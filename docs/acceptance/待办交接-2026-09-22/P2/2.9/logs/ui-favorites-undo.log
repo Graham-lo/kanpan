@@ -1,0 +1,4 @@
+Test Case '-[KanpanUITests.FavoritesUndoUITests testClearingTheCacheCanBeUndone]' passed (24.733 seconds).
+Test Case '-[KanpanUITests.FavoritesUndoUITests testHomeLooksRightInEverySkin]' passed (20.706 seconds).
+Test Case '-[KanpanUITests.FavoritesUndoUITests testRemovingAFavoriteOffersUndoAndPutsTheRowBack]' passed (15.685 seconds).
+Test Case '-[KanpanUITests.FavoritesUndoUITests testRestoringDefaultsCanBeUndone]' passed (15.032 seconds).

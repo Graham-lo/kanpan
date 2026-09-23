@@ -1,3 +1,4 @@
+import KanpanChart
 import Combine
 import Foundation
 import KanpanCore
@@ -71,7 +72,7 @@ final class AlertWatcher: ObservableObject {
       AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol), sound: sound())
     }
     guard foreground else { return }
-    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+    Haptics.alarm()
     onFired?(alert)
   }
 }

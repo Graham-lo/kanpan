@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 
 struct FriendsPage: View {
@@ -7,7 +8,7 @@ struct FriendsPage: View {
   var body: some View {
     PanelSheet(title: "朋友", subtitle: nil) {
       ForEach(inbox.friends) { friend in
-        FriendRow(friend: friend) { Task { await inbox.removeFriend(friend.username) } }
+        FriendRow(friend: friend) { Haptics.warning(); Task { await inbox.removeFriend(friend.username) } }
       }
       if inbox.friends.isEmpty {
         Text("还没有朋友").font(.scaled(13)).foregroundStyle(theme.ink3).padding(22)

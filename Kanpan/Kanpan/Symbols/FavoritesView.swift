@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import UIKit
 import KanpanCore
@@ -577,7 +578,7 @@ struct FavoritesView: View {
           moreRow("重命名当前分类", icon: "square.and.pencil", id: "favorites.renameGroup") {
             renamedID = group.id; name = group.name; editingName = true
           }
-          moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { model.deleteGroup(group.id) }
+          moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { Haptics.warning(); model.deleteGroup(group.id) }
         }
       }.padding(.vertical, 6)
     }.font(.scaled(14))
@@ -1344,6 +1345,7 @@ struct FavoritesView: View {
     let model = self.model
     let snapshots = list.compactMap { model.favoriteSnapshot($0) }
     guard !snapshots.isEmpty else { return }
+    Haptics.warning()
     list.forEach { model.removeFavorite($0) }
     session.offerUndo(snapshots.count > 1 ? "已移除 \(snapshots.count) 个" : "已移除") {
       model.restoreFavorites(snapshots)

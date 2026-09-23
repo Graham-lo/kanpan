@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import KanpanCore
 import KanpanData
@@ -151,7 +152,7 @@ struct SettingsPanel: View {
   private var cacheRow: some View {
     PanelRow(name: "清缓存") {
       // 点下去先给五秒反悔，过了才真清（P2.7），所以这里不再转圈。
-      Button { store.clearCacheLater() } label: {
+      Button { Haptics.warning(); store.clearCacheLater() } label: {
         Text("清除").font(PanelFont.seg).foregroundStyle(t.amber)
       }
       .buttonStyle(.plain)
@@ -162,6 +163,7 @@ struct SettingsPanel: View {
   private func resetAll() {
     let before = store.prefs
     store.resetToDefaults()
+    Haptics.warning()
     store.note("已恢复默认", undo: { store.restore(before) })
   }
 

@@ -1,0 +1,560 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -workspace Kanpan.xcworkspace -scheme Kanpan -destination id=AAC522D2-98D8-452F-802A-491C8556CA54 -derivedDataPath /tmp/p2-dd "-only-testing:KanpanUITests/ReviewFlowUITests/testAMarkOnlyPaintsOnItsOwnSymbolAndIntervalAndLandsInTheBook"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanAccount: /tmp/p2/KanpanAccount @ local
+  KanpanNetwork: /tmp/p2/KanpanNetwork @ local
+  KanpanData: /tmp/p2/KanpanData @ local
+  KanpanChart: /tmp/p2/KanpanChart @ local
+  KanpanCore: /tmp/p2/KanpanCore @ local
+  KanpanReview: /tmp/p2/KanpanReview @ local
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (16 targets)
+    Target 'KanpanUITests' in project 'Kanpan'
+        ➜ Explicit dependency on target 'Kanpan' in project 'Kanpan'
+    Target 'Kanpan' in project 'Kanpan'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanReview' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'KanpanAccount' in project 'KanpanAccount'
+    Target 'KanpanAccount' in project 'KanpanAccount'
+        ➜ Explicit dependency on target 'KanpanAccount' in project 'KanpanAccount'
+    Target 'KanpanAccount' in project 'KanpanAccount' (no dependencies)
+    Target 'KanpanReview' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewDomain' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewData' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewUI' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'ReviewUI' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewDomain' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewData' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'ReviewData' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewDomain' in project 'KanpanReview'
+    Target 'ReviewDomain' in project 'KanpanReview' (no dependencies)
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanNetwork' in project 'KanpanNetwork'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanNetwork' in project 'KanpanNetwork'
+    Target 'KanpanNetwork' in project 'KanpanNetwork'
+        ➜ Explicit dependency on target 'KanpanNetwork' in project 'KanpanNetwork'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanNetwork' in project 'KanpanNetwork'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /tmp/p2/Kanpan/Kanpan/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+Build description signature: f9e3cdc5ceb4f6dfa88ebed28f137d9c
+Build description path: /tmp/p2-dd/Build/Intermediates.noindex/XCBuildData/f9e3cdc5ceb4f6dfa88ebed28f137d9c.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /tmp/p2-dd/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /tmp/p2
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /tmp/p2-dd/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+SwiftDriver Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios26.0-simulator -g -module-cache-path /tmp/p2-dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /tmp/p2-dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /tmp/p2-dd/Build/Products/Debug-iphonesimulator -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /tmp/p2-dd/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /tmp/p2-dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /tmp/p2-dd/ModuleCache.noindex -sdk-module-cache-path /tmp/p2-dd/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /tmp/p2-dd/ModuleCache.noindex/Session.modulevalidation -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/tmp/p2-dd/Build/Products/Debug-iphonesimulator/include -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/arm64 -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /tmp/p2/Kanpan -experimental-emit-module-separately -disable-cmo
+
+ProcessInfoPlistFile /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist /tmp/p2/Kanpan/Config/Info.plist (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-infoPlistUtility /tmp/p2/Kanpan/Config/Info.plist -producttype com.apple.product-type.application -genpkginfo /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist -o /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist
+
+SwiftCompile normal arm64 Compiling\ ToastCenter.swift /tmp/p2/Kanpan/Kanpan/Main/ToastCenter.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftCompile normal arm64 /tmp/p2/Kanpan/Kanpan/Main/ToastCenter.swift (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    
+/tmp/p2/Kanpan/Kanpan/Main/ToastCenter.swift:124:47: warning: 'shouldAutorotate' was deprecated in iOS 16.0: Update supported interface orientations and call setNeedsUpdateOfSupportedInterfaceOrientations to indicate a change.
+  override var shouldAutorotate: Bool { main?.shouldAutorotate ?? true }
+                                              ^
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ Kanpan (in target 'Kanpan' from project 'Kanpan')
+EmitSwiftModule normal arm64 (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling ToastCenter.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for Kanpan (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriver\ Compilation\ Requirements Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios26.0-simulator -g -module-cache-path /tmp/p2-dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /tmp/p2-dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /tmp/p2-dd/Build/Products/Debug-iphonesimulator -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /tmp/p2-dd/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /tmp/p2-dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /tmp/p2-dd/ModuleCache.noindex -sdk-module-cache-path /tmp/p2-dd/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /tmp/p2-dd/ModuleCache.noindex/Session.modulevalidation -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/tmp/p2-dd/Build/Products/Debug-iphonesimulator/include -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/arm64 -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /tmp/p2/Kanpan -experimental-emit-module-separately -disable-cmo
+
+SwiftDriver\ Compilation Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios26.0-simulator -g -module-cache-path /tmp/p2-dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /tmp/p2-dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /tmp/p2-dd/Build/Products/Debug-iphonesimulator -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /tmp/p2-dd/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /tmp/p2-dd/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /tmp/p2-dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /tmp/p2-dd/ModuleCache.noindex -sdk-module-cache-path /tmp/p2-dd/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /tmp/p2-dd/ModuleCache.noindex/Session.modulevalidation -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/tmp/p2-dd/Build/Products/Debug-iphonesimulator/include -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/arm64 -Xcc -I/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /tmp/p2/Kanpan -experimental-emit-module-separately -disable-cmo
+
+Copy /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.abi.json /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.abi.json (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.abi.json /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+Copy /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftsourceinfo (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftsourceinfo /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+Ld /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib normal (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.0-simulator -dynamiclib -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -L/tmp/p2-dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/tmp/p2-dd/Build/Products/Debug-iphonesimulator -F/tmp/p2-dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator -filelist /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.LinkFileList -install_name @rpath/Kanpan.debug.dylib -Xlinker -rpath -Xlinker /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-linker-args.resp -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -Xlinker -no_adhoc_codesign -o /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-linker-args.resp -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-linker-args.resp -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanData.build/Debug-iphonesimulator/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanData.build/Debug-iphonesimulator/KanpanData.build/Objects-normal/arm64/KanpanData-linker-args.resp -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanNetwork.build/Debug-iphonesimulator/KanpanNetwork.build/Objects-normal/arm64/KanpanNetwork.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanNetwork.build/Debug-iphonesimulator/KanpanNetwork.build/Objects-normal/arm64/KanpanNetwork-linker-args.resp -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanReview.build/Debug-iphonesimulator/ReviewDomain.build/Objects-normal/arm64/ReviewDomain.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanReview.build/Debug-iphonesimulator/ReviewDomain.build/Objects-normal/arm64/ReviewDomain-linker-args.resp -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanReview.build/Debug-iphonesimulator/ReviewData.build/Objects-normal/arm64/ReviewData.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanReview.build/Debug-iphonesimulator/ReviewData.build/Objects-normal/arm64/ReviewData-linker-args.resp -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanReview.build/Debug-iphonesimulator/ReviewUI.build/Objects-normal/arm64/ReviewUI.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanReview.build/Debug-iphonesimulator/ReviewUI.build/Objects-normal/arm64/ReviewUI-linker-args.resp -Xlinker -add_ast_path -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/KanpanAccount.build/Debug-iphonesimulator/KanpanAccount.build/Objects-normal/arm64/KanpanAccount.swiftmodule @/tmp/p2-dd/Build/Intermediates.noindex/KanpanAccount.build/Debug-iphonesimulator/KanpanAccount.build/Objects-normal/arm64/KanpanAccount-linker-args.resp
+
+ConstructStubExecutorLinkFileList /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    construct-stub-executor-link-file-list /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'Kanpan' from project 'Kanpan')
+
+Ld /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan normal (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.0-simulator -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -L/tmp/p2-dd/Build/Products/Debug-iphonesimulator -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/tmp/p2-dd/Build/Products/Debug-iphonesimulator -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker /tmp/p2-dd/Build/Products/Debug-iphonesimulator/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.app-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.app-Simulated.xcent.der /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib -Xlinker -no_adhoc_codesign -o /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan
+
+CopySwiftLibs /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Frameworks --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/PlugIns --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/SystemExtensions --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+ExtractAppIntentsMetadata (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Kanpan --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 26.0 --bundle-identifier com.mdd.kanpan --output /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app --target-triple arm64-apple-ios26.0-simulator --binary-file /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan --dependency-file /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_dependency_info.dat --stringsdata-file /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList --metadata-file-list /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.DependencyMetadataFileList --static-metadata-file-list /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.DependencyStaticMetadataFileList --swift-const-vals-list /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-23 09:55:36.399 appintentsmetadataprocessor[83109:6543295] Starting appintentsmetadataprocessor export
+2026-09-23 09:55:36.413 appintentsmetadataprocessor[83109:6543295] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CodeSign /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib
+
+CodeSign /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/__preview.dylib (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/__preview.dylib
+/tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app/__preview.dylib: replacing existing signature
+
+CodeSign /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app
+
+Validate /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-validationUtility /tmp/p2-dd/Build/Products/Debug-iphonesimulator/Kanpan.app -shallow-bundle -infoplist-subpath Info.plist
+
+ProcessInfoPlistFile /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/empty-KanpanUITests.plist (in target 'KanpanUITests' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-infoPlistUtility /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/empty-KanpanUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/ProductTypeInfoPlistAdditions.plist -o /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist
+
+CopySwiftLibs /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest (in target 'KanpanUITests' from project 'Kanpan')
+    cd /tmp/p2/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/PlugIns --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/SystemExtensions --scan-folder /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /tmp/p2-dd/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /tmp/p2-dd/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+2026-09-23 09:55:46.930798+0800 KanpanUITests-Runner[83241:6544163] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-23 09:55:47.439.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-23 09:55:47.440.
+Test Suite 'ReviewFlowUITests' started at 2026-09-23 09:55:47.440.
+Test Case '-[KanpanUITests.ReviewFlowUITests testAMarkOnlyPaintsOnItsOwnSymbolAndIntervalAndLandsInTheBook]' started.
+    t =     0.00s Start Test at 2026-09-23 09:55:47.440
+    t =     0.03s Set Up
+    t =     0.03s     Setting device orientation to Portrait
+    t =     0.03s         Wait for com.apple.springboard to idle
+    t =     0.04s     Open com.mdd.kanpan
+    t =     0.04s         Launch com.mdd.kanpan
+2026-09-23 09:55:48.842 xcodebuild[82090:6531197] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-23 09:55:48.844 xcodebuild[82090:6531197] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     5.10s             Setting up automation session
+    t =     5.84s             Wait for com.mdd.kanpan to idle
+    t =     7.27s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     8.34s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     8.34s             Checking existence of `"bottom.chart" Button`
+    t =     8.41s     Checking existence of `"top.symbol" Any`
+    t =     8.42s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     9.49s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     9.49s             Checking existence of `"top.symbol" Any`
+    t =     9.51s     Find the Window (First Match)
+    t =     9.52s     Find the "interval.more" Button
+    t =     9.54s     Find the "bottom.favorites" Button
+    t =     9.60s Checking existence of `"chart.canvas" Other`
+    t =     9.64s Find the "chart.canvas" Other
+    t =     9.70s Find the "chart.latest" Button
+objc[83241]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10aef4310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10ac2c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =    10.73s     Find the "chart.latest" Button (retry 1)
+    t =    11.78s     Find the "chart.latest" Button (retry 2)
+    t =    11.82s Press Window (First Match)[0.00, 0.00] -> (40.0, 472.8) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 472.8) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    11.82s     Wait for com.mdd.kanpan to idle
+    t =    11.83s     Find the Window (First Match)
+    t =    11.84s     Check for interrupting elements affecting Window
+    t =    11.87s     Synthesize event
+    t =    11.87s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.87s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.88s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.88s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.89s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    12.64s     Wait for com.mdd.kanpan to idle
+    t =    12.65s Find the "chart.latest" Button
+    t =    12.73s Find the Window (First Match)
+    t =    12.77s Find the "chart.latest" Button
+    t =    12.79s Find the Window (First Match)
+    t =    12.81s Tap "chart.latest" Button
+    t =    12.81s     Wait for com.mdd.kanpan to idle
+    t =    12.82s     Find the "chart.latest" Button
+    t =    12.85s     Check for interrupting elements affecting "chart.latest" Button
+    t =    12.87s     Synthesize event
+    t =    13.16s     Wait for com.mdd.kanpan to idle
+    t =    13.17s Find the "chart.latest" Button
+    t =    14.23s     Find the "chart.latest" Button (retry 1)
+    t =    15.27s     Find the "chart.latest" Button (retry 2)
+    t =    15.28s Checking existence of `"chart.canvas" Other`
+    t =    15.30s Find the "chart.canvas" Other
+    t =    15.31s Checking existence of `"chart.canvas" Other`
+    t =    15.33s Find the "chart.canvas" Other
+    t =    15.34s Find the "review.range" Other
+    t =    15.36s Waiting 8.0s for "interval.chart" Button to exist
+    t =    16.43s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chart" Button`
+    t =    16.43s         Checking existence of `"interval.chart" Button`
+    t =    16.45s Tap "interval.chart" Button
+    t =    16.45s     Wait for com.mdd.kanpan to idle
+    t =    16.45s     Find the "interval.chart" Button
+    t =    16.48s     Check for interrupting elements affecting "interval.chart" Button
+    t =    16.50s     Synthesize event
+    t =    16.79s     Wait for com.mdd.kanpan to idle
+    t =    17.26s Waiting 8.0s for "chart.record" Button to exist
+    t =    18.34s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.record" Button`
+    t =    18.34s         Checking existence of `"chart.record" Button`
+    t =    18.44s Tap "chart.record" Button
+    t =    18.44s     Wait for com.mdd.kanpan to idle
+    t =    18.44s     Find the "chart.record" Button
+    t =    18.51s     Check for interrupting elements affecting "chart.record" Button
+    t =    18.56s     Synthesize event
+    t =    18.88s     Wait for com.mdd.kanpan to idle
+    t =    19.34s Waiting 8.0s for "记下" Button to exist
+    t =    20.41s     Checking `Expect predicate `existsNoRetry == 1` for object "记下" Button`
+    t =    20.41s         Checking existence of `"记下" Button`
+    t =    20.48s Tap "记下" Button
+    t =    20.48s     Wait for com.mdd.kanpan to idle
+    t =    20.48s     Find the "记下" Button
+    t =    20.55s     Check for interrupting elements affecting "记下" Button
+    t =    20.60s     Synthesize event
+    t =    20.89s     Wait for com.mdd.kanpan to idle
+    t =    20.89s Checking existence of `"记下" Button`
+    t =    20.92s Find the "review.range" Other
+    t =    20.95s Checking existence of `"interval.chip.1m" Button`
+    t =    20.97s Find the "interval.chip.1m" Button
+    t =    21.00s Tap Target Application 'com.mdd.kanpan'[0.00, 0.00] -> (27.8, 191.3)
+    t =    21.00s     Wait for com.mdd.kanpan to idle
+    t =    21.00s     Find the Target Application 'com.mdd.kanpan'
+    t =    21.01s     Check for interrupting elements affecting "Hkline" Application
+    t =    21.03s     Synthesize event
+    t =    21.03s         Find the Target Application 'com.mdd.kanpan'
+    t =    21.03s         Find the Target Application 'com.mdd.kanpan'
+    t =    21.05s         Find the Target Application 'com.mdd.kanpan'
+    t =    21.34s     Wait for com.mdd.kanpan to idle
+    t =    21.34s Checking existence of `"chart.canvas" Other`
+    t =    21.38s Find the "chart.canvas" Other
+    t =    21.66s Checking existence of `"chart.canvas" Other`
+    t =    21.69s Find the "chart.canvas" Other
+    t =    21.73s Find the "review.range" Other
+    t =    21.74s Checking existence of `"interval.chip.1h" Button`
+    t =    21.76s Find the "interval.chip.1h" Button
+    t =    21.81s Tap Target Application 'com.mdd.kanpan'[0.00, 0.00] -> (210.0, 191.3)
+    t =    21.81s     Wait for com.mdd.kanpan to idle
+    t =    21.81s     Find the Target Application 'com.mdd.kanpan'
+    t =    21.83s     Check for interrupting elements affecting "Hkline" Application
+    t =    21.85s     Synthesize event
+    t =    21.86s         Find the Target Application 'com.mdd.kanpan'
+    t =    21.87s         Find the Target Application 'com.mdd.kanpan'
+    t =    21.89s         Find the Target Application 'com.mdd.kanpan'
+    t =    22.19s     Wait for com.mdd.kanpan to idle
+    t =    22.20s Checking existence of `"chart.canvas" Other`
+    t =    22.30s Find the "chart.canvas" Other
+    t =    22.33s Find the "review.range" Other
+    t =    22.35s Waiting 10.0s for "top.search" Button to exist
+    t =    23.43s     Checking `Expect predicate `existsNoRetry == 1` for object "top.search" Button`
+    t =    23.43s         Checking existence of `"top.search" Button`
+    t =    23.45s Tap "top.search" Button
+    t =    23.45s     Wait for com.mdd.kanpan to idle
+    t =    23.45s     Find the "top.search" Button
+    t =    23.47s     Check for interrupting elements affecting "top.search" Button
+    t =    23.48s     Synthesize event
+    t =    23.77s     Wait for com.mdd.kanpan to idle
+    t =    24.14s Waiting 10.0s for "search.query" TextField to exist
+    t =    25.22s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    25.22s         Checking existence of `"search.query" TextField`
+    t =    25.32s Waiting 8.0s for "search.query" TextField to exist
+    t =    26.38s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    26.39s         Checking existence of `"search.query" TextField`
+    t =    26.45s Tap "search.query" TextField
+    t =    26.45s     Wait for com.mdd.kanpan to idle
+    t =    26.45s     Find the "search.query" TextField
+    t =    26.48s     Check for interrupting elements affecting "search.query" TextField
+    t =    26.51s     Synthesize event
+    t =    26.81s     Wait for com.mdd.kanpan to idle
+    t =    26.91s Find the "search.query" TextField
+    t =    27.08s Find the "search.query" TextField
+    t =    27.12s Type 'ETHUSDT' into "search.query" TextField
+    t =    27.12s     Wait for com.mdd.kanpan to idle
+    t =    27.29s     Find the "search.query" TextField
+    t =    27.35s     Check for interrupting elements affecting "search.query" TextField
+    t =    27.38s     Synthesize event
+    t =    27.70s     Wait for com.mdd.kanpan to idle
+    t =    28.03s Waiting 30.0s for "symbols.row.ETHUSDT" Any to exist
+    t =    29.10s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.row.ETHUSDT" Any`
+    t =    29.10s         Checking existence of `"symbols.row.ETHUSDT" Any`
+    t =    29.67s Tap "symbols.row.ETHUSDT" Any
+    t =    29.67s     Wait for com.mdd.kanpan to idle
+    t =    29.69s     Find the "symbols.row.ETHUSDT" Any
+    t =    30.62s     Check for interrupting elements affecting "symbols.row.ETHUSDT" Button
+    t =    30.78s     Synthesize event
+    t =    31.10s     Wait for com.mdd.kanpan to idle
+    t =    31.53s Checking existence of `"chart.canvas" Other`
+    t =    31.72s Find the "chart.canvas" Other
+    t =    31.74s Checking existence of `"chart.canvas" Other`
+    t =    31.76s Find the "chart.canvas" Other
+    t =    31.78s Find the "review.range" Other
+    t =    31.82s Waiting 10.0s for "top.search" Button to exist
+    t =    32.88s     Checking `Expect predicate `existsNoRetry == 1` for object "top.search" Button`
+    t =    32.88s         Checking existence of `"top.search" Button`
+    t =    32.91s Tap "top.search" Button
+    t =    32.91s     Wait for com.mdd.kanpan to idle
+    t =    32.91s     Find the "top.search" Button
+    t =    32.93s     Check for interrupting elements affecting "top.search" Button
+    t =    32.99s     Synthesize event
+    t =    33.31s     Wait for com.mdd.kanpan to idle
+    t =    33.64s Waiting 10.0s for "search.query" TextField to exist
+    t =    34.69s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    34.69s         Checking existence of `"search.query" TextField`
+    t =    34.75s Waiting 8.0s for "search.query" TextField to exist
+    t =    35.83s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    35.83s         Checking existence of `"search.query" TextField`
+    t =    35.88s Tap "search.query" TextField
+    t =    35.88s     Wait for com.mdd.kanpan to idle
+    t =    35.88s     Find the "search.query" TextField
+    t =    35.92s     Check for interrupting elements affecting "search.query" TextField
+    t =    36.00s     Synthesize event
+    t =    36.30s     Wait for com.mdd.kanpan to idle
+    t =    36.31s Find the "search.query" TextField
+    t =    36.43s Find the "search.query" TextField
+    t =    36.47s Type 'BTCUSDT' into "search.query" TextField
+    t =    36.47s     Wait for com.mdd.kanpan to idle
+    t =    36.75s     Find the "search.query" TextField
+    t =    36.80s     Check for interrupting elements affecting "search.query" TextField
+    t =    36.83s     Synthesize event
+    t =    37.15s     Wait for com.mdd.kanpan to idle
+    t =    37.34s Waiting 30.0s for "symbols.row.BTCUSDT" Any to exist
+    t =    38.41s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.row.BTCUSDT" Any`
+    t =    38.41s         Checking existence of `"symbols.row.BTCUSDT" Any`
+    t =    39.31s Tap "symbols.row.BTCUSDT" Any
+    t =    39.31s     Wait for com.mdd.kanpan to idle
+    t =    39.32s     Find the "symbols.row.BTCUSDT" Any
+    t =    40.49s     Check for interrupting elements affecting "symbols.row.BTCUSDT" Button
+    t =    40.53s     Synthesize event
+    t =    40.82s     Wait for com.mdd.kanpan to idle
+    t =    41.19s Checking existence of `"chart.canvas" Other`
+    t =    41.23s Find the "chart.canvas" Other
+    t =    41.25s Checking existence of `"chart.canvas" Other`
+    t =    41.26s Find the "chart.canvas" Other
+    t =    41.27s Find the "review.range" Other
+    t =    41.32s Waiting 8.0s for "top.review" Button to exist
+    t =    42.38s     Checking `Expect predicate `existsNoRetry == 1` for object "top.review" Button`
+    t =    42.39s         Checking existence of `"top.review" Button`
+    t =    42.47s Tap "top.review" Button
+    t =    42.47s     Wait for com.mdd.kanpan to idle
+    t =    42.47s     Find the "top.review" Button
+    t =    42.50s     Check for interrupting elements affecting "top.review" Button
+    t =    42.52s     Synthesize event
+    t =    42.80s     Wait for com.mdd.kanpan to idle
+    t =    42.91s Waiting 30.0s for "review.back" Button to exist
+    t =    43.95s     Checking `Expect predicate `existsNoRetry == 1` for object "review.back" Button`
+    t =    43.95s         Checking existence of `"review.back" Button`
+    t =    44.01s Waiting 8.0s for "记录" Button to exist
+    t =    45.08s     Checking `Expect predicate `existsNoRetry == 1` for object "记录" Button`
+    t =    45.08s         Checking existence of `"记录" Button`
+    t =    45.15s Tap "记录" Button
+    t =    45.15s     Wait for com.mdd.kanpan to idle
+    t =    45.15s     Find the "记录" Button
+    t =    45.21s     Check for interrupting elements affecting "记录" Button
+    t =    45.27s     Synthesize event
+    t =    45.57s     Wait for com.mdd.kanpan to idle
+    t =    46.83s Checking existence of `"review.empty" Button`
+    t =    46.89s Waiting 8.0s for Cell (First Match) to exist
+    t =    47.96s     Checking `Expect predicate `existsNoRetry == 1` for object Cell (First Match)`
+    t =    47.96s         Checking existence of `Cell (First Match)`
+    t =    48.02s Tap "review.back" Button
+    t =    48.02s     Wait for com.mdd.kanpan to idle
+    t =    48.02s     Find the "review.back" Button
+    t =    48.10s     Check for interrupting elements affecting "review.back" Button
+    t =    48.13s     Synthesize event
+    t =    48.43s     Wait for com.mdd.kanpan to idle
+    t =    49.25s Waiting 30.0s for "interval.chart" Button to exist
+    t =    50.32s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chart" Button`
+    t =    50.32s         Checking existence of `"interval.chart" Button`
+    t =    50.35s Find the "review.range" Other
+    t =    50.36s Setting device orientation to Landscape Left
+    t =    50.36s     Device orientation changed to Landscape Left
+    t =    50.36s     Wait for com.mdd.kanpan to idle
+    t =    50.37s Waiting 30.0s for "land.symbol" Any to exist
+    t =    51.40s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    51.40s         Checking existence of `"land.symbol" Any`
+    t =    51.44s         Capturing element debug description
+    t =    52.38s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    52.38s         Checking existence of `"land.symbol" Any`
+    t =    52.48s         Capturing element debug description
+    t =    53.43s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    53.44s         Checking existence of `"land.symbol" Any`
+    t =    53.47s         Capturing element debug description
+    t =    54.41s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    54.41s         Checking existence of `"land.symbol" Any`
+    t =    54.44s         Capturing element debug description
+    t =    55.40s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    55.40s         Checking existence of `"land.symbol" Any`
+    t =    55.44s         Capturing element debug description
+    t =    56.40s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    56.40s         Checking existence of `"land.symbol" Any`
+    t =    56.45s         Capturing element debug description
+    t =    57.38s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    57.38s         Checking existence of `"land.symbol" Any`
+    t =    57.42s         Capturing element debug description
+    t =    58.45s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    58.46s         Checking existence of `"land.symbol" Any`
+    t =    58.53s         Capturing element debug description
+    t =    59.39s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    59.39s         Checking existence of `"land.symbol" Any`
+    t =    59.44s         Capturing element debug description
+    t =    60.38s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    60.39s         Checking existence of `"land.symbol" Any`
+    t =    60.42s         Capturing element debug description
+    t =    61.37s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    61.37s         Checking existence of `"land.symbol" Any`
+    t =    61.41s         Capturing element debug description
+    t =    62.44s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    62.44s         Checking existence of `"land.symbol" Any`
+    t =    62.49s         Capturing element debug description
+    t =    63.42s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    63.42s         Checking existence of `"land.symbol" Any`
+    t =    63.46s         Capturing element debug description
+    t =    64.38s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    64.39s         Checking existence of `"land.symbol" Any`
+    t =    64.43s         Capturing element debug description
+    t =    65.45s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    65.45s         Checking existence of `"land.symbol" Any`
+    t =    65.50s         Capturing element debug description
+    t =    66.43s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    66.44s         Checking existence of `"land.symbol" Any`
+    t =    66.53s         Capturing element debug description
+    t =    67.46s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    67.46s         Checking existence of `"land.symbol" Any`
+    t =    67.58s         Capturing element debug description
+    t =    68.43s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    68.43s         Checking existence of `"land.symbol" Any`
+    t =    68.46s         Capturing element debug description
+    t =    69.42s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    69.42s         Checking existence of `"land.symbol" Any`
+    t =    69.48s         Capturing element debug description
+    t =    70.44s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    70.44s         Checking existence of `"land.symbol" Any`
+    t =    70.48s         Capturing element debug description
+    t =    71.42s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    71.43s         Checking existence of `"land.symbol" Any`
+    t =    71.47s         Capturing element debug description
+    t =    72.42s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    72.42s         Checking existence of `"land.symbol" Any`
+    t =    72.48s         Capturing element debug description
+    t =    73.40s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    73.40s         Checking existence of `"land.symbol" Any`
+    t =    73.44s         Capturing element debug description
+    t =    74.41s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    74.41s         Checking existence of `"land.symbol" Any`
+    t =    74.55s         Capturing element debug description
+    t =    75.39s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    75.39s         Checking existence of `"land.symbol" Any`
+    t =    75.48s         Capturing element debug description
+    t =    76.40s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    76.40s         Checking existence of `"land.symbol" Any`
+    t =    76.42s         Capturing element debug description
+    t =    77.45s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    77.45s         Checking existence of `"land.symbol" Any`
+    t =    77.50s         Capturing element debug description
+    t =    78.44s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    78.44s         Checking existence of `"land.symbol" Any`
+    t =    78.60s         Capturing element debug description
+    t =    79.44s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    79.44s         Checking existence of `"land.symbol" Any`
+    t =    79.49s         Capturing element debug description
+    t =    80.37s     Checking `Expect predicate `existsNoRetry == 1` for object "land.symbol" Any`
+    t =    80.38s         Checking existence of `"land.symbol" Any`
+    t =    80.51s         Capturing element debug description
+    t =    80.52s     Checking existence of `"land.symbol" Any`
+    t =    80.56s Collecting debug information to assist test failure triage
+    t =    80.56s     Requesting snapshot of accessibility hierarchy for app with pid 83281
+/tmp/p2/Kanpan/KanpanUITests/ReviewFlowUITests.swift:146: error: -[KanpanUITests.ReviewFlowUITests testAMarkOnlyPaintsOnItsOwnSymbolAndIntervalAndLandsInTheBook] : XCTAssertTrue failed - 没横过来
+    t =    80.61s Tear Down
+    t =    80.61s     Setting device orientation to Portrait
+    t =    80.61s         Device orientation changed to Portrait
+    t =    80.61s         Wait for com.mdd.kanpan to idle
+Test Case '-[KanpanUITests.ReviewFlowUITests testAMarkOnlyPaintsOnItsOwnSymbolAndIntervalAndLandsInTheBook]' failed (80.677 seconds).
+2026-09-23 09:57:08.117541+0800 KanpanUITests-Runner[83241:6544163] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-23 09:57:08.117761+0800 KanpanUITests-Runner[83241:6544277] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-23 09:57:09.262294+0800 KanpanUITests-Runner[83862:6548492] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-23 09:57:09.726.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-23 09:57:09.726.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-23 09:57:09.726.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-23 09:57:09.726.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-09-23 09:57:49.532 xcodebuild[82090:6531197] [MT] IDETestOperationsObserverDebug: 131.929 elapsed -- Testing started completed.
+2026-09-23 09:57:49.533 xcodebuild[82090:6531197] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-23 09:57:49.533 xcodebuild[82090:6531197] [MT] IDETestOperationsObserverDebug: 131.930 sec, +131.930 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/p2-dd/Logs/Test/Test-Kanpan-2026.09.23_09-52-44-+0800.xcresult
+
+Failing tests:
+	ReviewFlowUITests.testAMarkOnlyPaintsOnItsOwnSymbolAndIntervalAndLandsInTheBook()
+
+** TEST FAILED **
+
+Testing started

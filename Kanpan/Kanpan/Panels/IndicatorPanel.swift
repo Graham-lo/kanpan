@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import UIKit
 import KanpanCore
@@ -300,7 +301,7 @@ private struct IndicatorEditor: View {
               .foregroundStyle(t.amber)
               .frame(maxWidth: .infinity, alignment: .leading)
               .contentShape(Rectangle())
-              .onTapGesture { draft.colors = [:] }
+              .onTapGesture { Haptics.warning(); draft.colors = [:] }
               .accessibilityIdentifier("indicator.colors.reset")
               .accessibilityAddTraits(.isButton)
           } header: {
@@ -444,6 +445,7 @@ private struct IndicatorEditor: View {
   /// 行一挪就串到隔壁去了。
   private func removePeriods(_ offsets: IndexSet) {
     guard draft.params.count - offsets.count >= 1 else { return }
+    Haptics.warning()
     commitAll(); focus = nil
     for index in offsets.sorted(by: >) {
       draft.params.remove(at: index)

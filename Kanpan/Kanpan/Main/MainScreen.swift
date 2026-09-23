@@ -1120,6 +1120,7 @@ struct MainScreen: View {
     }
     // 作废记录之类还能反悔的事，走那唯一一条提示（P2.7）。
     review.onUndoable = { text, undo in ToastCenter.shared.say(text, undo: undo) }
+    review.onFeedback = { $0 == .done ? Haptics.success() : Haptics.warning() }
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
@@ -1170,6 +1171,7 @@ struct MainScreen: View {
                        // 横屏图本来就矮，卡片不能占掉一半；竖屏给 280pt。
                        maxHeight: landscape ? 150 : 280,
                        onSaved: {
+                         Haptics.success()
                          // 「已记下 · 查看」：右边那颗直接翻到刚记的那条（§2F2）。
                          // 图上那个新记号同时闪一下，两边指的是同一件事。
                          say("已记下", actionTitle: "查看") {
@@ -1746,7 +1748,7 @@ struct MainScreen: View {
       proxy.cancelWindow()
     }
     market.switchTo(interval: iv)
-    UISelectionFeedbackGenerator().selectionChanged()
+    Haptics.step()
   }
 
   /// 顶栏价格区横滑一下：按冻结下来的名单换上一只 / 下一只（§10.1）。
@@ -1763,7 +1765,7 @@ struct MainScreen: View {
       return
     case .edge:
       // 到头了。不循环、不弹字，只轻轻顶一下手指（§10.1）。
-      UIImpactFeedbackGenerator(style: .light).impactOccurred()
+      Haptics.tap()
     case .move(let symbol):
       // 正在看历史：新的那只也停在同一段时间上，不要每换一只就被拽回最新——
       // 横着扫一排品种，看的就是「同一段时间里它们各自在干什么」。
@@ -1775,7 +1777,7 @@ struct MainScreen: View {
       alertPrompt.dismiss()
       open(linkedSymbol: symbol)
       if let keep { proxy.show(window: keep, symbol: symbol, interval: market.interval) }
-      UISelectionFeedbackGenerator().selectionChanged()
+      Haptics.step()
     }
   }
 

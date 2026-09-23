@@ -3,6 +3,7 @@ import Foundation
 import KanpanCore
 import QuartzCore
 import UIKit
+import os
 
 // MARK: - 手势状态
 
@@ -822,18 +823,52 @@ extension ChartView {
 
 // MARK: - 触觉
 
-/// 三种触觉各管一件事（G11）：出十字线 light、磁吸换根 selection、缩放到边界 rigid。
+/// 全 app 的触觉都从这儿出（G11、P2.9），各管一件事：
+/// - 图上：出十字线 light、磁吸换根 selection、缩放到边界 rigid；
+/// - 图外：点星、扫到头之类的轻点 `tap`，选中、拖完排序 `press`，换一档 `step`，提醒响了 `alarm`；一件事办成了（记下、判定、登录）`success`；
+///   拿掉了东西（删除、恢复默认、清缓存、退出）`warning`。
 ///
 /// 生成器留着不重建：`prepare()` 之后系统会把 Taptic Engine 预热，每次现 new 一个
 /// 第一下会晚几十毫秒，磁吸换根那种连续反馈就会糊成一片。
 @MainActor
-enum Haptics {
+public enum Haptics {
   private static let light = UIImpactFeedbackGenerator(style: .light)
   private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
   private static let selection = UISelectionFeedbackGenerator()
+  private static let medium = UIImpactFeedbackGenerator(style: .medium)
+  private static let notice = UINotificationFeedbackGenerator()
 
   /// 系统「减少动效」。甩和回弹看它，触觉不看——那是两个开关。
   static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+
+  /// 轻点一下：加减自选这类随手的开关。
+  public static func tap() { trace("tap"); light.impactOccurred() }
+
+  /// 实一点的一下：选中一只、拖完排序这类「落定」。
+  public static func press() { trace("press"); medium.impactOccurred() }
+
+  /// 换了一档：换周期、扫到下一只、副图挪了一格。
+  public static func step() { trace("step"); selection.selectionChanged() }
+
+  /// 提醒响了（前台）。
+  public static func alarm() { trace("alarm"); rigid.impactOccurred() }
+
+  /// 一件事办成了：记下一笔、判定、登录成功。
+  public static func success() { trace("success"); notice.notificationOccurred(.success) }
+
+  /// 拿掉了东西：删除、恢复默认、清缓存、退出登录。都能撤销或重来，所以是提醒不是报错。
+  public static func warning() { trace("warning"); notice.notificationOccurred(.warning) }
+
+  /// 模拟器上摸不到震动，只好留一行日志证明「该震的时候真的叫了」（P2.9 验收用，仅 DEBUG）。
+  /// 抓法：`/usr/bin/log stream --predicate 'subsystem == "kanpan.haptics"'`。
+  private static func trace(_ kind: StaticString) {
+    #if DEBUG
+    os_log("haptic %{public}s", log: traceLog, type: .default, "\(kind)")
+    #endif
+  }
+  #if DEBUG
+  private static let traceLog = OSLog(subsystem: "kanpan.haptics", category: "haptics")
+  #endif
 
   static func crosshair() {
     light.prepare()

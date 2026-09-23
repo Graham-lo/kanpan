@@ -93,6 +93,9 @@ import ReviewData
   @ObservationIgnored public var onUndoable: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?
   /// 撤销窗口有多长。和宿主那条提示带「撤销」时停留的时间一致；测试里调短。
   @ObservationIgnored public var undoWindow: Duration = .seconds(5)
+  /// 一件事的结果要不要震一下（P2.9）。这个包不碰触觉，宿主接到全 app 那套 `Haptics` 上：
+  /// `.done` 是判定落下了（完成复盘、同一次 / 独立判断），`.removed` 是作废了一条。
+  @ObservationIgnored public var onFeedback: (@MainActor (ReviewFeedback) -> Void)?
   /// 刚作废、还在撤销窗口里的那一条。它的 void 操作已经排进队列，但窗口没过之前不发。
   @ObservationIgnored private var heldVoid: UUID?
   @ObservationIgnored private var voidRelease: Task<Void, Never>?
@@ -295,7 +298,7 @@ import ReviewData
       // 存成了不说话（§P3-8）：他刚按的就是「保存」，回到列表那条记录已经带着
       // 他写的那句话——成没成看得见，再弹一条「复盘已保存」是替他自己的动作鼓掌。
       // 失败那一句留着（下面那行 `catch`），那才是他看不出来的事。
-      }) { notice = nil; synchronize() }
+      }) { notice = nil; if publish { onFeedback?(.done) }; synchronize() }
     } catch { notice = error.localizedDescription }
   }
   public func voidRecord(_ id: UUID) {
@@ -326,6 +329,7 @@ import ReviewData
       self.heldVoid = nil
       self.synchronize()
     }
+    onFeedback?(.removed)
     onUndoable?("已作废") { [weak self] in self?.undoVoid(id) }
     synchronize()
   }
@@ -352,7 +356,7 @@ import ReviewData
         if let index = archive.records.firstIndex(where: { $0.id == id }) { archive.records[index] = value }
         else { archive.records.insert(value, at: 0) }
         archive.queue.append(operation)
-      }) { synchronize() }
+      }) { onFeedback?(.done); synchronize() }
     } catch { notice = error.localizedDescription }
   }
   public func rememberReplay(_ id: UUID, position: ReviewReplayPosition) {
@@ -639,3 +643,6 @@ import ReviewData
     catch { if requestEpoch == epoch { statisticsError = error.localizedDescription } }
   }
 }
+
+/// 复盘里一件事的结果，宿主按它出触觉（P2.9）。
+public enum ReviewFeedback: Sendable, Equatable { case done, removed }

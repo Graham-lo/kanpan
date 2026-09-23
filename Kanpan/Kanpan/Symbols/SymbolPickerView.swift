@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import KanpanCore
 #if canImport(UIKit)
@@ -240,7 +241,7 @@ struct SymbolPickerView: View {
       id: row.id, open: $openSwipe, brick: .flush,
       trailing: favorite
         ? [.delete(theme, title: "移出自选", id: SwipeDeleteIDs.favoritesUnstar) {
-            haptic(.medium)
+            Haptics.warning()
             model.removeFavorite(row.id)
           }]
         : []
@@ -251,11 +252,11 @@ struct SymbolPickerView: View {
                     colors: colors,
                     nameSize: nameSize, metaSize: metaSize,
                     priceSize: priceSize, pctSize: pctSize,
-                    onStar: { haptic(.light); model.toggleFavorite(row.id) },
+                    onStar: { Haptics.tap(); model.toggleFavorite(row.id) },
                     onPick: {
                       if swipe.isOpen { swipe.close(); return }
                       searchFocused = false
-                      haptic(.medium)
+                      Haptics.press()
                       if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
                     })
       .padding(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
@@ -265,7 +266,7 @@ struct SymbolPickerView: View {
       // 最后那一下还被当成点行、把整页关掉了）。挪到里层之后，横拖先归 `SwipeToDelete`
       // 那道横纵锁，长按不动那一路照旧交给拖拽，两件事各走各的。
       .modifier(FavoriteDragModifier(enabled: favorite, symbol: row.id, dragging: $dragging) { from, onto in
-        haptic(.medium)
+        Haptics.press()
         model.moveFavorite(from, onto: onto)
       })
     }
@@ -278,18 +279,6 @@ struct SymbolPickerView: View {
     .alignmentGuide(.listRowSeparatorTrailing) { d in d.width - 16 }
   }
 
-  private func haptic(_ style: HapticStyle) {
-    #if canImport(UIKit) && !targetEnvironment(macCatalyst)
-    let generator: UIImpactFeedbackGenerator
-    switch style {
-    case .light: generator = UIImpactFeedbackGenerator(style: .light)
-    case .medium: generator = UIImpactFeedbackGenerator(style: .medium)
-    }
-    generator.impactOccurred()
-    #endif
-  }
-
-  private enum HapticStyle { case light, medium }
 }
 
 // ============================================================ 一行

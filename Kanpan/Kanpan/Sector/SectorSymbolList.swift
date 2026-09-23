@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import KanpanCore
 
@@ -202,6 +203,7 @@ struct SectorSymbolList: View {
 
   private func unfavorite(_ symbol: String, _ picker: SymbolPickerModel) {
     guard let before = picker.favoriteSnapshot(symbol) else { return }
+    Haptics.warning()
     picker.removeFavorite(symbol)
     ToastCenter.shared.say("已移除") { picker.restoreFavorites([before]) }
   }

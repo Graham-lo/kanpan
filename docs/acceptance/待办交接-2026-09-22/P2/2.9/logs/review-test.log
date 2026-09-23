@@ -1,0 +1,37 @@
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAFailedRefreshKeepsTheNumbersAlreadyOnScreen]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAFailedRefreshKeepsTheNumbersAlreadyOnScreen]' passed (0.007 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testARecordWithoutAShotStillSaves]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testARecordWithoutAShotStillSaves]' passed (0.004 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testATransientFailureKeepsTheOperationAndItsKey]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testATransientFailureKeepsTheOperationAndItsKey]' passed (0.020 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAVoidIsSentOnceTheUndoWindowPasses]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAVoidIsSentOnceTheUndoWindowPasses]' passed (0.067 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testKeepingTheRemoteVersionDropsTheLocalUpload]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testKeepingTheRemoteVersionDropsTheLocalUpload]' passed (0.013 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLaterPagesAreNotMixedWithLocalOnlyRecords]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLaterPagesAreNotMixedWithLocalOnlyRecords]' passed (0.003 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLoadingAndSyncingDoNotSendTheUserBackToTheTodoTab]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLoadingAndSyncingDoNotSendTheUserBackToTheTodoTab]' passed (0.009 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLocallyCreatedRecordStaysInTheBookAfterTheServerListLoads]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLocallyCreatedRecordStaysInTheBookAfterTheServerListLoads]' passed (0.011 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testOnePermanentConflictDoesNotBlockTheRestOfTheQueue]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testOnePermanentConflictDoesNotBlockTheRestOfTheQueue]' passed (0.012 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testOnlyVerdictsAndVoidsReportFeedback]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testOnlyVerdictsAndVoidsReportFeedback]' passed (0.030 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testResolvingAConflictRebasesAndUsesAFreshIdempotencyKey]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testResolvingAConflictRebasesAndUsesAFreshIdempotencyKey]' passed (0.020 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testStatisticsNeverFabricateAZeroPercent]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testStatisticsNeverFabricateAZeroPercent]' passed (0.499 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testSwitchingAccountsClearsTheOtherPersonsNumbers]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testSwitchingAccountsClearsTheOtherPersonsNumbers]' passed (0.006 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheChartShotIsSavedLocallyAndUploaded]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheChartShotIsSavedLocallyAndUploaded]' passed (0.019 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheFirstStatisticsFailureShowsAnErrorNotAnEmptyScoreboard]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheFirstStatisticsFailureShowsAnErrorNotAnEmptyScoreboard]' passed (0.002 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheLocalCopyDoesNotDuplicateTheServerRow]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheLocalCopyDoesNotDuplicateTheServerRow]' passed (0.011 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testVoidingARecordCanBeUndoneBeforeItIsSent]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testVoidingARecordCanBeUndoneBeforeItIsSent]' passed (0.106 seconds).
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.840 (1.772) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.840 (1.772) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.840 (1.776) seconds

@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import Observation
 import KanpanAccount
@@ -129,6 +130,7 @@ import KanpanAccount
     user = value.user; email = value.user.email; password = ""; newPassword = ""; code = ""
     needsReauthentication = false; replacedNotice = nil
     page = .account; presented = false; onSynchronize?()
+    Haptics.success()
   }
   /// 退出登录。
   ///

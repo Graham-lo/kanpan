@@ -1,0 +1,2 @@
+Test Case '-[KanpanUITests.AccountPreferenceSyncUITests testPreferencesFollowTheAccountAcrossRegisterLogoutSwitchAndRelogin]' passed (194.579 seconds).
+Test Case '-[KanpanUITests.ReviewFlowUITests testAMarkOnlyPaintsOnItsOwnSymbolAndIntervalAndLandsInTheBook]' failed (73.417 seconds).

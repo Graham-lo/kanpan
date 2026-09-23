@@ -1,3 +1,4 @@
+import KanpanChart
 import KanpanCore
 import SwiftUI
 
@@ -80,7 +81,7 @@ struct AlertListPage: View {
                    onOpen: { onOpen(alert) },
                    onRearm: { store.rearm(id: alert.id) },
                    onCondition: { store.setCondition($0, id: alert.id) },
-                   onDelete: { store.remove(id: alert.id) },
+                   onDelete: { Haptics.warning(); store.remove(id: alert.id) },
                    zone: zone)
         }
       }

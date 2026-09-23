@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import KanpanCore
 
@@ -98,7 +99,7 @@ struct SymbolSearchView: View {
     .background(theme.app)
     .foregroundStyle(theme.ink)
     .confirmationDialog("清除搜索记录", isPresented: $askClear, titleVisibility: .visible) {
-      Button("清除", role: .destructive) { history.clear() }
+      Button("清除", role: .destructive) { Haptics.warning(); history.clear() }
       Button("取消", role: .cancel) {}
     }
     .task {

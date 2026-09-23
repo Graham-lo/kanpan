@@ -328,6 +328,7 @@ extension ChartView {
     guard var s = state, !s.drawings.isEmpty else { return }
     drawing.history.commit(before: s.drawings); s.drawings = []; state = s
     drawing.selected = nil; drawing.pending = nil; drawing.aim = nil; drawing.origin = nil
+    Haptics.warning()
     drawingChanged(items: [])
   }
   public func setAllDrawingsHidden(_ hidden: Bool) {
@@ -346,7 +347,7 @@ extension ChartView {
     s.drawings.removeAll { $0.id == sel }
     state = s
     drawing.selected = nil
-    Haptics.boundary()
+    Haptics.warning()
     drawingChanged(items: s.drawings)
   }
 

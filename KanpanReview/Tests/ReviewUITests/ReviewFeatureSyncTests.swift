@@ -520,6 +520,40 @@ final class ReviewFeatureSyncTests: XCTestCase {
   // MARK: - P2.7：作废一条记录，五秒内能撤销
 
   /// 作废之后先说一句带「撤销」的话；窗口里点撤销，记录回来、那条作废根本没发到服务端。
+  /// P2.9：判定落下（完成复盘、同一次 / 独立判断）报 `.done`，作废报 `.removed`；
+  /// 只存草稿、判定失败都不报——宿主按这个出触觉，报错了就是替没发生的事震一下。
+  @MainActor func testOnlyVerdictsAndVoidsReportFeedback() async throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let server = FakeReviewServer()
+    let feature = ReviewFeature(directory: directory)
+    let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
+    feature.activate(store: store, client: client(server))
+    var heard: [ReviewFeedback] = []
+    feature.onFeedback = { heard.append($0) }
+
+    let draft = validDraft()
+    feature.begin(draft)
+    XCTAssertTrue(feature.saveRecord())
+    await settle(feature)
+    XCTAssertEqual(heard, [], "记下一笔由宿主那边震，这个包不该再报一次")
+
+    feature.saveReflection(draft.id, note: "", nextTime: "", publish: true)
+    XCTAssertEqual(heard, [], "没写复盘就点完成，被拦下了还震")
+    feature.saveReflection(draft.id, note: "草稿", nextTime: "", publish: false)
+    XCTAssertEqual(heard, [], "存草稿不是判定")
+    feature.saveReflection(draft.id, note: "追高了", nextTime: "等回踩", publish: true)
+    XCTAssertEqual(heard, [.done])
+    await settle(feature)
+    feature.resolveGroup(draft.id, sameEpisode: true)
+    XCTAssertEqual(heard, [.done, .done])
+    await settle(feature)
+    feature.voidRecord(draft.id)
+    XCTAssertEqual(heard, [.done, .done, .removed])
+    feature.resolveGroup(UUID(), sameEpisode: false)
+    XCTAssertEqual(heard, [.done, .done, .removed], "没有这条记录，判定没发生")
+  }
+
   @MainActor func testVoidingARecordCanBeUndoneBeforeItIsSent() async throws {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

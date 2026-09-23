@@ -1,3 +1,4 @@
+import KanpanChart
 import SwiftUI
 import KanpanAccount
 
@@ -137,7 +138,7 @@ struct AccountView: View {
         row("修改密码") { feature.move(.changePassword) }
       }
       .listRowBackground(theme.raised)
-      Section { Button("退出登录") { Task { await feature.logout() } }.foregroundStyle(theme.danger) }
+      Section { Button("退出登录") { Haptics.warning(); Task { await feature.logout() } }.foregroundStyle(theme.danger) }
         .listRowBackground(theme.raised)
       Section { Button("注销账号") { feature.move(.close) }.foregroundStyle(theme.danger) }
         .listRowBackground(theme.raised)
@@ -170,7 +171,7 @@ struct AccountView: View {
             Text([item.kind.label, item.current ? "本机" : Date(timeIntervalSince1970: Double(item.lastSeen) / 1000).formatted(date: .abbreviated, time: .shortened)].joined(separator: " · "))
               .font(.caption).foregroundStyle(theme.ink3)
           }
-          Spacer(); Button("退出") { feature.revoke(item) }.foregroundStyle(theme.danger).frame(minHeight: 44)
+          Spacer(); Button("退出") { Haptics.warning(); feature.revoke(item) }.foregroundStyle(theme.danger).frame(minHeight: 44)
         }
         .listRowBackground(theme.raised)
       }

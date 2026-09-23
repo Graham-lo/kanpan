@@ -185,7 +185,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       reorderStart = state.subs
       reorderFrames = Array(chart.chartLayout?.panes.dropFirst() ?? [])
       chart.clearCrosshair(); state.crosshair = nil
-      UIImpactFeedbackGenerator(style: .light).impactOccurred()
+      Haptics.tap()
     }
     guard let original = reorderStart else { return }
     if press.state == .cancelled || press.state == .failed {
@@ -195,7 +195,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       let target = reorderFrames.firstIndex(where: { y < $0.y + $0.h }) ?? max(0, original.count - 1)
       if let source = state.subs.firstIndex(of: id), source != target {
         state.subs.remove(at: source); state.subs.insert(id, at: target)
-        UISelectionFeedbackGenerator().selectionChanged()
+        Haptics.step()
       }
     }
     chart.state = state
