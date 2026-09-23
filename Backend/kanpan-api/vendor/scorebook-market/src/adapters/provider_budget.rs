@@ -42,8 +42,10 @@ impl ProviderBudget {
         .bind(market)
         .execute(&mut *tx)
         .await?;
-        let row=sqlx::query("SELECT window_start,used,blocked_until,now() AS at FROM provider_budgets WHERE egress_id=$1 AND market=$2 FOR UPDATE").bind(&self.egress).bind(market).fetch_one(&mut *tx).await?;
+        let row=sqlx::query("SELECT window_start,used,greatest(blocked_until,'epoch'::timestamptz) AS blocked_until,now() AS at FROM provider_budgets WHERE egress_id=$1 AND market=$2 FOR UPDATE").bind(&self.egress).bind(market).fetch_one(&mut *tx).await?;
         let now: DateTime<Utc> = row.get("at");
+        // 列默认值是 '-infinity'（从没冷却过）；chrono 解不了无穷，sqlx 会直接 panic 把 worker 带走，
+        // 所以在 SQL 里先夹到 epoch，语义不变（「早于现在」= 没在冷却）。
         let blocked: DateTime<Utc> = row.get("blocked_until");
         let start: DateTime<Utc> = row.get("window_start");
         if blocked > now {
