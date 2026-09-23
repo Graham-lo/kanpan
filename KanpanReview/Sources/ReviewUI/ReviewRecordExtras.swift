@@ -208,11 +208,13 @@ struct ReviewAttachmentsSection: View {
         .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
         .accessibilityIdentifier("review.attachments.pager")
       }
+      // PhotosPicker 的 label 闭包不在主线程隔离里，先把要显示的值取出来再交进去。
+      let loading = busy, count = items.count, limit = ReviewFeature.attachmentLimit, ink3 = t.ink3
       PhotosPicker(selection: $picked, matching: .images, photoLibrary: .shared()) {
         HStack {
           Label("补一张图", systemImage: "photo.badge.plus")
           Spacer()
-          if busy { ProgressView() } else { Text("\(items.count)/\(ReviewFeature.attachmentLimit)").monospacedDigit().foregroundStyle(t.ink3) }
+          if loading { ProgressView() } else { Text("\(count)/\(limit)").monospacedDigit().foregroundStyle(ink3) }
         }
       }
       .disabled(busy || items.count >= ReviewFeature.attachmentLimit || record.serverId == nil)
