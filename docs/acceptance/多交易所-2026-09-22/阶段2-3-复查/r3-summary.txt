@@ -1,0 +1,11 @@
+cargo EXIT=0
+core-test EXIT=0
+network-test EXIT=0
+data-test EXIT=0
+app-logic-test EXIT=0
+sync-contract EXIT=0
+account-test EXIT=0
+drift: 
+build EXIT=0
+chart-test EXIT=0
+DONE
