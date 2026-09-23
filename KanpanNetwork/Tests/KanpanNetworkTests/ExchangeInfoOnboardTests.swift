@@ -12,8 +12,8 @@ struct ExchangeInfoOnboardTests {
     a["onboardDate"] = 1_788_343_200_000
     let b = ExchangeInfoStatusTests.row("BUSDT", status: "TRADING")
     let list = try BinanceREST.parseExchangeInfo(try ExchangeInfoStatusTests.body([a, b]))
-    #expect(list.first { $0.symbol == "AUSDT" }?.onboardDate == 1_788_343_200_000)
-    #expect(list.first { $0.symbol == "BUSDT" }?.onboardDate == nil)
+    #expect(list.first { $0.id.symbol == "AUSDT" }?.onboardDate == 1_788_343_200_000)
+    #expect(list.first { $0.id.symbol == "BUSDT" }?.onboardDate == nil)
   }
 
   @Test("上线 30 天以内才算新；预告上线、没有日期都不算")
