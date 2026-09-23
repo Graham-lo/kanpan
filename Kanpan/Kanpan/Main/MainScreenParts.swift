@@ -307,7 +307,6 @@ struct MainChartView: View {
       ChartHost(
         portrait: portrait,
         renderingActive: renderingActive,
-        panelOpen: panelOpen,
         state: reviewChart.active ? reviewChart.state : liveState,
         holdOnEmpty: !reviewChart.active && market.holdsFrame,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,

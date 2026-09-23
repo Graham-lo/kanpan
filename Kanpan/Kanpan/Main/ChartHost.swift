@@ -52,10 +52,7 @@ enum ViewIntent: Equatable {
 final class ChartBox: UIView, UIGestureRecognizerDelegate {
   let chart = ChartView(frame: .zero)
   private let scroll = ChartPageScrollView()
-  private let panelDismiss = UIControl()
   var onOverlayUpdate: () -> Void = {}
-  var onPanelDismiss: () -> Void = {}
-  var panelOpen = false { didSet { panelDismiss.isHidden = !panelOpen; if panelOpen { bringSubviewToFront(panelDismiss) } } }
   private var grips: [IndicatorID: ResizeGrip] = [:]
   private var resizeStart: (id: IndicatorID, height: Double, scale: Double, content: Double, other: Double)?
   private var resizeOriginY: CGFloat?
@@ -92,11 +89,6 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
     reorder.minimumPressDuration = 0.35; reorder.delegate = self
     chart.addGestureRecognizer(reorder)
     scroll.panGestureRecognizer.require(toFail: reorder)
-    panelDismiss.isHidden = true
-    panelDismiss.accessibilityIdentifier = "chart.dismissPanel"
-    panelDismiss.accessibilityLabel = "收起面板"
-    panelDismiss.addTarget(self, action: #selector(closePanel), for: .touchUpInside)
-    addSubview(panelDismiss)
   }
 
   required init?(coder: NSCoder) { fatalError("不从 xib 来") }
@@ -107,7 +99,6 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
     let oldSpacing = chart.state.flatMap { state in
       oldWidth.map { state.view.barSpacing(step: state.series.step, plotW: $0) }
     }
-    panelDismiss.frame = bounds
     scroll.frame = bounds
     let contentHeight = chart.state.map { state in
       ChartContentLayout.height(viewport: Double(bounds.height), subs: state.subs, portrait: portrait)
@@ -129,8 +120,6 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
     }
     updateControls()
   }
-
-  @objc private func closePanel() { onPanelDismiss() }
 
   /// 图上的把手 / 覆盖层跟着新布局走一遍。
   ///
@@ -158,7 +147,6 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       grip.frame = CGRect(x: 0, y: min(layout.H - 16, pane.y + pane.h - 8), width: layout.W, height: 16)
       grip.accessibilityValue = String(format: "%.0f", pane.h)
     }
-    if panelOpen { bringSubviewToFront(panelDismiss) }
   }
 
   override func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
@@ -396,7 +384,6 @@ final class ChartProxy {
 struct ChartHost: UIViewRepresentable {
   var portrait = true
   var renderingActive: Bool = true
-  var panelOpen = false
   var state: ChartState?
   /// `state` 为空时是否先留着图上现有那一帧（同品种换周期、新周期还没数据）。
   /// 假 = 照旧清成空图（换品种时必须清：老蜡烛顶着新品种的名字多一帧都是错的）。
@@ -574,8 +561,6 @@ struct ChartHost: UIViewRepresentable {
   }
 
   private func wire(_ box: ChartBox) {
-    box.panelOpen = panelOpen
-    box.onPanelDismiss = onTapped
     box.resetSpacing = resetSpacing
     drawing?.attach(box.chart)
     // 视野一变就顺手把根间距量出来报上去。量它要图区宽度，那是 UIKit 这一侧才知道的事，
