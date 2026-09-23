@@ -2,6 +2,7 @@ use crate::review_domain as domain;
 use crate::{AppState,auth::Identity,error::{ApiError,Params,Payload,Result,Route},envelope,review::{key,lock,cached,finish,parse,core},review_worker::range_bars};
 use axum::{Router,Json,extract::State,routing::{get,post},http::HeaderMap};
 use chrono::Utc;
+use futures_util::StreamExt;
 use scorebook_core::{api::native_review::{NativeSearch,ChartRange},domain::chart_match,market::MarketDataProvider};
 use serde::{Deserialize,Serialize};
 use serde_json::{Value,json};
@@ -102,6 +103,9 @@ fn sorted_unique(mut items:Vec<Value>)->Vec<Value> {
  let mut result:Vec<Value>=vec![];
  for item in items {if result.iter().any(|v|v["range"]["symbol"]==item["range"]["symbol"]&&v["range"]["start"].as_i64()<item["range"]["end"].as_i64()&&v["range"]["end"].as_i64()>item["range"]["start"].as_i64()){continue}result.push(item)}result
 }
+/// 一个租约处理多少个候选、同时向币安取几个（见 `run_one` 里的说明）。
+const SEARCH_BATCH:usize=48;
+const SEARCH_CONCURRENCY:usize=4;
 pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let mut tx=s.pool.begin().await?;
  let owner:Option<Uuid>=sqlx::query_scalar("SELECT user_id FROM search_dispatch WHERE next_at<=now() ORDER BY next_at,user_id FOR UPDATE SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
@@ -116,15 +120,23 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let work=async {
   let bars=range_bars(market,&q.range,q.cutoff).await?;let candles=core(chart_match::from_bars(&bars))?;
   let candidates:Vec<Candidate>=match old_candidates{Some(v)=>parse(v)?,None=>candidates(s,owner,&q,&core(chart_match::descriptor(&candles))?).await?};
-  // Sixteen candidates per lease: the bound exists to let other saved records
-  // progress between batches, and on a 7-core host with a handful of users the
-  // old four made a search take four times as many leases as it needed to.
-  for candidate in candidates.iter().skip(position).take(16) {
-   if let Ok(bars)=range_bars(market,&candidate.range,q.cutoff).await {
+  // 每个租约 48 个候选、同时取 4 个。每个候选都要去币安取一次 K 线，原来一个一个取、
+  // 一租约 16 个：300 个候选要 19 个租约，租约之间 worker 还要睡一秒，线上一次
+  // 「找相似」要 140 秒（P3.8 实测），人在屏幕前干等。并发封在 4：worker 的连接池
+  // 只有 8 条，每次取数还要进一次 provider_budgets 的行锁记账，开太宽会把判定、
+  // 提醒那几条循环的连接挤掉。批大小的上限仍在：别的人的检索在租约之间照样能插进来。
+  // `buffered` 保序：结果按候选顺序落，`position` 与原来逐个推进时一致。
+  {
+  let batch:Vec<&Candidate>=candidates.iter().skip(position).take(SEARCH_BATCH).collect();
+  let mut fetched=futures_util::stream::iter(batch.iter().map(|c|range_bars(market,&c.range,q.cutoff))).buffered(SEARCH_CONCURRENCY);
+  for candidate in &batch {
+   let Some(bars)=fetched.next().await else{break};
+   if let Ok(bars)=bars {
     let score=core(chart_match::rerank(&candles,&core(chart_match::from_bars(&bars))?,false))?.score;checked+=1;
     if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}
    }
    position+=1;
+  }
   }
   Ok::<_,ApiError>(candidates)
  }.await;

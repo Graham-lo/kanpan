@@ -65,6 +65,20 @@ fn endpoint(market: &str, path: &str) -> Option<String> {
     Some(format!("{REST}/{family}/v1/{path}"))
 }
 
+/// 这一页向币安要多少根：还差几根就要几根再多一根，封顶 1000。
+fn klines_limit(missing: i64) -> i64 {
+    (missing + 1).clamp(1, 1000)
+}
+
+/// 币安 fapi / dapi klines 按 limit 分档计的请求权重。
+fn klines_weight(limit: i64) -> i32 {
+    match limit {
+        ..100 => 1,
+        100..500 => 2,
+        _ => 5,
+    }
+}
+
 impl Binance {
     async fn tickers_24h(&self, market: &str) -> Result<Value> {
         let url =
@@ -117,7 +131,13 @@ impl Binance {
         let mut gap = false;
         let mut expected = None;
         loop {
-            self.budget.reserve(market, 5).await?;
+            // 只要还差的那几根（多要一根留余量），不再每页都要满 1000 根：「找相似」
+            // 一次要对几百个 64 根的区间各取一页，满页既慢又按 5 计权重；64 根只算 1。
+            let limit = klines_limit(iv.bars_between(
+                DateTime::from_timestamp_millis(cursor).unwrap_or(start),
+                end,
+            ));
+            self.budget.reserve(market, klines_weight(limit)).await?;
             let response = self
                 .client
                 .get(&url)
@@ -126,7 +146,7 @@ impl Binance {
                     ("interval", interval.to_string()),
                     ("startTime", cursor.to_string()),
                     ("endTime", (end.timestamp_millis() - 1).to_string()),
-                    ("limit", "1000".into()),
+                    ("limit", limit.to_string()),
                 ])
                 .send()
                 .await
@@ -189,7 +209,7 @@ impl Binance {
                 return Err(Error::bad("provider_pagination_stalled"));
             }
             cursor = next;
-            if page.len() < 1000 || cursor >= end.timestamp_millis() {
+            if page.len() < limit as usize || cursor >= end.timestamp_millis() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
@@ -332,7 +352,22 @@ impl Binance {
 
 #[cfg(test)]
 mod endpoint_tests {
-    use super::endpoint;
+    use super::{endpoint, klines_limit, klines_weight};
+
+    #[test]
+    fn klines_pages_ask_only_for_what_is_missing_and_pay_the_matching_weight() {
+        // 币安 fapi / dapi 的 klines 权重按 limit 分档：[1,100)→1，[100,500)→2，
+        // [500,1000]→5。
+        assert_eq!(klines_limit(64), 65);
+        assert_eq!(klines_weight(65), 1);
+        assert_eq!(klines_limit(0), 1);
+        assert_eq!(klines_weight(klines_limit(98)), 1);
+        assert_eq!(klines_weight(klines_limit(99)), 2);
+        assert_eq!(klines_weight(klines_limit(498)), 2);
+        assert_eq!(klines_weight(klines_limit(499)), 5);
+        assert_eq!(klines_limit(50_000), 1000);
+        assert_eq!(klines_weight(1000), 5);
+    }
 
     #[test]
     fn every_rest_path_goes_through_the_website_host() {
