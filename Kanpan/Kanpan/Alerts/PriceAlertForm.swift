@@ -32,6 +32,8 @@ struct PriceAlertForm: View {
   var resolve: (String) -> PriceAlertQuote?
   /// 品种定下来之后叫一声：宿主去要一口价（不在自选里的品种报价簿手上没有）。
   var prepare: (String) -> Void = { _ in }
+  /// 页面关了叫一声，宿主把 `prepare` 点名要的那一只放掉。
+  var release: () -> Void = {}
   var onCreate: (PriceAlertQuote, Double) -> Void
 
   @State private var symbolText = ""
@@ -97,6 +99,8 @@ struct PriceAlertForm: View {
       prepare(resolve(symbolText)?.symbol ?? initialSymbol)
       focus = .price
     }
+    // 和上面的 `prepare` 成对：退回总表、整张提醒表收起，都在这儿放掉点名的那一只。
+    .onDisappear { release() }
     // 点进品种框就把整串选中：想换一只直接打，不用先删。等这一拍的光标落定再选，
     // 否则点按落下的插入点会把选区盖掉。
     .onChange(of: focus) { _, field in

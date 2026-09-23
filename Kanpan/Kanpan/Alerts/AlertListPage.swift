@@ -24,6 +24,8 @@ struct AlertListPage: View {
   var quote: (String) -> PriceAlertQuote? = { _ in nil }
   /// 新建页定了品种之后叫一声，宿主去要一口价。
   var prepareQuote: (String) -> Void = { _ in }
+  /// 新建页关了叫一声，宿主放掉 `prepareQuote` 点名要的那一只（图上那只照旧）。
+  var releaseQuote: () -> Void = {}
   /// 锁屏上正盯着的那条提醒（一台设备只盯一条）。
   var watching: String? = nil
   /// 行上那颗「盯一个」：宿主去开 / 收锁屏实时活动。
@@ -49,7 +51,8 @@ struct AlertListPage: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showSound) { AlertSoundPage(store: preferences) }
         .navigationDestination(isPresented: $showNew) {
-          PriceAlertForm(initialSymbol: currentSymbol, resolve: quote, prepare: prepareQuote) { quote, target in
+          PriceAlertForm(initialSymbol: currentSymbol, resolve: quote, prepare: prepareQuote,
+                         release: releaseQuote) { quote, target in
             let alert = store.addPrice(symbol: quote.symbol, target: target, current: quote.price,
                                        label: quote.label(target))
             guard alert != nil else { return }

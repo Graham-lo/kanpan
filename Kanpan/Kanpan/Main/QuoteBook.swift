@@ -583,7 +583,8 @@ final class QuoteBook {
 
   private func updateStreams() {
     let symbols = listSymbols()
-    wanted = Set(symbols + [chartSymbol].compactMap { $0 })
+    // 点名的那一只（新建提醒页开着时）也算：页面开着期间别的变动不能把它的价裁掉。
+    wanted = Set(symbols + [chartSymbol, named].compactMap { $0 })
     // 自选表还没到，先把上次恢复出来的那批一起算进来，别把它们裁掉（见 `favoritesKnown`）。
     if !favoritesKnown { wanted.formUnion(raw.keys) }
     if raw.keys.contains(where: { !wanted.contains($0) }) { raw = raw.filter { wanted.contains($0.key) } }
@@ -722,12 +723,33 @@ final class QuoteBook {
   /// 列表不可见时 `requestQuote` 只放行图上那只——平时这是对的，别的页面不该替看不见的
   /// 行去拉价。可新建提醒那一页是从设置里开的，列表本来就不可见：用户在品种框里打了
   /// 「ETH」，要看的就是 ETH 此刻多少；原来这里只调 `watch`，被那道闸挡掉，于是
-  /// 不在图上的品种一直是「当前 —」。同一时刻只点名一只，换一只就换掉。
+  /// 不在图上的品种一直是「当前 —」。同一时刻只点名一只，换一只就换掉（前一只照 `releaseNamed` 收掉）。
   func quoteNow(_ symbol: String) {
     let symbol = InstrumentID.canonical(symbol)
     guard !symbol.isEmpty else { return }
+    if let old = named, old != symbol { named = nil; unwatchNamed(old) }
     named = symbol
     watch(symbol)
+  }
+
+  /// `quoteNow` 的另一半：新建提醒那一页关了，点名的那一只不再特殊照顾。
+  ///
+  /// 以前点名只进不出：页面关了 `named` 还钉着那只，列表收起时它的报价请求不撤、
+  /// 之后每一拍还放它过 `requestQuote` 那道闸，`wanted` / `raw` 里也一直留着它。
+  /// 这里只撤「点名」这一条来路——图上那只、列表上露着的行、自选和挂着提醒的品种
+  /// 各有各的来路保着，不受影响（刚建好提醒的那只由 `setAlertedSymbols` 接着钉住）。
+  func releaseNamed() {
+    guard let symbol = named else { return }
+    named = nil
+    unwatchNamed(symbol)
+  }
+
+  private func unwatchNamed(_ symbol: String) {
+    if symbol != chartSymbol, !(visible && visibleRows.contains(symbol)) {
+      quoteQueue.removeAll { $0 == symbol }
+      quoteJobs.removeValue(forKey: symbol)?.cancel()
+    }
+    updateStreams()
   }
 
   private func watchBaseline(_ symbol: String) {

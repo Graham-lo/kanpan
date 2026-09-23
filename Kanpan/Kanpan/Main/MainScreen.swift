@@ -593,6 +593,7 @@ struct MainScreen: View {
                     currentSymbol: InstrumentID(market.symbol).display,
                     quote: { text in alertQuote(text) },
                     prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
+                    releaseQuote: { [weak quotes] in quotes?.releaseNamed() },
                     watching: activities.watching,
                     onWatch: { alert in watch(alert) })
         .environment(\.panelTheme, theme)
