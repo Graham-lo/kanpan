@@ -2,37 +2,36 @@ import SwiftUI
 import UIKit
 import KanpanCore
 
-/// 板块气泡页 ——「釉珠」整页外壳。
+/// 板块页整页外壳。
 ///
 /// 底栏第四格进来的就是这一张页，它自己不做任何计算：口径在 `KanpanCore`
-/// （`SectorAggregator` / `SectorSelector`），球画在 `SectorBubbleField` 里，
-/// 记号在 `SectorIcon.swift`，行情由 `SectorFeed` 喂进来。这一层只负责把它们
-/// 摆到同一张纸上，再管三段导航。
+/// （`SectorAggregator`），清单画在 `SectorBoardList` 里，记号在 `SectorIcon.swift`，
+/// 行情由 `SectorFeed` 喂进来。这一层只负责把它们摆到同一张纸上，再管两段导航。
 ///
-/// 三段，中间不弹任何详情浮层（用户 2026-09-18 定稿）：
+/// 两段，中间不弹任何详情浮层：
 ///
-///   一层气泡（板块）──点一颗─→ 该板块的品种列表 ──点一行─→ 行情页（宿主接手）
+///   板块列表 ──点一行─→ 该板块的品种列表 ──点一行─→ 行情页（宿主接手）
 ///
-/// 没上场的板块不在气泡页上另起一块界面，只走右上角「…」→「全部板块」整页清单；
-/// 兜底桶只出现在那张清单里，并且和普通板块画得一模一样。
+/// 2026-09-24 用户撤了气泡场：「现在不再展示气泡，一律用页面即可」。原来右上角「…」
+/// 通到的「全部板块」清单就是现在的首页，所有板块（含兜底桶）按当前窗口的涨跌幅
+/// 一行一个排下来。
 ///
-/// 两个市场（加密 / 美股）是**硬切换**：各自一套基准、各自的 N/M、各自的尺子、
-/// 各自的统计行，永远不共处一屏，也不为美股再开一格底栏。
+/// 两个市场（加密 / 美股）是**硬切换**：各自一套基准、各自的统计行，永远不共处一屏，
+/// 也不为美股再开一格底栏。
 struct SectorPage: View {
   /// 行情。页面只读它，并在出现 / 消失时开关它的轮询。
   var feed: SectorFeed
-  /// 红涨绿跌。球身两头的色相交换只由它决定，别的什么都不改。
+  /// 红涨绿跌。气泡场时期给球身两头换色相用；列表的涨跌色走 `theme.up` / `down`，
+  /// 已经带着这一项。参数留着只是为了宿主那处调用（`MainScreen.sectorPage`）不用动。
   var redUp: Bool
-  /// 釉珠的可调参数。默认就是原型定稿那一组。
-  var knobs: SectorFieldKnobs = .default
   /// 大写 base → 完整合约代号。板块聚合一路只认 base（分类表里记的就是代号），
-  /// 但开行情页要的是 `BTCUSDT` 这样的全名。默认按 USDT 本位拼，宿主手里有品种表，
+  /// 但开行情页要的是品种的全名。默认按 USDT 本位拼，宿主手里有品种表，
   /// 传一个照表查的实现能把 USDC 本位那几个也认对。
   var symbolForBase: (String) -> String = { $0 + "USDT" }
   /// 这一页上「他摆出来的样子」存在哪：停在哪个市场、看今日还是 5 日，
   /// 以及下钻那层品种列表按什么排。
   var store: PrefsStore
-  /// 点中一行品种：交出完整 symbol（如 `BTCUSDT`），由 `MainScreen` 切过去。
+  /// 点中一行品种：交出完整 symbol，由 `MainScreen` 切过去。
   var onPickSymbol: (String) -> Void
   /// 下钻那层品种列表点进图表时，把那一刻列表的顺序交出去（连续扫图，§10.1）。
   var onScanList: ([String]) -> Void = { _ in }
@@ -47,24 +46,14 @@ struct SectorPage: View {
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-  /// 压在气泡页上面的那几层。空 = 只有球场。最多两层（全部板块 → 某板块的品种列表）。
+  /// 压在板块列表上面的那一层。空 = 只有列表；最多一层（某个板块的品种列表）。
   ///
   /// 它由宿主（`MainScreen`）持有：底栏是常驻标签栏，这一页每切走一次就整个重建，
   /// 存在自己身上的 `@State` 会跟着死掉——下钻到品种列表、点进行情页再返回，
-  /// 人就被扔回球场了。挪到宿主手里，来回一趟才回得到原来那一层。
+  /// 人就被扔回板块列表了。挪到宿主手里，来回一趟才回得到原来那一层。
   @Binding var route: [SectorRoute]
   /// 「5 日」要的日线收盘。取不到就是空，页面回到只有今日的样子，不提示。
   @State private var historyFeed = SectorHistoryFeed()
-  /// 面积分母的迟滞记忆。
-  ///
-  /// 它必须活过一次次重画，又不能是 `@State` 的值类型——`snapshot()` 是在 `body`
-  /// 里算的，在那儿写 `@State` 会把视图再拍一遍。装在一个不被观察的盒子里，
-  /// 只当上一次的读数用。换市场时清空：两个市场各有各的尺子。
-  @State private var scaleMemo = ScaleMemo()
-
-  /// 每个窗口一把尺子。今日跳 3% 是大事，5 日跳 3% 不是；两档共用一个分母会让
-  /// 切过去的第一屏球整体大一圈或小一圈，然后再慢慢缩回来。
-  private final class ScaleMemo { var values: [String: Double] = [:] }
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
   /// 停在哪个市场。
@@ -82,17 +71,13 @@ struct SectorPage: View {
 
   // MARK: - 口径
 
-  /// 这一屏的全部算料。一次算齐，三层共用——聚合和兜底桶都不便宜，
+  /// 这一屏的全部算料。一次算齐，两层共用——聚合和兜底桶都不便宜，
   /// 不能让每个子视图各算一遍。
   private struct Snapshot {
-    /// 当前市场的板块统计（含兜底桶），按**当前窗口**算。
+    /// 当前市场的板块统计（含兜底桶），按**当前窗口**算，已按涨跌幅降序排好。
     var stats: [SectorStat]
-    /// 上场的那几颗。`SectorSelector` 自己会把兜底桶摘掉，气泡场吃不到它们。
-    var selection: SectorSelection
     /// 当前市场、这段窗口上真算得出收益的品种数（去重）。
     var covered: Int
-    /// 上面这些里**报得出成交额**的有几个。只给球场那句读屏文案用，不画到屏上。
-    var volumed: Int
     /// 兜底桶，用来在下钻时还原成员名单。
     var buckets: [SectorFallbackBucket]
     /// 这一屏真正在用的窗口。用户停在 5 日、这个市场却没有历史时它是今日。
@@ -116,16 +101,11 @@ struct SectorPage: View {
                                              window: .d5, history: history)
     // 「显示哪一档 + 药丸行在不在 + 那一档叫什么」三样一起定，在
     // `SectorWindowChoice` 里（纯函数，`Kanpan/Sector` 那个壳包有用例盯着，
-    // 复核项 7）。原来这儿只算窗口，名字在 `windowBar` 里另写一遍。
+    // 复核项 7）。
     let choice = SectorWindowChoice.resolve(preferred: preferredWindow, hasD5: hasD5)
     let window = choice.window
     let stats = SectorAggregator.stats(market: market, quotes: quotes, fallbackBuckets: buckets,
                                        window: window, history: history)
-    // N/M 按市场取各自的默认档（加密 5+3、美股 3+2）。上一次的尺子传进去做迟滞——
-    // 每个窗口各记各的，不借别人的分母。
-    let selection = SectorSelector.select(stats, market: market,
-                                          previousScale: scaleMemo.values[window.rawValue])
-    scaleMemo.values[window.rawValue] = selection.scalePct
     // 统计行里那个「品种」数不能拿各板块成员数相加——一个品种可以同时属于好几个
     // 板块（允许交叉归属），加起来会比实际多出一大截。这儿数的是去重之后、
     // 这段窗口上真算得出收益的那些。
@@ -140,10 +120,7 @@ struct SectorPage: View {
     }
     for def in SectorCatalog.sectors(market) { cover(def.members) }
     for bucket in buckets { cover(bucket.members) }
-    let volumed = seen.reduce(into: 0) { n, base in
-      if quotes[base]?.quoteVolume.isFinite == true { n += 1 }
-    }
-    return Snapshot(stats: stats, selection: selection, covered: seen.count, volumed: volumed,
+    return Snapshot(stats: SectorBoardOrder.sorted(stats), covered: seen.count,
                     buckets: buckets,
                     window: window, windowTitle: choice.title,
                     hasD5: choice.showsBar, history: history)
@@ -152,15 +129,9 @@ struct SectorPage: View {
   var body: some View {
     let snap = snapshot()
     return ZStack {
-      // 上面压了层就把球场整个从可及性树里摘掉：它被盖住了，读屏不该读它，
+      // 上面压了品种列表就把板块列表整个从可及性树里摘掉：它被盖住了，读屏不该读它，
       // 市场胶囊那套 id 也就不会同时出现两份。
-      fieldLayer(snap).accessibilityHidden(!route.isEmpty)
-      if route.contains(.all) {
-        SectorAllSheet(stats: snap.stats.sorted { $0.pct > $1.pct }, market: market,
-                       onBack: pop, onPick: { push(.list($0.id)) },
-                       onPickMarket: switchMarket)
-          .transition(.opacity)
-      }
+      boardLayer(snap).accessibilityHidden(!route.isEmpty)
       if let id = listedSector {
         listLayer(id, snap).transition(.opacity)
       }
@@ -190,42 +161,32 @@ struct SectorPage: View {
 
   /// 最上面那一层如果是品种列表，是哪个板块。
   private var listedSector: String? {
-    guard let last = route.last, case .list(let id) = last else { return nil }
+    guard let last = route.last, case .sector(let id) = last else { return nil }
     return id
   }
 
-  // MARK: - 第一层：顶栏 + 统计行 + 球场
+  // MARK: - 第一层：页头 + 窗口药丸 + 板块列表
 
-  private func fieldLayer(_ snap: Snapshot) -> some View {
+  private func boardLayer(_ snap: Snapshot) -> some View {
     VStack(spacing: 0) {
       header(snap)
       if snap.hasD5 { windowBar(snap) }
       if feed.showsEmptyState {
         emptyState
-      } else if feed.quotes.isEmpty {
+      } else if snap.stats.isEmpty {
         // 第一趟还在路上：整块留白，不闪那句「暂无行情」，也不写「加载中」
         // （复核项 2 / `kanpan-no-engineering-status-fields`）。
         Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
-        SectorBubbleField(selection: snap.selection, knobs: knobs, redUp: redUp,
-                          onPick: { push(.list($0.stat.id)) })
+        SectorBoardList(stats: snap.stats, onPick: { push(.sector($0.id)) })
           .frame(maxWidth: .infinity, maxHeight: .infinity)
-          // 球场整个是一块 Canvas，底下没有可及的叶子。给它一个 id 和一句
-          // 「几颗球 · 多少个品种报得出成交额」，读屏念得出来，UI 用例也拿它当准星
-          // （`SectorRouteUITests` 靠它证明网关那条线路上这一页真有全市场行情）。
-          .accessibilityElement()
-          .accessibilityLabel("板块气泡")
-          .accessibilityValue("\(snap.selection.picks.count) 个板块 · \(snap.volumed) 个品种有成交额")
-          .accessibilityIdentifier("sector.bubbles")
       }
     }
   }
 
-  /// 一颗球都没有的时候。
+  /// 一个板块都没有、而且取数确实失败了的时候。
   ///
-  /// 以前这儿是一张空球场：底还在、统计行写着「0 / 0 板块 · 0 品种」，但中间那块
-  /// 什么都没有，用户看不出是在加载、还是这一页坏了、还是他该做点什么。现在给一句
-  /// 中文和一个可以点的动作，就这两行——不说「网络异常」、不说「数据截至」、
+  /// 给一句中文和一个可以点的动作，就这两行——不说「网络异常」、不说「数据截至」、
   /// 不报线路状态（`kanpan-no-engineering-status-fields`），点一下就重取一趟。
   private var emptyState: some View {
     Button { feed.retry() } label: {
@@ -246,35 +207,29 @@ struct SectorPage: View {
     .accessibilityIdentifier("sector.empty")
   }
 
-  /// 顶栏一行：标题 + 市场硬切换 +「…」，统计行贴在标题右边。
+  /// 页头：标题「板块」+ 规模一行，右边市场硬切换。字体与排布照原「全部板块」的页头，
+  /// 只是去掉了返回键——这一页已经是首页。
   ///
-  /// 统计行照原型 `paintHeader()`：`N / M 板块 · K 品种`。这不是取数状态，
-  /// 是这一屏自己的规模——上场几颗、一共几个板块、盖住了多少品种。
-  ///
-  /// 聚合口径那行药丸 2026-09-18 整行撤了：板块只有中位数一个口径，
-  /// 不再让用户挑（也不退进「…」菜单）。那一行现在站着「板块明星 / 潜力明星」两颗——
-  /// 换的是看多长一段，不是换算法。
-  ///
-  /// 系统字调大、一行放不下时，统计行整句落到标题下面一行，不截成「13 / 28…」（P2.13）。
-  /// 默认档及更小照旧一行（统计行靠 `minimumScaleFactor` 在窄屏上收一点）。
+  /// 规模那行（`28 个板块 · 526 个品种`）不是取数状态，是这一屏自己的盘子有多大。
+  /// 系统字调大、一行放不下时它整句落到标题下面一行，不截成「28 个…」（P2.13）。
+  /// 默认档及更小照旧一行（靠 `minimumScaleFactor` 在窄屏上收一点）。
   @ViewBuilder private func header(_ snap: Snapshot) -> some View {
     if dynamicTypeSize <= .large {
       oneRowHeader(snap)
-        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
+        .padding(.horizontal, 20).padding(.top, 6)
     } else {
       ViewThatFits(in: .horizontal) {
         oneRowHeader(snap)
         VStack(alignment: .leading, spacing: 2) {
           HStack(spacing: 10) {
             headerTitle
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
             marketSwitch
-            moreButton
           }
           headerStats(snap)
         }
       }
-      .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
+      .padding(.horizontal, 20).padding(.top, 6)
     }
   }
 
@@ -284,34 +239,34 @@ struct SectorPage: View {
         headerTitle
         headerStats(snap)
       }
-      Spacer(minLength: 0)
+      Spacer(minLength: 8)
       marketSwitch
-      moreButton
     }
+    // 和原「全部板块」页头一样高：那一行里有颗 40 的返回键把它撑开，这儿没了它也不塌。
+    .frame(minHeight: 40)
   }
 
   private var headerTitle: some View {
-    Text("板块").font(skin.serif(21)).tracking(1.26).foregroundStyle(theme.ink)
+    Text("板块").font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
+      .accessibilityAddTraits(.isHeader)
   }
 
-  /// 手里还没有行情时整行不出：「0 / 0 板块 · 0 品种」读起来像这一页坏了。
+  /// 手里还没有行情时整行不出：「0 个板块 · 0 个品种」读起来像这一页坏了。
   @ViewBuilder private func headerStats(_ snap: Snapshot) -> some View {
     if !feed.quotes.isEmpty, snap.covered > 0 {
-      Text("\(snap.selection.picks.count) / \(snap.stats.count) 板块 · \(snap.covered) 品种")
+      Text(SectorSubtitle.scale(sectors: snap.stats.count, symbols: snap.covered))
         .font(.scaled(10.5, design: .monospaced)).tracking(0.63)
         .foregroundStyle(skin.ink4)
         .lineLimit(1).minimumScaleFactor(0.8)
+        .accessibilityIdentifier("sector.scale")
     }
   }
 
-  /// 「板块明星 / 潜力明星」。就这两颗，没有第三颗，也没有任何解释文字。
-  ///
-  /// 名字讲的是这一屏在挑什么样的板块，底下取的还是今日 24h 与 5 日两段数据
-  /// （`SectorWindow.today` / `.d5` 一个字没动）——换名字不是换口径。
+  /// 「今日 / 5 日」。就这两颗，没有第三颗，也没有任何解释文字。
   ///
   /// 这一行只在 5 日那档真有东西可看时才出现（`snap.hasD5`）；美股那边服务端还没采
-  /// 日线，那一格就整行不在，页面和甲版一模一样。样式照品种列表里「涨跌幅 / 成交额」
-  /// 那两颗，整页只有这一种药丸。
+  /// 日线，那一格就整行不在。样式照品种列表里「涨跌幅 / 成交额」那两颗，
+  /// 整页只有这一种药丸。
   private func windowBar(_ snap: Snapshot) -> some View {
     HStack(spacing: 7) {
       windowChip(.today, on: snap.window == .today)
@@ -343,43 +298,24 @@ struct SectorPage: View {
       .accessibilityIdentifier("sector.window." + value.rawValue)
   }
 
-  /// 市场硬切换。两个市场永远不共处一屏，换一格就是换一整套尺子。
+  /// 市场硬切换。两个市场永远不共处一屏，换一格就是换一整套板块。
   private var marketSwitch: some View {
     SectorMarketSwitch(skin: skin, market: market, onPick: switchMarket)
   }
 
-  /// 换市场。球场和「全部板块」那张清单共用这一段。
+  /// 换市场。压着的品种列表属于上一个市场，一并收掉。
   private func switchMarket(_ value: SectorMarket) {
     store.update { $0.sectorMarket = value }
-    // 换市场就是换一整套尺子，上一档的分母不能带过去。
-    scaleMemo.values.removeAll()
-    // 人在「全部板块」里换市场，是想看另一个市场的那张清单，不是想被送回球场；
-    // 所以清单留着，只把它上面压着的品种列表收掉。
-    route = route.first == .all ? [.all] : []
+    route = []
   }
 
-  /// 右上角那颗「…」：没上场的板块只有这一条路。
-  private var moreButton: some View {
-    Button { push(.all) } label: {
-      Image(systemName: "ellipsis")
-        .font(.system(size: 14, weight: .medium)).foregroundStyle(theme.ink2)
-        .frame(width: 30, height: 30)
-        .background(skin.well, in: Circle())
-        .overlay(Circle().strokeBorder(skin.rule, lineWidth: 0.5))
-        .frame(width: 40, height: 40)
-        .contentShape(Rectangle())
-    }.buttonStyle(.plain)
-      .accessibilityLabel("全部板块")
-      .accessibilityIdentifier("sector.more")
-  }
-
-  // MARK: - 第三层：某个板块的品种列表
+  // MARK: - 第二层：某个板块的品种列表
 
   /// 成员名单从分类表（或兜底桶）取，行情从 `feed` 取。
   ///
   /// 这一帧的 `stats` 里找不到这个板块时**不退栈**（审查 C-01）。「找不到」多数时候
   /// 只是行情还没到——冷启动第一帧、刚换窗口、网络抖一下都会这样；把它当成「人按了
-  /// 返回」，用户就会在数据回来之前被悄悄送回球场，而且再也回不去（路由已经被弹掉，
+  /// 返回」，用户就会在数据回来之前被悄悄送回板块列表，而且再也回不去（路由已经被弹掉，
   /// 没人会替他压回来）。退不退由 `SectorDrillDecision` 判：只有分类表确认它不在、
   /// 兜底桶里也没有、而且这一帧确实算出了别的板块（说明行情在跑，只是没有它），
   /// 才算「板块没了」。其余情况留在原地等，摆一张只有名字的空壳——返回键还在，
@@ -425,16 +361,15 @@ struct SectorPage: View {
 
 // MARK: - 导航
 
-/// 压在球场上面的那几层。宿主持有它（见 `SectorPage.route`），所以它得是 internal。
+/// 压在板块列表上面的那一层。宿主持有它（见 `SectorPage.route`），所以它得是 internal。
 enum SectorRoute: Equatable {
-  case all
-  case list(String)
+  /// 某个板块（或兜底桶）的品种列表。
+  case sector(String)
 }
 
 // MARK: - 市场硬切换
 
-/// 「加密 / 美股」那颗胶囊。球场的顶栏和「全部板块」的页头共用同一颗——
-/// 同一个动作只有一种长相，也只有一套 id。
+/// 「加密 / 美股」那颗胶囊。只在板块列表的页头出现一次，一套 id。
 struct SectorMarketSwitch: View {
   var skin: SectorSkin
   var market: SectorMarket
@@ -562,9 +497,9 @@ struct SectorSkin {
 
 // MARK: - 底：一块连续的材料
 
-/// 板块页三层共用的底。
+/// 板块页两层共用的底。
 ///
-/// 气泡场、品种列表、全部板块都铺这一张——上层盖下来时换的是内容不是纸，
+/// 板块列表和品种列表都铺这一张——上层盖下来时换的是内容不是纸，
 /// 整屏从头到脚读成同一块材料，上下不出拼缝。
 struct SectorBackdrop: View {
   let skin: SectorSkin
@@ -638,7 +573,7 @@ struct SectorBackdrop: View {
   }()
 }
 
-// MARK: - 三层共用的零件
+// MARK: - 两层共用的零件
 
 /// 左上角那颗返回。原型 `.back`：30 的圆片挂在 40 的可点区里。
 struct SectorBackButton: View {

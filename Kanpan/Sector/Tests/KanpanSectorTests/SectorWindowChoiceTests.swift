@@ -15,7 +15,7 @@ struct SectorWindowChoiceTests {
   func fallsBackToTodayWhenHistoryIsThin() {
     let got = SectorWindowChoice.resolve(preferred: .d5, hasD5: false)
     #expect(got.window == .today)
-    #expect(got.title == "板块明星")
+    #expect(got.title == "今日")
     // 那一行药丸整个不出现——没有可切的第二档就别摆一个切不动的开关。
     #expect(!got.showsBar)
   }
@@ -23,14 +23,14 @@ struct SectorWindowChoiceTests {
   @Test("5 日算得出就照用户停的那一档")
   func honoursThePreferenceWhenHistoryIsThere() {
     let got = SectorWindowChoice.resolve(preferred: .d5, hasD5: true)
-    #expect(got == SectorWindowChoice.Resolved(window: .d5, showsBar: true, title: "潜力明星"))
+    #expect(got == SectorWindowChoice.Resolved(window: .d5, showsBar: true, title: "5 日"))
   }
 
   @Test("停在今日的人不会被日线推去 5 日")
   func todayStaysToday() {
     let got = SectorWindowChoice.resolve(preferred: .today, hasD5: true)
     #expect(got.window == .today)
-    #expect(got.title == "板块明星")
+    #expect(got.title == "今日")
     #expect(got.showsBar, "有 5 日可切，药丸那一行要在")
   }
 

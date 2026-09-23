@@ -91,7 +91,7 @@ import KanpanNetwork
 
   /// 网络和磁盘两条路都从这儿进，一道闸：过期的不要（服务端算不出今天那份时会拿
   /// 上一份垫着，老基线配现价算出来的不是「5 日」），同一天的原样那份也不要
-  /// （`history` 是被观察的，赋一次整页就重算一次聚合、重排一遍球）。
+  /// （`history` 是被观察的，赋一次整页就重算一次聚合、重排一遍列表）。
   /// 口径在 Core 的 `SectorHistory.accepts`，那儿有用例钉着。
   private func apply(_ next: SectorHistory) {
     guard history.accepts(next) else { return }

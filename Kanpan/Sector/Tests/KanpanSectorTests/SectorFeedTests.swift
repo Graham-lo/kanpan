@@ -4,7 +4,7 @@ import KanpanCore
 import KanpanNetwork
 @testable import KanpanSector
 
-// 板块页取数的寿命规则（审查 A-04）。这一路上所有的错都长得一样：屏上有数、球也在动，
+// 板块页取数的寿命规则（审查 A-04）。这一路上所有的错都长得一样：屏上有数、列表也在动，
 // 只是那些数属于另一条线路或者属于十分钟以前。全离线，不碰网络。
 
 private func ticker(_ symbol: String, pct: Double, volume: Double = 1_000_000,
@@ -124,14 +124,14 @@ struct SectorFeedTests {
   func loadingIsNotEmptiness() async {
     let feed = SectorFeed()
     feed.fetchTickers = { _ in [ticker("BTCUSDT", pct: 1)] }
-    // 一趟都还没问过：屏上没有球，但也不是「暂无行情」——那句会在首屏闪一下。
+    // 一趟都还没问过：屏上没有板块，但也不是「暂无行情」——那句会在首屏闪一下。
     #expect(feed.quotes.isEmpty)
     #expect(!feed.showsEmptyState)
 
     feed.setVisible(true)
     await settle(feed)
     feed.setVisible(false)
-    #expect(!feed.showsEmptyState, "有球了自然不是空态")
+    #expect(!feed.showsEmptyState, "有板块了自然不是空态")
   }
 
   @Test("问过了却什么都没有，才是空态")

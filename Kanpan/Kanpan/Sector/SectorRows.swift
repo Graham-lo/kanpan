@@ -104,6 +104,47 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
   }
 }
 
+/// 板块页那张整页列表的顺序：按当前窗口的涨跌幅降序，兜底桶和普通板块一视同仁。
+///
+/// 算不出数的（NaN / ±∞）压到最后，并列按 id 排——NaN 参与 `>` 时比较恒假，排序谓词
+/// 就不再是严格弱序，同一份数据两次刷新能排出两个顺序，行会自己换位（和品种列表那条
+/// 规矩一样，审查 B.5）。
+enum SectorBoardOrder {
+  static func sorted(_ stats: [SectorStat]) -> [SectorStat] {
+    stats.sorted { a, b in
+      let x = a.pct.isFinite ? a.pct : -.infinity
+      let y = b.pct.isFinite ? b.pct : -.infinity
+      return x == y ? a.id < b.id : x > y
+    }
+  }
+}
+
+/// 板块的副文案：`18 个品种 · 15/18 跑赢大盘` 再接一段 `tail`。
+///
+/// 板块列表每一行和品种列表头部说的是同一句，只有末段不同（列表行接成交额，
+/// 品种列表看 5 日时接「20 日」），所以句子只在这儿拼一次。
+///
+/// 有行情成员不到 `minEligibleMembers` 个的板块（`desci` 就一只 BIO）没有「广度」可言
+/// ——一只币的涨跌不是板块强弱。这种少写「跑赢大盘」那一段，不解释为什么。
+enum SectorSubtitle {
+  static func text(_ stat: SectorStat, tail: String) -> String {
+    let head = "\(stat.memberCount) 个品种"
+    guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
+    return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢大盘" + tail
+  }
+
+  /// 板块列表里的一行：末段是成交额，拿不到就整段不写（`sectorVolumeClause`）。
+  static func row(_ stat: SectorStat) -> String {
+    text(stat, tail: sectorVolumeClause(stat.quoteVolume))
+  }
+
+  /// 页头标题旁那行规模：`28 个板块 · 526 个品种`。品种数是去重后、这段窗口上
+  /// 真算得出收益的那些，不是各板块成员数相加（一个品种可以同时属于好几个板块）。
+  static func scale(sectors: Int, symbols: Int) -> String {
+    "\(sectors) 个板块 · \(symbols) 个品种"
+  }
+}
+
 /// 价格千分位。`fmtNum` 只管小数位，逗号在这儿补。和自选页同一份实现。
 func sectorGrouped(_ text: String) -> String {
   let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)

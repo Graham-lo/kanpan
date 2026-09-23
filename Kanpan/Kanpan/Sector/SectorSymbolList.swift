@@ -6,9 +6,9 @@ import KanpanCore
 ///
 /// 视觉照抄自选页（`FavoritesView.row(_:first:)`）——同样的 66 高、同样的徽章、
 /// 同样的两端渐隐发丝线、同样的价格与涨跌药丸。用户点过名：这儿要的是自选页那张
-/// 列表，不是浮在球场上的胶囊卡片。
+/// 列表，不是浮在板块页上的胶囊卡片。
 ///
-/// 底还是 `SectorBackdrop`，和球场同一块材料；不加玻璃纸（自选页 2026-09-17
+/// 底还是 `SectorBackdrop`，和板块列表同一块材料；不加玻璃纸（自选页 2026-09-17
 /// 起已经改成「融合」）。
 struct SectorSymbolList: View {
   var stat: SectorStat
@@ -78,7 +78,7 @@ struct SectorSymbolList: View {
       .scrollIndicators(.hidden)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    // 这一层底下还铺着球场。落在头部空处的点要在这儿吃掉，不然会穿下去点着一颗球。
+    // 这一层底下还铺着板块列表。落在头部空处的点要在这儿吃掉，不然会穿下去点着底下那一行。
     .contentShape(Rectangle())
     .onTapGesture { }
     .background { SectorBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
@@ -96,8 +96,8 @@ struct SectorSymbolList: View {
 
   /// 原型 `enterList()`：返回、记号、板块名、一行副文案，右边是聚合涨跌幅。
   ///
-  /// 副文案 `17 个品种 · 14/17 跑赢 · 成交额 4.86B` 和「全部板块」每行的完全同一格式。
-  /// 「跑赢」几家说的是整体在动还是一只在爆——右边那个大字只说动了多少，这两件事
+  /// 副文案 `17 个品种 · 14/17 跑赢大盘 · 成交额 4.86B` 和板块列表每行的完全同一格式
+  /// （同一个 `SectorSubtitle`）。「跑赢大盘」几家说的是整体在动还是一只在爆——右边那个大字只说动了多少，这两件事
   /// 分不开。涨跌幅不在这行重写一遍（右边已经有了），分母是有行情的成员数，
   /// 页面上不出现算法名，也不出现目录登记数。
   ///
@@ -106,14 +106,12 @@ struct SectorSymbolList: View {
   /// 没有 20 日数据就只剩前两段——不写「暂无」，也不解释；成交额拿不到时那一段
   /// 也是整个不写（`sectorVolumeClause`），不排一句「成交额 —」。
   private var subtitle: String {
-    let head = "\(stat.memberCount) 个品种"
     let tail: String = if window == .d5 {
       medianD20.map { " · 20 日 " + sectorPctText($0) } ?? ""
     } else {
       sectorVolumeClause(stat.quoteVolume)
     }
-    guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
-    return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢" + tail
+    return SectorSubtitle.text(stat, tail: tail)
   }
 
   private var header: some View {

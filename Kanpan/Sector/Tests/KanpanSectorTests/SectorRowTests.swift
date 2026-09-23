@@ -89,7 +89,7 @@ struct SectorRowTests {
 
   @Test("副文案里缺成交额就整段不写，不排一列「成交额 —」")
   func missingVolumeDropsTheWholeClause() {
-    // 板块副文案（「全部板块」那一列、下钻页的标题行）走的是另一个出口：
+    // 板块副文案（板块列表每一行、下钻页的标题行）走的是另一个出口：
     // 有数才带这一段，没有就少一段。网关那条线路上全市场都没有 USDT 成交额，
     // 整列印「· 成交额 —」既不是空位也不传达任何事。
     #expect(sectorVolumeClause(1_234_000) == " · 成交额 1.23M")
@@ -114,5 +114,44 @@ struct SectorRowTests {
                                      symbolForBase: { $0 + "USDT" }, sort: .change)
     #expect(rows.map(\.base) == ["DDD", "BBB", "AAA", "CCC"])
     #expect(rows[2].changeText == "—")
+  }
+
+  // ---------------------------------------------------------------- 板块列表（2026-09-24 起的首页）
+
+  private func board(_ id: String, pct: Double, members: Int = 5, breadth: Double = 0.6,
+                     volume: Double = 1_200_000_000) -> SectorStat {
+    SectorStat(id: id, name: id, market: .crypto, pct: pct, memberCount: members,
+               quoteVolume: volume, isFallback: false, breadth: breadth)
+  }
+
+  @Test("板块列表按涨跌幅降序，并列按 id，非数沉底")
+  func boardOrderIsByChangeDescending() {
+    let got = SectorBoardOrder.sorted([
+      board("b", pct: 1), board("nan", pct: .nan), board("a", pct: 1),
+      board("up", pct: 7), board("down", pct: -3),
+    ])
+    #expect(got.map(\.id) == ["up", "a", "b", "down", "nan"])
+    // 换个进场次序排出来一样——两次刷新之间不换位。
+    #expect(SectorBoardOrder.sorted(got.reversed()).map(\.id) == got.map(\.id))
+  }
+
+  @Test("每行副文案：N 个品种 · x/N 跑赢大盘 · 成交额")
+  func boardSubtitleSpellsOutTheBenchmark() {
+    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 5, breadth: 0.6))
+            == "5 个品种 · 3/5 跑赢大盘 · 成交额 1.20B")
+    // 拿不到成交额：那一段整个不写。
+    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 5, breadth: 0.6, volume: .nan))
+            == "5 个品种 · 3/5 跑赢大盘")
+    // 成员不够三家：「跑赢大盘」那段不写（两只币的涨跌不是板块强弱）。
+    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 2, breadth: 0.5))
+            == "2 个品种 · 成交额 1.20B")
+    // 下钻页 5 日那档换尾巴，前两段同一个出口。
+    #expect(SectorSubtitle.text(board("l1", pct: 1), tail: " · 20 日 +3.00%")
+            == "5 个品种 · 3/5 跑赢大盘 · 20 日 +3.00%")
+  }
+
+  @Test("页头规模：N 个板块 · M 个品种")
+  func scaleLine() {
+    #expect(SectorSubtitle.scale(sectors: 28, symbols: 526) == "28 个板块 · 526 个品种")
   }
 }

@@ -19,7 +19,7 @@ import KanpanNetwork
 ///
 /// 手里那份行情**有寿命**（审查 A-04）。原来它只增不减：换线路之后仍旧拿上一家
 /// 报的数算板块；连着取不到时整页就那么定在一分钟前、十分钟前、一小时前的数字上，
-/// 而球、药丸、统计行看上去和实时的一模一样。现在两种情形都会把它清空：
+/// 而列表、药丸、统计行看上去和实时的一模一样。现在两种情形都会把它清空：
 /// * 换线路 / 换镜像（`configure`）——那是换了一家交易所，一条都不能留；
 /// * 连着 `failuresBeforeDropping` 趟取不到、且手里这份已经超过 `dropAfterSeconds`
 ///   （`noteFailure`）。
@@ -34,7 +34,7 @@ import KanpanNetwork
   /// 这条线路上**问过**一趟了吗（成功或失败都算）。
   ///
   /// 只给空态判「还没取回来」用（复核项 2）：从前空态的判据只有「手里没行情」，
-  /// 于是首屏那一两百毫秒里「暂无行情 / 点此重试」会先闪一下再被球场顶掉。
+  /// 于是首屏那一两百毫秒里「暂无行情 / 点此重试」会先闪一下再被板块列表顶掉。
   /// 换线路会把它清回 false——换了一家交易所，之前问过什么都不作数。
   private(set) var attempted = false
 
@@ -329,7 +329,7 @@ import KanpanNetwork
       guard !base.isEmpty else { continue }
       // 同一个 base 可能有多张合约（USDT / USDC / FDUSD）。先按计价币的固定优先级挑，
       // 同一档才比成交额——USDT 和 USDC 两张的 24h 涨幅并不相同，按成交额挑会在
-      // 两张之间来回切，球就一直在抖。
+      // 两张之间来回切，板块的涨跌就一直在抖。
       // 成交额拿不到就是**没有**，不是 0（审查复核项 1）：编成 0 之后这个成员会
       // 带着一个假的「零成交」进板块成交额的加总、也会在「成交额」那档排序里
       // 冒充一个真实的最小值，而列表上那条「—」分支永远走不到。NaN 原样留着，
@@ -387,7 +387,7 @@ import KanpanNetwork
 
   /// 大写 base → 完整合约代号（`BTC` → `BTCUSDT`）。
   ///
-  /// 板块这一路从头到尾只认 base——分类表里记的就是代号，聚合、选取、画球都不需要
+  /// 板块这一路从头到尾只认 base——分类表里记的就是代号，聚合、排序、画列表都不需要
   /// 知道它是拿什么计价的。但点进品种列表再点一行是要开行情页的，那儿要的是全名。
   /// 直接拼 `base + "USDT"` 在绝大多数上成立，可币安有一小撮只有 USDC 本位的合约
   /// （分类表里也收了），拼出来的代号在品种表里根本不存在，点下去就是一张空图。
@@ -422,19 +422,18 @@ import KanpanNetwork
   /// 没被分类表收录的品种，按交易所自带的标签凑成的几个桶。
   ///
   /// 加密那份分类表里有 48 个币标的是 `NONE`——不是漏了，是它们确实不属于任何一个
-  /// 我们定义的板块。这些币走交易所自己的 `underlyingSubTypes` 兜底，只出现在
-  /// 「全部板块」那张整页列表里，**不参与气泡场的排名和归一**，而且在那张列表里
-  /// 画得和普通板块一模一样（不去饱和、不加标记、不另起一组）。
+  /// 我们定义的板块。这些币走交易所自己的 `underlyingSubTypes` 兜底，在板块列表里
+  /// 和普通板块一起按涨跌幅排，画得也一模一样（不去饱和、不加标记、不另起一组）。
   ///
   /// 桶的 id 和数量不是随手定的，得和记号表对上：`SectorIcons` 里除了 34 个真板块，
   /// 另有 `tag-infrastructure` / `tag-alpha` / `tag-defi` / `misc` 四枚，就是给这儿用的
   /// （原型定稿那一版也正好是这四个桶、49 个成员）。所以这儿**不能**按标签有几种就分几个桶
-  /// ——那样会冒出一串 id 对不上、没有记号的小桶，在「全部板块」里就是一片空洞。
+  /// ——那样会冒出一串 id 对不上、没有记号的小桶，在板块列表里就是一片空洞。
   ///
   /// 分桶是**划分**不是打标签：一个币只落一个桶，按 `tagOrder` 的先后认领，
   /// 一个都不认的落 `misc`。美股那一路分类表本来就只收「AI 产业链」那几十只
   /// （`kanpan-us-equity-data-is-binance-only`），剩下的一律进 `misc`，
-  /// 免得它们从「全部板块」里凭空消失。
+  /// 免得它们从板块列表里凭空消失。
   func fallbackBuckets(for market: SectorMarket) -> [SectorFallbackBucket] {
     let covered = Set(SectorCatalog.sectors(market).flatMap(\.members))
     var buckets: [String: [String]] = [:]
@@ -458,7 +457,7 @@ import KanpanNetwork
 
   /// 认领顺序。和 `bucketOrder` 一致，只是少了兜底的 `misc`。
   private static let tagOrder = ["infrastructure", "alpha", "defi"]
-  /// 出现在「全部板块」里的先后，和 `SectorIcons` 里那四枚记号的顺序一致。
+  /// 在板块列表里并列时的先后，和 `SectorIcons` 里那四枚记号的顺序一致。
   private static let bucketOrder = ["tag-infrastructure", "tag-alpha", "tag-defi", "misc"]
   /// 桶名照原型定稿。`MarketSector.title` 给的是「基础设施 / Alpha / DeFi」，
   /// 但这一页要说清楚它们是**兜底**，所以 Alpha 带上「币安」、DeFi 带上「其他」。

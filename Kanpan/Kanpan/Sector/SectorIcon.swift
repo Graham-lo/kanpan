@@ -9,7 +9,8 @@ import KanpanCore
 /// SwiftUI 上，画法照品种徽章（`CoinBadge.swift`）：
 ///
 /// · **底板是一块渐变的圆**，不是徽章那种圆角方块。徽章站在列表行里，方块和行是一路的；
-///   板块记号要压在气泡的球面上，圆才不会在曲面上露出四个角。
+///   板块记号是一枚圆章，和行里的品种徽章一眼分得开（原型定稿时它压在气泡的球面上，
+///   2026-09-24 气泡撤了，圆留着）。
 /// · **上色跟着皮肤走**，走的就是徽章那套 `BadgeTint`：色相往皮肤强调色偏一小步、
 ///   饱和度封顶、明度收进窄带、深色再压暗一档。所以每枚只声明自己的 `from` / `to`
 ///   身份色，三套皮肤 × 深浅共八种组合由那段变换负责，这儿不写第二处颜色。
@@ -110,15 +111,8 @@ enum SectorInk {
   /// 的强调色沿用青苔的墨绿。这儿以种子为准，理由有二：面板里不许写字面 hex；
   /// 而且真按原型那支蓝走，经典皮肤下整屏只有板块记号往一支别处不存在的蓝偏，
   /// 反倒是它自己跳出来。
-  ///
-  /// `onBall` 是给球面上那一枚用的：底板压在饱和的球身上，原型一律按深色那一档上色
-  /// （`drawSectorIcon(..., dark = true)`），浅色皮肤下也一样——浅档的底板铺在
-  /// 强端那种鲜艳的球面上会发白，认不出记号。
-  static func gradient(_ art: SectorIconArt, theme: PanelTheme,
-                       onBall: Bool = false) -> (top: Color, bottom: Color) {
-    var seed = theme.seed
-    if onBall { seed.dark = true }
-    return BadgeTint.gradient(from: Hex(art.from), to: Hex(art.to), seed: seed)
+  static func gradient(_ art: SectorIconArt, theme: PanelTheme) -> (top: Color, bottom: Color) {
+    BadgeTint.gradient(from: Hex(art.from), to: Hex(art.to), seed: theme.seed)
   }
 
   /// 描边宽度：和徽章共用一条窄带（`BadgeLine`），`size` 是底板直径。
@@ -130,7 +124,6 @@ enum SectorInk {
   ///
   /// 和 `BadgeLine` 是一个道理：直径小于 20 时按比例缩会显得空，所以把记号放大最多一成，
   /// 把仅有的那几个像素全用在剪影上，上限 0.82（再往外就贴到底板的边了）。
-  /// 气泡场上小球的记号只有十几 pt，这一步不能省，省了那一档就糊。
   static func inset(_ base: CGFloat, at size: CGFloat) -> CGFloat {
     let k = min(max((20 - size) / 8, 0), 1)
     return min(base * (1 + 0.10 * k), 0.82)
@@ -141,7 +134,7 @@ enum SectorInk {
 
 /// 记号视图：底板 + 记号。`size` 是外框边长（也就是底板直径）。
 ///
-/// 用在「全部板块」那张列表和品种列表的头部——凡是不在 Canvas 里的地方都走这条。
+/// 用在板块列表的每一行和品种列表的头部。
 struct SectorIconView: View {
   var art: SectorIconArt
   var size: CGFloat
@@ -169,7 +162,7 @@ struct SectorIconView: View {
 struct SectorMark: View {
   var art: SectorIconArt
   var size: CGFloat
-  /// 记号的颜色。默认白：它总是压在自己那块底板或者球身上。
+  /// 记号的颜色。默认白：它总是压在自己那块底板上。
   var ink: Color = .white
 
   var body: some View {
@@ -197,67 +190,6 @@ private struct SectorShape: Shape {
 
   func path(in rect: CGRect) -> Path {
     SVGPath.parsed(paths).applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
-  }
-}
-
-// MARK: - 落笔
-
-/// 给 `Canvas` 直接落笔用。
-///
-/// 气泡场是一整块 `Canvas`（几十颗球每帧重画一遍），塞不进 SwiftUI 的视图，所以记号
-/// 在那边得自己画。三十几枚记号 × 每帧几十颗球，这条路上不许有字符串解析：
-/// 路径走 `SVGPath.parsed` 的 memo 拿现成的 `Path`，缩放交给上下文的变换，
-/// 一帧下来只有填充和描边两种命令。
-enum SectorMarkDraw {
-  /// 在 `rect` 内把记号画进上下文，已做好缩放与皮肤适配。
-  ///
-  /// `plate` 是那块渐变底板（球面上要，原型就是这么画的）；只要记号本身时传 `false`。
-  /// `shadow` 是底板底下那一点影子，让它从球面上浮起来。
-  static func draw(_ art: SectorIconArt, in rect: CGRect, context ctx: inout GraphicsContext,
-                   theme: PanelTheme, plate: Bool = true, shadow: Bool = true) {
-    let d = min(rect.width, rect.height)
-    // 原型没有这道闸，但它也不会把直径画到个位数。这里兜一手：4pt 以下记号已经不成形，
-    // 画出来只是一个脏点，顺带也挡住 rect 为空时的除零。
-    guard d >= 4 else { return }
-    let cx = rect.midX, cy = rect.midY
-
-    if plate {
-      let ink = SectorInk.gradient(art, theme: theme, onBall: true)
-      let shading = GraphicsContext.Shading.linearGradient(
-        Gradient(colors: [ink.top, ink.bottom]),
-        startPoint: CGPoint(x: cx - d * 0.36, y: cy - d * 0.36),
-        endPoint: CGPoint(x: cx + d * 0.36, y: cy + d * 0.36))
-      let disc = Path(ellipseIn: CGRect(x: cx - d / 2, y: cy - d / 2, width: d, height: d))
-      if shadow {
-        ctx.drawLayer { layer in
-          layer.addFilter(.shadow(color: .black.opacity(theme.dark ? 0.45 : 0.28),
-                                  radius: d * 0.09, y: d * 0.08))
-          layer.fill(disc, with: shading)
-        }
-      } else {
-        ctx.fill(disc, with: shading)
-      }
-    }
-
-    // 记号：把上下文挪到记号的取景框上再缩到 24 格，路径就能原样落笔。
-    // `GraphicsContext` 是值类型，拷一份改变换等于 save / restore，外面那份不受影响。
-    let box = d * SectorInk.inset(art.inset, at: d)
-    let k = box / 24
-    var g = ctx
-    g.translateBy(x: cx - box / 2, y: cy - box / 2)
-    g.scaleBy(x: k, y: k)
-    let white = GraphicsContext.Shading.color(.white)
-    for part in art.parts {
-      let p = SVGPath.parsed(part.d)
-      if let width = part.stroke {
-        // 线宽是在缩放后的坐标系里算的，所以要先除掉这一道缩放。
-        g.stroke(p, with: white,
-                 style: StrokeStyle(lineWidth: SectorInk.weight(width, at: d) / k,
-                                    lineCap: .round, lineJoin: .round))
-      } else {
-        g.fill(p, with: white, style: FillStyle(eoFill: part.eo))
-      }
-    }
   }
 }
 
@@ -653,7 +585,7 @@ public enum SectorIcons {
     ]),
     // 「电力」接手原来那道闪电——供电、散热、发电、储能这一格，画什么都不如一道电来得直接。
     // 同族里改走中档蓝（和 `neo` 共用一对，就像 `mem` 和 `optic` 共用琥珀浅档），
-    // 形状差得远，球上不会认错。
+    // 形状差得远，不会认错。
     icon("power", "电力", .us, fam: "power", hue: "indigo", tone: "M",
         from: "#78AEF2", to: "#2F67C4", inset: 0.66, parts: [
       solid(

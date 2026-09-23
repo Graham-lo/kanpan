@@ -10,10 +10,12 @@ import KanpanCore
 
 /// 当前窗口这一档的决定。
 enum SectorWindowChoice {
-  /// 药丸上的两个名字。讲的是这一屏在挑什么样的板块，不是口径名
-  /// （底下还是 `SectorWindow.today` / `.d5`，换名字不是换口径）。
-  static let todayTitle = "板块明星"
-  static let d5Title = "潜力明星"
+  /// 药丸上的两个名字，就是这两段窗口本身的名字。
+  ///
+  /// 气泡场时期叫「板块明星 / 潜力明星」，讲的是球场在挑什么样的板块；2026-09-24
+  /// 板块页改成一张整页列表之后，这一行只是在换看多长一段，名字就照直写。
+  static let todayTitle = "今日"
+  static let d5Title = "5 日"
 
   /// 某一档窗口在屏上叫什么。`d20` 不是一个模式（它只是 5 日那档头部补的一句），
   /// 所以除了 `d5` 都按今日那个名字写。
@@ -21,7 +23,7 @@ enum SectorWindowChoice {
     window == .d5 ? d5Title : todayTitle
   }
 
-  /// 决定的结果。三样东西必须一起给出来，不然就会出现「名字写着潜力明星、
+  /// 决定的结果。三样东西必须一起给出来，不然就会出现「名字写着 5 日、
   /// 底下的数却是今日」这种屏（那正是原来那行三元式和 `windowBar` 分开算的后果）。
   struct Resolved: Sendable, Equatable {
     /// 这一屏真正在用的窗口。
