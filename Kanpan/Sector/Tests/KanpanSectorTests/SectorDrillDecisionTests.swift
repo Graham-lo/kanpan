@@ -52,5 +52,7 @@ struct SectorDrillDecisionTests {
     #expect(shell.name == def.name)
     #expect(shell.staticCount == def.members.count)
     #expect(shell.memberCount == 0, "没数据就是没数据，不许编一个中位数出来")
+    // 成员数 0：副文案只剩「0 个品种」，不写「0/0 跑赢大盘」。
+    #expect(SectorSubtitle.row(shell) == "0 个品种")
   }
 }

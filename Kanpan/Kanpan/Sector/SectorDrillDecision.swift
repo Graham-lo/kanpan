@@ -52,6 +52,7 @@ enum SectorDrillDecision: Equatable {
     let members = def?.members ?? bucket?.members ?? []
     return SectorStat(id: id, name: def?.name ?? bucket?.name ?? id, market: market,
                       pct: 0, memberCount: 0, staticCount: members.count,
-                      quoteVolume: 0, isFallback: def == nil)
+                      // 成交额是「没有」，不是 0：写 0 头部就会印出一句「成交额 0.00」。
+                      quoteVolume: .nan, isFallback: def == nil)
   }
 }
