@@ -350,8 +350,8 @@ fn plain(symbol:&str)->String {
 /// Strips the quote asset from a contract symbol: `BTC-USDT-SWAP` -> `BTC`.
 /// A symbol with no recognised quote is returned whole, so a client asking for
 /// a bare base still resolves. Where a pair is ambiguous (`USDTUSD` is USDT
-/// against USD, not USD against TUSD) only [`base_candidates`] gets it right,
-/// by asking the table which reading it knows.
+/// against USD, not USD against TUSD) only [`lookup`] gets it right, by
+/// asking the table which of the [`base_readings`] it knows.
 pub fn strip_quote(symbol:&str)->String {
  let clean=plain(symbol);
  for quote in QUOTES {if let Some(rest)=clean.strip_suffix(quote)&& !rest.is_empty() {return rest.to_owned()}}
@@ -377,22 +377,6 @@ pub fn strip_multiplier(base:&str)->(&str,f64) {
    && rest.len()>=3 && rest.starts_with(|c:char|c.is_ascii_alphabetic()) {return (rest,multiplier)}
  }
  (base,1.0)
-}
-/// Every base a contract symbol could name, best reading first, each with the
-/// multiplier its supply must be divided by.
-///
-/// Un-multiplied names come first on purpose: Binance's own table lists
-/// `1000SATS` as an asset whose supply is *already* divided by 1000, so when it
-/// knows the bundle we must take its figure rather than divide a second time.
-/// Only a bundle it has never heard of (`1000PEPE`) falls through to the coin.
-pub fn base_candidates(symbol:&str)->Vec<(String,f64)> {
- let names=base_readings(symbol);
- let mut out:Vec<(String,f64)>=names.iter().map(|n|(n.clone(),1.0)).collect();
- for name in &names {
-  let (base,multiplier)=strip_multiplier(name);
-  if multiplier!=1.0 {out.push((base.to_owned(),multiplier))}
- }
- out
 }
 /// 一个合约符号能读成哪些资产名，最像的在前：整个符号，然后去掉计价资产之后的部分。
 pub fn base_readings(symbol:&str)->Vec<String> {

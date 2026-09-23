@@ -192,14 +192,16 @@ async fn review_rls_and_alias() {
  tx.commit().await.unwrap();
  let anonymous:i64=sqlx::query_scalar("SELECT count(*) FROM review_records").fetch_one(&w.s.pool).await.unwrap();
  assert_eq!(anonymous,0,"没有身份就什么都不是");
- // 复数那个路径是历史遗留的别名，规矩完全一样：同一套鉴权、同一套版本校验。
+ // 复数的 `/reflections` 是历史遗留的别名，没有客户端调用（客户端按操作 kind 拼路径，
+ // kind 只有单数 `reflection`），2026-09-24 删掉（审查 D5）：删掉就得真的不在。
  let plural=format!("{path}/reflections");let single=format!("{path}/reflection");
  let write=|note:&str,revision:i64|json!({"expectedRevision":revision,"reflection":{"note":note,"nextTime":"","publishedAt":null,"revision":0},"publish":false});
- assert_eq!(request(&w.app,&plural,"POST",Some(&b.token),Some(Uuid::new_v4()),write("偷写",0)).await.0,404,"别名也不认外人");
- let (status,v)=request(&w.app,&plural,"POST",Some(&a.token),Some(Uuid::new_v4()),write("第一遍",0)).await;
+ assert_eq!(request(&w.app,&plural,"POST",Some(&a.token),Some(Uuid::new_v4()),write("别名",0)).await.0,404,"复数别名应该已经删掉");
+ assert_eq!(request(&w.app,&single,"POST",Some(&b.token),Some(Uuid::new_v4()),write("偷写",0)).await.0,404,"不认外人");
+ let (status,v)=request(&w.app,&single,"POST",Some(&a.token),Some(Uuid::new_v4()),write("第一遍",0)).await;
  assert_eq!(status,200,"{v}");assert_eq!(v["data"]["record"]["revision"],1);
  let (status,v)=request(&w.app,&single,"POST",Some(&a.token),Some(Uuid::new_v4()),write("拿旧版本再写",0)).await;
- assert_eq!(status,409,"两个路径共用同一个版本号：{v}");
+ assert_eq!(status,409,"拿旧版本号再写要被拒：{v}");
  assert_eq!(v["error"]["code"],"record_revision_changed");
  let (status,v)=request(&w.app,&single,"POST",Some(&a.token),Some(Uuid::new_v4()),write("第二遍",1)).await;
  assert_eq!(status,200,"{v}");assert_eq!(v["data"]["record"]["reflection"]["note"],"第二遍");

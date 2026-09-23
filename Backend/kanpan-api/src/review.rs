@@ -15,7 +15,6 @@ pub fn routes()->Router<AppState> {
  Router::new().route("/v1/native-review/records",get(list).post(create))
  .route("/v1/native-review/records/{id}",get(detail))
  .route("/v1/native-review/records/{id}/reflection",post(reflection))
- .route("/v1/native-review/records/{id}/reflections",post(reflection))
  .route("/v1/native-review/records/{id}/void",post(void_record))
  .route("/v1/native-review/records/{id}/group",post(group))
  // 这一条走自己的体积上限：整套 API 的默认是 512 KiB，而一张 2× 缩放的行情截图
