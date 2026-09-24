@@ -245,7 +245,9 @@ public final class ChartView: UIView {
           "orderFlowOrders": s.orderFlow?.orders.count ?? 0,
           "orderFlowBands": (orderFlow?.bands ?? []).map {
             ["side": $0.order.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
-             "w": $0.frame.width, "alpha": $0.alpha, "color": $0.color.value] as [String: Any]
+             "w": $0.frame.width, "h": $0.frame.height, "alpha": $0.alpha, "color": $0.color.value,
+             "product": $0.order.product.rawValue, "status": $0.order.status.rawValue,
+             "dashed": $0.dashed] as [String: Any]
           },
           "orderFlowHovered": orderFlow?.hovered ?? false,
           "panes": layout.panes.dropFirst().map { ["id": $0.indicator?.rawValue ?? "", "y": $0.y, "h": $0.h] as [String: Any] }, "subs": s.subs.map(\.rawValue),
@@ -520,7 +522,7 @@ public final class ChartView: UIView {
     }
     if o.depth != new.depth { p.insert(.live) }
     // 主力订单流：色带在 plot、图例在 cross；十字线进出色带要把那条提亮到 0.9，也得重画 plot。
-    if o.orderFlow != new.orderFlow { p.insert([.plot, .cross]) }
+    if o.orderFlow != new.orderFlow || o.orderFlowDisplay != new.orderFlowDisplay { p.insert([.plot, .cross]) }
     else if o.crosshair != new.crosshair, new.orderFlow?.orders.isEmpty == false,
             o.crosshair.map({ $0.pane == nil }) == true || new.crosshair.map({ $0.pane == nil }) == true { p.insert(.plot) }
     if o.crosshair != new.crosshair { p.insert(.cross) }

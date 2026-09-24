@@ -10,103 +10,157 @@ import UIKit
 struct OrderFlowChartTests {
   static let size = AxisWidthTests.size
 
-  /// 最新价上下各摆几档大单：买七条（第七条最小，只进合计不画）、卖一条。
-  static func renderer(redUp: Bool = false, firstSeenBack: Int = 10) -> (ChartRenderer, [BigOrder]) {
+  static func order(_ product: OrderFlowProduct, _ side: BookSide, price: Double, firstSeen: Int64,
+                    end: Int64? = nil, status: BigOrder.Status = .live, notional: Double = 10_000_000,
+                    initial: Double = 10_000_000, filled: Double = 0, threshold: Double = 5_000_000,
+                    bucket: Int64 = 0) -> BigOrder {
+    BigOrder(venueID: "binance:\(product.rawValue):X", exchange: "币安", product: product, side: side,
+             bucket: bucket, price: price, firstSeenMs: firstSeen, endMs: end, status: status,
+             initialNotional: initial, notional: notional, filledNotional: filled, threshold: threshold)
+  }
+
+  /// 最新价上下摆几单：U 本位买（挂着）、现货买卖、币本位卖、一条已成交买、一条已撤销卖。
+  static func renderer(redUp: Bool = false) -> (ChartRenderer, [BigOrder]) {
     var r = AxisWidthTests.renderer()
     let b = r.state.series
     let price = b.close.last!
-    let width = price * 0.0008
-    let seen = b.time(at: b.count - firstSeenBack) + 1
-    var orders: [BigOrder] = (1...7).map { k in
-      let low = price - Double(k) * width * 3
-      return BigOrder(side: .bid, bucketIndex: Int64(k), low: low, width: width,
-                      notional: Double(8 - k) * 1_000_000, initialNotional: Double(8 - k) * 1_000_000,
-                      filledNotional: 0, firstSeenMs: seen)
-    }
-    orders.append(BigOrder(side: .ask, bucketIndex: 100, low: price + width * 4, width: width,
-                           notional: 5_300_000, initialNotional: 8_000_000, filledNotional: 3_040_000,
-                           firstSeenMs: b.firstTime - 60_000))
+    let d = price * 0.002
+    let seen = b.time(at: b.count - 10) + 1
+    let ended = b.time(at: b.count - 4) + 1
+    let orders = [
+      order(.usdtPerp, .bid, price: price - d, firstSeen: seen, bucket: 1),
+      order(.spot, .bid, price: price - 2 * d, firstSeen: seen, notional: 1_500_000, initial: 1_500_000,
+            threshold: 1_000_000, bucket: 2),
+      order(.spot, .ask, price: price + 2 * d, firstSeen: seen, notional: 1_500_000, initial: 1_500_000,
+            threshold: 1_000_000, bucket: 3),
+      order(.coinPerp, .ask, price: price + d, firstSeen: b.firstTime - 60_000, notional: 5_300_000,
+            initial: 8_000_000, filled: 3_040_000, bucket: 4),
+      order(.usdtPerp, .bid, price: price - 3 * d, firstSeen: seen, end: ended, status: .filled,
+            filled: 9_000_000, bucket: 5),
+      order(.delivery, .ask, price: price + 3 * d, firstSeen: seen, end: ended, status: .cancelled, bucket: 6),
+    ]
     r.state.redUp = redUp
     r.state.orderFlow = OrderFlowSnapshot(symbol: r.state.symbol.symbol, phase: .ready, orders: orders,
                                           asOfMs: seen + 12 * 60_000)
     return (r, orders)
   }
 
-  @Test("色带：同侧最多六条、高度 2–6 pt、从首见那根左缘画到主图右缘、透明度按开方")
-  func bands() throws {
+  func frame(_ r: ChartRenderer) -> ChartRenderer.OrderFlowFrame {
+    let L = r.layout(size: Self.size)
+    return r.orderFlowFrame(pane: L.main, range: r.priceRange(size: Self.size), L: L)
+  }
+
+  @Test("一单一块：首见那根左缘起，挂着的画到主图右缘、结束的画到结束那根右缘")
+  func geometry() throws {
     let (r, orders) = Self.renderer()
-    let L = r.layout(size: Self.size), range = r.priceRange(size: Self.size)
-    let frame = r.orderFlowFrame(pane: L.main, range: range, L: L)
-    let bids = frame.bands.filter { $0.order.side == .bid }
-    #expect(bids.count == 6)
-    #expect(!bids.contains { $0.order.bucketIndex == 7 })
-    #expect(frame.bands.count == 7)
-    // 合计仍算全部七条买单。
-    #expect(frame.bidTotal == orders.filter { $0.side == .bid }.map(\.notional).reduce(0, +))
-    #expect(frame.askTotal == 5_300_000)
-    #expect(frame.bands.allSatisfy { $0.frame.height >= 2 && $0.frame.height <= 6 })
-    #expect(frame.bands.allSatisfy { abs($0.frame.maxX - L.plotW) < 0.001 })
-    // 起点：首见那根的左缘；卖单首见早于整段序列，从 0 画起。
+    let L = r.layout(size: Self.size)
+    let f = frame(r)
+    #expect(f.bands.count == orders.count)
     let b = r.state.series
     let spacing = r.state.view.barSpacing(step: b.step, plotW: L.plotW)
     let left = r.state.view.x(Double(b.time(at: b.count - 10)), plotW: L.plotW) - spacing / 2
-    #expect(bids.allSatisfy { abs($0.frame.minX - max(0, left)) < 0.001 })
-    let ask = try #require(frame.bands.first { $0.order.side == .ask })
-    #expect(ask.frame.minX == 0)
-    // 透明度：最大的一条 0.55，其余按开方比例落在 0.22–0.55。
-    let top = try #require(frame.bands.first { $0.order.notional == 7_000_000 })
-    #expect(abs(top.alpha - 0.55) < 1e-9)
-    #expect(abs(ask.alpha - (0.22 + 0.33 * sqrt(5.3 / 7))) < 1e-9)
-    #expect(frame.bands.allSatisfy { $0.alpha >= 0.22 && $0.alpha <= 0.55 })
-    // 颜色：买涨色、卖跌色；标签「5.3M · 38%」。
-    #expect(bids.allSatisfy { $0.color == r.state.colors.up })
-    #expect(ask.color == r.state.colors.down)
-    #expect(ask.amount == "5.3M" && ask.fill == " · 38%")
-    #expect(top.fill == nil)
-    // 标签竖向不撞：相邻至少隔 10 pt。
-    let ys = frame.bands.map(\.labelY).sorted()
-    #expect(zip(ys, ys.dropFirst()).allSatisfy { $1 - $0 >= 10 - 1e-9 })
+    let endRight = r.state.view.x(Double(b.time(at: b.count - 4)), plotW: L.plotW) + spacing / 2
+    for band in f.bands {
+      if band.order.firstSeenMs < b.firstTime { #expect(band.frame.minX == 0) }
+      else { #expect(abs(band.frame.minX - max(0, left)) < 0.001) }
+      if band.order.isLive { #expect(abs(band.frame.maxX - L.plotW) < 0.001) }
+      else { #expect(abs(band.frame.maxX - endRight) < 0.001) }
+    }
   }
 
-  @Test("红涨绿跌打开时色带跟着反")
-  func redUpFlips() {
-    let (r, _) = Self.renderer(redUp: true)
-    let L = r.layout(size: Self.size)
-    let frame = r.orderFlowFrame(pane: L.main, range: r.priceRange(size: Self.size), L: L)
-    #expect(frame.bands.filter { $0.order.side == .bid }.allSatisfy { $0.color == r.state.colors.up })
-    #expect(r.state.colors.up == Palette.chart(Palette.lightSeed, redUp: true).up)
+  @Test("厚度：名义 ÷ (门槛 ÷ 8) 格、一格 0.25 pt、封顶 40 格，夹到 1.5–10 pt")
+  func thickness() {
+    #expect(ChartRenderer.orderFlowBandHeight(notional: 5_000_000, threshold: 5_000_000) == 2)
+    #expect(ChartRenderer.orderFlowBandHeight(notional: 12_500_000, threshold: 5_000_000) == 5)
+    #expect(ChartRenderer.orderFlowBandHeight(notional: 25_000_000, threshold: 5_000_000) == 10)
+    #expect(ChartRenderer.orderFlowBandHeight(notional: 500_000_000, threshold: 5_000_000) == 10)
+    #expect(ChartRenderer.orderFlowBandHeight(notional: 1_000_000, threshold: 5_000_000) == 1.5)
+    #expect(ChartRenderer.orderFlowBandHeight(notional: 1, threshold: 0) == 1.5)
+    let (r, _) = Self.renderer()
+    #expect(frame(r).bands.allSatisfy { $0.frame.height >= 1.5 && $0.frame.height <= 10 })
   }
 
-  @Test("只有一条时 0.45；十字线停在带上提到 0.9 并出读数")
-  func singleAndHover() throws {
+  @Test("透明度：0.25 + 0.65 × 成交比例；已撤销再 × 0.45 并描虚线")
+  func alpha() throws {
+    let (r, _) = Self.renderer()
+    let f = frame(r)
+    let fresh = try #require(f.bands.first { $0.order.bucket == 1 })
+    #expect(abs(fresh.alpha - 0.25) < 1e-9 && !fresh.dashed)
+    let coin = try #require(f.bands.first { $0.order.bucket == 4 })
+    #expect(abs(coin.alpha - (0.25 + 0.65 * 0.38)) < 1e-9)
+    let filled = try #require(f.bands.first { $0.order.bucket == 5 })
+    #expect(abs(filled.alpha - 0.835) < 1e-9)
+    let cancelled = try #require(f.bands.first { $0.order.bucket == 6 })
+    #expect(abs(cancelled.alpha - 0.25 * 0.45) < 1e-9 && cancelled.dashed)
+    var full = fresh.order; full.filledNotional = 50_000_000
+    #expect(ChartRenderer.orderFlowAlpha(full) == 0.9)
+  }
+
+  @Test("颜色：合约走涨跌色（红涨绿跌跟着反）、现货黄紫不变、币本位往正文色混四成")
+  func colors() throws {
+    for redUp in [false, true] {
+      let (r, _) = Self.renderer(redUp: redUp)
+      let t = r.state.colors
+      let f = frame(r)
+      #expect(f.bands.first { $0.order.bucket == 1 }?.color == t.up)
+      #expect(f.bands.first { $0.order.bucket == 6 }?.color == t.down)
+      #expect(f.bands.first { $0.order.bucket == 2 }?.color == "#E1D610")
+      #expect(f.bands.first { $0.order.bucket == 3 }?.color == "#CF09E7")
+      #expect(f.bands.first { $0.order.bucket == 4 }?.color == mixHex(t.down, t.text, 0.4))
+    }
+    #expect(Self.renderer(redUp: true).0.state.colors.up == Palette.chart(Palette.lightSeed, redUp: true).up)
+  }
+
+  @Test("显示开关：关现货 / 合约 / 已成交买 / 已撤销卖各自只藏那一类；合计只算还挂着的")
+  func display() {
     var (r, orders) = Self.renderer()
-    let ask = orders.last!
-    r.state.orderFlow?.orders = [ask]
-    let L = r.layout(size: Self.size)
-    var frame = r.orderFlowFrame(pane: L.main, range: r.priceRange(size: Self.size), L: L)
-    #expect(frame.bands.count == 1 && abs(frame.bands[0].alpha - 0.45) < 1e-9)
-    r.state.crosshair = Crosshair(index: r.state.series.count - 1, price: ask.center)
-    frame = r.orderFlowFrame(pane: L.main, range: r.priceRange(size: Self.size), L: L)
-    #expect(frame.hovered == ask)
-    #expect(abs(frame.bands[0].alpha - 0.9) < 1e-9)
-    let text = ChartRenderer.orderFlowReadout(ask, decimals: 2, nowMs: ask.firstSeenMs + 12 * 60_000)
-    #expect(text.hasPrefix("卖 "))
-    #expect(text.hasSuffix(" · 5.3M · 成交 38% · 12 分"))
-    var fresh = ask; fresh.filledNotional = 0
-    #expect(!ChartRenderer.orderFlowReadout(fresh, decimals: 2, nowMs: ask.firstSeenMs).contains("成交"))
-    #expect(ChartRenderer.orderFlowReadout(
-      BigOrder(side: .ask, bucketIndex: 0, low: 78_418.6, width: 62.76, notional: 5_300_000,
-               initialNotional: 5_300_000, filledNotional: 0, firstSeenMs: 0), decimals: 1, nowMs: 720_000)
-      == "卖 78,450 · 5.3M · 12 分")
+    let live = orders.filter(\.isLive)
+    #expect(frame(r).bidTotal == live.filter { $0.side == .bid }.map(\.notional).reduce(0, +))
+    #expect(frame(r).askTotal == live.filter { $0.side == .ask }.map(\.notional).reduce(0, +))
+    r.state.orderFlowDisplay.spot = false
+    #expect(!frame(r).bands.contains { $0.order.product == .spot })
+    #expect(frame(r).bands.count == 4)
+    r.state.orderFlowDisplay = .all
+    r.state.orderFlowDisplay.contract = false
+    #expect(frame(r).bands.allSatisfy { $0.order.product == .spot })
+    r.state.orderFlowDisplay = .all
+    r.state.orderFlowDisplay.filledBid = false
+    #expect(!frame(r).bands.contains { $0.order.status == .filled })
+    r.state.orderFlowDisplay.cancelledAsk = false
+    #expect(!frame(r).bands.contains { $0.order.status == .cancelled })
+    #expect(frame(r).bands.count == 4)
   }
 
-  @Test("开关与内容变化脏哪几层；开着主力图例多留一行；拉快照中不画带")
+  @Test("十字线停在块上：那一块 1.0，图例出「币安 永续 卖 84,120 · 5.3M · 成交 38% · 12 分」")
+  func hoverAndReadout() throws {
+    var (r, orders) = Self.renderer()
+    let coin = orders[3]
+    r.state.crosshair = Crosshair(index: r.state.series.count - 1, price: coin.price)
+    let f = frame(r)
+    #expect(f.hovered == coin)
+    #expect(f.bands.first { $0.order == coin }?.alpha == 1)
+
+    var perp = Self.order(.usdtPerp, .ask, price: 84_120, firstSeen: 0, notional: 5_300_000, initial: 8_000_000,
+                          filled: 3_040_000)
+    #expect(ChartRenderer.orderFlowReadout(perp, decimals: 0, nowMs: 720_000)
+      == "币安 永续 卖 84,120 · 5.3M · 成交 38% · 12 分")
+    perp.filledNotional = 0
+    #expect(ChartRenderer.orderFlowReadout(perp, decimals: 1, nowMs: 30_000) == "币安 永续 卖 84,120.0 · 5.3M · 不到 1 分")
+    let done = Self.order(.coinPerp, .bid, price: 84_000, firstSeen: 0, end: 3_900_000, status: .cancelled,
+                          notional: 6_000_000, initial: 6_000_000)
+    #expect(ChartRenderer.orderFlowReadout(done, decimals: 0, nowMs: 99_000_000)
+      == "币安 币本位 买 84,000 · 6.0M · 已撤销 · 1 时 5 分")
+  }
+
+  @Test("开关与内容变化脏哪几层；开着主力图例多留一行；拉快照中、别的品种不画")
   func invalidationAndInset() {
     let (r, _) = Self.renderer()
     var off = r.state; off.orderFlow = nil
     #expect(ChartView.changed(from: off, to: r.state) == .all)
     var moved = r.state; moved.orderFlow?.orders.removeLast()
     #expect(ChartView.changed(from: r.state, to: moved) == [.plot, .cross])
+    var hidden = r.state; hidden.orderFlowDisplay.spot = false
+    #expect(ChartView.changed(from: r.state, to: hidden) == [.plot, .cross])
     var hover = r.state; hover.crosshair = Crosshair(index: 3, price: 1)
     #expect(ChartView.changed(from: r.state, to: hover).contains(.plot))
     let plain = ChartRenderer(state: off)
@@ -114,17 +168,15 @@ struct OrderFlowChartTests {
 
     var loading = r
     loading.state.orderFlow = .loading(r.state.symbol.symbol)
-    let L = loading.layout(size: Self.size)
-    #expect(loading.orderFlowFrame(pane: L.main, range: loading.priceRange(size: Self.size), L: L).bands.isEmpty)
-    // 别的品种的快照（切品种那一拍）不画。
+    #expect(frame(loading).bands.isEmpty)
     var other = r
     other.state.orderFlow?.symbol = "ETHUSDT"
-    #expect(other.orderFlowFrame(pane: L.main, range: other.priceRange(size: Self.size), L: L).bands.isEmpty)
+    #expect(frame(other).bands.isEmpty)
   }
 
-  @Test("整帧绘制：色带真的落到像素上，比价模式不画")
+  @Test("整帧绘制：色块真的落到像素上，比价模式不画")
   func pixels() throws {
-    let (r, _) = Self.renderer()
+    let (r, orders) = Self.renderer()
     let L = r.layout(size: Self.size), range = r.priceRange(size: Self.size)
     var bytes = [UInt8](repeating: 0, count: 402 * 520 * 4)
     try bytes.withUnsafeMutableBytes { buffer in
@@ -132,10 +184,10 @@ struct OrderFlowChartTests {
         bitsPerComponent: 8, bytesPerRow: 402 * 4, space: CGColorSpaceCreateDeviceRGB(),
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
       UIGraphicsPushContext(ctx)
-      #expect(r.drawOrderFlow(ctx, pane: L.main, range: range, L: L) == 7)
+      #expect(r.drawOrderFlow(ctx, pane: L.main, range: range, L: L) == orders.count)
       UIGraphicsPopContext()
     }
-    #expect(stride(from: 3, to: bytes.count, by: 4).filter { bytes[$0] >= 50 }.count > 1_000)
+    #expect(stride(from: 3, to: bytes.count, by: 4).filter { bytes[$0] >= 50 }.count > 500)
     let image = UIGraphicsImageRenderer(size: Self.size).image { context in
       r.draw(in: context.cgContext, size: Self.size, scale: 2)
     }

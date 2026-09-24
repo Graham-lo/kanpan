@@ -83,6 +83,8 @@ public struct ChartState: Sendable, Equatable {
     public var magnet: Bool
     /// 主力订单流的当前大单集合（ChartRenderer+OrderFlow）。`nil` = 开关关着或横屏画线台；永不落盘。
     public var orderFlow: OrderFlowSnapshot? = nil
+    /// 主力订单流的显示开关（现货 / 合约 / 已成交买卖 / 已撤销买卖）。只管画不画，跟人走。
+    public var orderFlowDisplay: OrderFlowDisplay = .all
     public var depth: OrderBook? = nil
     /// 「本根还有多久收」用的当前时刻（毫秒）。`nil` 就不画倒计时。
     ///
@@ -220,6 +222,10 @@ public struct ChartState: Sendable, Equatable {
   public var orderFlow: OrderFlowSnapshot? {
     get { overlay.orderFlow }
     _modify { yield &overlay.orderFlow }
+  }
+  public var orderFlowDisplay: OrderFlowDisplay {
+    get { overlay.orderFlowDisplay }
+    _modify { yield &overlay.orderFlowDisplay }
   }
   public var depth: OrderBook? {
     get { overlay.depth }
