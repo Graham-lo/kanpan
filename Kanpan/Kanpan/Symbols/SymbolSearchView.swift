@@ -49,6 +49,9 @@ struct SymbolSearchView: View {
   @State private var askClear = false
   /// 剪贴板里像是有个能搜的东西（只在这一页出现的那一刻看一次，见 `ClipboardSymbol`）。
   @State private var offerPaste = false
+  /// 「热门」的代号，进页时排一次就定住（审查 U7）：成交额每秒都在变，
+  /// 行跟着换位置的话手指底下那一行会跑掉。行情照旧是实时的，只是顺序不动。
+  @State private var hot: [String] = []
 
   private var seed: PaletteSeed { theme.seed }
   private var colors: ChartColors { Palette.chart(seed, redUp: redUp) }
@@ -116,9 +119,13 @@ struct SymbolSearchView: View {
       // 排在它后面的话人已经对着一页不动的界面点了两下了。
       focused = true
       model.setSectionsActive(true)
+      refreshHot()
       await model.appear()
+      refreshHot()
       await lookAtClipboard()
     }
+    // 目录或行情比这一页晚到时，到了再排一次；排出来之后就不再动。
+    .onChange(of: model.quoteRevision) { refreshHot() }
     .onDisappear {
       focused = false
       model.setSectionsActive(false)
@@ -228,6 +235,25 @@ struct SymbolSearchView: View {
       groupHead("最近看过") { EmptyView() }
       rowList(rows)
     }
+
+    // 第一次打开：没搜过、也没看过，这一页原来是一整屏空白（审查 U7）。
+    // 给按 24h 成交额排的前 10 个——和搜索结果、「全部合约」同一个排序口径。
+    // 有了历史或最近，这一组就让位，不和它们抢位置。
+    if history.terms.isEmpty, rows.isEmpty {
+      let hotRows = hot.compactMap { key in
+        model.info(for: key).map { SymbolRow(match: SymbolMatch(info: $0), ticker: model.ticker(for: $0.symbol)) }
+      }
+      if !hotRows.isEmpty {
+        groupHead("热门") { EmptyView() }
+          .accessibilityIdentifier("search.hot")
+        rowList(hotRows)
+      }
+    }
+  }
+
+  private func refreshHot() {
+    guard hot.isEmpty, history.terms.isEmpty, recents.isEmpty else { return }
+    hot = model.hotSymbols()
   }
 
   // ---------------------------------------------------------------- 打了字：结果

@@ -465,6 +465,14 @@ final class SymbolPickerModel {
     return out
   }
 
+  /// 搜索页「热门」那一组的代号（`SymbolSections.hot`）。行情取实时 + 全市场种子合起来的那份，
+  /// 和搜索结果排序用的是同一份（见 `rebuild()`）。
+  func hotSymbols(limit: Int = SymbolSections.hotLimit) -> [String] {
+    var shown = tickers
+    if let seeds = seedTickers?(), !seeds.isEmpty { shown.merge(seeds) { live, _ in live } }
+    return SymbolSections.hot(catalog: catalog, tickers: shown, limit: limit)
+  }
+
   /// 搜索框里打了字时列的那一列——**只有代号**，没有价格涨跌。
   /// 排序跟品种页一个口径：先最匹配，同档按 24h 成交额降序（见 `SymbolSections.build`）。
   func matchingSymbols(_ query: String, limit: Int = 60) -> [String] {

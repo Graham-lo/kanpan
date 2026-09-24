@@ -215,6 +215,31 @@ enum SymbolSections {
     }
     return out
   }
+
+  /// 搜索页的「热门」：没有历史搜索、也没有最近看过时（第一次打开）列的那一组（审查 U7）。
+  ///
+  /// 口径和「全部合约」、搜索结果同一套：只列还能交易的，按 24h 成交额降序，
+  /// 同额保交易所原序。成交额拿不到（还没有行情、NaN、负数）的**不列**——
+  /// 「热门」是一句关于成交额的话，没有成交额就不该凭交易所原序凑数。
+  static func hot(catalog: [SymbolInfo], tickers: [String: Ticker], limit: Int = hotLimit) -> [String] {
+    var seen = Set<String>()
+    return catalog
+      .filter { $0.status.hasLivePrice }
+      .compactMap { info -> (key: String, volume: Double)? in
+        let key = InstrumentID.canonical(info.symbol)
+        guard seen.insert(key).inserted, let v = tickers[key]?.quoteVolume, v.isFinite, v > 0 else { return nil }
+        return (key, v)
+      }
+      .enumerated()
+      .sorted { a, b in
+        a.element.volume == b.element.volume ? a.offset < b.offset : a.element.volume > b.element.volume
+      }
+      .prefix(limit)
+      .map(\.element.key)
+  }
+
+  /// 「热门」列几个。
+  static let hotLimit = 10
 }
 
 extension InstrumentID {
