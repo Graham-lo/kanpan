@@ -518,6 +518,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **设置与同步**：门槛与步长按币存成**一个**顶层字段 `Prefs.orderFlowOverrides`（`[base: 覆盖]`，对象值——`PersonalSyncCodec.ownedKeys` 是固定集合，按币拆字段就没法发删除）；六个显示开关 `orderFlowSpot / Contract / FilledBid / FilledAsk / CancelledBid / CancelledAsk` 各一个字段。服务端 `sync.rs` / `sync_validation.rs` / `settings-fields.json` 白名单同步并校验取值（门槛过小回 400）。离线照用，不设登录门槛。
 - **部署**：12:33:53 CST，备份 `/opt/kanpan-backups/orderflow-settings-20260924-123031`；中继那一提交已随第 14 节 J 线 12:05 部署先上线。公网端到端（临时账号推门槛表、读回、非法值 400、删号）通过；中继 101、清单 200。
 - **验收**：只在 iPhone 17 Pro Max 模拟器，`OrderFlowEvidenceUITests` 5/5（含改门槛生效、关合约只剩现货）；冷启动首屏开 0.545 s / 关 0.577 s（中位数），订簿在首屏后约 0.8 s。真机未装（Xcode 账号没登录）。
+- **部署后用真实数据复核生命周期**（2026-09-24 晚，`6f212478` + `46d85c7d`，两端同改，22:05 二次部署）：查出三处 bug——币安 U 本位 aggTrade 走了没有命令通道的 socket、成交恒为 0（`feeds.rs` `commands_open`）；结局按「跌破前最后一拍」算消失量会把慢慢撤掉的墙判成成交，改按**峰值**名义（卡上新增「部分成交」）；币安 1000 档快照只盖盘口 0.3%，重启后 2–10% 外读回的单被当成「簿上空了」整批误撤（347 条里 227 条），簿现在记住快照最远那档与增量碰过的价位、未知区的单不判（`Levels::knows` / `LocalBook.knows`）。复核：重启那分钟撤单 115 条、之后回到 50–70 条基线。稳态撤 : 成 ≈ 300 : 1 是模型口径不是 bug。细节见验收报告「部署后拿真实数据复核生命周期」。
 
 ## 15. UI 对照 HIG 全面审查与整改（2026-09-24，报告 `docs/acceptance/UI审查-2026-09-24/`）
 
