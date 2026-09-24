@@ -12,10 +12,9 @@ import UIKit
 // · **冷启动**：那一下随场景一起过来，在 `scene(_:willConnectTo:options:)` 的
 //   `connectionOptions.shortcutItem` 里。晚一步去问就没有了。
 //
-// SwiftUI 的 app 生命周期没有地方让人挂场景代理，只能从 app 代理那一侧
-// 指定（`application(_:configurationForConnecting:options:)` 里设 `delegateClass`）。
-// 那个 app 代理就是 `OrientationBridge`（`KanpanApp` 上那一行 `@UIApplicationDelegateAdaptor`），
-// 所以这儿给它加一条扩展，而不是新开第二个 app 代理——一个 app 只认一个。
+// 前两条路都经场景代理 `KanpanSceneDelegate` 进来。它和指定它的那段场景配置是
+// 整个 app 的入口接线，住在 `App/KanpanSceneDelegate.swift`；这儿只留快捷入口
+// 自己的那部分，外加 app 代理（`OrientationBridge`）上那条兜底回调。
 //
 // 两条路都通向同一件事：把那一格化成一条 `DeepLink` 交给 `DeepLinkRouter`，
 // 界面那边照常由 `MainScreen` 一处消费（方案第 1 节）。
@@ -60,37 +59,9 @@ enum HomeShortcutsBridge {
   }
 }
 
-// ---------------------------------------------------------------- 场景代理
-
-/// 只干一件事：接住桌面快捷入口。窗口与界面仍然由 SwiftUI 自己搭
-/// （`KanpanApp` 的 `WindowGroup`），这儿一个 window 都不碰。
-final class KanpanSceneDelegate: NSObject, UIWindowSceneDelegate {
-  /// 冷启动：那一下藏在 `connectionOptions` 里。
-  func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
-             options connectionOptions: UIScene.ConnectionOptions) {
-    if let item = connectionOptions.shortcutItem { HomeShortcutsBridge.handle(item) }
-  }
-
-  /// app 还活着时点的那一下。
-  func windowScene(_ windowScene: UIWindowScene,
-                   performActionFor shortcutItem: UIApplicationShortcutItem,
-                   completionHandler: @escaping (Bool) -> Void) {
-    completionHandler(HomeShortcutsBridge.handle(shortcutItem))
-  }
-}
+// ---------------------------------------------------------------- app 代理兜底
 
 extension OrientationBridge {
-  /// 给每个新场景指一个我们自己的代理（上面那个）。除了 `delegateClass`，
-  /// 这份配置什么都不改，SwiftUI 那套照常。
-  @objc(application:configurationForConnectingSceneSession:options:)
-  func application(_ application: UIApplication,
-                   configurationForConnecting connectingSceneSession: UISceneSession,
-                   options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-    let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
-    config.delegateClass = KanpanSceneDelegate.self
-    return config
-  }
-
   /// 兜底：有些情形下系统把那一下交给 app 代理而不是场景代理。两边落到同一个
   /// `DeepLinkRouter`，重复一次也只是同一条链接覆盖同一条，没有副作用。
   @objc(application:performActionForShortcutItem:completionHandler:)
