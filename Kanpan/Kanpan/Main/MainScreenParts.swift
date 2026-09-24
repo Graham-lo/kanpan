@@ -337,9 +337,15 @@ struct MainChartView: View {
         onSubReorder: { order in let next = merged(order); store.update { $0.subs = next } },
         onCrosshair: { [readout = session.readout] in
           readout.set($0)
-          market.orderFlow.noteCrosshair(onMain: $0.map { $0.pane == nil } ?? false)
+          // 行情流逐帧发的「精细档」：十字线在主图上，或者正盯着一单的详情卡。
+          market.orderFlow.noteCrosshair(onMain: ($0.map { $0.pane == nil } ?? false) || readout.orderFlow != nil)
           // 十字线一出来就把「看细节」要去的那一档先热上（B3）。
           if $0 != nil, !reviewChart.active { market.prewarmDetail() }
+        },
+        // 主力订单流的焦点（轻点选中的那一单，或十字线停着的那一条）：出详情卡。
+        onOrderFlowFocus: { [readout = session.readout] focus in
+          readout.set(orderFlow: focus)
+          market.orderFlow.noteCrosshair(onMain: focus != nil || readout.crosshair.map { $0.pane == nil } == true)
         },
         onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
@@ -361,6 +367,10 @@ struct MainChartView: View {
         .allowsHitTesting(reviewChart.mode == .capture || (reviewChart.mode == .live && !draw.active && !drawingCanvasOnly && !panelOpen))
       // 切线路一律静默：用户要看的是 K 线，不是我们从哪台机器取的数。
       // 历史数据真拉不下来才出这一条——那是「图不全」，得让人知道并且能重试。
+      // 主力订单流详情卡（照 CoinAnk）：只随焦点重求值，不接触摸，点它等于点下面的图。
+      OrderFlowDetailLayer(readout: session.readout, theme: theme, hidden: reviewChart.active,
+                           base: QuoteAssets.base(of: market.symbol), decimals: market.info.priceDecimals,
+                           timeZone: input.prefs.timeZone.offsetMinutes)
       if let error = market.historyError, !reviewChart.active {
         ChartHistoryRetry(theme: theme, text: error) { market.retryHistory() }
       }

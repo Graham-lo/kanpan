@@ -14,12 +14,24 @@ import SwiftUI
   /// 十字线摆在哪根上；`nil` 就没有十字线。
   private(set) var crosshair: Crosshair?
 
+  /// 主力订单流选中的那一单（轻点选中，或十字线停在一条带上）；`nil` 就不出详情卡。
+  /// 出卡时头部「顶部」那档的开高低收让位（图里那块开高低收框由渲染器自己不画）。
+  private(set) var orderFlow: ChartOrderFlowFocus?
+
   func set(_ value: Crosshair?) {
     guard crosshair != value else { return }
     crosshair = value
   }
 
-  func clear() { set(nil) }
+  func set(orderFlow value: ChartOrderFlowFocus?) {
+    guard orderFlow != value else { return }
+    orderFlow = value
+  }
+
+  func clear() {
+    set(nil)
+    set(orderFlow: nil)
+  }
 }
 
 /// 读数要的那几样「不跟着手指走」的输入：哪条序列、几位小数、什么时区、这个模式开没开。
@@ -65,7 +77,8 @@ struct CrosshairOHLCLabel: View {
   var fillsWidth = false
 
   var body: some View {
-    if let text = crosshairOHLCText(readout.crosshair, context) {
+    // 十字线停在一条主力色带上：详情卡顶替开高低收，两块读数不同时出。
+    if readout.orderFlow == nil, let text = crosshairOHLCText(readout.crosshair, context) {
       Text(text)
         .font(.system(size: size, design: .monospaced))
         .foregroundStyle(color)
@@ -90,7 +103,7 @@ struct HiddenWhileCrosshairReads: ViewModifier {
   let context: CrosshairContext
 
   func body(content: Content) -> some View {
-    content.opacity(context.enabled && crosshairAlive(readout.crosshair, context) ? 0 : 1)
+    content.opacity(context.enabled && readout.orderFlow == nil && crosshairAlive(readout.crosshair, context) ? 0 : 1)
   }
 }
 

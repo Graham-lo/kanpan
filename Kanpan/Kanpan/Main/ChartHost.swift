@@ -432,6 +432,8 @@ struct ChartHost: UIViewRepresentable {
   var onSubResize: (IndicatorID, Double) -> Void = { _, _ in }
   var onSubReorder: ([IndicatorID]) -> Void = { _ in }
   var onCrosshair: (Crosshair?) -> Void = { _ in }
+  /// 主力订单流选中的那一单变了（轻点选中 / 十字线停在一条带上）；`nil` = 收卡。见 `ChartView.onOrderFlowFocusChanged`。
+  var onOrderFlowFocus: (ChartOrderFlowFocus?) -> Void = { _ in }
   var onNeedsHistory: () -> Void = {}
   var onTapped: () -> Void = {}
   /// 图里那些「做了个大动作」的提示，接到外面的 toast 上。
@@ -462,6 +464,7 @@ struct ChartHost: UIViewRepresentable {
       if next.price.mode == saved.price.mode { next.price = saved.price }
       next.subInverted = saved.subInverted
       next.crosshair = next.options.dataDisplay == saved.options.dataDisplay && next.options.crossPrice == saved.options.crossPrice ? saved.crosshair : nil
+      next.orderFlowSelected = next.orderFlow == nil ? nil : saved.orderFlowSelected
       incoming = next
       // 图不在的那段时间档案到过货（见 `ChartProxy.lastAdoptToken`）：存下来的那份
       // 视野宽度是旧的，位置留着、宽度按档案重量。没到过货就原样装回去。
@@ -505,6 +508,8 @@ struct ChartHost: UIViewRepresentable {
       // 手势正在做的位移覆盖掉。只在品种/周期/风格真换了的时候才重算。
       s.view = old.view
       s.crosshair = old.crosshair
+      // 轻点选中的那一单（详情卡）也是图上的交互态，外面那份必然是空的；主力订单流关掉就清掉。
+      s.orderFlowSelected = s.orderFlow == nil ? nil : old.orderFlowSelected
       s.subInverted = old.subInverted
       if box.isResizing { s.subScale = old.subScale }
       if box.isReordering { s.subs = old.subs }
@@ -521,9 +526,11 @@ struct ChartHost: UIViewRepresentable {
       if old.series.symbol == s.series.symbol { s.drawingPreviewID = old.drawingPreviewID }
       if old.series.symbol != s.series.symbol {
         s.crosshair = nil
+        s.orderFlowSelected = nil
         box.pending = .reset
       } else if old.series.interval != s.series.interval {
         s.crosshair = nil
+        s.orderFlowSelected = nil
         let plotW = box.chart.chartLayout?.plotW ?? proxy?.savedPlotWidth ?? Double(box.bounds.width)
         // 「跟着最新」和「在看历史」是两件事，换周期时的右缘也就该落在两个地方（A-05）：
         // 前者贴到新序列的末根上（传 nil），后者把切之前那个时刻原样带过去，由
@@ -627,6 +634,7 @@ struct ChartHost: UIViewRepresentable {
     box.onSubResize = onSubResize
     box.onSubReorder = onSubReorder
     box.chart.onCrosshairChanged = onCrosshair
+    box.chart.onOrderFlowFocusChanged = onOrderFlowFocus
     box.chart.onNeedsHistory = onNeedsHistory
     box.chart.onTapped = onTapped
     box.chart.onNotice = onNotice
