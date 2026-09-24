@@ -190,4 +190,21 @@ struct LaunchThemeMirrorTests {
       wipe()
     }
   }
+
+  @Test("老版本留下的域名镜像键冷启动清掉，清过之后不再写")
+  func 老域名镜像清掉() {
+    LaunchMirror.$override.withValue(Self.box) {
+      let d = LaunchMirror.defaults
+      d.set("fstream.binance.com", forKey: "kanpan.launch.streamHost")
+      d.set("fapi.binance.com", forKey: "kanpan.launch.apiHost")
+      d.set("terra", forKey: LaunchThemeMirror.skinKey)
+      LaunchMirror.sweepRetired()
+      #expect(d.object(forKey: "kanpan.launch.apiHost") == nil)
+      #expect(d.object(forKey: "kanpan.launch.streamHost") == nil)
+      #expect(d.string(forKey: LaunchThemeMirror.skinKey) == "terra", "只清退下来的键，皮肤镜像不能跟着没了")
+      LaunchMirror.sweepRetired()      // 再叫一次：什么都不发生
+      #expect(d.object(forKey: "kanpan.launch.apiHost") == nil)
+      wipe()
+    }
+  }
 }

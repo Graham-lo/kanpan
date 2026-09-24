@@ -36,6 +36,17 @@ enum LaunchMirror {
     #endif
     return .standard
   }
+
+  /// 已经没人读的老镜像键。`LaunchHostMirror`（冷启动按自定义域名热身）随 `apiHost` /
+  /// `streamHost` 两个字段一起删了（b339f7bf），那次说「几个字节、新代码不再读，不专门清」。
+  /// 可不清就永远躺在用户的 defaults 里，下一个人翻到还得去考证它还有没有用——清掉。
+  static let retiredKeys = ["kanpan.launch.apiHost", "kanpan.launch.streamHost"]
+
+  /// 冷启动时叫一次（`KanpanApp.init`）。键不在就什么都不写，所以清过之后每次只是两次查表。
+  static func sweepRetired() {
+    let d = defaults
+    for key in retiredKeys where d.object(forKey: key) != nil { d.removeObject(forKey: key) }
+  }
 }
 
 /// 冷启动**第一帧底色**要用的皮肤与深浅，在本机留的一份镜像。

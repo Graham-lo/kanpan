@@ -10,6 +10,8 @@ struct KanpanApp: App {
   /// 晚订阅一次就少一天的数据——所以放在这儿，不等界面起来。幂等，重复叫没事。
   init() {
     DiagnosticsCenter.shared.start()
+    // 老版本留在 defaults 里、已经没人读的镜像键，清一次（见 `LaunchMirror.retiredKeys`）。
+    LaunchMirror.sweepRetired()
     // 趁界面还没起来，把到行情域名的连接先握好（见 `LaunchPrewarm`）。
     LaunchPrewarm.run()
     // 系统喊内存紧张时得有人去放 K 线缓存。通知只能在这儿听，
