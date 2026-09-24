@@ -1783,6 +1783,11 @@ struct MainScreen: View {
        ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] == nil {
       // 没有账号桥，就没有「档案到货」那个事件；但档案本身在建 store 的那一刻就已经
       // 读进来了，落地页照样得按它兑现一次，否则有自选的人也停在行情页。
+      // 复盘的档案原来是 `ReviewFeature` 自己在构造时开的，现在只由账号桥注入；
+      // 没有桥的这条岔路得自己给它一份（仍落在这棵测试子树里），不然「记下」永远存不进去。
+      if let reviewStore = try? ReviewStore(paths: .legacy(in: ReviewChartBridge.storageDirectory())) {
+        review.activate(store: reviewStore, client: nil)
+      }
       honorProfile(); return
     }
     #endif
