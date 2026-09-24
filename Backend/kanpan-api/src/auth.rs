@@ -123,7 +123,7 @@ async fn lock_email(tx:&mut Transaction<'_,Postgres>,email:&str)->Result<()> {
 /// 取 `X-Forwarded-For` 的**最后一段**：反向代理是往已有链表的尾部追加它亲眼看到的
 /// 对端地址，客户端自己伪造的那几段只会排在前面。尾段解不出地址就当没有这个头，
 /// 宁可退回对端也不要去信前面那几段。`X-Real-IP` 只在没有 `X-Forwarded-For` 时兜底。
-fn client_ip(peer:&SocketAddr,headers:&HeaderMap)->IpAddr {
+pub(crate) fn client_ip(peer:&SocketAddr,headers:&HeaderMap)->IpAddr {
  if !peer.ip().is_loopback() {return peer.ip()}
  if let Some(list)=headers.get("x-forwarded-for").and_then(|h|h.to_str().ok())
   && let Some(last)=list.rsplit(',').next()
