@@ -290,11 +290,11 @@ final class OrderFlowDefaultsTests: XCTestCase {
     let override = OrderFlowOverride(spot: 1_500_000, coinPerp: 4_000_000, step: 25)
     let data = try JSONEncoder().encode(override)
     XCTAssertEqual(try JSONDecoder().decode(OrderFlowOverride.self, from: data), override)
-    let display = OrderFlowDisplay(spot: false, cancelledAsk: false)
+    let display = OrderFlowDisplay(spot: false, cancelled: false)
     XCTAssertEqual(try JSONDecoder().decode(OrderFlowDisplay.self, from: JSONEncoder().encode(display)), display)
   }
 
-  func testDisplayTogglesFilterByProductStatusAndSide() {
+  func testDisplayTogglesFilterByProductAndStatus() {
     func order(_ product: OrderFlowProduct, _ side: BookSide, _ status: BigOrder.Status) -> BigOrder {
       BigOrder(venueID: "v", exchange: "币安", product: product, side: side, bucket: 1, price: 1, firstSeenMs: 0,
                status: status, initialNotional: 1, notional: 1, threshold: 1)
@@ -307,13 +307,16 @@ final class OrderFlowDefaultsTests: XCTestCase {
     let noContract = OrderFlowDisplay(contract: false)
     XCTAssertFalse(noContract.shows(order(.delivery, .bid, .live)))
     XCTAssertTrue(noContract.shows(order(.spot, .bid, .live)))
-    let noFilledBid = OrderFlowDisplay(filledBid: false)
-    XCTAssertFalse(noFilledBid.shows(order(.usdtPerp, .bid, .filled)))
-    XCTAssertTrue(noFilledBid.shows(order(.usdtPerp, .ask, .filled)))
-    XCTAssertTrue(noFilledBid.shows(order(.usdtPerp, .bid, .live)), "挂着的单只看产品开关")
-    let noCancelledAsk = OrderFlowDisplay(cancelledAsk: false)
-    XCTAssertFalse(noCancelledAsk.shows(order(.usdtPerp, .ask, .cancelled)))
-    XCTAssertTrue(noCancelledAsk.shows(order(.usdtPerp, .bid, .cancelled)))
+    let noFilled = OrderFlowDisplay(filled: false)
+    XCTAssertFalse(noFilled.shows(order(.usdtPerp, .bid, .filled)))
+    XCTAssertFalse(noFilled.shows(order(.spot, .ask, .filled)), "买卖两侧一起藏")
+    XCTAssertTrue(noFilled.shows(order(.usdtPerp, .bid, .cancelled)))
+    XCTAssertTrue(noFilled.shows(order(.usdtPerp, .bid, .live)), "挂着的单只看产品开关")
+    let noCancelled = OrderFlowDisplay(cancelled: false)
+    XCTAssertFalse(noCancelled.shows(order(.usdtPerp, .ask, .cancelled)))
+    XCTAssertFalse(noCancelled.shows(order(.usdtPerp, .bid, .cancelled)))
+    XCTAssertTrue(noCancelled.shows(order(.usdtPerp, .bid, .filled)))
+    XCTAssertTrue(noCancelled.shows(order(.usdtPerp, .bid, .lost)), "失联结束不归撤销开关管")
   }
 
   func testNotionalConvertsLinearAndInverseToUsd() {
@@ -637,7 +640,7 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(order.status, .lost, "断线之后成交还是撤单不知道：失联结束，不判撤单")
     XCTAssertEqual(order.endMs, 500, "按最后一次看到时结束")
     XCTAssertNil(order.vanishedNotional)
-    XCTAssertTrue(OrderFlowDisplay(filledBid: false, filledAsk: false, cancelledBid: false, cancelledAsk: false)
+    XCTAssertTrue(OrderFlowDisplay(filled: false, cancelled: false)
       .shows(order), "失联结束的不归成交 / 撤销开关管")
   }
 

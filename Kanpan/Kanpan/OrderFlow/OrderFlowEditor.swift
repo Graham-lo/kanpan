@@ -4,7 +4,7 @@ import KanpanCore
 import KanpanData
 import KanpanNetwork
 
-/// 「指标 › 主力订单流」那张表：当前这只币的过滤门槛（按产品各一格）、价格步长，以及六个显示开关。
+/// 「指标 › 主力订单流」那张表：当前这只币的过滤门槛（按产品各一格）、价格步长，以及四个显示开关。
 ///
 /// 门槛和步长是**按币**存的（`Prefs.orderFlowOverrides[base]`），显示开关全品种共用一份；
 /// 两样都随账号同步。和别的指标参数表同一个规矩：按「保存」才一次性生效，取消 / 下滑都不存
@@ -72,10 +72,8 @@ struct OrderFlowEditor: View {
         Section {
           toggle("现货", \.spot, "spot")
           toggle("合约", \.contract, "contract")
-          toggle("已成交买单", \.filledBid, "filledBid")
-          toggle("已成交卖单", \.filledAsk, "filledAsk")
-          toggle("已撤销买单", \.cancelledBid, "cancelledBid")
-          toggle("已撤销卖单", \.cancelledAsk, "cancelledAsk")
+          toggle("已成交", \.filled, "filled")
+          toggle("已撤销", \.cancelled, "cancelled")
         } header: {
           PanelFormSectionTitle(text: "显示")
         }

@@ -106,11 +106,11 @@ enum PrefsFieldPlan {
     "replaySpeed": .synced, "reviewSearchScope": .synced,
     "alertSound": .synced,
     "watchMoveAlert": .synced, "watchMoveThreshold": .synced,
-    // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）与六个显示开关。
+    // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）与四个显示开关。
+    // 六合四之前的 `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 在服务端 RETIRED_SETTINGS_FIELDS 里退役。
     "orderFlowOverrides": .synced,
     "orderFlowSpot": .synced, "orderFlowContract": .synced,
-    "orderFlowFilledBid": .synced, "orderFlowFilledAsk": .synced,
-    "orderFlowCancelledBid": .synced, "orderFlowCancelledAsk": .synced,
+    "orderFlowShowFilled": .synced, "orderFlowShowCancelled": .synced,
 
     // ------------------------------------------------- 跟着人走，但线上并成一个键
     "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,

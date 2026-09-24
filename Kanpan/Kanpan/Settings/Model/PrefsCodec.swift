@@ -79,10 +79,11 @@ extension Prefs: Codable {
     case indicatorColors
     case ambientTheme
     case depth, orderFlow, priceMode, magnet, countdown, keepAwake, timeZone, changeBasis
-    // 主力订单流的门槛 / 步长改动与六个显示开关（2026-09-24 逐单模型那一轮加的，全是加法）。
+    // 主力订单流的门槛 / 步长改动与四个显示开关（2026-09-24 逐单模型那一轮加的，全是加法）。
     case orderFlowOverrides
-    case orderFlowSpot, orderFlowContract, orderFlowFilledBid, orderFlowFilledAsk
-    case orderFlowCancelledBid, orderFlowCancelledAsk
+    case orderFlowSpot, orderFlowContract, orderFlowShowFilled, orderFlowShowCancelled
+    // 只读不写：六合四之前按买卖拆开的四个旧键，老存档里读出来迁成「买 || 卖」（审查第 41 项）。
+    case orderFlowFilledBid, orderFlowFilledAsk, orderFlowCancelledBid, orderFlowCancelledAsk
     case candleKind, gridChoice, bodyChoice, lastLine, sinceChange
     case viewAnchor, priceBias
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
@@ -119,10 +120,8 @@ extension Prefs: Codable {
     try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
     try c.encode(orderFlowSpot, forKey: .orderFlowSpot)
     try c.encode(orderFlowContract, forKey: .orderFlowContract)
-    try c.encode(orderFlowFilledBid, forKey: .orderFlowFilledBid)
-    try c.encode(orderFlowFilledAsk, forKey: .orderFlowFilledAsk)
-    try c.encode(orderFlowCancelledBid, forKey: .orderFlowCancelledBid)
-    try c.encode(orderFlowCancelledAsk, forKey: .orderFlowCancelledAsk)
+    try c.encode(orderFlowShowFilled, forKey: .orderFlowShowFilled)
+    try c.encode(orderFlowShowCancelled, forKey: .orderFlowShowCancelled)
     try c.encode(countdown, forKey: .countdown)
     try c.encode(keepAwake, forKey: .keepAwake)
     try c.encode(timeZone.rawValue, forKey: .timeZone)
@@ -233,10 +232,18 @@ extension Prefs: Codable {
     }
     if let v = bool(.orderFlowSpot) { orderFlowSpot = v }
     if let v = bool(.orderFlowContract) { orderFlowContract = v }
-    if let v = bool(.orderFlowFilledBid) { orderFlowFilledBid = v }
-    if let v = bool(.orderFlowFilledAsk) { orderFlowFilledAsk = v }
-    if let v = bool(.orderFlowCancelledBid) { orderFlowCancelledBid = v }
-    if let v = bool(.orderFlowCancelledAsk) { orderFlowCancelledAsk = v }
+    // 新键优先；没有新键的老存档按旧的买卖两键迁：两侧有一侧开着就算开（只关了一侧的人，
+    // 合并后那一类还看得见，比整类都藏掉少丢信息）。
+    if let v = bool(.orderFlowShowFilled) {
+      orderFlowShowFilled = v
+    } else if bool(.orderFlowFilledBid) != nil || bool(.orderFlowFilledAsk) != nil {
+      orderFlowShowFilled = (bool(.orderFlowFilledBid) ?? true) || (bool(.orderFlowFilledAsk) ?? true)
+    }
+    if let v = bool(.orderFlowShowCancelled) {
+      orderFlowShowCancelled = v
+    } else if bool(.orderFlowCancelledBid) != nil || bool(.orderFlowCancelledAsk) != nil {
+      orderFlowShowCancelled = (bool(.orderFlowCancelledBid) ?? true) || (bool(.orderFlowCancelledAsk) ?? true)
+    }
     if let v = bool(.countdown) { countdown = v }
     if let v = bool(.keepAwake) { keepAwake = v }
     if let raw = str(.changeBasis), let v = ChangeBasis(rawValue: raw) { changeBasis = v }

@@ -5,7 +5,7 @@ import KanpanCore
 
 @Suite("主力订单流 · 设置")
 struct OrderFlowPrefsTests {
-  @Test("出厂：没有改过的币、六个显示开关全开")
+  @Test("出厂：没有改过的币、四个显示开关全开")
   func defaults() {
     let prefs = Prefs.defaults
     #expect(prefs.orderFlowOverrides.isEmpty)
@@ -17,12 +17,23 @@ struct OrderFlowPrefsTests {
     var prefs = Prefs.defaults
     prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000, step: 50), for: "BTC")
     prefs.setOrderFlowOverride(OrderFlowOverride(usdtPerp: 1_500_000), for: "TSLA")
-    prefs.orderFlowDisplay.cancelledAsk = false
+    prefs.orderFlowDisplay.cancelled = false
     prefs.orderFlowDisplay.spot = false
     let back = PrefsCodec.decode(PrefsCodec.encode(prefs))
     #expect(back.orderFlowOverrides == prefs.orderFlowOverrides)
     #expect(back.orderFlowDisplay == prefs.orderFlowDisplay)
-    #expect(!back.orderFlowSpot && !back.orderFlowCancelledAsk && back.orderFlowContract)
+    #expect(!back.orderFlowSpot && !back.orderFlowShowCancelled && back.orderFlowContract && back.orderFlowShowFilled)
+  }
+
+  @Test("六合四迁移：老存档里按买卖拆开的旧键按「买 || 卖」读成一个；新键在就只认新键")
+  func migratesSixTogglesToFour() {
+    let old = PrefsCodec.decode(Data(#"{"v":2,"orderFlowFilledBid":false,"orderFlowFilledAsk":true,"orderFlowCancelledBid":false,"orderFlowCancelledAsk":false}"#.utf8))
+    #expect(old.orderFlowShowFilled, "只关了一侧：合并后那一类还看得见")
+    #expect(!old.orderFlowShowCancelled, "两侧都关：合并后关")
+    let both = PrefsCodec.decode(Data(#"{"v":2,"orderFlowShowCancelled":true,"orderFlowCancelledBid":false,"orderFlowCancelledAsk":false}"#.utf8))
+    #expect(both.orderFlowShowCancelled, "新键优先")
+    let fresh = String(decoding: PrefsCodec.encode(Prefs.defaults), as: UTF8.self)
+    #expect(!fresh.contains("orderFlowFilledBid") && !fresh.contains("orderFlowCancelledAsk"), "旧键只读不写")
   }
 
   @Test("越界的项丢掉，一项不剩等于恢复默认；认不出的 base 不收")
@@ -66,10 +77,13 @@ struct OrderFlowPrefsTests {
 
   @Test("门槛与开关都跟着人走（随账号同步）")
   func synced() {
-    for name in ["orderFlowOverrides", "orderFlowSpot", "orderFlowContract", "orderFlowFilledBid",
-                 "orderFlowFilledAsk", "orderFlowCancelledBid", "orderFlowCancelledAsk"] {
+    for name in ["orderFlowOverrides", "orderFlowSpot", "orderFlowContract", "orderFlowShowFilled",
+                 "orderFlowShowCancelled"] {
       #expect(PrefsFieldPlan.table[name] == .synced, "\(name)")
       #expect(Prefs.syncedFieldNames.contains(name), "\(name)")
+    }
+    for retired in ["orderFlowFilledBid", "orderFlowFilledAsk", "orderFlowCancelledBid", "orderFlowCancelledAsk"] {
+      #expect(PrefsFieldPlan.table[retired] == nil && !Prefs.syncedFieldNames.contains(retired), "\(retired)")
     }
   }
 }

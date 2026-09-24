@@ -124,17 +124,15 @@ public struct OrderFlowDisplay: Sendable, Equatable, Codable {
   public var spot = true
   /// 显示合约（U 本位永续、币本位永续、交割）的大单。
   public var contract = true
-  /// 显示已成交的买单 / 卖单。
-  public var filledBid = true
-  public var filledAsk = true
-  /// 显示已撤销的买单 / 卖单。
-  public var cancelledBid = true
-  public var cancelledAsk = true
+  /// 显示已成交的大单（买卖两侧一起）。
+  public var filled = true
+  /// 显示已撤销的大单（买卖两侧一起）。
+  public var cancelled = true
+  // 原来已成交 / 已撤销各按买卖拆成两个开关（六个），审查第 41 项合成四个：买卖两侧分开藏
+  // 没有实际用处（看的是「这一侧有没有人撤」，不是「只看撤掉的卖单」），六个开关只是多占一屏。
 
-  public init(spot: Bool = true, contract: Bool = true, filledBid: Bool = true, filledAsk: Bool = true,
-              cancelledBid: Bool = true, cancelledAsk: Bool = true) {
-    self.spot = spot; self.contract = contract; self.filledBid = filledBid; self.filledAsk = filledAsk
-    self.cancelledBid = cancelledBid; self.cancelledAsk = cancelledAsk
+  public init(spot: Bool = true, contract: Bool = true, filled: Bool = true, cancelled: Bool = true) {
+    self.spot = spot; self.contract = contract; self.filled = filled; self.cancelled = cancelled
   }
 
   public static let all = OrderFlowDisplay()
@@ -144,8 +142,8 @@ public struct OrderFlowDisplay: Sendable, Equatable, Codable {
     guard order.product.isContract ? contract : spot else { return false }
     switch order.status {
     case .live, .lost: return true  // 失联结束的不归成交 / 撤销开关管
-    case .filled: return order.side == .bid ? filledBid : filledAsk
-    case .cancelled: return order.side == .bid ? cancelledBid : cancelledAsk
+    case .filled: return filled
+    case .cancelled: return cancelled
     }
   }
 }

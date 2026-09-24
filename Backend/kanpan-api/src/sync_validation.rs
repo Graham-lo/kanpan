@@ -156,7 +156,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "favoritesGroup"=>string(v,128),
    "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
     |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
-    |"orderFlowSpot"|"orderFlowContract"|"orderFlowFilledBid"|"orderFlowFilledAsk"|"orderFlowCancelledBid"|"orderFlowCancelledAsk"=>v.is_boolean(),
+    |"orderFlowSpot"|"orderFlowContract"|"orderFlowShowFilled"|"orderFlowShowCancelled"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }
  }

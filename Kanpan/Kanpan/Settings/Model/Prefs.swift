@@ -57,14 +57,14 @@ struct Prefs: Sendable, Equatable {
   /// 而一个人同时在两台设备上改两只币的门槛极少见（用户规模也就几个人），改错了再改一次即可。
   /// 显示开关拆成独立字段是因为那几个是全品种共用的高频开关，两台设备各关一项的概率高得多。
   var orderFlowOverrides: [String: OrderFlowOverride] = [:]
-  /// 主力订单流的六个显示开关（跟人走、全品种共用，只管画不画、不影响跟踪）。
-  /// 拆成六个字段而不是一个对象，是为了两台设备各关一项时同步不互相覆盖。合起来读写走 `orderFlowDisplay`。
+  /// 主力订单流的四个显示开关：现货 / 合约 / 已成交 / 已撤销（跟人走、全品种共用，只管画不画、不影响跟踪）。
+  /// 拆成四个字段而不是一个对象，是为了两台设备各关一项时同步不互相覆盖。合起来读写走 `orderFlowDisplay`。
+  /// 原来已成交 / 已撤销按买卖各拆两个（`orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask`），
+  /// 审查第 41 项合成一个；老存档读的时候按「买 || 卖」迁过来（`PrefsCodec`），服务端把旧四个键退役。
   var orderFlowSpot = true
   var orderFlowContract = true
-  var orderFlowFilledBid = true
-  var orderFlowFilledAsk = true
-  var orderFlowCancelledBid = true
-  var orderFlowCancelledAsk = true
+  var orderFlowShowFilled = true
+  var orderFlowShowCancelled = true
   var countdown: Bool = false
   /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
   var candleKind: CandleKind = .candle
@@ -311,17 +311,15 @@ struct Prefs: Sendable, Equatable {
   /// 想让每格 ≈79pt 而主图留在 ≈317pt，解出来正好 w = 0.75。
   static let defaultSubScale: Double = 0.75
 
-  /// 主力订单流的显示开关（六个字段合起来）。
+  /// 主力订单流的显示开关（四个字段合起来）。
   var orderFlowDisplay: OrderFlowDisplay {
     get {
-      OrderFlowDisplay(spot: orderFlowSpot, contract: orderFlowContract, filledBid: orderFlowFilledBid,
-                       filledAsk: orderFlowFilledAsk, cancelledBid: orderFlowCancelledBid,
-                       cancelledAsk: orderFlowCancelledAsk)
+      OrderFlowDisplay(spot: orderFlowSpot, contract: orderFlowContract, filled: orderFlowShowFilled,
+                       cancelled: orderFlowShowCancelled)
     }
     set {
       orderFlowSpot = newValue.spot; orderFlowContract = newValue.contract
-      orderFlowFilledBid = newValue.filledBid; orderFlowFilledAsk = newValue.filledAsk
-      orderFlowCancelledBid = newValue.cancelledBid; orderFlowCancelledAsk = newValue.cancelledAsk
+      orderFlowShowFilled = newValue.filled; orderFlowShowCancelled = newValue.cancelled
     }
   }
 

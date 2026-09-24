@@ -57,7 +57,12 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 /// `favoritesExpanded` (2026-09-24, review U9): the favorites page had two detail forms for the
 /// same symbol — the inline expansion and the long-press preview card. Only the card is left, so
 /// the set of expanded rows has nothing to remember any more.
-pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded"];
+/// `orderFlowFilledBid/Ask`, `orderFlowCancelledBid/Ask` (2026-09-24, review item 41): the order-flow
+/// display switches went from six to four — filled and cancelled are no longer split by side. The
+/// client now sends `orderFlowShowFilled` / `orderFlowShowCancelled` and migrates its own archive as
+/// bid || ask; stored bodies still carrying the four old names are cleaned on their next merge.
+pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
+ "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk"];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
 /// the Widget's pinned-first ordering only ever saw an empty list. Same treatment as the settings
@@ -118,9 +123,10 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 自选五分钟波动提醒（P3.1）：开关 + 幅度（百分数）。服务端 `watch_move.rs` 读这两个。
  "watchMoveAlert","watchMoveThreshold",
  // 主力订单流（2026-09-24 逐单模型）：用户改过门槛 / 步长的那几只 base（整张表一个键），
- // 以及六个显示开关（现货 / 合约 / 已成交买卖 / 已撤销买卖）。服务端只校验、不读。
+ // 以及四个显示开关（现货 / 合约 / 已成交 / 已撤销；六合四之前按买卖拆开的四个旧键在
+ // RETIRED_SETTINGS_FIELDS 里）。服务端只校验、不读。
  "orderFlowOverrides",
- "orderFlowSpot","orderFlowContract","orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
+ "orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled",
 ];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
@@ -551,10 +557,20 @@ mod tests {
  /// 自选波动提醒的两项设置：过白名单、过值规则、真的合并进去；越界的一律拒。
  #[test] fn order_flow_settings_are_accepted_and_bounded() {
   use crate::sync_validation::field;
-  for key in ["orderFlowSpot","orderFlowContract","orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk"] {
+  for key in ["orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled"] {
    assert!(SETTINGS_FIELDS.contains(&key));
    assert!(field("settings",key,&json!(false))&&!field("settings",key,&json!(0))&&!field("settings",key,&json!(null)),"{key}");
   }
+  // 六合四：按买卖拆开的四个旧键退役——老版本推上来只丢字段不丢操作，存量 body 合并时洗掉。
+  let old=op("settings",&[("orderFlowFilledBid",json!(false)),("orderFlowCancelledAsk",json!(false)),("orderFlowShowFilled",json!(false))]);
+  assert!(old.validate().is_ok(),"老版本带着旧开关推上来不能整条 400");
+  let mut dropped=old.unknown_fields();dropped.sort();
+  assert_eq!(dropped,vec!["orderFlowCancelledAsk".to_string(),"orderFlowFilledBid".to_string()]);
+  let mut stored=blank("settings","chart");
+  stored.body.insert("orderFlowCancelledBid".into(),json!(true));
+  let merged=merge(stored,&old,1_800_000_000_000).unwrap();
+  assert_eq!(merged.body["orderFlowShowFilled"],json!(false));
+  assert!(!merged.body.contains_key("orderFlowCancelledBid")&&!merged.body.contains_key("orderFlowFilledBid"));
   assert!(SETTINGS_FIELDS.contains(&"orderFlowOverrides"));
   for good in [json!({}),json!({"BTC":{"spot":2000000.0,"step":50}}),json!({"PEPE":{"usdtPerp":1000}}),
                json!({"XAU":{"usdtPerp":1e9,"step":0.00000001},"ETH":{"coinPerp":3e6,"delivery":4e6}})] {

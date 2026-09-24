@@ -122,7 +122,7 @@ struct OrderFlowChartTests {
     }
   }
 
-  @Test("显示开关：关现货 / 合约 / 已成交买 / 已撤销卖各自只藏那一类；合计只算还挂着的")
+  @Test("显示开关：关现货 / 合约 / 已成交 / 已撤销各自只藏那一类；合计只算还挂着的")
   func display() {
     var (r, orders) = Self.renderer()
     let live = orders.filter(\.isLive)
@@ -135,9 +135,9 @@ struct OrderFlowChartTests {
     r.state.orderFlowDisplay.contract = false
     #expect(frame(r).bands.allSatisfy { $0.order.product == .spot })
     r.state.orderFlowDisplay = .all
-    r.state.orderFlowDisplay.filledBid = false
+    r.state.orderFlowDisplay.filled = false
     #expect(!frame(r).bands.contains { $0.order.status == .filled })
-    r.state.orderFlowDisplay.cancelledAsk = false
+    r.state.orderFlowDisplay.cancelled = false
     #expect(!frame(r).bands.contains { $0.order.status == .cancelled })
     #expect(frame(r).bands.count == 4)
   }
@@ -172,10 +172,8 @@ struct OrderFlowChartTests {
     r.state.orderFlow?.orders[5].status = .lost
     let band = try #require(frame(r).bands.first { $0.order.bucket == 6 })
     #expect(!band.dashed && abs(band.alpha - 0.25) < 1e-9)
-    r.state.orderFlowDisplay.cancelledAsk = false
-    r.state.orderFlowDisplay.cancelledBid = false
-    r.state.orderFlowDisplay.filledAsk = false
-    r.state.orderFlowDisplay.filledBid = false
+    r.state.orderFlowDisplay.cancelled = false
+    r.state.orderFlowDisplay.filled = false
     #expect(frame(r).bands.contains { $0.order.bucket == 6 })
   }
 
