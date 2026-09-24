@@ -31,12 +31,12 @@ struct LineAlertPhraseTests {
   @Test("还没拿到现价：只说到哪个价")
   func noQuote() {
     #expect(LineAlertPhrase(targets: [64_000], current: nil, decimals: 0).target == "到 64,000")
-    #expect(LineAlertPhrase(targets: [1, 2], current: nil, decimals: 0).target == "碰到这条线")
+    #expect(LineAlertPhrase(targets: [1, 2], current: nil, decimals: 0).target == "价格达到这条线")
   }
 
   @Test("线段此刻不在（已经走完或还没开始）：不报价")
   func outOfSpan() {
-    #expect(LineAlertPhrase(targets: [], current: 64_000, decimals: 0).target == "碰到这条线")
+    #expect(LineAlertPhrase(targets: [], current: 64_000, decimals: 0).target == "价格达到这条线")
   }
 
   @Test("小价不插千分位，四位以上才插")

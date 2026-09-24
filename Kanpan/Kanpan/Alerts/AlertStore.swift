@@ -37,7 +37,8 @@ final class AlertStore: ObservableObject {
   /// UI 测试要一条「服务端已经判到价、同步换下来」的提醒。
   ///
   /// 那一段的上半截（服务端判定 → 写同步日志）在服务端，客户端一个字都没有，
-  /// 所以用例只能量下半截：总表上看得见「已触发」、按得着「再次提醒」。开局那份存档
+  /// 所以用例只能量下半截：2026-09-25 v3 起是「触发即删」——这条开局就躺着的已触发提醒
+  /// 在总表和创建页都看不见，并且被 `AlertWatcher` 从存档里清掉。开局那份存档
   /// 没法从外面塞进 app 的沙盒（跑用例的是另一个进程），于是按 `SymbolPrefs.testSeed`
   /// 同一套路，从启动环境里认一条：`KANPAN_TEST_ALERT_FIRED=<代号>`（要配
   /// `KANPAN_TEST_PROFILE=1`，且存档是空的时候才种）。整段关在 `#if DEBUG` 里，
@@ -62,6 +63,9 @@ final class AlertStore: ObservableObject {
   #endif
 
   var all: [Alert] { archive.alerts }
+  /// 界面上看得见的那些：已触发只是「通知 / Webhook 发出去之前」的一瞬间，不展示
+  /// （复盘到点例外，它的「已到点」就是给人看的，一天后由 `ReviewDueAlerts` 清）。
+  var visible: [Alert] { archive.alerts.filter(AlertRecordText.isVisible) }
   var sorted: [Alert] { archive.sorted }
   var activeCount: Int { archive.alerts.filter(\.isActive).count }
   func alerts(symbol: String) -> [Alert] { archive.alerts(symbol: symbol) }
@@ -176,11 +180,18 @@ final class AlertStore: ObservableObject {
     write { $0[id] = alert }
   }
 
-  /// 「再次提醒」：重新上膛，从现在起算。
-  func rearm(id: String, now: Double = Date().timeIntervalSince1970 * 1000) {
-    guard var alert = archive[id] else { return }
-    alert.status = .active; alert.armedAt = now; alert.firedAt = nil; alert.firedPrice = nil
-    write { $0[id] = alert }
+  /// 触发即删（2026-09-25 v3，用户：「默认就是触发一次就删除啊」）。
+  ///
+  /// `AlertWatcher` 把通知 / Webhook 发出去之后调这一口，把那几条已触发的从存档里删掉。
+  /// 走 `write`，所以账号桥照常记账：同步推上去的是这几条的**删除**，服务端那份也跟着没了。
+  /// 只删「此刻仍是已触发」的：中途被人重新布防（编辑改了价）就不动它。复盘到点不删——
+  /// 它的「已到点」是给人看的，跟着复盘记录走（`ReviewDueAlerts` 到点一天后清）。
+  func purgeFired(ids: Set<String>) {
+    guard !ids.isEmpty else { return }
+    write { archive in
+      archive.alerts.removeAll { ids.contains($0.id) && $0.status == .fired && $0.kind != .reviewDue }
+    }
+    for id in ids where archive[id] == nil { localFires[id] = nil }
   }
 
   /// 响了。前台评估和服务端推下来的那条走同一个口，`once` 保证只记一次。
@@ -236,8 +247,14 @@ final class AlertStore: ObservableObject {
 
   // ---------------------------------------------------------------- 账号
 
+  /// 换过几次档案（登录、退登、换号）。`AlertWatcher` 靠它分清「换进来的这份档案里
+  /// 本来就躺着的已触发」（旧包留下的，不再报，直接清）和「同步刚换下来的已触发」（要报）。
+  /// 在给 `archive` 赋值**之前**加一：`@Published` 在 willSet 里发，订阅方那一拍读到的是新值。
+  private(set) var generation = 0
+
   func useStorage(_ store: AlertFileStore, archive: AlertArchive) {
     self.store = store
+    generation += 1
     self.archive = archive
   }
 

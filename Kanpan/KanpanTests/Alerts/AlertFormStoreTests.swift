@@ -158,12 +158,13 @@ struct AlertFormStoreTests {
     #expect(AlertRecordText.title(line, withSymbol: false).hasPrefix("触到你画的"))
   }
 
-  @Test("记录行灰字：生效中写条件（创建页）或「生效中」（总表），已触发带时间与现价")
+  @Test("记录行灰字：生效中写条件，已触发带时间与现价")
   func recordMeta() {
     var alert = KanpanCore.Alert.price(symbol: "BTCUSDT", target: 90_000, current: 84_500,
                                        label: "90,000.0", now: 1, condition: .close)
     #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: true) == "收盘穿过")
-    #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: false) == "生效中")
+    alert.condition = .touch
+    #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: true) == "价格达到")
     alert.status = .fired
     alert.firedAt = 1_758_732_240_000   // 2025-09-24 16:44 UTC
     alert.firedPrice = 84_670.5
@@ -171,16 +172,52 @@ struct AlertFormStoreTests {
             == "已触发 · 9/24 16:44 · 现价 84,670.5")
   }
 
-  @Test("创建页只列这一只：生效中的在前、已触发在后，各按新建倒序；复盘到点不列")
+  @Test("创建页「当前提醒」只列这一只还没触发的，按新建倒序；已触发、复盘到点不列")
   func recordOrder() throws {
     let store = fresh()
     let a = try #require(store.addPrice(symbol: "BTCUSDT", target: 90_000, current: 84_500, label: "a", now: 1))
     let b = try #require(store.addPrice(symbol: "BTCUSDT", target: 91_000, current: 84_500, label: "b", now: 2))
     let c = try #require(store.addPrice(symbol: "BTCUSDT", target: 92_000, current: 84_500, label: "c", now: 3))
-    _ = try #require(store.addPrice(symbol: "ETHUSDT", target: 5_000, current: 4_000, label: "e", now: 4))
+    let line = try #require(store.add(drawing: Drawing(id: "d1", kind: .hline, points: [DrawPoint(t: 1_000, p: 100)]),
+                                      symbol: "BTCUSDT", now: 4))
+    _ = try #require(store.addPrice(symbol: "ETHUSDT", target: 5_000, current: 4_000, label: "e", now: 5))
     _ = store.markFired(id: c.id, at: 10, price: 92_001)
     let ids = AlertRecordText.records(store.all, symbol: "binance/usd_m/BTCUSDT").map(\.id)
-    #expect(ids == [b.id, a.id, c.id])
+    #expect(ids == [line.id, b.id, a.id])
+  }
+
+  @Test("全部预警：价格、画线两段按品种分，复盘到点有才单列；已触发的不列")
+  func sections() throws {
+    let store = fresh()
+    let btc1 = try #require(store.addPrice(symbol: "BTCUSDT", target: 90_000, current: 84_500, label: "a", now: 1))
+    let eth = try #require(store.addPrice(symbol: "ETHUSDT", target: 5_000, current: 4_000, label: "e", now: 2))
+    let btc2 = try #require(store.addPrice(symbol: "BTCUSDT", target: 91_000, current: 84_500, label: "b", now: 3))
+    let fired = try #require(store.addPrice(symbol: "BTCUSDT", target: 92_000, current: 84_500, label: "c", now: 4))
+    _ = store.markFired(id: fired.id, at: 10, price: 92_001)
+    let line = try #require(store.add(drawing: Drawing(id: "d1", kind: .hline, points: [DrawPoint(t: 1_000, p: 100)]),
+                                      symbol: "ETHUSDT", now: 5))
+    var sections = AlertRecordText.sections(store.all)
+    #expect(sections.map(\.kind) == [.price, .drawing])
+    #expect(sections.map(\.title) == ["价格提醒 3", "画线提醒 1"])
+    // 品种按各自最新那条倒序：BTC（3）在 ETH（2）前面；组里按新建倒序。
+    #expect(sections[0].groups.map(\.symbol) == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
+    #expect(sections[0].groups[0].alerts.map(\.id) == [btc2.id, btc1.id])
+    #expect(sections[0].groups[1].alerts.map(\.id) == [eth.id])
+    #expect(sections[1].groups.map { $0.alerts.map(\.id) } == [[line.id]])
+
+    var due = KanpanCore.Alert(id: "r1", kind: .reviewDue, symbol: "BTCUSDT", armedAt: 1, dueAt: 2,
+                               title: "BTC 到点了", created: 1)
+    due.status = .fired
+    store.settleReviewDue(ReviewDueAlerts.Plan(upsert: [due], remove: []))
+    sections = AlertRecordText.sections(store.all)
+    #expect(sections.map(\.title) == ["价格提醒 3", "画线提醒 1", "复盘到点 1"])
+    #expect(AlertRecordText.sections([]).isEmpty)
+  }
+
+  @Test("段头品种名：和品种卡同一个写法")
+  func pairName() {
+    #expect(AlertRecordText.pairName("binance/usd_m/BTCUSDT") == "BTC/USDT")
+    #expect(AlertRecordText.pairName("coinbase/spot/BTC-USD") == "BTC/USD")
   }
 
   @Test("品种卡第二行：交易所 · 产品")

@@ -19,17 +19,17 @@ struct LineAlertPhrase: Equatable {
     return targets.filter { $0 < current }.max()
   }
 
-  /// 不带「叫我 / 叫你」的那半句：「跌到 64,000」「涨到 A 或跌到 B」「碰到这条线」。
+  /// 不带「叫我 / 叫你」的那半句：「跌到 64,000」「涨到 A 或跌到 B」「价格达到这条线」。
   var target: String {
-    guard !targets.isEmpty else { return "碰到这条线" }
+    guard !targets.isEmpty else { return "价格达到这条线" }
     guard current != nil else {
-      return targets.count == 1 ? "到 \(text(targets[0]))" : "碰到这条线"
+      return targets.count == 1 ? "到 \(text(targets[0]))" : "价格达到这条线"
     }
     switch (above, below) {
     case let (a?, b?): return "涨到 \(text(a)) 或跌到 \(text(b))"
     case let (a?, nil): return "涨到 \(text(a))"
     case let (nil, b?): return "跌到 \(text(b))"
-    default: return "碰到这条线"
+    default: return "价格达到这条线"
     }
   }
 

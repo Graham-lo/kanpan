@@ -75,7 +75,7 @@ struct AlertMessageTests {
   func defaultTemplate() {
     let text = AlertMessage.render(template: AlertMessage.defaultTemplate, alert: btc(),
                                    price: 84_670.5, decimals: 1, at: Self.t0)
-    #expect(text == "BTC 碰到 84,662.2，现价 84,670.5")
+    #expect(text == "BTC 价格达到 84,662.2，现价 84,670.5")
     // 空模板回落到默认。
     #expect(AlertMessage.render(template: "  ", alert: btc(), price: 84_670.5, decimals: 1, at: Self.t0) == text)
   }
@@ -85,7 +85,7 @@ struct AlertMessageTests {
     let a = btc(note: "看这里")
     let text = AlertMessage.render(template: "{代号}|{目标价}|{条件}|{时间}|{备注}|{别的}", alert: a,
                                    price: 84_670.5, decimals: 1, at: Self.t0)
-    #expect(text == "BTCUSDT|84,662.2|碰到|2026-09-21T14:13:20Z|看这里|{别的}")
+    #expect(text == "BTCUSDT|84,662.2|价格达到|2026-09-21T14:13:20Z|看这里|{别的}")
   }
 
   @Test("POST 身体：十四个键，测试事件与告警事件同一个形状")
@@ -96,7 +96,7 @@ struct AlertMessageTests {
     #expect(Set(body.keys) == ["event", "alertId", "symbol", "market", "name", "title", "condition", "once",
                                "target", "price", "firedAt", "time", "note", "text"])
     #expect(body["event"] as? String == "alert")
-    #expect(body["text"] as? String == "BTC 碰到 84,662.2，现价 84,670.5")
+    #expect(body["text"] as? String == "BTC 价格达到 84,662.2，现价 84,670.5")
     #expect(body["condition"] as? String == "touch")
     #expect(body["once"] as? Bool == true)
     let test = AlertWebhookPayload(event: .test, alert: a, price: 84_670.5, decimals: 1, at: Self.t0)

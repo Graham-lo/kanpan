@@ -267,19 +267,23 @@ struct AlertEngineTests {
     #expect(again?.firedAt == first?.firedAt)
   }
 
-  @Test("再次提醒之后照样能响")
-  func rearmedAlertsCanFireAgain() {
+  @Test("价格提醒改了价就重新布防，新价照样能响")
+  func editedPriceAlertsCanFireAgain() {
     let store = fresh()
-    let alert = arm(store, price: 100)
+    let alert = store.addPrice(symbol: "BTCUSDT", target: 100, current: 90, label: "100",
+                               now: Double(minute(0)))!
     let engine = AlertEngine()
     engine.attach(store)
-    engine.observe(symbol: "BTCUSDT", price: 100, timeMs: minute(0) + 1_000)
+    engine.observe(symbol: "BTCUSDT", price: 99, timeMs: minute(1) + 1_000)
+    engine.observe(symbol: "BTCUSDT", price: 101, timeMs: minute(1) + 2_000)
     #expect(store.alert(id: alert.id)?.status == .fired)
 
-    store.rearm(id: alert.id, now: Double(minute(1)))
-    engine.observe(symbol: "BTCUSDT", price: 100, timeMs: minute(2) + 1_000)
+    store.update(id: alert.id, target: 120, current: 101, label: "120", condition: .touch,
+                 webhook: nil, webhookText: nil, note: nil, now: Double(minute(2)))
+    #expect(store.alert(id: alert.id)?.status == .active)
+    engine.observe(symbol: "BTCUSDT", price: 119, timeMs: minute(3) + 1_000)
+    engine.observe(symbol: "BTCUSDT", price: 121, timeMs: minute(3) + 2_000)
     #expect(store.alert(id: alert.id)?.status == .fired)
-    #expect(store.alert(id: alert.id)?.firedPrice == 100)
   }
 
   // ---------------------------------------------------------------- 盯谁

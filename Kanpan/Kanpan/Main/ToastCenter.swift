@@ -24,8 +24,13 @@ final class ToastCenter {
 
   /// 没有动作的提示停多久。UI 用例可以用启动环境 `KANPAN_TEST_TOAST_SECONDS` 拉长
   /// （1.6 秒比 XCUITest 一次「等空闲 + 查询」还短，查到时提示已经在淡出了）。
+  /// 这道后门只在 DEBUG 里编（审查 C.10-1：Release 里一个测试后门都没有）。
+  #if DEBUG
   static let plainSeconds: Double =
     ProcessInfo.processInfo.environment["KANPAN_TEST_TOAST_SECONDS"].flatMap(Double.init) ?? 1.6
+  #else
+  static let plainSeconds: Double = 1.6
+  #endif
 
   struct Line: Equatable {
     var serial: Int

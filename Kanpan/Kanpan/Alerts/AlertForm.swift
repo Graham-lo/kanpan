@@ -35,8 +35,8 @@ struct AlertDraft {
 }
 
 extension AlertStore {
-  /// 表单的「创建提醒 / 保存」落账。新建（图上十字线那颗「创建提醒」）与编辑（提醒记录那一行、
-  /// 总表左划「编辑」）共用这一处：建完顺手要通知权限、登记推送——按方案，第一次建提醒
+  /// 表单的「创建提醒 / 保存」落账。新建（图上十字线那颗「创建提醒」）与编辑（创建页底下
+  /// 「当前提醒」那一行）共用这一处：建完顺手要通知权限、登记推送——按方案，第一次建提醒
   /// 才问权限。编辑（`editing` 给了 id）不再问。
   @discardableResult
   func commit(_ draft: AlertDraft, editing id: String? = nil) -> KanpanCore.Alert? {
@@ -61,21 +61,24 @@ extension AlertStore {
 /// 创建 / 编辑一条价格提醒的那一页。
 ///
 /// 新建只有一个入口：图上十字线那颗「创建提醒」（`AlertComposeSheet`，品种是图上那只，价格
-/// 预填十字线那一口，右上「全部」推进提醒总表）。编辑从这一页底下「提醒记录」里点一条生效中的
-/// 价格提醒、或者总表那一行左划「编辑」进来，同一页，标题「编辑提醒」、按钮「保存」。
+/// 预填十字线那一口，右上「全部预警」推进提醒总表）。编辑从这一页底下「当前提醒」里点一条
+/// 价格提醒进来，同一页，标题「编辑提醒」、按钮「保存」。
 ///
 /// 2026-09-25 v2（用户：「布局不太合理、做的有点粗糙……品种不可编辑，也不需要 -2% 这种，
 /// 通常用户就是设置某个具体值提醒」）整页重做成 iOS 设置那种分组卡片，一种语言到底：
 ///
 /// 1. **品种卡**（只读）：徽章、`BTC/USDT`、「币安 · USDT 永续」，右边现价与涨跌幅实时跳。
 ///    品种不能改——提醒挂在哪只由入口决定，要给别的品种建提醒就去那只的图上点。
-/// 2. **条件卡**：价格（手动输入、等宽数字，不给步进器也不给 ±% 快捷）、价格下一行小字说离现价
-///    多远、「碰到 | 收盘穿过」。**方向不让选**：比现价高就是「涨到」，低就是「跌到」。
+/// 2. **条件卡**：价格（手动输入、等宽数字，不给步进器也不给 ±% 快捷；v3 起放在一口输入井里，
+///    一眼看得出能改）、价格下一行小字说离现价多远、「价格达到 | 收盘穿过」。
+///    **方向不让选**：比现价高就是「涨到」，低就是「跌到」。
 /// 3. **通知卡**：Webhook 开关，开着只填一个地址；推送内容由我们定（默认模板），卡片下面一行
 ///    脚注说清发的是什么，旁边「发一条测试」。
-/// 4. 主按钮跟在卡片后面（不钉底）；再往下是这只品种的「提醒记录」（新建时才有）。
+/// 4. 主按钮跟在卡片后面（不钉底）；再往下是这只品种的「当前提醒 N」（新建时才有）：
+///    只列还没触发的价格与画线提醒（用户叫它「未生效预警」），每行右侧一枚垃圾桶，
+///    价格提醒点行进编辑。
 ///
-/// 只响一次（响过变「已触发」，总表里可以「再次提醒」）；没有「每次」这一档。
+/// 只响一次，响完就删（`AlertWatcher`，2026-09-25 v3）；没有「每次」「再次提醒」。
 struct AlertForm: View {
   /// 图上那只给人看的代号（宿主交的是 `InstrumentID.display`）。
   var initialSymbol: String
@@ -89,13 +92,13 @@ struct AlertForm: View {
   var prepare: (String) -> Void = { _ in }
   /// 页面关了叫一声，宿主把 `prepare` 点名要的那一只放掉。
   var release: () -> Void = {}
-  /// 这只品种的提醒记录（已排好序，见 `AlertRecordText.records`）。只有新建页摆。
+  /// 这只品种还没触发的提醒（已排好序，见 `AlertRecordText.records`）。只有新建页摆。
   var records: [KanpanCore.Alert] = []
   /// 记录里的时间按设置里那档时区写。
   var zone: TZOffset = .system
-  /// 点一条生效中的价格提醒：推进它的编辑页。
+  /// 点一条价格提醒：推进它的编辑页。
   var onEditRecord: (String) -> Void = { _ in }
-  /// 左划删除一条记录。
+  /// 行尾垃圾桶删一条。
   var onDeleteRecord: (String) -> Void = { _ in }
   var onSave: (AlertDraft) -> Void
 
@@ -105,7 +108,6 @@ struct AlertForm: View {
   @State private var webhookURL = ""
   @State private var testing = false
   @State private var seeded = false
-  @State private var openSwipe: String?
   @FocusState private var focus: Field?
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -120,6 +122,8 @@ struct AlertForm: View {
   private static let hintHeight = Space.section
   /// 主按钮高度。
   private static let buttonHeight = Inset.rowMin + Space.xs
+  /// 价格井聚焦 / 失焦的过渡时长。
+  private static let focusFade: Double = 0.15
 
   private var symbolKey: String { existing?.symbol ?? initialSymbol }
 
@@ -137,8 +141,10 @@ struct AlertForm: View {
         mainButton(quote)
           .padding(.top, Space.xl)
         if existing == nil, !records.isEmpty {
+          // 最后一条删掉时整段（标题 + 卡片）一起淡出，不闪。
           recordsSection(quote)
             .padding(.top, Space.section)
+            .transition(.opacity)
         }
       }
       .padding(.horizontal, hPad)
@@ -160,7 +166,7 @@ struct AlertForm: View {
     .onAppear {
       seed(quote)
       // 要价按宿主解析出来的规范键要；代号（尤其 `BTC/USD`）直接交出去会被当成币安的裸代号。
-      // 每次露面都要一次：推进「全部」或编辑页再退回来时，上一次那一只已经在 `onDisappear` 里放掉了。
+      // 每次露面都要一次：推进「全部预警」或编辑页再退回来时，上一次那一只已经在 `onDisappear` 里放掉了。
       prepare(quote?.symbol ?? symbolKey)
     }
     // 和 `prepare` 成对：推进下一层、整张提醒表收起，都在这儿放掉点名的那一只。
@@ -234,24 +240,15 @@ struct AlertForm: View {
 
   private func conditionCard(_ quote: PriceAlertQuote?) -> some View {
     AlertGroupCard {
-      // 价格：整行点哪儿都进输入框（标签那一截也算）。
+      // 价格：一口输入井（v3，用户：「价格可以编辑吧」——原来一串裸数字看不出能改）。
+      // 井底取页面底色（比卡片深一层，和条件分段的槽同一个底），`Radius.s` 圆角，
+      // 前面一枚小铅笔；聚焦时描一圈强调色。整行点哪儿都进输入框（标签那一截也算）。
       HStack(spacing: Space.m) {
         label("价格")
-        HStack(spacing: Space.xs) {
-          TextField("0", text: $priceText)
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
-            .font(TypeScale.bodyEmph).monospacedDigit()
-            .foregroundStyle(t.ink)
-            .focused($focus, equals: .price)
-            .accessibilityIdentifier("alerts.new.price")
-            .accessibilityLabel("价格")
-          Text(quote?.quoteAsset ?? SymbolInfo.placeholder(symbol: symbolKey).quote)
-            .font(TypeScale.caption)
-            .foregroundStyle(t.ink3)
-        }
+        priceWell(quote)
       }
       .padding(.horizontal, Inset.card)
+      .padding(.vertical, Space.xs)
       .frame(minHeight: Inset.rowMin)
       .contentShape(Rectangle())
       .onTapGesture { focus = .price }
@@ -261,6 +258,9 @@ struct AlertForm: View {
         .font(TypeScale.caption).monospacedDigit()
         .foregroundStyle(t.ink3)
         .lineLimit(1)
+        // 跟着输入实时变：数字滚动换，不整句闪。
+        .contentTransition(.numericText())
+        .animation(.snappy, value: priceText)
         .frame(maxWidth: .infinity, minHeight: Self.hintHeight, alignment: .topLeading)
         .padding(.horizontal, Inset.card)
         .accessibilityIdentifier("alerts.new.current")
@@ -277,6 +277,38 @@ struct AlertForm: View {
       .padding(.vertical, PanelMetrics.vPad)
       .frame(minHeight: Inset.rowMin)
     }
+  }
+
+  private func priceWell(_ quote: PriceAlertQuote?) -> some View {
+    let focused = focus == .price
+    return HStack(spacing: Space.s) {
+      Image(systemName: "pencil")
+        .font(TypeScale.caption)
+        .foregroundStyle(focused ? t.amber : t.ink3)
+        .accessibilityHidden(true)
+      TextField("0", text: $priceText)
+        .keyboardType(.decimalPad)
+        .multilineTextAlignment(.trailing)
+        .font(TypeScale.bodyEmph).monospacedDigit()
+        .foregroundStyle(t.ink)
+        .focused($focus, equals: .price)
+        .accessibilityIdentifier("alerts.new.price")
+        .accessibilityLabel("价格")
+      Text(quote?.quoteAsset ?? SymbolInfo.placeholder(symbol: symbolKey).quote)
+        .font(TypeScale.caption)
+        .foregroundStyle(t.ink3)
+    }
+    .padding(.horizontal, Space.m)
+    .padding(.vertical, Space.s)
+    .frame(maxWidth: .infinity)
+    .background {
+      // 聚焦时井底微微提亮一层强调色的薄纱，描边换成强调色——一眼看得出「正在输这儿」。
+      let well = RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
+      well.fill(AlertPageStyle.background(t))
+        .overlay { well.fill(focused ? t.amberSoft : .clear) }
+        .overlay { well.strokeBorder(focused ? t.amberLine : .clear, lineWidth: 1) }
+    }
+    .animation(.easeOut(duration: Self.focusFade), value: focused)
   }
 
   /// 「现价 83,964.6 · 低于现价 4.82%」。没填价 / 填的不是正数：「输入一个价格」。
@@ -398,8 +430,9 @@ struct AlertForm: View {
         .background(Capsule().fill(ready ? t.amber : disabledFill))
         .contentShape(Capsule())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(AlertPressStyle())
     .disabled(!ready)
+    .animation(.snappy, value: ready)
     .accessibilityIdentifier("alerts.new.create")
   }
 
@@ -423,31 +456,25 @@ struct AlertForm: View {
     return value
   }
 
-  // ---------------------------------------------------------------- 提醒记录
+  // ---------------------------------------------------------------- 当前提醒
 
+  /// 这只品种还没触发的提醒（用户叫它「未生效预警」）。行尾只有一枚垃圾桶；
+  /// 价格提醒点行进编辑，画线提醒的价在线上，要改就去图上拖线，行本身不可点。
   private func recordsSection(_ quote: PriceAlertQuote?) -> some View {
     VStack(alignment: .leading, spacing: Space.s) {
-      AlertCardTitle(text: "提醒记录")
+      AlertCardTitle(text: "当前提醒 \(records.count)")
+        .contentTransition(.numericText())
       AlertGroupCard {
         ForEach(Array(records.enumerated()), id: \.element.id) { index, alert in
-          SwipeToDelete(id: alert.id, open: $openSwipe, brick: .flush,
-                        trailing: [.delete(t) { onDeleteRecord(alert.id) }]) { swipe in
-            let editable = alert.kind == .price && alert.status != .fired
-            AlertRecordRow(
-              alert: alert,
-              title: AlertRecordText.title(alert, withSymbol: false),
-              meta: AlertRecordText.meta(alert, zone: zone, decimals: quote?.decimals,
-                                         conditionInline: true),
-              divider: index < records.count - 1,
-              onTap: editable ? { swipe.isOpen ? swipe.close() : onEditRecord(alert.id) } : nil
-            ) {
-              if editable {
-                VectorIcon.chevronRight(ControlMetrics.chevron)
-                  .foregroundStyle(t.ink3)
-                  .accessibilityHidden(true)
-              }
-            }
-          }
+          AlertRecordRow(
+            alert: alert,
+            title: AlertRecordText.title(alert, withSymbol: false),
+            meta: AlertRecordText.meta(alert, zone: zone, decimals: quote?.decimals,
+                                       conditionInline: true),
+            divider: index < records.count - 1,
+            onTap: alert.kind == .price ? { onEditRecord(alert.id) } : nil,
+            onDelete: { withAnimation(.snappy) { onDeleteRecord(alert.id) } })
+          .transition(AlertRecordRow.removal)
         }
       }
     }
@@ -462,11 +489,23 @@ struct AlertForm: View {
   }
 }
 
-/// 图上十字线那颗「创建提醒」弹出来的那张表：创建提醒页 + 右上「全部」推进提醒总表。
+/// 主按钮的按压反馈：按下缩一点、松手弹回。只动比例，不动颜色（禁用态由 `PanelDisabled` 管）。
+private struct AlertPressStyle: ButtonStyle {
+  @Environment(\.isEnabled) private var enabled
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .scaleEffect(configuration.isPressed && enabled ? 0.98 : 1)
+      .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+  }
+}
+
+/// 图上十字线那颗「创建提醒」弹出来的那张表：创建提醒页 + 右上「全部预警」推进提醒总表。
 ///
-/// 2026-09-25 起提醒总表的日常入口就是这颗「全部」（设置里那一行删了）；深链与通知点开时
+/// 2026-09-25 起提醒总表的日常入口就是这颗「全部预警」（设置里那一行删了；v3 起不带数量，
+/// 十字线动作栏也不另加入口）；深链与通知点开时
 /// 总表仍自己是一张表（`AlertListPage(presentedAsSheet: true)`）。两张表不会同时开：
-/// 宿主用同一个 `sheet(item:)` 管它俩。页底「提醒记录」点一条推进它的编辑页，也在这一层的
+/// 宿主用同一个 `sheet(item:)` 管它俩。页底「当前提醒」点一条推进它的编辑页，也在这一层的
 /// 导航栈里（`AlertForm` 不能在自己身上挂一个推进自己的去处，那是个递归的类型）。
 struct AlertComposeSheet: View {
   @ObservedObject var store: AlertStore
@@ -491,8 +530,8 @@ struct AlertComposeSheet: View {
                 records: AlertRecordText.records(store.all, symbol: key),
                 zone: context.zone,
                 onEditRecord: { editing = $0 },
-                onDeleteRecord: { id in Haptics.warning(); store.remove(id: id) }) { draft in
-        if let alert = store.commit(draft) { onCreated(alert) }
+                onDeleteRecord: { store.remove(id: $0) }) { draft in
+        if let alert = store.commit(draft) { Haptics.success(); onCreated(alert) }
       }
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
@@ -500,9 +539,8 @@ struct AlertComposeSheet: View {
             .accessibilityIdentifier("panel.done")
         }
         ToolbarItem(placement: .topBarTrailing) {
-          let count = store.all.count
-          Button(count > 0 ? "全部 \(count)" : "全部") { showAll = true }
-            .monospacedDigit()
+          // 导航栏按钮的字交给系统（和左上关闭同一套玻璃按钮），不另设字号。
+          Button("全部预警") { showAll = true }
             .accessibilityIdentifier("alerts.all")
         }
       }
@@ -514,7 +552,7 @@ struct AlertComposeSheet: View {
           AlertForm(initialSymbol: InstrumentID(alert.symbol).display, existing: alert,
                     resolve: context.quote, prepare: context.prepareQuote,
                     release: context.releaseQuote, zone: context.zone) { draft in
-            store.commit(draft, editing: id)
+            if store.commit(draft, editing: id) != nil { Haptics.success() }
           }
         }
       }

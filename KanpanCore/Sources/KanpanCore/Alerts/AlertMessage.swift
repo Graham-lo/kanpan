@@ -6,7 +6,7 @@ import Foundation
 /// 服务端 `alerts.rs` 按同一份模板规则渲染一遍（后台时是它发），两边写出来的字要一样，
 /// 所以占位符、价格写法、时间写法都钉在这儿，由 `AlertMessageTests` 用契约里那条例子对账。
 public enum AlertMessage {
-  /// 出厂模板：`BTC 碰到 84,662.2，现价 84,670.5`。
+  /// 出厂模板：`BTC 价格达到 84,662.2，现价 84,670.5`。
   public static let defaultTemplate = "{品种} {条件} {目标价}，现价 {价格}"
 
   /// 表单上那排占位符胶囊的顺序（点一下往模板末尾追加 `{名字}`）。
@@ -18,7 +18,7 @@ public enum AlertMessage {
   /// - `{代号}`：完整代号（`BTCUSDT`、`BTC-USD`）
   /// - `{价格}`：现价，千分位 + 品种小数位
   /// - `{目标价}`：`lines.first.points.first.p`，写法同上
-  /// - `{条件}`：碰到 / 收盘穿过
+  /// - `{条件}`：价格达到 / 收盘穿过
   /// - `{时间}`：ISO 8601 UTC，`2026-09-24T16:44:00Z`
   /// - `{备注}`：备注，没有就是空
   ///
@@ -75,7 +75,7 @@ public enum AlertMessage {
 /// {"event":"alert","alertId":"a…","symbol":"BTCUSDT","market":"binance/usd_m","name":"BTC",
 ///  "title":"BTC 涨到 84,662.2","condition":"touch","once":true,"target":84662.2,
 ///  "price":84670.5,"firedAt":1758000000000,"time":"2026-09-24T16:44:00Z","note":"",
-///  "text":"BTC 碰到 84,662.2，现价 84,670.5"}
+///  "text":"BTC 价格达到 84,662.2，现价 84,670.5"}
 /// ```
 ///
 /// 「发一条测试」是同一份，`event` 为 `test`、价格用现价。

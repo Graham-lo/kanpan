@@ -3,7 +3,7 @@ import KanpanCore
 import Testing
 @testable import Kanpan
 
-/// 存档的管家：建、删、改条件、重新上膛、以及「同一条线只留一条提醒」。
+/// 存档的管家：建、删、改条件、触发即删、以及「同一条线只留一条提醒」。
 @Suite("提醒仓库")
 @MainActor
 struct AlertStoreTests {
@@ -50,18 +50,38 @@ struct AlertStoreTests {
     #expect(again?.lines.first?.points.first?.p == 250)
   }
 
-  @Test("响过的再上膛，历史不留在身上")
-  func rearmClearsTheFiredMark() {
+  @Test("触发即删：已触发的清掉并记一笔账（同步推删除），生效中的与复盘到点不动")
+  func purgeFiredRemovesOnlyFiredAlerts() {
     let store = fresh()
-    let alert = store.add(drawing: hline("d1"), symbol: "BTCUSDT", now: 5)!
-    store.markFired(id: alert.id, at: 6, price: 123)
-    #expect(store.alert(id: alert.id)?.status == .fired)
-    store.rearm(id: alert.id, now: 20)
-    let after = store.alert(id: alert.id)
-    #expect(after?.status == .active)
-    #expect(after?.firedAt == nil)
-    #expect(after?.firedPrice == nil)
-    #expect(after?.armedAt == 20)
+    var booked: [[String]] = []
+    store.onChange = { booked.append($0.alerts.map(\.id)) }
+    let fired = store.add(drawing: hline("d1"), symbol: "BTCUSDT", now: 5)!
+    let live = store.add(drawing: hline("d2", p: 90), symbol: "BTCUSDT", now: 5)!
+    store.markFired(id: fired.id, at: 6, price: 123)
+    #expect(store.visible.map(\.id) == [live.id])
+    var due = KanpanCore.Alert(id: "r1", kind: .reviewDue, symbol: "BTCUSDT", armedAt: 1, dueAt: 2,
+                    title: "BTC 到点了", created: 1)
+    due.status = .fired; due.firedAt = 3
+    store.settleReviewDue(ReviewDueAlerts.Plan(upsert: [due], remove: []))
+    booked.removeAll()
+    store.purgeFired(ids: [fired.id, live.id, "r1"])
+    #expect(store.alert(id: fired.id) == nil)
+    #expect(store.alert(id: live.id)?.status == .active)
+    #expect(store.alert(id: "r1") != nil)
+    #expect(!store.firedLocally(fired))
+    // 删的这一笔走了 `write`：账号桥收到的是删掉之后的那一版。
+    #expect(booked == [[live.id, "r1"]])
+    // 复盘到点的「已到点」照样看得见。
+    #expect(Set(store.visible.map(\.id)) == [live.id, "r1"])
+  }
+
+  @Test("换进来的档案要记一次代次，好让提醒的看门人分清旧档案与新同步")
+  func useStorageBumpsGeneration() {
+    let store = fresh()
+    let before = store.generation
+    store.useStorage(AlertFileStore(url: FileManager.default.temporaryDirectory
+      .appendingPathComponent("alerts-\(UUID().uuidString).json")), archive: AlertArchive())
+    #expect(store.generation == before + 1)
   }
 
   @Test("同一条只记一次触发")
