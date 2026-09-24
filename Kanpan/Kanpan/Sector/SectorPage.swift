@@ -629,23 +629,3 @@ struct SectorHairline: View {
       .frame(height: 0.5).pageHorizontalInset()
   }
 }
-
-/// 涨跌小三角。
-struct SectorTriangle: Shape {
-  let up: Bool
-
-  func path(in rect: CGRect) -> Path {
-    var path = Path()
-    if up {
-      path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-      path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-    } else {
-      path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-      path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-    }
-    path.closeSubpath()
-    return path
-  }
-}

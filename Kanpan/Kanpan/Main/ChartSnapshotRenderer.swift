@@ -180,22 +180,17 @@ private struct ChartShotCard: View {
     .padding(.vertical, 9)
   }
 
-  /// 涨跌药丸和顶栏那颗同一副长相（填色 + 白字 + 方向箭头），只是小一号。
+  /// 涨跌药丸：涨跌色填底 + 白字，数字带符号「+2.74%」「−2.74%」（数学减号 U+2212）。
+  /// 全 app 的涨跌口径是「符号 + 颜色」，不再用 ▲▼ 小三角（UI 整改 P1c）。
   private var pill: some View {
-    HStack(spacing: 2.5) {
-      if let pct = head.changePercent {
-        Image(systemName: pct >= 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-          .font(.system(size: 6.5))
-      }
-      Text(changePercentText(head.changePercent, arrow: true))
-        .font(.system(size: 10.5, weight: .semibold))
-        .monospacedDigit()
-    }
-    .foregroundStyle(head.changePercent == nil ? t.ink3 : t.badgeInk)
-    .padding(.horizontal, 6)
-    .padding(.vertical, 3)
-    .background(head.changePercent.map { t.badgeFill(up: $0 >= 0) } ?? t.raised2,
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    Text(changePercentText(head.changePercent))
+      .font(.system(size: 10.5, weight: .semibold))
+      .monospacedDigit()
+      .foregroundStyle(head.changePercent == nil ? t.ink3 : t.badgeInk)
+      .padding(.horizontal, 6)
+      .padding(.vertical, 3)
+      .background(head.changePercent.map { t.badgeFill(up: $0 >= 0) } ?? t.raised2,
+                  in: RoundedRectangle(cornerRadius: 6, style: .continuous))
   }
 
   private var footer: some View {

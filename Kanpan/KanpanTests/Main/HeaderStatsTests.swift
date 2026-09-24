@@ -27,7 +27,7 @@ struct HeaderStatsTests {
     #expect(HeaderStats.priceChangeText(change: .nan, percent: 1, decimals: 2) == "—")
   }
 
-  /// 带箭头的药丸（预览卡、分享截图）现在走 KanpanCore 那把 `changePercentText(_:arrow:)`（审查 U9），
+  /// 涨跌幅那半截走 KanpanCore 那把 `changePercentText`（审查 U9），
   /// 用例在 `FormatTests`；这儿只守顶栏涨跌额取整成 0 时不写「−0.00」。
   @Test("涨跌额取整成 0 时不带负号")
   func flatChangeHasNoMinus() {

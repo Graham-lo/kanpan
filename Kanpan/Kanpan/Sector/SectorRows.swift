@@ -57,8 +57,6 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
 
   var volumeText: String { sectorVolumeText(quoteVolume) }
   var isUp: Bool { pct >= 0 }
-  /// 药丸里只写数，符号由前面那个小三角表达（和自选页一致）。
-  var changeText: String { changePercentText(pct, arrow: true) }
   var signedText: String { sectorPctText(pct) }
 
   /// 把成员名单和行情拼成行。没有行情的成员直接不出现——聚合那边也没算它。

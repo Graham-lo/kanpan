@@ -319,17 +319,16 @@ func toFixedReference(_ x: Double, _ p: Int) -> String {
 /// 全 app 唯一的涨跌幅写法（审查 U9）。参数是百分数（2.74 就是 2.74%），两位小数，
 /// 取整走 `toFixed`（和原型同一把逢五进位）。
 ///
-/// * `arrow: false`（默认）：带符号「+2.74%」「−2.74%」。负号用数学减号 U+2212，不用连字符——
+/// * 带符号「+2.74%」「−2.74%」。负号用数学减号 U+2212，不用连字符——
 ///   它和「+」、和等宽数字一样宽，一列涨跌上下对得齐（顶栏涨跌额从来就是这么写的）。
-/// * `arrow: true`：旁边已经有 ▲▼ 小三角或底色说了方向（自选列表、预览卡药丸、分享截图、
-///   板块药丸），数字只写绝对值「2.74%」——不写成「▼ −2.74%」那样说两遍。
-/// * 四舍五入后是 0.00 的一律「+0.00%」（`arrow` 时「0.00%」），不会冒出「−0.00%」。
+/// * 四舍五入后是 0.00 的一律「+0.00%」，不会冒出「−0.00%」。
+/// * 全 app 的涨跌只有「符号 + 颜色」一种说法，不再有 ▲▼ 小三角配绝对值那一路（UI 整改 P1c，
+///   原来的 `arrow:` 参数随最后两处调用——分享截图药丸、板块行——一起删了）。
 /// * 缺数（`nil`、NaN、无穷）写 `missing`，默认「—」。小组件和实时活动传「--」：那两处的价格
 ///   走 `fmtPrice` 一族，缺数本来就写「--」，同一行里两种占位更难看。
-public func changePercentText(_ percent: Double?, arrow: Bool = false, missing: String = "—") -> String {
+public func changePercentText(_ percent: Double?, missing: String = "—") -> String {
   guard let percent, percent.isFinite else { return missing }
   let magnitude = toFixed(abs(percent), 2)
-  if arrow { return magnitude + "%" }
   let zero = !magnitude.contains(where: { $0 != "0" && $0 != "." })
   return (percent < 0 && !zero ? "\u{2212}" : "+") + magnitude + "%"
 }

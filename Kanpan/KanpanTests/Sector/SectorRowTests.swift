@@ -113,7 +113,7 @@ struct SectorRowTests {
     let rows = SectorSymbolRow.build(members: members, quotes: quotes,
                                      symbolForBase: { $0 + "USDT" }, sort: .change)
     #expect(rows.map(\.base) == ["DDD", "BBB", "AAA", "CCC"])
-    #expect(rows[2].changeText == "—")
+    #expect(rows[2].signedText == "—")
   }
 
   // ---------------------------------------------------------------- 板块列表（2026-09-24 起的首页）

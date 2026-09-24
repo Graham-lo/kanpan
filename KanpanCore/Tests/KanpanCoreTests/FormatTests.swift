@@ -53,7 +53,7 @@ struct FormatTests {
     #expect(volUnit(-1.2e12) == .t)
   }
 
-  /// 全 app 一种涨跌幅写法（审查 U9）：带符号用数学减号，有箭头时只写绝对值，
+  /// 全 app 一种涨跌幅写法（审查 U9）：带符号用数学减号（UI 整改 P1c 起不再有三角 + 绝对值那一路），
   /// 取整成 0 的不带负号，缺数写「—」。
   @Test("涨跌幅只有一种写法")
   func changePercentOneFormat() {
@@ -61,11 +61,9 @@ struct FormatTests {
     #expect(changePercentText(-2.745) == "\u{2212}2.75%", "负号是 U+2212，取整同 toFixed")
     #expect(changePercentText(0) == "+0.00%")
     #expect(changePercentText(-0.004) == "+0.00%", "取整成 0 的不能写成 −0.00%")
-    #expect(changePercentText(-2.74, arrow: true) == "2.74%", "箭头已经说了方向，数字不再带负号")
-    #expect(changePercentText(3.1, arrow: true) == "3.10%")
     #expect(changePercentText(nil) == "—")
     #expect(changePercentText(.nan) == "—")
-    #expect(changePercentText(.infinity, arrow: true) == "—")
+    #expect(changePercentText(.infinity) == "—")
     #expect(changePercentText(123.456) == "+123.46%")
   }
 
