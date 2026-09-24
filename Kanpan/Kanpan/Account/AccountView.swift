@@ -47,7 +47,7 @@ struct AccountView: View {
   }
   private var form: some View {
     ScrollView {
-      VStack(spacing: 18) {
+      VStack(spacing: Space.l) {
         if [.login, .register].contains(feature.page) {
           input("用户名", field: .email, hint: feature.usernameHint, hintID: "account.email.rule") {
             TextField("用户名", text: $feature.email).keyboardType(.asciiCapable)
@@ -75,13 +75,13 @@ struct AccountView: View {
               .accessibilityIdentifier("account.newPassword")
           }
         }
-        if feature.page == .close { Text("注销后云端数据将删除").font(.footnote).foregroundStyle(theme.ink3).frame(maxWidth: .infinity, alignment: .leading) }
+        if feature.page == .close { Text("注销后云端数据将删除").font(TypeScale.footnote).foregroundStyle(theme.ink3).frame(maxWidth: .infinity, alignment: .leading) }
         // 出错的字走跌色。原来写死了橙，那是上一版的品牌色，换了配色以后它是全页唯一
         // 一处跟谁都不像的颜色；错误本来就该跟「跌」同一支红。
         // 登录页上那一行字：这一趟出的错优先，没出错时摆「被顶下去」那一句
         // ——人是被顶回登录页来的，得让他看见为什么。
         if let message = feature.error ?? (feature.page == .login ? feature.replacedNotice : nil) {
-          Text(message).font(.footnote).foregroundStyle(theme.danger).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error")
+          Text(message).font(TypeScale.footnote).foregroundStyle(theme.danger).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error")
         }
         // 禁用态（没填全）不再交给系统 `.borderedProminent`：它在灰底上叠灰字，实测只有 1.44:1，
         // 看不出按钮上写的是什么。和面板里的主按钮同一套（`PanelDisabled`）：底换中性的
@@ -91,7 +91,7 @@ struct AccountView: View {
           Group { if feature.busy { ProgressView().tint(theme.badgeInk) } else { Text(primary) } }
             .font(TypeScale.title)
             .foregroundStyle(ready ? theme.badgeInk : PanelDisabled.ink(theme))
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: Hit.min + Space.xs)  // 主按钮 48
             .background(Capsule().fill(ready ? (feature.page == .close ? theme.danger : theme.amber)
                                              : PanelDisabled.fill(theme)))
             .contentShape(Capsule())
@@ -100,11 +100,18 @@ struct AccountView: View {
         // 登录、注册两页互相切换的那一颗：同一个位置、同一种样式，只是字对调。
         if [.login, .register].contains(feature.page) {
           let other: AccountFeature.Page = feature.page == .login ? .register : .login
-          Button(other == .register ? "注册" : "登录") { focused = nil; feature.move(other) }
-            .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)
-            .accessibilityIdentifier("account.switch")
+          Button { focused = nil; feature.move(other) } label: {
+            // 点按区放进 label 里撑满整宽 44，否则只有那两个字点得中。
+            Text(other == .register ? "注册" : "登录")
+              .font(TypeScale.bodyEmph)
+              .frame(maxWidth: .infinity, minHeight: Hit.min)
+              .contentShape(Rectangle())
+          }
+          .accessibilityIdentifier("account.switch")
         }
-      }.padding(20)
+      }
+      .pageHorizontalInset()
+      .padding(.vertical, Space.xl)
     }.scrollDismissesKeyboard(.interactively)
       .scrollContentBackground(.hidden)
       .background(theme.app)
@@ -115,13 +122,14 @@ struct AccountView: View {
   /// `hint` 是框下那一行规则字：只在不合格时占一行，合格了整行收起，不留空位。
   private func input<Content: View>(_ title: String, field: Field, hint: String? = nil, hintID: String = "",
                                     @ViewBuilder content: () -> Content) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title).font(.subheadline).foregroundStyle(theme.ink3)
-      content().padding(.horizontal, 12).frame(minHeight: 48)
+    // 2026-09-24 UI 整改 P1b：框里的字 15、框高 44、圆角 8（`Radius.s`），标签 13、规则字 12。
+    VStack(alignment: .leading, spacing: Space.s) {
+      Text(title).font(TypeScale.footnote).foregroundStyle(theme.ink3)
+      content().font(TypeScale.body).padding(.horizontal, Space.m).frame(minHeight: Hit.min)
         .foregroundStyle(theme.ink)
-        .background(theme.raised2, in: RoundedRectangle(cornerRadius: 10))
+        .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
       if let hint {
-        Text(hint).font(.footnote).foregroundStyle(theme.ink3).accessibilityIdentifier(hintID)
+        Text(hint).font(TypeScale.caption).foregroundStyle(theme.ink3).accessibilityIdentifier(hintID)
       }
     }
   }
@@ -133,15 +141,15 @@ struct AccountView: View {
   @ViewBuilder private var expired: some View {
     if feature.needsReauthentication {
       Section {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.s) {
           // 被同类设备顶下去时说得出是什么顶的（「这个账号在另一台手机上登录了」）；
           // 其余的失效仍旧是笼统那一句。
           Text(feature.replacedNotice ?? "登录已失效").foregroundStyle(theme.danger)
           Text("已退出登录，本机数据都在")
-            .font(.footnote).foregroundStyle(theme.ink3)
+            .font(TypeScale.caption).foregroundStyle(theme.ink3)
           Button("重新登录") { feature.reauthenticate() }
-            .frame(minHeight: 44).accessibilityIdentifier("account.reauthenticate")
-        }.padding(.vertical, 4)
+            .frame(minHeight: Hit.min).accessibilityIdentifier("account.reauthenticate")
+        }.padding(.vertical, Space.xs)
       }
       .listRowBackground(theme.raised)
     }
@@ -159,7 +167,7 @@ struct AccountView: View {
           HStack {
             Text("导出我的数据"); Spacer()
             if feature.exporting { ProgressView().controlSize(.small) }
-            else { VectorIcon.chevron(10, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(theme.ink3) }
+            else { VectorIcon.chevronRight(ControlMetrics.chevron).foregroundStyle(theme.ink3) }
           }
         }
         .foregroundStyle(theme.ink).disabled(feature.exporting)
@@ -201,9 +209,11 @@ struct AccountView: View {
             // 「每类设备只许一台在线」这条规则要在这张表上看得见：手机 / 平板 / 电脑
             // 各占一行，同一类里再登一台就会把这一行顶掉。
             Text([item.kind.label, item.current ? "本机" : Date(timeIntervalSince1970: Double(item.lastSeen) / 1000).formatted(date: .abbreviated, time: .shortened)].joined(separator: " · "))
-              .font(.caption).foregroundStyle(theme.ink3)
+              .font(TypeScale.caption).foregroundStyle(theme.ink3)
           }
-          Spacer(); Button("退出") { Haptics.warning(); feature.revoke(item) }.foregroundStyle(theme.danger).frame(minHeight: 44)
+          Spacer()
+          Button { Haptics.warning(); feature.revoke(item) } label: { Text("退出").hitTarget() }
+            .buttonStyle(.borderless).foregroundStyle(theme.danger)
         }
         .listRowBackground(theme.raised)
       }
@@ -219,7 +229,7 @@ struct AccountView: View {
     .task { await feature.loadDevices() }.refreshable { await feature.loadDevices() }
   }
   private func row(_ title: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) { HStack { Text(title); Spacer(); VectorIcon.chevron(10, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(theme.ink3) } }.foregroundStyle(theme.ink)
+    Button(action: action) { HStack { Text(title); Spacer(); VectorIcon.chevronRight(ControlMetrics.chevron).foregroundStyle(theme.ink3) } }.foregroundStyle(theme.ink)
   }
 }
 
@@ -228,7 +238,12 @@ private extension View {
   /// 不换的话它们是全 app 仅存的系统配色，和左右两页对不上。
   /// 行的底得逐个 `Section` 自己写 `.listRowBackground(theme.raised)`，
   /// 那是行的属性，挂在 `List` 上不生效。
+  ///
+  /// 2026-09-24 UI 整改 P1b：行名 15（`TypeScale.body`，系统 List 默认是 17），行高至少 44。
+  /// 左右边距用 inset grouped 自己的版心（本机 20 / 小屏 16），和 `Inset.page` 同一档。
   func listed(_ theme: PanelTheme) -> some View {
-    scrollContentBackground(.hidden).background(theme.app).foregroundStyle(theme.ink)
+    font(TypeScale.body)
+      .environment(\.defaultMinListRowHeight, Inset.rowMin)
+      .scrollContentBackground(.hidden).background(theme.app).foregroundStyle(theme.ink)
   }
 }
