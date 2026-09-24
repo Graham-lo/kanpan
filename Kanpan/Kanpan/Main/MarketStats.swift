@@ -11,6 +11,7 @@ import Synchronization
 /// GET /v1/market/open-interest?symbol=BTCUSDT&source=binance
 /// ```
 /// 失败一律当「没有」——那一格显示 `--`，不弹提示、不在界面上报线路状态。
+/// 这两条只在主机的 kanpan-api 上（备用机跑 metrics 模式，回 404），调用方传 `route.apiHosts`。
 
 struct SymbolMeta: Sendable, Equatable {
   var totalSupply: Double?

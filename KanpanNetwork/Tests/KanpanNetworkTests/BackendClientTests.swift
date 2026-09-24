@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import KanpanNetwork
 import KanpanNetworkTestSupport
+import KanpanCore
 
 /// 后端（kanpan-api `/v1/*`）只读接口的取数口：主备顺序、失败分类、日志。
 @Suite("后端取数口") struct BackendClientTests {
@@ -52,9 +53,10 @@ import KanpanNetworkTestSupport
     #expect(await server.urls().isEmpty)
   }
 
-  @Test("RouteResolver 给的后端是线上两台网关，两档线路都一样")
+  @Test("RouteResolver 给的后端只有主机（备用机 metrics 模式，/v1 这些路径回 404），两档线路都一样")
   func resolverBackend() {
-    #expect(RouteResolver(policy: .direct).backend.hosts == MarketEndpoints.production.gateways)
+    #expect(RouteResolver(policy: .direct).backend.hosts == [ServerHosts.primary])
+    #expect(RouteResolver(policy: .direct).backend.hosts == MarketEndpoints.production.api)
     #expect(RouteResolver(policy: .gateway).backend == RouteResolver(policy: .direct).backend)
   }
 }

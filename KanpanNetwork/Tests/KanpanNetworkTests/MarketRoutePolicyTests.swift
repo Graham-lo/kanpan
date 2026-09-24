@@ -61,6 +61,21 @@ struct MarketRoutePolicyTests {
     #expect(BinanceProvider.upstream(for: MarketRoute(policy: .gateway, endpoints: .production)) == .okx)
   }
 
+  @Test("线路两档只管币安主行情：apiHosts 两档都只有主机，gateways 仍是主备两台")
+  func apiHostsIgnorePolicy() {
+    for policy in MarketRoutePolicy.allCases {
+      let route = MarketRoute(policy: policy, endpoints: .production)
+      #expect(route.apiHosts == [ServerHosts.primary], "\(policy)")
+      #expect(route.gateways == ServerHosts.gateways, "\(policy)")
+    }
+    #expect(ServerHosts.gateways.count == 2)
+    #expect(ServerHosts.api == [ServerHosts.primary])
+    // 只给 gateways 时 apiHosts 取第一台；重复的去掉；没有网关就没有 kanpan-api。
+    #expect(MarketEndpoints(gateways: ["a", "b"]).api == ["a"])
+    #expect(MarketEndpoints(gateways: ["a", "a", "b"], api: ["x", "x"]).api == ["x"])
+    #expect(MarketEndpoints(gateways: []).api.isEmpty)
+  }
+
   @Test("换线路会广播；没变就不广播")
   func settingPostsNotification() async {
     let defaults = MarketRoutePolicyStore.defaults

@@ -495,7 +495,7 @@ final class MarketModel {
   /// 两条都失败就让那两格一直是 `--`，不报错、不弹窗。
   private func startStats() {
     statsTask?.cancel()
-    let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = resolver.route.gateways
+    let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = resolver.route.apiHosts
     guard !proxies.isEmpty else {
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
       return
@@ -670,7 +670,7 @@ final class MarketModel {
         self.seedFunding(for: self.symbol)
       }
     }
-    let proxies = resolver.route.gateways
+    let proxies = resolver.route.apiHosts
     guard !proxies.isEmpty else { return }
     // 可能混着不同交易所的品种：持仓量按各自那一家的口径问。
     let bySource = Dictionary(grouping: syms) { resolver.provider(forSymbol: $0).capabilities.openInterestSource ?? "" }

@@ -85,7 +85,7 @@ final class SymbolPreviewStore {
     let needsFunding = funding(for: key) == nil
     guard jobs[key] == nil, needsBars || needsStats || needsFunding else { return }
     let service = SymbolPreviewService(resolver: resolver)
-    let proxies = resolver.route.gateways
+    let proxies = resolver.route.apiHosts
     let caps = service.capabilities(for: key)
     let src = caps.openInterestSource, upstream = caps.upstream
     jobs[key] = Task { [weak self] in

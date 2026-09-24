@@ -3,9 +3,9 @@ import KanpanCore
 
 /// 一只币有哪几本簿、怎么分到几条连接上。
 ///
-/// 1. 查网关的品种表 `GET /v1/market/orderflow/instruments?base=BTC`（kanpan-api 每 10 分钟把币安 /
+/// 1. 查 kanpan-api 的品种表 `GET /v1/market/orderflow/instruments?base=BTC`（每 10 分钟把币安 /
 ///    OKX / Coinbase 的七张合约表汇总一次，只查内存）：各家各产品的合约代号、面值口径、交割时间、
-///    币安带前缀的缩放（`1000PEPE`）。两条线路都查网关——这是网关专属的只读接口，和行情走哪条路无关。
+///    币安带前缀的缩放（`1000PEPE`）。两条线路都查 `MarketRoute.apiHosts`（只有主机）——和行情走哪条路无关。
 /// 2. 查不到（网关都不通、回了坏数据、一本都没有）就用保底那几本：币安 U 本位永续 `<BASE>USDT`、
 ///    币安现货 `<BASE>USDT`、Coinbase `<BASE>-USD`。哪本不存在，它的快照回 4xx，那本就一直不就绪，
 ///    图上少一本而已。
@@ -59,7 +59,7 @@ public struct OrderFlowCatalog: Sendable {
     if let rows = await cache.rows(base: base, nowMs: nowMs) {
       return Books(base: base, chartScale: scale, books: Self.books(rows, chartScale: scale, nowMs: nowMs), fromCatalog: true)
     }
-    for host in route.gateways {
+    for host in route.apiHosts {
       guard var c = URLComponents(string: "https://\(host)"), c.host != nil, c.user == nil else { continue }
       c.path = Self.path
       c.queryItems = [URLQueryItem(name: "base", value: base)]
@@ -156,7 +156,7 @@ public struct OrderFlowCatalog: Sendable {
   // ------------------------------------------------------------------ 分连接
 
   /// 把要订的簿分到连接上。顺序：币安 U 本位、币安币本位、币安现货、OKX、Coinbase。
-  /// 没有网关时 OKX 那几本订不了（只有中继能到 OKX），直接不给。
+  /// 没有 kanpan-api 主机时 OKX 那几本订不了（只有中继能到 OKX），直接不给。
   public func adapters(_ books: [DepthBook]) -> [any DepthFeedAdapter] {
     var binance: [BinanceDepthAdapter.Market: [DepthBook]] = [:]
     var okx: [DepthBook] = []
@@ -176,9 +176,9 @@ public struct OrderFlowCatalog: Sendable {
                                        sockets: sockets, http: http))
       }
     }
-    if !route.gateways.isEmpty {
+    if !route.apiHosts.isEmpty {
       for chunk in Self.chunks(okx, OKXBooksAdapter.maxBooks) {
-        out.append(OKXBooksAdapter(books: chunk, gateways: route.gateways, sockets: sockets))
+        out.append(OKXBooksAdapter(books: chunk, gateways: route.apiHosts, sockets: sockets))
       }
     }
     for book in coinbase { out.append(CoinbaseLevel2Adapter(book: book, sockets: sockets)) }

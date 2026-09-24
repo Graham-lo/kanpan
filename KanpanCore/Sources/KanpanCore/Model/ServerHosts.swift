@@ -8,8 +8,11 @@ import Foundation
 /// 登录一律被拒（审查 2026-09-24 §2）。现在三处都从这里取。
 ///
 /// 两台的分工：行情网关主在前、备在后，`RouteResolver` 会在两台之间切；
-/// 账号 API 只走主机——账号库只在主机上，备机没有账号服务，所以账号**没有**故障转移，
-/// 主机挂了登录 / 同步就暂停，本地缓存照常能用（`kanpan-cloud-outage-must-not-break-the-app`）。
+/// kanpan-api 的完整版（账号、订单流的品种表 / 深度快照 / 币安与 OKX 中继、板块历史、元数据、
+/// 持仓量）只在主机上——备机跑的是 kanpan-api 的 metrics 模式，只有 `/oi/v1/metrics/*` 与
+/// `/v1/market/{raw,stream,funding,ticker,open-interest/history}`，别的 `/v1/*` 一律 404
+/// （2026-09-24 实测）。所以这些**没有**故障转移，主机挂了登录 / 同步 / 订单流就暂停，
+/// 本地缓存照常能用（`kanpan-cloud-outage-must-not-break-the-app`）。
 public enum ServerHosts {
   /// 主机（纽约）：行情网关 + 账号 API，走 443。
   public static let primary = "kanpan.107-174-172-10.sslip.io"
@@ -19,6 +22,10 @@ public enum ServerHosts {
 
   /// 行情网关，主在前、备在后（`MarketEndpoints.production`）。
   public static let gateways: [String] = [primary, "\(backup):\(backupPort)"]
+
+  /// kanpan-api 完整版所在的主机（`MarketRoute.apiHosts`）。只有主机：备机上这些路径都是 404，
+  /// 列进来只会让每次主机失败时再白等一次 404。
+  public static let api: [String] = [primary]
 
   /// 账号客户端认的主机名与端口。地址写错一个字母就是把 refresh 令牌递给别人，
   /// 所以 `AccountClient` 只认这张名单，不认「看起来像 https」。

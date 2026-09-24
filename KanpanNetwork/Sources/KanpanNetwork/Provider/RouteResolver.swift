@@ -49,9 +49,9 @@ public struct RouteResolver: Sendable {
     VenueRegistry.descriptor(venue).map { $0.makeOwn(route, log) }
   }
 
-  /// 看盘自己的后端（`kanpan-api` 的 `/v1/*` 只读接口）。后端只在网关那两台上，
-  /// 不随线路档位变——直连线路下问板块历史、供应量也是问它。
-  public var backend: BackendClient { BackendClient(hosts: route.gateways, log: log) }
+  /// 看盘自己的后端（`kanpan-api` 的 `/v1/*` 只读接口）。不随线路档位变——直连线路下问板块历史、
+  /// 供应量也是问它；而且只在主机上（`MarketRoute.apiHosts`），备机上这些路径是 404。
+  public var backend: BackendClient { BackendClient(hosts: route.apiHosts, log: log) }
 
   /// 默认交易所。
   public var defaultProvider: any MarketProvider { VenueRegistry.default.make(route, log) }

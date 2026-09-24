@@ -141,10 +141,17 @@ public protocol MarketStream: AnyObject, Sendable {
 public struct MarketEndpoints: Sendable, Equatable {
   /// 看盘自己的网关，主在前、备在后。
   public var gateways: [String]
+  /// kanpan-api 完整版所在的主机（`MarketRoute.apiHosts`）。不给就取网关表的第一台（主机）。
+  public var api: [String]
 
-  public init(gateways: [String] = []) {
+  public init(gateways: [String] = [], api: [String]? = nil) {
+    self.gateways = Self.unique(gateways)
+    self.api = Self.unique(api ?? Array(self.gateways.prefix(1)))
+  }
+
+  private static func unique(_ hosts: [String]) -> [String] {
     var seen = Set<String>()
-    self.gateways = gateways.filter { !$0.isEmpty && seen.insert($0).inserted }
+    return hosts.filter { !$0.isEmpty && seen.insert($0).inserted }
   }
 
   /// 没有网关的空表：只给测试和「只走直连」的离线工具用。app 里一律用 `production`。
@@ -153,7 +160,7 @@ public struct MarketEndpoints: Sendable, Equatable {
   /// 线上那两台网关（美国 VPS），主在前、备在后。app 里所有取数件都从 `RouteResolver.current`
   /// 拿到这一份，不再各自拼。
   /// 地址本身只在 `ServerHosts` 一处。
-  public static let production = MarketEndpoints(gateways: ServerHosts.gateways)
+  public static let production = MarketEndpoints(gateways: ServerHosts.gateways, api: ServerHosts.api)
 }
 
 /// 与交易所无关的 K 线序列小工具。

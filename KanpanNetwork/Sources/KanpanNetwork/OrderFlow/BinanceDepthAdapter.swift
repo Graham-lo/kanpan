@@ -6,14 +6,14 @@ import KanpanCore
 /// 按市场分三种连接（`Market`），一条连接最多 `maxBooks` 本（网关中继一条最多 8 路流，一本两路）：
 ///
 /// - `um` U 本位（永续 + U 本位交割 `BTCUSDT_260925`）：U / u / pu 链。
-///   - 直连：推送走 `hosts.stream` 的组合流（默认 `dstream.binance.me`），快照打 `hosts.fapi` 的
-///     `/fapi/v1/depth?limit=1000`。
-///   - 网关：推送走 kanpan-api 的中继 `/v1/market/ws/binance?streams=…`（上游 `dstream.binance.com`，
-///     一条连接同时发 U 本位与币本位的四种合约），快照打 kanpan-api `GET /v1/market/depth?market=um`
-///     （美国机房打 fapi 回 451，由 kanpan-api 经 `www.binance.com` 取），按网关表逐台试。
 /// - `cm` 币本位（永续 `BTCUSD_PERP` + 币本位交割 `BTCUSD_260925`）：同样 U / u / pu 链。
-///   直连快照打 `dapi.binance.com/dapi/v1/depth`（`hosts.fapi` 换成 dapi），网关 `market=cm`；推送同上。
 ///   数量是张数（反向合约），名义美元 = 张数 × 面值，由 Core 的 `OrderFlowNotional.inverse` 算。
+///
+///   这两种**不分线路**，一律经 kanpan-api（`MarketRoute.apiHosts`，只有主机）：推送走中继
+///   `/v1/market/ws/binance?streams=…`（服务端按产品分上游：币本位 dstream，U 本位深度 fstream `/public`、
+///   成交 fstream `/market`），快照打 `GET /v1/market/depth?market=um|cm`（美国机房打 fapi 回 451，
+///   由 kanpan-api 经 `www.binance.com` 取）。线路两档只管币安主行情，订单流要三家聚合、OKX 只能走中继，
+///   合约这两种也跟着走同一台，免得一只币的几本簿一半直连一半中继。
 /// - `spot` 现货：U / u 链（没有 pu）。不分线路一律直连 `data-stream.binance.vision`，快照打
 ///   `data-api.binance.vision/api/v3/depth`——网关中继只接币安合约的上游。
 ///
@@ -79,8 +79,7 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
       c.queryItems = [URLQueryItem(name: "streams", value: streams.joined(separator: "/"))]
       return c.url.map { [$0] } ?? []
     case .um, .cm:
-      return route.viaGateway ? Self.gatewayStreams(route.gateways, path: Self.relayPath, streams: streams)
-                              : [hosts.combinedStream(streams)]
+      return Self.gatewayStreams(route.apiHosts, path: Self.relayPath, streams: streams)
     }
   }
 
@@ -128,13 +127,8 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
     case .spot:
       return try await get(host: Self.spotRestHost, path: "/api/v3/depth", query: query, book: book)
     case .um, .cm:
-      guard route.viaGateway else {
-        let host = market == .um ? hosts.fapi : Self.dapiHost(hosts.fapi)
-        let path = market == .um ? "/fapi/v1/depth" : "/dapi/v1/depth"
-        return try await get(host: host, path: path, query: query, book: book)
-      }
       var lastError: Error = FeedError.badResponse("行情服务暂不可用")
-      for host in route.gateways {
+      for host in route.apiHosts {
         do {
           return try await get(host: host, path: Self.gatewaySnapshotPath,
                                query: query + [URLQueryItem(name: "market", value: market.rawValue)], book: book)
@@ -148,11 +142,6 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
       }
       throw lastError
     }
-  }
-
-  /// 币本位的 REST 主机：U 本位那台的 `fapi` 换成 `dapi`（`fapi.binance.com` → `dapi.binance.com`）。
-  static func dapiHost(_ fapi: String) -> String {
-    fapi.hasPrefix("fapi.") ? "dapi." + fapi.dropFirst("fapi.".count) : "dapi.binance.com"
   }
 
   private func get(host: String, path: String, query: [URLQueryItem], book: DepthBook) async throws -> BookSnapshot {

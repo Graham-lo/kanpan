@@ -13,11 +13,13 @@ import KanpanCore
 //
 // | 分组 | 产品 | 增量 | 快照 | 连接 |
 // |---|---|---|---|---|
-// | 币安 U 本位 | U 本位永续、U 本位交割 | `@depth@100ms` + `@aggTrade` | REST fapi / 网关 `market=um` | 直连 dstream 组合流 / 网关中继 `/v1/market/ws/binance` |
-// | 币安币本位 | 币本位永续、币本位交割 | 同上 | REST dapi / 网关 `market=cm` | 同上 |
+// | 币安 U 本位 | U 本位永续、U 本位交割 | `@depth@100ms` + `@aggTrade` | kanpan-api `/v1/market/depth?market=um` | 恒走中继 `/v1/market/ws/binance`（服务端分 fstream `/public` 与 `/market`） |
+// | 币安币本位 | 币本位永续、币本位交割 | 同上 | kanpan-api `market=cm` | 恒走中继（服务端连 dstream） |
 // | 币安现货 | 现货 | 同上（无 pu） | REST data-api.binance.vision | 恒直连 data-stream.binance.vision |
-// | OKX | 四种都有 | `books` + `trades` | 流内 snapshot | 恒走网关中继 `/v1/market/ws/okx`（国内连不上 OKX） |
+// | OKX | 四种都有 | `books` + `trades` | 流内 snapshot | 恒走中继 `/v1/market/ws/okx`（国内连不上 OKX） |
 // | Coinbase | 现货 | `level2` + `market_trades` | 流内 snapshot | 恒直连 |
+//
+// 「中继」「kanpan-api」都是 `MarketRoute.apiHosts`（只有主机），不随线路两档变：线路只管币安主行情。
 
 /// 一本簿：Core 的描述 + 把这一家报的价格换到图上那只品种的价格口径。
 ///

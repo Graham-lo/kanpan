@@ -11,8 +11,9 @@ struct OrderFlowAdapterTests {
   static let gateways = ["gw-a.example", "gw-b.example:8443"]
   static let hosts = BinanceHosts()
 
-  static func route(_ policy: MarketRoutePolicy) -> MarketRoute {
-    MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways))
+  /// `api` 缺省时跟生产一样只有第一台（主机）：备用机跑 metrics 模式，订单流那几条它回 404。
+  static func route(_ policy: MarketRoutePolicy, api: [String]? = nil) -> MarketRoute {
+    MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways, api: api))
   }
 
   static func book(_ exchange: String, _ product: OrderFlowProduct, _ instrument: String,
@@ -29,8 +30,8 @@ struct OrderFlowAdapterTests {
 
   static func binance(_ market: BinanceDepthAdapter.Market, _ books: [DepthBook], _ policy: MarketRoutePolicy,
                       server: FakeServer = FakeServer { _ in json("{}") },
-                      deck: ReplayDeck = ReplayDeck([.hang])) -> BinanceDepthAdapter {
-    BinanceDepthAdapter(market: market, books: books, hosts: hosts, route: route(policy),
+                      deck: ReplayDeck = ReplayDeck([.hang]), api: [String]? = nil) -> BinanceDepthAdapter {
+    BinanceDepthAdapter(market: market, books: books, hosts: hosts, route: route(policy, api: api),
                         sockets: ReplayFactory(deck: deck, pacer: FastPacer()), http: FakeTransport(server))
   }
 
@@ -69,39 +70,50 @@ struct OrderFlowAdapterTests {
                                                                        bids: [], asks: [BookLevel(price: 100, quantity: 1)], eventTimeMs: 5)))])
   }
 
-  @Test("币安直连：U 本位拨 dstream 组合流、快照打 fapi；币本位快照打 dapi；现货恒直连 binance.vision")
-  func binanceDirectRoute() async throws {
-    let deck = ReplayDeck([.hang])
-    let server = FakeServer { _ in json(#"{"lastUpdateId":777,"E":1700000000000,"T":1,"bids":[["100","2"]],"asks":[["101","3"]]}"#) }
-    let um = Self.binance(.um, [Self.umPerp, Self.umQuarter], .direct, server: server, deck: deck)
-    let s = try await um.connect(candidate: 0); await s.cancel()
-    let url = try #require(await deck.stats().urls.first)
-    #expect(url.absoluteString == "wss://dstream.binance.me/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade/btcusdt_260925@depth@100ms/btcusdt_260925@aggTrade")
-    let snap = try await um.fetchSnapshot(venueID: Self.umQuarter.id)
-    #expect(snap == BookSnapshot(lastUpdateID: 777, requestedLevels: 1000, bids: [BookLevel(price: 100, quantity: 2)],
-                                 asks: [BookLevel(price: 101, quantity: 3)], eventTimeMs: 1700000000000))
-    let cm = Self.binance(.cm, [Self.cmPerp], .direct, server: server)
-    _ = try await cm.fetchSnapshot(venueID: Self.cmPerp.id)
-    let spot = Self.binance(.spot, [Self.spot], .direct, server: server)
-    #expect(spot.streamURLs.map(\.absoluteString) == ["wss://data-stream.binance.vision/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade"])
-    _ = try await spot.fetchSnapshot(venueID: Self.spot.id)
-    #expect(await server.urls().map(\.absoluteString) == [
-      "https://fapi.binance.com/fapi/v1/depth?limit=1000&symbol=BTCUSDT_260925",
-      "https://dapi.binance.com/dapi/v1/depth?limit=1000&symbol=BTCUSD_PERP",
-      "https://data-api.binance.vision/api/v3/depth?limit=1000&symbol=BTCUSDT",
-    ])
-    await #expect(throws: (any Error).self) { try await um.fetchSnapshot(venueID: "binance:usdtPerp:ETHUSDT") }
+  @Test("线路两档都一样：合约推送拨主机中继 /v1/market/ws/binance、快照打主机 kanpan-api 带 market；现货恒直连 binance.vision")
+  func binanceRouteIgnoresPolicy() async throws {
+    let streams = "btcusdt@depth@100ms/btcusdt@aggTrade/btcusdt_260925@depth@100ms/btcusdt_260925@aggTrade"
+    for policy in [MarketRoutePolicy.direct, .gateway] {
+      let deck = ReplayDeck([.hang])
+      let server = FakeServer { _ in json(#"{"lastUpdateId":777,"E":1700000000000,"T":1,"bids":[["100","2"]],"asks":[["101","3"]]}"#) }
+      let um = Self.binance(.um, [Self.umPerp, Self.umQuarter], policy, server: server, deck: deck)
+      #expect(um.streamURLs.map(\.absoluteString) == ["wss://gw-a.example/v1/market/ws/binance?streams=" + streams], "\(policy)")
+      let s = try await um.connect(candidate: 0); await s.cancel()
+      #expect(await deck.stats().urls.first?.absoluteString == "wss://gw-a.example/v1/market/ws/binance?streams=" + streams)
+      let snap = try await um.fetchSnapshot(venueID: Self.umQuarter.id)
+      #expect(snap == BookSnapshot(lastUpdateID: 777, requestedLevels: 1000, bids: [BookLevel(price: 100, quantity: 2)],
+                                   asks: [BookLevel(price: 101, quantity: 3)], eventTimeMs: 1700000000000))
+      let cm = Self.binance(.cm, [Self.cmPerp], policy, server: server)
+      _ = try await cm.fetchSnapshot(venueID: Self.cmPerp.id)
+      let spot = Self.binance(.spot, [Self.spot], policy, server: server)
+      #expect(spot.streamURLs.map(\.absoluteString) == ["wss://data-stream.binance.vision/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade"])
+      _ = try await spot.fetchSnapshot(venueID: Self.spot.id)
+      #expect(await server.urls().map(\.absoluteString) == [
+        "https://gw-a.example/v1/market/depth?limit=1000&symbol=BTCUSDT_260925&market=um",
+        "https://gw-a.example/v1/market/depth?limit=1000&symbol=BTCUSD_PERP&market=cm",
+        "https://data-api.binance.vision/api/v3/depth?limit=1000&symbol=BTCUSDT",
+      ], "\(policy)")
+      await #expect(throws: (any Error).self) { try await um.fetchSnapshot(venueID: "binance:usdtPerp:ETHUSDT") }
+    }
   }
 
-  @Test("币安网关：合约推送拨中继 /v1/market/ws/binance，快照打 kanpan-api 带 market，主节点 503 就换备用")
-  func binanceGatewayRoute() async throws {
+  @Test("币安中继：主机 503 就报，不去问备用机（备用机没有这几条）")
+  func binanceRelayPrimaryOnly() async throws {
+    let server = FakeServer { _ in json(#"{"error":{"code":"market_upstream_unavailable"}}"#, status: 503, headers: ["Retry-After": "2"]) }
+    let a = Self.binance(.cm, [Self.cmQuarter], .gateway, server: server)
+    await #expect(throws: (any Error).self) { try await a.fetchSnapshot(venueID: Self.cmQuarter.id) }
+    #expect(await server.urls().compactMap(\.host) == ["gw-a.example"])
+  }
+
+  @Test("币安中继：kanpan-api 若有多台，推送与快照按序换下一台")
+  func binanceRelayFailsOverAcrossApiHosts() async throws {
     let deck = ReplayDeck([.hang])
     let server = FakeServer { url in
       url.host == "gw-a.example"
         ? json(#"{"error":{"code":"market_upstream_unavailable"}}"#, status: 503, headers: ["Retry-After": "2"])
         : json(#"{"lastUpdateId":9,"bids":[["100","2"]],"asks":[["101","3"]]}"#)
     }
-    let a = Self.binance(.cm, [Self.cmPerp, Self.cmQuarter], .gateway, server: server, deck: deck)
+    let a = Self.binance(.cm, [Self.cmPerp, Self.cmQuarter], .direct, server: server, deck: deck, api: Self.gateways)
     let s = try await a.connect(candidate: 0); await s.cancel()
     let streams = "btcusd_perp@depth@100ms/btcusd_perp@aggTrade/btcusd_260925@depth@100ms/btcusd_260925@aggTrade"
     #expect(await deck.stats().urls.first?.absoluteString == "wss://gw-a.example/v1/market/ws/binance?streams=" + streams)
@@ -274,8 +286,9 @@ struct OrderFlowAdapterTests {
   ]}
   """#
 
-  static func catalog(_ policy: MarketRoutePolicy, server: FakeServer, gateways: [String] = gateways) -> OrderFlowCatalog {
-    OrderFlowCatalog(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways)),
+  static func catalog(_ policy: MarketRoutePolicy, server: FakeServer, gateways: [String] = gateways,
+                      api: [String]? = nil) -> OrderFlowCatalog {
+    OrderFlowCatalog(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways, api: api)),
                      binanceHosts: hosts, sockets: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
                      http: FakeTransport(server), cache: OrderFlowCatalogCache())
   }
@@ -304,16 +317,24 @@ struct OrderFlowAdapterTests {
     #expect(await server.urls().count == 1)
   }
 
-  @Test("品种表：主网关不通就问备用；都不通给保底三本（币安永续、币安现货、Coinbase）")
+  @Test("品种表：只问主机（备用机没有这条）；kanpan-api 若有多台才按序换；都不通给保底三本（币安永续、币安现货、Coinbase）")
   func catalogFallback() async throws {
     let flaky = FakeServer { url in url.host == "gw-a.example" ? json("{}", status: 502) : json(Self.catalogJSON) }
-    let ok = await Self.catalog(.gateway, server: flaky).books(base: "BTC", nowMs: 1_790_000_000_000)
+    let primaryOnly = await Self.catalog(.gateway, server: flaky).books(base: "BTC", nowMs: 1_790_000_000_000)
+    #expect(!primaryOnly.fromCatalog)
+    #expect(await flaky.urls().compactMap(\.host) == ["gw-a.example"])
+    let ok = await Self.catalog(.gateway, server: flaky, api: Self.gateways).books(base: "BTC", nowMs: 1_790_000_000_000)
     #expect(ok.fromCatalog && ok.books.count == 10)
     let dead = FakeServer { _ in json("oops", status: 500) }
-    let fallback = await Self.catalog(.gateway, server: dead).books(base: "ETH", nowMs: 1)
+    let fallback = await Self.catalog(.gateway, server: dead, api: Self.gateways).books(base: "ETH", nowMs: 1)
     #expect(!fallback.fromCatalog)
     #expect(fallback.books.map(\.id) == ["binance:usdtPerp:ETHUSDT", "binance:spot:ETHUSDT", "coinbase:spot:ETH-USD"])
     #expect(await dead.urls().count == 2)
+    // 两档线路下 OKX 都拨主机中继。
+    for policy in [MarketRoutePolicy.direct, .gateway] {
+      let names = Self.catalog(policy, server: dead).adapters([Self.okxSwap]).map(\.name)
+      #expect(names == ["OKX BTC-USDT-SWAP"], "\(policy)")
+    }
     // 没有网关：OKX 那几本订不了，不给连接。
     let noGateway = Self.catalog(.direct, server: dead, gateways: [])
     #expect(noGateway.adapters([Self.okxSwap, Self.umPerp]).map(\.name) == ["币安U 本位 BTCUSDT"])
@@ -346,6 +367,7 @@ struct OrderFlowAdapterTests {
     #expect((direct as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == false)
     #expect((gateway as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == true)
     #expect((coinbase as? any OrderFlowSourcing)?.orderFlowCatalog.route.gateways == ["gw-a.example"])
+    #expect((coinbase as? any OrderFlowSourcing)?.orderFlowCatalog.route.apiHosts == ["gw-a.example"])
     #expect(direct.orderFlowAdapter(symbol: "BTCUSDT") == nil)
   }
 
