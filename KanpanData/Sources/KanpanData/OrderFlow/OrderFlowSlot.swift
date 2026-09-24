@@ -30,6 +30,8 @@ struct OrderFlowSlot {
   private var overrideKey: String?
   /// 最后一帧：换周期（同一只品种）时直接补给新的 selection，不必重订。
   private(set) var last: OrderFlowSnapshot?
+  /// 图上此刻看的时间范围（品种键, 毫秒）。新起的那条先拿到它，往左补服务端历史、淘汰时优先留可视区都靠它。
+  private var view: (symbol: String, from: Int64, to: Int64)?
 
   /// 开着、在前台、首帧已画、品种事实已到、这只还没在跑，就起一条。起了返回 true。
   mutating func start(symbol: String, foreground: Bool, provider: (any MarketProvider)?,
@@ -42,6 +44,9 @@ struct OrderFlowSlot {
                                    provider: provider, directory: directory, precise: precise, log: log,
                                    sink: { frame in await publish(token, frame) }) else { return false }
     feed = next; self.token = token; last = nil; overrideKey = facts.overrideKey
+    if let view, InstrumentID.canonical(view.symbol) == InstrumentID.canonical(symbol) {
+      Task { await next.setVisibleWindow(fromMs: view.from, toMs: view.to) }
+    }
     Task.detached(priority: .utility) {
       OrderFlowFeed.sweep(directory: directory, nowMs: Int64(Date().timeIntervalSince1970 * 1000))
     }
@@ -59,10 +64,17 @@ struct OrderFlowSlot {
     if after != before { Task { await feed.setOverride(after) } }
   }
 
+  /// 图挪了。正在跑的是这只就推给它；没在跑也记着，起的时候给。
+  mutating func setView(symbol: String, fromMs: Int64, toMs: Int64, current: String) {
+    guard fromMs <= toMs, InstrumentID.canonical(symbol) == InstrumentID.canonical(current) else { return }
+    view = (symbol, fromMs, toMs)
+    if let feed { Task { await feed.setVisibleWindow(fromMs: fromMs, toMs: toMs) } }
+  }
+
   /// 退订并清簿。`forgetChart` 为 true 时连「首帧已画」也清掉（换品种、换线路）。
   /// 原来有一条在跑就返回 true（调用方据此发一帧 nil 清图）。
   mutating func stop(forgetChart: Bool) -> Bool {
-    if forgetChart { chartReady = nil }
+    if forgetChart { chartReady = nil; view = nil }
     guard let dying = feed else { return false }
     feed = nil; token = UUID(); last = nil; overrideKey = nil
     let prior = stopping

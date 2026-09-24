@@ -340,6 +340,25 @@ struct OrderFlowAdapterTests {
     #expect(noGateway.adapters([Self.okxSwap, Self.umPerp]).map(\.name) == ["币安U 本位 BTCUSDT"])
   }
 
+  @Test("服务端历史：带 base/from/to 问主机，解析成一页；主机不通、回了坏数据、别的币的页都当没有")
+  func historyFetch() async throws {
+    let body = #"{"base":"BTC","thresholds":{"spot":1000000.0,"usdtPerp":5000000.0,"coinPerp":5000000.0,"delivery":5000000.0,"step":100.0},"trackedSinceMs":1790256061037,"orders":[{"venueID":"binance:usdtPerp:BTCUSDT","exchange":"币安","product":"usdtPerp","side":"bid","bucket":1123,"price":112300.0,"firstSeenMs":1790256070000,"endMs":1790256130000,"status":"cancelled","initialNotional":6100000.0,"notional":0.0,"filledNotional":0.0,"threshold":5000000.0,"vanishedNotional":6100000.0}]}"#
+    let server = FakeServer { _ in json(body) }
+    let page = try #require(await Self.catalog(.direct, server: server)
+      .history(base: "BTC", fromMs: 1_790_256_000_000, toMs: 1_790_256_200_000))
+    #expect(page.base == "BTC" && page.thresholds.step == 100 && page.trackedSinceMs == 1_790_256_061_037)
+    #expect(page.fromMs == 1_790_256_000_000 && page.toMs == 1_790_256_200_000)
+    #expect(page.orders.map(\.id) == ["binance:usdtPerp:BTCUSDT|bid|1123|1790256070000"])
+    #expect(await server.urls().map(\.absoluteString) ==
+      ["https://gw-a.example/v1/market/orderflow/history?base=BTC&from=1790256000000&to=1790256200000"])
+    let dead = FakeServer { _ in json("oops", status: 503) }
+    #expect(await Self.catalog(.gateway, server: dead, api: Self.gateways).history(base: "BTC", fromMs: 0, toMs: 1) == nil)
+    #expect(await dead.urls().count == 2)
+    let other = FakeServer { _ in json(body) }
+    #expect(await Self.catalog(.direct, server: other).history(base: "ETH", fromMs: 0, toMs: 1) == nil)
+    #expect(await Self.catalog(.direct, server: other).history(base: "BTC", fromMs: 5, toMs: 1) == nil)
+  }
+
   @Test("品种表：看 1000PEPEUSDT 时按 PEPE 查，币安带前缀那行不缩放，其他家乘 1000；保底也按这个口径")
   func catalogScaledBase() async throws {
     let body = #"{"base":"PEPE","asOfMs":1,"venues":[{"exchange":"binance","product":"usdtPerp","instrument":"1000PEPEUSDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.0000001,"priceScale":1000},{"exchange":"okx","product":"usdtPerp","instrument":"PEPE-USDT-SWAP","notional":{"kind":"linear","multiplier":10000000},"tick":0.00000001}]}"#

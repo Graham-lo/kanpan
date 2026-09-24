@@ -81,6 +81,38 @@ public struct OrderFlowCatalog: Sendable {
                  fromCatalog: false)
   }
 
+  // ------------------------------------------------------------------ 服务端历史
+
+  public static let historyPath = "/v1/market/orderflow/history"
+
+  /// 取服务端记下的大单生命周期（`fromMs…toMs`，服务端一次最多 30 天）。`base` 是去掉缩放前缀的币名
+  /// （`OrderFlowBase.normalize` 之后的）。两条线路都查 `MarketRoute.apiHosts`，哪台回了就用哪台；
+  /// 都不通、回了坏数据就是 nil——调用方当它没有，照常只用本地跟到的，不报错、不提示。
+  /// 24 小时一页 BTC 约 1.7 MB（gzip 后），URLSession 自己解压；超时给 15 秒。
+  public func history(base: String, fromMs: Int64, toMs: Int64) async -> OrderFlowHistoryPage? {
+    guard OrderFlowBase.isValid(base), fromMs >= 0, fromMs <= toMs else { return nil }
+    for host in route.apiHosts {
+      guard var c = URLComponents(string: "https://\(host)"), c.host != nil, c.user == nil else { continue }
+      c.path = Self.historyPath
+      c.queryItems = [URLQueryItem(name: "base", value: base),
+                      URLQueryItem(name: "from", value: String(fromMs)),
+                      URLQueryItem(name: "to", value: String(toMs))]
+      guard let url = c.url else { continue }
+      do {
+        let reply = try await http.get(url, timeout: 15)
+        guard (200..<300).contains(reply.status),
+              let page = OrderFlowHistoryPage.parse(reply.body, fromMs: fromMs, toMs: toMs),
+              page.base == base else { continue }
+        return page
+      } catch is CancellationError {
+        return nil
+      } catch {
+        continue
+      }
+    }
+    return nil
+  }
+
   /// 品种表的一行（字段名是和 kanpan-api `orderflow_instruments.rs` 的约定）。
   public struct Row: Sendable, Equatable {
     public var exchange: String

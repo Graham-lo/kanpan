@@ -40,8 +40,12 @@ public struct OrderFlowFacts: Sendable, Equatable {
 ///   每条连接一个 `DepthStream`。某家没有、某条连不上，只是少几本簿。
 /// - 门槛与步长：默认表（`OrderFlowDefaults`）叠用户改过的项（`setOverride`）；表里和用户都没给步长时，
 ///   按前一 UTC 日收盘 × 最小变动价推一个（`BucketScheme.derivedStep`），跨 UTC 日重算。
-/// - 落盘：大单本身（不含簿）按品种记一份小日志（`<目录>/<品种>.json`，结束的最多 500 条、挂着的不删、24 小时），
-///   再打开这只时读回来接着画；不同步。
+/// - 服务端历史（2026-09-24）：kanpan-api 常驻跟踪大单生命周期、存 30 天。读完本地日志就取最近 24 小时并进模型，
+///   之后每分钟取一次增量（从上一页最晚的时刻往前退 5 分钟接着取）；图往左拖到已取区间之外，就 24 小时一段往前补，
+///   最多到 30 天（或服务端开始跟这只的时刻）。取不到就当没有，纯本地照常，不报错、不提示。
+///   合并规则见 `OrderFlowModel.mergeHistory`。
+/// - 落盘：大单本身（不含簿）按品种记一份小日志（`<目录>/<品种>.json`，只存 24 小时、最多 5000 条，约 1 MB），
+///   再打开这只时读回来接着画；更早的每次从服务端取，不落盘；不同步。
 public actor OrderFlowFeed {
   public typealias Sink = @Sendable (OrderFlowSnapshot) async -> Void
   /// 前一 UTC 日收盘。`referenceDayMs` 是那一天 0 点（UTC）。
@@ -52,6 +56,8 @@ public actor OrderFlowFeed {
   public typealias AdapterMaker = @Sendable (_ books: [DepthBook]) -> [any DepthFeedAdapter]
   /// 24h 成交额（美元）。
   public typealias TurnoverLoader = @Sendable () async -> Double?
+  /// 取服务端记下的一段历史（`base` 已去掉缩放前缀）。取不到给 nil。
+  public typealias HistoryLoader = @Sendable (_ base: String, _ fromMs: Int64, _ toMs: Int64) async -> OrderFlowHistoryPage?
 
   /// 每隔多久按簿算一帧（出现、消失的确认要两次评估且相隔 ≥ 300 ms，所以不能比 300 ms 更密）。
   public static let evaluateEveryMs: Double = 500
@@ -60,8 +66,16 @@ public actor OrderFlowFeed {
   /// 画出来一样、只是金额变了的帧最快隔这么久才发一次（图例「主力 买 12.3M」的合计要跟上，
   /// 但不能每拍都发）；十字线停在色块上（`precise` 为真）时不受这一条限制，读数要精确金额。
   public static let amountRefreshMs: Int64 = 5_000
-  /// 大单有变化时隔这么久落一次盘。
-  public static let saveEveryMs: Int64 = 15_000
+  /// 大单有变化时隔这么久落一次盘。日志最多约 1 MB，更早的都在服务端，被杀掉丢的这一分钟下次打开由服务端补回。
+  public static let saveEveryMs: Int64 = 60_000
+  /// 服务端历史：每隔多久取一次增量；增量从上一页最晚时刻往前退多少接着取（服务端挂着的单 15 秒才刷一次库）；
+  /// 一段取多长（首次与往左补都是 24 小时一段）。
+  public static let historyEveryMs: Int64 = 60_000
+  public static let historyOverlapMs: Int64 = 5 * 60_000
+  public static let historySpanMs: Int64 = 86_400_000
+  /// 首次那一页没取到，隔多久再试；往左补的一段没取到，隔多久再试。
+  static let historyRetryMs: Int64 = 10_000
+  static let backfillRetryMs: Int64 = 30_000
 
   public let symbol: String
   public let facts: OrderFlowFacts
@@ -69,6 +83,10 @@ public actor OrderFlowFeed {
   private let makeAdapters: AdapterMaker
   private let loadClose: CloseLoader
   private let loadTurnover: TurnoverLoader
+  private let loadHistory: HistoryLoader
+  private let historyEveryMs: Int64
+  /// 图上一个价格单位是几个币（`1000PEPE` 为 1000）：服务端的价是每个币的价，并进来时要乘它。
+  private let chartScale: Double
   private let file: URL?
   private let pacer: any Pacer
   private let clock: @Sendable () -> Int64
@@ -102,6 +120,24 @@ public actor OrderFlowFeed {
   private var started = false
   private var stopped = false
 
+  // 服务端历史的进度。步长一变模型清空，这几项跟着清、`historyGeneration` 加一，路上那一页回来也不认了。
+  /// 已经并进来的最早时刻（往左补从这里接着往前）；nil 是首次那一页还没取到。
+  private var historyFromMs: Int64?
+  /// 增量从哪儿接着取（上一页最晚的出现 / 结束时刻）。
+  private var historyCursorMs: Int64?
+  /// 服务端从什么时候开始跟这只（封顶 30 天前）：往左补到这里为止。
+  private var historyTrackedSinceMs: Int64?
+  /// 上一次取首次页 / 增量的时刻（不论成败）。
+  private var historyPulledMs: Int64 = .min / 2
+  private var historyRetryAtMs: Int64 = .min / 2
+  private var backfillRetryAtMs: Int64 = .min / 2
+  /// 服务端的步长和本机对不上（用户改过步长）：本机步长还是这个就不再取。
+  private var historyBlockedStep: Double?
+  private var historyGeneration = 0
+  private var historyFetch: Task<Void, Never>?
+  /// 图上此刻看的时间范围（最左 K 线的时刻往前补、淘汰时优先留它）。
+  private var visibleFromMs: Int64?
+
   /// - Parameters:
   ///   - symbol: 品种键（`InstrumentID.canonical`），吐出去的快照带的就是它。
   ///   - override: 用户给这只 base 改过的门槛 / 步长。
@@ -109,6 +145,8 @@ public actor OrderFlowFeed {
   public init(symbol: String, facts: OrderFlowFacts, override: OrderFlowOverride?, directory: URL?,
               loadBooks: @escaping BookLoader, makeAdapters: @escaping AdapterMaker,
               loadClose: @escaping CloseLoader, loadTurnover: @escaping TurnoverLoader = { nil },
+              loadHistory: @escaping HistoryLoader = { _, _, _ in nil },
+              historyEveryMs: Int64 = OrderFlowFeed.historyEveryMs,
               pacer: any Pacer = SystemPacer(),
               clock: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
               evaluateEveryMs: Double = OrderFlowFeed.evaluateEveryMs,
@@ -122,6 +160,9 @@ public actor OrderFlowFeed {
     self.makeAdapters = makeAdapters
     self.loadClose = loadClose
     self.loadTurnover = loadTurnover
+    self.loadHistory = loadHistory
+    self.historyEveryMs = max(historyEveryMs, 1)
+    self.chartScale = OrderFlowBase.normalize(facts.base).scale
     self.file = directory.map { Self.journalFile(in: $0, symbol: symbol) }
     self.pacer = pacer
     self.clock = clock
@@ -146,6 +187,7 @@ public actor OrderFlowFeed {
               makeAdapters: { books in catalog.adapters(books) },
               loadClose: { day in try await Self.previousClose(provider: provider, symbol: symbol, referenceDayMs: day) },
               loadTurnover: { try? await provider.ticker24h(symbol: symbol, timeout: 8).quoteVolume },
+              loadHistory: { base, from, to in await catalog.history(base: base, fromMs: from, toMs: to) },
               precise: precise, log: log, sink: sink)
   }
 
@@ -164,7 +206,7 @@ public actor OrderFlowFeed {
     return directory.appendingPathComponent(safe + ".json")
   }
 
-  /// 清掉目录里 24 小时没动过的日志，以及旧版留下的门槛标定（按上游分的子目录、`.cal`）。
+  /// 清掉目录里 24 小时（`journalRetentionMs`）没动过的日志，以及旧版留下的门槛标定（按上游分的子目录、`.cal`）。
   public static func sweep(directory: URL, nowMs: Int64) {
     let fm = FileManager.default
     let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
@@ -176,7 +218,7 @@ public actor OrderFlowFeed {
         continue
       }
       let modified = values?.contentModificationDate.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
-      if nowMs - modified >= OrderFlowDefaults.retentionMs { try? fm.removeItem(at: item) }
+      if nowMs - modified >= OrderFlowDefaults.journalRetentionMs { try? fm.removeItem(at: item) }
     }
   }
 
@@ -206,6 +248,7 @@ public actor OrderFlowFeed {
       tasks.append(Task { [weak self] in await self?.fetchTurnover() })
     }
     ensureDerivedStep()
+    pumpHistory()
   }
 
   /// 退订并清簿。大单有变化就顺手落盘。
@@ -213,6 +256,7 @@ public actor OrderFlowFeed {
     stopped = true
     frameSink.finish()
     tasks.forEach { $0.cancel() }; tasks = []
+    historyFetch?.cancel(); historyFetch = nil; historyGeneration += 1
     schemeTask?.cancel(); schemeTask = nil
     snapshotTasks.values.forEach { $0.cancel() }; snapshotTasks = [:]
     let dying = streams; streams = []; adapters = []
@@ -225,7 +269,7 @@ public actor OrderFlowFeed {
     guard let file else { return }
     let now = clock()
     guard let journal = (try? Data(contentsOf: file)).flatMap(OrderFlowJournal.decode),
-          journal.symbol == symbol, now - journal.savedAtMs < OrderFlowDefaults.retentionMs else { return }
+          journal.symbol == symbol, now - journal.savedAtMs < OrderFlowDefaults.journalRetentionMs else { return }
     model = OrderFlowModel(symbol: symbol, thresholds: model.thresholds, restored: journal)
   }
 
@@ -241,8 +285,11 @@ public actor OrderFlowFeed {
   private func refreshThresholds() {
     let next = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: derivedStep)
     guard next != model.thresholds else { return }
+    // 步长一变模型整个清空重来：服务端历史也从头取（首次那一页），路上那一页作废。
+    if next.step != model.thresholds.step { resetHistory() }
     model.setThresholds(next)
     lastEmitted = nil  // 门槛一改立刻出一帧，不等心跳
+    pumpHistory()
   }
 
   private func fetchTurnover() async {
@@ -413,6 +460,107 @@ public actor OrderFlowFeed {
     }
   }
 
+  // MARK: - 服务端历史
+
+  /// 图上此刻看的时间范围（`ChartView.onViewChanged`，毫秒）。最左边早于已取到的，就往前补。
+  public func setVisibleWindow(fromMs: Int64, toMs: Int64) {
+    guard fromMs <= toMs else { return }
+    visibleFromMs = fromMs
+    model.setVisibleWindow(fromMs...toMs)
+    pumpHistory()
+  }
+
+  private func resetHistory() {
+    historyFetch?.cancel(); historyFetch = nil
+    historyGeneration += 1
+    historyFromMs = nil; historyCursorMs = nil; historyTrackedSinceMs = nil
+    historyPulledMs = .min / 2; historyRetryAtMs = .min / 2; backfillRetryAtMs = .min / 2
+    historyBlockedStep = nil
+  }
+
+  enum HistoryKind: Sendable { case initial, increment, backfill }
+  struct HistoryJob: Sendable, Equatable {
+    var kind: HistoryKind
+    var fromMs: Int64
+    var toMs: Int64
+  }
+
+  /// 该取哪一页了：首次（最近 24 小时）→ 到点的增量 → 图往左拖出去了就往前补一段。都不该取是 nil。
+  func nextHistoryJob(nowMs now: Int64) -> HistoryJob? {
+    // 还没有步长（按收盘推的那个还在路上）：并不进来，先不取。
+    guard let step = model.thresholds.step else { return nil }
+    if let blocked = historyBlockedStep, blocked == step { return nil }
+    let oldest = now - OrderFlowDefaults.retentionMs
+    guard let cursor = historyCursorMs, let loadedFrom = historyFromMs else {
+      guard now >= historyRetryAtMs else { return nil }
+      return HistoryJob(kind: .initial, fromMs: now - Self.historySpanMs, toMs: now)
+    }
+    if now - historyPulledMs >= historyEveryMs {
+      return HistoryJob(kind: .increment, fromMs: max(oldest, min(cursor, now) - Self.historyOverlapMs), toMs: now)
+    }
+    if let visibleFrom = visibleFromMs, visibleFrom < loadedFrom, now >= backfillRetryAtMs {
+      let floor = max(historyTrackedSinceMs ?? oldest, oldest)
+      guard loadedFrom > floor else { return nil }
+      return HistoryJob(kind: .backfill, fromMs: max(floor, loadedFrom - Self.historySpanMs), toMs: loadedFrom)
+    }
+    return nil
+  }
+
+  /// 有该取的就取（同一时刻只有一页在路上）。每一拍评估、改门槛、图挪了都来问一次，开销只是几个比较。
+  private func pumpHistory() {
+    guard started, !stopped, historyFetch == nil, let job = nextHistoryJob(nowMs: clock()) else { return }
+    let load = loadHistory, base = facts.overrideKey, generation = historyGeneration
+    historyFetch = Task { [weak self] in
+      let page = await load(base, job.fromMs, job.toMs)
+      await self?.historyArrived(page, job: job, generation: generation)
+    }
+  }
+
+  private func historyArrived(_ page: OrderFlowHistoryPage?, job: HistoryJob, generation: Int) {
+    guard generation == historyGeneration, !stopped else { return }
+    historyFetch = nil
+    let now = clock()
+    if job.kind == .increment { historyPulledMs = now }
+    guard let page else {
+      // 服务端不通：纯本地照常。首次那页隔一会儿再试，增量等下一分钟，往前补的一段隔半分钟再试。
+      switch job.kind {
+      case .initial: historyRetryAtMs = now + Self.historyRetryMs
+      case .increment: break
+      case .backfill: backfillRetryAtMs = now + Self.backfillRetryMs
+      }
+      return
+    }
+    historyTrackedSinceMs = page.trackedSinceMs
+    switch model.mergeHistory(page, chartScale: chartScale, nowMs: now) {
+    case .merged:
+      switch job.kind {
+      case .initial:
+        historyFromMs = page.fromMs
+        historyCursorMs = page.latestMs ?? page.toMs
+        historyPulledMs = now
+      case .increment:
+        historyCursorMs = max(historyCursorMs ?? .min, page.latestMs ?? page.fromMs + Self.historyOverlapMs)
+      case .backfill:
+        historyFromMs = min(historyFromMs ?? page.fromMs, page.fromMs)
+      }
+      lastEmitted = nil  // 并进来的马上出一帧
+    case .pending:
+      // 本机步长还没定（取的时候有，回来时没了，只可能是刚被清）：下一拍重来。
+      break
+    case .incompatible:
+      if page.thresholds.step == nil {
+        // 服务端这只刚开始跟、步长还没算出来：过一会儿再问。
+        historyRetryAtMs = now + Self.historyRetryMs
+        backfillRetryAtMs = now + Self.backfillRetryMs
+      } else {
+        // 用户改过步长：服务端按默认步长分的桶对不上，这个步长下只用本地的。
+        historyBlockedStep = model.thresholds.step
+        log("主力订单流 \(symbol)：步长和服务端不同，不并服务端历史")
+      }
+    }
+    pumpHistory()
+  }
+
   // MARK: - 出帧
 
   private func evaluateLoop() async {
@@ -426,6 +574,7 @@ public actor OrderFlowFeed {
     guard !stopped else { return }
     let now = clock()
     escalateStaleResubscribes(nowMs: now)
+    pumpHistory()
     var frame = model.evaluate(nowMs: now)
     frame.defaults = Self.effective(facts: facts, turnover: turnover, override: nil, derivedStep: nil)
     if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
@@ -462,4 +611,5 @@ public actor OrderFlowFeed {
   // MARK: - 测试
 
   func modelForTests() -> OrderFlowModel { model }
+  func historyRangeForTests() -> (from: Int64?, cursor: Int64?) { (historyFromMs, historyCursorMs) }
 }

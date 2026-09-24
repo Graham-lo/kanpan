@@ -177,6 +177,11 @@ public actor RoutedMarketFeed {
     orderFlow.setOverrides(overrides)
     if enabled { startOrderFlow() } else { stopOrderFlow(forgetChart: false) }
   }
+  /// 图上此刻看的时间范围（`ChartView.onViewChanged`，毫秒）：主力订单流往左补服务端历史、淘汰时优先留可视区。
+  /// `symbol` 是这个范围属于哪只（切品种那一拍的旧范围不认）。
+  public func setOrderFlowView(symbol viewed: String, fromMs: Int64, toMs: Int64) {
+    orderFlow.setView(symbol: viewed, fromMs: fromMs, toMs: toMs, current: symbol)
+  }
   private func startOrderFlow() {
     guard orderFlow.start(symbol: symbol, foreground: foreground, provider: activeProvider, paths: paths, log: log,
                           publish: { [weak self] token, frame in await self?.publishOrderFlow(frame, token: token) })
