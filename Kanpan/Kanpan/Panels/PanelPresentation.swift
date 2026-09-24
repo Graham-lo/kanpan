@@ -55,7 +55,7 @@ struct PanelHost<Content: View>: View {
       .presentationDetents([.medium, .large])
       .presentationDragIndicator(.visible)
       .presentationBackground { Color(hex: seed.raised) }
-      .presentationCornerRadius(18)
+      // 圆角交给系统（iOS 26 的 sheet 圆角与屏幕同心），不再手写 18。
       // 背后继续更新；外部触摸由宿主页的 `PanelDismissShield` 接住，只关闭面板。
       .presentationBackgroundInteraction(.enabled(upThrough: .medium))
       // 面板里那张长列表**自己滚**，不许它把面板一路顶到满屏。

@@ -32,8 +32,9 @@ import KanpanCore
 ///   现在这儿只有一行「指标」，右边写着开着哪几个，点进去是面板里推进去的一层
 ///   （`IndicatorPage`），「‹」回到这一页，不关面板。
 /// - **「分享图片」和「发给朋友」并成一行「分享」。** 两者都是「把这张图给别人」，
-///   差别只在对方收到的是一张图还是能在自己图上看的线。点「分享」底下弹一块二选一
-///   （`ShareChooser`）；只有一种能用时（复盘回放里没有「发线」）直接走那一种，不弹。
+///   差别只在对方收到的是一张图还是能在自己图上看的线。点「分享」推进去一层二选一
+///   （`ShareChooser`，2026-09-24 起不再是盖在面板上的第二层遮罩）；只有一种能用时
+///   （复盘回放里没有「发线」）直接走那一种，不推。
 ///   画线页上那颗纸飞机一并撤了：同一个动作只留一个入口。
 ///
 /// 2026-09-24（审查 U4 / U5）：这一页原来十七八行，要滚三屏。现在头一层只放每天会碰的
@@ -64,7 +65,6 @@ struct ChartPanel: View {
   @Environment(\.panelDismiss) private var sideDismiss
   /// 面板里推进去的是哪一层。
   @State private var page: Page = .main
-  @State private var choosingShare = false
 
   private var prefs: Prefs { store.prefs }
 
@@ -82,6 +82,14 @@ struct ChartPanel: View {
       case .more:
         morePage
           .transition(.move(edge: .trailing))
+      case .share:
+        if let onShare, let onSend {
+          ShareChooser(onImage: { close(); onShare() },
+                       onLines: { close(); onSend() },
+                       linesBlocked: sendBlocked,
+                       onBack: { page = .main })
+            .transition(.move(edge: .trailing))
+        }
       case .main:
         settings
           .transition(.move(edge: .leading))
@@ -89,15 +97,6 @@ struct ChartPanel: View {
     }
     .animation(.easeOut(duration: 0.22), value: page)
     .clipped()
-    .overlay {
-      if choosingShare, let onShare, let onSend {
-        ShareChooser(onImage: { choosingShare = false; close(); onShare() },
-                     onLines: { choosingShare = false; close(); onSend() },
-                     linesBlocked: sendBlocked,
-                     onCancel: { choosingShare = false })
-      }
-    }
-    .animation(.easeOut(duration: 0.18), value: choosingShare)
     .sensoryFeedback(.selection, trigger: prefs)
   }
 
@@ -118,14 +117,17 @@ struct ChartPanel: View {
       // 对比 K 线（`Kanpan/Kanpan/Compare/`）：最多三只，颜色跟皮肤色板走，不给选。
       if let onAddCompare {
         PanelGroupTitle(text: "对比")
+        // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶（原来画面上毫无变化）。
         PanelRow(name: "添加对比品种", onTap: { close(); onAddCompare() })
           .disabled(prefs.compareSymbols.count >= 3)
           .accessibilityIdentifier("compare.add")
         ForEach(prefs.compareSymbols, id: \.self) { key in
           PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
-            Button("移除") { store.update { $0.compareSymbols.removeAll { $0 == key } }; close() }
-              .font(PanelFont.meta).foregroundStyle(t.ink2)
-              .accessibilityIdentifier("compare.remove." + key)
+            Button { store.update { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
+              Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("compare.remove." + key)
           }
         }
         if !prefs.compareSymbols.isEmpty {
@@ -138,7 +140,7 @@ struct ChartPanel: View {
       // 分组标题就叫「图上」——原来叫「指标」，底下第一行又叫「指标」，念出来是两遍。
       PanelGroupTitle(text: "图上")
       PanelRow(name: "指标", onTap: { page = .indicators }) {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.s) {
           Text(IndicatorPage.summary(prefs))
             .font(PanelFont.meta).foregroundStyle(t.ink3)
             .lineLimit(1).truncationMode(.tail)
@@ -222,7 +224,7 @@ struct ChartPanel: View {
   }
 
   private var chevron: some View {
-    VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+    VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
   }
 
   /// 只有一种分享能用时直接走那一种，两种都在才弹二选一。
@@ -230,7 +232,7 @@ struct ChartPanel: View {
     switch (onShare, onSend) {
     case (let image?, nil): close(); image()
     case (nil, let send?): close(); send()
-    default: choosingShare = true
+    default: page = .share
     }
   }
 
@@ -247,7 +249,7 @@ struct ChartPanel: View {
     }
   }
 
-  enum Page: Hashable { case main, indicators, more }
+  enum Page: Hashable { case main, indicators, more, share }
 
   // MARK: - 分段选项
 

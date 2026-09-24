@@ -2,7 +2,7 @@ import SwiftUI
 import KanpanCore
 
 /// 四个面板共用的零件：半屏壳、行、分段、开关、分组标题、步进器、脚注、toast。
-/// 尺寸与字号全部照原型 `style.css`，改这里就是改四个面板。
+/// 字号、间距、圆角、命中区一律取 `DesignTokens`（2026-09-24 HIG 整改 P0b），改这里就是改所有面板。
 
 // MARK: - 壳
 
@@ -39,13 +39,14 @@ struct PanelSheet<Content: View>: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(alignment: .center, spacing: 6) {
+      HStack(alignment: .center, spacing: 0) {
         if !asPage {
           Button { if let onBack { onBack() } else { PanelCloser(side: sideDismiss, sheet: dismiss)() } } label: {
             Image(systemName: "chevron.left")
-              .font(.system(size: 17, weight: .semibold))
-              // 描边图标的点击区默认只有笔画本身，补一块 32×32 的矩形，画面不动。
-              .frame(width: 32, height: 32)
+              .font(TypeScale.title)
+              // 箭头的笔画左对齐到正文的 `hPad`，点击区从屏幕边一直撑到 44 以外，画面不动。
+              .padding(.leading, PanelMetrics.hPad)
+              .frame(minWidth: Hit.min + Space.xs, minHeight: Hit.min, alignment: .leading)
               .contentShape(Rectangle())
           }
           .foregroundStyle(t.amber)
@@ -54,7 +55,7 @@ struct PanelSheet<Content: View>: View {
           .accessibilityIdentifier("panel.done")
         }
 
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s) {
           Text(title).font(PanelFont.title).foregroundStyle(t.ink)
             .accessibilityIdentifier("panel.header")
           if let subtitle {
@@ -65,25 +66,24 @@ struct PanelSheet<Content: View>: View {
         if let action {
           Button(action: action.run) {
             Text(action.title).font(PanelFont.title).foregroundStyle(t.amber)
-              .frame(minHeight: 32)
-              .contentShape(Rectangle())
+              .hitTarget()
           }
           .buttonStyle(.plain)
           .accessibilityIdentifier(action.id)
         }
       }
-      // 图标自带 7pt 视觉留白，左边对齐到和正文一样的 `hPad`；整页模式下没有图标，
-      // 标题自己顶上去，直接用 `hPad`。
-      .padding(.leading, asPage ? PanelMetrics.hPad : PanelMetrics.hPad - 7)
+      // 「‹」自己带着 `hPad` 的左留白（点击区要贴到屏幕边）；整页模式下没有它，
+      // 标题直接用 `hPad`。标题行至少 44 高，有没有「‹」都一样高。
+      .frame(minHeight: Hit.min)
+      .padding(.leading, asPage ? PanelMetrics.hPad : 0)
       .padding(.trailing, PanelMetrics.hPad)
-      .padding(.top, 13)
-      .padding(.bottom, 10)
+      .padding(.vertical, Space.xs)
       .overlay(alignment: .bottom) { Rectangle().fill(t.line).frame(height: 1) }
 
       ScrollView {
         VStack(spacing: 0) { content() }
-          .padding(.top, 4)
-          .padding(.bottom, 10)
+          .padding(.top, Space.xs)
+          .padding(.bottom, Space.l)
       }
       .scrollBounceBehavior(.basedOnSize)
       .accessibilityIdentifier("panel.content")
@@ -117,19 +117,17 @@ struct PanelRow<Trailing: View>: View {
   @ViewBuilder var trailing: () -> Trailing
 
   @Environment(\.panelTheme) private var t
+  /// 外面 `.disabled(...)` 了这一行（如对比满三只时的「添加对比品种」），名字换成禁用色阶。
+  @Environment(\.isEnabled) private var enabled
 
   var body: some View {
     let row = HStack(spacing: PanelMetrics.rowGap) {
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 4) {
-          if let swatch {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-              .fill(swatch)
-              .frame(width: 9, height: 9)
-          }
+      VStack(alignment: .leading, spacing: Space.xxs) {
+        HStack(spacing: Space.xs) {
+          if let swatch { PanelSwatch(color: swatch) }
           Text(name)
             .font(PanelFont.name)
-            .foregroundStyle(highlighted ? t.amber : t.ink)
+            .foregroundStyle(!enabled ? PanelDisabled.ink(t) : highlighted ? t.amber : t.ink)
         }
         if let meta {
           Text(meta).font(PanelFont.meta).foregroundStyle(t.ink3)
@@ -140,6 +138,7 @@ struct PanelRow<Trailing: View>: View {
     }
     .padding(.horizontal, PanelMetrics.hPad)
     .padding(.vertical, PanelMetrics.vPad)
+    .frame(minHeight: Inset.rowMin)
     .contentShape(Rectangle())
     .overlay(alignment: .bottom) {
       if divider { Rectangle().fill(t.hair).frame(height: 1) }
@@ -163,6 +162,36 @@ extension PanelRow where Trailing == EmptyView {
               divider: divider, onTap: onTap, onLongPress: onLongPress,
               trailing: { EmptyView() })
   }
+}
+
+/// 名字前面那颗指标色块（行里、「正在用」列表里同一个尺寸）。
+struct PanelSwatch: View {
+  var color: Color
+  var body: some View {
+    RoundedRectangle(cornerRadius: Space.xxs, style: .continuous)
+      .fill(color)
+      .frame(width: Space.s, height: Space.s)
+  }
+}
+
+extension View {
+  /// 行尾控件（字按钮、开关、分段）的命中区：撑到 44×44——正好一整行高——但只向布局报告
+  /// 行里正文那么高，所以行不会因此变高。只用在 `PanelRow` 的 trailing 里（它上下各留 `vPad`）。
+  func rowHitTarget() -> some View {
+    hitTarget().padding(.vertical, -PanelMetrics.vPad)
+  }
+}
+
+/// 面板里禁用态的颜色。
+///
+/// 审查量过：「加提醒」「分享卡」「清空全部画线」原来是整块 `opacity(0.4)`，文字与底色只剩
+/// 1.05–1.6:1，看上去像没画出来。现在字一律不靠透明度淡化：禁用的字换成 `ink3`（三套皮肤、
+/// 深浅色下对 `raised`／`raised2` 最差 3.5:1），强调色的底换成中性的 `raised2`，
+/// 只有纯装饰（图标、色块）才乘 `ControlMetrics.disabledOpacity`。
+enum PanelDisabled {
+  /// 主按钮（琥珀底）禁用时的底色与字色。
+  static func fill(_ t: PanelTheme) -> Color { t.raised2 }
+  static func ink(_ t: PanelTheme) -> Color { t.ink3 }
 }
 
 /// 有就挂上，没有就什么都不做——省得每处写一遍 `if let`。
@@ -196,30 +225,40 @@ struct PanelSegment<Value: Hashable>: View {
   @Environment(\.panelTheme) private var t
 
   var body: some View {
-    HStack(spacing: 2) {
+    // 画面上是一条 32 高的槽（28 的档 + 上下各 2），但每一档的点击区是 44 高、撑满整行；
+    // 多出来的那截用负边距还给布局，行高仍是 44。
+    HStack(spacing: Space.xxs) {
       ForEach(options, id: \.1) { text, value in
         let on = value == selection
         Button { pick(value) } label: {
           Text(text)
             .font(PanelFont.seg)
             .foregroundStyle(on ? t.ink : t.ink2)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, Space.m)
+            .frame(minHeight: ControlMetrics.pillHeight)
             .background {
               if on {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: Radius.concentric(outer: Radius.s, padding: Space.xxs),
+                                 style: .continuous)
                   .fill(t.segOn)
                   .shadow(color: .black.opacity(0.09), radius: 1, y: 1)
               }
             }
+            .frame(minHeight: Hit.min)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id.map { "\($0).\(text)" } ?? "")
         .accessibilityAddTraits(on ? [.isSelected] : [])
       }
     }
-    .padding(2)
-    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.raised2))
+    .padding(.horizontal, Space.xxs)
+    .background {
+      RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
+        .fill(t.raised2)
+        .padding(.vertical, (Hit.min - ControlMetrics.pillHeight) / 2 - Space.xxs)
+    }
+    .padding(.vertical, -PanelMetrics.vPad)
   }
 }
 
@@ -244,6 +283,7 @@ struct PanelSwitch: View {
       }
       .frame(width: 44, height: 26)
       .animation(.easeOut(duration: 0.18), value: isOn)
+      .rowHitTarget()
     }
     .buttonStyle(.plain)
     .accessibilityAddTraits(.isButton)
@@ -265,8 +305,8 @@ struct PanelGroupTitle: View {
       .foregroundStyle(t.ink3)
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, PanelMetrics.hPad)
-      .padding(.top, 14)
-      .padding(.bottom, 6)
+      .padding(.top, Space.xl)
+      .padding(.bottom, Space.s)
   }
 }
 
