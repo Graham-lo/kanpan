@@ -43,7 +43,8 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
     // `fmtPrice` 而不是 `fmtNum`：0.0000004 这种合法极小价按通常位数
     // 四舍五入会变成 `0.00`，那是在说「这个东西不值钱」（审查 B-07）。
     // 占位行没有精度可言（目录里查不到），`displayDecimals` 会按这口价自己猜。
-    return fmtPrice(t.last, decimals: info.displayDecimals(for: t.last))
+    // 千分位（UI 审查 2026-09-24 §2.6：搜索页与品种整页的价格原来没有，自选页有）。
+    return grouped(fmtPrice(t.last, decimals: info.displayDecimals(for: t.last)))
   }
 
   /// 这一行还有没有实时价可言。没有的时候界面按「旧值」渲染（灰掉），

@@ -56,6 +56,9 @@ struct FavoritesView: View {
   /// 和行情页顶栏放大镜用的是同一个）。加自选统一在搜索页做（用户 2026-09-18 定的），
   /// 不用先跳回行情页；整页那颗返回原路退回搜索页。
   @State private var search = SymbolSearchFlow()
+  /// 分类格里那行字此刻真的排成多大：15 按 `.subheadline` 的曲线缩放（和 `.scaled(15, .medium)`
+  /// 挑的是同一条），并且吃得到根上 `.xxxLarge` 的封顶。量格宽用它，见 `tabWidth`。
+  @ScaledMetric(relativeTo: .subheadline) private var tabTextSize: CGFloat = 15
   @State private var more = false
   @State private var sorting = false
   @State private var afterMore: (() -> Void)?
@@ -350,8 +353,10 @@ struct FavoritesView: View {
       }
       groupStrip
     }
-    .padding(.horizontal, 12)
-    .padding(.bottom, 2)
+    // 左右边距跟页面走（`Inset.page`：16 Pro 16、Pro Max 20），和下面的排序行、每一行的徽章
+    // 站在同一条竖线上（UI 审查 2026-09-24：这一页原来有 12 / 22 / 19 三条左竖线）。
+    .pageHorizontalInset()
+    .padding(.bottom, Space.xxs)
     // 那行状态小字撤掉了，但 UI 测试要从 `favorites.feed` 上读调色板与行情线路的
     // 诊断串（它只在辅助功能树里，界面上看不见），所以把这个标识挂到整条头部上。
     .accessibilityElement(children: .contain)
@@ -366,12 +371,13 @@ struct FavoritesView: View {
   /// 这里能搜。里面不放真的输入框——真输入框会在这一页起键盘，搜索页那边还要再起一次。
   private var searchField: some View {
     Button { search.openSearch() } label: {
-      HStack(spacing: 7) {
-        VectorIcon.search(16).foregroundStyle(theme.ink3)
-        Text("搜索品种").font(.scaled(15)).foregroundStyle(theme.ink3)
+      // 放大镜、字号、内边距和搜索页那条真框（`SymbolSearchField`）一样，点进去框不跳。
+      HStack(spacing: Space.s) {
+        VectorIcon.search(SymbolSearchField.iconSize).foregroundStyle(theme.ink3)
+        Text("搜索品种").font(TypeScale.body).foregroundStyle(theme.ink3)
         Spacer(minLength: 0)
       }
-      .padding(.horizontal, 15)
+      .padding(.horizontal, SymbolSearchField.hPad)
       .frame(maxWidth: .infinity).frame(height: 42)
       .background(skin.glassThin, in: Capsule())
       .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
@@ -429,11 +435,16 @@ struct FavoritesView: View {
 
   // MARK: - 分类分段器
 
-  /// 一格分类占多宽：15 的名字 + 左右各 19 的内边。
+  /// 一格分类占多宽：名字 + 左右各 19 的内边，72–150 之间。
+  ///
+  /// 原来拿不缩放的 15pt 量宽、字却是 `.scaled(15)` 排的：系统字号一调大，格子还是按 15 算的宽，
+  /// 名字就被截成「自…选」（UI 审查 2026-09-24 §3.3 的 bug）。现在量宽和排字用同一个字号
+  /// （`tabTextSize`，做法同 `IntervalBar.textWidth`），上下限也跟着字号一起放大。
   private func tabWidth(_ group: FavoriteGroup) -> CGFloat {
-    let text = (group.name as NSString)
-      .size(withAttributes: [.font: UIFont.systemFont(ofSize: 15, weight: .medium)]).width
-    return min(150, max(72, text + 38))
+    let font = UIFont.systemFont(ofSize: tabTextSize, weight: .medium)
+    let text = ceil((group.name as NSString).size(withAttributes: [.font: font]).width)
+    let scale = tabTextSize / 15
+    return min(150 * scale, max(72 * scale, text + 38))
   }
 
   /// 分类文件夹：一条能横向滚的玻璃分段器。
@@ -484,7 +495,7 @@ struct FavoritesView: View {
     return Button { select(id) } label: {
       // 名字后面原来还挂着一个上标的数量，用户 2026-09-18 让去掉——数量在列表上面
       // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
-      Text(title).font(.scaled(15, .medium))
+      Text(title).font(.system(size: tabTextSize, weight: .medium))
         .lineLimit(1).truncationMode(.middle)
         // 压在强调色上的字一律走 `badgeInk`：浅色下它就是 `#FFFFFF`（和原来的
         // `Color.white` 一个值，这一页的定稿基准图一个像素不变），深色下换成近黑的
@@ -541,10 +552,10 @@ struct FavoritesView: View {
     let x = min(max(10, rect.maxX - width), max(10, proxy.size.width - width - 10))
     return content()
       .frame(width: width)
-      .background(theme.app, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-      .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(skin.edgeSoft, lineWidth: 0.5))
+      .background(theme.app, in: RoundedRectangle(cornerRadius: Radius.l, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: Radius.l, style: .continuous).strokeBorder(skin.edgeSoft, lineWidth: 0.5))
       .shadow(color: .black.opacity(0.14), radius: 20, y: 10)
-      .offset(x: x, y: rect.maxY + 8)
+      .offset(x: x, y: rect.maxY + Space.s)
       .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
   }
 
@@ -557,8 +568,8 @@ struct FavoritesView: View {
   private func moreRow(_ title: String, icon: String, id: String, destructive: Bool = false,
                        action: @escaping () -> Void) -> some View {
     Button { runMore(action) } label: {
-      Label(title, systemImage: icon).frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-        .padding(.horizontal, 16).contentShape(Rectangle())
+      Label(title, systemImage: icon).frame(maxWidth: .infinity, minHeight: Hit.min, alignment: .leading)
+        .padding(.horizontal, Inset.card).contentShape(Rectangle())
     }.buttonStyle(.plain).foregroundStyle(destructive ? theme.danger : theme.ink)
       .accessibilityIdentifier(id)
   }
@@ -577,7 +588,7 @@ struct FavoritesView: View {
       if let group = deletableGroup {
         moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { Haptics.warning(); model.deleteGroup(group.id) }
       }
-    }.padding(.vertical, 6).font(.scaled(14))
+    }.padding(.vertical, Space.s).font(TypeScale.body)
   }
 
   /// 菜单里那颗「删除当前分类」删的是哪一类。只剩一类（首装加第一个品种就是这样）时是
@@ -596,19 +607,21 @@ struct FavoritesView: View {
 
   private var sortBar: some View {
     HStack(spacing: 0) {
-      Text("\(symbols.count) 个品种").font(.scaled(10.5)).foregroundStyle(skin.ink4)
+      Text("\(symbols.count) 个品种").font(TypeScale.caption2).foregroundStyle(skin.ink4)
       Spacer(minLength: 0)
       Button { sorting = true } label: {
-        HStack(spacing: 4) {
-          Text(sortTitle).font(.scaled(11)).foregroundStyle(theme.ink3)
+        HStack(spacing: Space.xs) {
+          Text(sortTitle).font(TypeScale.caption2).foregroundStyle(theme.ink3)
           Image(systemName: sort == "custom" ? "arrow.up.arrow.down"
                 : (ascending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill"))
             .font(.system(size: 7)).foregroundStyle(theme.amber)
-        }.frame(height: 28).contentShape(Rectangle())
+        }
+        // 点击区 44（原来 28）。整行也就 44 高，比原来的 10 + 28 + 4 还矮两点，字的位置不动。
+        .hitTarget()
       }.buttonStyle(.plain).disabled(editing)
         .accessibilityLabel("排序方式").accessibilityIdentifier("favorites.sort")
         .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["sort": $0] }
-    }.padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 4)
+    }.pageHorizontalInset()
   }
 
   private var sortTitle: String {
@@ -633,7 +646,7 @@ struct FavoritesView: View {
       // 一条提醒都没有的时候这一档没有意义（整张表都是「—」），干脆不出现——
       // 它是跟着「加入提醒」长出来的入口，不是一个要先看懂才知道选不选的选项。
       if !alerts.isEmpty { sortItem("离提醒线最近", key: alertSortKey) }
-    }.padding(.vertical, 6).font(.scaled(14))
+    }.padding(.vertical, Space.s).font(TypeScale.body)
   }
 
   private func sortItem(_ title: String, key: String, useAmount: Bool? = nil) -> some View {
@@ -643,15 +656,15 @@ struct FavoritesView: View {
       applySort(key)
       sorting = false
     } label: {
-      HStack(spacing: 8) {
+      HStack(spacing: Space.s) {
         Text(title)
         Spacer(minLength: 0)
         if current {
           Image(systemName: ascending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
             .font(.system(size: 8)).foregroundStyle(theme.amber)
         }
-      }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .padding(.horizontal, 16).contentShape(Rectangle())
+      }.frame(maxWidth: .infinity, minHeight: Hit.min, alignment: .leading)
+        .padding(.horizontal, Inset.card).contentShape(Rectangle())
     }.buttonStyle(.plain).foregroundStyle(current ? theme.amber : theme.ink)
   }
 
@@ -1030,79 +1043,38 @@ struct FavoritesView: View {
     let value = ticker?.changePercent ?? .nan
     let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
     let nearestAlertText = alertDistanceText(symbol)
-    return HStack(spacing: 10) {
-      HStack(spacing: 10) {
-        badge(base)
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Text(base).font(.scaled(13.5, .semibold)).foregroundStyle(theme.ink)
-            Text(quoteLabel(symbol)).font(.scaled(9)).foregroundStyle(skin.ink4)
-            if NewListingMark.shows(info) {
-              NewListingMark(symbol: symbol, accent: skin.accent).padding(.leading, 2)
-            }
-          }.lineLimit(1).minimumScaleFactor(0.75)
-          // 按「离提醒线最近」排的时候，这一行让位给距离；这个品种没有在等的线就空着，
-          // 不写「—」也不解释——空白本身就说明它不在这张单子上（只答远近，不答方向）。
-          if sort == alertSortKey {
-            Text(nearestAlertText ?? " ")
-              .font(.scaled(10)).monospacedDigit()
-              .foregroundStyle(nearestAlertText == nil ? .clear : theme.amber)
-              .lineLimit(1).minimumScaleFactor(0.8)
-          } else {
-            // 写全称（2026-09-24 审查 6.4）：单字「额 / 幅」要猜。「幅」这里是 24h 振幅
-            // （`amplitude24h`），不是涨跌幅——涨跌已经在右边那格，所以写「振幅」，和顶栏一个叫法。
-            Text("成交额 " + volumeText + "  ·  振幅 " + amplitudeText)
-              .font(.scaled(10)).monospacedDigit().foregroundStyle(theme.ink3)
-              .lineLimit(1).minimumScaleFactor(0.8)
-          }
-        }.frame(maxWidth: .infinity, alignment: .leading)
-        if !editing, sparkline {
-          Sparkline(values: sparkValues(symbol), color: trend)
-            .frame(width: 44, height: 24)
-        }
-        quote(symbol)
-      }.contentShape(Rectangle())
-        .onTapGesture { selectOrOpen(symbol) }
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("favorites.open." + symbol)
-        .accessibilityAction { selectOrOpen(symbol) }
-    }
-    // 没有纸之后行的左右内边距放宽到 20pt 上下，徽章和「自选」标题、分类段对齐同一条竖线。
-    .padding(.leading, 19).padding(.trailing, 20)
-    .frame(height: 66)
-    .overlay(alignment: .top) {
-      if !first {
-        LinearGradient(colors: [.clear, skin.rule, skin.rule, .clear],
-                       startPoint: .leading, endPoint: .trailing)
-          .frame(height: 0.5).padding(.horizontal, 20)
+    let quote = quoteParts(symbol)
+    // 行本身（徽章、字号、药丸、左右边距、发丝线）是和板块内品种表共用的 `LiuliSymbolRow`
+    // （UI 审查 2026-09-24：两份手抄已经漂开）。这一页只管往里填什么。
+    return LiuliSymbolRow(
+      symbol: symbol, base: base, quote: quoteLabel(symbol),
+      asset: info.map { SymbolClassifier.classify($0).asset },
+      isNew: NewListingMark.shows(info), first: first,
+      priceText: quote.priceText, priceInk: quote.priceInk, priceSkeleton: quote.skeleton,
+      priceID: "favorites.price." + symbol,
+      change: quote.change, changeText: quote.changeText, changePending: !stale,
+      changeID: "favorites.change." + symbol,
+      openID: "favorites.open." + symbol,
+      onOpen: { selectOrOpen(symbol) }
+    ) {
+      // 按「离提醒线最近」排的时候，这一行让位给距离；这个品种没有在等的线就空着，
+      // 不写「—」也不解释——空白本身就说明它不在这张单子上（只答远近，不答方向）。
+      if sort == alertSortKey {
+        Text(nearestAlertText ?? " ")
+          .foregroundStyle(nearestAlertText == nil ? .clear : theme.amber)
+      } else {
+        // 写全称（2026-09-24 审查 6.4）：单字「额 / 幅」要猜。「幅」这里是 24h 振幅
+        // （`amplitude24h`），不是涨跌幅——涨跌已经在右边那格，所以写「振幅」，和顶栏一个叫法。
+        Text("成交额 " + volumeText + SymbolRowText.separator + "振幅 " + amplitudeText)
+          .foregroundStyle(theme.ink3)
+      }
+    } accessory: {
+      if !editing, sparkline {
+        Sparkline(values: sparkValues(symbol), color: trend)
+          .frame(width: 44, height: 24)
       }
     }
-  }
-
-  /// 徽章：背后一团品牌色的光晕，外面一圈捕光环。
-  private func badge(_ base: String) -> some View {
-    let spec = CoinSpec.of(base)
-    let brand = BadgeTint.gradient(from: spec.from, to: spec.to, seed: theme.seed).bottom
-    return ZStack {
-      RadialGradient(colors: [brand.opacity(skin.dark ? 0.34 : 0.2), brand.opacity(0)],
-                     center: .center, startRadius: 2, endRadius: 24)
-        .frame(width: 48, height: 48)
-      CoinBadge(base: base, size: 33)
-        .overlay {
-          RoundedRectangle(cornerRadius: 13.7, style: .continuous)
-            .strokeBorder(AngularGradient(
-              gradient: Gradient(stops: [
-                .init(color: brand, location: 0),
-                .init(color: brand.opacity(0.2), location: 0.3),
-                .init(color: brand, location: 0.55),
-                .init(color: brand.opacity(0.15), location: 0.83),
-                .init(color: brand, location: 1)]),
-              center: .center, angle: .degrees(210)), lineWidth: 1)
-            .opacity(skin.dark ? 0.6 : 0.55)
-            .padding(-3.5)
-        }
-    }.frame(width: 33, height: 33)
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.32), value: displayQuote(symbol) != nil)
   }
 
   /// 走势线取的是详情那条历史订阅里的分钟线，不另开请求。
@@ -1115,80 +1087,30 @@ struct FavoritesView: View {
     return picked
   }
 
-  private func quote(_ symbol: String) -> some View {
+  /// 右边那一列要填的东西：价、价的墨色、要不要骨架、涨跌（幅或额）。
+  private func quoteParts(_ symbol: String)
+    -> (priceText: String, priceInk: Color, skeleton: Bool, change: Double, changeText: String) {
     let ticker = displayQuote(symbol)
     let info = model.info(for: symbol)
     // 和 `row(_:first:)` 同一个判据（审查 B-06 / 复核项 4）。
     let stale = !model.listing(of: symbol).hasLivePrice
     let price = ticker?.last ?? .nan
     // 小数位由品种自己说（`priceDecimals`，按 `tickSize` 推）。目录里没有这个代号时走全 app 唯一那把
-    // 梯子，不再在这一页写死 2 位（审查 B-07）。
+    // 梯子，不再在这一页写死 2 位（审查 B-07）。`fmtPrice` 而不是 `fmtNum`：0.0000004 这种
+    // 合法极小价按 2 位四舍五入会写成 `0.00`，那等于说这东西不值钱。
     let decimals = info?.displayDecimals(for: price) ?? priceDecimalsFallback(price)
     let value: Double = stale ? .nan : (ticker?.changePercent ?? .nan)
     let change = amount && value.isFinite && price.isFinite && value > -100 ? price - price / (1 + value / 100) : value
-    // `fmtPrice` 而不是 `fmtNum`：0.0000004 这种合法极小价按 2 位四舍五入会写成
-    // `0.00`，那等于说这东西不值钱（审查 B-07）。
-    let priceText = price.isFinite ? grouped(fmtPrice(price, decimals: decimals)) : "—"
-    let tint = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
+    // 骨架块只表示「还在路上」。已下架 / 还没开盘的行不摆骨架，摆「—」，
+    // 否则那块灰底会永远亮着，读起来像永远加载不完。
+    let skeleton = !price.isFinite && !stale
     // 没有实时价时最后那口真价照旧摆着，只是退成次要文字色——不加标签、不弹窗。
-    let priceInk: Color = stale ? skin.ink4 : (price.isFinite ? theme.ink : .clear)
-    // 还没到的涨跌幅和还没到的价格用同一种骨架：一块底色，不写字。
-    // 写「—」会让人以为这个品种没有涨跌幅，而不是还在路上。
-    // 涨跌幅走全 app 唯一那把 `changePercentText`（审查 U9）：前面有小三角，数字只写绝对值；
-    // 读屏没有三角可看，念带符号的那一种。
-    let changeText = amount ? (change.isFinite ? toFixed(abs(change), decimals) : "—")
-      : changePercentText(change, arrow: true)
-    let signed = amount ? (change.isFinite ? (change < 0 ? "\u{2212}" : "+") + changeText : "—")
+    let priceInk: Color = stale ? skin.ink4 : theme.ink
+    // 涨跌一律带「+ / −」（UI 审查 2026-09-24：全 app 跌幅一种写法，不再用小三角说方向）。
+    // 还没到的涨跌和还没到的价格用同一种骨架：药丸只剩一块底，不写字。
+    let changeText = amount ? SymbolRowText.signedAmount(change, decimals: decimals)
       : changePercentText(change)
-    return VStack(alignment: .trailing, spacing: 5) {
-      Text(priceText)
-        .font(.scaled(15.5, .medium)).monospacedDigit()
-        .lineLimit(1).minimumScaleFactor(0.7)
-        .foregroundStyle(priceInk)
-        .overlay(alignment: .trailing) {
-          // 骨架块只表示「还在路上」。已下架 / 还没开盘的行不摆骨架，摆「—」，
-          // 否则那块灰底会永远亮着，读起来像永远加载不完。
-          if !price.isFinite, !stale {
-            RoundedRectangle(cornerRadius: 4).fill(skin.rule).frame(width: 70, height: 13)
-              .accessibilityHidden(true)
-          }
-        }.accessibilityIdentifier("favorites.price." + symbol)
-      HStack(spacing: 4) {
-        if change.isFinite {
-          Triangle(up: change >= 0).fill(tint).frame(width: 6, height: 5)
-            .accessibilityHidden(true)
-        }
-        Text(changeText)
-          .font(.scaled(11, .semibold)).monospacedDigit()
-          .foregroundStyle(change.isFinite ? tint : (stale ? skin.ink4 : .clear))
-          .accessibilityLabel(signed)
-          .accessibilityIdentifier("favorites.change." + symbol)
-      }
-      .padding(.horizontal, 7).frame(minHeight: 19).frame(minWidth: 54)
-      .background {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-          .fill(change.isFinite ? tint.opacity(0.14) : skin.rule)
-          .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .strokeBorder(change.isFinite ? tint.opacity(0.3) : .clear, lineWidth: 0.5))
-      }
-    }.frame(minWidth: 86, alignment: .trailing)
-      .animation(reduceMotion ? nil : .easeOut(duration: 0.32), value: ticker != nil)
-  }
-
-  /// 价格千分位。`fmtNum` 只管小数位，逗号在这儿补。
-  private func grouped(_ text: String) -> String {
-    let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-    var head = String(parts[0])
-    let negative = head.hasPrefix("-")
-    if negative { head.removeFirst() }
-    guard head.count > 3 else { return text }
-    var out = ""
-    for (index, character) in head.reversed().enumerated() {
-      if index > 0, index % 3 == 0 { out.append(",") }
-      out.append(character)
-    }
-    let body = (negative ? "-" : "") + String(out.reversed())
-    return parts.count > 1 ? body + "." + parts[1] : body
+    return (SymbolRowText.price(price, decimals: decimals), priceInk, skeleton, change, changeText)
   }
 
   // MARK: - 近 N 小时涨跌
@@ -1274,25 +1196,25 @@ struct FavoritesView: View {
   // MARK: - 空自选
 
   private var emptyState: some View {
-    VStack(spacing: 10) {
+    VStack(spacing: Space.m) {
       Spacer(minLength: 0)
       Image(systemName: "plus")
         .font(.system(size: 17, weight: .medium)).foregroundStyle(skin.accent)
-        .frame(width: 44, height: 44)
-        .background(skin.glassThin, in: RoundedRectangle(cornerRadius: 13.6, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 13.6, style: .continuous)
+        .frame(width: Hit.min, height: Hit.min)
+        .background(skin.glassThin, in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
           .strokeBorder(skin.accent.opacity(0.35), lineWidth: 1))
-      Text("还没有自选").font(skin.serif(15.5)).foregroundStyle(theme.ink).padding(.top, 2)
+      Text("还没有自选").font(skin.serif(TypeScale.body.size)).foregroundStyle(theme.ink)
       Button { search.openSearch() } label: {
-        Text("添加品种").font(.scaled(13, .semibold)).foregroundStyle(theme.badgeInk)
-          .frame(height: 36).padding(.horizontal, 20)
-          .background(skin.accentGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        Text("添加品种").font(TypeScale.controlOn).foregroundStyle(theme.badgeInk)
+          .frame(height: Hit.min).padding(.horizontal, Space.xl)
+          .background(skin.accentGradient, in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
           .overlay(alignment: .top) { skin.topHighlight(inset: 8) }
           .shadow(color: skin.accent.opacity(0.4), radius: 10, x: 0, y: 6)
-      }.buttonStyle(.plain).padding(.top, 8)
+      }.buttonStyle(.plain).padding(.top, Space.s)
       Spacer(minLength: 0)
     }.frame(maxWidth: .infinity, maxHeight: .infinity)
-      .padding(.top, 6).padding(.bottom, 8)
+      .padding(.top, Space.s).padding(.bottom, Space.s)
   }
 }
 
@@ -1494,24 +1416,6 @@ private struct Sparkline: View {
       path.addLine(to: CGPoint(x: points[0].x, y: bottom))
       path.closeSubpath()
     }
-    return path
-  }
-}
-
-private struct Triangle: Shape {
-  let up: Bool
-  func path(in rect: CGRect) -> Path {
-    var path = Path()
-    if up {
-      path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-      path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-    } else {
-      path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-      path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-    }
-    path.closeSubpath()
     return path
   }
 }

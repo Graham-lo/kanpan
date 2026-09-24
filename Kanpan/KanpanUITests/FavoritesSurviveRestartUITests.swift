@@ -40,11 +40,11 @@ final class FavoritesSurviveRestartUITests: KanpanUICase {
     XCTAssertTrue(app.openFavorites(), "没进到自选页")
     for symbol in ["ETHUSDT", "SOLUSDT", "DOGEUSDT"] { addFavorite(symbol) }
 
-    // 删：右滑出「取消自选」再点
+    // 删：左滑出「取消自选」再点（右滑 2026-09-24 起不响应，见 4f400127）
     let sol = row("SOLUSDT")
-    sol.swipeRight()
+    sol.swipeLeft()
     let remove = app.buttons["取消自选"]
-    XCTAssertTrue(remove.waitForExistence(timeout: 5), "右滑没出「取消自选」")
+    XCTAssertTrue(remove.waitForExistence(timeout: 5), "左滑没出「取消自选」")
     remove.tap()
     XCTAssertTrue(waitUntil(timeout: 5) { !sol.exists }, "SOLUSDT 删不掉")
 

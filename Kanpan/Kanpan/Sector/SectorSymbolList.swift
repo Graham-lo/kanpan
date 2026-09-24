@@ -3,9 +3,9 @@ import KanpanCore
 
 /// 第二层：某一个板块里的品种。
 ///
-/// 视觉照抄自选页（`FavoritesView.row(_:first:)`）——同样的 66 高、同样的徽章、
-/// 同样的两端渐隐发丝线、同样的价格与涨跌药丸。用户点过名：这儿要的是自选页那张
-/// 列表，不是浮在板块页上的胶囊卡片。
+/// 视觉就是自选页那一行——现在是同一个 `LiuliSymbolRow`（UI 审查 2026-09-24 把两份手抄
+/// 收成一份）：同样的 66 高、同样的徽章、同样的两端渐隐发丝线、同样的价格与涨跌药丸。
+/// 用户点过名：这儿要的是自选页那张列表，不是浮在板块页上的胶囊卡片。
 ///
 /// 底还是 `SectorBackdrop`，和板块列表同一块材料；不加玻璃纸（自选页 2026-09-17
 /// 起已经改成「融合」）。
@@ -42,8 +42,6 @@ struct SectorSymbolList: View {
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// 系统字号超过默认档时头部副文案放开到两行；默认档仍是原来的一行。
-  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
   /// 这张列表按什么排。原来是裸 `@AppStorage("sector.sort")`，跟着这台机器走；
@@ -72,7 +70,7 @@ struct SectorSymbolList: View {
             }) { onScanList(rows.map(\.symbol)); onPick($0) }
           }
         }
-        .padding(.top, 6).padding(.bottom, 8)
+        .padding(.bottom, Space.s)
       }
       .scrollIndicators(.hidden)
     }
@@ -114,55 +112,51 @@ struct SectorSymbolList: View {
   }
 
   private var header: some View {
-    HStack(spacing: 6) {
+    HStack(spacing: Space.s) {
       SectorBackButton(skin: skin, id: "sector.list.back", action: onBack)
+        // 返回键的点击区比圆盘大，左半截伸进页边距里，圆盘仍贴着页面左边那条竖线。
+        .padding(.leading, -(Hit.min - ControlMetrics.iconDisc) / 2)
       if let art = SectorIcons.art(stat.id) {
         SectorIconView(art: art, size: 38)
       }
-      VStack(alignment: .leading, spacing: 2) {
-        Text(stat.name).font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
-          .lineLimit(1).minimumScaleFactor(0.7)
+      VStack(alignment: .leading, spacing: Space.xxs) {
+        // 页标题 17 semibold（UI 审查：页标题原有无 / 15 / 19 三种，统一到 17）。
+        Text(stat.name).font(TypeScale.title).foregroundStyle(theme.ink)
+          .lineLimit(1).minimumScaleFactor(0.8)
+        // 副文案 11 是下限，不再缩到 0.6 倍（6.6pt）挤进一行；放不下就折到第二行。
         Text(subtitle)
-          .font(.scaled(11)).monospacedDigit().tracking(0.2)
+          .font(TypeScale.caption2).monospacedDigit()
           .foregroundStyle(skin.ink4)
-          .lineLimit(dynamicTypeSize > .large ? 2 : 1).minimumScaleFactor(0.6)
+          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("sector.list.breadth")
       }
-      .padding(.leading, 5)
-      Spacer(minLength: 8)
+      Spacer(minLength: Space.s)
       Text(sectorPctText(stat.pct))
-        .font(.scaled(19, .medium)).monospacedDigit()
+        .font(Self.headlinePct).monospacedDigit()
         .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
     }
-    .padding(.leading, 15).padding(.trailing, 20).padding(.top, 6)
+    .pageHorizontalInset()
+    .padding(.top, Space.s)
   }
+
+  /// 头部右边那个聚合涨跌幅：和页标题同一档（17），medium（原 19，不在阶梯上）。
+  private static let headlinePct = ScaledFont(TypeScale.title.size, .medium, relativeTo: .headline)
 
   private func sortBar(_ count: Int) -> some View {
-    HStack(spacing: 7) {
-      ForEach(SectorSymbolSort.allCases, id: \.rawValue) { sortChip($0) }
+    // 排序小块和搜索页历史词、品种整页筛选同一种（`SymbolChip`）：看得见 28、点击区 44。
+    HStack(spacing: Space.s) {
+      ForEach(SectorSymbolSort.allCases, id: \.rawValue) { value in
+        SymbolChip(title: value.title, selected: sort == value) { sort = value }
+          .accessibilityIdentifier("sector.sort." + value.rawValue)
+      }
       Spacer(minLength: 0)
       Text("\(count) 个")
-        .font(.scaled(10.5, design: .monospaced)).tracking(0.63)
+        .font(TypeScale.caption2).monospacedDigit()
         .foregroundStyle(skin.ink4)
     }
-    .padding(.horizontal, 20).padding(.top, 10)
-  }
-
-  private func sortChip(_ value: SectorSymbolSort) -> some View {
-    let on = sort == value
-    return Button { sort = value } label: {
-      Text(value.title).font(.scaled(11.5)).tracking(0.23)
-        .foregroundStyle(on ? theme.ink : theme.ink3)
-        .padding(.horizontal, 10).frame(height: 25)
-        .background {
-          Capsule().fill(on ? skin.chipOn : Color.clear)
-            .overlay(Capsule().strokeBorder(on ? skin.chipEdge : skin.rule, lineWidth: 0.5))
-        }
-        .contentShape(Capsule())
-    }.buttonStyle(.plain)
-      .accessibilityLabel(value.title)
-      .accessibilityAddTraits(on ? .isSelected : [])
-      .accessibilityIdentifier("sector.sort." + value.rawValue)
+    .pageHorizontalInset()
+    .padding(.top, Space.xxs)
   }
 
   // MARK: - 长按预览
@@ -211,99 +205,35 @@ struct SectorSymbolList: View {
            high: .nan, low: .nan, quoteVolume: item.quoteVolume)
   }
 
-  // MARK: - 行（照抄自选页）
+  // MARK: - 行（和自选页同一行）
 
   private func row(_ item: SectorSymbolRow, first: Bool, open: @escaping (String) -> Void) -> some View {
-    HStack(spacing: 10) {
-      badge(item.base)
-      VStack(alignment: .leading, spacing: 4) {
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
-          Text(item.base).font(.scaled(13.5, .semibold)).foregroundStyle(theme.ink)
-          Text(item.quoteText).font(.scaled(9)).foregroundStyle(skin.ink4)
-        }.lineLimit(1).minimumScaleFactor(0.75)
-        // 自选页那行是「额 … · 幅 …」，振幅要 24h 高低价，全市场 ticker 的那一趟
-        // 里没带回来，所以这儿只留成交额，排版和字号一模一样。
-        //
-        // 前沿成员的「领涨」就接在成交额后面，同一个分隔点、同一个字号，只换涨色：
-        // `额 3.05M · 领涨`。悬在名字和价格中间的空档里它像掉在那儿的。
-        HStack(spacing: 0) {
-          Text("额 " + item.volumeText)
-            .font(.scaled(10)).monospacedDigit().foregroundStyle(theme.ink3)
-          if item.isFrontier {
-            Text(" · 领涨")
-              .font(.scaled(10)).tracking(0.3)
-              .foregroundStyle(theme.up)
-              .accessibilityIdentifier("sector.frontier." + item.symbol)
-          }
-        }.lineLimit(1).minimumScaleFactor(0.8)
-      }.frame(maxWidth: .infinity, alignment: .leading)
-      quote(item)
-    }
-    .padding(.leading, 19).padding(.trailing, 20)
-    .frame(height: 66)
-    .contentShape(Rectangle())
-    .onTapGesture { open(item.symbol) }
-    .overlay(alignment: .top) {
-      if !first { SectorHairline(skin: skin) }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityAddTraits(.isButton)
-    .accessibilityIdentifier("sector.open." + item.symbol)
-    .accessibilityAction { open(item.symbol) }
-  }
-
-  /// 徽章：品牌色晕 + `CoinBadge` + 一圈角向高光。和自选页同一支。
-  private func badge(_ base: String) -> some View {
-    let spec = CoinSpec.of(base)
-    let brand = BadgeTint.gradient(from: spec.from, to: spec.to, seed: theme.seed).bottom
-    return ZStack {
-      RadialGradient(colors: [brand.opacity(skin.dark ? 0.34 : 0.2), brand.opacity(0)],
-                     center: .center, startRadius: 2, endRadius: 24)
-        .frame(width: 48, height: 48)
-      CoinBadge(base: base, size: 33)
-        .overlay {
-          RoundedRectangle(cornerRadius: 13.7, style: .continuous)
-            .strokeBorder(AngularGradient(
-              gradient: Gradient(stops: [
-                .init(color: brand, location: 0),
-                .init(color: brand.opacity(0.2), location: 0.3),
-                .init(color: brand, location: 0.55),
-                .init(color: brand.opacity(0.15), location: 0.83),
-                .init(color: brand, location: 1)]),
-              center: .center, angle: .degrees(210)), lineWidth: 1)
-            .opacity(skin.dark ? 0.6 : 0.55)
-            .padding(-3.5)
+    // 品种表到了才认得出资产类别和「新」；没到就按代号画徽章、不标新，和自选页同一个退路。
+    let info = picker?.info(for: item.symbol)
+    return LiuliSymbolRow(
+      symbol: item.symbol, base: item.base, quote: item.quoteText,
+      asset: info.map { SymbolClassifier.classify($0).asset },
+      isNew: NewListingMark.shows(info),
+      first: first,
+      priceText: item.priceText, priceID: "sector.price." + item.symbol,
+      change: item.pct, changeText: item.signedText, changeID: "sector.change." + item.symbol,
+      openID: "sector.open." + item.symbol, onOpen: { open(item.symbol) }
+    ) {
+      // 自选页那行是「成交额 … · 振幅 …」，振幅要 24h 高低价，全市场 ticker 的那一趟
+      // 里没带回来，所以这儿只留成交额，写法和字号一模一样（原来这儿写的是「额」）。
+      //
+      // 前沿成员的「领涨」就接在成交额后面，同一个分隔点、同一个字号，只换涨色：
+      // `成交额 3.05M · 领涨`。悬在名字和价格中间的空档里它像掉在那儿的。
+      HStack(spacing: 0) {
+        Text("成交额 " + item.volumeText).foregroundStyle(theme.ink3)
+        if item.isFrontier {
+          Text(SymbolRowText.separator + "领涨")
+            .foregroundStyle(theme.up)
+            .accessibilityIdentifier("sector.frontier." + item.symbol)
         }
-    }.frame(width: 33, height: 33)
-  }
-
-  /// 右边一列：价 + 涨跌药丸。尺寸全部照自选页。
-  private func quote(_ item: SectorSymbolRow) -> some View {
-    let tint = item.pct.isFinite ? (item.isUp ? theme.up : theme.down) : skin.ink4
-    return VStack(alignment: .trailing, spacing: 5) {
-      Text(item.priceText)
-        .font(.scaled(15.5, .medium)).monospacedDigit()
-        .lineLimit(1).minimumScaleFactor(0.7)
-        .foregroundStyle(theme.ink)
-        .accessibilityIdentifier("sector.price." + item.symbol)
-      HStack(spacing: 4) {
-        if item.pct.isFinite {
-          SectorTriangle(up: item.isUp).fill(tint).frame(width: 6, height: 5)
-            .accessibilityHidden(true)
-        }
-        Text(item.changeText)
-          .font(.scaled(11, .semibold)).monospacedDigit()
-          .foregroundStyle(tint)
-          .accessibilityLabel(item.signedText)
-          .accessibilityIdentifier("sector.change." + item.symbol)
       }
-      .padding(.horizontal, 7).frame(minHeight: 19).frame(minWidth: 54)
-      .background {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-          .fill(tint.opacity(0.14))
-          .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .strokeBorder(tint.opacity(0.3), lineWidth: 0.5))
-      }
-    }.frame(minWidth: 86, alignment: .trailing)
+    } accessory: {
+      EmptyView()
+    }
   }
 }

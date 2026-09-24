@@ -169,33 +169,38 @@ struct SymbolPreviewCard: View {
   }
   private var bars: [Bar] { store.bars(for: symbol) }
 
+  // 字号、间距、圆角全取令牌（UI 审查 2026-09-24：原来 9 / 9.5 / 10 / 10.5 的字、11 / 9 / 14 的距）。
+  /// 品种名：15 semibold，和价格同一档、字重高一级。
+  private static let nameFont = ScaledFont(TypeScale.body.size, .semibold, relativeTo: .subheadline)
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 11) {
+    VStack(alignment: .leading, spacing: Space.m) {
       head
       candles
       stats
     }
-    .padding(14)
+    .padding(Inset.card)
     .frame(width: 272)
     .background(t.app)
     .task { store.warm(symbol: symbol, base: base) }
   }
 
   private var head: some View {
-    HStack(spacing: 9) {
-      CoinBadge(base: base, size: 28)
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
-          Text(base).font(.scaled(14, .semibold)).foregroundStyle(t.ink)
-          Text(quote).font(.scaled(9)).foregroundStyle(t.ink3)
+    HStack(spacing: Space.s) {
+      CoinBadge(base: base, asset: info.map { SymbolClassifier.classify($0).asset },
+                size: ControlMetrics.badge)
+      VStack(alignment: .leading, spacing: Space.xxs) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
+          Text(base).font(Self.nameFont).foregroundStyle(t.ink)
+          Text(quote).font(TypeScale.caption2).foregroundStyle(t.ink3)
         }.lineLimit(1)
         Text(SymbolPreviewStore.interval.shortLabel + " · 近 \(SymbolPreviewStore.barCount) 根")
-          .font(.scaled(9.5)).foregroundStyle(t.ink3)
+          .font(TypeScale.caption2).foregroundStyle(t.ink3)
       }
-      Spacer(minLength: 6)
-      VStack(alignment: .trailing, spacing: 3) {
-        Text(price.map { grouped(fmtPrice($0, decimals: decimals)) } ?? "—")
-          .font(.scaled(15, .medium)).monospacedDigit()
+      Spacer(minLength: Space.s)
+      VStack(alignment: .trailing, spacing: Space.xs) {
+        Text(price.map { SymbolRowText.price($0, decimals: decimals) } ?? SymbolRowText.missing)
+          .font(TypeScale.bodyEmph).monospacedDigit()
           .foregroundStyle(stale ? t.ink3 : (pct.map { $0 >= 0 ? t.up : t.down } ?? t.ink))
           .lineLimit(1).minimumScaleFactor(0.7)
         pill
@@ -203,35 +208,25 @@ struct SymbolPreviewCard: View {
     }
   }
 
+  /// 和列表里同一颗药丸（`ChangePill`）：方向只靠「+ / −」和颜色说，不挂小三角。
   private var pill: some View {
-    HStack(spacing: 2.5) {
-      if let pct {
-        Image(systemName: pct >= 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-          .font(.system(size: 6.5))
-      }
-      Text(changePercentText(pct, arrow: true))
-        .font(.scaled(10.5, .semibold)).monospacedDigit()
-    }
-    .foregroundStyle(pct == nil ? t.ink3 : t.badgeInk)
-    .padding(.horizontal, 6).padding(.vertical, 2.5)
-    .background(pct.map { t.badgeFill(up: $0 >= 0) } ?? t.raised2,
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    ChangePill(value: pct ?? .nan, text: pct.map { changePercentText($0) } ?? SymbolRowText.missing)
   }
 
   /// 一段迷你 K 线。还没到货时摆一块底色，不写「加载中」——它一两秒就自己来了。
   @ViewBuilder private var candles: some View {
     ZStack {
-      RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.chartBG)
+      RoundedRectangle(cornerRadius: Radius.s, style: .continuous).fill(t.chartBG)
       if bars.count > 1 {
         MiniCandles(bars: bars, up: Color(hex: t.chart.up), down: Color(hex: t.chart.down))  // 蜡烛取图上色
-          .padding(.horizontal, 7).padding(.vertical, 6)
+          .padding(Space.s)
       }
     }
     .frame(height: 86)
   }
 
   private var stats: some View {
-    Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+    Grid(alignment: .leading, horizontalSpacing: Space.l, verticalSpacing: Space.s) {
       if let recentChange {
         GridRow {
           cell("1小时", stale ? nil : recentChange(1).map { changePercentText($0) })
@@ -239,8 +234,8 @@ struct SymbolPreviewCard: View {
         }
       }
       GridRow {
-        cell("24小时高", live.flatMap { $0.high.isFinite && $0.high > 0 ? grouped(fmtPrice($0.high, decimals: decimals)) : nil })
-        cell("24小时低", live.flatMap { $0.low.isFinite && $0.low > 0 ? grouped(fmtPrice($0.low, decimals: decimals)) : nil })
+        cell("24小时高", live.flatMap { $0.high.isFinite && $0.high > 0 ? SymbolRowText.price($0.high, decimals: decimals) : nil })
+        cell("24小时低", live.flatMap { $0.low.isFinite && $0.low > 0 ? SymbolRowText.price($0.low, decimals: decimals) : nil })
       }
       GridRow {
         cell("持仓量", HeaderStats.openInterestText(value: store.stats(for: symbol)?.openInterestValue,
@@ -256,11 +251,13 @@ struct SymbolPreviewCard: View {
   }
 
   private func cell(_ label: String, _ value: String?) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Text(label).font(.scaled(10)).foregroundStyle(t.ink3)
+    HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+      // 标签永远整字显示，挤的时候让数值缩（数值有 minimumScaleFactor）。
+      Text(label).font(TypeScale.caption2).foregroundStyle(t.ink3)
+        .lineLimit(1).fixedSize()
       Spacer(minLength: 0)
-      Text(value ?? "--")
-        .font(.scaled(11, .medium)).monospacedDigit()
+      Text(value ?? SymbolRowText.missing)
+        .font(TypeScale.caption2Emph).monospacedDigit()
         .foregroundStyle(value == nil ? t.ink3 : t.ink2)
         .lineLimit(1).minimumScaleFactor(0.8)
     }

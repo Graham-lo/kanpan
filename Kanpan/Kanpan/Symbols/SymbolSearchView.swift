@@ -5,14 +5,14 @@ import KanpanCore
 //
 // 顶栏右上角放大镜开的那一页，长相照原型 `header-search-2026-09-17.html` 的 `searchPage()`：
 //
-//   .sbar    7/6/8/12 内边距，输入框高 34、圆角 9、raised2 底、line 描边，字 13.5
-//   .cancel  14pt 强调色，贴在输入框右边（不是页头的返回箭头——这一页是从键盘开始的，
-//            手指在下面，出口就该在同一条横线上）
-//   .ghead   14/16/6，11pt medium、1px 字距、ink3；右边可以挂一个垃圾桶或计数
-//   .hchip   高 30、圆角 8、raised2 底、12.5pt
-//   .row     11/16 的品种行——直接复用品种整页那一行（`SymbolRowView`），
-//            两页的行长得一样才不会像两个 app
-//   .morerow 高 44、13pt 强调色
+// UI 审查 2026-09-24 按 HIG 阶梯重排之后：
+//   搜索条   共用的 `SymbolSearchField`（44 高胶囊、字 15），左右跟页边距
+//   取消     15 medium 强调色，点击区 44，贴在输入框右边（不是页头的返回箭头——这一页是
+//            从键盘开始的，手指在下面，出口就该在同一条横线上）
+//   分组头   16/8，11 medium、1 字距、ink3；右边可以挂一个垃圾桶（点击区 44）或计数
+//   历史词   共用的 `SymbolChip`（看得见 28、点击区 44、字 13），和品种整页的筛选同一种
+//   行       直接复用品种整页那一行（`SymbolRowView`），两页的行长得一样才不会像两个 app
+//   查看全部 高 44、13 强调色
 //
 // 这一页只做「我知道要找什么」：打字、历史词、最近看过。分组、板块筛选、全部合约
 // 那些浏览的事仍然归品种整页（`SymbolPickerView`），搜到超过 6 个时底下那行
@@ -54,12 +54,8 @@ struct SymbolSearchView: View {
   @State private var hot: [String] = []
 
   private var seed: PaletteSeed { theme.seed }
-  private var colors: ChartColors { Palette.chart(seed, redUp: redUp) }
-
-  @ScaledMetric(relativeTo: .body) private var nameSize: CGFloat = 14
-  @ScaledMetric(relativeTo: .caption) private var metaSize: CGFloat = 11
-  @ScaledMetric(relativeTo: .body) private var priceSize: CGFloat = 13.5
-  @ScaledMetric(relativeTo: .caption) private var pctSize: CGFloat = 11
+  /// 行上的涨跌色按这一页的 `redUp` 现造（宿主灌进来的环境主题不一定带着它）。
+  private var rowTheme: PanelTheme { PanelTheme(seed: seed, redUp: redUp) }
 
   /// 搜索结果最多先露几行（原型 `out.slice(0,6)`）：一屏之内看得完，
   /// 再多就该去品种整页慢慢翻。
@@ -89,7 +85,7 @@ struct SymbolSearchView: View {
           // 剪贴板里像是有个品种时，最上面摆一个系统的粘贴按钮。
           if !searching, offerPaste { clipboardRow }
           if searching { results } else { resting }
-          Color.clear.frame(height: 26)
+          Color.clear.frame(height: Space.xxl)
         }
       }
       // 同自选页：系统滚动条那条竖带压在每行最右边那颗星上，而这一页加自选全靠点星，
@@ -135,58 +131,29 @@ struct SymbolSearchView: View {
   // ---------------------------------------------------------------- 搜索条
 
   private var searchBar: some View {
-    HStack(spacing: 6) {
-      HStack(spacing: 7) {
-        VectorIcon.search(13).foregroundStyle(theme.ink3)
-        TextField("", text: $model.query, prompt:
-          Text("搜 BTC、ETH、SOL…").foregroundStyle(theme.ink3))
-          .font(.scaled(13.5))
-          .foregroundStyle(theme.ink)
-          .keyboardType(.asciiCapable)
-          .textInputAutocapitalization(.characters)
-          .autocorrectionDisabled()
-          .submitLabel(.search)
-          .focused($focused)
-          .onSubmit { history.remember(trimmed) }
-          .accessibilityIdentifier("search.query")
-        if searching {
-          Button {
-            model.query = ""
-            focused = true
-          } label: {
-            Image(systemName: "xmark.circle.fill")
-              .font(.system(size: 14))
-              .foregroundStyle(theme.ink3)
-              .frame(width: 26, height: 30)
-              .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel("清空搜索框")
-          .accessibilityIdentifier("search.clear")
-        }
-      }
-      .padding(.horizontal, 10)
-      .frame(height: 34)
-      .background(RoundedRectangle(cornerRadius: 9).fill(theme.raised2))
-      .overlay(RoundedRectangle(cornerRadius: 9).stroke(
-        focused ? theme.amberLine : theme.line, lineWidth: focused ? 2 : 1))
+    HStack(spacing: Space.xs) {
+      SymbolSearchField(text: $model.query, focused: $focused, id: "search.query",
+                        onSubmit: { history.remember(trimmed) },
+                        clearID: "search.clear",
+                        onClear: { model.query = ""; focused = true })
 
-      Button("取消") {
+      Button {
         focused = false
         close()
+      } label: {
+        Text("取消")
+          .font(TypeScale.bodyEmph)
+          .foregroundStyle(theme.amber)
+          .padding(.horizontal, Space.s)
+          .hitTarget()
       }
-      .font(.scaled(14, .medium))
-      .foregroundStyle(theme.amber)
       .buttonStyle(.plain)
-      .padding(.horizontal, 10)
-      .frame(height: 34)
-      .contentShape(Rectangle())
+      // 字右边那截留白伸进页边距里，「取消」两个字的右沿仍在页面右边那条竖线上。
+      .padding(.trailing, -Space.s)
       .accessibilityIdentifier("search.cancel")
     }
-    .padding(.leading, 12)
-    .padding(.trailing, 6)
-    .padding(.top, 7)
-    .padding(.bottom, 8)
+    .pageHorizontalInset()
+    .padding(.vertical, Space.s)
   }
 
   // ---------------------------------------------------------------- 没打字：历史 + 最近
@@ -197,37 +164,30 @@ struct SymbolSearchView: View {
       groupHead("历史搜索") {
         Button { askClear = true } label: {
           Image(systemName: "trash")
-            .font(.system(size: 13))
+            .font(TypeScale.footnote)
             .foregroundStyle(theme.ink3)
-            .frame(width: 30, height: 24)
-            .contentShape(Rectangle())
+            .hitTarget()
         }
         .buttonStyle(.plain)
+        // 44 的点击区不把分组头撑高：竖向多出来的那截叠在上下的留白上。
+        .frame(height: Space.l)
         .accessibilityLabel("清除搜索记录")
         .accessibilityIdentifier("search.clearHistory")
       }
-      ChipFlow(spacing: 8) {
+      // 小块看得见 28、点击区 44：竖向多出来的 16 就是两行小块之间的间距，
+      // 所以这里行距给 0，看起来仍是 16 一行。
+      ChipFlow(spacing: Space.s, lineSpacing: 0) {
         ForEach(history.terms, id: \.self) { term in
-          Button {
+          SymbolChip(title: term) {
             model.query = term
             history.remember(term)
             focused = true
-          } label: {
-            Text(term)
-              .font(.scaled(12.5))
-              .foregroundStyle(theme.ink2)
-              .lineLimit(1)
-              .padding(.horizontal, 13)
-              .frame(height: 30)
-              .background(RoundedRectangle(cornerRadius: 8).fill(theme.raised2))
           }
-          .buttonStyle(.plain)
           .accessibilityIdentifier("search.history." + term)
         }
       }
-      .padding(.horizontal, 16)
-      .padding(.top, 4)
-      .padding(.bottom, 10)
+      .pageHorizontalInset()
+      .padding(.top, -Space.s)
     }
 
     let rows = recents
@@ -263,16 +223,16 @@ struct SymbolSearchView: View {
     let rows = hits?.rows ?? []
     if rows.isEmpty {
       Text(model.emptyText)
-        .font(.scaled(12.5))
+        .font(TypeScale.caption)
         .foregroundStyle(theme.ink3)
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 26)
+        .pageHorizontalInset()
+        .padding(.vertical, Space.xxl)
         .accessibilityIdentifier("search.empty")
     } else {
       groupHead("品种") {
         Text("\(hitCount)")
-          .font(.scaled(11))
+          .font(TypeScale.caption2)
           .monospacedDigit()
           .foregroundStyle(theme.ink3)
       }
@@ -282,13 +242,13 @@ struct SymbolSearchView: View {
           history.remember(trimmed)
           onAll()
         } label: {
-          HStack(spacing: 4) {
-            Text("查看全部 \(hitCount) 个品种").font(.scaled(13))
-            VectorIcon.chevronRight(12)
+          HStack(spacing: Space.xs) {
+            Text("查看全部 \(hitCount) 个品种").font(TypeScale.footnote)
+            VectorIcon.chevronRight(ControlMetrics.chevron)
           }
           .foregroundStyle(theme.amber)
           .frame(maxWidth: .infinity)
-          .frame(height: 44)
+          .frame(height: Hit.min)
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -299,42 +259,34 @@ struct SymbolSearchView: View {
 
   // ---------------------------------------------------------------- 零件
 
-  /// 分组头：11pt medium + 1px 字距 + ink3，右边挂一个动作（垃圾桶 / 计数）。
+  /// 分组头：11 medium + 1 字距 + ink3，右边挂一个动作（垃圾桶 / 计数）。
   private func groupHead<Trailing: View>(
     _ title: String, @ViewBuilder trailing: () -> Trailing
   ) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 7) {
+    HStack(alignment: .center, spacing: Space.s) {
       Text(title)
-        .font(.scaled(11, .medium))
+        .font(TypeScale.caption2Emph)
         .kerning(1)
         .foregroundStyle(theme.ink3)
       trailing()
       Spacer(minLength: 0)
     }
-    .padding(.horizontal, 16)
-    .padding(.top, 14)
-    .padding(.bottom, 6)
+    .pageHorizontalInset()
+    .padding(.top, Space.l)
+    .padding(.bottom, Space.s)
   }
 
   @ViewBuilder
   private func rowList(_ rows: [SymbolRow]) -> some View {
     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-      if index > 0 {
-        theme.hair.frame(height: 0.5).padding(.leading, 60)
-      }
+      if index > 0 { SymbolRowDivider() }
       SymbolRowView(row: row,
                     isFavorite: model.isFavorite(row.id),
-                    seed: seed,
-                    colors: colors,
-                    redUp: redUp,
-                    nameSize: nameSize, metaSize: metaSize,
-                    priceSize: priceSize, pctSize: pctSize,
+                    theme: rowTheme,
                     onStar: {
                       if model.toggleFavorite(row.id, info: row.info) { onStarred?(row.id) }
                     },
                     onPick: { pick(row.info) })
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
         .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
         .onDisappear { onRowVisibility?(row.id, false) }
     }
@@ -359,8 +311,8 @@ struct SymbolSearchView: View {
       .tint(theme.amber)
       Spacer(minLength: 0)
     }
-    .padding(.horizontal, 16)
-    .frame(height: 44)
+    .pageHorizontalInset()
+    .frame(height: Hit.min)
     .accessibilityIdentifier("search.clipboard")
   }
 
@@ -407,7 +359,9 @@ struct SymbolSearchView: View {
 /// `Layout` 这个名字在本仓库里撞车：`KanpanCore.Layout` 是图表的几何布局。
 /// 这儿要的是 SwiftUI 那个协议，写全名。
 private struct ChipFlow: SwiftUI.Layout {
-  var spacing: CGFloat = 8
+  var spacing: CGFloat = Space.s
+  /// 行与行之间。小块自带 44 的点击区（比看得见的 28 高 16），所以通常给 0。
+  var lineSpacing: CGFloat = Space.s
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout ()) -> CGSize {
     let maxWidth = proposal.width ?? .infinity
@@ -416,7 +370,7 @@ private struct ChipFlow: SwiftUI.Layout {
       let size = view.sizeThatFits(.unspecified)
       if x > 0, x + size.width > maxWidth {
         x = 0
-        y += rowHeight + spacing
+        y += rowHeight + lineSpacing
         rowHeight = 0
       }
       x += size.width + spacing
@@ -433,7 +387,7 @@ private struct ChipFlow: SwiftUI.Layout {
       let size = view.sizeThatFits(.unspecified)
       if x > 0, x + size.width > bounds.width {
         x = 0
-        y += rowHeight + spacing
+        y += rowHeight + lineSpacing
         rowHeight = 0
       }
       view.place(at: CGPoint(x: bounds.minX + x, y: bounds.minY + y),

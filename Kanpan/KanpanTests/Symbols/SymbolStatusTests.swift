@@ -46,7 +46,7 @@ struct SymbolStatusTests {
     // ② 最后那口真价照旧摆着（灰显由视图按 `isStale` 做），
     //    由它算出来的涨跌幅留空——不写 0.00%，也不写任何文字标签。
     #expect(eth.isStale)
-    #expect(eth.priceText == "2913.45")
+    #expect(eth.priceText == "2,913.45")
     #expect(eth.changeText == "—")
     // ③ 还在交易的那一行什么都没变。
     let btc = try! #require(favorites.rows.first { $0.id == "binance/usd_m/BTCUSDT" })
@@ -272,7 +272,7 @@ struct SymbolStatusTests {
                                     prefs: SymbolPrefs(), query: "")
       .first { $0.kind == .all }?.rows ?? []
     func text(_ symbol: String) -> String? { rows.first { $0.id == symbol }?.priceText }
-    #expect(text("binance/usd_m/BTCUSDT") == "76800.0")           // 1 位
+    #expect(text("binance/usd_m/BTCUSDT") == "76,800.0")           // 1 位
     #expect(text("binance/usd_m/SOLUSDT") == "141.226")           // 3 位
     #expect(text("binance/usd_m/XRPUSDT") == "2.1843")            // 4 位
     #expect(text("binance/usd_m/1000PEPEUSDT") == "0.0074812")    // 7 位

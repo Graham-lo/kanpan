@@ -5,15 +5,15 @@ import UIKit
 
 // ============================================================ 品种整页
 //
-// §9.3 / §10.5 / A5.7–A5.9。长相逐条对原型 `#pgSymbol`：
-//   .sheeth  13/16/10 内边距，标题 600 15，右边一行小字 400 11 ink3
-//   .search  8/12/10，输入框 raised2 底、line 描边、圆角 9、字 14
-//   .row     11/16，名 500 14、小字 400 11 ink3、数 mono 500 13.5、涨跌 mono 500 11
-//   .groupt  14/16/6，500 11，字距 .09em，ink3
-//   .note    10/16/2，400 11.5，ink3
-//   .star    ink3，选中强调色（`seed.accent`，随皮肤走，不是画在图上那支暖色）
+// §9.3 / §10.5 / A5.7–A5.9，UI 审查 2026-09-24 按 HIG 阶梯重排：
+//   页头     左右跟页边距（`Inset.page`），标题 17 semibold，右边条数 11 ink3，返回键点击区 44
+//   搜索     共用的 `SymbolSearchField`（44 高胶囊、字 15），右边「清空」点击区 44
+//   筛选     共用的 `SymbolChip`（看得见 28、点击区 44），和搜索页历史词同一种
+//   行       共用的 `SymbolRowView`（名 15、价 15 等宽数字带千分位、涨跌 13，行高 ≥ 44）
+//   分组标题 11 medium 字距 1，吸顶时垫页面底色，滚上去的行不从它底下透出来
+//   小字     12 ink3
 //
-// 页面进入自动聚焦搜索框弹键盘（§10.5「这是来搜的」），返回时收键盘。
+// 进页不自动聚焦搜索框（见 `.task`），返回时收键盘。
 
 struct SymbolPickerView: View {
   @Bindable var model: SymbolPickerModel
@@ -37,11 +37,8 @@ struct SymbolPickerView: View {
   private var seed: PaletteSeed { theme.seed }
   private var colors: ChartColors { Palette.chart(seed, redUp: redUp) }
 
-  @ScaledMetric(relativeTo: .body) private var nameSize: CGFloat = 14
-  @ScaledMetric(relativeTo: .caption) private var metaSize: CGFloat = 11
-  @ScaledMetric(relativeTo: .body) private var priceSize: CGFloat = 13.5
-  @ScaledMetric(relativeTo: .caption) private var pctSize: CGFloat = 11
-  @ScaledMetric(relativeTo: .body) private var fieldSize: CGFloat = 14
+  /// 行上的涨跌色按这一页的 `redUp` 现造（宿主灌进来的环境主题不一定带着它）。
+  private var rowTheme: PanelTheme { PanelTheme(seed: seed, redUp: redUp) }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -82,70 +79,59 @@ struct SymbolPickerView: View {
   // ---------------------------------------------------------------- 页头
 
   private var header: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: Space.xs) {
       Button {
         searchFocused = false
         onClose?()
       } label: {
         Chevron()
           .stroke(Color(hex: seed.ink2), style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-          .frame(width: 18, height: 18)
-          .frame(width: 32, height: 32)
-          // 描边形状的按钮，点击区默认只有那条 1.7pt 的线本身——32×32 里绝大部分是空的，
-          // 手指落在两笔之间就没反应（A8.4 在 5 台机器上实测到）。补一块矩形点击区，
-          // 画面一个像素都不动。
-          .contentShape(Rectangle())
+          .frame(width: Self.chevron, height: Self.chevron)
+          // 描边形状的按钮，点击区默认只有那条 1.7pt 的线本身（A8.4 在 5 台机器上实测到）。
+          // 补一块 44 的矩形点击区（HIG），画面一个像素都不动。
+          .hitTarget()
       }
       .buttonStyle(.plain)
+      // 点击区左半截伸进页边距里，箭头那个 18 的框仍贴着页面左边那条竖线。
+      .padding(.leading, -(Hit.min - Self.chevron) / 2)
       .accessibilityLabel("返回")
       .accessibilityIdentifier("symbols.back")
 
-      Text("品种").font(.scaled(15, .semibold)).foregroundStyle(Color(hex: seed.ink))
-      Text(model.countText).font(.scaled(11)).foregroundStyle(Color(hex: seed.ink3))
+      HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+        Text("品种").font(TypeScale.title).foregroundStyle(Color(hex: seed.ink))
+        Text(model.countText).font(TypeScale.caption2).foregroundStyle(Color(hex: seed.ink3))
+      }
       Spacer(minLength: 0)
     }
-    .padding(.leading, 16 - 7)   // iconbtn 自带 7pt 视觉留白，对齐到 16
-    .padding(.trailing, 16)
-    .padding(.top, 13)
-    .padding(.bottom, 10)
+    .pageHorizontalInset()
+    .padding(.top, Space.xs)
     .overlay(alignment: .bottom) { Divider().overlay(Color(hex: seed.line)) }
   }
+
+  /// 返回箭头画多大（点击区另算，44）。
+  private static let chevron: CGFloat = 18
 
   // ---------------------------------------------------------------- 搜索
 
   private var searchBar: some View {
-    HStack(spacing: 8) {
-      TextField("", text: $model.query, prompt:
-        Text("搜 BTC、ETH、SOL…").foregroundStyle(Color(hex: seed.ink3)))
-        .font(.system(size: fieldSize))
-        .foregroundStyle(Color(hex: seed.ink))
-        // 品种代号全是 ASCII，锁住输入法语言，别让上次用中文输入法的人在这儿先切一次。
-        .keyboardType(.asciiCapable)
-        .textInputAutocapitalization(.characters)
-        .autocorrectionDisabled()
-        .submitLabel(.search)
-        .focused($searchFocused)
-        .padding(.vertical, 9)
-        .padding(.horizontal, 11)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Color(hex: seed.raised2)))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(
-          searchFocused ? theme.amberLine : Color(hex: seed.line),
-          lineWidth: searchFocused ? 2 : 1))
-        .accessibilityIdentifier("symbols.query")
+    HStack(spacing: Space.xs) {
+      // 品种代号全是 ASCII，框里锁英文键盘（见 `SymbolSearchField`）。
+      SymbolSearchField(text: $model.query, focused: $searchFocused, id: "symbols.query")
 
-      Button("清空") {
+      Button {
         model.query = ""
+      } label: {
+        Text("清空")
+          .font(TypeScale.bodyEmph)
+          .foregroundStyle(Color(hex: seed.accent))
+          .padding(.horizontal, Space.s)
+          .hitTarget()
       }
-      .font(.scaled(14, .medium))
-      .foregroundStyle(Color(hex: seed.accent))
       .buttonStyle(.plain)
-      .padding(6)
+      .padding(.trailing, -Space.s)
     }
-    .padding(.leading, 12)
-    .padding(.trailing, 6)
-    .padding(.top, 8)
-    .padding(.bottom, 10)
-    .overlay(alignment: .bottom) { Divider().overlay(Color(hex: seed.line)) }
+    .pageHorizontalInset()
+    .padding(.vertical, Space.s)
   }
 
   private func openFilter(_ kind: FilterSelection) {
@@ -158,15 +144,20 @@ struct SymbolPickerView: View {
   }
 
   private var filters: some View {
-    HStack(spacing: 18) {
-      Button { openFilter(.market) } label: { Label(MarketSector.title(model.marketFilter), systemImage: "chevron.down") }
+    // 和搜索页的历史词同一种小块（UI 审查：筛选小块原有四套）。选了具体的市场 / 板块
+    // 就按选中画，一眼看得出这张表现在被筛过。
+    HStack(spacing: Space.s) {
+      SymbolChip(title: MarketSector.title(model.marketFilter),
+                 selected: model.marketFilter != "all", menu: true) { openFilter(.market) }
         .accessibilityIdentifier("symbols.market")
-      Button { openFilter(.sector) } label: {
-        Label(model.sectorFilter.map(MarketSector.title) ?? "全部板块", systemImage: "chevron.down")
-      }.disabled(model.sectors.isEmpty).accessibilityIdentifier("symbols.sector")
+      SymbolChip(title: model.sectorFilter.map(MarketSector.title) ?? "全部板块",
+                 selected: model.sectorFilter != nil, menu: true) { openFilter(.sector) }
+        .disabled(model.sectors.isEmpty)
+        .accessibilityIdentifier("symbols.sector")
       Spacer(minLength: 0)
-    }.font(.scaled(12, .medium)).foregroundStyle(theme.amber)
-      .padding(.horizontal, 16).padding(.bottom, 10)
+    }
+    .pageHorizontalInset()
+    .overlay(alignment: .bottom) { Divider().overlay(Color(hex: seed.line)) }
   }
 
   // ---------------------------------------------------------------- 列表
@@ -177,10 +168,10 @@ struct SymbolPickerView: View {
       // §10.5：空结果一行小字，不放插画。
       VStack {
         Text(model.emptyText)
-          .font(.scaled(12.5))
+          .font(TypeScale.caption)
           .foregroundStyle(Color(hex: seed.ink3))
-          .padding(.horizontal, 16)
-          .padding(.vertical, 22)
+          .pageHorizontalInset()
+          .padding(.vertical, Space.xl)
         Spacer(minLength: 0)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,20 +184,31 @@ struct SymbolPickerView: View {
             }
             if let note = section.moreNote {
               Text(note)
-                .font(.scaled(11.5))
+                .font(TypeScale.caption)
                 .foregroundStyle(Color(hex: seed.ink3))
-                .lineSpacing(4)
-                .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 2, trailing: 16))
+                .lineSpacing(Space.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .pageHorizontalInset()
+                .padding(.top, Space.s)
+                .padding(.bottom, Space.xxs)
+                .listRowInsets(EdgeInsets())
                 .listRowBackground(Color(hex: seed.app))
                 .listRowSeparator(.hidden)
             }
           } header: {
+            // 吸顶的分组标题自己垫一层页面底色、铺满整宽：`.plain` 表的吸顶头默认是
+            // 系统的半透明材质，滚上去的行从它底下透出来，在青苔 / 陶土底上是一条色带（接缝）。
             Text(section.title)
-              .font(.scaled(11, .medium))
+              .font(TypeScale.caption2Emph)
               .kerning(1)
               .textCase(nil)
               .foregroundStyle(Color(hex: seed.ink3))
-              .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 6, trailing: 16))
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .pageHorizontalInset()
+              .padding(.top, Space.l)
+              .padding(.bottom, Space.s)
+              .background(Color(hex: seed.app))
+              .listRowInsets(EdgeInsets())
           }
         }
       }
@@ -216,6 +218,10 @@ struct SymbolPickerView: View {
       .scrollContentBackground(.hidden)
       .scrollDismissesKeyboard(.interactively)
       .environment(\.defaultMinListRowHeight, 0)
+      // `.plain` 表自带一截顶部留白，叠上分组标题自己的 `Space.l`，筛选条下面空出一大块；
+      // 间距只由标题那一个令牌管。
+      .contentMargins(.top, 0, for: .scrollContent)
+      .listSectionSpacing(0)
     }
   }
 
@@ -230,11 +236,10 @@ struct SymbolPickerView: View {
     // 字走 `theme.badgeInk`。不是自选段的行照旧划不出任何东西——那时候
     // `trailing` 是空数组，手势什么都不做，砖也不建出来。
     //
-    // 行的内缩从 `listRowInsets` 挪进内容里：砖画在行的 `.background` 上，
-    // 行要是被 `listRowInsets` 往里收 16pt，砖就够不着屏幕右沿了
-    // （`DrawingSheet` 那一处同样的处理）。挪完分隔线的两头会跟着跑，
-    // 所以按挪之前量到的位置钉死：左 59pt（16 内缩 + 33 徽章 + 10 间距）、
-    // 右 16pt，也就是 iPhone 15 上那条 x 177…1131 像素的发丝线。
+    // 行的内缩从 `listRowInsets` 挪进内容里（`SymbolRowView` 自己按页边距收）：砖画在行的
+    // `.background` 上，行要是被 `listRowInsets` 往里收，砖就够不着屏幕右沿了
+    // （`DrawingSheet` 那一处同样的处理）。分隔线两头因此按页边距钉：
+    // 左从文字起点（页边距 + 徽章 + 间距），右到页边距。
     SwipeToDelete(
       id: row.id, open: $openSwipe, brick: .flush,
       trailing: favorite
@@ -246,11 +251,7 @@ struct SymbolPickerView: View {
     ) { swipe in
       SymbolRowView(row: row,
                     isFavorite: model.isFavorite(row.id),
-                    seed: seed,
-                    colors: colors,
-                    redUp: redUp,
-                    nameSize: nameSize, metaSize: metaSize,
-                    priceSize: priceSize, pctSize: pctSize,
+                    theme: rowTheme,
                     onStar: { Haptics.tap(); model.toggleFavorite(row.id) },
                     onPick: {
                       if swipe.isOpen { swipe.close(); return }
@@ -258,7 +259,6 @@ struct SymbolPickerView: View {
                       Haptics.press()
                       if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
                     })
-      .padding(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
       // 拖动排序挂在**砖的里面**，不在外面。`.draggable` 装的是一个 UIKit 的
       // `UIDragInteraction`：它在表里起手很快，压在左划手势的外层时会把那一趟横拖
       // 整个认走，砖一次都划不出来（2026-09-22 在 iPhone 15 上拍到过，三个起手点全灭，
@@ -274,126 +274,10 @@ struct SymbolPickerView: View {
     .listRowInsets(EdgeInsets())
     .listRowBackground(Color(hex: seed.app))
     .listRowSeparatorTint(Color(hex: colors.hair))
-    .alignmentGuide(.listRowSeparatorLeading) { _ in 59 }
-    .alignmentGuide(.listRowSeparatorTrailing) { d in d.width - 16 }
+    .alignmentGuide(.listRowSeparatorLeading) { d in Inset.page(d.width) + SymbolRowView.textLead }
+    .alignmentGuide(.listRowSeparatorTrailing) { d in d.width - Inset.page(d.width) }
   }
 
-}
-
-// ============================================================ 一行
-
-struct SymbolRowView: View {
-  let row: SymbolRow
-  let isFavorite: Bool
-  let seed: PaletteSeed
-  let colors: ChartColors
-  /// 涨跌幅文字按它对调（文字取 `Palette.inkUp` / `inkDown`，不取图上的 `colors.up`）。
-  var redUp: Bool = false
-  let nameSize: CGFloat
-  let metaSize: CGFloat
-  let priceSize: CGFloat
-  let pctSize: CGFloat
-  let onStar: () -> Void
-  let onPick: () -> Void
-
-  // 行和星都**不是 `Button`**，是两块 `contentShape` 加 `onTapGesture`，
-  // 无障碍身份靠 `.isButton` 补回去（自选分类页那一行就是这么写的，见
-  // `FavoritesView.row(_:first:)`）。
-  //
-  // 这不是风格问题：`.buttonStyle(.plain)` 的 `Button` 在 `List` 的行里
-  // 认的是「按下—抬手」，横着拖过去一百二十点它照样当成点了一下，而且它把
-  // 这一趟触摸整个占住，外层 `SwipeToDelete` 那道 `simultaneousGesture`
-  // 一次 `onChanged` 都收不到。2026-09-22 在 iPhone 15 上六次起手全灭：
-  // 起手压在星上的那一下把 BTCUSDT 取消了自选，压在行上的那几下把整页关掉
-  // 换了品种，砖一次都没露头。`TapGesture` 则在手指挪过点击容差时自己作废，
-  // 横拖就干净地落给左划。
-  var body: some View {
-    HStack(spacing: 10) {
-      HStack(spacing: 10) {
-        // 这一页原先一个徽章都没有——搜索结果十几行全靠代号分辨，和自选页对不上。
-        // 事实分类直接从 `row.info` 算，比让徽章自己去猜准。
-        CoinBadge(base: row.info.base, asset: SymbolClassifier.classify(row.info).asset, size: 33)
-        VStack(alignment: .leading, spacing: 2) {
-          HStack(alignment: .firstTextBaseline, spacing: 5) {
-            name
-            if NewListingMark.shows(row.info) {
-              NewListingMark(symbol: row.id, accent: Color(hex: seed.accent))
-            }
-            // 别家交易所的品种在名字右边标一个灰色小字（默认那一家不标）——
-            // 两家所都有 BTC，搜出来并排时靠它分。
-            if let tag = VenueRegistry.descriptor(forSymbol: row.id).searchTag {
-              Text(tag)
-                .font(.system(size: metaSize))
-                .foregroundStyle(Color(hex: seed.ink3))
-                .accessibilityIdentifier("symbols.venue.\(row.id)")
-            }
-          }
-          Text(row.meta)
-            .font(.system(size: metaSize))
-            .foregroundStyle(Color(hex: seed.ink3))
-        }
-        Spacer(minLength: 0)
-        VStack(alignment: .trailing, spacing: 0) {
-          Text(row.priceText)
-            .font(.system(size: priceSize, weight: .medium, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(Color(hex: seed.ink))
-          Text(row.changeText)
-            .font(.system(size: pctSize, weight: .medium, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(Color(hex: row.ticker?.changePercent.isFinite == true ? (row.isUp ? Palette.inkUp(seed, redUp: redUp) : Palette.inkDown(seed, redUp: redUp)) : seed.ink3))
-        }
-      }
-      .contentShape(Rectangle())
-      .onTapGesture(perform: onPick)
-      .accessibilityElement(children: .contain)
-      .accessibilityAddTraits(.isButton)
-      .accessibilityIdentifier("symbols.row.\(row.id)")
-      .accessibilityAction(.default, onPick)
-      StarShape()
-        .fill(isFavorite ? Color(hex: seed.accent) : .clear)
-        .overlay(StarShape().stroke(
-          Color(hex: isFavorite ? seed.accent : seed.ink3),
-          style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)))
-        .frame(width: 15, height: 15)
-        // 星画得小是视觉上的克制，但感应区不能跟着小：`StarShape` 那个带凹口的
-        // 12×12 星本来就没多少面积，旁边那块铺满整行的感应区又贴着它，
-        // 点在星的正中都会被行接走（iPad Pro 11" 上必现：点星变成开图表）。
-        // 所以补一块矩形感应区，并把它撑到 35pt——手指按得着，星本身还是 15pt。
-        .padding(10)
-        .contentShape(Rectangle())
-        .animation(.easeOut(duration: 0.2), value: isFavorite)
-        .onTapGesture(perform: onStar)
-        .accessibilityElement()
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(isFavorite ? "取消自选" : "加入自选")
-        .accessibilityIdentifier("symbols.star.\(row.id)")
-        .accessibilityAction(.default, onStar)
-    }
-  }
-
-  /// `BTC` + 灰的 ` / USDT`；搜索命中的片段用琥珀标出来（§10.5 匹配片段高亮）。
-  private var name: Text {
-    let base = row.info.base
-    let quote = row.info.quote
-    // `Text + Text` iOS 26 起废弃了，改用 `Text` 插值拼，逐段的字体/颜色照样保留。
-    var out = Text("")
-    for seg in SymbolQuery.split(base, highlight: row.match.highlight, offset: 0) {
-      let piece = Text(seg.text)
-        .font(.system(size: nameSize, weight: .medium))
-        .foregroundStyle(Color(hex: seg.hit ? seed.accent : seed.ink))
-      out = Text("\(out)\(piece)")
-    }
-    let slash = Text(" / ").font(.system(size: nameSize)).foregroundStyle(Color(hex: seed.ink3))
-    out = Text("\(out)\(slash)")
-    for seg in SymbolQuery.split(quote, highlight: row.match.highlight, offset: base.count) {
-      let piece = Text(seg.text)
-        .font(.system(size: nameSize))
-        .foregroundStyle(Color(hex: seg.hit ? seed.accent : seed.ink3))
-      out = Text("\(out)\(piece)")
-    }
-    return out
-  }
 }
 
 // ============================================================ 拖动排序
@@ -413,7 +297,7 @@ private struct FavoriteDragModifier: ViewModifier {
       content
         .opacity(dragging == symbol ? 0.4 : 1)
         .draggable(symbol) {
-          Text(InstrumentID(symbol).display).font(.scaled(13, .medium)).padding(6)
+          Text(InstrumentID(symbol).display).font(TypeScale.footnoteEmph).padding(Space.s)
         }
         .dropDestination(for: String.self) { items, _ in
           guard let from = items.first, from != symbol else { return false }

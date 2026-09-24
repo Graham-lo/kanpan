@@ -186,7 +186,7 @@ struct SymbolSectionsTests {
     #expect(btc.name == "BTC")
     #expect(btc.quoteSuffix == " / USDT")
     #expect(btc.meta == "BTCUSDT 永续")
-    #expect(btc.priceText == "76800.0")     // tickSize 0.1 → 1 位
+    #expect(btc.priceText == "76,800.0")     // tickSize 0.1 → 1 位
     #expect(btc.changeText == "+1.24%")
     #expect(btc.isUp)
 
@@ -207,7 +207,7 @@ struct SymbolSectionsTests {
     let btc = SymbolFixtures.info("binance/usd_m/BTCUSDT")
     #expect(btc.pricePrecision == 2)
     #expect(btc.priceDecimals == 1)
-    #expect(rows.first { $0.id == "binance/usd_m/BTCUSDT" }?.priceText == "76800.0")
+    #expect(rows.first { $0.id == "binance/usd_m/BTCUSDT" }?.priceText == "76,800.0")
   }
 
   @Test("平盘按涨算，没有行情时价显示破折号")

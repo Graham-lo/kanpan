@@ -173,7 +173,7 @@ struct SymbolPickerModelTests {
     m.updateQuotes([Ticker(symbol: "binance/usd_m/BTCUSDT", last: 77_123.4, changePercent: -2.5,
                           high: 78_000, low: 76_000, quoteVolume: 1e9)])
     let btc = m.sections[0].rows.first { $0.id == "binance/usd_m/BTCUSDT" }
-    #expect(btc?.priceText == "77123.4")
+    #expect(btc?.priceText == "77,123.4")
     #expect(btc?.changeText == "\u{2212}2.50%")
     #expect(btc?.isUp == false)
   }
