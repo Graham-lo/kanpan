@@ -121,6 +121,14 @@ public struct SyncArchive: Codable, Sendable {
   /// 装到一半出错（画线解码失败、文件写不进去）时，盘上留着的是「这批已经digest过了」，
   /// 下一轮不会重来，这批的内容就永远不会落到本机。判断「这批要不要重来」看的是这一个。
   public var lastApplied: Int64?
+  /// 云端改过 `local`、**还没装进正式文件**的那几张表（`settings` / `drawings` / `alerts` …）。
+  /// `nil` 表示「说不清」，下一次一律全装。
+  ///
+  /// 和写 `local` 的那一笔在**同一个事务里**落盘（`receive` / `acknowledge`），所以拉到一半
+  /// 进程没了，重开照样知道哪几张表欠着。老存档没有这个键，解出来是 `nil`——升级后第一次
+  /// 全装一遍，是想要的保守方向。「装进本机」只装这里列着的，一轮纯推送之后它是空的，
+  /// 合并与落盘整个跳过（深度审查第 22 项）。
+  public var unapplied: Set<String>? = []
   public var logical: UInt64 = 0
   public var offset: Int64 = 0
   /// 被服务端顶回来、已经从待发队列里拿走，但**用户的值还留在本机**的那些操作。
@@ -141,6 +149,7 @@ public struct SyncArchive: Codable, Sendable {
     autoSync = try c.decodeIfPresent(Bool.self, forKey: .autoSync) ?? true
     lastSync = try c.decodeIfPresent(Int64.self, forKey: .lastSync)
     lastApplied = try c.decodeIfPresent(Int64.self, forKey: .lastApplied)
+    unapplied = try c.decodeIfPresent(Set<String>.self, forKey: .unapplied)
     logical = try c.decodeIfPresent(UInt64.self, forKey: .logical) ?? 0
     offset = try c.decodeIfPresent(Int64.self, forKey: .offset) ?? 0
     rejected = try c.decodeIfPresent([RejectedOperation].self, forKey: .rejected) ?? []
@@ -261,37 +270,33 @@ final class ArchiveWriter: @unchecked Sendable {
     archive = next
     writer.schedule(next)
   }
-  /// 拉取这一批完成了（还没装进本机）。
+  /// 这一轮同步成了（「上次同步」显示的就是它）。装没装进本机看 `unapplied`，不看它。
   public func markFetched(at time: Int64) throws {
     try transaction { $0.lastSync = time }
   }
   /// 这一批**真的装进本机了**。落盘成功之后才准调它。
-  public func markApplied(at time: Int64) throws {
-    try transaction { $0.lastApplied = time }
-  }
-  /// 云端的值落进 `local`、而且**和本机原来那份不一样**的次数（只在内存里记，进程内单调递增）。
   ///
-  /// 两条路会把云端的值写进 `local`：拉取（`receive`）和回执（`acknowledge`——服务端把
-  /// 这条 patch 并进它那份对象，别的设备改过的字段会跟着回来）。只要这个数没动，
-  /// `local` 里就没有本机界面上还没有的东西，一轮「只推不拉」之后不必再合并、落盘一遍。
-  /// 比的是 `body` 与 `deleted`，不比 `revision`：每条回执都会抬版本号，那不是新内容。
-  public private(set) var remoteArrivals: UInt64 = 0
-
-  /// 一轮**只推送、没有拉取**的同步收尾：`local` 从 `mark`（本轮开始时的 `remoteArrivals`）
-  /// 起没被云端改过、上一批也早已装进本机时，直接把「拉到哪儿 / 装到哪儿」两个时刻一起
-  /// 记上，返回 `false`——调用方**不必**再跑一遍合并与两次阻塞落盘。
-  /// 否则什么都不写，返回 `true`，由调用方照常 `markFetched` + 合并。
-  public func finishPushOnlyRound(since mark: UInt64, at time: Int64) throws -> Bool {
-    guard remoteArrivals == mark, !needsApply else { return true }
-    try transaction { $0.lastSync = time; $0.lastApplied = time }
-    return false
+  /// `covering` 是这次装了哪几张表（就是装之前读到的 `archive.unapplied`）；`nil` 表示全装了。
+  /// 装的时候是同步的一整段，中间插不进新的到达，所以减掉它就是「剩下还欠着的」。
+  public func markApplied(at time: Int64, covering: Set<String>? = nil) throws {
+    try transaction { a in
+      a.lastApplied = time
+      if let covering { a.unapplied = a.unapplied.map { $0.subtracting(covering) } } else { a.unapplied = [] }
+    }
   }
-
-  /// 拉下来的这批还没装进本机。重启之后照样看得出来，因为两个时刻都在存档里。
-  public var needsApply: Bool {
-    guard let fetched = archive.lastSync else { return false }
-    return (archive.lastApplied ?? .min) < fetched
+  /// 把这几张表记成「欠着，下次要装」（`nil` = 全部）。全量同步用它换一次整份合并，
+  /// 把正式文件和 `local` 之间任何说不清的差异扳回来。
+  public func markUnapplied(_ collections: Set<String>?) throws {
+    guard let collections else {
+      guard archive.unapplied != nil else { return }
+      try transaction { $0.unapplied = nil }; return
+    }
+    guard let current = archive.unapplied, !collections.isSubset(of: current) else { return }
+    try transaction { $0.unapplied = $0.unapplied.map { $0.union(collections) } }
   }
+  /// 有东西要装进本机：云端改过 `local` 的表还没装，或者说不清（老存档 / 全量要求）。
+  /// 重启之后照样看得出来，因为它和 `local` 在同一份存档里。
+  public var needsApply: Bool { archive.unapplied != [] }
   /// 存档里「本机说了算」、但正式文件上还没有这一版的那些对象。
   ///
   /// 用在启动时的前向对账：画线是先落同步存档（新的本地值和那条待发操作在同一份档里），
@@ -646,7 +651,6 @@ final class ArchiveWriter: @unchecked Sendable {
     let pending = Set(archive.operations.map(\.id))
     let mine = response.results.filter { pending.contains($0.operationId) }
     guard !mine.isEmpty else { return }
-    var arrived = false
     try transaction { a in
       a.offset = response.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
       for result in mine {
@@ -671,32 +675,30 @@ final class ArchiveWriter: @unchecked Sendable {
           a.rejected.removeAll { $0.key == result.object.key }
         }
         if !a.holdsLocal(result.object.collection, result.object.id) {
-          if Self.differs(a.local[result.object.key], result.object) { arrived = true }
+          if Self.differs(a.local[result.object.key], result.object) { a.unapplied?.insert(result.object.collection) }
           a.local[result.object.key] = result.object
         }
       }
     }
-    if arrived { remoteArrivals &+= 1 }
   }
-  /// 云端这份和本机记账里那份是不是两样内容（版本号不算）。
+  /// 云端这份和本机记账里那份是不是两样内容（版本号不算）。每条回执都会抬版本号，
+  /// 那不是新内容；只有内容不同，这张表才记进 `unapplied`。
   private static func differs(_ local: SyncObject?, _ remote: SyncObject) -> Bool {
     guard let local else { return true }
     return local.body != remote.body || local.deleted != remote.deleted
   }
   public func receive(_ page: SyncPage) throws {
-    var arrived = false
     try transaction { a in
       a.offset = page.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
       for object in page.objects {
         a.objects[object.key] = object
         // 有待发操作**或者**有未了结的拒绝记录，就都别让云端那份盖掉本机的值。
         if !a.holdsLocal(object.collection, object.id) {
-          if Self.differs(a.local[object.key], object) { arrived = true }
+          if Self.differs(a.local[object.key], object) { a.unapplied?.insert(object.collection) }
           a.local[object.key] = object
         }
       }
     }
-    if arrived { remoteArrivals &+= 1 }
   }
   /// 等排队的写盘全部落地。
   public func flush() async {

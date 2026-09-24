@@ -626,9 +626,6 @@ import ReviewUI
         // 推上去那一刻的脏字段快照。推成功之后按「时刻没变」逐个清——
         // **推成功才清**，失败 / 断网 / 被杀都留着，下次启动本地照样赢。
         let marks = prefs.dirtyMarks
-        // 这一轮开始时「云端改过本机记账」的计数。一轮下来它没动、又没拉任何 scope，
-        // 就是纯推送：本机界面上已经是最新的，合并与两次阻塞落盘都省掉（见收尾处）。
-        let arrivals = sync.remoteArrivals
         // 推、拉、谁赢、出错怎么退都在 `SyncEngine` 里（`KanpanAccount`，swift test 直接测）；
         // 桥上只管这一轮算不算数、推完清哪些脏标记、拉完要不要装进本机。
         let engine = SyncEngine(store: sync, transport: HTTPSyncTransport(client: api),
@@ -652,18 +649,20 @@ import ReviewUI
           // 全量补推拒绝记录之后队列里又有了东西：跑完这一轮接着推。
           if outcome.leftovers { queuedPush = queuedPush ?? false }
         }
-        // 纯推送（没拉任何 scope）而且回执没带回别的设备的改动：`local` 里没有界面上还没有的
-        // 东西，`applyPending()` 那一整套（全量合并、两次主线程 `flushNow()`、`onProfileReady()`）
-        // 跑了也是原样写回。这时把两个时刻一起记上就收工。上一次被 `canApply()` 挡下的
-        // （`pendingApply`）、或者拉下来还没装进去的（`needsApply`），照旧走合并。
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        if outcome.pulled.isEmpty, !pendingApply, try !sync.finishPushOnlyRound(since: arrivals, at: now) {
-          updateStatus()
-        } else {
-          // 只记「拉到哪儿了」。「装进本机没有」由 `applyPending()` 落盘成功后自己记（B4）。
-          try sync.markFetched(at: now)
-          try applyPending(); updateStatus()
-        }
+        // 装进本机只装**云端真的改过的那几张表**（`SyncStore.unapplied`，和写 `local` 的那笔
+        // 同一个事务里记下）。一轮纯推送、回执又没带回别的设备的改动时它是空的，
+        // `applyPending()` 那一整套（合并、两次主线程 `flushNow()`、`onProfileReady()`）整个跳过；
+        // 换品种拉画线时只动画线那一份。全量同步例外：它把整份都记成欠着，顺手把正式文件与
+        // `local` 之间任何说不清的差异扳回来——那一档五分钟最多一次，不在手指上。
+        //
+        // 深度审查 §9 的疑问「纯推送之后 `applyPending` 是否还承担把 realign 出的本地值落盘」：
+        // 不承担。`realign` 只改操作的版本元信息、不碰 `local`；回执只在 `!holdsLocal` 时写
+        // `local`，内容一变就记进 `unapplied`。`PushOnlyRoundTests` 逐条钉住。
+        if case .full = plan { try sync.markUnapplied(nil) }
+        // 「上次同步」：这一轮推 / 拉都成了。它不再兼任「有没有要装的」，那是 `unapplied` 的事。
+        try sync.markFetched(at: Int64(Date().timeIntervalSince1970 * 1000))
+        if pendingApply || sync.needsApply { try applyPending() }
+        updateStatus()
         // 复盘同步只跟着全量走：登录 / 恢复会话 / 手动 / 到点的回前台。
         if case .full = plan { review.synchronize(manual: manual) }
       } catch is CancellationError { if requestEpoch == epoch && taskID == runID { updateStatus() } }
@@ -692,7 +691,7 @@ import ReviewUI
   ///
   /// 现在：会抛错的活儿全在第一段做完，第一段抛错时**一个字节都没写、一个 store
   /// 都没碰**，`pendingApply` 原样留着等下一轮重来；第二段把整套候选态一次性落盘
-  /// （各文件 + 存档里的 `lastApplied`），落盘成功之后才清 `pendingApply`；
+  /// （各文件 + 存档里的 `lastApplied` / `unapplied`），落盘成功之后才清 `pendingApply`；
   /// 第三段才把同一代值推给内存里的 store 与界面。
   func applyPending() throws {
     guard let sync else { return }
@@ -700,20 +699,34 @@ import ReviewUI
     // 进门先记成「这一批还没装进去」，而不是从前那样先把它清掉。中途抛错时这一笔
     // 还在，面板一关 `resumeApply()` 就会重来；清掉的时机在第二段落盘成功之后。
     pendingApply = true
-    let objects = sync.archive.local
+    // 这一次装哪几张表：云端改过、还没装的那几张（`nil` = 全部）。空的就是没有要装的——
+    // 只把「装到哪儿了」记上，不合并、不落盘、不打扰界面。
+    let scope = sync.archive.unapplied
+    guard scope != [] else {
+      try sync.markApplied(at: Int64(Date().timeIntervalSince1970 * 1000), covering: [])
+      pendingApply = false; return
+    }
+    func wants(_ collections: String...) -> Bool { scope.map { !$0.isDisjoint(with: collections) } ?? true }
+    let objects = sync.archive.local.values
 
     // —— 一、准备。只算不写，也不碰任何可见状态。这一段抛错等于这一批整个没发生。
     // 每一种对象怎么落到本地模型上，和启动前向对账是同一份（`SyncOverlay`）。
     // 设置按字段合并：本地脏的一律跳过，干净的跟着云端走；第三段 `prefs.applySynced`
-    // 会把同一套规则再走一遍（幂等）。
-    let nextPrefs = try SyncOverlay.settings(objects["settings:chart"], onto: prefs.prefs, keeping: prefs.dirtyFields)
+    // 会把同一套规则再走一遍（幂等）。不在这次范围里的表，候选态就是现状，后面两段自然不动它。
+    let nextPrefs = wants("settings")
+      ? try SyncOverlay.settings(sync.archive.local["settings:chart"], onto: prefs.prefs, keeping: prefs.dirtyFields) : nil
     var archive = drawings.storedArchive
-    SyncOverlay.drawings(objects.values.filter { $0.collection == "drawings" || $0.collection == "drawingPreferences" }, onto: &archive)
+    if wants("drawings", "drawingPreferences") {
+      SyncOverlay.drawings(objects.filter { $0.collection == "drawings" || $0.collection == "drawingPreferences" }, onto: &archive)
+    }
     var alertArchive = alerts.archive
-    SyncOverlay.alerts(objects.values.filter { $0.collection == "alerts" }, onto: &alertArchive)
+    if wants("alerts") { SyncOverlay.alerts(objects.filter { $0.collection == "alerts" }, onto: &alertArchive) }
     // 服务端只同步自选/分组这几张表，「最近」「常看」一直是本机的事，重建时原样带回去。
-    let nextSymbols = SyncOverlay.symbols(rebuiltFrom: objects.values.filter { $0.collection == "favorites" || $0.collection == "groups" },
-                                          keeping: symbols.prefs)
+    // 整张重建要的是这两张表的**全部**对象，所以只要其中一张改过，就拿 `local` 里整份来建。
+    let symbolsChanged = wants("favorites", "groups")
+    let nextSymbols = symbolsChanged
+      ? SyncOverlay.symbols(rebuiltFrom: objects.filter { $0.collection == "favorites" || $0.collection == "groups" }, keeping: symbols.prefs)
+      : symbols.prefs
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
 
     // —— 二、落盘。整套候选态一次性提交；成功之后才准清 `pendingApply`。
@@ -735,7 +748,7 @@ import ReviewUI
     try alerts.commitSynced(alertArchive)
     // 「拉到哪儿了」和「装进本机没有」是两个时刻。这一句必须排在所有文件落盘之后：
     // 它一旦落下去，下一次启动就不会再重做这一批了。
-    try sync.markApplied(at: Int64(Date().timeIntervalSince1970 * 1000))
+    try sync.markApplied(at: Int64(Date().timeIntervalSince1970 * 1000), covering: scope)
     sync.flushNow()
     pendingApply = false
 
@@ -758,7 +771,8 @@ import ReviewUI
     alerts.publishSynced(alertArchive)
     symbols.applySynced(nextSymbols)
     // 云端那份设置也是「档案换进来了」的一种：周期、落地页这些要跟着重新兑现一次。
-    onProfileReady()
+    // 它读的只有设置与自选；这两样都没动时不去惊动宿主。
+    if wants("settings") || symbolsChanged { onProfileReady() }
   }
 }
 

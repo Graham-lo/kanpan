@@ -216,7 +216,9 @@ import Testing
       let store = try SyncStore(directory: root)
       // 拉取完成。从前这里写的是 `lastSync`，紧接着才去 `applyPending()`——
       // 于是「拉到哪儿了」和「装进本机没有」共用一个时刻，装到一半没了也没人知道。
+      // 现在欠账记在 `unapplied` 里（`receive` 写 `local` 的同一笔事务），这里直接记上。
       try store.markFetched(at: 1_000)
+      try store.markUnapplied(["drawings"])
       store.flushNow()
     }
     let reopened = try SyncStore(directory: root)
@@ -232,9 +234,13 @@ import Testing
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root)
     try store.markFetched(at: 1_000)
+    try store.markUnapplied(["settings"])
     try store.markApplied(at: 1_000)
     #expect(!store.needsApply)
+    // 光是又同步了一轮不算欠账（纯推送那一轮就是这样）；云端真改了哪张表才算。
     try store.markFetched(at: 2_000)
+    #expect(!store.needsApply)
+    try store.markUnapplied(["settings"])
     #expect(store.needsApply)
   }
 
@@ -343,6 +349,7 @@ import Testing
     // 中途抛错也要把存档落下去——「拉到哪儿了」这一笔本来就已经记上了。
     defer { store.flushNow() }
     try store.markFetched(at: time)
+    try store.markUnapplied(["settings", "drawings"])
     pendingApply = true
     if threePhase {
       // 一、准备：会抛错的全在这儿，而且一个字节都不写。
