@@ -518,3 +518,15 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **设置与同步**：门槛与步长按币存成**一个**顶层字段 `Prefs.orderFlowOverrides`（`[base: 覆盖]`，对象值——`PersonalSyncCodec.ownedKeys` 是固定集合，按币拆字段就没法发删除）；六个显示开关 `orderFlowSpot / Contract / FilledBid / FilledAsk / CancelledBid / CancelledAsk` 各一个字段。服务端 `sync.rs` / `sync_validation.rs` / `settings-fields.json` 白名单同步并校验取值（门槛过小回 400）。离线照用，不设登录门槛。
 - **部署**：12:33:53 CST，备份 `/opt/kanpan-backups/orderflow-settings-20260924-123031`；中继那一提交已随第 14 节 J 线 12:05 部署先上线。公网端到端（临时账号推门槛表、读回、非法值 400、删号）通过；中继 101、清单 200。
 - **验收**：只在 iPhone 17 Pro Max 模拟器，`OrderFlowEvidenceUITests` 5/5（含改门槛生效、关合约只剩现货）；冷启动首屏开 0.545 s / 关 0.577 s（中位数），订簿在首屏后约 0.8 s。真机未装（Xcode 账号没登录）。
+
+## 15. UI 对照 HIG 全面审查与整改（2026-09-24，报告 `docs/acceptance/UI审查-2026-09-24/`）
+
+起因：用户的设计师朋友看行情页说「怪怪的」（「主标题 16 那么副标题就该 12」「外容器 20、内容器 16 / 8」「层级的分层对比关系」）。用户要求按苹果 HIG 审查**全部**页面并整改；审查交 Opus，整改由 Claude 这边自己决断到底、不回去问。用户只拍了两条板：K 线图区内一律不动；图外文字上的涨跌色可以加深过对比度。
+
+- **审查结论**（`静态审查.md` + `视觉审查.md` + `汇总.md`，汇总是整改口径）：21 种字号里 12 种不在 Dynamic Type 阶梯上（12.5 / 13.6 这类半点值做的「假层级」）、52% 的 padding 不在 4pt 网格、14 种圆角、约 55 处命中区 < 44、约 25 处文字 < 11pt；行情页头部字重倒挂（品种名 bold、六格 semibold 比 22 medium 的价格还重）；页面外边距 12 / 16 / 18 / 19 / 20 / 22 混用；自绘「‹ + 15 号左标题」浮卡与系统导航栏两套写法混用；浅色下 AICoin 涨色 `#36B257` 对页底只有 2.5–2.7 : 1。
+- **令牌层**（`16899f45`，`Kanpan/Kanpan/DesignSystem/DesignTokens.swift` + `PageInset.swift`）：`TypeScale`（22 / 17 / 16 / 15 / 13 / 12 / 11，全部 `ScaledFont … relativeTo:` 随系统缩放）、`Space`（2 / 4 / 8 / 12 / 16 / 20 / 24 / 32）、`Inset.page(width)`（宽 ≥ 428 为 20 否则 16，`.pageHorizontalInset()` 自量宽度）、`Radius`（4 / 8 / 12 / 16 + 同心公式）、`Hit.min 44` 与 `.hitTarget()`、`ControlMetrics`。`PanelFont` / `PanelMetrics` 已改成从令牌取值。**以后新 UI 一律取令牌，不手写数字。**
+- **涨跌色两支**（`3395e5b1`，`Palette.swift` + `SkinPaletteTests` 对比度守卫）：图内（蜡烛、均线、副图、图上价签）`ChartColors` AICoin 原色永不动；图外文字 `PanelTheme.up / down` 浅色皮肤下加深为 `#1E8040` / `#C9303E`（三套浅底都 ≥ 4.5 : 1），经典深的跌色文字提亮到 `#E0524F`。K 线预览、小组件里的蜡烛仍取图内色。
+- **P0a 行情页**（`afc27bcb`、取证 `3062526c`）：头部左右外边距 12 → `Inset.page`，纵向 8 / 8 / 2；层级 22 medium 价格 > 16 semibold 品种名 > 13 medium 涨跌 > 12 medium 等宽六格值 > 11 标签；周期条 / 十字线条 / 更多弹层 / Toast 12.5 → 13；弹层圆角 12、Toast 胶囊；历史重试、撤销、钉住命中区达标；底栏未选中 0.64 / 选中放大 1.06。头部 `MarketChrome.typeCap` 保持 `.large`（`.xLarge` 下 1000SATS 在 402pt 宽溢出约 30pt）。两条 UI 断言改到新口径（左缘 `Inset.page`、间距 15.5）。
+- **P0b 面板体系**（`a586ef92` → `767def69`）：`PanelChrome` 标题 17 / 关闭钮 44；图表设置、更多设置、指标、均线参数、画线工具与样式、提醒表单、画线提醒胶囊、登录、朋友：行 44、15 / 12 / 11 三级、禁用态对比 ≥ 3 : 1；分享从独立 sheet 改成面板内推入页 `Page.share`（`share.cancel` id 删除，`share.chooser` / `share.lines` 保留）。
+- **P1（进行中）**：P1a（16 Pro）自选琉璃行只吸附 13.5 / 15.5 → 13 / 15、USDT 9 / 「成交额」10 → 11、外边距统一、`tabWidth` 量宽随缩放；自选 / 板块内列表 / 搜索 / 品种整页收成一种共享行（千分位、等宽、跌用「−」）；搜索框三套收一套、结果行 44。P1b（17 Pro Max）板块页、设置整页、账号页、提醒总表与铃声页：17 / 15 / 12 / 11、行 44、外边距统一、底栏整页及其子页一律系统 `NavigationStack`，面板内子页一律 `PanelChrome` 推入。P2 设置 / 画线条与横屏台 / 分享收件预览条 / 导航全 app 统一；P3 复盘页接皮肤并删「判定规则 criteria-v2」工程字段、小组件字号 ≥ 11。
+- 截图证据：`shots/`（审查，17 Pro Max）与 `整改/P0a|P0b|P1a|P1b/`（16 Pro 与 17 Pro Max，只这两台）。
