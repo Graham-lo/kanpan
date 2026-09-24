@@ -409,6 +409,40 @@ struct OrderFlowChartTests {
     #expect(key.bucket == 1 && key.start == 50, "起点一样取桶小的")
   }
 
+  @Test("并墙要成块：价格走着走着前后接力的段不链成一片（要有共同在场的时刻），一堵最多 maxWallBuckets 个桶")
+  func wallsStayCompact() {
+    let gap: Int64 = 60_000
+    func seg(_ bucket: Int64, _ start: Int64, _ end: Int64?) -> OrderFlowGroup.Segment {
+      OrderFlowGroup.Segment(key: OrderFlowGroupKey(bucket: bucket, side: .ask, contract: true, start: start),
+                             members: [], endMs: end)
+    }
+    let hour: Int64 = 3_600_000
+    // 1. 漂移：每桶挂一个半小时、下一桶晚一小时起。两两相邻都挨着，但 0 与 2 从来不同时在——
+    //    首版并查集会把 30 个桶链成一堵。现在每堵最多两段。
+    let drift = (0..<30).map { i in seg(Int64(i), Int64(i) * hour, Int64(i) * hour + hour * 3 / 2) }
+    let driftWalls = OrderFlowGroup.walls(drift, gapMs: gap)
+    #expect(driftWalls.allSatisfy { $0.segments.count <= 2 }, "\(driftWalls.map(\.segments.count))")
+    #expect(driftWalls.count == 15)
+    // 共同时刻：每堵墙最晚的起点 ≤ 最早的结束 + 容差。
+    for w in driftWalls {
+      let latest = w.segments.map(\.key.start).max()!
+      let earliestEnd = w.segments.compactMap(\.endMs).min().map { $0 + gap } ?? .max
+      #expect(latest <= earliestEnd)
+    }
+    // 2. 挂着的一排：12 个相邻桶同时挂着，切成 5 + 5 + 2，每堵不超过 maxWallBuckets。
+    let row = (0..<12).map { i in seg(Int64(100 + i), 1_000 + Int64(i), nil) }
+    let rowWalls = OrderFlowGroup.walls(row, gapMs: gap)
+    #expect(rowWalls.map(\.segments.count).sorted() == [2, 5, 5])
+    for w in rowWalls {
+      let bs = w.segments.map(\.key.bucket)
+      #expect(bs.max()! - bs.min()! + 1 <= Int64(OrderFlowGroup.maxWallBuckets))
+    }
+    // 3. 与输入顺序无关。
+    let shuffled = OrderFlowGroup.walls(row.reversed(), gapMs: gap)
+    #expect(Set(shuffled.map(\.key)) == Set(rowWalls.map(\.key)))
+    #expect(Set(OrderFlowGroup.walls(drift.reversed(), gapMs: gap).map(\.key)) == Set(driftWalls.map(\.key)))
+  }
+
   @Test("并墙：键跨帧稳定——挂着续长、后来的段并进来键不变；回填更早的段键前移，旧键按 covers 认回来")
   func wallIdentityStable() throws {
     var (r, step, b0) = wallRenderer()
@@ -432,7 +466,8 @@ struct OrderFlowChartTests {
     #expect(focus.group.key == key && focus.group.bucketCount == 3)
 
     // 3. 回填了下面一桶更早的段、和这堵墙时间上接上：键前移到那一段，旧键仍认得回来。
-    let early = wallOrder(r, step: step, bucket: b0 + 4, venue: "binance:coinPerp:X", from: 30, to: 19)
+    // （它要一直在到最后那一段起来之后：墙里得有一个所有段都在的时刻。）
+    let early = wallOrder(r, step: step, bucket: b0 + 4, venue: "binance:coinPerp:X", from: 30, to: 2)
     r.state.orderFlow?.orders.insert(early, at: 0)
     let bands = frame(r).bands
     #expect(bands.count == 1)

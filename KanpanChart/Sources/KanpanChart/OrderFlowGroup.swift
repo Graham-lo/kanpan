@@ -28,12 +28,14 @@ import KanpanCore
 //
 // **相邻桶并成一堵墙**（2026-09-25）：ETH / SOL 的步长小（1 / 0.1），一堵 3100 万的墙在簿上摊在 2682、2683、2684
 // 三个桶里，画成三条细带、各写各的金额，一屏几百条 2 pt 带没有主次。所以切好段、去掉活不过一根 K 线的
-// 已结束段之后，再把「同侧、同类、桶号相邻（差 1，可以连成串）、时间上重叠或空档 ≤ 切段容差」的段并成一堵墙：
+// 已结束段之后，再把「同侧、同类、桶号相邻（差 1，可以连成串）、时间上重叠或空档 ≤ 切段容差」的段并成一堵墙。
+// 墙必须成块：墙里所有段有一个共同在场的时刻、最多跨 `maxWallBuckets`（5）个桶——否则价格走几天，
+// 相邻桶里前后接力的段会链成一整片（首版真机 BTC 一堵墙 34 个桶、高 1396 pt）。
 //   - 价位范围 = 最低桶的桶价 … 最高桶的桶价 + 步长；名义 = 各段画法名义之和；粗细档按合计算；
 //   - 标签写合计；详情卡标题写价位范围，一本簿一行，同一本簿跨几个桶就每桶一行、各带自己的价；
 //   - 墙的键 = 墙里最早起的那一段的键（起点一样取桶小的）：挂着的墙续长、后来的段并进来都不变；
 //     更早的段并进来（服务端回填）键会前移，按 `covers` 认回来（见那里）。
-//   - 单桶的墙和原来的一段一条完全一样（BTC 步长 100，多半是单桶，看起来不变）。
+//   - 单桶的墙和原来的一段一条完全一样；BTC 步长 100，墙最多 500 美元宽，看起来和原来差不多。
 
 /// 一条合并带（一堵墙）的身份：墙里最早起的那一段是哪一桶、哪一侧、哪一类、从哪一刻起。
 ///
@@ -249,52 +251,66 @@ public struct OrderFlowGroup: Sendable, Equatable {
     return segments.filter { s in s.endMs.map { $0 - s.key.start >= minLifeMs } ?? true }
   }
 
-  /// 把段并成墙：同侧、同类、桶号相邻（差 1，可以连成串）、时间上重叠或空档 ≤ `gapMs` 的段并在一起。
-  /// 墙的键取墙里最早起的那一段的键（起点一样取桶小的）。结果与输入顺序无关；墙的顺序无意义，调用方自己排。
+  /// 一堵墙最多跨几个桶。BTC 默认步长 100 时是 500 美元，ETH（步长 1）是 5 美元。
+  public static let maxWallBuckets = 5
+
+  /// 把段并成墙：同侧、同类、桶号相邻、时间上重叠或空档 ≤ `gapMs` 的段并在一起，但墙要**成块**：
+  ///   - **有一个共同的时刻**：墙里每一段（结束 + `gapMs` 之前）都还在的那一刻得存在——
+  ///     最晚的起点 ≤ 最早的「结束 + 容差」（挂着的算无穷远）。不然价格走了三天，一路上相邻桶里前后接力的段会
+  ///     链成一整片（真机 BTC 首版：34 个桶、1600 段并成一堵、高 1396 pt）；
+  ///   - **最多 `maxWallBuckets` 个桶**。
+  /// 做法：按（起点，桶）升序逐段看，能挂到相邻桶（±1）所在的、还「开着」（最早的结束 + 容差 ≥ 这段起点）的墙上
+  /// 就挂上去（两边都能挂取键早的那堵），否则另起一堵。不做两堵之间的桥接。同一桶的段在时间上相隔 > 容差，
+  /// 所以一堵墙每个桶最多一段。结果只取决于段的集合（排序全序），与输入顺序无关；墙的顺序无意义，调用方自己排。
   public static func walls(_ segments: [Segment], gapMs: Int64) -> [Wall] {
     guard !segments.isEmpty else { return [] }
-    // 并查集。
-    var parent = Array(segments.indices)
-    func find(_ i: Int) -> Int {
-      var i = i
-      while parent[i] != i { parent[i] = parent[parent[i]]; i = parent[i] }
-      return i
+    let order = segments.indices.sorted {
+      let a = segments[$0].key, b = segments[$1].key
+      if a.start != b.start { return a.start < b.start }
+      if a.bucket != b.bucket { return a.bucket < b.bucket }
+      if a.side != b.side { return a.side == .bid }
+      return !a.contract && b.contract
     }
-    func union(_ a: Int, _ b: Int) {
-      let ra = find(a), rb = find(b)
-      if ra != rb { parent[max(ra, rb)] = min(ra, rb) }
-    }
-    // 一条道（桶 × 侧 × 类）里的段按起点排好；同一条道里的段彼此不相交（相隔 > gapMs），结束也是升序。
-    var lanes: [Lane: [Int]] = [:]
-    for (i, s) in segments.enumerated() {
-      lanes[Lane(bucket: s.key.bucket, side: s.key.side, contract: s.key.contract), default: []].append(i)
-    }
-    for key in lanes.keys { lanes[key]!.sort { segments[$0].key.start < segments[$1].key.start } }
     let reach = { (i: Int) -> Int64 in
       guard let end = segments[i].endMs else { return .max }
       return end > Int64.max - gapMs ? .max : end + gapMs
     }
-    for (lane, lower) in lanes {
-      guard let upper = lanes[Lane(bucket: lane.bucket + 1, side: lane.side, contract: lane.contract)] else { continue }
-      // 双指针：上一桶里第一段还够得着的位置随下一桶的段单调往后走。
-      var j = 0
-      for a in lower {
-        let aStart = segments[a].key.start
-        while j < upper.count, reach(upper[j]) < aStart { j += 1 }
-        var k = j
-        let aReach = reach(a)
-        while k < upper.count, segments[upper[k]].key.start <= aReach {
-          if reach(upper[k]) >= aStart { union(a, upper[k]) }
-          k += 1
+    struct Building { var parts: [Int]; var low: Int64; var high: Int64; var minReach: Int64 }
+    var building: [Building] = []
+    // 每条道（桶 × 侧 × 类）最后挂到的那堵墙。
+    var laneWall: [Lane: Int] = [:]
+    for i in order {
+      let s = segments[i]
+      let b = s.key.bucket
+      var best: Int?
+      for nb in [b - 1, b + 1] {
+        guard let w = laneWall[Lane(bucket: nb, side: s.key.side, contract: s.key.contract)] else { continue }
+        let wall = building[w]
+        guard wall.minReach >= s.key.start,
+              max(wall.high, b) - min(wall.low, b) + 1 <= Int64(maxWallBuckets),
+              laneWall[Lane(bucket: b, side: s.key.side, contract: s.key.contract)] != w
+        else { continue }
+        if let cur = best {
+          let ck = segments[building[cur].parts[0]].key, wk = segments[wall.parts[0]].key
+          if (wk.start, wk.bucket) < (ck.start, ck.bucket) { best = w }
+        } else {
+          best = w
         }
       }
-    }
-    var byRoot: [Int: [Int]] = [:]
-    for i in segments.indices { byRoot[find(i), default: []].append(i) }
-    return byRoot.values.map { idx in
-      let parts = idx.map { segments[$0] }.sorted {
-        $0.key.start != $1.key.start ? $0.key.start < $1.key.start : $0.key.bucket < $1.key.bucket
+      let lane = Lane(bucket: b, side: s.key.side, contract: s.key.contract)
+      if let w = best {
+        building[w].parts.append(i)
+        building[w].low = min(building[w].low, b)
+        building[w].high = max(building[w].high, b)
+        building[w].minReach = min(building[w].minReach, reach(i))
+        laneWall[lane] = w
+      } else {
+        building.append(Building(parts: [i], low: b, high: b, minReach: reach(i)))
+        laneWall[lane] = building.count - 1
       }
+    }
+    return building.map { w in
+      let parts = w.parts.map { segments[$0] }
       let end: Int64? = parts.contains { $0.endMs == nil } ? nil : parts.compactMap(\.endMs).max()
       return Wall(key: parts[0].key, segments: parts, startMs: parts[0].key.start, endMs: end)
     }
