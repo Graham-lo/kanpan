@@ -42,7 +42,8 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     }
 
     public var base: String { Alert.base(of: symbol) }
-    public var priceLabel: String { ReviewLabels.price(price, decimals: decimals) }
+    /// 价：品种小数位 + 千分位，和自选 / 搜索列表、顶栏一个写法（UI 审查 2026-09-24 P1a 定的）。
+    public var priceLabel: String { AlertMessage.groupedPrice(price, decimals: decimals) }
     public var changeLabel: String {
       // 全 app 唯一那把涨跌幅写法（审查 U9）：负号 U+2212、平盘「+0.00%」；缺数和旁边的价一样写「--」。
       changePercentText(change, missing: "--")

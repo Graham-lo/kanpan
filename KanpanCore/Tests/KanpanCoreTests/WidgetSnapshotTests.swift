@@ -28,6 +28,16 @@ import Testing
     #expect(rows[3].changeLabel == "--")
   }
 
+  @Test("价的写法：品种小数位 + 千分位，与列表一致；缺数写「--」")
+  func priceLabelIsGrouped() {
+    let q = WidgetSnapshot.Quote(symbol: "BTCUSDT", price: 84549.6, change: 0.15, decimals: 1, timeMs: 1_000)
+    #expect(q.priceLabel == "84,549.6")
+    let small = WidgetSnapshot.Quote(symbol: "SOLUSDT", price: 117.39, change: 2.52, decimals: 2, timeMs: 1_000)
+    #expect(small.priceLabel == "117.39")
+    let none = WidgetSnapshot.Quote(symbol: "XRPUSDT", price: .nan, change: .nan, decimals: nil, timeMs: 0)
+    #expect(none.priceLabel == "--")
+  }
+
   @Test("小号：选了分类只列那一类，顺序仍跟自选；分类被删了回到全部")
   func rowsFollowGroup() {
     let s = snapshot()
