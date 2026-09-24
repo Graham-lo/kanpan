@@ -39,6 +39,23 @@ final class OrderFlowHistoryUITests: KanpanUICase {
     return out
   }
 
+  /// `orderflow.diagnostics` 里的 `books=` 与 `counts=`：各本簿就绪与否、每本簿手上的单数。
+  private func flowBooks() -> (ready: [String: Bool], counts: [String: Int]) {
+    let el = app.staticTexts["orderflow.diagnostics"].firstMatch
+    guard el.exists, let text = el.value as? String else { return ([:], [:]) }
+    var ready: [String: Bool] = [:], counts: [String: Int] = [:]
+    for pair in text.split(separator: ";") {
+      let kv = pair.split(separator: "=", maxSplits: 1)
+      guard kv.count == 2 else { continue }
+      for item in kv[1].split(separator: "|") {
+        guard let colon = item.lastIndex(of: ":") else { continue }
+        let key = String(item[..<colon]); let value = String(item[item.index(after: colon)...])
+        if kv[0] == "books" { ready[key] = value == "1" } else if kv[0] == "counts" { counts[key] = Int(value) ?? 0 }
+      }
+    }
+    return (ready, counts)
+  }
+
   private func turnOnOrderFlow() {
     app.buttons[Ids.intervalChart].tap()
     XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
@@ -83,5 +100,24 @@ final class OrderFlowHistoryUITests: KanpanUICase {
     try? FileManager.default.createDirectory(at: Self.outDir, withIntermediateDirectories: true)
     try? image.pngRepresentation.write(to: Self.outDir.appendingPathComponent("历史回填-17ProMax.png"))
     print("取证|历史回填|拍图|chartOrders=\(chartInfo()["orderFlowOrders"] ?? 0)|diag=\(flowInfo())|bands=\((chartInfo()["orderFlowBands"] as? [Any])?.count ?? 0)")
+  }
+
+  // ------------------------------------------------------------ 三家的簿都要接上（用户 2026-09-24：「btc okx现货也接上才行」）
+
+  /// BTC 打开主力订单流后，币安四本、OKX 三本（含现货 BTC-USDT）、Coinbase 现货 BTC-USD 都要就绪，
+  /// 而且 OKX 现货这本簿手上要有单（本机跟到的或服务端历史并进来的都算）。
+  func testAllBooksReadyIncludingOKXSpot() {
+    XCTAssertTrue(waitForLiveChart(), "没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    let must = ["OKX/spot/BTC-USDT", "OKX/usdtPerp/BTC-USDT-SWAP", "Coinbase/spot/BTC-USD", "币安/spot/BTCUSDT", "币安/usdtPerp/BTCUSDT"]
+    let ok = waitUntil(timeout: 90, poll: 1) {
+      let books = self.flowBooks()
+      return must.allSatisfy { books.ready[$0] == true } && (books.counts["okx:spot:BTC-USDT"] ?? 0) > 0
+    }
+    let books = flowBooks()
+    let readyList = books.ready.keys.sorted().map { "\($0)=\(books.ready[$0]! ? 1 : 0)" }.joined(separator: " ")
+    let countList = books.counts.keys.sorted().map { "\($0)=\(books.counts[$0]!)" }.joined(separator: " ")
+    print("取证|三家簿|ok=\(ok)|books: \(readyList)|counts: \(countList)")
+    XCTAssertTrue(ok, "簿没全就绪或 OKX 现货没出单：\(readyList) / \(countList)")
   }
 }

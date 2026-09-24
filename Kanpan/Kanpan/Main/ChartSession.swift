@@ -325,9 +325,18 @@ struct LiveCompareObservers: ViewModifier {
     }
 
     private var orderFlowSummary: String {
-      let orders = market.orderFlow.snapshot?.orders ?? []
+      let snapshot = market.orderFlow.snapshot
+      let orders = snapshot?.orders ?? []
       let earliest = orders.map(\.firstSeenMs).min() ?? 0
-      return "orders=\(orders.count);earliest=\(earliest);live=\(orders.filter { $0.endMs == nil }.count)"
+      // 各本簿就绪与否（`OKX/spot/BTC-USDT:1`），以及每本簿手上的单数——用来核「某家某产品真的接上了」
+      // （2026-09-24 用户点名 OKX 现货 BTC 必须接上）：簿就绪只说明快照到了，单数才说明它在出单。
+      var perVenue: [String: Int] = [:]
+      for o in orders { perVenue[o.venueID, default: 0] += 1 }
+      let books = (snapshot?.venues ?? [])
+        .map { "\($0.label)/\($0.product.rawValue)/\($0.instrument):\($0.ready ? 1 : 0)" }
+        .joined(separator: "|")
+      let counts = perVenue.keys.sorted().map { "\($0):\(perVenue[$0]!)" }.joined(separator: "|")
+      return "orders=\(orders.count);earliest=\(earliest);live=\(orders.filter { $0.endMs == nil }.count);books=\(books);counts=\(counts)"
     }
   }
 #endif
