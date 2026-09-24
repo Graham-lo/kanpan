@@ -25,41 +25,46 @@ struct LandscapeHeadline: View {
   }
 
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: Space.s) {
       // 和竖屏顶栏同一个写法「BTC/USDT」：基础币正文色、计价币降一级（审查 U11——
       // 原来写的是裸代号「BTCUSDT」，转个屏品种名就换了个样子）。
       HStack(alignment: .firstTextBaseline, spacing: 1) {
         Text(pair.base)
-          .font(.system(size: 13, weight: .semibold))
+          .font(TypeScale.controlOn)
           .foregroundStyle(theme.ink)
         if !pair.quote.isEmpty {
           Text("/" + pair.quote)
-            .font(.system(size: 11, weight: .medium))
+            .font(TypeScale.caption2Emph)
             .foregroundStyle(theme.ink3)
         }
       }
       if onTapSymbol != nil {
-        Image(systemName: "chevron.down")
-          .font(.system(size: 8, weight: .bold))
+        // 原来 8 号粗体，是全 app 最小的一个记号；和别处的列表箭头统一成一个尺寸。
+        VectorIcon.chevron(ControlMetrics.chevron)
           .foregroundStyle(theme.ink3)
-          .padding(.leading, -4)
+          .padding(.leading, -Space.xs)
       }
       if let price {
         // 横屏这颗药丸和竖屏顶栏是同一口价，写法也必须一样（审查 B-07）。
         Text(fmtPrice(price, decimals: decimals))
-          .font(.system(size: 13, weight: .semibold).monospacedDigit())
+          .font(TypeScale.controlOn).monospacedDigit()
           .foregroundStyle(up ? theme.up : theme.down)
       }
       if let changePercent, changePercent.isFinite {
         Text(changePercentText(changePercent))
-          .font(.system(size: 11, weight: .medium).monospacedDigit())
+          .font(TypeScale.caption2Emph).monospacedDigit()
           .foregroundStyle(up ? theme.up : theme.down)
       }
     }
-    .padding(.horizontal, 9)
-    .padding(.vertical, 5)
+    .padding(.horizontal, Space.m)
+    .padding(.vertical, Space.xs)
     .background(Capsule().fill(theme.raised2.opacity(0.82)))
-    .contentShape(Capsule())
+    // 画线工作台里它是换品种的按钮：画面还是这颗矮胶囊，点击区上下撑到 44，
+    // 多出来的高度用负边距还给布局，图例位不因此变高。
+    .frame(minHeight: onTapSymbol == nil ? nil : Hit.min)
+    .padding(.vertical, onTapSymbol == nil ? 0 : -(Hit.min - ControlMetrics.pillHeight) / 2)
+    .contentShape(Rectangle())
+    .dynamicTypeSize(...MarketChrome.typeCap)
     .onTapGesture { onTapSymbol?() }
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(onTapSymbol == nil ? [] : .isButton)
@@ -82,16 +87,15 @@ struct IntervalRail: View {
   var body: some View {
     VStack(spacing: 0) {
       ScrollView(.vertical, showsIndicators: false) {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
           ForEach(list, id: \.self) { chip($0) }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, Space.xs)
       }
       Button(action: onMore) {
-        VectorIcon.chevron(11)
+        VectorIcon.chevron(ControlMetrics.chevron)
           .foregroundStyle(theme.ink2)
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 8)
+          .frame(maxWidth: .infinity, minHeight: Hit.min)
           // 横屏下「更多」在底，分隔线也就从左边挪到顶上（原型 `.land .pmore`）。
           .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
           .contentShape(Rectangle())
@@ -101,23 +105,24 @@ struct IntervalRail: View {
     }
     .frame(width: 52)
     .overlay(alignment: .trailing) { Rectangle().fill(theme.line).frame(width: 1) }
+    .dynamicTypeSize(...MarketChrome.typeCap)
   }
 
   private func chip(_ iv: Interval) -> some View {
     let on = iv == current
     return Button { onPick(iv) } label: {
       Text(iv.shortLabel)
-        .font(.system(size: 13, weight: .medium))
+        .font(on ? TypeScale.controlOn : TypeScale.control)
         .foregroundStyle(on ? theme.amber : theme.ink2)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        // 每档一格 44 高（原来 13 号字上下各 8，约 32）：竖着排七八档仍然一屏装下。
+        .frame(maxWidth: .infinity, minHeight: Hit.min)
         .overlay(alignment: .bottom) {
           if on {
-            RoundedRectangle(cornerRadius: 2)
+            Capsule()
               .fill(theme.amber)
-              .frame(height: 2)
-              .padding(.horizontal, 6)
-              .padding(.bottom, 2)
+              .frame(height: Space.xxs)
+              .padding(.horizontal, Space.s)
+              .padding(.bottom, Space.s)
           }
         }
         .contentShape(Rectangle())
@@ -163,23 +168,32 @@ struct ToolRail: View {
     .frame(width: 52)
     .background(theme.app)
     .overlay(alignment: .leading) { Rectangle().fill(theme.line).frame(width: 1) }
+    .dynamicTypeSize(...MarketChrome.typeCap)
   }
 
   private func item(
     _ icon: VectorIcon, _ title: String, on: Bool, action: @escaping () -> Void
   ) -> some View {
     Button(action: action) {
-      VStack(spacing: 3) {
-        icon
-        Text(title).font(.system(size: 9, weight: .medium))
+      // 记号 22 的框（和画线栏同一个尺寸，见 `DrawChrome`），字 11（原来 9，低于下限）。
+      // 52 宽的竖栏里「画线」「竖屏」两个字 11 号只要 22pt，不用改成只剩图标。
+      VStack(spacing: Space.xxs) {
+        sized(icon)
+        Text(title).font(TypeScale.caption2Emph).lineLimit(1).fixedSize()
       }
-      .foregroundStyle(on ? theme.amber : theme.ink3)
-      .frame(maxWidth: .infinity)
-      .padding(.vertical, 9)
+      .foregroundStyle(on ? theme.amber : theme.ink2)
+      .frame(maxWidth: .infinity, minHeight: Hit.min)
+      .padding(.vertical, Space.s)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .accessibilityAddTraits(on ? [.isSelected] : [])
+  }
+
+  private func sized(_ icon: VectorIcon) -> VectorIcon {
+    var icon = icon
+    icon.size = DrawChrome.icon
+    return icon
   }
 }
 

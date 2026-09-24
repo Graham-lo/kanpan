@@ -42,22 +42,27 @@ struct DrawingSymbolSwitcher: View {
     return q.isEmpty ? frequent : matches(q)
   }
 
-  private let columns = [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)]
+  private let columns = [GridItem(.flexible(), spacing: Space.xs), GridItem(.flexible(), spacing: Space.xs)]
 
-  /// 列表留多高：键盘起来时压到 92pt，没起来时 208pt。
+  /// 列表留多高：键盘起来时露两行，没起来时露四行（每行 44，UI 审查 2026-09-24 起）。
   ///
-  /// 横屏的键盘就是半块屏（iPhone 上约 209pt / 393pt）。208pt 的列表在键盘上来之后
-  /// 有四分之三被盖住，用户看着一堆结果却只能点最上面一行。压到 92pt——正好是两行
-  /// 加上下的留白——整块浮层就落在键盘上沿以内，前四个匹配结果始终露着，再多的照样滑。
-  /// 而键盘没起来的时候（也就是一进来那会儿）列表是满的，「常看」十来个一眼看全。
-  private var listHeight: Double { focused ? 92 : 208 }
+  /// 横屏的键盘就是半块屏（iPhone 上约 209pt / 402pt）。四行的列表在键盘上来之后
+  /// 有大半被盖住，用户看着一堆结果却只能点最上面一行。压到两行——整块浮层就落在
+  /// 键盘上沿以内（品种名下 40 + 搜索框 44 + 两行 100 ≈ 184 < 193），前四个匹配结果
+  /// 始终露着，再多的照样滑。键盘起来时「常看」那行小标题也收起，省下的正好是这一截。
+  /// 而键盘没起来的时候（也就是一进来那会儿）列表是满的，「常看」八个一眼看全。
+  private func rowsHeight(_ rows: Int) -> Double {
+    Double(rows) * Hit.min + Double(rows - 1) * Space.xs + 2 * Space.s
+  }
+  private var listHeight: Double { focused ? rowsHeight(2) : rowsHeight(4) }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 6) {
-        Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(theme.ink3)
+      HStack(spacing: Space.s) {
+        Image(systemName: "magnifyingglass").font(TypeScale.footnote).foregroundStyle(theme.ink3)
+        // 输入框和全 app 同一档：15 号字、44 高（原来 13 号、36 高）。
         TextField("搜索品种", text: $query)
-          .font(.system(size: 13))
+          .font(TypeScale.body)
           // 品种代号全是 ASCII（BTCUSDT、TSLA、XAUUSD…）。不锁 `.asciiCapable` 的话，
           // 用户上次用的是中文输入法，这里就弹一副中文键盘出来——打 BTC 还得先切一次输入法。
           .keyboardType(.asciiCapable)
@@ -68,47 +73,58 @@ struct DrawingSymbolSwitcher: View {
           .onSubmit { if let first = rows.first { pick(first) } }
           .accessibilityIdentifier("draw.symbol.search")
         if !query.isEmpty {
-          Button { query = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 13)) }
-            .foregroundStyle(theme.ink3).accessibilityLabel("清空")
+          Button { query = "" } label: {
+            Image(systemName: "xmark.circle.fill").font(TypeScale.footnote)
+              // 画面是 13 号的小圆，点击区撑满这一行的高、宽 44，右半截借进边距。
+              .hitTarget()
+          }
+          .foregroundStyle(theme.ink3).accessibilityLabel("清空")
+          .padding(.trailing, -Space.m)
         }
       }
-      .padding(.horizontal, 10).frame(height: 36)
+      .padding(.horizontal, Space.m).frame(height: Hit.min)
       theme.line.frame(height: 0.5)
 
-      if query.trimmingCharacters(in: .whitespaces).isEmpty {
-        Text("常看").font(.system(size: 10)).foregroundStyle(theme.ink3)
-          .padding(.horizontal, 10).padding(.top, 7).padding(.bottom, 1)
+      if query.trimmingCharacters(in: .whitespaces).isEmpty, !focused {
+        // 分组小标题：11 medium（原来 10，低于下限）。
+        Text("常看").font(TypeScale.caption2Emph).foregroundStyle(theme.ink3)
+          .padding(.horizontal, Space.m).padding(.top, Space.s)
       }
 
       if rows.isEmpty {
-        Text("没有这个品种").font(.system(size: 12)).foregroundStyle(theme.ink3)
-          .padding(.horizontal, 10).padding(.vertical, 14)
+        Text("没有这个品种").font(TypeScale.caption).foregroundStyle(theme.ink3)
+          .padding(.horizontal, Space.m).padding(.vertical, Space.l)
       } else {
         ScrollView(.vertical, showsIndicators: false) {
           LazyVGrid(columns: columns, spacing: 4) {
             ForEach(rows, id: \.self) { symbol in
               Button { pick(symbol) } label: {
+                // 13 号、一格 44 高（原来 12 号、32 高）。长代号最多缩到 11 号为止，不再往下。
                 Text(InstrumentID(symbol).display)
-                  .font(.system(size: 12, weight: symbol == current ? .semibold : .regular))
-                  .lineLimit(1).minimumScaleFactor(0.8)
-                  .frame(maxWidth: .infinity, minHeight: 32)
-                  .background(symbol == current ? theme.amberSoft : .clear, in: RoundedRectangle(cornerRadius: 7))
-                  .foregroundStyle(symbol == current ? theme.amber : theme.ink)
+                  .font(symbol == current ? TypeScale.footnoteEmph : TypeScale.footnote)
+                  .lineLimit(1).minimumScaleFactor(11 / 13)
+                  .padding(.horizontal, Space.xs)
+                  .frame(maxWidth: .infinity, minHeight: Hit.min)
+                  .background(symbol == current ? theme.amberSoft : .clear,
+                              in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
+                  // 当前这只：底是琥珀淡底，字仍用正文墨色（琥珀字压琥珀底在浅色下不到 3:1）。
+                  .foregroundStyle(theme.ink)
                   .contentShape(Rectangle())
               }
               .accessibilityIdentifier("draw.symbol.\(symbol)")
             }
           }
-          .padding(.horizontal, 8).padding(.vertical, 6)
+          .padding(.horizontal, Space.s).padding(.vertical, Space.s)
         }
         .frame(maxHeight: listHeight)
         .animation(.easeOut(duration: 0.2), value: focused)
         .accessibilityIdentifier("draw.symbol.list")
       }
     }
-    .frame(width: 236)
-    .background(RoundedRectangle(cornerRadius: 12).fill(theme.raised2))
-    .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.line, lineWidth: 0.5))
+    .frame(width: 240)
+    .background(RoundedRectangle(cornerRadius: Radius.m, style: .continuous).fill(theme.raised2))
+    .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous).stroke(theme.line, lineWidth: 0.5))
+    .dynamicTypeSize(...MarketChrome.typeCap)
     .shadow(color: .black.opacity(0.22), radius: 12, y: 4)
     .buttonStyle(.plain)
     // 进来**不**自动弹键盘。

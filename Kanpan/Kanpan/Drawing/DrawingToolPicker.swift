@@ -20,6 +20,14 @@ struct DrawingToolPicker: View {
   var store: PrefsStore
   var onClose: () -> Void
   @Environment(\.panelTheme) private var theme
+  @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+  /// 竖屏三列四行；横屏（高度 compact）四列三行。
+  ///
+  /// 横屏那块贴边卡片只有 340 宽、可用高度三百来点，三列四行会把最后一行切在屏幕下沿
+  /// （UI 审查 2026-09-24 画线 §横屏）。四列三行一屏摆完，格子也还有 68pt 宽，
+  /// 六个字的工具名折成两行照样写全。
+  private var columnCount: Int { verticalSizeClass == .compact ? 4 : 3 }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -53,7 +61,7 @@ struct DrawingToolPicker: View {
   /// 每一格会长高，那时候还能往下推一点，而不是把最后一行顶出屏幕。
   private var grid: some View {
     ScrollView {
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.m), count: 3), spacing: Space.m) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.m), count: columnCount), spacing: Space.m) {
         ForEach(Drawing.Kind.palette) { kind in tile(kind) }
       }
       .padding(.horizontal, Inset.card).padding(.top, Space.xs).padding(.bottom, Space.xl)
@@ -71,20 +79,32 @@ struct DrawingToolPicker: View {
     // 就没有哪一格亮起来——这正是该有的样子，不必去改那个值。
     let picked = controller.tool == kind
       || (controller.tool == nil && store.prefs.lastDrawTool == kind.rawValue)
+    let compact = verticalSizeClass == .compact
     return Button { controller.pick(kind) } label: {
       VStack(spacing: Space.s) {
+        // 记号是彩色的那一半；名字选中时仍用正文墨色——琥珀字压琥珀淡底在浅色皮肤下
+        // 对比不到 3:1（UI 审查 2026-09-24），选中与否靠记号颜色 + 描边读。
         DrawKindGlyph(kind: kind, size: 30)
-        Text(kind.title).font(TypeScale.caption).multilineTextAlignment(.center)
+          .foregroundStyle(picked ? theme.amber : theme.ink)
+        Text(kind.title).font(picked ? TypeScale.captionEmph : TypeScale.caption)
+          .foregroundStyle(theme.ink)
+          .multilineTextAlignment(.center)
           .lineLimit(2).fixedSize(horizontal: false, vertical: true)
       }
-      .padding(.horizontal, Space.xs).padding(.vertical, Space.m)
-      .frame(maxWidth: .infinity, minHeight: Hit.min * 2)
+      .padding(.horizontal, Space.xs).padding(.vertical, compact ? Space.s : Space.m)
+      .frame(maxWidth: .infinity, minHeight: compact ? Hit.min + Space.xl : Hit.min * 2)
       .contentShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
     }
     .buttonStyle(.plain)
-    .foregroundStyle(picked ? theme.amber : theme.ink)
     .background(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
       .fill(picked ? theme.amberSoft : theme.raised2))
+    .overlay {
+      if picked {
+        RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
+          .strokeBorder(theme.amber, lineWidth: 1.5)
+      }
+    }
+    .accessibilityAddTraits(picked ? .isSelected : [])
     .accessibilityIdentifier("draw.tool.\(kind.rawValue)")
     .drawRepeatOnLongPress(controller, kind)
   }

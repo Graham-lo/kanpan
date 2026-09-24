@@ -24,6 +24,25 @@ import UIKit
 /// 渐隐——被裁的那把是淡出去的，不是被切成半个字。字号、图标、文字一个都没缩。
 /// 可变的那一段一律 `.frame(maxWidth: .infinity)` + `.clipped()`，不许把内容漏到
 /// 固定按钮底下（「测量」曾整块压在「撤销」底下，点测量点到的是撤销）。
+/// 画线的几根栏（竖屏两行、选中栏、「更多」、横屏底条）共用的记号尺寸。
+///
+/// 2026-09-24 UI 审查（汇总 §画线）：原来一根栏上四种图标尺寸——铅笔 17、撤销 15、
+/// 选中栏动作 14、工具记号 18 / 20——并排看像是从四个地方拼来的。现在一律落在 22 的框里，
+/// 和底栏同一家族：SF Symbol 能用实心的用实心（`symbolVariant(.fill)`），笔画统一 medium。
+enum DrawChrome {
+  /// 记号的框。工具记号（`DrawKindGlyph`）和 SF Symbol 都是这个框。
+  static let icon: CGFloat = 22
+  /// SF Symbol 的字号：19 medium 的字形正好撑满 22 的框，和工具记号视觉等高。
+  static let symbolPoint: CGFloat = 19
+
+  static func symbol(_ name: String) -> some View {
+    Image(systemName: name)
+      .symbolVariant(.fill)
+      .font(.system(size: symbolPoint, weight: .medium))
+      .frame(width: icon, height: icon)
+  }
+}
+
 struct DrawingBar: View {
   var controller: DrawingController
   /// 选中一条能设提醒的线时，选中栏左边是提醒胶囊（`LineAlertChip`）。
@@ -46,7 +65,7 @@ struct DrawingBar: View {
       HStack(spacing: 0) {
         // 「全部工具」钉在下排：画完一条线它自动选中、上排换成选中栏，这时照样一下就能换别的工具。
         Button { controller.openTools() } label: {
-          Image(systemName: "pencil.line").frame(width: 44, height: 44).contentShape(Rectangle())
+          DrawChrome.symbol("pencil.line").hitTarget()
         }
         .foregroundStyle(controller.picker ? theme.amber : theme.ink2)
         .accessibilityLabel("全部画线工具").accessibilityIdentifier("draw.tools")
@@ -59,13 +78,18 @@ struct DrawingBar: View {
         Spacer(minLength: 0)
         DrawingMoreButton(controller: controller, style: .inline)
         divider
-        Button("完成") { controller.finish() }
-          .frame(width: 52, height: 44).contentShape(Rectangle())
-          .foregroundStyle(theme.amber)
-          .accessibilityIdentifier("draw.finish")
+        Button { controller.finish() } label: {
+          Text("完成").font(TypeScale.controlOn)
+            .padding(.horizontal, Space.m).hitTarget()
+        }
+        .foregroundStyle(theme.amber)
+        .accessibilityIdentifier("draw.finish")
       }
     }
-    .font(.system(size: 12, weight: .medium)).buttonStyle(.plain)
+    // 整根栏的字走控件档（13 medium），跟系统文字大小走、封顶和行情页顶上那几条一样
+    // （`MarketChrome.typeCap`）：两行的总高是钉死的，字再大就要把 K 线往上顶。
+    .font(TypeScale.control).buttonStyle(.plain)
+    .dynamicTypeSize(...MarketChrome.typeCap)
     .foregroundStyle(theme.ink2).background(theme.raised)
     .overlay(alignment: .top) { theme.line.frame(height: 0.5) }
   }
@@ -80,9 +104,9 @@ struct DrawingBar: View {
   /// 记号大小三套一个数：挤不下时让出来的是空隙，不是内容。
   private var tools: some View {
     ViewThatFits(in: .horizontal) {
-      filledTools(spacing: 6, pad: 10)
-      filledTools(spacing: 4, pad: 6)
-      filledTools(spacing: 2, pad: 2)
+      filledTools(spacing: Space.s, pad: Space.m)
+      filledTools(spacing: Space.xs, pad: Space.s)
+      filledTools(spacing: Space.xxs, pad: Space.xxs)
       scrollingTools
     }
     .frame(maxWidth: .infinity)
@@ -100,14 +124,14 @@ struct DrawingBar: View {
         if kind != Drawing.Kind.palette.first { Spacer(minLength: spacing) }
         toolChip(kind, pad: pad)
       }
-    }.padding(.horizontal, 4)
+    }.padding(.horizontal, Space.xs)
   }
 
   private var scrollingTools: some View {
     ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: 6) {
-        ForEach(Drawing.Kind.palette) { kind in toolChip(kind, pad: 10) }
-      }.padding(.trailing, 4)
+      HStack(spacing: Space.s) {
+        ForEach(Drawing.Kind.palette) { kind in toolChip(kind, pad: Space.m) }
+      }.padding(.horizontal, Space.xs)
     }
     .frame(maxWidth: .infinity)
     // `.clipped()` 管的是 hit-test（见上面，不许删）；渐隐只管看的那一层，
@@ -124,25 +148,27 @@ struct DrawingBar: View {
   ///
   private func toolChip(_ kind: Drawing.Kind, pad: Double) -> some View {
     Button { controller.pick(kind) } label: {
-      HStack(spacing: 5) { DrawKindGlyph(kind: kind, size: 18); Text(kind.title).fixedSize() }
+      HStack(spacing: Space.xs) { DrawKindGlyph(kind: kind, size: DrawChrome.icon); Text(kind.title).fixedSize() }
     }
-    .padding(.horizontal, pad).frame(minHeight: 44)
-    .background(controller.tool == kind ? theme.amberSoft : .clear, in: RoundedRectangle(cornerRadius: 8))
+    .padding(.horizontal, pad).frame(minHeight: Hit.min)
+    .background(controller.tool == kind ? theme.amberSoft : .clear,
+                in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
     .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)
     .contentShape(Rectangle())
     .accessibilityIdentifier("draw.\(kind.rawValue)")
     .drawRepeatOnLongPress(controller, kind)
   }
 
-  private var divider: some View { theme.line.frame(width: 0.5, height: 28) }
+  private var divider: some View { theme.line.frame(width: 0.5, height: ControlMetrics.pillHeight) }
   private func icon(
     _ system: String, _ label: String, _ id: String, enabled: Bool, action: @escaping () -> Void
   ) -> some View {
     Button(action: action) {
-      Image(systemName: system).frame(width: 44, height: 44).contentShape(Rectangle())
+      DrawChrome.symbol(system).hitTarget()
     }
     .disabled(!enabled)
-    .opacity(enabled ? 1 : 0.35)
+    // 只有记号、没有字：按约定装饰件的禁用态整块降到 `disabledOpacity`。
+    .opacity(enabled ? 1 : ControlMetrics.disabledOpacity)
     .accessibilityLabel(label).accessibilityIdentifier(id)
   }
 }
@@ -181,32 +207,34 @@ struct DrawingSelectionBar: View {
       let _ = FrameProbe.shared.countBody("DrawingSelectionBar")
     #endif
     if let item = controller.selected {
-      HStack(spacing: 2) {
+      HStack(spacing: Space.xxs) {
         if let lineAlert, AlertGeometry.supports(item.kind) {
           LineAlertChip(model: lineAlert, drawing: item, symbol: controller.currentSymbol)
-            .padding(.leading, 8)
+            .padding(.leading, Space.s)
             // 胶囊可以缩字，三颗动作一个都不许挤掉。
             .layoutPriority(-1)
           if item.locked {
-            Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(theme.ink3)
-              .padding(.leading, 4).accessibilityLabel("已锁定")
+            // 这把锁是跟在胶囊后面的状态字，不是按钮：按字排，和旁边的小字同一档。
+            Image(systemName: "lock.fill").font(TypeScale.caption).foregroundStyle(theme.ink3)
+              .padding(.leading, Space.xs).accessibilityLabel("已锁定")
           }
         } else {
           Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
-            .font(.system(size: 12)).foregroundStyle(theme.ink3)
-            .padding(.leading, landscape ? 12 : 10).lineLimit(1).truncationMode(.tail)
-            // 「两端延伸」「向右延伸」四个字，竖屏窄机上刚好差一点：先缩一点字，还不够才截。
-            .minimumScaleFactor(0.75)
+            .font(TypeScale.caption).foregroundStyle(theme.ink3)
+            .padding(.leading, Space.m).lineLimit(1).truncationMode(.tail)
+            // 原来这儿 `minimumScaleFactor(0.75)`，12 号能缩到 9——低于 11 的下限（UI 审查
+            // 2026-09-24）。不缩字：放不下就在尾巴上截，三颗动作仍然一颗不许挤掉。
             .layoutPriority(-1)
         }
         Spacer(minLength: 4)
         act("样式", "slider.horizontal.3", "draw.style") { controller.panel = .style }
         act("复制", "plus.square.on.square", "draw.copy") { controller.duplicate() }
         act("删除", "trash", "draw.delete", tint: theme.danger) { controller.deleteSelected() }
-          .padding(.trailing, landscape ? 8 : 2)
+          .padding(.trailing, landscape ? Space.s : Space.xxs)
       }
       .frame(maxWidth: .infinity)
-      .frame(height: 44)
+      .frame(height: Hit.min)
+      .dynamicTypeSize(...MarketChrome.typeCap)
       .background { if landscape { theme.raised } }
       .overlay(alignment: .bottom) { if landscape { theme.line.frame(height: 0.5) } }
       .buttonStyle(.plain)
@@ -222,12 +250,15 @@ struct DrawingSelectionBar: View {
     action: @escaping () -> Void
   ) -> some View {
     Button(action: action) {
-      VStack(spacing: 2) {
-        Image(systemName: icon).font(.system(size: 14))
-        Text(title).font(.system(size: 10))
+      // 记号 22 在上、11 号字在下（原来 14 + 10，字低于下限）：22 + 2 + 一行 13 = 37，
+      // 装在 44 高的栏里；宽度按字撑、最少 44。
+      VStack(spacing: Space.xxs) {
+        DrawChrome.symbol(icon)
+        Text(title).font(TypeScale.caption2Emph).lineLimit(1).fixedSize()
       }
       .foregroundStyle(tint ?? theme.ink2)
-      .frame(width: 48, height: 44).contentShape(Rectangle())
+      .padding(.horizontal, Space.xxs)
+      .frame(minWidth: Hit.min, minHeight: Hit.min).contentShape(Rectangle())
     }
     .accessibilityLabel(title).accessibilityIdentifier(id)
   }
@@ -245,7 +276,7 @@ struct DrawingMoreButton: View {
   enum Style { case inline, dock }
   var controller: DrawingController
   var style: Style
-  var height: Double = 44
+  var height: Double = Hit.min
   @Environment(\.panelTheme) private var theme
   @State private var open = false
 
@@ -254,17 +285,17 @@ struct DrawingMoreButton: View {
       Group {
         switch style {
         case .inline:
-          HStack(spacing: 4) {
-            Image(systemName: "ellipsis.circle").font(.system(size: 15))
+          HStack(spacing: Space.xs) {
+            DrawChrome.symbol("ellipsis.circle")
             Text("更多")
           }
-          .padding(.horizontal, 10)
+          .padding(.horizontal, Space.s)
         case .dock:
-          VStack(spacing: 1) {
-            Image(systemName: "ellipsis.circle").font(.system(size: 15))
-            Text("更多").lineLimit(1)
+          VStack(spacing: Space.xxs) {
+            DrawChrome.symbol("ellipsis.circle")
+            Text("更多").lineLimit(1).fixedSize()
           }
-          .frame(width: 48)
+          .frame(minWidth: Hit.min)
         }
       }
       .frame(height: height).contentShape(Rectangle())
@@ -355,7 +386,8 @@ struct DrawingHintStrip: View {
   var body: some View {
     if let hint = controller.hint {
       Text(hint).font(PanelFont.note).foregroundStyle(theme.ink2)
-        .padding(.horizontal, 12).padding(.vertical, 6)
+        .dynamicTypeSize(...MarketChrome.typeCap)
+        .padding(.horizontal, Inset.cardCompact).padding(.vertical, Space.s)
         .background(theme.raised, in: Capsule()).allowsHitTesting(false)
     }
   }
@@ -383,7 +415,8 @@ struct DrawingDock: View {
   var controller: DrawingController
   @Environment(\.panelTheme) private var theme
   @Environment(\.displayScale) private var displayScale
-  private static let height: Double = 46
+  /// 命中区 44 再加 2。记号 22 + 2 + 11 号字一行 13 = 37，装得下。
+  private static let height: Double = Hit.min + Space.xxs
 
   var body: some View {
     HStack(spacing: 0) {
@@ -392,9 +425,9 @@ struct DrawingDock: View {
       // 工具放在滚动区里：十二把在横屏这根条上也摆不下，但右边那几个固定动作
       // 一个都不能被挤没（竖屏那根条踩过这个坑，见 `DrawingBar` 顶上那段）。
       ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 2) {
+        HStack(spacing: Space.xxs) {
           ForEach(Drawing.Kind.palette) { kind in toolButton(kind) }
-        }.padding(.horizontal, 4)
+        }.padding(.horizontal, Space.xs)
       }
       .frame(maxWidth: .infinity)
       .clipped()
@@ -405,12 +438,18 @@ struct DrawingDock: View {
       }
       DrawingMoreButton(controller: controller, style: .dock, height: Self.height)
       divider
-      Button("完成") { controller.finish() }
-        .frame(width: 56, height: Self.height).contentShape(Rectangle())
-        .foregroundStyle(theme.amber).font(.system(size: 12, weight: .medium))
-        .accessibilityIdentifier("draw.finish")
+      Button { controller.finish() } label: {
+        Text("完成").font(TypeScale.controlOn)
+          .padding(.horizontal, Space.m)
+          .frame(minWidth: Hit.min, minHeight: Self.height).contentShape(Rectangle())
+      }
+      .foregroundStyle(theme.amber)
+      .accessibilityIdentifier("draw.finish")
     }
-    .font(.system(size: 10))
+    // 记号下面那行名字原来 10 号，低于 HIG 下限 11（UI 审查 2026-09-24）。
+    // 工具名写全不截：它们排在横滚区里，要多宽给多宽，放不下的往右滑。
+    .font(TypeScale.caption2Emph)
+    .dynamicTypeSize(...MarketChrome.typeCap)
     .buttonStyle(.plain)
     .frame(height: Self.height)
     .background(theme.raised)
@@ -418,7 +457,7 @@ struct DrawingDock: View {
     .overlay(alignment: .top) { theme.line.frame(height: 1 / displayScale) }
   }
 
-  private var divider: some View { theme.line.frame(width: 1 / displayScale, height: 26) }
+  private var divider: some View { theme.line.frame(width: 1 / displayScale, height: ControlMetrics.pillHeight) }
 
   /// 笔形入口。手里拿着的工具不在这根条上时它也亮着，并且写上那把工具的名字——
   /// 不然换了一把这条上没摆的线（长按重复画留下的，或者老版本存的），
@@ -426,10 +465,10 @@ struct DrawingDock: View {
   private var toolsButton: some View {
     let held = controller.tool.flatMap { Drawing.Kind.palette.contains($0) ? nil : $0.title }
     return Button { controller.openTools() } label: {
-      VStack(spacing: 1) {
-        Image(systemName: "pencil.line").font(.system(size: 17))
+      VStack(spacing: Space.xxs) {
+        DrawChrome.symbol("pencil.line")
         Text(held ?? "工具").lineLimit(1).fixedSize()
-      }.frame(minWidth: 54, minHeight: Self.height).padding(.horizontal, held == nil ? 0 : 4)
+      }.frame(minWidth: Hit.min + Space.s, minHeight: Self.height).padding(.horizontal, held == nil ? 0 : Space.xs)
         .contentShape(Rectangle())
     }
     .foregroundStyle(held != nil || controller.picker ? theme.amber : theme.ink2)
@@ -439,15 +478,16 @@ struct DrawingDock: View {
 
   private func toolButton(_ kind: Drawing.Kind) -> some View {
     Button { controller.pick(kind) } label: {
-      VStack(spacing: 1) {
-        DrawKindGlyph(kind: kind, size: 20)
+      VStack(spacing: Space.xxs) {
+        DrawKindGlyph(kind: kind, size: DrawChrome.icon)
         // 名字写全、不许截（审查 U11：「VWAP」曾被截成「VW」）——这一格在横滚区里，
         // 要多宽给多宽，`fixedSize` 让它按字的真宽度排。
         Text(kind.title).lineLimit(1).fixedSize()
-      }.frame(minWidth: 46, minHeight: Self.height).padding(.horizontal, 2).contentShape(Rectangle())
+      }.frame(minWidth: Hit.min, minHeight: Self.height).padding(.horizontal, Space.xxs).contentShape(Rectangle())
     }
     .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)
-    .background(controller.tool == kind ? theme.amberSoft : .clear, in: RoundedRectangle(cornerRadius: 8))
+    .background(controller.tool == kind ? theme.amberSoft : .clear,
+                in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
     .accessibilityLabel(kind.title)
     .accessibilityIdentifier("draw.\(kind.rawValue)")
     .drawRepeatOnLongPress(controller, kind)
@@ -457,10 +497,10 @@ struct DrawingDock: View {
                           action: @escaping () -> Void) -> some View {
     Button(action: action) {
       // 命中区不能低于 44×44。
-      Image(systemName: icon).font(.system(size: 15))
-        .frame(width: 44, height: Self.height).contentShape(Rectangle())
+      DrawChrome.symbol(icon)
+        .frame(width: Hit.min, height: Self.height).contentShape(Rectangle())
     }
-    .disabled(!enabled).opacity(enabled ? 1 : 0.35)
+    .disabled(!enabled).opacity(enabled ? 1 : ControlMetrics.disabledOpacity)
     .accessibilityLabel(label).accessibilityIdentifier(id)
   }
 }
@@ -486,7 +526,7 @@ struct DrawingSheet: View {
       NavigationStack {
         List {
           Section {
-              if controller.items.isEmpty { Text("还没有画线").foregroundStyle(theme.ink2) }
+              if controller.items.isEmpty { Text("还没有画线").font(TypeScale.body).foregroundStyle(theme.ink2) }
               // 左划删除走 `SwipeToDelete`，和提醒总表同一个零件。
               //
               // 这儿原来用的是系统的 `.swipeActions`，砖底靠 `.tint(theme.danger)` 盖，
@@ -512,30 +552,33 @@ struct DrawingSheet: View {
                       // 划开着的时候点行不是「选中这条线」，是「先把砖收回去」。
                       if swipe.isOpen { swipe.close() } else { controller.select(item.id); dismiss() }
                     } label: {
-                      VStack(alignment: .leading, spacing: 3) {
+                      VStack(alignment: .leading, spacing: Space.xxs) {
+                        // 行名 15、副 12（HIG 字阶；系统 `List` 默认 17 比面板标题还大）。
                         Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
+                          .font(TypeScale.body).foregroundStyle(theme.ink)
                         // 价格的写法全 app 一个口径：品种自己的小数位 + 极小正价自动多给
                         // 几位（审查 B-07）。原来这儿按「有效数字 2–10 位」写，同一条线
                         // 在图上和在这张清单里能差出好几位。
                         Text(fmtPrice(item.a.p, decimals: decimals))
-                          .font(.caption).foregroundStyle(theme.ink3)
+                          .font(TypeScale.caption).foregroundStyle(theme.ink3)
                       }.frame(maxWidth: .infinity, alignment: .leading)
                     }.accessibilityIdentifier("draw.object.\(item.id)")
                     Button {
                       if swipe.isOpen { swipe.close() } else { controller.toggleHidden(item) }
                     } label: {
-                      Image(systemName: item.hidden ? "eye.slash" : "eye").frame(width: 44, height: 44)
+                      Image(systemName: item.hidden ? "eye.slash" : "eye").font(TypeScale.body).hitTarget()
                     }.accessibilityLabel(item.hidden ? "显示画线" : "隐藏画线")
                   }.buttonStyle(.borderless)
                   // 行内的留白原来由 `List` 自己的 `listRowInsets` 给。砖块要够得着
                   // 行的右沿，那份内缩必须清掉，改由行内容自己补回同样的量。
-                  .padding(.leading, 16)
-                  .padding(.trailing, 4)
-                  .padding(.vertical, 12)
+                  .padding(.leading, Inset.card)
+                  .padding(.trailing, Space.xs)
+                  .padding(.vertical, Space.s)
+                  .frame(minHeight: Inset.rowMin)
                 }
                 .listRowInsets(EdgeInsets())
                 // 内缩清掉之后分隔线会顶到最左边，按原来的量把它推回去。
-                .alignmentGuide(.listRowSeparatorLeading) { _ in 16 }
+                .alignmentGuide(.listRowSeparatorLeading) { _ in Inset.card }
               }
             }
             .listRowBackground(theme.raised)
