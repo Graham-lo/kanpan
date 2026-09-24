@@ -70,11 +70,6 @@ enum SyncOverlay {
   /// `objects` 要给**这两张表的全部对象**（`SyncArchive.local` 里的那一整份）：给一部分就是
   /// 把没给的那几条删掉。
   static func symbols(rebuiltFrom objects: some Sequence<SyncObject>, keeping local: SymbolPrefs) -> SymbolPrefs {
-    func order(_ a: SyncObject, _ b: SyncObject) -> Bool {
-      let x: Double = { if case .number(let n) = a.body["order"] { return n }; return 0 }()
-      let y: Double = { if case .number(let n) = b.body["order"] { return n }; return 0 }()
-      return x == y ? a.id < b.id : x < y
-    }
     let live = objects.filter { !$0.deleted }
     let groups = live.filter { $0.collection == "groups" }.sorted(by: order).compactMap { v -> FavoriteGroup? in
       guard case .string(let name) = v.body["name"] else { return nil }; return FavoriteGroup(id: v.id, name: name)
@@ -86,6 +81,25 @@ enum SyncOverlay {
     }
     let rebuilt = SymbolPrefs(favorites: names, groups: groups, groupForSymbol: membership)
     return SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: local, over: rebuilt)
+  }
+
+  /// 这一整份分组对象里，哪些是同名的多余那个：「被并掉的 id → 留下的 id」。
+  ///
+  /// 整张重建（上面那个）已经按名字并好了；这里是给 `applyPending` 看的——不空就说明
+  /// 云端还躺着多余的分组对象，要再记一次账，把它们推删除、把挂在上面的自选改挂过去。
+  static func mergedGroups(in objects: some Sequence<SyncObject>) -> [String: String] {
+    let groups = objects.filter { $0.collection == "groups" && !$0.deleted }.sorted(by: order).compactMap { v -> FavoriteGroup? in
+      guard case .string(let name) = v.body["name"], !v.id.isEmpty, !name.isEmpty else { return nil }
+      return FavoriteGroup(id: v.id, name: name)
+    }
+    return SymbolPrefs.mergeSameNamed(groups).merged
+  }
+
+  /// 按对象里记的 `order` 排，同序按 id。
+  private static func order(_ a: SyncObject, _ b: SyncObject) -> Bool {
+    let x: Double = { if case .number(let n) = a.body["order"] { return n }; return 0 }()
+    let y: Double = { if case .number(let n) = b.body["order"] { return n }; return 0 }()
+    return x == y ? a.id < b.id : x < y
   }
 
   /// 自选 / 分组：**逐条补**（启动前向对账用）。只动给了的那几条，位置按对象里记的 `order`
@@ -108,5 +122,7 @@ enum SyncOverlay {
       prefs.favorites.insert(symbol, at: min(max(slot, 0), prefs.favorites.count))
       if case .string(let group) = object.body["groupId"] { prefs.groupForSymbol[symbol] = group }
     }
+    // 补回来的分组可能和手上的同名（另一台设备推上来的「加密」）：同样并成一格。
+    prefs.mergeSameNamedGroups()
   }
 }

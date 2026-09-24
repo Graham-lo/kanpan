@@ -133,6 +133,115 @@ import XCTest
     XCTAssertTrue(created.isEmpty, "测试账号没删掉：\(created)")
   }
 
+  // ------------------------------------------------------------ 同名分类只能有一格
+
+  /// 用户 2026-09-24 报的现象：手机全新安装（换了包名，访客状态）→ 登录老账号 →
+  /// 自选页分类条上两个「加密」、两个「美股」。
+  ///
+  /// A 设备是「老账号」：注册、摆好「加密」「美股」、推上云。B 设备是「全新安装的手机」：
+  /// 全新档案，**先以访客身份**攒出自己的「加密」「美股」（id 是现场随机的，和 A 的不同），
+  /// 然后登录同一个账号。登录后分类条上每个名字只能有一格，四只自选一只不少；
+  /// 再回 A 同步一次，A 那边也还是一格——多余的分组对象被推删除了，云端自愈。
+  func testFreshInstallGuestLoginKeepsOneChipPerCategoryName() throws {
+    continueAfterFailure = false
+
+    // ---- A 设备：老账号，云端已经有「加密」「美股」
+    let a = makeApp(profile: profileA)
+    a.launch()
+    XCTAssertTrue(a.buttons["bottom.settings"].waitForExistence(timeout: 90),
+                  "A 设备（profile=\(profileA)）起了 90s 还没见到底栏\n\(a.debugDescription)")
+    created.append(account)
+    register(a, step: "A 设备注册 \(account)")
+    openFavorites(a, step: "A 设备进自选页")
+    addFavoriteFromSearch(a, symbol: "BTCUSDT", step: "A 设备加一个币")
+    addFavoriteFromSearch(a, symbol: "AAPLUSDT", step: "A 设备加一支美股")
+    moveToCategory(a, symbol: "AAPLUSDT", name: second, step: "A 设备把美股移进「美股」")
+    syncNow(a, step: "A 设备把两类推上云")
+    a.terminate()
+
+    // ---- B 设备：全新安装，访客状态下自己攒出同名的两类
+    let b = makeApp(profile: profileB)
+    b.launch()
+    XCTAssertTrue(b.buttons["bottom.settings"].waitForExistence(timeout: 90),
+                  "B 设备（profile=\(profileB)）起了 90s 还没见到底栏\n\(b.debugDescription)")
+    openFavorites(b, step: "B 设备（访客）进自选页")
+    addFavoriteFromSearch(b, symbol: "SOLUSDT", step: "B 设备（访客）加一个币")
+    addFavoriteFromSearch(b, symbol: "TSLAUSDT", step: "B 设备（访客）加一支美股")
+    moveToCategory(b, symbol: "TSLAUSDT", name: second, step: "B 设备（访客）把美股移进「美股」")
+    XCTAssertTrue(waitUntil(20) { self.chip(b, self.first).exists && self.chip(b, self.second).exists },
+                  "B 设备访客状态下应当已有「\(first)」「\(second)」两格\n\(b.debugDescription)")
+
+    // ---- B 登录老账号：登录本身拉一次全量，再点一次「立即同步」确保云端那份落地
+    login(b, step: "B 设备登录 \(account)")
+    syncNow(b, step: "B 设备把云端那份拉下来")
+    openFavorites(b, step: "B 设备登录后进自选页")
+    // 等云端的成员到齐（BTC / AAPL 是 A 的），才谈得上数格子。
+    _ = waitUntil(60) { self.members(b, self.first).contains("BTCUSDT") }
+    saveShot(b, "B设备-登录后的自选页")
+    XCTAssertEqual(chips(b, first), 1, "B 设备登录后分类条上「\(first)」不止一格——正是用户报的现象\n\(b.debugDescription)")
+    XCTAssertEqual(chips(b, second), 1, "B 设备登录后分类条上「\(second)」不止一格——正是用户报的现象\n\(b.debugDescription)")
+    XCTAssertEqual(Set(members(b, first)), ["BTCUSDT", "SOLUSDT"], "「\(first)」里应当是两边的币合在一起")
+    XCTAssertEqual(Set(members(b, second)), ["AAPLUSDT", "TSLAUSDT"], "「\(second)」里应当是两边的美股合在一起")
+    tapGroup(b, name: first, step: "B 设备停回「\(first)」截图")
+    saveShot(b, "B设备-登录后-加密")
+    // 并掉的那两个分组对象要推删除：再同步一次，等队列清空报「已同步」。
+    syncNow(b, step: "B 设备把合并结果推上云")
+    b.terminate()
+
+    // ---- 回 A：云端已经自愈，A 这边也只有一格
+    // 同一个账号每一类设备只许一台在线（两个档案在同一台模拟器上都算「手机」），B 登录时
+    // A 已经被顶下线了；A 这边照用户的路点「重新登录」登回来，登录那一下就会拉一次全量。
+    a.launch()
+    XCTAssertTrue(a.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 设备重开没见到底栏\n\(a.debugDescription)")
+    relogin(a, step: "A 设备重新登录 \(account)")
+    syncNow(a, step: "A 设备拉回合并后的那份")
+    openFavorites(a, step: "A 设备同步后进自选页")
+    _ = waitUntil(60) { self.members(a, self.first).contains("SOLUSDT") }
+    saveShot(a, "A设备-同步后的自选页")
+    XCTAssertEqual(chips(a, first), 1, "云端没自愈：A 设备上「\(first)」不止一格\n\(a.debugDescription)")
+    XCTAssertEqual(chips(a, second), 1, "云端没自愈：A 设备上「\(second)」不止一格\n\(a.debugDescription)")
+    XCTAssertEqual(Set(members(a, first)), ["BTCUSDT", "SOLUSDT"])
+    XCTAssertEqual(Set(members(a, second)), ["AAPLUSDT", "TSLAUSDT"])
+
+    closeAccount(a, step: "注销 \(account)")
+    XCTAssertTrue(created.isEmpty, "测试账号没删掉：\(created)")
+  }
+
+  /// 被同类设备顶下线之后，账号页上点「重新登录」登回来。用户名是预填好的，别再敲一遍。
+  private func relogin(_ app: XCUIApplication, step: String) {
+    openAccount(app, step: step)
+    let entry = app.buttons["account.reauthenticate"]
+    XCTAssertTrue(entry.waitForExistence(timeout: 30), "\(step)：账号页上没有「重新登录」\n\(app.debugDescription)")
+    entry.tap()
+    let field = app.textFields["account.email"]
+    XCTAssertTrue(field.waitForExistence(timeout: 20), "\(step)：没有用户名输入框\n\(app.debugDescription)")
+    fill(app, username: (field.value as? String) == account ? nil : account, step: step)
+    app.buttons["account.submit"].tap()
+    XCTAssertTrue(waitUntil(60) { !app.otherElements["account.view"].exists },
+                  "\(step)：重新登录没闭合账号页，页面报错=\(errorText(app))\n\(app.debugDescription)")
+  }
+
+  /// 分类条上叫这个名字的胶囊有几颗。
+  private func chips(_ app: XCUIApplication, _ name: String) -> Int {
+    app.buttons.matching(identifier: "favorites.group." + name).count
+  }
+
+  /// 点中某一类，读出列表里露着哪几只（只认这条用例用到的四只）。同名有两格时点第一格。
+  private func members(_ app: XCUIApplication, _ name: String) -> [String] {
+    let target = app.buttons.matching(identifier: "favorites.group." + name).firstMatch
+    guard target.exists else { return [] }
+    if !target.isSelected, target.isHittable { target.tap(); _ = waitUntil(3) { target.isSelected } }
+    return ["BTCUSDT", "SOLUSDT", "AAPLUSDT", "TSLAUSDT"].filter { app.buttons["favorites.open." + testInstrumentKey($0)].exists }
+  }
+
+  /// 截图既挂进结果包，也落一份 PNG 到 /tmp，验收时直接拿来看。
+  private func saveShot(_ app: XCUIApplication, _ name: String) {
+    shot(app, name)
+    let dir = URL(fileURLWithPath: "/tmp/kanpan-samename-shots", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try? app.screenshot().pngRepresentation.write(to: dir.appendingPathComponent(name + ".png"))
+  }
+
   // ------------------------------------------------------------ 启动与环境
 
   private func makeApp(profile: String) -> XCUIApplication {

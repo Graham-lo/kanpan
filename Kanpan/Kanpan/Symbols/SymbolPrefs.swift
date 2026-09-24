@@ -102,11 +102,17 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     self.favorites = Self.clean(favorites)
     self.recents = Array(Self.clean(recents).prefix(Self.recentLimit))
     var seen = Set<String>()
-    self.groups = groups.filter { !$0.id.isEmpty && !$0.name.isEmpty && seen.insert($0.id).inserted }
-    self.groupForSymbol = InstrumentID.migrate(groupForSymbol).filter { self.favorites.contains($0.key) && seen.contains($0.value) }
+    let unique = groups.filter { !$0.id.isEmpty && !$0.name.isEmpty && seen.insert($0.id).inserted }
+    // 同名分类并成一个（`mergeSameNamed`）：不管这份档案是从盘上读的、云端重建的，还是
+    // 调用方拼出来的，出门的时候每个名字只有一格，挂在被并掉那一类上的成员改挂过去。
+    let (merged, remap) = Self.mergeSameNamed(unique)
+    let live = Set(merged.map(\.id))
+    self.groups = merged
+    self.groupForSymbol = InstrumentID.migrate(groupForSymbol).mapValues { remap[$0] ?? $0 }
+      .filter { self.favorites.contains($0.key) && live.contains($0.value) }
     // 老存档里那个分类可能早就被删了，读进来就洗掉——免得迁移把一个指向空气的
-    // id 搬进 `Prefs.favoritesGroup`。
-    self.legacySelectedGroup = legacySelectedGroup.flatMap { seen.contains($0) ? $0 : nil }
+    // id 搬进 `Prefs.favoritesGroup`。被并掉的那一类改指留下的那一类。
+    self.legacySelectedGroup = legacySelectedGroup.map { remap[$0] ?? $0 }.flatMap { live.contains($0) ? $0 : nil }
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -246,7 +252,7 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   mutating func createGroup(_ name: String, after anchor: String? = nil) -> String? {
     let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
     guard !trimmed.isEmpty else { return nil }
-    if let existing = groups.first(where: { $0.name == trimmed }) { return existing.id }
+    if let existing = groups.first(where: { Self.groupIdentity($0.name) == trimmed }) { return existing.id }
     let id = UUID().uuidString
     if let anchor, let at = groups.firstIndex(where: { $0.name == anchor }) {
       groups.insert(.init(id: id, name: trimmed), at: at + 1)
@@ -304,6 +310,75 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     let members = Set(ordered.favorites)
     var iterator = ordered.favorites.makeIterator()
     favorites = favorites.map { members.contains($0) ? iterator.next()! : $0 }
+  }
+
+  /// 分类的身份：名字，首尾空白不算（和 `createGroup` 修名字的口径一致）。
+  ///
+  /// 同一个人手上不许有两个「加密」。分类对象的 id 是 `createGroup` 现场随机的，
+  /// 两台设备（或同一台设备的访客档案与账号档案）各自建出来的「加密」id 不同，
+  /// 只按 id 合并就会并出两格——2026-09-24 用户全新安装后登录老账号，分类条上
+  /// 两个「加密」、两个「美股」，就是这么来的。
+  static func groupIdentity(_ name: String) -> String {
+    name.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// 同名分类并成一个。返回并好的分类表和「被并掉的 id → 留下的 id」。
+  ///
+  /// **留哪一个只看 id（取最小的）**，不看谁排在前面：`order` 是每台设备按自己手上的顺序
+  /// 重新编的，两台看到的先后可能相反；按位置挑，两台就会各删对方那个，最后两个都没了。
+  /// id 不可变，每台设备不管以什么顺序拿到这几个对象，挑出来的都是同一个，删除推上去也
+  /// 删的是同一批，云端收敛到一份。
+  ///
+  /// 并出来的那一格站在同名里最靠前的那个位置上，名字用留下那一个的。
+  static func mergeSameNamed(_ groups: [FavoriteGroup]) -> (groups: [FavoriteGroup], merged: [String: String]) {
+    var keeper: [String: FavoriteGroup] = [:]
+    for group in groups {
+      let name = groupIdentity(group.name)
+      if let kept = keeper[name], kept.id <= group.id { continue }
+      keeper[name] = group
+    }
+    var out: [FavoriteGroup] = [], placed = Set<String>(), merged: [String: String] = [:]
+    for group in groups {
+      let name = groupIdentity(group.name)
+      guard let kept = keeper[name] else { continue }
+      if group.id != kept.id { merged[group.id] = kept.id }
+      if placed.insert(name).inserted { out.append(kept) }
+    }
+    return (out, merged)
+  }
+
+  /// 把这份档案里的同名分类并掉：成员、老存档里「停在哪一类」一并改挂到留下的那一类上。
+  /// 返回「被并掉的 id → 留下的 id」，调用方拿它去改挂别处记着的分类 id（`Prefs.favoritesGroup`）。
+  @discardableResult
+  mutating func mergeSameNamedGroups() -> [String: String] {
+    let (merged, remap) = Self.mergeSameNamed(groups)
+    guard !remap.isEmpty else { return [:] }
+    groups = merged
+    groupForSymbol = groupForSymbol.mapValues { remap[$0] ?? $0 }
+    legacySelectedGroup = legacySelectedGroup.map { remap[$0] ?? $0 }
+    return remap
+  }
+
+  /// 访客档案并进账号（`AppAccountBridge.prepare` 认领访客目录那一步）。
+  ///
+  /// 分类按**名字**并：访客的「加密」遇上账号里的「加密」，留账号那一类的 id 和位置，
+  /// 访客那一类里的成员改挂过去；账号里没有的名字才接在后面。自选按代号并，账号里已有的
+  /// 那只归属不动，访客新带来的接在后面。
+  ///
+  /// 以前按 id 并：访客那份的分类 id 是 `createGroup` 现场随机的，和账号里同名那一类
+  /// 永远对不上，登录一次分类条上就多出一套同名的。
+  mutating func absorb(guest: SymbolPrefs) {
+    var byName: [String: String] = [:]
+    for group in groups where byName[Self.groupIdentity(group.name)] == nil { byName[Self.groupIdentity(group.name)] = group.id }
+    var remap: [String: String] = [:]
+    for group in guest.groups where !groups.contains(where: { $0.id == group.id }) {
+      let name = Self.groupIdentity(group.name)
+      if let kept = byName[name] { remap[group.id] = kept; continue }
+      groups.append(group); byName[name] = group.id
+    }
+    for key in guest.favorites where !favorites.contains(key) {
+      favorites.append(key); groupForSymbol[key] = guest.groupForSymbol[key].map { remap[$0] ?? $0 }
+    }
   }
 
   // ---------------------------------------------------------------- 最近

@@ -268,11 +268,7 @@ import ReviewUI
       if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("draws.json").path) { nextDrawings.preferences = guestDrawings.preferences; adopted.insert("drawingPreferences") }
       let claimedAlerts = Set(nextAlerts.alerts.map(\.id))
       nextAlerts.alerts += guestAlerts.alerts.filter { !claimedAlerts.contains($0.id) }
-      let groupIDs = Set(nextSymbols.groups.map(\.id))
-      nextSymbols.groups += guestSymbols.groups.filter { !groupIDs.contains($0.id) }
-      for key in guestSymbols.favorites where !nextSymbols.favorites.contains(key) {
-        nextSymbols.favorites.append(key); nextSymbols.groupForSymbol[key] = guestSymbols.groupForSymbol[key]
-      }
+      nextSymbols.absorb(guest: guestSymbols)
       let guestReview = try ReviewStore(directory: claim.directory)
       try nextReview.transaction { archive in
         for var record in guestReview.archive.records where record.serverId == nil && !archive.records.contains(where: { $0.id == record.id }) {
@@ -329,6 +325,11 @@ import ReviewUI
     // 出现「老的清了、新的没写上」。
     if nextPrefs.favoritesGroup.isEmpty, let legacy = nextSymbols.legacySelectedGroup {
       nextPrefs.favoritesGroup = legacy
+    }
+    // 盘上那份自选读进来时同名分类已经并好了（`SymbolPrefs.init`）；「停在哪一类」要是
+    // 指着被并掉的那个，照同步存档里的分组对象改指留下的那个，免得启动那一下跳回第一类。
+    if let nextSync, let kept = SyncOverlay.mergedGroups(in: nextSync.archive.local.values)[nextPrefs.favoritesGroup] {
+      nextPrefs.favoritesGroup = kept
     }
     nextSymbols.legacySelectedGroup = nil
     // Complete all fallible disk preparation before replacing any visible account state.
@@ -747,6 +748,11 @@ import ReviewUI
       ? SyncOverlay.symbols(rebuiltFrom: objects.filter { $0.collection == "favorites" || $0.collection == "groups" }, keeping: symbols.prefs)
       : symbols.prefs
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
+    // 云端手上还躺着同名的分组对象（两台设备、或访客档案与账号各建了一个「加密」）：
+    // 重建那一步已经按名字并成一格了，这里记下「被并掉的 id → 留下的 id」，发布之后
+    // 再记一次账——把多余的分组对象推删除、挂在上面的自选改挂过去，云端跟着收敛成一份。
+    // 留哪一个只看 id（`SymbolPrefs.mergeSameNamed`），每台设备挑的都是同一个。
+    let mergedGroups = SyncOverlay.mergedGroups(in: objects.filter { $0.collection == "groups" })
 
     // —— 二、落盘。整套候选态一次性提交；成功之后才准清 `pendingApply`。
     //
@@ -790,6 +796,16 @@ import ReviewUI
     drawings.publishSynced(archive)
     alerts.publishSynced(alertArchive)
     symbols.applySynced(nextSymbols)
+    if !mergedGroups.isEmpty {
+      // 记账那一步的第一道门是 `!gate.isApplying`，写在保护区里一条操作都产生不了，
+      // 所以同样等离开保护区再做（理由同上面的设置）。「停在哪一类」要是指着被并掉的那个，
+      // 一并改指留下的那个，不然自选页会跳回第一类。
+      gate.afterApplying { [weak self] in
+        guard let self else { return }
+        if let kept = mergedGroups[prefs.prefs.favoritesGroup] { prefs.update { $0.favoritesGroup = kept } }
+        captureSymbols()
+      }
+    }
     // 云端那份设置也是「档案换进来了」的一种：周期、落地页这些要跟着重新兑现一次。
     // 它读的只有设置与自选；这两样都没动时不去惊动宿主。
     if wants("settings") || symbolsChanged { onProfileReady() }
