@@ -285,7 +285,7 @@ test: core-test presentation-test network-test data-test app-logic-test chart-te
 # xcodebuild 的那几个（Chart、Review、KanpanTests）需要显式写。
 #
 # **Debug 有、Release 没有的用例，必须单独列出来、不许并进 Release 的通过数**（报告原话）。
-# 清完之后，全仓只剩这三处：
+# 清完之后，全仓只剩这四处：
 #   Kanpan/KanpanTests/Symbols/SymbolPrefsSeedIsolationTests.swift —— 4 条。
 #   它钉的是 `SymbolPrefsStore.testSeed`，而那段种子脚手架按 A-07 / C-02 只存在于 DEBUG，
 #   Release 包里连代码都不该有。这 4 条在 Release 下会「为了错的理由变绿」，所以留在 DEBUG。
@@ -294,6 +294,9 @@ test: core-test presentation-test network-test data-test app-logic-test chart-te
 #   有存储，Release 里恒为 0。同文件另外 3 条验的是产品行为，两种配置都跑。
 #   Kanpan/KanpanTests/Alerts/P31AlertKindsTests.swift —— 1 条。
 #   它调的是 `WatchMoveMonitor.injectTestMove`（UI 用例的注入口），那个口子只在 DEBUG 里有。
+#   KanpanChart/Tests/KanpanChartTests/OrderFlowChartTests.swift —— 1 条（共 11 条）。
+#   主力订单流「十字线扫 50 步底图一次不重画」读的是 `ChartView.renderCounts`，那份计数
+#   只在 DEBUG 下有。同文件另外 10 条验的是画法与缓存，两种配置都跑。
 # KanpanAccount 原来那 16 条（ClientHardening 8 / DeviceKind 5 / SessionLifecycle 全套）
 # 已经在本轮改成白名单主机 + 自带 URLProtocol，Debug / Release 两边都是 60 条，不再有差集。
 test-release: core-test-release presentation-test-release network-test-release data-test-release app-logic-test-release \

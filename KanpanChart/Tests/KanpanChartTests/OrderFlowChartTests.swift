@@ -149,7 +149,19 @@ struct OrderFlowChartTests {
     r.state.crosshair = Crosshair(index: r.state.series.count - 1, price: coin.price)
     let f = frame(r)
     #expect(f.hovered == coin)
-    #expect(f.bands.first { $0.order == coin }?.alpha == 1)
+    // 底图上那一块照旧是没点亮的透明度；点亮是另外叠在 crossLayer 上的一块不透明的。
+    #expect(abs((f.bands.first { $0.order == coin }?.alpha ?? 0) - ChartRenderer.orderFlowAlpha(coin)) < 1e-9)
+    let L = r.layout(size: Self.size), range = r.priceRange(size: Self.size)
+    let lit = UIGraphicsImageRenderer(size: Self.size).image { context in
+      #expect(r.drawOrderFlowHover(context.cgContext, pane: L.main, range: range, L: L))
+    }
+    #expect(lit.cgImage != nil)
+    var away = r
+    away.state.crosshair = Crosshair(index: 0, price: coin.price * 2)
+    let scratch = try #require(CGContext(data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 16,
+                                         space: CGColorSpaceCreateDeviceRGB(),
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    #expect(!away.drawOrderFlowHover(scratch, pane: L.main, range: range, L: L))
 
     var perp = Self.order(.usdtPerp, .ask, price: 84_120, firstSeen: 0, notional: 5_300_000, initial: 8_000_000,
                           filled: 2_014_000)
@@ -194,7 +206,7 @@ struct OrderFlowChartTests {
     var eaten = r.state; eaten.orderFlow?.orders[0].filledNotional = 1_000_000  // 成交 10%，透明度换两档
     #expect(ChartView.changed(from: r.state, to: eaten) == [.plot, .cross])
     var hover = r.state; hover.crosshair = Crosshair(index: 3, price: 1)
-    #expect(ChartView.changed(from: r.state, to: hover).contains(.plot))
+    #expect(ChartView.changed(from: r.state, to: hover) == [.cross])  // 点亮的那一块叠在 cross 层（审查 32）
     let plain = ChartRenderer(state: off)
     #expect(r.mainLegendInset(plotW: 300) == plain.mainLegendInset(plotW: 300) + 12)
 
@@ -228,6 +240,10 @@ struct OrderFlowChartTests {
     compare.state.percentAxis = true
     #expect(compare.orderFlowSnapshot == nil)
   }
+
+  // 下面这条秤读 `ChartView.renderCounts`，那份计数只在 DEBUG 下有存储：Release 里读不到，
+  // 断言会直接红。所以圈进 DEBUG，并记在 `ReleaseTestRosterTests.debugOnly` 与 Makefile
+  // 的 Release 差集清单上。同文件其余用例两种配置都跑。
   #if DEBUG
   /// 审查 32 的秤：十字线在主图上走 50 步、横穿好几块大单，底图（plot 层）真画了几次。
   /// 读 `ChartView.renderCounts`（DEBUG 才有）；每一步都 `redrawNow`，一步一帧。
@@ -253,11 +269,29 @@ struct OrderFlowChartTests {
     return (plot, cross, hovered)
   }
 
-  @Test("十字线在主图上走 50 步：读数（cross 层）每步都画")
+  @Test("十字线在主图上走 50 步：读数（cross 层）每步都画，底图一次不画（审查 32）")
   func crosshairSweepCounts() {
     let c = Self.crosshairSweep()
     #expect(c.cross == 50)
+    #expect(c.plot == 0)
     #expect(c.hovered > 0, "扫一遍总该有几步停在大单上")
   }
   #endif
+
+  @Test("色块几何两层共用一份：十字线动不重算，快照一变才重算")
+  func frameCache() {
+    var (r, orders) = Self.renderer()
+    let L = r.layout(size: Self.size), range = r.priceRange(size: Self.size)
+    _ = r.orderFlowFrame(pane: L.main, range: range, L: L)
+    _ = r.orderFlowBands(pane: L.main, range: range, L: L)
+    #expect(r.orderFlowCache.computed == 1)
+    r.state.crosshair = Crosshair(index: r.state.series.count - 1, price: orders[3].price)
+    #expect(r.orderFlowFrame(pane: L.main, range: range, L: L).hovered == orders[3])
+    #expect(r.orderFlowCache.computed == 1)
+    r.state.orderFlow?.orders.removeLast()
+    _ = r.orderFlowFrame(pane: L.main, range: range, L: L)
+    #expect(r.orderFlowCache.computed == 1, "快照变了换了新盒子，新盒子里算了一次")
+    #expect(r.orderFlowFrame(pane: L.main, range: range, L: L).bands.count == orders.count - 1)
+  }
+
 }

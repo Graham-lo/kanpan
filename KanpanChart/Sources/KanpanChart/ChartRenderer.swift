@@ -39,6 +39,8 @@ public struct ChartRenderer {
   private var inputCache = InputCache()
   /// 随 `state.input` 或 `state.viewport` 失效的那一层几何。见 `ViewportCache`。
   private var viewportCache = ViewportCache()
+  /// 主力订单流色块的几何：再加上快照与显示开关变了才失效，十字线动不失效。见 `OrderFlowCache`。
+  var orderFlowCache = OrderFlowCache()
 
   public init(state: ChartState) {
     self.state = state
@@ -59,7 +61,7 @@ public struct ChartRenderer {
     // 隔离照旧：换缓存就是换一只新盒子，旧盒子跟着旧副本走，谁也串不到谁。
     // 一只盒子只会被「那一层输入与它里面的结果一致」的 state 写入。
     guard let previous else {
-      inputCache = InputCache(); viewportCache = ViewportCache()
+      inputCache = InputCache(); viewportCache = ViewportCache(); orderFlowCache = OrderFlowCache()
       ChartWorkCounter.bump(.geometryCache); ChartWorkCounter.bump(.viewportCache)
       rebuildIndicators(previous: nil)
       return
@@ -74,6 +76,10 @@ public struct ChartRenderer {
     if inputChanged || viewportChanged {
       viewportCache = ViewportCache()
       ChartWorkCounter.bump(.viewportCache)
+    }
+    if inputChanged || viewportChanged || previous.orderFlow != state.orderFlow
+      || previous.orderFlowDisplay != state.orderFlowDisplay {
+      orderFlowCache = OrderFlowCache()
     }
     if inputChanged || previous.view != state.view {
       rebuildIndicators(previous: previous)

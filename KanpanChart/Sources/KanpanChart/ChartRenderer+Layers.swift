@@ -41,6 +41,8 @@ extension ChartRenderer {
     guard !state.series.isEmpty else { return }
     let L = layout(size: size)
     UIGraphicsPushContext(ctx)
+    // 十字线点亮的那一块主力色块叠在这一层（压在图例底下）：底图不因为十字线动一下就整层重画（审查 32）。
+    if !state.percentAxis { drawOrderFlowHover(ctx, pane: L.main, range: priceRange(size: size), L: L) }
     drawLegends(ctx, L: L)
     UIGraphicsPopContext()
     drawOverlay(in: ctx, size: size, scale: scale)

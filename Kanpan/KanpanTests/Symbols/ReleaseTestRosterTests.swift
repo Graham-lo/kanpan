@@ -40,6 +40,10 @@ struct ReleaseTestRosterTests {
     "P31AlertKindsTests.swift":
       "「UI 注入写裸代号也响」那一条调的是 `WatchMoveMonitor.injectTestMove`，"
       + "那是 UI 用例的注入口，只在 DEBUG 里有。同文件其余用例两种配置都跑。",
+    "OrderFlowChartTests.swift":
+      "主力订单流「十字线扫 50 步底图一次不重画」那条秤读的是 `ChartView.renderCounts`，"
+      + "那份计数只在 DEBUG 里有，Release 下断言会直接红。同文件的几何、厚度、颜色、开关、"
+      + "整帧绘制、色块几何缓存这些产品行为没被圈进去，两种配置都跑。",
   ]
 
   /// 允许跳过用例的文件，以及跳过的那一下是什么门。

@@ -12,14 +12,16 @@ import UIKit
 //   - 左缘 = 首次过门槛那根 K 线的左缘；右缘 = 结束那根的右缘，还挂着就画到主图右缘。
 //   - 高度 = min(40, 名义 ÷ (门槛 ÷ 8)) × 0.25 pt，再夹到 1.5–10 pt：刚过门槛 2 pt，门槛五倍封顶 10 pt。
 //   - 透明度 = 0.25 + 0.65 × 成交比例（0.25–0.9）：被吃得越多越实；已撤销再 × 0.45 并描虚线边；
-//     失联结束（簿断太久，之后是成交还是撤单不知道）不描虚线、不打折；十字线停在上面的那一块 1.0。
+//     失联结束（簿断太久，之后是成交还是撤单不知道）不描虚线、不打折；十字线停在上面的那一块 1.0——
+//     这一块另外叠画在 crossLayer 上（同一个矩形、不透明），plotLayer 不因十字线变脏。
 //   - 颜色：合约（U 本位永续、交割）用皮肤涨跌色（跟着红涨绿跌走）；现货买黄、卖紫（CoinAnk 的现货配色，
 //     不随红涨绿跌）：深色底 #E1D610 / #CF09E7，浅色底压暗成 #B8A800 / #A806BC——亮黄在白底上发虚；**币本位永续**用涨跌色往皮肤正文色混 40%——同一侧的颜色
 //     发灰一档，和 U 本位一眼分得开，又不和现货的黄紫、也不和已撤销的虚线边撞。
 //   - 显示开关（`state.orderFlowDisplay`）只管画不画：关掉现货 / 合约 / 已成交 / 已撤销（四个）。
 //
 // 层序：`draw` 在叠加线之后、画线之前调 `drawOrderFlow`，所以色块压在蜡烛上、画线和
-// 最新价（liveLayer）盖在色块上。图例那一行画在 crossLayer（跟十字线读数同层）。
+// 最新价（liveLayer）盖在色块上。图例那一行与被点亮的那一块画在 crossLayer（跟十字线读数同层）。
+// 色块几何（`orderFlowFrame`）按（快照、显示开关、视野、布局）缓存一份，两层共用（`OrderFlowCache`）。
 // 比价（百分比坐标）与横屏画线台不画——后者由 app 把 `orderFlow` 置空。
 extension ChartRenderer {
   /// 一块要画的大单。
@@ -33,11 +35,22 @@ extension ChartRenderer {
   }
 
   struct OrderFlowFrame: Equatable {
+    /// 画的先后排好的色块，透明度是没被点亮时的。
     var bands: [OrderFlowBand] = []
     /// 可视区里还挂着（且开着显示）的大单各侧合计。
     var bidTotal = 0.0
     var askTotal = 0.0
+    /// 十字线停在哪一块上（透明度 1，叠画在 crossLayer）。
     var hovered: BigOrder?
+  }
+
+  /// 按 pane / 价格区间 / 主图宽记一份色块几何（不含十字线）。盒子在 `recalc` 里随输入、视野、
+  /// 快照、显示开关一起换新，十字线动只换 `state.overlay.crosshair`、盒子留着——plot 与 cross
+  /// 两层画同一帧时也只算一遍（原来 cross 层画图例要把 500 多单逐单二分查 K 线再算一遍）。
+  final class OrderFlowCache {
+    var entries: [(pane: Pane, range: PriceRange, plotW: Double, frame: OrderFlowFrame)] = []
+    /// 真算了几次（测试核对缓存有没有生效）。
+    var computed = 0
   }
 
   /// 现货买、卖的颜色（CoinAnk）：深色底一套、浅色底压暗一套。
@@ -91,8 +104,38 @@ extension ChartRenderer {
     return 0.2126 * v.r + 0.7152 * v.g + 0.0722 * v.b > 0.5
   }
 
-  /// 色块几何。纯函数：同一份 state、同一套 pane / range / layout 给同一个结果。
+  /// 色块几何，连同十字线点亮的那一块。同一份 state、同一套 pane / range / layout 给同一个结果。
   func orderFlowFrame(pane: Pane, range: PriceRange, L: Layout) -> OrderFlowFrame {
+    var frame = orderFlowBands(pane: pane, range: range, L: L)
+    frame.hovered = orderFlowHovered(frame.bands, pane: pane, range: range, L: L)?.order
+    return frame
+  }
+
+  /// 色块几何（不看十字线），按 pane / range / plotW 走缓存。
+  func orderFlowBands(pane: Pane, range: PriceRange, L: Layout) -> OrderFlowFrame {
+    let cache = orderFlowCache
+    if let hit = cache.entries.first(where: { $0.pane == pane && $0.range == range && $0.plotW == L.plotW }) {
+      return hit.frame
+    }
+    let value = computeOrderFlowBands(pane: pane, range: range, L: L)
+    cache.computed += 1
+    if cache.entries.count >= 4 { cache.entries.removeFirst() }
+    cache.entries.append((pane, range, L.plotW, value))
+    return value
+  }
+
+  /// 十字线停在哪一块上：只看主图，横向落在块里、竖向离块中线不超过半高 + 3 pt，取最近的一块。
+  func orderFlowHovered(_ bands: [OrderFlowBand], pane: Pane, range: PriceRange, L: Layout) -> OrderFlowBand? {
+    guard let cross = state.crosshair, cross.pane == nil, !bands.isEmpty, !state.series.isEmpty else { return nil }
+    let i = min(max(0, cross.index), state.series.count - 1)
+    let cy = KanpanCore.yOf(cross.price ?? state.series.close[i], pane: pane, range: range, mode: state.effectivePriceMode)
+    let cx = state.view.x(Double(state.series.time(at: i)), plotW: L.plotW)
+    return bands
+      .filter { cx >= $0.frame.minX - 2 && cx <= $0.frame.maxX + 2 && abs(cy - $0.frame.midY) <= $0.frame.height / 2 + 3 }
+      .min { abs(cy - $0.frame.midY) < abs(cy - $1.frame.midY) }
+  }
+
+  private func computeOrderFlowBands(pane: Pane, range: PriceRange, L: Layout) -> OrderFlowFrame {
     guard let flow = orderFlowSnapshot, flow.phase == .ready, !flow.orders.isEmpty,
           !state.series.isEmpty, L.plotW > 0 else { return OrderFlowFrame() }
     let mode = state.effectivePriceMode
@@ -130,20 +173,8 @@ extension ChartRenderer {
       return a.order.id < b.order.id
     }
 
-    // 十字线停在哪一块上：只看主图，横向落在块里、竖向离块中线不超过半高 + 3 pt，取最近的一块。
-    var hovered: String?
-    if let cross = state.crosshair, cross.pane == nil {
-      let i = min(max(0, cross.index), state.series.count - 1)
-      let cy = y(cross.price ?? state.series.close[i])
-      let cx = state.view.x(Double(state.series.time(at: i)), plotW: L.plotW)
-      hovered = bands
-        .filter { cx >= $0.rect.minX - 2 && cx <= $0.rect.maxX + 2 && abs(cy - $0.rect.midY) <= $0.rect.height / 2 + 3 }
-        .min { abs(cy - $0.rect.midY) < abs(cy - $1.rect.midY) }?.order.id
-    }
-    frame.hovered = bands.first { $0.order.id == hovered }?.order
     frame.bands = bands.map { order, rect in
-      OrderFlowBand(order: order, frame: rect, color: orderFlowColor(order),
-                    alpha: order.id == hovered ? 1 : Self.orderFlowAlpha(order),
+      OrderFlowBand(order: order, frame: rect, color: orderFlowColor(order), alpha: Self.orderFlowAlpha(order),
                     dashed: order.status == .cancelled)
     }
     return frame
@@ -169,20 +200,36 @@ extension ChartRenderer {
     return (frame.bands, frame.hovered != nil)
   }
 
-  /// 在 plotLayer 上画色块。返回画了几块（给测试核对）。
+  /// 在 plotLayer 上画色块（都按没被点亮时的透明度）。返回画了几块（给测试核对）。
   @discardableResult
   func drawOrderFlow(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Int {
-    let frame = orderFlowFrame(pane: pane, range: range, L: L)
+    let frame = orderFlowBands(pane: pane, range: range, L: L)
     guard !frame.bands.isEmpty else { return 0 }
+    fillOrderFlow(ctx, frame.bands, pane: pane, L: L)
+    return frame.bands.count
+  }
+
+  /// 在 crossLayer 上把十字线停着的那一块再叠画一遍，不透明。返回叠了没有。
+  @discardableResult
+  func drawOrderFlowHover(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Bool {
+    guard state.crosshair?.pane == nil, state.crosshair != nil, orderFlowSnapshot != nil else { return false }
+    let frame = orderFlowBands(pane: pane, range: range, L: L)
+    guard var band = orderFlowHovered(frame.bands, pane: pane, range: range, L: L) else { return false }
+    band = OrderFlowBand(order: band.order, frame: band.frame, color: band.color, alpha: 1, dashed: band.dashed)
+    fillOrderFlow(ctx, [band], pane: pane, L: L)
+    return true
+  }
+
+  private func fillOrderFlow(_ ctx: CGContext, _ bands: [OrderFlowBand], pane: Pane, L: Layout) {
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
-    for band in frame.bands {
+    for band in bands {
       ctx.setAlpha(band.alpha)
       ctx.setFillColor(Paint.cg(band.color))
       ctx.fill(band.frame)
     }
     // 已撤销的描虚线边（不透明度跟着块走，但至少 0.6，免得虚线看不见）。
-    let dashed = frame.bands.filter(\.dashed)
+    let dashed = bands.filter(\.dashed)
     if !dashed.isEmpty {
       ctx.setLineWidth(0.8)
       ctx.setLineDash(phase: 0, lengths: [3, 2])
@@ -195,7 +242,6 @@ extension ChartRenderer {
     }
     ctx.setAlpha(1)
     ctx.restoreGState()
-    return frame.bands.count
   }
 
   /// 图例「主力」那一行：跟在叠加指标的图例后面另起一行。`x`、`y` 是前面那几段画完停在哪儿。
