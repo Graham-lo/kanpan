@@ -242,8 +242,13 @@ public struct BarSeries: Sendable, Equatable {
   /// 从前这是编译器合成的 `==`：`ChartRenderer.recalc` 和 `ChartView.sameFrame`
   /// 每个 tick 都要靠它扫五列。戳相同就一定同内容，可以直接收工；戳不同**不**代表
   /// 内容不同（两条分别建出来的一样的序列），所以老的逐列比一个字没删，留在后面兜底。
+  ///
+  /// 第二条快路（审查 24「每 tick O(n) 序列比较」）：来一笔 tick 之后新旧两条的 `revision`
+  /// 必然不同，从前就一路逐列比到底——`close` 要扫完整列才在末根上分出不等。前缀戳相同
+  /// 就说明除末根以外一个字节都没动，只比末根那一格就够了，结论和逐列比完全一样。
   public static func == (a: BarSeries, b: BarSeries) -> Bool {
     if a.revision == b.revision { return true }
+    if a.prefixRevision == b.prefixRevision, a.sameShape(as: b) { return a.sameLastBar(as: b) }
     return a.symbol == b.symbol && a.interval == b.interval && a.t0 == b.t0 && a.step == b.step
       && a.close == b.close && a.open == b.open && a.high == b.high
       && a.low == b.low && a.volume == b.volume && a.openTime == b.openTime
@@ -255,17 +260,39 @@ public struct BarSeries: Sendable, Equatable {
   /// 「只有末根在动」是行情的常态（每个 WS tick 都是），指标能不能走增量、
   /// 底图要不要重画，问的都是这一句。先看前缀戳——`replaceLast` 会原样留着它，
   /// 所以正常 tick 一次比较就够；戳对不上再退回逐列比。
+  ///
+  /// 前缀戳对上时连 `openTime` 也只比末根：不等距周期（1M / 1y）那一列是带着的，
+  /// 从前每个 tick 都要整列比一遍才走到戳这一步。
   public func samePrefix(as other: BarSeries) -> Bool {
-    guard symbol == other.symbol, interval == other.interval, t0 == other.t0, step == other.step,
-      count == other.count, count > 0, openTime == other.openTime
-    else { return self == other }
-    if prefixRevision == other.prefixRevision { return true }
+    guard sameShape(as: other), count > 0 else { return self == other }
+    if prefixRevision == other.prefixRevision {
+      return openTime.count == other.openTime.count && openTime.last == other.openTime.last
+    }
+    guard openTime == other.openTime else { return self == other }
     return open.dropLast().elementsEqual(other.open.dropLast())
       && high.dropLast().elementsEqual(other.high.dropLast())
       && low.dropLast().elementsEqual(other.low.dropLast())
       && close.dropLast().elementsEqual(other.close.dropLast())
       && volume.dropLast().elementsEqual(other.volume.dropLast())
       && Self.sameColumn(takerBuy.dropLast(), other.takerBuy.dropLast())
+  }
+
+  /// 品种、周期、起点、步长、根数都一样——戳快路之前必须先对上的「形状」。
+  private func sameShape(as other: BarSeries) -> Bool {
+    symbol == other.symbol && interval == other.interval && t0 == other.t0 && step == other.step
+      && count == other.count
+  }
+
+  /// 只比末根那一格（前缀已由戳担保相同）。空序列两边都没有末根，算相同。
+  private func sameLastBar(as other: BarSeries) -> Bool {
+    guard count > 0 else { return openTime == other.openTime }
+    let i = count - 1
+    return open[i] == other.open[i] && high[i] == other.high[i] && low[i] == other.low[i]
+      && close[i] == other.close[i] && volume[i] == other.volume[i]
+      // 这一列是 `public var`，外面可能塞进一条长度不齐的；按「从末根起的那一段」比，不按下标硬取。
+      && takerBuy.count == other.takerBuy.count
+      && Self.sameColumn(takerBuy[min(i, takerBuy.count)...], other.takerBuy[min(i, other.takerBuy.count)...])
+      && openTime.count == other.openTime.count && openTime.last == other.openTime.last
   }
 
   /// 逐位比一列「可以缺失」的数，两边都是 NaN 算相等。

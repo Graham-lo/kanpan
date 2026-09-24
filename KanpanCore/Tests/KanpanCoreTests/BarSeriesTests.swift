@@ -227,9 +227,18 @@ struct BarSeriesTests {
     for _ in 0..<1000 {
       var a = regular(Int.random(in: 1...40, using: &rng))
       var b = a
-      switch Int.random(in: 0...5, using: &rng) {
+      switch Int.random(in: 0...7, using: &rng) {
       case 0: break
       case 1: b.replaceLast(with: bar(b.lastTime, Double.random(in: 0...100, using: &rng)))
+      // 同一条各自覆盖末根的兄弟俩：前缀戳相同、`revision` 不同，`==` 只比末根的那条快路
+      // 必须和逐列比同一个结论——末根一样就相等，不一样就不等（审查 24）。
+      case 6:
+        let v = Double(Int.random(in: 0...2, using: &rng))
+        a.replaceLast(with: bar(a.lastTime, v))
+        b.replaceLast(with: bar(b.lastTime, Double(Int.random(in: 0...2, using: &rng))))
+      case 7:
+        a.replaceLast(with: bar(a.lastTime, 3))
+        b.replaceLast(with: bar(b.lastTime + b.step, 3))   // 末根换了时间：摊开 openTime 列
       case 2: b.append(bar(b.lastTime + b.step, 7))
       case 3: b.close[Int.random(in: 0..<b.count, using: &rng)] += 1
       case 4: b.prepend([bar(b.t0 - b.step, 5)])
