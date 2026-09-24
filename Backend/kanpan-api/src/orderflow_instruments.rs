@@ -214,7 +214,15 @@ pub fn parse_binance_spot(body:&[u8])->anyhow::Result<Table> {
 /// 币安把单价极小的币挂成「N 个币」一个单位：`1000PEPE`、`1000000MOG`、`1MBABYDOGE`。
 /// 客户端 `OrderFlowBase.scaledPrefixes` 有同一张（它要从图上那只 `1000PEPEUSDT` 反推 base），
 /// 两边经 `contract/settings-fields.json` 的 `orderFlow.binanceScaledPrefixes` 对账。
-const BINANCE_SCALED:[(&str,u64);3]=[("1000000",1_000_000),("1000",1000),("1M",1_000_000)];
+pub(crate) const BINANCE_SCALED:[(&str,u64);3]=[("1000000",1_000_000),("1000",1000),("1M",1_000_000)];
+
+/// 币安合约表里的 baseAsset → 手机与这里用的 base：去掉「N 个币」前缀（`1000PEPE` → `PEPE`）。
+pub(crate) fn unscaled(base:&str)->&str {
+ for (prefix,_) in BINANCE_SCALED {
+  if let Some(rest)=base.strip_prefix(prefix) && !rest.is_empty() && rest.bytes().next().is_some_and(|b|b.is_ascii_uppercase()) {return rest}
+ }
+ base
+}
 
 // ------------------------------------------------------------------ OKX
 

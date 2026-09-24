@@ -266,25 +266,61 @@ pub struct VenueBook {
  pending:Option<Snapshot>,
  /// 当前连接代号：连接任务每次连上都换一个，迟到的旧帧与旧快照按它丢掉。
  pub connection:u64,
+ /// 换连接（币安连接到 24 小时前平滑换新、或几条小连接并成一条）时，旧连接的代号：
+ /// 交接期间两条连接推的是同一串全局序号，两边的帧都收，重复的由 `LocalBook::apply` 按序号丢掉，
+ /// 簿不用重拉快照。旧连接一断（或交接完成）就清掉。
+ pub previous:Option<u64>,
+ /// 这本簿第几次从头开始（连上新连接、断线各加一）。REST 快照按它认：排队期间换了连接（平滑交接）
+ /// 不加，排着的快照照样能用；断过线重来就加，旧快照丢掉。
+ pub epoch:u64,
 }
 
 impl VenueBook {
  pub fn new(venue:VenueInfo)->Self {
   let book=LocalBook::new(venue.sequence);
-  Self{venue,book,ready_since:None,buffered:VecDeque::new(),pending:None,connection:0}
+  Self{venue,book,ready_since:None,buffered:VecDeque::new(),pending:None,connection:0,previous:None,epoch:0}
  }
  pub fn is_ready(&self)->bool {self.book.quality==Quality::Ready&&self.ready_since.is_some()}
 
  /// 新连接：换代号、清簿。快照不在流里的要去拉一份。
  pub fn opened(&mut self,connection:u64)->Action {
   self.connection=connection;
+  self.previous=None;
+  self.epoch+=1;
   self.book.begin_resync();
   self.buffered.clear();self.pending=None;self.ready_since=None;
   if self.venue.in_band {Action::None} else {Action::FetchSnapshot}
  }
 
+ /// 这条连接的帧 / 快照认不认。
+ pub fn accepts(&self,connection:u64)->bool {connection==self.connection||self.previous==Some(connection)}
+
+ /// 平滑换连接：新连接已经在推同一串序号了，簿接着用，两条连接的帧都认。
+ /// 从来没在任何连接上开过（代号 0）的，按新连接从头开。只用于序号全局的簿（币安）。
+ pub fn handover(&mut self,connection:u64)->Action {
+  if self.connection==0 {return self.opened(connection)}
+  if connection!=self.connection {self.previous=Some(self.connection);self.connection=connection;}
+  Action::None
+ }
+
+ /// 某条连接断了：是当前连接就回到「等重连」；只是交接中的旧连接就忘掉它。
+ pub fn disconnected(&mut self,connection:u64) {
+  if connection==self.connection {self.closed()} else if self.previous==Some(connection) {self.previous=None}
+ }
+
+ /// 就绪时中间价两侧 `bps` 以内买卖两侧的美元名义之和。
+ pub fn depth_usd(&mut self,bps:f64)->Option<f64> {
+  if !self.is_ready() {return None}
+  let notional=self.venue.notional;
+  let mut sum=0.0;
+  self.book.for_each_within(bps,|_,price,quantity|sum+=notional.usd(price,quantity))?;
+  Some(sum)
+ }
+
  /// 断线：回到「等重连」。
- pub fn closed(&mut self) {self.book.begin_resync();self.buffered.clear();self.pending=None;self.ready_since=None;}
+ pub fn closed(&mut self) {
+  self.previous=None;self.epoch+=1;self.book.begin_resync();self.buffered.clear();self.pending=None;self.ready_since=None;
+ }
 
  pub fn ingest(&mut self,message:Message,now:i64)->Action {
   let in_band=self.venue.in_band;
@@ -377,6 +413,35 @@ mod tests {
   assert_eq!(book.apply(&delta(106,107,None,&[])),Err(Gap));
   assert_eq!(book.quality,Quality::Gapped);
   assert_eq!(book.quantity(Side::Bid,99.0),0.0);
+ }
+
+ fn futures_venue()->VenueInfo {
+  VenueInfo{id:"binance:usdtPerp:BTCUSDT".into(),exchange:"binance",label:"币安",product:"usdtPerp",instrument:"BTCUSDT".into(),
+   notional:super::super::model::Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalOverlap,in_band:false}
+ }
+
+ #[test] fn handover_keeps_the_book_and_both_connections_feed_it() {
+  let mut b=VenueBook::new(futures_venue());
+  assert_eq!(b.opened(1),Action::FetchSnapshot);
+  assert_eq!(b.ingest(Message::Delta(delta(95,101,Some(94),&[(99.0,1.0)])),0),Action::None);
+  assert_eq!(b.snapshot(snap(100,&[(99.0,1.0)],&[(101.0,1.0)]),0),Action::None);
+  assert!(b.is_ready());
+  let epoch=b.epoch;
+  assert_eq!(b.handover(2),Action::None,"换连接不重拉快照");
+  assert_eq!(b.epoch,epoch,"交接不换代：排队中的快照照样认");
+  assert!(b.accepts(1)&&b.accepts(2)&&!b.accepts(3));
+  // 两条连接推同一串：新连接先到的 102–105，旧连接晚到的同一帧按序号丢掉。
+  assert_eq!(b.ingest(Message::Delta(delta(102,105,Some(101),&[(99.0,3.0)])),1),Action::None);
+  assert_eq!(b.ingest(Message::Delta(delta(102,105,Some(101),&[(99.0,3.0)])),1),Action::None);
+  assert!(b.is_ready());
+  b.disconnected(1);
+  assert!(b.is_ready()&&!b.accepts(1),"旧连接断开只是忘掉它");
+  assert_eq!(b.depth_usd(200.0),Some(99.0*3.0+101.0),"±2% 以内两侧名义");
+  b.disconnected(2);
+  assert!(!b.is_ready());
+  assert_eq!(b.epoch,epoch+1,"真断线换代");
+  let mut fresh=VenueBook::new(futures_venue());
+  assert_eq!(fresh.handover(7),Action::FetchSnapshot,"没开过的簿按新连接从头开");
  }
 
  #[test] fn futures_need_pu_and_okx_needs_exact_prev() {

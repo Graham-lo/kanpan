@@ -2,7 +2,7 @@
 //!
 //! * 挂着的单每 15 秒整批 upsert 一次，结束的单一结束就写。upsert 只改还没结束的行
 //!   （`WHERE orderflow_orders.end_ms IS NULL`）：晚到的一批「挂着」不会把刚写进去的结束翻回去。
-//! * 保留：按结束时刻滚动 30 天；另有总量闸门，表文件超过 20 GB 时从结束得最早的删起、删到 18 GB 以下。
+//! * 保留：按结束时刻滚动 3 天（2026-09-25 从 30 天改：没人往回看超过几天）；另有总量闸门，表文件超过 20 GB 时从结束得最早的删起、删到 18 GB 以下。
 //!   删行不会让表文件变小（空间留给后来的行复用），所以「删到多少」按「行数 × 每行占用」估，不按文件大小——
 //!   按文件大小会每小时都判超、一路删光。
 use super::book::Side;
@@ -11,7 +11,7 @@ use sqlx::{PgPool,Postgres,QueryBuilder,Row};
 
 pub const DAY_MS:i64=86_400_000;
 /// 结束的单留多久。
-pub const RETENTION_MS:i64=30*DAY_MS;
+pub const RETENTION_MS:i64=3*DAY_MS;
 /// 总量闸门：表文件超过它就删，删到估算占用低于 `GATE_TARGET`。
 pub const GATE_BYTES:f64=20e9;
 pub const GATE_TARGET:f64=18e9;
@@ -19,7 +19,7 @@ pub const GATE_TARGET:f64=18e9;
 pub const ROW_BYTES:f64=450.0;
 /// 一条语句最多删几行：serve 的连接挂着 20 秒语句死线，一口气删几十万行会半路断。
 const DELETE_BATCH:i64=10_000;
-/// 一次最多回几条（30 天 BTC 的量级见验收报告；这只是防御上限）。
+/// 一次最多回几条（3 天 BTC 的量级远低于它；这只是防御上限）。
 pub const MAX_ROWS:i64=200_000;
 
 const COLUMNS:&str="base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms";
@@ -97,7 +97,7 @@ async fn delete_ended_before(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u6
  }
 }
 
-/// 每小时一次：30 天以前结束的删掉；没在跟踪的 base 上缺席超过两分钟的挂单按最后一次看到时失联结束；
+/// 每小时一次：3 天以前结束的删掉；没在跟踪的 base 上缺席超过两分钟的挂单按最后一次看到时失联结束；
 /// 估算体积超过闸门就从最旧的删起。返回（删了几行，失联结束几行）。
 pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u64)> {
  let bases=bases(pool).await?;
@@ -160,14 +160,14 @@ mod tests {
   let Some(pool)=isolated_pool().await else {return};
   sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZT'").execute(&pool).await.unwrap();
   let now=100*DAY_MS;
-  // 挂着的、窗口里结束的、跨过窗口右沿才结束的、31 天前结束的。
+  // 挂着的、窗口里结束的、跨过窗口右沿才结束的、4 天前结束的（超过 3 天保留期）。
   let live=order(1,now-3_600_000,None);
   let inside=order(2,now-2*DAY_MS,Some(now-3_600_000));
   let across=order(3,now-7_200_000,Some(now+1));
-  let old=order(4,now-32*DAY_MS,Some(now-31*DAY_MS));
-  upsert(&pool,"ZZT",100.0,&[(live.clone(),now-1000),(inside.clone(),now-3_600_000),(across.clone(),now+1),(old.clone(),now-31*DAY_MS)]).await.unwrap();
+  let old=order(4,now-5*DAY_MS,Some(now-4*DAY_MS));
+  upsert(&pool,"ZZT",100.0,&[(live.clone(),now-1000),(inside.clone(),now-3_600_000),(across.clone(),now+1),(old.clone(),now-4*DAY_MS)]).await.unwrap();
   let got=range(&pool,"ZZT",now-DAY_MS,now).await.unwrap();
-  assert_eq!(got.iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3,1],"按出现时刻升序，31 天前结束的不在最近一天里");
+  assert_eq!(got.iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3,1],"按出现时刻升序，4 天前结束的不在最近一天里");
   assert_eq!(range(&pool,"ZZT",now-DAY_MS,now-5_000_000).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3],"右沿之后才出现的（挂着的 1 号）不回，跨过右沿的 3 号要回");
   // 结束写进去之后，晚到的一批「挂着」翻不回去。
   let mut ended=live.clone();ended.end_ms=Some(now);ended.status=Status::Filled;
@@ -184,10 +184,11 @@ mod tests {
   assert_eq!(touch(&pool,"ZZT",now,true).await.unwrap(),now);
   assert_eq!(touch(&pool,"ZZT",now+9,false).await.unwrap(),now);
   assert!(recent_bases(&pool,now+10).await.unwrap().contains(&"ZZT".to_string()));
-  // 滚动清理：30 天以前结束的删掉；没在跟的 base 上缺席的挂单失联结束。
+  // 滚动清理：3 天以前结束的删掉；没在跟的 base 上缺席的挂单失联结束。
   let (deleted,closed)=purge(&pool,now+STALE_MS+10,&[]).await.unwrap();
   assert!(deleted>=1&&closed>=1);
-  let rest=range(&pool,"ZZT",now-30*DAY_MS,now+STALE_MS).await.unwrap();
+  // 窗口拉到 6 天前：4 号要是没删会落在这里面。
+  let rest=range(&pool,"ZZT",now-6*DAY_MS,now+STALE_MS).await.unwrap();
   assert!(rest.iter().all(|o|o.bucket!=4));
   assert_eq!(rest.iter().find(|o|o.bucket==5).map(|o|(o.status,o.end_ms)),Some((Status::Lost,Some(now+2))));
   sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZT'").execute(&pool).await.unwrap();

@@ -84,6 +84,41 @@ pub fn defaults(base:&str,crypto:bool,turnover:Option<f64>)->Thresholds {
  Thresholds{spot:Some(spot),usdt_perp:Some(perp),coin_perp:Some(perp),delivery:Some(perp),step:None}
 }
 
+// ------------------------------------------------------------------ 非币的门槛：按簿深标定（2026-09-25）
+
+/// 簿深按中间价两侧多远算（±1%）。
+pub const CALIBRATION_BPS:f64=100.0;
+/// 门槛 = 簿深的这个比例，再取整到 1 / 2 / 5 × 10ⁿ。
+pub const CALIBRATION_SHARE:f64=0.03;
+pub const CALIBRATION_MIN:f64=50_000.0;
+pub const CALIBRATION_MAX:f64=2_000_000.0;
+/// 簿没有全部拿到首个快照时，最多等这么久（有一本就算）。
+pub const CALIBRATION_WAIT_MS:i64=8_000;
+
+/// 线性距离最近的 1 / 2 / 5 × 10ⁿ；平局取小的那个。非正数或非有限数回 None。
+///
+/// 手机那份（Swift）用同一个公式，两边的数必须逐位一致：候选按从小到大比、只有严格更近才换。
+pub fn round125(x:f64)->Option<f64> {
+ if !x.is_finite()||x<=0.0 {return None}
+ let decade=10f64.powi(x.log10().floor() as i32);
+ let mut best:Option<f64>=None;
+ for c in [1.0,2.0,5.0,10.0] {
+  let v=c*decade;
+  if best.is_none_or(|b|(v-x).abs()<(b-x).abs()) {best=Some(v)}
+ }
+ best
+}
+
+/// 非币（`crypto == false` 且不在 `MAJORS`）的 U 本位永续默认门槛：
+/// T = round125(0.03 × D)，夹在 [5 万, 200 万]。D 为各簿中间价 ±1% 以内买卖两侧美元名义之和。
+/// 没有簿（或簿深为 0）回退 200 万（`TRADFI_PERPETUAL`）。
+pub fn calibrated_threshold(depth_usd:f64)->f64 {
+ match round125(CALIBRATION_SHARE*depth_usd) {
+  Some(t)=>t.clamp(CALIBRATION_MIN,CALIBRATION_MAX),
+  None=>TRADFI_PERPETUAL,
+ }
+}
+
 /// 收盘 × 0.1% 最接近的 1 / 2 / 5 × 10ⁿ，且不小于最小价格步长（照 `BucketScheme.derivedStep`）。
 pub fn derived_step(close:f64,tick:Option<f64>)->Option<f64> {
  if !close.is_finite()||close<=0.0 {return None}
@@ -195,6 +230,14 @@ impl Model {
  pub fn book_mut(&mut self,id:&str)->Option<&mut VenueBook> {self.tracks.get_mut(id).and_then(|t|t.book.as_mut())}
  pub fn venue_ids(&self)->Vec<String> {self.tracks.iter().filter(|(_,t)|t.book.is_some()).map(|(id,_)|id.clone()).collect()}
  pub fn ready_count(&self)->usize {self.tracks.values().filter(|t|t.book.as_ref().is_some_and(VenueBook::is_ready)).count()}
+ /// 已就绪的簿各自中间价两侧 `bps` 以内、买卖两侧美元名义之和（非币门槛标定用）。
+ pub fn depth_usd(&mut self,bps:f64)->f64 {
+  self.tracks.values_mut().filter_map(|t|t.book.as_mut()).filter_map(|b|b.depth_usd(bps)).sum()
+ }
+
+ /// 不评估的时候（非币标定之前）也要把就绪簿里留存带以外的档清掉——平时这件事是评估顺手做的，
+ /// 跳过评估的几分钟里簿会一直长。
+ pub fn trim(&mut self) {let _=self.depth_usd(0.0);}
 
  /// 读回库里挂着的单：步长对不上、或缺席超过 `STALE_MS` 的按最后一次看到的时刻失联结束，其余接着跟。
  pub fn restore(&mut self,rows:Vec<Restored>,now:i64) {
@@ -233,7 +276,7 @@ impl Model {
  /// 连接代号对得上才交给簿（旧连接迟到的帧丢掉）。
  pub fn ingest(&mut self,id:&str,connection:u64,message:Message,now:i64)->super::book::Action {
   let Some(book)=self.book_mut(id) else {return super::book::Action::None};
-  if book.connection!=connection {return super::book::Action::None}
+  if !book.accepts(connection) {return super::book::Action::None}
   book.ingest(message,now)
  }
 
@@ -319,7 +362,7 @@ impl Model {
 
  /// 断线：簿回到「等重连」。
  pub fn closed(&mut self,id:&str,connection:u64) {
-  if let Some(book)=self.book_mut(id) {if book.connection==connection {book.closed()}}
+  if let Some(book)=self.book_mut(id) {book.disconnected(connection)}
  }
 
  /// 停止跟踪：还挂着的单按最后一次看到时失联结束。
@@ -643,6 +686,23 @@ mod tests {
   assert_eq!(derived_step(2.4,Some(0.01)),Some(0.01));
   assert_eq!(derived_step(0.000_012,Some(1e-9)).map(|v|(v*1e9).round()),Some(10.0));
   assert_eq!(reference_day(86_400_000*3+5),86_400_000*2);
+ }
+
+ /// 手机那份用同一组向量对账。
+ #[test] fn calibration_vectors() {
+  assert_eq!(round125(570_000.0),Some(500_000.0));
+  assert_eq!(round125(760_000.0),Some(1_000_000.0));
+  assert_eq!(round125(300_000.0),Some(200_000.0),"平局取小（和 500k 比，200k 更近）");
+  assert_eq!(round125(150_000.0),Some(100_000.0),"真平局：100k 与 200k 一样远，取小");
+  assert_eq!(round125(750_000.0),Some(500_000.0),"真平局：500k 与 1M 一样远，取小");
+  assert_eq!(round125(1_000_000.0),Some(1_000_000.0));
+  assert_eq!(round125(6_000_000.0),Some(5_000_000.0));
+  assert_eq!(round125(0.0),None);
+  assert_eq!(calibrated_threshold(19_000_000.0),500_000.0);
+  assert_eq!(calibrated_threshold(2_000_000.0),50_000.0);
+  assert_eq!(calibrated_threshold(200_000_000.0),2_000_000.0,"6M → 5M → 夹到 2M");
+  assert_eq!(calibrated_threshold(100_000.0),50_000.0,"3000 → 夹到 5 万");
+  assert_eq!(calibrated_threshold(0.0),2_000_000.0,"没有簿深回退 200 万");
  }
 
  #[test] fn order_json_uses_client_field_names() {

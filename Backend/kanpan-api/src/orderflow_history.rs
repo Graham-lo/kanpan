@@ -1,24 +1,38 @@
-//! 主力订单流 · 服务端历史（2026-09-24）。
+//! 主力订单流 · 服务端历史（2026-09-24，2026-09-25 改成分层常驻）。
 //!
 //! 手机上的订单流只在打开一只品种时才开始跟，关掉就断：刚打开时图上是空的，往左拖也没有。
 //! 这里在 serve 进程里常驻跟踪，一单一行写进 `orderflow_orders`；手机打开品种先拉最近 24 小时，
-//! 之后每分钟增量拉一次，往左拖再一天一天补（最多 30 天）。
+//! 之后每分钟增量拉一次，往左拖再一天一天补（最多 3 天）。
 //!
 //! * 跟踪规则和手机那份（`OrderFlowModel.swift`）逐条一致，见 `model.rs`；簿的接续见 `book.rs`；
-//!   各家连接见 `feeds.rs`；库见 `store.rs`。
-//! * 只按**默认门槛**跟（`OrderFlowDefaults` 那张表 + 前一日收盘推的步长）。用户在手机上改过门槛的，
-//!   手机拿到之后自己按自己的门槛过滤（比默认门槛低的那部分服务端没有，只能靠手机本地跟）。
-//! * 跟哪些币：BTC / ETH / SOL 一直跟；其它币第一次有人要才开始跟，24 小时没人要就停；
-//!   最多同时 20 只，满了踢掉最久没人要的那只（三只主币不踢）。
-//! * 写库：挂着的单每 15 秒整批 upsert，结束的单一结束就写；进程重启读回挂着的单，
-//!   缺席超过 2 分钟的按最后一次看到时失联结束。每小时滚动清理一次（30 天 + 20 GB 闸门）。
+//!   帧的解码见 `feeds.rs`；连接池见 `hub.rs`；REST 快照队列见 `snapshots.rs`；分层见 `layers.rs`；
+//!   资源闸门见 `resources.rs`；库见 `store.rs`。
+//! * 只按**默认门槛**跟（`OrderFlowDefaults` 那张表 + 前一日收盘推的步长；非币按簿深标定，见下）。
+//!   用户在手机上改过门槛的，手机拿到之后自己按自己的门槛过滤。
+//! * 跟哪些币：主币、固定（美股 / 大宗 / 指数）、山寨（成交额前 40）、热点（四路信号，每小时）、按需（手机打开的）
+//!   五层，总数最多 220 只，满了只踢按需与热点里最久没人要的；详见 `layers.rs`。
+//!   `KANPAN_ORDERFLOW_LAYERS` 选开哪几层，缺省全开。
+//! * **手机的行情转发永远优先**：这里的连接与 REST 全部自己开、自己限速（各家额度的一小份），
+//!   资源闸门（RSS > 2.5 GB 或最近一分钟 CPU > 300%）一过就不再新增，并按热点 → 山寨 → 固定卸层，
+//!   转发那一侧一概不动。
+//! * 非币默认门槛：T = round125(0.03 × D)，夹 [5 万, 200 万]，D 为各 U 本位永续簿中间价 ±1% 以内买卖两侧美元之和；
+//!   簿全部拿到首个快照时标定；有簿还没连上或快照还在排队就接着等（最多 10 分钟），不再有簿在等
+//!   （或到了 10 分钟）之后 8 秒，用已就绪的标，之后簿都齐了再补标一次；每个 UTC 日重标一次。标定前不评估、不读回挂着的单，
+//!   `/history` 回的 `thresholds.usdtPerp` 为空。一本簿都没有回退 200 万。
+//! * 写库：挂着的单每 15 秒刷一次，只写新出现的、名义 / 成交 / 门槛变了 1% 以上的、以及 60 秒没写过的
+//!   （刷新 `seen_ms`）；结束的单一结束就写；所有币合起来最多同时占 3 条库连接。进程重启读回挂着的单，
+//!   缺席超过 2 分钟的按最后一次看到时失联结束。每小时滚动清理一次（3 天 + 20 GB 闸门）。
 //! * 接口 `GET /v1/market/orderflow/history?base=&from=&to=`：`to` 缺省为此刻，`from` 缺省为
-//!   `to` 前 24 小时，区间最长 30 天；回 `{base, thresholds, trackedSinceMs, orders}`，gzip。
-//!   没在跟的币回空表、`trackedSinceMs` 为此刻，并从这一刻开始跟。
+//!   `to` 前 24 小时，区间最长 3 天；回 `{base, thresholds, trackedSinceMs, orders}`，gzip。
+//!   没在跟的币回空表、`trackedSinceMs` 为此刻，并从这一刻开始跟（按需层）。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
 mod feeds;
+mod hub;
+mod layers;
 mod model;
+mod resources;
+mod snapshots;
 mod store;
 
 use crate::AppState;
@@ -30,12 +44,14 @@ use axum::response::{IntoResponse,Response};
 use axum::routing::get;
 use axum::{Json,Router};
 use book::{Action,Sequence,VenueInfo};
-use feeds::{Event,Resubscribe};
-use model::{BigOrder,Model,Notional,Thresholds};
+use feeds::Event;
+use layers::Enabled;
+use model::{BigOrder,Model,Notional,Restored,Thresholds};
 use serde::Deserialize;
 use serde_json::Value;
 use sqlx::PgPool;
 use std::collections::{HashMap,HashSet};
+use std::sync::atomic::{AtomicBool,AtomicU8,AtomicU64,Ordering};
 use std::sync::{Arc,Mutex,OnceLock};
 use std::time::Duration;
 use tokio::sync::{mpsc,watch};
@@ -43,10 +59,14 @@ use tokio::task::JoinHandle;
 
 const PATH:&str="/v1/market/orderflow/history";
 /// 一直跟的三只。
-const ALWAYS:[&str;3]=["BTC","ETH","SOL"];
-const MAX_BASES:usize=20;
-/// 其它币多久没人要就停。
+const ALWAYS:[&str;3]=layers::MAJORS;
+/// 同时最多跟几只（五层合计）。
+const MAX_BASES:usize=220;
+/// 按需层（只因为有人要才跟的）最多几只。
+const MAX_ON_DEMAND:usize=20;
+/// 按需的多久没人要就停；山寨、热点掉榜之后再跟多久。
 const IDLE_MS:i64=store::DAY_MS;
+const LINGER_MS:i64=store::DAY_MS;
 const DEFAULT_SPAN_MS:i64=store::DAY_MS;
 const MAX_SPAN_MS:i64=store::RETENTION_MS;
 const EVALUATE:Duration=Duration::from_millis(500);
@@ -55,11 +75,24 @@ const REFRESH:Duration=Duration::from_secs(10*60);
 const THRESHOLDS_EVERY_MS:i64=60*60*1000;
 const SWEEP:Duration=Duration::from_secs(10*60);
 const PURGE:Duration=Duration::from_secs(60*60);
-/// 快照失败或过期之后隔多久再拉；拉之前先等一小会儿让增量攒起来（照手机那份）。
+/// 快照失败之后隔多久再排；排之前先等一小会儿让增量攒起来（照手机那份）。
 const SNAPSHOT_RETRY_MS:i64=2_000;
+/// 没变化的挂着的单多久重写一次（刷新 `seen_ms`）；须小于 `model::STALE_MS`（120 秒）。
+const LIVE_REWRITE_MS:i64=60_000;
 const SNAPSHOT_SETTLE:Duration=Duration::from_millis(500);
+/// 非币门槛标定最多等多久（从订阅起）：满额 220 只冷启动时 U 本位快照按每分钟 30 份排，最后一份约 7 分钟后到。
+const CALIBRATION_CAP_MS:i64=10*60_000;
 /// 还拿不到步长（收盘没拉到）时隔多久再试。
 const RESOLVE_RETRY:Duration=Duration::from_secs(30);
+/// 成批起跟踪（进程启动、层重算）时两只之间隔多久：拉品种表、收盘、订阅都错开，不一口气打出去。
+const START_GAP:Duration=Duration::from_millis(250);
+/// 资源采样与层的节拍。
+const SAMPLE:Duration=Duration::from_secs(15);
+const LAYER_TICK:Duration=Duration::from_secs(60);
+const HOT_EVERY_MS:i64=60*60*1000;
+const FIXED_EVERY_MS:i64=10*60*1000;
+/// 资源闸门连续多少分钟不超才放回一层。
+const SHED_RECOVER_MINUTES:u32=10;
 
 fn now_ms()->i64 {chrono::Utc::now().timestamp_millis()}
 
@@ -101,12 +134,6 @@ fn number(v:&Value)->Option<f64> {
  (x as f64).is_finite().then_some(x)
 }
 
-async fn turnover(perp:Option<&Venue>)->Option<f64> {
- let perp=perp?;
- let body=crate::market_meta::get_json(&format!("https://www.binance.com/fapi/v1/ticker/24hr?symbol={}",perp.instrument)).await.ok()?;
- number(&body["quoteVolume"]).filter(|t|*t>=0.0)
-}
-
 /// 前一 UTC 日那根日线的收盘（照手机的 `previousClose`）。
 fn previous_close(rows:&Value,day:i64)->Option<f64> {
  let rows=rows.as_array()?;
@@ -130,14 +157,15 @@ async fn derived_step(venues:&[Venue],day:i64)->Option<f64> {
  None
 }
 
-/// 这只币此刻的默认门槛与步长。步长可能还是 None（收盘没拉到）。
-async fn resolve(base:&str,venues:&[Venue],now:i64)->Thresholds {
+/// 这只币此刻的默认门槛与步长（步长可能还是 None：收盘没拉到），以及它是不是币。
+/// 非币的 U 本位门槛这里给的是回退值 200 万，真正用的是跟踪器按簿深标定的那个。
+async fn resolve(base:&str,venues:&[Venue],now:i64)->(Thresholds,bool) {
  let perp=binance_perp(venues);
  let crypto=model::is_major(base)||is_crypto(perp).await;
- let turnover=if crypto&&!model::is_major(base) {turnover(perp).await} else {None};
+ let turnover=match perp {Some(p) if crypto&&!model::is_major(base)=>layers::turnover(&p.instrument).await,_=>None};
  let mut t=model::defaults(base,crypto,turnover);
  if t.step.is_none() {t.step=derived_step(venues,model::reference_day(now)).await;}
- t
+ (t,crypto)
 }
 
 // ------------------------------------------------------------------ 一只币的跟踪
@@ -145,10 +173,47 @@ async fn resolve(base:&str,venues:&[Venue],now:i64)->Thresholds {
 /// 写库只走一个任务：挂着的与结束的按到达先后写，不会乱序把结束翻回挂着。
 struct Write {step:f64,rows:Vec<(BigOrder,i64)>}
 
+/// 所有币的写库任务合起来最多同时占这么多条库连接：连接池一共 8 条，还要留给账号、同步与读历史的请求。
+/// 本地全开 154 只时，几十个跟踪任务同一时刻刷盘把池子占满，账号请求拿连接要等 2–3 秒（sqlx 慢获取告警）。
+static WRITE_SLOTS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(3);
+
 async fn writer(pool:PgPool,base:String,mut rx:mpsc::Receiver<Write>) {
  while let Some(w)=rx.recv().await {
   if w.rows.is_empty() {continue}
+  let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
   if let Err(e)=store::upsert(&pool,&base,w.step,&w.rows).await {tracing::warn!("Orderflow history: {base} write of {} rows failed: {e}",w.rows.len());}
+ }
+}
+
+/// 非币门槛的标定（见模块说明）。
+struct Calibration {
+ /// 非币才要标。
+ needed:bool,
+ /// 标出来的门槛与标定那天（`reference_day`）。
+ value:Option<f64>,
+ day:Option<i64>,
+ /// 上一次标定时不是所有簿都就绪：等它们都就绪了再补标一次（只补一次）。
+ partial:bool,
+ /// 8 秒从哪一刻起算：订阅那一刻；之后只要还有簿没连上（币安的新簿要攒 5–15 秒成批开连接）、
+ /// 或者它的快照还在排队，就往后推——这两段等待是这里的连接批次与快照限速造成的，
+ /// 不该让 OKX 那一本（流内快照、立刻就绪）单独把门槛标了。最多等 `CALIBRATION_CAP_MS`。
+ since:i64,
+ subscribed:i64,
+ /// 标定之前读回来的挂单：标定之后再读回（照手机：标定前不评估、不读回）。
+ restored:Option<Vec<Restored>>,
+}
+
+impl Calibration {
+ /// 此刻该不该标：第一次——簿全就绪、没有簿，或者至少一本就绪且 8 秒里没有簿还在等连接 / 等快照
+ /// （等了 `CALIBRATION_CAP_MS` 就不再等）；之后——跨了 UTC 日，或上次只标了一部分簿、现在都就绪了。
+ fn due(&mut self,now:i64,day:i64,total:usize,ready:usize,waiting:bool)->bool {
+  if !self.needed {return false}
+  if self.value.is_none() {
+   if waiting&&now-self.subscribed<CALIBRATION_CAP_MS {self.since=now;}
+   return total==0||ready==total||(ready>=1&&now-self.since>=model::CALIBRATION_WAIT_MS)
+  }
+  if self.partial&&total>0&&ready==total {return true}
+  self.day!=Some(day)&&ready>0
  }
 }
 
@@ -156,54 +221,60 @@ struct Tracker {
  base:String,
  model:Model,
  events:mpsc::Sender<Event>,
- commands:HashMap<String,mpsc::Sender<Resubscribe>>,
- sockets:Vec<JoinHandle<()>>,
  open:HashSet<String>,
- inflight:HashSet<String>,
+ /// 排着的快照：簿 → 那份请求的 epoch。
+ inflight:HashMap<String,u64>,
  retry:HashMap<String,i64>,
+ /// 每本簿此刻的 epoch，快照队列按它丢过期的请求。
+ epochs:HashMap<String,Arc<AtomicU64>>,
+ /// 每本簿最后一笔成交号（换连接的重叠期里两条连接都推同一笔，按号去重）。
+ last_trade:HashMap<String,i64>,
+ /// 挂着的单上次写库时的量、成交、门槛与时刻（见 `changed_live`）。
+ written:HashMap<LiveKey,(f64,f64,f64,i64)>,
+ priority:Arc<AtomicU8>,
  writes:mpsc::Sender<Write>,
+ calibration:Calibration,
+ /// 订阅按这套门槛挑产品（非币标定之前 `model.thresholds.usdt_perp` 是空的，但 U 本位永续要订）。
+ planned:Thresholds,
+ shared:watch::Sender<Thresholds>,
 }
 
 impl Tracker {
  fn step(&self)->f64 {self.model.thresholds.step.unwrap_or(0.0)}
-
- fn spawn_sockets(&mut self,venues:Vec<VenueInfo>) {
-  for socket in feeds::plan(&venues) {
-   let (tx,rx)=mpsc::channel(16);
-   for v in &socket.venues {if socket.kind!=feeds::Kind::BinanceUmTrades {self.commands.insert(v.id.clone(),tx.clone());}}
-   self.sockets.push(tokio::spawn(feeds::run(socket,self.events.clone(),rx)));
-  }
- }
+ fn calibrating(&self)->bool {self.calibration.needed&&self.calibration.value.is_none()}
 
  fn add_venues(&mut self,venues:&[Venue]) {
   let known:HashSet<String>=self.model.venue_ids().into_iter().collect();
-  let fresh:Vec<VenueInfo>=venues.iter().filter(|v|self.model.thresholds.of(wire_product(v.product)).is_some()).map(info).filter(|v|!known.contains(&v.id)).collect();
+  let fresh:Vec<VenueInfo>=venues.iter().filter(|v|self.planned.of(wire_product(v.product)).is_some()).map(info).filter(|v|!known.contains(&v.id)).collect();
   if fresh.is_empty() {return}
-  tracing::info!("Orderflow history: {} tracks {}",self.base,fresh.iter().map(|v|v.id.as_str()).collect::<Vec<_>>().join(", "));
+  tracing::debug!("Orderflow history: {} tracks {}",self.base,fresh.iter().map(|v|v.id.as_str()).collect::<Vec<_>>().join(", "));
   for v in &fresh {self.model.add_venue(v.clone());}
-  self.spawn_sockets(fresh);
+  hub::add(fresh,&self.events);
+ }
+
+ fn sync_epoch(&mut self,id:&str) {
+  let Some(epoch)=self.model.book_mut(id).map(|b|b.epoch) else {return};
+  self.epochs.entry(id.to_string()).or_insert_with(||Arc::new(AtomicU64::new(0))).store(epoch,Ordering::Relaxed);
  }
 
  fn act(&mut self,venue:&str,action:Action) {
   match action {
    Action::None=>{},
-   Action::Resubscribe=>{if let Some(tx)=self.commands.get(venue) {let _=tx.try_send(Resubscribe(venue.to_string()));}},
+   Action::Resubscribe=>hub::resubscribe(venue.to_string()),
    Action::FetchSnapshot=>self.fetch(venue,SNAPSHOT_SETTLE),
   }
  }
 
+ /// 排一份 REST 快照（全进程一条限速队列，见 `snapshots.rs`）。同一 epoch 已经排着就不重复排。
  fn fetch(&mut self,venue:&str,settle:Duration) {
-  if self.inflight.contains(venue) {return}
   let Some(book)=self.model.book_mut(venue) else {return};
-  let (info,connection)=(book.venue.clone(),book.connection);
-  self.inflight.insert(venue.to_string());
+  let (info,epoch)=(book.venue.clone(),book.epoch);
+  if self.inflight.get(venue)==Some(&epoch) {return}
+  self.inflight.insert(venue.to_string(),epoch);
   self.retry.remove(venue);
-  let events=self.events.clone();
-  tokio::spawn(async move {
-   tokio::time::sleep(settle).await;
-   let snapshot=feeds::fetch_snapshot(&info).await;
-   let _=events.send(Event::Snapshot{venue:info.id,connection,snapshot}).await;
-  });
+  self.sync_epoch(venue);
+  let Some(current)=self.epochs.get(venue).cloned() else {return};
+  snapshots::request(snapshots::Request{venue:info,epoch,priority:self.priority.clone(),not_before:tokio::time::Instant::now()+settle,events:self.events.clone(),current});
  }
 
  fn handle(&mut self,event:Event) {
@@ -212,23 +283,42 @@ impl Tracker {
    Event::Opened{venues,connection}=>for id in venues {
     self.open.insert(id.clone());
     let action=self.model.book_mut(&id).map_or(Action::None,|b|b.opened(connection));
+    self.sync_epoch(&id);
+    self.act(&id,action);
+   },
+   // 连接池换连接（24 小时前换新、合并）：还连着的簿接着用，两条连接的帧都认；没连着的按新连接从头开。
+   Event::Handover{venues,connection}=>for id in venues {
+    let was_open=self.open.contains(&id);
+    let action=self.model.book_mut(&id).map_or(Action::None,|b|if was_open {b.handover(connection)} else {b.opened(connection)});
+    self.open.insert(id.clone());
+    self.sync_epoch(&id);
     self.act(&id,action);
    },
    Event::Closed{venues,connection}=>for id in venues {
     if self.model.book_mut(&id).is_some_and(|b|b.connection==connection) {self.open.remove(&id);}
     self.model.closed(&id,connection);
+    self.sync_epoch(&id);
    },
    Event::Frame{venue,connection,message}=>{
     let action=self.model.ingest(&venue,connection,message,now);
     self.act(&venue,action);
    },
-   Event::Trade{venue,trade}=>self.model.trade(&venue,trade),
-   Event::Snapshot{venue,connection,snapshot}=>{
-    self.inflight.remove(&venue);
+   Event::Trade{venue,trade,id}=>{
+    if let Some(id)=id {
+     let last=self.last_trade.entry(venue.clone()).or_insert(i64::MIN);
+     if id<=*last {return}
+     *last=id;
+    }
+    self.model.trade(&venue,trade);
+   },
+   Event::Snapshot{venue,epoch,snapshot}=>{
+    if self.inflight.get(&venue)==Some(&epoch) {self.inflight.remove(&venue);}
     let Some(book)=self.model.book_mut(&venue) else {return};
+    // 排队期间断过线：这份是上一轮的，新一轮的请求在 opened 时已经排上了。
+    if book.epoch!=epoch {return}
     match snapshot {
-     Some(s) if book.connection==connection=>{let action=book.snapshot(s,now);self.act(&venue,action);},
-     _=>{self.retry.insert(venue,now+SNAPSHOT_RETRY_MS);},
+     Some(s)=>{let action=book.snapshot(s,now);self.act(&venue,action);},
+     None=>{self.retry.insert(venue,now+SNAPSHOT_RETRY_MS);},
     }
    },
   }
@@ -244,6 +334,33 @@ impl Tracker {
   }
  }
 
+ /// 非币门槛：到点就标，跨 UTC 日重标。第一次标完才开始评估、读回挂着的单。
+ fn calibrate(&mut self,now:i64) {
+  if !self.calibration.needed {return}
+  let day=model::reference_day(now);
+  let books:Vec<String>=self.model.venue_ids();
+  let total=books.len();
+  let ready=self.model.ready_count();
+  let waiting=books.iter().any(|id|!self.open.contains(id)||self.inflight.contains_key(id));
+  if !self.calibration.due(now,day,total,ready,waiting) {return}
+  let depth=self.model.depth_usd(model::CALIBRATION_BPS);
+  let value=model::calibrated_threshold(depth);
+  let first=self.calibration.value.is_none();
+  self.calibration.value=Some(value);
+  self.calibration.day=Some(day);
+  self.calibration.partial=ready<total;
+  tracing::info!("Orderflow history: {} usdtPerp threshold calibrated to {value} (±1% depth {depth:.0} USD over {ready}/{total} books)",self.base);
+  let mut next=self.model.thresholds;
+  next.usdt_perp=Some(value);
+  if next!=self.model.thresholds {self.model.set_thresholds(next,now);}
+  self.shared.send_replace(next);
+  if first && let Some(rows)=self.calibration.restored.take() {
+   let n=rows.len();
+   self.model.restore(rows,now);
+   if n>0 {tracing::info!("Orderflow history: {} restored {n} live orders after calibration ({} ended as lost)",self.base,self.model.ended.len());}
+  }
+ }
+
  async fn write_ended(&mut self) {
   let ended=self.model.take_ended();
   if ended.is_empty() {return}
@@ -252,37 +369,71 @@ impl Tracker {
  }
 
  async fn write_live(&mut self) {
-  let rows=self.model.live();
+  let rows=changed_live(self.model.live(),&mut self.written,now_ms());
   if rows.is_empty() {return}
   let _=self.writes.send(Write{step:self.step(),rows}).await;
  }
 }
 
+/// 一条挂着的单在库里的身份：簿、侧、桶、出现时刻。
+type LiveKey=(String,book::Side,i64,i64);
+
+/// 这一轮要写的挂着的单：新出现的、量或成交或门槛变了 1% 以上的、以及上次写已经过了 `LIVE_REWRITE_MS` 的
+/// （`seen_ms` 要赶在 `model::STALE_MS` 之前刷新，重启读回时才不会被当成失联）。220 只全开时每 15 秒整表重写
+/// 一遍是本地实测里 Postgres 出现慢语句的原因，大部分墙在两次刷新之间根本没动。
+fn changed_live(rows:Vec<(BigOrder,i64)>,written:&mut HashMap<LiveKey,(f64,f64,f64,i64)>,now:i64)->Vec<(BigOrder,i64)> {
+ let moved=|a:f64,b:f64|(a-b).abs()>b.abs()*0.01;
+ let mut keep=HashSet::new();
+ let mut out=Vec::new();
+ for (order,seen) in rows {
+  let key:LiveKey=(order.venue_id.clone(),order.side,order.bucket,order.first_seen_ms);
+  let fresh=(order.notional,order.filled_notional,order.threshold);
+  let due=match written.get(&key) {
+   None=>true,
+   Some(&(n,f,t,at))=>moved(fresh.0,n)||moved(fresh.1,f)||moved(fresh.2,t)||now-at>=LIVE_REWRITE_MS,
+  };
+  if due {written.insert(key.clone(),(fresh.0,fresh.1,fresh.2,now));out.push((order,seen));}
+  keep.insert(key);
+ }
+ written.retain(|k,_|keep.contains(k));
+ out
+}
+
 /// 拿品种表与门槛，直到步长有了。停了返回 None。
-async fn prepare(base:&str,stop:&mut watch::Receiver<bool>)->Option<(Vec<Venue>,Thresholds)> {
+async fn prepare(base:&str,stop:&mut watch::Receiver<bool>)->Option<(Vec<Venue>,Thresholds,bool)> {
  loop {
   let venues=instruments::venues(base).await;
-  let thresholds=resolve(base,&venues,now_ms()).await;
-  if !venues.is_empty()&&thresholds.step.is_some() {return Some((venues,thresholds))}
+  let (thresholds,crypto)=resolve(base,&venues,now_ms()).await;
+  if !venues.is_empty()&&thresholds.step.is_some() {return Some((venues,thresholds,crypto))}
   tracing::info!("Orderflow history: {base} not ready ({} venues, step {:?}), retrying",venues.len(),thresholds.step);
   tokio::select! {_=stop.changed()=>return None,_=tokio::time::sleep(RESOLVE_RETRY)=>{}}
  }
 }
 
-async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop:watch::Receiver<bool>) {
- let Some((venues,thresholds))=prepare(&base,&mut stop).await else {return};
- shared.send_replace(thresholds);
+async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop:watch::Receiver<bool>,priority:Arc<AtomicU8>,delay:Duration) {
+ if !delay.is_zero() {
+  tokio::select! {_=stop.changed()=>return,_=tokio::time::sleep(delay)=>{}}
+ }
+ let Some((venues,thresholds,crypto))=prepare(&base,&mut stop).await else {return};
+ if let Err(e)=store::touch(&pool,&base,now_ms(),false).await {tracing::warn!("Orderflow history: {base} not recorded: {e}");}
+ let needed=!crypto;
+ let mut published=thresholds;
+ if needed {published.usdt_perp=None;}
+ shared.send_replace(published);
  let (events,mut inbox)=mpsc::channel::<Event>(8192);
  let (writes,rx)=mpsc::channel::<Write>(256);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
- let mut t=Tracker{base:base.clone(),model:Model::new(&base,thresholds),events,commands:HashMap::new(),sockets:Vec::new(),
-  open:HashSet::new(),inflight:HashSet::new(),retry:HashMap::new(),writes};
+ let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),
+  epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority,writes,
+  calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
+  Ok(rows) if needed=>t.calibration.restored=Some(rows),
   Ok(rows)=>{let n=rows.len();t.model.restore(rows,now_ms());if n>0 {tracing::info!("Orderflow history: {base} restored {n} live orders ({} ended as lost)",t.model.ended.len());}},
   Err(e)=>tracing::warn!("Orderflow history: {base} restore failed: {e}"),
  }
  t.write_ended().await;
  t.add_venues(&venues);
+ (t.calibration.since,t.calibration.subscribed)=(now_ms(),now_ms());
  let mut evaluate=tokio::time::interval(EVALUATE);
  evaluate.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
  let mut flush=tokio::time::interval_at(tokio::time::Instant::now()+FLUSH,FLUSH);
@@ -298,7 +449,8 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
    },
    _=evaluate.tick()=>{
     let now=now_ms();
-    t.model.evaluate(now);
+    t.calibrate(now);
+    if t.calibrating() {t.model.trim();} else {t.model.evaluate(now);}
     t.due_retries(now);
     t.write_ended().await;
     // 跨 UTC 日：步长按新的前一日收盘重算。
@@ -309,21 +461,23 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
     let venues=instruments::venues(&base).await;
     let now=now_ms();
     if now-resolved_at>=THRESHOLDS_EVERY_MS {
-     let next=resolve(&base,&venues,now).await;
+     let (mut next,_)=resolve(&base,&venues,now).await;
      if next.step.is_some() {
-      if next!=t.model.thresholds {tracing::info!("Orderflow history: {base} thresholds {:?} -> {next:?}",t.model.thresholds);t.model.set_thresholds(next,now);shared.send_replace(next);}
+      t.planned=next;
+      if t.calibration.needed {next.usdt_perp=t.calibration.value;}
+      if next!=t.model.thresholds {tracing::info!("Orderflow history: {base} thresholds {:?} -> {next:?}",t.model.thresholds);t.model.set_thresholds(next,now);t.shared.send_replace(next);}
       resolved_at=now;resolved_day=model::reference_day(now);
      }
     }
     t.add_venues(&venues);
     t.write_ended().await;
-    tracing::info!("Orderflow history: {} {}/{} books ready, {} live",t.model.base,t.model.ready_count(),t.model.venue_ids().len(),t.model.live_count());
+    tracing::debug!("Orderflow history: {} {}/{} books ready, {} live",t.model.base,t.model.ready_count(),t.model.venue_ids().len(),t.model.live_count());
    },
   }
  }
  t.model.stop();
  t.write_ended().await;
- for s in &t.sockets {s.abort();}
+ hub::remove(t.model.venue_ids());
  drop(t);
  let _=tokio::time::timeout(Duration::from_secs(10),writer).await;
  tracing::info!("Orderflow history: {base} stopped");
@@ -331,67 +485,347 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
 
 // ------------------------------------------------------------------ 跟哪些币
 
-struct Entry {requested:i64,stop:watch::Sender<bool>,thresholds:watch::Receiver<Thresholds>,task:JoinHandle<()>}
+/// 一只币为什么在跟，按强到弱。数值也是快照队列里的先后（小的先）。
+#[derive(Clone,Copy,Debug,PartialEq,Eq,PartialOrd,Ord,Hash)]
+enum Layer {Major=0,OnDemand=1,Fixed=2,Alt=3,Hot=4}
 
-struct Registry {pool:PgPool,entries:Mutex<HashMap<String,Entry>>}
+impl Layer {
+ fn label(self)->&'static str {match self {Layer::Major=>"majors",Layer::OnDemand=>"on-demand",Layer::Fixed=>"fixed",Layer::Alt=>"alts",Layer::Hot=>"hot"}}
+}
+
+/// 资源闸门卸到第几层：0 不卸，1 卸热点，2 再卸山寨，3 再卸固定。主币与按需不卸。
+fn shed_label(level:u8)->&'static str {match level {0=>"nothing",1=>"hot",2=>"hot+alts",_=>"hot+alts+fixed"}}
+
+/// 在榜上（没有截止时刻）。
+const LISTED:i64=i64::MAX;
+
+struct Entry {
+ major:bool,
+ fixed:bool,
+ /// 山寨 / 热点：在榜上为 `LISTED`，掉榜之后为掉榜时刻 + 24 小时，不在这一层为 0。
+ alt_until:i64,
+ hot_until:i64,
+ /// 最后一次在热点榜上的时刻。
+ hot_seen:i64,
+ /// 最后一次有人要的时刻（没人要过为 0）。
+ requested:i64,
+ priority:Arc<AtomicU8>,
+ stop:watch::Sender<bool>,
+ thresholds:watch::Receiver<Thresholds>,
+ task:JoinHandle<()>,
+}
+
+impl Entry {
+ fn on_demand(&self,now:i64)->bool {self.requested>0&&now-self.requested<IDLE_MS}
+ /// 此刻最强的理由（按卸层之后算）；None 就是不该再跟了。
+ fn layer(&self,now:i64,shed:u8)->Option<Layer> {
+  if self.major {Some(Layer::Major)}
+  else if self.on_demand(now) {Some(Layer::OnDemand)}
+  else if self.fixed&&shed<3 {Some(Layer::Fixed)}
+  else if self.alt_until>now&&shed<2 {Some(Layer::Alt)}
+  else if self.hot_until>now&&shed<1 {Some(Layer::Hot)}
+  else {None}
+ }
+ /// 满了可以踢的：只因为按需或热点在跟的。
+ fn evictable(&self,now:i64)->bool {!self.major&&!self.fixed&&self.alt_until<=now}
+ fn wanted_at(&self)->i64 {self.requested.max(self.hot_seen)}
+ fn only_on_demand(&self,now:i64)->bool {self.on_demand(now)&&!self.major&&!self.fixed&&self.alt_until<=now&&self.hot_until<=now}
+ fn only_hot(&self,now:i64)->bool {self.hot_until>now&&!self.major&&!self.fixed&&self.alt_until<=now&&!self.on_demand(now)}
+}
+
+/// 各层最近一次算出来的名单（卸层恢复时重新套用）。
+#[derive(Default)]
+struct Lists {fixed:Vec<String>,alts:Vec<String>,hot:Vec<String>}
+
+struct Registry {
+ pool:PgPool,
+ entries:Mutex<HashMap<String,Entry>>,
+ lists:Mutex<Lists>,
+ /// 资源闸门此刻超没超（超了不再新增）。
+ over:AtomicBool,
+ shed:AtomicU8,
+ /// 成批起跟踪时下一只排到什么时候。
+ next_start:Mutex<tokio::time::Instant>,
+}
 
 static REGISTRY:OnceLock<Arc<Registry>>=OnceLock::new();
 
-impl Registry {
- fn lock(&self)->std::sync::MutexGuard<'_,HashMap<String,Entry>> {self.entries.lock().unwrap_or_else(|e|e.into_inner())}
+type Entries=HashMap<String,Entry>;
 
- fn start(&self,entries:&mut HashMap<String,Entry>,base:&str,requested:i64) {
-  let (stop,rx)=watch::channel(false);
-  let (shared,thresholds)=watch::channel(Thresholds::default());
-  let task=tokio::spawn(track(self.pool.clone(),base.to_string(),shared,rx));
-  entries.insert(base.to_string(),Entry{requested,stop,thresholds,task});
+impl Registry {
+ fn new(pool:PgPool)->Self {
+  Self{pool,entries:Mutex::new(HashMap::new()),lists:Mutex::new(Lists::default()),over:AtomicBool::new(false),shed:AtomicU8::new(0),
+   next_start:Mutex::new(tokio::time::Instant::now())}
+ }
+ fn lock(&self)->std::sync::MutexGuard<'_,Entries> {self.entries.lock().unwrap_or_else(|e|e.into_inner())}
+ fn shed(&self)->u8 {self.shed.load(Ordering::Relaxed)}
+ fn over(&self)->bool {self.over.load(Ordering::Relaxed)}
+
+ fn delay(&self,immediate:bool)->Duration {
+  if immediate {return Duration::ZERO}
+  let mut next=self.next_start.lock().unwrap_or_else(|e|e.into_inner());
+  let now=tokio::time::Instant::now();
+  let at=(*next).max(now)+START_GAP;
+  *next=at;
+  at-now
  }
 
- /// 满了就踢最久没人要的那只（三只主币不踢）。踢不动返回 false。
- fn make_room(entries:&mut HashMap<String,Entry>)->bool {
+ fn start(&self,entries:&mut Entries,base:&str,now:i64,immediate:bool,tag:impl FnOnce(&mut Entry)) {
+  let (stop,rx)=watch::channel(false);
+  let (shared,thresholds)=watch::channel(Thresholds::default());
+  let priority=Arc::new(AtomicU8::new(Layer::Hot as u8));
+  let task=tokio::spawn(track(self.pool.clone(),base.to_string(),shared,rx,priority.clone(),self.delay(immediate)));
+  let mut e=Entry{major:false,fixed:false,alt_until:0,hot_until:0,hot_seen:0,requested:0,priority,stop,thresholds,task};
+  tag(&mut e);
+  if let Some(layer)=e.layer(now,self.shed()) {e.priority.store(layer as u8,Ordering::Relaxed);}
+  entries.insert(base.to_string(),e);
+ }
+
+ fn stop(entries:&mut Entries,base:&str,why:&str) {
+  if let Some(e)=entries.remove(base) {let _=e.stop.send(true);tracing::info!("Orderflow history: {base} {why}");}
+ }
+
+ /// 满了就踢按需 / 热点里最久没人要的那只（主币、固定、山寨不踢）。踢不动返回 false。
+ fn make_room(entries:&mut Entries,now:i64)->bool {
   if entries.len()<MAX_BASES {return true}
-  let victim=entries.iter().filter(|(b,_)|!model::is_major(b)).min_by_key(|(_,e)|e.requested).map(|(b,_)|b.clone());
+  let victim=entries.iter().filter(|(_,e)|e.evictable(now)).min_by_key(|(b,e)|(e.wanted_at(),(*b).clone())).map(|(b,_)|b.clone());
   let Some(victim)=victim else {return false};
-  if let Some(e)=entries.remove(&victim) {let _=e.stop.send(true);tracing::info!("Orderflow history: {victim} evicted for room");}
+  Self::stop(entries,&victim,"evicted for room");
   true
  }
 
- /// 有人要这只：记下时刻，没在跟就开始跟。回此刻的门槛（还没算出来是全空）。
+ /// 有人要这只：记下时刻，没在跟就开始跟（按需层）。回此刻的门槛（还没算出来是全空）。
  fn request(&self,base:&str,now:i64)->Thresholds {
   let mut entries=self.lock();
-  if let Some(e)=entries.get_mut(base) {e.requested=now;return *e.thresholds.borrow()}
-  if Self::make_room(&mut entries) {self.start(&mut entries,base,now);}
+  let shed=self.shed();
+  if let Some(e)=entries.get_mut(base) {
+   e.requested=now;
+   if let Some(layer)=e.layer(now,shed) {e.priority.store(layer as u8,Ordering::Relaxed);}
+   return *e.thresholds.borrow()
+  }
+  if self.over() {tracing::info!("Orderflow history: {base} requested but the resource gate is over, not tracking");return Thresholds::default()}
+  let demand:Vec<(i64,String)>=entries.iter().filter(|(_,e)|e.only_on_demand(now)).map(|(b,e)|(e.requested,b.clone())).collect();
+  if demand.len()>=MAX_ON_DEMAND && let Some((_,victim))=demand.into_iter().min() {Self::stop(&mut entries,&victim,"evicted from on-demand for a newer request");}
+  if Self::make_room(&mut entries,now) {self.start(&mut entries,base,now,true,|e|e.requested=now);}
   Thresholds::default()
  }
 
  fn tracked(&self)->Vec<String> {self.lock().keys().cloned().collect()}
 
- /// 每十分钟：24 小时没人要的其它币停掉；意外结束的任务重起。
+ /// 不该再跟的停掉、先后重排、热点层（含掉榜还在跟的）超过 30 只就停掉最早掉榜的。
+ fn settle(&self,entries:&mut Entries,now:i64) {
+  let shed=self.shed();
+  let gone:Vec<String>=entries.iter().filter(|(_,e)|e.layer(now,shed).is_none()).map(|(b,_)|b.clone()).collect();
+  for base in gone {Self::stop(entries,&base,"no longer wanted, stopped");}
+  let mut tails:Vec<(i64,String)>=entries.iter().filter(|(_,e)|e.only_hot(now)&&e.hot_until!=LISTED).map(|(b,e)|(e.hot_seen,b.clone())).collect();
+  let hot=entries.values().filter(|e|e.only_hot(now)).count();
+  if hot>layers::MAX_HOT {
+   tails.sort();
+   for (_,base) in tails.into_iter().take(hot-layers::MAX_HOT) {Self::stop(entries,&base,"dropped off the hot list, cap reached");}
+  }
+  for e in entries.values() {if let Some(layer)=e.layer(now,shed) {e.priority.store(layer as u8,Ordering::Relaxed);}}
+ }
+
+ /// 套一层的名单：在榜的打上标记（没在跟就起），不在榜的去掉标记（山寨 / 热点改成再跟 24 小时）。
+ fn apply(&self,layer:Layer,list:&[String],now:i64) {
+  {
+   let mut lists=self.lists.lock().unwrap_or_else(|e|e.into_inner());
+   match layer {Layer::Fixed=>lists.fixed=list.to_vec(),Layer::Alt=>lists.alts=list.to_vec(),Layer::Hot=>lists.hot=list.to_vec(),_=>{}}
+  }
+  let set:HashSet<&str>=list.iter().map(String::as_str).collect();
+  let mut entries=self.lock();
+  for (base,e) in entries.iter_mut() {
+   let on=set.contains(base.as_str());
+   match layer {
+    Layer::Fixed=>e.fixed=on,
+    Layer::Alt=>{if on {e.alt_until=LISTED} else if e.alt_until==LISTED {e.alt_until=now+LINGER_MS}},
+    Layer::Hot=>{if on {e.hot_until=LISTED;e.hot_seen=now} else if e.hot_until==LISTED {e.hot_until=now+LINGER_MS}},
+    _=>{},
+   }
+  }
+  let shed=self.shed();
+  let shed_here=match layer {Layer::Fixed=>shed>=3,Layer::Alt=>shed>=2,Layer::Hot=>shed>=1,_=>false};
+  let (mut started,mut refused)=(0,0);
+  for base in list {
+   if entries.contains_key(base) {continue}
+   if shed_here||self.over()||!Self::make_room(&mut entries,now) {refused+=1;continue}
+   self.start(&mut entries,base,now,false,|e|match layer {
+    Layer::Fixed=>e.fixed=true,
+    Layer::Alt=>e.alt_until=LISTED,
+    Layer::Hot=>{e.hot_until=LISTED;e.hot_seen=now},
+    _=>{},
+   });
+   started+=1;
+  }
+  self.settle(&mut entries,now);
+  tracing::info!("Orderflow history: {} layer {} bases ({started} started{}): {}",layer.label(),list.len(),
+   if refused>0 {format!(", {refused} held back by the resource gate / cap")} else {String::new()},list.join(" "));
+ }
+
+ /// 热点要排除的：已经因为别的理由在跟的，加上固定与山寨名单。
+ fn not_hot(&self,now:i64)->HashSet<String> {
+  let mut out:HashSet<String>=self.lock().iter().filter(|(_,e)|e.major||e.fixed||e.alt_until>now||e.on_demand(now)).map(|(b,_)|b.clone()).collect();
+  let lists=self.lists.lock().unwrap_or_else(|e|e.into_inner());
+  out.extend(lists.fixed.iter().cloned());
+  out.extend(lists.alts.iter().cloned());
+  out.extend(layers::MAJORS.iter().map(|m|m.to_string()));
+  out
+ }
+
+ /// 每十分钟：不该再跟的停掉；意外结束的任务重起（标记不变）。
  fn sweep(&self,now:i64) {
   let mut entries=self.lock();
-  let idle:Vec<String>=entries.iter().filter(|(b,e)|!model::is_major(b)&&now-e.requested>=IDLE_MS).map(|(b,_)|b.clone()).collect();
-  for base in idle {if let Some(e)=entries.remove(&base) {let _=e.stop.send(true);tracing::info!("Orderflow history: {base} idle for a day, stopped");}}
-  let dead:Vec<(String,i64)>=entries.iter().filter(|(_,e)|e.task.is_finished()).map(|(b,e)|(b.clone(),e.requested)).collect();
-  for (base,requested) in dead {tracing::warn!("Orderflow history: {base} tracker ended unexpectedly, restarting");self.start(&mut entries,&base,requested);}
+  self.settle(&mut entries,now);
+  let dead:Vec<String>=entries.iter().filter(|(_,e)|e.task.is_finished()).map(|(b,_)|b.clone()).collect();
+  for base in dead {
+   let Some(old)=entries.remove(&base) else {continue};
+   tracing::warn!("Orderflow history: {base} tracker ended unexpectedly, restarting");
+   self.start(&mut entries,&base,now,false,|e|{e.major=old.major;e.fixed=old.fixed;e.alt_until=old.alt_until;e.hot_until=old.hot_until;e.hot_seen=old.hot_seen;e.requested=old.requested;});
+  }
+ }
+
+ /// 资源闸门（每分钟）：超了就不再新增，并卸一层；连续 10 分钟不超放回一层、重新套名单。
+ fn gate(&self,now:i64,clear:&mut u32) {
+  let load=resources::last();
+  let over=load.over();
+  self.over.store(over,Ordering::Relaxed);
+  let shed=self.shed();
+  if over {
+   *clear=0;
+   if shed<3 {
+    self.shed.store(shed+1,Ordering::Relaxed);
+    tracing::warn!("Orderflow history: resource gate over ({}), shedding {}",load.describe(),shed_label(shed+1));
+    let mut entries=self.lock();
+    self.settle(&mut entries,now);
+   } else {
+    tracing::warn!("Orderflow history: resource gate still over ({}) with only majors and on-demand left",load.describe());
+   }
+  } else if shed>0 {
+   *clear+=1;
+   if *clear>=SHED_RECOVER_MINUTES {
+    *clear=0;
+    self.shed.store(shed-1,Ordering::Relaxed);
+    tracing::info!("Orderflow history: resource gate clear for {SHED_RECOVER_MINUTES} minutes ({}), now shedding {}",load.describe(),shed_label(shed-1));
+    let lists=std::mem::take(&mut *self.lists.lock().unwrap_or_else(|e|e.into_inner()));
+    self.apply(Layer::Fixed,&lists.fixed,now);
+    self.apply(Layer::Alt,&lists.alts,now);
+    self.apply(Layer::Hot,&lists.hot,now);
+   }
+  }
+ }
+
+ /// 一行现状：各层多少只、连接数、进程负载、卸层。
+ fn status(&self,now:i64)->String {
+  let shed=self.shed();
+  let entries=self.lock();
+  let mut counts:HashMap<Layer,usize>=HashMap::new();
+  for e in entries.values() {if let Some(l)=e.layer(now,shed) {*counts.entry(l).or_default()+=1;}}
+  let parts:Vec<String>=[Layer::Major,Layer::OnDemand,Layer::Fixed,Layer::Alt,Layer::Hot].iter().map(|l|format!("{} {}",l.label(),counts.get(l).copied().unwrap_or(0))).collect();
+  format!("tracking {} ({}), {} connections, {}, shedding {}",entries.len(),parts.join(", "),hub::connections(),resources::last().describe(),shed_label(shed))
  }
 }
 
-/// 起跟踪：三只主币、以及最近 24 小时有人要过的（最多 20 只）；之后每十分钟清一遍、每小时滚动清理。
+/// 热点那一路要取 150 次持仓历史（约 45 秒），单独起任务，不挡着资源采样与闸门。
+async fn recompute_hot(registry:Arc<Registry>,running:Arc<AtomicBool>) {
+ let result=async {
+  let info=crate::market_meta::exchange_info().await.ok()?;
+  let tickers=layers::ticker_map(&*layers::tickers().await.ok()?);
+  let exclude=registry.not_hot(now_ms());
+  let candidates=layers::oi_candidates(&info,&tickers,&exclude);
+  let oi=layers::oi_changes(&candidates).await;
+  let exclude=registry.not_hot(now_ms());
+  Some((layers::pick_hot(&info,&tickers,&oi,&exclude),oi.len(),candidates.len()))
+ }.await;
+ match result {
+  Some((hot,got,asked))=>{
+   tracing::info!("Orderflow history: hot signals ready (open interest for {got}/{asked} contracts)");
+   registry.apply(Layer::Hot,&hot,now_ms());
+  },
+  None=>tracing::warn!("Orderflow history: hot layer not recomputed (contract list or tickers unavailable), keeping the last one"),
+ }
+ running.store(false,Ordering::Relaxed);
+}
+
+/// 层的循环：每 15 秒采一次资源；每分钟过一遍闸门，到点重算固定（10 分钟对一次合约表）、山寨（UTC 0 点）、
+/// 热点（每小时）。
+async fn run_layers(registry:Arc<Registry>,enabled:Enabled) {
+ let mut sample=tokio::time::interval(SAMPLE);
+ sample.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+ let mut tick=tokio::time::interval(LAYER_TICK);
+ tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+ // 0 而不是 i64::MIN：`now - i64::MIN` 会溢出（Release 下绕成负数，层永远不起）。
+ let (mut fixed_at,mut hot_at,mut alts_day)=(0i64,0i64,None::<i64>);
+ let mut clear=0u32;
+ let mut missing_named:Option<Vec<String>>=None;
+ let hot_running=Arc::new(AtomicBool::new(false));
+ let started=now_ms();
+ let mut status_at=0i64;
+ loop {
+  tokio::select! {
+   _=sample.tick()=>{resources::sample();},
+   _=tick.tick()=>{
+    let now=now_ms();
+    registry.gate(now,&mut clear);
+    let info=if enabled.fixed||enabled.alts||enabled.hot {
+     match crate::market_meta::exchange_info().await {
+      Ok(info)=>Some(info),
+      Err(_)=>{tracing::warn!("Orderflow history: contract list unavailable, layers retried next minute");None},
+     }
+    } else {None};
+    if let Some(info)=info {
+     if enabled.fixed&&now-fixed_at>=FIXED_EVERY_MS {
+      let (found,missing)=layers::fixed_bases(&info);
+      if missing_named.as_ref()!=Some(&missing) {
+       tracing::info!("Orderflow history: fixed layer {} of {} names listed on Binance; not listed, skipped: {}",found.len(),found.len()+missing.len(),
+        if missing.is_empty() {"none".to_string()} else {missing.join(" ")});
+       missing_named=Some(missing);
+      }
+      registry.apply(Layer::Fixed,&found,now);
+      fixed_at=now;
+     }
+     let day=now.div_euclid(store::DAY_MS);
+     if enabled.alts&&alts_day!=Some(day) {
+      match layers::tickers().await {
+       Ok(body)=>{
+        let tickers=layers::ticker_map(&body);
+        let fixed:HashSet<String>=layers::fixed_bases(&info).0.into_iter().collect();
+        let alts=layers::pick_alts(&info,&tickers,&fixed);
+        registry.apply(Layer::Alt,&alts,now);
+        alts_day=Some(day);
+       },
+       Err(_)=>tracing::warn!("Orderflow history: tickers unavailable, alts layer retried next minute"),
+      }
+     }
+     if enabled.hot&&now-hot_at>=HOT_EVERY_MS&&!hot_running.swap(true,Ordering::Relaxed) {
+      hot_at=now;
+      tokio::spawn(recompute_hot(registry.clone(),hot_running.clone()));
+     }
+    }
+    // 起来的头十分钟每分钟一行现状，之后十分钟一行。
+    let every=if now-started<10*60_000 {60_000} else {10*60_000};
+    if now-status_at>=every-1_000 {status_at=now;tracing::info!("Orderflow history: {}",registry.status(now));}
+   },
+  }
+ }
+}
+
+/// 起跟踪：主币、最近 24 小时有人要过的（最多 20 只），再按 `KANPAN_ORDERFLOW_LAYERS` 起固定 / 山寨 / 热点；
+/// 之后每十分钟清一遍、每小时滚动清理。
 pub fn spawn(pool:PgPool)->JoinHandle<()> {
  tokio::spawn(async move {
-  let registry=REGISTRY.get_or_init(||Arc::new(Registry{pool:pool.clone(),entries:Mutex::new(HashMap::new())})).clone();
+  let registry=REGISTRY.get_or_init(||Arc::new(Registry::new(pool.clone()))).clone();
+  let enabled=Enabled::from_env();
+  tracing::info!("Orderflow history: layers {} (up to {MAX_BASES} bases)",enabled.describe());
   let now=now_ms();
   let recent=store::recent_bases(&pool,now).await.unwrap_or_else(|e|{tracing::warn!("Orderflow history: recent bases unreadable: {e}");Vec::new()});
-  for base in ALWAYS {
-   if let Err(e)=store::touch(&pool,base,now,false).await {tracing::warn!("Orderflow history: {base} not recorded: {e}");}
-  }
   {
    let mut entries=registry.lock();
-   for base in ALWAYS {registry.start(&mut entries,base,0);}
-   for base in recent.iter().filter(|b|!ALWAYS.contains(&b.as_str())&&instruments::valid_base(b)).take(MAX_BASES-ALWAYS.len()) {
-    registry.start(&mut entries,base,now);
+   for base in ALWAYS {registry.start(&mut entries,base,now,false,|e|e.major=true);}
+   for base in recent.iter().filter(|b|!ALWAYS.contains(&b.as_str())&&instruments::valid_base(b)).take(MAX_ON_DEMAND) {
+    registry.start(&mut entries,base,now,false,|e|e.requested=now);
    }
   }
+  tokio::spawn(run_layers(registry.clone(),enabled));
   let mut sweep=tokio::time::interval_at(tokio::time::Instant::now()+SWEEP,SWEEP);
   // 进程起来一分钟后先清一次，之后每小时一次。
   let mut purge=tokio::time::interval_at(tokio::time::Instant::now()+Duration::from_secs(60),PURGE);
@@ -416,7 +850,7 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
 #[serde(deny_unknown_fields)]
 struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>}
 
-/// 校验并补齐区间：`to` 缺省此刻，`from` 缺省 `to` 前 24 小时，最长 30 天。
+/// 校验并补齐区间：`to` 缺省此刻，`from` 缺省 `to` 前 24 小时，最长 3 天。
 fn window(from:Option<i64>,to:Option<i64>,now:i64)->std::result::Result<(i64,i64),&'static str> {
  let to=to.unwrap_or(now);
  let from=from.unwrap_or(to-DEFAULT_SPAN_MS);
@@ -446,13 +880,62 @@ pub fn routes()->Router<AppState> {
 mod tests {
  use super::*;
 
+ #[test] fn live_rows_are_rewritten_only_when_they_move_or_age() {
+  use model::Status;
+  let order=|notional:f64,filled:f64|BigOrder{venue_id:"binance:usdtPerp:BTCUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Bid,
+   bucket:599,price:59_950.0,first_seen_ms:1_000,end_ms:None,status:Status::Live,initial_notional:6e6,notional,filled_notional:filled,threshold:5e6,vanished_notional:None};
+  let mut written=HashMap::new();
+  assert_eq!(changed_live(vec![(order(6e6,0.0),0)],&mut written,0).len(),1,"新出现的写");
+  assert!(changed_live(vec![(order(6.03e6,0.0),15_000)],&mut written,15_000).is_empty(),"动了不到 1% 不写");
+  assert_eq!(changed_live(vec![(order(6.2e6,0.0),30_000)],&mut written,30_000).len(),1,"量动了写");
+  assert_eq!(changed_live(vec![(order(6.2e6,1e5),45_000)],&mut written,45_000).len(),1,"成交动了写");
+  assert!(changed_live(vec![(order(6.2e6,1e5),60_000)],&mut written,60_000).is_empty());
+  assert_eq!(changed_live(vec![(order(6.2e6,1e5),105_000)],&mut written,105_000).len(),1,"一分钟没写过：刷新 seen_ms");
+  assert!(LIVE_REWRITE_MS<model::STALE_MS);
+  changed_live(Vec::new(),&mut written,120_000);
+  assert!(written.is_empty(),"不再挂着的不留");
+ }
+
+ #[test] fn calibration_waits_for_every_book_to_connect_and_its_snapshot() {
+  let mut c=Calibration{needed:true,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
+  // OKX 一本秒就绪，币安那本还在攒连接 / 排快照：不标。
+  assert!(!c.due(5_000,0,2,1,true));
+  assert!(!c.due(60_000,0,2,1,true),"还在等就一直往后推");
+  // 币安那本连上、快照也拿到了但还没接上序号：从这一刻起 8 秒。
+  assert!(!c.due(60_000+7_999,0,2,1,false));
+  assert!(c.due(60_000+8_000,0,2,1,false));
+  // 两本都就绪：立刻标。
+  let mut c=Calibration{needed:true,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
+  assert!(c.due(3_000,0,2,2,true));
+  // 等满 10 分钟还有簿在等：用就绪的那本标。
+  let mut c=Calibration{needed:true,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
+  assert!(!c.due(CALIBRATION_CAP_MS-1,0,2,1,true));
+  assert!(c.due(CALIBRATION_CAP_MS+model::CALIBRATION_WAIT_MS,0,2,1,true));
+  // 没有簿：直接标（回退 200 万）。
+  let mut c=Calibration{needed:true,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
+  assert!(c.due(0,0,0,0,false));
+ }
+
+ #[test] fn calibration_upgrades_once_and_renews_daily() {
+  let day=86_400_000;
+  let mut c=Calibration{needed:true,value:Some(50_000.0),day:Some(day),partial:true,since:0,subscribed:0,restored:None};
+  assert!(!c.due(1,day,2,1,false),"同一天、还是一部分簿：不补标");
+  assert!(c.due(1,day,2,2,false),"全就绪了：补标一次");
+  c.partial=false;
+  assert!(!c.due(1,day,2,2,false));
+  assert!(c.due(1,2*day,2,2,false),"跨 UTC 日重标");
+  assert!(!c.due(1,2*day,2,0,false),"一本都没就绪不重标");
+  let mut crypto=Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
+  assert!(!crypto.due(0,0,0,0,false),"币不标");
+ }
+
  #[test] fn window_defaults_and_limits() {
   let now=100*store::DAY_MS;
   assert_eq!(window(None,None,now),Ok((now-store::DAY_MS,now)));
   assert_eq!(window(Some(5),Some(9),now),Ok((5,9)));
   assert_eq!(window(None,Some(now-store::DAY_MS),now),Ok((now-2*store::DAY_MS,now-store::DAY_MS)));
-  assert_eq!(window(Some(now-30*store::DAY_MS),None,now),Ok((now-30*store::DAY_MS,now)));
-  assert_eq!(window(Some(now-30*store::DAY_MS-1),None,now),Err("range_too_long"));
+  assert_eq!(window(Some(now-3*store::DAY_MS),None,now),Ok((now-3*store::DAY_MS,now)));
+  assert_eq!(window(Some(now-3*store::DAY_MS-1),None,now),Err("range_too_long"));
   assert_eq!(window(Some(9),Some(5),now),Err("invalid_range"));
   assert_eq!(window(Some(-1),Some(5),now),Err("invalid_range"));
  }
