@@ -171,6 +171,14 @@ struct PrefsFieldPlanTests {
       用它画出来的线被整条拒绝，永远离不开这台手机。
       """)
 
+    #expect(contract.orderFlow == SettingsFieldContract.OrderFlowLimits.current, """
+      契约里的 `orderFlow`（主力订单流的取值范围 / 前缀表）和客户端常量对不上：
+      契约 \(contract.orderFlow)
+      客户端 \(SettingsFieldContract.OrderFlowLimits.current)
+      改了 OrderFlowOverride 的范围、Prefs.maxOrderFlowOverrides 或 OrderFlowBase 的前缀表，
+      就跑一次 `make sync-contract`，再把 Rust 那边的常量改成一样的。
+      """)
+
     #expect(onDisk == rendered, """
       \(SettingsFieldContract.relativePath) 和母表生成出来的那份逐字不同——
       上面几条都绿说明差的是说明文字或格式，多半是有人手改了这个文件。它是生成物，
@@ -352,6 +360,38 @@ enum SettingsFieldContract {
     var drawingKindsNote: String
     /// `Drawing.Kind` 的全部 rawValue。
     var drawingKinds: [String]
+    var orderFlowNote: String
+    /// 主力订单流设置的取值范围与币安缩放前缀表。
+    var orderFlow: OrderFlowLimits
+  }
+
+  /// 主力订单流的那几个数：`orderFlowOverrides` 的值规则，以及两边各有一份的币安前缀表。
+  struct OrderFlowLimits: Codable, Equatable {
+    var thresholdMin: Double
+    var thresholdMax: Double
+    var stepMin: Double
+    var stepMax: Double
+    var maxOverrides: Int
+    var baseMaxLength: Int
+    var overrideKeys: [String]
+    var binanceScaledPrefixes: [ScaledPrefix]
+
+    struct ScaledPrefix: Codable, Equatable {
+      var prefix: String
+      var scale: Int
+    }
+
+    static var current: OrderFlowLimits {
+      OrderFlowLimits(
+        thresholdMin: OrderFlowOverride.thresholdRange.lowerBound,
+        thresholdMax: OrderFlowOverride.thresholdRange.upperBound,
+        stepMin: OrderFlowOverride.stepRange.lowerBound,
+        stepMax: OrderFlowOverride.stepRange.upperBound,
+        maxOverrides: Prefs.maxOrderFlowOverrides,
+        baseMaxLength: OrderFlowBase.maxLength,
+        overrideKeys: OrderFlowProduct.allCases.map(\.rawValue) + ["step"],
+        binanceScaledPrefixes: OrderFlowBase.scaledPrefixes.map { ScaledPrefix(prefix: $0.0, scale: Int($0.1)) })
+    }
   }
 
   // MARK: 定位
@@ -381,13 +421,15 @@ enum SettingsFieldContract {
         + "客户端按 fieldClasses 决定一个字段跟不跟人走；服务端 sync::SETTINGS_FIELDS 必须逐字等于 wireKeys，"
         + "sync_validation 的指标与画线词表必须逐项等于这里的两份。",
       generatedFrom: "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；"
-        + "KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind",
+        + "KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；"
+        + "KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
       generatedBy: "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
       howToRegenerate: "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），"
         + "然后在仓库根跑 `make sync-contract`。"
         + "改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，"
         + "Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、"
-        + "the_indicator_vocabulary_is_the_contract_one 与 every_drawing_tool_is_in_the_contract。",
+        + "the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、"
+        + "order_flow_limits_are_the_contract_ones 与 binance_scaled_prefixes_are_the_contract_ones。",
       fieldClassesNote: "synced=随账号同步、线上用自己的名字；"
         + "syncedMerged=随账号同步但线上并成别的键（见 wireOnlyKeys）；"
         + "deviceOnly=这台机器 / 这张网的属性，不跟人走；"
@@ -417,7 +459,15 @@ enum SettingsFieldContract {
       drawingKindsNote: "`Drawing.Kind` 的全部 rawValue。服务端 sync_validation 的 KINDS 必须和它一样——"
         + "drawings.kind、drawingPreferences.favorites 与 styles/<kind>、settings.lastDrawTool "
         + "四条值规则都拿它当词表。少一个：用那把工具画出来的线被服务端整条拒绝，永远离不开这台手机。",
-      drawingKinds: Drawing.Kind.allCases.map(\.rawValue)
+      drawingKinds: Drawing.Kind.allCases.map(\.rawValue),
+      orderFlowNote: "主力订单流 settings.orderFlowOverrides 的值规则与币安缩放前缀表。"
+        + "门槛（spot / usdtPerp / coinPerp / delivery，美元）在 thresholdMin…thresholdMax，"
+        + "step 在 stepMin…stepMax，最多 maxOverrides 只 base、base 不长于 baseMaxLength。"
+        + "客户端的来源是 OrderFlowOverride.thresholdRange / stepRange、Prefs.maxOrderFlowOverrides、"
+        + "OrderFlowBase.maxLength / scaledPrefixes；服务端 sync_validation 的 ORDER_FLOW_* 常量"
+        + "与 orderflow_instruments 的 BINANCE_SCALED 必须逐项等于这里。"
+        + "差一个数：客户端认为合法的值被服务端整条 400，那只币的设置永远同步不上去。",
+      orderFlow: OrderFlowLimits.current
     )
   }
 

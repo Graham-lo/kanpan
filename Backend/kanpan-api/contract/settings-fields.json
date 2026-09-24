@@ -106,8 +106,8 @@
   },
   "fieldClassesNote" : "synced=随账号同步、线上用自己的名字；syncedMerged=随账号同步但线上并成别的键（见 wireOnlyKeys）；deviceOnly=这台机器 / 这张网的属性，不跟人走；derivedLocal=自动累积的统计，不跟人也不同步。",
   "generatedBy" : "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
-  "generatedFrom" : "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind",
-  "howToRegenerate" : "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），然后在仓库根跑 `make sync-contract`。改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、the_indicator_vocabulary_is_the_contract_one 与 every_drawing_tool_is_in_the_contract。",
+  "generatedFrom" : "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
+  "howToRegenerate" : "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），然后在仓库根跑 `make sync-contract`。改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、order_flow_limits_are_the_contract_ones 与 binance_scaled_prefixes_are_the_contract_ones。",
   "indicatorIDs" : [
     "MA",
     "EMA",
@@ -130,6 +130,36 @@
     "CVD"
   ],
   "indicatorIDsNote" : "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——`params` / `hiddenOutputs` / `indicatorColors` / `subHeightOverrides` 这些带指标名的路径，第二段只认这份词表，不在表里的整条操作 400。",
+  "orderFlow" : {
+    "baseMaxLength" : 20,
+    "binanceScaledPrefixes" : [
+      {
+        "prefix" : "1000000",
+        "scale" : 1000000
+      },
+      {
+        "prefix" : "1000",
+        "scale" : 1000
+      },
+      {
+        "prefix" : "1M",
+        "scale" : 1000000
+      }
+    ],
+    "maxOverrides" : 200,
+    "overrideKeys" : [
+      "spot",
+      "usdtPerp",
+      "coinPerp",
+      "delivery",
+      "step"
+    ],
+    "stepMax" : 1000000,
+    "stepMin" : 1e-08,
+    "thresholdMax" : 1000000000,
+    "thresholdMin" : 1000
+  },
+  "orderFlowNote" : "主力订单流 settings.orderFlowOverrides 的值规则与币安缩放前缀表。门槛（spot / usdtPerp / coinPerp / delivery，美元）在 thresholdMin…thresholdMax，step 在 stepMin…stepMax，最多 maxOverrides 只 base、base 不长于 baseMaxLength。客户端的来源是 OrderFlowOverride.thresholdRange / stepRange、Prefs.maxOrderFlowOverrides、OrderFlowBase.maxLength / scaledPrefixes；服务端 sync_validation 的 ORDER_FLOW_* 常量与 orderflow_instruments 的 BINANCE_SCALED 必须逐项等于这里。差一个数：客户端认为合法的值被服务端整条 400，那只币的设置永远同步不上去。",
   "overlayIndicatorIDs" : [
     "MA",
     "EMA",

@@ -42,12 +42,20 @@ fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)
 /// （`Prefs.maxOrderFlowOverrides`）；门槛 1e3…1e9 美元、步长 1e-8…1e6，和
 /// `OrderFlowOverride.thresholdRange / stepRange` 同一组数。空的一只（`{}`）客户端从来不发——
 /// 一项不剩就是恢复默认，那只 base 直接从表里拿掉。
+///
+/// 这几个数和客户端经 `contract/settings-fields.json` 的 `orderFlow` 一段对账
+/// （测试 `order_flow_limits_are_the_contract_ones`），改一边不改另一边测试就红。
+const ORDER_FLOW_MAX_OVERRIDES:usize=200;
+const ORDER_FLOW_BASE_MAX_LEN:usize=20;
+const ORDER_FLOW_THRESHOLD:(f64,f64)=(1e3,1e9);
+const ORDER_FLOW_STEP:(f64,f64)=(1e-8,1e6);
+const ORDER_FLOW_THRESHOLD_KEYS:[&str;4]=["spot","usdtPerp","coinPerp","delivery"];
 fn order_flow_overrides(v:&Value)->bool {
- v.as_object().is_some_and(|all|all.len()<=200&&all.iter().all(|(base,o)|{
-  !base.is_empty()&&base.len()<=20&&base.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit())
+ v.as_object().is_some_and(|all|all.len()<=ORDER_FLOW_MAX_OVERRIDES&&all.iter().all(|(base,o)|{
+  !base.is_empty()&&base.len()<=ORDER_FLOW_BASE_MAX_LEN&&base.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit())
   && o.as_object().is_some_and(|o|!o.is_empty()&&o.iter().all(|(k,v)|match k.as_str() {
-   "spot"|"usdtPerp"|"coinPerp"|"delivery"=>number(v,1e3,1e9),
-   "step"=>number(v,1e-8,1e6),
+   "step"=>number(v,ORDER_FLOW_STEP.0,ORDER_FLOW_STEP.1),
+   k if ORDER_FLOW_THRESHOLD_KEYS.contains(&k)=>number(v,ORDER_FLOW_THRESHOLD.0,ORDER_FLOW_THRESHOLD.1),
    _=>false,
   }))
  }))
@@ -317,6 +325,30 @@ mod tests {
    .unwrap_or_else(||panic!("contract/settings-fields.json has no `{key}` array. It is generated \
      from the client's enums, so the file is stale: run `make sync-contract` from the repo root."))
    .iter().map(|v|v.as_str().expect("contract list entries must be strings").to_string()).collect()
+ }
+
+ /// **主力订单流的取值范围和客户端是同一组数。** 客户端认为合法、服务端拒掉的值会让那条
+ /// 设置操作整条 400、从此同步不上去；反过来服务端放过客户端不认的值，读回时被 `normalized` 丢掉。
+ #[test] fn order_flow_limits_are_the_contract_ones() {
+  let contract:Value=serde_json::from_str(CONTRACT).expect("contract/settings-fields.json is not valid JSON");
+  let of=&contract["orderFlow"];
+  assert!(of.is_object(),"contract has no `orderFlow` section; run `make sync-contract` from the repo root");
+  let f=|k:&str|of[k].as_f64().unwrap_or_else(||panic!("orderFlow.{k} missing"));
+  assert_eq!((f("thresholdMin"),f("thresholdMax")),ORDER_FLOW_THRESHOLD);
+  assert_eq!((f("stepMin"),f("stepMax")),ORDER_FLOW_STEP);
+  assert_eq!(of["maxOverrides"].as_u64(),Some(ORDER_FLOW_MAX_OVERRIDES as u64));
+  assert_eq!(of["baseMaxLength"].as_u64(),Some(ORDER_FLOW_BASE_MAX_LEN as u64));
+  let keys:Vec<&str>=of["overrideKeys"].as_array().expect("orderFlow.overrideKeys").iter().map(|v|v.as_str().unwrap()).collect();
+  let mut ours:Vec<&str>=ORDER_FLOW_THRESHOLD_KEYS.to_vec(); ours.push("step");
+  assert_eq!(keys,ours);
+  // 边界本身合法、刚出界不合法：常量真的是校验在用的那组数。
+  let (lo,hi)=ORDER_FLOW_THRESHOLD;
+  assert!(order_flow_overrides(&json!({"BTC":{"spot":lo,"delivery":hi,"step":ORDER_FLOW_STEP.0}})));
+  assert!(!order_flow_overrides(&json!({"BTC":{"spot":lo*0.999}})));
+  assert!(!order_flow_overrides(&json!({"BTC":{"step":ORDER_FLOW_STEP.1*1.001}})));
+  let long="A".repeat(ORDER_FLOW_BASE_MAX_LEN);
+  assert!(order_flow_overrides(&json!({long.clone():{"spot":lo}})));
+  assert!(!order_flow_overrides(&json!({format!("{long}A"):{"spot":lo}})));
  }
 
  /// **The indicator vocabulary is the client's `IndicatorID`, in the client's order.**

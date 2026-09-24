@@ -206,7 +206,12 @@ public enum OrderFlowBase {
   public static let exchanges: [String: String] = ["binance": "币安", "okx": "OKX", "coinbase": "Coinbase"]
 
   /// 币安给单价极小的币加的前缀（和 kanpan-api `BINANCE_SCALED` 同一张）。长的在前。
-  static let scaledPrefixes: [(String, Double)] = [("1000000", 1_000_000), ("1000", 1000), ("1M", 1_000_000)]
+  /// public 是因为 App 测试里的契约生成器（`SettingsFieldContract`）要把它导出到
+  /// `Backend/kanpan-api/contract/settings-fields.json`，Rust 那边拿同一份对账（审查第 39 项）。
+  public static let scaledPrefixes: [(String, Double)] = [("1000000", 1_000_000), ("1000", 1000), ("1M", 1_000_000)]
+
+  /// base 最长几个字符。和 kanpan-api `ORDER_FLOW_BASE_MAX_LEN` 同一个数，经契约对账。
+  public static let maxLength = 20
 
   /// `1000PEPE` → (`PEPE`, 1000)；`1MBABYDOGE` → (`BABYDOGE`, 1e6)；其余原样、1。
   public static func normalize(_ base: String) -> (base: String, scale: Double) {
@@ -220,7 +225,7 @@ public enum OrderFlowBase {
 
   /// kanpan-api 只收 `^[A-Z0-9]{1,20}$`。
   public static func isValid(_ base: String) -> Bool {
-    !base.isEmpty && base.count <= 20 && base.allSatisfy { ($0.isASCII && $0.isUppercase) || $0.isASCII && $0.isNumber }
+    !base.isEmpty && base.count <= maxLength && base.allSatisfy { ($0.isASCII && $0.isUppercase) || $0.isASCII && $0.isNumber }
   }
 
   /// 合约代号：字母数字、`-`、`_`，不长于 40。

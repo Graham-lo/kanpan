@@ -212,6 +212,8 @@ pub fn parse_binance_spot(body:&[u8])->anyhow::Result<Table> {
 }
 
 /// 币安把单价极小的币挂成「N 个币」一个单位：`1000PEPE`、`1000000MOG`、`1MBABYDOGE`。
+/// 客户端 `OrderFlowBase.scaledPrefixes` 有同一张（它要从图上那只 `1000PEPEUSDT` 反推 base），
+/// 两边经 `contract/settings-fields.json` 的 `orderFlow.binanceScaledPrefixes` 对账。
 const BINANCE_SCALED:[(&str,u64);3]=[("1000000",1_000_000),("1000",1000),("1M",1_000_000)];
 
 // ------------------------------------------------------------------ OKX
@@ -507,6 +509,16 @@ mod tests {
  use serde_json::{Value,json};
 
  const NOW:i64=1_790_200_000_000; // 2026-09-24，BTCUSDT_260925 还没到期
+
+ /// 前缀表和客户端那张逐项相同、顺序也相同（长的在前，`1000000` 要先于 `1000` 试）。
+ #[test] fn binance_scaled_prefixes_are_the_contract_ones() {
+  let contract:Value=serde_json::from_str(include_str!("../contract/settings-fields.json")).expect("contract JSON");
+  let rows=contract["orderFlow"]["binanceScaledPrefixes"].as_array()
+   .expect("contract has no orderFlow.binanceScaledPrefixes; run `make sync-contract` from the repo root");
+  let theirs:Vec<(String,u64)>=rows.iter().map(|r|(r["prefix"].as_str().unwrap().to_string(),r["scale"].as_u64().unwrap())).collect();
+  let ours:Vec<(String,u64)>=BINANCE_SCALED.iter().map(|(p,s)|(p.to_string(),*s)).collect();
+  assert_eq!(theirs,ours);
+ }
 
  fn fapi()->Value {json!({"symbols":[
   {"symbol":"BTCUSDT","status":"TRADING","contractType":"PERPETUAL","baseAsset":"BTC","quoteAsset":"USDT","marginAsset":"USDT","deliveryDate":4133404800000_i64,"filters":[{"filterType":"PRICE_FILTER","tickSize":"0.10","minPrice":"556.80"},{"filterType":"LOT_SIZE","stepSize":"0.001"}]},
