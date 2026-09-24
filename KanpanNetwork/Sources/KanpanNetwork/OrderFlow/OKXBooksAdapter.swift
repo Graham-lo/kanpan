@@ -62,6 +62,18 @@ public struct OKXBooksAdapter: DepthFeedAdapter {
     }
   }
 
+  /// 单本重订（审查第 37 项）：这一本的序号接不上时，只退订再订它的 `books`，OKX 会给它重发一帧
+  /// snapshot；同一条连接上的另外十来本不受影响。`trades` 不动（成交没有序号，不用重来）。
+  /// 中继一条消息一个 arg、退订在前，订阅数不会超过它的上限。
+  public func resubscribeMessages(venueID: String) -> [String]? {
+    guard let book = books.first(where: { $0.id == venueID }) else { return nil }
+    return ["unsubscribe", "subscribe"].compactMap { op in
+      let obj: [String: Any] = ["op": op, "args": [["channel": "books", "instId": book.venue.instrument]]]
+      guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return nil }
+      return String(decoding: data, as: UTF8.self)
+    }
+  }
+
   public func connect(candidate: Int) async throws -> any WSSocket {
     let socket = try await sockets.connect(to: try url(candidate))
     do {

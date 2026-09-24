@@ -15,6 +15,8 @@ private final class ScriptAdapter: DepthFeedAdapter, @unchecked Sendable {
   var streamURLs: [URL] { [URL(string: "wss://depth.test/\(name)")!] }
   let script: [String: [VenueMessage]]
   let snapshots: Snapshots
+  /// 像 OKX 那样能单本重订：给出「退订 / 订阅」两句（内容只要认得出是哪本）。
+  let resubscribable: Bool
 
   actor Snapshots {
     var replies: [Result<BookSnapshot, DepthSnapshotError>]
@@ -32,8 +34,8 @@ private final class ScriptAdapter: DepthFeedAdapter, @unchecked Sendable {
   }
 
   init(name: String, books: [DepthBook], script: [String: [VenueMessage]],
-       snapshots: [Result<BookSnapshot, DepthSnapshotError>] = []) {
-    self.name = name; self.books = books; self.script = script
+       snapshots: [Result<BookSnapshot, DepthSnapshotError>] = [], resubscribable: Bool = false) {
+    self.name = name; self.books = books; self.script = script; self.resubscribable = resubscribable
     self.snapshots = Snapshots(snapshots.isEmpty ? [.failure(DepthSnapshotError(status: 404))] : snapshots)
   }
 
@@ -44,6 +46,9 @@ private final class ScriptAdapter: DepthFeedAdapter, @unchecked Sendable {
     return s
   }
   func decode(_ text: String) -> [VenueMessage] { script[text] ?? [] }
+  func resubscribeMessages(venueID: String) -> [String]? {
+    resubscribable ? ["unsubscribe \(venueID)", "subscribe \(venueID)"] : nil
+  }
   func fetchSnapshot(venueID: String) async throws -> BookSnapshot { try await snapshots.next(venueID) }
 }
 
@@ -58,6 +63,15 @@ private actor Frames {
 private actor Handed {
   private(set) var books: [DepthBook] = []
   func set(_ b: [DepthBook]) { books = b }
+}
+
+/// 测试拨的钟：`clock` 参数是同步闭包，用锁护着一个数。
+private final class TestClock: @unchecked Sendable {
+  private let lock = NSLock()
+  private var ms: Int64
+  init(_ ms: Int64 = 1_700_000_000_000) { self.ms = ms }
+  var now: Int64 { lock.withLock { ms } }
+  func advance(_ delta: Int64) { lock.withLock { ms += delta } }
 }
 
 private func level(_ price: Double, _ quantity: Double) -> BookLevel { BookLevel(price: price, quantity: quantity) }
@@ -94,7 +108,7 @@ private let eth = OrderFlowFacts(base: "ETH", asset: .crypto, tick: 0.01, turnov
 struct OrderFlowFeedTests {
   private func makeFeed(_ adapters: [ScriptAdapter], facts: OrderFlowFacts = eth, override: OrderFlowOverride? = nil,
                         dir: URL?, frames: Frames, handed: Handed = Handed(),
-                        close: Double? = 1_250) -> OrderFlowFeed {
+                        close: Double? = 1_250, clock: TestClock? = nil) -> OrderFlowFeed {
     let books = adapters.flatMap(\.books)
     return OrderFlowFeed(
       symbol: symbolKey, facts: facts, override: override, directory: dir,
@@ -106,7 +120,9 @@ struct OrderFlowFeedTests {
         let ids = Set(wanted.map(\.id))
         return adapters.filter { a in a.books.contains { ids.contains($0.id) } }
       },
-      loadClose: { _ in close }, evaluateEveryMs: 10,
+      loadClose: { _ in close },
+      clock: { @Sendable in clock?.now ?? Int64(Date().timeIntervalSince1970 * 1000) },
+      evaluateEveryMs: 10,
       sink: { await frames.add($0) })
   }
 
@@ -165,7 +181,7 @@ struct OrderFlowFeedTests {
     #expect(await again.modelForTests().orders.map(\.id).sorted() == saved.orders.map(\.id).sorted())
   }
 
-  @Test("流内快照断档：整条连接重拨，新快照到了照常；挂着的单不因为重连被判结束", .timeLimit(.minutes(1)))
+  @Test("流内快照断档、这家不会单本重订（Coinbase 那种整条连接一个序号）：整条连接重拨，新快照到了照常；挂着的单不因为重连被判结束", .timeLimit(.minutes(1)))
   func resubscribe() async throws {
     let okx = ScriptAdapter(
       name: "okx", books: [okxSpot],
@@ -184,6 +200,58 @@ struct OrderFlowFeedTests {
     let last = try #require(await frames.last)
     #expect(last.orders.count == 1)
     #expect(last.orders.first?.isLive == true)
+    await feed.stop()
+  }
+
+  @Test("流内快照断档、这家能单本重订（OKX）：只退订再订断的那本，不重拨；同连接的另一本照常", .timeLimit(.minutes(1)))
+  func resubscribeOneBookInPlace() async throws {
+    let okx = ScriptAdapter(
+      name: "okx", books: [okxSpot, okxCoin],
+      script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))],
+               "coin": [VenueMessage(okxCoin.id, .snapshot(deepSnapshot(last: 100)))],
+               "gap": [VenueMessage(okxSpot.id, .reset)]],
+      resubscribable: true)
+    let frames = Frames()
+    let feed = makeFeed([okx], dir: nil, frames: frames)
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    let socket = try #require(await okx.snapshots.socket(0))
+    await socket.push(.text("snap"))
+    await socket.push(.text("coin"))
+    #expect(await waitUntil(5) { await frames.last?.venues.filter(\.ready).count == 2 })
+    await socket.push(.text("gap"))
+    #expect(await waitUntil(5) { await socket.sent.suffix(2) == ["unsubscribe \(okxSpot.id)", "subscribe \(okxSpot.id)"] })
+    // 断的那本在等新快照，另一本一直就绪；连接没动。
+    #expect(await waitUntil(5) { await frames.last?.venues.first { $0.instrument == "ETH-USDT" }?.ready == false })
+    #expect(await frames.last?.venues.first { $0.instrument == "ETH-USD-SWAP" }?.ready == true)
+    #expect(await okx.snapshots.connects == 1)
+    #expect(await socket.cancelCalls == 0)
+    await socket.push(.text("snap"))
+    #expect(await waitUntil(5) { await frames.last?.venues.filter(\.ready).count == 2 })
+    #expect(await okx.snapshots.connects == 1)
+    await feed.stop()
+  }
+
+  @Test("单本重订发出去 10 秒还没等到新快照（订阅被吞了）：那条连接整条重拨兜底", .timeLimit(.minutes(1)))
+  func staleResubscribeEscalates() async throws {
+    let okx = ScriptAdapter(
+      name: "okx", books: [okxSpot],
+      script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))],
+               "gap": [VenueMessage(okxSpot.id, .reset)]],
+      resubscribable: true)
+    let clock = TestClock()
+    let feed = makeFeed([okx], dir: nil, frames: Frames(), clock: clock)
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    let socket = try #require(await okx.snapshots.socket(0))
+    await socket.push(.text("snap"))
+    await socket.push(.text("gap"))
+    #expect(await waitUntil(5) { await socket.sent.last == "subscribe \(okxSpot.id)" })
+    clock.advance(OrderFlowFeed.resubscribeTimeoutMs - 1_000)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(await okx.snapshots.connects == 1)
+    clock.advance(2_000)
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 2 })
     await feed.stop()
   }
 

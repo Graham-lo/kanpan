@@ -84,6 +84,9 @@ public protocol DepthFeedAdapter: Sendable {
   func fetchSnapshot(venueID: String) async throws -> BookSnapshot
   /// 连上之后每隔多久发一句什么保活（OKX 30 秒没有帧就断，要自己发 `ping`）。不用就是 nil。
   var keepAlive: DepthKeepAlive? { get }
+  /// 只让这一本簿重新下发流内快照要在当前连接上发的几句（OKX：退订再订那一个 instId 的 `books`）。
+  /// 做不到单本重订（序号是整条连接一个的那家、或快照不在流里的）就是 nil，调用方整条重拨。
+  func resubscribeMessages(venueID: String) -> [String]?
 }
 
 public struct DepthKeepAlive: Sendable, Equatable {
@@ -95,6 +98,7 @@ public struct DepthKeepAlive: Sendable, Equatable {
 public extension DepthFeedAdapter {
   var venues: [OrderFlowVenue] { books.map(\.venue) }
   var keepAlive: DepthKeepAlive? { nil }
+  func resubscribeMessages(venueID: String) -> [String]? { nil }
   func fetchSnapshot(venueID: String) async throws -> BookSnapshot {
     throw FeedError.unsupported("深度快照")
   }

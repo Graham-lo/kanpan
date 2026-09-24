@@ -88,6 +88,10 @@ public actor OrderFlowFeed {
   private var tasks: [Task<Void, Never>] = []
   private var schemeTask: Task<Void, Never>?
   private var snapshotTasks: [String: Task<Void, Never>] = [:]
+  /// 正在单本重订、还没等到新快照的簿：簿 → (哪条连接, 什么时候发的)。等太久（订阅被吞了）就整条重拨兜底。
+  private var resubscribing: [String: (stream: Int, sinceMs: Int64)] = [:]
+  /// 单本重订等快照最多等多久，过了就整条重拨。
+  static let resubscribeTimeoutMs: Int64 = 10_000
   private var lastEmitted: OrderFlowSnapshot?
   private var lastEmitMs: Int64 = .min / 2
   private var lastSaveMs: Int64 = 0
@@ -258,6 +262,7 @@ public actor OrderFlowFeed {
     switch event {
     case .connected:
       for book in books {
+        resubscribing[book.id] = nil
         cancelSnapshot(book.id)
         await perform(model.connectionOpened(book.id), venue: book.id, stream: index)
       }
@@ -267,18 +272,18 @@ public actor OrderFlowFeed {
         let action = model.ingest(m.venueID, m.message, nowMs: now)
         if action != .none { actions[m.venueID] = action }
       }
-      // 一条连接上只要有一本要重订，整条重拨一次就够了。
-      if actions.values.contains(.resubscribe) {
-        await streams[index].reconnect()
-        return
-      }
-      for (venue, action) in actions.sorted(by: { $0.key < $1.key }) {
+      for venue in resubscribing.keys where model.isReady(venue) { resubscribing[venue] = nil }
+      // 要重订的几本一起交给这条连接：能单本重订（OKX）就只动它们，同连接的别的簿照常；不能就整条重拨一次。
+      let again = actions.filter { $0.value == .resubscribe }.keys.sorted()
+      if !again.isEmpty { await resubscribe(again, stream: index, nowMs: now) }
+      for (venue, action) in actions.sorted(by: { $0.key < $1.key }) where action != .resubscribe {
         await perform(action, venue: venue, stream: index)
       }
     case .disconnected(let reason):
       // 断线期间簿不再可信：回到「拉快照中」，重连后再重建。
       for book in books {
         model.disconnected(book.id)
+        resubscribing[book.id] = nil
         cancelSnapshot(book.id)
       }
       log("主力订单流 \(symbol) \(adapters[index].name) 断开：\(reason)")
@@ -289,7 +294,25 @@ public actor OrderFlowFeed {
     switch action {
     case .none: break
     case .fetchSnapshot: fetchSnapshot(venue: venue, stream: index)
-    case .resubscribe: await streams[index].reconnect()
+    case .resubscribe: await resubscribe([venue], stream: index, nowMs: clock())
+    }
+  }
+
+  private func resubscribe(_ venues: [String], stream index: Int, nowMs: Int64) async {
+    if await streams[index].resubscribe(venues) {
+      for venue in venues { resubscribing[venue] = (index, nowMs) }
+    }
+  }
+
+  /// 单本重订发出去太久还没等到新快照（订阅被中继或交易所吞了）：那条连接整条重拨。
+  private func escalateStaleResubscribes(nowMs: Int64) {
+    let stale = Set(resubscribing.values.filter { nowMs - $0.sinceMs >= Self.resubscribeTimeoutMs }.map(\.stream))
+    guard !stale.isEmpty else { return }
+    resubscribing = resubscribing.filter { !stale.contains($0.value.stream) }
+    for index in stale.sorted() where index < streams.count {
+      let stream = streams[index]
+      log("主力订单流 \(symbol) \(adapters[index].name) 单本重订 \(Self.resubscribeTimeoutMs / 1000) 秒没等到快照，整条重连")
+      Task { await stream.reconnect() }
     }
   }
 
@@ -383,6 +406,7 @@ public actor OrderFlowFeed {
   private func step() {
     guard !stopped else { return }
     let now = clock()
+    escalateStaleResubscribes(nowMs: now)
     var frame = model.evaluate(nowMs: now)
     frame.defaults = Self.effective(facts: facts, turnover: turnover, override: nil, derivedStep: nil)
     if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }

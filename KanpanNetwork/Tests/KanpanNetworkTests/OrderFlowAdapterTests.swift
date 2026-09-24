@@ -442,6 +442,90 @@ struct OrderFlowAdapterTests {
     reader.cancel()
   }
 
+  @Test("连接客户端：看门狗是常驻的——帧一直在来（间隔都小于窗口）就不掐，累计时长远超窗口也不掐；停了才掐，原因写明")
+  func streamWatchdogIsResident() async throws {
+    // 100× 快进：窗口 60 秒 = 真 600 ms，帧间隔 15 秒 = 真 150 ms，留足余量不怕机器忙时抖动。
+    let pacer = FastPacer(scale: 0.01)
+    var steps: [ReplayStep] = [.frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1)))]
+    for i in 0..<6 {
+      steps += [.silence(15_000), .frame(.text(Self.okxFrame("update", seq: 11 + Int64(i), prev: 10 + Int64(i))))]
+    }
+    steps += [.hang]
+    let deck = ReplayDeck(steps)
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap], gateways: Self.gateways,
+                                                      sockets: ReplayFactory(deck: deck, pacer: pacer)),
+                             pacer: pacer, silenceMs: 60_000)
+    let events = await stream.start()
+    let log = EventLog()
+    let reader = Task { for await e in events { await log.note(e) } }
+    // 六段 15 秒共 90 秒，比 60 秒的窗口长：旧的「每帧一个 sleep」和新的常驻看门狗都不该在这期间掐。
+    #expect(await waitUntil(10) { await log.lines.filter { $0 == "message" }.count >= 6 })
+    #expect(await deck.stats().connects == 1)
+    // 之后一直不来帧：看门狗掐掉重连，断开原因是它记下的那句，不是「连接已取消」。
+    #expect(await waitUntil(10) { await log.lines.contains("connected 2") })
+    #expect(await log.reasons.first?.contains("60 秒没有收到深度推送") == true)
+    await stream.stop()
+    reader.cancel()
+  }
+
+  @Test("连接客户端：事件缓冲有上限，调用方跟不上被挤掉帧就整条重拨，不在内存里越积越多")
+  func streamBoundedBufferReconnectsOnOverflow() async throws {
+    let pacer = FastPacer()
+    var steps: [ReplayStep] = [.frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1)))]
+    for i in 0..<6 { steps.append(.frame(.text(Self.okxFrame("update", seq: 11 + Int64(i), prev: 10 + Int64(i))))) }
+    steps += [.hang]
+    let deck = ReplayDeck(steps)
+    let lines = LineLog()
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap], gateways: Self.gateways,
+                                                      sockets: ReplayFactory(deck: deck, pacer: pacer)),
+                             pacer: pacer, silenceMs: 600_000_000, bufferLimit: 3,
+                             log: FeedLog { line in Task { await lines.add(line) } })
+    // 故意先不读：缓冲 3 条，第 4 条进来时最旧的被挤掉。
+    let events = await stream.start()
+    #expect(await waitUntil(5) { await deck.stats().connects >= 2 })
+    #expect(await waitUntil(5) { await lines.all.contains { $0.contains("缓冲满了丢了帧") } })
+    // 立即重拨（不走退避）；读出来的是最新的几条，末尾是新连接。
+    let log = EventLog()
+    let reader = Task { for await e in events { await log.note(e) } }
+    #expect(await waitUntil(5) { await log.lines.contains { $0.hasPrefix("connected") } })
+    await stream.stop()
+    reader.cancel()
+  }
+
+  @Test("OKX 单本重订：只退订再订那一个 instId 的 books，trades 不动；不认识的簿给 nil")
+  func okxResubscribeOneBook() throws {
+    let okx = Self.okx()
+    let messages = try #require(okx.resubscribeMessages(venueID: Self.okxCoin.id))
+    #expect(messages == [#"{"args":[{"channel":"books","instId":"BTC-USD-SWAP"}],"op":"unsubscribe"}"#,
+                         #"{"args":[{"channel":"books","instId":"BTC-USD-SWAP"}],"op":"subscribe"}"#])
+    #expect(okx.resubscribeMessages(venueID: "nope") == nil)
+    // 币安、Coinbase 做不到单本重订（Coinbase 序号整条连接一个；币安快照走 REST 本来就不用重订）。
+    #expect(Self.binance(.um, [Self.umPerp], .direct).resubscribeMessages(venueID: Self.umPerp.id) == nil)
+  }
+
+  @Test("连接客户端：单本重订在当前连接上发退订 + 订阅，不重拨；适配器不会单本重订的就整条重拨")
+  func streamResubscribesOneBookInPlace() async throws {
+    let pacer = FastPacer()
+    let deck = ReplayDeck([.frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .hang])
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap, Self.okxCoin], gateways: Self.gateways,
+                                                      sockets: ReplayFactory(deck: deck, pacer: pacer)),
+                             pacer: pacer, silenceMs: 600_000_000)
+    let events = await stream.start()
+    let log = EventLog()
+    let reader = Task { for await e in events { await log.note(e) } }
+    #expect(await waitUntil(5) { await log.lines.contains("snapshot 10") })
+    #expect(await stream.resubscribe([Self.okxSwap.id]))
+    let sent = await deck.stats().sent
+    #expect(sent.suffix(2) == [#"{"args":[{"channel":"books","instId":"BTC-USDT-SWAP"}],"op":"unsubscribe"}"#,
+                               #"{"args":[{"channel":"books","instId":"BTC-USDT-SWAP"}],"op":"subscribe"}"#])
+    #expect(await deck.stats().connects == 1)
+    // 名单里混了一本认不出的：退回整条重拨。
+    #expect(await stream.resubscribe(["nope"]) == false)
+    #expect(await waitUntil(5) { await log.lines.contains("connected 2") })
+    await stream.stop()
+    reader.cancel()
+  }
+
   @Test("适配器与本地簿对得上：三家的帧把各自那本簿带到就绪，互不干扰")
   func adaptersFeedTheModel() {
     let okx = Self.okx()
@@ -469,12 +553,18 @@ struct OrderFlowAdapterTests {
   }
 }
 
+private actor LineLog {
+  var all: [String] = []
+  func add(_ line: String) { all.append(line) }
+}
+
 private actor EventLog {
   var lines: [String] = []
+  var reasons: [String] = []
   func note(_ e: DepthStreamEvent) {
     switch e {
     case .connected(let n): lines.append("connected \(n)")
-    case .disconnected: lines.append("disconnected")
+    case .disconnected(let why): lines.append("disconnected"); reasons.append(why)
     case .messages(let ms):
       for m in ms {
         if case .snapshot(let s) = m.message { lines.append("snapshot \(s.lastUpdateID)") } else { lines.append("message") }
