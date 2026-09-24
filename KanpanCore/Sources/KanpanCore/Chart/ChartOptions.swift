@@ -39,27 +39,11 @@ public struct ChartOptions: Sendable, Equatable {
 /// 存盘与同步走 rawValue，三个名字都不能改。
 public enum CandleKind: String, Sendable, Codable, CaseIterable {
   case candle, heikin, line
-
-  public var display: String {
-    switch self {
-    case .candle: "蜡烛"
-    case .heikin: "平均K线"
-    case .line: "收盘价"
-    }
-  }
 }
 
 /// 网格覆盖。`.style` 读风格表，另两档强制。
 public enum GridChoice: String, Sendable, Codable, CaseIterable {
   case style, on, off
-
-  public var display: String {
-    switch self {
-    case .style: "跟随风格"
-    case .on: "显示"
-    case .off: "隐藏"
-    }
-  }
 }
 
 /// 阳线实体画法。
@@ -69,13 +53,6 @@ public enum GridChoice: String, Sendable, Codable, CaseIterable {
 /// 旧存档里的 `"style"` 在 `PrefsCodec` 里直接读成 `.solid`。
 public enum BodyChoice: String, Sendable, Codable, CaseIterable {
   case solid, hollowUp
-
-  public var display: String {
-    switch self {
-    case .solid: "实心"
-    case .hollowUp: "阳线空心"
-    }
-  }
 }
 
 /// 蜡烛在主图区里的上下位置。
@@ -84,14 +61,6 @@ public enum BodyChoice: String, Sendable, Codable, CaseIterable {
 /// 所以留白得堆到下面去。名字按用户看到的那件事取，别按实现取。
 public enum PriceBias: String, Sendable, Codable, CaseIterable {
   case up, center, down
-
-  public var display: String {
-    switch self {
-    case .up: "偏上"
-    case .center: "居中"
-    case .down: "偏下"
-    }
-  }
 
   /// 总留白量固定是 `2 × style.pad`（风格表里那个数），这里只决定它怎么分给上下。
   ///
@@ -109,14 +78,6 @@ public enum PriceBias: String, Sendable, Codable, CaseIterable {
 /// 「回到最新」时最新一根停在图区的哪一侧。
 public enum ViewAnchor: String, Sendable, Codable, CaseIterable {
   case left, center, right
-
-  public var display: String {
-    switch self {
-    case .left: "偏左"
-    case .center: "居中"
-    case .right: "靠右"
-    }
-  }
 }
 
 public enum CandleDataDisplay: String, Sendable, Codable, CaseIterable { case inside, top, follow }

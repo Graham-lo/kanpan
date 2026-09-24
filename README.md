@@ -6,7 +6,7 @@ Swift 原生 iOS 行情、自选与复盘应用。SwiftUI 页面 + UIKit/CoreGra
 
 ## 现在长什么样
 
-- **皮肤**：「青苔·冷」（默认）、「陶土·暖」与「经典」三套，各有浅色 / 深色，跟随系统或手动指定。经典是青苔换了一张 AICoin 的白底，文字与强调色和青苔相同，让图里图外同一张纸。这张白底是**纯白 `#FFFFFF`**，不是带蓝的 `#F7F9FF`——真机逐像素量过 AICoin 的行情页，标题、价格行、周期行、主图副图全是纯白，安卓包里的 `sh_base_view_bg` 与 `ui_kline_menu_bg_color` 也都是 `#ffffff`；再往下一层的自选页底取中性灰 `#F7F8FA`（`sh_base_page_bg`），深色是 `#0D111C` / `#090C14`。图里图外的分隔线取 K 线页自己的那两支——图内结构线（主图 / 时间轴 / 各副图之间、右轴竖线）`ui_kline_divider_color` = `#F2F4F7`，周期条上下 `ui_kline_indicator_bar_divider_color` = `#EAEAEA`，不是通用列表的 `sh_base_divider_dim_fill_color` = `#DEE1E5`（后者离纯白的亮度差是前者的七倍，整屏 8 条会把一块连续的白切成格子）。K 线的颜色只有一套：浅色下三套皮肤的涨跌色、蜡烛、均线、副图指标线和顶栏价格红绿全是 AICoin iPhone 端的实测值（蜡烛 `#36B257` / `#E64552`、MA 黄 / 紫 / 绿 / 珊瑚、副图槽位 `#2FD2B2 #FFB400 #E849B9 …`），皮肤只管图外；深色 AICoin 没在真机量过，经典深色取安卓包常量，青苔 / 陶土深色暂留各自那组（`ThemeSkin` / `ThemeChoice`，色值种子在 `KanpanCore/Sources/KanpanCore/Style/Palette.swift`）。早期的靛色、纸色、暖暗配色已经不存在。
+- **皮肤**：「青苔·冷」（默认）、「陶土·暖」与「经典」三套，各有浅色 / 深色，跟随系统或手动指定。经典是青苔换了一张 AICoin 的白底，文字与强调色和青苔相同，让图里图外同一张纸。这张白底是**纯白 `#FFFFFF`**，不是带蓝的 `#F7F9FF`——真机逐像素量过 AICoin 的行情页，标题、价格行、周期行、主图副图全是纯白，安卓包里的 `sh_base_view_bg` 与 `ui_kline_menu_bg_color` 也都是 `#ffffff`；再往下一层的自选页底取中性灰 `#F7F8FA`（`sh_base_page_bg`），深色是 `#0D111C` / `#090C14`。图里图外的分隔线取 K 线页自己的那两支——图内结构线（主图 / 时间轴 / 各副图之间、右轴竖线）`ui_kline_divider_color` = `#F2F4F7`，周期条上下 `ui_kline_indicator_bar_divider_color` = `#EAEAEA`，不是通用列表的 `sh_base_divider_dim_fill_color` = `#DEE1E5`（后者离纯白的亮度差是前者的七倍，整屏 8 条会把一块连续的白切成格子）。K 线的颜色只有一套：浅色下三套皮肤的涨跌色、蜡烛、均线、副图指标线和顶栏价格红绿全是 AICoin iPhone 端的实测值（蜡烛 `#36B257` / `#E64552`、MA 黄 / 紫 / 绿 / 珊瑚、副图槽位 `#2FD2B2 #FFB400 #E849B9 …`），皮肤只管图外；深色 AICoin 没在真机量过，经典深色取安卓包常量，青苔 / 陶土深色暂留各自那组（`ThemeSkin` / `ThemeChoice`，色值种子在 `KanpanPresentation/Sources/KanpanPresentation/Palette.swift`）。早期的靛色、纸色、暖暗配色已经不存在。
 - **底栏**：常驻标签栏「画线 · 图表 · 自选 · 板块分类 · 设置」五格等宽（`Kanpan/Kanpan/Main/TabBar.swift`；旧的 `BottomBar.swift` 已删）。底栏没有自己的底，页面的材料从它身后穿过去，选中态是页面同款的釉面记号。「画线」那一格是动作不是去处——点它把当前这张图横过来画，画完自动转回；没有「横屏」和「风格」格子，K 线只保留 AICoin 一套造型（`CandleStyle.all == [aicoin]`），指标并进「图表设置」面板，复盘挪到行情页顶栏那颗带角标的按钮。
 - **行情页**：顶栏是品种徽章 + 品种名 + 复盘（带待办角标）+ 放大镜（`Main/TopBar.swift`）。品种名只是标签，点上去什么都不弹（2026-09-18 撤掉了那个半屏快捷选择层）；换品种两条路：放大镜进搜索页、底栏「自选」进分类自选页。连接状态点与顶栏那颗自选星同日撤掉——加自选统一在搜索页和自选页的行上做。价格块为22pt中等字重最新价，正下方13pt的涨跌额与涨跌幅小字（无底色、无箭头），右侧固定六格统计（两列三行：仓 / 额 · 市值 / 费率 · 结算 / 振幅，2026-09-21 定，`Main/HeaderStats.swift`），头部动态字体封顶 `.large`，价格位数统一取报价步长推导的 `SymbolInfo.priceDecimals`（闪迪 / 美光两位、BTC一位、1000SATS八位）；数额统一 K/M/B/T，市值是总市值（总供应量 × 现价，口径见 `docs/市值口径与数据来源-2026-09-18.md`）。周期条常用行六档等宽铺满（出厂 `5m 30m 1h 4h 1d 1w`，`Prefs.maxQuick = 6`），全部 14 档（1m…1y，不含 3d）在行尾「更多 ˅」里钉住 / 取消。价格区左右横滑是连续扫图（切上一只 / 下一只，名单来自进来时那份列表）。
 - **自选页**（「琉璃」版，`Kanpan/Kanpan/Symbols/FavoritesView.swift`）：浅色是光斑底、深色是素底（2026-09-17 用户看真机说深色的两团光晕影响视觉，去掉了），列表行直接长在底上（同日用户选了「融合」，不再垫玻璃纸），衬线标题旁一枚正放的数量印章，涨跌比例条；每行有品种徽章、价格与涨跌药丸（迷你走势图默认关闭，可在「…」里打开）；分类文件夹、排序（含涨跌幅口径与 2026-09-21 新增的「离提醒线最近」）收进排序弹层；长按一行出只读预览卡（打开 / 调整顺序 / 移到分类 / 取消自选），拖动排序退到卡上那条「调整顺序」里；滑动 / 批量删除后给「撤销」，加号选品。冷启动有收藏就进自选页，否则进 BTC。
@@ -23,9 +23,11 @@ Swift 原生 iOS 行情、自选与复盘应用。SwiftUI 页面 + UIKit/CoreGra
 | 位置 | 内容 |
 | --- | --- |
 | `Kanpan/Kanpan/` | App 页面：`Main`（顶栏、标签栏、主屏）、`Symbols`（自选与选品）、`Sector`（板块分类）、`Panels`、`Settings`、`Drawing`、`Account`、`ReviewIntegration` |
-| `Kanpan/Symbols`、`Kanpan/Settings` | `KanpanSymbols`、`KanpanSettings` 两个本地包及其单测 |
+| `Kanpan/KanpanTests/` | app 侧逻辑单测（`@testable import Kanpan`，按页面分组：`make app-logic-test` / `main-ios-test`） |
+| `Kanpan/KanpanShared/` | app 与小组件扩展共用的源文件（锁屏实时活动的属性、小组件快照的读写） |
 | `Kanpan/KanpanUITests/` | XCUITest；用例按 accessibilityIdentifier 找控件（`favorites.*`、`top.*`、`bottom.*`） |
-| `KanpanCore/` | 坐标、布局、指标、画线、皮肤色板等纯 Swift 算法 |
+| `KanpanCore/` | 坐标、布局、指标、画线等纯 Swift 模型与算法（不含皮肤与界面文案） |
+| `KanpanPresentation/` | 三套皮肤的配色种子与图表用色表（`Palette`）、设置里的档位名 |
 | `KanpanChart/` | 自绘图表与 UIKit 手势 |
 | `KanpanNetwork/` | 网络层：HTTP / WS 最小接口、币安 REST / WS 客户端与限流、行情线路（直连 / 网关）、网关竞速与冷却；`KanpanNetworkTestSupport` 是两个包共用的测试假件 |
 | `KanpanData/` | 行情 feed、目录、历史 OI、快照与缓存（网络请求全部经 `KanpanNetwork`，并把它整包转出给 app） |
@@ -44,9 +46,9 @@ Swift 6、部署目标 iOS 26.0（app 与各 SPM 包同步，2026-09-21 从 18.0
 
 ```sh
 swift test --package-path KanpanCore
+swift test --package-path KanpanPresentation
 swift test --package-path KanpanNetwork
 swift test --package-path KanpanData
-swift test --package-path Kanpan/Symbols
 make strict
 xcodebuild -workspace Kanpan.xcworkspace -scheme Kanpan -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/kanpan-dd build
 ```

@@ -23,16 +23,17 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help doctor venue-isolation core-test network-test data-test chart-build chart-test \
+.PHONY: help doctor venue-isolation core-test presentation-test network-test data-test chart-build chart-test \
 	symbols-test settings-test sector-test scan-test alerts-test diag-test deeplink-test account-codec-test \
 	diag-ios-test main-ios-test app-logic-test sync-contract backend-test account-test review-test test \
-	test-release core-test-release network-test-release data-test-release account-test-release \
+	test-release core-test-release presentation-test-release network-test-release data-test-release account-test-release \
 	app-logic-test-release chart-test-release main-ios-test-release review-test-release diag-ios-test-release \
 	strict evidence fixtures feed app-test ui-test ui-test-one build device-release install-release \
 	archive ipa upload snap screenshots devices boot shutdown clean
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
+	@echo "presentation-test 跑 KanpanPresentation 单测（三套皮肤的配色接线与对比度、档位名）"
 	@echo "network-test 跑 KanpanNetwork 单测（HTTP/WS 接口、币安客户端、线路与网关竞速）"
 	@echo "data-test    跑 KanpanData 单测（全离线：假 transport / 假 socket / 假时钟）"
 	@echo "chart-build  编 KanpanChart（UIKit，必须走 xcodebuild）"
@@ -43,7 +44,7 @@ help:
 	@echo "diag-ios-test   只跑帧探针冒烟那一套（它也在 diag-test / app-logic-test 里）"
 	@echo "main-ios-test   KanpanTests 的 Main 组：主屏生命周期用例（需要一台模拟器）"
 	@echo "backend-test 跑 kanpan-api 的库内单测（cargo test --lib，不需要 Postgres）"
-	@echo "test         core / network / data / app-logic / chart / main-ios / account / review 全跑"
+	@echo "test         core / presentation / network / data / app-logic / chart / main-ios / account / review 全跑"
 	@echo "test-release 同一套按 Release 配置再跑一遍（各目标加 -release 后缀可单跑）"
 	@echo "strict       全部包按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
@@ -98,6 +99,14 @@ endif
 
 core-test:
 	cd $(CORE) && $(SWIFT) test $(CORE_TEST_FLAGS)
+
+# ---------------------------------------------------------------- 展示层令牌
+# 皮肤配色（`Skin` / `PaletteSeed` / `Palette` / `ChartColors`）与几处档位名，审查 24 从
+# KanpanCore 搬出来的。只依赖 Core、只用 Foundation，mac 上直接 `swift test`。
+PRESENTATION := KanpanPresentation
+
+presentation-test:
+	cd $(PRESENTATION) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # ---------------------------------------------------------------- 网络层
 # 怎么连到交易所：HTTP / WS 最小接口、币安 REST / WS 客户端与限流、行情线路（直连 / 网关）、
@@ -264,7 +273,7 @@ review-test:
 	cd $(REVIEW) && $(XCODEBUILD) test -scheme KanpanReview \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
 
-test: core-test network-test data-test app-logic-test chart-test main-ios-test account-test review-test
+test: core-test presentation-test network-test data-test app-logic-test chart-test main-ios-test account-test review-test
 
 # ---------------------------------------------------------------- Release 回归
 # 审查 C-05 的另一半：`Kanpan.xcscheme` 的 TestAction 是 Debug，上面那条 `test` 也全是
@@ -287,11 +296,13 @@ test: core-test network-test data-test app-logic-test chart-test main-ios-test a
 #   它调的是 `WatchMoveMonitor.injectTestMove`（UI 用例的注入口），那个口子只在 DEBUG 里有。
 # KanpanAccount 原来那 16 条（ClientHardening 8 / DeviceKind 5 / SessionLifecycle 全套）
 # 已经在本轮改成白名单主机 + 自带 URLProtocol，Debug / Release 两边都是 60 条，不再有差集。
-test-release: core-test-release network-test-release data-test-release app-logic-test-release \
+test-release: core-test-release presentation-test-release network-test-release data-test-release app-logic-test-release \
               account-test-release chart-test-release main-ios-test-release review-test-release
 
 core-test-release:
 	cd $(CORE) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+presentation-test-release:
+	cd $(PRESENTATION) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 network-test-release:
 	cd $(NETWORK) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 data-test-release:
@@ -318,14 +329,14 @@ diag-ios-test-release:
 	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD_RELEASE) $(APP_RELEASE_FLAGS) $(APP_SMOKE)
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
-# 覆盖：四个 mac 能编的库包（Core / Network / Data / Account），外加三样只能在 iOS 上编的
+# 覆盖：五个 mac 能编的库包（Core / Presentation / Network / Data / Account），外加三样只能在 iOS 上编的
 # ——KanpanChart、KanpanReview（各自 Package.swift 认 `KANPAN_STRICT=<包名>` 打开，
 # 原因见 KanpanChart/Package.swift 顶上），以及 app 本身。app 那一步认 `KANPAN_STRICT_APP=YES`：
 # 它只被 app target 的 SWIFT_TREAT_WARNINGS_AS_ERRORS 引用，依赖的包照常编——全局开
 # -warnings-as-errors 会和包的 -suppress-warnings 撞上。和以前一样只编产品代码、不编测试 target
 # （包那几步是 `swift build`，本来就不编测试）。
 STRICT_FLAGS := -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-STRICT_MAC_PACKAGES := $(CORE) $(NETWORK) $(DATA) $(ACCOUNT)
+STRICT_MAC_PACKAGES := $(CORE) $(PRESENTATION) $(NETWORK) $(DATA) $(ACCOUNT)
 
 strict:
 	@for p in $(STRICT_MAC_PACKAGES); do \
@@ -350,7 +361,7 @@ evidence:
 
 # fixture 是把原型 chart.js / styles.js / data.js 原样跑一遍问出来的黄金值，
 # 已入库，只有原型改动时才需要重导。两个脚本各管一个包（KanpanCore 的算法黄金值 /
-# KanpanChart 的几何与快照）；配色那两份（styles.json、colors.json）真源已是 Palette.swift，
+# KanpanChart 的几何与快照）；配色那两份（styles.json、colors.json）真源已是 KanpanPresentation 的 Palette.swift，
 # 脚本不再覆盖它们。
 fixtures:
 	node Tools/export-fixtures.mjs

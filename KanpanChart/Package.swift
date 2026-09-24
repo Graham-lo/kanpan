@@ -20,11 +20,13 @@ let package = Package(
   name: "KanpanChart",
   platforms: [.iOS(.v26), .macOS(.v14)],
   products: [.library(name: "KanpanChart", targets: ["KanpanChart"])],
-  dependencies: [.package(path: "../KanpanCore")],
+  // 配色（`PaletteSeed` / `ChartColors`）从 KanpanCore 搬到了 KanpanPresentation（审查 24）。
+  dependencies: [.package(path: "../KanpanCore"), .package(path: "../KanpanPresentation")],
   targets: [
     .target(
       name: "KanpanChart",
-      dependencies: [.product(name: "KanpanCore", package: "KanpanCore")],
+      dependencies: [.product(name: "KanpanCore", package: "KanpanCore"),
+                     .product(name: "KanpanPresentation", package: "KanpanPresentation")],
       swiftSettings: common
     ),
     .testTarget(

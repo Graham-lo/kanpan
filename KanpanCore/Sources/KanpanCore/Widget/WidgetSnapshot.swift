@@ -64,12 +64,6 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
       self.ground = ground; self.ink = ink; self.ink2 = ink2; self.ink3 = ink3
       self.line = line; self.accent = accent; self.up = up; self.down = down
     }
-
-    public init(seed: PaletteSeed, redUp: Bool) {
-      let chart = Palette.chart(seed, redUp: redUp)
-      self.init(ground: seed.app.value, ink: seed.ink.value, ink2: seed.ink2.value, ink3: seed.ink3.value,
-                line: seed.line.value, accent: seed.accent.value, up: chart.up.value, down: chart.down.value)
-    }
   }
 
   public enum Appearance: String, Codable, Sendable { case auto, light, dark }

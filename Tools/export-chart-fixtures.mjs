@@ -220,7 +220,7 @@ for (const dark of [false, true]) {
 }
 // colors.json 不再从原型重导（2026-09-18 起）：它记的是出厂配色「青苔」的 Palette 定版值，
 // 原型 styles.js 没有那批 AICoin 真机采样色，重导只会把它打回旧色。真源是
-// KanpanCore/Style/Palette.swift，那份文件手工维护。上面的计算留着，只是不落盘。
+// KanpanPresentation/Palette.swift，那份文件手工维护。上面的计算留着，只是不落盘。
 void colors
 console.log('colors.json 跳过（手工维护，真源是 Palette.swift）')
 

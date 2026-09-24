@@ -4,14 +4,6 @@ import Foundation
 public enum PriceMode: String, Sendable, Codable, CaseIterable {
   case linear, log, percent
 
-  public var display: String {
-    switch self {
-    case .linear: "常规"
-    case .log: "对数"
-    case .percent: "百分比"
-    }
-  }
-
   /// 前向变换：画之前把价格换到线性空间。
   public func forward(_ p: Double, base: Double) -> Double {
     switch self {

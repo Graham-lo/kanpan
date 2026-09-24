@@ -1,5 +1,6 @@
 import Testing
-@testable import KanpanCore
+import KanpanCore
+@testable import KanpanPresentation
 
 /// 三套配色（青苔 / 陶土 / 经典）六个版本在真实表面上的可读性。
 ///

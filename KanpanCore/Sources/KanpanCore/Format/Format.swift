@@ -6,19 +6,10 @@ import Foundation
 
 /// 时区口径（§9.4）：跟系统 / UTC / 交易所（固定 UTC+8）。
 ///
-/// 界面上第三档写「UTC+8」，不写「交易所」（审查 U13）：「UTC」和「交易所」并排摆着，
-/// 看起来像同一件事的两种叫法；写出偏移量，三档各是什么一眼就分得开。
-/// case 名 `exchange` 不动——它是存档与同步里的原值。
+/// case 名 `exchange` 不动——它是存档与同步里的原值。界面上写什么在 KanpanPresentation
+/// 的 `TZChoice.display`。
 public enum TZChoice: String, Sendable, Codable, CaseIterable {
   case local, utc, exchange
-
-  public var display: String {
-    switch self {
-    case .local: "本地"
-    case .utc: "UTC"
-    case .exchange: "UTC+8"
-    }
-  }
 
   /// 相对 UTC 的偏移**口径**——注意它不是一个数，而是一条「怎么算偏移」的规则（审查 B-08）。
   ///

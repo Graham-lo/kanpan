@@ -20,15 +20,12 @@ struct ChartOptionsTests {
     #expect(ChartOptions() == ChartOptions())
   }
 
-  /// 设置页直接读 `display`，改名等于改用户看到的字，得钉住。
-  @Test("中文档名")
-  func displayNames() {
-    #expect(CandleKind.allCases.map(\.display) == ["蜡烛", "平均K线", "收盘价"])
-    #expect(GridChoice.allCases.map(\.display) == ["跟随风格", "显示", "隐藏"])
-    #expect(BodyChoice.allCases.map(\.display) == ["实心", "阳线空心"])
-    #expect(PriceBias.allCases.map(\.display) == ["偏上", "居中", "偏下"])
-    #expect(ViewAnchor.allCases.map(\.display) == ["偏左", "居中", "靠右"])
-    // 存盘走 rawValue，不能跟着中文改。
+  /// 存盘与同步走 rawValue，改名等于把旧存档读丢，得钉住。
+  ///
+  /// 原来这条还钉着五个枚举的中文 `display`，可设置面板从来不读它们（各档的名字写在
+  /// 面板自己那儿），那五份文案是没人用的死代码，已随审查 24 删掉。
+  @Test("存档原值")
+  func rawValues() {
     #expect(CandleKind.heikin.rawValue == "heikin" && ViewAnchor.left.rawValue == "left")
     #expect(CandleKind.line.rawValue == "line", "收盘价画法走同步，服务端认的就是这个名字")
   }

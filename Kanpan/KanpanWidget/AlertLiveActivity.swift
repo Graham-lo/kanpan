@@ -1,5 +1,6 @@
 import ActivityKit
 import KanpanCore
+import KanpanPresentation
 import SwiftUI
 import WidgetKit
 
