@@ -43,13 +43,16 @@ extension OISource {
 
 extension RoutedMarketFeed {
   /// 老用例的注入口：`primary` 是币安本家的 REST，`backup` 是网关上替身的 REST。
+  /// `http` 是直接问网关的那几笔（订单流品种表等）；不给就是真 `URLSessionTransport`——
+  /// 会真的去连 `gw.test` 这类假主机，等满超时（审查第 44 项：路由用例 7 秒多就耗在这里）。
   init(hosts: BinanceHosts, paths: Paths, log: FeedLog = .silent,
        primary: BinanceREST, backup: BinanceREST, sockets: any WSSocketFactory,
-       policy: MarketRoutePolicy) {
+       http: (any HTTPTransport)? = nil, policy: MarketRoutePolicy) {
     self.init(paths: paths, log: log, policy: policy) { _, policy in
       let upstream = BinanceProvider.upstream(for: MarketRoute(policy: policy, endpoints: .production))
       return BinanceProvider(upstream: upstream, hosts: hosts, policy: policy,
-                             rest: upstream == .binance ? primary : backup, sockets: sockets, log: log)
+                             rest: upstream == .binance ? primary : backup, sockets: sockets,
+                             http: http ?? URLSessionTransport(), log: log)
     }
   }
 }

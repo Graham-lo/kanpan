@@ -454,7 +454,7 @@ struct OrderFlowRoutingTests {
       hosts: hosts, paths: Paths(root: root), log: .silent,
       primary: BinanceREST(hosts: hosts, transport: transport, limiter: RateLimiter()),
       backup: BinanceREST(hosts: hosts, transport: transport, limiter: RateLimiter()),
-      sockets: DialFactory(log: dials), policy: .direct)
+      sockets: DialFactory(log: dials), http: transport, policy: .direct)
     await routed.setSnapshotEnabled(false)
     // 网关品种表在假服务器上拿不到：走保底那几本（币安 U 本位永续、币安现货、Coinbase 现货）。
     let facts: @Sendable (String) -> OrderFlowFacts? = { key in
@@ -475,7 +475,8 @@ struct OrderFlowRoutingTests {
     await routed.start(symbol: "ETHUSDT", interval: .m1)
     // K 线推送已经连上，历史还挂着：簿一概不订。
     #expect(await waitUntil(5) { await dials.urls.contains { $0.contains("ethusdt@kline_1m") } })
-    try await Task.sleep(for: .milliseconds(300))
+    // 历史请求已经挂在闸门上：在它放行之前，没有任何东西能让界面拿到 ≥ 3 根，所以不用拿睡眠去等「确实没订」。
+    #expect(await waitUntil(5) { await hold.arrived > 0 })
     #expect(await dials.depthDials("ethusdt") == 0)
     #expect(await seen.flow.isEmpty)
 
