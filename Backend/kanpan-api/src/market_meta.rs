@@ -98,7 +98,11 @@ pub struct Meta {pub total_supply:Option<f64>,pub circulating_supply:Option<f64>
  /// 同一个代号底下可能是另一个币（P4.8 普查：`1000000BOBUSDT` 撞上的是
  /// bob-build-on-bitcoin，单价差了五个数量级）。拿它跟合约价一比，身份对不对一眼就
  /// 看得出来，见 [`coingecko_verified`]。
- pub price:Option<f64>}
+ pub price:Option<f64>,
+ /// 股票才有：一致预期的未来十二个月净利润、过去十二个月营收，都折成美元（见 [`Valuation`]）。
+ /// 送出去的是**金额**不是比率——比率由手机拿「市值 = 供应量 × 正在显示的那口价」
+ /// 现除，跟市值那一格同一口价。
+ pub forward_earnings:Option<f64>,pub revenue:Option<f64>}
 /// 一行供应量的身份是哪一族的口径认的。
 ///
 /// 币安自己的两个表（apex / product）用的是同一套资产代号，所以它们是同一族，
@@ -118,7 +122,9 @@ impl Meta {
   // 单价反过来乘：一张 `1000PEPE` 值一千个 PEPE。这样查出来的 `price` 总是「一张合约
   // 该值多少」，可以直接跟合约价比。
   Self{total_supply:by(self.total_supply),circulating_supply:by(self.circulating_supply),max_supply:by(self.max_supply),rank:self.rank,family:self.family,
-   price:self.price.map(|p|p*multiplier)}
+   price:self.price.map(|p|p*multiplier),
+   // 利润与营收是整家公司的金额，跟一张合约装几个币无关，不缩放。
+   forward_earnings:self.forward_earnings,revenue:self.revenue}
  }
  pub fn value(&self)->Value {
   let mut out=serde_json::Map::new();
@@ -126,6 +132,8 @@ impl Meta {
   if let Some(v)=self.circulating_supply {out.insert("circulatingSupply".into(),json!(v));}
   if let Some(v)=self.max_supply {out.insert("maxSupply".into(),json!(v));}
   if let Some(v)=self.rank {out.insert("rank".into(),json!(v));}
+  if let Some(v)=self.forward_earnings {out.insert("forwardEarnings".into(),json!(v));}
+  if let Some(v)=self.revenue {out.insert("revenue".into(),json!(v));}
   Value::Object(out)
  }
 }
@@ -174,7 +182,9 @@ pub struct Contract {pub symbol:String,pub base:String,pub kind:Kind}
 #[derive(Clone,Copy,Debug,PartialEq,Serialize,Deserialize)]
 pub struct Priced {pub k:f64,pub at:SystemTime,
  /// 算这个 k 时用的合约价格。留着它是为了认出拆股：见 [`unit_changed`]。
- #[serde(default)] pub price:f64}
+ #[serde(default)] pub price:f64,
+ /// 同一页上读出来的估值底数（美元）。旧快照里没有，按「没有」读。
+ #[serde(default)] pub valuation:Valuation}
 
 /// 合约的计价单位变了吗——拆股、合股、换股都长这个样子。
 ///
@@ -187,6 +197,16 @@ pub fn unit_changed(before:f64,now:f64)->bool {
  let ratio=now/before;
  !(0.667..=1.5).contains(&ratio)
 }
+/// 顶栏「Fwd PE / P/S」那一格的底数：一致预期的未来十二个月净利润、过去十二个月营收，
+/// 都已折成美元。
+///
+/// 存金额不存比率，因为比率随价格走：页面上的 `forwardPE` 是按页面那一刻的股价算的，
+/// 手机上的市值却是按正在跳的合约价现乘的。把「页面市值 ÷ 页面远期市盈率」存成利润，
+/// 手机拿它去除现乘的市值，市盈率就跟市值那一格永远是同一口价。汇率在这里一并消掉：
+/// 市值和利润按同一个汇率折成美元，比率与币种无关。
+#[derive(Clone,Copy,Debug,Default,PartialEq,Serialize,Deserialize)]
+#[serde(default)]
+pub struct Valuation {pub forward_earnings:Option<f64>,pub revenue:Option<f64>}
 /// Contract symbol (`AAPLUSDT`) -> the number its price is multiplied by to get
 /// the listed company's market capitalisation, and when that number was taken.
 pub type EquityTable=HashMap<String,Priced>;
@@ -246,7 +266,8 @@ impl Market {
    // capitalisation at all, and blank is the honest answer for them too.
    Kind::TickerEquity|Kind::NamedEquity=>self.equities.get(&plain(symbol))
     .filter(|priced|!expired(Some(priced.at)))
-    .map(|priced|Meta{total_supply:Some(priced.k),..Meta::default()}),
+    .map(|priced|Meta{total_supply:Some(priced.k),forward_earnings:priced.valuation.forward_earnings,
+     revenue:priced.valuation.revenue,..Meta::default()}),
    // 未上市（B-09）、金属与指数、以及币安没说过的东西：都没有可发布的市值。
    Kind::PreMarket|Kind::Other|Kind::Unknown=>None,
   }
@@ -549,7 +570,7 @@ pub fn parse_apex(body:&Value)->Vec<Asset> {
  for row in rows(body) {
   let Some(base)=row["baseAsset"].as_str() else {continue};
   let base=base.to_ascii_uppercase();
-  let meta=Meta{total_supply:positive(&row["totalSupply"]),circulating_supply:positive(&row["circulatingSupply"]),max_supply:positive(&row["maxSupply"]),rank:rank_of(&row["rank"]),family:Some(Family::Binance),price:None};
+  let meta=Meta{total_supply:positive(&row["totalSupply"]),circulating_supply:positive(&row["circulatingSupply"]),max_supply:positive(&row["maxSupply"]),rank:rank_of(&row["rank"]),family:Some(Family::Binance),price:None,forward_earnings:None,revenue:None};
   out.push(Asset{id:base.clone(),ticker:base,meta});
  }
  out
@@ -573,7 +594,7 @@ pub fn parse_coingecko(body:&Value)->Vec<Asset> {
  let mut out=Vec::new();
  for row in rows(body) {
   let (Some(id),Some(symbol))=(row["id"].as_str(),row["symbol"].as_str()) else {continue};
-  let meta=Meta{total_supply:positive(&row["total_supply"]),circulating_supply:positive(&row["circulating_supply"]),max_supply:positive(&row["max_supply"]),rank:rank_of(&row["market_cap_rank"]),family:Some(Family::CoinGecko),price:positive(&row["current_price"])};
+  let meta=Meta{total_supply:positive(&row["total_supply"]),circulating_supply:positive(&row["circulating_supply"]),max_supply:positive(&row["max_supply"]),rank:rank_of(&row["market_cap_rank"]),family:Some(Family::CoinGecko),price:positive(&row["current_price"]),forward_earnings:None,revenue:None};
   out.push(Asset{id:id.to_ascii_lowercase(),ticker:symbol.to_ascii_uppercase(),meta});
  }
  out
@@ -601,14 +622,38 @@ pub fn money(v:&Value)->Option<f64> {
 /// An ETF page has no `marketCap` at all — it reports assets under management,
 /// which is not a capitalisation and must not be shown as one — so a page we
 /// cannot read a capitalisation out of is simply left blank.
-pub fn parse_stockanalysis_cap(body:&Value)->Option<f64> {
+pub fn parse_stockanalysis_cap(body:&Value)->Option<f64> {overview_field(body,"marketCap",money)}
+/// 同一页上的估值两项（`forwardPE` 与 `revenue`），跟市值同一个节点、同一种索引写法。
+///
+/// * `forwardPE`：按一致预期的未来十二个月每股收益算的市盈率。预期亏损的公司写
+///   `n/a`——那不是缺数，是这家公司没有远期市盈率，于是只剩营收那一项。
+/// * `revenue`：过去十二个月营收，**已经是报价币种**（腾讯的财报是人民币，页面上这个
+///   数是港币：3.94T ÷ 910.28B = 4.33，与站方统计页的 PS 一致），所以能跟市值同页相除。
+///
+/// 返回 `(远期市盈率, 营收)`，都是页面上的原值；折美元在 [`valuation`] 里做。
+pub fn parse_stockanalysis_valuation(body:&Value)->(Option<f64>,Option<f64>) {
+ let ratio=|v:&Value|match v {
+  Value::String(s)=>s.trim().replace(',',"").parse::<f64>().ok(),
+  other=>num(other),
+ }.filter(|x|x.is_finite()&&*x>0.0);
+ (overview_field(body,"forwardPE",ratio),overview_field(body,"revenue",money))
+}
+/// 概览页上某一项的值：`data[0]` 是索引表，`data[data[0][key]]` 才是那个数。
+fn overview_field(body:&Value,key:&str,read:impl Fn(&Value)->Option<f64>)->Option<f64> {
  for node in body["nodes"].as_array()? {
   let Some(data)=node["data"].as_array() else {continue};
   let Some(head)=data.first().and_then(Value::as_object) else {continue};
-  let Some(index)=head.get("marketCap").and_then(Value::as_u64) else {continue};
-  if let Some(cap)=data.get(index as usize).and_then(money) {return Some(cap)}
+  let Some(index)=head.get(key).and_then(Value::as_u64) else {continue};
+  if let Some(value)=data.get(index as usize).and_then(&read) {return Some(value)}
  }
  None
+}
+/// 把页面上的估值两项折成 [`Valuation`]：利润 = 市值 ÷ 远期市盈率，营收照页面，
+/// 再一起除以同一个汇率。
+pub fn valuation(cap_local:f64,rate:f64,forward_pe:Option<f64>,revenue_local:Option<f64>)->Valuation {
+ if !(cap_local>0.0&&rate>0.0) {return Valuation::default()}
+ let usd=|x:f64|Some(x/rate).filter(|v|v.is_finite()&&*v>0.0);
+ Valuation{forward_earnings:forward_pe.and_then(|pe|usd(cap_local/pe)),revenue:revenue_local.and_then(usd)}
 }
 /// 页面上所有能当身份用的字符串：代码与公司名，规范化之后。
 ///
@@ -853,7 +898,7 @@ pub(crate) async fn get_json(url:&str)->Result<Value> {
 ///   或者页面根本不是这家公司（身份校验没过）。要把旧值清掉。
 /// * `Carry` 这一轮问不出来——页面抓不到、汇率缺这个币种、价格表里没有这个合约。
 ///   留着上一轮的数字（还要过七天上限那一关），而不是当成「没有市值」。
-enum Priceable {Value(f64),Blank,Carry}
+enum Priceable {Value(f64,Valuation),Blank,Carry}
 async fn equity_price(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f64>,prices:&HashMap<String,f64>)->Priceable {
  // 没有登记过页面的名字：不猜地址，这个合约就是没有市值。
  let Some(path)=listing(contract.kind,&contract.base) else {return Priceable::Blank};
@@ -882,7 +927,8 @@ async fn equity_price(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f
   return Priceable::Blank;
  }
  let Some(cap)=parse_stockanalysis_cap(&body) else {return Priceable::Blank};
- match multiplier(cap,rate,price) {Some(k)=>Priceable::Value(k),None=>Priceable::Blank}
+ let (forward_pe,revenue)=parse_stockanalysis_valuation(&body);
+ match multiplier(cap,rate,price) {Some(k)=>Priceable::Value(k,valuation(cap,rate,forward_pe,revenue)),None=>Priceable::Blank}
 }
 /// Asks stockanalysis.com for every equity contract, one page at a time.
 ///
@@ -910,7 +956,7 @@ async fn refresh_equities(source:&dyn Source,contracts:&[Contract],previous:Opti
  let mut kept=0usize;
  for contract in wanted {
   match equity_price(source,contract,&fx,&prices).await {
-   Priceable::Value(k)=>{out.insert(contract.symbol.clone(),Priced{k,at:now,price:prices.get(&contract.symbol).copied().unwrap_or(0.0)});},
+   Priceable::Value(k,valuation)=>{out.insert(contract.symbol.clone(),Priced{k,at:now,price:prices.get(&contract.symbol).copied().unwrap_or(0.0),valuation});},
    Priceable::Blank=>{}
    Priceable::Carry=>{
     // 带着上一次的时刻一起留着，所以它会继续变老，七天之后自己就不再发布了。
@@ -1234,7 +1280,7 @@ mod tests {
 
  fn table(pairs:&[(&str,Meta)])->SupplyTable {pairs.iter().map(|(k,v)|((*k).to_owned(),*v)).collect()}
  /// 币安自己认领的一行：它的身份是证据，剥前缀的判断要靠它。
- fn supply(total:f64)->Meta {Meta{total_supply:Some(total),circulating_supply:Some(total),max_supply:None,rank:None,family:Some(Family::Binance),price:None}}
+ fn supply(total:f64)->Meta {Meta{total_supply:Some(total),circulating_supply:Some(total),max_supply:None,rank:None,family:Some(Family::Binance),price:None,forward_earnings:None,revenue:None}}
  /// CoinGecko 那一族的一行：同样的数字，但身份是弱的。
  fn weak(total:f64)->Meta {Meta{family:Some(Family::CoinGecko),..supply(total)}}
  /// 一张币表，外加「这些合约写的确实是币」这句声明。没有声明就是 Unknown，
@@ -1244,9 +1290,9 @@ mod tests {
   Market::fresh(coins,EquityTable::new(),kinds)
  }
  /// 刚算出来的一个股票乘数。
- fn priced(k:f64,price:f64)->Priced {Priced{k,at:SystemTime::now(),price}}
+ fn priced(k:f64,price:f64)->Priced {Priced{k,at:SystemTime::now(),price,valuation:Valuation::default()}}
  fn aged(k:f64,price:f64,age:Duration)->Priced {
-  Priced{k,at:SystemTime::now()-age,price}
+  Priced{k,at:SystemTime::now()-age,price,valuation:Valuation::default()}
  }
 
  /// 只有币安那一族的表，合出来给 lookup 用。
@@ -1303,7 +1349,7 @@ mod tests {
    {"symbol":"BTCUSDT","baseAsset":"BTC","quoteAsset":"USDT","circulatingSupply":19_800_000.0,"totalSupply":19_800_000.0,"maxSupply":21_000_000.0,"rank":1},
    {"symbol":"ETHUSDT","baseAsset":"ETH","quoteAsset":"USDT","circulatingSupply":"120500000","totalSupply":"120500000","maxSupply":null,"rank":"2"}]});
   let t=binance_table(&body);
-  assert_eq!(t["BTC"],Meta{total_supply:Some(19_800_000.0),circulating_supply:Some(19_800_000.0),max_supply:Some(21_000_000.0),rank:Some(1),family:Some(Family::Binance),price:None});
+  assert_eq!(t["BTC"],Meta{total_supply:Some(19_800_000.0),circulating_supply:Some(19_800_000.0),max_supply:Some(21_000_000.0),rank:Some(1),family:Some(Family::Binance),price:None,forward_earnings:None,revenue:None});
   assert_eq!(t["ETH"].max_supply,None);
   assert_eq!(t["ETH"].rank,Some(2));
  }
@@ -1709,6 +1755,33 @@ mod tests {
   // BRK.B 这种带点的代码，两边都规范化之后才比。
   let (code,keyword)=expected_identity("BRKB","stocks/BRK.B");
   assert!(page_is(&listing_page("BRK.B","Berkshire Hathaway Inc.","1.07T"),&code,keyword));
+ }
+ /// 顶栏「Fwd PE / P/S」的底数：同一页上的远期市盈率与营收，折成美元金额发出去。
+ #[test]
+ fn a_listing_page_yields_forward_earnings_and_revenue_in_dollars() {
+  // 真页面的形状（NVDA 2026-09-25）：远期市盈率是字串，营收带 B 后缀。
+  let body=json!({"type":"data","nodes":[
+   {"type":"data","data":[{"marketCap":1,"revenue":2,"peRatio":3,"forwardPE":4},"5.42T","302.97B","28.51","18.72"]}]});
+  assert_eq!(parse_stockanalysis_valuation(&body),(Some(18.72),Some(302.97e9)));
+  let v=valuation(5.42e12,1.0,Some(18.72),Some(302.97e9));
+  assert!((v.forward_earnings.unwrap()-5.42e12/18.72).abs()<1.0);
+  assert_eq!(v.revenue,Some(302.97e9));
+  // 预期亏损的公司（RIVN）：远期市盈率 `n/a`，只剩营收。
+  let loss=json!({"nodes":[{"data":[{"marketCap":1,"revenue":2,"forwardPE":3},"22.14B","5.88B","n/a"]}]});
+  assert_eq!(parse_stockanalysis_valuation(&loss),(None,Some(5.88e9)));
+  // 港股：市值与营收同是港币，一起除以同一个汇率，比率不变。
+  let hk=valuation(3.94e12,7.8,Some(12.47),Some(910.28e9));
+  assert!(((3.94e12/7.8)/hk.forward_earnings.unwrap()-12.47).abs()<1e-9);
+  assert!(((3.94e12/7.8)/hk.revenue.unwrap()-3.94e12/910.28e9).abs()<1e-9);
+  // 发布：股票那一行带着两项金额；旧快照里没有估值的那一行照旧只给供应量。
+  let with=Priced{valuation:v,..priced(3.0e10,180.0)};
+  let m=Market::fresh(SupplyTable::new(),[("NVDAUSDT".to_owned(),with)].into_iter().collect(),
+   [("NVDAUSDT".to_owned(),Kind::TickerEquity)].into_iter().collect());
+  let out=m.meta("NVDAUSDT").expect("a priced equity publishes").value();
+  assert_eq!(out["revenue"],json!(302.97e9));
+  assert!(out["forwardEarnings"].as_f64().is_some());
+  let old:Priced=serde_json::from_value(json!({"k":1.0,"at":{"secs_since_epoch":1,"nanos_since_epoch":0},"price":2.0})).unwrap();
+  assert_eq!(old.valuation,Valuation::default());
  }
  #[test]
  fn an_etf_page_carries_no_capitalisation() {
