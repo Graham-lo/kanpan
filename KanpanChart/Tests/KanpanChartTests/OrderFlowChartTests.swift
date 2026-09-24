@@ -372,10 +372,12 @@ struct OrderFlowChartTests {
     #expect(g.books.count == 3 && Set(g.books.map(\.bucket)) == [b0 + 5, b0 + 6, b0 + 7], "一本簿一桶一行")
     #expect(g.books.allSatisfy { abs($0.price - (Double($0.bucket) + 0.5) * step) < 1e-9 }, "每行带自己那一桶的价")
     #expect(g.isLive && g.endMs == nil)
-    // 主带盖住整个价位范围，至少一条单桶带那么粗。
+    // 实心芯画在代表价上、按档粗细；整个价位范围垫一层淡色（范围比芯窄时不垫，芯本身就盖住了）。
     #expect(wall.role == .main && !wall.thin)
-    #expect(wall.frame.minY <= y(r, g.priceHigh) + 1e-9 && wall.frame.maxY >= y(r, g.priceLow) - 1e-9)
-    #expect(wall.frame.height >= 4.5)
+    #expect(abs(wall.frame.height - 4.5) < 1e-9 && abs(wall.frame.midY - y(r, g.price)) < 1e-6)
+    let cover = wall.span ?? wall.frame
+    #expect(cover.minY <= y(r, g.priceHigh) + 1e-9 && cover.maxY >= y(r, g.priceLow) - 1e-9)
+    if let span = wall.span { #expect(span.minX == wall.frame.minX && span.maxX == wall.frame.maxX) }
     let L = r.layout(size: Self.size)
     let spacing = r.state.view.barSpacing(step: r.state.series.step, plotW: L.plotW)
     let b = r.state.series
@@ -387,8 +389,14 @@ struct OrderFlowChartTests {
     for o in [skip, spot, bid, old] {
       #expect(f.bands.contains { $0.key == OrderFlowGroupKey(o) && $0.group.bucketCount == 1 }, "\(o.id)")
     }
-    // 点中、出卡都是整堵墙（点在下沿：上面挨着的现货、买单被挤成细线压在墙中线附近）。
-    #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: wall.frame.maxY - 0.3)?.key == wall.key)
+    // 点中、出卡都是整堵墙：点在芯上；点在淡色范围里、离别的带都够远的地方也认这堵墙。
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: wall.frame.midY)?.key == wall.key)
+    if let span = wall.span,
+       let yFar = stride(from: span.minY, through: span.maxY, by: 0.5).first(where: { yy in
+         f.bands.allSatisfy { max(0, abs(yy - $0.frame.midY) - $0.frame.height / 2) > 8 }
+       }) {
+      #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: yFar)?.key == wall.key)
+    }
     r.state.orderFlowSelected = wall.key
     #expect(r.orderFlowFocus(size: Self.size)?.group.members.count == 3)
 
@@ -628,10 +636,10 @@ struct OrderFlowChartTests {
       #expect(!band.thin && band.frame.width >= 48)
       #expect(label.text == ChartRenderer.orderFlowAmount(band.group.notional))
       #expect(label.fill == band.color)
-      #expect(label.frame.height == 11)
+      #expect(abs(label.frame.height - ChartRenderer.orderFlowLabelHeight) < 1e-6)
       #expect(abs(label.frame.midY - band.frame.midY) < 1e-9)
-      if band.group.isLive { #expect(abs(label.frame.maxX - (L.plotW - 1)) < 1e-9, "挂着的贴主图右缘") }
-      else { #expect(abs(label.frame.maxX - (band.frame.maxX - 1)) < 1e-9, "结束的贴带右端内侧") }
+      if band.group.isLive { #expect(abs(label.frame.maxX - (L.plotW - ChartRenderer.orderFlowLabelInset)) < 1e-9, "挂着的贴主图右缘") }
+      else { #expect(abs(label.frame.maxX - (band.frame.maxX - ChartRenderer.orderFlowLabelInset)) < 1e-9, "结束的贴带右端内侧") }
     }
     // 夹具里只有币本位卖那条从最左画起（首见早于序列），宽过 48 pt；其余首见在最后十根（4 pt 一根，40 pt）。
     #expect(f.labels.map(\.text) == ["5.3M"])
@@ -798,6 +806,18 @@ struct OrderFlowChartTests {
     #expect(ChartRenderer.orderFlowHit([band, smallBand], x: x, y: band.frame.minY + 0.1)?.key == band.key)
     // 都没点在带里：离带边最近的；一样近取名义大的。
     #expect(ChartRenderer.orderFlowHit([smallBand, band], x: x, y: band.frame.maxY + 3)?.key == band.key)
+    // 轻点：命中区至少 44 pt 高、44 pt 宽（HIG）；十字线仍按 8 pt / 4 pt。
+    let reachY = (ChartRenderer.orderFlowTouchTarget - h) / 2
+    #expect(reachY > 8)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + h / 2 + reachY - 0.1, touch: true)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid - h / 2 - reachY + 0.1, touch: true)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + h / 2 + reachY + 0.1, touch: true) == nil)
+    let narrow = ChartRenderer.OrderFlowBand(group: band.group,
+                                             frame: CGRect(x: band.frame.minX, y: band.frame.minY, width: 4, height: h),
+                                             color: band.color, dark: false, thin: false)
+    #expect(ChartRenderer.orderFlowHit([narrow], x: narrow.frame.midX + 21.9, y: mid, touch: true)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([narrow], x: narrow.frame.midX + 22.1, y: mid, touch: true) == nil)
+    #expect(ChartRenderer.orderFlowHit([narrow], x: narrow.frame.midX + 6.1, y: mid) == nil, "十字线不放宽")
     // 视图坐标版只认主图绘图区。
     #expect(r.orderFlowHit(at: CGPoint(x: x, y: mid), size: Self.size)?.key == band.key)
     #expect(r.orderFlowHit(at: CGPoint(x: r.layout(size: Self.size).plotW + 5, y: mid), size: Self.size) == nil)
