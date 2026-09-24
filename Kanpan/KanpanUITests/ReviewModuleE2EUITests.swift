@@ -168,7 +168,7 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     row.tap()
     guard expectExists(app.navigationBars["记录详情"], Self.short, "\(step)：没进记录详情") else { return false }
     let image = app.images["review.detail.shot"]
-    // 图在详情靠上那一段（List 是懒的，滚出屏幕就不在树上）：先原地等一会儿，
+    // 图在「当时」那一段下面（List 是懒的，滚出屏幕就不在树上）：先原地等一会儿，
     // 再往顶上翻，最后才往下找。
     var found = image.waitForExistence(timeout: Self.short)
     for _ in 0..<4 where !found { app.swipeDown(); found = image.waitForExistence(timeout: 1.5) }

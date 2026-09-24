@@ -293,14 +293,6 @@ public struct ReviewRecordView: View {
               Button("独立判断") { feature.resolveGroup(id, sameEpisode: false) }
             }.listRowBackground(t.raised)
           }
-          if let shot {
-            Section("当时那张图") {
-              Image(uiImage: shot).resizable().scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .accessibilityIdentifier("review.detail.shot")
-                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-            }.listRowBackground(t.raised)
-          }
           Section("当时") {
             LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(Interval.shortLabel(raw: record.draft.range.interval))")
             if let confidence = record.draft.confidence {
@@ -324,6 +316,16 @@ public struct ReviewRecordView: View {
               feature.search(record.draft.range, cutoff: record.draft.created, scope: feature.searchScope)
             }
           }.listRowBackground(t.raised)
+          // 「当时那张图」排在「当时」之后、「补图」之前：图是整屏 K 线加三块副图，
+          // 竖着有大半屏高，摆在最上面会把「在图上重温」「找相似」挤出第一屏。
+          if let shot {
+            Section("当时那张图") {
+              Image(uiImage: shot).resizable().scaledToFit()
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityIdentifier("review.detail.shot")
+                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+            }.listRowBackground(t.raised)
+          }
           if feature.isConnected { ReviewAttachmentsSection(feature: feature, record: record) }
           Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)
