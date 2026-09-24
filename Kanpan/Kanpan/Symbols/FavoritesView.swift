@@ -810,9 +810,7 @@ struct FavoritesView: View {
     let stale = !model.listing(of: symbol).hasLivePrice
     let ticker = stale ? nil : displayQuote(symbol)
     let base = info?.base ?? SymbolInfo.placeholder(symbol: symbol).base
-    let amplitude = ticker?.amplitude24h
     let volumeText = ticker.map { $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) : "—" } ?? "—"
-    let amplitudeText = amplitude.map { toFixed($0, 2) + "%" } ?? "—"
     let value = ticker?.changePercent ?? .nan
     let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
     let quote = quoteParts(symbol)
@@ -829,9 +827,8 @@ struct FavoritesView: View {
       openID: "favorites.open." + symbol,
       onOpen: { selectOrOpen(symbol) }
     ) {
-      // 写全称（2026-09-24 审查 6.4）：单字「额 / 幅」要猜。「幅」这里是 24h 振幅
-      // （`amplitude24h`），不是涨跌幅——涨跌已经在右边那格，所以写「振幅」，和顶栏一个叫法。
-      Text("成交额 " + volumeText + SymbolRowText.separator + "振幅 " + amplitudeText)
+      // 副文案只剩成交额（2026-09-25 用户把振幅去掉了）；写全称不写单字「额」。
+      Text("成交额 " + volumeText)
         .foregroundStyle(theme.ink3)
     } accessory: {
       if !editing, sparkline {
