@@ -169,27 +169,27 @@ extension View {
   }
 }
 
-/// 面板的字号字重，照原型 CSS 抄的（`.row .name` 是 500 14px，`.meta` 是 400 11px…）。
-/// 跟随系统文字大小，见 `ScaledFont`。
+/// 面板的字号字重。原来照原型 CSS 抄（`.row .name` 是 500 14px、`.meta` 是 400 11px…），
+/// 2026-09-24 UI 审查后改为指向 `TypeScale` 的阶梯（14 → 15、11 → 12、12.5 → 13 …），
+/// 名字保留，调用处不用动。
 enum PanelFont {
-  static let name = ScaledFont(14, .medium)
-  static let meta = ScaledFont(11)
-  static let title = ScaledFont(15, .semibold)
-  static let sub = ScaledFont(11)
-  static let group = ScaledFont(11, .medium)
-  static let seg = ScaledFont(12, .medium)
-  static let note = ScaledFont(11.5)
-  static let cardName = ScaledFont(14, .semibold)
+  static let name = TypeScale.body            // 14 medium → 15 regular
+  static let meta = TypeScale.caption         // 11 → 12
+  static let title = TypeScale.title          // 15 semibold → 17 semibold
+  static let sub = TypeScale.caption          // 11 → 12
+  static let group = TypeScale.caption2Emph   // 11 medium → 11 medium（下限）
+  static let seg = TypeScale.control          // 12 medium → 13 medium
+  static let note = TypeScale.caption         // 11.5 → 12
+  static let cardName = TypeScale.bodyEmph    // 14 semibold → 15 medium
   /// 数字一律等宽，免得步进时左右跳。
-  static let number = ScaledFont(11, .medium, design: .monospaced)
+  static let number = TypeScale.number        // 11 → 12 等宽
 }
 
-
-/// 面板横向留白，原型 `.row { padding: 11px 16px }`。
+/// 面板留白：横向 16（sheet 自带边距），行竖向 12，行距 12；行最小高 `Inset.rowMin` 44。
 enum PanelMetrics {
-  static let hPad: CGFloat = 16
-  static let vPad: CGFloat = 11
-  static let rowGap: CGFloat = 10
+  static let hPad: CGFloat = Inset.card
+  static let vPad: CGFloat = Inset.rowV
+  static let rowGap: CGFloat = Space.m
 }
 
 // MARK: - 环境
