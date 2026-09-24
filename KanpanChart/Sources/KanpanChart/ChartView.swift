@@ -250,14 +250,17 @@ public final class ChartView: UIView {
             if let step = f.thresholds.step { out["step"] = step }
             return out
           } ?? [:],
-          // 一段一条的合并带：product = contract / spot；thin = 被挤成了细线；books = 几本簿、members = 几单；
-          // id =「类|侧|桶|段起点 ms」。
+          // 一堵墙一条的合并带：product = contract / spot；thin = 被挤成了细线；books = 几行（一本簿一桶一行）、
+          // members = 几单；id =「类|侧|桶|起点 ms」（墙里最早那一段）；priceLow / priceHigh = 墙的价位范围，
+          // buckets = 并了几个桶；role = main / secondary / noise（屏内排名的主次），alpha = 不透明度。
           "orderFlowBands": (orderFlow?.bands ?? []).map {
             ["side": $0.group.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
              "w": $0.frame.width, "h": $0.frame.height, "color": $0.color.value, "dark": $0.dark,
              "tier": $0.group.tier, "product": $0.group.contract ? "contract" : "spot", "thin": $0.thin,
              "live": $0.group.isLive, "books": $0.group.books.count, "members": $0.group.members.count,
-             "notional": $0.group.notional, "id": $0.key.id] as [String: Any]
+             "notional": $0.group.notional, "id": $0.key.id, "priceLow": $0.group.priceLow,
+             "priceHigh": $0.group.priceHigh, "buckets": $0.group.bucketCount, "role": $0.role.rawValue,
+             "alpha": $0.alpha] as [String: Any]
           },
           "orderFlowLabels": (orderFlow?.labels ?? []).map {
             ["id": $0.key.id, "text": $0.text, "x": $0.frame.minX, "y": $0.frame.minY,

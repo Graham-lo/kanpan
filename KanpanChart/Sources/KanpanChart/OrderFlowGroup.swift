@@ -25,11 +25,20 @@ import KanpanCore
 //   - 起点取段里最早的首见，终点取段里最晚的结束，有一单还挂着就画到右缘；
 //   - 成交金额按段里全部单求和（成交是真实发生过的，不会重复）。
 // 以上都只在段内算，别的段的单不掺进来。
+//
+// **相邻桶并成一堵墙**（2026-09-25）：ETH / SOL 的步长小（1 / 0.1），一堵 3100 万的墙在簿上摊在 2682、2683、2684
+// 三个桶里，画成三条细带、各写各的金额，一屏几百条 2 pt 带没有主次。所以切好段、去掉活不过一根 K 线的
+// 已结束段之后，再把「同侧、同类、桶号相邻（差 1，可以连成串）、时间上重叠或空档 ≤ 切段容差」的段并成一堵墙：
+//   - 价位范围 = 最低桶的桶价 … 最高桶的桶价 + 步长；名义 = 各段画法名义之和；粗细档按合计算；
+//   - 标签写合计；详情卡标题写价位范围，一本簿一行，同一本簿跨几个桶就每桶一行、各带自己的价；
+//   - 墙的键 = 墙里最早起的那一段的键（起点一样取桶小的）：挂着的墙续长、后来的段并进来都不变；
+//     更早的段并进来（服务端回填）键会前移，按 `covers` 认回来（见那里）。
+//   - 单桶的墙和原来的一段一条完全一样（BTC 步长 100，多半是单桶，看起来不变）。
 
-/// 一条合并带是哪一桶、哪一侧、哪一类、从哪一刻起的那一段。
+/// 一条合并带（一堵墙）的身份：墙里最早起的那一段是哪一桶、哪一侧、哪一类、从哪一刻起。
 ///
-/// `start` = 段里最早的首见。挂着的单续长、新单并到段尾，起点都不变，所以选中的那条不会跳走；
-/// 只有更早的单并进来（服务端历史回填把两段接上）起点才会前移——那时按 `OrderFlowGroup.covers` 认回来。
+/// `start` = 那一段里最早的首见。挂着的单续长、新单并到段尾、后起的段并进墙，键都不变，所以选中的那堵不会跳走；
+/// 只有更早的单或段并进来（服务端历史回填把两段接上）键才会变——那时按 `OrderFlowGroup.covers` 认回来。
 public struct OrderFlowGroupKey: Sendable, Hashable {
   public var bucket: Int64
   public var side: BookSide
@@ -52,22 +61,29 @@ public struct OrderFlowGroupKey: Sendable, Hashable {
     bucket == other.bucket && side == other.side && contract == other.contract
   }
 
+  /// 同一侧、同一类（不管哪一桶、哪一段）：能并成同一堵墙的前提。
+  public func sameKind(_ other: OrderFlowGroupKey) -> Bool {
+    side == other.side && contract == other.contract
+  }
+
   /// 诊断与 UI 用例用的字符串：「contract|ask|836|1790000000000」（最后一段是起点 ms）。
   public var id: String {
     (contract ? "contract" : "spot") + "|" + side.rawValue + "|" + String(bucket) + "|" + String(start)
   }
 }
 
-/// 一条合并带：同一桶、同一侧、同一类、时间上连成一段的几单。
+/// 一条合并带（一堵墙）：同侧、同类、相邻桶、时间上连着的几段。单桶单段就是原来的「一段一条」。
 public struct OrderFlowGroup: Sendable, Equatable {
-  /// 一本簿在这条带里的那一行（详情卡上一行一本）。
+  /// 一本簿在这堵墙的某一桶里的那一行（详情卡上一行一本；同一本簿跨几个桶就每桶一行）。
   public struct Book: Sendable, Equatable {
     public var venueID: String
     public var exchange: String
     public var product: OrderFlowProduct
-    /// 这本簿最近的那一单（首见最晚的）：此刻的名义、状态以它为准。
+    /// 哪一桶。
+    public var bucket: Int64
+    /// 这本簿在这一桶最近的那一单（首见最晚的）：此刻的名义、状态、价位以它为准。
     public var latest: BigOrder
-    /// 这本簿在这条带里一共几单（撤了又挂回来算两单）。
+    /// 这本簿在这一桶一共几单（撤了又挂回来算两单）。
     public var orders: Int
     /// 全部单的成交名义之和。
     public var filledNotional: Double
@@ -77,50 +93,112 @@ public struct OrderFlowGroup: Sendable, Equatable {
     public var hasFill: Bool
 
     public var notional: Double { latest.notional }
+    /// 这一行的价位（这本簿这一桶最近那一单的价）。
+    public var price: Double { latest.price }
     public var fillRatio: Double { fillBase > 0 ? min(1, max(0, filledNotional / fillBase)) : 0 }
+  }
+
+  /// 墙里的一段占的那一格：哪一桶、从哪到哪（挂着的 `end` 是 nil）。选中认回来靠它。
+  public struct Span: Sendable, Equatable, Hashable {
+    public var bucket: Int64
+    public var start: Int64
+    public var end: Int64?
+
+    public init(bucket: Int64, start: Int64, end: Int64?) {
+      self.bucket = bucket; self.start = start; self.end = end
+    }
+
+    /// 这一格的时间跨度里有没有这一刻。
+    public func contains(_ ms: Int64) -> Bool { start <= ms && ms <= (end ?? .max) }
   }
 
   public var key: OrderFlowGroupKey
   /// 按首见先后排的全部单。
   public var members: [BigOrder]
-  /// 一本簿一行，按此刻名义从大到小（名义一样按簿名）。
+  /// 一本簿一桶一行，按此刻名义从大到小（名义一样按簿名、再按桶）。
   public var books: [Book]
+  /// 墙里的各段（一桶可以有几段），按起点排。
+  public var spans: [Span]
+  /// 步长（`OrderFlowSnapshot.thresholds.step`）：算价位范围用；不知道时按各行的价。
+  public var step: Double?
 
-  /// 把几单合成一条带；空的给 nil。不检查它们是不是同一桶同一侧同一类同一段，调用方按 `segments` 分好组。
-  public init?(key: OrderFlowGroupKey, members: [BigOrder]) {
+  /// 把几单合成一条带；空的给 nil。不检查它们是不是同侧同类、桶与时间连着，调用方按 `segments` / `walls` 分好组。
+  /// `spans` 不给就按成员一桶一格（每桶最早首见到最晚结束）。
+  public init?(key: OrderFlowGroupKey, members: [BigOrder], spans: [Span]? = nil, step: Double? = nil) {
     guard !members.isEmpty else { return nil }
     self.key = key
+    self.step = step.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
     self.members = members.sorted { $0.firstSeenMs != $1.firstSeenMs ? $0.firstSeenMs < $1.firstSeenMs : $0.id < $1.id }
-    var byVenue: [String: Book] = [:]
+    struct RowKey: Hashable { var venue: String; var bucket: Int64 }
+    var rows: [RowKey: Book] = [:]
+    var perBucket: [Int64: Span] = [:]
     for o in self.members {
       let base = o.status == .live ? o.notional : (o.vanishedNotional ?? o.notional)
-      if var b = byVenue[o.venueID] {
+      let rk = RowKey(venue: o.venueID, bucket: o.bucket)
+      if var b = rows[rk] {
         if o.firstSeenMs >= b.latest.firstSeenMs { b.latest = o }
         b.orders += 1
         b.filledNotional += o.filledNotional
         b.fillBase += base
         b.hasFill = b.hasFill || o.hasFill
-        byVenue[o.venueID] = b
+        rows[rk] = b
       } else {
-        byVenue[o.venueID] = Book(venueID: o.venueID, exchange: o.exchange, product: o.product, latest: o, orders: 1,
-                                  filledNotional: o.filledNotional, fillBase: base, hasFill: o.hasFill)
+        rows[rk] = Book(venueID: o.venueID, exchange: o.exchange, product: o.product, bucket: o.bucket, latest: o,
+                        orders: 1, filledNotional: o.filledNotional, fillBase: base, hasFill: o.hasFill)
+      }
+      if spans == nil {
+        let end: Int64? = o.isLive ? nil : max(o.firstSeenMs, o.endMs ?? o.firstSeenMs)
+        if var span = perBucket[o.bucket] {
+          span.start = min(span.start, o.firstSeenMs)
+          span.end = (span.end == nil || end == nil) ? nil : max(span.end!, end!)
+          perBucket[o.bucket] = span
+        } else {
+          perBucket[o.bucket] = Span(bucket: o.bucket, start: o.firstSeenMs, end: end)
+        }
       }
     }
-    books = byVenue.values.sorted { $0.notional != $1.notional ? $0.notional > $1.notional : $0.venueID < $1.venueID }
+    books = rows.values.sorted {
+      if $0.notional != $1.notional { return $0.notional > $1.notional }
+      if $0.venueID != $1.venueID { return $0.venueID < $1.venueID }
+      return $0.bucket < $1.bucket
+    }
+    self.spans = (spans ?? Array(perBucket.values)).sorted {
+      $0.start != $1.start ? $0.start < $1.start : $0.bucket < $1.bucket
+    }
   }
 
   /// 两段之间的空档不超过这么久就并成一段的下限：撤了马上挂回来仍算同一堵墙。
   public static let minMergeGapMs: Int64 = 60_000
 
-  /// 切段容差：max(60 秒, 一根 K 线的时长)。理由见文件头。
+  /// 切段容差：max(60 秒, 一根 K 线的时长)。理由见文件头。并墙的时间容差用同一个数。
   public static func mergeGapMs(barMs: Int64) -> Int64 { max(minMergeGapMs, barMs) }
 
   /// 一段：键、按首见排好的成员、段的结束（有一单还挂着就是 nil）。只切段、不建 `OrderFlowGroup`（便宜），
-  /// 图表先按段的时间跨度筛掉这一屏外面的，再对剩下的建组。
+  /// 图表先按墙的时间跨度筛掉这一屏外面的，再对剩下的建组。
   public struct Segment: Sendable, Equatable {
     public var key: OrderFlowGroupKey
     public var members: [BigOrder]
     public var endMs: Int64?
+
+    public var span: Span { Span(bucket: key.bucket, start: key.start, end: endMs) }
+  }
+
+  /// 一堵墙：并在一起的几段（还没建 `OrderFlowGroup`）。
+  public struct Wall: Sendable, Equatable {
+    public var key: OrderFlowGroupKey
+    public var segments: [Segment]
+    /// 最早的起点。
+    public var startMs: Int64
+    /// 最晚的结束；有一段还挂着就是 nil。
+    public var endMs: Int64?
+
+    public var members: [BigOrder] { segments.flatMap(\.members) }
+    public var spans: [Span] { segments.map(\.span) }
+
+    /// 建成画得出来的一条带。
+    public func group(step: Double?) -> OrderFlowGroup? {
+      OrderFlowGroup(key: key, members: members, spans: spans, step: step)
+    }
   }
 
   private struct Lane: Hashable {
@@ -164,29 +242,117 @@ public struct OrderFlowGroup: Sendable, Equatable {
     return out
   }
 
-  /// 画的先后：画法上的名义（`drawNotional`）从大到小，一样按 `key.id`（结果稳定）。
+  /// 去掉活不过一根 K 线的已结束段：（结束 − 首见）< `minLifeMs`。挂着的一律留。
+  /// 这类段在图上最多占一根 K 线宽，一屏几百条只是碎屑；图例（逐单还挂着的合计）不受影响。
+  public static func dropShortLived(_ segments: [Segment], minLifeMs: Int64) -> [Segment] {
+    guard minLifeMs > 0 else { return segments }
+    return segments.filter { s in s.endMs.map { $0 - s.key.start >= minLifeMs } ?? true }
+  }
+
+  /// 把段并成墙：同侧、同类、桶号相邻（差 1，可以连成串）、时间上重叠或空档 ≤ `gapMs` 的段并在一起。
+  /// 墙的键取墙里最早起的那一段的键（起点一样取桶小的）。结果与输入顺序无关；墙的顺序无意义，调用方自己排。
+  public static func walls(_ segments: [Segment], gapMs: Int64) -> [Wall] {
+    guard !segments.isEmpty else { return [] }
+    // 并查集。
+    var parent = Array(segments.indices)
+    func find(_ i: Int) -> Int {
+      var i = i
+      while parent[i] != i { parent[i] = parent[parent[i]]; i = parent[i] }
+      return i
+    }
+    func union(_ a: Int, _ b: Int) {
+      let ra = find(a), rb = find(b)
+      if ra != rb { parent[max(ra, rb)] = min(ra, rb) }
+    }
+    // 一条道（桶 × 侧 × 类）里的段按起点排好；同一条道里的段彼此不相交（相隔 > gapMs），结束也是升序。
+    var lanes: [Lane: [Int]] = [:]
+    for (i, s) in segments.enumerated() {
+      lanes[Lane(bucket: s.key.bucket, side: s.key.side, contract: s.key.contract), default: []].append(i)
+    }
+    for key in lanes.keys { lanes[key]!.sort { segments[$0].key.start < segments[$1].key.start } }
+    let reach = { (i: Int) -> Int64 in
+      guard let end = segments[i].endMs else { return .max }
+      return end > Int64.max - gapMs ? .max : end + gapMs
+    }
+    for (lane, lower) in lanes {
+      guard let upper = lanes[Lane(bucket: lane.bucket + 1, side: lane.side, contract: lane.contract)] else { continue }
+      // 双指针：上一桶里第一段还够得着的位置随下一桶的段单调往后走。
+      var j = 0
+      for a in lower {
+        let aStart = segments[a].key.start
+        while j < upper.count, reach(upper[j]) < aStart { j += 1 }
+        var k = j
+        let aReach = reach(a)
+        while k < upper.count, segments[upper[k]].key.start <= aReach {
+          if reach(upper[k]) >= aStart { union(a, upper[k]) }
+          k += 1
+        }
+      }
+    }
+    var byRoot: [Int: [Int]] = [:]
+    for i in segments.indices { byRoot[find(i), default: []].append(i) }
+    return byRoot.values.map { idx in
+      let parts = idx.map { segments[$0] }.sorted {
+        $0.key.start != $1.key.start ? $0.key.start < $1.key.start : $0.key.bucket < $1.key.bucket
+      }
+      let end: Int64? = parts.contains { $0.endMs == nil } ? nil : parts.compactMap(\.endMs).max()
+      return Wall(key: parts[0].key, segments: parts, startMs: parts[0].key.start, endMs: end)
+    }
+  }
+
+  /// 画的先后（也是这一屏排主次的次序）：画法上的名义（`drawNotional`）从大到小，一样的先起的在前，
+  /// 再按 `key.id`（结果稳定）。
   public static func drawOrder(_ a: OrderFlowGroup, _ b: OrderFlowGroup) -> Bool {
-    a.drawNotional != b.drawNotional ? a.drawNotional > b.drawNotional : a.key.id < b.key.id
+    if a.drawNotional != b.drawNotional { return a.drawNotional > b.drawNotional }
+    if a.firstSeenMs != b.firstSeenMs { return a.firstSeenMs < b.firstSeenMs }
+    return a.key.id < b.key.id
   }
 
-  /// 按「桶 × 侧 × 类 × 时间段」把一批单分组（`segments`），按 `drawOrder` 排好。
-  /// `gapMs` 缺省只用 60 秒下限；图表按周期传 `mergeGapMs(barMs:)`。
-  public static func groups(_ orders: [BigOrder], gapMs: Int64 = minMergeGapMs) -> [OrderFlowGroup] {
-    segments(orders, gapMs: gapMs).compactMap { OrderFlowGroup(key: $0.key, members: $0.members) }.sorted(by: drawOrder)
+  /// 把一批单切段、去掉活不过 `minLifeMs` 的已结束段、并墙，按 `drawOrder` 排好。
+  /// `gapMs` 缺省只用 60 秒下限；图表按周期传 `mergeGapMs(barMs:)`，`minLifeMs` 传一根 K 线。
+  public static func groups(_ orders: [BigOrder], gapMs: Int64 = minMergeGapMs, minLifeMs: Int64 = 0,
+                            step: Double? = nil) -> [OrderFlowGroup] {
+    let parts = dropShortLived(segments(orders, gapMs: gapMs), minLifeMs: minLifeMs)
+    return walls(parts, gapMs: gapMs).compactMap { $0.group(step: step) }.sorted(by: drawOrder)
   }
 
-  /// 选中存的那个键还认不认这一段：键一样；或者同桶侧类、键的起点落在这一段的时间跨度里
-  /// （更早的单并进来、段的起点前移了，或者两段被回填的历史接成了一段）。段之间在时间上不相交，最多认一段。
+  /// 选中存的那个键还认不认这堵墙：键一样；或者同侧同类、墙里有一段在键的那一桶、键的起点落在那一段的时间跨度里
+  /// （那一段的起点前移了、两段被回填的历史接成了一段、或者更早的段并进来键换了）。同一桶里的段在时间上不相交，
+  /// 一段只属于一堵墙，所以最多认一堵。
   public func covers(_ other: OrderFlowGroupKey) -> Bool {
     if other == key { return true }
-    guard key.sameLane(other), firstSeenMs <= other.start else { return false }
-    return endMs.map { other.start <= $0 } ?? true
+    guard key.sameKind(other) else { return false }
+    return spans.contains { $0.bucket == other.bucket && $0.contains(other.start) }
+  }
+
+  /// 宽松地认：键那一段已经不在了（活不过一根 K 线被去掉），但键的桶在墙的桶范围里、起点在墙的时间跨度里。
+  /// 只在 `covers` 谁都不认时兜底用。
+  public func looselyCovers(_ other: OrderFlowGroupKey) -> Bool {
+    guard key.sameKind(other), other.bucket >= bucketLow, other.bucket <= bucketHigh else { return false }
+    return firstSeenMs <= other.start && other.start <= (endMs ?? .max)
   }
 
   public var side: BookSide { key.side }
   public var contract: Bool { key.contract }
 
-  /// 此刻的名义：各本簿最近那一单的名义之和（图上标签、详情卡的合计）。
+  /// 最低、最高的桶。
+  public var bucketLow: Int64 { spans.map(\.bucket).min() ?? key.bucket }
+  public var bucketHigh: Int64 { spans.map(\.bucket).max() ?? key.bucket }
+  /// 并了几个桶。
+  public var bucketCount: Int { Set(spans.map(\.bucket)).count }
+  /// 跨了不止一个桶（详情卡标题写价位范围、每行带价）。
+  public var isRange: Bool { bucketCount > 1 }
+  /// 价位范围：最低桶的桶价 … 最高桶的桶价 + 步长。不知道步长时按各行的价。
+  public var priceLow: Double {
+    if let step { return Double(bucketLow) * step }
+    return books.map(\.price).min() ?? price
+  }
+  public var priceHigh: Double {
+    if let step { return Double(bucketHigh + 1) * step }
+    return books.map(\.price).max() ?? price
+  }
+
+  /// 此刻的名义：各行（一本簿一桶）最近那一单的名义之和（图上标签、详情卡的合计）。
   public var notional: Double { books.reduce(0) { $0 + $1.notional } }
   /// 全部单的成交名义之和。
   public var filledNotional: Double { books.reduce(0) { $0 + $1.filledNotional } }
@@ -207,15 +373,16 @@ public struct OrderFlowGroup: Sendable, Equatable {
     return members.compactMap(\.endMs).max()
   }
 
-  /// 画粗细用的「门槛四分之一格」之和：各本簿最近那一单的 `thicknessQuarters` 相加。
+  /// 画粗细用的「门槛四分之一格」之和：各行最近那一单的 `thicknessQuarters` 相加。
   /// 只由逐单的 `renderKey` 决定——名义在一格里抖，粗细和挤压都不变，底图不用重画。
   public var quarters: Int { books.reduce(0) { $0 + $1.latest.thicknessQuarters } }
   /// 粗细档（0…4）。
   public var tier: Int { BigOrder.thicknessTier(quarters: quarters) }
-  /// 排先后（谁先落、谁被压成细线、谁留标签）用的名义：按四分之一格折回美元，同样只由 `renderKey` 决定。
+  /// 排先后（主次、谁被压成细线、谁留标签）用的名义：按四分之一格折回美元，同样只由 `renderKey` 决定。
   public var drawNotional: Double { books.reduce(0) { $0 + Double($1.latest.thicknessQuarters) * $1.latest.threshold / 4 } }
 
-  /// 画在哪口价上：四分之一格最多的那本簿最近那一单的价（一样多取 id 小的，结果稳定）。
+  /// 代表价（次墙、底噪的细线画在这里；被压成细线的也画在这里）：四分之一格最多的那一行最近那一单的价
+  /// （一样多取 id 小的，结果稳定）。
   public var price: Double {
     books.map(\.latest).max { a, b in
       a.thicknessQuarters != b.thicknessQuarters ? a.thicknessQuarters < b.thicknessQuarters : a.id > b.id

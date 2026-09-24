@@ -321,6 +321,213 @@ struct OrderFlowChartTests {
     #expect(!lone.covers(key))
   }
 
+  // ------------------------------------------------------------ 相邻桶并墙、屏内排名、去碎屑（2026-09-25）
+  // 真机 ETH / SOL：步长小，一堵墙摊在相邻几个桶里画成几条各写各的金额；一屏几百条 2 pt 带没有主次。
+
+  /// 按步长摆一单：桶号 `bucket`、价在桶中间；默认合约卖、10M（门槛 5M 的 2 倍）。
+  func wallOrder(_ r: ChartRenderer, step: Double, bucket: Int64, side: BookSide = .ask,
+                 product: OrderFlowProduct = .usdtPerp, venue: String = "binance:usdtPerp:X",
+                 from: Int, to: Int? = nil, notional: Double = 10_000_000) -> BigOrder {
+    let b = r.state.series
+    var o = Self.order(product, side, price: (Double(bucket) + 0.5) * step, firstSeen: b.time(at: b.count - from) + 1,
+                       end: to.map { b.time(at: b.count - $0) + 1 }, status: to == nil ? .live : .cancelled,
+                       notional: notional, initial: notional,
+                       threshold: product == .spot ? 1_000_000 : 5_000_000, bucket: bucket)
+    o.venueID = venue
+    return o
+  }
+
+  /// 夹具换成按步长摆的一组单；步长取最新价的万分之一（ETH 步长 1 ≈ 价的万分之四，同一量级），
+  /// 几十个桶以内都还落在主图里。
+  func wallRenderer() -> (ChartRenderer, step: Double, b0: Int64) {
+    var (r, _) = Self.renderer()
+    let p = r.state.series.close.last!
+    let step = p * 0.0001
+    r.state.orderFlow?.thresholds.step = step
+    return (r, step, Int64((p / step).rounded(.down)))
+  }
+
+  @Test("并墙：同侧同类、桶号相邻、时间连着的段并成一堵；隔一桶、不同类、不同侧、时间断开的不并")
+  func wallsMergeAdjacentBuckets() throws {
+    var (r, step, b0) = wallRenderer()
+    let a = wallOrder(r, step: step, bucket: b0 + 5, from: 20)
+    let bMid = wallOrder(r, step: step, bucket: b0 + 6, venue: "okx:usdtPerp:X", from: 15, to: 5)
+    let c = wallOrder(r, step: step, bucket: b0 + 7, from: 10)
+    let skip = wallOrder(r, step: step, bucket: b0 + 9, from: 40, to: 35)  // 隔一桶、时间也不挨着
+    let spot = wallOrder(r, step: step, bucket: b0 + 8, product: .spot, venue: "binance:spot:X", from: 10,
+                         notional: 2_000_000)                                // 挨着但是现货
+    let bid = wallOrder(r, step: step, bucket: b0 + 8, side: .bid, from: 10)  // 挨着但是买单
+    let old = wallOrder(r, step: step, bucket: b0 + 4, from: 60, to: 50)       // 挨着但时间断开
+    r.state.orderFlow?.orders = [c, skip, spot, a, bid, old, bMid]
+    let f = frame(r)
+    #expect(f.bands.count == 5, "\(f.bands.map(\.key.id))")
+    let wall = try #require(f.bands.first { $0.key == OrderFlowGroupKey(a) }, "墙的键 = 最早起的那一段")
+    let g = wall.group
+    #expect(g.bucketCount == 3 && g.bucketLow == b0 + 5 && g.bucketHigh == b0 + 7 && g.isRange)
+    #expect(abs(g.priceLow - Double(b0 + 5) * step) < 1e-9 && abs(g.priceHigh - Double(b0 + 8) * step) < 1e-9,
+            "价位范围：最低桶的桶价 … 最高桶的桶价 + 步长")
+    #expect(g.notional == 30_000_000 && g.drawNotional == 30_000_000, "名义按各段相加")
+    // 3 × 2 倍 = 6 倍 → 第 2 档 4.5 pt（一段单画都是第 1 档）。
+    #expect(g.tier == 2)
+    #expect(g.books.count == 3 && Set(g.books.map(\.bucket)) == [b0 + 5, b0 + 6, b0 + 7], "一本簿一桶一行")
+    #expect(g.books.allSatisfy { abs($0.price - (Double($0.bucket) + 0.5) * step) < 1e-9 }, "每行带自己那一桶的价")
+    #expect(g.isLive && g.endMs == nil)
+    // 主带盖住整个价位范围，至少一条单桶带那么粗。
+    #expect(wall.role == .main && !wall.thin)
+    #expect(wall.frame.minY <= y(r, g.priceHigh) + 1e-9 && wall.frame.maxY >= y(r, g.priceLow) - 1e-9)
+    #expect(wall.frame.height >= 4.5)
+    let L = r.layout(size: Self.size)
+    let spacing = r.state.view.barSpacing(step: r.state.series.step, plotW: L.plotW)
+    let b = r.state.series
+    #expect(abs(wall.frame.minX - (r.state.view.x(Double(b.time(at: b.count - 20)), plotW: L.plotW) - spacing / 2)) < 0.001)
+    #expect(abs(wall.frame.maxX - L.plotW) < 0.001)
+    // 标签写合计。
+    if wall.frame.width >= 48 { #expect(f.labels.contains { $0.key == wall.key && $0.text == "30.0M" }) }
+    // 不并的几条各自成一条。
+    for o in [skip, spot, bid, old] {
+      #expect(f.bands.contains { $0.key == OrderFlowGroupKey(o) && $0.group.bucketCount == 1 }, "\(o.id)")
+    }
+    // 点中、出卡都是整堵墙（点在下沿：上面挨着的现货、买单被挤成细线压在墙中线附近）。
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: wall.frame.maxY - 0.3)?.key == wall.key)
+    r.state.orderFlowSelected = wall.key
+    #expect(r.orderFlowFocus(size: Self.size)?.group.members.count == 3)
+
+    // 连成串：5–6 重叠、6–7 重叠，5 与 7 不挨着也在同一堵里；空档恰好等于容差还并。
+    let gap = OrderFlowGroup.mergeGapMs(barMs: b.step)
+    func seg(_ bucket: Int64, _ start: Int64, _ end: Int64?) -> OrderFlowGroup.Segment {
+      OrderFlowGroup.Segment(key: OrderFlowGroupKey(bucket: bucket, side: .ask, contract: true, start: start),
+                             members: [], endMs: end)
+    }
+    #expect(OrderFlowGroup.walls([seg(1, 0, 100), seg(2, 100 + gap, 200 + gap)], gapMs: gap).count == 1)
+    #expect(OrderFlowGroup.walls([seg(1, 0, 100), seg(2, 101 + gap, 200 + gap)], gapMs: gap).count == 2)
+    #expect(OrderFlowGroup.walls([seg(1, 0, 100), seg(2, 50, 400), seg(3, 300, nil)], gapMs: gap).count == 1)
+    #expect(OrderFlowGroup.walls([seg(1, 0, 100), seg(3, 0, 100)], gapMs: gap).count == 2, "隔一桶不并")
+    // 挂着的段（结束无穷远）够得着之后起的一切；更早起的段结束得够晚才挨上。
+    #expect(OrderFlowGroup.walls([seg(1, 100_000_000, nil), seg(2, 500_000_000, 500_000_001)], gapMs: gap).count == 1)
+    #expect(OrderFlowGroup.walls([seg(1, 100_000_000, nil), seg(2, 0, 10)], gapMs: gap).count == 2)
+    let key = try #require(OrderFlowGroup.walls([seg(2, 50, 400), seg(1, 50, 100), seg(3, 300, nil)], gapMs: gap).first).key
+    #expect(key.bucket == 1 && key.start == 50, "起点一样取桶小的")
+  }
+
+  @Test("并墙：键跨帧稳定——挂着续长、后来的段并进来键不变；回填更早的段键前移，旧键按 covers 认回来")
+  func wallIdentityStable() throws {
+    var (r, step, b0) = wallRenderer()
+    let a = wallOrder(r, step: step, bucket: b0 + 5, from: 20)
+    let c = wallOrder(r, step: step, bucket: b0 + 6, from: 12)
+    r.state.orderFlow?.orders = [a, c]
+    let key = OrderFlowGroupKey(a)
+    #expect(frame(r).bands.map(\.key) == [key])
+    r.state.orderFlowSelected = key
+
+    // 1. 续长：快照往后走、名义在变。
+    r.state.orderFlow?.asOfMs += 30 * 60_000
+    r.state.orderFlow?.orders[0].notional = 14_000_000
+    var focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.key == key && focus.group.notional == 24_000_000)
+
+    // 2. 后来的段并进来（上面再挨一桶）：键不变，范围变宽。
+    let later = wallOrder(r, step: step, bucket: b0 + 7, venue: "okx:usdtPerp:X", from: 3)
+    r.state.orderFlow?.orders.append(later)
+    focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.key == key && focus.group.bucketCount == 3)
+
+    // 3. 回填了下面一桶更早的段、和这堵墙时间上接上：键前移到那一段，旧键仍认得回来。
+    let early = wallOrder(r, step: step, bucket: b0 + 4, venue: "binance:coinPerp:X", from: 30, to: 19)
+    r.state.orderFlow?.orders.insert(early, at: 0)
+    let bands = frame(r).bands
+    #expect(bands.count == 1)
+    let merged = try #require(bands.first)
+    #expect(merged.key == OrderFlowGroupKey(early) && merged.group.covers(key))
+    focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.key == merged.key && focus.selected)
+    #expect(r.orderFlowIsSelected(merged.group), "再点同一条要能收起")
+    // 同侧同类、别的桶或别的时间的墙不认。
+    let other = try #require(OrderFlowGroup.groups([wallOrder(r, step: step, bucket: b0 + 5, from: 60, to: 50)],
+                                                   step: step).first)
+    #expect(!other.covers(key) && !other.looselyCovers(key))
+  }
+
+  @Test("去碎屑：已结束、活不过一根 K 线的段不画（挂着的留，恰好一根的留）；图例不受影响")
+  func shortLivedDropped() throws {
+    var (r, step, b0) = wallRenderer()
+    let b = r.state.series
+    var flash = wallOrder(r, step: step, bucket: b0 + 5, from: 10, to: 10)
+    flash.endMs = flash.firstSeenMs + b.step - 1
+    var oneBar = wallOrder(r, step: step, bucket: b0 + 9, from: 10, to: 9)
+    oneBar.endMs = oneBar.firstSeenMs + b.step
+    let fresh = wallOrder(r, step: step, bucket: b0 + 13, side: .bid, from: 1)   // 刚挂上，挂着
+    r.state.orderFlow?.orders = [flash, oneBar, fresh]
+    let f = frame(r)
+    #expect(!f.bands.contains { $0.key == OrderFlowGroupKey(flash) })
+    #expect(f.bands.contains { $0.key == OrderFlowGroupKey(oneBar) })
+    #expect(f.bands.contains { $0.key == OrderFlowGroupKey(fresh) })
+    #expect(f.bidTotal == 10_000_000, "图例按逐单还挂着的算")
+    // 碎屑不当桥：两段之间一条活不过一根的段，不把它们并成一堵。
+    let lo = wallOrder(r, step: step, bucket: b0 + 20, from: 30, to: 20)
+    var bridge = wallOrder(r, step: step, bucket: b0 + 21, from: 20, to: 20)
+    bridge.endMs = bridge.firstSeenMs + 1
+    let hi = wallOrder(r, step: step, bucket: b0 + 22, from: 20, to: 10)
+    r.state.orderFlow?.orders = [lo, bridge, hi]
+    #expect(frame(r).bands.count == 2)
+    #expect(OrderFlowGroup.groups([lo, bridge, hi], step: step).count == 1, "不去碎屑时三段连成一堵")
+    #expect(OrderFlowGroup.groups([lo, bridge, hi], minLifeMs: b.step, step: step).count == 2)
+  }
+
+  @Test("屏内排名：前 6 名主（整条、最细 3 pt、写金额），7–18 名次（2 pt、不写），其余底噪（1 pt、35%）；挂着的底噪升成次")
+  func rankRoles() throws {
+    var (r, step, b0) = wallRenderer()
+    let pane = r.layout(size: Self.size).main
+    let count = 25
+    let pitch = (pane.h - 40) / Double(count)
+    #expect(pitch >= 9, "主图够高才摆得开：\(pane.h)")
+    // 一桶一堵，桶号隔开两格（不并墙）；名义从大到小，价从上往下错开，互不相碍。
+    var orders: [BigOrder] = []
+    for i in 0..<count {
+      let p = price(r, atY: pane.y + 20 + pitch * Double(i))
+      var o = wallOrder(r, step: step, bucket: b0 + Int64(3 * i), from: 30, to: i == count - 1 ? nil : 5,
+                        notional: Double(40 - i) * 1_250_000)
+      o.price = p
+      o.threshold = 5_000_000  // 名义正好是门槛四分之一格的整数倍：排名没有并列
+      orders.append(o)
+    }
+    r.state.orderFlow?.orders = orders.shuffled()
+    let f = frame(r)
+    #expect(f.bands.count == count)
+    let byKey = Dictionary(uniqueKeysWithValues: f.bands.map { ($0.key, $0) })
+    for (i, o) in orders.enumerated() {
+      let band = try #require(byKey[OrderFlowGroupKey(o)])
+      let want: ChartRenderer.OrderFlowRole = i < 6 ? .main : i < 18 ? .secondary : i == count - 1 ? .secondary : .noise
+      #expect(band.role == want, "第 \(i + 1) 名")
+      switch want {
+      case .main: #expect(band.frame.height >= 3 && band.alpha == 1)
+      case .secondary: #expect(band.thin || band.frame.height == 2); #expect(band.alpha == 1)
+      case .noise: #expect(band.frame.height == 1 && band.alpha == 0.35 && !band.thin)
+      }
+      #expect(abs(band.frame.midY - y(r, o.price)) < 1e-9, "不挪位")
+    }
+    #expect(f.labels.allSatisfy { l in byKey[l.key]?.role == .main }, "只有主写金额")
+    #expect(!f.labels.isEmpty)
+    // 画的先后：底噪在最下面。
+    let firstNonNoise = try #require(f.bands.firstIndex { $0.role != .noise })
+    #expect(f.bands[..<firstNonNoise].allSatisfy { $0.role == .noise })
+    #expect(f.bands[firstNonNoise...].allSatisfy { $0.role != .noise })
+    // 名义一样的先起的在前。
+    var tieEarly = orders[0]; tieEarly.firstSeenMs -= 60_000
+    let e = try #require(OrderFlowGroup(key: OrderFlowGroupKey(tieEarly), members: [tieEarly]))
+    let l = try #require(OrderFlowGroup(key: OrderFlowGroupKey(orders[0]), members: [orders[0]]))
+    #expect(OrderFlowGroup.drawOrder(e, l) && !OrderFlowGroup.drawOrder(l, e))
+    // 每帧现排、结果确定：换个顺序给同一批单，画出来一样。
+    let again = frame(r)
+    r.state.orderFlow?.orders = orders.reversed()
+    #expect(frame(r) == again)
+    // 画到像素上：底噪是淡的。
+    let L = r.layout(size: Self.size)
+    let image = UIGraphicsImageRenderer(size: Self.size).image { context in
+      #expect(r.drawOrderFlow(context.cgContext, pane: L.main, range: r.priceRange(size: Self.size), L: L) == count)
+    }
+    #expect(image.cgImage != nil)
+  }
+
   @Test("纵向去挤：按名义从大到小落带，和已落下的纵向重叠（含 1 pt 间隙）的小带压成 1.5 pt 细线，不挪位、仍点得中")
   func thinLines() throws {
     var (r, orders) = Self.renderer()
@@ -334,7 +541,7 @@ struct OrderFlowChartTests {
     let nearPrice = price(r, atY: cy - 3)
     let near = Self.order(.coinPerp, .ask, price: nearPrice, firstSeen: seen, bucket: 2)
     // 远：往上 20 pt，互不相碍。
-    let far = Self.order(.delivery, .ask, price: price(r, atY: cy - 20), firstSeen: seen, bucket: 3)
+    let far = Self.order(.delivery, .ask, price: price(r, atY: cy - 20), firstSeen: seen, bucket: 5)
     r.state.orderFlow?.orders = [small, near, big, far]
     let f = frame(r)
     let bigBand = try #require(f.bands.first { $0.key == OrderFlowGroupKey(big) })
@@ -363,11 +570,11 @@ struct OrderFlowChartTests {
     r.state.orderFlow?.orders = [big, before]
     #expect(frame(r).bands.allSatisfy { !$0.thin })
 
-    // 纵向隔 1 pt 以上也不挤：6 pt 大带下沿 + 1 pt 间隙之外摆一条 2 pt 小带。
-    let gapPrice = price(r, atY: cy + 3 + 1 + 1 + 0.2)
+    // 纵向隔 1 pt 以上也不挤：6 pt 大带下沿 + 1 pt 间隙之外摆一条小带（主带最细 3 pt）。
+    let gapPrice = price(r, atY: cy + 3 + 1 + 1.5 + 0.2)
     let apart = Self.order(.spot, .bid, price: gapPrice, firstSeen: seen, notional: 1_500_000, initial: 1_500_000,
                            threshold: 1_000_000, bucket: 7)
-    let touching = Self.order(.spot, .ask, price: price(r, atY: cy - 3 - 1 - 1 + 0.2), firstSeen: seen,
+    let touching = Self.order(.spot, .ask, price: price(r, atY: cy - 3 - 1 - 1.5 + 0.2), firstSeen: seen,
                               notional: 1_500_000, initial: 1_500_000, threshold: 1_000_000, bucket: 8)
     r.state.orderFlow?.orders = [big, apart, touching]
     let g = frame(r)
@@ -397,11 +604,11 @@ struct OrderFlowChartTests {
     #expect(ChartRenderer.orderFlowLabelInk("#E1D610") == "#141414")
     #expect(ChartRenderer.orderFlowLabelInk("#CF09E7") == "#FFFFFF")
 
-    // 窄带（只挂了一根就撤了）不写。
+    // 窄带（挂了一根多就撤了，两根宽）不写。活不过一根的已结束段整条不画，见 `shortLivedDropped`。
     let b = r.state.series
     let p = orders[0].price, cy = y(r, p)
     let narrow = Self.order(.usdtPerp, .bid, price: p, firstSeen: b.time(at: b.count - 8) + 1,
-                            end: b.time(at: b.count - 8) + 2, status: .cancelled, bucket: 1)
+                            end: b.time(at: b.count - 7) + 2, status: .cancelled, bucket: 1)
     r.state.orderFlow?.orders = [narrow]
     let n = frame(r)
     #expect(n.bands.count == 1 && n.bands[0].frame.width < 48)
