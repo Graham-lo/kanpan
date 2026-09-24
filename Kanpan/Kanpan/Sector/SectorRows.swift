@@ -104,12 +104,19 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
 
 /// 板块页那张整页列表的顺序：按当前窗口的涨跌幅降序，兜底桶和普通板块一视同仁。
 ///
+/// 有行情成员不到 `minEligibleMembers` 个的板块整档排在后面（`desci` 就一只 BIO）：
+/// 它的「中位数」就是那一两只币自己的涨跌，拿来和几十只成员的板块比强弱，
+/// 一只币拉一根就能顶到第一。这一档自己之间仍按涨跌幅排，板块照样列着、点得进去。
+///
 /// 算不出数的（NaN / ±∞）压到最后，并列按 id 排——NaN 参与 `>` 时比较恒假，排序谓词
 /// 就不再是严格弱序，同一份数据两次刷新能排出两个顺序，行会自己换位（和品种列表那条
 /// 规矩一样，审查 B.5）。
 enum SectorBoardOrder {
   static func sorted(_ stats: [SectorStat]) -> [SectorStat] {
     stats.sorted { a, b in
+      let thinA = a.memberCount < SectorAggregator.minEligibleMembers
+      let thinB = b.memberCount < SectorAggregator.minEligibleMembers
+      if thinA != thinB { return thinB }
       let x = a.pct.isFinite ? a.pct : -.infinity
       let y = b.pct.isFinite ? b.pct : -.infinity
       return x == y ? a.id < b.id : x > y

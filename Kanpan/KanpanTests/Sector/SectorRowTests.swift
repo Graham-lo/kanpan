@@ -135,6 +135,16 @@ struct SectorRowTests {
     #expect(SectorBoardOrder.sorted(got.reversed()).map(\.id) == got.map(\.id))
   }
 
+  @Test("成员不到三只的板块整档排在后面，一只币拉一根也顶不到第一")
+  func thinBoardsSinkBelowRealSectors() {
+    let got = SectorBoardOrder.sorted([
+      board("desci", pct: 38, members: 1), board("pair", pct: 12, members: 2),
+      board("ai", pct: 4), board("meme", pct: -2), board("nan", pct: .nan),
+    ])
+    #expect(got.map(\.id) == ["ai", "meme", "nan", "desci", "pair"])
+    #expect(SectorBoardOrder.sorted(got.reversed()).map(\.id) == got.map(\.id))
+  }
+
   @Test("每行副文案：N 个品种 · x/N 跑赢大盘 · 成交额")
   func boardSubtitleSpellsOutTheBenchmark() {
     #expect(SectorSubtitle.row(board("l1", pct: 1, members: 5, breadth: 0.6))
