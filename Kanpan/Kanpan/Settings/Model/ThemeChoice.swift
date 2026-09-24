@@ -8,11 +8,10 @@ import KanpanCore
 ///
 /// 这一层只决定**颜色**。K 线底座的形状、尺寸，以及指标那几行读数的排布，
 /// 一个字都不经过这里——换配色换的只有 `PaletteSeed` 里那十几个色值。
-enum ThemeSkin: String, Sendable, Codable, CaseIterable, Hashable {
-  case sage
-  case terra
-  case classic
+typealias ThemeSkin = Skin
 
+/// 皮肤身份（`Skin`）跟着种子走、住在主题层；这里只补界面上给人看的那几个字。
+extension Skin {
   var display: String {
     switch self {
     case .sage: "青苔"
@@ -30,13 +29,7 @@ enum ThemeSkin: String, Sendable, Codable, CaseIterable, Hashable {
     }
   }
 
-  func seed(dark: Bool) -> PaletteSeed {
-    switch self {
-    case .sage: dark ? Palette.sageNightSeed : Palette.sageSeed
-    case .terra: dark ? Palette.terraNightSeed : Palette.terraSeed
-    case .classic: dark ? Palette.classicNightSeed : Palette.classicSeed
-    }
-  }
+  func seed(dark: Bool) -> PaletteSeed { Palette.seed(self, dark: dark) }
 
   static let fallback: ThemeSkin = .sage
 }

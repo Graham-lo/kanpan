@@ -126,6 +126,36 @@ struct SkinPaletteTests {
     #expect(Palette.chart(Palette.sageNightSeed).hair == "#FFFFFF0A")
   }
 
+  /// 皮肤身份由种子自己报，不看颜色：给经典换一支底色，它仍然是经典（审查 2026-09-24 §1.4）。
+  @Test("皮肤身份不靠比颜色")
+  func skinIdentityIsDeclared() {
+    for skin in Skin.allCases {
+      for dark in [false, true] {
+        #expect(Palette.seed(skin, dark: dark).skin == skin)
+        #expect(Palette.seed(skin, dark: dark).dark == dark)
+      }
+    }
+    var retinted = Palette.classicSeed
+    retinted.ground = Palette.sageSeed.ground
+    #expect(Palette.isClassic(retinted), "底色撞上青苔也还是经典")
+    #expect(!Palette.isWarm(retinted))
+  }
+
+  /// 十二份图表色是一次算好的只读表；表外的种子现算，不会拿到表里那一格的旧值。
+  @Test("图表色表：六套种子 × 红涨绿涨，表外种子现算")
+  func chartTable() {
+    for seed in Self.seeds {
+      let plain = Palette.chart(seed), flipped = Palette.chart(seed, redUp: true)
+      #expect(plain.up == seed.up && plain.down == seed.down)
+      #expect(flipped.up == seed.down && flipped.down == seed.up)
+      #expect(Palette.chart(seed) == plain, "同一套种子每次拿到的是同一份")
+    }
+    var custom = Palette.sageSeed
+    custom.amber = "#123456"
+    #expect(Palette.chart(custom).amber == "#123456")
+    #expect(Palette.chart(Palette.sageSeed).amber == Palette.sageSeed.amber)
+  }
+
   /// 经典只是青苔换了底：底、面、线是 AICoin 的白 / 深蓝，其余每一个令牌都和青苔相同。
   @Test("浅色三套皮肤的 K 线色都是 AICoin 那一套；经典只换底")
   func lightSkinsShareAICoinKLine() {

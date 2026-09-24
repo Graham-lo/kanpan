@@ -35,6 +35,16 @@ public struct Hex: Sendable, Equatable, Hashable, Codable, ExpressibleByStringLi
   public func alpha(_ aa: String) -> Hex { Hex(value + aa) }
 }
 
+/// 三套皮肤：青苔（冷，出厂）、陶土（暖）、经典（白）。
+///
+/// 皮肤是谁，由种子**自己报**，不再拿颜色去比。以前 `isWarm` / `isClassic` 是拿 `ground`
+/// 和陶土、经典两套种子的底色逐字比出来的（审查 2026-09-24 §1.4）：哪天给经典的底换一支
+/// 更准的白，「它是不是经典」这个判断就悄悄翻了——自选页、板块页的底跟着换错，而且没有
+/// 任何一条测试会红。存档与同步走 rawValue，三个名字都不能改。
+public enum Skin: String, Sendable, Codable, CaseIterable, Hashable {
+  case sage, terra, classic
+}
+
 /// 一套配色的原始令牌。
 ///
 /// `amber` 是**画在图上**的那支暖色（BOLL 中轴、画线手柄）；`accent` 是**界面**的强调色
@@ -42,6 +52,8 @@ public struct Hex: Sendable, Equatable, Hashable, Codable, ExpressibleByStringLi
 /// 界面强调色是配色自己的主色（青苔的墨绿、陶土的赤陶），而图上那支暖色仍要和
 /// K 线、均线区分得开——合成一支的话，要么图上多一支绿线和涨色撞，要么界面变土黄。
 public struct PaletteSeed: Sendable, Equatable {
+  /// 这套种子属于哪张皮肤。冷暖、是不是「经典」都只问它。
+  public var skin: Skin
   public var dark: Bool
   public var ground, app, chart, raised, raised2: Hex
   public var line, grid, hair: Hex
@@ -68,10 +80,11 @@ public struct PaletteSeed: Sendable, Equatable {
   /// 按周期挑的颜色不是一个顺序，所以「经典」得单独给一组。
   public var sub: [Hex]
 
-  public init(dark: Bool, ground: Hex, app: Hex, chart: Hex, raised: Hex, raised2: Hex,
+  public init(skin: Skin, dark: Bool, ground: Hex, app: Hex, chart: Hex, raised: Hex, raised2: Hex,
               line: Hex, grid: Hex, hair: Hex, ink: Hex, ink2: Hex, ink3: Hex,
               up: Hex, down: Hex, amber: Hex, accent: Hex? = nil, danger: Hex, palette: [Hex],
               sub: [Hex]? = nil) {
+    self.skin = skin
     self.dark = dark
     self.ground = ground; self.app = app; self.chart = chart
     self.raised = raised; self.raised2 = raised2
@@ -129,7 +142,7 @@ public enum Palette: Sendable {
 
   /// 青苔 · 浅。全新安装就是这一套。
   public static let sageSeed = PaletteSeed(
-    dark: false,
+    skin: .sage, dark: false,
     ground: "#C3D6CA", app: "#F3F7F4", chart: "#F3F7F4", raised: "#FFFFFF", raised2: "#E7EFE9",
     line: "#D6E3DA", grid: "#E2EBE5", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
@@ -138,7 +151,7 @@ public enum Palette: Sendable {
 
   /// 青苔 · 深。
   public static let sageNightSeed = PaletteSeed(
-    dark: true,
+    skin: .sage, dark: true,
     ground: "#060A08", app: "#0B120F", chart: "#0B120F", raised: "#131C18", raised2: "#1A241F",
     line: "#25332C", grid: "#1A241F", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
@@ -149,7 +162,7 @@ public enum Palette: Sendable {
 
   /// 陶土 · 浅。
   public static let terraSeed = PaletteSeed(
-    dark: false,
+    skin: .terra, dark: false,
     ground: "#D9C7B4", app: "#FBF6F0", chart: "#FBF6F0", raised: "#FFFFFF", raised2: "#F2E8DE",
     line: "#E7DACB", grid: "#F0E6DA", hair: "#241A130F",
     ink: "#241A13", ink2: "#6E5C4D", ink3: "#756659",
@@ -158,7 +171,7 @@ public enum Palette: Sendable {
 
   /// 陶土 · 深。
   public static let terraNightSeed = PaletteSeed(
-    dark: true,
+    skin: .terra, dark: true,
     ground: "#0C0805", app: "#16100C", chart: "#16100C", raised: "#211812", raised2: "#2A1F17",
     line: "#37281D", grid: "#2A1F17", hair: "#FFFFFF0A",
     ink: "#F7EFE6", ink2: "#C2AC98", ink3: "#958576",
@@ -182,7 +195,7 @@ public enum Palette: Sendable {
   /// 不要再拿通用列表的 `sh_base_divider_dim_fill_color` = `#DEE1E5`，那支在纯白页面上明显发灰。
   /// 涨跌与指标线色跟青苔 / 陶土浅色一样都是 AICoin 的（见 `aicoinDayUp` 一组）。
   public static let classicSeed = PaletteSeed(
-    dark: false,
+    skin: .classic, dark: false,
     ground: "#F7F8FA", app: "#FFFFFF", chart: "#FFFFFF", raised: "#FFFFFF", raised2: "#F3F5F7",
     line: "#EAEAEA", grid: "#EAEAEA", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
@@ -195,7 +208,7 @@ public enum Palette: Sendable {
   /// 涨跌取安卓包 `sh_base_text_color_green_night` / `_red_night`（`#2F9347` / `#CC3333`），
   /// 指标线沿用安卓默认槽位色。深色这组没在真机上量过（镜像后台点不动，切不了夜间模式）。
   public static let classicNightSeed = PaletteSeed(
-    dark: true,
+    skin: .classic, dark: true,
     ground: "#090C14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
     line: "#20232E", grid: "#20232E", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
@@ -246,21 +259,24 @@ public enum Palette: Sendable {
   public static let lightSeed = sageSeed
   public static let darkSeed = sageNightSeed
 
-  /// 暖色那一套（陶土）。渐变、徽章那几处要按冷暖分别让一让。
-  public static func isWarm(_ t: PaletteSeed) -> Bool {
-    t.ground == terraSeed.ground || t.ground == terraNightSeed.ground
+  /// 某张皮肤的浅 / 深那一套种子。全仓挑种子只走这一处。
+  public static func seed(_ skin: Skin, dark: Bool) -> PaletteSeed {
+    switch skin {
+    case .sage: dark ? sageNightSeed : sageSeed
+    case .terra: dark ? terraNightSeed : terraSeed
+    case .classic: dark ? classicNightSeed : classicSeed
+    }
   }
+
+  /// 暖色那一套（陶土）。渐变、徽章那几处要按冷暖分别让一让。
+  public static func isWarm(_ t: PaletteSeed) -> Bool { t.skin == .terra }
 
   /// K 线色是不是 AICoin 那套（浅色三套皮肤都是，深色只有经典）。对比度那几条测试对这些种子不设限：
   /// 它们的目标是「跟 AICoin 一样」，`#FFB400` 在白底上只有 1.8:1 也照抄。
-  public static func usesAICoinKLine(_ t: PaletteSeed) -> Bool {
-    t.palette == aicoinDayMA || t.palette == classicNightSeed.palette
-  }
+  public static func usesAICoinKLine(_ t: PaletteSeed) -> Bool { !t.dark || t.skin == .classic }
 
   /// 白底那一套（经典）。自选页的浅色底不再借「天青」，直接用种子自己的白。
-  public static func isClassic(_ t: PaletteSeed) -> Bool {
-    t.ground == classicSeed.ground || t.ground == classicNightSeed.ground
-  }
+  public static func isClassic(_ t: PaletteSeed) -> Bool { t.skin == .classic }
 
   /// 小字用的第三级墨色。六套种子都是手配的，直接用。
   public static func secondaryInk(_ t: PaletteSeed) -> Hex { t.ink3 }
@@ -293,25 +309,38 @@ public enum Palette: Sendable {
   ///
   /// `ChartState.colors` 是个计算属性，画一帧要读几十次；每读一次 `expanded` 就重拼
   /// 一遍 `.alpha()` 的十六进制串、重建一次调色板数组。可全仓一共就六套种子，
-  /// 结果永远是同样几份。这里挂一张小表：种子数量有限，线性比 `==` 就够，
-  /// 不用给 `PaletteSeed` 加 `Hashable`（那是公开 API，能不动就不动）。
-  private nonisolated(unsafe) static var chartCache: [(seed: PaletteSeed, redUp: Bool, value: ChartColors)] = []
-  private static let chartCacheLock = NSLock()
-
+  /// 结果永远是那十二份（六套 × 红涨 / 绿涨）。
+  ///
+  /// 所以这十二份在第一次用到时一次算好，之后是**只读**的表：按（皮肤, 深浅, 红涨）直接
+  /// 定位到那一格，再核一眼种子确实就是那一套，不加锁、不线性扫（审查 2026-09-24 §5）。
+  /// 以前是一张加锁的可变小表，每取一次色都要上锁、逐个比种子。
+  /// 表外的种子（只有用例会造）现算，不缓存。
   public static func chart(_ t: PaletteSeed, redUp: Bool = false) -> ChartColors {
-    chartCacheLock.lock()
-    if let hit = chartCache.first(where: { $0.redUp == redUp && $0.seed == t }) {
-      chartCacheLock.unlock()
-      return hit.value
+    let hit = chartTable[chartSlot(t.skin, dark: t.dark, redUp: redUp)]
+    return hit.seed == t ? hit.value : derive(t, redUp: redUp)
+  }
+
+  private static func chartSlot(_ skin: Skin, dark: Bool, redUp: Bool) -> Int {
+    let row = switch skin { case .sage: 0; case .terra: 1; case .classic: 2 }
+    return row * 4 + (dark ? 2 : 0) + (redUp ? 1 : 0)
+  }
+
+  private static let chartTable: [(seed: PaletteSeed, value: ChartColors)] = {
+    var table: [(seed: PaletteSeed, value: ChartColors)] = []
+    for skin in [Skin.sage, .terra, .classic] {  // 与 chartSlot 的行号同序
+      for dark in [false, true] {
+        for redUp in [false, true] {
+          let s = seed(skin, dark: dark)
+          table.append((s, derive(s, redUp: redUp)))
+        }
+      }
     }
-    chartCacheLock.unlock()
+    return table
+  }()
+
+  private static func derive(_ t: PaletteSeed, redUp: Bool) -> ChartColors {
     var result = expanded(t)
     if redUp { swap(&result.up, &result.down) }
-    chartCacheLock.lock()
-    // 皮肤是用户挑的，种类有限；真要被自定义种子撑大了就整只倒掉重来。
-    if chartCache.count >= 32 { chartCache.removeAll(keepingCapacity: true) }
-    chartCache.append((t, redUp, result))
-    chartCacheLock.unlock()
     return result
   }
 
