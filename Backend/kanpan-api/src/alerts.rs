@@ -457,8 +457,8 @@ pub struct WebhookFill<'a> {
 pub fn webhook_name(market:&str,symbol:&str)->String {
  if market==BINANCE {symbol.strip_suffix("USDT").filter(|b|!b.is_empty()).unwrap_or(symbol).to_string()} else {symbol.replace('-',"/")}
 }
-/// `{条件}`：`碰到` / `收盘穿过`。
-fn condition_word(c:Condition)->&'static str {match c {Condition::Touch=>"碰到",Condition::Close=>"收盘穿过"}}
+/// `{条件}`：`价格达到` / `收盘穿过`（2026-09-25 用户：「碰到改成价格达到」）。
+fn condition_word(c:Condition)->&'static str {match c {Condition::Touch=>"价格达到",Condition::Close=>"收盘穿过"}}
 fn condition_key(c:Condition)->&'static str {match c {Condition::Touch=>"touch",Condition::Close=>"close"}}
 /// `{时间}`：ISO 8601、UTC、到秒，`2026-09-24T16:44:00Z`。
 pub fn iso_time(at:i64)->String {
@@ -1706,9 +1706,9 @@ mod tests {
  /// 模板渲染逐字对：契约里那一句默认文案。
  #[test] fn the_default_webhook_text_reads_exactly_like_the_contract() {
   let f=WebhookFill{market:BINANCE,symbol:"BTCUSDT",condition:Condition::Touch,target:Some(84_662.2),price:84_670.5,at:1_758_732_240_000,note:""};
-  assert_eq!(render_webhook_text(None,&f),"BTC 碰到 84,662.2，现价 84,670.5");
-  assert_eq!(render_webhook_text(Some(""),&f),"BTC 碰到 84,662.2，现价 84,670.5","空模板用默认");
-  assert_eq!(render_webhook_text(Some("  "),&f),"BTC 碰到 84,662.2，现价 84,670.5","全是空白也算空");
+  assert_eq!(render_webhook_text(None,&f),"BTC 价格达到 84,662.2，现价 84,670.5");
+  assert_eq!(render_webhook_text(Some(""),&f),"BTC 价格达到 84,662.2，现价 84,670.5","空模板用默认");
+  assert_eq!(render_webhook_text(Some("  "),&f),"BTC 价格达到 84,662.2，现价 84,670.5","全是空白也算空");
  }
  /// 每一个占位符都换得对；认不得的、没合上的原样留着；备注里的占位符不会被二次替换。
  #[test] fn every_webhook_placeholder_is_filled_once() {
@@ -1750,7 +1750,7 @@ mod tests {
   assert_eq!(webhook_body(&hooked(None),84_670.5,at),json!({
    "event":"alert","alertId":"binance/usd_m/BTCUSDT/a1","symbol":"BTCUSDT","market":"binance/usd_m","name":"BTC",
    "title":"BTC 涨到 84,662.2","condition":"touch","once":true,"target":84_662.2,"price":84_670.5,"firedAt":at,
-   "time":"2025-09-24T16:44:00Z","note":"","text":"BTC 碰到 84,662.2，现价 84,670.5"}));
+   "time":"2025-09-24T16:44:00Z","note":"","text":"BTC 价格达到 84,662.2，现价 84,670.5"}));
   let mut w=hooked(Some("突破加仓"));w.webhook_text=Some("{品种} {备注}".into());w.title=String::new();
   let body=webhook_body(&w,84_670.5,at);
   assert_eq!(body["note"],json!("突破加仓"));assert_eq!(body["text"],json!("BTC 突破加仓"));
@@ -1813,7 +1813,7 @@ mod tests {
    assert_eq!(header(&head,"user-agent"),Some("Hkline-Alerts/1"),"不是共享客户端的浏览器 UA");
    let sent:Value=serde_json::from_slice(&bytes).unwrap();
    assert_eq!(sent,body);
-   assert_eq!(sent["text"],json!("BTC 碰到 84,662.2，现价 84,670.5"));
+   assert_eq!(sent["text"],json!("BTC 价格达到 84,662.2，现价 84,670.5"));
   }
   assert!(rx.try_recv().is_err(),"成了就不再发");
  }
