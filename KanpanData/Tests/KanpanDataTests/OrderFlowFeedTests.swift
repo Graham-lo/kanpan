@@ -263,6 +263,14 @@ struct OrderFlowFeedTests {
                         dir: nil, frames: frames)
     await feed.start()
     #expect(await waitUntil(5) { await frames.last?.thresholds.step == 1 })
+    // 审查 30：帧里带「叠用户改过的项之前」的默认——按成交额分过档（app 自己查表只落到第三档），
+    // 按收盘推的步长不算默认；用户改了门槛，默认不跟着变。
+    let top = OrderFlowDefaults.thresholds(base: "XYZ", asset: .crypto, turnover24h: 1e10)
+    #expect(top != OrderFlowDefaults.thresholds(base: "XYZ", asset: .crypto, turnover24h: nil))
+    #expect(await frames.last?.defaults == top)
+    await feed.setOverride(OrderFlowOverride(spot: 900_000_000))
+    #expect(await waitUntil(5) { await frames.last?.thresholds.spot == 900_000_000 })
+    #expect(await frames.last?.defaults == top)
     await feed.stop()
   }
 

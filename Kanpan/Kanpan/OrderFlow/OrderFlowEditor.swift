@@ -34,6 +34,8 @@ struct OrderFlowEditor: View {
   }
 
   private var facts: OrderFlowFacts? { link?.currentFacts.flatMap { OrderFlowBase.isValid($0.overrideKey) ? $0 : nil } }
+  /// 行情流算好的默认（按成交额分过档）；还没来就是 nil。
+  private var feedDefaults: OrderFlowThresholds? { link?.feedDefaults(symbol: symbol) }
   private var effective: OrderFlowThresholds? { link?.effectiveThresholds(symbol: symbol) }
   private var products: [OrderFlowProduct] { OrderFlowProduct.allCases.filter { effective?[$0] != nil } }
 
@@ -145,12 +147,13 @@ struct OrderFlowEditor: View {
     }
   }
 
-  /// 默认表里这一格的数（恢复默认后显示用）。步长默认按收盘推，表里没有就沿用此刻生效的那个。
+  /// 默认的那一格（恢复默认后显示用）：行情流给的那份优先，还没来就按品种事实查表（成交额不知道，
+  /// 可能低一档）。步长表里没有就是 nil，框里写「自动」。
   private func defaultValue(_ field: OrderFlowField) -> Double? {
-    guard let facts else { return nil }
+    guard let defaults = feedDefaults ?? facts?.defaults else { return nil }
     switch field {
-    case .threshold(let product): return facts.defaults[product]
-    case .step: return facts.defaults.step
+    case .threshold(let product): return defaults[product]
+    case .step: return defaults.step
     }
   }
 
@@ -170,18 +173,33 @@ struct OrderFlowEditor: View {
     for field in typing.keys { commit(field) }
     let next = display
     guard let facts else { store.update { $0.orderFlowDisplay = next }; return }
-    let base = facts.overrideKey, defaults = facts.defaults
-    var override = resetting ? OrderFlowOverride() : (store.prefs.orderFlowOverrides[base] ?? OrderFlowOverride())
-    for (field, value) in edited {
-      switch field {
-      case .threshold(let product): override[product] = value == defaults[product] ? nil : value
-      case .step: override.step = value == defaults.step ? nil : value
-      }
-    }
+    let base = facts.overrideKey
+    let override = Self.override(defaults: feedDefaults, existing: resetting ? nil : store.prefs.orderFlowOverrides[base],
+                                 edited: edited)
     store.update {
       $0.orderFlowDisplay = next
       $0.setOrderFlowOverride(override, for: base)
     }
+  }
+
+  /// 保存时写进改动表的那一份（纯函数，`OrderFlowPrefsTests` 测它）：在原来那份上改打过的那几格；
+  /// 和默认一样的格拿掉（跟着默认走，默认换档时它也跟着换）。
+  ///
+  /// `defaults` 只认行情流给的那份（`OrderFlowSnapshot.defaults`）：app 自己查表不知道成交额，
+  /// 只会落到第三档——拿它比，用户照着真实默认打的数不会被存，打一个恰好等于第三档的数反倒被当成
+  /// 「和默认一样」丢掉（审查第 30 项）。所以还没拿到时一格都不拿掉，打了什么存什么。
+  nonisolated static func override(defaults: OrderFlowThresholds?, existing: OrderFlowOverride?,
+                       edited: [OrderFlowField: Double]) -> OrderFlowOverride {
+    var override = existing ?? OrderFlowOverride()
+    for (field, value) in edited {
+      switch field {
+      case .threshold(let product):
+        override[product] = defaults.map { value == $0[product] } == true ? nil : value
+      case .step:
+        override.step = defaults.map { value == $0.step } == true ? nil : value
+      }
+    }
+    return override
   }
 
   /// 框里的数：整数不带小数点，小数去掉尾零。

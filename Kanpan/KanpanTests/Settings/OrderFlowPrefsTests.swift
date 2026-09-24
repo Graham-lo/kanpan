@@ -86,4 +86,43 @@ struct OrderFlowPrefsTests {
       #expect(PrefsFieldPlan.table[retired] == nil && !Prefs.syncedFieldNames.contains(retired), "\(retired)")
     }
   }
+
+  // MARK: 面板保存（审查 30）
+
+  /// 行情流按成交额分到最高档的那份默认：合约 500 万、现货 100 万（app 自己查表不知道成交额，只落到第三档）。
+  private static let btcTop = OrderFlowThresholds(spot: 1_000_000, usdtPerp: 5_000_000, coinPerp: 5_000_000,
+                                                  delivery: 5_000_000, step: 100)
+
+  @Test("保存：只改打过的格，和行情流给的默认一样的格拿掉")
+  func overrideStripsCellsEqualToFeedDefaults() {
+    let existing = OrderFlowOverride(spot: 2_000_000, coinPerp: 7_000_000)
+    let next = OrderFlowEditor.override(defaults: Self.btcTop, existing: existing,
+                                        edited: [.threshold(.usdtPerp): 8_000_000, .threshold(.spot): 1_000_000,
+                                                 .step: 100])
+    #expect(next == OrderFlowOverride(usdtPerp: 8_000_000, coinPerp: 7_000_000))
+  }
+
+  @Test("保存：行情流的默认还没来就一格不拿掉——打了什么存什么，不拿查表那份第三档去比")
+  func overrideKeepsEverythingBeforeFeedDefaultsArrive() {
+    let next = OrderFlowEditor.override(defaults: nil, existing: nil,
+                                        edited: [.threshold(.usdtPerp): 5_000_000, .step: 100])
+    #expect(next == OrderFlowOverride(usdtPerp: 5_000_000, step: 100))
+  }
+
+  @Test("保存：恢复默认（不带原来那份）后什么都没打就是空，整只从改动表里拿掉")
+  func overrideAfterResetIsEmpty() {
+    var prefs = Prefs.defaults
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000), for: "DOGE")
+    let next = OrderFlowEditor.override(defaults: Self.btcTop, existing: nil, edited: [:])
+    #expect(next.isEmpty)
+    prefs.setOrderFlowOverride(next, for: "DOGE")
+    #expect(prefs.orderFlowOverrides["DOGE"] == nil)
+  }
+
+  @Test("保存：默认表里没有步长（按收盘推）时打的步长照存")
+  func overrideStoresStepWhenDefaultIsAutomatic() {
+    var auto = Self.btcTop; auto.step = nil
+    let next = OrderFlowEditor.override(defaults: auto, existing: nil, edited: [.step: 0.0002])
+    #expect(next == OrderFlowOverride(step: 0.0002))
+  }
 }

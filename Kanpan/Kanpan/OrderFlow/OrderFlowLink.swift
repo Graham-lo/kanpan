@@ -96,6 +96,14 @@ final class OrderFlowLink {
     return facts.defaults.applying(overrides[facts.overrideKey])
   }
 
+  /// 行情流算好的这只品种的默认门槛与步长（`OrderFlowSnapshot.defaults`，按成交额分过档）。
+  /// 这只的帧还没来（或只是「拉快照中」的占位）就是 nil。
+  func feedDefaults(symbol: String) -> OrderFlowThresholds? {
+    guard let snapshot, InstrumentID.canonical(snapshot.symbol) == InstrumentID.canonical(symbol),
+          OrderFlowProduct.allCases.contains(where: { snapshot.defaults[$0] != nil }) else { return nil }
+    return snapshot.defaults
+  }
+
   /// 给图表的值：关着或横屏画线台是 nil；订着但这只品种的帧还没到，就先给「拉快照中」，
   /// 图例一直占着那一行，切品种时图不会上下跳一下。
   func chartValue(symbol: String, drawingCanvasOnly: Bool) -> OrderFlowSnapshot? {

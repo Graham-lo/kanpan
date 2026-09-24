@@ -27,6 +27,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
       env["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/SOLUSDT?interval=1m"
     }
     if name.contains("Coinbase") { env["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/coinbase/spot/BTC-USD?interval=1m" }
+    if name.contains("Doge") { env["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/DOGEUSDT?interval=1m" }
     // 线路种子只在「档案里还没有存档」时生效（PrefsStore），所以取证用例每条都从一份新档案起步，
     // 不吃这台模拟器上一轮留下的线路 / 皮肤；只有首屏实测那条要用固定档案。
     env["KANPAN_PERSISTENCE_PROFILE"] = name.contains("ColdStartProfile") ? Self.coldStartProfile : UUID().uuidString
@@ -242,6 +243,60 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     shot("只看现货")
   }
 
+  /// 表外币（DOGE，没有固定门槛表，默认按 24h 成交额分档）的参数表保存（审查第 30 项）。
+  /// app 自己查表不知道成交额，只会落到第三档（永续 100 万）；面板比「等于默认就不存」时必须拿行情流给的
+  /// 那份默认比：照着真实默认打不算改动；打一个恰好等于第三档的数（真实档位不是第三档时）要真的存下、
+  /// 真的到簿那一层，不能被当成「和默认一样」吞掉。
+  func testDogeThresholdEditUsesFeedDefaults() {
+    executionTimeAllowance = 900
+    XCTAssertTrue(waitUntil(timeout: 60, poll: 0.5) {
+      (self.chartInfo()["symbol"] as? String ?? "").hasSuffix("/DOGEUSDT") && (self.chartInfo()["bars"] as? Int ?? 0) >= 20
+    }, "深链开 DOGEUSDT 没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    XCTAssertTrue(waitUntil(timeout: 90, poll: 1) {
+      self.chartInfo()["orderFlowPhase"] as? String == "ready" && self.thresholds()["usdtPerp"] != nil
+    }, "DOGE 的簿没就绪：\(chartInfo())")
+    let lookup = OrderFlowTierProbe.unknownTurnoverPerpetual
+    // DOGE 的成交额若恰好落在第三档（5 亿–20 亿），查表与真实默认相同、碰不到这个 bug；换成交额低一档的
+    // LTC / LINK（通常 1 亿–5 亿，永续默认 50 万）再看。
+    var symbol = "DOGEUSDT"
+    for next in ["LTCUSDT", "LINKUSDT"] where thresholds()["usdtPerp"] == lookup {
+      print("取证|DOGE|\(symbol) 的真实默认恰是第三档，换 \(next)")
+      app.open(URL(string: "hkline://symbol/\(next)?interval=1m")!)
+      symbol = next
+      XCTAssertTrue(waitUntil(timeout: 90, poll: 1) {
+        (self.chartInfo()["symbol"] as? String ?? "").hasSuffix("/" + next)
+          && self.chartInfo()["orderFlowPhase"] as? String == "ready" && self.thresholds()["usdtPerp"] != nil
+      }, "\(next) 的簿没就绪：\(chartInfo())")
+    }
+    guard let real = thresholds()["usdtPerp"] else { return }
+    print("取证|DOGE|\(symbol) 行情流默认 U本位永续 \(Int(real))|app 查表 \(Int(lookup))|触到第 30 项=\(real != lookup)")
+
+    // ① 照着真实默认打：不算改动。
+    openOrderFlowEditor()
+    retype("orderflow.threshold.usdtPerp.field", String(Int(real)))
+    app.buttons["orderflow.save"].tap()
+    let edit = app.buttons["indicator.edit.ORDERFLOW"].firstMatch
+    XCTAssertTrue(edit.waitForExistence(timeout: Self.short))
+    XCTAssertFalse(waitUntil(timeout: 2) { edit.label.contains("已改门槛") },
+                   "照着行情流的默认 \(Int(real)) 打，却被存成了改动：\(edit.label)")
+
+    // ② 打一个和真实默认不同的数（真实档位不是第三档时就打第三档那个数）：要存下、要到簿那一层。
+    let target = real == lookup ? 2_500_000 : lookup
+    edit.tap()
+    expectExists(app.buttons["orderflow.save"], Self.short, "再点主力订单流没开出参数表")
+    retype("orderflow.threshold.usdtPerp.field", String(Int(target)))
+    shot("DOGE-参数表-改门槛")
+    app.buttons["orderflow.save"].tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { edit.exists && edit.label.contains("已改门槛") },
+                  "DOGE 改成 \(Int(target)) 保存后「正在用」没报已改门槛：\(edit.label)")
+    closePanels()
+    XCTAssertTrue(waitUntil(timeout: 20, poll: 0.5) { self.thresholds()["usdtPerp"] == target },
+                  "DOGE 新门槛 \(Int(target)) 没到簿那一层：\(thresholds())")
+    print("取证|DOGE|改后 thresholds=\(thresholds())")
+    shot("DOGE-改门槛后")
+  }
+
   // ------------------------------------------------------------ 3. 网关：OKX 替身
 
   func testGatewayOKX() {
@@ -300,4 +355,10 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: 30) { !(self.chartInfo()["orderFlowPhase"] as? String ?? "").isEmpty },
                   "打开开关后没开始订簿")
   }
+}
+
+/// 用例里要对照的「app 自己查表」那个数：成交额不知道时落在第三档，永续门槛 100 万
+/// （`OrderFlowDefaults.coinTiers[unknownTurnoverTier].perpetual`；UI 用例不链 KanpanCore，照抄一份）。
+private enum OrderFlowTierProbe {
+  static let unknownTurnoverPerpetual = 1_000_000.0
 }

@@ -383,7 +383,8 @@ public actor OrderFlowFeed {
   private func step() {
     guard !stopped else { return }
     let now = clock()
-    let frame = model.evaluate(nowMs: now)
+    var frame = model.evaluate(nowMs: now)
+    frame.defaults = Self.effective(facts: facts, turnover: turnover, override: nil, derivedStep: nil)
     if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
     if let last = lastEmitted, now - lastEmitMs < Self.heartbeatMs, Self.skip(frame, after: last,
                                                                              sinceLastMs: now - lastEmitMs,

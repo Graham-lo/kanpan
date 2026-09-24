@@ -127,12 +127,17 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   public var orders: [BigOrder]
   public var asOfMs: Int64
   public var thresholds: OrderFlowThresholds
+  /// 叠用户改过的项之前的门槛与步长（默认表按这只的成交额分档之后的那份；步长只有表里给了才有，
+  /// 按收盘推的不算默认）。面板的「恢复默认」与「和默认一样就不存」都拿它比（审查第 30 项）：
+  /// app 手里的品种事实没有成交额，自己查表只会落到「成交额不知道」那一档（第三档）。模型本身不知道，由数据层填。
+  public var defaults: OrderFlowThresholds
   public var venues: [OrderFlowVenueStatus]
 
   public init(symbol: String, phase: Phase, orders: [BigOrder], asOfMs: Int64,
-              thresholds: OrderFlowThresholds = OrderFlowThresholds(), venues: [OrderFlowVenueStatus] = []) {
+              thresholds: OrderFlowThresholds = OrderFlowThresholds(),
+              defaults: OrderFlowThresholds = OrderFlowThresholds(), venues: [OrderFlowVenueStatus] = []) {
     self.symbol = symbol; self.phase = phase; self.orders = orders; self.asOfMs = asOfMs
-    self.thresholds = thresholds; self.venues = venues
+    self.thresholds = thresholds; self.defaults = defaults; self.venues = venues
   }
 
   public static func loading(_ symbol: String, asOfMs: Int64 = 0) -> OrderFlowSnapshot {
@@ -143,7 +148,7 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   /// 名义与成交比例在同一格、同一档里的抖动不算变化。BTC 十几本簿、现价附近的名义几乎每一拍都在变，
   /// 按精确值比的话图表静止时也要每秒整层重画两次（审查第 31 项）。
   public func sameContent(as other: OrderFlowSnapshot) -> Bool {
-    guard symbol == other.symbol, phase == other.phase, thresholds == other.thresholds,
+    guard symbol == other.symbol, phase == other.phase, thresholds == other.thresholds, defaults == other.defaults,
           venues == other.venues, orders.count == other.orders.count else { return false }
     return zip(orders, other.orders).allSatisfy { $0.pixelKey == $1.pixelKey }
   }
@@ -151,7 +156,7 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   /// 除时间戳外逐字相同（十字线停在某一块上、读数要精确金额时用）。
   public func sameExactContent(as other: OrderFlowSnapshot) -> Bool {
     symbol == other.symbol && phase == other.phase && orders == other.orders
-      && thresholds == other.thresholds && venues == other.venues
+      && thresholds == other.thresholds && defaults == other.defaults && venues == other.venues
   }
 }
 
