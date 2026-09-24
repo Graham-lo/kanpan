@@ -273,7 +273,7 @@ impl Model {
      Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.peak=l.peak.max(v.notional);l.seen=now;l.ending=None;},
      // 这一档在快照覆盖范围以外、增量也没推过（币安 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
      // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判。
-     other if !book.knows(key.0,l.order.price)=>{l.seen=now;},
+     _ if !book.knows(key.0,l.order.price)=>{l.seen=now;},
      other=>{
       let mut p=l.ending.unwrap_or(Pending{first:now,samples:0,remaining:0.0});
       p.samples+=1;
