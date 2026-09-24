@@ -1,0 +1,108 @@
+{
+  "interval" : "1m",
+  "orderFlowBands" : [
+    {
+      "alpha" : 1,
+      "books" : 3,
+      "buckets" : 2,
+      "color" : "#4096CE",
+      "dark" : false,
+      "h" : 2.5,
+      "id" : "contract|bid|1745|1790285276956",
+      "live" : true,
+      "members" : 3,
+      "notional" : 2032784.5505999997,
+      "priceHigh" : 1747,
+      "priceLow" : 1745,
+      "product" : "contract",
+      "role" : "main",
+      "side" : "bid",
+      "spanBottom" : 309.77765189199152,
+      "spanTop" : 270.33593427099322,
+      "thin" : false,
+      "tier" : 1,
+      "w" : 8,
+      "x" : 385,
+      "y" : 285.3184653073273
+    },
+    {
+      "alpha" : 1,
+      "books" : 1,
+      "buckets" : 1,
+      "color" : "#4096CE",
+      "dark" : false,
+      "h" : 2.5,
+      "id" : "contract|bid|1751|1790285276956",
+      "live" : true,
+      "members" : 1,
+      "notional" : 663895.79330000002,
+      "priceHigh" : 1752,
+      "priceLow" : 1751,
+      "product" : "contract",
+      "role" : "main",
+      "side" : "bid",
+      "spanBottom" : -1,
+      "spanTop" : -1,
+      "thin" : false,
+      "tier" : 0,
+      "w" : 8,
+      "x" : 385,
+      "y" : 175.46662818982244
+    },
+    {
+      "alpha" : 1,
+      "books" : 1,
+      "buckets" : 1,
+      "color" : "#4096CE",
+      "dark" : false,
+      "h" : 2.5,
+      "id" : "contract|bid|1748|1790285278456",
+      "live" : true,
+      "members" : 1,
+      "notional" : 575863.96560000011,
+      "priceHigh" : 1749,
+      "priceLow" : 1748,
+      "product" : "contract",
+      "role" : "main",
+      "side" : "bid",
+      "spanBottom" : -1,
+      "spanTop" : -1,
+      "thin" : false,
+      "tier" : 0,
+      "w" : 8,
+      "x" : 385,
+      "y" : 245.70778379093102
+    }
+  ],
+  "orderFlowLabels" : [
+    {
+      "h" : 16,
+      "id" : "contract|bid|1745|1790285276956",
+      "text" : "2.0M",
+      "w" : 35.19921875,
+      "x" : 353.80078125,
+      "y" : 277.3184653073273
+    },
+    {
+      "h" : 16,
+      "id" : "contract|bid|1751|1790285276956",
+      "text" : "663.9K",
+      "w" : 48.798828125,
+      "x" : 340.201171875,
+      "y" : 167.46662818982244
+    },
+    {
+      "h" : 16,
+      "id" : "contract|bid|1748|1790285278456",
+      "text" : "575.9K",
+      "w" : 48.798828125,
+      "x" : 340.201171875,
+      "y" : 237.70778379093102
+    }
+  ],
+  "orderFlowOrders" : 12,
+  "orderFlowThresholds" : {
+    "step" : 1,
+    "usdtPerp" : 500000
+  }
+}
