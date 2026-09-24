@@ -4,58 +4,96 @@ import Testing
 import KanpanNetworkTestSupport
 import KanpanCore
 
-/// 主力订单流三家适配器：连哪儿、订什么、帧怎么解、快照从哪儿拿；以及连接客户端的重连。
+/// 主力订单流的接入：一只币有哪几本簿（品种表 / 保底）、怎么分连接、各家的帧怎么解、快照从哪儿拿、
+/// 价格口径怎么换（1000PEPE），以及连接客户端的重连与保活。
 @Suite("主力订单流 · 深度适配器")
 struct OrderFlowAdapterTests {
-  static let hosts = BinanceHosts(oiProxy: "gw-a.example", oiProxyFallbacks: ["gw-b.example:8443"])
+  static let gateways = ["gw-a.example", "gw-b.example:8443"]
+  static let hosts = BinanceHosts()
 
-  static func binance(_ policy: MarketRoutePolicy, server: FakeServer = FakeServer { _ in json("{}") },
+  static func route(_ policy: MarketRoutePolicy) -> MarketRoute {
+    MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways))
+  }
+
+  static func book(_ exchange: String, _ product: OrderFlowProduct, _ instrument: String,
+                   _ notional: OrderFlowNotional = .linear(multiplier: 1), factor: Double = 1) -> DepthBook {
+    DepthBook(venue: OrderFlowCatalog.venue(exchange: exchange, product: product, instrument: instrument, notional: notional),
+              priceFactor: factor)
+  }
+
+  static let umPerp = book("binance", .usdtPerp, "BTCUSDT")
+  static let umQuarter = book("binance", .delivery, "BTCUSDT_260925")
+  static let cmPerp = book("binance", .coinPerp, "BTCUSD_PERP", .inverse(contractUsd: 100))
+  static let cmQuarter = book("binance", .delivery, "BTCUSD_260925", .inverse(contractUsd: 100))
+  static let spot = book("binance", .spot, "BTCUSDT")
+
+  static func binance(_ market: BinanceDepthAdapter.Market, _ books: [DepthBook], _ policy: MarketRoutePolicy,
+                      server: FakeServer = FakeServer { _ in json("{}") },
                       deck: ReplayDeck = ReplayDeck([.hang])) -> BinanceDepthAdapter {
-    BinanceDepthAdapter(symbol: "BTCUSDT", hosts: hosts, route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: hosts.oiProxies)),
+    BinanceDepthAdapter(market: market, books: books, hosts: hosts, route: route(policy),
                         sockets: ReplayFactory(deck: deck, pacer: FastPacer()), http: FakeTransport(server))
   }
 
   // ---------------------------------------------------------------- 币安
 
-  @Test("币安：组合流里的 depthUpdate 解成带 U/u/pu 的增量")
+  @Test("币安 U 本位：一条组合流带永续与交割，按 s 分到各自的簿，带 U/u/pu")
   func binanceDelta() {
-    let a = Self.binance(.direct)
+    let a = Self.binance(.um, [Self.umPerp, Self.umQuarter], .direct)
     let text = #"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1700000000123,"T":1700000000120,"s":"BTCUSDT","U":100,"u":105,"pu":99,"b":[["78450.1","3.5"],["78449.0","0"]],"a":[["78460.0","1.25"]]}}"#
-    let out = a.decode(text)
-    #expect(out == [.delta(BookDelta(firstUpdateID: 100, finalUpdateID: 105, previousFinalUpdateID: 99,
-                                     bids: [BookLevel(price: 78450.1, quantity: 3.5), BookLevel(price: 78449, quantity: 0)],
-                                     asks: [BookLevel(price: 78460, quantity: 1.25)], eventTimeMs: 1700000000123))])
-    // 别的品种、坏档位一律不认。
+    let delta = BookDelta(firstUpdateID: 100, finalUpdateID: 105, previousFinalUpdateID: 99,
+                          bids: [BookLevel(price: 78450.1, quantity: 3.5), BookLevel(price: 78449, quantity: 0)],
+                          asks: [BookLevel(price: 78460, quantity: 1.25)], eventTimeMs: 1700000000123)
+    #expect(a.decode(text) == [VenueMessage(Self.umPerp.id, .delta(delta))])
+    let quarter = text.replacingOccurrences(of: "\"s\":\"BTCUSDT\"", with: "\"s\":\"BTCUSDT_260925\"")
+    #expect(a.decode(quarter) == [VenueMessage(Self.umQuarter.id, .delta(delta))])
+    // 不在这条连接上的品种、坏档位一律不认。
     #expect(a.decode(text.replacingOccurrences(of: "\"s\":\"BTCUSDT\"", with: "\"s\":\"ETHUSDT\"")).isEmpty)
     #expect(a.decode(text.replacingOccurrences(of: "\"3.5\"", with: "\"x\"")).isEmpty)
   }
 
-  @Test("币安：aggTrade 的 m=true 是主动卖，吃买盘")
+  @Test("币安：aggTrade 的 m=true 是主动卖，吃买盘；币本位的量是张数，原样给")
   func binanceTrade() {
-    let a = Self.binance(.gateway)
-    let sell = #"{"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","s":"BTCUSDT","p":"78450","q":"0.5","m":true,"T":1700000000500}}"#
-    #expect(a.decode(sell) == [.trade(OrderFlowTrade(price: 78450, quantity: 0.5, hitSide: .bid, timeMs: 1700000000500))])
+    let a = Self.binance(.cm, [Self.cmPerp], .gateway)
+    let sell = #"{"stream":"btcusd_perp@aggTrade","data":{"e":"aggTrade","s":"BTCUSD_PERP","p":"78450","q":"120","m":true,"T":1700000000500}}"#
+    #expect(a.decode(sell) == [VenueMessage(Self.cmPerp.id, .trade(OrderFlowTrade(price: 78450, quantity: 120, hitSide: .bid, timeMs: 1700000000500)))])
     let buy = sell.replacingOccurrences(of: "\"m\":true", with: "\"m\":false")
-    #expect(a.decode(buy) == [.trade(OrderFlowTrade(price: 78450, quantity: 0.5, hitSide: .ask, timeMs: 1700000000500))])
+    #expect(a.decode(buy) == [VenueMessage(Self.cmPerp.id, .trade(OrderFlowTrade(price: 78450, quantity: 120, hitSide: .ask, timeMs: 1700000000500)))])
   }
 
-  @Test("币安直连：推送拨 dstream 组合流（深度 + 成交），快照打 fapi 1000 档")
+  @Test("币安现货：没有 pu（带了也不用），序号模型是 rangeOverlap")
+  func binanceSpotDelta() {
+    let a = Self.binance(.spot, [Self.spot], .gateway)
+    #expect(Self.spot.venue.sequenceModel == .rangeOverlap && !Self.spot.venue.snapshotInBand)
+    let text = #"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":5,"s":"BTCUSDT","U":7,"u":9,"pu":6,"b":[],"a":[["100","1"]]}}"#
+    #expect(a.decode(text) == [VenueMessage(Self.spot.id, .delta(BookDelta(firstUpdateID: 7, finalUpdateID: 9, previousFinalUpdateID: nil,
+                                                                       bids: [], asks: [BookLevel(price: 100, quantity: 1)], eventTimeMs: 5)))])
+  }
+
+  @Test("币安直连：U 本位拨 dstream 组合流、快照打 fapi；币本位快照打 dapi；现货恒直连 binance.vision")
   func binanceDirectRoute() async throws {
     let deck = ReplayDeck([.hang])
     let server = FakeServer { _ in json(#"{"lastUpdateId":777,"E":1700000000000,"T":1,"bids":[["100","2"]],"asks":[["101","3"]]}"#) }
-    let a = Self.binance(.direct, server: server, deck: deck)
-    #expect(a.sequenceModel == .previousFinalOverlap)
-    #expect(!a.snapshotInBand)
-    let s = try await a.connect(candidate: 0); await s.cancel()
+    let um = Self.binance(.um, [Self.umPerp, Self.umQuarter], .direct, server: server, deck: deck)
+    let s = try await um.connect(candidate: 0); await s.cancel()
     let url = try #require(await deck.stats().urls.first)
-    #expect(url.absoluteString == "wss://dstream.binance.me/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade")
-    let snap = try await a.fetchSnapshot()
+    #expect(url.absoluteString == "wss://dstream.binance.me/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade/btcusdt_260925@depth@100ms/btcusdt_260925@aggTrade")
+    let snap = try await um.fetchSnapshot(venueID: Self.umQuarter.id)
     #expect(snap == BookSnapshot(lastUpdateID: 777, requestedLevels: 1000, bids: [BookLevel(price: 100, quantity: 2)],
                                  asks: [BookLevel(price: 101, quantity: 3)], eventTimeMs: 1700000000000))
-    #expect(await server.urls().map(\.absoluteString) == ["https://fapi.binance.com/fapi/v1/depth?limit=1000&symbol=BTCUSDT"])
+    let cm = Self.binance(.cm, [Self.cmPerp], .direct, server: server)
+    _ = try await cm.fetchSnapshot(venueID: Self.cmPerp.id)
+    let spot = Self.binance(.spot, [Self.spot], .direct, server: server)
+    #expect(spot.streamURLs.map(\.absoluteString) == ["wss://data-stream.binance.vision/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade"])
+    _ = try await spot.fetchSnapshot(venueID: Self.spot.id)
+    #expect(await server.urls().map(\.absoluteString) == [
+      "https://fapi.binance.com/fapi/v1/depth?limit=1000&symbol=BTCUSDT_260925",
+      "https://dapi.binance.com/dapi/v1/depth?limit=1000&symbol=BTCUSD_PERP",
+      "https://data-api.binance.vision/api/v3/depth?limit=1000&symbol=BTCUSDT",
+    ])
+    await #expect(throws: (any Error).self) { try await um.fetchSnapshot(venueID: "binance:usdtPerp:ETHUSDT") }
   }
 
-  @Test("币安网关：推送拨网关 /market/stream，快照打 kanpan-api，主节点 503 就换备用")
+  @Test("币安网关：合约推送拨中继 /v1/market/ws/binance，快照打 kanpan-api 带 market，主节点 503 就换备用")
   func binanceGatewayRoute() async throws {
     let deck = ReplayDeck([.hang])
     let server = FakeServer { url in
@@ -63,83 +101,126 @@ struct OrderFlowAdapterTests {
         ? json(#"{"error":{"code":"market_upstream_unavailable"}}"#, status: 503, headers: ["Retry-After": "2"])
         : json(#"{"lastUpdateId":9,"bids":[["100","2"]],"asks":[["101","3"]]}"#)
     }
-    let a = Self.binance(.gateway, server: server, deck: deck)
+    let a = Self.binance(.cm, [Self.cmPerp, Self.cmQuarter], .gateway, server: server, deck: deck)
     let s = try await a.connect(candidate: 0); await s.cancel()
-    let url = try #require(await deck.stats().urls.first)
-    #expect(url.absoluteString == "wss://gw-a.example/market/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade")
+    let streams = "btcusd_perp@depth@100ms/btcusd_perp@aggTrade/btcusd_260925@depth@100ms/btcusd_260925@aggTrade"
+    #expect(await deck.stats().urls.first?.absoluteString == "wss://gw-a.example/v1/market/ws/binance?streams=" + streams)
     #expect(a.streamURLs.map(\.absoluteString) == [
-      "wss://gw-a.example/market/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade",
-      "wss://gw-b.example:8443/market/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade",
+      "wss://gw-a.example/v1/market/ws/binance?streams=" + streams,
+      "wss://gw-b.example:8443/v1/market/ws/binance?streams=" + streams,
     ])
-    let snap = try await a.fetchSnapshot()
+    let snap = try await a.fetchSnapshot(venueID: Self.cmQuarter.id)
     #expect(snap.lastUpdateID == 9)
     #expect(await server.urls().map(\.absoluteString) == [
-      "https://gw-a.example/v1/market/depth?symbol=BTCUSDT&limit=1000",
-      "https://gw-b.example:8443/v1/market/depth?symbol=BTCUSDT&limit=1000",
+      "https://gw-a.example/v1/market/depth?limit=1000&symbol=BTCUSD_260925&market=cm",
+      "https://gw-b.example:8443/v1/market/depth?limit=1000&symbol=BTCUSD_260925&market=cm",
     ])
   }
 
   @Test("币安网关：4xx（品种不认）直接报，不换主机")
   func binanceGatewayClientError() async throws {
     let server = FakeServer { _ in json(#"{"error":{"code":"unknown_symbol"}}"#, status: 400) }
-    let a = Self.binance(.gateway, server: server)
-    await #expect(throws: DepthSnapshotError(status: 400, retryAfterMs: nil)) { try await a.fetchSnapshot() }
+    let a = Self.binance(.um, [Self.umPerp], .gateway, server: server)
+    await #expect(throws: DepthSnapshotError(status: 400, retryAfterMs: nil)) { try await a.fetchSnapshot(venueID: Self.umPerp.id) }
     #expect(await server.urls().count == 1)
+  }
+
+  @Test("币安：一条连接最多 4 本（中继一条最多 8 路流）")
+  func binanceCapsBooks() {
+    let books = (0..<6).map { Self.book("binance", .usdtPerp, "X\($0)USDT") }
+    let a = Self.binance(.um, books, .gateway)
+    #expect(a.books.count == 4)
+    #expect(a.streams.count == 8)
+  }
+
+  // ---------------------------------------------------------------- 价格口径
+
+  @Test("价格口径：看 1000PEPEUSDT 时 OKX 一个币的价乘 1000、正向数量除 1000，名义美元不变")
+  func priceFactorKeepsNotional() throws {
+    let pepe = Self.book("okx", .usdtPerp, "PEPE-USDT-SWAP", .linear(multiplier: 10_000_000), factor: 1000)
+    let a = OKXBooksAdapter(books: [pepe], gateways: Self.gateways)
+    let text = #"{"arg":{"channel":"books","instId":"PEPE-USDT-SWAP"},"action":"snapshot","data":[{"asks":[["0.00001234","50","0","1"]],"bids":[],"ts":"1","checksum":0,"prevSeqId":-1,"seqId":3}]}"#
+    guard case .snapshot(let s)? = a.decode(text).first?.message else { Issue.record("不是快照"); return }
+    let level = try #require(s.asks.first)
+    #expect(abs(level.price - 0.01234) < 1e-12)
+    #expect(abs(level.quantity - 0.05) < 1e-12)
+    let raw = OrderFlowNotional.linear(multiplier: 10_000_000).usd(price: 0.00001234, quantity: 50)
+    #expect(abs(pepe.venue.notional.usd(price: level.price, quantity: level.quantity) - raw) < 1e-6)
+    // 反向合约的数量是张数，只换价格。
+    let inverse = Self.book("okx", .coinPerp, "PEPE-USD-SWAP", .inverse(contractUsd: 10), factor: 1000)
+    #expect(inverse.quantityFactor == 1)
   }
 
   // ---------------------------------------------------------------- OKX
 
-  static func okx(deck: ReplayDeck = ReplayDeck([.hang])) -> OKXBooksAdapter {
-    OKXBooksAdapter(symbol: "BTCUSDT", gateways: hosts.oiProxies, sockets: ReplayFactory(deck: deck, pacer: FastPacer()))
+  static let okxSwap = book("okx", .usdtPerp, "BTC-USDT-SWAP", .linear(multiplier: 0.01))
+  static let okxCoin = book("okx", .coinPerp, "BTC-USD-SWAP", .inverse(contractUsd: 100))
+  static let okxFuture = book("okx", .delivery, "BTC-USD-260925", .inverse(contractUsd: 100))
+
+  static func okx(deck: ReplayDeck = ReplayDeck([.hang]), books: [DepthBook] = [okxSwap, okxCoin, okxFuture]) -> OKXBooksAdapter {
+    OKXBooksAdapter(books: books, gateways: gateways, sockets: ReplayFactory(deck: deck, pacer: FastPacer()))
   }
 
-  static func okxFrame(_ action: String, seq: Int64, prev: Int64, bids: String = #"[["78450.1","350","0","4"]]"#,
-                       asks: String = #"[["78460","20","0","1"]]"#) -> String {
-    #"{"stream":"btcusdt@depth@100ms","source":"okx","ctVal":"0.01","data":{"arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"action":""# + action + #"","data":[{"asks":"# + asks + #","bids":"# + bids + #","ts":"1700000000999","checksum":0,"prevSeqId":"# + String(prev) + #","seqId":"# + String(seq) + "}]}}"
+  static func okxFrame(_ action: String, seq: Int64, prev: Int64, instId: String = "BTC-USDT-SWAP",
+                       bids: String = #"[["78450.1","350","0","4"]]"#, asks: String = #"[["78460","20","0","1"]]"#) -> String {
+    #"{"arg":{"channel":"books","instId":""# + instId + #""},"action":""# + action + #"","data":[{"asks":"# + asks + #","bids":"# + bids + #","ts":"1700000000999","checksum":0,"prevSeqId":"# + String(prev) + #","seqId":"# + String(seq) + "}]}"
   }
 
-  @Test("OKX：books 首帧是流内快照，张数乘 ctVal；update 按 seqId/prevSeqId；倒退就重置")
+  @Test("OKX：books 首帧是流内快照，数量原样（张数）；update 按各自 instId 的 seqId/prevSeqId；倒退就重置")
   func okxBooks() {
     let a = Self.okx()
-    #expect(a.sequenceModel == .previousFinalExact && a.snapshotInBand)
-    #expect(a.decode(Self.okxFrame("snapshot", seq: 10, prev: -1)) == [
-      .snapshot(BookSnapshot(lastUpdateID: 10, requestedLevels: 400, bids: [BookLevel(price: 78450.1, quantity: 3.5)],
-                             asks: [BookLevel(price: 78460, quantity: 0.2)], eventTimeMs: 1700000000999))])
-    #expect(a.decode(Self.okxFrame("update", seq: 12, prev: 10, bids: "[]")) == [
+    #expect(Self.okxSwap.venue.sequenceModel == .previousFinalExact && Self.okxSwap.venue.snapshotInBand)
+    #expect(a.decode(Self.okxFrame("snapshot", seq: 10, prev: -1)) == [VenueMessage(Self.okxSwap.id,
+      .snapshot(BookSnapshot(lastUpdateID: 10, requestedLevels: 400, bids: [BookLevel(price: 78450.1, quantity: 350)],
+                             asks: [BookLevel(price: 78460, quantity: 20)], eventTimeMs: 1700000000999)))])
+    #expect(a.decode(Self.okxFrame("update", seq: 12, prev: 10, instId: "BTC-USD-260925", bids: "[]")) == [VenueMessage(Self.okxFuture.id,
       .delta(BookDelta(firstUpdateID: 12, finalUpdateID: 12, previousFinalUpdateID: 10, bids: [],
-                       asks: [BookLevel(price: 78460, quantity: 0.2)], eventTimeMs: 1700000000999))])
-    #expect(a.decode(Self.okxFrame("update", seq: 5, prev: 12)) == [.reset])
-    // 别的频道名、没有 ctVal、订阅回执：不认。
-    #expect(a.decode(Self.okxFrame("update", seq: 13, prev: 12).replacingOccurrences(of: "btcusdt@", with: "ethusdt@")).isEmpty)
-    #expect(a.decode(Self.okxFrame("update", seq: 13, prev: 12).replacingOccurrences(of: #""ctVal":"0.01","#, with: "")).isEmpty)
-    #expect(a.decode(#"{"stream":"btcusdt@depth@100ms","source":"okx","ctVal":"0.01","data":{"event":"subscribe","arg":{"channel":"books"}}}"#).isEmpty)
+                       asks: [BookLevel(price: 78460, quantity: 20)], eventTimeMs: 1700000000999)))])
+    #expect(a.decode(Self.okxFrame("update", seq: 5, prev: 12, instId: "BTC-USD-SWAP")) == [VenueMessage(Self.okxCoin.id, .reset)])
+    // 不在这条连接上的 instId、订阅回执、错误、pong：不认。
+    #expect(a.decode(Self.okxFrame("update", seq: 13, prev: 12, instId: "ETH-USDT-SWAP")).isEmpty)
+    #expect(a.decode(#"{"event":"subscribe","arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"connId":"a"}"#).isEmpty)
+    #expect(a.decode(#"{"event":"error","code":"60012","msg":"Invalid request"}"#).isEmpty)
+    #expect(a.decode("pong").isEmpty)
   }
 
-  @Test("OKX：trades 的 side 是主动方，sz 也是张数")
+  @Test("OKX：trades 的 side 是主动方，sz 原样（张数）")
   func okxTrades() {
     let a = Self.okx()
-    let text = #"{"stream":"btcusdt@aggTrade","source":"okx","ctVal":"0.01","data":{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"instId":"BTC-USDT-SWAP","tradeId":"1","px":"78450","sz":"30","side":"sell","ts":"1700000000001","count":"1"},{"instId":"BTC-USDT-SWAP","tradeId":"2","px":"78460","sz":"5","side":"buy","ts":"1700000000002","count":"1"}]}}"#
+    let text = #"{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"instId":"BTC-USDT-SWAP","tradeId":"1","px":"78450","sz":"30","side":"sell","ts":"1700000000001","count":"1"},{"instId":"BTC-USDT-SWAP","tradeId":"2","px":"78460","sz":"5","side":"buy","ts":"1700000000002","count":"1"}]}"#
     #expect(a.decode(text) == [
-      .trade(OrderFlowTrade(price: 78450, quantity: 0.3, hitSide: .bid, timeMs: 1700000000001)),
-      .trade(OrderFlowTrade(price: 78460, quantity: 0.05, hitSide: .ask, timeMs: 1700000000002)),
+      VenueMessage(Self.okxSwap.id, .trade(OrderFlowTrade(price: 78450, quantity: 30, hitSide: .bid, timeMs: 1700000000001))),
+      VenueMessage(Self.okxSwap.id, .trade(OrderFlowTrade(price: 78460, quantity: 5, hitSide: .ask, timeMs: 1700000000002))),
     ])
   }
 
-  @Test("OKX：只走网关 /market/okx/stream，深度与成交同一条连接")
+  @Test("OKX：拨网关中继 /v1/market/ws/okx，连上后发订阅（一条最多 12 个 args），每 20 秒 ping")
   func okxRoute() async throws {
     let deck = ReplayDeck([.hang])
-    let s = try await Self.okx(deck: deck).connect(candidate: 0); await s.cancel()
-    let url = try #require(await deck.stats().urls.first)
-    #expect(url.absoluteString == "wss://gw-a.example/market/okx/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade")
+    let books = (0..<8).map { Self.book("okx", .spot, "C\($0)-USDT") }
+    let s = try await Self.okx(deck: deck, books: books).connect(candidate: 1); await s.cancel()
+    let stats = await deck.stats()
+    #expect(stats.urls.map(\.absoluteString) == ["wss://gw-b.example:8443/v1/market/ws/okx"])
+    #expect(stats.sent.count == 2)
+    let first = try #require(stats.sent.first.flatMap { $0.data(using: .utf8) })
+    let obj = try #require(try JSONSerialization.jsonObject(with: first) as? [String: Any])
+    #expect(obj["op"] as? String == "subscribe")
+    let args = try #require(obj["args"] as? [[String: String]])
+    #expect(args.count == 12)
+    #expect(args.prefix(2) == [["channel": "books", "instId": "C0-USDT"], ["channel": "trades", "instId": "C0-USDT"]])
+    #expect(Self.okx().keepAlive == DepthKeepAlive(text: "ping", everyMs: 20_000))
+    #expect(OKXBooksAdapter(books: (0..<20).map { Self.book("okx", .spot, "C\($0)-USDT") }, gateways: Self.gateways).books.count == 12)
   }
 
   // ---------------------------------------------------------------- Coinbase
 
+  static let coinbaseBook = book("coinbase", .spot, "BTC-USD")
+
   @Test("Coinbase：直连订 level2 / market_trades / heartbeats 三个频道")
   func coinbaseSubscribe() async throws {
     let deck = ReplayDeck([.hang])
-    let a = CoinbaseLevel2Adapter(symbol: "coinbase/spot/BTC-USD", sockets: ReplayFactory(deck: deck, pacer: FastPacer()))
-    #expect(a.symbol == "BTC-USD" && a.sequenceModel == .strictIncrementing && a.snapshotInBand)
+    let a = CoinbaseLevel2Adapter(book: Self.coinbaseBook, sockets: ReplayFactory(deck: deck, pacer: FastPacer()))
+    #expect(a.symbol == "BTC-USD" && Self.coinbaseBook.venue.sequenceModel == .strictIncrementing)
     let s = try await a.connect(candidate: 0); await s.cancel()
     let stats = await deck.stats()
     #expect(stats.urls.map(\.absoluteString) == ["wss://advanced-trade-ws.coinbase.com"])
@@ -152,39 +233,120 @@ struct OrderFlowAdapterTests {
 
   @Test("Coinbase：整条连接一个序号，心跳与回执也推进；l2 快照整本在；成交只收 update")
   func coinbaseDecode() {
-    let a = CoinbaseLevel2Adapter(symbol: "BTC-USD")
-    let advance: (Int64) -> DepthMessage = { .delta(BookDelta(firstUpdateID: $0, finalUpdateID: $0, previousFinalUpdateID: nil)) }
+    let a = CoinbaseLevel2Adapter(book: Self.coinbaseBook)
+    let id = Self.coinbaseBook.id
+    let advance: (Int64) -> VenueMessage = { VenueMessage(id, .delta(BookDelta(firstUpdateID: $0, finalUpdateID: $0, previousFinalUpdateID: nil))) }
     #expect(a.decode(#"{"channel":"subscriptions","sequence_num":0,"events":[]}"#) == [advance(0)])
     #expect(a.decode(#"{"channel":"heartbeats","sequence_num":3,"events":[{"heartbeat_counter":1}]}"#) == [advance(3)])
     let snap = #"{"channel":"l2_data","sequence_num":1,"events":[{"type":"snapshot","product_id":"BTC-USD","updates":[{"side":"bid","event_time":"2026-09-24T01:02:03.456789Z","price_level":"60000","new_quantity":"1.5"},{"side":"bid","event_time":"2026-09-24T01:02:03.456789Z","price_level":"59990","new_quantity":"2"},{"side":"offer","event_time":"2026-09-24T01:02:03.456789Z","price_level":"60010","new_quantity":"0.5"}]}]}"#
-    guard case .snapshot(let s)? = a.decode(snap).first else { Issue.record("不是快照"); return }
+    guard case .snapshot(let s)? = a.decode(snap).first?.message else { Issue.record("不是快照"); return }
     #expect(s.lastUpdateID == 1 && s.requestedLevels == 3 && s.bids.count == 2 && s.asks == [BookLevel(price: 60010, quantity: 0.5)])
     #expect(s.eventTimeMs == CoinbaseDTO.isoMs("2026-09-24T01:02:03.456Z"))
     let update = #"{"channel":"l2_data","sequence_num":2,"events":[{"type":"update","product_id":"BTC-USD","updates":[{"side":"offer","event_time":"2026-09-24T01:02:04Z","price_level":"60010","new_quantity":"0"}]}]}"#
-    #expect(a.decode(update) == [.delta(BookDelta(firstUpdateID: 2, finalUpdateID: 2, previousFinalUpdateID: nil, bids: [],
-                                                  asks: [BookLevel(price: 60010, quantity: 0)],
-                                                  eventTimeMs: CoinbaseDTO.isoMs("2026-09-24T01:02:04Z")!))])
+    #expect(a.decode(update) == [VenueMessage(id, .delta(BookDelta(firstUpdateID: 2, finalUpdateID: 2, previousFinalUpdateID: nil, bids: [],
+                                                                  asks: [BookLevel(price: 60010, quantity: 0)],
+                                                                  eventTimeMs: CoinbaseDTO.isoMs("2026-09-24T01:02:04Z")!)))])
     let trades = #"{"channel":"market_trades","sequence_num":4,"events":[{"type":"snapshot","trades":[{"product_id":"BTC-USD","price":"1","size":"1","side":"BUY","time":"2026-09-24T01:00:00Z"}]},{"type":"update","trades":[{"trade_id":"9","product_id":"BTC-USD","price":"60010","size":"0.25","side":"BUY","time":"2026-09-24T01:02:05Z"},{"trade_id":"10","product_id":"BTC-USD","price":"60000","size":"0.1","side":"SELL","time":"2026-09-24T01:02:05Z"}]}]}"#
     let t = CoinbaseDTO.isoMs("2026-09-24T01:02:05Z")!
     #expect(a.decode(trades) == [advance(4),
-                                 .trade(OrderFlowTrade(price: 60010, quantity: 0.25, hitSide: .ask, timeMs: t)),
-                                 .trade(OrderFlowTrade(price: 60000, quantity: 0.1, hitSide: .bid, timeMs: t))])
+                                 VenueMessage(id, .trade(OrderFlowTrade(price: 60010, quantity: 0.25, hitSide: .ask, timeMs: t))),
+                                 VenueMessage(id, .trade(OrderFlowTrade(price: 60000, quantity: 0.1, hitSide: .bid, timeMs: t)))])
     #expect(a.decode(#"{"type":"error","message":"nope"}"#).isEmpty)
   }
 
-  // ---------------------------------------------------------------- 工厂
+  // ---------------------------------------------------------------- 品种表
 
-  @Test("工厂：币安直连 → 币安适配器，网关（OKX 替身）→ OKX 适配器，Coinbase 恒直连")
-  func factory() {
+  static let catalogJSON = #"""
+  {"base":"BTC","asOfMs":1790000000000,"venues":[
+   {"exchange":"binance","product":"usdtPerp","instrument":"BTCUSDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.1},
+   {"exchange":"binance","product":"delivery","instrument":"BTCUSDT_260925","margin":"usdt","notional":{"kind":"linear","multiplier":1.0},"tick":0.1,"expiryMs":1790323200000},
+   {"exchange":"binance","product":"delivery","instrument":"BTCUSDT_250926","margin":"usdt","notional":{"kind":"linear","multiplier":1.0},"tick":0.1,"expiryMs":1758873600000},
+   {"exchange":"binance","product":"coinPerp","instrument":"BTCUSD_PERP","notional":{"kind":"inverse","contractUsd":100.0},"tick":0.1},
+   {"exchange":"binance","product":"delivery","instrument":"BTCUSD_260925","margin":"coin","notional":{"kind":"inverse","contractUsd":100.0},"tick":0.1,"expiryMs":1790323200000},
+   {"exchange":"okx","product":"usdtPerp","instrument":"BTC-USDT-SWAP","notional":{"kind":"linear","multiplier":0.01},"tick":0.1},
+   {"exchange":"okx","product":"coinPerp","instrument":"BTC-USD-SWAP","notional":{"kind":"inverse","contractUsd":100.0},"tick":0.1},
+   {"exchange":"okx","product":"delivery","instrument":"BTC-USD-260925","margin":"coin","notional":{"kind":"inverse","contractUsd":100.0},"tick":0.1,"expiryMs":1790323200000},
+   {"exchange":"binance","product":"spot","instrument":"BTCUSDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.01},
+   {"exchange":"okx","product":"spot","instrument":"BTC-USDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.1},
+   {"exchange":"coinbase","product":"spot","instrument":"BTC-USD","notional":{"kind":"linear","multiplier":1.0},"tick":0.01},
+   {"exchange":"kraken","product":"spot","instrument":"XBT-USD","notional":{"kind":"linear","multiplier":1.0},"tick":0.1},
+   {"exchange":"okx","product":"usdtPerp","instrument":"BAD-ZERO","notional":{"kind":"linear","multiplier":0},"tick":0.1}
+  ]}
+  """#
+
+  static func catalog(_ policy: MarketRoutePolicy, server: FakeServer, gateways: [String] = gateways) -> OrderFlowCatalog {
+    OrderFlowCatalog(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways)),
+                     binanceHosts: hosts, sockets: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
+                     http: FakeTransport(server), cache: OrderFlowCatalogCache())
+  }
+
+  @Test("品种表：解析各家各产品，丢掉未知交易所、坏面值、已过交割时间的，分到 5 条连接")
+  func catalogParses() async throws {
+    let server = FakeServer { _ in json(Self.catalogJSON) }
+    let c = Self.catalog(.direct, server: server)
+    let got = await c.books(base: "btc", nowMs: 1_790_000_000_000)
+    #expect(got.fromCatalog && got.base == "BTC" && got.chartScale == 1)
+    #expect(got.books.map(\.id) == [
+      "binance:usdtPerp:BTCUSDT", "binance:delivery:BTCUSDT_260925", "binance:coinPerp:BTCUSD_PERP",
+      "binance:delivery:BTCUSD_260925", "okx:usdtPerp:BTC-USDT-SWAP", "okx:coinPerp:BTC-USD-SWAP",
+      "okx:delivery:BTC-USD-260925", "binance:spot:BTCUSDT", "okx:spot:BTC-USDT", "coinbase:spot:BTC-USD",
+    ])
+    #expect(got.books.first { $0.id == "okx:coinPerp:BTC-USD-SWAP" }?.venue.notional == .inverse(contractUsd: 100))
+    #expect(got.books.first { $0.id == "binance:delivery:BTCUSD_260925" }?.expiryMs == 1_790_323_200_000)
+    #expect(await server.urls().map(\.absoluteString) == ["https://gw-a.example/v1/market/orderflow/instruments?base=BTC"])
+    let adapters = c.adapters(got.books)
+    #expect(adapters.map(\.name) == [
+      "币安U 本位 BTCUSDT,BTCUSDT_260925", "币安币本位 BTCUSD_PERP,BTCUSD_260925", "币安现货 BTCUSDT",
+      "OKX BTC-USDT-SWAP,BTC-USD-SWAP,BTC-USD-260925,BTC-USDT", "Coinbase BTC-USD",
+    ])
+    // 第二次同一只币走内存缓存，不再请求。
+    _ = await c.books(base: "BTC", nowMs: 1_790_000_060_000)
+    #expect(await server.urls().count == 1)
+  }
+
+  @Test("品种表：主网关不通就问备用；都不通给保底三本（币安永续、币安现货、Coinbase）")
+  func catalogFallback() async throws {
+    let flaky = FakeServer { url in url.host == "gw-a.example" ? json("{}", status: 502) : json(Self.catalogJSON) }
+    let ok = await Self.catalog(.gateway, server: flaky).books(base: "BTC", nowMs: 1_790_000_000_000)
+    #expect(ok.fromCatalog && ok.books.count == 10)
+    let dead = FakeServer { _ in json("oops", status: 500) }
+    let fallback = await Self.catalog(.gateway, server: dead).books(base: "ETH", nowMs: 1)
+    #expect(!fallback.fromCatalog)
+    #expect(fallback.books.map(\.id) == ["binance:usdtPerp:ETHUSDT", "binance:spot:ETHUSDT", "coinbase:spot:ETH-USD"])
+    #expect(await dead.urls().count == 2)
+    // 没有网关：OKX 那几本订不了，不给连接。
+    let noGateway = Self.catalog(.direct, server: dead, gateways: [])
+    #expect(noGateway.adapters([Self.okxSwap, Self.umPerp]).map(\.name) == ["币安U 本位 BTCUSDT"])
+  }
+
+  @Test("品种表：看 1000PEPEUSDT 时按 PEPE 查，币安带前缀那行不缩放，其他家乘 1000；保底也按这个口径")
+  func catalogScaledBase() async throws {
+    let body = #"{"base":"PEPE","asOfMs":1,"venues":[{"exchange":"binance","product":"usdtPerp","instrument":"1000PEPEUSDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.0000001,"priceScale":1000},{"exchange":"okx","product":"usdtPerp","instrument":"PEPE-USDT-SWAP","notional":{"kind":"linear","multiplier":10000000},"tick":0.00000001}]}"#
+    let server = FakeServer { _ in json(body) }
+    let got = await Self.catalog(.direct, server: server).books(base: "1000PEPE", nowMs: 1)
+    #expect(got.base == "PEPE" && got.chartScale == 1000)
+    #expect(got.books.map(\.priceFactor) == [1, 1000])
+    #expect(await server.urls().first?.absoluteString == "https://gw-a.example/v1/market/orderflow/instruments?base=PEPE")
+    let fallback = OrderFlowCatalog.fallback(viewedBase: "1000PEPE", base: "PEPE", chartScale: 1000)
+    #expect(fallback.map(\.id) == ["binance:usdtPerp:1000PEPEUSDT", "binance:spot:PEPEUSDT", "coinbase:spot:PEPE-USD"])
+    #expect(fallback.map(\.priceFactor) == [1, 1000, 1000])
+    for (raw, base, scale) in [("1MBABYDOGE", "BABYDOGE", 1_000_000.0), ("1000000MOG", "MOG", 1_000_000),
+                               ("1INCH", "1INCH", 1), ("1000", "1000", 1), ("1000pepe", "PEPE", 1000)] {
+      let n = OrderFlowBase.normalize(raw)
+      #expect(n.base == base && n.scale == scale, "\(raw)")
+    }
+    #expect(!OrderFlowBase.isValid("BTC-USD") && !OrderFlowBase.isValid(""))
+  }
+
+  @Test("提供者：币安（两条线路）与 Coinbase 都给得出品种表，线路跟着提供者走")
+  func providersSource() {
     let direct: any MarketProvider = BinanceProvider(upstream: .binance, hosts: Self.hosts, policy: .direct)
     let gateway: any MarketProvider = BinanceProvider(upstream: .okx, hosts: Self.hosts, policy: .gateway)
     let coinbase: any MarketProvider = CoinbaseProvider(policy: .gateway, endpoints: MarketEndpoints(gateways: ["gw-a.example"]))
-    #expect(direct.orderFlowAdapter(symbol: "BTCUSDT") is BinanceDepthAdapter)
-    #expect(gateway.orderFlowAdapter(symbol: "BTCUSDT") is OKXBooksAdapter)
-    #expect(coinbase.orderFlowAdapter(symbol: "coinbase/spot/BTC-USD") is CoinbaseLevel2Adapter)
-    #expect(direct.orderFlowAdapter(symbol: "BTCUSDT")?.upstream == "binance")
-    #expect(gateway.orderFlowAdapter(symbol: "BTCUSDT")?.upstream == "okx")
-    #expect(coinbase.orderFlowAdapter(symbol: "BTC-USD")?.upstream == "coinbase")
+    #expect((direct as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == false)
+    #expect((gateway as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == true)
+    #expect((coinbase as? any OrderFlowSourcing)?.orderFlowCatalog.route.gateways == ["gw-a.example"])
+    #expect(direct.orderFlowAdapter(symbol: "BTCUSDT") == nil)
   }
 
   // ---------------------------------------------------------------- 连接客户端
@@ -195,7 +357,7 @@ struct OrderFlowAdapterTests {
     let deck = ReplayDeck([.frame(.text(first)), .frame(.text("{}")), .drop("bye"),
                            .frame(.text(Self.okxFrame("snapshot", seq: 20, prev: -1))), .hang])
     let pacer = FastPacer()
-    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", gateways: Self.hosts.oiProxies,
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap], gateways: Self.gateways,
                                                       sockets: ReplayFactory(deck: deck, pacer: pacer)),
                              pacer: pacer, silenceMs: 600_000)
     let events = await stream.start()
@@ -214,7 +376,7 @@ struct OrderFlowAdapterTests {
   func streamFallsBackToBackupGateway() async throws {
     let deck = ReplayDeck([.drop("主节点没推"), .frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .hang])
     let pacer = FastPacer()
-    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", gateways: Self.hosts.oiProxies,
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap], gateways: Self.gateways,
                                                       sockets: ReplayFactory(deck: deck, pacer: pacer)),
                              pacer: pacer, silenceMs: 600_000)
     let events = await stream.start()
@@ -231,7 +393,7 @@ struct OrderFlowAdapterTests {
     let deck = ReplayDeck([.frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .silence(120_000),
                            .frame(.text(Self.okxFrame("snapshot", seq: 30, prev: -1))), .hang])
     let pacer = FastPacer()
-    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", gateways: Self.hosts.oiProxies,
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap], gateways: Self.gateways,
                                                       sockets: ReplayFactory(deck: deck, pacer: pacer)),
                              pacer: pacer, silenceMs: 30_000)
     let events = await stream.start()
@@ -242,17 +404,45 @@ struct OrderFlowAdapterTests {
     reader.cancel()
   }
 
-  @Test("适配器与本地簿对得上：OKX 快照 + 增量把模型带到就绪")
-  func okxFeedsTheModel() {
-    let a = Self.okx()
-    var model = OrderFlowModel(symbol: "BTCUSDT", sequenceModel: a.sequenceModel, snapshotInBand: a.snapshotInBand,
-                               scheme: nil, calibration: FloorCalibration())
-    #expect(model.connectionOpened() == .none)
+  @Test("连接客户端：OKX 连上后发订阅，之后按保活间隔发 ping")
+  func streamKeepAlive() async throws {
+    let deck = ReplayDeck([.frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .hang])
+    let pacer = FastPacer()
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap], gateways: Self.gateways,
+                                                      sockets: ReplayFactory(deck: deck, pacer: pacer)),
+                             pacer: pacer, silenceMs: 600_000_000)
+    let events = await stream.start()
+    let reader = Task { for await _ in events {} }
+    #expect(await waitUntil(5) { await deck.stats().sent.filter { $0 == "ping" }.count >= 2 })
+    #expect(await deck.stats().sent.first?.contains("\"subscribe\"") == true)
+    await stream.stop()
+    reader.cancel()
+  }
+
+  @Test("适配器与本地簿对得上：三家的帧把各自那本簿带到就绪，互不干扰")
+  func adaptersFeedTheModel() {
+    let okx = Self.okx()
+    let um = Self.binance(.um, [Self.umPerp], .direct)
+    let thresholds = OrderFlowThresholds(spot: 1_000_000, usdtPerp: 5_000_000, coinPerp: 5_000_000, delivery: 5_000_000, step: 100)
+    var model = OrderFlowModel(symbol: "BTCUSDT", thresholds: thresholds)
+    for book in [Self.okxSwap, Self.okxCoin, Self.umPerp] { model.addVenue(book.venue) }
+    #expect(model.connectionOpened(Self.okxSwap.id) == .none)
+    #expect(model.connectionOpened(Self.okxCoin.id) == .none)
     for text in [Self.okxFrame("update", seq: 9, prev: 8), Self.okxFrame("snapshot", seq: 10, prev: -1),
                  Self.okxFrame("update", seq: 11, prev: 10)] {
-      for m in a.decode(text) { #expect(model.ingest(m, nowMs: 1) == .none) }
+      for m in okx.decode(text) { #expect(model.ingest(m.venueID, m.message, nowMs: 1) == .none) }
     }
-    #expect(model.isReady)
+    #expect(model.isReady(Self.okxSwap.id))
+    #expect(!model.isReady(Self.okxCoin.id))
+    // 币安要 REST 快照：连上先要快照，缓冲的增量对上序号就绪。
+    _ = model.connectionOpened(Self.umPerp.id)
+    let delta = #"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1,"s":"BTCUSDT","U":100,"u":105,"pu":99,"b":[["78450","1"]],"a":[]}}"#
+    let actions = um.decode(delta).map { model.ingest($0.venueID, $0.message, nowMs: 2) }
+    #expect(actions.contains(.fetchSnapshot) || actions == [.none])
+    let snapshot = BookSnapshot(lastUpdateID: 102, requestedLevels: 1000, bids: [BookLevel(price: 78450, quantity: 2)],
+                                asks: [BookLevel(price: 78460, quantity: 2)])
+    #expect(model.applySnapshot(Self.umPerp.id, snapshot, nowMs: 3) == .none)
+    #expect(model.isReady(Self.umPerp.id))
   }
 }
 
@@ -264,7 +454,7 @@ private actor EventLog {
     case .disconnected: lines.append("disconnected")
     case .messages(let ms):
       for m in ms {
-        if case .snapshot(let s) = m { lines.append("snapshot \(s.lastUpdateID)") } else { lines.append("message") }
+        if case .snapshot(let s) = m.message { lines.append("snapshot \(s.lastUpdateID)") } else { lines.append("message") }
       }
     }
   }

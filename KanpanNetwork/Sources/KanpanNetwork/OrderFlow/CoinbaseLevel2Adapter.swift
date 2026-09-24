@@ -2,6 +2,7 @@ import Foundation
 import KanpanCore
 
 /// Coinbase 现货的 `level2`：流内 snapshot + update，恒走直连（网关的 Coinbase hub 不收 level2）。
+/// 一条连接只放一本簿：`sequence_num` 是整条连接的序号，放两本就分不清谁断了档。
 ///
 /// - 同一条连接订 `level2`、`market_trades`、`heartbeats`。`sequence_num` 是**整条连接**的序号，
 ///   所以心跳、订阅回执、成交帧也各发一条空增量把序号推过去，否则本地簿会误判断档。
@@ -12,17 +13,18 @@ import KanpanCore
 public struct CoinbaseLevel2Adapter: DepthFeedAdapter {
   public static let streamURL = URL(string: "wss://\(CoinbaseEndpoints.streamHost)")!
 
-  public let symbol: String
-  public var upstream: String { CoinbaseDTO.venue }
-  public var sequenceModel: DepthSequenceModel { .strictIncrementing }
-  public var snapshotInBand: Bool { true }
-
+  public let book: DepthBook
+  public var books: [DepthBook] { [book] }
+  /// Coinbase 的产品代号（`BTC-USD`）。
+  var symbol: String { book.venue.instrument }
   let sockets: any WSSocketFactory
 
-  public init(symbol: String, sockets: any WSSocketFactory = URLSessionSocketFactory()) {
-    self.symbol = CoinbaseDTO.productID(symbol)
+  public init(book: DepthBook, sockets: any WSSocketFactory = URLSessionSocketFactory()) {
+    self.book = book
     self.sockets = sockets
   }
+
+  public var name: String { "Coinbase \(symbol)" }
 
   public var streamURLs: [URL] { [Self.streamURL] }
 
@@ -42,7 +44,11 @@ public struct CoinbaseLevel2Adapter: DepthFeedAdapter {
     return socket
   }
 
-  public func decode(_ text: String) -> [DepthMessage] {
+  public func decode(_ text: String) -> [VenueMessage] {
+    decodeMessages(text).map { VenueMessage(book.id, $0) }
+  }
+
+  private func decodeMessages(_ text: String) -> [DepthMessage] {
     guard let frame = DepthWire.object(text), let seq = DepthWire.integer(frame["sequence_num"]) else { return [] }
     let advance = DepthMessage.delta(BookDelta(firstUpdateID: seq, finalUpdateID: seq, previousFinalUpdateID: nil))
     let events = frame["events"] as? [[String: Any]] ?? []
@@ -56,7 +62,7 @@ public struct CoinbaseLevel2Adapter: DepthFeedAdapter {
         for u in event["updates"] as? [[String: Any]] ?? [] {
           guard let p = DepthWire.number(u["price_level"]), let q = DepthWire.number(u["new_quantity"]),
                 p > 0, q >= 0, p.isFinite, q.isFinite else { continue }
-          let level = BookLevel(price: p, quantity: q)
+          let level = BookLevel(price: p * book.priceFactor, quantity: q * book.quantityFactor)
           switch u["side"] as? String {
           case "bid": bids.append(level)
           case "offer", "ask": asks.append(level)
@@ -83,8 +89,8 @@ public struct CoinbaseLevel2Adapter: DepthFeedAdapter {
           case "SELL": hit = .bid
           default: continue
           }
-          out.append(.trade(OrderFlowTrade(price: p, quantity: q, hitSide: hit,
-                                           timeMs: (t["time"] as? String).flatMap(CoinbaseDTO.isoMs) ?? 0)))
+          out.append(.trade(book.trade(price: p, quantity: q, hit: hit,
+                                       timeMs: (t["time"] as? String).flatMap(CoinbaseDTO.isoMs) ?? 0)))
         }
       }
       return out

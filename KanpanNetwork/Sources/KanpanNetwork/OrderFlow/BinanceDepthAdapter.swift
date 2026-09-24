@@ -1,46 +1,87 @@
 import Foundation
 import KanpanCore
 
-/// 币安 U 本位永续的增量深度（`<sym>@depth@100ms`，U / u / pu 链）+ REST 快照。
+/// 币安一条组合流上的几本簿：增量深度（`<sym>@depth@100ms`）+ 逐笔聚合成交（`@aggTrade`）+ REST 快照。
 ///
-/// - 直连：推送走 `hosts.stream` 的组合流（默认 `dstream.binance.me`，2026-09-24 实测同一条连接上
-///   `@depth@100ms` 与 `@aggTrade` 都发），快照打 `hosts.fapi` 的 `/fapi/v1/depth?limit=1000`。
-/// - 网关：推送走网关 `/market/stream`（stream_hub 经币安 `/public` 上游逐帧转发，不合并），主备两台；
-///   成交同样订 `@aggTrade`（网关原样转发）。快照打 kanpan-api `GET /v1/market/depth`
-///   （美国机房打 fapi 回 451，由 kanpan-api 经 `www.binance.com` 取），只有主节点有，按网关表逐台试。
+/// 按市场分三种连接（`Market`），一条连接最多 `maxBooks` 本（网关中继一条最多 8 路流，一本两路）：
 ///
-/// 走哪条、网关有哪几台，一律读提供者交进来的 `MarketRoute`（`RouteResolver` 定的那一份），
-/// 这里不再自己拿线路档位和 `hosts.oiProxies` 另判一遍。
+/// - `um` U 本位（永续 + U 本位交割 `BTCUSDT_260925`）：U / u / pu 链。
+///   - 直连：推送走 `hosts.stream` 的组合流（默认 `dstream.binance.me`），快照打 `hosts.fapi` 的
+///     `/fapi/v1/depth?limit=1000`。
+///   - 网关：推送走 kanpan-api 的中继 `/v1/market/ws/binance?streams=…`（上游 `dstream.binance.com`，
+///     一条连接同时发 U 本位与币本位的四种合约），快照打 kanpan-api `GET /v1/market/depth?market=um`
+///     （美国机房打 fapi 回 451，由 kanpan-api 经 `www.binance.com` 取），按网关表逐台试。
+/// - `cm` 币本位（永续 `BTCUSD_PERP` + 币本位交割 `BTCUSD_260925`）：同样 U / u / pu 链。
+///   直连快照打 `dapi.binance.com/dapi/v1/depth`（`hosts.fapi` 换成 dapi），网关 `market=cm`；推送同上。
+///   数量是张数（反向合约），名义美元 = 张数 × 面值，由 Core 的 `OrderFlowNotional.inverse` 算。
+/// - `spot` 现货：U / u 链（没有 pu）。不分线路一律直连 `data-stream.binance.vision`，快照打
+///   `data-api.binance.vision/api/v3/depth`——网关中继只接币安合约的上游。
 ///
+/// 走哪条、网关有哪几台，一律读提供者交进来的 `MarketRoute`（`RouteResolver` 定的那一份）。
 /// 解码对应原项目 `bit-orderbook-binance/src/lib.rs:519 decode_depth_snapshot`、`:548 decode_depth_delta`。
 public struct BinanceDepthAdapter: DepthFeedAdapter {
+  public enum Market: String, Sendable, CaseIterable {
+    case um, cm, spot
+
+    var label: String {
+      switch self {
+      case .um: "U 本位"
+      case .cm: "币本位"
+      case .spot: "现货"
+      }
+    }
+
+    public var sequenceModel: DepthSequenceModel { self == .spot ? .rangeOverlap : .previousFinalOverlap }
+  }
+
   public static let snapshotLevels = 1000
+  /// 一条连接最多几本簿：网关中继一条最多 8 路流（`market_relay.rs` MAX_STREAMS），一本 depth + aggTrade 两路。
+  public static let maxBooks = 4
   static let gatewaySnapshotPath = "/v1/market/depth"
+  static let relayPath = "/v1/market/ws/binance"
+  static let spotStreamHost = "data-stream.binance.vision"
+  static let spotRestHost = "data-api.binance.vision"
 
-  public let symbol: String
-  public var upstream: String { BinanceUpstream.binance.rawValue }
-  public var sequenceModel: DepthSequenceModel { .previousFinalOverlap }
-  public var snapshotInBand: Bool { false }
-
+  public let market: Market
+  public let books: [DepthBook]
   let hosts: BinanceHosts
   let route: MarketRoute
   let sockets: any WSSocketFactory
   let http: any HTTPTransport
+  /// 报文里的 `s`（大写合约代号）→ 簿。
+  private let byInstrument: [String: DepthBook]
 
-  public init(symbol: String, hosts: BinanceHosts, route: MarketRoute,
+  public init(market: Market, books: [DepthBook], hosts: BinanceHosts, route: MarketRoute,
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               http: any HTTPTransport = URLSessionTransport()) {
-    self.symbol = InstrumentID(symbol).symbol.uppercased()
+    self.market = market
+    self.books = Array(books.prefix(Self.maxBooks))
     self.hosts = hosts; self.route = route; self.sockets = sockets; self.http = http
+    var map: [String: DepthBook] = [:]
+    for book in self.books { map[book.venue.instrument.uppercased()] = book }
+    byInstrument = map
   }
 
-  var depthStream: String { "\(symbol.lowercased())@depth@100ms" }
-  var tradeStream: String { BinanceHosts.aggTradeStream(symbol: symbol) }
-  var streams: [String] { [depthStream, tradeStream] }
+  public var name: String { "币安\(market.label) \(books.map(\.venue.instrument).joined(separator: ","))" }
+
+  var streams: [String] {
+    books.flatMap { book -> [String] in
+      let s = book.venue.instrument.lowercased()
+      return ["\(s)@depth@100ms", "\(s)@aggTrade"]
+    }
+  }
 
   public var streamURLs: [URL] {
-    route.viaGateway ? Self.gatewayStreams(route.gateways, path: "/market/stream", streams: streams)
-                     : [hosts.combinedStream(streams)]
+    switch market {
+    case .spot:
+      var c = URLComponents()
+      c.scheme = "wss"; c.host = Self.spotStreamHost; c.path = "/stream"
+      c.queryItems = [URLQueryItem(name: "streams", value: streams.joined(separator: "/"))]
+      return c.url.map { [$0] } ?? []
+    case .um, .cm:
+      return route.viaGateway ? Self.gatewayStreams(route.gateways, path: Self.relayPath, streams: streams)
+                              : [hosts.combinedStream(streams)]
+    }
   }
 
   public func connect(candidate: Int) async throws -> any WSSocket {
@@ -49,24 +90,26 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
 
   // ------------------------------------------------------------------ 推送
 
-  public func decode(_ text: String) -> [DepthMessage] {
+  public func decode(_ text: String) -> [VenueMessage] {
     guard let outer = DepthWire.object(text) else { return [] }
     let body = (outer["data"] as? [String: Any]) ?? outer
+    guard let symbol = (body["s"] as? String)?.uppercased(), let book = byInstrument[symbol] else { return [] }
     switch body["e"] as? String {
     case "depthUpdate":
-      guard (body["s"] as? String)?.uppercased() == symbol,
-            let first = DepthWire.integer(body["U"]), let final = DepthWire.integer(body["u"]),
-            let bids = DepthWire.levels(body["b"]), let asks = DepthWire.levels(body["a"]) else { return [] }
-      return [.delta(BookDelta(firstUpdateID: first, finalUpdateID: final,
-                               previousFinalUpdateID: DepthWire.integer(body["pu"]),
-                               bids: bids, asks: asks, eventTimeMs: DepthWire.integer(body["E"]) ?? 0))]
+      guard let first = DepthWire.integer(body["U"]), let final = DepthWire.integer(body["u"]),
+            let bids = book.levels(body["b"]), let asks = book.levels(body["a"]) else { return [] }
+      // 现货不带 pu；合约带。现货要是带了 pu 也不用它（rangeOverlap 不许有 pu）。
+      let previous = market == .spot ? nil : DepthWire.integer(body["pu"])
+      return [VenueMessage(book.id, .delta(BookDelta(firstUpdateID: first, finalUpdateID: final,
+                                                    previousFinalUpdateID: previous, bids: bids, asks: asks,
+                                                    eventTimeMs: DepthWire.integer(body["E"]) ?? 0)))]
     case "aggTrade":
-      guard (body["s"] as? String)?.uppercased() == symbol,
-            let p = DepthWire.number(body["p"]), let q = DepthWire.number(body["q"]), p > 0, q > 0 else { return [] }
+      guard let p = DepthWire.number(body["p"]), let q = DepthWire.number(body["q"]),
+            p > 0, q > 0, p.isFinite, q.isFinite else { return [] }
       // m = 买方是挂单方 → 这笔是主动卖，吃的是买盘。
       let hit: BookSide = (body["m"] as? Bool ?? false) ? .bid : .ask
-      return [.trade(OrderFlowTrade(price: p, quantity: q, hitSide: hit,
-                                    timeMs: DepthWire.integer(body["T"]) ?? 0))]
+      return [VenueMessage(book.id, .trade(book.trade(price: p, quantity: q, hit: hit,
+                                                      timeMs: DepthWire.integer(body["T"]) ?? 0)))]
     default:
       return []
     }
@@ -74,29 +117,52 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
 
   // ------------------------------------------------------------------ 快照
 
-  public func fetchSnapshot() async throws -> BookSnapshot {
-    guard route.viaGateway else {
-      let url = hosts.url("/fapi/v1/depth", ["symbol": symbol, "limit": String(Self.snapshotLevels)])
-      return try Self.snapshot(try await Self.body(http.get(url, timeout: 10)))
+  public func fetchSnapshot(venueID: String) async throws -> BookSnapshot {
+    guard let book = books.first(where: { $0.id == venueID }) else {
+      throw FeedError.badResponse("没有这本簿")
     }
-    var lastError: Error = FeedError.badResponse("行情服务暂不可用")
-    for host in route.gateways {
-      guard var c = URLComponents(string: "https://\(host)") else { continue }
-      c.path = Self.gatewaySnapshotPath
-      c.queryItems = [URLQueryItem(name: "symbol", value: symbol),
-                      URLQueryItem(name: "limit", value: String(Self.snapshotLevels))]
-      guard let url = c.url else { continue }
-      do {
-        return try Self.snapshot(try await Self.body(http.get(url, timeout: 10)))
-      } catch is CancellationError {
-        throw CancellationError()
-      } catch let error as DepthSnapshotError where error.isClientError {
-        throw error
-      } catch {
-        lastError = error
+    let symbol = book.venue.instrument.uppercased()
+    let query = [URLQueryItem(name: "limit", value: String(Self.snapshotLevels)),
+                 URLQueryItem(name: "symbol", value: symbol)]
+    switch market {
+    case .spot:
+      return try await get(host: Self.spotRestHost, path: "/api/v3/depth", query: query, book: book)
+    case .um, .cm:
+      guard route.viaGateway else {
+        let host = market == .um ? hosts.fapi : Self.dapiHost(hosts.fapi)
+        let path = market == .um ? "/fapi/v1/depth" : "/dapi/v1/depth"
+        return try await get(host: host, path: path, query: query, book: book)
       }
+      var lastError: Error = FeedError.badResponse("行情服务暂不可用")
+      for host in route.gateways {
+        do {
+          return try await get(host: host, path: Self.gatewaySnapshotPath,
+                               query: query + [URLQueryItem(name: "market", value: market.rawValue)], book: book)
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch let error as DepthSnapshotError where error.isClientError {
+          throw error
+        } catch {
+          lastError = error
+        }
+      }
+      throw lastError
     }
-    throw lastError
+  }
+
+  /// 币本位的 REST 主机：U 本位那台的 `fapi` 换成 `dapi`（`fapi.binance.com` → `dapi.binance.com`）。
+  static func dapiHost(_ fapi: String) -> String {
+    fapi.hasPrefix("fapi.") ? "dapi." + fapi.dropFirst("fapi.".count) : "dapi.binance.com"
+  }
+
+  private func get(host: String, path: String, query: [URLQueryItem], book: DepthBook) async throws -> BookSnapshot {
+    guard var c = URLComponents(string: "https://\(host)"), c.host != nil else {
+      throw FeedError.badResponse("行情服务暂不可用")
+    }
+    c.path = path
+    c.queryItems = query
+    guard let url = c.url else { throw FeedError.badResponse("行情服务暂不可用") }
+    return try Self.snapshot(try Self.body(await http.get(url, timeout: 10)), book: book)
   }
 
   static func body(_ reply: HTTPReply) throws -> Data {
@@ -107,10 +173,10 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
     return reply.body
   }
 
-  static func snapshot(_ data: Data) throws -> BookSnapshot {
+  static func snapshot(_ data: Data, book: DepthBook) throws -> BookSnapshot {
     guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
           let last = DepthWire.integer(obj["lastUpdateId"]),
-          let bids = DepthWire.levels(obj["bids"]), let asks = DepthWire.levels(obj["asks"]) else {
+          let bids = book.levels(obj["bids"]), let asks = book.levels(obj["asks"]) else {
       throw FeedError.badResponse("深度快照格式不对")
     }
     return BookSnapshot(lastUpdateID: last, requestedLevels: snapshotLevels, bids: bids, asks: asks,

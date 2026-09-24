@@ -1,14 +1,16 @@
 import Foundation
 import KanpanCore
 
-/// 深度流上发生的事。`connected` 之后的消息都属于这条新连接，调用方要先让本地簿换连接号。
+/// 深度流上发生的事。`connected` 之后的消息都属于这条新连接，调用方要先让这条连接上的
+/// 每本簿换连接号。
 public enum DepthStreamEvent: Sendable {
   case connected(Int)
-  case messages([DepthMessage])
+  case messages([VenueMessage])
   case disconnected(String)
 }
 
-/// 一只品种的一条深度连接：拨号、收帧、解码，断了按退避重连；`silenceMs` 内一帧都没有就当断了。
+/// 一条深度连接（上面可能有好几本簿）：拨号、收帧、解码，断了按退避重连；`silenceMs` 内一帧都没有
+/// 就当断了；适配器要保活的，连上后按它给的间隔发。
 /// 簿怎么维护不归它管（KanpanCore `OrderFlowModel`）；本地簿要求重来时调 `reconnect()`。
 public actor DepthStream {
   public let adapter: any DepthFeedAdapter
@@ -18,6 +20,7 @@ public actor DepthStream {
   private var backoff: Backoff
   private var socket: (any WSSocket)?
   private var task: Task<Void, Never>?
+  private var keepAliveTask: Task<Void, Never>?
   private var connection = 0
   /// 主动要求重连：不退避、不算失败。
   private var skipBackoff = false
@@ -45,6 +48,7 @@ public actor DepthStream {
 
   public func stop() async {
     task?.cancel(); task = nil
+    keepAliveTask?.cancel(); keepAliveTask = nil
     let s = socket
     socket = nil
     await s?.cancel()
@@ -68,12 +72,14 @@ public actor DepthStream {
         socket = s
         connection += 1
         skipBackoff = false
-        log("深度 \(adapter.upstream) \(adapter.symbol) 连上 #\(connection)")
+        log("深度 \(adapter.name) 连上 #\(connection)")
         sink.yield(.connected(connection))
+        startKeepAlive(s)
         try await pump(s, sink)
       } catch {
         reason = "\(error)"
       }
+      keepAliveTask?.cancel(); keepAliveTask = nil
       let dying = socket
       socket = nil
       await dying?.cancel()
@@ -85,8 +91,22 @@ public actor DepthStream {
         continue
       }
       let wait = backoff.next()
-      log("深度 \(adapter.upstream) \(adapter.symbol) 断了（\(reason)），\(Int(wait))ms 后重连")
+      log("深度 \(adapter.name) 断了（\(reason)），\(Int(wait))ms 后重连")
       do { try await pacer.sleep(ms: wait) } catch { return }
+    }
+  }
+
+  /// OKX 这类 30 秒没有帧就断的，照它的要求定时发一句；发不出去就算了，收帧那边会发现连接断了。
+  private func startKeepAlive(_ s: any WSSocket) {
+    keepAliveTask?.cancel(); keepAliveTask = nil
+    guard let keep = adapter.keepAlive, keep.everyMs > 0 else { return }
+    let pacer = self.pacer
+    keepAliveTask = Task {
+      while !Task.isCancelled {
+        do { try await pacer.sleep(ms: keep.everyMs) } catch { return }
+        guard !Task.isCancelled else { return }
+        do { try await s.send(keep.text) } catch { return }
+      }
     }
   }
 
