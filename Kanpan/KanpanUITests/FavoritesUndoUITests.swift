@@ -65,7 +65,7 @@ final class FavoritesUndoUITests: KanpanUICase {
     clear.tap()
     let undo = app.buttons["toast.undo"]
     XCTAssertTrue(undo.waitForExistence(timeout: Self.short), "清缓存之后底下没有「撤销」")
-    XCTAssertTrue(app.staticTexts["已清缓存"].exists, "那一条上写的不是「已清缓存」")
+    XCTAssertTrue(app.staticTexts["已清理存储空间"].exists, "那一条上写的不是「已清理存储空间」")
     shot("13-设置-已清缓存撤销")
     undo.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { !undo.exists }, "点了「撤销」提示没收起来")

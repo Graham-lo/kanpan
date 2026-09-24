@@ -67,7 +67,6 @@ struct MainScreenObservers: ViewModifier {
   let onMicrostructure: (Bool) -> Void
   let onSubs: ([IndicatorID]) -> Void
   let onDepth: (Bool) -> Void
-  let onLaunchSnapshot: (Bool) -> Void
   let onComfort: () -> Void
   let onSyncGate: () -> Void
   let onReviewScope: (String) -> Void
@@ -112,7 +111,6 @@ struct MainScreenObservers: ViewModifier {
     .onChange(of: microstructureVisible, initial: true) { _, visible in onMicrostructure(visible) }
     .onChange(of: prefs.subs) { _, subs in onSubs(subs) }
     .onChange(of: prefs.depth) { _, on in onDepth(on) }
-    .onChange(of: prefs.launchSnapshot) { _, on in onLaunchSnapshot(on) }
   }
 
   // 原 `observedContent`：亮度 / 皮肤 / 常亮 / 云端设置 / 找相似范围 / 时区。

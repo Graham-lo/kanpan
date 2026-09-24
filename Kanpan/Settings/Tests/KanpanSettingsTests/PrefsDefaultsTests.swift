@@ -21,7 +21,6 @@ struct PrefsDefaultsTests {
     #expect(p.theme == .system)                      // app.js: 'auto'
     #expect(!p.countdown)                             // §10.4 默认开
     #expect(p.keepAwake)                             // §10.4 默认开
-    #expect(p.launchSnapshot)                        // §4.3 默认开
     #expect(p.routePolicy == .direct)                // 行情线路出厂直连，没有「自动」
   }
 

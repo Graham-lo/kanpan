@@ -290,7 +290,7 @@ final class MarketModel {
   /// `switchTo` 等于白打一趟请求，还会让人先看一眼不是他上次那张图。
   /// - Parameter deferSnapshot: 冷启动落点不是图表（上次落在自选页）时传 true：
   ///   第一帧画的是自选，不必为图表同步读盘去抢主线程；快照照样经 `feed` 异步送到，
-  ///   点进图表时第一帧仍然有图。「启动快照」开关本身的语义不变。
+  ///   点进图表时第一帧仍然有图。启动时的快照照样读，只是换个时机。
   func start(snapshot: Bool, symbol requestedSymbol: String? = nil, interval requestedInterval: Interval? = nil,
              deferSnapshot: Bool = false) {
     if let requestedSymbol, !requestedSymbol.isEmpty { symbol = InstrumentID.canonical(requestedSymbol) }
@@ -371,10 +371,6 @@ final class MarketModel {
     Task { [feed] in await feed.enterForeground() }
   }
   func memoryWarning() { Task { [feed] in await feed.memoryWarning() } }
-  func setSnapshotEnabled(_ on: Bool) {
-    snapshot = on
-    Task { [feed] in await feed.setSnapshotEnabled(on) }
-  }
 
   // ---------------------------------------------------------------- 事件
 

@@ -5,6 +5,10 @@ import Foundation
 /// 成交量 / 成交额走千进制金融单位 K / M / B / T（2026-09-18 用户决定，取代原型的万/亿）。
 
 /// 时区口径（§9.4）：跟系统 / UTC / 交易所（固定 UTC+8）。
+///
+/// 界面上第三档写「UTC+8」，不写「交易所」（审查 U13）：「UTC」和「交易所」并排摆着，
+/// 看起来像同一件事的两种叫法；写出偏移量，三档各是什么一眼就分得开。
+/// case 名 `exchange` 不动——它是存档与同步里的原值。
 public enum TZChoice: String, Sendable, Codable, CaseIterable {
   case local, utc, exchange
 
@@ -12,7 +16,7 @@ public enum TZChoice: String, Sendable, Codable, CaseIterable {
     switch self {
     case .local: "本地"
     case .utc: "UTC"
-    case .exchange: "交易所"
+    case .exchange: "UTC+8"
     }
   }
 

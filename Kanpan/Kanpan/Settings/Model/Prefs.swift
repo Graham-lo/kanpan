@@ -104,9 +104,10 @@ struct Prefs: Sendable, Equatable {
   var rsiLower = 30.0
   /// 盯盘时不锁屏（§10.4，默认开）。
   var keepAwake: Bool = true
-  /// 启动快照（§4.3「设置里『启动快照』开关，默认开」）。
-  var launchSnapshot: Bool = true
-  /// 时区（A6.9）。Core 的 `TZChoice` 已经是原型的口径：本地 / UTC / 交易所。
+  // 这儿原来还有 `launchSnapshot`（§4.3 的「启动快照」开关）。2026-09-24 审查 U13 把它从
+  // 设置页撤了，字段随后也删掉：界面上改不了的开关，谁要是以前关过，就永远关着、
+  // 再也打不开——冷启动一直是空图。启动快照现在无条件开着（`MainScreen.boot`）。
+  /// 时区（A6.9）。Core 的 `TZChoice` 是原型的口径：本地 / UTC / 交易所（界面上写「UTC+8」）。
   var timeZone: TZChoice = .local
   var changeBasis: ChangeBasis = .rolling24h
   /// 所有价格提醒共用，随账号同步；复盘到期通知不使用此项。

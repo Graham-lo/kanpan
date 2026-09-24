@@ -209,10 +209,10 @@ struct PrefsFieldPlanTests {
   /// 等于把那台手机的同步队列堵死。新客户端既不发也不收。
   @Test("直连 / 网关留在这台设备上")
   func routePolicyStaysOnThisDevice() {
-    for name in ["apiHost", "streamHost"] {
-      #expect(PrefsFieldPlan.table[name] == nil, "\(name) 已删：主机一律由 RouteResolver 按线路给")
+    for name in ["apiHost", "streamHost", "launchSnapshot"] {
+      #expect(PrefsFieldPlan.table[name] == nil, "\(name) 已删：主机一律由 RouteResolver 按线路给，启动快照一律开着")
     }
-    for name in ["routePolicy", "launchSnapshot"] {
+    for name in ["routePolicy"] {
       #expect(PrefsFieldPlan.table[name] == .deviceOnly, "\(name) 是这台机器 / 这张网的属性，不跟人走")
       #expect(!Prefs.syncedFieldNames.contains(name), "\(name) 进了同步白名单就会被发上去")
     }

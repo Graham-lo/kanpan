@@ -265,7 +265,7 @@ struct MarketCacheTests {
     #expect(store.notice == nil)
   }
 
-  /// P2.7：设置页那颗「清除」现在走 `clearCacheLater`——先说「已清缓存 · 撤销」，
+  /// P2.7：设置页那颗「清除」现在走 `clearCacheLater`——先说「已清理存储空间 · 撤销」，
   /// 窗口过了才真清；窗口里点撤销，一个字节都不动。
   @Test("清缓存五秒内点撤销，缓存原样还在")
   @MainActor
@@ -280,7 +280,7 @@ struct MarketCacheTests {
     #expect(before > 0)
 
     store.clearCacheLater()
-    #expect(store.notice == "已清缓存")
+    #expect(store.notice == "已清理存储空间")
     let undo = try #require(store.noticeUndo)
     undo()
     try await Task.sleep(for: .milliseconds(300))

@@ -74,9 +74,11 @@ extension Prefs: Codable {
     // `showDrawings`（全局画线开关）和 `subHeights`（副图三档高度）同理：2026-09-24 两端删掉，
     // 老存档、云端老 body 里还带着也无妨。`favoritesExpanded`（自选页展开着详情的那几行）
     // 也是同一天删的：审查 U9 把行内展开收掉了，品种详情只剩长按那张预览卡。
+    // `launchSnapshot`（启动快照开关）同一天删：界面上早没有入口，启动快照一律开着。
+    // 它一直是 deviceOnly，从没上过服务端，老存档里的键读的时候忽略。
     case indicatorColors
     case ambientTheme
-    case depth, orderFlow, priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
+    case depth, orderFlow, priceMode, magnet, countdown, keepAwake, timeZone, changeBasis
     case candleKind, gridChoice, bodyChoice, lastLine, sinceChange
     case viewAnchor, priceBias
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
@@ -112,7 +114,6 @@ extension Prefs: Codable {
     try c.encode(orderFlow, forKey: .orderFlow)
     try c.encode(countdown, forKey: .countdown)
     try c.encode(keepAwake, forKey: .keepAwake)
-    try c.encode(launchSnapshot, forKey: .launchSnapshot)
     try c.encode(timeZone.rawValue, forKey: .timeZone)
     try c.encode(changeBasis.rawValue, forKey: .changeBasis)
     try c.encode(candleKind.rawValue, forKey: .candleKind)
@@ -215,7 +216,6 @@ extension Prefs: Codable {
     if let v = bool(.orderFlow) { orderFlow = v }
     if let v = bool(.countdown) { countdown = v }
     if let v = bool(.keepAwake) { keepAwake = v }
-    if let v = bool(.launchSnapshot) { launchSnapshot = v }
     if let raw = str(.changeBasis), let v = ChangeBasis(rawValue: raw) { changeBasis = v }
     if let raw = str(.timeZone), let v = TZChoice(rawValue: raw) { timeZone = v }
 

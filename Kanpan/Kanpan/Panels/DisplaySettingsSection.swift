@@ -37,7 +37,10 @@ struct DisplaySettingsSection: View {
         store.update { $0.theme = choice; $0.ambientTheme = false }
       }
     }
-    PanelRow(name: "自动护眼配色", meta: "随屏幕明暗切换") {
+    // 原来叫「自动护眼配色 · 随屏幕明暗切换」，和上面「外观」里的「跟随系统」读起来像
+    // 同一件事（审查 U13）。两者不合并：「跟随系统」跟的是系统深色模式，这颗跟的是屏幕
+    // 亮度（`BrightnessThemePolicy`）。只改字面，写清它按什么切，不要副标题。
+    PanelRow(name: "按屏幕亮度切换深浅") {
       PanelSwitch(isOn: store.prefs.ambientTheme) { store.update { $0.ambientTheme.toggle() } }
         .accessibilityIdentifier("display.ambient")
     }

@@ -443,7 +443,6 @@ struct MainScreen: View {
       onMicrostructure: { visible in market.setChartVisible(visible) },
       onSubs: { subs in market.setExternalIndicators(subs, depth: prefs.depth) },
       onDepth: { on in market.setExternalIndicators(prefs.subs, depth: on) },
-      onLaunchSnapshot: { on in market.setSnapshotEnabled(on) },
       onComfort: { refreshComfort() },
       onSyncGate: { accountBridge?.resumeApply() },
       onReviewScope: { value in store.update { $0.reviewSearchScope = value } },
@@ -1773,7 +1772,8 @@ struct MainScreen: View {
     wireAccount()
     // 第一帧画的是自选页时，不为图表同步读 K 线快照（主线程上的一次读盘 + 解码）；
     // 快照照样由 feed 异步送到，点进图表第一帧仍然有图。
-    market.start(snapshot: prefs.launchSnapshot, symbol: picker.prefs.recents.first, interval: prefs.interval,
+    // 启动快照一律开着：原来那颗「启动快照」开关 2026-09-24 从设置页撤了、字段也删了（审查 U13）。
+    market.start(snapshot: true, symbol: picker.prefs.recents.first, interval: prefs.interval,
                  deferSnapshot: tab == .favorites)
     picker.setSectionsActive(false)
     quotes.onReset = { picker.clearQuotes() }
@@ -1917,7 +1917,7 @@ struct MainScreen: View {
   ///
   /// 这三件事以前各修各的，而且各漏各的：品种去读 `SymbolPrefsStore()` 那个没注入
   /// 存储的柜子（写在账号文件里、读在 UserDefaults 里）；周期只在 `boot()` 里读一次，
-  /// 那一刻档案还没装进来，读到的是出厂 1h，而 `launchSnapshot` / `subs` /
+  /// 那一刻档案还没装进来，读到的是出厂 1h，而 `subs` /
   /// `changeBasis` 各自有 `onChange` 兜底、唯独它没有；落地页则挂在 `onSwitch` 上，
   /// 没登录过的人一次都不响。它们是同一个时序病根——**逐个字段补 `onChange` 本身
   /// 就是会漏的结构**，所以统一挂到「档案到货」这一个事件上
