@@ -192,9 +192,16 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
       let thin = all.filter { $0["thin"] as? Bool == true }.count
       let labels = (chartInfo()["orderFlowLabels"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
       print("取证|手机布局|\(title)|orders=\(orderCount())|bands=\(all.count)|整条档=\(tiers.sorted())|细线=\(thin)|标签=\(labels)|books=\(all.map { $0["books"] as? Int ?? 0 })")
-      // 细线 + 签（2026-09-25）：线最粗 2.5 pt（挂着的主档），跨桶的墙只多一层淡底，线本身不变粗。
+      // 细线 + 签（2026-09-25）：线最粗 2.5 pt（挂着的主档）；跨桶的墙不铺范围底色，只在段右端立一枚 3 pt 宽的括号。
       XCTAssertTrue(all.allSatisfy { ($0["h"] as? Double ?? 99) <= 2.5 }, "\(title)：有线粗过 2.5 pt：\(all)")
+      let brackets = all.filter { ($0["bracketX"] as? Double ?? -1) >= 0 }
+      XCTAssertTrue(brackets.allSatisfy { $0["role"] as? String == "main" && ($0["buckets"] as? Int ?? 1) > 1 },
+                    "\(title)：范围括号只给跨桶的主墙：\(brackets)")
+      print("取证|手机布局|\(title)|括号=\(brackets.map { "\($0["id"] ?? "") x=\($0["bracketX"] ?? 0) \($0["bracketTop"] ?? 0)…\($0["bracketBottom"] ?? 0)" })")
       shot("手机布局-\(title)", file: "手机布局-\(title)-\(Self.shortDevice)")
+      if title == "经典深" {
+        shot("BTC-1m-经典深", file: "../主力订单流-2026-09-25/BTCUSDT-1m-经典深-\(Self.shortDevice)")
+      }
     }
 
     // 轻点一条主档整条（点中了 `orderFlowSelected` 就是那一堵的 id），详情卡出来。先挑跨桶的墙（卡上是价位范围），
@@ -286,16 +293,18 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     }
 
     // 点空白处收卡：挑主图左侧一个点，离每条线的轻点命中区（至少 8 pt 高的带子外放到 44 pt）都在 6 pt 以外，
-    // 也不落在任何一堵墙的淡底范围里。
+    // 也不落在任何一堵墙的范围括号（横向外放到 44 pt）附近。
     let all = bands()
     let clear = { (px: Double, py: Double) -> Bool in
       all.allSatisfy { b in
         let bx = b["x"] as? Double ?? 0, bw = b["w"] as? Double ?? 0
         let by = b["y"] as? Double ?? 0, bh = max(b["h"] as? Double ?? 3, 8)
         let reachX = max(4, (44 - bw) / 2), reachY = max(8, (44 - bh) / 2)
-        let st = b["spanTop"] as? Double ?? -1, sb = b["spanBottom"] as? Double ?? -1
+        let kx = b["bracketX"] as? Double ?? -1
+        let kt = b["bracketTop"] as? Double ?? -1, kb = b["bracketBottom"] as? Double ?? -1
+        let nearBracket = kx >= 0 && abs(px - (kx + 1.5)) <= 22 + 6 && py >= kt - 6 && py <= kb + 6
         let outX = px < bx - reachX - 6 || px > bx + bw + reachX + 6
-        return outX || (abs(py - by) > bh / 2 + reachY + 6 && !(st >= 0 && py >= st - 6 && py <= sb + 6))
+        return !nearBracket && (outX || abs(py - by) > bh / 2 + reachY + 6)
       }
     }
     let candidates = [30.0, 60, 90, 120, 150].flatMap { x in stride(from: mainH * 0.15, to: mainH * 0.9, by: 4).map { (x, $0) } }
