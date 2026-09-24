@@ -85,6 +85,8 @@ async fn main()->anyhow::Result<()> {
  // Daily closes are history, not a cache: the sweep and the route share this
  // process so the answer served is the one the sweep just refreshed.
  supervisor.watch("daily-close",Life::Forever,kanpan_api::sector_history::spawn_daily(s.pool.clone()));
+ // 主力订单流的历史：常驻跟踪各家挂单簿、判出来的大单写进库，同一进程回 `/v1/market/orderflow/history`。
+ supervisor.watch("orderflow-history",Life::Forever,kanpan_api::orderflow_history::spawn(s.pool.clone()));
  // The open interest archive keeps its own disk cache; index it before the
  // first chart asks rather than inside that request. It finishes by design.
  supervisor.watch("oi-warm",Life::Once,kanpan_api::oi_archive::spawn_warm());

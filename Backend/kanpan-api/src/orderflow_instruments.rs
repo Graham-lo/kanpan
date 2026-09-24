@@ -352,7 +352,7 @@ pub fn pick(tables:&[(Exchange,Option<Arc<Table>>)],base:&str,now_ms:i64)->Vec<V
  out
 }
 
-fn valid_base(base:&str)->bool {(1..=20).contains(&base.len())&&base.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit())}
+pub(crate) fn valid_base(base:&str)->bool {(1..=20).contains(&base.len())&&base.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit())}
 
 // ------------------------------------------------------------------ 后台拉表
 
@@ -491,6 +491,12 @@ fn reply(base:&str,venues:Vec<Venue>,now_ms:i64)->Response {
  let mut response=Json(serde_json::json!({"base":base,"asOfMs":now_ms,"venues":venues})).into_response();
  response.headers_mut().insert(header::CACHE_CONTROL,HeaderValue::from_static(CACHE_CONTROL));
  response
+}
+
+/// 一只 base 此刻的全部簿（服务端历史跟踪用），和接口发给手机的是同一份；顺带让表的后台循环保持在跑。
+pub async fn venues(base:&str)->Vec<Venue> {
+ let tables=snapshot(book()).await;
+ pick(&tables,base,chrono::Utc::now().timestamp_millis())
 }
 
 async fn instruments(Params(query):Params<InstrumentsQuery>)->Response {
