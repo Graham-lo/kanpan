@@ -217,6 +217,9 @@ struct MainHeaderView<Card: View>: View {
           openInterestUnit: market.openInterestUnit,
           totalSupply: market.totalSupply,
           fundingRate: market.displayedFundingRate,
+          asset: market.asset,
+          forwardEarnings: market.forwardEarnings,
+          revenue: market.revenue,
           nextFundingTimeMs: market.displayedNextFundingTime,
           stale: !market.priceFresh)
           .modifier(HiddenWhileCrosshairReads(readout: readout, context: context))

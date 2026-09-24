@@ -18,6 +18,10 @@ struct SymbolMeta: Sendable, Equatable {
   var circulatingSupply: Double?
   var maxSupply: Double?
   var rank: Int?
+  /// 股票才有（后端从同一张上市页读出来、折成美元）：一致预期的未来十二个月净利润、
+  /// 过去十二个月营收。顶栏「Fwd PE / P/S」那一格拿现乘的市值去除它们。
+  var forwardEarnings: Double? = nil
+  var revenue: Double? = nil
 }
 
 struct OpenInterestStat: Sendable, Equatable {
@@ -176,7 +180,9 @@ actor MarketStatsClient {
         totalSupply: num(row["totalSupply"]),
         circulatingSupply: num(row["circulatingSupply"]),
         maxSupply: num(row["maxSupply"]),
-        rank: (row["rank"] as? NSNumber)?.intValue)
+        rank: (row["rank"] as? NSNumber)?.intValue,
+        forwardEarnings: num(row["forwardEarnings"]),
+        revenue: num(row["revenue"]))
     }
     return out
   }

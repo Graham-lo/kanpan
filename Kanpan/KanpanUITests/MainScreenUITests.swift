@@ -43,6 +43,15 @@ final class MainScreenUITests: KanpanUICase {
           .allSatisfy { !["", "—", "--"].contains($0) }
       }, "\(symbol) 的价格与六格实值没有到齐")
       XCTAssertTrue(app.symbolLabel.label.contains(symbol), "深链没有打开 \(symbol)")
+      // 第六格：股票是 Fwd PE（预期亏损的是 P/S），币是 OI/MC（2026-09-25）。
+      let valuation = app.staticTexts["top.valuation"]
+      if symbol == "MUUSDT" || symbol == "BTCUSDT" {
+        XCTAssertTrue(waitUntil(timeout: Self.long) { !["", "—", "--"].contains(valuation.label) },
+                      "\(symbol) 的第六格没有实值")
+      }
+      let valuationLabel = symbol.hasPrefix("MU") || symbol.hasPrefix("SNDK") ? ["Fwd PE", "P/S"] : ["OI/MC"]
+      XCTAssertTrue(valuationLabel.contains { app.staticTexts[$0].exists }, "\(symbol) 第六格的名字不对")
+      print("VALUATION \(symbol) \(valuationLabel.first { app.staticTexts[$0].exists } ?? "?")=\(valuation.label)")
       let digits = ["SNDKUSDT": 2, "MUUSDT": 2, "1000SATSUSDT": 8, "BTCUSDT": 1][symbol]!
       let pattern = "^[0-9,]+\\.[0-9]{\(digits)}$"
       XCTAssertNotNil(price.label.range(of: pattern, options: .regularExpression), "\(symbol) 价格未按报价步长展示：\(price.label)")

@@ -111,6 +111,12 @@ final class MarketModel {
   /// 单位和值同生同死：值被清掉时单位也要清，否则下一个品种会沿用上一个的坎。
   private(set) var openInterestUnit: VolUnit?
   private(set) var totalSupply: Double?
+  /// 股票的估值底数（美元），跟供应量同一条 `meta` 来、同生同死；顶栏「Fwd PE / P/S」用。
+  private(set) var forwardEarnings: Double?
+  private(set) var revenue: Double?
+  /// 这只是什么（币 / 股票 / 金属…）。顶栏第六格按它决定摆「OI/MC」还是「Fwd PE」，
+  /// 别的类别不摆；目录还没到时是「不知道」，那一格先不出现。
+  var asset: SymbolClassification.Asset { SymbolClassifier.classify(info).asset }
   /// 顶栏「仓」那一格显示的数。就是美元名义，没有第二个来源。
   var openInterestDisplay: Double? { openInterestValue }
   /// 总市值在顶栏那一格里现乘（`totalSupply × 正在显示的那口价`），这儿只管存供应量：
@@ -499,6 +505,7 @@ final class MarketModel {
     let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = resolver.route.apiHosts
     guard !proxies.isEmpty else {
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
+      forwardEarnings = nil; revenue = nil
       return
     }
     statsTask = Task { [weak self] in
@@ -550,7 +557,10 @@ final class MarketModel {
   /// 「一台都没问通」不会走到这儿——`MarketStatsClient.meta` 那时返回 `nil`。
   private func applyMeta(_ meta: SymbolMeta, for sym: String) {
     guard sym == symbol else { return }
-    totalSupply = meta.totalSupply.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+    let positive = { (v: Double?) in v.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } }
+    totalSupply = positive(meta.totalSupply)
+    forwardEarnings = positive(meta.forwardEarnings)
+    revenue = positive(meta.revenue)
   }
 
   /// 规则全在 `MarketStatsClient.notionalOpenInterest` 里（纯函数，用例守着）：
@@ -761,6 +771,7 @@ final class MarketModel {
       markPrice = nil; markTime = 0
       funding = nil
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
+      forwardEarnings = nil; revenue = nil
       fundingExpired = false
       // 这个品种以前认过小数位就照旧顶上，别让冷切换先用 2 位画一帧再跳回去。
       var seed = MarketModel.placeholder(sym)

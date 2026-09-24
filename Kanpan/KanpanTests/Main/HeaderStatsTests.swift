@@ -4,7 +4,7 @@ import KanpanCore
 import KanpanNetwork
 @testable import Kanpan
 
-// 顶栏右侧五格（仓 / 额 · 市值 / 费率 · 结算）的取值规则。除了「仓」以外都会**过期**，
+// 顶栏右侧六格（仓 / 额 · 市值 / 费率 · 结算 / 估值）的取值规则。除了「仓」以外都会**过期**，
 // 而过期的数和真的数在屏上长得一模一样——只能靠用例守。
 
 @Suite("B-T10 / A-T20 顶栏六格只显示能负责的数")
@@ -126,6 +126,62 @@ struct HeaderStatsTests {
     #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: at(720), now: now) == "12分")
     // 不足一分钟写「即将结算」，不写「还有零分钟」。
     #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: at(30), now: now) == "<1分")
+  }
+
+  @Test("第六格：币给 OI/MC，就是「仓」÷「市值」")
+  func cryptoOpenInterestToCap() {
+    // 供应量 1 亿 × 价 10 = 市值 10 亿；持仓 2,500 万 → 2.50%。
+    let cell = HeaderStats.valuationCell(asset: .crypto, openInterest: 25e6, totalSupply: 1e8, price: 10,
+                                         forwardEarnings: nil, revenue: nil, fresh: true)
+    #expect(cell?.label == "OI/MC")
+    #expect(cell?.value == "2.50%")
+    // 量级跟着位数走：BTC 那种零点几、山寨几十。
+    #expect(HeaderStats.valuationCell(asset: .crypto, openInterest: 4.3e9, totalSupply: 1e10, price: 100,
+                                      forwardEarnings: nil, revenue: nil, fresh: true)?.value == "0.43%")
+    #expect(HeaderStats.valuationCell(asset: .crypto, openInterest: 3.47e8, totalSupply: 1e8, price: 10,
+                                      forwardEarnings: nil, revenue: nil, fresh: true)?.value == "34.7%")
+    // 缺持仓、缺供应量、价不新鲜：格子还在，值是破折号。
+    for (oi, supply, fresh) in [(nil, 1e8, true), (25e6, nil, true), (25e6, 1e8, false)] as [(Double?, Double?, Bool)] {
+      let blank = HeaderStats.valuationCell(asset: .crypto, openInterest: oi, totalSupply: supply, price: 10,
+                                            forwardEarnings: nil, revenue: nil, fresh: fresh)
+      #expect(blank?.label == "OI/MC")
+      #expect(blank?.value == nil)
+    }
+  }
+
+  @Test("第六格：股票给 Fwd PE，预期亏损的给 P/S，按正在显示的那口价现除")
+  func equityValuation() {
+    // NVDA 形状：市值 5.42T、远期利润 = 5.42T / 18.72。价涨一成，远期市盈率跟着涨一成。
+    let earnings = 5.42e12 / 18.72
+    let supply = 5.42e12 / 180
+    let at = { (price: Double) in
+      HeaderStats.valuationCell(asset: .equity, openInterest: 9e9, totalSupply: supply, price: price,
+                                forwardEarnings: earnings, revenue: 302.97e9, fresh: true)
+    }
+    #expect(at(180)?.label == "Fwd PE")
+    #expect(at(180)?.value == "18.7")
+    #expect(at(198)?.value == "20.6")
+    // RIVN 形状：没有远期利润，只剩营收 → P/S。
+    let loss = HeaderStats.valuationCell(asset: .equity, openInterest: nil, totalSupply: 22.14e9 / 15, price: 15,
+                                         forwardEarnings: nil, revenue: 5.88e9, fresh: true)
+    #expect(loss?.label == "P/S")
+    #expect(loss?.value == "3.77")
+    // 两项都没有（ETF 这类）：格子仍叫 Fwd PE，值是破折号；股票不会显示 OI/MC。
+    let none = HeaderStats.valuationCell(asset: .equity, openInterest: 9e9, totalSupply: supply, price: 180,
+                                         forwardEarnings: nil, revenue: nil, fresh: true)
+    #expect(none?.label == "Fwd PE")
+    #expect(none?.value == nil)
+    // 价不新鲜：同一套规矩。
+    #expect(HeaderStats.valuationCell(asset: .equity, openInterest: nil, totalSupply: supply, price: 180,
+                                      forwardEarnings: earnings, revenue: nil, fresh: false)?.value == nil)
+  }
+
+  @Test("第六格：金属、指数、未上市、不知道的都没有这一格")
+  func noValuationCellForOtherAssets() {
+    for asset in [SymbolClassification.Asset.preciousMetal, .commodity, .index, .preMarket, .other] {
+      #expect(HeaderStats.valuationCell(asset: asset, openInterest: 1e9, totalSupply: 1e8, price: 10,
+                                        forwardEarnings: 1e9, revenue: 1e9, fresh: true) == nil)
+    }
   }
 
   @Test("没有结算时刻就一个字不写")

@@ -1,7 +1,8 @@
 import Foundation
 import KanpanCore
 
-/// 顶栏右侧五格（仓 / 额 · 市值 / 费率 · 结算；振幅 2026-09-25 去掉）的**取值规则**。
+/// 顶栏右侧六格（仓 / 额 · 市值 / 费率 · 结算 / 估值；振幅 2026-09-25 去掉，
+/// 同日第六格换成按品种类别给的估值格）的**取值规则**。
 ///
 /// 单独拆一份是因为这几格的规则全是「什么时候该显示 `—`」，而它们出错的样子
 /// 用户一眼看不出来（一个上一条线路留下的成交额和一个真的成交额长得一模一样）。
@@ -47,6 +48,45 @@ enum HeaderStats {
     guard fresh, let supply = totalSupply, supply.isFinite, supply > 0,
           let price, price.isFinite, price > 0 else { return nil }
     return fmtVol(supply * price)
+  }
+
+  /// 第六格：按品种类别给一个估值比率（用户 2026-09-25 定的）。
+  ///
+  /// * **币**：`OI/MC` = 持仓量 ÷ 总市值——就是左边「仓」「市值」两格那两个数相除，
+  ///   衡量一个币的合约杠杆有多重（大币零点几个百分点，热门山寨能到几十个百分点）。
+  /// * **股票**：`Fwd PE` = 市值 ÷ 一致预期的未来十二个月净利润；预期亏损的公司没有
+  ///   远期市盈率，改给 `P/S` = 市值 ÷ 过去十二个月营收（亏损成长股看的就是它）。
+  ///   两项底数后端从同一张上市页读，比率在这儿拿**正在显示的那口价**现除，所以跟
+  ///   「市值」那一格永远是同一口价。
+  /// * 金属、指数、未上市、不知道是什么的：没有这一格（`nil`），回到五格。
+  ///
+  /// 值与其它格同一条约定：拿不到可靠数据就 `nil`（界面上是 `—`），价不新鲜也是 `—`。
+  static func valuationCell(asset: SymbolClassification.Asset, openInterest: Double?,
+                            totalSupply: Double?, price: Double?, forwardEarnings: Double?,
+                            revenue: Double?, fresh: Bool) -> (label: String, value: String?)? {
+    func positive(_ v: Double?) -> Double? { v.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } }
+    let cap: Double? = {
+      guard fresh, let s = positive(totalSupply), let p = positive(price) else { return nil }
+      return s * p
+    }()
+    switch asset {
+    case .crypto:
+      guard let cap, let oi = positive(openInterest) else { return ("OI/MC", nil) }
+      return ("OI/MC", ratioText(oi / cap * 100) + "%")
+    case .equity:
+      if let e = positive(forwardEarnings) { return ("Fwd PE", cap.map { ratioText($0 / e) }) }
+      if let r = positive(revenue) { return ("P/S", cap.map { ratioText($0 / r) }) }
+      return ("Fwd PE", nil)
+    case .preciousMetal, .commodity, .index, .preMarket, .other:
+      return nil
+    }
+  }
+
+  /// 比率的位数跟着量级走，三位有效数字上下：`0.43`、`18.7`、`164`。
+  static func ratioText(_ x: Double) -> String {
+    guard x.isFinite else { return "—" }
+    let a = abs(x)
+    return String(format: a < 10 ? "%.2f" : a < 100 ? "%.1f" : "%.0f", x)
   }
 
   /// 「费率」。除了价的新鲜度，它自己还有一条寿命：`markPrice` 那条流超过

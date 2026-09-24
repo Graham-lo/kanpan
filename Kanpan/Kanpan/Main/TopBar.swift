@@ -203,6 +203,11 @@ struct PriceRow: View {
   /// 资金费率，已经是小数（`0.0001` = 0.01%）。超过展示寿命的帧由外面先判成 `nil`
   /// （`MarketModel.displayedFundingRate`），这儿看到的就是「现在还算数」的值。
   var fundingRate: Double?
+  /// 第六格（估值）要的：这只是什么，以及股票的两项估值底数（美元）。
+  /// 规则在 `HeaderStats.valuationCell`。
+  var asset: SymbolClassification.Asset = .other
+  var forwardEarnings: Double?
+  var revenue: Double?
   /// 下一次资金费率结算的时刻（`MarkPriceTick.nextFundingTime`）。「结算」那一格
   /// 读它；没有就显示破折号（见 `HeaderStats.fundingCountdownText`）。
   var nextFundingTimeMs: Int64?
@@ -282,9 +287,16 @@ struct PriceRow: View {
     HeaderStats.fundingText(rate: fundingRate, fresh: !stale)
   }
 
+  private var valuationCell: (label: String, value: String?)? {
+    HeaderStats.valuationCell(asset: asset, openInterest: openInterest, totalSupply: totalSupply,
+                              price: lastPrice, forwardEarnings: forwardEarnings,
+                              revenue: revenue, fresh: !stale)
+  }
+
   /// 每列按最宽的实值分配；间距固定，不缩字、不截字、不换行。
   /// 列距 16、标签↔值 8、行距 2：三行总高约 47pt（原来 53），不向图表借高度。
-  /// 五格：左列仓 / 市值 / 结算，右列额 / 费率（振幅 2026-09-25 去掉）。
+  /// 六格：左列仓 / 市值 / 结算，右列额 / 费率 / 估值（振幅 2026-09-25 去掉，
+  /// 同日用户要把第六格补成估值：币 OI/MC，股票 Fwd PE 或 P/S，别的类别没有这一格）。
   private var stats: some View {
     HStack(alignment: .top, spacing: Space.l) {
       statColumn {
@@ -295,8 +307,9 @@ struct PriceRow: View {
       statColumn {
         statRow("额", turnoverText, id: "top.turnover")
         statRow("费率", fundingText, id: "top.funding", tint: frTint)
-        // 「振幅」那格 2026-09-25 用户拿掉了（「把振幅去掉」）：右列只剩额 / 费率两行，
-        // 左列仍是仓 / 市值 / 结算三行，不补别的数进来凑格。
+        if let cell = valuationCell {
+          statRow(cell.label, cell.value, id: "top.valuation")
+        }
       }
     }
     .lineLimit(1)
