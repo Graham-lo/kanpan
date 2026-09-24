@@ -131,6 +131,18 @@ public struct VenueBook: Sendable {
     }
     return mid == nil ? nil : out
   }
+
+  /// 中间价两侧 `bps` 以内、买卖两侧全部价位的美元名义之和；簿没就绪返回 nil。标定非币默认门槛用。
+  mutating func depthUSD(withinBps bps: Double) -> Double? {
+    guard book.quality == .ready, readySinceMs != nil else { return nil }
+    let notional = venue.notional
+    var total = 0.0
+    let mid = book.forEachLevel(withinBps: bps) { _, price, quantity in
+      let usd = notional.usd(price: price, quantity: quantity)
+      if usd > 0 { total += usd }
+    }
+    return mid == nil ? nil : total
+  }
 }
 
 /// 桶键：一侧一桶。

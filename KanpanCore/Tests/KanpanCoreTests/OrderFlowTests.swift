@@ -246,6 +246,45 @@ final class OrderFlowDefaultsTests: XCTestCase {
     XCTAssertEqual(other, OrderFlowThresholds(usdtPerp: 2_000_000, step: nil))
   }
 
+  /// 1 / 2 / 5 × 10ⁿ 就近取整：按线性距离，一样近取小的。
+  func testRound125PicksTheNearestOneTwoFive() {
+    XCTAssertEqual(OrderFlowDefaults.round125(570_000), 500_000)
+    XCTAssertEqual(OrderFlowDefaults.round125(60_000), 50_000)
+    XCTAssertEqual(OrderFlowDefaults.round125(6_000_000), 5_000_000)
+    XCTAssertEqual(OrderFlowDefaults.round125(760_000), 1_000_000)
+    XCTAssertEqual(OrderFlowDefaults.round125(300_000), 200_000)
+    XCTAssertEqual(OrderFlowDefaults.round125(150_000), 100_000, "100K 与 200K 一样近，取小的")
+    XCTAssertEqual(OrderFlowDefaults.round125(350_000), 200_000, "200K 与 500K 一样近，取小的")
+    XCTAssertEqual(OrderFlowDefaults.round125(1_000_000), 1_000_000)
+    XCTAssertEqual(OrderFlowDefaults.round125(2_000_000), 2_000_000)
+    XCTAssertEqual(OrderFlowDefaults.round125(5), 5)
+    XCTAssertEqual(OrderFlowDefaults.round125(0.9), 1)
+  }
+
+  /// 非币默认门槛按簿深标定：round125(0.03 × D)，夹在 [5 万, 200 万]。
+  func testCalibratedThresholdFollowsBookDepth() {
+    XCTAssertEqual(OrderFlowDefaults.calibratedThreshold(depth: 19_000_000), 500_000)   // 570K → 500K
+    XCTAssertEqual(OrderFlowDefaults.calibratedThreshold(depth: 2_000_000), 50_000)     // 60K → 50K
+    XCTAssertEqual(OrderFlowDefaults.calibratedThreshold(depth: 200_000_000), 2_000_000) // 6M → 5M → 封顶 2M
+    XCTAssertEqual(OrderFlowDefaults.calibratedThreshold(depth: 100_000), 50_000, "太浅也不低于 5 万")
+    XCTAssertEqual(OrderFlowDefaults.calibratedThreshold(depth: 0), 50_000)
+    XCTAssertEqual(OrderFlowDefaults.calibratedThreshold(depth: .nan), OrderFlowDefaults.tradfiPerpetual)
+    XCTAssertTrue(OrderFlowDefaults.needsCalibration(base: "sndk", asset: .equity))
+    XCTAssertTrue(OrderFlowDefaults.needsCalibration(base: "XAU", asset: .preciousMetal))
+    XCTAssertFalse(OrderFlowDefaults.needsCalibration(base: "DOGE", asset: .crypto))
+    XCTAssertFalse(OrderFlowDefaults.needsCalibration(base: "BTC", asset: .equity), "固定表里的不标定")
+    // 标定值只替非币的 U 本位永续门槛；步长表不动；币一律忽略它。
+    XCTAssertEqual(OrderFlowDefaults.thresholds(base: "SNDK", asset: .equity, turnover24h: nil, calibrated: 500_000),
+                   OrderFlowThresholds(usdtPerp: 500_000, step: 1))
+    XCTAssertEqual(OrderFlowDefaults.thresholds(base: "SNDK", asset: .equity, turnover24h: nil, calibrated: nil),
+                   OrderFlowThresholds(usdtPerp: 2_000_000, step: 1), "还没标定用兜底 200 万")
+    XCTAssertEqual(OrderFlowDefaults.thresholds(base: "DOGE", asset: .crypto, turnover24h: nil, calibrated: 50_000),
+                   OrderFlowDefaults.thresholds(base: "DOGE", asset: .crypto, turnover24h: nil))
+    // 用户改过的仍然优先。
+    XCTAssertEqual(OrderFlowDefaults.thresholds(base: "SNDK", asset: .equity, turnover24h: nil, calibrated: 500_000)
+      .applying(OrderFlowOverride(usdtPerp: 3_000_000)), OrderFlowThresholds(usdtPerp: 3_000_000, step: 1))
+  }
+
   /// 其他币按 24h 成交额分六档；币本位、交割取永续那个数；不知道成交额走第三档。
   func testCoinsAreTieredBy24hTurnover() {
     func t(_ turnover: Double?) -> OrderFlowThresholds {
@@ -373,6 +412,23 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(model.ingest(venue.id, .delta(BookDelta(firstUpdateID: seq, finalUpdateID: seq,
                                                            previousFinalUpdateID: seq - 1, bids: [bid], asks: [],
                                                            eventTimeMs: 0)), nowMs: 0), .none)
+  }
+
+  /// 标定用的簿深：只算已就绪的簿，中间价 ±1% 以内两侧美元名义之和。
+  func testCalibrationDepthSumsReadyBooksWithinOnePercent() {
+    var model = inBand(okx)
+    model.addVenue(binance)  // 还没拿到快照：不算
+    let depth = model.calibrationDepth()
+    XCTAssertEqual(depth.ready, 1)
+    XCTAssertEqual(depth.total, 2)
+    // 中间价 1600，±1% 是 1584…1616：买侧 1599…1584 共 16 档（1590 是墙），卖侧 1601…1616 共 16 档。
+    var expected = 0.0
+    for k in 1...16 {
+      let bid = 1_600 - Double(k)
+      expected += bid * (bid == 1_590 ? 12_000 : 150)
+      expected += (1_600 + Double(k)) * 150
+    }
+    XCTAssertEqual(depth.depth, expected, accuracy: 1e-6)
   }
 
   func testRestSnapshotBootstrapsAgainstBufferedDeltas() {
@@ -689,23 +745,24 @@ final class OrderFlowModelTests: XCTestCase {
              notional: 6_000_000, threshold: 5_000_000, vanishedNotional: 6_000_000)
   }
 
-  /// 30 天以前结束的删掉；结束的超过 2 万条一次挤到九成，先挤活得短的；最近 2 小时内结束的、
+  /// 3 天以前结束的删掉；结束的超过 2 万条一次挤到九成，先挤活得短的；最近 2 小时内结束的、
   /// 落在可视区间里的后挤；挂着的不删。
-  func testRetentionKeepsThirtyDaysAndSqueezesShortLivedFirst() {
+  func testRetentionKeepsThreeDaysAndSqueezesShortLivedFirst() {
     let day: Int64 = 86_400_000
     let now = 40 * day
     let n = OrderFlowDefaults.maxEndedOrders + 100
     var list: [BigOrder] = []
-    for k in 0..<n {  // 3 天前结束，活了 k 秒
-      let end = now - 3 * day - Int64(k)
+    for k in 0..<n {  // 2 天前结束，活了 k 秒
+      let end = now - 2 * day - Int64(k)
       list.append(ended(bucket: 2_000 + k, first: end - Int64(k) * 1_000, end: end))
     }
-    // 最近 1 小时内结束、只活了 1 毫秒的 10 条，和落在可视区间里（10 天前）只活了 1 毫秒的 10 条。
+    // 最近 1 小时内结束、只活了 1 毫秒的 10 条，和落在可视区间里（36 小时前）只活了 1 毫秒的 10 条。
+    let seen = now - 36 * 3_600_000
     for k in 0..<10 { list.append(ended(bucket: 100_000 + k, first: now - 3_600_000, end: now - 3_600_000 + 1)) }
-    for k in 0..<10 { list.append(ended(bucket: 200_000 + k, first: now - 10 * day, end: now - 10 * day + 1)) }
+    for k in 0..<10 { list.append(ended(bucket: 200_000 + k, first: seen, end: seen + 1)) }
     var model = inBand(okx, restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: now, orders: list))
     XCTAssertEqual(model.orders.count, n + 20)
-    model.setVisibleWindow((now - 10 * day - 60_000)...(now - 10 * day + 60_000))
+    model.setVisibleWindow((seen - 60_000)...(seen + 60_000))
     _ = model.evaluate(nowMs: now)
     let frame = model.evaluate(nowMs: now + 500)
     let endedOrders = frame.orders.filter { !$0.isLive }
@@ -715,8 +772,8 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(endedOrders.filter { $0.bucket >= 100_000 }.count, 20, "最近的、可视区间里的都留着")
     let shortest = endedOrders.filter { $0.bucket < 100_000 }.compactMap { o in o.endMs.map { $0 - o.firstSeenMs } }.min()
     XCTAssertEqual(shortest, Int64(n - (keep - 20)) * 1_000, "挤掉的是活得最短的那些")
-    let later = model.evaluate(nowMs: now + 28 * day)
-    XCTAssertEqual(later.orders.filter { !$0.isLive }.count, 10, "结束超过 30 天的删掉，最近那 10 条还在")
+    let later = model.evaluate(nowMs: now + 2 * day + 12 * 3_600_000)
+    XCTAssertEqual(later.orders.filter { !$0.isLive }.count, 10, "结束超过 3 天的删掉，最近那 10 条还在")
   }
 
   /// 落盘只存最近 24 小时、最多 5000 条（挂着的全留，结束的按留存同一个次序挑）；5000 条不到 1.25 MB。
@@ -732,7 +789,7 @@ final class OrderFlowModelTests: XCTestCase {
     var model = inBand(okx, restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: now, orders: list))
     _ = model.evaluate(nowMs: now)
     _ = model.evaluate(nowMs: now + 500)
-    XCTAssertEqual(model.orders.count, 100 + n + 1, "内存里 30 天的都在")
+    XCTAssertEqual(model.orders.count, 100 + n + 1, "内存里 3 天的都在")
     let journal = try XCTUnwrap(model.journal(nowMs: now + 500))
     XCTAssertEqual(journal.orders.count, OrderFlowDefaults.journalMaxOrders)
     XCTAssertEqual(journal.orders.filter(\.isLive).count, 1)

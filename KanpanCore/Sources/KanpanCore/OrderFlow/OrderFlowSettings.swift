@@ -157,8 +157,18 @@ public enum OrderFlowDefaults {
     "SOL": (750_000, 2_500_000, 0.1),
   ]
 
-  /// 非币（美股、ETF、金银、大宗、指数、盘前……）：只订 U 本位永续，门槛 200 万。
+  /// 非币（美股、ETF、金银、大宗、指数、盘前……）的兜底门槛 200 万：只在标定不出来（一本簿都没拿到首张快照）
+  /// 时用。正常情况下非币的默认门槛按簿深标定，见 `calibratedThreshold(depth:)`。
   public static let tradfiPerpetual = 2_000_000.0
+  /// 非币默认门槛的标定（2026-09-25）：固定 200 万对 SNDK 这类盘口只有两千来万深的票永远出不了一单。
+  /// D = 各本簿首张快照里中间价 ±1% 以内买卖两侧的美元名义之和，门槛 = round125(0.03 × D)，夹在 [5 万, 200 万]。
+  /// 服务端（kanpan-api）用同一条公式，`thresholds` 里回的是同一个数。
+  public static let calibrationBandBps = 100.0
+  public static let calibrationFraction = 0.03
+  public static let calibrationFloor = 50_000.0
+  public static let calibrationCeiling = 2_000_000.0
+  /// 订阅起来后最多等这么久：所有簿都拿到首张快照就立刻标定；到点时有一本就按已有的算，一本都没有用兜底。
+  public static let calibrationTimeoutMs: Int64 = 8_000
   /// 非币里有表的步长；没表的按前一日收盘推。
   public static let tradfiSteps: [String: Double] = [
     "MU": 1, "SNDK": 1, "SPCX": 1, "SKHYNIX": 1, "SKHY": 0.1, "XAU": 1, "XAG": 0.1,
@@ -195,12 +205,13 @@ public enum OrderFlowDefaults {
   public static let filledRatio = 0.8
   /// 已结束的大单在内存里保留多久、最多几条。还挂着的永远不删——挂着的墙就是这个功能要看的东西。
   ///
-  /// 2026-09-24 起服务端（kanpan-api `orderflow_history`）常驻跟踪、存 30 天，手机打开时取回来并进模型，
-  /// 往左拖还能往前补（见 `OrderFlowModel.mergeHistory`）；所以内存里要装得下 30 天。
-  /// 条数封顶 2 万：线上实测 BTC 默认门槛一天约三万多条结束的单（一半活不过 1 分钟），30 天装不下全部，
+  /// 服务端（kanpan-api `orderflow_history`）常驻跟踪、存 3 天，手机打开时取回来并进模型，
+  /// 往左拖还能往前补（见 `OrderFlowModel.mergeHistory`）；所以内存里要装得下 3 天。
+  /// 2026-09-25 从 30 天收到 3 天：更早的墙对盯盘没有用，一个月的碎单只会把图刷成底噪、把条数额度冲光。
+  /// 条数封顶 2 万：线上实测 BTC 默认门槛一天约三万多条结束的单（一半活不过 1 分钟），3 天也装不下全部，
   /// 超了按「活得短的先走」挤（`recentKeepMs` 以内结束的、落在可视区间里的优先留），
-  /// 拉远看一个月时留下的正是活得久、看得见的那些墙。
-  public static let retentionMs: Int64 = 30 * 86_400_000
+  /// 拉远看几天时留下的正是活得久、看得见的那些墙。
+  public static let retentionMs: Int64 = 3 * 86_400_000
   public static let maxEndedOrders = 20_000
   /// 这么久以内结束的，不因为超额被挤掉（刚发生的细节最要紧，1 分钟图上一屏就是这么长）。
   public static let recentKeepMs: Int64 = 2 * 3_600_000
@@ -220,13 +231,48 @@ public enum OrderFlowDefaults {
     return coinTiers.firstIndex { t >= $0.turnover } ?? coinTiers.count - 1
   }
 
+  /// 这只品种的默认门槛要不要按簿深标定：非币、且不在固定表里。
+  public static func needsCalibration(base: String, asset: SymbolClassification.Asset) -> Bool {
+    asset != .crypto && majors[base.uppercased()] == nil
+  }
+
+  /// 就近取 1 / 2 / 5 × 10ⁿ（按线性距离；两边一样近取小的）。非正数、非有限数原样返回。
+  public static func round125(_ x: Double) -> Double {
+    guard x.isFinite, x > 0 else { return x }
+    let exponent = floor(log10(x))
+    var candidates: [Double] = []
+    for e in [exponent - 1, exponent, exponent + 1] {
+      let p = pow(10, e)
+      candidates += [p, 2 * p, 5 * p]
+    }
+    var best = candidates[0]
+    var bestDistance = abs(x - best)
+    for c in candidates.dropFirst() {
+      let d = abs(x - c)
+      // 候选从小到大排，严格小于才换：一样近时留住小的那个。相对容差吸收 pow/log 的浮点零头。
+      if d < bestDistance - 1e-9 * max(1, c) { best = c; bestDistance = d }
+    }
+    return best
+  }
+
+  /// 簿深 D（中间价 ±1% 以内两侧美元名义之和）→ 标定门槛。D 不可用时给兜底 200 万。
+  public static func calibratedThreshold(depth: Double) -> Double {
+    guard depth.isFinite else { return tradfiPerpetual }
+    guard depth > 0 else { return calibrationFloor }
+    let raw = round125(calibrationFraction * depth)
+    return min(calibrationCeiling, max(calibrationFloor, raw))
+  }
+
   /// 一只 base 的默认门槛与步长（步长可能是 nil，等前一日收盘）。
   /// `turnover24h` 是币安 U 本位永续的 24h 成交额（美元），不知道给 nil。
+  /// `calibrated` 是按簿深标定出的非币门槛（`calibratedThreshold(depth:)`）；还没标定或标定不出给 nil，用兜底 200 万。
+  /// 只对 `needsCalibration` 的品种起作用，币一律忽略它。
   public static func thresholds(base: String, asset: SymbolClassification.Asset,
-                                turnover24h: Double?) -> OrderFlowThresholds {
+                                turnover24h: Double?, calibrated: Double? = nil) -> OrderFlowThresholds {
     let base = base.uppercased()
     guard asset == .crypto || majors[base] != nil else {
-      return OrderFlowThresholds(usdtPerp: tradfiPerpetual, step: tradfiSteps[base])
+      let threshold = calibrated.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? tradfiPerpetual
+      return OrderFlowThresholds(usdtPerp: threshold, step: tradfiSteps[base])
     }
     if let m = majors[base] {
       return OrderFlowThresholds(spot: m.spot, usdtPerp: m.perpetual, coinPerp: m.perpetual,

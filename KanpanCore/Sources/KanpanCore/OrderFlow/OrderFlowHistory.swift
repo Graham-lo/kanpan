@@ -3,8 +3,8 @@ import Foundation
 // 主力订单流 · 服务端历史的一页。
 //
 // kanpan-api 常驻跟踪 BTC / ETH / SOL（别的币有人问过就跟，24 小时没人问就停），大单的生命周期
-// 存 30 天。手机打开一只品种时取最近 24 小时并进本机模型，每分钟取一次增量，往左拖还能 24 小时一段
-// 往前补，最多到 30 天：
+// 存 3 天（2026-09-25 从 30 天收到 3 天）。手机打开一只品种时取最近 24 小时并进本机模型，每分钟取一次增量，往左拖还能 24 小时一段
+// 往前补，最多到 3 天：
 // ```
 // GET /v1/market/orderflow/history?base=BTC&from=<ms>&to=<ms>
 // → {"base":"BTC","thresholds":{"spot":1e6,"usdtPerp":5e6,…,"step":100},"trackedSinceMs":…,"orders":[…]}
@@ -19,7 +19,7 @@ public struct OrderFlowHistoryPage: Sendable, Equatable {
   public var base: String
   /// 服务端此刻用的默认门槛与步长（步长是每个币的价；还没算出来是 nil）。
   public var thresholds: OrderFlowThresholds
-  /// 服务端从什么时候开始跟这只（封顶 30 天前）。比它早的去取也是空的。
+  /// 服务端从什么时候开始跟这只（封顶 3 天前）。比它早的去取也是空的。
   public var trackedSinceMs: Int64
   /// 这一页问的区间。
   public var fromMs: Int64

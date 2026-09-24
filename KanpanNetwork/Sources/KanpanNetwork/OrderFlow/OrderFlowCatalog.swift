@@ -85,7 +85,7 @@ public struct OrderFlowCatalog: Sendable {
 
   public static let historyPath = "/v1/market/orderflow/history"
 
-  /// 取服务端记下的大单生命周期（`fromMs…toMs`，服务端一次最多 30 天）。`base` 是去掉缩放前缀的币名
+  /// 取服务端记下的大单生命周期（`fromMs…toMs`，服务端只存 3 天）。`base` 是去掉缩放前缀的币名
   /// （`OrderFlowBase.normalize` 之后的）。两条线路都查 `MarketRoute.apiHosts`，哪台回了就用哪台；
   /// 都不通、回了坏数据就是 nil——调用方当它没有，照常只用本地跟到的，不报错、不提示。
   /// 24 小时一页 BTC 约 1.7 MB（gzip 后），URLSession 自己解压；超时给 15 秒。

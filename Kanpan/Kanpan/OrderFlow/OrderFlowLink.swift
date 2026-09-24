@@ -15,7 +15,7 @@ import SwiftUI
 //   3. 收下行情流推来的当前大单集合，只认当前品种的；
 //   4. 给图表一份可以直接塞进 `ChartState.orderFlow` 的值（横屏画线台给 nil）。
 // 大单集合按品种在本机记一份小日志（24 小时内、最多 5000 条，见 OrderFlowFeed），不同步；更早的由行情流
-// 从 kanpan-api 取（服务端存 30 天），图往左拖出已取区间就往前补——所以这里还要把图的可视范围交给行情流（`noteView`）。
+// 从 kanpan-api 取（服务端存 3 天），图往左拖出已取区间就往前补——所以这里还要把图的可视范围交给行情流（`noteView`）。
 
 /// 行情流在自己的执行器上问品种事实，所以得是线程安全的一张小表。
 final class OrderFlowFactsTable: Sendable {

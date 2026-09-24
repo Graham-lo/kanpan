@@ -14,9 +14,9 @@ import Foundation
 //   跨家记还会把同一笔成交重复算好几次，「已成交」因此偏多。
 // - 结束：累计成交 ≥ 消失掉的名义（跌破退出线前最后一拍的名义 − 结束时剩下的）× 0.8 记「已成交」，
 //   否则「已撤销」（理由见 `OrderFlowDefaults.filledRatio`）。透明度与读数里的成交比例用同一个分母。
-// - 历史：结束的大单留在图上，30 天、最多 2 万条（`OrderFlowDefaults.retentionMs / maxEndedOrders`），
+// - 历史：结束的大单留在图上，3 天、最多 2 万条（`OrderFlowDefaults.retentionMs / maxEndedOrders`），
 //   超了先挤活得短的；还挂着的永远不删。
-// - 服务端历史：kanpan-api 常驻跟踪、存 30 天，取回来的一页由 `mergeHistory` 并进来（规则见那里）。
+// - 服务端历史：kanpan-api 常驻跟踪、存 3 天，取回来的一页由 `mergeHistory` 并进来（规则见那里）。
 // - 落盘：`OrderFlowJournal`，一只品种一份小文件（KanpanData 管读写），只存最近 24 小时、最多 5000 条
 //   （`journal(nowMs:)`），切回来、进程重启、断网时历史还在；更早的每次向服务端取，不落盘；不同步。
 // - 簿断了：没就绪的那本簿这一拍不参与（它的单既不新增也不结束）；断开超过 2 分钟，它还挂着的单
@@ -131,7 +131,7 @@ public struct OrderFlowVenueStatus: Sendable, Equatable {
   }
 }
 
-/// 主力订单流对外唯一的值：这只品种此刻的大单（还挂着的 + 30 天内结束的，本机跟踪的与服务端取回的并在一起）。
+/// 主力订单流对外唯一的值：这只品种此刻的大单（还挂着的 + 3 天内结束的，本机跟踪的与服务端取回的并在一起）。
 public struct OrderFlowSnapshot: Sendable, Equatable {
   public enum Phase: Sendable, Equatable { case loading, ready }
   public var symbol: String
@@ -305,6 +305,19 @@ public struct OrderFlowModel: Sendable {
   public var venues: [OrderFlowVenue] { venueOrder.compactMap { books[$0]?.venue } }
 
   public func isReady(_ venueID: String) -> Bool { books[venueID]?.isReady ?? false }
+
+  /// 按簿深标定非币默认门槛用：已拿到首张快照（就绪）的每本簿中间价 ±`bps` 以内两侧美元名义之和，
+  /// 以及就绪了几本、一共几本。公式见 `OrderFlowDefaults.calibratedThreshold(depth:)`。
+  public mutating func calibrationDepth(withinBps bps: Double = OrderFlowDefaults.calibrationBandBps)
+    -> (depth: Double, ready: Int, total: Int) {
+    var depth = 0.0, ready = 0
+    for id in venueOrder {
+      guard var book = books[id], let d = book.depthUSD(withinBps: bps) else { continue }
+      books[id] = book
+      depth += d; ready += 1
+    }
+    return (depth, ready, venueOrder.count)
+  }
 
   /// 新连接建立：这本簿换一个连接代号重来。
   public mutating func connectionOpened(_ venueID: String) -> Action {
@@ -576,7 +589,7 @@ public struct OrderFlowModel: Sendable {
     journalDirty = true
   }
 
-  /// 30 天以前结束的删掉；结束的超过 2 万条就一次挤到九成（`trimRatio`），先挤活得短的，
+  /// 3 天以前结束的删掉；结束的超过 2 万条就一次挤到九成（`trimRatio`），先挤活得短的，
   /// 最近 2 小时内结束的、落在图上可视区间里的后挤。还挂着的一条不删。删了返回 true。
   private mutating func prune(nowMs: Int64) -> Bool {
     let cutoff = nowMs - OrderFlowDefaults.retentionMs
