@@ -82,7 +82,7 @@
             （持仓量缓存，同一套淘汰逻辑）
           KanpanReview/Sources/ReviewData/ReviewStore.swift:73
             （`.contentModificationDateKey`）
-          Kanpan/Kanpan/Settings/Model/MarketCache.swift:93,102
+          KanpanData/Sources/KanpanData/Store/DiskMarketCache.swift:71,80
           Kanpan/Kanpan/Diagnostics/DiagnosticsStore.swift:238
             （后两处只取 `.fileSizeKey` / `.isRegularFileKey` 这类大小与类型元数据，
               同属 C617.1 这条的覆盖范围，一并算进来。）

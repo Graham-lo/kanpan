@@ -48,7 +48,7 @@ struct StorageLayeringTests {
   ///
   /// **只能是「没了还能原样拿回来」的东西。** 想往这张表上加一行之前，先回答那句判据。
   static let mayDelete: [String: String] = [
-    "MarketCache.swift": "设置里的「清缓存」：K 线快照 / 品种表 / OI，全都能重新拉",
+    "DiskMarketCache.swift": "设置里的「清缓存」：K 线快照 / 品种表 / OI，全都能重新拉",
     "SeriesStore.swift": "K 线快照自己的淘汰与上限",
     "Snapshot.swift": "旧版单份快照，只剩清理",
     "QuoteSnapshot.swift": "自选报价快照，下一帧行情就能补回来",

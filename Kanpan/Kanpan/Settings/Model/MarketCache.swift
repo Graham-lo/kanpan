@@ -1,5 +1,4 @@
 import Foundation
-import KanpanData
 
 /// 行情缓存占了多少（A6.11：设置页要显示，且有上限）。
 ///
@@ -41,82 +40,10 @@ struct MarketCacheUsage: Sendable, Equatable {
   }
 }
 
-/// 清缓存（A6.11）。**路径一律走 `KanpanData.Paths`**，这里不自己拼目录。
+/// 清缓存（A6.11）。设置模型只认这一份协议，不认磁盘上的哪棵目录（审查 24）：
+/// 真家伙是数据层的 `KanpanData.DiskMarketCache`，路径一律走 `KanpanData.Paths`；
+/// 两者在 `Settings/MarketCacheWiring.swift` 接上，这个文件不 `import KanpanData`。
 protocol MarketCacheStore: Sendable {
   func usage() async -> MarketCacheUsage
   func clear() async
-}
-
-/// 真家伙：`Library/Caches/kanpan` 下那三样，位置全部问 `Paths` 要。
-struct DiskMarketCache: MarketCacheStore {
-  var paths: Paths
-
-  init(paths: Paths = .caches()) { self.paths = paths }
-
-  func usage() async -> MarketCacheUsage {
-    let p = paths
-    return await Task.detached(priority: .utility) {
-      MarketCacheUsage(
-        available: true,
-        snapshotBytes: DiskMarketCache.size(of: p.series) + DiskMarketCache.size(of: p.snapshot),
-        catalogBytes: DiskMarketCache.size(of: p.exchangeInfo) + DiskMarketCache.size(of: p.sources),
-        oiBytes: DiskMarketCache.size(of: p.oi),
-        derivedBytes: DiskMarketCache.size(of: p.profiles) + DiskMarketCache.size(of: p.sectorHistory)
-          + DiskMarketCache.size(of: p.sectorQuotes))
-    }.value
-  }
-
-  /// 清的是**这几处**，不是「把缓存根目录整棵删」。
-  ///
-  /// 逐个点名而不是删根，是因为判据只有一句：**没了还能原样重新取回来的才准清**。
-  /// 删根那种写法迟早会把某个不该清的东西一起带走——真正随人走的那些
-  /// （偏好、图表布局、自选与分类、画线、搜索历史）压根不在这棵树下，
-  /// 但下一个往 `Paths` 里加路径的人不该靠运气。
-  ///
-  /// `profiles` 是按身份分的那一层，整棵删：报价和开盘价是取得回来的数据，
-  /// 分目录只为了不串号，不是把它们升格成随人走的状态。
-  ///
-  /// `sources` 同理，是按行情源分的那一层（那个源自己的品种表与快照）。它以前没被点到名，
-  /// 于是换过一次行情源之后那棵树就永远躺在盘上：清缓存清不掉，用量也不算它。
-  func clear() async {
-    let p = paths
-    await Task.detached(priority: .utility) {
-      let fm = FileManager.default
-      for url in [p.series, p.snapshot, p.exchangeInfo, p.sources, p.oi, p.profiles, p.sectorHistory, p.sectorQuotes] {
-        try? fm.removeItem(at: url)
-      }
-    }.value
-  }
-
-  /// 单个文件或整棵目录占的字节。算的是**实际分配**，跟系统「储存空间」对得上。
-  static func size(of url: URL) -> Int {
-    let fm = FileManager.default
-    var isDir: ObjCBool = false
-    guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return 0 }
-    if !isDir.boolValue { return allocated(url) }
-    guard let walker = fm.enumerator(at: url,
-                                     includingPropertiesForKeys: [.isRegularFileKey, .totalFileAllocatedSizeKey],
-                                     options: [.skipsHiddenFiles]) else { return 0 }
-    var total = 0
-    for case let child as URL in walker {
-      let values = try? child.resourceValues(forKeys: [.isRegularFileKey])
-      guard values?.isRegularFile == true else { continue }
-      total += allocated(child)
-    }
-    return total
-  }
-
-  private static func allocated(_ url: URL) -> Int {
-    let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileSizeKey]
-    let values = try? url.resourceValues(forKeys: keys)
-    return values?.totalFileAllocatedSize ?? values?.fileSize ?? 0
-  }
-}
-
-/// app 里用的那一份：真的 `DiskMarketCache`（app target 链着 `KanpanData`）。
-/// 单测里的占位 `UnavailableMarketCache` 在 `KanpanTests/Settings/UnavailableMarketCache.swift`。
-enum MarketCacheFactory {
-  static func make() -> any MarketCacheStore {
-    DiskMarketCache()
-  }
 }
