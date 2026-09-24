@@ -12,8 +12,12 @@ import KanpanCore
 /// 「设置」升成了标签栏上的一整页，不再是半屏；「指标」整段并进了「图表设置」，
 /// 成为它里头的一个子栏目——用户的话是「行情页面的指标放到图表里作为一个子栏目」。
 /// 半屏 sheet 从此只留给这种「从某一页里叫出来的子面板」，不承载标签本身。
+///
+/// 2026-09-24 周期条行尾多了一个「指标」大类入口（用户：「现在指标这个大类放到周期条中」），
+/// 它直接开指标页（`indicators`）——和「图表设置 › 指标」是同一页，只是没有上一层可回，
+/// 左上角那颗就是关面板。「图表设置」里那条推进去的路保持不变。
 enum Panel: String, Identifiable, CaseIterable, Sendable {
-  case period, chart
+  case period, chart, indicators
 
   var id: String { rawValue }
 
@@ -23,6 +27,7 @@ enum Panel: String, Identifiable, CaseIterable, Sendable {
     // 「图表」这个名字给了标签栏那一格（整张行情页），面板只管图上那些设置，
     // 所以它叫「图表设置」——同名两个东西会让人不知道自己点开的是哪个。
     case .chart: "图表设置"
+    case .indicators: "指标"
     }
   }
 }
@@ -156,6 +161,11 @@ struct PanelContent: View {
                  onSend: actions.onSend, sendBlocked: actions.sendBlocked,
                  onAddCompare: actions.onAddCompare, compareNames: actions.compareNames,
                  orderFlow: actions.orderFlow, symbol: actions.symbol)
+    case .indicators:
+      // 从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
+      // 选中反馈和「图表设置」那条路上一样（`ChartPanel` 挂在外层的那句）。
+      IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol)
+        .sensoryFeedback(.selection, trigger: store.prefs)
     }
   }
 }

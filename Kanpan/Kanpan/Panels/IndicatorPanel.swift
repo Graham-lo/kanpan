@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 import KanpanCore
 
-/// 「图表设置 › 指标」：面板里推进去的一整层。
+/// 「图表设置 › 指标」：面板里推进去的一整层。2026-09-24 起周期条行尾的「指标」也直接开它
+/// （`Panel.indicators`），那条路上没有上一层，`onBack` 为 nil，左上角那颗关面板。
 ///
 /// 2026-09-18 指标并进「图表设置」时，是十三个开关连同每个开着的指标底下那块「参数与颜色」
 /// 一股脑铺在那一页上的——再往下还有一段「副图顺序」。开得越多，这一页越长，坐标轴、
@@ -20,7 +21,8 @@ struct IndicatorPage: View {
   /// 主力订单流的胶水与当前品种（它那张表要显示这只币此刻生效的门槛）。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
-  var onBack: () -> Void
+  /// 「‹」回上一层（「图表设置」）。nil = 从周期条直接开的，左上角那颗关面板。
+  var onBack: (() -> Void)? = nil
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
 

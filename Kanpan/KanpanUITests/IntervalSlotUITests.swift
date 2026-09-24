@@ -4,8 +4,8 @@ import XCTest
 //
 // 这一组用例守的是**六档周期在各种状态下都完整地排在条上，且彼此分得开**。
 //
-// 行尾那颗（「最新 / 返回刚才」）原来占着一个恒定宽度的槽位：空着、放「最新」、放
-// 「返回刚才」三种状态一样宽，为的是「药丸进出时周期不跳位」。2026-09-21 用户看了
+// 行尾那颗「最新」原来占着一个恒定宽度的槽位：空着、放「最新」、放另一颗药丸
+// 几种状态一样宽，为的是「药丸进出时周期不跳位」。2026-09-21 用户看了
 // 出厂第一屏的截图，第一句话说的就是那个槽位留下的空白（「周期条空间足够放，那可以
 // 搞点间距隔开啊」），于是槽位删了：**不在场时零宽度**，在场时淡入，周期区跟着
 // 0.18s 平滑地重新铺满。同一轮里出厂默认也从五档放满成六档（`Interval.quick`）。
@@ -14,11 +14,16 @@ import XCTest
 // 2026-09-23 起十字线的四颗动作（上一根 / 下一根 / 按此价画线 / 看细节，`CrosshairActionBar`）
 // 就在周期条**这一行**上：十字线在时它们整行顶替周期条，条透明让位、点不着，但照旧占位；
 // 十字线一收，六档要原地出现，一个点都不许挪。
-// 「最新 / 返回刚才」进出时周期区**本来就要重新铺满**，改成断言「六档还是全在、
+// 「最新」进出时周期区**本来就要重新铺满**，改成断言「六档还是全在、
 // 互不重叠、都在条里」，外加那颗动作自己点得着。
 //
-// `testPinnedChipsAllFit` 守的是两头——钉满六档时六颗全在条上，钉三档时那三颗把整行
-// 铺满；`testFullPinsSwapInOneStep` 守的是「钉满时点第七颗 = 挑一档换掉，一步到位」；
+// 2026-09-24 行尾从「最新 | 更多 · 图表设置」变成「最新 | 更多 ▾ · 指标 · 图表设置」
+// （用户：「现在指标这个大类放到周期条中」），同一天「返回刚才」按用户要求整个删掉。
+// 最挤的一屏因此是「六档满钉 + 有『最新』+ 行尾三件」。
+//
+// `testPinnedChipsAllFit` 守的是两头——钉满六档、「最新」在场时六颗全在条上、行尾三件
+// 都点得着，钉三档时那三颗把整行铺满；`testIndicatorsOpensIndicatorPage` 守的是「指标」
+// 直接开指标页、左上角那颗关面板；`testFullPinsSwapInOneStep` 守的是「钉满时点第七颗 = 挑一档换掉，一步到位」；
 // `testOffBarIntervalNeverEvictsPins` 守的是「临时去看一个没钉的周期，钉住的一档都不少」。
 //
 // 量的是每一颗 chip 的 `frame`，不是截图像素：截图能看出「动了」，量框才说得出「动了多少」。
@@ -28,6 +33,12 @@ import XCTest
 final class IntervalSlotUITests: KanpanUICase {
 
   private var canvas: XCUIElement { app.otherElements["chart.canvas"] }
+
+  /// 一条用例一棵干净的档案树：沙盒的六档种子、出厂的「青苔 · 跟随系统」都从零起，
+  /// 不吃共享测试档案里别的用例留下的皮肤与深浅（2026-09-24 取证时撞到过：
+  /// 共享档案里存着「深色」，模拟器切成浅色拍出来的仍是深色）。
+  private let profile = UUID().uuidString
+  override var extraLaunchEnvironment: [String: String] { ["KANPAN_PERSISTENCE_PROFILE": profile] }
 
   private func shot(_ name: String) {
     let screenshot = app.screenshot()
@@ -42,8 +53,8 @@ final class IntervalSlotUITests: KanpanUICase {
 
   /// 量一次周期条：条框与各档药丸取自**同一张**快照，而且要等版面停稳才作数。
   ///
-  /// 行尾的「最新 / 返回刚才」进出时，周期区本来就要用 0.18s 的 easeOut 重新铺满
-  ///（`IntervalBar.body` 上那两句 `animation`）。而 `XCUIElement.snapshot()` **每调一次
+  /// 行尾的「最新」进出时，周期区本来就要用 0.18s 的 easeOut 重新铺满
+  ///（`IntervalBar.body` 上那句 `animation`）。而 `XCUIElement.snapshot()` **每调一次
   /// 都是一次独立的抓取**：一件一件分别量的时候，「条」可能抓在动画中途（还窄着），
   /// 「药丸」抓在动画停稳之后（已经铺满），两个不同时刻的数字一比，就报出根本不存在的
   /// 越界——iPhone Air 上那次 `药丸右沿 294.0 > 条右沿 293.794` 正是这么来的：停稳之后
@@ -145,15 +156,23 @@ final class IntervalSlotUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { !cell.exists }, "选完 \(raw) 网格没收起来")
   }
 
+  /// 点「更多」打开网格，等到 `raw` 那颗图钉出来。
+  ///
+  /// 走 `tapButton`（同一个点最多两下）：刚点完「最新」时图还在滑回右缘、「最新」正在
+  /// 淡出，XCUI 偶尔把「更多」的命中点算成 `{-1, -1}`，那一下就落空了
+  ///（2026-09-24 整组跑时撞到一次，单跑复现不出来；事后层级里「更多」的位置与大小都对）。
+  private func openGrid(_ raw: String) {
+    let pin = app.buttons["period.pin.\(raw)"]
+    XCTAssertTrue(tapButton(app.buttons[Ids.intervalMore]) { pin.exists }, "「更多」网格没打开")
+  }
+
   /// 取消钉住几档。
   ///
   /// 走网格右上角的图钉，不走条上的长按：`press(forDuration:)` 在 SwiftUI 的
   /// `Button` + `onLongPressGesture` 上不稳（实测按 0.8s 也取不下来），
   /// 而这条用例要验的是「排得下排不下」，不是长按手势本身。
   private func unpinFromGrid(_ list: [String]) {
-    app.buttons[Ids.intervalMore].tap()
-    XCTAssertTrue(app.buttons["period.pin.\(list[0])"].waitForExistence(timeout: Self.short),
-                  "「更多」网格没打开")
+    openGrid(list[0])
     for raw in list {
       app.buttons["period.pin.\(raw)"].tap()
       XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons[Ids.intervalChip(raw)].exists },
@@ -166,9 +185,7 @@ final class IntervalSlotUITests: KanpanUICase {
 
   /// 钉上几档（网格右上角那颗图钉）。钉满六档之后点图钉是「挑一档换掉」，所以顺序上要先取后钉。
   private func pinFromGrid(_ list: [String]) {
-    app.buttons[Ids.intervalMore].tap()
-    XCTAssertTrue(app.buttons["period.pin.\(list[0])"].waitForExistence(timeout: Self.short),
-                  "「更多」网格没打开")
+    openGrid(list[0])
     for raw in list {
       let pin = app.buttons["period.pin.\(raw)"]
       pin.tap()
@@ -247,9 +264,9 @@ final class IntervalSlotUITests: KanpanUICase {
   /// 钉满六档（`Prefs.maxQuick`）时六颗全在条上，取到三档时那三颗把整行铺满。
   ///
   /// 这是「最多展示六档」那条规矩的秤：行尾的动作再宽也不许把钉住的周期挤出去，
-  /// 也不许再靠横向滚动把排不下的那几档藏到屏幕外面。行尾三种状态（空 /「最新」/
-  /// 「返回刚才」）各量一遍——「返回刚才」是最宽的那一种，六档在它在场时还排得下，
-  /// 才谈得上排版对「≤6 档」这一种情况负责。
+  /// 也不许再靠横向滚动把排不下的那几档藏到屏幕外面。行尾两种状态（空 /「最新」）
+  /// 各量一遍——「最新」在场、行尾「更多 ▾ · 指标 · 图表设置」三件都在是最挤的一屏，
+  /// 六档在那时还排得下、三件都点得着，才谈得上排版对「≤6 档」这一种情况负责。
   func testPinnedChipsAllFit() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
     // 沙盒铺的就是满钉六档。先切到 4h，免得后面取消钉住时动到当前这一档
@@ -266,23 +283,21 @@ final class IntervalSlotUITests: KanpanUICase {
                   "往回拖了却没出现「最新」")
     assertAllVisible(full, "六档满钉·有「最新」")
     assertNoOverlap(full, "六档满钉·有「最新」")
-    shot("21-六档满钉-有最新")
+    assertTailFits(full, "六档满钉·有「最新」")
+    // 最挤的那一屏的实测数字，留在日志里给人看（16 Pro 上尤其要看这一行）。
+    dumpFrames(full, "六档满钉·有「最新」")
+    shot("21-六档满钉-有最新-行尾三件")
 
+    // 回到最新：「最新」收起，行尾只剩三件。
     app.buttons[Ids.latestButton].tap()
-    XCTAssertTrue(app.buttons["chart.returnBack"].waitForExistence(timeout: Self.short),
-                  "点了「最新」之后没有「返回刚才」")
-    assertAllVisible(full, "六档满钉·有「返回刚才」")
-    assertNoOverlap(full, "六档满钉·有「返回刚才」")
-    // 最挤的那一屏的实测数字，留在日志里给人看（SE 上尤其要看这一行）。
-    dumpFrames(full, "六档满钉·有「返回刚才」")
-    shot("22-六档满钉-有返回刚才")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.onScreen(self.app.buttons[Ids.latestButton]) },
+                  "点了「最新」它还在")
 
     // 取到三档：剩下的那三颗要把整行铺满（钉得少就平分，右边不留一条空白）。
     unpinFromGrid(["1m", "5m", "15m"])
     let three = ["30m", "1h", "4h"]
     assertAllVisible(three, "三档")
     assertFillsRow(three, "三档")
-    // 行尾这会儿还挂着「返回刚才」（上一步点过「最新」），正好一起看：
     // 三档摊开铺满剩下的整行，右边不留一条空白。
     shot("23-三档-铺满整行")
 
@@ -316,6 +331,8 @@ final class IntervalSlotUITests: KanpanUICase {
                   "最宽六档时往回拖了却没出现「最新」")
     assertAllVisible(widest, "最宽六档·有「最新」")
     assertNoOverlap(widest, "最宽六档·有「最新」")
+    assertTailFits(widest, "最宽六档·有「最新」")
+    dumpFrames(widest, "最宽六档·有「最新」")
     shot("27-最宽六档-有最新")
   }
 
@@ -417,37 +434,55 @@ final class IntervalSlotUITests: KanpanUICase {
       file: file, line: line)
   }
 
-  // ------------------------------------------------------------ 返回刚才
-
-  /// 翻到历史上 → 点「最新」→ 行尾同一处换成「返回刚才」→ 点它回到刚才那一屏。
-  func testReturnToWhereIWasComesBack() {
-    XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
-    dragChartRight(); dragChartRight()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.onScreen(self.app.buttons[Ids.latestButton]) },
-                  "往回拖了却没出现「最新」")
-    guard let was = chartInfo()["to"] as? Double, let span = chartInfo()["span"] as? Double else {
-      return XCTFail("读不到当前视野")
+  /// 行尾「最新 | 更多 ▾ · 指标 · 图表设置」都在屏上、点得着，一件也没压到末档上，
+  /// 也没被推出屏幕右沿。
+  private func assertTailFits(_ list: [String], _ what: String,
+                              file: StaticString = #filePath, line: UInt = #line) {
+    guard let m = stripLayout(list) else { return XCTFail("找不到周期条", file: file, line: line) }
+    let lastChip = list.compactMap { m.chips[$0] }.map(\.maxX).max() ?? m.row.maxX
+    let screen = app.windows.firstMatch.frame
+    var prevMaxX = lastChip
+    for id in [Ids.latestButton, Ids.intervalMore, Ids.intervalIndicators, Ids.intervalChart] {
+      let b = app.buttons[id]
+      XCTAssertTrue(b.exists && b.isHittable, "\(what)：\(id) 点不着", file: file, line: line)
+      XCTAssertGreaterThanOrEqual(b.frame.minX, lastChip - 0.5,
+        "\(what)：\(id) 压到了末档上（\(b.frame.minX) < \(lastChip)）", file: file, line: line)
+      XCTAssertLessThanOrEqual(b.frame.maxX, screen.maxX + 0.5,
+        "\(what)：\(id) 被推出了屏幕右沿（\(b.frame.maxX)）", file: file, line: line)
+      // 命中区可以往两边伸一两点（「最新」药丸不足 44 时），但顺序不许乱。
+      XCTAssertGreaterThanOrEqual(b.frame.midX, prevMaxX - 2,
+        "\(what)：\(id) 和前一件叠在一起了", file: file, line: line)
+      prevMaxX = b.frame.maxX
     }
-    shot("05-返回刚才-翻到历史上")
+  }
 
-    app.buttons[Ids.latestButton].tap()
-    let back = app.buttons["chart.returnBack"]
-    XCTAssertTrue(back.waitForExistence(timeout: Self.short),
-                  "点了「最新」之后，行尾没有换成「返回刚才」")
-    shot("06-返回刚才-回到最新后出现")
-    // 「返回刚才」比「最新」宽，周期区跟着重新铺一次——要的是铺完之后
-    // 六档一颗不少、谁也没压着谁，而不是「一个点都不动」。
-    assertAllVisible(Ids.quickIntervals, "有「返回刚才」")
-    assertNoOverlap(Ids.quickIntervals, "有「返回刚才」")
-    XCTAssertTrue(back.isHittable, "「返回刚才」在屏上却点不着")
+  // ------------------------------------------------------------ 行尾「指标」
 
-    back.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.long) {
-      guard let to = self.chartInfo()["to"] as? Double else { return false }
-      return abs(to - was) < span * 0.05
-    }, "点了「返回刚才」没回到刚才那一屏：to=\(String(describing: chartInfo()["to"])) 原 to=\(was)")
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["chart.returnBack"].exists },
-                  "回去之后「返回刚才」还在")
-    shot("07-返回刚才-回到了刚才那一屏")
+  /// 周期条行尾「指标」：点它直接开指标页（不经「图表设置」）；左上角那颗关面板，
+  /// 不是退回「图表设置」。「更多」网格开着时点它，网格先收起来。
+  func testIndicatorsOpensIndicatorPage() {
+    XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
+    let entry = app.buttons[Ids.intervalIndicators]
+    XCTAssertTrue(entry.waitForExistence(timeout: Self.short) && entry.isHittable, "周期条上没有「指标」")
+    XCTAssertEqual(entry.label, "指标")
+
+    // 网格开着时点「指标」：网格收起、面板开出来。
+    app.buttons[Ids.intervalMore].tap()
+    XCTAssertTrue(app.buttons[Ids.periodRow("4h")].waitForExistence(timeout: Self.short), "「更多」网格没打开")
+    entry.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons[Ids.periodRow("4h")].exists },
+                  "点「指标」之后「更多」网格没收起来")
+    let marker = app.buttons[Ids.indicatorSwitch("RSI")]
+    XCTAssertTrue(marker.waitForExistence(timeout: Self.short), "点「指标」没开出指标页")
+    let header = app.staticTexts["panel.header"]
+    XCTAssertTrue(header.exists && header.label == "指标", "面板标题不是「指标」：\(header.label)")
+    XCTAssertFalse(app.buttons["chart.indicators"].exists, "开出来的是图表设置，不是指标页")
+    shot("30-周期条指标-开出指标页")
+
+    // 左上角那颗：关面板，不退回「图表设置」。
+    app.buttons["panel.done"].tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !marker.exists }, "左上角那颗没关掉指标页")
+    XCTAssertFalse(app.buttons["chart.indicators"].exists, "左上角那颗退回了图表设置，而不是关面板")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { entry.isHittable }, "面板关了周期条没回来")
   }
 }

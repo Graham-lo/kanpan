@@ -49,7 +49,6 @@ struct MainScreenObservers: ViewModifier {
   let favorites: [String]
   let symbol: String
   let undoStamp: Int
-  let returnStamp: Int
   let storeNotice: String?
   let drawFull: Bool
   let drawNotice: String?
@@ -80,7 +79,6 @@ struct MainScreenObservers: ViewModifier {
   let onFavorites: ([String]) -> Void
   let onSymbol: (String) -> Void
   let onUndoStamp: () -> Void
-  let expireReturn: () async -> Void
   let noteDwell: () async -> Void
   let onStoreNotice: (String?) -> Void
   let onDrawFull: () -> Void
@@ -150,8 +148,6 @@ struct MainScreenObservers: ViewModifier {
     // 所以话由自选页放进来、宿主念出去；盯的是计数不是那句话本身——连删两只
     // 说的是同一句，`onChange(of: String)` 不会响第二次。
     .onChange(of: undoStamp) { _, _ in onUndoStamp() }
-    // 「返回刚才」只活一分钟：过了这阵，那一屏多半已经不是他还记着的那件事了。
-    .task(id: returnStamp) { await expireReturn() }
     // 「常看」记的是**在这张图上真待住了**，不是「点开过」：搜索里滑过一下、点错一次
     // 立刻退出去的，都不该算一分。`task(id:)` 换品种就取消重来，离屏也取消，
     // 所以停不满 3 秒的那些一分都拿不到。
@@ -310,7 +306,6 @@ struct MainChartView: View {
   let merged: ([IndicatorID]) -> [IndicatorID]
   let say: (String) -> Void
   let onTapped: () -> Void
-  let onUserView: () -> Void
   /// 点图上已画的一条复盘记录（P3.7）：打开它的详情。
   var onOpenRecord: (UUID) -> Void = { _ in }
 
@@ -341,8 +336,6 @@ struct MainChartView: View {
         // **这一路只收用户手上的动作**（`ChartHost.onBarSpacing` ← `ChartView.onUserViewChanged`）。
         // 程序自己摆出来的视野绝不会走到这儿——那正是用户那个 bug 的「杀法甲」。
         onBarSpacing: { if !reviewChart.active { viewport.userIsZooming(to: $0) } },
-        // 他自己动手翻图了：「返回刚才」那条后路当场作废——再点它就是盖掉他刚做的事。
-        onUserView: { onUserView() },
         onInteractionEnded: { if !reviewChart.active { viewport.interactionEnded() } },
         adoptToken: viewport.adoptToken,
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },

@@ -3,7 +3,7 @@ import KanpanCore
 import SwiftUI
 import UIKit
 
-/// 周期条：钉住的那几档横排 + 行尾「最新 / 更多 / 图表设置」（§9.1）。
+/// 周期条：钉住的那几档横排 + 行尾「最新 | 更多 ▾ · 指标 · 图表设置」（§9.1）。
 ///
 /// 档位一律写中文短写（`Interval.shortLabel`：5分 / 1时 / 1周 / 1月，审查 U12）——
 /// 以前条上 `1m` 和「更多」网格里的 `1M` 只差一个大小写，一分钟和一个月靠眼力分。
@@ -15,8 +15,14 @@ import UIKit
 ///
 /// **条上最多六档**（`Prefs.maxQuick`，2026-09-21 定），**出厂就把六格放满**
 /// （`Interval.quick` = `5m 30m 1h 4h 1d 1w`）。这一行要同时放下六档、行尾的
-/// 「最新 / 返回刚才」、「更多」和图表设置，还得在 iPhone SE（375pt）上一个字都不截——
-/// 六档是实测排得下的上限，所以钉位本身就卡在六个，排版只对「≤6 档」这一种情况负责。
+/// 「最新」、「更多」、「指标」和图表设置，还得在最窄的 iPhone 16 Pro（402pt，内容 370pt）上
+/// 一个字都不截——六档是实测排得下的上限，所以钉位本身就卡在六个，排版只对「≤6 档」负责。
+///
+/// **排版预算**（2026-09-24 加「指标」时逐项算过，13pt semibold）：六档 + 每格 2×2 内距、
+/// 「最新」8 前缝 + 药丸、分隔线 17、「更多 ▾」53.8、「指标」44、图表设置记号 31
+/// （它的 44pt 命中区往右伸进页边距，版面只占记号本身，见 `chartButton`）。
+/// 出厂六档满钉加「最新」刚好排下；最宽的六档组合（15分 30分 12时 …）加「最新」
+/// 会多出八九个点，这时只把格子里那 2pt 内距按剩下的空当收窄（`chipPad`），不缩字、不截字。
 /// 原来那条「排不下就横向滚动 + 右边渐隐」的退路一并删了：能滚就意味着有档位藏在屏幕外，
 /// 而钉住的那几档是用户自己挑的、每一档都得看得见。
 ///
@@ -27,7 +33,7 @@ import UIKit
 ///   没选中的档是**平文字、没有任何底色**，六档连读是一行字。
 /// - 只有**当前那一档**有底：一颗贴着文字的淡底药丸（`mark`），宽度按文字算而不是撑满
 ///   格子，所以它是「文字底下的一层底」，不是又一个色块。
-/// - 「最新 / 返回刚才」**不再预留槽位**：不在场时零宽度，在场时淡入，周期区跟着
+/// - 「最新」**不预留槽位**：不在场时零宽度，在场时淡入，周期区跟着
 ///   平滑地重新铺满（0.18s）。原来那颗画不出来的影子药丸把行尾恒定地占掉八十来点，
 ///   出厂第一屏就是「五颗药丸 + 一段空白 + 更多 图表」，用户一眼看出来的就是那段空白。
 ///
@@ -36,6 +42,9 @@ import UIKit
 ///
 /// 右端原来还有「画线」「记一笔」，用户的话是「这个功能不是经常用到啊」「记和画线都
 /// 放到图表栏目里」，两个都收进图表设置那一页（见 `ChartPanel`）。
+///
+/// 2026-09-24 行尾加了「指标」（用户：「现在指标这个大类放到周期条中，我看周期条还可以塞下
+/// 一个大分类」），同一天「返回刚才」按用户要求整个删掉（「不需要这个功能」）。
 struct IntervalBar: View {
   /// 这一行的字：13（`TypeScale.control` / `controlOn`，`.footnote` 曲线，UI 审查 2026-09-24 §4.3 #24）。
   /// 当前档那层底要按字宽画，得拿到**此刻真的排出来**的字号，所以字号自己在这儿按同一条曲线量一份
@@ -56,11 +65,8 @@ struct IntervalBar: View {
   var onPin: (Interval) -> Void
   /// 「最新」：把视野拽回末根。
   var onLatest: () -> Void
-  /// 「返回刚才」：刚从历史上被「最新」拽回来，再点它回到刚才看的那一屏（§P3-2）。
-  ///
-  /// 和「最新」是同一个位置上的两颗——两颗永远不会同时在（一个的前提是不在最新，
-  /// 另一个的前提是在最新）。没地方可回去时是 nil，那儿**一点宽度都不占**。
-  var onReturn: (() -> Void)? = nil
+  /// 行尾「指标」：直接开指标页（`Panel.indicators`），不用先进图表设置再推一层。
+  var onIndicators: () -> Void
   /// 行尾图表设置那颗记号：开 K 线那一页（`Panel.chart`）。画线、记一笔也在那一页上。
   var onChart: () -> Void
 
@@ -83,37 +89,54 @@ struct IntervalBar: View {
   /// 当前档没钉在条上：「更多」替它说出来。
   private var currentOffBar: Bool { !list.contains(current) }
 
+  /// 「更多」此刻写什么：当前档没钉在条上时写成那一档（见 `body`）。
+  private var moreTitle: String { currentOffBar ? current.shortLabel : "更多" }
+
   var body: some View {
     // 缝全交给格子自己（等宽 + 文字居中），所以这一层 `spacing` 是 0：行尾那几件
-      // 各自带着自己的留白——「最新」自带 8pt 的前缝，分隔线两侧各 8pt，
-      // 「更多」和图表设置本来就有 44pt 的命中区兜着。
-    HStack(spacing: 0) {
-      chips
-      actionSlot
-      divider
-      // 当前档没钉在条上时，「更多」就写成那一档（「2h ▾」）并高亮：人一眼知道
-      // 自己正看着哪一档，钉住的那几档也一个都没被挤走。网格拉开时照旧高亮。
-      tail(currentOffBar ? current.shortLabel : "更多", chevron: true,
-           on: gridOpen || currentOffBar, flipped: gridOpen) {
-        withAnimation(.easeOut(duration: 0.2)) { gridOpen.toggle() }
+    // 各自带着自己的留白——「最新」自带 8pt 的前缝，分隔线两侧各 8pt，
+    // 「更多」「指标」本来就有 44pt 的命中区兜着。
+    ZStack {
+      // 量这一行**能给多少**（不是这一行排出来多宽——挤不下时横排会比给的更宽，
+      // 拿它判断就永远「排得下」）。`Color.clear` 在 ZStack 里只吃提议的宽度，量到的就是
+      // 页边距以内的那一截；`chipPad` 拿它判断要不要把格子内距收掉。
+      Color.clear
+        .frame(height: 0)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { barWidth = $0 }
+        .accessibilityHidden(true)
+      HStack(spacing: 0) {
+        chips
+        actionSlot
+        divider
+        // 当前档没钉在条上时，「更多」就写成那一档（「2h ▾」）并高亮：人一眼知道
+        // 自己正看着哪一档，钉住的那几档也一个都没被挤走。网格拉开时照旧高亮。
+        tail(moreTitle, chevron: true,
+             on: gridOpen || currentOffBar, flipped: gridOpen) {
+          withAnimation(.easeOut(duration: 0.2)) { gridOpen.toggle() }
+        }
+        .accessibilityIdentifier("interval.more")
+        .accessibilityLabel(currentOffBar ? "更多周期，当前 \(current.display)" : "更多周期")
+        .accessibilityAddTraits(currentOffBar ? [.isSelected] : [])
+        // 「指标」：平文字、**没有下箭头**——「更多」的箭头说的是「从条上往下拉一张网格」，
+        // 这颗开的是一张面板（指标页），不是这根条的延伸。开之前先把网格收起来。
+        tail("指标") {
+          if gridOpen { withAnimation(.easeOut(duration: 0.2)) { gridOpen = false } }
+          onIndicators()
+        }
+        .accessibilityIdentifier("interval.indicators")
+        .accessibilityLabel("指标")
+        // 图表设置只画一颗记号（审查 U12）：原来写的「图表」和底栏那一格同名，
+        // 点开的却是设置面板；读屏照旧读得出它是什么。版面只占记号本身（见 `chartButton`）。
+        chartButton
       }
-      .accessibilityIdentifier("interval.more")
-      .accessibilityLabel(currentOffBar ? "更多周期，当前 \(current.display)" : "更多周期")
-      .accessibilityAddTraits(currentOffBar ? [.isSelected] : [])
-      // 图表设置只画一颗记号（审查 U12）：原来写的「图表」和底栏那一格同名，
-      // 点开的却是设置面板；读屏照旧读得出它是什么。
-      tailButton(on: false, action: onChart) { VectorIcon.adjust() }
-        .accessibilityIdentifier("interval.chart")
-        .accessibilityLabel("图表设置")
     }
     // 两头 `Inset.page`（16 Pro 16 / 17 Pro Max 20）：和头部内容的左缘对齐（UI 审查 2026-09-24 §4.3 #23）。
     .pageHorizontalInset()
     .frame(height: 44)
     .dynamicTypeSize(...MarketChrome.typeCap)
-    // 「最新 / 返回刚才」进出时周期区跟着重新铺满。这一句兜住 `MainScreen` 那头
+    // 「最新」进出时周期区跟着重新铺满。这一句兜住 `MainScreen` 那头
     // 没有包 `withAnimation` 的情况：没有它，六档会「啪」地跳一下位置。
     .animation(.easeOut(duration: 0.18), value: atLatest)
-    .animation(.easeOut(duration: 0.18), value: onReturn != nil)
     // 「更多」那张网格不在这儿了：它是图上的一层弹层（`IntervalPopoverLayer`），
     // 这根条永远 44pt，展开收起图的高度一个 pt 都不动。
   }
@@ -122,7 +145,7 @@ struct IntervalBar: View {
 
   /// 一条 1×14 的细线，把「选哪一档周期」和「按哪个动作」分成两摊。
   ///
-  /// 行尾那两个动作 2026-09-21 从药丸改成了平文字（和没选中的周期一个画法），
+  /// 行尾那几个动作 2026-09-21 从药丸改成了平文字（和没选中的周期一个画法），
   /// 于是需要一条线来说明它们不是周期——原来那层底色承担的就是这件事，
   /// 但一行里摆七八颗深浅不一的底才是用户说的「不协调」。线用皮肤自己的分割线色
   /// （`theme.line`，经典皮肤下就是 AICoin 周期条上下那条 `#EAEAEA`），不另起颜色。
@@ -134,46 +157,41 @@ struct IntervalBar: View {
       .accessibilityHidden(true)
   }
 
-  // ---------------------------------------------------------------- 行尾「最新 / 返回刚才」
+  // ---------------------------------------------------------------- 行尾「最新」
 
-  /// 「最新 / 返回刚才」：**要的时候才在，不在就一点宽度都不占**。
+  /// 「最新」：**要的时候才在，不在就一点宽度都不占**。
   ///
-  /// 这儿原来是一个按最宽那句话（「返回刚才」）钉死的固定槽位，底下垫一颗画不出来的
-  /// 影子药丸，为的是「药丸进出时周期不跳位」。代价是：绝大多数时候这一行里恒定地
-  /// 空着八十来点——2026-09-21 用户看出厂第一屏的截图，第一句话就是这段空白
+  /// 这儿原来是一个钉死宽度的固定槽位，底下垫一颗画不出来的影子药丸，为的是
+  /// 「药丸进出时周期不跳位」。代价是：绝大多数时候这一行里恒定地空着八十来点——
+  /// 2026-09-21 用户看出厂第一屏的截图，第一句话就是这段空白
   /// （「周期条空间足够放，那可以搞点间距隔开啊」）。空槽换成了两件事：
   ///
   /// - 六档**出厂就把行放满**（`Interval.quick`），那点宽度本来就该是周期的；
-  /// - 它进出时**周期区平滑地重新铺满**（`body` 上那两句 `animation`），
+  /// - 它进出时**周期区平滑地重新铺满**（`body` 上那句 `animation`），
   ///   不是瞬移一下。跳位之所以讨厌，是因为它在手指落下去之前无声地发生；
   ///   0.18s 的铺开是看得见的，手跟得上。
   ///
-  /// 这儿**只可能有一颗**：「最新」的前提是不在最新，「返回刚才」的前提是在最新。
   /// 「看细节」从前也挤在这儿，现在和「上一根 / 下一根 / 按此价画线」一起在
   /// 十字线动作行里（`CrosshairActionBar`）——十字线在时它整行顶替这根条。
-  ///
-  /// 两颗上原来各有一个小箭头（`‹` / `›`），2026-09-21 去掉了：「最新」「返回刚才」
-  /// 四个字本身已经把话说完了，箭头连着间距占 14pt。
+  /// 同一处原来还会在点完「最新」后换成「返回刚才」，2026-09-24 按用户要求删了。
   @ViewBuilder private var actionSlot: some View {
     if !atLatest {
       actionPill("最新", action: onLatest)
         .accessibilityIdentifier("chart.latest")
         .accessibilityLabel("回到最新")
         .transition(.opacity)
-    } else if let onReturn {
-      actionPill("返回刚才", action: onReturn)
-        .accessibilityIdentifier("chart.returnBack")
-        .accessibilityLabel("回到刚才看的那一屏")
-        .transition(.opacity)
     }
   }
 
-  /// 「最新 / 返回刚才」那颗药丸。
+  /// 「最新」那颗药丸。
   ///
   /// 这是整条上**唯一还带底色的动作**（`raised2`）：它是随状态冒出来的一件事，
-  /// 得让人一眼看见它来了；「更多」和图表设置是常驻的两个入口，平文字就够。
+  /// 得让人一眼看见它来了；「更多」「指标」和图表设置是常驻的入口，平文字就够。
   private func actionPill(_ title: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
+    // 命中区横着最窄 44pt；药丸本身（字 + 两边 8）不到 44 时，多出来的那一点
+    // 往两边伸进前缝和分隔线的留白里，**不占版面**——这一行排版是按药丸本身算的。
+    let bleed = max(0, Hit.min - Self.pillWidth(title, size: textSize)) / 2
+    return Button(action: action) {
       Text(title)
         .font(.system(size: textSize, weight: .semibold))
         .foregroundStyle(theme.ink2)
@@ -181,15 +199,54 @@ struct IntervalBar: View {
         .frame(height: ControlMetrics.pillHeight)
         .background(theme.raised2, in: Capsule())
         // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt。药丸自己还是 28pt 高。
-        .frame(minWidth: 44, minHeight: 44)
+        .frame(minWidth: Hit.min, minHeight: Hit.min)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     // 版面高度收回 28pt：多出来的那两圈只是手指的范围，不许把条顶高。
     .padding(.vertical, -8)
+    .fixedSize(horizontal: true, vertical: false)
+    .padding(.horizontal, -bleed)
     // 它和末档之间的缝。不在场时整个视图都不存在，这 8pt 也跟着没有。
     .padding(.leading, Space.s)
-    .fixedSize(horizontal: true, vertical: false)
+  }
+
+  // ---------------------------------------------------------------- 排版预算
+
+  /// 页边距以内这一行能给多少宽（见 `body` 里那颗 `Color.clear`）。0 = 还没量到。
+  @State private var barWidth: CGFloat = 0
+
+  /// 每格文字两边的内距：平时 2pt，**挤不下时按剩下的空当收窄**，最少到 0。
+  ///
+  /// 这 2pt 只决定「这一排按自然宽度最少要多宽」：排得下时每格都摊到均分的那一份，
+  /// 画出来多宽跟它无关；排不下时它就是把字顶出去的那几个点。最宽的六档组合
+  /// （15分 30分 12时 4时 6时 3分，字宽 158.9）加「最新」在 16 Pro 的 370pt 里
+  /// 要 378.5，不缩字号、不截字，只收内距。
+  ///
+  /// 不一刀收到 0：那样宽的三字档（15分 30分 12时）会一颗贴一颗连成一串，空出来的
+  /// 那十几点全被窄档吃掉（2026-09-24 取证图里「15分30分12时」连读）。按剩下的空当
+  /// 均摊给每一格（取到 0.25pt 往下），上面那组收到 1.25，字与字之间还留着 2.5pt。
+  private var chipPad: CGFloat {
+    guard barWidth > 0, !list.isEmpty else { return Space.xxs }
+    let text = list.reduce(0) { $0 + Self.rawTextWidth($1.shortLabel, size: textSize) }
+    let slack = barWidth - tailWidth - text
+    let share = slack / (CGFloat(list.count) * 2)
+    return max(0, min(Space.xxs, (share * 4).rounded(.down) / 4))
+  }
+
+  /// 行尾那几件按自己的自然宽度一共占多少：「最新」（在场时）+ 分隔线 + 「更多 ▾」+「指标」+ 图表设置。
+  /// 和下面各自的画法一一对应，改了画法这儿要跟着改。
+  private var tailWidth: CGFloat {
+    let latest = atLatest ? 0 : Space.s + Self.pillWidth("最新", size: textSize)
+    let divider = 1 + Space.s * 2
+    let more = max(Hit.min, Self.rawTextWidth(moreTitle, size: textSize) + 3 + 9 + Space.s * 2)
+    let indicators = max(Hit.min, Self.rawTextWidth("指标", size: textSize) + Space.s * 2)
+    return latest + divider + more + indicators + Self.chartSlot
+  }
+
+  /// 「最新」药丸本身多宽（字 + 两边 8）。
+  @MainActor private static func pillWidth(_ title: String, size: CGFloat) -> CGFloat {
+    rawTextWidth(title, size: size) + Space.s * 2
   }
 
   // ---------------------------------------------------------------- 常用那一排
@@ -220,9 +277,10 @@ struct IntervalBar: View {
 
   /// 钉住的那几档，各占一个等宽的格子，平分行里剩下的宽度。
   ///
-  /// 这里没有滚动、没有渐隐、也没有「排不排得下」的判断：档数封在六个（见 `list`），
-  /// 行尾那几件（「最新」/ 分隔线 / 更多 / 图表设置）各自按自然宽度先占好位子，剩下的全归这一排。
-  /// 最窄的 iPhone SE（375pt）上六档照样一个字不截——`IntervalSlotUITests` 量的就是这个。
+  /// 这里没有滚动、没有渐隐：档数封在六个（见 `list`），行尾那几件（「最新」/ 分隔线 /
+  /// 更多 / 指标 / 图表设置）各自按自然宽度先占好位子，剩下的全归这一排。挤不下时只收
+  /// 格子内距（`chipPad`）。最窄的 iPhone 16 Pro 上六档照样一个字不截——
+  /// `IntervalSlotUITests` 量的就是这个。
   ///
   /// **等宽是这一行看起来协调的全部原因**：文字在各自格子的正中，于是档与档之间的留白
   /// 只跟「格子多宽、字多宽」有关，不跟「这一档是不是当前档」有关。均分靠的是每个格子
@@ -280,9 +338,9 @@ struct IntervalBar: View {
       .fixedSize(horizontal: true, vertical: false)
       // 两头各 2pt。这个数只决定「这一排按自然宽度最少要多宽」，也就是排得下排不下：
       // 有富余的时候每格都摊到均分的那一份（下面 `maxWidth`），画出来多宽跟它无关。
-      // 2026-09-20 从 6 收到 4，2026-09-21 又收到 2：六档满钉是上限工况，
-      // SE（375pt）上留给这一排的只有一百七十几个点，按 4 算出来的自然宽会顶出去。
-      .padding(.horizontal, Space.xxs)
+      // 2026-09-20 从 6 收到 4，2026-09-21 又收到 2；2026-09-24 行尾多了「指标」，
+      // 挤不下时再收到 0（`chipPad`）。
+      .padding(.horizontal, chipPad)
       .frame(maxWidth: Self.maxChipWidth)
       .frame(height: 28)
       .background(alignment: .center) { mark(iv, on: on) }
@@ -297,7 +355,7 @@ struct IntervalBar: View {
   ///   换一档也不会把整排顶动一下。
   /// - 宽度按文字算（`markWidth`：文字 + 每边 8pt），不是撑满格子。iPad 上格子 76pt 宽，
   ///   撑满就是一颗横躺的大药丸。
-  /// - 但最宽只到「格子宽 - 4pt」：SE 上六档满钉、行尾又站着「返回刚才」时，一格只有
+  /// - 但最宽只到「格子宽 - 4pt」：六档满钉、行尾又站着「最新」时，一格只有
   ///   二十几点，按文字往外撑 8pt 会压到邻档的字上。挤到那个份上，底就贴着文字画。
   ///
   /// 填 10% 的强调色，不是实心：这一行离蜡烛只有 30pt，实心强调色是整屏饱和度最高的
@@ -328,18 +386,24 @@ struct IntervalBar: View {
   /// 字号是 `textSize`：13 经 `@ScaledMetric(relativeTo: .footnote)` 缩放（与 `UIFontMetrics(.footnote)`
   /// 同一条曲线），并且吃得到 `MarketChrome.typeCap` 的封顶——和排出来的字一模一样。
   @MainActor private static func textWidth(_ text: String, size: CGFloat) -> CGFloat {
-    let font = UIFont.systemFont(ofSize: size, weight: .semibold)
-    return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    ceil(rawTextWidth(text, size: size))
   }
 
-  /// 条右端那两个动作：**平文字，没有底色**——和没选中的周期一个画法，
+  /// 同上，不取整。排版预算（`chipPad`）用它：六档加行尾七八件，每件取整多出的
+  /// 零点几个点加起来能到三四点，出厂满钉那种只差一两点的工况会被误判成「排不下」。
+  @MainActor private static func rawTextWidth(_ text: String, size: CGFloat) -> CGFloat {
+    let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+    return (text as NSString).size(withAttributes: [.font: font]).width
+  }
+
+  /// 条右端那几个动作：**平文字，没有底色**——和没选中的周期一个画法，
   /// 整条读起来才是一行字。它们和周期分得开靠的是中间那条 `divider`，不是各自的底色。
   ///
   /// 「更多」展开时、或者当前档没钉在条上（它替那一档说话）时才亮起来：字变强调色、
   /// 底下垫同一套 10% 的淡底（和当前档一个规矩）。
   ///
-  /// 「更多」带下箭头（那是从条上往下拉出一张网格，展开时箭头翻上去）；图表设置那颗
-  /// 只有记号、没有字（审查 U12，见 `VectorIcon.adjust`），它开的是另一页，不是这根条的延伸。
+  /// 「更多」带下箭头（那是从条上往下拉出一张网格，展开时箭头翻上去）；「指标」没有箭头，
+  /// 它开的是一张面板；图表设置那颗只有记号、没有字（审查 U12，见 `VectorIcon.adjust`）。
   private func tail(
     _ title: String, chevron: Bool = false,
     on: Bool = false, flipped: Bool = false, action: @escaping () -> Void
@@ -355,7 +419,7 @@ struct IntervalBar: View {
   }
 
   private func tailButton<Label: View>(
-    on: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> Label
+    on: Bool, bleedsTrailing: Bool = false, action: @escaping () -> Void, @ViewBuilder label: () -> Label
   ) -> some View {
     Button(action: action) {
       label()
@@ -363,9 +427,10 @@ struct IntervalBar: View {
       .padding(.horizontal, Space.s)
       .frame(height: ControlMetrics.pillHeight)
       .background { if on { Capsule().fill(theme.amberSoft) } }
-      // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（图表设置那颗记号 15pt + 两边 8pt
-      // 只有 31pt，差的从这儿补上）。这 44pt 顺带成了两个动作之间的留白。
-      .frame(minWidth: 44, minHeight: 44)
+      // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（「指标」两个字 + 两边 8pt 只有
+      // 41.8pt，差的从这儿补上）。这 44pt 顺带成了动作之间的留白。
+      // 图表设置那颗贴左放：多出来的 13pt 要往右伸进页边距（见 `chartButton`）。
+      .frame(minWidth: Hit.min, minHeight: Hit.min, alignment: bleedsTrailing ? .leading : .center)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -375,6 +440,20 @@ struct IntervalBar: View {
     // 不钉死的话它们会跟「有多少要多少」的周期区抢，「最新」刚插进来那一帧能被挤成零宽
     // ——UI 测试里当场报「Activation point invalid」，点都点不着。
     .fixedSize(horizontal: true, vertical: false)
+    .padding(.trailing, bleedsTrailing ? Self.chartSlot - Hit.min : 0)
+  }
+
+  /// 图表设置那颗在版面上占多宽：记号 15pt + 两边 8pt。
+  private static let chartSlot: CGFloat = 15 + Space.s * 2
+
+  /// 行尾图表设置那颗记号。**版面只占记号本身**（`chartSlot` = 31pt），44pt 的命中区
+  /// 往右伸 13pt 进页边距（16 Pro 16 / 17 Pro Max 20，伸得进去）：2026-09-24 行尾多了
+  /// 「指标」，这 13pt 是出厂六档满钉加「最新」还排得下的那一截。顺带记号的右缘
+  /// 离头部内容的右缘只差它自己那 8pt 留白。
+  private var chartButton: some View {
+    tailButton(on: false, bleedsTrailing: true, action: onChart) { VectorIcon.adjust() }
+      .accessibilityIdentifier("interval.chart")
+      .accessibilityLabel("图表设置")
   }
 }
 
@@ -420,7 +499,7 @@ struct IntervalRow: View {
   var onPick: (Interval) -> Void
   var onPin: (Interval) -> Void
   var onLatest: () -> Void
-  var onReturn: (() -> Void)?
+  var onIndicators: () -> Void
   var onChart: () -> Void
   let readout: CrosshairReadout
   let context: CrosshairContext
@@ -435,7 +514,7 @@ struct IntervalRow: View {
       IntervalBar(
         theme: theme, quick: quick, current: current, atLatest: atLatest,
         gridOpen: $gridOpen, onPick: onPick, onPin: onPin,
-        onLatest: onLatest, onReturn: onReturn, onChart: onChart)
+        onLatest: onLatest, onIndicators: onIndicators, onChart: onChart)
         .modifier(YieldsToCrosshair(readout: readout, context: context, gridOpen: $gridOpen))
       CrosshairActionBar(
         readout: readout, context: context, theme: theme, canDetail: canDetail,

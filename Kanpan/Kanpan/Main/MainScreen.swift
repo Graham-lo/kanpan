@@ -202,14 +202,6 @@ struct MainScreen: View {
   @State private var intervalGrid = false
   /// 图还停在最新那根上没有。周期条行尾那颗「最新」靠它决定露不露面。
   @State private var atLatest = true
-  /// 刚被「最新」拽回来之前，人在看哪一屏（§P3-2）。
-  ///
-  /// 有值 = 周期条行尾那颗「最新」变成「返回刚才」，点它原样回去。它是一条**后路**，
-  /// 不是一段记忆：手一碰图、换品种、换周期、或者过了一分钟都作废——再点回去时
-  /// 那一屏多半已经不是他刚才看的那件事了。
-  @State private var returnView: ViewWindow?
-  /// 每记一笔后路自增。六十秒那条计时器用它作废上一笔（`task(id:)`）。
-  @State private var returnStamp = 0
   /// Historical OHLC belongs only to the crosshair container.
   ///
   /// 十字线跟手时一秒钟能动几十次，从前它写在主屏自己的 `@State` 上，于是主屏的 body
@@ -423,7 +415,6 @@ struct MainScreen: View {
       favorites: picker.prefs.favorites,
       symbol: market.symbol,
       undoStamp: favoritesEdit.undoStamp,
-      returnStamp: returnStamp,
       storeNotice: store.notice,
       drawFull: draw.full,
       drawNotice: draw.notice,
@@ -462,18 +453,10 @@ struct MainScreen: View {
         quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
         // 扫图名单里的前后邻居先预取：滑过去时顶栏六格和持仓量副图就有数（B1 / B2）。
         if let list = scanList { market.prefetchNeighbors(list.neighbors(of: symbol)) }
-        // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
-        forgetReturn()
       },
       onUndoStamp: {
         guard let undo = favoritesEdit.undoAction else { return }
         say(favoritesEdit.undoText, undo: undo)
-      },
-      expireReturn: {
-        guard returnView != nil else { return }
-        try? await Task.sleep(for: .seconds(60))
-        guard !Task.isCancelled else { return }
-        returnView = nil
       },
       noteDwell: {
         let symbol = market.symbol
@@ -720,10 +703,9 @@ struct MainScreen: View {
         atLatest: atLatest, gridOpen: $intervalGrid,
         onPick: pick(interval:),
         onPin: { iv in store.attempt { $0.toggleQuick(iv) } },
-        onLatest: { rememberBeforeLatest(); proxy.scrollToLatest() },
-        // 「返回刚才」：刚被「最新」拽回来，这颗把人原样送回去（§P3-2）。
-        // 没有后路时传 `nil`，那个槽位照旧空着——槽宽是钉死的，谁在里面都不影响周期药丸。
-        onReturn: returnView.map { view in { returnToRemembered(view) } },
+        onLatest: { proxy.scrollToLatest() },
+        // 指标页（`Panel.indicators`）：和图表设置一样不连着关，开着它一次调好几项。
+        onIndicators: { panel = .indicators },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart },
         readout: crosshairReadout, context: crosshairContext,
@@ -1190,8 +1172,6 @@ struct MainScreen: View {
       merged: { merged(subs: $0) },
       say: { say($0) },
       onTapped: { dismissPanel() },
-      // 他自己动手翻图了：「返回刚才」那条后路当场作废——再点它就是盖掉他刚做的事。
-      onUserView: { forgetReturn() },
       onOpenRecord: { openReview(id: $0.uuidString) })
   }
 
@@ -1956,8 +1936,6 @@ struct MainScreen: View {
     dismissPanel()
     guard iv != market.interval else { return }
     store.update { $0.interval = iv }
-    // 换了一档，「刚才那一屏」是上一档的坐标，回不去了（§P3-2）。
-    forgetReturn()
     // 「看细节」钻下去之后切回大周期：回到钻之前那个视野，而不是这一档的最新一屏——
     // 人是为了看清刚才那一根才下去的，回来当然还站在原地（§10.1）。
     // 栈里没有这一档就是平常的换周期，顺手把可能还欠着的那笔「铺到某段时间」销掉。
@@ -2007,31 +1985,6 @@ struct MainScreen: View {
       if let keep { proxy.show(window: keep, symbol: symbol, interval: market.interval) }
       Haptics.step()
     }
-  }
-
-  // ---------------------------------------------------------------- 返回刚才（§P3-2）
-
-  /// 点「最新」之前先记一笔：人现在看的是哪一屏。
-  ///
-  /// 「最新」是一下不可逆的跳转——从三个月前的那一段被拽回此刻，想回去只能重新拖。
-  /// 记下来之后行尾那一格变成「返回刚才」，点一下原样回去。
-  private func rememberBeforeLatest() {
-    guard !atLatest, let view = proxy.currentView else { return }
-    returnView = view
-    returnStamp += 1
-  }
-
-  /// 「返回刚才」：把视野原样铺回去，这条后路随即作废（回来了就不用再回了）。
-  private func returnToRemembered(_ view: ViewWindow) {
-    proxy.show(window: view, symbol: market.symbol, interval: market.interval)
-    forgetReturn()
-  }
-
-  /// 后路作废。手一碰图、换品种、换周期、或者六十秒到了，都走这儿。
-  private func forgetReturn() {
-    guard returnView != nil else { return }
-    returnView = nil
-    returnStamp += 1
   }
 
   /// 「看细节」：把十字线选中的这一根，换到更细的一档铺满一屏（§10.1）。

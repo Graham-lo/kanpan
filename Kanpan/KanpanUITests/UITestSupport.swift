@@ -29,6 +29,8 @@ enum Ids {
   // 周期条
   static func intervalChip(_ raw: String) -> String { "interval.chip.\(raw)" }
   static let intervalMore = "interval.more"
+  /// 周期条行尾「指标」（2026-09-24）：直接开指标页（`Panel.indicators`），不经图表设置。
+  static let intervalIndicators = "interval.indicators"
   /// UI 测试沙盒里铺出来的那六档（`PrefsStore.uiTestQuick`）。
   ///
   /// 出厂默认也是六档（`Interval.quick` = 5m 30m 1h 4h 1d 1w，2026-09-21 放满），

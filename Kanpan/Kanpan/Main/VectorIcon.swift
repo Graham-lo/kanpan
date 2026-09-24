@@ -363,7 +363,7 @@ extension VectorIcon {
     VectorIcon(box: 16, size: size, lineWidth: 1.7, items: [.path("M5.5 3.5 10 8l-4.5 4.5")])
   }
 
-  /// 周期条行尾「返回刚才」。和上面那颗是一对，方向反过来。
+  /// 十字线动作行「上一根」。和上面那颗是一对，方向反过来。
   static func chevronLeft(_ size: Double = 14) -> VectorIcon {
     VectorIcon(box: 16, size: size, lineWidth: 1.7, items: [.path("M10.5 3.5 6 8l4.5 4.5")])
   }

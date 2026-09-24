@@ -419,9 +419,6 @@ struct ChartHost: UIViewRepresentable {
   /// `.resize` / `.adopt` / 「回到最新」）**一律不报**，否则图会把自己开张时那份
   /// 出厂宽度当成用户意图，反过来把档案里真正的那份覆盖掉。见 `ChartView.onUserViewChanged`。
   var onBarSpacing: (Double) -> Void = { _ in }
-  /// **用户自己**动了视野（拖、捏、甩）。和 `onBarSpacing` 同一个源头，
-  /// 但报的是「他动手了」这件事本身，不是宽度——「返回刚才」那条后路靠它作废（§P3-2）。
-  var onUserView: () -> Void = {}
   /// 手指全部离开画布了。落盘与同步的时机钉在这儿，见 `ChartView.onInteractionEnded`。
   var onInteractionEnded: () -> Void = {}
   /// 「档案到货」的序号。变一次，图就按 `resetSpacing` 重量一次（`ViewIntent.adopt`）。
@@ -600,9 +597,7 @@ struct ChartHost: UIViewRepresentable {
     //   会把程序刚摆好的宽度当成用户意图报出去。
     let onView = self.onView, onBarSpacing = self.onBarSpacing
     box.chart.onViewChanged = { view in onView(view) }
-    let onUserView = self.onUserView
     box.chart.onUserViewChanged = { [weak box] view in
-      onUserView()
       guard let box, let layout = box.chart.chartLayout,
             let series = box.chart.state?.series, series.count > 0 else { return }
       onBarSpacing(view.barSpacing(step: series.step, plotW: layout.plotW))
