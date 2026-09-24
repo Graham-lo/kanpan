@@ -14,7 +14,7 @@ import SwiftUI
 //   2. 记下当前品种的品种事实（base、资产类型、价格步长），行情流拿它查默认门槛；
 //   3. 收下行情流推来的当前大单集合，只认当前品种的；
 //   4. 给图表一份可以直接塞进 `ChartState.orderFlow` 的值（横屏画线台给 nil）。
-// 大单集合按品种在本机记一份小日志（24 小时内、最多 200 条，见 OrderFlowFeed），不同步。
+// 大单集合按品种在本机记一份小日志（24 小时内、结束的最多 500 条、挂着的不删，见 OrderFlowFeed），不同步。
 
 /// 行情流在自己的执行器上问品种事实，所以得是线程安全的一张小表。
 final class OrderFlowFactsTable: Sendable {

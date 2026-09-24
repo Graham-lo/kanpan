@@ -12,25 +12,7 @@ import Foundation
 public enum OrderFlowProduct: String, Sendable, Hashable, Codable, CaseIterable {
   case spot, usdtPerp, coinPerp, delivery
 
-  /// 设置面板上的名字。
-  public var label: String {
-    switch self {
-    case .spot: "现货"
-    case .usdtPerp: "U本位永续"
-    case .coinPerp: "币本位永续"
-    case .delivery: "交割"
-    }
-  }
-
-  /// 十字线读数里的短名：「币安 永续 卖 84,120 …」。
-  public var shortLabel: String {
-    switch self {
-    case .spot: "现货"
-    case .usdtPerp: "永续"
-    case .coinPerp: "币本位"
-    case .delivery: "交割"
-    }
-  }
+  // 给人看的名字（`label` / `shortLabel`）在 KanpanPresentation 的 DisplayLabels.swift，Core 不住中文文案。
 
   /// 合约（永续、交割）与现货分开着色、分开开关。
   public var isContract: Bool { self != .spot }

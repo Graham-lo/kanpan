@@ -53,8 +53,6 @@ public protocol MarketProvider: Sendable {
   func probeStream(symbol: String, interval: Interval) async -> Bool
   /// 一条已经带好订阅、连上就推的原始推送地址（命令行录回放报文用）。做不到就给 nil。
   func rawStreamURL(topics: [StreamTopic]) -> URL?
-  /// 主力订单流的深度接入（实现在 `OrderFlow/`）。这条线路上没有深度就是 nil。
-  func orderFlowAdapter(symbol: String) -> (any DepthFeedAdapter)?
 
   /// 冷启动热身：这条线路上首屏最先要连的那几台主机（只握手，回什么都不管）。
   /// 由线路决定——直连热交易所自己的域名，网关热网关；不给就不热。

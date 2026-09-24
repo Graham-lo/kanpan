@@ -43,7 +43,7 @@ struct OrderFlowEditor: View {
         if let facts, let effective {
           Section {
             ForEach(products, id: \.self) { product in
-              row(.threshold(product), label: Self.label(product), value: effective[product] ?? 0,
+              row(.threshold(product), label: product.label, value: effective[product],
                   suffix: "美元", identifier: "orderflow.threshold.\(product.rawValue).field")
             }
           } header: {
@@ -52,7 +52,8 @@ struct OrderFlowEditor: View {
           .listRowBackground(t.raised)
 
           Section {
-            row(.step, label: "价格步长", value: effective.step ?? 0, suffix: nil,
+            // 表里没有步长、前一日收盘还没到时步长还在推：框留空、写「自动」，不显示一个假的 0。
+            row(.step, label: "价格步长", value: effective.step, suffix: nil,
                 identifier: "orderflow.step.field")
             if store.prefs.orderFlowOverrides[facts.overrideKey] != nil {
               // 同 `IndicatorEditor`：表单纸会在键盘起落时整张跳一下，按钮的按压跟踪扛不住，点击手势能。
@@ -113,15 +114,6 @@ struct OrderFlowEditor: View {
     .presentationBackground(t.app)
   }
 
-  static func label(_ product: OrderFlowProduct) -> String {
-    switch product {
-    case .spot: "现货"
-    case .usdtPerp: "U本位永续"
-    case .coinPerp: "币本位永续"
-    case .delivery: "交割"
-    }
-  }
-
   private func toggle(_ name: String, _ key: WritableKeyPath<OrderFlowDisplay, Bool>, _ id: String) -> some View {
     Toggle(name, isOn: Binding(get: { display[keyPath: key] }, set: { display[keyPath: key] = $0 }))
       .foregroundStyle(t.ink)
@@ -129,17 +121,18 @@ struct OrderFlowEditor: View {
   }
 
   /// 一行「名字 + 数字框 + 读数」。门槛框右边小字给 K / M / B 读法，免得数零。
-  private func row(_ field: OrderFlowField, label: String, value: Double, suffix: String?,
+  private func row(_ field: OrderFlowField, label: String, value: Double?, suffix: String?,
                    identifier: String) -> some View {
     let shown = resetting ? defaultValue(field) ?? value : (edited[field] ?? value)
-    let text = typing[field] ?? Self.plain(shown)
+    let text = typing[field] ?? shown.map(Self.plain) ?? ""
     return HStack(spacing: 10) {
       Text(label).foregroundStyle(t.ink)
       Spacer(minLength: 8)
       if suffix != nil, let amount = Double(text), amount > 0 {
         Text(Self.compact(amount)).font(PanelFont.meta).monospacedDigit().foregroundStyle(t.ink3)
       }
-      TextField("", text: Binding(get: { text }, set: { typing[field] = String($0.filter { $0.isNumber || $0 == "." }.prefix(14)) }))
+      TextField("", text: Binding(get: { text }, set: { typing[field] = String($0.filter { $0.isNumber || $0 == "." }.prefix(14)) }),
+                prompt: Text("自动").foregroundStyle(t.ink3))
         .keyboardType(.decimalPad)
         .multilineTextAlignment(.trailing)
         .font(.body.monospacedDigit())

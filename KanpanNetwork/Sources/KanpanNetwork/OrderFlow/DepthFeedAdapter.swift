@@ -100,16 +100,10 @@ public extension DepthFeedAdapter {
   }
 }
 
-/// 能给出主力订单流接入的提供者（币安、Coinbase）。实现在 `DepthFeedFactory.swift`，提供者文件不动。
-///
-/// `MarketProvider.orderFlowAdapter(symbol:)` 是一只品种一家一条的旧入口，逐单模型要一只币
-/// 各家各产品都订，入口换成这里；那个协议要求留着给默认实现（nil），调用方已经不用它。
+/// 能给出主力订单流接入的提供者（币安、Coinbase）：一只币各家各产品的簿都从这里查。
+/// 实现在 `DepthFeedFactory.swift`，提供者文件不动。
 public protocol OrderFlowSourcing: Sendable {
   var orderFlowCatalog: OrderFlowCatalog { get }
-}
-
-public extension MarketProvider {
-  func orderFlowAdapter(symbol: String) -> (any DepthFeedAdapter)? { nil }
 }
 
 extension DepthFeedAdapter {

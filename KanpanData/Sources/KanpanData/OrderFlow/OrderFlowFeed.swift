@@ -40,7 +40,7 @@ public struct OrderFlowFacts: Sendable, Equatable {
 ///   每条连接一个 `DepthStream`。某家没有、某条连不上，只是少几本簿。
 /// - 门槛与步长：默认表（`OrderFlowDefaults`）叠用户改过的项（`setOverride`）；表里和用户都没给步长时，
 ///   按前一 UTC 日收盘 × 最小变动价推一个（`BucketScheme.derivedStep`），跨 UTC 日重算。
-/// - 落盘：大单本身（不含簿）按品种记一份小日志（`<目录>/<品种>.json`，最多 200 条、24 小时），
+/// - 落盘：大单本身（不含簿）按品种记一份小日志（`<目录>/<品种>.json`，结束的最多 500 条、挂着的不删、24 小时），
 ///   再打开这只时读回来接着画；不同步。
 public actor OrderFlowFeed {
   public typealias Sink = @Sendable (OrderFlowSnapshot) async -> Void
@@ -347,7 +347,7 @@ public actor OrderFlowFeed {
       if loadedDay != day {
         let close = try? await loadClose(day)
         guard !Task.isCancelled else { return }
-        if let close, let step = OrderFlowDefaults.derivedStep(referenceClose: close, tick: facts.tick) {
+        if let close, let step = BucketScheme.derivedStep(referenceClose: close, tick: facts.tick) {
           derivedStep = step
           loadedDay = day
           backoff.reset()

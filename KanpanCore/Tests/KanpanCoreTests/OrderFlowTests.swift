@@ -634,8 +634,11 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(model.evaluate(nowMs: 1_000).orders.first?.status, .live)
     XCTAssertEqual(model.evaluate(nowMs: 60_000).orders.first?.status, .live)
     let order = model.evaluate(nowMs: 500 + OrderFlowModel.staleMs).orders[0]
-    XCTAssertEqual(order.status, .cancelled)
+    XCTAssertEqual(order.status, .lost, "断线之后成交还是撤单不知道：失联结束，不判撤单")
     XCTAssertEqual(order.endMs, 500, "按最后一次看到时结束")
+    XCTAssertNil(order.vanishedNotional)
+    XCTAssertTrue(OrderFlowDisplay(filledBid: false, filledAsk: false, cancelledBid: false, cancelledAsk: false)
+      .shows(order), "失联结束的不归成交 / 撤销开关管")
   }
 
   /// 24 小时以前结束的删掉；结束的超过 500 条删结束最早的；挂着的不删。
@@ -682,7 +685,7 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(model.scheme?.step, 10)
   }
 
-  /// 落盘读回：步长一致才认；步长还不知道时先放着，知道了再认；200 条不到 64 KB。
+  /// 落盘读回：步长一致才认；步长还不知道时先放着，知道了再认；结束的上限 500 条（`d415d680` 从 200 调上来）也不到 128 KB。
   func testJournalRoundTripAndDeferredRestore() throws {
     var model = inBand(okx)
     _ = model.evaluate(nowMs: 0)
@@ -705,14 +708,15 @@ final class OrderFlowModelTests: XCTestCase {
                    "步长不一样，桶号对不上，整份作废")
     XCTAssertNil(OrderFlowJournal.decode(Data("{}".utf8)))
 
-    let many = (0..<200).map { k in
+    let many = (0..<OrderFlowDefaults.maxEndedOrders).map { k in
       BigOrder(venueID: "binance:coinPerp:BTCUSD_PERP", exchange: "币安", product: .coinPerp, side: .bid,
                bucket: Int64(840 + k), price: 84_123.4, firstSeenMs: 1_790_000_000_000 + Int64(k),
                endMs: 1_790_000_600_000, status: .filled, initialNotional: 5_312_345.67, notional: 5_312_345.67,
-               filledNotional: 4_400_000.12, threshold: 5_000_000)
+               filledNotional: 4_400_000.12, threshold: 5_000_000, vanishedNotional: 5_312_345.67)
     }
     let size = OrderFlowJournal(symbol: "BTCUSDT", step: 100, savedAtMs: 0, orders: many).encoded().count
-    XCTAssertLessThan(size, 64 * 1024)
+    // 500 条实测约 110 KB；日志 15 秒最多写一次，这个量级落盘不是负担（原来 200 条时的 64 KB 线跟着放宽）。
+    XCTAssertLessThan(size, 128 * 1024, "\(size) 字节")
   }
 
   /// 进程重启读回来的挂单，簿一就绪就照常续上；那本簿再没出现，两分钟后按存盘时刻结束。
@@ -731,8 +735,27 @@ final class OrderFlowModelTests: XCTestCase {
     var orphan = OrderFlowModel(symbol: "ETHUSDT", thresholds: thresholds, restored: journal)
     _ = orphan.evaluate(nowMs: 10_000)
     let ended = orphan.evaluate(nowMs: 10_000 + OrderFlowModel.staleMs).orders[0]
-    XCTAssertEqual(ended.status, .cancelled)
+    XCTAssertEqual(ended.status, .lost)
     XCTAssertEqual(ended.endMs, 800)
+  }
+
+  /// 存盘之后缺席超过两分钟才再打开：读回的挂单第一次评估就按存盘时刻失联结束；
+  /// 那个桶此刻还过门槛，就当一条新出现的单，从这一刻重新确认——不把缺席的那几小时画成一直挂着。
+  func testRestoredAfterLongAbsenceEndsAtSaveTimeAndReappearsAsNew() throws {
+    var first = inBand(okx)
+    _ = first.evaluate(nowMs: 0)
+    _ = first.evaluate(nowMs: 500)
+    let journal = try XCTUnwrap(first.journal(nowMs: 800))
+
+    var later = inBand(okx, restored: journal)
+    let back: Int64 = 800 + 3_600_000
+    let frame = later.evaluate(nowMs: back)
+    XCTAssertEqual(frame.orders.count, 1)
+    XCTAssertEqual(frame.orders[0].status, .lost)
+    XCTAssertEqual(frame.orders[0].endMs, 800, "按存盘时刻结束，不是现在")
+    let next = later.evaluate(nowMs: back + 500).orders
+    XCTAssertEqual(next.count, 2)
+    XCTAssertEqual(next.filter { $0.isLive }.map { $0.firstSeenMs }, [back], "桶还在：当一条新出现的单")
   }
 
   /// 成交按（簿、侧、桶）索引记账：读回来的挂单、改门槛之后留下的挂单都还能收到成交；已经结束的不再收。

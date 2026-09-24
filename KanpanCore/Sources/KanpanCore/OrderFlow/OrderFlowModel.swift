@@ -18,14 +18,18 @@ import Foundation
 //   还挂着的永远不删。
 // - 落盘：`OrderFlowJournal`，一只品种一份小文件（KanpanData 管读写），切回来、进程重启历史还在；不同步。
 // - 簿断了：没就绪的那本簿这一拍不参与（它的单既不新增也不结束）；断开超过 2 分钟，它还挂着的单
-//   按最后一次看到的时刻结束（`staleMs`）。
+//   按最后一次看到的时刻结束（`staleMs`），状态记「失联结束」（`.lost`）——那一刻之后发生了什么不知道，
+//   不能判成撤单。
+// - 读回：日志里挂着的单，如果存盘之后已经过了 `staleMs` 才再打开，第一次评估时一律按存盘时刻失联结束；
+//   那个桶此刻还过门槛的话，按正常确认当成一条新出现的单（不把缺席的那几个小时画成一直挂着）。
 //
 // 交易所帧由 KanpanNetwork 的适配器解成 `DepthMessage` 喂进来，连接、快照拉取、节流与落盘由
 // KanpanData 的 OrderFlowFeed 管。图表与 app 只看得到 `OrderFlowSnapshot`。
 
 /// 一条大单。
 public struct BigOrder: Sendable, Equatable, Identifiable, Codable {
-  public enum Status: String, Sendable, Codable { case live, filled, cancelled }
+  /// `lost`：簿断开太久（或读回时缺席太久），按最后一次看到的时刻结束——之后是成交还是撤单不知道。
+  public enum Status: String, Sendable, Codable { case live, filled, cancelled, lost }
 
   /// 哪本簿（`OrderFlowVenue.id`）。
   public var venueID: String
@@ -197,6 +201,8 @@ public struct OrderFlowModel: Sendable {
   private var startedMs: Int64?
   /// 读回来的那份，步长还不知道（等前一日收盘）时先放着。
   private var pendingJournal: OrderFlowJournal?
+  /// 读回了挂着的单：存盘时刻。第一次评估时据此判断缺席是不是超过了 `staleMs`。
+  private var restoredAtMs: Int64?
 
   struct CandidateKey: Hashable, Sendable {
     var venue: String
@@ -318,6 +324,7 @@ public struct OrderFlowModel: Sendable {
     guard abs(journal.step - scheme.step) <= scheme.step * 1e-9 else { return }
     orders = journal.orders.sorted(by: Self.chronological)
     for order in orders where order.isLive { lastSeen[order.id] = journal.savedAtMs }
+    if orders.contains(where: \.isLive) { restoredAtMs = journal.savedAtMs }
     requalify()
     reindex()
   }
@@ -344,6 +351,13 @@ public struct OrderFlowModel: Sendable {
   public mutating func evaluate(nowMs: Int64) -> OrderFlowSnapshot {
     guard let scheme else { return .loading(symbol, asOfMs: nowMs) }
     if startedMs == nil { startedMs = nowMs }
+    if let saved = restoredAtMs {
+      restoredAtMs = nil
+      if nowMs - saved >= Self.staleMs {
+        for i in orders.indices where orders[i].isLive { endLost(i, atMs: saved) }
+        reindex()
+      }
+    }
     var evaluated = Set<String>()
     var touched = Set<CandidateKey>()
     var appended = false
@@ -447,16 +461,25 @@ public struct OrderFlowModel: Sendable {
     journalDirty = true
   }
 
-  /// 簿断开太久（或这一轮根本没订到那本簿，例如交割合约换季了），它还挂着的单按最后一次看到时结束。
+  /// 簿断开太久（或这一轮根本没订到那本簿，例如交割合约换季了），它还挂着的单按最后一次看到时失联结束。
   private mutating func expireStale(nowMs: Int64) {
     guard let started = startedMs, nowMs - started >= Self.staleMs else { return }
     for i in orders.indices where orders[i].isLive {
       let seen = venueSeen[orders[i].venueID] ?? started
       guard nowMs - seen >= Self.staleMs else { continue }
-      let oid = orders[i].id
-      end(i, atMs: lastSeen[oid] ?? orders[i].firstSeenMs, remaining: orders[i].notional)
-      ending[oid] = nil
+      endLost(i, atMs: lastSeen[orders[i].id] ?? orders[i].firstSeenMs)
     }
+  }
+
+  /// 失联结束：不判成交 / 撤单，不记消失掉的名义。
+  private mutating func endLost(_ i: Int, atMs: Int64) {
+    let oid = orders[i].id
+    orders[i].status = .lost
+    orders[i].endMs = max(orders[i].firstSeenMs, atMs)
+    orders[i].vanishedNotional = nil
+    lastSeen[oid] = nil
+    ending[oid] = nil
+    journalDirty = true
   }
 
   /// 24 小时以前结束的删掉；结束的超过 500 条就删结束得最早的。还挂着的一条不删。删了返回 true。

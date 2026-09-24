@@ -12,9 +12,9 @@ import UIKit
 //   - 左缘 = 首次过门槛那根 K 线的左缘；右缘 = 结束那根的右缘，还挂着就画到主图右缘。
 //   - 高度 = min(40, 名义 ÷ (门槛 ÷ 8)) × 0.25 pt，再夹到 1.5–10 pt：刚过门槛 2 pt，门槛五倍封顶 10 pt。
 //   - 透明度 = 0.25 + 0.65 × 成交比例（0.25–0.9）：被吃得越多越实；已撤销再 × 0.45 并描虚线边；
-//     十字线停在上面的那一块 1.0。
-//   - 颜色：合约（U 本位永续、交割）用皮肤涨跌色（跟着红涨绿跌走）；现货买黄 #E1D610、卖紫 #CF09E7
-//     （CoinAnk 的现货配色，不随红涨绿跌）；**币本位永续**用涨跌色往皮肤正文色混 40%——同一侧的颜色
+//     失联结束（簿断太久，之后是成交还是撤单不知道）不描虚线、不打折；十字线停在上面的那一块 1.0。
+//   - 颜色：合约（U 本位永续、交割）用皮肤涨跌色（跟着红涨绿跌走）；现货买黄、卖紫（CoinAnk 的现货配色，
+//     不随红涨绿跌）：深色底 #E1D610 / #CF09E7，浅色底压暗成 #B8A800 / #A806BC——亮黄在白底上发虚；**币本位永续**用涨跌色往皮肤正文色混 40%——同一侧的颜色
 //     发灰一档，和 U 本位一眼分得开，又不和现货的黄紫、也不和已撤销的虚线边撞。
 //   - 显示开关（`state.orderFlowDisplay`）只管画不画：关掉现货 / 合约 / 已成交买卖 / 已撤销买卖。
 //
@@ -40,9 +40,11 @@ extension ChartRenderer {
     var hovered: BigOrder?
   }
 
-  /// 现货买、卖的颜色（CoinAnk）。
+  /// 现货买、卖的颜色（CoinAnk）：深色底一套、浅色底压暗一套。
   static let orderFlowSpotBid: Hex = "#E1D610"
   static let orderFlowSpotAsk: Hex = "#CF09E7"
+  static let orderFlowSpotBidOnLight: Hex = "#B8A800"
+  static let orderFlowSpotAskOnLight: Hex = "#A806BC"
   /// 币本位永续往正文色混的比例。
   static let orderFlowCoinMix = 0.4
   /// 高度：名义每「门槛 ÷ 8」一格，一格 0.25 pt，最多 40 格；再夹到 1.5–10 pt。
@@ -74,10 +76,19 @@ extension ChartRenderer {
   func orderFlowColor(_ order: BigOrder) -> Hex {
     let t = state.colors
     switch order.product {
-    case .spot: return order.side == .bid ? Self.orderFlowSpotBid : Self.orderFlowSpotAsk
+    case .spot:
+      let light = Self.isLightBackground(t.bg)
+      return order.side == .bid ? (light ? Self.orderFlowSpotBidOnLight : Self.orderFlowSpotBid)
+                                : (light ? Self.orderFlowSpotAskOnLight : Self.orderFlowSpotAsk)
     case .usdtPerp, .delivery: return order.side == .bid ? t.up : t.down
     case .coinPerp: return mixHex(order.side == .bid ? t.up : t.down, t.text, Self.orderFlowCoinMix)
     }
+  }
+
+  /// 图区底色是不是浅色（按亮度，不认皮肤名：六套种子各自的底色说了算）。
+  static func isLightBackground(_ bg: Hex) -> Bool {
+    let v = bg.rgba
+    return 0.2126 * v.r + 0.7152 * v.g + 0.0722 * v.b > 0.5
   }
 
   /// 色块几何。纯函数：同一份 state、同一套 pane / range / layout 给同一个结果。
@@ -211,7 +222,7 @@ extension ChartRenderer {
     if frame.askTotal > 0 { put("卖 " + Self.orderFlowAmount(frame.askTotal), t.down) }
   }
 
-  /// 「币安 永续 卖 84,120 · 5.3M · 成交 38% · 12 分」。已结束的补一段「已成交 / 已撤销」，
+  /// 「币安 永续 卖 84,120 · 5.3M · 成交 38% · 12 分」。已结束的补一段「已成交 / 已撤销 / 断线」，
   /// 时长算到结束那一刻；成交不足一成时不显示成交那一段。
   static func orderFlowReadout(_ order: BigOrder, decimals: Int, nowMs: Int64) -> String {
     var parts = ["\(order.exchange) \(order.product.shortLabel) " + (order.side == .bid ? "买 " : "卖 ")
@@ -222,6 +233,7 @@ extension ChartRenderer {
     case .live: break
     case .filled: parts.append("已成交")
     case .cancelled: parts.append("已撤销")
+    case .lost: parts.append("断线")
     }
     let minutes = max(0, (order.endMs ?? nowMs) - order.firstSeenMs) / 60_000
     parts.append(minutes >= 60 ? "\(minutes / 60) 时 \(minutes % 60) 分" : minutes < 1 ? "不到 1 分" : "\(minutes) 分")

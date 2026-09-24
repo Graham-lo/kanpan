@@ -97,7 +97,7 @@ struct OrderFlowChartTests {
     #expect(ChartRenderer.orderFlowAlpha(full) == 0.9)
   }
 
-  @Test("颜色：合约走涨跌色（红涨绿跌跟着反）、现货黄紫不变、币本位往正文色混四成")
+  @Test("颜色：合约走涨跌色（红涨绿跌跟着反）、现货黄紫不随涨跌、按底色明暗两套、币本位往正文色混四成")
   func colors() throws {
     for redUp in [false, true] {
       let (r, _) = Self.renderer(redUp: redUp)
@@ -105,11 +105,21 @@ struct OrderFlowChartTests {
       let f = frame(r)
       #expect(f.bands.first { $0.order.bucket == 1 }?.color == t.up)
       #expect(f.bands.first { $0.order.bucket == 6 }?.color == t.down)
-      #expect(f.bands.first { $0.order.bucket == 2 }?.color == "#E1D610")
-      #expect(f.bands.first { $0.order.bucket == 3 }?.color == "#CF09E7")
+      #expect(f.bands.first { $0.order.bucket == 2 }?.color == "#B8A800", "浅色底：黄压暗")
+      #expect(f.bands.first { $0.order.bucket == 3 }?.color == "#A806BC", "浅色底：紫压暗")
       #expect(f.bands.first { $0.order.bucket == 4 }?.color == mixHex(t.down, t.text, 0.4))
     }
     #expect(Self.renderer(redUp: true).0.state.colors.up == Palette.chart(Palette.lightSeed, redUp: true).up)
+    // 六套皮肤按底色分两套：浅色三套压暗、深色三套用 CoinAnk 原色。
+    for skin in Skin.allCases {
+      for dark in [false, true] {
+        var (r, _) = Self.renderer()
+        r.state.paletteSeed = Palette.seed(skin, dark: dark)
+        let f = frame(r)
+        #expect(f.bands.first { $0.order.bucket == 2 }?.color == (dark ? "#E1D610" : "#B8A800"), "\(skin) \(dark)")
+        #expect(f.bands.first { $0.order.bucket == 3 }?.color == (dark ? "#CF09E7" : "#A806BC"), "\(skin) \(dark)")
+      }
+    }
   }
 
   @Test("显示开关：关现货 / 合约 / 已成交买 / 已撤销卖各自只藏那一类；合计只算还挂着的")
@@ -151,6 +161,22 @@ struct OrderFlowChartTests {
                           notional: 6_000_000, initial: 6_000_000)
     #expect(ChartRenderer.orderFlowReadout(done, decimals: 0, nowMs: 99_000_000)
       == "币安 币本位 买 84,000 · 6.0M · 已撤销 · 1 时 5 分")
+    var lost = done; lost.status = .lost
+    #expect(ChartRenderer.orderFlowReadout(lost, decimals: 0, nowMs: 99_000_000)
+      == "币安 币本位 买 84,000 · 6.0M · 断线 · 1 时 5 分")
+  }
+
+  @Test("失联结束：不描虚线、不打折，也不归已成交 / 已撤销开关管")
+  func lost() throws {
+    var (r, _) = Self.renderer()
+    r.state.orderFlow?.orders[5].status = .lost
+    let band = try #require(frame(r).bands.first { $0.order.bucket == 6 })
+    #expect(!band.dashed && abs(band.alpha - 0.25) < 1e-9)
+    r.state.orderFlowDisplay.cancelledAsk = false
+    r.state.orderFlowDisplay.cancelledBid = false
+    r.state.orderFlowDisplay.filledAsk = false
+    r.state.orderFlowDisplay.filledBid = false
+    #expect(frame(r).bands.contains { $0.order.bucket == 6 })
   }
 
   @Test("开关与内容变化脏哪几层；开着主力图例多留一行；拉快照中、别的品种不画")

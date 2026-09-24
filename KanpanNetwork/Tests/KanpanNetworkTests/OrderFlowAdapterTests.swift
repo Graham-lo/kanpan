@@ -368,7 +368,8 @@ struct OrderFlowAdapterTests {
     #expect((gateway as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == true)
     #expect((coinbase as? any OrderFlowSourcing)?.orderFlowCatalog.route.gateways == ["gw-a.example"])
     #expect((coinbase as? any OrderFlowSourcing)?.orderFlowCatalog.route.apiHosts == ["gw-a.example"])
-    #expect(direct.orderFlowAdapter(symbol: "BTCUSDT") == nil)
+    // 旧的一品种一家入口 `MarketProvider.orderFlowAdapter(symbol:)` 已删，订单流只从这张品种表拿。
+    #expect([direct, gateway, coinbase].allSatisfy { $0 is any OrderFlowSourcing })
   }
 
   // ---------------------------------------------------------------- 连接客户端

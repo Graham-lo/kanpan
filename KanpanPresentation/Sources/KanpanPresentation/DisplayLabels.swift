@@ -40,3 +40,25 @@ extension PriceMode {
     }
   }
 }
+
+extension OrderFlowProduct {
+  /// 主力订单流设置面板上的名字。
+  public var label: String {
+    switch self {
+    case .spot: "现货"
+    case .usdtPerp: "U本位永续"
+    case .coinPerp: "币本位永续"
+    case .delivery: "交割"
+    }
+  }
+
+  /// 十字线读数里的短名：「币安 永续 卖 84,120 …」。
+  public var shortLabel: String {
+    switch self {
+    case .spot: "现货"
+    case .usdtPerp: "永续"
+    case .coinPerp: "币本位"
+    case .delivery: "交割"
+    }
+  }
+}

@@ -872,7 +872,7 @@ final class MarketModel {
     let taker = active && externalEnabled.contains(.taker), depth = active && depthEnabled
     Task { [feed] in await feed.setMicrostructure(taker: taker, depth: depth) }
     // 主力订单流只跟前后台走，不跟「图表看不看得见」走：切到自选 / 设置看一眼再回来，
-    // 簿和每条墙挂了多久都还在；停掉重订就是一本新簿，60 秒热身、墙的起点和「N 分」全清零。
+    // 簿和每条大单从哪根 K 线开始挂的都还在；停掉重订就是一本新簿，要重新确认，还挂着的单只能靠日志接回来。
     orderFlow.apply(visible: foreground, to: feed)
   }
 

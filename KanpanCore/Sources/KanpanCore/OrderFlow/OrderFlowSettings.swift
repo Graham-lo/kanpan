@@ -139,11 +139,11 @@ public struct OrderFlowDisplay: Sendable, Equatable, Codable {
 
   public static let all = OrderFlowDisplay()
 
-  /// 这一单画不画。还挂着的单只看产品开关。
+  /// 这一单画不画。还挂着的、失联结束的只看产品开关。
   public func shows(_ order: BigOrder) -> Bool {
     guard order.product.isContract ? contract : spot else { return false }
     switch order.status {
-    case .live: return true
+    case .live, .lost: return true  // 失联结束的不归成交 / 撤销开关管
     case .filled: return order.side == .bid ? filledBid : filledAsk
     case .cancelled: return order.side == .bid ? cancelledBid : cancelledAsk
     }
@@ -225,10 +225,5 @@ public enum OrderFlowDefaults {
     }
     let t = coinTiers[tier(turnover24h: turnover24h)]
     return OrderFlowThresholds(spot: t.spot, usdtPerp: t.perpetual, coinPerp: t.perpetual, delivery: t.perpetual)
-  }
-
-  /// 表里没有步长时：前一 UTC 日收盘 × 0.1% 最接近的 1 / 2 / 5 × 10ⁿ，不小于最小价格步长。
-  public static func derivedStep(referenceClose: Double, tick: Double?) -> Double? {
-    BucketScheme.derivedStep(referenceClose: referenceClose, tick: tick)
   }
 }
