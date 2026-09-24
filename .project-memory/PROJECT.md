@@ -467,7 +467,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **成交流**（`50c431d`，已部署）：网关两条线路都放行 `<symbol>@aggTrade`，逐帧排队不合并（成交比例要每一笔都在）。币安 aggTrade 实测只在 `/market/stream` 上推（5 秒 123 帧，`/public` 0 帧），所以和行情同一条上游；OKX 映射为 `trades`（instId 同 books），帧是 `{"stream":"<sym>@aggTrade","source":"okx","ctVal","data":<OKX 原消息>}`，sz 是张数要乘 ctVal。
 - 判定都在 `depth_relay.py`：`sequenced()` 管逐帧排队（深度 + 成交），`on_public()` 管走不走币安 `/public`（只有深度），`OKX_SEQUENCED` 是 OKX 映射表。
 
-## 主力订单流 · 客户端（2026-09-24，`819f9cc` Core → `12b4e76` Network → `b01d647` Data → `2e4d136` Chart → `4953b31` App，验收见 `docs/acceptance/主力订单流-2026-09-24/验收报告.md`）
+## 主力订单流 · 客户端·站立墙旧版（已被下文「逐单模型」取代，只留作历史；2026-09-24，`819f9cc` Core → `12b4e76` Network → `b01d647` Data → `2e4d136` Chart → `4953b31` App，验收见 `docs/acceptance/主力订单流-2026-09-24/验收报告.md`）
 
 - **是什么**：主图叠加「主力订单流」（主图指标第 7 项，无参数）。挂单簿里挑出的大单画成横向色带（高 2–6 pt、透明度按平方根落在 0.22–0.55、只有一条时 0.45、十字线停上去 0.9），右端 9pt 等宽标签「金额 · 成交%」，图例一行「主力 买 … · 卖 …」；十字线停在色带上时图例换成那一条的明细。每侧最多 6 条；画在 K 线之上、画线与最新价线之下；横屏画线台不画。
 - **模块位置**（一个功能一个模块，外面只留接线点）：判定 `KanpanCore/OrderFlow/`（本地簿、8 bps 分桶、`BigOrderFilter` 照搬 send-tradfi candidate.rs 的门槛、下限标定、模型与 60 秒热身）；接入 `KanpanNetwork/OrderFlow/`（`DepthFeedAdapter` 协议 + 币安 / OKX / Coinbase 三家适配器，深度与成交都走适配器，`check-venue-isolation.sh` 已把这个目录算作交易所目录）；订阅 `KanpanData/OrderFlow/`（`OrderFlowFeed` 管连接、快照、桶宽，`OrderFlowSlot` 是 `RoutedMarketFeed` 里的一格）；画法 `KanpanChart/ChartRenderer+OrderFlow.swift`；App 胶水 `Kanpan/OrderFlow/OrderFlowLink.swift`。
@@ -478,3 +478,15 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **有意没搬的**：原项目的单交易所 8 倍分支与 0.97 分位；标定样本口径按本机单交易所重定。桶宽缺日线时退回簿中间价，tick 不明时退回 10 的幂。深度连接不经 `MarketSocketRouter`（它只管行情主流）。
 - **服务端**：`ORDERFLOW` 已进 `settings-fields.json` 与 `sync_validation.rs` 的 `OVERLAY_INDICATORS`，随 App 那一步部署（备份 `/opt/kanpan-backups/orderflow-app-20260924-060238`，06:05:41 重启，只读核对通过）。
 - **取证用例** `KanpanUITests/OrderFlowEvidenceUITests`（不进常规套件，按需 `-only-testing` 跑）：色带画在 CoreGraphics 上，读 `chart.canvas` 诊断里的 `orderFlowPhase / orderFlowBands / orderFlowHovered`（DEBUG 才有）；每条用例一份新档案（线路种子只在空档案上生效）。
+
+## 主力订单流 · 逐单模型（CoinAnk「主力大额挂单」版，2026-09-24）
+
+提交：`78f6945c` Core → `c51d44e2` Network → `06e45f61` 服务端中继与合约清单 → `e727a72d` Data → `ce630464` Chart → `36131fde` App → `1a5b191f` 服务端设置白名单 → 验收提交。方案 `docs/主力订单流-方案-2026-09-24.md`，验收 `docs/acceptance/主力订单流-2026-09-24/验收报告.md`。上面「站立墙旧版」一节的判据（分位标定、邻居倍数、60 秒热身、每侧 6 条）全部作废；第 14 节里「main 暂时编不过」那条已由 `e727a72d` / `ce630464` 解掉。
+
+- **判定**：一条大单 = 交易所 × 产品 × 买卖 × 价位桶（按步长归并），美元名义 ≥ 该产品门槛。出现 / 消失各要连续 2 次评估且间隔 ≥ 300 ms（每 500 ms 评估）；消失时累计成交 ≥ 初始 0.8 算成交，否则算撤单。结束的单照画，24 h / 最多 200 条，换品种清空；每只品种一份小日志 `Caches/kanpan/orderflow/<品种>.json`（15 s 落一次，StorageLayering 守卫已登记它的删除）。
+- **产品**：现货（币安 / OKX / Coinbase）、U 本位永续、币本位永续、交割（当季 / 次季），一律换算成美元叠在一张图上；非加密品种只有 U 本位永续。BTC 一只 13 本簿压成 5 条连接。国内不可达的币安主机走 kanpan-api 中继 `/v1/market/ws/binance`（上游 dstream）与 `/v1/market/ws/okx`；合约清单 `/v1/market/orderflow/instruments?base=`；深度快照 `/v1/market/depth` 加了 `market=um|cm`。不用 binancefuture.com。
+- **模块**：`KanpanCore/OrderFlow/`（`LocalBook`、`VenueBook`、`BucketScheme`、`OrderFlowModel`、`OrderFlowSettings` 里的 `OrderFlowDefaults` 默认表）；`KanpanNetwork/OrderFlow/`（三家适配器、`OrderFlowCatalog` 品种表、`DepthFeedFactory`）；`KanpanData/OrderFlow/OrderFlowFeed`（簿在首帧之后才订）；`KanpanChart/ChartRenderer+OrderFlow.swift`；App `Kanpan/OrderFlow/OrderFlowLink.swift` + `OrderFlowEditor.swift`（「图表 › 指标 › 主力订单流」参数表，输入框，无步进器）。
+- **画法**：一单一块，首见那根左缘 → 结束那根右缘（挂着的到右缘）；厚 `min(40, 名义/(门槛/8)) × 0.25` 夹 [1.5, 10] pt；透明度 `0.25 + 0.65 × 成交比例`，撤单 × 0.45 加虚线，悬停 1.0；合约用皮肤涨跌色，现货 #E1D610 / #CF09E7，币本位 = 涨跌色向正文色混 40%；图例显示在挂的合计；横屏画线台不画。
+- **设置与同步**：门槛与步长按币存成**一个**顶层字段 `Prefs.orderFlowOverrides`（`[base: 覆盖]`，对象值——`PersonalSyncCodec.ownedKeys` 是固定集合，按币拆字段就没法发删除）；六个显示开关 `orderFlowSpot / Contract / FilledBid / FilledAsk / CancelledBid / CancelledAsk` 各一个字段。服务端 `sync.rs` / `sync_validation.rs` / `settings-fields.json` 白名单同步并校验取值（门槛过小回 400）。离线照用，不设登录门槛。
+- **部署**：12:33:53 CST，备份 `/opt/kanpan-backups/orderflow-settings-20260924-123031`；中继那一提交已随第 14 节 J 线 12:05 部署先上线。公网端到端（临时账号推门槛表、读回、非法值 400、删号）通过；中继 101、清单 200。
+- **验收**：只在 iPhone 17 Pro Max 模拟器，`OrderFlowEvidenceUITests` 5/5（含改门槛生效、关合约只剩现货）；冷启动首屏开 0.545 s / 关 0.577 s（中位数），订簿在首屏后约 0.8 s。真机未装（Xcode 账号没登录）。

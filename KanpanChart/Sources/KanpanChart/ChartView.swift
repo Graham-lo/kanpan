@@ -243,6 +243,13 @@ public final class ChartView: UIView {
           // 主力订单流：快照阶段、大单条数、此刻画出来的色带（视图坐标）与十字线点亮与否。
           "orderFlowPhase": s.orderFlow.map { $0.phase == .ready ? "ready" : "loading" } ?? "",
           "orderFlowOrders": s.orderFlow?.orders.count ?? 0,
+          // 此刻生效的门槛（按产品，美元）与步长：用例改完门槛靠它确认新数真的到了簿那一层。
+          "orderFlowThresholds": s.orderFlow.map { f in
+            var out: [String: Double] = [:]
+            for product in OrderFlowProduct.allCases { if let v = f.thresholds[product] { out[product.rawValue] = v } }
+            if let step = f.thresholds.step { out["step"] = step }
+            return out
+          } ?? [:],
           "orderFlowBands": (orderFlow?.bands ?? []).map {
             ["side": $0.order.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
              "w": $0.frame.width, "h": $0.frame.height, "alpha": $0.alpha, "color": $0.color.value,
