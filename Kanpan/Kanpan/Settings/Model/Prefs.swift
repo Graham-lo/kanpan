@@ -169,10 +169,12 @@ struct Prefs: Sendable, Equatable {
   // 一个都不在 `keepDeviceFields` 里（它们都不是「这台手机的属性」）。
 
   /// 自选表的排序口径：`custom`（自选顺序）/ `name` / `price` / `change` / `volume`。
+  /// 2026-09-25 起自选页不再有排序 UI，字段只为协议兼容保留、页面不读它。
   var favoritesSort: String = "custom"
-  /// 排序方向。`custom` 那一档用不上它，但仍然记着——换回某个口径时接着上次的方向。
+  /// 排序方向。2026-09-25 起自选页不再有排序 UI，字段只为协议兼容保留、页面不读它。
   var favoritesAscending: Bool = false
-  /// 涨跌那一列看涨跌额还是涨跌幅。
+  /// 涨跌那一列看涨跌额还是涨跌幅。2026-09-25 起自选页不再有排序 UI（涨跌固定显示涨跌幅），
+  /// 字段只为协议兼容保留、页面不读它。
   var favoritesAmount: Bool = false
   /// 行尾那条迷你走势线。默认不画，想看的人在「…」里自己打开。
   var favoritesSparkline: Bool = false

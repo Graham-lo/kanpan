@@ -583,12 +583,7 @@ final class ChartFoundationUITests: XCTestCase {
     leaveSettings()
     XCTAssertTrue(app.openFavorites())
     addFavoriteFromSearch("BTCUSDT")
-    // 涨跌口径不再常驻排序行，它是排序弹层里的一项——先把弹层打开再看。
-    // 弹层里那一项是一颗整按钮，标题就是它的 label，没有单独的子 staticText。
-    app.buttons["favorites.sort"].tap()
-    let basis8 = app.buttons["8点涨跌幅"].firstMatch
-    XCTAssertTrue(basis8.waitForExistence(timeout: 5))
-    basis8.tap()
+    // 自选页的涨跌格固定显示涨跌幅，口径跟设置走：改完直接看那一格是带「%」的涨跌幅。
     let change = app.staticTexts["favorites.change.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(wait(seconds: 40) { change.exists && change.label.contains("%") })
     shot("自选-上海8点统一涨跌幅")
@@ -896,12 +891,10 @@ final class ChartFoundationUITests: XCTestCase {
         let tab = app.buttons["favorites.group." + name]
         XCTAssertTrue(tab.exists)
         XCTAssertGreaterThanOrEqual(tab.frame.height, 44)
-        // 分类胶囊不能和上面那条搜索框挤在一起。原来这里比的是 `maxX <= add.minX`——
-        // 那是「加号还蹲在同一行最右边」年代的写法；`1f6f220` 之后头部改成了两行，
-        // `favorites.add` 就是那条横贯整行的长搜索框（`minX` 12），胶囊自然从它下面
-        // 重新起头，横向比一定不成立。真正要守的是纵向不压：胶囊整条在搜索框下沿以下。
-        XCTAssertGreaterThanOrEqual(tab.frame.minY, app.buttons["favorites.add"].frame.maxY)
-        // 也别让它甩出页面右缘——这条是原来那句横向断言真正想拦的事。
+        // 头部是一行：分类格和放大镜同一行居中，分类格整个落在放大镜左边，不压、不甩出页面右缘。
+        let add = app.buttons["favorites.add"].frame
+        XCTAssertLessThanOrEqual(abs(tab.frame.midY - add.midY), 2)
+        XCTAssertLessThanOrEqual(tab.frame.maxX, add.minX)
         XCTAssertLessThanOrEqual(tab.frame.maxX, app.windows.firstMatch.frame.maxX)
       }
       shot("配色-" + skin + mode + "-自选")

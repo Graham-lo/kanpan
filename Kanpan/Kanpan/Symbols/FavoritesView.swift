@@ -11,8 +11,12 @@ import KanpanNetwork
 /// 十六进制——唯一的例外是浅色那组「天青·薄荷」光斑，那是浅色底下专配的一组冷光，
 /// 不属于任何一套皮肤。
 ///
-/// 这一页能做的事：切分类、删当前分类（只剩一类时不给删）、添加品种、排序、调整顺序
+/// 这一页能做的事：切分类、删当前分类（只剩一类时不给删）、添加品种、调整顺序
 /// （长按拖动）、左滑「移到分类 / 取消自选」、长按看预览卡、进图表。
+///
+/// 列表永远按自选顺序排。2026-09-25 用户把头部压成一行（分类条 + 放大镜 + 「…」），
+/// 顺手撤了「N 个品种」和整套排序（按价格 / 成交额 / 涨跌 / 离提醒线排、涨跌额与涨跌幅
+/// 切换）：排序很固定、很少用，空间留给品种行。想换顺序走「…」→「调整顺序」。
 ///
 /// 2026-09-24 按「判了不做的不准收编」删掉了三样：新建分类、重命名分类（自建分组）、
 /// 批量编辑（勾选多行 + 底部编辑条）。分类只剩按资产类型自动开的那几类
@@ -25,10 +29,12 @@ struct FavoritesView: View {
   var session: FavoritesEditSession
   /// 搜索页的历史词仓。自选页自己开搜索页（见 `search`），所以得跟着传进来。
   var history: SearchHistory
-  /// 这一页上「他摆出来的样子」存在哪：排序口径、方向、涨跌额/幅、迷你走势。
+  /// 这一页上「他摆出来的样子」存在哪：迷你走势开不开、停在哪一类。
   /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
   var store: PrefsStore
   var redUp: Bool
+  /// 涨跌口径的短名。只在排序菜单里用过，2026-09-25 排序撤了之后这一页不再读它；
+  /// 入参留着是因为宿主（`MainScreen.favoritesPage`）还在传，等那边一起收。
   var basisTitle: String
   var updatedAt: Date?
   var feedStatus: FeedStatus
@@ -40,15 +46,11 @@ struct FavoritesView: View {
   /// 预览里那段 K 线得有人去取，`nil` 说明这一层没人接线（预览、用例）。
   var previews: SymbolPreviewStore?
   /// 从这一页点进图表的那一刻，把**这张表当时的顺序**交出去，供顶栏横滑连续扫图
-  /// （§10.1）。顺序是这一页自己算的（分类 + 排序口径 + 升降序），外面复算一遍迟早走样，
-  /// 所以由这儿在开图的同一瞬间原样递出去。
+  /// （§10.1）。顺序是这一页自己定的（当前分类里的自选顺序），由这儿在开图的同一瞬间
+  /// 原样递出去，外面不用复算。
   var onScanList: ([String]) -> Void = { _ in }
-  /// 加了提醒的那些线（方案 §10「临近关键位置筛选」）。这一版不另立「关注线」概念：
-  /// **加了提醒的线就是关注线**，所以排序里的「离提醒线最近」和行的副文案都读它。
-  /// 空数组 = 这个人一条提醒都没设过，那一档排序根本不出现。
-  ///
-  /// 传的是值不是仓库：提醒本身很少动，而这一页每批报价都要重画，挂个 `@ObservedObject`
-  /// 只会让两边互相牵连。到价判定在服务端，这儿只算「离得多远」。
+  /// 加了提醒的那些线。原来只喂「离提醒线最近」那一档排序和行上的距离副文案，
+  /// 2026-09-25 排序撤了之后这一页不再读它；入参留着是因为宿主还在传，等那边一起收。
   var alerts: [KanpanCore.Alert] = []
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.panelTheme) private var theme
@@ -56,11 +58,7 @@ struct FavoritesView: View {
   /// 和行情页顶栏放大镜用的是同一个）。加自选统一在搜索页做（用户 2026-09-18 定的），
   /// 不用先跳回行情页；整页那颗返回原路退回搜索页。
   @State private var search = SymbolSearchFlow()
-  /// 分类格里那行字此刻真的排成多大：15 按 `.subheadline` 的曲线缩放（和 `.scaled(15, .medium)`
-  /// 挑的是同一条），并且吃得到根上 `.xxxLarge` 的封顶。量格宽用它，见 `tabWidth`。
-  @ScaledMetric(relativeTo: .subheadline) private var tabTextSize: CGFloat = 15
   @State private var more = false
-  @State private var sorting = false
   @State private var afterMore: (() -> Void)?
   @State private var moreTask: Task<Void, Never>?
   // 调整顺序开着没有 / 调整期间冻住的报价：都在 `session` 上，写法照旧是直接赋值。
@@ -80,43 +78,18 @@ struct FavoritesView: View {
   /// 现在每一行停在哪儿，以及由它算出来的落脚点（审查 C-08）。盒子是**不被观察**的，
   /// 理由见 `FavoritesRenderedRows`。
   @State private var rows = FavoritesRenderedRows()
-  /// 排好的顺序缓存。和上面那个一样是不被观察的引用盒子：命中与否不该触发重画。
-  @State private var sortCache = FavoritesSortCache()
   /// 落脚点已经还原过了吗。还原之前不记新的——列表刚铺开时最上面那几行会先
   /// `onAppear`，那时候记下来的是「第一行」，正好把要还原的那个盖掉。
   @State private var anchorRestored = false
-  // 这张表「他摆成了什么样」：排序口径、升降序、涨跌额还是涨跌幅、画不画迷你走势线。
-  // （原来还有「哪几行展开着详情」，2026-09-24 审查 U9 把行内展开收掉了，详情只剩长按那张卡。）
+  // 这张表「他摆成了什么样」：画不画迷你走势线、停在哪一类。
   //
-  // 这几项一路搬过两次家。最早是 `@State`——底栏换成常驻标签栏之后，自选页每切走
-  // 一次就整个重建，排好的顺序当场退回「自选顺序」，人回来还得再排一遍。于是搬去了
-  // `@AppStorage`，注释写的是「这台机器上这张表想怎么看，跟着机器走，不跟账号走」。
+  // 这类状态住在 `Prefs` 里（见 `Prefs` 末尾那一节），随账号同步，未登录记在访客档案。
+  // 判据是「这是他改出来的习惯，还是这个对象自己的属性」：前者跟着人走，换台设备登
+  // 同一个账号还是这个样子；同一台机器上换个人登进来，就不该还是上一个人摆的样子。
+  // 写法是直接赋值（`sparkline.toggle()`），底下走的是 `store.update`。
   //
-  // **「跟着机器走」这条判断 2026-09-19 推翻了**：判据不是「它在不在设置页上」，而是
-  // 「这是他改出来的习惯，还是这个对象自己的属性」。按成交额排、看涨跌额、画不画
-  // 走势线，全是前者——换台设备登同一个账号，这张表就该还是这个样子，而同一台机器上
-  // 换个人登进来，就不该还是上一个人排的那个顺序。裸 `@AppStorage` 两头都反了。
-  // 现在它们住在 `Prefs` 里（见 `Prefs` 末尾那一节），随账号同步，未登录记在访客档案。
-  //
-  // 写法照旧是直接赋值（`sort = "name"`、`sparkline.toggle()`），只是底下换成了
-  // `store.update`——调用处一个字都不用改。
-  //
-  // 2026-09-19 补：搬家的时候漏了一组——批量编辑（编辑模式 + 勾中的那几行 + 冻住的
-  // 报价）还是裸 `@State`，于是「勾好几个品种 → 切去设置页什么都没碰 → 切回来」
-  // 编辑模式自己退了、勾全没了。它跟排序口径不一样，不该落盘（冷启动举着三个勾
-  // 进来是另一种惊悚），所以搬去了只活一次使用的 `FavoritesEditSession`。
-  private var sort: String {
-    get { store.prefs.favoritesSort }
-    nonmutating set { store.update { $0.favoritesSort = newValue } }
-  }
-  private var ascending: Bool {
-    get { store.prefs.favoritesAscending }
-    nonmutating set { store.update { $0.favoritesAscending = newValue } }
-  }
-  private var amount: Bool {
-    get { store.prefs.favoritesAmount }
-    nonmutating set { store.update { $0.favoritesAmount = newValue } }
-  }
+  // 调整顺序开着没有、调整期间冻住的报价不落盘（冷启动举着半做完的动作进来更吓人），
+  // 住在宿主手里的 `FavoritesEditSession`。
   private var sparkline: Bool {
     get { store.prefs.favoritesSparkline }
     nonmutating set { store.update { $0.favoritesSparkline = newValue } }
@@ -160,7 +133,7 @@ struct FavoritesView: View {
   /// 冻结期间「有哪些」仍然认最新的：这五秒里被删掉的行不再画（不然点它会打到空），
   /// 新加进来的按最新的顺序补在后面。
   private var symbols: [String] {
-    let fresh = sortedSymbols
+    let fresh = favoriteOrder
     guard let held = session.heldOrder, session.frozen else { return fresh }
     let alive = Set(fresh)
     var rows = held.filter { alive.contains($0) }
@@ -169,43 +142,8 @@ struct FavoritesView: View {
     return rows
   }
 
-  /// 按「名单 + 口径 + 报价版本」记住的那一份顺序（审查 C3）。
-  ///
-  /// `symbols` 一次 body 求值里要被读好多遍——每一行问一次「我是不是第一行」、
-  /// 每露一行报一次可见顺序——从前每读一遍就把整张表重排一遍，一屏 N 行就是
-  /// N 次 O(N log N)。现在输入没变就直接拿上一次排好的，报价来一批才重排一次。
-  private var sortedSymbols: [String] {
-    let source = model.prefs.favorites(in: groupID)
-    // 只有按行情排的那几档才认报价版本：自选顺序、按品种名、编辑中，行情再跳顺序也不动，
-    // 别让它们平白每批报价都失效一次（也别平白多挂一条对报价的观察）。
-    let byQuote = !editing && sort != "custom" && sort != "name"
-    let key = FavoritesSortCache.Key(
-      source: source, sort: sort, ascending: ascending, amount: amount, editing: editing,
-      quotes: byQuote ? model.quoteRevision : 0, alerts: sort == alertSortKey ? alerts : [])
-    if let hit = sortCache.rows(for: key) { return hit }
-    let rows = sortRows(source)
-    sortCache.store(rows, for: key)
-    return rows
-  }
-
-  private func sortRows(_ source: [String]) -> [String] {
-    var rows = source
-    if !editing, sort != "custom" {
-      // 「离提醒线最近」要拿每一行的现价和它自己的提醒线比，一次比较算一遍太贵——
-      // 先把整张表算出来，比较器只查表。别的口径用不上它，那就是一张空表。
-      let distances = sort == alertSortKey ? alertDistances : [:]
-      rows.sort { a, b in
-        if sort == "name" { return ascending ? a < b : a > b }
-        let x = sortValue(a, distances)
-        let y = sortValue(b, distances)
-        guard let x, x.isFinite else { return false }
-        guard let y, y.isFinite else { return true }
-        if x == y { return a < b }
-        return ascending ? x < y : x > y
-      }
-    }
-    return rows
-  }
+  /// 当前分类里的自选顺序——这一页只有这一种排法。
+  private var favoriteOrder: [String] { model.prefs.favorites(in: groupID) }
 
   var body: some View {
     // 这一页外面曾经套着一层 `NavigationStack`。整页没有一个 `NavigationLink`，
@@ -224,7 +162,6 @@ struct FavoritesView: View {
         FavoritesHeader(prefs: model.prefs, editing: editing, more: more,
                         theme: theme, width: geometry.size.width,
                         content: headerBar).equatable()
-        sortBar
         if symbols.isEmpty { emptyState } else { listSheet }
       }
       .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
@@ -232,7 +169,6 @@ struct FavoritesView: View {
         GeometryReader { proxy in floatingMenu(proxy: proxy, anchors: anchors) }
       }
       .animation(.easeOut(duration: 0.16), value: more)
-      .animation(.easeOut(duration: 0.16), value: sorting)
     }
     .background { AuroraBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
     .tint(theme.amber)
@@ -319,101 +255,70 @@ struct FavoritesView: View {
 
   // MARK: - 头部
 
-  /// 两行：上一行是一条长搜索框加一颗「…」，下一行整条都是分类文件夹。
+  /// 一行，高 44：分类条占满左边，右边两颗玻璃圆片——放大镜（开搜索页）和「…」。
   ///
-  /// 2026-09-18 用户把这一页顶上的「自选」大字、数量印章、右边那条涨跌比和
-  /// 「今日 N 涨 N 跌」那行小字全撤了，加自选的入口只留一个——它开的就是搜索页。
-  /// 排法照推特：中间整条是搜索框，分类条自己独占一行，这样分类不必和按钮抢宽度，
-  /// 也不会挤成一条乱麻。
+  /// 2026-09-25 用户嫌原来的两行头部（整条搜索框 + 独占一行的分类条，再加一行
+  /// 「N 个品种 · 排序」，合计约 160pt）太占地方：搜索只要一颗图标，分类挪上来和它
+  /// 同一行，空间留给品种行。字号、间距、命中区都走 `DesignTokens`。
   ///
-  /// 同一天晚些时候底栏换成了常驻标签栏，这一行跟着改了两处：**左边那颗返回没了**
-  /// （自选本身就是标签栏上的一格，「返回」去哪儿都说不清，换一格就是返回），
-  /// **右边那颗从齿轮换回「…」**——齿轮现在归标签栏最右边那一整页，两个齿轮
-  /// 一个开整页设置、一个开这一页的菜单，谁也分不出哪个是哪个。
+  /// 「…」装的是调整顺序、迷你走势开关、删除当前分类——全是**这一页**的事，
+  /// 所以记号用「…」而不是齿轮：齿轮在标签栏最右边，那颗才是整个 app 的设置。
   private var headerBar: some View {
-    VStack(spacing: 6) {
-      HStack(spacing: 8) {
-        // 编辑中把搜索框换成「完成」：模式总得有个看得见的出口，藏进菜单要点两下才出得来。
-        if editing {
-          Button { toggleEditing() } label: {
-            Text("完成").font(.scaled(15, .semibold)).foregroundStyle(theme.amber)
-              .frame(maxWidth: .infinity).frame(height: 42)
-              .background(skin.glassThin, in: Capsule())
-              .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-              .frame(height: 46).contentShape(Rectangle())
-          }.buttonStyle(.plain)
-            .accessibilityLabel("完成调整").accessibilityIdentifier("favorites.editToggle")
-        } else {
-          searchField
-        }
-        // 它装的是调整顺序、迷你走势开关、删除当前分类——全是**这一页**的事，
-        // 所以记号用「…」而不是齿轮：齿轮在标签栏最右边，那颗才是整个 app 的设置。
-        circleButton("ellipsis", label: "自选菜单", id: "favorites.more") { more = true }
-          .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["more": $0] }
+    HStack(spacing: Space.s) {
+      groupStrip.frame(maxWidth: .infinity, alignment: .leading)
+      // 编辑中把放大镜换成「完成」：模式总得有个看得见的出口，藏进菜单要点两下才出得来。
+      if editing { doneButton } else { searchButton }
+      circleButton(label: "自选菜单", id: "favorites.more", action: { more = true }) {
+        Image(systemName: "ellipsis").font(TypeScale.bodyEmph).foregroundStyle(theme.ink)
       }
-      groupStrip
+      .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["more": $0] }
     }
-    // 左右边距跟页面走（`Inset.page`：16 Pro 16、Pro Max 20），和下面的排序行、每一行的徽章
-    // 站在同一条竖线上（UI 审查 2026-09-24：这一页原来有 12 / 22 / 19 三条左竖线）。
+    .frame(height: Hit.min)
+    // 左右边距跟页面走（`Inset.page`：16 Pro 16、Pro Max 20），和每一行的徽章站在同一条竖线上。
     .pageHorizontalInset()
-    .padding(.bottom, Space.xxs)
-    // 那行状态小字撤掉了，但 UI 测试要从 `favorites.feed` 上读调色板与行情线路的
-    // 诊断串（它只在辅助功能树里，界面上看不见），所以把这个标识挂到整条头部上。
+    .padding(.bottom, Space.xs)
+    // UI 测试要从 `favorites.feed` 上读调色板与行情线路的诊断串（它只在辅助功能树里，
+    // 界面上看不见），所以把这个标识挂到整条头部上。
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("favorites.feed")
     .accessibilityValue(paletteDiagnostics)
   }
 
-  /// 中间那条长搜索框：看着像输入框，点一下开的是整张搜索页。
-  ///
-  /// 这一页只有这一个「加自选」的入口（点进去在结果行上点星）。做成框而不是一颗放大镜
-  /// 是用户 2026-09-18 照推特定的：框子把两头的圆按钮分开，中线不空，也一眼看得出
-  /// 这里能搜。里面不放真的输入框——真输入框会在这一页起键盘，搜索页那边还要再起一次。
-  private var searchField: some View {
-    Button { search.openSearch() } label: {
-      // 放大镜、字号、内边距和搜索页那条真框（`SymbolSearchField`）一样，点进去框不跳。
-      HStack(spacing: Space.s) {
-        VectorIcon.search(SymbolSearchField.iconSize).foregroundStyle(theme.ink3)
-        Text("搜索品种").font(TypeScale.body).foregroundStyle(theme.ink3)
-        Spacer(minLength: 0)
-      }
-      .padding(.horizontal, SymbolSearchField.hPad)
-      .frame(maxWidth: .infinity).frame(height: 42)
-      .background(skin.glassThin, in: Capsule())
-      .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-      .frame(height: 46)
-      .contentShape(Rectangle())
+  /// 放大镜：这一页唯一的「加自选」入口，点开整张搜索页（在结果行上点星）。
+  /// 放大镜的尺寸和搜索页那条真框（`SymbolSearchField`）里的一样。
+  private var searchButton: some View {
+    circleButton(label: "添加品种", id: "favorites.add", action: { search.openSearch() }) {
+      VectorIcon.search(SymbolSearchField.iconSize).foregroundStyle(theme.ink)
+    }
+  }
+
+  /// 调整顺序时顶替放大镜的「完成」胶囊，和圆片同高。
+  private var doneButton: some View {
+    Button { toggleEditing() } label: {
+      Text("完成").font(TypeScale.bodyEmph).foregroundStyle(theme.amber)
+        .padding(.horizontal, Space.l)
+        .frame(height: Self.disc)
+        .background(skin.glassThin, in: Capsule())
+        .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
+        .frame(minWidth: Hit.min, minHeight: Hit.min)
+        .contentShape(Rectangle())
     }.buttonStyle(.plain)
-      .accessibilityLabel("添加品种").accessibilityIdentifier("favorites.add")
+      .accessibilityLabel("完成调整").accessibilityIdentifier("favorites.editToggle")
   }
 
-  private func circleButton(_ icon: VectorIcon, label: String, id: String,
-                            action: @escaping () -> Void) -> some View {
-    circleButton(label: label, id: id, action: action) {
-      icon.foregroundStyle(theme.ink)
-    }
-  }
+  /// 头部圆片、「完成」胶囊、分类胶囊轨的可见高度。命中区一律是 `Hit.min`。
+  private static let disc: CGFloat = 36
 
-  private func circleButton(_ icon: String, label: String, id: String,
-                            action: @escaping () -> Void) -> some View {
-    circleButton(label: label, id: id, action: action) {
-      Image(systemName: icon)
-        .font(.system(size: 19, weight: .regular))
-        .foregroundStyle(theme.ink)
-    }
-  }
-
-  /// 玻璃圆片：42 的片子挂在 46 的可点区里，两种记号（SF Symbol / 自绘线条）共用。
-  /// 片子原来是 32，用户 2026-09-18 两次说太小不好点，一路放大到 42。
+  /// 玻璃圆片：36 的片子挂在 44 的可点区里。
   private func circleButton<Icon: View>(label: String, id: String,
                                         action: @escaping () -> Void,
                                         @ViewBuilder icon: () -> Icon) -> some View {
     Button(action: action) {
       icon()
-        .frame(width: 42, height: 42)
+        .frame(width: Self.disc, height: Self.disc)
         .background(skin.glassThin, in: Circle())
         .overlay(Circle().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-        .frame(width: 46, height: 46)
+        .frame(width: Hit.min, height: Hit.min)
         .contentShape(Rectangle())
     }.buttonStyle(.plain)
       .accessibilityLabel(label).accessibilityIdentifier(id)
@@ -435,23 +340,11 @@ struct FavoritesView: View {
 
   // MARK: - 分类分段器
 
-  /// 一格分类占多宽：名字 + 左右各 19 的内边，72–150 之间。
+  /// 分类文件夹：一条能横向滚的玻璃分段器，占头部那一行除两颗圆片外的全部宽度。
   ///
-  /// 原来拿不缩放的 15pt 量宽、字却是 `.scaled(15)` 排的：系统字号一调大，格子还是按 15 算的宽，
-  /// 名字就被截成「自…选」（UI 审查 2026-09-24 §3.3 的 bug）。现在量宽和排字用同一个字号
-  /// （`tabTextSize`，做法同 `IntervalBar.textWidth`），上下限也跟着字号一起放大。
-  private func tabWidth(_ group: FavoriteGroup) -> CGFloat {
-    let font = UIFont.systemFont(ofSize: tabTextSize, weight: .medium)
-    let text = ceil((group.name as NSString).size(withAttributes: [.font: font]).width)
-    let scale = tabTextSize / 15
-    return min(150 * scale, max(72 * scale, text + 38))
-  }
-
-  /// 分类文件夹：一条能横向滚的玻璃分段器。
-  ///
-  /// 原来这条是按剩余宽度裁的——排不下的分类折进设置菜单的「更多分类」里。现在它
-  /// 自己独占头部第二行，改成横着滚：分类再多也都在这条上，往左推就能看见，菜单里
-  /// 那半截也就不用留了（用户 2026-09-18：「空间都给分类文件夹」「往右边滑即可」）。
+  /// 分类再多也都在这条上，往左推就能看见（用户 2026-09-18：「往右边滑即可」）。
+  /// 格子宽按名字自己长（`chip`），不量字、不设上下限：条是横着滚的，名字长的那格
+  /// 宽一点也撑不破版面。
   @ViewBuilder private var groupStrip: some View {
     if model.prefs.groups.isEmpty {
       EmptyView()
@@ -461,21 +354,24 @@ struct FavoritesView: View {
           HStack(spacing: 0) {
             ForEach(model.prefs.groups) { group in
               chip(group.name, id: group.id, count: model.prefs.favorites(in: group.id).count)
-                .frame(width: tabWidth(group))
             }
           }
-          .padding(.horizontal, 4)
+          // 格子（32）在轨（36）里上下各留 2，左右也留 2，圆角同心。
+          .padding(.horizontal, Space.xxs)
           .background {
             Capsule()
               .fill(skin.glassThin)
               .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-              .frame(height: 46)
+              .frame(height: Self.disc)
           }
-          // 选中那格底下有一圈光晕，留出上下这点地方，免得被滚动区裁掉。
-          .padding(.vertical, 8)
         }
-        // 选中的那一格必须看得见：新建完一个分类它就立刻被选上，要是正好排在
-        // 滚动区外面，用户会以为分类没建成。
+        // 选中格底下那圈光晕会溢出这条 44 高的滚动区。只放开竖向：关掉滚动区的裁切，
+        // 再用一张上下各伸出 16 的蒙版把横向按原边界裁回去——单开 `scrollClipDisabled`
+        // 的话，滚出去的格子会横着压到右边那两颗圆片上。
+        .scrollClipDisabled()
+        .mask { Rectangle().padding(.vertical, -16) }
+        // 选中的那一格必须看得见：换了分类（或者从搜索页加的品种落进了别的类）时，
+        // 要是它正好排在滚动区外面，用户会以为没切过去。
         .onAppear { scrollToSelected(reader, animated: false) }
         .onChange(of: selected) { _, _ in scrollToSelected(reader, animated: true) }
       }
@@ -493,26 +389,31 @@ struct FavoritesView: View {
   private func chip(_ title: String, id: String, count: Int) -> some View {
     let on = selected == id
     return Button { select(id) } label: {
-      // 名字后面原来还挂着一个上标的数量，用户 2026-09-18 让去掉——数量在列表上面
-      // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
-      Text(title).font(.system(size: tabTextSize, weight: .medium))
-        .lineLimit(1).truncationMode(.middle)
-        // 压在强调色上的字一律走 `badgeInk`：浅色下它就是 `#FFFFFF`（和原来的
-        // `Color.white` 一个值，这一页的定稿基准图一个像素不变），深色下换成近黑的
-        // `seed.ground`——深色强调色是 `#4FB69C` / `#E2874F` 那种亮色，白字压上去
-        // 只有 2.5:1，读不清。
-        .foregroundStyle(on ? theme.badgeInk : theme.ink2)
-        .frame(maxWidth: .infinity).frame(height: 40)
-        .background {
-          if on {
-            Capsule()
-              .fill(skin.accentGradient)
-              .overlay(alignment: .top) { skin.topHighlight(inset: 10) }
-              .shadow(color: skin.accent.opacity(skin.dark ? 0.5 : 0.35), radius: 8, x: 0, y: 5)
-          }
+      // 格子里只放名字，数量只进朗读标签。
+      //
+      // 选中格换成 semibold 会宽一点点；底下垫一份看不见的 semibold 撑住宽度，
+      // 选中与否格子一样宽，切分类时整条不抖。
+      ZStack {
+        Text(title).font(TypeScale.controlOn).hidden()
+        Text(title).font(on ? TypeScale.controlOn : TypeScale.control)
+          // 压在强调色上的字一律走 `badgeInk`：浅色下是 `#FFFFFF`，深色下换成近黑的
+          // `seed.ground`——深色强调色是 `#4FB69C` / `#E2874F` 那种亮色，白字压上去读不清。
+          .foregroundStyle(on ? theme.badgeInk : theme.ink2)
+      }
+      .lineLimit(1)
+      .padding(.horizontal, Space.l)
+      .frame(minWidth: Hit.min)
+      .frame(height: Self.disc - 2 * Space.xxs)
+      .background {
+        if on {
+          Capsule()
+            .fill(skin.accentGradient)
+            .overlay(alignment: .top) { skin.topHighlight(inset: Space.s) }
+            .shadow(color: skin.accent.opacity(skin.dark ? 0.5 : 0.35), radius: 6, x: 0, y: 3)
         }
-        .frame(height: 44)
-        .contentShape(Rectangle())
+      }
+      .frame(height: Hit.min)
+      .contentShape(Rectangle())
     }.buttonStyle(.plain)
       .accessibilityLabel(title + "，\(count)个品种")
       .accessibilityAddTraits(on ? .isSelected : [])
@@ -521,9 +422,9 @@ struct FavoritesView: View {
 
   // MARK: - 浮层菜单
 
-  /// 设置菜单与排序菜单都画在页面自己的浮层里，不走 `.popover`。
+  /// 「…」菜单画在页面自己的浮层里，不走 `.popover`。
   ///
-  /// 原来这两张卡片是 `.popover(presentationCompactAdaptation(.popover))`。UIKit 为它
+  /// 原来这张卡片（连同当年的排序菜单）是 `.popover(presentationCompactAdaptation(.popover))`。UIKit 为它
   /// 单独起一层承载视图，而这一页的列表是「空态 ↔ 列表」两个分支换着挂的：只要弹层
   /// 出现过一次，之后新挂上来的那张 `List` 就落在了那层的下面，画得出来却收不到触摸
   /// ——展开箭头、整行、右滑全都点不动（2026-09-18 在模拟器上复现：先开一次设置菜单
@@ -531,15 +432,13 @@ struct FavoritesView: View {
   /// 自己的视图树里就没有这层承载视图，也顺手省掉了 iPad 上 popover 的尺寸适配。
   @ViewBuilder
   private func floatingMenu(proxy: GeometryProxy, anchors: [String: Anchor<CGRect>]) -> some View {
-    if more || sorting {
+    if more {
       ZStack(alignment: .topLeading) {
         // 点菜单外面收起来：透明但吃点击，画面上看不出多一层。
         Color.black.opacity(0.001).ignoresSafeArea().contentShape(Rectangle())
-          .onTapGesture { more = false; sorting = false }
-        if more, let anchor = anchors["more"] {
+          .onTapGesture { more = false }
+        if let anchor = anchors["more"] {
           menuCard(width: 260, proxy: proxy, anchor: anchor) { moreList }
-        } else if sorting, let anchor = anchors["sort"] {
-          menuCard(width: 190, proxy: proxy, anchor: anchor) { sortList }
         }
       }
     }
@@ -603,130 +502,11 @@ struct FavoritesView: View {
     if editing { session.end() } else { session.begin(quotes: model.tickers) }
   }
 
-  // MARK: - 排序行
-
-  private var sortBar: some View {
-    HStack(spacing: 0) {
-      Text("\(symbols.count) 个品种").font(TypeScale.caption2).foregroundStyle(skin.ink4)
-      Spacer(minLength: 0)
-      Button { sorting = true } label: {
-        HStack(spacing: Space.xs) {
-          Text(sortTitle).font(TypeScale.caption2).foregroundStyle(theme.ink3)
-          Image(systemName: sort == "custom" ? "arrow.up.arrow.down"
-                : (ascending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill"))
-            .font(.system(size: 7)).foregroundStyle(theme.amber)
-        }
-        // 点击区 44（原来 28）。整行也就 44 高，比原来的 10 + 28 + 4 还矮两点，字的位置不动。
-        .hitTarget()
-      }.buttonStyle(.plain).disabled(editing)
-        .accessibilityLabel("排序方式").accessibilityIdentifier("favorites.sort")
-        .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["sort": $0] }
-    }.pageHorizontalInset()
-  }
-
-  private var sortTitle: String {
-    switch sort {
-    case "name": "品种"
-    case "volume": "成交额"
-    case "price": "价格"
-    case "change": amount ? "涨跌额" : basisTitle
-    case alertSortKey: "离提醒线最近"
-    default: "自选顺序"
-    }
-  }
-
-  private var sortList: some View {
-    VStack(spacing: 0) {
-      sortItem("自选顺序", key: "custom")
-      sortItem("品种", key: "name")
-      sortItem("成交额", key: "volume")
-      sortItem("价格", key: "price")
-      sortItem(basisTitle, key: "change", useAmount: false)
-      sortItem("涨跌额", key: "change", useAmount: true)
-      // 一条提醒都没有的时候这一档没有意义（整张表都是「—」），干脆不出现——
-      // 它是跟着「加入提醒」长出来的入口，不是一个要先看懂才知道选不选的选项。
-      if !alerts.isEmpty { sortItem("离提醒线最近", key: alertSortKey) }
-    }.padding(.vertical, Space.s).font(TypeScale.body)
-  }
-
-  private func sortItem(_ title: String, key: String, useAmount: Bool? = nil) -> some View {
-    let current = sort == key && (useAmount == nil || useAmount == amount)
-    return Button {
-      if let useAmount { amount = useAmount }
-      applySort(key)
-      sorting = false
-    } label: {
-      HStack(spacing: Space.s) {
-        Text(title)
-        Spacer(minLength: 0)
-        if current {
-          Image(systemName: ascending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-            .font(.system(size: 8)).foregroundStyle(theme.amber)
-        }
-      }.frame(maxWidth: .infinity, minHeight: Hit.min, alignment: .leading)
-        .padding(.horizontal, Inset.card).contentShape(Rectangle())
-    }.buttonStyle(.plain).foregroundStyle(current ? theme.amber : theme.ink)
-  }
-
-  /// 排序键与方向：和原来那排小按钮一个逻辑——同一个键点第二次翻方向，
-  /// 第三次退回自选顺序。
-  private func applySort(_ key: String) {
-    guard key != "custom" else { sort = "custom"; return }
-    if sort != key { sort = key; ascending = ascendingByDefault(key) }
-    else if ascending == ascendingByDefault(key) { ascending.toggle() } else { sort = "custom" }
-  }
-
-  /// 这个口径第一次点的时候是「小的在前」吗。品种按字母、离提醒线按距离，
-  /// 都是小的在前；价格、成交额、涨跌那几档照旧是大的在前。
-  private func ascendingByDefault(_ key: String) -> Bool { key == "name" || key == alertSortKey }
-
-  /// 「离提醒线最近」这一档的键。存进 `Prefs.favoritesSort` 的就是它。
-  private var alertSortKey: String { "alert" }
-
-  /// 每个品种离它自己最近的那条提醒线有多远（0.008 就是 0.8%）。
-  ///
-  /// 只算还醒着的提醒：已触发、已暂停的线不是「在等的位置」。取不到现价（停牌、
-  /// 已下架）或者线压根落在别的时间段上，这个品种就不在表里——它排最后，副文案也空着。
-  private var alertDistances: [String: Double] {
-    guard !alerts.isEmpty else { return [:] }
-    let now = Date().timeIntervalSince1970 * 1000
-    var out: [String: Double] = [:]
-    for (symbol, list) in Dictionary(grouping: alerts.filter(\.isActive), by: { SymbolPrefs.key($0.symbol) }) {
-      guard model.listing(of: symbol).hasLivePrice,
-            let price = displayQuote(symbol)?.last, price > 0, price.isFinite else { continue }
-      guard let d = AlertEvaluator.nearestDistance(from: price, among: list, at: now) else { continue }
-      out[symbol] = d
-    }
-    return out
-  }
-
-  /// 这一行要不要在副文案上写「距提醒线 x.x%」。只在按这一档排的时候写——
-  /// 平时那一行是「额 … · 幅 …」，两样东西不挤在一行里。
-  private func alertDistanceText(_ symbol: String) -> String? {
-    guard sort == alertSortKey, let d = alertDistances[SymbolPrefs.key(symbol)] else { return nil }
-    return "距提醒线 " + toFixed(d * 100, d * 100 < 10 ? 2 : 1) + "%"
-  }
+  // MARK: - 报价
 
   /// 编辑行布局不随每批WS报价重建；退出编辑立刻读取最新行情。
   private func displayQuote(_ symbol: String) -> Ticker? {
     editing ? editQuotes[symbol] : model.ticker(for: symbol)
-  }
-
-  private func sortValue(_ symbol: String, _ distances: [String: Double]) -> Double? {
-    // 「离提醒线最近」不走行情那几个字段：距离已经在 `alertDistances` 里算好了，
-    // 表里没有这个品种就是「它没有在等的线」，照旧沉到末尾。
-    if sort == alertSortKey { return distances[SymbolPrefs.key(symbol)] }
-    // 已下架 / 还没开盘的行没有实时价可排：它的涨跌幅、成交额在界面上是「—」，
-    // 拿一个界面上看不见的数去决定它排第几，用户只会觉得顺序是乱的（审查 B.5 / B-06）。
-    // 这里返回 `nil`，上面那个比较器会把它沉到末尾，而且照旧留在表里。
-    guard model.listing(of: symbol).hasLivePrice,
-          let ticker = displayQuote(symbol) else { return nil }
-    if sort == "price" { return ticker.last }
-    if sort == "volume" { return ticker.quoteVolume }
-    if amount, ticker.changePercent > -100 {
-      return ticker.last - ticker.last / (1 + ticker.changePercent / 100)
-    }
-    return ticker.changePercent
   }
 
   // MARK: - 列表：行直接长在极光上
@@ -817,9 +597,8 @@ struct FavoritesView: View {
         }
       }
       .onMove { source, target in
-        // 编辑时恢复自定义顺序，筛选时不允许把可见索引套到完整列表。
+        // 列表只显示当前分类，可见索引不能直接套到完整的自选名单上。
         model.moveVisible(symbols, from: source, to: target)
-        sort = "custom"
       }
     }
     .listStyle(.plain)
@@ -855,7 +634,7 @@ struct FavoritesView: View {
       }
     }
     .gesture(TouchWatcher { down in
-      if down { session.hold(sortedSymbols) } else { session.release() }
+      if down { session.hold(favoriteOrder) } else { session.release() }
     })
     // 关掉系统滚动条。iOS 13 起那根灰条自己是能抓住拖的，也就是说它会吃触摸——
     // 它占的那条竖带（右边 30pt）正好压在每行最右边的涨跌格上，列表一滚或一重建
@@ -865,7 +644,7 @@ struct FavoritesView: View {
     .environment(\.defaultMinListRowHeight, 0)
     // List 占满剩下的整屏：长按把一行拖到最后一行下面，落点还在列表里。
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .padding(.top, 6).padding(.bottom, 8)
+    .padding(.top, Space.xs).padding(.bottom, Space.s)
   }
 
   /// 记下「他现在停在哪一行」：按表的顺序取第一个还画在屏幕上的品种。
@@ -1042,7 +821,6 @@ struct FavoritesView: View {
     let amplitudeText = amplitude.map { toFixed($0, 2) + "%" } ?? "—"
     let value = ticker?.changePercent ?? .nan
     let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
-    let nearestAlertText = alertDistanceText(symbol)
     let quote = quoteParts(symbol)
     // 行本身（徽章、字号、药丸、左右边距、发丝线）是和板块内品种表共用的 `LiuliSymbolRow`
     // （UI 审查 2026-09-24：两份手抄已经漂开）。这一页只管往里填什么。
@@ -1057,17 +835,10 @@ struct FavoritesView: View {
       openID: "favorites.open." + symbol,
       onOpen: { selectOrOpen(symbol) }
     ) {
-      // 按「离提醒线最近」排的时候，这一行让位给距离；这个品种没有在等的线就空着，
-      // 不写「—」也不解释——空白本身就说明它不在这张单子上（只答远近，不答方向）。
-      if sort == alertSortKey {
-        Text(nearestAlertText ?? " ")
-          .foregroundStyle(nearestAlertText == nil ? .clear : theme.amber)
-      } else {
-        // 写全称（2026-09-24 审查 6.4）：单字「额 / 幅」要猜。「幅」这里是 24h 振幅
-        // （`amplitude24h`），不是涨跌幅——涨跌已经在右边那格，所以写「振幅」，和顶栏一个叫法。
-        Text("成交额 " + volumeText + SymbolRowText.separator + "振幅 " + amplitudeText)
-          .foregroundStyle(theme.ink3)
-      }
+      // 写全称（2026-09-24 审查 6.4）：单字「额 / 幅」要猜。「幅」这里是 24h 振幅
+      // （`amplitude24h`），不是涨跌幅——涨跌已经在右边那格，所以写「振幅」，和顶栏一个叫法。
+      Text("成交额 " + volumeText + SymbolRowText.separator + "振幅 " + amplitudeText)
+        .foregroundStyle(theme.ink3)
     } accessory: {
       if !editing, sparkline {
         Sparkline(values: sparkValues(symbol), color: trend)
@@ -1087,7 +858,7 @@ struct FavoritesView: View {
     return picked
   }
 
-  /// 右边那一列要填的东西：价、价的墨色、要不要骨架、涨跌（幅或额）。
+  /// 右边那一列要填的东西：价、价的墨色、要不要骨架、涨跌幅。
   private func quoteParts(_ symbol: String)
     -> (priceText: String, priceInk: Color, skeleton: Bool, change: Double, changeText: String) {
     let ticker = displayQuote(symbol)
@@ -1099,8 +870,7 @@ struct FavoritesView: View {
     // 梯子，不再在这一页写死 2 位（审查 B-07）。`fmtPrice` 而不是 `fmtNum`：0.0000004 这种
     // 合法极小价按 2 位四舍五入会写成 `0.00`，那等于说这东西不值钱。
     let decimals = info?.displayDecimals(for: price) ?? priceDecimalsFallback(price)
-    let value: Double = stale ? .nan : (ticker?.changePercent ?? .nan)
-    let change = amount && value.isFinite && price.isFinite && value > -100 ? price - price / (1 + value / 100) : value
+    let change: Double = stale ? .nan : (ticker?.changePercent ?? .nan)
     // 骨架块只表示「还在路上」。已下架 / 还没开盘的行不摆骨架，摆「—」，
     // 否则那块灰底会永远亮着，读起来像永远加载不完。
     let skeleton = !price.isFinite && !stale
@@ -1108,8 +878,7 @@ struct FavoritesView: View {
     let priceInk: Color = stale ? skin.ink4 : theme.ink
     // 涨跌一律带「+ / −」（UI 审查 2026-09-24：全 app 跌幅一种写法，不再用小三角说方向）。
     // 还没到的涨跌和还没到的价格用同一种骨架：药丸只剩一块底，不写字。
-    let changeText = amount ? SymbolRowText.signedAmount(change, decimals: decimals)
-      : changePercentText(change)
+    let changeText = changePercentText(change)
     return (SymbolRowText.price(price, decimals: decimals), priceInk, skeleton, change, changeText)
   }
 
@@ -1570,27 +1339,6 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   func forgetScrollAnchor() { scrollAnchor = nil }
 }
 
-/// 自选表排好的那一份顺序，连同算它用的输入（审查 C3）。
-///
-/// 输入一样，结果就一样：名单本身、排序口径、升降序、涨跌额还是涨跌幅、在不在编辑、
-/// 报价版本（`SymbolPickerModel.quoteRevision`），以及按「离提醒线最近」排时的那几条提醒。
-/// 只记最近一份——这一页同一时刻只画一类、一种排法。
-@MainActor final class FavoritesSortCache {
-  struct Key: Equatable {
-    var source: [String]
-    var sort: String
-    var ascending: Bool
-    var amount: Bool
-    var editing: Bool
-    var quotes: UInt64
-    var alerts: [KanpanCore.Alert]
-  }
-  private var key: Key?
-  private var cached: [String] = []
-  func rows(for key: Key) -> [String]? { self.key == key ? cached : nil }
-  func store(_ rows: [String], for key: Key) { self.key = key; cached = rows }
-}
-
 /// 列表现在铺着哪几行，以及由它算出来的落脚点（审查 C-08）。
 ///
 /// 做成一个**普通的引用盒子、不被任何人观察**是故意的：滚动时每露一行就要写一次，
@@ -1708,7 +1456,7 @@ struct TouchWatcher: UIGestureRecognizerRepresentable {
   func handleUIGestureRecognizerAction(_ recognizer: TouchWatchRecognizer, context: Context) {}
 }
 
-/// 记下「设置」「排序」两颗按钮的位置，好让浮层菜单吊在它们下面。
+/// 记下「…」那颗按钮的位置，好让浮层菜单吊在它下面。
 private struct MenuAnchors: PreferenceKey {
   static let defaultValue: [String: Anchor<CGRect>] = [:]
   static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
