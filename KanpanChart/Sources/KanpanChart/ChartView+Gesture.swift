@@ -609,10 +609,10 @@ extension ChartView {
       return
     }
     gesture.lastPlotTap = (ms: now, x: Double(p.x), y: Double(p.y))
-    // 主力订单流：点在一条色带上就选中它（出详情卡、描边），再点同一条收起，点别的换过去；
+    // 主力订单流：点在一条色带（一桶合并的那条）上就选中它（出详情卡、描边），再点同一条收起，点别的换过去；
     // 选中时点空白处只收卡，不顺手开十字线。
     if let hit = renderer?.orderFlowHit(at: p, size: bounds.size) {
-      selectOrderFlow(state?.orderFlowSelected?.id == hit.id ? nil : hit)
+      selectOrderFlow(state?.orderFlowSelected == hit.key ? nil : hit.key)
       return
     }
     if state?.orderFlowSelected != nil {
@@ -628,11 +628,11 @@ extension ChartView {
     }
   }
 
-  /// 选中 / 取消选中主力订单流的一单（`nil` = 取消）。选中时十字线收掉，两块读数不同时出。
-  public func selectOrderFlow(_ order: BigOrder?) {
-    guard var s = state, s.orderFlowSelected != order || (order != nil && s.crosshair != nil) else { return }
-    s.orderFlowSelected = order
-    if order != nil { s.crosshair = nil }
+  /// 选中 / 取消选中主力订单流的一条合并带（`nil` = 取消）。选中时十字线收掉，两块读数不同时出。
+  public func selectOrderFlow(_ key: OrderFlowGroupKey?) {
+    guard var s = state, s.orderFlowSelected != key || (key != nil && s.crosshair != nil) else { return }
+    s.orderFlowSelected = key
+    if key != nil { s.crosshair = nil }
     state = s
   }
 

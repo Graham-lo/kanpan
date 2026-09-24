@@ -250,17 +250,25 @@ public final class ChartView: UIView {
             if let step = f.thresholds.step { out["step"] = step }
             return out
           } ?? [:],
+          // 一桶一条的合并带：product = contract / spot；thin = 被挤成了细线；books = 几本簿、members = 几单。
           "orderFlowBands": (orderFlow?.bands ?? []).map {
-            ["side": $0.order.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
+            ["side": $0.group.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
              "w": $0.frame.width, "h": $0.frame.height, "color": $0.color.value, "dark": $0.dark,
-             "tier": $0.order.thicknessTier, "product": $0.order.product.rawValue,
-             "status": $0.order.status.rawValue, "id": $0.order.id] as [String: Any]
+             "tier": $0.group.tier, "product": $0.group.contract ? "contract" : "spot", "thin": $0.thin,
+             "live": $0.group.isLive, "books": $0.group.books.count, "members": $0.group.members.count,
+             "notional": $0.group.notional, "id": $0.key.id] as [String: Any]
+          },
+          "orderFlowLabels": (orderFlow?.labels ?? []).map {
+            ["id": $0.key.id, "text": $0.text, "x": $0.frame.minX, "y": $0.frame.minY,
+             "w": $0.frame.width, "h": $0.frame.height] as [String: Any]
           },
           "orderFlowHovered": orderFlow?.hovered ?? false,
-          // 轻点选中的那一单（`state.orderFlowSelected`，空串 = 没选中）与此刻出卡的那一单。
+          // 轻点选中的那一桶（`state.orderFlowSelected`，空串 = 没选中）与此刻出卡的那一桶。
           "orderFlowSelected": s.orderFlowSelected?.id ?? "",
           "orderFlowFocus": orderFlow?.focus.map {
-            ["id": $0.order.id, "selected": $0.selected, "anchorX": $0.anchorX, "bandY": $0.bandY] as [String: Any]
+            ["id": $0.group.key.id, "selected": $0.selected, "anchorX": $0.anchorX, "bandY": $0.bandY,
+             "bandHalf": $0.bandHalf, "books": $0.group.books.count, "cardMaxW": $0.cardMaxWidth,
+             "cardMaxH": $0.cardPlacement.maxHeight, "cardBelow": $0.cardPlacement.below] as [String: Any]
           } ?? [:],
           "orderFlowAdoptions": orderFlowAdoptions,
           "orderFlowPlotDirties": orderFlowPlotDirties,
@@ -490,7 +498,7 @@ public final class ChartView: UIView {
     flashIfTicked(from: old, to: s)
     if !layers.isEmpty { onStateChanged?(s, layers) }
     if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }
-    // 选中的那一单：只在有十字线、有选中，或者上一次报过的时候才去算（没选中时一次都不算）。
+    // 选中的那一条：只在有十字线、有选中，或者上一次报过的时候才去算（没选中时一次都不算）。
     if s.crosshair != nil || s.orderFlowSelected != nil || orderFlowFocus != nil {
       fireOrderFlowFocus(renderer?.orderFlowFocus(size: bounds.size))
     }

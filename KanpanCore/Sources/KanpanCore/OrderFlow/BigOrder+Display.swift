@@ -1,21 +1,41 @@
 import Foundation
 
-// 主力订单流 · 画法要用的只读派生量（2026-09-24 改 CoinAnk 式粗横带）。
+// 主力订单流 · 画法要用的只读派生量（2026-09-24 CoinAnk 式粗横带；同日晚改手机布局）。
 //
-// 图表那一层只按两样东西画一单：粗细档（名义 ÷ 门槛，半个倍频一档，共七档）与深浅（有没有成交过）。
-// `renderKey` 就是「画出来一样」的判据：名义在同一档里抖、成交比例在「有成交」里涨跌都不算变化，
-// 底图不因此重画。`pixelKey`（行情流用来决定要不要发帧）比它细，这里不动它。
+// 图上不再一单一条：同一价位桶、同一侧、同一类（现货 / 合约）的几单合成一条带（合并在 KanpanChart，
+// `OrderFlowGroup`），粗细按合并后的「名义 ÷ 门槛」之和分五档。所以每一单交给图表的是「门槛的几个四分之一」
+// （`thicknessQuarters`，向下取整）：五档的分界 1× / 2× / 4× / 8× / 16× 都是 ¼ 的整数倍，单独一单的档
+// 不因取整而偏；几单相加时按取整后的数算，名义在一格（¼ 门槛）里抖不改变画法。
+//
+// `renderKey` 就是「画出来一样」的判据：四分之一格、深浅、位置与状态都一样，底图不重画。
+// `pixelKey`（行情流用来决定要不要发帧）比它细，这里不动它。
 extension BigOrder {
-  /// 粗细档数：0…6。
-  public static let thicknessTiers = 7
+  /// 粗细档数：0…4（2 / 3 / 4.5 / 6 / 8 pt，见 `ChartRenderer.orderFlowBandHeight`）。
+  public static let thicknessTiers = 5
+  /// 四分之一格封顶：16 倍门槛以上一律按 16 倍算（已经是最粗一档）。
+  public static let maxThicknessQuarters = 64
 
-  /// 粗细档：r = 名义 ÷ 门槛，档 = ⌊2·log₂ r⌋ 夹到 0…6——刚过门槛（r < √2）0 档，
-  /// 每大 √2 倍升一档，门槛 8 倍及以上封顶 6 档。撤单滞回留下的 0.5–1 倍也落 0 档。
-  public var thicknessTier: Int { Self.thicknessTier(notional: notional, threshold: threshold) }
+  /// 这一单占门槛的几个四分之一（向下取整，封顶 64 = 16 倍）。
+  public var thicknessQuarters: Int { Self.thicknessQuarters(notional: notional, threshold: threshold) }
+
+  public static func thicknessQuarters(notional: Double, threshold: Double) -> Int {
+    guard threshold > 0, notional.isFinite, notional > 0 else { return 0 }
+    let q = (4 * notional / threshold).rounded(.down)
+    return q.isFinite ? Int(min(Double(maxThicknessQuarters), max(0, q))) : 0
+  }
+
+  /// 单独画这一单时的粗细档。
+  public var thicknessTier: Int { Self.thicknessTier(quarters: thicknessQuarters) }
 
   public static func thicknessTier(notional: Double, threshold: Double) -> Int {
-    guard threshold > 0, notional.isFinite, notional > threshold else { return 0 }
-    return min(thicknessTiers - 1, max(0, Int((2 * log2(notional / threshold)).rounded(.down))))
+    thicknessTier(quarters: thicknessQuarters(notional: notional, threshold: threshold))
+  }
+
+  /// 粗细档：r = 四分之一格数 ÷ 4（名义 ÷ 门槛），档 = ⌊log₂ r⌋ 夹到 0…4——
+  /// 不到 2 倍（含撤单滞回留下的 0.5–1 倍）0 档，2 倍 1 档，4 倍 2 档，8 倍 3 档，16 倍及以上 4 档。
+  public static func thicknessTier(quarters: Int) -> Int {
+    guard quarters >= 8 else { return 0 }
+    return min(thicknessTiers - 1, max(0, Int(log2(Double(quarters) / 4).rounded(.down))))
   }
 
   /// 有没有被吃过（深色）：成交名义 > 0。
@@ -29,13 +49,14 @@ extension BigOrder {
     public var bucket: Int64
     public var price: Double
     public var threshold: Double
-    public var tier: Int
+    public var quarters: Int
     public var hasFill: Bool
+    public var tier: Int { BigOrder.thicknessTier(quarters: quarters) }
   }
 
   public var renderKey: RenderKey {
     RenderKey(id: id, status: status, endMs: endMs, bucket: bucket, price: price, threshold: threshold,
-              tier: thicknessTier, hasFill: hasFill)
+              quarters: thicknessQuarters, hasFill: hasFill)
   }
 }
 

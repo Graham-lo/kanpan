@@ -85,9 +85,9 @@ public struct ChartState: Sendable, Equatable {
     public var orderFlow: OrderFlowSnapshot? = nil
     /// 主力订单流的显示开关（现货 / 合约 / 已成交买卖 / 已撤销买卖）。只管画不画，跟人走。
     public var orderFlowDisplay: OrderFlowDisplay = .all
-    /// 轻点选中的那一单（详情卡、描边）。存的是点中那一刻的一份，画和出卡时按 `id` 到最新快照里
-    /// 取新值（金额、状态会变）；快照里没了就用这一份。换品种、换周期清掉；永不落盘。
-    public var orderFlowSelected: BigOrder? = nil
+    /// 轻点选中的那一条合并带（详情卡、描边）：存「桶 × 侧 × 类」，画和出卡时到最新快照里现合一份
+    /// （金额、状态会变）；快照里这一桶没单了就等于没选中。换品种、换周期清掉；永不落盘。
+    public var orderFlowSelected: OrderFlowGroupKey? = nil
     public var depth: OrderBook? = nil
     /// 「本根还有多久收」用的当前时刻（毫秒）。`nil` 就不画倒计时。
     ///
@@ -230,7 +230,7 @@ public struct ChartState: Sendable, Equatable {
     get { overlay.orderFlowDisplay }
     _modify { yield &overlay.orderFlowDisplay }
   }
-  public var orderFlowSelected: BigOrder? {
+  public var orderFlowSelected: OrderFlowGroupKey? {
     get { overlay.orderFlowSelected }
     _modify { yield &overlay.orderFlowSelected }
   }

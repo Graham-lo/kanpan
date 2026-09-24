@@ -42,7 +42,12 @@ extension ChartRenderer {
     let L = layout(size: size)
     UIGraphicsPushContext(ctx)
     // 十字线点亮的那一块主力色块叠在这一层（压在图例底下）：底图不因为十字线动一下就整层重画（审查 32）。
-    if !state.percentAxis { drawOrderFlowHover(ctx, pane: L.main, range: priceRange(size: size), L: L) }
+    // 带上的金额小签也在这一层（金额每拍都在抖，不拖着底图重画），画在选中描边之后、图例之前。
+    if !state.percentAxis {
+      let range = priceRange(size: size)
+      drawOrderFlowHover(ctx, pane: L.main, range: range, L: L)
+      drawOrderFlowLabels(ctx, pane: L.main, range: range, L: L)
+    }
     drawLegends(ctx, L: L)
     UIGraphicsPopContext()
     drawOverlay(in: ctx, size: size, scale: scale)
