@@ -80,16 +80,6 @@ import Testing
     #expect(s.colors(systemDark: true).ground == "#FFFFFF")
   }
 
-  @Test("写下去再读回来一字不差")
-  func roundTrip() throws {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-    let s = snapshot()
-    try s.write(to: WidgetSnapshot.url(in: dir))
-    #expect(WidgetSnapshot.read(from: WidgetSnapshot.url(in: dir)) == s)
-  }
-
   @Test("小组件补价：直连模板打币安本家、载荷不带信封")
   func refreshDirect() throws {
     let r = WidgetSnapshot.Refresh(market: "binance/usdm", hosts: ["fapi.binance.com"],

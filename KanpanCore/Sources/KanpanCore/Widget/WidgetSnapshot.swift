@@ -6,11 +6,11 @@ import Foundation
 /// 小组件扩展（`Kanpan/KanpanWidget/`）只读它，再在自己刷新的那一拍按需补一口新价。
 /// 两边都只认这一个类型，字段一改两边一起编译不过，不会各读各的。
 ///
-/// 放在 Core：扩展进程只能链 Core（它不带 UIKit 以外的任何 app 模块），而这份东西
-/// 的「挑哪四行」「新价怎么折成涨跌幅」都是纯逻辑，放这儿才能在 `make core-test` 里测。
+/// 快照本身（字段、「挑哪四行」「新价怎么折成涨跌幅」、补价的地址模板与解析）是纯逻辑，
+/// 放在 Core 才能在 `make core-test` 里测。它落在哪、怎么读写（App Group 容器里的
+/// 那个文件）是 app 与扩展共用的平台胶水，在 `Kanpan/KanpanShared/WidgetSnapshotFile.swift`
+/// （审查 24：Core 不做文件 IO、不认 App Group）。
 public struct WidgetSnapshot: Codable, Sendable, Equatable {
-  public static let appGroup = "group.com.mdd.kanpan"
-  public static let fileName = "widget-snapshot.json"
   /// 「全部」这一类没有真身（自选页上没有这颗 chip），小组件编辑里用这个 id 代它。
   public static let allGroupID = "all"
   public static let allGroupName = "全部"
@@ -226,19 +226,5 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     return values.enumerated().map { i, v in
       (x: Double(i) / last, y: span > 0 ? 1 - (v - lo) / span : 0.5)
     }
-  }
-
-  // MARK: 读写
-
-  public static func url(in container: URL) -> URL { container.appendingPathComponent(fileName) }
-
-  public static func read(from url: URL) -> WidgetSnapshot? {
-    guard let data = try? Data(contentsOf: url) else { return nil }
-    return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
-  }
-
-  public func write(to url: URL) throws {
-    let data = try JSONEncoder().encode(self)
-    try data.write(to: url, options: .atomic)
   }
 }

@@ -73,6 +73,11 @@
 			path = KanpanWidget;
 			sourceTree = "<group>";
 		};
+		AE0000000000000000000050 /* KanpanShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KanpanShared;
+			sourceTree = "<group>";
+		};
 		AB0000000000000000000009 /* Kanpan */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Kanpan;
@@ -131,6 +136,7 @@
 				AE0000000000000000000042 /* KanpanTests */,
 				AB0000000000000000000042 /* KanpanUITests */,
 				AD0000000000000000000009 /* KanpanWidget */,
+				AE0000000000000000000050 /* KanpanShared */,
 				AB0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -188,6 +194,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				AB0000000000000000000009 /* Kanpan */,
+				AE0000000000000000000050 /* KanpanShared */,
 			);
 			name = Kanpan;
 			packageProductDependencies = (
@@ -239,6 +246,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				AD0000000000000000000009 /* KanpanWidget */,
+				AE0000000000000000000050 /* KanpanShared */,
 			);
 			name = KanpanWidget;
 			packageProductDependencies = (

@@ -1,13 +1,14 @@
 import Foundation
-#if canImport(ActivityKit) && os(iOS)
-import ActivityKit
-#endif
 
 /// 提醒「盯一个」的实时活动里会变的那一块（P3.3）。
 ///
 /// 形状和服务端 `Backend/kanpan-api/src/live_activity.rs` 的 `content_state` 一一对应：
 /// 七个键每一拍都在（取不到的是 `null`），响了之后另带一个 `firedPrice`。
 /// 服务端推来的和 app 前台自己算的是同一个类型，锁屏那一块不分来源。
+///
+/// 这一半是纯值，留在 Core（和服务端契约对得上、在 `make core-test` 里测）；
+/// 带 `ActivityKit` 的静态那一半（`AlertActivityAttributes`）在 app 与小组件共用的
+/// `Kanpan/KanpanShared/AlertActivityAttributes.swift`（审查 24：Core 不碰系统框架）。
 public struct AlertActivityState: Codable, Hashable, Sendable {
   public var price: Double?
   /// 24 小时涨跌幅，**小数**（-0.0123 = -1.23%），和服务端同口径。
@@ -51,25 +52,3 @@ public struct AlertActivityState: Codable, Hashable, Sendable {
     changePercentText(change.map { $0 * 100 }, missing: "--")
   }
 }
-
-#if canImport(ActivityKit) && os(iOS)
-/// 活动的静态那一半：建的时候定死，服务端一个字都不改（`symbol` / `alertID` / `toolLabel`）。
-public struct AlertActivityAttributes: ActivityAttributes {
-  public typealias ContentState = AlertActivityState
-
-  public var symbol: String
-  /// 同步对象 id（`binance/usd_m/<SYM>/<id>`），服务端按它找线、判停。
-  public var alertID: String
-  /// 「水平线」「趋势线」「价格」这一类，锁屏上说明它盯的是什么。
-  public var toolLabel: String
-  /// 价格按品种精度排；服务端不用这一格。
-  public var decimals: Int?
-  /// 发起那一刻的涨跌配色（锁屏上没有皮肤可跟，只跟这一项）。
-  public var redUp: Bool
-
-  public init(symbol: String, alertID: String, toolLabel: String, decimals: Int?, redUp: Bool) {
-    self.symbol = symbol; self.alertID = alertID; self.toolLabel = toolLabel; self.decimals = decimals
-    self.redUp = redUp
-  }
-}
-#endif
