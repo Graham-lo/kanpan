@@ -279,6 +279,47 @@ public enum Palette: Sendable {
   /// 小字用的第三级墨色。六套种子都是手配的，直接用。
   public static func secondaryInk(_ t: PaletteSeed) -> Hex { t.ink3 }
 
+  // ---------------------------------------------------------------- 主力订单流四色
+
+  /// 主力订单流的线色：合约买 / 卖、现货买 / 卖（2026-09-25）。
+  ///
+  /// 原来合约直接用 K 线涨跌色，线垫在同色蜡烛上就融成一片（用户：「是颜色重合了把 K 线覆盖了」）。
+  /// 六套种子的蜡烛涨色是绿 134°–165°、跌色是红 356°–6°，离两者色相都 ≥ 60° 的只剩黄（≈ 66°–74°）和
+  /// 蓝—品红（≈ 225°–294°）两段，所以：合约买蓝、合约卖品红（主角，两色差 67° / 79°），现货买黄、现货卖紫；
+  /// 紫夹在蓝和品红之间（色相各差 30°–50°），靠明度分开：深底上紫最淡（对底 8.3:1，蓝 5.2:1、品红 5.8:1）；
+  /// 浅底上品红压成深梅（7.2:1），紫反而是四色里偏淡的一支（3.8:1），蓝往天蓝偏（204°，浅底的涨色是 137°，够远）。
+  /// 对图区底色全部 ≥ 3:1（图形元素线）。橙、青、玫红离涨跌色太近（< 30°），不用。
+  /// 深浅按图区底色的亮度选（`orderFlow(bg:)`），不认皮肤名；红涨绿跌不影响。守卫见 `SkinPaletteTests`。
+  public struct OrderFlowColors: Sendable, Equatable {
+    public let contractBid, contractAsk, spotBid, spotAsk: Hex
+    public var all: [Hex] { [contractBid, contractAsk, spotBid, spotAsk] }
+  }
+  public static let orderFlowOnDark = OrderFlowColors(contractBid: "#5A7DFF", contractAsk: "#E04BF0",
+                                                      spotBid: "#CCE21E", spotAsk: "#B89CFF")
+  public static let orderFlowOnLight = OrderFlowColors(contractBid: "#0A78C2", contractAsk: "#8A149F",
+                                                       spotBid: "#76850A", spotAsk: "#8566E8")
+  /// 这张图区底色用哪一套（相对亮度 > 0.5 算浅底，与图表判「浅色底」同一把尺）。
+  public static func orderFlow(bg: Hex) -> OrderFlowColors {
+    let v = bg.rgba
+    return 0.2126 * v.r + 0.7152 * v.g + 0.0722 * v.b > 0.5 ? orderFlowOnLight : orderFlowOnDark
+  }
+
+  /// 色相（0…360°，HSV）。灰色给 0。
+  public static func hue(_ c: Hex) -> Double {
+    let v = c.rgba
+    let hi = max(v.r, v.g, v.b), lo = min(v.r, v.g, v.b), d = hi - lo
+    guard d > 0 else { return 0 }
+    let h: Double
+    if hi == v.r { h = (v.g - v.b) / d } else if hi == v.g { h = 2 + (v.b - v.r) / d } else { h = 4 + (v.r - v.g) / d }
+    return (h * 60 + 360).truncatingRemainder(dividingBy: 360)
+  }
+
+  /// 两个色相在色轮上差多少度（0…180）。
+  public static func hueDistance(_ a: Hex, _ b: Hex) -> Double {
+    let d = abs(hue(a) - hue(b)).truncatingRemainder(dividingBy: 360)
+    return min(d, 360 - d)
+  }
+
   public static func contrast(_ foreground: Hex, _ background: Hex) -> Double {
     func luminance(_ c: Hex) -> Double {
       let v = c.rgba
@@ -287,6 +328,20 @@ public enum Palette: Sendable {
     }
     let a = luminance(foreground), b = luminance(background)
     return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+  }
+
+  /// 一口没成交的主力单画浅一档：往图区底色混，最多混 `maxMix`（45%），但混完对底色仍要 ≥ 3:1
+  /// （线是图形元素，按 3:1 收）。对比度富余的颜色（深底上的黄绿、浅底上的李紫）照混 45%，
+  /// 富余少的（浅底橄榄只有 3.8:1）少混一点——看得见优先于深浅分档。二分八次，误差 < 0.2%。
+  public static func orderFlowUnfilled(_ color: Hex, bg: Hex, maxMix: Double = 0.45) -> Hex {
+    func mixed(_ m: Double) -> Hex { mix(color, bg, amount: 1 - m) }
+    if contrast(mixed(maxMix), bg) >= 3 { return mixed(maxMix) }
+    var lo = 0.0, hi = maxMix
+    for _ in 0..<8 {
+      let m = (lo + hi) / 2
+      if contrast(mixed(m), bg) >= 3 { lo = m } else { hi = m }
+    }
+    return mixed(lo)
   }
 
   public static func mix(_ a: Hex, _ b: Hex, amount: Double) -> Hex {

@@ -255,4 +255,32 @@ struct SkinPaletteTests {
     }
     #expect(swapped.up == chart.down && swapped.down == chart.up)
   }
+
+  @Test("主力订单流四色：看得见、不和蜡烛撞色、彼此分得开", arguments: seeds)
+  func orderFlowColors(_ seed: PaletteSeed) {
+    let chart = Palette.chart(seed)
+    let flow = Palette.orderFlow(bg: chart.bg)
+    #expect(flow == (seed.dark ? Palette.orderFlowOnDark : Palette.orderFlowOnLight))
+    for c in flow.all {
+      // 线画在图区上，按图形元素收 3:1。
+      #expect(Palette.contrast(c, chart.bg) >= 3, "\(c) 画在 \(chart.bg) 上太淡")
+      // 一口没成交的浅一档同样收 3:1，且确实比本色浅（深浅分档还在）。
+      let unfilled = Palette.orderFlowUnfilled(c, bg: chart.bg)
+      #expect(Palette.contrast(unfilled, chart.bg) >= 3, "\(c) 的浅档 \(unfilled) 画在 \(chart.bg) 上太淡")
+      #expect(unfilled != c, "\(c) 没有浅档")
+      // 线垫在蜡烛下面，色相离涨跌两色都要 ≥ 60°，否则压在同色蜡烛上就融成一片（红涨绿跌只是对调，同一组色相）。
+      for candle in [chart.up, chart.down] {
+        #expect(Palette.hueDistance(c, candle) >= 60, "\(c) 和蜡烛色 \(candle) 色相只差 \(Palette.hueDistance(c, candle))°")
+      }
+    }
+    // 合约买卖是主角，两色色相至少差 60°；四色两两之间色相差 ≥ 25° 或明度对比 ≥ 1.4（紫靠明度和蓝、品红分开）。
+    #expect(Palette.hueDistance(flow.contractBid, flow.contractAsk) >= 60)
+    #expect(Palette.hueDistance(flow.spotBid, flow.spotAsk) >= 60)
+    for (i, a) in flow.all.enumerated() {
+      for b in flow.all[(i + 1)...] {
+        #expect(Palette.hueDistance(a, b) >= 25, "\(a) 和 \(b) 色相太近")
+        #expect(Palette.hueDistance(a, b) >= 45 || Palette.contrast(a, b) >= 1.4, "\(a) 和 \(b) 色相近、明暗也差不多")
+      }
+    }
+  }
 }
