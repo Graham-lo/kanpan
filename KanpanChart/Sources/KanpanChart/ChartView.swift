@@ -257,6 +257,8 @@ public final class ChartView: UIView {
              "dashed": $0.dashed] as [String: Any]
           },
           "orderFlowHovered": orderFlow?.hovered ?? false,
+          "orderFlowAdoptions": orderFlowAdoptions,
+          "renderCounts": renderCounts,
           "panes": layout.panes.dropFirst().map { ["id": $0.indicator?.rawValue ?? "", "y": $0.y, "h": $0.h] as [String: Any] }, "subs": s.subs.map(\.rawValue),
           // 画线横屏要的是一张没有任何指标参与定标的原始 K 线，用例得能看见主图叠加层。
           "overlays": s.overlays.map(\.rawValue),
@@ -464,6 +466,7 @@ public final class ChartView: UIView {
     setNeedsRedraw(parts)
     #if DEBUG
     onAdoptedForProbe?(!parts.isEmpty)
+    if old?.orderFlow != s.orderFlow { orderFlowAdoptions += 1 }
     #endif
     flashIfTicked(from: old, to: s)
     if !layers.isEmpty { onStateChanged?(s, layers) }
@@ -665,6 +668,7 @@ public final class ChartView: UIView {
     }
     #if DEBUG
     if part != .cross { onRenderedForProbe?() }
+    renderCounts[part == .plot ? "plot" : part == .live ? "live" : "cross", default: 0] += 1
     #endif
   }
 
@@ -676,6 +680,11 @@ public final class ChartView: UIView {
   public var onRenderedForProbe: (() -> Void)?
   /// 分层计时：哪一层、画了多少毫秒。只给采帧诊断用。
   public var onRenderPartForProbe: ((String, Double) -> Void)?
+  /// 三层各真画了几次（审查 31 / 32 的秤）：静置时、十字线移动时底图有没有被白画，
+  /// 取证用例前后各读一次相减。只在 DEBUG 里有，诊断 JSON 的 `renderCounts`。
+  private(set) var renderCounts: [String: Int] = [:]
+  /// 主力订单流快照换了几次（新快照和上一份不相等才算），诊断 JSON 的 `orderFlowAdoptions`。
+  private(set) var orderFlowAdoptions = 0
   #endif
 }
 

@@ -196,4 +196,36 @@ struct OrderFlowChartTests {
     compare.state.percentAxis = true
     #expect(compare.orderFlowSnapshot == nil)
   }
+  #if DEBUG
+  /// 审查 32 的秤：十字线在主图上走 50 步、横穿好几块大单，底图（plot 层）真画了几次。
+  /// 读 `ChartView.renderCounts`（DEBUG 才有）；每一步都 `redrawNow`，一步一帧。
+  @discardableResult
+  static func crosshairSweep(steps: Int = 50) -> (plot: Int, cross: Int, hovered: Int) {
+    let (r, orders) = renderer()
+    let view = ChartView(state: r.state)
+    view.frame = CGRect(origin: .zero, size: size)
+    view.layoutIfNeeded()
+    view.redrawNow()
+    let plot0 = view.renderCounts["plot"] ?? 0, cross0 = view.renderCounts["cross"] ?? 0
+    let prices = orders.map(\.price)
+    let lo = prices.min()!, hi = prices.max()!
+    var hovered = 0
+    for k in 0..<steps {
+      let p = lo + (hi - lo) * Double(k) / Double(steps - 1)
+      view.state?.crosshair = Crosshair(index: r.state.series.count - 1, price: p)
+      view.redrawNow()
+      if view.renderer?.orderFlowDiagnostics(size: size).hovered == true { hovered += 1 }
+    }
+    let plot = (view.renderCounts["plot"] ?? 0) - plot0, cross = (view.renderCounts["cross"] ?? 0) - cross0
+    print("ORDERFLOW-REDRAW crosshair-\(steps) plot=\(plot) cross=\(cross) hovered=\(hovered)")
+    return (plot, cross, hovered)
+  }
+
+  @Test("十字线在主图上走 50 步：读数（cross 层）每步都画")
+  func crosshairSweepCounts() {
+    let c = Self.crosshairSweep()
+    #expect(c.cross == 50)
+    #expect(c.hovered > 0, "扫一遍总该有几步停在大单上")
+  }
+  #endif
 }

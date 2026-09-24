@@ -38,8 +38,10 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
 
   /// 截图文件名前缀：跑在哪台模拟器上就用哪台的名字（去空格），如 iPhone17ProMax。
   private static let device = (ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? "iPhone").replacingOccurrences(of: " ", with: "")
-  private static let outDir = URL(
-    fileURLWithPath: "/Users/mdd/zhk/kanpan/docs/acceptance/主力订单流-2026-09-24", isDirectory: true)
+  /// 取证图落在编出这份用例的那棵工作树里（按本文件路径推回仓库根），别的工作树跑时不写进共享工作树。
+  private static let outDir = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    .appendingPathComponent("docs/acceptance/主力订单流-2026-09-24", isDirectory: true)
 
   private func shot(_ name: String) {
     let image = app.screenshot()
@@ -267,7 +269,28 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     shot("Coinbase-BTC-USD")
   }
 
-  // ------------------------------------------------------------ 5. 首屏实测的档案
+  // ------------------------------------------------------------ 5. 静置 10 秒重画了几次（审查 31）
+
+  /// 开着主力订单流、手不碰屏幕放 10 秒：底图（plot 层）真画了几次、订单流快照换了几次。
+  /// 读数来自 `chart.canvas` 诊断里的 `renderCounts` / `orderFlowAdoptions`（DEBUG 才有），前后相减。
+  /// 本身不判数，改 `sameContent` 前后各跑一遍对比；蜡烛跟着成交推进也会画 plot，所以两个数都报。
+  func testIdleRedrawTenSeconds() {
+    executionTimeAllowance = 900
+    XCTAssertTrue(waitForLiveChart(), "币安直连没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    guard waitForBandsRotating("静置重画", symbols: ["BTCUSDT", "ETHUSDT"]) != nil else { return }
+    _ = waitUntil(timeout: 5, poll: 1) { false }
+    func counts() -> (plot: Int, cross: Int, live: Int, frames: Int) {
+      let info = chartInfo(), r = info["renderCounts"] as? [String: Int] ?? [:]
+      return (r["plot"] ?? 0, r["cross"] ?? 0, r["live"] ?? 0, info["orderFlowAdoptions"] as? Int ?? 0)
+    }
+    let a = counts()
+    _ = waitUntil(timeout: 10, poll: 10) { false }
+    let b = counts()
+    print("取证|静置10秒|plot=\(b.plot - a.plot)|cross=\(b.cross - a.cross)|live=\(b.live - a.live)|orderFlowFrames=\(b.frames - a.frames)|orders=\(chartInfo()["orderFlowOrders"] ?? 0)")
+  }
+
+  // ------------------------------------------------------------ 6. 首屏实测的档案
 
   /// 只做准备：在固定档案里打开「主力订单流」，等它真的开始订簿（阶段不再是空），开关已落盘。
   /// 冷启动计时在测试外面用 `simctl launch --console-pty` 做（见验收报告）。
