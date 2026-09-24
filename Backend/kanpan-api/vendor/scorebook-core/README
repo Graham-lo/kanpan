@@ -1,0 +1,41 @@
+scorebook-core（看盘 vendor 副本）
+================================
+
+来历
+----
+- 源：记分簿（Scorebook）后端 `scorebook-backend/crates/core`，
+  基线提交 5e5b0a9c932491d54cc3526ac2591414962680b2。
+- 首次拷入看盘：b71bd9c5，当时带着一份已审过的本地扩展 `native_review`
+  （api/native_review.rs、domain/native_review.rs），即看盘复盘记录的判定规则。
+- 之后看盘自己的改动都在 git 历史里（`git log -- Backend/kanpan-api/vendor/scorebook-core`），
+  不再回灌记分簿；记分簿网页版已不是主线，这份副本以看盘为准独立演进。
+- 原来的 SOURCE.json（逐文件 sha256 冻结清单）在 2026-09-24 裁剪时删除：
+  native_review.rs 早已被看盘改过、清单早就对不上，git 历史才是真实来历。
+
+2026-09-24 裁剪（深度审查第 26 项）
+---------------------------------
+只保留看盘 kanpan-api 与 vendor/scorebook-market 实际调用到的部分：
+
+- error：Error / ErrorKind / RetryDirective / Result
+- market：MarketDataProvider / ProviderFuture（行情提供者边界）
+- api::native_review：复盘记录与检索的请求体（NativeDraft、ChartRange、NativeSearch…）
+- domain::native_review：复盘判定（time / validate_range / validate / evaluate）
+- domain::interval、domain::instrument：周期白名单与品种字符表
+  （KanpanReview 的对账测试直接读 native_review.rs 与 interval.rs，两份未改动）
+- domain::statistics：复盘统计
+- domain::criteria：只剩 `Bar` 与价格字符串校验 `dec`
+- domain::chart / chart_match：只剩 K 线数值 → 192 维形态描述子与 DTW 重排
+  （from_bars / descriptor / rerank / MODEL）
+
+删掉的（看盘里没有任何调用方，删后 cargo build/test 验证）：
+- 记分簿网页版的整层 HTTP DTO 与工作流：access、ports、exchange、knowledge_index、chat、secrets，
+  api 下的 backups、chart_search、chat、dto、history*、instruments、jobs、knowledge_*、lifecycle、
+  market、record_changes、replay、review_*、sets、settlement、statistics、trades；
+  domain 下的 calendar、parser、replay、trade_ledger、watch。
+- chart_match 的截图识别（image 解码、连通域、窗格切分）、价格域比对、自由长度扫描；
+  chart 的 raster / svg 出图与 ChartRequest；market::HistorySource。
+- criteria 的 Decimal 判决（Criteria / evaluate / 聚合 / ATR），看盘判定走 native_review。
+- 依赖：image、utoipa、bigdecimal、chrono-tz、tokio、zeroize。`dec` 原来靠 bigdecimal 解析，
+  现在手写同一套规则、同样的错误码（见 criteria.rs 的单测）。
+
+以后要从记分簿再搬东西进来，按需拷单个文件并在这里补一行来历，不要整包覆盖。

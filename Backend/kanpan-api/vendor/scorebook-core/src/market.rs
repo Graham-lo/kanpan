@@ -23,11 +23,3 @@ pub trait MarketDataProvider: Send + Sync {
     fn exchange_info<'a>(&'a self, market: &'a str) -> ProviderFuture<'a>;
     fn tickers_24h<'a>(&'a self, market: &'a str) -> ProviderFuture<'a>;
 }
-
-#[derive(Clone, Default, serde::Serialize, serde::Deserialize, utoipa::ToSchema, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum HistorySource {
-    #[default]
-    Rest,
-    MonthlyArchive,
-}
