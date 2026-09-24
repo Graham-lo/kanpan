@@ -16,7 +16,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUNDLE="com.mdd.kanpan"
+BUNDLE="com.yj27y32.hkline"
 OUT="$ROOT/docs/acceptance/M9"
 ARG="${1:-booted}"
 

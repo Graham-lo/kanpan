@@ -13,7 +13,7 @@ else
   CONFIG="Debug"
 fi
 APP="DerivedData/Build/Products/${CONFIG}-iphonesimulator/Kanpan.app"
-BUNDLE="com.mdd.kanpan"
+BUNDLE="com.yj27y32.hkline"
 
 [ -d "$APP" ] || {
   if [ "$CONFIG" = "Release" ]; then

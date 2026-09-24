@@ -8,7 +8,7 @@ import Foundation
 // `FrameProbe` 采完一段就往这儿扔一份 `FrameReport`。落盘位置和 MetricKit 的
 // 诊断放一块（`Application Support/kanpan/Diagnostics/frames/`），取法也一样：
 //
-//   模拟器：xcrun simctl get_app_container booted com.mdd.kanpan data
+//   模拟器：xcrun simctl get_app_container booted com.yj27y32.hkline data
 //   真机：  Xcode ▸ Window ▸ Devices and Simulators ▸ Download Container
 //
 // 也可以直接调 `Tools/frame-report.sh`，它把上面这两步和判定表一起干了。

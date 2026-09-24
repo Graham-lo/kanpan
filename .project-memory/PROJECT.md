@@ -268,6 +268,27 @@ INFO 照旧（`alerts still fire, still record firedAt/firedPrice and still sync
   不要因为签不了就把功能停在纸面上。
 - 登账号这一步需要用户的密码与双重验证，我做不了，只能报给他。
 
+**已解决（2026-09-24）：换成本团队独有的一套标识。** 用户在 Xcode 登了免费个人团队
+「yom jack」（`27Y32PT2HZ`）之后，`com.mdd.kanpan`、`com.mdd.kanpan.widget`、
+`group.com.mdd.kanpan` 三个都报「not available」——它们已经注册在另一个 Apple 账号下，
+这个团队永远拿不到。于是整套改名：
+
+| 旧 | 新 |
+|---|---|
+| `com.mdd.kanpan`（app） | `com.yj27y32.hkline` |
+| `com.mdd.kanpan.widget` | `com.yj27y32.hkline.widget` |
+| `com.mdd.kanpan.tests` / `.uitests` | `com.yj27y32.hkline.tests` / `.uitests` |
+| `group.com.mdd.kanpan` | `group.com.yj27y32.hkline`（两份 entitlements + `WidgetSnapshotFile.swift`） |
+
+- **免费团队签 App Group 是可以的**——这次带着 App Group 一次签过，小组件随包上了手机，
+  上面「至今没有答案」那条就此证实。
+- 改包名等于装了一个新 app：钥匙串会话跟包名走，**手机上要重新登录一次**；
+  旧包 `com.mdd.kanpan` 用户已手动删掉。模拟器里旧包名的那份会留着，不影响，要清可 `simctl uninstall`。
+- 免费团队描述文件**只有 7 天**（这一张到 2026-09-29），过期后手机上的包起不来，
+  重跑 `make install-release` 会自动续签。
+- 没改的：`NSUserActivity` 类型、快捷方式类型、URL scheme 名这些 `com.mdd.kanpan.*`
+  字符串不需要在苹果那边注册，照旧；`Evidence/` 取证宿主与 `offsite-pull` LaunchAgent 同理。
+
 ## 锁屏实时活动 · 服务端这一半（`64638cd`，已部署）
 
 `src/live_activity.rs`（457 行，一个功能一个模块）+ `migrations/0017_live_activity.sql`。

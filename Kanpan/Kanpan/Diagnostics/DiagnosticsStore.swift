@@ -13,7 +13,7 @@ import Foundation
 //   - 不放 `Caches/`：系统随时会清，崩溃报告被清掉 = P9.7 没法验。
 //   - 不放 `Documents/`：那要 Info.plist 开 `UIFileSharingEnabled` 才有意义，
 //     而 Info.plist 这轮不许动。导出走 `exportBundle()` 生成一份合并 JSON，
-//     模拟器上用 `xcrun simctl get_app_container booted com.mdd.kanpan data` 直接取，
+//     模拟器上用 `xcrun simctl get_app_container booted com.yj27y32.hkline data` 直接取，
 //     真机上用 Xcode ▸ Devices ▸ Download Container。取法写在 docs/acceptance/M9.md。
 //
 // 容量：诊断文件不能变成 P9.4「沙盒 < 1MB」的累赘，所以**自带上限**

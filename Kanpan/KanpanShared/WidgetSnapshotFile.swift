@@ -8,7 +8,7 @@ import KanpanCore
 /// 两边认的是同一个容器、同一个文件名。快照的内容与挑行逻辑是 Core 里的纯值 `WidgetSnapshot`；
 /// 从前连这几行读写也放在 Core，审查 24 把文件 IO 与 App Group 请了出来。
 extension WidgetSnapshot {
-  static let appGroup = "group.com.mdd.kanpan"
+  static let appGroup = "group.com.yj27y32.hkline"
   static let fileName = "widget-snapshot.json"
 
   static func url(in container: URL) -> URL { container.appendingPathComponent(fileName) }
