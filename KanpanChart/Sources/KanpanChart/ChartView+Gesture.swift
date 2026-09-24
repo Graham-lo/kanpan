@@ -491,6 +491,8 @@ extension ChartView {
       c.price = renderer?.subCrosshairValue(y: Double(q.y), pane: pane)
     } else if s.magnet { c.price = s.series.close[i] }
     s.crosshair = c
+    // 十字线一出来，轻点选中的那一单就让位：卡片改由十字线停在哪条带上决定。
+    s.orderFlowSelected = nil
     // 回调由 `state` 的 setter 统一发（`adopt` 里那一句）。这儿不再补一发：同一份
     // 十字线连送两次，外面每收一次就重算一遍读数——跟手时那是白白翻倍的一摊活。
     state = s
@@ -601,11 +603,22 @@ extension ChartView {
     guard !isDouble else {
       gesture.lastPlotTap = nil
       if state?.crosshair != nil { clearCrosshair() }
+      selectOrderFlow(nil)
       resetPriceScale()
       scrollToLatest()
       return
     }
     gesture.lastPlotTap = (ms: now, x: Double(p.x), y: Double(p.y))
+    // 主力订单流：点在一条色带上就选中它（出详情卡、描边），再点同一条收起，点别的换过去；
+    // 选中时点空白处只收卡，不顺手开十字线。
+    if let hit = renderer?.orderFlowHit(at: p, size: bounds.size) {
+      selectOrderFlow(state?.orderFlowSelected?.id == hit.id ? nil : hit)
+      return
+    }
+    if state?.orderFlowSelected != nil {
+      selectOrderFlow(nil)
+      return
+    }
     if state?.crosshair != nil {
       clearCrosshair()
     } else if let L = chartLayout {
@@ -613,6 +626,14 @@ extension ChartView {
       finishCrosshairSelection()
       onTapped?()
     }
+  }
+
+  /// 选中 / 取消选中主力订单流的一单（`nil` = 取消）。选中时十字线收掉，两块读数不同时出。
+  public func selectOrderFlow(_ order: BigOrder?) {
+    guard var s = state, s.orderFlowSelected != order || (order != nil && s.crosshair != nil) else { return }
+    s.orderFlowSelected = order
+    if order != nil { s.crosshair = nil }
+    state = s
   }
 
   /// Restore automatic Y only; historical X and inversion remain unchanged.

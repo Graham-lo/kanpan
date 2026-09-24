@@ -252,11 +252,16 @@ public final class ChartView: UIView {
           } ?? [:],
           "orderFlowBands": (orderFlow?.bands ?? []).map {
             ["side": $0.order.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
-             "w": $0.frame.width, "h": $0.frame.height, "alpha": $0.alpha, "color": $0.color.value,
-             "product": $0.order.product.rawValue, "status": $0.order.status.rawValue,
-             "dashed": $0.dashed] as [String: Any]
+             "w": $0.frame.width, "h": $0.frame.height, "color": $0.color.value, "dark": $0.dark,
+             "tier": $0.order.thicknessTier, "product": $0.order.product.rawValue,
+             "status": $0.order.status.rawValue, "id": $0.order.id] as [String: Any]
           },
           "orderFlowHovered": orderFlow?.hovered ?? false,
+          // 轻点选中的那一单（`state.orderFlowSelected`，空串 = 没选中）与此刻出卡的那一单。
+          "orderFlowSelected": s.orderFlowSelected?.id ?? "",
+          "orderFlowFocus": orderFlow?.focus.map {
+            ["id": $0.order.id, "selected": $0.selected, "anchorX": $0.anchorX, "bandY": $0.bandY] as [String: Any]
+          } ?? [:],
           "orderFlowAdoptions": orderFlowAdoptions,
           "orderFlowPlotDirties": orderFlowPlotDirties,
           "orderFlowDirtyReasons": orderFlowDirtyReasons,
@@ -302,6 +307,11 @@ public final class ChartView: UIView {
   public var onUserViewChanged: ((ViewWindow) -> Void)?
   /// 十字线出现 / 移动 / 消失。`nil` 表示消失。
   public var onCrosshairChanged: ((Crosshair?) -> Void)?
+  /// 主力订单流选中的那一单（轻点选中，或十字线停在一条带上）变了；`nil` = 没有。app 据此出详情卡。
+  /// 同一单的金额、状态跟着快照变了也会再报一次（卡上的数要跟着走）。
+  public var onOrderFlowFocusChanged: ((ChartOrderFlowFocus?) -> Void)?
+  /// 上一次报出去的选中单，比较用。
+  private(set) var orderFlowFocus: ChartOrderFlowFocus?
   /// 视野左缘推进到头部 200 根以内，该补历史了（§13 G9）。序列长出来之前只叫一次。
   public var onNeedsHistory: (() -> Void)?
   /// 图上轻点了一下（没有十字线、不是双击）。画线选中交给 M7 接。
@@ -452,6 +462,7 @@ public final class ChartView: UIView {
       gesture.touches.removeAll(); gesture.reset(); gesture.endAxisTapCandidate()
       cancelAxisFreeze()
       fireCrosshairChanged(nil)
+      fireOrderFlowFocus(nil)
       onStateChanged?(nil, .all)
       renderer = nil
       setNeedsRedraw(.all)
@@ -479,6 +490,16 @@ public final class ChartView: UIView {
     flashIfTicked(from: old, to: s)
     if !layers.isEmpty { onStateChanged?(s, layers) }
     if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }
+    // 选中的那一单：只在有十字线、有选中，或者上一次报过的时候才去算（没选中时一次都不算）。
+    if s.crosshair != nil || s.orderFlowSelected != nil || orderFlowFocus != nil {
+      fireOrderFlowFocus(renderer?.orderFlowFocus(size: bounds.size))
+    }
+  }
+
+  private func fireOrderFlowFocus(_ focus: ChartOrderFlowFocus?) {
+    guard focus != orderFlowFocus else { return }
+    orderFlowFocus = focus
+    onOrderFlowFocusChanged?(focus)
   }
 
   // ---------------------------------------------------------------- 最新价闪一下
@@ -540,21 +561,22 @@ public final class ChartView: UIView {
     }
     if o.depth != new.depth { p.insert(.live) }
     // 主力订单流：色块在 plot、图例与十字线点亮的那一块在 cross（审查 32：十字线动不脏底图）。
-    // 画出来一样（只是金额在同一格、同一档里抖）只脏 cross：图例合计与读数在那一层，底图不动（审查 31）。
+    // 画出来一样（只是金额在同一粗细档里抖、成交比例在「被吃过」里涨）只脏 cross：图例合计与选中那一条
+    // 在那一层，底图不动（审查 31）。
     if o.orderFlowDisplay != new.orderFlowDisplay || !samePixels(o.orderFlow, new.orderFlow) { p.insert([.plot, .cross]) }
     else if o.orderFlow != new.orderFlow { p.insert(.cross) }
-    if o.crosshair != new.crosshair { p.insert(.cross) }
+    if o.crosshair != new.crosshair || o.orderFlowSelected != new.orderFlowSelected { p.insert(.cross) }
     // 倒计时每秒走一格，但它只画在 `liveLayer` 上——只脏 live，别把整张图拖下水
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
     if o.nowMs != new.nowMs, new.options.countdown, new.options.lastLine { p.insert(.live) }
     return p
   }
 
-  /// 两份主力快照画在底图上是不是一样（`OrderFlowSnapshot.sameContent`：量化到像素）。
+  /// 两份主力快照画在底图上是不是一样（`OrderFlowSnapshot.sameRender`：粗细档 + 深浅 + 位置与状态）。
   private static func samePixels(_ a: OrderFlowSnapshot?, _ b: OrderFlowSnapshot?) -> Bool {
     switch (a, b) {
     case (nil, nil): true
-    case let (a?, b?): a.sameContent(as: b)
+    case let (a?, b?): a.sameRender(as: b)
     default: false
     }
   }
@@ -704,7 +726,7 @@ public final class ChartView: UIView {
   private(set) var orderFlowAdoptions = 0
   /// 其中画出来真的变了、把底图弄脏的有几次（其余只脏 cross 层），诊断 JSON 的 `orderFlowPlotDirties`。
   private(set) var orderFlowPlotDirties = 0
-  /// 底图被弄脏的那几次各是因为什么（单数变、某单高度格变、透明度档变、状态变……），取证用。
+  /// 底图被弄脏的那几次各是因为什么（单数变、某单粗细档变、深浅变、状态变……），取证用。
   private(set) var orderFlowDirtyReasons: [String: Int] = [:]
   static func dirtyReasons(_ a: OrderFlowSnapshot?, _ b: OrderFlowSnapshot?) -> Set<String> {
     guard let a, let b else { return ["nil"] }
@@ -712,13 +734,13 @@ public final class ChartView: UIView {
     if a.phase != b.phase || a.symbol != b.symbol { out.insert("phase") }
     if a.thresholds != b.thresholds || a.defaults != b.defaults { out.insert("thresholds") }
     if a.venues != b.venues { out.insert("venues") }
-    let ka = Dictionary(a.orders.map { ($0.id, $0.pixelKey) }, uniquingKeysWith: { x, _ in x })
-    let kb = Dictionary(b.orders.map { ($0.id, $0.pixelKey) }, uniquingKeysWith: { x, _ in x })
+    let ka = Dictionary(a.orders.map { ($0.id, $0.renderKey) }, uniquingKeysWith: { x, _ in x })
+    let kb = Dictionary(b.orders.map { ($0.id, $0.renderKey) }, uniquingKeysWith: { x, _ in x })
     if Set(ka.keys) != Set(kb.keys) { out.insert(Set(kb.keys).subtracting(ka.keys).isEmpty ? "removed" : "added") }
     var heights = 0
     for (id, x) in ka { guard let y = kb[id] else { continue }
-      if x.heightUnits != y.heightUnits { heights += 1 }
-      if x.fillStep != y.fillStep { out.insert("fill") }
+      if x.tier != y.tier { heights += 1 }
+      if x.hasFill != y.hasFill { out.insert("fill") }
       if x.status != y.status || x.endMs != y.endMs { out.insert("status") }
     }
     if heights > 0 { out.insert("height"); out.insert(heights >= 5 ? "height≥5" : "height×\(heights)") }

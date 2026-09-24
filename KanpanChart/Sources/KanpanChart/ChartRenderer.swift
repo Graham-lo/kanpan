@@ -465,7 +465,10 @@ public struct ChartRenderer {
       label.drawCentered(at: CGPoint(x: chip.x + chip.w / 2, y: y), font: ChartFont.axis, color: t.crossInk)
     }
 
-    drawCandleData(ctx, L: L, index: i, selectedX: xc)
+    // 十字线停在一条主力色带上时，那一单的详情卡（app 画）顶替开高低收框，两块不叠。
+    if cross.pane != nil || !orderFlowHoversBand(L: L, range: r) {
+      drawCandleData(ctx, L: L, index: i, selectedX: xc)
+    }
 
     // 下轴时间
     let tl = fmtFull(ms: Double(b.time(at: i)), offsetMinutes: state.timezone.offsetMinutes)
