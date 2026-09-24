@@ -533,6 +533,9 @@ struct MainScreen: View {
       let _ = FrameProbe.shared.countBody("MainScreen")
     #endif
     lifecycleContent
+    #if DEBUG
+    .task { [market] in await IdleFrameProbe.run { market.status == .live } }
+    #endif
     // 那唯一一条提示画在自己的窗里，拿不到这儿的环境；皮肤一换就递一份过去（P2.7）。
     .onChange(of: theme, initial: true) { _, value in ToastCenter.shared.theme = value }
     .sheet(item: $draw.panel) { panel in

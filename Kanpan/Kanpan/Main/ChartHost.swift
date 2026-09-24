@@ -465,6 +465,9 @@ struct ChartHost: UIViewRepresentable {
   private func consumeAdoptToken(_ box: ChartBox) { proxy?.lastAdoptToken = adoptToken; box.lastAdoptToken = adoptToken }
 
   func updateUIView(_ box: ChartBox, context: Context) {
+    #if DEBUG
+      FrameProbe.shared.countBody("ChartHost.update")
+    #endif
     proxy?.box = box
     box.chart.isHidden = !renderingActive
     guard renderingActive else { return }

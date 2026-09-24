@@ -300,6 +300,9 @@ struct MainChartView: View {
   var onOpenRecord: (UUID) -> Void = { _ in }
 
   var body: some View {
+    #if DEBUG
+      let _ = FrameProbe.shared.countBody("MainChartView")
+    #endif
     ZStack(alignment: .bottomTrailing) {
       theme.chartBG
       ChartHost(
