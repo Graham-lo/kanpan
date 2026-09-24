@@ -183,8 +183,8 @@ struct ChartReviewA5Tests {
 
     // 趋势线的中点：在矩形肚子里，离矩形的两个手柄都远得很。
     let onTrend = CGPoint(x: 200, y: 280)
-    #expect(hypot(Double(onTrend.x) - 80, Double(onTrend.y) - 140) > Chart.selectedHandlePt)
-    #expect(hypot(Double(onTrend.x) - 300, Double(onTrend.y) - 420) > Chart.selectedHandlePt)
+    #expect(hypot(Double(onTrend.x) - 80, Double(onTrend.y) - 140) > ChartGesture.selectedHandlePt)
+    #expect(hypot(Double(onTrend.x) - 300, Double(onTrend.y) - 420) > ChartGesture.selectedHandlePt)
     drawTap(v, at: onTrend, ms: 10_000)
     #expect(v.selectedDrawingID == trend.id, "选中的矩形那块填充不许吞掉压在它里面的线（A-02）")
 

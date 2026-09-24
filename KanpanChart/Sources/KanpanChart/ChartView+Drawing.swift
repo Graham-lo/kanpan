@@ -114,18 +114,18 @@ public enum DrawingFeedback: Sendable, Equatable {
 /// §10.8 的原文写的是 200ms，那是照着鼠标的 click 抄来的数。手指不是鼠标——落笔要先
 /// 瞄准，指腹压上去、看一眼落点再抬起，200ms 根本来不及，实测一大半「点」会被判成
 /// 没动够距离的拖动而整个丢掉。所以**这里以 500ms 为准，不改回 200ms**（第五轮审查
-/// A.4 的裁决）；真正把「点」和「拖」分开的是位移那一半，它复用 `Chart.panSlopPt`，
-/// 和图表手势是同一个 4pt。长按（`Chart.longPressMs` = 400ms）走的是另一条路，
+/// A.4 的裁决）；真正把「点」和「拖」分开的是位移那一半，它复用 `ChartGesture.panSlopPt`，
+/// 和图表手势是同一个 4pt。长按（`ChartGesture.longPressMs` = 400ms）走的是另一条路，
 /// 手指一旦停住到 400ms 就被十字线接走，不会跟这 500ms 抢。
 private let drawTapMs: Double = 500
 
-/// 「按下即第一点」判「拖过了」的位移门槛：`Chart.panSlopPt`（4pt）的两倍。
+/// 「按下即第一点」判「拖过了」的位移门槛：`ChartGesture.panSlopPt`（4pt）的两倍。
 ///
 /// 预览和落地共用这一个数——覆盖层拿它决定什么时候把临时起点顶上来、开始画线，
 /// 抬手拿它决定这一笔是「一整条线」还是「轻点落第一点」。两边各写各的就会出现
 /// 「拖动时看见了线、抬手却只落下一个点」。`DrawingSession.moved` 是这一程位移的
 /// **历史最大值**，所以越过一次之后手指收回原点附近也不会把预览抽走。
-let drawDragSlopPt = Chart.panSlopPt * 2
+let drawDragSlopPt = ChartGesture.panSlopPt * 2
 
 extension ChartView {
   /// 这张图的画线会话。第一次问的时候建。
@@ -710,7 +710,7 @@ extension ChartView {
   ///
   /// 三遍，一遍比一遍松，**整层比完才往下一层**：
   ///
-  /// ① **手柄**。选中那条给 `Chart.selectedHandlePt`（22pt）的手指靶，别的按
+  /// ① **手柄**。选中那条给 `ChartGesture.selectedHandlePt`（22pt）的手指靶，别的按
   ///    `Chart.hitHandlePt`（9.5pt）。同一遍里比的是真实距离，所以两条线的端点凑在一起时
   ///    谁近点中谁；选中项在同样够得着的时候优先——那是用户正在编辑的那组端点。
   /// ② **看得见的墨**：线体与文字。比的还是真实距离，一样近就让上面那条赢。
@@ -729,7 +729,7 @@ extension ChartView {
     var handle: (hit: DrawHit, distance: Double, selected: Bool)?
     for shape in shapes {
       let selected = shape.item.id == drawing.selected
-      let radius = selected ? Chart.selectedHandlePt : Chart.hitHandlePt
+      let radius = selected ? ChartGesture.selectedHandlePt : Chart.hitHandlePt
       guard let near = shape.geometry.nearestHandle(x: x, y: y, radius: radius) else { continue }
       let better = handle.map { old in
         old.selected == selected ? near.distance < old.distance : selected
@@ -978,7 +978,7 @@ extension ChartView {
     let d = drawing
     let now = Self.drawMs(event)
     let isTap =
-      !d.navigating && !cancelled && gesture.mode == .pan && gesture.moved < Chart.panSlopPt
+      !d.navigating && !cancelled && gesture.mode == .pan && gesture.moved < ChartGesture.panSlopPt
       // 捏合降下来的那一轮不算轻点，和图表手势自己那条 A-03 是同一个道理：
       // `reset()` 刚把 `moved` 清零，原地抬起剩下那根看上去和轻点一模一样。
       && !gesture.cameFromPinch

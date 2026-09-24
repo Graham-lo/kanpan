@@ -173,7 +173,7 @@ extension ChartView {
     let dx = Double(q.x - gesture.startPoint.x)
     let dy = Double(q.y - gesture.startPoint.y)
     gesture.moved = max(gesture.moved, (dx * dx + dy * dy).squareRoot())
-    if gesture.moved > Chart.longPressSlopPt { gesture.cancelLongPress() }
+    if gesture.moved > ChartGesture.longPressSlopPt { gesture.cancelLongPress() }
 
     switch mode {
     case .pinch, .autoFit, .subAxis: break
@@ -183,7 +183,7 @@ extension ChartView {
     case .crosshair: moveCrosshair(to: q, L: L)
     case .pan:
       do {
-        guard gesture.moved >= Chart.panSlopPt else { break }
+        guard gesture.moved >= ChartGesture.panSlopPt else { break }
         if !gesture.directionChosen {
           gesture.directionChosen = true
           if abs(dy) > 1.5 * abs(dx) {
@@ -294,20 +294,20 @@ extension ChartView {
     if wasLongPress { finishCrosshairSelection(); return }
     // 捏合降下来的那一轮不判轻点：`reset()` 刚把 `moved` 清零，原地抬手看上去和轻点
     // 一模一样，但用户的意思是「结束这次缩放」，不是「点一下图」（A-03）。
-    if (mode == .pan || mode == .crosshair), moved < Chart.panSlopPt * 2, !cameFromPinch {
+    if (mode == .pan || mode == .crosshair), moved < ChartGesture.panSlopPt * 2, !cameFromPinch {
       handleTap(at: now, previous: plotTapCandidate)
       return
     }
     if mode == .autoFit {
       // 手指没跑出钮才算数，跟系统按钮一个规矩。
-      if moved < Chart.panSlopPt * 2, let L = chartLayout,
+      if moved < ChartGesture.panSlopPt * 2, let L = chartLayout,
         L.hitsAutoFit(x: Double(endPoint.x), y: Double(endPoint.y))
       {
         resetPriceScale()
       }
       return
     }
-    if mode == .subAxis, moved < Chart.panSlopPt * 2 {
+    if mode == .subAxis, moved < ChartGesture.panSlopPt * 2 {
       if let layout = chartLayout, var s = state, s.options.allowSubInversion,
          let id = layout.panes.first(where: { $0.indicator != nil && endPoint.y >= $0.y && endPoint.y <= $0.y + $0.h })?.indicator {
         if s.subInverted.contains(id) { s.subInverted.remove(id) } else { s.subInverted.insert(id) }
@@ -315,7 +315,7 @@ extension ChartView {
       }
       return
     }
-    if mode == .axisPrice, moved < Chart.panSlopPt * 2 {
+    if mode == .axisPrice, moved < ChartGesture.panSlopPt * 2 {
       handleAxisTap(at: now, point: endPoint, previous: axisTapCandidate)
       return
     }
@@ -352,7 +352,7 @@ extension ChartView {
   }
 
   private func dragPriceAxis(dy: Double, L: Layout) {
-    guard var s = state, gesture.moved >= Chart.panSlopPt else { return }
+    guard var s = state, gesture.moved >= ChartGesture.panSlopPt else { return }
     if !gesture.axisStarted {
       gesture.axisStarted = true
       gesture.startPoint.y += dy
@@ -390,7 +390,7 @@ extension ChartView {
     guard gesture.pinchD0 > 0 else { gesture.pinchD0 = d; return }
     // 两指太近的那几帧只当噪声，但基准要跟着它走：不跟的话，等间距一跨过门槛，
     // d/d0 会把这一路攒下来的比例一次性甩出去，图会「嘭」地跳一下。
-    guard d >= Chart.minPinchSpanPt else {
+    guard d >= ChartGesture.minPinchSpanPt else {
       gesture.pinchD0 = d; gesture.pinchMid0 = m; gesture.pinchActive = false
       return
     }
@@ -399,7 +399,7 @@ extension ChartView {
     // 于是「两指按住图挪」纹丝不动，非得先捏一下改了倍数才肯跟着走（A-06）。
     // 死区期间 `pinchD0` 不跟着每一帧走：跟了就永远越不过门槛（慢慢撑开等于没撑）。
     if !gesture.pinchActive {
-      guard abs(d - gesture.pinchD0) > 2 * Chart.panSlopPt else {
+      guard abs(d - gesture.pinchD0) > 2 * ChartGesture.panSlopPt else {
         panPinch(mid: m, L: L)
         return
       }
@@ -465,7 +465,7 @@ extension ChartView {
     let work = DispatchWorkItem { [weak self] in
       guard let self, let L = self.chartLayout else { return }
       self.gesture.longPress = nil
-      guard self.gesture.moved <= Chart.longPressSlopPt else { return }
+      guard self.gesture.moved <= ChartGesture.longPressSlopPt else { return }
       self.gesture.longPressActivated = true
       self.gesture.mode = .crosshair
       // 十字线一出来就把坐标钉住：接下来这段跟手的移动里，新 K 线到货也好、
@@ -476,7 +476,7 @@ extension ChartView {
     }
     gesture.longPress = work
     DispatchQueue.main.asyncAfter(
-      deadline: .now() + Chart.longPressMs / 1000, execute: work)
+      deadline: .now() + ChartGesture.longPressMs / 1000, execute: work)
   }
 
   /// 把十字线摆到手指底下。存的是时间与价格，不是像素（见 `Crosshair`）。

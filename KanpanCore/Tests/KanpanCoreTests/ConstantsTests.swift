@@ -4,7 +4,6 @@ import Testing
   @Test func defaults() {
     #expect(AICoinBehavior.initialSpacing == 4)
     #expect(Chart.minBarSpacing == 1.6 && Chart.maxBarSpacing == 40)
-    #expect(Chart.longPressMs == 400)
     #expect(AICoinBehavior.rightInset == 0)
     #expect(Chart.hitHandlePt == Chart.hitLinePt)
   }

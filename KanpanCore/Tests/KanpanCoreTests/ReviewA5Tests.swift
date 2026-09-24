@@ -12,6 +12,9 @@ import Testing
 struct ReviewA5Tests {
   // ---------------------------------------------------------------- 场地
 
+  /// 选中手柄的手指靶（pt）。真值是 KanpanChart 的 `ChartGesture.selectedHandlePt`，
+  /// 那边 `ChartGestureConstantsTests` 钉着它仍是 22；这里只拿同一个数喂纯几何。
+  static let fingerTarget = 22.0
   static let plotW = 390.0
   static let paneY = 40.0
   static let paneH = 420.0
@@ -51,9 +54,9 @@ struct ReviewA5Tests {
                                 measure: Self.measure)
     let box = try #require(placed.first?.box, "文字标注排不出任何一块字")
     // 字块本身宽出手柄的命中半径一大截，正是 A-01 报的那件事：从前只有锚点周围 9.5pt 有反应。
-    #expect(box.right - box.left > Chart.selectedHandlePt * 2)
+    #expect(box.right - box.left > Self.fingerTarget * 2)
     let mid = DrawPixel((box.left + box.right) / 2, (box.top + box.bottom) / 2)
-    #expect(hypot(mid.x - 120, mid.y - 300) > Chart.selectedHandlePt,
+    #expect(hypot(mid.x - 120, mid.y - 300) > Self.fingerTarget,
             "字中段离锚点不到 22pt，这条用例就证明不了什么")
     #expect(g.inkDistance(x: mid.x, y: mid.y) == 0, "点字中段没命中")
     #expect(g.hit(x: mid.x, y: mid.y) == .body, "点字中段该算线体，不是手柄")
@@ -85,7 +88,7 @@ struct ReviewA5Tests {
     let lg = drawingGeometry(line, bounds: Self.bounds, xOf: Self.x, yOf: Self.y, decimals: 2)
     // 矩形被选中时手柄靶放大到 22pt，但**只放大手柄**：线体和填充照旧。
     let q = DrawPixel(200, 300)
-    #expect(rg.nearestHandle(x: q.x, y: q.y, radius: Chart.selectedHandlePt) == nil,
+    #expect(rg.nearestHandle(x: q.x, y: q.y, radius: Self.fingerTarget) == nil,
             "线身正中离矩形四角远得很，不该被当成手柄")
     #expect(rg.inkDistance(x: q.x, y: q.y) == nil, "矩形的边离这儿很远，不该算线体")
     #expect(rg.hitsFill(x: q.x, y: q.y), "矩形的填充确实盖住了这一点")
@@ -98,12 +101,12 @@ struct ReviewA5Tests {
   func case2_handleStillWins() throws {
     let rect = Drawing(kind: .rectangle, a: Self.point(x: 60, y: 120), b: Self.point(x: 330, y: 400))
     let g = drawingGeometry(rect, bounds: Self.bounds, xOf: Self.x, yOf: Self.y, decimals: 2)
-    let near = try #require(g.nearestHandle(x: 62, y: 122, radius: Chart.selectedHandlePt),
+    let near = try #require(g.nearestHandle(x: 62, y: 122, radius: Self.fingerTarget),
                             "点在角上没抓到手柄")
-    #expect(g.hit(x: 62, y: 122, handleRadius: Chart.selectedHandlePt) == .anchor(near.index))
+    #expect(g.hit(x: 62, y: 122, handleRadius: Self.fingerTarget) == .anchor(near.index))
     // 两个角都够得着时比的是真实距离，不是谁先被遍历到。
     let mid = g.nearestHandle(x: Self.x(rect.a.t) + 1, y: Self.y(rect.a.p) + 1,
-                              radius: Chart.selectedHandlePt)
+                              radius: Self.fingerTarget)
     #expect(mid?.index == 0)
   }
 
