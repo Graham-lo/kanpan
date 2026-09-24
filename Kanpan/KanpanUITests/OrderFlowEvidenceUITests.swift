@@ -118,7 +118,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.intervalChart].exists })
   }
 
-  // ------------------------------------------------------------ 1. 币安直连：四套配色 + 十字线
+  // ------------------------------------------------------------ 1. 币安直连：六套配色 + 十字线
 
   func testBinanceDirectSkinsAndCrosshair() {
     executionTimeAllowance = 2700
@@ -127,6 +127,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     guard let symbol = waitForBandsRotating("币安直连", symbols: ["BTCUSDT", "ETHUSDT"]) else { return }
     print("取证|币安直连|拍摄品种 \(symbol)")
     for (skin, mode, title) in [("sage", "浅色", "青苔浅"), ("sage", "深色", "青苔深"),
+                                ("terra", "浅色", "陶土浅"), ("terra", "深色", "陶土深"),
                                 ("classic", "浅色", "经典浅"), ("classic", "深色", "经典深")] {
       pickSkin(skin, mode)
       // 已结束的单也留在图上，换完皮肤回来大单照样在；保险起见仍等它出现才拍，不拍空图。
@@ -329,20 +330,24 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
   /// 开着主力订单流、手不碰屏幕放 10 秒：底图（plot 层）真画了几次、订单流快照换了几次。
   /// 读数来自 `chart.canvas` 诊断里的 `renderCounts` / `orderFlowAdoptions`（DEBUG 才有），前后相减。
   /// 本身不判数，改 `sameContent` 前后各跑一遍对比；蜡烛跟着成交推进也会画 plot，所以两个数都报。
+  /// `orderFlowPlotDirties` 是其中由订单流快照引起的次数，`reasons` 拆开是哪一种变化（加单、高度格、透明度档、状态）。
   func testIdleRedrawTenSeconds() {
     executionTimeAllowance = 900
     XCTAssertTrue(waitForLiveChart(), "币安直连没出图：\(chartInfo())")
     turnOnOrderFlow()
     guard waitForBandsRotating("静置重画", symbols: ["BTCUSDT", "ETHUSDT"]) != nil else { return }
     _ = waitUntil(timeout: 5, poll: 1) { false }
-    func counts() -> (plot: Int, cross: Int, live: Int, frames: Int) {
+    func counts() -> (plot: Int, cross: Int, live: Int, frames: Int, dirties: Int) {
       let info = chartInfo(), r = info["renderCounts"] as? [String: Int] ?? [:]
-      return (r["plot"] ?? 0, r["cross"] ?? 0, r["live"] ?? 0, info["orderFlowAdoptions"] as? Int ?? 0)
+      return (r["plot"] ?? 0, r["cross"] ?? 0, r["live"] ?? 0, info["orderFlowAdoptions"] as? Int ?? 0,
+              info["orderFlowPlotDirties"] as? Int ?? 0)
     }
-    let a = counts()
+    let a = counts(), reasonsA = chartInfo()["orderFlowDirtyReasons"] as? [String: Int] ?? [:]
     _ = waitUntil(timeout: 10, poll: 10) { false }
-    let b = counts()
-    print("取证|静置10秒|plot=\(b.plot - a.plot)|cross=\(b.cross - a.cross)|live=\(b.live - a.live)|orderFlowFrames=\(b.frames - a.frames)|orders=\(chartInfo()["orderFlowOrders"] ?? 0)")
+    let b = counts(), reasonsB = chartInfo()["orderFlowDirtyReasons"] as? [String: Int] ?? [:]
+    // 底图被订单流弄脏的那几次各因为什么（同一次可以有好几个原因），只算这 10 秒里的。
+    let reasons = reasonsB.compactMap { k, v in v - (reasonsA[k] ?? 0) > 0 ? "\(k)=\(v - (reasonsA[k] ?? 0))" : nil }.sorted()
+    print("取证|静置10秒|plot=\(b.plot - a.plot)|cross=\(b.cross - a.cross)|live=\(b.live - a.live)|orderFlowFrames=\(b.frames - a.frames)|orderFlowPlotDirties=\(b.dirties - a.dirties)|reasons=\(reasons.joined(separator: ","))|orders=\(chartInfo()["orderFlowOrders"] ?? 0)")
   }
 
   // ------------------------------------------------------------ 6. 首屏实测的档案

@@ -258,6 +258,8 @@ public final class ChartView: UIView {
           },
           "orderFlowHovered": orderFlow?.hovered ?? false,
           "orderFlowAdoptions": orderFlowAdoptions,
+          "orderFlowPlotDirties": orderFlowPlotDirties,
+          "orderFlowDirtyReasons": orderFlowDirtyReasons,
           "renderCounts": renderCounts,
           "panes": layout.panes.dropFirst().map { ["id": $0.indicator?.rawValue ?? "", "y": $0.y, "h": $0.h] as [String: Any] }, "subs": s.subs.map(\.rawValue),
           // 画线横屏要的是一张没有任何指标参与定标的原始 K 线，用例得能看见主图叠加层。
@@ -466,7 +468,13 @@ public final class ChartView: UIView {
     setNeedsRedraw(parts)
     #if DEBUG
     onAdoptedForProbe?(!parts.isEmpty)
-    if old?.orderFlow != s.orderFlow { orderFlowAdoptions += 1 }
+    if old?.orderFlow != s.orderFlow {
+      orderFlowAdoptions += 1
+      if !Self.samePixels(old?.orderFlow, s.orderFlow) {
+        orderFlowPlotDirties += 1
+        for r in Self.dirtyReasons(old?.orderFlow, s.orderFlow) { orderFlowDirtyReasons[r, default: 0] += 1 }
+      }
+    }
     #endif
     flashIfTicked(from: old, to: s)
     if !layers.isEmpty { onStateChanged?(s, layers) }
@@ -694,6 +702,29 @@ public final class ChartView: UIView {
   private(set) var renderCounts: [String: Int] = [:]
   /// 主力订单流快照换了几次（新快照和上一份不相等才算），诊断 JSON 的 `orderFlowAdoptions`。
   private(set) var orderFlowAdoptions = 0
+  /// 其中画出来真的变了、把底图弄脏的有几次（其余只脏 cross 层），诊断 JSON 的 `orderFlowPlotDirties`。
+  private(set) var orderFlowPlotDirties = 0
+  /// 底图被弄脏的那几次各是因为什么（单数变、某单高度格变、透明度档变、状态变……），取证用。
+  private(set) var orderFlowDirtyReasons: [String: Int] = [:]
+  static func dirtyReasons(_ a: OrderFlowSnapshot?, _ b: OrderFlowSnapshot?) -> Set<String> {
+    guard let a, let b else { return ["nil"] }
+    var out: Set<String> = []
+    if a.phase != b.phase || a.symbol != b.symbol { out.insert("phase") }
+    if a.thresholds != b.thresholds || a.defaults != b.defaults { out.insert("thresholds") }
+    if a.venues != b.venues { out.insert("venues") }
+    let ka = Dictionary(a.orders.map { ($0.id, $0.pixelKey) }, uniquingKeysWith: { x, _ in x })
+    let kb = Dictionary(b.orders.map { ($0.id, $0.pixelKey) }, uniquingKeysWith: { x, _ in x })
+    if Set(ka.keys) != Set(kb.keys) { out.insert(Set(kb.keys).subtracting(ka.keys).isEmpty ? "removed" : "added") }
+    var heights = 0
+    for (id, x) in ka { guard let y = kb[id] else { continue }
+      if x.heightUnits != y.heightUnits { heights += 1 }
+      if x.fillStep != y.fillStep { out.insert("fill") }
+      if x.status != y.status || x.endMs != y.endMs { out.insert("status") }
+    }
+    if heights > 0 { out.insert("height"); out.insert(heights >= 5 ? "height≥5" : "height×\(heights)") }
+    if out.isEmpty && a.orders.map(\.id) != b.orders.map(\.id) { out.insert("order") }
+    return out
+  }
   #endif
 }
 
