@@ -11,7 +11,8 @@ import UIKit
 // 同一份重负载 state（3 副图 + 主副图都藏了输出），每种交互各走 100 步，每步按
 // `ChartView` 的三层各画一帧，数「真的算了一遍」的次数。只打印不断言——这张表要在
 // 改之前的代码上也能原样跑一遍，前后两份读数对着看。断言在 `CrosshairWorkTests`。
-#if DEBUG
+// 不圈 DEBUG：它不断言，Release 下计数恒为 0 只是打印一张零表，不会假绿也不会红
+// （Release 测试名册只收「整体关掉」有理由的套件，见 `ReleaseTestRosterTests`）。
 @MainActor @Suite(.serialized) struct GeometryWorkLedgerTests {
   let size = CGSize(width: 393, height: 780)
 
@@ -72,4 +73,3 @@ import UIKit
     _ = run("skin") { s, k in s.dark = k % 2 == 0 }
   }
 }
-#endif
