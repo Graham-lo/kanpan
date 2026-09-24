@@ -321,8 +321,18 @@ private final class HorizontalPanRecognizer: UIPanGestureRecognizer, UIGestureRe
     delegate = self
   }
 
+  /// 只和表的滚动那颗并存（理由见 `init`）。行上别的手势——整行那颗 `Button` 的点按——
+  /// **不并存**：横划一旦认下，点按就被挤掉。
+  ///
+  /// 2026-09-24 自选页撤了右划那颗砖之后复现出来的：原来这儿对谁都放行，于是在行上
+  /// 往右划三四十点就松手，横划什么都没做（那一边没挂东西），整行按钮却把这一下当成
+  /// 一次点，直接进了图表——「右划不响应」变成了「右划进图」（用例
+  /// `testFavoritesRightSwipeDoesNothing`，起手 x=400 往右推 38 点，改前必进图）。
+  /// 左划和它是同一条路，同一条用例里也短划一下看页面没跳走。
   func gestureRecognizer(_ g: UIGestureRecognizer,
-                         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+                         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+    other.view is UIScrollView
+  }
 
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
     super.touchesBegan(touches, with: event)
