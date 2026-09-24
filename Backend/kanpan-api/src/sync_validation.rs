@@ -37,6 +37,21 @@ fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()
 fn integers(v:&Value,count:usize,lo:i64,hi:i64)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_i64().is_some_and(|n|n>=lo&&n<=hi)))}
 fn names(v:&Value,count:usize,names:&[&str])->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(|s|names.contains(&s))))}
 fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)}
+/// 主力订单流改过的门槛 / 步长：`{ base: { spot?, usdtPerp?, coinPerp?, delivery?, step? } }`。
+/// base 和客户端 `OrderFlowBase.isValid` 同一条规矩（`^[A-Z0-9]{1,20}$`），最多 200 只
+/// （`Prefs.maxOrderFlowOverrides`）；门槛 1e3…1e9 美元、步长 1e-8…1e6，和
+/// `OrderFlowOverride.thresholdRange / stepRange` 同一组数。空的一只（`{}`）客户端从来不发——
+/// 一项不剩就是恢复默认，那只 base 直接从表里拿掉。
+fn order_flow_overrides(v:&Value)->bool {
+ v.as_object().is_some_and(|all|all.len()<=200&&all.iter().all(|(base,o)|{
+  !base.is_empty()&&base.len()<=20&&base.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit())
+  && o.as_object().is_some_and(|o|!o.is_empty()&&o.iter().all(|(k,v)|match k.as_str() {
+   "spot"|"usdtPerp"|"coinPerp"|"delivery"=>number(v,1e3,1e9),
+   "step"=>number(v,1e-8,1e6),
+   _=>false,
+  }))
+ }))
+}
 fn one_of(v:&Value,all:&[&str])->bool {v.as_str().is_some_and(|s|all.contains(&s))}
 fn symbol(v:&Value)->bool {
  if v.as_str().is_some_and(|s|s.len()<=40 && s.strip_suffix("-USD").is_some_and(|base| !base.is_empty() && base.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))) {return true}
@@ -127,6 +142,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
    // 自选波动提醒的幅度（百分数），和客户端 `WatchMove.thresholdRange` 同一个区间。
    "watchMoveThreshold"=>number(v,0.1,50.0),
+   "orderFlowOverrides"=>order_flow_overrides(v),
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
    // A tab label on the drawing panel, not an enum with any server meaning; the client
@@ -139,7 +155,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // `_=>false` fallthrough rejects the whole operation with a 400.
    "favoritesGroup"=>string(v,128),
    "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
-    |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"=>v.is_boolean(),
+    |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
+    |"orderFlowSpot"|"orderFlowContract"|"orderFlowFilledBid"|"orderFlowFilledAsk"|"orderFlowCancelledBid"|"orderFlowCancelledAsk"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }
  }

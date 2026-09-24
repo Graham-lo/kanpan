@@ -117,6 +117,10 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "alertSound",
  // 自选五分钟波动提醒（P3.1）：开关 + 幅度（百分数）。服务端 `watch_move.rs` 读这两个。
  "watchMoveAlert","watchMoveThreshold",
+ // 主力订单流（2026-09-24 逐单模型）：用户改过门槛 / 步长的那几只 base（整张表一个键），
+ // 以及六个显示开关（现货 / 合约 / 已成交买卖 / 已撤销买卖）。服务端只校验、不读。
+ "orderFlowOverrides",
+ "orderFlowSpot","orderFlowContract","orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
 ];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
@@ -504,7 +508,7 @@ mod tests {
    json!(true),json!(""),json!(0.5),json!(1),json!(4.0),json!([5]),
    json!(["MA"]),json!(["VOL"]),json!(["1m"]),json!(["BTCUSDT"]),json!(["binance/usd_m/BTCUSDT"]),json!([30,70]),
    json!("1m"),json!("sage"),json!("direct"),json!("custom"),json!("crypto"),json!("today"),
-   json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),
+   json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),json!({}),
   ];
   let accepts=|key:&str|{
    [key.to_string(),format!("{key}/MA"),format!("{key}/MA/0")].iter()
@@ -545,6 +549,25 @@ mod tests {
   }
  }
  /// 自选波动提醒的两项设置：过白名单、过值规则、真的合并进去；越界的一律拒。
+ #[test] fn order_flow_settings_are_accepted_and_bounded() {
+  use crate::sync_validation::field;
+  for key in ["orderFlowSpot","orderFlowContract","orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk"] {
+   assert!(SETTINGS_FIELDS.contains(&key));
+   assert!(field("settings",key,&json!(false))&&!field("settings",key,&json!(0))&&!field("settings",key,&json!(null)),"{key}");
+  }
+  assert!(SETTINGS_FIELDS.contains(&"orderFlowOverrides"));
+  for good in [json!({}),json!({"BTC":{"spot":2000000.0,"step":50}}),json!({"PEPE":{"usdtPerp":1000}}),
+               json!({"XAU":{"usdtPerp":1e9,"step":0.00000001},"ETH":{"coinPerp":3e6,"delivery":4e6}})] {
+   assert!(field("settings","orderFlowOverrides",&good),"{good}");
+  }
+  let many:serde_json::Map<String,Value>=(0..201).map(|i|(format!("C{i}"),json!({"spot":1e6}))).collect();
+  for bad in [json!(null),json!([]),json!({"btc":{"spot":1e6}}),json!({"":{"spot":1e6}}),json!({"BTC-USDT":{"spot":1e6}}),
+              json!({"ABCDEFGHIJKLMNOPQRSTU":{"spot":1e6}}),json!({"BTC":{}}),json!({"BTC":{"spot":999}}),
+              json!({"BTC":{"spot":1.1e9}}),json!({"BTC":{"step":0}}),json!({"BTC":{"step":1e7}}),
+              json!({"BTC":{"spot":"1000000"}}),json!({"BTC":{"swap":1e6}}),json!({"BTC":1e6}),Value::Object(many)] {
+   assert!(!field("settings","orderFlowOverrides",&bad),"{bad}");
+  }
+ }
  #[test] fn watch_move_settings_are_accepted_and_bounded() {
   for (key,value) in [("watchMoveAlert",json!(true)),("watchMoveAlert",json!(false)),("watchMoveThreshold",json!(1.5)),("watchMoveThreshold",json!(0.1)),("watchMoveThreshold",json!(50))] {
    let operation=op("settings",&[(key,value.clone())]);
