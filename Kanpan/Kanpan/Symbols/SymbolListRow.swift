@@ -69,17 +69,23 @@ struct ChangePill: View {
 
   var body: some View {
     let finite = value.isFinite
-    // 方向按写出来的那个数判，不按原始值：−0.004% 写出来是「+0.00%」，底色也得跟着算涨，
-    // 否则一颗绿底上写着「+」（红涨绿跌时）会被读成「涨」和「跌」各说各的。
+    // 方向按写出来的那个数判，不按原始值：−0.004% 写出来是「+0.00%」，颜色也得跟着算涨，
+    // 否则一颗绿字写着「+」（红涨绿跌时）会被读成「涨」和「跌」各说各的。
     let up = !(text.hasPrefix("\u{2212}") || text.hasPrefix("-"))
-    let tint = finite ? (up ? theme.up : theme.down) : SymbolRowInk.rule(theme)
+    let tint = finite ? (up ? theme.up : theme.down) : SymbolRowInk.faint(theme)
+    let shape = RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
+    // 淡底 + 涨跌色字（2026-09-25 用户否掉实心红绿底：「之前的淡红淡绿其实就很好」）：
+    // 底 14% 的涨跌色、0.5pt 30% 的描边，字就是涨跌色本身；横排定宽照旧。
     Text(finite ? text : SymbolRowText.missing)
       .font(TypeScale.controlOn).monospacedDigit()
       .lineLimit(1).minimumScaleFactor(0.8)
-      .foregroundStyle(finite ? theme.badgeInk : (pending ? .clear : SymbolRowInk.faint(theme)))
+      .foregroundStyle(finite ? tint : (pending ? .clear : tint))
       .padding(.horizontal, Space.xs)
       .frame(width: width, height: height)
-      .background(tint, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
+      .background {
+        shape.fill(finite ? tint.opacity(0.14) : SymbolRowInk.rule(theme))
+          .overlay(shape.strokeBorder(finite ? tint.opacity(0.3) : .clear, lineWidth: 0.5))
+      }
       .accessibilityIdentifier(id ?? "")
   }
 }

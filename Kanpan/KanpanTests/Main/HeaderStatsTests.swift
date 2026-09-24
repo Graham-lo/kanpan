@@ -4,7 +4,7 @@ import KanpanCore
 import KanpanNetwork
 @testable import Kanpan
 
-// 顶栏右侧六格（仓 / 额 · 市值 / 费率 · 结算 / 振幅）的取值规则。除了「仓」以外都会**过期**，
+// 顶栏右侧五格（仓 / 额 · 市值 / 费率 · 结算）的取值规则。除了「仓」以外都会**过期**，
 // 而过期的数和真的数在屏上长得一模一样——只能靠用例守。
 
 @Suite("B-T10 / A-T20 顶栏六格只显示能负责的数")
@@ -141,26 +141,6 @@ struct HeaderStatsTests {
     // 刚刚结算完（10 秒前），下一帧还没到：写的是下一期，不是一个已经过去的时刻。
     let justPassed = Int64((now.timeIntervalSince1970 - 10) * 1000)
     #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: justPassed, now: now) == "7时59分")
-  }
-
-  // ---------------------------------------------------------------- 振幅
-
-  @Test("振幅按最低价算 24h 的高低差")
-  func amplitudeUsesLowAsDenominator() {
-    #expect(HeaderStats.amplitudeText(high: 110, low: 100, fresh: true) == "10.00%")
-    #expect(HeaderStats.amplitudeText(high: 100, low: 100, fresh: true) == "0.00%")
-    #expect(HeaderStats.amplitudeText(high: 0.000_012, low: 0.000_010, fresh: true) == "20.00%")
-  }
-
-  @Test("高低价缺一个、或者价已经不新鲜，振幅就是 --")
-  func amplitudeStaysDashesWithoutTrustworthyData() {
-    #expect(HeaderStats.amplitudeText(high: 110, low: 100, fresh: false) == nil)
-    #expect(HeaderStats.amplitudeText(high: nil, low: 100, fresh: true) == nil)
-    #expect(HeaderStats.amplitudeText(high: 110, low: nil, fresh: true) == nil)
-    #expect(HeaderStats.amplitudeText(high: .nan, low: 100, fresh: true) == nil)
-    #expect(HeaderStats.amplitudeText(high: 110, low: 0, fresh: true) == nil)
-    // 高比低还小只可能是拼错的两帧，宁可空着也不给一个负数。
-    #expect(HeaderStats.amplitudeText(high: 90, low: 100, fresh: true) == nil)
   }
 
   /// 下架 / 交割的合约没有「现在的价」，顶栏不给它实时的样子（审查 B-06）。

@@ -1,9 +1,9 @@
 import Foundation
 import KanpanCore
 
-/// 顶栏右侧六格（仓 / 额 · 市值 / 费率 · 结算 / 振幅）的**取值规则**。
+/// 顶栏右侧五格（仓 / 额 · 市值 / 费率 · 结算；振幅 2026-09-25 去掉）的**取值规则**。
 ///
-/// 单独拆一份是因为这六格的规则全是「什么时候该显示 `—`」，而它们出错的样子
+/// 单独拆一份是因为这几格的规则全是「什么时候该显示 `—`」，而它们出错的样子
 /// 用户一眼看不出来（一个上一条线路留下的成交额和一个真的成交额长得一模一样）。
 /// 规则留在 SwiftUI 的 `body` 里没法用例守，所以这儿只做纯函数，`PriceRow`
 /// 只负责把返回的字串画出来（`nil` → `—`，不解释、不弹提示）。
@@ -78,18 +78,6 @@ enum HeaderStats {
 
   /// 费率帧的展示寿命。资金费率每小时结算一次，帧比一个结算周期还旧就等于没有。
   static let fundingMaxAge: TimeInterval = 3600
-
-  /// 「振幅」= 24h 最高与最低之间隔了多远，按最低价算：`(高 − 低) / 低`。
-  ///
-  /// 分母用最低价而不是开盘价：这一格回答的是「今天这根柱子有多长」，
-  /// 从谷底看涨到顶要多少，和开在哪儿无关（`Ticker.amplitude24h` 那支是
-  /// 以开盘价为分母的另一口径，给别处用，两边不混）。
-  /// 高低价和价来自同一帧，价旧了这一格也一起 `—`。
-  static func amplitudeText(high: Double?, low: Double?, fresh: Bool) -> String? {
-    guard fresh, let high, let low, high.isFinite, low.isFinite,
-          low > 0, high >= low else { return nil }
-    return toFixed((high - low) / low * 100, 2) + "%"
-  }
 
   /// 帧是不是已经过了展示寿命。`frameMs <= 0`（从没收到过帧）不算过期——
   /// 那时候本来就没有值可显示，另一条 `rate == nil` 的门会拦住它。

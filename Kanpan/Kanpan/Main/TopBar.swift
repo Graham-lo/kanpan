@@ -210,7 +210,7 @@ struct PriceRow: View {
   /// 灰显，不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
   /// 它自己就亮回来（§2B #54）。
   ///
-  /// 除了灰显，它还会把「额 / 市值 / 费率 / 振幅」几格压成 `—`（审查 B.8）：那几个数
+  /// 除了灰显，它还会把「额 / 市值 / 费率」几格压成 `—`（审查 B.8）：那几个数
   /// 和价来自同一帧，价已经判定为旧的，它们摆在那儿只会让人当成现在的数。
   var stale = false
 
@@ -282,13 +282,9 @@ struct PriceRow: View {
     HeaderStats.fundingText(rate: fundingRate, fresh: !stale)
   }
 
-  /// 「振幅」= 24h (高 − 低) / 低。高低价和价来自同一帧，价旧了它一起 `—`。
-  private var amplitudeText: String? {
-    HeaderStats.amplitudeText(high: ticker?.high, low: ticker?.low, fresh: !stale)
-  }
-
   /// 每列按最宽的实值分配；间距固定，不缩字、不截字、不换行。
   /// 列距 16、标签↔值 8、行距 2：三行总高约 47pt（原来 53），不向图表借高度。
+  /// 五格：左列仓 / 市值 / 结算，右列额 / 费率（振幅 2026-09-25 去掉）。
   private var stats: some View {
     HStack(alignment: .top, spacing: Space.l) {
       statColumn {
@@ -299,7 +295,8 @@ struct PriceRow: View {
       statColumn {
         statRow("额", turnoverText, id: "top.turnover")
         statRow("费率", fundingText, id: "top.funding", tint: frTint)
-        statRow("振幅", amplitudeText, id: "top.amplitude")
+        // 「振幅」那格 2026-09-25 用户拿掉了（「把振幅去掉」）：右列只剩额 / 费率两行，
+        // 左列仍是仓 / 市值 / 结算三行，不补别的数进来凑格。
       }
     }
     .lineLimit(1)
