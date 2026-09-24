@@ -115,7 +115,7 @@ struct SectorSymbolList: View {
     HStack(spacing: Space.s) {
       SectorBackButton(skin: skin, id: "sector.list.back", action: onBack)
         // 返回键的点击区比圆盘大，左半截伸进页边距里，圆盘仍贴着页面左边那条竖线。
-        .padding(.leading, -(Hit.min - ControlMetrics.iconDisc) / 2)
+        .padding(.leading, -SectorBackButton.overhang)
       if let art = SectorIcons.art(stat.id) {
         SectorIconView(art: art, size: 38)
       }

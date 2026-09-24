@@ -603,16 +603,23 @@ struct SectorBackButton: View {
   let id: String
   let action: () -> Void
 
+  /// 命中区 44 比圆盘 32 多出来的那一圈的一半。调用处拿它把按钮往左收，圆盘的左缘就落在
+  /// 页面左边距（`pageHorizontalInset`）那条竖线上，点按区的左半截伸进页边距里。
+  static let overhang = (Hit.min - ControlMetrics.iconDisc) / 2
+
+  /// 和行情页顶栏那颗返回（`TopBar.backButton`）同一副：32 圆盘、箭头 16 semibold
+  /// （`TypeScale.heading`，UI 审查 §4.3 #12）、命中区 44（UI 整改 P1c）。
+  /// 圆盘是定尺寸的，箭头跟系统字号只跟到 `.xxxLarge`，再大就顶出圆盘了。
   var body: some View {
     Button(action: action) {
       Image(systemName: "chevron.left")
-        .font(TypeScale.bodyEmph)
+        .font(TypeScale.heading)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .foregroundStyle(skin.theme.ink2)
         .frame(width: ControlMetrics.iconDisc, height: ControlMetrics.iconDisc)
         .background(skin.well, in: Circle())
         .overlay(Circle().strokeBorder(skin.rule, lineWidth: 0.5))
-        .frame(width: Hit.min, height: Hit.min)
-        .contentShape(Rectangle())
+        .hitTarget()
     }.buttonStyle(.plain)
       .accessibilityLabel("返回")
       .accessibilityIdentifier(id)
