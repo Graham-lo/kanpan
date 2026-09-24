@@ -17,6 +17,7 @@ struct FriendNameField: View {
   var onCommit: (String) -> Void
   @FocusState private var focused: Bool
   @Environment(\.panelTheme) private var theme
+  @Environment(\.panelHPad) private var hPad
 
   private var name: String? { AccountCredentialRules.username(text) }
 
@@ -31,20 +32,24 @@ struct FriendNameField: View {
           .onSubmit { commit() }
           .font(TypeScale.body).foregroundStyle(theme.ink)
           .accessibilityIdentifier(fieldID)
+          // 输入框 44 高、圆角 8，和账号页的输入框同一种画法（UI 整改 P1b / P2）。
+          .padding(.horizontal, Space.m)
+          .frame(minHeight: Hit.min)
+          .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
         Button { commit() } label: {
-          Text(action).font(PanelFont.seg)
+          Text(action).font(TypeScale.bodyEmph)
             .foregroundStyle(name == nil ? PanelDisabled.ink(theme) : theme.amber)
             .hitTarget()
         }
           .buttonStyle(.plain)
           .disabled(name == nil)
           .accessibilityIdentifier(buttonID)
-      }.frame(minHeight: Inset.rowMin + Space.s)
+      }.padding(.vertical, Space.xs)
       if !text.isEmpty, name == nil {
-        Text(AccountCredentialRules.usernameRule).font(TypeScale.caption2).foregroundStyle(theme.ink3)
+        Text(AccountCredentialRules.usernameRule).font(TypeScale.caption).foregroundStyle(theme.ink3)
           .padding(.bottom, Space.s).accessibilityIdentifier(ruleID)
       }
-    }.padding(.horizontal, PanelMetrics.hPad)
+    }.padding(.horizontal, hPad)
   }
 
   private func commit() {

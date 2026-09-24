@@ -13,7 +13,7 @@ struct FriendPickerSheet: View {
       if !adding, !inbox.friends.isEmpty {
         ForEach(inbox.friends) { friend in
           PanelRow(name: friend.username, onTap: { send(friend.username) }) {
-            Image(systemName: "paperplane").foregroundStyle(theme.amber)
+            Image(systemName: "paperplane.fill").font(TypeScale.bodyEmph).foregroundStyle(theme.amber)
           }.accessibilityIdentifier("share.friend.\(friend.username)")
         }
         PanelRow(name: "新朋友", divider: false, onTap: { adding = true })

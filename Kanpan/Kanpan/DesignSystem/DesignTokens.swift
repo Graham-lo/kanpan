@@ -112,4 +112,6 @@ enum ControlMetrics {
   static let chevron: CGFloat = 12
   /// 禁用态不透明度（原来 0.35 / 0.4 / 0.45 三种）。
   static let disabledOpacity: Double = 0.4
+  /// 空态那一枚图标（UI 审查 2026-09-24：空态 = 36 图标 + 15 字，不写解释句）。
+  static let emptyGlyph: CGFloat = 36
 }

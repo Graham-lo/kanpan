@@ -51,7 +51,7 @@ struct ShareChooser: View {
         Text(note).font(PanelFont.meta).foregroundStyle(t.ink3)
           .lineLimit(2).fixedSize(horizontal: false, vertical: true)
       }
-      .padding(Inset.cardCompact)
+      .padding(Inset.card)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .background(t.raised2, in: shape)
       .contentShape(shape)
