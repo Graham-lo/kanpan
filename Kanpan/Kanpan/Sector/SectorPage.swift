@@ -188,12 +188,12 @@ struct SectorPage: View {
   /// 不报线路状态（`kanpan-no-engineering-status-fields`），点一下就重取一趟。
   private var emptyState: some View {
     Button { feed.retry() } label: {
-      VStack(spacing: 7) {
+      VStack(spacing: Space.s) {
         Text("暂无行情")
-          .font(skin.serif(17)).tracking(0.85)
+          .font(TypeScale.bodyEmph)
           .foregroundStyle(theme.ink2)
         Text("点此重试")
-          .font(.scaled(11.5)).tracking(0.23)
+          .font(TypeScale.caption)
           .foregroundStyle(theme.ink3)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -214,38 +214,39 @@ struct SectorPage: View {
   @ViewBuilder private func header(_ snap: Snapshot) -> some View {
     if dynamicTypeSize <= .large {
       oneRowHeader(snap)
-        .padding(.horizontal, 20).padding(.top, 6)
+        .pageHorizontalInset().padding(.top, Space.xs)
     } else {
       ViewThatFits(in: .horizontal) {
         oneRowHeader(snap)
-        VStack(alignment: .leading, spacing: 2) {
-          HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.xxs) {
+          HStack(spacing: Space.m) {
             headerTitle
-            Spacer(minLength: 8)
+            Spacer(minLength: Space.s)
             marketSwitch
           }
           headerStats(snap)
         }
       }
-      .padding(.horizontal, 20).padding(.top, 6)
+      .pageHorizontalInset().padding(.top, Space.xs)
     }
   }
 
   private func oneRowHeader(_ snap: Snapshot) -> some View {
-    HStack(spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 9) {
+    HStack(spacing: Space.m) {
+      HStack(alignment: .firstTextBaseline, spacing: Space.s) {
         headerTitle
         headerStats(snap)
       }
-      Spacer(minLength: 8)
+      Spacer(minLength: Space.s)
       marketSwitch
     }
-    // 和原「全部板块」页头一样高：那一行里有颗 40 的返回键把它撑开，这儿没了它也不塌。
-    .frame(minHeight: 40)
+    // 一整行至少 44：右边那颗分段每一档的点击区就是 44 高。
+    .frame(minHeight: Hit.min)
   }
 
+  /// 整页标题与系统行内导航标题同级：17 semibold 系统字（UI 审查 2026-09-24：不再用衬线）。
   private var headerTitle: some View {
-    Text("板块").font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
+    Text("板块").font(TypeScale.title).foregroundStyle(theme.ink)
       .accessibilityAddTraits(.isHeader)
   }
 
@@ -253,47 +254,35 @@ struct SectorPage: View {
   @ViewBuilder private func headerStats(_ snap: Snapshot) -> some View {
     if !feed.quotes.isEmpty, snap.covered > 0 {
       Text(SectorSubtitle.scale(sectors: snap.stats.count, symbols: snap.covered))
-        .font(.scaled(10.5, design: .monospaced)).tracking(0.63)
-        .foregroundStyle(skin.ink4)
-        .lineLimit(1).minimumScaleFactor(0.8)
+        .font(TypeScale.caption2).monospacedDigit()
+        .foregroundStyle(theme.ink3)
+        .lineLimit(1).minimumScaleFactor(0.9)
         .accessibilityIdentifier("sector.scale")
     }
   }
 
-  /// 「今日 / 5 日」。就这两颗，没有第三颗，也没有任何解释文字。
+  /// 「今日 / 5 日」。就这两档，没有第三档，也没有任何解释文字。
   ///
   /// 这一行只在 5 日那档真有东西可看时才出现（`snap.hasD5`）；美股那边服务端还没采
-  /// 日线，那一格就整行不在。样式照品种列表里「涨跌幅 / 成交额」那两颗，
-  /// 整页只有这一种药丸。
+  /// 日线，那一格就整行不在。画法是全 app 统一的分段（`SectorSegment`，与面板里的
+  /// `PanelSegment` 同一套：32 的槽、每档 44 的点击区），和右上角的市场切换是同一种控件。
   private func windowBar(_ snap: Snapshot) -> some View {
-    HStack(spacing: 7) {
-      windowChip(.today, on: snap.window == .today)
-      windowChip(.d5, on: snap.window == .d5)
+    HStack(spacing: 0) {
+      // 药丸上的名字只有 `SectorWindowChoice.title` 一个来源——页面这边一个字面量都不留。
+      SectorSegment(options: [SectorWindow.today, .d5].map {
+                      .init(title: SectorWindowChoice.title($0), value: $0,
+                            id: "sector.window." + $0.rawValue)
+                    },
+                    selection: snap.window,
+                    pick: { value in store.update { $0.sectorWindow = value } })
       Spacer(minLength: 0)
     }
-    .padding(.horizontal, 20).padding(.top, 8)
+    .pageHorizontalInset()
     .accessibilityElement(children: .contain)
     // 读屏上这一行念的就是当下那一档，名字来自定这一档的那个函数本身，
     // 不在页面上另存一份（复核项 4）。
     .accessibilityValue(snap.windowTitle)
     .accessibilityIdentifier("sector.window")
-  }
-
-  /// 药丸上的名字只有 `SectorWindowChoice.title` 一个来源——页面这边一个字面量都不留。
-  private func windowChip(_ value: SectorWindow, on: Bool) -> some View {
-    Button { store.update { $0.sectorWindow = value } } label: {
-      Text(SectorWindowChoice.title(value)).font(.scaled(11.5)).tracking(0.23)
-        .foregroundStyle(on ? theme.ink : theme.ink3)
-        .padding(.horizontal, 10).frame(height: 25)
-        .background {
-          Capsule().fill(on ? skin.chipOn : Color.clear)
-            .overlay(Capsule().strokeBorder(on ? skin.chipEdge : skin.rule, lineWidth: 0.5))
-        }
-        .contentShape(Capsule())
-    }.buttonStyle(.plain)
-      .accessibilityLabel(SectorWindowChoice.title(value))
-      .accessibilityAddTraits(on ? .isSelected : [])
-      .accessibilityIdentifier("sector.window." + value.rawValue)
   }
 
   /// 市场硬切换。两个市场永远不共处一屏，换一格就是换一整套板块。
@@ -367,51 +356,85 @@ enum SectorRoute: Equatable {
 
 // MARK: - 市场硬切换
 
-/// 「加密 / 美股」那颗胶囊。只在板块列表的页头出现一次，一套 id。
+/// 「加密 / 美股」。只在板块列表的页头出现一次，一套 id。
+///
+/// 原来是一颗强调色渐变的液态药丸，2026-09-24 UI 审查把全 app 的分段收成一种样式，
+/// 这里换成 `SectorSegment`（选中那档抬起一块 `segOn`，不再铺强调色）。
 struct SectorMarketSwitch: View {
   var skin: SectorSkin
   var market: SectorMarket
   var onPick: (SectorMarket) -> Void
 
-  private var theme: PanelTheme { skin.theme }
-
   var body: some View {
-    HStack(spacing: 2) {
-      // 名字只认 `MarketSector.title`，和品种页、自选页的市场名是同一张表。
-      ForEach(SectorMarket.allCases, id: \.self) { tab($0, MarketSector.title($0.rawValue)) }
-    }
-    .padding(2)
-    .background {
-      Capsule().fill(skin.well)
-        .overlay(Capsule().strokeBorder(skin.rule, lineWidth: 0.5))
-    }
+    // 名字只认 `MarketSector.title`，和品种页、自选页的市场名是同一张表。
+    SectorSegment(options: SectorMarket.allCases.map {
+                    .init(title: MarketSector.title($0.rawValue), value: $0,
+                          id: "sector.market." + $0.rawValue)
+                  },
+                  selection: market,
+                  pick: { value in
+                    guard value != market else { return }
+                    onPick(value)
+                  })
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("sector.market")
   }
+}
 
-  private func tab(_ value: SectorMarket, _ title: String) -> some View {
-    let on = market == value
-    return Button {
-      guard !on else { return }
-      onPick(value)
-    } label: {
-      Text(title).font(.scaled(12)).tracking(0.48)
-        // 选中那格的字压在强调色上，走 `badgeInk`（浅色 `#FFFFFF`，观感不变；
-        // 深色换成近黑，白字在 `#4FB69C` / `#E2874F` 上只有 2.5:1）。
-        .foregroundStyle(on ? theme.badgeInk : theme.ink3)
-        .padding(.horizontal, 11).frame(height: 26)
-        .background {
-          if on {
-            Capsule().fill(skin.accentGradient)
-              .overlay(alignment: .top) { skin.topHighlight(inset: 7) }
-              .shadow(color: skin.accent.opacity(skin.dark ? 0.45 : 0.32), radius: 5, x: 0, y: 2)
-          }
+// MARK: - 分段
+
+/// 板块页的两处分段（市场、窗口）。画法与 `PanelSegment` 一字不差：32 高的 `raised2` 槽、
+/// 28 高的档、选中那档抬起一块 `segOn`、每一档的点击区 44 高。
+///
+/// 不直接用 `PanelSegment`：那一颗是给 `PanelRow` 行尾用的——它用负边距把高度还给行，
+/// 标识按档位文字下发；这里站在页面上自己占 44 的高，标识沿用 `sector.market.<raw>`
+/// / `sector.window.<raw>`（UI 用例认这一套）。
+struct SectorSegment<Value: Hashable>: View {
+  struct Option {
+    var title: String
+    var value: Value
+    var id: String
+  }
+
+  var options: [Option]
+  var selection: Value
+  var pick: (Value) -> Void
+
+  @Environment(\.panelTheme) private var t
+
+  var body: some View {
+    HStack(spacing: Space.xxs) {
+      ForEach(options, id: \.id) { option in
+        let on = option.value == selection
+        Button { pick(option.value) } label: {
+          Text(option.title)
+            .font(PanelFont.seg)
+            .foregroundStyle(on ? t.ink : t.ink2)
+            .padding(.horizontal, Space.m)
+            .frame(minHeight: ControlMetrics.pillHeight)
+            .background {
+              if on {
+                RoundedRectangle(cornerRadius: Radius.concentric(outer: Radius.s, padding: Space.xxs),
+                                 style: .continuous)
+                  .fill(t.segOn)
+                  .shadow(color: .black.opacity(0.09), radius: 1, y: 1)
+              }
+            }
+            .frame(minHeight: Hit.min)
+            .contentShape(Rectangle())
         }
-        .contentShape(Capsule())
-    }.buttonStyle(.plain)
-      .accessibilityLabel(title)
-      .accessibilityAddTraits(on ? .isSelected : [])
-      .accessibilityIdentifier("sector.market." + value.rawValue)
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.title)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier(option.id)
+      }
+    }
+    .padding(.horizontal, Space.xxs)
+    .background {
+      RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
+        .fill(t.raised2)
+        .padding(.vertical, (Hit.min - ControlMetrics.pillHeight) / 2 - Space.xxs)
+    }
   }
 }
 
@@ -478,9 +501,10 @@ struct SectorSkin {
       .frame(height: 1).padding(.horizontal, inset)
   }
 
-  /// 标题字体。和自选页同一支：iOS 装机里没有可用的简体中文衬线体，
-  /// `.serif` 让拉丁走 New York、中文走系统字，靠字号与字距把标题撑起来。
-  func serif(_ size: CGFloat) -> ScaledFont { ScaledFont(size, .medium, design: .serif) }
+  /// 标题字体。原来是 `.serif`（拉丁走 New York）按传入的字号画；2026-09-24 UI 审查定
+  /// 全 app 标题统一系统字、整页标题一律 17 semibold（`TypeScale.title`），所以这里不再
+  /// 看 `size`——下钻那层「AI 代币」这类标题跟着一起换，调用处不必改。
+  func serif(_ size: CGFloat) -> ScaledFont { TypeScale.title }
 
   /// 往亮里提一档：色相不动，饱和收一点、明度往上走。
   private static func lift(_ hex: Hex, _ amount: Double) -> Color {
@@ -573,7 +597,7 @@ struct SectorBackdrop: View {
 
 // MARK: - 两层共用的零件
 
-/// 左上角那颗返回。原型 `.back`：30 的圆片挂在 40 的可点区里。
+/// 左上角那颗返回：32 的圆片（顶栏圆托底同一个尺寸）挂在 44 的可点区里。
 struct SectorBackButton: View {
   let skin: SectorSkin
   let id: String
@@ -582,12 +606,12 @@ struct SectorBackButton: View {
   var body: some View {
     Button(action: action) {
       Image(systemName: "chevron.left")
-        .font(.system(size: 15, weight: .semibold))
+        .font(TypeScale.bodyEmph)
         .foregroundStyle(skin.theme.ink2)
-        .frame(width: 30, height: 30)
+        .frame(width: ControlMetrics.iconDisc, height: ControlMetrics.iconDisc)
         .background(skin.well, in: Circle())
         .overlay(Circle().strokeBorder(skin.rule, lineWidth: 0.5))
-        .frame(width: 40, height: 40)
+        .frame(width: Hit.min, height: Hit.min)
         .contentShape(Rectangle())
     }.buttonStyle(.plain)
       .accessibilityLabel("返回")
@@ -602,7 +626,7 @@ struct SectorHairline: View {
   var body: some View {
     LinearGradient(colors: [.clear, skin.rule, skin.rule, .clear],
                    startPoint: .leading, endPoint: .trailing)
-      .frame(height: 0.5).padding(.horizontal, 20)
+      .frame(height: 0.5).pageHorizontalInset()
   }
 }
 

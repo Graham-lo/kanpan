@@ -19,7 +19,7 @@ struct SectorBoardList: View {
   var onPick: (SectorStat) -> Void
 
   @Environment(\.panelTheme) private var theme
-  /// 系统字号超过默认档时副文案放开到两行、行高跟着长；默认档仍是原来的一行 52pt。
+  /// 系统字号超过默认档时副文案放开到两行、行高跟着长。
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
@@ -31,7 +31,7 @@ struct SectorBoardList: View {
           row(stat, first: index == 0)
         }
       }
-      .padding(.top, 6).padding(.bottom, 8)
+      .padding(.top, Space.xs).padding(.bottom, Space.s)
     }
     .scrollIndicators(.hidden)
     // 先成组再挂 id，否则这个 id 会盖掉底下每一行自己的（见 `SectorPage`）。
@@ -39,30 +39,33 @@ struct SectorBoardList: View {
     .accessibilityIdentifier("sector.board")
   }
 
-  /// 原型 `.srow`：26 的记号 + 全称 + 副文案，右边一列涨跌幅。
+  /// 原型 `.srow`：记号 + 全称 + 副文案，右边一列涨跌幅。
+  ///
+  /// 字号照 HIG 阶梯（UI 审查 2026-09-24 P1b）：行名 15 regular、涨跌 13 medium 等宽、
+  /// 说明 12；记号与列表徽章同一个 32，行至少 44 高，左右边距跟页面走（16 / 20）。
   private func row(_ stat: SectorStat, first: Bool) -> some View {
-    HStack(spacing: 11) {
+    HStack(spacing: Space.m) {
       if let art = SectorIcons.art(stat.id) {
-        SectorIconView(art: art, size: 26)
+        SectorIconView(art: art, size: ControlMetrics.listBadge)
       } else {
         // 兜底桶不一定有自己的记号。留出同样的位置，行与行的竖线才不会错开。
-        Color.clear.frame(width: 26, height: 26)
+        Color.clear.frame(width: ControlMetrics.listBadge, height: ControlMetrics.listBadge)
       }
-      VStack(alignment: .leading, spacing: 2) {
-        Text(stat.name).font(.scaled(14, .medium)).foregroundStyle(theme.ink)
-          .lineLimit(1).minimumScaleFactor(0.75)
+      VStack(alignment: .leading, spacing: Space.xxs) {
+        Text(stat.name).font(TypeScale.body).foregroundStyle(theme.ink)
+          .lineLimit(1).minimumScaleFactor(0.85)
         Text(SectorSubtitle.row(stat))
-          .font(.scaled(10.5)).monospacedDigit().tracking(0.32)
-          .foregroundStyle(skin.ink4)
-          .lineLimit(dynamicTypeSize > .large ? 2 : 1).minimumScaleFactor(0.8)
+          .font(TypeScale.caption).monospacedDigit()
+          .foregroundStyle(theme.ink3)
+          .lineLimit(dynamicTypeSize > .large ? 2 : 1).minimumScaleFactor(0.9)
       }.frame(maxWidth: .infinity, alignment: .leading)
       Text(sectorPctText(stat.pct))
-        .font(.scaled(13.5, .medium)).monospacedDigit()
+        .font(TypeScale.footnoteEmph).monospacedDigit()
         .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
     }
-    .padding(.horizontal, 20)
-    .padding(.vertical, dynamicTypeSize > .large ? 7 : 0)
-    .frame(minHeight: 52)
+    .pageHorizontalInset()
+    .padding(.vertical, Space.s)
+    .frame(minHeight: Inset.rowMin)
     .contentShape(Rectangle())
     .onTapGesture { onPick(stat) }
     .overlay(alignment: .top) {
