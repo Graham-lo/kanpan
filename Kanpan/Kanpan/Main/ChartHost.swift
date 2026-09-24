@@ -275,7 +275,10 @@ private final class ResizeGrip: UIView {
 /// 这里只是借来用一下。
 @MainActor
 final class ChartProxy {
-  weak var box: ChartBox?
+  weak var box: ChartBox? { didSet { if box !== oldValue, box != nil { onBoxChanged?() } } }
+  /// 换了一只盒子（换页、重建）叫一声。盖在图上的复盘记号层（`RangeOverlayView`）靠它
+  /// 重新挂 `onOverlayUpdate`——那一刻 SwiftUI 不会再下发那一层，以前只能靠定时器兜。
+  var onBoxChanged: (() -> Void)?
   var savedState: ChartState?
   var savedPlotWidth: Double?
   /// 上一次兑现过的「档案到货」序号（`ChartHost.adoptToken`）。

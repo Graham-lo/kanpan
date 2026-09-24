@@ -47,6 +47,8 @@ final class RangeOverlayView: UIView {
   weak var proxy: ChartProxy?
   var draft: ReviewDraft?
   var records: [ReviewRecord] = []
+  /// 这张图上要画哪几条：记录与图没变就给上一次的答案（原来每一帧都把全部记录筛一遍）。
+  private var marks = ReviewMarkFilter()
   /// 见 `ReviewRangeOverlay.suppressed`。回放态那一支不吃 `records`，所以得单独挡一道。
   var suppressed = false
   /// 选区带、目标 / 失效横线、手柄、落图记号统一用的强调色（见 `ReviewRangeOverlay.theme`）。
@@ -55,7 +57,22 @@ final class RangeOverlayView: UIView {
   /// 在第一次 `draw(_:)` 之前一定跑过一遍，默认值原则上看不见；但只要它是
   /// `.systemOrange` / `.systemBackground` 这类系统色，下一个人读这段就会以为
   /// 「这一层还允许系统色」。这一层一支系统色都不留。
-  var accent: UIColor = UIColor(Color(hex: Palette.lightSeed.accent))
+  var accent: UIColor = UIColor(Color(hex: Palette.lightSeed.accent)) {
+    didSet { if accent != oldValue { textStyles = nil } }
+  }
+  /// 标签那两种字（11pt 选区 / 价线、10pt 落图结论）连同颜色，按强调色存一份。
+  /// 原来每画一个标签现造一次 `UIFont` 和属性字典，拖图时一帧好几次。
+  private struct TextStyles { var label: [NSAttributedString.Key: Any]; var outcome: [NSAttributedString.Key: Any] }
+  private static let labelFont = UIFont.systemFont(ofSize: 11)
+  private static let outcomeFont = UIFont.systemFont(ofSize: 10)
+  private var textStyles: TextStyles?
+  private var styles: TextStyles {
+    if let textStyles { return textStyles }
+    let value = TextStyles(label: [.font: Self.labelFont, .foregroundColor: accent],
+                           outcome: [.font: Self.outcomeFont, .foregroundColor: accent])
+    textStyles = value
+    return value
+  }
   /// 画布自己的底（`PanelTheme.chartBG`）。手柄的描边走它，才能在任何皮肤下都把
   /// 那颗圆点从背后的蜡烛里剜出来；原来写死 `UIColor.white`，落在
   /// `#F3F7F4` / `#FBF6F0` / `#FFFFFF` 这几张浅画布上等于没画。
@@ -171,80 +188,40 @@ final class RangeOverlayView: UIView {
     return view
   }()
 
-  // MARK: - 这一层自己盯着图有没有换内容
+  // MARK: - 图换了内容 / 换了盒子，叫这一层重画
 
   /// 记号画在图**上面**的一层独立 `UIView` 里，它自己并不知道图什么时候换了内容。
-  /// 原来只有两条路会叫它重画，而这两条路都会断：
+  /// 叫它重画的路有三条，全是事件，没有定时器：
   ///
-  /// - **SwiftUI 那条**（`updateUIView`）：这一层的入参全是引用类型（feature / bridge /
-  ///   proxy）加两个小值，换周期、换品种时它们一个都没变，SwiftUI 比下来「没变化」就
-  ///   不再下发这一层；
-  /// - **盒子那条**（`ChartBox.onOverlayUpdate`）：`ChartProxy.box` 是弱引用，盒子活不过
-  ///   一次换页/重建，盒子一换，挂在旧盒子上的那个回调就跟着没了——而重新挂钩恰恰只发生在
-  ///   上面那条已经断掉的路里。
-  ///
-  /// 用例 A 抓到的就是这个：1h 上记一笔 → 切到 1m（记号正确地不画）→ 切回 1h，图已经是
-  /// 1h 了，这一层还停在 1m 那一帧上，用户的记号就这么没了。所以这一层自己盯着：在窗口里
-  /// 的时候每 0.25 秒看一眼「我贴着的还是那只盒子吗、图上那段行情还是刚才那段吗」，变了
-  /// 才重画。一次「看一眼」只是十来个字段的比较，不碰画布，静止时的开销可以忽略。
-  private struct Frame: Equatable {
-    var chart: ObjectIdentifier?
-    var symbol = ""
-    var interval = ""
-    var bars = 0
-    var lastTime: Int64 = 0
-    var to = 0.0
-    var span = 0.0
-    var mode = ""
-  }
-  private var lastFrame = Frame()
+  /// - **SwiftUI 那条**（`updateUIView`）：记录、草稿、模式变了会下发；
+  /// - **盒子那条**（`ChartBox.onOverlayUpdate`）：图的输入层或视野一动（换周期、换品种、
+  ///   拖图、捏合、推进一根）就叫一声；
+  /// - **换盒子那条**（`ChartProxy.onBoxChanged`）：`ChartProxy.box` 是弱引用，盒子活不过
+  ///   一次换页 / 重建，而这时 SwiftUI 比下来这一层的入参「没变化」、不会再下发——挂在旧盒子
+  ///   上的回调就跟着没了。用例 A 抓到的就是这个：1h 上记一笔 → 切到 1m → 切回 1h，图已经是
+  ///   1h 了，这一层还停在 1m 那一帧上。以前靠每 0.25 秒看一眼兜住（静止时一秒也醒四次），
+  ///   现在由把手在换盒子的那一刻直接叫这一层重新挂钩。
   private weak var hooked: ChartBox?
-  private var watchdog: Timer?
+  private weak var watched: ChartProxy?
 
   /// 把「图重画了叫我一声」挂到**当前**这只盒子上；换了盒子就重挂一次。
   func attach() {
+    if let proxy, proxy !== watched {
+      watched?.onBoxChanged = nil
+      watched = proxy
+      proxy.onBoxChanged = { [weak self] in self?.attach() }
+    }
     guard let box = proxy?.box, box !== hooked else { return }
     hooked = box
     box.onOverlayUpdate = { [weak self] in self?.setNeedsDisplay() }
     setNeedsDisplay()
   }
 
-  private func currentFrame() -> Frame {
-    guard let chart, let state = chart.state else { return Frame(mode: bridge?.mode.rawValue ?? "") }
-    return Frame(chart: ObjectIdentifier(chart), symbol: state.series.symbol,
-                 interval: state.series.interval.rawValue, bars: state.series.count,
-                 lastTime: state.series.lastTime, to: state.view.to, span: state.view.span,
-                 mode: bridge?.mode.rawValue ?? "")
-  }
-
-  private func resync() {
-    attach()
-    let now = currentFrame()
-    guard now != lastFrame else { return }
-    lastFrame = now
-    setNeedsDisplay()
-  }
-
   override func didMoveToWindow() {
     super.didMoveToWindow()
-    watchdog?.invalidate(); watchdog = nil
     guard window != nil else { stopEdgeScroll(); return }
-    // 同 `flash(_:)` 里那段：定时器挂在主 runloop 上，回调只会在主线程来，这里把这件
-    // 既成事实如实声明一次；视图没了就让定时器自己收摊——`deinit` 是非隔离的，碰不了
-    // 主 actor 上的这几个存储属性。
-    let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] timer in
-      let alive = MainActor.assumeIsolated { () -> Bool in
-        guard let self else { return false }
-        self.resync()
-        return true
-      }
-      if !alive { timer.invalidate() }
-    }
-    // `.common`：捏合、拖动、列表滚动时 runloop 在 tracking 模式，默认模式的定时器
-    // 会整段哑掉——那正是记号最该跟着动的时候。
-    RunLoop.main.add(timer, forMode: .common)
-    watchdog = timer
-    resync()
+    attach()
+    setNeedsDisplay()
   }
   override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
     guard let layout = chart?.chartLayout else { return false }
@@ -264,10 +241,8 @@ final class RangeOverlayView: UIView {
       // 那儿有单测盯着「BTC 的记号不许画到 ETH 上、1h 的不许画到 1m 上、
       // 另一家交易所记的不许画到这家的图上」。venue 这一条是这轮补的（审查 B.4）：
       // 记录一直带着捕获时的行情源，落图时却没人看它。
-      let mine = records.filter {
-        $0.paints(venue: bridge?.liveVenue ?? "binance", symbol: state.series.symbol,
-                  interval: state.series.interval.rawValue)
-      }.prefix(50)
+      let mine = marks.marks(records, venue: bridge?.liveVenue ?? "binance", symbol: state.series.symbol,
+                             interval: state.series.interval.rawValue)
       for record in mine {
         paint(record.draft, state: state, layout: layout, ctx: ctx, editing: false,
               outcome: record.outcome, emphasis: record.id == flashID && flashOn)
@@ -307,7 +282,7 @@ final class RangeOverlayView: UIView {
       let label = ReviewLabels.range(bars: draft.range.bars, start: draft.range.start,
                                      end: draft.range.end,
                                      offsetMinutes: state.timezone.offsetMinutes)
-      label.draw(at: CGPoint(x: 8, y: layout.mainH - 24), withAttributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: color])
+      label.draw(at: CGPoint(x: 8, y: layout.mainH - 24), withAttributes: styles.label)
     }
     if draft.rule.direction != .observe, let priceRange = chart?.chartPriceRange {
       for (value, title) in [(draft.rule.target, "目标"), (draft.rule.invalidation, "失效")] {
@@ -320,7 +295,7 @@ final class RangeOverlayView: UIView {
           // `SymbolInfo.priceDecimals`），和顶栏、K 线价格轴一致（审查 B-07）。
           // 原来是「最多 6 位、能省就省」，于是 76800 写成 `76800`、0.0000004 写成
           // `0.0000004`，同一张图上两条线的写法能差出四位。
-          ReviewLabels.price(title, value: value, decimals: state.decimals).draw(at: CGPoint(x: max(8, layout.plotW - 125), y: max(2, min(layout.mainH - 52, y - 17))), withAttributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: color])
+          ReviewLabels.price(title, value: value, decimals: state.decimals).draw(at: CGPoint(x: max(8, layout.plotW - 125), y: max(2, min(layout.mainH - 52, y - 17))), withAttributes: styles.label)
         }
       }
       let expiry = min(layout.plotW - 18, max(18, state.view.x(Double(draft.rule.expires), plotW: layout.plotW)))
@@ -332,7 +307,7 @@ final class RangeOverlayView: UIView {
     if !editing {
       let judgment = state.view.x(Double(draft.created), plotW: layout.plotW)
       ctx.setStrokeColor(color.withAlphaComponent(0.5).cgColor); ctx.move(to: CGPoint(x: judgment, y: 0)); ctx.addLine(to: CGPoint(x: judgment, y: layout.mainH)); ctx.strokePath()
-      if let outcome { outcome.title.draw(at: CGPoint(x: max(3, a), y: layout.mainH - 20), withAttributes: [.font: UIFont.systemFont(ofSize: 10), .foregroundColor: color]) }
+      if let outcome { outcome.title.draw(at: CGPoint(x: max(3, a), y: layout.mainH - 20), withAttributes: styles.outcome) }
     }
   }
   private func handle(_ point: CGPoint, ctx: CGContext) {

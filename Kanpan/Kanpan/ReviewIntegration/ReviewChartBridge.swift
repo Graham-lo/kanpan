@@ -29,7 +29,9 @@ import ReviewUI
   var cursor = 0
   var replayRecord: ReviewRecord?
   var notice: String?
-  private var bars: [Bar] = []
+  /// 回放那一卷 K 线，以及推进时喂给图的那一段（增量追加、画线快照只解一次，见 `ReviewReplayTape`）。
+  private var tape: ReviewReplayTape?
+  private var bars: [Bar] { tape?.bars ?? [] }
   private var replayBase: ChartState?
   private var playback: Task<Void, Never>?
   private var loadTask: Task<Void, Never>?
@@ -207,7 +209,8 @@ import ReviewUI
         }
         guard ordered.count >= 3 else { throw ReviewBridgeError.noHistory }
         for i in 1..<ordered.count where Self.closeTime(ordered[i - 1].openTime, interval: interval) != ordered[i].openTime { throw ReviewBridgeError.historyGap }
-        bars = ordered
+        tape = ReviewReplayTape(symbol: range.key, interval: interval, bars: ordered,
+                                drawingSnapshot: record.draft.drawingSnapshot)
         base.series = BarSeries(symbol: range.key, interval: interval, bars: ordered)
         // 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
         let decimals = feature.priceDecimals(range.key)
@@ -282,7 +285,7 @@ import ReviewUI
         var combined = (bars + incoming).sorted { $0.openTime < $1.openTime }
         for i in 1..<combined.count where Self.closeTime(combined[i - 1].openTime, interval: interval) != combined[i].openTime { throw ReviewBridgeError.historyGap }
         if combined.count > 6000 { combined = forward ? Array(combined.suffix(6000)) : Array(combined.prefix(6000)) }
-        bars = combined; cursor = max(2, bars.firstIndex(where: { $0.openTime == position }) ?? 2)
+        tape?.replace(bars: combined); cursor = max(2, bars.firstIndex(where: { $0.openTime == position }) ?? 2)
         // 取回来了就得画上去。`bars` 只是这边的一个数组，屏幕上那张图是 `updateReplay`
         // 按 `cursor` 现切的；不补这一句，往前翻到头拿回来的五百根要等到人再动一下
         // （再点一次「后一根」、或者播放走到下一拍）才显形——看起来就是「翻到头了没反应，
@@ -334,10 +337,13 @@ import ReviewUI
   /// 于是人在回放里放大看一根的细节，按一下「下一根」就被缩回 80 根，拖去看历史也
   /// 会被拽回最右边。那颗按钮等于一次次把人的手拨开。
   private func updateReplay(feature: ReviewFeature, reset: Bool = false) {
-    guard var base = replayBase, let record = replayRecord, !bars.isEmpty else { return }
-    base.series = BarSeries(symbol: record.draft.range.key, interval: base.series.interval, bars: Array(bars.prefix(cursor + 1)))
+    guard var base = replayBase, let record = replayRecord, !bars.isEmpty,
+          let series = tape?.series(through: cursor) else { return }
+    // 往后推一根只追加那一根（图表认得出「后面长了一根」，指标只算末根）；
+    // 画线快照整条回放只解一次。原来每一拍都整段重摊、整份重解（第 25 项）。
+    base.series = series
     let known = Self.closeTime(base.series.lastTime, interval: base.series.interval)
-    if known >= record.draft.created, let data = record.draft.drawingSnapshot { base.drawings = (try? JSONDecoder().decode([Drawing].self, from: data)) ?? [] }
+    if known >= record.draft.created { base.drawings = tape?.drawings() ?? [] }
     let window = ReviewReplayViewport.next(current: liveWindow, previousLastTime: replayLastTime,
                                            lastTime: base.series.lastTime, step: base.series.step, reset: reset)
     base.view = ViewWindow(to: window.to, span: window.span)
@@ -348,7 +354,7 @@ import ReviewUI
   }
   func exitReplay(feature: ReviewFeature) {
     playing = false; playback?.cancel(); loadTask?.cancel(); pageTask?.cancel(); paging = false; replayProvider = nil; loadID = UUID(); loading = false
-    state = nil; replayBase = nil; bars = []; replayRecord = nil; mode = .live; proxy = ChartProxy()
+    state = nil; replayBase = nil; tape = nil; replayRecord = nil; mode = .live; proxy = ChartProxy()
   }
   private func slice(_ s: BarSeries, count: Int) -> BarSeries {
     BarSeries(symbol: s.symbol, interval: s.interval, t0: s.t0, open: Array(s.open.prefix(count)), high: Array(s.high.prefix(count)), low: Array(s.low.prefix(count)), close: Array(s.close.prefix(count)), volume: Array(s.volume.prefix(count)), takerBuy: Array(s.takerBuy.prefix(count)), openTime: Array(s.openTime.prefix(count)))
