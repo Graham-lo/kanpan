@@ -412,6 +412,21 @@ class KanpanUICase: XCTestCase {
 }
 
 extension XCUIApplication {
+  /// 账号页的出口。表里、以及账号页的子页（同步、设备……）是左上那颗 `account.back`；
+  /// 设置 → 账号推进来的顶层（UI 整改 P2，2026-09-25）用的是系统返回，它没有我们的标识符。
+  /// 账号页 / 朋友页在不在。从设置进去是推进设置那一叠（2026-09-25 P2），SwiftUI 会把
+  /// 页面容器的标识符并到它唯一的滚动视图上，类型不再是 Other；别处开的仍是 sheet（Other）。
+  /// 所以按标识符找任意类型。
+  var accountView: XCUIElement { descendants(matching: .any).matching(identifier: "account.view").firstMatch }
+  var friendsPage: XCUIElement { descendants(matching: .any).matching(identifier: "friends.page").firstMatch }
+  var accountExit: XCUIElement {
+    let custom = buttons["account.back"]
+    if custom.exists { return custom }
+    let system = navigationBars.buttons["BackButton"]
+    if system.exists { return system }
+    return navigationBars.firstMatch.buttons.element(boundBy: 0)
+  }
+
   /// 顶栏品种名 →「搜索品种」→ 全屏搜索页。返回是否真的到了搜索页。
   /// 左上角那块品种名。它不是按钮了，但用例还要拿它的位置点顶栏。
   var symbolLabel: XCUIElement {

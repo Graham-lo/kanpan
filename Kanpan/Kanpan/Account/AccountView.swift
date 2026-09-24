@@ -3,34 +3,59 @@ import KanpanAccount
 
 struct AccountView: View {
   @Bindable var feature: AccountFeature
+  /// 推在设置整页的导航栈里（设置 → 账号，UI 整改 P2）：不自带导航栈；顶层（账号 / 登录）
+  /// 用系统返回，退回设置；子页（同步、设备、改密码……）仍是左上那颗 `account.back` 退回上一层。
+  var pushed = false
   @Environment(\.panelTheme) private var theme
   @FocusState private var focused: Field?
   private enum Field { case email, password, newPassword }
+  /// 账号页的顶层：再往外退就是离开账号页。
+  private var atTop: Bool { feature.page == .account || feature.page == .login }
   var body: some View {
-    NavigationStack {
-      Group {
-        switch feature.page {
-        case .account: account
-        case .sync: sync
-        case .devices: deviceList
-        default: form
-        }
+    if pushed {
+      // 外面这层是「账号页在不在」的记号（`account.view`；SwiftUI 会把它并到唯一的
+      // 滚动视图上，用例按任意类型找，见 `XCUIApplication.accountView`），
+      // `children: .contain` 让里头的输入框、按钮各留各的名字。
+      VStack(spacing: 0) { page }
+        .tint(theme.amber)
+        .background(theme.app.ignoresSafeArea())
+        // 提交中不许退（和表那条路的 `interactiveDismissDisabled(busy)` 同一个意思）；
+        // 子页的「‹」是自己的，系统那颗藏起来。
+        .navigationBarBackButtonHidden(!atTop || feature.busy)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("account.view")
+    } else {
+      sheet
+    }
+  }
+  private var page: some View {
+    Group {
+      switch feature.page {
+      case .account: account
+      case .sync: sync
+      case .devices: deviceList
+      default: form
       }
-      .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        // 不论是收起整张账号页还是退回上一层，出口都在左上角同一颗「‹」上（2026-09-15）。
+    }
+    .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      // 不论是收起整张账号页还是退回上一层，出口都在左上角同一颗「‹」上（2026-09-15）。
+      // 推在设置里时顶层这颗交给系统返回。
+      if !pushed || !atTop {
         ToolbarItem(placement: .cancellationAction) {
           Button {
             focused = nil
-            if feature.page == .account || feature.page == .login { feature.presented = false }
+            if atTop { feature.presented = false }
             else { feature.move(feature.user == nil ? .login : .account) }
           } label: {
-            Label(feature.page == .account || feature.page == .login ? "关闭" : "返回",
-                  systemImage: "chevron.left")
+            Label(atTop ? "关闭" : "返回", systemImage: "chevron.left")
           }.disabled(feature.busy).accessibilityIdentifier("account.back")
         }
       }
-    }.tint(theme.amber)
+    }
+  }
+  private var sheet: some View {
+    NavigationStack { page }.tint(theme.amber)
       // 审查 U14 在模拟器上见过一次「下半截白底硬边」，2026-09-24 按键盘交互收起、整张下拉
       // 复现过一轮没再出现。表单底色只铺在内容那一层，sheet 本身仍是系统默认底；
       // 把 sheet 的底也钉成页面底色，哪一帧露出来都是同一块料。

@@ -186,7 +186,7 @@ final class ReviewModuleE2EUITests: KanpanUICase {
   // ------------------------------------------------------------ 账号
 
   private func openAccountPage() {
-    if app.otherElements["account.view"].exists { return }
+    if app.accountView.exists { return }
     if !app.buttons["settings.account"].exists {
       let tab = app.buttons[Ids.bottomSettings]
       expectExists(tab, Self.long, "底栏上没有设置格")
@@ -195,7 +195,7 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     let row = app.buttons["settings.account"]
     expectExists(row, Self.long, "设置页上没有账号行 settings.account")
     row.tap()
-    expectExists(app.otherElements["account.view"], Self.long, "点了账号行但账号页没打开")
+    expectExists(app.accountView, Self.long, "点了账号行但账号页没打开")
   }
 
   private func fill(username: String?) {
@@ -220,7 +220,7 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     entry.tap()
     fill(username: username)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.accountView.exists },
                   "注册 \(username) 没有闭合账号页")
   }
 
@@ -233,14 +233,14 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     }
     fill(username: username)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.accountView.exists },
                   "登录 \(username) 没有闭合账号页")
   }
 
   private func closeAccountPage() {
     let close = app.buttons.matching(NSPredicate(format: "identifier == 'account.close' OR label IN {'关闭', '完成'}")).firstMatch
     if close.exists { close.tap() } else { app.swipeDown() }
-    _ = waitUntil(timeout: Self.short) { !self.app.otherElements["account.view"].exists }
+    _ = waitUntil(timeout: Self.short) { !self.app.accountView.exists }
   }
 
   private func logout() {
@@ -248,7 +248,7 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     let button = app.buttons["退出登录"]
     expectExists(button, Self.long, "账号页上没有「退出登录」")
     button.tap()
-    XCTAssertTrue(waitUntil(timeout: 30) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(timeout: 30) { !self.app.accountView.exists },
                   "点了退出登录但账号页没关")
   }
 
@@ -259,7 +259,7 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     entry.tap()
     fill(username: nil)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.accountView.exists },
                   "注销 \(username) 没完成")
     created.removeAll { $0 == username }
   }

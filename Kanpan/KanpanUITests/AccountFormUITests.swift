@@ -83,10 +83,10 @@ import UIKit
     XCTAssertFalse(app.staticTexts["还没有收到画线"].exists)
     attach("朋友页-未登录")
     tap("friends.login")
-    XCTAssertTrue(app.otherElements["account.view"].waitForExistence(timeout: 10), "点了登录没进账号页")
+    XCTAssertTrue(app.accountView.waitForExistence(timeout: 10), "点了登录没进账号页")
     tap("account.switch")
     let name = register()
-    XCTAssertTrue(app.otherElements["friends.page"].waitForExistence(timeout: 20), "登完没有回到朋友页")
+    XCTAssertTrue(app.friendsPage.waitForExistence(timeout: 20), "登完没有回到朋友页")
     XCTAssertTrue(app.buttons["friends.add"].waitForExistence(timeout: 10), "登录后的朋友页没有「加朋友」")
     XCTAssertFalse(app.staticTexts["friends.signedOut"].exists)
     attach("朋友页-登录后 \(name)")
@@ -100,7 +100,7 @@ import UIKit
     XCTAssertTrue(username.waitForExistence(timeout: 10)); username.tap(); username.typeText(me)
     _ = typePassword(password)
     tap("account.submit")
-    XCTAssertTrue(wait(45) { !self.app.otherElements["account.view"].exists }, "登录未完成")
+    XCTAssertTrue(wait(45) { !self.app.accountView.exists }, "登录未完成")
     openFriends()
     tap("friends.add")
     let field = app.textFields["friends.username"]
@@ -126,7 +126,7 @@ import UIKit
 
   private func openAccount() {
     tap("bottom.settings"); tap("settings.account")
-    XCTAssertTrue(app.otherElements["account.view"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.accountView.waitForExistence(timeout: 10))
   }
   private func openFriends() {
     tap("bottom.settings")
@@ -134,7 +134,7 @@ import UIKit
     XCTAssertTrue(friends.waitForExistence(timeout: 10))
     if !friends.isHittable { app.scrollViews.firstMatch.swipeUp() }
     friends.tap()
-    XCTAssertTrue(app.otherElements["friends.page"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.friendsPage.waitForExistence(timeout: 10))
   }
   /// 口令要逐字符敲：整串 `typeText` 会被「强密码」建议气泡吃掉。
   @discardableResult private func typePassword(_ text: String) -> XCUIElement {
@@ -152,7 +152,7 @@ import UIKit
     XCTAssertTrue(username.waitForExistence(timeout: 10)); username.tap(); username.typeText(name)
     typePassword(password)
     tap("account.submit")
-    XCTAssertTrue(wait(45) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(wait(45) { !self.app.accountView.exists },
                   "注册 \(name) 没闭合账号页，页面报错=\(app.staticTexts["account.error"].exists ? app.staticTexts["account.error"].label : "无")")
     return name
   }

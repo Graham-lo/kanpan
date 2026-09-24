@@ -33,6 +33,17 @@ struct SettingsPanel: View {
 
   private var prefs: Prefs { store.prefs }
 
+  /// 整页时推进设置自己这个导航栈的那几层（账号、朋友）。路径住在宿主（`MainScreen`）：
+  /// 登录成功要退回、点开一条收到的线要清空，都得宿主能动它。nil = 不推，走宿主的表。
+  var path: Binding<[SettingsRoute]>? = nil
+  /// 每一层画什么由宿主给——朋友页要的收件箱、打开收到的线，都在宿主那儿。
+  var destination: ((SettingsRoute) -> AnyView)? = nil
+  /// 账号那一行。整页时推一层账号页（系统返回，底栏常驻）；nil 走 `account.open()` 那张表。
+  var onAccount: (() -> Void)? = nil
+  /// 整页时身下那条标签栏的高度。宿主的 `safeAreaInset` 进不了 `NavigationStack`，
+  /// 这一页和推进来的每一层都自己让出这一截，滚到底最后一行才在标签栏上沿以内。
+  var bottomInset: CGFloat = 0
+
   var body: some View {
     page
       // 账号页由**一个** presenter 持有（审查 C-06）。
@@ -55,7 +66,9 @@ struct SettingsPanel: View {
   /// 预览与旧入口）仍是 `PanelSheet`，两条路各走各的，同一条路径上不中途换写法。
   @ViewBuilder private var page: some View {
     if asPage {
-      NavigationStack {
+      // 设置 → 账号 / 朋友推在这个栈里（UI 整改 P2，2026-09-25）：底栏常驻、系统返回，
+      // 回来时滚动位置还在。别的入口（图表面板、分享、深链）进来的仍是表。
+      NavigationStack(path: path ?? .constant([])) {
         ScrollView {
           VStack(spacing: 0) { rows }
             .padding(.top, Space.xs)
@@ -63,9 +76,13 @@ struct SettingsPanel: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .accessibilityIdentifier("panel.content")
+        .safeAreaPadding(.bottom, bottomInset)
         .background(t.app.ignoresSafeArea())
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: SettingsRoute.self) { route in
+          destination?(route).safeAreaPadding(.bottom, bottomInset)
+        }
       }
       // 行文、分组标题、皮肤卡左右跟页面外边距走：16 Pro 上 16，17 Pro Max 上 20。
       .panelPageInset()
@@ -83,7 +100,7 @@ struct SettingsPanel: View {
       // 上一次请求的结果，用户想知道的是「我这台机器上的东西新不新」。
       PanelRow(name: account.user?.email ?? "登录",
                meta: account.user == nil ? nil : syncMeta(account),
-               onTap: { account.open() }) {
+               onTap: { if let onAccount { onAccount() } else { account.open() } }) {
         nextPageMark
       }.accessibilityIdentifier("settings.account")
     }
@@ -271,4 +288,10 @@ private struct AccountPresenter: ViewModifier {
       content
     }
   }
+}
+
+/// 设置整页推进去的那几层。
+enum SettingsRoute: Hashable {
+  case account
+  case friends
 }

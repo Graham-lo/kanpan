@@ -192,6 +192,13 @@ struct MainScreen: View {
   @State private var showFriendPicker = false
   /// 朋友页上点了「登录」：账号页收起、而且真登上了，就把朋友页再打开。
   @State private var friendsAfterLogin = false
+  /// 设置整页自己那个导航栈的路径：设置 → 账号 / 朋友是推进去的一层（UI 整改 P2，2026-09-25），
+  /// 底栏常驻、系统返回。别的入口（图表面板、分享、深链）仍开表。离开设置这一格就清空。
+  @State private var settingsPath: [SettingsRoute] = []
+  /// 标签栏量出来的高度。设置整页是个 `NavigationStack`，下面那句 `safeAreaInset` 顶不进
+  /// 导航栈里的页（UIKit 的导航控制器不收 SwiftUI 加的这份 inset），滚到底「清理存储空间」
+  /// 会压在标签栏底下——所以把高度量出来，由设置页自己在栈里补上。
+  @State private var tabBarHeight: CGFloat = 0
   @State private var shareDraft: ShareOutbound?
   @State private var shareShot: Data?
   /// 「回给他」：他那一封的线已经留在图上，等我画完点发送（P3.5）。
@@ -534,13 +541,22 @@ struct MainScreen: View {
     }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
-    .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
+    .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen && !accountInSettings }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
     // 从朋友页点「登录」进来的：登完回到朋友页，不把人丢在设置页上。
     .onChange(of: account.presented) { _, open in
+      // 推在设置里的账号页：登成功 / 退登（`presented` 落回 false）就退回上一层。
+      if !open, settingsPath.last == .account { settingsPath.removeLast() }
       guard !open, friendsAfterLogin else { return }
       friendsAfterLogin = false
       guard account.user != nil else { return }
       Task { try? await Task.sleep(for: .milliseconds(350)); showFriends = true }
+    }
+    // 反过来：用户在推进来的账号页上按了系统返回，账号页就算收起了。
+    .onChange(of: settingsPath) { old, new in
+      if old.last == .account, new.last != .account, account.presented { account.presented = false }
+    }
+    .onChange(of: tab) { _, next in
+      if next != .settings, !settingsPath.isEmpty { settingsPath = [] }
     }
     .fullScreenCover(isPresented: $review.bookOpen) {
       ReviewBook(feature: review)
@@ -594,7 +610,11 @@ struct MainScreen: View {
         else { favoritesPage }
       case .sectors: sectorPage
       case .settings: SettingsPanel(store: store, asPage: true,
-                                    onFriends: { showFriends = true })
+                                    onFriends: { settingsPath.append(.friends) },
+                                    path: $settingsPath,
+                                    destination: settingsDestination,
+                                    onAccount: openAccountInSettings,
+                                    bottomInset: tabBarHeight)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -604,6 +624,7 @@ struct MainScreen: View {
     .safeAreaInset(edge: .bottom, spacing: 0) {
       if !reviewChart.active {
         TabBar(theme: theme, current: tab, drawing: draw.active, drawingEnabled: !comparing, onPick: switchTo(tab:))
+          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { tabBarHeight = $0 }
       }
     }
     // 键盘不许顶这三张常驻页，也不许顶标签栏。
@@ -990,6 +1011,24 @@ struct MainScreen: View {
   }
   /// 朋友页没登录时那颗「登录」。朋友页和账号页都挂在根这一层，同一时刻只能开一张：
   /// 先收朋友页，等它退场再开账号页（和 `beginShareSend` 收面板再开发送表同一个等法）。
+  /// 账号页此刻推在设置的导航栈里（根上那张账号表就不开）。
+  private var accountInSettings: Bool { tab == .settings && settingsPath.last == .account }
+  /// 设置整页推进去的那几层画什么（`SettingsRoute`）。
+  private func settingsDestination(_ route: SettingsRoute) -> AnyView {
+    switch route {
+    case .account:
+      AnyView(AccountView(feature: account, pushed: true))
+    case .friends:
+      AnyView(FriendsPage(inbox: inbox, loggedIn: account.user != nil,
+                          onLogin: openAccountInSettings, onOpen: openShare, pushed: true))
+    }
+  }
+  /// 设置里点账号那一行，或推进来的朋友页上点「登录」：账号页推一层，不再另开一张表。
+  /// 登成功自己退回上一层（上面那条 `onChange(of: account.presented)`）——从朋友页来的回到朋友页。
+  private func openAccountInSettings() {
+    if settingsPath.last != .account { settingsPath.append(.account) }
+    account.open()
+  }
   private func loginFromFriends() {
     showFriends = false; friendsAfterLogin = true
     Task { try? await Task.sleep(for: .milliseconds(350)); account.open() }
@@ -1782,7 +1821,12 @@ struct MainScreen: View {
         // 用户自己换号 / 退登，要把人从自选页带走（别让他对着上一个账号的表）。
         // 冷启动那一段不算：装访客档案、以及 `account.restore()` 把登录态读回来，
         // 走的是同一条路，那时候该停哪一格交给 `honorProfile()` 按真档案定。
-        if !awaitingAccount { tab = .chart; didLeaveLaunch = true }
+        // 例外：从设置里推进来的朋友页点「登录」（设置那一叠是 [朋友, 账号]）——登完退回
+        // 朋友页，和原来朋友页是半屏时「登完再把朋友页开回来」同一个意思，不把人丢到行情页。
+        if !awaitingAccount {
+          if !(tab == .settings && settingsPath.contains(.friends)) { tab = .chart }
+          didLeaveLaunch = true
+        }
         // 正勾着的那次批量编辑跟着走：换了号，表就不是刚才那张表了，
         // 勾中的代号留着只会落到别人的自选上。
         // 落脚点也一起丢（审查 C-08）：换了号，「他停在 APTUSDT 那一行」说的是

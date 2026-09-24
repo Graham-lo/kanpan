@@ -32,7 +32,7 @@ struct FriendsPage: View {
 
   var body: some View {
     if pushed {
-      page
+      page.tint(theme.amber)
     } else {
       NavigationStack {
         page.toolbar {

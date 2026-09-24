@@ -177,7 +177,7 @@ final class IPadReviewBookSignedInUITests: KanpanUICase {
   }
 
   private func openAccountPage() {
-    if app.otherElements["account.view"].exists { return }
+    if app.accountView.exists { return }
     if !app.buttons["settings.account"].exists {
       let tab = app.buttons[Ids.bottomSettings]
       expectExists(tab, Self.long, "底栏上没有设置格")
@@ -186,7 +186,7 @@ final class IPadReviewBookSignedInUITests: KanpanUICase {
     let row = app.buttons["settings.account"]
     expectExists(row, Self.long, "设置页上没有账号行 settings.account")
     row.tap()
-    expectExists(app.otherElements["account.view"], Self.long, "点了账号行但账号页没打开")
+    expectExists(app.accountView, Self.long, "点了账号行但账号页没打开")
   }
 
   /// 口令要逐字符敲：整串 `typeText` 会被 iOS 的「强密码」建议气泡吃掉，只剩最后一个字符。
@@ -212,7 +212,7 @@ final class IPadReviewBookSignedInUITests: KanpanUICase {
     entry.tap()
     fill(username: username)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.accountView.exists },
                   "注册 \(username) 没有闭合账号页，页面报错=\(errorText())")
   }
 
@@ -224,7 +224,7 @@ final class IPadReviewBookSignedInUITests: KanpanUICase {
     entry.tap()
     fill(username: nil)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.accountView.exists },
                   "注销 \(username) 没完成，页面报错=\(errorText())")
     created.removeAll { $0 == username }
   }

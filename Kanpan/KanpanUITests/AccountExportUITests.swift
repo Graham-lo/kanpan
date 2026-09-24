@@ -47,7 +47,7 @@ import XCTest
     XCTAssertTrue(username.waitForExistence(timeout: 10)); username.tap(); username.typeText(name)
     let secure = app.secureTextFields["account.password"]; secure.tap(); secure.typeText(password)
     tap("account.submit")
-    XCTAssertTrue(wait(45) { !self.app.otherElements["account.view"].exists }, "登录未完成")
+    XCTAssertTrue(wait(45) { !self.app.accountView.exists }, "登录未完成")
     // 登录成功会回到图表页，再从底栏回设置。
     if !app.buttons["settings.account"].waitForExistence(timeout: 3) { tap("bottom.settings") }
     for _ in 0..<6 where !app.buttons["settings.account"].isHittable { app.swipeDown() }

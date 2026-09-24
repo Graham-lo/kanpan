@@ -217,7 +217,7 @@ import XCTest
     XCTAssertTrue(field.waitForExistence(timeout: 20), "\(step)：没有用户名输入框\n\(app.debugDescription)")
     fill(app, username: (field.value as? String) == account ? nil : account, step: step)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(60) { !app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !app.accountView.exists },
                   "\(step)：重新登录没闭合账号页，页面报错=\(errorText(app))\n\(app.debugDescription)")
   }
 
@@ -258,7 +258,7 @@ import XCTest
   // 这边两台机器一个人，所以 `app` 得当参数传进来。
 
   private func openAccount(_ app: XCUIApplication, step: String) {
-    if !app.otherElements["account.view"].exists {
+    if !app.accountView.exists {
       let tab = app.buttons["bottom.settings"]
       XCTAssertTrue(tab.waitForExistence(timeout: 60), "\(step)：底栏上没有设置格\n\(app.debugDescription)")
       tab.tap()
@@ -266,7 +266,7 @@ import XCTest
       XCTAssertTrue(row.waitForExistence(timeout: 20), "\(step)：设置页上没有账号行\n\(app.debugDescription)")
       row.tap()
     }
-    XCTAssertTrue(app.otherElements["account.view"].waitForExistence(timeout: 20),
+    XCTAssertTrue(app.accountView.waitForExistence(timeout: 20),
                   "\(step)：账号页没打开\n\(app.debugDescription)")
   }
 
@@ -296,7 +296,7 @@ import XCTest
     entry.tap()
     fill(app, username: account, step: step)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(60) { !app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !app.accountView.exists },
                   "\(step)：注册没闭合账号页，页面报错=\(errorText(app))\n\(app.debugDescription)")
   }
 
@@ -304,7 +304,7 @@ import XCTest
     openAccount(app, step: step)
     fill(app, username: account, step: step)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(60) { !app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !app.accountView.exists },
                   "\(step)：登录没闭合账号页，页面报错=\(errorText(app))\n\(app.debugDescription)")
   }
 
@@ -316,7 +316,7 @@ import XCTest
     entry.tap()
     fill(app, username: nil, step: step)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(60) { !app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !app.accountView.exists },
                   "\(step)：注销没完成，页面报错=\(errorText(app))\n\(app.debugDescription)")
     created.removeAll { $0 == account }
   }
@@ -351,13 +351,13 @@ import XCTest
   /// sheet 怎么关。不收起来的话它整个盖在底栏上，后面点「自选」那一下根本落不到底栏上。
   private func leaveAccount(_ app: XCUIApplication, step: String) {
     for _ in 0..<4 {
-      guard app.otherElements["account.view"].exists else { return }
-      let back = app.buttons["account.back"]
+      guard app.accountView.exists else { return }
+      let back = app.accountExit
       guard back.exists, back.isHittable else { break }
       back.tap()
-      _ = waitUntil(5) { !app.otherElements["account.view"].exists }
+      _ = waitUntil(5) { !app.accountView.exists }
     }
-    XCTAssertFalse(app.otherElements["account.view"].exists,
+    XCTAssertFalse(app.accountView.exists,
                    "\(step)：账号页收不起来\n\(app.debugDescription)")
   }
 

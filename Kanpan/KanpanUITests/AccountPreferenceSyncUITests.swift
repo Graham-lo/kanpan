@@ -106,7 +106,7 @@ import CoreGraphics
                   屏幕亮度始终是 \(flip.summary)，账号页报错=\(errorText())
                   \(app.debugDescription)
                   """)
-    XCTAssertTrue(waitUntil(60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !self.app.accountView.exists },
                   "第 6 步：登回 A 没有闭合账号页，页面报错=\(errorText())\n\(app.debugDescription)")
     shot("6-登回A")
     // 亮度只证明「换了一套暗的」。到底是不是 A 那一套，回设置页按控件逐个核对。
@@ -270,14 +270,14 @@ import CoreGraphics
 
   /// 账号页没开就从底栏「设置」那一格进去开。已经开着就原样返回。
   private func openAccount(step: String) {
-    if !app.otherElements["account.view"].exists {
+    if !app.accountView.exists {
       goToSettings(step: step)
       let row = app.buttons["settings.account"]
       XCTAssertTrue(row.waitForExistence(timeout: 20),
                     "\(step)：设置页上没有账号行 settings.account\n\(app.debugDescription)")
       row.tap()
     }
-    XCTAssertTrue(app.otherElements["account.view"].waitForExistence(timeout: 20),
+    XCTAssertTrue(app.accountView.waitForExistence(timeout: 20),
                   "\(step)：点了账号行但账号页没打开\n\(app.debugDescription)")
   }
 
@@ -311,7 +311,7 @@ import CoreGraphics
     entry.tap()
     fill(username: username, step: step)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !self.app.accountView.exists },
                   "\(step)：注册没有闭合账号页，页面报错=\(errorText())\n\(app.debugDescription)")
   }
 
@@ -319,7 +319,7 @@ import CoreGraphics
     openAccount(step: step)
     fill(username: username, step: step)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !self.app.accountView.exists },
                   "\(step)：登录没有闭合账号页，页面报错=\(errorText())\n\(app.debugDescription)")
   }
 
@@ -329,7 +329,7 @@ import CoreGraphics
     XCTAssertTrue(button.waitForExistence(timeout: 20),
                   "\(step)：账号页上没有「退出登录」\n\(app.debugDescription)")
     button.tap()
-    XCTAssertTrue(waitUntil(30) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(30) { !self.app.accountView.exists },
                   "\(step)：点了退出登录但账号页没关，页面报错=\(errorText())\n\(app.debugDescription)")
   }
 
@@ -342,7 +342,7 @@ import CoreGraphics
     entry.tap()
     fill(username: nil, step: step)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(waitUntil(60) { !self.app.otherElements["account.view"].exists },
+    XCTAssertTrue(waitUntil(60) { !self.app.accountView.exists },
                   "\(step)：注销 \(username) 没完成，页面报错=\(errorText())\n\(app.debugDescription)")
     created.removeAll { $0 == username }
   }
@@ -573,13 +573,13 @@ import CoreGraphics
   /// 从账号页退回页面本身（`account.back` 在子页是「返回」、在账号页是「收起」）。
   private func leaveAccount(step: String) {
     for _ in 0..<4 {
-      guard app.otherElements["account.view"].exists else { return }
-      let back = app.buttons["account.back"]
+      guard app.accountView.exists else { return }
+      let back = app.accountExit
       guard back.exists, back.isHittable else { break }
       back.tap()
-      _ = waitUntil(5) { !self.app.otherElements["account.view"].exists }
+      _ = waitUntil(5) { !self.app.accountView.exists }
     }
-    XCTAssertFalse(app.otherElements["account.view"].exists, "\(step)：账号页收不起来\n\(app.debugDescription)")
+    XCTAssertFalse(app.accountView.exists, "\(step)：账号页收不起来\n\(app.debugDescription)")
   }
 
   private func openFavoritesPage(step: String) {

@@ -175,7 +175,7 @@ import UIKit
       app.buttons["bottom.settings"].tap()
       let row = app.buttons["settings.account"]
       XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
-      XCTAssertTrue(app.otherElements["account.view"].waitForExistence(timeout: 15))
+      XCTAssertTrue(app.accountView.waitForExistence(timeout: 15))
     }
     func credentials() {
       let user = app.textFields["account.email"]
@@ -192,7 +192,7 @@ import UIKit
       paste.first { $0.exists && $0.isHittable }!.tap()
       UIPasteboard.general.items = []
       app.buttons["account.submit"].tap()
-      XCTAssertTrue(wait(60) { !self.app.otherElements["account.view"].exists })
+      XCTAssertTrue(wait(60) { !self.app.accountView.exists })
     }
     // 先记下再注册：注册成功但回包丢了也能在收尾时删掉。
     createdAccount = (name, password)

@@ -164,6 +164,6 @@ final class KeyboardUsabilityUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { submit.frame.maxY < self.keyboardTop() },
                   "出错之后「登录」压在键盘底下了")
 
-    app.buttons["account.back"].tap()
+    app.accountExit.tap()
   }
 }

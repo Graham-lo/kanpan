@@ -34,8 +34,8 @@ final class PresenterAndStateUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { view.count > 0 }, "点了账号入口没开出账号页")
     XCTAssertEqual(view.count, 1, "屏幕上同时有 \(view.count) 张账号页——两个 presenter 抢同一个开关")
 
-    // 关掉。左上角那颗「‹」是账号页唯一的出口。
-    let back = app.buttons["account.back"]
+    // 关掉。左上角那颗「‹」是账号页唯一的出口（设置里推进来的是系统返回）。
+    let back = app.accountExit
     expectExists(back, Self.short, "账号页上没有返回")
     back.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { view.count == 0 }, "按了返回账号页没收走")
@@ -46,7 +46,7 @@ final class PresenterAndStateUITests: KanpanUICase {
     entry.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { view.count > 0 }, "第二次点账号入口一下没开（要点两下）")
     XCTAssertEqual(view.count, 1, "第二次开出了 \(view.count) 张账号页")
-    app.buttons["account.back"].tap()
+    app.accountExit.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { view.count == 0 }, "第二次关不掉")
   }
 

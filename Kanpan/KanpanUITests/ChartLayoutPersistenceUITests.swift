@@ -167,7 +167,7 @@ import XCTest
     app.textFields["account.email"].typeText(String(account))
     typeSecret(app, password)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(wait(40) { !app.otherElements["account.view"].exists }, app.debugDescription)
+    XCTAssertTrue(wait(40) { !app.accountView.exists }, app.debugDescription)
 
     app.buttons["bottom.chart"].tap()
     waitForChart(app)
@@ -192,7 +192,7 @@ import XCTest
     restarted.buttons["注销账号"].tap()
     typeSecret(restarted, password)
     restarted.buttons["account.submit"].tap()
-    XCTAssertTrue(wait(30) { !restarted.otherElements["account.view"].exists })
+    XCTAssertTrue(wait(30) { !restarted.accountView.exists })
   }
 
   /// 用户 2026-09-19 报的那条路，**跟上面那条差的只是落地页**：有自选的人冷启动
@@ -231,7 +231,7 @@ import XCTest
     app.textFields["account.email"].typeText(String(account))
     typeSecret(app, password)
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(wait(40) { !app.otherElements["account.view"].exists }, app.debugDescription)
+    XCTAssertTrue(wait(40) { !app.accountView.exists }, app.debugDescription)
 
     app.buttons["bottom.chart"].tap()
     waitForChart(app)
@@ -277,7 +277,7 @@ import XCTest
     third.buttons["注销账号"].tap()
     typeSecret(third, password)
     third.buttons["account.submit"].tap()
-    XCTAssertTrue(wait(30) { !third.otherElements["account.view"].exists })
+    XCTAssertTrue(wait(30) { !third.accountView.exists })
   }
 
   // ---------------------------------------------------------------- 没登录那条路

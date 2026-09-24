@@ -214,7 +214,7 @@ import XCTest
     XCTAssertTrue(username.waitForExistence(timeout: 10)); username.tap(); username.typeText(person["username"]!)
     let password = app.secureTextFields["account.password"]; password.tap(); password.typeText(person["password"]!)
     tap("account.submit")
-    XCTAssertTrue(wait(45) { !self.app.otherElements["account.view"].exists }, "登录未完成")
+    XCTAssertTrue(wait(45) { !self.app.accountView.exists }, "登录未完成")
   }
   private func tap(_ id: String) {
     let button = app.buttons[id]; XCTAssertTrue(button.waitForExistence(timeout: 12), id)

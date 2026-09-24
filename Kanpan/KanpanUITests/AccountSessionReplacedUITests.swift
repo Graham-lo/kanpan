@@ -183,7 +183,7 @@ import UIKit
     try typeUsername(user, step: "第 5 步（用户名）")
     try fillPassword(step: "第 5 步（口令）")
     app.buttons["account.submit"].tap()
-    try check(waitUntil(45) { !self.app.otherElements["account.view"].exists },
+    try check(waitUntil(45) { !self.app.accountView.exists },
               "第 5 步：登回 \(user) 没有闭合账号页，页面报错=\(errorText())\n\(app.debugDescription)")
     shot("5-登回来")
 
@@ -237,7 +237,7 @@ import UIKit
 
   /// 账号页没开就从底栏「设置」那一格进去开。已经开着就原样返回。
   private func openAccount(step: String) throws {
-    if !app.otherElements["account.view"].exists {
+    if !app.accountView.exists {
       let tab = app.buttons["bottom.settings"]
       try check(tab.waitForExistence(timeout: 60),
                 "\(step)：底栏上没有设置格 bottom.settings\n\(app.debugDescription)")
@@ -247,7 +247,7 @@ import UIKit
                 "\(step)：设置页上没有账号行 settings.account\n\(app.debugDescription)")
       row.tap()
     }
-    try check(app.otherElements["account.view"].waitForExistence(timeout: 20),
+    try check(app.accountView.waitForExistence(timeout: 20),
               "\(step)：点了账号行但账号页没打开\n\(app.debugDescription)")
   }
 
@@ -296,7 +296,7 @@ import UIKit
     try typeUsername(username, step: step)
     try fillPassword(step: step)
     app.buttons["account.submit"].tap()
-    try check(waitUntil(45) { !self.app.otherElements["account.view"].exists },
+    try check(waitUntil(45) { !self.app.accountView.exists },
               "\(step)：注册没有闭合账号页，页面报错=\(errorText())\n\(app.debugDescription)")
   }
 
@@ -306,7 +306,7 @@ import UIKit
     try tapLabel("注销账号", step: step)
     try fillPassword(step: step)
     app.buttons["account.submit"].tap()
-    try check(waitUntil(45) { !self.app.otherElements["account.view"].exists },
+    try check(waitUntil(45) { !self.app.accountView.exists },
               "\(step)：注销 \(username) 没完成，页面报错=\(errorText())\n\(app.debugDescription)")
     created.removeAll { $0 == username }
   }

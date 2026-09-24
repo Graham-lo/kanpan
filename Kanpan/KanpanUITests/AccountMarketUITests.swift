@@ -81,7 +81,7 @@ import XCTest
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     for character in "Testpass2026" { app.secureTextFields["account.password"].typeText(String(character)) }
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(wait(25) { !app.otherElements["account.view"].exists }, app.debugDescription)
+    XCTAssertTrue(wait(25) { !app.accountView.exists }, app.debugDescription)
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     app.buttons["bottom.settings"].tap(); app.buttons["settings.account"].tap()
@@ -93,6 +93,6 @@ import XCTest
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     for character in "Testpass2026" { app.secureTextFields["account.password"].typeText(String(character)) }
     app.buttons["account.submit"].tap()
-    XCTAssertTrue(wait(20) { !app.otherElements["account.view"].exists })
+    XCTAssertTrue(wait(20) { !app.accountView.exists })
   }
 }
