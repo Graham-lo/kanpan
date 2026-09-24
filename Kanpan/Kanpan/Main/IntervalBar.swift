@@ -49,7 +49,17 @@ struct IntervalBar: View {
   /// 这一行的字：13（`TypeScale.control` / `controlOn`，`.footnote` 曲线，UI 审查 2026-09-24 §4.3 #24）。
   /// 当前档那层底要按字宽画，得拿到**此刻真的排出来**的字号，所以字号自己在这儿按同一条曲线量一份
   /// （`textWidth` 用的就是它），不走 `.font(TypeScale.control)`。封顶跟头部一起（`MarketChrome.typeCap`）。
-  @ScaledMetric(relativeTo: .footnote) private var textSize: CGFloat = 13
+  ///
+  /// 封顶必须在这儿**自己夹**，不能指望 `body` 末尾那句 `.dynamicTypeSize(...)`：那句只管
+  /// `body` 里面的子视图，这个结构体自己的属性（原来是 `@ScaledMetric`）读的是**外面**的环境，
+  /// 系统字号开到 AX3 时它照样量出 AX3 的字号——周期条的字比头部大一圈、整排比页宽多出 10pt，
+  /// 把头部、图表一起往左右各顶出 5pt（UI 整改 P1c 在 16 Pro 上复现：六格右缘 391 > 386）。
+  @Environment(\.dynamicTypeSize) private var systemTypeSize
+  private var textSize: CGFloat {
+    let capped = min(systemTypeSize, MarketChrome.typeCap)
+    let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(capped))
+    return UIFontMetrics(forTextStyle: .footnote).scaledValue(for: TypeScale.control.size, compatibleWith: traits)
+  }
   var theme: PanelTheme
   var quick: [Interval]
   var current: Interval
@@ -383,8 +393,8 @@ struct IntervalBar: View {
   ///
   /// 底不参与布局，所以拿不到「这几个字被排成了多宽」，只能按同一支字体自己算一遍。
   /// 一律按 `.semibold` 量（当前档就是这个字重），差的那零点几个点落在 8pt 的留白里。
-  /// 字号是 `textSize`：13 经 `@ScaledMetric(relativeTo: .footnote)` 缩放（与 `UIFontMetrics(.footnote)`
-  /// 同一条曲线），并且吃得到 `MarketChrome.typeCap` 的封顶——和排出来的字一模一样。
+  /// 字号是 `textSize`：13 按 `UIFontMetrics(.footnote)` 的曲线缩放，先夹到 `MarketChrome.typeCap`
+  /// 为止——和排出来的字一模一样。
   @MainActor private static func textWidth(_ text: String, size: CGFloat) -> CGFloat {
     ceil(rawTextWidth(text, size: size))
   }
