@@ -8,15 +8,14 @@ from collections import deque
 from aiohttp import WSMsgType
 from market_rest import MARKET, OKX_BARS, normalize_okx, Unavailable
 from stream_hub import Hub
-from depth_relay import OKX_SEQUENCED, okx_frame
 
 
 class OKXHub(Hub):
-    # OKX tickers, books and trades live on the public endpoint while candle
-    # channels live on the business endpoint. Keep one client-facing hub, but use one
-    # bounded upstream connection for each channel family.
+    # OKX tickers live on the public endpoint while candle channels live on the
+    # business endpoint. Keep one client-facing hub, but use one bounded
+    # upstream connection for each channel family.
     # Client channel kind -> OKX channel; any other kind is a kline interval.
-    OKX_CHANNELS = {'ticker': 'tickers', **dict(OKX_SEQUENCED.values())}
+    OKX_CHANNELS = {'ticker': 'tickers'}
     def __init__(self,
                  upstream='wss://ws.okx.com:8443/ws/v5/public',
                  candle_upstream='wss://ws.okx.com:8443/ws/v5/business', **kwargs):
@@ -26,8 +25,6 @@ class OKXHub(Hub):
         self.controls = deque()
         self.kind_changed = {'ticker': asyncio.Event(), 'kline': asyncio.Event()}
         self.upstreams = set()
-        self.ct_vals = {}  # books/trades channel -> OKX contract face value
-        self.fresh = set()  # books channels a new peer joined: they need a new snapshot
 
     def update_upstream_indicator(self):
         # Hub.observe() and the inherited health handler use this single
@@ -38,10 +35,9 @@ class OKXHub(Hub):
     @staticmethod
     def channel_parts(channel):
         """Return (binance-style symbol, kind) for a validated client channel."""
-        for suffix, kind in (('@ticker', 'ticker'), *((s, k) for s, (k, _) in OKX_SEQUENCED.items())):
-            if channel.endswith(suffix):
-                symbol = channel[:-len(suffix)]
-                return (symbol, kind) if symbol else None
+        if channel.endswith('@ticker'):
+            symbol = channel[:-len('@ticker')]
+            return (symbol, 'ticker') if symbol else None
         prefix, separator, interval = channel.partition('@kline_')
         if separator and prefix and interval in OKX_BARS:
             return prefix, interval
@@ -50,11 +46,8 @@ class OKXHub(Hub):
     def replace(self, peer, desired):
         if any(self.channel_parts(channel) is None for channel in desired):
             return False
-        joined = desired - peer.channels
         accepted = super().replace(peer, desired)
         if accepted:
-            self.fresh = {channel for channel in self.fresh | joined
-                          if channel in self.channels and self.channel_parts(channel)[1] == 'books'}
             self.kind_changed['ticker'].set()
             self.kind_changed['kline'].set()
         return accepted
@@ -70,18 +63,11 @@ class OKXHub(Hub):
                 item = await asyncio.to_thread(MARKET.instrument, symbol.upper())
             except (Unavailable, ValueError):
                 continue
-            if kind in ('books', 'trades'):
-                self.ct_vals[channel] = item.get('ctVal')
             args.add((item['instId'], self.OKX_CHANNELS.get(kind) or 'candle' + OKX_BARS[kind]))
         return args
 
     def family(self, channel):
         return 'ticker' if self.channel_parts(channel)[1] in self.OKX_CHANNELS else 'kline'
-
-    def market_channels(self):
-        # Every OKX channel, books included, rides one of this hub's own
-        # sockets, so all of them count for the inherited stall watchdog.
-        return set(self.channels)
 
     async def sync(self, upstream, family, sent, changed):
         while True:
@@ -98,11 +84,7 @@ class OKXHub(Hub):
                 changed.set()
                 continue
             wanted = await self.arguments(wanted_channels)
-            # OKX sends a books snapshot only on subscribe, so a peer joining a
-            # book someone else already watches gets one by resubscribing.
-            joined, self.fresh = self.fresh & wanted_channels, self.fresh - wanted_channels
-            renew = await self.arguments(joined) & sent
-            for op, values in [('unsubscribe', (sent - wanted) | renew), ('subscribe', (wanted - sent) | renew)]:
+            for op, values in [('unsubscribe', sent - wanted), ('subscribe', wanted - sent)]:
                 if values:
                     # Permit normal bursts; enforce the hourly budget without delaying every new chart.
                     now = time.monotonic()
@@ -117,7 +99,7 @@ class OKXHub(Hub):
                     sent.update(values) if op == 'subscribe' else sent.difference_update(values)
 
 
-    async def publish(self, payload, raw=None):
+    async def publish(self, payload):
         arg = payload.get('arg', {}); inst = arg.get('instId', '')
         parts = inst.split('-')
         if len(parts) != 3 or parts[1:] != ['USDT', 'SWAP'] or not isinstance(payload.get('data'), list):
@@ -128,20 +110,6 @@ class OKXHub(Hub):
             if parts is None or parts[0] != symbol.lower():
                 continue
             _, kind = parts
-            if kind in ('books', 'trades'):
-                if arg.get('channel') != self.OKX_CHANNELS[kind]:
-                    continue
-                if kind == 'books' and payload.get('action') not in ('snapshot', 'update'):
-                    continue
-                frame = okx_frame(channel, self.ct_vals.get(channel),
-                                  raw if raw is not None else json.dumps(payload, separators=(',', ':')))
-                if frame is None:
-                    continue
-                for peer in tuple(self.channels.get(channel, ())):
-                    if not peer.closing and not peer.offer(channel, frame):
-                        peer.closing = True; asyncio.create_task(self.disconnect(peer, 1013))
-                self.last_market = time.monotonic()
-                continue
             if kind == 'ticker':
                 if arg.get('channel') != 'tickers':
                     continue
@@ -192,7 +160,6 @@ class OKXHub(Hub):
                         peer.closing = True; asyncio.create_task(self.disconnect(peer, 1013))
             self.last_market = time.monotonic()
         self.components = {k: v for k, v in self.components.items() if k in self.channels}
-        self.ct_vals = {k: v for k, v in self.ct_vals.items() if k in self.channels}
 
     @staticmethod
     def ticker_frame(channel, symbol, row):
@@ -274,7 +241,7 @@ class OKXHub(Hub):
                         if payload.get('event') == 'error':
                             raise ValueError('upstream subscription failed')
                         if payload.get('data'):
-                            await self.publish(payload, message.data); backoff = 1
+                            await self.publish(payload); backoff = 1
                         if control.done():
                             await control
             except asyncio.CancelledError:

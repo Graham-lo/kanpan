@@ -13,9 +13,9 @@
 
 ## 共享实时订阅
 
-`/market/stream?streams=…`由独立aiohttp服务处理：每节点只有一条固定币安上游WS，所有客户端的同名频道合并订阅，最后一个订阅者离开才退订；无客户端时释放上游。保留双向SUBSCRIBE/UNSUBSCRIBE语义。每个慢客户端只留每频道最新一条待发真实帧，不落盘，不向新客户端重播旧报价。例外是`<symbol>@depth@100ms`（逻辑都在`depth_relay.py`）：深度增量靠U/u/pu（OKX靠seqId/prevSeqId）串成链，逐帧排队不合并，超出每客户端待发上限就断开让它重连重取快照；币安把盘口流拆到了`/public`端点（`/market`不推深度），所以深度单开一条`wss://fstream.binance.com/public/stream`上游、按需开关；OKX线路把同名频道映射为`books`，首帧snapshot、之后update，整条原样包在`{"stream","source":"okx","ctVal","data"}`里转发，后来者靠重订拿到新snapshot。`<symbol>@aggTrade`同样逐帧排队，但币安仍走`/market`（实测`/public`不推成交）；OKX映射为`trades`，外层同上。共享上游不等于下行免费：客户端数量增加仍消耗出站带宽和连接资源。
+`/market/stream?streams=…`由独立aiohttp服务处理：每节点只有一条固定币安上游WS，所有客户端的同名频道合并订阅，最后一个订阅者离开才退订；无客户端时释放上游。保留双向SUBSCRIBE/UNSUBSCRIBE语义。每个慢客户端只留每频道最新一条待发真实帧，不落盘，不向新客户端重播旧报价。例外是`<symbol>@aggTrade`：每一笔成交都要算进主动买卖量，所以逐帧排队不合并（仍受每客户端待发上限约束，超出就断开让它重连），走的仍是同一条`/market`上游（实测`/public`不推成交）。OKX线路（`/market/okx/stream`）只转ticker与K线，不接受`@aggTrade`。旧版订单流用过的`<symbol>@depth@100ms`（币安`/public`上游、OKX `books`/`trades`映射，原`depth_relay.py`）已被kanpan-api的`/v1/market/ws/*`中继取代，2026-09-24删除，两条线路握手时都按非法频道拒绝。共享上游不等于下行免费：客户端数量增加仍消耗出站带宽和连接资源。
 
-允许ticker、markPrice@1s、depth@100ms、aggTrade和图表支持的kline周期；不允许用户指定上游URL、交易或账户API。每连接最多64频道、每来源最多160不同频道、每节点最多512频道。订阅消息有大小和速率限制；单来源握手、并发与总键数有界；慢发送超时断开，避免阻塞其他客户端。Caddy覆盖客户端来源头，公网自行填写同名头不能伪造来源。
+允许ticker、markPrice@1s、aggTrade和图表支持的kline周期（`depth@100ms`等深度流不再放行）；不允许用户指定上游URL、交易或账户API。每连接最多64频道、每来源最多160不同频道、每节点最多512频道。订阅消息有大小和速率限制；单来源握手、并发与总键数有界；慢发送超时断开，避免阻塞其他客户端。Caddy覆盖客户端来源头，公网自行填写同名头不能伪造来源。
 
 当前匿名应用用可信连接IP隔离滥用，不宣称能识别独立自然人。共享NAT也共享来源配额。正常自选与主图每App通常两条连接；上限针对异常占用。应用层限制不替代运营商对大规模网络攻击的防护。
 
@@ -122,7 +122,7 @@ JSON 解码、等一段和上一屏 90% 重叠的历史被重新分页下载。�
 
 ## 运行、验证与回滚
 
-Python3.11+，独立venv，`pip install -r requirements.txt`；aiohttp固定3.14.3。本地运行 `python -m unittest discover -s Backend/kanpan-gateway`，**必须用装了 aiohttp 的那个解释器（venv 里的 python）**：实时那一半（`test_okx_hub` / `test_stream_hub`）在导入时就需要 aiohttp，系统 `python3` 上它们会以带修复办法的 skip 信息整模块跳过（输出里是 `OK (skipped=2)`，不是「WS 那半边跑过了」，想看原因加 `-v`）。92项测试含100个本地客户端复用一条假上游、来源限额、异常控制帧隔离、慢客户端释放、OI周期与缓存，以及历史分页并行不丢连续性、响应字节缓存而serverTime保持新鲜、上游451作为独立信号不扣调用方配额，还有落盘 K 线只在能给出与网络逐行一致的窗口时才回答、后台续鲜让出限速时隙、频道保温到期后真的退订。另有上游限流那一组：上游 429 带 `Retry-After` 与无头 418 各自的截止时间原样到达客户端、OKX HTTP 200 的限流业务码不当空行情、已排进限速队列的第二条请求在冷却期内不再出站、本机 busy 的 429 与上游限流的 429 可区分，以及 OKX ticker / K 线的量纲与 `underlyingType` 只在有依据时才写、上游 403 当封禁走 429 契约而不是压成 503、OKX `state` 映射后透传（`preopen`/`suspend` 各一条断言，`test` 合约被过滤）。全市场 ticker 那一组另钉住：数组元素与单品种映射逐字段相等、品种表里没有的合约被过滤掉、5 秒内第二次请求不出站、`quoteVolume` 恒为空串（不是 `"0"`）。100客户端测试只证明共享/隔离功能，不是生产容量承诺。
+Python3.11+，独立venv，`pip install -r requirements.txt`；aiohttp固定3.14.3。本地运行 `python -m unittest discover -s Backend/kanpan-gateway`，**必须用装了 aiohttp 的那个解释器（venv 里的 python）**：实时那一半（`test_okx_hub` / `test_stream_hub`）在导入时就需要 aiohttp，系统 `python3` 上它们会以带修复办法的 skip 信息整模块跳过（输出里是 `OK (skipped=2)`，不是「WS 那半边跑过了」，想看原因加 `-v`）。98项测试含100个本地客户端复用一条假上游、来源限额、异常控制帧隔离、慢客户端释放、OI周期与缓存，以及历史分页并行不丢连续性、响应字节缓存而serverTime保持新鲜、上游451作为独立信号不扣调用方配额，还有落盘 K 线只在能给出与网络逐行一致的窗口时才回答、后台续鲜让出限速时隙、频道保温到期后真的退订。另有上游限流那一组：上游 429 带 `Retry-After` 与无头 418 各自的截止时间原样到达客户端、OKX HTTP 200 的限流业务码不当空行情、已排进限速队列的第二条请求在冷却期内不再出站、本机 busy 的 429 与上游限流的 429 可区分，以及 OKX ticker / K 线的量纲与 `underlyingType` 只在有依据时才写、上游 403 当封禁走 429 契约而不是压成 503、OKX `state` 映射后透传（`preopen`/`suspend` 各一条断言，`test` 合约被过滤）。全市场 ticker 那一组另钉住：数组元素与单品种映射逐字段相等、品种表里没有的合约被过滤掉、5 秒内第二次请求不出站、`quoteVolume` 恒为空串（不是 `"0"`）。100客户端测试只证明共享/隔离功能，不是生产容量承诺。
 
 源码部署在`/opt/kanpan-gateway`，`kanpan-gateway.service`监听127.0.0.1:8792，`kanpan-stream-hub.service`监听127.0.0.1:8793；DynamicUser、NoNewPrivileges、ProtectSystem=strict、ProtectHome、PrivateTmp。历史缓存位于`/var/cache/kanpan-gateway`，可清理重建。
 

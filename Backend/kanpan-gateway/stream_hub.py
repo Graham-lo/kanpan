@@ -11,7 +11,6 @@ from urllib.parse import urlencode
 
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 from resource_limits import Bucket, Capacity, HostSampler
-from depth_relay import BINANCE_PUBLIC, BinancePublicLane, sequenced, split
 
 UPSTREAM = 'wss://fstream.binance.com/market/stream'
 # One channel the node keeps subscribed with or without clients. Opening the
@@ -27,7 +26,16 @@ RESIDENT = frozenset(v for v in os.environ.get('RESIDENT_STREAMS', 'btcusdt@klin
 # the return trip cost nothing; the cap keeps a long session from accumulating.
 LINGER_SECONDS = float(os.environ.get('CHANNEL_LINGER', '90'))
 LINGER_CHANNELS = 48
-STREAM = re.compile(r'(?:[a-z0-9_]{1,30}@(?:ticker|markPrice@1s|depth@100ms|aggTrade|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)\Z')
+STREAM = re.compile(r'(?:[a-z0-9_]{1,30}@(?:ticker|markPrice@1s|aggTrade|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)\Z')
+TRADES = '@aggTrade'
+
+
+def sequenced(channel):
+    """True for channels whose frames must all arrive, in order.
+
+    Every aggregated trade counts towards the taker volume, so trades are never
+    coalesced the way tickers and klines are."""
+    return channel.endswith(TRADES)
 
 
 def streams(values):
@@ -51,8 +59,8 @@ def client_key(request):
 class Pending:
     """At most one newest unsent real frame per subscribed channel; never disk cached.
 
-    Sequenced (depth) channels are the exception: every frame is queued in
-    order, because dropping one breaks the U/u/pu or seqId chain."""
+    Sequenced (trade) channels are the exception: every frame is queued in
+    order, because dropping one loses traded volume."""
     def __init__(self, limit=512 * 1024):
         self.frames, self.queues, self.size, self.limit = {}, {}, 0, limit
 
@@ -113,9 +121,8 @@ class Peer:
 
 class Hub:
     def __init__(self, upstream=UPSTREAM, capacity=None, idle_seconds=2, resident=RESIDENT,
-                 linger_seconds=LINGER_SECONDS, public_upstream=BINANCE_PUBLIC):
+                 linger_seconds=LINGER_SECONDS):
         self.upstream_url = upstream  # injected only by local tests, never by client requests
-        self.public = BinancePublicLane(self, public_upstream, idle_seconds)  # depth channels
         self.resident = frozenset(resident)
         self.linger_seconds = linger_seconds
         self.linger = OrderedDict()  # channel -> deadline, oldest first
@@ -201,7 +208,6 @@ class Hub:
         peer.channels = set(desired)
         peer.pending.retain(desired)
         self.changed.set()
-        self.public.changed.set()
         return True
 
     async def disconnect(self, peer, code=1000):
@@ -293,7 +299,7 @@ class Hub:
                     await asyncio.wait_for(peer.ws.send_str(frame), 1)
                     blocked_since = None
                 if peer.pending.queues:
-                    peer.ready.set()  # queued depth frames go one per channel per pass
+                    peer.ready.set()  # queued trade frames go one per channel per pass
         except (asyncio.TimeoutError, ConnectionError, RuntimeError):
             await self.disconnect(peer, 1013)
         except asyncio.CancelledError:
@@ -316,7 +322,7 @@ class Hub:
             # off to .3 so rapid chart switching stays <= ~3 control frames/s.
             pause = .03 if time.monotonic() - last_control > 1 else .3
             await asyncio.sleep(pause)
-            wanted = self.market_channels() | self.resident | split(self.lingering())[1]
+            wanted = self.market_channels() | self.resident | self.lingering()
             if not wanted:
                 # Wait on the event, not the clock: a client arriving during the
                 # idle hold must be subscribed at once, not when the hold ends.
@@ -340,12 +346,9 @@ class Hub:
                     await asyncio.sleep(pause)
 
     def market_channels(self):
-        return split(self.channels)[1]
+        return set(self.channels)
 
     async def run(self):
-        await asyncio.gather(self.run_market(), self.public.run())
-
-    async def run_market(self):
         backoff = 1
         while not self.closed:
             if not self.market_channels() and not self.resident:
@@ -355,7 +358,7 @@ class Hub:
                     continue
             sync = None
             try:
-                initial = self.market_channels() | self.resident | split(self.lingering())[1]
+                initial = self.market_channels() | self.resident | self.lingering()
                 url = self.upstream_url + '?' + urlencode({'streams': '/'.join(sorted(initial))})
                 async with self.http.ws_connect(url, heartbeat=20, max_msg_size=2 * 1024 * 1024, compress=0) as upstream:
                     self.upstream, self.sent = upstream, initial
@@ -413,8 +416,7 @@ class Hub:
                                   'channels': len(self.channels), 'capacity': self.capacity.clients,
                                   'resident': len(self.resident), 'lingering': len(self.linger),
                                   'upstreamConnected': self.upstream is not None,
-                                  'upstreamConnections': self.upstream_connections,
-                                  'publicConnected': self.public.upstream is not None})
+                                  'upstreamConnections': self.upstream_connections})
 
 
 def app_for(hub, okx=None):

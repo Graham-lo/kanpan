@@ -466,9 +466,9 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 ## 主力订单流 · 服务端这一半（2026-09-24，`57fad66` + `a4763fd`，两处都已部署）
 
 - **深度快照**：`GET https://kanpan.107-174-172-10.sslip.io/v1/market/depth?symbol=BTCUSDT&limit=1000`（只在主节点的 kanpan-api 上，备用节点没有）。免登录；`limit` 只收 500/1000（缺省 1000），`symbol` 只收 `[A-Z0-9]{2,30}`；经 `binance_gate` 取 `www.binance.com/fapi/v1/depth`，正文原样透传；每个（品种, 档数）1 秒合并缓存。错误码：400 `invalid_symbol` / `invalid_limit` / `invalid_query` / `unknown_symbol`；503 `market_upstream_unavailable` + `Retry-After: 2`（451/429/418/超时）；502 `market_upstream_failed`。代码全在 `src/market_depth.rs`。
-- **深度增量流**：网关两条线路都放行 `<symbol>@depth@100ms`，逻辑全在 `Backend/kanpan-gateway/depth_relay.py`。币安把盘口流拆到了 `/public`，`/market` 实测 0 帧，所以网关为深度单开一条 `fstream.binance.com/public/stream` 上游、按需开关；深度帧逐帧排队不合并（合并会打断 U/u/pu 链）。OKX 线路 `/market/okx/stream` 映射为 `books`：帧是 `{"stream","source":"okx","ctVal","data":<OKX 原消息>}`，首帧 snapshot（400 档、prevSeqId=-1）、之后 update；OKX 的 checksum 现恒为 0，只能靠 seqId/prevSeqId；后来者加入时网关重订一次拿新 snapshot（约 0.4 秒，之前会先收到几条 update，客户端要丢掉 snapshot 之前的 update；已在看的人也会再收到一份 snapshot）。
-- **成交流**（`50c431d`，已部署）：网关两条线路都放行 `<symbol>@aggTrade`，逐帧排队不合并（成交比例要每一笔都在）。币安 aggTrade 实测只在 `/market/stream` 上推（5 秒 123 帧，`/public` 0 帧），所以和行情同一条上游；OKX 映射为 `trades`（instId 同 books），帧是 `{"stream":"<sym>@aggTrade","source":"okx","ctVal","data":<OKX 原消息>}`，sz 是张数要乘 ctVal。
-- 判定都在 `depth_relay.py`：`sequenced()` 管逐帧排队（深度 + 成交），`on_public()` 管走不走币安 `/public`（只有深度），`OKX_SEQUENCED` 是 OKX 映射表。
+- **深度增量流（已删除）**：旧版订单流曾让 Python 网关两条线路放行 `<symbol>@depth@100ms`（`depth_relay.py`、币安 `fstream.binance.com/public` 专用上游、OKX `books` 映射，`a4763fd`）；已被 kanpan-api 中继（`/v1/market/ws/*`）取代，2026-09-24 删除（第四批第 38 项），网关现在把深度流当非法频道、握手回 400。
+- **成交流**：币安那条 `/market/stream` 仍放行 `<symbol>@aggTrade`（`50c431d`；逐帧排队不合并，和行情同一条上游，`/public` 实测不推成交）。OKX 线路的 `trades` 映射没有调用方（OKX 替身 `hasMicrostructure: false`，订单流的 OKX 成交走 `/v1/market/ws/okx`），同日一并删除。
+- 逐帧排队的判定 `sequenced()` 已挪进 `stream_hub.py`，只剩 aggTrade 一种。
 
 ## 主力订单流 · 客户端·站立墙旧版（已被下文「逐单模型」取代，只留作历史；2026-09-24，`819f9cc` Core → `12b4e76` Network → `b01d647` Data → `2e4d136` Chart → `4953b31` App，验收见 `docs/acceptance/主力订单流-2026-09-24/验收报告.md`）
 
