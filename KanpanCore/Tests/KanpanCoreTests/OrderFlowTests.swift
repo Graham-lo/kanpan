@@ -517,8 +517,8 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(order.initialNotional, 1_590 * 12_000, "首次名义不跟着涨")
   }
 
-  /// 各家的成交都记进同一侧同一桶的大单；一本簿一本簿各自出单。
-  func testTradesFromAnyVenueCountAndVenuesAreTrackedSeparately() {
+  /// 成交只记同一本簿自己的：别家打到同一侧同一桶的成交不记；一本簿一本簿各自出单。
+  func testTradesOnlyCountOnTheirOwnVenueAndVenuesAreTrackedSeparately() {
     var model = OrderFlowModel(symbol: "ETHUSDT", thresholds: thresholds)
     for venue in [okx, coinbase] {
       model.addVenue(venue)
@@ -532,9 +532,26 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(Set(frame.orders.map(\.exchange)), ["OKX", "Coinbase"])
     XCTAssertEqual(Set(frame.orders.map(\.product)), [.usdtPerp, .spot])
     _ = model.ingest(coinbase.id, .trade(OrderFlowTrade(price: 1_590, quantity: 100, hitSide: .bid, timeMs: 0)), nowMs: 600)
-    for order in model.evaluate(nowMs: 700).orders {
-      XCTAssertEqual(order.filledNotional, 159_000, "Coinbase 的成交也记进 OKX 那一单")
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    let after = model.evaluate(nowMs: 700).orders
+    XCTAssertEqual(after.first { $0.exchange == "Coinbase" }?.filledNotional, 159_000)
+    XCTAssertEqual(after.first { $0.exchange == "OKX" }?.filledNotional, 15_900, "Coinbase 的成交不记进 OKX 那一单")
+  }
+
+  /// 正在确认中的候选也只收自己这本簿的成交。
+  func testCandidateOnlyCollectsItsOwnVenuesTrades() {
+    var model = OrderFlowModel(symbol: "ETHUSDT", thresholds: thresholds)
+    for venue in [okx, coinbase] {
+      model.addVenue(venue)
+      _ = model.connectionOpened(venue.id)
     }
+    _ = model.ingest(okx.id, .snapshot(deepSnapshot(last: 1)), nowMs: 0)
+    _ = model.ingest(coinbase.id, .snapshot(deepSnapshot(last: 1, wall: 0)), nowMs: 0)
+    _ = model.evaluate(nowMs: 0)  // OKX 1590 成了候选
+    _ = model.ingest(coinbase.id, .trade(OrderFlowTrade(price: 1_590, quantity: 100, hitSide: .bid, timeMs: 0)), nowMs: 100)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 20, hitSide: .bid, timeMs: 0)), nowMs: 100)
+    let order = model.evaluate(nowMs: 500).orders.first { $0.exchange == "OKX" }
+    XCTAssertEqual(order?.filledNotional, 31_800)
   }
 
   /// 币本位：张数 × 面值换成美元再比门槛。

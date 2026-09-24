@@ -8,7 +8,10 @@ import Foundation
 // - 出现 / 消失：各要连续两次评估、首尾相隔 ≥ 300 ms 才算（`OrderFlowDefaults.confirmation*`）。
 //   出现要 ≥ 门槛，出现之后跌到门槛 × 0.5 以下才算消失（`OrderFlowDefaults.exitRatio`，退出滞回）。
 //   出现时刻记第一次过门槛那一拍，结束时刻记第一次跌破那一拍。
-// - 成交：主动成交（任何一家的逐笔）打到这一侧这个桶，就记进这个桶上每一条还挂着的大单。
+// - 成交：只认同一本簿（同一个 `venueID`）自己的逐笔——打到这一侧这个桶，记进这本簿这个桶上还挂着的
+//   那一单（以及正在确认的候选）。别家、别的产品的成交不记：交割、现货、永续之间有基差（季度合约常见
+//   0.5–2%，远大于 BTC 100 美元的步长），同一个绝对价位在不同的簿里离现价远近不同；几家同桶都有墙时，
+//   跨家记还会把同一笔成交重复算好几次，「已成交」因此偏多。
 // - 结束：累计成交 ≥ 消失掉的名义（首次名义 − 结束时剩下的）× 0.8 记「已成交」，否则「已撤销」（理由见 `OrderFlowDefaults.filledRatio`）。
 // - 历史：结束的大单留在图上，24 小时、最多 500 条（`OrderFlowDefaults.retentionMs / maxEndedOrders`）；
 //   还挂着的永远不删。
@@ -240,7 +243,7 @@ public struct OrderFlowModel: Sendable {
   public mutating func ingest(_ venueID: String, _ message: DepthMessage, nowMs: Int64) -> Action {
     guard let venue = books[venueID]?.venue else { return .none }
     if case .trade(let trade) = message {
-      attribute(trade, notional: venue.notional)
+      attribute(trade, venueID: venueID, notional: venue.notional)
       return .none
     }
     return books[venueID]?.ingest(message, nowMs: nowMs) ?? .none
@@ -251,18 +254,18 @@ public struct OrderFlowModel: Sendable {
     books[venueID]?.applySnapshot(snapshot, nowMs: nowMs) ?? .none
   }
 
-  /// 成交记进这一侧这个桶上还挂着的大单（各家的成交都算），以及正在确认中的候选。
-  private mutating func attribute(_ trade: OrderFlowTrade, notional: OrderFlowNotional) {
+  /// 成交记进同一本簿这一侧这个桶上还挂着的大单，以及正在确认中的候选。别的簿的成交不记（见文件头）。
+  private mutating func attribute(_ trade: OrderFlowTrade, venueID: String, notional: OrderFlowNotional) {
     guard let scheme else { return }
     let usd = notional.usd(price: trade.price, quantity: trade.quantity)
     guard usd > 0 else { return }
     let bucket = scheme.index(of: trade.price)
-    for i in orders.indices where orders[i].isLive && orders[i].side == trade.hitSide && orders[i].bucket == bucket {
+    for i in orders.indices where orders[i].isLive && orders[i].venueID == venueID
+      && orders[i].side == trade.hitSide && orders[i].bucket == bucket {
       orders[i].filledNotional += usd
     }
-    for key in candidates.keys where key.key.side == trade.hitSide && key.key.index == bucket {
-      candidates[key]?.filled += usd
-    }
+    let key = CandidateKey(venue: venueID, key: BucketKey(side: trade.hitSide, index: bucket))
+    candidates[key]?.filled += usd
   }
 
   // MARK: - 设置
