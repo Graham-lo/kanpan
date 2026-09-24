@@ -23,13 +23,17 @@ import UIKit
 //   3. **细线 + 签，垫在 K 线下面**（2026-09-25 用户看真机：「大单不许盖住 K 线，K 线是主体」「是颜色重合了把 K 线覆盖了」）：
 //      首版是实心色带（粗细五档 2–8 pt，跨桶的盖住整个价位范围），压在同色蜡烛上融成一片。改成线只表示在场区间：
 //      主 2 pt（还挂着的主 2.5 pt，最粗就到这儿）、次 1 pt 70%、底噪 1 pt 35%；名义大小不再靠加粗表达，
-//      只体现在排名（主次）与金额签上。跨桶的墙只在整个价位范围（最低桶价 … 最高桶价 + 步长）垫一层 10% 的淡底，
-//      代表价上一条芯线（按主的线粗）——不再有实心矩形。
+//      只体现在排名（主次）与金额签上。跨桶的墙只画代表价上一条芯线（按主的线粗），价位范围（最低桶价 …
+//      最高桶价 + 步长）用段右端一枚细竖括号「]」表达：宽 3 pt、高 = 范围在屏上的高度、段色 70%；挂着的紧贴金额签
+//      左侧，已结束的落在结束点处（`orderFlowBracket`）。第三版曾在整个范围垫 10% 淡底：经典深底上一堵 300 美元的墙
+//      淡底铺满大半张图、另一堵叠在下半屏，整张图染成紫色，读起来像 K 线又被盖了（2026-09-25 验收），改成括号。
+//      范围数字写在详情卡上。
 //   4. **纵向去挤**（主、次）：按排名落线；和已落下的横向有交叠、纵向重叠（含 1 pt 间隙）的排名更后的线压成 1 pt
 //      细线、不写金额——不平移、不改价位。底噪不参与。画的先后：底噪 → 整条 → 细线。
 //      线细了命中区不跟着细：轻点、十字线都按至少 8 pt 高的带子算（`orderFlowHitHeight`），轻点再放到 44 pt。
 //   5. **金额签**：只给「主」里没被压细的：还挂着的贴主图右缘（价格刻度列左侧、不进刻度列），已结束的放在
-//      结束点右侧；签底是线色 80% 不透明、字色按叠到底色上之后的颜色取对比色（`orderFlowLabelInk`）；
+//      结束点右侧；签底是线色 85% 不透明、字色在近黑与白之间取对叠出来的颜色对比度高的那个（`orderFlowLabelInk`，
+//      六套皮肤 × 四色 × 深浅两档都 ≥ 4.5:1，测试守着）；一屏最多 6 枚（`orderFlowLabelMax`）；
 //      11 pt medium 等宽（HIG 下限，同 app 的 `TypeScale.caption2Emph`）、高 16、左右 4、圆角 4、签间至少 2。
 //      签之间纵向撞了按名义让位：名义小的挪到撞上那枚的上方或下方（离自己的线最多 32 pt），挪不开就不放。
 //      签画在 crossLayer：金额每拍都在抖，不能拖着底图重画（审查 31）。
@@ -49,7 +53,7 @@ import UIKit
 // 并进更早的段按 `OrderFlowGroup.covers` 认回来）。选中的那条在 crossLayer 上重画一遍并描 1 pt 正文色边，
 // app 按它出「一段一卡」的详情卡；这时图里的开高低收框不画。
 //
-// 层序（2026-09-25 改）：`draw` 在网格之后、蜡烛之前调 `drawOrderFlow`——线与淡底垫在蜡烛、均线、画线、
+// 层序（2026-09-25 改）：`draw` 在网格之后、蜡烛之前调 `drawOrderFlow`——线与范围括号垫在蜡烛、均线、画线、
 // 最新价（liveLayer）下面，副图（成交量等）本来就不画大单。选中那一条（描边重画）、金额签、图例画在 crossLayer。几何（`orderFlowFrame`）按（快照、显示开关、
 // 视野、布局）缓存一份，两层共用（`OrderFlowCache`）。比价（百分比坐标）与横屏画线台不画。
 
@@ -101,15 +105,16 @@ extension ChartRenderer {
     let role: OrderFlowRole
     /// 不透明度（主 1、次 0.7、底噪 0.35）。
     let alpha: Double
-    /// 跨几个桶的「主」墙整个价位范围（最低桶价 … 最高桶价 + 步长）：垫一层 10% 的淡底（`orderFlowRangeAlpha`），
-    /// 在蜡烛下面、不占位；`frame` 是代表价上那条芯线。单桶、次、底噪、被压细的没有。
-    let span: CGRect?
+    /// 跨几个桶的「主」墙的价位范围括号「]」（最低桶价 … 最高桶价 + 步长在屏上的高度，宽 3 pt）：挂着的紧贴金额签
+    /// 左侧、已结束的在结束点处，段色 70%（`orderFlowBracketAlpha`），在蜡烛下面、不占位；`frame` 是代表价上那条芯线。
+    /// 单桶、次、底噪、被压细的、范围比芯线还窄的没有。
+    let bracket: CGRect?
     var key: OrderFlowGroupKey { group.key }
 
     init(group: OrderFlowGroup, frame: CGRect, color: Hex, dark: Bool, thin: Bool, role: OrderFlowRole = .main,
-         alpha: Double = 1, span: CGRect? = nil) {
+         alpha: Double = 1, bracket: CGRect? = nil) {
       self.group = group; self.frame = frame; self.color = color; self.dark = dark; self.thin = thin
-      self.role = role; self.alpha = alpha; self.span = span
+      self.role = role; self.alpha = alpha; self.bracket = bracket
     }
   }
 
@@ -156,10 +161,14 @@ extension ChartRenderer {
   /// 不透明度：主 1、次 0.7、底噪 0.35。
   static let orderFlowSecondaryAlpha = 0.7
   static let orderFlowNoiseAlpha = 0.35
-  /// 跨桶主墙价位范围那层淡底的不透明度（垫在蜡烛下面）。首版把整个范围画成实心：BTC 1 分钟图上一堵 5 桶
-  /// （500 美元）的墙高 213 pt、盖住三分之一张图的 K 线（2026-09-25 真机取证）；第二版 16% 淡色 + 按档加粗的实心芯
-  /// 仍压在蜡烛上面，用户看真机说「大单不许盖住 K 线」，改成垫在下面、10%。
-  static let orderFlowRangeAlpha = 0.10
+  /// 跨桶主墙的价位范围括号「]」：宽 3 pt（竖笔与上下两个钩都是 1.5 pt）、段色 70%，和金额签之间留 1 pt。
+  /// 首版把整个范围画成实心：BTC 1 分钟图上一堵 5 桶（500 美元）的墙高 213 pt、盖住三分之一张图的 K 线；第二版 16% 淡色
+  /// + 实心芯仍压在蜡烛上面；第三版垫到蜡烛下面、10% 淡底，经典深底上两堵墙把整张图染成紫色（2026-09-25 验收）。
+  /// 所以范围不再铺面，只在段右端立一枚括号。
+  static let orderFlowBracketWidth = 3.0
+  static let orderFlowBracketStroke = 1.5
+  static let orderFlowBracketAlpha = 0.7
+  static let orderFlowBracketGap = 1.0
   /// 一屏几名「主」、主加次一共几名（第 7–18 名是次）。
   static let orderFlowMainCount = 6
   static let orderFlowRankedCount = 18
@@ -168,14 +177,16 @@ extension ChartRenderer {
   /// 金额小签（2026-09-25 按 HIG 整改口径，原 8.5 pt / 高 11 / 左右 3 / 圆角 2 / 离右端 1 都不合规）：
   /// 11 pt medium 等宽（下限 11，对应 app 的 `TypeScale.caption2Emph`；常驻一只实例，`ChartFont` 的缓存按字体身份做键）、
   /// 高 16、左右各留 4（`Space.xs`）、圆角 4（`Radius.xs`）、离主图右缘 / 结束点 4、签与签之间至少 2（`Space.xxs`）。
-  /// 签底半透明（80%），压到蜡烛上时还透得出底下的 K 线。图表包拿不到 app 的令牌，数值在这里照抄。
+  /// 签底半透明（85%），压到蜡烛上时还隐约透得出底下的 K 线。一屏最多 6 枚（主档就 6 名）。图表包拿不到 app 的令牌，
+  /// 数值在这里照抄。
   static let orderFlowLabelFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .medium)
   static let orderFlowLabelHeight = 16.0
   static let orderFlowLabelPadX = 4.0
   static let orderFlowLabelInset = 4.0
   static let orderFlowLabelRadius = 4.0
   static let orderFlowLabelGap = 2.0
-  static let orderFlowLabelAlpha = 0.8
+  static let orderFlowLabelAlpha = 0.85
+  static let orderFlowLabelMax = 6
   /// 签让位时离自己的线最多挪多远（两枚签高）；再远就读不出是哪条线的，不放。
   static let orderFlowLabelMaxShift = 32.0
   /// 命中区按至少这么高的带子算：线细了（1–2.5 pt）命中区不跟着细（2026-09-25）。
@@ -226,9 +237,32 @@ extension ChartRenderer {
     return 0.2126 * v.r + 0.7152 * v.g + 0.0722 * v.b > 0.5
   }
 
-  /// 小签上的字色：带色亮就用近黑，暗就用白。
+  /// 小签上的字色：近黑与白里对 `fill`（签底叠到图区底色上之后的颜色）对比度高的那个；两个都不到 4.5:1
+  /// （中间亮度的品红一带，近黑 4.3、白 4.3）就用纯黑——白不到 4.5 时纯黑一定过 4.6。原来按亮度 0.5 一刀切，
+  /// 深底蔚蓝 #5A7DFF 会取到白、只有 3.6:1。
   static func orderFlowLabelInk(_ fill: Hex) -> Hex {
-    isLightBackground(fill) ? "#141414" : "#FFFFFF"
+    let dark = Palette.contrast("#141414", fill), light = Palette.contrast("#FFFFFF", fill)
+    if max(dark, light) < 4.5 { return "#000000" }
+    return dark >= light ? "#141414" : "#FFFFFF"
+  }
+
+  /// 金额签的横向落点（纵向让位不改它）：挂着的贴主图右缘（刻度列左侧），已结束的在结束点右侧、放不下收回主图右缘以内。
+  static func orderFlowLabelX(live: Bool, lineRight: Double, width w: Double, plotW: Double) -> Double {
+    let edge = plotW - orderFlowLabelInset - w
+    return live ? edge : min(lineRight + orderFlowLabelInset, edge)
+  }
+
+  /// 跨桶主墙的范围括号：右缘紧贴金额签的横向落点左侧（留 1 pt）——挂着的就在签左边，已结束的正好落在结束点处
+  /// （签在结束点右侧 4 pt）；这一枚签因为让位没放下也照样画在那儿。纵向是整个价位范围 `top … bottom`。
+  static func orderFlowBracket(live: Bool, lineRight: Double, labelWidth w: Double, plotW: Double,
+                               top: Double, bottom: Double) -> CGRect {
+    let right = orderFlowLabelX(live: live, lineRight: lineRight, width: w, plotW: plotW) - orderFlowBracketGap
+    return CGRect(x: right - orderFlowBracketWidth, y: top, width: orderFlowBracketWidth, height: bottom - top)
+  }
+
+  /// 金额签的宽：字宽 + 左右各 4。
+  static func orderFlowLabelWidth(_ text: String) -> Double {
+    Double(text.width(orderFlowLabelFont)) + 2 * orderFlowLabelPadX
   }
 
   /// 色带几何。同一份 state、同一套 pane / range / layout 给同一个结果。
@@ -255,7 +289,8 @@ extension ChartRenderer {
   ///      再一样取画在上面的——被压细的小单和大单同价时，点下去出的是那堵大的（它才是这一价位上的主角）；
   ///   2. 否则离带边不超过 8 pt（轻点时放到命中区 44 pt，见 `orderFlowTouchTarget`）的里面取离得最近的；
   ///      一样近取名义大的、再取 id 小的（结果稳定）；
-  ///   3. 都不沾：落在某堵跨桶主墙的价位范围（淡底）里就认那堵墙，几堵叠着取名义大的。
+  ///   3. 都不沾：落在某堵跨桶主墙的范围括号上（横向放宽同上，轻点时放到 44 pt）就认那堵墙，几堵叠着取名义大的。
+  ///      范围里的空白处不再算——那里已经不画东西了。
   static func orderFlowHit(_ bands: [OrderFlowBand], x: Double, y: Double, touch: Bool = false) -> OrderFlowBand? {
     let half = { (b: OrderFlowBand) in max(Double(b.frame.height), orderFlowHitHeight) / 2 }
     let slopX = { (b: OrderFlowBand) in
@@ -290,7 +325,11 @@ extension ChartRenderer {
       return near
     }
     return bands
-      .filter { b in b.span.map { inX(b) && y >= $0.minY && y <= $0.maxY } ?? false }
+      .filter { b in
+        guard let r = b.bracket else { return false }
+        let sx = touch ? max(orderFlowHitSlopX, (orderFlowTouchTarget - Double(r.width)) / 2) : orderFlowHitSlopX
+        return x >= Double(r.minX) - sx && x <= Double(r.maxX) + sx && y >= Double(r.minY) - 0.5 && y <= Double(r.maxY) + 0.5
+      }
       .min(by: rank)
   }
 
@@ -429,7 +468,7 @@ extension ChartRenderer {
 
     // 3. 按排名定主次与线粗：主 2 pt（还挂着 2.5）、次 1 pt 70%、底噪 1 pt 35%。主、次按排名落线，
     //    和已落下的（整条或细线）横向交叠、纵向重叠（含 1 pt 间隙）就压成 1 pt 细线、不写金额。底噪不占位、不被压。
-    //    跨桶的主墙另记价位范围（最低桶价 … 最高桶价 + 步长），垫 10% 淡底；范围比线还窄就不垫。淡底不占位。
+    //    跨桶的主墙另记价位范围（最低桶价 … 最高桶价 + 步长），在段右端立一枚范围括号；范围比线还窄就不立。括号不占位。
     var noise: [OrderFlowBand] = [], full: [OrderFlowBand] = [], thin: [OrderFlowBand] = []
     var occupied: [CGRect] = []
     for (rank, (group, left, right)) in visible.enumerated() {
@@ -445,14 +484,18 @@ extension ChartRenderer {
         continue
       }
       let whole: CGRect
-      var span: CGRect?
+      var bracket: CGRect?
       let alpha = role == .main ? 1 : Self.orderFlowSecondaryAlpha
       if role == .main {
         whole = line(group.isLive ? Self.orderFlowMainLiveLine : Self.orderFlowMainLine)
         if group.isRange {
           let a = y(group.priceLow), b = y(group.priceHigh)
           let top = min(a, b), bottom = max(a, b)
-          if bottom - top > whole.height { span = CGRect(x: left, y: top, width: right - left, height: bottom - top) }
+          if bottom - top > whole.height {
+            bracket = Self.orderFlowBracket(live: group.isLive, lineRight: right,
+                                            labelWidth: Self.orderFlowLabelWidth(Self.orderFlowAmount(group.notional)),
+                                            plotW: L.plotW, top: top, bottom: bottom)
+          }
         }
       } else {
         whole = line(Self.orderFlowSecondaryLine)
@@ -464,7 +507,7 @@ extension ChartRenderer {
       let rect = clash ? line(Self.orderFlowThinLine) : whole
       occupied.append(rect)
       let band = OrderFlowBand(group: group, frame: rect, color: color, dark: group.hasFill, thin: clash, role: role,
-                               alpha: alpha, span: clash ? nil : span)
+                               alpha: alpha, bracket: clash ? nil : bracket)
       if clash { thin.append(band) } else { full.append(band) }
     }
     frame.bands = noise + full + thin
@@ -475,9 +518,9 @@ extension ChartRenderer {
   /// 金额签（只给「主」里没被压细的，按排名）：还挂着的贴主图右缘（价格刻度列左侧、不进刻度列）、
   /// 已结束的放在结束点右侧（放不下就往左收到主图右缘以内）；纵向居中在线上。
   /// 和已放下的签撞了（留 2 pt）：挪到撞上那枚的上方或下方，取离自己的线近的、不再撞任何一枚、
-  /// 没出主图、离线不超过 32 pt 的那个位置；都不行就不放。名义大的先放，所以让位的总是名义小的。
+  /// 没出主图、离线不超过 32 pt 的那个位置；都不行就不放。名义大的先放，所以让位的总是名义小的。一屏最多 6 枚。
   private func orderFlowLabels(_ mains: [OrderFlowBand], pane: Pane, L: Layout, spacing: Double) -> [OrderFlowLabel] {
-    let h = Self.orderFlowLabelHeight, inset = Self.orderFlowLabelInset, gap = Self.orderFlowLabelGap
+    let h = Self.orderFlowLabelHeight, gap = Self.orderFlowLabelGap
     let bg = state.colors.bg
     var labels: [OrderFlowLabel] = []
     let collides = { (r: CGRect) in
@@ -486,15 +529,10 @@ extension ChartRenderer {
           && r.minY < l.frame.maxY + gap && r.maxY > l.frame.minY - gap
       }
     }
-    for band in mains {
+    for band in mains where labels.count < Self.orderFlowLabelMax {
       let text = Self.orderFlowAmount(band.group.notional)
-      let w = Double(text.width(Self.orderFlowLabelFont)) + 2 * Self.orderFlowLabelPadX
-      let x: Double
-      if band.group.isLive {
-        x = L.plotW - inset - w
-      } else {
-        x = min(Double(band.frame.maxX) + inset, L.plotW - inset - w)
-      }
+      let w = Self.orderFlowLabelWidth(text)
+      let x = Self.orderFlowLabelX(live: band.group.isLive, lineRight: Double(band.frame.maxX), width: w, plotW: L.plotW)
       guard x >= 0 else { continue }
       let mid = Double(band.frame.midY)
       let clamp = { (top: Double) in min(max(top, pane.y), pane.y + pane.h - h) }
@@ -542,7 +580,7 @@ extension ChartRenderer {
     return (frame.bands, frame.labels, focus.map { !$0.selected } ?? false, focus)
   }
 
-  /// 在 plotLayer 上画线（在蜡烛之前调，垫在 K 线下面）：先是跨桶主墙的淡底，再底噪、整条、细线依次。
+  /// 在 plotLayer 上画线（在蜡烛之前调，垫在 K 线下面）：底噪、整条、细线依次，最后是跨桶主墙的范围括号。
   /// 返回画了几条（给测试核对）。
   @discardableResult
   func drawOrderFlow(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Int {
@@ -550,23 +588,22 @@ extension ChartRenderer {
     guard !frame.bands.isEmpty else { return 0 }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
-    ctx.setAlpha(CGFloat(Self.orderFlowRangeAlpha))
-    for band in frame.bands {
-      guard let span = band.span else { continue }
-      ctx.setFillColor(Paint.cg(band.color))
-      ctx.fill(span)
-    }
     for band in frame.bands {
       ctx.setAlpha(CGFloat(band.alpha))
       ctx.setFillColor(Paint.cg(band.color))
       ctx.fill(band.frame)
+    }
+    ctx.setAlpha(CGFloat(Self.orderFlowBracketAlpha))
+    for band in frame.bands {
+      guard let bracket = band.bracket else { continue }
+      drawOrderFlowBracket(ctx, bracket, color: band.color)
     }
     ctx.setAlpha(1)
     ctx.restoreGState()
     return frame.bands.count
   }
 
-  /// 在 crossLayer 上画金额签（签底 80% 不透明）。返回画了几枚。
+  /// 在 crossLayer 上画金额签（签底 85% 不透明）。返回画了几枚。
   @discardableResult
   func drawOrderFlowLabels(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Int {
     let frame = orderFlowBands(pane: pane, range: range, L: L)
@@ -587,25 +624,28 @@ extension ChartRenderer {
   }
 
   /// 在 crossLayer 上把选中的那一条再画一遍（盖过蜡烛，读得出选中的是哪条）并描 1 pt 正文色边；
-  /// 跨桶的墙另描一圈半透明的价位范围框（不填：淡底已经垫在蜡烛下面）。返回画了没有。
+  /// 跨桶的墙的范围括号也用本色（不透明）再画一遍。返回画了没有。
   @discardableResult
   func drawOrderFlowHover(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Bool {
     guard let band = orderFlowFocusBand(pane: pane, range: range, L: L)?.band else { return false }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
-    if let span = band.span {
-      ctx.setAlpha(0.5)
-      ctx.setStrokeColor(Paint.cg(band.color))
-      ctx.setLineWidth(1)
-      ctx.stroke(span.insetBy(dx: 0.5, dy: 0.5))
-      ctx.setAlpha(1)
-    }
+    if let bracket = band.bracket { drawOrderFlowBracket(ctx, bracket, color: band.color) }
     ctx.setFillColor(Paint.cg(state.colors.text))
     ctx.fill(band.frame.insetBy(dx: -1, dy: -1))
     ctx.setFillColor(Paint.cg(band.color))
     ctx.fill(band.frame)
     ctx.restoreGState()
     return true
+  }
+
+  /// 范围括号「]」：右侧一道竖笔、上下两个朝左的钩，笔画 1.5 pt，整个框宽 3 pt。不透明度由调用方设。
+  func drawOrderFlowBracket(_ ctx: CGContext, _ r: CGRect, color: Hex) {
+    let t = Self.orderFlowBracketStroke
+    ctx.setFillColor(Paint.cg(color))
+    ctx.fill(CGRect(x: r.maxX - t, y: r.minY, width: t, height: r.height))
+    ctx.fill(CGRect(x: r.minX, y: r.minY, width: r.width - t, height: t))
+    ctx.fill(CGRect(x: r.minX, y: r.maxY - t, width: r.width - t, height: t))
   }
 
   /// 十字线正停在一条带上（这时详情卡顶替图里的开高低收框）。

@@ -85,12 +85,14 @@ struct OrderFlowChartTests {
     }
   }
 
-  @Test("细线：主 2 pt（还挂着 2.5）、次 1 pt 70%、底噪 1 pt ≤ 35%、被压 1 pt；墙的淡底 ≤ 12%；线粗不看名义")
+  @Test("细线：主 2 pt（还挂着 2.5）、次 1 pt 70%、底噪 1 pt ≤ 35%、被压 1 pt；墙的范围括号宽 3 pt、70%；线粗不看名义")
   func thickness() {
     typealias R = ChartRenderer
     #expect(R.orderFlowMainLine == 2 && R.orderFlowMainLiveLine == 2.5)
     #expect(R.orderFlowSecondaryLine == 1 && R.orderFlowNoiseLine == 1 && R.orderFlowThinLine == 1)
-    #expect(R.orderFlowSecondaryAlpha == 0.7 && R.orderFlowNoiseAlpha <= 0.35 && R.orderFlowRangeAlpha <= 0.12)
+    #expect(R.orderFlowSecondaryAlpha == 0.7 && R.orderFlowNoiseAlpha <= 0.35)
+    #expect(R.orderFlowBracketWidth == 3 && R.orderFlowBracketAlpha == 0.7)
+    #expect(R.orderFlowLabelAlpha == 0.85 && R.orderFlowLabelMax == 6)
     #expect(BigOrder.thicknessTiers == 5)
     let (r, _) = Self.renderer()
     let f = frame(r)
@@ -375,17 +377,21 @@ struct OrderFlowChartTests {
     #expect(g.books.count == 3 && Set(g.books.map(\.bucket)) == [b0 + 5, b0 + 6, b0 + 7], "一本簿一桶一行")
     #expect(g.books.allSatisfy { abs($0.price - (Double($0.bucket) + 0.5) * step) < 1e-9 }, "每行带自己那一桶的价")
     #expect(g.isLive && g.endMs == nil)
-    // 芯线画在代表价上（主档、还挂着 → 2.5 pt）；整个价位范围垫一层 10% 的淡色（范围比芯窄时不垫）。
+    // 芯线画在代表价上（主档、还挂着 → 2.5 pt）；不铺范围底色，价位范围是段右端一枚 3 pt 宽的括号
+    // （挂着的紧贴金额签左侧，范围比芯窄时不立）。
     #expect(wall.role == .main && !wall.thin)
     #expect(abs(wall.frame.height - 2.5) < 1e-9 && abs(wall.frame.midY - y(r, g.price)) < 1e-6)
     let rangeHeight = abs(y(r, g.priceLow) - y(r, g.priceHigh))
-    if let span = wall.span {
-      #expect(span.minY <= y(r, g.priceHigh) + 1e-9 && span.maxY >= y(r, g.priceLow) - 1e-9)
-      #expect(span.minX == wall.frame.minX && span.maxX == wall.frame.maxX)
-    } else {
-      #expect(rangeHeight <= wall.frame.height + 1e-9, "范围比芯线还窄才不垫淡底")
-    }
     let L = r.layout(size: Self.size)
+    if let bracket = wall.bracket {
+      #expect(abs(bracket.minY - y(r, g.priceHigh)) < 1e-6 && abs(bracket.maxY - y(r, g.priceLow)) < 1e-6,
+              "括号高 = 范围在屏上的高度")
+      #expect(abs(bracket.width - 3) < 1e-9)
+      let label = try #require(f.labels.first { $0.key == wall.key })
+      #expect(abs(bracket.maxX - (label.frame.minX - ChartRenderer.orderFlowBracketGap)) < 1e-6, "挂着的括号紧贴金额签左侧")
+    } else {
+      #expect(rangeHeight <= wall.frame.height + 1e-9, "范围比芯线还窄才不立括号")
+    }
     let spacing = r.state.view.barSpacing(step: r.state.series.step, plotW: L.plotW)
     let b = r.state.series
     #expect(abs(wall.frame.minX - (r.state.view.x(Double(b.time(at: b.count - 20)), plotW: L.plotW) - spacing / 2)) < 0.001)
@@ -396,13 +402,16 @@ struct OrderFlowChartTests {
     for o in [skip, spot, bid, old] {
       #expect(f.bands.contains { $0.key == OrderFlowGroupKey(o) && $0.group.bucketCount == 1 }, "\(o.id)")
     }
-    // 点中、出卡都是整堵墙：点在芯上；点在淡色范围里、离别的带都够远的地方也认这堵墙。
+    // 点中、出卡都是整堵墙：点在芯上；点在范围括号上、离别的带都够远的地方也认这堵墙；范围里的空白处不再算。
     #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: wall.frame.midY)?.key == wall.key)
-    if let span = wall.span,
-       let yFar = stride(from: span.minY, through: span.maxY, by: 0.5).first(where: { yy in
-         f.bands.allSatisfy { max(0, abs(yy - $0.frame.midY) - max($0.frame.height, ChartRenderer.orderFlowHitHeight) / 2) > 8.5 }
-       }) {
-      #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: yFar)?.key == wall.key)
+    let clearOf = { (yy: Double) in
+      f.bands.allSatisfy { max(0, abs(yy - $0.frame.midY) - max($0.frame.height, ChartRenderer.orderFlowHitHeight) / 2) > 8.5 }
+    }
+    if let bracket = wall.bracket,
+       let yFar = stride(from: bracket.minY, through: bracket.maxY, by: 0.5).first(where: clearOf) {
+      #expect(ChartRenderer.orderFlowHit(f.bands, x: bracket.midX, y: yFar)?.key == wall.key)
+      #expect(ChartRenderer.orderFlowHit(f.bands, x: bracket.midX, y: yFar, touch: true)?.key == wall.key)
+      #expect(ChartRenderer.orderFlowHit(f.bands, x: bracket.minX - 40, y: yFar) == nil, "范围里的空白处不认墙")
     }
     r.state.orderFlowSelected = wall.key
     #expect(r.orderFlowFocus(size: Self.size)?.group.members.count == 3)
@@ -647,7 +656,7 @@ struct OrderFlowChartTests {
       #expect(label.text == ChartRenderer.orderFlowAmount(band.group.notional))
       #expect(label.fill == band.color)
       #expect(label.ink == ChartRenderer.orderFlowLabelInk(mixHex(band.color, r.state.colors.bg, 1 - ChartRenderer.orderFlowLabelAlpha)),
-              "签底 80% 不透明，字色按叠出来的颜色算对比")
+              "签底 85% 不透明，字色按叠出来的颜色算对比")
       #expect(abs(label.frame.height - ChartRenderer.orderFlowLabelHeight) < 1e-6)
       #expect(abs(label.frame.midY - band.frame.midY) <= ChartRenderer.orderFlowLabelMaxShift + 1e-9)
       #expect(label.frame.maxX <= L.plotW - inset + 1e-9, "不进价格刻度列")
@@ -665,9 +674,12 @@ struct OrderFlowChartTests {
       }
     }
     #expect(f.labels.contains { $0.text == "5.3M" })
-    // 字色取带色的对比色。
+    // 字色取近黑与白里对比度高的那个；深底蔚蓝按亮度一刀切会取到白（3.6:1），按对比度取近黑；两个都不到 4.5 用纯黑。
     #expect(ChartRenderer.orderFlowLabelInk("#E1D610") == "#141414")
-    #expect(ChartRenderer.orderFlowLabelInk("#CF09E7") == "#FFFFFF")
+    #expect(ChartRenderer.orderFlowLabelInk("#8A149F") == "#FFFFFF")
+    #expect(ChartRenderer.orderFlowLabelInk("#CF09E7") == "#000000")
+    #expect(ChartRenderer.orderFlowLabelInk("#5A7DFF") == "#141414")
+    #expect(f.labels.count <= ChartRenderer.orderFlowLabelMax)
 
     // 窄段（挂了一根多就撤了）也写：签在结束点右侧，放不下就收回主图右缘以内。
     let b = r.state.series
@@ -807,6 +819,13 @@ struct OrderFlowChartTests {
           let lc = r.orderFlowColor(light), dc = r.orderFlowColor(deep)
           #expect(Self.distance(lc, bg) > 0.12, "\(skin) \(dark) \(o.product) 浅色档要和底色拉开：\(lc.value) vs \(bg.value)")
           #expect(Self.distance(lc, dc) > 0.10, "\(skin) \(dark) \(o.product) 深浅两档要分得开")
+          // 金额签：签底 85% 叠到图区底色上，字对它 ≥ 4.5:1。
+          for c in [lc, dc] {
+            let shown = mixHex(c, bg, 1 - ChartRenderer.orderFlowLabelAlpha)
+            let ink = ChartRenderer.orderFlowLabelInk(shown)
+            #expect(Palette.contrast(ink, shown) >= 4.5,
+                    "\(skin) \(dark) \(c.value) 签字 \(ink.value) 对签底 \(shown.value) 只有 \(Palette.contrast(ink, shown))")
+          }
         }
       }
     }
