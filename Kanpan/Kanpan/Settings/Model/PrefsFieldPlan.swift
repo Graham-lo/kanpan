@@ -36,9 +36,11 @@ import Foundation
 /// `PrefsFieldPlanTests.routePolicyStaysOnThisDevice` 与
 /// `RoutePolicyStaysHomeTests` 把这件事钉住了。
 ///
-/// 服务端那一侧**仍然认 `routePolicy`**（见下面的 `wireOnlyKeys`）：口袋里还有老版本
-/// 客户端在发它，而服务端对含未知字段的操作是整条拒绝，把它从白名单上删掉等于把那台手机的
-/// 同步队列堵死。新客户端既不发也不收。
+/// 服务端那一侧**仍然认 `routePolicy`**（见下面的 `wireOnlyKeys`）：库里存着的老 body
+/// 还带着它，直接从白名单删掉，那条设置对象下一次合并就会因为这个键没有值规则整条 400。
+/// 要下线得走服务端 `RETIRED_SETTINGS_FIELDS` 两端退役。新客户端既不发也不收。
+/// （老客户端多发一个服务端不认的键，服务端现在只是丢掉它、在 `droppedFields` 里报回，
+/// 不再整条拒绝——早先这里写的「堵死同步队列」说的是那之前的服务端。）
 ///
 /// 来回搬过的字段各留了一条记录，免得下一个人再翻一次：`interval` / `keepAwake` 曾经被当成
 /// 本机设置，结果是「换台设备登同一个账号，周期回到出厂 1h」，2026-09-19 改回 `synced`；
@@ -139,22 +141,26 @@ enum PrefsFieldPlan {
   ///
   /// 理由写在值里，跟着键一起被导进契约文件（`Backend/kanpan-api/contract/settings-fields.json`），
   /// 所以加一个键就必须当场写清楚为什么，下一个人不用去翻 git log。
+  ///
+  /// 留着它们的理由是**存量**，不是「老客户端还在发」：服务端对不认识的字段现在是丢掉并在
+  /// `droppedFields` 里报回（不再整条拒绝），但库里存着的老 body 里的键如果突然没了值规则，
+  /// 那条对象之后的每次合并都会 400。所以删它们要走服务端 `RETIRED_SETTINGS_FIELDS`。
+  /// 四个退下来的键共用的那半句理由（见上）。
+  private static let keptForStoredBodies = "服务端仍然认这个键：库里存着的老 body 还带着它，直接从 SETTINGS_FIELDS 删掉，下一次合并到那条对象上会因为这个键没有值规则整条 400；真要下线它，走 sync.rs 的 RETIRED_SETTINGS_FIELDS 两端退役（strip_retired 会顺手把存量 body 洗掉）。老客户端单纯多发一个服务端不认的键，如今只会被丢掉并在 droppedFields 里报回，不再堵队列。"
+
   static let wireOnlyKeys: [String: String] = [
     "rsiRange": "客户端的 rsiUpper / rsiLower 合成的一个键（PrefsFieldClass.syncedMerged）；"
       + "那两个字段自己的名字从不上线，所以服务端只认合成后的 rsiRange。",
-    "styleID": "十二款蜡烛造型那一阵子的选择，客户端早就不发了。服务端留着是为了不把老客户端"
-      + "的操作整条拒掉——服务端对含未知字段的操作是整条拒绝，删掉它等于把老版本的同步队列堵死。",
+    "styleID": "十二款蜡烛造型那一阵子的选择，客户端早就不发了。"
+      + Self.keptForStoredBodies,
     "drawToolGroup": "「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、"
       + "分类标签整条去掉之后，客户端既不发也不收了（见 Drawing.Kind.palette）。"
-      + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"
-      + "服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
+      + Self.keptForStoredBodies,
     "compactValues": "「简化指标数值」开关。2026-09-23 起数额（量、均量、持仓量、成交量差）一律 K / M / B / T、"
       + "价格与振荡类读数一律原样不缩写，这件事不再交给用户选，开关连同 Prefs 字段一起收掉，客户端既不发也不收。"
-      + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"
-      + "服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
+      + Self.keptForStoredBodies,
     "routePolicy": "直连 / 网关那两档。2026-09-19 起是本机字段（PrefsFieldClass.deviceOnly）："
       + "它说的是这台手机这张网连得通哪一头，不跟着人走，新客户端既不发也不收。"
-      + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"
-      + "服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
+      + Self.keptForStoredBodies,
   ]
 }

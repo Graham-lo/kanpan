@@ -79,8 +79,9 @@ struct PrefsFieldPlanTests {
   /// 2026-09-19 之前这条测试里躺着一份从 `Backend/kanpan-api/src/sync.rs` 手抄过来的
   /// 53 个字符串，服务端那边的 `the_allowlist_is_what_ios_sends` 又把同一份期望写了第三遍。
   /// 三份手抄只在「三个地方都记得同时改」时才成立，而它已经咬过一次：提交 `a161bb0`——
-  /// 服务端认的字段比客户端会发的少十九个，服务端对含未知字段的操作是**整条拒绝**，
-  /// 于是那个账号的同步队列被一条永远推不上去的操作堵死。
+  /// 服务端认的字段比客户端会发的少十九个，而当时的服务端对含未知字段的操作是**整条拒绝**，
+  /// 于是那个账号的同步队列被一条永远推不上去的操作堵死。（服务端后来改成丢掉不认识的
+  /// 字段、在 `droppedFields` 里报回；少认一个键的代价变成「那个字段悄悄不同步」，照样是 bug。）
   ///
   /// 现在中间放了一个机器可读的产物 `Backend/kanpan-api/contract/settings-fields.json`：
   /// 它由**这个文件里的 `SettingsFieldContract`** 从母表 `PrefsFieldPlan.table` 生成
@@ -204,9 +205,9 @@ struct PrefsFieldPlanTests {
   /// **产品规则本身一个字没变**：出厂默认直连、只有两档、手动选、没有任何自动切换。
   /// 变的只有一件事——这个选择不再跨设备覆盖。
   ///
-  /// 服务端那一侧仍然认 `routePolicy`（进了 `PrefsFieldPlan.wireOnlyKeys`）：口袋里还有
-  /// 老版本客户端在发它，而服务端对含未知字段的操作是**整条拒绝**，把它从白名单上删掉
-  /// 等于把那台手机的同步队列堵死。新客户端既不发也不收。
+  /// 服务端那一侧仍然认 `routePolicy`（进了 `PrefsFieldPlan.wireOnlyKeys`）：库里存着的
+  /// 老 body 还带着它，直接从白名单删掉，那条设置对象之后的每次合并都会因为它没有值规则
+  /// 整条 400；要下线得走服务端 `RETIRED_SETTINGS_FIELDS`。新客户端既不发也不收。
   @Test("直连 / 网关留在这台设备上")
   func routePolicyStaysOnThisDevice() {
     for name in ["apiHost", "streamHost", "launchSnapshot"] {
@@ -227,7 +228,7 @@ struct PrefsFieldPlanTests {
 
     // 但服务端还得继续认这个键：老客户端还在发。
     #expect(PrefsFieldPlan.wireOnlyKeys["routePolicy"] != nil,
-            "服务端不认它，老客户端那条操作会被整条拒绝，队列从此堵死（提交 a161bb0）")
+            "服务端不认它，存着它的老 body 合并时会整条 400；要删走 RETIRED_SETTINGS_FIELDS")
 
     // 换档案（登录 / 退登 / 切账号）时按 `deviceOnlyFieldNames` 保本机值：
     // 线路那两档留住。
@@ -394,7 +395,8 @@ enum SettingsFieldContract {
       fieldClasses: PrefsFieldPlan.table.mapValues(\.rawValue),
       wireKeysNote: "线上真正会出现的 settings 顶层键 = synced 的字段名 + wireOnlyKeys。"
         + "Backend/kanpan-api/src/sync.rs 的 SETTINGS_FIELDS 必须逐字等于这一集合。"
-        + "少一个：含那个键的操作被服务端整条拒绝，客户端的同步队列被它堵死（提交 a161bb0）。"
+        + "少一个：客户端推上来的这个键被服务端丢掉（在 droppedFields 里报回），那个字段从此悄悄不同步；"
+        + "库里已经存着它的 body 还会在下一次合并时整条 400——要下线一个键，走 sync.rs 的 RETIRED_SETTINGS_FIELDS。"
         + "多一个而 sync_validation::field 没配值规则：同一种死法，_=>false 让整条操作 400。",
       wireKeys: PrefsFieldPlan.names(.synced).union(PrefsFieldPlan.wireOnlyKeys.keys).sorted(),
       wireOnlyKeysNote: "服务端认、客户端不发的键，以及它们为什么只在线上存在。",
