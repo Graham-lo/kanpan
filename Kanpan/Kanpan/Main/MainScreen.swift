@@ -327,16 +327,14 @@ struct MainScreen: View {
 
   /// 自选那一整页。标签栏上的一格，所以没有「返回」——返回就是换一格标签。
   private var favoritesPage: some View {
-    FavoritesView(model: picker, session: favoritesEdit, history: searchHistory, store: store, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
+    FavoritesView(model: picker, session: favoritesEdit, history: searchHistory, store: store, redUp: prefs.redUp, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
                   onVisible: { quotes.watch($0) },
                   // 露面的自选行顺手把顶栏那几格（仓 / 费率 / 结算 / 市值）的数先取回来。
                   onRowVisibility: { quotes.watchRow($0, visible: $1); if $1 { market.prefetchListStats([$0]) } },
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) },
                   previews: previews,
                   // 点一行进图的同一瞬间冻结这张表的顺序，顶栏横滑就照着它一只只看过去。
-                  onScanList: { adoptScanList($0) },
-                  // 加了提醒的线就是「关注线」：自选页多一档「离提醒线最近」（§10）。
-                  alerts: alerts.all)
+                  onScanList: { adoptScanList($0) })
   }
 
   /// 板块列表页那一整页。计算全在 `KanpanCore`，画全在 `Kanpan/Sector/`，

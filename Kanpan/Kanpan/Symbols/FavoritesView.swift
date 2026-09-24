@@ -33,9 +33,6 @@ struct FavoritesView: View {
   /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
   var store: PrefsStore
   var redUp: Bool
-  /// 涨跌口径的短名。只在排序菜单里用过，2026-09-25 排序撤了之后这一页不再读它；
-  /// 入参留着是因为宿主（`MainScreen.favoritesPage`）还在传，等那边一起收。
-  var basisTitle: String
   var updatedAt: Date?
   var feedStatus: FeedStatus
   var feedDiagnostics: String? = nil
@@ -49,9 +46,6 @@ struct FavoritesView: View {
   /// （§10.1）。顺序是这一页自己定的（当前分类里的自选顺序），由这儿在开图的同一瞬间
   /// 原样递出去，外面不用复算。
   var onScanList: ([String]) -> Void = { _ in }
-  /// 加了提醒的那些线。原来只喂「离提醒线最近」那一档排序和行上的距离副文案，
-  /// 2026-09-25 排序撤了之后这一页不再读它；入参留着是因为宿主还在传，等那边一起收。
-  var alerts: [KanpanCore.Alert] = []
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.panelTheme) private var theme
   /// 搜索页盖层，以及它「查看全部 N 个品种」通往的品种整页（见 `SymbolSearchFlow`，
