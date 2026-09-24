@@ -308,9 +308,14 @@ final class ReviewInteractionUITests: KanpanUICase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.163, dy: 0.41)).tap()
         picked = pager.waitForExistence(timeout: 20)
       }
+      shot("P37-15c-挑完之后")
       XCTAssertTrue(picked, "挑了图但详情里没出现那张图")
       if picked {
-        XCTAssertTrue(waitUntil(timeout: Self.long) { add.label.contains("1/3") }, "补图计数没到 1/3：\(add.label)")
+        // 详情顶上多了「当时那张图」之后，挑完图那一刻「补一张图」常落在屏幕下沿之外——
+        // List 是懒加载的，出了屏的行不在无障碍树里，直接读 `.label` 会当场抛错。先滑到它出来。
+        for _ in 0..<4 where !add.exists { app.swipeUp() }
+        XCTAssertTrue(waitUntil(timeout: Self.long) { add.exists && add.label.contains("1/3") },
+                      "补图计数没到 1/3：\(add.exists ? add.label : "按钮不在屏上")")
         shot("P37-16-补图-之后")
       }
     }
@@ -333,7 +338,14 @@ final class ReviewInteractionUITests: KanpanUICase {
     XCTAssertTrue(waitForLiveChart(), "没等到行情")
     for tf in ["15m", "4h"] {
       app.tapIntervalChip(tf)
-      XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChip(tf)].isSelected }, "没切到 \(tf)")
+      // 15m 不在出厂钉住的那几档里（周期条只列钉住的，见 U12）：没有那颗胶囊时，
+      // 「更多」那颗的读法会写「当前 15 分钟」。
+      let spoken = ["15m": "15 分钟", "4h": "4 小时"][tf] ?? tf
+      XCTAssertTrue(waitUntil(timeout: Self.long) {
+        let chip = self.app.buttons[Ids.intervalChip(tf)]
+        return (chip.exists && chip.isSelected)
+          || self.app.buttons[Ids.intervalMore].label.hasSuffix("当前 \(spoken)")
+      }, "没切到 \(tf)")
       XCTAssertTrue(waitForLiveChart(), "\(tf) 没等到行情")
       guard openCapture() else { return }
       XCTAssertTrue(waitUntil(timeout: Self.short) { (self.captureBars() ?? 0) >= 16 }, "\(tf) 取景不到 16 根")
