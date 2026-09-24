@@ -533,11 +533,19 @@ import ReviewUI
   private func submitPushToken() {
     guard let api = account.client, let owner,
           let token = pushLedger.due(token: PushRegistration.token, owner: owner) else { return }
-    let body: [String: String] = ["token": token, "kind": "alerts", "environment": PushRegistration.environment]
-    guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
+    // 复盘到点走推送时（`ReviewDueReminders.channel == .remote`）另登记一条 `reviewDue` 类：
+    // 服务端只把复盘到点推给这一类（迁移 0023），走本机日历通知的设备不登记，就收不到第二条。
+    let kinds = ReviewDueReminders.channel == .remote ? ["alerts", "reviewDue"] : ["alerts"]
+    let bodies = kinds.compactMap { kind in
+      try? JSONSerialization.data(withJSONObject: ["token": token, "kind": kind, "environment": PushRegistration.environment])
+    }
+    guard bodies.count == kinds.count else { return }
     pushLedger.begin(token: token, owner: owner)
     Task { [weak self] in
-      let ok = (try? await api.data("v1/devices/push-token", method: "POST", body: data)) != nil
+      var ok = true
+      for data in bodies where ok {
+        ok = (try? await api.data("v1/devices/push-token", method: "POST", body: data)) != nil
+      }
       self?.pushLedger.finish(token: token, owner: owner, ok: ok)
     }
   }

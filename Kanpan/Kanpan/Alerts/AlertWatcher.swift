@@ -64,12 +64,13 @@ final class AlertWatcher: ObservableObject {
   }
 
   private func report(_ alert: Alert) {
+    // 复盘到点不在这儿叫人：叫人只有 `ReviewDueReminders` 一处（本机日历通知，没权限时
+    // 它自己在前台补叫）。这儿再震一下、再弹一条浮条，就是同一件事说两遍——以前从后台
+    // 回来、同步下来一条 fired 时正是这样。总表里那条照常显示为已触发。
+    if alert.kind == .reviewDue { return }
     // 通知中心里留一条：前台时 `willPresent` 会把横幅压掉（界面上已经有浮条了），
-    // 后台回来那一下则是它把人叫住。复盘到点不在这儿发：它有一条到点就响的日历
-    // 通知（`ReviewDueNotifications`），这儿再发就是同一件事两条。
-    if alert.kind != .reviewDue {
-      AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol), sound: sound())
-    }
+    // 后台回来那一下则是它把人叫住。
+    AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol), sound: sound())
     guard foreground else { return }
     Haptics.alarm()
     onFired?(alert)

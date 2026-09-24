@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import ReviewData
 import UIKit
 import UserNotifications
 
@@ -23,7 +24,7 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate, @unc
   /// 服务端推送里标明「这是哪一种」的键（`apns.rs::alert_payload`）。
   static let kindKey = "kind"
   /// 本机前台自己也会报的那几种推送。
-  static let localTwins: Set<String> = ["watchMove", "reviewDue"]
+  static let localTwins: Set<String> = ["watchMove"]
 
   private override init() { super.init() }
 
@@ -51,12 +52,16 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate, @unc
                               willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
     let request = notification.request
     if request.content.categoryIdentifier == AlertSoundPreview.category { return [.sound] }
-    // 服务端推下来的自选波动 / 复盘到点：前台时本机自己那一份已经说过了
-    // （`WatchMoveMonitor` 的浮条、`ReviewDueNotifications` 的日历通知），这一条压掉，
-    // 免得同一件事在通知中心躺两条。
-    if let kind = request.content.userInfo[Self.kindKey] as? String, Self.localTwins.contains(kind) { return [] }
+    // 服务端推下来的自选波动：前台时本机自己那一份（`WatchMoveMonitor` 的浮条）已经
+    // 说过了，这一条压掉，免得同一件事在通知中心躺两条。
+    let kind = request.content.userInfo[Self.kindKey] as? String
+    if let kind, Self.localTwins.contains(kind) { return [] }
+    // 复盘到点只走一条通道（`ReviewDueReminders.channel`）：走推送时这就是唯一的一条，
+    // 前台照常弹横幅；走本机日历通知时服务端本不该推到这台（它没登记 `reviewDue` 类
+    // token），真推来了（服务端还没部署 0023）就压掉，免得和本机那条重复。
+    if kind == "reviewDue" { return ReviewDueReminders.channel == .remote ? [.banner, .list, .sound] : [] }
     guard request.content.categoryIdentifier == Self.category else { return [.banner, .list, .sound] }
-    // 价格提醒保留所选声音与通知中心条目；复盘到期的前台呈现保持原样。
+    // 价格提醒、自选波动保留所选声音与通知中心条目。
     return request.identifier.hasPrefix("alert.") || request.identifier.hasPrefix("move.") ? [.list, .sound] : [.list]
   }
 

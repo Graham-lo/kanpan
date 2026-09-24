@@ -4,6 +4,7 @@ import KanpanData
 import KanpanNetwork
 import SwiftUI
 import UIKit
+import ReviewData
 import ReviewDomain
 import ReviewUI
 import KanpanAccount
@@ -96,6 +97,8 @@ struct MainScreen: View {
   @State private var grace = BackgroundGrace()
   @State private var proxy = ChartProxy()
   @State private var review = ReviewFeature()
+  /// 复盘待办到点叫人的唯一一处（本机日历通知；没有通知权限时前台自己补叫）。
+  @State private var reviewDue = ReviewDueReminders.live()
   @State private var reviewChart = ReviewChartBridge()
 
   @State private var panel: Panel?
@@ -508,8 +511,8 @@ struct MainScreen: View {
       onReviewChartNotice: { note in if let note { say(note); reviewChart.notice = nil } },
       onReviewBookOpen: { endSharePreview() },
       onReviewRecords: { list in
-        // 本机那条日历通知是双保险；进提醒系统（总表 + 同步 + 服务端到点推送）的是这一份。
-        ReviewDueNotifications.reschedule(list)
+        // 叫人的只有 `reviewDue` 这一处；下面那份只进提醒总表、跟着同步，不叫人。
+        reviewDue.reschedule(list)
         alerts.settleReviewDue(ReviewDueAlerts.plan(items: list.map(ReviewDueAlerts.Item.init(record:)),
                                                     existing: alerts.all,
                                                     now: Date().timeIntervalSince1970 * 1000))
@@ -1455,6 +1458,7 @@ struct MainScreen: View {
       session.setForeground(false); sectorFeed.setForeground(false)
       // 后台里响的那些不去动界面，只留一条本地通知（见 `AlertWatcher`）。
       alertWatcher.setForeground(false)
+      reviewDue.setForeground(false)
       // 判定也一起停：桶断了就不算连着，回来那一下不拿断口两侧的价去算穿越。
       alertEngine.setForeground(false)
       watchMove.setForeground(false)
@@ -1464,6 +1468,7 @@ struct MainScreen: View {
       grace.end()
       session.setForeground(true); sectorFeed.setForeground(true)
       alertWatcher.setForeground(true)
+      reviewDue.setForeground(true)
       alertEngine.setForeground(true)
       watchMove.setForeground(true)
       widgetFeed.setForeground(true)
@@ -1571,10 +1576,12 @@ struct MainScreen: View {
     }
     alertWatcher.sound = { [weak store] in store?.prefs.alertSound ?? .default }
     alertWatcher.attach(alerts)
+    // 复盘到点不经 `alertWatcher`：只有没有通知权限时由 `reviewDue` 在前台补叫这一声。
+    reviewDue.onInApp = { reminder in
+      Haptics.alarm()
+      say(reminder.title, actionTitle: "查看") { openReview(id: reminder.id.uuidString) }
+    }
     alertWatcher.onFired = { alert in
-      if alert.kind == .reviewDue, let id = alert.reviewID {
-        return say(alert.title, actionTitle: "查看") { openReview(id: id) }
-      }
       guard let drawingID = alert.drawingID else {
         return say(alert.title, actionTitle: "查看") { open(linkedSymbol: alert.symbol) }
       }

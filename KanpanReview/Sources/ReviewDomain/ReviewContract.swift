@@ -59,7 +59,7 @@ public enum ReviewContract {
   ///
   /// 「这个市场能不能复盘」全客户端只问这一处（`supports`）：捕获入口
   /// （`ReviewChartBridge.beginCapture` → `captureFailure`）和复盘到点提醒
-  /// （`ReviewDueNotifications` 的 `eligible`）以前各判一遍，后者只认币安，
+  /// （`ReviewDueAlerts.Item.init(record:)` 的 `eligible`）以前各判一遍，后者只认币安，
   /// 于是现货（`coinbase/spot`）的记录能记、到点却不进提醒总表（审查 2026-09-24 §2）。
   ///
   /// 为什么是镜像而不是开机问服务端要能力表：服务端没有这样的端点，而捕获入口是离线也要
