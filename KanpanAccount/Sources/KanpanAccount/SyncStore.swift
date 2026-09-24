@@ -317,6 +317,24 @@ final class ArchiveWriter: @unchecked Sendable {
     }
     return out.sorted { $0.key < $1.key }
   }
+  /// 启动时要叠到正式文件上的那几份：`unpersistedLocalChanges` 之外，再加上**云端的墓碑**。
+  ///
+  /// 墓碑那一半：别的设备删掉的对象，本机正式文件上可能还留着（拉回来了、装之前进程没了；
+  /// 或者更老的版本没装干净）。启动时不删，用户就会看见一条在云端早已不存在的线 / 提醒。
+  /// 例外只有一个，和其余所有地方同一条规则：**本机说了算**（`holdsLocal`）的对象，墓碑不算数——
+  /// 那时要落到盘上的是 `local` 里本机那份（活的就补回来，删的就删掉），由后一半给出。
+  ///
+  /// 2026-09-24 以前这是 `prepare` 里两段手写的循环，规则写的是「有待发的 `restore` 才不删」，
+  /// 然后前向对账再把「本机说了算的活值」补回来——净效果和这里一样，只是同一件事分两步、
+  /// 先删后加。现在一步给出，调用方统一交给 `SyncOverlay` 去落。
+  public func startupCorrections(in collections: Set<String>, onDisk: [SyncObject]) -> [SyncObject] {
+    var out = unpersistedLocalChanges(in: collections, onDisk: onDisk)
+    for (_, cloud) in archive.objects where cloud.deleted && collections.contains(cloud.collection) {
+      guard !archive.holdsLocal(cloud.collection, cloud.id) else { continue }
+      out.append(cloud)
+    }
+    return out.sorted { $0.key < $1.key }
+  }
   /// Record only actual field changes. Uncertain requests are immutable; retry them with their original ID.
   public func capture(_ value: SyncObject, device: UUID, importing batch: UUID? = nil,
                       owning ownedKeys: [String: Set<String>] = [:]) throws {

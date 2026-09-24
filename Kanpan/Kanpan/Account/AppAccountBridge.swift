@@ -301,81 +301,20 @@ import ReviewUI
       }
     }
     if let nextSync {
-      for tombstone in nextSync.archive.objects.values where tombstone.collection == "drawings" && tombstone.deleted {
-        let name = PersonalSyncCodec.instrument(tombstone); guard !name.isEmpty else { continue }
-        let id = String(tombstone.id.split(separator: "/").last ?? "")
-        if !nextSync.archive.operations.contains(where: { $0.objectId == tombstone.id && $0.action == "restore" }) {
-          nextDrawings[name].removeAll { $0.id == id }
-        }
-      }
-      // 画线的启动前向对账（B2）。
+      // 启动前向对账（B2）。
       //
-      // 画线落两个文件：`DrawingController.write()` 先落同步存档（新的本地值和
-      // 那条待发操作在同一份档里），再落 `draws.json`。两次写之间进程没了，盘上
-      // 就是「新存档 + 旧 draws.json」。这里把差额向前补进 `draws.json`。
-      //
-      // **只向前**：只补那些存档里「本机说了算」（有待发操作或未了结的拒绝记录）
-      // 的对象。云端下发的那些一个都不碰，否则这一步就成了拿存档去回滚用户
-      // 已经落在盘上的画线。
-      // 提醒也照样：删掉的不许在启动时复活，本机说了算的那几条向前补进 `alerts.json`。
-      for tombstone in nextSync.archive.objects.values where tombstone.collection == "alerts" && tombstone.deleted {
-        let id = String(tombstone.id.split(separator: "/").last ?? "")
-        if !nextSync.archive.operations.contains(where: { $0.objectId == tombstone.id && $0.action == "restore" }) {
-          nextAlerts.alerts.removeAll { $0.id == id }
-        }
-      }
-      for object in nextSync.unpersistedLocalChanges(in: ["alerts"], onDisk: (try? PersonalSyncCodec.alerts(nextAlerts.alerts)) ?? []) {
-        let id = String(object.id.split(separator: "/").last ?? "")
-        if object.deleted { nextAlerts.alerts.removeAll { $0.id == id }; continue }
-        guard let alert = try? PersonalSyncCodec.alert(object) else { continue }
-        nextAlerts[id] = alert
-      }
-      let onDisk = (try? PersonalSyncCodec.drawings(nextDrawings)) ?? []
-      for object in nextSync.unpersistedLocalChanges(in: ["drawings", "drawingPreferences"], onDisk: onDisk) {
-        if object.collection == "drawingPreferences" {
-          if let value = try? KanpanAccount.JSONValue.object(PersonalSyncCodec.expand(object.body)).decode(DrawingPreferences.self) {
-            nextDrawings.preferences = value
-          }
-          continue
-        }
-        let name = PersonalSyncCodec.instrument(object); guard !name.isEmpty else { continue }
-        let id = String(object.id.split(separator: "/").last ?? "")
-        if object.deleted {
-          nextDrawings[name].removeAll { $0.id == id }
-          continue
-        }
-        // 解不开的那条就跳过：待发操作还在队列里，用户的意图不会丢，
-        // 而云端那份也进不了 `local`，下一轮还有机会。
-        guard let drawing = try? PersonalSyncCodec.drawing(object) else { continue }
-        if let index = nextDrawings[name].firstIndex(where: { $0.id == id }) { nextDrawings[name][index] = drawing }
-        else { nextDrawings[name].append(drawing) }
-      }
-      // 自选 / 分组的启动前向对账。判据和上面画线、提醒那两段逐字同义，只是
-      // 这一档从前**根本没有**这一步——因为它的两次写本来就是反着的
-      // （`symbols.json` 先落、存档后落），落在补得回来的那一侧的情况压根不会出现。
-      // 2026-09-22 把顺序掉过来之后，「新存档 + 旧 symbols.json」成了崩溃后的常态，
-      // 这一段就是把它补回来的人；没有它，用户重开会看见被自己删掉的那条自选还在，
-      // 要等下一次云端应用才恢复。
-      //
-      // **只向前**：只补那些「本机说了算」（有待发操作或未了结的拒绝记录）的对象，
-      // 云端下发的那些一个都不碰。位置按存档里记的 `order` 插回去，插不进就落到末尾——
-      // 真身顺序仍以那条待发操作为准，下一次 `applyPending` 会把它摆正。
-      for object in nextSync.unpersistedLocalChanges(in: ["favorites", "groups"], onDisk: PersonalSyncCodec.symbols(nextSymbols)) {
-        var slot = Int.max
-        if case .number(let order) = object.body["order"] { slot = Int(order) }
-        if object.collection == "groups" {
-          nextSymbols.groups.removeAll { $0.id == object.id }
-          guard !object.deleted, case .string(let name) = object.body["name"] else { continue }
-          nextSymbols.groups.insert(FavoriteGroup(id: object.id, name: name), at: min(max(slot, 0), nextSymbols.groups.count))
-          continue
-        }
-        let symbol = PersonalSyncCodec.instrument(object); guard !symbol.isEmpty else { continue }
-        nextSymbols.favorites.removeAll { $0 == symbol }
-        nextSymbols.groupForSymbol[symbol] = nil
-        guard !object.deleted else { continue }
-        nextSymbols.favorites.insert(symbol, at: min(max(slot, 0), nextSymbols.favorites.count))
-        if case .string(let group) = object.body["groupId"] { nextSymbols.groupForSymbol[symbol] = group }
-      }
+      // 画线、提醒、自选都落两个文件：先落同步存档（新的本地值和那条待发操作在同一份档里），
+      // 再落正式文件。两次写之间进程没了，盘上就是「新存档 + 旧正式文件」。这里把差额
+      // **只向前**补进正式文件：本机说了算（有待发操作或未了结的拒绝记录）的对象落 `local`
+      // 那份，别的对象只认云端的墓碑（删掉的不许在启动时复活）；云端下发的活值一个都不碰，
+      // 否则这一步就成了拿存档去回滚用户已经落在盘上的东西。挑哪几份是
+      // `SyncStore.startupCorrections`，怎么落是 `SyncOverlay`——和 `applyPending` 同一份。
+      SyncOverlay.alerts(nextSync.startupCorrections(in: ["alerts"], onDisk: (try? PersonalSyncCodec.alerts(nextAlerts.alerts)) ?? []),
+                         onto: &nextAlerts)
+      SyncOverlay.drawings(nextSync.startupCorrections(in: ["drawings", "drawingPreferences"], onDisk: (try? PersonalSyncCodec.drawings(nextDrawings)) ?? []),
+                           onto: &nextDrawings)
+      SyncOverlay.symbols(nextSync.startupCorrections(in: ["favorites", "groups"], onDisk: PersonalSyncCodec.symbols(nextSymbols)),
+                          patching: &nextSymbols)
     }
     PersonalSyncCodec.keepDeviceFields(prefs.prefs, in: &nextPrefs)
     // 「自选页停在哪一类」从自选档案搬进偏好：老存档里它写在 `symbols.json` 的
@@ -764,63 +703,17 @@ import ReviewUI
     let objects = sync.archive.local
 
     // —— 一、准备。只算不写，也不碰任何可见状态。这一段抛错等于这一批整个没发生。
-    var nextPrefs: Prefs?
-    if let settings = objects["settings:chart"] {
-      // 按字段合并：本地脏的一律跳过，干净的跟着云端走。这里先算出合并结果，
-      // 第三段 `prefs.applySynced` 会把同一套规则再走一遍（幂等）。
-      nextPrefs = Prefs.keeping(prefs.dirtyFields, of: prefs.prefs, over: try PersonalSyncCodec.apply(settings, to: prefs.prefs))
-    }
+    // 每一种对象怎么落到本地模型上，和启动前向对账是同一份（`SyncOverlay`）。
+    // 设置按字段合并：本地脏的一律跳过，干净的跟着云端走；第三段 `prefs.applySynced`
+    // 会把同一套规则再走一遍（幂等）。
+    let nextPrefs = try SyncOverlay.settings(objects["settings:chart"], onto: prefs.prefs, keeping: prefs.dirtyFields)
     var archive = drawings.storedArchive
-    if let tools = objects["drawingPreferences:tools"] {
-      archive.preferences = try KanpanAccount.JSONValue.object(PersonalSyncCodec.expand(tools.body)).decode(DrawingPreferences.self)
-    }
-    for object in objects.values where object.collection == "drawings" {
-      let name = PersonalSyncCodec.instrument(object); guard !name.isEmpty else { continue }
-      let id = String(object.id.split(separator: "/").last ?? "")
-      if object.deleted { archive[name].removeAll { $0.id == id } }
-      else {
-        // 解不开的那条跳过，别整批抛（和下面提醒那一段同一条规矩）。
-        // 新版本加一把画线工具，老版本的机器就会在这儿读到一个它不认识的 `kind`：
-        // 整批抛出去的话 `pendingApply` 一直挂着，每次重试都在同一条上翻车，
-        // 这台设备从此再也收不到任何设置、自选、画线——只因为别的设备画了一条新工具。
-        guard let drawing = try? PersonalSyncCodec.drawing(object) else { continue }
-        if let index = archive[name].firstIndex(where: { $0.id == id }) { archive[name][index] = drawing }
-        else { archive[name].append(drawing) }
-      }
-    }
-    // 提醒。服务端判出触发之后会自己写一条 `patch`（`status` / `firedAt` / `firedPrice`），
-    // 就是从这儿落进本机的——所以这一段既管「别的设备加的提醒」，也管「它响了」。
-    // 解不开的那条跳过而不是整批抛：一条坏数据不该让设置、自选、画线一起落不了地。
+    SyncOverlay.drawings(objects.values.filter { $0.collection == "drawings" || $0.collection == "drawingPreferences" }, onto: &archive)
     var alertArchive = alerts.archive
-    for object in objects.values where object.collection == "alerts" {
-      let id = String(object.id.split(separator: "/").last ?? "")
-      if object.deleted { alertArchive.alerts.removeAll { $0.id == id }; continue }
-      guard let alert = try? PersonalSyncCodec.alert(object) else { continue }
-      alertArchive[id] = alert
-    }
-    func order(_ a: SyncObject, _ b: SyncObject) -> Bool {
-      let x: Double = { if case .number(let n) = a.body["order"] { return n }; return 0 }()
-      let y: Double = { if case .number(let n) = b.body["order"] { return n }; return 0 }()
-      return x == y ? a.id < b.id : x < y
-    }
-    let groups = objects.values.filter { $0.collection == "groups" && !$0.deleted }.sorted(by: order).compactMap { v -> FavoriteGroup? in
-      guard case .string(let name) = v.body["name"] else { return nil }; return FavoriteGroup(id: v.id, name: name)
-    }
-    let favorites = objects.values.filter { $0.collection == "favorites" && !$0.deleted }.sorted(by: order)
-    var names: [String] = [], membership: [String: String] = [:]
-    for value in favorites {
-      let name = PersonalSyncCodec.instrument(value); guard !name.isEmpty else { continue }; names.append(name)
-      if case .string(let group) = value.body["groupId"] { membership[name] = group }
-    }
-    // 服务端只同步自选/分组这几张表，「最近」「常看」一直是本机的事——
-    // 重建时要把它们原样带回去，否则每来一次同步就把常看清零。
-    //
-    // 这儿原来是手抄一行 `SymbolPrefs(favorites:recents:…:viewScores:scoredAt:)`，
-    // 少抄一个本机字段就是「每同步一次，常看被清空一次」，而且不报任何错。现在改成
-    // **云端重建出来的那份当底，再按 `SymbolFieldPlan` 的 localOnly 表把本机字段抄回去**：
-    // 清单只有那一张表，加字段的人不必记得回这儿补参数（`SymbolFieldPlanTests` 替他记）。
-    let rebuilt = SymbolPrefs(favorites: names, groups: groups, groupForSymbol: membership)
-    let nextSymbols = SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: symbols.prefs, over: rebuilt)
+    SyncOverlay.alerts(objects.values.filter { $0.collection == "alerts" }, onto: &alertArchive)
+    // 服务端只同步自选/分组这几张表，「最近」「常看」一直是本机的事，重建时原样带回去。
+    let nextSymbols = SyncOverlay.symbols(rebuiltFrom: objects.values.filter { $0.collection == "favorites" || $0.collection == "groups" },
+                                          keeping: symbols.prefs)
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
 
     // —— 二、落盘。整套候选态一次性提交；成功之后才准清 `pendingApply`。
