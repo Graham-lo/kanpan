@@ -90,6 +90,9 @@ private struct InUseList: View {
   private static let rowH: CGFloat = Inset.rowMin
 
   private var prefs: Prefs { store.prefs }
+  /// 这一段里有没有带把手的行（副图）。有的话，没把手的行（主图叠加、订单流）在同一个位置
+  /// 垫一块同宽的空位，参数和「›」才落在同一条竖线上（UI 整改 P2）。
+  private var hasHandles: Bool { !prefs.subs.isEmpty }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -128,7 +131,7 @@ private struct InUseList: View {
           VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
         }
         .padding(.leading, PanelMetrics.hPad)
-        .padding(.trailing, index == nil ? PanelMetrics.hPad : Space.xs)
+        .padding(.trailing, hasHandles ? Space.xs : PanelMetrics.hPad)
         .frame(height: Self.rowH)
         .contentShape(Rectangle())
       }
@@ -148,6 +151,13 @@ private struct InUseList: View {
           .accessibilityIdentifier("indicator.height.reset.\(id.rawValue)")
       }
 
+      if index == nil, hasHandles {
+        // 把手那一格的空位：同宽、同样借进边距，只占地方不画东西。
+        Color.clear
+          .frame(width: Hit.min, height: Self.rowH)
+          .padding(.trailing, PanelMetrics.hPad - Space.m)
+          .accessibilityHidden(true)
+      }
       if let index {
         Image(systemName: "line.3.horizontal")
           .font(TypeScale.bodyEmph)

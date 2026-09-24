@@ -82,7 +82,7 @@ struct PanelTheme: Sendable, Equatable {
   }
   var segOn: Color { Color(hex: seed.raised) }
   /// 开关关着时的槽（`--sw-off`）。
-  var switchOff: Color { seed.dark ? Color(hex: seed.raised2) : Color(hex: seed.line) }
+  var switchOff: Color { controlLine }
   /// 开关的圆钮（原型 `.sw:after`）：开关两态都是白的，靠槽的颜色区分开关，
   /// 不靠钮的颜色——钮换色时那一小片白在深色里会整个消失，看着像钮没了。
   var switchKnob: Color { .white }

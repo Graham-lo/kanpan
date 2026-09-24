@@ -52,6 +52,7 @@ struct DisplaySettingsSection: View {
   private func card(_ skin: ThemeSkin) -> some View {
     let color = PanelTheme(seed: skin.seed(dark: dark), redUp: store.prefs.redUp)
     let picked = store.prefs.skin == skin
+    let shape = RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
     return Button {
       store.update { $0.skin = skin }
     } label: {
@@ -71,10 +72,13 @@ struct DisplaySettingsSection: View {
           HStack(spacing: Space.xs) { skinName(skin, color); skinNote(skin, color) }
           VStack(alignment: .leading, spacing: Space.xxs) { skinName(skin, color); skinNote(skin, color) }
         }
-      }.padding(Inset.cardCompact).frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.app, in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
-          .strokeBorder(picked ? theme.amber : theme.line, lineWidth: picked ? 2 : 1))
+      }.padding(Inset.cardCompact).frame(maxWidth: .infinity, minHeight: Hit.min, alignment: .leading)
+        .background(color.app, in: shape)
+        // 没选中的描边取 `controlLine`（对页面底 ≥ 3:1，UI 整改 P2）；原来的 `line` 只有 1.2:1 左右，
+        // 浅色皮肤下白卡压在近白的页面上几乎看不出边。描边画在卡里（`strokeBorder`），和卡同心。
+        .overlay(shape.strokeBorder(picked ? theme.amber : theme.controlLine, lineWidth: picked ? 2 : 1))
+        // 整张卡都是点按区。
+        .contentShape(shape)
     }.buttonStyle(.plain).accessibilityIdentifier("display.theme." + skin.rawValue)
       .accessibilityValue(picked ? "已选" : "未选")
   }

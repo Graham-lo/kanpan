@@ -265,6 +265,27 @@ struct PanelSegment<Value: Hashable>: View {
   }
 }
 
+// MARK: - 控件边界
+
+extension PanelTheme {
+  /// 控件的边界色：开关关着时的槽、没选中的配色卡描边。对页面底（`app`）和浮层底（`raised`）
+  /// 都 ≥ 3:1（WCAG 1.4.11 非文字对比，UI 审查 2026-09-24）。
+  ///
+  /// 原来槽取的是 `line`（深色取 `raised2`），六套种子实测只有 1.1–1.5:1，关着的开关
+  /// 在青苔深上几乎看不出槽（`整改/P1b/设置整页-底部-青苔深.png`）。`line` 当分隔线够，
+  /// 当控件边界不够，所以从 `line` 往 `ink` 一档一档调深，调到两块底都够 3:1 为止——
+  /// 和 `Palette.readable` 同一个做法，只是门槛是非文字的 3:1。六套种子的结果：
+  /// 青苔 #839088 / #5E6A64、陶土 #998D81 / #716459、经典 #909693 / #686E72（浅 / 深）。
+  var controlLine: Color {
+    let surfaces = [seed.app, seed.raised]
+    for step in 0...100 {
+      let candidate = Palette.mix(seed.line, seed.ink, amount: 1 - Double(step) / 100)
+      if surfaces.allSatisfy({ Palette.contrast(candidate, $0) >= 3 }) { return Color(hex: candidate) }
+    }
+    return ink3
+  }
+}
+
 // MARK: - 开关
 
 /// 原型 `.sw`：44 × 26，开着填强调色。不用系统 `Toggle`，因为系统的绿不在配色里。
@@ -277,7 +298,8 @@ struct PanelSwitch: View {
   var body: some View {
     Button(action: toggle) {
       ZStack(alignment: isOn ? .trailing : .leading) {
-        Capsule().fill(isOn ? t.switchOn : t.switchOff)
+        // 关着的槽取 `controlLine`（≥ 3:1），不再是几乎和底一样的 `switchOff`。
+        Capsule().fill(isOn ? t.switchOn : t.controlLine)
         Circle()
           .fill(t.switchKnob)
           .frame(width: 20, height: 20)
