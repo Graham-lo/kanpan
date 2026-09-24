@@ -32,7 +32,7 @@ import Testing
     #expect(!store.needsApply)
   }
 
-  @Test func pushWhoseAckBringsNothingNewSkipsTheMerge() throws {
+  @Test func pushWhoseAckBringsNothingNewSkipsTheMerge() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer(), device = UUID()
     server.seed(stamped(server, ["theme": .string("moss"), "zoom": .number(1)], revision: 4))
@@ -42,8 +42,7 @@ import Testing
     var mine = try #require(store.archive.local["settings:prefs"])
     mine.body["theme"] = .string("clay")
     try store.capture(mine, device: device)
-    var loop = SyncLoop(store: store, server: server, device: device)
-    try loop.push()
+    try await engine(over: server, store, device: device).run(.push)
     #expect(store.archive.operations.isEmpty)
     // 回执把服务端那份写回了 local，但内容和本机的一模一样（只是版本号抬了）。
     #expect(store.archive.local["settings:prefs"]?.revision == 5)
@@ -56,7 +55,7 @@ import Testing
   }
 
   /// 回执里带着别的设备刚改的字段：`local` 变了，这一轮必须照常合并。
-  @Test func ackCarryingAnotherDevicesFieldStillMerges() throws {
+  @Test func ackCarryingAnotherDevicesFieldStillMerges() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer(), device = UUID()
     server.seed(stamped(server, ["theme": .string("moss")], revision: 4))
@@ -68,8 +67,7 @@ import Testing
     var mine = try #require(store.archive.local["settings:prefs"])
     mine.body["theme"] = .string("clay")
     try store.capture(mine, device: device)
-    var loop = SyncLoop(store: store, server: server, device: device)
-    try loop.push()
+    try await engine(over: server, store, device: device).run(.push)
     #expect(store.archive.local["settings:prefs"]?.body["zoom"] == .number(2))
     #expect(store.remoteArrivals == mark &+ 1)
 

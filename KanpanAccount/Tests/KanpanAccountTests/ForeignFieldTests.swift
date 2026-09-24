@@ -118,7 +118,7 @@ import Testing
   /// 只有 `color` / `groupId` / `text` 和 settings、drawingPreferences 的嵌套路径收 null。
   /// 服务端**没改**，也不该改——放开白名单等于放任老客户端把它只是不认识的字段抹掉。
   @Test("整轮全量同步跑完，没有一条被隔离，云端的老字段还在")
-  func aFullRoundTripLeavesNothingQuarantined() throws {
+  func aFullRoundTripLeavesNothingQuarantined() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer(), device = UUID()
     server.refuse = { op in
@@ -143,8 +143,7 @@ import Testing
     edited.body["color"] = .string("#00ff00")
     try store.capture(edited, device: device, owning: owned)
 
-    var loop = SyncLoop(store: store, server: server, device: device)
-    try loop.full(["drawings"])
+    try await engine(over: server, store, device: device, owning: owned).fullThenLeftovers("binance/usd_m/BTCUSDT/")
 
     #expect(store.archive.rejected.isEmpty, "还有操作卡在隔离区：\(store.archive.rejected.map(\.reason))")
     #expect(store.archive.operations.isEmpty)

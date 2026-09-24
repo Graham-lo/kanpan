@@ -37,16 +37,6 @@ import ReviewUI
   private var preparedOwner: UUID??
   /// 两次全量 bootstrap 之间的最小间隔。
   private static let bootstrapInterval: TimeInterval = 300
-  /// 服务端一次最多收 100 条操作（`Backend/kanpan-api/src/sync.rs:91`）。
-  private static let pushBatchLimit = 100
-  /// 一批**编码之后**最多多少字节。
-  ///
-  /// 条数从来不是唯一的上限：服务端整个请求体只收 512 KiB（`kanpan-api/src/lib.rs`
-  /// 的 `DefaultBodyLimit`），而一条画线操作的大小完全由用户画了多少点决定——
-  /// 一百条大操作轻轻松松越线。越线的下场是 413：**整批一条都不落库**，而这一批
-  /// 又会原样重发，于是这个账号的队列从此再也前进不了。所以按真实字节往回削，
-  /// 384 KiB 给 HTTP 头、令牌、以及 JSON 编码的余量留够空间。
-  private static let pushBatchBytes = 384 * 1024
   var canApply: () -> Bool = { true }
   var onSwitch: () -> Void = {}
   /// 档案（prefs / symbols / 画线）**真的换进来之后**响一次。
@@ -665,72 +655,6 @@ import ReviewUI
   /// app 要是这会儿被杀，云端就永远停在旧值上。
   private var queuedPush: Bool?
 
-  /// 被服务端按语义顶回来的那些操作现在记在**存档**里（`SyncArchive.rejected`），
-  /// 不再是内存里的一个数组。见 `SyncStore.quarantine`。
-
-  /// 这个错误是不是「再发一万次也不会成功」。
-  ///
-  /// 400 / 422 这类是服务端对内容本身的判决（字段不认、格式不对），重试没有意义；
-  /// 401 要重新登录、429 是限流、5xx 与网络错误都是「这次不行」，那些该留在队列里
-  /// 等下一轮。409 分两种，见 `isRollback`：`resync_required` 要重拉重整，
-  /// `idempotency_mismatch` 是「同 id 的操作已经落过库、载荷却对不上」——那条
-  /// 再发一万次也只会拿到同一个 409，只能隔离。
-  private static func isPermanent(_ error: AccountError) -> Bool {
-    guard case .http(let code, let reason) = error else { return false }
-    if reason == "idempotency_mismatch" { return true }
-    if code == 401 || code == 409 || code == 429 { return false }
-    return code == 400 || code == 422 || reason == "invalid_operation"
-  }
-  /// 请求体太大被服务端挡在门外（413）。它和 409 一样证明这一批一条都没落库：
-  /// `DefaultBodyLimit` 是在进 handler 之前拒的，根本没到数据库。
-  private static func isTooLarge(_ error: AccountError) -> Bool {
-    guard case .http(413, _) = error else { return false }
-    return true
-  }
-  /// 这个错误能不能证明**这一批服务端一条都没落库**。
-  ///
-  /// `merge()` 在事务里抛 `resync_required`，`tx.commit()` 根本没跑到，所以整批
-  /// 确定回滚，可以把 `sent` 清掉重整。别的理由不行：`idempotency_mismatch`
-  /// 恰恰说明同 id 的操作确实已经落过库。
-  private static func isRollback(_ error: AccountError) -> Bool {
-    guard case .http(409, let reason) = error else { return false }
-    return reason == "resync_required"
-  }
-  /// 一轮同步里最多做几次「回滚 → 重拉 → 重整 → 接着推」。
-  ///
-  /// 恢复本身要花两三次跨洋往返，正常最多用一次（服务端顶回来的那一下）。给三次
-  /// 是为了容下「重拉的同时别的设备又改了一次」；再多就不是冲突而是打转了，
-  /// 剩下的留给下一轮。
-  private static let resyncBudget = 3
-  /// 被 409 顶回来之后，把这一批碰过的对象重新拉一遍。
-  ///
-  /// **必须在这一轮里就拉。** `resync_required` 之后只置 `needsBootstrap` 是不够的：
-  /// 下一轮 `.full` 照样**先跑推送循环**，照样撞同一个 409，永远到不了用来修复它的
-  /// 拉取阶段——整个账号的队列就此再也前进不了（B1）。
-  ///
-  /// 按 collection 归并着拉，画线再按品种那一层的前缀收窄（画线 id 是
-  /// `venue/market/symbol/<线 id>`）：既不会退化成一条一个请求，也不会为了一条线
-  /// 把这个人所有品种的画线都拖回来。
-  private func refetch(_ batch: [SyncOperation], api: AccountClient, into sync: SyncStore) async throws {
-    var scopes: Set<[String]> = []
-    for op in batch {
-      guard op.collection == "drawings" else { scopes.insert([op.collection]); continue }
-      let folder = op.objectId.split(separator: "/").dropLast().joined(separator: "/")
-      scopes.insert(folder.isEmpty ? [op.collection] : [op.collection, folder + "/"])
-    }
-    for scope in scopes.sorted(by: { $0.joined(separator: "/") < $1.joined(separator: "/") }) {
-      var after: String?
-      repeat {
-        var query = [URLQueryItem(name: "collection", value: scope[0])]
-        if scope.count > 1 { query.append(URLQueryItem(name: "prefix", value: scope[1])) }
-        if let after { query.append(URLQueryItem(name: "after", value: after)) }
-        var components = URLComponents(); components.queryItems = query
-        let page: SyncPage = try await api.request("v1/sync/bootstrap" + (components.string ?? ""))
-        try Task.checkCancellation()
-        try sync.receive(page); after = page.next
-      } while after != nil
-    }
-  }
   private func run(_ plan: SyncPlan, manual: Bool) {
     guard task == nil else {
       // 全量 / 画线那两档自己有别的触发点（回前台、换品种），不必排队；
@@ -760,156 +684,41 @@ import ReviewUI
         }
       }
       do {
-        // 一次一批，最多 100 条（服务端上限）。幂等落在每条操作的 id 上，
-        // 整批重发时已生效的那几条按 digest 原样返回，不会重复应用。
         // 推上去那一刻的脏字段快照。推成功之后按「时刻没变」逐个清——
         // **推成功才清**，失败 / 断网 / 被杀都留着，下次启动本地照样赢。
         let marks = prefs.dirtyMarks
         // 这一轮开始时「云端改过本机记账」的计数。一轮下来它没动、又没拉任何 scope，
         // 就是纯推送：本机界面上已经是最新的，合并与两次阻塞落盘都省掉（见收尾处）。
         let arrivals = sync.remoteArrivals
-        // 服务端**认掉**的那些操作里带的线上字段名。`markSent` 只是「发出去了」，
-        // 不算成功；成功以 `SyncPushResponse` 里按 `operationId` 对上的为准，
-        // 而且要扣掉它回报的 `droppedFields`（认了这条，但这几项没收下）。
-        var acked: Set<String> = []
-        // 这一轮**没落地**的那些线上字段名：被 `droppedFields` 顶回来的、整条没回执的、
-        // 被隔离的。它得和 `acked` 一起交给 `SettingsStamp`——本地一个 `params` 字段
-        // 在线上是 `params/MA`、`params/EMA`… 好几条路径（`PersonalSyncCodec.flatten`），
-        // 只认下一条就把整个字段的脏标记清掉，等于把另外那条没推上去的改动当成推过了。
-        // 哪些算「没落地」在这儿算，别让 `SettingsStamp` 去猜。
-        var dropped: Set<String> = []
-        // 撞过一次「这条永远不会成功」之后改成一条一条发，把坏的那条揪出来单独隔离，
-        // 不让它替后面所有好操作挡路。
-        var oneByOne = false
-        // 还剩几次「回滚 → 重拉 → 重整 → 接着推」的机会。
-        var resyncs = Self.resyncBudget
-        // 这一轮的字节上限。撞过 413 就对半砍，砍到单条也过不去时把那条隔离掉。
-        var byteBudget = Self.pushBatchBytes
-        while !sync.archive.operations.isEmpty {
-          try Task.checkCancellation()
-          // 一批不是「队首一百条」，是「队首一百条里**能安全同批**的那几条」：
-          // 删除后面紧跟的恢复、恢复后面带旧 generation 的那些，同批必定整批回滚
-          // （`SyncStore.batch` 写了服务端 `merge()` 逐条推出来的那几条边）。
-          // 两道闸：条数（服务端 `sync.rs` 的上限）和**编码之后的真实字节数**
-          // （`DefaultBodyLimit`）。削法与理由都在 `SyncStore.nextBatch(limit:maxBytes:)`。
-          let batch = sync.nextBatch(limit: oneByOne ? 1 : Self.pushBatchLimit, maxBytes: byteBudget)
-          let payload = try JSONEncoder().encode(SyncPushRequest(batch))
-          if payload.count > byteBudget {
-            // 单独一条就超限：它再发一万次也只会换回 413。和语义错误那一档同一个
-            // 处置——隔离掉，本地值与脏标记一个不动，别让它把后面所有人的操作堵死。
-            if batch[0].collection == "settings" && batch[0].objectId == "chart" {
-              dropped.formUnion(batch[0].fields.keys)
-            }
-            try sync.quarantine(batch[0].id, reason: "payload_too_large")
-            updateStatus()
-            continue
-          }
-          let before = sync.archive.operations.count
-          try sync.markSent(batch.map(\.id))
-          let result: SyncPushResponse
-          do {
-            result = try await api.request("v1/sync/operations", method: "POST", body: payload, key: batch[0].id)
-          } catch let error as AccountError where Self.isTooLarge(error) {
-            // 413：服务端连读都没读完，**这一批一条都没落库**（和 `resync_required`
-            // 同一个性质），所以先把 `sent` 清掉，再把上限对半砍了重来。原样重发
-            // 是死循环——这正是「一条大画线把整条队列堵死」的走法。
-            try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
-            try sync.rollback(batch.map(\.id))
-            // 砍到 16 KiB 就不再往下砍：再小也只能说明是那一条本身发不上去，
-            // 下一圈开头那道字节闸会把它认出来并隔离掉，循环一定收敛。
-            byteBudget = max(16 * 1024, min(byteBudget, payload.count) / 2)
-            updateStatus()
-            continue
-          } catch let error as AccountError where Self.isRollback(error) && resyncs > 0 {
-            // 服务端那一整个事务已经回滚，这批**一条都没落地**。所以：先把 `sent`
-            // 清掉（不清就没法重整，那些操作会一直被当成「结果不明、不许碰」），
-            // 然后**在同一轮里**把受影响的对象拉回来，按新版本重整本地意图，
-            // 最后接着推。等下一轮就是回到同一个 409 里打转。
-            try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
-            resyncs -= 1
-            try sync.rollback(batch.map(\.id))
-            try await refetch(batch, api: api, into: sync)
-            guard requestEpoch == epoch && taskID == runID else { return }
-            try sync.realign()
-            // 重拉过之后本机这份已经是新的了，这一轮的全量不必再为它重来一次。
-            updateStatus()
-            continue
-          } catch let error as AccountError where Self.isPermanent(error) {
-            // 语义错误（400 / 422）：这条**再发一万次也不会成功**。重试只会把
-            // 整条队列堵死——一次缩放就能让这个账号从此再也同步不上任何东西
-            // （2026-09-19 实测：服务端 `valid_field` 不认 `barSpacing`，
-            // 整条操作被 `invalid_operation` 顶回来）。
-            try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
-            guard batch.count == 1 else { oneByOne = true; continue }   // 先揪出是哪一条
-            let reason: String = { if case .http(_, let code) = error { return code }; return "request_failed" }()
-            try sync.quarantine(batch[0].id, reason: reason)
-            // **本地值和脏标记一个都不动**：下次启动本地照样赢。这条连同用户当时的
-            // 意图一起写进了存档（`SyncArchive.rejected`），所以它既挡得住云端那份
-            // 把本地值盖回去，也能在服务端修好之后由 `retryRejected` 用一条**新 id**
-            // 的操作自己补上去，不用用户再改一次。被隔离的这条里那几条线上路径
-            // 记进 `dropped`，免得同一个字段的兄弟路径在别的操作里被认下，
-            // 反倒把这个字段的脏标记顺手清了。
-            if batch[0].collection == "settings" && batch[0].objectId == "chart" {
-              dropped.formUnion(batch[0].fields.keys)
-            }
-            updateStatus()
-            continue
-          }
-          try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
-          let receipts = Dictionary(result.results.map { ($0.operationId, Set($0.droppedFields ?? [])) }, uniquingKeysWith: { a, _ in a })
-          for op in batch where op.collection == "settings" && op.objectId == "chart" {
-            guard let missed = receipts[op.id] else {                   // 没回执 = 没认掉
-              dropped.formUnion(op.fields.keys); continue
-            }
-            acked.formUnion(op.fields.keys.filter { !missed.contains($0) })
-            dropped.formUnion(missed)
-          }
-          try sync.acknowledge(result)
-          // 服务端没认掉任何一条就别空转。
-          guard sync.archive.operations.count < before else { break }
-        }
-        // 跳出循环时队列里还剩下的（服务端一条没认、被隔离的顶在前面挡着）：也算没落地。
-        // 同一个字段的另一条路径还躺在队列里时，不能因为先发的那条被认下就把它清了。
-        for op in sync.archive.operations where op.collection == "settings" && op.objectId == "chart" {
-          dropped.formUnion(op.fields.keys)
-        }
+        // 推、拉、谁赢、出错怎么退都在 `SyncEngine` 里（`KanpanAccount`，swift test 直接测）；
+        // 桥上只管这一轮算不算数、推完清哪些脏标记、拉完要不要装进本机。
+        let engine = SyncEngine(store: sync, transport: HTTPSyncTransport(client: api),
+                                device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
+        engine.stillCurrent = { [weak self] in self.map { $0.epoch == requestEpoch && $0.taskID == runID } ?? false }
+        engine.onProgress = { [weak self] in self?.updateStatus() }
         // **只清服务端认下的那几个字段。** 被隔离的、被 `droppedFields` 丢掉的、
-        // 还在队列里没发的，脏标记全都留着——下次启动本地照样赢。
-        prefs.syncPushed(marks, acked: acked, dropped: dropped)
-        var scopes: [String] = []
+        // 还在队列里没发的，脏标记全都留着——下次启动本地照样赢。放在拉取之前：
+        // 拉取断了，已经推上去的那几个字段也确实在云端了。
+        engine.onPushed = { [weak self] acked, dropped in self?.prefs.syncPushed(marks, acked: acked, dropped: dropped) }
+        let drawingsPrefix = requestedSymbol.isEmpty ? nil : InstrumentID.canonical(requestedSymbol) + "/"
+        let outcome: SyncEngine.Outcome
         switch plan {
-        case .push: scopes = []
-        case .drawings: scopes = requestedSymbol.isEmpty ? [] : ["drawings"]
-        case .full: scopes = ["settings", "drawingPreferences", "favorites", "groups", "alerts"] + (requestedSymbol.isEmpty ? [] : ["drawings"])
+        case .push: outcome = try await engine.run(.push)
+        case .drawings: outcome = try await engine.run(drawingsPrefix.map { .drawings(prefix: $0) } ?? .push)
+        case .full: outcome = try await engine.run(.full(drawingsPrefix: drawingsPrefix))
         }
-        for collection in scopes {
-          var after: String?
-          repeat {
-            var query = [URLQueryItem(name: "collection", value: collection)]
-            if collection == "drawings" { query.append(URLQueryItem(name: "prefix", value: InstrumentID.canonical(requestedSymbol) + "/")) }
-            if let after { query.append(URLQueryItem(name: "after", value: after)) }
-            var components = URLComponents(); components.queryItems = query
-            let page: SyncPage = try await api.request("v1/sync/bootstrap" + (components.string ?? ""))
-            try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
-            try sync.receive(page); after = page.next
-          } while after != nil
-        }
-        if scopes.contains("drawings") { bootstrappedDrawings.insert(requestedSymbol) }
+        if outcome.pulled.contains(where: { $0.collection == "drawings" }) { bootstrappedDrawings.insert(requestedSymbol) }
         if case .full = plan {
           needsBootstrap = false; lastBootstrap = Date()
-          // 服务端修好之后，被它顶回来过的那几项自己补上去，不用用户再改一次。
-          // **只在全量这一档。** 每次推送后都重试就是个忙循环：服务端要是真的
-          // 永远不认这个字段，那就是每 500 毫秒一次跨洋往返换一次 400。
-          // 这儿刚把云端那份拉回来，正好拿它和当前本地值现做差分。
-          try sync.retryRejected(device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
-          if !sync.archive.operations.isEmpty { queuedPush = queuedPush ?? false }
+          // 全量补推拒绝记录之后队列里又有了东西：跑完这一轮接着推。
+          if outcome.leftovers { queuedPush = queuedPush ?? false }
         }
         // 纯推送（没拉任何 scope）而且回执没带回别的设备的改动：`local` 里没有界面上还没有的
         // 东西，`applyPending()` 那一整套（全量合并、两次主线程 `flushNow()`、`onProfileReady()`）
         // 跑了也是原样写回。这时把两个时刻一起记上就收工。上一次被 `canApply()` 挡下的
         // （`pendingApply`）、或者拉下来还没装进去的（`needsApply`），照旧走合并。
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        if scopes.isEmpty, !pendingApply, try !sync.finishPushOnlyRound(since: arrivals, at: now) {
+        if outcome.pulled.isEmpty, !pendingApply, try !sync.finishPushOnlyRound(since: arrivals, at: now) {
           updateStatus()
         } else {
           // 只记「拉到哪儿了」。「装进本机没有」由 `applyPending()` 落盘成功后自己记（B4）。
@@ -921,7 +730,7 @@ import ReviewUI
       } catch is CancellationError { if requestEpoch == epoch && taskID == runID { updateStatus() } }
       catch {
         // 被服务端按版本顶回来了：本机这份不再可信，下一轮必须整份重拉。
-        if case AccountError.http(let code, _) = error, (400..<500).contains(code), code != 401, code != 429 { needsBootstrap = true }
+        if SyncEngine.demandsBootstrap(error) { needsBootstrap = true }
         if requestEpoch == epoch && taskID == runID { account.pending = sync.archive.operations.count; account.report(sync: error) }
       }
     }

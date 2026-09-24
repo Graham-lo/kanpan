@@ -110,57 +110,6 @@ extension JSONEncoder {
   static var sorted: JSONEncoder { let e = JSONEncoder(); e.outputFormatting = [.sortedKeys]; return e }
 }
 
-// MARK: - 按 AppAccountBridge.run 写的推送循环
-
-/// `AppAccountBridge.run(_:manual:)` 那个推送循环在本机的复刻。
-///
-/// 两个开关是给「修复前是红的」用的：`smartBatching` 关掉就是从前那句
-/// `operations.prefix(100)`，`recover` 关掉就是从前那条「只置 `needsBootstrap`、
-/// 下一轮再说」。
-@MainActor struct SyncLoop {
-  let store: SyncStore
-  let server: FakeSyncServer
-  let device: UUID
-  var limit = 100
-  var smartBatching = true
-  var recover = true
-  /// 实际发出去过的批次（条数），用来确认没退化成逐条跨洋请求。
-  private(set) var sentBatches: [Int] = []
-
-  mutating func push() throws {
-    var resyncs = 3
-    var oneByOne = false
-    while !store.archive.operations.isEmpty {
-      let batch = smartBatching ? store.nextBatch(limit: oneByOne ? 1 : limit)
-        : Array(store.archive.operations.prefix(oneByOne ? 1 : limit))
-      let before = store.archive.operations.count
-      try store.markSent(batch.map(\.id))
-      sentBatches.append(batch.count)
-      do {
-        try store.acknowledge(try server.push(batch.map(WireOperation.init)))
-      } catch FakeSyncServer.Failure.conflict("resync_required") where recover && resyncs > 0 {
-        resyncs -= 1
-        try store.rollback(batch.map(\.id))
-        try store.receive(server.page(Set(batch.map(\.collection))))
-        try store.realign()
-        continue
-      } catch FakeSyncServer.Failure.bad(let reason) {
-        guard batch.count == 1 else { oneByOne = true; continue }
-        try store.quarantine(batch[0].id, reason: reason)
-        continue
-      }
-      guard store.archive.operations.count < before else { break }
-    }
-  }
-  /// 全量那一档：推完拉一遍，再把拒绝记录补推一次。
-  mutating func full(_ collections: Set<String>) throws {
-    try push()
-    try store.receive(server.page(collections))
-    try store.retryRejected(device: device)
-    if !store.archive.operations.isEmpty { try push() }
-  }
-}
-
 // MARK: - 用例
 
 @MainActor @Suite("本地与云端的冲突编排") struct SyncConflictTests {
@@ -184,7 +133,7 @@ extension JSONEncoder {
   /// B1 的正面：离线删掉一条线又立刻撤销，这两条是**必定组不成一批**的。
   /// 从前它们被一起发出去、整批回滚，客户端又永远先推后拉，于是这个账号的队列
   /// 从此再也前进不了。
-  @Test func offlineDeleteThenUndoRecoversInOneRun() throws {
+  @Test func offlineDeleteThenUndoRecoversInOneRun() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer(), device = UUID()
     let line = stamped(server, collection: "drawings", id: "binance/usd_m/BTCUSDT/a",
@@ -197,10 +146,9 @@ extension JSONEncoder {
     try store.capture(line, device: device)
     #expect(store.archive.operations.map(\.action) == ["delete", "restore"])
     // 删除和恢复之间有一条依赖边，批次必须在那儿截断。
-    #expect(store.nextBatch(limit: 100).map(\.action) == ["delete"])
+    #expect(store.nextBatch(limit: 100, maxBytes: SyncEngine.batchBytes).map(\.action) == ["delete"])
 
-    var loop = SyncLoop(store: store, server: server, device: device)
-    try loop.push()
+    let loop = try await engine(over: server, store, device: device).run(.push)
     #expect(store.archive.operations.isEmpty)
     let final = try #require(server.objects[line.key])
     #expect(final.deleted == false)
@@ -222,17 +170,18 @@ extension JSONEncoder {
     try store.capture(deleted, device: device)
     try store.capture(line, device: device)
 
-    var old = SyncLoop(store: store, server: server, device: device)
-    old.smartBatching = false; old.recover = false
+    // 从前的走法：队首直接切一百条整批发，409 之后只置个标记、下一轮原样再发。
     for _ in 0..<3 {
-      #expect(throws: FakeSyncServer.Failure.conflict("resync_required")) { try old.push() }
+      #expect(throws: FakeSyncServer.Failure.conflict("resync_required")) {
+        try server.push(store.archive.operations.prefix(100).map(WireOperation.init))
+      }
     }
     #expect(store.archive.operations.count == 2)          // 一条都没前进
     #expect(server.objects[line.key]?.revision == 4)      // 服务端整批回滚了
   }
 
   /// 删除 → 恢复 → 接着编辑：三条都要落地，语义顺序也要对。
-  @Test func deleteRestoreThenEditAllLand() throws {
+  @Test func deleteRestoreThenEditAllLand() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer(), device = UUID()
     let line = stamped(server, collection: "drawings", id: "binance/usd_m/BTCUSDT/a",
@@ -247,19 +196,18 @@ extension JSONEncoder {
     try store.capture(edited, device: device)
     #expect(store.archive.operations.map(\.action) == ["delete", "restore", "patch"])
 
-    var loop = SyncLoop(store: store, server: server, device: device)
-    try loop.push()
+    let loop = try await engine(over: server, store, device: device).run(.push)
     #expect(store.archive.operations.isEmpty)
     let final = try #require(server.objects[line.key])
     #expect(final.deleted == false)
     #expect(final.generation == 1)
     #expect(final.body["color"] == .string("blue"))
-    #expect(loop.sentBatches == [1, 1, 1])
+    #expect(loop.batches == [1, 1, 1])
   }
 
   /// 设备 B 删了又恢复把代次推到 1，A 带着代次 0 的旧操作重连：走恢复路径，
   /// A 的改动不能丢。
-  @Test func aReconnectsAcrossDeviceBsGenerationBump() throws {
+  @Test func aReconnectsAcrossDeviceBsGenerationBump() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer()
     let a = UUID(), b = UUID()
@@ -282,8 +230,7 @@ extension JSONEncoder {
     _ = try server.push([wire("restore", base: 5, generation: 0)])
     #expect(server.objects[line.key]?.generation == 1)
 
-    var loop = SyncLoop(store: store, server: server, device: a)
-    try loop.push()
+    let loop = try await engine(over: server, store, device: a).run(.push)
     #expect(store.archive.operations.isEmpty)
     let final = try #require(server.objects[line.key])
     #expect(final.generation == 1)
@@ -294,7 +241,7 @@ extension JSONEncoder {
 
   /// B5 的核心验收：同一串离线操作，分成 1 / 99 / 100 / 101 条推上去，
   /// 最终状态必须一模一样。B 的并发修改就放在里头。
-  @Test(arguments: [1, 99, 100, 101]) func theBatchBoundaryDoesNotPickTheWinner(_ count: Int) throws {
+  @Test(arguments: [1, 99, 100, 101]) func theBatchBoundaryDoesNotPickTheWinner(_ count: Int) async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer()
     let a = UUID(), b = UUID()
@@ -319,14 +266,13 @@ extension JSONEncoder {
       fields: ["barSpacing": .number(999)], importBatch: nil))])
     #expect(server.objects["settings:chart"]?.body["barSpacing"] == .number(999))
 
-    var loop = SyncLoop(store: store, server: server, device: a)
-    try loop.push()
+    let loop = try await engine(over: server, store, device: a).run(.push)
     #expect(store.archive.operations.isEmpty)
     // 不论 A 积压了一条还是一百零一条，赢家都得是时间戳最晚的 B。
     #expect(server.objects["settings:chart"]?.body["barSpacing"] == .number(999))
     #expect(store.archive.local["settings:chart"]?.body["barSpacing"] == .number(999))
     // 互不依赖的 patch 仍然是整批走的，没退化成一条一个请求。
-    #expect(loop.sentBatches.count == (count + 99) / 100)
+    #expect(loop.batches.count == (count + 99) / 100)
   }
 
   /// B3：被服务端顶回来之后，用户的值不许回退，记录要留在盘上，`pending` 不许算它，
@@ -347,8 +293,7 @@ extension JSONEncoder {
     #expect(store.archive.operations.first?.fields["text"] == .null)
     let original = try #require(store.archive.operations.first?.id)
 
-    var loop = SyncLoop(store: store, server: server, device: device)
-    try loop.push()
+    let loop = try await engine(over: server, store, device: device).run(.push)
     // 1. 队列空了（不堵别人），`pending` 不含它。
     #expect(store.archive.operations.isEmpty)
     // 2. 用户的值没回退。
@@ -370,19 +315,18 @@ extension JSONEncoder {
 
     // 5. 服务端修好了：下一次全量自己用新 id 补推，不用用户再删一次。
     server.refuse = nil
-    var next = SyncLoop(store: store, server: server, device: device)
-    try next.full(["drawings"])
+    let next = try await engine(over: server, store, device: device).fullThenLeftovers("binance/usd_m/BTCUSDT/")
     #expect(server.objects[line.key]?.body["text"] == nil)
     #expect(store.archive.operations.isEmpty)
     #expect(store.archive.rejected.isEmpty)
     // 载荷重建走的是新 id：已经发出去过的那条 id 绝不能改载荷再发。
-    #expect(next.sentBatches == [1])
+    #expect(next.batches == [1])
     #expect(store.archive.objects[line.key]?.body["text"] == nil)
     #expect(original != store.archive.rejected.first?.id)
   }
 
   /// 服务端一直不认时也不能无限加速：全量之间只补推一次，再被拒就再记一次。
-  @Test func aStillBrokenServerJustGetsOneMoreTryPerFullSync() throws {
+  @Test func aStillBrokenServerJustGetsOneMoreTryPerFullSync() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root), server = FakeSyncServer(), device = UUID()
     let line = stamped(server, collection: "drawings", id: "binance/usd_m/BTCUSDT/note",
@@ -393,12 +337,10 @@ extension JSONEncoder {
     var cleared = line; cleared.body["text"] = nil
     try store.capture(cleared, device: device)
 
-    var loop = SyncLoop(store: store, server: server, device: device)
-    try loop.push()
+    let loop = try await engine(over: server, store, device: device).run(.push)
     #expect(store.archive.rejected.count == 1)
-    var again = SyncLoop(store: store, server: server, device: device)
-    try again.full(["drawings"])
-    #expect(again.sentBatches == [1])                 // 一次全量只补推一条
+    let again = try await engine(over: server, store, device: device).fullThenLeftovers("binance/usd_m/BTCUSDT/")
+    #expect(again.batches == [1])                 // 一次全量只补推一条
     #expect(store.archive.rejected.count == 1)        // 又被拒，又记了一次，没堆起来
     #expect(store.archive.operations.isEmpty)
     #expect(store.archive.local[line.key]?.body["text"] == nil)

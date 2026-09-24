@@ -438,3 +438,20 @@ import Testing
     #expect(r.transport.bootstraps.isEmpty)
   }
 }
+
+// MARK: - 给别的用例用的接线
+
+/// 一台按 `sync.rs` 复刻的假服务端上的真引擎。
+@MainActor func engine(over server: FakeSyncServer, _ store: SyncStore, device: UUID,
+                       owning: [String: Set<String>] = [:]) -> SyncEngine {
+  SyncEngine(store: store, transport: ServerTransport(server), device: device, owning: owning)
+}
+@MainActor extension SyncEngine {
+  /// 全量一档，再加上桥上那句「补推留下的，跑完接着推」（`AppAccountBridge.run` 的 `queuedPush`）。
+  func fullThenLeftovers(_ drawingsPrefix: String?) async throws -> Outcome {
+    var outcome = try await run(.full(drawingsPrefix: drawingsPrefix))
+    guard outcome.leftovers else { return outcome }
+    outcome.batches += try await run(.push).batches
+    return outcome
+  }
+}

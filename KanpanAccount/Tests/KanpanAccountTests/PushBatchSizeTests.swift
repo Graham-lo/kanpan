@@ -32,7 +32,7 @@ struct PushBatchSizeTests {
     #expect(store.archive.operations.count == 40)
 
     // 老口径（只按条数）：整批一次发出去，远超服务端的 512 KiB。
-    let byCount = store.nextBatch(limit: 100)
+    let byCount = SyncStore.batch(store.archive.operations, limit: 100)
     #expect(byCount.count == 40)
     #expect(SyncStore.encodedSize(byCount) > 512 * 1024)
 

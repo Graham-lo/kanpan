@@ -433,8 +433,6 @@ final class ArchiveWriter: @unchecked Sendable {
     }
     return picked
   }
-  /// 待发队首的下一批。
-  public func nextBatch(limit: Int) -> [SyncOperation] { Self.batch(archive.operations, limit: limit) }
 
   /// 待发队首的下一批，**同时受条数和字节数两道闸**。
   ///
