@@ -328,14 +328,17 @@ final class ReviewInteractionUITests: KanpanUICase {
 
   // ------------------------------------------------------------ P3.8：找相似
 
-  /// 15m 和 4h 各框一段、点「找相似」，要真的出结果（线上后端、全市场一年历史）；
-  /// 15m 那一页左滑存下第一条，再去复盘本「…」→「已存案例」看到它。
+  /// 15m 和 4h 各框一段、点「找相似」，任务要真的跑完（线上后端、全市场一年历史）：出结果或
+  /// 「没有很像的区间」都算完成——有没有命中取决于当时那段行情（2026-09-24 实测 BTCUSDT 15m
+  /// 精确取满 300 个候选也没有一个过 0.60，4h 有），用例不能假设某一档一定有。
+  /// 哪一档先出结果就在那一页左滑存下第一条，再去复盘本「…」→「已存案例」看到它；两档都没命中才算失败。
   func testFindSimilarOn15mAnd4hAndSaveOne() throws {
     let user = "p38_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12).lowercased()
     created.append(user)
     register(user)
     app.buttons[Ids.bottomChart].tap()
     XCTAssertTrue(waitForLiveChart(), "没等到行情")
+    var savedOne = false
     for tf in ["15m", "4h"] {
       app.tapIntervalChip(tf)
       // 15m 不在出厂钉住的那几档里（周期条只列钉住的，见 U12）：没有那颗胶囊时，
@@ -358,9 +361,9 @@ final class ReviewInteractionUITests: KanpanUICase {
         row.exists || self.app.staticTexts["没有很像的区间"].exists
       }
       note("\(tf) 找相似用时 \(Int(Date().timeIntervalSince(started))) 秒，结果行=\(row.exists)")
-      XCTAssertTrue(found && row.exists, "\(tf) 找相似没出结果：\(app.debugDescription)")
+      XCTAssertTrue(found, "\(tf) 找相似没跑完（既没结果也没空状态）：\(app.debugDescription)")
       shot("P38-\(tf)-找相似结果")
-      if tf == "15m", row.exists {
+      if !savedOne, row.exists {
         row.swipeLeft()
         let save = app.buttons["保存"]
         if expectExists(save, Self.short, "左滑没出「保存」") {
@@ -368,8 +371,9 @@ final class ReviewInteractionUITests: KanpanUICase {
           _ = XCTWaiter.wait(for: [XCTestExpectation(description: "save")], timeout: 2)
           row.swipeLeft()
           XCTAssertTrue(app.buttons["已保存"].waitForExistence(timeout: Self.short), "存了之后左滑没变成「已保存」")
-          shot("P38-15m-已保存")
+          shot("P38-\(tf)-已保存")
           row.swipeRight()
+          savedOne = true
         }
       }
       app.buttons["review.search.back"].tap()
@@ -377,6 +381,9 @@ final class ReviewInteractionUITests: KanpanUICase {
       app.buttons["记下"].tap()
       XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["记下"].exists }, "取景卡没收回去")
     }
+
+    XCTAssertTrue(savedOne, "15m 与 4h 两档都没有命中，存不了案例")
+    guard savedOne else { closeAccount(user); return }
 
     // 复盘本「…」→「已存案例」：刚存的那一条在。
     app.buttons[Ids.topReview].tap()
