@@ -171,14 +171,22 @@ struct OrderFlowFeedTests {
     #expect(last.orders.first { $0.product == .usdtPerp }?.threshold == 5_000_000)
     // OKX 流内快照：不拉 REST。
     #expect(await okx.snapshots.calls.isEmpty)
-    await feed.stop()
+    // 帧按产生的先后送到（审查第 40 项：原来一帧一个 Task，先后不保证）。
+    let stamps = await frames.all.map(\.asOfMs)
+    #expect(stamps == stamps.sorted())
 
+    // 切走马上切回：旧的这条还在停（日志还没落盘），新的一条已经建好。
+    // 新的在 init 里不读日志，`start(after:)` 等旧的停完才读，读到的是旧的最后落的那份（审查第 40 项）。
+    let stopping = Task { await feed.stop() }
+    let again = makeFeed([], dir: dir, frames: Frames())
+    #expect(await again.modelForTests().orders.isEmpty)
+    await again.start(after: stopping)
     let file = OrderFlowFeed.journalFile(in: dir, symbol: symbolKey)
     let saved = try #require(OrderFlowJournal.decode(try Data(contentsOf: file)))
     #expect(saved.orders.count == 2)
     #expect(saved.step == 1)
-    let again = makeFeed([binance, okx], dir: dir, frames: Frames())
     #expect(await again.modelForTests().orders.map(\.id).sorted() == saved.orders.map(\.id).sorted())
+    await again.stop()
   }
 
   @Test("流内快照断档、这家不会单本重订（Coinbase 那种整条连接一个序号）：整条连接重拨，新快照到了照常；挂着的单不因为重连被判结束", .timeLimit(.minutes(1)))
@@ -487,6 +495,18 @@ struct OrderFlowRoutingTests {
     // 关开关：退订并清图。
     await routed.setOrderFlow(enabled: false, facts: facts)
     #expect(await waitUntil(5) { await seen.lastFlow == .some(nil) })
+
+    // 开关带序号（审查第 40 项）：界面每次调用各起一个 Task，先发的那次可能后到——按序号丢掉。
+    // 旧的那次（关，序号 4）要是被照办了，会多一帧 nil、之后开（序号 6）又重订一遍。
+    await routed.setOrderFlow(enabled: true, facts: facts, sequence: 5)
+    #expect(await waitUntil(5) { await dials.depthDials("btcusdt") == 4 })
+    let mark = await seen.flow.count
+    await routed.setOrderFlow(enabled: false, facts: facts, sequence: 4)
+    await routed.setOrderFlow(enabled: true, facts: facts, sequence: 6)
+    await routed.setOrderFlow(enabled: false, facts: facts, sequence: 7)
+    #expect(await waitUntil(5) { await seen.lastFlow == .some(nil) })
+    #expect(await seen.flow.dropFirst(mark).filter { $0 == nil }.count == 1)
+    #expect(await dials.depthDials("btcusdt") == 4)
     await routed.stop()
   }
 }

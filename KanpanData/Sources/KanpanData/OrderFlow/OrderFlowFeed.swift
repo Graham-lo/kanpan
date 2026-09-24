@@ -74,6 +74,10 @@ public actor OrderFlowFeed {
   private let clock: @Sendable () -> Int64
   private let log: FeedLog
   private let sink: Sink
+  /// 帧按产生的先后排队送给 `sink`（审查第 40 项：原来一帧一个无结构 Task，先后不保证）。
+  /// 帧是整份快照，只留最新几帧，调用方卡住时旧的被挤掉也无妨，顺序不乱。
+  private let frames: AsyncStream<OrderFlowSnapshot>
+  private let frameSink: AsyncStream<OrderFlowSnapshot>.Continuation
   private let evaluateEveryMs: Double
   /// 十字线此刻停在主图上（读数要精确金额）。在评估那一拍读，所以是个线程安全的读函数，不是状态。
   private let precise: @Sendable () -> Bool
@@ -125,13 +129,11 @@ public actor OrderFlowFeed {
     self.precise = precise
     self.log = log
     self.sink = sink
-    let now = clock()
-    let restored = file.flatMap { try? Data(contentsOf: $0) }.flatMap(OrderFlowJournal.decode)
-      .flatMap { $0.symbol == symbol && now - $0.savedAtMs < OrderFlowDefaults.retentionMs ? $0 : nil }
+    (frames, frameSink) = AsyncStream.makeStream(of: OrderFlowSnapshot.self, bufferingPolicy: .bufferingNewest(8))
+    // 日志不在这里读：同一只切走再切回时，旧的那条可能还在停、还没落盘（审查第 40 项），读挪到 `start`。
     self.model = OrderFlowModel(symbol: symbol,
                                 thresholds: Self.effective(facts: facts, turnover: facts.turnover24h,
-                                                           override: override?.normalized, derivedStep: nil),
-                                restored: restored)
+                                                           override: override?.normalized, derivedStep: nil))
   }
 
   /// 按提供者建一条：品种表、连接、日线、成交额都从它来。这条线路给不出订单流就返回 nil。
@@ -188,9 +190,16 @@ public actor OrderFlowFeed {
 
   // MARK: - 生命周期
 
-  public func start() {
+  /// 起订。`prior` 是上一条正在停的订阅（`OrderFlowSlot` 记着）：先等它停完、日志落了盘，
+  /// 再读这只的日志，免得读到旧版本、之后两边互相覆盖（审查第 40 项）。
+  public func start(after prior: Task<Void, Never>? = nil) async {
     guard !started, !stopped else { return }
     started = true
+    await prior?.value
+    guard !stopped else { return }
+    restoreJournal()
+    let frames = self.frames, sink = self.sink
+    tasks.append(Task { for await frame in frames { await sink(frame) } })
     tasks.append(Task { [weak self] in await self?.setUp() })
     tasks.append(Task { [weak self] in await self?.evaluateLoop() })
     if turnover == nil, facts.asset == .crypto {
@@ -202,12 +211,22 @@ public actor OrderFlowFeed {
   /// 退订并清簿。大单有变化就顺手落盘。
   public func stop() async {
     stopped = true
+    frameSink.finish()
     tasks.forEach { $0.cancel() }; tasks = []
     schemeTask?.cancel(); schemeTask = nil
     snapshotTasks.values.forEach { $0.cancel() }; snapshotTasks = [:]
     let dying = streams; streams = []; adapters = []
     for s in dying { await s.stop() }
     save()
+  }
+
+  /// 读回这只的日志（24 小时内、品种对得上的）。门槛照此刻生效的那份（`start` 之前可能已经改过）。
+  private func restoreJournal() {
+    guard let file else { return }
+    let now = clock()
+    guard let journal = (try? Data(contentsOf: file)).flatMap(OrderFlowJournal.decode),
+          journal.symbol == symbol, now - journal.savedAtMs < OrderFlowDefaults.retentionMs else { return }
+    model = OrderFlowModel(symbol: symbol, thresholds: model.thresholds, restored: journal)
   }
 
   /// 用户改了这只 base 的门槛 / 步长（面板里改，或别的设备同步过来）。
@@ -415,8 +434,7 @@ public actor OrderFlowFeed {
                                                                              precise: precise()) { return }
     lastEmitted = frame
     lastEmitMs = now
-    let sink = self.sink
-    Task { await sink(frame) }
+    frameSink.yield(frame)
   }
 
   /// 心跳之内这一帧发不发：画出来有变化就发；只是金额变了，十字线停着就发、否则隔 `amountRefreshMs` 发一次。

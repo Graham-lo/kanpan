@@ -9,6 +9,9 @@ struct OrderFlowSlot {
 
   /// 指标开关。
   var enabled = false
+  /// 调用方给开关调用编的序号里最大的那个（审查第 40 项）：每次调用各起一个 Task，到达先后不定，
+  /// 快速开关时旧的那次可能后到，按序号把它丢掉。
+  var sequence: UInt64 = 0
   /// 品种事实（base、资产类别、最小变动价、成交额），由 app 按品种给。还没有就先不订。
   var facts: @Sendable (String) -> OrderFlowFacts? = { _ in nil }
   /// 十字线此刻停在主图上（读数要精确金额，见 `OrderFlowFeed.amountRefreshMs`）。
@@ -20,6 +23,9 @@ struct OrderFlowSlot {
   /// 正在跑的那一条订阅；`token` 跟着换，迟到的旧帧因此进不来。
   private(set) var feed: OrderFlowFeed?
   private(set) var token = UUID()
+  /// 上一条正在停的订阅（停完、日志落了盘才算完）。新起的那条先等它，再读日志（审查第 40 项）。
+  /// 连着停几次时一条接一条排着，最后这个 Task 完了就表示之前的全停完了。
+  private var stopping: Task<Void, Never>?
   /// 正在跑的那条按哪个 base 取用户改过的项。
   private var overrideKey: String?
   /// 最后一帧：换周期（同一只品种）时直接补给新的 selection，不必重订。
@@ -39,7 +45,8 @@ struct OrderFlowSlot {
     Task.detached(priority: .utility) {
       OrderFlowFeed.sweep(directory: directory, nowMs: Int64(Date().timeIntervalSince1970 * 1000))
     }
-    Task { await next.start() }
+    let prior = stopping
+    Task { await next.start(after: prior) }
     return true
   }
 
@@ -58,7 +65,13 @@ struct OrderFlowSlot {
     if forgetChart { chartReady = nil }
     guard let dying = feed else { return false }
     feed = nil; token = UUID(); last = nil; overrideKey = nil
-    Task { await dying.stop() }
+    let prior = stopping
+    // 这条立刻停（它要是还在等上一条就不会再起连接）；等上一条也停完，这个 Task 才算完。
+    // 这条只有在上一条停完之后才读过日志、才会有要落的盘，所以两条的落盘不会倒序。
+    stopping = Task {
+      await dying.stop()
+      await prior?.value
+    }
     return true
   }
 

@@ -165,9 +165,14 @@ public actor RoutedMarketFeed {
   ///   - facts: 品种 → base、资产类别、最小变动价、成交额；还不知道就给 nil（先不订）。
   ///   - overrides: 用户改过的门槛 / 步长，键是去掉缩放前缀的 base（`OrderFlowFacts.overrideKey`）。
   ///   - precise: 十字线此刻是否停在主图上（停着时读数要精确金额，帧不按画面量化去重）。
+  ///   - sequence: 调用方给每次调用编的递增序号。比已经处理过的小（先发的那次后到）就丢掉；nil 不比。
   public func setOrderFlow(enabled: Bool, overrides: [String: OrderFlowOverride] = [:],
                            facts: @escaping @Sendable (String) -> OrderFlowFacts?,
-                           precise: @escaping @Sendable () -> Bool = { false }) {
+                           precise: @escaping @Sendable () -> Bool = { false }, sequence: UInt64? = nil) {
+    if let sequence {
+      guard sequence > orderFlow.sequence else { return }
+      orderFlow.sequence = sequence
+    }
     orderFlow.enabled = enabled; orderFlow.facts = facts; orderFlow.precise = precise
     orderFlow.setOverrides(overrides)
     if enabled { startOrderFlow() } else { stopOrderFlow(forgetChart: false) }

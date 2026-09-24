@@ -54,6 +54,8 @@ final class OrderFlowLink {
   /// 当前品种的事实（面板里「恢复默认」要显示的默认值从这里算）。
   private(set) var currentFacts: OrderFlowFacts?
   @ObservationIgnored let facts = OrderFlowFactsTable()
+  /// 每次交给行情流都编一个递增序号：各起一个 Task，到达先后不定，行情流按序号丢掉后到的旧调用（审查第 40 项）。
+  @ObservationIgnored private var sequence: UInt64 = 0
   @ObservationIgnored let focus = OrderFlowFocus()
 
   /// 十字线变了（`ChartView.onCrosshairChanged`）：停在主图上时读数要精确金额。
@@ -67,9 +69,10 @@ final class OrderFlowLink {
   func apply(visible: Bool, to feed: RoutedMarketFeed) {
     active = visible && wanted
     if !active { snapshot = nil }
-    let on = active, table = self.facts, overrides = self.overrides, focus = self.focus
+    sequence &+= 1
+    let on = active, table = self.facts, overrides = self.overrides, focus = self.focus, sequence = self.sequence
     Task { await feed.setOrderFlow(enabled: on, overrides: overrides, facts: { table.facts(for: $0) },
-                                   precise: { focus.isOn }) }
+                                   precise: { focus.isOn }, sequence: sequence) }
   }
 
   /// 行情流的 `.orderFlow` 事件。别的品种的帧（切品种那一拍）不认。
