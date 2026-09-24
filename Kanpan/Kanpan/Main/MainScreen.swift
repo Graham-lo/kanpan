@@ -184,6 +184,8 @@ struct MainScreen: View {
   @State private var inbox = ShareInbox()
   @State private var showFriends = false
   @State private var showFriendPicker = false
+  /// 朋友页上点了「登录」：账号页收起、而且真登上了，就把朋友页再打开。
+  @State private var friendsAfterLogin = false
   @State private var shareDraft: ShareOutbound?
   @State private var shareShot: Data?
   /// 「回给他」：他那一封的线已经留在图上，等我画完点发送（P3.5）。
@@ -550,12 +552,20 @@ struct MainScreen: View {
       friendPicker.presentationDetents([.medium, .large])
     }
     .sheet(isPresented: $showFriends) {
-      FriendsPage(inbox: inbox, onOpen: openShare).environment(\.panelTheme, theme)
+      FriendsPage(inbox: inbox, loggedIn: account.user != nil, onLogin: loginFromFriends, onOpen: openShare)
+        .environment(\.panelTheme, theme)
         .presentationDetents([.large])
     }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
     .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
+    // 从朋友页点「登录」进来的：登完回到朋友页，不把人丢在设置页上。
+    .onChange(of: account.presented) { _, open in
+      guard !open, friendsAfterLogin else { return }
+      friendsAfterLogin = false
+      guard account.user != nil else { return }
+      Task { try? await Task.sleep(for: .milliseconds(350)); showFriends = true }
+    }
     .fullScreenCover(isPresented: $review.bookOpen) {
       ReviewBook(feature: review)
         .environment(\.reviewTheme, theme.review)
@@ -1065,6 +1075,12 @@ struct MainScreen: View {
   private var chartSendAction: (() -> Void)? {
     guard !reviewChart.active, draw.previewing == nil else { return nil }
     return beginShareSend
+  }
+  /// 朋友页没登录时那颗「登录」。朋友页和账号页都挂在根这一层，同一时刻只能开一张：
+  /// 先收朋友页，等它退场再开账号页（和 `beginShareSend` 收面板再开发送表同一个等法）。
+  private func loginFromFriends() {
+    showFriends = false; friendsAfterLogin = true
+    Task { try? await Task.sleep(for: .milliseconds(350)); account.open() }
   }
   private var friendPicker: some View {
     FriendPickerSheet(inbox: inbox, onSend: sendShare)

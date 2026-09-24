@@ -7,6 +7,11 @@ struct ShareClient: Sendable {
   private struct Sent: Decodable, Sendable { var id: String }
   private struct OK: Decodable, Sendable { var ok: Bool }
   func friends() async throws -> [ShareFriend] { try await api.request("v1/friends") }
+  /// 朋友页的「加朋友」：只记进自己的朋友表（服务端 `share.rs` `add_friend`）。
+  func add(_ username: String) async throws {
+    struct Body: Encodable { var username: String }
+    let _: ShareFriend = try await api.request("v1/friends", method: "POST", body: JSONEncoder().encode(Body(username: username)))
+  }
   func remove(_ username: String) async throws {
     let _: OK = try await api.request("v1/friends/" + username, method: "DELETE")
   }

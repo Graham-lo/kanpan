@@ -14,8 +14,9 @@ struct Send {to:String,symbol:String,interval:String,view:View,drawings:Vec<Valu
  // 「回给他」：在他发来的那封信的线上接着画，再发回去。只能指向**我收到的、正是他发的**那一封。
  #[serde(default,rename="replyTo")] reply_to:Option<String>}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Cursor {after:Option<DateTime<Utc>>}
+#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct AddFriend {username:String}
 pub fn routes()->Router<AppState> {
- Router::new().route("/v1/friends",get(friends))
+ Router::new().route("/v1/friends",get(friends).post(add_friend))
   .route("/v1/friends/{username}",delete(remove_friend))
   .route("/v1/shares",post(send)).route("/v1/shares/inbox",get(inbox))
   .route("/v1/shares/{id}/shot",put(put_shot).get(get_shot))
@@ -40,6 +41,20 @@ async fn friends(State(s):State<AppState>,who:Identity)->Result<Json<Value>> {
  let mut tx=s.personal(who.user).await?;
  let names:Vec<String>=sqlx::query_scalar("SELECT u.email FROM friendships f JOIN account_users u ON u.id=f.friend_id WHERE f.user_id=$1 AND u.disabled_at IS NULL ORDER BY u.email").bind(who.user).fetch_all(&mut *tx).await?;
  tx.commit().await?; Ok(envelope(json!(names.into_iter().map(|username|json!({"username":username})).collect::<Vec<_>>())))
+}
+/// 朋友页上的「加朋友」：只把对方记进**我自己**的朋友表，不替他加我。
+///
+/// 从前朋友只能靠「发一次线」结成（P4.11 把没人用的这条删了）；朋友页要有自己的入口
+/// （审查 U15），就又要回来。和删朋友一样只动自己那一行——通讯录是自己的，
+/// 往别人的通讯录里塞人只该发生在真的给他发了东西的时候（`send` 那条双向建）。
+/// 用户名规则和注册同一条（`username`），对方不存在回 404 `no_such_user`，加自己回
+/// 400 `cannot_send_self`；已经是朋友时照样 200，按钮点两下不算错。
+async fn add_friend(State(s):State<AppState>,who:Identity,Payload(v):Payload<AddFriend>)->Result<Json<Value>> {
+ let name=username(&v.username)?;
+ if !hit_limit(&s,&format!("friend-add:{}",who.user),30,60).await? {return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"try_later"))}
+ let mut tx=s.personal(who.user).await?;let other=recipient(&mut tx,&name,who.user).await?;
+ befriend(&mut tx,who.user,other).await?;
+ tx.commit().await?;Ok(envelope(json!({"username":name})))
 }
 async fn remove_friend(State(s):State<AppState>,who:Identity,Route(name):Route<String>)->Result<Json<Value>> {
  let name=username(&name)?;let mut tx=s.personal(who.user).await?;

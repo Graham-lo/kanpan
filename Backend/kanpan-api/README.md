@@ -158,8 +158,10 @@ IDs. It atomically makes both accounts friends. `GET /v1/shares/inbox` returns
 `{items,cursor}` inside the normal data envelope. Pass that RFC3339 cursor as
 `after` on the next pull; opened/kept changes also participate in incremental
 pulls. A per-recipient transaction lock and server timestamp prevent concurrent
-sends from falling behind a cursor. `GET /v1/friends` and
-`DELETE /v1/friends/{username}` manage the caller's list.
+sends from falling behind a cursor. `GET /v1/friends`,
+`POST /v1/friends` (`{"username"}`; adds the name to the caller's list only,
+404 `no_such_user`, 400 `cannot_send_self`) and `DELETE /v1/friends/{username}`
+manage the caller's list.
 
 JPEG thumbnails use `PUT/GET /v1/shares/{id}/shot` (300 KiB); only the sender can
 upload, either participant can read. Opened/kept marks can only be written by the

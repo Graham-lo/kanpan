@@ -21,8 +21,21 @@ async fn shares_are_private_make_friends_and_keep_independent_lines() {
   let (_,v)=request(&w.app,"/v1/friends","GET",Some(&user.token),None,json!({})).await;
   assert_eq!(v["data"].as_array().unwrap().len(),1,"first send makes reciprocal friends");
  }
- // 朋友只能靠「发一次」结成；单独加朋友的 POST /v1/friends 没有客户端用，已删（P4.11）。
- assert_eq!(request(&w.app,"/v1/friends","POST",Some(&a.token),None,json!({"username":name})).await.0,405);
+ // 朋友页的「加朋友」（审查 U15）：只记进自己的朋友表，不替对方加回来；重复加照样 200。
+ let c_name:String=sqlx::query_scalar("SELECT email FROM account_users WHERE id=$1").bind(c.id).fetch_one(&w.admin).await.unwrap();
+ for _ in 0..2 {
+  let (status,v)=request(&w.app,"/v1/friends","POST",Some(&a.token),None,json!({"username":c_name.to_uppercase()})).await;
+  assert_eq!(status,200,"{v}");assert_eq!(v["data"]["username"],json!(c_name));
+ }
+ let (_,v)=request(&w.app,"/v1/friends","GET",Some(&a.token),None,json!({})).await;assert_eq!(v["data"].as_array().unwrap().len(),2);
+ let (_,v)=request(&w.app,"/v1/friends","GET",Some(&c.token),None,json!({})).await;assert_eq!(v["data"],json!([]),"adding is one-sided");
+ let a_self:String=sqlx::query_scalar("SELECT email FROM account_users WHERE id=$1").bind(a.id).fetch_one(&w.admin).await.unwrap();
+ assert_eq!(request(&w.app,"/v1/friends","POST",Some(&a.token),None,json!({"username":a_self})).await.0,400);
+ assert_eq!(request(&w.app,"/v1/friends","POST",Some(&a.token),None,json!({"username":"qa_nobody_here"})).await.0,404);
+ assert_eq!(request(&w.app,"/v1/friends","POST",Some(&a.token),None,json!({"username":"no.dots"})).await.0,400);
+ assert_eq!(request(&w.app,"/v1/friends","POST",Some(&a.token),None,json!({"username":name,"extra":1})).await.0,400);
+ assert_eq!(request(&w.app,"/v1/friends","POST",None,None,json!({"username":name})).await.0,401);
+ assert_eq!(request(&w.app,&format!("/v1/friends/{c_name}"),"DELETE",Some(&a.token),None,json!({})).await.0,200);
  let (_,inbox)=request(&w.app,"/v1/shares/inbox","GET",Some(&b.token),None,json!({})).await;
  assert_eq!(inbox["data"]["items"][0]["drawings"],payload["drawings"]);
  for user in [&a,&c] {
@@ -47,7 +60,6 @@ async fn shares_are_private_make_friends_and_keep_independent_lines() {
  }
  // 回给他：只能回我收到的、正是他发来的那一封；回过去的信在他的收件箱里带着 replyTo。
  let a_name:String=sqlx::query_scalar("SELECT email FROM account_users WHERE id=$1").bind(a.id).fetch_one(&w.admin).await.unwrap();
- let c_name:String=sqlx::query_scalar("SELECT email FROM account_users WHERE id=$1").bind(c.id).fetch_one(&w.admin).await.unwrap();
  let mut reply=payload.clone();reply["to"]=json!(a_name);reply["replyTo"]=json!(id);
  let (status,v)=request(&w.app,"/v1/shares","POST",Some(&b.token),None,reply.clone()).await;assert_eq!(status,200,"{v}");
  let (_,a_inbox)=request(&w.app,"/v1/shares/inbox","GET",Some(&a.token),None,json!({})).await;

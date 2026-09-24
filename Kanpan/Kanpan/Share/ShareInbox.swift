@@ -112,6 +112,18 @@ import KanpanCore
     try save()
     return item.copies(ids: cache.copies[item.id])
   }
+  /// 朋友页上「加朋友」。成功就记进本机那份名单；失败把错抛给输入框那一行去说。
+  func addFriend(_ name: String) async throws {
+    guard let client else { throw AccountError.unavailable }
+    let generation = epoch
+    try await client.add(name)
+    guard generation == epoch else { throw CancellationError() }
+    if !cache.friends.contains(where: { $0.username == name }) {
+      cache.friends.append(ShareFriend(username: name))
+      cache.friends.sort { $0.username < $1.username }
+    }
+    try save(); friends = cache.friends
+  }
   func removeFriend(_ name: String) async {
     guard let client else { return }; let generation = epoch
     do {
