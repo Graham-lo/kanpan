@@ -64,24 +64,34 @@ struct AlertSoundPage: View {
   @State private var lifecycle: AppLifecycle.ResourceToken?
 
   var body: some View {
-    PanelSheet(title: "提醒铃声", subtitle: nil) {
-      ForEach(AlertSound.allCases, id: \.self) { sound in
-        PanelRow(name: sound.title, onTap: {
-          store.update { $0.alertSound = sound }
-          preview.play(sound)
-        }) {
-          Image(systemName: "checkmark")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(t.amber)
-            .opacity(store.prefs.alertSound == sound ? 1 : 0)
-            .accessibilityHidden(true)
+    // 2026-09-24 UI 整改 P1b：从提醒总表推进来的一层，走系统导航栏（居中标题 + 系统返回），
+    // 不再自绘「‹」头；四行各 44 高，选中的那一行名字与勾都用皮肤强调色。
+    ScrollView {
+      VStack(spacing: 0) {
+        ForEach(AlertSound.allCases, id: \.self) { sound in
+          let selected = store.prefs.alertSound == sound
+          PanelRow(name: sound.title, highlighted: selected, onTap: {
+            store.update { $0.alertSound = sound }
+            preview.play(sound)
+          }) {
+            Image(systemName: "checkmark")
+              .font(TypeScale.bodyEmph)
+              .foregroundStyle(t.amber)
+              .opacity(selected ? 1 : 0)
+              .accessibilityHidden(true)
+          }
+          .accessibilityIdentifier("alerts.sound." + sound.rawValue)
+          .accessibilityValue(selected ? "已选" : "未选")
+          .accessibilityAddTraits(selected ? .isSelected : [])
         }
-        .accessibilityIdentifier("alerts.sound." + sound.rawValue)
-        .accessibilityValue(store.prefs.alertSound == sound ? "已选" : "未选")
-        .accessibilityAddTraits(store.prefs.alertSound == sound ? .isSelected : [])
       }
+      .padding(.top, Space.xs)
+      .padding(.bottom, Space.l)
     }
-    .toolbar(.hidden, for: .navigationBar)
+    .scrollBounceBehavior(.basedOnSize)
+    .background(t.raised.ignoresSafeArea())
+    .navigationTitle("提醒铃声")
+    .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       guard lifecycle == nil else { return }
       lifecycle = AppLifecycle.shared.registerResources(

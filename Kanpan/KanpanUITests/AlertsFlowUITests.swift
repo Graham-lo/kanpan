@@ -340,7 +340,7 @@ import XCTest
     XCTAssertTrue(add.waitForExistence(timeout: 5) && add.isEnabled, "「加提醒」按不下去")
     add.tap()
     XCTAssertTrue(alertsPage.waitForExistence(timeout: 8), "加完没回到总表")
-    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "BTC ", "12345")).firstMatch
+    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "BTC ", "12,345")).firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 8), "总表里没有这条价格提醒：\(app.debugDescription)")
     XCTAssertTrue(wait(seconds: 20) {
       self.app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已触发")).count > 0
@@ -377,7 +377,7 @@ import XCTest
     shot("17-新建提醒-ETH填好")
     add.tap()
     XCTAssertTrue(alertsPage.waitForExistence(timeout: 8), "加完没回到总表")
-    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "ETH ", "12345")).firstMatch
+    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "ETH ", "12,345")).firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 8), "总表里没有这条 ETH 的提醒：\(app.debugDescription)")
     shot("18-总表里的ETH提醒")
   }
@@ -421,7 +421,7 @@ import XCTest
     unlock()
 
     // 删掉提醒 → 锁屏那块收起。
-    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "BTC ", "12345")).firstMatch
+    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "BTC ", "12,345")).firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 8), "回到 app 总表不见了：\(app.debugDescription)")
     // 按住慢拖 120pt 露出删除砖（快甩会越过「滑到底」门槛直接删，看不到砖）。
     let from = row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))

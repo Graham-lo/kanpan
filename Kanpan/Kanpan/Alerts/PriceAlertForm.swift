@@ -13,7 +13,8 @@ struct PriceAlertQuote: Equatable {
   /// 页上「当前 xxx」那口现价：和行情页头部那口价同一个写法——小数位由品种说
   /// （`decimals`），整数部分插千分位（`grouped`，头部 `TopBar.lastText` 用的就是它）。
   /// 同一只 BTC，头部写 86,781.5、这里写 86781.50 就对不上眼（审查 D3）。
-  /// 提醒标题（`label`）不插千分位：它和用户手打的那串数要一眼对得上。
+  /// 2026-09-24 UI 整改 P1b：提醒标题也用这个写法（「BTC 跌到 12,345.00」），通知、锁屏、
+  /// 总表三处的数一个样（视觉审查 2.9 #3 / §3 #7 数字写法统一）。
   func current(_ value: Double) -> String { grouped(label(value)) }
 }
 
@@ -42,12 +43,16 @@ struct PriceAlertForm: View {
   @FocusState private var focus: Field?
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.panelHPad) private var hPad
 
   private enum Field: Hashable { case symbol, price }
 
   var body: some View {
     let quote = resolve(symbolText)
-    PanelSheet(title: "新建提醒", subtitle: nil) {
+    // 2026-09-24 UI 整改 P1b：从提醒总表推进来的一层，走系统导航栏（居中标题 + 系统返回），
+    // 和铃声页、设置 → 账号同一套；不再自绘「‹」头。
+    ScrollView {
+      VStack(spacing: 0) {
       field("品种") {
         TextField("", text: $symbolText, selection: $symbolSelection)
           .keyboardType(.asciiCapable)
@@ -66,13 +71,13 @@ struct PriceAlertForm: View {
       }
       HStack {
         Text(currentLine(quote))
-          .font(PanelFont.meta).monospacedDigit()
+          .font(TypeScale.caption).monospacedDigit()
           // 查不到品种是这一页唯一的错误态，用 `danger` 标出来，不和「当前 xxx」同一个灰。
           .foregroundStyle(quote == nil && !symbolText.isEmpty ? t.danger : t.ink3)
           .accessibilityIdentifier("alerts.new.current")
         Spacer(minLength: 0)
       }
-      .padding(.horizontal, PanelMetrics.hPad)
+      .padding(.horizontal, hPad)
       .padding(.top, Space.s)
       Button {
         guard let quote, let target else { return }
@@ -92,11 +97,24 @@ struct PriceAlertForm: View {
       }
       .buttonStyle(.plain)
       .disabled(quote == nil || target == nil)
-      .padding(.horizontal, PanelMetrics.hPad)
+      .padding(.horizontal, hPad)
       .padding(.top, Space.l)
       .accessibilityIdentifier("alerts.new.create")
+      }
+      .padding(.top, Space.xs)
+      .padding(.bottom, Space.l)
     }
-    .toolbar(.hidden, for: .navigationBar)
+    .scrollBounceBehavior(.basedOnSize)
+    .background(t.raised.ignoresSafeArea())
+    .navigationTitle("新建提醒")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      // 价格是数字键盘，没有回车键收不起来（视觉审查 2.9 #5）。
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer()
+        Button("完成") { focus = nil }
+      }
+    }
     .onAppear {
       if symbolText.isEmpty { symbolText = initialSymbol }
       // 要价按宿主解析出来的规范键要；框里的代号（尤其 `BTC/USD`）直接交出去会被当成币安的裸代号。
@@ -146,7 +164,7 @@ struct PriceAlertForm: View {
         .frame(maxWidth: .infinity)
         .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
     }
-    .padding(.horizontal, PanelMetrics.hPad)
+    .padding(.horizontal, hPad)
     .padding(.vertical, Space.xs)
     .frame(minHeight: Inset.rowMin)
     .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }

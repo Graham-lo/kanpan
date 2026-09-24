@@ -33,6 +33,14 @@ final class AlertSoundUITests: XCTestCase {
     XCTAssertTrue(app.buttons["alerts.sound.default"].waitForExistence(timeout: 10))
   }
 
+  /// 铃声页是提醒总表里推进去的一层，走系统导航栏（2026-09-24 UI 整改 P1b）：
+  /// 回总表按导航栏左上那颗系统返回钮，`panel.done` 现在只是总表的「关闭」。
+  private func backFromSounds() {
+    let back = app.navigationBars["提醒铃声"].buttons.element(boundBy: 0)
+    XCTAssertTrue(back.waitForExistence(timeout: 5), "铃声页没有系统返回钮")
+    back.tap()
+  }
+
   private func shot(_ name: String) {
     let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
     attachment.name = name
@@ -49,7 +57,7 @@ final class AlertSoundUITests: XCTestCase {
       }
       shot("铃声-" + sound)
     }
-    app.buttons["panel.done"].tap()
+    backFromSounds()
     XCTAssertEqual(app.buttons["alerts.sound.open"].value as? String, "玻璃")
     shot("提醒总表-玻璃")
     app.terminate()
@@ -71,7 +79,7 @@ final class AlertSoundUITests: XCTestCase {
       openSounds()
       app.buttons["alerts.sound.glass"].tap()
       shot("铃声皮肤-" + skin)
-      app.buttons["panel.done"].tap()
+      backFromSounds()
       XCTAssertTrue(app.buttons["alerts.sound.open"].waitForExistence(timeout: 10))
       app.buttons["panel.done"].tap()
     }

@@ -45,16 +45,38 @@ struct AlertListPage: View {
   /// 当前左划开着的是哪一行。一张表同一时刻只许开一行（见 `SwipeToDelete`）。
   @State private var openSwipe: String?
 
+  @Environment(\.dismiss) private var dismiss
+
   var body: some View {
+    // 2026-09-24 UI 整改 P1b：头部换成系统导航栏（居中 17 标题、左上关闭、右上「新建」，
+    // 推进去的铃声页与新建页用系统返回）。原来自绘的「‹」钮 32×32 落在 x=9，比正文左缘还靠外，
+    // 而且和设置 → 账号那套系统导航在同一条路径上来回切（视觉审查 2.9 #1、§3 #3）。
     NavigationStack {
       list
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("提醒")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .topBarLeading) {
+            // 标识符沿用 `panel.done`：UI 用例靠它收表。
+            Button(role: .close) { dismiss() }
+              .accessibilityIdentifier("panel.done")
+          }
+          ToolbarItem(placement: .topBarTrailing) {
+            Button("新建") { showNew = true }
+              .accessibilityIdentifier("alerts.new")
+          }
+          // 数字键盘没有回车键，收不起来（视觉审查 2.9 #5）。
+          ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("完成") { thresholdFocused = false }
+          }
+        }
         .navigationDestination(isPresented: $showSound) { AlertSoundPage(store: preferences) }
         .navigationDestination(isPresented: $showNew) {
           PriceAlertForm(initialSymbol: currentSymbol, resolve: quote, prepare: prepareQuote,
                          release: releaseQuote) { quote, target in
             let alert = store.addPrice(symbol: quote.symbol, target: target, current: quote.price,
-                                       label: quote.label(target))
+                                       label: quote.current(target))
             guard alert != nil else { return }
             Task {
               await AlertNotifications.requestAuthorization()
@@ -63,37 +85,45 @@ struct AlertListPage: View {
           }
         }
     }
+    .tint(t.amber)
+    .panelPageInset()
   }
 
   private var list: some View {
-    PanelSheet(title: "提醒", subtitle: nil, asPage: false,
-               action: PanelSheetAction(title: "新建", id: "alerts.new", run: { showNew = true })) {
-      PanelRow(name: "提醒铃声", onTap: { showSound = true }) {
-        HStack(spacing: 5) {
-          Text(preferences.prefs.alertSound.title).font(PanelFont.seg)
-          VectorIcon.chevronRight(11)
-        }.foregroundStyle(t.amber)
-      }
-      .accessibilityIdentifier("alerts.sound.open")
-      .accessibilityValue(preferences.prefs.alertSound.title)
-      watchMoveRows
-      if permission.needsSystemSettings { permissionRow }
-      if store.all.isEmpty {
-        empty
-      } else {
-        ForEach(store.sorted) { alert in
-          AlertRow(alert: alert,
-                   open: $openSwipe,
-                   onOpen: { onOpen(alert) },
-                   onRearm: { store.rearm(id: alert.id) },
-                   onCondition: { store.setCondition($0, id: alert.id) },
-                   onDelete: { Haptics.warning(); store.remove(id: alert.id) },
-                   watched: watching == alert.id,
-                   onWatch: { onWatch(alert) },
-                   zone: zone)
+    ScrollView {
+      VStack(spacing: 0) {
+        PanelRow(name: "提醒铃声", onTap: { showSound = true }) {
+          HStack(spacing: Space.xs) {
+            Text(preferences.prefs.alertSound.title).font(PanelFont.name)
+            VectorIcon.chevronRight(ControlMetrics.chevron)
+          }.foregroundStyle(t.ink3)
+        }
+        .accessibilityIdentifier("alerts.sound.open")
+        .accessibilityValue(preferences.prefs.alertSound.title)
+        watchMoveRows
+        if permission.needsSystemSettings { AlertPermissionRow { permission.openSystemSettings() } }
+        if store.all.isEmpty {
+          empty
+        } else {
+          ForEach(store.sorted) { alert in
+            AlertRow(alert: alert,
+                     open: $openSwipe,
+                     onOpen: { onOpen(alert) },
+                     onRearm: { store.rearm(id: alert.id) },
+                     onCondition: { store.setCondition($0, id: alert.id) },
+                     onDelete: { Haptics.warning(); store.remove(id: alert.id) },
+                     watched: watching == alert.id,
+                     onWatch: { onWatch(alert) },
+                     zone: zone)
+          }
         }
       }
+      .padding(.top, Space.xs)
+      .padding(.bottom, Space.l)
     }
+    .scrollBounceBehavior(.basedOnSize)
+    .scrollDismissesKeyboard(.interactively)
+    .background(t.raised.ignoresSafeArea())
     .task { await permission.refresh() }
     .onAppear {
       guard lifecycle == nil else { return }
@@ -108,11 +138,8 @@ struct AlertListPage: View {
       lifecycle = nil
     }
     // 「这张表在不在」的记号。**`children: .contain` 那一句不能省**：光写
-    // `accessibilityIdentifier` 会把这个名字往下盖到每个子元素上，表头那颗「‹」的
-    // `panel.done` 在无障碍树里就成了 `alerts.page`（和 `DisplaySettingsSection`
-    // 那一排配色卡踩过的是同一个坑）。后果是这张表**关不掉**——UI 用例换皮肤那一步
-    // 一直盖着同一张表截图，sage 与 terra 两张 PNG 逐字节相同。`.contain` 让它只当
-    // 一个容器，子元素各留各的名字。`AlertPromptBar` 那一条也是这么写的。
+    // `accessibilityIdentifier` 会把这个名字往下盖到每个子元素上（`DisplaySettingsSection`
+    // 那一排配色卡踩过同一个坑），`.contain` 让它只当一个容器，子元素各留各的名字。
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alerts.page")
   }
@@ -129,21 +156,21 @@ struct AlertListPage: View {
     }
     if on {
       PanelRow(name: "五分钟涨跌超过") {
-        HStack(spacing: 4) {
+        HStack(spacing: Space.xs) {
           TextField("", text: $thresholdText)
             .keyboardType(.decimalPad)
             .multilineTextAlignment(.trailing)
-            .font(.body.monospacedDigit())
+            .font(TypeScale.body).monospacedDigit()
             .foregroundStyle(t.ink)
-            .frame(width: 52)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(t.raised2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .frame(width: Hit.min)
+            .padding(.horizontal, Space.s)
+            .padding(.vertical, Space.s)
+            .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
             .focused($thresholdFocused)
             .onSubmit(commitThreshold)
             .accessibilityIdentifier("alerts.watchMove.threshold")
             .accessibilityLabel("五分钟涨跌超过")
-          Text("%").font(.body).foregroundStyle(t.ink3)
+          Text("%").font(TypeScale.body).foregroundStyle(t.ink3)
         }
       }
       .onAppear { thresholdText = Self.format(preferences.prefs.watchMoveThreshold) }
@@ -168,59 +195,17 @@ struct AlertListPage: View {
     return text
   }
 
-  /// 通知被拒之后顶上那一行。**提示，不是拦路**：它不挡列表，下面该有几条还是几条。
-  ///
-  /// 三件事上和「要不要提醒」那条问句（`AlertPromptBar`）长一个样，不是巧合——
-  /// 它俩是同一个功能的两句话，应该读成同一个东西：
-  /// - 色走 `amberSoft` + `amberLine`，也就是**皮肤自己的强调色**兑得极淡的一层
-  ///   （青苔是墨绿、陶土是赤陶）。**不用 `t.danger`**：那一支是给「删除 / 注销」
-  ///   这种不可逆动作留的，这儿只是「有件事你可能不知道」，摆一条红的等于吓人；
-  ///   也不能是系统那块黄警告条——那是外面贴上来的一块颜色，这张表要读成一整块材料。
-  /// - 底是半透明的一层兑色，不是一块实底，身下那张 `raised` 照常透过去，不切硬边。
-  /// - 行高 36、字 13，比一条提醒还轻一档——它不跟真正的内容抢眼睛。
-  private var permissionRow: some View {
-    Button(action: { permission.openSystemSettings() }) {
-      HStack(spacing: 8) {
-        Image(systemName: "bell.slash")
-          .font(.system(size: 12, weight: .semibold))
-          .foregroundStyle(t.amber)
-        Text("通知关着，提醒到了不会响")
-          .font(.scaled(13))
-          .foregroundStyle(t.ink)
-          .lineLimit(1)
-          .minimumScaleFactor(0.85)
-        Spacer(minLength: 6)
-        HStack(spacing: 2) {
-          Text("去打开").font(.scaled(13, .semibold))
-          VectorIcon.chevronRight(11)
-        }
-        .foregroundStyle(t.amber)
-      }
-      .padding(.horizontal, 12)
-      .frame(maxWidth: .infinity)
-      .frame(height: 36)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-          .fill(t.amberSoft)
-          .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(t.amberLine, lineWidth: 0.5))
-      )
-    }
-    .buttonStyle(.plain)
-    .padding(.horizontal, 10)
-    .padding(.top, 4)
-    .padding(.bottom, 6)
-    .accessibilityIdentifier("alerts.permission")
-  }
-
   private var empty: some View {
-    VStack(spacing: 6) {
-      Image(systemName: "bell").font(.system(size: 22, weight: .light)).foregroundStyle(t.ink3)
-      Text("还没有提醒").font(PanelFont.name).foregroundStyle(t.ink3)
+    VStack(spacing: Space.s) {
+      // 实心款，不用线框（静态审查 3.9：图标不能是线框）；32 落在审查给的 32–44 里。
+      Image(systemName: "bell.fill")
+        .font(.system(size: ControlMetrics.iconDisc))
+        .foregroundStyle(t.ink3)
+        .accessibilityHidden(true)
+      Text("还没有提醒").font(TypeScale.body).foregroundStyle(t.ink3)
     }
     .frame(maxWidth: .infinity)
-    .padding(.vertical, 48)
+    .padding(.vertical, Space.section * 2)
   }
 }
 
@@ -242,6 +227,7 @@ private struct AlertRow: View {
   var zone: TZOffset
 
   @Environment(\.panelTheme) private var t
+  @Environment(\.panelHPad) private var hPad
 
   var body: some View {
     SwipeToDelete(id: alert.id, open: $open, brick: .flush,
@@ -250,33 +236,59 @@ private struct AlertRow: View {
     }
   }
 
+  /// 2026-09-24 UI 整改 P1b：不再往 `PanelRow` 上叠一层 overlay 把徽章硬塞进左留白
+  /// （原来徽章 24、文字从 46 起，和上面两行对不齐）。徽章进正经的前导位（`listBadge` 32，
+  /// 和板块、自选列表同一个尺寸），名 15、副 12，右边两颗胶囊视觉不变、点按区撑到 44。
   private func row(_ swipe: SwipeDeleteProxy) -> some View {
-    PanelRow(name: title, meta: meta, onTap: { swipe.isOpen ? swipe.close() : onOpen() }) {
-      if alert.kind == .reviewDue {
-        // 复盘到点没有「再次提醒」也没有条件可改：它跟着那条记录走。
-        EmptyView()
-      } else if alert.status == .fired {
-        Button(action: { swipe.close(); onRearm() }) {
-          Text("再次提醒")
-            .font(PanelFont.seg)
-            .foregroundStyle(t.badgeInk)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(t.amber))
+    Button(action: { swipe.isOpen ? swipe.close() : onOpen() }) {
+      HStack(spacing: Space.m) {
+        CoinBadge(base: KanpanCore.Alert.base(of: alert.symbol), size: ControlMetrics.listBadge)
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: Space.xxs) {
+          Text(title)
+            .font(TypeScale.body).monospacedDigit()
+            .foregroundStyle(t.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+          Text(meta).font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink3)
         }
-        .buttonStyle(.plain)
-      } else {
-        HStack(spacing: 10) {
-          if alert.isActive { watchButton(swipe) }
-          condition
-        }
+        Spacer(minLength: 0)
+        // 胶囊的点按区撑到 44，但不把行撑高：往回收一个 `Space.s`，点按区落在行自己的上下留白里。
+        trailing(swipe).padding(.vertical, -Space.s)
+      }
+      .padding(.horizontal, hPad)
+      .padding(.vertical, Space.s)
+      .frame(minHeight: Inset.rowMin)
+      .contentShape(Rectangle())
+      .overlay(alignment: .bottom) {
+        // 分隔线从文字那一条起（iOS 带图标列表的惯例），徽章下面不划。
+        Rectangle().fill(t.hair).frame(height: 1)
+          .padding(.leading, hPad + ControlMetrics.listBadge + Space.m)
       }
     }
-    .overlay(alignment: .leading) {
-      CoinBadge(base: KanpanCore.Alert.base(of: alert.symbol), size: 24)
-        .padding(.leading, PanelMetrics.hPad - 30)
-        .allowsHitTesting(false)
+    .buttonStyle(.plain)
+  }
+
+  @ViewBuilder private func trailing(_ swipe: SwipeDeleteProxy) -> some View {
+    if alert.kind == .reviewDue {
+      // 复盘到点没有「再次提醒」也没有条件可改：它跟着那条记录走。
+      EmptyView()
+    } else if alert.status == .fired {
+      Button(action: { swipe.close(); onRearm() }) {
+        Text("再次提醒")
+          .font(PanelFont.seg)
+          .foregroundStyle(t.badgeInk)
+          .padding(.horizontal, Space.s).padding(.vertical, Space.xs)
+          .background(Capsule().fill(t.amber))
+          .hitTarget()
+      }
+      .buttonStyle(.plain)
+    } else {
+      HStack(spacing: Space.s) {
+        if alert.isActive { watchButton(swipe) }
+        condition
+      }
     }
-    .padding(.leading, 30)
   }
 
   /// 「盯一个」：把这条挂到锁屏 / 灵动岛上。盯着时实心，再点一次就不盯了。
@@ -285,9 +297,10 @@ private struct AlertRow: View {
       Text(watched ? "盯着" : "盯一个")
         .font(PanelFont.seg)
         .foregroundStyle(watched ? t.badgeInk : t.amber)
-        .padding(.horizontal, 9).padding(.vertical, 4)
+        .padding(.horizontal, Space.s).padding(.vertical, Space.xs)
         .background(Capsule().fill(watched ? t.amber : Color.clear))
         .overlay(Capsule().stroke(t.amber, lineWidth: watched ? 0 : 1))
+        .hitTarget()
     }
     .buttonStyle(.plain)
     .accessibilityIdentifier("alerts.watch")
@@ -302,15 +315,22 @@ private struct AlertRow: View {
         Button(c.title) { onCondition(c) }
       }
     } label: {
-      HStack(spacing: 3) {
+      HStack(spacing: Space.xxs) {
         Text(alert.condition.title).font(PanelFont.seg)
-        VectorIcon.chevron(9, w: 1.7)
-      }.foregroundStyle(t.amber)
+        VectorIcon.chevron(ControlMetrics.chevron, w: 1.7)
+      }
+      .foregroundStyle(t.amber)
+      .hitTarget()
     }
     .accessibilityIdentifier("alerts.condition")
   }
 
   private var title: String {
+    // 价格提醒的标题末尾那串价补上千分位（「BTC 跌到 12,345.00」）。老提醒存的是不带
+    // 分隔的写法，这里在显示时补，`grouped` 对已经带分隔的串原样返回（视觉审查 2.9 #3）。
+    if alert.kind == .price, let cut = alert.title.lastIndex(of: " ") {
+      return String(alert.title[...cut]) + grouped(String(alert.title[alert.title.index(after: cut)...]))
+    }
     if alert.kind != .drawing, !alert.title.isEmpty { return alert.title }
     // 别家带分隔的代号写 `BTC/USD`，币安照旧只写基础币（见 `Alert.name(of:)`）。
     let base = KanpanCore.Alert.name(of: alert.symbol)
@@ -332,5 +352,51 @@ private struct AlertRow: View {
     // 条件已经写在右边那颗胶囊上，这里不再复述一遍（2026-09-24 审查 6.4）。
     case .active: return "生效中"
     }
+  }
+}
+
+/// 通知被拒之后顶上那一行。**提示，不是拦路**：它不挡列表，下面该有几条还是几条。
+///
+/// 色走 `amberSoft` + `amberLine`（皮肤自己的强调色兑得极淡的一层），和「要不要提醒」
+/// 那条问句（`AlertPromptBar`）是同一个功能的两句话，读成同一个东西；不用 `t.danger`——
+/// 那一支留给「删除 / 注销」这种不可逆动作。
+///
+/// 2026-09-24 UI 整改 P1b：高 36 → 44（整行就是按钮）、圆角取 `Radius.m`、左右跟正文同一条
+/// 边（`hPad`，整页里随屏宽 16 / 20），去掉 SF 的铃铛线框，字 13 走 `TypeScale.footnote`。
+private struct AlertPermissionRow: View {
+  var open: () -> Void
+  @Environment(\.panelTheme) private var t
+  @Environment(\.panelHPad) private var hPad
+
+  var body: some View {
+    Button(action: open) {
+      HStack(spacing: Space.s) {
+        Text("通知关着，提醒到了不会响")
+          .font(TypeScale.footnote)
+          .foregroundStyle(t.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.85)
+        Spacer(minLength: Space.s)
+        HStack(spacing: Space.xxs) {
+          Text("去打开").font(TypeScale.footnoteEmph)
+          VectorIcon.chevronRight(ControlMetrics.chevron)
+        }
+        .foregroundStyle(t.amber)
+      }
+      .padding(.horizontal, Space.m)
+      .frame(maxWidth: .infinity)
+      .frame(minHeight: Hit.min)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
+          .fill(t.amberSoft)
+          .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
+            .strokeBorder(t.amberLine, lineWidth: 0.5))
+      )
+    }
+    .buttonStyle(.plain)
+    .padding(.horizontal, hPad)
+    .padding(.vertical, Space.s)
+    .accessibilityIdentifier("alerts.permission")
   }
 }
