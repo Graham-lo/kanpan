@@ -9,10 +9,15 @@ import KanpanCore
 struct PanelTheme: Sendable, Equatable {
   var seed: PaletteSeed
   var chart: ChartColors
+  /// 图外文字上的涨跌色（`Palette.inkUp` / `inkDown`），已按 `redUp` 对调。
+  private var inkUpHex: Hex
+  private var inkDownHex: Hex
 
   init(seed: PaletteSeed, redUp: Bool = false) {
     self.seed = seed
     chart = Palette.chart(seed, redUp: redUp)
+    inkUpHex = Palette.inkUp(seed, redUp: redUp)
+    inkDownHex = Palette.inkDown(seed, redUp: redUp)
   }
   init(dark: Bool, redUp: Bool = false) {
     self.init(seed: dark ? Palette.darkSeed : Palette.lightSeed, redUp: redUp)
@@ -50,9 +55,13 @@ struct PanelTheme: Sendable, Equatable {
   var amberSoft: Color { Color(hex: seed.accent.alpha(dark ? "24" : "1A")) }
   var amberLine: Color { Color(hex: seed.accent.alpha("66")) }
 
-  /// 涨 / 跌，已按 `redUp` 对调。
-  var up: Color { Color(hex: chart.up) }
-  var down: Color { Color(hex: chart.down) }
+  /// 图外**文字**上的涨 / 跌，已按 `redUp` 对调。
+  ///
+  /// 浅色下比蜡烛色深一档（`Palette.inkDayUp` / `inkDayDown`），为的是小字对页面底够 4.5:1；
+  /// 图上画的东西、以及「这是图上那支颜色」的预览（蜡烛缩略、指标色标、徽章底）
+  /// 一律取 `chart.up` / `chart.down`，不要拿这两支去画。
+  var up: Color { Color(hex: inkUpHex) }
+  var down: Color { Color(hex: inkDownHex) }
 
   /// 警示：删除、注销、报错这类「不可逆 / 出事了」的动作字（见 `PaletteSeed.danger`）。
   ///

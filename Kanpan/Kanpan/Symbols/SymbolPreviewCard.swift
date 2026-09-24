@@ -223,7 +223,7 @@ struct SymbolPreviewCard: View {
     ZStack {
       RoundedRectangle(cornerRadius: 8, style: .continuous).fill(t.chartBG)
       if bars.count > 1 {
-        MiniCandles(bars: bars, up: t.up, down: t.down)
+        MiniCandles(bars: bars, up: Color(hex: t.chart.up), down: Color(hex: t.chart.down))  // 蜡烛取图上色
           .padding(.horizontal, 7).padding(.vertical, 6)
       }
     }

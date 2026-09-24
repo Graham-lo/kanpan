@@ -56,7 +56,8 @@ struct DisplaySettingsSection: View {
       VStack(alignment: .leading, spacing: 10) {
         HStack(alignment: .bottom, spacing: 5) {
           ForEach(0..<6) { index in
-            Rectangle().fill(index.isMultiple(of: 3) ? color.down : color.up)
+            // 这是蜡烛预览，取图上那支色（`chart`），不是文字上的涨跌色。
+            Rectangle().fill(Color(hex: index.isMultiple(of: 3) ? color.chart.down : color.chart.up))
               .frame(width: 6, height: CGFloat(10 + (index * 7) % 27))
           }
           Spacer(minLength: 0)

@@ -248,6 +248,7 @@ struct SymbolPickerView: View {
                     isFavorite: model.isFavorite(row.id),
                     seed: seed,
                     colors: colors,
+                    redUp: redUp,
                     nameSize: nameSize, metaSize: metaSize,
                     priceSize: priceSize, pctSize: pctSize,
                     onStar: { Haptics.tap(); model.toggleFavorite(row.id) },
@@ -286,6 +287,8 @@ struct SymbolRowView: View {
   let isFavorite: Bool
   let seed: PaletteSeed
   let colors: ChartColors
+  /// 涨跌幅文字按它对调（文字取 `Palette.inkUp` / `inkDown`，不取图上的 `colors.up`）。
+  var redUp: Bool = false
   let nameSize: CGFloat
   let metaSize: CGFloat
   let priceSize: CGFloat
@@ -338,7 +341,7 @@ struct SymbolRowView: View {
           Text(row.changeText)
             .font(.system(size: pctSize, weight: .medium, design: .monospaced))
             .monospacedDigit()
-            .foregroundStyle(Color(hex: row.ticker?.changePercent.isFinite == true ? (row.isUp ? colors.up : colors.down) : seed.ink3))
+            .foregroundStyle(Color(hex: row.ticker?.changePercent.isFinite == true ? (row.isUp ? Palette.inkUp(seed, redUp: redUp) : Palette.inkDown(seed, redUp: redUp)) : seed.ink3))
         }
       }
       .contentShape(Rectangle())

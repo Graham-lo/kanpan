@@ -207,6 +207,38 @@ public enum Palette: Sendable {
   /// （比安卓包 `#32A853` / `#EB4236` 略亮）；顶栏最新价、涨跌幅胶囊也用这两支（实测 `#34A756`，同一支）。
   public static let aicoinDayUp: Hex = "#36B257"
   public static let aicoinDayDown: Hex = "#E64552"
+
+  // ---------------------------------------------------------------- 图外文字上的涨跌色
+
+  /// 图外**文字**用的涨跌色（最新价、涨跌行、六格里的费率、列表涨跌幅、订单流详情卡……）。
+  ///
+  /// 上面那两支 AICoin 浅色蜡烛色对三套浅底只有 2.5–2.7:1（涨）、3.6–3.9:1（跌），22pt 价格
+  /// 连 3:1 都不到。2026-09-24 UI 审查汇总 §四，用户拍板选项 2：**只加深文字上的涨跌色**，
+  /// 蜡烛、均线、副图、图上价格标签（`ChartColors`）一个值都不动。
+  /// 浅色三套：涨 `#1E8040`、跌 `#C9303E`（对三张浅底 4.5:1 以上）；深色沿用图上原色，
+  /// 只有经典深的跌色 `#CC3333` 对 `#0D111C` 不够 4.5:1，提亮到 `#E0524F`。
+  /// 由 `SkinPaletteTests` 守住：六套种子的文字涨跌色对 `app` 都 ≥ 4.5:1。
+  public static let inkDayUp: Hex = "#1E8040"
+  public static let inkDayDown: Hex = "#C9303E"
+  public static let classicNightInkDown: Hex = "#E0524F"
+
+  private static func inkPair(_ t: PaletteSeed) -> (up: Hex, down: Hex) {
+    if !t.dark { return (inkDayUp, inkDayDown) }
+    if t.skin == .classic { return (t.up, classicNightInkDown) }
+    return (t.up, t.down)
+  }
+
+  /// 图外文字上的涨色，已按 `redUp` 对调（与 `chart(_:redUp:)` 同一套对调口径）。
+  public static func inkUp(_ t: PaletteSeed, redUp: Bool = false) -> Hex {
+    let p = inkPair(t)
+    return redUp ? p.down : p.up
+  }
+
+  /// 图外文字上的跌色，已按 `redUp` 对调。
+  public static func inkDown(_ t: PaletteSeed, redUp: Bool = false) -> Hex {
+    let p = inkPair(t)
+    return redUp ? p.up : p.down
+  }
   /// AICoin 主图 MA 依次取的色：MA10 黄、MA30 紫、MA120 绿、MA256 珊瑚（用户手机上这四条占槽位
   /// 第 2、3、5、6 格），后两格给第五、六条均线和 BOLL 带 / 持仓量用。
   public static let aicoinDayMA: [Hex] = ["#FFB400", "#E849B9", "#6EBF26", "#F55B58", "#1478C8", "#2FD2B2"]

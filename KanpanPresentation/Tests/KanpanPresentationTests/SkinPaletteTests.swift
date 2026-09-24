@@ -215,4 +215,44 @@ struct SkinPaletteTests {
       #expect(!Palette.usesAICoinKLine(seed))
     }
   }
+
+  // ---------------------------------------------------------------- 图外文字上的涨跌色
+
+  /// UI 审查 2026-09-24 §四，用户拍板选项 2：图外文字上的涨跌色单独一支，对页面底 ≥ 4.5:1；
+  /// 图上的蜡烛、均线、副图、价格标签一个值都不动。两头都在这儿守住。
+  @Test("图外文字的涨跌色对页面底 ≥ 4.5:1，红涨绿跌照样对调", arguments: seeds)
+  func textUpDownContrast(_ seed: PaletteSeed) {
+    for redUp in [false, true] {
+      let up = Palette.inkUp(seed, redUp: redUp), down = Palette.inkDown(seed, redUp: redUp)
+      #expect(Palette.contrast(up, seed.app) >= 4.5, "\(seed.skin) dark=\(seed.dark) 涨色文字 \(up) 在 \(seed.app) 上不够 4.5")
+      #expect(Palette.contrast(down, seed.app) >= 4.5, "\(seed.skin) dark=\(seed.dark) 跌色文字 \(down) 在 \(seed.app) 上不够 4.5")
+    }
+    #expect(Palette.inkUp(seed, redUp: true) == Palette.inkDown(seed))
+    #expect(Palette.inkDown(seed, redUp: true) == Palette.inkUp(seed))
+    if seed.dark {
+      // 深色沿用图上原色，只有经典深的跌色提亮。
+      #expect(Palette.inkUp(seed) == seed.up)
+      #expect(Palette.inkDown(seed) == (seed.skin == .classic ? Palette.classicNightInkDown : seed.down))
+    } else {
+      #expect(Palette.inkUp(seed) == Palette.inkDayUp)
+      #expect(Palette.inkDown(seed) == Palette.inkDayDown)
+    }
+  }
+
+  @Test("加深文字涨跌色不碰图上的色：蜡烛仍是 AICoin / 种子原色", arguments: seeds)
+  func chartUpDownUntouched(_ seed: PaletteSeed) {
+    let chart = Palette.chart(seed), swapped = Palette.chart(seed, redUp: true)
+    if seed.dark {
+      let original: (Hex, Hex) = switch seed.skin {
+      case .sage: ("#4FB69C", "#E36159")
+      case .terra: ("#3FA783", "#E0584A")
+      case .classic: ("#2F9347", "#CC3333")
+      }
+      #expect(chart.up == original.0 && chart.down == original.1)
+    } else {
+      #expect(chart.up == "#36B257" && chart.down == "#E64552")
+      #expect(Palette.aicoinDayUp == "#36B257" && Palette.aicoinDayDown == "#E64552")
+    }
+    #expect(swapped.up == chart.down && swapped.down == chart.up)
+  }
 }

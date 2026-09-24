@@ -326,6 +326,7 @@ struct SymbolSearchView: View {
                     isFavorite: model.isFavorite(row.id),
                     seed: seed,
                     colors: colors,
+                    redUp: redUp,
                     nameSize: nameSize, metaSize: metaSize,
                     priceSize: priceSize, pctSize: pctSize,
                     onStar: {
