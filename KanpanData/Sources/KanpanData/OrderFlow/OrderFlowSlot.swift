@@ -11,6 +11,8 @@ struct OrderFlowSlot {
   var enabled = false
   /// 品种事实（base、资产类别、最小变动价、成交额），由 app 按品种给。还没有就先不订。
   var facts: @Sendable (String) -> OrderFlowFacts? = { _ in nil }
+  /// 十字线此刻停在主图上（读数要精确金额，见 `OrderFlowFeed.amountRefreshMs`）。
+  var precise: @Sendable () -> Bool = { false }
   /// 用户改过的门槛 / 步长，按去掉缩放前缀的 base 存。
   private(set) var overrides: [String: OrderFlowOverride] = [:]
   /// 哪只品种的 K 线已经交给界面（历史 ≥ 3 根）。簿订阅只在这之后才发，不跟首屏抢。
@@ -31,7 +33,7 @@ struct OrderFlowSlot {
     let token = UUID()
     let directory = Self.directory(in: paths)
     guard let next = OrderFlowFeed(symbol: symbol, facts: facts, override: overrides[facts.overrideKey],
-                                   provider: provider, directory: directory, log: log,
+                                   provider: provider, directory: directory, precise: precise, log: log,
                                    sink: { frame in await publish(token, frame) }) else { return false }
     feed = next; self.token = token; last = nil; overrideKey = facts.overrideKey
     Task.detached(priority: .utility) {

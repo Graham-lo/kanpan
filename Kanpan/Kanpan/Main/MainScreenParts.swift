@@ -337,6 +337,7 @@ struct MainChartView: View {
         onSubReorder: { order in let next = merged(order); store.update { $0.subs = next } },
         onCrosshair: { [readout = session.readout] in
           readout.set($0)
+          market.orderFlow.noteCrosshair(onMain: $0.map { $0.pane == nil } ?? false)
           // 十字线一出来就把「看细节」要去的那一档先热上（B3）。
           if $0 != nil, !reviewChart.active { market.prewarmDetail() }
         },

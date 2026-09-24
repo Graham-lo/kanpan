@@ -793,4 +793,28 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(frame.orders.map(\.firstSeenMs), [0, 1_000])
     XCTAssertEqual(frame.venues, [OrderFlowVenueStatus(label: "OKX", product: .usdtPerp, instrument: "ETH-USDT-SWAP", ready: true)])
   }
+
+  /// 审查 31：`sameContent` 只比画出来会变样的量——状态、结束时刻、桶、价、门槛、高度格、透明度档。
+  func testSameContentIgnoresSubPixelJitter() {
+    let order = BigOrder(venueID: "binance:usdtPerp:BTCUSDT", exchange: "币安", product: .usdtPerp, side: .bid,
+                         bucket: 7, price: 100, firstSeenMs: 1, initialNotional: 10_000_000, notional: 10_000_000,
+                         threshold: 5_000_000)
+    let a = OrderFlowSnapshot(symbol: "BTCUSDT", phase: .ready, orders: [order], asOfMs: 1)
+    func with(_ change: (inout BigOrder) -> Void) -> OrderFlowSnapshot {
+      var b = a; change(&b.orders[0]); b.asOfMs = 99; return b
+    }
+    // 一格是 625K：+200K 还在同一格；成交 2%（0.4 档）四舍五入还在 0 档。
+    let jitter = with { $0.notional += 200_000; $0.filledNotional = 200_000 }
+    XCTAssertTrue(a.sameContent(as: jitter))
+    XCTAssertFalse(a.sameExactContent(as: jitter))
+    XCTAssertFalse(a.sameContent(as: with { $0.notional += 400_000 }))       // 16 格 → 17 格
+    XCTAssertFalse(a.sameContent(as: with { $0.filledNotional = 500_000 }))  // 5%：换一档
+    XCTAssertFalse(a.sameContent(as: with { $0.price = 101 }))
+    XCTAssertFalse(a.sameContent(as: with { $0.status = .cancelled; $0.endMs = 5; $0.vanishedNotional = 1 }))
+    // 封顶 40 格之后再大也画一样厚。
+    let huge = with { $0.notional = 30_000_000 }
+    XCTAssertTrue(huge.sameContent(as: with { $0.notional = 90_000_000 }))
+    XCTAssertEqual(huge.orders[0].pixelKey.heightUnits, BigOrder.maxHeightUnits)
+    XCTAssertFalse(a.sameContent(as: OrderFlowSnapshot(symbol: "BTCUSDT", phase: .ready, orders: [], asOfMs: 1)))
+  }
 }

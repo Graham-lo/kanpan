@@ -75,6 +75,30 @@ public struct BigOrder: Sendable, Equatable, Identifiable, Codable {
     return base > 0 ? min(1, max(0, filledNotional / base)) : 0
   }
 
+  /// 图上这一块长什么样只取决于这几项（审查第 31 项）。名义与成交比例按画法量化：
+  /// 高度一格是「门槛 ÷ 8」（封顶 40 格，一格 0.25 pt），透明度按成交比例 5% 一档——
+  /// 格内、档内的抖动画出来差不到半个像素，不值得整层重画。
+  public struct PixelKey: Sendable, Equatable {
+    public var id: String
+    public var status: Status
+    public var endMs: Int64?
+    public var bucket: Int64
+    public var price: Double
+    public var threshold: Double
+    public var heightUnits: Int
+    public var fillStep: Int
+  }
+
+  /// 高度最多几格（和图表 `orderFlowMaxUnits` 同一个数）。
+  public static let maxHeightUnits = 40
+
+  public var pixelKey: PixelKey {
+    let units = threshold > 0 && notional.isFinite
+      ? min(Self.maxHeightUnits, Int((max(0, notional) / (threshold / 8)).rounded())) : 0
+    return PixelKey(id: id, status: status, endMs: endMs, bucket: bucket, price: price, threshold: threshold,
+                    heightUnits: units, fillStep: Int((fillRatio * 20).rounded()))
+  }
+
   // 落盘用短键：500 条约 75 KB。
   enum CodingKeys: String, CodingKey {
     case venueID = "v", exchange = "x", product = "p", side = "s", bucket = "b", price = "px"
@@ -115,8 +139,17 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
     OrderFlowSnapshot(symbol: symbol, phase: .loading, orders: [], asOfMs: asOfMs)
   }
 
-  /// 除时间戳外内容相同（用来判断要不要再发一帧）。
+  /// 画出来一样（用来判断要不要再发一帧、图表要不要重画底图）：每一单只比 `BigOrder.pixelKey`，
+  /// 名义与成交比例在同一格、同一档里的抖动不算变化。BTC 十几本簿、现价附近的名义几乎每一拍都在变，
+  /// 按精确值比的话图表静止时也要每秒整层重画两次（审查第 31 项）。
   public func sameContent(as other: OrderFlowSnapshot) -> Bool {
+    guard symbol == other.symbol, phase == other.phase, thresholds == other.thresholds,
+          venues == other.venues, orders.count == other.orders.count else { return false }
+    return zip(orders, other.orders).allSatisfy { $0.pixelKey == $1.pixelKey }
+  }
+
+  /// 除时间戳外逐字相同（十字线停在某一块上、读数要精确金额时用）。
+  public func sameExactContent(as other: OrderFlowSnapshot) -> Bool {
     symbol == other.symbol && phase == other.phase && orders == other.orders
       && thresholds == other.thresholds && venues == other.venues
   }

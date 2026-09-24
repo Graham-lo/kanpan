@@ -57,6 +57,9 @@ public actor OrderFlowFeed {
   public static let evaluateEveryMs: Double = 500
   /// 内容没变时至少隔这么久也发一次（界面上的「12 分」要走）。
   public static let heartbeatMs: Int64 = 30_000
+  /// 画出来一样、只是金额变了的帧最快隔这么久才发一次（图例「主力 买 12.3M」的合计要跟上，
+  /// 但不能每拍都发）；十字线停在色块上（`precise` 为真）时不受这一条限制，读数要精确金额。
+  public static let amountRefreshMs: Int64 = 5_000
   /// 大单有变化时隔这么久落一次盘。
   public static let saveEveryMs: Int64 = 15_000
 
@@ -72,6 +75,8 @@ public actor OrderFlowFeed {
   private let log: FeedLog
   private let sink: Sink
   private let evaluateEveryMs: Double
+  /// 十字线此刻停在主图上（读数要精确金额）。在评估那一拍读，所以是个线程安全的读函数，不是状态。
+  private let precise: @Sendable () -> Bool
 
   private var model: OrderFlowModel
   private var override: OrderFlowOverride?
@@ -99,6 +104,7 @@ public actor OrderFlowFeed {
               pacer: any Pacer = SystemPacer(),
               clock: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
               evaluateEveryMs: Double = OrderFlowFeed.evaluateEveryMs,
+              precise: @escaping @Sendable () -> Bool = { false },
               log: FeedLog = .silent, sink: @escaping Sink) {
     self.symbol = symbol
     self.facts = facts
@@ -112,6 +118,7 @@ public actor OrderFlowFeed {
     self.pacer = pacer
     self.clock = clock
     self.evaluateEveryMs = max(evaluateEveryMs, 1)
+    self.precise = precise
     self.log = log
     self.sink = sink
     let now = clock()
@@ -125,14 +132,15 @@ public actor OrderFlowFeed {
 
   /// 按提供者建一条：品种表、连接、日线、成交额都从它来。这条线路给不出订单流就返回 nil。
   public init?(symbol: String, facts: OrderFlowFacts, override: OrderFlowOverride?,
-               provider: any MarketProvider, directory: URL?, log: FeedLog = .silent, sink: @escaping Sink) {
+               provider: any MarketProvider, directory: URL?, precise: @escaping @Sendable () -> Bool = { false },
+               log: FeedLog = .silent, sink: @escaping Sink) {
     guard let catalog = (provider as? any OrderFlowSourcing)?.orderFlowCatalog else { return nil }
     self.init(symbol: symbol, facts: facts, override: override, directory: directory,
               loadBooks: { base in await catalog.books(base: base) },
               makeAdapters: { books in catalog.adapters(books) },
               loadClose: { day in try await Self.previousClose(provider: provider, symbol: symbol, referenceDayMs: day) },
               loadTurnover: { try? await provider.ticker24h(symbol: symbol, timeout: 8).quoteVolume },
-              log: log, sink: sink)
+              precise: precise, log: log, sink: sink)
   }
 
   /// 此刻生效的门槛与步长：默认表 → 叠用户改过的项 → 还没有步长就用按收盘推的那个。
@@ -377,11 +385,21 @@ public actor OrderFlowFeed {
     let now = clock()
     let frame = model.evaluate(nowMs: now)
     if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
-    if let last = lastEmitted, last.sameContent(as: frame), now - lastEmitMs < Self.heartbeatMs { return }
+    if let last = lastEmitted, now - lastEmitMs < Self.heartbeatMs, Self.skip(frame, after: last,
+                                                                             sinceLastMs: now - lastEmitMs,
+                                                                             precise: precise()) { return }
     lastEmitted = frame
     lastEmitMs = now
     let sink = self.sink
     Task { await sink(frame) }
+  }
+
+  /// 心跳之内这一帧发不发：画出来有变化就发；只是金额变了，十字线停着就发、否则隔 `amountRefreshMs` 发一次。
+  static func skip(_ frame: OrderFlowSnapshot, after last: OrderFlowSnapshot, sinceLastMs: Int64,
+                   precise: Bool) -> Bool {
+    guard last.sameContent(as: frame) else { return false }
+    if last.sameExactContent(as: frame) { return true }
+    return !precise && sinceLastMs < amountRefreshMs
   }
 
   private func save() {

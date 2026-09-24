@@ -531,8 +531,10 @@ public final class ChartView: UIView {
       if o.crosshair == nil || new.crosshair == nil { p.insert(.cross) }
     }
     if o.depth != new.depth { p.insert(.live) }
-    // 主力订单流：色带在 plot、图例在 cross；十字线进出色带要把那条提亮到 0.9，也得重画 plot。
-    if o.orderFlow != new.orderFlow || o.orderFlowDisplay != new.orderFlowDisplay { p.insert([.plot, .cross]) }
+    // 主力订单流：色块在 plot、图例在 cross；十字线进出色带要把那条提亮到 0.9，也得重画 plot。
+    // 画出来一样（只是金额在同一格、同一档里抖）只脏 cross：图例合计与读数在那一层，底图不动（审查第 31 项）。
+    if o.orderFlowDisplay != new.orderFlowDisplay || !samePixels(o.orderFlow, new.orderFlow) { p.insert([.plot, .cross]) }
+    else if o.orderFlow != new.orderFlow { p.insert(.cross) }
     else if o.crosshair != new.crosshair, new.orderFlow?.orders.isEmpty == false,
             o.crosshair.map({ $0.pane == nil }) == true || new.crosshair.map({ $0.pane == nil }) == true { p.insert(.plot) }
     if o.crosshair != new.crosshair { p.insert(.cross) }
@@ -540,6 +542,15 @@ public final class ChartView: UIView {
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
     if o.nowMs != new.nowMs, new.options.countdown, new.options.lastLine { p.insert(.live) }
     return p
+  }
+
+  /// 两份主力快照画在底图上是不是一样（`OrderFlowSnapshot.sameContent`：量化到像素）。
+  private static func samePixels(_ a: OrderFlowSnapshot?, _ b: OrderFlowSnapshot?) -> Bool {
+    switch (a, b) {
+    case (nil, nil): true
+    case let (a?, b?): a.sameContent(as: b)
+    default: false
+    }
   }
 
   private static func sameLastBar(_ a: BarSeries, _ b: BarSeries) -> Bool {

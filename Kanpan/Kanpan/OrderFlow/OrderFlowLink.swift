@@ -32,6 +32,14 @@ final class OrderFlowFactsTable: Sendable {
   func facts(for symbol: String) -> OrderFlowFacts? { table.withLock { $0[InstrumentID.canonical(symbol)] } }
 }
 
+/// 十字线此刻停没停在主图上。主线程写、行情流每一拍评估时读，所以是把锁（审查第 31 项：
+/// 画出来一样的帧不发，只有读数要精确金额的时候才逐拍发）。
+final class OrderFlowFocus: Sendable {
+  private let on = Mutex(false)
+  func set(_ value: Bool) { on.withLock { $0 = value } }
+  var isOn: Bool { on.withLock { $0 } }
+}
+
 @MainActor
 @Observable
 final class OrderFlowLink {
@@ -46,6 +54,10 @@ final class OrderFlowLink {
   /// 当前品种的事实（面板里「恢复默认」要显示的默认值从这里算）。
   private(set) var currentFacts: OrderFlowFacts?
   @ObservationIgnored let facts = OrderFlowFactsTable()
+  @ObservationIgnored let focus = OrderFlowFocus()
+
+  /// 十字线变了（`ChartView.onCrosshairChanged`）：停在主图上时读数要精确金额。
+  func noteCrosshair(onMain: Bool) { focus.set(onMain) }
 
   func setWanted(_ on: Bool) { wanted = on }
   func setOverrides(_ next: [String: OrderFlowOverride]) { overrides = next }
@@ -55,8 +67,9 @@ final class OrderFlowLink {
   func apply(visible: Bool, to feed: RoutedMarketFeed) {
     active = visible && wanted
     if !active { snapshot = nil }
-    let on = active, table = self.facts, overrides = self.overrides
-    Task { await feed.setOrderFlow(enabled: on, overrides: overrides, facts: { table.facts(for: $0) }) }
+    let on = active, table = self.facts, overrides = self.overrides, focus = self.focus
+    Task { await feed.setOrderFlow(enabled: on, overrides: overrides, facts: { table.facts(for: $0) },
+                                   precise: { focus.isOn }) }
   }
 
   /// 行情流的 `.orderFlow` 事件。别的品种的帧（切品种那一拍）不认。

@@ -110,6 +110,22 @@ struct OrderFlowFeedTests {
       sink: { await frames.add($0) })
   }
 
+  @Test("出帧去重（审查 31）：画面没变不发；只是金额变了隔 5 秒发一次，十字线停着就逐拍发")
+  func emitOnlyWhenPixelsChange() {
+    let order = BigOrder(venueID: "binance:usdtPerp:ETHUSDT", exchange: "币安", product: .usdtPerp, side: .ask,
+                         bucket: 3, price: 2_000, firstSeenMs: 1, initialNotional: 3_000_000, notional: 3_000_000,
+                         threshold: 1_000_000)
+    let last = OrderFlowSnapshot(symbol: symbolKey, phase: .ready, orders: [order], asOfMs: 1)
+    var same = last; same.asOfMs = 501
+    var jitter = same; jitter.orders[0].notional += 20_000
+    var grew = same; grew.orders[0].notional += 500_000
+    #expect(OrderFlowFeed.skip(same, after: last, sinceLastMs: 500, precise: true))
+    #expect(OrderFlowFeed.skip(jitter, after: last, sinceLastMs: 500, precise: false))
+    #expect(!OrderFlowFeed.skip(jitter, after: last, sinceLastMs: OrderFlowFeed.amountRefreshMs, precise: false))
+    #expect(!OrderFlowFeed.skip(jitter, after: last, sinceLastMs: 500, precise: true))
+    #expect(!OrderFlowFeed.skip(grew, after: last, sinceLastMs: 500, precise: false))
+  }
+
   @Test("两家两条连接：REST 快照那本与流内快照那本各自就绪，墙各出一条；停时日志落盘，再开读回来",
         .timeLimit(.minutes(1)))
   func twoVenues() async throws {

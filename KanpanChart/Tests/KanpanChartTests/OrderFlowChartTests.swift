@@ -186,6 +186,13 @@ struct OrderFlowChartTests {
     #expect(ChartView.changed(from: r.state, to: moved) == [.plot, .cross])
     var hidden = r.state; hidden.orderFlowDisplay.spot = false
     #expect(ChartView.changed(from: r.state, to: hidden) == [.plot, .cross])
+    // 金额在同一格、同一档里抖（BTC 簿几乎每拍都这样）：底图不动，只有图例 / 读数那一层重画（审查 31）。
+    var jitter = r.state; jitter.orderFlow?.orders[0].notional += 100_000; jitter.orderFlow?.asOfMs += 500
+    #expect(ChartView.changed(from: r.state, to: jitter) == [.cross])
+    var grew = r.state; grew.orderFlow?.orders[0].notional += 1_000_000  // 多出 1.6 格
+    #expect(ChartView.changed(from: r.state, to: grew) == [.plot, .cross])
+    var eaten = r.state; eaten.orderFlow?.orders[0].filledNotional = 1_000_000  // 成交 10%，透明度换两档
+    #expect(ChartView.changed(from: r.state, to: eaten) == [.plot, .cross])
     var hover = r.state; hover.crosshair = Crosshair(index: 3, price: 1)
     #expect(ChartView.changed(from: r.state, to: hover).contains(.plot))
     let plain = ChartRenderer(state: off)
