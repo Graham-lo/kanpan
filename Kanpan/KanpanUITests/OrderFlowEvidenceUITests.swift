@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 // ============================================================ 主力订单流 · 验收取证（2026-09-24，逐单模型）
@@ -191,55 +192,73 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
       let thin = all.filter { $0["thin"] as? Bool == true }.count
       let labels = (chartInfo()["orderFlowLabels"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
       print("取证|手机布局|\(title)|orders=\(orderCount())|bands=\(all.count)|整条档=\(tiers.sorted())|细线=\(thin)|标签=\(labels)|books=\(all.map { $0["books"] as? Int ?? 0 })")
-      XCTAssertTrue(all.allSatisfy { ($0["h"] as? Double ?? 99) <= 8 }, "\(title)：有带超过 8 pt：\(all)")
+      // 细线 + 签（2026-09-25）：线最粗 2.5 pt（挂着的主档），跨桶的墙只多一层淡底，线本身不变粗。
+      XCTAssertTrue(all.allSatisfy { ($0["h"] as? Double ?? 99) <= 2.5 }, "\(title)：有线粗过 2.5 pt：\(all)")
       shot("手机布局-\(title)", file: "手机布局-\(title)-\(Self.shortDevice)")
     }
 
-    // 轻点最粗的那条整带（点中了 `orderFlowSelected` 就是那一桶的 id），详情卡出来。
+    // 轻点一条主档整条（点中了 `orderFlowSelected` 就是那一堵的 id），详情卡出来。先挑跨桶的墙（卡上是价位范围），
+    // 再挑名义大的、宽的；卡拍完再挑一条单桶的，证明单价位的段写一个价。
     let canvas = app.otherElements["chart.canvas"]
     let origin = canvas.coordinate(withNormalizedOffset: .zero)
     let card = app.descendants(matching: .any)["chart.orderFlowCard"]
-    var selected = ""
-    var picked: [String: Any] = [:]
-    for attempt in 0..<6 where selected.isEmpty {
-      guard waitUntil(timeout: 240, poll: 1, { !self.bands().isEmpty }) else { break }
+    let outDir = Self.outDir.deletingLastPathComponent().appendingPathComponent("主力订单流-2026-09-25", isDirectory: true)
+    try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+    /// 点一条线的左半段（避开右端的金额签），返回选中的 id。
+    func select(_ band: [String: Any]) -> String {
       let plotW = chartInfo()["plotW"] as? Double ?? 300
-      // 先挑合并了最多本簿的整带（详情卡看得出「一桶一卡」），再按粗细、宽度排。
-      let sorted = bands().sorted {
-        let a = ($0["thin"] as? Bool == true ? 0 : 1, $0["books"] as? Int ?? 0, $0["h"] as? Double ?? 0, $0["w"] as? Double ?? 0)
-        let b = ($1["thin"] as? Bool == true ? 0 : 1, $1["books"] as? Int ?? 0, $1["h"] as? Double ?? 0, $1["w"] as? Double ?? 0)
-        return a > b
-      }
-      let band = sorted[min(attempt, sorted.count - 1)]
       let bx = band["x"] as? Double ?? 0, bw = band["w"] as? Double ?? 0, by = band["y"] as? Double ?? 0
-      // 诊断里的 y 就是带的中线；点带的左半段，避开右端的金额签。
       let x = min(plotW - 2, max(1, bx + bw * 0.35))
       origin.withOffset(CGVector(dx: x, dy: by)).tap()
       _ = waitUntil(timeout: 3) { !(self.chartInfo()["orderFlowSelected"] as? String ?? "").isEmpty }
-      selected = chartInfo()["orderFlowSelected"] as? String ?? ""
-      picked = band
-      print("取证|详情卡|点在 (\(x), \(by))|band=\(band)|selected=\(selected)")
+      let id = chartInfo()["orderFlowSelected"] as? String ?? ""
+      print("取证|详情卡|点在 (\(x), \(by))|band=\(band)|selected=\(id)")
+      return id
+    }
+    func ranked(range: Bool, role: String = "main") -> [[String: Any]] {
+      bands().filter { $0["thin"] as? Bool != true && $0["role"] as? String == role
+        && (($0["buckets"] as? Int ?? 1) > 1) == range }
+        .sorted { ($0["notional"] as? Double ?? 0, $0["w"] as? Double ?? 0) > ($1["notional"] as? Double ?? 0, $1["w"] as? Double ?? 0) }
+    }
+    /// 卡上只有三行：标题（价位或区间 · 方向 · 类 · 持续）、总金额 / 总数量、开始 / 状态；不列交易所。
+    func checkCard(_ what: String) -> String {
+      expectExists(card, Self.short, "\(what)：选中大单后没出详情卡")
+      let text = card.label
+      print("取证|详情卡|\(what)|文字=\(text.replacingOccurrences(of: "\n", with: " / "))")
+      XCTAssertTrue(text.contains("USDT"), "详情卡没写 USDT 金额：\(text)")
+      XCTAssertTrue(text.contains(" BTC"), "详情卡没写 BTC 数量：\(text)")
+      XCTAssertTrue(text.contains("委托买单") || text.contains("委托卖单"), "详情卡没写买卖方向：\(text)")
+      XCTAssertTrue(text.contains("合约") || text.contains("现货"), "详情卡标题没写类：\(text)")
+      for word in ["总金额", "总数量", "开始", "状态", "持续"] {
+        XCTAssertTrue(text.contains(word), "详情卡缺「\(word)」：\(text)")
+      }
+      XCTAssertTrue(["在场", "已撤", "已成交"].contains { text.contains($0) }, "详情卡没写状态：\(text)")
+      for venue in ["币安", "OKX", "Coinbase", "永续", "交割", "还有"] {
+        XCTAssertFalse(text.contains(venue), "详情卡不该列交易所 / 产品行（出现了「\(venue)」）：\(text)")
+      }
+      XCTAssertEqual(text.components(separatedBy: "\n").count, 3, "详情卡应当只有三行：\(text)")
+      return text
+    }
+    var selected = ""
+    var picked: [String: Any] = [:]
+    var wantRange = true
+    for attempt in 0..<8 where selected.isEmpty {
+      guard waitUntil(timeout: 240, poll: 1, { !self.bands().isEmpty }) else { break }
+      // 等一会儿跨桶的墙；等不到就退回单桶。
+      if wantRange, ranked(range: true).isEmpty, !waitUntil(timeout: 60, poll: 2, { !ranked(range: true).isEmpty }) { wantRange = false }
+      let pool = ranked(range: wantRange).isEmpty ? ranked(range: !wantRange) : ranked(range: wantRange)
+      guard !pool.isEmpty else { continue }
+      picked = pool[min(attempt, pool.count - 1)]
+      selected = select(picked)
     }
     XCTAssertFalse(selected.isEmpty, "轻点大单没选中：\(bands())")
-    expectExists(card, Self.short, "选中大单后没出详情卡")
-    let text = card.label
-    print("取证|详情卡|文字=\(text.replacingOccurrences(of: "\n", with: " / "))")
-    XCTAssertTrue(text.contains("USDT"), "详情卡没写 USDT 金额：\(text)")
-    XCTAssertTrue(text.contains(" BTC"), "详情卡没写 BTC 数量：\(text)")
-    XCTAssertTrue(text.contains("委托买单") || text.contains("委托卖单"), "详情卡没写买卖方向：\(text)")
-    XCTAssertTrue(text.contains("合约") || text.contains("现货"), "详情卡标题没写类：\(text)")
-    for word in ["数量", "金额", "成交", "最早", "持续"] {
-      XCTAssertTrue(text.contains(word), "详情卡缺「\(word)」：\(text)")
-    }
-    XCTAssertTrue(["挂单中", "已成交", "部分成交", "已撤销", "失联结束"].contains { text.contains($0) }, "详情卡没写状态：\(text)")
-    // 一本簿一行、最多六行：行数 = 卡上的簿行（不含标题与汇总两行），多出来的折成「还有 N 本」。
-    let lines = text.components(separatedBy: "\n")
-    let bookLines = lines.dropFirst(3).filter { !$0.hasPrefix("还有") }
-    XCTAssertTrue(bookLines.count >= 1 && bookLines.count <= 6, "详情卡的簿行数不对：\(lines)")
-    if let books = picked["books"] as? Int, books > 6 { XCTAssertTrue(text.contains("还有"), "超过六本没折叠：\(text)") }
+    let text = checkCard("第一张")
+    let isRange = (picked["buckets"] as? Int ?? 1) > 1
+    XCTAssertEqual(text.components(separatedBy: "\n").first?.contains(" – ") ?? false, isRange,
+                   "价位写法和段的形态不符（buckets=\(picked["buckets"] ?? 1)）：\(text)")
     XCTAssertNil(app.staticTexts.matching(identifier: "chart.topOHLC").allElementsBoundByIndex.first { $0.exists },
                  "出详情卡时开高低收读数没让位")
-    // 尺寸与位置：宽 ≤ 85% 绘图区、高 ≤ 55% 主图、在绘图区里、不盖住选中的那条带。
+    // 尺寸与位置：宽 ≤ 85% 绘图区、高 ≤ 55% 主图、在绘图区里、不盖住选中那条线的命中带。
     let focus = chartInfo()["orderFlowFocus"] as? [String: Any] ?? [:]
     let plotW = chartInfo()["plotW"] as? Double ?? 0, mainH = chartInfo()["mainH"] as? Double ?? 0
     let cf = card.frame, vf = canvas.frame
@@ -247,29 +266,46 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     print("取证|详情卡|卡=\(cf)|画布=\(vf)|plotW=\(plotW)|mainH=\(mainH)|focus=\(focus)")
     XCTAssertLessThanOrEqual(Double(cf.width), plotW * 0.85 + 1, "详情卡宽过 85% 绘图区")
     XCTAssertLessThanOrEqual(Double(cf.height), mainH * 0.55 + 1, "详情卡高过 55% 主图")
+    XCTAssertLessThanOrEqual(Double(cf.height), 100, "三行的卡不该高过 100 pt：\(cf)")
     XCTAssertGreaterThanOrEqual(Double(cf.minX), Double(vf.minX) - 0.5, "详情卡出了绘图区左边")
     XCTAssertLessThanOrEqual(Double(cf.maxX), Double(vf.minX) + plotW + 0.5, "详情卡出了绘图区右边")
     XCTAssertTrue(Double(cf.maxY) <= bandY - half + 0.5 || Double(cf.minY) >= bandY + half - 0.5,
-                  "详情卡盖住了选中的那条带：卡 \(cf)，带中线 \(bandY) 半高 \(half)")
+                  "详情卡盖住了选中的那条线：卡 \(cf)，线中 \(bandY) 半高 \(half)")
     shot("手机布局-详情卡", file: "手机布局-详情卡-\(Self.shortDevice)")
+    shot("详情卡-\(isRange ? "区间" : "单价")", file: "../主力订单流-2026-09-25/详情卡-\(isRange ? "区间" : "单价")-\(Self.shortDevice)")
+    // 另一种形态也拍一张：刚才是区间就换一条单桶的，反之亦然；主档里没有就退到次档（卡是同一张），屏上都没有才跳过。
+    if let other = ranked(range: !isRange).first ?? ranked(range: !isRange, role: "secondary").first {
+      let id = select(other)
+      if !id.isEmpty, id != selected {
+        let t2 = checkCard("另一种形态")
+        XCTAssertEqual(t2.components(separatedBy: "\n").first?.contains(" – ") ?? false, !isRange, "价位写法和段的形态不符：\(t2)")
+        shot("详情卡-\(isRange ? "单价" : "区间")", file: "../主力订单流-2026-09-25/详情卡-\(isRange ? "单价" : "区间")-\(Self.shortDevice)")
+      }
+    } else {
+      print("取证|详情卡|屏上没有另一种形态（range=\(!isRange)）的主档与次档，跳过")
+    }
 
-    // 点空白处收卡：挑主图左侧一个离所有带都在命中容差之外的点（竖向半个带高 + 8 pt、横向 4 pt，再各留 6 pt 余量）。
+    // 点空白处收卡：挑主图左侧一个点，离每条线的轻点命中区（至少 8 pt 高的带子外放到 44 pt）都在 6 pt 以外，
+    // 也不落在任何一堵墙的淡底范围里。
     let all = bands()
     let clear = { (px: Double, py: Double) -> Bool in
       all.allSatisfy { b in
         let bx = b["x"] as? Double ?? 0, bw = b["w"] as? Double ?? 0
-        let by = b["y"] as? Double ?? 0, bh = b["h"] as? Double ?? 3
-        return px < bx - 10 || px > bx + bw + 10 || abs(py - by) > bh / 2 + 14
+        let by = b["y"] as? Double ?? 0, bh = max(b["h"] as? Double ?? 3, 8)
+        let reachX = max(4, (44 - bw) / 2), reachY = max(8, (44 - bh) / 2)
+        let st = b["spanTop"] as? Double ?? -1, sb = b["spanBottom"] as? Double ?? -1
+        let outX = px < bx - reachX - 6 || px > bx + bw + reachX + 6
+        return outX || (abs(py - by) > bh / 2 + reachY + 6 && !(st >= 0 && py >= st - 6 && py <= sb + 6))
       }
     }
-    let candidates = [40.0, 80, 120].flatMap { x in stride(from: mainH * 0.2, to: mainH * 0.9, by: 6).map { (x, $0) } }
+    let candidates = [30.0, 60, 90, 120, 150].flatMap { x in stride(from: mainH * 0.15, to: mainH * 0.9, by: 4).map { (x, $0) } }
     if let blank = candidates.first(where: { clear($0.0, $0.1) }) {
       origin.withOffset(CGVector(dx: blank.0, dy: blank.1)).tap()
       XCTAssertTrue(waitUntil(timeout: 3) { (self.chartInfo()["orderFlowSelected"] as? String ?? "x").isEmpty },
-                    "点空白处没取消选中")
+                    "点空白处没取消选中（点在 \(blank)）")
       XCTAssertTrue(waitUntil(timeout: 3) { !card.exists }, "点空白处详情卡没收")
     } else {
-      print("取证|详情卡|主图里找不到离所有带都远的空白行，跳过收卡检查")
+      print("取证|详情卡|主图里找不到离所有线都远的空白处，跳过收卡检查")
     }
   }
 
@@ -410,6 +446,128 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
                   "DOGE 新门槛 \(Int(target)) 没到簿那一层：\(thresholds())")
     print("取证|DOGE|改后 thresholds=\(thresholds())")
     shot("DOGE-改门槛后")
+  }
+
+  // ------------------------------------------------------------ 4b. 切品种后要重新起订（2026-09-25）
+
+  /// 开着指标、一只已经就绪之后，用深链接换到别的品种（ETH、SOL），每只都要在 90 秒内重新订上簿、画出大单。
+  /// 2026-09-25 17 Pro Max 上 BTC 15 分钟切 ETH 1 分钟 180 秒一直「加载中」，这条守着它。
+  /// 没就绪时把 app 行情日志里「主力订单流」那几行带出来（首帧、前台、在跑、品种事实、起订）。
+  func testSwitchSymbolRestartsOrderFlow() {
+    executionTimeAllowance = 900
+    XCTAssertTrue(waitForLiveChart(), "没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    XCTAssertTrue(waitUntil(timeout: 180, poll: 1) {
+      self.chartInfo()["orderFlowPhase"] as? String == "ready" && !self.bands().isEmpty
+    }, "首只品种 180 秒没画出大单：\(chartInfo())")
+    // 照出事那条路走：同一只先换周期（只换周期不重订、补最后一帧），再换品种、再换周期、再换品种。
+    for (symbol, interval) in [("BTCUSDT", "15m"), ("ETHUSDT", "1m"), ("ETHUSDT", "15m"), ("SOLUSDT", "1m")] {
+      let started = Date()
+      app.open(URL(string: "hkline://symbol/\(symbol)?interval=\(interval)")!)
+      XCTAssertTrue(waitUntil(timeout: 60, poll: 0.5) {
+        (self.chartInfo()["symbol"] as? String ?? "").hasSuffix("/" + symbol) && (self.chartInfo()["bars"] as? Int ?? 0) >= 20
+      }, "\(symbol) 没出图：\(chartInfo())")
+      let ok = waitUntil(timeout: 90, poll: 1) {
+        self.chartInfo()["orderFlowPhase"] as? String == "ready" && !self.bands().isEmpty
+      }
+      let net = app.staticTexts["market.network"].firstMatch
+      let lines = (net.exists ? net.label : "<market.network 不在>").components(separatedBy: "\n").filter { $0.contains("主力订单流") }
+      print("取证|切品种|\(symbol)|\(interval)|ok=\(ok)|用时 \(Int(Date().timeIntervalSince(started))) 秒|phase=\(chartInfo()["orderFlowPhase"] ?? "")|orders=\(orderCount())|日志=\(lines.suffix(12).joined(separator: " ⏎ "))")
+      XCTAssertTrue(ok, "\(symbol) \(interval)：切过去 90 秒没画出大单（phase=\(chartInfo()["orderFlowPhase"] ?? "")）")
+    }
+  }
+
+  // ------------------------------------------------------------ 5. 并墙 + 屏内排名（2026-09-25）
+
+  /// 并墙与屏内排名的取证：BTC / ETH / SOL / SNDK 各拍 1 分钟、15 分钟两张（17 Pro Max），
+  /// 记每张的主 / 次 / 底噪条数、并了几桶的墙、标签；SNDK 另记簿深标定出的门槛，并打开参数表看「默认门槛」。
+  /// 图写进 `docs/acceptance/主力订单流-2026-09-25/`。
+  func testWallsRankedFourSymbols() {
+    executionTimeAllowance = 3000
+    XCTAssertTrue(waitForLiveChart(), "没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    let outDir = Self.outDir.deletingLastPathComponent().appendingPathComponent("主力订单流-2026-09-25", isDirectory: true)
+    try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+    for symbol in ["BTCUSDT", "ETHUSDT", "SOLUSDT", "SNDKUSDT"] {
+      for interval in ["1m", "15m"] {
+        app.open(URL(string: "hkline://symbol/\(symbol)?interval=\(interval)")!)
+        XCTAssertTrue(waitUntil(timeout: 60, poll: 0.5) {
+          (self.chartInfo()["symbol"] as? String ?? "").hasSuffix("/" + symbol) && (self.chartInfo()["bars"] as? Int ?? 0) >= 20
+        }, "\(symbol) \(interval) 没出图：\(chartInfo())")
+        let ok = waitUntil(timeout: 180, poll: 1) {
+          self.chartInfo()["orderFlowPhase"] as? String == "ready" && !self.bands().isEmpty
+        }
+        // 就绪后再等一会儿：服务端回填的历史、本机刚确认的单都落进来再拍。
+        _ = waitUntil(timeout: 20, poll: 5) { false }
+        let all = bands()
+        let role = { (r: String) in all.filter { $0["role"] as? String == r }.count }
+        let walls = all.filter { ($0["buckets"] as? Int ?? 1) > 1 }
+          .map { "\($0["buckets"] ?? 0)桶 \($0["priceLow"] ?? 0)–\($0["priceHigh"] ?? 0) \($0["role"] ?? "")" }
+        let labels = (chartInfo()["orderFlowLabels"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
+        print("取证|并墙|\(symbol)|\(interval)|ok=\(ok)|orders=\(orderCount())|thresholds=\(thresholds())|bands=\(all.count)|主=\(role("main"))|次=\(role("secondary"))|底噪=\(role("noise"))|细线=\(all.filter { $0["thin"] as? Bool == true }.count)|并墙=\(walls)|标签=\(labels)")
+        if !ok {
+          // 没就绪时把 app 的行情日志尾巴带出来（订阅了几本簿、连上没有），省得再跑一遍去猜。
+          let net = app.staticTexts["market.network"].firstMatch
+          print("取证|并墙|\(symbol)|\(interval)|行情日志=\(String((net.exists ? net.label : "").suffix(4000)))")
+        }
+        XCTAssertTrue(ok, "\(symbol) \(interval)：180 秒没画出大单（phase=\(chartInfo()["orderFlowPhase"] ?? "")）")
+        XCTAssertLessThanOrEqual(role("main"), 6, "\(symbol) \(interval)：主超过 6 条")
+        XCTAssertTrue(labels.count <= role("main"), "\(symbol) \(interval)：标签多过主")
+        shot("并墙-\(symbol)-\(interval)", file: "../主力订单流-2026-09-25/\(symbol)-\(interval)-\(Self.shortDevice)")
+        if interval == "1m", symbol == "BTCUSDT" || symbol == "ETHUSDT" { zoom(symbol, into: outDir) }
+        if symbol == "SNDKUSDT" {
+          let dump: [String: Any] = ["interval": interval, "orderFlowThresholds": thresholds(),
+                                     "orderFlowOrders": orderCount(), "orderFlowBands": all,
+                                     "orderFlowLabels": chartInfo()["orderFlowLabels"] ?? []]
+          if let data = try? JSONSerialization.data(withJSONObject: dump, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: outDir.appendingPathComponent("SNDKUSDT-\(interval)-诊断.json"))
+          }
+          XCTAssertNotNil(thresholds()["usdtPerp"], "SNDK 没有门槛：\(thresholds())")
+          XCTAssertFalse(all.isEmpty, "SNDK 的 orderFlowBands 是空的")
+        }
+      }
+    }
+    // SNDK 参数表：「默认门槛」是簿深标定出来的那个数；照原样保存不算改动。
+    let calibrated = thresholds()["usdtPerp"]
+    openOrderFlowEditor()
+    let field = app.textFields["orderflow.threshold.usdtPerp.field"]
+    expectExists(field, Self.short, "参数表里没有 U 本位永续门槛")
+    print("取证|并墙|SNDK 参数表|field=\(field.value ?? "")|placeholder=\(field.placeholderValue ?? "")|标定=\(calibrated ?? 0)")
+    shot("并墙-SNDK-参数表", file: "../主力订单流-2026-09-25/SNDKUSDT-参数表-\(Self.shortDevice)")
+    app.buttons["orderflow.save"].tap()
+    let edit = app.buttons["indicator.edit.ORDERFLOW"].firstMatch
+    XCTAssertTrue(edit.waitForExistence(timeout: Self.short))
+    XCTAssertFalse(waitUntil(timeout: 2) { edit.label.contains("已改门槛") }, "没改动也被存成了改门槛：\(edit.label)")
+    closePanels()
+  }
+
+  /// 局部放大：在最右 40 根 K 线里找大单最密的一段（±50 pt 里线最多），截 180 × 120 pt 放大 2 倍落盘，
+  /// 看得出蜡烛压在线的上面（2026-09-25：订单流垫在 K 线下层）。
+  private func zoom(_ symbol: String, into dir: URL) {
+    let canvas = app.otherElements["chart.canvas"]
+    let vf = canvas.frame
+    let plotW = chartInfo()["plotW"] as? Double ?? Double(vf.width)
+    let left = max(0, plotW - 180)
+    let ys = bands().filter { ($0["x"] as? Double ?? 0) + ($0["w"] as? Double ?? 0) > left }.compactMap { $0["y"] as? Double }
+    guard let center = ys.max(by: { a, b in
+      ys.filter { abs($0 - a) <= 50 }.count < ys.filter { abs($0 - b) <= 50 }.count
+    }) else { print("取证|局部放大|\(symbol)|右侧没有线，跳过"); return }
+    let shot = app.screenshot()
+    let image = shot.image
+    let scale = image.scale
+    let rect = CGRect(x: (Double(vf.minX) + left) * scale, y: (Double(vf.minY) + center - 60) * scale,
+                      width: 180 * scale, height: 120 * scale)
+    guard let cg = image.cgImage?.cropping(to: rect) else { return }
+    let size = CGSize(width: 360, height: 240)
+    let format = UIGraphicsImageRendererFormat(); format.scale = scale
+    let zoomed = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+      ctx.cgContext.interpolationQuality = .none
+      UIImage(cgImage: cg).draw(in: CGRect(origin: .zero, size: size))
+    }
+    let file = dir.appendingPathComponent("\(symbol)-1m-局部放大-\(Self.shortDevice).png")
+    try? zoomed.pngData()?.write(to: file)
+    let a = XCTAttachment(image: zoomed); a.name = "局部放大-\(symbol)"; a.lifetime = .keepAlways; add(a)
+    print("取证|局部放大|\(symbol)|中心 y=\(center)|线数=\(ys.filter { abs($0 - center) <= 50 }.count)|\(file.lastPathComponent)")
   }
 
   // ------------------------------------------------------------ 3. 网关：OKX 替身
