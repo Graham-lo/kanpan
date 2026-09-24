@@ -315,30 +315,32 @@ private struct DrawingMoreMenu: View {
       PanelGroupTitle(text: "这个品种的所有画线")
       PanelRow(name: "全部隐藏") {
         PanelSwitch(isOn: allHidden) { controller.hideAll() }
-          .disabled(empty).opacity(empty ? 0.4 : 1)
+          .disabled(empty).opacity(empty ? ControlMetrics.disabledOpacity : 1)
           .accessibilityIdentifier("draw.hideAll")
       }
       PanelRow(name: "画线列表", onTap: onList) {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.s) {
           Text("\(controller.items.count) 条").monospacedDigit().font(PanelFont.meta).foregroundStyle(theme.ink3)
-          VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(theme.ink3)
+          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(theme.ink3)
         }
       }
       .accessibilityIdentifier("draw.objects.quick")
       Button { confirmClear = true } label: {
+        // 没线可清时字换成禁用色阶，不再整块降透明度（原来对比只剩约 1.3:1）。
         Text("清空全部画线")
           .font(PanelFont.name)
-          .foregroundStyle(theme.danger)
+          .foregroundStyle(empty ? PanelDisabled.ink(theme) : theme.danger)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.horizontal, PanelMetrics.hPad)
           .padding(.vertical, PanelMetrics.vPad)
+          .frame(minHeight: Inset.rowMin)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .disabled(empty).opacity(empty ? 0.4 : 1)
+      .disabled(empty)
       .accessibilityIdentifier("draw.clear")
     }
-    .padding(.bottom, 4)
+    .padding(.bottom, Space.xs)
     .frame(width: 290)
     .fixedSize(horizontal: false, vertical: true)
     .confirmationDialog("清空这个品种的全部画线？", isPresented: $confirmClear, titleVisibility: .visible) {
@@ -620,7 +622,7 @@ private struct DrawingStyleEditor: View {
           Section {
             TextField("写点什么", text: $item.text, axis: .vertical).lineLimit(1...4)
               .accessibilityIdentifier("draw.note.text")
-            Text("最多 \(Drawing.textLimit) 个字").font(.caption).foregroundStyle(theme.ink3)
+            Text("最多 \(Drawing.textLimit) 个字").font(TypeScale.caption).foregroundStyle(theme.ink3)
           } header: {
             PanelFormSectionTitle(text: "文字")
           }
@@ -637,6 +639,8 @@ private struct DrawingStyleEditor: View {
           .listRowBackground(theme.raised)
         }
       }
+      // 行文 15 regular，和面板行同一档（系统 `Form` 默认 17，比面板标题还大）。
+      .font(TypeScale.body)
       // 这张 `Form` 原来整张都是系统灰白——底、分节卡片、导航栏一个令牌都没接。
       // 从前那句「这张表是系统 `Form`」的就地豁免不成立：`IndicatorPanel` 那张同样是
       // 系统 `Form`，照样接了主题（表底 `app` / 行底 `raised` / 导航栏 `app`），
@@ -700,10 +704,10 @@ struct DrawingKindSwapRow: View {
     ViewThatFits(in: .horizontal) {
       HStack(spacing: 0) {
         Text(swap.title)
-        Spacer(minLength: 8)
+        Spacer(minLength: Space.s)
         options
       }
-      VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: Space.s) {
         Text(swap.title)
         options
       }
@@ -713,7 +717,7 @@ struct DrawingKindSwapRow: View {
   }
 
   private var options: some View {
-    HStack(spacing: 4) {
+    HStack(spacing: Space.xs) {
       ForEach(swap.options) { option in
         let on = option.kind == kind
         Button { kind = option.kind } label: {
@@ -721,15 +725,15 @@ struct DrawingKindSwapRow: View {
             .lineLimit(1)
             .fixedSize()
             .foregroundStyle(on ? theme.ink : theme.ink2)
-            .padding(.horizontal, 10)
-            .frame(minWidth: 44, minHeight: 34)
+            .padding(.horizontal, Space.m)
+            .frame(minWidth: Hit.min, minHeight: ControlMetrics.iconDisc)
             .background(on ? theme.ink.opacity(0.08) : .clear,
-                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
             .overlay {
-              RoundedRectangle(cornerRadius: 9, style: .continuous)
+              RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
                 .stroke(on ? theme.ink.opacity(0.55) : .clear, lineWidth: 1.5)
             }
-            .contentShape(Rectangle())
+            .styleCellHit()
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(option.label)
@@ -758,24 +762,24 @@ struct LineWidthPicker: View {
   var body: some View {
     HStack(spacing: 0) {
       Text("粗细")
-      Spacer(minLength: 8)
+      Spacer(minLength: Space.s)
       ForEach(Self.options, id: \.self) { w in
         Button { width = w } label: {
           RoundedRectangle(cornerRadius: w / 2, style: .continuous)
             .fill(theme.ink)
             .frame(width: 26, height: w)
-            .frame(width: 44, height: 34)
+            .frame(width: Hit.min, height: ControlMetrics.iconDisc)
             // 选中的记号用皮肤自己的墨色 `ink`，和上面那排色卡的选中圈同一支笔。
             // （原来写的是 `Color.primary`，理由是「这张表是系统 `Form`」——现在这张表
             //   已经接了主题，系统的黑白反而是这一屏上唯一不跟皮肤走的那支。
             //   仍然不用强调色：这四档是样张不是开关，用强调色会和「保存」抢眼。）
             .background(selected == w ? theme.ink.opacity(0.08) : .clear,
-                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
             .overlay {
-              RoundedRectangle(cornerRadius: 9, style: .continuous)
+              RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
                 .stroke(selected == w ? theme.ink.opacity(0.55) : .clear, lineWidth: 1.5)
             }
-            .contentShape(Rectangle())
+            .styleCellHit()
         }
         .buttonStyle(.borderless)
         .accessibilityLabel("粗细 \(w.formatted())")
@@ -783,6 +787,16 @@ struct LineWidthPicker: View {
         .accessibilityIdentifier("draw.width.\(w.formatted())")
       }
     }
+  }
+}
+
+private extension View {
+  /// 样式表里那几排小格（换画法、粗细）：画面是 32 高的格，点击区撑到 44；多出来的上下
+  /// 各 6 用负边距还给布局，表格行不会因此变高（系统表格行上下本来就留着更宽的边）。
+  func styleCellHit() -> some View {
+    frame(minHeight: Hit.min)
+      .contentShape(Rectangle())
+      .padding(.vertical, -(Hit.min - ControlMetrics.iconDisc) / 2)
   }
 }
 
@@ -794,16 +808,16 @@ struct DrawingColorControl: View {
   @Environment(\.panelTheme) private var theme
   private let swatches: [Hex] = ["#E2B34F", "#4A90E2", "#A078D0", "#37A78F", "#E46A76", "#D88040", "#B8C4D8"]
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Space.s) {
       ColorPicker(title, selection: Binding(get: { Color(hex: color) }, set: { color = Self.hex($0) }), supportsOpacity: false)
       ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: 4) {
+      HStack(spacing: Space.xs) {
         ForEach(swatches, id: \.self) { hex in
           Button { color = hex } label: {
             Circle().fill(Color(hex: hex)).frame(width: 22, height: 22)
               // 选中圈走皮肤的墨色，不用系统的黑白（同 `LineWidthPicker`）。
               .overlay(Circle().stroke(color == hex ? theme.ink : .clear, lineWidth: 2).padding(-3))
-              .frame(width: 44, height: 44).contentShape(Rectangle())
+              .hitTarget()
           }.buttonStyle(.borderless).accessibilityLabel(hex.value).accessibilityIdentifier("\(identifierPrefix).\(hex.value)")
         }
       }

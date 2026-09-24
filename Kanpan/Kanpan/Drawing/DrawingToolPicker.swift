@@ -31,27 +31,32 @@ struct DrawingToolPicker: View {
 
   private var header: some View {
     HStack {
-      Text("画线").font(.system(size: 20, weight: .semibold)).foregroundStyle(theme.ink)
+      // 标题和其它面板同一档（17 semibold）；原来 20 是全 app 唯一一处。
+      Text("画线").font(TypeScale.title).foregroundStyle(theme.ink)
       Spacer()
       Button(action: onClose) {
-        Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
-          .frame(width: 30, height: 30)
+        Image(systemName: "xmark").font(TypeScale.captionEmph)
+          .frame(width: ControlMetrics.iconDisc, height: ControlMetrics.iconDisc)
           .background(theme.raised2, in: Circle())
+          .hitTarget()
       }
       .buttonStyle(.plain).foregroundStyle(theme.ink2)
       .accessibilityLabel("关闭").accessibilityIdentifier("draw.sheet.done")
     }
-    .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+    .padding(.leading, Inset.card)
+    // 关闭钮的圆托底落在右缘 `hPad` 上：44 的点击区比托底宽，多出来的那半截借进边距。
+    .padding(.trailing, Inset.card - (Hit.min - ControlMetrics.iconDisc) / 2)
+    .padding(.vertical, Space.xs)
   }
 
   /// 仍然套一层 `ScrollView`：十二格在最小的机型上也摆得下，但把字号调到 AX 档之后
   /// 每一格会长高，那时候还能往下推一点，而不是把最后一行顶出屏幕。
   private var grid: some View {
     ScrollView {
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.m), count: 3), spacing: Space.m) {
         ForEach(Drawing.Kind.palette) { kind in tile(kind) }
       }
-      .padding(.horizontal, 16).padding(.bottom, 20)
+      .padding(.horizontal, Inset.card).padding(.top, Space.xs).padding(.bottom, Space.xl)
     }
   }
 
@@ -67,18 +72,19 @@ struct DrawingToolPicker: View {
     let picked = controller.tool == kind
       || (controller.tool == nil && store.prefs.lastDrawTool == kind.rawValue)
     return Button { controller.pick(kind) } label: {
-      VStack(spacing: 8) {
+      VStack(spacing: Space.s) {
         DrawKindGlyph(kind: kind, size: 30)
-        Text(kind.title).font(.system(size: 11)).multilineTextAlignment(.center)
-          .lineLimit(2).minimumScaleFactor(0.85).fixedSize(horizontal: false, vertical: true)
+        Text(kind.title).font(TypeScale.caption).multilineTextAlignment(.center)
+          .lineLimit(2).fixedSize(horizontal: false, vertical: true)
       }
-      .padding(.horizontal, 4).padding(.vertical, 12)
-      .frame(maxWidth: .infinity, minHeight: 86)
-      .contentShape(RoundedRectangle(cornerRadius: 12))
+      .padding(.horizontal, Space.xs).padding(.vertical, Space.m)
+      .frame(maxWidth: .infinity, minHeight: Hit.min * 2)
+      .contentShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
     }
     .buttonStyle(.plain)
     .foregroundStyle(picked ? theme.amber : theme.ink)
-    .background(RoundedRectangle(cornerRadius: 12).fill(picked ? theme.amberSoft : theme.raised2))
+    .background(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
+      .fill(picked ? theme.amberSoft : theme.raised2))
     .accessibilityIdentifier("draw.tool.\(kind.rawValue)")
     .drawRepeatOnLongPress(controller, kind)
   }
