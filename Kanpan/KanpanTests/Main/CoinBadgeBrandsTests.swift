@@ -50,8 +50,11 @@ struct CoinBadgeBrandsTests {
   }
 
   @Test func everyPathParses() {
-    // `SVGPath` 碰到不认识的字母只会默默跳过，所以先查字符集，再查解出来的图形不是空的。
+    // `SVGPath` 碰到不认识的字母只会默默跳过，所以先查字符集，再查解出来的图形不是空的、
+    // 落在 24 格画布里（按路径本身的外框算，不含曲线控制点）。画布四周各放 1 格余量：
+    // TIA 的月牙是拿一枚探出右上角的圆去挖的，挖的那一枚本来就越过边一点。
     let allowed = Set("MmLlHhVvCcSsQqTtAaZz0123456789.-, ")
+    let canvas = CGRect(x: -1, y: -1, width: 26, height: 26)
     for (key, spec) in CoinSpec.brandFile {
       guard case .parts(let parts) = spec.mark else { continue }
       #expect(!parts.isEmpty, "\(key) 没有笔画")
@@ -63,6 +66,8 @@ struct CoinBadgeBrandsTests {
           #expect(Set(d).isSubset(of: allowed), "\(key) 路径有不认识的字符：\(d)")
           let box = SVGPath.parsed([d]).boundingRect
           #expect(!box.isNull && (box.width > 0 || box.height > 0), "\(key) 路径解出来是空的：\(d)")
+          let outline = SVGPath.parsed([d]).cgPath.boundingBoxOfPath
+          #expect(canvas.contains(outline), "\(key) 路径出了 24 格画布：\(outline)")
         }
       }
     }
@@ -101,5 +106,14 @@ struct CoinBadgeBrandsTests {
       #expect(CoinSpec.of(key) == CoinSpec.brand(key), "\(key)")
     }
     #expect(CoinSpec.brand("NOT-A-SYMBOL") == nil)
+  }
+
+  /// 比亚迪那枚椭圆原来起笔写成了左端点当顶点，整只椭圆往左偏了 6.6 格、一半出了画布，
+  /// 中间那道横条戳在圈外。守住它居中。
+  @Test func bydEllipseIsCentered() throws {
+    let byd = try #require(CoinSpec.brand("BYD"))
+    guard case .parts(let parts) = byd.mark else { Issue.record("BYD 不是笔画记号"); return }
+    let ring = SVGPath.parsed(parts[0].d).cgPath.boundingBoxOfPath
+    #expect(abs(ring.midX - 12) < 0.01 && abs(ring.midY - 12) < 0.01, "椭圆中心 \(ring)")
   }
 }
