@@ -87,6 +87,7 @@ public struct ChartRenderer {
     let oiChanged = previous?.oi != state.oi || previous?.external != state.external
     let inputsChanged = seriesChanged || oiChanged || previous?.params != state.params
       || previous?.overlays != state.overlays || previous?.subs != state.subs
+    var tailed = false
     // Same count does not imply same candles: REST can replace a stale snapshot,
     // and every live tick changes the last MA/MACD value.
     if let old = previous, seriesChanged || oiChanged {
@@ -101,11 +102,17 @@ public struct ChartRenderer {
       if old.series.samePrefix(as: state.series) || state.series.isOneBarAfter(old.series),
         old.oi == state.oi && old.external == state.external {
         engine.updateTail(series: state.series, external: state.indicatorInputs, dataKey: dataKey)
+        tailed = true
       } else {
         engine = IndicatorEngine()
       }
     }
-    if inputsChanged { engine.ensure(
+    // 只来了一笔 tick（尾巴已经更完、指标集合和参数都没动）时，`ensure` 能得出的只有
+    // 「键没变、什么都不做」——`updateTail` 刚按同一份输入记过键。从前它照样再理一遍参数、
+    // 再造一次键去比，每个 tick 两份（审查 24）；现在这一步直接跳过。
+    let onlyTicked = tailed && previous?.params == state.params
+      && previous?.overlays == state.overlays && previous?.subs == state.subs
+    if inputsChanged, !onlyTicked { engine.ensure(
       series: state.series, wanted: state.overlays + state.subs,
       params: state.params, external: state.indicatorInputs, dataKey: dataKey) }
     if seriesChanged || previous?.view != state.view || previous?.options.kind != state.options.kind {

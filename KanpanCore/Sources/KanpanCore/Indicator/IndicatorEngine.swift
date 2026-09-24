@@ -11,7 +11,7 @@ public struct IndicatorEngine: Sendable {
 
   private var states: [IndicatorID: State] = [:]
   private var params: [IndicatorID: [Int]] = [:]
-  private var key = ""
+  private var key: CacheKey?
   /// 现有这些状态是照着哪一份 K 线算出来的（`BarSeries.revision`，全局唯一）。
   /// 0 是「还没算过」——戳从 1 开始发，永远撞不上。
   private var dataRevision: UInt64 = 0
@@ -33,8 +33,7 @@ public struct IndicatorEngine: Sendable {
     let ids = Array(Set(wanted))
     // 参数先理一遍再用：`build` 按下标取固定个数的参数，长度不够就是越界崩溃。
     let resolved = Dictionary(uniqueKeysWithValues: ids.map { ($0, $0.normalizedParams(params[$0])) })
-    let k = Self.cacheKey(series: series, wanted: ids, params: resolved,
-                          external: external, dataKey: dataKey)
+    let k = CacheKey(series: series, params: resolved, external: external, dataKey: dataKey)
     if k == key { return false }
     key = k
 
@@ -122,8 +121,7 @@ public struct IndicatorEngine: Sendable {
       states[id]?.update(series: series, from: start, external: external[id])
       values[id] = states[id]?.result
     }
-    key = Self.cacheKey(series: series, wanted: Array(states.keys), params: params,
-                        external: external, dataKey: dataKey)
+    key = CacheKey(series: series, params: params, external: external, dataKey: dataKey)
     dataRevision = series.revision
   }
 
@@ -145,20 +143,29 @@ public struct IndicatorEngine: Sendable {
   /// K 线一个字没动它们也会变（持仓量补上了新的一段、多空比翻了一页历史），
   /// 键里没有它们的影子就意味着「数据更新了但键没变」，`ensure` 直接短路返回、
   /// 画面停在旧值上。戳是全局唯一的，比一遍数组便宜。
-  public static func cacheKey(
-    series: BarSeries, wanted: [IndicatorID], params: [IndicatorID: [Int]],
-    external: [IndicatorID: ExternalSeries] = [:], dataKey: String = ""
-  ) -> String {
-    // 直接按指标排、直接拿值，不再「先转成字符串排序、再用字符串反查指标」——
-    // 那一来一回要两次强制解包，任何一个名字对不上就是崩溃。
-    let parts = wanted.sorted { $0.rawValue < $1.rawValue }.map { id -> String in
-      let p = (params[id] ?? []).map(String.init).joined(separator: "-")
-      return "\(id.rawValue):\(p)"
+  ///
+  /// 从前是一条拼出来的字符串（`数据键|品种|周期|指标:参数,…|外部@戳,…|根数`），
+  /// 每个 tick 要排序、插值、拼接两遍（审查 24）。现在是一个值：字段逐个比，
+  /// 指标集合就是参数表的键，比较结论和那条字符串一样，只是不再每 tick 造字符串。
+  struct CacheKey: Equatable, Sendable {
+    var dataKey: String
+    var symbol: String
+    var interval: Interval
+    /// 指标 → 理过的参数。键集合就是「要哪些指标」。
+    var params: [IndicatorID: [Int]]
+    /// 外部输入 → 它的戳。
+    var external: [IndicatorID: UInt64]
+    var count: Int
+
+    init(series: BarSeries, params: [IndicatorID: [Int]],
+         external: [IndicatorID: ExternalSeries], dataKey: String) {
+      self.dataKey = dataKey
+      symbol = series.symbol
+      interval = series.interval
+      self.params = params
+      self.external = external.mapValues(\.revision)
+      count = series.count
     }
-    let ext = external.sorted { $0.key.rawValue < $1.key.rawValue }.map { id, series -> String in
-      "\(id.rawValue)@\(series.revision)"
-    }
-    return "\(dataKey)|\(series.symbol)|\(series.interval.rawValue)|\(parts.joined(separator: ","))|\(ext.joined(separator: ","))|\(series.count)"
   }
 
   // ---------------------------------------------------------------- 状态
