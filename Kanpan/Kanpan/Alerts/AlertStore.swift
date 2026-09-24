@@ -93,7 +93,7 @@ final class AlertStore: ObservableObject {
     return alert
   }
 
-  /// 裸价格提醒：图上十字线那颗「涨到 X 提醒我」弹出的新建页走这一个口（`AlertStore.commit`）。
+  /// 裸价格提醒：图上十字线那颗「创建提醒」弹出的新建页走这一个口（`AlertStore.commit`）。
   /// 方向按现价自动定（`Alert.price`）。同一只品种同一个价已经有一条活动的就不再建第二条——
   /// 把这一次填的条件、Webhook、备注落到那一条上，返回它。
   @discardableResult

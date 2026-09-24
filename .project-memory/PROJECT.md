@@ -555,3 +555,9 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   - Webhook 只在本机触发的那一次由 app 发（`AlertStore.localFires`），服务端触发的由服务端发，不重复。
 - 验收截图 `docs/acceptance/提醒-2026-09-25/`（16 Pro，青苔浅 / 深）；手册 `docs/使用手册-2026-09-21.md` 提醒一节已改。
 - **状态**：已推送——客户端 `0d39c09f`（Core）、`3abe0775`（App）、`d6cbf6f9`（UI 用例）与文档截图一笔；服务端 `6d61a9b3` 已推送并部署。
+- **v2 重做（2026-09-25 下午，用户看完第一版：「布局不太合理、有点粗糙」「webhook 只要地址」「也不需要备注」）**：
+  - 十字线药丸改成带铃铛的「创建提醒」（琥珀淡底 + 描边，28 高、44 点按区，id 仍是 `chart.crosshair.alert`）；`ChartSession.livePrice` 随之删掉。
+  - 创建页（`AlertForm.swift`）整页 inset grouped 卡片（`AlertRecordRow.swift` 里的 `AlertGroupCard` / `AlertCardDivider` / `AlertPageStyle`：浅色页面 `raised`、卡片 `raised2`；深色页面退到 `app`）：只读品种卡（徽章、交易所 · 产品、现价与涨跌幅）→ 价格 + 「现价 X · 高于/低于现价 Y%」+ 条件分段（`PanelSegment` 新增 `track` 参数）→ Webhook 开关 + 地址 → 脚注「触发时向这个地址发一条 JSON」与「发一条测试」（结果走 Toast）→ 48 高主按钮（不钉底）→ 「提醒记录」（只列这只品种，生效中在前，点生效中的价格提醒进编辑页，左划删除）。
+  - 删掉：品种输入框、±% 档位、模板编辑与占位符、最近用过的 Webhook、备注（UI、总表行、通知正文）。契约不变：客户端 `note` / `webhookText` 一律写 null，服务端按默认模板发；`AlertMessage` 的 `{备注}` 占位逻辑与测试保留。
+  - 总表行与「提醒记录」共用 `AlertRecordRow` / `AlertRecordText`（标题、状态灰字、排序、交易所行都是纯函数，有单测）。
+  - 验收截图 `docs/acceptance/提醒-2026-09-25/v2-*.png`（16 Pro：图上药丸、创建页青苔浅 / 深 / 经典浅、Webhook 打开、提醒记录、编辑页）。

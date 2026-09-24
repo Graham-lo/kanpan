@@ -25,7 +25,7 @@ struct AlertListContext {
 /// 全 app 管提醒只有这一处：改条件、编辑、删除、重新上膛都在这儿。
 /// 图上那枚小铃铛只表示「这条线挂着提醒」，点它不弹任何菜单——同一个动作
 /// 只留一个入口（`kanpan-one-entry-per-action`）。建提醒也只有一个入口：图上十字线那颗
-/// 「涨到 X 提醒我」，所以这张表右上不再有「新建」。
+/// 「创建提醒」，所以这张表右上不再有「新建」。
 ///
 /// 2026-09-25 起它不再挂在设置里（入口搬到了图上）：从新建提醒页右上「全部」推进来
 /// （`presentedAsSheet == false`，系统返回），深链 `hkline://alerts` / 通知点开时仍是一张表
@@ -47,6 +47,7 @@ struct AlertListPage: View {
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.panelHPad) private var hPad
 
   var body: some View {
     if presentedAsSheet {
@@ -76,7 +77,7 @@ struct AlertListPage: View {
         if let alert = store.all.first(where: { $0.id == id }) {
           AlertForm(initialSymbol: InstrumentID(alert.symbol).display, existing: alert,
                     resolve: context.quote, prepare: context.prepareQuote,
-                    release: context.releaseQuote, recentWebhooks: store.recentWebhooks) { draft in
+                    release: context.releaseQuote, zone: context.zone) { draft in
             store.commit(draft, editing: id)
           }
         }
@@ -89,25 +90,33 @@ struct AlertListPage: View {
         if store.all.isEmpty {
           empty
         } else {
-          ForEach(store.sorted) { alert in
-            AlertRow(alert: alert,
-                     open: $openSwipe,
-                     onOpen: { context.onOpen(alert) },
-                     onRearm: { store.rearm(id: alert.id) },
-                     onCondition: { store.setCondition($0, id: alert.id) },
-                     onEdit: alert.kind == .price ? { editing = alert.id } : nil,
-                     onDelete: { Haptics.warning(); store.remove(id: alert.id) },
-                     watched: context.watching == alert.id,
-                     onWatch: { context.onWatch(alert) },
-                     zone: context.zone)
+          // 2026-09-25 v2：和创建提醒页底下的「提醒记录」同一种写法——一张分组卡片、同一个
+          // `AlertRecordRow`，只是这里跨品种，标题带品种名，右边多出再次提醒 / 盯一个 / 条件。
+          let rows = store.sorted
+          AlertGroupCard {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, alert in
+              AlertRow(alert: alert,
+                       open: $openSwipe,
+                       divider: index < rows.count - 1,
+                       onOpen: { context.onOpen(alert) },
+                       onRearm: { store.rearm(id: alert.id) },
+                       onCondition: { store.setCondition($0, id: alert.id) },
+                       onEdit: alert.kind == .price ? { editing = alert.id } : nil,
+                       onDelete: { Haptics.warning(); store.remove(id: alert.id) },
+                       watched: context.watching == alert.id,
+                       onWatch: { context.onWatch(alert) },
+                       zone: context.zone,
+                       decimals: context.quote(InstrumentID(alert.symbol).display)?.decimals)
+            }
           }
         }
       }
-      .padding(.top, Space.xs)
-      .padding(.bottom, Space.l)
+      .padding(.horizontal, hPad)
+      .padding(.top, Space.m)
+      .padding(.bottom, Space.section)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .background(t.raised.ignoresSafeArea())
+    .background(AlertPageStyle.background(t).ignoresSafeArea())
     // 「这张表在不在」的记号。**`children: .contain` 那一句不能省**：光写
     // `accessibilityIdentifier` 会把这个名字往下盖到每个子元素上（`DisplaySettingsSection`
     // 那一排配色卡踩过同一个坑），`.contain` 让它只当一个容器，子元素各留各的名字。
@@ -131,15 +140,14 @@ struct AlertListPage: View {
   }
 }
 
-/// 一行：徽章 + 品种 + 线种 + 状态。左划删除。
+/// 总表的一行：`AlertRecordRow`（圆点 + 标题 + 灰字）+ 右边的动作。左划删除 / 编辑。
 ///
 /// 左划那一套**不在这儿实现**：它是 `SwipeToDelete`，全 app 一份，画线管理
-/// （`DrawingSheet`）用的是同一个零件。这一行原来自己 ZStack + DragGesture 画了
-/// 一遍，画线管理那边又用系统的 `.swipeActions` 画了一遍——同一个动作两套实现，
-/// 两块砖的字色还不一样（`kanpan-one-feature-one-module`）。
+/// （`DrawingSheet`）和创建提醒页的「提醒记录」用的是同一个零件（`kanpan-one-feature-one-module`）。
 private struct AlertRow: View {
   var alert: KanpanCore.Alert
   @Binding var open: String?
+  var divider: Bool
   var onOpen: () -> Void
   var onRearm: () -> Void
   var onCondition: (KanpanCore.Alert.Condition) -> Void
@@ -149,13 +157,21 @@ private struct AlertRow: View {
   var watched = false
   var onWatch: () -> Void = {}
   var zone: TZOffset
+  var decimals: Int?
 
   @Environment(\.panelTheme) private var t
-  @Environment(\.panelHPad) private var hPad
 
   var body: some View {
     SwipeToDelete(id: alert.id, open: $open, brick: .flush, trailing: actions) { swipe in
-      row(swipe)
+      AlertRecordRow(alert: alert,
+                     title: AlertRecordText.title(alert, withSymbol: true),
+                     meta: AlertRecordText.meta(alert, zone: zone, decimals: decimals,
+                                                conditionInline: false),
+                     divider: divider,
+                     onTap: { swipe.isOpen ? swipe.close() : onOpen() }) {
+        // 胶囊的点按区撑到 44，但不把行撑高：往回收一个 `Space.s`，点按区落在行自己的上下留白里。
+        trailing(swipe).padding(.vertical, -Space.s)
+      }
     }
   }
 
@@ -164,56 +180,6 @@ private struct AlertRow: View {
     var list: [SwipeAction] = [.delete(t, run: onDelete)]
     if let onEdit { list.append(SwipeAction(id: "edit", title: "编辑", fill: t.amber, run: onEdit)) }
     return list
-  }
-
-  /// 2026-09-24 UI 整改 P1b：不再往 `PanelRow` 上叠一层 overlay 把徽章硬塞进左留白
-  /// （原来徽章 24、文字从 46 起，和上面两行对不齐）。徽章进正经的前导位（`listBadge` 32，
-  /// 和板块、自选列表同一个尺寸），名 15、副 12，右边两颗胶囊视觉不变、点按区撑到 44。
-  private func row(_ swipe: SwipeDeleteProxy) -> some View {
-    Button(action: { swipe.isOpen ? swipe.close() : onOpen() }) {
-      HStack(spacing: Space.m) {
-        CoinBadge(base: KanpanCore.Alert.base(of: alert.symbol), size: ControlMetrics.listBadge)
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: Space.xxs) {
-          Text(title)
-            .font(TypeScale.body).monospacedDigit()
-            .foregroundStyle(t.ink)
-            .lineLimit(1)
-            .minimumScaleFactor(0.85)
-          HStack(spacing: Space.xs) {
-            Text(meta).font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink3)
-            // 填了 Webhook 的在状态后面带一枚链接记号，读得出「这条响了还会往外发」。
-            if alert.webhook != nil {
-              Image(systemName: "link")
-                .font(TypeScale.captionEmph)
-                .foregroundStyle(t.ink3)
-                .accessibilityLabel("Webhook")
-                .accessibilityIdentifier("alerts.row.webhook")
-            }
-          }
-          if let note = alert.note {
-            Text(note)
-              .font(TypeScale.caption)
-              .foregroundStyle(t.ink2)
-              .lineLimit(1)
-              .accessibilityIdentifier("alerts.row.note")
-          }
-        }
-        Spacer(minLength: 0)
-        // 胶囊的点按区撑到 44，但不把行撑高：往回收一个 `Space.s`，点按区落在行自己的上下留白里。
-        trailing(swipe).padding(.vertical, -Space.s)
-      }
-      .padding(.horizontal, hPad)
-      .padding(.vertical, Space.s)
-      .frame(minHeight: Inset.rowMin)
-      .contentShape(Rectangle())
-      .overlay(alignment: .bottom) {
-        // 分隔线从文字那一条起（iOS 带图标列表的惯例），徽章下面不划。
-        Rectangle().fill(t.hair).frame(height: 1)
-          .padding(.leading, hPad + ControlMetrics.listBadge + Space.m)
-      }
-    }
-    .buttonStyle(.plain)
   }
 
   @ViewBuilder private func trailing(_ swipe: SwipeDeleteProxy) -> some View {
@@ -255,8 +221,7 @@ private struct AlertRow: View {
   }
 
   @ViewBuilder private var condition: some View {
-    // 「碰到 / 收盘穿过」这个选择**只住在这一行**。画完线那一下不问，
-    // 图上也没有第二处能改（方案 2.3）。
+    // 「碰到 / 收盘穿过」在总表里住在这一行右边（创建页里在「条件」那一格）。
     Menu {
       ForEach([KanpanCore.Alert.Condition.touch, .close], id: \.self) { c in
         Button(c.title) { onCondition(c) }
@@ -270,34 +235,5 @@ private struct AlertRow: View {
       .hitTarget()
     }
     .accessibilityIdentifier("alerts.condition")
-  }
-
-  private var title: String {
-    // 价格提醒的标题末尾那串价补上千分位（「BTC 跌到 12,345.00」）。老提醒存的是不带
-    // 分隔的写法，这里在显示时补，`grouped` 对已经带分隔的串原样返回（视觉审查 2.9 #3）。
-    if alert.kind == .price, let cut = alert.title.lastIndex(of: " ") {
-      return String(alert.title[...cut]) + grouped(String(alert.title[alert.title.index(after: cut)...]))
-    }
-    if alert.kind != .drawing, !alert.title.isEmpty { return alert.title }
-    // 别家带分隔的代号写 `BTC/USD`，币安照旧只写基础币（见 `Alert.name(of:)`）。
-    let base = KanpanCore.Alert.name(of: alert.symbol)
-    guard let name = alert.lineName else { return base }
-    return base + " · " + name
-  }
-
-  private var meta: String {
-    if alert.kind == .reviewDue {
-      let at = alert.status == .fired ? alert.firedAt ?? alert.dueAt : alert.dueAt
-      let time = at.map { ReviewLabels.dayTime(ms: Int64($0), offsetMinutes: zone) } ?? ""
-      return alert.status == .fired ? "已到点 · " + time : "到期 " + time
-    }
-    switch alert.status {
-    case .fired:
-      guard let at = alert.firedAt else { return "已触发" }
-      return "已触发 · " + ReviewLabels.dayTime(ms: Int64(at), offsetMinutes: zone)
-    case .paused: return "已暂停"
-    // 条件已经写在右边那颗胶囊上，这里不再复述一遍（2026-09-24 审查 6.4）。
-    case .active: return "生效中"
-    }
   }
 }

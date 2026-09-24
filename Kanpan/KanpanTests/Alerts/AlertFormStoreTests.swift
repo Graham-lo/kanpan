@@ -3,8 +3,9 @@ import KanpanCore
 import Testing
 @testable import Kanpan
 
-/// 2026-09-25 从图上加提醒：新建带条件 / Webhook / 备注、编辑（改价重新布防）、
-/// 「最近用过」、以及 Webhook 只在本机判响时由本机发。
+/// 2026-09-25 从图上加提醒：新建带条件 / Webhook、编辑（改价重新布防）、
+/// Webhook 只在本机判响时由本机发，以及 v2 创建页的记录行文字与排序。
+/// v2 起表单不再交备注与推送内容（落账时两样都是 nil），存储层照旧认这两个字段。
 @Suite("提醒 · 新建与编辑")
 @MainActor
 struct AlertFormStoreTests {
@@ -86,32 +87,24 @@ struct AlertFormStoreTests {
                          webhook: nil, webhookText: nil, note: "x") == nil)
   }
 
-  @Test("表单落账：新建与编辑走同一个口")
+  @Test("表单落账：新建与编辑走同一个口，备注与推送内容一律不写")
   func commitCreatesThenEdits() throws {
     let store = fresh()
     let draft = AlertDraft(quote: quote(), target: 84_662.2, condition: .touch,
-                           webhook: "https://example.com/hook", webhookText: nil, note: "n")
+                           webhook: "https://example.com/hook")
     let created = try #require(store.commit(draft))
     #expect(created.title == "BTC 涨到 84,662.2")
+    #expect(created.note == nil)
+    #expect(created.webhookText == nil)
+    #expect(created.webhook == "https://example.com/hook")
     var next = draft
     next.target = 83_000
-    next.note = nil
+    next.webhook = nil
     let edited = try #require(store.commit(next, editing: created.id))
     #expect(edited.id == created.id)
     #expect(edited.title == "BTC 跌到 83,000.0")
-    #expect(edited.note == nil)
+    #expect(edited.webhook == nil)
     #expect(store.all.count == 1)
-  }
-
-  @Test("最近用过的地址：去重、新的在前、最多三个")
-  func recentWebhooks() {
-    let store = fresh()
-    let urls = ["https://a.com/1", "https://b.com/2", "https://a.com/1", "https://c.com/3", "https://d.com/4"]
-    for (i, url) in urls.enumerated() {
-      store.addPrice(symbol: "BTCUSDT", target: Double(90_000 + i), current: 84_500, label: "x",
-                     webhook: url, now: Double(i))
-    }
-    #expect(store.recentWebhooks == ["https://d.com/4", "https://c.com/3", "https://a.com/1"])
   }
 
   @Test("本机判响的才算本机发 Webhook；同步下来的已触发不算")
@@ -129,21 +122,71 @@ struct AlertFormStoreTests {
     #expect(!store.firedLocally(alert))
   }
 
-  @Test("通知正文：现价 · 备注")
+  @Test("通知正文只写现价，不再接备注")
   func notificationBody() throws {
     var alert = KanpanCore.Alert.price(symbol: "BTCUSDT", target: 84_662.2, current: 84_500,
                                        label: "84,662.2", now: 1, note: "前高")
-    #expect(AlertNotifications.body(for: alert, decimals: 1) == "前高")
+    #expect(AlertNotifications.body(for: alert, decimals: 1) == nil)
     alert.firedPrice = 84_670.5
-    #expect(AlertNotifications.body(for: alert, decimals: 1) == "现价 84,670.5 · 前高")
+    #expect(AlertNotifications.body(for: alert, decimals: 1) == "现价 84,670.5")
     alert.note = nil
     #expect(AlertNotifications.body(for: alert, decimals: 1) == "现价 84,670.5")
   }
 
-  @Test("十字线药丸的字：比现价高是涨到、低是跌到、没现价写在")
+  @Test("十字线药丸的字固定是「创建提醒」，不报价")
   func crosshairChipTitle() {
-    #expect(CrosshairActionBar.title(price: 84_535.5, live: 84_000, decimals: 1) == "涨到 84,535.5 提醒我")
-    #expect(CrosshairActionBar.title(price: 83_000, live: 84_000, decimals: 1) == "跌到 83,000.0 提醒我")
-    #expect(CrosshairActionBar.title(price: 83_000, live: nil, decimals: 1) == "在 83,000.0 提醒我")
+    #expect(CrosshairActionBar.title == "创建提醒")
+  }
+
+  @Test("Webhook 测试的提示：成功只说已发出")
+  func webhookToast() {
+    #expect(AlertWebhook.Outcome.status(200).toast == "已发出")
+    #expect(AlertWebhook.Outcome.status(500).toast == "发送失败 · 500")
+    #expect(AlertWebhook.Outcome.failed("超时").toast == "发送失败 · 超时")
+  }
+
+  @Test("记录行：创建页的标题不带品种名，总表带")
+  func recordTitles() throws {
+    let price = KanpanCore.Alert.price(symbol: "BTCUSDT", target: 79_916.2, current: 84_500,
+                                       label: "79916.2", now: 1)
+    #expect(AlertRecordText.title(price, withSymbol: false) == "跌到 79,916.2")
+    #expect(AlertRecordText.title(price, withSymbol: true) == "BTC 跌到 79,916.2")
+    let store = fresh()
+    let line = try #require(store.add(drawing: Drawing(id: "d1", kind: .hline, points: [DrawPoint(t: 1_000, p: 100)]),
+                                      symbol: "BTCUSDT", now: 5))
+    #expect(AlertRecordText.title(line, withSymbol: true).hasPrefix("BTC · "))
+    #expect(AlertRecordText.title(line, withSymbol: false).hasPrefix("触到你画的"))
+  }
+
+  @Test("记录行灰字：生效中写条件（创建页）或「生效中」（总表），已触发带时间与现价")
+  func recordMeta() {
+    var alert = KanpanCore.Alert.price(symbol: "BTCUSDT", target: 90_000, current: 84_500,
+                                       label: "90,000.0", now: 1, condition: .close)
+    #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: true) == "收盘穿过")
+    #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: false) == "生效中")
+    alert.status = .fired
+    alert.firedAt = 1_758_732_240_000   // 2025-09-24 16:44 UTC
+    alert.firedPrice = 84_670.5
+    #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: true)
+            == "已触发 · 9/24 16:44 · 现价 84,670.5")
+  }
+
+  @Test("创建页只列这一只：生效中的在前、已触发在后，各按新建倒序；复盘到点不列")
+  func recordOrder() throws {
+    let store = fresh()
+    let a = try #require(store.addPrice(symbol: "BTCUSDT", target: 90_000, current: 84_500, label: "a", now: 1))
+    let b = try #require(store.addPrice(symbol: "BTCUSDT", target: 91_000, current: 84_500, label: "b", now: 2))
+    let c = try #require(store.addPrice(symbol: "BTCUSDT", target: 92_000, current: 84_500, label: "c", now: 3))
+    _ = try #require(store.addPrice(symbol: "ETHUSDT", target: 5_000, current: 4_000, label: "e", now: 4))
+    _ = store.markFired(id: c.id, at: 10, price: 92_001)
+    let ids = AlertRecordText.records(store.all, symbol: "binance/usd_m/BTCUSDT").map(\.id)
+    #expect(ids == [b.id, a.id, c.id])
+  }
+
+  @Test("品种卡第二行：交易所 · 产品")
+  func venueLine() {
+    #expect(AlertRecordText.venueLine("binance/usd_m/BTCUSDT") == "币安 · USDT 永续")
+    #expect(AlertRecordText.venueLine("coinbase/spot/BTC-USD") == "Coinbase · 现货")
+    #expect(AlertRecordText.venueLine("BTCUSDT") == "币安 · USDT 永续")
   }
 }

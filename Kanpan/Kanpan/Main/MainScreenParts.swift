@@ -227,7 +227,7 @@ struct MainHeaderView<Card: View>: View {
           // 和十字线那套让位一模一样，行高一个 pt 都不变。
           .opacity(cardVisible ? 0 : 1)
         // 「顶部」那一档的开高低收（其余两档读数在图里，这儿什么都不画）。
-        // 十字线那颗「涨到 X 提醒我」不在头部：它在周期条那一行（`CrosshairActionBar`），
+        // 十字线那颗「创建提醒」不在头部：它在周期条那一行（`CrosshairActionBar`），
         // 所以按住图找位置的时候，价格、涨跌、六格一直是实时的（2026-09-23）。
         CrosshairOHLCLabel(readout: readout, context: context, color: theme.ink, fillsWidth: true)
           .fixedSize(horizontal: false, vertical: true)

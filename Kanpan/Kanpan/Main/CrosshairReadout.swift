@@ -52,9 +52,6 @@ struct CrosshairContext {
   var offsetMinutes: TZOffset
   /// 「顶部」那档显示模式开着吗（`prefs.dataDisplay == .top`）。
   var enabled: Bool
-  /// 此刻的现价（逐笔，没有就 24h 行情的最新价）。和序列一样是现取的：只有十字线那颗
-  /// 「涨到 X 提醒我」在场时才读，用来定「涨到」还是「跌到」。
-  var livePrice: @MainActor () -> Double? = { nil }
 }
 
 /// 头部那几行开高低收。口径和从前的 `MainScreen.topCandleData` 逐字相同。
@@ -118,22 +115,28 @@ struct HiddenWhileCrosshairReads: ViewModifier {
   return series.close.indices.contains(c.index)
 }
 
-/// 十字线活着时周期条那一行换成的一颗药丸：「涨到 84,535.5 提醒我」。
+/// 十字线活着时周期条那一行换成的一颗药丸：铃铛 +「创建提醒」。
 ///
 /// **摆在周期条那一行的同一个 44pt 框里**（2026-09-23）：十字线活着时它整行顶替周期条
 /// （周期条透明让位、点不着，但照旧占着位置、量着自己的宽度，所以十字线收起时不跳位），
 /// 顶栏的价格、涨跌、六格一直实时。画布上不许浮控件，而周期条那一行紧贴图的上沿、
 /// 拇指够得着、也不压 K 线。跟着手指重求值的只有这只小视图。
 ///
-/// 2026-09-25 起这一行只剩这一颗：原来的「上一根 / 下一根 / 按此价画线 / 看细节」四颗撤掉
-/// （「看细节」整套删了；画线在画线工作台里画），换成从图上加提醒——这是新建提醒唯一的入口。
-/// 样子照画线选中栏里那颗「跌到 X 叫我」（`LineAlertChip` 的未开态）：同一个功能，一个读法。
+/// 2026-09-25 起这一行只剩这一颗：原来的「上一根 / 下一根 / 按此价画线 / 看细节」四颗撤掉，
+/// 换成从图上加提醒——这是新建提醒唯一的入口。
+///
+/// 2026-09-25 v2（用户看完真机）：药丸上的字固定写「创建提醒」，不再写「涨到 / 跌到 X 提醒我」、
+/// 也不显示价——点空白是要**创建一条提醒**，涨跌方向与离现价多远交给页里那行小字说。
+/// 十字线那口价照旧带进页里预填。
 struct CrosshairActionBar: View {
   let readout: CrosshairReadout
   let context: CrosshairContext
   let theme: PanelTheme
   /// 点了：交出十字线那一口价（主图价；没有就那一根的收盘）。
   var onAlert: (Double) -> Void
+
+  /// 药丸上的字。UI 用例按它认。
+  static let title = "创建提醒"
 
   var body: some View {
     // 副图上的十字线读的是指标值，不是价——按它建价格提醒毫无意义，所以不给。
@@ -144,7 +147,7 @@ struct CrosshairActionBar: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         // 左缘和头部、周期条同一根线（`Inset.page`）；字号封顶也跟它们一起（UI 审查 2026-09-24 §4.3 #23/#24）。
         .pageHorizontalInset()
-        .frame(height: 44)
+        .frame(height: Hit.min)
         .dynamicTypeSize(...MarketChrome.typeCap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chart.crosshair.actions")
@@ -156,21 +159,13 @@ struct CrosshairActionBar: View {
     return series.close[i]
   }
 
-  /// 「涨到 / 跌到」按现价定（和 `Alert.price` 建出来的方向同一个口径）；没有现价就写「在」。
-  static func title(price: Double, live: Double?, decimals: Int) -> String {
-    let text = grouped(ReviewLabels.price(price, decimals: decimals))
-    guard let live, live > 0 else { return "在 \(text) 提醒我" }
-    return (price >= live ? "涨到 " : "跌到 ") + text + " 提醒我"
-  }
-
   private func chip(_ price: Double) -> some View {
     Button { onAlert(price) } label: {
       HStack(spacing: Space.xs) {
         Image(systemName: "bell")
           .font(.system(size: 12, weight: .semibold))
-        Text(Self.title(price: price, live: context.livePrice(), decimals: context.decimals))
-          .font(TypeScale.control)
-          .monospacedDigit()
+        Text(Self.title)
+          .font(TypeScale.controlOn)
       }
       .foregroundStyle(theme.amber)
       .padding(.horizontal, Space.m)
@@ -181,6 +176,7 @@ struct CrosshairActionBar: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .accessibilityLabel(Self.title)
     .accessibilityIdentifier("chart.crosshair.alert")
   }
 }

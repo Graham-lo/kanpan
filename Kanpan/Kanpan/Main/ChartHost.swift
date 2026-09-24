@@ -376,7 +376,7 @@ final class ChartProxy {
     // 那样 `layoutSubviews` 不会自己来。这里点它一下，欠的账才有人兑现。
     box.setNeedsLayout()
   }
-  /// 收掉十字线（图上那颗「涨到 X 提醒我」点下去、弹新建提醒页时）。图还没建出来就当没这回事。
+  /// 收掉十字线（图上那颗「创建提醒」点下去、弹新建提醒页时）。图还没建出来就当没这回事。
   func clearCrosshair() { box?.chart.clearCrosshair() }
 
   var isAtLatest: Bool { box?.chart.isAtLatest ?? true }

@@ -26,10 +26,10 @@ enum AlertWebhook {
 
     var ok: Bool { if case .status(let code) = self { return (200..<300).contains(code) }; return false }
 
-    /// 「已发出 · 200」/「发送失败 · 超时」。
+    /// 「已发出」/「发送失败 · 超时」（「发一条测试」的结果走全局提示条，成功不报状态码）。
     var toast: String {
       switch self {
-      case .status(let code) where (200..<300).contains(code): "已发出 · \(code)"
+      case .status(let code) where (200..<300).contains(code): "已发出"
       case .status(let code): "发送失败 · \(code)"
       case .failed(let reason): "发送失败 · \(reason)"
       }

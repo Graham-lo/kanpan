@@ -1,12 +1,12 @@
 import XCTest
 
-// ============================================================ 连续扫图（§10.1）与十字线上的「提醒我」
+// ============================================================ 连续扫图（§10.1）与十字线上的「创建提醒」
 //
 // 扫图是手势（顶栏价格区横滑），只有在真机 / 模拟器上才验得了；名单怎么走那一半纯算术
 // 在 KanpanTests 的 Scan 组里用 swift-testing 守着，这儿只验它接到界面上之后人看到的样子。
 //
-// 2026-09-25 起十字线开着时周期条那一行只剩一颗「涨到 / 跌到 X 提醒我」（原来的
-// 上一根 / 下一根 / 按此价画线 / 看细节整套撤了），这儿顺带在三套皮肤下各看它一眼。
+// 2026-09-25 起十字线开着时周期条那一行只剩一颗「创建提醒」（原来的
+// 上一根 / 下一根 / 按此价画线 / 看细节整套撤了；v2 起药丸上不再报价），这儿顺带在三套皮肤下各看它一眼。
 
 @MainActor
 final class ScanSwipeUITests: KanpanUICase {
@@ -92,9 +92,9 @@ final class ScanSwipeUITests: KanpanUICase {
     shot("04-扫图-离开再回来名单已清")
   }
 
-  // ------------------------------------------------------------ 十字线上的「提醒我」
+  // ------------------------------------------------------------ 十字线上的「创建提醒」
 
-  /// 选中一根 → 周期条那一行换成「涨到 / 跌到 X 提醒我」→ 点它：十字线收掉、弹出「新建提醒」，
+  /// 选中一根 → 周期条那一行换成「创建提醒」→ 点它：十字线收掉、弹出创建提醒页，
   /// 价格框里就是十字线那口价。三套皮肤各截一张药丸。
   func testCrosshairAlertChipOpensTheNewAlertSheetInEverySkin() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
@@ -106,11 +106,9 @@ final class ScanSwipeUITests: KanpanUICase {
       XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true },
                     "\(name)：点图没选中一根")
       let chip = app.buttons["chart.crosshair.alert"]
-      expectExists(chip, Self.short, "\(name)：十字线开着，周期条那一行却没有「提醒我」")
-      XCTAssertTrue(chip.label.hasSuffix("提醒我")
-                      && (chip.label.hasPrefix("涨到") || chip.label.hasPrefix("跌到") || chip.label.hasPrefix("在")),
-                    "\(name)：药丸上没说哪个价：\(chip.label)")
-      shot("08-提醒我-\(name)皮肤")
+      expectExists(chip, Self.short, "\(name)：十字线开着，周期条那一行却没有「创建提醒」")
+      XCTAssertEqual(chip.label, "创建提醒", "\(name)：药丸上的字不对")
+      shot("08-创建提醒-\(name)皮肤")
       // 收掉十字线，下一轮从干净的状态开始。
       selectACandle()
       _ = waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false }
@@ -121,14 +119,15 @@ final class ScanSwipeUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true },
                   "点图没选中一根")
     let chip = app.buttons["chart.crosshair.alert"]
-    expectExists(chip, Self.short, "十字线开着却没有「提醒我」")
+    expectExists(chip, Self.short, "十字线开着却没有「创建提醒」")
+    XCTAssertEqual(chip.label, "创建提醒")
     chip.tap()
     let price = app.textFields["alerts.new.price"]
-    expectExists(price, Self.long, "点了「提醒我」没弹出新建提醒")
-    XCTAssertFalse((price.value as? String ?? "").isEmpty, "新建页的价格框没带上十字线那口价")
+    expectExists(price, Self.long, "点了「创建提醒」没弹出创建提醒页")
+    XCTAssertFalse((price.value as? String ?? "").isEmpty, "创建页的价格框没带上十字线那口价")
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false },
                   "点了药丸十字线还钉在图上")
-    shot("09-提醒我-弹出新建提醒")
+    shot("09-创建提醒-弹出创建页")
   }
 
   /// 图区靠右点一下（离最新近，细档不用补太多历史）。再点一下是收掉十字线。

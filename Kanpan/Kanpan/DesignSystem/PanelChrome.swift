@@ -223,6 +223,9 @@ struct PanelSegment<Value: Hashable>: View {
   /// 按钮顶着同一个标识，`app.buttons["chart.bodyChoice"]` 拿到的是一团分不开的东西，
   /// 用例只能退回按坐标猜。所以分段行一律把行上的标识撤掉，改从这里逐档下发。
   var id: String? = nil
+  /// 槽的底色。缺省 `raised2`（整页铺在 `raised` 上的设置行）；放进本身就是 `raised2` 的
+  /// 分组卡片里时（创建提醒页），槽会化进卡片，由调用方换成页面那一层的底。
+  var track: Color? = nil
   var pick: (Value) -> Void
 
   @Environment(\.panelTheme) private var t
@@ -258,7 +261,7 @@ struct PanelSegment<Value: Hashable>: View {
     .padding(.horizontal, Space.xxs)
     .background {
       RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-        .fill(t.raised2)
+        .fill(track ?? t.raised2)
         .padding(.vertical, (Hit.min - ControlMetrics.pillHeight) / 2 - Space.xxs)
     }
     .padding(.vertical, -PanelMetrics.vPad)

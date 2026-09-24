@@ -704,7 +704,7 @@ struct MainScreen: View {
     VStack(spacing: 0) {
       if reviewChart.mode == .replay { reviewHeader } else { header }
       hairline
-      // 十字线活着时这一行换成「涨到 X 提醒我」那一颗（`IntervalRow` / `CrosshairActionBar`）。
+      // 十字线活着时这一行换成「创建提醒」那一颗（`IntervalRow` / `CrosshairActionBar`）。
       if !reviewChart.active { IntervalRow(
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
         atLatest: atLatest, gridOpen: $intervalGrid,
@@ -1668,14 +1668,20 @@ struct MainScreen: View {
     }
     guard let symbol else { return nil }
     let price: Double?
+    let change: Double?
     if symbol == main {
       price = market.tradeQuote?.price ?? market.ticker?.last ?? quotes.observedQuote(symbol)?.last
+      // 涨跌幅和行情页头部同一个数（`displayedTicker`），品种卡上那口价的颜色才和头部对得上。
+      change = session.displayedTicker?.changePercent ?? quotes.observedQuote(symbol)?.changePercent
     } else {
       // 这个闭包在新建提醒那一页的 body 里求值：点名那只走参与观察的镜像，价到了那一页就重算。
-      price = quotes.observedQuote(symbol)?.last
+      let ticker = quotes.observedQuote(symbol)
+      price = ticker?.last
+      change = ticker?.changePercent
     }
     let decimals = picker.info(for: symbol)?.knownPriceDecimals
-    return PriceAlertQuote(symbol: symbol, price: price.flatMap { $0 > 0 ? $0 : nil }, decimals: decimals)
+    return PriceAlertQuote(symbol: symbol, price: price.flatMap { $0 > 0 ? $0 : nil }, decimals: decimals,
+                           changePercent: change.flatMap { $0.isFinite ? $0 : nil })
   }
 
   /// 提醒总表与新建页要的宿主能力（点一行去哪儿、时区、查价、锁屏盯一个）。
@@ -2023,7 +2029,7 @@ struct MainScreen: View {
     }
   }
 
-  /// 十字线那颗「涨到 X 提醒我」：收十字线，弹新建提醒页（品种、价格都填好）。
+  /// 十字线那颗「创建提醒」：收十字线，弹新建提醒页（品种、价格都填好）。
   private func newAlert(at price: Double) {
     proxy.clearCrosshair()
     crosshairReadout.clear()

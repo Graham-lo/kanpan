@@ -2,7 +2,7 @@ import XCTest
 
 /// 提醒走一遍用户真的会走的那条路：
 /// 画一条水平线 → 选中栏上那句「跌到 X 叫我」 → 点一下 → 线右端多一枚铃铛 →
-/// 图上点一根 → 十字线那颗「涨到 / 跌到 X 提醒我」→ 新建提醒 → 右上「全部」→ 总表。
+/// 图上点一根 → 十字线那颗「创建提醒」→ 创建提醒页 → 右上「全部」→ 总表。
 ///
 /// 2026-09-25 起设置里不再有「提醒」那一行：建提醒只从图上那颗药丸进，已有的提醒在
 /// 新建页右上「全部」里管（深链 `hkline://alerts` / 点通知仍直接开总表）；铃声、
@@ -187,7 +187,7 @@ import XCTest
     return wait(seconds: 8) { self.info()["crosshair"] as? Bool == true }
   }
 
-  /// 图上十字线那颗「涨到 / 跌到 X 提醒我」→ 新建提醒。点完十字线要收掉。
+  /// 图上十字线那颗「创建提醒」→ 创建提醒页。点完十字线要收掉。
   @discardableResult
   private func openNewAlertFromChart() -> Bool {
     for _ in 0..<3 {
@@ -198,12 +198,23 @@ import XCTest
       chip.tap()
       if app.textFields["alerts.new.price"].waitForExistence(timeout: 8) {
         XCTAssertTrue(wait(seconds: 5) { self.info()["crosshair"] as? Bool != true },
-                      "点了「提醒我」十字线还钉在图上")
+                      "点了「创建提醒」十字线还钉在图上")
         return true
       }
     }
     return false
   }
+
+  /// 品种卡右边那口现价跳出来了（不是「—」）。
+  private func waitForLivePrice(_ what: String) {
+    let last = app.staticTexts["alerts.new.last"]
+    XCTAssertTrue(last.waitForExistence(timeout: 8), "\(what)：品种卡上没有现价")
+    XCTAssertTrue(wait(seconds: 20) { last.label != "—" && !last.label.isEmpty },
+                  "\(what)：品种卡上的现价一直是空的")
+  }
+
+  /// 价格下面那行小字：「现价 83,964.6 · 低于现价 4.82%」。
+  private var hint: XCUIElement { app.staticTexts["alerts.new.current"] }
 
   /// 总表：图上药丸 → 新建页 → 右上「全部」推进来（系统返回，没有左上关闭）。
   @discardableResult
@@ -227,6 +238,14 @@ import XCTest
   private func createAndExpectToast(_ what: String) {
     let add = app.buttons["alerts.new.create"]
     XCTAssertTrue(add.waitForExistence(timeout: 5) && add.isEnabled, "\(what)：「创建提醒」按不下去")
+    // 主按钮不钉在底部：刚填完地址时键盘盖着它。先收键盘（键盘上方那颗「完成」），
+    // 还够不着就往上推一推页面。
+    if app.keyboards.firstMatch.exists {
+      let done = app.buttons["完成"].firstMatch
+      if done.exists { done.tap() } else { app.keyboards.buttons["Done"].firstMatch.tap() }
+      _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
+    }
+    for _ in 0..<3 where !add.isHittable { newAlertPage.swipeUp() }
     add.tap()
     // 提示画在所有 sheet 之上的那扇小窗里（用例里停 6 秒）：先抓它，再等表收完。
     // 输价就碰价的那条（`KANPAN_TEST_ALERT_TOUCH`）会紧跟着响，「已加提醒」随即被
@@ -282,11 +301,11 @@ import XCTest
     chip.tap()
     XCTAssertTrue(wait(seconds: 8) { self.alerted() == [line] }, "第二次打开铃铛没挂上：\(alerted())")
 
-    // ③ 收起画线栏 → 图上点一根 → 十字线那颗「提醒我」→ 新建页 → 右上「全部」→ 总表。
+    // ③ 收起画线栏 → 图上点一根 → 十字线那颗「创建提醒」→ 创建页 → 右上「全部」→ 总表。
     let finish = app.buttons["draw.finish"]
     if finish.exists { finish.tap() }
     XCTAssertTrue(wait(seconds: 10) { !self.app.buttons["draw.finish"].exists }, "画线栏收不起来")
-    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「提醒我」没开出新建提醒")
+    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「创建提醒」没开出创建页")
     let all = app.buttons["alerts.all"]
     XCTAssertTrue(all.waitForExistence(timeout: 5), "新建页右上没有「全部」")
     XCTAssertTrue(all.label.hasPrefix("全部 1"), "「全部」没带上已有的那一条：\(all.label)")
@@ -378,9 +397,9 @@ import XCTest
     XCTAssertTrue(sound.exists && sound.isHittable, "设置页划不到「通知」一组的「提醒铃声」")
   }
 
-  /// 设置页「通知」一组（铃声 / 自选波动 / 通知权限都在这儿）→ 图上药丸 → 新建页（右上「全部」）
-  /// → Webhook 展开、写备注 → 创建 → 总表那一行带备注与链接记号 → 左划「编辑」进同一页、按钮是「保存」。
-  /// 青苔浅、青苔深各走一遍截图（验收截图就取这里的）。
+  /// 设置页「通知」一组（铃声 / 自选波动 / 通知权限都在这儿）→ 图上药丸「创建提醒」→ 创建页
+  /// （右上「全部」）→ Webhook 打开只填地址 → 创建 → 总表那一行带链接记号、不再有备注 →
+  /// 左划「编辑」进同一页、按钮是「保存」、地址还在。青苔浅、青苔深各走一遍。
   func testNotificationSettingsComposeAndListScreens() throws {
     for (mode, tag) in [("浅色", "青苔浅"), ("深色", "青苔深")] {
       applySkin("sage", mode: mode)
@@ -396,46 +415,44 @@ import XCTest
       backToChart()
       XCTAssertTrue(selectACandle(), "\(tag)：点图没选中一根")
       let pill = app.buttons["chart.crosshair.alert"]
-      XCTAssertTrue(pill.waitForExistence(timeout: 5), "\(tag)：十字线开着，周期条那一行却没有「提醒我」")
-      shot("图上-十字线提醒我-" + tag)
-      XCTAssertTrue(openNewAlertFromChart(), "\(tag)：「提醒我」没开出新建提醒")
-      let current = app.staticTexts["alerts.new.current"]
-      XCTAssertTrue(wait(seconds: 20) { current.label.hasPrefix("当前 ") && current.label != "当前 —" },
-                    "\(tag)：那一行没写现价：\(current.label)")
+      XCTAssertTrue(pill.waitForExistence(timeout: 5), "\(tag)：十字线开着，周期条那一行却没有「创建提醒」")
+      XCTAssertEqual(pill.label, "创建提醒", "\(tag)：药丸上的字不对")
+      shot("图上-十字线创建提醒-" + tag)
+      XCTAssertTrue(openNewAlertFromChart(), "\(tag)：「创建提醒」没开出创建页")
+      waitForLivePrice(tag)
+      XCTAssertTrue(wait(seconds: 10) { self.hint.label.hasPrefix("现价 ") || self.hint.label == "和现价相同" },
+                    "\(tag)：价格下面那行没说离现价多远：\(hint.label)")
       let all = app.buttons["alerts.all"]
-      XCTAssertTrue(all.waitForExistence(timeout: 5), "\(tag)：新建页右上没有「全部」")
+      XCTAssertTrue(all.waitForExistence(timeout: 5), "\(tag)：创建页右上没有「全部」")
       shot("新建提醒-全部按钮-" + tag)
 
       if mode == "浅色" {
-        // Webhook 打开：地址、最近用过、推送内容、占位符、发一条测试一起露出来。
-        let webhook = app.buttons["alerts.new.webhook"]
-        XCTAssertTrue(webhook.waitForExistence(timeout: 5), "新建页没有 Webhook 开关")
-        webhook.tap()
+        // Webhook 打开：只露出一个地址框和卡片下那行脚注 +「发一条测试」，没有推送内容、没有备注。
+        let webhook = app.switches["alerts.new.webhook"]
+        XCTAssertTrue(webhook.waitForExistence(timeout: 5), "创建页没有 Webhook 开关")
+        webhook.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).tap()
         let url = app.textFields["alerts.new.webhook.url"]
         XCTAssertTrue(url.waitForExistence(timeout: 5), "打开 Webhook 没露出地址框")
         url.tap()
         url.typeText("https://example.com/hook")
         XCTAssertTrue(app.buttons["alerts.new.webhook.test"].waitForExistence(timeout: 5), "没有「发一条测试」")
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "alerts.new.webhook.text").firstMatch.exists,
-                      "没有推送内容")
-        let note = app.textFields["alerts.new.note"]
-        for _ in 0..<4 where !(note.exists && note.isHittable) { app.swipeUp(velocity: .slow) }
-        XCTAssertTrue(note.exists, "没有备注框")
-        note.tap()
-        note.typeText("前高回踩")
+        XCTAssertTrue(app.staticTexts["触发时向这个地址发一条 JSON"].exists, "Webhook 下面没有脚注")
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "alerts.new.webhook.text").firstMatch.exists,
+                       "推送内容模板该撤了")
+        XCTAssertFalse(app.textFields["alerts.new.note"].exists, "备注该撤了")
         shot("新建提醒-Webhook展开-" + tag)
-        createAndExpectToast("带 Webhook 与备注")
+        createAndExpectToast("带 Webhook")
 
-        XCTAssertTrue(openAlertsPage(), "新建页右上「全部」没开出总表")
-        let noteLine = app.staticTexts["alerts.row.note"]
-        XCTAssertTrue(noteLine.waitForExistence(timeout: 8), "总表那一行没带备注：\(app.debugDescription)")
-        XCTAssertEqual(noteLine.label, "前高回踩")
+        XCTAssertTrue(openAlertsPage(), "创建页右上「全部」没开出总表")
+        let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "BTC ")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 8), "总表里没有那一条：\(app.debugDescription)")
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "alerts.row.webhook").firstMatch.exists,
                       "总表那一行没有 Webhook 记号")
-        shot("总表-备注与Webhook-" + tag)
+        XCTAssertFalse(app.staticTexts["alerts.row.note"].exists, "总表那一行不该再写备注")
+        shot("总表-Webhook-" + tag)
 
-        // 左划「编辑」：进同一页，品种锁着、按钮换成「保存」，备注还在。
-        let from = noteLine.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+        // 左划「编辑」：进同一页，品种只读、按钮换成「保存」，地址还在。
+        let from = row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
         from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: -160, dy: 0)),
                    withVelocity: .slow, thenHoldForDuration: 0.3)
         let edit = app.buttons["swipe.edit"]
@@ -444,10 +461,69 @@ import XCTest
         let save = app.buttons["alerts.new.create"]
         XCTAssertTrue(save.waitForExistence(timeout: 8), "「编辑」没进编辑页")
         XCTAssertTrue(save.label.contains("保存"), "编辑页的主按钮不是「保存」：\(save.label)")
-        XCTAssertFalse(app.textFields["alerts.new.symbol"].isEnabled, "编辑时品种该锁着")
-        XCTAssertEqual(app.textFields["alerts.new.note"].value as? String, "前高回踩", "编辑页没带上备注")
+        XCTAssertFalse(app.textFields["alerts.new.symbol"].exists, "品种不该是输入框")
+        XCTAssertEqual(app.textFields["alerts.new.webhook.url"].value as? String, "https://example.com/hook",
+                       "编辑页没带上 Webhook 地址")
         shot("编辑提醒-" + tag)
       }
+      closeSheet()
+    }
+  }
+
+  /// v2 验收截图：开局有一条响过的画线提醒（`KANPAN_TEST_ALERT_FIRED`，名字里带 Fired 才种）。
+  /// 青苔浅：药丸 → 创建页（记录里一条已触发）→ Webhook 展开 → 建一条 → 再开创建页
+  /// （记录里一条生效中带链接 + 一条已触发）→ 点生效中那条进编辑页；再在青苔深、经典浅下各看一眼创建页。
+  func testComposePageV2ScreensWithRecordsFired() throws {
+    applySkin("sage", mode: "浅色")
+    backToChart()
+    XCTAssertTrue(selectACandle(), "点图没选中一根")
+    XCTAssertTrue(app.buttons["chart.crosshair.alert"].waitForExistence(timeout: 5), "没有「创建提醒」药丸")
+    shot("v2-图上药丸-青苔浅")
+    XCTAssertTrue(openNewAlertFromChart(), "「创建提醒」没开出创建页")
+    waitForLivePrice("青苔浅")
+    XCTAssertEqual(app.navigationBars.staticTexts.firstMatch.label, "创建提醒")
+    XCTAssertTrue(app.staticTexts["alerts.new.symbol"].label == "BTC/USDT", "品种卡上的名字不对")
+    XCTAssertTrue(app.staticTexts["币安 · USDT 永续"].exists, "品种卡第二行不对")
+    let records = app.descendants(matching: .any).matching(identifier: "alerts.records").firstMatch
+    XCTAssertTrue(records.waitForExistence(timeout: 5), "开局那条响过的提醒没列进「提醒记录」")
+    shot("v2-创建页-青苔浅")
+
+    let webhook = app.switches["alerts.new.webhook"]
+    XCTAssertTrue(webhook.waitForExistence(timeout: 5), "没有 Webhook 开关")
+    webhook.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).tap()
+    let url = app.textFields["alerts.new.webhook.url"]
+    XCTAssertTrue(url.waitForExistence(timeout: 5), "打开 Webhook 没露出地址框")
+    let create = app.buttons["alerts.new.create"]
+    XCTAssertFalse(create.isEnabled, "地址还空着主按钮就能按")
+    url.tap()
+    url.typeText("https://example.com/hook")
+    XCTAssertTrue(wait(seconds: 3) { create.isEnabled }, "填好地址主按钮还按不下去")
+    app.buttons["完成"].firstMatch.tap()
+    shot("v2-Webhook打开-青苔浅")
+    createAndExpectToast("v2")
+
+    XCTAssertTrue(openNewAlertFromChart(), "第二次没开出创建页")
+    waitForLivePrice("青苔浅·第二次")
+    let rows = app.descendants(matching: .any).matching(identifier: "alerts.record")
+    XCTAssertTrue(wait(seconds: 5) { rows.count == 2 }, "「提醒记录」该有两条（一条生效中、一条已触发）：\(rows.count)")
+    for _ in 0..<3 where !(rows.element(boundBy: 1).isHittable) { app.swipeUp(velocity: .slow) }
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已触发 · ")).count > 0,
+                  "已触发那条没写时间与现价")
+    shot("v2-提醒记录-青苔浅")
+
+    rows.element(boundBy: 0).tap()
+    XCTAssertTrue(wait(seconds: 8) { self.app.navigationBars.staticTexts["编辑提醒"].exists }, "点生效中那条没进编辑页")
+    XCTAssertTrue(app.buttons["alerts.new.create"].label.contains("保存"))
+    XCTAssertEqual(app.textFields["alerts.new.webhook.url"].value as? String, "https://example.com/hook")
+    shot("v2-编辑页-青苔浅")
+    closeSheet()
+
+    for (skin, mode, tag) in [("sage", "深色", "青苔深"), ("classic", "浅色", "经典浅")] {
+      applySkin(skin, mode: mode)
+      backToChart()
+      XCTAssertTrue(openNewAlertFromChart(), "\(tag)：没开出创建页")
+      waitForLivePrice(tag)
+      shot("v2-创建页-" + tag)
       closeSheet()
     }
   }
@@ -465,28 +541,25 @@ import XCTest
   /// 图上药丸 → 新建页（品种是图上那只、价是十字线那口）→ 改成一个价 →「创建提醒」→
   /// 总表里多一条，碰到那个价之后变成「已触发」。
   ///
-  /// 方向不让选：页上只有一行「当前 xxx」。碰价那一段由启动环境
+  /// 方向不让选：价格下面只有一行「现价 x · 低于现价 y%」。碰价那一段由启动环境
   /// `KANPAN_TEST_ALERT_TOUCH` 喂（真行情一两分钟里未必走到那个价），喂的价走的是和真行情
   /// 同一条路：桶 → 判定 → `markFired` → 总表。
   func testATypedPriceBecomesAnAlertAndFires() throws {
-    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「提醒我」没开出新建提醒")
-    let symbol = app.textFields["alerts.new.symbol"]
-    XCTAssertTrue(symbol.waitForExistence(timeout: 8), "新建页上没有品种框")
-    XCTAssertEqual(symbol.value as? String, "BTCUSDT", "品种没默认成图上那只")
-    let current = app.staticTexts["alerts.new.current"]
-    XCTAssertTrue(wait(seconds: 20) { (current.label).hasPrefix("当前 ") && current.label != "当前 —" },
-                  "那一行没写现价：\(current.label)")
-    // 现价和头部同一个写法：BTCUSDT 的 tick 是 0.1，所以一位小数，整数部分带千分位
-    // （审查 D3：以前是不插千分位的 `86781.5`，和头部的 `86,781.5` 对不上）。
-    // 价格框带着十字线那口价，所以后面接一段「· 高 / 低 x%」离现价多远。
-    XCTAssertTrue(wait(seconds: 10) {
-      current.label.range(of: #"^当前 \d{1,3}(,\d{3})+\.\d( · [高低] [\d.,]+%)?$"#, options: .regularExpression) != nil
-    }, "「当前」那口价没按品种小数位 + 千分位写：\(current.label)")
+    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「创建提醒」没开出创建页")
+    let symbol = app.staticTexts["alerts.new.symbol"]
+    XCTAssertTrue(symbol.waitForExistence(timeout: 8), "创建页上没有品种卡")
+    XCTAssertEqual(symbol.label, "BTC/USDT", "品种没默认成图上那只")
+    waitForLivePrice("输价")
     let price = app.textFields["alerts.new.price"]
     XCTAssertTrue(price.waitForExistence(timeout: 5), "没有价格输入框")
     XCTAssertFalse(app.steppers.count > 0, "价格不许用加减步进器")
     XCTAssertFalse((price.value as? String ?? "").isEmpty, "价格框没带上十字线那口价")
     replace(price, with: "12345")
+    // 现价和头部同一个写法：BTCUSDT 的 tick 是 0.1，所以一位小数，整数部分带千分位
+    // （审查 D3：以前是不插千分位的 `86781.5`，和头部的 `86,781.5` 对不上）。
+    XCTAssertTrue(wait(seconds: 10) {
+      self.hint.label.range(of: #"^现价 \d{1,3}(,\d{3})+\.\d · 低于现价 [\d.,]+%$"#, options: .regularExpression) != nil
+    }, "价格下面那行没按「现价 x · 低于现价 y%」写：\(hint.label)")
     shot("09-新建价格提醒")
     createAndExpectToast("价格提醒")
     XCTAssertTrue(openAlertsPage(), "新建页右上「全部」没开出总表")
@@ -498,41 +571,30 @@ import XCTest
     shot("10-价格提醒已触发")
   }
 
-  /// 从行情页出发（开局停在 BTC 的图上）→ 图上药丸 → 新建：品种框里是给人看的代号
-  /// `BTCUSDT`，不是内部的 `binance/usd_m/BTCUSDT`；点进框里整串是选中的，直接打「ETH」
-  /// 就覆盖成 ETH，认成 ETHUSDT、有现价，建出来的是一条 ETH 的提醒。
-  func testNewAlertSymbolFieldShowsTheCodeAndTakesATypedSymbol() throws {
-    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「提醒我」没开出新建提醒")
-    let symbol = app.textFields["alerts.new.symbol"]
-    XCTAssertTrue(symbol.waitForExistence(timeout: 8), "新建页上没有品种框")
-    XCTAssertEqual(symbol.value as? String, "BTCUSDT", "品种框该是代号，不是规范键")
-    shot("15-新建提醒-预填代号")
-    symbol.tap()
-    symbol.typeText("ETH")
-    XCTAssertTrue(wait(seconds: 5) { symbol.value as? String == "ETH" },
-                  "点进品种框没有整串选中，打完是：\(symbol.value as? String ?? "nil")")
-    let current = app.staticTexts["alerts.new.current"]
-    XCTAssertTrue(wait(seconds: 20) { current.label.hasPrefix("当前 ") && current.label != "当前 —" },
-                  "改成 ETH 之后那一行没写现价：\(current.label)")
-    shot("16-新建提醒-改成ETH")
+  /// v2：品种只读（「进去后品种不可编辑」）、没有 ±% 快捷、没有备注和推送内容模板；
+  /// 价格清空时小字说「输入一个价格」、主按钮按不下去。
+  func testNewAlertSymbolIsReadOnlyAndPriceIsTheOnlyInput() throws {
+    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「创建提醒」没开出创建页")
+    let symbol = app.staticTexts["alerts.new.symbol"]
+    XCTAssertTrue(symbol.waitForExistence(timeout: 8), "创建页上没有品种卡")
+    XCTAssertEqual(symbol.label, "BTC/USDT")
+    XCTAssertFalse(app.textFields["alerts.new.symbol"].exists, "品种不该能改")
+    XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "alerts.new.nudge")).count, 0,
+                   "±% 快捷该撤了")
+    XCTAssertFalse(app.textFields["alerts.new.note"].exists, "备注该撤了")
+    XCTAssertEqual(app.textFields.count, 1, "页上只该有价格这一个输入框（Webhook 关着）")
     let price = app.textFields["alerts.new.price"]
-    XCTAssertTrue(price.waitForExistence(timeout: 5), "没有价格输入框")
-    replace(price, with: "12345")
-    shot("17-新建提醒-ETH填好")
-    createAndExpectToast("ETH 提醒")
-    XCTAssertTrue(openAlertsPage(), "新建页右上「全部」没开出总表")
-    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "ETH ", "12,345")).firstMatch
-    XCTAssertTrue(row.waitForExistence(timeout: 8), "总表里没有这条 ETH 的提醒：\(app.debugDescription)")
-    shot("18-总表里的ETH提醒")
+    replace(price, with: "")
+    XCTAssertTrue(wait(seconds: 5) { self.hint.label == "输入一个价格" }, "价格空着小字没说：\(hint.label)")
+    XCTAssertFalse(app.buttons["alerts.new.create"].isEnabled, "价格空着主按钮还能按")
+    shot("15-创建页-价格空着")
   }
 
   /// P3.3「盯一个」：总表里一条价格提醒 →「盯一个」→ 锁屏上挂出一块实时活动（品种、现价、
   /// 24h 涨跌、离提醒价多少）→ 回 app 跟几拍价再锁屏看它更新 → 删掉提醒，锁屏那块跟着收。
   func testWatchingOneAlertPutsItOnTheLockScreen() throws {
-    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「提醒我」没开出新建提醒")
-    let current = app.staticTexts["alerts.new.current"]
-    XCTAssertTrue(wait(seconds: 20) { current.label.hasPrefix("当前 ") && current.label != "当前 —" },
-                  "那一行没写现价：\(current.label)")
+    XCTAssertTrue(openNewAlertFromChart(), "十字线上的「创建提醒」没开出创建页")
+    waitForLivePrice("盯一个")
     let price = app.textFields["alerts.new.price"]
     XCTAssertTrue(price.waitForExistence(timeout: 5), "没有价格输入框")
     replace(price, with: "12345")

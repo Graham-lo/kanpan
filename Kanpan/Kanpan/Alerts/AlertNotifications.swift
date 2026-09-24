@@ -136,12 +136,11 @@ extension AlertNotifications {
     UNUserNotificationCenter.current().add(request)
   }
 
-  /// 通知正文：「现价 84,670.5 · 备注」。没有现价只写备注，两样都没有就不写。
+  /// 通知正文：「现价 84,670.5」。没有现价就不写。
+  /// 2026-09-25 起不再接备注（创建提醒页已经没有备注这一格，用户：「也不需要备注啊」）；
+  /// 老提醒身上即便还留着一句备注，也不往通知里写。
   static func body(for alert: Alert, decimals: Int?) -> String? {
-    var parts: [String] = []
-    if let price = alert.firedPrice { parts.append("现价 " + AlertMessage.groupedPrice(price, decimals: decimals)) }
-    if let note = alert.note { parts.append(note) }
-    return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    alert.firedPrice.map { "现价 " + AlertMessage.groupedPrice($0, decimals: decimals) }
   }
 
   /// 自选波动响了：通知中心留一条，点开就是那只品种。id 带窗口，同一个窗口重复 `add`

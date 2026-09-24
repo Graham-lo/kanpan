@@ -8,6 +8,8 @@ struct PriceAlertQuote: Equatable {
   var symbol: String
   var price: Double?
   var decimals: Int?
+  /// 24h 涨跌幅（百分数，`1.2` = +1.2%）。创建页品种卡右下那一小行；取不到就空着。
+  var changePercent: Double? = nil
 
   func label(_ value: Double) -> String { ReviewLabels.price(value, decimals: decimals) }
   /// 页上「当前 xxx」那口现价：和行情页头部那口价同一个写法——小数位由品种说
@@ -21,18 +23,20 @@ struct PriceAlertQuote: Equatable {
 }
 
 /// 表单填完交出去的那一份。落账在 `AlertStore.commit`。
+///
+/// 2026-09-25 v2：没有备注（用户「也不需要备注啊」）、没有推送内容模板（「webhook 不要给用户
+/// 填写 json，只需要输入地址即可」）——Webhook 一律发默认模板，所以这两样不在草稿里；
+/// 落账时对服务端契约照旧写 `note` / `webhookText` 两个键，值是 null。
 struct AlertDraft {
   var quote: PriceAlertQuote
   var target: Double
   var condition: KanpanCore.Alert.Condition
   var webhook: String?
-  var webhookText: String?
-  var note: String?
 }
 
 extension AlertStore {
-  /// 表单的「创建提醒 / 保存」落账。新建（图上十字线那颗「涨到 X 提醒我」）与编辑（总表左划
-  /// 「编辑」）共用这一处：建完顺手要通知权限、登记推送——按方案，第一次建提醒
+  /// 表单的「创建提醒 / 保存」落账。新建（图上十字线那颗「创建提醒」）与编辑（提醒记录那一行、
+  /// 总表左划「编辑」）共用这一处：建完顺手要通知权限、登记推送——按方案，第一次建提醒
   /// 才问权限。编辑（`editing` 给了 id）不再问。
   @discardableResult
   func commit(_ draft: AlertDraft, editing id: String? = nil) -> KanpanCore.Alert? {
@@ -40,11 +44,11 @@ extension AlertStore {
     if let id {
       return update(id: id, target: draft.target, current: draft.quote.price, label: label,
                     condition: draft.condition, webhook: draft.webhook,
-                    webhookText: draft.webhookText, note: draft.note)
+                    webhookText: nil, note: nil)
     }
     let alert = addPrice(symbol: draft.quote.symbol, target: draft.target, current: draft.quote.price,
                          label: label, condition: draft.condition, webhook: draft.webhook,
-                         webhookText: draft.webhookText, note: draft.note)
+                         webhookText: nil, note: nil)
     guard alert != nil else { return nil }
     Task {
       await AlertNotifications.requestAuthorization()
@@ -52,33 +56,26 @@ extension AlertStore {
     }
     return alert
   }
-
-  /// 「最近用过」的 Webhook 地址：从已有提醒里去重，新建的在前，最多三个。
-  var recentWebhooks: [String] {
-    var seen: Set<String> = [], out: [String] = []
-    for alert in archive.alerts.sorted(by: { $0.created > $1.created }) {
-      guard let url = alert.webhook, !seen.contains(url) else { continue }
-      seen.insert(url); out.append(url)
-      if out.count == 3 { break }
-    }
-    return out
-  }
 }
 
-/// 新建 / 编辑一条价格提醒的那一页。新建只有一个入口：图上十字线那颗「涨到 X 提醒我」
-/// （`AlertComposeSheet`，价格与品种都已经填好，右上「全部」推进提醒总表）。编辑从总表那一行
-/// 左划「编辑」进来，同一页，按钮换成「保存」。
+/// 创建 / 编辑一条价格提醒的那一页。
 ///
-/// - 品种默认就是图上那只，框里填的是给人看的代号（`BTCUSDT`、`BTC/USD`），不是内部的规范键
-///   （`binance/usd_m/BTCUSDT`）；规范键只在宿主解析、提交时才出现。能改（打「ETH」就认成
-///   `ETHUSDT`），点进框里整串全选，直接打就是覆盖；锁英文键盘（`kanpan-symbol-search-keyboard`）。
-///   编辑时品种不能改（改了就是另一条提醒，删了重建）。
-/// - 价格是手动输入框、等宽数字，不给加减步进器（`kanpan-no-steppers-use-text-fields`）；
-///   下面一排 −2% −1% +1% +2% 按现价一点就填。
-/// - **方向不让选**：比现价高就是「涨到」，低就是「跌到」，由 `Alert.price` 按建的那一刻的
-///   现价定；价格下面一行小字「当前 xxx · 高 x%」让人知道自己在跟谁比。
-/// - 只响一次（响过变「已触发」，总表里可以「再次提醒」）；没有「每次」这一档。
-/// - 通知：Webhook 开关，开着时填地址、推送内容（带占位符），可以先发一条测试。
+/// 新建只有一个入口：图上十字线那颗「创建提醒」（`AlertComposeSheet`，品种是图上那只，价格
+/// 预填十字线那一口，右上「全部」推进提醒总表）。编辑从这一页底下「提醒记录」里点一条生效中的
+/// 价格提醒、或者总表那一行左划「编辑」进来，同一页，标题「编辑提醒」、按钮「保存」。
+///
+/// 2026-09-25 v2（用户：「布局不太合理、做的有点粗糙……品种不可编辑，也不需要 -2% 这种，
+/// 通常用户就是设置某个具体值提醒」）整页重做成 iOS 设置那种分组卡片，一种语言到底：
+///
+/// 1. **品种卡**（只读）：徽章、`BTC/USDT`、「币安 · USDT 永续」，右边现价与涨跌幅实时跳。
+///    品种不能改——提醒挂在哪只由入口决定，要给别的品种建提醒就去那只的图上点。
+/// 2. **条件卡**：价格（手动输入、等宽数字，不给步进器也不给 ±% 快捷）、价格下一行小字说离现价
+///    多远、「碰到 | 收盘穿过」。**方向不让选**：比现价高就是「涨到」，低就是「跌到」。
+/// 3. **通知卡**：Webhook 开关，开着只填一个地址；推送内容由我们定（默认模板），卡片下面一行
+///    脚注说清发的是什么，旁边「发一条测试」。
+/// 4. 主按钮跟在卡片后面（不钉底）；再往下是这只品种的「提醒记录」（新建时才有）。
+///
+/// 只响一次（响过变「已触发」，总表里可以「再次提醒」）；没有「每次」这一档。
 struct AlertForm: View {
   /// 图上那只给人看的代号（宿主交的是 `InstrumentID.display`）。
   var initialSymbol: String
@@ -86,57 +83,72 @@ struct AlertForm: View {
   var initialPrice: Double? = nil
   /// 编辑哪一条。nil 是新建。
   var existing: KanpanCore.Alert? = nil
-  /// 按用户打的字查品种与现价；查不到这只品种返回 nil。
+  /// 按代号查品种与现价；查不到这只品种返回 nil。
   var resolve: (String) -> PriceAlertQuote?
   /// 品种定下来之后叫一声：宿主去要一口价（不在自选里的品种报价簿手上没有）。
   var prepare: (String) -> Void = { _ in }
   /// 页面关了叫一声，宿主把 `prepare` 点名要的那一只放掉。
   var release: () -> Void = {}
-  /// 「最近用过」那几个 Webhook 地址（`AlertStore.recentWebhooks`）。
-  var recentWebhooks: [String] = []
+  /// 这只品种的提醒记录（已排好序，见 `AlertRecordText.records`）。只有新建页摆。
+  var records: [KanpanCore.Alert] = []
+  /// 记录里的时间按设置里那档时区写。
+  var zone: TZOffset = .system
+  /// 点一条生效中的价格提醒：推进它的编辑页。
+  var onEditRecord: (String) -> Void = { _ in }
+  /// 左划删除一条记录。
+  var onDeleteRecord: (String) -> Void = { _ in }
   var onSave: (AlertDraft) -> Void
 
-  @State private var symbolText = ""
-  @State private var symbolSelection: TextSelection?
   @State private var priceText = ""
   @State private var condition: KanpanCore.Alert.Condition = .touch
   @State private var webhookOn = false
   @State private var webhookURL = ""
-  @State private var template = AlertMessage.defaultTemplate
-  @State private var note = ""
   @State private var testing = false
-  @State private var testResult: AlertWebhook.Outcome?
   @State private var seeded = false
+  @State private var openSwipe: String?
   @FocusState private var focus: Field?
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
+  /// 页面左右边距（`panelPageInset` 按屏宽给 16 / 20，即 `Inset.page`）。
   @Environment(\.panelHPad) private var hPad
 
-  private enum Field: Hashable { case symbol, price, url, template, note }
+  private enum Field: Hashable { case price, url }
+
+  /// 品种卡那一行的高度：徽章 28 + 两行字，比普通行（44）高一档。
+  private static let symbolRowHeight = Inset.rowMin + Space.m
+  /// 价格下面那行小字的高度（和价格同一张卡，中间不划线）。
+  private static let hintHeight = Space.section
+  /// 主按钮高度。
+  private static let buttonHeight = Inset.rowMin + Space.xs
+
+  private var symbolKey: String { existing?.symbol ?? initialSymbol }
 
   var body: some View {
-    let quote = resolve(symbolText)
-    // 2026-09-24 UI 整改 P1b：走系统导航栏（居中标题 + 系统返回 / 左上关闭），
-    // 和铃声页、设置 → 账号同一套；不再自绘「‹」头。
+    let quote = resolve(existing.map { InstrumentID($0.symbol).display } ?? initialSymbol)
+    // 走系统导航栏（居中标题 + 系统返回 / 左上关闭），和铃声页、设置 → 账号同一套。
     ScrollView {
-      VStack(spacing: 0) {
-        symbolRow
-        priceRow(quote)
-        currentLine(quote)
-        nudges(quote)
-        conditionRow
-        notifySection(quote)
-        noteRow
+      VStack(alignment: .leading, spacing: 0) {
+        symbolCard(quote)
+        conditionCard(quote)
+          .padding(.top, Space.xl)
+        notifyCard
+          .padding(.top, Space.xl)
+        if webhookOn { webhookFootnote(quote) }
+        mainButton(quote)
+          .padding(.top, Space.xl)
+        if existing == nil, !records.isEmpty {
+          recordsSection(quote)
+            .padding(.top, Space.section)
+        }
       }
-      .padding(.top, Space.xs)
-      .padding(.bottom, Space.l)
+      .padding(.horizontal, hPad)
+      .padding(.top, Space.m)
+      .padding(.bottom, Space.section)
     }
     .scrollBounceBehavior(.basedOnSize)
     .scrollDismissesKeyboard(.interactively)
-    // 主按钮钉在底上：键盘起来时它跟着停在键盘上沿，不用先收键盘再去找。
-    .safeAreaInset(edge: .bottom, spacing: 0) { saveButton(quote) }
-    .background(t.raised.ignoresSafeArea())
-    .navigationTitle(existing == nil ? "新建提醒" : "编辑提醒")
+    .background(AlertPageStyle.background(t).ignoresSafeArea())
+    .navigationTitle(existing == nil ? "创建提醒" : "编辑提醒")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       // 价格是数字键盘，没有回车键收不起来（视觉审查 2.9 #5）。
@@ -146,225 +158,194 @@ struct AlertForm: View {
       }
     }
     .onAppear {
-      seed()
-      // 要价按宿主解析出来的规范键要；框里的代号（尤其 `BTC/USD`）直接交出去会被当成币安的裸代号。
-      // 每次露面都要一次：推进「全部」再退回来时，上一次那一只已经在 `onDisappear` 里放掉了。
-      prepare(resolve(symbolText)?.symbol ?? existing?.symbol ?? initialSymbol)
+      seed(quote)
+      // 要价按宿主解析出来的规范键要；代号（尤其 `BTC/USD`）直接交出去会被当成币安的裸代号。
+      // 每次露面都要一次：推进「全部」或编辑页再退回来时，上一次那一只已经在 `onDisappear` 里放掉了。
+      prepare(quote?.symbol ?? symbolKey)
     }
-    // 和 `prepare` 成对：推进下一层、退回总表、整张提醒表收起，都在这儿放掉点名的那一只。
+    // 和 `prepare` 成对：推进下一层、整张提醒表收起，都在这儿放掉点名的那一只。
     .onDisappear { release() }
-    // 点进品种框就把整串选中：想换一只直接打，不用先删。等这一拍的光标落定再选，
-    // 否则点按落下的插入点会把选区盖掉。
-    .onChange(of: focus) { _, field in
-      guard field == .symbol else { return }
-      Task { @MainActor in
-        symbolSelection = TextSelection(range: symbolText.startIndex..<symbolText.endIndex)
-      }
-    }
-    .onChange(of: quote?.symbol) { _, symbol in if let symbol { prepare(symbol) } }
-    .onChange(of: note) { _, text in
-      let clipped = KanpanCore.Alert.clip(note: text)
-      if clipped != text { note = clipped }
-    }
-    .onChange(of: webhookURL) { _, _ in testResult = nil }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alerts.new.page")
   }
 
   // ---------------------------------------------------------------- 预填
 
-  private func seed() {
+  private func seed(_ quote: PriceAlertQuote?) {
     guard !seeded else { return }
     seeded = true
     if let existing {
-      symbolText = InstrumentID(existing.symbol).display
-      let decimals = resolve(symbolText)?.decimals
-      if let target = existing.targetPrice { priceText = ReviewLabels.price(target, decimals: decimals) }
+      if let target = existing.targetPrice {
+        priceText = ReviewLabels.price(target, decimals: quote?.decimals)
+      }
       condition = existing.condition
       webhookOn = existing.webhook != nil
       webhookURL = existing.webhook ?? ""
-      template = existing.webhookText ?? AlertMessage.defaultTemplate
-      note = existing.note ?? ""
-    } else {
-      symbolText = initialSymbol
-      if let initialPrice { priceText = resolve(symbolText)?.label(initialPrice) ?? String(initialPrice) }
+    } else if let initialPrice {
+      priceText = quote?.label(initialPrice) ?? String(initialPrice)
     }
     // 没带价进来（预览、以后别的入口）直接对准价格框；图上带着价进来、或者编辑，先让人看全整页。
     if existing == nil, initialPrice == nil { focus = .price }
   }
 
-  // ---------------------------------------------------------------- 品种与价格
+  // ---------------------------------------------------------------- 品种卡
 
-  private var symbolRow: some View {
-    field("品种") {
-      TextField("", text: $symbolText, selection: $symbolSelection)
-        .keyboardType(.asciiCapable)
-        .textInputAutocapitalization(.characters)
-        .autocorrectionDisabled()
-        .focused($focus, equals: .symbol)
-        .disabled(existing != nil)
-        .accessibilityIdentifier("alerts.new.symbol")
-        .accessibilityLabel("品种")
+  private func symbolCard(_ quote: PriceAlertQuote?) -> some View {
+    let key = quote?.symbol ?? InstrumentID.canonical(symbolKey)
+    let info = SymbolInfo.placeholder(symbol: key)
+    let change = quote?.changePercent
+    let tone = change.map { $0 < 0 ? t.down : ($0 > 0 ? t.up : t.ink) } ?? t.ink
+    return AlertGroupCard {
+      HStack(spacing: Space.m) {
+        CoinBadge(base: info.base, size: ControlMetrics.badge)
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: Space.xxs) {
+          Text(info.base + "/" + info.quote)
+            .font(TypeScale.heading)
+            .foregroundStyle(t.ink)
+            .lineLimit(1)
+            .accessibilityIdentifier("alerts.new.symbol")
+          Text(AlertRecordText.venueLine(key))
+            .font(TypeScale.caption)
+            .foregroundStyle(t.ink3)
+            .lineLimit(1)
+        }
+        Spacer(minLength: Space.s)
+        VStack(alignment: .trailing, spacing: Space.xxs) {
+          Text(quote?.price.map { quote!.current($0) } ?? "—")
+            .font(TypeScale.bodyEmph).monospacedDigit()
+            .foregroundStyle(tone)
+            .contentTransition(.numericText())
+            .accessibilityIdentifier("alerts.new.last")
+          Text(changePercentText(change))
+            .font(TypeScale.caption).monospacedDigit()
+            .foregroundStyle(tone)
+        }
+        .lineLimit(1)
+      }
+      .padding(.horizontal, Inset.card)
+      .frame(height: Self.symbolRowHeight)
     }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("alerts.new.symbolCard")
   }
 
-  private func priceRow(_ quote: PriceAlertQuote?) -> some View {
-    field("价格", unit: quote?.quoteAsset) {
-      TextField("", text: $priceText)
-        .keyboardType(.decimalPad)
-        .focused($focus, equals: .price)
-        .accessibilityIdentifier("alerts.new.price")
-        .accessibilityLabel("价格")
-    }
-  }
+  // ---------------------------------------------------------------- 条件卡
 
-  /// 「当前 84,535.5」；填了价之后接上离现价多远（「· 高 0.15%」）。查不到品种用 `danger`。
-  private func currentLine(_ quote: PriceAlertQuote?) -> some View {
-    HStack {
-      Text(currentText(quote))
+  private func conditionCard(_ quote: PriceAlertQuote?) -> some View {
+    AlertGroupCard {
+      // 价格：整行点哪儿都进输入框（标签那一截也算）。
+      HStack(spacing: Space.m) {
+        label("价格")
+        HStack(spacing: Space.xs) {
+          TextField("0", text: $priceText)
+            .keyboardType(.decimalPad)
+            .multilineTextAlignment(.trailing)
+            .font(TypeScale.bodyEmph).monospacedDigit()
+            .foregroundStyle(t.ink)
+            .focused($focus, equals: .price)
+            .accessibilityIdentifier("alerts.new.price")
+            .accessibilityLabel("价格")
+          Text(quote?.quoteAsset ?? SymbolInfo.placeholder(symbol: symbolKey).quote)
+            .font(TypeScale.caption)
+            .foregroundStyle(t.ink3)
+        }
+      }
+      .padding(.horizontal, Inset.card)
+      .frame(minHeight: Inset.rowMin)
+      .contentShape(Rectangle())
+      .onTapGesture { focus = .price }
+
+      // 离现价多远：和价格同一格，中间不划线。
+      Text(hintText(quote))
         .font(TypeScale.caption).monospacedDigit()
-        // 查不到品种是这一页唯一的错误态，用 `danger` 标出来，不和「当前 xxx」同一个灰。
-        .foregroundStyle(quote == nil && !symbolText.isEmpty ? t.danger : t.ink3)
+        .foregroundStyle(t.ink3)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, minHeight: Self.hintHeight, alignment: .topLeading)
+        .padding(.horizontal, Inset.card)
         .accessibilityIdentifier("alerts.new.current")
-      Spacer(minLength: 0)
+      AlertCardDivider()
+
+      HStack(spacing: Space.m) {
+        label("条件")
+        Spacer(minLength: Space.s)
+        PanelSegment(options: KanpanCore.Alert.Condition.allCases.map { ($0.title, $0) },
+                     selection: condition, id: "alerts.new.condition",
+                     track: AlertPageStyle.background(t)) { condition = $0 }
+      }
+      .padding(.horizontal, Inset.card)
+      .padding(.vertical, PanelMetrics.vPad)
+      .frame(minHeight: Inset.rowMin)
     }
-    .padding(.horizontal, hPad)
-    .padding(.top, Space.s)
   }
 
-  private func currentText(_ quote: PriceAlertQuote?) -> String {
-    guard let quote else { return symbolText.isEmpty ? " " : "没有这只品种" }
-    guard let price = quote.price else { return "当前 —" }
-    let head = "当前 " + quote.current(price)
-    guard let target, price > 0 else { return head }
+  /// 「现价 83,964.6 · 低于现价 4.82%」。没填价 / 填的不是正数：「输入一个价格」。
+  private func hintText(_ quote: PriceAlertQuote?) -> String {
+    guard let target else { return "输入一个价格" }
+    guard let quote, let price = quote.price, price > 0 else { return "现价 —" }
     let pct = (target - price) / price * 100
-    guard abs(pct) >= 0.005 else { return head + " · 就是现价" }
-    return head + " · " + (pct > 0 ? "高 " : "低 ") + String(format: "%.2f%%", abs(pct))
+    guard abs(pct) >= 0.005 else { return "和现价相同" }
+    return "现价 " + quote.current(price) + " · " + (pct > 0 ? "高于现价 " : "低于现价 ")
+      + String(format: "%.2f%%", abs(pct))
   }
 
-  /// −2% −1% +1% +2%：按现价一点就填进价格框。没有现价就不摆。
-  @ViewBuilder private func nudges(_ quote: PriceAlertQuote?) -> some View {
-    if let quote, let price = quote.price {
-      HStack(spacing: Space.s) {
-        ForEach([-2, -1, 1, 2], id: \.self) { step in
-          let text = (step < 0 ? "−" : "+") + "\(abs(step))%"
-          Button {
-            priceText = quote.label(price * (1 + Double(step) / 100))
-          } label: {
-            Text(text)
-              .font(TypeScale.control).monospacedDigit()
-              .foregroundStyle(t.ink2)
-              .padding(.horizontal, Space.m)
-              .frame(height: ControlMetrics.pillHeight)
-              .background(Capsule().fill(t.raised2))
-              .frame(minHeight: Hit.min)
-              .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("alerts.new.nudge.\(step)")
+  // ---------------------------------------------------------------- 通知卡
+
+  private var notifyCard: some View {
+    AlertGroupCard {
+      HStack(spacing: Space.m) {
+        label("Webhook")
+        Spacer(minLength: Space.s)
+        Toggle("Webhook", isOn: Binding(get: { webhookOn }, set: { on in
+          withAnimation(.snappy) { webhookOn = on }
+          if on, webhookURL.isEmpty { focus = .url }
+        }))
+        .labelsHidden()
+        .tint(t.amber)
+        .accessibilityIdentifier("alerts.new.webhook")
+      }
+      .padding(.horizontal, Inset.card)
+      .frame(minHeight: Inset.rowMin)
+
+      if webhookOn {
+        AlertCardDivider()
+        HStack(spacing: Space.m) {
+          label("地址")
+          TextField("https://", text: $webhookURL)
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            // 地址键盘的回车键写「完成」，按下就收键盘，露出下面的主按钮。
+            .submitLabel(.done)
+            .onSubmit { focus = nil }
+            .multilineTextAlignment(.trailing)
+            .font(TypeScale.bodyEmph)
+            .foregroundStyle(t.ink)
+            .focused($focus, equals: .url)
+            .accessibilityIdentifier("alerts.new.webhook.url")
+            .accessibilityLabel("地址")
         }
-        Spacer(minLength: 0)
+        .padding(.horizontal, Inset.card)
+        .frame(minHeight: Inset.rowMin)
+        .contentShape(Rectangle())
+        .onTapGesture { focus = .url }
       }
-      .padding(.horizontal, hPad)
     }
   }
 
-  private var conditionRow: some View {
-    PanelRow(name: "条件") {
-      PanelSegment(options: KanpanCore.Alert.Condition.allCases.map { ($0.title, $0) },
-                   selection: condition, id: "alerts.new.condition") { condition = $0 }
-    }
-  }
-
-  // ---------------------------------------------------------------- 通知
-
-  @ViewBuilder private func notifySection(_ quote: PriceAlertQuote?) -> some View {
-    PanelGroupTitle(text: "通知")
-    PanelRow(name: "Webhook") {
-      PanelSwitch(isOn: webhookOn) {
-        webhookOn.toggle()
-        if webhookOn, webhookURL.isEmpty { focus = .url }
-      }
-      .accessibilityIdentifier("alerts.new.webhook")
-    }
-    if webhookOn {
-      field("地址") {
-        TextField("https://", text: $webhookURL)
-          .keyboardType(.URL)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-          .focused($focus, equals: .url)
-          .accessibilityIdentifier("alerts.new.webhook.url")
-          .accessibilityLabel("地址")
-      }
-      recentRow
-      templateBox
-      tokenRow
-      testRow(quote)
-    }
-  }
-
-  @ViewBuilder private var recentRow: some View {
-    let others = recentWebhooks.filter { $0 != webhookURL.trimmingCharacters(in: .whitespaces) }
-    if !others.isEmpty {
-      HStack(spacing: Space.s) {
-        Text("最近用过").font(TypeScale.caption).foregroundStyle(t.ink3)
-        ForEach(others, id: \.self) { url in
-          chip(URL(string: url)?.host() ?? url) { webhookURL = url }
-            .accessibilityIdentifier("alerts.new.webhook.recent")
-        }
-        Spacer(minLength: 0)
-      }
-      .padding(.horizontal, hPad)
-      .padding(.top, Space.xs)
-    }
-  }
-
-  private var templateBox: some View {
-    VStack(alignment: .leading, spacing: Space.s) {
-      Text("推送内容").font(PanelFont.name).foregroundStyle(t.ink)
-      TextField("", text: $template, axis: .vertical)
-        .lineLimit(3...5)
-        .font(TypeScale.body)
-        .foregroundStyle(t.ink)
-        .focused($focus, equals: .template)
-        .padding(Space.s)
-        .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
-        .accessibilityIdentifier("alerts.new.webhook.text")
-        .accessibilityLabel("推送内容")
-    }
-    .padding(.horizontal, hPad)
-    .padding(.top, Space.m)
-  }
-
-  /// 占位符胶囊：点一下往推送内容末尾追加 `{名字}`。
-  private var tokenRow: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: Space.s) {
-        ForEach(AlertMessage.placeholders, id: \.self) { name in
-          chip(name) { template += "{\(name)}" }
-            .accessibilityIdentifier("alerts.new.webhook.token.\(name)")
-        }
-      }
-      .padding(.horizontal, hPad)
-    }
-    .scrollBounceBehavior(.basedOnSize)
-  }
-
-  private func testRow(_ quote: PriceAlertQuote?) -> some View {
+  /// 卡片下面一行脚注：发的是什么，旁边「发一条测试」。结果走全局提示条，不占页面。
+  private func webhookFootnote(_ quote: PriceAlertQuote?) -> some View {
     let valid = KanpanCore.Alert.isValidWebhook(webhookURL)
     return HStack(spacing: Space.s) {
-      if let testResult {
-        Text(testResult.toast)
-          .font(TypeScale.caption)
-          .foregroundStyle(testResult.ok ? t.ink3 : t.danger)
-          .lineLimit(1)
-          .accessibilityIdentifier("alerts.new.webhook.result")
-      }
-      Spacer(minLength: 0)
+      Text("触发时向这个地址发一条 JSON")
+        .font(TypeScale.caption)
+        .foregroundStyle(t.ink3)
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
+      Spacer(minLength: Space.s)
       Button { sendTest(quote) } label: {
         Text(testing ? "发送中…" : "发一条测试")
-          .font(TypeScale.control)
+          .font(TypeScale.caption)
           .foregroundStyle(valid && !testing ? t.amber : PanelDisabled.ink(t))
           .frame(minHeight: Hit.min)
           .contentShape(Rectangle())
@@ -373,74 +354,66 @@ struct AlertForm: View {
       .disabled(!valid || testing)
       .accessibilityIdentifier("alerts.new.webhook.test")
     }
-    .padding(.horizontal, hPad)
+    // 点按区撑到 44，但脚注这一行看上去只有一行小字高：多出来的还给上下留白。
+    .padding(.vertical, -(Hit.min - Self.hintHeight) / 2)
+    .padding(.top, Space.s)
+    .transition(.opacity)
   }
 
   private func sendTest(_ quote: PriceAlertQuote?) {
-    let quote = quote ?? PriceAlertQuote(symbol: existing?.symbol ?? symbolText, price: nil, decimals: nil)
+    let quote = quote ?? PriceAlertQuote(symbol: InstrumentID.canonical(symbolKey), price: nil, decimals: nil)
     let price = quote.price ?? target ?? 0
+    // 不带推送内容也不带备注：发的就是默认模板，和真触发时一模一样。
     let draft = KanpanCore.Alert.price(
       symbol: quote.symbol, target: target ?? price, current: quote.price,
       label: quote.current(target ?? price), now: Date().timeIntervalSince1970 * 1000,
-      condition: condition, webhookText: AlertStore.clean(template: template), note: note)
+      condition: condition)
     let sent = existing.map { var a = draft; a.id = $0.id; return a } ?? draft
+    let url = webhookURL
     testing = true
-    testResult = nil
     Task { @MainActor in
-      testResult = await AlertWebhook.test(sent, url: webhookURL, price: price, decimals: quote.decimals)
+      let outcome = await AlertWebhook.test(sent, url: url, price: price, decimals: quote.decimals)
       testing = false
+      ToastCenter.shared.say(outcome.toast)
     }
   }
 
-  // ---------------------------------------------------------------- 备注与主按钮
+  // ---------------------------------------------------------------- 主按钮
 
-  private var noteRow: some View {
-    field("备注") {
-      TextField("选填，限 30 字", text: $note)
-        .focused($focus, equals: .note)
-        .accessibilityIdentifier("alerts.new.note")
-        .accessibilityLabel("备注")
-    }
-    .padding(.top, Space.l)
-  }
-
-  private func saveButton(_ quote: PriceAlertQuote?) -> some View {
+  private func mainButton(_ quote: PriceAlertQuote?) -> some View {
     let ready = draft(quote) != nil
     return Button {
       guard let draft = draft(quote) else { return }
+      focus = nil
       onSave(draft)
       dismiss()
     } label: {
-      // 禁用时不再整块降到 0.4（琥珀底上的字只剩 1.05:1，看上去像没画出来）：
-      // 底换成中性的 `raised2`、字换成 `ink3`，一眼看得出「还不能按」，字也读得清。
+      // 禁用时不整块降透明度（琥珀底上的字只剩 1.05:1，看上去像没画出来）：
+      // 底换成中性的 `raised2`、字换成 `ink3`（`PanelDisabled`，对比度审查定的写法）。
       Text(existing == nil ? "创建提醒" : "保存")
         .font(TypeScale.title)
         .foregroundStyle(ready ? t.badgeInk : PanelDisabled.ink(t))
         .frame(maxWidth: .infinity)
-        .frame(minHeight: Hit.min)
-        .background(Capsule().fill(ready ? t.amber : PanelDisabled.fill(t)))
+        .frame(height: Self.buttonHeight)
+        .background(Capsule().fill(ready ? t.amber : disabledFill))
         .contentShape(Capsule())
     }
     .buttonStyle(.plain)
     .disabled(!ready)
-    // 标识符挂在按钮本身：挂在下面那层铺到底的底色上，无障碍框会一路伸进键盘底下，
-    // 点它的中心就点到了键盘（用例里「创建提醒」按了没反应就是这么来的）。
     .accessibilityIdentifier("alerts.new.create")
-    .padding(.horizontal, hPad)
-    .padding(.vertical, Space.s)
-    .background(t.raised.ignoresSafeArea(edges: .bottom))
   }
+
+  /// 禁用的底：浅色下 `raised2` 就是卡片色，和卡片同一层；深色页面底换成了 `app`，
+  /// 卡片色 `raised2` 在上面分得开，两种情况都用 `PanelDisabled`。
+  private var disabledFill: Color { PanelDisabled.fill(t) }
 
   /// 能交了吗：品种认得、价是正数、开着 Webhook 时地址合法。
   private func draft(_ quote: PriceAlertQuote?) -> AlertDraft? {
     guard let quote, let target else { return nil }
     let url = webhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
     if webhookOn, !KanpanCore.Alert.isValidWebhook(url) { return nil }
-    let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
     return AlertDraft(quote: quote, target: target, condition: condition,
-                      webhook: webhookOn ? url : nil,
-                      webhookText: webhookOn ? AlertStore.clean(template: template) : nil,
-                      note: trimmedNote.isEmpty ? nil : trimmedNote)
+                      webhook: webhookOn ? url : nil)
   }
 
   /// 用户打的价。逗号当千分位扔掉；非正数、读不出来的都不算。
@@ -450,56 +423,51 @@ struct AlertForm: View {
     return value
   }
 
-  // ---------------------------------------------------------------- 零件
+  // ---------------------------------------------------------------- 提醒记录
 
-  private func chip(_ text: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Text(text)
-        .font(TypeScale.control)
-        .foregroundStyle(t.ink2)
-        .lineLimit(1)
-        .padding(.horizontal, Space.m)
-        .frame(height: ControlMetrics.pillHeight)
-        .background(Capsule().fill(t.raised2))
-        .frame(minHeight: Hit.min)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-  }
-
-  private func field<Input: View>(_ label: String, unit: String? = nil,
-                                  @ViewBuilder input: () -> Input) -> some View {
-    // 和 `PanelRow` 同一套尺寸：行高 44、左右 `hPad`、底下一条 1pt 的 `hair`。
-    // 输入框占满名字右边的剩余宽度，长代号（`BTC/USD`）和长价格都放得下。
-    HStack(spacing: Space.m) {
-      Text(label).font(PanelFont.name).foregroundStyle(t.ink)
-      HStack(spacing: Space.xs) {
-        input()
-          .multilineTextAlignment(.trailing)
-          .font(TypeScale.body)
-          .monospacedDigit()
-          .foregroundStyle(t.ink)
-        if let unit {
-          Text(unit).font(TypeScale.caption).foregroundStyle(t.ink3)
+  private func recordsSection(_ quote: PriceAlertQuote?) -> some View {
+    VStack(alignment: .leading, spacing: Space.s) {
+      AlertCardTitle(text: "提醒记录")
+      AlertGroupCard {
+        ForEach(Array(records.enumerated()), id: \.element.id) { index, alert in
+          SwipeToDelete(id: alert.id, open: $openSwipe, brick: .flush,
+                        trailing: [.delete(t) { onDeleteRecord(alert.id) }]) { swipe in
+            let editable = alert.kind == .price && alert.status != .fired
+            AlertRecordRow(
+              alert: alert,
+              title: AlertRecordText.title(alert, withSymbol: false),
+              meta: AlertRecordText.meta(alert, zone: zone, decimals: quote?.decimals,
+                                         conditionInline: true),
+              divider: index < records.count - 1,
+              onTap: editable ? { swipe.isOpen ? swipe.close() : onEditRecord(alert.id) } : nil
+            ) {
+              if editable {
+                VectorIcon.chevronRight(ControlMetrics.chevron)
+                  .foregroundStyle(t.ink3)
+                  .accessibilityHidden(true)
+              }
+            }
+          }
         }
       }
-      .padding(.horizontal, Space.s)
-      .padding(.vertical, Space.s)
-      .frame(maxWidth: .infinity)
-      .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
     }
-    .padding(.horizontal, hPad)
-    .padding(.vertical, Space.xs)
-    .frame(minHeight: Inset.rowMin)
-    .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("alerts.records")
+  }
+
+  // ---------------------------------------------------------------- 零件
+
+  private func label(_ text: String) -> some View {
+    Text(text).font(TypeScale.body).foregroundStyle(t.ink).lineLimit(1).fixedSize()
   }
 }
 
-/// 图上十字线那颗「涨到 X 提醒我」弹出来的那张表：新建提醒页 + 右上「全部」推进提醒总表。
+/// 图上十字线那颗「创建提醒」弹出来的那张表：创建提醒页 + 右上「全部」推进提醒总表。
 ///
 /// 2026-09-25 起提醒总表的日常入口就是这颗「全部」（设置里那一行删了）；深链与通知点开时
 /// 总表仍自己是一张表（`AlertListPage(presentedAsSheet: true)`）。两张表不会同时开：
-/// 宿主用同一个 `sheet(item:)` 管它俩。
+/// 宿主用同一个 `sheet(item:)` 管它俩。页底「提醒记录」点一条推进它的编辑页，也在这一层的
+/// 导航栈里（`AlertForm` 不能在自己身上挂一个推进自己的去处，那是个递归的类型）。
 struct AlertComposeSheet: View {
   @ObservedObject var store: AlertStore
   var context: AlertListContext
@@ -511,14 +479,19 @@ struct AlertComposeSheet: View {
   var onCreated: (KanpanCore.Alert) -> Void
 
   @State private var showAll = false
+  @State private var editing: String?
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
+    let key = context.quote(symbol)?.symbol ?? InstrumentID.canonical(symbol)
     NavigationStack {
       AlertForm(initialSymbol: symbol, initialPrice: price, resolve: context.quote,
                 prepare: context.prepareQuote, release: context.releaseQuote,
-                recentWebhooks: store.recentWebhooks) { draft in
+                records: AlertRecordText.records(store.all, symbol: key),
+                zone: context.zone,
+                onEditRecord: { editing = $0 },
+                onDeleteRecord: { id in Haptics.warning(); store.remove(id: id) }) { draft in
         if let alert = store.commit(draft) { onCreated(alert) }
       }
       .toolbar {
@@ -535,6 +508,15 @@ struct AlertComposeSheet: View {
       }
       .navigationDestination(isPresented: $showAll) {
         AlertListPage(store: store, context: context, presentedAsSheet: false)
+      }
+      .navigationDestination(item: $editing) { id in
+        if let alert = store.all.first(where: { $0.id == id }) {
+          AlertForm(initialSymbol: InstrumentID(alert.symbol).display, existing: alert,
+                    resolve: context.quote, prepare: context.prepareQuote,
+                    release: context.releaseQuote, zone: context.zone) { draft in
+            store.commit(draft, editing: id)
+          }
+        }
       }
     }
     .tint(t.amber)
