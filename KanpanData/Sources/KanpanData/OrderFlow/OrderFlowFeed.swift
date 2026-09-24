@@ -2,30 +2,70 @@ import Foundation
 import KanpanCore
 import KanpanNetwork
 
-/// 主力订单流的数据层：一只品种的一条订阅，从连上深度流到吐出「此刻的大单集合」全在这里。
+/// 一只品种在主力订单流里要用到的事实，由 app 按品种信息给。
+public struct OrderFlowFacts: Sendable, Equatable {
+  /// `SymbolInfo.base`，可能带币安的缩放前缀（`1000PEPE`）。
+  public var base: String
+  public var asset: SymbolClassification.Asset
+  /// 合约表里的最小变动价（图上价格单位）。
+  public var tick: Double?
+  /// 24h 成交额（美元）。不知道给 nil，数据层自己去问一次。
+  public var turnover24h: Double?
+
+  public init(base: String, asset: SymbolClassification.Asset, tick: Double? = nil, turnover24h: Double? = nil) {
+    self.base = base; self.asset = asset
+    self.tick = tick.flatMap { $0 > 0 && $0.isFinite ? $0 : nil }
+    self.turnover24h = turnover24h.flatMap { $0 >= 0 && $0.isFinite ? $0 : nil }
+  }
+
+  public init(info: SymbolInfo, turnover24h: Double? = nil) {
+    self.init(base: info.base, asset: SymbolClassifier.classify(info).asset, tick: info.tickSize,
+              turnover24h: turnover24h)
+  }
+
+  /// 去掉缩放前缀之后的币名：用户改过的门槛按它存（`[base: OrderFlowOverride]`），默认表也按它查。
+  public var overrideKey: String { OrderFlowBase.normalize(base).base }
+
+  /// 默认门槛与步长（还没叠用户改过的项）。
+  public var defaults: OrderFlowThresholds {
+    OrderFlowDefaults.thresholds(base: overrideKey, asset: asset, turnover24h: turnover24h)
+  }
+}
+
+/// 主力订单流的数据层：一只品种的全部簿，从连上各家深度流到吐出「此刻的大单集合」全在这里。
 ///
 /// - 订阅 / 退订：`start()` / `stop()`，只订当前看的这一只；切品种由 `RoutedMarketFeed` 整个换掉。
-/// - 上游：由提供者按线路给的 `DepthFeedAdapter` 决定（哪家、哪条线路、快照在不在流里），
-///   这里不认识任何一家。
-/// - 清簿：`stop()` 连同本地簿整个扔掉；大单状态永远不同步、不落盘。
-/// - 采样落盘：只有门槛标定（`FloorCalibration`）按「上游 × 品种」落在本机缓存目录。
-/// - 桶宽：前一 UTC 日收盘（日线）× 合约表 tick，跨 UTC 日重算；日线拉不到时先用簿中价顶着。
+/// - 上游：按 base 查品种表（`OrderFlowCatalog`，网关给各家各产品的合约；拿不到就用保底那几本），
+///   只留这只有门槛的产品（非币只有 U 本位永续），各家的簿按组合流 / 中继并成几条连接，
+///   每条连接一个 `DepthStream`。某家没有、某条连不上，只是少几本簿。
+/// - 门槛与步长：默认表（`OrderFlowDefaults`）叠用户改过的项（`setOverride`）；表里和用户都没给步长时，
+///   按前一 UTC 日收盘 × 最小变动价推一个（`BucketScheme.derivedStep`），跨 UTC 日重算。
+/// - 落盘：大单本身（不含簿）按品种记一份小日志（`<目录>/<品种>.json`，最多 200 条、24 小时），
+///   再打开这只时读回来接着画；不同步。
 public actor OrderFlowFeed {
   public typealias Sink = @Sendable (OrderFlowSnapshot) async -> Void
   /// 前一 UTC 日收盘。`referenceDayMs` 是那一天 0 点（UTC）。
   public typealias CloseLoader = @Sendable (_ referenceDayMs: Int64) async throws -> Double?
+  /// 按 base 查这只币的全部簿。
+  public typealias BookLoader = @Sendable (_ base: String) async -> OrderFlowCatalog.Books
+  /// 把一组簿并成几条连接。
+  public typealias AdapterMaker = @Sendable (_ books: [DepthBook]) -> [any DepthFeedAdapter]
+  /// 24h 成交额（美元）。
+  public typealias TurnoverLoader = @Sendable () async -> Double?
 
-  /// 每隔多久按簿算一帧。
+  /// 每隔多久按簿算一帧（出现、消失的确认要两次评估且相隔 ≥ 300 ms，所以不能比 300 ms 更密）。
   public static let evaluateEveryMs: Double = 500
   /// 内容没变时至少隔这么久也发一次（界面上的「12 分」要走）。
   public static let heartbeatMs: Int64 = 30_000
-  /// 标定有新样本时隔这么久落一次盘。
-  public static let saveEveryMs: Int64 = 60_000
+  /// 大单有变化时隔这么久落一次盘。
+  public static let saveEveryMs: Int64 = 15_000
 
   public let symbol: String
-  private let adapter: any DepthFeedAdapter
+  public let facts: OrderFlowFacts
+  private let loadBooks: BookLoader
+  private let makeAdapters: AdapterMaker
   private let loadClose: CloseLoader
-  private let tick: Double?
+  private let loadTurnover: TurnoverLoader
   private let file: URL?
   private let pacer: any Pacer
   private let clock: @Sendable () -> Int64
@@ -34,57 +74,96 @@ public actor OrderFlowFeed {
   private let evaluateEveryMs: Double
 
   private var model: OrderFlowModel
-  private var stream: DepthStream?
+  private var override: OrderFlowOverride?
+  private var turnover: Double?
+  /// 按前一日收盘推出来的步长（表里和用户都没给时才用）。
+  private var derivedStep: Double?
+  private var adapters: [any DepthFeedAdapter] = []
+  private var streams: [DepthStream] = []
   private var tasks: [Task<Void, Never>] = []
-  private var snapshotTask: Task<Void, Never>?
-  /// 桶宽是日线定的（true）还是簿中价临时顶的（false）。
-  private var schemeFromDaily = false
+  private var schemeTask: Task<Void, Never>?
+  private var snapshotTasks: [String: Task<Void, Never>] = [:]
   private var lastEmitted: OrderFlowSnapshot?
   private var lastEmitMs: Int64 = .min / 2
   private var lastSaveMs: Int64 = 0
+  private var started = false
   private var stopped = false
 
   /// - Parameters:
   ///   - symbol: 品种键（`InstrumentID.canonical`），吐出去的快照带的就是它。
-  ///   - tick: 合约表里的最小变动价；没有时按价格量级估一个。
-  ///   - directory: 标定落盘目录；nil 表示不落盘。
-  public init(symbol: String, adapter: any DepthFeedAdapter, tick: Double?, directory: URL?,
-              loadClose: @escaping CloseLoader, pacer: any Pacer = SystemPacer(),
+  ///   - override: 用户给这只 base 改过的门槛 / 步长。
+  ///   - directory: 日志落盘目录；nil 表示不落盘。
+  public init(symbol: String, facts: OrderFlowFacts, override: OrderFlowOverride?, directory: URL?,
+              loadBooks: @escaping BookLoader, makeAdapters: @escaping AdapterMaker,
+              loadClose: @escaping CloseLoader, loadTurnover: @escaping TurnoverLoader = { nil },
+              pacer: any Pacer = SystemPacer(),
               clock: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
               evaluateEveryMs: Double = OrderFlowFeed.evaluateEveryMs,
               log: FeedLog = .silent, sink: @escaping Sink) {
     self.symbol = symbol
-    self.adapter = adapter
+    self.facts = facts
+    self.override = override?.normalized
+    self.turnover = facts.turnover24h
+    self.loadBooks = loadBooks
+    self.makeAdapters = makeAdapters
     self.loadClose = loadClose
-    self.tick = tick.flatMap { $0 > 0 && $0.isFinite ? $0 : nil }
-    self.file = directory.map { Self.calibrationFile(in: $0, upstream: adapter.upstream, symbol: symbol) }
+    self.loadTurnover = loadTurnover
+    self.file = directory.map { Self.journalFile(in: $0, symbol: symbol) }
     self.pacer = pacer
     self.clock = clock
-    self.evaluateEveryMs = evaluateEveryMs
+    self.evaluateEveryMs = max(evaluateEveryMs, 1)
     self.log = log
     self.sink = sink
-    let saved = file.flatMap { try? Data(contentsOf: $0) }.flatMap { FloorCalibration(encoded: $0) }
-    self.model = OrderFlowModel(symbol: symbol, sequenceModel: adapter.sequenceModel,
-                                snapshotInBand: adapter.snapshotInBand, scheme: nil,
-                                calibration: saved ?? FloorCalibration())
+    let now = clock()
+    let restored = file.flatMap { try? Data(contentsOf: $0) }.flatMap(OrderFlowJournal.decode)
+      .flatMap { $0.symbol == symbol && now - $0.savedAtMs < OrderFlowDefaults.retentionMs ? $0 : nil }
+    self.model = OrderFlowModel(symbol: symbol,
+                                thresholds: Self.effective(facts: facts, turnover: facts.turnover24h,
+                                                           override: override?.normalized, derivedStep: nil),
+                                restored: restored)
   }
 
-  /// 按提供者建一条：适配器与日线都从它来。这一家这条线路没有深度流就返回 nil。
-  public init?(symbol: String, provider: any MarketProvider, tick: Double?, directory: URL?,
-               log: FeedLog = .silent, sink: @escaping Sink) {
-    guard let adapter = provider.orderFlowAdapter(symbol: symbol) else { return nil }
-    self.init(symbol: symbol, adapter: adapter, tick: tick, directory: directory,
+  /// 按提供者建一条：品种表、连接、日线、成交额都从它来。这条线路给不出订单流就返回 nil。
+  public init?(symbol: String, facts: OrderFlowFacts, override: OrderFlowOverride?,
+               provider: any MarketProvider, directory: URL?, log: FeedLog = .silent, sink: @escaping Sink) {
+    guard let catalog = (provider as? any OrderFlowSourcing)?.orderFlowCatalog else { return nil }
+    self.init(symbol: symbol, facts: facts, override: override, directory: directory,
+              loadBooks: { base in await catalog.books(base: base) },
+              makeAdapters: { books in catalog.adapters(books) },
               loadClose: { day in try await Self.previousClose(provider: provider, symbol: symbol, referenceDayMs: day) },
+              loadTurnover: { try? await provider.ticker24h(symbol: symbol, timeout: 8).quoteVolume },
               log: log, sink: sink)
   }
 
-  /// 标定文件：`<dir>/<上游>/<品种键里的字母数字>.cal`。
-  public static func calibrationFile(in directory: URL, upstream: String, symbol: String) -> URL {
-    func safe(_ s: String) -> String {
-      String(s.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "_" })
+  /// 此刻生效的门槛与步长：默认表 → 叠用户改过的项 → 还没有步长就用按收盘推的那个。
+  static func effective(facts: OrderFlowFacts, turnover: Double?, override: OrderFlowOverride?,
+                        derivedStep: Double?) -> OrderFlowThresholds {
+    var t = OrderFlowDefaults.thresholds(base: facts.overrideKey, asset: facts.asset, turnover24h: turnover)
+      .applying(override)
+    if t.step == nil { t.step = derivedStep }
+    return t
+  }
+
+  /// 日志文件：`<dir>/<品种键里的字母数字>.json`。
+  public static func journalFile(in directory: URL, symbol: String) -> URL {
+    let safe = String(symbol.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "_" })
+    return directory.appendingPathComponent(safe + ".json")
+  }
+
+  /// 清掉目录里 24 小时没动过的日志，以及旧版留下的门槛标定（按上游分的子目录、`.cal`）。
+  public static func sweep(directory: URL, nowMs: Int64) {
+    let fm = FileManager.default
+    let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
+    guard let items = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys) else { return }
+    for item in items {
+      let values = try? item.resourceValues(forKeys: Set(keys))
+      if values?.isDirectory == true || item.pathExtension != "json" {
+        try? fm.removeItem(at: item)
+        continue
+      }
+      let modified = values?.contentModificationDate.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
+      if nowMs - modified >= OrderFlowDefaults.retentionMs { try? fm.removeItem(at: item) }
     }
-    return directory.appendingPathComponent(safe(upstream), isDirectory: true)
-      .appendingPathComponent(safe(symbol) + ".cal")
   }
 
   /// 前一 UTC 日那根日线的收盘。
@@ -98,76 +177,134 @@ public actor OrderFlowFeed {
   // MARK: - 生命周期
 
   public func start() {
-    guard tasks.isEmpty, !stopped else { return }
-    let depth = DepthStream(adapter: adapter, pacer: pacer, log: log)
-    stream = depth
-    tasks.append(Task { [weak self] in
-      let events = await depth.start()
-      for await event in events {
-        guard let self, !Task.isCancelled else { return }
-        await self.handle(event)
-      }
-    })
-    tasks.append(Task { [weak self] in await self?.schemeLoop() })
+    guard !started, !stopped else { return }
+    started = true
+    tasks.append(Task { [weak self] in await self?.setUp() })
     tasks.append(Task { [weak self] in await self?.evaluateLoop() })
+    if turnover == nil, facts.asset == .crypto {
+      tasks.append(Task { [weak self] in await self?.fetchTurnover() })
+    }
+    ensureDerivedStep()
   }
 
-  /// 退订并清簿。标定有新样本就顺手落盘。
+  /// 退订并清簿。大单有变化就顺手落盘。
   public func stop() async {
     stopped = true
     tasks.forEach { $0.cancel() }; tasks = []
-    snapshotTask?.cancel(); snapshotTask = nil
-    let s = stream; stream = nil
-    await s?.stop()
+    schemeTask?.cancel(); schemeTask = nil
+    snapshotTasks.values.forEach { $0.cancel() }; snapshotTasks = [:]
+    let dying = streams; streams = []; adapters = []
+    for s in dying { await s.stop() }
     save()
   }
 
-  // MARK: - 深度流
+  /// 用户改了这只 base 的门槛 / 步长（面板里改，或别的设备同步过来）。
+  public func setOverride(_ next: OrderFlowOverride?) {
+    let normalized = next?.normalized
+    guard normalized != override else { return }
+    override = normalized
+    refreshThresholds()
+    ensureDerivedStep()
+  }
 
-  private func handle(_ event: DepthStreamEvent) async {
+  private func refreshThresholds() {
+    let next = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: derivedStep)
+    guard next != model.thresholds else { return }
+    model.setThresholds(next)
+    lastEmitted = nil  // 门槛一改立刻出一帧，不等心跳
+  }
+
+  private func fetchTurnover() async {
+    guard let value = await loadTurnover(), value.isFinite, value >= 0, !Task.isCancelled, !stopped else { return }
+    turnover = value
+    refreshThresholds()
+  }
+
+  // MARK: - 簿与连接
+
+  private func setUp() async {
+    let result = await loadBooks(facts.base)
+    guard !Task.isCancelled, !stopped else { return }
+    let thresholds = model.thresholds
+    let books = result.books.filter { thresholds[$0.venue.product] != nil }
+    for book in books { model.addVenue(book.venue) }
+    adapters = makeAdapters(books)
+    log("主力订单流 \(symbol)：\(books.count) 本簿、\(adapters.count) 条连接\(result.fromCatalog ? "" : "（品种表没拿到，用保底）")")
+    for (index, adapter) in adapters.enumerated() {
+      let depth = DepthStream(adapter: adapter, pacer: pacer, log: log)
+      streams.append(depth)
+      tasks.append(Task { [weak self] in
+        let events = await depth.start()
+        for await event in events {
+          guard let self, !Task.isCancelled else { return }
+          await self.handle(event, stream: index)
+        }
+      })
+    }
+  }
+
+  private func handle(_ event: DepthStreamEvent, stream index: Int) async {
+    guard index < adapters.count, !stopped else { return }
+    let books = adapters[index].books
     let now = clock()
     switch event {
     case .connected:
-      await perform(model.connectionOpened())
-    case .messages(let messages):
-      var pending = OrderFlowModel.Action.none
-      for message in messages {
-        let action = model.ingest(message, nowMs: now)
-        if action != .none { pending = action }
+      for book in books {
+        cancelSnapshot(book.id)
+        await perform(model.connectionOpened(book.id), venue: book.id, stream: index)
       }
-      await perform(pending)
+    case .messages(let messages):
+      var actions: [String: OrderFlowModel.Action] = [:]
+      for m in messages {
+        let action = model.ingest(m.venueID, m.message, nowMs: now)
+        if action != .none { actions[m.venueID] = action }
+      }
+      // 一条连接上只要有一本要重订，整条重拨一次就够了。
+      if actions.values.contains(.resubscribe) {
+        await streams[index].reconnect()
+        return
+      }
+      for (venue, action) in actions.sorted(by: { $0.key < $1.key }) {
+        await perform(action, venue: venue, stream: index)
+      }
     case .disconnected(let reason):
-      // 断线期间簿不再可信：换个连接号让它回到「拉快照中」，重连后再重建。
-      _ = model.connectionOpened()
-      snapshotTask?.cancel(); snapshotTask = nil
-      log("主力订单流 \(symbol) 断开：\(reason)")
+      // 断线期间簿不再可信：回到「拉快照中」，重连后再重建。
+      for book in books {
+        model.disconnected(book.id)
+        cancelSnapshot(book.id)
+      }
+      log("主力订单流 \(symbol) \(adapters[index].name) 断开：\(reason)")
     }
   }
 
-  private func perform(_ action: OrderFlowModel.Action) async {
+  private func perform(_ action: OrderFlowModel.Action, venue: String, stream index: Int) async {
     switch action {
     case .none: break
-    case .fetchSnapshot: fetchSnapshot()
-    case .resubscribe: await stream?.reconnect()
+    case .fetchSnapshot: fetchSnapshot(venue: venue, stream: index)
+    case .resubscribe: await streams[index].reconnect()
     }
   }
 
-  /// 拉一份快照（快照不在流里的那一路）。同一时刻只拉一份；失败按服务端给的等待或退避重试。
-  private func fetchSnapshot() {
-    guard snapshotTask == nil, !stopped else { return }
-    let adapter = self.adapter, pacer = self.pacer
-    snapshotTask = Task { [weak self] in
+  private func cancelSnapshot(_ venue: String) {
+    snapshotTasks.removeValue(forKey: venue)?.cancel()
+  }
+
+  /// 拉一本簿的 REST 快照（快照不在流里的那一路）。同一本同一时刻只拉一份；失败按服务端给的等待或退避重试。
+  private func fetchSnapshot(venue: String, stream index: Int) {
+    guard snapshotTasks[venue] == nil, !stopped, index < adapters.count else { return }
+    let adapter = adapters[index], pacer = self.pacer
+    snapshotTasks[venue] = Task { [weak self] in
       var backoff = Backoff(baseMs: 1000, capMs: 15_000)
       while !Task.isCancelled {
         do {
-          let snapshot = try await adapter.fetchSnapshot()
+          let snapshot = try await adapter.fetchSnapshot(venueID: venue)
           guard !Task.isCancelled else { return }
-          await self?.applied(snapshot)
+          await self?.applied(snapshot, venue: venue, stream: index)
           return
         } catch is CancellationError {
           return
         } catch let error as DepthSnapshotError where error.isClientError {
-          await self?.snapshotFailed("快照被拒（HTTP \(error.status)），不再重试")
+          await self?.snapshotFailed(venue, "快照被拒（HTTP \(error.status)），不再重试")
           return
         } catch {
           let wait = (error as? DepthSnapshotError)?.retryAfterMs ?? backoff.next()
@@ -177,37 +314,44 @@ public actor OrderFlowFeed {
     }
   }
 
-  private func applied(_ snapshot: BookSnapshot) async {
-    snapshotTask = nil
-    let action = model.applySnapshot(snapshot, nowMs: clock())
+  private func applied(_ snapshot: BookSnapshot, venue: String, stream index: Int) async {
+    snapshotTasks[venue] = nil
+    let action = model.applySnapshot(venue, snapshot, nowMs: clock())
     if action == .fetchSnapshot {
       // 快照比缓冲的增量还旧（或对不上）：等一小会儿让增量攒起来再拉，别连打。
       try? await pacer.sleep(ms: 500)
       guard !stopped else { return }
     }
-    await perform(action)
+    await perform(action, venue: venue, stream: index)
   }
 
-  private func snapshotFailed(_ message: String) {
-    snapshotTask = nil
-    log("主力订单流 \(symbol) \(message)")
+  private func snapshotFailed(_ venue: String, _ message: String) {
+    snapshotTasks[venue] = nil
+    log("主力订单流 \(symbol) \(venue) \(message)")
   }
 
-  // MARK: - 桶宽
+  // MARK: - 步长
+
+  /// 表里和用户都没给步长时，按前一日收盘推一个；已经在推就不重复起。
+  private func ensureDerivedStep() {
+    let needs = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: nil).step == nil
+    guard needs, schemeTask == nil, started, !stopped else { return }
+    schemeTask = Task { [weak self] in await self?.schemeLoop() }
+  }
 
   private func schemeLoop() async {
     var backoff = Backoff(baseMs: 2000, capMs: 60_000)
+    var loadedDay: Int64?
     while !Task.isCancelled {
-      let now = clock()
-      let day = BucketScheme.referenceDay(nowMs: now)
-      if model.scheme?.referenceDayMs != day || !schemeFromDaily {
+      let day = BucketScheme.referenceDay(nowMs: clock())
+      if loadedDay != day {
         let close = try? await loadClose(day)
         guard !Task.isCancelled else { return }
-        if let close, let scheme = BucketScheme(referenceClose: close, tick: tick ?? Self.guessTick(close),
-                                                referenceDayMs: day) {
-          model.setScheme(scheme)
-          schemeFromDaily = true
+        if let close, let step = OrderFlowDefaults.derivedStep(referenceClose: close, tick: facts.tick) {
+          derivedStep = step
+          loadedDay = day
           backoff.reset()
+          refreshThresholds()
         } else {
           do { try await pacer.sleep(ms: backoff.next()) } catch { return }
           continue
@@ -217,12 +361,6 @@ public actor OrderFlowFeed {
       let next = day + 2 * 86_400_000 + 60_000
       do { try await pacer.sleep(ms: Double(max(1000, next - clock()))) } catch { return }
     }
-  }
-
-  /// 合约表里没有 tick 时的兜底：按价格量级取十万分之一再落到 10 的整数次幂。
-  static func guessTick(_ price: Double) -> Double {
-    guard price > 0, price.isFinite else { return 1e-8 }
-    return pow(10, (log10(price * 1e-5)).rounded(.down))
   }
 
   // MARK: - 出帧
@@ -235,14 +373,10 @@ public actor OrderFlowFeed {
   }
 
   private func step() {
+    guard !stopped else { return }
     let now = clock()
-    if model.scheme == nil, !schemeFromDaily, model.isReady, let mid = bookMid() {
-      // 日线还没到：先按簿中价把桶宽定下来，日线到了再换（宽度一样就不清跟踪表）。
-      model.setScheme(BucketScheme(referenceClose: mid, tick: tick ?? Self.guessTick(mid),
-                                   referenceDayMs: BucketScheme.referenceDay(nowMs: now)))
-    }
     let frame = model.evaluate(nowMs: now)
-    if model.calibrationDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
+    if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
     if let last = lastEmitted, last.sameContent(as: frame), now - lastEmitMs < Self.heartbeatMs { return }
     lastEmitted = frame
     lastEmitMs = now
@@ -250,22 +384,17 @@ public actor OrderFlowFeed {
     Task { await sink(frame) }
   }
 
-  private func bookMid() -> Double? {
-    let top = model.book.view(levels: 1)
-    guard let bid = top.bids.first?.price, let ask = top.asks.first?.price else { return nil }
-    return (bid + ask) / 2
-  }
-
   private func save() {
-    guard let file, model.calibrationDirty else { return }
-    lastSaveMs = clock()
-    let data = model.calibration.encoded()
+    guard let file, model.journalDirty else { return }
+    let now = clock()
+    lastSaveMs = now
+    guard let journal = model.journal(nowMs: now) else { return }
     do {
       try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try data.write(to: file, options: .atomic)
-      model.markCalibrationSaved()
+      try journal.encoded().write(to: file, options: .atomic)
+      model.markJournalSaved()
     } catch {
-      log("主力订单流 \(symbol) 标定落盘失败：\(error)")
+      log("主力订单流 \(symbol) 日志落盘失败：\(error)")
     }
   }
 

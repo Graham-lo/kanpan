@@ -42,6 +42,10 @@ public struct OrderFlowCatalog: Sendable {
     public var books: [DepthBook]
     /// 来自网关的品种表；false 是保底那几本。
     public var fromCatalog: Bool
+
+    public init(base: String, chartScale: Double, books: [DepthBook], fromCatalog: Bool) {
+      self.base = base; self.chartScale = chartScale; self.books = books; self.fromCatalog = fromCatalog
+    }
   }
 
   // ------------------------------------------------------------------ 查表

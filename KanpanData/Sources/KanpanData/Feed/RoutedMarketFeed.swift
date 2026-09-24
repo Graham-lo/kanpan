@@ -159,9 +159,15 @@ public actor RoutedMarketFeed {
     let micro = activeProvider?.capabilities.hasMicrostructure == true
     await feed?.setMicrostructure(taker: micro && taker, depth: micro && depth)
   }
-  /// 主力订单流开关。簿订阅不在这里发：要等当前品种的 K 线交给界面之后（见 `forward`）。
-  public func setOrderFlow(enabled: Bool, tick: @escaping @Sendable (String) -> Double?) {
-    orderFlow.enabled = enabled; orderFlow.tick = tick
+  /// 主力订单流开关与设置。簿订阅不在这里发：要等当前品种的 K 线交给界面之后（见 `forward`）。
+  /// 开着时重复调用无妨：品种事实刚到（之前没起成）会在这里补起，用户改过的门槛会推给正在跑的那条。
+  /// - Parameters:
+  ///   - facts: 品种 → base、资产类别、最小变动价、成交额；还不知道就给 nil（先不订）。
+  ///   - overrides: 用户改过的门槛 / 步长，键是去掉缩放前缀的 base（`OrderFlowFacts.overrideKey`）。
+  public func setOrderFlow(enabled: Bool, overrides: [String: OrderFlowOverride] = [:],
+                           facts: @escaping @Sendable (String) -> OrderFlowFacts?) {
+    orderFlow.enabled = enabled; orderFlow.facts = facts
+    orderFlow.setOverrides(overrides)
     if enabled { startOrderFlow() } else { stopOrderFlow(forgetChart: false) }
   }
   private func startOrderFlow() {

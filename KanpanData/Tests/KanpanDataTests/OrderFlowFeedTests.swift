@@ -7,23 +7,22 @@ import KanpanNetworkTestSupport
 
 // MARK: - 假件
 
-/// 深度适配器假件：连接是 `GateSocket`，测试往里推「脚本名」，解码按脚本表翻成 `DepthMessage`。
+/// 深度适配器假件：一条连接上若干本簿，连接是 `GateSocket`，测试往里推「脚本名」，
+/// 解码按脚本表翻成带簿号的消息。
 private final class ScriptAdapter: DepthFeedAdapter, @unchecked Sendable {
-  let upstream = "fake"
-  let symbol: String
-  let sequenceModel: DepthSequenceModel
-  let snapshotInBand: Bool
-  var streamURLs: [URL] { [URL(string: "wss://depth.test/\(symbol)")!] }
-  let script: [String: [DepthMessage]]
+  let name: String
+  let books: [DepthBook]
+  var streamURLs: [URL] { [URL(string: "wss://depth.test/\(name)")!] }
+  let script: [String: [VenueMessage]]
   let snapshots: Snapshots
 
   actor Snapshots {
     var replies: [Result<BookSnapshot, DepthSnapshotError>]
-    private(set) var calls = 0
+    private(set) var calls: [String] = []
     private(set) var sockets: [GateSocket] = []
     init(_ replies: [Result<BookSnapshot, DepthSnapshotError>]) { self.replies = replies }
-    func next() throws -> BookSnapshot {
-      calls += 1
+    func next(_ venue: String) throws -> BookSnapshot {
+      calls.append(venue)
       let reply = replies.count > 1 ? replies.removeFirst() : replies[0]
       return try reply.get()
     }
@@ -32,10 +31,9 @@ private final class ScriptAdapter: DepthFeedAdapter, @unchecked Sendable {
     var connects: Int { sockets.count }
   }
 
-  init(symbol: String, sequenceModel: DepthSequenceModel, snapshotInBand: Bool,
-       script: [String: [DepthMessage]], snapshots: [Result<BookSnapshot, DepthSnapshotError>] = []) {
-    self.symbol = symbol; self.sequenceModel = sequenceModel; self.snapshotInBand = snapshotInBand
-    self.script = script
+  init(name: String, books: [DepthBook], script: [String: [VenueMessage]],
+       snapshots: [Result<BookSnapshot, DepthSnapshotError>] = []) {
+    self.name = name; self.books = books; self.script = script
     self.snapshots = Snapshots(snapshots.isEmpty ? [.failure(DepthSnapshotError(status: 404))] : snapshots)
   }
 
@@ -45,8 +43,8 @@ private final class ScriptAdapter: DepthFeedAdapter, @unchecked Sendable {
     await snapshots.add(s)
     return s
   }
-  func decode(_ text: String) -> [DepthMessage] { script[text] ?? [] }
-  func fetchSnapshot() async throws -> BookSnapshot { try await snapshots.next() }
+  func decode(_ text: String) -> [VenueMessage] { script[text] ?? [] }
+  func fetchSnapshot(venueID: String) async throws -> BookSnapshot { try await snapshots.next(venueID) }
 }
 
 private actor Frames {
@@ -56,9 +54,15 @@ private actor Frames {
   var sawLoading: Bool { all.contains { $0.phase == .loading } }
 }
 
+/// 交给 `makeAdapters` 的簿记下来（验「没门槛的产品不订」）。
+private actor Handed {
+  private(set) var books: [DepthBook] = []
+  func set(_ b: [DepthBook]) { books = b }
+}
+
 private func level(_ price: Double, _ quantity: Double) -> BookLevel { BookLevel(price: price, quantity: quantity) }
 
-/// 买侧 1600 往下每 1 美元一档；1590 那档挂一堵 12 000 个币的墙。卖侧对称没墙（与 Core 用例同一本簿）。
+/// 买侧 1600 往下每 1 美元一档；1590 那档挂一堵 12 000 个币（约 1908 万美元）的墙。卖侧对称没墙。
 private func deepSnapshot(last: Int64) -> BookSnapshot {
   var bids = (1...40).map { level(1_600 - Double($0), 150) }
   bids[9] = level(1_590, 12_000)
@@ -72,67 +76,98 @@ private func tempDir() -> URL {
 
 private let symbolKey = "binance/usd_m/ETHUSDT"
 
+private let binancePerp = DepthBook(venue: OrderFlowVenue(
+  exchange: "binance", label: "币安", product: .usdtPerp, instrument: "ETHUSDT", notional: .linear(multiplier: 1),
+  sequenceModel: .previousFinalOverlap, snapshotInBand: false))
+private let okxSpot = DepthBook(venue: OrderFlowVenue(
+  exchange: "okx", label: "OKX", product: .spot, instrument: "ETH-USDT", notional: .linear(multiplier: 1),
+  sequenceModel: .previousFinalExact, snapshotInBand: true))
+private let okxCoin = DepthBook(venue: OrderFlowVenue(
+  exchange: "okx", label: "OKX", product: .coinPerp, instrument: "ETH-USD-SWAP", notional: .inverse(contractUsd: 10),
+  sequenceModel: .previousFinalExact, snapshotInBand: true))
+
+private let eth = OrderFlowFacts(base: "ETH", asset: .crypto, tick: 0.01, turnover24h: 1e10)
+
 // MARK: - OrderFlowFeed
 
 @Suite("主力订单流 · 数据层")
 struct OrderFlowFeedTests {
-  private func makeFeed(_ adapter: ScriptAdapter, dir: URL?, frames: Frames) -> OrderFlowFeed {
-    OrderFlowFeed(symbol: symbolKey, adapter: adapter, tick: 1, directory: dir,
-                  loadClose: { _ in 1_250 }, evaluateEveryMs: 10,
-                  sink: { await frames.add($0) })
+  private func makeFeed(_ adapters: [ScriptAdapter], facts: OrderFlowFacts = eth, override: OrderFlowOverride? = nil,
+                        dir: URL?, frames: Frames, handed: Handed = Handed(),
+                        close: Double? = 1_250) -> OrderFlowFeed {
+    let books = adapters.flatMap(\.books)
+    return OrderFlowFeed(
+      symbol: symbolKey, facts: facts, override: override, directory: dir,
+      loadBooks: { base in
+        OrderFlowCatalog.Books(base: base, chartScale: 1, books: books, fromCatalog: true)
+      },
+      makeAdapters: { wanted in
+        Task { await handed.set(wanted) }
+        let ids = Set(wanted.map(\.id))
+        return adapters.filter { a in a.books.contains { ids.contains($0.id) } }
+      },
+      loadClose: { _ in close }, evaluateEveryMs: 10,
+      sink: { await frames.add($0) })
   }
 
-  @Test("REST 快照这一路：连上就拉快照，与缓冲增量对上后吐出那堵墙；停时标定落盘", .timeLimit(.minutes(1)))
-  func restPath() async throws {
+  @Test("两家两条连接：REST 快照那本与流内快照那本各自就绪，墙各出一条；停时日志落盘，再开读回来",
+        .timeLimit(.minutes(1)))
+  func twoVenues() async throws {
     let dir = tempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let adapter = ScriptAdapter(
-      symbol: symbolKey, sequenceModel: .previousFinalOverlap, snapshotInBand: false,
-      script: ["d1": [.delta(BookDelta(firstUpdateID: 95, finalUpdateID: 101, previousFinalUpdateID: 94))]],
+    let binance = ScriptAdapter(
+      name: "binance", books: [binancePerp],
+      script: ["d1": [VenueMessage(binancePerp.id, .delta(BookDelta(firstUpdateID: 95, finalUpdateID: 101,
+                                                                    previousFinalUpdateID: 94)))]],
       snapshots: [.success(deepSnapshot(last: 100))])
+    let okx = ScriptAdapter(name: "okx", books: [okxSpot],
+                            script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))]])
     let frames = Frames()
-    let feed = makeFeed(adapter, dir: dir, frames: frames)
+    let feed = makeFeed([binance, okx], dir: dir, frames: frames)
     await feed.start()
-    #expect(await waitUntil(5) { await adapter.snapshots.connects == 1 })
-    #expect(await waitUntil(5) { await frames.sawLoading })
-    #expect(await waitUntil(5) { await adapter.snapshots.calls == 1 })
-    await adapter.snapshots.socket(0)?.push(.text("d1"))
-    #expect(await waitUntil(5) { await frames.last?.phase == .ready })
+    #expect(await waitUntil(5) { await binance.snapshots.connects == 1 })
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    #expect(await waitUntil(5) { await binance.snapshots.calls == [binancePerp.id] })
+    await binance.snapshots.socket(0)?.push(.text("d1"))
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    #expect(await waitUntil(5) { await frames.last?.orders.count == 2 })
     let last = try #require(await frames.last)
     #expect(last.symbol == symbolKey)
-    #expect(last.orders.map(\.low) == [1_590])
-    #expect(last.orders.first?.side == .bid)
+    #expect(Set(last.orders.map(\.venueID)) == [binancePerp.id, okxSpot.id])
+    #expect(last.orders.allSatisfy { $0.side == .bid && $0.price == 1_590 && $0.isLive })
+    #expect(last.orders.first { $0.product == .spot }?.threshold == 1_000_000)
+    #expect(last.orders.first { $0.product == .usdtPerp }?.threshold == 5_000_000)
+    // OKX 流内快照：不拉 REST。
+    #expect(await okx.snapshots.calls.isEmpty)
     await feed.stop()
-    let file = OrderFlowFeed.calibrationFile(in: dir, upstream: "fake", symbol: symbolKey)
-    let saved = try #require(FloorCalibration(encoded: try Data(contentsOf: file)))
-    #expect(!saved.samples(.bid).isEmpty)
-    #expect(!saved.samples(.ask).isEmpty)
-    // 再起一条：落盘的标定被读回来。
-    let again = makeFeed(adapter, dir: dir, frames: Frames())
-    #expect(await again.modelForTests().calibration.samples(.bid).count == saved.samples(.bid).count)
+
+    let file = OrderFlowFeed.journalFile(in: dir, symbol: symbolKey)
+    let saved = try #require(OrderFlowJournal.decode(try Data(contentsOf: file)))
+    #expect(saved.orders.count == 2)
+    #expect(saved.step == 1)
+    let again = makeFeed([binance, okx], dir: dir, frames: Frames())
+    #expect(await again.modelForTests().orders.map(\.id).sorted() == saved.orders.map(\.id).sorted())
   }
 
-  @Test("流内快照这一路：快照一到就就绪；断档要求重订，会重新拨号并回到拉快照中", .timeLimit(.minutes(1)))
-  func inBandPath() async throws {
-    let adapter = ScriptAdapter(
-      symbol: symbolKey, sequenceModel: .previousFinalExact, snapshotInBand: true,
-      script: ["early": [.delta(BookDelta(firstUpdateID: 7, finalUpdateID: 7, previousFinalUpdateID: 6))],
-               "snap": [.snapshot(deepSnapshot(last: 100))],
-               "gap": [.reset]])
+  @Test("流内快照断档：整条连接重拨，新快照到了照常；挂着的单不因为重连被判结束", .timeLimit(.minutes(1)))
+  func resubscribe() async throws {
+    let okx = ScriptAdapter(
+      name: "okx", books: [okxSpot],
+      script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))],
+               "gap": [VenueMessage(okxSpot.id, .reset)]])
     let frames = Frames()
-    let feed = makeFeed(adapter, dir: nil, frames: frames)
+    let feed = makeFeed([okx], dir: nil, frames: frames)
     await feed.start()
-    #expect(await waitUntil(5) { await adapter.snapshots.connects == 1 })
-    let first = try #require(await adapter.snapshots.socket(0))
-    await first.push(.text("early"))  // 快照前的增量直接丢，不拉 REST
-    await first.push(.text("snap"))
-    #expect(await waitUntil(5) { await frames.last?.orders.map(\.low) == [1_590] })
-    #expect(await adapter.snapshots.calls == 0)
-    await first.push(.text("gap"))
-    #expect(await waitUntil(5) { await adapter.snapshots.connects == 2 })
-    #expect(await waitUntil(5) { await frames.last?.phase == .loading })
-    await adapter.snapshots.socket(1)?.push(.text("snap"))
-    #expect(await waitUntil(5) { await frames.last?.phase == .ready })
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    #expect(await waitUntil(5) { await frames.last?.orders.count == 1 })
+    await okx.snapshots.socket(0)?.push(.text("gap"))
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 2 })
+    await okx.snapshots.socket(1)?.push(.text("snap"))
+    try await Task.sleep(for: .milliseconds(100))
+    let last = try #require(await frames.last)
+    #expect(last.orders.count == 1)
+    #expect(last.orders.first?.isLive == true)
     await feed.stop()
   }
 
@@ -140,32 +175,96 @@ struct OrderFlowFeedTests {
   func snapshotRetry() async throws {
     let delta = BookDelta(firstUpdateID: 95, finalUpdateID: 101, previousFinalUpdateID: 94)
     let adapter = ScriptAdapter(
-      symbol: symbolKey, sequenceModel: .previousFinalOverlap, snapshotInBand: false,
-      script: ["d1": [.delta(delta)]],
+      name: "binance", books: [binancePerp], script: ["d1": [VenueMessage(binancePerp.id, .delta(delta))]],
       snapshots: [.failure(DepthSnapshotError(status: 503, retryAfterMs: 20)), .success(deepSnapshot(last: 100))])
     let frames = Frames()
-    let feed = makeFeed(adapter, dir: nil, frames: frames)
+    let feed = makeFeed([adapter], dir: nil, frames: frames)
     await feed.start()
     #expect(await waitUntil(5) { await adapter.snapshots.connects == 1 })
     await adapter.snapshots.socket(0)?.push(.text("d1"))
-    #expect(await waitUntil(5) { await frames.last?.phase == .ready })
-    #expect(await adapter.snapshots.calls == 2)
+    #expect(await waitUntil(5) { await frames.last?.orders.count == 1 })
+    #expect(await adapter.snapshots.calls.count == 2)
     await feed.stop()
 
-    let refused = ScriptAdapter(symbol: symbolKey, sequenceModel: .previousFinalOverlap, snapshotInBand: false,
-                                script: [:], snapshots: [.failure(DepthSnapshotError(status: 400))])
-    let quiet = makeFeed(refused, dir: nil, frames: Frames())
+    let refused = ScriptAdapter(name: "binance", books: [binancePerp], script: [:],
+                                snapshots: [.failure(DepthSnapshotError(status: 400))])
+    let quiet = makeFeed([refused], dir: nil, frames: Frames())
     await quiet.start()
-    #expect(await waitUntil(5) { await refused.snapshots.calls == 1 })
-    try await Task.sleep(for: .milliseconds(200))
-    #expect(await refused.snapshots.calls == 1)
+    #expect(await waitUntil(5) { await refused.snapshots.calls.count == 1 })
+    #expect(await staysFalse(for: 0.2) { await refused.snapshots.calls.count > 1 })
     await quiet.stop()
   }
 
-  @Test("桶宽兜底：没有 tick 时按价格量级取 10 的整数次幂")
-  func guessTick() {
-    #expect(OrderFlowFeed.guessTick(78_450) == 0.1)
-    #expect(OrderFlowFeed.guessTick(1.25) == 0.00001)
+  @Test("用户把门槛抬过墙：那条立刻不再是大单；放回默认又按正常确认出现", .timeLimit(.minutes(1)))
+  func overrideTakesEffect() async throws {
+    let okx = ScriptAdapter(name: "okx", books: [okxSpot],
+                            script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))]])
+    let frames = Frames()
+    let feed = makeFeed([okx], dir: nil, frames: frames)
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    #expect(await waitUntil(5) { await frames.last?.orders.count == 1 })
+    await feed.setOverride(OrderFlowOverride(spot: 50_000_000))
+    #expect(await waitUntil(5) { await frames.last?.orders.isEmpty == true })
+    #expect(await frames.last?.thresholds.spot == 50_000_000)
+    await feed.setOverride(nil)
+    #expect(await waitUntil(5) { await frames.last?.orders.count == 1 })
+    #expect(await frames.last?.thresholds.spot == 1_000_000)
+    await feed.stop()
+  }
+
+  @Test("非币只订 U 本位永续：别的产品的簿不交给连接", .timeLimit(.minutes(1)))
+  func tradfiOnlyPerp() async throws {
+    let handed = Handed()
+    let perp = ScriptAdapter(name: "binance", books: [binancePerp], script: [:])
+    let spot = ScriptAdapter(name: "okx", books: [okxSpot, okxCoin], script: [:])
+    let feed = makeFeed([perp, spot], facts: OrderFlowFacts(base: "AAPL", asset: .equity, tick: 0.01),
+                        dir: nil, frames: Frames(), handed: handed)
+    await feed.start()
+    #expect(await waitUntil(5) { await handed.books.map(\.id) == [binancePerp.id] })
+    await feed.stop()
+  }
+
+  @Test("门槛与步长：默认表 → 用户改过的项 → 没步长按前一日收盘推")
+  func effectiveThresholds() async throws {
+    let btc = OrderFlowFacts(base: "BTC", asset: .crypto)
+    #expect(OrderFlowFeed.effective(facts: btc, turnover: nil, override: nil, derivedStep: nil)
+      == OrderFlowThresholds(spot: 1_000_000, usdtPerp: 5_000_000, coinPerp: 5_000_000, delivery: 5_000_000, step: 100))
+    let mine = OrderFlowFeed.effective(facts: btc, turnover: nil,
+                                       override: OrderFlowOverride(usdtPerp: 8_000_000, step: 50), derivedStep: 7)
+    #expect(mine.usdtPerp == 8_000_000 && mine.step == 50 && mine.spot == 1_000_000)
+    let doge = OrderFlowFacts(base: "DOGE", asset: .crypto, tick: 0.00001)
+    let d = OrderFlowFeed.effective(facts: doge, turnover: 3e9, override: nil, derivedStep: 0.0002)
+    #expect(d.usdtPerp == 2_500_000 && d.spot == 750_000 && d.step == 0.0002)
+    // 带缩放前缀的按去掉前缀的币名存用户改过的项。
+    #expect(OrderFlowFacts(base: "1000PEPE", asset: .crypto).overrideKey == "PEPE")
+
+    // 表里没有步长的币：前一日收盘 1250 × 0.1% → 1（不小于 tick）。
+    let frames = Frames()
+    let okx = ScriptAdapter(name: "okx", books: [okxSpot], script: [:])
+    let feed = makeFeed([okx], facts: OrderFlowFacts(base: "XYZ", asset: .crypto, tick: 0.01, turnover24h: 1e10),
+                        dir: nil, frames: frames)
+    await feed.start()
+    #expect(await waitUntil(5) { await frames.last?.thresholds.step == 1 })
+    await feed.stop()
+  }
+
+  @Test("清目录：24 小时没动的日志和旧版标定子目录删掉，新的留下")
+  func sweep() throws {
+    let dir = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let fm = FileManager.default
+    try fm.createDirectory(at: dir.appendingPathComponent("binance-um"), withIntermediateDirectories: true)
+    let fresh = dir.appendingPathComponent("a.json"), stale = dir.appendingPathComponent("b.json")
+    try Data("{}".utf8).write(to: fresh)
+    try Data("{}".utf8).write(to: stale)
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    try fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: Double(now - 90_000_000) / 1000)],
+                         ofItemAtPath: stale.path)
+    OrderFlowFeed.sweep(directory: dir, nowMs: now)
+    let left = try fm.contentsOfDirectory(atPath: dir.path)
+    #expect(left == ["a.json"])
   }
 }
 
@@ -175,7 +274,12 @@ struct OrderFlowFeedTests {
 private actor DialLog {
   private(set) var urls: [String] = []
   func add(_ u: URL) { urls.append(u.absoluteString) }
+  /// 这只的深度流拨了几次（合约组合流、现货组合流都算）。
   func depthDials(_ symbol: String) -> Int { urls.filter { $0.contains("\(symbol)@depth@100ms") }.count }
+  /// 现货那条（data-stream.binance.vision）拨了几次。
+  func spotDials(_ symbol: String) -> Int {
+    urls.filter { $0.contains("data-stream.binance.vision") && $0.contains("\(symbol)@depth@100ms") }.count
+  }
 }
 
 private struct DialFactory: WSSocketFactory {
@@ -252,7 +356,11 @@ struct OrderFlowRoutingTests {
       backup: BinanceREST(hosts: hosts, transport: transport, limiter: RateLimiter()),
       sockets: DialFactory(log: dials), policy: .direct)
     await routed.setSnapshotEnabled(false)
-    await routed.setOrderFlow(enabled: true, tick: { _ in 0.01 })
+    // 网关品种表在假服务器上拿不到：走保底那几本（币安 U 本位永续、币安现货、Coinbase 现货）。
+    let facts: @Sendable (String) -> OrderFlowFacts? = { key in
+      OrderFlowFacts(base: QuoteAssets.base(of: InstrumentID(key).symbol), asset: .crypto, tick: 0.01, turnover24h: 1e10)
+    }
+    await routed.setOrderFlow(enabled: true, facts: facts)
 
     let seen = RoutedSeen()
     let events = await routed.events()
@@ -273,18 +381,19 @@ struct OrderFlowRoutingTests {
 
     await hold.open()
     #expect(await waitUntil(5) { await seen.series > 0 })
-    #expect(await waitUntil(5) { await dials.depthDials("ethusdt") == 1 })
+    #expect(await waitUntil(5) { await dials.depthDials("ethusdt") == 2 })
+    #expect(await dials.spotDials("ethusdt") == 1)
     #expect(await waitUntil(5) { await seen.flow.first??.phase == .loading })
 
     // 换品种：先发一帧 nil 清掉，新品种的 K 线到了再订它的簿。
     let before = await seen.flow.count
     await routed.switchTo(symbol: "BTCUSDT", interval: .m1)
     #expect(await waitUntil(5) { await seen.flow.dropFirst(before).contains { $0 == nil } })
-    #expect(await waitUntil(5) { await dials.depthDials("btcusdt") == 1 })
+    #expect(await waitUntil(5) { await dials.depthDials("btcusdt") == 2 })
     #expect(await waitUntil(5) { await seen.lastFlow??.symbol == "binance/usd_m/BTCUSDT" })
 
     // 关开关：退订并清图。
-    await routed.setOrderFlow(enabled: false, tick: { _ in 0.01 })
+    await routed.setOrderFlow(enabled: false, facts: facts)
     #expect(await waitUntil(5) { await seen.lastFlow == .some(nil) })
     await routed.stop()
   }
