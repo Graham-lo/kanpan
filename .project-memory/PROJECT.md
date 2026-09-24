@@ -69,7 +69,7 @@
   六秒不理等于「只画线」；**2026-09-21 起它占头部价格行那一行的位置**——价格行照旧占位、
   只是透明，十字线那三颗动作同理让位，行高与图表尺寸一个 pt 都不变，画布也一个点都没碰着；
   从前它是图外额外插的一行，画完线图当场矮一行、六秒后又弹回来，肉眼两次跳动。横屏仍是图
-  下面那一条）、`AlertListPage`（设置面板里「提醒」那一行进）、
+  下面那一条）、`AlertListPage`（2026-09-25 起从新建提醒页右上「全部 N」推入，深链 `hkline://alerts` 与通知点开时以 sheet 出现）、
   `AlertNotifications`、`PushRegistration`、`ReviewDueNotifications`（复盘待办到点，纯本地通知）。
   测试壳 `Kanpan/Alerts/`（符号链接，`make alerts-test`）。
 - **图表只暴露两样**：`ChartHost.onDrawingCommitted(Drawing, symbol)` 和
@@ -539,3 +539,18 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 周期条行尾改成「[最新] | 更多 ˅ · 指标 · 图表设置」：「指标」平文字无箭头、44pt 命中区，直接开 `Panel.indicators`（同一张 `IndicatorPage`，`onBack` 为 nil，左上角那颗关面板；「图表设置 › 指标」那条路不变）。
 - 排版按 iPhone 16 Pro 370pt 算：图表设置记号版面只占 31pt，44pt 命中区往右伸 13pt 进页边距；「最新」药丸不足 44 时命中区伸进两侧留白、不占版面；最宽六档组合 + 「最新」挤不下时只把格子 2pt 内距按剩下的空当均摊收窄（`IntervalBar.chipPad`，取 0.25pt 往下，最少 0），不缩字不截字；一刀收到 0 会让「15分30分12时」连成一串，取证时看到后改掉。
 - 「返回刚才」按用户要求整个删除（`returnView` / `forgetReturn` / `ChartHost.onUserView` 链、`chart.returnBack` 用例）；「最新」保留。
+
+## 17. 从图上加提醒（2026-09-25）
+
+用户要的：提醒从图上那口价起手，不再去设置里找；只响一次，不做重复提醒；设置里的「提醒」那一行删掉。
+
+- **服务端这一半**（`6d61a9b3`，已部署）：`alert_watches` 加 `note` / `webhook` / `webhook_text` 三列（迁移 0025），服务端触发时照同一份模板 POST Webhook；本机 / 内网字面地址不发，日志只写主机名。
+- **字段契约**（两端一字不差）：`Alert` 加 `note`（≤ 30 字）、`webhook`（http/https、无空白）、`webhookText` 三个可空键，永远写出、空则 null，缺键解码为 nil；占位符 {品种} {代号} {价格} {目标价} {条件} {时间} {备注}，默认模板 `{品种} {条件} {目标价}，现价 {价格}`（`KanpanCore/Alerts/AlertMessage.swift`）；POST 为 JSON、UA `Hkline-Alerts/1`、8 s 超时、3 s 后重试一次，正文 14 键，「发一条试试」带 `event:"test"`。`once` 永远 true，不做重复提醒。
+- **客户端**：
+  - 十字线条上「看细节」删掉（`DetailZoom` 整套），换成「提醒我 · <价>」药丸 `chart.crosshair.alert`，点开新建提醒页（`AlertForm.swift`：`AlertDraft` / `AlertStore.commit` / `AlertComposeSheet`），价格预填十字线那口价、±档位微调、条件选「碰到 / 收盘穿过」（方向按现价自动判）、可展开 Webhook（地址、模板、最近用过的三条、发一条试试）与备注；建好 Toast「已加提醒 · …」，十字线收掉。
+  - 已有提醒左划「编辑」进同一张表（品种不可改、价格不变时保持布防、改价重新布防；画线提醒不给编辑价格）。
+  - 总表行显示备注与 Webhook 小记号；总表去掉「新建」，空态一句「在图上点一下，就能按那口价加提醒」；新建页右上「全部 N」（`alerts.all`）推入总表，深链 / 通知点开时总表以 sheet 出现带关闭钮（`presentedAsSheet`），两张 sheet 不同时开（`MainScreen` 单一 `.sheet(item: $alertSheet)`）。
+  - 设置整页：删「提醒」行与「提醒与朋友」分组；新增「通知」组（在「行情」之后）放提醒铃声、自选波动、通知权限（`Alerts/AlertSettingsSection.swift`）；「朋友」挪到「通用」最上面。
+  - Webhook 只在本机触发的那一次由 app 发（`AlertStore.localFires`），服务端触发的由服务端发，不重复。
+- 验收截图 `docs/acceptance/提醒-2026-09-25/`（16 Pro，青苔浅 / 深）；手册 `docs/使用手册-2026-09-21.md` 提醒一节已改。
+- **状态**：已推送——客户端 `0d39c09f`（Core）、`3abe0775`（App）、`d6cbf6f9`（UI 用例）与文档截图一笔；服务端 `6d61a9b3` 已推送并部署。
