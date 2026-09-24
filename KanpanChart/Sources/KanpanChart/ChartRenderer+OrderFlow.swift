@@ -11,9 +11,10 @@ import UIKit
 //
 // 手机布局（用户：「都挤在一起，有没有适合手机的布局设计展示」——BTC 十三本簿同时出单，
 // 一单一条在 1 分钟图右缘叠成一堵墙）：
-//   1. **一桶一条**：同一价位桶、同一侧、同一类（现货 / 合约）的单合成一条带（`OrderFlowGroup`）。
+//   1. **一段一条**：同一价位桶、同一侧、同一类（现货 / 合约）、时间上连成一段的单合成一条带（`OrderFlowGroup`）。
 //      四种合约（币安 U 本位 / 币本位 / 交割、OKX 永续）是一条「合约」带，三家现货是一条「现货」带。
-//      左缘 = 最早首见那根 K 线的左缘；右缘 = 最晚结束那根的右缘，有一单还挂着就画到主图右缘。
+//      时间上断开（空档超过 max(60 秒, 一根 K 线)）就另起一段、另画一条——不把空档画成墙（`OrderFlowGroup.segments`）。
+//      左缘 = 段里最早首见那根 K 线的左缘；右缘 = 段里最晚结束那根的右缘，有一单还挂着就画到主图右缘。
 //   2. **粗细五档**：合并后的「名义 ÷ 门槛」（各本簿最近那一单的四分之一格之和）1× / 2× / 4× / 8× / 16×
 //      → 2 / 3 / 4.5 / 6 / 8 pt。手机图区矮，不再到 12 pt。
 //   3. **纵向去挤**：按名义从大到小落带；一条带落下后，和它横向有交叠、纵向重叠（含 1 pt 间隙）的更小的带
@@ -27,8 +28,8 @@ import UIKit
 //   6. 显示开关（`state.orderFlowDisplay`）逐单过滤后再合并；图例「主力 买 X · 卖 Y」仍按逐单求和。
 //
 // 选中（`ChartOrderFlowFocus`）：十字线停在一条带上，或者轻点选中了一条（`state.orderFlowSelected`，
-// 存的是那一桶的 `OrderFlowGroupKey`）。选中的那条在 crossLayer 上重画一遍并描 1 pt 正文色边，
-// app 按它出「一桶一卡」的详情卡；这时图里的开高低收框不画。
+// 存的是那一段的 `OrderFlowGroupKey`，含段的起点）。选中的那条在 crossLayer 上重画一遍并描 1 pt 正文色边，
+// app 按它出「一段一卡」的详情卡；这时图里的开高低收框不画。
 //
 // 层序：`draw` 在叠加线之后、画线之前调 `drawOrderFlow`，所以色带压在蜡烛上、画线和最新价（liveLayer）
 // 盖在色带上。选中那一条、金额标签、图例画在 crossLayer。几何（`orderFlowFrame`）按（快照、显示开关、
@@ -36,7 +37,7 @@ import UIKit
 
 /// 此刻被选中的那一条合并带，交给 app 出详情卡。坐标都是图表视图坐标（pt）。
 public struct ChartOrderFlowFocus: Sendable, Equatable {
-  /// 最新快照里的这一桶（金额、状态随快照更新）。
+  /// 最新快照里的这一段（金额、状态随快照更新）。
   public var group: OrderFlowGroup
   /// true = 轻点选中；false = 十字线停在上面。
   public var selected: Bool
@@ -245,8 +246,8 @@ extension ChartRenderer {
     return Self.orderFlowHit(bands, x: cx, y: cy)
   }
 
-  /// 此刻被选中的那一条（十字线在主图上就看十字线，否则看轻点选中的那一桶）及其画出来的样子。
-  /// 选中的桶不在这一屏的带里（滚出去了）时 `band` 为空，合并带按整份快照现合一份；快照里也没了就是 nil。
+  /// 此刻被选中的那一条（十字线在主图上就看十字线，否则看轻点选中的那一段）及其画出来的样子。
+  /// 选中的段不在这一屏的带里（滚出去了）时 `band` 为空，按整份快照把那一桶侧类现切一遍找回那一段；快照里也没了就是 nil。
   func orderFlowFocusBand(pane: Pane, range: PriceRange, L: Layout) -> (group: OrderFlowGroup, band: OrderFlowBand?, hovered: Bool)? {
     guard let flow = orderFlowSnapshot, flow.phase == .ready else { return nil }
     let frame = orderFlowBands(pane: pane, range: range, L: L)
@@ -255,11 +256,22 @@ extension ChartRenderer {
       return (band.group, band, true)
     }
     guard let key = state.orderFlowSelected else { return nil }
-    if let band = frame.bands.first(where: { $0.key == key }) { return (band.group, band, false) }
+    if let band = frame.bands.first(where: { $0.key == key }) ?? frame.bands.first(where: { $0.group.covers(key) }) {
+      return (band.group, band, false)
+    }
     let display = state.orderFlowDisplay
-    let members = flow.orders.filter { display.shows($0) && OrderFlowGroupKey($0) == key }
-    guard let group = OrderFlowGroup(key: key, members: members) else { return nil }
+    let lane = flow.orders.filter { display.shows($0) && OrderFlowGroupKey($0).sameLane(key) }
+    let segments = OrderFlowGroup.groups(lane, gapMs: orderFlowMergeGapMs)
+    guard let group = segments.first(where: { $0.key == key }) ?? segments.first(where: { $0.covers(key) }) else { return nil }
     return (group, nil, false)
+  }
+
+  /// 这一周期的切段容差：max(60 秒, 一根 K 线)。
+  var orderFlowMergeGapMs: Int64 { OrderFlowGroup.mergeGapMs(barMs: state.series.step) }
+
+  /// 这一条是不是此刻选中的那一条（选中存的键可能是段起点前移之前的，按 `covers` 认）。轻点同一条收起用。
+  public func orderFlowIsSelected(_ group: OrderFlowGroup) -> Bool {
+    state.orderFlowSelected.map { group.covers($0) } ?? false
   }
 
   /// 交给 app 的选中带（出详情卡用）。没选中返回 nil。
@@ -293,42 +305,50 @@ extension ChartRenderer {
     let spacing = state.view.barSpacing(step: state.series.step, plotW: L.plotW)
     let display = state.orderFlowDisplay
 
-    // 1. 逐单：过显示开关、落在主图里、横向落在这一屏的单，记下各自的横向范围；图例合计逐单求和。
+    // 1. 逐单：过显示开关；图例合计只算还挂着、落在主图里、横向落在这一屏的单（逐单求和，不因合并变）。
     var frame = OrderFlowFrame()
-    var visible: [BigOrder] = []
-    var extent: [OrderFlowGroupKey: (left: Double, right: Double)] = [:]
+    var shown: [BigOrder] = []
+    shown.reserveCapacity(flow.orders.count)
     for order in flow.orders where display.shows(order) {
+      shown.append(order)
+      guard order.isLive else { continue }
       let cy = y(order.price)
-      guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h else { continue }
-      guard let x0 = orderFlowBarX(order.firstSeenMs, spacing: spacing, plotW: L.plotW)?.left else { continue }
+      guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h,
+            let x0 = orderFlowBarX(order.firstSeenMs, spacing: spacing, plotW: L.plotW)?.left, x0 < L.plotW else { continue }
+      if order.side == .bid { frame.bidTotal += order.notional } else { frame.askTotal += order.notional }
+    }
+    guard !shown.isEmpty else { return frame }
+
+    // 2. 按「桶 × 侧 × 类 × 时间段」切段（切段只看时间与周期，不看这一屏：段的身份跨缩放、平移稳定），
+    //    再按段的时间跨度筛出横向落在这一屏的，只对它们建组；带画在段的价上、价落在主图里才画。
+    //    横向范围：段起点那根的左缘到段结束那根的右缘，有一单还挂着就到主图右缘。
+    var visible: [(group: OrderFlowGroup, left: Double, right: Double)] = []
+    for segment in OrderFlowGroup.segments(shown, gapMs: orderFlowMergeGapMs) {
+      guard let x0 = orderFlowBarX(segment.key.start, spacing: spacing, plotW: L.plotW)?.left else { continue }
       let x1: Double
-      if let end = order.endMs {
+      if let end = segment.endMs {
         guard let bar = orderFlowBarX(end, spacing: spacing, plotW: L.plotW) else { continue }
         x1 = bar.right
       } else {
         x1 = L.plotW
       }
       let left = max(0, x0), right = min(L.plotW, max(x1, x0 + 1))
-      guard right > left, left < L.plotW else { continue }
-      visible.append(order)
-      let key = OrderFlowGroupKey(order)
-      let e = extent[key]
-      extent[key] = (min(e?.left ?? left, left), max(e?.right ?? right, right))
-      if order.isLive {
-        if order.side == .bid { frame.bidTotal += order.notional } else { frame.askTotal += order.notional }
-      }
+      guard right > left, left < L.plotW,
+            let group = OrderFlowGroup(key: segment.key, members: segment.members) else { continue }
+      let cy = y(group.price)
+      guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h else { continue }
+      visible.append((group, left, right))
     }
     guard !visible.isEmpty else { return frame }
+    visible.sort { OrderFlowGroup.drawOrder($0.group, $1.group) }
 
-    // 2. 一桶一条，按画法名义从大到小落带；和已落下的（整条或细线）横向交叠、纵向重叠（含 1 pt 间隙）就压成细线。
+    // 3. 按画法名义从大到小落带；和已落下的（整条或细线）横向交叠、纵向重叠（含 1 pt 间隙）就压成细线。
     var full: [OrderFlowBand] = [], thin: [OrderFlowBand] = []
     var occupied: [CGRect] = []
-    for group in OrderFlowGroup.groups(visible) {
-      guard let e = extent[group.key] else { continue }
+    for (group, left, right) in visible {
       let cy = y(group.price)
-      guard cy.isFinite else { continue }
       let h = Self.orderFlowBandHeight(tier: group.tier)
-      let whole = CGRect(x: e.left, y: cy - h / 2, width: e.right - e.left, height: h)
+      let whole = CGRect(x: left, y: cy - h / 2, width: right - left, height: h)
       let clash = occupied.contains { r in
         r.minX < whole.maxX && r.maxX > whole.minX
           && whole.minY < r.maxY + Self.orderFlowGap && whole.maxY > r.minY - Self.orderFlowGap
@@ -342,7 +362,7 @@ extension ChartRenderer {
     }
     frame.bands = full + thin
 
-    // 3. 金额小签：整条的、宽 ≥ 48 pt 的才写；按名义从大到小放，和已放下的签碰上就不放。
+    // 4. 金额小签：整条的、宽 ≥ 48 pt 的才写；按名义从大到小放，和已放下的签碰上就不放。
     var labels: [OrderFlowLabel] = []
     for band in full where Double(band.frame.width) >= Self.orderFlowLabelMinWidth {
       let text = Self.orderFlowAmount(band.group.notional)

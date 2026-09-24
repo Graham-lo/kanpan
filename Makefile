@@ -294,9 +294,9 @@ test: core-test presentation-test network-test data-test app-logic-test chart-te
 #   有存储，Release 里恒为 0。同文件另外 3 条验的是产品行为，两种配置都跑。
 #   Kanpan/KanpanTests/Alerts/P31AlertKindsTests.swift —— 1 条。
 #   它调的是 `WatchMoveMonitor.injectTestMove`（UI 用例的注入口），那个口子只在 DEBUG 里有。
-#   KanpanChart/Tests/KanpanChartTests/OrderFlowChartTests.swift —— 1 条（共 11 条）。
+#   KanpanChart/Tests/KanpanChartTests/OrderFlowChartTests.swift —— 1 条（共 20 条）。
 #   主力订单流「十字线扫 50 步底图一次不重画」读的是 `ChartView.renderCounts`，那份计数
-#   只在 DEBUG 下有。同文件另外 10 条验的是画法与缓存，两种配置都跑。
+#   只在 DEBUG 下有。同文件另外 19 条验的是画法与缓存，两种配置都跑。
 # KanpanAccount 原来那 16 条（ClientHardening 8 / DeviceKind 5 / SessionLifecycle 全套）
 # 已经在本轮改成白名单主机 + 自带 URLProtocol，Debug / Release 两边都是 60 条，不再有差集。
 test-release: core-test-release presentation-test-release network-test-release data-test-release app-logic-test-release \

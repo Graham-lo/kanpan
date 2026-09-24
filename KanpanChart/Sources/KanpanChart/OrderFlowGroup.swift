@@ -1,40 +1,64 @@
 import Foundation
 import KanpanCore
 
-// 主力订单流 · 手机布局的「一桶一条带」（2026-09-24 晚，用户：「都挤在一起，有没有适合手机的布局设计展示」）。
+// 主力订单流 · 手机布局的「一段一条带」（2026-09-24 晚，用户：「都挤在一起，有没有适合手机的布局设计展示」）。
 //
 // BTC 默认门槛下十三本簿同时出单，一单一条带在手机的矮图区里右缘叠成一堵墙。所以画的时候按
-// 「价位桶 × 买卖侧 × 类（现货 / 合约）」合成一条：币安 U 本位、币本位、交割与 OKX 永续在同一桶同一侧的
-// 单画成一条「合约」带，三家现货画成一条「现货」带。只是画法合并——`OrderFlowModel` 交出来的逐单不动，
+// 「价位桶 × 买卖侧 × 类（现货 / 合约）× 时间段」合成一条：币安 U 本位、币本位、交割与 OKX 永续在同一桶同一侧、
+// 时间上连着的单画成一条「合约」带，三家现货画成一条「现货」带。只是画法合并——`OrderFlowModel` 交出来的逐单不动，
 // 图例「主力 买 X · 卖 Y」仍按逐单求和。
 //
-// 一条带里同一本簿可能先后有好几单（撤了又挂回来）。它们是同一堵墙的前后两段，名义不该累加：
+// **按时间切段**（2026-09-24 夜修）：起初同一「桶 × 侧 × 类」不分时间合成一条，同一价位 21:30 挂过 1 分钟、
+// 23:00 又挂一单，就画成 21:30 连到右缘的一整条。真机 BTC 实测 191 条带画出来共 572 小时，真有单挂着的只有
+// 213 小时；最坏的合约卖 834 桶 22 单实挂 10 分钟，画成近 5 小时——图上画了没发生过的墙。所以同一桶侧类里的单
+// 按首见排好，逐单往前一段上并：和这一段的区间重叠、或者空档不超过容差（`mergeGapMs`）就并进去，否则另起一段。
+// 容差 = max(60 秒, 一根 K 线的时长)：
+//   - 60 秒兜底：撤了马上挂回来（簿抖、改价）仍算同一堵墙，不在 1 分钟图上碎成几截；
+//   - 一根 K 线：空档不超过一根时，两单在图上落在同一根或相邻两根，画出来本来就是连着的，拆成两条只多一个缝、
+//     多一枚签、多一次命中歧义；超过一根才会在图上真的空出一根以上——那才是看得见的「中间没有墙」。
+//   - 只随周期变，不随缩放、平移变：段的身份（选中）跨缩放稳定；换周期时选中本来就会清掉。
+//
+// 一段里同一本簿可能先后有好几单（撤了又挂回来）。它们是同一堵墙的前后两截，名义不该累加：
 //   - 每本簿取「最近的那一单」（首见最晚的）当它此刻的名义与状态；
 //   - 合并带的名义 = 各本簿最近那一单的名义之和；粗细按各本簿最近那一单的「门槛四分之一格」之和算档；
-//   - 深浅：任何一单（含早先那几段）有过成交就深；
-//   - 起点取最早的首见，终点取最晚的结束，有一单还挂着就画到右缘；
-//   - 成交金额按全部单求和（成交是真实发生过的，不会重复）。
+//   - 深浅：段里任何一单有过成交就深；
+//   - 起点取段里最早的首见，终点取段里最晚的结束，有一单还挂着就画到右缘；
+//   - 成交金额按段里全部单求和（成交是真实发生过的，不会重复）。
+// 以上都只在段内算，别的段的单不掺进来。
 
-/// 一条合并带是哪一桶、哪一侧、哪一类。
+/// 一条合并带是哪一桶、哪一侧、哪一类、从哪一刻起的那一段。
+///
+/// `start` = 段里最早的首见。挂着的单续长、新单并到段尾，起点都不变，所以选中的那条不会跳走；
+/// 只有更早的单并进来（服务端历史回填把两段接上）起点才会前移——那时按 `OrderFlowGroup.covers` 认回来。
 public struct OrderFlowGroupKey: Sendable, Hashable {
   public var bucket: Int64
   public var side: BookSide
   /// true = 合约（U 本位永续、币本位永续、交割），false = 现货。
   public var contract: Bool
+  /// 这一段的起点：段里最早的首见（ms）。
+  public var start: Int64
 
-  public init(bucket: Int64, side: BookSide, contract: Bool) {
-    self.bucket = bucket; self.side = side; self.contract = contract
+  public init(bucket: Int64, side: BookSide, contract: Bool, start: Int64) {
+    self.bucket = bucket; self.side = side; self.contract = contract; self.start = start
   }
 
+  /// 以这一单为起点的那一段（这一单是段里最早的那一单时，就是它所在那条带的键）。
   public init(_ order: BigOrder) {
-    self.init(bucket: order.bucket, side: order.side, contract: order.product.isContract)
+    self.init(bucket: order.bucket, side: order.side, contract: order.product.isContract, start: order.firstSeenMs)
   }
 
-  /// 诊断与 UI 用例用的字符串：「contract|ask|836」。
-  public var id: String { (contract ? "contract" : "spot") + "|" + side.rawValue + "|" + String(bucket) }
+  /// 同一桶、同一侧、同一类（不管哪一段）。
+  public func sameLane(_ other: OrderFlowGroupKey) -> Bool {
+    bucket == other.bucket && side == other.side && contract == other.contract
+  }
+
+  /// 诊断与 UI 用例用的字符串：「contract|ask|836|1790000000000」（最后一段是起点 ms）。
+  public var id: String {
+    (contract ? "contract" : "spot") + "|" + side.rawValue + "|" + String(bucket) + "|" + String(start)
+  }
 }
 
-/// 一条合并带：同一桶、同一侧、同一类的几单。
+/// 一条合并带：同一桶、同一侧、同一类、时间上连成一段的几单。
 public struct OrderFlowGroup: Sendable, Equatable {
   /// 一本簿在这条带里的那一行（详情卡上一行一本）。
   public struct Book: Sendable, Equatable {
@@ -62,7 +86,7 @@ public struct OrderFlowGroup: Sendable, Equatable {
   /// 一本簿一行，按此刻名义从大到小（名义一样按簿名）。
   public var books: [Book]
 
-  /// 把几单合成一条带；空的给 nil。不检查它们是不是同一桶同一侧同一类，调用方按 `key` 分好组。
+  /// 把几单合成一条带；空的给 nil。不检查它们是不是同一桶同一侧同一类同一段，调用方按 `segments` 分好组。
   public init?(key: OrderFlowGroupKey, members: [BigOrder]) {
     guard !members.isEmpty else { return nil }
     self.key = key
@@ -85,12 +109,78 @@ public struct OrderFlowGroup: Sendable, Equatable {
     books = byVenue.values.sorted { $0.notional != $1.notional ? $0.notional > $1.notional : $0.venueID < $1.venueID }
   }
 
-  /// 按「桶 × 侧 × 类」把一批单分组。顺序：画法上的名义（`drawNotional`）从大到小，一样按 `key.id`。
-  public static func groups(_ orders: [BigOrder]) -> [OrderFlowGroup] {
-    var buckets: [OrderFlowGroupKey: [BigOrder]] = [:]
-    for o in orders { buckets[OrderFlowGroupKey(o), default: []].append(o) }
-    return buckets.compactMap { OrderFlowGroup(key: $0.key, members: $0.value) }
-      .sorted { $0.drawNotional != $1.drawNotional ? $0.drawNotional > $1.drawNotional : $0.key.id < $1.key.id }
+  /// 两段之间的空档不超过这么久就并成一段的下限：撤了马上挂回来仍算同一堵墙。
+  public static let minMergeGapMs: Int64 = 60_000
+
+  /// 切段容差：max(60 秒, 一根 K 线的时长)。理由见文件头。
+  public static func mergeGapMs(barMs: Int64) -> Int64 { max(minMergeGapMs, barMs) }
+
+  /// 一段：键、按首见排好的成员、段的结束（有一单还挂着就是 nil）。只切段、不建 `OrderFlowGroup`（便宜），
+  /// 图表先按段的时间跨度筛掉这一屏外面的，再对剩下的建组。
+  public struct Segment: Sendable, Equatable {
+    public var key: OrderFlowGroupKey
+    public var members: [BigOrder]
+    public var endMs: Int64?
+  }
+
+  private struct Lane: Hashable {
+    var bucket: Int64
+    var side: BookSide
+    var contract: Bool
+  }
+
+  /// 按「桶 × 侧 × 类 × 时间段」切段。同一桶侧类里的单按首见排好，逐单往当前段上并：它的首见不晚于
+  /// 「段里最晚的结束 + gapMs」（区间重叠或空档不超过容差）就并进去，否则另起一段。挂着的单结束算无穷远，
+  /// 之后的单都并进来。同首见的单谁先谁后不影响结果。顺序：桶侧类的字典序无意义，调用方自己排。
+  public static func segments(_ orders: [BigOrder], gapMs: Int64) -> [Segment] {
+    var lanes: [Lane: [BigOrder]] = [:]
+    for o in orders {
+      lanes[Lane(bucket: o.bucket, side: o.side, contract: o.product.isContract), default: []].append(o)
+    }
+    var out: [Segment] = []
+    out.reserveCapacity(lanes.count)
+    for (lane, list) in lanes {
+      let sorted = list.sorted { $0.firstSeenMs < $1.firstSeenMs }
+      var members: [BigOrder] = []
+      var runEnd = Int64.min
+      func flush() {
+        guard let first = members.first else { return }
+        let key = OrderFlowGroupKey(bucket: lane.bucket, side: lane.side, contract: lane.contract, start: first.firstSeenMs)
+        out.append(Segment(key: key, members: members, endMs: runEnd == .max ? nil : runEnd))
+      }
+      for o in sorted {
+        let end = o.isLive ? Int64.max : max(o.firstSeenMs, o.endMs ?? o.firstSeenMs)
+        if !members.isEmpty, runEnd == .max || o.firstSeenMs - runEnd <= gapMs {
+          members.append(o)
+          runEnd = max(runEnd, end)
+        } else {
+          flush()
+          members = [o]
+          runEnd = end
+        }
+      }
+      flush()
+    }
+    return out
+  }
+
+  /// 画的先后：画法上的名义（`drawNotional`）从大到小，一样按 `key.id`（结果稳定）。
+  public static func drawOrder(_ a: OrderFlowGroup, _ b: OrderFlowGroup) -> Bool {
+    a.drawNotional != b.drawNotional ? a.drawNotional > b.drawNotional : a.key.id < b.key.id
+  }
+
+  /// 按「桶 × 侧 × 类 × 时间段」把一批单分组（`segments`），按 `drawOrder` 排好。
+  /// `gapMs` 缺省只用 60 秒下限；图表按周期传 `mergeGapMs(barMs:)`。
+  public static func groups(_ orders: [BigOrder], gapMs: Int64 = minMergeGapMs) -> [OrderFlowGroup] {
+    segments(orders, gapMs: gapMs).compactMap { OrderFlowGroup(key: $0.key, members: $0.members) }.sorted(by: drawOrder)
+  }
+
+  /// 选中存的那个键还认不认这一段：键一样；或者同桶侧类、键的起点落在这一段的时间跨度里
+  /// （更早的单并进来、段的起点前移了，或者两段被回填的历史接成了一段）。段之间在时间上不相交，最多认一段。
+  public func covers(_ other: OrderFlowGroupKey) -> Bool {
+    if other == key { return true }
+    guard key.sameLane(other), firstSeenMs <= other.start else { return false }
+    return endMs.map { other.start <= $0 } ?? true
   }
 
   public var side: BookSide { key.side }

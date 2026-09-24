@@ -107,7 +107,7 @@ struct OrderFlowChartTests {
     #expect(bandAt(frame(r), bucket: 1)?.frame.height == 3)
   }
 
-  @Test("合并：同桶同侧同类合成一条（四种合约一条、三家现货一条），不同类、不同侧不合；粗细按合计")
+  @Test("合并：同桶同侧同类、时间上连着的合成一条（四种合约一条、三家现货一条），不同类、不同侧不合；粗细按合计")
   func mergeRules() throws {
     var (r, orders) = Self.renderer()
     let p = orders[0].price
@@ -142,7 +142,7 @@ struct OrderFlowChartTests {
     r.state.orderFlow?.orders = merged
     let f = frame(r)
     #expect(f.bands.count == 3, "合约买一条、现货买一条、现货卖一条")
-    let c = try #require(f.bands.first { $0.key == OrderFlowGroupKey(bucket: 1, side: .bid, contract: true) })
+    let c = try #require(f.bands.first { $0.key == OrderFlowGroupKey(bucket: 1, side: .bid, contract: true, start: early) })
     #expect(c.group.books.count == 4 && c.group.members.count == 4)
     #expect(c.group.notional == 20_000_000)
     // 4 × 1 倍门槛 = 4 倍 → 第 2 档 4.5 pt（一单单画都是 2 pt）。
@@ -154,10 +154,10 @@ struct OrderFlowChartTests {
     #expect(abs(c.frame.minX - (r.state.view.x(Double(b.time(at: b.count - 14)), plotW: L.plotW) - spacing / 2)) < 0.001,
             "起点取最早的首见")
     #expect(abs(c.frame.maxX - L.plotW) < 0.001, "有一单还挂着就画到右缘")
-    let sb = try #require(f.bands.first { $0.key == OrderFlowGroupKey(bucket: 1, side: .bid, contract: false) })
+    let sb = try #require(f.bands.first { $0.key == OrderFlowGroupKey(bucket: 1, side: .bid, contract: false, start: seen) })
     #expect(sb.group.books.count == 3 && sb.group.notional == 3_000_000)
     #expect(!sb.dark && sb.color == mixHex(r.orderFlowBaseColor(side: .bid, contract: false), r.state.colors.bg, 0.45))
-    #expect(f.bands.contains { $0.key == OrderFlowGroupKey(bucket: 1, side: .ask, contract: false) })
+    #expect(f.bands.contains { $0.key == OrderFlowGroupKey(bucket: 1, side: .ask, contract: false, start: seen) })
     // 图例仍按逐单求和（只算挂着的）。
     #expect(f.bidTotal == 15_000_000 + 3_000_000)
     #expect(f.askTotal == 1_000_000)
@@ -184,6 +184,141 @@ struct OrderFlowChartTests {
     #expect(group.notional == 6_000_000)
     #expect(group.filledNotional == 1_500_000)
     #expect(group.isLive && group.endMs == nil)
+  }
+
+  // ------------------------------------------------------------ 按时间切段（2026-09-24 夜）
+  // 真机 BTC：191 条带画出来 572 小时、真有单挂着的 213 小时——同一桶侧类不分时间合成一条，把空档画成了墙。
+
+  /// 同一桶（合约买 1 桶）上的一单。
+  func laneOrder(_ venue: String, firstSeen: Int64, end: Int64? = nil, notional: Double = 10_000_000,
+                 filled: Double = 0, price: Double) -> BigOrder {
+    var o = Self.order(.usdtPerp, .bid, price: price, firstSeen: firstSeen, end: end,
+                       status: end == nil ? .live : (filled > 0 ? .filled : .cancelled),
+                       notional: notional, initial: notional, filled: filled, bucket: 1)
+    o.venueID = venue
+    return o
+  }
+
+  @Test("切段：同桶两单空档远大于容差时画两条，各自的起止、名义、深浅只在段内算")
+  func segmentsSplitOnLongGap() throws {
+    var (r, orders) = Self.renderer()
+    let b = r.state.series
+    let p = orders[0].price
+    let L = r.layout(size: Self.size)
+    let spacing = r.state.view.barSpacing(step: b.step, plotW: L.plotW)
+    let barLeft = { (i: Int) in r.state.view.x(Double(b.time(at: i)), plotW: L.plotW) - spacing / 2 }
+    let barRight = { (i: Int) in r.state.view.x(Double(b.time(at: i)), plotW: L.plotW) + spacing / 2 }
+    // 早先那单：挂了一根多就撤了、被吃过一口；后来那单隔了十几根才挂上、还挂着、一口没成交。
+    let early = laneOrder("binance:usdtPerp:X", firstSeen: b.time(at: b.count - 30) + 1,
+                          end: b.time(at: b.count - 29) + 1, notional: 20_000_000, filled: 1_000, price: p)
+    let late = laneOrder("okx:usdtPerp:X", firstSeen: b.time(at: b.count - 12) + 1, notional: 6_000_000, price: p)
+    #expect(late.firstSeenMs - early.endMs! > OrderFlowGroup.mergeGapMs(barMs: b.step))
+    r.state.orderFlow?.orders = [late, early]
+    let f = frame(r)
+    #expect(f.bands.count == 2, "空档画成墙：\(f.bands.map(\.key.id))")
+    let a = try #require(f.bands.first { $0.key == OrderFlowGroupKey(early) })
+    let c = try #require(f.bands.first { $0.key == OrderFlowGroupKey(late) })
+    #expect(a.group.members == [early] && c.group.members == [late])
+    #expect(abs(a.frame.minX - barLeft(b.count - 30)) < 0.001 && abs(a.frame.maxX - barRight(b.count - 29)) < 0.001,
+            "早先那段只画它挂着的那两根")
+    #expect(abs(c.frame.minX - barLeft(b.count - 12)) < 0.001 && abs(c.frame.maxX - L.plotW) < 0.001)
+    #expect(a.group.notional == 20_000_000 && c.group.notional == 6_000_000, "名义只算段内")
+    #expect(a.dark && !c.dark, "深浅只看段内有没有被吃过")
+    #expect(!a.group.isLive && a.group.endMs == early.endMs)
+    #expect(a.key.id != c.key.id && a.key.id.hasSuffix("|\(early.firstSeenMs)"))
+    #expect(f.bidTotal == 6_000_000, "图例仍按逐单求和：只算还挂着的")
+    // 命中与详情卡按段：点在早先那段上拿到的是早先那段。
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: a.frame.midX, y: a.frame.midY)?.key == a.key)
+    r.state.orderFlowSelected = a.key
+    #expect(r.orderFlowFocus(size: Self.size)?.group.members == [early])
+
+    // 金额签按段：早先那段两根宽（< 48 pt）不写，后来那段够宽才写，写的是段内名义。
+    if c.frame.width >= 48, !c.thin { #expect(f.labels.contains { $0.key == c.key && $0.text == "6.0M" }) }
+    #expect(!f.labels.contains { $0.key == a.key })
+
+    // 切段的边界：空档恰好等于容差还并，多 1 ms 就断。
+    let gap = OrderFlowGroup.mergeGapMs(barMs: b.step)
+    let x = laneOrder("binance:usdtPerp:X", firstSeen: 1_000, end: 2_000, price: p)
+    let y1 = laneOrder("okx:usdtPerp:X", firstSeen: 2_000 + gap, end: 2_000 + gap + 10, price: p)
+    let y2 = laneOrder("okx:usdtPerp:X", firstSeen: 2_000 + gap + 1, end: 2_000 + gap + 10, price: p)
+    #expect(OrderFlowGroup.segments([x, y1], gapMs: gap).count == 1)
+    #expect(OrderFlowGroup.segments([x, y2], gapMs: gap).count == 2)
+    #expect(OrderFlowGroup.mergeGapMs(barMs: 1_000) == 60_000, "秒级周期也至少 60 秒")
+    #expect(OrderFlowGroup.mergeGapMs(barMs: 3_600_000) == 3_600_000, "一小时图按一根")
+  }
+
+  @Test("切段：空档小于容差（撤了马上挂回来、相邻 K 线）并成一条；区间重叠照旧并")
+  func segmentsMergeShortGap() throws {
+    var (r, orders) = Self.renderer()
+    let b = r.state.series
+    let p = orders[0].price
+    let gap = OrderFlowGroup.mergeGapMs(barMs: b.step)
+    let first = laneOrder("binance:usdtPerp:X", firstSeen: b.time(at: b.count - 20) + 1,
+                          end: b.time(at: b.count - 16) + 1, notional: 10_000_000, price: p)
+    // 同一本簿撤了、隔半个容差又挂回来。
+    let again = laneOrder("binance:usdtPerp:X", firstSeen: first.endMs! + gap / 2,
+                          end: first.endMs! + gap / 2 + 3 * b.step, notional: 7_000_000, price: p)
+    // 别家在它还挂着时挂上（区间重叠），一直挂着。
+    let other = laneOrder("okx:usdtPerp:X", firstSeen: again.firstSeenMs + b.step, notional: 5_000_000, price: p)
+    r.state.orderFlow?.orders = [other, again, first]
+    let f = frame(r)
+    #expect(f.bands.count == 1, "\(f.bands.map(\.key.id))")
+    let band = try #require(f.bands.first)
+    #expect(band.key == OrderFlowGroupKey(first), "段的身份是段里最早的首见")
+    #expect(band.group.members.count == 3 && band.group.books.count == 2)
+    #expect(band.group.notional == 12_000_000, "同一本簿取最近那一单（7M，不累加前一截的 10M）+ OKX 5M")
+    #expect(band.group.isLive)
+    let L = r.layout(size: Self.size)
+    #expect(abs(band.frame.maxX - L.plotW) < 0.001)
+  }
+
+  @Test("切段：挂着的单续长、新单并进来、回填的历史把段起点前移，选中的那条都不跳走不丢")
+  func segmentIdentityStable() throws {
+    var (r, orders) = Self.renderer()
+    let b = r.state.series
+    let p = orders[0].price
+    let gap = OrderFlowGroup.mergeGapMs(barMs: b.step)
+    let wall = laneOrder("binance:usdtPerp:X", firstSeen: b.time(at: b.count - 12) + 1, price: p)
+    // 同桶更早的一段（已经撤了，隔得远），不能被选中的那条认成自己。
+    let old = laneOrder("binance:usdtPerp:X", firstSeen: b.time(at: b.count - 40) + 1,
+                        end: b.time(at: b.count - 39) + 1, price: p)
+    r.state.orderFlow?.orders = [old, wall]
+    let key = try #require(frame(r).bands.first { $0.group.isLive }).key
+    #expect(key == OrderFlowGroupKey(wall))
+    r.state.orderFlowSelected = key
+    #expect(r.orderFlowFocus(size: Self.size)?.group.key == key)
+
+    // 1. 挂着的单续长：快照时刻往后走、名义在变——还是同一条，id 不变。
+    r.state.orderFlow?.asOfMs += 30 * 60_000
+    r.state.orderFlow?.orders[1].notional = 14_000_000
+    var focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.key == key && focus.selected && focus.group.notional == 14_000_000)
+    #expect(frame(r).bands.contains { $0.key == key })
+
+    // 2. 别家新挂一单并进这一段：段的起点不变，选中的还是它，卡上多一本簿。
+    let joined = laneOrder("okx:usdtPerp:X", firstSeen: b.time(at: b.count - 3) + 1, notional: 5_000_000, price: p)
+    r.state.orderFlow?.orders.append(joined)
+    focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.key == key && focus.group.books.count == 2)
+
+    // 3. 原先那单撤了、容差内又挂回来：仍是同一条。
+    r.state.orderFlow?.orders[1].status = .cancelled
+    r.state.orderFlow?.orders[1].endMs = b.time(at: b.count - 2) + 1
+    r.state.orderFlow?.orders.append(laneOrder("binance:usdtPerp:X", firstSeen: b.time(at: b.count - 2) + 1 + gap / 2, price: p))
+    focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.key == key && focus.group.members.count == 3)
+
+    // 4. 服务端回填了一单，把早先那段和这一段接上：段的起点前移到早先那段，选中的键旧了，但仍认得回来。
+    let bridge = laneOrder("binance:delivery:X", firstSeen: old.endMs! + 1, end: wall.firstSeenMs + 1, price: p)
+    r.state.orderFlow?.orders.insert(bridge, at: 1)
+    let merged = try #require(frame(r).bands.first { $0.key.sameLane(key) })
+    #expect(merged.key == OrderFlowGroupKey(old) && frame(r).bands.filter { $0.key.sameLane(key) }.count == 1)
+    focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.key == merged.key && focus.selected)
+    #expect(r.orderFlowIsSelected(merged.group), "再点同一条要能收起")
+    // 同桶另一段（没接上的时候）不会被认成选中的那条。
+    let lone = try #require(OrderFlowGroup.groups([old], gapMs: gap).first)
+    #expect(!lone.covers(key))
   }
 
   @Test("纵向去挤：按名义从大到小落带，和已落下的纵向重叠（含 1 pt 间隙）的小带压成 1.5 pt 细线，不挪位、仍点得中")

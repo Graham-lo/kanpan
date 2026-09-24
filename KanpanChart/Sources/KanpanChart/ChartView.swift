@@ -250,7 +250,8 @@ public final class ChartView: UIView {
             if let step = f.thresholds.step { out["step"] = step }
             return out
           } ?? [:],
-          // 一桶一条的合并带：product = contract / spot；thin = 被挤成了细线；books = 几本簿、members = 几单。
+          // 一段一条的合并带：product = contract / spot；thin = 被挤成了细线；books = 几本簿、members = 几单；
+          // id =「类|侧|桶|段起点 ms」。
           "orderFlowBands": (orderFlow?.bands ?? []).map {
             ["side": $0.group.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
              "w": $0.frame.width, "h": $0.frame.height, "color": $0.color.value, "dark": $0.dark,
@@ -263,7 +264,7 @@ public final class ChartView: UIView {
              "w": $0.frame.width, "h": $0.frame.height] as [String: Any]
           },
           "orderFlowHovered": orderFlow?.hovered ?? false,
-          // 轻点选中的那一桶（`state.orderFlowSelected`，空串 = 没选中）与此刻出卡的那一桶。
+          // 轻点选中的那一段（`state.orderFlowSelected`，空串 = 没选中）与此刻出卡的那一段。
           "orderFlowSelected": s.orderFlowSelected?.id ?? "",
           "orderFlowFocus": orderFlow?.focus.map {
             ["id": $0.group.key.id, "selected": $0.selected, "anchorX": $0.anchorX, "bandY": $0.bandY,
