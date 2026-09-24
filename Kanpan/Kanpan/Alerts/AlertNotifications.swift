@@ -36,11 +36,21 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate, @unc
   // ---------------------------------------------------------------- 代理
 
   /// 用户点了一条通知。
+  ///
+  /// 用带完成回调的这一版、并且**在主线程上**回调。以前是 `async` 那一版：系统替它
+  /// 包的完成回调落在并发执行器的线程上，UIKit 收尾（更新后台快照）时断言「必须在主线程」
+  /// 直接 abort——app 在后台时点任何一条通知，app 都会闪退，冷启动都进不去
+  /// （第 25 项端到端验收时抓到，崩溃栈落在 `_performBlockAfterCATransactionCommitSynchronizes`）。
   func userNotificationCenter(_ center: UNUserNotificationCenter,
-                              didReceive response: UNNotificationResponse) async {
+                              didReceive response: UNNotificationResponse,
+                              withCompletionHandler completionHandler: @escaping () -> Void) {
     let request = response.notification.request
-    guard let link = Self.link(userInfo: request.content.userInfo, identifier: request.identifier) else { return }
-    await MainActor.run { DeepLinkRouter.shared.open(link) }
+    let link = Self.link(userInfo: request.content.userInfo, identifier: request.identifier)
+    nonisolated(unsafe) let done = completionHandler
+    DispatchQueue.main.async {
+      MainActor.assumeIsolated { if let link { DeepLinkRouter.shared.open(link) } }
+      done()
+    }
   }
 
   /// app 在前台时来了一条通知。
