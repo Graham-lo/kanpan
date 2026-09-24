@@ -281,6 +281,8 @@ final class MarketModel {
 
   private var selection = UUID()
   private var switchTask: Task<Void, Never>?
+  /// 冷切换之后品种信息还没查回来（见 `switchTo` 里的说明）。
+  private var infoOwed = false
   private var markTime: Int64 = 0
   private var markPrice: Double?
   private var statsTask: Task<Void, Never>?
@@ -726,6 +728,12 @@ final class MarketModel {
     let iv = newInterval ?? interval
     guard sym != symbol || iv != interval else { return }
     let cold = sym != symbol
+    // 冷切换欠下一次品种信息（`refreshInfo`）。同一帧里连着两次切换（深链「换品种 + 换周期」、
+    // 扫图连点）时，后一次会把前一次的任务在它开跑之前就取消掉，而后一次自己不是冷切换——
+    // 这笔债不能跟着被取消，要由接手的那一次还：否则新品种的小数位、资产类型、主力订单流的
+    // 品种事实永远等不到。`refreshInfo` 查到当前品种之后才销账。
+    if cold { infoOwed = true }
+    let owesInfo = infoOwed
     selection = UUID()
     let request = selection
     switchTask?.cancel()
@@ -772,8 +780,8 @@ final class MarketModel {
     }
     switchTask = Task { [feed] in
       guard !Task.isCancelled else { return }
-      await feed.switchTo(symbol: sym, interval: iv, coldStart: cold, selection: request)
-      if cold { await refreshInfo() }
+      await feed.switchTo(symbol: sym, interval: iv, coldStart: owesInfo, selection: request)
+      if owesInfo { await refreshInfo() }
     }
   }
 
@@ -821,8 +829,10 @@ final class MarketModel {
     loading = false
     historyError = nil
     switching = true
+    let owesInfo = infoOwed
     switchTask = Task { [feed] in
       await feed.retry(selection: request)
+      if owesInfo { await self.refreshInfo() }
     }
   }
 
@@ -1236,8 +1246,12 @@ final class MarketModel {
     let want = symbol
     // 进一张图就是「用户点名了这个品种」：表里没有它（刚上市的新合约）时允许为他
     // 立刻重拉一次整表，不必等满 24 小时的 TTL（审查 B-06）。去抖在目录层。
-    guard let found = await catalog.lookup(want) else { return }
+    guard let found = await catalog.lookup(want) else {
+      if orderFlow.wanted { Self.log("主力订单流 品种信息 \(want)：品种表里没查到") }
+      return
+    }
     guard want == symbol else { return }
+    infoOwed = false
     // 小数位只认第一次：见 `lockedPrecision`。
     if let locked = lockedPrecision[want] {
       var value = found
@@ -1251,7 +1265,9 @@ final class MarketModel {
     // 主力订单流只认品种表里的这一份（切品种时顶上的占位信息资产类型、步长都是猜的，
     // 拿它起的簿不会因为真信息到了再重起一遍）。开着指标时顺手再催一次行情流：
     // 首帧先到、品种信息后到的那一拍，行情流因为查不到品种事实没起来。
-    if orderFlow.noteInfo(found), orderFlow.wanted { updateMicrostructure() }
+    let fresh = orderFlow.noteInfo(found)
+    if orderFlow.wanted { Self.log("主力订单流 品种信息 \(want)：到了｜新 \(fresh)｜前台 \(foreground)") }
+    if fresh, orderFlow.wanted { updateMicrostructure() }
   }
 }
 

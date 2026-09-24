@@ -1,6 +1,7 @@
 import Foundation
 import KanpanCore
 import KanpanNetwork
+import Synchronization
 
 /// Switches complete feeds. Business views never merge candles from different exchanges.
 ///
@@ -9,6 +10,9 @@ import KanpanNetwork
 public actor RoutedMarketFeed {
   public typealias Resolver = @Sendable (_ venue: String, _ policy: MarketRoutePolicy) -> any MarketProvider
   private let log: FeedLog
+  /// 这是本进程里第几条行情流（诊断日志用：同一进程里冒出第二条就说明界面那一层整个重建过）。
+  private let serial = RoutedMarketFeed.serials.withLock { $0 += 1; return $0 }
+  private static let serials = Mutex(0)
   private let paths: Paths
   private var freshHistory = false
   private let resolver: Resolver
@@ -186,6 +190,7 @@ public actor RoutedMarketFeed {
     guard orderFlow.start(symbol: symbol, foreground: foreground, provider: activeProvider, paths: paths, log: log,
                           publish: { [weak self] token, frame in await self?.publishOrderFlow(frame, token: token) })
     else { return }
+    log("主力订单流 #\(serial) \(symbol)：起订")
     continuation?.yield(FeedUpdate(selection: selection, event: .orderFlow(.loading(symbol))))
   }
   private func stopOrderFlow(forgetChart: Bool) {
@@ -347,8 +352,17 @@ public actor RoutedMarketFeed {
     settleRoute()
     // 当前品种的 K 线刚交给界面：这之后才订簿，不跟首屏抢。
     if case .series(let series) = update.event, series.count >= 3, orderFlow.chartReady != symbol {
-      orderFlow.chartReady = symbol; startOrderFlow()
+      orderFlow.chartReady = symbol
+      // 起不起得来的几个条件各记一笔（诊断日志，正式包静音）：切品种后大单一直「加载中」时靠它分清卡在哪一步。
+      if orderFlow.enabled {
+        log("主力订单流 #\(serial) \(symbol)：首帧已画｜前台 \(foreground)｜在跑 \(orderFlow.running)｜品种事实 \(orderFlow.facts(symbol) != nil)｜线路 \(activeProvider != nil)")
+      }
     }
+    // 起订不只靠「首帧刚到」这一下：开关、品种事实、前后台三路各自只催一次，切品种时撞上前后台来回
+    // （深链接打开会先退后台再回前台）先后一乱，三下都落空，簿就再也不订、图上一直「主力 …」
+    // （2026-09-25 17 Pro Max：BTC 15 分钟切 ETH 1 分钟，180 秒没起）。所以只要该起没起，每一拍都再催一次；
+    // 起了之后 `wantsStart` 是 false，只多几个布尔判断。
+    if orderFlow.wantsStart(symbol: symbol, foreground: foreground) { startOrderFlow() }
   }
   /// 新线路的历史和实时都到齐了：收掉「切换中」的提示。
   ///

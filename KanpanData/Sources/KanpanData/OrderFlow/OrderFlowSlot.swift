@@ -55,6 +55,14 @@ struct OrderFlowSlot {
     return true
   }
 
+  /// 有一条在跑（诊断日志用）。
+  var running: Bool { feed != nil }
+
+  /// 开着、在前台、这只的首帧已画、还没在跑、品种事实已到——该起却没起。`forward` 每一拍问一次。
+  func wantsStart(symbol: String, foreground: Bool) -> Bool {
+    enabled && foreground && feed == nil && !symbol.isEmpty && chartReady == symbol && facts(symbol) != nil
+  }
+
   /// 换一份用户改过的项；正在跑的那条的 base 变了就推给它。
   mutating func setOverrides(_ next: [String: OrderFlowOverride]) {
     let before = overrideKey.flatMap { overrides[$0] }
