@@ -193,12 +193,23 @@ public enum OrderFlowDefaults {
   /// 被吃掉大半、剩下一点被顺手撤掉，交易员眼里仍然是「这单被打穿了」。低于八成就是主动撤单为主。
   /// 比的是消失的部分而不是首次名义：有了退出滞回，结束时桶里可能还剩门槛的一半没走，那一半既没成交也没撤。
   public static let filledRatio = 0.8
-  /// 已结束的大单保留多久、最多几条。还挂着的永远不删——挂着的墙就是这个功能要看的东西。
+  /// 已结束的大单在内存里保留多久、最多几条。还挂着的永远不删——挂着的墙就是这个功能要看的东西。
   ///
-  /// 实测 BTC 默认门槛、十三本簿，结束的单一天能积上千条；只留最近的 500 条足够铺满一屏 1 分钟图，
-  /// 日志约 75 KB。
-  public static let retentionMs: Int64 = 86_400_000
-  public static let maxEndedOrders = 500
+  /// 2026-09-24 起服务端（kanpan-api `orderflow_history`）常驻跟踪、存 30 天，手机打开时取回来并进模型，
+  /// 往左拖还能往前补（见 `OrderFlowModel.mergeHistory`）；所以内存里要装得下 30 天。
+  /// 条数封顶 2 万：线上实测 BTC 默认门槛一天约三万多条结束的单（一半活不过 1 分钟），30 天装不下全部，
+  /// 超了按「活得短的先走」挤（`recentKeepMs` 以内结束的、落在可视区间里的优先留），
+  /// 拉远看一个月时留下的正是活得久、看得见的那些墙。
+  public static let retentionMs: Int64 = 30 * 86_400_000
+  public static let maxEndedOrders = 20_000
+  /// 这么久以内结束的，不因为超额被挤掉（刚发生的细节最要紧，1 分钟图上一屏就是这么长）。
+  public static let recentKeepMs: Int64 = 2 * 3_600_000
+  /// 超额时一次删到上限的这个比例，免得每一拍都排一次序。
+  public static let trimRatio = 0.9
+  /// 本机日志只存最近 24 小时、最多这么多条：更早的每次向服务端取，不落盘。
+  /// 5000 条短键 JSON 约 1 MB（单测钉着上限）；超了按留存同一个次序挑（挂着的全留）。
+  public static let journalRetentionMs: Int64 = 86_400_000
+  public static let journalMaxOrders = 5_000
   /// 只看每本簿中间价两侧这么远以内的价位（10%）。更远的挂单离现价太远，不是「主力」要看的东西，
   /// 也免得几张远处的死单占着留存额度。
   public static let scanRadiusBps = 1_000.0

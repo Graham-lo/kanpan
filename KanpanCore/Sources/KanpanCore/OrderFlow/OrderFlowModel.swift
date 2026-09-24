@@ -14,9 +14,11 @@ import Foundation
 //   跨家记还会把同一笔成交重复算好几次，「已成交」因此偏多。
 // - 结束：累计成交 ≥ 消失掉的名义（跌破退出线前最后一拍的名义 − 结束时剩下的）× 0.8 记「已成交」，
 //   否则「已撤销」（理由见 `OrderFlowDefaults.filledRatio`）。透明度与读数里的成交比例用同一个分母。
-// - 历史：结束的大单留在图上，24 小时、最多 500 条（`OrderFlowDefaults.retentionMs / maxEndedOrders`）；
-//   还挂着的永远不删。
-// - 落盘：`OrderFlowJournal`，一只品种一份小文件（KanpanData 管读写），切回来、进程重启历史还在；不同步。
+// - 历史：结束的大单留在图上，30 天、最多 2 万条（`OrderFlowDefaults.retentionMs / maxEndedOrders`），
+//   超了先挤活得短的；还挂着的永远不删。
+// - 服务端历史：kanpan-api 常驻跟踪、存 30 天，取回来的一页由 `mergeHistory` 并进来（规则见那里）。
+// - 落盘：`OrderFlowJournal`，一只品种一份小文件（KanpanData 管读写），只存最近 24 小时、最多 5000 条
+//   （`journal(nowMs:)`），切回来、进程重启、断网时历史还在；更早的每次向服务端取，不落盘；不同步。
 // - 簿断了：没就绪的那本簿这一拍不参与（它的单既不新增也不结束）；断开超过 2 分钟，它还挂着的单
 //   按最后一次看到的时刻结束（`staleMs`），状态记「失联结束」（`.lost`）——那一刻之后发生了什么不知道，
 //   不能判成撤单。
@@ -92,14 +94,25 @@ public struct BigOrder: Sendable, Equatable, Identifiable, Codable {
   /// 高度最多几格（和图表 `orderFlowMaxUnits` 同一个数）。
   public static let maxHeightUnits = 40
 
-  public var pixelKey: PixelKey {
-    let units = threshold > 0 && notional.isFinite
-      ? min(Self.maxHeightUnits, Int((max(0, notional) / (threshold / 8)).rounded())) : 0
-    return PixelKey(id: id, status: status, endMs: endMs, bucket: bucket, price: price, threshold: threshold,
-                    heightUnits: units, fillStep: Int((fillRatio * 20).rounded()))
+  /// 画出来是不是一样（逐项比 `pixelKey` 那几项，但不拼 `id` 字符串：一帧两万条时拼字符串是大头）。
+  public static func samePixels(_ a: BigOrder, _ b: BigOrder) -> Bool {
+    a.firstSeenMs == b.firstSeenMs && a.bucket == b.bucket && a.side == b.side && a.status == b.status
+      && a.endMs == b.endMs && a.price == b.price && a.threshold == b.threshold
+      && a.heightUnits == b.heightUnits && a.fillStep == b.fillStep && a.venueID == b.venueID
   }
 
-  // 落盘用短键：500 条约 75 KB。
+  private var heightUnits: Int {
+    threshold > 0 && notional.isFinite
+      ? min(Self.maxHeightUnits, Int((max(0, notional) / (threshold / 8)).rounded())) : 0
+  }
+  private var fillStep: Int { Int((fillRatio * 20).rounded()) }
+
+  public var pixelKey: PixelKey {
+    PixelKey(id: id, status: status, endMs: endMs, bucket: bucket, price: price, threshold: threshold,
+             heightUnits: heightUnits, fillStep: fillStep)
+  }
+
+  // 落盘用短键：5000 条约 1.1 MB。
   enum CodingKeys: String, CodingKey {
     case venueID = "v", exchange = "x", product = "p", side = "s", bucket = "b", price = "px"
     case firstSeenMs = "f", endMs = "e", status = "st", initialNotional = "n0", notional = "n"
@@ -118,7 +131,7 @@ public struct OrderFlowVenueStatus: Sendable, Equatable {
   }
 }
 
-/// 主力订单流对外唯一的值：这只品种此刻的大单（还挂着的 + 24 小时内结束的）。
+/// 主力订单流对外唯一的值：这只品种此刻的大单（还挂着的 + 30 天内结束的，本机跟踪的与服务端取回的并在一起）。
 public struct OrderFlowSnapshot: Sendable, Equatable {
   public enum Phase: Sendable, Equatable { case loading, ready }
   public var symbol: String
@@ -150,7 +163,7 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   public func sameContent(as other: OrderFlowSnapshot) -> Bool {
     guard symbol == other.symbol, phase == other.phase, thresholds == other.thresholds, defaults == other.defaults,
           venues == other.venues, orders.count == other.orders.count else { return false }
-    return zip(orders, other.orders).allSatisfy { $0.pixelKey == $1.pixelKey }
+    return zip(orders, other.orders).allSatisfy { BigOrder.samePixels($0, $1) }
   }
 
   /// 除时间戳外逐字相同（十字线停在某一块上、读数要精确金额时用）。
@@ -218,6 +231,8 @@ public struct OrderFlowModel: Sendable {
   public static let bufferCapacity = 5_000
   /// 一本簿连续这么久没就绪（断线、没这只合约），它还挂着的单按最后一次看到的时刻结束。
   public static let staleMs: Int64 = 120_000
+  /// 服务端说「还挂着」之后这么久内算数（数据层每分钟取一次增量，留一倍多的余量）。
+  public static let remoteFreshMs: Int64 = 180_000
 
   public let symbol: String
   public private(set) var thresholds: OrderFlowThresholds
@@ -243,6 +258,11 @@ public struct OrderFlowModel: Sendable {
   private var pendingJournal: OrderFlowJournal?
   /// 读回了挂着的单：存盘时刻。第一次评估时据此判断缺席是不是超过了 `staleMs`。
   private var restoredAtMs: Int64?
+  /// 服务端最近一次说它还挂着的时刻（按单 id）。本机没这本簿、簿没就绪时，靠服务端续命，
+  /// 不按「簿断开太久」失联结束；服务端也不再续（断网、它结束了）就照常处理。
+  private var remoteSeen: [String: Int64] = [:]
+  /// 图上此刻看得见的时间区间：超额挤单时，落在这里面的优先留（往左拖补回来的那一段不被立刻挤掉）。
+  private var visibleWindow: ClosedRange<Int64>?
 
   struct CandidateKey: Hashable, Sendable {
     var venue: String
@@ -334,6 +354,7 @@ public struct OrderFlowModel: Sendable {
       scheme = nextScheme
       if !orders.isEmpty { journalDirty = true }
       orders.removeAll(); candidates.removeAll(); ending.removeAll(); lastSeen.removeAll(); peak.removeAll()
+      remoteSeen.removeAll()
       restoreIfPossible()
       reindex()
       return
@@ -356,6 +377,7 @@ public struct OrderFlowModel: Sendable {
     ending = ending.filter { live.contains($0.key) }
     lastSeen = lastSeen.filter { live.contains($0.key) }
     peak = peak.filter { live.contains($0.key) }
+    remoteSeen = remoteSeen.filter { live.contains($0.key) }
     if orders.count != before { journalDirty = true }
   }
 
@@ -382,9 +404,21 @@ public struct OrderFlowModel: Sendable {
 
   // MARK: - 落盘
 
+  /// 落盘的那一份：挂着的全留；结束的只留最近 24 小时（`journalRetentionMs`），多于 5000 条
+  /// （`journalMaxOrders`）按留存同一个次序挑（最近 2 小时内结束的先留，其余活得久的先留）。
+  /// 更早的历史每次向服务端取，不落盘。
   public func journal(nowMs: Int64) -> OrderFlowJournal? {
     guard let scheme else { return nil }
-    return OrderFlowJournal(symbol: symbol, step: scheme.step, savedAtMs: nowMs, orders: orders)
+    let cutoff = nowMs - OrderFlowDefaults.journalRetentionMs
+    var picked = orders.filter { $0.isLive || ($0.endMs ?? $0.firstSeenMs) >= cutoff }
+    if picked.count > OrderFlowDefaults.journalMaxOrders {
+      let live = picked.count(where: \.isLive)
+      let room = max(0, OrderFlowDefaults.journalMaxOrders - live)
+      let ended = picked.indices.filter { !picked[$0].isLive }
+      let keep = Set(Self.evictionOrder(ended, in: picked, nowMs: nowMs, window: nil).suffix(room))
+      picked = picked.indices.compactMap { picked[$0].isLive || keep.contains($0) ? picked[$0] : nil }
+    }
+    return OrderFlowJournal(symbol: symbol, step: scheme.step, savedAtMs: nowMs, orders: picked)
   }
 
   public mutating func markJournalSaved() { journalDirty = false }
@@ -398,7 +432,8 @@ public struct OrderFlowModel: Sendable {
     if let saved = restoredAtMs {
       restoredAtMs = nil
       if nowMs - saved >= Self.staleMs {
-        for i in orders.indices where orders[i].isLive { endLost(i, atMs: saved) }
+        // 服务端刚说过还挂着的（冷启动时历史比第一次评估先到）不算缺席。
+        for i in orders.indices where orders[i].isLive && remoteSeen[orders[i].id] == nil { endLost(i, atMs: saved) }
         reindex()
       }
     }
@@ -513,6 +548,7 @@ public struct OrderFlowModel: Sendable {
     orders[i].endMs = max(order.firstSeenMs, atMs)
     lastSeen[order.id] = nil
     peak[order.id] = nil
+    remoteSeen[order.id] = nil
     journalDirty = true
   }
 
@@ -520,6 +556,7 @@ public struct OrderFlowModel: Sendable {
   private mutating func expireStale(nowMs: Int64) {
     guard let started = startedMs, nowMs - started >= Self.staleMs else { return }
     for i in orders.indices where orders[i].isLive {
+      if let remote = remoteSeen[orders[i].id], nowMs - remote < Self.remoteFreshMs { continue }
       let seen = venueSeen[orders[i].venueID] ?? started
       guard nowMs - seen >= Self.staleMs else { continue }
       endLost(i, atMs: lastSeen[orders[i].id] ?? orders[i].firstSeenMs)
@@ -535,26 +572,185 @@ public struct OrderFlowModel: Sendable {
     lastSeen[oid] = nil
     peak[oid] = nil
     ending[oid] = nil
+    remoteSeen[oid] = nil
     journalDirty = true
   }
 
-  /// 24 小时以前结束的删掉；结束的超过 500 条就删结束得最早的。还挂着的一条不删。删了返回 true。
+  /// 30 天以前结束的删掉；结束的超过 2 万条就一次挤到九成（`trimRatio`），先挤活得短的，
+  /// 最近 2 小时内结束的、落在图上可视区间里的后挤。还挂着的一条不删。删了返回 true。
   private mutating func prune(nowMs: Int64) -> Bool {
     let cutoff = nowMs - OrderFlowDefaults.retentionMs
     let before = orders.count
     orders.removeAll { !$0.isLive && ($0.endMs ?? $0.firstSeenMs) < cutoff }
-    let ended = orders.filter { !$0.isLive }
-    let excess = ended.count - OrderFlowDefaults.maxEndedOrders
-    if excess > 0 {
-      let drop = Set(ended.sorted { ($0.endMs ?? 0) < ($1.endMs ?? 0) }.prefix(excess).map(\.id))
-      orders.removeAll { drop.contains($0.id) }
+    let ended = orders.indices.filter { !orders[$0].isLive }
+    if ended.count > OrderFlowDefaults.maxEndedOrders {
+      let keep = Int(Double(OrderFlowDefaults.maxEndedOrders) * OrderFlowDefaults.trimRatio)
+      let drop = Set(Self.evictionOrder(ended, in: orders, nowMs: nowMs, window: visibleWindow)
+        .prefix(ended.count - keep))
+      orders = orders.indices.compactMap { drop.contains($0) ? nil : orders[$0] }
     }
     if orders.count != before {
       journalDirty = true
-      let alive = Set(orders.map(\.id))
+      let alive = Set(orders.lazy.filter(\.isLive).map(\.id))
       ending = ending.filter { alive.contains($0.key) }
       lastSeen = lastSeen.filter { alive.contains($0.key) }
+      peak = peak.filter { alive.contains($0.key) }
+      remoteSeen = remoteSeen.filter { alive.contains($0.key) }
     }
     return orders.count != before
+  }
+
+  /// 结束的单按「先挤谁」排好的下标：最近 `recentKeepMs` 内结束的最后挤，其次是落在可视区间里的，
+  /// 同一档里活得短的先挤、再按结束早的先挤。
+  static func evictionOrder(_ indices: [Int], in orders: [BigOrder], nowMs: Int64,
+                            window: ClosedRange<Int64>?) -> [Int] {
+    let recent = nowMs - OrderFlowDefaults.recentKeepMs
+    func tier(_ o: BigOrder) -> Int {
+      let end = o.endMs ?? nowMs
+      if end >= recent { return 2 }
+      if let window, o.firstSeenMs <= window.upperBound, end >= window.lowerBound { return 1 }
+      return 0
+    }
+    let keyed = indices.map { i -> (Int, Int, Int64, Int64) in
+      let o = orders[i]
+      let end = o.endMs ?? nowMs
+      return (i, tier(o), end - o.firstSeenMs, end)
+    }
+    return keyed.sorted { a, b in
+      if a.1 != b.1 { return a.1 < b.1 }
+      if a.2 != b.2 { return a.2 < b.2 }
+      if a.3 != b.3 { return a.3 < b.3 }
+      return a.0 < b.0
+    }.map(\.0)
+  }
+
+  // MARK: - 服务端历史
+
+  /// 并一页服务端历史的结果。
+  public enum HistoryMerge: Sendable, Equatable {
+    /// 并进来了（可能一条都没变）。
+    case merged
+    /// 自己的步长还不知道（等前一日收盘），先别并，过会儿再取。
+    case pending
+    /// 步长和服务端的对不上（用户改过步长，或服务端的还没算出来），桶号没法比，这一页不用。
+    case incompatible
+  }
+
+  /// 图上此刻看得见的时间区间（超额挤单时这里面的优先留）。
+  public mutating func setVisibleWindow(_ window: ClosedRange<Int64>?) { visibleWindow = window }
+
+  /// 把服务端取回来的一页并进来。
+  ///
+  /// - 换算：服务端的价是每个币的价，乘 `chartScale`（`1000PEPE` 为 1000）换成图上的价，再按本机步长
+  ///   重新分桶；门槛换成本机此刻生效的那份。步长（换算后）和本机的对不上就整页不用（`.incompatible`）。
+  /// - 门槛：首次名义不到本机门槛的丢掉（用户把门槛调高了）。用户调低了，服务端没有的那些由本机实时跟踪补。
+  /// - 同一本簿、同一侧、同一桶、时间区间有重叠的，算同一条，**以服务端为准**；只有本机有的留着。
+  /// - 服务端说还挂着：本机也挂着那条就接着本机跟（出现时刻、首次名义取服务端的，已成交、峰值取两边大的，
+  ///   此刻名义与价位用本机簿上的——本机簿这一桶还在退出线上就一直这么跟，跌破了由本机照常判结束）；
+  ///   本机没有就按服务端的状态挂上，本机簿就绪后由本机接着跟，本机没这本簿就靠服务端每分钟续命
+  ///   （`remoteFreshMs`）。本机已经亲眼看到它结束（已成交 / 已撤销）的，留本机的结束，只补出现时刻与成交——
+  ///   服务端还挂着多半只是还没刷到库里（挂着的单 15 秒一刷），等它下一次说结束了再以它为准，
+  ///   免得图上一会儿挂着一会儿结束来回跳。本机判的是「失联结束」的，以服务端为准。
+  /// - 服务端说结束了：重叠的本机那条（挂着的也算）换成服务端的。本机簿上那一桶还过门槛的话，
+  ///   本机按正常确认重新出现一条。
+  @discardableResult
+  public mutating func mergeHistory(_ page: OrderFlowHistoryPage, chartScale: Double, nowMs: Int64) -> HistoryMerge {
+    guard let scheme else { return .pending }
+    guard let remoteStep = page.thresholds.step, chartScale.isFinite, chartScale > 0,
+          abs(remoteStep * chartScale - scheme.step) <= scheme.step * 1e-6 else { return .incompatible }
+    var incoming: [BigOrder] = []
+    incoming.reserveCapacity(page.orders.count)
+    for var order in page.orders {
+      guard let threshold = thresholds[order.product], order.initialNotional >= threshold else { continue }
+      order.price *= chartScale
+      guard order.price.isFinite, order.price > 0 else { continue }
+      order.bucket = scheme.index(of: order.price)
+      order.threshold = threshold
+      incoming.append(order)
+    }
+    guard !incoming.isEmpty else { return .merged }
+
+    func key(_ o: BigOrder) -> CandidateKey { CandidateKey(venue: o.venueID, key: BucketKey(side: o.side, index: o.bucket)) }
+    var byKey: [CandidateKey: [Int]] = [:]
+    for i in orders.indices { byKey[key(orders[i]), default: []].append(i) }
+    var removed = Set<Int>()
+    var claimed = Set<Int>()
+    var added: [BigOrder] = []
+
+    // 挂着的先配：先把本机正在跟的那条认领下来，后面同键的结束单就不会把它当成重叠删掉。
+    for remote in incoming where remote.isLive {
+      let matches = (byKey[key(remote)] ?? []).filter { !removed.contains($0) && !claimed.contains($0)
+        && Self.overlaps(orders[$0], remote) }
+      if let i = matches.first(where: { orders[$0].isLive }) {
+        adopt(i, remote: remote, nowMs: nowMs)
+        claimed.insert(i)
+        for j in matches where j != i { removed.insert(j) }
+      } else if let j = matches.filter({ orders[$0].status == .filled || orders[$0].status == .cancelled })
+                  .max(by: { (orders[$0].endMs ?? 0) < (orders[$1].endMs ?? 0) }) {
+        // 本机亲眼看到结束了：留本机的结束，只补出现时刻与成交。
+        let old = orders[j]
+        orders[j].firstSeenMs = min(remote.firstSeenMs, old.endMs ?? remote.firstSeenMs)
+        orders[j].initialNotional = remote.initialNotional
+        orders[j].filledNotional = max(old.filledNotional, remote.filledNotional)
+        claimed.insert(j)
+        for k in matches where k != j { removed.insert(k) }
+      } else {
+        matches.forEach { removed.insert($0) }
+        added.append(remote)
+        lastSeen[remote.id] = nowMs
+        peak[remote.id] = max(remote.initialNotional, remote.notional)
+        remoteSeen[remote.id] = nowMs
+      }
+    }
+    for remote in incoming where !remote.isLive {
+      for i in byKey[key(remote)] ?? [] where !claimed.contains(i) && Self.overlaps(orders[i], remote) {
+        removed.insert(i)
+      }
+      added.append(remote)
+    }
+
+    if !removed.isEmpty { orders = orders.indices.compactMap { removed.contains($0) ? nil : orders[$0] } }
+    orders.append(contentsOf: added)
+    // 同一条单服务端一页里只会出现一次；几页之间重叠的那一段（增量往前退了 5 分钟）已经按「服务端为准」换掉了。
+    orders.sort(by: Self.chronological)
+    reindex()
+    let alive = Set(orders.lazy.filter(\.isLive).map(\.id))
+    ending = ending.filter { alive.contains($0.key) }
+    lastSeen = lastSeen.filter { alive.contains($0.key) }
+    peak = peak.filter { alive.contains($0.key) }
+    remoteSeen = remoteSeen.filter { alive.contains($0.key) }
+    // 已经有单挂着的桶上的候选作废（不然两拍后又冒出一条同键的挂单）。
+    candidates = candidates.filter { liveIndex[$0.key] == nil }
+    journalDirty = true
+    _ = prune(nowMs: nowMs)
+    reindex()
+    return .merged
+  }
+
+  /// 同一个键上的两条时间区间有没有重叠（挂着的算到无穷；首尾相接不算）。
+  static func overlaps(_ a: BigOrder, _ b: BigOrder) -> Bool {
+    let aEnd = a.endMs.map { max($0, a.firstSeenMs + 1) } ?? .max
+    let bEnd = b.endMs.map { max($0, b.firstSeenMs + 1) } ?? .max
+    return a.firstSeenMs < bEnd && b.firstSeenMs < aEnd
+  }
+
+  /// 本机正在跟的这条接上服务端那条：出现时刻、首次名义取服务端的，成交与峰值取两边大的，
+  /// 此刻名义与价位仍是本机簿上的。出现时刻一变 id 就变，按单 id 记的几张表跟着换键。
+  private mutating func adopt(_ i: Int, remote: BigOrder, nowMs: Int64) {
+    let old = orders[i]
+    let oldID = old.id
+    orders[i].firstSeenMs = remote.firstSeenMs
+    orders[i].initialNotional = remote.initialNotional
+    orders[i].filledNotional = max(old.filledNotional, remote.filledNotional)
+    let newID = orders[i].id
+    if newID != oldID {
+      lastSeen[newID] = lastSeen.removeValue(forKey: oldID)
+      peak[newID] = peak.removeValue(forKey: oldID)
+      ending[newID] = ending.removeValue(forKey: oldID)
+    }
+    peak[newID] = max(peak[newID] ?? 0, remote.initialNotional, remote.notional, old.notional, old.initialNotional)
+    if lastSeen[newID] == nil { lastSeen[newID] = nowMs }
+    remoteSeen[oldID] = nil
+    remoteSeen[newID] = nowMs
   }
 }
