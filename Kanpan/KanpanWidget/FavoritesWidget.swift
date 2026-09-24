@@ -18,8 +18,12 @@ struct FavoritesProvider: AppIntentTimelineProvider {
     if let current = snapshot {
       snapshot = await LiveQuotes.refresh(current, symbols: current.rows(group: group).map(\.symbol))
     }
-    let entry = QuoteEntry(date: Date(), snapshot: snapshot, group: group)
-    return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(refreshEvery)))
+    let now = Date()
+    let entry = QuoteEntry(date: now, snapshot: snapshot, group: group)
+    // 价旧了按时变淡（`WidgetFreshness`）：在最早那只变旧的时刻再排一格同样的内容。
+    let stale = WidgetFreshness.staleEntryDate(snapshot?.rows(group: group) ?? [], after: now)
+      .map { QuoteEntry(date: $0, snapshot: snapshot, group: group) }
+    return Timeline(entries: [entry] + (stale.map { [$0] } ?? []), policy: .after(now.addingTimeInterval(refreshEvery)))
   }
 }
 
@@ -47,8 +51,12 @@ struct SymbolProvider: AppIntentTimelineProvider {
     if let current = snapshot, let focus = current.focus(symbol: chosen) {
       snapshot = await LiveQuotes.refresh(current, symbols: [focus.symbol], sparkline: focus.symbol)
     }
-    let entry = QuoteEntry(date: Date(), snapshot: snapshot, symbol: chosen)
-    return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(refreshEvery)))
+    let now = Date()
+    let entry = QuoteEntry(date: now, snapshot: snapshot, symbol: chosen)
+    let focus = snapshot?.focus(symbol: chosen)
+    let stale = WidgetFreshness.staleEntryDate(focus.map { [$0] } ?? [], after: now)
+      .map { QuoteEntry(date: $0, snapshot: snapshot, symbol: chosen) }
+    return Timeline(entries: [entry] + (stale.map { [$0] } ?? []), policy: .after(now.addingTimeInterval(refreshEvery)))
   }
 }
 
