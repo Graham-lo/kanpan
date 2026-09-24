@@ -166,6 +166,9 @@ public struct SyncArchive: Codable, Sendable {
 
 /// 存档落盘器：一条串行队列，把「编码 + 原子写」整段挪出主线程。
 ///
+/// 2026-09-24 起盘上是**分片**的（`ArchiveDisk`）：每次提交只编码、只写变了的那几片 + head，
+/// 下面几段注释里说的「整份」指的是交给它的那个值（仍是整份快照），不再是写到盘上的字节。
+///
 /// 为什么是 `DispatchQueue` 而不是 actor：串行队列是 FIFO 的，第 N 次
 /// `schedule` 一定排在第 N+1 次前面，所以盘上的内容永远是某一次 transaction
 /// 的完整快照，不会出现新档被旧档盖回去。往 actor 里塞 `Task` 没有这个保证。
@@ -183,13 +186,20 @@ final class ArchiveWriter: @unchecked Sendable {
   /// 系统一忙就可能把这次写拖到几十上百毫秒之后；`.userInitiated` 不吃那道节流，
   /// 手一抬到字节落盘通常是几毫秒。这次写本来就小又不频繁，占不了别人的地方。
   static let queue = DispatchQueue(label: "kanpan.account.archive", qos: .userInitiated)
-  private let url: URL
+  private let directory: URL
   private let lock = NSLock()
   private var failure: Error?
   private var writes = 0
+  private var bytes = 0
   /// 还没开写的最新一版。每次 `schedule` 覆盖它，队列上的第一格取走它。
   private var pending: SyncArchive?
-  init(url: URL) { self.url = url }
+  /// 读进来时盘上那一套（这个目录在本进程里还没提交过时，拿它当「上一版」）。只在队列上用。
+  private var seed: CommittedArchive
+  /// 读的是老的 `sync-v1.json`：第一次提交成功之后删掉它。只在队列上用。
+  private var removingLegacy: Bool
+  init(directory: URL, seed: CommittedArchive = CommittedArchive(), migrating: Bool = false) {
+    self.directory = directory; self.seed = seed; removingLegacy = migrating
+  }
 
   /// `SyncArchive` 是值类型，拷出来之后主线程就可以接着改自己的那份。
   ///
@@ -215,10 +225,14 @@ final class ArchiveWriter: @unchecked Sendable {
     guard let value = pending else { lock.unlock(); return }
     pending = nil
     lock.unlock()
-    var caught: Error?
-    do { try AccountFiles.writeData(try JSONEncoder().encode(value), to: url) } catch { caught = error }
+    var caught: Error?, written = 0
+    // 分片提交：只写变了的那几片 + head（见 `ArchiveDisk`）。
+    do {
+      written = try ArchiveDisk.commit(value, directory: directory, seed: seed, removingLegacy: removingLegacy)
+      removingLegacy = false
+    } catch { caught = error }
     lock.lock()
-    writes += 1
+    writes += 1; bytes += written
     if failure == nil { failure = caught }
     lock.unlock()
   }
@@ -246,17 +260,25 @@ final class ArchiveWriter: @unchecked Sendable {
   }
   /// 真正落盘的次数。只用于观测与测试（「一次批量只写一次」）。
   var writeCount: Int { lock.lock(); defer { lock.unlock() }; return writes }
+  /// 累计写了多少字节。只用于观测与测试（分片前后的对比）。
+  var bytesWritten: Int { lock.lock(); defer { lock.unlock() }; return bytes }
 }
 
 @MainActor public final class SyncStore {
   public private(set) var archive: SyncArchive
-  private let url: URL
   private let writer: ArchiveWriter
   public init(directory: URL) throws {
-    url = directory.appendingPathComponent("sync-v1.json")
-    archive = try AccountFiles.read(SyncArchive.self, at: url) ?? SyncArchive()
+    let loaded = try ArchiveDisk.load(directory: directory)
+    archive = loaded.archive
     guard archive.version == 1 else { throw AccountError.storage }
-    writer = ArchiveWriter(url: url)
+    writer = ArchiveWriter(directory: directory, seed: loaded.committed, migrating: loaded.migrating)
+    // 老的整份 `sync-v1.json`：现在就排一次整份提交迁成分片，不等下一次事务。
+    if loaded.migrating { writer.schedule(archive) }
+  }
+  /// 直接读盘上那份存档（不经过任何 `SyncStore` 的内存）。测试与诊断用；可以在任意线程调。
+  public nonisolated static func readArchive(directory: URL) throws -> SyncArchive? {
+    let loaded = try ArchiveDisk.load(directory: directory)
+    return loaded.found ? loaded.archive : nil
   }
   /// 一次事务 = 一次编码 + 一次写盘。
   ///
@@ -733,4 +755,6 @@ final class ArchiveWriter: @unchecked Sendable {
   public func afterArchiveWritten(_ work: @escaping @Sendable () -> Void) { writer.drain(work) }
   /// 真正落盘的次数。观测与测试用。
   public var writeCount: Int { writer.writeCount }
+  /// 累计落盘字节数。观测与测试用。
+  var bytesWritten: Int { writer.bytesWritten }
 }

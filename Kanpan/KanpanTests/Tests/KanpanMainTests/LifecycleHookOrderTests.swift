@@ -108,7 +108,6 @@ struct ArchiveQueueLeaveTests {
       .appendingPathComponent("bt14-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let archiveURL = root.appendingPathComponent("sync-v1.json")
     let store = try SyncStore(directory: root)
     let device = UUID()
     let events = LockedLog()
@@ -125,7 +124,7 @@ struct ArchiveQueueLeaveTests {
     let key = line.key
     store.afterArchiveWritten {
       // 正式文件这一笔跑的时候，盘上的存档必须已经不比它旧（B2：存档先落）。
-      let onDisk = (try? JSONDecoder().decode(SyncArchive.self, from: Data(contentsOf: archiveURL)))?
+      let onDisk = (try? SyncStore.readArchive(directory: root))?
         .local[key]?.body["v"]
       switch onDisk {
       case .some(.number(2)): events.add("companion:v2")

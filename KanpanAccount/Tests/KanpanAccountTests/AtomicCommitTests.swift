@@ -433,9 +433,7 @@ private final class OrderLog: @unchecked Sendable {
 /// 盘上那份存档此刻记到第几版（读的是真文件，不是内存里那份）。
 /// 不挂在测试套件上：它要在**写盘队列**上被调用，不能是 MainActor 的。
 private func tickOnDisk(_ root: URL) -> Int {
-  let url = root.appendingPathComponent("sync-v1.json")
-  guard let data = try? Data(contentsOf: url),
-        let archive = try? JSONDecoder().decode(SyncArchive.self, from: data),
+  guard let archive = try? SyncStore.readArchive(directory: root),
         case .number(let tick)? = archive.local["settings:chart"]?.body["tick"] else { return 0 }
   return Int(tick)
 }
