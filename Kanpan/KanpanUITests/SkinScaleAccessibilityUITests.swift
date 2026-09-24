@@ -52,7 +52,7 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     ("top.symbol", "顶栏品种名"),
     ("top.lastPrice", "最新价"),
     ("top.changePercent", "涨跌幅"),
-    ("interval.chart", "周期行右端的「图表」"),
+    ("interval.chart", "周期行右端的图表设置"),
     ("bottom.draw", "底栏画线"),
     ("bottom.chart", "底栏图表"),
     ("bottom.favorites", "底栏自选"),

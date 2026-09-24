@@ -92,7 +92,7 @@ struct IntervalRail: View {
   private func chip(_ iv: Interval) -> some View {
     let on = iv == current
     return Button { onPick(iv) } label: {
-      Text(iv.rawValue)
+      Text(iv.shortLabel)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(on ? theme.amber : theme.ink2)
         .frame(maxWidth: .infinity)

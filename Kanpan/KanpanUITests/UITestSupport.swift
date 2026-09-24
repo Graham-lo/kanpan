@@ -52,7 +52,7 @@ enum Ids {
   static let bottomSettings = "bottom.settings"
   /// 顶栏的「复盘」：右上角那颗带待办角标的按钮，开复盘本。
   static let topReview = "top.review"
-  /// 周期行右端的「图表」：网格、阳线实心/空心、价格轴，外加整段指标开关，都在这张
+  /// 周期行右端的图表设置：网格、阳线实心/空心、价格轴，外加整段指标开关，都在这张
   /// 名叫「图表设置」的面板里。面板名和标签名要分清——标签栏那一格叫「图表」，是整页。
   static let intervalChart = "interval.chart"
   /// 「画线」：标签栏最左那一格，任何一页上点它都直接在当前这张图上开画。
@@ -389,7 +389,7 @@ class KanpanUICase: XCTestCase {
     if !edit.exists {
       if !app.buttons[Ids.intervalChart].exists { leaveSettings(file: file, line: line) }
       let entry = app.buttons[Ids.intervalChart]
-      expectExists(entry, Self.short, "周期行右端没有「图表」", file: file, line: line)
+      expectExists(entry, Self.short, "周期行右端没有图表设置那颗", file: file, line: line)
       entry.tap()
       expectExists(app.staticTexts[Ids.panelHeader], Self.short, "图表设置面板没开出来",
                    file: file, line: line)

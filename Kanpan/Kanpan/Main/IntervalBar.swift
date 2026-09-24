@@ -3,7 +3,10 @@ import KanpanCore
 import SwiftUI
 import UIKit
 
-/// 周期条：钉住的那几档横排 + 行尾「最新 / 更多 / 图表」（§9.1）。
+/// 周期条：钉住的那几档横排 + 行尾「最新 / 更多 / 图表设置」（§9.1）。
+///
+/// 档位一律写中文短写（`Interval.shortLabel`：5分 / 1时 / 1周 / 1月，审查 U12）——
+/// 以前条上 `1m` 和「更多」网格里的 `1M` 只差一个大小写，一分钟和一个月靠眼力分。
 ///
 /// 条上排哪几档由用户自己钉（`quickIntervals`，A6.5），不按停留时长学习——
 /// 会自己动的东西没法形成肌肉记忆。顺序固定按 `Interval.allCases` 走。从「更多」里
@@ -12,7 +15,7 @@ import UIKit
 ///
 /// **条上最多六档**（`Prefs.maxQuick`，2026-09-21 定），**出厂就把六格放满**
 /// （`Interval.quick` = `5m 30m 1h 4h 1d 1w`）。这一行要同时放下六档、行尾的
-/// 「最新 / 返回刚才」、「更多」和「图表」，还得在 iPhone SE（375pt）上一个字都不截——
+/// 「最新 / 返回刚才」、「更多」和图表设置，还得在 iPhone SE（375pt）上一个字都不截——
 /// 六档是实测排得下的上限，所以钉位本身就卡在六个，排版只对「≤6 档」这一种情况负责。
 /// 原来那条「排不下就横向滚动 + 右边渐隐」的退路一并删了：能滚就意味着有档位藏在屏幕外，
 /// 而钉住的那几档是用户自己挑的、每一档都得看得见。
@@ -32,7 +35,7 @@ import UIKit
 /// 用上——否则同样几档会被摊成一排横向拉长的色块。
 ///
 /// 右端原来还有「画线」「记一笔」，用户的话是「这个功能不是经常用到啊」「记和画线都
-/// 放到图表栏目里」，两个都收进「图表」那一页（见 `ChartPanel`）。
+/// 放到图表栏目里」，两个都收进图表设置那一页（见 `ChartPanel`）。
 struct IntervalBar: View {
   var theme: PanelTheme
   var quick: [Interval]
@@ -54,7 +57,7 @@ struct IntervalBar: View {
   /// 和「最新」是同一个位置上的两颗——两颗永远不会同时在（一个的前提是不在最新，
   /// 另一个的前提是在最新）。没地方可回去时是 nil，那儿**一点宽度都不占**。
   var onReturn: (() -> Void)? = nil
-  /// 行尾「图表」：开 K 线那一页（`Panel.chart`）。画线、记一笔也在那一页上。
+  /// 行尾图表设置那颗记号：开 K 线那一页（`Panel.chart`）。画线、记一笔也在那一页上。
   var onChart: () -> Void
 
   /// 条上排哪几档：**只有钉住的那些**，按 `Interval.allCases` 从短到长。
@@ -79,22 +82,25 @@ struct IntervalBar: View {
   var body: some View {
     // 缝全交给格子自己（等宽 + 文字居中），所以这一层 `spacing` 是 0：行尾那几件
       // 各自带着自己的留白——「最新」自带 6pt 的前缝，分隔线两侧各 8pt，
-      // 「更多 / 图表」本来就有 44pt 的命中区兜着。
+      // 「更多」和图表设置本来就有 44pt 的命中区兜着。
     HStack(spacing: 0) {
       chips
       actionSlot
       divider
       // 当前档没钉在条上时，「更多」就写成那一档（「2h ▾」）并高亮：人一眼知道
       // 自己正看着哪一档，钉住的那几档也一个都没被挤走。网格拉开时照旧高亮。
-      tail(currentOffBar ? current.rawValue : "更多", chevron: true,
+      tail(currentOffBar ? current.shortLabel : "更多", chevron: true,
            on: gridOpen || currentOffBar, flipped: gridOpen) {
         withAnimation(.easeOut(duration: 0.2)) { gridOpen.toggle() }
       }
       .accessibilityIdentifier("interval.more")
       .accessibilityLabel(currentOffBar ? "更多周期，当前 \(current.display)" : "更多周期")
       .accessibilityAddTraits(currentOffBar ? [.isSelected] : [])
-      tail("图表", action: onChart)
+      // 图表设置只画一颗记号（审查 U12）：原来写的「图表」和底栏那一格同名，
+      // 点开的却是设置面板；读屏照旧读得出它是什么。
+      tailButton(on: false, action: onChart) { VectorIcon.adjust() }
         .accessibilityIdentifier("interval.chart")
+        .accessibilityLabel("图表设置")
     }
     // 两头 12pt：和头部内容的左缘对齐（2026-09-21 从 8 放回来的——影子药丸删掉之后
     // 这一行不再需要从边距里抠那几个点）。
@@ -161,7 +167,7 @@ struct IntervalBar: View {
   /// 「最新 / 返回刚才」那颗药丸。
   ///
   /// 这是整条上**唯一还带底色的动作**（`raised2`）：它是随状态冒出来的一件事，
-  /// 得让人一眼看见它来了；「更多 / 图表」是常驻的两个入口，平文字就够。
+  /// 得让人一眼看见它来了；「更多」和图表设置是常驻的两个入口，平文字就够。
   private func actionPill(_ title: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
       Text(title)
@@ -211,7 +217,7 @@ struct IntervalBar: View {
   /// 钉住的那几档，各占一个等宽的格子，平分行里剩下的宽度。
   ///
   /// 这里没有滚动、没有渐隐、也没有「排不排得下」的判断：档数封在六个（见 `list`），
-  /// 行尾那几件（「最新」/ 分隔线 / 更多 / 图表）各自按自然宽度先占好位子，剩下的全归这一排。
+  /// 行尾那几件（「最新」/ 分隔线 / 更多 / 图表设置）各自按自然宽度先占好位子，剩下的全归这一排。
   /// 最窄的 iPhone SE（375pt）上六档照样一个字不截——`IntervalSlotUITests` 量的就是这个。
   ///
   /// **等宽是这一行看起来协调的全部原因**：文字在各自格子的正中，于是档与档之间的留白
@@ -261,7 +267,7 @@ struct IntervalBar: View {
 
   @ViewBuilder private func chipLabel(_ iv: Interval) -> some View {
     let on = iv == current
-    Text(iv.rawValue)
+    Text(iv.shortLabel)
       .font(.system(size: 12.5, weight: on ? .semibold : .medium))
       .foregroundStyle(on ? theme.amber : theme.ink2)
       // 字先 `fixedSize` 钉死自己的自然宽度，再谈铺满。铺满靠每格 `maxWidth`，
@@ -304,7 +310,7 @@ struct IntervalBar: View {
 
   /// 那层底画多宽：贴着文字（每边 `markPad`），但不许伸到邻档的字底下（格子宽 - `markGap`）。
   private func markWidth(_ iv: Interval) -> CGFloat {
-    let text = Self.textWidth(iv.rawValue)
+    let text = Self.textWidth(iv.shortLabel)
     let hug = text + Self.markPad * 2
     let cell = cellWidth
     guard cell > 0 else { return hug }              // 还没量到这一排多宽，先按贴着文字画
@@ -326,25 +332,33 @@ struct IntervalBar: View {
   /// 「更多」展开时、或者当前档没钉在条上（它替那一档说话）时才亮起来：字变强调色、
   /// 底下垫同一套 10% 的淡底（和当前档一个规矩）。
   ///
-  /// 「更多」带下箭头（那是从条上往下拉出一张网格，展开时箭头翻上去），「图表」不带
-  /// （它开的是另一页，不是这根条的延伸）。
+  /// 「更多」带下箭头（那是从条上往下拉出一张网格，展开时箭头翻上去）；图表设置那颗
+  /// 只有记号、没有字（审查 U12，见 `VectorIcon.adjust`），它开的是另一页，不是这根条的延伸。
   private func tail(
     _ title: String, chevron: Bool = false,
     on: Bool = false, flipped: Bool = false, action: @escaping () -> Void
   ) -> some View {
-    Button(action: action) {
+    tailButton(on: on, action: action) {
       HStack(spacing: 3) {
         Text(title).font(.system(size: 12.5, weight: .semibold))
         if chevron {
           VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(flipped ? 180 : 0))
         }
       }
+    }
+  }
+
+  private func tailButton<Label: View>(
+    on: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> Label
+  ) -> some View {
+    Button(action: action) {
+      label()
       .foregroundStyle(on ? theme.amber : theme.ink2)
       .padding(.horizontal, 8)
       .frame(height: 28)
       .background { if on { Capsule().fill(theme.amberSoft) } }
-      // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（「图表」两个字算出来是 43pt，
-      // 差的那一点从这儿补上）。这 44pt 顺带成了两个动作之间的留白。
+      // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（图表设置那颗记号 15pt + 两边 8pt
+      // 只有 31pt，差的从这儿补上）。这 44pt 顺带成了两个动作之间的留白。
       .frame(minWidth: 44, minHeight: 44)
       .contentShape(Rectangle())
     }

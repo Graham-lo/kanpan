@@ -1,4 +1,5 @@
 import SwiftUI
+import KanpanCore
 import PhotosUI
 import UIKit
 import ReviewDomain
@@ -58,7 +59,7 @@ struct ReviewSavedMatchesView: View {
   private func row(_ match: ReviewMatch) -> some View {
     HStack {
       VStack(alignment: .leading, spacing: 5) {
-        Text(match.range.shortSymbol + " · " + match.range.interval).fontWeight(.medium).foregroundStyle(t.ink)
+        Text(match.range.shortSymbol + " · " + Interval.shortLabel(raw: match.range.interval)).fontWeight(.medium).foregroundStyle(t.ink)
         Text(feature.fullTime(match.range.start)).font(.caption).foregroundStyle(t.ink3)
         Text("\(match.range.bars) 根").font(.caption).foregroundStyle(t.ink3)
       }

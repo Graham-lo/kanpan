@@ -163,7 +163,7 @@ private struct ChartShotCard: View {
             .font(.system(size: 10.5, weight: .medium))
             .foregroundStyle(t.ink3)
         }
-        Text("· " + head.interval.display)
+        Text("· " + head.interval.shortLabel)
           .font(.system(size: 10.5, weight: .medium))
           .foregroundStyle(t.ink3)
       }

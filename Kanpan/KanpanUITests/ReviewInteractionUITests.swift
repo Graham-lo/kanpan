@@ -52,7 +52,7 @@ final class ReviewInteractionUITests: KanpanUICase {
     print("P37|" + text)
   }
 
-  /// 取景卡抬头那一行「N 根 · 1h」里的 N。
+  /// 取景卡抬头那一行「N 根 · 1时」里的 N。
   private func captureBars() -> Int? {
     let label = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' 根 · '")).firstMatch
     guard let snap = try? label.snapshot() else { return nil }
@@ -66,7 +66,7 @@ final class ReviewInteractionUITests: KanpanUICase {
 
   private func openCapture() -> Bool {
     let entry = app.buttons[Ids.intervalChart]
-    guard expectExists(entry, Self.short, "周期行右端没有「图表」") else { return false }
+    guard expectExists(entry, Self.short, "周期行右端没有图表设置那颗") else { return false }
     entry.tap()
     let record = app.buttons["chart.record"]
     guard expectExists(record, Self.short, "「图表」面板里没有「记一笔」") else { return false }

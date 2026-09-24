@@ -580,7 +580,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     XCTAssertTrue(waitForLiveChart(), "没等到行情：\(chartInfo())")
 
     let entry = app.buttons[Ids.intervalChart]
-    expectExists(entry, Self.short, "周期行右端没有「图表」")
+    expectExists(entry, Self.short, "周期行右端没有图表设置那颗")
     entry.tap()
     let record = app.buttons["chart.record"]
     expectExists(record, Self.short, "「图表」面板里没有「记一笔」")

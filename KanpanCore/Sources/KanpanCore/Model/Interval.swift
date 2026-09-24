@@ -52,6 +52,36 @@ public enum Interval: String, CaseIterable, Sendable, Codable {
     }
   }
 
+  /// 界面上的周期短写：周期条、横屏周期栏、「更多」网格、复盘本都用这一份（审查 U12）。
+  ///
+  /// 以前条上是 `5m / 1h / 1w`，「更多」网格里又是「5 分钟」，同一档两种写法；
+  /// `1m` 与 `1M` 只差一个大小写，一分钟和一个月靠眼力分。统一成中文短写之后
+  /// 「1分」「1月」一眼就分得开。`rawValue` 仍是交易所 / 存档 / 无障碍标识用的那份，
+  /// 不给人看；要整句读出来（无障碍、分享卡）用 `display`。
+  public var shortLabel: String {
+    switch self {
+    case .m1: "1分"
+    case .m3: "3分"
+    case .m5: "5分"
+    case .m15: "15分"
+    case .m30: "30分"
+    case .h1: "1时"
+    case .h2: "2时"
+    case .h4: "4时"
+    case .h6: "6时"
+    case .h12: "12时"
+    case .d1: "1日"
+    case .w1: "1周"
+    case .mo1: "1月"
+    case .y1: "1年"
+    }
+  }
+
+  /// 存档里只剩一个周期字符串（复盘记录等）时的短写；认不出的原样给回去，不丢信息。
+  public static func shortLabel(raw: String) -> String {
+    Interval(rawValue: raw)?.shortLabel ?? raw
+  }
+
   /// 周期条第一行的常用档（原型 `QUICK`）。
   ///
   /// 六档 → 七档 → 五档 → 现在的六档，也就是上限（`Prefs.maxQuick`）本身。

@@ -1,4 +1,5 @@
 import SwiftUI
+import KanpanCore
 import UIKit
 import ReviewDomain
 
@@ -218,7 +219,7 @@ struct ReviewRecordRow: View {
       HStack {
         // 短名（§2G5）：`BTCUSDT` 里后面那四个字母每行都一样，认的是前半截。
         Text(record.draft.range.shortSymbol).fontWeight(.semibold).foregroundStyle(t.ink)
-        Text(record.draft.range.interval).foregroundStyle(t.ink3)
+        Text(Interval.shortLabel(raw: record.draft.range.interval)).foregroundStyle(t.ink3)
         Spacer()
         Text(record.outcome.title).foregroundStyle(t.accent)
       }
@@ -300,7 +301,7 @@ public struct ReviewRecordView: View {
             }.listRowBackground(t.raised)
           }
           Section("当时") {
-            LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(record.draft.range.interval)")
+            LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(Interval.shortLabel(raw: record.draft.range.interval))")
             if let confidence = record.draft.confidence {
               LabeledContent("把握", value: "\(confidence)%")
             }

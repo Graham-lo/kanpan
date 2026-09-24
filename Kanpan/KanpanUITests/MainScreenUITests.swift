@@ -298,7 +298,7 @@ final class MainScreenUITests: KanpanUICase {
     app.buttons[Ids.intervalChart].tap()
     XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
     let solid = app.buttons[Ids.chartBody("实心")], hollow = app.buttons[Ids.chartBody("空心")]
-    expectExists(hollow, Self.short, "点周期行「图表」没开出图表面板")
+    expectExists(hollow, Self.short, "点周期行右端的图表设置没开出图表面板")
     hollow.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { hollow.isSelected }, "选了「空心」它自己没变成选中")
     XCTAssertFalse(solid.isSelected, "同一时刻只能有一档选中")
@@ -312,13 +312,13 @@ final class MainScreenUITests: KanpanUICase {
   /// 指标：开得出来、收得回去。多项配置页，选完**不**自动收（规矩①的另一半）。
   ///
   /// 2026-09-18 起指标不再是底栏上单独的一格，整段并进了「图表设置」面板
-  /// （用户：「行情页面的指标放到图表里作为一个子栏目」），入口是周期行右端的「图表」。
+  /// （用户：「行情页面的指标放到图表里作为一个子栏目」），入口是周期行右端的图表设置。
   func testIndicatorPanelOpensAndCloses() {
     app.buttons[Ids.intervalChart].tap()
     // 2026-09-23 起面板上只留一行「指标」摘要，点进去才是开关（同一张面板里推进去的一页）。
     XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
-    expectExists(macd, Self.short, "点周期行「图表」没开出指标那几栏")
+    expectExists(macd, Self.short, "点周期行右端的图表设置没开出指标那几栏")
     expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标那几栏里没有主图叠加")
     // 主力订单流（2026-09-24）：主图叠加区第七行，只有开关。
     expectExists(app.buttons[Ids.indicatorSwitch("ORDERFLOW")], Self.short, "主图叠加里没有「主力订单流」")

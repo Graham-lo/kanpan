@@ -462,7 +462,7 @@ import XCTest
   /// 记一笔（看多，等答案）→ 总表里多一条「BTC 到点了」，写着到期时刻。
   func testARecordedCallShowsUpAsADueAlert() throws {
     let entry = app.buttons[Ids.intervalChart]
-    XCTAssertTrue(entry.waitForExistence(timeout: 10), "周期行右端没有「图表」")
+    XCTAssertTrue(entry.waitForExistence(timeout: 10), "周期行右端没有图表设置那颗")
     entry.tap()
     let record = app.buttons["chart.record"]
     XCTAssertTrue(record.waitForExistence(timeout: 10), "「图表」面板里没有「记一笔」")

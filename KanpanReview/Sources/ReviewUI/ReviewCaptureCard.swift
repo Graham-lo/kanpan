@@ -16,7 +16,7 @@ public struct ReviewCaptureCard: View {
         VStack(alignment: .leading, spacing: 12) {
           HStack {
             Text("记一笔").font(.headline).foregroundStyle(t.ink)
-            Text("\(draft.range.bars) 根 · \(draft.range.interval)").font(.caption).foregroundStyle(t.ink3)
+            Text("\(draft.range.bars) 根 · \(Interval.shortLabel(raw: draft.range.interval))").font(.caption).foregroundStyle(t.ink3)
             Spacer()
             Button("收起", action: onClose).foregroundStyle(t.ink2)
           }

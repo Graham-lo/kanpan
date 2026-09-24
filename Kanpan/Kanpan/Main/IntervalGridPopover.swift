@@ -66,7 +66,7 @@ struct IntervalGridPopover: View {
         }
         onPick(iv)
       } label: {
-        Text(iv.display)
+        Text(iv.shortLabel)
           .font(.system(size: 12.5, weight: on ? .semibold : .medium))
           .foregroundStyle(on || chosen ? theme.amber : theme.ink2)
           .lineLimit(1)

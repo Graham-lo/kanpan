@@ -181,7 +181,7 @@ struct SymbolPreviewCard: View {
           Text(base).font(.scaled(14, .semibold)).foregroundStyle(t.ink)
           Text(quote).font(.scaled(9)).foregroundStyle(t.ink3)
         }.lineLimit(1)
-        Text(SymbolPreviewStore.interval.display + " · 近 \(SymbolPreviewStore.barCount) 根")
+        Text(SymbolPreviewStore.interval.shortLabel + " · 近 \(SymbolPreviewStore.barCount) 根")
           .font(.scaled(9.5)).foregroundStyle(t.ink3)
       }
       Spacer(minLength: 6)

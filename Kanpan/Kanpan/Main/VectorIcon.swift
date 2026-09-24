@@ -401,6 +401,20 @@ extension VectorIcon {
     ])
   }
 
+  /// 周期条行尾那颗「图表设置」（审查 U12）：两根调节杆，各带一颗旋钮。
+  ///
+  /// 那儿原来写着「图表」两个字，和底栏的「图表」格同名，开的却是图表设置那张面板。
+  /// 不改写成「设置」——底栏最右那一格就叫设置，同名的毛病只是换了个对象。
+  /// 描边的粗细、字号和它旁边的「更多 ▾」、顶栏的放大镜是同一套，读起来仍是一行字。
+  static func adjust(_ size: Double = 15) -> VectorIcon {
+    VectorIcon(
+      box: 18, size: size, lineWidth: 1.6,
+      items: [
+        .path("M2.5 5.5h6.4M13.6 5.5h1.9"), .circle(x: 11.25, y: 5.5, r: 2.1),
+        .path("M2.5 12.5h1.9M9.1 12.5h6.4"), .circle(x: 6.75, y: 12.5, r: 2.1),
+      ])
+  }
+
   static var landscape: VectorIcon {
     tool([.rect(x: 2.5, y: 5.5, w: 15, h: 9, r: 1.6), .path("M7 2.6 9 4.6 7 6.6")])
   }

@@ -68,7 +68,7 @@ final class ReviewFlowUITests: KanpanUICase {
   @discardableResult
   private func recordOnce(file: StaticString = #filePath, line: UInt = #line) -> Bool {
     let entry = app.buttons[Ids.intervalChart]
-    guard expectExists(entry, Self.short, "周期行右端没有「图表」", file: file, line: line) else { return false }
+    guard expectExists(entry, Self.short, "周期行右端没有图表设置那颗", file: file, line: line) else { return false }
     entry.tap()
     let record = app.buttons["chart.record"]
     guard expectExists(record, Self.short, "「图表」面板里没有「记一笔」", file: file, line: line) else { return false }
