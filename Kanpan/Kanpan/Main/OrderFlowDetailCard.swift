@@ -2,16 +2,18 @@ import KanpanChart
 import KanpanCore
 import SwiftUI
 
-/// 主力订单流的详情卡：一桶一卡（2026-09-24 晚改手机布局）。
+/// 主力订单流的详情卡：一堵墙一卡（2026-09-24 晚改手机布局；2026-09-25 相邻桶并成墙、卡只留关键信息）。
 ///
-/// 图上同一价位桶、同一侧、同一类（现货 / 合约）的单合成了一条带（`OrderFlowGroup`），
-/// 轻点这条带或者十字线停在上面，就在主图里出这一桶的卡：
-///   - 标题：「83,600 · 委托卖单 · 合约」，右边「持续 X」；
-///   - 汇总两行：合计数量 / 合计金额（USDT）、成交金额与比例 / 最早挂单时间；
-///   - 下面一本簿一行（按此刻名义从大到小）：交易所 产品 · 数量 · 金额 · 状态 · 成交比例；
-///     最多六行，再多折成「还有 N 本」；主图矮、放不下就再少列几行。
-/// 尺寸：宽不超过绘图区的 85%，高不超过主图的 55%，而且不越过那条带——摆在带的上面或下面
-/// （哪边空得多摆哪边），横向摆在焦点（十字线 / 带中点）的另一侧。点空白处收起，点另一条换成那一条。
+/// 图上同一侧、同一类（现货 / 合约）、相邻价位桶、时间上连着的单合成了一堵墙（`OrderFlowGroup`），
+/// 轻点这条线或者十字线停在上面，就在主图里出这堵墙的卡。卡只有三行：
+///   - 标题：「83,600.0 · 委托卖单 · 合约」；跨几个桶的墙写价位范围「83,900 – 84,400」
+///     （最低桶的桶价 – 最高桶的桶价 + 步长），单价位的段写那一个价，都带千分位；右上「持续 X」
+///     （标题优先，放不下时时长短写成「X 小时 Y 分」）；
+///   - 两行键值：总金额 / 总数量，开始 / 状态（在场 / 已撤 / 已成交 X%）。
+/// 不列交易所：哪几家、哪种合约是聚合进来的，用户要的是「这里有多大一堵墙、挂了多久、还在不在」
+/// （2026-09-25 用户：「详情卡不列交易所」），所以原先一本簿一行的表、折叠行都删了。
+/// 尺寸：宽不超过绘图区的 85%，高不超过主图的 55%，而且不越过那条线的命中带——摆在它的上面或下面
+/// （哪边空得多摆哪边），横向摆在焦点（十字线 / 线中点）的另一侧。点空白处收起，点另一条换成那一条。
 ///
 /// 挂法和十字线读数一样：这一层自己观察 `CrosshairReadout.orderFlow`，跟着焦点重求值的
 /// 只有它，图和主屏的 body 不跟着动。卡片**不接触摸**（`allowsHitTesting(false)`）——
@@ -37,9 +39,9 @@ struct OrderFlowDetailLayer: View {
       let top = place.below ? focus.bandY + focus.bandHalf + gap : focus.bandY - focus.bandHalf - gap - place.maxHeight
       OrderFlowDetailCard(focus: focus, theme: theme, base: base, decimals: decimals, timeZone: timeZone,
                           maxWidth: focus.cardMaxWidth, maxHeight: place.maxHeight)
-        .frame(width: max(0, focus.plotW - 16), height: max(0, place.maxHeight), alignment: alignment)
+        .frame(width: max(0, focus.plotW - 2 * Space.s), height: max(0, place.maxHeight), alignment: alignment)
         .clipped()
-        .offset(x: 8, y: top)
+        .offset(x: Space.s, y: top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
     }
@@ -55,11 +57,6 @@ struct OrderFlowDetailCard: View {
   let maxWidth: Double
   let maxHeight: Double
 
-  /// 排行数用的估高（pt）：内边距 12 × 2 + 标题一行 + 汇总两行 + 分隔线与间距；簿一行 12 pt 字 + 4 pt 行距。
-  /// 实际高度超了还有 `.clipped()` 兜底，不会越过带或出主图。
-  static let fixedHeight = 94.0
-  static let rowHeight = 19.0
-
   private var group: OrderFlowGroup { focus.group }
 
   var body: some View {
@@ -67,11 +64,12 @@ struct OrderFlowDetailCard: View {
     TimelineView(.periodic(from: .now, by: 30)) { context in
       let now = Int64(context.date.timeIntervalSince1970 * 1000)
       let lines = OrderFlowCardText(group: group, base: base, decimals: decimals, timeZone: timeZone,
-                                    nowMs: max(now, focus.asOfMs),
-                                    lines: OrderFlowCardBudget.lines(maxHeight: maxHeight, fixedHeight: Self.fixedHeight,
-                                                                     rowHeight: Self.rowHeight))
-      // 卡内两级（UI 审查 2026-09-24 §4.3 #30）：标题 13 semibold，其余一律 12——
-      // 状态 12 medium 状态色、正文 12 等宽 ink、标签 12 次墨色。
+                                    nowMs: max(now, focus.asOfMs))
+      // 卡内三级（HIG：标题与正文差一档，字重 + 颜色一起分层）：
+      //   标题 13 semibold（TypeScale.controlOn；价 ink、方向用图外涨跌色 PanelTheme.up / down）；
+      //   正文 12（TypeScale.caption）——值 ink、键 ink3，状态 12 medium（captionEmph）状态色；
+      //   注脚 11（TypeScale.caption2）ink3——右上的「持续 X」。
+      // 间距：内边距 Inset.cardCompact 12、行距 Space.xs 4、键值之间 Space.s 8、两列之间 Space.m 12；圆角 Radius.m。
       VStack(alignment: .leading, spacing: Space.xs) {
         HStack(spacing: Space.s) {
           (Text(lines.price + " · ").foregroundStyle(theme.ink)
@@ -79,8 +77,15 @@ struct OrderFlowDetailCard: View {
             + Text(" · " + lines.kind).foregroundStyle(theme.ink))
             .font(TypeScale.controlOn)
             .monospacedDigit()
-          Spacer(minLength: Space.s)
-          Text(lines.duration).font(TypeScale.caption).foregroundStyle(theme.ink3)
+            // 标题先拿够宽度：价位范围 + 方向 + 类一个字都不许截（17 Pro Max 上 BTC 五桶墙曾截成「委托买单 ·…」）；
+            // 右上的时长让位，放不下「持续 2 小时 39 分」就写「2 小时 39 分」。
+            .layoutPriority(1)
+          Spacer(minLength: 0)
+          ViewThatFits(in: .horizontal) {
+            Text(lines.duration)
+            Text(lines.durationShort)
+          }
+          .font(TypeScale.caption2).foregroundStyle(theme.ink3)
         }
         Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xs) {
           ForEach(lines.pairs.indices, id: \.self) { i in
@@ -88,37 +93,23 @@ struct OrderFlowDetailCard: View {
             GridRow {
               Text(pair.0.label).foregroundStyle(theme.ink3)
               Text(pair.0.value).foregroundStyle(theme.ink)
-              Text(pair.1.label).foregroundStyle(theme.ink3).padding(.leading, Space.s)
-              Text(pair.1.value).foregroundStyle(theme.ink)
+              Text(pair.1.label).foregroundStyle(theme.ink3).padding(.leading, Space.m - Space.s)
+              if i == lines.pairs.count - 1 {
+                Text(pair.1.value).font(TypeScale.captionEmph).foregroundStyle(color(lines.state))
+              } else {
+                Text(pair.1.value).foregroundStyle(theme.ink)
+              }
             }
           }
         }
         .font(TypeScale.caption)
         .monospacedDigit()
-        Rectangle().fill(theme.line).frame(height: 1)
-        Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xs) {
-          ForEach(lines.rows.indices, id: \.self) { i in
-            let row = lines.rows[i]
-            GridRow {
-              Text(row.name).foregroundStyle(theme.ink2).layoutPriority(-1)
-              Text(row.quantity).foregroundStyle(theme.ink).gridColumnAlignment(.trailing)
-              Text(row.amount).foregroundStyle(theme.ink).gridColumnAlignment(.trailing)
-              Text(row.status).font(TypeScale.captionEmph).foregroundStyle(color(row.state))
-              Text(row.fill).foregroundStyle(theme.ink3).gridColumnAlignment(.trailing)
-            }
-          }
-        }
-        .font(TypeScale.caption)
-        .monospacedDigit()
-        if let folded = lines.folded {
-          Text(folded).font(TypeScale.caption).foregroundStyle(theme.ink3)
-        }
       }
       .lineLimit(1)
       .fixedSize(horizontal: false, vertical: true)
       .padding(Inset.cardCompact)
       .frame(maxWidth: maxWidth, alignment: .leading)
-      // 高度贴着内容，不撑满上限（行数已按上限算过）；万一超出由外层按上限裁掉。
+      // 高度贴着内容（三行，约 80 pt）；万一主图矮到放不下，由外层按上限裁掉。
       .background(theme.raised.opacity(0.96), in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
       .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous).strokeBorder(theme.line, lineWidth: 1))
       .clipShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
@@ -129,11 +120,11 @@ struct OrderFlowDetailCard: View {
     }
   }
 
-  private func color(_ state: OrderFlowCardText.RowState) -> Color {
+  private func color(_ state: OrderFlowCardText.State) -> Color {
     switch state {
     case .live: theme.amber
-    case .filled, .partial: theme.ink
-    case .cancelled, .lost: theme.ink3
+    case .filled: theme.ink
+    case .cancelled: theme.ink3
     }
   }
 }
@@ -141,86 +132,80 @@ struct OrderFlowDetailCard: View {
 /// 卡片上的每一行字。拆出来是为了让文案口径单独可读、可测。
 struct OrderFlowCardText {
   struct Cell { var label: String, value: String }
-  enum RowState { case live, filled, partial, cancelled, lost }
-  struct Row {
-    /// 「币安 永续」。
-    var name: String
-    var quantity: String
-    var amount: String
-    var status: String
-    var state: RowState
-    /// 成交比例；一口没成交是「—」。
-    var fill: String
-  }
+  enum State { case live, filled, cancelled }
 
-  /// 「83,600.0」。
+  /// 「83,600.0」；跨几个桶的墙是价位范围「2,682 – 2,685」（最低桶的桶价 – 最高桶的桶价 + 步长）。
   var price: String
+  /// 跨了不止一个桶：标题写范围。
+  var isRange: Bool
   /// 「委托买单」/「委托卖单」。
   var sideTitle: String
   /// 「合约」/「现货」。
   var kind: String
   /// 「持续 15 小时 27 分」。
   var duration: String
+  /// 标题行放不下时的短写「15 小时 27 分」。
+  var durationShort: String
+  /// 两行键值：总金额 / 总数量，开始 / 状态。
   var pairs: [(Cell, Cell)]
-  var rows: [Row]
-  /// 「还有 N 本」；全列下了是 nil。
-  var folded: String?
+  /// 状态的颜色档。
+  var state: State
 
-  init(group: OrderFlowGroup, base: String, decimals: Int, timeZone: TZOffset, nowMs: Int64,
-       lines: Int = OrderFlowCardBudget.maxRows) {
-    price = fmtPrice(group.price, decimals: decimals)
+  init(group: OrderFlowGroup, base: String, decimals: Int, timeZone: TZOffset, nowMs: Int64) {
+    isRange = group.isRange
+    // 范围两端按步长的位数写（步长 1 写整数、0.1 写一位），不多于品种的价格位数。
+    let bucketDecimals = min(decimals, group.step.map(Self.stepDecimals) ?? decimals)
+    // 卡是给人读的一句话，价和头部一个写法带千分位（`grouped`）；价格轴那种密排数据才不加。
+    price = isRange
+      ? grouped(fmtPrice(group.priceLow, decimals: bucketDecimals)) + " – " + grouped(fmtPrice(group.priceHigh, decimals: bucketDecimals))
+      : grouped(fmtPrice(group.price, decimals: decimals))
     sideTitle = group.side == .bid ? "委托买单" : "委托卖单"
     kind = group.contract ? "合约" : "现货"
     let end = group.endMs ?? nowMs
-    duration = "持续 " + Self.duration(ms: end - group.firstSeenMs)
+    durationShort = Self.duration(ms: end - group.firstSeenMs)
+    duration = "持续 " + durationShort
     let qty = { (usd: Double, price: Double) in price > 0 ? usd / price : 0 }
     let totalQty = group.books.reduce(0) { $0 + qty($1.notional, $1.latest.price) }
-    let pct = toFixed(group.fillRatio * 100, 1) + "%"
+    let status = Self.status(group)
+    state = status.state
     pairs = [
-      (Cell(label: "数量", value: Self.quantity(totalQty) + " " + base),
-       Cell(label: "金额", value: fmtVol(group.notional) + " USDT")),
-      (Cell(label: "成交", value: group.hasFill ? fmtVol(group.filledNotional) + " (" + pct + ")" : "—"),
-       Cell(label: "最早", value: Self.monthDayTime(ms: Double(group.firstSeenMs), timeZone: timeZone))),
+      (Cell(label: "总金额", value: fmtVol(group.notional) + " USDT"),
+       Cell(label: "总数量", value: Self.quantity(totalQty) + " " + base)),
+      (Cell(label: "开始", value: Self.monthDayTime(ms: Double(group.firstSeenMs), timeZone: timeZone)),
+       Cell(label: "状态", value: status.text)),
     ]
-    let budget = OrderFlowCardBudget.rows(books: group.books.count, lines: lines)
-    rows = group.books.prefix(budget.shown).map { book in
-      Row(name: book.exchange + " " + book.product.shortLabel,
-          quantity: Self.quantity(qty(book.notional, book.latest.price)),
-          amount: fmtVol(book.notional),
-          status: Self.status(book.latest),
-          state: Self.state(book.latest),
-          fill: book.hasFill ? toFixed(book.fillRatio * 100, 1) + "%" : "—")
+  }
+
+  /// 整堵墙的状态：还有一单挂着就是「在场」（吃过的补一句成交比例）；都结束了，吃过就是「已成交 X%」，
+  /// 一口没吃（撤单、失联）是「已撤」。比例和图上深浅同一个判据（`OrderFlowGroup.hasFill` / `fillRatio`）。
+  static func status(_ group: OrderFlowGroup) -> (text: String, state: State) {
+    let pct = percent(group.fillRatio)
+    if group.isLive { return (group.hasFill ? "在场 · 已成交 " + pct : "在场", .live) }
+    if group.hasFill { return ("已成交 " + pct, .filled) }
+    return ("已撤", .cancelled)
+  }
+
+  /// 「38%」；不到 10% 留一位小数（「0.4%」），免得小成交写成 0%。
+  static func percent(_ ratio: Double) -> String {
+    let v = ratio * 100
+    return (v >= 10 ? toFixed(v, 0) : toFixed(v, 1)) + "%"
+  }
+
+  /// 步长要几位小数才写得下（1 → 0、0.1 → 1、0.25 → 2、0.005 → 3）。
+  static func stepDecimals(_ step: Double) -> Int {
+    guard step.isFinite, step > 0 else { return 0 }
+    for d in 0...8 {
+      let scaled = step * pow(10, Double(d))
+      if abs(scaled - scaled.rounded()) <= 1e-9 * max(1, scaled) { return d }
     }
-    folded = budget.folded > 0 ? "还有 \(budget.folded) 本" : nil
+    return 8
   }
 
   /// 读屏与 UI 用例读的那一整段。
   var spoken: String {
     ([price + " " + sideTitle + " " + kind + " " + duration]
-      + pairs.map { $0.0.label + " " + $0.0.value + "，" + $0.1.label + " " + $0.1.value }
-      + rows.map { [$0.name, $0.quantity, $0.amount, $0.status, $0.fill].joined(separator: " ") }
-      + (folded.map { [$0] } ?? []))
+      + pairs.map { $0.0.label + " " + $0.0.value + "，" + $0.1.label + " " + $0.1.value })
       .joined(separator: "\n")
-  }
-
-  /// 照 CoinAnk 四档：挂单中 / 已成交 / 部分成交 / 已撤销，外加失联结束。「部分成交」= 判成撤单但吃过（`hasFill`），
-  /// 和图上「有成交就画深色」同一个判据；成交了多少看这一行的成交比例。
-  static func status(_ order: BigOrder) -> String {
-    switch order.status {
-    case .live: "挂单中"
-    case .filled: "已成交"
-    case .cancelled: order.hasFill ? "部分成交" : "已撤销"
-    case .lost: "失联结束"
-    }
-  }
-
-  static func state(_ order: BigOrder) -> RowState {
-    switch order.status {
-    case .live: .live
-    case .filled: .filled
-    case .cancelled: order.hasFill ? .partial : .cancelled
-    case .lost: .lost
-    }
   }
 
   /// 币的数量：上千用 K/M/B，一个以上两位小数，不足一个给四位。

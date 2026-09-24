@@ -60,8 +60,9 @@ struct OrderFlowEditor: View {
             if store.prefs.orderFlowOverrides[facts.overrideKey] != nil {
               // 同 `IndicatorEditor`：表单纸会在键盘起落时整张跳一下，按钮的按压跟踪扛不住，点击手势能。
               Text("恢复默认")
+                .font(TypeScale.body)
                 .foregroundStyle(t.amber)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: Inset.rowMin, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { Haptics.warning(); resetting = true; typing = [:]; edited = [:]; focus = nil }
                 .accessibilityIdentifier("orderflow.reset")
@@ -81,6 +82,8 @@ struct OrderFlowEditor: View {
         }
         .listRowBackground(t.raised)
       }
+      // 行至少 44（HIG 命中区，`Inset.rowMin`）；表里三级字：行名 / 输入 15、K·M 读数 12、分组标题 11。
+      .environment(\.defaultMinListRowHeight, Inset.rowMin)
       .scrollContentBackground(.hidden)
       .background(t.app)
       .navigationTitle(IndicatorID.orderFlow.name)
@@ -116,6 +119,7 @@ struct OrderFlowEditor: View {
 
   private func toggle(_ name: String, _ key: WritableKeyPath<OrderFlowDisplay, Bool>, _ id: String) -> some View {
     Toggle(name, isOn: Binding(get: { display[keyPath: key] }, set: { display[keyPath: key] = $0 }))
+      .font(TypeScale.body)
       .foregroundStyle(t.ink)
       .accessibilityIdentifier("orderflow.show.\(id)")
   }
@@ -125,9 +129,9 @@ struct OrderFlowEditor: View {
                    identifier: String) -> some View {
     let shown = resetting ? defaultValue(field) ?? value : (edited[field] ?? value)
     let text = typing[field] ?? shown.map(Self.plain) ?? ""
-    return HStack(spacing: 10) {
-      Text(label).foregroundStyle(t.ink)
-      Spacer(minLength: 8)
+    return HStack(spacing: Space.m) {
+      Text(label).font(TypeScale.body).foregroundStyle(t.ink)
+      Spacer(minLength: Space.s)
       if suffix != nil, let amount = Double(text), amount > 0 {
         Text(Self.compact(amount)).font(PanelFont.meta).monospacedDigit().foregroundStyle(t.ink3)
       }
@@ -135,12 +139,18 @@ struct OrderFlowEditor: View {
                 prompt: Text("自动").foregroundStyle(t.ink3))
         .keyboardType(.decimalPad)
         .multilineTextAlignment(.trailing)
-        .font(.body.monospacedDigit())
+        .font(TypeScale.body)
+        .monospacedDigit()
         .foregroundStyle(t.ink)
         .frame(width: 112)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(t.raised2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .padding(.horizontal, Space.s)
+        // 框本身（也就是能点进去打字的那块）44 高；垫的底上下各收 4，看上去 36，不贴着行的分隔线。
+        .frame(minHeight: Hit.min)
+        .background {
+          RoundedRectangle(cornerRadius: Radius.s, style: .continuous).fill(t.raised2).padding(.vertical, Space.xs)
+        }
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded { focus = field })
         .focused($focus, equals: field)
         .accessibilityIdentifier(identifier)
         .accessibilityLabel(label)
