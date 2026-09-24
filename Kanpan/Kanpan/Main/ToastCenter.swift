@@ -107,6 +107,8 @@ private final class ToastWindow: UIWindow {
 }
 
 /// 状态栏样式和转向都听主窗口的：这扇窗只是压在上面的一层，不该替界面做这两个决定。
+/// （转向只转交 `supportedInterfaceOrientations`：`shouldAutorotate` 从 iOS 16 起系统不再问，
+/// 覆盖它只换来一条弃用警告，`make strict` 下就是错误。）
 private final class ToastHostController: UIHostingController<ToastStage> {
   private var main: UIViewController? {
     guard let scene = view.window?.windowScene else { return nil }
@@ -120,7 +122,6 @@ private final class ToastHostController: UIHostingController<ToastStage> {
   override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
     main?.supportedInterfaceOrientations ?? .allButUpsideDown
   }
-  override var shouldAutorotate: Bool { main?.shouldAutorotate ?? true }
 }
 
 /// 窗口里唯一的内容：底下那条提示。位置和原来宿主上那条一样（离底 92pt，让开底栏）。
