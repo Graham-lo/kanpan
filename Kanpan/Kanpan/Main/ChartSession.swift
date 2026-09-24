@@ -168,7 +168,8 @@ final class ChartSession {
   func crosshairContext(timeZone: TZOffset, enabled: Bool) -> CrosshairContext {
     CrosshairContext(
       seriesSource: { [market] in market.series }, symbol: market.symbol, interval: market.interval,
-      decimals: market.info.priceDecimals, offsetMinutes: timeZone, enabled: enabled)
+      decimals: market.info.priceDecimals, offsetMinutes: timeZone, enabled: enabled,
+      livePrice: { [market] in market.tradeQuote?.price ?? market.ticker?.last })
   }
 
   /// 行情 + 设置 揉成一份 `ChartState`。**只在 `MainChartView` 的 body 里调**——

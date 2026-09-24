@@ -128,12 +128,20 @@ extension AlertNotifications {
   static func present(_ alert: Alert, decimals: Int? = nil, sound: AlertSound) {
     let content = UNMutableNotificationContent()
     content.title = alert.title.isEmpty ? "提醒" : alert.title
-    if let price = alert.firedPrice { content.body = "现价 " + ReviewLabels.price(price, decimals: decimals) }
+    if let body = body(for: alert, decimals: decimals) { content.body = body }
     content.sound = sound.fileName.map { UNNotificationSound(named: UNNotificationSoundName(rawValue: $0)) } ?? .default
     content.categoryIdentifier = category
     if let link = link(for: alert) { content.userInfo = [linkKey: link] }
     let request = UNNotificationRequest(identifier: "alert." + alert.id, content: content, trigger: nil)
     UNUserNotificationCenter.current().add(request)
+  }
+
+  /// 通知正文：「现价 84,670.5 · 备注」。没有现价只写备注，两样都没有就不写。
+  static func body(for alert: Alert, decimals: Int?) -> String? {
+    var parts: [String] = []
+    if let price = alert.firedPrice { parts.append("现价 " + AlertMessage.groupedPrice(price, decimals: decimals)) }
+    if let note = alert.note { parts.append(note) }
+    return parts.isEmpty ? nil : parts.joined(separator: " · ")
   }
 
   /// 自选波动响了：通知中心留一条，点开就是那只品种。id 带窗口，同一个窗口重复 `add`

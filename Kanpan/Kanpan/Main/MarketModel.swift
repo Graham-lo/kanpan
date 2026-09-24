@@ -52,8 +52,8 @@ final class MarketModel {
   private var oiEnabled = false
   private var oiRequestedAt = Date.distantPast
   /// 换走之前手里那份持仓量，按「品种|周期」留着（B2）。换回来、扫回来时同步摆上，
-  /// 副图不用先闪一下「持仓量加载中」再等一次读盘或往返。扫图邻居、「看细节」
-  /// 要去的那一档、当前品种的常用周期也会先预热进这里（`warmOI`）。
+  /// 副图不用先闪一下「持仓量加载中」再等一次读盘或往返。扫图邻居、
+  /// 当前品种的常用周期也会先预热进这里（`warmOI`）。
   private struct OIMemo {
     var points: [OIPoint]
     var region: (from: Int64, to: Int64)
@@ -76,7 +76,6 @@ final class MarketModel {
   /// 列表上刚露面、还没替它们取顶栏数据的行（见 `prefetchListStats`）。
   @ObservationIgnored private var listStatsTask: Task<Void, Never>?
   @ObservationIgnored private var listStatsPending: [String] = []
-  @ObservationIgnored private var detailWarm: (key: String, at: Date)?
   private var lastView: ViewWindow?
   private(set) var ticker: Ticker?
   /// 成交额自己一条时钟（见 `TurnoverCarry`）：网关线路的推送帧不带成交额，整帧替换
@@ -130,7 +129,7 @@ final class MarketModel {
   /// 换品种/周期尚未取得新序列。旧蜡烛清空，宿主单独保留视野参数。
   private(set) var switching = false
   /// 同一个品种换周期、新周期盘上又没有快照：新序列到之前，图先留着上一档那一帧，
-  /// 不清成一张空图（B3：「看细节」切到没钉住的细周期时首帧整张空白）。
+  /// 不清成一张空图（B3：切到没钉住的周期时首帧整张空白）。
   private(set) var holdsFrame = false
 
   private(set) var symbol: String
@@ -681,19 +680,6 @@ final class MarketModel {
       }
     }
     _ = await (meta, oi)
-  }
-
-  /// 十字线一出来就叫：「看细节」要切去的那一档更细周期（多半没钉在周期条上，
-  /// 自选预热从来不碰它），K 线快照和持仓量先拿回来，按下去时首帧就有图（B3）。
-  /// 同一只同一档一分钟内只热一次——十字线拖着走会一直叫这里。
-  func prewarmDetail() {
-    guard foreground, let finer = DetailZoom.finer(than: interval) else { return }
-    let key = symbol + "|" + finer.rawValue
-    if let last = detailWarm, last.key == key, Date().timeIntervalSince(last.at) < 60 { return }
-    detailWarm = (key, Date())
-    let sym = symbol
-    if snapshot { Task { [feed] in await feed.prewarm(symbols: [sym], interval: finer, slot: "detail") } }
-    warmOI([(symbol: sym, interval: finer)])
   }
 
   // ---------------------------------------------------------------- 展示寿命

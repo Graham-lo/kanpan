@@ -118,8 +118,6 @@ struct MainScreen: View {
   /// nil = 这一趟没有名单（底栏直接点「图表」、顶栏搜索、深链进来的）——那时候横滑
   /// 什么都不做。名单在离开标签页时作废（见 `switchTo(tab:)`），不跨越一次「出去再进来」。
   @State private var scanList: ScanList?
-  /// 「看细节」钻下去之前的那些视野，按周期记（§10.1）。切回大周期时回到原处。
-  @State private var detailZoom = DetailZoomStack()
   /// 这次复盘是从哪儿开的。退出复盘时按它把人放回原处。
   @State private var replayOrigin: ReplayOrigin?
   /// 历史搜索词。放在宿主身上，来回进出搜索页不丢。
@@ -185,8 +183,9 @@ struct MainScreen: View {
   @State private var watchMove = WatchMoveMonitor()
   /// 桌面小组件的快照写手（P3.2）。
   @State private var widgetFeed = WidgetFeed()
-  /// 提醒总表开着没有。设置里那一行和 `hkline://alerts` 都开它。
-  @State private var showAlerts = false
+  /// 提醒那一张表：总表（`hkline://alerts`、通知点开）或新建页（图上十字线那颗药丸）。
+  /// 一个 `sheet(item:)` 管两样，两张不会同时开：开新建页时总表自然收起。
+  @State private var alertSheet: AlertSheetRoute?
   @State private var shareInterval: SharePreviewInterval?
   @State private var inbox = ShareInbox()
   @State private var showFriends = false
@@ -549,23 +548,13 @@ struct MainScreen: View {
         .sheet(isPresented: $account.presented) { AccountView(feature: account).environment(\.panelTheme, theme) }
     }
     .onAppear { wireReview() }
-    // 提醒总表。半屏叫出来的一张面板：它是「管一管已经有的那些」，不是一张要长住的页。
-    .sheet(isPresented: $showAlerts) {
-      AlertListPage(store: alerts, preferences: store,
-                    onOpen: { alert in
-                      showAlerts = false
-                      if alert.kind == .reviewDue, let id = alert.reviewID { openReview(id: id); return }
-                      guard let drawingID = alert.drawingID else { open(linkedSymbol: alert.symbol); return }
-                      open(linkedSymbol: alert.symbol)
-                      draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
-                    },
-                    zone: prefs.timeZone.offsetMinutes,
-                    currentSymbol: InstrumentID(market.symbol).display,
-                    quote: { text in alertQuote(text) },
-                    prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
-                    releaseQuote: { [weak quotes] in quotes?.releaseNamed() },
-                    watching: activities.watching,
-                    onWatch: { alert in watch(alert) })
+    // 提醒：深链 / 通知点开的是总表，图上十字线那颗药丸开的是新建页（右上「全部」再推进总表）。
+    .sheet(item: $alertSheet) { route in
+      AlertSheetView(route: route, store: alerts, context: alertListContext,
+                     onCreated: { alert in
+                       alertSheet = nil
+                       say("已加提醒 · " + alert.title)
+                     })
         .environment(\.panelTheme, theme)
     }
     // 盯着的那条被删、被暂停、响了：锁屏那块跟着收。
@@ -605,8 +594,6 @@ struct MainScreen: View {
         else { favoritesPage }
       case .sectors: sectorPage
       case .settings: SettingsPanel(store: store, asPage: true,
-                                    alertCount: alerts.activeCount,
-                                    onAlerts: { showAlerts = true },
                                     onFriends: { showFriends = true })
       }
     }
@@ -670,7 +657,6 @@ struct MainScreen: View {
     // 来路作废，那张冻结的名单也跟着作废：横滑是「接着刚才那张表往下看」，
     // 人已经离开那张表了，再横滑就该什么都不发生（§10.1）。
     scanList = nil
-    detailZoom.clear()
     // 再点一下已经站着的那一格 = 回到这一页的根。板块页下钻了两层时尤其需要：
     // 底栏那一格是它唯一的出口。
     if next == tab, next == .sectors { sectorRoute = [] }
@@ -697,7 +683,7 @@ struct MainScreen: View {
     VStack(spacing: 0) {
       if reviewChart.mode == .replay { reviewHeader } else { header }
       hairline
-      // 十字线活着时这一行换成它的四颗动作（`IntervalRow` / `CrosshairActionBar`）。
+      // 十字线活着时这一行换成「涨到 X 提醒我」那一颗（`IntervalRow` / `CrosshairActionBar`）。
       if !reviewChart.active { IntervalRow(
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
         atLatest: atLatest, gridOpen: $intervalGrid,
@@ -709,12 +695,7 @@ struct MainScreen: View {
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart },
         readout: crosshairReadout, context: crosshairContext,
-        // 「看细节」（§10.1）：还有更细的一档可进才给。只看当前周期，不引入对十字线的观察。
-        canDetail: DetailZoom.finer(than: market.interval) != nil,
-        onStep: { proxy.moveCrosshair(by: $0) },
-        // 对比态下图上不画线，「按此价画线」这颗也不给。
-        onLine: comparing ? nil : { endSharePreview(); proxy.addHorizontalLine(at: $0) },
-        onDetail: zoomIntoDetail
+        onAlert: newAlert(at:)
       ) }
       hairline
       // 「更多」那张网格是盖在图上的一层（遮罩 + 从上沿展开的面板），和复盘卡片在同一个
@@ -1107,7 +1088,7 @@ struct MainScreen: View {
 
   private func openShare(_ item: ShareItem) {
     endSharePreview()
-    dismissPanel(); showFriends = false; showAlerts = false
+    dismissPanel(); showFriends = false; alertSheet = nil
     if reviewChart.active { endReview() }
     draw.finish(); alertPrompt.dismiss()
     let before = market.interval
@@ -1598,7 +1579,7 @@ struct MainScreen: View {
       let title = WatchMove.title(for: event)
       // 那唯一一条提示画在面板与表之上（P2.7），开着提醒总表时也看得见。
       say(title, actionTitle: "查看") {
-        showAlerts = false
+        alertSheet = nil
         dismissPanel()
         open(linkedSymbol: event.symbol)
       }
@@ -1658,10 +1639,28 @@ struct MainScreen: View {
     return PriceAlertQuote(symbol: symbol, price: price.flatMap { $0 > 0 ? $0 : nil }, decimals: decimals)
   }
 
+  /// 提醒总表与新建页要的宿主能力（点一行去哪儿、时区、查价、锁屏盯一个）。
+  private var alertListContext: AlertListContext {
+    AlertListContext(
+      onOpen: { alert in
+        alertSheet = nil
+        if alert.kind == .reviewDue, let id = alert.reviewID { openReview(id: id); return }
+        guard let drawingID = alert.drawingID else { open(linkedSymbol: alert.symbol); return }
+        open(linkedSymbol: alert.symbol)
+        draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
+      },
+      zone: prefs.timeZone.offsetMinutes,
+      quote: { text in alertQuote(text) },
+      prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
+      releaseQuote: { [weak quotes] in quotes?.releaseNamed() },
+      watching: activities.watching,
+      onWatch: { alert in watch(alert) })
+  }
+
   /// 站到某一条复盘记录上（通知、提醒总表、到点浮条都走这儿）。
   private func openReview(id: String) {
     guard let uuid = UUID(uuidString: id), review.record(uuid) != nil else { return }
-    dismissPanel(); showAlerts = false
+    dismissPanel(); alertSheet = nil
     review.selectedRecord = uuid
     review.bookOpen = true
   }
@@ -1880,7 +1879,7 @@ struct MainScreen: View {
       open(linkedSymbol: symbol)
       if let raw = interval, let iv = Interval(rawValue: raw) { pick(interval: iv) }
     case let .drawing(symbol, drawingID):
-      showAlerts = false
+      alertSheet = nil
       open(linkedSymbol: symbol)
       // 只高亮，不进画线工作台：从通知 / 提醒列表点进来的人要看的是「那条线在哪儿」，
       // 不是「开始画线」（后者在竖屏会当场把屏幕转过去）。品种的线还没装进图时
@@ -1888,7 +1887,7 @@ struct MainScreen: View {
       draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(symbol))
     case .alerts:
       dismissPanel()
-      showAlerts = true
+      alertSheet = .list
     case let .review(id):
       // 复盘那条「到点了」的通知点进来：直接站到那条记录上。
       openReview(id: id)
@@ -1896,7 +1895,7 @@ struct MainScreen: View {
       openLinkedSearch()
     case .favorites:
       // 桌面小号自选那一格点进来。
-      dismissPanel(); showAlerts = false
+      dismissPanel(); alertSheet = nil
       switchTo(tab: .favorites)
     case let .share(id):
       if let item = inbox.items.first(where: { $0.id == id }) { openShare(item) }
@@ -1936,14 +1935,8 @@ struct MainScreen: View {
     dismissPanel()
     guard iv != market.interval else { return }
     store.update { $0.interval = iv }
-    // 「看细节」钻下去之后切回大周期：回到钻之前那个视野，而不是这一档的最新一屏——
-    // 人是为了看清刚才那一根才下去的，回来当然还站在原地（§10.1）。
-    // 栈里没有这一档就是平常的换周期，顺手把可能还欠着的那笔「铺到某段时间」销掉。
-    if let back = detailZoom.pop(symbol: market.symbol, interval: iv) {
-      proxy.show(window: back, symbol: market.symbol, interval: iv)
-    } else {
-      proxy.cancelWindow()
-    }
+    // 顺手把可能还欠着的那笔「铺到某段时间」销掉（扫图横滑时提的）。
+    proxy.cancelWindow()
     // 换周期连同收十字线一起走会话那一个入口。
     session.show(interval: iv)
     Haptics.step()
@@ -1976,7 +1969,6 @@ struct MainScreen: View {
       // 正在看历史：新的那只也停在同一段时间上，不要每换一只就被拽回最新——
       // 横着扫一排品种，看的就是「同一段时间里它们各自在干什么」。
       let keep = atLatest ? nil : proxy.currentView
-      detailZoom.clear()
       // 人已经翻到下一只去了，那句问话问的还是上一只身上那条线——跟着走没有意义，
       // 当场收掉（等于「只画线」，线本身早就落盘了）。横滑本身照常翻：那一句是挂在
       // 价格行上的一层 overlay，除了它自己那两颗按钮，整行的横滑仍旧走这条路。
@@ -1987,26 +1979,12 @@ struct MainScreen: View {
     }
   }
 
-  /// 「看细节」：把十字线选中的这一根，换到更细的一档铺满一屏（§10.1）。
-  private func zoomIntoDetail(_ crosshair: Crosshair) {
-    guard let series = market.series, series.symbol == market.symbol,
-          series.interval == market.interval,
-          crosshair.index >= 0, crosshair.index < series.count,
-          let finer = DetailZoom.finer(than: market.interval) else { return }
-    let open = Double(series.time(at: crosshair.index))
-    // 这一根管到哪儿：下一根的开盘时刻。没有下一根（选的就是末根）才按名义步长加一格——
-    // 1M / 1y 那两档每根长短不一，能问真值就别算（`DetailZoom.window` 那段注释）。
-    let end = crosshair.index + 1 < series.count
-      ? Double(series.time(at: crosshair.index + 1))
-      : open + Double(series.step)
-    // 先记下此刻的视野：切回这一档时回到这儿。
-    if let view = proxy.currentView {
-      detailZoom.push(symbol: market.symbol, interval: market.interval, view: view)
-    }
-    // 换档走的还是那唯一一条换档的路，铺视野的请求跟在它后面提（`pick` 会把旧请求销掉）。
-    pick(interval: finer)
-    proxy.show(window: DetailZoom.window(barOpen: open, barEnd: end, finer: finer),
-               symbol: market.symbol, interval: finer)
+  /// 十字线那颗「涨到 X 提醒我」：收十字线，弹新建提醒页（品种、价格都填好）。
+  private func newAlert(at price: Double) {
+    proxy.clearCrosshair()
+    crosshairReadout.clear()
+    dismissPanel()
+    alertSheet = .new(symbol: InstrumentID(market.symbol).display, price: price)
   }
 
   /// 说一句话。全 app 只有一条提示（`ToastCenter`），新的一句直接顶掉旧的。

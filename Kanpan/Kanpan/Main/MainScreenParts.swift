@@ -227,7 +227,7 @@ struct MainHeaderView<Card: View>: View {
           // 和十字线那套让位一模一样，行高一个 pt 都不变。
           .opacity(cardVisible ? 0 : 1)
         // 「顶部」那一档的开高低收（其余两档读数在图里，这儿什么都不画）。
-        // 十字线的四颗动作不在头部了：它们在周期条那一行（`CrosshairActionBar`），
+        // 十字线那颗「涨到 X 提醒我」不在头部：它在周期条那一行（`CrosshairActionBar`），
         // 所以按住图找位置的时候，价格、涨跌、六格一直是实时的（2026-09-23）。
         CrosshairOHLCLabel(readout: readout, context: context, color: theme.ink, fillsWidth: true)
           .fixedSize(horizontal: false, vertical: true)
@@ -345,8 +345,6 @@ struct MainChartView: View {
           readout.set($0)
           // 行情流逐帧发的「精细档」：十字线在主图上，或者正盯着一单的详情卡。
           market.orderFlow.noteCrosshair(onMain: ($0.map { $0.pane == nil } ?? false) || readout.orderFlow != nil)
-          // 十字线一出来就把「看细节」要去的那一档先热上（B3）。
-          if $0 != nil, !reviewChart.active { market.prewarmDetail() }
         },
         // 主力订单流的焦点（轻点选中的那一桶，或十字线停着的那一条合并带）：出详情卡。
         onOrderFlowFocus: { [readout = session.readout] focus in

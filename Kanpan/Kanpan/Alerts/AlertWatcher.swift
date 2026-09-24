@@ -12,7 +12,7 @@ import UIKit
 /// 回前台拉一次同步换下来。两边靠 `status == .active` 这道闸去重，不会响两次
 /// （细节在 `AlertEngine` 的头注释里）。
 ///
-/// 所以它只做三件事，都是「呈现」：
+/// 所以它只做四件事，都是「呈现」：
 ///
 /// 1. 盯着 `AlertStore` 的存档。有提醒**刚**变成已触发，就震一下 + 让宿主说一句，
 ///    那句话点得动，点了就去那条线上。
@@ -20,6 +20,8 @@ import UIKit
 ///    「已触发」那一堆里等着，不该在开 app 的那一瞬间集体弹一遍。
 /// 3. app 不在前台那一下变的（从后台回来拉一次同步就会看到），补一条本地通知。
 ///    没有 APNs 权限的现在，这是提醒能走到用户眼前的**唯一**一条路。
+/// 4. 填了 Webhook 的，本机判响的那一次由这里往那个地址 POST（`AlertWebhook`）；
+///    服务端判响、同步换下来的那种服务端已经发过，这里不再发第二遍。
 @MainActor
 final class AlertWatcher: ObservableObject {
   /// 说一句。宿主接到主 toast 上（`MainScreen.say`）。
@@ -70,7 +72,12 @@ final class AlertWatcher: ObservableObject {
     if alert.kind == .reviewDue { return }
     // 通知中心里留一条：前台时 `willPresent` 会把横幅压掉（界面上已经有浮条了），
     // 后台回来那一下则是它把人叫住。
-    AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol), sound: sound())
+    let decimals = priceDecimals(alert.symbol)
+    AlertNotifications.present(alert, decimals: decimals, sound: sound())
+    if alert.webhook != nil, let store, store.firedLocally(alert), let price = alert.firedPrice,
+       let at = alert.firedAt {
+      AlertWebhook.fire(alert, price: price, decimals: decimals, at: at)
+    }
     guard foreground else { return }
     Haptics.alarm()
     onFired?(alert)

@@ -181,8 +181,7 @@ settings-test:
 sector-test:
 	$(call app_test,Sector)
 
-# 连续扫图与「看细节」的纯算术（§10.1）：冻结下来的那张名单怎么走一只（`ScanList`）、
-# 「看细节」该进哪一档、视野铺多宽、切回大周期时回到哪儿（`DetailZoom`）。
+# 连续扫图的纯算术（§10.1）：冻结下来的那张名单怎么走一只（`ScanList`）。
 scan-test:
 	$(call app_test,Scan)
 

@@ -1,120 +1,105 @@
 import KanpanCore
 import SwiftUI
 
-/// 提醒总表（方案 2.3 的「管理」）。
-///
-/// 全 app 管提醒只有这一处：改条件在这儿，删在这儿，重新上膛也在这儿。
-/// 图上那枚小铃铛只表示「这条线挂着提醒」，点它不弹任何菜单——同一个动作
-/// 只留一个入口（`kanpan-one-entry-per-action`）。
-///
-/// 跨品种的一张表，不按品种分段：用户来这儿是为了「我一共挂了几条、哪条响了」，
-/// 按品种切成几堆反而要翻。
-struct AlertListPage: View {
-  @ObservedObject var store: AlertStore
-  var preferences: PrefsStore
-  @State private var showSound = false
-  @State private var showNew = false
+/// 提醒总表（方案 2.3 的「管理」）用到的宿主能力。总表有两处出现（深链 / 通知点开时是一张
+/// 表，新建提醒页右上「全部」推进来是一层），两处接的是同一份，由宿主（`MainScreen`）拼好交过来。
+struct AlertListContext {
   /// 点一行：去那条线上（复盘到点去那条记录）。宿主接成深链。
-  var onOpen: (KanpanCore.Alert) -> Void
+  var onOpen: (KanpanCore.Alert) -> Void = { _ in }
   /// 时间按用户在设置里选的那档时区写。
   var zone: TZOffset = .system
-  /// 「新建」那一页默认的品种（图上那只）。
-  var currentSymbol: String = ""
-  /// 按用户打的代号查品种与现价（宿主那边有目录、报价簿与图上那只的逐笔）。
+  /// 按用户打的代号查品种与现价（编辑页要）。
   var quote: (String) -> PriceAlertQuote? = { _ in nil }
-  /// 新建页定了品种之后叫一声，宿主去要一口价。
+  /// 编辑页定了品种之后叫一声，宿主去要一口价。
   var prepareQuote: (String) -> Void = { _ in }
-  /// 新建页关了叫一声，宿主放掉 `prepareQuote` 点名要的那一只（图上那只照旧）。
+  /// 编辑页关了叫一声，宿主放掉 `prepareQuote` 点名要的那一只（图上那只照旧）。
   var releaseQuote: () -> Void = {}
   /// 锁屏上正盯着的那条提醒（一台设备只盯一条）。
   var watching: String? = nil
   /// 行上那颗「盯一个」：宿主去开 / 收锁屏实时活动。
   var onWatch: (KanpanCore.Alert) -> Void = { _ in }
-  /// 自选波动的幅度，编辑时的那一格字。离开输入框才落盘（`kanpan-persist-on-gesture-end`）。
-  @State private var thresholdText = ""
-  @FocusState private var thresholdFocused: Bool
+}
 
-  @Environment(\.panelTheme) private var t
-  /// 通知权限那一行的开关（见 `AlertPermission`）。总表自己养一个，别处不看它。
-  @StateObject private var permission = AlertPermission()
-  /// 「回前台再查一遍」那份登记。用户点了这一行就走了，回来时这张表还开着、
-  /// `task` 不会再跑一次；而他很可能刚把开关拨上来，这一行就得自己消失。
-  /// 走 `AppLifecycle` 是**规定**：全 app 只有那一处读前后台，谁要听就去报到，
-  /// 不许自己挂 `UIApplication` 的通知（见 `AppLifecycle` 开头第 1 条）。
-  @State private var lifecycle: AppLifecycle.ResourceToken?
+/// 提醒总表（方案 2.3 的「管理」）。
+///
+/// 全 app 管提醒只有这一处：改条件、编辑、删除、重新上膛都在这儿。
+/// 图上那枚小铃铛只表示「这条线挂着提醒」，点它不弹任何菜单——同一个动作
+/// 只留一个入口（`kanpan-one-entry-per-action`）。建提醒也只有一个入口：图上十字线那颗
+/// 「涨到 X 提醒我」，所以这张表右上不再有「新建」。
+///
+/// 2026-09-25 起它不再挂在设置里（入口搬到了图上）：从新建提醒页右上「全部」推进来
+/// （`presentedAsSheet == false`，系统返回），深链 `hkline://alerts` / 通知点开时仍是一张表
+/// （带左上关闭）。铃声、自选波动、通知权限这三样设置项搬去了设置整页的「通知」组
+/// （`AlertSettingsSection`）。
+///
+/// 跨品种的一张表，不按品种分段：用户来这儿是为了「我一共挂了几条、哪条响了」，
+/// 按品种切成几堆反而要翻。
+struct AlertListPage: View {
+  @ObservedObject var store: AlertStore
+  var context = AlertListContext()
+  /// 自己是一张表（带 NavigationStack 与左上关闭），还是被推进来的一层（用外面的导航栈）。
+  var presentedAsSheet = true
+
   /// 当前左划开着的是哪一行。一张表同一时刻只许开一行（见 `SwipeToDelete`）。
   @State private var openSwipe: String?
+  /// 左划「编辑」点的是哪一条（推进编辑页）。
+  @State private var editing: String?
 
+  @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
-    // 2026-09-24 UI 整改 P1b：头部换成系统导航栏（居中 17 标题、左上关闭、右上「新建」，
-    // 推进去的铃声页与新建页用系统返回）。原来自绘的「‹」钮 32×32 落在 x=9，比正文左缘还靠外，
-    // 而且和设置 → 账号那套系统导航在同一条路径上来回切（视觉审查 2.9 #1、§3 #3）。
-    NavigationStack {
-      list
-        .navigationTitle("提醒")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-          ToolbarItem(placement: .topBarLeading) {
-            // 标识符沿用 `panel.done`：UI 用例靠它收表。
-            Button(role: .close) { dismiss() }
-              .accessibilityIdentifier("panel.done")
-          }
-          ToolbarItem(placement: .topBarTrailing) {
-            Button("新建") { showNew = true }
-              .accessibilityIdentifier("alerts.new")
-          }
-          // 数字键盘没有回车键，收不起来（视觉审查 2.9 #5）。
-          ToolbarItemGroup(placement: .keyboard) {
-            Spacer()
-            Button("完成") { thresholdFocused = false }
-          }
-        }
-        .navigationDestination(isPresented: $showSound) { AlertSoundPage(store: preferences) }
-        .navigationDestination(isPresented: $showNew) {
-          PriceAlertForm(initialSymbol: currentSymbol, resolve: quote, prepare: prepareQuote,
-                         release: releaseQuote) { quote, target in
-            let alert = store.addPrice(symbol: quote.symbol, target: target, current: quote.price,
-                                       label: quote.current(target))
-            guard alert != nil else { return }
-            Task {
-              await AlertNotifications.requestAuthorization()
-              await MainActor.run { PushRegistration.startIfAuthorized() }
+    if presentedAsSheet {
+      NavigationStack {
+        content
+          .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+              // 标识符沿用 `panel.done`：UI 用例靠它收表。
+              Button(role: .close) { dismiss() }
+                .accessibilityIdentifier("panel.done")
             }
           }
-        }
+      }
+      .tint(t.amber)
+      .panelPageInset()
+    } else {
+      content
     }
-    .tint(t.amber)
-    .panelPageInset()
+  }
+
+  /// 2026-09-24 UI 整改 P1b：头部是系统导航栏（居中 17 标题）；推进去的编辑页用系统返回。
+  private var content: some View {
+    list
+      .navigationTitle("提醒")
+      .navigationBarTitleDisplayMode(.inline)
+      .navigationDestination(item: $editing) { id in
+        if let alert = store.all.first(where: { $0.id == id }) {
+          AlertForm(initialSymbol: InstrumentID(alert.symbol).display, existing: alert,
+                    resolve: context.quote, prepare: context.prepareQuote,
+                    release: context.releaseQuote, recentWebhooks: store.recentWebhooks) { draft in
+            store.commit(draft, editing: id)
+          }
+        }
+      }
   }
 
   private var list: some View {
     ScrollView {
       VStack(spacing: 0) {
-        PanelRow(name: "提醒铃声", onTap: { showSound = true }) {
-          HStack(spacing: Space.xs) {
-            Text(preferences.prefs.alertSound.title).font(PanelFont.name)
-            VectorIcon.chevronRight(ControlMetrics.chevron)
-          }.foregroundStyle(t.ink3)
-        }
-        .accessibilityIdentifier("alerts.sound.open")
-        .accessibilityValue(preferences.prefs.alertSound.title)
-        watchMoveRows
-        if permission.needsSystemSettings { AlertPermissionRow { permission.openSystemSettings() } }
         if store.all.isEmpty {
           empty
         } else {
           ForEach(store.sorted) { alert in
             AlertRow(alert: alert,
                      open: $openSwipe,
-                     onOpen: { onOpen(alert) },
+                     onOpen: { context.onOpen(alert) },
                      onRearm: { store.rearm(id: alert.id) },
                      onCondition: { store.setCondition($0, id: alert.id) },
+                     onEdit: alert.kind == .price ? { editing = alert.id } : nil,
                      onDelete: { Haptics.warning(); store.remove(id: alert.id) },
-                     watched: watching == alert.id,
-                     onWatch: { onWatch(alert) },
-                     zone: zone)
+                     watched: context.watching == alert.id,
+                     onWatch: { context.onWatch(alert) },
+                     zone: context.zone)
           }
         }
       }
@@ -122,77 +107,12 @@ struct AlertListPage: View {
       .padding(.bottom, Space.l)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .scrollDismissesKeyboard(.interactively)
     .background(t.raised.ignoresSafeArea())
-    .task { await permission.refresh() }
-    .onAppear {
-      guard lifecycle == nil else { return }
-      lifecycle = AppLifecycle.shared.registerResources(
-        id: "alerts.permission",
-        leave: {},
-        enter: { Task { await permission.refresh() } })
-    }
-    .onDisappear {
-      guard let token = lifecycle else { return }
-      AppLifecycle.shared.unregisterResources(token: token)
-      lifecycle = nil
-    }
     // 「这张表在不在」的记号。**`children: .contain` 那一句不能省**：光写
     // `accessibilityIdentifier` 会把这个名字往下盖到每个子元素上（`DisplaySettingsSection`
     // 那一排配色卡踩过同一个坑），`.contain` 让它只当一个容器，子元素各留各的名字。
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alerts.page")
-  }
-
-  /// 自选波动提醒：一个开关，开着时下面一格幅度（手动输入，没有口径可选）。
-  @ViewBuilder private var watchMoveRows: some View {
-    let on = preferences.prefs.watchMoveAlert
-    PanelRow(name: "自选波动提醒") {
-      PanelSwitch(isOn: on) {
-        commitThreshold()
-        preferences.update { $0.watchMoveAlert.toggle() }
-      }
-      .accessibilityIdentifier("alerts.watchMove")
-    }
-    if on {
-      PanelRow(name: "五分钟涨跌超过") {
-        HStack(spacing: Space.xs) {
-          TextField("", text: $thresholdText)
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
-            .font(TypeScale.body).monospacedDigit()
-            .foregroundStyle(t.ink)
-            .frame(width: Hit.min)
-            .padding(.horizontal, Space.s)
-            .padding(.vertical, Space.s)
-            .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
-            .focused($thresholdFocused)
-            .onSubmit(commitThreshold)
-            .accessibilityIdentifier("alerts.watchMove.threshold")
-            .accessibilityLabel("五分钟涨跌超过")
-          Text("%").font(TypeScale.body).foregroundStyle(t.ink3)
-        }
-      }
-      .onAppear { thresholdText = Self.format(preferences.prefs.watchMoveThreshold) }
-      .onChange(of: thresholdFocused) { _, focused in if !focused { commitThreshold() } }
-      .onDisappear(perform: commitThreshold)
-    }
-  }
-
-  private func commitThreshold() {
-    let text = thresholdText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
-    guard !text.isEmpty else { return }
-    let value = Double(text).map(WatchMove.clampThreshold) ?? preferences.prefs.watchMoveThreshold
-    thresholdText = Self.format(value)
-    guard value != preferences.prefs.watchMoveThreshold else { return }
-    preferences.update { $0.watchMoveThreshold = value }
-  }
-
-  private static func format(_ value: Double) -> String {
-    var text = String(format: "%.2f", value)
-    while text.hasSuffix("0") { text.removeLast() }
-    if text.hasSuffix(".") { text.removeLast() }
-    return text
   }
 
   private var empty: some View {
@@ -202,9 +122,11 @@ struct AlertListPage: View {
         .font(.system(size: ControlMetrics.iconDisc))
         .foregroundStyle(t.ink3)
         .accessibilityHidden(true)
-      Text("还没有提醒").font(TypeScale.body).foregroundStyle(t.ink3)
+      Text("在图上点一下，就能按那口价加提醒").font(TypeScale.body).foregroundStyle(t.ink3)
+        .multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity)
+    .padding(.horizontal, Space.xl)
     .padding(.vertical, Space.section * 2)
   }
 }
@@ -221,6 +143,8 @@ private struct AlertRow: View {
   var onOpen: () -> Void
   var onRearm: () -> Void
   var onCondition: (KanpanCore.Alert.Condition) -> Void
+  /// 左划「编辑」（只有价格提醒有：画线提醒的价在线上，复盘到点跟着记录走）。
+  var onEdit: (() -> Void)?
   var onDelete: () -> Void
   var watched = false
   var onWatch: () -> Void = {}
@@ -230,10 +154,16 @@ private struct AlertRow: View {
   @Environment(\.panelHPad) private var hPad
 
   var body: some View {
-    SwipeToDelete(id: alert.id, open: $open, brick: .flush,
-                  trailing: [.delete(t, run: onDelete)]) { swipe in
+    SwipeToDelete(id: alert.id, open: $open, brick: .flush, trailing: actions) { swipe in
       row(swipe)
     }
+  }
+
+  /// 删除贴屏幕边（第一颗），编辑在它里面一格。
+  private var actions: [SwipeAction] {
+    var list: [SwipeAction] = [.delete(t, run: onDelete)]
+    if let onEdit { list.append(SwipeAction(id: "edit", title: "编辑", fill: t.amber, run: onEdit)) }
+    return list
   }
 
   /// 2026-09-24 UI 整改 P1b：不再往 `PanelRow` 上叠一层 overlay 把徽章硬塞进左留白
@@ -250,7 +180,24 @@ private struct AlertRow: View {
             .foregroundStyle(t.ink)
             .lineLimit(1)
             .minimumScaleFactor(0.85)
-          Text(meta).font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink3)
+          HStack(spacing: Space.xs) {
+            Text(meta).font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink3)
+            // 填了 Webhook 的在状态后面带一枚链接记号，读得出「这条响了还会往外发」。
+            if alert.webhook != nil {
+              Image(systemName: "link")
+                .font(TypeScale.captionEmph)
+                .foregroundStyle(t.ink3)
+                .accessibilityLabel("Webhook")
+                .accessibilityIdentifier("alerts.row.webhook")
+            }
+          }
+          if let note = alert.note {
+            Text(note)
+              .font(TypeScale.caption)
+              .foregroundStyle(t.ink2)
+              .lineLimit(1)
+              .accessibilityIdentifier("alerts.row.note")
+          }
         }
         Spacer(minLength: 0)
         // 胶囊的点按区撑到 44，但不把行撑高：往回收一个 `Space.s`，点按区落在行自己的上下留白里。
@@ -352,51 +299,5 @@ private struct AlertRow: View {
     // 条件已经写在右边那颗胶囊上，这里不再复述一遍（2026-09-24 审查 6.4）。
     case .active: return "生效中"
     }
-  }
-}
-
-/// 通知被拒之后顶上那一行。**提示，不是拦路**：它不挡列表，下面该有几条还是几条。
-///
-/// 色走 `amberSoft` + `amberLine`（皮肤自己的强调色兑得极淡的一层），和「要不要提醒」
-/// 那条问句（`AlertPromptBar`）是同一个功能的两句话，读成同一个东西；不用 `t.danger`——
-/// 那一支留给「删除 / 注销」这种不可逆动作。
-///
-/// 2026-09-24 UI 整改 P1b：高 36 → 44（整行就是按钮）、圆角取 `Radius.m`、左右跟正文同一条
-/// 边（`hPad`，整页里随屏宽 16 / 20），去掉 SF 的铃铛线框，字 13 走 `TypeScale.footnote`。
-private struct AlertPermissionRow: View {
-  var open: () -> Void
-  @Environment(\.panelTheme) private var t
-  @Environment(\.panelHPad) private var hPad
-
-  var body: some View {
-    Button(action: open) {
-      HStack(spacing: Space.s) {
-        Text("通知关着，提醒到了不会响")
-          .font(TypeScale.footnote)
-          .foregroundStyle(t.ink)
-          .lineLimit(1)
-          .minimumScaleFactor(0.85)
-        Spacer(minLength: Space.s)
-        HStack(spacing: Space.xxs) {
-          Text("去打开").font(TypeScale.footnoteEmph)
-          VectorIcon.chevronRight(ControlMetrics.chevron)
-        }
-        .foregroundStyle(t.amber)
-      }
-      .padding(.horizontal, Space.m)
-      .frame(maxWidth: .infinity)
-      .frame(minHeight: Hit.min)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
-          .fill(t.amberSoft)
-          .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
-            .strokeBorder(t.amberLine, lineWidth: 0.5))
-      )
-    }
-    .buttonStyle(.plain)
-    .padding(.horizontal, hPad)
-    .padding(.vertical, Space.s)
-    .accessibilityIdentifier("alerts.permission")
   }
 }

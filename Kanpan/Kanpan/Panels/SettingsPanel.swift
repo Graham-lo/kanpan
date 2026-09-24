@@ -26,10 +26,6 @@ struct SettingsPanel: View {
   var store: PrefsStore
   /// 当作标签栏上的整页画：不要左上角的「‹」，底色用页面底色。
   var asPage = false
-  /// 还在等着响的提醒有几条。只为在「提醒」那一行右边摆个数，没有就不摆。
-  var alertCount = 0
-  /// 打开提醒总表。全 app 管提醒只有这一个入口（`kanpan-one-entry-per-action`）。
-  var onAlerts: (() -> Void)?
   var onFriends: (() -> Void)?
 
   @Environment(\.panelTheme) private var t
@@ -78,7 +74,7 @@ struct SettingsPanel: View {
     }
   }
 
-  /// 分组照 UI 审查 §4.4：配色 / 深浅（`DisplaySettingsSection`）之后是「行情」「提醒与朋友」
+  /// 分组照 UI 审查 §4.4：配色 / 深浅（`DisplaySettingsSection`）之后是「行情」「通知」
   /// 「通用」三组，只有组名、没有说明文字。账号那一行照系统设置的习惯排在最上面，自己不成组。
   /// 进下一页的行尾一律是箭头；就地动作（恢复、清除）是强调色的字，整行都能点。
   @ViewBuilder private var rows: some View {
@@ -140,29 +136,18 @@ struct SettingsPanel: View {
       }
     }
 
-    // 提醒：建在图上（画完线那一下），管在这儿。朋友和它一样是进另一页的一行。
-    if onAlerts != nil || onFriends != nil {
-      PanelGroupTitle(text: "提醒与朋友")
-    }
-    if let onAlerts {
-      PanelRow(name: "提醒", divider: onFriends != nil, onTap: onAlerts) {
-        HStack(spacing: Space.s) {
-          if alertCount > 0 {
-            Text("\(alertCount)").font(PanelFont.seg).monospacedDigit().foregroundStyle(t.ink3)
-          }
-          nextPageMark
-        }
-      }
-      .accessibilityIdentifier("settings.alerts")
-    }
-    // 原来上面还压着一行分组标题「朋友」，底下唯一一行又叫「朋友」（审查 U13）。
+    // 通知：铃声、自选波动、通知权限（2026-09-25 从提醒总表搬过来）。「提醒」那一行删了：
+    // 建提醒在图上十字线那颗药丸，管提醒在新建页右上「全部」（用户：「入口改到了外面了就不需要了」）。
+    AlertSettingsSection(preferences: store)
+
+    PanelGroupTitle(text: "通用")
+    // 「朋友」原来和「提醒」同一组；提醒那一行走了，它不单独顶一个同名分组标题（审查 U13），
+    // 排在通用组最上面。
     if let onFriends {
-      PanelRow(name: "朋友", divider: false, onTap: onFriends) {
+      PanelRow(name: "朋友", onTap: onFriends) {
         nextPageMark
       }.accessibilityIdentifier("settings.friends")
     }
-
-    PanelGroupTitle(text: "通用")
     aboutRow
     // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
     // 撤得回来。直接恢复，右边留一颗「撤销」五秒。

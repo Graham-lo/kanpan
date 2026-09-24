@@ -35,8 +35,8 @@ enum ViewIntent: Equatable {
   /// 没有任何一条会回头去读新到货的值。于是图会一直画在错的宽度上，直到某次视野变化
   /// 把它当成用户意图报回去、反过来把档案里对的那份覆盖掉（`ChartViewport` 的「杀法甲」）。
   case adopt(spacing: Double)
-  /// **把视野铺到一个指定的时间窗上。** 「看细节」（§10.1）专用：十字线选中一根大 K 线，
-  /// 换到更细的一档之后，视野要刚好是那一根覆盖的那一段，而不是新周期的最新一屏。
+  /// **把视野铺到一个指定的时间窗上。** 连续扫图（§10.1）用：正在看历史时横滑换一只，
+  /// 新的那只要停在同一段时间上，而不是它的最新一屏。（「看细节」原来也走这一档，2026-09-25 删了。）
   ///
   /// 和 `.switchInterval` 的区别是位置由外面说了算：那一档保的是根宽，这一档保的是**时间**，
   /// 根宽由窗宽和图区宽度反推（`clampView` 会把它夹在 1.6～40pt 之间）。
@@ -308,10 +308,10 @@ final class ChartProxy {
   /// 表现出来就是：拖到历史区，去自选转一圈再点回来，图还停在历史那一段。
   /// 所以这里记一笔，等图建好、量出图区宽度（`chartLayout`）之后再兑现。
   fileprivate var wantsLatest = false
-  /// 还欠一下「把视野铺到这一段时间上」（「看细节」，§10.1）。
+  /// 还欠一下「把视野铺到这一段时间上」（扫图横滑停在同一段时间，§10.1）。
   ///
-  /// 和 `wantsLatest` 同一个毛病、同一个治法：提这一下的时候（人刚点了「看细节」）新那档
-  /// 的数据还在路上，图上还是旧周期，当场铺等于铺在错的序列上。所以记一笔，等对得上的
+  /// 和 `wantsLatest` 同一个毛病、同一个治法：提这一下的时候（人刚横滑换了一只）新那只
+  /// 的数据还在路上，图上还是旧品种，当场铺等于铺在错的序列上。所以记一笔，等对得上的
   /// 序列到了再兑现。`tries` 是这笔账的有效期——细档的历史可能一时补不到那么早
   /// （`clampView` 会先把视野顶在现有数据的左边缘上，图自己会去要更多历史，
   /// 下一批到了再铺一次），但不能无限期地等着，否则它会在很久以后冷不丁跳出来。
@@ -320,7 +320,7 @@ final class ChartProxy {
   /// 一笔账最多跨多少轮渲染。约等于数据来回两三趟的量。
   private static let windowAttempts = 30
 
-  /// 「看细节」：等这个品种的这一档数据到了，把视野铺成 `window`。
+  /// 等这个品种的这一档数据到了，把视野铺成 `window`。
   func show(window: ViewWindow, symbol: String, interval: Interval) {
     wantsWindow = (InstrumentID.canonical(symbol), interval, window, 0)
     box?.setNeedsLayout()
@@ -341,7 +341,7 @@ final class ChartProxy {
     if Double(series.firstTime) <= want.view.from { wantsWindow = nil }
     // 铺完再补报一次视野。这一下是在 SwiftUI 的更新里发生的（`updateUIView` →
     // `applyPending`），那一轮里 `onViewChanged` 报出去的位置到不了 `@State`：
-    // 实测「看细节」钻进历史之后，周期条行尾那颗「最新」不露面，人就没路回来了。
+    // 实测铺进历史之后，周期条行尾那颗「最新」不露面，人就没路回来了。
     // 隔一个 runloop 用同一个口子再报一次（`onViewChanged` 本来就是「谁造成的都来」），
     // 位置类的事就都对上了。
     renotify()
@@ -376,19 +376,12 @@ final class ChartProxy {
     // 那样 `layoutSubviews` 不会自己来。这里点它一下，欠的账才有人兑现。
     box.setNeedsLayout()
   }
-  /// 十字线往左 / 往右挪一根（§P3-7）。图还没建出来就当没这回事——
-  /// 那三颗药丸只有十字线活着时才在屏幕上，图不在十字线也不在。
-  func moveCrosshair(by step: Int) { box?.chart.moveCrosshair(by: step) }
-
-  /// 按十字线此刻这口价画一条水平线（§P3-7）。走的是画线自己那条落笔路。
-  @discardableResult
-  func addHorizontalLine(at price: Double) -> Bool {
-    box?.chart.addHorizontalLine(at: price) ?? false
-  }
+  /// 收掉十字线（图上那颗「涨到 X 提醒我」点下去、弹新建提醒页时）。图还没建出来就当没这回事。
+  func clearCrosshair() { box?.chart.clearCrosshair() }
 
   var isAtLatest: Bool { box?.chart.isAtLatest ?? true }
   /// 此刻图上真正在看的那段时间。视野归图自己管，外面要读就从这儿读
-  /// （换品种时想停在同一段时间上、「看细节」钻下去前要记一笔，都要它）。
+  /// （换品种时想停在同一段时间上要它）。
   var currentView: ViewWindow? { box?.chart.state?.view ?? savedState?.view }
 }
 
@@ -492,7 +485,7 @@ struct ChartHost: UIViewRepresentable {
     wire(box)
     proxy?.handOverLatest(to: box)
     guard var s = state else {
-      // 「看细节」切到一档没钉住的细周期、盘上没快照时，新序列要一个往返才到。
+      // 切到一档没钉住的周期、盘上没快照时，新序列要一个往返才到。
       // 这段时间里留着上一档那一帧，数据一到走下面「换周期」那条路接上视野
       // （`proxy.window(for:)` 欠的那一下照样兑现），不先闪一张空图。
       if holdOnEmpty, let old = box.chart.state, old.series.count > 0 { return }
@@ -569,7 +562,7 @@ struct ChartHost: UIViewRepresentable {
       consumeAdoptToken(box)
       if box.pending != .reset { box.pending = .adopt(spacing: resetSpacing) }
     }
-    // 「看细节」欠的那一下：放在所有 `pending` 赋值之后——这一下是人刚按下去的意图，
+    // 「铺到某段时间」欠的那一下：放在所有 `pending` 赋值之后——这一下是人刚做的意图，
     // 优先于换周期那条默认的「保根宽、贴最新」。数据还没到就什么都不做，账留着。
     if let want = proxy?.window(for: s.series) { box.pending = .window(want) }
     let previousWidth = box.chart.chartLayout?.plotW

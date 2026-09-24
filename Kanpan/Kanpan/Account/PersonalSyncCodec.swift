@@ -132,7 +132,7 @@ enum PersonalSyncCodec {
   /// 服务端对 `alerts.market` 就是这么卡的（`sync_validation.rs`），不是画线那种
   /// `venue` + `market` 拆两半。别照着画线想当然。
   ///
-  /// 身体的 15 个键由 `Alert.encode(to:)` 一次写全，可空的那五个空就写 null——
+  /// 身体的 18 个键由 `Alert.encode(to:)` 一次写全，可空的那八个空就写 null——
   /// 理由见那儿的注释（省略会被 `SyncStore.stage` 读成「删掉这个字段」）。
   static func alerts(_ archive: [Alert]) throws -> [SyncObject] {
     try archive.map { alert in
@@ -306,7 +306,7 @@ enum PersonalSyncCodec {
 
   /// 每一个可空字段都填了值的一条提醒。
   ///
-  /// 其实 `Alert.encode(to:)` 无论如何都会把 15 个键全写出来（空就写 null），
+  /// 其实 `Alert.encode(to:)` 无论如何都会把 18 个键全写出来（空就写 null），
   /// 所以这份样板填不填值都一样；**照旧把它们填满**，是为了下一个往 `Alert` 上加
   /// `encodeIfPresent` 字段的人——那种字段不给值就进不了这张表，用户清空它时那一下
   /// 就同步不上去（和画线那份样板是同一条规矩）。
@@ -314,7 +314,8 @@ enum PersonalSyncCodec {
     Alert(id: "a", kind: .drawing, symbol: "BTCUSDT", drawingID: "d",
           lines: [AlertLine(points: [DrawPoint(t: 0, p: 0)], extendLeft: true, extendRight: true)],
           condition: .touch, armedAt: 0, once: true, status: .active,
-          firedAt: 0, firedPrice: 0, dueAt: 0, reviewID: "r", title: "x", created: 0)
+          firedAt: 0, firedPrice: 0, dueAt: 0, reviewID: "r", title: "x", created: 0,
+          note: "n", webhook: "https://example.com/hook", webhookText: "{品种}")
   }
 
   /// 分类、自选、归属都齐了的一份自选表：`symbols` 每一种对象都发得出来。

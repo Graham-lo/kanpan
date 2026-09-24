@@ -22,6 +22,11 @@ final class ToastCenter {
   /// 所以提示消失的那一刻就是撤销机会没了的那一刻。
   static let undoSeconds = 5.0
 
+  /// 没有动作的提示停多久。UI 用例可以用启动环境 `KANPAN_TEST_TOAST_SECONDS` 拉长
+  /// （1.6 秒比 XCUITest 一次「等空闲 + 查询」还短，查到时提示已经在淡出了）。
+  static let plainSeconds: Double =
+    ProcessInfo.processInfo.environment["KANPAN_TEST_TOAST_SECONDS"].flatMap(Double.init) ?? 1.6
+
   struct Line: Equatable {
     var serial: Int
     var text: String
@@ -48,7 +53,7 @@ final class ToastCenter {
     withAnimation(.easeOut(duration: 0.18)) {
       line = Line(serial: mine, text: text, actionTitle: actionTitle, hasAction: undo != nil)
     }
-    let stay = undo == nil ? 1.6 : Self.undoSeconds
+    let stay = undo == nil ? Self.plainSeconds : Self.undoSeconds
     Task { [weak self] in
       try? await Task.sleep(for: .seconds(stay))
       guard let self, self.serial == mine else { return }

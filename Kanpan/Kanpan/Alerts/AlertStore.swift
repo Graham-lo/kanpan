@@ -93,20 +93,63 @@ final class AlertStore: ObservableObject {
     return alert
   }
 
-  /// 提醒总表右上「新建」：裸价格提醒。方向按现价自动定（`Alert.price`），同一只品种
-  /// 同一个价已经有一条活动的就不再建第二条。
+  /// 裸价格提醒：图上十字线那颗「涨到 X 提醒我」弹出的新建页走这一个口（`AlertStore.commit`）。
+  /// 方向按现价自动定（`Alert.price`）。同一只品种同一个价已经有一条活动的就不再建第二条——
+  /// 把这一次填的条件、Webhook、备注落到那一条上，返回它。
   @discardableResult
   func addPrice(symbol: String, target: Double, current: Double?, label: String,
+                condition: Alert.Condition = .touch,
+                webhook: String? = nil, webhookText: String? = nil, note: String? = nil,
                 now: Double = Date().timeIntervalSince1970 * 1000) -> Alert? {
     let symbol = InstrumentID.canonical(symbol)
     guard target.isFinite, target > 0, !symbol.isEmpty else { return nil }
     if let same = archive.alerts.first(where: {
       $0.kind == .price && $0.isActive && $0.symbol == symbol && $0.targetPrice == target
-    }) { return same }
+    }) {
+      return update(id: same.id, target: target, current: current, label: label, condition: condition,
+                    webhook: webhook, webhookText: webhookText, note: note, now: now) ?? same
+    }
     guard archive.hasRoom else { notice = "提醒最多 \(AlertArchive.limit) 条"; return nil }
-    let alert = Alert.price(symbol: symbol, target: target, current: current, label: label, now: now)
+    let alert = Alert.price(symbol: symbol, target: target, current: current, label: label, now: now,
+                            condition: condition, webhook: Self.clean(webhook: webhook),
+                            webhookText: Self.clean(template: webhookText), note: Alert.blankIsNil(note))
     write { $0.alerts.append(alert) }
     return alert
+  }
+
+  /// 编辑一条裸价格提醒（表单的「保存」）。条件、Webhook、备注照填的改；
+  /// **价变了**就重挂那条水平线、按现价重写标题，并且从现在起重新布防
+  /// （`armedAt` = 现在、`status` = 生效中、清掉上一次的触发记录）——否则挪过去的
+  /// 那一刻就被当前这一分钟判成已触发。价没变只改设置，布防状态不动。
+  @discardableResult
+  func update(id: String, target: Double, current: Double?, label: String,
+              condition: Alert.Condition,
+              webhook: String?, webhookText: String?, note: String?,
+              now: Double = Date().timeIntervalSince1970 * 1000) -> Alert? {
+    guard var alert = archive[id], alert.kind == .price, target.isFinite, target > 0 else { return nil }
+    if alert.targetPrice != target {
+      let fresh = Alert.price(symbol: alert.symbol, target: target, current: current, label: label, now: now)
+      alert.lines = fresh.lines; alert.title = fresh.title
+      alert.armedAt = now; alert.status = .active; alert.firedAt = nil; alert.firedPrice = nil
+    }
+    alert.condition = condition
+    alert.webhook = Self.clean(webhook: webhook)
+    alert.webhookText = Self.clean(template: webhookText)
+    alert.note = Alert.blankIsNil(note.map(Alert.clip(note:)))
+    write { $0[id] = alert }
+    return alert
+  }
+
+  /// Webhook 地址：去掉首尾空白，不合法就当没填（表单那边已经拦了，这里兜底）。
+  static func clean(webhook: String?) -> String? {
+    guard let url = webhook?.trimmingCharacters(in: .whitespacesAndNewlines), Alert.isValidWebhook(url) else { return nil }
+    return url
+  }
+
+  /// 推送内容：和出厂模板一字不差就不存（nil 就是出厂模板），省得以后改了出厂模板老提醒还是旧话。
+  static func clean(template: String?) -> String? {
+    guard let text = Alert.blankIsNil(template), text != AlertMessage.defaultTemplate else { return nil }
+    return text
   }
 
   /// 复盘待办到点：跟着复盘记录对一遍账（`ReviewDueAlerts.plan` 算，这儿只落账）。
@@ -146,8 +189,20 @@ final class AlertStore: ObservableObject {
   func markFired(id: String, at time: Double, price: Double?) -> Alert? {
     guard var alert = archive[id], alert.status == .active else { return nil }
     alert.status = .fired; alert.firedAt = time; alert.firedPrice = price
+    localFires[id] = time
     write { $0[id] = alert }
     return alert
+  }
+
+  /// 本机自己判响的那几次（id → `firedAt`）。同步换下来的「服务端已经响过」不经
+  /// `markFired`，不在这里。`AlertWatcher` 靠它决定 Webhook 由谁发：本机判响的本机发，
+  /// 服务端判响的服务端已经发过了。
+  private var localFires: [String: Double] = [:]
+
+  /// 这一次「已触发」是不是本机判出来的。
+  func firedLocally(_ alert: Alert) -> Bool {
+    guard let at = alert.firedAt else { return false }
+    return localFires[alert.id] == at
   }
 
   /// 跟着画线存档对一遍账。返回真表示真的动了东西。

@@ -73,7 +73,7 @@ struct IntervalBar: View {
   /// 条上排哪几档：**只有钉住的那些**，按 `Interval.allCases` 从短到长。
   ///
   /// 从前当前档没钉住时会在这儿追加一颗虚线描边的临时 chip，钉满六档时还得把最长的
-  /// 那一档先让出去——「看细节」从 4h 进到没钉住的 15m、或者从网格里点个 2h，
+  /// 那一档先让出去——从网格里点个没钉住的 2h，
   /// 用户自己钉的 1w 当场从条上消失（2026-09-23 体验审查）。钉住的档是人挑的，
   /// 不该被一个临时去看的周期挤掉；现在当前档没钉住时，由行尾「更多」改写成那一档的
   /// 名字并高亮（见 `body`），这一排一个都不动。
@@ -171,8 +171,8 @@ struct IntervalBar: View {
   ///   不是瞬移一下。跳位之所以讨厌，是因为它在手指落下去之前无声地发生；
   ///   0.18s 的铺开是看得见的，手跟得上。
   ///
-  /// 「看细节」从前也挤在这儿，现在和「上一根 / 下一根 / 按此价画线」一起在
-  /// 十字线动作行里（`CrosshairActionBar`）——十字线在时它整行顶替这根条。
+  /// 「看细节」从前也挤在这儿，后来搬进十字线动作行，2026-09-25 整套删了；十字线在时
+  /// 整行顶替这根条的是那颗「涨到 X 提醒我」（`CrosshairActionBar`）。
   /// 同一处原来还会在点完「最新」后换成「返回刚才」，2026-09-24 按用户要求删了。
   @ViewBuilder private var actionSlot: some View {
     if !atLatest {
@@ -485,7 +485,7 @@ struct IntervalGridPanel: View {
   }
 }
 
-/// 竖屏周期条那一行：平时是周期条，十字线活着时整行换成十字线的四颗动作。
+/// 竖屏周期条那一行：平时是周期条，十字线活着时整行换成那颗「涨到 X 提醒我」。
 ///
 /// 独立成非泛型 struct 有两个原因：一是把这几层从 `MainScreen.chartPage` 的类型嵌套里
 /// 摘出去（见 `MainScreen.swift` 文件头那条层数上限）；二是只有这一层去观察十字线——
@@ -503,11 +503,8 @@ struct IntervalRow: View {
   var onChart: () -> Void
   let readout: CrosshairReadout
   let context: CrosshairContext
-  var canDetail: Bool
-  var onStep: (Int) -> Void
-  /// nil = 这一刻不许按价画线（对比态）。
-  var onLine: ((Double) -> Void)?
-  var onDetail: (Crosshair) -> Void
+  /// 十字线那颗「涨到 X 提醒我」点了。
+  var onAlert: (Double) -> Void
 
   var body: some View {
     ZStack {
@@ -516,9 +513,7 @@ struct IntervalRow: View {
         gridOpen: $gridOpen, onPick: onPick, onPin: onPin,
         onLatest: onLatest, onIndicators: onIndicators, onChart: onChart)
         .modifier(YieldsToCrosshair(readout: readout, context: context, gridOpen: $gridOpen))
-      CrosshairActionBar(
-        readout: readout, context: context, theme: theme, canDetail: canDetail,
-        onStep: onStep, onLine: onLine, onDetail: onDetail)
+      CrosshairActionBar(readout: readout, context: context, theme: theme, onAlert: onAlert)
     }
     .frame(height: 44)
     .background(theme.app)

@@ -52,6 +52,9 @@ struct CrosshairContext {
   var offsetMinutes: TZOffset
   /// 「顶部」那档显示模式开着吗（`prefs.dataDisplay == .top`）。
   var enabled: Bool
+  /// 此刻的现价（逐笔，没有就 24h 行情的最新价）。和序列一样是现取的：只有十字线那颗
+  /// 「涨到 X 提醒我」在场时才读，用来定「涨到」还是「跌到」。
+  var livePrice: @MainActor () -> Double? = { nil }
 }
 
 /// 头部那几行开高低收。口径和从前的 `MainScreen.topCandleData` 逐字相同。
@@ -94,8 +97,8 @@ struct CrosshairOHLCLabel: View {
 /// 被它包着的 `PriceRow` 是主屏那一次 body 求值造出来的值，不会跟着重造。
 ///
 /// **只有 `.top` 那一档让位**（2026-09-23）。从前是「十字线一在就让」，因为头部那一行
-/// 要腾出来放「上一根 / 下一根 / 按此价画线 / 看细节」——结果手指按在图上找位置的那几秒，
-/// 顶栏最新价、涨跌和右边六格全没了，而那正是交易员最想同时盯着的东西。现在那几颗
+/// 要腾出来放十字线的几颗动作——结果手指按在图上找位置的那几秒，
+/// 顶栏最新价、涨跌和右边六格全没了，而那正是交易员最想同时盯着的东西。现在那一行的动作
 /// 搬去了周期条那一行（`CrosshairActionBar`），价格行一直实时；只有读数摆在顶部的那一档，
 /// 开高低收要借这一行的位置。让的是**同一行**：价格行照旧占着位置（只是透明），行高不变。
 struct HiddenWhileCrosshairReads: ViewModifier {
@@ -115,50 +118,36 @@ struct HiddenWhileCrosshairReads: ViewModifier {
   return series.close.indices.contains(c.index)
 }
 
-/// 十字线的四颗动作：上一根 / 下一根 / 按此价画线 / 看细节。
+/// 十字线活着时周期条那一行换成的一颗药丸：「涨到 84,535.5 提醒我」。
 ///
 /// **摆在周期条那一行的同一个 44pt 框里**（2026-09-23）：十字线活着时它整行顶替周期条
 /// （周期条透明让位、点不着，但照旧占着位置、量着自己的宽度，所以十字线收起时不跳位），
-/// 顶栏的价格、涨跌、六格一直实时。从前它们在头部价格行的位置上，一按住图价格就没了。
+/// 顶栏的价格、涨跌、六格一直实时。画布上不许浮控件，而周期条那一行紧贴图的上沿、
+/// 拇指够得着、也不压 K 线。跟着手指重求值的只有这只小视图。
 ///
-/// 画布上不许浮控件，而周期条那一行紧贴图的上沿、拇指够得着、也不压 K 线。
-/// 和整只 `MainScreen` 的关系照旧：跟着手指重求值的只有这只小视图。
-/// 四颗在最窄的受支持机型 iPhone 16 Pro（402pt）上一行放得下（实测约 290pt）。
+/// 2026-09-25 起这一行只剩这一颗：原来的「上一根 / 下一根 / 按此价画线 / 看细节」四颗撤掉
+/// （「看细节」整套删了；画线在画线工作台里画），换成从图上加提醒——这是新建提醒唯一的入口。
+/// 样子照画线选中栏里那颗「跌到 X 叫我」（`LineAlertChip` 的未开态）：同一个功能，一个读法。
 struct CrosshairActionBar: View {
   let readout: CrosshairReadout
   let context: CrosshairContext
   let theme: PanelTheme
-  /// 当前这一档还有更细的一档可进（`DetailZoom.finer`）。最细那一档不画「看细节」。
-  var canDetail: Bool
-  /// 往左 / 往右挪一根。
-  var onStep: (Int) -> Void
-  /// 按十字线此刻这口价画一条水平线。nil 时不给这颗（对比态的图上不画线）。
-  var onLine: ((Double) -> Void)?
-  /// 「看细节」：把选中的这一根换到更细的一档铺满一屏（§10.1）。
-  var onDetail: (Crosshair) -> Void
+  /// 点了：交出十字线那一口价（主图价；没有就那一根的收盘）。
+  var onAlert: (Double) -> Void
 
   var body: some View {
-    if crosshairAlive(readout.crosshair, context), let c = readout.crosshair {
-      HStack(spacing: Space.s) {
-        chip("上一根", icon: VectorIcon.chevronLeft(10), id: "chart.crosshair.prev") { onStep(-1) }
-        chip("下一根", trailingIcon: VectorIcon.chevronRight(10), id: "chart.crosshair.next") { onStep(1) }
-        // 副图上的十字线读的是指标值，不是价——那条线画到主图上毫无意义，所以不给。
-        if c.pane == nil, let onLine, let price = c.price ?? priceOfBar(c.index), price.isFinite {
-          chip("按此价画线", id: "chart.crosshair.hline") { onLine(price) }
-        }
-        if canDetail {
-          chip("看细节", id: "chart.detailZoom") { onDetail(c) }
-            .accessibilityLabel("看这一根的细节")
-        }
-      }
-      .fixedSize(horizontal: true, vertical: false)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      // 左缘和头部、周期条同一根线（`Inset.page`）；字号封顶也跟它们一起（UI 审查 2026-09-24 §4.3 #23/#24）。
-      .pageHorizontalInset()
-      .frame(height: 44)
-      .dynamicTypeSize(...MarketChrome.typeCap)
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("chart.crosshair.actions")
+    // 副图上的十字线读的是指标值，不是价——按它建价格提醒毫无意义，所以不给。
+    if crosshairAlive(readout.crosshair, context), let c = readout.crosshair, c.pane == nil,
+       let price = c.price ?? priceOfBar(c.index), price.isFinite, price > 0 {
+      chip(price)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // 左缘和头部、周期条同一根线（`Inset.page`）；字号封顶也跟它们一起（UI 审查 2026-09-24 §4.3 #23/#24）。
+        .pageHorizontalInset()
+        .frame(height: 44)
+        .dynamicTypeSize(...MarketChrome.typeCap)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("chart.crosshair.actions")
     }
   }
 
@@ -167,26 +156,32 @@ struct CrosshairActionBar: View {
     return series.close[i]
   }
 
-  /// 和周期条行尾「最新」一模一样的做法：药丸自己 28pt 高，命中区 44pt。
-  private func chip(
-    _ title: String, icon: VectorIcon? = nil, trailingIcon: VectorIcon? = nil,
-    id: String, action: @escaping () -> Void
-  ) -> some View {
-    Button(action: action) {
-      HStack(spacing: 3) {
-        if let icon { icon }
-        Text(title).font(TypeScale.controlOn)
-        if let trailingIcon { trailingIcon }
+  /// 「涨到 / 跌到」按现价定（和 `Alert.price` 建出来的方向同一个口径）；没有现价就写「在」。
+  static func title(price: Double, live: Double?, decimals: Int) -> String {
+    let text = grouped(ReviewLabels.price(price, decimals: decimals))
+    guard let live, live > 0 else { return "在 \(text) 提醒我" }
+    return (price >= live ? "涨到 " : "跌到 ") + text + " 提醒我"
+  }
+
+  private func chip(_ price: Double) -> some View {
+    Button { onAlert(price) } label: {
+      HStack(spacing: Space.xs) {
+        Image(systemName: "bell")
+          .font(.system(size: 12, weight: .semibold))
+        Text(Self.title(price: price, live: context.livePrice(), decimals: context.decimals))
+          .font(TypeScale.control)
+          .monospacedDigit()
       }
-      .foregroundStyle(theme.ink2)
-      .padding(.horizontal, Space.s)
+      .foregroundStyle(theme.amber)
+      .padding(.horizontal, Space.m)
       .frame(height: ControlMetrics.pillHeight)
-      .background(theme.raised2, in: Capsule())
-      .frame(minWidth: 44, minHeight: 44)
+      .background(Capsule().fill(theme.amberSoft))
+      .overlay(Capsule().strokeBorder(theme.amberLine, lineWidth: 0.5))
+      .frame(minHeight: Hit.min)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .accessibilityIdentifier(id)
+    .accessibilityIdentifier("chart.crosshair.alert")
   }
 }
 
