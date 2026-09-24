@@ -98,7 +98,8 @@ struct OrderFlowDetailCard: View {
     switch order.status {
     case .live: theme.amber
     case .filled: theme.ink
-    case .cancelled, .lost: theme.ink3
+    case .cancelled: order.hasFill ? theme.ink : theme.ink3
+    case .lost: theme.ink3
     }
   }
 }
@@ -118,7 +119,7 @@ struct OrderFlowCardText {
 
   init(order: BigOrder, base: String, decimals: Int, timeZone: TZOffset, nowMs: Int64) {
     title = order.exchange + " " + order.product.label
-    status = Self.status(order.status)
+    status = Self.status(order)
     sideTitle = order.side == .bid ? "委托买单" : "委托卖单"
     let price = order.price
     let qty = { (usd: Double) in price > 0 ? usd / price : 0 }
@@ -144,11 +145,13 @@ struct OrderFlowCardText {
       .joined(separator: "\n")
   }
 
-  static func status(_ s: BigOrder.Status) -> String {
-    switch s {
+  /// 照 CoinAnk 四档：挂单中 / 已成交 / 部分成交 / 已撤销。「部分成交」= 判成撤单但吃过（`hasFill`），
+  /// 和图上「有成交就画深色」同一个判据；成交了多少看下面的「成交金额」。
+  static func status(_ order: BigOrder) -> String {
+    switch order.status {
     case .live: "挂单中"
     case .filled: "已成交"
-    case .cancelled: "已撤销"
+    case .cancelled: order.hasFill ? "部分成交" : "已撤销"
     case .lost: "失联结束"
     }
   }

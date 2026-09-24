@@ -527,8 +527,8 @@ final class OrderFlowModelTests: XCTestCase {
   }
 
   /// 减仓后被吃：挂出 1908 万，先撤到 636 万（还在退出线 250 万以上），再被吃掉 556.5 万跌破退出线。
-  /// 按首次名义算只成交三成（会判撤单），按跌破前最后一拍的 636 万算消失的部分全是被吃的——已成交。
-  func testShrunkThenEatenIsFilled() {
+  /// 消失的按峰值算是 1828 万，成交 556.5 万只有三成——撤的多，判已撤销（卡片上写「部分成交」）。
+  func testShrunkThenEatenIsCancelledAgainstThePeak() {
     var model = inBand(okx)
     _ = model.evaluate(nowMs: 0)
     _ = model.evaluate(nowMs: 500)
@@ -538,9 +538,48 @@ final class OrderFlowModelTests: XCTestCase {
     set(&model, okx, seq: 3, bid: level(1_590, 500))
     _ = model.evaluate(nowMs: 1_500)
     let order = model.evaluate(nowMs: 2_000).orders[0]
+    XCTAssertEqual(order.status, .cancelled)
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 11_500, accuracy: 1e-6)
+    XCTAssertEqual(order.fillRatio, 3_500.0 / 11_500, accuracy: 1e-9)
+  }
+
+  /// 线上实测的形状（2026-09-24）：一面 340 万的墙十几拍里一点点撤到剩一半（每拍都在退出线上），
+  /// 零星成交 27 万，最后一拍才跌破。按「跌破前最后一拍 − 剩下的」只消失了 2 万，会误判已成交；
+  /// 按峰值算消失了 290 万——是撤的。
+  func testGraduallyPulledWallWithAFewFillsIsCancelled() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 170, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    var now: Int64 = 1_000
+    var seq: Int64 = 2
+    for k in 1...12 {
+      set(&model, okx, seq: seq, bid: level(1_590, 12_000 - 800 * Double(k)))
+      _ = model.evaluate(nowMs: now)
+      now += 100; seq += 1
+    }
+    XCTAssertEqual(model.evaluate(nowMs: now).orders[0].status, .live, "2 400 个（382 万）仍在退出线上")
+    set(&model, okx, seq: seq, bid: level(1_590, 100))
+    _ = model.evaluate(nowMs: now + 100)
+    let order = model.evaluate(nowMs: now + 400).orders[0]
+    XCTAssertEqual(order.status, .cancelled)
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 11_900, accuracy: 1e-6)
+    XCTAssertEqual(order.filledNotional, 1_590 * 170, accuracy: 1e-6)
+  }
+
+  /// 加码后被吃：挂出 1908 万、加到 4770 万，被吃掉 4600 万——按峰值算消失的部分几乎全是成交，已成交。
+  func testGrownThenEatenIsFilledAgainstThePeak() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    set(&model, okx, seq: 2, bid: level(1_590, 30_000))
+    _ = model.evaluate(nowMs: 1_000)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 29_000, hitSide: .bid, timeMs: 0)), nowMs: 1_100)
+    set(&model, okx, seq: 3, bid: level(1_590, 100))
+    _ = model.evaluate(nowMs: 1_500)
+    let order = model.evaluate(nowMs: 2_000).orders[0]
     XCTAssertEqual(order.status, .filled)
-    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 3_500, accuracy: 1e-6)
-    XCTAssertEqual(order.fillRatio, 1, accuracy: 1e-9)
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 29_900, accuracy: 1e-6)
   }
 
   /// 旧版日志没有「消失掉的名义」：读回来按名义算，不崩、不改判定。
@@ -740,6 +779,48 @@ final class OrderFlowModelTests: XCTestCase {
     let ended = orphan.evaluate(nowMs: 10_000 + OrderFlowModel.staleMs).orders[0]
     XCTAssertEqual(ended.status, .lost)
     XCTAssertEqual(ended.endMs, 800)
+  }
+
+  /// 重启后新快照被截断（币安 1000 档只盖盘口两侧 0.3%）、盖不到读回来的那面墙：不判撤单，等增量推到它。
+  /// 服务端 2026-09-24 实测重启一分钟内 190 条 2%–10% 外的单全被判成「已撤销、剩 0」，两端一起改。
+  func testRestoredOrdersBeyondSnapshotCoverageWaitForADelta() throws {
+    var first = inBand(okx)
+    _ = first.evaluate(nowMs: 0)
+    _ = first.evaluate(nowMs: 500)
+    let journal = try XCTUnwrap(first.journal(nowMs: 800))
+
+    /// 只盖 1600 往下 `levels` 档、要的档数也正好是这么多（截断）；`wall` 0 表示 1590 那档没了。
+    func truncated(levels: Int) -> BookSnapshot {
+      var s = deepSnapshot(last: 1, requested: levels, wall: 0)
+      s.bids = Array(s.bids.prefix(levels)); s.asks = Array(s.asks.prefix(levels))
+      return s
+    }
+    var resumed = OrderFlowModel(symbol: "ETHUSDT", thresholds: thresholds, restored: journal)
+    resumed.addVenue(okx)
+    _ = resumed.connectionOpened(okx.id)
+    _ = resumed.ingest(okx.id, .snapshot(truncated(levels: 5)), nowMs: 1_000)  // 1599…1595，1590 在覆盖范围外
+    _ = resumed.evaluate(nowMs: 1_000)
+    let frame = resumed.evaluate(nowMs: 1_500)
+    XCTAssertEqual(frame.orders.count, 1)
+    XCTAssertTrue(frame.orders[0].isLive, "快照没盖到 1590：不判撤单")
+    // 增量推到它、还在：接着跟，名义更新。
+    set(&resumed, okx, seq: 2, bid: level(1_590, 13_000))
+    _ = resumed.evaluate(nowMs: 2_000)
+    XCTAssertEqual(resumed.orders[0].notional, 13_000 * 1_590, accuracy: 1)
+    // 增量推成 0：确实没了，两拍后按撤单结束、消失的按峰值算。
+    set(&resumed, okx, seq: 3, bid: level(1_590, 0))
+    _ = resumed.evaluate(nowMs: 2_500)
+    _ = resumed.evaluate(nowMs: 3_000)
+    XCTAssertEqual(resumed.orders[0].status, .cancelled)
+    XCTAssertEqual(resumed.orders[0].endMs, 2_500)
+    XCTAssertEqual(try XCTUnwrap(resumed.orders[0].vanishedNotional), 13_000 * 1_590, accuracy: 1)
+    // 覆盖范围以内的不受影响：快照里没有就是没有。
+    var near = OrderFlowModel(symbol: "ETHUSDT", thresholds: thresholds, restored: journal)
+    near.addVenue(okx)
+    _ = near.connectionOpened(okx.id)
+    _ = near.ingest(okx.id, .snapshot(truncated(levels: 20)), nowMs: 1_000)  // 盖到 1580
+    _ = near.evaluate(nowMs: 1_000)
+    XCTAssertEqual(near.evaluate(nowMs: 1_500).orders[0].status, .cancelled)
   }
 
   /// 存盘之后缺席超过两分钟才再打开：读回的挂单第一次评估就按存盘时刻失联结束；

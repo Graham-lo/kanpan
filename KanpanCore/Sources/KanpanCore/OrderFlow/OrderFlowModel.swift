@@ -235,6 +235,8 @@ public struct OrderFlowModel: Sendable {
   private var liveIndex: [CandidateKey: Int] = [:]
   private var ending: [String: Pending] = [:]
   private var lastSeen: [String: Int64] = [:]
+  /// 挂着期间见过的最大名义（按单 id）；结束判定的分母。读回来的按首次与最后名义取大。
+  private var peak: [String: Double] = [:]
   private var venueSeen: [String: Int64] = [:]
   private var startedMs: Int64?
   /// 读回来的那份，步长还不知道（等前一日收盘）时先放着。
@@ -331,7 +333,7 @@ public struct OrderFlowModel: Sendable {
     if nextScheme != scheme {
       scheme = nextScheme
       if !orders.isEmpty { journalDirty = true }
-      orders.removeAll(); candidates.removeAll(); ending.removeAll(); lastSeen.removeAll()
+      orders.removeAll(); candidates.removeAll(); ending.removeAll(); lastSeen.removeAll(); peak.removeAll()
       restoreIfPossible()
       reindex()
       return
@@ -353,6 +355,7 @@ public struct OrderFlowModel: Sendable {
     let live = Set(orders.map(\.id))
     ending = ending.filter { live.contains($0.key) }
     lastSeen = lastSeen.filter { live.contains($0.key) }
+    peak = peak.filter { live.contains($0.key) }
     if orders.count != before { journalDirty = true }
   }
 
@@ -361,7 +364,10 @@ public struct OrderFlowModel: Sendable {
     pendingJournal = nil
     guard abs(journal.step - scheme.step) <= scheme.step * 1e-9 else { return }
     orders = journal.orders.sorted(by: Self.chronological)
-    for order in orders where order.isLive { lastSeen[order.id] = journal.savedAtMs }
+    for order in orders where order.isLive {
+      lastSeen[order.id] = journal.savedAtMs
+      peak[order.id] = max(order.initialNotional, order.notional)
+    }
     if orders.contains(where: \.isLive) { restoredAtMs = journal.savedAtMs }
     requalify()
     reindex()
@@ -417,11 +423,17 @@ public struct OrderFlowModel: Sendable {
         if let value = map[key], value.notional >= exitLine {
           orders[i].notional = value.notional
           orders[i].price = value.price
+          peak[oid] = max(peak[oid] ?? orders[i].initialNotional, value.notional)
           lastSeen[oid] = nowMs
           ending[oid] = nil
+        } else if !book.knows(key.side, price: orders[i].price) {
+          // 这一档在快照覆盖范围以外、增量也没推过（币安 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
+          // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判。
+          lastSeen[oid] = nowMs
         } else {
-          var pending = ending[oid] ?? Pending(firstMs: nowMs, remaining: map[key]?.notional ?? 0)
+          var pending = ending[oid] ?? Pending(firstMs: nowMs, remaining: 0)
           pending.samples += 1
+          pending.remaining = map[key]?.notional ?? 0  // 确认期间还在掉就按最后一拍剩的算
           if Self.confirmed(samples: pending.samples, firstMs: pending.firstMs, nowMs: nowMs) {
             end(i, atMs: pending.firstMs, remaining: pending.remaining)
             ending[oid] = nil
@@ -449,6 +461,7 @@ public struct OrderFlowModel: Sendable {
           liveIndex[ck] = orders.count - 1
           appended = true
           lastSeen[order.id] = nowMs
+          peak[order.id] = max(c.initial, c.notional)
           candidates[ck] = nil
           journalDirty = true
         } else {
@@ -483,19 +496,23 @@ public struct OrderFlowModel: Sendable {
     a.firstSeenMs != b.firstSeenMs ? a.firstSeenMs < b.firstSeenMs : a.id < b.id
   }
 
-  /// 跌破退出线：消失掉的那部分名义里成交够八成算已成交，否则已撤销。`remaining` 是跌破那一拍桶里还剩的。
+  /// 跌破退出线：消失掉的那部分名义里成交够八成算已成交，否则已撤销。`remaining` 是确认结束的最后一拍桶里还剩的。
   ///
-  /// 消失掉的 = 跌破前最后一拍的名义（`notional`，只在退出线以上才更新）− 结束时剩下的。不用首次名义：
-  /// 挂出 1M、加到 5M 再撤掉，按首次名义算只要成交 0.8M 就判「已成交」，其实 4M 是撤的；
-  /// 先减仓再被吃掉则反过来被判成撤单（审查 5.2）。
+  /// 消失掉的 = 挂着期间见过的最大名义（`peak`）− 结束时剩下的。不用首次名义：
+  /// 挂出 1M、加到 5M 再撤掉，按首次名义算只要成交 0.8M 就判「已成交」，其实 4M 是撤的。
+  /// 也不用「跌破前最后一拍的名义」：线上实测（2026-09-24）一面 340 万的现货墙十几拍里被一点点撤到 52 万，
+  /// 最后一拍只差 2 万，27 万零星成交就把它判成了「已成交」；按峰值算消失了 290 万、成交不到一成——是撤的。
+  /// 先撤一半再被吃掉剩下的，按这个口径是「已撤销 · 成交 43%」（卡片上写「部分成交」）。
   private mutating func end(_ i: Int, atMs: Int64, remaining: Double) {
     let order = orders[i]
-    let vanished = max(0, order.notional - max(0, remaining))
+    let top = max(peak[order.id] ?? 0, order.initialNotional, order.notional)
+    let vanished = max(0, top - max(0, remaining))
     orders[i].vanishedNotional = vanished
     orders[i].status = vanished > 0 && order.filledNotional >= vanished * OrderFlowDefaults.filledRatio
       ? .filled : .cancelled
     orders[i].endMs = max(order.firstSeenMs, atMs)
     lastSeen[order.id] = nil
+    peak[order.id] = nil
     journalDirty = true
   }
 
@@ -516,6 +533,7 @@ public struct OrderFlowModel: Sendable {
     orders[i].endMs = max(orders[i].firstSeenMs, atMs)
     orders[i].vanishedNotional = nil
     lastSeen[oid] = nil
+    peak[oid] = nil
     ending[oid] = nil
     journalDirty = true
   }

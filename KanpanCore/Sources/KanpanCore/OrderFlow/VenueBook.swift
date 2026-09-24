@@ -27,6 +27,11 @@ public struct VenueBook: Sendable {
   var snapshotInBand: Bool { venue.snapshotInBand }
   public var isReady: Bool { book.quality == .ready }
 
+  /// 这一档本地知不知道（快照截断时覆盖范围以外、又没推过的档不知道）。簿没就绪一律不知道。
+  func knows(_ side: BookSide, price: Double) -> Bool {
+    book.quality == .ready && readySinceMs != nil && book.knows(side, price: price)
+  }
+
   /// 新连接建立：簿换一个连接代号重来。旧连接的迟到包因代号不符进不来。
   mutating func connectionOpened() -> OrderFlowModel.Action {
     connection += 1

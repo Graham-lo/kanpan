@@ -144,7 +144,8 @@ struct Candidate {first:i64,samples:u32,initial:f64,notional:f64,price:f64,fille
 struct Pending {first:i64,samples:u32,remaining:f64}
 
 #[derive(Clone,Debug)]
-struct Live {order:BigOrder,seen:i64,ending:Option<Pending>}
+/// `peak`：挂着期间见过的最大名义（读回来的按首次与最后名义取大），结束判定的分母。
+struct Live {order:BigOrder,seen:i64,ending:Option<Pending>,peak:f64}
 
 /// 一本簿以及它上面的单。`book` 为 None：读回来的单所在的簿这一轮没订（交割换季、交易所下架）。
 #[derive(Default)]
@@ -162,8 +163,13 @@ pub struct Model {
 fn confirmed(samples:u32,first:i64,now:i64)->bool {samples>=CONFIRM_SAMPLES&&now-first>=CONFIRM_MS}
 
 /// 跌破退出线：消失掉的那部分里成交够八成算已成交，否则已撤销。
-fn end(mut order:BigOrder,at:i64,remaining:f64)->BigOrder {
- let vanished=(order.notional-remaining.max(0.0)).max(0.0);
+///
+/// 消失掉的 = 挂着期间见过的最大名义（`peak`）− 结束时剩下的。不用「跌破前最后一拍」：
+/// 线上实测一面 340 万的现货墙十几拍里被一点点撤到 52 万，最后一拍只差 2 万，
+/// 27 万的零星成交就把它判成了「已成交」；按峰值算消失了 290 万，成交不到一成——是撤的。
+/// 也不用首次名义：挂出 1M、加到 5M 再撤掉，按首次算只要成交 0.8M 就判已成交，其实 4M 是撤的。
+fn end(mut order:BigOrder,at:i64,remaining:f64,peak:f64)->BigOrder {
+ let vanished=(peak.max(order.notional)-remaining.max(0.0)).max(0.0);
  order.vanished_notional=Some(vanished);
  order.status=if vanished>0.0&&order.filled_notional>=vanished*FILLED_RATIO {Status::Filled} else {Status::Cancelled};
  order.end_ms=Some(order.first_seen_ms.max(at));
@@ -201,7 +207,8 @@ impl Model {
    let mut order=order;
    order.threshold=threshold.unwrap_or(order.threshold);
    let track=self.tracks.entry(order.venue_id.clone()).or_default();
-   track.live.insert((order.side,order.bucket),Live{order,seen:seen_ms,ending:None});
+   let peak=order.initial_notional.max(order.notional);
+   track.live.insert((order.side,order.bucket),Live{order,seen:seen_ms,ending:None,peak});
   }
  }
 
@@ -263,16 +270,20 @@ impl Model {
    let mut finished=Vec::new();
    for (key,l) in track.live.iter_mut() {
     match map.get(key) {
-     Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.seen=now;l.ending=None;},
+     Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.peak=l.peak.max(v.notional);l.seen=now;l.ending=None;},
+     // 这一档在快照覆盖范围以外、增量也没推过（币安 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
+     // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判。
+     other if !book.knows(key.0,l.order.price)=>{l.seen=now;},
      other=>{
-      let mut p=l.ending.unwrap_or(Pending{first:now,samples:0,remaining:other.map_or(0.0,|v|v.notional)});
+      let mut p=l.ending.unwrap_or(Pending{first:now,samples:0,remaining:0.0});
       p.samples+=1;
+      p.remaining=other.map_or(0.0,|v|v.notional);  // 确认期间还在掉就按最后一拍剩的算
       if confirmed(p.samples,p.first,now) {finished.push((*key,p));} else {l.ending=Some(p);}
      },
     }
    }
    for (key,p) in finished {
-    if let Some(l)=track.live.remove(&key) {self.ended.push(end(l.order,p.first,p.remaining));}
+    if let Some(l)=track.live.remove(&key) {self.ended.push(end(l.order,p.first,p.remaining,l.peak));}
    }
 
    // 2. 新过门槛的桶：确认两拍才出现。这一拍刚结束的桶这一拍不起候选（照手机那份）。
@@ -287,7 +298,8 @@ impl Model {
      let order=BigOrder{venue_id:id.clone(),exchange:label.to_string(),product:product.to_string(),side:key.0,bucket:key.1,
       price:c.price,first_seen_ms:c.first,end_ms:None,status:Status::Live,initial_notional:c.initial,notional:c.notional,
       filled_notional:c.filled,threshold,vanished_notional:None};
-     track.live.insert(*key,Live{order,seen:now,ending:None});
+     let peak=c.initial.max(c.notional);
+     track.live.insert(*key,Live{order,seen:now,ending:None,peak});
     }
    }
    // 这一拍没再过门槛的候选作废（「连续」两拍）。
@@ -353,6 +365,17 @@ mod tests {
    self.seq+=1;
    let s=Snapshot{last:self.seq,requested:1000,bids:bids.to_vec(),asks:asks.to_vec()};
    self.m.ingest(id,1,Message::Snapshot(s),now);
+  }
+  /// 被截断的快照：要的档数正好等于给的档数（币安 REST 那种）。
+  fn truncated(&mut self,id:&str,bids:&[(f64,f64)],asks:&[(f64,f64)],now:i64) {
+   self.seq+=1;
+   let s=Snapshot{last:self.seq,requested:bids.len().max(asks.len()),bids:bids.to_vec(),asks:asks.to_vec()};
+   self.m.ingest(id,1,Message::Snapshot(s),now);
+  }
+  fn delta(&mut self,id:&str,bids:&[(f64,f64)],asks:&[(f64,f64)],now:i64) {
+   self.seq+=1;
+   let d=super::super::book::Delta{first:self.seq,last:self.seq,prev:None,bids:bids.to_vec(),asks:asks.to_vec()};
+   self.m.ingest(id,1,Message::Delta(d),now);
   }
   fn trade(&mut self,id:&str,price:f64,qty:f64,hit:Side,_now:i64) {self.m.trade(id,Trade{price,quantity:qty,hit});}
   fn live(&self)->Vec<BigOrder> {self.m.live().into_iter().map(|(o,_)|o).collect()}
@@ -473,15 +496,44 @@ mod tests {
   r.trade("a",59_950.0,1.0*T/59_950.0,Side::Bid,500);
   r.book("a",&[(60_000.0,1.0)],&[ASK],600);r.m.evaluate(600);r.m.evaluate(900);
   assert_eq!(r.m.ended[0].status,Status::Cancelled);
-  // 先缩到 0.6M 再被吃掉 0.5M：判已成交。
+  // 先撤到 0.6M 再被吃掉 0.5M：消失的 1.15M 里成交 0.5M，不到八成——撤的多，判已撤销（成交比例 43%）。
   let mut r=Rig::new();
   appear(&mut r,1.2*T);
   r.book("a",&wall(0.6*T),&[ASK],400);r.m.evaluate(400);
   r.trade("a",59_950.0,0.5*T/59_950.0,Side::Bid,500);
   r.book("a",&wall(0.05*T),&[ASK],600);r.m.evaluate(600);r.m.evaluate(900);
   let o=&r.m.ended[0];
+  assert_eq!(o.status,Status::Cancelled);
+  assert!((o.vanished_notional.unwrap()-1.15*T).abs()<1.0);
+ }
+
+ #[test] fn gradually_pulled_wall_with_a_few_fills_is_cancelled() {
+  // 线上实测的形状：3.4M 的墙十几拍里一点点撤到 0.52M（每拍都在退出线上），零星成交 0.27M，
+  // 最后一拍才跌破。按「跌破前最后一拍 − 剩下的」只消失了 2 万，会误判已成交；按峰值算是撤的。
+  let mut r=Rig::new();
+  appear(&mut r,3.4*T);
+  r.trade("a",59_950.0,0.27*T/59_950.0,Side::Bid,350);
+  let mut now=400;
+  for k in 0..12 {
+   r.book("a",&wall((3.4-0.24*(k as f64+1.0))*T),&[ASK],now);r.m.evaluate(now);now+=100;
+  }
+  assert_eq!(r.live().len(),1,"0.52M 仍在退出线上");
+  r.book("a",&wall(0.1*T),&[ASK],now);r.m.evaluate(now);r.m.evaluate(now+300);
+  let o=&r.m.ended[0];
+  assert_eq!(o.status,Status::Cancelled);
+  assert!((o.vanished_notional.unwrap()-3.3*T).abs()<1.0);
+  assert!((o.filled_notional-0.27*T).abs()<1.0);
+ }
+
+ #[test] fn a_wall_that_grows_then_is_eaten_is_filled_against_its_peak() {
+  let mut r=Rig::new();
+  appear(&mut r,1.2*T);
+  r.book("a",&wall(3.0*T),&[ASK],400);r.m.evaluate(400);
+  r.trade("a",59_950.0,2.6*T/59_950.0,Side::Bid,500);
+  r.book("a",&wall(0.1*T),&[ASK],600);r.m.evaluate(600);r.m.evaluate(900);
+  let o=&r.m.ended[0];
   assert_eq!(o.status,Status::Filled);
-  assert!((o.vanished_notional.unwrap()-0.55*T).abs()<1.0);
+  assert!((o.vanished_notional.unwrap()-2.9*T).abs()<1.0);
  }
 
  #[test] fn inverse_contracts_count_contracts_times_face_value() {
@@ -531,6 +583,40 @@ mod tests {
   let live=r.live();
   assert_eq!(live.len(),1);
   assert_eq!((live[0].bucket,live[0].first_seen_ms),(599,0),"读回来的那条接着跟，不另起一条");
+ }
+
+ #[test] fn restored_orders_beyond_snapshot_coverage_wait_for_a_delta() {
+  // 线上实测：重启后币安 1000 档快照只盖盘口两侧 0.3%，读回来的 190 条 2%–10% 外的单
+  // 一分钟内全被判成「已撤销、剩 0」。覆盖范围以外的档：不知道就不判，增量推到它再说。
+  let mut r=Rig::new();
+  let order=BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:595,
+   price:59_500.0,first_seen_ms:0,end_ms:None,status:Status::Live,initial_notional:1.2*T,notional:1.2*T,filled_notional:0.0,threshold:T,vanished_notional:None};
+  r.m.restore(vec![Restored{order,step:100.0,seen_ms:599_900}],600_000);
+  r.truncated("a",&[(60_000.0,1.0),(59_990.0,1.0)],&[ASK],600_000);
+  r.m.evaluate(600_000);r.m.evaluate(600_300);r.m.evaluate(600_600);
+  assert!(r.m.ended.is_empty(),"快照没盖到 59 500：不判撤单");
+  let live=r.m.live();
+  assert_eq!(live.len(),1);
+  assert_eq!(live[0].1,600_600,"等着的时候按看到过算，下次重启不会因为「两分钟没见」判失联");
+  // 增量推到它、还在：接着跟，名义更新。
+  r.delta("a",&[(59_500.0,1.5*T/59_500.0)],&[],600_700);
+  r.m.evaluate(600_700);
+  assert!((r.live()[0].notional-1.5*T).abs()<1.0);
+  // 增量推成 0：确实没了，两拍后按撤单结束、消失的按峰值算。
+  r.delta("a",&[(59_500.0,0.0)],&[],601_000);
+  r.m.evaluate(601_000);r.m.evaluate(601_300);
+  let o=&r.m.ended[0];
+  assert_eq!((o.status,o.end_ms),(Status::Cancelled,Some(601_000)));
+  assert!((o.vanished_notional.unwrap()-1.5*T).abs()<1.0);
+  assert!(r.live().is_empty());
+  // 覆盖范围以内的不受影响：快照里没有就是没有。
+  let mut r=Rig::new();
+  let order=BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:599,
+   price:59_995.0,first_seen_ms:0,end_ms:None,status:Status::Live,initial_notional:1.2*T,notional:1.2*T,filled_notional:0.0,threshold:T,vanished_notional:None};
+  r.m.restore(vec![Restored{order,step:100.0,seen_ms:599_900}],600_000);
+  r.truncated("a",&[(60_000.0,1.0),(59_990.0,1.0)],&[ASK],600_000);
+  r.m.evaluate(600_000);r.m.evaluate(600_300);
+  assert_eq!(r.m.ended[0].status,Status::Cancelled);
  }
 
  #[test] fn step_change_ends_everything_threshold_change_keeps_it() {

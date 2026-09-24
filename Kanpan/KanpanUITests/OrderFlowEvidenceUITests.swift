@@ -216,7 +216,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     for word in ["成交金额", "初始金额", "成交数量", "初始数量", "委托时间", "持续时间"] {
       XCTAssertTrue(text.contains(word), "详情卡缺「\(word)」：\(text)")
     }
-    XCTAssertTrue(["挂单中", "已成交", "已撤销", "失联结束"].contains { text.contains($0) }, "详情卡没写状态：\(text)")
+    XCTAssertTrue(["挂单中", "已成交", "部分成交", "已撤销", "失联结束"].contains { text.contains($0) }, "详情卡没写状态：\(text)")
     XCTAssertNil(app.staticTexts.matching(identifier: "chart.topOHLC").allElementsBoundByIndex.first { $0.exists },
                  "出详情卡时开高低收读数没让位")
     shot("详情卡", file: "详情卡-\(Self.shortDevice)")

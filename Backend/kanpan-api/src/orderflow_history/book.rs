@@ -8,7 +8,7 @@
 //!
 //! 和手机那份的差别只有一处：连接代号的核对放在上一层（`VenueBook`），旧连接的迟到帧在进簿之前就丢了。
 use super::model::{Notional,SCAN_RADIUS_BPS};
-use std::collections::{BTreeMap,HashMap,VecDeque};
+use std::collections::{BTreeMap,BTreeSet,HashMap,VecDeque};
 
 /// 本地簿留中间价两侧多远（扫描半径的两倍）。
 pub const RETAIN_BPS:f64=2.0*SCAN_RADIUS_BPS;
@@ -49,17 +49,37 @@ pub enum Quality {Bootstrapping,Ready,Resyncing,Gapped}
 pub struct Gap;
 
 /// 一侧的价位。正的有限浮点数按位比较与按值比较同序，所以用位做键、拿有序表取最优价。
+///
+/// 快照被截断时（币安 REST 只给 1000 档，BTC 现货合起来才盘口两侧 0.3%），比快照最远一档还远的价位
+/// 本地并不知道有没有：`extent` 记快照最远那一档，`touched` 记此后增量推过的价位（含推成 0 的）。
+/// 覆盖范围以内「表里没有」就是没有；以外的只有推过的才算知道。快照完整（返回的档数不到要的数、
+/// 或者流里整本推来）时 `extent` 是 None，整侧都算知道。
 #[derive(Clone,Debug,Default)]
-struct Levels(BTreeMap<u64,f64>);
+struct Levels {map:BTreeMap<u64,f64>,extent:Option<f64>,touched:BTreeSet<u64>}
 impl Levels {
- fn set(&mut self,price:f64,quantity:f64) {if quantity==0.0 {self.0.remove(&price.to_bits());} else {self.0.insert(price.to_bits(),quantity);}}
- fn best_bid(&self)->Option<f64> {self.0.last_key_value().map(|(k,_)|f64::from_bits(*k))}
- fn best_ask(&self)->Option<f64> {self.0.first_key_value().map(|(k,_)|f64::from_bits(*k))}
+ fn set(&mut self,price:f64,quantity:f64) {if quantity==0.0 {self.map.remove(&price.to_bits());} else {self.map.insert(price.to_bits(),quantity);}}
+ fn touch(&mut self,price:f64) {if self.extent.is_some() {self.touched.insert(price.to_bits());}}
+ fn best_bid(&self)->Option<f64> {self.map.last_key_value().map(|(k,_)|f64::from_bits(*k))}
+ fn best_ask(&self)->Option<f64> {self.map.first_key_value().map(|(k,_)|f64::from_bits(*k))}
  /// 丢掉低于 `floor` 的。
- fn keep_from(&mut self,floor:f64) {self.0=self.0.split_off(&floor.to_bits());}
+ fn keep_from(&mut self,floor:f64) {self.map=self.map.split_off(&floor.to_bits());self.touched=self.touched.split_off(&floor.to_bits());}
  /// 丢掉高于 `ceiling` 的。
- fn keep_to(&mut self,ceiling:f64) {let _=self.0.split_off(&(ceiling.to_bits()+1));}
- fn clear(&mut self) {self.0.clear()}
+ fn keep_to(&mut self,ceiling:f64) {let _=self.map.split_off(&(ceiling.to_bits()+1));let _=self.touched.split_off(&(ceiling.to_bits()+1));}
+ fn clear(&mut self) {self.map.clear();self.extent=None;self.touched.clear();}
+ /// 这一档本地知不知道：覆盖范围以内都知道，以外的只有增量推过的才知道。`far_is_low`：买盘越远价越低。
+ fn knows(&self,price:f64,far_is_low:bool)->bool {
+  match self.extent {
+   None=>true,
+   Some(e)=>(if far_is_low {price>=e} else {price<=e})||self.touched.contains(&price.to_bits()),
+  }
+ }
+}
+
+/// 快照这一侧的覆盖范围：返回的档数够到要的数就可能被截断，最远那一档以外不算知道。
+fn extent(levels:&[Level],requested:usize,far_is_low:bool)->Option<f64> {
+ if levels.len()<requested {return None}
+ let prices=levels.iter().filter(|(p,_)|p.is_finite()&&*p>0.0).map(|(p,_)|*p);
+ if far_is_low {prices.reduce(f64::min)} else {prices.reduce(f64::max)}
 }
 
 #[derive(Clone,Debug)]
@@ -82,6 +102,7 @@ impl LocalBook {
   if s.requested==0||s.bids.len()>s.requested||s.asks.len()>s.requested {return self.fail()}
   self.bids.clear();self.asks.clear();self.retained=None;
   write(&s.bids,&mut self.bids,None);write(&s.asks,&mut self.asks,None);
+  self.bids.extent=extent(&s.bids,s.requested,true);self.asks.extent=extent(&s.asks,s.requested,false);
   self.check_not_crossed()?;
   self.trim_far();
   let l=s.last;
@@ -128,6 +149,7 @@ impl LocalBook {
   if s.requested==0||s.bids.len()>s.requested||s.asks.len()>s.requested {return self.fail()}
   self.begin_resync();
   write(&s.bids,&mut self.bids,None);write(&s.asks,&mut self.asks,None);
+  self.bids.extent=extent(&s.bids,s.requested,true);self.asks.extent=extent(&s.asks,s.requested,false);
   self.last=Some(s.last);
   self.quality=Quality::Ready;
   self.check_not_crossed()?;
@@ -152,7 +174,16 @@ impl LocalBook {
   Ok(())
  }
 
- fn apply_levels(&mut self,d:&Delta) {write(&d.bids,&mut self.bids,self.retained);write(&d.asks,&mut self.asks,self.retained);}
+ fn apply_levels(&mut self,d:&Delta) {
+  write(&d.bids,&mut self.bids,self.retained);write(&d.asks,&mut self.asks,self.retained);
+  for &(p,q) in &d.bids {if p.is_finite()&&p>0.0&&q.is_finite()&&q>=0.0 {self.bids.touch(p);}}
+  for &(p,q) in &d.asks {if p.is_finite()&&p>0.0&&q.is_finite()&&q>=0.0 {self.asks.touch(p);}}
+ }
+
+ /// 这一档本地知不知道（见 `Levels`）。不知道的：不在表里不等于没了。
+ pub fn knows(&self,side:Side,price:f64)->bool {
+  match side {Side::Bid=>self.bids.knows(price,true),Side::Ask=>self.asks.knows(price,false)}
+ }
 
  fn band(mid:f64,bid:f64,ask:f64)->(f64,f64) {let f=RETAIN_BPS/10_000.0;((mid*(1.0-f)).min(bid),(mid*(1.0+f)).max(ask))}
 
@@ -169,8 +200,8 @@ impl LocalBook {
   let mid=(bid+ask)/2.0;
   let f=bps/10_000.0;
   let (floor,ceiling)=(mid*(1.0-f),mid*(1.0+f));
-  for (k,q) in self.bids.0.range(floor.to_bits()..) {body(Side::Bid,f64::from_bits(*k),*q)}
-  for (k,q) in self.asks.0.range(..=ceiling.to_bits()) {body(Side::Ask,f64::from_bits(*k),*q)}
+  for (k,q) in self.bids.map.range(floor.to_bits()..) {body(Side::Bid,f64::from_bits(*k),*q)}
+  for (k,q) in self.asks.map.range(..=ceiling.to_bits()) {body(Side::Ask,f64::from_bits(*k),*q)}
   let keep=Self::band(mid,bid,ask);
   self.bids.keep_from(keep.0);self.asks.keep_to(keep.1);
   self.retained=Some(keep);
@@ -180,7 +211,7 @@ impl LocalBook {
  #[cfg(test)]
  pub fn quantity(&self,side:Side,price:f64)->f64 {
   let levels=match side {Side::Bid=>&self.bids,Side::Ask=>&self.asks};
-  levels.0.get(&price.to_bits()).copied().unwrap_or(0.0)
+  levels.map.get(&price.to_bits()).copied().unwrap_or(0.0)
  }
 }
 
@@ -302,6 +333,9 @@ impl VenueBook {
   }
  }
 
+ /// 这一档本地知不知道（快照截断时覆盖范围以外、又没推过的档不知道）。簿没就绪一律不知道。
+ pub fn knows(&self,side:Side,price:f64)->bool {self.is_ready()&&self.book.knows(side,price)}
+
  /// 这一拍按桶合计的美元名义（中间价两侧 `radius_bps` 以内），簿没就绪返回 None。
  pub fn buckets(&mut self,step:f64,radius_bps:f64)->Option<HashMap<(Side,i64),Bucket>> {
   if !self.is_ready() {return None}
@@ -377,6 +411,27 @@ mod tests {
   let mut seen=vec![];
   book.for_each_within(1000.0,|s,p,q|seen.push((s,p,q)));
   assert_eq!(seen,vec![(Side::Bid,98.0,3.0),(Side::Ask,101.0,1.0)]);
+ }
+
+ #[test] fn a_truncated_snapshot_only_covers_as_far_as_its_last_level() {
+  // 币安 REST 快照要 1000 档只给到 1000 档：比最远那档更远的价位本地不知道，直到增量推过它。
+  let mut book=LocalBook::new(Sequence::PreviousFinalExact);
+  let bids:Vec<Level>=vec![(60_000.0,1.0),(59_990.0,1.0)];
+  book.replace(&Snapshot{last:1,requested:2,bids:bids.clone(),asks:vec![(60_010.0,1.0)]}).unwrap();
+  assert!(book.knows(Side::Bid,59_995.0),"覆盖范围以内不在表里就是没有");
+  assert!(book.knows(Side::Bid,59_990.0));
+  assert!(!book.knows(Side::Bid,59_500.0),"比最远一档还远：不知道");
+  assert!(book.knows(Side::Ask,70_000.0),"卖盘只回了 1 档、不到要的 2 档：整侧完整");
+  book.apply(&delta(2,2,Some(1),&[(59_500.0,0.0)])).unwrap();
+  assert!(book.knows(Side::Bid,59_500.0),"增量推成 0 也算知道了：确实没了");
+  assert!(!book.knows(Side::Bid,59_400.0));
+  book.apply(&delta(3,3,Some(2),&[(59_400.0,2.0)])).unwrap();
+  assert!(book.knows(Side::Bid,59_400.0)&&book.quantity(Side::Bid,59_400.0)==2.0);
+  // 完整快照（档数不到要的数）整侧都知道；流里整本推来的（requested = MAX）也是。
+  book.replace(&Snapshot{last:4,requested:1000,bids,asks:vec![(60_010.0,1.0)]}).unwrap();
+  assert!(book.knows(Side::Bid,59_500.0)&&book.knows(Side::Bid,1.0));
+  book.mark_gapped();
+  assert!(book.knows(Side::Bid,1.0),"簿本身空了由上层（VenueBook::is_ready）挡");
  }
 
  #[test] fn bucket_floors_and_snaps_float_noise() {

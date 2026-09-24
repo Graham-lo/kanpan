@@ -106,6 +106,8 @@ public enum ApplyOutcome: Sendable, Equatable { case applied, duplicateIgnored }
 struct BookSideLevels: Sendable {
   let isBid: Bool
   private(set) var levels: [Double: Double] = [:]
+  /// 快照之后增量推过的价位（含推成 0 的）。快照被截断时，覆盖范围以外只有这些是本地知道的。
+  private(set) var touched: Set<Double> = []
   private var best: Double?
   private var bestStale = false
 
@@ -125,11 +127,15 @@ struct BookSideLevels: Sendable {
     }
   }
 
-  mutating func removeAll() { levels.removeAll(keepingCapacity: true); best = nil; bestStale = false }
+  mutating func touch(_ price: Double) { touched.insert(price) }
+
+  mutating func removeAll() {
+    levels.removeAll(keepingCapacity: true); touched.removeAll(); best = nil; bestStale = false
+  }
 
   /// 一批不是最优价的价位整批删掉（裁远处用）。最优价不在里面，缓存不用动。
   mutating func remove(_ prices: [Double]) {
-    for price in prices { levels.removeValue(forKey: price) }
+    for price in prices { levels.removeValue(forKey: price); touched.remove(price) }
   }
 
   mutating func bestPrice() -> Double? {
@@ -381,7 +387,33 @@ public struct LocalBook: Sendable {
   private mutating func applyLevels(_ delta: BookDelta) {
     Self.write(delta.bids, into: &bids, within: retained)
     Self.write(delta.asks, into: &asks, within: retained)
+    if bidsLimited { for level in delta.bids where Self.valid(level) { bids.touch(level.price) } }
+    if asksLimited { for level in delta.asks where Self.valid(level) { asks.touch(level.price) } }
     sourceEventTimeMs = delta.eventTimeMs
+  }
+
+  /// 快照这一侧回的档数够到要的数：可能被截断，最远那一档以外不算知道。
+  private var bidsLimited: Bool { coverage.requestedLevels > 0 && coverage.snapshotBidLevels >= coverage.requestedLevels }
+  private var asksLimited: Bool { coverage.requestedLevels > 0 && coverage.snapshotAskLevels >= coverage.requestedLevels }
+
+  /// 这一档本地知不知道。快照被截断时（币安 REST 只给 1000 档，BTC 现货合起来才盘口两侧 0.3%），
+  /// 快照最远一档以外的价位本地并不知道有没有——只有增量推过的（含推成 0 的）才知道；
+  /// 覆盖范围以内「表里没有」就是没有。快照完整（回的档数不到要的数、或流里整本推来）整侧都知道。
+  /// 主力订单流靠它区分「墙没了」和「墙在快照盖不到的地方」：重启后读回来的、离盘口 2%–10% 的单
+  /// 不能因为新快照没盖到就判成撤单。
+  public func knows(_ side: BookSide, price: Double) -> Bool {
+    switch side {
+    case .bid:
+      guard bidsLimited, let floor = coverage.bidFloor else { return true }
+      return price >= floor || bids.touched.contains(price)
+    case .ask:
+      guard asksLimited, let ceiling = coverage.askCeiling else { return true }
+      return price <= ceiling || asks.touched.contains(price)
+    }
+  }
+
+  private static func valid(_ level: BookLevel) -> Bool {
+    level.price.isFinite && level.price > 0 && level.quantity.isFinite && level.quantity >= 0
   }
 
   /// `within` 给了时，区间以外的新价位不收（删单 quantity == 0 照删）。

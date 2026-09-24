@@ -260,6 +260,10 @@ pub async fn run(socket:Socket,events:mpsc::Sender<Event>,mut commands:mpsc::Rec
  let decoder=Decoder::new(&socket);
  let ids:Vec<String>=socket.venues.iter().map(|v|v.id.clone()).collect();
  let mut backoff=Duration::from_secs(1);
+ // 跟踪器只给带簿的连接留命令口；只订成交的那条（币安 U 本位 aggTrade）从来没有发送端，
+ // `recv()` 立刻回 None——不能把它当成「跟踪器停了」退出（2026-09-24 线上就是这样丢了全部 U 本位成交），
+ // 关掉这条分支接着转帧就是。跟踪器停了的判据是 `events` 那头关了。
+ let mut commands_open=true;
  loop {
   if events.is_closed() {return}
   let ws=match open(&socket).await {
@@ -296,8 +300,8 @@ pub async fn run(socket:Socket,events:mpsc::Sender<Event>,mut commands:mpsc::Rec
       if events.send(event).await.is_err() {return}
      }
     },
-    command=commands.recv()=>{
-     let Some(Resubscribe(venue))=command else {return};
+    command=commands.recv(),if commands_open=>{
+     let Some(Resubscribe(venue))=command else {commands_open=false;continue};
      match socket.kind {
       Kind::Okx=>{
        let Some(v)=socket.venues.iter().find(|v|v.id==venue) else {continue};
