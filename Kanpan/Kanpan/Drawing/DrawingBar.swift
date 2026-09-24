@@ -119,11 +119,12 @@ struct DrawingBar: View {
       startPoint: .leading, endPoint: .trailing))
   }
 
-  /// 一把工具：记号在前、短名在后——横屏那根栏和这排 chip 认的是同一套形状（`DrawKindGlyph`）。
+  /// 一把工具：记号在前、名字在后——横屏那根栏和这排 chip 认的是同一套形状（`DrawKindGlyph`），
+  /// 名字也是同一个 `title`，和工具面板上那一格一字不差（审查 U11）。
   ///
   private func toolChip(_ kind: Drawing.Kind, pad: Double) -> some View {
     Button { controller.pick(kind) } label: {
-      HStack(spacing: 5) { DrawKindGlyph(kind: kind, size: 18); Text(kind.shortTitle).fixedSize() }
+      HStack(spacing: 5) { DrawKindGlyph(kind: kind, size: 18); Text(kind.title).fixedSize() }
     }
     .padding(.horizontal, pad).frame(minHeight: 44)
     .background(controller.tool == kind ? theme.amberSoft : .clear, in: RoundedRectangle(cornerRadius: 8))
@@ -421,12 +422,13 @@ struct DrawingDock: View {
   /// 不然换了一把这条上没摆的线（长按重复画留下的，或者老版本存的），
   /// 条上没有任何一格是亮的，看不出手里正拿着东西。
   private var toolsButton: some View {
-    let held = controller.tool.flatMap { Drawing.Kind.palette.contains($0) ? nil : $0.shortTitle }
+    let held = controller.tool.flatMap { Drawing.Kind.palette.contains($0) ? nil : $0.title }
     return Button { controller.openTools() } label: {
       VStack(spacing: 1) {
         Image(systemName: "pencil.line").font(.system(size: 17))
-        Text(held ?? "工具").lineLimit(1).minimumScaleFactor(0.8)
-      }.frame(width: 54, height: Self.height).contentShape(Rectangle())
+        Text(held ?? "工具").lineLimit(1).fixedSize()
+      }.frame(minWidth: 54, minHeight: Self.height).padding(.horizontal, held == nil ? 0 : 4)
+        .contentShape(Rectangle())
     }
     .foregroundStyle(held != nil || controller.picker ? theme.amber : theme.ink2)
     .background(controller.picker ? theme.amberSoft : .clear)
@@ -437,7 +439,9 @@ struct DrawingDock: View {
     Button { controller.pick(kind) } label: {
       VStack(spacing: 1) {
         DrawKindGlyph(kind: kind, size: 20)
-        Text(kind.shortTitle).lineLimit(1).minimumScaleFactor(0.8)
+        // 名字写全、不许截（审查 U11：「VWAP」曾被截成「VW」）——这一格在横滚区里，
+        // 要多宽给多宽，`fixedSize` 让它按字的真宽度排。
+        Text(kind.title).lineLimit(1).fixedSize()
       }.frame(minWidth: 46, minHeight: Self.height).padding(.horizontal, 2).contentShape(Rectangle())
     }
     .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)

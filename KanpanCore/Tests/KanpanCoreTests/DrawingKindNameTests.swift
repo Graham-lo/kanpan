@@ -18,6 +18,15 @@ struct DrawingKindNameTests {
     }
   }
 
+  /// 审查 U11：面板、画线栏、横屏那根条原来是两套名字（「斐波那契回撤」对「回撤」）。
+  /// 现在只有 `title` 一份；面板上十二格名字各不相同，才能拿名字认工具。
+  @Test("面板上十二把工具各有一个名字，全是中文")
+  func paletteNamesAreOneSet() {
+    let names = Drawing.Kind.palette.map(\.title)
+    #expect(Set(names).count == names.count, "\(names)")
+    #expect(names.allSatisfy { !$0.isEmpty && !$0.contains("VWAP") })
+  }
+
   @Test("向右延伸 / 两端延伸 / 十字线")
   func namesMatchTheStyleSheet() {
     #expect(Drawing.Kind.ray.title == "向右延伸")

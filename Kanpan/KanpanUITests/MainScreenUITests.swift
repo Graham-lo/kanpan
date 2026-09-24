@@ -410,6 +410,59 @@ final class MainScreenUITests: KanpanUICase {
                   "退回竖屏后均线没回来：\(chartInfo()["overlays"] ?? "?")")
   }
 
+  /// 审查 U11：横屏画线台上品种名和竖屏一个写法、工具只有一套名字、出口只有「完成」。
+  ///
+  /// - 品种名「BTC/USDT」，不是裸代号「BTCUSDT」；
+  /// - 底下那根条上每一把工具念出来和写出来的都是面板上那个名字（`Drawing.Kind.title`），
+  ///   字按真宽度排，不许截（「VWAP」曾被截成「VW」）；
+  /// - 画线进行中右边那根侧栏（「画线」「竖屏」）不在，也没有「返回」，只有「完成」；
+  /// - 工具面板标题叫「画线」。
+  func testLandscapeWorkbenchOneNameOneExit() {
+    func shot(_ name: String) {
+      let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
+    }
+    XCTAssertTrue(app.tapDrawEntry(), "标签栏上没有「画线」")
+    let symbol = app.descendants(matching: .any).matching(identifier: Ids.landscapeSymbol).firstMatch
+    expectExists(symbol, Self.long, "点「画线」没横过去")
+    XCTAssertTrue(symbol.label.contains("BTC") && symbol.label.contains("/USDT") && !symbol.label.contains("BTCUSDT"),
+                  "横屏品种名念出来是「\(symbol.label)」，和竖屏的「BTC/USDT」不是一个写法")
+
+    let titles: [(id: String, title: String)] = [
+      ("hline", "水平线"), ("trend", "趋势线"), ("vline", "垂直线"), ("channel", "平行通道"),
+      ("fibonacci", "斐波那契回撤"), ("fibExtension", "斐波那契扩展"), ("measure", "价时测量"),
+      ("note", "文字标注"), ("anchoredVWAP", "锚定均价线"), ("fixedVolumeProfile", "区间成交量分布"),
+      ("anchoredVolumeProfile", "锚定成交量分布"), ("position", "多空持仓框"),
+    ]
+    for (id, title) in titles {
+      let tool = app.buttons["draw." + id]
+      expectExists(tool, Self.short, "画线条上没有「\(title)」")
+      XCTAssertEqual(tool.label, title, "\(id) 念出来是「\(tool.label)」，和工具面板上的名字不一样")
+      let text = tool.staticTexts[title]
+      XCTAssertTrue(text.exists, "\(id) 条上写的不是「\(title)」")
+      // 10pt 的汉字一个字九点多宽；按字数算出来的宽度都不到，就是被截了。
+      XCTAssertGreaterThanOrEqual(text.frame.width, CGFloat(title.count) * 9,
+                                  "「\(title)」只排了 \(text.frame.width)pt 宽，被截了")
+    }
+
+    XCTAssertTrue(app.buttons[Ids.drawFinish].exists, "画线台上没有「完成」")
+    XCTAssertFalse(app.buttons["land.exit"].exists, "画线进行中「竖屏」还在，出口成了两个")
+    XCTAssertFalse(app.buttons["land.draw"].exists, "画线进行中侧栏的「画线」还在")
+    XCTAssertFalse(app.buttons["返回"].exists, "画线台上还有一个「返回」")
+
+    app.buttons["draw.tools"].tap()
+    let tile = app.buttons["draw.tool.fibonacci"]
+    expectExists(tile, Self.short, "笔形入口没开出工具面板")
+    XCTAssertTrue(app.staticTexts["画线"].exists, "工具面板的标题不是「画线」")
+    XCTAssertTrue(tile.label.contains("斐波那契回撤"), "面板上那一格念出来是「\(tile.label)」")
+    shot("横屏画线台-工具面板")
+    app.buttons["draw.sheet.done"].tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !tile.exists }, "工具面板关不掉")
+    shot("横屏画线台-一套名字")
+
+    app.buttons[Ids.drawFinish].tap()
+    expectExists(app.buttons[Ids.bottomSettings], Self.long, "点「完成」没自己转回竖屏")
+  }
+
   // ---------------------------------------------------------------- 回到最新
 
   /// 「回到最新」：视野在最新一根上时它不在，往回拖一段就出现，点一下又消失。

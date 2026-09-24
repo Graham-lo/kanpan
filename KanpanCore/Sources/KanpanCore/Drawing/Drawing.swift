@@ -91,39 +91,10 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       case .anchoredVolumeProfile: "锚定成交量分布"
       }
     }
-    public var shortTitle: String {
-      switch self {
-      case .fibonacci: "回撤"
-      case .channel: "通道"
-      case .measure: "测量"
-      case .position: "持仓框"
-      case .regression: "回归"
-      case .fibExtension: "扩展"
-      case .priceRange: "价区"
-      case .dateRange: "日区"
-      case .note: "文字"
-      case .pitchfork: "分叉"
-      case .fibChannel: "斐通道"
-      case .datePriceRange: "价时区"
-      case .fibTimeZone: "时区"
-      case .fibFan: "扇形"
-      case .gannBox: "江恩箱"
-      case .gannFan: "江恩扇"
-      case .xabcd: "XABCD"
-      case .abcd: "ABCD"
-      case .headShoulders: "头肩"
-      case .elliottImpulse: "推动浪"
-      case .elliottCorrection: "调整浪"
-      case .callout: "气泡"
-      case .priceLabel: "价签"
-      case .markerUp: "上箭头"
-      case .markerDown: "下箭头"
-      case .anchoredVWAP: "均价线"
-      case .fixedVolumeProfile: "区间量分布"
-      case .anchoredVolumeProfile: "锚定量分布"
-      default: title
-      }
-    }
+    // 这儿原来还有一份 `shortTitle`：画线栏和横屏那根条上写「回撤」「通道」「扩展」「测量」
+    // 「文字」，工具面板上写「斐波那契回撤」「平行通道」……同一把工具两个名字，人得自己对上号
+    // （2026-09-24 审查 U11）。现在只有 `title` 一份：面板、两根条、选中条、提醒、读屏都叫它。
+    // 条是横着滚的，名字长一点只是多划一下，不会挤掉右边那几个固定动作。
     /// 存几个点。
     public var pointCount: Int {
       switch self {

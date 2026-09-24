@@ -18,12 +18,26 @@ struct LandscapeHeadline: View {
   var onTapSymbol: (() -> Void)?
 
   private var up: Bool { (changePercent ?? 0) >= 0 }
+  /// 拆法和 `TopBar` 同一把：`SymbolInfo.placeholder` 认得币安裸代号和别家带分隔的代号。
+  private var pair: (base: String, quote: String) {
+    let info = SymbolInfo.placeholder(symbol: symbol)
+    return (info.base, info.quote)
+  }
 
   var body: some View {
     HStack(spacing: 8) {
-      Text(InstrumentID(symbol).display)
-        .font(.system(size: 13, weight: .semibold))
-        .foregroundStyle(theme.ink)
+      // 和竖屏顶栏同一个写法「BTC/USDT」：基础币正文色、计价币降一级（审查 U11——
+      // 原来写的是裸代号「BTCUSDT」，转个屏品种名就换了个样子）。
+      HStack(alignment: .firstTextBaseline, spacing: 1) {
+        Text(pair.base)
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(theme.ink)
+        if !pair.quote.isEmpty {
+          Text("/" + pair.quote)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(theme.ink3)
+        }
+      }
       if onTapSymbol != nil {
         Image(systemName: "chevron.down")
           .font(.system(size: 8, weight: .bold))
