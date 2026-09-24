@@ -27,6 +27,11 @@ extension CoinSpec {
       ?? chainsA[key] ?? chainsB[key]
   }
 
+  /// 临时对账用（审查第 18 项）：八张表按查表顺序原样交出去，删表时一起删。
+  static var legacyBrandTables: [[String: CoinSpec]] {
+    [chips, software, consumer, finance, industry, asia, chainsA, chainsB]
+  }
+
   // ---------------------------------------------------------------- 半导体与硬件
 
   private static let chips: [String: CoinSpec] = [

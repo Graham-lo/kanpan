@@ -109,6 +109,40 @@ struct CoinSpec {
   static func stroke(_ d: [String], _ w: Double) -> Mark { .parts([Part(d: d, stroke: w)]) }
 }
 
+// MARK: - 从资源文件读
+
+/// 品牌标表住在 `Resources/CoinBadgeBrands.json`（一条一个代号：`from` / `to` / `inset` /
+/// `mark`，外加写设计依据的 `note` 和原来那张小表的标题 `group`，后两样只给人看，这里不读）。
+/// `Hex` 自己的 Codable 是按对象编的，JSON 里写的是裸字符串，所以这儿手写解码。
+extension CoinSpec: Decodable, Equatable {
+  private enum Key: String, CodingKey { case from, to, inset, mark }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: Key.self)
+    self.init(
+      from: Hex(try c.decode(String.self, forKey: .from)),
+      to: Hex(try c.decode(String.self, forKey: .to)),
+      mark: try c.decode(Mark.self, forKey: .mark),
+      inset: try c.decodeIfPresent(CGFloat.self, forKey: .inset) ?? 0.62)
+  }
+}
+
+extension CoinSpec.Part: Decodable, Equatable {}
+
+/// `{"text": "₿"}` 或 `{"parts": [{"d": [...], "stroke": 2.1}, ...]}`，两样必居其一。
+extension CoinSpec.Mark: Decodable, Equatable {
+  private enum Key: String, CodingKey { case text, parts }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: Key.self)
+    if let text = try c.decodeIfPresent(String.self, forKey: .text) {
+      self = .text(text)
+    } else {
+      self = .parts(try c.decode([CoinSpec.Part].self, forKey: .parts))
+    }
+  }
+}
+
 // MARK: - 品类记号
 
 extension CoinSpec {
@@ -231,6 +265,29 @@ extension CoinSpec {
     "OPENAI": CoinSpec(from: "#8FC7C0", to: "#2E7D6B", mark: stroke([
       "M12 3.6l7.3 4.2v8.4L12 20.4l-7.3-4.2V7.8z", "M12 8.4l3.4 2v4L12 16.4l-3.4-2v-4z"], 1.8)),
   ]
+}
+
+extension CoinSpec {
+  /// 资源文件里那张品牌标表，第一次用到时读一次、解一次（`static let` 本身就是惰性且只跑一次的）。
+  /// 读不到或解不开只在调试包里喊停；发布包退回空表，所有品种落到长尾标，不至于崩。
+  static let brandFile: [String: CoinSpec] = loadBrandFile(from: .main)
+
+  static func loadBrandFile(from bundle: Bundle) -> [String: CoinSpec] {
+    guard let url = bundle.url(forResource: "CoinBadgeBrands", withExtension: "json") else {
+      assertionFailure("app 包里没有 CoinBadgeBrands.json")
+      return [:]
+    }
+    do {
+      return try JSONDecoder().decode(BrandFile.self, from: Data(contentsOf: url)).brands
+    } catch {
+      assertionFailure("CoinBadgeBrands.json 解不开：\(error)")
+      return [:]
+    }
+  }
+
+  struct BrandFile: Decodable {
+    var brands: [String: CoinSpec]
+  }
 }
 
 // MARK: - 品类归属
