@@ -40,10 +40,14 @@ public struct OrderFlowFacts: Sendable, Equatable {
 ///   每条连接一个 `DepthStream`。某家没有、某条连不上，只是少几本簿。
 /// - 门槛与步长：默认表（`OrderFlowDefaults`）叠用户改过的项（`setOverride`）；表里和用户都没给步长时，
 ///   按前一 UTC 日收盘 × 最小变动价推一个（`BucketScheme.derivedStep`），跨 UTC 日重算。
-/// - 服务端历史（2026-09-24）：kanpan-api 常驻跟踪大单生命周期、存 30 天。读完本地日志就取最近 24 小时并进模型，
+/// - 服务端历史（2026-09-24）：kanpan-api 常驻跟踪大单生命周期、存 3 天（2026-09-25 从 30 天收到 3 天）。读完本地日志就取最近 24 小时并进模型，
 ///   之后每分钟取一次增量（从上一页最晚的时刻往前退 5 分钟接着取）；图往左拖到已取区间之外，就 24 小时一段往前补，
-///   最多到 30 天（或服务端开始跟这只的时刻）。取不到就当没有，纯本地照常，不报错、不提示。
+///   最多到 3 天（`OrderFlowDefaults.retentionMs`，或服务端开始跟这只的时刻）。取不到就当没有，纯本地照常，不报错、不提示。
 ///   合并规则见 `OrderFlowModel.mergeHistory`。
+/// - 非币默认门槛标定（2026-09-25）：非币、且不在固定表里的品种，默认门槛按簿深标定
+///   （`OrderFlowDefaults.calibratedThreshold`）。所有簿都拿到首张快照就立刻算；订阅起来 8 秒还没齐，
+///   有一本就按已有的算，一本都没有用兜底 200 万。算一次，这条订阅里不再变。标定出来之前不评估、
+///   不读回日志、不取服务端历史（只出「加载中」），免得兜底门槛把 200 万以下的单删掉或挡在外面。
 /// - 落盘：大单本身（不含簿）按品种记一份小日志（`<目录>/<品种>.json`，只存 24 小时、最多 5000 条，约 1 MB），
 ///   再打开这只时读回来接着画；更早的每次从服务端取，不落盘；不同步。
 public actor OrderFlowFeed {
@@ -125,7 +129,7 @@ public actor OrderFlowFeed {
   private var historyFromMs: Int64?
   /// 增量从哪儿接着取（上一页最晚的出现 / 结束时刻）。
   private var historyCursorMs: Int64?
-  /// 服务端从什么时候开始跟这只（封顶 30 天前）：往左补到这里为止。
+  /// 服务端从什么时候开始跟这只（封顶 3 天前）：往左补到这里为止。
   private var historyTrackedSinceMs: Int64?
   /// 上一次取首次页 / 增量的时刻（不论成败）。
   private var historyPulledMs: Int64 = .min / 2
@@ -137,6 +141,16 @@ public actor OrderFlowFeed {
   private var historyFetch: Task<Void, Never>?
   /// 图上此刻看的时间范围（最左 K 线的时刻往前补、淘汰时优先留它）。
   private var visibleFromMs: Int64?
+
+  // 非币默认门槛标定（见文件头）。
+  /// 还在等标定：不评估、不读回日志、不取服务端历史。币与固定表里的品种一开始就是 false。
+  private var calibrating: Bool
+  /// 标定出来的门槛；标定不出（一本簿都没到）或不用标定是 nil。
+  private var calibrated: Double?
+  /// 订阅起来（簿都加进模型）之后到这个时刻还没齐，就按已有的算。
+  private var calibrationDeadlineMs: Int64?
+  /// 等标定期间读到的日志，标定完再交给模型。
+  private var deferredJournal: OrderFlowJournal?
 
   /// - Parameters:
   ///   - symbol: 品种键（`InstrumentID.canonical`），吐出去的快照带的就是它。
@@ -170,6 +184,7 @@ public actor OrderFlowFeed {
     self.precise = precise
     self.log = log
     self.sink = sink
+    self.calibrating = OrderFlowDefaults.needsCalibration(base: facts.overrideKey, asset: facts.asset)
     (frames, frameSink) = AsyncStream.makeStream(of: OrderFlowSnapshot.self, bufferingPolicy: .bufferingNewest(8))
     // 日志不在这里读：同一只切走再切回时，旧的那条可能还在停、还没落盘（审查第 40 项），读挪到 `start`。
     self.model = OrderFlowModel(symbol: symbol,
@@ -191,10 +206,11 @@ public actor OrderFlowFeed {
               precise: precise, log: log, sink: sink)
   }
 
-  /// 此刻生效的门槛与步长：默认表 → 叠用户改过的项 → 还没有步长就用按收盘推的那个。
+  /// 此刻生效的门槛与步长：默认表（非币用标定出的门槛）→ 叠用户改过的项 → 还没有步长就用按收盘推的那个。
   static func effective(facts: OrderFlowFacts, turnover: Double?, override: OrderFlowOverride?,
-                        derivedStep: Double?) -> OrderFlowThresholds {
-    var t = OrderFlowDefaults.thresholds(base: facts.overrideKey, asset: facts.asset, turnover24h: turnover)
+                        derivedStep: Double?, calibrated: Double? = nil) -> OrderFlowThresholds {
+    var t = OrderFlowDefaults.thresholds(base: facts.overrideKey, asset: facts.asset, turnover24h: turnover,
+                                         calibrated: calibrated)
       .applying(override)
     if t.step == nil { t.step = derivedStep }
     return t
@@ -270,6 +286,8 @@ public actor OrderFlowFeed {
     let now = clock()
     guard let journal = (try? Data(contentsOf: file)).flatMap(OrderFlowJournal.decode),
           journal.symbol == symbol, now - journal.savedAtMs < OrderFlowDefaults.journalRetentionMs else { return }
+    // 默认门槛还在等标定：先放着，标定完再读回（兜底 200 万会把标定门槛以上、200 万以下的单删掉）。
+    if calibrating { deferredJournal = journal; return }
     model = OrderFlowModel(symbol: symbol, thresholds: model.thresholds, restored: journal)
   }
 
@@ -283,7 +301,8 @@ public actor OrderFlowFeed {
   }
 
   private func refreshThresholds() {
-    let next = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: derivedStep)
+    let next = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: derivedStep,
+                              calibrated: calibrated)
     guard next != model.thresholds else { return }
     // 步长一变模型整个清空重来：服务端历史也从头取（首次那一页），路上那一页作废。
     if next.step != model.thresholds.step { resetHistory() }
@@ -306,6 +325,7 @@ public actor OrderFlowFeed {
     let thresholds = model.thresholds
     let books = result.books.filter { thresholds[$0.venue.product] != nil }
     for book in books { model.addVenue(book.venue) }
+    if calibrating { calibrationDeadlineMs = clock() + OrderFlowDefaults.calibrationTimeoutMs }
     adapters = makeAdapters(books)
     log("主力订单流 \(symbol)：\(books.count) 本簿、\(adapters.count) 条连接\(result.fromCatalog ? "" : "（品种表没拿到，用保底）")")
     for (index, adapter) in adapters.enumerated() {
@@ -507,8 +527,9 @@ public actor OrderFlowFeed {
   }
 
   /// 有该取的就取（同一时刻只有一页在路上）。每一拍评估、改门槛、图挪了都来问一次，开销只是几个比较。
+  /// 默认门槛还在等标定时不取：按兜底 200 万并进来的页会把 200 万以下的单挡在外面。
   private func pumpHistory() {
-    guard started, !stopped, historyFetch == nil, let job = nextHistoryJob(nowMs: clock()) else { return }
+    guard started, !stopped, !calibrating, historyFetch == nil, let job = nextHistoryJob(nowMs: clock()) else { return }
     let load = loadHistory, base = facts.overrideKey, generation = historyGeneration
     historyFetch = Task { [weak self] in
       let page = await load(base, job.fromMs, job.toMs)
@@ -574,9 +595,14 @@ public actor OrderFlowFeed {
     guard !stopped else { return }
     let now = clock()
     escalateStaleResubscribes(nowMs: now)
+    if calibrating { calibrate(nowMs: now) }
     pumpHistory()
-    var frame = model.evaluate(nowMs: now)
-    frame.defaults = Self.effective(facts: facts, turnover: turnover, override: nil, derivedStep: nil)
+    // 标定之前出「加载中」、不带门槛与默认：面板那时按品种事实查表（兜底 200 万），标定完换成标定值。
+    var frame = calibrating ? OrderFlowSnapshot.loading(symbol, asOfMs: now) : model.evaluate(nowMs: now)
+    if !calibrating {
+      frame.defaults = Self.effective(facts: facts, turnover: turnover, override: nil, derivedStep: nil,
+                                      calibrated: calibrated)
+    }
     if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
     if let last = lastEmitted, now - lastEmitMs < Self.heartbeatMs, Self.skip(frame, after: last,
                                                                              sinceLastMs: now - lastEmitMs,
@@ -584,6 +610,31 @@ public actor OrderFlowFeed {
     lastEmitted = frame
     lastEmitMs = now
     frameSink.yield(frame)
+  }
+
+  /// 非币默认门槛标定：所有簿都拿到首张快照就算；到点（订阅起来 8 秒）时有一本就按已有的算，一本都没有用兜底。
+  /// 簿还没加进模型（品种表还在取）不算到点；一本簿都没有的品种直接用兜底。
+  private func calibrate(nowMs now: Int64) {
+    guard let deadline = calibrationDeadlineMs else { return }
+    let depth = model.calibrationDepth()
+    let complete = depth.total > 0 && depth.ready == depth.total
+    guard complete || depth.total == 0 || now >= deadline else { return }
+    calibrating = false
+    calibrationDeadlineMs = nil
+    calibrated = depth.ready > 0 ? OrderFlowDefaults.calibratedThreshold(depth: depth.depth) : nil
+    let shown = calibrated.map { "\(Int($0))" } ?? "标定不出，用兜底 \(Int(OrderFlowDefaults.tradfiPerpetual))"
+    log("主力订单流 \(symbol)：默认门槛按簿深标定 \(shown)（±1% 簿深 \(Int(depth.depth))，\(depth.ready)/\(depth.total) 本簿）")
+    let next = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: derivedStep,
+                              calibrated: calibrated)
+    if next != model.thresholds {
+      if next.step != model.thresholds.step { resetHistory() }
+      model.setThresholds(next)
+    }
+    if let journal = deferredJournal {
+      deferredJournal = nil
+      model.restore(journal)
+    }
+    lastEmitted = nil  // 标定完立刻出一帧
   }
 
   /// 心跳之内这一帧发不发：画出来有变化就发；只是金额变了，十字线停着就发、否则隔 `amountRefreshMs` 发一次。
@@ -611,5 +662,6 @@ public actor OrderFlowFeed {
   // MARK: - 测试
 
   func modelForTests() -> OrderFlowModel { model }
+  func calibratedForTests() -> (pending: Bool, value: Double?) { (calibrating, calibrated) }
   func historyRangeForTests() -> (from: Int64?, cursor: Int64?) { (historyFromMs, historyCursorMs) }
 }

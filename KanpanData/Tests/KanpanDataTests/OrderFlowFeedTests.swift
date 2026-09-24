@@ -102,6 +102,23 @@ private let okxCoin = DepthBook(venue: OrderFlowVenue(
 
 private let eth = OrderFlowFacts(base: "ETH", asset: .crypto, tick: 0.01, turnover24h: 1e10)
 
+/// 流内快照即就绪的 U 本位永续（OKX 那种）：非币标定用。
+private let okxPerp = DepthBook(venue: OrderFlowVenue(
+  exchange: "okx", label: "OKX", product: .usdtPerp, instrument: "SNDK-USDT-SWAP", notional: .linear(multiplier: 1),
+  sequenceModel: .previousFinalExact, snapshotInBand: true))
+/// 美股：步长照表 1。
+private let sndk = OrderFlowFacts(base: "SNDK", asset: .equity, tick: 0.01)
+/// `deepSnapshot` 中间价 ±1% 两侧的美元名义：买侧 1599…1584（1590 那档是墙），卖侧 1601…1616。
+/// 0.03 × 26 521 500 ≈ 79.6 万 → round125 → 100 万。
+private let deepSnapshotDepth: Double = {
+  var d = 0.0
+  for k in 1...16 {
+    let bid = 1_600 - Double(k)
+    d += bid * (bid == 1_590 ? 12_000 : 150) + (1_600 + Double(k)) * 150
+  }
+  return d
+}()
+
 /// 服务端历史假件：记下每一次问的区间，按脚本回一页（nil = 服务端不通）。
 private actor HistoryServer {
   struct Call: Equatable { var base: String; var from: Int64; var to: Int64 }
@@ -116,11 +133,11 @@ private actor HistoryServer {
   var count: Int { calls.count }
 }
 
-/// 服务端那一页：ETH 的默认门槛与步长（每个币的价，步长 1），从 30 天前开始跟。
+/// 服务端那一页：ETH 的默认门槛与步长（每个币的价，步长 1），从 3 天前开始跟（服务端只存 3 天）。
 private func historyPage(_ call: HistoryServer.Call, orders: [BigOrder], step: Double = 1) -> OrderFlowHistoryPage {
   OrderFlowHistoryPage(base: call.base,
                        thresholds: OrderFlowThresholds(spot: 1e6, usdtPerp: 5e6, coinPerp: 5e6, delivery: 5e6, step: step),
-                       trackedSinceMs: call.to - 30 * 86_400_000, fromMs: call.from, toMs: call.to, orders: orders)
+                       trackedSinceMs: call.to - 3 * 86_400_000, fromMs: call.from, toMs: call.to, orders: orders)
 }
 
 // MARK: - OrderFlowFeed
@@ -341,6 +358,91 @@ struct OrderFlowFeedTests {
     await feed.stop()
   }
 
+  @Test("非币默认门槛按簿深标定：簿都到齐就算；标定之前不评估、不读回日志、不取服务端历史；日志里兜底 200 万以下、标定门槛以上的单不被删",
+        .timeLimit(.minutes(1)))
+  func calibratesNonCryptoDefault() async throws {
+    #expect(OrderFlowDefaults.calibratedThreshold(depth: deepSnapshotDepth) == 1_000_000)
+    let dir = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    // 真钟：墙的出现确认要两拍相隔 ≥ 300 ms。
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    // 日志里一单 150 万（兜底 200 万下会被删，标定 100 万下留着），24 小时以内结束的。
+    let saved = BigOrder(venueID: okxPerp.id, exchange: "OKX", product: .usdtPerp, side: .ask, bucket: 1_650,
+                         price: 1_650, firstSeenMs: now - 3_600_000, endMs: now - 1_800_000,
+                         status: .cancelled, initialNotional: 1_500_000, notional: 1_500_000, threshold: 2_000_000)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try OrderFlowJournal(symbol: symbolKey, step: 1, savedAtMs: now, orders: [saved]).encoded()
+      .write(to: OrderFlowFeed.journalFile(in: dir, symbol: symbolKey))
+    let server = HistoryServer { _ in nil }
+    let okx = ScriptAdapter(name: "okx", books: [okxPerp],
+                            script: ["snap": [VenueMessage(okxPerp.id, .snapshot(deepSnapshot(last: 100)))]])
+    let frames = Frames()
+    let feed = makeFeed([okx], facts: sndk, dir: dir, frames: frames, history: { await server.load($0, $1, $2) })
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(await feed.calibratedForTests().pending)
+    #expect(await server.count == 0, "标定之前不取服务端历史")
+    #expect(await feed.modelForTests().orders.isEmpty, "标定之前不读回日志")
+    #expect(await frames.last?.phase == .loading)
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    #expect(await waitUntil(5) { await frames.last?.thresholds.usdtPerp == 1_000_000 })
+    #expect(await feed.calibratedForTests().value == 1_000_000)
+    #expect(await frames.last?.defaults == OrderFlowThresholds(usdtPerp: 1_000_000, step: 1), "面板的默认门槛是标定值")
+    #expect(await waitUntil(5) { await frames.last?.orders.contains { $0.id == saved.id } == true })
+    #expect(await waitUntil(5) { await frames.last?.orders.contains { $0.isLive && $0.price == 1_590 } == true })
+    #expect(await waitUntil(5) { await server.count >= 1 }, "标定完才取服务端历史")
+    // 用户改过的优先；默认仍是标定值。
+    await feed.setOverride(OrderFlowOverride(usdtPerp: 3_000_000))
+    #expect(await waitUntil(5) { await frames.last?.thresholds.usdtPerp == 3_000_000 })
+    #expect(await frames.last?.defaults.usdtPerp == 1_000_000)
+    await feed.stop()
+  }
+
+  @Test("非币标定到点：8 秒时有一本到了就按已有的算；一本都没到用兜底 200 万", .timeLimit(.minutes(1)))
+  func calibrationTimesOut() async throws {
+    // 一本到了、一本永远拉不到快照（REST 404）。
+    let clock = TestClock()
+    let okx = ScriptAdapter(name: "okx", books: [okxPerp],
+                            script: ["snap": [VenueMessage(okxPerp.id, .snapshot(deepSnapshot(last: 100)))]])
+    let stuck = ScriptAdapter(name: "binance", books: [binancePerp], script: [:])
+    let frames = Frames()
+    let feed = makeFeed([okx, stuck], facts: sndk, dir: nil, frames: frames, clock: clock)
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(await feed.calibratedForTests().pending, "还有一本没到，没到点就接着等")
+    clock.advance(OrderFlowDefaults.calibrationTimeoutMs)
+    #expect(await waitUntil(5) { await feed.calibratedForTests().pending == false })
+    #expect(await feed.calibratedForTests().value == 1_000_000)
+    #expect(await waitUntil(5) { await frames.last?.thresholds.usdtPerp == 1_000_000 })
+    await feed.stop()
+
+    // 一本都没到：兜底。
+    let clock2 = TestClock()
+    let frames2 = Frames()
+    let none = makeFeed([ScriptAdapter(name: "binance", books: [binancePerp], script: [:])], facts: sndk, dir: nil,
+                        frames: frames2, clock: clock2)
+    await none.start()
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(await none.calibratedForTests().pending)
+    clock2.advance(OrderFlowDefaults.calibrationTimeoutMs)
+    #expect(await waitUntil(5) { await none.calibratedForTests().pending == false })
+    #expect(await none.calibratedForTests().value == nil)
+    #expect(await waitUntil(5) { await frames2.last?.thresholds.usdtPerp == 2_000_000 })
+    #expect(await frames2.last?.defaults.usdtPerp == 2_000_000)
+    await none.stop()
+  }
+
+  @Test("币与固定表里的品种不等标定")
+  func cryptoDoesNotCalibrate() async throws {
+    let feed = makeFeed([], dir: nil, frames: Frames())
+    #expect(await feed.calibratedForTests().pending == false)
+    let btcLike = makeFeed([], facts: OrderFlowFacts(base: "BTC", asset: .equity), dir: nil, frames: Frames())
+    #expect(await btcLike.calibratedForTests().pending == false)
+  }
+
   @Test("门槛与步长：默认表 → 用户改过的项 → 没步长按前一日收盘推")
   func effectiveThresholds() async throws {
     let btc = OrderFlowFacts(base: "BTC", asset: .crypto)
@@ -405,15 +507,19 @@ struct OrderFlowFeedTests {
     // 服务端这一页没再提那单挂着的：本机没有这本簿、又没人续命，3 分钟后才按失联结束——这一拍它还在。
     #expect(await frames.last?.orders.count == 2)
 
-    // 图往左拖到 50 小时前：往前补两段（24–48、48–72 小时前），够了就停。
-    await feed.setVisibleWindow(fromMs: t0 - 50 * hour, toMs: t0 - 40 * hour)
+    // 图往左拖到 60 小时前：往前补两段（24–48 小时前、48 小时前到 3 天前），补到 3 天（留存上限）就停。
+    // 此刻已经是 t0 + 1 分钟，3 天的底是 t0 + 1 分钟 − 3 天。
+    let now = t0 + OrderFlowFeed.historyEveryMs
+    await feed.setVisibleWindow(fromMs: t0 - 60 * hour, toMs: t0 - 40 * hour)
     #expect(await waitUntil(5) { await server.count == 4 })
     let calls = await server.calls
     #expect(calls[2] == HistoryServer.Call(base: "ETH", from: t0 - 2 * day, to: t0 - day))
-    #expect(calls[3] == HistoryServer.Call(base: "ETH", from: t0 - 3 * day, to: t0 - 2 * day))
+    #expect(calls[3] == HistoryServer.Call(base: "ETH", from: now - OrderFlowDefaults.retentionMs, to: t0 - 2 * day))
+    // 再往左拖也不取 3 天以前的。
+    await feed.setVisibleWindow(fromMs: t0 - 5 * day, toMs: t0 - 4 * day)
     try await Task.sleep(for: .milliseconds(200))
     #expect(await server.count == 4)
-    #expect(await feed.historyRangeForTests().from == t0 - 3 * day)
+    #expect(await feed.historyRangeForTests().from == now - OrderFlowDefaults.retentionMs)
     await feed.stop()
   }
 

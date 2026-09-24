@@ -394,6 +394,15 @@ public struct OrderFlowModel: Sendable {
     if orders.count != before { journalDirty = true }
   }
 
+  /// 晚一点读回日志：非币的默认门槛要等簿到了按簿深标定（`OrderFlowDefaults.calibratedThreshold`），
+  /// 先用兜底 200 万读回的话，200 万以下、标定门槛以上的那些单会被 `requalify` 删掉。
+  /// 模型里已经有单（评估或服务端历史先到了）就不接，免得两份叠在一起。
+  public mutating func restore(_ journal: OrderFlowJournal) {
+    guard orders.isEmpty else { return }
+    pendingJournal = journal
+    restoreIfPossible()
+  }
+
   private mutating func restoreIfPossible() {
     guard let journal = pendingJournal, let scheme else { return }
     pendingJournal = nil
