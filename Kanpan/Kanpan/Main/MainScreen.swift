@@ -95,7 +95,7 @@ struct MainScreen: View {
   @State private var teardown = RootTeardown()
   @State private var grace = BackgroundGrace()
   @State private var proxy = ChartProxy()
-  @State private var review = ReviewFeature(directory: ReviewChartBridge.storageDirectory())
+  @State private var review = ReviewFeature()
   @State private var reviewChart = ReviewChartBridge()
 
   @State private var panel: Panel?

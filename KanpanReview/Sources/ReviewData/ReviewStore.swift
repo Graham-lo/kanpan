@@ -25,13 +25,15 @@ public enum ReviewStorageError: LocalizedError {
 /// A complete atomic archive is one transaction: a record and its upload cannot diverge.
 @MainActor public final class ReviewStore {
   public private(set) var archive: ReviewArchive
-  private let url: URL
-  private let replayURL: URL
-  private let draftURL: URL
+  /// 这份档案的全部文件位置（`ReviewPaths`）。
+  public let paths: ReviewPaths
+  private var url: URL { paths.archive }
+  private var replayURL: URL { paths.replay }
+  private var draftURL: URL { paths.draft }
   /// 「记一笔」自动存下来的那张图放哪儿（§4.3）。一条记录一张，文件名就是记录 id，
   /// 所以不需要索引，也不进主档——几百 KB 的 PNG 塞进那份每次改动都整份重写的
   /// JSON 里，等于每记一笔就把所有图重编码一遍。
-  private let shotsURL: URL
+  private var shotsURL: URL { paths.shots }
   private struct DraftFile: Codable { var draft: ReviewDraft? }
   private var positions: [String: ReviewReplayPosition]
   public var cloudCache = false
@@ -62,24 +64,23 @@ public enum ReviewStorageError: LocalizedError {
   ///
   /// 坏掉的那份不静默抹掉：先留一份 `.backup`（和 `DrawStore.save`、
   /// `PersonalFileStorage.write` 同一个做法），再按缺省值往下走。
-  public init(directory: URL) throws {
-    url = directory.appendingPathComponent("review-v1.json")
-    replayURL = directory.appendingPathComponent("replay-positions.json")
-    draftURL = directory.appendingPathComponent("draft-v1.json")
-    shotsURL = directory.appendingPathComponent("shots", isDirectory: true)
-    positions = Self.recover([String: ReviewReplayPosition].self, at: replayURL) ?? [:]
+  public convenience init(directory: URL) throws { try self.init(paths: ReviewPaths(directory: directory)) }
+  public init(paths: ReviewPaths) throws {
+    self.paths = paths
+    let directory = paths.directory
+    positions = Self.recover([String: ReviewReplayPosition].self, at: paths.replay) ?? [:]
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    if FileManager.default.fileExists(atPath: url.path) {
-      let value = try JSONDecoder().decode(ReviewArchive.self, from: Data(contentsOf: url))
+    if FileManager.default.fileExists(atPath: paths.archive.path) {
+      let value = try JSONDecoder().decode(ReviewArchive.self, from: Data(contentsOf: paths.archive))
       guard value.version == 1 else { throw ReviewStorageError.unreadable }
       archive = value
-      stamp = Self.fingerprint(url)
+      stamp = Self.fingerprint(paths.archive)
     } else { archive = ReviewArchive() }
-    if FileManager.default.fileExists(atPath: draftURL.path) {
+    if FileManager.default.fileExists(atPath: paths.draft.path) {
       // 解不动时 `recover` 给 nil，这儿要和「文件里明写着没有草稿」区分开：
       // 前者保留主档里那一份（登录时从访客档案并过来的草稿就住在那儿），
       // 后者照旧清空（草稿提交完 `saveDraft(nil)` 留下的就是它）。
-      if let saved = Self.recover(DraftFile.self, at: draftURL) {
+      if let saved = Self.recover(DraftFile.self, at: paths.draft) {
         archive.draft = saved.draft.flatMap { value in archive.records.contains(where: { $0.id == value.id }) ? nil : value }
       }
     }
@@ -124,7 +125,7 @@ public enum ReviewStorageError: LocalizedError {
 
   // MARK: - 那张图
 
-  private func shotURL(_ id: UUID) -> URL { shotsURL.appendingPathComponent(id.uuidString + ".png") }
+  private func shotURL(_ id: UUID) -> URL { paths.shot(id) }
   /// 这条记录的图。没有就是 nil，不抛——它只是一张图。
   public func shot(_ id: UUID) -> Data? { try? Data(contentsOf: shotURL(id)) }
   public func hasShot(_ id: UUID) -> Bool { FileManager.default.fileExists(atPath: shotURL(id).path) }

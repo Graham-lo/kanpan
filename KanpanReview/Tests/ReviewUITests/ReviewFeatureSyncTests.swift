@@ -173,7 +173,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
 
@@ -201,7 +201,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     await feature.loadHistory()
@@ -223,7 +223,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3])
@@ -240,7 +240,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     XCTAssertEqual(feature.pendingUploads, 0, "传完队列要空，图那条不许把后面的堵住")
 
     // 换一台设备：本机没有这张图，详情页去服务端拉。
-    let second = ReviewFeature(directory: makeDirectory())
+    let second = ReviewFeature()
     let secondStore = try ReviewStore(directory: directory.appendingPathComponent("other"))
     second.activate(store: secondStore, client: client(server))
     await second.loadHistory()
@@ -254,7 +254,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     feature.autoSync = false
@@ -278,7 +278,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     server.records = [first.id: first, older.id: older]
     server.page0 = [first.id]; server.page1 = [older.id]; server.cursor = "p1"
 
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     feature.autoSync = false
@@ -304,7 +304,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     XCTAssertEqual(feature.tab, "todo", "复盘本每次**打开**都落在待办（§2G2）")
@@ -330,7 +330,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     server.records = [mine.id: theirs]; server.page0 = [mine.id]
     server.reflectionRejections = 1
 
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     try store.transaction { $0.records = [mine] }
     feature.activate(store: store, client: client(server))
@@ -382,7 +382,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
       server.reflectionRejections = 1
       server.reflectionRejection = AccountError.http(status, code)
 
-      let feature = ReviewFeature(directory: directory)
+      let feature = ReviewFeature()
       let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
       try store.transaction { $0.records = [mine] }
       feature.activate(store: store, client: client(server))
@@ -422,7 +422,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     server.records = [mine.id: theirs]; server.page0 = [mine.id]
     server.reflectionRejections = 1
 
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     try store.transaction { $0.records = [mine] }
     feature.activate(store: store, client: client(server))
@@ -457,7 +457,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     server.records = [mine.id: theirs]; server.page0 = [mine.id]
     server.reflectionRejections = 1
 
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     try store.transaction { $0.records = [mine] }
     feature.activate(store: store, client: client(server))
@@ -479,7 +479,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let server = FakeReviewServer()
     server.createFailure = URLError(.notConnectedToInternet)
 
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     let draft = validDraft()
@@ -515,7 +515,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
       "proof": ["compatible_groups": ["sig-1": ["numerator": 0, "denominator": 1,
                                                 "verdict_status": "insufficient", "recheck": false]]],
     ]
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
 
@@ -530,7 +530,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
     server.statsFailure = ScorebookError.http(503, "temporarily_unavailable")
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
 
@@ -548,7 +548,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
       "proof": ["compatible_groups": ["sig-1": ["numerator": 26, "denominator": 40,
                                                 "verdict_status": "verdict_due", "recheck": true]]],
     ]
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     await feature.loadStatistics()
@@ -570,7 +570,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
       "proof": ["compatible_groups": ["sig-1": ["numerator": 26, "denominator": 40,
                                                 "verdict_status": "verdict_due"]]],
     ]
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let first = try ReviewStore(directory: directory.appendingPathComponent("first"))
     feature.activate(store: first, client: client(server))
     await feature.loadStatistics()
@@ -594,7 +594,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     var heard: [ReviewFeedback] = []
@@ -626,7 +626,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
     var said: [String] = []
@@ -659,7 +659,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     feature.undoWindow = .milliseconds(50)
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
@@ -686,7 +686,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
     mine.serverId = mine.id; mine.revision = 1
     server.records = [mine.id: mine]; server.page0 = [mine.id]
 
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     try store.transaction { $0.records = [mine] }
     feature.activate(store: store, client: client(server))

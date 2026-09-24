@@ -108,7 +108,7 @@ final class ReviewSyncCharacterizationTests: XCTestCase {
                                       seed: [ReviewRecord] = []) throws -> (ReviewFeature, ReviewStore) {
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     if !seed.isEmpty { try store.transaction { $0.records = seed } }
-    let feature = ReviewFeature(directory: directory)
+    let feature = ReviewFeature()
     let client = ScorebookClient(connection: ReviewConnection(baseURL: URL(string: "https://example.invalid")!),
                                  transport: replay.transport)
     feature.activate(store: store, client: client)

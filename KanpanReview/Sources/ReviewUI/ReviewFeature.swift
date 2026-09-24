@@ -160,45 +160,20 @@ import ReviewData
     if store?.archive.queue.contains(where: { $0.recordId == id }) == true || local?.conflict != nil { return local }
     return history.first(where: { $0.id == id }) ?? local
   }
-  /// 云端那份 + 只活在本机的那几样。
-  ///
-  /// `conflict`（被隔离下来的上传）压根不在协议里，拉一次列表就会被抹掉；
-  /// 两个裁定版本只在详情响应的外层出现，列表里没有，也不能被 `nil` 盖掉。
-  private static func adopt(_ remote: ReviewRecord, over local: ReviewRecord) -> ReviewRecord {
-    var value = remote
-    value.conflict = local.conflict
-    // 还挂着未裁决的冲突时，人写的那份要留在屏幕上。
-    //
-    // 被隔离的那条上传里装的正是他刚写下的复盘，云端那份还没有它；这时候把云端那份
-    // 盖回来，他打开记录看到的是一段旧文字——「我明明写了」。内容在 `conflict.body`
-    // 里并没有丢，但界面上丢了就等于丢了（审查 B-02）。裁决完（`resolveConflict`）
-    // 冲突一清，这里自然就以云端为准。
-    if local.conflict != nil {
-      value.reflection = local.reflection
-      value.reflectionHistory = local.reflectionHistory
-      value.voided = local.voided || value.voided
-    }
-    if value.assessmentRevision == nil { value.assessmentRevision = local.assessmentRevision }
-    if value.reflectionAssessmentRevision == nil { value.reflectionAssessmentRevision = local.reflectionAssessmentRevision }
-    return value
-  }
   private var epoch = UUID()
   @ObservationIgnored private var store: ReviewStore?
   @ObservationIgnored private var attachmentCache: [UUID: Data] = [:]
   @ObservationIgnored private var client: ScorebookClient?
-  @ObservationIgnored private let directory: URL
   @ObservationIgnored private var searchTask: Task<Void, Never>?
   @ObservationIgnored private var syncTask: Task<Void, Never>?
   public var pendingCount: Int { records.filter(\.needsAction).count }
   public var isConnected: Bool { client != nil }
 
-  public init(directory: URL) {
-    self.directory = directory
-    do {
-      store = try ReviewStore(directory: directory.appendingPathComponent("local"))
-      reload()
-    } catch { notice = error.localizedDescription }
-  }
+  /// 不带档案也能构造：档案由宿主在装好账号那一刻 `activate(store:client:)` 注进来
+  /// （冷启动先装访客那份，登录后换账号那份）。以前这儿自己在 `local/` 开一份档案，
+  /// 那是账号化之前的老位置，只剩迁移还读它（`ReviewPaths.legacy`）——每次冷启动
+  /// 白读一遍、白建一个目录。
+  public init() {}
   public func activate(store: ReviewStore, client: ScorebookClient?) {
     syncTask?.cancel(); cancelSearch(); epoch = UUID(); syncID = UUID()
     self.store = store; self.client = client; store.cloudCache = client != nil
@@ -421,6 +396,20 @@ import ReviewData
     let requestEpoch = epoch
     let runID = UUID(); syncID = runID
     syncing = true
+    guard let store else { syncing = false; return }
+    // 一轮一个引擎：状态全在存档里，引擎自己不留跨轮次的东西（`ReviewSyncEngine`）。
+    let engine = ReviewSyncEngine(store: store, transport: client)
+    engine.stillCurrent = { [weak self] in self?.epoch == requestEpoch && self?.syncID == runID }
+    // 撤销窗口还没过的作废先不发（`holdVoid`）；窗口一过会再叫一次同步。
+    engine.isHeld = { [weak self] operation in
+      operation.kind == "void" && operation.recordId == self?.heldVoid && operation.attempted != true
+    }
+    engine.onChange = { [weak self, store] in self?.records = store.archive.records }
+    engine.onNotice = { [weak self] text in self?.notice = text }
+    engine.onAdopted = { [weak self] remote in
+      guard let self, let index = history.firstIndex(where: { $0.id == remote.id }) else { return }
+      history[index] = remote
+    }
     syncTask = Task { [weak self] in
       guard let self else { return }
       defer {
@@ -429,123 +418,9 @@ import ReviewData
           if let manual = syncAgain { syncAgain = nil; synchronize(manual: manual) }
         }
       }
-      do {
-        while var operation = store?.archive.queue.first {
-          try Task.checkCancellation()
-          guard epoch == requestEpoch && syncID == runID else { return }
-          // 撤销窗口还没过的作废先不发（`holdVoid`）；窗口一过会再叫一次同步。
-          if operation.kind == "void", operation.recordId == heldVoid, operation.attempted != true { return }
-          if operation.attempted != true {
-            // 图不是对记录内容的一次修改，没有版本可锁（服务端那条路也不读它）。
-            if operation.kind != "create", operation.kind != "shot",
-              let current = records.first(where: { $0.id == operation.recordId }),
-              var body = try JSONSerialization.jsonObject(with: operation.body) as? [String: Any] {
-              body["expectedRevision"] = current.revision
-              operation.body = try JSONSerialization.data(withJSONObject: body)
-            }
-            operation.attempted = true
-            let pending = operation
-            guard change({ archive in if let index = archive.queue.firstIndex(where: { $0.id == pending.id }) { archive.queue[index] = pending } }) else { return }
-          }
-          // 图那条不换回一份记录：服务端只答「收下了」。
-          let remote: ReviewRecord?
-          do {
-            switch operation.kind {
-            case "create": remote = try await client.create(operation)
-            case "shot": try await client.uploadShot(operation); remote = nil
-            default: remote = try await client.update(operation)
-            }
-          } catch {
-            if error is CancellationError { return }
-            guard epoch == requestEpoch && syncID == runID else { return }
-            // 三种结局，别再混成一种（审查 B-02）。
-            switch ReviewFailure.verdict(for: error) {
-            case .transient:
-              // 网络断了、凭证过期、服务端忙：这条**原样留在队首**，连幂等键一起留着，
-              // 下次同步一模一样地重发——幂等重试的前提就是同一个键配同一份 body。
-              notice = error.localizedDescription
-              _ = change { archive in
-                if let index = archive.records.firstIndex(where: { $0.id == operation.recordId }) {
-                  archive.records[index].syncError = error.localizedDescription
-                }
-              }
-              return
-            case .conflict, .rejected:
-              // 这条**再也发不出去**了。摘下来存成冲突（人写的内容一个字不丢），
-              // 队列接着往下跑：后面那些无关记录凭什么陪它一起卡死。
-              guard quarantine(operation, error: error) else { return }
-              continue
-            }
-          }
-          try Task.checkCancellation()
-          guard epoch == requestEpoch && syncID == runID else { return }
-          guard change({ archive in
-            archive.queue.removeAll { $0.id == operation.id }
-            if let remote, let i = archive.records.firstIndex(where: { $0.id == remote.id }) {
-              var merged = Self.adopt(remote, over: archive.records[i])
-              // 这一次成功的如果正是那条冲突的重发，冲突就算解了。
-              if merged.conflict?.kind == operation.kind { merged.conflict = nil }
-              if archive.queue.contains(where: { $0.recordId == remote.id && $0.kind == "reflection" }) { merged.reflection = archive.records[i].reflection }
-              if archive.queue.contains(where: { $0.recordId == remote.id && $0.kind == "void" }) { merged.voided = true }
-              archive.records[i] = merged
-            }
-          }) else { return }
-          if let remote, let index = history.firstIndex(where: { $0.id == remote.id }) { history[index] = remote }
-        }
-        do {
-          let page = try await client.list()
-          try Task.checkCancellation()
-          guard epoch == requestEpoch && syncID == runID else { return }
-          guard change({ archive in
-            for remote in page.records {
-              guard !archive.queue.contains(where: { $0.recordId == remote.id }) else { continue }
-              // `adopt` 而不是直接赋值：列表里没有 `conflict`，也没有那两个裁定版本。
-              // 直接盖回去，刚被隔离下来的那条冲突就在同一轮同步的末尾被自己抹掉了，
-              // 人再也看不到「有一条没传上去，等你裁决」（审查 B-02）。
-              if let i = archive.records.firstIndex(where: { $0.id == remote.id }) {
-                archive.records[i] = Self.adopt(remote, over: archive.records[i])
-              } else { archive.records.append(remote) }
-            }
-            archive.records.sort { $0.draft.created > $1.draft.created }
-            let protected = Set(archive.queue.map(\.recordId))
-            let recent = Set(archive.records.prefix(200).map(\.id))
-            archive.records.removeAll { $0.serverId != nil && !protected.contains($0.id) && !recent.contains($0.id) }
-
-          }) else { return }
-          onSyncComplete()
-        }
-      } catch is CancellationError {} catch {
-        guard epoch == requestEpoch && syncID == runID else { return }
-        notice = error.localizedDescription
-        if let id = store?.archive.queue.first?.recordId {
-          _ = change { archive in if let i = archive.records.firstIndex(where: { $0.id == id }) { archive.records[i].syncError = error.localizedDescription } }
-        }
-      }
+      if await engine.run() { onSyncComplete() }
     }
   }
-  /// 把一条再也发不出去的操作从队列里摘下来，内容原样存进这条记录的 `conflict`。
-  ///
-  /// 摘掉的是「这一次投递」，不是「人写的东西」：正文、备注、作废意图都在 `body` 里
-  /// 留着，等人裁决（`resolveConflict`）。
-  private func quarantine(_ operation: ReviewOperation, error: any Error) -> Bool {
-    let code = ReviewFailure.code(for: error)
-    let status = (error as? any ReviewFailureStatus)?.reviewStatusCode
-    let reason = ReviewFailure.message(code, status: status)
-    // 新建被拒没法「重新基准」——它本来就没有 expectedRevision 可以换；
-    // 4xx 的参数拒绝更是重发一万次都一样。这两种只给「留在本机」。
-    let retryable = ReviewFailure.verdict(for: error) == .conflict && operation.kind != "create"
-    let conflict = ReviewConflict(kind: operation.kind, code: code, reason: reason,
-                                  at: ReviewClock.now, body: operation.body, retryable: retryable)
-    notice = reason
-    return change { archive in
-      archive.queue.removeAll { $0.id == operation.id }
-      if let index = archive.records.firstIndex(where: { $0.id == operation.recordId }) {
-        archive.records[index].conflict = conflict
-        archive.records[index].syncError = nil
-      }
-    }
-  }
-
   /// 人对那条冲突的裁决（审查 B-02）。
   ///
   /// * `keepLocal = true`：拿服务端**最新版本**做基准，把本地那份内容重发一遍。
@@ -573,7 +448,7 @@ import ReviewData
       let operation = ReviewOperation(recordId: id, kind: conflict.kind, body: try JSONSerialization.data(withJSONObject: body))
       guard change({ archive in
         if let index = archive.records.firstIndex(where: { $0.id == id }) {
-          var merged = Self.adopt(latest, over: archive.records[index])
+          var merged = ReviewSyncEngine.adopt(latest, over: archive.records[index])
           merged.conflict = nil
           // 云端那份的备注不能盖掉人这边正要重发的那份。
           merged.reflection = archive.records[index].reflection
@@ -603,7 +478,7 @@ import ReviewData
       guard epoch == requestEpoch else { return }
       _ = change { archive in
         if let index = archive.records.firstIndex(where: { $0.id == latest.id }) {
-          archive.records[index] = Self.adopt(latest, over: archive.records[index])
+          archive.records[index] = ReviewSyncEngine.adopt(latest, over: archive.records[index])
         } else { archive.records.append(latest) }
       }
       if let index = history.firstIndex(where: { $0.id == latest.id }) { history[index] = latest }

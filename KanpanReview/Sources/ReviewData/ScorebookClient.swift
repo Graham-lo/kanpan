@@ -113,6 +113,7 @@ public struct NativeRecordResponse: Codable, Sendable {
   /// 而详情是翻记录时一条一条要的；本地没有、这儿写着有，才去取那一条路径。
   /// 老服务端不给这个键，当成「不知道」（nil），行为和以前一样。
   public var hasShot: Bool?
+  public init(record: ReviewRecord) { self.record = record }
   /// 把外层那三个字段贴回记录里，调用方只管用这一份。
   public var merged: ReviewRecord {
     var value = record
@@ -122,7 +123,10 @@ public struct NativeRecordResponse: Codable, Sendable {
     return value
   }
 }
-public struct NativeListResponse: Codable, Sendable { public var records: [ReviewRecord]; public var next: String? }
+public struct NativeListResponse: Codable, Sendable {
+  public var records: [ReviewRecord]; public var next: String?
+  public init(records: [ReviewRecord], next: String?) { self.records = records; self.next = next }
+}
 public struct NativeSearchResponse: Codable, Sendable { public var items: [ReviewMatch]; public var cutoff: Int64; public var next: String?; public var partial: Bool? }
 public struct NativeSearchJob: Codable, Sendable { public var id: UUID; public var status: String; public var cutoff: Int64; public var checked: Int?; public var total: Int?; public var error: String? }
 public struct NativeMatchResponse: Codable, Sendable { public var item: ReviewMatch }
@@ -339,9 +343,12 @@ public struct ScorebookClient: Sendable {
   ///
   /// 它不走 `update` 那条路：那条会被队列改写成带 `expectedRevision` 的形状，
   /// 而图不是对记录内容的一次修改，没有版本可锁。重复上传就是覆盖，天然幂等。
-  public func uploadShot(_ operation: ReviewOperation) async throws {
-    let _: OKResponse = try await request("v1/native-review/records/\(operation.recordId.uuidString)/shot",
-                                          method: "POST", body: operation.body, key: operation.id)
+  /// 线上的形状没变（`{"image": base64}`）；变的是字节从哪来——队列里只记 id，
+  /// 图本身在 `shots/<id>.png`，发的那一刻才读。
+  public func uploadShot(record: UUID, image: Data, key: UUID) async throws {
+    let body = try JSONEncoder().encode(["image": image.base64EncodedString()])
+    let _: OKResponse = try await request("v1/native-review/records/\(record.uuidString)/shot",
+                                          method: "POST", body: body, key: key)
   }
   /// 取回这条记录的图。没有就是 404，交给调用方当「没有」处理。
   public func shot(_ id: UUID) async throws -> Data? {

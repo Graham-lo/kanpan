@@ -190,13 +190,13 @@ import ReviewUI
     // 「写了一半还没提交的那条草稿」和「每条记录重温到哪一根」全留在老目录里再也读不到——
     // 那两份是纯粹的用户产出，不是可以重算的缓存。主档能不能搬得通仍然是前提
     // （`ReviewStore(directory:)` 解不动就抛，整次迁移不做）。
-    let source = ReviewChartBridge.storageDirectory().appendingPathComponent("local", isDirectory: true)
-    let old = source.appendingPathComponent("review-v1.json")
-    if FileManager.default.fileExists(atPath: old.path),
-       !FileManager.default.fileExists(atPath: guest.appendingPathComponent("review-v1.json").path) {
-      _ = try ReviewStore(directory: source)
-      for name in ["review-v1.json", "draft-v1.json", "replay-positions.json"] {
-        let from = source.appendingPathComponent(name), to = guest.appendingPathComponent(name)
+    let source = ReviewPaths.legacy(in: ReviewChartBridge.storageDirectory())
+    let target = ReviewPaths(directory: guest)
+    if FileManager.default.fileExists(atPath: source.archive.path),
+       !FileManager.default.fileExists(atPath: target.archive.path) {
+      _ = try ReviewStore(paths: source)
+      for name in ReviewPaths.files {
+        let from = source.directory.appendingPathComponent(name), to = guest.appendingPathComponent(name)
         guard FileManager.default.fileExists(atPath: from.path),
               !FileManager.default.fileExists(atPath: to.path) else { continue }
         try FileManager.default.copyItem(at: from, to: to)
