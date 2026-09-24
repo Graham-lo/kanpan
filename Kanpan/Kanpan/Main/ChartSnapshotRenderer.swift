@@ -3,7 +3,7 @@ import KanpanCore
 import SwiftUI
 import UIKit
 
-/// 成片顶上那一条要说的话：徽章 · 品种 · 周期 · 最新价 · 涨跌药丸。
+/// 成片顶上那一条要说的话：徽章 · 品种 · 周期 · 最新价 · 涨跌。
 ///
 /// 只放这四样。发出去的那张图是给人看「什么东西、什么周期、现在多少钱」的，
 /// 时间戳、线路、版本号一概不写——那是我们自己的事，写在图上只会让人去猜它的含义。
@@ -151,59 +151,63 @@ private struct ChartShotCard: View {
     .background(t.app)
   }
 
+  // 成片是一张定稿的图，不跟系统文字大小走：字号取令牌的设计值，按固定字画
+  // （`ImageRenderer` 离屏出图，跟着 Dynamic Type 放大只会让不同人发出去的图长得不一样）。
+  private func fixed(_ spec: ScaledFont) -> Font {
+    .system(size: spec.size, weight: spec.weight, design: spec.design)
+  }
+
+  /// 身份条：左边徽章 · 品种 · 周期，右边最新价一行、涨跌一行小字紧贴其下（和行情页顶栏
+  /// 一个排法，UI 整改 P3）。原来价和一颗实心涨跌药丸横排，药丸在别处都已经拿掉了。
   private var strip: some View {
-    HStack(spacing: 8) {
-      CoinBadge(base: head.base, size: 24)
-      HStack(alignment: .firstTextBaseline, spacing: 3) {
+    HStack(spacing: Space.s) {
+      CoinBadge(base: head.base, size: ControlMetrics.badge)
+      HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
         Text(head.base)
-          .font(.system(size: 14, weight: .bold))
+          .font(fixed(TypeScale.heading))
           .foregroundStyle(t.ink)
         if !head.quote.isEmpty {
           Text("/" + head.quote)
-            .font(.system(size: 10.5, weight: .medium))
+            .font(fixed(TypeScale.caption2Emph))
             .foregroundStyle(t.ink3)
         }
         Text("· " + head.interval.shortLabel)
-          .font(.system(size: 10.5, weight: .medium))
+          .font(fixed(TypeScale.caption2Emph))
           .foregroundStyle(t.ink3)
       }
       .lineLimit(1)
-      Spacer(minLength: 8)
-      Text(head.priceText)
-        .font(.system(size: 14, weight: .medium))
-        .monospacedDigit()
-        .foregroundStyle(tint)
-        .lineLimit(1)
-      pill
+      Spacer(minLength: Space.s)
+      VStack(alignment: .trailing, spacing: 0) {
+        Text(head.priceText)
+          .font(fixed(TypeScale.heading))
+          .monospacedDigit()
+          .foregroundStyle(tint)
+        // 涨跌只用「符号 + 颜色」：+2.74% / −2.74%（数学减号 U+2212），不填底。
+        Text(changePercentText(head.changePercent))
+          .font(fixed(TypeScale.caption2Emph))
+          .monospacedDigit()
+          .foregroundStyle(head.changePercent == nil ? t.ink3 : tint)
+      }
+      .lineLimit(1)
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 9)
+    .padding(.horizontal, Inset.cardCompact)
+    .padding(.vertical, Space.s)
   }
 
-  /// 涨跌药丸：涨跌色填底 + 白字，数字带符号「+2.74%」「−2.74%」（数学减号 U+2212）。
-  /// 全 app 的涨跌口径是「符号 + 颜色」，不再用 ▲▼ 小三角（UI 整改 P1c）。
-  private var pill: some View {
-    Text(changePercentText(head.changePercent))
-      .font(.system(size: 10.5, weight: .semibold))
-      .monospacedDigit()
-      .foregroundStyle(head.changePercent == nil ? t.ink3 : t.badgeInk)
-      .padding(.horizontal, 6)
-      .padding(.vertical, 3)
-      .background(head.changePercent.map { t.badgeFill(up: $0 >= 0) } ?? t.raised2,
-                  in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-  }
+  /// 右下角的字样。品牌字是全 app 唯一低于 11 的字：它不是要人读的内容，只是一个落款。
+  private static let brandSize: CGFloat = 10
 
   private var footer: some View {
     HStack(spacing: 0) {
       Spacer(minLength: 0)
       Text("Hkline")
-        .font(.system(size: 8.5, weight: .semibold))
+        .font(.system(size: Self.brandSize, weight: .semibold))
         .tracking(0.6)
         .foregroundStyle(t.ink3.opacity(0.7))
     }
-    .padding(.horizontal, 12)
-    .padding(.top, 5)
-    .padding(.bottom, 7)
+    .padding(.horizontal, Inset.cardCompact)
+    .padding(.top, Space.xs)
+    .padding(.bottom, Space.s)
   }
 
   private var tint: Color {
