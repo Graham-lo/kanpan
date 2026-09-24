@@ -30,7 +30,7 @@ final class SwitchLatencyUITests: KanpanUICase {
 
   private func pause() { Thread.sleep(forTimeInterval: 1.5) }
 
-  /// 顶栏价格区横滑一下。左滑 = 名单里的下一只（同 `ScanAndDetailZoomUITests`）。
+  /// 顶栏价格区横滑一下。左滑 = 名单里的下一只（同 `ScanSwipeUITests`）。
   private func swipePrice(next: Bool) {
     let quote = app.descendants(matching: .any).matching(identifier: "market.quote").firstMatch
     XCTAssertTrue(quote.waitForExistence(timeout: Self.short), "顶栏价格区不在")

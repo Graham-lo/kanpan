@@ -1,14 +1,15 @@
 import XCTest
 
-// ============================================================ 连续扫图 与 看细节（§10.1）
+// ============================================================ 连续扫图（§10.1）与十字线上的「提醒我」
 //
-// 两件事都只有在真机 / 模拟器上才验得了：一件是手势（顶栏价格区横滑），另一件是
-// 「换完档之后视野落在哪儿」——后者要图真的量出宽度、真的把那一段数据取回来。
-// 纯算术那一半（名单怎么走、进哪一档、铺多宽、切回哪儿）在 KanpanTests 的 Scan 组里
-// 用 swift-testing 守着，这儿只验它们接到界面上之后人看到的样子。
+// 扫图是手势（顶栏价格区横滑），只有在真机 / 模拟器上才验得了；名单怎么走那一半纯算术
+// 在 KanpanTests 的 Scan 组里用 swift-testing 守着，这儿只验它接到界面上之后人看到的样子。
+//
+// 2026-09-25 起十字线开着时周期条那一行只剩一颗「涨到 / 跌到 X 提醒我」（原来的
+// 上一根 / 下一根 / 按此价画线 / 看细节整套撤了），这儿顺带在三套皮肤下各看它一眼。
 
 @MainActor
-final class ScanAndDetailZoomUITests: KanpanUICase {
+final class ScanSwipeUITests: KanpanUICase {
 
   override var extraLaunchEnvironment: [String: String] {
     ["KANPAN_TEST_FAVORITES": "BTCUSDT,ETHUSDT,SOLUSDT"]
@@ -91,65 +92,12 @@ final class ScanAndDetailZoomUITests: KanpanUICase {
     shot("04-扫图-离开再回来名单已清")
   }
 
-  // ------------------------------------------------------------ 看细节
+  // ------------------------------------------------------------ 十字线上的「提醒我」
 
-  /// 4h 上选一根 →「看细节」→ 15m 把那一根铺满一屏 → 切回 4h 回到原来的视野。
-  func testDetailZoomSpreadsOneCandleAndComesBack() {
+  /// 选中一根 → 周期条那一行换成「涨到 / 跌到 X 提醒我」→ 点它：十字线收掉、弹出「新建提醒」，
+  /// 价格框里就是十字线那口价。三套皮肤各截一张药丸。
+  func testCrosshairAlertChipOpensTheNewAlertSheetInEverySkin() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
-    app.tapIntervalChip("4h")
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChip("4h")].isSelected },
-                  "没切到 4h")
-    XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["bars"] as? Int ?? 0) > 20 },
-                  "4h 上没等到 K 线")
-
-    let before = chartInfo()
-    let beforeTo = before["to"] as? Double ?? 0
-    let beforeSpan = before["span"] as? Double ?? 0
-    XCTAssertGreaterThan(beforeSpan, 0, "读不到 4h 的视野")
-
-    selectACandle()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true },
-                  "点图没选中一根")
-
-    let detail = app.buttons["chart.detailZoom"]
-    expectExists(detail, Self.short, "十字线选中了一根，周期条那一行却没有「看细节」")
-    shot("05-看细节-十字线选中一根")
-
-    detail.tap()
-    // 4h 的下一档是能把这根切成十几根的 15m（见 `DetailZoom.finer(than:)`）。
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChip("15m")].isSelected },
-                  "「看细节」没进 15m")
-    let fine = Double(15 * 60 * 1000)
-    XCTAssertTrue(waitUntil(timeout: Self.long) {
-      guard let span = self.chartInfo()["span"] as? Double else { return false }
-      // 一根 4h = 16 根 15m，两头各留半根 → 17 根。
-      return abs(span - 17 * fine) < fine
-    }, "15m 的视野不是「刚好那一根」：span=\(String(describing: chartInfo()["span"]))")
-    // 钻下去就停在历史上了：行尾那颗「最新」得露面，否则人回不去（也说明
-    // 程序摆的这一下视野没报上去）。
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.onScreen(self.app.buttons[Ids.latestButton]) },
-                  "看细节停在历史上，周期条行尾却没有「最新」")
-    shot("06-看细节-15m 铺开那一根")
-
-    // 切回 4h：回到钻下去之前的那个视野，而不是 4h 的最新一屏。
-    app.tapIntervalChip("4h")
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChip("4h")].isSelected },
-                  "没切回 4h")
-    XCTAssertTrue(waitUntil(timeout: Self.long) {
-      guard let to = self.chartInfo()["to"] as? Double,
-            let span = self.chartInfo()["span"] as? Double else { return false }
-      return abs(to - beforeTo) < beforeSpan * 0.05 && abs(span - beforeSpan) < beforeSpan * 0.05
-    }, "切回 4h 没回到原来的视野：to=\(String(describing: chartInfo()["to"])) 原 to=\(beforeTo)")
-    shot("07-看细节-切回 4h 回到原视野")
-  }
-
-  // ------------------------------------------------------------ 三套皮肤
-
-  /// 「看细节」在三套皮肤下都得像周期条自家的东西，而不是贴上去的一块。
-  /// 这条只负责把它在三套皮肤下各画一张（人看），顺带守住「它真的在」。
-  func testDetailButtonLooksAtHomeInEverySkin() {
-    XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
-    app.tapIntervalChip("4h")
     for (skin, name) in [("sage", "青苔"), ("terra", "陶土"), ("classic", "经典")] {
       setSkin(skin)
       XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["bars"] as? Int ?? 0) > 20 },
@@ -157,12 +105,30 @@ final class ScanAndDetailZoomUITests: KanpanUICase {
       if chartInfo()["crosshair"] as? Bool != true { selectACandle() }
       XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true },
                     "\(name)：点图没选中一根")
-      expectExists(app.buttons["chart.detailZoom"], Self.short, "\(name)：周期条上没有「看细节」")
-      shot("08-看细节-\(name)皮肤")
+      let chip = app.buttons["chart.crosshair.alert"]
+      expectExists(chip, Self.short, "\(name)：十字线开着，周期条那一行却没有「提醒我」")
+      XCTAssertTrue(chip.label.hasSuffix("提醒我")
+                      && (chip.label.hasPrefix("涨到") || chip.label.hasPrefix("跌到") || chip.label.hasPrefix("在")),
+                    "\(name)：药丸上没说哪个价：\(chip.label)")
+      shot("08-提醒我-\(name)皮肤")
       // 收掉十字线，下一轮从干净的状态开始。
       selectACandle()
       _ = waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false }
     }
+
+    // 最后一套上点一下药丸：十字线收掉，新建页带着那口价弹出来。
+    selectACandle()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true },
+                  "点图没选中一根")
+    let chip = app.buttons["chart.crosshair.alert"]
+    expectExists(chip, Self.short, "十字线开着却没有「提醒我」")
+    chip.tap()
+    let price = app.textFields["alerts.new.price"]
+    expectExists(price, Self.long, "点了「提醒我」没弹出新建提醒")
+    XCTAssertFalse((price.value as? String ?? "").isEmpty, "新建页的价格框没带上十字线那口价")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false },
+                  "点了药丸十字线还钉在图上")
+    shot("09-提醒我-弹出新建提醒")
   }
 
   /// 图区靠右点一下（离最新近，细档不用补太多历史）。再点一下是收掉十字线。

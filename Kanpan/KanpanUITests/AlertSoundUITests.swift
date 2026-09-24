@@ -22,19 +22,17 @@ final class AlertSoundUITests: XCTestCase {
 
   override func tearDown() async throws { app.terminate() }
 
+  /// 设置页「通知」一组里的「提醒铃声」（2026-09-25 起从提醒总表搬到设置页）。
   private func openSounds() {
-    let alerts = app.buttons["settings.alerts"]
-    XCTAssertTrue(alerts.waitForExistence(timeout: 10))
-    if !alerts.isHittable { app.swipeUp() }
-    alerts.tap()
     let sounds = app.buttons["alerts.sound.open"]
-    XCTAssertTrue(sounds.waitForExistence(timeout: 10))
+    XCTAssertTrue(sounds.waitForExistence(timeout: 10), "设置页里没有「提醒铃声」")
+    let bottom = app.windows.firstMatch.frame.maxY - 140
+    for _ in 0..<8 where !(sounds.isHittable && sounds.frame.maxY < bottom) { app.swipeUp(velocity: .slow) }
     sounds.tap()
     XCTAssertTrue(app.buttons["alerts.sound.default"].waitForExistence(timeout: 10))
   }
 
-  /// 铃声页是提醒总表里推进去的一层，走系统导航栏（2026-09-24 UI 整改 P1b）：
-  /// 回总表按导航栏左上那颗系统返回钮，`panel.done` 现在只是总表的「关闭」。
+  /// 铃声页是设置页里推进去的一层，走系统导航栏：回设置页按导航栏左上那颗系统返回钮。
   private func backFromSounds() {
     let back = app.navigationBars["提醒铃声"].buttons.element(boundBy: 0)
     XCTAssertTrue(back.waitForExistence(timeout: 5), "铃声页没有系统返回钮")
@@ -59,7 +57,7 @@ final class AlertSoundUITests: XCTestCase {
     }
     backFromSounds()
     XCTAssertEqual(app.buttons["alerts.sound.open"].value as? String, "玻璃")
-    shot("提醒总表-玻璃")
+    shot("设置通知组-玻璃")
     app.terminate()
     app.launch()
     XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 30))
@@ -73,7 +71,7 @@ final class AlertSoundUITests: XCTestCase {
     for skin in ["sage", "terra", "classic"] {
       let button = app.buttons["display.theme." + skin]
       XCTAssertTrue(button.waitForExistence(timeout: 10))
-      if !button.isHittable { app.swipeDown() }
+      for _ in 0..<8 where !button.isHittable { app.swipeDown(velocity: .slow) }
       button.tap()
       XCTAssertEqual(button.value as? String, "已选")
       openSounds()
@@ -81,7 +79,6 @@ final class AlertSoundUITests: XCTestCase {
       shot("铃声皮肤-" + skin)
       backFromSounds()
       XCTAssertTrue(app.buttons["alerts.sound.open"].waitForExistence(timeout: 10))
-      app.buttons["panel.done"].tap()
     }
   }
   func testNotificationPermissionAndDefaultPreview() throws {

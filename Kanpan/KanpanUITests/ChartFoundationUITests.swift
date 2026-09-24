@@ -1340,8 +1340,8 @@ final class ChartFoundationUITests: XCTestCase {
     selectMain()
     XCTAssertTrue(app.staticTexts["chart.topOHLC"].waitForExistence(timeout: 8))
     shot("顶部-历史OHLC")
-    // 十字线开着时，周期条那一行让位给十字线操作行（上一根 / 下一根 / 按此价画线 / 看细节，
-    // `2045efe`、`9f449e2` 起），「图表」钮不在手指够得着的地方——人要先在图上点一下收起十字线，
+    // 十字线开着时，周期条那一行让位给十字线操作行（2026-09-25 起只剩「涨到 / 跌到 X 提醒我」一颗，
+    // 最早是 `2045efe`、`9f449e2` 起的四颗），「图表」钮不在手指够得着的地方——人要先在图上点一下收起十字线，
     // 周期条回来了才去开面板。这条用例写在那之前，一直在十字线开着时点「图表」。
     XCTAssertFalse(app.buttons["interval.chart"].isHittable, "十字线开着时周期条应让位给操作行")
     selectMain()

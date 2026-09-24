@@ -479,15 +479,17 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
                   "点了主图没出十字线：mainH=\(chartInfo()["mainH"] ?? "?") "
                   + "panes=\(chartInfo()["panes"] ?? "?") trace=\(chartInfo()["gestureTrace"] ?? "?") "
                   + "画布=\(app.otherElements["chart.canvas"].frame)")
-    // 十字线活着时周期条整行让位给十字线的四颗动作、透明且点不着（ae1e7a4）；这时能换周期的
-    // 只有「看细节」——它正是「换了周期、原来指的那一根不在了」的那条路。
+    // 十字线活着时周期条整行让位给「提醒我」那颗药丸、透明且点不着（ae1e7a4）；这时换周期
+    // 只剩外面进来的那条路（通知 / 小组件 / 分享点开的 `hkline://symbol/…?interval=`），
+    // 它正是「换了周期、原来指的那一根不在了」的情形。
     let from = try XCTUnwrap(chartInfo()["interval"] as? String)
-    let detail = app.buttons["chart.detailZoom"]
-    expectExists(detail, Self.short, "十字线开着却没有「看细节」")
-    detail.tap()
+    expectExists(app.buttons["chart.crosshair.alert"], Self.short, "十字线开着却没有「提醒我」")
+    let target = from == "15m" ? "1h" : "15m"
+    let code = (chartInfo()["symbol"] as? String ?? "BTCUSDT").split(separator: "/").last.map(String.init) ?? "BTCUSDT"
+    app.open(URL(string: "hkline://symbol/\(code)?interval=\(target)")!)
     XCTAssertTrue(waitUntil(timeout: Self.long) {
       (self.chartInfo()["interval"] as? String).map { $0 != from } ?? false
-    }, "点了「看细节」图没换周期")
+    }, "从链接换到 \(target)，图没换周期")
     let to = chartInfo()["interval"] as? String ?? "?"
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false },
                   "从 \(from) 换到 \(to)，十字线还钉在那儿")

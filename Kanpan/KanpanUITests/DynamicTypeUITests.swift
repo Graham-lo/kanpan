@@ -66,13 +66,11 @@ final class DynamicTypeUITests: KanpanUICase {
     shot("AX3-设置")
     assertInWindow([Ids.settingsMagnet], page: "设置")
 
-    // 提醒总表（设置 →「提醒」）
-    let entry = app.descendants(matching: .any).matching(identifier: "settings.alerts").firstMatch
-    if expectExists(entry, Self.short, "设置里没有「提醒」") {
-      for _ in 0..<5 where !app.descendants(matching: .any)["alerts.page"].exists {
-        guard waitUntil(timeout: 5, { entry.frame.height > 1 }) else { continue }
-        entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        _ = app.descendants(matching: .any)["alerts.page"].waitForExistence(timeout: 5)
+    // 提醒总表。2026-09-25 起设置里没有「提醒」那一行了，走通知 / 深链那条路（`hkline://alerts`）。
+    do {
+      for _ in 0..<3 where !app.descendants(matching: .any)["alerts.page"].exists {
+        app.open(URL(string: "hkline://alerts")!)
+        _ = app.descendants(matching: .any)["alerts.page"].waitForExistence(timeout: 8)
       }
       XCTAssertTrue(app.descendants(matching: .any)["alerts.page"].exists, "AX3 下开不出提醒总表")
       RunLoop.current.run(until: Date(timeIntervalSinceNow: 1))

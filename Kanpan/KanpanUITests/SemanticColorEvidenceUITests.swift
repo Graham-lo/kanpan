@@ -410,13 +410,8 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
   func testSwipeDeleteInkInAlertList() throws {
     applySageNight("提醒总表左滑")
 
-    let settingsTab = app.buttons[Ids.bottomSettings]
-    expectExists(settingsTab, Self.short, "标签栏上没有「设置」")
-    settingsTab.tap()
-    let entry = app.descendants(matching: .any).matching(identifier: "settings.alerts").firstMatch
-    expectExists(entry, Self.long, "设置里没有「提醒」这一行")
-    XCTAssertTrue(waitUntil(timeout: Self.short) { entry.frame.height > 1 }, "「提醒」那一行量不出 frame")
-    entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    // 2026-09-25 起设置里没有「提醒」那一行了，走通知 / 深链那条路开总表。
+    app.open(URL(string: "hkline://alerts")!)
     let page = app.descendants(matching: .any).matching(identifier: "alerts.page").firstMatch
     expectExists(page, Self.long, "「提醒」没开出总表")
 
@@ -463,8 +458,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     let done = app.buttons[Ids.panelDone]
     if done.exists, done.isHittable { done.tap() }
     XCTAssertTrue(waitUntil(timeout: Self.short) { !page.exists }, "提醒总表收不掉")
-    XCTAssertTrue(waitUntil(timeout: Self.short) { entry.frame.height > 1 }, "「提醒」那一行量不出 frame")
-    entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    app.open(URL(string: "hkline://alerts")!)
     expectExists(page, Self.long, "提醒总表第二次开不出来")
     XCTAssertTrue(rowAnchor.waitForExistence(timeout: Self.long),
                   "重新开总表那条提醒不见了，这一趟把它删掉了")

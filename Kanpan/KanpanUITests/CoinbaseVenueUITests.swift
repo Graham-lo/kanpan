@@ -182,11 +182,8 @@ final class CoinbaseVenueUITests: KanpanUICase {
     let finish = app.buttons["draw.finish"]
     if finish.exists { finish.tap() }
 
-    // 提醒总表：这一条写 BTC/USD。
-    openSettingsPage()
-    let row = app.descendants(matching: .any).matching(identifier: "settings.alerts").firstMatch
-    XCTAssertTrue(row.waitForExistence(timeout: Self.short), "设置页没有「提醒」")
-    row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    // 提醒总表：这一条写 BTC/USD。设置里没有「提醒」那一行了（2026-09-25），走深链开总表。
+    app.open(URL(string: "hkline://alerts")!)
     let page = app.descendants(matching: .any).matching(identifier: "alerts.page").firstMatch
     XCTAssertTrue(page.waitForExistence(timeout: Self.short), "提醒总表没打开")
     let named = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'BTC/USD'")).firstMatch

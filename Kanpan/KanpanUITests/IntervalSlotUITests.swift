@@ -11,8 +11,8 @@ import XCTest
 // 0.18s 平滑地重新铺满。同一轮里出厂默认也从五档放满成六档（`Interval.quick`）。
 //
 // 所以「周期一个点都不许动」这条只剩一处还成立、也只有那一处该成立：**十字线开关**。
-// 2026-09-23 起十字线的四颗动作（上一根 / 下一根 / 按此价画线 / 看细节，`CrosshairActionBar`）
-// 就在周期条**这一行**上：十字线在时它们整行顶替周期条，条透明让位、点不着，但照旧占位；
+// 十字线的动作（`CrosshairActionBar`；2026-09-25 起只剩「涨到 / 跌到 X 提醒我」一颗）
+// 就在周期条**这一行**上：十字线在时它整行顶替周期条，条透明让位、点不着，但照旧占位；
 // 十字线一收，六档要原地出现，一个点都不许挪。
 // 「最新」进出时周期区**本来就要重新铺满**，改成断言「六档还是全在、
 // 互不重叠、都在条里」，外加那颗动作自己点得着。
@@ -202,7 +202,7 @@ final class IntervalSlotUITests: KanpanUICase {
   /// 十字线开关不许动周期条；「最新」进出时周期重新铺满，但六档照样全在、互不重叠。
   func testCrosshairKeepsChipsStillAndLatestKeepsThemWhole() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
-    // 4h 才有更细的一档，「看细节」那颗才可能出现（它现在在头部那一行）。
+    // 换一档不是默认的周期，量的是「用户切过周期之后」那一排。
     pickFromGrid("4h")
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChip("4h")].isSelected },
                   "没切到 4h")
@@ -215,13 +215,13 @@ final class IntervalSlotUITests: KanpanUICase {
     let empty = chipFrames()
     shot("01-出厂态-停在最新")
 
-    // ② 十字线开着：「上一根 / 下一根 / 按此价画线 / 看细节」整行顶替周期条，
-    //    就摆在周期条那一行的框里；周期条透明让位、点不着。十字线一收，六档原地出现。
+    // ② 十字线开着：「涨到 / 跌到 X 提醒我」那颗药丸顶替周期条，就摆在周期条那一行的框里；
+    //    周期条透明让位、点不着。十字线一收，六档原地出现。
     guard let strip = try? app.intervalStrip.snapshot().frame else { return XCTFail("量不到周期条") }
     toggleCrosshair(); waitCrosshair(true, "点图没选中一根")
-    XCTAssertTrue(app.buttons["chart.detailZoom"].waitForExistence(timeout: Self.short),
-                  "十字线开着却没有「看细节」")
-    for id in ["chart.crosshair.prev", "chart.crosshair.next", "chart.crosshair.hline", "chart.detailZoom"] {
+    XCTAssertTrue(app.buttons["chart.crosshair.alert"].waitForExistence(timeout: Self.short),
+                  "十字线开着却没有「提醒我」药丸")
+    for id in ["chart.crosshair.alert"] {
       let b = app.buttons[id]
       XCTAssertTrue(b.exists && b.isHittable, "十字线开着却点不着 \(id)")
       XCTAssertEqual(b.frame.midY, strip.midY, accuracy: 2, "\(id) 不在周期条那一行上：\(b.frame) 条 \(strip)")
@@ -245,11 +245,11 @@ final class IntervalSlotUITests: KanpanUICase {
     XCTAssertTrue(app.buttons[Ids.latestButton].isHittable, "「最新」在屏上却点不着")
     shot("03-有最新")
 
-    // ④ 「最新」+ 十字线一起：动作行照旧顶替整行；十字线收起后「最新」和六档原地回来。
+    // ④ 「最新」+ 十字线一起：药丸照旧顶替整行；十字线收起后「最新」和六档原地回来。
     let latestOnly = chipFrames()
     toggleCrosshair(); waitCrosshair(true, "历史视野上点图没选中一根")
-    XCTAssertTrue(app.buttons["chart.detailZoom"].waitForExistence(timeout: Self.short),
-                  "历史视野上十字线开着却没有「看细节」")
+    XCTAssertTrue(app.buttons["chart.crosshair.alert"].waitForExistence(timeout: Self.short),
+                  "历史视野上十字线开着却没有「提醒我」药丸")
     shot("04-最新加十字线")
     toggleCrosshair(); waitCrosshair(false, "历史视野上再点一下没收掉十字线")
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.latestButton].isHittable },
