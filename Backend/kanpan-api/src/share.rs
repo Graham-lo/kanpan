@@ -147,6 +147,16 @@ async fn opened(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->
 async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Result<Json<Value>> {mark(&s,who.user,&id,true).await}
 #[cfg(test)] mod tests {
  use super::*;
+ /// 「发给朋友」填的用户名和注册用的是同一条规则：客户端的加朋友输入框与注册页
+ /// 共用 `AccountCredentialRules`，这里对的是同一份 `contract/account-credentials.json`。
+ #[test]
+ fn recipient_names_follow_the_shared_username_rule() {
+  let v:Value=serde_json::from_str(include_str!("../contract/account-credentials.json")).expect("contract/account-credentials.json is not valid JSON");
+  for c in v["username"]["cases"].as_array().expect("username cases") {
+   let input=c["input"].as_str().expect("input");
+   assert_eq!(username(input).ok(),c["accepted"].as_str().map(str::to_string),"share 用户名 {input:?}");
+  }
+ }
  /// 客户端 `Drawing` 编码导出的那份，编进来而不是运行时读：文件缺了或坏了是编译错误。
  const DRAWING_CONTRACT:&str=include_str!("../contract/drawing-fields.json");
  fn drawing_contract()->Value {serde_json::from_str(DRAWING_CONTRACT).expect("contract/drawing-fields.json is not valid JSON; regenerate it with `make sync-contract`")}

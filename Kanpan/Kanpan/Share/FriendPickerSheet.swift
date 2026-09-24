@@ -19,18 +19,9 @@ struct FriendPickerSheet: View {
         PanelRow(name: "新朋友", divider: false, onTap: { adding = true })
           .accessibilityIdentifier("share.newFriend")
       } else {
-        HStack(spacing: 10) {
-          TextField("朋友的用户名", text: $username)
-            .keyboardType(.asciiCapable).textInputAutocapitalization(.never)
-            .autocorrectionDisabled().submitLabel(.send)
-            .onSubmit { send(username) }
-            .font(.scaled(14)).foregroundStyle(theme.ink)
-            .accessibilityIdentifier("share.username")
-          Button("发送") { send(username) }
-            .font(.scaled(13)).foregroundStyle(theme.amber)
-            .disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityIdentifier("share.send")
-        }.padding(.horizontal, 18).frame(minHeight: 54)
+        // 和朋友页的「加朋友」同一个输入框（`FriendNameField`），规则、置灰一个样。
+        FriendNameField(text: $username, action: "发送", fieldID: "share.username",
+                        buttonID: "share.send", ruleID: "share.username.rule") { send($0) }
       }
       if let error {
         Text(error).font(.scaled(12)).foregroundStyle(theme.danger)
@@ -43,8 +34,8 @@ struct FriendPickerSheet: View {
     .accessibilityElement(children: .contain).accessibilityIdentifier("share.picker")
     .task { inbox.pull() }
   }
+  /// 名单里点的、输入框交来的都已经是服务端存的样子（`FriendNameField` 规整过）。
   private func send(_ name: String) {
-    let name = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard !sending, !name.isEmpty else { return }
     sending = true; error = nil
     Task {

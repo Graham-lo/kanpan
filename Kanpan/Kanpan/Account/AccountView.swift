@@ -31,6 +31,10 @@ struct AccountView: View {
         }
       }
     }.tint(theme.amber)
+      // 审查 U14 在模拟器上见过一次「下半截白底硬边」，2026-09-24 按键盘交互收起、整张下拉
+      // 复现过一轮没再出现。表单底色只铺在内容那一层，sheet 本身仍是系统默认底；
+      // 把 sheet 的底也钉成页面底色，哪一帧露出来都是同一块料。
+      .presentationBackground(theme.app)
       .interactiveDismissDisabled(feature.busy)
       .accessibilityIdentifier("account.view")
   }
@@ -45,7 +49,7 @@ struct AccountView: View {
     ScrollView {
       VStack(spacing: 18) {
         if [.login, .register].contains(feature.page) {
-          input("用户名", field: .email) {
+          input("用户名", field: .email, hint: feature.usernameHint, hintID: "account.email.rule") {
             TextField("用户名", text: $feature.email).keyboardType(.asciiCapable)
               .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
               .focused($focused, equals: .email).submitLabel(.next).onSubmit { focused = .password }
@@ -53,7 +57,8 @@ struct AccountView: View {
           }
         }
         if [.login, .register, .changePassword, .close].contains(feature.page) {
-          input(feature.page == .changePassword ? "当前密码" : "密码", field: .password) {
+          input(feature.page == .changePassword ? "当前密码" : "密码", field: .password,
+                hint: feature.page == .register ? feature.passwordHint : nil, hintID: "account.password.rule") {
             SecureField("密码", text: $feature.password)
               // 注册页不要报 `.newPassword`：那会拉起系统的「强密码」自动填充流程，
               // 这套账号是用户名 + 自定义口令，弹出来的密码面板不但用不上，还会把 app
@@ -64,7 +69,7 @@ struct AccountView: View {
           }
         }
         if [.changePassword].contains(feature.page) {
-          input("新密码", field: .newPassword) {
+          input("新密码", field: .newPassword, hint: feature.passwordHint, hintID: "account.password.rule") {
             SecureField("新密码", text: $feature.newPassword).textContentType(.password)
               .focused($focused, equals: .newPassword).submitLabel(.go).onSubmit { feature.submit() }
               .accessibilityIdentifier("account.newPassword")
@@ -81,13 +86,13 @@ struct AccountView: View {
         Button { focused = nil; feature.submit() } label: {
           Group { if feature.busy { ProgressView().tint(theme.badgeInk) } else { Text(primary) } }.frame(maxWidth: .infinity, minHeight: 48)
         }.buttonStyle(.borderedProminent).tint(feature.page == .close ? theme.danger : theme.amber)
-          .disabled(feature.busy).accessibilityIdentifier("account.submit")
-        if feature.page == .login {
-          HStack {
-            Spacer(); Button("注册") { feature.move(.register) }.frame(minHeight: 44)
-          }.font(.subheadline)
-        } else if feature.page == .register {
-          Button("已有账号，登录") { feature.move(.login) }.frame(minHeight: 44)
+          .disabled(feature.busy || !feature.canSubmit).accessibilityIdentifier("account.submit")
+        // 登录、注册两页互相切换的那一颗：同一个位置、同一种样式，只是字对调。
+        if [.login, .register].contains(feature.page) {
+          let other: AccountFeature.Page = feature.page == .login ? .register : .login
+          Button(other == .register ? "注册" : "登录") { focused = nil; feature.move(other) }
+            .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)
+            .accessibilityIdentifier("account.switch")
         }
       }.padding(20)
     }.scrollDismissesKeyboard(.interactively)
@@ -97,12 +102,17 @@ struct AccountView: View {
   private var primary: String {
     switch feature.page { case .changePassword: "保存"; default: title }
   }
-  private func input<Content: View>(_ title: String, field: Field, @ViewBuilder content: () -> Content) -> some View {
+  /// `hint` 是框下那一行规则字：只在不合格时占一行，合格了整行收起，不留空位。
+  private func input<Content: View>(_ title: String, field: Field, hint: String? = nil, hintID: String = "",
+                                    @ViewBuilder content: () -> Content) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(title).font(.subheadline).foregroundStyle(theme.ink3)
       content().padding(.horizontal, 12).frame(minHeight: 48)
         .foregroundStyle(theme.ink)
         .background(theme.raised2, in: RoundedRectangle(cornerRadius: 10))
+      if let hint {
+        Text(hint).font(.footnote).foregroundStyle(theme.ink3).accessibilityIdentifier(hintID)
+      }
     }
   }
   /// 「登录已失效」那一条。

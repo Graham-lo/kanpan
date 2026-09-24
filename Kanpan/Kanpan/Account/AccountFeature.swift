@@ -175,8 +175,33 @@ import KanpanCore
   }
   func open() { error = nil; password = ""; newPassword = ""; page = user == nil ? .login : .account; presented = true }
   func move(_ page: Page) { self.page = page; error = nil; password = ""; newPassword = "" }
+  /// 这一页填的东西够不够交出去。不够时提交按钮置灰，键盘上的「前往」也不发请求。
+  ///
+  /// 规则和服务端一个口径（`AccountCredentialRules`，对的是同一份夹具）：注册要用户名、
+  /// 密码都合规则；登录只要用户名合规则、密码不空——登录不查密码长短，那是注册时的事，
+  /// 服务端登录也只按「对不对」回；改密码查新密码；注销只要密码不空。
+  var canSubmit: Bool {
+    switch page {
+    case .login: AccountCredentialRules.username(email) != nil && !password.isEmpty
+    case .register: AccountCredentialRules.username(email) != nil && AccountCredentialRules.acceptsPassword(password)
+    case .changePassword: !password.isEmpty && AccountCredentialRules.acceptsPassword(newPassword)
+    case .close: !password.isEmpty
+    default: false
+    }
+  }
+  /// 用户名框下那一行规则字：只在填了、而且不合规则时出现。空着不算错——还没填而已。
+  var usernameHint: String? {
+    guard [.login, .register].contains(page), !email.isEmpty, AccountCredentialRules.username(email) == nil else { return nil }
+    return AccountCredentialRules.usernameRule
+  }
+  /// 设新密码的那个框（注册页的密码、改密码页的新密码）下的规则字，出现的条件同上。
+  var passwordHint: String? {
+    let fresh = page == .register ? password : page == .changePassword ? newPassword : ""
+    guard !fresh.isEmpty, !AccountCredentialRules.acceptsPassword(fresh) else { return nil }
+    return AccountCredentialRules.passwordRule
+  }
   func submit() {
-    guard !busy else { return }
+    guard !busy, canSubmit else { return }
     guard let client else { error = AccountError.unavailable.localizedDescription; return }
     busy = true; error = nil; let id = UUID(); attempt = id
     let current = page

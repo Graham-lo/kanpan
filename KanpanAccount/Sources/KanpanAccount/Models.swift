@@ -121,9 +121,9 @@ public enum AccountError: LocalizedError, Equatable {
     case .storage: "未能保存，请检查设备空间"
     case .reauthenticationRequired: "登录已失效，请重新登录"
     case .sessionReplaced(let kind): "这个账号在另一台\(kind.label)上登录了"
-    case .http(_, "invalid_username"): "用户名需 3–32 位字母、数字或下划线"
+    case .http(_, "invalid_username"): AccountCredentialRules.usernameRule
     case .http(_, "username_taken"): "用户名已被使用"
-    case .http(_, "invalid_password"): "密码至少 8 位，需含字母和数字"
+    case .http(_, "invalid_password"): AccountCredentialRules.passwordRule
     case .http(_, "wrong_password"): "密码不对"
     case .http(_, "search_range_too_short"): "找相似至少框选 16 根 K 线"
     case .http(_, "search_busy"): "正在处理上一次查找，请稍后再试"
@@ -134,6 +134,35 @@ public enum AccountError: LocalizedError, Equatable {
     case .http(_, _): "暂未成功，请稍后重试"
     }
   }
+}
+/// 用户名、密码的规则，和服务端 `auth.rs` 的 `email` / `password`、`share.rs` 的
+/// `username` 一个口径。
+///
+/// 从前这两条只在服务端拒了之后才以错误的形式露面：人填完、点了、等一趟网络才知道
+/// 用户名不能带点、密码要有数字。现在账号页和加朋友的输入框边输边拿它校验，不合格
+/// 直接置灰，规则那一行小字只在不合格时出现。两边对同一份夹具
+/// `Backend/kanpan-api/contract/account-credentials.json` 各跑一遍，谁改了规则另一边的
+/// 测试就红。
+public enum AccountCredentialRules {
+  public static let usernameRule = "用户名需 3–32 位字母、数字或下划线"
+  public static let passwordRule = "密码至少 8 位，需含字母和数字"
+  /// 服务端会存下来的样子（去首尾空白、ASCII 小写）；不合规则时是 `nil`。
+  public static func username(_ raw: String) -> String? {
+    let v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard (3...32).contains(v.utf8.count), v.utf8.allSatisfy({ letter($0) || digit($0) || $0 == UInt8(ascii: "_") })
+    else { return nil }
+    return v.lowercased()
+  }
+  /// 注册、改新密码时收不收。下限按 Unicode 标量数（服务端 `chars().count()`，不是
+  /// Swift 的字形数——一个全家福表情是 5 个标量），上限按 UTF-8 字节数。
+  public static func acceptsPassword(_ v: String) -> Bool {
+    v.unicodeScalars.count >= 8 && v.utf8.count <= 128
+      && v.utf8.contains(where: letter) && v.utf8.contains(where: digit)
+  }
+  // 只认 ASCII：全角字母、带重音的字母服务端都不收（`is_ascii_alphanumeric`）。
+  // UTF-8 里多字节字符的每个字节都 ≥ 0x80，按字节判不会把它们误认进来。
+  private static func letter(_ b: UInt8) -> Bool { (0x41...0x5A).contains(b) || (0x61...0x7A).contains(b) }
+  private static func digit(_ b: UInt8) -> Bool { (0x30...0x39).contains(b) }
 }
 /// A typed, Sendable JSON value used by the sync boundary, never raw Any dictionaries.
 public enum JSONValue: Codable, Sendable, Equatable {

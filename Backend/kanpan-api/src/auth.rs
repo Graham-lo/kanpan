@@ -369,6 +369,28 @@ mod tests {
   assert_eq!(still_current(&seen,&None),None,"验完之后账号被删或停用了");
   assert_eq!(still_current(&None,&Some((a,"h1".into()))),None);
  }
+ /// **用户名、密码规则两端一个口径**：客户端边输边校验（`AccountCredentialRules`），
+ /// 不合格就不让点提交；这里是最终裁决。夹具里每一条，`email`（注册 / 登录）和
+ /// `password` 的结论都必须和夹具一字不差——客户端那边的 CredentialRulesContractTests
+ /// 读的是同一份；「发给朋友」那一处的 `share::username` 在 share.rs 里对同一份夹具。
+ #[test]
+ fn every_shared_credential_case_agrees() {
+  let v:Value=serde_json::from_str(include_str!("../contract/account-credentials.json")).expect("contract/account-credentials.json is not valid JSON");
+  assert_eq!(v["version"],1,"account-credentials.json 的格式版本变了，这里的读法要一起改");
+  let names=v["username"]["cases"].as_array().expect("username cases");
+  assert!(names.len()>=10,"用户名夹具被删薄了");
+  for c in names {
+   let input=c["input"].as_str().expect("input");
+   let want=c["accepted"].as_str().map(str::to_string);
+   assert_eq!(email(input).ok(),want,"auth 用户名 {input:?}");
+  }
+  let words=v["password"]["cases"].as_array().expect("password cases");
+  assert!(words.len()>=10,"密码夹具被删薄了");
+  for c in words {
+   let input=c["input"].as_str().expect("input");
+   assert_eq!(password(input).is_ok(),c["ok"].as_bool().expect("ok"),"密码 {input:?}");
+  }
+ }
  #[test]
  fn one_time_passwords_pass_the_signup_rule_and_differ() {
   let a=one_time_password();let b=one_time_password();
