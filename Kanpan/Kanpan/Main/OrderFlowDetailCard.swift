@@ -38,6 +38,7 @@ struct OrderFlowDetailLayer: View {
       OrderFlowDetailCard(focus: focus, theme: theme, base: base, decimals: decimals, timeZone: timeZone,
                           maxWidth: focus.cardMaxWidth, maxHeight: place.maxHeight)
         .frame(width: max(0, focus.plotW - 16), height: max(0, place.maxHeight), alignment: alignment)
+        .clipped()
         .offset(x: 8, y: top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
@@ -117,7 +118,7 @@ struct OrderFlowDetailCard: View {
       .fixedSize(horizontal: false, vertical: true)
       .padding(Inset.cardCompact)
       .frame(maxWidth: maxWidth, alignment: .leading)
-      .frame(maxHeight: maxHeight, alignment: .top)
+      // 高度贴着内容，不撑满上限（行数已按上限算过）；万一超出由外层按上限裁掉。
       .background(theme.raised.opacity(0.96), in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
       .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous).strokeBorder(theme.line, lineWidth: 1))
       .clipShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))

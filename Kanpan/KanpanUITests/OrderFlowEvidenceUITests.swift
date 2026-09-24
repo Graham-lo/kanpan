@@ -160,50 +160,64 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     shot("十字线读数")
   }
 
-  // ------------------------------------------------------------ 1b. CoinAnk 式粗带 + 详情卡（2026-09-24）
+  // ------------------------------------------------------------ 1b. 手机布局：一桶一条 + 一桶一卡（2026-09-24 晚）
   //
-  // 用户原话：「主力订单流都看不清」「点击相应色块都不显示多少个，一共多少 usdt 面额」「coinank 都是
-  // 横向的价格带，生命周期完成后颜色都不一样」。改成不透明粗带（粗细按名义分七档、深浅按有没有成交），
-  // 轻点一条带出详情卡。这条用例拍三套皮肤（含深色）的粗带，再轻点最宽那条拍详情卡，最后点空白收卡。
+  // 用户原话：「都挤在一起，有没有适合手机的布局设计展示」——BTC 十三本簿同时出单，一单一条在右缘叠成墙。
+  // 改成同一价位桶按「侧 × 类（现货 / 合约）」合成一条带，粗细五档（2 / 3 / 4.5 / 6 / 8 pt），
+  // 和更大的带纵向重叠的压成 1.5 pt 细线，宽的带右端写合计金额；轻点一条出这一桶的卡（一本簿一行，最多六行）。
+  // 这条用例等图上攒到 ≥ 20 单，拍三套皮肤（含深色）的整屏，再轻点最粗的那条拍详情卡，最后点空白收卡。
 
   /// 截图文件名里的机型短名：「iPhone17ProMax」→「17ProMax」。
   private static var shortDevice: String { device.replacingOccurrences(of: "iPhone", with: "") }
 
+  private func orderCount() -> Int { chartInfo()["orderFlowOrders"] as? Int ?? 0 }
+
   func testCoinAnkBandsAndDetailCard() {
-    executionTimeAllowance = 1800
+    executionTimeAllowance = 2400
     XCTAssertTrue(waitForLiveChart(), "币安直连没出图：\(chartInfo())")
     turnOnOrderFlow()
-    guard waitForBandsRotating("CoinAnk 粗带", symbols: ["BTCUSDT"], perSymbol: 240) != nil else { return }
-    // 新档案是从零开始记单的：刚开出来的带只有右缘一两根 K 线宽。等最宽那条横出去几根再拍，
-    // 看得出「横向的价格带」（1 分钟图一根约 4 pt；等不到也照拍，不判失败）。
-    let wide = waitUntil(timeout: 480, poll: 5) {
-      (self.bands().compactMap { $0["w"] as? Double }.max() ?? 0) >= 24
+    guard waitForBandsRotating("手机布局", symbols: ["BTCUSDT"], perSymbol: 240) != nil else { return }
+    // 新档案是从零开始记单的：等攒到 20 单（十几本簿一起出单时就是用户说的「挤在一起」那种场面），
+    // 并且最宽那条横出去几根再拍（1 分钟图一根约 4 pt；等不到也照拍，不判失败）。
+    let crowded = waitUntil(timeout: 420, poll: 5) {
+      self.orderCount() >= 20 && (self.bands().compactMap { $0["w"] as? Double }.max() ?? 0) >= 48
     }
-    print("取证|粗带|等横向铺开 wide=\(wide)|最宽=\(bands().compactMap { $0["w"] as? Double }.max() ?? 0)")
+    print("取证|手机布局|等攒单 crowded=\(crowded)|orders=\(orderCount())|最宽=\(bands().compactMap { $0["w"] as? Double }.max() ?? 0)")
     for (skin, mode, title) in [("sage", "浅色", "青苔浅"), ("sage", "深色", "青苔深"), ("classic", "深色", "经典深")] {
       pickSkin(skin, mode)
       XCTAssertTrue(waitUntil(timeout: 240, poll: 1) { !self.bands().isEmpty }, "\(title)：换完皮肤 240 秒没等回大单")
-      let tiers = Set(bands().compactMap { $0["tier"] as? Int }), darks = bands().filter { $0["dark"] as? Bool == true }.count
-      print("取证|粗带|\(title)|bands=\(bands().count)|档=\(tiers.sorted())|深色=\(darks)")
-      shot("粗带-\(title)", file: "粗带-\(title)-\(Self.shortDevice)")
+      let all = bands()
+      let tiers = all.filter { $0["thin"] as? Bool != true }.compactMap { $0["tier"] as? Int }
+      let thin = all.filter { $0["thin"] as? Bool == true }.count
+      let labels = (chartInfo()["orderFlowLabels"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
+      print("取证|手机布局|\(title)|orders=\(orderCount())|bands=\(all.count)|整条档=\(tiers.sorted())|细线=\(thin)|标签=\(labels)|books=\(all.map { $0["books"] as? Int ?? 0 })")
+      XCTAssertTrue(all.allSatisfy { ($0["h"] as? Double ?? 99) <= 8 }, "\(title)：有带超过 8 pt：\(all)")
+      shot("手机布局-\(title)", file: "手机布局-\(title)-\(Self.shortDevice)")
     }
 
-    // 轻点最宽的那条带（最好点中），点中了 `orderFlowSelected` 就是它的 id，详情卡出来。
+    // 轻点最粗的那条整带（点中了 `orderFlowSelected` 就是那一桶的 id），详情卡出来。
     let canvas = app.otherElements["chart.canvas"]
     let origin = canvas.coordinate(withNormalizedOffset: .zero)
     let card = app.descendants(matching: .any)["chart.orderFlowCard"]
     var selected = ""
+    var picked: [String: Any] = [:]
     for attempt in 0..<6 where selected.isEmpty {
       guard waitUntil(timeout: 240, poll: 1, { !self.bands().isEmpty }) else { break }
       let plotW = chartInfo()["plotW"] as? Double ?? 300
-      let sorted = bands().sorted { ($0["w"] as? Double ?? 0) > ($1["w"] as? Double ?? 0) }
+      // 先挑合并了最多本簿的整带（详情卡看得出「一桶一卡」），再按粗细、宽度排。
+      let sorted = bands().sorted {
+        let a = ($0["thin"] as? Bool == true ? 0 : 1, $0["books"] as? Int ?? 0, $0["h"] as? Double ?? 0, $0["w"] as? Double ?? 0)
+        let b = ($1["thin"] as? Bool == true ? 0 : 1, $1["books"] as? Int ?? 0, $1["h"] as? Double ?? 0, $1["w"] as? Double ?? 0)
+        return a > b
+      }
       let band = sorted[min(attempt, sorted.count - 1)]
       let bx = band["x"] as? Double ?? 0, bw = band["w"] as? Double ?? 0, by = band["y"] as? Double ?? 0
-      // 诊断里的 y 就是带的中线。
-      let x = min(plotW - 2, max(1, bx + bw / 2))
+      // 诊断里的 y 就是带的中线；点带的左半段，避开右端的金额签。
+      let x = min(plotW - 2, max(1, bx + bw * 0.35))
       origin.withOffset(CGVector(dx: x, dy: by)).tap()
       _ = waitUntil(timeout: 3) { !(self.chartInfo()["orderFlowSelected"] as? String ?? "").isEmpty }
       selected = chartInfo()["orderFlowSelected"] as? String ?? ""
+      picked = band
       print("取证|详情卡|点在 (\(x), \(by))|band=\(band)|selected=\(selected)")
     }
     XCTAssertFalse(selected.isEmpty, "轻点大单没选中：\(bands())")
@@ -213,16 +227,33 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     XCTAssertTrue(text.contains("USDT"), "详情卡没写 USDT 金额：\(text)")
     XCTAssertTrue(text.contains(" BTC"), "详情卡没写 BTC 数量：\(text)")
     XCTAssertTrue(text.contains("委托买单") || text.contains("委托卖单"), "详情卡没写买卖方向：\(text)")
-    for word in ["成交金额", "初始金额", "成交数量", "初始数量", "委托时间", "持续时间"] {
+    XCTAssertTrue(text.contains("合约") || text.contains("现货"), "详情卡标题没写类：\(text)")
+    for word in ["数量", "金额", "成交", "最早", "持续"] {
       XCTAssertTrue(text.contains(word), "详情卡缺「\(word)」：\(text)")
     }
     XCTAssertTrue(["挂单中", "已成交", "部分成交", "已撤销", "失联结束"].contains { text.contains($0) }, "详情卡没写状态：\(text)")
+    // 一本簿一行、最多六行：行数 = 卡上的簿行（不含标题与汇总两行），多出来的折成「还有 N 本」。
+    let lines = text.components(separatedBy: "\n")
+    let bookLines = lines.dropFirst(3).filter { !$0.hasPrefix("还有") }
+    XCTAssertTrue(bookLines.count >= 1 && bookLines.count <= 6, "详情卡的簿行数不对：\(lines)")
+    if let books = picked["books"] as? Int, books > 6 { XCTAssertTrue(text.contains("还有"), "超过六本没折叠：\(text)") }
     XCTAssertNil(app.staticTexts.matching(identifier: "chart.topOHLC").allElementsBoundByIndex.first { $0.exists },
                  "出详情卡时开高低收读数没让位")
-    shot("详情卡", file: "详情卡-\(Self.shortDevice)")
+    // 尺寸与位置：宽 ≤ 85% 绘图区、高 ≤ 55% 主图、在绘图区里、不盖住选中的那条带。
+    let focus = chartInfo()["orderFlowFocus"] as? [String: Any] ?? [:]
+    let plotW = chartInfo()["plotW"] as? Double ?? 0, mainH = chartInfo()["mainH"] as? Double ?? 0
+    let cf = card.frame, vf = canvas.frame
+    let bandY = (focus["bandY"] as? Double ?? 0) + Double(vf.minY), half = focus["bandHalf"] as? Double ?? 0
+    print("取证|详情卡|卡=\(cf)|画布=\(vf)|plotW=\(plotW)|mainH=\(mainH)|focus=\(focus)")
+    XCTAssertLessThanOrEqual(Double(cf.width), plotW * 0.85 + 1, "详情卡宽过 85% 绘图区")
+    XCTAssertLessThanOrEqual(Double(cf.height), mainH * 0.55 + 1, "详情卡高过 55% 主图")
+    XCTAssertGreaterThanOrEqual(Double(cf.minX), Double(vf.minX) - 0.5, "详情卡出了绘图区左边")
+    XCTAssertLessThanOrEqual(Double(cf.maxX), Double(vf.minX) + plotW + 0.5, "详情卡出了绘图区右边")
+    XCTAssertTrue(Double(cf.maxY) <= bandY - half + 0.5 || Double(cf.minY) >= bandY + half - 0.5,
+                  "详情卡盖住了选中的那条带：卡 \(cf)，带中线 \(bandY) 半高 \(half)")
+    shot("手机布局-详情卡", file: "手机布局-详情卡-\(Self.shortDevice)")
 
     // 点空白处收卡：挑主图左侧一个离所有带都在命中容差之外的点（竖向半个带高 + 8 pt、横向 4 pt，再各留 6 pt 余量）。
-    let mainH = chartInfo()["mainH"] as? Double ?? 300
     let all = bands()
     let clear = { (px: Double, py: Double) -> Bool in
       all.allSatisfy { b in
