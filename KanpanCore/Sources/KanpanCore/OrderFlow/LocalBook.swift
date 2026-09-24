@@ -326,6 +326,19 @@ public struct LocalBook: Sendable {
     return (mid, b, a)
   }
 
+  /// 中间价两侧 `bps` 以内的每一档，逐档回调、不排序（主力订单流每 500 ms 走一遍，省掉排序）。
+  /// 返回中间价；任一侧为空、`bps` 非法时不回调、返回 nil。
+  @discardableResult
+  public mutating func forEachLevel(withinBps bps: Double, _ body: (BookSide, Double, Double) -> Void) -> Double? {
+    guard bps.isFinite, bps > 0, let bestBid = bids.bestPrice(), let bestAsk = asks.bestPrice() else { return nil }
+    let mid = (bestBid + bestAsk) / 2
+    let fraction = bps / 10_000
+    let floor = mid * (1 - fraction), ceiling = mid * (1 + fraction)
+    for (price, quantity) in bids.levels where price >= floor { body(.bid, price, quantity) }
+    for (price, quantity) in asks.levels where price <= ceiling { body(.ask, price, quantity) }
+    return mid
+  }
+
   /// 同一份簿内容（世代、质量、序号、各价位）——对应原项目 deterministic_state_hash 的比较用途。
   public func sameState(as other: LocalBook) -> Bool {
     epoch == other.epoch && quality == other.quality && lastUpdateID == other.lastUpdateID
