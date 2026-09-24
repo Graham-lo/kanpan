@@ -72,6 +72,13 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 服务端只负责原样发出去，不认识中文也不该去拼。
   public var title: String
   public var created: Double
+  /// 用户写给自己的一句备注（界面限 30 个字形，`Alert.clip(note:)`）。空就是 nil。
+  public var note: String?
+  /// 响的时候往这个地址 POST 一份 JSON（`AlertWebhookPayload`）。必须 http:// 或 https://
+  /// 开头、不含空白（`Alert.isValidWebhook`）。空就是不发。
+  public var webhook: String?
+  /// Webhook 里 `text` 那一句的模板，占位符见 `AlertMessage`。nil 用出厂模板。
+  public var webhookText: String?
 
   public init(id: String = Alert.newID(), kind: Kind = .drawing, symbol: String,
               market: String = Alert.market, drawingID: String? = nil,
@@ -79,12 +86,15 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
               armedAt: Double, once: Bool = true, status: Status = .active,
               firedAt: Double? = nil, firedPrice: Double? = nil,
               dueAt: Double? = nil, reviewID: String? = nil,
-              title: String, created: Double) {
+              title: String, created: Double,
+              note: String? = nil, webhook: String? = nil, webhookText: String? = nil) {
     self.id = id; self.kind = kind; self.symbol = InstrumentID.canonical(symbol.contains("/") ? symbol : market + "/" + symbol); self.market = InstrumentID(self.symbol).marketKey
     self.drawingID = drawingID; self.lines = lines; self.condition = condition
     self.armedAt = armedAt; self.once = once; self.status = status
     self.firedAt = firedAt; self.firedPrice = firedPrice
     self.dueAt = dueAt; self.reviewID = reviewID; self.title = title; self.created = created
+    self.note = Alert.blankIsNil(note); self.webhook = Alert.blankIsNil(webhook)
+    self.webhookText = Alert.blankIsNil(webhookText)
   }
 
   // ---------------------------------------------------------------- 线协议
@@ -92,15 +102,17 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   private enum CodingKeys: String, CodingKey {
     case id, kind, symbol, market, drawingID, lines, condition, armedAt, once
     case status, firedAt, firedPrice, dueAt, reviewID, title, created
+    case note, webhook, webhookText
   }
 
-  /// **可空的那五个永远写出来，空就写 null**，不许省略。
+  /// **可空的那八个永远写出来，空就写 null**，不许省略。
   ///
   /// 理由和画线那条 `text` 一模一样（见 `PersonalSyncCodec.drawings` 的注释）：
   /// `SyncStore.stage` 是拿前后两份 body 逐键做差分的，一个「先前有、现在没有」的键会被
   /// 翻译成删除。省略和 null 在这儿不是一回事——省略会让「用户把触发记录清掉」这种改动
-  /// 时有时无。服务端的 null 白名单正好放行这五个（`drawingID` / `firedAt` /
-  /// `firedPrice` / `dueAt` / `reviewID`），别的键一个 null 都不许发。
+  /// 时有时无。服务端的 null 白名单正好放行这八个（`drawingID` / `firedAt` /
+  /// `firedPrice` / `dueAt` / `reviewID` / `note` / `webhook` / `webhookText`），
+  /// 别的键一个 null 都不许发。后三个是 2026-09-25「从图上加提醒」加的，两边同一天对齐。
   public func encode(to encoder: any Encoder) throws {
     var c = encoder.container(keyedBy: CodingKeys.self)
     try c.encode(id, forKey: .id)
@@ -119,6 +131,9 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     try c.encode(reviewID, forKey: .reviewID)
     try c.encode(title, forKey: .title)
     try c.encode(created, forKey: .created)
+    try c.encode(Alert.blankIsNil(note), forKey: .note)
+    try c.encode(Alert.blankIsNil(webhook), forKey: .webhook)
+    try c.encode(Alert.blankIsNil(webhookText), forKey: .webhookText)
   }
 
   /// 解码一律给得起兜底：从云端换下来的那份可能是别的版本写的，少一个键不该整条读不出来。
@@ -142,6 +157,16 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     reviewID = try c.decodeIfPresent(String.self, forKey: .reviewID)
     title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
     created = try c.decodeIfPresent(Double.self, forKey: .created) ?? 0
+    // 老版本写的那份没有这三个键：缺键就是 nil，不是解码失败。
+    note = Alert.blankIsNil(try? c.decodeIfPresent(String.self, forKey: .note))
+    webhook = Alert.blankIsNil(try? c.decodeIfPresent(String.self, forKey: .webhook))
+    webhookText = Alert.blankIsNil(try? c.decodeIfPresent(String.self, forKey: .webhookText))
+  }
+
+  /// 空串、全是空白都当没填（nil）。解码与 app 端落账共用。
+  public static func blankIsNil(_ text: String??) -> String? {
+    guard let text = text ?? nil, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    return text
   }
 
   public static let market = InstrumentID.defaultMarketKey
@@ -187,12 +212,37 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   ///
   /// 方向不存：它由建的那一刻的现价决定（高于现价就是「涨到」、低于就是「跌到」），
   /// 只体现在标题里。判定按 `touch`：价格走到那条线上就响，从哪边来都一样。
+  ///
+  /// 条件（碰到 / 收盘穿过）、Webhook 与备注是新建表单上填的，不填就是出厂值：
+  /// 碰到、不发 Webhook、没有备注。只响一次（`once` 恒为 true），响过变「已触发」。
   public static func price(symbol: String, target: Double, current: Double?, label: String,
-                           now: Double) -> Alert {
+                           now: Double, condition: Condition = .touch,
+                           webhook: String? = nil, webhookText: String? = nil,
+                           note: String? = nil) -> Alert {
     let line = AlertLine(points: [DrawPoint(t: now, p: target)], extendLeft: true, extendRight: true)
-    return Alert(kind: .price, symbol: symbol, lines: [line], condition: .touch, armedAt: now,
+    return Alert(kind: .price, symbol: symbol, lines: [line], condition: condition, armedAt: now,
                  title: priceTitle(symbol: symbol, target: target, current: current, label: label),
-                 created: now)
+                 created: now, note: note.map(clip(note:)), webhook: webhook, webhookText: webhookText)
+  }
+
+  /// 备注的上限：30 个字形（按用户看到的「字」数，一个 emoji 算一个）。
+  public static let noteLimit = 30
+
+  /// 截到 30 个字形。表单一边打一边截，存之前再截一遍兜底。
+  public static func clip(note: String) -> String {
+    note.count > noteLimit ? String(note.prefix(noteLimit)) : note
+  }
+
+  /// Webhook 地址合不合法：去掉首尾空白后以 `http://` 或 `https://` 开头（不分大小写）、
+  /// 中间不含任何空白、scheme 后面还有东西。服务端按同一条卡。
+  public static func isValidWebhook(_ text: String) -> Bool {
+    let url = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !url.contains(where: { $0.isWhitespace }) else { return false }
+    let lower = url.lowercased()
+    for scheme in ["https://", "http://"] where lower.hasPrefix(scheme) {
+      return url.count > scheme.count
+    }
+    return false
   }
 
   /// 「BTC 涨到 65,000」/「BTC 跌到 60,000」。`label` 是调用方按品种精度排好的价。

@@ -355,10 +355,11 @@ struct AlertTests {
     let a = alert([AlertLine(points: [DrawPoint(t: Self.t0, p: 100)], extendRight: true)])
     let data = try JSONEncoder().encode(a)
     let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-    // `id` 是本地的，上行时由 codec 摘掉拼进对象 id；这里只核对身体那 15 个。
+    // `id` 是本地的，上行时由 codec 摘掉拼进对象 id；这里只核对身体那 18 个。
     let body = Set(json.keys).subtracting(["id"])
     #expect(body == ["kind", "symbol", "market", "drawingID", "lines", "condition", "armedAt",
-                     "once", "status", "firedAt", "firedPrice", "dueAt", "reviewID", "title", "created"])
+                     "once", "status", "firedAt", "firedPrice", "dueAt", "reviewID", "title", "created",
+                     "note", "webhook", "webhookText"])
     let lines = try #require(json["lines"] as? [[String: Any]])
     #expect(Set(lines[0].keys) == ["points", "extendLeft", "extendRight"])
     let points = try #require(lines[0]["points"] as? [[String: Any]])
