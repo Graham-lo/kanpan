@@ -10,6 +10,9 @@
 //!   手上那份旧的照常用；从来没拉成功过的那一家这一次就不出现（其他照给，接口仍 200）。
 //! * 请求只查内存，不出站。进程起来后第一个请求会等第一轮拉完（最多 `FIRST_WAIT`），
 //!   之后再也不等。
+//! * 没人用就不拉：最近 `IDLE`（1 小时）没有任何请求，各张表的后台循环在下一次该拉的时候停下
+//!   （手上的表留着）；之后第一个请求照常立刻拿手上那份答复，同时把循环重新起起来、马上拉一轮。
+//!   朋友们一晚上不开订单流，这台 VPS 就不必每 10 分钟去七家各敲一次门。
 //! * 币安 U 本位那张表和 `market_meta` / `sector_history` 共用进程里那一份
 //!   （`market_meta::exchange_info`），不多拉一次。
 //!
@@ -41,9 +44,10 @@ use serde::{Deserialize,Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc,OnceLock};
+use std::sync::{Arc,Mutex,OnceLock};
 use std::time::Duration;
 use tokio::sync::watch;
+use tokio::time::Instant;
 
 const PATH:&str="/v1/market/orderflow/instruments";
 const BINANCE_SPOT:&str="https://data-api.binance.vision/api/v3/exchangeInfo?symbolStatus=TRADING&showPermissionSets=false";
@@ -61,6 +65,8 @@ const RETRY:Duration=Duration::from_secs(30);
 const FETCH_TIMEOUT:Duration=Duration::from_secs(20);
 /// 进程起来后的第一个请求最多等第一轮拉多久。比路由上那层 30 秒超时短得多。
 const FIRST_WAIT:Duration=Duration::from_secs(8);
+/// 最近多久没有请求，后台循环就停下。
+const IDLE:Duration=Duration::from_secs(60*60);
 /// 答复可以被中间层缓存多久。
 const CACHE_CONTROL:&str="max-age=60";
 
@@ -360,7 +366,74 @@ struct Source {
 #[derive(Clone,Default)]
 struct Held {table:Option<Arc<Table>>,tried:bool}
 
-struct Book {sources:Vec<(Exchange,watch::Receiver<Held>)>}
+/// 后台循环的节奏（测试里换成自己的）。
+#[derive(Clone,Copy,Debug)]
+struct Pace {
+ /// 拉成功之后隔多久再拉。
+ fresh:Duration,
+ /// 拉失败之后隔多久再试。
+ retry:Duration,
+ /// 最近多久没有请求就停。
+ idle:Duration,
+}
+const PACE:Pace=Pace{fresh:FRESH,retry:RETRY,idle:IDLE};
+
+/// 一张表：从哪儿拉、拉到的放哪儿。循环停了表也留着。
+struct Feed {source:Source,held:watch::Sender<Held>}
+
+/// 最近一次请求的时间，以及每张表的循环在不在跑。放在同一把锁里，
+/// 「循环判定没人要了、停下」与「请求来了、看循环在不在跑」不会错开。
+struct Activity {asked:Instant,running:Vec<bool>}
+
+struct Book {feeds:Vec<Feed>,activity:Mutex<Activity>,pace:Pace}
+
+impl Book {
+ /// 建好但不启动：第一个请求来时 `asked` 才把循环起起来。
+ fn new(sources:Vec<Source>,pace:Pace)->Arc<Self> {
+  let running=vec![false;sources.len()];
+  let feeds=sources.into_iter().map(|source|Feed{source,held:watch::channel(Held::default()).0}).collect();
+  Arc::new(Self{feeds,activity:Mutex::new(Activity{asked:Instant::now(),running}),pace})
+ }
+ /// 有人问了：记下时间，没在跑的循环（第一次，或者闲置停掉的）重新起。
+ fn asked(self:&Arc<Self>) {
+  let mut activity=self.activity.lock().unwrap_or_else(|e|e.into_inner());
+  activity.asked=Instant::now();
+  for index in 0..self.feeds.len() {
+   if activity.running[index] {continue}
+   activity.running[index]=true;
+   tokio::spawn(run(self.clone(),index));
+  }
+ }
+ /// 这个循环该不该停；该停就顺手把它记成不在跑。
+ fn idle(&self,index:usize)->bool {
+  let mut activity=self.activity.lock().unwrap_or_else(|e|e.into_inner());
+  if activity.asked.elapsed()<self.pace.idle {return false}
+  activity.running[index]=false;
+  true
+ }
+}
+
+/// 一张表的后台循环：成功隔 10 分钟再拉，失败隔 30 秒再试，旧表一直留着用；
+/// 每次该拉之前看一眼，最近一小时没人问就停。
+async fn run(book:Arc<Book>,index:usize) {
+ let Feed{source,held}=&book.feeds[index];
+ loop {
+  let wait=match tokio::time::timeout(FETCH_TIMEOUT+Duration::from_secs(5),(source.fetch)()).await {
+   Ok(Ok(table))=>{
+    let table=Arc::new(table);
+    held.send_modify(|held|{held.table=Some(table);held.tried=true;});
+    book.pace.fresh
+   },
+   Ok(Err(e))=>{tracing::warn!("Orderflow instruments: {} table failed: {e}",source.name);held.send_modify(|held|held.tried=true);book.pace.retry},
+   Err(_)=>{tracing::warn!("Orderflow instruments: {} table timed out",source.name);held.send_modify(|held|held.tried=true);book.pace.retry},
+  };
+  tokio::time::sleep(wait).await;
+  if book.idle(index) {
+   tracing::info!("Orderflow instruments: {} loop stopped, nobody asked for {:?}",source.name,book.pace.idle);
+   return;
+  }
+ }
+}
 
 async fn get_bytes(url:&str)->anyhow::Result<axum::body::Bytes> {
  let gated=binance_gate::covers(url);
@@ -384,42 +457,23 @@ fn sources()->Vec<Source> {
  ]
 }
 
-/// 每张表一个后台循环：成功隔 10 分钟再拉，失败隔 30 秒再试，旧表一直留着用。
-fn start()->Book {
- let sources=sources().into_iter().map(|source| {
-  let (tx,rx)=watch::channel(Held::default());
-  tokio::spawn(async move {
-   loop {
-    let wait=match tokio::time::timeout(FETCH_TIMEOUT+Duration::from_secs(5),(source.fetch)()).await {
-     Ok(Ok(table))=>{
-      let table=Arc::new(table);
-      tx.send_modify(|held|{held.table=Some(table);held.tried=true;});
-      FRESH
-     },
-     Ok(Err(e))=>{tracing::warn!("Orderflow instruments: {} table failed: {e}",source.name);tx.send_modify(|held|held.tried=true);RETRY},
-     Err(_)=>{tracing::warn!("Orderflow instruments: {} table timed out",source.name);tx.send_modify(|held|held.tried=true);RETRY},
-    };
-    tokio::time::sleep(wait).await;
-   }
-  });
-  (source.exchange,rx)
- }).collect();
- Book{sources}
-}
-
 /// 那一份后台表。第一次有人问时才开始拉（测试和不用这个功能的进程不出站）。
-fn book()->&'static Book {
- static B:OnceLock<Book>=OnceLock::new();
- B.get_or_init(start)
+fn book()->&'static Arc<Book> {
+ static B:OnceLock<Arc<Book>>=OnceLock::new();
+ B.get_or_init(||Book::new(sources(),PACE))
 }
 
-async fn snapshot(book:&Book)->Vec<(Exchange,Option<Arc<Table>>)> {
- let waits=book.sources.iter().map(|(exchange,rx)| {
-  let mut rx=rx.clone();
+/// 记下这次请求（必要时把停掉的循环起起来），然后拿各张表手上那份。只有从来没拉过的那张才等
+/// （最多 `FIRST_WAIT`）；闲置停过又重起的，手上有旧表就不等。
+async fn snapshot(book:&Arc<Book>)->Vec<(Exchange,Option<Arc<Table>>)> {
+ book.asked();
+ let waits=book.feeds.iter().map(|feed| {
+  let mut rx=feed.held.subscribe();
+  let exchange=feed.source.exchange;
   async move {
    if !rx.borrow().tried {let _=tokio::time::timeout(FIRST_WAIT,rx.wait_for(|held|held.tried)).await;}
    let table=rx.borrow().table.clone();
-   (*exchange,table)
+   (exchange,table)
   }
  });
  futures_util::future::join_all(waits).await
@@ -631,5 +685,50 @@ mod tests {
   assert_eq!(body["base"],"BTC");
   assert_eq!(body["asOfMs"],NOW);
   assert_eq!(body["venues"].as_array().unwrap().len(),13);
+ }
+
+ #[tokio::test(start_paused=true)]
+ async fn the_table_loops_stop_after_an_idle_hour_and_come_back_on_the_next_request() {
+  use std::sync::atomic::{AtomicUsize,Ordering};
+  static FETCHES:AtomicUsize=AtomicUsize::new(0);
+  let fetches=||FETCHES.load(Ordering::SeqCst);
+  let source=Source{name:"test",exchange:Exchange::Binance,fetch:||Box::pin(async {
+   FETCHES.fetch_add(1,Ordering::SeqCst);
+   let mut table=Table::new();
+   table.insert("BTC".into(),Vec::new());
+   Ok(table)
+  })};
+  let minutes=|n:u64|Duration::from_secs(n*60);
+  let book=Book::new(vec![source],Pace{fresh:minutes(10),retry:Duration::from_secs(30),idle:minutes(60)});
+  assert_eq!(fetches(),0,"建好不拉，第一个请求来了才拉");
+
+  // 第 0 分钟有人问：拉一轮，之后每 10 分钟一轮。
+  let first=snapshot(&book).await;
+  assert!(first[0].1.is_some());
+  assert_eq!(fetches(),1);
+  // 第 30 分钟又有人问：停的时间往后顺延到 90 分钟之后。
+  tokio::time::sleep(minutes(30)+Duration::from_secs(1)).await;
+  assert_eq!(fetches(),4,"0、10、20、30");
+  snapshot(&book).await;
+  tokio::time::sleep(minutes(60)).await;
+  assert_eq!(fetches(),10,"一直拉到第 90 分钟：40、50、60、70、80、90");
+  // 第 100 分钟醒来一看，最近一小时（30 分钟那次之后）没人问：不再拉，循环停了。
+  tokio::time::sleep(minutes(11)).await;
+  assert_eq!(fetches(),10,"第 100 分钟不再出站");
+  assert!(!book.activity.lock().unwrap().running[0]);
+  tokio::time::sleep(minutes(180)).await;
+  assert_eq!(fetches(),10,"停了就一直停着");
+
+  // 下一次请求：手上那份旧表立刻答复（不等），同时循环重新起、马上拉一轮。
+  let asked_at=Instant::now();
+  let again=snapshot(&book).await;
+  assert_eq!(Instant::now(),asked_at,"不等第一轮");
+  assert!(again[0].1.is_some(),"停掉时手上那份表还在");
+  tokio::task::yield_now().await;
+  assert_eq!(fetches(),11,"重新起来的循环马上拉一轮");
+  assert!(book.activity.lock().unwrap().running[0]);
+  snapshot(&book).await;
+  tokio::task::yield_now().await;
+  assert_eq!(fetches(),11,"在跑的循环不重复起");
  }
 }
