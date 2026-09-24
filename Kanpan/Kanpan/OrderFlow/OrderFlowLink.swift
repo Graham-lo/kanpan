@@ -14,7 +14,8 @@ import SwiftUI
 //   2. 记下当前品种的品种事实（base、资产类型、价格步长），行情流拿它查默认门槛；
 //   3. 收下行情流推来的当前大单集合，只认当前品种的；
 //   4. 给图表一份可以直接塞进 `ChartState.orderFlow` 的值（横屏画线台给 nil）。
-// 大单集合按品种在本机记一份小日志（24 小时内、结束的最多 500 条、挂着的不删，见 OrderFlowFeed），不同步。
+// 大单集合按品种在本机记一份小日志（24 小时内、最多 5000 条，见 OrderFlowFeed），不同步；更早的由行情流
+// 从 kanpan-api 取（服务端存 30 天），图往左拖出已取区间就往前补——所以这里还要把图的可视范围交给行情流（`noteView`）。
 
 /// 行情流在自己的执行器上问品种事实，所以得是线程安全的一张小表。
 final class OrderFlowFactsTable: Sendable {
@@ -58,6 +59,20 @@ final class OrderFlowLink {
   @ObservationIgnored private var sequence: UInt64 = 0
   @ObservationIgnored let focus = OrderFlowFocus()
 
+  /// 上一次交给行情流的可视范围（按分钟取整）：平移时每一帧都回调，分钟没变就不再跨一次 actor。
+  @ObservationIgnored private var sentView: (symbol: String, from: Int64, to: Int64)?
+
+  /// 图的可视范围变了（`ChartView.onViewChanged`，经 `MarketModel.loadOI`）。开着指标才交给行情流：
+  /// 它按最左边往前补服务端历史，超过 2 万条挤掉旧单时优先留可视区里的。
+  func noteView(_ view: ViewWindow, symbol: String, feed: RoutedMarketFeed) {
+    guard active, view.span > 0, view.from.isFinite, view.to.isFinite else { return }
+    let from = Int64((view.from / 60_000).rounded(.down)) * 60_000
+    let to = Int64((view.to / 60_000).rounded(.up)) * 60_000
+    if let sent = sentView, sent.symbol == symbol, sent.from == from, sent.to == to { return }
+    sentView = (symbol, from, to)
+    Task { await feed.setOrderFlowView(symbol: symbol, fromMs: from, toMs: to) }
+  }
+
   /// 十字线变了（`ChartView.onCrosshairChanged`）：停在主图上时读数要精确金额。
   func noteCrosshair(onMain: Bool) { focus.set(onMain) }
 
@@ -68,7 +83,7 @@ final class OrderFlowLink {
   /// 都从那儿过（传进来的是「在前台」）。重复调用无害：行情流那一侧已经在跑同一只就不重订。
   func apply(visible: Bool, to feed: RoutedMarketFeed) {
     active = visible && wanted
-    if !active { snapshot = nil }
+    if !active { snapshot = nil; sentView = nil }
     sequence &+= 1
     let on = active, table = self.facts, overrides = self.overrides, focus = self.focus, sequence = self.sequence
     Task { await feed.setOrderFlow(enabled: on, overrides: overrides, facts: { table.facts(for: $0) },

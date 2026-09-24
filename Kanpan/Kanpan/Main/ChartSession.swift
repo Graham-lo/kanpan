@@ -316,7 +316,18 @@ struct LiveCompareObservers: ViewModifier {
         Text("layout").font(.system(size: 1)).opacity(0.01)
           .accessibilityIdentifier("layout.diagnostics")
           .accessibilityValue("stored=\(store.prefs.barSpacing);live=\(viewport.barSpacing);token=\(viewport.adoptToken)")
+        // 主力订单流手上这份大单：条数、最早一条的出现时刻、还挂着的条数。用例拿「最早出现」比启动时刻，
+        // 早于启动就只能是从服务端历史并进来的（本机日志只记本机看见过的）。
+        Text("orderflow").font(.system(size: 1)).opacity(0.01)
+          .accessibilityIdentifier("orderflow.diagnostics")
+          .accessibilityValue(orderFlowSummary)
       }.allowsHitTesting(false)
+    }
+
+    private var orderFlowSummary: String {
+      let orders = market.orderFlow.snapshot?.orders ?? []
+      let earliest = orders.map(\.firstSeenMs).min() ?? 0
+      return "orders=\(orders.count);earliest=\(earliest);live=\(orders.filter { $0.endMs == nil }.count)"
     }
   }
 #endif

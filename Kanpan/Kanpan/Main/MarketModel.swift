@@ -874,6 +874,7 @@ final class MarketModel {
     // 主力订单流只跟前后台走，不跟「图表看不看得见」走：切到自选 / 设置看一眼再回来，
     // 簿和每条大单从哪根 K 线开始挂的都还在；停掉重订就是一本新簿，要重新确认，还挂着的单只能靠日志接回来。
     orderFlow.apply(visible: foreground, to: feed)
+    if let lastView { orderFlow.noteView(lastView, symbol: symbol, feed: feed) }
   }
 
   /// 主力订单流开关（`Prefs.orderFlow`）。
@@ -949,6 +950,8 @@ final class MarketModel {
   func loadOI(view: ViewWindow, refresh: Bool = false) {
     lastView = view
     loadMetrics(view: view, refresh: refresh)
+    // 主力订单流也要知道图在看哪一段（往左补服务端历史）；和持仓量一样挂在这个「图挪了」的入口上。
+    orderFlow.noteView(view, symbol: symbol, feed: feed)
     guard chartVisible, foreground, oiAvailable else { return }
     guard oiEnabled, let series, !series.isEmpty else { return }
     let refresh = refresh || oiStaleTail
