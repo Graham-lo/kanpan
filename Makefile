@@ -168,7 +168,7 @@ app_test = $(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $$($(
 app_test_release = $(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD_RELEASE) \
 	$(APP_RELEASE_FLAGS) $$($(APP_GROUP) $(1)) $(APP_SKIP)
 
-# 自选、搜索、品种表、报价会话。
+# 自选、搜索、品种表。（报价会话 `QuoteSession` 跟着 `QuoteBook` 搬去了 Main 组，审查第 18 项。）
 symbols-test:
 	$(call app_test,Symbols)
 
@@ -210,7 +210,7 @@ diag-ios-test:
 	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $(APP_SMOKE)
 
 # 主屏那几条生命周期用例（宿主销毁收摊、合批缓冲换人就丢、转屏复位只认最后一次、
-# 后台额度必须还）、顶栏纯显示（A-T20）、报价簿（B-T10）。它们**挂在 `test` 里**（审查复核项 8）。
+# 后台额度必须还）、顶栏纯显示（A-T20）、报价簿（B-T10）与报价会话。它们**挂在 `test` 里**（审查复核项 8）。
 main-ios-test:
 	$(call app_test,Main)
 
