@@ -54,7 +54,11 @@ struct MainScreen: View {
   /// 图上这个品种只是个占位。真正「上次看的那张图」要等档案（访客或账号）装进来
   /// 才知道，见 `honorProfile()`；`boot()` 里 `market.start(symbol:)` 会拿着那份
   /// 档案里的值开张，不会先开一张别的图再切过去。
-  @State private var market = MarketModel(symbol: "BTCUSDT")
+  ///
+  /// 行情、报价簿、对比、十字线读数都归 `ChartSession`（审查 21）：逐笔推送只该叫醒图和
+  /// 顶栏那几块，不该叫醒这张根视图。下面的 `market` / `quotes` 等只是它的简写。
+  @State private var session: ChartSession
+  private var market: MarketModel { session.market }
   /// 第一帧的底色不能等档案。
   ///
   /// 设置的真身在账号目录里的 `prefs.json`，而这个 `store` 是在第一帧**之前**构造的，
@@ -76,12 +80,12 @@ struct MainScreen: View {
   @State private var favoritesEdit = FavoritesEditSession()
   /// 画线工作台里那一层换品种开着没有。只在横屏画线时有意义。
   @State private var showDrawSwitcher = false
-  @State private var quotes = QuoteBook()
+  private var quotes: QuoteBook { session.quotes }
   /// 板块页那一路的行情。它拉的是**全市场 24h ticker**（一趟就够），和 `QuoteBook`
   /// 那条按可见范围订阅的线完全不搭界，所以单独一份，只在板块页看得见时才跑。
   @State private var sectorFeed = SectorFeed()
   /// 对比 K 线的行情（`Kanpan/Kanpan/Compare/`）：集合在 `prefs.compareSymbols`，这里只管拉数与对齐。
-  @State private var comparison = CompareModel()
+  private var comparison: CompareModel { session.comparison }
   @State private var showComparePicker = false
   /// 长按一行品种弹出来那张预览卡的数据（§4.1）。自选页和板块品种列表共用一份，
   /// 所以它挂在这儿而不是各自页里——两张表长按同一个品种只取一趟。
@@ -208,12 +212,7 @@ struct MainScreen: View {
   /// 十字线跟手时一秒钟能动几十次，从前它写在主屏自己的 `@State` 上，于是主屏的 body
   /// 一起跟着重求值几十次——而真正变的只有头部那几行开高低收。现在它住在
   /// `CrosshairReadout` 里，只有读数那一小块观察它（见 `CrosshairReadout.swift`）。
-  @State private var crosshairReadout = CrosshairReadout()
-  /// 倒计时的当前时刻（毫秒）。`nil` = 不画。
-  ///
-  /// 渲染器**不读系统时钟**（`ChartState` 得是纯值，A3.11 的基线靠这条），时间只能
-  /// 从外面喂进去。喂的人就是下面那个 `heartbeat()`。
-  @State private var nowMs: Double?
+  private var crosshairReadout: CrosshairReadout { session.readout }
 
   /// `store` 要先造出来才能交给 `viewport` 当属主，`@State` 的默认值互相引用不了，
   /// 所以这里显式写一个 init。
@@ -224,6 +223,7 @@ struct MainScreen: View {
                            sentinel: PrefsStore.deviceStorage())
     _store = State(initialValue: store)
     _viewport = State(initialValue: ChartViewport(owner: store))
+    _session = State(initialValue: ChartSession(symbol: "BTCUSDT"))
   }
 
   @Environment(\.colorScheme) private var scheme
@@ -267,17 +267,7 @@ struct MainScreen: View {
     .overlay(alignment: .topLeading) {
       #if DEBUG
       if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
-        VStack {
-        Text(market.capabilities.upstream).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.source").accessibilityValue(market.status.rawValue)
-        Text(MarketNetworkDiagnostics.shared.lines).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.network")
-        // 根宽的三份拷贝，排查「捏完杀 app」那个 bug 用：
-        // `stored` = `PrefsStore` 手上这份（`update` 是同步落盘的，它等于盘上那份）；
-        // `live` = `ChartViewport` 内存里那份；图自己量出来的那份在 `chart.canvas` 的
-        // `spacing` 里。三份对不上，就知道是哪一步把用户的值写掉了。
-        Text("layout").font(.system(size: 1)).opacity(0.01)
-          .accessibilityIdentifier("layout.diagnostics")
-          .accessibilityValue("stored=\(prefs.barSpacing);live=\(viewport.barSpacing);token=\(viewport.adoptToken)")
-        }.allowsHitTesting(false)
+        MainDiagnosticsOverlay(market: market, store: store, viewport: viewport)
       }
       #endif
     }
@@ -361,11 +351,10 @@ struct MainScreen: View {
                  else {
                    if tab != .chart { chartOrigin = tab }
                    tab = .chart; didLeaveLaunch = true
-                   crosshairReadout.clear()
                    // 目录还没载回来时点一行，以前只换图不记「最近」——同一个动作在
                    // 目录加载前后结果不一样，而且这张图下次冷启动也回不来。
                    picker.visit(symbol)
-                   market.switchTo(symbol: symbol)
+                   session.show(symbol: symbol)
                  }
                },
                onScanList: { adoptScanList($0) },
@@ -399,7 +388,8 @@ struct MainScreen: View {
     // **不要把 `.onChange` / `.onReceive` 重新挂回这条链上，往那只修饰符里加。**
     .modifier(observers)
     // 对比 K 线只有这一个观察者，自带一层修饰符，不往上面那只里塞。
-    .modifier(CompareObservers(drive: compareDrive, onChange: { updateCompare() }))
+    // 接线键（要读序列首尾时刻）在修饰符自己的 body 里求值，见 `LiveCompareObservers`。
+    .modifier(LiveCompareObservers(drive: { compareDrive }, onChange: { updateCompare() }))
     .modifier(OrderFlowObserver(on: prefs.orderFlow, market: market))
   }
 
@@ -410,6 +400,8 @@ struct MainScreen: View {
   /// 主屏那一串观察者的接线。
   ///
   /// **被观察的值全在这儿求值**——`onChange(of:)` 的依赖记在求值它的那个 body 上，
+  /// （例外是逐笔推送带出来的那两条：成交和费率。它们在 `LiveTickRelay` 里自己求值，
+  /// 放在这儿每一笔成交都会叫醒整页——审查 21。）
   /// 所以这些读取必须留在 `MainScreen` 里，搬进修饰符会让宿主不再订阅它们
   /// （最要命的是 `listVisible`：它是拿 `picker.prefs.favorites` 算的）。
   /// 动作照旧是这只 `MainScreen` 上的方法，收的是 `onChange` 给的新值。
@@ -422,11 +414,10 @@ struct MainScreen: View {
       syncGate: syncGate,
       reviewScope: review.searchScope,
       routePolicy: prefs.routePolicy,
-      fundingRate: market.displayedFundingRate,
+      session: session,
       catalogCount: picker.catalog.count,
       listVisible: listVisible,
       favorites: picker.prefs.favorites,
-      tradeQuote: market.tradeQuote,
       symbol: market.symbol,
       undoStamp: favoritesEdit.undoStamp,
       returnStamp: returnStamp,
@@ -450,10 +441,10 @@ struct MainScreen: View {
       onReviewScope: { value in store.update { $0.reviewSearchScope = value } },
       onPrefsReviewScope: { value in review.searchScope = value },
       onTimeZone: { value in review.timezone = value },
-      onChangeBasis: { next in quotes.configure(route: route, basis: next) },
+      onChangeBasis: { next in session.configure(route: route, basis: next) },
       onRoutePolicy: { next in
         let route = RouteResolver(policy: next)
-        quotes.configure(route: route, basis: prefs.changeBasis)
+        session.configure(route: route, basis: prefs.changeBasis)
         sectorFeed.configure(route: route)
         previews.configure(route: route)
       },
@@ -461,9 +452,6 @@ struct MainScreen: View {
       onCatalog: { sectorFeed.setCatalog(picker.catalog) },
       onListVisible: { on in quotes.setVisible(on) },
       onFavorites: { symbols in settleFavorites(symbols) },
-      onTradeQuote: { trade in
-        if !market.capabilities.isSubstitute, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
-      },
       onSymbol: { symbol in
         if let preview = draw.previewing, preview.key != symbol { endSharePreview() }
         // 回信只回那一只上的线：换走了就算不回了。
@@ -804,10 +792,9 @@ struct MainScreen: View {
       .background(theme.app)
       VStack(spacing: 0) {
         if reviewChart.mode == .replay { reviewHeader } else {
-        LandscapeHeadline(
-          theme: theme, symbol: market.symbol, price: readoutPrice,
-          changePercent: displayedTicker?.changePercent,
-          decimals: market.info.priceDecimals,
+        // 价和涨跌在 `LiveLandscapeHeadline` 自己的 body 里取：逐笔推送只叫醒那一行。
+        LiveLandscapeHeadline(
+          session: session, theme: theme,
           // 只有画线工作台里那一行是按钮，见 `DrawingSymbolSwitcher` 顶上那段。
           // 换品种和挑工具都贴在左边，同时开会叠在一起——开一个就把另一个收了。
           onTapSymbol: draw.active ? { draw.picker = false; showDrawSwitcher.toggle() } : nil)
@@ -977,9 +964,7 @@ struct MainScreen: View {
   private var header: some View {
     MainHeaderView(
       theme: theme, market: market, review: review,
-      readout: crosshairReadout, context: crosshairContext,
-      ticker: rollingTicker, lastPrice: readoutPrice,
-      diagnostics: quoteDiagnostics,
+      session: session, context: crosshairContext,
       cardVisible: headerCardVisible,
       // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
       onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
@@ -989,57 +974,13 @@ struct MainScreen: View {
       card: shareAndAlertCard(inHeader: true))
   }
 
-  private var displayedTicker: Ticker? {
-    rollingTicker.map { quotes.presented($0) }
-  }
-
-  /// 头部涨跌额与涨跌幅成对使用交易所 24 小时统计；自选口径仍走 presented。
-  private var rollingTicker: Ticker? {
-    // 备用线路上先用它自己的一帧；它还没到（或这个品种它根本没有）就退回
-    // 共享报价层里那口最后的价，顶栏灰显而不是退成骨架（§2B #54）。
-    if market.capabilities.isSubstitute {
-      let shared = quotes.raw[market.symbol] ?? quotes.seeded(market.symbol)
-      guard var own = market.ticker else { return shared }
-      // 替身的推送帧不带成交额，REST 那一帧补回来之前（冷启动、扫图的头一两百毫秒），
-      // 用共享报价层同一条线路上的那份垫着（它按上游分区存盘、种子按上游收），不跨源借。
-      if !own.quoteVolume.isFinite, !market.tickerStale, let shared, shared.symbol == own.symbol,
-         shared.quoteVolume.isFinite {
-        own.quoteVolume = shared.quoteVolume
-      }
-      return own
-    }
-    if let quote = quotes.raw[market.symbol] { return quote }
-    // MarketModel already receives the venue ticker frames as part of the
-    // chart feed. Use that value immediately instead of waiting for the
-    // separate list QuoteBook to open another socket.
-    // 两路都还没到（从板块列表 / 搜索点进一只没看过的品种）：退到全市场 24h 那一份
-    // 种子——几秒前的价，也比顶栏一排「—」强，真行情一到就被盖掉。
-    return market.ticker ?? quotes.seeded(market.symbol)
-  }
-
-  /// 给 UI 用例读的那串诊断值。**只在 DEBUG 构建里存在**（审查 C-02）：
-  /// 正式包不该因为一个环境变量就把根数、视野、报价时刻挂到可访问树上。
-  private var quoteDiagnostics: String {
-    #if DEBUG
-    guard ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" else { return "" }
-    return "symbol=\(market.symbol);last=\(displayedTicker?.last ?? .nan);time=\(displayedTicker?.timeMs ?? 0)"
-    #else
-    return ""
-    #endif
-  }
-
-  /// Latest trade quote only; changing candle interval must never change its source.
-  private var readoutPrice: Double? {
-    return market.capabilities.isSubstitute ? (market.series?.close.last ?? displayedTicker?.last) : displayedTicker?.last
-  }
-
   /// 读数那一小块要的、**不跟着手指走**的那几样输入。十字线本身不在这儿——
   /// 它住在 `crosshairReadout` 里，只有读数视图读得到（见 `CrosshairReadout.swift`）。
+  ///
+  /// 序列不在这儿取（审查 21）：`crosshairContext` 在宿主 body 里求值，这儿读一次
+  /// `market.series` 就等于让每根新 K 线都把整页叫起来。它交给读数视图在十字线真在场时现取。
   private var crosshairContext: CrosshairContext {
-    CrosshairContext(
-      series: market.series, symbol: market.symbol, interval: market.interval,
-      decimals: market.info.priceDecimals, offsetMinutes: prefs.timeZone.offsetMinutes,
-      enabled: prefs.dataDisplay == .top)
+    session.crosshairContext(timeZone: prefs.timeZone.offsetMinutes, enabled: prefs.dataDisplay == .top)
   }
 
   /// 「图表设置」里的「记一笔」。复盘回放里没有「记」这回事、预览别人的线时那张图不是
@@ -1187,7 +1128,7 @@ struct MainScreen: View {
     open(linkedSymbol: item.key)
     shareInterval = SharePreviewInterval(before: before, shared: item.interval)
     // 分享切换只活在本次预览，不写 Prefs，也不进入个人同步。
-    market.switchTo(interval: item.interval)
+    session.show(interval: item.interval)
     draw.focus(item.key)
     draw.preview(item)
     proxy.show(window: item.view.window, symbol: item.key, interval: item.interval)
@@ -1199,7 +1140,7 @@ struct MainScreen: View {
     let restore = shareInterval?.restore(current: market.interval)
     draw.endPreview(); shareInterval = nil
     proxy.cancelWindow()
-    if let restore { market.switchTo(interval: restore) }
+    if let restore { session.show(interval: restore) }
   }
 
   private func keepShare(_ item: ShareItem) {
@@ -1222,10 +1163,10 @@ struct MainScreen: View {
   /// 成片顶上那一条：徽章 品种 · 周期 · 最新价 涨跌药丸。取的和头部同两个数，
   /// 免得图上写的价和屏幕上那口对不上。
   private var chartShotHead: ChartShotHead {
-    let pct = displayedTicker?.changePercent
+    let pct = session.displayedTicker?.changePercent
     return ChartShotHead(
       symbol: market.symbol, interval: market.interval,
-      price: readoutPrice, decimals: market.info.priceDecimals,
+      price: session.readoutPrice, decimals: market.info.priceDecimals,
       changePercent: (pct?.isFinite == true) ? pct : nil)
   }
 
@@ -1234,8 +1175,8 @@ struct MainScreen: View {
     MainChartView(
       theme: theme, market: market, proxy: proxy, viewport: viewport, store: store,
       review: review, reviewChart: reviewChart, draw: draw, alerts: alerts,
-      readout: crosshairReadout,
-      liveState: chartState,
+      session: session,
+      input: chartInput,
       portrait: !landscape,
       renderingActive: tab == .chart && !symbolSearch.isActive && !showComparePicker,
       panelOpen: panel != nil || draw.panel != nil,
@@ -1298,20 +1239,20 @@ struct MainScreen: View {
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
-      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), route: route.route)
+      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), route: route.route)
     }
     // 卡片上改起止时刻（P3.7）：吸附、重算目标失效、把图挪过去，都在图这一头做。
     review.onEditRange = { start, end in reviewChart.editRange(start: start, end: end, feature: review) }
     review.onOpenMatch = { match, cutoff in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = review.searchRecord.map { .search($0) }
-      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), route: route.route)
+      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), route: route.route)
     }
     review.synchronize()
   }
   private func startReviewCapture() {
     endSharePreview(); dismissPanel(); draw.finish()
-    reviewChart.beginCapture(feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), prefs: prefs)
+    reviewChart.beginCapture(feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), prefs: prefs)
   }
   /// 退出复盘。
   ///
@@ -1376,59 +1317,14 @@ struct MainScreen: View {
 
   // ---------------------------------------------------------------- 图的输入
 
-  /// 行情 + 设置 揉成一份 `ChartState`。
+  /// 揉 `ChartState` 要的、**不随推送变**的那一半（审查 21）。
   ///
-  /// `view` 这里给个占位：视野归图自己管，`ChartHost` 会按「换品种/换周期/换风格」
-  /// 三种情形各自算一份真的（见 `ViewIntent`）。
-  private var chartState: ChartState? {
-    guard let s = market.series, s.symbol == market.symbol, s.interval == market.interval, s.count > 0 else { return nil }
-    // 上下翻转跟着人走，不跟着品种走：换品种时这份 state 是新造的，翻转要是不从设置里
-    // 带出来，图就会自己翻回去。开关关掉时不认存档里那一份——否则翻过去之后把开关一关，
-    // 就再也没有把它翻回来的入口了。
-    var price = PriceTransform(mode: prefs.priceMode)
-    price.inverted = prefs.allowMainInversion && prefs.mainInverted
-    var result = ChartState(
-      series: s,
-      symbol: market.info,
-      view: ViewWindow(to: Double(s.lastTime), span: Double(s.step) * 80),
-      dark: dark,
-      redUp: prefs.redUp,
-      price: price,
-      overlays: visibleOverlays,
-      subs: visibleSubs,
-      params: prefs.params,
-      timezone: prefs.timeZone,
-      oi: market.oi,
-      magnet: prefs.magnet,
-      decimals: market.info.priceDecimals,
-      options: prefs.chartOptions,
-      nowMs: nowMs,
-      subScale: subScale)
-    // 走 OKX 兜底线路时持仓量根本取不到（`OISource` 只连币安）——让副图说实话，
-    // 别一直挂「加载中」。
-    result.external = market.external
-    result.depth = drawingCanvasOnly || !prefs.depth ? nil : market.depth
-    result.orderFlow = market.orderFlow.chartValue(symbol: market.symbol, drawingCanvasOnly: drawingCanvasOnly)
-    // 持仓量和衍生统计分开认：网关线路上的替身有持仓量历史（kanpan-api 代问 OKX），
-    // 多空比、主动买卖、基差没有。
-    result.oiSupported = market.capabilities.hasOpenInterestHistory
-    result.externalSupported = market.capabilities.hasDerivativeMetrics
-    result.subInverted = prefs.allowSubInversion ? prefs.subInverted : []
-    result.paletteSeed = seed
-    result.hiddenOutputs = prefs.hiddenOutputs
-    result.indicatorColors = prefs.indicatorColors
-    result.percentAxis = comparing
-    if comparing { result.options.drawings = false }
-    let shown = comparing ? compareKeys : []
-    result.compare = comparison.series(main: s, keys: shown,
-      colors: shown.map { key in
-        let slot = prefs.compareSymbols.firstIndex(of: key) ?? 0
-        let palette = result.colors.palette
-        return palette[slot % palette.count]
-      },
-      names: { compareNames[$0] ?? String($0.split(separator: "/").last ?? "") })
-    result.rsiUpper = prefs.rsiUpper; result.rsiLower = prefs.rsiLower
-    return result
+  /// 逐笔的那一半（序列、持仓量、深度、倒计时）由 `ChartSession.liveState` 在
+  /// `MainChartView` 自己的 body 里现取——宿主这儿一个都不读，推送就叫不醒它。
+  private var chartInput: ChartInput {
+    ChartInput(prefs: prefs, seed: seed, overlays: visibleOverlays, subs: visibleSubs, subScale: subScale,
+               drawingCanvasOnly: drawingCanvasOnly, comparing: comparing,
+               compareKeys: compareKeys, compareNames: compareNames)
   }
 
   /// 此刻图上是不是对比态。横屏画线、复盘、看朋友分享的线时暂退，集合本身不动，回来就恢复。
@@ -1477,15 +1373,11 @@ struct MainScreen: View {
   private var beating: Bool { phase == .active }
 
   /// 一秒一跳。倒计时读到秒就够，再快只是白耗。
+  ///
+  /// 倒计时那一秒记在 `ChartSession.nowMs` 上，只有图读它（审查 21：以前它是这儿的
+  /// `@State`，每一秒整页重求值一次）。
   private func heartbeat() async {
-    guard beating else { nowMs = nil; return }
-    while !Task.isCancelled {
-      nowMs = prefs.countdown ? Date().timeIntervalSince1970 * 1000 : nil
-      market.refreshOIIfNeeded()
-      quotes.tick()
-      refreshComfort()
-      do { try await Task.sleep(for: .seconds(1)) } catch { return }
-    }
+    await session.heartbeat(active: beating, countdown: { prefs.countdown }, onBeat: { refreshComfort() })
   }
 
   private func refreshComfort() {
@@ -1559,8 +1451,7 @@ struct MainScreen: View {
       // 先把后台运行额度要下来，再进后台状态：两处宽限窗口靠它才有 CPU 可跑，
       // 短暂切走再回来就不必重连。
       grace.begin()
-      comparison.setForeground(false)
-      market.enterBackground(); quotes.setForeground(false); sectorFeed.setForeground(false)
+      session.setForeground(false); sectorFeed.setForeground(false)
       // 后台里响的那些不去动界面，只留一条本地通知（见 `AlertWatcher`）。
       alertWatcher.setForeground(false)
       // 判定也一起停：桶断了就不算连着，回来那一下不拿断口两侧的价去算穿越。
@@ -1570,8 +1461,7 @@ struct MainScreen: View {
       widgetFeed.setForeground(false)
     } enter: {
       grace.end()
-      comparison.setForeground(true)
-      market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
+      session.setForeground(true); sectorFeed.setForeground(true)
       alertWatcher.setForeground(true)
       alertEngine.setForeground(true)
       watchMove.setForeground(true)
@@ -1587,16 +1477,15 @@ struct MainScreen: View {
     // 捕获列表是必须的：不写的话闭包捕获的是 `MainScreen` 这个结构体，而它的
     // `@State` 包装器正握着 `teardown` 的存储，成环之后 `deinit` 永远不来。
     // 登记全部按 token 撤，撤不到别人的那一份（同一时刻可能已经有新的根接上了）。
-    teardown.onTeardown { [market, quotes, sectorFeed, grace, comparison] in
+    teardown.onTeardown { [session, sectorFeed, grace] in
       AppLifecycle.shared.unregisterResources(token: feedsToken)
       AppLifecycle.shared.unregister(hook: viewportHook)
       AppLifecycle.shared.unregister(hook: reviewHook)
       // `MemoryWarningRelay` 那条不撤：它登记的是 `[weak market]`，模型一释放就成了
       // 空操作；按 id 撤反而可能把新根刚登记的那份摘掉。
       grace.end()          // 系统那份后台额度必须还回去
-      comparison.stop()
-      market.stop()        // 事件流、重连、OI 轮询
-      quotes.shutdown()    // 列表那条 socket，不走 25 秒宽限：没有「回来」了
+      // 对比、事件流 / 重连 / OI 轮询、列表那条 socket（不走 25 秒宽限：没有「回来」了）。
+      session.stop()
       sectorFeed.setForeground(false)
     }
   }
@@ -1809,7 +1698,7 @@ struct MainScreen: View {
       picker.markDelisted(symbol)
       market.noteSymbolRejected(symbol)
     }
-    quotes.configure(route: route, basis: prefs.changeBasis)
+    session.configure(route: route, basis: prefs.changeBasis)
     // 自选表要赶在 `setChartSymbol` 前面：后者会重算订阅范围，那时候如果自选还是空的，
     // `configure` 刚恢复出来的那批报价就会被裁到只剩图上这一个品种。
     //
@@ -1842,8 +1731,7 @@ struct MainScreen: View {
       if tab != .chart { chartOrigin = tab }
       tab = .chart; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
-      crosshairReadout.clear()
-      market.switchTo(symbol: info.symbol)
+      session.show(symbol: info.symbol)
     }
     picker.setLoader(market.catalogLoader)
     market.knownInfo = { [picker] in picker.info(for: $0) }
@@ -1953,7 +1841,7 @@ struct MainScreen: View {
       // 上次看的那张图。`boot()` 中途调到这儿时行情还没开张，那一次交给
       // `market.start(symbol:)` 直接开对，不在这儿切。
       if live, let last = profile.recents.first, last != market.symbol {
-        crosshairReadout.clear(); market.switchTo(symbol: last)
+        session.show(symbol: last)
       }
     }
     if !awaitingAccount {
@@ -1965,7 +1853,7 @@ struct MainScreen: View {
     // 周期跟着人走（已经从 `PersonalSyncCodec.keepDeviceFields` 里拿出来了）。
     // 复盘在跑的时候图是复盘自己的，别动。
     if live, !reviewChart.active, prefs.interval != market.interval {
-      crosshairReadout.clear(); market.switchTo(interval: prefs.interval)
+      session.show(interval: prefs.interval)
     }
     // 报价簿要等 `boot()` 把线接好才认表；`boot()` 自己会交一次。
     if live { settleFavorites(profile.favorites) }
@@ -2018,9 +1906,8 @@ struct MainScreen: View {
     symbolSearch.reset()
     if tab != .chart { chartOrigin = tab }
     tab = .chart; didLeaveLaunch = true
-    crosshairReadout.clear()
     picker.visit(symbol)
-    market.switchTo(symbol: symbol)
+    session.show(symbol: symbol)
   }
 
   private func openLinkedSearch() {
@@ -2042,7 +1929,6 @@ struct MainScreen: View {
     dismissPanel()
     guard iv != market.interval else { return }
     store.update { $0.interval = iv }
-    crosshairReadout.clear()
     // 换了一档，「刚才那一屏」是上一档的坐标，回不去了（§P3-2）。
     forgetReturn()
     // 「看细节」钻下去之后切回大周期：回到钻之前那个视野，而不是这一档的最新一屏——
@@ -2053,7 +1939,8 @@ struct MainScreen: View {
     } else {
       proxy.cancelWindow()
     }
-    market.switchTo(interval: iv)
+    // 换周期连同收十字线一起走会话那一个入口。
+    session.show(interval: iv)
     Haptics.step()
   }
 

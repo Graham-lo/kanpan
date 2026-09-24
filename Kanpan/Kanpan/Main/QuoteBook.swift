@@ -17,7 +17,13 @@ final class QuoteBook {
   }
 #endif
 
-  private(set) var raw: [String: Ticker] = [:]
+  /// 全部品种的最新报价。**不参与观察**（审查 21）：自选表里任何一只跳一下都会改它，
+  /// 谁在 body 里读它，谁就跟着整张表一起重算。列表走 `onUpdate` 合批那条路，
+  /// 图表头部读下面那份 `chartQuote`——这儿只在动作里现取。
+  @ObservationIgnored private(set) var raw: [String: Ticker] = [:] { didSet { syncChartQuote() } }
+  /// 图上那只（`setChartSymbol`）的最新报价，`raw` 里那一格的镜像。**只有它参与观察**：
+  /// 头部价格行读它，自选表别的行跳动不会把行情页叫起来。
+  private(set) var chartQuote: Ticker?
   private(set) var lastListUpdate: Date?
   private(set) var basis: ChangeBasis = .rolling24h
   private var latestReceived: [String: QuoteState] = [:]
@@ -690,6 +696,12 @@ final class QuoteBook {
     return next
   }
 
+  /// `raw` 里图上那一格变了才写，同值不写——写了就会叫醒读它的头部。
+  private func syncChartQuote() {
+    let next = chartSymbol.flatMap { raw[$0] }
+    if next != chartQuote { chartQuote = next }
+  }
+
   func presented(_ ticker: Ticker) -> Ticker {
     var value = ticker
     let start = basis.boundary(now: Int64(Date().timeIntervalSince1970 * 1000))
@@ -706,6 +718,7 @@ final class QuoteBook {
     let next = InstrumentID.canonical(symbol)
     guard chartSymbol != next else { return }
     chartSymbol = next
+    syncChartQuote()
     guard needsConnection else { return }
     watch(next)
     reconcileConnection()

@@ -629,6 +629,15 @@ public final class ChartView: UIView {
   /// 层回调进来的唯一入口。视图不画，只负责分派。
   fileprivate func render(_ part: CanvasLayer.Part, in ctx: CGContext, size: CGSize, scale: CGFloat)
   {
+    #if DEBUG
+    let probeStart = CACurrentMediaTime()
+    defer {
+      if let hook = onRenderPartForProbe {
+        hook(part == .plot ? "plot" : part == .live ? "live" : "cross",
+             (CACurrentMediaTime() - probeStart) * 1000)
+      }
+    }
+    #endif
     guard let renderer, size.width > 0, size.height > 0 else {
       ctx.clear(CGRect(origin: .zero, size: size))
       #if DEBUG
@@ -656,6 +665,8 @@ public final class ChartView: UIView {
   /// `onRenderedForProbe`：蜡烛层或最新价层刚画完一次。
   public var onAdoptedForProbe: ((Bool) -> Void)?
   public var onRenderedForProbe: (() -> Void)?
+  /// 分层计时：哪一层、画了多少毫秒。只给采帧诊断用。
+  public var onRenderPartForProbe: ((String, Double) -> Void)?
   #endif
 }
 

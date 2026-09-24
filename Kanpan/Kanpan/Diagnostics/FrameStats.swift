@@ -114,6 +114,8 @@ struct FrameReport: Sendable, Equatable, Codable {
   /// 只有登记过的视图才会出现在这里（`FrameProbe.countBody`）；没登记、或者采集期间
   /// 一次也没重算的，不在表里。用来比「拖一条线时宿主页整页重算了多少遍」这种账。
   var bodies: [String: Int]? = nil
+  /// 主线程忙时超过 8ms 的那些帧里，各登记视图出现了几次；`"*"` 是这种重帧的总数。
+  var heavyBodies: [String: Int]? = nil
 
   struct Verdict: Sendable, Equatable, Codable {
     /// P9.2：hitch 占比 < 1%。

@@ -24,10 +24,14 @@ import SwiftUI
 
 /// 读数要的那几样「不跟着手指走」的输入：哪条序列、几位小数、什么时区、这个模式开没开。
 ///
-/// 它们只会随行情推进、换品种、改设置而变，那几件事本来就要重求值主屏的 body，
-/// 所以在 body 里现取，不进 `CrosshairReadout`。
+/// 品种、周期、位数、时区、模式只随换品种、改设置而变，宿主在 body 里现取，不进
+/// `CrosshairReadout`。**序列例外**（审查 21）：它每根新 K 线都换一份，宿主 body 里读一次
+/// 就等于让每笔推送叫醒整页。所以这里只存一个取法（`seriesSource`），读数视图在十字线
+/// 真在场时才去取——那一刻读到的依赖记在读数视图自己身上。
 struct CrosshairContext {
-  var series: BarSeries?
+  /// 序列的现取法。只在十字线在场时调用（见上）。
+  var seriesSource: @MainActor () -> BarSeries?
+  @MainActor var series: BarSeries? { seriesSource() }
   var symbol: String
   var interval: Interval
   var decimals: Int
@@ -39,7 +43,7 @@ struct CrosshairContext {
 }
 
 /// 头部那几行开高低收。口径和从前的 `MainScreen.topCandleData` 逐字相同。
-func crosshairOHLCText(_ crosshair: Crosshair?, _ context: CrosshairContext) -> String? {
+@MainActor func crosshairOHLCText(_ crosshair: Crosshair?, _ context: CrosshairContext) -> String? {
   guard context.enabled, let c = crosshair, let series = context.series,
         series.symbol == context.symbol, series.interval == context.interval,
         series.close.indices.contains(c.index) else { return nil }
@@ -91,7 +95,7 @@ struct HiddenWhileCrosshairReads: ViewModifier {
 }
 
 /// 十字线此刻是不是真的落在一根上（序列对得上、下标在范围里）。
-func crosshairAlive(_ crosshair: Crosshair?, _ context: CrosshairContext) -> Bool {
+@MainActor func crosshairAlive(_ crosshair: Crosshair?, _ context: CrosshairContext) -> Bool {
   guard let c = crosshair, let series = context.series,
         series.symbol == context.symbol, series.interval == context.interval
   else { return false }

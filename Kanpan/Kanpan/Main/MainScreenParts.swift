@@ -42,11 +42,11 @@ struct MainScreenObservers: ViewModifier {
   let syncGate: Bool
   let reviewScope: String
   let routePolicy: MarketRoutePolicy
-  let fundingRate: Double?
+  /// 逐笔推送带出来的两条（成交、费率）不在这儿求值，交给 `LiveTickRelay`（审查 21）。
+  let session: ChartSession
   let catalogCount: Int
   let listVisible: Bool
   let favorites: [String]
-  let tradeQuote: TradeQuote?
   let symbol: String
   let undoStamp: Int
   let returnStamp: Int
@@ -78,7 +78,6 @@ struct MainScreenObservers: ViewModifier {
   let onCatalog: () -> Void
   let onListVisible: (Bool) -> Void
   let onFavorites: ([String]) -> Void
-  let onTradeQuote: (TradeQuote?) -> Void
   let onSymbol: (String) -> Void
   let onUndoStamp: () -> Void
   let expireReturn: () async -> Void
@@ -98,6 +97,8 @@ struct MainScreenObservers: ViewModifier {
   // （`unable to type-check this expression in reasonable time`）。顺序和从前一样。
   func body(content: Content) -> some View {
     panelSection(marketSection(displaySection(lifecycleSection(content))))
+      // 成交交给报价簿、费率存给预览卡：这只空视图自己观察推送，宿主不跟着醒。
+      .background(LiveTickRelay(session: session, onFunding: onFundingRate))
   }
 
   // 原 `lifecycleContent` + `indicatorObservedContent`。
@@ -139,14 +140,11 @@ struct MainScreenObservers: ViewModifier {
     view
     .onChange(of: prefs.changeBasis) { _, next in onChangeBasis(next) }
     .onChange(of: routePolicy) { _, next in onRoutePolicy(next) }
-    // 费率只有正在看的那张图才有（`markPrice` 流里捎的），顺手存一份给预览卡。
-    .onChange(of: fundingRate) { _, rate in onFundingRate(rate) }
     // 品种表是板块页认 base 的依据（兜底桶按它的标签凑，点行去看图也靠它拼全名）。
     // 它是异步载进来的，所以不能只在 `boot()` 里交一次。
     .onChange(of: catalogCount) { _, _ in onCatalog() }
     .onChange(of: listVisible) { _, on in onListVisible(on) }
     .onChange(of: favorites) { _, symbols in onFavorites(symbols) }
-    .onChange(of: tradeQuote) { _, trade in onTradeQuote(trade) }
     .onChange(of: symbol) { _, next in onSymbol(next) }
     // 自选页删掉一只之后那句「已移除 · 撤销」（§P3-4）。全屏只有一层提示条，
     // 所以话由自选页放进来、宿主念出去；盯的是计数不是那句话本身——连删两只
@@ -186,12 +184,10 @@ struct MainHeaderView<Card: View>: View {
   let theme: PanelTheme
   let market: MarketModel
   let review: ReviewFeature
-  let readout: CrosshairReadout
+  /// 那口价、涨跌和诊断串都在这块自己的 body 里向会话现取（审查 21）：逐笔推送只叫醒头部，
+  /// 不叫醒宿主。
+  let session: ChartSession
   let context: CrosshairContext
-  /// 头部涨跌额与涨跌幅成对使用交易所 24 小时统计（宿主算好的 `rollingTicker`）。
-  let ticker: Ticker?
-  let lastPrice: Double?
-  let diagnostics: String
   /// 「要不要加提醒」/ 分享卡在场没有：价格行和读数行照旧占位，只是透明。
   let cardVisible: Bool
   let onBack: (() -> Void)?
@@ -201,6 +197,10 @@ struct MainHeaderView<Card: View>: View {
   let card: Card
 
   var body: some View {
+    #if DEBUG
+      let _ = FrameProbe.shared.countBody("MainHeaderView")
+    #endif
+    let readout = session.readout
     VStack(spacing: 9) {
       // 顶栏没有自选星了（用户 2026-09-18 定的）：加自选统一在搜索页和自选页的
       // 品种行上做，那儿看得见一整列，挑着加；顶栏这一颗紧贴品种名，只会误触。
@@ -214,7 +214,7 @@ struct MainHeaderView<Card: View>: View {
         onReview: onReview,
         onSearch: onSearch)
       ZStack {
-        PriceRow(theme: theme, instrument: market.symbol, ticker: ticker, lastPrice: lastPrice,
+        PriceRow(theme: theme, instrument: market.symbol, ticker: session.rollingTicker, lastPrice: session.readoutPrice,
           decimals: market.info.priceDecimals,
           volumeUnit: market.volumeUnit,
           openInterest: market.openInterestDisplay,
@@ -226,7 +226,7 @@ struct MainHeaderView<Card: View>: View {
           .modifier(HiddenWhileCrosshairReads(readout: readout, context: context))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
-          .accessibilityValue(diagnostics)
+          .accessibilityValue(session.quoteDiagnostics)
           // 「要不要加提醒」在场的那六秒，价格行也照旧占着位置、只是透明——
           // 和十字线那套让位一模一样，行高一个 pt 都不变。
           .opacity(cardVisible ? 0 : 1)
@@ -283,9 +283,11 @@ struct MainChartView: View {
   let reviewChart: ReviewChartBridge
   let draw: DrawingController
   let alerts: AlertStore
-  let readout: CrosshairReadout
-  /// 宿主揉好的那份 `ChartState`（复盘态下用的是 `reviewChart.state`）。
-  let liveState: ChartState?
+  /// 行情那一半在这块自己的 body 里现取（`session.liveState`），宿主只交不随推送变的
+  /// `input`——逐笔推送、倒计时每一秒，叫醒的是这块而不是整页（审查 21）。
+  /// 复盘态下用的是 `reviewChart.state`，那时候不去揉实时那份。
+  let session: ChartSession
+  let input: ChartInput
   let portrait: Bool
   let renderingActive: Bool
   let panelOpen: Bool
@@ -308,7 +310,7 @@ struct MainChartView: View {
       ChartHost(
         portrait: portrait,
         renderingActive: renderingActive,
-        state: reviewChart.active ? reviewChart.state : liveState,
+        state: reviewChart.active ? reviewChart.state : session.liveState(input),
         holdOnEmpty: !reviewChart.active && market.holdsFrame,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
         onView: { view in
@@ -333,7 +335,7 @@ struct MainChartView: View {
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
         onSubReorder: { order in let next = merged(order); store.update { $0.subs = next } },
-        onCrosshair: { [readout] in
+        onCrosshair: { [readout = session.readout] in
           readout.set($0)
           // 十字线一出来就把「看细节」要去的那一档先热上（B3）。
           if $0 != nil, !reviewChart.active { market.prewarmDetail() }

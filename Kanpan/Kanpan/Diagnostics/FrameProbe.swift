@@ -70,12 +70,19 @@
     private(set) var isRunning = false
     /// 这一段里登记过的视图各重算了几次 `body`。见 `countBody`。
     private var bodyCounts: [String: Int] = [:]
+    /// 这一轮 runloop 里求值过的视图。结帐时看这一帧重不重，把重帧记到它们名下。
+    private var frameBodies: Set<String> = []
+    /// 主线程忙时超过 `heavyFrameMs` 的帧里，各视图出现了几次（键 `"*"` 是重帧总数）。
+    /// 用来回答「掉帧那几帧里是谁在重算」——光有总次数看不出来。
+    private var heavyBodies: [String: Int] = [:]
+    static let heavyFrameMs = 8.0
 
     /// 在视图的 `body` 里调一下，采集期间它每被求值一次就记一笔，停的时候进报告
     /// （`FrameReport.bodies`）。没在采集就什么也不做——平时这一行只是一次布尔判断。
     func countBody(_ name: String) {
       guard isRunning else { return }
       bodyCounts[name, default: 0] += 1
+      frameBodies.insert(name)
     }
 
     init(store: FrameReportStore = FrameReportStore()) {
@@ -93,6 +100,8 @@
       self.label = label
       stats.reset()
       bodyCounts = [:]
+      frameBodies = []
+      heavyBodies = [:]
       wokeAt = nil
       pendingFrame = nil
 
@@ -121,7 +130,9 @@
       guard !stats.isEmpty else { return nil }
       var report = stats.report(label: label, device: Self.deviceTag())
       if !bodyCounts.isEmpty { report.bodies = bodyCounts }
+      if !heavyBodies.isEmpty { report.heavyBodies = heavyBodies }
       bodyCounts = [:]
+      heavyBodies = [:]
       stats.reset()
       store.save(report)
       return report
@@ -185,11 +196,17 @@
 
     /// runloop 要睡了：这一帧的账在这里结。
     private func closeFrame() {
+      let seen = frameBodies
       defer {
         wokeAt = nil
         pendingFrame = nil
+        frameBodies = []
       }
       guard isRunning, let frame = pendingFrame, let start = wokeAt else { return }
+      if (CACurrentMediaTime() - start) * 1000 > Self.heavyFrameMs {
+        heavyBodies["*", default: 0] += 1
+        for name in seen { heavyBodies[name, default: 0] += 1 }
+      }
       stats.add(
         FrameSample(
           timestamp: frame.timestamp,

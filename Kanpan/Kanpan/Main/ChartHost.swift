@@ -605,6 +605,13 @@ struct ChartHost: UIViewRepresentable {
       if EventDrawProbe.enabled {
         box.chart.onAdoptedForProbe = { EventDrawProbe.shared.adopted(dirty: $0) }
         box.chart.onRenderedForProbe = { EventDrawProbe.shared.rendered() }
+      } else {
+        // 帧探针在采的时候，把「图真的重画了一层」也记进 bodies，重帧归因（`heavyBodies`）用得上。
+        box.chart.onRenderedForProbe = { FrameProbe.shared.countBody("ChartView.render") }
+        box.chart.onAdoptedForProbe = { dirty in FrameProbe.shared.countBody(dirty ? "adopt.dirty" : "adopt.clean") }
+        box.chart.onRenderPartForProbe = { part, ms in
+          FrameProbe.shared.countBody("render.\(part)" + (ms > 8 ? ">8ms" : ms > 3 ? ">3ms" : ""))
+        }
       }
       let onInteractionEnded = self.onInteractionEnded
       box.chart.onInteractionEnded = {
