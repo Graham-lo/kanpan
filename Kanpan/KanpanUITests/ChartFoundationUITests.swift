@@ -1004,7 +1004,7 @@ final class ChartFoundationUITests: XCTestCase {
   ///
   /// 2026-09-18 全量 13 台矩阵里，iPad Pro 11-inch (M5) 上
   /// `testFavoritesCategoryOverflow` 红过一次（`docs/acceptance/M8/ui-test/iPad-Pro-11-inch-M5.log`
-  /// 第 4395 行附近），当时只记进了「未做 / 边界」。2026-09-19 复现出来了，机制是这样的：
+  /// 第 4395 行附近；2026-09-24 已删，`git show b5a4d543:<路径>` 取回），当时只记进了「未做 / 边界」。2026-09-19 复现出来了，机制是这样的：
   ///
   ///     t = 22.50s Tap "favorites.more" Button
   ///     t = 22.55s     Check for interrupting elements affecting "favorites.more" Button

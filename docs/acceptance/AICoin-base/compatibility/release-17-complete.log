@@ -1,4 +1,0 @@
-START iPhone 17 Pro
-START iPhone 17e
-DONE {'name': 'iPhone 17e', 'exitCode': 73, 'seconds': 74, 'result': 'Failed', 'passedTests': 0, 'failedTests': 1, 'skippedTests': 0, 'expectedTests': 16}
-DONE {'name': 'iPhone 17 Pro', 'exitCode': 0, 'seconds': 374, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}

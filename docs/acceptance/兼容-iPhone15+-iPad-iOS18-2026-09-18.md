@@ -470,7 +470,7 @@ iPad 上那条「画线 → 工作台」的路由由 `AICoinBaseUITests` 守着�
 
 ### 现象是怎么发生的
 
-矩阵那一轮的日志（`docs/acceptance/M8/ui-test/iPad-Pro-11-inch-M5.log`，第 4395 行附近）：
+矩阵那一轮的日志（`docs/acceptance/M8/ui-test/iPad-Pro-11-inch-M5.log`，第 4395 行附近；2026-09-24 已删，`git show b5a4d543:<路径>` 取回）：
 
 ```
 t = 22.50s Tap "favorites.more" Button

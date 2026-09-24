@@ -133,7 +133,7 @@
 
 ### 证据与未确认项
 
-`native-editor-dismiss-ipad.log`最新自定义编辑稳定与面板外点击2/2通过；`native-right-swipe-ipad.log`右滑确认删除1/1通过；`native-direct-sort-ipad.log`普通自选行拖动和整个副图区域拖动通过，其中旧编辑控制测试失败后来已修复。`native-fresh-quotes-symbols.log`53项、`native-fresh-quotes-data.log`72项、`native-fresh-quotes-strict.log`严格构建通过。此前Core188、Chart68、Settings/Style57、Diagnostics47、后端7项见各专属记录。
+（下列 iPad 日志 2026-09-24 已删，`git show b5a4d543:<路径>` 取回）`native-editor-dismiss-ipad.log`最新自定义编辑稳定与面板外点击2/2通过；`native-right-swipe-ipad.log`右滑确认删除1/1通过；`native-direct-sort-ipad.log`普通自选行拖动和整个副图区域拖动通过，其中旧编辑控制测试失败后来已修复。`native-fresh-quotes-symbols.log`53项、`native-fresh-quotes-data.log`72项、`native-fresh-quotes-strict.log`严格构建通过。此前Core188、Chart68、Settings/Style57、Diagnostics47、后端7项见各专属记录。
 
 正式手机存档已通过devicectl读回核对，包含用户要求22个品种和既有额外收藏SPCXUSDT，三类加密/美股/贵金属；保留既有数据，不覆盖清空。`user-favorites-final22.log`完成补MSFT/SOXL，但其普通行拖动断言失败，不计入通过。最终正常用户会话复验结果另列，不能用早期模拟器或旧二进制通过代替。
 
