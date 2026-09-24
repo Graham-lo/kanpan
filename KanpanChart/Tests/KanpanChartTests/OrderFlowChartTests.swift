@@ -390,7 +390,9 @@ struct OrderFlowChartTests {
       let label = try #require(f.labels.first { $0.key == wall.key })
       #expect(abs(bracket.maxX - (label.frame.minX - ChartRenderer.orderFlowBracketGap)) < 1e-6, "挂着的括号紧贴金额签左侧")
     } else {
-      #expect(rangeHeight <= wall.frame.height + 1e-9, "范围比芯线还窄才不立括号")
+      let pane = r.layout(size: Self.size).main
+      #expect(rangeHeight <= wall.frame.height + 1e-9 || y(r, g.priceHigh) < pane.y || y(r, g.priceLow) > pane.y + pane.h,
+              "范围比芯线还窄、或出了主图才不立括号")
     }
     let spacing = r.state.view.barSpacing(step: r.state.series.step, plotW: L.plotW)
     let b = r.state.series
@@ -431,6 +433,80 @@ struct OrderFlowChartTests {
     #expect(OrderFlowGroup.walls([seg(1, 100_000_000, nil), seg(2, 0, 10)], gapMs: gap).count == 2)
     let key = try #require(OrderFlowGroup.walls([seg(2, 50, 400), seg(1, 50, 100), seg(3, 300, nil)], gapMs: gap).first).key
     #expect(key.bucket == 1 && key.start == 50, "起点一样取桶小的")
+  }
+
+  @Test("范围括号：整段范围出了主图（哪怕只出一端）整枚不画、不裁一截；芯线、金额签、详情卡的区间照旧")
+  func bracketNeedsWholeRangeOnScreen() throws {
+    var (r, _) = Self.renderer()
+    let p = r.state.series.close.last!
+    let step = p * 0.001
+    r.state.orderFlow?.thresholds.step = step
+    let pane = r.layout(size: Self.size).main
+    let perBucket = abs(y(r, p) - y(r, p + step))
+    try #require(perBucket > 3, "一桶在屏上要比芯线高，括号才有意义：\(perBucket)")
+    // 最低那桶压在主图顶上一格：代表价（加大的那桶）在主图里，最高那桶的上沿出了主图顶。
+    let top = Int64((price(r, atY: pane.y) / step).rounded(.down))
+    let lo = top - 2
+    let orders = (lo...(lo + 3)).map { bk in
+      wallOrder(r, step: step, bucket: bk, from: 20, notional: bk == lo ? 14_000_000 : 10_000_000)
+    }
+    r.state.orderFlow?.orders = orders
+    let f = frame(r)
+    let wall = try #require(f.bands.first { $0.group.bucketCount == 4 }, "\(f.bands.map(\.key.id))")
+    #expect(y(r, wall.group.priceHigh) < pane.y, "夹具：范围上沿要出主图顶")
+    #expect(wall.frame.midY >= pane.y, "夹具：芯线在主图里")
+    #expect(wall.role == .main && !wall.thin && wall.group.isRange)
+    #expect(wall.bracket == nil, "范围一端出了主图，括号整枚不画")
+    #expect(f.labels.contains { $0.key == wall.key }, "金额签照旧")
+    r.state.orderFlowSelected = wall.key
+    let focus = try #require(r.orderFlowFocus(size: Self.size))
+    #expect(focus.group.isRange && focus.group.bucketCount == 4, "详情卡照旧给区间")
+
+    // 同一堵墙整段挪回主图中间：括号立起来，上下沿就是范围的屏上高度、都在主图里。
+    let mid = Int64((p / step).rounded(.down)) - 2
+    let moved = (mid...(mid + 3)).map { bk in
+      wallOrder(r, step: step, bucket: bk, from: 20, notional: bk == mid ? 14_000_000 : 10_000_000)
+    }
+    r.state.orderFlow?.orders = moved
+    let g = frame(r)
+    let inside = try #require(g.bands.first { $0.group.bucketCount == 4 })
+    let bracket = try #require(inside.bracket, "整段在主图里就立括号")
+    #expect(bracket.minY >= pane.y && bracket.maxY <= pane.y + pane.h)
+  }
+
+  @Test("范围括号：同一 x 上两枚纵向重叠只留名义大的那枚，不错开 x；两堵墙的芯线、金额签都照旧")
+  func overlappingBracketsKeepLarger() throws {
+    var (r, _) = Self.renderer()
+    let p = r.state.series.close.last!
+    let step = p * 0.001
+    r.state.orderFlow?.thresholds.step = step
+    let perBucket = abs(y(r, p) - y(r, p + step))
+    try #require(perBucket > 3, "\(perBucket)")
+    let b0 = Int64((p / step).rounded(.down)) - 4
+    // 卖墙 b0 … b0+4 合计 54M（代表价在 b0+1）；买墙 b0+3 … b0+7 合计 36M（代表价在 b0+6）：
+    // 芯线隔 5 桶不挤，范围在 b0+3 … b0+5 重叠；两枚签宽一样（等宽字「54.0M」「36.0M」）→ 括号同一 x。
+    let ask = (b0...(b0 + 4)).map { bk in
+      wallOrder(r, step: step, bucket: bk, side: .ask, from: 20, notional: bk == b0 + 1 ? 14_000_000 : 10_000_000)
+    }
+    let bid = ((b0 + 3)...(b0 + 7)).map { bk in
+      wallOrder(r, step: step, bucket: bk, side: .bid, from: 20, notional: bk == b0 + 6 ? 12_000_000 : 6_000_000)
+    }
+    r.state.orderFlow?.orders = ask + bid
+    let f = frame(r)
+    let big = try #require(f.bands.first { $0.group.side == .ask && $0.group.bucketCount == 5 }, "\(f.bands.map(\.key.id))")
+    let small = try #require(f.bands.first { $0.group.side == .bid && $0.group.bucketCount == 5 })
+    #expect(big.group.notional > small.group.notional)
+    #expect(big.role == .main && small.role == .main && !big.thin && !small.thin, "芯线隔得开，都不压细")
+    let kept = try #require(big.bracket, "名义大的那枚留下")
+    #expect(small.bracket == nil, "同一 x 上纵向重叠的后一枚不画")
+    // 不错开 x：留下的那枚仍紧贴自己的签；两枚签都在，落点同一 x。
+    let bigLabel = try #require(f.labels.first { $0.key == big.key })
+    let smallLabel = try #require(f.labels.first { $0.key == small.key })
+    #expect(abs(kept.maxX - (bigLabel.frame.minX - ChartRenderer.orderFlowBracketGap)) < 1e-6)
+    #expect(abs(bigLabel.frame.minX - smallLabel.frame.minX) < 1e-6, "夹具：两枚签同一 x")
+    // 小的那堵单独在场时自己的括号是立得起来的——没画只是因为重叠。
+    r.state.orderFlow?.orders = bid
+    #expect(frame(r).bands.first { $0.group.bucketCount == 5 }?.bracket != nil)
   }
 
   @Test("并墙要成块：价格走着走着前后接力的段不链成一片（要有共同在场的时刻），一堵最多 maxWallBuckets 个桶")

@@ -27,6 +27,8 @@ import UIKit
 //      最高桶价 + 步长）用段右端一枚细竖括号「]」表达：宽 3 pt、高 = 范围在屏上的高度、段色 70%；挂着的紧贴金额签
 //      左侧，已结束的落在结束点处（`orderFlowBracket`）。第三版曾在整个范围垫 10% 淡底：经典深底上一堵 300 美元的墙
 //      淡底铺满大半张图、另一堵叠在下半屏，整张图染成紫色，读起来像 K 线又被盖了（2026-09-25 验收），改成括号。
+//      括号只在整段范围（含两端横钩）都落在主图里时才画，任一端出界整枚不画、不裁；同一 x 上纵向重叠的只留名义大的
+//      那枚（1 分钟 BTC 的墙比整张主图还高，裁剩的几枚叠成一根贯穿主图的竖线，2026-09-25 复验）。
 //      范围数字写在详情卡上。
 //   4. **纵向去挤**（主、次）：按排名落线；和已落下的横向有交叠、纵向重叠（含 1 pt 间隙）的排名更后的线压成 1 pt
 //      细线、不写金额——不平移、不改价位。底噪不参与。画的先后：底噪 → 整条 → 细线。
@@ -468,9 +470,10 @@ extension ChartRenderer {
 
     // 3. 按排名定主次与线粗：主 2 pt（还挂着 2.5）、次 1 pt 70%、底噪 1 pt 35%。主、次按排名落线，
     //    和已落下的（整条或细线）横向交叠、纵向重叠（含 1 pt 间隙）就压成 1 pt 细线、不写金额。底噪不占位、不被压。
-    //    跨桶的主墙另记价位范围（最低桶价 … 最高桶价 + 步长），在段右端立一枚范围括号；范围比线还窄就不立。括号不占位。
+    //    跨桶的主墙另记价位范围（最低桶价 … 最高桶价 + 步长），在段右端立一枚范围括号；范围比线还窄、任一端出了主图、
+    //    或和已立的括号在同一 x 上纵向重叠就不立（只留名义大的那枚）。括号不占线的位。
     var noise: [OrderFlowBand] = [], full: [OrderFlowBand] = [], thin: [OrderFlowBand] = []
-    var occupied: [CGRect] = []
+    var occupied: [CGRect] = [], brackets: [CGRect] = []
     for (rank, (group, left, right)) in visible.enumerated() {
       var role: OrderFlowRole = rank < Self.orderFlowMainCount ? .main
         : rank < Self.orderFlowRankedCount ? .secondary : .noise
@@ -491,7 +494,9 @@ extension ChartRenderer {
         if group.isRange {
           let a = y(group.priceLow), b = y(group.priceHigh)
           let top = min(a, b), bottom = max(a, b)
-          if bottom - top > whole.height {
+          // 整段范围（含两端横钩）都落在主图里才立；任一端出界整枚不画、不裁一截——
+          // 1 分钟 BTC 一堵 300 美元的墙比整张主图还高，几枚裁剩的括号叠成一根贯穿主图的竖线（2026-09-25 复验）。
+          if bottom - top > whole.height, top >= pane.y, bottom <= pane.y + pane.h {
             bracket = Self.orderFlowBracket(live: group.isLive, lineRight: right,
                                             labelWidth: Self.orderFlowLabelWidth(Self.orderFlowAmount(group.notional)),
                                             plotW: L.plotW, top: top, bottom: bottom)
@@ -506,8 +511,13 @@ extension ChartRenderer {
       }
       let rect = clash ? line(Self.orderFlowThinLine) : whole
       occupied.append(rect)
+      // 同一 x 上和已立的括号纵向重叠的不再立（按排名先立的是名义大的）；不错开 x，签照旧紧贴。
+      let kept = clash ? nil : bracket.flatMap { k in
+        brackets.contains { $0.minX < k.maxX && $0.maxX > k.minX && $0.minY < k.maxY && $0.maxY > k.minY } ? nil : k
+      }
+      if let kept { brackets.append(kept) }
       let band = OrderFlowBand(group: group, frame: rect, color: color, dark: group.hasFill, thin: clash, role: role,
-                               alpha: alpha, bracket: clash ? nil : bracket)
+                               alpha: alpha, bracket: kept)
       if clash { thin.append(band) } else { full.append(band) }
     }
     frame.bands = noise + full + thin

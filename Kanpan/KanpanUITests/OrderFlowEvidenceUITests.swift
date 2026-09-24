@@ -198,6 +198,23 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
       XCTAssertTrue(brackets.allSatisfy { $0["role"] as? String == "main" && ($0["buckets"] as? Int ?? 1) > 1 },
                     "\(title)：范围括号只给跨桶的主墙：\(brackets)")
       print("取证|手机布局|\(title)|括号=\(brackets.map { "\($0["id"] ?? "") x=\($0["bracketX"] ?? 0) \($0["bracketTop"] ?? 0)…\($0["bracketBottom"] ?? 0)" })")
+      // 括号只在整段范围都落在主图里才画（2026-09-25 复验）：画出来的上下沿都在 [0, mainH] 里；
+      // 同一 x 上纵向不重叠；范围出了这一屏的跨桶主墙一枚都不画。
+      let mainH = chartInfo()["mainH"] as? Double ?? 0
+      let top = chartInfo()["mainPriceTop"] as? Double ?? 0, bottom = chartInfo()["mainPriceBottom"] as? Double ?? 0
+      let span = { (b: [String: Any], k: String) in b[k] as? Double ?? -1 }
+      XCTAssertTrue(brackets.allSatisfy { span($0, "bracketTop") >= 0 && span($0, "bracketBottom") <= mainH },
+                    "\(title)：有括号出了主图：\(brackets)")
+      for (i, a) in brackets.enumerated() {
+        for b in brackets[(i + 1)...] where abs(span(a, "bracketX") - span(b, "bracketX")) < 3 {
+          XCTAssertFalse(span(a, "bracketTop") < span(b, "bracketBottom") && span(b, "bracketTop") < span(a, "bracketBottom"),
+                         "\(title)：同一 x 上两枚括号纵向重叠：\(a["id"] ?? "") / \(b["id"] ?? "")")
+        }
+      }
+      let out = all.filter { $0["role"] as? String == "main" && ($0["buckets"] as? Int ?? 1) > 1 }
+        .filter { span($0, "priceHigh") > top || span($0, "priceLow") < bottom }
+      XCTAssertTrue(out.allSatisfy { $0["bracketX"] as? Double == nil }, "\(title)：范围出了一屏的墙还画了括号：\(out)")
+      print("取证|手机布局|\(title)|主图价=\(bottom)…\(top)|出屏的跨桶主墙=\(out.map { "\($0["priceLow"] ?? 0)–\($0["priceHigh"] ?? 0)" })")
       shot("手机布局-\(title)", file: "手机布局-\(title)-\(Self.shortDevice)")
       if title == "经典深" {
         shot("BTC-1m-经典深", file: "../主力订单流-2026-09-25/BTCUSDT-1m-经典深-\(Self.shortDevice)")

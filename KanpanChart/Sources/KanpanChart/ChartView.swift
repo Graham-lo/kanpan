@@ -243,6 +243,14 @@ public final class ChartView: UIView {
           // 主力订单流：快照阶段、大单条数、此刻画出来的色带（视图坐标）与十字线点亮与否。
           "orderFlowPhase": s.orderFlow.map { $0.phase == .ready ? "ready" : "loading" } ?? "",
           "orderFlowOrders": s.orderFlow?.orders.count ?? 0,
+          // 主图上下沿对应的价（用例拿它判断哪堵墙的范围出了这一屏，括号该不该画）。
+          "mainPriceTop": renderer.map { r in
+            KanpanCore.pOf(layout.main.y, pane: layout.main, range: r.priceRange(size: bounds.size), mode: s.effectivePriceMode)
+          } ?? 0,
+          "mainPriceBottom": renderer.map { r in
+            KanpanCore.pOf(layout.main.y + layout.main.h, pane: layout.main, range: r.priceRange(size: bounds.size),
+                           mode: s.effectivePriceMode)
+          } ?? 0,
           // 此刻生效的门槛（按产品，美元）与步长：用例改完门槛靠它确认新数真的到了簿那一层。
           "orderFlowThresholds": s.orderFlow.map { f in
             var out: [String: Double] = [:]
@@ -253,7 +261,7 @@ public final class ChartView: UIView {
           // 一堵墙一条的合并带：product = contract / spot；thin = 被挤成了细线；books = 几行（一本簿一桶一行）、
           // members = 几单；id =「类|侧|桶|起点 ms」（墙里最早那一段）；priceLow / priceHigh = 墙的价位范围，
           // buckets = 并了几个桶；role = main / secondary / noise（屏内排名的主次），alpha = 不透明度；
-          // h = 线粗（1–2.5 pt），bracketX / bracketTop / bracketBottom = 跨桶主墙范围括号的左缘与上下沿（没有是 -1）。
+          // h = 线粗（1–2.5 pt），bracketX / bracketTop / bracketBottom = 跨桶主墙范围括号的左缘与上下沿（不画的墙为 nil，JSON 里是 null）。
           "orderFlowBands": (orderFlow?.bands ?? []).map {
             ["side": $0.group.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
              "w": $0.frame.width, "h": $0.frame.height, "color": $0.color.value, "dark": $0.dark,
@@ -261,9 +269,9 @@ public final class ChartView: UIView {
              "live": $0.group.isLive, "books": $0.group.books.count, "members": $0.group.members.count,
              "notional": $0.group.notional, "id": $0.key.id, "priceLow": $0.group.priceLow,
              "priceHigh": $0.group.priceHigh, "buckets": $0.group.bucketCount, "role": $0.role.rawValue,
-             "alpha": $0.alpha, "bracketX": $0.bracket.map { Double($0.minX) } ?? -1,
-             "bracketTop": $0.bracket.map { Double($0.minY) } ?? -1,
-             "bracketBottom": $0.bracket.map { Double($0.maxY) } ?? -1] as [String: Any]
+             "alpha": $0.alpha, "bracketX": $0.bracket.map { Double($0.minX) as Any } ?? NSNull(),
+             "bracketTop": $0.bracket.map { Double($0.minY) as Any } ?? NSNull(),
+             "bracketBottom": $0.bracket.map { Double($0.maxY) as Any } ?? NSNull()] as [String: Any]
           },
           "orderFlowLabels": (orderFlow?.labels ?? []).map {
             ["id": $0.key.id, "text": $0.text, "x": $0.frame.minX, "y": $0.frame.minY,
