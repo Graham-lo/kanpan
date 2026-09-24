@@ -178,7 +178,8 @@ public func fmtPrice(_ x: Double, decimals: Int) -> String {
   guard x.isFinite else { return "--" }
   let p = max(0, min(12, decimals))
   let s = toFixed(x, p)
-  guard x != 0, Double(s) == 0 else { return s }
+  // 「舍完是不是 0」看字面有没有非零数字就够了，不必再把字符串解析回 `Double`。
+  guard x != 0, !s.utf8.contains(where: { $0 >= 49 && $0 <= 57 }) else { return s }
   let need = min(12, Int(ceil(-log10(abs(x)))) + 1)
   return toFixed(x, max(p, need))
 }
@@ -239,8 +240,53 @@ public func fmtVol(_ x: Double, unit: VolUnit) -> String {
 /// JS `Number.prototype.toFixed` 的语义：对**二进制精确值**四舍五入，逢五进一（远离零）。
 ///
 /// `String(format:)` 用的是「逢五取偶」，`0.125` 会给 `0.12` 而 JS 给 `0.13`。
-/// 先把精确十进制展开取足位数，再自己在第 p 位上进位，两边就一致了。
+///
+/// 图上每一帧的刻度、图例、最新价都要过它（审查 24：每帧 `String(format:)`），所以分两条路：
+/// 放大后装得进 2^52 的（价格、成交量、百分比几乎全是）走整数快路，不碰 `String(format:)`；
+/// 装不下的退回下面 `toFixedReference` 那条「精确展开再进位」的老路。两条路逐位一致，
+/// 由「定点小数快路与精确展开逐位一致」那条随机对拍测试守着。
 public func toFixed(_ x: Double, _ p: Int) -> String {
+  if let fast = toFixedFast(x, p) { return fast }
+  return toFixedReference(x, p)
+}
+
+/// 10 的 0…15 次方，全都是精确的 `Double`。
+private let pow10Table: [Double] = (0...15).map { p in (0..<p).reduce(1.0) { a, _ in a * 10 } }
+
+/// 整数快路：`|x|·10^p` 的精确值拆成「乘出来的 `Double`」加「乘法舍掉的那点误差」，
+/// 误差用 FMA 精确求出（`s` 是精确的 10 的幂，`x·s` 的舍入误差本身就是一个 `Double`）。
+/// 然后在精确值上按「逢五进一」取整——判的是二进制精确值，不是乘完舍入过的那个，
+/// 所以 `1.005`（精确值是 1.00499999…）照样给 `1.00`，和 JS 一样。
+///
+/// 返回 `nil` 表示这条路不管（位数太多、数太大、非数），交给精确展开。
+func toFixedFast(_ x: Double, _ p: Int) -> String? {
+  guard x.isFinite, p >= 0, p < pow10Table.count else { return nil }
+  let s = pow10Table[p]
+  let a = abs(x)
+  let scaled = a * s
+  // 2^52 以内：`scaled` 的小数部分精确可表示，取整后的整数也放得进 Int64。
+  guard scaled < 4_503_599_627_370_496 else { return nil }
+  let err = (-scaled).addingProduct(a, s)   // a·s − scaled，一次舍入的 FMA，精确
+  let whole = scaled.rounded(.down)
+  let frac = scaled - whole               // 精确（同一量级内相减）
+  // 真值 = whole + frac + err，|err| ≤ scaled 的半个 ulp，而 frac 是 ulp 的整数倍：
+  // frac ≠ 0.5 时 err 改变不了它在 0.5 哪一边；正好 0.5 时看 err 的符号（= 0 就是真的逢五，进）。
+  let up = frac > 0.5 || (frac == 0.5 && err >= 0)
+  let n = Int64(whole) + (up ? 1 : 0)
+  var digits = String(n)
+  if p > 0 {
+    if digits.utf8.count <= p {
+      digits = String(repeating: "0", count: p + 1 - digits.utf8.count) + digits
+    }
+    digits.insert(".", at: digits.index(digits.endIndex, offsetBy: -p))
+  }
+  // 和老路一致：舍入后全是 0 的负数不带负号（`-0.001` → `0.00`）。
+  return x < 0 && n != 0 ? "-" + digits : digits
+}
+
+/// 精确展开再进位：先把二进制精确值展开取足位数，再自己在第 p 位上进位。
+/// 快路装不下的数走这里；测试拿它当对拍的标准答案。
+func toFixedReference(_ x: Double, _ p: Int) -> String {
   guard x.isFinite else { return "\(x)" }
   guard p >= 0, p <= 100 else { return String(format: "%.\(max(0, p))f", x) }
   let neg = x < 0

@@ -86,6 +86,39 @@ struct FormatTests {
     #expect(toFixed(0.0001234, 8) == "0.00012340")
   }
 
+  /// 整数快路（审查 24）必须和精确展开逐位一致。随机数专挑容易出事的地方：
+  /// 正好落在「五」上的（`k + 0.5` 再除以 10^p，二进制下有的精确、有的差一点）、
+  /// 几乎整的、跨好几个量级的，以及快路装不下退回老路的大数。种子固定，失败可复现。
+  @Test("定点小数快路与精确展开逐位一致")
+  func toFixedFastMatchesReference() {
+    var rng = SplitMix(seed: 0x6B61_6E70_616E)
+    var checked = 0
+    for _ in 0..<60_000 {
+      let p = Int(rng.next() % 13)
+      let scale = pow(10.0, Double(p))
+      let kind = rng.next() % 4
+      let mag = pow(10.0, Double(Int(rng.next() % 16)) - 6)
+      let u = Double(rng.next() >> 11) / Double(1 << 53)
+      var x: Double
+      switch kind {
+      case 0: x = (Double(rng.next() % 1_000_000) + 0.5) / scale          // 逢五
+      case 1: x = (u * mag * scale).rounded() / scale                        // 几乎整
+      case 2: x = u * mag                                                    // 任意
+      default: x = (u * mag).nextUp                                           // 贴边
+      }
+      if rng.next() % 3 == 0 { x = -x }
+      if let fast = toFixedFast(x, p) {
+        #expect(fast == toFixedReference(x, p), "x=\(x) p=\(p)")
+        checked += 1
+      }
+      #expect(toFixed(x, p) == toFixedReference(x, p), "x=\(x) p=\(p)")
+    }
+    #expect(checked > 40_000, "快路至少要接住大多数")
+    #expect(toFixedFast(1e17, 2) == nil, "放大后超过 2^52 交给老路")
+    #expect(toFixedFast(.nan, 2) == nil)
+    #expect(toFixed(1e17, 2) == "100000000000000000.00")
+  }
+
   /// 价格按品种精度：`tickSize` 决定几位小数。
   @Test("价格精度跟 tickSize 走")
   func priceDecimals() {
@@ -324,5 +357,18 @@ struct FormatTests {
     for (ms, want) in cases {
       #expect(fmtFull(ms: ms, offsetMinutes: 0) == want, "ms=\(ms) 得到 \(fmtFull(ms: ms, offsetMinutes: 0))")
     }
+  }
+}
+
+/// 可复现的随机数（固定种子），只给对拍测试用。
+private struct SplitMix {
+  var state: UInt64
+  init(seed: UInt64) { state = seed }
+  mutating func next() -> UInt64 {
+    state &+= 0x9E37_79B9_7F4A_7C15
+    var z = state
+    z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+    z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+    return z ^ (z >> 31)
   }
 }
