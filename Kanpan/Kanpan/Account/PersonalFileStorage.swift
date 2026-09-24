@@ -51,7 +51,7 @@ final class PersonalFileStorage: PrefsStorage, SymbolPrefsStorage, SearchHistory
   /// 覆盖之前留一份一次性备份。
   ///
   /// 这套「读不动就拒绝覆盖 + 覆盖前留 `.backup`」原来只有画线有
-  /// （`KanpanCore/Drawing/DrawStore.save`）。账号目录里这几份都属于「没了拿不回来」
+  /// （`Kanpan/Kanpan/Drawing/DrawStore.save`）。账号目录里这几份都属于「没了拿不回来」
   /// 那一类，凭什么只有画线有？所以搬到这一层，`prefs.json` 与 `symbols.json`
   /// 一视同仁——上面那道 `guard failed == nil` 是「读失败拒绝覆盖」那一半，
   /// 这儿是「留一份原件」那一半。
