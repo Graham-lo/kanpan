@@ -348,7 +348,7 @@ struct MainChartView: View {
           // 十字线一出来就把「看细节」要去的那一档先热上（B3）。
           if $0 != nil, !reviewChart.active { market.prewarmDetail() }
         },
-        // 主力订单流的焦点（轻点选中的那一单，或十字线停着的那一条）：出详情卡。
+        // 主力订单流的焦点（轻点选中的那一桶，或十字线停着的那一条合并带）：出详情卡。
         onOrderFlowFocus: { [readout = session.readout] focus in
           readout.set(orderFlow: focus)
           market.orderFlow.noteCrosshair(onMain: focus != nil || readout.crosshair.map { $0.pane == nil } == true)

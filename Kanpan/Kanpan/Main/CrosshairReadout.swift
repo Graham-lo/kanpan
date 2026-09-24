@@ -14,7 +14,7 @@ import SwiftUI
   /// 十字线摆在哪根上；`nil` 就没有十字线。
   private(set) var crosshair: Crosshair?
 
-  /// 主力订单流选中的那一单（轻点选中，或十字线停在一条带上）；`nil` 就不出详情卡。
+  /// 主力订单流选中的那一桶（轻点选中，或十字线停在一条合并带上）；`nil` 就不出详情卡。
   /// 出卡时头部「顶部」那档的开高低收让位（图里那块开高低收框由渲染器自己不画）。
   private(set) var orderFlow: ChartOrderFlowFocus?
 

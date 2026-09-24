@@ -429,7 +429,7 @@ struct ChartHost: UIViewRepresentable {
   var onSubResize: (IndicatorID, Double) -> Void = { _, _ in }
   var onSubReorder: ([IndicatorID]) -> Void = { _ in }
   var onCrosshair: (Crosshair?) -> Void = { _ in }
-  /// 主力订单流选中的那一单变了（轻点选中 / 十字线停在一条带上）；`nil` = 收卡。见 `ChartView.onOrderFlowFocusChanged`。
+  /// 主力订单流选中的那一桶变了（轻点选中 / 十字线停在一条带上）；`nil` = 收卡。见 `ChartView.onOrderFlowFocusChanged`。
   var onOrderFlowFocus: (ChartOrderFlowFocus?) -> Void = { _ in }
   var onNeedsHistory: () -> Void = {}
   var onTapped: () -> Void = {}
@@ -505,7 +505,7 @@ struct ChartHost: UIViewRepresentable {
       // 手势正在做的位移覆盖掉。只在品种/周期/风格真换了的时候才重算。
       s.view = old.view
       s.crosshair = old.crosshair
-      // 轻点选中的那一单（详情卡）也是图上的交互态，外面那份必然是空的；主力订单流关掉就清掉。
+      // 轻点选中的那一桶（详情卡）也是图上的交互态，外面那份必然是空的；主力订单流关掉就清掉。
       s.orderFlowSelected = s.orderFlow == nil ? nil : old.orderFlowSelected
       s.subInverted = old.subInverted
       if box.isResizing { s.subScale = old.subScale }
