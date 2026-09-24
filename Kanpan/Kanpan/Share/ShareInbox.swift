@@ -25,7 +25,14 @@ import KanpanCore
   @ObservationIgnored private var client: ShareClient?
   @ObservationIgnored private var epoch = UUID()
   @ObservationIgnored private var task: Task<Void, Never>?
+  /// 内存里最多留 `shotMemoryLimit` 张（一张一两百 KB），按最近用过的顺序淘汰；
+  /// 以前是只进不出的字典，翻一遍收件箱就全留在内存里。
   @ObservationIgnored private var shots: [String: Data] = [:]
+  @ObservationIgnored private var shotOrder: [String] = []
+  static let shotMemoryLimit = 6
+  /// `share-shots/` 的总量上限。一张一两百 KB，32 MB 约两百张；删掉的哪天再打开那封信
+  /// 会从服务端再拉一次（服务端不删分享）。
+  static let shotDiskBudget = 32 * 1024 * 1024
 
   static func read(directory: URL) throws -> Cache {
     let file = directory.appendingPathComponent("shares.json")
@@ -37,7 +44,7 @@ import KanpanCore
     self.directory = directory; self.owner = owner; self.cache = cache
     client = owner == nil ? nil : api.map { ShareClient(api: $0) }
     items = owner == nil ? [] : cache.items; friends = owner == nil ? [] : cache.friends
-    shots = [:]
+    shots = [:]; shotOrder = []
   }
   private func save() throws {
     guard let directory else { return }
@@ -144,16 +151,45 @@ import KanpanCore
     }
     return removed
   }
+  /// 超过 `budget` 就按最久没看（修改时间，`shot(_:)` 读到时会拨到现在）删「id.jpg」，
+  /// 删到回到预算以内。别的文件不碰。
+  @discardableResult static func trimShots(in directory: URL, budget: Int = shotDiskBudget) -> Int {
+    let folder = directory.appendingPathComponent("share-shots")
+    let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
+    let files = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys)) ?? [])
+      .filter { $0.pathExtension == "jpg" }
+      .compactMap { url -> (url: URL, size: Int, used: Date)? in
+        guard let values = try? url.resourceValues(forKeys: Set(keys)) else { return nil }
+        return (url, values.fileSize ?? 0, values.contentModificationDate ?? .distantPast)
+      }
+    var total = files.reduce(0) { $0 + $1.size }
+    var removed = 0
+    for file in files.sorted(by: { $0.used < $1.used }) where total > budget {
+      if (try? FileManager.default.removeItem(at: file.url)) != nil { total -= file.size; removed += 1 }
+    }
+    return removed
+  }
+  private func remember(_ data: Data, for id: String) {
+    shots[id] = data
+    shotOrder.removeAll { $0 == id }; shotOrder.append(id)
+    while shotOrder.count > Self.shotMemoryLimit, let victim = shotOrder.first {
+      shotOrder.removeFirst(); shots.removeValue(forKey: victim)
+    }
+  }
   func shot(_ id: String) async -> Data? {
-    if let image = shots[id] { return image }
+    if let image = shots[id] { remember(image, for: id); return image }
     guard let client, let directory else { return nil }
     let generation = epoch
     let file = directory.appendingPathComponent("share-shots").appendingPathComponent(id + ".jpg")
-    if let data = try? Data(contentsOf: file) { shots[id] = data; return data }
+    if let data = try? Data(contentsOf: file) {
+      try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+      remember(data, for: id); return data
+    }
     guard let data = try? await client.shot(id), generation == epoch else { return nil }
-    shots[id] = data
+    remember(data, for: id)
     try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
     try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    Self.trimShots(in: directory)
     return data
   }
 }

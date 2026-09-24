@@ -238,8 +238,10 @@ import ReviewData
     guard let data = captureShot?(), !data.isEmpty, data.count <= Self.shotMaxBytes else { return }
     do { try store?.saveShot(data, for: id) } catch { return }
     remember(data, for: id)
-    guard client != nil, let body = try? JSONEncoder().encode(["image": data.base64EncodedString()]) else { return }
-    _ = change { archive in archive.queue.append(ReviewOperation(recordId: id, kind: "shot", body: body)) }
+    // 队列里只记「这条记录的图要传」，图本身已经在 `shots/<id>.png` 里了，引擎发的
+    // 那一刻现读（第 25 项）。以前整张图 base64 进 body，主档每改一次都跟着重写一遍。
+    guard client != nil else { return }
+    _ = change { archive in archive.queue.append(ReviewOperation(recordId: id, kind: "shot", body: Data())) }
   }
   /// 服务端那边的上限也是这个数（`review.rs` 的 `SHOT_MAX_BYTES`）。本地先量一次，
   /// 省得存下来再被拒一次。

@@ -84,6 +84,28 @@ public enum ReviewStorageError: LocalizedError {
         archive.draft = saved.draft.flatMap { value in archive.records.contains(where: { $0.id == value.id }) ? nil : value }
       }
     }
+    migrateShotBodies()
+  }
+
+  /// 老队列里的「发图」那条把整张图（base64）塞在 body 里（第 25 项之前）。
+  ///
+  /// 那样每一次 `transaction` 都要把几百 KB 到 2 MB 的图跟着整份主档重编码、重写一遍，
+  /// 记一笔、改一句复盘、归一次组都是。现在队列只记「哪条记录的图要传」，图本身就住在
+  /// `shots/<id>.png`，引擎发的那一刻现读。这里把老 body 落成文件（那边已经有就不盖），
+  /// 再把 body 清空；落不下来的那条原样留着，引擎还认得老格式。
+  private func migrateShotBodies() {
+    struct Legacy: Decodable { var image: String }
+    var stripped = Set<UUID>()
+    for operation in archive.queue where operation.kind == "shot" && !operation.body.isEmpty {
+      guard let legacy = try? JSONDecoder().decode(Legacy.self, from: operation.body),
+            let image = Data(base64Encoded: legacy.image) else { continue }
+      if !hasShot(operation.recordId) { guard (try? saveShot(image, for: operation.recordId, trim: false)) != nil else { continue } }
+      stripped.insert(operation.id)
+    }
+    guard !stripped.isEmpty else { return }
+    try? transaction { archive in
+      for index in archive.queue.indices where stripped.contains(archive.queue[index].id) { archive.queue[index].body = Data() }
+    }
   }
 
   /// 读一份**侧文件**：解不动就留一份 `.backup` 再返回 nil，不抛。
@@ -127,11 +149,51 @@ public enum ReviewStorageError: LocalizedError {
 
   private func shotURL(_ id: UUID) -> URL { paths.shot(id) }
   /// 这条记录的图。没有就是 nil，不抛——它只是一张图。
-  public func shot(_ id: UUID) -> Data? { try? Data(contentsOf: shotURL(id)) }
+  ///
+  /// 读到了就把文件的修改时间拨到现在：`trimShots` 按它做 LRU，刚看过的最后才轮到。
+  public func shot(_ id: UUID) -> Data? {
+    guard let data = try? Data(contentsOf: shotURL(id)) else { return nil }
+    try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: shotURL(id).path)
+    return data
+  }
   public func hasShot(_ id: UUID) -> Bool { FileManager.default.fileExists(atPath: shotURL(id).path) }
-  public func saveShot(_ data: Data, for id: UUID) throws {
+  public func saveShot(_ data: Data, for id: UUID) throws { try saveShot(data, for: id, trim: true) }
+  private func saveShot(_ data: Data, for id: UUID, trim: Bool) throws {
     try FileManager.default.createDirectory(at: shotsURL, withIntermediateDirectories: true)
     try data.write(to: shotURL(id), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    if trim { trimShots() }
+  }
+
+  /// `shots/` 的总量上限。一张图压到 2 MB 以内（`ReviewFeature.shotMaxBytes`），
+  /// 实际多在 150–400 KB，64 MB 大约是最近两三百条记录的图——和云端缓存留的 200 条
+  /// 记录对得上；整台设备的预算是存储加内存约 2 GB，复盘的图占它 3%。
+  public static let shotBudget = 64 * 1024 * 1024
+
+  /// 超过 `budget` 就按「最久没看」删图，删到回到预算以内。
+  ///
+  /// 只删**能再要回来**的：已经上过云（有 `serverId`）、队列里没有它的任何一条（图那条
+  /// 还没传上去的更不能删）、也不是手上那条草稿。删掉的那张哪天再翻到，`loadShot`
+  /// 会从服务端再要一次。本机独有的图一张都不删——宁可超预算。
+  @discardableResult public func trimShots(budget: Int = ReviewStore.shotBudget) -> Int {
+    guard readable else { return 0 }
+    let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
+    let files = (try? FileManager.default.contentsOfDirectory(at: shotsURL, includingPropertiesForKeys: keys)) ?? []
+    var entries: [(id: UUID, url: URL, size: Int, used: Date)] = []
+    for url in files where url.pathExtension == "png" {
+      guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
+            let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+      entries.append((id, url, values.fileSize ?? 0, values.contentModificationDate ?? .distantPast))
+    }
+    var total = entries.reduce(0) { $0 + $1.size }
+    guard total > budget else { return 0 }
+    let pinned = Set(archive.queue.map(\.recordId)).union(archive.draft.map { [$0.id] } ?? [])
+    let cloud = Set(archive.records.filter { $0.serverId != nil }.map(\.id))
+    var removed = 0
+    for entry in entries.sorted(by: { $0.used < $1.used }) where total > budget {
+      guard cloud.contains(entry.id), !pinned.contains(entry.id) else { continue }
+      if (try? FileManager.default.removeItem(at: entry.url)) != nil { total -= entry.size; removed += 1 }
+    }
+    return removed
   }
   public func removeShot(_ id: UUID) { try? FileManager.default.removeItem(at: shotURL(id)) }
 
@@ -156,6 +218,8 @@ public enum ReviewStorageError: LocalizedError {
       guard let id = UUID(uuidString: String(name.dropLast(4))), !live.contains(id) else { continue }
       if (try? FileManager.default.removeItem(at: shotsURL.appendingPathComponent(name))) != nil { removed += 1 }
     }
+    // 孤儿删完再看总量（换档案时扫一次，不挂定时器）。
+    trimShots()
     return removed
   }
 

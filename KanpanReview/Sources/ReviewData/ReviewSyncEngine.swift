@@ -34,8 +34,8 @@ import ReviewDomain
   public var onNotice: (String) -> Void = { _ in }
   /// 服务端回了一份新的记录（宿主拿它去补已经摆在复盘本上的那一行）。
   public var onAdopted: (ReviewRecord) -> Void = { _ in }
-  /// 发图那一条要的字节。老队列里的图还在 body 里（`{"image": base64}`），先认它；
-  /// 没有就读这份档案里那张图（`ReviewStore.shot`）。
+  /// 发图那一条要的字节。队列里只记「哪条记录」，图住在 `shots/<id>.png`，发的那一刻现读
+  /// （`ReviewStore.shot`）；老队列 body 里还带着 base64 的（开档时没迁成的）先认它。
   public var shotBytes: (ReviewOperation) -> Data?
 
   public init(store: ReviewStore, transport: any ReviewTransport) {
@@ -83,6 +83,12 @@ import ReviewDomain
               }
             }
             return false
+          case .conflict where operation.kind == "shot", .rejected where operation.kind == "shot":
+            // 图没有「人写的内容」可裁决：服务端不收（太大、记录没了）或者本机的图已经
+            // 不在了，重发多少次都一样，挂成冲突只会让人面对一条他什么也做不了的提示。
+            // 安静摘掉，记录本身不受影响。
+            guard commit({ archive in archive.queue.removeAll { $0.id == operation.id } }) else { return false }
+            continue
           case .conflict, .rejected:
             // 这条再也发不出去了。摘下来，队列接着往下跑。
             guard quarantine(operation, error: error) else { return false }

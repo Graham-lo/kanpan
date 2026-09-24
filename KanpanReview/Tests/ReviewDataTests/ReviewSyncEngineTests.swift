@@ -190,6 +190,30 @@ final class ReviewSyncEngineTests: XCTestCase {
     let calls = await server.calls
     XCTAssertEqual(calls, [.shot(with.id, bytes.count), .list(nil)])
     XCTAssertTrue(store.archive.queue.isEmpty)
+    XCTAssertNil(store.archive.records.first { $0.id == without.id }?.conflict, "图丢了不挂冲突：人对它什么也做不了")
+  }
+
+  /// 服务端不收那张图（太大、记录没了）：安静摘掉，不挂冲突、不提示，后面照发。
+  @MainActor func testRejectedShotIsDroppedSilently() async throws {
+    let (store, directory) = try makeStore()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let server = FakeReviewTransport()
+    let mine = cloud(revision: 2)
+    try store.saveShot(Data([1, 2, 3]), for: mine.id)
+    try store.transaction {
+      $0.records = [mine]
+      $0.queue = [ReviewOperation(recordId: mine.id, kind: "shot", body: Data()), try edit(mine, kind: "reflection", expected: 2)]
+    }
+    await server.fail(mine.id, with: ScorebookError.http(413, "shot_too_large"))
+    let engine = ReviewSyncEngine(store: store, transport: server)
+    var notices: [String] = []
+    engine.onNotice = { notices.append($0) }
+    let completed = await engine.run()
+    XCTAssertTrue(completed)
+    XCTAssertEqual(notices, [])
+    XCTAssertNil(store.archive.records.first { $0.id == mine.id }?.conflict)
+    XCTAssertTrue(store.archive.queue.isEmpty)
+    XCTAssertTrue(store.hasShot(mine.id), "本机那张图照样留着看")
   }
 
   /// 拉回来的一页并进存档：还在队列里的不盖、只活在本机的冲突不抹、云端缓存最多 200 条。

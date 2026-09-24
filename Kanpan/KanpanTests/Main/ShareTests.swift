@@ -81,4 +81,22 @@ import UIKit
     // 目录还不存在（一张图都没拉过）也不出事。
     #expect(ShareInbox.pruneShots(in: folder.appendingPathComponent("nope"), keeping: []) == 0)
   }
+
+  /// 截图缓存有总量上限（第 25 项）：超了按最久没看的删，删回预算以内；别的文件不碰。
+  @Test func trimShotsEvictsLeastRecentlyUsedOverBudget() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let shots = folder.appendingPathComponent("share-shots")
+    try FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    for (offset, name) in ["old.jpg", "mid.jpg", "new.jpg"].enumerated() {
+      let file = shots.appendingPathComponent(name)
+      try Data(count: 1000).write(to: file)
+      try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(offset - 3) * 100)], ofItemAtPath: file.path)
+    }
+    try Data(count: 5000).write(to: shots.appendingPathComponent("other.tmp"))
+    #expect(ShareInbox.trimShots(in: folder, budget: 3000) == 0)
+    #expect(ShareInbox.trimShots(in: folder, budget: 2000) == 1)
+    #expect(Set(try FileManager.default.contentsOfDirectory(atPath: shots.path)) == ["mid.jpg", "new.jpg", "other.tmp"])
+    #expect(ShareInbox.trimShots(in: folder.appendingPathComponent("nope"), budget: 0) == 0)
+  }
 }
