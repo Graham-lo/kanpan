@@ -45,7 +45,7 @@ struct SettingsPanel: View {
         PanelRow(name: account.user?.email ?? "登录",
                  meta: account.user == nil ? nil : syncMeta(account),
                  onTap: { account.open() }) {
-          Image(systemName: "person.crop.circle").font(.title3).foregroundStyle(t.amber)
+          Image(systemName: "person.crop.circle").font(TypeScale.price).foregroundStyle(t.amber)
         }.accessibilityIdentifier("settings.account")
       }
       DisplaySettingsSection(store: store)
@@ -62,10 +62,12 @@ struct SettingsPanel: View {
             Button(basis.title) { store.update { $0.changeBasis = basis } }
           }
         } label: {
-          HStack(spacing: 3) {
+          HStack(spacing: Space.xs) {
             Text(prefs.changeBasis.title).font(PanelFont.seg)
-            VectorIcon.chevron(9, w: 1.7)
-          }.foregroundStyle(t.amber)
+            VectorIcon.chevron(ControlMetrics.chevron, w: 1.7)
+          }
+          .foregroundStyle(t.amber)
+          .rowHitTarget()
         }.accessibilityIdentifier("settings.changeBasis")
       }
       PanelRow(name: "时区") {
@@ -82,9 +84,9 @@ struct SettingsPanel: View {
       // 提醒：建在图上（画完线那一下），管在这儿。
       if let onAlerts {
         PanelRow(name: "提醒", onTap: onAlerts) {
-          HStack(spacing: 3) {
+          HStack(spacing: Space.xs) {
             if alertCount > 0 { Text("\(alertCount)").font(PanelFont.seg) }
-            VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90))
+            VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90))
           }.foregroundStyle(t.amber)
         }
         .accessibilityIdentifier("settings.alerts")
@@ -94,7 +96,7 @@ struct SettingsPanel: View {
       // 它和「提醒」一样是进另一页的一行，不需要自己的分组。
       if let onFriends {
         PanelRow(name: "朋友", onTap: onFriends) {
-          VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.amber)
+          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.amber)
         }.accessibilityIdentifier("settings.friends")
       }
 
@@ -161,7 +163,7 @@ struct SettingsPanel: View {
     PanelRow(name: "清理存储空间", divider: false) {
       // 点下去先给五秒反悔，过了才真清（P2.7），所以这里不再转圈。
       Button { Haptics.warning(); store.clearCacheLater() } label: {
-        Text("清除").font(PanelFont.seg).foregroundStyle(t.amber)
+        Text("清除").font(PanelFont.seg).foregroundStyle(t.amber).rowHitTarget()
       }
       .buttonStyle(.plain)
       .accessibilityIdentifier("settings.clearCache")
@@ -174,10 +176,10 @@ struct SettingsPanel: View {
   private var aboutRow: some View {
     PanelRow(name: "关于", meta: SettingsPanel.version) {
       if let base = SettingsPanel.legalBase {
-        HStack(spacing: 12) {
-          Link("隐私政策", destination: base.appending(path: "privacy"))
+        HStack(spacing: Space.xs) {
+          Link(destination: base.appending(path: "privacy")) { Text("隐私政策").rowHitTarget() }
             .accessibilityIdentifier("settings.privacy")
-          Link("服务条款", destination: base.appending(path: "terms"))
+          Link(destination: base.appending(path: "terms")) { Text("服务条款").rowHitTarget() }
             .accessibilityIdentifier("settings.terms")
         }
         .font(PanelFont.seg).foregroundStyle(t.amber)

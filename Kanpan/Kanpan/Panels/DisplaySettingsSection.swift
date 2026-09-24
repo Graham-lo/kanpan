@@ -20,11 +20,11 @@ struct DisplaySettingsSection: View {
     // 「显示」这个词让给「图表」面板里那一组（那边管的是画在图上的东西）：
     // 这儿从头到尾只有配色，叫「配色」不会再和那边撞（第三批 16）。
     PanelGroupTitle(text: "配色")
-    HStack(spacing: 10) {
+    HStack(spacing: Space.m) {
       ForEach(ThemeSkin.allCases, id: \.self) { skin in
         card(skin)
       }
-    }.padding(.horizontal, 16).padding(.vertical, 8)
+    }.padding(.horizontal, PanelMetrics.hPad).padding(.vertical, Space.s)
     // 这一排原来还挂着 `.accessibilityIdentifier("display.themes")`。加在 HStack 上的
     // 标识符会往下盖住几张卡自己的 `display.theme.sage` / `display.theme.terra` / `display.theme.classic`，
     // 于是无障碍树里并排躺着两个都叫 `display.themes` 的按钮，UI 用例按名字一张也找不着。
@@ -53,8 +53,8 @@ struct DisplaySettingsSection: View {
     return Button {
       store.update { $0.skin = skin }
     } label: {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(alignment: .bottom, spacing: 5) {
+      VStack(alignment: .leading, spacing: Space.s) {
+        HStack(alignment: .bottom, spacing: Space.xs) {
           ForEach(0..<6) { index in
             // 这是蜡烛预览，取图上那支色（`chart`），不是文字上的涨跌色。
             Rectangle().fill(Color(hex: index.isMultiple(of: 3) ? color.chart.down : color.chart.up))
@@ -66,13 +66,13 @@ struct DisplaySettingsSection: View {
         // 名字和注脚默认并排；系统字调大、三张卡并排放不下时，注脚整行落到名字下面，
         // 不把「冷 · 墨绿」拆成两半（P2.13）。
         ViewThatFits(in: .horizontal) {
-          HStack(spacing: 6) { skinName(skin, color); skinNote(skin, color) }
-          VStack(alignment: .leading, spacing: 2) { skinName(skin, color); skinNote(skin, color) }
+          HStack(spacing: Space.xs) { skinName(skin, color); skinNote(skin, color) }
+          VStack(alignment: .leading, spacing: Space.xxs) { skinName(skin, color); skinNote(skin, color) }
         }
-      }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.app, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12)
-          .stroke(picked ? theme.amber : theme.line, lineWidth: picked ? 2 : 1))
+      }.padding(Inset.cardCompact).frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.app, in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
+          .strokeBorder(picked ? theme.amber : theme.line, lineWidth: picked ? 2 : 1))
     }.buttonStyle(.plain).accessibilityIdentifier("display.theme." + skin.rawValue)
       .accessibilityValue(picked ? "已选" : "未选")
   }

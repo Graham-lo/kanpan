@@ -84,7 +84,8 @@ private struct InUseList: View {
   @State private var dragging: IndicatorID?
   @State private var offset: CGFloat = 0
 
-  private static let rowH: CGFloat = 48
+  /// 和 `PanelRow` 同一个行高，同一张表节奏一致。
+  private static let rowH: CGFloat = Inset.rowMin
 
   private var prefs: Prefs { store.prefs }
 
@@ -114,19 +115,18 @@ private struct InUseList: View {
     return HStack(spacing: 0) {
       Button { onEdit(id) } label: {
         HStack(spacing: PanelMetrics.rowGap) {
-          HStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-              .fill(t.swatch(id)).frame(width: 9, height: 9)
+          HStack(spacing: Space.xs) {
+            PanelSwatch(color: t.swatch(id))
             Text(id.name).font(PanelFont.name).foregroundStyle(t.ink).lineLimit(1)
           }
           Spacer(minLength: 0)
           if !params.isEmpty {
             Text(params).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
           }
-          VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
         }
         .padding(.leading, PanelMetrics.hPad)
-        .padding(.trailing, index == nil ? PanelMetrics.hPad : 4)
+        .padding(.trailing, index == nil ? PanelMetrics.hPad : Space.xs)
         .frame(height: Self.rowH)
         .contentShape(Rectangle())
       }
@@ -136,22 +136,25 @@ private struct InUseList: View {
 
       // 在图上拖过副图高度才出现的那条退路（高度只在图上拖，这儿不给档位）。
       if resized {
-        Button("还原高度") { store.update { $0.subHeightOverrides[id] = nil } }
-          .font(PanelFont.meta).foregroundStyle(t.amber)
+        Button { store.update { $0.subHeightOverrides[id] = nil } } label: {
+          Text("还原高度").font(PanelFont.seg).foregroundStyle(t.amber)
+            .frame(height: Self.rowH)
+            .hitTarget()
+        }
           .buttonStyle(.plain)
-          .frame(height: Self.rowH)
-          .padding(.leading, 6)
+          .padding(.leading, Space.s)
           .accessibilityIdentifier("indicator.height.reset.\(id.rawValue)")
       }
 
       if let index {
         Image(systemName: "line.3.horizontal")
-          .font(.system(size: 14, weight: .medium))
+          .font(TypeScale.bodyEmph)
           .foregroundStyle(t.ink3)
-          .frame(width: 44, height: Self.rowH)
+          .frame(width: Hit.min, height: Self.rowH)
           .contentShape(Rectangle())
           .gesture(drag(id: id, index: index))
-          .padding(.trailing, PanelMetrics.hPad - 12)
+          // 把手的图形大致落在正文右缘 `hPad` 上：44 宽的点击区里图形居中，多出来的那截借进边距。
+          .padding(.trailing, PanelMetrics.hPad - Space.m)
           .accessibilityElement()
           .accessibilityLabel("\(id.name)，第 \(index + 1) 个副图")
           .accessibilityIdentifier("indicator.order.\(id.rawValue)")
@@ -288,6 +291,8 @@ private struct IndicatorEditor: View {
           .listRowBackground(t.raised)
         }
       }
+      // 行文 15 regular，和面板行同一档（系统 `Form` 默认 17，在这里比标题还大）。
+      .font(TypeScale.body)
       // 这张表是系统 `Form`，但配色得跟着皮肤走：底换成 `app`、行换成 `raised`、
       // 强调色（「添加周期」、开关、光标）走 `tint`。留着 `Form` 是因为分节、左滑删除
       // 和键盘避让都是它给的，自己搭一套只会把这几样做丢。
@@ -456,20 +461,21 @@ private struct ParamField: View {
   var identifier: String
 
   var body: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: Space.m) {
       Text(label).foregroundStyle(theme.ink)
-      Spacer(minLength: 8)
+      Spacer(minLength: Space.s)
       // 一格能打字的数字，底垫一层 `raised2`：不垫的话它和左边的名字长得一模一样，
       // 谁也不会想到那儿能点进去打字。
       TextField("", text: $text)
         .keyboardType(.numberPad)
         .multilineTextAlignment(.trailing)
-        .font(.body.monospacedDigit())
+        .font(TypeScale.body)
+        .monospacedDigit()
         .foregroundStyle(theme.ink)
-        .frame(width: 56)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(theme.raised2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .frame(width: Hit.min + Space.m)
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, Space.s)
+        .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
         .focused(focus, equals: field)
         .accessibilityIdentifier(identifier)
         .accessibilityLabel(label)
