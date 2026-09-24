@@ -45,10 +45,13 @@ enum SymbolRowText {
 
 // MARK: - 涨跌药丸
 
-/// 一颗涨跌药丸：淡底加半像素描边，里面是带符号的数。
+/// 一颗涨跌药丸：实心涨跌色底、反白的数，等宽一列。
 ///
 /// 自选页、板块内品种表、长按预览卡三处同一颗（静态审查 §3.4「预览卡涨跌药丸」）。
+/// 2026-09-25 用户拿富途式的自选表当参照，把琉璃行右边改成「价格在前、涨跌幅在后」横排：
+/// 药丸从淡底描边改成实心块，宽度固定，一列药丸的左右缘在同一条线上，扫一眼就是一列涨跌。
 /// 方向只靠「+ / −」和颜色说，不再在前面挂小三角（视觉审查 §3 第 4 条：同一个数三种写法）。
+/// 字用 `theme.badgeInk`（浅色白、深色近黑），和分类条选中格压在强调色上的字一个口径。
 struct ChangePill: View {
   /// 只拿来判「有没有」与「涨还是跌」。
   let value: Double
@@ -60,26 +63,23 @@ struct ChangePill: View {
   var id: String? = nil
 
   @Environment(\.panelTheme) private var theme
-
-  /// 药丸最矮多高、最窄多宽：`−12.34%` 这种最长的也不挤，一列药丸看上去一样宽。
-  static let minHeight: CGFloat = 20
-  static let minWidth: CGFloat = 54
+  /// 固定宽：`−12.34%` 这种最长的也放得下；字号放大时跟着长。
+  @ScaledMetric(relativeTo: .footnote) private var width: CGFloat = 72
+  @ScaledMetric(relativeTo: .footnote) private var height: CGFloat = ControlMetrics.pillHeight
 
   var body: some View {
     let finite = value.isFinite
-    let tint = finite ? (value >= 0 ? theme.up : theme.down) : SymbolRowInk.faint(theme)
+    // 方向按写出来的那个数判，不按原始值：−0.004% 写出来是「+0.00%」，底色也得跟着算涨，
+    // 否则一颗绿底上写着「+」（红涨绿跌时）会被读成「涨」和「跌」各说各的。
+    let up = !(text.hasPrefix("\u{2212}") || text.hasPrefix("-"))
+    let tint = finite ? (up ? theme.up : theme.down) : SymbolRowInk.rule(theme)
     Text(finite ? text : SymbolRowText.missing)
-      .font(SymbolRowFont.pill).monospacedDigit()
-      .lineLimit(1)
-      .foregroundStyle(finite ? tint : (pending ? .clear : tint))
-      .padding(.horizontal, Space.s)
-      .frame(minWidth: Self.minWidth, minHeight: Self.minHeight)
-      .background {
-        RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-          .fill(finite ? tint.opacity(0.14) : SymbolRowInk.rule(theme))
-          .overlay(RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-            .strokeBorder(finite ? tint.opacity(0.3) : .clear, lineWidth: 0.5))
-      }
+      .font(TypeScale.controlOn).monospacedDigit()
+      .lineLimit(1).minimumScaleFactor(0.8)
+      .foregroundStyle(finite ? theme.badgeInk : (pending ? .clear : SymbolRowInk.faint(theme)))
+      .padding(.horizontal, Space.xs)
+      .frame(width: width, height: height)
+      .background(tint, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
       .accessibilityIdentifier(id ?? "")
   }
 }
@@ -94,8 +94,6 @@ enum SymbolRowFont {
   static let liuliPrice = TypeScale.bodyEmph
   /// 计价币、副文案：11（下限；原 9 / 10）。
   static let small = TypeScale.caption2
-  /// 药丸里的数：11 semibold。
-  static let pill = ScaledFont(TypeScale.caption2.size, .semibold, relativeTo: .caption2)
 }
 
 /// 琉璃两页（自选、板块）共用的两支弱墨，公式和它们各自的 skin 一字不差。
@@ -241,9 +239,10 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
     .accessibilityAction(.default, onOpen)
   }
 
-  /// 右边一列：价 + 涨跌药丸。
+  /// 右边：价格在前、涨跌药丸在后，横排（2026-09-25 照用户给的富途式自选表改）。
+  /// 价格靠右贴着药丸，药丸定宽，于是两列各自成一条竖线。
   private var quoteColumn: some View {
-    VStack(alignment: .trailing, spacing: Space.xs) {
+    HStack(spacing: Space.m) {
       Text(priceText)
         .font(SymbolRowFont.liuliPrice).monospacedDigit()
         .lineLimit(1).minimumScaleFactor(0.7)
@@ -257,7 +256,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
         }
         .accessibilityIdentifier(priceID)
       ChangePill(value: change, text: changeText, pending: changePending, id: changeID)
-    }.frame(minWidth: 86, alignment: .trailing)
+    }
   }
 }
 
