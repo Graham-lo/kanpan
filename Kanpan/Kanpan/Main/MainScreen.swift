@@ -564,7 +564,7 @@ struct MainScreen: View {
         .sheet(isPresented: $account.presented) { AccountView(feature: account).environment(\.panelTheme, theme) }
     }
     .onAppear { wireReview() }
-    // 提醒：深链 / 通知点开的是总表，图上十字线那颗药丸开的是新建页（右上「全部」再推进总表）。
+    // 提醒：深链 / 通知点开的是总表，图上十字线那颗药丸开的是新建页（右上「全部预警」再推进总表）。
     .sheet(item: $alertSheet) { route in
       AlertSheetView(route: route, store: alerts, context: alertListContext,
                      onCreated: { alert in
@@ -1519,17 +1519,6 @@ struct MainScreen: View {
   /// 判定全靠服务端 + APNs；而这个项目没有 APNs 密钥，于是「提醒」在用户手上
   /// 其实一次都没响过。现在前台自己判，服务端那一份照旧当后台的兜底，
   /// 两边靠 `status == .active` 这道闸去重（细节写在 `AlertEngine` 的头注释里）。
-  /// 提醒行上的「盯一个」：拿这一刻手上最新的价开一块锁屏实时活动（再点一次就是不盯了）。
-  private func watch(_ alert: KanpanCore.Alert) {
-    let symbol = alert.symbol
-    let ticker = quotes.raw[symbol] ?? (market.symbol == symbol ? market.ticker : nil)
-    let price = market.symbol == symbol ? (market.tradeQuote?.price ?? market.ticker?.last) : ticker?.last
-    let decimals = picker.info(for: symbol)?.knownPriceDecimals
-    let started = activities.toggle(alert, price: price, change: ticker.map { $0.changePercent / 100 },
-                                    decimals: decimals, redUp: prefs.redUp)
-    if !started && activities.watching == nil && !activities.available { say("系统设置里关掉了实时活动") }
-  }
-
   private func wireAlerts() {
     alertPrompt.onAcceptBatch = { items, symbol in
       for item in items {
@@ -1684,7 +1673,7 @@ struct MainScreen: View {
                            changePercent: change.flatMap { $0.isFinite ? $0 : nil })
   }
 
-  /// 提醒总表与新建页要的宿主能力（点一行去哪儿、时区、查价、锁屏盯一个）。
+  /// 提醒总表与新建页要的宿主能力（点一行去哪儿、时区、查价）。
   private var alertListContext: AlertListContext {
     AlertListContext(
       onOpen: { alert in
@@ -1697,9 +1686,7 @@ struct MainScreen: View {
       zone: prefs.timeZone.offsetMinutes,
       quote: { text in alertQuote(text) },
       prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
-      releaseQuote: { [weak quotes] in quotes?.releaseNamed() },
-      watching: activities.watching,
-      onWatch: { alert in watch(alert) })
+      releaseQuote: { [weak quotes] in quotes?.releaseNamed() })
   }
 
   /// 站到某一条复盘记录上（通知、提醒总表、到点浮条都走这儿）。

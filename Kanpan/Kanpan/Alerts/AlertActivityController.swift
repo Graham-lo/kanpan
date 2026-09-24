@@ -132,6 +132,10 @@ final class AlertActivityController: ObservableObject {
   }
 
   /// 提醒表变了：盯着的那条被删 / 暂停就收掉；响了就写上「已触发」再收。
+  ///
+  /// v3 触发即删：响了的那条先以「已触发」发布（这里同步收到，写最后一拍再收），
+  /// 下一拍 `AlertWatcher` 才把它从存档删掉——那时活动已经收了，走不到 `stop()`；
+  /// 万一先看到的是删除（比如同步一次拉到删除后的状态），走 `stop()` 立即收，不会挂着不结束。
   func reconcile(_ alerts: [KanpanCore.Alert]) {
     guard let current = alert, let activity else { return }
     guard let next = alerts.first(where: { $0.id == current.id }), next.status != .paused else {

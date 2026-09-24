@@ -35,7 +35,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   ///   两侧都判：前台 `AlertEvaluator`、服务端 `alerts.rs`。切换的口子在提醒列表那一行上。
   public enum Condition: String, Sendable, Codable, CaseIterable {
     case touch, close
-    public var title: String { self == .touch ? "碰到" : "收盘穿过" }
+    public var title: String { self == .touch ? "价格达到" : "收盘穿过" }
   }
 
   public enum Status: String, Sendable, Codable, CaseIterable {
@@ -60,7 +60,8 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 从这个时刻起才算数（毫秒）。线被挪动之后要重置成「现在」，否则挪过去的那一刻
   /// 就被历史 K 线判成触发了。
   public var armedAt: Double
-  /// `true` 时只响一次；关闭后按现有再次提醒规则重新布防。
+  /// 只响一次（恒为 `true`）。2026-09-25 v3 起响过就由 app 从存档里删掉，没有「再次提醒」；
+  /// 字段留着是线协议里本来就有它。
   public var once: Bool
   public var status: Status
   public var firedAt: Double?
@@ -213,8 +214,9 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 方向不存：它由建的那一刻的现价决定（高于现价就是「涨到」、低于就是「跌到」），
   /// 只体现在标题里。判定按 `touch`：价格走到那条线上就响，从哪边来都一样。
   ///
-  /// 条件（碰到 / 收盘穿过）、Webhook 与备注是新建表单上填的，不填就是出厂值：
-  /// 碰到、不发 Webhook、没有备注。只响一次（`once` 恒为 true），响过变「已触发」。
+  /// 条件（价格达到 / 收盘穿过）、Webhook 与备注是新建表单上填的，不填就是出厂值：
+  /// 价格达到、不发 Webhook、没有备注。只响一次（`once` 恒为 true）：响过短暂变「已触发」，
+  /// app 把通知 / Webhook 发出去之后就从存档里删掉（`AlertWatcher`）。
   public static func price(symbol: String, target: Double, current: Double?, label: String,
                            now: Double, condition: Condition = .touch,
                            webhook: String? = nil, webhookText: String? = nil,

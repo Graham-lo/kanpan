@@ -112,8 +112,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
   ///
   /// `XCUIElement.exists` 在**查询本身匹配不到**的时候不会老实答 false，会当场把用例
   /// 判失败（`Failed to get matching snapshot: No matches found for first query match
-  /// sequence`）。「再次提醒」那颗胶囊只在 `status == .fired` 时才在，属于
-  /// 「有就记一笔、没有就算了」的探询，一律走这里。
+  /// sequence`）。「有就记一笔、没有就算了」的探询（比如自选页的搜索框），一律走这里。
   private func snapshotFrame(_ el: XCUIElement) -> CGRect? {
     guard let snap = try? el.snapshot(), snap.frame.width > 1, snap.frame.height > 1
     else { return nil }
@@ -405,64 +404,9 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     XCTAssertEqual(chartInfo()["drawingIDs"] as? [String], ids, "线换了一批，说明删过又画过")
   }
 
-  /// 提醒总表那一行。和画线管理是**同一个零件**（`SwipeToDelete`）的另一种砖型
-  /// （`.flush` 贴边方砖，画线管理是 `.pill` 圆角药丸），两处判词一模一样。
-  func testSwipeDeleteInkInAlertList() throws {
-    applySageNight("提醒总表左滑")
-
-    // 2026-09-25 起设置里没有「提醒」那一行了，走通知 / 深链那条路开总表。
-    app.open(URL(string: "hkline://alerts")!)
-    let page = app.descendants(matching: .any).matching(identifier: "alerts.page").firstMatch
-    expectExists(page, Self.long, "「提醒」没开出总表")
-
-    // 「这一行还在不在」的准星用**行名那行字**（「BTC · 水平线」），
-    // 既不用「再次提醒」也不用「删除」：
-    // - 「再次提醒」只在 `status == .fired` 时才在。第一版拿它当准星，起手点正压在
-    //   那颗胶囊上，那一下把提醒重新上了膛、它自己换成「碰到 ⌄」，被误判成「行被删了」。
-    // - 「删除」那块砖没划开时压根不建出来（`SwipeToDelete.brickView` 里那个 `if`），
-    //   不在无障碍树里，划之前找不着。
-    // 行名两种状态都在，划开之后只是被推走，在树里照样在。
-    let rowAnchor = app.staticTexts
-      .matching(NSPredicate(format: "label CONTAINS %@", "水平线")).firstMatch
-    expectExists(rowAnchor, Self.long, "种下的那条提醒没出现在总表里：\(app.debugDescription)")
-    XCTAssertTrue(waitUntil(timeout: Self.short) { rowAnchor.frame.height > 1 }, "那一行量不出 frame")
-    let rowBand = rowAnchor.frame
-    shot("iPhone15-左滑删除-提醒总表-滑之前-青苔深")
-
-    // 起手点按顺序试三个，哪个划出来了就停：行右侧「再次提醒」胶囊下面一点、
-    // 胶囊正中（划得动，代价是把提醒重新上了膛，不影响这一趟要量的砖）、行左半边文字区。
-    let rearm = app.buttons["再次提醒"]
-    let capsule = snapshotFrame(rearm) ?? rowBand
-    let delete = revealDelete(capsule.midY,
-                              [capsule.maxX - 16, capsule.midX, 200])
-    XCTAssertTrue(brickIsOpen(delete),
-                  "左滑没把删除砖划出来（量到宽 \(delete.exists ? Int(delete.frame.width) : -1)）："
-                    + app.debugDescription)
-    geometry("提醒总表-行名", rowBand)
-    geometry("提醒总表-行名（划开后）", rowAnchor.frame)
-    geometry("提醒总表-删除砖", delete.frame)
-    let label = app.staticTexts[Self.deleteText]
-    XCTAssertTrue(label.waitForExistence(timeout: Self.short) && label.frame.width > 1,
-                  "砖上「删除」两个字在无障碍树里没有 frame：\(app.debugDescription)")
-    geometry("提醒总表-删除二字", label.frame)
-    shot("iPhone15-左滑删除-提醒总表-青苔深")
-
-    assertDeleteInk(histogram(label.frame), ink: Self.sageNightInk, what: "提醒总表-删除二字")
-    assertBrickFill(histogram(delete.frame.insetBy(dx: 8, dy: 8)),
-                    fill: Self.sageNightDanger, what: "提醒总表-砖底")
-
-    // 这一趟只是滑出来看一眼，不删：砖露着的时候那一行还在（只是被推走了）。
-    XCTAssertTrue(rowAnchor.exists, "滑出删除砖的同时那一行没了，多半是被删了")
-
-    // 再从头走一遍验「真的没删」：收掉总表、重新开出来，那条提醒还在。
-    let done = app.buttons[Ids.panelDone]
-    if done.exists, done.isHittable { done.tap() }
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !page.exists }, "提醒总表收不掉")
-    app.open(URL(string: "hkline://alerts")!)
-    expectExists(page, Self.long, "提醒总表第二次开不出来")
-    XCTAssertTrue(rowAnchor.waitForExistence(timeout: Self.long),
-                  "重新开总表那条提醒不见了，这一趟把它删掉了")
-  }
+  // 提醒总表那一行的左划删除 2026-09-25 v3 起去掉了（用户：「行上只给一个删除 icon」），
+  // 行尾只剩一枚垃圾桶，原来那条 `testSwipeDeleteInkInAlertList` 随之删掉；
+  // 左划删除这个零件（`SwipeToDelete`）的墨色仍由上面画线管理那一条守着。
 
   // ============================================================ 二、自选段的行特征
 

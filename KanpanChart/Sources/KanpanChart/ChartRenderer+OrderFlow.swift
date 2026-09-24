@@ -26,7 +26,8 @@ import UIKit
 //      压成 1.5 pt 细线——不平移、不改价位，仍然是本色深浅、仍然点得中。底噪不参与（本来就是 1 pt 淡线）。
 //      画的先后：底噪 → 整条 → 细线（细线压在上面，不会被大的整个吞掉）。
 //   4. **金额标签**：「主」里没被压细、宽 ≥ 48 pt 的带在右端内侧（挂着的贴主图右缘）放一枚带色小签，
-//      写合并后的名义（「6.2M」，8.5 pt 等宽，字色取带色的对比色）；标签之间碰撞只留名义大的。
+//      写合并后的名义（「6.2M」，11 pt medium 等宽——HIG 下限，与 app 的 `TypeScale.caption2Emph` 同档；
+//      高 16、左右 4、圆角 4，全在 4pt 网格与 `Radius.xs` 上；字色取带色的对比色）；标签之间碰撞（留 2 pt）只留名义大的。
 //      标签画在 crossLayer：金额每拍都在抖，不能拖着底图重画（审查 31）。
 //   5. **颜色**：合约一律皮肤涨跌色（跟着红涨绿跌走），现货买黄、卖紫（CoinAnk；浅色底压暗成 #B8A800 / #A806BC）。
 //      深浅两档：任何一单被吃过（成交名义 > 0）是本色；一口没成交往图区底色混 45%。主、次不透明，底噪 35%。
@@ -89,12 +90,15 @@ extension ChartRenderer {
     let role: OrderFlowRole
     /// 不透明度（底噪 0.35，其余 1）。
     let alpha: Double
+    /// 跨几个桶的「主」墙整个价位范围（最低桶价 … 最高桶价 + 步长）：垫一层淡色（`orderFlowRangeAlpha`），
+    /// 不占位、不挡 K 线；`frame` 是画在代表价上的那条实心芯（按档粗细）。单桶、次、底噪、被压细的没有。
+    let span: CGRect?
     var key: OrderFlowGroupKey { group.key }
 
     init(group: OrderFlowGroup, frame: CGRect, color: Hex, dark: Bool, thin: Bool, role: OrderFlowRole = .main,
-         alpha: Double = 1) {
+         alpha: Double = 1, span: CGRect? = nil) {
       self.group = group; self.frame = frame; self.color = color; self.dark = dark; self.thin = thin
-      self.role = role; self.alpha = alpha
+      self.role = role; self.alpha = alpha; self.span = span
     }
   }
 
@@ -145,6 +149,9 @@ extension ChartRenderer {
   static let orderFlowSecondaryHeight = 2.0
   static let orderFlowNoiseHeight = 1.0
   static let orderFlowNoiseAlpha = 0.35
+  /// 跨桶主墙价位范围那层淡色的不透明度。首版把整个范围画成实心：BTC 1 分钟图上一堵 5 桶（500 美元）的墙
+  /// 高 213 pt、盖住三分之一张图的 K 线，详情卡也没地方摆（2026-09-25 真机取证）。
+  static let orderFlowRangeAlpha = 0.16
   /// 一屏几名「主」、主加次一共几名（第 7–18 名是次）。
   static let orderFlowMainCount = 6
   static let orderFlowRankedCount = 18
@@ -154,14 +161,23 @@ extension ChartRenderer {
   static let orderFlowGap = 1.0
   /// 带宽到这么宽才写金额。
   static let orderFlowLabelMinWidth = 48.0
-  /// 金额小签：8.5 pt 等宽（常驻一只实例，`ChartFont` 的缓存按字体身份做键）、高 11 pt、左右各留 3 pt、离带右端 1 pt。
-  static let orderFlowLabelFont = UIFont.monospacedSystemFont(ofSize: 8.5, weight: .medium)
-  static let orderFlowLabelHeight = 11.0
-  static let orderFlowLabelPadX = 3.0
-  static let orderFlowLabelInset = 1.0
-  /// 点选 / 十字线的竖向容差：离带边不超过 8 pt；横向两头各放 4 pt。
+  /// 金额小签（2026-09-25 按 HIG 整改口径，原 8.5 pt / 高 11 / 左右 3 / 圆角 2 / 离右端 1 都不合规）：
+  /// 11 pt medium 等宽（下限 11，对应 app 的 `TypeScale.caption2Emph`；常驻一只实例，`ChartFont` 的缓存按字体身份做键）、
+  /// 高 16、左右各留 4（`Space.xs`）、圆角 4（`Radius.xs`）、离带右端 4、签与签之间至少 2（`Space.xxs`）。
+  /// 图表包拿不到 app 的令牌，数值在这里照抄。
+  static let orderFlowLabelFont = UIFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+  static let orderFlowLabelHeight = 16.0
+  static let orderFlowLabelPadX = 4.0
+  static let orderFlowLabelInset = 4.0
+  static let orderFlowLabelRadius = 4.0
+  static let orderFlowLabelGap = 2.0
+  /// 十字线的竖向容差：离带边不超过 8 pt；横向两头各放 4 pt。
   static let orderFlowHitSlop = 8.0
   static let orderFlowHitSlopX = 4.0
+  /// 手指轻点的命中区至少 44 × 44 pt（HIG，2026-09-25）：带细（1–8 pt）、结束得早的带窄，
+  /// 轻点时竖向容差放到 (44 − 带高) / 2、横向放到 (44 − 带宽) / 2（都不小于上面十字线那两个）。
+  /// 几条带的命中区叠在一起时仍按离得最近的给，所以放宽不会点错条，只是空白处离带 22 pt 以内点下去算点中带。
+  static let orderFlowTouchTarget = 44.0
 
   /// 这一帧要不要画主力订单流：快照属于当前品种、不在比价模式。
   var orderFlowSnapshot: OrderFlowSnapshot? {
@@ -238,23 +254,38 @@ extension ChartRenderer {
 
   /// 一个点落在哪条带上。横向落在带里（两头各放 4 pt）为前提：
   ///   1. 点在某条带画出来的范围里（上下各放 0.5 pt）：取画在最上面的那条（细线画在整条之后）；
-  ///   2. 否则离带边不超过 8 pt 的里面取离得最近的；一样近取名义大的、再取 id 小的（结果稳定）。
-  static func orderFlowHit(_ bands: [OrderFlowBand], x: Double, y: Double) -> OrderFlowBand? {
+  ///   2. 否则离带边不超过 8 pt（轻点时放到命中区 44 pt，见 `orderFlowTouchTarget`）的里面取离得最近的；
+  ///      一样近取名义大的、再取 id 小的（结果稳定）；
+  ///   3. 都不沾：落在某堵跨桶主墙的价位范围（淡色）里就认那堵墙，几堵叠着取名义大的。
+  static func orderFlowHit(_ bands: [OrderFlowBand], x: Double, y: Double, touch: Bool = false) -> OrderFlowBand? {
+    let slopX = { (b: OrderFlowBand) in
+      touch ? max(orderFlowHitSlopX, (orderFlowTouchTarget - Double(b.frame.width)) / 2) : orderFlowHitSlopX
+    }
+    let slopY = { (b: OrderFlowBand) in
+      touch ? max(orderFlowHitSlop, (orderFlowTouchTarget - Double(b.frame.height)) / 2) : orderFlowHitSlop
+    }
     let inX = { (b: OrderFlowBand) in
-      x >= b.frame.minX - orderFlowHitSlopX && x <= b.frame.maxX + orderFlowHitSlopX
+      x >= Double(b.frame.minX) - slopX(b) && x <= Double(b.frame.maxX) + slopX(b)
     }
     if let exact = bands.last(where: { inX($0) && y >= $0.frame.minY - 0.5 && y <= $0.frame.maxY + 0.5 }) {
       return exact
     }
     let gap = { (b: OrderFlowBand) in max(0, abs(y - b.frame.midY) - b.frame.height / 2) }
-    return bands
-      .filter { inX($0) && gap($0) <= orderFlowHitSlop }
-      .min { a, b in
+    let rank = { (a: OrderFlowBand, b: OrderFlowBand) -> Bool in
+      if a.group.drawNotional != b.group.drawNotional { return a.group.drawNotional > b.group.drawNotional }
+      return a.key.id < b.key.id
+    }
+    if let near = bands
+      .filter({ inX($0) && gap($0) <= slopY($0) })
+      .min(by: { a, b in
         let ga = gap(a), gb = gap(b)
-        if ga != gb { return ga < gb }
-        if a.group.drawNotional != b.group.drawNotional { return a.group.drawNotional > b.group.drawNotional }
-        return a.key.id < b.key.id
-      }
+        return ga != gb ? ga < gb : rank(a, b)
+      }) {
+      return near
+    }
+    return bands
+      .filter { b in b.span.map { inX(b) && y >= $0.minY && y <= $0.maxY } ?? false }
+      .min(by: rank)
   }
 
   /// 轻点这一下落在哪条带上（视图坐标）。只认主图的绘图区。
@@ -264,7 +295,7 @@ extension ChartRenderer {
     let x = Double(point.x), y = Double(point.y)
     guard x >= 0, x <= L.plotW, y >= L.main.y, y <= L.main.y + L.main.h else { return nil }
     let frame = orderFlowBands(pane: L.main, range: priceRange(size: size), L: L)
-    return Self.orderFlowHit(frame.bands, x: x, y: y)?.group
+    return Self.orderFlowHit(frame.bands, x: x, y: y, touch: true)?.group
   }
 
   /// 十字线停在哪条带上：只看主图，十字线交点用 `orderFlowHit` 同样的容差。
@@ -407,16 +438,16 @@ extension ChartRenderer {
         continue
       }
       let whole: CGRect
+      var span: CGRect?
       if role == .main {
         let h = max(Self.orderFlowMainMinHeight, Self.orderFlowBandHeight(tier: group.tier))
+        // 芯画在代表价上、按档粗细；跨几个桶的另垫一层淡色盖住整个价位范围（最低桶价 … 最高桶价 + 步长），
+        // 范围比芯还窄就不垫。淡色不占位（不把别的带挤成细线）。
+        whole = CGRect(x: left, y: cy - h / 2, width: right - left, height: h)
         if group.isRange {
-          // 跨几个桶：盖住整个价位范围（最低桶的桶价 … 最高桶的桶价 + 步长），至少一条单桶带那么粗。
           let a = y(group.priceLow), b = y(group.priceHigh)
-          var top = min(a, b), bottom = max(a, b)
-          if bottom - top < h { let mid = (top + bottom) / 2; top = mid - h / 2; bottom = mid + h / 2 }
-          whole = CGRect(x: left, y: top, width: right - left, height: bottom - top)
-        } else {
-          whole = CGRect(x: left, y: cy - h / 2, width: right - left, height: h)
+          let top = min(a, b), bottom = max(a, b)
+          if bottom - top > h { span = CGRect(x: left, y: top, width: right - left, height: bottom - top) }
         }
       } else {
         whole = CGRect(x: left, y: cy - Self.orderFlowSecondaryHeight / 2, width: right - left,
@@ -430,7 +461,8 @@ extension ChartRenderer {
         ? CGRect(x: whole.minX, y: cy - Self.orderFlowThinHeight / 2, width: whole.width, height: Self.orderFlowThinHeight)
         : whole
       occupied.append(rect)
-      let band = OrderFlowBand(group: group, frame: rect, color: color, dark: group.hasFill, thin: clash, role: role)
+      let band = OrderFlowBand(group: group, frame: rect, color: color, dark: group.hasFill, thin: clash, role: role,
+                               span: clash ? nil : span)
       if clash { thin.append(band) } else { full.append(band) }
     }
     frame.bands = noise + full + thin
@@ -446,7 +478,7 @@ extension ChartRenderer {
       let rect = CGRect(x: max(Double(band.frame.minX), right - w), y: top, width: w, height: h)
       let clash = labels.contains { l in
         l.frame.minX < rect.maxX && l.frame.maxX > rect.minX
-          && rect.minY < l.frame.maxY + Self.orderFlowGap && rect.maxY > l.frame.minY - Self.orderFlowGap
+          && rect.minY < l.frame.maxY + Self.orderFlowLabelGap && rect.maxY > l.frame.minY - Self.orderFlowLabelGap
       }
       guard !clash else { continue }
       labels.append(OrderFlowLabel(key: band.key, text: text, frame: rect, fill: band.color,
@@ -485,6 +517,13 @@ extension ChartRenderer {
     guard !frame.bands.isEmpty else { return 0 }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
+    // 跨桶主墙的价位范围先垫一层淡色，压在所有带下面。
+    ctx.setAlpha(CGFloat(Self.orderFlowRangeAlpha))
+    for band in frame.bands {
+      guard let span = band.span else { continue }
+      ctx.setFillColor(Paint.cg(band.color))
+      ctx.fill(span)
+    }
     for band in frame.bands {
       ctx.setAlpha(CGFloat(band.alpha))
       ctx.setFillColor(Paint.cg(band.color))
@@ -504,7 +543,7 @@ extension ChartRenderer {
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     for label in frame.labels {
       ctx.setFillColor(Paint.cg(label.fill))
-      ctx.addRoundRect(label.frame, radius: 2)
+      ctx.addRoundRect(label.frame, radius: Self.orderFlowLabelRadius)
       ctx.fillPath()
       label.text.drawCentered(at: CGPoint(x: label.frame.midX, y: label.frame.midY), font: Self.orderFlowLabelFont,
                               color: label.ink)
@@ -520,6 +559,16 @@ extension ChartRenderer {
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     ctx.setFillColor(Paint.cg(band.color))
+    if let span = band.span {
+      // 跨桶的墙：整个价位范围再加深一层、描半透明边，读得出选中的是整堵墙。
+      ctx.setAlpha(CGFloat(Self.orderFlowRangeAlpha))
+      ctx.fill(span)
+      ctx.setAlpha(0.5)
+      ctx.setStrokeColor(Paint.cg(band.color))
+      ctx.setLineWidth(1)
+      ctx.stroke(span.insetBy(dx: 0.5, dy: 0.5))
+      ctx.setAlpha(1)
+    }
     ctx.fill(band.frame)
     ctx.setStrokeColor(Paint.cg(state.colors.text))
     ctx.setLineWidth(1)
