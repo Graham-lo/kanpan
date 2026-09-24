@@ -36,6 +36,7 @@ struct PanelSheet<Content: View>: View {
   /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
   @Environment(\.panelDismiss) private var sideDismiss
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.panelHPad) private var hPad
 
   var body: some View {
     VStack(spacing: 0) {
@@ -45,7 +46,7 @@ struct PanelSheet<Content: View>: View {
             Image(systemName: "chevron.left")
               .font(TypeScale.title)
               // 箭头的笔画左对齐到正文的 `hPad`，点击区从屏幕边一直撑到 44 以外，画面不动。
-              .padding(.leading, PanelMetrics.hPad)
+              .padding(.leading, hPad)
               .frame(minWidth: Hit.min + Space.xs, minHeight: Hit.min, alignment: .leading)
               .contentShape(Rectangle())
           }
@@ -75,8 +76,8 @@ struct PanelSheet<Content: View>: View {
       // 「‹」自己带着 `hPad` 的左留白（点击区要贴到屏幕边）；整页模式下没有它，
       // 标题直接用 `hPad`。标题行至少 44 高，有没有「‹」都一样高。
       .frame(minHeight: Hit.min)
-      .padding(.leading, asPage ? PanelMetrics.hPad : 0)
-      .padding(.trailing, PanelMetrics.hPad)
+      .padding(.leading, asPage ? hPad : 0)
+      .padding(.trailing, hPad)
       .padding(.vertical, Space.xs)
       .overlay(alignment: .bottom) { Rectangle().fill(t.line).frame(height: 1) }
 
@@ -119,6 +120,8 @@ struct PanelRow<Trailing: View>: View {
   @Environment(\.panelTheme) private var t
   /// 外面 `.disabled(...)` 了这一行（如对比满三只时的「添加对比品种」），名字换成禁用色阶。
   @Environment(\.isEnabled) private var enabled
+  /// 半屏里 16；拼到整页上时跟页面外边距走（`panelPageInset()`）。
+  @Environment(\.panelHPad) private var hPad
 
   var body: some View {
     let row = HStack(spacing: PanelMetrics.rowGap) {
@@ -136,7 +139,7 @@ struct PanelRow<Trailing: View>: View {
       Spacer(minLength: 0)
       trailing()
     }
-    .padding(.horizontal, PanelMetrics.hPad)
+    .padding(.horizontal, hPad)
     .padding(.vertical, PanelMetrics.vPad)
     .frame(minHeight: Inset.rowMin)
     .contentShape(Rectangle())
@@ -297,6 +300,7 @@ struct PanelSwitch: View {
 struct PanelGroupTitle: View {
   var text: String
   @Environment(\.panelTheme) private var t
+  @Environment(\.panelHPad) private var hPad
 
   var body: some View {
     Text(text)
@@ -304,7 +308,7 @@ struct PanelGroupTitle: View {
       .tracking(1)
       .foregroundStyle(t.ink3)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.horizontal, PanelMetrics.hPad)
+      .padding(.horizontal, hPad)
       .padding(.top, Space.xl)
       .padding(.bottom, Space.s)
   }

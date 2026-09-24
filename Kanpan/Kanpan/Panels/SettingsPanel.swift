@@ -38,109 +38,146 @@ struct SettingsPanel: View {
   private var prefs: Prefs { store.prefs }
 
   var body: some View {
-    PanelSheet(title: "设置", subtitle: nil, asPage: asPage) {
-      if let account {
-        // 登录后这一行报的是「上次同步多久以前」，不是「成功」——「成功」说的是
-        // 上一次请求的结果，用户想知道的是「我这台机器上的东西新不新」。
-        PanelRow(name: account.user?.email ?? "登录",
-                 meta: account.user == nil ? nil : syncMeta(account),
-                 onTap: { account.open() }) {
-          Image(systemName: "person.crop.circle").font(TypeScale.price).foregroundStyle(t.amber)
-        }.accessibilityIdentifier("settings.account")
-      }
-      DisplaySettingsSection(store: store)
-      PanelRow(name: "涨跌配色") {
-        PanelSegment(options: [("绿涨红跌", false), ("红涨绿跌", true)], selection: prefs.redUp) { v in
-          store.update { $0.redUp = v }
+    page
+      // 账号页由**一个** presenter 持有（审查 C-06）。
+      //
+      // 这一页当标签栏整页画的时候，它是长在根视图树里的一节，而根那一层
+      // （`MainScreen`）已经拿同一个 `account.presented` 挂了一张 `.sheet`。
+      // 两个 presenter 抢同一个布尔：SwiftUI 只认一个，另一个的呈现状态没人收，
+      // 「关掉之后要点两下才再开」这类症状就是从那儿来的。所以整页时这儿不挂，
+      // 点账号入口只是把布尔置位，开页的事交给根。
+      //
+      // `asPage == false` 的那条路留着：那时这一页自己是一张 sheet，账号页得叠在
+      // 它上面，根的 sheet 够不着——那才是「真正作为上层 sheet 的设置上下文」。
+      .modifier(AccountPresenter(account: asPage ? nil : account))
+      .sensoryFeedback(.selection, trigger: prefs)
+  }
+
+  /// 整页走系统 `NavigationStack`：行内标题 17 semibold、滚动时系统自己的边缘效果
+  /// （UI 审查 2026-09-24 定的导航写法：标签页整页与它钻进去的子页一律系统导航栏，
+  /// 面板 / 半屏里的子页才用 `PanelSheet` 的「‹」）。半屏那条路（`asPage == false`，
+  /// 预览与旧入口）仍是 `PanelSheet`，两条路各走各的，同一条路径上不中途换写法。
+  @ViewBuilder private var page: some View {
+    if asPage {
+      NavigationStack {
+        ScrollView {
+          VStack(spacing: 0) { rows }
+            .padding(.top, Space.xs)
+            .padding(.bottom, Space.l)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .accessibilityIdentifier("panel.content")
+        .background(t.app.ignoresSafeArea())
+        .navigationTitle("设置")
+        .navigationBarTitleDisplayMode(.inline)
       }
-      PanelRow(name: "涨跌幅起点") {
-        // 自带标签的 `Menu(_:)` 会用系统强调色（蓝），整页就这一处跳出配色之外。
-        // 自己搭标签，颜色从 `PanelTheme` 取。
-        Menu {
-          ForEach(ChangeBasis.allCases, id: \.self) { basis in
-            Button(basis.title) { store.update { $0.changeBasis = basis } }
-          }
-        } label: {
-          HStack(spacing: Space.xs) {
-            Text(prefs.changeBasis.title).font(PanelFont.seg)
-            VectorIcon.chevron(ControlMetrics.chevron, w: 1.7)
-          }
-          .foregroundStyle(t.amber)
-          .rowHitTarget()
-        }.accessibilityIdentifier("settings.changeBasis")
-      }
-      PanelRow(name: "时区") {
-        PanelSegment(options: SettingsPanel.zones, selection: prefs.timeZone) { v in
-          store.update { $0.timeZone = v }
-        }
-      }
-      // 画线「更多」里还有一颗「吸附到 K 线」：那颗管画线端点，这颗管长按出来的十字线，
-      // 两件事、两个出厂档位（`Prefs.magnet` 的注释）。同一个动词、各自写明主语，
-      // 不再一个叫「磁吸」一个叫「吸附」（审查 U13）。
-      switchRow("十字线吸附到 K 线", nil, prefs.magnet) { $0.magnet = $1 }
-        .accessibilityIdentifier("settings.magnet")
-
-      // 提醒：建在图上（画完线那一下），管在这儿。
-      if let onAlerts {
-        PanelRow(name: "提醒", onTap: onAlerts) {
-          HStack(spacing: Space.xs) {
-            if alertCount > 0 { Text("\(alertCount)").font(PanelFont.seg) }
-            VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90))
-          }.foregroundStyle(t.amber)
-        }
-        .accessibilityIdentifier("settings.alerts")
-      }
-
-      // 原来上面还压着一行分组标题「朋友」，底下唯一一行又叫「朋友」（审查 U13）。
-      // 它和「提醒」一样是进另一页的一行，不需要自己的分组。
-      if let onFriends {
-        PanelRow(name: "朋友", onTap: onFriends) {
-          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.amber)
-        }.accessibilityIdentifier("settings.friends")
-      }
-
-      // ---- 任务书 §10.6 里有、原型里没有的
-      switchRow("盯盘时不锁屏", nil, prefs.keepAwake) { $0.keepAwake = $1 }
-        .accessibilityIdentifier("settings.keepAwake")
-      // 「启动快照」不再摆出来（2026-09-24 审查 U13）：它是工程开关，用户没有理由关它。
-      // 字段也一起删了，启动快照一律开着（`MainScreen.boot`）。
-
-      // 线路是用户定的，选了哪条就走哪条，没有「自动」：原来那套对冲 + 自动切源
-      // 偶尔会把一次探测失败当成「这台机器上不去币安」，整套换到 OKX 还要等好几
-      // 分钟才肯回头。存在 `Prefs` 里：登录了随账号同步，没登录就记在本机。
-      PanelRow(name: "行情线路") {
-        PanelSegment(options: SettingsPanel.routes, selection: prefs.routePolicy,
-                     id: "settings.routePolicy") { v in
-          store.update { $0.routePolicy = v }
-        }
-      }
-
-      aboutRow
-
-      // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
-      // 撤得回来。直接恢复，右边留一颗「撤销」五秒。
-      PanelRow(name: "恢复默认", onTap: { resetAll() }) {
-        Text("恢复").font(PanelFont.seg).foregroundStyle(t.amber)
-      }
-      .accessibilityIdentifier("settings.reset")
-
-      // 清缓存是排查用的，平时用不着，放在最底（2026-09-24 审查 U13）。
-      cacheRow
-
+      // 行文、分组标题、皮肤卡左右跟页面外边距走：16 Pro 上 16，17 Pro Max 上 20。
+      .panelPageInset()
+    } else {
+      PanelSheet(title: "设置", subtitle: nil) { rows }
     }
-    // 账号页由**一个** presenter 持有（审查 C-06）。
-    //
-    // 这一页当标签栏整页画的时候，它是长在根视图树里的一节，而根那一层
-    // （`MainScreen`）已经拿同一个 `account.presented` 挂了一张 `.sheet`。
-    // 两个 presenter 抢同一个布尔：SwiftUI 只认一个，另一个的呈现状态没人收，
-    // 「关掉之后要点两下才再开」这类症状就是从那儿来的。所以整页时这儿不挂，
-    // 点账号入口只是把布尔置位，开页的事交给根。
-    //
-    // `asPage == false` 的那条路留着：那时这一页自己是一张 sheet，账号页得叠在
-    // 它上面，根的 sheet 够不着——那才是「真正作为上层 sheet 的设置上下文」。
-    .modifier(AccountPresenter(account: asPage ? nil : account))
-    .sensoryFeedback(.selection, trigger: prefs)
+  }
+
+  /// 分组照 UI 审查 §4.4：配色 / 深浅（`DisplaySettingsSection`）之后是「行情」「提醒与朋友」
+  /// 「通用」三组，只有组名、没有说明文字。账号那一行照系统设置的习惯排在最上面，自己不成组。
+  /// 进下一页的行尾一律是箭头；就地动作（恢复、清除）是强调色的字，整行都能点。
+  @ViewBuilder private var rows: some View {
+    if let account {
+      // 登录后这一行报的是「上次同步多久以前」，不是「成功」——「成功」说的是
+      // 上一次请求的结果，用户想知道的是「我这台机器上的东西新不新」。
+      PanelRow(name: account.user?.email ?? "登录",
+               meta: account.user == nil ? nil : syncMeta(account),
+               onTap: { account.open() }) {
+        nextPageMark
+      }.accessibilityIdentifier("settings.account")
+    }
+    DisplaySettingsSection(store: store)
+
+    PanelGroupTitle(text: "行情")
+    PanelRow(name: "涨跌配色") {
+      PanelSegment(options: [("绿涨红跌", false), ("红涨绿跌", true)], selection: prefs.redUp) { v in
+        store.update { $0.redUp = v }
+      }
+    }
+    PanelRow(name: "涨跌幅起点") {
+      // 自带标签的 `Menu(_:)` 会用系统强调色（蓝），整页就这一处跳出配色之外。
+      // 自己搭标签，颜色从 `PanelTheme` 取。
+      Menu {
+        ForEach(ChangeBasis.allCases, id: \.self) { basis in
+          Button(basis.title) { store.update { $0.changeBasis = basis } }
+        }
+      } label: {
+        HStack(spacing: Space.xs) {
+          Text(prefs.changeBasis.title).font(PanelFont.seg)
+          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7)
+        }
+        .foregroundStyle(t.amber)
+        .rowHitTarget()
+      }.accessibilityIdentifier("settings.changeBasis")
+    }
+    PanelRow(name: "时区") {
+      PanelSegment(options: SettingsPanel.zones, selection: prefs.timeZone) { v in
+        store.update { $0.timeZone = v }
+      }
+    }
+    // 画线「更多」里还有一颗「吸附到 K 线」：那颗管画线端点，这颗管长按出来的十字线，
+    // 两件事、两个出厂档位（`Prefs.magnet` 的注释）。同一个动词、各自写明主语，
+    // 不再一个叫「磁吸」一个叫「吸附」（审查 U13）。
+    switchRow("十字线吸附到 K 线", nil, prefs.magnet) { $0.magnet = $1 }
+      .accessibilityIdentifier("settings.magnet")
+    switchRow("盯盘时不锁屏", nil, prefs.keepAwake) { $0.keepAwake = $1 }
+      .accessibilityIdentifier("settings.keepAwake")
+    // 「启动快照」不再摆出来（2026-09-24 审查 U13）：它是工程开关，用户没有理由关它。
+    // 字段也一起删了，启动快照一律开着（`MainScreen.boot`）。
+
+    // 线路是用户定的，选了哪条就走哪条，没有「自动」：原来那套对冲 + 自动切源
+    // 偶尔会把一次探测失败当成「这台机器上不去币安」，整套换到 OKX 还要等好几
+    // 分钟才肯回头。选择只记在本机这台设备上（审查 B7）。
+    PanelRow(name: "行情线路", divider: false) {
+      PanelSegment(options: SettingsPanel.routes, selection: prefs.routePolicy,
+                   id: "settings.routePolicy") { v in
+        store.update { $0.routePolicy = v }
+      }
+    }
+
+    // 提醒：建在图上（画完线那一下），管在这儿。朋友和它一样是进另一页的一行。
+    if onAlerts != nil || onFriends != nil {
+      PanelGroupTitle(text: "提醒与朋友")
+    }
+    if let onAlerts {
+      PanelRow(name: "提醒", divider: onFriends != nil, onTap: onAlerts) {
+        HStack(spacing: Space.s) {
+          if alertCount > 0 {
+            Text("\(alertCount)").font(PanelFont.seg).monospacedDigit().foregroundStyle(t.ink3)
+          }
+          nextPageMark
+        }
+      }
+      .accessibilityIdentifier("settings.alerts")
+    }
+    // 原来上面还压着一行分组标题「朋友」，底下唯一一行又叫「朋友」（审查 U13）。
+    if let onFriends {
+      PanelRow(name: "朋友", divider: false, onTap: onFriends) {
+        nextPageMark
+      }.accessibilityIdentifier("settings.friends")
+    }
+
+    PanelGroupTitle(text: "通用")
+    aboutRow
+    // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
+    // 撤得回来。直接恢复，右边留一颗「撤销」五秒。
+    PanelRow(name: "恢复默认", onTap: { resetAll() }) {
+      Text("恢复").font(PanelFont.seg).foregroundStyle(t.amber)
+    }
+    .accessibilityIdentifier("settings.reset")
+    // 清缓存是排查用的，平时用不着，放在最底（2026-09-24 审查 U13）。
+    cacheRow
+  }
+
+  /// 进下一页的行尾箭头。全 app 列表箭头一个尺寸（`ControlMetrics.chevron`），灰色——
+  /// 强调色留给就地动作（「恢复」「清除」「隐私政策」）。
+  private var nextPageMark: some View {
+    VectorIcon.chevronRight(ControlMetrics.chevron).foregroundStyle(t.ink3)
   }
 
   // MARK: - 行
@@ -160,14 +197,13 @@ struct SettingsPanel: View {
   private var cacheRow: some View {
     // 行名写用户得到什么（空间），不写我们清的是什么（缓存）（审查 U13）。清的都是
     // 没了还能原样取回的行情数据，偏好、画线、自选一样不碰（`MarketCacheTests`）。
-    PanelRow(name: "清理存储空间", divider: false) {
-      // 点下去先给五秒反悔，过了才真清（P2.7），所以这里不再转圈。
-      Button { Haptics.warning(); store.clearCacheLater() } label: {
-        Text("清除").font(PanelFont.seg).foregroundStyle(t.amber).rowHitTarget()
-      }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("settings.clearCache")
+    // 点下去先给五秒反悔，过了才真清（P2.7），所以这里不再转圈。整行都能点，
+    // 和「恢复默认」同一种写法（UI 审查：「清除」原来只有 26×14 的字能点）。
+    PanelRow(name: "清理存储空间", divider: false,
+             onTap: { Haptics.warning(); store.clearCacheLater() }) {
+      Text("清除").font(PanelFont.seg).foregroundStyle(t.amber)
     }
+    .accessibilityIdentifier("settings.clearCache")
   }
 
   /// 「关于」（P3.6）：版本号、构建号，和托管在账号服务上的两张静态页。

@@ -7,6 +7,8 @@ struct DisplaySettingsSection: View {
   var store: PrefsStore
   @Environment(\.panelTheme) private var theme
   @Environment(\.colorScheme) private var scheme
+  /// 皮肤卡这一排和上下的行站在同一条竖线上：整页里跟页面外边距走（`panelPageInset()`）。
+  @Environment(\.panelHPad) private var hPad
 
   private var dark: Bool {
     switch store.prefs.theme {
@@ -24,7 +26,7 @@ struct DisplaySettingsSection: View {
       ForEach(ThemeSkin.allCases, id: \.self) { skin in
         card(skin)
       }
-    }.padding(.horizontal, PanelMetrics.hPad).padding(.vertical, Space.s)
+    }.padding(.horizontal, hPad).padding(.vertical, Space.s)
     // 这一排原来还挂着 `.accessibilityIdentifier("display.themes")`。加在 HStack 上的
     // 标识符会往下盖住几张卡自己的 `display.theme.sage` / `display.theme.terra` / `display.theme.classic`，
     // 于是无障碍树里并排躺着两个都叫 `display.themes` 的按钮，UI 用例按名字一张也找不着。

@@ -31,3 +31,44 @@ extension View {
     modifier(PageHorizontalInset())
   }
 }
+
+// MARK: - 面板零件在整页上的边距
+
+/// `PanelRow`、`PanelGroupTitle`、`PanelSheet` 左右留多少。默认是面板那一份 `Inset.card`（16）：
+/// 半屏面板自带边距，不跟页面宽走。
+private struct PanelHPadKey: EnvironmentKey {
+  static let defaultValue: CGFloat = Inset.card
+}
+
+extension EnvironmentValues {
+  /// 面板零件的左右内边距。面板零件被拿去拼**整页**（设置页、提醒总表）时由 `panelPageInset()`
+  /// 改成页面外边距，这样行文、分组标题、皮肤卡和页面上别的东西站在同一条竖线上。
+  var panelHPad: CGFloat {
+    get { self[PanelHPadKey.self] }
+    set { self[PanelHPadKey.self] = newValue }
+  }
+}
+
+/// 量这一整页有多宽，按 `Inset.page` 把 `panelHPad` 灌下去（16 / 20）。量法与 `PageHorizontalInset` 同。
+private struct PanelPageInset: ViewModifier {
+  @State private var width: CGFloat = PanelPageInset.screenWidth
+
+  func body(content: Content) -> some View {
+    content
+      .environment(\.panelHPad, Inset.page(width))
+      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+  }
+
+  @MainActor private static var screenWidth: CGFloat {
+    let scene = UIApplication.shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }.first
+    guard let bounds = scene?.screen.bounds else { return 0 }
+    return min(bounds.width, bounds.height)
+  }
+}
+
+extension View {
+  /// 这一整页里的面板零件（`PanelRow` 等）左右改用页面外边距（`Inset.page`）。整页用，半屏面板别用。
+  func panelPageInset() -> some View {
+    modifier(PanelPageInset())
+  }
+}
