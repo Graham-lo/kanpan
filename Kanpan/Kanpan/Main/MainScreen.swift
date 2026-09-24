@@ -1297,6 +1297,15 @@ struct MainScreen: View {
                        maxHeight: landscape ? 150 : 280,
                        onSaved: {
                          Haptics.success()
+                         // 记下的是一笔有方向的判断，到点要叫人——锁屏也得叫得到，那就要通知权限。
+                         // 和画线提醒同一个做法：第一次真用到时问一次，问不到也不挡（前台照样补叫）；
+                         // 问完按新权限重排，不然这一笔还挂在「没权限」那一轮上。
+                         if let id = review.lastSaved, review.record(id)?.outcome == .waiting {
+                           Task {
+                             await AlertNotifications.requestAuthorization()
+                             reviewDue.refresh()
+                           }
+                         }
                          // 「已记下 · 查看」：右边那颗直接翻到刚记的那条（§2F2）。
                          // 图上那个新记号同时闪一下，两边指的是同一件事。
                          say("已记下", actionTitle: "查看") {

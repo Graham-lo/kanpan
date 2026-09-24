@@ -113,6 +113,10 @@ import ReviewDomain
   }
 
   /// 前后台。没有通知权限时，只有前台这一段能叫到人。
+  /// 通知权限刚变过（记下第一笔有方向的记录时问的那一次）：按手上这份记录重排一遍。
+  /// 不重排的话，问之前那一轮已经按「没权限」只挂了前台补叫，锁屏上就响不了。
+  public func refresh() { reschedule(records) }
+
   public func setForeground(_ value: Bool) {
     foreground = value
     if value { reschedule(records) } else { waiter?.cancel(); waiter = nil }

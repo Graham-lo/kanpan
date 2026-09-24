@@ -73,6 +73,20 @@ final class ReviewDueRemindersTests: XCTestCase {
     XCTAssertEqual(scheduler.added.first?.1, start.addingTimeInterval(10))
   }
 
+  /// 记下第一笔时才问到权限：问完 `refresh()` 一次，这一笔就挂上系统通知（锁屏也响）。
+  @MainActor func testRefreshAfterPermissionGrantedSchedulesTheSystemNotification() async {
+    let scheduler = FakeDueScheduler(); scheduler.authorized = false
+    let reminders = ReviewDueReminders(scheduler: scheduler, defaults: defaults(), clock: { self.start })
+    let pending = record(dueIn: 3600, from: start)
+    reminders.reschedule([pending])
+    await reminders.settled()
+    XCTAssertTrue(scheduler.added.isEmpty, "没权限时不往通知中心排")
+    scheduler.authorized = true
+    reminders.refresh()
+    await reminders.settled()
+    XCTAssertEqual(scheduler.added.map(\.0.id), [pending.id])
+  }
+
   /// 没有通知权限：前台自己叫，一条只叫一次（换页重排、冷启动都不再叫）；后台不叫。
   @MainActor func testWithoutPermissionTheForegroundAnnouncesEachOnce() async {
     let scheduler = FakeDueScheduler(); scheduler.authorized = false
