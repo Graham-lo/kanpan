@@ -29,7 +29,7 @@ public enum ViewMath {
     return ViewWindow(to: settled.to + (beyond > 0 ? pull : -pull) / plotW * settled.span, span: settled.span)
   }
 
-  public static func maximumOffset(count: Int, spacing: Double, plotW: Double, anchor: ViewAnchor) -> Double {
+  static func maximumOffset(count: Int, spacing: Double, plotW: Double, anchor: ViewAnchor) -> Double {
     let total = max(0, Double(count + 400) * spacing - plotW)
     let reserved = min(400 * spacing - rightInset(anchor, plotW: plotW), total)
     return max(0, total - reserved)

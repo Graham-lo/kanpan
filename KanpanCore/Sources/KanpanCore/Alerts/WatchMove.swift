@@ -46,7 +46,7 @@ public enum WatchMove {
   }
 
   /// 一只品种的 1 分钟收盘价（最近七根够用）。
-  public struct Series: Sendable, Equatable {
+  struct Series: Sendable, Equatable {
     /// 开盘时刻 → 收盘价，只存已经收了的。
     var closes: [Int64: Double] = [:]
     var currentOpen: Int64?

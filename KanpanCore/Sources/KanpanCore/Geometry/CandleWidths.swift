@@ -74,7 +74,7 @@ public func candleMetrics(spacing: Double, scale: Double) -> CandleMetrics {
 }
 
 /// 影线粗细，换回点。整数设备像素除以 scale，落笔正好压满整数个像素。
-public func wickLineWidth(scale: Double) -> Double {
+func wickLineWidth(scale: Double) -> Double {
   Double(wickPixels(scale: scale)) / scale
 }
 

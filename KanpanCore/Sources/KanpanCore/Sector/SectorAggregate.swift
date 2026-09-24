@@ -35,7 +35,7 @@ public enum SectorWindow: String, Sendable, CaseIterable, Equatable {
   case d20
 
   /// 要不要日线收盘。`today` 不要——所以取历史失败时今日这一档一点都不受影响。
-  public var needsHistory: Bool { self != .today }
+  var needsHistory: Bool { self != .today }
 }
 
 /// 一个品种的日线收盘。缺一档就是**没有**，不是 0——0 会让 `last/c − 1` 变成 +∞。
@@ -111,7 +111,7 @@ public struct SectorHistory: Sendable, Equatable {
   /// `c5` 是 `asof − 5 天`那根日线的收盘：快照旧一天，「5 日」那一档就多算一天。
   /// 旧到一周前，挂在「5 日」上的其实是十二天的收益——宁可留空（那颗药丸整行不出现）
   /// 也不能给错的数。
-  public static let maxAgeDays = 7
+  static let maxAgeDays = 7
 
   /// 这一份（不管来自网络还是磁盘）还认不认。
   public func isFresh(now: Date = Date()) -> Bool { Self.isFresh(asof, now: now) }
@@ -136,7 +136,7 @@ public struct SectorHistory: Sendable, Equatable {
   ///   的 `stale()`），老基线配现价算出来的不是「5 日」。
   /// - 同一天只在**覆盖面更大**时才认：采集是增量的，当天晚些时候会补齐几个合约；
   ///   一样多或更少就是同一份，不值得整页重算。
-  public func supersedes(_ old: SectorHistory) -> Bool {
+  func supersedes(_ old: SectorHistory) -> Bool {
     guard !isEmpty, let mine = Self.day(asof) else { return false }
     guard !old.isEmpty, let theirs = Self.day(old.asof) else { return true }
     if mine != theirs { return mine > theirs }
@@ -179,11 +179,11 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
   public let breadth: Double
   /// 绝对上涨家数（`pct > 0`）。和 `breadth` 不是一回事：全场普涨的日子里
   /// 一个板块可以人人翻红却没一个跑赢大盘。
-  public let upCount: Int
+  let upCount: Int
   /// 前沿成员：跑赢基准、且相对收益排在全池 90 分位以上的那几只，按相对收益降序。
   public let frontier: [String]
   /// 删一区间：逐个删掉一个成员再取中位数，落在这个范围里。成员 ≤ 2 时没有意义，缺省。
-  public let jackknife: ClosedRange<Double>?
+  let jackknife: ClosedRange<Double>?
 
   /// 跑赢池基准的家数。`breadth` 就是它除以 `memberCount`，这儿还原回整数给界面用。
   public var outperformCount: Int {
@@ -278,7 +278,7 @@ public enum SectorAggregator {
   /// 服务端的日线是逐个合约采的，新上市的币根本没有 5 根日线。一个 20 个成员的板块
   /// 只剩 4 个算得出 5 日收益时，那 4 个的中位数不是这个板块的 5 日强弱。
   /// 覆盖不够的板块不算数——`hasEligible` 靠它判「5 日」那颗药丸出不出现。
-  public static let minWindowCoverage = 0.8
+  static let minWindowCoverage = 0.8
 
   /// - Parameters:
   ///   - quotes: 以**大写 base** 为键。

@@ -90,7 +90,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// 加这个是为了把「外部输入」这件事说清楚：引擎的留用判断和缓存键都得知道
   /// 某个指标的值不只取决于 K 线（见 `IndicatorEngine.ensure` 里的留用条件），
   /// 从前只有持仓量一个，是硬写成 `id != .oi` 的后门；现在四个了，再开后门必漏。
-  public var externalColumns: Int? {
+  var externalColumns: Int? {
     switch self {
     case .oi, .lsr, .taker, .basis: 1
     default: nil
@@ -145,7 +145,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// 多出来的丢掉。按列表画的那几把（均线、指数均线、强弱、均量）条数本来就随用户，原样。
   /// 取值本身（0、负数）不在这里改：各条线对脏窗口长度自有处理，画成「这段没有线」
   /// （见 `IndicatorEdgeTests`、`degenerateParamsAtIndexZero`）。
-  public func normalizedParams(_ params: [Int]?) -> [Int] {
+  func normalizedParams(_ params: [Int]?) -> [Int] {
     guard let params else { return defaultParams }
     switch self {
     case .ma, .ema, .rsi, .vol:
@@ -229,7 +229,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   ///
   /// 动向指标同样不锁：三条线理论上在 0–100 之间，可实盘里趋势强度常年趴在 10–40，
   /// 锁到 0–100 就把它压成贴着底的一条平线。
-  public var fixedScale: (lo: Double, hi: Double)? {
+  var fixedScale: (lo: Double, hi: Double)? {
     switch self {
     case .rsi, .srsi: (0, 100)
     default: nil
@@ -253,10 +253,10 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
 
   /// 副图默认：MACD + RSI；主图默认：MA（§3.2，定死）。
   public static let defaultOverlays: [IndicatorID] = [.ma]
-  public static let defaultSubs: [IndicatorID] = [.macd, .rsi]
+  static let defaultSubs: [IndicatorID] = [.macd, .rsi]
 
   /// 增量重算要回头算多少根：最长参数 + 1（§5.7）。
-  public func tailBars(params: [Int]) -> Int {
+  func tailBars(params: [Int]) -> Int {
     let maxParam = params.max() ?? 1
     switch self {
     case .srsi: return (params.first ?? 14) + (params.dropFirst().first ?? 14) + maxParam + 1

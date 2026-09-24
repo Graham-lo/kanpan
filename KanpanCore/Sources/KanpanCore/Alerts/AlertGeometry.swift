@@ -11,7 +11,7 @@ import Foundation
 /// 几何一律照 `DrawGeometry` 里同一种的画法来，图上看到的线和会响的线必须是同一条。
 public enum AlertGeometry {
   /// 能长出提醒的那些种类（方案表 2.2）。
-  public static let supportedKinds: Set<Drawing.Kind> = [
+  static let supportedKinds: Set<Drawing.Kind> = [
     .hline, .hray, .trend, .ray, .extended, .arrowLine, .crossLine,
     .channel, .rectangle, .fibonacci,
   ]
@@ -77,5 +77,5 @@ public enum AlertGeometry {
 
   /// 一条提醒最多摊成几条线。服务端卡的是 32（`sync_validation.rs`），这边先按同一个
   /// 数收口，免得一张刻度开满的回撤把整条操作顶成被拒。
-  public static let maxLines = 32
+  static let maxLines = 32
 }

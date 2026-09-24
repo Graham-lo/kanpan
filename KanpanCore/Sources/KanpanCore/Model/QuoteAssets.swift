@@ -19,7 +19,7 @@ public enum QuoteAssets {
   /// 前面，否则 `ETHFDUSD` 会剥成 `ETHFD`）。比 `tradable` 多 `USDD` 与裸 `USD`：
   /// 它们不是币安 U 本位的计价资产，但供应量表、别家交易所的代号会带着。
   /// 对着 Rust `QUOTE_SUFFIXES`。
-  public static let suffixes = ["FDUSD", "BUSD", "TUSD", "USDT", "USDC", "USDD", "USD1", "USD"]
+  static let suffixes = ["FDUSD", "BUSD", "TUSD", "USDT", "USDC", "USDD", "USD1", "USD"]
 
   /// 偏好档次：`tradable` 里的下标，表里没有的一律垫底（`tradable.count`）。
   public static func rank(_ quote: String) -> Int {

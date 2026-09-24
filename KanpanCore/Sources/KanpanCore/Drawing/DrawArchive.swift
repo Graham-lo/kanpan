@@ -170,7 +170,7 @@ public struct DrawArchive: Sendable, Equatable, Codable {
   /// 理由被「整批外部替换」一次——而整批替换要清空撤销栈和选中态（见
   /// `ChartView.setDrawings`）。于是「别人改了别的品种」会把我这边画到一半的撤销栈
   /// 抹掉，这是 A-07 报的那件事。发布同步结果之前先拿这个问一句。
-  public func bucketChanged(from old: DrawArchive, symbol: String) -> Bool {
+  func bucketChanged(from old: DrawArchive, symbol: String) -> Bool {
     self[symbol] != old[symbol]
   }
 

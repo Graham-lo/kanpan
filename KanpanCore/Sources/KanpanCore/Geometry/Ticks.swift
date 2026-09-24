@@ -1,7 +1,7 @@
 import Foundation
 
 /// 价格轴一格的「好看的步长」：1 / 2 / 2.5 / 5 / 10 × 10^k（§5.8，原型 `niceStep`）。
-public func niceStep(span: Double, want: Double) -> Double {
+func niceStep(span: Double, want: Double) -> Double {
   guard span > 0 else { return 1 }
   let rough = span / max(1, want)
   let mag = pow(10, floor(log10(rough)))
@@ -15,13 +15,13 @@ private let HOUR: Int64 = 3_600_000
 private let DAY: Int64 = 86_400_000
 
 /// 时间轴允许的步长阶梯（原型 `TIME_STEPS`）。
-public let timeSteps: [Int64] = [
+let timeSteps: [Int64] = [
   MIN, 5 * MIN, 15 * MIN, 30 * MIN, HOUR, 2 * HOUR, 4 * HOUR, 6 * HOUR, 12 * HOUR,
   DAY, 2 * DAY, 7 * DAY, 14 * DAY, 30 * DAY, 90 * DAY, 180 * DAY, 365 * DAY,
 ]
 
 /// 取第一个 ≥ `span / 能放下的标签数` 的阶梯。
-public func timeStep(spanMs: Double, plotW: Double, perLabelPx: Double = Chart.timeLabelPx) -> Int64 {
+func timeStep(spanMs: Double, plotW: Double, perLabelPx: Double = Chart.timeLabelPx) -> Int64 {
   let want = max(2, floor(plotW / perLabelPx))
   let rough = spanMs / want
   for s in timeSteps where Double(s) >= rough { return s }

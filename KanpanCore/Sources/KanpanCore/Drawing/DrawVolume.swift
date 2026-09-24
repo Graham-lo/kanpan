@@ -38,7 +38,7 @@ public struct VolumeProfile: Sendable, Equatable {
   /// 名义行数。价格区间退化成一条水平线时只有 1 行，见 `rowCount`。
   public static let rows = 24
   /// 价值区占总量的比例（CBOT 的老规矩，TV 也是 70%）。
-  public static let valueArea = 0.70
+  static let valueArea = 0.70
 
   /// 区间内的 `min(low)` / `max(high)`。
   public var lo: Double, hi: Double
@@ -47,9 +47,9 @@ public struct VolumeProfile: Sendable, Equatable {
   /// 每行的涨量 / 跌量。口径和蜡烛颜色一致：`close >= open` 记进 `up`。
   public var up: [Double], down: [Double]
   /// 总量最大的那一行。
-  public var poc: Int
+  var poc: Int
   /// 价值区的首末行，含两端。
-  public var vaLow: Int, vaHigh: Int
+  var vaLow: Int, vaHigh: Int
   /// 参与计算的 K 线下标范围，含两端。
   public var first: Int, last: Int
 
@@ -63,15 +63,15 @@ public struct VolumeProfile: Sendable, Equatable {
 
   /// 真实行数：正常 24，一字线区间 1。
   public var rowCount: Int { up.count }
-  public func rowLow(_ r: Int) -> Double { lo + rowHeight * Double(r) }
-  public func rowHigh(_ r: Int) -> Double { rowHeight > 0 ? lo + rowHeight * Double(r + 1) : hi }
+  func rowLow(_ r: Int) -> Double { lo + rowHeight * Double(r) }
+  func rowHigh(_ r: Int) -> Double { rowHeight > 0 ? lo + rowHeight * Double(r + 1) : hi }
   /// 这一行的中价，画 POC 线和判并列时用。
-  public func rowMid(_ r: Int) -> Double { (rowLow(r) + rowHigh(r)) / 2 }
-  public func rowTotal(_ r: Int) -> Double { up[r] + down[r] }
+  func rowMid(_ r: Int) -> Double { (rowLow(r) + rowHigh(r)) / 2 }
+  func rowTotal(_ r: Int) -> Double { up[r] + down[r] }
   public var total: Double { zip(up, down).reduce(0) { $0 + $1.0 + $1.1 } }
   /// 最长那一行的量。柱子的像素宽度按它归一。
-  public var maxRow: Double { (0 ..< rowCount).map(rowTotal).max() ?? 0 }
-  public func inValueArea(_ r: Int) -> Bool { r >= vaLow && r <= vaHigh }
+  var maxRow: Double { (0 ..< rowCount).map(rowTotal).max() ?? 0 }
+  func inValueArea(_ r: Int) -> Bool { r >= vaLow && r <= vaHigh }
 }
 
 extension Drawing {
@@ -112,7 +112,7 @@ extension Drawing {
   ///
   /// 末根每个 tick 都在变，所以这是一路重算的 O(n)——n 就是锚点到现在的根数。
   /// 不做增量缓存：真慢了再加，别为一个还没量到的问题先背一个失效规则（§9）。
-  public static func vwapTrail(anchorT: Double, series: BarSeries) -> VWAPTrail? {
+  static func vwapTrail(anchorT: Double, series: BarSeries) -> VWAPTrail? {
     guard let start = firstBar(atOrAfter: anchorT, in: series) else { return nil }
     var pv = 0.0, vv = 0.0
     var values: [Double] = []
@@ -140,7 +140,7 @@ extension Drawing {
   /// 分桶口径：每根把自己的 `volume` **按价格重叠比例**摊到 `[low, high]` 盖住的每一行上，
   /// 不是整根丢进收盘价那一行。一根长影线的量本来就分布在它走过的整段价格上，
   /// 整根丢进一行会凭空堆出一个假的高峰。
-  public static func volumeProfile(fromT: Double, toT: Double?, series: BarSeries) -> VolumeProfile? {
+  static func volumeProfile(fromT: Double, toT: Double?, series: BarSeries) -> VolumeProfile? {
     guard series.count > 0, let first = firstBar(atOrAfter: fromT, in: series) else { return nil }
     let last: Int
     if let toT {

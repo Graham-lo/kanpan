@@ -28,7 +28,7 @@ public enum AICoinBehavior {
   /// iPhone原版进入行情末列贴绘图区右缘；2026-09-15镜像实测。
   public static let rightInset = 0.0
   public static let mainTopInset = 24.0
-  public static let mainBottomInset = 8.0
+  static let mainBottomInset = 8.0
   // 均线 / 均量 / MACD 的出厂周期不在这里：只有 `IndicatorID.defaultParams` 一份。
   public static let subpanels: [IndicatorID] = [.vol, .oi, .macd]
 

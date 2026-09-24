@@ -135,7 +135,7 @@ public func fmtFull(ms: Double, offsetMinutes: TZOffset) -> String {
 
 /// 复盘选区那种「几月几日 时:分」的短时间。和十字线同一个口径（同一个 `TZOffset`），
 /// 不再各自 `DateFormatter()` 拿设备时区、也不跟随地区习惯换分隔符（审查 B-07 / B-08）。
-public func fmtDayTime(ms: Double, offsetMinutes: TZOffset) -> String {
+func fmtDayTime(ms: Double, offsetMinutes: TZOffset) -> String {
   let p = DateParts(ms: ms, offsetMinutes: offsetMinutes)
   return "\(p.month)/\(p.day) \(pad2(p.hour)):\(pad2(p.minute))"
 }

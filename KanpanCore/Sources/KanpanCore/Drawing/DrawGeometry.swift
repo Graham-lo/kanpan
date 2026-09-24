@@ -75,7 +75,7 @@ public struct DrawLabel: Sendable {
   ///
   /// 绝大多数读数是贴着线的右端或刻度的右端写的，右对齐正好把字压在线上方；
   /// 「测量」的读数要压在框的正中间那条轴上，只有居中才对得齐。
-  public var centered = false
+  var centered = false
   public var plate: DrawPlate = .none
   public init(point: DrawPixel, text: String, tint: DrawTint = .line,
               centered: Bool = false, plate: DrawPlate = .none) {
@@ -148,7 +148,7 @@ public struct DrawGeometry: Sendable {
   /// 渲染和命中都走那个入口，两边拿到的就是同一批矩形。
   public var labelBoxes: [DrawBounds] = []
   /// 只有一块填充区时的老写法。多块的（持仓框）走 `fills`。
-  public var polygon: [DrawPixel] {
+  var polygon: [DrawPixel] {
     get { fills.first?.points ?? [] }
     set { fills = newValue.isEmpty ? [] : [DrawFill(points: newValue)] }
   }

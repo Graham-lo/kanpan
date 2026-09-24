@@ -15,7 +15,7 @@ public enum ServerHosts {
   public static let primary = "kanpan.107-174-172-10.sslip.io"
   /// 备机：只做行情网关，走 8443。
   public static let backup = "kanpan.96-44-162-222.sslip.io"
-  public static let backupPort = 8443
+  static let backupPort = 8443
 
   /// 行情网关，主在前、备在后（`MarketEndpoints.production`）。
   public static let gateways: [String] = [primary, "\(backup):\(backupPort)"]

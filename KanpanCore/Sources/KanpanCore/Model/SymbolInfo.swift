@@ -117,7 +117,7 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   }
 
   /// 「新」记号的窗口：上线 30 天以内（P2.15）。
-  public static let newListingWindowMs: Int64 = 30 * 86_400_000
+  static let newListingWindowMs: Int64 = 30 * 86_400_000
 
   /// 上线不满 30 天。还没到上线时间的（预告上线）不算——它还没「上线」。
   public func isNewListing(nowMs: Int64) -> Bool {

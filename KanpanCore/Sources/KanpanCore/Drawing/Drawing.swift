@@ -116,7 +116,7 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
     /// 由 `Drawing.fittedRegression(from:series:)` 把两点补成三点。
     public var placeCount: Int { self == .regression ? 2 : pointCount }
     /// 这把工具的出厂刻度。回撤是「退回去多少」，扩展是「再走出去多少」，两套数不一样。
-    public var defaultLevels: [Double] {
+    var defaultLevels: [Double] {
       switch self {
       case .fibExtension: [0, 0.382, 0.618, 1, 1.618, 2.618]
       case .fibTimeZone: [0, 1, 2, 3, 5, 8]
@@ -357,7 +357,7 @@ public struct DrawHit: Sendable, Equatable {
 }
 
 /// 点到线段的距离（原型 `distSeg`）。
-public func distSeg(_ px: Double, _ py: Double, _ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Double {
+func distSeg(_ px: Double, _ py: Double, _ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Double {
   let dx = x2 - x1, dy = y2 - y1
   let len = dx * dx + dy * dy
   var t = len != 0 ? ((px - x1) * dx + (py - y1) * dy) / len : 0
@@ -368,7 +368,7 @@ public func distSeg(_ px: Double, _ py: Double, _ x1: Double, _ y1: Double, _ x2
 /// 画线集合的命中判定。从最后一条往前找——后画的在上面。
 ///
 /// `xOf` / `yOf` 由调用方给：时间→x、价格→y，Core 不知道 pane 长什么样。
-public func hitDraw(
+func hitDraw(
   _ draws: [Drawing], px: Double, py: Double,
   xOf: (Double) -> Double, yOf: (Double) -> Double
 ) -> DrawHit? {
@@ -411,7 +411,7 @@ public struct DrawingStore: Sendable, Equatable {
     }
   }
 
-  public mutating func removeSelected() {
+  mutating func removeSelected() {
     guard let sel = selected else { return }
     items.removeAll { $0.id == sel }
     selected = nil

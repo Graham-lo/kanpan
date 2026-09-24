@@ -47,7 +47,7 @@ public struct Bar: Sendable, Equatable {
   }
 
   /// 两个「可以缺失」的数是不是同一个值；两边都缺也算同一个。
-  @inlinable public static func sameOptional(_ a: Double, _ b: Double) -> Bool {
+  @inlinable static func sameOptional(_ a: Double, _ b: Double) -> Bool {
     a == b || (a.isNaN && b.isNaN)
   }
 }

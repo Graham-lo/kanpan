@@ -92,7 +92,7 @@ public struct QuoteState: Sendable {
 
   /// 手里的成交额是哪一刻的（交易所时间）；`nil` 表示还没有成交额。
   public var turnoverTimeMs: Int64? { turnover.value == nil ? nil : (turnover.timeMs ?? 0) }
-  public var hasTurnover: Bool { turnover.value != nil }
+  var hasTurnover: Bool { turnover.value != nil }
 
   @discardableResult public mutating func receive(_ next: TradeQuote) -> Bool {
     guard next.price.isFinite, next.price > 0, next.timeMs > 0, next.tradeID >= 0,

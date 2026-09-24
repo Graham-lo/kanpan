@@ -104,7 +104,7 @@ public enum AlertEvaluator {
     (previous < line && close >= line) || (previous > line && close <= line)
   }
 
-  public static func fires(_ alert: Alert, bar: Bar) -> Bool { hit(alert, bar: bar) != nil }
+  static func fires(_ alert: Alert, bar: Bar) -> Bool { hit(alert, bar: bar) != nil }
 
   /// 复盘到点：还在等、到期时刻已经过了（含正好到点）。服务端 `alerts.rs` 同一条。
   public static func dueHit(_ alert: Alert, now: Double) -> Bool {

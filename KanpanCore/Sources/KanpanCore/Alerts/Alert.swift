@@ -160,7 +160,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
 
   /// 整句里「线名」前面那一截。列表要的是线名，通知要的是整句，两边共用这一个记号，
   /// 免得哪天改了文案，列表那边悄悄开始显示空白。
-  public static let titleMarker = "触到你画的"
+  static let titleMarker = "触到你画的"
 
   /// 这条提醒挂在哪一种线上（「水平线」「趋势线」…）。裸价格提醒没有，返回 nil。
   ///
@@ -197,7 +197,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
 
   /// 「BTC 涨到 65,000」/「BTC 跌到 60,000」。`label` 是调用方按品种精度排好的价。
   /// 现价取不到时不猜方向，写「到了」。
-  public static func priceTitle(symbol: String, target: Double, current: Double?, label: String) -> String {
+  static func priceTitle(symbol: String, target: Double, current: Double?, label: String) -> String {
     let verb: String
     if let current, current.isFinite, current > 0 { verb = target >= current ? "涨到" : "跌到" } else { verb = "到了" }
     return "\(name(of: symbol)) \(verb) \(label)"

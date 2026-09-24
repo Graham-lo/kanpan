@@ -6,7 +6,7 @@ import Foundation
 func nanArray(_ n: Int) -> [Double] { [Double](repeating: .nan, count: n) }
 
 /// 滑动窗均值。窗内含 NaN 则之后一路 NaN（和原型的累加写法一致）。
-public func sma(_ src: [Double], _ n: Int) -> [Double] {
+func sma(_ src: [Double], _ n: Int) -> [Double] {
   var out = nanArray(src.count)
   guard n >= 1 else { return out }
   var sum = 0.0
@@ -35,7 +35,7 @@ public func ema(_ src: [Double], _ n: Int) -> [Double] {
 }
 
 /// Wilder 的平滑（RSI、ATR 用的那种，衰减比 EMA 慢一半）。
-public func rma(_ src: [Double], _ n: Int) -> [Double] {
+func rma(_ src: [Double], _ n: Int) -> [Double] {
   var out = nanArray(src.count)
   guard src.count >= n, n >= 1 else { return out }
   var sum = 0.0
@@ -50,7 +50,7 @@ public func rma(_ src: [Double], _ n: Int) -> [Double] {
 }
 
 /// 会跳过前面 NaN 的简单均线（原型 `smaSkip`）。
-public func smaSkip(_ src: [Double], _ n: Int) -> [Double] {
+func smaSkip(_ src: [Double], _ n: Int) -> [Double] {
   var out = nanArray(src.count)
   guard let start = src.firstIndex(where: { $0.isFinite }) else { return out }
   let tail = sma(Array(src[start...]), n)
