@@ -67,29 +67,33 @@ struct PriceAlertForm: View {
       HStack {
         Text(currentLine(quote))
           .font(PanelFont.meta).monospacedDigit()
-          .foregroundStyle(t.ink3)
+          // 查不到品种是这一页唯一的错误态，用 `danger` 标出来，不和「当前 xxx」同一个灰。
+          .foregroundStyle(quote == nil && !symbolText.isEmpty ? t.danger : t.ink3)
           .accessibilityIdentifier("alerts.new.current")
         Spacer(minLength: 0)
       }
       .padding(.horizontal, PanelMetrics.hPad)
-      .padding(.top, 8)
+      .padding(.top, Space.s)
       Button {
         guard let quote, let target else { return }
         onCreate(quote, target)
         dismiss()
       } label: {
+        // 禁用时不再整块降到 0.4（琥珀底上的字只剩 1.05:1，看上去像没画出来）：
+        // 底换成中性的 `raised2`、字换成 `ink3`，一眼看得出「还不能按」，字也读得清。
+        let ready = quote != nil && target != nil
         Text("加提醒")
-          .font(.scaled(15, .semibold))
-          .foregroundStyle(t.badgeInk)
+          .font(TypeScale.title)
+          .foregroundStyle(ready ? t.badgeInk : PanelDisabled.ink(t))
           .frame(maxWidth: .infinity)
-          .frame(height: 42)
-          .background(Capsule().fill(t.amber))
-          .opacity(quote != nil && target != nil ? 1 : 0.4)
+          .frame(minHeight: Hit.min)
+          .background(Capsule().fill(ready ? t.amber : PanelDisabled.fill(t)))
+          .contentShape(Capsule())
       }
       .buttonStyle(.plain)
       .disabled(quote == nil || target == nil)
       .padding(.horizontal, PanelMetrics.hPad)
-      .padding(.top, 16)
+      .padding(.top, Space.l)
       .accessibilityIdentifier("alerts.new.create")
     }
     .toolbar(.hidden, for: .navigationBar)
@@ -128,20 +132,23 @@ struct PriceAlertForm: View {
   }
 
   private func field<Input: View>(_ label: String, @ViewBuilder input: () -> Input) -> some View {
-    HStack(spacing: 12) {
+    // 和 `PanelRow` 同一套尺寸：行高 44、左右 `hPad`、底下一条 1pt 的 `hair`。
+    // 输入框不再定死 150 宽，占满名字右边的剩余宽度，长代号（`BTC/USD`）和长价格都放得下。
+    HStack(spacing: Space.m) {
       Text(label).font(PanelFont.name).foregroundStyle(t.ink)
-      Spacer(minLength: 8)
       input()
         .multilineTextAlignment(.trailing)
-        .font(.body.monospacedDigit())
+        .font(TypeScale.body)
+        .monospacedDigit()
         .foregroundStyle(t.ink)
-        .frame(width: 150)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(t.raised2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, Space.s)
+        .frame(maxWidth: .infinity)
+        .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
     }
     .padding(.horizontal, PanelMetrics.hPad)
-    .frame(minHeight: 48)
-    .overlay(alignment: .bottom) { Rectangle().fill(t.line).frame(height: 0.5).padding(.leading, PanelMetrics.hPad) }
+    .padding(.vertical, Space.xs)
+    .frame(minHeight: Inset.rowMin)
+    .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }
   }
 }

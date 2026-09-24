@@ -61,6 +61,13 @@ final class AlertPromptModel: ObservableObject {
   }
 }
 
+private extension View {
+  /// 提醒条里的按钮：点击区 44×44，布局高度不超过条高。
+  func promptHit() -> some View {
+    hitTarget().padding(.vertical, -(Hit.min - AlertPromptBar.height) / 2)
+  }
+}
+
 /// 那一条。整行高 36pt，字 13pt——它比周期条还轻一档。
 ///
 /// 两个落脚点，内容一字不差：
@@ -78,35 +85,43 @@ struct AlertPromptBar: View {
   var inHeader = false
   @Environment(\.panelTheme) private var theme
 
+  /// 条高 36：竖屏它盖在头部价格行上，不能比那一行高（高了会扫到 K 线上）。
+  static let height: CGFloat = Hit.min - Space.s
+
   var body: some View {
     if let pending = model.pending {
-      HStack(spacing: 8) {
+      HStack(spacing: Space.s) {
         Image(systemName: "bell")
-          .font(.system(size: 12, weight: .semibold))
+          .font(TypeScale.captionEmph)
           .foregroundStyle(theme.amber)
         Text(pending.sentence)
-          .font(.scaled(13))
+          .font(TypeScale.footnote)
           .foregroundStyle(theme.ink)
           .lineLimit(2)
           .minimumScaleFactor(0.85)
-        Spacer(minLength: 6)
-        Button("只留线") { model.dismiss() }
-          .buttonStyle(.plain)
-          .font(.scaled(13))
-          .foregroundStyle(theme.ink3)
-          .accessibilityIdentifier("alert.prompt.dismiss")
-        Button("加入提醒") { model.accept() }
-          .buttonStyle(.plain)
-          .font(.scaled(13, .semibold))
-          .accessibilityIdentifier("alert.prompt.accept")
-          .foregroundStyle(theme.badgeInk)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
-          .background(Capsule().fill(theme.amber))
+        Spacer(minLength: Space.xs)
+        // 两颗按钮画面不变（「只留线」是字、「加入提醒」是 28 高的药丸），点击区各撑到 44×44；
+        // 比这一条高出来的那几 pt 用负边距还给布局，条本身的高度一个 pt 不变。
+        Button { model.dismiss() } label: {
+          Text("只留线").font(TypeScale.footnote).foregroundStyle(theme.ink3).promptHit()
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("alert.prompt.dismiss")
+        Button { model.accept() } label: {
+          Text("加入提醒")
+            .font(TypeScale.controlOn)
+            .foregroundStyle(theme.badgeInk)
+            .padding(.horizontal, Space.m)
+            .frame(minHeight: ControlMetrics.pillHeight)
+            .background(Capsule().fill(theme.amber))
+            .promptHit()
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("alert.prompt.accept")
       }
-      .padding(.horizontal, 12)
+      .padding(.horizontal, Space.m)
       .frame(maxWidth: .infinity)
-      .frame(height: 36)
+      .frame(height: Self.height)
       // `children: .contain` 是这儿的关键：只写 identifier 的话，它会顺着这一行
       // 盖到里面每个元素头上，两颗按钮自己的 identifier 就被顶掉了（用例里
       // 「没有「加入提醒」」就是这么来的）。改成容器之后这一行有自己的 frame
@@ -116,11 +131,11 @@ struct AlertPromptBar: View {
       .background(
         // 底栏没有自己的底，这一条也一样：底下那张材料照常穿过去，
         // 只借一层极轻的强调色把它托起来。
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
+        RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
           .fill(theme.amberSoft)
-          .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(theme.amberLine, lineWidth: 0.5))
+          .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous).strokeBorder(theme.amberLine, lineWidth: 0.5))
       )
-      .padding(.horizontal, inHeader ? 0 : 10)
+      .padding(.horizontal, inHeader ? 0 : Space.s)
       // 头部那一档只淡入淡出：它是挂在价格行上的 `overlay`，不受父视图裁剪，
       // 从下往上滑那一下会有一帧扫过 K 线——「画布上不浮控件」这条不留例外。
       .transition(inHeader ? .opacity : .opacity.combined(with: .move(edge: .bottom)))

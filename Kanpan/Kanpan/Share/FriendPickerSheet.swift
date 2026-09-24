@@ -24,11 +24,12 @@ struct FriendPickerSheet: View {
                         buttonID: "share.send", ruleID: "share.username.rule") { send($0) }
       }
       if let error {
-        Text(error).font(.scaled(12)).foregroundStyle(theme.danger)
-          .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 8)
+        Text(error).font(TypeScale.caption).foregroundStyle(theme.danger)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, PanelMetrics.hPad).padding(.vertical, Space.s)
           .accessibilityIdentifier("share.error")
       }
-      if sending { ProgressView().tint(theme.amber).padding(12) }
+      if sending { ProgressView().tint(theme.amber).padding(Space.m) }
     }
     .disabled(sending)
     .accessibilityElement(children: .contain).accessibilityIdentifier("share.picker")

@@ -83,9 +83,19 @@ struct AccountView: View {
         if let message = feature.error ?? (feature.page == .login ? feature.replacedNotice : nil) {
           Text(message).font(.footnote).foregroundStyle(theme.danger).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error")
         }
+        // 禁用态（没填全）不再交给系统 `.borderedProminent`：它在灰底上叠灰字，实测只有 1.44:1，
+        // 看不出按钮上写的是什么。和面板里的主按钮同一套（`PanelDisabled`）：底换中性的
+        // `raised2`、字换 `ink3`（≥3:1）；提交中（`busy`）仍是可用的样子，只是转圈。
+        let ready = feature.busy || feature.canSubmit
         Button { focused = nil; feature.submit() } label: {
-          Group { if feature.busy { ProgressView().tint(theme.badgeInk) } else { Text(primary) } }.frame(maxWidth: .infinity, minHeight: 48)
-        }.buttonStyle(.borderedProminent).tint(feature.page == .close ? theme.danger : theme.amber)
+          Group { if feature.busy { ProgressView().tint(theme.badgeInk) } else { Text(primary) } }
+            .font(TypeScale.title)
+            .foregroundStyle(ready ? theme.badgeInk : PanelDisabled.ink(theme))
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(Capsule().fill(ready ? (feature.page == .close ? theme.danger : theme.amber)
+                                             : PanelDisabled.fill(theme)))
+            .contentShape(Capsule())
+        }.buttonStyle(.plain)
           .disabled(feature.busy || !feature.canSubmit).accessibilityIdentifier("account.submit")
         // 登录、注册两页互相切换的那一颗：同一个位置、同一种样式，只是字对调。
         if [.login, .register].contains(feature.page) {

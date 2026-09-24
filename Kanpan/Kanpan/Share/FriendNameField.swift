@@ -21,25 +21,30 @@ struct FriendNameField: View {
   private var name: String? { AccountCredentialRules.username(text) }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack(spacing: 10) {
+    // 左右边距和 `PanelRow` 同一个 `hPad`（原来 18，和上下几行的左缘差 2pt 对不齐）。
+    VStack(alignment: .leading, spacing: Space.xs) {
+      HStack(spacing: Space.m) {
         TextField("朋友的用户名", text: $text)
           .keyboardType(.asciiCapable).textInputAutocapitalization(.never)
           .autocorrectionDisabled().submitLabel(.done)
           .focused($focused)
           .onSubmit { commit() }
-          .font(.scaled(14)).foregroundStyle(theme.ink)
+          .font(TypeScale.body).foregroundStyle(theme.ink)
           .accessibilityIdentifier(fieldID)
-        Button(action) { commit() }
-          .font(.scaled(13)).foregroundStyle(name == nil ? theme.ink3 : theme.amber)
+        Button { commit() } label: {
+          Text(action).font(PanelFont.seg)
+            .foregroundStyle(name == nil ? PanelDisabled.ink(theme) : theme.amber)
+            .hitTarget()
+        }
+          .buttonStyle(.plain)
           .disabled(name == nil)
           .accessibilityIdentifier(buttonID)
-      }.frame(minHeight: 54)
+      }.frame(minHeight: Inset.rowMin + Space.s)
       if !text.isEmpty, name == nil {
-        Text(AccountCredentialRules.usernameRule).font(.scaled(11)).foregroundStyle(theme.ink3)
-          .padding(.bottom, 8).accessibilityIdentifier(ruleID)
+        Text(AccountCredentialRules.usernameRule).font(TypeScale.caption2).foregroundStyle(theme.ink3)
+          .padding(.bottom, Space.s).accessibilityIdentifier(ruleID)
       }
-    }.padding(.horizontal, 18)
+    }.padding(.horizontal, PanelMetrics.hPad)
   }
 
   private func commit() {
