@@ -210,7 +210,7 @@ diag-ios-test:
 	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $(APP_SMOKE)
 
 # 主屏那几条生命周期用例（宿主销毁收摊、合批缓冲换人就丢、转屏复位只认最后一次、
-# 后台额度必须还）、顶栏纯显示（A-T20）、报价簿（B-T10）与报价会话。它们**挂在 `test` 里**（审查复核项 8）。
+# 后台额度必须还）、顶栏纯显示（A-T20）、报价簿（B-T10）、报价会话与品种徽章表。它们**挂在 `test` 里**（审查复核项 8）。
 main-ios-test:
 	$(call app_test,Main)
 

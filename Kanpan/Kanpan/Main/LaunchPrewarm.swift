@@ -20,6 +20,9 @@ enum LaunchPrewarm {
   static func run() {
     guard !started else { return }
     started = true
+    // 品牌标表从资源文件解（`CoinSpec.brandFile`，模拟器上冷读约 3 ms）。第一屏的徽章
+    // 马上就要查它，先在后台解好，主线程第一次查表时就是现成的。纯本地，不碍测试。
+    Task.detached(priority: .userInitiated) { _ = CoinSpec.brandFile }
     // 测试模式下不热身（UI 用例不该为两笔无认证预热等网络）。Release 包里没有这回事。
     #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] != "1" else { return }

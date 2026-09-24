@@ -95,7 +95,7 @@ enum SVGPath {
   ///
   /// 一枚徽章的记号是一到两层、每层一串到七串 `d=`；一屏自选二十几行，每行一枚，
   /// 每次重画都要把这些串重新扫一遍字符、拆成命令和数字、再一段段 `addCurve`。
-  /// 这些串是写死在代码里的常量，解析结果永远一样。
+  /// 这些串是写死在代码和资源文件（`CoinBadgeBrands.json`）里的常量，解析结果永远一样。
   static func parsed(_ paths: [String]) -> Path {
     memo.value(for: paths) {
       var p = Path()

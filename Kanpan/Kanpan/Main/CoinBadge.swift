@@ -165,8 +165,9 @@ extension CoinSpec {
 extension CoinSpec {
   /// 照原型 `COIN` 表抄来的那几支，加上后来补的品牌标。
   ///
-  /// 这张表收**认得准**的牌子；个股、港股、韩股的那一批在 `CoinBadgeBrands.swift`，
-  /// 两张表一先一后查。都没有的落到 `generated`，按代号散出一枚各自不同的几何标。
+  /// 这张表收**认得准**的牌子；个股、港股、韩股和一批链上币在资源文件
+  /// `Resources/CoinBadgeBrands.json`（`brand(_:)`），两张表一先一后查。
+  /// 都没有的落到 `generated`，按代号散出一枚各自不同的几何标。
   private static let known: [String: CoinSpec] = [
     // ── 加密
     "BTC": CoinSpec(from: "#F9B34A", to: "#EE7A12", mark: .text("₿")),
@@ -267,7 +268,38 @@ extension CoinSpec {
   ]
 }
 
+// MARK: - 个股与链上的品牌标
+//
+// 用户为品种徽章纠正过两次，落点不一样：
+//
+//   第一次「像 xau 展示的图标就是 xau，美股的一些展示缩写」——不能拿代号当图标。
+//   第二次「另外美股的图标设计的不对啊」「每个品种都有单独的图标啊」——也不能
+//   整类共用一个图形。当时所有个股共用一座交易所门廊，一屏美股扫下去每行都是
+//   同一座房子，和每行印着自己的字母一样分不出来。
+//
+// 所以这张表按「一支一个记号」办，画得准优先：
+//
+//   · 品牌有记号的就画它的记号——苹果那一口、迪士尼三个圆、沃尔玛的火花、
+//     COIN 的圆中方、Snowflake 的雪花、IBM 的横条。
+//   · 品牌本身是纯字标、画出来只会走形的，就画这家公司**做的东西**——礼来是胶囊、
+//     开拓重工是推土楔、火箭实验室是火箭、西部数据是盘片。它不是那家公司的注册标，
+//     但它能把这一行和上下行分开，这才是徽章要回答的问题。
+//   · 两样都够不着的长尾，走 `generated`：按代号散列出一枚每支都不一样的
+//     几何标（见 `CoinBadgeGenerated.swift`）。兜底的图形也要随条目变，才叫图标。
+//
+// 常看的那批币原来也大多落在长尾标上——散列出来的几何形每支不重样，但它回答不了
+// 「这是哪个币」，所以表里也按各自的标补了真记号：门罗是那个 M 的三角、Cosmos 是
+// 三环轨道、SHIB 是狗头、PENGU 是企鹅。
+//
+// 这张表原来是 `Main/CoinBadgeBrands.swift` 里的八张 Swift 静态表，审查第 18 项搬成了
+// 资源文件 `Resources/CoinBadgeBrands.json`：每条带 `note`（上面那套依据落到这一支上的
+// 理由，原来写在每条前面的注释里）和 `group`（原来那张小表的标题）。加一支就在 JSON
+// 里照样子加一条，`CoinBadgeBrandsTests` 会查条数、颜色、路径和 note。
+
 extension CoinSpec {
+  /// 查品牌标。
+  static func brand(_ key: String) -> CoinSpec? { brandFile[key] }
+
   /// 资源文件里那张品牌标表，第一次用到时读一次、解一次（`static let` 本身就是惰性且只跑一次的）。
   /// 读不到或解不开只在调试包里喊停；发布包退回空表，所有品种落到长尾标，不至于崩。
   static let brandFile: [String: CoinSpec] = loadBrandFile(from: .main)
@@ -331,7 +363,7 @@ extension CoinSpec {
 
   /// 这个品种画什么记号。
   ///
-  /// 查表 + 剥数字前缀 + 散列出一枚长尾标，一趟下来要过八张字典。结果只取决于
+  /// 查表 + 剥数字前缀 + 散列出一枚长尾标，一趟下来要过好几张字典。结果只取决于
   /// 代号和事实分类，所以按这两样记住——自选表滚一屏是二十几次查表，滚回来又是
   /// 二十几次，都是同样的答案。
   static func of(_ base: String, asset: SymbolClassification.Asset? = nil) -> CoinSpec {
@@ -363,7 +395,7 @@ extension CoinSpec {
     }
     if asset == .commodity { return CoinSpec(from: pair.0, to: pair.1, mark: drop, inset: 0.6) }
 
-    // 剩下的全走长尾标：一支一枚，见 `CoinBadgeBrands.swift`。
+    // 剩下的全走长尾标：一支一枚，见 `CoinBadgeGenerated.swift`。
     //
     // 这儿原来有两条兜底，两条都被用户否掉了。先是首字母——「像 xau 展示的图标
     // 就是 xau，美股的一些展示缩写」；后是品类标，个股一律画交易所门廊、ETF 一律画
