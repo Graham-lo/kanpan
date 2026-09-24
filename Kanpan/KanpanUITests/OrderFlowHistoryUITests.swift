@@ -120,4 +120,31 @@ final class OrderFlowHistoryUITests: KanpanUICase {
     print("取证|三家簿|ok=\(ok)|books: \(readyList)|counts: \(countList)")
     XCTAssertTrue(ok, "簿没全就绪或 OKX 现货没出单：\(readyList) / \(countList)")
   }
+
+  // ------------------------------------------------------------ 手机上常看的周期（用户 2026-09-24：「为什么真机不是你截图这效果」）
+
+  /// 同一个会话里依次切 1 分钟、30 分钟、1 小时，各拍一张，记下每个周期的带数、最宽的带、带横向铺开的范围。
+  /// 之前的取证图全是 1 分钟；手机上看的是 30 分钟 / 1 小时。
+  func testPhoneIntervalsLayout() {
+    XCTAssertTrue(waitForLiveChart(), "没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    _ = waitUntil(timeout: 30, poll: 0.5) { self.chartInfo()["orderFlowPhase"] as? String == "ready" }
+    for interval in ["1m", "30m", "1h"] {
+      if interval != "1m" { app.open(URL(string: "hkline://symbol/BTCUSDT?interval=\(interval)")!) }
+      _ = waitUntil(timeout: 20, poll: 0.5) {
+        self.chartInfo()["orderFlowPhase"] as? String == "ready" && ((self.chartInfo()["orderFlowBands"] as? [Any])?.count ?? 0) > 0
+      }
+      sleep(3)
+      let info = chartInfo()
+      let bands = (info["orderFlowBands"] as? [[String: Any]]) ?? []
+      let xs = bands.compactMap { $0["x"] as? Double }, ws = bands.compactMap { $0["w"] as? Double }
+      let rights = zip(xs, ws).map { $0 + $1 }
+      let wide = ws.filter { $0 >= 48 }.count
+      print("取证|周期|\(interval)|orders=\(info["orderFlowOrders"] ?? 0)|bands=\(bands.count)|宽≥48=\(wide)|minX=\(xs.min() ?? -1)|maxRight=\(rights.max() ?? -1)|maxW=\(ws.max() ?? -1)|labels=\((info["orderFlowLabels"] as? [Any])?.count ?? 0)|diag=\(flowInfo())")
+      let image = app.screenshot()
+      let a = XCTAttachment(screenshot: image); a.name = "周期-\(interval)"; a.lifetime = .keepAlways; add(a)
+      try? FileManager.default.createDirectory(at: Self.outDir, withIntermediateDirectories: true)
+      try? image.pngRepresentation.write(to: Self.outDir.appendingPathComponent("周期-\(interval)-17ProMax.png"))
+    }
+  }
 }
