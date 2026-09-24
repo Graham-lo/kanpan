@@ -154,10 +154,10 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     expectExists(group, Self.short, "自选页上没有「加密」这条分类")
     XCTAssertTrue(group.label.contains("个品种"),
                   "分类胶囊念出来是「\(group.label)」，听不出里面有几个品种")
-    let expand = app.buttons["favorites.expand.binance/usd_m/BTCUSDT"]
-    expectExists(expand, Self.short, "自选行上没有展开详情的那一下")
-    XCTAssertEqual(expand.label, "展开详情", "展开那一下念出来是「\(expand.label)」")
-    XCTAssertEqual(expand.value as? String, "已收起", "展开状态念不出来")
+    // 行内展开详情 2026-09-24 收掉了（审查 U9），详情只剩长按那张预览卡；
+    // 这儿只看最大字号下整行还在窗口里、点得到。
+    XCTAssertTrue(windowFrame.insetBy(dx: -0.5, dy: -0.5).contains(row.frame),
+                  "最大字号下自选那一行被挤出窗口了：\(row.frame)")
     shot("最大字号-自选页")
 
     row.tap()

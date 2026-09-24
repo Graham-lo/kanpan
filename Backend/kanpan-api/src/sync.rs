@@ -54,7 +54,10 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 /// and every older build encodes `showDrawings` into every snapshot — so the snapshot check lets
 /// these through instead of 400-ing every review an older build tries to save. Readers ignore
 /// them: the client only applies names it still declares.
-pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights"];
+/// `favoritesExpanded` (2026-09-24, review U9): the favorites page had two detail forms for the
+/// same symbol — the inline expansion and the long-press preview card. Only the card is left, so
+/// the set of expanded rows has nothing to remember any more.
+pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded"];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
 /// the Widget's pinned-first ordering only ever saw an empty list. Same treatment as the settings
@@ -106,7 +109,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
  "keepAwake","routePolicy",
  // How the person left each page looking: sort order, which market, which tool.
- "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline","favoritesExpanded",
+ "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline",
  // Which category the favorites page is parked on. It used to live in the phone's own symbol
  // archive (`SymbolPrefs.selectedGroupID`), so it never followed the person to a second device.
  "favoritesGroup",

@@ -4,7 +4,12 @@ import KanpanCore
 import KanpanData
 import KanpanNetwork
 
-/// 长按一行品种弹出来的那张小卡：徽章 · 名字 · 最新价 · 涨跌药丸 · 一段 K 线 · 四格数。
+/// 长按一行品种弹出来的那张小卡：徽章 · 名字 · 最新价 · 涨跌药丸 · 一段 K 线 · 几格数。
+///
+/// 品种详情全 app 只剩这一种形态（审查 U9）：自选页原来还有一套行内展开的详情，
+/// 和这张卡摆的是同一批数、两种排法。展开那套收掉了，它独有的几格搬到了这儿——
+/// 1 小时 / 4 小时涨跌（只有自选页有逐分钟的走势，所以只有它传 `recentChange`）、
+/// 24 小时高 / 低；它的「移到分类」「打开」本来就在长按菜单里。
 ///
 /// 它回答的是「这东西现在什么样」——不用切页就看一眼，松手就没了。所以它只摆
 /// 已经有的事实，不做任何交互（要动手的都在旁边那份菜单里）。
@@ -142,6 +147,9 @@ struct SymbolPreviewCard: View {
   var store: SymbolPreviewStore
   /// 已下架 / 还没开盘的行：由实时价算出来的几格一律空着，和列表里同一个判据。
   var stale = false
+  /// 近 N 小时涨跌幅（百分数）。只有手上有逐分钟走势的页（自选）传；没传就不摆那一行——
+  /// 拿卡上这段 1 小时 K 线去凑会差出将近一整根，宁可不写也不写个差不多的数。
+  var recentChange: ((Int) -> Double?)? = nil
 
   @Environment(\.panelTheme) private var t
 
@@ -224,6 +232,16 @@ struct SymbolPreviewCard: View {
 
   private var stats: some View {
     Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+      if let recentChange {
+        GridRow {
+          cell("1小时", stale ? nil : recentChange(1).map { changePercentText($0) })
+          cell("4小时", stale ? nil : recentChange(4).map { changePercentText($0) })
+        }
+      }
+      GridRow {
+        cell("24小时高", live.flatMap { $0.high.isFinite && $0.high > 0 ? grouped(fmtPrice($0.high, decimals: decimals)) : nil })
+        cell("24小时低", live.flatMap { $0.low.isFinite && $0.low > 0 ? grouped(fmtPrice($0.low, decimals: decimals)) : nil })
+      }
       GridRow {
         cell("持仓量", HeaderStats.openInterestText(value: store.stats(for: symbol)?.openInterestValue,
                                                  unit: nil))

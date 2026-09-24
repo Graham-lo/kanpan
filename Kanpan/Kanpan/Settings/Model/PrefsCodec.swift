@@ -72,7 +72,8 @@ extension Prefs: Codable {
     // 现在「记」住在周期条上，没有位置可存了。老存档里那两个键读的时候认不出来，
     // 直接忽略（这份编解码是一个键一个键 `try?` 取的，多出来的键不会让整份存档解不开）。
     // `showDrawings`（全局画线开关）和 `subHeights`（副图三档高度）同理：2026-09-24 两端删掉，
-    // 老存档、云端老 body 里还带着也无妨。
+    // 老存档、云端老 body 里还带着也无妨。`favoritesExpanded`（自选页展开着详情的那几行）
+    // 也是同一天删的：审查 U9 把行内展开收掉了，品种详情只剩长按那张预览卡。
     case indicatorColors
     case ambientTheme
     case depth, orderFlow, priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
@@ -86,7 +87,7 @@ extension Prefs: Codable {
     // 线路只剩直连 / 网关两档，主机一律由 `RouteResolver` 定。旧存档里的这两个键解码时忽略。
     case routePolicy
     // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
-    case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline, favoritesExpanded
+    case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline
     case favoritesGroup
     case sectorMarket, sectorWindow, sectorSort
     case lastDrawTool
@@ -145,7 +146,6 @@ extension Prefs: Codable {
     try c.encode(favoritesAscending, forKey: .favoritesAscending)
     try c.encode(favoritesAmount, forKey: .favoritesAmount)
     try c.encode(favoritesSparkline, forKey: .favoritesSparkline)
-    try c.encode(favoritesExpanded.sorted(), forKey: .favoritesExpanded)
     try c.encode(favoritesGroup, forKey: .favoritesGroup)
     try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
@@ -288,8 +288,6 @@ extension Prefs: Codable {
     if let v = bool(.favoritesAscending) { favoritesAscending = v }
     if let v = bool(.favoritesAmount) { favoritesAmount = v }
     if let v = bool(.favoritesSparkline) { favoritesSparkline = v }
-    // 展开的行数按自选条数走，理论上不会多，但存档里躺着一份没有上限的名单不是好事。
-    if let raw = strs(.favoritesExpanded) { favoritesExpanded = Set(raw.filter { !$0.isEmpty }.prefix(Prefs.maxExpanded).map(InstrumentID.canonical)) }
     // 分类 id 是本机生成的 UUID 串，认不认得出交给 `SymbolPrefs.group(_:)`；
     // 这儿只拦长度，128 这个数和服务端 `sync_validation.rs` 给它的上限逐字相同。
     if let raw = str(.favoritesGroup), raw.count <= 128 { favoritesGroup = raw }

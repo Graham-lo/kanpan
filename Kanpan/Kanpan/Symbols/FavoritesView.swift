@@ -25,7 +25,7 @@ struct FavoritesView: View {
   var session: FavoritesEditSession
   /// 搜索页的历史词仓。自选页自己开搜索页（见 `search`），所以得跟着传进来。
   var history: SearchHistory
-  /// 这一页上「他摆出来的样子」存在哪：排序口径、方向、涨跌额/幅、迷你走势、展开的行。
+  /// 这一页上「他摆出来的样子」存在哪：排序口径、方向、涨跌额/幅、迷你走势。
   /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
   var store: PrefsStore
   var redUp: Bool
@@ -82,20 +82,20 @@ struct FavoritesView: View {
   /// 落脚点已经还原过了吗。还原之前不记新的——列表刚铺开时最上面那几行会先
   /// `onAppear`，那时候记下来的是「第一行」，正好把要还原的那个盖掉。
   @State private var anchorRestored = false
-  // 这张表「他摆成了什么样」：排序口径、升降序、涨跌额还是涨跌幅、画不画迷你走势线、
-  // 哪几行展开着详情。
+  // 这张表「他摆成了什么样」：排序口径、升降序、涨跌额还是涨跌幅、画不画迷你走势线。
+  // （原来还有「哪几行展开着详情」，2026-09-24 审查 U9 把行内展开收掉了，详情只剩长按那张卡。）
   //
   // 这几项一路搬过两次家。最早是 `@State`——底栏换成常驻标签栏之后，自选页每切走
   // 一次就整个重建，排好的顺序当场退回「自选顺序」，人回来还得再排一遍。于是搬去了
   // `@AppStorage`，注释写的是「这台机器上这张表想怎么看，跟着机器走，不跟账号走」。
   //
   // **「跟着机器走」这条判断 2026-09-19 推翻了**：判据不是「它在不在设置页上」，而是
-  // 「这是他改出来的习惯，还是这个对象自己的属性」。按成交额排、看涨跌额、把某几行
-  // 展开着，全是前者——换台设备登同一个账号，这张表就该还是这个样子，而同一台机器上
+  // 「这是他改出来的习惯，还是这个对象自己的属性」。按成交额排、看涨跌额、画不画
+  // 走势线，全是前者——换台设备登同一个账号，这张表就该还是这个样子，而同一台机器上
   // 换个人登进来，就不该还是上一个人排的那个顺序。裸 `@AppStorage` 两头都反了。
   // 现在它们住在 `Prefs` 里（见 `Prefs` 末尾那一节），随账号同步，未登录记在访客档案。
   //
-  // 写法照旧是直接赋值（`sort = "name"`、`expanded.removeAll()`），只是底下换成了
+  // 写法照旧是直接赋值（`sort = "name"`、`sparkline.toggle()`），只是底下换成了
   // `store.update`——调用处一个字都不用改。
   //
   // 2026-09-19 补：搬家的时候漏了一组——批量编辑（编辑模式 + 勾中的那几行 + 冻住的
@@ -117,10 +117,6 @@ struct FavoritesView: View {
   private var sparkline: Bool {
     get { store.prefs.favoritesSparkline }
     nonmutating set { store.update { $0.favoritesSparkline = newValue } }
-  }
-  private var expanded: Set<String> {
-    get { store.prefs.favoritesExpanded }
-    nonmutating set { store.update { $0.favoritesExpanded = newValue } }
   }
   @State private var moving: MoveRequest?
   private struct MoveRequest: Identifiable { let id = UUID(); let symbols: [String] }
@@ -485,7 +481,7 @@ struct FavoritesView: View {
 
   private func chip(_ title: String, id: String, count: Int) -> some View {
     let on = selected == id
-    return Button { select(id); expanded.removeAll() } label: {
+    return Button { select(id) } label: {
       // 名字后面原来还挂着一个上标的数量，用户 2026-09-18 让去掉——数量在列表上面
       // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
       Text(title).font(.scaled(15, .medium))
@@ -594,7 +590,6 @@ struct FavoritesView: View {
 
   private func toggleEditing() {
     if editing { session.end() } else { session.begin(quotes: model.tickers) }
-    expanded.removeAll()
   }
 
   // MARK: - 排序行
@@ -764,10 +759,7 @@ struct FavoritesView: View {
           ],
           fullSwipe: false
         ) { _ in
-          VStack(spacing: 0) {
-            previewable(symbol, row(symbol, first: symbol == symbols.first))
-            if expanded.contains(symbol), !editing { details(symbol) }
-          }
+          previewable(symbol, row(symbol, first: symbol == symbols.first))
           // 替还原那一步找到 `List` 背后的 UIKit 滚动容器（P2.4，见 `alignAnchorPixels`）。
           // 挂在行的**内容**上，不是挂在下面那几条 `listRow*` 外头——理由见下一段注释。
           .background(FavoritesScrollerProbe(rows: rows))
@@ -853,8 +845,8 @@ struct FavoritesView: View {
       if down { session.hold(sortedSymbols) } else { session.release() }
     })
     // 关掉系统滚动条。iOS 13 起那根灰条自己是能抓住拖的，也就是说它会吃触摸——
-    // 它占的那条竖带（右边 30pt）正好压在每行最右边那颗展开箭头上，列表一滚或一重建
-    // 它就闪出来，那一两秒里点箭头会没反应。这一页本来也没打算露系统滚动条。
+    // 它占的那条竖带（右边 30pt）正好压在每行最右边的涨跌格上，列表一滚或一重建
+    // 它就闪出来，那一两秒里点那一格会没反应。这一页本来也没打算露系统滚动条。
     .scrollIndicators(.hidden)
     .scrollContentBackground(.hidden)
     .environment(\.defaultMinListRowHeight, 0)
@@ -1014,7 +1006,8 @@ struct FavoritesView: View {
       } preview: {
         SymbolPreviewCard(symbol: symbol, info: model.info(for: symbol),
                           ticker: displayQuote(symbol), store: previews,
-                          stale: !model.listing(of: symbol).hasLivePrice)
+                          stale: !model.listing(of: symbol).hasLivePrice,
+                          recentChange: { historyChange(symbol, hours: $0) })
           .environment(\.panelTheme, theme)
       }
     } else {
@@ -1074,16 +1067,6 @@ struct FavoritesView: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("favorites.open." + symbol)
         .accessibilityAction { selectOrOpen(symbol) }
-        .accessibilityAction(named: "展开详情") { toggleDetails(symbol) }
-      if !editing {
-        Button { toggleDetails(symbol) } label: {
-          Image(systemName: expanded.contains(symbol) ? "chevron.up" : "chevron.down")
-            .font(.system(size: 9, weight: .semibold)).foregroundStyle(skin.ink4)
-            .frame(width: 14, height: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityLabel("展开详情")
-          .accessibilityValue(expanded.contains(symbol) ? "已展开" : "已收起")
-          .accessibilityIdentifier("favorites.expand." + symbol)
-      }
     }
     // 没有纸之后行的左右内边距放宽到 20pt 上下，徽章和「自选」标题、分类段对齐同一条竖线。
     .padding(.leading, 19).padding(.trailing, 20)
@@ -1208,61 +1191,10 @@ struct FavoritesView: View {
     return parts.count > 1 ? body + "." + parts[1] : body
   }
 
-  // MARK: - 展开详情
+  // MARK: - 近 N 小时涨跌
 
-  private func details(_ symbol: String) -> some View {
-    let ticker = displayQuote(symbol)
-    let info = model.info(for: symbol)
-    // 同一档状态（审查 B-06 / 复核项 4）：没有实时价时，凡是由实时价算出来的格子
-    // 一律「—」，24 小时高 / 低 / 额也在内（审查 B.8）——摆一个上周的统计比空着更像在骗人。
-    let stale = !model.listing(of: symbol).hasLivePrice
-    let live = stale ? nil : ticker
-    let decimals = info?.displayDecimals(for: ticker?.last ?? .nan)
-      ?? priceDecimalsFallback(ticker?.last ?? .nan)
-    return VStack(spacing: 12) {
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), spacing: 12) {
-        // 标题一律中文，不用 H 这种英文缩写（`kanpan-ui-labels-are-chinese`）。
-        cell("1小时", percent(stale ? nil : historyChange(symbol, hours: 1)))
-        cell("4小时", percent(stale ? nil : historyChange(symbol, hours: 4)))
-        cell(basisTitle, percent(live?.changePercent))
-        cell("24小时高", number(live?.high, decimals))
-        cell("24小时低", number(live?.low, decimals))
-        // 缺成交额也写「—」，和紧挨着的 24 小时高 / 低同一个写法（复核项 3）。
-        cell("24小时额", live.flatMap {
-          $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) + " " + quoteAsset(symbol) : nil
-        } ?? "—")
-      }
-      if let ticker = live, ticker.high > ticker.low, ticker.last.isFinite {
-        GeometryReader { geometry in
-          Capsule().fill(skin.rule).frame(height: 4)
-          Capsule().fill(skin.accentGradient).frame(width: 2, height: 10)
-            .offset(x: min(max((ticker.last - ticker.low) / (ticker.high - ticker.low), 0), 1) * max(0, geometry.size.width - 2), y: -3)
-        }.frame(height: 8)
-      }
-      HStack(spacing: 10) {
-        detailAction("移到分类", id: "favorites.move." + symbol) { moving = MoveRequest(symbols: [symbol]) }
-        Spacer(minLength: 0)
-        detailAction("打开", id: "favorites.open.chart." + symbol) { open(symbol) }
-      }
-    }.padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 16)
-      .background(skin.glassThin)
-      .overlay(alignment: .top) {
-        LinearGradient(colors: [.clear, skin.rule, skin.rule, .clear], startPoint: .leading, endPoint: .trailing)
-          .frame(height: 0.5).padding(.horizontal, 20)
-      }
-      .accessibilityElement(children: .contain).accessibilityIdentifier("favorites.details." + symbol)
-  }
-
-  private func detailAction(_ title: String, id: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Text(title).font(.scaled(12, .medium)).foregroundStyle(theme.amber)
-        .frame(height: 30).padding(.horizontal, 14)
-        .background(skin.glassThin, in: Capsule())
-        .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-        .contentShape(Rectangle())
-    }.buttonStyle(.plain).accessibilityIdentifier(id)
-  }
-
+  /// 长按预览卡上「1小时 / 4小时」那两格（审查 U9：行内展开收掉之后，这两格搬去了卡上）。
+  /// 取数还是列表为迷你走势线订的那份逐分钟走势，所以只有看过的行才有。
   private func historyChange(_ symbol: String, hours: Int) -> Double? {
     let target = Int64(Date().timeIntervalSince1970 * 1000) - Int64(hours) * 3_600_000
     guard let bar = model.historyBars[symbol]?.last(where: { $0.openTime <= target }),
@@ -1270,17 +1202,6 @@ struct FavoritesView: View {
           let price = displayQuote(symbol)?.last else { return nil }
     return (price / bar.open - 1) * 100
   }
-  private func percent(_ value: Double?) -> String { changePercentText(value) }
-  /// 详情里的价格格子。`fmtPrice` 兜住极小的正价（审查 B-07）。
-  private func number(_ value: Double?, _ decimals: Int) -> String { guard let value, value.isFinite else { return "—" }; return grouped(fmtPrice(value, decimals: decimals)) }
-  private func cell(_ title: String, _ value: String) -> some View {
-    VStack(alignment: .leading, spacing: 5) {
-      Text(title).font(.scaled(9, .medium)).tracking(1.2).foregroundStyle(skin.ink4)
-      Text(value).font(.scaled(12, .medium)).monospacedDigit().foregroundStyle(theme.ink)
-    }
-  }
-
-  private func toggleDetails(_ symbol: String) { if !expanded.insert(symbol).inserted { expanded.remove(symbol) } }
   private func selectOrOpen(_ symbol: String) {
     // 有砖划开着的时候，点行任何一处都是「先把砖收回去」，不是一次正常的点击——
     // 不接这一下，人划开之后想反悔只能再划一次（`SwipeDeleteProxy` 那只手的用意）。
@@ -1640,7 +1561,7 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   var quotes: [String: Ticker] = [:]
   /// 他停在表的哪一行（审查 C-08）。
   ///
-  /// 存的是**品种代号**，不是滚动偏移量：一屏能放几行随字号、随展开的详情、随
+  /// 存的是**品种代号**，不是滚动偏移量：一屏能放几行随字号、随
   /// 机型变，像素位置换个环境就对不上，而「他正盯着 APTUSDT 那一行」换到哪儿都成立。
   /// 和编辑会话同住一处、同一个理由——这是「一次使用里的落脚点」，不是跟着账号走的
   /// 习惯：冷启动理应从第一行看起，所以它不进 `Prefs`、不落盘。

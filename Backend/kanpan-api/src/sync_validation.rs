@@ -138,8 +138,6 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // Being on the allowlist without a rule here would make the field a poison pill — the
    // `_=>false` fallthrough rejects the whole operation with a 400.
    "favoritesGroup"=>string(v,128),
-   // Capped at `Prefs.maxExpanded`.
-   "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(|v|symbol(v)||v.as_str().is_some_and(|s|{let p:Vec<_>=s.split('/').collect();p.len()==3&&identity(p[0],p[1],p[2])}))),
    "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
     |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
@@ -463,7 +461,7 @@ mod tests {
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(field("settings","replaySpeed",&json!(4))&&!field("settings","replaySpeed",&json!(8)));
-  assert!(field("settings","favoritesExpanded",&json!(["BTCUSDT"]))&&!field("settings","favoritesExpanded",&json!(["btc"])));
+  assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");
   for flag in ["mainInverted","keepAwake","favoritesAscending","favoritesAmount","favoritesSparkline"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");
   }

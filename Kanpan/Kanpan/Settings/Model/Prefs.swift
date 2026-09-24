@@ -159,8 +159,6 @@ struct Prefs: Sendable, Equatable {
   var favoritesAmount: Bool = false
   /// 行尾那条迷你走势线。默认不画，想看的人在「…」里自己打开。
   var favoritesSparkline: Bool = false
-  /// 展开着行详情的那几个品种。
-  var favoritesExpanded: Set<String> = []
   /// 自选页停在哪个分类。空串 = 还没挑过，按第一个分类开。
   ///
   /// 2026-09-19 从 `SymbolPrefs.selectedGroupID` 搬过来的。它本来和自选名单、分组名单
@@ -222,10 +220,6 @@ struct Prefs: Sendable, Equatable {
 
   /// 「找相似」认得的两档范围。
   static let searchScopes: Set<String> = ["history", "private"]
-
-  /// 展开着的自选行最多记多少个。这份名单跟着自选条数走，正常情况下远小于它；
-  /// 上限只是别让手改过的存档把一份无限长的名单带进来。
-  static let maxExpanded = 500
 
   /// 回放倍速只有 1 / 2 / 4 三档（`ReviewReplayControls` 上那颗按钮就是这么转的）。
   static func clampSpeed(_ value: Int) -> Int { [1, 2, 4].contains(value) ? value : 1 }

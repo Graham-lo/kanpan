@@ -98,7 +98,7 @@ enum PrefsFieldPlan {
     "subHeightOverrides": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
     "favoritesSort": .synced, "favoritesAscending": .synced, "favoritesAmount": .synced,
-    "favoritesSparkline": .synced, "favoritesExpanded": .synced, "favoritesGroup": .synced,
+    "favoritesSparkline": .synced, "favoritesGroup": .synced,
     "sectorMarket": .synced, "sectorWindow": .synced, "sectorSort": .synced,
     "lastDrawTool": .synced,
     "replaySpeed": .synced, "reviewSearchScope": .synced,

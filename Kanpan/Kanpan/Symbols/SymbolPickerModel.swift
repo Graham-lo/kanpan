@@ -187,9 +187,9 @@ final class SymbolPickerModel {
     }
   }
 
-  /// 展开详情里的 1h / 4h 涨跌用的分钟线。一份 245 根约 8 KB，
-  /// 三十几份也就几百 KB——按「机器资源可以大方用」的口径，够整张自选表
-  /// 全展开也不用互相挤掉。
+  /// 自选行尾的迷你走势线和长按预览卡上 1 小时 / 4 小时涨跌用的分钟线。一份 245 根约 8 KB，
+  /// 三十几份也就几百 KB——按「机器资源可以大方用」的口径，翻一整张自选表
+  /// 也不用互相挤掉。
   static let historyCapacity = 40
 
   func setHistory(_ symbol: String, _ bars: [Bar]) {
@@ -387,7 +387,7 @@ final class SymbolPickerModel {
   // **2026-09-19 那个字段搬去了 `Prefs.favoritesGroup`**：他停在哪一类是「把自选页摆成
   // 什么样」，和自选表按什么排、板块看今日还是 5 日是同一等级的东西，该跟着体验类设置
   // 一起走；留在自选档案里它只能跟着这台机器。切换现在由 `FavoritesView` 直接写
-  // `PrefsStore`（和那一页上 `favoritesSort` / `favoritesExpanded` 走同一条路），
+  // `PrefsStore`（和那一页上 `favoritesSort` / `favoritesSparkline` 走同一条路），
   // 这一层只负责在需要「此刻是哪一类」时通过 `selectedGroupSource` 问一声。
   //
   // 更早还有一个 `pickedGroupThisRun` 记号配 `resetSelectedGroup()`，执行「冷启动回到
