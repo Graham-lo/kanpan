@@ -102,7 +102,7 @@ public enum BootstrapOutcome: Sendable, Equatable {
 
 public enum ApplyOutcome: Sendable, Equatable { case applied, duplicateIgnored }
 
-/// 一侧的价位表，顺手缓存最优价（被删掉时才整表重算）。
+/// 一侧的价位表，顺手缓存最优价：只有删掉的正是最优价那一档时才整表重算，别的增删都是 O(1)。
 struct BookSideLevels: Sendable {
   let isBid: Bool
   private(set) var levels: [Double: Double] = [:]
@@ -127,6 +127,11 @@ struct BookSideLevels: Sendable {
 
   mutating func removeAll() { levels.removeAll(keepingCapacity: true); best = nil; bestStale = false }
 
+  /// 一批不是最优价的价位整批删掉（裁远处用）。最优价不在里面，缓存不用动。
+  mutating func remove(_ prices: [Double]) {
+    for price in prices { levels.removeValue(forKey: price) }
+  }
+
   mutating func bestPrice() -> Double? {
     if bestStale {
       best = isBid ? levels.keys.max() : levels.keys.min()
@@ -149,6 +154,14 @@ public struct LocalBook: Sendable {
   public private(set) var lastError: BookError?
   var bids = BookSideLevels(isBid: true)
   var asks = BookSideLevels(isBid: false)
+  /// 只留中间价两侧这么远（bps）以内的价位；nil 不裁（原样照搬原项目时的行为）。
+  ///
+  /// 审查第 36 项：增量式的簿随增量一直长，有的交易所首帧就下发整本簿（BTC 现货数万档），而订单流只看
+  /// 中间价 ±10% 以内；不裁的话表越长越大，每 500 ms 的评估和最优价重算都要扫整张表。
+  /// 主力订单流取扫描半径的两倍：现价走出一倍半径之前，扫描窗里的价位都还在。
+  public var retainBps: Double?
+  /// 上一次裁剪时算出来的保留区间（含两侧最优价）。增量里落在区间外的新价位不收，删单照删。
+  private var retained: (floor: Double, ceiling: Double)?
 
   public init(sequenceModel: DepthSequenceModel, connection: Int = 0) {
     self.sequenceModel = sequenceModel
@@ -175,10 +188,12 @@ public struct LocalBook: Sendable {
     }
     coverage = Self.coverage(of: snapshot)
     bids.removeAll(); asks.removeAll()
+    retained = nil
     Self.write(snapshot.bids, into: &bids)
     Self.write(snapshot.asks, into: &asks)
     sourceEventTimeMs = snapshot.eventTimeMs
     try validateNotCrossed()
+    trimFarLevels()
 
     let L = snapshot.lastUpdateID
     let firstIndex: Int? = switch sequenceModel {
@@ -270,6 +285,7 @@ public struct LocalBook: Sendable {
     quality = .ready
     lastError = nil
     try validateNotCrossed()
+    trimFarLevels()
   }
 
   public mutating func beginResync(connection newConnection: Int) {
@@ -279,6 +295,7 @@ public struct LocalBook: Sendable {
     quality = .resyncing
     lastUpdateID = nil
     bids.removeAll(); asks.removeAll()
+    retained = nil
     coverage = BookCoverage()
     sourceEventTimeMs = nil
   }
@@ -294,6 +311,7 @@ public struct LocalBook: Sendable {
     quality = .gapped
     lastUpdateID = nil
     bids.removeAll(); asks.removeAll()
+    retained = nil
     coverage = BookCoverage()
     sourceEventTimeMs = nil
     lastError = error
@@ -327,15 +345,24 @@ public struct LocalBook: Sendable {
   }
 
   /// 中间价两侧 `bps` 以内的每一档，逐档回调、不排序（主力订单流每 500 ms 走一遍，省掉排序）。
-  /// 返回中间价；任一侧为空、`bps` 非法时不回调、返回 nil。
+  /// 返回中间价；任一侧为空、`bps` 非法时不回调、返回 nil。设了 `retainBps` 时顺手把保留区间以外的价位裁掉
+  /// （同一遍扫描里记下、扫完再删），保留区间也跟着这一拍的中间价挪。
   @discardableResult
   public mutating func forEachLevel(withinBps bps: Double, _ body: (BookSide, Double, Double) -> Void) -> Double? {
     guard bps.isFinite, bps > 0, let bestBid = bids.bestPrice(), let bestAsk = asks.bestPrice() else { return nil }
     let mid = (bestBid + bestAsk) / 2
     let fraction = bps / 10_000
     let floor = mid * (1 - fraction), ceiling = mid * (1 + fraction)
-    for (price, quantity) in bids.levels where price >= floor { body(.bid, price, quantity) }
-    for (price, quantity) in asks.levels where price <= ceiling { body(.ask, price, quantity) }
+    let keep = retainedBand(mid: mid, bestBid: bestBid, bestAsk: bestAsk)
+    var farBids: [Double] = [], farAsks: [Double] = []
+    for (price, quantity) in bids.levels {
+      if price >= floor { body(.bid, price, quantity) } else if let keep, price < keep.floor { farBids.append(price) }
+    }
+    for (price, quantity) in asks.levels {
+      if price <= ceiling { body(.ask, price, quantity) } else if let keep, price > keep.ceiling { farAsks.append(price) }
+    }
+    bids.remove(farBids); asks.remove(farAsks)
+    retained = keep
     return mid
   }
 
@@ -352,15 +379,34 @@ public struct LocalBook: Sendable {
   }
 
   private mutating func applyLevels(_ delta: BookDelta) {
-    Self.write(delta.bids, into: &bids)
-    Self.write(delta.asks, into: &asks)
+    Self.write(delta.bids, into: &bids, within: retained)
+    Self.write(delta.asks, into: &asks, within: retained)
     sourceEventTimeMs = delta.eventTimeMs
   }
 
-  private static func write(_ levels: [BookLevel], into side: inout BookSideLevels) {
+  /// `within` 给了时，区间以外的新价位不收（删单 quantity == 0 照删）。
+  private static func write(_ levels: [BookLevel], into side: inout BookSideLevels,
+                            within band: (floor: Double, ceiling: Double)? = nil) {
     for level in levels where level.price.isFinite && level.price > 0 && level.quantity.isFinite && level.quantity >= 0 {
+      if let band, level.quantity > 0, level.price < band.floor || level.price > band.ceiling { continue }
       side.set(level.price, level.quantity)
     }
+  }
+
+  /// 按这一刻的中间价算保留区间；两侧最优价永远在区间里（价差大得离谱时也不裁掉最优价）。
+  private func retainedBand(mid: Double, bestBid: Double, bestAsk: Double) -> (floor: Double, ceiling: Double)? {
+    guard let bps = retainBps, bps.isFinite, bps > 0 else { return nil }
+    let fraction = bps / 10_000
+    return (min(mid * (1 - fraction), bestBid), max(mid * (1 + fraction), bestAsk))
+  }
+
+  /// 整本快照写进来之后裁一次远处（首帧整本下发的那种）。
+  private mutating func trimFarLevels() {
+    guard retainBps != nil, let bestBid = bids.bestPrice(), let bestAsk = asks.bestPrice(),
+          let keep = retainedBand(mid: (bestBid + bestAsk) / 2, bestBid: bestBid, bestAsk: bestAsk) else { return }
+    bids.remove(bids.levels.keys.filter { $0 < keep.floor })
+    asks.remove(asks.levels.keys.filter { $0 > keep.ceiling })
+    retained = keep
   }
 
   private mutating func validateNotCrossed() throws(BookError) {

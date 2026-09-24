@@ -18,7 +18,11 @@ public struct VenueBook: Sendable {
   public init(venue: OrderFlowVenue) {
     self.venue = venue
     self.book = LocalBook(sequenceModel: venue.sequenceModel)
+    book.retainBps = Self.retainBps
   }
+
+  /// 本地簿只留中间价两侧扫描半径两倍以内的价位（审查第 36 项）。
+  public static let retainBps = 2 * OrderFlowDefaults.scanRadiusBps
 
   var snapshotInBand: Bool { venue.snapshotInBand }
   public var isReady: Bool { book.quality == .ready }
