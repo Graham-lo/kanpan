@@ -297,6 +297,7 @@ public struct ReviewRecordView: View {
             Section("当时那张图") {
               Image(uiImage: shot).resizable().scaledToFit()
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityIdentifier("review.detail.shot")
                 .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
             }.listRowBackground(t.raised)
           }
