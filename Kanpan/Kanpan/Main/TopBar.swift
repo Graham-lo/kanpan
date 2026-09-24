@@ -22,8 +22,10 @@ import SwiftUI
 /// 2026-09-24（审查 U6）它的记号从借来的「指标」折线换成专属的 `ReviewGlyph`（一本带书签的
 /// 复盘本）。这颗只负责**进复盘本**；「记一笔」只留两处：图表设置里的那一行、复盘本右上角的「+」。
 ///
-/// 字号、间距、图标都按原型 `style.css` 的 `.top` 那一段抄，别自己发挥——
+/// 字号、间距、图标一律取 `DesignTokens` 的令牌（UI 审查 2026-09-24 §4.3 #4–#12），别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
+/// 层级：品种名 16 semibold（`TypeScale.heading`，不用 bold——它不该比 22 的价格更「黑」）
+/// > 计价币 12 regular 次墨色 > 「永续」角标 11。
 struct TopBar: View {
   @State private var iconTapCount = 0
   var theme: PanelTheme
@@ -45,31 +47,31 @@ struct TopBar: View {
   private var quote: String { SymbolInfo.placeholder(symbol: symbol).quote }
 
   var body: some View {
-    HStack(spacing: 9) {
+    HStack(spacing: Space.s) {
       if let onBack {
         backButton(onBack)
       }
-      HStack(spacing: 9) {
-        CoinBadge(base: base, size: 29)
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
+      HStack(spacing: Space.s) {
+        CoinBadge(base: base, size: ControlMetrics.badge)
+        HStack(alignment: .firstTextBaseline, spacing: Space.xxs) {
           Text(base)
-            .font(.scaled(15.5, .bold))
+            .font(TypeScale.heading)
             .foregroundStyle(theme.ink)
           if !quote.isEmpty {
             Text("/" + quote)
-              .font(.scaled(12, .medium))
+              .font(TypeScale.caption)
               .foregroundStyle(theme.ink3)
           }
           // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
           // 「点我展开」的记号，比没有记号更糟。
           Text(InstrumentID(symbol).productLabel)
-            // 10pt 是界面上文字的下限（9.5 那一档小到得凑近看）；纯符号不在此列。
-            .font(.scaled(10, .medium))
+            // 11pt 是 HIG 的文字下限（原来 10）；纯符号不在此列。
+            .font(TypeScale.caption2Emph)
             .foregroundStyle(theme.ink3)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1.5)
-            .background(theme.raised2, in: RoundedRectangle(cornerRadius: 4))
-            .padding(.leading, 3)
+            .padding(.horizontal, Space.xs)
+            .padding(.vertical, Space.xxs)
+            .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.xs))
+            .padding(.leading, Space.xs)
         }
         .lineLimit(1)
       }
@@ -79,24 +81,23 @@ struct TopBar: View {
 
       Spacer(minLength: 0)
 
-      // 右上角这两颗单独成一组，间距 14 不是 9。
+      // 右上角这两颗单独成一组，间距 12 不是 8。
       //
-      // 托底还是 30pt（用户定过的尺度，一点没动），命中区撑到 44×44（见 `iconButton`）。
-      // 两颗之间的**步距**必须 ≥44 才不会让两块命中区叠在一起——叠上了就会出现
-      // 「明明点的是搜索，开的是复盘」这种谁也说不清的一下。30 + 14 = 44，正好首尾相接：
-      // 缝里没有点不着的死区，也没有归属不清的重叠带。多出来的 5pt 从 `Spacer` 里出，
-      // 左边的品种名一个点都没挪。
-      HStack(spacing: 14) {
+      // 托底 32pt（`ControlMetrics.iconDisc`，UI 审查 2026-09-24 从 30 调上来），命中区撑到
+      // 44×44（见 `iconButton`）。两颗之间的**步距**必须 ≥44 才不会让两块命中区叠在一起——
+      // 叠上了就会出现「明明点的是搜索，开的是复盘」这种谁也说不清的一下。32 + 12 = 44，
+      // 正好首尾相接：缝里没有点不着的死区，也没有归属不清的重叠带。
+      HStack(spacing: Space.m) {
         if let onReview {
           iconButton(ReviewGlyph(theme: theme), label: "复盘", action: onReview)
             .accessibilityIdentifier("top.review")
             .overlay(alignment: .topTrailing) {
               if reviewCount > 0 {
                 Text("\(min(reviewCount, 99))")
-                  // 角标里也是字，一样守 10pt 这个下限。
-                  .font(.scaled(10, .semibold))
+                  // 角标里也是字，一样守 11pt 这个下限。
+                  .font(TypeScale.caption2Emph)
                   .foregroundStyle(theme.badgeInk)
-                  .padding(.horizontal, 4).padding(.vertical, 1.5)
+                  .padding(.horizontal, Space.xs).padding(.vertical, Space.xxs)
                   .background(theme.amber, in: Capsule())
                   .offset(x: 5, y: -3)
                   .allowsHitTesting(false)
@@ -104,34 +105,37 @@ struct TopBar: View {
             }
         }
 
-        iconButton(VectorIcon.search(15), label: "搜索品种", action: onSearch)
+        iconButton(VectorIcon.search(16), label: "搜索品种", action: onSearch)
           .accessibilityIdentifier("top.search")
       }
     }
   }
 
-  /// 最左边那颗返回。和右上角两颗圆按钮同一副托底（30pt `raised` 圆 + 二级墨色），
-  /// 箭头照板块页 `SectorBackButton` 的 15pt semibold —— 整个 app 的返回只有一种长相。
+  /// 最左边那颗返回。和右上角两颗圆按钮同一副托底（32pt `raised` 圆 + 二级墨色），
+  /// 箭头 16pt semibold（UI 审查 2026-09-24 §4.3 #12）。
   private func backButton(_ action: @escaping () -> Void) -> some View {
     Button {
       iconTapCount += 1
       action()
     } label: {
       Image(systemName: "chevron.left")
-        .font(.system(size: 15, weight: .semibold))
+        .font(.system(size: 16, weight: .semibold))
         .foregroundStyle(theme.ink2)
-        .frame(width: 30, height: 30)
+        .frame(width: ControlMetrics.iconDisc, height: ControlMetrics.iconDisc)
         .background(theme.raised, in: Circle())
-        .frame(width: 44, height: 44)
+        .frame(width: Hit.min, height: Hit.min)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .padding(-7)
+    .padding(Self.hitOverhang)
     .accessibilityLabel("返回")
     .accessibilityIdentifier("top.back")
   }
 
-  /// 右上角的圆按钮：30pt 的托底 + 15pt 的线性图标（用户定过的尺度）。
+  /// 命中区 44 比托底 32 多出来的那一圈，用负边距从版面里收回去。
+  private static let hitOverhang = -(Hit.min - ControlMetrics.iconDisc) / 2
+
+  /// 右上角的圆按钮：32pt 的托底 + 16pt 的线性图标。
   /// 图标用二级墨色配一层中性托底，不要用强调色填满——它旁边就是价格，
   /// 填满会把视线从价格上抢走。
   private func iconButton<Icon: View>(
@@ -143,19 +147,19 @@ struct TopBar: View {
     } label: {
       icon
         .foregroundStyle(theme.ink2)
-        .frame(width: 30, height: 30)
+        .frame(width: ControlMetrics.iconDisc, height: ControlMetrics.iconDisc)
         .background(theme.raised, in: Circle())
-        // 画出来的还是 30pt，手指够得着的是 44×44。
+        // 画出来的是 32pt，手指够得着的是 44×44。
         //
         // 放大只能写在 `label` 里面：`Button` 认的是标签自己的 `contentShape`，
-        // 套在按钮外面的 `frame` 它一点都不认。外面那句 `-7` 再把**版面**收回 30×30，
-        // 顶栏一个点都没变高——多出来的那一圈竖着落在顶栏与价格行之间那 9pt 的空隙里，
+        // 套在按钮外面的 `frame` 它一点都不认。外面那句 `hitOverhang`（-6）再把**版面**收回 32×32，
+        // 顶栏一个点都没变高——多出来的那一圈竖着落在顶栏与价格行之间那 8pt 的空隙里，
         // 够不到价格行上那个横滑换品种的手势（`MainScreen.header`）。
-        .frame(width: 44, height: 44)
+        .frame(width: Hit.min, height: Hit.min)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .padding(-7)
+    .padding(Self.hitOverhang)
     .accessibilityLabel(label)
     // 点击计数只给 UI 用例读，**只在 DEBUG 构建里挂上去**（审查 C-02）：
     // 正式包的读屏不该因为一个环境变量多念一串数字。
@@ -174,11 +178,12 @@ struct TopBar: View {
 
 /// 行情页价格行：左侧价格与涨跌小字，右侧两列三行数据。
 /// 六格始终在价格右侧；字号跟随系统，但密集数据行有独立封顶。
+///
+/// 字号全取 `TypeScale`（UI 审查 2026-09-24 §4.3 #13–#21），五档都在 HIG 阶梯上：
+/// 最新价 22 medium（`.title2`）> 涨跌行 13 medium（`.footnote`）> 六格的值 12 medium
+/// 等宽数字（`.caption`）> 六格标签 11 regular 次墨色（`.caption2`）。原来涨跌行和六格的值
+/// 都是 13 semibold，右边六个墨色粗数压过了浅色的价格，眼睛先落到右边。
 struct PriceRow: View {
-  @ScaledMetric(relativeTo: .body) private var priceSize: CGFloat = 22
-  @ScaledMetric(relativeTo: .body) private var changeSize: CGFloat = 13
-  @ScaledMetric(relativeTo: .body) private var labelSize: CGFloat = 12
-  @ScaledMetric(relativeTo: .body) private var valueSize: CGFloat = 13
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var theme: PanelTheme
   /// 这口价属于哪只：完整品种键（`venue/market/symbol`，即 `MarketModel.symbol`）。
@@ -220,9 +225,9 @@ struct PriceRow: View {
 
   var body: some View {
     HStack(alignment: .center, spacing: 0) {
-      VStack(alignment: .leading, spacing: 3) {
+      VStack(alignment: .leading, spacing: Space.xxs) {
         Text(lastText)
-          .font(.system(size: priceSize, weight: .medium))
+          .font(TypeScale.price)
           .monospacedDigit()
           .foregroundStyle(lastPrice == nil || stale ? theme.ink3 : tint)
           // 跳价时逐位滚过去（P2.8），只动变了的那几位；「减少动效」下直接换字。
@@ -235,14 +240,14 @@ struct PriceRow: View {
           .transition(.identity)
           .accessibilityIdentifier("top.lastPrice")
         Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
-          .font(.system(size: changeSize, weight: .semibold))
+          .font(TypeScale.footnoteEmph)
           .monospacedDigit()
           .foregroundStyle(stale || ticker?.priceChange == nil || pct == nil ? theme.ink3 : tint)
           .accessibilityIdentifier("top.changePercent")
       }
       .lineLimit(1)
       .fixedSize(horizontal: true, vertical: false)
-      Spacer(minLength: 8)
+      Spacer(minLength: Space.l)
       stats
     }
     // 换品种这一下整行不带任何动画（哪怕外面的事务带着）：旧那只的价当场拿掉，
@@ -283,8 +288,9 @@ struct PriceRow: View {
   }
 
   /// 每列按最宽的实值分配；间距固定，不缩字、不截字、不换行。
+  /// 列距 16、标签↔值 8、行距 2：三行总高约 47pt（原来 53），不向图表借高度。
   private var stats: some View {
-    HStack(alignment: .top, spacing: 14) {
+    HStack(alignment: .top, spacing: Space.l) {
       statColumn {
         statRow("仓", openInterestText, id: "top.openInterest")
         statRow("市值", marketCapText, id: "top.marketCap")
@@ -303,7 +309,7 @@ struct PriceRow: View {
   }
 
   private func statColumn<Rows: View>(@ViewBuilder _ rows: () -> Rows) -> some View {
-    Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 3) { rows() }
+    Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xxs) { rows() }
   }
 
   private func statRow(_ label: String, _ value: String?, id: String,
@@ -339,7 +345,7 @@ struct PriceRow: View {
 
   private func statLabel(_ text: String) -> some View {
     Text(text)
-      .font(.system(size: labelSize))
+      .font(TypeScale.caption2)
       .foregroundStyle(theme.ink3)
       .gridColumnAlignment(.leading)
   }
@@ -347,7 +353,7 @@ struct PriceRow: View {
   private func statValue(_ text: String, missing: Bool, id: String,
                          tint: Color? = nil) -> some View {
     Text(text)
-      .font(.system(size: valueSize, weight: .semibold))
+      .font(TypeScale.captionEmph)
       .monospacedDigit()
       .foregroundStyle(missing || stale ? theme.ink3 : (tint ?? theme.ink))
       .gridColumnAlignment(.trailing)

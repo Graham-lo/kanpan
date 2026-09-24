@@ -56,12 +56,14 @@ final class MainScreenUITests: KanpanUICase {
       shot.name = "header-\(symbol)"; shot.lifetime = .keepAlways; add(shot)
       print("HEADER \(symbol) price=\(p) stats=\(s) intervalY=\(y)")
       XCTAssertGreaterThanOrEqual(s.minX, p.maxX, "\(symbol) 六格掉到价格下面")
-      XCTAssertGreaterThanOrEqual(s.minX, change.frame.maxX + 7.5, "\(symbol) 涨跌行挤进六格")
-      XCTAssertGreaterThanOrEqual(p.minX, 11.5, "\(symbol) 价格超出左侧留白")
+      // 页面外边距 `Inset.page`（宽 ≥ 428 为 20，否则 16）、价格列与六格之间至少 16（UI 审查 2026-09-24）。
+      let inset: CGFloat = app.windows.firstMatch.frame.width >= 428 ? 20 : 16
+      XCTAssertGreaterThanOrEqual(s.minX, change.frame.maxX + 15.5, "\(symbol) 涨跌行挤进六格")
+      XCTAssertGreaterThanOrEqual(p.minX, inset - 0.5, "\(symbol) 价格超出左侧留白")
       XCTAssertTrue(change.label.contains("  "), "\(symbol) 涨跌额或涨跌幅缺失")
       XCTAssertGreaterThanOrEqual(change.frame.minY, p.maxY, "\(symbol) 涨跌行没在价格下面")
       XCTAssertEqual(change.frame.minX, p.minX, accuracy: 0.5, "\(symbol) 涨跌行没有左对齐")
-      XCTAssertLessThanOrEqual(s.maxX, app.windows.firstMatch.frame.maxX - 12 + 0.5,
+      XCTAssertLessThanOrEqual(s.maxX, app.windows.firstMatch.frame.maxX - inset + 0.5,
                                "\(symbol) 六格超出屏幕右缘")
       if let statsHeight { XCTAssertEqual(s.height, statsHeight, accuracy: 0.5) }
       if let intervalY { XCTAssertEqual(y, intervalY, accuracy: 0.5, "\(symbol) 头部挤高了周期条") }

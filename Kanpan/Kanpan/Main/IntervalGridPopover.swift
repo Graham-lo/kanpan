@@ -11,6 +11,9 @@ import SwiftUI
 /// 「挑一档换掉」：六个已钉的格子描上一圈虚线，点哪一格就换掉哪一格；点别处（别的格、
 /// 同一颗图钉、网格空白处）就取消。整个过程没有一句解释文案——虚线本身就是那句话。
 struct IntervalGridPopover: View {
+  /// 图钉命中区比记号多出来的那一圈：往格子外（上、右）8，往格子里（左、下）4。
+  private static let pinReach = EdgeInsets(top: Space.s, leading: Space.xs, bottom: Space.xs, trailing: Space.s)
+
   var theme: PanelTheme
   var quick: [Interval]
   var current: Interval
@@ -27,16 +30,18 @@ struct IntervalGridPopover: View {
   private var pinFull: Bool { quick.count >= Prefs.maxQuick }
 
   var body: some View {
-    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5),
-              spacing: 8) {
+    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.s), count: 5),
+              spacing: Space.s) {
       ForEach(Interval.allCases, id: \.self) { cell($0) }
     }
     // 五列 `.flexible()` 会把整行宽度平分：iPad 上一格能摊到两百来点宽、还是 44pt 高，
     // 一排横躺的长条。封一个和手机相当的上限，网格照旧从左边起排。
     .frame(maxWidth: 520, alignment: .leading)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 10)
+    // 左缘和周期条同一根线（`Inset.page`），上下 12（UI 审查 2026-09-24 §4.3 #23）。
+    .pageHorizontalInset()
+    .padding(.vertical, Space.m)
+    .dynamicTypeSize(...MarketChrome.typeCap)
     // 网格空白处也算「别处」：点了就取消换档。
     .contentShape(Rectangle())
     .onTapGesture { cancelReplace() }
@@ -67,7 +72,7 @@ struct IntervalGridPopover: View {
         onPick(iv)
       } label: {
         Text(iv.shortLabel)
-          .font(.system(size: 12.5, weight: on ? .semibold : .medium))
+          .font(on ? TypeScale.controlOn : TypeScale.control)
           .foregroundStyle(on || chosen ? theme.amber : theme.ink2)
           .lineLimit(1)
           .minimumScaleFactor(0.85)
@@ -75,16 +80,16 @@ struct IntervalGridPopover: View {
           .frame(height: 44)
           // 当前那一格：10% 淡底 + 强调色字（和周期条上当前档一个规矩）。
           .background(on ? AnyShapeStyle(theme.amberSoft) : AnyShapeStyle(theme.raised2),
-                      in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                      in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
           .overlay {
             // 可以被换掉的六格描虚线；正要钉进来的那一档描实线。
             if target || chosen {
-              RoundedRectangle(cornerRadius: 10, style: .continuous)
+              RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
                 .strokeBorder(theme.amber, style: StrokeStyle(
                   lineWidth: 1.2, dash: target ? [4, 3] : []))
             }
           }
-          .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+          .contentShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
       }
       .buttonStyle(.plain)
       .accessibilityIdentifier("period.row.\(iv.rawValue)")
@@ -92,6 +97,10 @@ struct IntervalGridPopover: View {
       .accessibilityAddTraits(on ? [.isSelected] : [])
 
       // 图钉压在格子右上角：钉住的实心，没钉的是个空壳。点它只钉不切档。
+      //
+      // 命中区（UI 审查 2026-09-24 §4.3 #26）：记号本身仍是 24×20，命中区往**格子外**的缝里长——
+      // 上、右各 8（正好吃满格间距 / 网格留白，碰不到邻格），往格子里只让 4，免得压到周期字。
+      // 合计 36×32。44×44 做不到：再往里长就盖住「30m」这类字的右半边，点字会变成点图钉。
       Button {
         if replacing != nil {
           // 同一颗图钉再点一次、或者点了别的图钉：都算取消。
@@ -107,14 +116,20 @@ struct IntervalGridPopover: View {
           .font(.system(size: 9.5, weight: .medium))
           .foregroundStyle(pinned || chosen ? theme.amber : theme.ink3)
           .frame(width: 24, height: 20)
+          .padding(Self.pinReach)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .padding(Self.pinReach.negated)
       .accessibilityIdentifier("period.pin.\(iv.rawValue)")
       .accessibilityLabel(pinned ? "从常用行移除 \(iv.display)" : "加进常用行 \(iv.display)")
       .accessibilityValue(chosen ? "正在挑一档换掉" : "")
     }
   }
+}
+
+private extension EdgeInsets {
+  var negated: EdgeInsets { EdgeInsets(top: -top, leading: -leading, bottom: -bottom, trailing: -trailing) }
 }
 
 /// 竖屏「更多」那一层：从周期条下沿往下展开的网格 + 盖住图其余部分的遮罩。

@@ -37,6 +37,10 @@ import UIKit
 /// 右端原来还有「画线」「记一笔」，用户的话是「这个功能不是经常用到啊」「记和画线都
 /// 放到图表栏目里」，两个都收进图表设置那一页（见 `ChartPanel`）。
 struct IntervalBar: View {
+  /// 这一行的字：13（`TypeScale.control` / `controlOn`，`.footnote` 曲线，UI 审查 2026-09-24 §4.3 #24）。
+  /// 当前档那层底要按字宽画，得拿到**此刻真的排出来**的字号，所以字号自己在这儿按同一条曲线量一份
+  /// （`textWidth` 用的就是它），不走 `.font(TypeScale.control)`。封顶跟头部一起（`MarketChrome.typeCap`）。
+  @ScaledMetric(relativeTo: .footnote) private var textSize: CGFloat = 13
   var theme: PanelTheme
   var quick: [Interval]
   var current: Interval
@@ -81,7 +85,7 @@ struct IntervalBar: View {
 
   var body: some View {
     // 缝全交给格子自己（等宽 + 文字居中），所以这一层 `spacing` 是 0：行尾那几件
-      // 各自带着自己的留白——「最新」自带 6pt 的前缝，分隔线两侧各 8pt，
+      // 各自带着自己的留白——「最新」自带 8pt 的前缝，分隔线两侧各 8pt，
       // 「更多」和图表设置本来就有 44pt 的命中区兜着。
     HStack(spacing: 0) {
       chips
@@ -102,10 +106,10 @@ struct IntervalBar: View {
         .accessibilityIdentifier("interval.chart")
         .accessibilityLabel("图表设置")
     }
-    // 两头 12pt：和头部内容的左缘对齐（2026-09-21 从 8 放回来的——影子药丸删掉之后
-    // 这一行不再需要从边距里抠那几个点）。
-    .padding(.horizontal, 12)
+    // 两头 `Inset.page`（16 Pro 16 / 17 Pro Max 20）：和头部内容的左缘对齐（UI 审查 2026-09-24 §4.3 #23）。
+    .pageHorizontalInset()
     .frame(height: 44)
+    .dynamicTypeSize(...MarketChrome.typeCap)
     // 「最新 / 返回刚才」进出时周期区跟着重新铺满。这一句兜住 `MainScreen` 那头
     // 没有包 `withAnimation` 的情况：没有它，六档会「啪」地跳一下位置。
     .animation(.easeOut(duration: 0.18), value: atLatest)
@@ -126,7 +130,7 @@ struct IntervalBar: View {
     Rectangle()
       .fill(theme.line)
       .frame(width: 1, height: 14)
-      .padding(.horizontal, 8)
+      .padding(.horizontal, Space.s)
       .accessibilityHidden(true)
   }
 
@@ -171,10 +175,10 @@ struct IntervalBar: View {
   private func actionPill(_ title: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
       Text(title)
-        .font(.system(size: 12.5, weight: .semibold))
+        .font(.system(size: textSize, weight: .semibold))
         .foregroundStyle(theme.ink2)
-        .padding(.horizontal, 9)
-        .frame(height: 28)
+        .padding(.horizontal, Space.s)
+        .frame(height: ControlMetrics.pillHeight)
         .background(theme.raised2, in: Capsule())
         // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt。药丸自己还是 28pt 高。
         .frame(minWidth: 44, minHeight: 44)
@@ -183,8 +187,8 @@ struct IntervalBar: View {
     .buttonStyle(.plain)
     // 版面高度收回 28pt：多出来的那两圈只是手指的范围，不许把条顶高。
     .padding(.vertical, -8)
-    // 它和末档之间的缝。不在场时整个视图都不存在，这 6pt 也跟着没有。
-    .padding(.leading, 6)
+    // 它和末档之间的缝。不在场时整个视图都不存在，这 8pt 也跟着没有。
+    .padding(.leading, Space.s)
     .fixedSize(horizontal: true, vertical: false)
   }
 
@@ -268,7 +272,7 @@ struct IntervalBar: View {
   @ViewBuilder private func chipLabel(_ iv: Interval) -> some View {
     let on = iv == current
     Text(iv.shortLabel)
-      .font(.system(size: 12.5, weight: on ? .semibold : .medium))
+      .font(.system(size: textSize, weight: on ? .semibold : .medium))
       .foregroundStyle(on ? theme.amber : theme.ink2)
       // 字先 `fixedSize` 钉死自己的自然宽度，再谈铺满。铺满靠每格 `maxWidth`，
       // 横排是**均分**，「15m」「30m」这种四个字符的档分到的那一份可能比它自己还窄，
@@ -278,7 +282,7 @@ struct IntervalBar: View {
       // 有富余的时候每格都摊到均分的那一份（下面 `maxWidth`），画出来多宽跟它无关。
       // 2026-09-20 从 6 收到 4，2026-09-21 又收到 2：六档满钉是上限工况，
       // SE（375pt）上留给这一排的只有一百七十几个点，按 4 算出来的自然宽会顶出去。
-      .padding(.horizontal, 2)
+      .padding(.horizontal, Space.xxs)
       .frame(maxWidth: Self.maxChipWidth)
       .frame(height: 28)
       .background(alignment: .center) { mark(iv, on: on) }
@@ -310,7 +314,7 @@ struct IntervalBar: View {
 
   /// 那层底画多宽：贴着文字（每边 `markPad`），但不许伸到邻档的字底下（格子宽 - `markGap`）。
   private func markWidth(_ iv: Interval) -> CGFloat {
-    let text = Self.textWidth(iv.shortLabel)
+    let text = Self.textWidth(iv.shortLabel, size: textSize)
     let hug = text + Self.markPad * 2
     let cell = cellWidth
     guard cell > 0 else { return hug }              // 还没量到这一排多宽，先按贴着文字画
@@ -321,8 +325,10 @@ struct IntervalBar: View {
   ///
   /// 底不参与布局，所以拿不到「这几个字被排成了多宽」，只能按同一支字体自己算一遍。
   /// 一律按 `.semibold` 量（当前档就是这个字重），差的那零点几个点落在 8pt 的留白里。
-  @MainActor private static func textWidth(_ text: String) -> CGFloat {
-    let font = UIFont.systemFont(ofSize: 12.5, weight: .semibold)
+  /// 字号是 `textSize`：13 经 `@ScaledMetric(relativeTo: .footnote)` 缩放（与 `UIFontMetrics(.footnote)`
+  /// 同一条曲线），并且吃得到 `MarketChrome.typeCap` 的封顶——和排出来的字一模一样。
+  @MainActor private static func textWidth(_ text: String, size: CGFloat) -> CGFloat {
+    let font = UIFont.systemFont(ofSize: size, weight: .semibold)
     return ceil((text as NSString).size(withAttributes: [.font: font]).width)
   }
 
@@ -340,7 +346,7 @@ struct IntervalBar: View {
   ) -> some View {
     tailButton(on: on, action: action) {
       HStack(spacing: 3) {
-        Text(title).font(.system(size: 12.5, weight: .semibold))
+        Text(title).font(.system(size: textSize, weight: .semibold))
         if chevron {
           VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(flipped ? 180 : 0))
         }
@@ -354,8 +360,8 @@ struct IntervalBar: View {
     Button(action: action) {
       label()
       .foregroundStyle(on ? theme.amber : theme.ink2)
-      .padding(.horizontal, 8)
-      .frame(height: 28)
+      .padding(.horizontal, Space.s)
+      .frame(height: ControlMetrics.pillHeight)
       .background { if on { Capsule().fill(theme.amberSoft) } }
       // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（图表设置那颗记号 15pt + 两边 8pt
       // 只有 31pt，差的从这儿补上）。这 44pt 顺带成了两个动作之间的留白。

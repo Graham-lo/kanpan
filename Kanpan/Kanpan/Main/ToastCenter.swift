@@ -134,7 +134,11 @@ private struct ToastStage: View {
       if let line = center.line, let theme = center.theme {
         Toast(theme: theme, text: line.text, actionTitle: line.actionTitle,
               undo: line.hasAction ? { center.runAction() } : nil)
-          .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { center.hitRect = $0 }
+          // 「撤销」的点区上下各撑出条外几点（字高 16 撑到 44，条本身约 36），命中矩形跟着放大，
+          // 不然那几点会被透传给底下的图。
+          .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+            center.hitRect = $0.insetBy(dx: 0, dy: -max(0, Toast.undoReach - Toast.vPad))
+          }
           .padding(.bottom, 92)
           .id(line.serial)
       }

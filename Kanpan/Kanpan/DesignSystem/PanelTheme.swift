@@ -119,7 +119,7 @@ struct PanelTheme: Sendable, Equatable {
 /// 调用处写 `.font(.scaled(13, .semibold))`、`.font(PanelFont.name)`，和原来一样读。
 ///
 /// 放大到哪一档为止不在这儿管：整个 app 在根上封顶 `.xxxLarge`（`KanpanApp`），
-/// 行情页头部那一行更低、封顶 `.large`（`MainHeaderView`）。
+/// 行情页头部那一行更低、封顶 `MarketChrome.typeCap`（`.large`，见 `MainHeaderView`）。
 struct ScaledFont: Equatable {
   var size: CGFloat
   var weight: Font.Weight = .regular

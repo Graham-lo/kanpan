@@ -194,9 +194,11 @@ private struct TabGlyph: View {
     .frame(width: TabBar.glyph, height: TabBar.glyph)
     // 先合成再压淡：不合成的话 `opacity` 会逐层往下压，两片叠在一起的地方会比别处深一档。
     .compositingGroup()
-    // 选中就是「亮着」，没选中整组压到 52%。不换颜色也不加底——记号是同一套材料的几个位置，
-    // 亮着的那个自己跳出来。
-    .opacity(on ? 1 : 0.52)
+    // 选中就是「亮着」，没选中整组压到 64%。不换颜色也不加底——记号是同一套材料的几个位置，
+    // 亮着的那个自己跳出来。52% 时未选中记号对页面底只有 2.0–2.9 : 1（UI 审查 2026-09-24 §3.2），
+    // 提到 64% 之后「亮 / 不亮」的差少了一截，由选中那颗放大 6% 补回来。
+    .opacity(on ? 1 : 0.64)
+    .scaleEffect(on ? 1.06 : 1)
     // 一层贴着的软影，让记号离页面的材料一点点。原型是 `drop-shadow(0 2px 5px #0000001f)`。
     .shadow(color: .black.opacity(theme.dark ? 0.26 : 0.12), radius: 2.5, y: 1)
   }
@@ -351,25 +353,37 @@ struct Toast: View {
   /// 右边那颗按钮。nil 就是一条普通提示，不画按钮。
   var undo: (() -> Void)?
 
+  /// 上下内边距 10（审查定案 16 / 10）：阶梯上没有 10，拿 8 + 2 拼。
+  static let vPad = Space.s + Space.xxs
+  /// 「撤销」点区比字多出来的那一圈：13pt 的字约 16 高，四边各 14 撑到 44。
+  static let undoReach = (Hit.min - 16) / 2
+
   var body: some View {
-    HStack(spacing: 10) {
+    HStack(spacing: Space.s) {
       Text(text)
       if let undo {
         // 中间点一个间隔点，别让文案和按钮糊成一句话。
         Text("·").foregroundStyle(theme.ink3)
-        Button(actionTitle, action: undo)
+        Button(action: undo) {
+          // 命中区 44（UI 审查 2026-09-24 §4.3 #31）：字本身只有十五六点高，点区四边各往外撑
+          // `Self.undoReach`，版面一个点不变。竖着撑出条外的那几点由 `ToastStage` 把命中矩形
+          // 同步放大（`ToastCenter.hitReach`），不然透传窗口会把它们放给底下的图。
+          Text(actionTitle)
+            .contentShape(Rectangle().inset(by: -Self.undoReach))
+        }
           .buttonStyle(.plain)
           .foregroundStyle(theme.amber)
           .accessibilityIdentifier(actionTitle == "撤销" ? "toast.undo" : "toast.action")
       }
     }
-      .font(.system(size: 12.5))
+      .font(TypeScale.footnote)
       .foregroundStyle(theme.ink)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 8)
+      .padding(.horizontal, Space.l)
+      .padding(.vertical, Self.vPad)
+      // 高约 36，原来写的是 r20 的矩形——圆角大过半高，本来就是胶囊，照实写成胶囊。
       .background(
-        RoundedRectangle(cornerRadius: 20).fill(theme.raised)
-          .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.line, lineWidth: 1)))
+        Capsule().fill(theme.raised)
+          .overlay(Capsule().stroke(theme.line, lineWidth: 1)))
       .shadow(color: .black.opacity(theme.dark ? 0.5 : 0.12), radius: 12, y: 4)
       .transition(.opacity)
   }

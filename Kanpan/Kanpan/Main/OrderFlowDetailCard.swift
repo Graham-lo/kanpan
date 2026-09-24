@@ -54,36 +54,40 @@ struct OrderFlowDetailCard: View {
       let now = Int64(context.date.timeIntervalSince1970 * 1000)
       let lines = OrderFlowCardText(order: order, base: base, decimals: decimals, timeZone: timeZone,
                                     nowMs: max(now, focus.asOfMs))
-      VStack(alignment: .leading, spacing: 4) {
-        HStack(spacing: 6) {
-          Text(lines.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink)
-          Spacer(minLength: 8)
-          Text(lines.status).font(.system(size: 11, weight: .semibold)).foregroundStyle(statusColor)
+      // 卡内两级（UI 审查 2026-09-24 §4.3 #30）：标题 13 semibold，其余一律 12——
+      // 状态 12 medium 状态色、正文 12 等宽 ink、标签 12 次墨色。
+      VStack(alignment: .leading, spacing: Space.xs) {
+        HStack(spacing: Space.s) {
+          Text(lines.title).font(TypeScale.controlOn).foregroundStyle(theme.ink)
+          Spacer(minLength: Space.s)
+          Text(lines.status).font(TypeScale.captionEmph).foregroundStyle(statusColor)
         }
-        HStack(spacing: 6) {
+        HStack(spacing: Space.s) {
           Text(lines.sideTitle).foregroundStyle(order.side == .bid ? theme.up : theme.down)
           Text(lines.headline).foregroundStyle(theme.ink)
         }
-        .font(.system(size: 11, weight: .medium).monospacedDigit())
-        Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 3) {
+        .font(TypeScale.captionEmph)
+        .monospacedDigit()
+        Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xs) {
           ForEach(lines.pairs.indices, id: \.self) { i in
             let pair = lines.pairs[i]
             GridRow {
               Text(pair.0.label).foregroundStyle(theme.ink3)
               Text(pair.0.value).foregroundStyle(theme.ink)
-              Text(pair.1.label).foregroundStyle(theme.ink3).padding(.leading, 6)
+              Text(pair.1.label).foregroundStyle(theme.ink3).padding(.leading, Space.s)
               Text(pair.1.value).foregroundStyle(theme.ink)
             }
           }
         }
-        .font(.system(size: 11).monospacedDigit())
+        .font(TypeScale.caption)
+        .monospacedDigit()
       }
       .lineLimit(1)
       .fixedSize()
-      .padding(.horizontal, 10)
-      .padding(.vertical, 8)
-      .background(theme.raised.opacity(0.96), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-      .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(theme.line, lineWidth: 1))
+      .padding(Inset.cardCompact)
+      .background(theme.raised.opacity(0.96), in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous).strokeBorder(theme.line, lineWidth: 1))
+      .dynamicTypeSize(...MarketChrome.typeCap)
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(lines.spoken)
       .accessibilityIdentifier("chart.orderFlowCard")

@@ -772,7 +772,7 @@ struct MainScreen: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.line, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.24), radius: 14, x: 2, y: 2)
-        .padding(.vertical, 6).padding(.leading, 6)
+        .padding(.vertical, Space.s).padding(.leading, Space.s)
         .transition(.move(edge: .leading).combined(with: .opacity))
     } else if draw.active, draw.picker {
       DrawingToolPicker(controller: draw, store: store, onClose: { draw.picker = false })
@@ -780,7 +780,7 @@ struct MainScreen: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.line, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.24), radius: 14, x: 2, y: 2)
-        .padding(.vertical, 6).padding(.leading, 6)
+        .padding(.vertical, Space.s).padding(.leading, Space.s)
         .transition(.move(edge: .leading).combined(with: .opacity))
         .environment(\.panelTheme, theme)
     }
@@ -801,9 +801,9 @@ struct MainScreen: View {
           // 只有画线工作台里那一行是按钮，见 `DrawingSymbolSwitcher` 顶上那段。
           // 换品种和挑工具都贴在左边，同时开会叠在一起——开一个就把另一个收了。
           onTapSymbol: draw.active ? { draw.picker = false; showDrawSwitcher.toggle() } : nil)
-          .padding(.horizontal, 8).padding(.vertical, 4)
-        CrosshairOHLCLabel(readout: crosshairReadout, context: crosshairContext,
-                           size: 10, color: theme.ink)
+          .padding(.horizontal, Space.m).padding(.vertical, Space.xs)
+        // 横屏读数原来 10pt，低于 HIG 下限 11（UI 审查 2026-09-24 §4.3 #34），用默认的 11。
+        CrosshairOHLCLabel(readout: crosshairReadout, context: crosshairContext, color: theme.ink)
         }
         // 选中一条线之后的 样式 / 锁定 / 复制 / 删除 排在**图外**这一条属性栏上（§2E2）。
         // 横屏的图就是画布，浮在上面的东西正好压着刚画的那一笔，也和「画布上不浮任何

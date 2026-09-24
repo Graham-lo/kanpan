@@ -201,7 +201,7 @@ struct MainHeaderView<Card: View>: View {
       let _ = FrameProbe.shared.countBody("MainHeaderView")
     #endif
     let readout = session.readout
-    VStack(spacing: 9) {
+    VStack(spacing: Space.s) {
       // 顶栏没有自选星了（用户 2026-09-18 定的）：加自选统一在搜索页和自选页的
       // 品种行上做，那儿看得见一整列，挑着加；顶栏这一颗紧贴品种名，只会误触。
       // 复盘从底栏挪到了这儿：底栏换成常驻标签栏之后那四格是分页，复盘按用户的话
@@ -257,16 +257,29 @@ struct MainHeaderView<Card: View>: View {
         onScan(dx < 0 ? .next : .previous)
       })
     }
-    .padding(.horizontal, 12)
-    .padding(.top, 6)
-    .padding(.bottom, 9)
+    // 左右 `Inset.page`（16 Pro 16 / 17 Pro Max 20），上下 8 / 8（UI 审查 2026-09-24 §4.3 #1–#3）。
+    // 周期条、十字线动作条、「更多」弹层用的是同一份边距，四样东西站在同一条竖线上。
+    .pageHorizontalInset()
+    .padding(.vertical, Space.s)
     .background(theme.app)
     // 头部整块（顶栏品种名、价格 + 六格、十字线读数、「要不要加提醒」那一句）只跟到
-    // 默认档 .large 为止，比全局的 .xxxLarge 低得多（P2.13，也满足 P0 D.13 的 .xLarge）：
-    // 390pt 上 10 位价格 + 六格要并排装下，而且头部多高、图表就少多高——
+    // `MarketChrome.typeCap` 为止，比全局的 .xxxLarge 低得多（P2.13 / P0 D.13）：
+    // 价格 + 六格要并排装下，而且头部多高、图表就少多高——
     // 辅助大字下六格照旧在价格右边、头部一个 pt 都不长；调小字号时照常跟着变小。
-    .dynamicTypeSize(...DynamicTypeSize.large)
+    .dynamicTypeSize(...MarketChrome.typeCap)
   }
+}
+
+/// 行情页顶上那几条常驻 chrome（头部、周期条、十字线动作条、「更多」弹层）共用的口径。
+enum MarketChrome {
+  /// 字号跟随系统到哪一档为止。
+  ///
+  /// 仍是 `.large`。09-22 在 390pt 的机器上实测 `.xLarge` 下价格 + 六格超宽 16pt；
+  /// 2026-09-24 兼容机型收到 16 Pro（402pt）/ 17 Pro Max（440pt）、字号换成令牌之后在 16 Pro 上
+  /// 重量了一次（`MainScreenUITests.testHeaderStatsAtLargestDynamicType` 临时开到 `.xLarge`）：
+  /// BTC、SNDK、MU 装得下（BTC 涨跌行到六格只剩 17.7pt），1000SATS 的价格八位小数 139pt 宽，
+  /// 整行超出约 30pt——价格左缘顶出屏幕 15pt、六格右缘顶出 15pt。所以不放宽。改档先重量。
+  static let typeCap: DynamicTypeSize = .large
 }
 
 /// K 线画布那一块（原 `MainScreen.chart`）。竖屏横屏共用一份。
@@ -399,12 +412,20 @@ struct ChartHistoryRetry: View {
   let action: () -> Void
 
   var body: some View {
-    Button(text, action: action).font(.caption).foregroundStyle(theme.ink2)
-      .padding(.horizontal, 12).padding(.vertical, 8)
-      .background(theme.raised, in: Capsule())
-      .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-      .padding(.top, 8)
+    // 胶囊画出来约 32pt 高，命中区撑到 44（UI 审查 2026-09-24 §4.3 #33）：放大写在 `label` 里，
+    // 外面再用负边距把版面收回来，画面一个点不变。
+    Button(action: action) {
+      Text(text).font(.caption).foregroundStyle(theme.ink2)
+        .padding(.horizontal, Space.m).padding(.vertical, Space.s)
+        .background(theme.raised, in: Capsule())
+        .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
+        .padding(.vertical, Space.s)
+        .hitTarget()
+    }
+    .buttonStyle(.plain)
+    .padding(.vertical, -Space.s)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .padding(.top, Space.s)
   }
 }
 
@@ -431,7 +452,7 @@ struct ReplayHeaderView: View {
   let fallbackDecimals: Int
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 5) {
+    VStack(alignment: .leading, spacing: Space.xs) {
       Text("重温 · " + InstrumentID(bridge.state?.series.symbol ?? "").display).font(.headline)
       // 时间跟着**这张图自己的时区档**走，和时间轴、十字线、选区标签同一口径（审查 B-08）。
       // `Text(Date, style:)` 认的是设备时区：图表切到「交易所」之后，这一行和轴上
@@ -445,14 +466,19 @@ struct ReplayHeaderView: View {
         // 小数位由品种自己说（审查 B-07）：原来按「有效数字 1–7 位」写，
         // 回放头部的开高低收和顶栏的最新价能是两种写法。
         let p = bridge.state?.decimals ?? fallbackDecimals
-        HStack(spacing: 10) {
-          Text("开 " + fmtPrice(open, decimals: p))
-          Text("高 " + fmtPrice(high, decimals: p))
-          Text("低 " + fmtPrice(low, decimals: p))
-          Text("收 " + fmtPrice(close, decimals: p))
-        }.font(.caption.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
+        // 原来一行排不下就整行缩到 65%（最坏 7.8pt，UI 审查 2026-09-24 §4.3 #34）。
+        // 现在不缩字：一行放得下就一行，放不下就折成两行（开高 / 低收）。
+        let o = Text("开 " + fmtPrice(open, decimals: p)), h = Text("高 " + fmtPrice(high, decimals: p))
+        let l = Text("低 " + fmtPrice(low, decimals: p)), c = Text("收 " + fmtPrice(close, decimals: p))
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: Space.s) { o; h; l; c }
+          VStack(alignment: .leading, spacing: Space.xxs) {
+            HStack(spacing: Space.s) { o; h }
+            HStack(spacing: Space.s) { l; c }
+          }
+        }.font(.caption.monospacedDigit()).lineLimit(1)
       }
-    }.padding(.horizontal).padding(.vertical, 8)
+    }.pageHorizontalInset().padding(.vertical, Space.s)
   }
 }
 

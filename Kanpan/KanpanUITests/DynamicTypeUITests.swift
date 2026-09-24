@@ -105,8 +105,10 @@ final class DynamicTypeUITests: KanpanUICase {
                         intervalY: app.buttons[Ids.intervalMore].frame.minY)
     shot(name)
     XCTAssertGreaterThanOrEqual(header.stats.minX, header.price.maxX, "\(name)：六格掉到价格下面")
-    XCTAssertGreaterThanOrEqual(header.stats.minX, header.change.maxX + 7.5, "\(name)：涨跌行挤进六格")
-    XCTAssertLessThanOrEqual(header.stats.maxX, windowFrame.maxX - 12 + 0.5, "\(name)：六格超出屏幕右缘")
+    // 页面外边距 `Inset.page`（宽 ≥ 428 为 20，否则 16）；价格列与六格之间至少 16（UI 审查 2026-09-24）。
+    let inset: CGFloat = windowFrame.width >= 428 ? 20 : 16
+    XCTAssertGreaterThanOrEqual(header.stats.minX, header.change.maxX + 15.5, "\(name)：涨跌行挤进六格")
+    XCTAssertLessThanOrEqual(header.stats.maxX, windowFrame.maxX - inset + 0.5, "\(name)：六格超出屏幕右缘")
     XCTAssertTrue(header.stats.minY < header.change.maxY && header.stats.maxY > header.price.minY,
                   "\(name)：六格和价格不在同一行")
     return header

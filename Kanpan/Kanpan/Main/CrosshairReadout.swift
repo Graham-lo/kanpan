@@ -139,7 +139,7 @@ struct CrosshairActionBar: View {
 
   var body: some View {
     if crosshairAlive(readout.crosshair, context), let c = readout.crosshair {
-      HStack(spacing: 6) {
+      HStack(spacing: Space.s) {
         chip("上一根", icon: VectorIcon.chevronLeft(10), id: "chart.crosshair.prev") { onStep(-1) }
         chip("下一根", trailingIcon: VectorIcon.chevronRight(10), id: "chart.crosshair.next") { onStep(1) }
         // 副图上的十字线读的是指标值，不是价——那条线画到主图上毫无意义，所以不给。
@@ -153,8 +153,10 @@ struct CrosshairActionBar: View {
       }
       .fixedSize(horizontal: true, vertical: false)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.horizontal, 12)
+      // 左缘和头部、周期条同一根线（`Inset.page`）；字号封顶也跟它们一起（UI 审查 2026-09-24 §4.3 #23/#24）。
+      .pageHorizontalInset()
       .frame(height: 44)
+      .dynamicTypeSize(...MarketChrome.typeCap)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("chart.crosshair.actions")
     }
@@ -173,12 +175,12 @@ struct CrosshairActionBar: View {
     Button(action: action) {
       HStack(spacing: 3) {
         if let icon { icon }
-        Text(title).font(.system(size: 12.5, weight: .semibold))
+        Text(title).font(TypeScale.controlOn)
         if let trailingIcon { trailingIcon }
       }
       .foregroundStyle(theme.ink2)
-      .padding(.horizontal, 9)
-      .frame(height: 28)
+      .padding(.horizontal, Space.s)
+      .frame(height: ControlMetrics.pillHeight)
       .background(theme.raised2, in: Capsule())
       .frame(minWidth: 44, minHeight: 44)
       .contentShape(Rectangle())
