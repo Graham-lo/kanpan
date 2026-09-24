@@ -1218,7 +1218,11 @@ struct MainScreen: View {
     // 记一笔的那一刻顺手截一张图附在这条记录上（§4.3），和「分享图片」同一支渲染器。
     // 画不出来就没有图：记录照记，详情里那一格不出现。
     review.captureShot = {
-      guard let state = reviewState(proxy.box?.chart.state), let size = proxy.box?.chart.bounds.size, size.width > 0 else { return nil }
+      // 记一笔时图表宿主挂的是复盘那只把手（`MainChartView`：`reviewChart.active ?
+      // reviewChart.proxy : proxy`），行情那只此刻没有盒子。以前这儿只问行情那只，
+      // 于是每一条记录都「画不出来」、详情里永远没有这张图（第 25 项端到端验收时发现）。
+      let box = (reviewChart.active ? reviewChart.proxy : proxy).box
+      guard let state = reviewState(box?.chart.state), let size = box?.chart.bounds.size, size.width > 0 else { return nil }
       return ChartSnapshotRenderer.png(state: state, size: size, head: chartShotHead, theme: theme)
     }
     // 回放倍速跟着人走：初值从偏好来，那颗按钮一改就写回去（R3-4）。
