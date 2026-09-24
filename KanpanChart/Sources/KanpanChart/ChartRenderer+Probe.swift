@@ -97,7 +97,7 @@ extension ChartRenderer {
         if h > hiP { hiP = h }
         if l < loP { loP = l }
       }
-      for arr in probeOverlayLines() where arr.count > lo {
+      for arr in overlayLines() where arr.count > lo {
         for i in lo...min(hi, arr.count - 1) where arr[i].isFinite {
           if arr[i] > hiP { hiP = arr[i] }
           if arr[i] < loP { loP = arr[i] }
@@ -219,22 +219,6 @@ extension ChartRenderer {
       let xx = state.view.x(k.t, plotW: L.plotW)
       if xx < 0 || xx > L.plotW { continue }
       out.append(hairline(xx, scale: s))
-    }
-    return out
-  }
-
-  /// 和 `ChartRenderer.overlayLines()` 同一口径：单线那几把全要，BOLL 只要上下轨。
-  /// 两处必须一起改——这边喂的是十字线取数与自适应探针，那边喂的是真正的绘制。
-  private func probeOverlayLines() -> [[Double]] {
-    guard !state.percentAxis else { return [] }
-    var out: [[Double]] = []
-    for id in state.overlays {
-      guard let v = engine[id] else { continue }
-      switch id {
-      case .ma, .ema, .vwap, .supertrend, .sar: out += v.lines
-      case .boll: if v.lines.count >= 3 { out += [v.lines[1], v.lines[2]] }
-      default: break
-      }
     }
     return out
   }

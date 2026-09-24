@@ -59,13 +59,13 @@ import UIKit
     let baseline = renderer.priceRange(size: size)
     for i in 0..<5 {
       s.crosshair = Crosshair(index: i)
-      #expect(s.sameGeometryInputs(as: renderer.state))
+      #expect(s.changedLayers(from: renderer.state) == .overlay)
       renderer.state = s
       #expect(renderer.priceRange(size: size) == baseline)
     }
     s.compare[0].close[4] = 100
     #expect(ChartView.changed(from: renderer.state, to: s) == .all)
-    #expect(!s.sameGeometryInputs(as: renderer.state))
+    #expect(s.changedLayers(from: renderer.state).contains(.input))
     renderer.state = s
     #expect(renderer.priceRange(size: size).hi > baseline.hi)
   }

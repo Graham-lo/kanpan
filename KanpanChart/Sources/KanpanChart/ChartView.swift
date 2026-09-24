@@ -59,36 +59,46 @@ public final class ChartView: UIView {
   /// 画一帧要的全部东西。换一份就按需重画。
   ///
   /// `nil` 表示还没数据（冷启动、切品种的空档）：三层清空，什么都不画。
+  ///
+  /// 写进来的那份先按规矩摆正（`normalized`）再存——从前是在 `didSet` 里发现不对就
+  /// 回头再赋一遍 `state`，靠的是「属性观察器里给自己赋值不会再触发观察器」这条
+  /// 语言细节才没递归，读起来像递归，改的人一不小心就真递归了（审查 23.5）。
   public var state: ChartState? {
-    didSet {
-      if let old = oldValue, var next = state {
-        var fixed = false
-        if old.options.dataDisplay != next.options.dataDisplay || old.options.crossPrice != next.options.crossPrice
-          || old.series.symbol != next.series.symbol || old.series.interval != next.series.interval
-          || next.crosshair?.pane.map({ !next.subs.contains($0) }) == true {
-          next.crosshair = nil
-          fixed = true
-        }
-        // 换品种 / 换周期 = 换了一张图，上一张图上那次轴轻点跟现在没关系了（A-09）。
-        // 补历史的门同理：那次「已经喊过了」记的是上一张图的账（A.5 用例 13）。
-        // 冻结也一样：手指底下那张图已经不在了，钉着上一张图的视野只会更乱。
-        if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval
-          || old.percentAxis != next.percentAxis {
-          gesture.endAxisTapCandidate()
-          gesture.askedHistory = false
-          cancelAxisFreeze()
-        }
-        // 手指按着一个目标的这段时间里视野钉死（见 `beginAxisFreeze`）：外面灌进来的
-        // 那份视野一律让位——新 K 线到货时 `AICoinBehavior.reconcile` 会把视野右移一格，
-        // 而用户手指没动，线不能跟着跑。
-        if let frozen = frozenAxes, next.view != frozen.view {
-          next.view = frozen.view
-          fixed = true
-        }
-        if fixed { state = next }
-      }
-      adopt(old: oldValue)
+    get { storedState }
+    set {
+      let old = storedState
+      if let old, let incoming = newValue { storedState = normalized(incoming, after: old) }
+      else { storedState = newValue }
+      adopt(old: old)
     }
+  }
+  private var storedState: ChartState?
+
+  /// 新来的一份 state 相对上一份要先摆正的几件事。纯粹改值，不碰任何副作用以外的状态
+  /// （手势候选、补历史的门、冻结这三样「换了张图就作废」的账在这里一并销掉）。
+  private func normalized(_ incoming: ChartState, after old: ChartState) -> ChartState {
+    var next = incoming
+    if old.options.dataDisplay != next.options.dataDisplay || old.options.crossPrice != next.options.crossPrice
+      || old.series.symbol != next.series.symbol || old.series.interval != next.series.interval
+      || next.crosshair?.pane.map({ !next.subs.contains($0) }) == true {
+      next.crosshair = nil
+    }
+    // 换品种 / 换周期 = 换了一张图，上一张图上那次轴轻点跟现在没关系了（A-09）。
+    // 补历史的门同理：那次「已经喊过了」记的是上一张图的账（A.5 用例 13）。
+    // 冻结也一样：手指底下那张图已经不在了，钉着上一张图的视野只会更乱。
+    if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval
+      || old.percentAxis != next.percentAxis {
+      gesture.endAxisTapCandidate()
+      gesture.askedHistory = false
+      cancelAxisFreeze()
+    }
+    // 手指按着一个目标的这段时间里视野钉死（见 `beginAxisFreeze`）：外面灌进来的
+    // 那份视野一律让位——新 K 线到货时 `AICoinBehavior.reconcile` 会把视野右移一格，
+    // 而用户手指没动，线不能跟着跑。
+    if let frozen = frozenAxes, next.view != frozen.view {
+      next.view = frozen.view
+    }
+    return next
   }
 
   // ---------------------------------------------------------------- 拖动期间的坐标
@@ -259,7 +269,10 @@ public final class ChartView: UIView {
   /// 图自己做了件用户可能没预料到的事，需要外面报一行短提示（比如价格轴双击翻转）。
   /// 只给这种「不说一声就找不回来」的动作用，别拿它做常规反馈。
   public var onNotice: ((String) -> Void)?
-  public var onStateChanged: ((ChartState?) -> Void)?
+  /// state 换了。第二个参数是这次变的是哪几层（`nil` state 报 `.all`）；
+  /// 宿主据此只更新变了的那部分——拖图只报 `.viewport`，十字线跟手只报 `.overlay`。
+  /// 一层都没变（同一份 state 又灌了一遍）不报。
+  public var onStateChanged: ((ChartState?, ChartState.Layers) -> Void)?
   /// **这次交互结束了：手指全部离开了画布。**
   ///
   /// 每次抬手都响一次（拖、甩、点、捏都算），而且 `.ended` 和 `.cancelled` 都响——
@@ -399,20 +412,25 @@ public final class ChartView: UIView {
       gesture.touches.removeAll(); gesture.reset(); gesture.endAxisTapCandidate()
       cancelAxisFreeze()
       fireCrosshairChanged(nil)
-      onStateChanged?(nil)
+      onStateChanged?(nil, .all)
       renderer = nil
       setNeedsRedraw(.all)
       return
     }
+    let layers = s.changedLayers(from: old)
+    // 视野变了才需要知道「布局动没动」（轴宽跟着这一屏的刻度走）；旧布局此刻多半
+    // 就在缓存里，取一下不花钱。
+    let layoutBefore = layers.contains(.viewport) ? chartLayout : nil
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
     renderer?.guestDrawings = guestDrawings; renderer?.ownDimmed = ownDimmed
-    let parts = Self.changed(from: old, to: s)
+    var parts = Self.changed(from: old, to: s)
+    if let layoutBefore, !parts.contains(.cross), chartLayout != layoutBefore { parts.insert(.cross) }
     setNeedsRedraw(parts)
     #if DEBUG
     onAdoptedForProbe?(!parts.isEmpty)
     #endif
     flashIfTicked(from: old, to: s)
-    onStateChanged?(s)
+    if !layers.isEmpty { onStateChanged?(s, layers) }
     if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }
   }
 
@@ -448,15 +466,25 @@ public final class ChartView: UIView {
     onCrosshairChanged?(crosshair)
   }
 
-  /// 新旧两帧的差异落在哪几层。
+  /// 新旧两帧的差异落在哪几层。按 `ChartState` 的三层来问（审查 23.1）：
   ///
-  /// 末根之外的东西一动（视野、风格、指标、主题、整段数据），几何就变了，三层全重画；
-  /// 只有末根动（ticker 推进来一笔），蜡烛和最新价要跟着变，十字线不用；
-  /// 只有十字线动，就只画十字线那层。
+  /// - **输入层**除末根外动了（风格、指标、主题、整段数据）：几何全变，三层全重画；
+  ///   只有末根动（ticker 推进来一笔），蜡烛和最新价要跟着变，十字线不用。
+  /// - **视野层**动了（拖、捏、甩、拉价格轴、拖分隔线）：底图与最新价重画；十字线层
+  ///   只在它的内容真读视野时才跟着画——十字线开着、比价（图例读视野左缘的基准）、
+  ///   订单流开着（图例按这一屏的区间合计），以及布局变了（由 `adopt` 比布局补上）。
+  /// - **叠加层**：画线只脏底图，十字线只脏十字线层，盘口 / 倒计时只脏最新价层。
   static func changed(from old: ChartState?, to new: ChartState) -> Parts {
     guard let o = old else { return .all }
-    if !sameFrame(o, new) { return .all }
+    guard o.input.sameExceptLastBar(as: new.input),
+          (o.orderFlow == nil) == (new.orderFlow == nil)  // 开着主力就多一行图例，影响 mainLegendInset
+    else { return .all }
     var p: Parts = []
+    if o.viewport != new.viewport {
+      p.insert([.plot, .live])
+      if o.crosshair != nil || new.crosshair != nil || new.percentAxis || new.orderFlow != nil { p.insert(.cross) }
+    }
+    if o.drawings != new.drawings || o.drawingPreviewID != new.drawingPreviewID { p.insert(.plot) }
     // 末根变了：蜡烛（plot）、最新价（live）都要重画；没有十字线时图例读的就是末根，
     // 图例在 `crossLayer` 上，所以 cross 也得跟着脏。
     if !sameLastBar(o.series, new.series) {
@@ -473,25 +501,6 @@ public final class ChartView: UIView {
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
     if o.nowMs != new.nowMs, new.options.countdown, new.options.lastLine { p.insert(.live) }
     return p
-  }
-
-  /// 末根之外的一切是否一样。
-  private static func sameFrame(_ a: ChartState, _ b: ChartState) -> Bool {
-    a.symbol == b.symbol && a.view == b.view && a.dark == b.dark && a.paletteSeed == b.paletteSeed
-      && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
-      && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
-      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.external == b.external && a.oiSupported == b.oiSupported && a.externalSupported == b.externalSupported
-      && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
-      && a.compare == b.compare && a.percentAxis == b.percentAxis && (a.orderFlow == nil) == (b.orderFlow == nil)
-      && a.indicatorColors == b.indicatorColors && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
-      && a.rsiUpper == b.rsiUpper && a.rsiLower == b.rsiLower && a.axisScaleAnchor == b.axisScaleAnchor
-      && sameSeriesExceptLast(a.series, b.series)
-  }
-
-  /// 搬到了 `BarSeries.samePrefix(as:)`：判定条件和从前逐字相同，只是在逐列比之前
-  /// 先看一眼前缀戳。留着这层壳是因为它是 `sameFrame` 的一部分，名字在这儿读着顺。
-  private static func sameSeriesExceptLast(_ a: BarSeries, _ b: BarSeries) -> Bool {
-    a.samePrefix(as: b)
   }
 
   private static func sameLastBar(_ a: BarSeries, _ b: BarSeries) -> Bool {

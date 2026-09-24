@@ -76,6 +76,14 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   /// 视野兑现完还欠一下「回到最新」。见 `ChartProxy.scrollToLatest(animated:)`：
   /// 那一下经常提在图还没量出宽度的时候，只能记账、等 `layoutSubviews` 兑现。
   var pendingLatest = false
+  /// 上一次摆把手时各格的上下沿。见 `updateControls`。
+  private struct GripKey: Equatable {
+    struct Pane: Equatable { var id: IndicatorID?; var y: Double; var h: Double }
+    var width: Double
+    var height: Double
+    var panes: [Pane]
+  }
+  private var lastGripKey: GripKey?
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -129,6 +137,11 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   func updateControls() {
     onOverlayUpdate()
     guard let state = chart.state, let layout = chart.chartLayout else { return }
+    // 把手只跟各格的上下沿有关。拖图、捏合每帧都会走到这儿，而那时各格一个像素都没动——
+    // 从前照样把每只把手的 frame 与无障碍读数重写一遍（审查 23.1：拖图不重排、不重建无障碍）。
+    let key = GripKey(width: layout.W, height: layout.H, panes: layout.panes.dropFirst().map { GripKey.Pane(id: $0.indicator, y: $0.y, h: $0.h) })
+    guard key != lastGripKey else { return }
+    lastGripKey = key
     for id in Array(grips.keys) where !state.subs.contains(id) { grips.removeValue(forKey: id)?.removeFromSuperview() }
     for pane in layout.panes.dropFirst() {
       guard let id = pane.indicator else { continue }
@@ -612,7 +625,12 @@ struct ChartHost: UIViewRepresentable {
       onDrawingCommitted(item, symbol)
     }
     let onInversion = self.onInversion
-    box.chart.onStateChanged = { [weak proxy, weak box] state in
+    box.chart.onStateChanged = { [weak proxy, weak box] state, layers in
+      // 只有十字线、画线这类叠加层变了：把手、覆盖层、翻转都不读它们，一样都不用动。
+      if layers.isDisjoint(with: [.input, .viewport]) {
+        if let state { proxy?.savedState = state }
+        return
+      }
       box?.updateControls()
       guard let state, let box, let layout = box.chart.chartLayout else { return }
       proxy?.savedState = state

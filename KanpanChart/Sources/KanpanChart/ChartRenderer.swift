@@ -35,8 +35,10 @@ public struct ChartRenderer {
   /// 平均 K 线的可见段。`kind == .candle` 时恒为 `nil`——默认路径一个数都不多算。
   public private(set) var heikin: HeikinSlice?
 
-  /// 同一份 `state` 下算出来的几何。见 `GeometryCache`。
-  private var geometry = GeometryCache()
+  /// 只随 `state.input` 失效的那一层几何。见 `InputCache`。
+  private var inputCache = InputCache()
+  /// 随 `state.input` 或 `state.viewport` 失效的那一层几何。见 `ViewportCache`。
+  private var viewportCache = ViewportCache()
 
   public init(state: ChartState) {
     self.state = state
@@ -44,21 +46,42 @@ public struct ChartRenderer {
   }
 
   private mutating func recalc(previous: ChartState? = nil) {
-    // 换了 state 就换一只新盒子：旧的那只留给还拿着旧值的副本，谁也串不到谁。
+    // 几何缓存分两层，各按各的输入失效（审查 23.4）：
     //
-    // 唯一的例外是**几何输入一个没动**的那种变化（十字线跟手、倒计时走一格）：
-    // 那只盒子里存的每一项对新旧两份 state 都同样正确（见 `sameGeometryInputs`），
-    // 留着不清，手指跟手时才不会每帧把布局、价格区间、隐藏掩码原样重算一遍。
+    // - **输入层**（指标掩码、叠加线、图例内缩、量字宽度）只看 `state.input`——K 线、
+    //   指标、参数、样式。拖图、捏合、拖分隔线一个都不碰它。
+    // - **视野层**（布局、价格区间）再加上 `state.viewport`。布局也在这一层，因为右轴
+    //   多宽是按**这一屏**最宽的刻度量的（见 `computeLayout`），视野一动刻度就可能换位数——
+    //   为了像素一个不差，这一层不能跨视野复用。
+    // - **叠加层**（画线、十字线、订单流、盘口、倒计时）不失效任何东西。唯一的例外是
+    //   订单流从无到有 / 从有到无：它让主图图例多一行，图例内缩变了，价格区间跟着变。
     //
-    // 隔离仍然成立：一只盒子只会被「几何输入与它里面的结果一致」的 state 写入——
-    // 每次写都发生在当前 state 下，而只有与前一份几何等价时才继承这只盒子，
-    // 递推下去，同一只盒子的所有写入方几何输入全等，谁也串不到谁。
-    if let old = previous, old.sameGeometryInputs(as: state) {
-      // 几何照旧：指标、平均 K 线的那几步也一定不会走（下面的判据全是它的子集）。
+    // 隔离照旧：换缓存就是换一只新盒子，旧盒子跟着旧副本走，谁也串不到谁。
+    // 一只盒子只会被「那一层输入与它里面的结果一致」的 state 写入。
+    guard let previous else {
+      inputCache = InputCache(); viewportCache = ViewportCache()
+      ChartWorkCounter.bump(.geometryCache); ChartWorkCounter.bump(.viewportCache)
+      rebuildIndicators(previous: nil)
       return
     }
-    geometry = GeometryCache()
-    ChartWorkCounter.bump(.geometryCache)
+    let inputChanged = previous.input != state.input
+      || (previous.orderFlow == nil) != (state.orderFlow == nil)  // 开着主力就多一行图例，影响 mainLegendInset
+    let viewportChanged = previous.viewport != state.viewport
+    if inputChanged {
+      inputCache = InputCache()
+      ChartWorkCounter.bump(.geometryCache)
+    }
+    if inputChanged || viewportChanged {
+      viewportCache = ViewportCache()
+      ChartWorkCounter.bump(.viewportCache)
+    }
+    if inputChanged || previous.view != state.view {
+      rebuildIndicators(previous: previous)
+    }
+  }
+
+  /// 指标与平均 K 线：只在输入或视野真动了的时候走（叠加层一变什么都不用算）。
+  private mutating func rebuildIndicators(previous: ChartState?) {
     let dataKey = state.symbol.symbol
     let seriesChanged = previous == nil || previous!.series != state.series
     let oiChanged = previous?.oi != state.oi || previous?.external != state.external
@@ -95,9 +118,9 @@ public struct ChartRenderer {
   /// 一帧里图例、叠加、副图、价格区间会各问一遍同一个指标，所以结果存一份；
   /// 被藏起来的那条线原本每次现开一条 n 长的 NaN 数组，现在整帧共用同一条。
   func displayed(_ id: IndicatorID) -> IndicatorResult? {
-    if let hit = geometry.displayed[id] { return hit }
+    if let hit = inputCache.displayed[id] { return hit }
     let value = computeDisplayed(id)
-    geometry.displayed[id] = value
+    inputCache.displayed[id] = value
     return value
   }
 
@@ -116,10 +139,10 @@ public struct ChartRenderer {
 
   /// 整帧共用的一条 NaN 线。数组是 COW，返回的是同一块内存，谁也不会去写它。
   private func blankLine(_ n: Int) -> [Double] {
-    if let hit = geometry.blank, hit.count == n { return hit }
+    if let hit = inputCache.blank, hit.count == n { return hit }
     ChartWorkCounter.bump(.hiddenMask)
     let value = [Double](repeating: .nan, count: n)
-    geometry.blank = value
+    inputCache.blank = value
     return value
   }
 
@@ -152,9 +175,9 @@ public struct ChartRenderer {
 
   // Adaptive mode reserves legend rows, never changes pane allocation.
   func mainLegendInset(plotW: Double) -> Double {
-    if let hit = geometry.legendInset, hit.plotW == plotW { return hit.value }
+    if let hit = inputCache.legendInset, hit.plotW == plotW { return hit.value }
     let value = computeMainLegendInset(plotW: plotW)
-    geometry.legendInset = (plotW, value)
+    inputCache.legendInset = (plotW, value)
     return value
   }
 
@@ -187,22 +210,33 @@ public struct ChartRenderer {
   /// 所以挂一只引用型备忘录：`ChartRenderer` 仍是值类型，但每次 `recalc`（也就是
   /// 每次 `state` 变）都换一只新盒子，旧盒子跟着旧副本走，不会把上一份 state 的
   /// 结果串到新的上面来。**这里存的是计算结果本身，不是近似或简化，像素一个不差。**
-  private final class GeometryCache {
-    var layout: (size: CGSize, value: Layout)?
+  /// 只跟 `state.input` 有关的那几样：指标掩码、叠加线、图例内缩、轴刻度量出来的字宽。
+  ///
+  /// 拖图时它整只留着——从前拖一下就作废整只缓存，下一帧把隐藏掩码、叠加线、图例
+  /// 内缩原样再算一遍，算的全是同一个数。
+  private final class InputCache {
     var legendInset: (plotW: Double, value: Double)?
     var overlayLines: [[Double]]?
     var displayed: [IndicatorID: IndicatorResult?] = [:]
     /// 被藏起来的输出统一指向的那条 NaN 线。
     var blank: [Double]?
+    /// 量轴宽时每条刻度模板（数字已换成 0）的字宽。字体是定死的 `ChartFont`，
+    /// 同一条模板量出来永远是同一个数；拖图时刻度会变，模板大多不变。
+    var axisTextWidths: [String: Double] = [:]
+  }
+
+  /// 跟视野有关的那两样：布局（轴宽按这一屏的刻度量）与价格区间。
+  private final class ViewportCache {
+    var layout: (size: CGSize, value: Layout)?
     /// 手势探针会拿别的 `view` / `transform` 来问（`panPrice` 的自动区间、回弹预演），
     /// 所以这里按入参存几条。条数极少（常见 1～2 条），线性找比哈希还快。
     var ranges: [(size: CGSize, view: ViewWindow, transform: PriceTransform, value: PriceRange)] = []
   }
 
   public func layout(size: CGSize) -> Layout {
-    if let hit = geometry.layout, hit.size == size { return hit.value }
+    if let hit = viewportCache.layout, hit.size == size { return hit.value }
     let value = computeLayout(size: size)
-    geometry.layout = (size, value)
+    viewportCache.layout = (size, value)
     return value
   }
 
@@ -221,7 +255,7 @@ public struct ChartRenderer {
     // 轴宽 = 这一屏最宽的那条刻度 + 两侧各 `axisLabelPadding`。从前是「50pt 起跳、
     // 不够再按 8pt 一档往上加」，于是三位数的价位两边各空一大截，用户看到的就是
     // 「右边这条太宽了」。位数多的品种自然宽、少的自然窄，不给「以后可能更长」留地方。
-    var measured = labels.map { Double(axisWidthTemplate($0).width(ChartFont.axis)) }.max() ?? 0
+    var measured = labels.map { axisTextWidth(axisWidthTemplate($0)) }.max() ?? 0
     // 倒计时也是这一格里的内容：它挂在最新价胶囊底下，`23:59:59` 比五位数的价还长。
     // 开着就一并量进来（按周期能出现的最长写法，不读当前时刻——时刻一变轴就得重排，
     // 那才是真的抖），关着（出厂默认）一个像素都不占。
@@ -234,6 +268,14 @@ public struct ChartRenderer {
                     measured.rounded(.up) + 2 * AICoinBehavior.axisLabelPadding)
     return Layout(width: Double(size.width), height: Double(size.height), subs: state.subs, subScale: state.subScale, mainWeight: mainWeight,
                   axisWidth: min(max(AICoinBehavior.axisMinWidth, Double(size.width) / 3), width))
+  }
+
+  /// 一条刻度模板的字宽，按模板记在输入层里（见 `InputCache.axisTextWidths`）。
+  private func axisTextWidth(_ template: String) -> Double {
+    if let hit = inputCache.axisTextWidths[template] { return hit }
+    let value = Double(template.width(ChartFont.axis))
+    inputCache.axisTextWidths[template] = value
+    return value
   }
 
   /// 量轴宽时先把数字一律换成 `0`。
@@ -286,7 +328,7 @@ public struct ChartRenderer {
 
   /// Probe another visible range using the same geometry and indicators.
   public func priceRange(size: CGSize, view: ViewWindow, transform: PriceTransform) -> PriceRange {
-    for hit in geometry.ranges where hit.size == size && hit.view == view && hit.transform == transform {
+    for hit in viewportCache.ranges where hit.size == size && hit.view == view && hit.transform == transform {
       return hit.value
     }
     // 从前这儿是 `paneHeight: layout(size:).main.h, topInset: ...layout(size:).plotW`，
@@ -303,8 +345,8 @@ public struct ChartRenderer {
       extraPrices: heikin?.extremes ?? [], bias: state.options.bias,
       paneHeight: L.main.h, topInset: mainLegendInset(plotW: L.plotW), anchorPrice: transform.isManual ? state.axisScaleAnchor : nil,
       closeOnly: state.options.kind == .line)
-    if geometry.ranges.count >= 8 { geometry.ranges.removeFirst() }
-    geometry.ranges.append((size, view, transform, value))
+    if viewportCache.ranges.count >= 8 { viewportCache.ranges.removeFirst() }
+    viewportCache.ranges.append((size, view, transform, value))
     return value
   }
 
@@ -441,10 +483,12 @@ public struct ChartRenderer {
   ///
   /// 只跟 `state.overlays` / `hiddenOutputs` 与 `engine` 有关，同一份 state 下恒定；
   /// `layout` 与每次 `priceRange` 都要，所以存一份（数组是 COW，存的是引用不是拷贝）。
-  private func overlayLines() -> [[Double]] {
-    if let hit = geometry.overlayLines { return hit }
+  /// 取证探针（`probe`）也走这一个——从前探针自己抄了一份，读的是没套隐藏掩码的原始
+  /// 指标，藏掉的那条线在探针里照样撑区间，量的就不是真画出来的东西了（审查 23.3）。
+  func overlayLines() -> [[Double]] {
+    if let hit = inputCache.overlayLines { return hit }
     let value = computeOverlayLines()
-    geometry.overlayLines = value
+    inputCache.overlayLines = value
     return value
   }
 

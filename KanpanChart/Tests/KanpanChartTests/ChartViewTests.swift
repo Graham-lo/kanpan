@@ -105,12 +105,22 @@ struct ChartViewDirtyTests {
     #expect(ChartView.changed(from: a, to: b) == [.plot, .live])
   }
 
-  @Test("视野 / 指标一动，三层全画")
+  @Test("指标一动三层全画；视野一动只画底图与最新价，十字线层看它读不读视野")
   func geometry() {
     let a = fixtureState()
     var moved = a
     moved.view = a.view.shifted(byPx: 40, plotW: 320)
-    #expect(ChartView.changed(from: a, to: moved) == .all)
+    // 视野层变了：十字线层上只有图例，图例读的是末根、摆在布局上——布局没变就不用重画
+    // （布局变没变由 `ChartView.adopt` 比出来补上，这里是纯 state 的那一半，审查 23.1）。
+    #expect(ChartView.changed(from: a, to: moved) == [.plot, .live])
+    var crossed = a
+    crossed.crosshair = Crosshair(index: 10)
+    var crossedMoved = crossed
+    crossedMoved.view = moved.view
+    #expect(ChartView.changed(from: crossed, to: crossedMoved) == .all)
+    var drawn = a
+    drawn.drawings = [Drawing(kind: .hline, points: [DrawPoint(t: Double(a.series.lastTime), p: a.series.close[0])])]
+    #expect(ChartView.changed(from: a, to: drawn) == .plot, "画线只画在底图上")
 
     // K 线造型只剩 AICoin 一套，`ChartState` 里已经没有 `style` 了。
     // 「阳线实心 / 空心」那档走的是 `options.body`，由下面 `ChartOptionsRenderTests` 管。

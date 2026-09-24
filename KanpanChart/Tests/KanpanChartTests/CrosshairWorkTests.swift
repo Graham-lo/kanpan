@@ -101,6 +101,39 @@ private final class WorkEvent: UIEvent {
     #expect(c.mask <= 1, "十字线移动不该重建隐藏输出掩码：\(c.mask)")
   }
 
+  @Test("100 步拖图、100 步拖画线：输入层一次都不作废，画线连视野层也不碰")
+  func panAndDrawingDragKeepInputTier() {
+    var s = heavyState()
+    s.drawings = [Drawing(kind: .trend, points: [
+      DrawPoint(t: Double(s.series.time(at: 150)), p: s.series.close[150]),
+      DrawPoint(t: Double(s.series.time(at: 190)), p: s.series.close[190]),
+    ])]
+    var renderer = ChartRenderer(state: s)
+    frame(renderer)
+
+    ChartWorkCounter.reset()
+    for _ in 0..<100 {
+      s.view.to -= Double(s.series.step) * 0.5
+      renderer.state = s
+      frame(renderer)
+    }
+    var c = counts()
+    print(ChartWorkCounter.line("pan-100"))
+    #expect(c.geometry == 0 && c.mask == 0, "拖图不该作废输入层：\(c)")
+    #expect(ChartWorkCounter.count(.viewportCache) == 100)
+
+    ChartWorkCounter.reset()
+    for k in 0..<100 {
+      s.drawings[0].points[1].p *= (k % 2 == 0 ? 1.001 : 0.9995)
+      renderer.state = s
+      frame(renderer)
+    }
+    c = counts()
+    print(ChartWorkCounter.line("drawing-drag-100"))
+    #expect(c.geometry == 0 && c.layout == 0 && c.range == 0 && c.mask == 0, "拖画线不该碰几何：\(c)")
+    #expect(ChartWorkCounter.count(.viewportCache) == 0)
+  }
+
   @Test("倒计时每秒走一格也不重算几何")
   func countdownDoesNotRebuildGeometry() {
     var s = heavyState()
@@ -175,13 +208,33 @@ private final class WorkEvent: UIEvent {
     print(ChartWorkCounter.line("subs-3-to-2"))
     #expect(c.geometry == 1 && c.layout == 1)
 
-    // ⑤ 视野（滚动 / 缩放）
+    // ⑤ 视野（滚动 / 缩放）：只换视野层——布局（轴宽按这一屏的刻度量）与价格区间
+    // 重算，输入层（掩码、叠加线、图例内缩）留着（审查 23.4）。
     ChartWorkCounter.reset()
     s.view.to += Double(s.series.step) * 3
     renderer.state = s
     frame(renderer)
     c = counts()
     print(ChartWorkCounter.line("view-pan"))
+    #expect(c.geometry == 0 && c.mask == 0, "拖图不该作废输入层：\(c)")
+    #expect(ChartWorkCounter.count(.viewportCache) == 1 && c.layout == 1)
+
+    // ⑤b 拖分隔线（副图倍率）：视野层作废，输入层留着
+    ChartWorkCounter.reset()
+    s.subScale[.macd] = 1.2
+    renderer.state = s
+    frame(renderer)
+    c = counts()
+    print(ChartWorkCounter.line("divider"))
+    #expect(c.geometry == 0 && c.mask == 0 && c.layout == 1)
+
+    // ⑤c 换皮肤：输入层作废
+    ChartWorkCounter.reset()
+    s.dark.toggle()
+    renderer.state = s
+    frame(renderer)
+    c = counts()
+    print(ChartWorkCounter.line("skin"))
     #expect(c.geometry == 1 && c.layout == 1)
 
     // ⑥ 隐藏输出改了：掩码必须跟着重建

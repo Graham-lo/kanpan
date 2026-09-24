@@ -7,8 +7,12 @@ import Foundation
 /// 区间、隐藏输出掩码却全部作废，下一帧再原样算一遍。这几个计数就是那笔账的读数：
 /// 改之前它们跟着移动次数走，改之后应当恒定。
 public enum ChartWork: String, Sendable, CaseIterable, CustomStringConvertible {
-  /// 新建了一只 `GeometryCache`：这一刻起布局、价格区间、指标掩码全部作废。
+  /// 新建了一只输入层几何缓存（`ChartRenderer.InputCache`）：指标掩码、叠加线、
+  /// 图例内缩、刻度字宽全部作废。只有 `state.input` 变了才会走。
   case geometryCache
+  /// 新建了一只视野层几何缓存（`ChartRenderer.ViewportCache`）：布局、价格区间作废。
+  /// 拖图、捏合、拖分隔线走这一档，输入层留着。
+  case viewportCache
   /// `computeLayout` 真的跑了一趟（轴宽要量字、还要先求一次价格区间）。
   case layout
   /// `KanpanCore.priceRange` 真的扫了一趟可见段。
