@@ -85,26 +85,22 @@ struct OrderFlowChartTests {
     }
   }
 
-  @Test("粗细五档：名义 ÷ 门槛 1× / 2× / 4× / 8× / 16× → 2 / 3 / 4.5 / 6 / 8 pt，不再到 12 pt")
+  @Test("细线：主 2 pt（还挂着 2.5）、次 1 pt 70%、底噪 1 pt ≤ 35%、被压 1 pt；墙的淡底 ≤ 12%；线粗不看名义")
   func thickness() {
-    let h = { (r: Double) in ChartRenderer.orderFlowBandHeight(notional: 5_000_000 * r, threshold: 5_000_000) }
-    #expect(h(0.6) == 2, "撤单滞回留下的不到一倍也是最细一档")
-    #expect(h(1) == 2)
-    #expect(h(1.9) == 2)
-    #expect(h(2) == 3)
-    #expect(h(3.9) == 3)
-    #expect(h(4) == 4.5)
-    #expect(h(7.9) == 4.5)
-    #expect(h(8) == 6)
-    #expect(h(16) == 8)
-    #expect(h(100) == 8)
-    #expect(ChartRenderer.orderFlowBandHeight(notional: 1, threshold: 0) == 2)
+    typealias R = ChartRenderer
+    #expect(R.orderFlowMainLine == 2 && R.orderFlowMainLiveLine == 2.5)
+    #expect(R.orderFlowSecondaryLine == 1 && R.orderFlowNoiseLine == 1 && R.orderFlowThinLine == 1)
+    #expect(R.orderFlowSecondaryAlpha == 0.7 && R.orderFlowNoiseAlpha <= 0.35 && R.orderFlowRangeAlpha <= 0.12)
     #expect(BigOrder.thicknessTiers == 5)
-    #expect((0..<BigOrder.thicknessTiers).map { ChartRenderer.orderFlowBandHeight(tier: $0) } == [2, 3, 4.5, 6, 8])
     let (r, _) = Self.renderer()
-    #expect(frame(r).bands.allSatisfy { $0.frame.height >= 2 && $0.frame.height <= 8 })
-    // 10M ÷ 5M = 2 倍 → 第 1 档 3 pt。
-    #expect(bandAt(frame(r), bucket: 1)?.frame.height == 3)
+    let f = frame(r)
+    #expect(f.bands.allSatisfy { $0.frame.height >= 1 && $0.frame.height <= 2.5 })
+    for band in f.bands where band.role == .main && !band.thin {
+      #expect(band.frame.height == (band.group.isLive ? 2.5 : 2) && band.alpha == 1)
+    }
+    // 10M 挂着的合约买：主档、还挂着 → 2.5 pt；结束的已成交那条 2 pt。名义翻倍线也不变粗。
+    #expect(bandAt(f, bucket: 1)?.frame.height == 2.5)
+    #expect(bandAt(f, bucket: 5)?.frame.height == 2)
   }
 
   @Test("合并：同桶同侧同类、时间上连着的合成一条（四种合约一条、三家现货一条），不同类、不同侧不合；粗细按合计")
@@ -148,7 +144,7 @@ struct OrderFlowChartTests {
     // 4 × 1 倍门槛 = 4 倍 → 第 2 档 4.5 pt（一单单画都是 2 pt）。
     #expect(c.group.tier == 2)
     #expect(c.dark, "任何一单被吃过就是深色")
-    #expect(c.color == r.state.colors.up)
+    #expect(c.color == r.orderFlowBaseColor(side: .bid, contract: true) && c.color != r.state.colors.up)
     let L = r.layout(size: Self.size)
     let spacing = r.state.view.barSpacing(step: b.step, plotW: L.plotW)
     #expect(abs(c.frame.minX - (r.state.view.x(Double(b.time(at: b.count - 14)), plotW: L.plotW) - spacing / 2)) < 0.001,
@@ -156,7 +152,7 @@ struct OrderFlowChartTests {
     #expect(abs(c.frame.maxX - L.plotW) < 0.001, "有一单还挂着就画到右缘")
     let sb = try #require(f.bands.first { $0.key == OrderFlowGroupKey(bucket: 1, side: .bid, contract: false, start: seen) })
     #expect(sb.group.books.count == 3 && sb.group.notional == 3_000_000)
-    #expect(!sb.dark && sb.color == mixHex(r.orderFlowBaseColor(side: .bid, contract: false), r.state.colors.bg, 0.45))
+    #expect(!sb.dark && sb.color == Palette.orderFlowUnfilled(r.orderFlowBaseColor(side: .bid, contract: false), bg: r.state.colors.bg))
     #expect(f.bands.contains { $0.key == OrderFlowGroupKey(bucket: 1, side: .ask, contract: false, start: seen) })
     // 图例仍按逐单求和（只算挂着的）。
     #expect(f.bidTotal == 15_000_000 + 3_000_000)
@@ -232,9 +228,16 @@ struct OrderFlowChartTests {
     r.state.orderFlowSelected = a.key
     #expect(r.orderFlowFocus(size: Self.size)?.group.members == [early])
 
-    // 金额签按段：早先那段两根宽（< 48 pt）不写，后来那段够宽才写，写的是段内名义。
-    if c.frame.width >= 48, !c.thin { #expect(f.labels.contains { $0.key == c.key && $0.text == "6.0M" }) }
-    #expect(!f.labels.contains { $0.key == a.key })
+    // 金额签按段，写的是段内名义：挂着的那段贴主图右缘，结束的那段在它结束点右侧（放不下就收回主图右缘以内）。
+    let plotW = r.layout(size: Self.size).plotW
+    if let lc = f.labels.first(where: { $0.key == c.key }) {
+      #expect(lc.text == "6.0M" && abs(lc.frame.maxX - (plotW - ChartRenderer.orderFlowLabelInset)) < 1e-9)
+    }
+    if let la = f.labels.first(where: { $0.key == a.key }) {
+      #expect(la.text == "20.0M")
+      let want = min(a.frame.maxX + ChartRenderer.orderFlowLabelInset, plotW - ChartRenderer.orderFlowLabelInset - la.frame.width)
+      #expect(abs(la.frame.minX - want) < 1e-9)
+    }
 
     // 切段的边界：空档恰好等于容差还并，多 1 ms 就断。
     let gap = OrderFlowGroup.mergeGapMs(barMs: b.step)
@@ -372,19 +375,23 @@ struct OrderFlowChartTests {
     #expect(g.books.count == 3 && Set(g.books.map(\.bucket)) == [b0 + 5, b0 + 6, b0 + 7], "一本簿一桶一行")
     #expect(g.books.allSatisfy { abs($0.price - (Double($0.bucket) + 0.5) * step) < 1e-9 }, "每行带自己那一桶的价")
     #expect(g.isLive && g.endMs == nil)
-    // 实心芯画在代表价上、按档粗细；整个价位范围垫一层淡色（范围比芯窄时不垫，芯本身就盖住了）。
+    // 芯线画在代表价上（主档、还挂着 → 2.5 pt）；整个价位范围垫一层 10% 的淡色（范围比芯窄时不垫）。
     #expect(wall.role == .main && !wall.thin)
-    #expect(abs(wall.frame.height - 4.5) < 1e-9 && abs(wall.frame.midY - y(r, g.price)) < 1e-6)
-    let cover = wall.span ?? wall.frame
-    #expect(cover.minY <= y(r, g.priceHigh) + 1e-9 && cover.maxY >= y(r, g.priceLow) - 1e-9)
-    if let span = wall.span { #expect(span.minX == wall.frame.minX && span.maxX == wall.frame.maxX) }
+    #expect(abs(wall.frame.height - 2.5) < 1e-9 && abs(wall.frame.midY - y(r, g.price)) < 1e-6)
+    let rangeHeight = abs(y(r, g.priceLow) - y(r, g.priceHigh))
+    if let span = wall.span {
+      #expect(span.minY <= y(r, g.priceHigh) + 1e-9 && span.maxY >= y(r, g.priceLow) - 1e-9)
+      #expect(span.minX == wall.frame.minX && span.maxX == wall.frame.maxX)
+    } else {
+      #expect(rangeHeight <= wall.frame.height + 1e-9, "范围比芯线还窄才不垫淡底")
+    }
     let L = r.layout(size: Self.size)
     let spacing = r.state.view.barSpacing(step: r.state.series.step, plotW: L.plotW)
     let b = r.state.series
     #expect(abs(wall.frame.minX - (r.state.view.x(Double(b.time(at: b.count - 20)), plotW: L.plotW) - spacing / 2)) < 0.001)
     #expect(abs(wall.frame.maxX - L.plotW) < 0.001)
-    // 标签写合计。
-    if wall.frame.width >= 48 { #expect(f.labels.contains { $0.key == wall.key && $0.text == "30.0M" }) }
+    // 标签写合计：名义最大、先放，一定有。
+    #expect(f.labels.contains { $0.key == wall.key && $0.text == "30.0M" })
     // 不并的几条各自成一条。
     for o in [skip, spot, bid, old] {
       #expect(f.bands.contains { $0.key == OrderFlowGroupKey(o) && $0.group.bucketCount == 1 }, "\(o.id)")
@@ -393,7 +400,7 @@ struct OrderFlowChartTests {
     #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: wall.frame.midY)?.key == wall.key)
     if let span = wall.span,
        let yFar = stride(from: span.minY, through: span.maxY, by: 0.5).first(where: { yy in
-         f.bands.allSatisfy { max(0, abs(yy - $0.frame.midY) - $0.frame.height / 2) > 8 }
+         f.bands.allSatisfy { max(0, abs(yy - $0.frame.midY) - max($0.frame.height, ChartRenderer.orderFlowHitHeight) / 2) > 8.5 }
        }) {
       #expect(ChartRenderer.orderFlowHit(f.bands, x: wall.frame.midX, y: yFar)?.key == wall.key)
     }
@@ -516,7 +523,7 @@ struct OrderFlowChartTests {
     #expect(OrderFlowGroup.groups([lo, bridge, hi], minLifeMs: b.step, step: step).count == 2)
   }
 
-  @Test("屏内排名：前 6 名主（整条、最细 3 pt、写金额），7–18 名次（2 pt、不写），其余底噪（1 pt、35%）；挂着的底噪升成次")
+  @Test("屏内排名：前 6 名主（2 / 2.5 pt、写金额），7–18 名次（1 pt、70%、不写），其余底噪（1 pt、35%）；挂着的底噪升成次")
   func rankRoles() throws {
     var (r, step, b0) = wallRenderer()
     let pane = r.layout(size: Self.size).main
@@ -542,8 +549,8 @@ struct OrderFlowChartTests {
       let want: ChartRenderer.OrderFlowRole = i < 6 ? .main : i < 18 ? .secondary : i == count - 1 ? .secondary : .noise
       #expect(band.role == want, "第 \(i + 1) 名")
       switch want {
-      case .main: #expect(band.frame.height >= 3 && band.alpha == 1)
-      case .secondary: #expect(band.thin || band.frame.height == 2); #expect(band.alpha == 1)
+      case .main: #expect(!band.thin && band.frame.height == (o.endMs == nil ? 2.5 : 2) && band.alpha == 1)
+      case .secondary: #expect(band.frame.height == 1 && band.alpha == 0.7)
       case .noise: #expect(band.frame.height == 1 && band.alpha == 0.35 && !band.thin)
       }
       #expect(abs(band.frame.midY - y(r, o.price)) < 1e-9, "不挪位")
@@ -571,13 +578,13 @@ struct OrderFlowChartTests {
     #expect(image.cgImage != nil)
   }
 
-  @Test("纵向去挤：按名义从大到小落带，和已落下的纵向重叠（含 1 pt 间隙）的小带压成 1.5 pt 细线，不挪位、仍点得中")
+  @Test("纵向去挤：按名义从大到小落线，和已落下的纵向重叠（含 1 pt 间隙）的压成 1 pt 细线、不写金额，不挪位；同价叠着点出大的")
   func thinLines() throws {
     var (r, orders) = Self.renderer()
     let p = orders[0].price
     let seen = orders[0].firstSeenMs
     let cy = y(r, p)
-    // 大：合约买 40M（8 倍 → 6 pt）；小：现货买同价 1.5M（2 pt）、合约卖在 2 pt 以外（重叠）。
+    // 大：合约买 40M（主、挂着 → 2.5 pt）；小：现货买同价 1.5M、合约卖在 3 pt 以外（2.5 pt 线加 1 pt 间隙，重叠）。
     let big = Self.order(.usdtPerp, .bid, price: p, firstSeen: seen, notional: 40_000_000, initial: 40_000_000, bucket: 1)
     let small = Self.order(.spot, .bid, price: p, firstSeen: seen, notional: 1_500_000, initial: 1_500_000,
                            filled: 10, threshold: 1_000_000, bucket: 1)
@@ -591,19 +598,21 @@ struct OrderFlowChartTests {
     let smallBand = try #require(f.bands.first { $0.key == OrderFlowGroupKey(small) })
     let nearBand = try #require(f.bands.first { $0.key == OrderFlowGroupKey(near) })
     let farBand = try #require(f.bands.first { $0.key == OrderFlowGroupKey(far) })
-    #expect(!bigBand.thin && bigBand.frame.height == 6)
-    #expect(smallBand.thin && smallBand.frame.height == 1.5)
+    #expect(!bigBand.thin && bigBand.frame.height == 2.5)
+    #expect(smallBand.thin && smallBand.frame.height == 1)
     #expect(abs(smallBand.frame.midY - cy) < 1e-9, "不挪位")
     #expect(smallBand.dark && smallBand.color == r.orderFlowBaseColor(small), "细线仍是本色深浅")
     #expect(nearBand.thin && abs(nearBand.frame.midY - y(r, nearPrice)) < 1e-9)
-    #expect(!farBand.thin && farBand.frame.height == 3)
+    #expect(!farBand.thin && farBand.frame.height == 2.5)
+    #expect(!f.labels.contains { $0.key == smallBand.key || $0.key == nearBand.key }, "细线不写金额")
     // 细线画在整条之后（压在上面）。
     let firstThin = try #require(f.bands.firstIndex { $0.thin })
     #expect(f.bands[firstThin...].allSatisfy(\.thin) && f.bands[..<firstThin].allSatisfy { !$0.thin })
-    // 细线仍点得中：点在细线上给细线，点在大带别处给大带。
-    #expect(ChartRenderer.orderFlowHit(f.bands, x: smallBand.frame.midX, y: smallBand.frame.midY)?.key == smallBand.key)
-    #expect(ChartRenderer.orderFlowHit(f.bands, x: bigBand.frame.midX, y: bigBand.frame.maxY - 0.5)?.key == bigBand.key)
-    #expect(r.orderFlowHit(at: CGPoint(x: smallBand.frame.midX, y: smallBand.frame.midY), size: Self.size)?.key == smallBand.key)
+    // 细线仍点得中：点在错开的细线上给细线；和大单同价叠着的，点下去给名义大的那条。
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: nearBand.frame.midX, y: nearBand.frame.midY)?.key == nearBand.key)
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: smallBand.frame.midX, y: smallBand.frame.midY)?.key == bigBand.key)
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: bigBand.frame.midX, y: bigBand.frame.maxY + 1)?.key == bigBand.key)
+    #expect(r.orderFlowHit(at: CGPoint(x: nearBand.frame.midX, y: nearBand.frame.midY), size: Self.size)?.key == nearBand.key)
 
     // 横向不交叠就不挤：小的在大的首见之前就结束了。
     let b = r.state.series
@@ -613,11 +622,11 @@ struct OrderFlowChartTests {
     r.state.orderFlow?.orders = [big, before]
     #expect(frame(r).bands.allSatisfy { !$0.thin })
 
-    // 纵向隔 1 pt 以上也不挤：6 pt 大带下沿 + 1 pt 间隙之外摆一条小带（主带最细 3 pt）。
-    let gapPrice = price(r, atY: cy + 3 + 1 + 1.5 + 0.2)
+    // 纵向隔 1 pt 以上也不挤：2.5 pt 大线下沿 + 1 pt 间隙之外摆一条小线（也是主档、挂着 → 2.5 pt）。
+    let gapPrice = price(r, atY: cy + 1.25 + 1 + 1.25 + 0.2)
     let apart = Self.order(.spot, .bid, price: gapPrice, firstSeen: seen, notional: 1_500_000, initial: 1_500_000,
                            threshold: 1_000_000, bucket: 7)
-    let touching = Self.order(.spot, .ask, price: price(r, atY: cy - 3 - 1 - 1.5 + 0.2), firstSeen: seen,
+    let touching = Self.order(.spot, .ask, price: price(r, atY: cy - 1.25 - 1 - 1.25 + 0.2), firstSeen: seen,
                               notional: 1_500_000, initial: 1_500_000, threshold: 1_000_000, bucket: 8)
     r.state.orderFlow?.orders = [big, apart, touching]
     let g = frame(r)
@@ -625,47 +634,87 @@ struct OrderFlowChartTests {
     #expect(g.bands.first { $0.key == OrderFlowGroupKey(touching) }?.thin == true, "间隙不足 1 pt 算重叠")
   }
 
-  @Test("金额标签：整条、宽 ≥ 48 pt 的才写；挂着的贴主图右缘；细线与窄带不写；上下相碰只留名义大的")
+  @Test("金额签：只给主档整条；挂着的贴主图右缘、结束的在结束点右侧；纵向撞了名义小的让位（挪 ≤ 32 pt，挪不开就不放）")
   func labels() throws {
     var (r, orders) = Self.renderer()
     let L = r.layout(size: Self.size)
+    let inset = ChartRenderer.orderFlowLabelInset, gap = ChartRenderer.orderFlowLabelGap
     let f = frame(r)
     #expect(!f.labels.isEmpty)
     for label in f.labels {
       let band = try #require(f.bands.first { $0.key == label.key })
-      #expect(!band.thin && band.frame.width >= 48)
+      #expect(!band.thin && band.role == .main)
       #expect(label.text == ChartRenderer.orderFlowAmount(band.group.notional))
       #expect(label.fill == band.color)
+      #expect(label.ink == ChartRenderer.orderFlowLabelInk(mixHex(band.color, r.state.colors.bg, 1 - ChartRenderer.orderFlowLabelAlpha)),
+              "签底 80% 不透明，字色按叠出来的颜色算对比")
       #expect(abs(label.frame.height - ChartRenderer.orderFlowLabelHeight) < 1e-6)
-      #expect(abs(label.frame.midY - band.frame.midY) < 1e-9)
-      if band.group.isLive { #expect(abs(label.frame.maxX - (L.plotW - ChartRenderer.orderFlowLabelInset)) < 1e-9, "挂着的贴主图右缘") }
-      else { #expect(abs(label.frame.maxX - (band.frame.maxX - ChartRenderer.orderFlowLabelInset)) < 1e-9, "结束的贴带右端内侧") }
+      #expect(abs(label.frame.midY - band.frame.midY) <= ChartRenderer.orderFlowLabelMaxShift + 1e-9)
+      #expect(label.frame.maxX <= L.plotW - inset + 1e-9, "不进价格刻度列")
+      if band.group.isLive { #expect(abs(label.frame.maxX - (L.plotW - inset)) < 1e-9, "挂着的贴主图右缘") }
+      else {
+        let want = min(band.frame.maxX + inset, L.plotW - inset - label.frame.width)
+        #expect(abs(label.frame.minX - want) < 1e-9, "结束的在结束点右侧")
+      }
     }
-    // 夹具里只有币本位卖那条从最左画起（首见早于序列），宽过 48 pt；其余首见在最后十根（4 pt 一根，40 pt）。
-    #expect(f.labels.map(\.text) == ["5.3M"])
+    // 签彼此不叠。
+    for (i, a) in f.labels.enumerated() {
+      for b in f.labels[(i + 1)...] {
+        #expect(a.frame.maxX <= b.frame.minX || b.frame.maxX <= a.frame.minX
+                  || a.frame.maxY + gap <= b.frame.minY + 1e-9 || b.frame.maxY + gap <= a.frame.minY + 1e-9)
+      }
+    }
+    #expect(f.labels.contains { $0.text == "5.3M" })
     // 字色取带色的对比色。
     #expect(ChartRenderer.orderFlowLabelInk("#E1D610") == "#141414")
     #expect(ChartRenderer.orderFlowLabelInk("#CF09E7") == "#FFFFFF")
 
-    // 窄带（挂了一根多就撤了，两根宽）不写。活不过一根的已结束段整条不画，见 `shortLivedDropped`。
+    // 窄段（挂了一根多就撤了）也写：签在结束点右侧，放不下就收回主图右缘以内。
     let b = r.state.series
     let p = orders[0].price, cy = y(r, p)
     let narrow = Self.order(.usdtPerp, .bid, price: p, firstSeen: b.time(at: b.count - 8) + 1,
                             end: b.time(at: b.count - 7) + 2, status: .cancelled, bucket: 1)
     r.state.orderFlow?.orders = [narrow]
     let n = frame(r)
-    #expect(n.bands.count == 1 && n.bands[0].frame.width < 48)
-    #expect(n.labels.isEmpty)
+    #expect(n.bands.count == 1 && n.labels.count == 1)
+    let nl = try #require(n.labels.first)
+    #expect(abs(nl.frame.minX - min(n.bands[0].frame.maxX + inset, L.plotW - inset - nl.frame.width)) < 1e-9)
 
-    // 两条带上下隔 6 pt：带不相碍（都是整条），标签 11 pt 高会碰——只留名义大的。首见放到三十根前，够宽。
+    // 两条线上下隔 6 pt：线不相碍（都是整条），签 16 pt 高会碰——名义大的居中在自己线上，小的挪到它上方。
     let seen = b.time(at: b.count - 30) + 1
     let big = Self.order(.usdtPerp, .bid, price: p, firstSeen: seen, notional: 20_000_000, initial: 20_000_000, bucket: 1)
     let small = Self.order(.coinPerp, .ask, price: price(r, atY: cy - 6), firstSeen: seen, bucket: 2)
     r.state.orderFlow?.orders = [small, big]
     let c = frame(r)
     #expect(c.bands.allSatisfy { !$0.thin })
-    #expect(c.labels.count == 1)
-    #expect(c.labels.first?.key == OrderFlowGroupKey(big))
+    #expect(c.labels.count == 2)
+    let bl = try #require(c.labels.first { $0.key == OrderFlowGroupKey(big) })
+    let sl = try #require(c.labels.first { $0.key == OrderFlowGroupKey(small) })
+    #expect(abs(bl.frame.midY - cy) < 1e-9, "名义大的不挪")
+    #expect(sl.frame.maxY <= bl.frame.minY - gap + 1e-9, "小的让到上方")
+    #expect(abs(sl.frame.midY - (cy - 6)) <= ChartRenderer.orderFlowLabelMaxShift)
+
+    // 六条主线挤在 20 pt 里：签挪不开的就不放，放了的彼此不叠、离自己的线不超过 32 pt，名义最大的一定有签。
+    var crowd: [BigOrder] = []
+    for i in 0..<6 {
+      let even = i % 2 == 0
+      let product: OrderFlowProduct = even ? .usdtPerp : .coinPerp
+      let side: BookSide = even ? .bid : .ask
+      let at: Double = price(r, atY: cy + 4 * Double(i))
+      let amount = Double(30 - i) * 1_000_000
+      crowd.append(Self.order(product, side, price: at, firstSeen: seen, notional: amount, initial: amount,
+                              bucket: Int64(10 + 3 * i)))
+    }
+    r.state.orderFlow?.orders = crowd
+    let k = frame(r)
+    #expect(k.bands.allSatisfy { !$0.thin } && k.bands.count == 6)
+    #expect(k.labels.count < 6)
+    #expect(k.labels.contains { $0.key == OrderFlowGroupKey(crowd[0]) })
+    for (i, a) in k.labels.enumerated() {
+      let line = try #require(k.bands.first { $0.key == a.key })
+      #expect(abs(a.frame.midY - line.frame.midY) <= ChartRenderer.orderFlowLabelMaxShift + 1e-9)
+      for o in k.labels[(i + 1)...] { #expect(a.frame.maxY + gap <= o.frame.minY + 1e-9 || o.frame.maxY + gap <= a.frame.minY + 1e-9) }
+    }
     // 挤成细线的不写。
     let thin = Self.order(.spot, .bid, price: p, firstSeen: seen, notional: 1_500_000, initial: 1_500_000,
                           threshold: 1_000_000, bucket: 1)
@@ -678,17 +727,9 @@ struct OrderFlowChartTests {
     #expect(image.cgImage != nil)
   }
 
-  @Test("详情卡上限：最多六本、再多折「还有 N 本」，放不下就少列；宽 ≤ 85% 绘图区、高 ≤ 55% 主图且不越过带")
+  @Test("详情卡上限：宽 ≤ 85% 绘图区、高 ≤ 55% 主图且不越过线的命中带（至少 8 pt 高）")
   func cardBudget() throws {
     typealias B = OrderFlowCardBudget
-    #expect(B.rows(books: 13, lines: 10) == (6, 7))
-    #expect(B.rows(books: 6, lines: 10) == (6, 0))
-    #expect(B.rows(books: 7, lines: 7) == (6, 1))
-    #expect(B.rows(books: 4, lines: 3) == (2, 2), "放不下：留一行给「还有 N 本」")
-    #expect(B.rows(books: 3, lines: 3) == (3, 0))
-    #expect(B.rows(books: 2, lines: 0) == (0, 2))
-    #expect(B.lines(maxHeight: 200, fixedHeight: 94, rowHeight: 19) == 5)
-    #expect(B.lines(maxHeight: 80, fixedHeight: 94, rowHeight: 19) == 0)
     #expect(B.maxWidth(plotW: 400) == 340)
     // 带在上面：卡摆下面，最高 55% 主图；带在下面：摆上面，最高不越过带。
     let top = B.placement(bandY: 60, bandHalf: 3, top: 20, bottom: 420, mainHeight: 400)
@@ -698,13 +739,14 @@ struct OrderFlowChartTests {
     // 带在中间偏上、主图矮：摆下面，最高就是带下沿到主图下沿（140 < 55% × 280）。
     let mid = B.placement(bandY: 150, bandHalf: 4, top: 20, bottom: 300, mainHeight: 280)
     #expect(mid.below && mid.maxHeight == 140)
-    // 焦点带出来的上限：宽按绘图区、高按主图。
+    // 焦点带出来的上限：宽按绘图区、高按主图；卡躲的是命中带，线细也按 8 pt 高算。
     var (r, orders) = Self.renderer()
     r.state.orderFlowSelected = OrderFlowGroupKey(orders[0])
     let focus = try #require(r.orderFlowFocus(size: Self.size))
     let L = r.layout(size: Self.size)
     #expect(focus.cardMaxWidth == L.plotW * 0.85)
     #expect(focus.mainHeight == L.main.h)
+    #expect(focus.bandHalf == ChartRenderer.orderFlowHitHeight / 2)
     let place = focus.cardPlacement
     #expect(place.maxHeight <= L.main.h * 0.55)
     if place.below { #expect(focus.bandY + focus.bandHalf + 6 + place.maxHeight <= focus.mainBottom + 1e-9) }
@@ -715,38 +757,49 @@ struct OrderFlowChartTests {
   func shades() throws {
     let (r, _) = Self.renderer()
     let t = r.state.colors
+    let bid = r.orderFlowBaseColor(side: .bid, contract: true), ask = r.orderFlowBaseColor(side: .ask, contract: true)
     let f = frame(r)
     let fresh = try #require(bandAt(f, bucket: 1))
-    #expect(!fresh.dark && fresh.color == mixHex(t.up, t.bg, 0.45))
+    #expect(!fresh.dark && fresh.color == Palette.orderFlowUnfilled(bid, bg: t.bg))
     let coin = try #require(bandAt(f, bucket: 4))
-    #expect(coin.dark && coin.color == t.down, "部分成交也是深色")
+    #expect(coin.dark && coin.color == ask, "部分成交也是深色")
     let filled = try #require(bandAt(f, bucket: 5))
-    #expect(filled.dark && filled.color == t.up)
+    #expect(filled.dark && filled.color == bid)
     let cancelled = try #require(bandAt(f, bucket: 6))
-    #expect(!cancelled.dark && cancelled.color == mixHex(t.down, t.bg, 0.45))
+    #expect(!cancelled.dark && cancelled.color == Palette.orderFlowUnfilled(ask, bg: t.bg))
     var eaten = fresh.group.members[0]; eaten.filledNotional = 1
-    #expect(r.orderFlowColor(eaten) == t.up, "被吃一口就转深")
+    #expect(r.orderFlowColor(eaten) == bid, "被吃一口就转深")
   }
 
-  @Test("颜色：合约（三种）一律涨跌色、红涨绿跌跟着反；现货黄紫不随涨跌、按底色明暗两套")
+  @Test("颜色：合约买蓝卖品红、现货买黄绿卖浅紫，一律不用蜡烛涨跌色、不随红涨绿跌翻；按图区底色明暗两套")
   func colors() throws {
     for redUp in [false, true] {
       let (r, orders) = Self.renderer(redUp: redUp)
       let t = r.state.colors
-      #expect(r.orderFlowBaseColor(orders[0]) == t.up)
-      #expect(r.orderFlowBaseColor(orders[3]) == t.down, "币本位永续和 U 本位同一套")
-      #expect(r.orderFlowBaseColor(orders[5]) == t.down, "交割同一套")
-      #expect(r.orderFlowBaseColor(orders[1]) == "#B8A800", "浅色底：黄压暗")
-      #expect(r.orderFlowBaseColor(orders[2]) == "#A806BC", "浅色底：紫压暗")
+      let p = Palette.orderFlow(bg: t.bg)
+      #expect(r.orderFlowBaseColor(orders[0]) == p.contractBid)
+      #expect(r.orderFlowBaseColor(orders[3]) == p.contractAsk, "币本位永续和 U 本位同一套")
+      #expect(r.orderFlowBaseColor(orders[5]) == p.contractAsk, "交割同一套")
+      #expect(r.orderFlowBaseColor(orders[1]) == p.spotBid)
+      #expect(r.orderFlowBaseColor(orders[2]) == p.spotAsk)
+      #expect(p == Palette.orderFlowOnLight, "默认夹具是浅色底")
+      for o in orders {
+        let c = r.orderFlowBaseColor(o)
+        #expect(c != t.up && c != t.down)
+        #expect(Palette.hueDistance(c, t.up) >= 60 && Palette.hueDistance(c, t.down) >= 60, "\(o.product) \(o.side) 和蜡烛撞色")
+      }
     }
     #expect(Self.renderer(redUp: true).0.state.colors.up == Palette.chart(Palette.lightSeed, redUp: true).up)
-    // 六套皮肤按底色分两套：浅色三套压暗、深色三套用 CoinAnk 原色；浅色档和底色、和深色档都拉得开。
+    // 六套皮肤按底色分两套；浅色档和底色、和深色档都拉得开。
     for skin in Skin.allCases {
       for dark in [false, true] {
         var (r, orders) = Self.renderer()
         r.state.paletteSeed = Palette.seed(skin, dark: dark)
-        #expect(r.orderFlowBaseColor(orders[1]) == (dark ? "#E1D610" : "#B8A800"), "\(skin) \(dark)")
-        #expect(r.orderFlowBaseColor(orders[2]) == (dark ? "#CF09E7" : "#A806BC"), "\(skin) \(dark)")
+        let want = dark ? Palette.orderFlowOnDark : Palette.orderFlowOnLight
+        #expect(r.orderFlowBaseColor(orders[0]) == want.contractBid, "\(skin) \(dark)")
+        #expect(r.orderFlowBaseColor(orders[1]) == want.spotBid, "\(skin) \(dark)")
+        #expect(r.orderFlowBaseColor(orders[2]) == want.spotAsk, "\(skin) \(dark)")
+        #expect(r.orderFlowBaseColor(orders[3]) == want.contractAsk, "\(skin) \(dark)")
         let bg = r.state.colors.bg
         for o in orders {
           var light = o; light.filledNotional = 0
@@ -785,35 +838,41 @@ struct OrderFlowChartTests {
     #expect(frame(r).bands.count == 4)
   }
 
-  @Test("点中判定：横向两头放 4 pt、竖向半高 + 8 pt；叠在一起点中画在上面的那条")
+  @Test("点中判定：线按至少 8 pt 高的带子算，横向两头放 4 pt、竖向再放 8 pt；同价叠着点出名义大的，错开的细线点得中")
   func hitTolerance() throws {
     let (r, _) = Self.renderer()
     let f = frame(r)
     let band = try #require(bandAt(f, bucket: 1))
-    let x = band.frame.midX, mid = band.frame.midY, h = band.frame.height
+    let x = band.frame.midX, mid = band.frame.midY
+    let half = max(band.frame.height, ChartRenderer.orderFlowHitHeight) / 2
+    #expect(half == 4, "2.5 pt 的线按 8 pt 的带子算")
     #expect(ChartRenderer.orderFlowHit(f.bands, x: x, y: mid)?.key == band.key)
-    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + h / 2 + 7.9)?.key == band.key)
-    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid - h / 2 - 7.9)?.key == band.key)
-    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + h / 2 + 8.1) == nil)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + half + 7.9)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid - half - 7.9)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + half + 8.1) == nil)
     #expect(ChartRenderer.orderFlowHit([band], x: band.frame.minX - 3.9, y: mid)?.key == band.key)
     #expect(ChartRenderer.orderFlowHit([band], x: band.frame.minX - 4.1, y: mid) == nil)
-    // 一条细线压在它上面：点在细线上给细线，点在带的别处给带。
+    // 一条名义小的细线：和它同价叠着时点下去给大的；错开 3 pt 时点在细线上给细线、点在大线上给大线。
     var small = band.group.members[0]; small.venueID = "binance:spot:X"; small.product = .spot
-    let thinFrame = CGRect(x: band.frame.minX, y: mid - 0.75, width: band.frame.width, height: 1.5)
-    let smallBand = ChartRenderer.OrderFlowBand(group: try #require(OrderFlowGroup(key: OrderFlowGroupKey(small), members: [small])),
-                                                frame: thinFrame, color: band.color, dark: false, thin: true)
-    #expect(ChartRenderer.orderFlowHit([band, smallBand], x: x, y: mid)?.key == smallBand.key)
-    #expect(ChartRenderer.orderFlowHit([band, smallBand], x: x, y: band.frame.minY + 0.1)?.key == band.key)
+    small.notional = 1_500_000; small.initialNotional = 1_500_000
+    let smallGroup = try #require(OrderFlowGroup(key: OrderFlowGroupKey(small), members: [small]))
+    let stacked = ChartRenderer.OrderFlowBand(group: smallGroup, frame: CGRect(x: band.frame.minX, y: mid - 0.5, width: band.frame.width, height: 1),
+                                              color: band.color, dark: false, thin: true)
+    #expect(ChartRenderer.orderFlowHit([band, stacked], x: x, y: mid)?.key == band.key)
+    let offset = ChartRenderer.OrderFlowBand(group: smallGroup, frame: CGRect(x: band.frame.minX, y: mid - 3.5, width: band.frame.width, height: 1),
+                                             color: band.color, dark: false, thin: true)
+    #expect(ChartRenderer.orderFlowHit([band, offset], x: x, y: mid - 3)?.key == offset.key)
+    #expect(ChartRenderer.orderFlowHit([band, offset], x: x, y: mid + 0.5)?.key == band.key)
     // 都没点在带里：离带边最近的；一样近取名义大的。
-    #expect(ChartRenderer.orderFlowHit([smallBand, band], x: x, y: band.frame.maxY + 3)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([offset, band], x: x, y: mid + half + 3)?.key == band.key)
     // 轻点：命中区至少 44 pt 高、44 pt 宽（HIG）；十字线仍按 8 pt / 4 pt。
-    let reachY = (ChartRenderer.orderFlowTouchTarget - h) / 2
-    #expect(reachY > 8)
-    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + h / 2 + reachY - 0.1, touch: true)?.key == band.key)
-    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid - h / 2 - reachY + 0.1, touch: true)?.key == band.key)
-    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + h / 2 + reachY + 0.1, touch: true) == nil)
+    let reachY = (ChartRenderer.orderFlowTouchTarget - 2 * half) / 2
+    #expect(reachY == 18)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + half + reachY - 0.1, touch: true)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid - half - reachY + 0.1, touch: true)?.key == band.key)
+    #expect(ChartRenderer.orderFlowHit([band], x: x, y: mid + half + reachY + 0.1, touch: true) == nil)
     let narrow = ChartRenderer.OrderFlowBand(group: band.group,
-                                             frame: CGRect(x: band.frame.minX, y: band.frame.minY, width: 4, height: h),
+                                             frame: CGRect(x: band.frame.minX, y: band.frame.minY, width: 4, height: band.frame.height),
                                              color: band.color, dark: false, thin: false)
     #expect(ChartRenderer.orderFlowHit([narrow], x: narrow.frame.midX + 21.9, y: mid, touch: true)?.key == band.key)
     #expect(ChartRenderer.orderFlowHit([narrow], x: narrow.frame.midX + 22.1, y: mid, touch: true) == nil)
@@ -933,7 +992,7 @@ struct OrderFlowChartTests {
     #expect(frame(other).bands.isEmpty)
   }
 
-  @Test("整帧绘制：色带真的落到像素上、不透明，比价模式不画")
+  @Test("整帧绘制：线真的落到像素上，比价模式不画")
   func pixels() throws {
     let (r, orders) = Self.renderer()
     let L = r.layout(size: Self.size), range = r.priceRange(size: Self.size)

@@ -252,7 +252,8 @@ public final class ChartView: UIView {
           } ?? [:],
           // 一堵墙一条的合并带：product = contract / spot；thin = 被挤成了细线；books = 几行（一本簿一桶一行）、
           // members = 几单；id =「类|侧|桶|起点 ms」（墙里最早那一段）；priceLow / priceHigh = 墙的价位范围，
-          // buckets = 并了几个桶；role = main / secondary / noise（屏内排名的主次），alpha = 不透明度。
+          // buckets = 并了几个桶；role = main / secondary / noise（屏内排名的主次），alpha = 不透明度；
+          // h = 线粗（1–2.5 pt），spanTop / spanBottom = 跨桶主墙淡底的上下沿（没有是 -1）。
           "orderFlowBands": (orderFlow?.bands ?? []).map {
             ["side": $0.group.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
              "w": $0.frame.width, "h": $0.frame.height, "color": $0.color.value, "dark": $0.dark,
@@ -260,7 +261,8 @@ public final class ChartView: UIView {
              "live": $0.group.isLive, "books": $0.group.books.count, "members": $0.group.members.count,
              "notional": $0.group.notional, "id": $0.key.id, "priceLow": $0.group.priceLow,
              "priceHigh": $0.group.priceHigh, "buckets": $0.group.bucketCount, "role": $0.role.rawValue,
-             "alpha": $0.alpha] as [String: Any]
+             "alpha": $0.alpha, "spanTop": $0.span.map { Double($0.minY) } ?? -1,
+             "spanBottom": $0.span.map { Double($0.maxY) } ?? -1] as [String: Any]
           },
           "orderFlowLabels": (orderFlow?.labels ?? []).map {
             ["id": $0.key.id, "text": $0.text, "x": $0.frame.minX, "y": $0.frame.minY,

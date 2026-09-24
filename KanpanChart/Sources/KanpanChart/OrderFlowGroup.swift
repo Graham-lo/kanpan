@@ -406,10 +406,8 @@ public struct OrderFlowGroup: Sendable, Equatable {
   }
 }
 
-/// 详情卡的尺寸上限与行数（app 那边按这个排，放在图表包里好单测）。
+/// 详情卡的尺寸上限与摆位（app 那边按这个排，放在图表包里好单测）。卡只有三行，不再按高度算列几本簿。
 public enum OrderFlowCardBudget {
-  /// 最多列几本簿，再多折成「还有 N 本」。
-  public static let maxRows = 6
   /// 卡宽不超过图区（绘图区宽）的这个比例。
   public static let widthFraction = 0.85
   /// 卡高不超过主图的这个比例。
@@ -427,20 +425,5 @@ public enum OrderFlowCardBudget {
     let below = bottom - (bandY + bandHalf + bandGap)
     let room = max(above, below)
     return (below >= above, max(0, min(mainHeight * heightFraction, room)))
-  }
-
-  /// 高度放得下几行、折几本。`lines` = 这么高能排下的簿行数（含折叠那一行）。
-  /// 簿不多于 `min(6, lines)` 全列；否则列 `min(6, lines − 1)` 行，其余折成一行「还有 N 本」。
-  public static func rows(books: Int, lines: Int) -> (shown: Int, folded: Int) {
-    let books = max(0, books), lines = max(0, lines)
-    if books <= min(maxRows, lines) { return (books, 0) }
-    let shown = max(0, min(maxRows, lines - 1))
-    return (shown, books - shown)
-  }
-
-  /// 按像素高度算能排几行：`(可用高 − 固定部分) ÷ 行高`，向下取整。
-  public static func lines(maxHeight: Double, fixedHeight: Double, rowHeight: Double) -> Int {
-    guard rowHeight > 0, maxHeight > fixedHeight else { return 0 }
-    return Int(((maxHeight - fixedHeight) / rowHeight).rounded(.down))
   }
 }

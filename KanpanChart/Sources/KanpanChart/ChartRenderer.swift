@@ -388,12 +388,13 @@ public struct ChartRenderer {
     let main = L.main
     drawPriceGrid(ctx, pane: main, r: r, L: L, scale: s)
     drawTimeGrid(ctx, L: L, scale: s)
+    // 主力订单流垫在 K 线下面：先画线与淡底，再画蜡烛、均线、副图（2026-09-25：「K 线是主体」）。
+    if !state.percentAxis { drawOrderFlow(ctx, pane: main, range: r, L: L) }
     drawCandles(ctx, pane: main, r: r, L: L, scale: s)
     drawExtrema(ctx, r: r, L: L, scale: s)
     if state.percentAxis { drawCompare(ctx, pane: main, r: r, L: L) }
     else {
       drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
-      drawOrderFlow(ctx, pane: main, range: r, L: L)
       drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
       if live { drawDepth(ctx, pane: main, range: r, L: L) }
     }

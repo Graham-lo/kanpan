@@ -10,7 +10,8 @@ import Foundation
 // `renderKey` 就是「画出来一样」的判据：四分之一格、深浅、位置与状态都一样，底图不重画。
 // `pixelKey`（行情流用来决定要不要发帧）比它细，这里不动它。
 extension BigOrder {
-  /// 粗细档数：0…4（2 / 3 / 4.5 / 6 / 8 pt，见 `ChartRenderer.orderFlowBandHeight`）。
+  /// 粗细档数：0…4。2026-09-25 起图上一律「细线 + 签」，线粗按屏内排名定（见 `ChartRenderer+OrderFlow`），
+  /// 这里的档只剩「画出来一样」的判据（`renderKey`）这一个用处。
   public static let thicknessTiers = 5
   /// 四分之一格封顶：16 倍门槛以上一律按 16 倍算（已经是最粗一档）。
   public static let maxThicknessQuarters = 64
