@@ -39,9 +39,9 @@ help:
 	@echo "chart-test   跑 KanpanChart 单测（需要一台模拟器）"
 	@echo "account-test 跑 KanpanAccount 单测（登录、退登、被顶下线、同步编解码）"
 	@echo "review-test  跑 KanpanReview 单测（需要一台模拟器）"
-	@echo "app-logic-test  跑 app 侧壳包（自选 / 设置 / 板块 / 诊断 / 同步字段 / 链接 / 扫图 / 提醒）+ 交易所隔离检查"
-	@echo "diag-ios-test   帧探针那几条（需要一台模拟器，不挂进 test）"
-	@echo "main-ios-test   主屏生命周期用例（需要一台模拟器）"
+	@echo "app-logic-test  跑 KanpanTests 除 Main 外的八组（自选 / 设置 / 板块 / 诊断 / 同步字段 / 链接 / 扫图 / 提醒，需要一台模拟器）+ 交易所隔离检查"
+	@echo "diag-ios-test   只跑帧探针冒烟那一套（它也在 diag-test / app-logic-test 里）"
+	@echo "main-ios-test   KanpanTests 的 Main 组：主屏生命周期用例（需要一台模拟器）"
 	@echo "backend-test 跑 kanpan-api 的库内单测（cargo test --lib，不需要 Postgres）"
 	@echo "test         core / network / data / app-logic / chart / main-ios / account / review 全跑"
 	@echo "test-release 同一套按 Release 配置再跑一遍（各目标加 -release 后缀可单跑）"
@@ -50,7 +50,7 @@ help:
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库；配色那两份不重导）"
 	@echo "feed         编数据层取证工具 kanpan-feed（Release）"
 	@echo "sync-contract 重新生成 iOS↔Rust 契约：settings 字段（PrefsFieldPlan.table → contract/settings-fields.json）与画线字段（Drawing 编码 → contract/drawing-fields.json）"
-	@echo "app-test     app-logic-test + 编一遍 app（app 自己没有单元测试 target）"
+	@echo "app-test     app-logic-test + 编一遍 app"
 	@echo "build        在模拟器上编 app（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "ui-test      A8.4：两台重点机型跑同一套 XCUITest 用例，逐台记结果"
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
@@ -126,85 +126,89 @@ chart-test:
 		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
 		-derivedDataPath .xcbuild
 
-# ---------------------------------------------------------------- app 侧逻辑包
-# app 工程里没有单元测试 target（`Kanpan.xcscheme` 的 test action 只挂 KanpanUITests），
-# 补一个要改 project.pbxproj。改用 SwiftPM 壳包：Sources/ 下是指向 Kanpan/Kanpan/<模块>/ 的符号链接，
-# 一份代码两处编译，不会漂移。新增模块照 Symbols 的样子加一行。
-SYMBOLS := Kanpan/Symbols
+# ---------------------------------------------------------------- app 侧逻辑（KanpanTests）
+# app 工程里的单元测试 target：`Kanpan/KanpanTests/`（宿主 app 是 Kanpan，`@testable import Kanpan`）。
+# 以前这里是九个 SwiftPM 壳包（`Kanpan/Symbols`、`Kanpan/Settings`……，Sources/ 下是指向
+# app 源码的符号链接），第三批 K 线（审查 27）把它们并成这一个 target：一份源码只编一处，
+# 壳包专用的 `#if canImport(...)` 分叉也一起删了。
+#
+# 分组 = `Kanpan/KanpanTests/` 下的子目录，目标名照旧；组里有哪些套件由
+# `Tools/app-test-group.sh` 现扫目录得出，往组里加文件不用改这里。
+# 全部跑在模拟器上（hosted test）：`DEVICE` 选机型，或者直接给 `SIM_DEST`
+# （例：make symbols-test SIM_DEST='platform=iOS Simulator,id=<udid>' APP_DD=/tmp/xx-dd）。
+APP_TESTS := Kanpan/KanpanTests
+SIM_DEST  ?= platform=iOS Simulator,name=$(DEVICE)
+APP_DD    ?= .xcbuild/app
+APP_DD_RELEASE ?= .xcbuild-release/app
+APP_GROUP := Tools/app-test-group.sh
+APP_TEST_FLAGS := -workspace $(WORKSPACE) -scheme $(SCHEME) -destination '$(SIM_DEST)' \
+	-test-timeouts-enabled YES -default-test-execution-time-allowance 300
+# Release 档：`@testable` 要 ENABLE_TESTABILITY；帧探针 / 假数据 / 桶快照这几份只进
+# DEBUG 或 `KANPAN_TEST_SUPPORT`，所以 Release 跑测时把后者打开（正式 Release 包不带）。
+APP_RELEASE_FLAGS := -configuration Release ENABLE_TESTABILITY=YES \
+	SWIFT_ACTIVE_COMPILATION_CONDITIONS='$$(inherited) KANPAN_TEST_SUPPORT'
 
-SETTINGS := Kanpan/Settings
+# 帧探针冒烟量的是一秒钟里主线程转了几帧，和几百条 @MainActor 用例挤在一起跑时主线程
+# 被占满，量出来八帧就判红——那是跑法的问题不是探针的问题。所以组里跳过它，
+# 同一个目标里接着单独跑一趟（`APP_SMOKE`），通过数一条不少。
+APP_SMOKE := -only-testing:KanpanTests/FrameProbeSmokeTests
+APP_SKIP  := -skip-testing:KanpanTests/FrameProbeSmokeTests
 
+# 跑某几组：$(call app_test,<组…>)；Release 档：$(call app_test_release,<组…>)
+app_test = $(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $$($(APP_GROUP) $(1)) $(APP_SKIP)
+app_test_release = $(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD_RELEASE) \
+	$(APP_RELEASE_FLAGS) $$($(APP_GROUP) $(1)) $(APP_SKIP)
+
+# 自选、搜索、品种表、报价会话。
 symbols-test:
-	cd $(SYMBOLS) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,Symbols)
 
+# 设置模型、偏好落盘与容错、行情缓存、settings 同步字段契约。
 settings-test:
-	cd $(SETTINGS) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,Settings)
 
 # 板块页那两件不吃 SwiftUI 的：取数（`SectorFeed`：换线路清行情、连着失败就丢）
 # 和品种列表的值与文案（`SectorRows`：小数位听品种表的、缺数不许伪排序）。
-SECTOR := Kanpan/Sector
-
 sector-test:
-	cd $(SECTOR) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,Sector)
 
 # 连续扫图与「看细节」的纯算术（§10.1）：冻结下来的那张名单怎么走一只（`ScanList`）、
 # 「看细节」该进哪一档、视野铺多宽、切回大周期时回到哪儿（`DetailZoom`）。
-# 手势与按钮吃 SwiftUI，那部分的证据走模拟器。
-SCAN := Kanpan/Scan
-
 scan-test:
-	cd $(SCAN) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,Scan)
 
-# 提醒模块里不吃 SwiftUI / UIKit 的那两件：存档与对账（线被挪了按同一个 id 重算、
-# 线被删了提醒跟着删）、以及那份存档的管家。纯逻辑（几何摊平、触发判定）在
-# KanpanCore/Alerts，跑 core-test。
-ALERTS := Kanpan/Alerts
-
+# 提醒模块的存档与对账（线被挪了按同一个 id 重算、线被删了提醒跟着删）、权限那一行。
+# 纯逻辑（几何摊平、触发判定）在 KanpanCore/Alerts，跑 core-test。
 alerts-test:
-	cd $(ALERTS) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,Alerts)
 
-DIAG := Kanpan/Diagnostics
-
+# 诊断：MetricKit 摘要、落盘、帧统计，以及帧探针冒烟（CADisplayLink / CFRunLoopObserver 真跑，单独一趟）。
 diag-test:
-	cd $(DIAG) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,Diagnostics)
+	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $(APP_SMOKE)
 
 # 外面进来的那条链接长什么样（`DeepLink`）。通知、桌面快捷入口、共享链接三边
-# 照着同一份形态拼串，解析只有这一处，所以它的契约要有人钉着。零依赖、不吃
-# SwiftUI，mac 上直接跑。
-DEEPLINK := Kanpan/DeepLink
-
+# 照着同一份形态拼串，解析只有这一处，所以它的契约要有人钉着。
 deeplink-test:
-	cd $(DEEPLINK) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,DeepLink)
 
-# 「这个客户端替哪些字段说话」那张表（`PersonalSyncCodec.ownedKeys`）的跑道。
-# 它吃的 Prefs / SymbolPrefs 都是 internal 的，所以这个壳包把设置模型、SymbolPrefs
-# 和 codec 链进同一个模块编——就是 app 靶子里它们本来的样子。
-ACCOUNT_CODEC := Kanpan/AccountCodec
-
+# 「这个客户端替哪些字段说话」那张表（`PersonalSyncCodec.ownedKeys`）与画线字段契约。
 account-codec-test:
-	cd $(ACCOUNT_CODEC) && $(SWIFT) test $(CORE_TEST_FLAGS)
+	$(call app_test,AccountCodec)
 
-# 帧探针那几条只有真跑在 iOS 上才走得到（CADisplayLink / CFRunLoopObserver 在 mac
-# 上编得过但量不到东西），所以单独一个 target，要起模拟器，故意不挂进 `test`。
-# 真机取证前必须跑一遍。
+# 帧探针冒烟那一套（真机取证前必须跑一遍）。diag-test / app-logic-test 里也各跑一趟，这个目标只单跑它。
 diag-ios-test:
-	cd $(DIAG) && $(XCODEBUILD) test -scheme KanpanDiagnostics \
-	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
+	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $(APP_SMOKE)
 
 # 主屏那几条生命周期用例（宿主销毁收摊、合批缓冲换人就丢、转屏复位只认最后一次、
-# 后台额度必须还）离不开真的 UIKit：UIApplication 的后台任务、CADisplayLink、
-# 窗口挂接在 mac 上根本没有，`swift test` 连 import UIKit 都过不去，所以单独起模拟器跑。
-#
-# 但它**挂在 `test` 里**（审查复核项 8）：顶栏纯显示（A-T20）、报价簿（B-T10）这些
-# 规则只有这一套能守，不挂进去就等于没人跑。走 xcodebuild 不是例外——`chart-test`
-# 一直是这么跑的，`test` 里本来就有它。
-MAIN := Kanpan/KanpanTests
-
+# 后台额度必须还）、顶栏纯显示（A-T20）、报价簿（B-T10）。它们**挂在 `test` 里**（审查复核项 8）。
 main-ios-test:
-	cd $(MAIN) && $(XCODEBUILD) test -scheme KanpanMain \
-	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
+	$(call app_test,Main)
 
-app-logic-test: venue-isolation symbols-test sector-test settings-test diag-test account-codec-test deeplink-test scan-test alerts-test
+# 除 Main 之外的八组一次编一次跑（分开跑要编八遍），外加帧探针单独那一趟、交易所隔离检查。
+app-logic-test: venue-isolation
+	$(call app_test,--except Main)
+	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $(APP_SMOKE)
 
 # 交易所隔离守卫：某家交易所的名字只许出现在它自己的提供者目录与 VenueRegistry 里。
 venue-isolation:
@@ -223,15 +227,15 @@ venue-isolation:
 #
 # 同一条命令也重新生成画线那一份 `drawing-fields.json`：一条画线在线上长什么样
 # （分享收哪些键、哪些必须在、同步收哪些键、每种工具几个锚点），母本是 `Drawing` 的编码
-# 本身，由 Kanpan/AccountCodec 的 DrawingFieldContract 拿真实编码结果导出。
+# 本身，由 KanpanTests 的 AccountCodec 组里 DrawingFieldContract 拿真实编码结果导出。
 SYNC_CONTRACT := Backend/kanpan-api/contract/settings-fields.json
 DRAWING_CONTRACT := Backend/kanpan-api/contract/drawing-fields.json
 
+# 开关经 `TEST_RUNNER_` 前缀递进测试进程（xcodebuild 会去掉前缀再交给宿主 app）。
 sync-contract:
-	cd $(SETTINGS) && KANPAN_WRITE_SYNC_CONTRACT=1 $(SWIFT) test $(CORE_TEST_FLAGS) \
-	  --filter theContractFileIsTheOneListBothSidesRead
-	cd $(ACCOUNT_CODEC) && KANPAN_WRITE_SYNC_CONTRACT=1 $(SWIFT) test $(CORE_TEST_FLAGS) \
-	  --filter theDrawingContractFileIsWhatDrawingEncodes
+	TEST_RUNNER_KANPAN_WRITE_SYNC_CONTRACT=1 $(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) \
+	  '-only-testing:KanpanTests/PrefsFieldPlanTests/theContractFileIsTheOneListBothSidesRead()' \
+	  '-only-testing:KanpanTests/DrawingFieldContractTests/theDrawingContractFileIsWhatDrawingEncodes()'
 	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table、$(DRAWING_CONTRACT) 已按 Drawing 的编码重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
 	@$(MAKE) --no-print-directory backend-test
 
@@ -269,17 +273,17 @@ test: core-test network-test data-test app-logic-test chart-test main-ios-test a
 # **`ENABLE_TESTABILITY=YES` 不能省。** xcodebuild 在 Release 配置下把它默认设成 NO，
 # 没有它，测试目标里的 `@testable import` 一律编不过（`module was not compiled for
 # testing`）。SwiftPM 的 `swift test -c release` 自己会带上这个设置，所以只有走
-# xcodebuild 的那几个包需要显式写。
+# xcodebuild 的那几个（Chart、Review、KanpanTests）需要显式写。
 #
 # **Debug 有、Release 没有的用例，必须单独列出来、不许并进 Release 的通过数**（报告原话）。
 # 清完之后，全仓只剩这三处：
-#   Kanpan/Symbols/Tests/KanpanSymbolsTests/SymbolPrefsSeedIsolationTests.swift —— 4 条。
+#   Kanpan/KanpanTests/Symbols/SymbolPrefsSeedIsolationTests.swift —— 4 条。
 #   它钉的是 `SymbolPrefsStore.testSeed`，而那段种子脚手架按 A-07 / C-02 只存在于 DEBUG，
 #   Release 包里连代码都不该有。这 4 条在 Release 下会「为了错的理由变绿」，所以留在 DEBUG。
 #   KanpanChart/Tests/KanpanChartTests/CrosshairWorkTests.swift —— 3 条（共 6 条）。
 #   那 3 条读 `ChartWorkCounter` 的重算次数，而那份计数趴在渲染热路径上、只在 DEBUG 下
 #   有存储，Release 里恒为 0。同文件另外 3 条验的是产品行为，两种配置都跑。
-#   Kanpan/Alerts/Tests/KanpanAlertsTests/P31AlertKindsTests.swift —— 1 条。
+#   Kanpan/KanpanTests/Alerts/P31AlertKindsTests.swift —— 1 条。
 #   它调的是 `WatchMoveMonitor.injectTestMove`（UI 用例的注入口），那个口子只在 DEBUG 里有。
 # KanpanAccount 原来那 16 条（ClientHardening 8 / DeviceKind 5 / SessionLifecycle 全套）
 # 已经在本轮改成白名单主机 + 自带 URLProtocol，Debug / Release 两边都是 60 条，不再有差集。
@@ -294,42 +298,34 @@ data-test-release:
 	cd $(DATA) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 account-test-release:
 	cd $(ACCOUNT) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-# 和 Debug 档的 app-logic-test 同一份包清单，少一个就等于那个包的 Release 没人测。
+# 和 Debug 档的 app-logic-test 同一份分组，少一组就等于那一组的 Release 没人测。
 app-logic-test-release: venue-isolation
-	cd $(SYMBOLS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-	cd $(SETTINGS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-	cd $(SECTOR) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-	cd $(DIAG) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-	cd $(ACCOUNT_CODEC) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-	cd $(DEEPLINK) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-	cd $(SCAN) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-	cd $(ALERTS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	$(call app_test_release,--except Main)
+	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD_RELEASE) $(APP_RELEASE_FLAGS) $(APP_SMOKE)
 chart-test-release:
 	cd $(CHART) && $(XCODEBUILD) test -scheme KanpanChart \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
 	  -configuration Release ENABLE_TESTABILITY=YES
 main-ios-test-release:
-	cd $(MAIN) && $(XCODEBUILD) test -scheme KanpanMain \
-	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
-	  -configuration Release ENABLE_TESTABILITY=YES
+	$(call app_test_release,Main)
 review-test-release:
 	cd $(REVIEW) && $(XCODEBUILD) test -scheme KanpanReview \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
 	  -configuration Release ENABLE_TESTABILITY=YES
 
-# 帧探针那一套同样只在模拟器上成立，Release 下也得能跑（同样要 ENABLE_TESTABILITY=YES）。
+# 帧探针那一套同样只在模拟器上成立，Release 下也得能跑。
 diag-ios-test-release:
-	cd $(DIAG) && $(XCODEBUILD) test -scheme KanpanDiagnostics \
-	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
-	  -configuration Release ENABLE_TESTABILITY=YES
+	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD_RELEASE) $(APP_RELEASE_FLAGS) $(APP_SMOKE)
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
-# 覆盖全部包：五个库包、app 侧八个 mac 能编的壳包，外加三个只能在 iOS 上编的
-# （KanpanChart、KanpanReview、主屏壳包 KanpanMain）。后三个走 xcodebuild，警告即错误
-# 由各自 Package.swift 认 `KANPAN_STRICT=<包名>` 打开（原因见 KanpanChart/Package.swift 顶上）。
+# 覆盖：四个 mac 能编的库包（Core / Network / Data / Account），外加三样只能在 iOS 上编的
+# ——KanpanChart、KanpanReview（各自 Package.swift 认 `KANPAN_STRICT=<包名>` 打开，
+# 原因见 KanpanChart/Package.swift 顶上），以及 app 本身。app 那一步认 `KANPAN_STRICT_APP=YES`：
+# 它只被 app target 的 SWIFT_TREAT_WARNINGS_AS_ERRORS 引用，依赖的包照常编——全局开
+# -warnings-as-errors 会和包的 -suppress-warnings 撞上。和以前一样只编产品代码、不编测试 target
+# （包那几步是 `swift build`，本来就不编测试）。
 STRICT_FLAGS := -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-STRICT_MAC_PACKAGES := $(CORE) $(NETWORK) $(DATA) $(ACCOUNT) \
-	$(SYMBOLS) $(SETTINGS) $(SECTOR) $(SCAN) $(ALERTS) $(DIAG) $(DEEPLINK) $(ACCOUNT_CODEC)
+STRICT_MAC_PACKAGES := $(CORE) $(NETWORK) $(DATA) $(ACCOUNT)
 
 strict:
 	@for p in $(STRICT_MAC_PACKAGES); do \
@@ -340,8 +336,9 @@ strict:
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
 	cd $(REVIEW) && KANPAN_STRICT=KanpanReview $(XCODEBUILD) -scheme KanpanReview \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
-	cd $(MAIN) && KANPAN_STRICT=KanpanMain $(XCODEBUILD) -scheme KanpanMain \
-		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
+	$(XCODEBUILD) build -workspace $(WORKSPACE) -scheme $(SCHEME) \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict/app \
+		KANPAN_STRICT_APP=YES
 
 # ---------------------------------------------------------------- §12 M3 取证
 # 绘制层的证据只能在模拟器里出（UIKit），所以取证器就是测试 target 里的三个 suite：
@@ -367,13 +364,10 @@ feed:
 	@echo "二进制：$(DATA)/.build/release/kanpan-feed"
 
 # ---------------------------------------------------------------- app
-# app 工程没有单元测试 target：`Kanpan.xcscheme` 的 test action 只挂 KanpanUITests（那是
-# `ui-test` / `ui-test-one`）。app 侧的逻辑一律由上面的壳包覆盖，这里只做编译验证。
+# app 侧逻辑走 KanpanTests（上面那几组），界面走 ui-test；这里再单独编一遍 app。
 app-test: app-logic-test build
-	@echo "注意：app 没有单元测试 target，app 侧逻辑走 symbols-test 这类壳包，界面走 ui-test。"
-
 # ---------------------------------------------------------------- A8.4 UI 测试
-# KanpanUITests（本工程里唯一的 XCTest target，其余单测一律 swift-testing）。
+# KanpanUITests（本工程里唯一的 XCTest 用例，其余单测一律 swift-testing；KanpanTests 不进这张矩阵）。
 # 同一套用例在两台重点机型上各跑一遍，逐台记结果：make ui-test
 # 单台：make ui-test-one DEVICE="iPhone 17 Pro Max"
 UI_DEVICES := $(DEVICES)

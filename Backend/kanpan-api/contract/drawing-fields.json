@@ -43,9 +43,9 @@
     "xabcd" : 5
   },
   "anchorCountsNote" : "Drawing.Kind 的 rawValue → 画完的一条线带几个锚点（pointCount）。sync_validation.rs 的 anchor_count 必须逐项等于它，KINDS 也必须正好是这些键：点数不对的画线服务端整条拒绝，那把工具画的线就永远离不开这台手机。",
-  "generatedBy" : "Kanpan/AccountCodec/Tests/KanpanAccountCodecTests/DrawingFieldContractTests.swift · DrawingFieldContract",
+  "generatedBy" : "Kanpan/KanpanTests/AccountCodec/DrawingFieldContractTests.swift · DrawingFieldContract",
   "generatedFrom" : "KanpanCore/Drawing/Drawing.swift · Drawing.encode(to:) 与 Drawing.Kind.pointCount；Kanpan/Kanpan/Account/PersonalSyncCodec.swift · PersonalSyncCodec.drawings",
-  "howToRegenerate" : "这是生成物，不要手改。改 Drawing 的编码或 Kind，然后在仓库根跑 `make sync-contract`。两边的测试自动对账：Kanpan/AccountCodec 的 theDrawingContractFileIsWhatDrawingEncodes，Backend/kanpan-api 的 share_fields_are_what_drawing_encodes、drawing_fields_are_what_the_codec_sends 与 anchor_counts_are_the_clients_point_counts。",
+  "howToRegenerate" : "这是生成物，不要手改。改 Drawing 的编码或 Kind，然后在仓库根跑 `make sync-contract`。两边的测试自动对账：KanpanTests 的 theDrawingContractFileIsWhatDrawingEncodes，Backend/kanpan-api 的 share_fields_are_what_drawing_encodes、drawing_fields_are_what_the_codec_sends 与 anchor_counts_are_the_clients_point_counts。",
   "legacySyncFields" : {
     "created" : "老存档随画线带的创建时刻；老客户端推上来的那份不能因为它被整条拒绝"
   },

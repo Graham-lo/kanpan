@@ -1,8 +1,6 @@
 import Foundation
 import KanpanCore
-#if canImport(UIKit)
 import UIKit
-#endif
 
 // ============================================================ 剪贴板
 //
@@ -57,7 +55,6 @@ enum ClipboardSymbol {
     return best.info
   }
 
-  #if canImport(UIKit)
   /// 上一次已经看过的那份剪贴板。`UIPasteboard.changeCount` 每换一次内容加一，
   /// 所以它既是「这份看过了」的记号，也是「同一份只摆一次」的实现。
   @MainActor private static var seen: Int?
@@ -81,5 +78,4 @@ enum ClipboardSymbol {
 
   /// 测试用：把「看过」的记号清掉。
   @MainActor static func forget() { seen = nil }
-  #endif
 }

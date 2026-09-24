@@ -1,1 +1,0 @@
-../../../Kanpan/Sector/SectorFeed.swift

@@ -1,1 +1,0 @@
-../../../Kanpan/Sector/SectorIconTable.swift

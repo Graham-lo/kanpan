@@ -38,8 +38,11 @@ RES="${RES:-$DD/ui-test}"                  # .xcresult 结果包（体积大，�
 SUFFIX="${SUFFIX:-}"
 ONLY_DEVICE="${ONLY_DEVICE:-}"            # 受影响用例可只跑一台，空值仍跑完整矩阵
 ONLY_TESTING="${ONLY_TESTING:-}"
-TEST_ARGS=()
+# 没点名时只跑 KanpanUITests：scheme 的 test action 里还挂着单测 target KanpanTests，
+# 那一份由 `make app-logic-test` / `main-ios-test` 跑，不进这张界面矩阵。
+TEST_ARGS=(-only-testing:KanpanUITests)
 if [ -n "$ONLY_TESTING" ]; then
+  TEST_ARGS=()
   IFS=',' read -r -a TEST_IDS <<< "$ONLY_TESTING"
   for test_id in "${TEST_IDS[@]}"; do TEST_ARGS+=("-only-testing:$test_id"); done
 fi

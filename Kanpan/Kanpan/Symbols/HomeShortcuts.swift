@@ -67,8 +67,8 @@ enum HomeShortcuts {
   /// 谁真的去写 `UIApplication.shared.shortcutItems`。app 启动时由
   /// `HomeShortcutsBridge.install()` 装上；单测里装一个假的就能看到摆了哪几格。
   ///
-  /// 这一层不直接 `import UIKit` 是有原因的：品种包（`Kanpan/Symbols`）的测试
-  /// 是在 macOS 上编的，进来一个 UIKit 就整包编不过。
+  /// 这一层不直接碰 `UIApplication`：摆格子的决定是纯值，单测换一个假的
+  /// `apply` 就看得到结果，不用真去改主屏快捷方式。
   @MainActor static var apply: (([HomeShortcut]) -> Void)?
 
   /// 上一次摆上去的。没变就不再写一遍——`shortcutItems` 的每次赋值都是一趟

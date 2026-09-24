@@ -1,1 +1,0 @@
-../../../Kanpan/Symbols/QuoteSubscriptionPlan.swift

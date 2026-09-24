@@ -4,7 +4,7 @@ import KanpanCore
 // 板块页顶上那一行药丸「到底显示哪一档、写哪个名字」。
 //
 // 这一段本来写在 `SectorPage.swift` 里（`snapshot()` 中的一行三元式 + `windowBar`
-// 里两个字面量）。那个文件 import SwiftUI，进不了 `Kanpan/Sector` 那个测试壳包，
+// 里两个字面量）。那个文件是视图，当年进不了 `Kanpan/Sector` 那个测试壳包（现已并进 KanpanTests），
 // 于是审查 B-T21 的后半——「历史不够时窗口和它的名字要一致」——只能靠肉眼在真机上看
 // （复核项 7）。现在决定本身是纯函数，页面只负责摆。
 

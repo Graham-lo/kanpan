@@ -1,6 +1,6 @@
 // 只在 DEBUG 包里采帧（ChartHost 的接线本来就在 `#if DEBUG` 里，审查 C5）；
-// 测试壳包靠 `KANPAN_TEST_SUPPORT` 在 release 下也编得进来。
-#if os(iOS) && (DEBUG || KANPAN_TEST_SUPPORT)
+// `make *-test-release` 靠 `KANPAN_TEST_SUPPORT` 在 release 下也把它编进来给 KanpanTests 用。
+#if DEBUG || KANPAN_TEST_SUPPORT
 
   import Foundation
   import QuartzCore

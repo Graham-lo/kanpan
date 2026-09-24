@@ -1,9 +1,7 @@
 import Combine
 import Foundation
-import UserNotifications
-#if canImport(UIKit)
 import UIKit
-#endif
+import UserNotifications
 
 /// 通知权限在提醒总表上的那一行（方案 2.3「权限时机」后半句）。
 ///
@@ -41,9 +39,7 @@ final class AlertPermission: ObservableObject {
 
   /// 把他送到系统设置里这个 app 那一页（通知开关就在那儿）。
   func openSystemSettings() {
-    #if canImport(UIKit)
     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
     UIApplication.shared.open(url)
-    #endif
   }
 }

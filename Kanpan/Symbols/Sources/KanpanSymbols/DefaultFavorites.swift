@@ -1,1 +1,0 @@
-../../../Kanpan/Symbols/DefaultFavorites.swift

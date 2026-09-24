@@ -11,8 +11,8 @@ import Foundation
 // docs/acceptance/M9.md 的表格。
 //
 // 这一层是**纯函数**：入参是 `Data`（`MXMetricPayload.jsonRepresentation()` 的
-// 原样输出），出参是 `PayloadDigest`。所以没有真机、没有 MetricKit、在 mac 上
-// `swift test` 里喂一段手写 JSON 就能把它全测了——这正是任务书要的
+// 原样输出），出参是 `PayloadDigest`。所以没有真机、没有 MetricKit、在
+// KanpanTests 里喂一段手写 JSON 就能把它全测了——这正是任务书要的
 // 「注入的假 payload」。
 
 /// payload 的种类。MetricKit 有两条回调，两种 JSON 结构完全不同。

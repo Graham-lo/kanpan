@@ -1,8 +1,5 @@
 import Foundation
-
-#if canImport(KanpanData)
 import KanpanData
-#endif
 
 /// 行情缓存占了多少（A6.11：设置页要显示，且有上限）。
 ///
@@ -50,13 +47,6 @@ protocol MarketCacheStore: Sendable {
   func clear() async
 }
 
-/// 数据层还没链进 app target 时的占位：如实说没接上。
-struct UnavailableMarketCache: MarketCacheStore {
-  func usage() async -> MarketCacheUsage { .unavailable }
-  func clear() async {}
-}
-
-#if canImport(KanpanData)
 /// 真家伙：`Library/Caches/kanpan` 下那三样，位置全部问 `Paths` 要。
 struct DiskMarketCache: MarketCacheStore {
   var paths: Paths
@@ -122,20 +112,11 @@ struct DiskMarketCache: MarketCacheStore {
     return values?.totalFileAllocatedSize ?? values?.fileSize ?? 0
   }
 }
-#endif
 
-/// 按当前工程接没接上数据层挑一个实现。
-/// app target 已经链上 `KanpanData`（`Kanpan.xcodeproj` 里既在
-/// `packageProductDependencies`，也在 `PBXFrameworksBuildPhase` 的
-/// 「KanpanData in Frameworks」），所以 `#if canImport(KanpanData)` 成立、
-/// 跑的是真的 `DiskMarketCache`——设置页的「清缓存」是能用的。
-/// `#else` 那支只留给没链数据层的跑道（见 `Kanpan/Settings/Package.swift`）。
+/// app 里用的那一份：真的 `DiskMarketCache`（app target 链着 `KanpanData`）。
+/// 单测里的占位 `UnavailableMarketCache` 在 `KanpanTests/Settings/UnavailableMarketCache.swift`。
 enum MarketCacheFactory {
   static func make() -> any MarketCacheStore {
-    #if canImport(KanpanData)
     DiskMarketCache()
-    #else
-    UnavailableMarketCache()
-    #endif
   }
 }

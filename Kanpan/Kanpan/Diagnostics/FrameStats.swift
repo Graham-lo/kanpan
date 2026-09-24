@@ -1,6 +1,6 @@
 import Foundation
 
-// 帧统计只服务 DEBUG 包里的帧探针 / 事件探针（审查 C5）；测试壳包靠 `KANPAN_TEST_SUPPORT` 在 release 下也编得进来。
+// 帧统计只服务 DEBUG 包里的帧探针 / 事件探针（审查 C5）；`make *-test-release` 靠 `KANPAN_TEST_SUPPORT` 在 release 下也把它编进来给 KanpanTests 用。
 #if DEBUG || KANPAN_TEST_SUPPORT
 
 // ============================================================ 帧耗时统计（纯算术）
@@ -17,7 +17,7 @@ import Foundation
 // 打架时以 Instruments 为准。
 //
 // 这一层**只有算术，没有 CADisplayLink**：喂进来的是一串 `FrameSample`，
-// 吐出来的是 `FrameReport`。所以在 mac 上 `swift test` 里造几十个假样本就能把
+// 吐出来的是 `FrameReport`。所以在 KanpanTests 里造几十个假样本就能把
 // 分位数、hitch 比例、丢帧数全测死，不需要开模拟器。真正接 DisplayLink 的
 // 在 `FrameProbe.swift`。
 

@@ -9,7 +9,7 @@ import UIKit
 
 // 第五轮审查 A.5「测试缺口」里**必须踩到真触摸**的那几条（1、2、3、4、5、9、11、12、13、18）。
 // 编号照报告原样保留。纯计算的那几条（6、8、14、15、16、17）在
-// `KanpanCoreTests/ReviewA5Tests.swift`，7 在 `KanpanSettingsTests`，10 是 UI 用例，
+// `KanpanCoreTests/ReviewA5Tests.swift`，7 在 KanpanTests 的 Settings 组，10 是 UI 用例，
 // 三处不重复。
 //
 // 手势与画线都是自己接 `touchesBegan/Moved/Ended` 的，所以这里造的是假触摸而不是

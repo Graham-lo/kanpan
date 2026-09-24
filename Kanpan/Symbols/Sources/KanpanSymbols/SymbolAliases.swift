@@ -1,1 +1,0 @@
-../../../Kanpan/Symbols/SymbolAliases.swift

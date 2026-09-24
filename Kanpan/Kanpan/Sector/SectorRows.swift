@@ -2,7 +2,7 @@ import Foundation
 import KanpanCore
 
 // 板块页那张品种列表的**值与文案**。视图（`SectorSymbolList.swift`）只管摆，
-// 这一份不 import SwiftUI——它要能在 `Kanpan/Sector` 那个测试壳包里单独编、单独跑
+// 这一份不 import SwiftUI——值与文案和视图分开，KanpanTests 的 Sector 组直接测它
 // （审查 B-07 / B.5：小数位和排序这两条规则以前只能靠肉眼在真机上看）。
 
 /// 品种列表的排序。原型 `.lsort` 那两颗。

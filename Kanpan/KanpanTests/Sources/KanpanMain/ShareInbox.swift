@@ -1,1 +1,0 @@
-../../../Kanpan/Share/ShareInbox.swift

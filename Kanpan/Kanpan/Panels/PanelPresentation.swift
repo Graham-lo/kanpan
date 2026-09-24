@@ -172,12 +172,18 @@ extension View {
 #if DEBUG
 // MARK: - 预览
 
+/// 预览不碰真缓存：报「没接上」，清也不清。
+private struct PreviewMarketCache: MarketCacheStore {
+  func usage() async -> MarketCacheUsage { .unavailable }
+  func clear() async {}
+}
+
 /// `#Preview` 用的壳：不碰真沙盒、不碰真缓存，深浅两版各看一眼。
 struct PanelPreviewHost<Content: View>: View {
   @ViewBuilder var content: (PrefsStore) -> Content
 
   @State private var store = PrefsStore(storage: InMemoryPrefsStorage(),
-                                        cache: UnavailableMarketCache())
+                                        cache: PreviewMarketCache())
   @Environment(\.colorScheme) private var scheme
 
   var body: some View {
@@ -196,7 +202,7 @@ struct PanelPreviewHost<Content: View>: View {
 /// 把面板挂起来看一眼：这就是主界面接它的全部写法。
 private struct PanelDemo: View {
   @State private var store = PrefsStore(storage: InMemoryPrefsStorage(),
-                                        cache: UnavailableMarketCache())
+                                        cache: PreviewMarketCache())
   @State private var panel: Panel?
 
   var body: some View {

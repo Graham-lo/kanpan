@@ -1,1 +1,0 @@
-../../../Kanpan/Diagnostics/MeasurementText.swift

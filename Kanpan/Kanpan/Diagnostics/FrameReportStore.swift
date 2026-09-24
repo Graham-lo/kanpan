@@ -1,6 +1,6 @@
 import Foundation
 
-// 帧报告只由 DEBUG 包里的 `FrameProbe` 产出（审查 C5）；测试壳包靠 `KANPAN_TEST_SUPPORT` 在 release 下也编得进来。
+// 帧报告只由 DEBUG 包里的 `FrameProbe` 产出（审查 C5）；`make *-test-release` 靠 `KANPAN_TEST_SUPPORT` 在 release 下也把它编进来给 KanpanTests 用。
 #if DEBUG || KANPAN_TEST_SUPPORT
 
 // ============================================================ 帧报告落盘

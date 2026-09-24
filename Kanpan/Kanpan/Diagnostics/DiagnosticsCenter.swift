@@ -21,9 +21,7 @@ import Foundation
 // `start()` 幂等，重复叫没事；首次调用还会把 `MXMetricManager.shared.pastPayloads`
 // 补收一遍。接线已完成，见 docs/acceptance/M9.md §6。
 
-#if canImport(MetricKit) && os(iOS)
   import MetricKit
-#endif
 
 /// 诊断中枢。单例，因为 `MXMetricManager` 弱引用 subscriber（见上面第 1 条）。
 final class DiagnosticsCenter: @unchecked Sendable {
@@ -47,18 +45,15 @@ final class DiagnosticsCenter: @unchecked Sendable {
     lock.lock()
     let first = !started
     started = true
-    #if canImport(MetricKit) && os(iOS)
       // 订阅本身必须同步挂上（见上面第 1 条），这一步几乎不花时间。
       // 挂 / 摘都放在锁里：`subscriber` 是 lazy var，锁外首次取值会和并发的
       // start/stop 抢着初始化，而且「started 已经是 false 但订阅还挂着」这种
       // 半截状态也只有和开关同一把锁才排得掉。回调只进 `store.ingest`（它有自己
       // 的锁），不回头拿这把，所以不会自锁。
       if first { MXMetricManager.shared.add(subscriber) }
-    #endif
     lock.unlock()
     guard first else { return }
 
-    #if canImport(MetricKit) && os(iOS)
       // `pastPayloads` / `pastDiagnosticPayloads` 是**已经交付过**的历史副本，
       // 系统留最近 24 份。首次装上订阅（或用户升级到带诊断的版本）时补收一次，
       // 否则「装了新版之前的崩溃」全看不到。`first` 只挡得住同一进程里的重复 start，
@@ -80,7 +75,6 @@ final class DiagnosticsCenter: @unchecked Sendable {
           for data in diagnostics { store.ingest(data, kind: .diagnostic) }
         }
       }
-    #endif
   }
 
   /// 取消订阅。app 里用不到（进程活多久订阅多久），留给单测和预览。
@@ -89,9 +83,7 @@ final class DiagnosticsCenter: @unchecked Sendable {
     defer { lock.unlock() }
     guard started else { return }
     started = false
-    #if canImport(MetricKit) && os(iOS)
       MXMetricManager.shared.remove(subscriber)
-    #endif
   }
 
   /// **注入假 payload**。单测、模拟器取证、`#Preview` 都走这条，
@@ -102,11 +94,10 @@ final class DiagnosticsCenter: @unchecked Sendable {
     store.ingest(data, kind: kind)
   }
 
-  #if canImport(MetricKit) && os(iOS)
     private lazy var subscriber = Subscriber(center: self)
 
     /// `MXMetricManagerSubscriber` 要求 `NSObject`。中枢本身不继承 NSObject
-    /// （它要在非 iOS 平台上也编得过），所以单独一层壳。
+    /// （它不是 NSObject），所以单独一层壳。
     private final class Subscriber: NSObject, MXMetricManagerSubscriber {
       private let center: DiagnosticsCenter
       init(center: DiagnosticsCenter) { self.center = center }
@@ -119,5 +110,4 @@ final class DiagnosticsCenter: @unchecked Sendable {
         for p in payloads { center.store.ingest(p.jsonRepresentation(), kind: .diagnostic) }
       }
     }
-  #endif
 }

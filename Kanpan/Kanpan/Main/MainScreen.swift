@@ -378,7 +378,7 @@ struct MainScreen: View {
     presentation
     // 接线要排在盖层前面：`QuoteBook` 得先知道自选是哪些，才不会拿「图上那一个品种」
     // 去裁刚从盘上恢复出来的报价。`.onAppear` 和 `.task` 两个入口都接在 `BootOnce`
-    // 里的同一道闸上，先到的那个真跑，后到的空转（BT-20 在 KanpanMain 里量这件事）。
+    // 里的同一道闸上，先到的那个真跑，后到的空转（BT-20 在 KanpanTests 的 Main 组里量这件事）。
     .modifier(BootOnce(boot: boot))
     // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
     .task(id: beating) { await heartbeat() }

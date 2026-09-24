@@ -4,7 +4,7 @@ import XCTest
 //
 // 「Release 不进测试后门」这件事要证两头，这儿是其中一头。
 //
-// **另一头在 `Kanpan/Symbols/Tests/KanpanSymbolsTests/ReleaseHookScanTests.swift`**：
+// **另一头在 `Kanpan/KanpanTests/Symbols/ReleaseHookScanTests.swift`**：
 // 那条用例把 app 与各包里会进 Release 二进制的源码全扫一遍，钉住「每一处读启动环境的
 // 地方都在 `#if DEBUG` 里」。那是**静态**的一半——它管得住「有没有第 N 个我没想到的开关」，
 // 但它不知道这些开关真开起来会不会生效。

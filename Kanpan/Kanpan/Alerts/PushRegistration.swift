@@ -36,9 +36,8 @@ enum PushRegistration {
 
   /// 有权限就要一次 token。启动时叫，幂等。
   ///
-  /// 权限自己问（而不是借 `AlertNotifications.isAuthorized()`）：这一整块要能脱开提醒
-  /// 模块单独编——`Main/OrientationBridge.swift` 的两条 delegate 回调引用它，
-  /// 主界面那个测试壳（`Kanpan/KanpanTests`）里只软链得到这一个文件。
+  /// 权限自己问（而不是借 `AlertNotifications.isAuthorized()`）：这一整块脱开提醒
+  /// 模块也能独立成立——`Main/OrientationBridge.swift` 的两条 delegate 回调只认它这一个文件。
   static func startIfAuthorized() {
     Task {
       let settings = await UNUserNotificationCenter.current().notificationSettings()

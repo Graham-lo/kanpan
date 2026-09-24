@@ -98,7 +98,7 @@ struct SectorPage: View {
     let hasD5 = SectorAggregator.hasEligible(market: market, quotes: quotes,
                                              window: .d5, history: history)
     // 「显示哪一档 + 药丸行在不在 + 那一档叫什么」三样一起定，在
-    // `SectorWindowChoice` 里（纯函数，`Kanpan/Sector` 那个壳包有用例盯着，
+    // `SectorWindowChoice` 里（纯函数，KanpanTests 的 Sector 组有用例盯着，
     // 复核项 7）。
     let choice = SectorWindowChoice.resolve(preferred: preferredWindow, hasD5: hasD5)
     let window = choice.window

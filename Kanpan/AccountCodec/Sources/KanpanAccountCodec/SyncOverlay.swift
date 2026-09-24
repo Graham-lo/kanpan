@@ -1,1 +1,0 @@
-../../../Kanpan/Account/SyncOverlay.swift

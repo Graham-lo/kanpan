@@ -1,9 +1,7 @@
 import SwiftUI
 import KanpanCore
 import KanpanNetwork
-#if canImport(UIKit)
 import UIKit
-#endif
 
 // ============================================================ 品种整页
 //

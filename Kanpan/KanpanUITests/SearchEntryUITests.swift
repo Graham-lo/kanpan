@@ -5,7 +5,7 @@ import UIKit
 ///
 /// 这一条把「搜品种」这件事从人的角度走一遍：进页面键盘就位（这一页是来打字的）、
 /// 打拼音和首字母要找得到币、点星之后人留在原地。
-/// 中文与拼音的**名次**由 `Kanpan/Symbols` 的单测钉死（`SymbolAliasesTests`），
+/// 中文与拼音的**名次**由 KanpanTests 的 Symbols 组钉死（`SymbolAliasesTests`），
 /// 这儿只验真界面上确实是那个结果。
 final class SearchEntryUITests: KanpanUICase {
   override var extraLaunchEnvironment: [String: String] {

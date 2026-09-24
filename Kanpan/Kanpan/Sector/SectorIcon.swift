@@ -2,7 +2,7 @@ import SwiftUI
 import KanpanCore
 
 /// 板块记号的**画法**：上色、笔画、内缩与两枚视图。记号本身（id、身份色、路径）
-/// 在 `SectorIconTable.swift`，那一份不吃 SwiftUI，`Kanpan/Sector` 测试壳在 mac 上对得了账。
+/// 在 `SectorIconTable.swift`，那一份不吃 SwiftUI，KanpanTests 的 Sector 组直接对账。
 
 // MARK: - 上色、笔画、内缩
 

@@ -1,1 +1,0 @@
-../../../Kanpan/Haptics.swift

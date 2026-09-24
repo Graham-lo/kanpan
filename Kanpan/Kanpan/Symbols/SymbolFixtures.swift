@@ -1,7 +1,7 @@
 import Foundation
 import KanpanCore
 
-// 只给预览和单测用：Release 包里不带这份假数据（审查 C5）。测试壳包靠 `KANPAN_TEST_SUPPORT` 在 release 下也编得进来。
+// 只给预览和单测用：Release 包里不带这份假数据（审查 C5）。`make *-test-release` 靠 `KANPAN_TEST_SUPPORT` 在 Release 下也把它编进来给 KanpanTests 用。
 #if DEBUG || KANPAN_TEST_SUPPORT
 
 // ============================================================ 假品种表

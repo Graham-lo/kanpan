@@ -1,1 +1,0 @@
-../../../Kanpan/Alerts/PushRegistration.swift

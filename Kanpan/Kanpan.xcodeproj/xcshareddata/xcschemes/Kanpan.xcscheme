@@ -18,6 +18,15 @@
          <TestableReference skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AE0000000000000000000046"
+               BuildableName = "KanpanTests.xctest"
+               BlueprintName = "KanpanTests"
+               ReferencedContainer = "container:Kanpan.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "AB0000000000000000000046"
                BuildableName = "KanpanUITests.xctest"
                BlueprintName = "KanpanUITests"

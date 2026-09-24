@@ -10,7 +10,7 @@ import PackageDescription
 // 自动加的 `-suppress-warnings` 撞车，报
 // `Conflicting options '-warnings-as-errors' and '-suppress-warnings'`。
 // 所以收窄成只对本包自己的两个 target 生效，由 `make strict` 置 `KANPAN_STRICT=KanpanChart` 打开。
-// 必须认包名而不是「有值就开」：KanpanMain 壳包依赖本包，严格编它时本包是依赖，
+// 必须认包名而不是「有值就开」：app（KanpanTests 严格编译时的宿主）依赖本包，严格编它时本包是依赖，
 // 再开一次就又和 `-suppress-warnings` 撞上。
 let strict = ProcessInfo.processInfo.environment["KANPAN_STRICT"] == "KanpanChart"
 let common: [SwiftSetting] =

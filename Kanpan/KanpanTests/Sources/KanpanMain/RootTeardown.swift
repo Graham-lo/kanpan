@@ -1,1 +1,0 @@
-../../../Kanpan/Main/RootTeardown.swift

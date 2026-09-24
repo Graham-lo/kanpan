@@ -2,8 +2,8 @@ import Foundation
 import KanpanCore
 import KanpanData
 
-// 板块页全市场行情的落盘（Lane D3）。只在 app 里接：`SectorFeed.swift` 同时被
-// `Kanpan/Sector` 那个测试包编译，那边不依赖 KanpanData，所以落到哪、怎么编码放在这儿。
+// 板块页全市场行情的落盘（Lane D3）。`SectorFeed.swift` 只管取数与聚合，
+// 落到哪（`KanpanData.Paths`）、怎么编码单独放在这儿。
 extension SectorFeed.Cache {
   /// `Library/Caches/kanpan/sector-quotes.json`；替身上游那份在 `sources/<分区>/` 子树里，
   /// 真身和替身的数各存各的，不混。整份覆盖写，只留最新一份。
