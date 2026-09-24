@@ -690,6 +690,28 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(ended.endMs, 800)
   }
 
+  /// 成交按（簿、侧、桶）索引记账：读回来的挂单、改门槛之后留下的挂单都还能收到成交；已经结束的不再收。
+  func testFillIndexSurvivesRestoreThresholdChangeAndEnding() throws {
+    var first = inBand(okx)
+    _ = first.evaluate(nowMs: 0)
+    _ = first.evaluate(nowMs: 500)
+    let journal = try XCTUnwrap(first.journal(nowMs: 600))
+    var model = inBand(okx, restored: journal)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10, hitSide: .bid, timeMs: 0)), nowMs: 700)
+    XCTAssertEqual(model.orders.first?.filledNotional, 15_900, "读回来的挂单照样记成交")
+    var higher = thresholds
+    higher.usdtPerp = 6_000_000
+    model.setThresholds(higher)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10, hitSide: .bid, timeMs: 0)), nowMs: 800)
+    XCTAssertEqual(model.orders.first?.filledNotional, 31_800, "改门槛之后留下的挂单照样记成交")
+    set(&model, okx, seq: 2, bid: level(1_590, 0))
+    _ = model.evaluate(nowMs: 1_000)
+    _ = model.evaluate(nowMs: 1_400)
+    XCTAssertEqual(model.orders.first?.isLive, false)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10, hitSide: .bid, timeMs: 0)), nowMs: 1_500)
+    XCTAssertEqual(model.orders.first?.filledNotional, 31_800, "结束了的不再收")
+  }
+
   func testLiveOrdersSortByFirstSeen() {
     var model = inBand(okx)
     _ = model.evaluate(nowMs: 0)

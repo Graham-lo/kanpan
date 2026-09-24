@@ -181,6 +181,9 @@ public struct OrderFlowModel: Sendable {
   private var books: [String: VenueBook] = [:]
   private var venueOrder: [String] = []
   private var candidates: [CandidateKey: Candidate] = [:]
+  /// 还挂着的单按（簿、侧、桶）到 `orders` 下标的索引：一个键上同一时刻最多挂一单（候选只在没有挂单的桶上起）。
+  /// `orders` 结构一变（新增、删、排序、读回）就重建；成交归因和逐本簿更新都走它，不再每笔成交扫全表。
+  private var liveIndex: [CandidateKey: Int] = [:]
   private var ending: [String: Pending] = [:]
   private var lastSeen: [String: Int64] = [:]
   private var venueSeen: [String: Int64] = [:]
@@ -260,11 +263,8 @@ public struct OrderFlowModel: Sendable {
     let usd = notional.usd(price: trade.price, quantity: trade.quantity)
     guard usd > 0 else { return }
     let bucket = scheme.index(of: trade.price)
-    for i in orders.indices where orders[i].isLive && orders[i].venueID == venueID
-      && orders[i].side == trade.hitSide && orders[i].bucket == bucket {
-      orders[i].filledNotional += usd
-    }
     let key = CandidateKey(venue: venueID, key: BucketKey(side: trade.hitSide, index: bucket))
+    if let i = liveIndex[key], orders[i].isLive { orders[i].filledNotional += usd }
     candidates[key]?.filled += usd
   }
 
@@ -282,9 +282,11 @@ public struct OrderFlowModel: Sendable {
       if !orders.isEmpty { journalDirty = true }
       orders.removeAll(); candidates.removeAll(); ending.removeAll(); lastSeen.removeAll()
       restoreIfPossible()
+      reindex()
       return
     }
     requalify()
+    reindex()
   }
 
   private mutating func requalify() {
@@ -310,6 +312,14 @@ public struct OrderFlowModel: Sendable {
     orders = journal.orders.sorted(by: Self.chronological)
     for order in orders where order.isLive { lastSeen[order.id] = journal.savedAtMs }
     requalify()
+    reindex()
+  }
+
+  private mutating func reindex() {
+    liveIndex.removeAll(keepingCapacity: true)
+    for i in orders.indices where orders[i].isLive {
+      liveIndex[CandidateKey(venue: orders[i].venueID, key: BucketKey(side: orders[i].side, index: orders[i].bucket))] = i
+    }
   }
 
   // MARK: - 落盘
@@ -329,6 +339,7 @@ public struct OrderFlowModel: Sendable {
     if startedMs == nil { startedMs = nowMs }
     var evaluated = Set<String>()
     var touched = Set<CandidateKey>()
+    var appended = false
     for id in venueOrder {
       guard var book = books[id], let threshold = thresholds[book.venue.product], threshold > 0 else { continue }
       let map = book.buckets(scheme: scheme, radiusBps: OrderFlowDefaults.scanRadiusBps)
@@ -340,8 +351,8 @@ public struct OrderFlowModel: Sendable {
       // 1. 这本簿上还挂着的单：还在退出线（门槛 × 0.5）上就更新，跌破就开始确认结束。
       let exitLine = threshold * OrderFlowDefaults.exitRatio
       var liveKeys = Set<BucketKey>()
-      for i in orders.indices where orders[i].venueID == id && orders[i].isLive {
-        let key = BucketKey(side: orders[i].side, index: orders[i].bucket)
+      for (ck, i) in liveIndex where ck.venue == id && orders[i].isLive {
+        let key = ck.key
         liveKeys.insert(key)
         let oid = orders[i].id
         if let value = map[key], value.notional >= exitLine {
@@ -376,6 +387,8 @@ public struct OrderFlowModel: Sendable {
                                initialNotional: c.initial, notional: c.notional, filledNotional: c.filled,
                                threshold: threshold)
           orders.append(order)
+          liveIndex[ck] = orders.count - 1
+          appended = true
           lastSeen[order.id] = nowMs
           candidates[ck] = nil
           journalDirty = true
@@ -388,8 +401,11 @@ public struct OrderFlowModel: Sendable {
     candidates = candidates.filter { touched.contains($0.key) || !evaluated.contains($0.key.venue) }
 
     expireStale(nowMs: nowMs)
-    prune(nowMs: nowMs)
-    orders.sort(by: Self.chronological)
+    let pruned = prune(nowMs: nowMs)
+    // 只有新增了单才可能乱序（新单的出现时刻记的是候选第一拍，可能早于上一拍刚出现的单）；
+    // 结束、删除都不改先后。
+    if appended { orders.sort(by: Self.chronological) }
+    if appended || pruned { reindex() }
 
     let statuses = venueOrder.compactMap { id in
       books[id].map { OrderFlowVenueStatus(label: $0.venue.label, product: $0.venue.product,
@@ -431,8 +447,8 @@ public struct OrderFlowModel: Sendable {
     }
   }
 
-  /// 24 小时以前结束的删掉；结束的超过 500 条就删结束得最早的。还挂着的一条不删。
-  private mutating func prune(nowMs: Int64) {
+  /// 24 小时以前结束的删掉；结束的超过 500 条就删结束得最早的。还挂着的一条不删。删了返回 true。
+  private mutating func prune(nowMs: Int64) -> Bool {
     let cutoff = nowMs - OrderFlowDefaults.retentionMs
     let before = orders.count
     orders.removeAll { !$0.isLive && ($0.endMs ?? $0.firstSeenMs) < cutoff }
@@ -448,5 +464,6 @@ public struct OrderFlowModel: Sendable {
       ending = ending.filter { alive.contains($0.key) }
       lastSeen = lastSeen.filter { alive.contains($0.key) }
     }
+    return orders.count != before
   }
 }
