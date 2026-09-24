@@ -44,8 +44,8 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     public var base: String { Alert.base(of: symbol) }
     public var priceLabel: String { ReviewLabels.price(price, decimals: decimals) }
     public var changeLabel: String {
-      guard change.isFinite else { return "--" }
-      return (change > 0 ? "+" : "") + String(format: "%.2f%%", change)
+      // 全 app 唯一那把涨跌幅写法（审查 U9）：负号 U+2212、平盘「+0.00%」；缺数和旁边的价一样写「--」。
+      changePercentText(change, missing: "--")
     }
   }
 

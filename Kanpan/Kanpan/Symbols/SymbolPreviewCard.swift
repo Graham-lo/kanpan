@@ -201,7 +201,7 @@ struct SymbolPreviewCard: View {
         Image(systemName: pct >= 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
           .font(.system(size: 6.5))
       }
-      Text(HeaderStats.arrowPercentText(pct))
+      Text(changePercentText(pct, arrow: true))
         .font(.scaled(10.5, .semibold)).monospacedDigit()
     }
     .foregroundStyle(pct == nil ? t.ink3 : t.badgeInk)

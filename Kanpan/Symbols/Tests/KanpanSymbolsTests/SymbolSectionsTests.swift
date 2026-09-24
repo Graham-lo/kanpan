@@ -192,7 +192,7 @@ struct SymbolSectionsTests {
 
     let xrp = rows.first { $0.id == "binance/usd_m/XRPUSDT" }!
     #expect(xrp.priceText == "2.1843")       // tickSize 0.0001 → 4 位
-    #expect(xrp.changeText == "-2.15%")
+    #expect(xrp.changeText == "\u{2212}2.15%")
     #expect(!xrp.isUp)
   }
 

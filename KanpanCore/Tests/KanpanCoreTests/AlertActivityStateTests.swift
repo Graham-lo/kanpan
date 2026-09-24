@@ -8,7 +8,7 @@ import Testing
   func activityState() throws {
     let s = AlertActivityState(price: 101, change: -0.0123, line: 100, updatedAt: 1)
     #expect(s.distanceLabel == "+1.00%")
-    #expect(s.changeLabel == "-1.23%")
+    #expect(s.changeLabel == "\u{2212}1.23%", "负号是数学减号，和 app 里所有涨跌幅一样（审查 U9）")
     #expect(!s.fired)
     let empty = AlertActivityState(price: .nan, change: nil, line: 100, fired: true, updatedAt: 1)
     #expect(empty.distance == nil && empty.distanceLabel == "--")

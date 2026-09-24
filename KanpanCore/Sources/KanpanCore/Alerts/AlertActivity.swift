@@ -43,15 +43,12 @@ public struct AlertActivityState: Codable, Hashable, Sendable {
 
   private static func finite(_ v: Double?) -> Double? { v.flatMap { $0.isFinite ? $0 : nil } }
 
-  /// 「离提醒价 +1.23%」里那个数。取不到写「--」。
-  public var distanceLabel: String {
-    guard let distance else { return "--" }
-    return (distance > 0 ? "+" : "") + String(format: "%.2f%%", distance * 100)
-  }
+  /// 「离提醒价 +1.23%」里那个数。取不到写「--」（和实时活动上缺价的写法一样）。
+  /// 和 app 里所有涨跌幅同一把写法（审查 U9）。
+  public var distanceLabel: String { changePercentText(distance.map { $0 * 100 }, missing: "--") }
 
   public var changeLabel: String {
-    guard let change else { return "--" }
-    return (change > 0 ? "+" : "") + String(format: "%.2f%%", change * 100)
+    changePercentText(change.map { $0 * 100 }, missing: "--")
   }
 }
 

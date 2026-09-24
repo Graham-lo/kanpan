@@ -16,16 +16,11 @@ enum HeaderStats {
   static func priceChangeText(change: Double?, percent: Double?, decimals: Int) -> String {
     guard let change, change.isFinite, let percent, percent.isFinite else { return "—" }
     // 符号单独格式化；涨跌额与价格采用同一小数位。
-    return (change >= 0 ? "+" : "−") + grouped(toFixed(abs(change), decimals))
-      + "  " + (percent >= 0 ? "+" : "−") + toFixed(abs(percent), 2) + "%"
-  }
-
-  /// 带方向箭头的涨跌幅药丸（品种预览卡、分享截图）：方向已经由箭头和底色说了，
-  /// 数字只写绝对值——「▼ 2.74%」，不是「▼ -2.74%」（2026-09-24 审查 6.4 / U9）。
-  /// 和自选列表那一格同一个写法。
-  static func arrowPercentText(_ percent: Double?) -> String {
-    guard let percent, percent.isFinite else { return "—" }
-    return toFixed(abs(percent), 2) + "%"
+    // 涨跌幅那半截走全 app 唯一那把 `changePercentText`（审查 U9）；涨跌额的符号跟它一套：
+    // 数学减号，取整成 0 的不带负号。
+    let amount = grouped(toFixed(abs(change), decimals))
+    let flat = !amount.contains(where: { $0.isNumber && $0 != "0" })
+    return (change < 0 && !flat ? "\u{2212}" : "+") + amount + "  " + changePercentText(percent)
   }
 
   /// 「仓」= **美元名义**持仓量（`openInterestValue`）。

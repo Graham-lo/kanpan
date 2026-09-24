@@ -1151,8 +1151,12 @@ struct FavoritesView: View {
     let priceInk: Color = stale ? skin.ink4 : (price.isFinite ? theme.ink : .clear)
     // 还没到的涨跌幅和还没到的价格用同一种骨架：一块底色，不写字。
     // 写「—」会让人以为这个品种没有涨跌幅，而不是还在路上。
-    let changeText = change.isFinite ? toFixed(abs(change), amount ? decimals : 2) + (amount ? "" : "%") : "—"
-    let signed = change.isFinite ? (change >= 0 ? "+" : "-") + changeText : "—"
+    // 涨跌幅走全 app 唯一那把 `changePercentText`（审查 U9）：前面有小三角，数字只写绝对值；
+    // 读屏没有三角可看，念带符号的那一种。
+    let changeText = amount ? (change.isFinite ? toFixed(abs(change), decimals) : "—")
+      : changePercentText(change, arrow: true)
+    let signed = amount ? (change.isFinite ? (change < 0 ? "\u{2212}" : "+") + changeText : "—")
+      : changePercentText(change)
     return VStack(alignment: .trailing, spacing: 5) {
       Text(priceText)
         .font(.scaled(15.5, .medium)).monospacedDigit()
@@ -1266,7 +1270,7 @@ struct FavoritesView: View {
           let price = displayQuote(symbol)?.last else { return nil }
     return (price / bar.open - 1) * 100
   }
-  private func percent(_ value: Double?) -> String { guard let value, value.isFinite else { return "—" }; return (value >= 0 ? "+" : "") + toFixed(value, 2) + "%" }
+  private func percent(_ value: Double?) -> String { changePercentText(value) }
   /// 详情里的价格格子。`fmtPrice` 兜住极小的正价（审查 B-07）。
   private func number(_ value: Double?, _ decimals: Int) -> String { guard let value, value.isFinite else { return "—" }; return grouped(fmtPrice(value, decimals: decimals)) }
   private func cell(_ title: String, _ value: String) -> some View {

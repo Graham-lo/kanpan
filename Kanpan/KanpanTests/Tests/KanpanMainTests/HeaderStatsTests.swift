@@ -27,13 +27,11 @@ struct HeaderStatsTests {
     #expect(HeaderStats.priceChangeText(change: .nan, percent: 1, decimals: 2) == "—")
   }
 
-  @Test("带箭头的涨跌幅只写绝对值，缺数写破折号")
-  func arrowPercent() {
-    #expect(HeaderStats.arrowPercentText(-2.74) == "2.74%")
-    #expect(HeaderStats.arrowPercentText(1.5) == "1.50%")
-    #expect(HeaderStats.arrowPercentText(0) == "0.00%")
-    #expect(HeaderStats.arrowPercentText(nil) == "—")
-    #expect(HeaderStats.arrowPercentText(.nan) == "—")
+  /// 带箭头的药丸（预览卡、分享截图）现在走 KanpanCore 那把 `changePercentText(_:arrow:)`（审查 U9），
+  /// 用例在 `FormatTests`；这儿只守顶栏涨跌额取整成 0 时不写「−0.00」。
+  @Test("涨跌额取整成 0 时不带负号")
+  func flatChangeHasNoMinus() {
+    #expect(HeaderStats.priceChangeText(change: -0.001, percent: -0.001, decimals: 2) == "+0.00  +0.00%")
   }
 
   private func stat(value: Double?, qty: Double?) -> OpenInterestStat {

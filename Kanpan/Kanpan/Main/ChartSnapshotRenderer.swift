@@ -187,7 +187,7 @@ private struct ChartShotCard: View {
         Image(systemName: pct >= 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
           .font(.system(size: 6.5))
       }
-      Text(HeaderStats.arrowPercentText(head.changePercent))
+      Text(changePercentText(head.changePercent, arrow: true))
         .font(.system(size: 10.5, weight: .semibold))
         .monospacedDigit()
     }

@@ -134,7 +134,7 @@ struct SymbolStatusTests {
     let favorite = try! #require(sections.first { $0.kind == .favorites }?
       .rows.first { $0.id == "binance/usd_m/ETHUSDT" })
     #expect(!favorite.isStale, "停牌不是「没有实时价」，灰不灰只看价格新不新鲜")
-    #expect(favorite.changeText == "-0.86%")           // 涨跌幅照常摆
+    #expect(favorite.changeText == "\u{2212}0.86%")           // 涨跌幅照常摆
     #expect(favorite.catalogListing == .listed(.halted))
     #expect(!favorite.catalogListing.isDelisted)
     // 「全部合约」里照常有它，页头那句小字也照常数它。

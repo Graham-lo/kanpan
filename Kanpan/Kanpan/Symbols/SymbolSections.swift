@@ -54,11 +54,11 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   /// 自选、搜索、图表三处都问这一个，所以同一个品种在三处的说法必然一致。
   var isStale: Bool { !catalogListing.hasLivePrice }
 
-  /// 涨跌幅：`+1.23%` / `-1.23%`，两位小数，照原型 `pct.toFixed(2)`。
+  /// 涨跌幅：`+1.23%` / `−1.23%`，两位小数，全 app 唯一那把 `changePercentText`（审查 U9）。
   /// 没有报价或日开盘基准时留空，不把缺失值写成0%或nan%。
   var changeText: String {
     guard !isStale, let p = ticker?.changePercent, p.isFinite else { return "—" }
-    return (p >= 0 ? "+" : "") + toFixed(p, 2) + "%"
+    return changePercentText(p)
   }
 
   /// 原型 `pct >= 0 ? 'up' : 'down'`——平盘算涨。

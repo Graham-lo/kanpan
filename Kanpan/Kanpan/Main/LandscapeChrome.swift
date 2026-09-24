@@ -37,7 +37,7 @@ struct LandscapeHeadline: View {
           .foregroundStyle(up ? theme.up : theme.down)
       }
       if let changePercent, changePercent.isFinite {
-        Text((changePercent >= 0 ? "+" : "") + toFixed(changePercent, 2) + "%")
+        Text(changePercentText(changePercent))
           .font(.system(size: 11, weight: .medium).monospacedDigit())
           .foregroundStyle(up ? theme.up : theme.down)
       }
