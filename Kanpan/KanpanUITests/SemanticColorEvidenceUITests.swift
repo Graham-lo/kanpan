@@ -673,7 +673,6 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
 
   /// 自选分类页那三颗砖的记号（见 `SwipeDeleteIDs`）。
   private static let favMoveBrick = "swipe.favorites.move"
-  private static let favRemoveBrick = "swipe.favorites.remove"
   private static let favUnstarBrick = "swipe.favorites.unstar"
 
   /// 一块砖：量它的底、量它的字、两样都断言。
@@ -700,7 +699,8 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
                  "\(what)：自选页上没有 BTCUSDT 那一行", file: file, line: line)
   }
 
-  /// 自选分类页：左划露「移到分类」+「取消自选」，右划露「取消自选」。
+  /// 自选分类页：左划露「移到分类」+「取消自选」，右划整个不响应（2026-09-24 审查 U8：
+  /// 原来右划露的是和左划同一颗「取消自选」，同一个动作一页上三处入口）。
   ///
   /// 2026-09-22 之前这三颗是系统 `.swipeActions`：两颗 destructive 连 `.tint` 都没给，
   /// 底是系统红 `#FF3B30`（这几屏上唯一一处不跟皮肤走的颜色）、白字 3.55:1；
@@ -744,17 +744,11 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
                     "\(skin.tag)：点行没把砖收回去")
       XCTAssertTrue(row.exists, "\(skin.tag)：只是划开看一眼，BTCUSDT 却没了")
 
-      // ---- 右划：一颗「取消自选」。
-      let remove = revealBrick(Self.favRemoveBrick, band.midY, [80, width * 0.5, width - 40],
+      // ---- 右划：什么都不露，行一个像素都不动（不许露半截）。
+      let remove = revealBrick(Self.deleteBrick, band.midY, [80, width * 0.5, width - 40],
                                dx: 120)
-      XCTAssertTrue(brickIsOpen(remove),
-                    "\(skin.tag)：右划没把「取消自选」划出来（宽 \(remove.exists ? Int(remove.frame.width) : -1)）："
-                      + app.debugDescription)
-      shot("iPhone15-自选右划-" + skin.tag)
-      measure(remove, "swipe.favorites.remove.text", fill: skin.danger, ink: skin.ink,
-              dark: skin.dark, what: "自选右划-取消自选-" + skin.tag)
-      row.tap()
-      XCTAssertTrue(waitUntil(timeout: 3) { !remove.exists }, "\(skin.tag)：点行没把砖收回去")
+      XCTAssertFalse(remove.exists, "\(skin.tag)：右划不该再露砖：" + app.debugDescription)
+      XCTAssertEqual(row.frame.minX, band.minX, accuracy: 0.5, "\(skin.tag)：右划把行拉动了（露半截）")
 
       // 这一趟一行都不许少。
       XCTAssertTrue(row.exists && eth.exists && app.buttons["favorites.open.binance/usd_m/SOLUSDT"].exists,

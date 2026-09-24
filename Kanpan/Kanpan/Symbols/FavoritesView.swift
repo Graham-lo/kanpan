@@ -11,11 +11,16 @@ import KanpanNetwork
 /// 十六进制——唯一的例外是浅色那组「天青·薄荷」光斑，那是浅色底下专配的一组冷光，
 /// 不属于任何一套皮肤。
 ///
-/// 功能与原来那一版逐条对齐：分类切换/新建/重命名/删除/溢出、添加品种、批量编辑、
-/// 排序、展开详情、右滑删除、长按拖动、进图表，`accessibilityIdentifier` 一个没换。
+/// 这一页能做的事：切分类、删当前分类（只剩一类时不给删）、添加品种、排序、调整顺序
+/// （长按拖动）、左滑「移到分类 / 取消自选」、长按看预览卡、进图表。
+///
+/// 2026-09-24 按「判了不做的不准收编」删掉了三样：新建分类、重命名分类（自建分组）、
+/// 批量编辑（勾选多行 + 底部编辑条）。分类只剩按资产类型自动开的那几类
+/// （`FavoriteCategory`），老账号里他当年建的分类照旧在、照旧能切能删。
+/// 「调整顺序」留着——它是排序，不是批量编辑：进去以后长按整行就是拖动。
 struct FavoritesView: View {
   @Bindable var model: SymbolPickerModel
-  /// 正在进行的那次批量编辑。它住在宿主手里，不是这一页自己的 `@State`——
+  /// 正在进行的那次调整顺序（连同落脚点、撤销提示）。它住在宿主手里，不是这一页自己的 `@State`——
   /// 理由见 `FavoritesEditSession`。
   var session: FavoritesEditSession
   /// 搜索页的历史词仓。自选页自己开搜索页（见 `search`），所以得跟着传进来。
@@ -55,11 +60,7 @@ struct FavoritesView: View {
   @State private var sorting = false
   @State private var afterMore: (() -> Void)?
   @State private var moreTask: Task<Void, Never>?
-  @State private var editingName = false
-  @State private var renamedID: String?
-  @State private var name = ""
-  // 编辑模式 / 勾中的那几行 / 编辑期间冻住的报价：三项都在 `session` 上，写法照旧
-  // 是直接赋值（`editing = false`、`selection.removeAll()`），调用处一个字没改。
+  // 调整顺序开着没有 / 调整期间冻住的报价：都在 `session` 上，写法照旧是直接赋值。
   private var editing: Bool {
     get { session.editing }
     nonmutating set { session.editing = newValue }
@@ -67,10 +68,6 @@ struct FavoritesView: View {
   private var editQuotes: [String: Ticker] {
     get { session.quotes }
     nonmutating set { session.quotes = newValue }
-  }
-  private var selection: Set<String> {
-    get { session.selection }
-    nonmutating set { session.selection = newValue }
   }
   /// 已经替它开了历史订阅的品种。页面整体消失时要逐个关掉——
   /// 行自己的 `onDisappear` 在整页被拆掉时不保证会走到。
@@ -239,7 +236,6 @@ struct FavoritesView: View {
       .animation(.easeOut(duration: 0.16), value: sorting)
     }
     .background { AuroraBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
-    .safeAreaInset(edge: .bottom, spacing: 0) { if editing { editBar } }
     .tint(theme.amber)
     .task { await model.appear() }
     .onAppear {
@@ -277,18 +273,10 @@ struct FavoritesView: View {
     .onChange(of: model.tickers.isEmpty) { _, empty in
       // 报价表空掉只是数据状态——设置里直连↔网关切一下，`QuoteBook` 就 reset 一次、
       // 把整张表清空。它不是用户的动作，不该拿来推翻用户正在做的事：以前这儿顺手
-      // `editing = false` 加清空 `selection`，人正批量选着品种准备改分类，别处切一次
-      // 线路，选择当场没了。编辑模式和多选只由用户自己的动作退出。
+      // `editing = false`，人正拖着排顺序，别处切一次线路，模式当场没了。
+      // 调整顺序只由用户自己的动作退出。
       // 编辑时那份冻结的报价（`editQuotes`）也别清，等新报价上来原地续上就是了。
       if !empty, editing { editQuotes = model.tickers }
-    }
-    .alert(renamedID == nil ? "新建分类" : "重命名分类", isPresented: $editingName) {
-      TextField("分类名称", text: $name)
-      Button("取消", role: .cancel) { }
-      Button("保存") {
-        if let renamedID { model.renameGroup(renamedID, name: name) }
-        else if let id = model.createGroup(name) { select(id) }
-      }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
     .fullScreenCover(isPresented: $search.searchShown, onDismiss: { search.searchDismissed() }) {
       SymbolSearchView(model: model, history: history, redUp: redUp,
@@ -315,7 +303,7 @@ struct FavoritesView: View {
     .sheet(item: $moving) { request in
       NavigationStack {
         List {
-          ForEach(model.prefs.groups) { group in Button(group.name) { assign(request.symbols, to: group.id) } }
+          ForEach(model.moveTargets, id: \.self) { name in Button(name) { assign(request.symbols, toCategory: name) } }
             // 行的底得**行自己**写：`scrollContentBackground` 只管表底，管不到行。
             // 只换表底的话，底已经是 `app` 了，行还是系统那张纯白圆角卡（深色是
             // `#1C1C1E` 灰卡压在墨绿黑上），卡的四条边就是一道硬边。
@@ -355,11 +343,11 @@ struct FavoritesView: View {
               .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
               .frame(height: 46).contentShape(Rectangle())
           }.buttonStyle(.plain)
-            .accessibilityLabel("完成编辑").accessibilityIdentifier("favorites.editToggle")
+            .accessibilityLabel("完成调整").accessibilityIdentifier("favorites.editToggle")
         } else {
           searchField
         }
-        // 它装的是编辑自选、新建/重命名/删除分类、迷你走势开关——全是**这一页**的事，
+        // 它装的是调整顺序、迷你走势开关、删除当前分类——全是**这一页**的事，
         // 所以记号用「…」而不是齿轮：齿轮在标签栏最右边，那颗才是整个 app 的设置。
         circleButton("ellipsis", label: "自选菜单", id: "favorites.more") { more = true }
           .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["more": $0] }
@@ -497,7 +485,7 @@ struct FavoritesView: View {
 
   private func chip(_ title: String, id: String, count: Int) -> some View {
     let on = selected == id
-    return Button { select(id); selection.removeAll(); expanded.removeAll() } label: {
+    return Button { select(id); expanded.removeAll() } label: {
       // 名字后面原来还挂着一个上标的数量，用户 2026-09-18 让去掉——数量在列表上面
       // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
       Text(title).font(.scaled(15, .medium))
@@ -581,28 +569,28 @@ struct FavoritesView: View {
 
   /// 设置菜单。以前头一段是「更多分类」——分类条排不下的那几个；现在分类条自己
   /// 能滚，一个都不会被挤掉，这一段就撤了。
+  ///
+  /// 「新建分类」「重命名当前分类」「编辑自选」（批量编辑）2026-09-24 撤了，理由见文件头。
+  /// 原来的「编辑自选」进去以后既能勾选又能拖动，现在只剩拖动，所以改叫「调整顺序」，
+  /// 和长按菜单里那一项同名——同一件事只有这两个入口。
   private var moreList: some View {
-    ScrollView {
-      VStack(spacing: 0) {
-        moreRow("新建分类", icon: "folder.badge.plus", id: "favorites.newGroup") {
-          renamedID = nil; name = ""; editingName = true
-        }
-        moreRow(editing ? "完成编辑" : "编辑自选", icon: "pencil", id: "favorites.edit") { toggleEditing() }
-        moreRow(sparkline ? "隐藏迷你走势" : "显示迷你走势", icon: sparkline ? "waveform.slash" : "waveform",
-                id: "favorites.sparkline") { sparkline.toggle() }
-        if let group = currentGroup {
-          moreRow("重命名当前分类", icon: "square.and.pencil", id: "favorites.renameGroup") {
-            renamedID = group.id; name = group.name; editingName = true
-          }
-          moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { Haptics.warning(); model.deleteGroup(group.id) }
-        }
-      }.padding(.vertical, 6)
-    }.font(.scaled(14))
-      .frame(height: min(430, CGFloat(3 + (currentGroup == nil ? 0 : 2)) * 46 + 12))
+    VStack(spacing: 0) {
+      moreRow(editing ? "完成调整" : "调整顺序", icon: "arrow.up.arrow.down", id: "favorites.edit") { toggleEditing() }
+      moreRow(sparkline ? "隐藏迷你走势" : "显示迷你走势", icon: sparkline ? "waveform.slash" : "waveform",
+              id: "favorites.sparkline") { sparkline.toggle() }
+      if let group = deletableGroup {
+        moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { Haptics.warning(); model.deleteGroup(group.id) }
+      }
+    }.padding(.vertical, 6).font(.scaled(14))
   }
 
-  /// 当前选中的那一组；没有（比如一条自选都还没加）时菜单里不摆重命名/删除。
-  private var currentGroup: FavoriteGroup? { model.prefs.groups.first(where: { $0.id == selected }) }
+  /// 菜单里那颗「删除当前分类」删的是哪一类。只剩一类（首装加第一个品种就是这样）时是
+  /// `nil`：删了它，里面的品种无处可去，而且下一次加品种又会按资产类型把它开回来——
+  /// 这颗按钮点了等于什么都没发生，干脆不摆。
+  private var deletableGroup: FavoriteGroup? {
+    guard model.prefs.groups.count > 1 else { return nil }
+    return model.prefs.groups.first(where: { $0.id == selected })
+  }
 
   private func toggleEditing() {
     if editing { session.end() } else { session.begin(quotes: model.tickers) }
@@ -759,14 +747,15 @@ struct FavoritesView: View {
         // 所以整个换成自己画的那一份，底走 `theme.danger` / `theme.amber`、
         // 字走 `theme.badgeInk`，机制见 `SwipeToDelete`。
         //
-        // 三颗的边、顺序、以及「不许滑到底直接触发」（原来的
-        // `allowsFullSwipe: false`）一个位置都没动。文案 2026-09-24 统一成「取消自选」
-        // （原来左划叫「删除」、右划叫「删除自选」、搜索页叫「移出自选」，同一件事三种叫法）。
+        // 「不许滑到底直接触发」（原来的 `allowsFullSwipe: false`）没动。文案 2026-09-24
+        // 统一成「取消自选」（原来左划叫「删除」、右划叫「删除自选」、搜索页叫「移出自选」，
+        // 同一件事三种叫法）。
+        //
+        // 右滑那一侧 2026-09-24 撤了：它露的是和左滑同一颗「取消自选」，同一个动作在这一页
+        // 摆了左滑、右滑、长按三处。现在「取消自选」「移到分类」各只在左滑和长按菜单里，
+        // 右滑整个不响应（`leading` 为空时行一个像素都拉不动，不会露半截）。
         SwipeToDelete(
           id: symbol, open: $openSwipe, brick: .flush,
-          leading: [.delete(theme, title: "取消自选", id: SwipeDeleteIDs.favoritesRemove) {
-            removeFavorites([symbol])
-          }],
           trailing: [
             SwipeAction(id: SwipeDeleteIDs.favoritesMove, title: "移到分类", fill: theme.amber) {
               moving = MoveRequest(symbols: [symbol])
@@ -1004,23 +993,21 @@ struct FavoritesView: View {
   /// 长按一行：先弹一张卡看看这东西现在什么样，再决定做什么（§4.1）。
   ///
   /// 卡是只读的，动作全在旁边那份菜单里——「打开 / 调整顺序 / 移到分类 / 取消自选」，
-  /// 和这一行右滑、展开详情里能做的是同几件事，不多一件也不少一件。
-  /// 批量编辑时整个不挂：那时候长按是拖动排序，两种长按不能抢同一个手势。
+  /// 后两样和这一行左滑能做的是同两件事。
+  /// 调整顺序时整个不挂：那时候长按是拖动排序，两种长按不能抢同一个手势。
   ///
   /// 「调整顺序」是这张菜单欠自己的一笔：长按整行原来是 `List` 自带的拖动排序
   /// （`onMove`），这张预览卡挂上去之后那半秒的长按被 `contextMenu` 先认走了，
   /// 同一个手势没法两件事都做。所以排序没有丢，只是退到菜单里——**长按弹出来的
-  /// 第一屏上就有它**，点一下进批量编辑，那儿的长按仍旧是拖动排序。
+  /// 第一屏上就有它**，点一下进调整顺序，那儿的长按仍旧是拖动排序。
   @ViewBuilder private func previewable(_ symbol: String, _ content: some View) -> some View {
     if let previews, !editing {
       content.contextMenu {
         Button("打开") { open(symbol) }
         Button("调整顺序") { toggleEditing() }
-        if !model.prefs.groups.isEmpty {
-          Menu("移到分类") {
-            ForEach(model.prefs.groups) { group in
-              Button(group.name) { model.assign(symbol, to: group.id) }
-            }
+        Menu("移到分类") {
+          ForEach(model.moveTargets, id: \.self) { name in
+            Button(name) { assign([symbol], toCategory: name) }
           }
         }
         Button("取消自选", role: .destructive) { removeFavorites([symbol]) }
@@ -1051,14 +1038,6 @@ struct FavoritesView: View {
     let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
     let nearestAlertText = alertDistanceText(symbol)
     return HStack(spacing: 10) {
-      if editing {
-        Button { if !selection.insert(symbol).inserted { selection.remove(symbol) } } label: {
-          // 没选中的勾选框只有一圈描边，不给它一块实心命中区的话，点圆圈正中是点不着的。
-          checkbox(selection.contains(symbol))
-            .frame(width: 20, height: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityLabel(selection.contains(symbol) ? "取消选择" : "选择")
-          .accessibilityIdentifier("favorites.select." + symbol)
-      }
       HStack(spacing: 10) {
         badge(base)
         VStack(alignment: .leading, spacing: 4) {
@@ -1096,12 +1075,7 @@ struct FavoritesView: View {
         .accessibilityIdentifier("favorites.open." + symbol)
         .accessibilityAction { selectOrOpen(symbol) }
         .accessibilityAction(named: "展开详情") { toggleDetails(symbol) }
-      if editing {
-        Button { moving = MoveRequest(symbols: [symbol]) } label: {
-          Image(systemName: "folder").font(.system(size: 13)).foregroundStyle(theme.ink3)
-            .frame(width: 22, height: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityIdentifier("favorites.move." + symbol)
-      } else {
+      if !editing {
         Button { toggleDetails(symbol) } label: {
           Image(systemName: expanded.contains(symbol) ? "chevron.up" : "chevron.down")
             .font(.system(size: 9, weight: .semibold)).foregroundStyle(skin.ink4)
@@ -1146,19 +1120,6 @@ struct FavoritesView: View {
             .padding(-3.5)
         }
     }.frame(width: 33, height: 33)
-  }
-
-  private func checkbox(_ on: Bool) -> some View {
-    ZStack {
-      if on {
-        Circle().fill(skin.accentGradient)
-          .overlay(alignment: .top) { skin.topHighlight(inset: 5) }
-        // 勾也是压在强调色上的记号，和分类药丸同一支字色（浅色仍是纯白）。
-        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(theme.badgeInk)
-      } else {
-        Circle().strokeBorder(skin.ink4, lineWidth: 1.4)
-      }
-    }.frame(width: 20, height: 20)
   }
 
   /// 走势线取的是详情那条历史订阅里的分钟线，不另开请求。
@@ -1320,8 +1281,8 @@ struct FavoritesView: View {
     // 有砖划开着的时候，点行任何一处都是「先把砖收回去」，不是一次正常的点击——
     // 不接这一下，人划开之后想反悔只能再划一次（`SwipeDeleteProxy` 那只手的用意）。
     if openSwipe != nil { openSwipe = nil; return }
-    if editing { if !selection.insert(symbol).inserted { selection.remove(symbol) } }
-    else { open(symbol) }
+    // 调整顺序时点一下什么都不做：那时候整行是拖动的把手，点进图表只会把人带离正在排的表。
+    if !editing { open(symbol) }
   }
   private func quoteAsset(_ symbol: String) -> String {
     model.info(for: symbol)?.quote ??
@@ -1350,21 +1311,26 @@ struct FavoritesView: View {
     model.pick(model.info(for: symbol) ?? fallback)
   }
   /// 移到分类。移错了也给五秒反悔（P2.7）：先记下每一只原来在哪一类，撤销时逐只放回。
-  private func assign(_ symbols: [String], to group: String?) {
+  ///
+  /// 挑的是还没开的预设分类时，这一下顺手把它开出来；撤销时它若因此空了就一并收掉，
+  /// 反悔之后分类条和移之前一模一样。
+  private func assign(_ symbols: [String], toCategory name: String) {
     let model = self.model
-    let before = symbols.compactMap { model.favoriteSnapshot($0) }.filter { $0.group != group }
-    symbols.forEach { model.assign($0, to: group) }; moving = nil; selection.removeAll()
-    guard !before.isEmpty else { return }
-    let name = group.flatMap { id in model.prefs.groups.first { $0.id == id }?.name } ?? "未分类"
-    session.offerUndo(before.count > 1 ? "已把 \(before.count) 个移到「\(name)」" : "已移到「\(name)」") {
+    moving = nil
+    let existed = model.prefs.groups.contains { $0.name == name }
+    let target = model.prefs.groups.first { $0.name == name }?.id
+    let before = symbols.compactMap { model.favoriteSnapshot($0) }.filter { target == nil || $0.group != target }
+    guard !before.isEmpty, let group = model.assign(before.map(\.symbol), toCategory: name) else { return }
+    session.offerUndo("已移到「\(name)」") {
       before.forEach { model.assign($0.symbol, to: $0.group) }
+      if !existed, !model.prefs.groupForSymbol.values.contains(group) { model.deleteGroup(group) }
     }
   }
 
-  /// 移除自选 —— 这一页上**唯一**的移除口子（左滑两处、长按菜单、编辑条批量，全走它）。
+  /// 取消自选 —— 这一页上**唯一**的移除口子（左滑、长按菜单，都走它）。
   ///
   /// 删自选没有二次确认（每加一道确认，正常的那一次就多一次打断），代价是删错了没得救。
-  /// 所以改成「先删，再给五秒反悔」：删之前把每一个的位置、分组、置顶位拍下来
+  /// 所以改成「先删，再给五秒反悔」：删之前把每一个的位置、分组拍下来
   /// （`SymbolPrefs.snapshot`），屏幕底下那条提示条上挂一颗「撤销」，点了就照快照原样
   /// 放回去。还原走的是和删除同一条写入路径（`commit()`），落盘和同步都照常发生。
   ///
@@ -1375,12 +1341,12 @@ struct FavoritesView: View {
     guard !snapshots.isEmpty else { return }
     Haptics.warning()
     list.forEach { model.removeFavorite($0) }
-    session.offerUndo(snapshots.count > 1 ? "已移除 \(snapshots.count) 个" : "已移除") {
+    session.offerUndo("已移除") {
       model.restoreFavorites(snapshots)
     }
   }
 
-  // MARK: - 空自选 / 编辑条
+  // MARK: - 空自选
 
   private var emptyState: some View {
     VStack(spacing: 10) {
@@ -1402,30 +1368,6 @@ struct FavoritesView: View {
       Spacer(minLength: 0)
     }.frame(maxWidth: .infinity, maxHeight: .infinity)
       .padding(.top, 6).padding(.bottom, 8)
-  }
-
-  private var editBar: some View {
-    HStack(spacing: 0) {
-      Button(selection.count == symbols.count ? "全不选" : "全选") {
-        selection = selection.count == symbols.count ? [] : Set(symbols)
-      }.foregroundStyle(theme.amber)
-      Spacer(minLength: 0)
-      Button("移到分类") { moving = MoveRequest(symbols: Array(selection)) }
-        .disabled(selection.isEmpty)
-        .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.amber)
-      Spacer(minLength: 0)
-      Button("取消自选", role: .destructive) {
-        removeFavorites(Array(selection)); selection.removeAll()
-      }.disabled(selection.isEmpty)
-        .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.danger)
-    }
-    .buttonStyle(.plain)
-    .font(.scaled(13, .semibold))
-    .padding(.horizontal, 20).frame(height: 52)
-    .background(skin.glass, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-    .overlay(alignment: .top) { skin.topHighlight(inset: 9) }
-    .padding(.horizontal, 12).padding(.bottom, 8)
   }
 }
 
@@ -1665,10 +1607,13 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   var body: some View { content }
 }
 
-// MARK: - 正在做的那次批量编辑
+// MARK: - 正在做的那次调整顺序
 
-/// 自选页上「他这会儿正勾着的那几个品种」：编辑模式开着没有、勾了哪几行、
-/// 以及编辑期间冻住的那份报价。
+/// 自选页上「他这会儿正在做的事」：调整顺序开着没有、调整期间冻住的那份报价、
+/// 表停在哪一行、以及「已移除 · 撤销」那条提示。
+///
+/// 2026-09-24 批量编辑（勾选多行 + 编辑条）撤了（「不做」清单），勾选那一份跟着删掉；
+/// 下面的历史照原样留着，讲的是「为什么住在宿主手里」，对调整顺序同样成立。
 ///
 /// **为什么不是 `FavoritesView` 自己的 `@State`**：底栏是常驻标签栏，
 /// `MainScreen.portraitBody` 里那个 `switch tab` 只留当前这一格，别的页整个拆掉，
@@ -1684,10 +1629,8 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
 /// 切后台再回来），但只活在这一次使用里：不进 `Prefs`、不进 `PersonalFileStorage`、
 /// 不进 `PersonalSyncCodec.fields`。换账号时由宿主清掉——那时候整张表都不是他的了。
 @MainActor @Observable final class FavoritesEditSession {
-  /// 编辑模式开着没有。只由用户自己的动作进出（「编辑自选」/「完成」/ 换账号）。
+  /// 调整顺序开着没有。只由用户自己的动作进出（「调整顺序」/「完成」/ 换账号）。
   var editing = false
-  /// 勾中的那几行。
-  var selection = Set<String>()
   /// 进编辑那一刻冻住的报价。编辑时整页读它而不是读实时报价，行布局才不会
   /// 随每批 WS 报价重排（见 `FavoritesView.displayQuote`）。
   var quotes: [String: Ticker] = [:]
@@ -1702,13 +1645,11 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
 
   func begin(quotes: [String: Ticker]) {
     self.quotes = quotes
-    selection.removeAll()
     editing = true
   }
 
   func end() {
     editing = false
-    selection.removeAll()
     quotes.removeAll()
   }
 
@@ -1717,7 +1658,7 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   /// 刚说出口的那句话，和「撤销」那一下要干什么。
   ///
   /// 屏幕底下那条提示条只有一条，住在宿主上（`MainScreen.say`）；撤销具体怎么撤
-  /// 是自选页的事（要还原到哪一位、哪一类、置不置顶）。所以这儿只当传声筒：
+  /// 是自选页的事（要还原到哪一位、哪一类）。所以这儿只当传声筒：
   /// 自选页把话和动作放进来，宿主念出去。
   private(set) var undoText = ""
   private(set) var undoAction: (() -> Void)?

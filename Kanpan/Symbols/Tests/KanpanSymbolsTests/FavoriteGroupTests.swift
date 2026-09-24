@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import KanpanCore
 @testable import KanpanSymbols
 
 @Suite("自选分类")
@@ -30,8 +31,6 @@ struct FavoriteGroupTests {
     prefs.assign("binance/usd_m/SNDKUSDT", to: group); prefs.assign("binance/usd_m/MUUSDT", to: group)
     prefs.toggleFavorite("binance/usd_m/SNDKUSDT")
     #expect(prefs.groupForSymbol["binance/usd_m/SNDKUSDT"] == nil)
-    prefs.renameGroup(group, name: "半导体")
-    #expect(prefs.groups.first?.name == "半导体")
     prefs.deleteGroup(group)
     #expect(prefs.favorites == ["binance/usd_m/MUUSDT"] && prefs.favorites(in: nil) == ["binance/usd_m/MUUSDT"])
   }
@@ -74,6 +73,32 @@ struct FavoriteGroupTests {
     #expect(prefs.favorites(in: crypto).count == 3)
     // 停在那一类被删了：读的时候自己退回第一类（见 `SymbolFieldPlanTests`）。
     #expect(prefs.group(selected) == crypto)
+  }
+
+
+  @Test("移到分类：还没开的预设分类当场开出来，已有的分类照用，名单不重复")
+  @MainActor func moveToPresetCategory() throws {
+    let memory = MemoryPrefsStorage(), store = SymbolPrefsStore(storage: memory)
+    let model = SymbolPickerModel(store: store)
+    func coin(_ symbol: String) -> SymbolInfo {
+      SymbolInfo(symbol: symbol, base: String(symbol.dropLast(4)),
+                 pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
+    }
+    // 新用户：第一支开出「加密」，之后站在「加密」里加的美股也落在「加密」（09-20 的规矩）。
+    model.addFavorite("binance/usd_m/BTCUSDT", info: coin("binance/usd_m/BTCUSDT"))
+    model.addFavorite("binance/usd_m/AAPLUSDT")
+    #expect(model.prefs.groups.map(\.name) == ["加密"])
+    // 没有「新建分类」之后，第二类只能从「移到分类」的预设里来。
+    #expect(model.moveTargets == ["加密", "美股", "贵金属"])
+    let stocks = try #require(model.assign(["binance/usd_m/AAPLUSDT"], toCategory: "美股"))
+    #expect(model.prefs.groups.map(\.name) == ["加密", "美股"])
+    #expect(model.prefs.favorites(in: stocks) == ["binance/usd_m/AAPLUSDT"])
+    #expect(model.moveTargets == ["加密", "美股", "贵金属"])
+    // 已经开着的那一类照用，不再开第二个同名的。
+    #expect(model.assign(["binance/usd_m/BTCUSDT"], toCategory: "美股") == stocks)
+    #expect(model.prefs.groups.count == 2)
+    // 落了盘：换一个模型读回来还在。
+    #expect(SymbolPickerModel(store: store).prefs.groupForSymbol["binance/usd_m/AAPLUSDT"] == stocks)
   }
 
 }

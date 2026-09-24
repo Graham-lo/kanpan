@@ -256,13 +256,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     return id
   }
 
-  mutating func renameGroup(_ id: String, name: String) {
-    let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
-    guard !trimmed.isEmpty, !groups.contains(where: { $0.id != id && $0.name == trimmed }),
-          let index = groups.firstIndex(where: { $0.id == id }) else { return }
-    groups[index].name = trimmed
-  }
-
   /// 删掉一类。`selected` 是删之前自选页停在哪一类。
   ///
   /// 删掉的**正好是选中的那一类**时，落单的成员进第一个分类——这一条以前靠

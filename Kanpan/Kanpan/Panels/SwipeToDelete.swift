@@ -291,8 +291,7 @@ enum SwipeDeleteIDs {
   // 各处的后缀写在这儿，实现和用例共用同一份字面量。
   /// `SwipeAction.delete` 默认的那颗。
   static let delete = "delete"
-  /// 自选分类页右划：「取消自选」。
-  static let favoritesRemove = "favorites.remove"
+  // 自选分类页右划的「取消自选」（`favorites.remove`）2026-09-24 撤了：右划整个不响应。
   /// 自选分类页左划：「移到分类」。
   static let favoritesMove = "favorites.move"
   /// 品种整页自选段左划：「取消自选」。

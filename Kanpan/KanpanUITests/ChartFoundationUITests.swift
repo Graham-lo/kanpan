@@ -446,40 +446,52 @@ final class ChartFoundationUITests: XCTestCase {
     }
   }
 
-  /// 分类这条路 2026-09-20 改过一次：**从某一类里点搜索加进来的品种，就留在那一类**
-  /// （`SymbolPickerModel.addFavorite`，用户点名要的）。以前无论站在哪儿加完都掉回
-  /// 「全部」，所以这条用例原来是「加完再移进半导体」；现在那一步是空跑——加完它已经
-  /// 在半导体里了。于是改成两组：站在「半导体」里加 SNDK（就地落位），再把它移去
-  /// 「光模块」，两边各看一眼，分类与移动这两件事仍旧各有一条断言管着。
+  /// 分类只在加自选时按资产类型自动开；「新建分类」2026-09-24 删了（审查 §3.3：自建分组
+  /// 早已判「不做」）。剩下的路这条用例各走一遍：自动开出来的分类能切、左滑「移到分类」
+  /// 能把品种移进**还没开的预设分类**（当场开出这一格——没有「新建」之后第二类只能从这儿来）、
+  /// 最后从自选点进图表。
   func testFavoritesCategoriesAndNavigation() throws {
-    XCTAssertTrue(app.openFavorites())
-    XCTAssertTrue(app.buttons["favorites.add"].waitForExistence(timeout: 5))
-    for group in ["半导体", "光模块"] {
-      favoritesAction("favorites.newGroup")
-      let name = app.alerts.textFields["分类名称"]
-      XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText(group)
-      app.alerts.buttons["保存"].tap()
-      XCTAssertTrue(app.buttons["favorites.group." + group].waitForExistence(timeout: 5))
-    }
-    let semiconductor = app.buttons["favorites.group.半导体"]
-    XCTAssertTrue(wait(seconds: 5) { semiconductor.isHittable }); semiconductor.tap()
-    addFavoriteFromSearch("SNDKUSDT")
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT"
+    app.launch()
+    if !app.buttons["favorites.more"].waitForExistence(timeout: 15) { XCTAssertTrue(app.openFavorites()) }
+    let stocks = app.buttons["favorites.group.美股"]
+    XCTAssertTrue(stocks.waitForExistence(timeout: 10), "SNDK 应当自己开出「美股」这一类")
+    XCTAssertFalse(app.buttons["favorites.group.贵金属"].exists, "还没有贵金属，不该先开出这一格")
+    XCTAssertTrue(waitHittable(stocks)); stocks.tap()
     let row = app.buttons["favorites.open.binance/usd_m/SNDKUSDT"]
-    XCTAssertTrue(row.waitForExistence(timeout: 5), "加进来的品种要留在当时站着的那一类里")
-    let move = app.buttons["favorites.move.binance/usd_m/SNDKUSDT"]
-    XCTAssertTrue(expandRow("SNDKUSDT"), "展开箭头点不开详情")
+    XCTAssertTrue(row.waitForExistence(timeout: 5))
+    let move = revealFavoriteMove(row)
+    XCTAssertTrue(move.exists, "左滑没露出「移到分类」：" + app.debugDescription)
     move.tap()
-    let destination = app.buttons["光模块"]
-    XCTAssertTrue(wait { destination.exists && destination.isHittable })
+    let destination = app.buttons["贵金属"]
+    XCTAssertTrue(wait { destination.exists && destination.isHittable }, "「移到分类」里要常驻还没开的预设分类")
+    shot("独立自选页-移到分类")
     destination.tap()
-    XCTAssertTrue(wait(seconds: 5) { !row.exists }, "移走之后不该还留在「半导体」这一类里")
-    app.buttons["favorites.group.光模块"].tap()
+    XCTAssertTrue(wait(seconds: 5) { !row.exists }, "移走之后不该还留在「美股」这一类里")
+    let metals = app.buttons["favorites.group.贵金属"]
+    XCTAssertTrue(metals.waitForExistence(timeout: 5), "挑了还没开的预设分类，分类条上该多出这一格")
+    XCTAssertTrue(waitHittable(metals)); metals.tap()
     XCTAssertTrue(row.waitForExistence(timeout: 5)); shot("独立自选页-分类与品种")
     row.tap()
     XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "binance/usd_m/SNDKUSDT" })
     XCTAssertTrue(app.buttons["interval.chart"].exists)
     // 「画线」2026-09-18 起是标签栏最左那一格，常驻——从自选页点进来也该在。
     XCTAssertTrue(app.buttons["bottom.draw"].exists)
+  }
+
+  /// 左滑一行，等「移到分类」那颗砖露出来（`SwipeToDelete`，`swipe.favorites.move`）。
+  /// 先慢推，推不出来再快甩一下——和 `SemanticColorEvidenceUITests.revealBrick` 同一个手法。
+  func revealFavoriteMove(_ row: XCUIElement) -> XCUIElement {
+    let brick = app.buttons["swipe.favorites.move"]
+    let from = row.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+    let to = from.withOffset(CGVector(dx: -140, dy: 0))
+    for velocity in [XCUIGestureVelocity.slow, XCUIGestureVelocity(900)] {
+      if brick.exists && brick.frame.width > 20 { break }
+      from.press(forDuration: 0.05, thenDragTo: to, withVelocity: velocity, thenHoldForDuration: 0.3)
+      _ = wait(seconds: 2) { brick.exists && brick.frame.width > 20 }
+    }
+    return brick
   }
 
   func testColdLaunchFavoritesAndLiveQuotes() throws {
@@ -582,14 +594,19 @@ final class ChartFoundationUITests: XCTestCase {
     shot("自选-上海8点统一涨跌幅")
   }
 
-  func testFavoritesBatchEditing() throws {
+  /// 「调整顺序」：批量编辑（勾选、全选、底部编辑条）2026-09-24 删了（审查 §3.3，判过「不做」），
+  /// 剩下的就是这个排序模式——「…」里点进去，长按拖动整行，头部换成「完成」。
+  func testFavoritesReorderMode() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     favoritesAction("favorites.edit")
+    XCTAssertTrue(app.buttons["favorites.editToggle"].waitForExistence(timeout: 5), "进了调整顺序，头部该换成「完成」")
+    XCTAssertFalse(app.buttons["全选"].exists, "批量编辑已删，不该再有「全选」")
+    XCTAssertFalse(app.buttons["favorites.select.binance/usd_m/ETHUSDT"].exists, "批量编辑已删，不该再有勾选框")
     let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
-    let sndk = app.buttons["favorites.open.binance/usd_m/SOLUSDT"]
+    let sol = app.buttons["favorites.open.binance/usd_m/SOLUSDT"]
     let quote = app.staticTexts["favorites.price.binance/usd_m/BTCUSDT"]
     var previousFrame = quote.frame
     var stableFrames = 0
@@ -598,12 +615,12 @@ final class ChartFoundationUITests: XCTestCase {
       stableFrames = frame == previousFrame ? stableFrames + 1 : 0
       previousFrame = frame
       return stableFrames >= 2
-    }, "等待进入编辑的系统控件布局完成")
+    }, "等待进入调整顺序的系统控件布局完成")
     let frozenPrice = quote.label, frozenFrame = quote.frame
     let deadline = Date().addingTimeInterval(3)
     while Date() < deadline {
-      XCTAssertEqual(quote.label, frozenPrice, "编辑期间报价冻结，退出后恢复实时")
-      XCTAssertEqual(quote.frame, frozenFrame, "编辑右侧报价不能随WS抖动")
+      XCTAssertEqual(quote.label, frozenPrice, "调整顺序期间报价冻结，退出后恢复实时")
+      XCTAssertEqual(quote.frame, frozenFrame, "调整顺序时右侧报价不能随WS抖动")
     }
     // 这一行整条都是 `favorites.open.<symbol>` 那个按钮，排序靠的是 List 自带的
     // 长按拖动——两个手势在抢同一个落点，按得不够久就被按钮先认走了（机器忙的时候
@@ -613,61 +630,36 @@ final class ChartFoundationUITests: XCTestCase {
     let source = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
       .withOffset(CGVector(dx: btc.frame.midX, dy: btc.frame.midY))
     source.press(forDuration: 1.2,
-                 thenDragTo: source.withOffset(CGVector(dx: 0, dy: sndk.frame.midY - btc.frame.midY + 10)),
+                 thenDragTo: source.withOffset(CGVector(dx: 0, dy: sol.frame.midY - btc.frame.midY + 10)),
                  withVelocity: .slow,
                  thenHoldForDuration: 0.8)
-    XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > before + 30 }, "编辑拖动应移动完整品种行")
-    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
-    // ETH 这一下故意打在勾选框上而不是整行。没选中的勾选框是一圈 `Circle().strokeBorder`，
-    // 20×20 的 frame 不会自己变成命中区，圆圈正中是空的——手指点在正中没反应，只能退回去
-    // 点整行才选得中（`2c5ce80` 给它补了 20×44 的实心命中区）。`tap()` 打的正是元素中心，
-    // 所以这一下修之前落空、修之后才选得中。
-    let ethCheck = app.buttons["favorites.select.binance/usd_m/ETHUSDT"]
-    XCTAssertTrue(ethCheck.waitForExistence(timeout: 5))
-    XCTAssertGreaterThanOrEqual(ethCheck.frame.height, 44,
-                                "勾选框的命中区至少要有一行高：\(ethCheck.frame)")
-    ethCheck.tap()
-    XCTAssertFalse(app.buttons["置顶"].exists, "选中两个之后不该还留着单选才有的「置顶」")
-    // 勾着东西切一格再切回来：编辑模式和勾好的那几行都得还在。
+    XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > before + 30 }, "调整顺序时拖动应移动完整品种行")
+    // 调整顺序时点一行什么都不做：不进图、不改任何东西。
+    btc.tap()
+    XCTAssertTrue(app.buttons["favorites.editToggle"].exists, "调整顺序时点一行不该跳走")
+    // 切一格再切回来：调整顺序还得在。
     //
     // 自选页每切走一次就整个重建（`MainScreen.portraitBody` 里的 `switch tab` 只留
-    // 当前那一格），编辑态原来是页面自己的 `@State`，跟着一起死——用户勾完去设置页
-    // 什么都没碰，回来编辑模式自己退了、勾全没了。现在它住在宿主手里
+    // 当前那一格），这个模式原来是页面自己的 `@State`，跟着一起死。现在它住在宿主手里
     // （`FavoritesEditSession`），活过重建但不落盘。
     app.buttons["bottom.settings"].tap()
     XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists }, "没切到设置页")
     app.buttons["bottom.favorites"].tap()
-    XCTAssertTrue(app.buttons["全选"].waitForExistence(timeout: 8), "切一格再回来，编辑模式自己退了")
-    let ethBack = app.buttons["favorites.select.binance/usd_m/ETHUSDT"]
-    XCTAssertTrue(ethBack.waitForExistence(timeout: 5))
-    XCTAssertEqual(ethBack.label, "取消选择", "切一格再回来，勾中的品种没了")
-    // 编辑态下整页读的是冻住的那份报价。页面重建之后它要重新填上，别让行里空着。
+    XCTAssertTrue(app.buttons["favorites.editToggle"].waitForExistence(timeout: 8), "切一格再回来，调整顺序自己退了")
+    // 调整顺序下整页读的是冻住的那份报价。页面重建之后它要重新填上，别让行里空着。
     if frozenPrice != "—" {
       XCTAssertTrue(wait(seconds: 5) { self.app.staticTexts["favorites.price.binance/usd_m/ETHUSDT"].label != "—" },
-                    "回到编辑态之后行里的报价空着")
+                    "回到调整顺序之后行里的报价空着")
     }
-    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
-    let remove = app.buttons["取消自选"]
-    XCTAssertTrue(remove.isEnabled)
-    // 编辑条必须整条落在标签栏上面。`cb0c4c3` 把标签栏改成 `safeAreaInset` 之后，
-    // 编辑条那层 `safeAreaInset` 挂在 `NavigationStack` 里面，吃不到外面让出来的那一栏，
-    // 于是「删除」的中心压进了「设置」格里——点删除会跳去设置页。光看「品种还在不在」
-    // 抓不住它（跳页之后两个都不在，断言会空过），所以这儿直接量两个框。
-    let tabBar = app.buttons["bottom.settings"]
-    XCTAssertTrue(tabBar.exists)
-    XCTAssertFalse(remove.frame.intersects(tabBar.frame),
-                   "编辑条压在标签栏上：删除 \(remove.frame)，设置格 \(tabBar.frame)")
-    remove.tap()
-    XCTAssertFalse(app.buttons["favorites.open.binance/usd_m/ETHUSDT"].exists)
-    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/BTCUSDT"].exists)
-    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/SOLUSDT"].exists)
-    favoritesAction("favorites.edit")
-    shot("自选-选择与删除")
+    shot("自选-调整顺序")
+    app.buttons["favorites.editToggle"].tap()
+    XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.editToggle"].exists }, "点「完成」没退出调整顺序")
+    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/ETHUSDT"].exists)
   }
 
   /// 长按整行这一下 2026-09-20 起归预览卡（方案 §4.1）：`contextMenu` 把那半秒先认走了，
   /// `List` 自带的拖动排序（`onMove`）在普通状态下就起不来——同一个手势没法两件事都做。
-  /// 排序没有丢，它退到卡旁边那份菜单的第一屏上（「调整顺序」），点一下进批量编辑，
+  /// 排序没有丢，它退到卡旁边那份菜单的第一屏上（「调整顺序」），点一下进调整顺序，
   /// 那儿的长按仍旧是拖动。这条用例走的就是这条新路（原名 `testFavoritesDirectRowReorder`）。
   func testFavoritesLongPressPreviewThenReorder() throws {
     app.terminate()
@@ -684,9 +676,9 @@ final class ChartFoundationUITests: XCTestCase {
     shot("自选-长按预览卡")
     reorder.tap()
     XCTAssertTrue(app.buttons["favorites.editToggle"].waitForExistence(timeout: 5),
-                  "「调整顺序」应直接进批量编辑")
+                  "「调整顺序」应直接进调整顺序模式")
     // 整行还是 `favorites.open.<symbol>` 那颗按钮，排序和它抢同一个落点：按满 1.2s
-    // 让排序会话先起来，拖完再按住 0.8s 才松手（同 `testFavoritesBatchEditing`）。
+    // 让排序会话先起来，拖完再按住 0.8s 才松手（同 `testFavoritesReorderMode`）。
     XCTAssertTrue(wait(seconds: 5) { btc.exists && sol.exists && btc.frame.minY < sol.frame.minY })
     let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
     let start = origin.withOffset(CGVector(dx: btc.frame.midX, dy: btc.frame.midY))
@@ -697,20 +689,42 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.editToggle"].tap()
   }
 
-  func testFavoritesRightSwipeRemove() throws {
+  /// 右划整个不响应（2026-09-24 审查 U8）：原来右划露的是和左划同一颗「取消自选」，
+  /// 同一个动作一页上三处入口。现在右划既不露砖、行也不动（不许露半截），自选一个不少。
+  func testFavoritesRightSwipeDoesNothing() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
     app.launch()
     let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(btc.waitForExistence(timeout: 15))
+    let band = btc.frame
+    let width = app.windows.firstMatch.frame.width
+    // 起手点从左到右三处，每处慢推一次、快甩一次（落点收在屏幕以内，手指出不了屏幕）。
+    // 每一下之后：行没动、没露砖、也没被当成一次点击进了图表。
+    for x in [80, width * 0.5, width - 40] {
+      for velocity in [XCUIGestureVelocity.slow, XCUIGestureVelocity(900)] {
+        let from = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+          .withOffset(CGVector(dx: x, dy: band.midY))
+        from.press(forDuration: velocity == .slow ? 0.1 : 0.01,
+                   thenDragTo: from.withOffset(CGVector(dx: min(120, width - 2 - x), dy: 0)),
+                   withVelocity: velocity, thenHoldForDuration: 0.3)
+        XCTAssertTrue(btc.waitForExistence(timeout: 2),
+                      "右划（起手 x=\(Int(x))，\(velocity == .slow ? "慢推" : "快甩")）之后自选行不见了：" + app.debugDescription)
+        XCTAssertEqual(btc.frame.minX, band.minX, accuracy: 0.5, "右划把行拉动了（露半截）")
+      }
+    }
+    XCTAssertFalse(app.buttons["swipe.delete"].exists, "右划不该再露「取消自选」")
+    XCTAssertFalse(app.buttons["swipe.favorites.move"].exists, "右划不该露任何砖")
     btc.swipeRight()
-    let remove = app.buttons["取消自选"]
-    XCTAssertTrue(remove.waitForExistence(timeout: 5))
-    XCTAssertTrue(btc.exists, "右滑仅显示操作，不能自动删除")
-    remove.tap()
-    XCTAssertTrue(wait(seconds: 5) { !btc.exists })
-    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/ETHUSDT"].exists)
-    shot("自选-右滑选择删除")
+    XCTAssertTrue(btc.exists && app.buttons["favorites.open.binance/usd_m/ETHUSDT"].exists, "右划动到了自选")
+    // 左划短短一下（刚过吸附门槛）：砖露出来，页面不许同时被当成一次点跳去图表。
+    let start = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: width - 60, dy: band.midY))
+    start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -70, dy: 0)),
+                withVelocity: .slow, thenHoldForDuration: 0.3)
+    XCTAssertTrue(btc.waitForExistence(timeout: 2), "左划短短一下就进了图表：" + app.debugDescription)
+    XCTAssertTrue(wait(seconds: 3) { self.app.buttons["swipe.favorites.move"].exists }, "左划过了门槛却没露砖")
+    shot("自选-右划不响应")
   }
 
   /// 仅用户明确要求写入正式自选时单独运行；常规回归保持跳过。
@@ -729,14 +743,20 @@ final class ChartFoundationUITests: XCTestCase {
       ("美股", ["AAPLUSDT", "MSFTUSDT", "NVDAUSDT", "AMZNUSDT", "GOOGLUSDT", "METAUSDT", "TSLAUSDT", "SNDKUSDT", "MUUSDT", "SKHYUSDT", "SKHYNIXUSDT", "MRVLUSDT", "LITEUSDT", "AVGOUSDT", "SOXLUSDT"]),
       ("贵金属", ["XAUUSDT", "XAGUSDT"])
     ]
+    // 「新建分类」2026-09-24 删了：站进那一类再加，加进来的品种就留在那一类里；
+    // 那一类还没开的话，把第一支左滑「移到分类」移过去（预设分类当场开出来）。
     for (group, symbols) in groups {
-      favoritesAction("favorites.newGroup")
-      let name = app.alerts.textFields["分类名称"]
-      XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText(group)
-      app.alerts.buttons["保存"].tap()
+      let chip = app.buttons["favorites.group." + group]
       for symbol in symbols {
-        if app.buttons["favorites.open." + testInstrumentKey(symbol)].exists { continue }
+        if chip.exists, !chip.isSelected, waitHittable(chip) { chip.tap() }
+        let row = app.buttons["favorites.open." + testInstrumentKey(symbol)]
+        if row.exists { continue }
         addFavoriteFromSearch(symbol)
+        guard !chip.exists else { continue }
+        revealFavoriteMove(row).tap()
+        let target = app.buttons[group]
+        XCTAssertTrue(wait { target.exists && target.isHittable }); target.tap()
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "移到「\(group)」没开出这一类")
       }
     }
     /// 分类条能横滑（用户 2026-09-18 定的），排不下的分类往两边滑着找，不再折进设置菜单。
@@ -955,17 +975,6 @@ final class ChartFoundationUITests: XCTestCase {
     shot("多品种多周期-报价时序")
   }
 
-  /// 点开一行右边那颗箭头，等它下面的详情出来。
-  ///
-  /// 箭头只有 14pt 宽，贴在屏幕最右边；合成点击偶尔会落空（手指点是好的，模拟器和
-  /// 真机上都逐步走过）。落空了就再点一次，别让一次抖动把整条用例判死。
-  @discardableResult func expandRow(_ symbol: String) -> Bool {
-    let chevron = app.buttons["favorites.expand." + testInstrumentKey(symbol)]
-    XCTAssertTrue(chevron.waitForExistence(timeout: 5), "没找到 " + symbol + " 那行的展开箭头")
-    chevron.tap()
-    return app.otherElements["favorites.details." + testInstrumentKey(symbol)].waitForExistence(timeout: 5)
-  }
-
   /// 从自选页加一个品种。
   ///
   /// 加自选的入口这一页只剩头部中间那条长搜索框（`favorites.add`，用户 2026-09-18
@@ -1037,8 +1046,9 @@ final class ChartFoundationUITests: XCTestCase {
     return wait(seconds: seconds) { element.exists && element.isHittable }
   }
 
-  /// 「…」菜单开着没有。「新建分类」是 `moreList` 里第一行，任何状态下都在，拿它当准星。
-  var favoritesMenuIsOpen: Bool { app.buttons["favorites.newGroup"].exists }
+  /// 「…」菜单开着没有。「调整顺序」是 `moreList` 里第一行，任何状态下都在，拿它当准星
+  /// （原来的准星「新建分类」2026-09-24 删了）。
+  var favoritesMenuIsOpen: Bool { app.buttons["favorites.edit"].exists }
 
   /// 开「…」菜单，没开就重来一次。返回是否真的开着；**不做断言**，好让调用方决定怎么收场。
   ///
@@ -1053,7 +1063,7 @@ final class ChartFoundationUITests: XCTestCase {
       let more = app.buttons["favorites.more"]
       guard more.waitForExistence(timeout: 4), waitHittable(more) else { continue }
       more.tap()
-      if app.buttons["favorites.newGroup"].waitForExistence(timeout: 4) { return true }
+      if app.buttons["favorites.edit"].waitForExistence(timeout: 4) { return true }
     }
     return favoritesMenuIsOpen
   }
@@ -1099,57 +1109,8 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(banner.exists, "系统通知仍遮挡顶部分类栏")
   }
 
-  /// 新建一个分类：「…」→「新建分类」→ 打字 →「保存」，整步最多走两遍。
-  ///
-  /// 为什么整步重来而不是只重试某一下——见 `ensureForeground()` 那段。app 被别的进程
-  /// 挤到后台的时候，这一串里的每一环都可能断在不同的地方：菜单没开、弹窗根本没上来、
-  /// 弹窗上来了又被 XCUITest 的默认打断处理器点掉「取消」、或者「保存」在 app 被重新
-  /// 激活之后算不出命中点。这些断法的共同收场都是「这个分类没建成」，所以判据只有一个：
-  /// `favorites.group.<名字>` 这颗胶囊出没出来。没出来就把现场清干净、整步重来一遍。
-  ///
-  /// 重试路径上一概不用 `XCTAssert*`：`continueAfterFailure = false` 下第一次断言失败
-  /// 就地终止用例，第二遍根本走不到。所以全走 `exists` / `waitForExistence` 的返回值。
-  /// 「保存」也不是拿到就点——`app.alerts.buttons["保存"].tap()` 这一下本身就可能抛
-  /// `Failed to compute hit point`，那是 XCTest 自己记的失败，Swift 这边接不住。
-  /// 所以点之前先确认 app 在前台、弹窗还在、按钮 `isHittable`，不满足就直接走重试分支。
-  ///
-  /// 重试不会把真缺陷放过去：分类真建不出来，两遍走完照样红。
-  func createGroup(_ name: String, file: StaticString = #filePath, line: UInt = #line) {
-    let group = app.buttons["favorites.group." + name]
-    for _ in 0..<2 {
-      // 上一遍可能已经建成了（比如只是「保存」之后那一下查询丢了），别重复建。
-      if group.exists { return }
-      ensureForeground()
-      // 弹窗要是还开着，先取消掉：残留的弹窗有一层遮罩，下一遍的「…」会点在它上面。
-      dismissStrayAlert()
-      guard tapFavoritesMenuAction("favorites.newGroup") else { continue }
-      let field = app.alerts.textFields.firstMatch
-      guard field.waitForExistence(timeout: 4), waitHittable(field) else { continue }
-      field.typeText(name)
-      let save = app.alerts.buttons["保存"]
-      guard waitHittable(save) else { continue }
-      save.tap()
-      if group.waitForExistence(timeout: 4) { return }
-    }
-    XCTFail("新建分类「\(name)」走了两遍都没建成", file: file, line: line)
-  }
-
-  /// 把还开着的弹窗按「取消」收掉，收不掉也不判红——判红交给调用方的那条判据。
-  ///
-  /// 这里必须先把 app 摆回前台再点「取消」：弹窗是模态的，它不收掉，后面的「…」
-  /// 就永远是「存在但点不动」。2026-09-19 第二轮注入就栽在这儿——那一遍在后台态下
-  /// 只看了一次 `isHittable`（假），就放着弹窗不管往下走，接着两次开菜单全被弹窗挡死。
-  func dismissStrayAlert() {
-    for _ in 0..<3 {
-      ensureForeground()
-      let alert = app.alerts.firstMatch
-      guard alert.exists else { return }
-      let cancel = alert.buttons["取消"]
-      if waitHittable(cancel) { cancel.tap() }
-      if alert.waitForNonExistence(timeout: 3) { return }
-    }
-  }
-
+  /// 分类条横滑、「…」菜单的内容。分类全是按资产类型自己开出来的（「新建分类」
+  /// 2026-09-24 删了），所以四支种子摆出三格：加密 / 美股 / 贵金属。
   func testFavoritesCategoryOverflow() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT,XAUUSDT"
@@ -1157,21 +1118,20 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     XCTAssertFalse(app.textFields["favorites.query"].exists)
     XCTAssertGreaterThanOrEqual(app.buttons["favorites.group.加密"].frame.height, 44)
-    for name in ["观察中的品种", "长期关注", "短线"] { createGroup(name) }
+    for name in ["加密", "美股", "贵金属"] {
+      XCTAssertTrue(app.buttons["favorites.group." + name].waitForExistence(timeout: 10), "种子没自动开出「\(name)」")
+    }
     shot("自选-顶部分类条")
     dismissNotificationBanner()
-    // 排不下的分类不再折进设置菜单，分类条自己能横滑（用户 2026-09-18 定的，和
-    // AICoin 一样）：新建完的那个已经被选上，条子会自己滚过去，往右滑又能回到第一个。
-    let created = app.buttons["favorites.group.观察中的品种"]
-    XCTAssertTrue(created.waitForExistence(timeout: 4))
-    XCTAssertTrue(created.isHittable, "刚建好的分类要自己滚进看得见的地方")
     XCTAssertTrue(openFavoritesMenu(), "点「…」开不出菜单：重试一次仍然没开")
     XCTAssertFalse(app.staticTexts["更多分类"].exists, "分类条能横滑了，菜单里不该再有「更多分类」")
+    XCTAssertFalse(app.buttons["favorites.newGroup"].exists, "自建分类判了不做，菜单里不该再有「新建分类」")
+    XCTAssertFalse(app.buttons["favorites.rename"].exists, "自建分类判了不做，菜单里不该再有「重命名」")
+    XCTAssertTrue(app.buttons["favorites.deleteGroup"].exists, "有三类时「删除当前分类」该在")
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
-    XCTAssertTrue(wait(seconds: 4) { !self.app.buttons["favorites.newGroup"].exists })
+    XCTAssertTrue(wait(seconds: 4) { !self.favoritesMenuIsOpen })
     favoritesAction("favorites.close")
     XCTAssertTrue(app.openFavorites())
-    XCTAssertTrue(app.buttons["favorites.group.观察中的品种"].waitForExistence(timeout: 15))
     let strip = app.descendants(matching: .any).matching(identifier: "favorites.groups").firstMatch
     XCTAssertTrue(strip.waitForExistence(timeout: 4))
     let crypto = app.buttons["favorites.group.加密"]
@@ -1179,10 +1139,24 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(crypto.isHittable, "往右滑要能滑回第一个分类")
     crypto.tap()
     favoritesAction("favorites.edit")
-    XCTAssertTrue(app.buttons["全选"].waitForExistence(timeout: 4))
-    favoritesAction("favorites.edit")
+    XCTAssertTrue(app.buttons["favorites.editToggle"].waitForExistence(timeout: 4))
+    XCTAssertFalse(app.buttons["全选"].exists, "批量编辑已删，调整顺序里不该有「全选」")
+    app.buttons["favorites.editToggle"].tap()
     app.buttons["favorites.add"].tap()
     XCTAssertTrue(app.textFields["search.query"].waitForExistence(timeout: 5))
+  }
+
+  /// 只剩一类时不给删：删了页面就空了，只能再加一支把它开回来（2026-09-24 审查 U8）。
+  func testFavoritesLastCategoryHasNoDelete() throws {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
+    app.launch()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["favorites.group.加密"].waitForExistence(timeout: 10))
+    XCTAssertTrue(openFavoritesMenu(), "点「…」开不出菜单")
+    XCTAssertFalse(app.buttons["favorites.deleteGroup"].exists, "只剩一类时不该有「删除当前分类」")
+    shot("自选-只剩一类的菜单")
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
   }
 
   func testUserSessionFreshQuotesAndReorder() throws {

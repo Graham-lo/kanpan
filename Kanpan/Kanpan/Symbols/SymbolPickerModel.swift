@@ -347,7 +347,7 @@ final class SymbolPickerModel {
   /// 移除之前替调用方拍一张快照（撤销要用）。
   func favoriteSnapshot(_ symbol: String) -> FavoriteSnapshot? { prefs.snapshot(of: symbol) }
 
-  /// 撤销「移除自选」：照快照放回原来的位置、分组、置顶位。
+  /// 撤销「移除自选」：照快照放回原来的位置和分类。
   ///
   /// 走的是和别处一模一样的 `commit()`——落盘、推同步、重挂行情订阅一样不少，
   /// 不走 `applySynced` 那条「只存不推」的近路，否则这一下在别的设备上等于没发生。
@@ -375,6 +375,9 @@ final class SymbolPickerModel {
     commit()
   }
 
+  /// 按名字开一类（已有同名的就用那一类）。界面上 2026-09-24 起没有「新建分类」了——
+  /// 分类只由加自选时按资产类型自动开（`addFavorite`）；这一层留着它，是因为老账号里
+  /// 仍躺着他当年自己建的分类，测试要拼出这种存档。
   @discardableResult
   func createGroup(_ name: String) -> String? {
     let id = prefs.createGroup(name); prefs.classifyUnassigned(into: currentGroup); commit(); return id
@@ -389,9 +392,22 @@ final class SymbolPickerModel {
   //
   // 更早还有一个 `pickedGroupThisRun` 记号配 `resetSelectedGroup()`，执行「冷启动回到
   // 第一个分类」，2026-09-19 一并删掉：上次停在哪一类是他的习惯，冷启动照样要还给他。
-  func renameGroup(_ id: String, name: String) { prefs.renameGroup(id, name: name); commit() }
   func deleteGroup(_ id: String) { prefs.deleteGroup(id, selected: currentGroup); commit() }
   func assign(_ symbol: String, to group: String?) { prefs.assign(symbol, to: group); commit() }
+  /// 「移到分类」挑了一格：已经开着的就直接用，还没开的预设分类（`FavoriteCategory.presets`）
+  /// 当场开出来。开类和移过去是同一次落盘、同一条同步。返回那一类的 id。
+  @discardableResult
+  func assign(_ symbols: [String], toCategory name: String) -> String? {
+    guard let group = prefs.createGroup(name) else { return nil }
+    symbols.forEach { prefs.assign($0, to: group) }
+    commit()
+    return group
+  }
+  /// 「移到分类」列出来的那几格：已有的分类照原顺序，后面接还没开的预设分类。
+  var moveTargets: [String] {
+    let names = prefs.groups.map(\.name)
+    return names + FavoriteCategory.presets.filter { !names.contains($0) }
+  }
   func moveVisible(_ visible: [String], from source: IndexSet, to destination: Int) {
     prefs.moveVisible(visible, from: source, to: destination); commit()
   }

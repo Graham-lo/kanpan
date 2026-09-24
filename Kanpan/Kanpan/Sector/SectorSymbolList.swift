@@ -167,10 +167,12 @@ struct SectorSymbolList: View {
 
   // MARK: - 长按预览
 
-  /// 和自选页同一张卡、同一份菜单（`FavoritesView.previewable`）。差别有两处：
-  /// 这儿的品种多半还不在自选里，所以那一项是「加入自选」而不是「取消自选」——
-  /// 看板块就是在挑东西，挑中了顺手收走，不用先切回自选页再搜一遍；另一处是
-  /// 没有「调整顺序」，这张表的顺序归排序口径管，本来就不是手排的。
+  /// 和自选页同一张卡，菜单是它的子集：「打开」加一颗收藏开关。
+  /// 这儿的品种多半还不在自选里，所以那一项平时是「加入自选」——看板块就是在挑东西，
+  /// 挑中了顺手收走，不用先切回自选页再搜一遍；已经在自选里的写「取消自选」。
+  /// 没有「调整顺序」（这张表的顺序归排序口径管），也没有「移到分类」——2026-09-24
+  /// 收拢入口（审查 U8）：移到分类只在自选页上做（左滑、长按菜单两处），分类本来就是
+  /// 那一页的东西，在板块里改了也看不见改到了哪儿。
   @ViewBuilder private func previewable(_ item: SectorSymbolRow, _ content: some View,
                                         open: @escaping (String) -> Void) -> some View {
     if let previews {
@@ -178,13 +180,6 @@ struct SectorSymbolList: View {
         Button("打开") { open(item.symbol) }
         if let picker {
           if picker.isFavorite(item.symbol) {
-            if !picker.prefs.groups.isEmpty {
-              Menu("移到分类") {
-                ForEach(picker.prefs.groups) { group in
-                  Button(group.name) { move(item.symbol, to: group, picker) }
-                }
-              }
-            }
             Button("取消自选", role: .destructive) { unfavorite(item.symbol, picker) }
           } else {
             Button("加入自选") { picker.addFavorite(item.symbol, info: picker.info(for: item.symbol)) }
@@ -200,13 +195,7 @@ struct SectorSymbolList: View {
     }
   }
 
-  /// 移到分类、取消自选都和自选页一样给五秒反悔（P2.7），说在全 app 那唯一一条提示上。
-  private func move(_ symbol: String, to group: FavoriteGroup, _ picker: SymbolPickerModel) {
-    guard let before = picker.favoriteSnapshot(symbol), before.group != group.id else { return }
-    picker.assign(symbol, to: group.id)
-    ToastCenter.shared.say("已移到「\(group.name)」") { picker.assign(before.symbol, to: before.group) }
-  }
-
+  /// 取消自选和自选页一样给五秒反悔（P2.7），说在全 app 那唯一一条提示上。
   private func unfavorite(_ symbol: String, _ picker: SymbolPickerModel) {
     guard let before = picker.favoriteSnapshot(symbol) else { return }
     Haptics.warning()

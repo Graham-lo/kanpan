@@ -1697,7 +1697,7 @@ struct MainScreen: View {
   }
 
   /// 桌面小组件（P3.2）：自选、报价、皮肤折成一份快照写进 App Group，扩展只读它。
-  /// 自选 / 分类 / 置顶 / 皮肤一变立刻写并重载；价只是动了，按 `WidgetFeed` 的节奏写。
+  /// 自选 / 分类 / 皮肤一变立刻写并重载；价只是动了，按 `WidgetFeed` 的节奏写。
   private func wireWidget() {
     widgetFeed.bind(
       collect: { closes in
