@@ -1,4 +1,4 @@
-//! 深度快照：`GET /v1/market/depth?symbol=BTCUSDT&limit=1000`。
+//! 深度快照：`GET /v1/market/depth?symbol=BTCUSDT&limit=1000[&market=um|cm]`。
 //!
 //! 主力订单流在手机上维护一本簿：订币安合约的增量深度流 `<symbol>@depth@100ms`，再拿
 //! 一份 REST 快照按 `U`/`u`/`pu` 对上序号。网关线路上的手机不能自己去拿这份快照——
@@ -13,8 +13,13 @@
 //! * 不登录、不碰数据库：行情是公开的。
 //! * 币安的 JSON **原样透传**（`lastUpdateId`、`E`、`T`、`bids`、`asks`），不套
 //!   `{"data":…}` 信封：手机拿它和直连线路上的同一份快照走同一个解码器。
-//! * `limit` 只收 500 或 1000（币安权重 10 / 20），缺省 1000；`symbol` 只收 `[A-Z0-9]{2,30}`。
-//! * 每个 (symbol, limit) 缓存一秒，并且合并正在飞的请求：一秒内几台手机切到同一只品种，
+//! * `limit` 只收 500 或 1000（币安权重 10 / 20），缺省 1000；`symbol` 只收 `[A-Z0-9_]{2,30}`
+//!   （带下划线的是交割合约 `BTCUSDT_260925` 与币本位 `BTCUSD_PERP`）。
+//! * `market` 选哪一家合约：`um`（缺省，U 本位，含 USDT 交割）走 `www.binance.com/fapi/v1/depth`，
+//!   `cm`（币本位永续与交割）走 `www.binance.com/dapi/v1/depth`——`dapi.binance.com` 对这两台
+//!   VPS 同样回 451，网站主机那条路是通的（2026-09-24 实测）。旧客户端不带这个参数，行为不变。
+//!   dapi 的 limit 只认 5/10/20/50/100/500/1000，这里收的 500 / 1000 两档两边都认。
+//! * 每个 (market, symbol, limit) 缓存一秒，并且合并正在飞的请求：一秒内几台手机切到同一只品种，
 //!   上游只挨一次。失败也缓存这一秒，限流的时候不会被十台手机的重试再敲十次。
 //! * 上游 451 / 429 / 418、超时、或这个出口正在被封 → 503 + `Retry-After: 2`；
 //!   上游 400（没有这个合约）→ 400 `unknown_symbol`；其它 → 502。
@@ -30,7 +35,8 @@ use tokio::sync::OnceCell;
 use tokio::time::Instant;
 
 const PATH:&str="/v1/market/depth";
-const UPSTREAM:&str="https://www.binance.com/fapi/v1/depth";
+const UPSTREAM_UM:&str="https://www.binance.com/fapi/v1/depth";
+const UPSTREAM_CM:&str="https://www.binance.com/dapi/v1/depth";
 /// 同一只品种的快照在这段时间里被复用。手机拿到快照后还要跟缓冲着的增量流对序号，
 /// 一秒前的快照只意味着多丢掉几帧更早的增量，不影响对得上。
 const FRESH:Duration=Duration::from_secs(1);
@@ -40,6 +46,10 @@ const TIMEOUT:Duration=Duration::from_secs(5);
 const ABANDONED:Duration=Duration::from_secs(30);
 const RETRY_AFTER:&str="2";
 const LIMITS:[u16;2]=[500,1000];
+
+/// 哪一家合约。`um` = U 本位（fapi，永续与 USDT 交割），`cm` = 币本位（dapi，永续与交割）。
+#[derive(Clone,Copy,Debug,PartialEq,Eq,Hash)]
+enum Market {Um,Cm}
 
 /// 一次取快照的结局。三种失败对手机的意义不同，所以分开：
 #[derive(Clone,Debug,PartialEq)]
@@ -63,16 +73,19 @@ struct Slot {
 }
 
 pub struct Depth {
- base:String,
+ /// U 本位（fapi）那条上游。
+ um:String,
+ /// 币本位（dapi）那条上游。
+ cm:String,
  timeout:Duration,
- slots:Mutex<HashMap<(String,u16),Arc<Slot>>>,
+ slots:Mutex<HashMap<(Market,String,u16),Arc<Slot>>>,
 }
 
 impl Depth {
- fn new(base:impl Into<String>,timeout:Duration)->Self {Self{base:base.into(),timeout,slots:Mutex::new(HashMap::new())}}
+ fn new(um:impl Into<String>,cm:impl Into<String>,timeout:Duration)->Self {Self{um:um.into(),cm:cm.into(),timeout,slots:Mutex::new(HashMap::new())}}
 
  /// 这一只品种这一档的快照：一秒内的答案直接复用，正在飞的请求直接跟上。
- async fn snapshot(&self,symbol:&str,limit:u16)->Outcome {
+ async fn snapshot(&self,market:Market,symbol:&str,limit:u16)->Outcome {
   let slot={
    let mut slots=self.slots.lock().unwrap_or_else(|e|e.into_inner());
    let now=Instant::now();
@@ -82,7 +95,7 @@ impl Depth {
     Some(at)=>now.duration_since(*at)<FRESH,
     None=>slot.born.get().is_none_or(|born|now.duration_since(*born)<ABANDONED),
    });
-   slots.entry((symbol.to_owned(),limit)).or_insert_with(|| {
+   slots.entry((market,symbol.to_owned(),limit)).or_insert_with(|| {
     let slot=Slot::default();
     let _=slot.born.set(now);
     Arc::new(slot)
@@ -91,14 +104,15 @@ impl Depth {
   // 第一个进来的去取，同一刻的其它请求在这里等同一个结果。发起者半路被断开时，
   // `OnceCell` 会让下一个等着的人接手去取，不会让大家一起卡住。
   slot.answer.get_or_init(|| async {
-   let outcome=self.fetch(symbol,limit).await;
+   let outcome=self.fetch(market,symbol,limit).await;
    let _=slot.done.set(Instant::now());
    outcome
   }).await.clone()
  }
 
- async fn fetch(&self,symbol:&str,limit:u16)->Outcome {
-  let url=format!("{}?symbol={symbol}&limit={limit}",self.base);
+ async fn fetch(&self,market:Market,symbol:&str,limit:u16)->Outcome {
+  let base=match market {Market::Um=>&self.um,Market::Cm=>&self.cm};
+  let url=format!("{base}?symbol={symbol}&limit={limit}");
   let gated=binance_gate::covers(&url);
   // 出口正被币安封着就连门都不敲：封禁期里继续敲，换来的只是封得更久。
   if gated&&binance_gate::blocked() {return Err(Failure::Busy)}
@@ -134,12 +148,12 @@ fn is_book(body:&[u8])->bool {
 }
 
 fn valid_symbol(symbol:&str)->bool {
- (2..=30).contains(&symbol.len())&&symbol.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit())
+ (2..=30).contains(&symbol.len())&&symbol.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit()||b==b'_')
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DepthQuery {symbol:String,limit:Option<u16>}
+struct DepthQuery {symbol:String,limit:Option<u16>,market:Option<String>}
 
 fn answer(outcome:Outcome)->Response {
  let refuse=|status:StatusCode,code:&str|(status,Json(json!({"error":{"code":code}}))).into_response();
@@ -166,12 +180,17 @@ async fn serve(depth:&Depth,query:DepthQuery)->Response {
  if !valid_symbol(&query.symbol) {return ApiError::bad("invalid_symbol").into_response()}
  let limit=query.limit.unwrap_or(1000);
  if !LIMITS.contains(&limit) {return ApiError::bad("invalid_limit").into_response()}
- answer(depth.snapshot(&query.symbol,limit).await)
+ let market=match query.market.as_deref() {
+  None|Some("um")=>Market::Um,
+  Some("cm")=>Market::Cm,
+  Some(_)=>return ApiError::bad("invalid_market").into_response(),
+ };
+ answer(depth.snapshot(market,&query.symbol,limit).await)
 }
 
 fn shared()->Arc<Depth> {
  static D:OnceLock<Arc<Depth>>=OnceLock::new();
- D.get_or_init(||Arc::new(Depth::new(UPSTREAM,TIMEOUT))).clone()
+ D.get_or_init(||Arc::new(Depth::new(UPSTREAM_UM,UPSTREAM_CM,TIMEOUT))).clone()
 }
 
 fn routes_with<S:Clone+Send+Sync+'static>(depth:Arc<Depth>)->Router<S> {
@@ -192,23 +211,27 @@ mod tests {
 
  const BOOK:&str=r#"{"lastUpdateId":11640260107234,"E":1790000000123,"T":1790000000100,"bids":[["95000.10","1.234"],["95000.00","0.500"]],"asks":[["95000.20","0.800"]]}"#;
 
- /// 假的币安：数被问了几次、记下最后一次的查询串，按设定的状态码 / 正文 / 延迟回答。
- struct Fake {hits:AtomicUsize,query:Mutex<String>,reply:Mutex<(u16,&'static str,Duration)>}
- async fn fake_depth(State(fake):State<Arc<Fake>>,RawQuery(query):RawQuery)->Response {
+ /// 假的币安：数被问了几次、记下最后一次的路径与查询串，按设定的状态码 / 正文 / 延迟回答。
+ struct Fake {hits:AtomicUsize,path:Mutex<String>,query:Mutex<String>,reply:Mutex<(u16,&'static str,Duration)>}
+ async fn fake_depth(State(fake):State<Arc<Fake>>,uri:axum::http::Uri,RawQuery(query):RawQuery)->Response {
   fake.hits.fetch_add(1,Ordering::SeqCst);
+  *fake.path.lock().unwrap()=uri.path().to_owned();
   *fake.query.lock().unwrap()=query.unwrap_or_default();
   let (status,body,delay)=*fake.reply.lock().unwrap();
   tokio::time::sleep(delay).await;
   (StatusCode::from_u16(status).unwrap(),body).into_response()
  }
- /// 起一个假上游，返回它和一个指向它的 `Depth`。`path` 决定这个 URL 过不过 `binance_gate`。
+ /// 起一个假上游，返回它和一个指向它的 `Depth`。`path` 决定这个 URL 过不过 `binance_gate`；
+ /// 币本位那条上游是同一个假币安，路径里的 `/fapi/` 换成 `/dapi/`，好核对 `market=cm` 真的走了 dapi。
  async fn upstream(path:&str,timeout:Duration)->(Arc<Fake>,Arc<Depth>) {
-  let fake=Arc::new(Fake{hits:AtomicUsize::new(0),query:Mutex::new(String::new()),reply:Mutex::new((200,BOOK,Duration::ZERO))});
+  let fake=Arc::new(Fake{hits:AtomicUsize::new(0),path:Mutex::new(String::new()),query:Mutex::new(String::new()),reply:Mutex::new((200,BOOK,Duration::ZERO))});
   let app=Router::new().fallback(fake_depth).with_state(fake.clone());
   let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
   let port=listener.local_addr().unwrap().port();
   tokio::spawn(async move {axum::serve(listener,app).await.unwrap()});
-  (fake,Arc::new(Depth::new(format!("http://127.0.0.1:{port}{path}"),timeout)))
+  let um=format!("http://127.0.0.1:{port}{path}");
+  let cm=um.replace("/fapi/","/dapi/");
+  (fake,Arc::new(Depth::new(um,cm,timeout)))
  }
  fn set(fake:&Fake,status:u16,body:&'static str,delay:Duration) {*fake.reply.lock().unwrap()=(status,body,delay);}
 
@@ -231,6 +254,8 @@ mod tests {
    ("symbol=B","invalid_symbol"),                     // 太短
    (&*format!("symbol={}","A".repeat(31)),"invalid_symbol"),
    ("symbol=BTC-USDT","invalid_symbol"),
+   ("symbol=btcusd_perp","invalid_symbol"),           // 下划线放行了，小写照样不行
+   ("symbol=BTCUSD%2DPERP","invalid_symbol"),
    ("symbol=BTC%2FUSDT","invalid_symbol"),
    ("symbol=BTC%20USDT","invalid_symbol"),
    ("symbol=%E4%B8%AD%E6%96%87","invalid_symbol"),
@@ -241,6 +266,10 @@ mod tests {
    ("symbol=BTCUSDT&limit=-1","invalid_query"),
    ("symbol=BTCUSDT&limit=99999999","invalid_query"),
    ("symbol=BTCUSDT&extra=1","invalid_query"),         // 多给的参数
+   ("symbol=BTCUSD_PERP&market=CM","invalid_market"),  // 只认小写的 um / cm
+   ("symbol=BTCUSD_PERP&market=spot","invalid_market"),
+   ("symbol=BTCUSD_PERP&market=","invalid_market"),
+   ("symbol=BTCUSD_PERP&market=cm&limit=100","invalid_limit"),
   ];
   for (query,expected) in cases {
    let (status,_,body)=call(&depth,query).await;
@@ -253,7 +282,30 @@ mod tests {
    let (status,_,_)=call(&depth,query).await;
    assert_eq!(status,StatusCode::OK,"{query}");
    assert_eq!(*fake.query.lock().unwrap(),sent);
+   assert_eq!(*fake.path.lock().unwrap(),"/fapi/v1/depth","缺省是 U 本位");
   }
+  // 带下划线的交割与币本位代号：um 走 fapi，cm 走 dapi。
+  for (query,path,sent) in [
+   ("symbol=BTCUSDT_260925","/fapi/v1/depth","symbol=BTCUSDT_260925&limit=1000"),
+   ("symbol=BTCUSDT_261225&market=um","/fapi/v1/depth","symbol=BTCUSDT_261225&limit=1000"),
+   ("symbol=BTCUSD_PERP&market=cm&limit=1000","/dapi/v1/depth","symbol=BTCUSD_PERP&limit=1000"),
+   ("symbol=BTCUSD_260925&market=cm&limit=500","/dapi/v1/depth","symbol=BTCUSD_260925&limit=500"),
+  ] {
+   let (status,_,_)=call(&depth,query).await;
+   assert_eq!(status,StatusCode::OK,"{query}");
+   assert_eq!(*fake.path.lock().unwrap(),path,"{query}");
+   assert_eq!(*fake.query.lock().unwrap(),sent,"{query}");
+  }
+ }
+
+ #[tokio::test]
+ async fn the_same_symbol_on_the_two_markets_is_two_cache_entries() {
+  let (fake,depth)=upstream("/fapi/v1/depth",TIMEOUT).await;
+  assert_eq!(call(&depth,"symbol=BTCUSD_PERP&market=cm").await.0,StatusCode::OK);
+  assert_eq!(call(&depth,"symbol=BTCUSD_PERP&market=um").await.0,StatusCode::OK);
+  assert_eq!(fake.hits.load(Ordering::SeqCst),2,"缓存键带 market：cm 的簿不能拿去答 um");
+  assert_eq!(call(&depth,"symbol=BTCUSD_PERP&market=cm").await.0,StatusCode::OK);
+  assert_eq!(fake.hits.load(Ordering::SeqCst),2,"同一 market 一秒内复用");
  }
 
  #[tokio::test]
@@ -318,7 +370,7 @@ mod tests {
    assert_eq!(retry.as_deref(),(expected==StatusCode::SERVICE_UNAVAILABLE).then_some(RETRY_AFTER),"只有 503 带 Retry-After: 2");
   }
   // 连不上：一个没人听的端口。
-  let nobody=Arc::new(Depth::new("http://127.0.0.1:1/fapi/v1/depth",Duration::from_millis(300)));
+  let nobody=Arc::new(Depth::new("http://127.0.0.1:1/fapi/v1/depth","http://127.0.0.1:1/dapi/v1/depth",Duration::from_millis(300)));
   let (got,_,reply)=call(&nobody,"symbol=BTCUSDT").await;
   assert_eq!((got,code(&reply).as_str()),(StatusCode::BAD_GATEWAY,"market_upstream_failed"));
  }
