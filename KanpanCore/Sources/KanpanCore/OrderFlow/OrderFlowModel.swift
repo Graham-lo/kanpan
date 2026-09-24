@@ -6,10 +6,12 @@ import Foundation
 // ≥ 该产品的门槛就算。除了门槛没有别的过滤（不看利用率、邻居中位数、单家倍数）。
 //
 // - 出现 / 消失：各要连续两次评估、首尾相隔 ≥ 300 ms 才算（`OrderFlowDefaults.confirmation*`）。
-//   出现时刻记第一次过门槛那一拍，结束时刻记第一次跌破门槛那一拍。
+//   出现要 ≥ 门槛，出现之后跌到门槛 × 0.5 以下才算消失（`OrderFlowDefaults.exitRatio`，退出滞回）。
+//   出现时刻记第一次过门槛那一拍，结束时刻记第一次跌破那一拍。
 // - 成交：主动成交（任何一家的逐笔）打到这一侧这个桶，就记进这个桶上每一条还挂着的大单。
-// - 结束：跌破门槛时，累计成交 ≥ 首次出现时名义 × 0.8 记「已成交」，否则「已撤销」（理由见 `OrderFlowDefaults.filledRatio`）。
-// - 历史：结束的大单留在图上；最多 200 条、24 小时（`OrderFlowDefaults.maxOrders / retentionMs`）。
+// - 结束：累计成交 ≥ 消失掉的名义（首次名义 − 结束时剩下的）× 0.8 记「已成交」，否则「已撤销」（理由见 `OrderFlowDefaults.filledRatio`）。
+// - 历史：结束的大单留在图上，24 小时、最多 500 条（`OrderFlowDefaults.retentionMs / maxEndedOrders`）；
+//   还挂着的永远不删。
 // - 落盘：`OrderFlowJournal`，一只品种一份小文件（KanpanData 管读写），切回来、进程重启历史还在；不同步。
 // - 簿断了：没就绪的那本簿这一拍不参与（它的单既不新增也不结束）；断开超过 2 分钟，它还挂着的单
 //   按最后一次看到的时刻结束（`staleMs`）。
@@ -59,7 +61,7 @@ public struct BigOrder: Sendable, Equatable, Identifiable, Codable {
     initialNotional > 0 ? min(1, max(0, filledNotional / initialNotional)) : 0
   }
 
-  // 落盘用短键：200 条约 30 KB。
+  // 落盘用短键：500 条约 75 KB。
   enum CodingKeys: String, CodingKey {
     case venueID = "v", exchange = "x", product = "p", side = "s", bucket = "b", price = "px"
     case firstSeenMs = "f", endMs = "e", status = "st", initialNotional = "n0", notional = "n"
@@ -200,6 +202,8 @@ public struct OrderFlowModel: Sendable {
   struct Pending: Sendable {
     var firstMs: Int64
     var samples = 0
+    /// 第一次跌破那一拍桶里还剩多少（美元）；算「消失了多少」用。
+    var remaining: Double
   }
 
   public init(symbol: String, thresholds: OrderFlowThresholds, restored: OrderFlowJournal? = nil) {
@@ -330,22 +334,23 @@ public struct OrderFlowModel: Sendable {
       evaluated.insert(id)
       venueSeen[id] = nowMs
 
-      // 1. 这本簿上还挂着的单：还在门槛上就更新，跌破就开始确认结束。
+      // 1. 这本簿上还挂着的单：还在退出线（门槛 × 0.5）上就更新，跌破就开始确认结束。
+      let exitLine = threshold * OrderFlowDefaults.exitRatio
       var liveKeys = Set<BucketKey>()
       for i in orders.indices where orders[i].venueID == id && orders[i].isLive {
         let key = BucketKey(side: orders[i].side, index: orders[i].bucket)
         liveKeys.insert(key)
         let oid = orders[i].id
-        if let value = map[key], value.notional >= threshold {
+        if let value = map[key], value.notional >= exitLine {
           orders[i].notional = value.notional
           orders[i].price = value.price
           lastSeen[oid] = nowMs
           ending[oid] = nil
         } else {
-          var pending = ending[oid] ?? Pending(firstMs: nowMs)
+          var pending = ending[oid] ?? Pending(firstMs: nowMs, remaining: map[key]?.notional ?? 0)
           pending.samples += 1
           if Self.confirmed(samples: pending.samples, firstMs: pending.firstMs, nowMs: nowMs) {
-            end(i, atMs: pending.firstMs)
+            end(i, atMs: pending.firstMs, remaining: pending.remaining)
             ending[oid] = nil
           } else {
             ending[oid] = pending
@@ -400,10 +405,11 @@ public struct OrderFlowModel: Sendable {
     a.firstSeenMs != b.firstSeenMs ? a.firstSeenMs < b.firstSeenMs : a.id < b.id
   }
 
-  /// 跌破门槛：成交够八成算已成交，否则已撤销。
-  private mutating func end(_ i: Int, atMs: Int64) {
+  /// 跌破退出线：消失掉的那部分名义里成交够八成算已成交，否则已撤销。`remaining` 是跌破那一拍桶里还剩的。
+  private mutating func end(_ i: Int, atMs: Int64, remaining: Double) {
     let order = orders[i]
-    orders[i].status = order.filledNotional >= order.initialNotional * OrderFlowDefaults.filledRatio
+    let vanished = max(0, order.initialNotional - max(0, remaining))
+    orders[i].status = vanished > 0 && order.filledNotional >= vanished * OrderFlowDefaults.filledRatio
       ? .filled : .cancelled
     orders[i].endMs = max(order.firstSeenMs, atMs)
     lastSeen[order.id] = nil
@@ -417,24 +423,20 @@ public struct OrderFlowModel: Sendable {
       let seen = venueSeen[orders[i].venueID] ?? started
       guard nowMs - seen >= Self.staleMs else { continue }
       let oid = orders[i].id
-      end(i, atMs: lastSeen[oid] ?? orders[i].firstSeenMs)
+      end(i, atMs: lastSeen[oid] ?? orders[i].firstSeenMs, remaining: orders[i].notional)
       ending[oid] = nil
     }
   }
 
-  /// 24 小时以前结束的删掉；超过 200 条先删结束得最早的，还多就删名义最小的挂单。
+  /// 24 小时以前结束的删掉；结束的超过 500 条就删结束得最早的。还挂着的一条不删。
   private mutating func prune(nowMs: Int64) {
     let cutoff = nowMs - OrderFlowDefaults.retentionMs
     let before = orders.count
     orders.removeAll { !$0.isLive && ($0.endMs ?? $0.firstSeenMs) < cutoff }
-    let excess = orders.count - OrderFlowDefaults.maxOrders
+    let ended = orders.filter { !$0.isLive }
+    let excess = ended.count - OrderFlowDefaults.maxEndedOrders
     if excess > 0 {
-      let ended = orders.filter { !$0.isLive }.sorted { ($0.endMs ?? 0) < ($1.endMs ?? 0) }
-      var drop = Set(ended.prefix(excess).map(\.id))
-      let still = excess - drop.count
-      if still > 0 {
-        drop.formUnion(orders.filter(\.isLive).sorted { $0.notional < $1.notional }.prefix(still).map(\.id))
-      }
+      let drop = Set(ended.sorted { ($0.endMs ?? 0) < ($1.endMs ?? 0) }.prefix(excess).map(\.id))
       orders.removeAll { drop.contains($0.id) }
     }
     if orders.count != before {

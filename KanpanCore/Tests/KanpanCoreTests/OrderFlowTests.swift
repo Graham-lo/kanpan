@@ -469,6 +469,40 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(order.endMs, 1_000)
   }
 
+  /// 退出滞回：缩到门槛以下、退出线（门槛 × 0.5）以上仍然挂着，名义跟着更新；跌破退出线才结束。
+  func testShrinkingAboveExitLineStaysLive() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    // 1590 × 2 000 = 318 万：低于门槛 500 万、高于退出线 250 万。
+    set(&model, okx, seq: 2, bid: level(1_590, 2_000))
+    _ = model.evaluate(nowMs: 1_000)
+    let shrunk = model.evaluate(nowMs: 1_500).orders[0]
+    XCTAssertEqual(shrunk.status, .live)
+    XCTAssertEqual(shrunk.notional, 1_590 * 2_000, "名义跟着缩")
+    XCTAssertEqual(shrunk.initialNotional, 1_590 * 12_000)
+    // 1590 × 1 500 = 238 万：跌破退出线，两拍后结束。
+    set(&model, okx, seq: 3, bid: level(1_590, 1_500))
+    XCTAssertEqual(model.evaluate(nowMs: 2_000).orders[0].status, .live)
+    let ended = model.evaluate(nowMs: 2_400).orders[0]
+    XCTAssertEqual(ended.status, .cancelled)
+    XCTAssertEqual(ended.endMs, 2_000)
+    XCTAssertEqual(ended.notional, 1_590 * 2_000, "名义留着结束前最后一次在退出线上的")
+  }
+
+  /// 成交比的是消失掉的那部分：结束时桶里还剩的既没成交也没撤。
+  func testFilledRatioIsAgainstTheVanishedPart() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    // 首次 12 000 个币；主动卖吃掉 9 000 个（75%，按首次名义算不到八成）。
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 9_000, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    // 剩 1 500 个（238 万，跌破退出线）：消失了 10 500 个，成交 9 000 ≥ 10 500 × 0.8 = 8 400 → 已成交。
+    set(&model, okx, seq: 2, bid: level(1_590, 1_500))
+    _ = model.evaluate(nowMs: 1_000)
+    XCTAssertEqual(model.evaluate(nowMs: 1_400).orders[0].status, .filled)
+  }
+
   /// 跌破一拍又回来：不结束，重新算。
   func testDipAndRecoverStaysLive() {
     var model = inBand(okx)
@@ -542,10 +576,10 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(order.endMs, 500, "按最后一次看到时结束")
   }
 
-  /// 24 小时以前结束的删掉；超过 200 条先删结束最早的。
-  func testRetentionKeepsTwentyFourHoursAndTwoHundredOrders() {
+  /// 24 小时以前结束的删掉；结束的超过 500 条删结束最早的；挂着的不删。
+  func testRetentionKeepsTwentyFourHoursAndFiveHundredEndedOrders() {
     var journalOrders: [BigOrder] = []
-    for k in 0..<230 {
+    for k in 0..<530 {
       journalOrders.append(BigOrder(venueID: okx.id, exchange: "OKX", product: .usdtPerp, side: .ask,
                                     bucket: Int64(2_000 + k), price: Double(2_000 + k), firstSeenMs: Int64(k),
                                     endMs: Int64(1_000 + k), status: .cancelled, initialNotional: 6_000_000,
@@ -553,14 +587,14 @@ final class OrderFlowModelTests: XCTestCase {
     }
     let journal = OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 2_000, orders: journalOrders)
     var model = inBand(okx, restored: journal)
-    XCTAssertEqual(model.orders.count, 230)
+    XCTAssertEqual(model.orders.count, 530)
     _ = model.evaluate(nowMs: 3_000)
     let frame = model.evaluate(nowMs: 3_500)
-    XCTAssertEqual(frame.orders.count, OrderFlowDefaults.maxOrders)
-    XCTAssertTrue(frame.orders.contains { $0.isLive }, "挂着的那条留着")
-    XCTAssertEqual(frame.orders.filter { !$0.isLive }.map(\.endMs).compactMap { $0 }.min(), 1_031, "删的是结束最早的 31 条")
+    XCTAssertEqual(frame.orders.filter { !$0.isLive }.count, OrderFlowDefaults.maxEndedOrders)
+    XCTAssertEqual(frame.orders.filter(\.isLive).count, 1, "挂着的那条留着，不占结束单的额度")
+    XCTAssertEqual(frame.orders.filter { !$0.isLive }.map(\.endMs).compactMap { $0 }.min(), 1_030, "删的是结束最早的 30 条")
     let later = model.evaluate(nowMs: 1_100 + OrderFlowDefaults.retentionMs)
-    XCTAssertEqual(later.orders.filter { !$0.isLive }.count, 130, "结束超过 24 小时的删掉")
+    XCTAssertEqual(later.orders.filter { !$0.isLive }.count, 430, "结束超过 24 小时的删掉")
   }
 
   /// 改门槛：首次名义不到新门槛的删掉，其余换成新门槛；改步长整份清掉。

@@ -111,6 +111,13 @@ extension ChartRenderer {
       }
     }
     guard !bands.isEmpty else { return frame }
+    // 画的先后：结束的垫底、挂着的在上；同一层里名义大的先画、小的盖在上面，
+    // 免得几家在同一价位的单叠成一块时，小的整个被大的吞掉看不见。
+    bands.sort { a, b in
+      if a.order.isLive != b.order.isLive { return !a.order.isLive }
+      if a.order.notional != b.order.notional { return a.order.notional > b.order.notional }
+      return a.order.id < b.order.id
+    }
 
     // 十字线停在哪一块上：只看主图，横向落在块里、竖向离块中线不超过半高 + 3 pt，取最近的一块。
     var hovered: String?
