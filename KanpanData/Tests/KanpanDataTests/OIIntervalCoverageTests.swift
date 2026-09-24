@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import KanpanData
 import KanpanCore
+import KanpanNetwork
 
 /// 持仓量到底覆盖到哪儿。
 ///

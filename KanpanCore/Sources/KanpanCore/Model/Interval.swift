@@ -98,21 +98,4 @@ public enum Interval: String, CaseIterable, Sendable, Codable {
   /// 1m / 15m 这些没被钉住的档一档没少，都在「更多」那张网格里，点一下就切过去，
   /// 并且会在条上以一颗虚线的临时 chip 出现；想常驻就在网格里按一下图钉。
   public static let quick: [Interval] = [.m5, .m30, .h1, .h4, .d1, .w1]
-
-  /// 持仓量历史的原生 period。1m/3m 比 5m 还细，用 5m 对齐；> 1d 的没有原生档，
-  /// 返回 nil，由调用方把 5m 源按桶取最后一条聚上去（§4.5）。
-  public var oiPeriod: String? {
-    switch self {
-    case .m1, .m3, .m5: "5m"
-    case .m15: "15m"
-    case .m30: "30m"
-    case .h1: "1h"
-    case .h2: "2h"
-    case .h4: "4h"
-    case .h6: "6h"
-    case .h12: "12h"
-    case .d1: "1d"
-    case .w1, .mo1, .y1: nil
-    }
-  }
 }
