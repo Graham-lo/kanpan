@@ -7,7 +7,7 @@ import XCTest
 // 1. 取景卡上的起止时间钮：改一下，选区（卡片抬头的根数）跟着变；
 // 2. 拖选区贴到图的左边按住，图自己往更早的那头滚，选区跟着长（贴边自动滚动）；
 // 3. 非圈选时点图上已画的记录，打开它的详情；
-// 4. 复盘本：摘要卡 + 「全部 · 待判定 · 已判定」、底部「判定规则 criteria-v2」、
+// 4. 复盘本：摘要卡 + 「全部 · 待判定 · 已判定」（「判定规则 criteria-v2」UI 整改 P3 撤了，断言它不再上屏）、
 //    「…」里的「已存案例」、详情里的「修订记录」（复盘改两次看得到两版）、补图。
 //
 // 第 4 条要账号：在项目自己的后端上注册一个一次性账号，做完当场注销（注销会把记录、
@@ -83,9 +83,16 @@ final class ReviewInteractionUITests: KanpanUICase {
     guard wheel.waitForExistence(timeout: Self.short) else {
       XCTFail("点了时间钮没出滚轮：\(app.debugDescription)"); return
     }
-    note("滚轮原值=\(wheel.value as? String ?? "?")")
-    // 实测：往下扫是往后拨（16 点 → 20 点），往上扫是往前拨。
-    if earlier { wheel.swipeUp() } else { wheel.swipeDown() }
+    let raw = wheel.value as? String ?? "?"
+    note("滚轮原值=\(raw)")
+    // 能拨一格就精确拨一格：扫一下会连滚好几格，凌晨时段（02 点）往前扫会绕回到
+    // 同一天的 22 点——比「现在」还晚，终点钮被夹回原处，选区根数不变，用例就随钟点红。
+    if let hour = Int(raw.filter(\.isNumber)), earlier ? hour > 0 : hour < 23 {
+      wheel.adjust(toPickerWheelValue: String(format: "%02d", earlier ? hour - 1 : hour + 1))
+    } else {
+      // 实测：往下扫是往后拨（16 点 → 20 点），往上扫是往前拨。
+      if earlier { wheel.swipeUp() } else { wheel.swipeDown() }
+    }
     _ = XCTWaiter.wait(for: [XCTestExpectation(description: "settle")], timeout: 1.2)
     note("滚轮新值=\(wheel.value as? String ?? "?")")
   }
@@ -189,8 +196,10 @@ final class ReviewInteractionUITests: KanpanUICase {
     // 摘要卡 + 三枚筛选。
     let summary = app.buttons["review.summary"]
     guard expectExists(summary, Self.short, "复盘本顶上没有战绩摘要卡") else { return }
-    XCTAssertTrue(waitUntil(timeout: Self.long) { summary.label.contains("criteria-v2") },
-                  "摘要卡底部没有「判定规则 criteria-v2」：\(summary.label)")
+    // 判定算法的版本号是审计字段，不上屏（UI 整改 P3）：摘要卡与整页都不许再出现它。
+    XCTAssertFalse(summary.label.contains("criteria-v2"), "摘要卡上还有判定规则版本号：\(summary.label)")
+    XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'criteria-v2'")).firstMatch.exists,
+                   "复盘本上还有「判定规则 criteria-v2」")
     for id in ["review.chip.all", "review.chip.todo", "review.chip.decided"] {
       XCTAssertTrue(app.buttons[id].exists, "没有筛选 \(id)")
     }

@@ -17,28 +17,39 @@ struct ReviewSavedMatchesView: View {
   @State private var loaded = false
   @State private var loading = false
   @State private var error: String?
+  /// 当前左划开着的是哪一行（同一时刻只开一行）。
+  @State private var openSwipe: String?
   var body: some View {
     List {
       if !feature.isConnected {
-        Text("登录后可用").foregroundStyle(t.ink3).listRowBackground(t.app)
-        Button("登录") { feature.bookOpen = false; feature.onLogin() }.listRowBackground(t.app)
+        Text("登录后可用").font(ReviewType.body).foregroundStyle(t.ink3).listRowBackground(t.app)
+        Button("登录") { feature.bookOpen = false; feature.onLogin() }.font(ReviewType.bodyEmph).listRowBackground(t.app)
       } else {
         ForEach(items) { saved in
-          Button { feature.openSavedMatch(saved.item) } label: { row(saved.item) }
-            .foregroundStyle(t.ink)
-            .listRowBackground(t.app)
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-              Button(role: .destructive) { Task { await remove(saved) } } label: { Label("删除", systemImage: "trash") }
-            }
-            .accessibilityIdentifier("review.saved.row")
+          // 左划删除走 app 那份唯一的左划实现（UI 整改 P3）：砖底是皮肤的警示色、字跟皮肤走，
+          // 不是系统 `.swipeActions` 那颗白字系统红（见 app 的 `SwipeToDelete` 文件头）。
+          ReviewSwipe(id: saved.id, open: $openSwipe,
+                      trailing: [ReviewSwipeAction(id: "delete", title: "删除", destructive: true) {
+                        Task { await remove(saved) }
+                      }]) { swipe in
+            Button {
+              if swipe.isOpen { swipe.close(); return }
+              feature.openSavedMatch(saved.item)
+            } label: { ReviewMatchRow(feature: feature, match: saved.item) }
+              .buttonStyle(.plain)
+              .reviewPageInset()
+              .accessibilityIdentifier("review.saved.row")
+          }
+          .listRowInsets(EdgeInsets())
+          .listRowBackground(t.app)
         }
         if loading { ProgressView().frame(maxWidth: .infinity).listRowBackground(t.app).listRowSeparator(.hidden) }
         if let error {
-          Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
-          Button("重试") { Task { await load(reset: items.isEmpty) } }.listRowBackground(t.app)
+          Text(error).font(ReviewType.body).foregroundStyle(t.danger).listRowBackground(t.app)
+          Button("重试") { Task { await load(reset: items.isEmpty) } }.font(ReviewType.bodyEmph).listRowBackground(t.app)
         }
         if loaded && items.isEmpty && !loading && error == nil {
-          Text("还没有存下的案例").foregroundStyle(t.ink3).frame(maxWidth: .infinity, minHeight: 44)
+          Text("还没有存下的案例").font(ReviewType.body).foregroundStyle(t.ink3).frame(maxWidth: .infinity, minHeight: ReviewControl.hit)
             .listRowBackground(t.app).listRowSeparator(.hidden)
             .accessibilityIdentifier("review.saved.empty")
         }
@@ -55,17 +66,6 @@ struct ReviewSavedMatchesView: View {
     .navigationTitle("已存案例").navigationBarTitleDisplayMode(.inline)
     .task { await load(reset: true) }
     .refreshable { await load(reset: true) }
-  }
-  private func row(_ match: ReviewMatch) -> some View {
-    HStack {
-      VStack(alignment: .leading, spacing: 5) {
-        Text(match.range.shortSymbol + " · " + Interval.shortLabel(raw: match.range.interval)).fontWeight(.medium).foregroundStyle(t.ink)
-        Text(feature.fullTime(match.range.start)).font(.caption).foregroundStyle(t.ink3)
-        Text("\(match.range.bars) 根").font(.caption).foregroundStyle(t.ink3)
-      }
-      Spacer(); Text("相似 " + match.scoreText).monospacedDigit().foregroundStyle(t.ink2)
-      Image(systemName: "chevron.right").font(.caption).foregroundStyle(t.ink3)
-    }.padding(.vertical, 5)
   }
   private func load(reset: Bool) async {
     guard feature.isConnected, !loading else { return }
@@ -102,23 +102,23 @@ struct ReviewRevisionsView: View {
   var body: some View {
     List {
       ForEach(Array(items.enumerated()), id: \.offset) { _, revision in
-        VStack(alignment: .leading, spacing: 6) {
-          HStack {
-            Text(title(revision)).fontWeight(.semibold).foregroundStyle(t.ink)
+        VStack(alignment: .leading, spacing: ReviewSpace.xs) {
+          HStack(alignment: .firstTextBaseline) {
+            Text(title(revision)).font(ReviewType.bodyEmph).foregroundStyle(t.ink)
             Spacer()
-            Text(feature.fullTime(revision.at)).font(.caption).monospacedDigit().foregroundStyle(t.ink3)
+            Text(feature.fullTime(revision.at)).font(ReviewType.caption).monospacedDigit().foregroundStyle(t.ink3)
           }
           ForEach(Array(lines(revision).enumerated()), id: \.offset) { _, line in
-            Text(line).font(.subheadline).foregroundStyle(t.ink2).textSelection(.enabled)
+            Text(line).font(ReviewType.body).foregroundStyle(t.ink2).textSelection(.enabled)
           }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, ReviewSpace.xs)
         .listRowBackground(t.raised)
         .accessibilityIdentifier("review.revision.\(revision.kind)")
       }
-      if let error { Text(error).foregroundStyle(t.ink3).listRowBackground(t.app) }
+      if let error { Text(error).font(ReviewType.body).foregroundStyle(t.danger).listRowBackground(t.app) }
       else if !loaded { ProgressView().frame(maxWidth: .infinity).listRowBackground(t.app) }
-      else if items.isEmpty { Text("还没有上传过，暂无修订").foregroundStyle(t.ink3).listRowBackground(t.app) }
+      else if items.isEmpty { Text("还没有上传过，暂无修订").font(ReviewType.body).foregroundStyle(t.ink3).listRowBackground(t.app) }
     }
     .scrollContentBackground(.hidden)
     .background(t.app)
@@ -154,7 +154,7 @@ struct ReviewRevisionsView: View {
         if let expires = rule["expires"]?.number { out.append("到期 " + feature.fullTime(Int64(expires))) }
       }
       if let text = draft["text"]?.string, !text.isEmpty { out.append("原话 " + text) }
-      if let version = body["ruleVersion"]?.string { out.append("判定规则 " + version) }
+      // `ruleVersion`（「criteria-v2」）不上屏：判定算法的版本号是审计字段（UI 整改 P3）。
       return out
     case "assessment":
       let outcome = body["outcome"]?.string.flatMap(ReviewOutcome.init(rawValue:)) ?? .needsVerification
@@ -183,22 +183,34 @@ struct ReviewAttachmentsSection: View {
   @State private var busy = false
   @State private var error: String?
   @State private var page: UUID?
+  /// 等人点头要删的那一张。删掉的图在服务端也没了，所以先问一句（UI 整改 P3）。
+  @State private var deleting: ReviewAttachment?
   var body: some View {
-    Section("补图") {
+    ReviewSection("补图") {
       if !items.isEmpty {
         TabView(selection: $page) {
           ForEach(items) { item in
             ZStack(alignment: .topTrailing) {
               if let image = images[item.id] {
                 Image(uiImage: image).resizable().scaledToFit()
-                  .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                  .clipShape(RoundedRectangle(cornerRadius: ReviewRadius.s, style: .continuous))
               } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
-              Button { Task { await remove(item) } } label: {
-                Image(systemName: "trash").font(.footnote.weight(.semibold)).foregroundStyle(t.danger)
-                  .frame(width: 32, height: 32).background(t.raised.opacity(0.9), in: Circle())
+              // 圆盘视觉 32，点按区 44（原来点按区就是那 32）。
+              Button { deleting = item } label: {
+                Image(systemName: "trash").font(ReviewType.controlOn).foregroundStyle(t.danger)
+                  .frame(width: ReviewControl.chip, height: ReviewControl.chip)
+                  .background(t.raised.opacity(0.9), in: Circle())
+                  .hitTarget()
               }
-              .buttonStyle(.plain).padding(6)
+              .buttonStyle(.plain)
               .accessibilityLabel("删除这张图")
+              .accessibilityIdentifier("review.attachments.delete")
+            }
+            // 挂在这一页上、只认这一张：挂在整段上会被 `List` 摊到每一行，同一个框弹好几次。
+            .confirmationDialog("删除这张图？",
+                                isPresented: Binding(get: { deleting?.id == item.id }, set: { if !$0 { deleting = nil } }),
+                                titleVisibility: .visible) {
+              Button("删除", role: .destructive) { Task { await remove(item) } }
             }
             .tag(Optional(item.id))
             .task { await fetch(item) }
@@ -206,7 +218,7 @@ struct ReviewAttachmentsSection: View {
         }
         .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .always : .never))
         .frame(height: 240)
-        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+        .listRowInsets(EdgeInsets(top: ReviewSpace.s, leading: ReviewSpace.m, bottom: ReviewSpace.s, trailing: ReviewSpace.m))
         .accessibilityIdentifier("review.attachments.pager")
       }
       // PhotosPicker 的 label 闭包不在主线程隔离里，先把要显示的值取出来再交进去。
@@ -215,12 +227,13 @@ struct ReviewAttachmentsSection: View {
         HStack {
           Label("补一张图", systemImage: "photo.badge.plus")
           Spacer()
-          if loading { ProgressView() } else { Text("\(count)/\(limit)").monospacedDigit().foregroundStyle(ink3) }
+          if loading { ProgressView() } else { Text("\(count)/\(limit)").font(ReviewType.body).monospacedDigit().foregroundStyle(ink3) }
         }
       }
       .disabled(busy || items.count >= ReviewFeature.attachmentLimit || record.serverId == nil)
       .accessibilityIdentifier("review.attachments.add")
-      if let error { Text(error).font(.caption).foregroundStyle(t.ink3) }
+      // 出错走警示色（UI 整改 P3）：原来 `ink3` 小灰字，传没传上去看不出来。
+      if let error { Text(error).font(ReviewType.caption).foregroundStyle(t.danger) }
     }
     .listRowBackground(t.raised)
     .task(id: record.id) { await reload() }

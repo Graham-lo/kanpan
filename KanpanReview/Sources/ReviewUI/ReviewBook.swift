@@ -16,12 +16,13 @@ public struct ReviewBook: View {
         // 分段控件：战绩是和记录并列的第三页，人要先切过去才知道自己打得怎么样。
         // 现在战绩浓缩成一张摘要卡常驻顶上，点开才是完整的分组战绩；下面的列表只剩
         // 「看哪一部分」这一个维度。
-        summary.padding(.horizontal).padding(.top, 8)
-        chips.padding(.horizontal).padding(.vertical, 10)
+        summary.reviewPageInset().padding(.top, ReviewSpace.s)
+        chips.reviewPageInset().padding(.vertical, ReviewSpace.xs)
         List {
           if feature.draft != nil {
             Button { feature.bookOpen = false; feature.onCapture() } label: {
-              Label("继续未完成的记录", systemImage: "square.and.pencil")
+              Label("继续未完成的记录", systemImage: "square.and.pencil").font(ReviewType.bodyEmph)
+                .frame(maxWidth: .infinity, minHeight: ReviewControl.hit, alignment: .leading)
             }
             .listRowBackground(t.app)
           }
@@ -34,15 +35,15 @@ public struct ReviewBook: View {
           }
           if feature.historyLoading { ProgressView().frame(maxWidth: .infinity).listRowBackground(t.app).listRowSeparator(.hidden) }
           if let error = feature.historyError {
-            Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
+            Text(error).font(ReviewType.body).foregroundStyle(t.danger).listRowBackground(t.app)
             Button("重试") { Task { if feature.nextPage != nil && !feature.history.isEmpty { await feature.loadMoreHistory() } else { await feature.loadHistory(query: filter) } } }.listRowBackground(t.app)
           }
           if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
             // 空状态一行字就够（§2G5）。只是一行字，不再是「记一笔」的第三个入口（审查 U6）：
             // 记一笔只留图表设置那一行和右上角的「+」，同一件事不摆三处。
             Text(feature.tab == "todo" ? "没有待判定的" : "还没有记录")
-              .foregroundStyle(t.ink3)
-              .frame(maxWidth: .infinity, minHeight: 44)
+              .font(ReviewType.body).foregroundStyle(t.ink3)
+              .frame(maxWidth: .infinity, minHeight: ReviewControl.hit)
               .listRowBackground(t.app)
               .listRowSeparator(.hidden)
               .accessibilityIdentifier("review.empty")
@@ -65,9 +66,10 @@ public struct ReviewBook: View {
       .background(t.app)
       .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        // 左上角统一成「‹ 返回」，和看盘其余各页一致（2026-09-15）。
-        ToolbarItem(placement: .cancellationAction) {
-          Button { feature.bookOpen = false } label: { Label("返回", systemImage: "chevron.left") }
+        // 左上角是系统关闭钮，和提醒总表同一套（UI 整改 P1b / P3）：复盘本是整屏盖上来的，
+        // 关掉回到图上；推进去的战绩、记录详情、已存案例走系统返回。标识沿用 `review.back`。
+        ToolbarItem(placement: .topBarLeading) {
+          Button(role: .close) { feature.bookOpen = false }
             .accessibilityIdentifier("review.back")
         }
         ToolbarItemGroup(placement: .primaryAction) {
@@ -93,8 +95,6 @@ public struct ReviewBook: View {
       .refreshable { feature.synchronize(manual: true); await feature.loadHistory(query: filter) }
       .task(id: feature.tab) { await feature.loadHistory(query: filter) }
       .task(id: filter) { do { try await Task.sleep(for: .milliseconds(350)); await feature.loadHistory(query: filter) } catch {} }
-      // 摘要卡底部那行「判定规则」来自战绩响应；已登录就顺手拉一次。
-      .task { if feature.isConnected { await feature.loadStatistics() } }
     }
     .tint(t.accent)
   }
@@ -104,35 +104,36 @@ public struct ReviewBook: View {
     let right = live.filter { $0.outcome == .realized }.count
     let wrong = live.filter { $0.outcome == .unrealized }.count
     return NavigationLink { ReviewStatisticsView(feature: feature) } label: {
-      VStack(alignment: .leading, spacing: 6) {
+      // 「判定规则 criteria-v2」不再上屏（UI 整改 P3）：那是服务端判定算法的版本号，
+      // 是审计字段，不是给交易员看的（kanpan-no-engineering-status-fields）。
+      // `feature.ruleVersion` 仍随记录存着，修订记录与服务端对账用它。
+      VStack(alignment: .leading, spacing: ReviewSpace.s) {
         HStack(alignment: .firstTextBaseline) {
-          Text("战绩").font(.headline).foregroundStyle(t.ink)
+          Text("战绩").font(ReviewType.title).foregroundStyle(t.ink)
           Spacer()
-          Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(t.ink3)
+          Image(systemName: "chevron.right").font(.system(size: ReviewControl.chevron, weight: .semibold)).foregroundStyle(t.ink3)
         }
-        HStack(spacing: 18) {
+        HStack(spacing: ReviewSpace.xxl) {
           stat("记录", live.count); stat("判对", right); stat("判错", wrong)
         }
-        Text("判定规则 \(feature.ruleVersion)").font(.caption2).foregroundStyle(t.ink3)
-          .accessibilityIdentifier("review.ruleVersion")
       }
-      .padding(12)
+      .padding(ReviewInset.cardCompact)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(t.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-      .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .background(t.raised, in: RoundedRectangle(cornerRadius: ReviewRadius.m, style: .continuous))
+      .contentShape(RoundedRectangle(cornerRadius: ReviewRadius.m, style: .continuous))
     }
     .buttonStyle(.plain)
     .accessibilityIdentifier("review.summary")
   }
   private func stat(_ title: String, _ value: Int) -> some View {
-    VStack(alignment: .leading, spacing: 1) {
-      Text("\(value)").font(.title3.monospacedDigit().weight(.semibold)).foregroundStyle(t.ink)
-      Text(title).font(.caption).foregroundStyle(t.ink3)
+    VStack(alignment: .leading, spacing: ReviewSpace.xxs) {
+      Text("\(value)").font(ReviewType.stat).foregroundStyle(t.ink)
+      Text(title).font(ReviewType.caption).foregroundStyle(t.ink3)
     }
   }
   /// 「全部 · 待判定 N · 已判定」。N 和底栏、顶栏的角标是同一个数（`pendingCount`）。
   private var chips: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: ReviewSpace.s) {
       chip("全部", tag: "all")
       chip(feature.pendingCount > 0 ? "待判定 \(feature.pendingCount)" : "待判定", tag: "todo")
       chip("已判定", tag: "decided")
@@ -144,10 +145,12 @@ public struct ReviewBook: View {
   private func chip(_ title: String, tag: String) -> some View {
     let on = feature.tab == tag
     return Button { feature.tab = tag } label: {
-      Text(title).font(.subheadline.weight(on ? .semibold : .regular)).monospacedDigit()
+      // 视觉 32 高的胶囊，点按区撑到 44（多出来的上下各 6 落在胶囊外的留白里）。
+      Text(title).font(on ? ReviewType.controlOn : ReviewType.control).monospacedDigit()
         .foregroundStyle(on ? t.onAccent : t.ink2)
-        .padding(.horizontal, 14).frame(minHeight: 32)
+        .padding(.horizontal, ReviewSpace.m).frame(minHeight: ReviewControl.chip)
         .background(on ? t.accent : t.raised, in: Capsule())
+        .hitTarget()
     }
     .buttonStyle(.plain)
     .accessibilityIdentifier("review.chip.\(tag)")
@@ -161,7 +164,7 @@ public struct ReviewBook: View {
           NavigationLink { ReviewRecordView(feature: feature, id: record.id) } label: { ReviewRecordRow(record: record, feature: feature) }
             .listRowBackground(t.app)
         }
-      } header: { if let title { Text(title).foregroundStyle(t.ink3) } }
+      } header: { if let title { ReviewSectionTitle(title) } }
     }
   }
 }
@@ -174,32 +177,30 @@ struct ReviewStatisticsView: View {
       if !feature.isConnected {
         // 没登录不是「出错」，是这一页还没轮到它：一句话 + 一颗「登录」，不给「重试」——
         // 重试一百次也还是没登录（§2G3）。
-        Text("登录后可用").foregroundStyle(t.ink3).listRowBackground(t.app)
-        Button("登录") { feature.bookOpen = false; feature.onLogin() }.listRowBackground(t.app)
+        Text("登录后可用").font(ReviewType.body).foregroundStyle(t.ink3).listRowBackground(t.app)
+        Button("登录") { feature.bookOpen = false; feature.onLogin() }.font(ReviewType.bodyEmph).listRowBackground(t.app)
           .accessibilityIdentifier("review.stats.login")
       } else if let error = feature.statisticsError {
-        Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
+        Text(error).font(ReviewType.body).foregroundStyle(t.danger).listRowBackground(t.app)
       } else if feature.statistics.isEmpty {
-        Text("暂无已判定样本").foregroundStyle(t.ink3).listRowBackground(t.app)
+        Text("暂无已判定样本").font(ReviewType.body).foregroundStyle(t.ink3).listRowBackground(t.app)
       }
       ForEach(feature.statistics) { group in
         HStack {
-          VStack(alignment: .leading) {
-            Text(group.title).foregroundStyle(t.ink)
-            Text("\(group.total) 条有效记录").font(.caption).foregroundStyle(t.ink3)
+          VStack(alignment: .leading, spacing: ReviewSpace.xxs) {
+            Text(group.title).font(ReviewType.body).foregroundStyle(t.ink)
+            Text("\(group.total) 条有效记录").font(ReviewType.caption).foregroundStyle(t.ink3)
           }
           Spacer()
           // 样本够了才写百分比，不够就写「样本不足」（审查 B-07 / B.2）。
           Text(group.rateText)
-            .font(group.verdict == "insufficient" ? .subheadline : .title2.monospacedDigit())
+            .font(group.verdict == "insufficient" ? ReviewType.body : ReviewType.rate)
             .foregroundStyle(group.verdict == "insufficient" ? t.ink3 : t.ink)
         }
+        .frame(minHeight: ReviewControl.hit)
         .listRowBackground(t.app)
       }
-      if feature.isConnected {
-        Text("判定规则 \(feature.ruleVersion)").font(.caption2).foregroundStyle(t.ink3)
-          .listRowBackground(t.app).listRowSeparator(.hidden)
-      }
+      // 原来这儿压着一行「判定规则 criteria-v2」：审计字段，UI 整改 P3 撤了。
     }
     .listStyle(.plain)
     .scrollContentBackground(.hidden)
@@ -215,15 +216,17 @@ struct ReviewRecordRow: View {
   let feature: ReviewFeature
   @Environment(\.reviewTheme) private var t
   var body: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      HStack {
+    VStack(alignment: .leading, spacing: ReviewSpace.xs) {
+      HStack(alignment: .firstTextBaseline, spacing: ReviewSpace.s) {
         // 短名（§2G5）：`BTCUSDT` 里后面那四个字母每行都一样，认的是前半截。
-        Text(record.draft.range.shortSymbol).fontWeight(.semibold).foregroundStyle(t.ink)
-        Text(Interval.shortLabel(raw: record.draft.range.interval)).foregroundStyle(t.ink3)
+        Text(record.draft.range.shortSymbol).font(ReviewType.bodyEmph).foregroundStyle(t.ink)
+        Text(Interval.shortLabel(raw: record.draft.range.interval)).font(ReviewType.caption).foregroundStyle(t.ink3)
         Spacer()
-        Text(record.outcome.title).foregroundStyle(t.accent)
+        // 结果按意思上色（UI 整改 P3）：判对走涨色、判错走警示色、等答案灰。
+        // 原来一律强调色，「判错」和「判对」一个颜色，扫一眼分不出输赢。
+        Text(record.outcome.title).font(ReviewType.bodyEmph).foregroundStyle(outcomeColor)
       }
-      Text(record.draft.text.isEmpty ? "未写原话" : record.draft.text).lineLimit(2).foregroundStyle(record.draft.text.isEmpty ? t.ink3 : t.ink2)
+      Text(record.draft.text.isEmpty ? "未写原话" : record.draft.text).font(ReviewType.body).lineLimit(2).foregroundStyle(record.draft.text.isEmpty ? t.ink3 : t.ink2)
       HStack {
         Text(record.draft.rule.direction.title); Text(record.draft.origin.title)
         // 「把握」填了就在这儿露一个小百分比（§2F4）：当时觉得有几成，事后回看才对得上
@@ -232,16 +235,24 @@ struct ReviewRecordRow: View {
         // 记于什么时候。跟着图表那一档时区写（审查 B-08）：原来是
         // `Text(Date, style: .date)`，只有日期、而且认设备时区——图表在「交易所」档上，
         // 同一条记录在选区标签上写 1/6、在这儿写 1/5。
-        Spacer(); Text(feature.dayTime(record.draft.created))
-      }.font(.caption).foregroundStyle(t.ink3)
+        Spacer(); Text(feature.dayTime(record.draft.created)).monospacedDigit()
+      }.font(ReviewType.caption).foregroundStyle(t.ink3)
       // 同步状态不在这儿说了（§2G1）。「已存本机 · 待同步」「同步失败」是后台的事，
       // 每条记录下面挂一行，复盘本就变成了一张同步报表。同步真出问题只在设置的账号行
       // 说一次（见 `SettingsPanel.syncMeta`）。下面这一行说的是记录本身的性质，留着。
       if !record.eligible && record.draft.rule.direction != .observe {
         Text(record.draft.originalClaimed != nil || record.submitted.map { abs($0 - record.draft.created) > 60_000 } == true ? "补记" : "核验中")
-          .font(.caption).foregroundStyle(t.ink3)
+          .font(ReviewType.caption).foregroundStyle(t.ink3)
       }
-    }.padding(.vertical, 7)
+    }.padding(.vertical, ReviewSpace.s)
+  }
+  private var outcomeColor: Color {
+    switch record.outcome {
+    case .realized: t.up
+    case .unrealized: t.danger
+    case .needsVerification: t.ink2
+    case .waiting, .observation, .voided: t.ink3
+    }
   }
 }
 public struct ReviewRecordView: View {
@@ -266,8 +277,8 @@ public struct ReviewRecordView: View {
           Section { ReviewRecordRow(record: record, feature: feature) }.listRowBackground(t.raised)
           // 这一条有一次上传永远成不了（审查 B-02）。内容一直在本机，人只需要拍一次板。
           if let conflict = record.conflict {
-            Section("没能同步") {
-              Text(conflict.reason).font(.subheadline).foregroundStyle(t.ink2)
+            ReviewSection("没能同步") {
+              Text(conflict.reason).font(ReviewType.body).foregroundStyle(t.ink2)
               if conflict.retryable {
                 Button("用我这份") { Task { await feature.resolveConflict(id, keepLocal: true) } }
                   .accessibilityIdentifier("review.conflict.keepLocal")
@@ -282,18 +293,18 @@ public struct ReviewRecordView: View {
           }
           // 结论在人写完复盘之后又变过，得让他自己再看一眼。
           if record.assessmentMoved {
-            Section("结果有更新") {
-              Text("这条的结果在你写完复盘之后变过，再看一眼").font(.subheadline).foregroundStyle(t.ink2)
+            ReviewSection("结果有更新") {
+              Text("这条的结果在你写完复盘之后变过，再看一眼").font(ReviewType.body).foregroundStyle(t.ink2)
             }.listRowBackground(t.raised)
           }
           if record.groupPending == true {
-            Section("这次判断") {
-              Text("与最近一笔是同一次判断吗？").font(.subheadline).foregroundStyle(t.ink2)
+            ReviewSection("这次判断") {
+              Text("与最近一笔是同一次判断吗？").font(ReviewType.body).foregroundStyle(t.ink2)
               Button("同一次判断") { feature.resolveGroup(id, sameEpisode: true) }
               Button("独立判断") { feature.resolveGroup(id, sameEpisode: false) }
             }.listRowBackground(t.raised)
           }
-          Section("当时") {
+          ReviewSection("当时") {
             LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(Interval.shortLabel(raw: record.draft.range.interval))")
             if let confidence = record.draft.confidence {
               LabeledContent("把握", value: "\(confidence)%")
@@ -319,26 +330,30 @@ public struct ReviewRecordView: View {
           // 「当时那张图」排在「当时」之后、「补图」之前：图是整屏 K 线加三块副图，
           // 竖着有大半屏高，摆在最上面会把「在图上重温」「找相似」挤出第一屏。
           if let shot {
-            Section("当时那张图") {
+            ReviewSection("当时那张图") {
               Image(uiImage: shot).resizable().scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: ReviewRadius.s, style: .continuous))
                 .accessibilityIdentifier("review.detail.shot")
-                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                .listRowInsets(EdgeInsets(top: ReviewSpace.s, leading: ReviewSpace.m, bottom: ReviewSpace.s, trailing: ReviewSpace.m))
             }.listRowBackground(t.raised)
           }
           if feature.isConnected { ReviewAttachmentsSection(feature: feature, record: record) }
-          Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }
+          ReviewSection("市场的答案") { Text(record.outcome.title).font(ReviewType.bodyEmph).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(ReviewType.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)
-          Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8).focused($typing).accessibilityIdentifier("review.note") }
+          ReviewSection("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8).focused($typing).accessibilityIdentifier("review.note") }
             .listRowBackground(t.raised)
-          Section("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6).focused($typing).accessibilityIdentifier("review.nextTime") }
+          ReviewSection("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6).focused($typing).accessibilityIdentifier("review.nextTime") }
             .listRowBackground(t.raised)
           Section {
+            // 主次分开（UI 整改 P3）：「完成复盘」是这一页的正事，强调色加粗；
+            // 「保存草稿」是退路，次一级的墨色。原来两颗一样的蓝字，看不出该点哪颗。
             Button("保存草稿") { typing = false; feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) }
+              .foregroundStyle(t.ink2)
             Button("完成复盘") { typing = false; feature.saveReflection(id, note: note, nextTime: nextTime, publish: true) }
+              .font(ReviewType.body.weight(.semibold)).foregroundStyle(t.accent)
           }.listRowBackground(t.raised)
           if !record.reflectionHistory.isEmpty {
-            Section("历史复盘") { ForEach(Array(record.reflectionHistory.enumerated()), id: \.offset) { _, reflection in Text(reflection.note.isEmpty ? "未写内容" : reflection.note).foregroundStyle(t.ink2) } }
+            ReviewSection("历史复盘") { ForEach(Array(record.reflectionHistory.enumerated()), id: \.offset) { _, reflection in Text(reflection.note.isEmpty ? "未写内容" : reflection.note).foregroundStyle(reflection.note.isEmpty ? t.ink3 : t.ink2) } }
               .listRowBackground(t.raised)
           }
           // 每一版规则 / 判定 / 复盘的完整内容，按时间排；只读，不能把旧版覆盖回来。
@@ -354,6 +369,7 @@ public struct ReviewRecordView: View {
               .listRowBackground(t.raised)
           }
         }
+        .font(ReviewType.body)
         .scrollContentBackground(.hidden)
         .background(t.app)
         .onAppear { note = record.reflection.note; nextTime = record.reflection.nextTime }
@@ -374,7 +390,8 @@ public struct ReviewRecordView: View {
     .background(t.app)
     .tint(t.accent)
     .navigationTitle("记录详情").navigationBarTitleDisplayMode(.inline)
-      .confirmationDialog("作废后保留内容，退出战绩统计", isPresented: $confirmVoid) {
+      // 标题要真的显示出来：只剩一颗红字「作废记录」，人不知道作废之后还留不留内容。
+      .confirmationDialog("作废后保留内容，退出战绩统计", isPresented: $confirmVoid, titleVisibility: .visible) {
         Button("作废记录", role: .destructive) { feature.voidRecord(id) }
       }
   }
@@ -384,4 +401,12 @@ public struct ReviewRecordView: View {
   private func price(_ value: Double, _ record: ReviewRecord) -> String {
     feature.price(value, symbol: record.draft.range.key)
   }
+}
+
+/// `Section("…")` 的皮肤版：头是 `ReviewSectionTitle`（12 medium ink3），不是系统那行灰字。
+struct ReviewSection<Content: View>: View {
+  var title: String
+  var content: Content
+  init(_ title: String, @ViewBuilder content: () -> Content) { self.title = title; self.content = content() }
+  var body: some View { Section { content } header: { ReviewSectionTitle(title) } }
 }

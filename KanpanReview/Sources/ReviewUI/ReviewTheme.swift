@@ -31,15 +31,31 @@ public struct ReviewTheme: Sendable, Equatable {
   /// app 那边对应的是 `PanelTheme.danger`（`PaletteSeed.danger`），
   /// 由 `ReviewThemeBridge` 灌进来——复盘这边一支色都不自己定。
   public var danger: Color
+  /// 分段控件里选中那一档的底（app 那边是 `PanelTheme.segOn`）。
+  public var segOn: Color
+  /// 行的左划动作由 app 那份唯一实现来画（`DesignSystem/SwipeToDelete`，砖底和字都跟皮肤走）。
+  ///
+  /// 复盘包看不到它，只能由桥（`ReviewThemeBridge`）顺着配色一起递进来；不递（`#Preview`）
+  /// 就退回系统 `.swipeActions`。它不参与 `==`：换皮肤比的是颜色，不是这支闭包。
+  public var swipe: ReviewSwipeProvider?
 
   public init(app: Color, raised: Color, raised2: Color, line: Color,
               ink: Color, ink2: Color, ink3: Color,
               accent: Color, accentSoft: Color, onAccent: Color,
-              up: Color, down: Color, danger: Color) {
+              up: Color, down: Color, danger: Color,
+              segOn: Color? = nil, swipe: ReviewSwipeProvider? = nil) {
     self.app = app; self.raised = raised; self.raised2 = raised2; self.line = line
     self.ink = ink; self.ink2 = ink2; self.ink3 = ink3
     self.accent = accent; self.accentSoft = accentSoft; self.onAccent = onAccent
     self.up = up; self.down = down; self.danger = danger
+    self.segOn = segOn ?? raised; self.swipe = swipe
+  }
+
+  public static func == (a: ReviewTheme, b: ReviewTheme) -> Bool {
+    a.app == b.app && a.raised == b.raised && a.raised2 == b.raised2 && a.line == b.line
+      && a.ink == b.ink && a.ink2 == b.ink2 && a.ink3 == b.ink3
+      && a.accent == b.accent && a.accentSoft == b.accentSoft && a.onAccent == b.onAccent
+      && a.up == b.up && a.down == b.down && a.danger == b.danger && a.segOn == b.segOn
   }
 
   public static let neutral = ReviewTheme(

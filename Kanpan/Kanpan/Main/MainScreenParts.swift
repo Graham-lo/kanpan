@@ -441,10 +441,14 @@ struct ReplayHeaderView: View {
   let fallbackZone: TZChoice
   /// 同理，小数位兜底用当前品种的。
   let fallbackDecimals: Int
+  @Environment(\.panelTheme) private var t
 
   var body: some View {
+    // 字和颜色走令牌（UI 整改 P3）：标题 17 semibold `ink`，时刻 12 `ink3`，开高低收 12 等宽 `ink2`。
+    // 原来一律系统默认色，深色皮肤下是纯白，和页面上别处的墨色不是一个调子。
     VStack(alignment: .leading, spacing: Space.xs) {
-      Text("重温 · " + InstrumentID(bridge.state?.series.symbol ?? "").display).font(.headline)
+      Text("重温 · " + InstrumentID(bridge.state?.series.symbol ?? "").display)
+        .font(TypeScale.title).foregroundStyle(t.ink)
       // 时间跟着**这张图自己的时区档**走，和时间轴、十字线、选区标签同一口径（审查 B-08）。
       // `Text(Date, style:)` 认的是设备时区：图表切到「交易所」之后，这一行和轴上
       // 写着两个时刻。
@@ -452,7 +456,7 @@ struct ReplayHeaderView: View {
         Text(fmtFull(ms: Double(bridge.replayTime),
                      offsetMinutes: (bridge.state?.timezone ?? fallbackZone).offsetMinutes))
         Spacer()
-      }.font(.caption.monospacedDigit())
+      }.font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink3)
       if let series = bridge.state?.series, let open = series.open.last, let high = series.high.last, let low = series.low.last, let close = series.close.last {
         // 小数位由品种自己说（审查 B-07）：原来按「有效数字 1–7 位」写，
         // 回放头部的开高低收和顶栏的最新价能是两种写法。
@@ -467,7 +471,7 @@ struct ReplayHeaderView: View {
             HStack(spacing: Space.s) { o; h }
             HStack(spacing: Space.s) { l; c }
           }
-        }.font(.caption.monospacedDigit()).lineLimit(1)
+        }.font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink2).lineLimit(1)
       }
     }.pageHorizontalInset().padding(.vertical, Space.s)
   }
