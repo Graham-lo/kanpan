@@ -1648,9 +1648,10 @@ struct MainScreen: View {
     guard let symbol else { return nil }
     let price: Double?
     if symbol == main {
-      price = market.tradeQuote?.price ?? market.ticker?.last ?? quotes.raw[symbol]?.last
+      price = market.tradeQuote?.price ?? market.ticker?.last ?? quotes.observedQuote(symbol)?.last
     } else {
-      price = quotes.raw[symbol]?.last
+      // 这个闭包在新建提醒那一页的 body 里求值：点名那只走参与观察的镜像，价到了那一页就重算。
+      price = quotes.observedQuote(symbol)?.last
     }
     let decimals = picker.info(for: symbol)?.knownPriceDecimals
     return PriceAlertQuote(symbol: symbol, price: price.flatMap { $0 > 0 ? $0 : nil }, decimals: decimals)

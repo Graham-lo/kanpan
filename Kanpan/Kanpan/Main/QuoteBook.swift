@@ -24,6 +24,9 @@ final class QuoteBook {
   /// 图上那只（`setChartSymbol`）的最新报价，`raw` 里那一格的镜像。**只有它参与观察**：
   /// 头部价格行读它，自选表别的行跳动不会把行情页叫起来。
   private(set) var chartQuote: Ticker?
+  /// 新建提醒那一页点名的那只（`quoteNow`）的最新报价，同样是 `raw` 里一格的镜像：
+  /// 那一页在自己的 body 里读它，价到了就只叫醒那一页。
+  private(set) var namedQuote: Ticker?
   private(set) var lastListUpdate: Date?
   private(set) var basis: ChangeBasis = .rolling24h
   private var latestReceived: [String: QuoteState] = [:]
@@ -226,7 +229,7 @@ final class QuoteBook {
   @ObservationIgnored private var seedFlush: Task<Void, Never>?
   @ObservationIgnored private var seededBatch: [Ticker] = []
   /// `quoteNow` 点名要的那一只（新建价格提醒页），列表不可见也给它要价。
-  @ObservationIgnored private var named: String?
+  @ObservationIgnored private var named: String? { didSet { syncChartQuote() } }
   private var historyWanted = Set<String>()
   private var historyJobs: [String: Task<Void, Never>] = [:]
   private var historyRequested: [String: Date] = [:]
@@ -696,10 +699,21 @@ final class QuoteBook {
     return next
   }
 
-  /// `raw` 里图上那一格变了才写，同值不写——写了就会叫醒读它的头部。
+  /// `raw` 里图上那一格（和点名那一格）变了才写，同值不写——写了就会叫醒读它的视图。
   private func syncChartQuote() {
     let next = chartSymbol.flatMap { raw[$0] }
     if next != chartQuote { chartQuote = next }
+    let named = named.flatMap { raw[$0] }
+    if named != namedQuote { namedQuote = named }
+  }
+
+  /// 在 body 里要某只的报价走这儿：图上那只、点名那只读的是参与观察的镜像，价一到就重算；
+  /// 别的品种只是现取一口（`raw` 不参与观察，见上）。
+  func observedQuote(_ symbol: String) -> Ticker? {
+    let key = InstrumentID.canonical(symbol)
+    if key == chartSymbol { return chartQuote }
+    if key == named { return namedQuote }
+    return raw[key]
   }
 
   func presented(_ ticker: Ticker) -> Ticker {
