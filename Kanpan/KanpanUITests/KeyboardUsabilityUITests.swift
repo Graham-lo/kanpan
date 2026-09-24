@@ -123,7 +123,9 @@ final class KeyboardUsabilityUITests: KanpanUICase {
     expectExists(user, Self.short, "登录页上没有用户名框")
     user.tap()
     XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: Self.short), "点了用户名框键盘没上来")
-    user.typeText("kb-probe-" + UUID().uuidString.prefix(8).lowercased())
+    // 用户名只许字母、数字、下划线（`AccountCredentialRules`，审查 U14 起边输边校验、不合格主按钮置灰）：
+    // 原来写的「kb-probe-…」带连字符，主按钮一直是灰的，点了什么都不发，自然等不到那行错。
+    user.typeText("kb_probe_" + UUID().uuidString.prefix(8).lowercased())
     XCTAssertLessThan(user.frame.maxY, keyboardTop(), "用户名框被键盘盖住了")
 
     let password = app.secureTextFields["account.password"]
@@ -145,10 +147,16 @@ final class KeyboardUsabilityUITests: KanpanUICase {
     XCTAssertEqual(user.value as? String, typed, "从后台回来，用户名被清了")
 
     // 打出那行错，再把键盘叫回来：红字和主按钮都还得在键盘上沿以内。
+    XCTAssertFalse(app.staticTexts["account.email.rule"].exists, "测试用户名本身不合规则，主按钮是灰的")
+    XCTAssertTrue(submit.isEnabled, "用户名、口令都填了，「登录」还是灰的")
     submit.tap()
     let error = app.staticTexts["account.error"]
     XCTAssertTrue(error.waitForExistence(timeout: Self.long),
                   "用错口令登录，页面上没有任何说法\n\(app.debugDescription)")
+    let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    shot.name = "账号-错口令红字"
+    shot.lifetime = .keepAlways
+    add(shot)
     password.tap()
     XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: Self.short), "再点口令框键盘没回来")
     XCTAssertTrue(waitUntil(timeout: Self.short) { error.frame.maxY < self.keyboardTop() },
