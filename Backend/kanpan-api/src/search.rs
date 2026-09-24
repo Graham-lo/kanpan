@@ -78,19 +78,29 @@ async fn remove(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,header
  let result=json!({"ok":true});finish(&mut tx,i.user,k,&request,&result).await?;tx.commit().await?;Ok(envelope(result))
 }
 #[derive(Serialize,Deserialize,Clone)] struct Candidate {id:Uuid,range:ChartRange}
+/// 公开历史取候选：同周期、同来源里离查询最近的 300 个窗口，**精确**的。
+///
+/// 原来写成光秃秃的 `ORDER BY embedding<=>$1::vector LIMIT 300`，好让 HNSW 索引
+/// （market_features_embedding_ann）承接。HNSW 是近似检索，WHERE 里的周期/来源/品种
+/// 过滤是在它吐出来的近邻里**事后**筛的；lib.rs 给每个连接挂了 iterative_scan=strict_order
+/// 和 max_scan_tuples=20000 去补，但稀疏的档补不满：线上 2026-09-24 只读实测，1d 一共
+/// 541 个窗口，sqlx 预编译语句一换成通用计划（同一连接执行五次之后就会换），就只剩
+/// 53 个候选；不挂那两个设置时 15m 只剩 24 个、4h 只剩 1 个。候选集跟着执行计划漂，
+/// 断点续跑按 position 数的顺序也就跟着漂。
+///
+/// 现在查询向量先在 MATERIALIZED 的 CTE 里转一次型：排序键变成「列 <=> 另一张表的列」，
+/// 不再是索引认得的形状，规划器只能按周期走 market_features_scope 取出这一档全部窗口、
+/// 逐个算距离、top-N 堆排序。转型只做一次也要紧——直接写 `$1::vector` 再绕开索引的话，
+/// 通用计划会对每一行重新解析一遍 192 维的文本，15m 一次要 7.5 s。线上实测这一版
+/// 自定义/通用两种计划下 15m（6.3 万窗口）约 0.29 s、4h 27–57 ms、1d 3 ms，各档都是满 300 个。
+/// 窗口数涨到百万级再回来考虑近似检索。外层按 (距离, id) 定序：同距离时谁在前是确定的。
+const PUBLIC_NEAREST_SQL:&str="WITH q AS MATERIALIZED (SELECT $1::vector AS v) SELECT * FROM (SELECT id,symbol,market,timeframe,start_at,end_at,bars_count,embedding<=>q.v AS distance FROM market_features,q WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2' AND market=$2 AND timeframe=$3 AND source=$4 AND end_at<=$5 AND symbol LIKE '%USDT' AND NOT(symbol=$6 AND start_at<$7 AND end_at>$8) ORDER BY distance LIMIT 300) nearest ORDER BY distance,id";
 async fn candidates(s:&AppState,owner:Uuid,q:&NativeSearch,vector:&[f32])->Result<Vec<Candidate>> {
  if q.scope=="history" && !matches!(q.range.venue.as_str(),"binance"|"coinbase") {return Ok(vec![])}
  let feature=format!("{vector:?}");let mut tx=s.personal(owner).await?;
- // 近邻查询的排序表达式必须是**光秃秃的一个** `列 <=> 常量`，向量索引才认得出来。
- // 原来写的是 `ORDER BY embedding<=>$1::vector,id`——多出来的这个 `,id` 让整条 ORDER BY
- // 不再是索引能供的那个形状，于是 market_features_embedding_ann 永远用不上（实测把
- // seqscan/bitmapscan/sort/incremental_sort 全禁掉，规划器宁可报错也不走它），
- // 每次检索都是全表算距离再排一遍。
- // 所以内层只按距离排 + LIMIT（这一层交给索引），把距离取出来当一列，外层再按
- // (距离, id) 定序：三百行的排序是白送的，而「同距离时谁在前」仍旧是确定的
- // ——这一条对断点续跑很要紧，position 是按这个顺序数的。
+ // 公开历史取候选要的是**精确**的前 300 近邻，而且不能随执行计划变。见 PUBLIC_NEAREST_SQL。
  let rows=if q.scope=="history" {
-  sqlx::query("SELECT * FROM (SELECT id,symbol,market,timeframe,start_at,end_at,bars_count,embedding<=>$1::vector AS distance FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2' AND market=$2 AND timeframe=$3 AND source=$4 AND end_at<=$5 AND symbol LIKE '%USDT' AND NOT(symbol=$6 AND start_at<$7 AND end_at>$8) ORDER BY embedding<=>$1::vector LIMIT 300) nearest ORDER BY distance,id")
+  sqlx::query(PUBLIC_NEAREST_SQL)
   .bind(&feature).bind(&q.range.market).bind(&q.range.interval).bind(&q.range.venue).bind(q.cutoff).bind(&q.range.symbol).bind(q.range.end).bind(q.range.start).fetch_all(&mut *tx).await?
  }else{
   sqlx::query("SELECT * FROM (SELECT id,symbol,'usd_m'::text AS market,timeframe,range_start AS start_at,range_end AS end_at,(record#>>'{draft,range,bars}')::int AS bars_count,feature<=>$1::vector AS distance FROM review_records WHERE user_id=$2 AND feature IS NOT NULL AND feature_version='candle-geometry-v2' AND record->>'voided'='false' AND record#>>'{draft,range,venue}'=$8 AND timeframe=$3 AND range_end<=$4 AND submitted<=$4 AND NOT(symbol=$5 AND range_start<$7 AND range_end>$6) ORDER BY feature<=>$1::vector LIMIT 300) nearest ORDER BY distance,id")
@@ -166,4 +176,21 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   },Err(_)=>{sqlx::query("UPDATE review_searches SET status=$4,error='market_unavailable',lease_id=NULL,lease_until=NULL,next_at=now()+interval '30 seconds' WHERE user_id=$1 AND id=$2 AND lease_id=$3").bind(owner).bind(id).bind(lease).bind(if attempts>=2{"failed"}else{"queued"}).execute(&mut *tx).await?;}
  }
  tx.commit().await?;Ok(true)
+}
+#[cfg(test)]
+mod tests {
+ use super::PUBLIC_NEAREST_SQL;
+ /// 门槛：公开历史取候选这一步（`candidates` 的 history 分支）。
+ /// 查询向量只能出现在 MATERIALIZED 的 CTE 里——排序键一旦写成 `embedding<=>$1…`
+ /// 这种索引认得的形状，规划器就可能改走 HNSW，候选数随执行计划塌到几十个（1d 通用计划
+ /// 线上实测 53/300）。真正的证据是线上 EXPLAIN；这条只钉住 SQL 的形状别被改回去。
+ #[test]
+ fn public_nearest_is_exact_and_plan_independent() {
+  let sql=PUBLIC_NEAREST_SQL;
+  assert!(sql.starts_with("WITH q AS MATERIALIZED (SELECT $1::vector AS v) "),"查询向量要先在 MATERIALIZED CTE 里转一次型");
+  assert_eq!(sql.matches("$1").count(),1,"$1 只许出现在 CTE 里");
+  assert!(!sql.contains("embedding<=>$"),"排序键不能是 HNSW 能承接的 embedding<=>参数");
+  assert!(sql.contains("embedding<=>q.v AS distance"));
+  assert!(sql.contains("ORDER BY distance LIMIT 300) nearest ORDER BY distance,id"),"内层取 300 个、外层按 (距离, id) 定序");
+ }
 }
