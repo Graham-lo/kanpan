@@ -50,6 +50,8 @@ import ReviewUI
   private var pushLedger = PushTokenLedger()
   /// 上一次 `applyPending()` 被 `canApply()` 挡回去了，等条件到齐要补跑。
   private var pendingApply = false
+  /// 画线增量记账的基线（上一次记完账的那份档案）。换档案、云端装进来时跟着挪或清空。
+  private var drawingDiff = DrawingSyncDiff()
 
   init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, alerts: AlertStore, review: ReviewFeature, search: SearchHistory, inbox: ShareInbox) throws {
     self.inbox = inbox
@@ -381,6 +383,8 @@ import ReviewUI
       preparedOwner = .some(user?.id)
       // 换属主之后本机拿到的是空档，下一次同步必须把服务端那份整份拉回来。
       needsBootstrap = true; lastBootstrap = .distantPast; bootstrappedDrawings = []
+      // 新档案盘上的画线和存档之间可能差着没记上的一笔：第一次抬手整份对一遍。
+      drawingDiff.forget()
       // 「同一个人的档案晚到」和「真的换了个人」对那一捏是相反的意思：前者要保住
       // 用户刚做的，后者必须作废。分界线在**上一个属主是不是一个真账号**：
       // - `.none`（一次都没 prepare 过）/ `.some(nil)`（上一个是访客）：这是冷启动
@@ -433,14 +437,16 @@ import ReviewUI
     run(fresh ? .drawings : .push, manual: false)
   }
   private func capture(_ objects: [SyncObject], collections: Set<String>) {
-    guard !gate.isApplying, owner != nil, let sync else { return }
+    capture(SyncCaptureBatch(objects: objects, owns: { collections.contains($0.collection) }))
+  }
+  /// 记一批账；返回「真的记上了没有」——画线的增量基线只在记上之后才准往前挪。
+  @discardableResult private func capture(_ batch: SyncCaptureBatch) -> Bool {
+    guard !gate.isApplying, owner != nil, let sync else { return false }
     do {
-      if let error = personal?.error { account.syncStatus = error; return }
-      let keys = Set(objects.map(\.key))
-      let deleted = sync.archive.local.values.filter { collections.contains($0.collection) && !keys.contains($0.key) && !$0.deleted }
+      if let error = personal?.error { account.syncStatus = error; return false }
       // 一次事务记完：自选每条都带 `order`，往头部插一个品种会让后面每一条都变，
-      // 逐条 capture 等于整档重写 N 次。
-      try sync.capture(objects + deleted.map { var value = $0; value.deleted = true; return value },
+      // 逐条 capture 等于整档重写 N 次。删除只在这一批覆盖到的范围里推（`SyncCaptureBatch.owns`）。
+      try sync.capture(batch.withDeletions(against: sync.archive.local.values),
                        device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
       // **落盘立刻发起，但不在主线程上等它写完。**
       //
@@ -475,7 +481,8 @@ import ReviewUI
       debounce = Task { [weak self] in
         try? await Task.sleep(for: .milliseconds(500)); guard !Task.isCancelled else { return }; self?.run(.push, manual: false)
       }
-    } catch { account.report(sync: error) }
+      return true
+    } catch { account.report(sync: error); return false }
   }
   private func captureSettings() {
     do {
@@ -509,7 +516,11 @@ import ReviewUI
     prefs.syncAgreed(agreed)
   }
   private func captureSymbols() { capture(PersonalSyncCodec.symbols(symbols.prefs), collections: ["favorites", "groups"]) }
-  private func captureDrawings() { do { capture(try PersonalSyncCodec.drawings(drawings.storedArchive), collections: ["drawings", "drawingPreferences"]) } catch { account.report(sync: error) } }
+  /// 只编「和上次记完账那份不一样」的品种（`DrawingSyncDiff`）；记上了才把基线挪过来。
+  private func captureDrawings() {
+    let archive = drawings.storedArchive
+    do { if capture(try drawingDiff.batch(archive)) { drawingDiff.captured(archive) } } catch { account.report(sync: error) }
+  }
   private func captureAlerts() { do { capture(try PersonalSyncCodec.alerts(alerts.all), collections: ["alerts"]) } catch { account.report(sync: error) } }
   /// 把这台设备的推送 token 交给服务端。
   ///
@@ -767,6 +778,7 @@ import ReviewUI
         captureSettings()
       }
     }
+    drawingDiff.rebase(from: drawings.storedArchive, to: archive)
     drawings.publishSynced(archive)
     alerts.publishSynced(alertArchive)
     symbols.applySynced(nextSymbols)
