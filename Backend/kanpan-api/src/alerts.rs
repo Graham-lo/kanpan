@@ -205,7 +205,7 @@ pub fn routes()->Router<AppState> {
 /// 缺哪一个都让这一行变成推不出去、也结束不掉的孤儿，所以在门口就拒掉——一个静悄悄
 /// 不更新的锁屏活动是查不出来的那种 bug。
 async fn push_token(State(s):State<AppState>,i:Identity,Json(v):Json<TokenBody>)->Result<Json<Value>> {
- if !matches!(v.kind.as_str(),"alerts"|"liveActivity"|"widget") {return Err(ApiError::bad("invalid_token_kind"))}
+ if !matches!(v.kind.as_str(),"alerts"|"liveActivity"|"widget"|"reviewDue") {return Err(ApiError::bad("invalid_token_kind"))}
  if !matches!(v.environment.as_str(),"production"|"sandbox") {return Err(ApiError::bad("invalid_token_environment"))}
  // APNs 的设备 token 是 32 字节的十六进制（64 个字符），但历史上长过、苹果也说过还会变，
  // 所以卡的是「十六进制、长度在一个合理的区间里」而不是等于 64。
@@ -416,12 +416,22 @@ pub fn display_symbol(market:&str,symbol:&str)->String {
  if market==BINANCE {symbol.to_string()} else {symbol.replace('-',"/")}
 }
 
+/// 这一种通知推给哪一类 token。
+///
+/// 复盘到点单独一类（迁移 0023）：客户端在「本地日历通知」和「服务端推送」两条通道里
+/// 只选一条，选了推送才注册 `reviewDue` 的 token；推给 `alerts` 就会和本地那条撞成两条。
+/// 老客户端只注册 `alerts`，所以它们收不到复盘到点的推送——它们本来就有本地那一条。
+pub fn token_kind(notice_kind:&str)->&'static str {
+ if notice_kind=="reviewDue" {"reviewDue"} else {"alerts"}
+}
+
 /// 把一条通知推给这个人所有注册过的设备。触发类（提醒、复盘到点、自选波动）共用。
 pub async fn notify(s:&AppState,apns:&Apns,owner:Uuid,notice:&Notice)->Result<()> {
+ let kind=token_kind(notice.kind);
  let (tokens,sound)={
   let mut tx=s.personal(owner).await?;
-  let rows=sqlx::query("SELECT device_id,token,environment FROM device_push_tokens WHERE user_id=$1 AND kind='alerts'")
-   .bind(owner).fetch_all(&mut *tx).await?;
+  let rows=sqlx::query("SELECT device_id,token,environment FROM device_push_tokens WHERE user_id=$1 AND kind=$2")
+   .bind(owner).bind(kind).fetch_all(&mut *tx).await?;
   // 与 token 在同一个个人事务里读取；不缓存，用户改声后下一条提醒立即采用新值。
   let settings=crate::sync::settings_body(&mut tx,owner).await?;
   let sound=crate::apns::alert_sound(settings.as_ref());
@@ -435,7 +445,7 @@ pub async fn notify(s:&AppState,apns:&Apns,owner:Uuid,notice:&Notice)->Result<()
    Ok(Outcome::Gone)=>{
     let device:Uuid=row.get("device_id");
     let mut tx=s.personal(owner).await?;
-    sqlx::query("DELETE FROM device_push_tokens WHERE user_id=$1 AND device_id=$2 AND kind='alerts'").bind(owner).bind(device).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM device_push_tokens WHERE user_id=$1 AND device_id=$2 AND kind=$3").bind(owner).bind(device).bind(kind).execute(&mut *tx).await?;
     tx.commit().await?;
    }
    // 推不出去不回滚状态：提醒确实触发了，客户端下次拉取照样看得到，
@@ -449,8 +459,8 @@ pub async fn notify(s:&AppState,apns:&Apns,owner:Uuid,notice:&Notice)->Result<()
 /// 复盘到点：到了就置 fired、写同步 op、推送。和价格提醒走同一个 `record_fired`，
 /// 所以「客户端前台先一步置了 fired」时这里同样一行都改不到、不会推第二次。
 ///
-/// 手机上还有一条本地日历通知兜底（`ReviewDueNotifications`，服务器宕机也照响），
-/// 这一条推送是给「换了设备 / 本地排程被系统清掉」的那一下的。
+/// 推送只发给选了「服务端推送」通道的设备（`reviewDue` 类 token，见 `token_kind`）；
+/// 走本地日历通知那条通道的设备（今天是全部）不注册它，所以这里只落账、同步，不重复叫人。
 async fn settle_due(s:&AppState,apns:Option<&Apns>,due:&[Due]) {
  let at=chrono::Utc::now().timestamp_millis();
  for d in due {
@@ -1301,6 +1311,14 @@ mod tests {
   assert_eq!(n.kind,"reviewDue");
   let named=Due{title:"ETH 到点了".into(),..d};
   assert_eq!(due_notice(&named).title,"ETH 到点了");
+ }
+ /// 复盘到点只推给选了「服务端推送」通道的设备（`reviewDue` 类 token）；别的触发类照旧
+ /// 推给 `alerts`。推给 `alerts` 就会和手机上那条本地日历通知撞成两条。
+ #[test] fn review_due_pushes_only_reach_review_due_tokens() {
+  assert_eq!(token_kind("reviewDue"),"reviewDue");
+  for kind in ["alert","watchMove",""] {assert_eq!(token_kind(kind),"alerts")}
+  let migration=include_str!("../migrations/0023_review_due_push_token.sql");
+  assert!(migration.contains("'alerts','liveActivity','widget','reviewDue'"),"0023 要放行 reviewDue，旧的三类一个不能少");
  }
 
  /// 通知正文里的价要看得清每一位，小币种也是。
