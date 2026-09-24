@@ -54,6 +54,9 @@ struct ChartPanel: View {
   var sendBlocked: String? = nil
   var onAddCompare: (() -> Void)? = nil
   var compareNames: [String: String] = [:]
+  /// 主力订单流的胶水与当前品种（见 `PanelActions.orderFlow`）。
+  var orderFlow: OrderFlowLink? = nil
+  var symbol: String = ""
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -74,7 +77,7 @@ struct ChartPanel: View {
     ZStack {
       switch page {
       case .indicators:
-        IndicatorPage(store: store, onBack: { page = .main })
+        IndicatorPage(store: store, orderFlow: orderFlow, symbol: symbol, onBack: { page = .main })
           .transition(.move(edge: .trailing))
       case .more:
         morePage

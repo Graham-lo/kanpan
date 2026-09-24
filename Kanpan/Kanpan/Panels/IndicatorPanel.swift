@@ -17,6 +17,9 @@ import KanpanCore
 /// 参数编辑那层 sheet 和面板提示仍挂在这一层自己身上。
 struct IndicatorPage: View {
   var store: PrefsStore
+  /// 主力订单流的胶水与当前品种（它那张表要显示这只币此刻生效的门槛）。
+  var orderFlow: OrderFlowLink? = nil
+  var symbol: String = ""
   var onBack: () -> Void
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
@@ -25,9 +28,9 @@ struct IndicatorPage: View {
 
   var body: some View {
     PanelSheet(title: "指标", subtitle: nil, onBack: onBack) {
-      if !prefs.overlays.isEmpty || !prefs.subs.isEmpty {
+      if !prefs.overlays.isEmpty || !prefs.subs.isEmpty || prefs.orderFlow {
         PanelGroupTitle(text: "正在用")
-        InUseList(store: store, onEdit: { editing = $0 })
+        InUseList(store: store, orderFlowBase: orderFlow?.currentFacts?.overrideKey, onEdit: { editing = $0 })
       }
 
       PanelGroupTitle(text: "主图叠加")
@@ -41,7 +44,13 @@ struct IndicatorPage: View {
         row(id, last: id == IndicatorID.subPalette.last)
       }
     }
-    .sheet(item: $editing) { id in IndicatorEditor(store: store, id: id).environment(\.panelTheme, t) }
+    .sheet(item: $editing) { id in
+      if id == .orderFlow {
+        OrderFlowEditor(store: store, link: orderFlow, symbol: symbol).environment(\.panelTheme, t)
+      } else {
+        IndicatorEditor(store: store, id: id).environment(\.panelTheme, t)
+      }
+    }
   }
 
   private func row(_ id: IndicatorID, last: Bool) -> some View {
@@ -67,6 +76,8 @@ struct IndicatorPage: View {
 /// 主图叠加不排序——几条均线叠在同一张图上，谁先谁后看不出来。
 private struct InUseList: View {
   var store: PrefsStore
+  /// 当前品种去掉缩放前缀的币名（主力订单流那一行报这只币的门槛动没动过）。
+  var orderFlowBase: String? = nil
   var onEdit: (IndicatorID) -> Void
   @Environment(\.panelTheme) private var t
 
@@ -82,6 +93,8 @@ private struct InUseList: View {
       ForEach(prefs.overlays.filter { $0.placement == .main }, id: \.self) { id in
         line(id, index: nil)
       }
+      // 主力订单流的开关是自己一个字段，不在 overlays 里；参数位写「改过」表示这只币的门槛动过。
+      if prefs.orderFlow { line(.orderFlow, index: nil) }
       ForEach(Array(prefs.subs.enumerated()), id: \.element) { index, id in
         line(id, index: index)
           .background(dragging == id ? t.raised2 : .clear)
@@ -94,7 +107,9 @@ private struct InUseList: View {
   }
 
   private func line(_ id: IndicatorID, index: Int?) -> some View {
-    let params = prefs.params(for: id).map(String.init).joined(separator: " · ")
+    let params = id == .orderFlow
+      ? orderFlowBase.map { "\($0) · " + (prefs.orderFlowOverrides[$0] == nil ? "默认门槛" : "已改门槛") } ?? ""
+      : prefs.params(for: id).map(String.init).joined(separator: " · ")
     let resized = id.placement == .sub && prefs.subHeightOverrides[id] != nil
     return HStack(spacing: 0) {
       Button { onEdit(id) } label: {

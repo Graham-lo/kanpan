@@ -1,0 +1,75 @@
+import Foundation
+import Testing
+import KanpanCore
+@testable import KanpanSettings
+
+@Suite("主力订单流 · 设置")
+struct OrderFlowPrefsTests {
+  @Test("出厂：没有改过的币、六个显示开关全开")
+  func defaults() {
+    let prefs = Prefs.defaults
+    #expect(prefs.orderFlowOverrides.isEmpty)
+    #expect(prefs.orderFlowDisplay == .all)
+  }
+
+  @Test("改过的门槛与显示开关落盘再读回一字不差")
+  func roundTrip() {
+    var prefs = Prefs.defaults
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000, step: 50), for: "BTC")
+    prefs.setOrderFlowOverride(OrderFlowOverride(usdtPerp: 1_500_000), for: "TSLA")
+    prefs.orderFlowDisplay.cancelledAsk = false
+    prefs.orderFlowDisplay.spot = false
+    let back = PrefsCodec.decode(PrefsCodec.encode(prefs))
+    #expect(back.orderFlowOverrides == prefs.orderFlowOverrides)
+    #expect(back.orderFlowDisplay == prefs.orderFlowDisplay)
+    #expect(!back.orderFlowSpot && !back.orderFlowCancelledAsk && back.orderFlowContract)
+  }
+
+  @Test("越界的项丢掉，一项不剩等于恢复默认；认不出的 base 不收")
+  func normalization() {
+    var prefs = Prefs.defaults
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 10, usdtPerp: 3_000_000), for: "ETH")
+    #expect(prefs.orderFlowOverrides["ETH"] == OrderFlowOverride(usdtPerp: 3_000_000))
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 10), for: "ETH")
+    #expect(prefs.orderFlowOverrides["ETH"] == nil)
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000), for: "btc")
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000), for: "BTC-USDT")
+    #expect(prefs.orderFlowOverrides.isEmpty)
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000), for: "SOL")
+    prefs.setOrderFlowOverride(nil, for: "SOL")
+    #expect(prefs.orderFlowOverrides.isEmpty)
+  }
+
+  @Test("最多记 200 只；已经在表里的照样能改")
+  func cap() {
+    var prefs = Prefs.defaults
+    for i in 0..<Prefs.maxOrderFlowOverrides { prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000), for: "C\(i)") }
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000), for: "EXTRA")
+    #expect(prefs.orderFlowOverrides.count == Prefs.maxOrderFlowOverrides && prefs.orderFlowOverrides["EXTRA"] == nil)
+    prefs.setOrderFlowOverride(OrderFlowOverride(spot: 3_000_000), for: "C0")
+    #expect(prefs.orderFlowOverrides["C0"]?.spot == 3_000_000)
+  }
+
+  @Test("坏档：一只坏的不拖垮整张表，越界项丢、开关类型不对就退默认")
+  func tolerantDecode() throws {
+    let json = """
+    {"v":2,"orderFlowOverrides":{"BTC":{"spot":2000000,"step":0},"eth":{"spot":2000000},"SOL":{"spot":1},
+     "XAU":{"usdtPerp":3000000}},"orderFlowSpot":false,"orderFlowContract":"no"}
+    """
+    let prefs = PrefsCodec.decode(Data(json.utf8))
+    #expect(prefs.orderFlowOverrides == ["BTC": OrderFlowOverride(spot: 2_000_000), "XAU": OrderFlowOverride(usdtPerp: 3_000_000)])
+    #expect(!prefs.orderFlowSpot && prefs.orderFlowContract)
+    // 整张表不是对象（坏档）→ 退空表，别的字段照读。
+    let bad = PrefsCodec.decode(Data(#"{"v":2,"orderFlowOverrides":[1,2],"orderFlow":true}"#.utf8))
+    #expect(bad.orderFlowOverrides.isEmpty && bad.orderFlow)
+  }
+
+  @Test("门槛与开关都跟着人走（随账号同步）")
+  func synced() {
+    for name in ["orderFlowOverrides", "orderFlowSpot", "orderFlowContract", "orderFlowFilledBid",
+                 "orderFlowFilledAsk", "orderFlowCancelledBid", "orderFlowCancelledAsk"] {
+      #expect(PrefsFieldPlan.table[name] == .synced, "\(name)")
+      #expect(Prefs.syncedFieldNames.contains(name), "\(name)")
+    }
+  }
+}

@@ -38,7 +38,7 @@ public enum OrderFlowProduct: String, Sendable, Hashable, Codable, CaseIterable 
 
 /// 一档挂单的数量怎么换成美元名义。USDT、USDC、USD 都按 1 美元算。
 public enum OrderFlowNotional: Sendable, Hashable {
-  /// 正向：一个数量单位是 `multiplier` 个币（币安现货 / U 本位、Coinbase 为 1；OKX U 本位是 ctVal），
+  /// 正向：一个数量单位是 `multiplier` 个币（币安现货 / U 本位、美国那家现货为 1；OKX U 本位是 ctVal），
   /// 名义 = 价 × 量 × multiplier。
   case linear(multiplier: Double)
   /// 反向（币本位永续、币本位交割）：数量是张数，一张 `contractUsd` 美元（币安 BTC 100、其他 10；
@@ -66,14 +66,14 @@ public enum OrderFlowNotional: Sendable, Hashable {
 public struct OrderFlowVenue: Sendable, Equatable {
   /// 交易所代号：`binance` / `okx` / `coinbase`。
   public var exchange: String
-  /// 交易所显示名：「币安」「OKX」「Coinbase」。
+  /// 交易所显示名：「币安」「OKX」等（清单在 `OrderFlowBase.exchanges`）。
   public var label: String
   public var product: OrderFlowProduct
   /// 这一家的合约代号（`BTCUSD_PERP`、`BTC-USD-260925`……）。
   public var instrument: String
   public var notional: OrderFlowNotional
   public var sequenceModel: DepthSequenceModel
-  /// 快照在流里（OKX、Coinbase）；false 就要另拉 REST 快照（币安）。
+  /// 快照在流里（OKX 与美国那家现货）；false 就要另拉 REST 快照（币安）。
   public var snapshotInBand: Bool
 
   public init(exchange: String, label: String, product: OrderFlowProduct, instrument: String,

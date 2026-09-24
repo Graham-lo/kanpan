@@ -135,6 +135,10 @@ struct PanelActions {
   var compareNames: [String: String] = [:]
   var onSend: (() -> Void)? = nil
   var sendBlocked: String? = nil
+  /// 主力订单流的胶水与当前品种：「指标 › 主力订单流」那张表拿它显示这只币此刻生效的门槛。
+  /// 传的是引用而不是算好的值——大单帧每半秒一次，算好的值挂在这里会让主界面跟着重算。
+  var orderFlow: OrderFlowLink? = nil
+  var symbol: String = ""
 }
 
 /// 某张面板里装什么。竖屏 sheet（`prefsPanel`）和横屏侧栏（`PanelSide`）都只认这一个，
@@ -150,7 +154,8 @@ struct PanelContent: View {
     case .chart:
       ChartPanel(store: store, onRecord: actions.onRecord, onShare: actions.onShare,
                  onSend: actions.onSend, sendBlocked: actions.sendBlocked,
-                 onAddCompare: actions.onAddCompare, compareNames: actions.compareNames)
+                 onAddCompare: actions.onAddCompare, compareNames: actions.compareNames,
+                 orderFlow: actions.orderFlow, symbol: actions.symbol)
     }
   }
 }

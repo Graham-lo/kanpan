@@ -79,6 +79,10 @@ extension Prefs: Codable {
     case indicatorColors
     case ambientTheme
     case depth, orderFlow, priceMode, magnet, countdown, keepAwake, timeZone, changeBasis
+    // 主力订单流的门槛 / 步长改动与六个显示开关（2026-09-24 逐单模型那一轮加的，全是加法）。
+    case orderFlowOverrides
+    case orderFlowSpot, orderFlowContract, orderFlowFilledBid, orderFlowFilledAsk
+    case orderFlowCancelledBid, orderFlowCancelledAsk
     case candleKind, gridChoice, bodyChoice, lastLine, sinceChange
     case viewAnchor, priceBias
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
@@ -112,6 +116,13 @@ extension Prefs: Codable {
     try c.encode(magnet, forKey: .magnet)
     try c.encode(depth, forKey: .depth)
     try c.encode(orderFlow, forKey: .orderFlow)
+    try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
+    try c.encode(orderFlowSpot, forKey: .orderFlowSpot)
+    try c.encode(orderFlowContract, forKey: .orderFlowContract)
+    try c.encode(orderFlowFilledBid, forKey: .orderFlowFilledBid)
+    try c.encode(orderFlowFilledAsk, forKey: .orderFlowFilledAsk)
+    try c.encode(orderFlowCancelledBid, forKey: .orderFlowCancelledBid)
+    try c.encode(orderFlowCancelledAsk, forKey: .orderFlowCancelledAsk)
     try c.encode(countdown, forKey: .countdown)
     try c.encode(keepAwake, forKey: .keepAwake)
     try c.encode(timeZone.rawValue, forKey: .timeZone)
@@ -214,6 +225,18 @@ extension Prefs: Codable {
     if let v = bool(.magnet) { magnet = v }
     if let v = bool(.depth) { depth = v }
     if let v = bool(.orderFlow) { orderFlow = v }
+    // 改过的门槛 / 步长：认不出的 base、越界的数一项一项丢，不让一只坏档拖垮整张表。
+    if let raw = try? c.decode([String: OrderFlowOverride].self, forKey: .orderFlowOverrides) {
+      for base in raw.keys.sorted() where orderFlowOverrides.count < Prefs.maxOrderFlowOverrides {
+        if OrderFlowBase.isValid(base), let value = raw[base]?.normalized { orderFlowOverrides[base] = value }
+      }
+    }
+    if let v = bool(.orderFlowSpot) { orderFlowSpot = v }
+    if let v = bool(.orderFlowContract) { orderFlowContract = v }
+    if let v = bool(.orderFlowFilledBid) { orderFlowFilledBid = v }
+    if let v = bool(.orderFlowFilledAsk) { orderFlowFilledAsk = v }
+    if let v = bool(.orderFlowCancelledBid) { orderFlowCancelledBid = v }
+    if let v = bool(.orderFlowCancelledAsk) { orderFlowCancelledAsk = v }
     if let v = bool(.countdown) { countdown = v }
     if let v = bool(.keepAwake) { keepAwake = v }
     if let raw = str(.changeBasis), let v = ChangeBasis(rawValue: raw) { changeBasis = v }

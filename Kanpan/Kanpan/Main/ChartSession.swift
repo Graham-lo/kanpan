@@ -206,6 +206,7 @@ final class ChartSession {
     result.external = market.external
     result.depth = input.drawingCanvasOnly || !prefs.depth ? nil : market.depth
     result.orderFlow = market.orderFlow.chartValue(symbol: market.symbol, drawingCanvasOnly: input.drawingCanvasOnly)
+    result.orderFlowDisplay = prefs.orderFlowDisplay
     // 持仓量和衍生统计分开认：网关线路上的替身有持仓量历史（kanpan-api 代问 OKX），
     // 多空比、主动买卖、基差没有。
     result.oiSupported = market.capabilities.hasOpenInterestHistory

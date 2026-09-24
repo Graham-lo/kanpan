@@ -49,6 +49,17 @@ struct Prefs: Sendable, Equatable {
   var depth: Bool = false
   /// 主图指标「主力订单流」：簿里过门槛的大单画到 K 线上。默认关。
   var orderFlow: Bool = false
+  /// 主力订单流：用户改过门槛 / 步长的那几只（键是去掉缩放前缀的 base，`OrderFlowFacts.overrideKey`）。
+  /// 没改过的 base 不在表里，一律走默认表——默认表以后调了，没改过的人跟着变。随账号同步（整张表一个字段）。
+  var orderFlowOverrides: [String: OrderFlowOverride] = [:]
+  /// 主力订单流的六个显示开关（跟人走、全品种共用，只管画不画、不影响跟踪）。
+  /// 拆成六个字段而不是一个对象，是为了两台设备各关一项时同步不互相覆盖。合起来读写走 `orderFlowDisplay`。
+  var orderFlowSpot = true
+  var orderFlowContract = true
+  var orderFlowFilledBid = true
+  var orderFlowFilledAsk = true
+  var orderFlowCancelledBid = true
+  var orderFlowCancelledAsk = true
   var countdown: Bool = false
   /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
   var candleKind: CandleKind = .candle
@@ -294,6 +305,34 @@ struct Prefs: Sendable, Equatable {
   /// 0.75 是照「主图不动」反推的：主图权重 3、三个副图各 w，
   /// 想让每格 ≈79pt 而主图留在 ≈317pt，解出来正好 w = 0.75。
   static let defaultSubScale: Double = 0.75
+
+  /// 主力订单流的显示开关（六个字段合起来）。
+  var orderFlowDisplay: OrderFlowDisplay {
+    get {
+      OrderFlowDisplay(spot: orderFlowSpot, contract: orderFlowContract, filledBid: orderFlowFilledBid,
+                       filledAsk: orderFlowFilledAsk, cancelledBid: orderFlowCancelledBid,
+                       cancelledAsk: orderFlowCancelledAsk)
+    }
+    set {
+      orderFlowSpot = newValue.spot; orderFlowContract = newValue.contract
+      orderFlowFilledBid = newValue.filledBid; orderFlowFilledAsk = newValue.filledAsk
+      orderFlowCancelledBid = newValue.cancelledBid; orderFlowCancelledAsk = newValue.cancelledAsk
+    }
+  }
+
+  /// 主力订单流改过的门槛 / 步长最多记多少只。服务端 `sync_validation.rs` 同一个数。
+  static let maxOrderFlowOverrides = 200
+
+  /// 记下一只 base 改过的门槛 / 步长；越界的项丢掉，一项不剩就等于恢复默认（从表里删掉）。
+  mutating func setOrderFlowOverride(_ value: OrderFlowOverride?, for base: String) {
+    guard OrderFlowBase.isValid(base) else { return }
+    if let value = value?.normalized {
+      guard orderFlowOverrides[base] != nil || orderFlowOverrides.count < Prefs.maxOrderFlowOverrides else { return }
+      orderFlowOverrides[base] = value
+    } else {
+      orderFlowOverrides[base] = nil
+    }
+  }
 
   /// 某个指标是不是开着的。
   func isOn(_ id: IndicatorID) -> Bool {

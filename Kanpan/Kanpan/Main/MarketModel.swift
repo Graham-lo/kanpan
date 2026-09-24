@@ -83,8 +83,9 @@ final class MarketModel {
   /// 会把 REST 补来的那份冲掉。换线路清空——不同上游的成交额不能串着用。
   @ObservationIgnored private var turnoverCarry = TurnoverCarry()
   private(set) var tradeQuote: TradeQuote?
-  private(set) var info: SymbolInfo { didSet { orderFlow.noteInfo(info) } }
-  /// 主力订单流的胶水（OrderFlow/OrderFlowLink.swift）；本类只在下面三处把它接上。
+  private(set) var info: SymbolInfo
+  /// 主力订单流的胶水（OrderFlow/OrderFlowLink.swift）；本类只在 `refreshInfo`、行情事件、
+  /// `updateMicrostructure` 与两个 setter 这几处把它接上。
   @ObservationIgnored let orderFlow = OrderFlowLink()
   /// 这个品种的小数位与成交额单位，一旦定下来这一程就不再变（§2B / 审查 §3.10 #53）。
   ///
@@ -877,6 +878,12 @@ final class MarketModel {
 
   /// 主力订单流开关（`Prefs.orderFlow`）。
   func setOrderFlow(_ on: Bool) { orderFlow.setWanted(on); updateMicrostructure() }
+  /// 主力订单流改过的门槛 / 步长（`Prefs.orderFlowOverrides`）。
+  func setOrderFlowOverrides(_ overrides: [String: OrderFlowOverride]) {
+    guard overrides != orderFlow.overrides else { return }
+    orderFlow.setOverrides(overrides)
+    if orderFlow.wanted { updateMicrostructure() }
+  }
 
   private func resetMetrics() {
     metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]
@@ -1252,6 +1259,10 @@ final class MarketModel {
       lockedPrecision[want] = (found.pricePrecision, found.tickSize)
       info = found
     }
+    // 主力订单流只认品种表里的这一份（切品种时顶上的占位信息资产类型、步长都是猜的，
+    // 拿它起的簿不会因为真信息到了再重起一遍）。开着指标时顺手再催一次行情流：
+    // 首帧先到、品种信息后到的那一拍，行情流因为查不到品种事实没起来。
+    if orderFlow.noteInfo(found), orderFlow.wanted { updateMicrostructure() }
   }
 }
 
