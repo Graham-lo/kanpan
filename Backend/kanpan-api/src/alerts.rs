@@ -164,11 +164,13 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
  }
  let text=|k:&str|object.body.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
  let number=|k:&str|object.body.get(k).and_then(Value::as_f64);
- sqlx::query("INSERT INTO alert_watches(user_id,alert_id,kind,symbol,market,drawing_id,lines,condition,title,armed_at,status,fired_at,fired_price,due_at,review_id,updated_at) \
-  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now()) \
+ sqlx::query("INSERT INTO alert_watches(user_id,alert_id,kind,symbol,market,drawing_id,lines,condition,title,armed_at,status,fired_at,fired_price,due_at,review_id,\
+  webhook,webhook_text,note,updated_at) \
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now()) \
   ON CONFLICT(user_id,alert_id) DO UPDATE SET kind=excluded.kind,symbol=excluded.symbol,market=excluded.market,drawing_id=excluded.drawing_id,\
   lines=excluded.lines,condition=excluded.condition,title=excluded.title,armed_at=excluded.armed_at,status=excluded.status,\
-  fired_at=excluded.fired_at,fired_price=excluded.fired_price,due_at=excluded.due_at,review_id=excluded.review_id,updated_at=now()")
+  fired_at=excluded.fired_at,fired_price=excluded.fired_price,due_at=excluded.due_at,review_id=excluded.review_id,\
+  webhook=excluded.webhook,webhook_text=excluded.webhook_text,note=excluded.note,updated_at=now()")
   .bind(owner).bind(&object.id).bind(text("kind")).bind(text("symbol"))
   .bind(object.body.get("market").and_then(Value::as_str).unwrap_or(BINANCE))
   .bind(object.body.get("drawingID").and_then(Value::as_str))
@@ -181,8 +183,17 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
   .bind(number("firedPrice"))
   .bind(number("dueAt").map(|v|v as i64))
   .bind(object.body.get("reviewID").and_then(Value::as_str))
+  // 空串和 null 一样当「没有」存成 NULL，评估器只需要看一种「没有」。
+  .bind(optional_text(object,"webhook"))
+  .bind(optional_text(object,"webhookText"))
+  .bind(optional_text(object,"note"))
   .execute(&mut **tx).await?;
  Ok(())
+}
+
+/// 可空的文本字段：null、缺、空串都是 `None`。
+fn optional_text<'a>(object:&'a Object,key:&str)->Option<&'a str> {
+ object.body.get(key).and_then(Value::as_str).filter(|v|!v.is_empty())
 }
 
 // ——————————————————————— 推送 token 端点 ———————————————————————
@@ -265,6 +276,12 @@ struct Watch {
  title:String,lines:Vec<Line>,armed_at:i64,condition:Condition,
  /// `binance/usd_m` 或 `coinbase/spot`：决定这条提醒由哪一条行情流来评估。
  market:String,
+ /// 响了往这里 POST 一份 JSON（见 [`webhook_body`]）。
+ webhook:Option<String>,
+ /// Webhook 里 `text` 的模板；空用 [`DEFAULT_WEBHOOK_TEXT`]。
+ webhook_text:Option<String>,
+ /// 用户写的备注：APNs 正文与 Webhook 都带上。
+ note:Option<String>,
 }
 
 /// 一条还没到点的复盘到点提醒。它不看价，不进 K 线流，只在每轮刷新时看一眼钟。
@@ -295,7 +312,7 @@ async fn load(s:&AppState,market:&str)->Result<Loaded> {
   for owner in &owners {
    let mut tx=match s.personal(*owner).await {Ok(tx)=>tx,Err(_)=>continue};
    // `price` 和 `drawing` 同一种形状（`lines`），一起读。
-   let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition,market FROM alert_watches WHERE user_id=$1 AND status='active' AND kind IN ('drawing','price') AND market=$2")
+   let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition,market,webhook,webhook_text,note FROM alert_watches WHERE user_id=$1 AND status='active' AND kind IN ('drawing','price') AND market=$2")
     .bind(owner).bind(market).fetch_all(&mut *tx).await?;
    // 复盘到点只读**已经到点**的那几条：没到点的留在库里，下一轮再看，不占内存。
    // 它不看价、不分交易所，只在币安那一支里判一次（两支都判会各推一遍）。
@@ -325,7 +342,8 @@ async fn load(s:&AppState,market:&str)->Result<Loaded> {
     for line in &mut lines {sort_points(&mut line.points)}
     out.push(Watch{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),
      drawing_id:r.get("drawing_id"),title:r.get("title"),lines,armed_at:r.get("armed_at"),
-     condition:Condition::of(&r.get::<String,_>("condition")),market:r.get("market")});
+     condition:Condition::of(&r.get::<String,_>("condition")),market:r.get("market"),
+     webhook:r.get("webhook"),webhook_text:r.get("webhook_text"),note:r.get("note")});
    }
   }
   after=owners.last().copied();
@@ -382,6 +400,21 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
  if let Err(e)=crate::live_activity::end_fired(s,apns,w.owner,&w.alert_id,quote,line,at).await {
   tracing::warn!("An alert fired but its live activity could not be ended ({e:?})");
  }
+ // Webhook 在事务之外、「没有 APNs 就 return」之前：线上现在没有 APNs 密钥，排在后面
+ // 就一条都发不出去。另起一个任务去发——最坏要 8 秒 + 3 秒 + 8 秒，不能让这一条的
+ // 对面慢吞吞地把后面所有提醒的落库和推送一起挂住。发不出去只留日志，不回滚状态。
+ if let Some(url)=w.webhook.as_deref().filter(|u|!u.is_empty()) {
+  if webhook_allowed(url) {
+   let (url,body,alert_id)=(url.to_string(),webhook_body(w,price,at),w.alert_id.clone());
+   tokio::spawn(async move {
+    if let Err(e)=deliver_webhook(crate::http::shared(),&url,&body,WEBHOOK_RETRY).await {
+     tracing::warn!("Alert {alert_id} fired but its webhook to {} failed: {e}",webhook_host(&url));
+    }
+   });
+  } else {
+   tracing::warn!("Alert {} has a webhook to a local or private address ({}); not posting",w.alert_id,webhook_host(url));
+  }
+ }
  let Some(apns)=apns else {
   // 没有 APNs 密钥时这就是终点，而且是一个完整的终点：状态已经落库、op 已经写进
   // alerts 集合，客户端下次拉同步（开 app 就会拉）照样看得到这条已触发的提醒。
@@ -389,8 +422,152 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
   tracing::info!("{} triggered {} at {}; recorded and synced, not pushed (no APNs key)",w.symbol,w.alert_id,money(price));
   return Ok(())
  };
- let title=if w.title.is_empty() {format!("{} 触到你画的线",display_symbol(&w.market,&w.symbol))} else {w.title.clone()};
- notify(s,apns,w.owner,&Notice{title,body:format!("现价 {}",money(price)),link:link_of(w),kind:"alert"}).await
+ notify(s,apns,w.owner,&Notice{title:title_of(w),body:alert_body(price,w.note.as_deref()),link:link_of(w),kind:"alert"}).await
+}
+
+/// 通知标题：用户（客户端）起的标题；没有就「BTCUSDT 触到你画的线」。Webhook 的 `title` 同一个。
+fn title_of(w:&Watch)->String {
+ if w.title.is_empty() {format!("{} 触到你画的线",display_symbol(&w.market,&w.symbol))} else {w.title.clone()}
+}
+/// APNs 正文：「现价 84,671」；有备注就接在后面，「现价 84,671 · 突破就加仓」。
+fn alert_body(price:f64,note:Option<&str>)->String {
+ let body=format!("现价 {}",money(price));
+ match note.map(str::trim).filter(|n|!n.is_empty()) {Some(note)=>format!("{body} · {note}"),None=>body}
+}
+
+// ——————————————————————————— Webhook ———————————————————————————
+
+/// Webhook 单次请求的超时。
+const WEBHOOK_TIMEOUT:Duration=Duration::from_secs(8);
+/// 网络错误或 5xx 之后等多久重试（只重试一次）。
+const WEBHOOK_RETRY:Duration=Duration::from_secs(3);
+/// Webhook 请求的 UA：让接收方认得出是谁在发。
+const WEBHOOK_UA:&str="Hkline-Alerts/1";
+/// 用户没写模板时 `text` 用的模板。
+pub const DEFAULT_WEBHOOK_TEXT:&str="{品种} {条件} {目标价}，现价 {价格}";
+
+/// 渲染 Webhook 文案要的那几样东西。
+pub struct WebhookFill<'a> {
+ pub market:&'a str,pub symbol:&'a str,pub condition:Condition,
+ pub target:Option<f64>,pub price:f64,pub at:i64,pub note:&'a str,
+}
+
+/// `{品种}`：币安去掉尾巴上的 `USDT`（`BTCUSDT` → `BTC`，没有这个尾巴就原样）；
+/// Coinbase 把 `-` 换成 `/`（`BTC-USD` → `BTC/USD`）。
+pub fn webhook_name(market:&str,symbol:&str)->String {
+ if market==BINANCE {symbol.strip_suffix("USDT").filter(|b|!b.is_empty()).unwrap_or(symbol).to_string()} else {symbol.replace('-',"/")}
+}
+/// `{条件}`：`碰到` / `收盘穿过`。
+fn condition_word(c:Condition)->&'static str {match c {Condition::Touch=>"碰到",Condition::Close=>"收盘穿过"}}
+fn condition_key(c:Condition)->&'static str {match c {Condition::Touch=>"touch",Condition::Close=>"close"}}
+/// `{时间}`：ISO 8601、UTC、到秒，`2026-09-24T16:44:00Z`。
+pub fn iso_time(at:i64)->String {
+ chrono::DateTime::from_timestamp_millis(at).map(|t|t.format("%Y-%m-%dT%H:%M:%SZ").to_string()).unwrap_or_default()
+}
+/// Webhook 里的价：千分位，小数照原样（最多 8 位、去掉尾巴上的 0）。
+///
+/// 不用 [`money`]：它按量级截小数（≥ 1000 不留小数），`84662.2` 会写成 `84,662`——
+/// 目标价是用户自己填的，Webhook 里要和他填的一模一样。8 位是为了吃掉浮点尾巴
+/// （`84662.20000000001` 仍写 `84,662.2`）。
+pub fn webhook_money(v:f64)->String {
+ if !v.is_finite() {return String::new()}
+ let text=format!("{v:.8}");
+ let text=text.trim_end_matches('0').trim_end_matches('.');
+ let (sign,rest)=match text.strip_prefix('-') {Some(r) if r!="0"=>("-",r),Some(r)=>("",r),None=>("",text)};
+ let (whole,fraction)=rest.split_once('.').map_or((rest,""),|(a,b)|(a,b));
+ let mut grouped=String::new();
+ for (i,c) in whole.chars().enumerate() {
+  if i>0&&(whole.len()-i)%3==0 {grouped.push(',')}
+  grouped.push(c);
+ }
+ if fraction.is_empty() {format!("{sign}{grouped}")} else {format!("{sign}{grouped}.{fraction}")}
+}
+/// 把模板里的占位符换成这一次的值。**一遍扫完**：备注里要是写了 `{价格}`，它就是字面的
+/// `{价格}`，不会被第二轮替换再换一次。认不得的 `{…}` 原样留着。空模板用默认模板。
+pub fn render_webhook_text(template:Option<&str>,f:&WebhookFill)->String {
+ let template=template.filter(|t|!t.trim().is_empty()).unwrap_or(DEFAULT_WEBHOOK_TEXT);
+ let value=|key:&str|->Option<String> {Some(match key {
+  "品种"=>webhook_name(f.market,f.symbol),
+  "代号"=>f.symbol.to_string(),
+  "价格"=>webhook_money(f.price),
+  "目标价"=>f.target.map(webhook_money).unwrap_or_default(),
+  "条件"=>condition_word(f.condition).to_string(),
+  "时间"=>iso_time(f.at),
+  "备注"=>f.note.to_string(),
+  _=>return None,
+ })};
+ let mut out=String::new();
+ let mut rest=template;
+ while let Some(start)=rest.find('{') {
+  out.push_str(&rest[..start]);
+  let tail=&rest[start..];
+  let Some(end)=tail.find('}') else {rest=tail;break};
+  match value(&tail[1..end]) {
+   Some(v)=>{out.push_str(&v);rest=&tail[end+1..]}
+   None=>{out.push('{');rest=&tail[1..]}
+  }
+ }
+ out.push_str(rest);
+ out
+}
+/// `{目标价}`：`lines` 第一条的第一个点的价（物化时已按时间排过）。
+fn target_of(w:&Watch)->Option<f64> {w.lines.first().and_then(|l|l.points.first()).map(|p|p.p)}
+/// POST 出去的那份 JSON。字段和客户端的字段契约一一对应；`once` 照契约写死 `true`
+/// （提醒一律响一次就结束）。
+fn webhook_body(w:&Watch,price:f64,at:i64)->Value {
+ let note=w.note.as_deref().unwrap_or_default();
+ let target=target_of(w);
+ let text=render_webhook_text(w.webhook_text.as_deref(),&WebhookFill{market:&w.market,symbol:&w.symbol,condition:w.condition,target,price,at,note});
+ json!({
+  "event":"alert","alertId":w.alert_id,"symbol":w.symbol,"market":w.market,
+  "name":webhook_name(&w.market,&w.symbol),"title":title_of(w),"condition":condition_key(w.condition),
+  "once":true,"target":target,"price":price,"firedAt":at,"time":iso_time(at),"note":note,"text":text,
+ })
+}
+/// 日志里只写主机名：Webhook 地址里常带着接收方的密钥（机器人 token 之类）。
+fn webhook_host(url:&str)->String {
+ reqwest::Url::parse(url).ok().and_then(|u|u.host_str().map(str::to_string)).unwrap_or_else(||"?".into())
+}
+/// 不往本机和内网发：这台 VPS 的 127.0.0.1 上跑着 API 本身和别的服务，一条填了
+/// `http://127.0.0.1:8794/...` 的提醒不该能从服务端里面去敲它们。只挡字面上的
+/// localhost 与内网 / 回环 / 链路本地地址；用户只有几个朋友，不为 DNS 重绑定再加一层。
+fn webhook_allowed(url:&str)->bool {
+ use std::net::IpAddr;
+ let Ok(url)=reqwest::Url::parse(url) else {return false};
+ if !matches!(url.scheme(),"http"|"https") {return false}
+ let Some(host)=url.host_str() else {return false};
+ let host=host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+ if host=="localhost"||host.ends_with(".localhost") {return false}
+ let v4_ok=|ip:std::net::Ipv4Addr|!(ip.is_loopback()||ip.is_private()||ip.is_link_local()||ip.is_unspecified()||ip.is_broadcast()||ip.octets()[0]==100&&(ip.octets()[1]&0xc0)==64);
+ match host.parse::<IpAddr>() {
+  Ok(IpAddr::V4(ip))=>v4_ok(ip),
+  Ok(IpAddr::V6(ip))=>match ip.to_ipv4_mapped() {
+   Some(v4)=>v4_ok(v4),
+   None=>!(ip.is_loopback()||ip.is_unspecified()||(ip.segments()[0]&0xfe00)==0xfc00||(ip.segments()[0]&0xffc0)==0xfe80),
+  },
+  Err(_)=>true,
+ }
+}
+/// POST 一次；网络错误或 5xx 等 `retry` 之后再试一次。4xx 是对面明确不收，不重试。
+/// 返回最后一次失败的原因，给调用方留日志。
+async fn deliver_webhook(client:&reqwest::Client,url:&str,body:&Value,retry:Duration)->std::result::Result<(),String> {
+ use reqwest::header::{CONTENT_TYPE,USER_AGENT};
+ let payload=body.to_string();
+ let mut last=String::new();
+ for attempt in 0..2 {
+  if attempt>0 {tokio::time::sleep(retry).await}
+  let sent=client.post(url).timeout(WEBHOOK_TIMEOUT)
+   .header(CONTENT_TYPE,"application/json").header(USER_AGENT,WEBHOOK_UA)
+   .body(payload.clone()).send().await;
+  match sent {
+   Ok(r) if r.status().is_success()=>return Ok(()),
+   Ok(r) if r.status().is_server_error()=>last=format!("HTTP {}",r.status().as_u16()),
+   Ok(r)=>return Err(format!("HTTP {}",r.status().as_u16())),
+   // 错误文本里可能带着整条地址，只留类别。
+   Err(e)=>last=if e.is_timeout() {"timed out".into()} else if e.is_connect() {"could not connect".into()} else {"request failed".into()},
+  }
+ }
+ Err(last)
 }
 
 /// 一条推送的内容。`kind` 原样进 payload：客户端前台已经自己出过提示的那几种
@@ -1286,7 +1463,7 @@ mod tests {
  /// 裸价格提醒没有线，点开只开品种；画线提醒去那条线。
  #[test] fn a_price_alert_links_to_its_symbol() {
   let mut w=Watch{owner:Uuid::nil(),alert_id:"p".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:"BTC 涨到 70,000".into(),
-   lines:vec![line(&[(0.0,70_000.0)],true,true)],armed_at:0,condition:Condition::Touch,market:BINANCE.into()};
+   lines:vec![line(&[(0.0,70_000.0)],true,true)],armed_at:0,condition:Condition::Touch,market:BINANCE.into(),webhook:None,webhook_text:None,note:None};
   assert_eq!(link_of(&w),"hkline://symbol/BTCUSDT");
   w.drawing_id=Some(String::new());
   assert_eq!(link_of(&w),"hkline://symbol/BTCUSDT");
@@ -1348,9 +1525,9 @@ mod tests {
  #[test] fn the_stream_url_is_the_one_measured_on_the_vps() {
   assert_eq!(STREAM,"wss://fstream.binance.com/market/stream");
   let watches=vec![
-   Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"ETHUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into()},
-   Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into()},
-   Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Close,market:BINANCE.into()},
+   Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"ETHUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into(),webhook:None,webhook_text:None,note:None},
+   Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into(),webhook:None,webhook_text:None,note:None},
+   Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Close,market:BINANCE.into(),webhook:None,webhook_text:None,note:None},
   ];
   let symbols=symbols_of(&watches,&Default::default());
   assert_eq!(symbols,vec!["BTCUSDT".to_string(),"ETHUSDT".to_string()],"同一品种只订一次，顺序稳定");
@@ -1400,7 +1577,7 @@ mod tests {
   assert!(coinbase_trades(r#"{"channel":"heartbeats","events":[]}"#).is_empty());
  }
  #[test] fn coinbase_alerts_open_the_coinbase_chart_and_read_like_the_app() {
-  let mut w=Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"BTC-USD".into(),drawing_id:Some("d1".into()),title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:COINBASE.into()};
+  let mut w=Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"BTC-USD".into(),drawing_id:Some("d1".into()),title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:COINBASE.into(),webhook:None,webhook_text:None,note:None};
   assert_eq!(link_of(&w),"hkline://drawing/coinbase/spot/BTC-USD/d1");
   assert_eq!(display_symbol(&w.market,&w.symbol),"BTC/USD");
   w.drawing_id=None;
@@ -1414,7 +1591,7 @@ mod tests {
 
  fn watch(alert_id:&str,condition:Condition,lines:Vec<Line>)->Watch {
   Watch{owner:Uuid::nil(),alert_id:alert_id.into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),
-   lines,armed_at:0,condition,market:BINANCE.into()}
+   lines,armed_at:0,condition,market:BINANCE.into(),webhook:None,webhook_text:None,note:None}
  }
  fn bar(open_time:i64,low:f64,high:f64,close:f64,closed:bool)->Candle {
   Candle{symbol:"BTCUSDT".into(),open_time,low,high,close,closed}
@@ -1522,5 +1699,143 @@ mod tests {
   let c=|start:i64,close:&str|crate::venues::coinbase::Candle{start,open:"1".into(),high:"3".into(),low:"0.5".into(),close:close.into(),volume:"1".into()};
   let rows=coinbase_rows("BTC-USD",vec![c(60,"2"),c(120,"nan?"),c(180,"2")],60_000,180_000);
   assert_eq!(rows,vec![Candle{symbol:"BTC-USD".into(),open_time:60_000,low:0.5,high:3.0,close:2.0,closed:true}]);
+ }
+
+ // ——— 从图上加提醒：备注、Webhook ———
+
+ /// 模板渲染逐字对：契约里那一句默认文案。
+ #[test] fn the_default_webhook_text_reads_exactly_like_the_contract() {
+  let f=WebhookFill{market:BINANCE,symbol:"BTCUSDT",condition:Condition::Touch,target:Some(84_662.2),price:84_670.5,at:1_758_732_240_000,note:""};
+  assert_eq!(render_webhook_text(None,&f),"BTC 碰到 84,662.2，现价 84,670.5");
+  assert_eq!(render_webhook_text(Some(""),&f),"BTC 碰到 84,662.2，现价 84,670.5","空模板用默认");
+  assert_eq!(render_webhook_text(Some("  "),&f),"BTC 碰到 84,662.2，现价 84,670.5","全是空白也算空");
+ }
+ /// 每一个占位符都换得对；认不得的、没合上的原样留着；备注里的占位符不会被二次替换。
+ #[test] fn every_webhook_placeholder_is_filled_once() {
+  let f=WebhookFill{market:BINANCE,symbol:"BTCUSDT",condition:Condition::Close,target:Some(84_662.2),price:84_670.5,at:1_758_732_240_000,note:"看{价格}"};
+  assert_eq!(render_webhook_text(Some("{品种}|{代号}|{价格}|{目标价}|{条件}|{时间}|{备注}"),&f),
+   "BTC|BTCUSDT|84,670.5|84,662.2|收盘穿过|2025-09-24T16:44:00Z|看{价格}");
+  assert_eq!(render_webhook_text(Some("{不认识} {{品种}} {价格"),&f),"{不认识} {BTC} {价格");
+  let coinbase=WebhookFill{market:COINBASE,symbol:"BTC-USD",target:None,note:"",..f};
+  assert_eq!(render_webhook_text(Some("{品种} {代号} [{目标价}] [{备注}]"),&coinbase),"BTC/USD BTC-USD [] []");
+ }
+ #[test] fn the_webhook_name_drops_usdt_only_on_binance() {
+  assert_eq!(webhook_name(BINANCE,"BTCUSDT"),"BTC");
+  assert_eq!(webhook_name(BINANCE,"BTCUSDC"),"BTCUSDC","没有 USDT 尾巴就原样");
+  assert_eq!(webhook_name(BINANCE,"USDT"),"USDT");
+  assert_eq!(webhook_name(COINBASE,"BTC-USD"),"BTC/USD");
+ }
+ /// Webhook 的价：千分位 + 原样小数，不按量级截。
+ #[test] fn webhook_prices_keep_the_digits_the_user_typed() {
+  assert_eq!(webhook_money(84_662.2),"84,662.2");
+  assert_eq!(webhook_money(84_662.200_000_000_01),"84,662.2");
+  assert_eq!(webhook_money(63_120.0),"63,120");
+  assert_eq!(webhook_money(1_234_567.891),"1,234,567.891");
+  assert_eq!(webhook_money(0.000_012_34),"0.00001234");
+  assert_eq!(webhook_money(-1_500.5),"-1,500.5");
+  assert_eq!(webhook_money(12.5),"12.5");
+ }
+ #[test] fn the_webhook_time_is_utc_to_the_second() {
+  assert_eq!(iso_time(1_758_732_240_000),"2025-09-24T16:44:00Z");
+  assert_eq!(iso_time(1_758_732_240_999),"2025-09-24T16:44:00Z");
+ }
+ fn hooked(note:Option<&str>)->Watch {
+  let mut w=watch("binance/usd_m/BTCUSDT/a1",Condition::Touch,vec![line(&[(0.0,84_662.2)],true,true)]);
+  w.title="BTC 涨到 84,662.2".into();w.webhook=Some("https://hooks.example.com/x".into());w.note=note.map(str::to_string);
+  w
+ }
+ /// POST 出去的 body 和字段契约一个键都不差。
+ #[test] fn the_webhook_body_carries_every_contract_key() {
+  let at=1_758_732_240_000;
+  assert_eq!(webhook_body(&hooked(None),84_670.5,at),json!({
+   "event":"alert","alertId":"binance/usd_m/BTCUSDT/a1","symbol":"BTCUSDT","market":"binance/usd_m","name":"BTC",
+   "title":"BTC 涨到 84,662.2","condition":"touch","once":true,"target":84_662.2,"price":84_670.5,"firedAt":at,
+   "time":"2025-09-24T16:44:00Z","note":"","text":"BTC 碰到 84,662.2，现价 84,670.5"}));
+  let mut w=hooked(Some("突破加仓"));w.webhook_text=Some("{品种} {备注}".into());w.title=String::new();
+  let body=webhook_body(&w,84_670.5,at);
+  assert_eq!(body["note"],json!("突破加仓"));assert_eq!(body["text"],json!("BTC 突破加仓"));
+  assert_eq!(body["title"],json!("BTCUSDT 触到你画的线"),"没有标题时和推送标题同一个兜底");
+ }
+ /// APNs 正文：有备注接在现价后面，没有就照旧。
+ #[test] fn the_push_body_appends_the_note() {
+  assert_eq!(alert_body(84_671.2,None),"现价 84,671");
+  assert_eq!(alert_body(84_671.2,Some("")),"现价 84,671");
+  assert_eq!(alert_body(84_671.2,Some(" 突破加仓 ")),"现价 84,671 · 突破加仓");
+ }
+ /// 本机、内网地址不发；公网地址和域名照发。
+ #[test] fn webhooks_to_local_addresses_are_refused() {
+  for ok in ["https://hooks.example.com/x","http://8.8.8.8/x","https://[2001:4860::8888]/x"] {assert!(webhook_allowed(ok),"{ok}")}
+  for bad in ["http://127.0.0.1:8794/v1","http://localhost/x","http://a.localhost/x","http://10.0.0.1/","http://192.168.1.1/","http://172.16.0.1/",
+   "http://169.254.169.254/latest","http://0.0.0.0/","http://[::1]/","http://[fd00::1]/","http://[fe80::1]/","http://[::ffff:127.0.0.1]/","http://100.64.0.1/","ftp://example.com/","not a url"] {
+   assert!(!webhook_allowed(bad),"{bad}")
+  }
+  assert_eq!(webhook_host("https://api.telegram.org/bot123:SECRET/sendMessage"),"api.telegram.org","日志里不带密钥");
+ }
+
+ /// 本机起一个假接收端：按顺序回 `statuses` 里的状态码，把每一个请求（头 + body）交回来。
+ async fn receiver(statuses:Vec<u16>)->(String,tokio::sync::mpsc::UnboundedReceiver<(String,Vec<u8>)>) {
+  use tokio::io::{AsyncReadExt,AsyncWriteExt};
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let url=format!("http://{}/hook",listener.local_addr().unwrap());
+  let (tx,rx)=tokio::sync::mpsc::unbounded_channel();
+  tokio::spawn(async move {
+   for status in statuses {
+    let Ok((mut socket,_))=listener.accept().await else {return};
+    let mut buffer=vec![];let mut chunk=[0u8;4096];
+    let (head,body)=loop {
+     let n=socket.read(&mut chunk).await.unwrap();if n==0 {return}
+     buffer.extend_from_slice(&chunk[..n]);
+     let Some(split)=buffer.windows(4).position(|w|w==b"\r\n\r\n") else {continue};
+     let head=String::from_utf8_lossy(&buffer[..split]).to_string();
+     let length=head.lines().find_map(|l|l.to_ascii_lowercase().strip_prefix("content-length:").map(|v|v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+     while buffer.len()<split+4+length {let n=socket.read(&mut chunk).await.unwrap();if n==0 {break};buffer.extend_from_slice(&chunk[..n])}
+     break (head,buffer[split+4..split+4+length].to_vec());
+    };
+    tx.send((head,body)).unwrap();
+    socket.write_all(format!("HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+    socket.shutdown().await.ok();
+   }
+  });
+  (url,rx)
+ }
+ fn header<'a>(head:&'a str,name:&str)->Option<&'a str> {
+  head.lines().find_map(|l|l.split_once(':').filter(|(k,_)|k.eq_ignore_ascii_case(name)).map(|(_,v)|v.trim()))
+ }
+ /// 真的发得出去：POST、JSON、UA；5xx 之后重试一次就成。
+ #[tokio::test] async fn a_webhook_is_posted_and_retried_once_after_a_server_error() {
+  let (url,mut rx)=receiver(vec![503,200]).await;
+  let body=webhook_body(&hooked(Some("看量")),84_670.5,1_758_732_240_000);
+  deliver_webhook(crate::http::shared(),&url,&body,Duration::from_millis(20)).await.expect("the retry succeeds");
+  for _ in 0..2 {
+   let (head,bytes)=rx.recv().await.unwrap();
+   assert!(head.starts_with("POST /hook HTTP/1.1"),"{head}");
+   assert_eq!(header(&head,"content-type"),Some("application/json"));
+   assert_eq!(header(&head,"user-agent"),Some("Hkline-Alerts/1"),"不是共享客户端的浏览器 UA");
+   let sent:Value=serde_json::from_slice(&bytes).unwrap();
+   assert_eq!(sent,body);
+   assert_eq!(sent["text"],json!("BTC 碰到 84,662.2，现价 84,670.5"));
+  }
+  assert!(rx.try_recv().is_err(),"成了就不再发");
+ }
+ /// 两次都 5xx：只试两次，报最后一次的原因。4xx：对面明确不收，不重试。
+ #[tokio::test] async fn a_webhook_gives_up_after_one_retry_and_never_retries_a_refusal() {
+  let (url,mut rx)=receiver(vec![500,502,200]).await;
+  let body=json!({"event":"alert"});
+  assert_eq!(deliver_webhook(crate::http::shared(),&url,&body,Duration::from_millis(20)).await,Err("HTTP 502".into()));
+  assert!(rx.recv().await.is_some()&&rx.recv().await.is_some());
+  assert!(rx.try_recv().is_err(),"只重试一次");
+  let (url,mut rx)=receiver(vec![404,200]).await;
+  assert_eq!(deliver_webhook(crate::http::shared(),&url,&body,Duration::from_millis(20)).await,Err("HTTP 404".into()));
+  assert!(rx.recv().await.is_some());
+  tokio::time::sleep(Duration::from_millis(100)).await;
+  assert!(rx.try_recv().is_err(),"4xx 不重试");
+ }
+ /// 连不上（对面没人听）也按网络错误重试一次，最后报「连不上」，不带地址。
+ #[tokio::test] async fn a_webhook_to_nobody_retries_then_reports_a_connect_failure() {
+  let port={let l=std::net::TcpListener::bind("127.0.0.1:0").unwrap();l.local_addr().unwrap().port()};
+  let started=std::time::Instant::now();
+  let result=deliver_webhook(crate::http::shared(),&format!("http://127.0.0.1:{port}/hook"),&json!({}),Duration::from_millis(200)).await;
+  assert_eq!(result,Err("could not connect".into()));
+  assert!(started.elapsed()>=Duration::from_millis(200),"中间等了一次重试间隔");
  }
 }

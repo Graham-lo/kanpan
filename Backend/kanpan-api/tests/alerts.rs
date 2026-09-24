@@ -23,6 +23,8 @@ fn alert_fields(armed:i64,price:f64)->Value {
   "kind":"drawing","symbol":"BTCUSDT","market":"binance/usd_m",
   "drawingID":"binance/usd_m/BTCUSDT/trend-1","condition":"touch","status":"active","once":true,
   "armedAt":armed,"created":armed,"title":"BTC 触到你画的趋势线",
+  // 客户端永远写出这三个键，空就是 null。
+  "note":null,"webhook":null,"webhookText":null,
   "lines":[{"points":[{"t":armed,"p":price},{"t":armed+3_600_000,"p":price}],"extendLeft":false,"extendRight":true}],
  })
 }
@@ -61,11 +63,20 @@ async fn real_postgres_alerts_materialize_fire_once_and_register_tokens() {
   .bind(owner).bind(id).fetch_one(&admin).await.expect("the alert was materialised");
  assert_eq!(row.0,"BTCUSDT");assert_eq!(row.1,"active");assert_eq!(row.2,armed);
  assert_eq!(row.3[0]["points"][0]["p"],json!(63_000.0));
+ let extras=sqlx::query_as::<_,(Option<String>,Option<String>,Option<String>)>("SELECT webhook,webhook_text,note FROM alert_watches WHERE user_id=$1 AND alert_id=$2")
+  .bind(owner).bind(id).fetch_one(&admin).await.unwrap();
+ assert_eq!(extras,(None,None,None),"null 就是没有");
 
  // 用户把被提醒的那条线拖到别处：同一个 alert id 再上传一次，几何与 armedAt 一起换掉。
  let moved=armed+600_000;
- let (status,v)=request(&app,"/v1/sync/operations","POST",Some(&token),json!({"operations":[operation(&device,id,1,"patch",alert_fields(moved,64_500.0))]})).await;
+ let mut moved_fields=alert_fields(moved,64_500.0);
+ moved_fields["note"]=json!("突破加仓");moved_fields["webhook"]=json!("https://hooks.example.com/x");moved_fields["webhookText"]=json!("{品种} {价格}");
+ let (status,v)=request(&app,"/v1/sync/operations","POST",Some(&token),json!({"operations":[operation(&device,id,1,"patch",moved_fields)]})).await;
  assert_eq!(status,200,"{v}");
+ assert!(v["data"]["results"][0]["droppedFields"].as_array().unwrap().is_empty(),"备注与 Webhook 不该被丢掉：{v}");
+ let extras=sqlx::query_as::<_,(Option<String>,Option<String>,Option<String>)>("SELECT webhook,webhook_text,note FROM alert_watches WHERE user_id=$1 AND alert_id=$2")
+  .bind(owner).bind(id).fetch_one(&admin).await.unwrap();
+ assert_eq!(extras,(Some("https://hooks.example.com/x".into()),Some("{品种} {价格}".into()),Some("突破加仓".into())),"物化表里存下来，评估器读得到");
  let row=sqlx::query_as::<_,(i64,Value)>("SELECT armed_at,lines FROM alert_watches WHERE user_id=$1 AND alert_id=$2")
   .bind(owner).bind(id).fetch_one(&admin).await.unwrap();
  assert_eq!(row.0,moved,"移动之后重新武装");

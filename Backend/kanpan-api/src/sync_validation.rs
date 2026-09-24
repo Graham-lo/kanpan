@@ -37,6 +37,10 @@ fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()
 fn integers(v:&Value,count:usize,lo:i64,hi:i64)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_i64().is_some_and(|n|n>=lo&&n<=hi)))}
 fn names(v:&Value,count:usize,names:&[&str])->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(|s|names.contains(&s))))}
 fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)}
+/// 提醒的 Webhook 地址：≤ 1024 字节、`http://` 或 `https://` 开头、不含空白。
+fn webhook(v:&Value)->bool {
+ v.as_str().is_some_and(|s|s.len()<=1024&&(s.starts_with("http://")||s.starts_with("https://"))&&!s.chars().any(char::is_whitespace))
+}
 /// 主力订单流改过的门槛 / 步长：`{ base: { spot?, usdtPerp?, coinPerp?, delivery?, step? } }`。
 /// base 和客户端 `OrderFlowBase.isValid` 同一条规矩（`^[A-Z0-9]{1,20}$`），最多 200 只
 /// （`Prefs.maxOrderFlowOverrides`）；门槛 1e3…1e9 美元、步长 1e-8…1e6，和
@@ -114,7 +118,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
  // firedAt / firedPrice 清掉；`kind` 从 drawing 改成别的时 drawingID 也会被清。
  // 客户端的 diff 把「这次不写这个 key」发成 null，拒收它就等于整条 op 400。
  if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text")
-  || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID")
+  // note / webhook / webhookText（从图上加提醒）：客户端永远写出这三个键，空就是 null。
+  || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID"|"note"|"webhook"|"webhookText")
   || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
  if collection==SETTINGS {
   if p.len()>1 {
@@ -218,7 +223,13 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   (ALERTS,"reviewID")=>string(v,100),
   // 通知标题是客户端生成的中文短句。和 `drawings.text` 同一档理由：这里数的是 UTF-8
   // 字节，客户端数的是字素，两者换算不了，所以给一个宽到不可能误伤的上限。
-  (ALERTS,"title")=>string(v,1024),_=>false
+  (ALERTS,"title")=>string(v,1024),
+  // 从图上加提醒：备注 ≤ 256 字节；Webhook 地址 ≤ 1024 字节、http(s) 开头、不含空白；
+  // Webhook 文案模板 ≤ 1024 字节。和客户端的字段契约逐字一致——这里多收紧一点，
+  // 带它的整条 op 就是 400、那台手机的同步队列会被堵死。
+  (ALERTS,"note")=>string(v,256),
+  (ALERTS,"webhook")=>webhook(v),
+  (ALERTS,"webhookText")=>string(v,1024),_=>false
  }
 }
 /// Folds the tombstones whose "no value" is actually a real value back into that value.
@@ -558,6 +569,28 @@ mod tests {
   assert!(field("alerts","firedPrice",&json!(63_120.5))&&!field("alerts","firedPrice",&json!("63120.5")));
   assert!(field("alerts","reviewID",&json!("9F1E"))&&field("alerts","title",&json!("BTC 触到你画的趋势线")));
   assert!(!field("alerts","title",&json!("x".repeat(1025))));
+  // 从图上加提醒的三个键：备注、Webhook 地址、Webhook 文案模板。
+  assert!(field("alerts","note",&json!("突破就加仓"))&&field("alerts","note",&json!("x".repeat(256))));
+  assert!(!field("alerts","note",&json!("x".repeat(257)))&&!field("alerts","note",&json!(1)));
+  // 256 是字节不是字：86 个汉字是 258 字节。
+  assert!(!field("alerts","note",&json!("备".repeat(86))));
+  for good in ["https://hooks.example.com/a?b=c","http://1.2.3.4:8080/x"] {assert!(field("alerts","webhook",&json!(good)),"{good}")}
+  let long=format!("https://{}",("x".repeat(1024-8)));
+  assert!(field("alerts","webhook",&json!(long)));
+  assert!(!field("alerts","webhook",&json!(format!("{long}x"))),"超过 1024 字节");
+  for bad in ["ftp://example.com","example.com","HTTPS://example.com","https://exa mple.com","https://example.com/\t","https://example.com\n",""] {
+   assert!(!field("alerts","webhook",&json!(bad)),"{bad:?}")
+  }
+  assert!(!field("alerts","webhook",&json!(1)));
+  assert!(field("alerts","webhookText",&json!("{品种} {条件} {目标价}，现价 {价格}"))&&field("alerts","webhookText",&json!("x".repeat(1024))));
+  assert!(!field("alerts","webhookText",&json!("x".repeat(1025)))&&!field("alerts","webhookText",&json!(false)));
+  // 客户端永远写出这三个键，空就是 null：null 必须放行，否则每一条提醒都推不上去。
+  for key in ["note","webhook","webhookText"] {assert!(field("alerts",key,&Value::Null),"{key}: null 是空")}
+  // 三个键都在白名单上：不在的话服务端静默丢掉，另一台设备就收不到。
+  for key in ["note","webhook","webhookText"] {assert!(crate::sync::allowlist("alerts").contains(&key),"{key} 要进 ALERT_FIELDS")}
+  // 整条对象带着它们（值或 null）都存得下。
+  object(&alert(&[("note",json!("看量")),("webhook",json!("https://hooks.example.com/x")),("webhookText",json!("{品种} {价格}"))])).expect("带备注与 Webhook 的提醒存得下");
+  object(&alert(&[("note",Value::Null),("webhook",Value::Null),("webhookText",Value::Null)])).expect("三个键都是 null 也存得下");
  }
 
  /// **`close` 是协议里的合法值，而且现在真的有人评估它。**

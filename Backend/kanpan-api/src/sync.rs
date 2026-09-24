@@ -145,9 +145,11 @@ pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
 // 注意 `market` 在这个集合里是 `"binance/usd_m"` 整串，而 `drawings`/`favorites` 的
 // `market` 是 `"usd_m"`、场所另放在 `venue`。这不是笔误，是方案文档 2.2 写死的形状，
 // 所以值规则也按集合分开写——把两者混成一条规则会让客户端发上来的整条 op 400。
-pub const ALERT_FIELDS:[&str;15]=[
+pub const ALERT_FIELDS:[&str;18]=[
  "kind","symbol","market","drawingID","lines","condition","armedAt","once",
  "status","firedAt","firedPrice","dueAt","reviewID","title","created",
+ // 从图上加提醒：备注、Webhook 地址、Webhook 文案模板（值规则见 sync_validation）。
+ "note","webhook","webhookText",
 ];
 pub fn allowlist(c:&str)->&'static [&'static str] {
  match c {SETTINGS=>SETTINGS_FIELDS,DRAWING_PREFERENCES=>&DRAWING_PREFERENCE_FIELDS,DRAWINGS=>&DRAWING_FIELDS,FAVORITES=>&FAVORITE_FIELDS,GROUPS=>&GROUP_FIELDS,ALERTS=>&ALERT_FIELDS,_=>&[]}
@@ -485,7 +487,8 @@ mod tests {
    ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
    ("favorites",&["symbol","market","venue","groupId","order","alerts"][..]),
    ("groups",&["name","order","members"][..]),
-   ("alerts",&["kind","symbol","market","drawingID","lines","condition","armedAt","once","status","firedAt","firedPrice","dueAt","reviewID","title","created"][..]),
+   ("alerts",&["kind","symbol","market","drawingID","lines","condition","armedAt","once","status","firedAt","firedPrice","dueAt","reviewID","title","created",
+    "note","webhook","webhookText"][..]),
   ];
   for (collection,want) in expected {
    let (mut have,mut want)=(allowlist(collection).to_vec(),want.to_vec());
