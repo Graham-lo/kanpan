@@ -176,11 +176,11 @@ struct ChartDrawingTests {
     v.drawTool = .trend
     // 提示跟着「按住拖动画」那一版改了口：按下就是第一点，拖到哪儿画到哪儿；
     // 位移不够的那一下退回轻点，「点两下」这条老路一点没丢，所以下面照旧点两下。
-    #expect(v.drawHint == "按住拖动画趋势线")
+    #expect(v.drawTool == .trend && v.placedDrawAnchors == 0)   // 提示的字归 app（DrawingHints），图只报落了几点
     tap(v, at: CGPoint(x: 120, y: 300), ms: 10_000)
     #expect(v.drawings.isEmpty, "第一点不该直接成线")
     #expect(v.drawing.pending != nil)
-    #expect(v.drawHint == "选择终点")
+    #expect(v.placedDrawAnchors == 1)
     tap(v, at: CGPoint(x: 280, y: 200), ms: 12_000)
     let d = try #require(v.drawings.first)
     #expect(d.kind == .trend)
@@ -438,7 +438,7 @@ struct ChartDrawingTests {
     tap(v, at: CGPoint(x: 150, y: 250))
     v.endDrawing()
     #expect(v.drawTool == nil && v.drawing.pending == nil && v.selectedDrawingID == nil)
-    #expect(v.drawHint == nil)
+    #expect(v.placedDrawAnchors == 0)
     #expect(v.drawings.count == 1, "「完成」把线也清掉了")
   }
 
@@ -775,5 +775,115 @@ extension ChartDrawingTests {
       try png.write(to: dir.appendingPathComponent(name))
       #expect(png.count > 1_000)
     }
+  }
+}
+
+// ---------------------------------------------------------------- 画线真值（审查 23.2）
+
+@MainActor
+@Suite("画线真值与投影")
+struct DrawingBookBindingTests {
+
+  @Test("两张图绑同一本真值：一张画的，另一张立刻看得见，撤销栈也是同一摞")
+  func twoChartsShareOneBook() throws {
+    let book = DrawingBook()
+    let (a, _) = try makeView()
+    let (b, _) = try makeView()
+    a.bindDrawings(to: book); b.bindDrawings(to: book)
+    #expect(a.addHorizontalLine(at: 62_000))
+    #expect(b.drawings == a.drawings && b.drawings.count == 1)
+    #expect(book.items("BTCUSDT") == a.drawings)
+    #expect(b.canUndoDrawing, "撤销栈不在真值里——换一张图就撤不回去了")
+    b.undoDrawing()
+    #expect(a.drawings.isEmpty && b.drawings.isEmpty)
+    #expect(a.canRedoDrawing)
+  }
+
+  @Test("绑了真值的图不认外面灌进来的线")
+  func boundChartIgnoresIncomingDrawings() throws {
+    let book = DrawingBook()
+    let own = Drawing(id: "own", kind: .hline, points: [DrawPoint(t: 1_700_000_000_000, p: 62_000)])
+    book.replace([own], for: "BTCUSDT")
+    let (v, _) = try makeView()
+    v.bindDrawings(to: book)
+    #expect(v.drawings == [own])
+    var s = try #require(v.state)
+    s.drawings = []
+    v.state = s
+    #expect(v.drawings == [own], "外面那份旧 state 把线抹了")
+    #expect(book.items("BTCUSDT") == [own])
+  }
+
+  @Test("没绑宿主的图（复盘回放）照旧吃 state 里给的线，且不进撤销栈")
+  func unboundChartMirrorsIncoming() throws {
+    let (v, _) = try makeView()
+    let snap = Drawing(id: "snap", kind: .hline, points: [DrawPoint(t: 1_700_000_000_000, p: 61_000)])
+    var s = try #require(v.state)
+    s.drawings = [snap]
+    v.state = s
+    #expect(v.drawings == [snap])
+    #expect(!v.canUndoDrawing)
+    s.drawings = []
+    v.state = s
+    #expect(v.drawings.isEmpty)
+  }
+
+  @Test("换品种：投影换桶，手上的工具和选中一并放下")
+  func symbolChangeResetsInteraction() throws {
+    let book = DrawingBook()
+    let eth = Drawing(id: "eth", kind: .hline, points: [DrawPoint(t: 1_700_000_000_000, p: 3_000)])
+    book.replace([eth], for: "ETHUSDT")
+    let (v, _) = try makeView()
+    v.bindDrawings(to: book)
+    #expect(v.addHorizontalLine(at: 62_000))
+    v.drawTool = .trend
+    tap(v, at: CGPoint(x: 120, y: 300))
+    #expect(v.placedDrawAnchors == 1)
+    var s = try #require(v.state)
+    s.series = BarSeries(symbol: "ETHUSDT", interval: s.series.interval, t0: s.series.t0, step: s.series.step,
+                         open: s.series.open, high: s.series.high, low: s.series.low, close: s.series.close,
+                         volume: s.series.volume)
+    v.state = s
+    #expect(v.drawings == [eth])
+    #expect(v.drawTool == nil && v.placedDrawAnchors == 0, "上一只品种画到一半的线跟过来了")
+    #expect(book.items("BTCUSDT").count == 1, "换品种把上一只的线弄丢了")
+  }
+
+  @Test("整批替换这一桶：撤销栈清掉；别的桶变了不碰这只的撤销（A-07）")
+  func replaceClearsOnlyTouchedBuckets() throws {
+    let book = DrawingBook()
+    let (v, _) = try makeView()
+    v.bindDrawings(to: book)
+    #expect(v.addHorizontalLine(at: 62_000))
+    var next = book.archive
+    next["ETHUSDT"] = [Drawing(id: "eth", kind: .hline, points: [DrawPoint(t: 1, p: 3_000)])]
+    book.replace(next)
+    #expect(v.canUndoDrawing)
+    next["BTCUSDT"] = []
+    book.replace(next)
+    #expect(v.drawings.isEmpty && !v.canUndoDrawing)
+  }
+
+  @Test("满了不画：上限在真值里，图只报「满了」和一下「没落成」")
+  func limitAndFeedback() throws {
+    let book = DrawingBook()
+    let full = (0..<DrawArchive.perSymbolLimit).map {
+      Drawing(id: "l\($0)", kind: .hline, points: [DrawPoint(t: 1_700_000_000_000, p: 60_000 + Double($0))])
+    }
+    book.replace(full, for: "BTCUSDT")
+    let (v, _) = try makeView()
+    v.bindDrawings(to: book)
+    var events: [DrawingFeedback] = []
+    var fullCalls = 0
+    v.onDrawingFeedback = { events.append($0) }
+    v.onDrawingLimitReached = { fullCalls += 1 }
+    #expect(!v.addHorizontalLine(at: 62_000))
+    #expect(events == [.rejected] && fullCalls == 1)
+    #expect(book.items("BTCUSDT").count == DrawArchive.perSymbolLimit)
+    v.selectedDrawingID = "l0"
+    v.deleteSelectedDrawing()
+    #expect(events.last == .removed)
+    #expect(v.addHorizontalLine(at: 62_000))
+    #expect(events.last == .snapped)
   }
 }

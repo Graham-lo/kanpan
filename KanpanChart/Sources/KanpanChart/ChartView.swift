@@ -67,12 +67,39 @@ public final class ChartView: UIView {
     get { storedState }
     set {
       let old = storedState
-      if let old, let incoming = newValue { storedState = normalized(incoming, after: old) }
-      else { storedState = newValue }
+      var next = newValue
+      if var incoming = next {
+        if let old { incoming = normalized(incoming, after: old) }
+        // 线不归调用方给：一律从画线真值（`DrawingBook`）按品种投影进来（审查 23.2）。
+        next = projectDrawings(into: incoming)
+      }
+      let keyBefore = drawingKey
+      storedState = next
+      if next != nil { drawingKey = drawingKeyCache.key }
       adopt(old: old)
+      // 换了品种：半截的画线交互（工具、选中、待落点）属于上一张图，放在 `adopt` 之后收，
+      // 收的时候外面回调读到的已经是新品种的那份 state。
+      if next != nil, keyBefore != drawingKey { drawingKeyDidChange(from: keyBefore) }
     }
   }
   private var storedState: ChartState?
+
+  // ---------------------------------------------------------------- 画线真值
+
+  /// 这张图的画线会话（选中、待落点、拖动快照……交互中间量）。第一次用到时才建
+  /// （见 `ChartView.drawing`）。从前挂在 objc 关联对象上，因为扩展里加不了存储属性；
+  /// 现在就是一个普通的存储属性（审查 23.2）。
+  var drawingSessionStorage: DrawingSession?
+  /// 画线真值。宿主用 `bindDrawings(to:)` 绑上它自己那一本；没绑的图（单测、复盘回放）
+  /// 用一本自己私有的，第一次用到时才建。
+  var drawingBookStorage: DrawingBook?
+  /// 绑的是宿主给的那一本（`true`），还是图私有的那一本（`false`）。
+  var drawingsBound = false
+  /// 这张图此刻投影的是哪一桶（规范写法的品种键）。`state` 为 `nil` 的空档里保留上一只，
+  /// 不然冷启动或换品种的空档一过，同一只品种回来也会被当成「换品种」把工具收掉。
+  var drawingKey: String?
+  /// 上一次算规范键用的原始代号。每一帧都要投影，`InstrumentID.canonical` 只在代号变了时算一次。
+  var drawingKeyCache: (raw: String, key: String) = ("", "")
 
   /// 新来的一份 state 相对上一份要先摆正的几件事。纯粹改值，不碰任何副作用以外的状态
   /// （手势候选、补历史的门、冻结这三样「换了张图就作废」的账在这里一并销掉）。

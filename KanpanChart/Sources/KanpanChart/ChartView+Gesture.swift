@@ -3,7 +3,6 @@ import Foundation
 import KanpanCore
 import QuartzCore
 import UIKit
-import os
 
 // MARK: - 手势状态
 
@@ -836,8 +835,9 @@ extension ChartView {
 
 // MARK: - 触觉
 
-/// 图上自己的那几下触觉（G11、P2.9）：出十字线 light、磁吸换根 selection、缩放到边界 rigid，
-/// 删画线 / 清空画线 warning。图外的触觉（点星、换档、提醒响了……）在 app 层的 `Haptics` 里，
+/// 图上自己的那几下触觉（G11、P2.9）：出十字线 light、十字线磁吸换根 selection、缩放到边界 rigid。
+/// 画线那几下（落点吸住、没落成、删线）不在这儿：图只报 `DrawingFeedback`，震不震由 app 的
+/// `DrawingHaptics` 定（审查 23.2）。图外的触觉（点星、换档、提醒响了……）在 app 层的 `Haptics` 里，
 /// 这个包不对外公开触觉。
 ///
 /// 生成器留着不重建：`prepare()` 之后系统会把 Taptic Engine 预热，每次现 new 一个
@@ -847,22 +847,9 @@ enum ChartHaptics {
   private static let light = UIImpactFeedbackGenerator(style: .light)
   private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
   private static let selection = UISelectionFeedbackGenerator()
-  private static let notice = UINotificationFeedbackGenerator()
 
   /// 系统「减少动效」。甩和回弹看它，触觉不看——那是两个开关。
   static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
-
-  /// 拿掉了画线：删选中的那条、清空。都能撤销，所以是提醒不是报错。
-  static func warning() {
-    #if DEBUG
-    // 和 app 层 `Haptics` 同一个日志口子（P2.9 验收：模拟器上摸不到震动，只能看日志）。
-    os_log("haptic %{public}s", log: traceLog, type: .default, "warning")
-    #endif
-    notice.notificationOccurred(.warning)
-  }
-  #if DEBUG
-  private static let traceLog = OSLog(subsystem: "kanpan.haptics", category: "haptics")
-  #endif
 
   static func crosshair() {
     light.prepare()

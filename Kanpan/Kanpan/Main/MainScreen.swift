@@ -1068,8 +1068,9 @@ struct MainScreen: View {
   }
 
   private var visibleShareDrawings: [Drawing] {
+    // 图上关了「显示画线」就不给发；线本身从画线真值取，不从图的投影里抠（审查 23.2）。
     guard let state = proxy.box?.chart.state, state.options.drawings else { return [] }
-    return state.drawings.filter { !$0.hidden }
+    return draw.shareable(state.series.symbol)
   }
   /// 「分享 › 画线」那格此刻为什么发不了；nil 就是能发。
   private var shareSendBlocked: String? {

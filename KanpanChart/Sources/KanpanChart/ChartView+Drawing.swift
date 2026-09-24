@@ -1,7 +1,6 @@
 import CoreGraphics
 import Foundation
 import KanpanCore
-import ObjectiveC
 import QuartzCore
 import UIKit
 
@@ -14,7 +13,8 @@ import UIKit
 /// 选中态、待落点、预览线都是**交互**中间量，进了 state 就等于改渲染路径。所以它们
 /// 留在这里，由一层不接触渲染器的覆盖视图画（`DrawingOverlayView`）。
 ///
-/// 扩展加不了存储属性，所以这个会话挂在视图的关联对象上（见 `ChartView.drawing`）。
+/// 线本身和撤销栈**不在**这里：它们是画线真值 `DrawingBook` 的（审查 23.2），
+/// 这里只剩「手上正在做什么」。会话是 `ChartView` 的一个普通存储属性（见 `ChartView.drawing`）。
 @MainActor
 final class DrawingSession {
   /// 一次拖动的快照。
@@ -66,7 +66,9 @@ final class DrawingSession {
   var preview: Drawing?
   var loupe: UIImage?
   var drag: Drag?
-  var history = DrawHistory()
+  /// 图自己正在往真值里写一笔。这段时间里真值回过来的 `.edited` 不必再投影一次——
+  /// 写完那一句自己会投影，还顺带把预览 id 之类一起摆好，省一次 `state` 往返。
+  var committing = false
 
   /// 这一次触摸归画线管，不转给图表手势。
   var claimed: UITouch?
@@ -89,15 +91,23 @@ final class DrawingSession {
   var onFull: (() -> Void)?
   var onCommitted: ((Drawing) -> Void)?
   var onDragged: ((Drawing) -> Void)?
+  var onFeedback: ((DrawingFeedback) -> Void)?
   /// 诊断用：落成过几条线、外面有没有接「刚画完」那一条。只给 `KANPAN_CHART_DIAGNOSTICS` 看。
   var commits = 0
   /// 哪几条线上挂着提醒。图上只拿它画那枚小铃铛，别的一概不管。
   var alerted: Set<String> = []
 }
 
-/// 关联对象的键。全局 `let` 只初始化一次，地址唯一，正好当键用。
-private nonisolated(unsafe) let drawingSessionKey =
-  UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+/// 画线这一层要外面「给个反应」的几个时刻。震不震、怎么震是 app 的事（审查 23.2：
+/// 触觉这类产品策略不住在图表包里），图只负责说出发生了什么。
+public enum DrawingFeedback: Sendable, Equatable {
+  /// 落下一点、吸住了一根 K 线（原来的磁吸 selection 那一下）。
+  case snapped
+  /// 没落成：满了、拟合不出来（原来的 rigid 边界那一下）。
+  case rejected
+  /// 拿掉了线：删选中的、清空（原来的 warning 那一下）。
+  case removed
+}
 
 /// 「轻点」的时长上限：按下到抬起 < 500ms 且位移 < 4pt 才算落笔。
 ///
@@ -120,19 +130,134 @@ let drawDragSlopPt = Chart.panSlopPt * 2
 extension ChartView {
   /// 这张图的画线会话。第一次问的时候建。
   var drawing: DrawingSession {
-    if let s = drawingSessionIfLoaded { return s }
+    if let s = drawingSessionStorage { return s }
     let s = DrawingSession()
-    objc_setAssociatedObject(self, drawingSessionKey, s, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    drawingSessionStorage = s
     return s
   }
 
   /// 已经建过的那份会话，没建过就是 `nil`。
   ///
   /// 出窗清理要用它：那条路上问 `drawing` 会把会话**建出来**——一张从没开过画线的图
-  /// 只是转了个屏，就凭空多挂一个关联对象。只有真开过画线的图才有东西要收。
-  var drawingSessionIfLoaded: DrawingSession? {
-    objc_getAssociatedObject(self, drawingSessionKey) as? DrawingSession
+  /// 只是转了个屏，就凭空多建一份会话。只有真开过画线的图才有东西要收。
+  var drawingSessionIfLoaded: DrawingSession? { drawingSessionStorage }
+
+  // MARK: 真值与投影
+
+  /// 这张图读写的那本画线真值。没绑宿主的图用一本私有的。
+  var drawingBook: DrawingBook {
+    if let book = drawingBookStorage { return book }
+    let book = DrawingBook()
+    drawingBookStorage = book
+    book.observe(self) { [weak self] change in self?.drawingBookChanged(change) }
+    return book
   }
+
+  /// 绑上宿主那一本画线真值（`DrawingController.book`）。
+  ///
+  /// 绑上之后图上的线**只**从这一本按品种投影：外面灌进来的 `ChartState.drawings` 一律
+  /// 不作数（宿主不必、也不该再把线从旧 state 抄到新 state 上）；图上的每一笔编辑都
+  /// 先写进这一本，撤销栈也在这一本里按品种存着，所以图被重建（换页、转横屏）
+  /// 之后线和撤销栈原样都在，不用谁来「接力」。
+  public func bindDrawings(to book: DrawingBook) {
+    guard !(drawingsBound && drawingBookStorage === book) else { return }
+    drawingBookStorage?.stopObserving(self)
+    drawingBookStorage = book
+    drawingsBound = true
+    book.observe(self) { [weak self] change in self?.drawingBookChanged(change) }
+    reprojectDrawings()
+  }
+
+  /// 把这一份 state 的线换成真值里这只品种那一桶。`state` 的 setter 每一次都走这里。
+  ///
+  /// 没绑宿主的图（复盘回放）线是调用方按快照给的：它给的和私有那本不一样，就把私有那本
+  /// 摆成它给的（不进撤销栈、不发通知），然后照样从本子里投影——两种图走的是同一条路。
+  func projectDrawings(into incoming: ChartState) -> ChartState {
+    var next = incoming
+    let raw = next.series.symbol
+    if raw != drawingKeyCache.raw || drawingKeyCache.key.isEmpty {
+      drawingKeyCache = (raw, InstrumentID.canonical(raw))
+    }
+    let key = drawingKeyCache.key
+    let book = drawingBook
+    if !drawingsBound, next.drawings != book.items(key) { book.mirror(next.drawings, for: key) }
+    next.drawings = book.items(key)
+    if key != drawingKey { next.drawingPreviewID = nil }
+    return next
+  }
+
+  /// 真值里这一桶变了，图重新投影一次。`update` 顺手改一下别的 overlay 字段（预览 id）。
+  func reprojectDrawings(_ update: (inout ChartState) -> Void = { _ in }) {
+    guard var s = state, let key = drawingKey else { return }
+    let items = drawingBook.items(key)
+    var patched = s
+    update(&patched)
+    guard s.drawings != items || patched != s else { return }
+    s = patched
+    s.drawings = items
+    state = s
+  }
+
+  /// 本机的一笔编辑：先写真值（进撤销栈、宿主据此落盘），再投影回图。没变返回 `false`。
+  @discardableResult
+  func commitDrawings(_ next: [Drawing], _ update: (inout ChartState) -> Void = { _ in }) -> Bool {
+    guard let key = drawingKey else { return false }
+    let d = drawing
+    d.committing = true
+    let wrote = drawingBook.commit(next, for: key)
+    d.committing = false
+    reprojectDrawings(update)
+    return wrote
+  }
+
+  private func drawingBookChanged(_ change: DrawingBook.Change) {
+    guard let key = drawingKey else { return }
+    switch change {
+    case .edited(let k):
+      guard k == key, drawingSessionIfLoaded?.committing != true else { return }
+      // 别处改的（宿主一次收下整批分享来的线、另一张绑着同一本的图）：投影过来，
+      // 选中的那条要是没了就别再选着它。
+      reprojectDrawings()
+      if let d = drawingSessionIfLoaded {
+        if let sel = d.selected, !drawings.contains(where: { $0.id == sel }) { d.selected = nil }
+        drawingChanged()
+      }
+    case .replaced(let keys):
+      guard keys.contains(key) else { return }
+      // 整批外部替换（换账号、云端推下来、`setDrawings`）：上一套的半截交互全部作废。
+      resetDrawingInteraction()
+      reprojectDrawings { $0.drawingPreviewID = nil }
+      if drawingSessionIfLoaded != nil { drawingChanged() }
+    }
+  }
+
+  /// 投影换了一桶。
+  ///
+  /// - 换了品种（`old` 不是 nil）：半截交互属于上一张图，全部放下。
+  /// - 第一次有了品种（刚重建的图接上第一份 state）：没有要放下的，但线和撤销栈是
+  ///   这一刻才从真值投影出来的——宿主在 `attach` 时问到的「能不能撤销」还是图空着时的答案，
+  ///   得再喊它一声。不喊的话，切一趟自选页回来线都在、「撤销」却是灰的（任务 3）。
+  func drawingKeyDidChange(from old: String?) {
+    guard drawingSessionIfLoaded != nil else { return }
+    if old != nil { resetDrawingInteraction() }
+    drawingChanged()
+  }
+
+  /// 工具、选中、待落点、拖动——「手上正在做的」全部放下。线和撤销栈在真值里，不动。
+  private func resetDrawingInteraction() {
+    guard let d = drawingSessionIfLoaded else { return }
+    d.preview = nil
+    d.selected = nil
+    d.pending = nil
+    d.aim = nil
+    d.origin = nil
+    d.drag = nil
+    d.tool = nil
+    d.claimed = nil
+    d.navigating = false
+  }
+
+  fileprivate func feedback(_ kind: DrawingFeedback) { drawing.onFeedback?(kind) }
 
   /// 视图离开窗口：把画线那条帧循环和半截交互态一起收掉。
   ///
@@ -229,60 +354,23 @@ extension ChartView {
   /// 图上现有的线。
   public var drawings: [Drawing] { state?.drawings ?? [] }
 
-  /// 整批换线（切品种、从磁盘读回来）。撤销栈一并清掉：两个品种的线互不相干。
-  /// **整批外部替换**：换品种、换存储、云端推下来的那一桶真的变了，才走这儿。
+  /// **整批外部替换**这张图此刻那只品种的线（单测、只用图表的宿主）。撤销栈一并清掉。
   ///
-  /// 它和「本地交互编辑」是两套撤销策略：本地每一笔编辑都进 `drawing.history`，撤销
+  /// 它和「本地交互编辑」是两套撤销策略：本地每一笔编辑都进真值的撤销栈，撤销
   /// 一步步往回走；而外部替换是「这张图上的线换了一整套」，上一套的撤销步骤全部失效
   /// （撤回去会撤成别人那份数据的中间态），所以这里把撤销栈连同选中项、半截交互态一起清掉。
   ///
-  /// 正因为代价是整条撤销历史，调用方有责任先确认**当前这一桶**真的变了——
-  /// 别的品种的云端变化不该清掉本图的撤销历史（A-07，见 `DrawingController.publishSynced`）。
+  /// 绑了宿主的图，换品种、换账号、云端推下来都不走这儿：宿主直接换真值
+  /// （`DrawingBook.replace`），图收到 `.replaced` 自己收拾，而且只有**这一桶真变了**
+  /// 才收拾——别的品种的云端变化不会清掉本图的撤销历史（A-07）。
   public func setDrawings(_ items: [Drawing]) {
-    guard var s = state else { return }
-    s.drawingPreviewID = nil
-    drawing.preview = nil
-    s.drawings = items
-    state = s
-    let d = drawing
-    d.selected = nil
-    d.pending = nil
-    d.aim = nil
-    d.origin = nil
-    d.drag = nil
-    d.history.clear()
-    d.tool = nil
-    d.claimed = nil
-    d.navigating = false
-    drawingChanged()
+    guard state != nil, let key = drawingKey else { return }
+    drawingBook.replace(items, for: key)
   }
 
-  /// 图区顶部那一行提示（§10.8）。没选工具时是 `nil`，外面就把提示条收起来。
-  public var drawHint: String? {
-    guard let tool = drawing.tool else { return nil }
-    if tool.pointCount == 1 { return "按住放置" + tool.title }
-    let placed = drawing.anchors.count
-    switch tool {
-    // 三点工具各有各的说法，统一说「选择终点」等于什么都没说。
-    case .position: return ["按住放置入场价", "选择目标价", "选择止损价"][min(placed, 2)]
-    case .fibExtension: return ["按住拖动画起点 A", "选择回调点 B", "选择起算点 C"][min(placed, 2)]
-    case .channel: return placed == 2 ? "选择通道宽度" : (placed == 0 ? "按住拖动画" + tool.title : "选择终点")
-    case .regression: return placed == 0 ? "圈住要拟合的那一段" : "选择这一段的终点"
-    // 形态类点数多，一路数下去比「选择终点」有用：用户照着字母摆点就行。
-    case .xabcd: return ["按住放置 X 点", "选择 A 点", "选择 B 点", "选择 C 点", "选择 D 点"][min(placed, 4)]
-    case .abcd: return ["按住放置 A 点", "选择 B 点", "选择 C 点", "选择 D 点"][min(placed, 3)]
-    case .headShoulders:
-      return ["按住放置起点", "选择左肩", "选择左颈线点", "选择头部", "选择右颈线点", "选择右肩", "选择终点"][min(placed, 6)]
-    case .elliottImpulse: return placed == 0 ? "按住放置 0 点" : "选择 \(placed) 浪终点"
-    case .elliottCorrection: return ["按住放置 0 点", "选择 A 浪终点", "选择 B 浪终点", "选择 C 浪终点"][min(placed, 3)]
-    case .pitchfork: return ["按住放置柄部 A", "选择枢轴 B", "选择枢轴 C"][min(placed, 2)]
-    case .fibChannel: return ["按住拖动画基线起点", "选择基线终点", "选择通道宽度"][min(placed, 2)]
-    case .triangle: return ["按住放置第一个角", "选择第二个角", "选择第三个角"][min(placed, 2)]
-    case .curve: return ["按住放置起点", "选择终点", "拉出弯曲方向"][min(placed, 2)]
-    case .callout: return placed == 0 ? "按住指向要标注的位置" : "选择气泡落点"
-    default: return placed == 0 ? "按住拖动画" + tool.title : "选择终点"
-    }
-  }
+  /// 已经落下的锚点数（多点工具画到第几点了）。顶上那行提示按它说话——提示的字归 app
+  /// （`DrawingHints`），图只报数（审查 23.2：中文文案不住在图表包里）。
+  public var placedDrawAnchors: Int { drawingSessionIfLoaded?.anchors.count ?? 0 }
 
   /// 哪几条线上挂着提醒（方案 2.3：线的右端一枚很小的铃铛）。
   ///
@@ -311,45 +399,44 @@ extension ChartView {
     set { drawing.magnet = newValue; drawingChanged() }
   }
   public func updateDrawing(_ item: Drawing) {
-    guard item.isValid, var s = state, let i = s.drawings.firstIndex(where: { $0.id == item.id }), s.drawings[i] != item else { return }
-    drawing.history.commit(before: s.drawings)
-    s.drawings[i] = item; state = s; drawingChanged(items: s.drawings)
+    var next = drawings
+    guard item.isValid, let i = next.firstIndex(where: { $0.id == item.id }), next[i] != item else { return }
+    next[i] = item
+    commitDrawings(next); drawingChanged(items: drawings)
   }
   public func duplicateSelectedDrawing() {
-    guard var s = state, let item = s.drawings.first(where: { $0.id == drawing.selected }), let axes = drawAxes else { return }
-    guard s.drawings.count < DrawArchive.perSymbolLimit else { drawing.onFull?(); return }
+    guard let item = drawings.first(where: { $0.id == drawing.selected }), let axes = drawAxes,
+      let key = drawingKey else { return }
+    guard drawingBook.hasRoom(key) else { drawing.onFull?(); return }
     var copy = item; copy.locked = false; copy.hidden = false
     copy = movedDrawing(copy, part: .body, dt: axes.view.span * 20 / axes.layout.plotW,
                         priceShift: { axes.p(atY: axes.y($0) + 20) })
     copy.id = Drawing.newID()
-    drawing.history.commit(before: s.drawings); s.drawings.append(copy); state = s
-    drawing.selected = copy.id; drawingChanged(items: s.drawings)
+    commitDrawings(drawings + [copy])
+    drawing.selected = copy.id; drawingChanged(items: drawings)
   }
   public func clearDrawings() {
-    guard var s = state, !s.drawings.isEmpty else { return }
-    drawing.history.commit(before: s.drawings); s.drawings = []; state = s
+    guard state != nil, !drawings.isEmpty else { return }
+    commitDrawings([])
     drawing.selected = nil; drawing.pending = nil; drawing.aim = nil; drawing.origin = nil
-    ChartHaptics.warning()
+    feedback(.removed)
     drawingChanged(items: [])
   }
   public func setAllDrawingsHidden(_ hidden: Bool) {
-    guard var s = state, s.drawings.contains(where: { $0.hidden != hidden }) else { return }
-    drawing.history.commit(before: s.drawings)
-    for i in s.drawings.indices { s.drawings[i].hidden = hidden }
-    state = s; drawing.selected = nil; drawingChanged(items: s.drawings)
+    var next = drawings
+    guard state != nil, next.contains(where: { $0.hidden != hidden }) else { return }
+    for i in next.indices { next[i].hidden = hidden }
+    commitDrawings(next); drawing.selected = nil; drawingChanged(items: drawings)
   }
 
   /// 删掉选中的那条（A7.6）。一次 rigid 触觉，没有确认弹窗——画错了重画就是了（§10.8）。
   public func deleteSelectedDrawing() {
-    guard var s = state, let sel = drawing.selected,
-      s.drawings.contains(where: { $0.id == sel })
+    guard state != nil, let sel = drawing.selected, drawings.contains(where: { $0.id == sel })
     else { return }
-    drawing.history.commit(before: s.drawings)
-    s.drawings.removeAll { $0.id == sel }
-    state = s
+    commitDrawings(drawings.filter { $0.id != sel })
     drawing.selected = nil
-    ChartHaptics.warning()
-    drawingChanged(items: s.drawings)
+    feedback(.removed)
+    drawingChanged(items: drawings)
   }
 
   /// 在给定价格上放一条水平线（§P3-7「按此价画线」）。
@@ -365,10 +452,10 @@ extension ChartView {
   /// 返回是否真的放下了（满了 / 没有行情时返回 `false`，并且已经通知过外面）。
   @discardableResult
   public func addHorizontalLine(at price: Double, t: Double? = nil) -> Bool {
-    guard price.isFinite, var s = state, s.series.count > 0 else { return false }
+    guard price.isFinite, let s = state, s.series.count > 0, let key = drawingKey else { return false }
     let d = drawing
-    guard s.drawings.count < DrawArchive.perSymbolLimit else {
-      ChartHaptics.boundary()
+    guard drawingBook.hasRoom(key) else {
+      feedback(.rejected)
       d.onFull?()
       return false
     }
@@ -383,11 +470,9 @@ extension ChartView {
       item.filled = style.filled; item.levels = style.levels
     }
     guard item.isValid else { return false }
-    d.history.commit(before: s.drawings)
-    s.drawings.append(item)
-    state = s
-    ChartHaptics.magnetTick()
-    drawingChanged(items: s.drawings)
+    commitDrawings(drawings + [item])
+    feedback(.snapped)
+    drawingChanged(items: drawings)
     d.commits += 1
     d.onCommitted?(item)
     return true
@@ -408,41 +493,43 @@ extension ChartView {
     drawingChanged()
   }
 
-  /// 这张图的撤销栈。**给宿主接力用**，别的地方不要动它。
-  ///
-  /// 撤销栈原来只活在 `ChartView` 这个实例上，而这张图是随时会被重建的：竖屏切一次
-  /// 自选页、进一次横屏画线工作台，`ChartBox.makeUIView` 就是一个全新的 `ChartView`，
-  /// 画了两笔之后回来「撤销」是灰的——用户的两笔还在图上，撤销却没了（任务 3）。
-  /// 宿主（`DrawingController`）按品种存着它，图一重建就接回去。
-  ///
-  /// setter 特意不为空栈建会话：一张从没开过画线的图不该凭空多挂一个关联对象。
+  /// 这张图此刻那只品种的撤销栈。它住在画线真值里（`DrawingBook`），不在图上：
+  /// 图随时会被重建（竖屏切一次自选页、进一次横屏画线工作台，`ChartBox.makeUIView`
+  /// 就是一个全新的 `ChartView`），绑着同一本真值的新图接上来撤销栈就在（任务 3）。
+  /// setter 留给单测和只用图表的宿主整摞换栈；它不建画线会话。
   public var drawingHistory: DrawHistory {
-    get { drawingSessionIfLoaded?.history ?? DrawHistory() }
+    get { drawingKey.map { drawingBook.history($0) } ?? DrawHistory() }
     set {
-      guard drawingSessionIfLoaded != nil || newValue.canUndo || newValue.canRedo else { return }
-      drawing.history = newValue
+      guard let key = drawingKey else { return }
+      drawingBook.setHistory(newValue, for: key)
     }
   }
 
-  public var canUndoDrawing: Bool { !drawing.anchors.isEmpty || drawing.history.canUndo }
-  public var canRedoDrawing: Bool { drawing.history.canRedo }
+  public var canUndoDrawing: Bool { !drawing.anchors.isEmpty || drawingHistory.canUndo }
+  public var canRedoDrawing: Bool { drawingHistory.canRedo }
 
   public func undoDrawing() {
     if !drawing.anchors.isEmpty {
       drawing.anchors.removeLast(); drawing.aim = nil; drawing.origin = nil
       drawingChanged(); return
     }
-    guard var s = state, let prev = drawing.history.undo(current: s.drawings) else { return }
-    s.drawings = prev
-    state = s
-    afterHistoryJump(prev)
+    guard state != nil, let key = drawingKey else { return }
+    drawing.committing = true
+    let moved = drawingBook.undo(key)
+    drawing.committing = false
+    guard moved else { return }
+    reprojectDrawings()
+    afterHistoryJump(drawings)
   }
 
   public func redoDrawing() {
-    guard var s = state, let next = drawing.history.redo(current: s.drawings) else { return }
-    s.drawings = next
-    state = s
-    afterHistoryJump(next)
+    guard state != nil, let key = drawingKey else { return }
+    drawing.committing = true
+    let moved = drawingBook.redo(key)
+    drawing.committing = false
+    guard moved else { return }
+    reprojectDrawings()
+    afterHistoryJump(drawings)
   }
 
   private func afterHistoryJump(_ items: [Drawing]) {
@@ -488,10 +575,17 @@ extension ChartView {
     set { drawing.onDragged = newValue }
   }
 
-  /// 这个品种画满 50 条了（A7.7）。要不要提示由外面定，这里只负责不再往里塞。
+  /// 这个品种画满了（A7.7，上限由画线真值 `DrawingBook.hasRoom` 定）。要不要提示由外面定，
+  /// 这里只负责不再往里塞。
   public var onDrawingLimitReached: (() -> Void)? {
     get { drawing.onFull }
     set { drawing.onFull = newValue }
+  }
+
+  /// 该给个反应的那几下（落点吸住、没落成、删掉了）。震动由外面接（`DrawingHaptics`）。
+  public var onDrawingFeedback: ((DrawingFeedback) -> Void)? {
+    get { drawing.onFeedback }
+    set { drawing.onFeedback = newValue }
   }
 
   /// 让覆盖层重画一次。外面改了 `state` 又想让手柄跟上时用。
@@ -688,9 +782,8 @@ extension ChartView {
     if let claimed = d.claimed {
       guard !touches.contains(claimed) else { return }
       // Transition the original touch and the new touch to a pinch. Keep completed anchors.
-      if let drag = d.drag, var s = state, let i = s.drawings.firstIndex(where: { $0.id == drag.id }) {
-        s.drawings[i] = drag.from; s.drawingPreviewID = nil; state = s
-      }
+      // 拖动途中线只画在预览里、没进真值，真值里那条本来就还是按下时的样子：只收预览 id。
+      if d.drag != nil, var s = state { s.drawingPreviewID = nil; state = s }
       // 放大镜也要跟着这一程一起结束：它扣着一张整屏位图（`DrawLoupe.image`），
       // 这一指既然转交给捏合了，镜子既没人看也没人再更新，留着就是一张压在内存里
       // 的死图，还会跟着后面的缩放一起被画出来（A.5 用例 18「二指介入 → 释放无残留」）。
@@ -816,16 +909,19 @@ extension ChartView {
     d.loupe = nil
     let axes = drawAxes
 
-    if let drag = d.drag, var s = state, let i = s.drawings.firstIndex(where: { $0.id == drag.id }) {
+    if let drag = d.drag, let i = drawings.firstIndex(where: { $0.id == drag.id }) {
       let preview = d.preview
-      d.drag = nil; d.preview = nil; s.drawingPreviewID = nil
-      if cancelled { s.drawings[i] = drag.from; state = s; drawingChanged(); return }
-      if let preview { s.drawings[i] = preview }
-      state = s
-      if s.drawings[i] != drag.from {
-        var before = s.drawings; before[i] = drag.from
-        d.history.commit(before: before); drawingChanged(items: s.drawings)
-      } else { drawingChanged() }
+      d.drag = nil; d.preview = nil
+      var next = drawings
+      if !cancelled, let preview { next[i] = preview }
+      // 拖动途中线只在预览里，真值里还是按下时那条；抬手这一下才写进去（一步撤销）。
+      if !cancelled, next[i] != drawings[i] {
+        commitDrawings(next) { $0.drawingPreviewID = nil }
+        drawingChanged(items: drawings)
+      } else {
+        reprojectDrawings { $0.drawingPreviewID = nil }
+        drawingChanged()
+      }
       return
     }
     // 瞄着落点的那根手指抬起来了。这一程的临时起点到此为止，取走再清——
@@ -930,7 +1026,7 @@ extension ChartView {
     let d = drawing
     let snap = drawPoint(at: q, axes: axes)
     d.aim = snap.point
-    if began, snap.index >= 0 { ChartHaptics.magnetTick() }
+    if began, snap.index >= 0 { feedback(.snapped) }
     refreshDrawingOverlay()
   }
 
@@ -941,23 +1037,21 @@ extension ChartView {
   /// 落一点。收一份**已经吸附好**的结果，而不是屏幕坐标——「按下即第一点」那一笔要
   /// 落的是按下那一刻存下来的那份吸附值（见 `drawingTouchesEnded`），不能在这儿重吸。
   private func placeDrawPoint(_ snap: DrawSnap, axes: DrawAxes) {
-    guard var s = state, let tool = drawing.tool else { return }
+    guard let s = state, let tool = drawing.tool, let key = drawingKey else { return }
     let d = drawing
     let pt = snap.point
 
     func commit(_ item: Drawing) {
-      guard s.drawings.count < DrawArchive.perSymbolLimit else {
+      guard drawingBook.hasRoom(key) else {
         // 满了就不画，也不偷偷挤掉最早那条——用户多半根本没看见它被挤掉。
-        ChartHaptics.boundary()
+        feedback(.rejected)
         d.pending = nil
         d.aim = nil
         d.onFull?()
         drawingChanged()
         return
       }
-      d.history.commit(before: s.drawings)
-      s.drawings.append(item)
-      state = s
+      commitDrawings(drawings + [item])
       d.tool = d.continuous ? tool : nil
       // 连续模式下别顺手选中：手里还攥着同一把工具要接着画，底下却弹出一条
       // 「样式／锁定／复制／删除」的选中条，画一条弹一次，挡着图还得先点空白取消。
@@ -965,8 +1059,8 @@ extension ChartView {
       d.selected = d.continuous ? nil : item.id
       d.pending = nil
       d.aim = nil
-      if snap.index >= 0 { ChartHaptics.magnetTick() }
-      drawingChanged(items: s.drawings)
+      if snap.index >= 0 { feedback(.snapped) }
+      drawingChanged(items: drawings)
       // 落盘那一条先响完再说「新画了一条」，这样外面拿到它的时候线已经在存档里了。
       d.commits += 1
       d.onCommitted?(item)
@@ -981,7 +1075,7 @@ extension ChartView {
         // 拟合不出来（圈住的 K 线不到 3 根）就当这一点没落，提示条还停在「选择终点」上，
         // 用户往右再点远一些就成了——比画出一条没有数据支持的通道诚实。
         guard let fitted = Drawing.fittedRegression(from: points, series: s.series) else {
-          ChartHaptics.boundary()
+          feedback(.rejected)
           return
         }
         points = fitted
@@ -991,7 +1085,7 @@ extension ChartView {
       commit(DrawingPreferences.newDrawing(tool: tool, points: points, styles: d.styles, variants: d.variants))
     } else {
       d.anchors.append(pt); d.aim = nil
-      if snap.index >= 0 { ChartHaptics.magnetTick() }
+      if snap.index >= 0 { feedback(.snapped) }
       drawingChanged()
     }
   }

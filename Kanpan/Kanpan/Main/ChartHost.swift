@@ -433,8 +433,9 @@ struct ChartHost: UIViewRepresentable {
   var onTapped: () -> Void = {}
   /// 图里那些「做了个大动作」的提示，接到外面的 toast 上。
   var onNotice: (String) -> Void = { _ in }
-  /// 画线壳（M7）。线本身住在 `ChartState.drawings` 里、手势归图，这个只负责
-  /// 亮哪一颗按钮和按品种落盘。
+  /// 画线壳（M7）。线住在它的真值（`DrawingController.book`）里，图绑上之后按品种投影、
+  /// 手势归图；壳管亮哪一颗按钮、落盘、震动与提示文案。复盘态传 `nil`：那张图的线是
+  /// 回放快照，不绑真值。
   var drawing: DrawingController?
   /// **用户刚亲手画完一条线**（改、拖、同步下来的都不算）。带上当时那个品种，
   /// 接的人不必再去猜图上是谁。提醒模块拿它弹确认卡（方案 2.3），
@@ -512,8 +513,9 @@ struct ChartHost: UIViewRepresentable {
         cross.index = s.series.index(atTime: Double(old.series.time(at: cross.index)))
         s.crosshair = cross
       }
-      // 线和视野一个道理：画的时候每帧都在动，外面那份必然是旧的。
-      if old.series.symbol == s.series.symbol { s.drawings = old.drawings; s.drawingPreviewID = old.drawingPreviewID }
+      // 线不用抄：绑了画线真值的图按品种自己投影，外面这份 `drawings` 它不认（审查 23.2）。
+      // 只有「正拖着的是哪一条」是图上的交互态，外面那份必然是旧的，照旧接住。
+      if old.series.symbol == s.series.symbol { s.drawingPreviewID = old.drawingPreviewID }
       if old.series.symbol != s.series.symbol {
         s.crosshair = nil
         box.pending = .reset

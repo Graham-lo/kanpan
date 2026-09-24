@@ -59,7 +59,7 @@ struct DrawingToolPicker: View {
   private func tile(_ kind: Drawing.Kind) -> some View {
     // 手上正举着的那把优先；空着手的时候把「上次用的那把」预选高亮出来。
     //
-    // 这两件事必须分清：**待画状态**换品种就该清掉（`ChartView+Drawing.setDrawings`
+    // 这两件事必须分清：**待画状态**换品种就该清掉（`ChartView+Drawing.resetDrawingInteraction`
     // 里那行 `d.tool = nil` 保持不动），冷启动更不许一进来就举着笔；而**上次用的是
     // 哪把**是习惯，该记住并跨启动保留，只体现在这一格的高亮上（见 `Prefs.lastDrawTool`）。
     // 存着的要是一把已经不在面板上的（老版本留下的「矩形」，或者换过画法的「射线」），

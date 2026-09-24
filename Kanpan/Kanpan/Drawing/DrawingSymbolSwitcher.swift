@@ -124,7 +124,7 @@ struct DrawingSymbolSwitcher: View {
   }
 
   /// 点中就**立刻**收起——用户点名要的「直接收起搜索框」。换品种本身交给宿主：
-  /// 画线是自动存的（`DrawingController.persist`），走之前不用问「要不要保存」。
+  /// 画线是自动存的（`DrawingController.write()`），走之前不用问「要不要保存」。
   private func pick(_ symbol: String) {
     focused = false
     onPick(symbol)
