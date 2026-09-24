@@ -162,7 +162,11 @@ import ReviewData
   }
   private var epoch = UUID()
   @ObservationIgnored private var store: ReviewStore?
+  /// 补图的内存缓存，最近用过的 `attachmentCacheLimit` 张。原来只进不出，横滑翻过的
+  /// 每一张图（几百 KB 一张）都一直攒在内存里，换账号也不清。
   @ObservationIgnored private var attachmentCache: [UUID: Data] = [:]
+  @ObservationIgnored private var attachmentOrder: [UUID] = []
+  static let attachmentCacheLimit = 8
   @ObservationIgnored private var client: ScorebookClient?
   @ObservationIgnored private var searchTask: Task<Void, Never>?
   @ObservationIgnored private var syncTask: Task<Void, Never>?
@@ -176,6 +180,7 @@ import ReviewData
   public init() {}
   public func activate(store: ReviewStore, client: ScorebookClient?) {
     syncTask?.cancel(); cancelSearch(); epoch = UUID(); syncID = UUID()
+    attachmentCache = [:]; attachmentOrder = []
     self.store = store; self.client = client; store.cloudCache = client != nil
     syncing = false; syncAgain = nil; searching = false; matches = []; statistics = []; searchID = nil; searchGeneration = UUID(); searchNext = nil; savedMatchIDs = []
     nextPage = nil; searchError = nil; statisticsError = nil; history = []; historyGeneration = UUID(); historyLoading = false; historyError = nil; historyLoaded = false
@@ -508,7 +513,7 @@ import ReviewData
           try await Task.sleep(for: .seconds(2))
           job = try await client.searchStatus(id)
         }
-        guard job.status == "completed" else { throw ScorebookError.http(503, job.status == "cancelled" ? "已取消" : "行情暂不完整，请稍后重试") }
+        guard job.status == "completed" else { throw ScorebookError.http(503, job.status == "cancelled" ? "search_cancelled" : "search_incomplete") }
         let result = try await client.searchResults(id)
         try Task.checkCancellation(); guard epoch == requestEpoch && searchGeneration == generation else { return }
         // 缺 `partial` 这个键时按「没找全」算。缺字段代表的是「这一版服务端没说」，
@@ -568,12 +573,12 @@ import ReviewData
 
   /// 一页存下的案例。
   public func savedMatchesPage(after: String? = nil) async throws -> NativeSavedMatchesResponse {
-    guard let client else { throw ScorebookError.invalidConnection }
+    guard let client else { throw ScorebookError.signedOut }
     return try await client.savedMatches(after: after)
   }
   /// 删一条存下的案例；「找相似」那一页上的「已保存」标记跟着撤掉。
   public func removeSavedMatch(_ match: NativeSavedMatch) async throws {
-    guard let client else { throw ScorebookError.invalidConnection }
+    guard let client else { throw ScorebookError.signedOut }
     try await client.removeSavedMatch(match.id, expectedRevision: match.revision)
     savedMatchIDs.remove(match.id)
   }
@@ -584,7 +589,7 @@ import ReviewData
   }
   /// 这条记录的全部修订。本机从没上过云的记录没有修订可看，给空。
   public func revisions(_ id: UUID) async throws -> [ReviewRevision] {
-    guard let client else { throw ScorebookError.invalidConnection }
+    guard let client else { throw ScorebookError.signedOut }
     guard record(id)?.serverId != nil else { return [] }
     return try await client.revisions(id)
   }
@@ -593,28 +598,35 @@ import ReviewData
   public static let attachmentLimit = 3
   public static let attachmentMaxBytes = 5 * 1024 * 1024
   public func attachments(_ id: UUID) async throws -> [ReviewAttachment] {
-    guard let client else { throw ScorebookError.invalidConnection }
+    guard let client else { throw ScorebookError.signedOut }
     guard record(id)?.serverId != nil else { return [] }
     return try await client.attachments(id)
   }
   /// 取一张补图。取过的放在内存里，横滑来回不重复下载。
   public func attachmentImage(_ id: UUID) async -> Data? {
-    if let hit = attachmentCache[id] { return hit }
+    if let hit = attachmentCache[id] { rememberAttachment(id, hit); return hit }
     guard let client, let data = try? await client.attachment(id) else { return nil }
-    attachmentCache[id] = data
+    rememberAttachment(id, data)
     return data
+  }
+  private func rememberAttachment(_ id: UUID, _ data: Data) {
+    attachmentCache[id] = data
+    attachmentOrder.removeAll { $0 == id }; attachmentOrder.append(id)
+    while attachmentOrder.count > Self.attachmentCacheLimit {
+      attachmentCache.removeValue(forKey: attachmentOrder.removeFirst())
+    }
   }
   /// 补一张图。`data` 由调用方压成 JPEG、并保证不超过上限。
   public func addAttachment(_ data: Data, to record: UUID) async throws {
-    guard let client else { throw ScorebookError.invalidConnection }
+    guard let client else { throw ScorebookError.signedOut }
     let id = UUID()
     try await client.uploadAttachment(id: id, record: record, image: data)
-    attachmentCache[id] = data
+    rememberAttachment(id, data)
   }
   public func deleteAttachment(_ id: UUID) async throws {
-    guard let client else { throw ScorebookError.invalidConnection }
+    guard let client else { throw ScorebookError.signedOut }
     try await client.deleteAttachment(id)
-    attachmentCache.removeValue(forKey: id)
+    attachmentCache.removeValue(forKey: id); attachmentOrder.removeAll { $0 == id }
   }
 }
 

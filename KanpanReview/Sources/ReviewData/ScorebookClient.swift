@@ -5,18 +5,17 @@ import FoundationNetworking
 import ReviewDomain
 import KanpanAccount
 
-public struct ReviewConnection: Codable, Sendable, Equatable {
-  public var baseURL: URL
-  public init(baseURL: URL) { self.baseURL = baseURL }
-}
 public enum ScorebookError: LocalizedError {
   /// `http(状态码, 机器可读错误码)`。第二个参数**不是**给人看的文案，而是服务端
   /// `{"error":{"code":"record_revision_changed"}}` 里那个码——文案由
   /// `ReviewFailure.message` 按码翻译，服务端原文一个字都不往界面上放。
-  case invalidConnection, http(Int, String), invalidResponse
+  /// `signedOut`：没登录，手上没有带令牌的通道（`ReviewFeature.client == nil`）。
+  /// 原来叫 `invalidConnection`、说「请输入有效服务地址和账户」——那是自填服务地址时代的
+  /// 文案，服务地址早就不让人填了。
+  case signedOut, http(Int, String), invalidResponse
   public var errorDescription: String? {
     switch self {
-    case .invalidConnection: "请输入有效服务地址和账户"
+    case .signedOut: "登录后才能同步复盘"
     case .http(let status, let code): ReviewFailure.message(code, status: status)
     case .invalidResponse: "服务返回的数据无法读取"
     }
@@ -88,6 +87,10 @@ public enum ReviewFailure {
     case "invalid_chart_snapshot", "invalid_drawing_snapshot": return "这一屏的设置或画线太大，服务端收不下"
     case "invalid_reflection", "invalid_change": return "这次改动服务端不收"
     case "not_found": return "服务端找不到这条记录"
+    // 这两个码是客户端自己打的：找相似的任务在服务端停了（取消 / 没搜完），不是服务端坏了。
+    // 原来它们跟着 503 走到下面那条「服务端暂时不可用，稍后自动重试」，可找相似根本不会自动重试。
+    case "search_cancelled": return "这次查找已取消"
+    case "search_incomplete": return "行情暂不完整，请稍后重试"
     default: break
     }
     switch status {
@@ -263,13 +266,11 @@ private struct Envelope<T: Decodable>: Decodable { var data: T }
 
 public struct ScorebookClient: Sendable {
   public typealias Transport = @Sendable (String, String, Data?, UUID?) async throws -> Data
-  public let connection: ReviewConnection
   private let transport: Transport
   /// 复盘只走注进来的 `Transport`（账号那条带 token 的通道）；自己拼 URLSession 的那条
-  /// 旁路已经没有调用方了（审查 3.1）。
-  public init(connection: ReviewConnection, transport: @escaping Transport) {
-    self.connection = connection; self.transport = transport
-  }
+  /// 旁路已经没有调用方了（审查 3.1）。原来还要带一个 `ReviewConnection(baseURL:)`，
+  /// 存下来谁都不读——地址在 `transport` 里，这儿删了。
+  public init(transport: @escaping Transport) { self.transport = transport }
   public func request<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: Data? = nil, key: UUID? = nil, as: T.Type = T.self) async throws -> T {
     let data = try await transport(path, method, body, key)
     return try JSONDecoder().decode(Envelope<T>.self, from: data).data

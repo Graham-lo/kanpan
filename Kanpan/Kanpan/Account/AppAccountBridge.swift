@@ -364,7 +364,7 @@ import ReviewUI
     }
     let client: ScorebookClient?
     if user != nil, let api = account.client {
-      client = ScorebookClient(connection: ReviewConnection(baseURL: api.baseURL)) { path, method, body, key in
+      client = ScorebookClient { path, method, body, key in
         try await api.data(path, method: method, body: body, key: key)
       }
     } else { client = nil }
