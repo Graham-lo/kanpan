@@ -12,7 +12,8 @@ import Foundation
 //   那一单（以及正在确认的候选）。别家、别的产品的成交不记：交割、现货、永续之间有基差（季度合约常见
 //   0.5–2%，远大于 BTC 100 美元的步长），同一个绝对价位在不同的簿里离现价远近不同；几家同桶都有墙时，
 //   跨家记还会把同一笔成交重复算好几次，「已成交」因此偏多。
-// - 结束：累计成交 ≥ 消失掉的名义（首次名义 − 结束时剩下的）× 0.8 记「已成交」，否则「已撤销」（理由见 `OrderFlowDefaults.filledRatio`）。
+// - 结束：累计成交 ≥ 消失掉的名义（跌破退出线前最后一拍的名义 − 结束时剩下的）× 0.8 记「已成交」，
+//   否则「已撤销」（理由见 `OrderFlowDefaults.filledRatio`）。透明度与读数里的成交比例用同一个分母。
 // - 历史：结束的大单留在图上，24 小时、最多 500 条（`OrderFlowDefaults.retentionMs / maxEndedOrders`）；
 //   还挂着的永远不删。
 // - 落盘：`OrderFlowJournal`，一只品种一份小文件（KanpanData 管读写），切回来、进程重启历史还在；不同步。
@@ -43,32 +44,38 @@ public struct BigOrder: Sendable, Equatable, Identifiable, Codable {
   public var initialNotional: Double
   /// 此刻的名义；结束了就是结束前最后一次过门槛时的名义。
   public var notional: Double
-  /// 出现以来打到这一侧这个桶的主动成交（美元，各家合计）。
+  /// 出现以来打到这一侧这个桶的主动成交（美元，只算这本簿自己的逐笔）。
   public var filledNotional: Double
   /// 这一单所属产品此刻的门槛（画厚度用）。
   public var threshold: Double
+  /// 结束时消失掉的名义：跌破退出线前最后一拍的名义 − 结束时桶里还剩的。已成交 / 已撤销的判定与
+  /// 成交比例都拿它当分母；挂着的单是 nil。旧版日志里没有这一项，读回来按 `notional` 算。
+  public var vanishedNotional: Double?
 
   public init(venueID: String, exchange: String, product: OrderFlowProduct, side: BookSide, bucket: Int64,
               price: Double, firstSeenMs: Int64, endMs: Int64? = nil, status: Status = .live,
-              initialNotional: Double, notional: Double, filledNotional: Double = 0, threshold: Double) {
+              initialNotional: Double, notional: Double, filledNotional: Double = 0, threshold: Double,
+              vanishedNotional: Double? = nil) {
     self.venueID = venueID; self.exchange = exchange; self.product = product; self.side = side
     self.bucket = bucket; self.price = price; self.firstSeenMs = firstSeenMs; self.endMs = endMs
     self.status = status; self.initialNotional = initialNotional; self.notional = notional
-    self.filledNotional = filledNotional; self.threshold = threshold
+    self.filledNotional = filledNotional; self.threshold = threshold; self.vanishedNotional = vanishedNotional
   }
 
   public var id: String { "\(venueID)|\(side.rawValue)|\(bucket)|\(firstSeenMs)" }
   public var isLive: Bool { status == .live }
-  /// 成交 / 首次名义，封顶 1（各家成交都记进来，可能超过挂单本身）。
+  /// 成交比例，封顶 1。挂着的单按此刻名义算；已成交 / 已撤销的按消失掉的那部分（`vanishedNotional`）算，
+  /// 和结束判定同一个分母——不会出现「成交 38% · 已成交」、块很淡却判已成交这种对不上的读数。
   public var fillRatio: Double {
-    initialNotional > 0 ? min(1, max(0, filledNotional / initialNotional)) : 0
+    let base = status == .live ? notional : (vanishedNotional ?? notional)
+    return base > 0 ? min(1, max(0, filledNotional / base)) : 0
   }
 
   // 落盘用短键：500 条约 75 KB。
   enum CodingKeys: String, CodingKey {
     case venueID = "v", exchange = "x", product = "p", side = "s", bucket = "b", price = "px"
     case firstSeenMs = "f", endMs = "e", status = "st", initialNotional = "n0", notional = "n"
-    case filledNotional = "fl", threshold = "t"
+    case filledNotional = "fl", threshold = "t", vanishedNotional = "vn"
   }
 }
 
@@ -425,9 +432,14 @@ public struct OrderFlowModel: Sendable {
   }
 
   /// 跌破退出线：消失掉的那部分名义里成交够八成算已成交，否则已撤销。`remaining` 是跌破那一拍桶里还剩的。
+  ///
+  /// 消失掉的 = 跌破前最后一拍的名义（`notional`，只在退出线以上才更新）− 结束时剩下的。不用首次名义：
+  /// 挂出 1M、加到 5M 再撤掉，按首次名义算只要成交 0.8M 就判「已成交」，其实 4M 是撤的；
+  /// 先减仓再被吃掉则反过来被判成撤单（审查 5.2）。
   private mutating func end(_ i: Int, atMs: Int64, remaining: Double) {
     let order = orders[i]
-    let vanished = max(0, order.initialNotional - max(0, remaining))
+    let vanished = max(0, order.notional - max(0, remaining))
+    orders[i].vanishedNotional = vanished
     orders[i].status = vanished > 0 && order.filledNotional >= vanished * OrderFlowDefaults.filledRatio
       ? .filled : .cancelled
     orders[i].endMs = max(order.firstSeenMs, atMs)

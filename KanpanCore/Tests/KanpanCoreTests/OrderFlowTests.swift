@@ -454,7 +454,9 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(order.endMs, 1_000)
     XCTAssertEqual(order.filledNotional, 1_590.4 * 12_000 * 0.85, accuracy: 1e-6)
     XCTAssertEqual(order.notional, initial, "名义留着结束前最后一次过门槛的")
-    XCTAssertEqual(order.fillRatio, 1_590.4 * 0.85 / 1_590, accuracy: 1e-9)
+    // 成交比例的分母是消失掉的那部分：1590 × (12 000 − 1 000)，和判定同一个口径。
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 11_000, accuracy: 1e-6)
+    XCTAssertEqual(order.fillRatio, 1_590.4 * 12_000 * 0.85 / (1_590 * 11_000), accuracy: 1e-9)
   }
 
   func testEndingWithFewFillsIsCancelled() {
@@ -501,6 +503,49 @@ final class OrderFlowModelTests: XCTestCase {
     set(&model, okx, seq: 2, bid: level(1_590, 1_500))
     _ = model.evaluate(nowMs: 1_000)
     XCTAssertEqual(model.evaluate(nowMs: 1_400).orders[0].status, .filled)
+  }
+
+  /// 加码后撤：挂出 1908 万、加到 6360 万后整张撤掉，其间被吃了 1590 万。按首次名义算够八成（会判已成交），
+  /// 按跌破前最后一拍的 6360 万算只成交了四分之一——是撤的。
+  func testAddedThenPulledIsCancelled() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    set(&model, okx, seq: 2, bid: level(1_590, 40_000))
+    XCTAssertEqual(model.evaluate(nowMs: 1_000).orders[0].notional, 1_590 * 40_000)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10_000, hitSide: .bid, timeMs: 0)), nowMs: 1_100)
+    XCTAssertEqual(model.evaluate(nowMs: 1_200).orders[0].fillRatio, 0.25, accuracy: 1e-9, "挂着的按此刻名义算")
+    set(&model, okx, seq: 3, bid: level(1_590, 0))
+    _ = model.evaluate(nowMs: 1_500)
+    let order = model.evaluate(nowMs: 2_000).orders[0]
+    XCTAssertEqual(order.status, .cancelled)
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 40_000, accuracy: 1e-6)
+    XCTAssertEqual(order.fillRatio, 0.25, accuracy: 1e-9)
+  }
+
+  /// 减仓后被吃：挂出 1908 万，先撤到 636 万（还在退出线 250 万以上），再被吃掉 556.5 万跌破退出线。
+  /// 按首次名义算只成交三成（会判撤单），按跌破前最后一拍的 636 万算消失的部分全是被吃的——已成交。
+  func testShrunkThenEatenIsFilled() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    set(&model, okx, seq: 2, bid: level(1_590, 4_000))
+    XCTAssertEqual(model.evaluate(nowMs: 1_000).orders[0].status, .live)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 3_500, hitSide: .bid, timeMs: 0)), nowMs: 1_100)
+    set(&model, okx, seq: 3, bid: level(1_590, 500))
+    _ = model.evaluate(nowMs: 1_500)
+    let order = model.evaluate(nowMs: 2_000).orders[0]
+    XCTAssertEqual(order.status, .filled)
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 3_500, accuracy: 1e-6)
+    XCTAssertEqual(order.fillRatio, 1, accuracy: 1e-9)
+  }
+
+  /// 旧版日志没有「消失掉的名义」：读回来按名义算，不崩、不改判定。
+  func testOldJournalWithoutVanishedDecodes() throws {
+    let json = #"{"version":1,"symbol":"ETHUSDT","step":1,"savedAtMs":0,"orders":[{"v":"okx","x":"OKX","p":"usdtPerp","s":"bid","b":1590,"px":1590,"f":0,"e":10,"st":"filled","n0":8000000,"n":6000000,"fl":3000000,"t":5000000}]}"#
+    let journal = try XCTUnwrap(OrderFlowJournal.decode(Data(json.utf8)))
+    XCTAssertNil(journal.orders[0].vanishedNotional)
+    XCTAssertEqual(journal.orders[0].fillRatio, 0.5, accuracy: 1e-9)
   }
 
   /// 跌破一拍又回来：不结束，重新算。

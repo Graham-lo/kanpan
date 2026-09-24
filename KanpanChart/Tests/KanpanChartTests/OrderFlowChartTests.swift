@@ -33,8 +33,9 @@ struct OrderFlowChartTests {
             threshold: 1_000_000, bucket: 2),
       order(.spot, .ask, price: price + 2 * d, firstSeen: seen, notional: 1_500_000, initial: 1_500_000,
             threshold: 1_000_000, bucket: 3),
+      // 挂着的单成交比例按此刻名义算：2.014M ÷ 5.3M = 38%。
       order(.coinPerp, .ask, price: price + d, firstSeen: b.firstTime - 60_000, notional: 5_300_000,
-            initial: 8_000_000, filled: 3_040_000, bucket: 4),
+            initial: 8_000_000, filled: 2_014_000, bucket: 4),
       order(.usdtPerp, .bid, price: price - 3 * d, firstSeen: seen, end: ended, status: .filled,
             filled: 9_000_000, bucket: 5),
       order(.delivery, .ask, price: price + 3 * d, firstSeen: seen, end: ended, status: .cancelled, bucket: 6),
@@ -141,7 +142,7 @@ struct OrderFlowChartTests {
     #expect(f.bands.first { $0.order == coin }?.alpha == 1)
 
     var perp = Self.order(.usdtPerp, .ask, price: 84_120, firstSeen: 0, notional: 5_300_000, initial: 8_000_000,
-                          filled: 3_040_000)
+                          filled: 2_014_000)
     #expect(ChartRenderer.orderFlowReadout(perp, decimals: 0, nowMs: 720_000)
       == "币安 永续 卖 84,120 · 5.3M · 成交 38% · 12 分")
     perp.filledNotional = 0
