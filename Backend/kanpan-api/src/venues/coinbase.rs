@@ -387,7 +387,7 @@ impl Hub {
     }=>{
      if upstream.is_some()&&self.clients.is_empty()&&idle_since.is_some_and(|t|t.elapsed()>=IDLE_GRACE) {
       tracing::info!("Coinbase hub has no clients; closing upstream");
-      self.drop_upstream(&mut upstream);self.last.clear();idle_since=None;
+      self.drop_upstream(&mut upstream);idle_since=None;
      }
     }
    }
@@ -402,8 +402,11 @@ impl Hub {
   Ok(s)
  }
 
+ /// 上游断了：订阅清单和「最近一帧」一起作废。断线这段时间价格可能已经走远，
+ /// 重连前后才订进来的人不能先拿到一帧断线前的旧行情当现价；重连后上游会先推一帧快照，
+ /// 由它重新填上。
  fn drop_upstream(&mut self,upstream:&mut Option<Upstreamed>) {
-  *upstream=None;self.sent.clear();
+  *upstream=None;self.sent.clear();self.last.clear();
  }
 
  fn wanted(&self)->BTreeSet<Key> {self.refs.iter().filter(|(_,n)|**n>0).map(|(k,_)|k.clone()).collect()}
@@ -604,6 +607,23 @@ mod tests {
   assert_eq!(hub.refs.get(&("ticker".into(),"BTC-USD".into())),Some(&1));
   hub.handle(Cmd::Change{id:2,subscribe:false,channel:"ticker".into(),products:vec!["BTC-USD".into()]});
   assert!(hub.wanted().is_empty());
+ }
+
+ #[tokio::test] async fn after_the_upstream_drops_a_new_subscriber_is_not_replayed_a_stale_frame() {
+  let mut hub=Hub::default();
+  let (a,mut ra)=mpsc::channel(8);let (b,mut rb)=mpsc::channel(8);
+  hub.handle(Cmd::Join{id:1,tx:a});hub.handle(Cmd::Join{id:2,tx:b});
+  hub.handle(Cmd::Change{id:1,subscribe:true,channel:"ticker".into(),products:vec!["BTC-USD".into()]});
+  hub.route(r#"{"channel":"ticker","events":[{"type":"update","tickers":[{"product_id":"BTC-USD","price":"1"}]}]}"#);
+  assert!(ra.try_recv().is_ok());
+  let mut upstream=None;
+  hub.drop_upstream(&mut upstream);
+  hub.handle(Cmd::Change{id:2,subscribe:true,channel:"ticker".into(),products:vec!["BTC-USD".into()]});
+  assert!(rb.try_recv().is_err(),"断线前的那一帧不能当现价补给新订阅者");
+  // 重连后上游推来的新帧照常补。
+  let fresh=r#"{"channel":"ticker","events":[{"type":"snapshot","tickers":[{"product_id":"BTC-USD","price":"2"}]}]}"#;
+  hub.route(fresh);
+  assert_eq!(&*rb.try_recv().unwrap(),fresh);
  }
 
  #[test] fn iso_times_keep_milliseconds() {
