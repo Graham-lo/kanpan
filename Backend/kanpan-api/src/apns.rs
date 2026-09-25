@@ -46,6 +46,8 @@ pub struct Apns {
  /// 某一行 token 没说自己是哪个环境时按它算（`KANPAN_APNS_ENV`）。
  default_environment:String,
  cached:Mutex<Option<Cached>>,
+ /// 只给测试用：把请求发到本机的一个假 APNs 上。线上永远是 None，按环境选苹果的主机。
+ origin:Option<String>,
 }
 
 #[derive(Serialize)]
@@ -115,7 +117,7 @@ impl Apns {
   // 带上；APNs 只说 HTTP/2，所以协商出来的一定是 h2。10 秒超时在每个请求上设（`SEND_TIMEOUT`）。
   let client=crate::http::shared().clone();
   tracing::info!("APNs ready: topic {topic}, default environment {environment}");
-  Some(Self{client,key,key_id,team_id,topic,default_environment:environment,cached:Mutex::new(None)})
+  Some(Self{client,key,key_id,team_id,topic,default_environment:environment,cached:Mutex::new(None),origin:None})
  }
  /// 当前该用的 provider 令牌，超过 55 分钟就换一枚。
  fn token(&self)->Result<String> {
@@ -124,6 +126,13 @@ impl Apns {
   let token=sign(&self.key,&self.key_id,&self.team_id,chrono::Utc::now().timestamp())?;
   *cached=Some(Cached{token:token.clone(),born:Instant::now()});
   Ok(token)
+ }
+ /// 苹果说这枚令牌过期了：把它从缓存里拿掉，下一次 `token()` 就现签一枚。
+ ///
+ /// 只在缓存里还是**这一枚**时才拿：并发的另一条推送可能已经换过了，别把它换上的新令牌
+ /// 也扔掉（那样一分钟里连换几次，苹果会回 `TooManyProviderTokenUpdates`）。
+ fn forget(&self,token:&str) {
+  if let Ok(mut cached)=self.cached.lock() && cached.as_ref().is_some_and(|c|c.token==token) {*cached=None}
  }
  /// 一条提醒的推送。payload 的形状写死在方案文档 2.4 里。
  ///
@@ -158,25 +167,38 @@ impl Apns {
    return Ok(Outcome::Gone)
   }
   let environment=if environment.is_empty() {self.default_environment.as_str()} else {environment};
-  let url=format!("{}/3/device/{device_token}",host(environment));
-  let response=self.client.post(&url)
-   .header("authorization",format!("bearer {}",self.token()?))
-   .header("apns-topic",topic.unwrap_or(&self.topic))
-   .header("apns-push-type",push_type)
-   .header("apns-priority","10")
-   .header("apns-expiration","0")
-   .timeout(SEND_TIMEOUT)
-   .json(payload).send().await.map_err(|e|{tracing::warn!("APNs request failed: {e}");ApiError::bad("apns_unreachable")})?;
-  let status=response.status();
-  if status.is_success() {return Ok(Outcome::Delivered)}
-  let reason=response.text().await.unwrap_or_default();
-  // 410 是「这枚 token 不在了」；400 + BadDeviceToken 是同一件事的另一种说法
-  // （环境搞错时苹果回的是后者）。两种都要把那一行删掉。
-  if status.as_u16()==410||reason.contains("BadDeviceToken")||reason.contains("Unregistered") {
-   tracing::info!("APNs dropped a dead device token ({status})");
-   return Ok(Outcome::Gone)
+  let url=format!("{}/3/device/{device_token}",self.origin.as_deref().unwrap_or(host(environment)));
+  // 第二轮只为一种情形存在：403 `ExpiredProviderToken`。缓存的令牌按 55 分钟换，但机器
+  // 时钟一跳、或者进程挂起过一阵，苹果那边可能已经判它过期；以前这一回就直接失败，
+  // 而且缓存还留着那枚过期令牌，直到 55 分钟到点前**每一条**推送都会同样失败。
+  // 现在清掉缓存、现签一枚、重发一次；第二次还不行就照常报失败，不无限重试。
+  for attempt in 0..2 {
+   let token=self.token()?;
+   let response=self.client.post(&url)
+    .header("authorization",format!("bearer {token}"))
+    .header("apns-topic",topic.unwrap_or(&self.topic))
+    .header("apns-push-type",push_type)
+    .header("apns-priority","10")
+    .header("apns-expiration","0")
+    .timeout(SEND_TIMEOUT)
+    .json(payload).send().await.map_err(|e|{tracing::warn!("APNs request failed: {e}");ApiError::bad("apns_unreachable")})?;
+   let status=response.status();
+   if status.is_success() {return Ok(Outcome::Delivered)}
+   let reason=response.text().await.unwrap_or_default();
+   // 410 是「这枚 token 不在了」；400 + BadDeviceToken 是同一件事的另一种说法
+   // （环境搞错时苹果回的是后者）。两种都要把那一行删掉。
+   if status.as_u16()==410||reason.contains("BadDeviceToken")||reason.contains("Unregistered") {
+    tracing::info!("APNs dropped a dead device token ({status})");
+    return Ok(Outcome::Gone)
+   }
+   if attempt==0 && status.as_u16()==403 && reason.contains("ExpiredProviderToken") {
+    tracing::warn!("APNs says the provider token expired; signing a fresh one and retrying once");
+    self.forget(&token);
+    continue
+   }
+   tracing::warn!("APNs refused a push: {status} {reason}");
+   return Err(ApiError::bad("apns_refused"))
   }
-  tracing::warn!("APNs refused a push: {status} {reason}");
   Err(ApiError::bad("apns_refused"))
  }
 }
@@ -273,5 +295,69 @@ mod tests {
   }
   // 缺的若是密钥本身的内容（文件在但不是 ES256 .p8），走的也是同一个函数的另一支。
   assert!(EncodingKey::from_ec_pem(b"not a key").is_err());
+ }
+
+ /// 一个只会按顺序回话的假 APNs：每个连接读一个请求、回一个 (状态, 正文)，
+ /// 把收到的 authorization 头报回来。
+ async fn fake_apns(replies:Vec<(u16,&'static str)>)->(String,tokio::sync::mpsc::UnboundedReceiver<String>) {
+  use tokio::io::{AsyncReadExt,AsyncWriteExt};
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let origin=format!("http://{}",listener.local_addr().unwrap());
+  let (tx,rx)=tokio::sync::mpsc::unbounded_channel();
+  tokio::spawn(async move {
+   for (status,body) in replies {
+    let Ok((mut socket,_))=listener.accept().await else {return};
+    let mut buffer=vec![];let mut chunk=[0u8;4096];
+    let head=loop {
+     let n=socket.read(&mut chunk).await.unwrap();if n==0 {return}
+     buffer.extend_from_slice(&chunk[..n]);
+     let Some(split)=buffer.windows(4).position(|w|w==b"\r\n\r\n") else {continue};
+     let head=String::from_utf8_lossy(&buffer[..split]).to_string();
+     let length=head.lines().find_map(|l|l.to_ascii_lowercase().strip_prefix("content-length:").map(|v|v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+     while buffer.len()<split+4+length {let n=socket.read(&mut chunk).await.unwrap();if n==0 {break};buffer.extend_from_slice(&chunk[..n])}
+     break head;
+    };
+    let auth=head.lines().find_map(|l|l.split_once(':').filter(|(k,_)|k.eq_ignore_ascii_case("authorization")).map(|(_,v)|v.trim().to_string())).unwrap_or_default();
+    tx.send(auth).unwrap();
+    socket.write_all(format!("HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+    socket.shutdown().await.ok();
+   }
+  });
+  (origin,rx)
+ }
+ fn apns_at(origin:String)->Apns {
+  let (pem,_)=generated_key();
+  Apns{client:reqwest::Client::new(),key:EncodingKey::from_ec_pem(&pem).unwrap(),key_id:"ABC1234567".into(),team_id:"27Y32PT2HZ".into(),
+   topic:"com.example.hkline".into(),default_environment:"production".into(),cached:Mutex::new(None),origin:Some(origin)}
+ }
+
+ /// **苹果说令牌过期了：清缓存、现签一枚、重发一次就送达。** 以前这一回直接失败，
+ /// 缓存里的过期令牌还要再用到 55 分钟，这段时间里每条推送都失败。
+ #[tokio::test] async fn an_expired_provider_token_is_replaced_and_the_push_retried_once() {
+  let (origin,mut rx)=fake_apns(vec![(403,r#"{"reason":"ExpiredProviderToken"}"#),(200,"")]).await;
+  let apns=apns_at(origin);
+  *apns.cached.lock().unwrap()=Some(Cached{token:"stale".into(),born:Instant::now()});
+  let outcome=apns.push_alert("abcdef0123","production","t","b","hkline://x","default","alert").await.expect("the retry is delivered");
+  assert_eq!(outcome,Outcome::Delivered);
+  assert_eq!(rx.recv().await.unwrap(),"bearer stale");
+  let second=rx.recv().await.unwrap();
+  assert!(second.starts_with("bearer ")&&second!="bearer stale","the retry carries a freshly signed token, got {second}");
+  let cached=apns.cached.lock().unwrap().as_ref().map(|c|c.token.clone()).unwrap();
+  assert_eq!(format!("bearer {cached}"),second,"the fresh token is what stays cached");
+ }
+
+ /// 只重试一次：第二次还说过期就照常报失败，不打转。别的 403 不重试。
+ #[tokio::test] async fn an_expired_token_is_retried_at_most_once_and_other_refusals_not_at_all() {
+  let (origin,mut rx)=fake_apns(vec![(403,r#"{"reason":"ExpiredProviderToken"}"#),(403,r#"{"reason":"ExpiredProviderToken"}"#),(200,"")]).await;
+  let apns=apns_at(origin);
+  assert!(apns.push_alert("abcdef0123","production","t","b","l","default","alert").await.is_err());
+  rx.recv().await.unwrap();rx.recv().await.unwrap();
+  assert!(rx.try_recv().is_err(),"no third attempt");
+
+  let (origin,mut rx)=fake_apns(vec![(403,r#"{"reason":"InvalidProviderToken"}"#),(200,"")]).await;
+  let apns=apns_at(origin);
+  assert!(apns.push_alert("abcdef0123","production","t","b","l","default","alert").await.is_err());
+  rx.recv().await.unwrap();
+  assert!(rx.try_recv().is_err(),"an invalid (not expired) token is not retried");
  }
 }
