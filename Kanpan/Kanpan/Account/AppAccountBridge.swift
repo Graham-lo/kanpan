@@ -439,6 +439,9 @@ import ReviewUI
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
       alerts.useStorage(alertStore, archive: nextAlerts)
+      // 提醒存档记下这份画线存档当「删之前」：这一档里第一次删线就能级联删提醒，
+      // 不用先把提醒暂停一轮、等下一次对账才删。
+      alerts.noteDrawings(drawings.storedArchive)
       inbox.activate(directory: directory, owner: user?.id, cache: nextInbox, api: account.client)
       search.useStorage(nextStorage)
       review.activate(store: nextReview, client: client)
@@ -852,6 +855,7 @@ import ReviewUI
     drawingDiff.rebase(from: drawings.storedArchive, to: archive)
     drawings.publishSynced(archive)
     alerts.publishSynced(alertArchive)
+    alerts.noteDrawings(drawings.storedArchive)
     symbols.applySynced(nextSymbols)
     if !mergedGroups.isEmpty {
       // 记账那一步的第一道门是 `!gate.isApplying`，写在保护区里一条操作都产生不了，

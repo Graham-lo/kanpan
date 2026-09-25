@@ -830,7 +830,7 @@ public actor MarketFeed {
   /// 因为补缺翻的是源周期的页。`nowMs` 必须是墙上时钟（和 K 线 openTime 同一把尺）——
   /// 原来传的是 `pacer.nowMs()`（开机以来的单调毫秒），和 openTime 一比永远是负数，
   /// 这道闸在真机上从来没拦下过任何快照。
-  /// `maxTailBars` 是这家提供者补缺的上限（Coinbase 只有 1400 根），接不上的快照不打底。
+  /// `maxTailBars` 是这家提供者补缺的上限（现货那家只有 1400 根），接不上的快照不打底。
   static func seedUsable(_ snap: BarSeries, sourceStepMs step: Int64, nowMs: Double,
                          maxTailBars: Int = .max) -> Bool {
     guard snap.count > 0 else { return false }
@@ -1072,7 +1072,7 @@ public actor MarketFeed {
       await fillOnce(symbol: sym, interval: iv, since: 0, selection: request)
       return
     }
-    // 断档超过补缺上限（Coinbase 1400 根、币安 6000 根）：`contiguousTail` 注定接不上，
+    // 断档超过补缺上限（`ProviderCapabilities.maxTailBars`，1400 或 6000 根）：`contiguousTail` 注定接不上，
     // 失败了再记缺口、再自愈也只会一遍遍撞同一堵墙，图上留个永久的洞。直接整段重拉一屏换掉。
     let pending = tailBars(from: from, interval: iv)
     if pending > caps.maxTailBars {

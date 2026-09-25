@@ -108,7 +108,7 @@ public struct FeedComposer: Sendable {
     if timeMs == lastTickMs, (tradeID ?? -1) <= (lastTradeID ?? -1) { return .ignored }
     // 补缺期间先不折（REST 马上拿权威值整段盖过来，这会儿改末根只会打架），但也不能丢：
     // 排进和 K 线同一条队，补完按到达顺序重放——丢了的话，只靠逐笔拼末根的那几档
-    // （Coinbase 非 5 分钟周期）补缺那几百毫秒里的成交就永远缺在末根上。
+    // （没有实时 K 线、靠成交折算末根的那些周期）补缺那几百毫秒里的成交就永远缺在末根上。
     if isBackfilling {
       pending.append(.tick(price: price, qty: qty, timeMs: timeMs, tradeID: tradeID))
       lastTickMs = timeMs; lastTradeID = tradeID
