@@ -66,8 +66,22 @@ fn order_flow_overrides(v:&Value)->bool {
 }
 fn one_of(v:&Value,all:&[&str])->bool {v.as_str().is_some_and(|s|all.contains(&s))}
 fn symbol(v:&Value)->bool {
- if v.as_str().is_some_and(|s|s.len()<=40 && s.strip_suffix("-USD").is_some_and(|base| !base.is_empty() && base.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))) {return true}
-v.as_str().is_some_and(|s|s.len()<=40&&QUOTES.iter().any(|q|s.ends_with(q))&&s.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))}
+ v.as_str().is_some_and(|s|coinbase_symbol(s)||binance_symbol(s))
+}
+/// 代号最长 40 个字符（按字符数，不按字节：中文代号一个字三个字节）。
+const SYMBOL_MAX_CHARS:usize=40;
+/// 币安 U 本位合约的代号：ASCII 大写字母、数字，或者**非 ASCII 的 Unicode 字母数字**，
+/// 并以一个计价资产结尾。币安上架过纯中文底名的合约（`币安人生USDT` 这类），只认 ASCII
+/// 的旧规则会把它们的自选、画线、提醒整条拒掉，同步队列从此卡在那一条上。ASCII 小写仍然
+/// 不收：币安代号永远是大写，小写只会是客户端拼错了。
+fn binance_symbol(s:&str)->bool {
+ s.chars().count()<=SYMBOL_MAX_CHARS && QUOTES.iter().any(|q|s.strip_suffix(q).is_some_and(|base|!base.is_empty()))
+  && s.chars().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()||(!c.is_ascii()&&c.is_alphanumeric()))
+}
+/// Coinbase 现货：`BASE-USD`，BASE 只有 ASCII 大写与数字。
+fn coinbase_symbol(s:&str)->bool {
+ s.len()<=SYMBOL_MAX_CHARS && s.strip_suffix("-USD").is_some_and(|b|!b.is_empty() && b.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))
+}
 /// How many anchors a finished drawing of this kind carries: `Drawing.Kind.pointCount`.
 /// Checked kind by kind against `contract/drawing-fields.json`'s `anchorCounts` (generated from
 /// the client's enum) by `anchor_counts_are_the_clients_point_counts`.
@@ -249,8 +263,8 @@ pub fn clear_tombstones(value:&mut Object) {
 }
 pub fn identity(venue:&str,market:&str,symbol:&str)->bool {
  match (venue,market) {
-  ("binance","usd_m") => symbol.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()) && QUOTES.iter().any(|q|symbol.ends_with(q)),
-  ("coinbase","spot") => symbol.strip_suffix("-USD").is_some_and(|b|!b.is_empty() && b.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit())),
+  ("binance","usd_m") => binance_symbol(symbol),
+  ("coinbase","spot") => coinbase_symbol(symbol),
   _ => false,
  }
 }
@@ -469,6 +483,23 @@ mod tests {
  #[test] fn a_usdc_margined_contract_is_a_real_symbol() {
   for good in ["BTCUSDT","1000BONKUSDC","ETHFDUSD"] {assert!(field("favorites","symbol",&json!(good)),"{good} should be accepted")}
   for bad in ["btcusdt","BTC-USDT","BTCEUR",""] {assert!(!field("favorites","symbol",&json!(bad)),"{bad} should be refused")}
+ }
+ /// 币安有纯中文底名的 U 本位合约；它们的自选 / 画线 / 提醒以前整条被拒。
+ #[test] fn a_binance_symbol_may_carry_a_unicode_base() {
+  for good in ["币安人生USDT","我踏马来了USDT","ÅBCUSDT","1000币USDC"] {
+   assert!(field("favorites","symbol",&json!(good)),"{good} should be accepted");
+   assert!(identity("binance","usd_m",good),"{good} is a binance usd_m identity");
+  }
+  // 40 个字符是上限，按字符数算：39 个汉字 + USDT 超了，36 个 + USDT 刚好。
+  assert!(field("favorites","symbol",&json!(format!("{}USDT","币".repeat(36)))));
+  assert!(!field("favorites","symbol",&json!(format!("{}USDT","币".repeat(37)))));
+  for bad in ["币安人生","币安人生usdt","币安 人生USDT","币安-人生USDT","USDT","😀USDT","btc币USDT"] {
+   assert!(!field("favorites","symbol",&json!(bad)),"{bad} should be refused");
+   assert!(!identity("binance","usd_m",bad),"{bad} is not a binance usd_m identity");
+  }
+  // Coinbase 不变：底名只有 ASCII 大写与数字。
+  assert!(identity("coinbase","spot","BTC-USD"));
+  assert!(!identity("coinbase","spot","币安-USD"));
  }
  #[test] fn a_caption_travels_with_its_note() {
   assert!(field("drawings","text",&json!("顶背离")));
