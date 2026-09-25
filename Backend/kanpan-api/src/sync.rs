@@ -259,18 +259,22 @@ pub const CHANGE_RETENTION_DAYS:i32=30;
 /// 否则一次 `changes` 可能读到旧水位、却撞上已经删掉的那几行，悄悄漏一段改动。
 /// 每个人**最新的那一行变更永远不删**：bootstrap 交出去的游标是 max(sequence)，
 /// 那一行没了，游标会退回 0、落到水位以下，刚 bootstrap 完的设备立刻就「过期」。
-/// 返回删掉的（回执数，变更数）。
-pub async fn prune(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<(u64,u64)> {
+/// 返回这一批删掉的（回执数，变更数）。
+pub async fn prune(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,limit:i64)->Result<(u64,u64)> {
  lock(tx,owner).await?;
- let receipts=sqlx::query("DELETE FROM sync_operations WHERE user_id=$1 AND created_at<now()-make_interval(days=>$2)")
-  .bind(owner).bind(OPERATION_RETENTION_DAYS).execute(&mut **tx).await?.rows_affected();
+ // 一次最多删 `limit` 行（`maintenance` 一批一个事务地滚，见 `maintenance::in_batches`）：
+ // 攒了几个月的回执一条 DELETE 删完，锁和 WAL 都会一下子冲上去，还把这个人的 push 堵在锁后面。
+ let receipts=sqlx::query("DELETE FROM sync_operations WHERE ctid IN (SELECT ctid FROM sync_operations \
+   WHERE user_id=$1 AND created_at<now()-make_interval(days=>$2) LIMIT $3)")
+  .bind(owner).bind(OPERATION_RETENTION_DAYS).bind(limit).execute(&mut **tx).await?.rows_affected();
+ // 变更按 sequence 从老到新删，水位随之一步步往上抬，不会先删掉中间一段、把还在那之前的游标提前判过期。
  let changes:i64=sqlx::query_scalar("WITH gone AS (\
-   DELETE FROM sync_changes WHERE user_id=$1 AND created_at<now()-make_interval(days=>$2) \
-    AND sequence<(SELECT max(sequence) FROM sync_changes WHERE user_id=$1) RETURNING sequence), \
+   DELETE FROM sync_changes WHERE ctid IN (SELECT ctid FROM sync_changes WHERE user_id=$1 AND created_at<now()-make_interval(days=>$2) \
+    AND sequence<(SELECT max(sequence) FROM sync_changes WHERE user_id=$1) ORDER BY sequence LIMIT $3) RETURNING sequence), \
   floor AS (INSERT INTO sync_change_floors(user_id,sequence) SELECT $1,max(sequence) FROM gone HAVING count(*)>0 \
    ON CONFLICT(user_id) DO UPDATE SET sequence=GREATEST(sync_change_floors.sequence,EXCLUDED.sequence),updated_at=now() RETURNING 1) \
   SELECT count(*) FROM gone")
-  .bind(owner).bind(CHANGE_RETENTION_DAYS).fetch_one(&mut **tx).await?;
+  .bind(owner).bind(CHANGE_RETENTION_DAYS).bind(limit).fetch_one(&mut **tx).await?;
  Ok((receipts,u64::try_from(changes).unwrap_or(0)))
 }
 /// 这个人的变更日志从哪里往后是完整的：`sequence` 不大于它的变更可能已经删掉了。
