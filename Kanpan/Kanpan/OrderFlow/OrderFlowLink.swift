@@ -61,6 +61,8 @@ final class OrderFlowLink {
 
   /// 上一次交给行情流的可视范围（按分钟取整）：平移时每一帧都回调，分钟没变就不再跨一次 actor。
   @ObservationIgnored private var sentView: (symbol: String, from: Int64, to: Int64)?
+  /// 可视范围也是每次各起一个 Task 交给行情流，同样编递增序号，后到的旧范围由行情流丢掉（审查 P2-4）。
+  @ObservationIgnored private var viewSequence: UInt64 = 0
 
   /// 图的可视范围变了（`ChartView.onViewChanged`，经 `MarketModel.loadOI`）。开着指标才交给行情流：
   /// 它按最左边往前补服务端历史，超过 2 万条挤掉旧单时优先留可视区里的。
@@ -70,7 +72,9 @@ final class OrderFlowLink {
     let to = Int64((view.to / 60_000).rounded(.up)) * 60_000
     if let sent = sentView, sent.symbol == symbol, sent.from == from, sent.to == to { return }
     sentView = (symbol, from, to)
-    Task { await feed.setOrderFlowView(symbol: symbol, fromMs: from, toMs: to) }
+    viewSequence &+= 1
+    let sequence = viewSequence
+    Task { await feed.setOrderFlowView(symbol: symbol, fromMs: from, toMs: to, sequence: sequence) }
   }
 
   /// 十字线变了（`ChartView.onCrosshairChanged`）：停在主图上时读数要精确金额。

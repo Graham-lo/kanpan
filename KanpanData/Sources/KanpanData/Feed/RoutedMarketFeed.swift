@@ -182,10 +182,13 @@ public actor RoutedMarketFeed {
     if enabled { startOrderFlow() } else { stopOrderFlow(forgetChart: false) }
   }
   /// 图上此刻看的时间范围（`ChartView.onViewChanged`，毫秒）：主力订单流往左补服务端历史、淘汰时优先留可视区。
-  /// `symbol` 是这个范围属于哪只（切品种那一拍的旧范围不认）。
-  public func setOrderFlowView(symbol viewed: String, fromMs: Int64, toMs: Int64) {
-    orderFlow.setView(symbol: viewed, fromMs: fromMs, toMs: toMs, current: symbol)
+  /// `symbol` 是这个范围属于哪只（切品种那一拍的旧范围不认）。`sequence` 是调用方编的递增序号：
+  /// 调用方每次各起一个 Task，到达先后不定，按序号丢掉后到的旧范围（审查 P2-4）。
+  public func setOrderFlowView(symbol viewed: String, fromMs: Int64, toMs: Int64, sequence: UInt64? = nil) {
+    orderFlow.setView(symbol: viewed, fromMs: fromMs, toMs: toMs, current: symbol, sequence: sequence)
   }
+  /// 测试用：订单流这一格此刻记着的可视范围。
+  var orderFlowViewForTesting: (symbol: String, from: Int64, to: Int64)? { orderFlow.view }
   private func startOrderFlow() {
     guard orderFlow.start(symbol: symbol, foreground: foreground, provider: activeProvider, paths: paths, log: log,
                           publish: { [weak self] token, frame in await self?.publishOrderFlow(frame, token: token) })

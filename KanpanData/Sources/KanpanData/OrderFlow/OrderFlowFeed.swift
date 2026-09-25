@@ -141,6 +141,10 @@ public actor OrderFlowFeed {
   private var historyFetch: Task<Void, Never>?
   /// 图上此刻看的时间范围（最左 K 线的时刻往前补、淘汰时优先留它）。
   private var visibleFromMs: Int64?
+  /// 可视范围 / 用户改项各自最后收下的那次调用的序号（审查 P2-4）：调用方每次各起一个 Task，
+  /// 到达先后不定，带序号的调用按序号丢掉后到的旧值（不带序号的照旧直接收）。
+  private var viewSequence: UInt64 = 0
+  private var overrideSequence: UInt64 = 0
 
   // 非币默认门槛标定（见文件头）。
   /// 还在等标定：不评估、不读回日志、不取服务端历史。币与固定表里的品种一开始就是 false。
@@ -292,7 +296,11 @@ public actor OrderFlowFeed {
   }
 
   /// 用户改了这只 base 的门槛 / 步长（面板里改，或别的设备同步过来）。
-  public func setOverride(_ next: OrderFlowOverride?) {
+  public func setOverride(_ next: OrderFlowOverride?, sequence: UInt64? = nil) {
+    if let sequence {
+      guard sequence > overrideSequence else { return }
+      overrideSequence = sequence
+    }
     let normalized = next?.normalized
     guard normalized != override else { return }
     override = normalized
@@ -332,6 +340,9 @@ public actor OrderFlowFeed {
       let depth = DepthStream(adapter: adapter, pacer: pacer, log: log)
       streams.append(depth)
       tasks.append(Task { [weak self] in
+        // `stop()` 可能赶在这个 Task 起跑之前（它已经把 streams 清空、对这条流调过 stop）：
+        // 重查一遍这条流还归不归这一轮，不归就别拨号（DepthStream 自己也会把 stop 之后的 start 挡掉）。
+        guard let live = await self?.owns(depth), live, !Task.isCancelled else { return }
         let events = await depth.start()
         for await event in events {
           guard let self, !Task.isCancelled else { return }
@@ -340,6 +351,9 @@ public actor OrderFlowFeed {
       })
     }
   }
+
+  /// 这条深度流还是不是当前这一轮的（没 stop、也没被换掉）。
+  private func owns(_ depth: DepthStream) -> Bool { !stopped && streams.contains { $0 === depth } }
 
   private func handle(_ event: DepthStreamEvent, stream index: Int) async {
     guard index < adapters.count, !stopped else { return }
@@ -483,8 +497,12 @@ public actor OrderFlowFeed {
   // MARK: - 服务端历史
 
   /// 图上此刻看的时间范围（`ChartView.onViewChanged`，毫秒）。最左边早于已取到的，就往前补。
-  public func setVisibleWindow(fromMs: Int64, toMs: Int64) {
+  public func setVisibleWindow(fromMs: Int64, toMs: Int64, sequence: UInt64? = nil) {
     guard fromMs <= toMs else { return }
+    if let sequence {
+      guard sequence > viewSequence else { return }
+      viewSequence = sequence
+    }
     visibleFromMs = fromMs
     model.setVisibleWindow(fromMs...toMs)
     pumpHistory()
@@ -664,4 +682,10 @@ public actor OrderFlowFeed {
   func modelForTests() -> OrderFlowModel { model }
   func calibratedForTests() -> (pending: Bool, value: Double?) { (calibrating, calibrated) }
   func historyRangeForTests() -> (from: Int64?, cursor: Int64?) { (historyFromMs, historyCursorMs) }
+}
+
+// 测试用：看一眼最后收下的可视范围起点与用户改项（审查 P2-4 的乱序用例）。
+extension OrderFlowFeed {
+  var visibleWindowStartForTesting: Int64? { visibleFromMs }
+  var overrideForTesting: OrderFlowOverride? { override }
 }

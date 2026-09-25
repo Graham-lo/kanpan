@@ -730,3 +730,56 @@ struct OrderFlowRoutingTests {
     await routed.stop()
   }
 }
+
+extension OrderFlowFeedTests {
+  @Test("刚建好连接任务就 stop（F10）：停了之后不许留一条活连接", .timeLimit(.minutes(1)))
+  func stopRightAfterSetUpLeavesNoLiveSocket() async throws {
+    for _ in 0..<20 {
+      let adapter = ScriptAdapter(name: "binance", books: [binancePerp], script: [:])
+      let handed = Handed()
+      let feed = makeFeed([adapter], dir: nil, frames: Frames(), handed: handed)
+      await feed.start()
+      // `setUp` 已经把连接任务排上了（适配器交出去了），这一刻就停。
+      #expect(await waitUntil(5) { await !handed.books.isEmpty })
+      await feed.stop()
+      // 给可能晚起跑的连接任务一点时间：它要么根本不拨号，要么拨了也立刻被掐掉。
+      try await Task.sleep(nanoseconds: 30_000_000)
+      let n = await adapter.snapshots.connects
+      for i in 0..<n {
+        let socket = try #require(await adapter.snapshots.socket(i))
+        #expect(await socket.closed, "stop 之后第 \(i + 1) 条连接还活着")
+      }
+    }
+  }
+}
+
+extension OrderFlowFeedTests {
+  @Test("可视范围 / 用户改项带序号（P2-4）：先发的那次后到，按序号丢掉")
+  func staleViewAndOverrideAreDropped() async {
+    let adapter = ScriptAdapter(name: "binance", books: [binancePerp], script: [:])
+    let feed = makeFeed([adapter], dir: nil, frames: Frames())
+    await feed.setVisibleWindow(fromMs: 2_000_000, toMs: 3_000_000, sequence: 2)
+    await feed.setVisibleWindow(fromMs: 1_000_000, toMs: 3_000_000, sequence: 1)
+    #expect(await feed.visibleWindowStartForTesting == 2_000_000, "序号 1 比已收下的 2 旧，不认")
+    await feed.setVisibleWindow(fromMs: 2_500_000, toMs: 3_000_000, sequence: 3)
+    #expect(await feed.visibleWindowStartForTesting == 2_500_000)
+
+    let newer = OrderFlowOverride(usdtPerp: 9_000_000), older = OrderFlowOverride(usdtPerp: 7_000_000)
+    await feed.setOverride(newer, sequence: 5)
+    await feed.setOverride(older, sequence: 4)
+    #expect(await feed.overrideForTesting == newer.normalized)
+    await feed.stop()
+  }
+
+  @Test("路由那一格的可视范围也按序号丢旧的（P2-4）")
+  func slotDropsStaleView() {
+    var slot = OrderFlowSlot()
+    slot.setView(symbol: "BTCUSDT", fromMs: 2_000, toMs: 5_000, current: "BTCUSDT", sequence: 2)
+    slot.setView(symbol: "BTCUSDT", fromMs: 1_000, toMs: 5_000, current: "BTCUSDT", sequence: 1)
+    #expect(slot.view?.from == 2_000)
+    #expect(slot.viewSequence == 2)
+    // 不带序号的老调用照旧直接收。
+    slot.setView(symbol: "BTCUSDT", fromMs: 1_500, toMs: 5_000, current: "BTCUSDT")
+    #expect(slot.view?.from == 1_500)
+  }
+}

@@ -414,6 +414,41 @@ struct OrderFlowAdapterTests {
     reader.cancel()
   }
 
+  @Test("连接客户端：idle → running → stopped；重复 start 结束旧流并掐旧连接；stop 之后的 start 立刻交回已结束的流、不拨号")
+  func streamLifecycleStates() async throws {
+    let deck = ReplayDeck([.frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .hang])
+    let pacer = FastPacer()
+    let stream = DepthStream(adapter: OKXBooksAdapter(books: [Self.okxSwap], gateways: Self.gateways,
+                                                      sockets: ReplayFactory(deck: deck, pacer: pacer)),
+                             pacer: pacer, silenceMs: 600_000)
+    #expect(await stream.state == .idle)
+    let first = await stream.start()
+    let firstEnded = Counter()
+    let reader1 = Task { for await _ in first {}; firstEnded.bump() }
+    #expect(await waitUntil(5) { await deck.stats().connects == 1 })
+
+    // 重复 start：旧读者的 for-await 必须正常退出（旧 continuation 被 finish），新一轮照常拨号。
+    let second = await stream.start()
+    #expect(await waitUntil(5) { firstEnded.value == 1 }, "重复 start 没有结束旧的那条流")
+    #expect(await stream.state == .running)
+    let log = EventLog()
+    let reader2 = Task { for await e in second { await log.note(e) } }
+    #expect(await waitUntil(5) { await deck.stats().connects == 2 })
+    #expect(await waitUntil(5) { await log.lines.contains { $0.hasPrefix("connected") } })
+
+    await stream.stop()
+    #expect(await stream.state == .stopped)
+    let connects = await deck.stats().connects
+    // stop 之后晚到的 start（OrderFlowFeed.setUp 的 Task 撞上 stop 就是这个时序）。
+    let late = await stream.start()
+    var got = 0
+    for await _ in late { got += 1 }
+    #expect(got == 0)
+    #expect(await staysFalse(for: 0.2) { await deck.stats().connects != connects }, "stop 之后不许再拨号")
+    #expect(await stream.state == .stopped)
+    reader1.cancel(); reader2.cancel()
+  }
+
   @Test("连接客户端：主节点连上却一条消息都没有就断，下次拨备用那台")
   func streamFallsBackToBackupGateway() async throws {
     let deck = ReplayDeck([.drop("主节点没推"), .frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .hang])

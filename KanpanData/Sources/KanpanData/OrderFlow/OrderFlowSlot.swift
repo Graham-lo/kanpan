@@ -31,7 +31,13 @@ struct OrderFlowSlot {
   /// 最后一帧：换周期（同一只品种）时直接补给新的 selection，不必重订。
   private(set) var last: OrderFlowSnapshot?
   /// 图上此刻看的时间范围（品种键, 毫秒）。新起的那条先拿到它，往左补服务端历史、淘汰时优先留可视区都靠它。
-  private var view: (symbol: String, from: Int64, to: Int64)?
+  private(set) var view: (symbol: String, from: Int64, to: Int64)?
+  /// 调用方给可视范围编的序号里最大的那个（审查 P2-4，和 `sequence` 同一个道理）。
+  var viewSequence: UInt64 = 0
+  /// 往正在跑的那条推可视范围 / 用户改项时编的递增票号：这里每次也是各起一个 Task，
+  /// 订单流那一侧按票号丢掉后到的旧值。
+  private var ticket: UInt64 = 0
+  private mutating func nextTicket() -> UInt64 { ticket &+= 1; return ticket }
 
   /// 开着、在前台、首帧已画、品种事实已到、这只还没在跑，就起一条。起了返回 true。
   mutating func start(symbol: String, foreground: Bool, provider: (any MarketProvider)?,
@@ -45,7 +51,8 @@ struct OrderFlowSlot {
                                    sink: { frame in await publish(token, frame) }) else { return false }
     feed = next; self.token = token; last = nil; overrideKey = facts.overrideKey
     if let view, InstrumentID.canonical(view.symbol) == InstrumentID.canonical(symbol) {
-      Task { await next.setVisibleWindow(fromMs: view.from, toMs: view.to) }
+      let t = nextTicket()
+      Task { await next.setVisibleWindow(fromMs: view.from, toMs: view.to, sequence: t) }
     }
     Task.detached(priority: .utility) {
       OrderFlowFeed.sweep(directory: directory, nowMs: Int64(Date().timeIntervalSince1970 * 1000))
@@ -69,14 +76,18 @@ struct OrderFlowSlot {
     overrides = next
     guard let feed, let key = overrideKey else { return }
     let after = next[key]
-    if after != before { Task { await feed.setOverride(after) } }
+    if after != before { let t = nextTicket(); Task { await feed.setOverride(after, sequence: t) } }
   }
 
   /// 图挪了。正在跑的是这只就推给它；没在跑也记着，起的时候给。
-  mutating func setView(symbol: String, fromMs: Int64, toMs: Int64, current: String) {
+  mutating func setView(symbol: String, fromMs: Int64, toMs: Int64, current: String, sequence: UInt64? = nil) {
     guard fromMs <= toMs, InstrumentID.canonical(symbol) == InstrumentID.canonical(current) else { return }
+    if let sequence {
+      guard sequence > viewSequence else { return }
+      viewSequence = sequence
+    }
     view = (symbol, fromMs, toMs)
-    if let feed { Task { await feed.setVisibleWindow(fromMs: fromMs, toMs: toMs) } }
+    if let feed { let t = nextTicket(); Task { await feed.setVisibleWindow(fromMs: fromMs, toMs: toMs, sequence: t) } }
   }
 
   /// 退订并清簿。`forgetChart` 为 true 时连「首帧已画」也清掉（换品种、换线路）。

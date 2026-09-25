@@ -42,6 +42,14 @@ public actor DepthStream {
   /// 看门狗或缓冲溢出掐掉连接时记下的原因（收帧那边只会看到 socket 被掐的错误）。
   private var cutReason: String?
   private let bufferLimit: Int
+  /// 生命周期：`idle` → `start` → `running` → `stop` → `stopped`（终态）。
+  /// stop 之后再 start 立刻交回一条已结束的流——调用方在 stop 与 start 之间有 actor 跳转，
+  /// 晚到的 start 不许把一条没人管的连接重新拉起来。
+  public enum RunState: Sendable, Equatable { case idle, running, stopped }
+  public private(set) var state: RunState = .idle
+  /// 当前这一轮的号：重复 start 或 stop 时加一，旧一轮的收尾（流被丢弃的回调）对不上号就不动新一轮。
+  private var run = 0
+  private var sink: AsyncStream<DepthStreamEvent>.Continuation?
 
   public init(adapter: any DepthFeedAdapter, pacer: any Pacer = SystemPacer(), silenceMs: Double = 30_000,
               backoff: Backoff = Backoff(baseMs: 1000, capMs: 30_000), bufferLimit: Int = DepthStream.bufferLimit,
@@ -50,25 +58,53 @@ public actor DepthStream {
     self.backoff = backoff; self.bufferLimit = max(1, bufferLimit); self.log = log
   }
 
-  /// 开始推送。只能调一次；流被丢弃或 `stop()` 就断开。
+  /// 开始推送；流被丢弃或 `stop()` 就断开。
+  /// - `stop()` 之后再调：立刻交回一条已结束的流，不拨号。
+  /// - 正在推送时再调：先结束旧的那条流（旧读者的 `for await` 正常退出）、掐掉旧连接，再开新的一轮。
   public func start() -> AsyncStream<DepthStreamEvent> {
     let (stream, sink) = AsyncStream.makeStream(of: DepthStreamEvent.self, bufferingPolicy: .bufferingNewest(bufferLimit))
-    task?.cancel()
+    guard state != .stopped else { sink.finish(); return stream }
+    if state == .running {
+      run &+= 1   // 先换号：下面 finish 触发的旧回调对不上号，不会把新一轮 stop 掉
+      self.sink?.finish()
+      let old = teardown()
+      Task { await old?.cancel() }
+    }
+    run &+= 1
+    let id = run
+    state = .running
+    self.sink = sink
     task = Task { [weak self] in
       await self?.loop(sink)
       sink.finish()
     }
-    sink.onTermination = { [weak self] _ in Task { await self?.stop() } }
+    sink.onTermination = { [weak self] _ in Task { await self?.terminated(run: id) } }
     return stream
   }
 
   public func stop() async {
+    state = .stopped
+    run &+= 1
+    let old = sink
+    sink = nil
+    old?.finish()
+    await teardown()?.cancel()
+  }
+
+  /// 读者把流丢了：只收它自己那一轮。
+  private func terminated(run id: Int) async {
+    guard id == run, state == .running else { return }
+    await stop()
+  }
+
+  /// 停掉循环、保活与看门狗，交出当前连接（由调用方去 cancel）。
+  private func teardown() -> (any WSSocket)? {
     task?.cancel(); task = nil
     keepAliveTask?.cancel(); keepAliveTask = nil
     watchdogTask?.cancel(); watchdogTask = nil
     let s = socket
     socket = nil
-    await s?.cancel()
+    return s
   }
 
   /// 掐掉当前连接立刻重拨（流内快照的那家整条连接一个序号，要重新拿 snapshot 只能这样）。
@@ -114,11 +150,14 @@ public actor DepthStream {
         sink.yield(.connected(connection))
         startKeepAlive(s)
         lastFrameMs = await pacer.nowMs()
+        guard !Task.isCancelled else { throw CancellationError() }
         startWatchdog(s, connection: connection)
         try await pump(s, sink)
       } catch {
         reason = cutReason ?? "\(error)"
       }
+      // 这一轮已经被 stop / 新的 start 收掉了：连接由它们掐，别再碰共享的状态（那已经是新一轮的）。
+      guard !Task.isCancelled else { return }
       cutReason = nil
       keepAliveTask?.cancel(); keepAliveTask = nil
       watchdogTask?.cancel(); watchdogTask = nil
