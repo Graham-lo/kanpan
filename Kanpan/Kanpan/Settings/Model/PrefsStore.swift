@@ -176,11 +176,12 @@ final class PrefsStore {
   ///   镜像挂在**落盘**那一步（`init` / `persist` / `useStorage` / `applySynced` 都调它），
   ///   所以用户在设置里点一下就走 `update` → `persist` → 这里，和同步那条路没关系。
   ///   没变的话 `set` 自己会跳过，不会把行情重开。
-  /// - 皮肤与深浅：第一帧的底色就要用它，而登录过的人那份档案要等
+  /// - 皮肤、深浅与涨跌色：第一帧的底色就要用它，而登录过的人那份档案要等
   ///   `account.restore()` 异步回来，见 `LaunchThemeMirror`。
   private func mirrorToDevice() {
     MarketRoutePolicyStore.set(prefs.routePolicy)
-    LaunchThemeMirror.set(skin: prefs.skin, theme: prefs.theme)
+    // 涨跌色也要：第一帧的列表 / 价格就按它上色，档案晚到再翻一次红绿是肉眼可见的闪。
+    LaunchThemeMirror.set(skin: prefs.skin, theme: prefs.theme, redUp: prefs.redUp)
   }
 
   /// 见上：UI 测试沙盒专用的常用行。
@@ -256,7 +257,9 @@ final class PrefsStore {
   ///
   /// 单独开一个口子而不是走 `attempt`：副图满三个时 `toggle` 是**改成了**并且带一句话
   /// （「已换下 VOL」），`attempt` 把「有话说」一律当成没改成，会把这一改吞掉。
-  /// 顺手把改动前的整份 `Prefs` 扣在闭包里，toast 上那颗「撤销」按下就整份还原。
+  /// toast 上那颗「撤销」只还原**这一下改到的那几个字段**（`restore(_:from:)`）：
+  /// 原来是把改动前的整份 `Prefs` 扣在闭包里整份换回去，撤销窗口里别处改的、
+  /// 云端刚落地的，全被一起抹掉。
   func toggleIndicator(_ id: IndicatorID) {
     let before = prefs
     var next = prefs
@@ -265,7 +268,7 @@ final class PrefsStore {
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
     persist(marking: changed)
-    if let why { note(why, undo: { [weak self] in self?.restore(before) }) }
+    if let why { note(why, undo: { [weak self] in self?.restore(changed, from: before) }) }
   }
 
   // ---------------------------------------------------------------- 图上量出来的习惯
@@ -286,23 +289,44 @@ final class PrefsStore {
 
   func clearNotice() { notice = nil; noticeUndo = nil }
 
-  /// 把整份设置还原成某个时刻的样子（「撤销」走这条路）。
-  func restore(_ value: Prefs) {
+  /// 撤销：把 `fields` 这几个字段还原成 `before` 里的样子，**别的字段一个不碰**。
+  ///
+  /// 原来这儿收的是整份 `Prefs`、整份换回去，还按「换属主」通知下游：撤销窗口那几秒里
+  /// 用户在别处改的、云端刚落地的，全被一并抹掉；手上还没落盘的那一捏也被当成
+  /// 「上一个人的」作废。撤销是**同一个人**收回自己刚才那一下，走的是和 `update` 一样的
+  /// 路：只动那几个字段、照常记脏，下游按 `.sameProfile` 接。
+  ///
+  /// - Parameters:
+  ///   - fields: 那一下改到的字段（`Prefs.changedStampedFields(from: before, to: after)`）。
+  ///   - before: 那一下之前的整份。只从它身上抄 `fields` 那几项。
+  func restore(_ fields: Set<String>, from before: Prefs) {
     clearNotice()
-    guard value != prefs else { return }
-    let changed = Prefs.changedStampedFields(from: prefs, to: value)
-    prefs = value
+    guard !fields.isEmpty else { return }
+    let next = Prefs.keeping(fields, of: before, over: prefs)
+    guard next != prefs else { return }
+    let changed = Prefs.changedStampedFields(from: prefs, to: next)
+    prefs = next
     persist(marking: changed)
-    // 撤销 = 整份换掉，等同换属主：手上还欠着的那一下属于被撤销掉的那份，作废。
-    onAdopt?(prefs, .ownerSwitched)
+    // 下游里只有图的视野关心「档案那一侧的值被换了」（它手上有一份根宽）。根宽不在
+    // 这次还原的字段里就不去惊动它——惊动一次图就要重新起点一次。
+    if changed.contains("barSpacing") { onAdopt?(prefs, .sameProfile) }
   }
 
-  /// 恢复出厂：把当前键抹掉，回到新默认。
-  func resetToDefaults() {
-    let changed = Prefs.changedStampedFields(from: prefs, to: .defaults)
-    prefs = .defaults
+  /// 恢复出厂：体验类字段回到新默认，**本机字段（`deviceOnly`，比如行情线路）留着**。
+  ///
+  /// 线路说的是这台手机挂在哪张网上，和「我习惯怎么用」无关；原来整份换成 `.defaults`，
+  /// 挂着网关的人点一下「恢复默认」行情就被切回直连、当场断流。
+  ///
+  /// - Returns: 这次真改到的字段，交给「撤销」用（`restore(_:from:)`）。
+  @discardableResult
+  func resetToDefaults() -> Set<String> {
+    let next = Prefs.defaults.keepingDeviceFields(from: prefs)
+    let changed = Prefs.changedStampedFields(from: prefs, to: next)
+    guard next != prefs else { return [] }
+    prefs = next
     persist(marking: changed)
     onAdopt?(prefs, .ownerSwitched)
+    return changed
   }
 
   /// 落盘 + 记脏 + 记时间，**同一步、同步完成**。
@@ -317,7 +341,7 @@ final class PrefsStore {
       sentinel.owner = stamp.owner
       sentinel.wroteAt = now
     }
-    storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    write(prefs, to: storage)
     if !changed.isEmpty { writeStamp(); writeSentinel() }
     mirrorToDevice()
     onChange?(prefs)
@@ -370,6 +394,15 @@ final class PrefsStore {
     writeStamp()
   }
 
+  /// 设置落盘的唯一出口。**编不出来就不写**，盘上留着上一份。
+  ///
+  /// 原来编码失败交出来的是空 `Data()`，照样写进去；下次读回来空档 = 出厂值，
+  /// 一次失败就把整份设置清零。
+  private func write(_ value: Prefs, to storage: any PrefsStorage) {
+    guard let data = PrefsCodec.encoded(value) else { return }
+    storage.setPrefsData(data, forKey: PrefsCodec.key)
+  }
+
   private func writeStamp() { storage.setPrefsData(try? JSONEncoder().encode(stamp), forKey: SettingsStamp.storageKey) }
   private func writeSentinel() { sentinelStorage.setPrefsData(try? JSONEncoder().encode(sentinel), forKey: SettingsSentinel.storageKey) }
 
@@ -420,7 +453,7 @@ final class PrefsStore {
       stamp = (keepsDirtyMarks ? found : nil) ?? .fresh(owner: owner)
       stamp.owner = owner
     }
-    storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    write(prefs, to: storage)
     writeStamp()
     mirrorToDevice()
     onAdopt?(prefs, arrival)
@@ -439,7 +472,7 @@ final class PrefsStore {
     let merged = Prefs.keeping(stamp.dirtyFields, of: prefs, over: value)
     guard merged != prefs else { return }
     prefs = merged
-    storage.setPrefsData(PrefsCodec.encode(merged), forKey: PrefsCodec.key)
+    write(merged, to: storage)
     mirrorToDevice()
     // 云端落地是同一个人的档案到货，不是换人。
     onAdopt?(prefs, .sameProfile)

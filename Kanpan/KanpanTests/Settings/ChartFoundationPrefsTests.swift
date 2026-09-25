@@ -69,7 +69,8 @@ struct IndicatorColorPersistenceTests {
     #expect(restarted.prefs.indicatorColors[.ema]?[0] == "#37A78F")
     var reset = IndicatorDraft(id: .ma, prefs: restarted.prefs); reset.colors = [:]
     restarted.update { reset.save(into: &$0) }
-    #expect(PrefsStore(storage: storage).prefs.indicatorColors[.ma]?.isEmpty == true)
+    // 配色清空 = 回到出厂：整项清掉（nil），不留一张「空表」副本（2026-09-26）。
+    #expect(PrefsStore(storage: storage).prefs.indicatorColors[.ma] == nil)
     #expect(PrefsStore(storage: storage).prefs.indicatorColors[.ema]?[0] == "#37A78F")
   }
 }

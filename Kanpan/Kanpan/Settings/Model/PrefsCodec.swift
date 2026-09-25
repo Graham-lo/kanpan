@@ -1,4 +1,5 @@
 import Foundation
+import os
 import KanpanCore
 import KanpanData
 import KanpanNetwork
@@ -20,21 +21,60 @@ enum PrefsCodec {
   ///
   /// 2026-09-19 改成：版本对不上也照读每一个字段（每个字段本来就是一项一项容错解码的），
   /// 这一版真正改了默认值的那几项交给 `migrate` 点名修。
-  static let version = 2
+  ///
+  /// 3（2026-09-26）：「认出上一版出厂的常用行就换成新默认」从 `init(from:)` 挪进
+  /// `migrate`。原来那段每次解码都跑——而同步合并、撤销、账号切换一路都是先编码再解码，
+  /// 于是用户**亲手**钉成 5m/30m/1h/4h/1d 的常用行，下一次随便哪条路一过就被改回出厂。
+  /// 只有写着 2 的老档才该被这样认；3 起写下的档，那串就是用户自己的选择。
+  static let version = 3
   /// 认得的最老存档。比它还老的是原型期那份键名完全不同的档（`styleID` / `recordButtonX`
   /// 那一代），读进来只会是一堆认不出的字段，不如直接退出厂值。
   static let oldestSupported = 2
   static let keyPrefix = "kanpan.prefs.v"
+  /// `UserDefaults` 键名里那个数字。**钉死在 2，不跟 `version` 走**：档内的 `v` 已经
+  /// 足够让 `migrate` 知道该修什么；键名要是跟着 +1，未登录那份设置会当场躺在一个再也
+  /// 没人读的旧键上（上面那段注释说的就是这件事）。
+  static let storageVersion = 2
 
   /// 写进 `UserDefaults` 的那个键。
-  static var key: String { key(version: version) }
+  static var key: String { key(version: storageVersion) }
   static func key(version: Int) -> String { "\(keyPrefix)\(version)" }
 
-  static func encode(_ prefs: Prefs) -> Data {
+  private static let log = Logger(subsystem: "com.kanpan.app", category: "prefs")
+
+  /// 编码。**编不出来就是 nil**——调用方拿到 nil 必须什么都不写、留着上一份。
+  ///
+  /// 原来这儿编不出来就交一个空 `Data()` 出去，`PrefsStore` 照单写盘：空档读回来是
+  /// `.defaults`，于是一次编码失败 = 全部偏好清零。JSONEncoder 真会抛的只有一种情况：
+  /// 某个 `Double` 是 NaN / ±∞（它不肯写非数），所以编码之前先 `sanitized` 一遍，
+  /// 把每一个浮点字段夹回合法区间；夹完还抛就记一条日志，交 nil。
+  static func encoded(_ prefs: Prefs) -> Data? {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    // Prefs 的 encode 不会抛（全是标准类型），真抛了就当没存档。
-    return (try? encoder.encode(prefs)) ?? Data()
+    do {
+      return try encoder.encode(sanitized(prefs))
+    } catch {
+      log.error("prefs encode failed, keeping previous archive: \(String(describing: error), privacy: .public)")
+      return nil
+    }
+  }
+
+  /// 兼容老调用方（账号那一侧还按「一定有 Data」在用）。`sanitized` 之后 `encoded`
+  /// 实际上不会失败；真失败了这里仍交空 `Data()`，**写盘的路一律改走 `encoded`**。
+  static func encode(_ prefs: Prefs) -> Data { encoded(prefs) ?? Data() }
+
+  /// 编码前把每一个浮点字段夹回合法区间：非数退回出厂值，越界夹到边上。
+  /// 和 `init(from:)` 里读的那一道是同一组规则——写进去的和读得回来的一样。
+  static func sanitized(_ prefs: Prefs) -> Prefs {
+    var p = prefs
+    p.barSpacing = Prefs.clampSpacing(p.barSpacing)
+    p.portraitHeight = Prefs.clampPortraitHeight(p.portraitHeight)
+    p.rsiUpper = p.rsiUpper.isFinite ? min(100, max(1, p.rsiUpper)) : Prefs.defaults.rsiUpper
+    p.rsiLower = p.rsiLower.isFinite ? min(p.rsiUpper - 1, max(0, p.rsiLower)) : min(p.rsiUpper - 1, Prefs.defaults.rsiLower)
+    p.watchMoveThreshold = WatchMove.clampThreshold(p.watchMoveThreshold)
+    p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
+    p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
+    return p
   }
 
   /// 永远给得出一份能用的设置：坏档、半截档、未来版本的档，都退回默认再往上并。
@@ -49,9 +89,13 @@ enum PrefsCodec {
   /// 那几个字段**，别的一个字都不碰。`from` 是存档里写着的版本；比当前还新（用户从更高
   /// 版本降级回来）时什么都不做，那一版新加的字段解码时已经当认不出忽略掉了。
   ///
-  /// 现在是空的：版本 2 就是目前这一版，还没有需要往上修的老档。
-  static func migrate(_ prefs: inout Prefs, from: Int) {
+  ///
+  /// `archivedQuicks`：存档里原样写着的常用行（只去重、没排序、没按上限截）。出厂的七档
+  /// 那一版截到六档之后就认不出来了，所以比对要拿截之前的那串。
+  static func migrate(_ prefs: inout Prefs, from: Int, archivedQuicks: [Interval]? = nil) {
     guard from < version else { return }
+    // 3：存档里原样躺着某一版出厂的常用行，就说明用户从没动过——换成新默认。
+    if from < 3, let quicks = archivedQuicks, Prefs.factoryQuicks.contains(quicks) { prefs.quickIntervals = Interval.quick }
     // 样板（真要用时照这个写）：版本 3 把出厂皮肤从青苔改成陶土，没手动挑过皮肤的
     // 老用户该跟着换，挑过的一个字不动——
     // if from < 3, prefs.skin == .moss { prefs.skin = .clay }
@@ -174,7 +218,7 @@ extension Prefs: Codable {
   /// 常用行是每次装完就写进存档的，所以「没存过」这条路只对全新安装有效；老用户要吃到
   /// 新默认，只能靠认出「这串就是上一版出厂的样子」。反过来只要有一处不一样，那就是
   /// 用户自己钉的，一个字都不动。
-  fileprivate static let factoryQuicks: [[Interval]] = [
+  static let factoryQuicks: [[Interval]] = [
     [.m1, .m5, .m15, .h1, .h4, .d1],        // 更早的六档
     [.m1, .m5, .m15, .m30, .h1, .h4, .d1],  // 收成五档之前的七档
     [.m5, .m30, .h1, .h4, .d1],             // 2026-09-21 放满六格之前的五档
@@ -196,15 +240,16 @@ extension Prefs: Codable {
 
     if let raw = str(.interval), let v = Interval(rawValue: raw) { interval = v }
 
+    var archivedQuicks: [Interval]?
     if let raw = strs(.quickIntervals) {
       var seen: [Interval] = []
       for r in raw {
         guard let iv = Interval(rawValue: r), !seen.contains(iv) else { continue }
         seen.append(iv)
       }
-      // 存档里原样躺着上一版出厂的那串就当没动过，直接给新默认；只要有一处不一样
-      // 就是用户自己钉过的，一个字都不改。
-      if Self.factoryQuicks.contains(seen) { seen = Interval.quick }
+      // 「认出上一版出厂的那串就换新默认」只对写着 2 的老档做，在末尾的 `PrefsCodec.migrate`
+      // 里（版本 3 起）。原来放在这儿每次解码都跑，用户亲手钉成同一串也会被改回去。
+      archivedQuicks = seen
       // 上限 2026-09-21 从 10 收到 6，存档里躺着七八档的不在少数。砍之前先按周期从短到长
       // 排一遍再取前六个：直接 `prefix` 砍的是「存档里写在前面的那几个」，那个顺序是
       // 历史包袱（手改的档、更早版本的写法），砍出来的六档可能是 1d 1w 1M 这种全长周期。
@@ -270,7 +315,7 @@ extension Prefs: Codable {
     if let v = bool(.mainInverted) { mainInverted = v }
     if let raw = strs(.subInverted) { subInverted = Set(Prefs.ids(raw, placement: .sub)) }
     if let v = bool(.adaptiveIndicators) { adaptiveIndicators = v }
-    if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = min(1, max(0, v)) }
+    if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = Prefs.clampPortraitHeight(v) }
     if let v = try? c.decode(Double.self, forKey: .rsiUpper), v.isFinite { rsiUpper = min(100, max(1, v)) }
     if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = min(rsiUpper - 1, max(0, v)) }
     if let raw = try? c.decode([String: [Int]].self, forKey: .hiddenOutputs) {
@@ -323,10 +368,11 @@ extension Prefs: Codable {
     if let raw = str(.favoritesGroup), raw.count <= 128 { favoritesGroup = raw }
     if let raw = str(.sectorMarket), let v = SectorMarket(rawValue: raw) { sectorMarket = v }
     if let raw = str(.sectorWindow), let v = SectorWindow(rawValue: raw) { sectorWindow = v }
-    // 排序口径那个枚举在 app target 里，这一层认不出来，只做长度这一道；
-    // 认不认得出交给读的那一边（`SectorSymbolSort(rawValue:) ?? .change`）。
-    if let raw = str(.sectorSort), !raw.isEmpty, raw.count <= 32 { sectorSort = raw }
-    if let raw = str(.lastDrawTool), raw.count <= 32 { lastDrawTool = raw }
+    // 这两项和服务端 `sync_validation.rs` 的值规则逐字对齐：排序只认枚举里那几档，
+    // 画线工具只认 `Drawing.Kind` 里有的（或空串 = 没用过）。认不出的退回出厂值，
+    // 不让一个手改 / 更高版本写下的字面量躺进档里、再被推上去整条拒收。
+    if let raw = str(.sectorSort), SectorSymbolSort(rawValue: raw) != nil { sectorSort = raw }
+    if let raw = str(.lastDrawTool) { lastDrawTool = raw.isEmpty || Drawing.Kind(rawValue: raw) != nil ? raw : "" }
     if let v = (try? c.decodeIfPresent(Int.self, forKey: .replaySpeed)) ?? nil { replaySpeed = Prefs.clampSpeed(v) }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
@@ -336,7 +382,7 @@ extension Prefs: Codable {
     }
 
     if let raw = strs(.compareSymbols) { compareSymbols = Prefs.cleanCompareSymbols(raw) }
-    PrefsCodec.migrate(&self, from: archived)
+    PrefsCodec.migrate(&self, from: archived, archivedQuicks: archivedQuicks)
   }
 
   /// 一串 rawValue → 去重、去掉认不出的、去掉放错位置的指标。

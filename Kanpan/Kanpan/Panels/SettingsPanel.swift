@@ -18,7 +18,8 @@ import KanpanNetwork
 /// 「智能行情线路」开关 2026-09-24 都整条删了：主机一律由 `RouteResolver` 按线路给。
 /// 唯一留下的是清缓存（界面上写「清理存储空间」）：那是用户真会想干的一件事。
 ///
-/// 没有「确定」也没有「取消」：改一下立刻生效、立刻落盘，并给一次 selection 触觉。
+/// 没有「确定」也没有「取消」：改一下立刻生效、立刻落盘，并给一次 selection 触觉
+/// （只在手指拨到的那一下，`PrefsStore.updateByHand`）。
 ///
 /// 2026-09-18 起它是标签栏最右边那一整页，不再是半屏（`asPage`）。用户定的是
 /// 「这四个底部栏都单独是一个页面」——设置里要翻的东西不少，半屏拉上拉下本来就别扭。
@@ -57,7 +58,8 @@ struct SettingsPanel: View {
       // `asPage == false` 的那条路留着：那时这一页自己是一张 sheet，账号页得叠在
       // 它上面，根的 sheet 够不着——那才是「真正作为上层 sheet 的设置上下文」。
       .modifier(AccountPresenter(account: asPage ? nil : account))
-      .sensoryFeedback(.selection, trigger: prefs)
+      // selection 触觉长在各个控件的动作上（`PrefsStore.updateByHand`），不挂在 `prefs` 上：
+      // 挂在值上的话，这一页开着时云端落地、别处改设置也会震。
   }
 
   /// 整页走系统 `NavigationStack`：行内标题 17 semibold、滚动时系统自己的边缘效果
@@ -109,7 +111,7 @@ struct SettingsPanel: View {
     PanelGroupTitle(text: "行情")
     PanelRow(name: "涨跌配色") {
       PanelSegment(options: [("绿涨红跌", false), ("红涨绿跌", true)], selection: prefs.redUp) { v in
-        store.update { $0.redUp = v }
+        store.updateByHand { $0.redUp = v }
       }
     }
     PanelRow(name: "涨跌幅起点") {
@@ -117,7 +119,7 @@ struct SettingsPanel: View {
       // 自己搭标签，颜色从 `PanelTheme` 取。
       Menu {
         ForEach(ChangeBasis.allCases, id: \.self) { basis in
-          Button(basis.title) { store.update { $0.changeBasis = basis } }
+          Button(basis.title) { store.updateByHand { $0.changeBasis = basis } }
         }
       } label: {
         HStack(spacing: Space.xs) {
@@ -130,7 +132,7 @@ struct SettingsPanel: View {
     }
     PanelRow(name: "时区") {
       PanelSegment(options: SettingsPanel.zones, selection: prefs.timeZone) { v in
-        store.update { $0.timeZone = v }
+        store.updateByHand { $0.timeZone = v }
       }
     }
     // 画线「更多」里还有一颗「吸附到 K 线」：那颗管画线端点，这颗管长按出来的十字线，
@@ -149,7 +151,7 @@ struct SettingsPanel: View {
     PanelRow(name: "行情线路", divider: false) {
       PanelSegment(options: SettingsPanel.routes, selection: prefs.routePolicy,
                    id: "settings.routePolicy") { v in
-        store.update { $0.routePolicy = v }
+        store.updateByHand { $0.routePolicy = v }
       }
     }
 
@@ -187,7 +189,7 @@ struct SettingsPanel: View {
   private func switchRow(_ name: String, _ meta: String?, _ on: Bool,
                          _ set: @escaping (inout Prefs, Bool) -> Void) -> some View {
     PanelRow(name: name, meta: meta) {
-      PanelSwitch(isOn: on) { store.update { set(&$0, !on) } }
+      PanelSwitch(isOn: on) { store.updateByHand { set(&$0, !on) } }
     }
   }
 
@@ -237,11 +239,13 @@ struct SettingsPanel: View {
 
   static var legalBase: URL? { ServerHosts.accountAPI }
 
+  /// 恢复默认。「撤销」只还原这一下改到的字段（`restore(_:from:)`）：撤销前那几秒里
+  /// 云端落地的、别处改的，不跟着被抹回去。
   private func resetAll() {
     let before = store.prefs
-    store.resetToDefaults()
+    let changed = store.resetToDefaults()
     Haptics.warning()
-    store.note("已恢复默认", undo: { store.restore(before) })
+    store.note("已恢复默认", undo: { store.restore(changed, from: before) })
   }
 
   /// 账号行右边那句。同步真出错时它换成那句错误——按 §2G 的规矩，

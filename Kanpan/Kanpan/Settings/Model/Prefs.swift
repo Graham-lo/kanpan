@@ -253,6 +253,16 @@ struct Prefs: Sendable, Equatable {
     return min(AICoinBehavior.maximumSpacing, max(AICoinBehavior.minimumSpacing, value))
   }
 
+  /// 竖屏主图占比的合法区间。和服务端 `sync_validation.rs` 的 `number(v, 0.1, 1.0)` 逐字相同：
+  /// 原来读档夹的是 0…1，0 这种值客户端收、服务端拒，推上去整条操作被打回。
+  static let portraitHeightRange: ClosedRange<Double> = 0.1...1
+
+  /// 读档、写档都走这一道：非数退回出厂的 0.5，越界夹到边上。
+  static func clampPortraitHeight(_ value: Double) -> Double {
+    guard value.isFinite else { return 0.5 }
+    return min(portraitHeightRange.upperBound, max(portraitHeightRange.lowerBound, value))
+  }
+
   // ---------------------------------------------------------------- 取用
 
   // 造型只剩 AICoin 一套（见 `CandleStyle`），这儿不存风格 id；旧存档里的 `styleID` 解码时直接忽略。

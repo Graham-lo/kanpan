@@ -163,9 +163,8 @@ struct PanelContent: View {
                  orderFlow: actions.orderFlow, symbol: actions.symbol)
     case .indicators:
       // 从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
-      // 选中反馈和「图表设置」那条路上一样（`ChartPanel` 挂在外层的那句）。
+      // 选中反馈长在指标页各控件的动作上（`PrefsStore.updateByHand`），两条路一样。
       IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol)
-        .sensoryFeedback(.selection, trigger: store.prefs)
     }
   }
 }
@@ -234,3 +233,24 @@ private struct PanelDemo: View {
   }
 }
 #endif
+
+// MARK: - 手指拨的那一下
+
+extension PrefsStore {
+  /// 面板上**手指拨到**的那一下：真改到了就给一次 selection 触觉。
+  ///
+  /// 以前触觉是 `.sensoryFeedback(.selection, trigger: prefs)` 挂在几张面板上：
+  /// 值一变就震，不管是谁改的——云端落地、图上双击翻转、另一处改设置，面板开着都会震；
+  /// 「图表设置」外层一句、里层一句，拨一下还震两下。触觉该回答的是「我这一下拨到了」，
+  /// 所以挂在控件动作上。
+  func updateByHand(_ change: (inout Prefs) -> Void) {
+    byHand { $0.update(change) }
+  }
+
+  /// 同上，给不走 `update` 的那几个动作（`toggleIndicator` 这类）用。
+  func byHand(_ action: (PrefsStore) -> Void) {
+    let before = prefs
+    action(self)
+    if prefs != before { Haptics.step() }
+  }
+}

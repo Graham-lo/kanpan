@@ -348,6 +348,13 @@ extension Prefs {
     return PrefsCodec.decode(data)
   }
 
+  /// 这一份，但本机字段（`deviceOnlyFieldNames`，比如行情线路）换成 `device` 身上的。
+  ///
+  /// 「恢复默认」拿它：出厂那一份打底，这台手机挂在哪张网上不跟着回出厂。
+  func keepingDeviceFields(from device: Prefs) -> Prefs {
+    Prefs.keeping(Prefs.deviceOnlyFieldNames, of: device, over: self)
+  }
+
   private static func fieldMap(_ prefs: Prefs) -> [String: Any] {
     (try? JSONSerialization.jsonObject(with: PrefsCodec.encode(prefs))) as? [String: Any] ?? [:]
   }

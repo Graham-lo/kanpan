@@ -72,6 +72,7 @@ struct MainScreenObservers: ViewModifier {
   let onPrefsReviewScope: (String) -> Void
   let onTimeZone: (TZChoice) -> Void
   let onChangeBasis: (ChangeBasis) -> Void
+  let onInterval: (Interval) -> Void
   let onRoutePolicy: (MarketRoutePolicy) -> Void
   let onFundingRate: (Double?) -> Void
   let onCatalog: () -> Void
@@ -137,6 +138,9 @@ struct MainScreenObservers: ViewModifier {
   private func marketSection<V: View>(_ view: V) -> some View {
     view
     .onChange(of: prefs.changeBasis) { _, next in onChangeBasis(next) }
+    // 偏好里的周期不是经周期条改的（云端落地、撤销、恢复默认），图也要跟上。
+    // 周期条那条路是先改偏好、再当场 `session.show`，到这儿两边已经一样，什么都不做。
+    .onChange(of: prefs.interval) { _, next in onInterval(next) }
     .onChange(of: routePolicy) { _, next in onRoutePolicy(next) }
     // 品种表是板块页认 base 的依据（兜底桶按它的标签凑，点行去看图也靠它拼全名）。
     // 它是异步载进来的，所以不能只在 `boot()` 里交一次。

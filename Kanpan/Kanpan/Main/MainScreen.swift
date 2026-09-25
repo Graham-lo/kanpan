@@ -440,6 +440,7 @@ struct MainScreen: View {
       onPrefsReviewScope: { value in review.searchScope = value },
       onTimeZone: { value in review.timezone = value },
       onChangeBasis: { next in session.configure(route: route, basis: next) },
+      onInterval: { next in followProfileInterval(next) },
       onRoutePolicy: { next in
         let route = RouteResolver(policy: next)
         session.configure(route: route, basis: prefs.changeBasis)
@@ -1964,6 +1965,17 @@ struct MainScreen: View {
     if panel != nil { panel = nil }
     if draw.panel != nil { draw.panel = nil }
     if intervalGrid { withAnimation(.easeOut(duration: 0.18)) { intervalGrid = false } }
+  }
+
+  /// 偏好里的周期变了、而图还停在别的周期上：图跟过去。
+  ///
+  /// 原来只有装档案那一刻（`honorProfile`）会对一次，于是云端落地、「撤销」、「恢复默认」
+  /// 改掉的周期，周期条上高亮已经换了、图还画在老周期上，直到下一次换档案。
+  /// 复盘在跑、分享预览开着的时候图是它们的，不动；不写偏好，所以不会回环。
+  private func followProfileInterval(_ next: Interval) {
+    guard live, !reviewChart.active, draw.previewing == nil, next != market.interval else { return }
+    proxy.cancelWindow()
+    session.show(interval: next)
   }
 
   private func pick(interval iv: Interval) {

@@ -255,15 +255,18 @@ struct PrefsPersistenceTests {
     #expect(box.keys == Self.oneSave)
   }
 
-  @Test("恢复默认把键抹掉")
+  @Test("恢复默认回到出厂值，只留本机专属的行情线路")
   @MainActor
   func 恢复默认() {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
     store.update { $0 = Self.mutated() }
     store.resetToDefaults()
-    #expect(store.prefs == .defaults)
-    #expect(PrefsStore(storage: box, cache: UnavailableMarketCache()).prefs == .defaults)
+    // 线路是这台设备自己的选择（deviceOnly），「恢复默认」不替它换线（2026-09-26）。
+    var expected = Prefs.defaults
+    expected.routePolicy = Self.mutated().routePolicy
+    #expect(store.prefs == expected)
+    #expect(PrefsStore(storage: box, cache: UnavailableMarketCache()).prefs == expected)
   }
 
   @Test("JSON 里存的是 rawValue，人能读，不是交错数组")
@@ -273,7 +276,7 @@ struct PrefsPersistenceTests {
     p.subHeightOverrides = [.macd: 1.25]
     let obj = try #require(
       try JSONSerialization.jsonObject(with: PrefsCodec.encode(p)) as? [String: Any])
-    #expect(obj["v"] as? Int == 2)
+    #expect(obj["v"] as? Int == 3)
     #expect(obj["interval"] as? String == "1h")
     #expect(obj["subs"] as? [String] == ["VOL", "OI", "MACD"])
     #expect((obj["params"] as? [String: [Int]])?["MA"] == [7, 25, 99])

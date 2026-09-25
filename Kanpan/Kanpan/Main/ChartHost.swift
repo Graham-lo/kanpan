@@ -73,6 +73,8 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   /// 上一次报出去的翻转状态。图每改一次状态都会回调一次，先在这儿比一下，
   /// 没变就不劳烦 `PrefsStore` 去比整份设置。
   var lastInversion: (main: Bool, subs: Set<IndicatorID>)?
+  /// 上一次从外面（偏好快照）带进来的翻转。没把手时的退路，见 `ChartProxy.lastSnapshotInversion`。
+  var lastSnapshotInversion: ChartInversion?
   /// 视野兑现完还欠一下「回到最新」。见 `ChartProxy.scrollToLatest(animated:)`：
   /// 那一下经常提在图还没量出宽度的时候，只能记账、等 `layoutSubviews` 兑现。
   var pendingLatest = false
@@ -268,6 +270,30 @@ private final class ResizeGrip: UIView {
   required init?(coder: NSCoder) { fatalError("programmatic only") }
 }
 
+/// 主图 / 副图的上下翻转，一份。
+struct ChartInversion: Equatable {
+  var main: Bool
+  var subs: Set<IndicatorID>
+
+  init(main: Bool, subs: Set<IndicatorID>) { self.main = main; self.subs = subs }
+  init(_ state: ChartState) { main = state.price.inverted; subs = state.subInverted }
+
+  /// 这一次该不该认外面带进来的那份翻转。
+  ///
+  /// 翻转是**图自己**的状态（双击轴翻一下，图先翻、再报给偏好），所以宿主一向拿图身上的
+  /// 那份盖过外面传下来的快照——否则外面那份还没跟上的一帧会把刚翻过来的又翻回去。
+  /// 可「永远以图为准」把另一条路堵死了：偏好里的翻转**不是从这张图来的**时候（云端落地、
+  /// 「允许翻转」关掉、撤销、恢复默认），图一直不认，设置改了图上看不出来。
+  ///
+  /// 判据：外面那份和上一次带进来的比变了没有。没变 = 快照只是旧的，图说了算；
+  /// 变了 = 偏好那一侧真改了，认它。图上双击那条路自己也会让快照变一次，
+  /// 但变成的正是图上现在那份，认了等于没动。复盘时翻转不写回偏好，快照不变，图说了算。
+  static func adopt(_ incoming: ChartInversion, last: ChartInversion?) -> Bool {
+    guard let last else { return false }
+    return last != incoming
+  }
+}
+
 /// 给 SwiftUI 递过去的一个把手。
 ///
 /// 「回到最新」要叫的是 `ChartView.scrollToLatest()`，那是 UIKit 那一侧的方法；
@@ -299,6 +325,9 @@ final class ChartProxy {
   /// 序号跟着 `MainScreen` 的 `@State` 活着，重建盒子时就能看出「我不在的时候档案
   /// 到过货」，改按 `resetSpacing` 重量一次（`.adopt`），位置照旧留着。
   var lastAdoptToken = 0
+  /// 上一次从外面（偏好快照）带进来的翻转。和 `lastAdoptToken` 同理记在这儿：盒子活不过
+  /// 一次换页，换页回来要知道「我不在的时候偏好里的翻转改过没有」。见 `ChartInversion.adopt`。
+  var lastSnapshotInversion: ChartInversion?
   /// 还欠一下「回到最新」。
   ///
   /// 竖屏的三张整页是 `switch tab` 拆出来的：换到自选再换回行情，`chartPage` 整棵树
@@ -448,11 +477,15 @@ struct ChartHost: UIViewRepresentable {
     wire(box)
     proxy?.handOverLatest(to: box)
     var incoming = state
+    let adoptInversion = incoming.map { noteSnapshotInversion($0, box: box) } ?? false
     if var next = incoming, let saved = proxy?.savedState, let width = proxy?.savedPlotWidth,
        next.series.symbol == saved.series.symbol, next.series.interval == saved.series.interval {
+      let wanted = ChartInversion(next)
       next.view = saved.view
       if next.price.mode == saved.price.mode { next.price = saved.price }
       next.subInverted = saved.subInverted
+      // 图不在的时候偏好里的翻转改过（云端 / 设置）：认偏好那份，不拿存下来的旧图盖。
+      if adoptInversion { next.price.inverted = wanted.main; next.subInverted = wanted.subs }
       next.crosshair = next.options.dataDisplay == saved.options.dataDisplay && next.options.crossPrice == saved.options.crossPrice ? saved.crosshair : nil
       next.orderFlowSelected = next.orderFlow == nil ? nil : saved.orderFlowSelected
       incoming = next
@@ -472,6 +505,16 @@ struct ChartHost: UIViewRepresentable {
   /// 上一次兑现过的到货序号。有把手就以把手上那份为准（它活得过换页），
   /// 没把手（横屏工作台之类只活一阵的图）就退回盒子自己记的那份。
   private func consumedAdoptToken(_ box: ChartBox) -> Int { proxy?.lastAdoptToken ?? box.lastAdoptToken }
+
+  /// 记下这一次外面带进来的翻转，并回答「这次该不该认它」（`ChartInversion.adopt`）。
+  /// 有把手记在把手上（活得过换页），没把手退回盒子。
+  private func noteSnapshotInversion(_ state: ChartState, box: ChartBox) -> Bool {
+    let now = ChartInversion(state)
+    let last = proxy != nil ? proxy?.lastSnapshotInversion : box.lastSnapshotInversion
+    proxy?.lastSnapshotInversion = now
+    box.lastSnapshotInversion = now
+    return ChartInversion.adopt(now, last: last)
+  }
   private func consumeAdoptToken(_ box: ChartBox) { proxy?.lastAdoptToken = adoptToken; box.lastAdoptToken = adoptToken }
 
   func updateUIView(_ box: ChartBox, context: Context) {
@@ -493,6 +536,8 @@ struct ChartHost: UIViewRepresentable {
       box.pending = .reset
       return
     }
+    let wanted = ChartInversion(s)
+    let adoptInversion = noteSnapshotInversion(s, box: box)
     if let old = box.chart.state ?? proxy?.savedState, old.series.count > 0 {
       // 视野归图自己管：外面传下来的那份是「上一次图告诉我的」，原样塞回去会把
       // 手势正在做的位移覆盖掉。只在品种/周期/风格真换了的时候才重算。
@@ -500,7 +545,8 @@ struct ChartHost: UIViewRepresentable {
       s.crosshair = old.crosshair
       // 轻点选中的那一桶（详情卡）也是图上的交互态，外面那份必然是空的；主力订单流关掉就清掉。
       s.orderFlowSelected = s.orderFlow == nil ? nil : old.orderFlowSelected
-      s.subInverted = old.subInverted
+      // 翻转归图，除非偏好那一侧真改了（`ChartInversion.adopt`）。
+      s.subInverted = adoptInversion ? wanted.subs : old.subInverted
       if box.isResizing { s.subScale = old.subScale }
       if box.isReordering { s.subs = old.subs }
       if old.options.dataDisplay != s.options.dataDisplay || old.options.crossPrice != s.options.crossPrice {
@@ -541,6 +587,7 @@ struct ChartHost: UIViewRepresentable {
         // 把上一个品种拉出来的倍率搬过去没有意义。
         if old.price.mode == s.price.mode { s.price = old.price }
         else { s.price.inverted = old.price.inverted }
+        if adoptInversion { s.price.inverted = wanted.main }
       } else {
         // 手指正按着十字线或某个画线锚点时，坐标是钉死的（`ChartView.axesFrozen`）：
         // 新 K 线照常进序列，但视野一格都不许挪——`reconcile` 把右缘往右推一格，
@@ -549,9 +596,11 @@ struct ChartHost: UIViewRepresentable {
         if !box.chart.axesFrozen, let layout = box.chart.chartLayout {
           s.view = AICoinBehavior.reconcile(old.view, from: old.series, to: s.series, plotW: layout.plotW, anchor: s.options.anchor)
         }
-        // Price transforms belong to the chart, not the SwiftUI settings snapshot.
+        // Price transforms belong to the chart, not the SwiftUI settings snapshot —
+        // 翻转那一位例外：偏好那一侧真改了就认偏好（`ChartInversion.adopt`）。
         if old.price.mode == s.price.mode { s.price = old.price }
         else { s.price.inverted = old.price.inverted }
+        if adoptInversion { s.price.inverted = wanted.main }
       }
     } else {
       box.pending = .reset

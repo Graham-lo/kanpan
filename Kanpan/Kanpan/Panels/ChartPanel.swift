@@ -97,7 +97,9 @@ struct ChartPanel: View {
     }
     .animation(.easeOut(duration: 0.22), value: page)
     .clipped()
-    .sensoryFeedback(.selection, trigger: prefs)
+    // 触觉不再挂 `.sensoryFeedback(trigger: prefs)`：外层一句、里层各一句，改一项震两下；
+    // 而且云端落地、图上翻转这些不是手指拨的改动也会震。现在震动长在控件动作上
+    // （`PrefsStore.updateByHand`），只有真拨到了才震一下。
   }
 
   private var settings: some View {
@@ -123,7 +125,7 @@ struct ChartPanel: View {
           .accessibilityIdentifier("compare.add")
         ForEach(prefs.compareSymbols, id: \.self) { key in
           PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
-            Button { store.update { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
+            Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
               Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
             }
             .buttonStyle(.plain)
@@ -131,7 +133,7 @@ struct ChartPanel: View {
           }
         }
         if !prefs.compareSymbols.isEmpty {
-          PanelRow(name: "清除对比", divider: false, onTap: { store.update { $0.compareSymbols = [] }; close() })
+          PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; close() })
             .accessibilityIdentifier("compare.clear")
         }
       }
@@ -151,11 +153,11 @@ struct ChartPanel: View {
       PanelRow(name: "画法") {
         PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
                      id: "chart.candleKind") { v in
-          store.update { $0.candleKind = v }
+          store.updateByHand { $0.candleKind = v }
         }
       }
       PanelRow(name: "价格轴") {
-        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.update { $0.priceMode = v } }
+        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.updateByHand { $0.priceMode = v } }
       }
       switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
         .accessibilityIdentifier("chart.lastLine")
@@ -164,7 +166,6 @@ struct ChartPanel: View {
       PanelRow(name: "更多设置", divider: false, onTap: { page = .more }) { chevron }
         .accessibilityIdentifier("chart.more")
     }
-    .sensoryFeedback(.selection, trigger: prefs)
   }
 
   /// 「更多设置」：一调就不再动的开关。和「指标」一样是面板里推进去的一层。
@@ -173,11 +174,11 @@ struct ChartPanel: View {
       PanelGroupTitle(text: "读数与坐标轴")
       PanelRow(name: "K 线数据") {
         PanelSegment(options: [("K线内", CandleDataDisplay.inside), ("顶部", .top), ("跟随K线", .follow)],
-                     selection: prefs.dataDisplay, id: "chart.dataDisplay") { v in store.update { $0.dataDisplay = v } }
+                     selection: prefs.dataDisplay, id: "chart.dataDisplay") { v in store.updateByHand { $0.dataDisplay = v } }
       }
       PanelRow(name: "十字线") {
         PanelSegment(options: [("选中价", CrossPriceMode.selected), ("收盘价", .close)], selection: prefs.crossPrice,
-                     id: "chart.crossPrice") { v in store.update { $0.crossPrice = v } }
+                     id: "chart.crossPrice") { v in store.updateByHand { $0.crossPrice = v } }
       }
       switchRow("主轴允许翻转", nil, prefs.allowMainInversion,
                 id: "chart.allowMainInversion") { $0.allowMainInversion = $1 }
@@ -189,25 +190,25 @@ struct ChartPanel: View {
       PanelRow(name: "网格") {
         PanelSegment(options: ChartPanel.grids, selection: prefs.gridChoice,
                      id: "chart.gridChoice") { v in
-          store.update { $0.gridChoice = v }
+          store.updateByHand { $0.gridChoice = v }
         }
       }
       PanelRow(name: "阳线") {
         PanelSegment(options: ChartPanel.bodies, selection: prefs.bodyChoice,
                      id: "chart.bodyChoice") { v in
-          store.update { $0.bodyChoice = v }
+          store.updateByHand { $0.bodyChoice = v }
         }
       }
       PanelRow(name: "横向位置") {
         PanelSegment(options: ChartPanel.anchors, selection: prefs.viewAnchor,
                      id: "chart.viewAnchor") { v in
-          store.update { $0.viewAnchor = v }
+          store.updateByHand { $0.viewAnchor = v }
         }
       }
       PanelRow(name: "纵向位置", divider: false) {
         PanelSegment(options: ChartPanel.biases, selection: prefs.priceBias,
                      id: "chart.priceBias") { v in
-          store.update { $0.priceBias = v }
+          store.updateByHand { $0.priceBias = v }
         }
       }
 
@@ -220,7 +221,6 @@ struct ChartPanel: View {
       }
       .accessibilityIdentifier("chart.sinceChange")
     }
-    .sensoryFeedback(.selection, trigger: prefs)
   }
 
   private var chevron: some View {
@@ -244,7 +244,7 @@ struct ChartPanel: View {
                          id: String? = nil,
                          _ set: @escaping (inout Prefs, Bool) -> Void) -> some View {
     PanelRow(name: name, meta: meta, divider: divider) {
-      PanelSwitch(isOn: on) { store.update { set(&$0, !on) } }
+      PanelSwitch(isOn: on) { store.updateByHand { set(&$0, !on) } }
         .accessibilityIdentifier(id ?? "")
     }
   }

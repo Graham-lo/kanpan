@@ -58,7 +58,7 @@ struct IndicatorPage: View {
   private func row(_ id: IndicatorID, last: Bool) -> some View {
     let on = prefs.isOn(id)
     return PanelRow(name: id.name, swatch: t.swatch(id), divider: !last) {
-      PanelSwitch(isOn: on) { store.toggleIndicator(id) }
+      PanelSwitch(isOn: on) { store.byHand { $0.toggleIndicator(id) } }
         .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }
   }
@@ -141,7 +141,7 @@ private struct InUseList: View {
 
       // 在图上拖过副图高度才出现的那条退路（高度只在图上拖，这儿不给档位）。
       if resized {
-        Button { store.update { $0.subHeightOverrides[id] = nil } } label: {
+        Button { store.updateByHand { $0.subHeightOverrides[id] = nil } } label: {
           Text("还原高度").font(PanelFont.seg).foregroundStyle(t.amber)
             .frame(height: Self.rowH)
             .hitTarget()
@@ -172,8 +172,8 @@ private struct InUseList: View {
           .accessibilityIdentifier("indicator.order.\(id.rawValue)")
           .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: store.update { $0.moveSub(from: index, to: index + 1) }
-            case .decrement: store.update { $0.moveSub(from: index, to: index - 1) }
+            case .increment: store.updateByHand { $0.moveSub(from: index, to: index + 1) }
+            case .decrement: store.updateByHand { $0.moveSub(from: index, to: index - 1) }
             default: break
             }
           }
@@ -192,7 +192,7 @@ private struct InUseList: View {
         dragging = nil
         offset = 0
         guard steps != 0 else { return }
-        store.update { $0.moveSub(from: index, to: index + steps) }
+        store.updateByHand { $0.moveSub(from: index, to: index + steps) }
       }
   }
 }
@@ -231,6 +231,8 @@ private struct IndicatorEditor: View {
   /// 现在「保存」走 `committed()`——在同一个调用栈里把手上这几格算进去再落盘，
   /// 一样不依赖失焦时序，而且连 RSI 上下限那两格也一并管上了。
   @State private var typing: [ParamFocus: String] = [:]
+  /// 按「保存」时 RSI 下限不低于上限：这一次没存，两格标红，直到改了其中一格。
+  @State private var rsiInvalid = false
   init(store: PrefsStore, id: IndicatorID) {
     self.store = store; _draft = State(initialValue: IndicatorDraft(id: id, prefs: store.prefs))
   }
@@ -260,8 +262,8 @@ private struct IndicatorEditor: View {
             ForEach(Array(draft.params.indices), id: \.self) { paramRow($0) }
           }
           if draft.id == .rsi {
-            numberRow(.upper, label: "上限", value: Int(draft.upper), identifier: "indicator.rsi.upper.field")
-            numberRow(.lower, label: "下限", value: Int(draft.lower), identifier: "indicator.rsi.lower.field")
+            numberRow(.upper, label: "上限", value: Int(draft.upper), identifier: "indicator.rsi.upper.field", invalid: rsiInvalid)
+            numberRow(.lower, label: "下限", value: Int(draft.lower), identifier: "indicator.rsi.lower.field", invalid: rsiInvalid)
           }
         } header: {
           PanelFormSectionTitle(text: "参数")
@@ -337,7 +339,7 @@ private struct IndicatorEditor: View {
         ToolbarItem(placement: .confirmationAction) {
           // 手指还停在某一格里也能直接按：`committed()` 把那格的字算进去之后才落盘
           // （验收 b，也是审查 C-07 那条账的现在这一版做法）。
-          Button("保存") { let final = committed(); store.update { final.save(into: &$0) }; dismiss() }
+          Button("保存") { save() }
             .fontWeight(.semibold)
             .foregroundStyle(t.amber)
             .accessibilityIdentifier("indicator.save")
@@ -346,6 +348,20 @@ private struct IndicatorEditor: View {
     }
     .tint(t.amber)
     .presentationBackground(t.app)
+  }
+
+  /// 「保存」。RSI 下限不低于上限时不存、不关，两格标红——原来两格打字时互相夹，
+  /// 想把 30/70 改成 75/85，先打上限 85 没事，先打下限 75 就被夹成 69，存进去的不是他打的。
+  private func save() {
+    let final = committed()
+    guard final.boundsValid else {
+      draft = final; typing.removeAll()
+      rsiInvalid = true
+      Haptics.warning()
+      return
+    }
+    store.updateByHand { final.save(into: &$0) }
+    dismiss()
   }
 
   private func parameterLabel(_ index: Int) -> String {
@@ -367,14 +383,18 @@ private struct IndicatorEditor: View {
   }
 
   /// 一行「名字 + 数字框」。框里显示的是「正在打的字」，没在打就是 draft 里的数。
-  private func numberRow(_ field: ParamFocus, label: String, value: Int, identifier: String) -> some View {
+  private func numberRow(_ field: ParamFocus, label: String, value: Int, identifier: String, invalid: Bool = false) -> some View {
     ParamField(label: label,
                text: Binding(get: { typing[field] ?? String(value) },
-                             set: { typing[field] = String($0.filter(\.isNumber).prefix(3)) }),
+                             set: { text in
+                               typing[field] = String(text.filter(\.isNumber).prefix(3))
+                               if field == .upper || field == .lower { rsiInvalid = false }
+                             }),
                field: field,
                focus: $focus,
                theme: t,
-               identifier: identifier)
+               identifier: identifier,
+               invalid: invalid)
   }
 
   /// 把一格打完的字落进 draft。
@@ -389,11 +409,11 @@ private struct IndicatorEditor: View {
     case .param(let index):
       guard draft.params.indices.contains(index) else { return }
       draft.params[index] = IndicatorParamRule.clamp(n)
-    case .upper:
-      // 上限永远得比下限高一格，所以夹的下沿跟着下限走。
-      draft.upper = Double(min(100, max(Int(draft.lower) + 1, n)))
-    case .lower:
-      draft.lower = Double(max(0, min(Int(draft.upper) - 1, n)))
+    case .upper, .lower:
+      // 两格各管各的，只夹 0…100。原来上限夹的下沿跟着下限走、下限夹的上沿跟着上限走，
+      // 于是先改哪一格决定了存进去的是什么；「下限低于上限」留到保存那一下再比（`save()`）。
+      let v = Double(min(100, max(0, n)))
+      if field == .upper { draft.upper = v } else { draft.lower = v }
     }
   }
 
@@ -471,6 +491,8 @@ private struct ParamField: View {
   var focus: FocusState<ParamFocus?>.Binding
   var theme: PanelTheme
   var identifier: String
+  /// 这一格的值存不进去（RSI 下限不低于上限）：字和底边标红。
+  var invalid: Bool = false
 
   var body: some View {
     HStack(spacing: Space.m) {
@@ -483,14 +505,20 @@ private struct ParamField: View {
         .multilineTextAlignment(.trailing)
         .font(TypeScale.body)
         .monospacedDigit()
-        .foregroundStyle(theme.ink)
+        .foregroundStyle(invalid ? theme.danger : theme.ink)
         .frame(width: Hit.min + Space.m)
         .padding(.horizontal, Space.s)
         .padding(.vertical, Space.s)
         .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
+        .overlay {
+          RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
+            .strokeBorder(theme.danger, lineWidth: 1)
+            .opacity(invalid ? 1 : 0)
+        }
         .focused(focus, equals: field)
         .accessibilityIdentifier(identifier)
         .accessibilityLabel(label)
+        .accessibilityHint(invalid ? "下限要低于上限" : "")
     }
   }
 }

@@ -10,11 +10,15 @@ struct DisplaySettingsSection: View {
   /// 皮肤卡这一排和上下的行站在同一条竖线上：整页里跟页面外边距走（`panelPageInset()`）。
   @Environment(\.panelHPad) private var hPad
 
+  /// 配色卡按哪种深浅画。「按屏幕亮度切换」开着时深浅不由 `theme` 定，由亮度策略定
+  /// （`MainScreen.effectiveTheme` / `PanelHost` 算好的那一份，经 `panelTheme` 传下来）；
+  /// 原来这儿只看 `theme`，亮度把整页切成深色了，几张卡还按浅色画。
   private var dark: Bool {
+    if store.prefs.ambientTheme { return theme.dark }
     switch store.prefs.theme {
-    case .system: scheme == .dark
-    case .light: false
-    case .dark: true
+    case .system: return scheme == .dark
+    case .light: return false
+    case .dark: return true
     }
   }
 
@@ -36,14 +40,14 @@ struct DisplaySettingsSection: View {
     PanelRow(name: "外观") {
       PanelSegment(options: ThemeChoice.allCases.map { ($0.display, $0) },
                    selection: store.prefs.theme, id: "display.mode") { choice in
-        store.update { $0.theme = choice; $0.ambientTheme = false }
+        store.updateByHand { $0.theme = choice; $0.ambientTheme = false }
       }
     }
     // 原来叫「自动护眼配色 · 随屏幕明暗切换」，和上面「外观」里的「跟随系统」读起来像
     // 同一件事（审查 U13）。两者不合并：「跟随系统」跟的是系统深色模式，这颗跟的是屏幕
     // 亮度（`BrightnessThemePolicy`）。只改字面，写清它按什么切，不要副标题。
     PanelRow(name: "按屏幕亮度切换深浅") {
-      PanelSwitch(isOn: store.prefs.ambientTheme) { store.update { $0.ambientTheme.toggle() } }
+      PanelSwitch(isOn: store.prefs.ambientTheme) { store.updateByHand { $0.ambientTheme.toggle() } }
         .accessibilityIdentifier("display.ambient")
     }
   }
@@ -54,7 +58,7 @@ struct DisplaySettingsSection: View {
     let picked = store.prefs.skin == skin
     let shape = RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
     return Button {
-      store.update { $0.skin = skin }
+      store.updateByHand { $0.skin = skin }
     } label: {
       VStack(alignment: .leading, spacing: Space.s) {
         HStack(alignment: .bottom, spacing: Space.xs) {
