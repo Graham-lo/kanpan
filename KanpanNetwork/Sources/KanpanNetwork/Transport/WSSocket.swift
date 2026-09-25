@@ -36,8 +36,13 @@ public protocol WSSocketFactory: Sendable {
 
 final class URLSessionSocket: WSSocket, @unchecked Sendable {
   private let task: URLSessionWebSocketTask
+  /// 单帧上限。系统默认 1 MiB，全市场 `!ticker@arr`、深度快照这类大帧在行情密集时会超，
+  /// 超了 `receive()` 直接报错断线、再连上又是一帧超限，陷进重连循环。放到 8 MiB。
+  static let maximumMessageSize = 8 * 1024 * 1024
+
   init(task: URLSessionWebSocketTask) {
     self.task = task
+    task.maximumMessageSize = Self.maximumMessageSize
     task.resume()
   }
 

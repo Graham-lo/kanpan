@@ -141,6 +141,32 @@ enum CoinbaseDTO {
     var trades: [Trade]?
     var tickers: [WSTicker]?
     var candles: [Candle]?
+    /// 订阅应答（`channel == "subscriptions"`）：频道 → 已订的品种。
+    var subscriptions: [String: [String]]?
+  }
+
+  /// 一帧推送证明了哪些「频道 × 品种」的订阅已经生效：数据帧（快照、更新都算）里出现的品种，
+  /// 以及订阅应答里列着的那些。心跳不算——它只说明连接活着。
+  static func confirmedSubs(_ frame: Frame) -> [(channel: String, product: String)] {
+    guard let channel = frame.channel, let events = frame.events else { return [] }
+    var out: [(channel: String, product: String)] = []
+    switch channel {
+    case "subscriptions":
+      for event in events {
+        for (ch, products) in event.subscriptions ?? [:] where ch != "heartbeats" {
+          for p in products { out.append((ch, p)) }
+        }
+      }
+    case "market_trades":
+      for event in events { for t in event.trades ?? [] { out.append((channel, t.product_id)) } }
+    case "ticker", "ticker_batch":
+      for event in events { for t in event.tickers ?? [] { out.append(("ticker", t.product_id)) } }
+    case "candles":
+      for event in events { for c in event.candles ?? [] { if let id = c.product_id { out.append((channel, id)) } } }
+    default:
+      break
+    }
+    return out
   }
 
   struct Trade: Decodable {
@@ -174,8 +200,13 @@ enum CoinbaseDTO {
     case "market_trades":
       for event in events where event.type == "update" {
         for t in (event.trades ?? []).reversed() {
-          guard let px = Double(t.price), let qty = Double(t.size), px.isFinite, px > 0, qty.isFinite,
-                let ms = isoMs(t.time) else { continue }
+          guard let px = Double(t.price), let qty = Double(t.size), let ms = isoMs(t.time) else { continue }
+          // 解得开却不是有限值（`nan`、`inf`、`1e400`）或越界：整帧丢掉并记一笔。
+          // 同一帧里别的成交也不收——坏帧里的其它数字同样不可信，而成交量一旦折进 NaN 整根就废了。
+          guard px.isFinite, px > 0, qty.isFinite, qty >= 0 else {
+            WireNumber.noteDropped()
+            return []
+          }
           out.append(.trade(TradeEvent(symbol: key(t.product_id), price: px, qty: qty, timeMs: ms,
                                        tradeID: t.trade_id.flatMap { Int64($0) })))
         }

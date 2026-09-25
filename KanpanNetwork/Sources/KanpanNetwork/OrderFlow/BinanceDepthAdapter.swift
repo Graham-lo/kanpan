@@ -104,7 +104,8 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
                                                     eventTimeMs: DepthWire.integer(body["E"]) ?? 0)))]
     case "aggTrade":
       guard let p = DepthWire.number(body["p"]), let q = DepthWire.number(body["q"]),
-            p > 0, q > 0, p.isFinite, q.isFinite else { return [] }
+            p > 0, q >= 0, p.isFinite, q.isFinite else { WireNumber.noteDropped(); return [] }
+      guard q > 0 else { return [] }
       // m = 买方是挂单方 → 这笔是主动卖，吃的是买盘。
       let hit: BookSide = (body["m"] as? Bool ?? false) ? .bid : .ask
       return [VenueMessage(book.id, .trade(book.trade(price: p, quantity: q, hit: hit,

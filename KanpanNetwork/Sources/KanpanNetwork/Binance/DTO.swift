@@ -324,10 +324,19 @@ public enum StreamPayload: Sendable {
 extension StreamPayload: Decodable {
   public init(from decoder: Decoder) throws {
     if var rows = try? decoder.unkeyedContainer() {
+      // 全市场 `!ticker@arr` 一帧几百行：坏一行只丢那一行，不许把整帧（整张列表的价）一起丢掉。
+      // 解不开的元素也得让容器往前走一格，所以包一层永不抛错的 `Lenient`。
       var tickers: [Ticker] = []
+      var dropped = 0
       while !rows.isAtEnd {
-        if case .ticker(let ticker) = try rows.decode(StreamPayload.self) { tickers.append(ticker) }
+        guard let row = try? rows.decode(Lenient.self) else { break }
+        switch row.value {
+        case .ticker(let ticker)?: tickers.append(ticker)
+        case nil: dropped += 1
+        default: break
+        }
       }
+      if dropped > 0 { StreamPayload.noteDroppedBatchRows(dropped) }
       self = tickers.isEmpty ? .other("empty ticker batch") : .tickerBatch(tickers)
       return
     }
@@ -338,7 +347,10 @@ extension StreamPayload: Decodable {
       self = .kline(try KlineEvent(from: decoder))
     case "24hrTicker":
       let sym = try c.decode(String.self, forKey: .s)
-      func d(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
+      // 解得开却不是有限值（`inf`、`1e400`）一律当缺失（NaN），不让一格 `inf` 顶到列表上。
+      func d(_ k: K) -> Double {
+        (try? c.decode(String.self, forKey: k)).flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil } ?? .nan
+      }
       // 网关转的替身帧（OKX）不带 `p`，同一帧里的最新价减 24h 开盘价就是它——币安自己
       // 的 `p` 也是这么定义的。`q`（成交额）替身帧里是空串，这里留成缺失，由 REST 那帧补。
       let last = d(.c), open = d(.o)
@@ -374,6 +386,24 @@ extension StreamPayload: Decodable {
     }
   }
   enum K: String, CodingKey { case e, s, c, o, P, h, l, q, p, k, b, a, r, i, T, E, C, L }
+
+  /// 批量帧里的一个元素：解不开就是 nil，但**一定**消费掉这一格。
+  private struct Lenient: Decodable {
+    let value: StreamPayload?
+    init(from decoder: Decoder) throws { value = try? StreamPayload(from: decoder) }
+  }
+
+  private static let batchDrops = BatchDropCounter()
+  /// 批量行情帧里解不开、被单独丢掉的行数（进程级累计，诊断用）。
+  public static var droppedBatchRows: Int { batchDrops.value }
+  static func noteDroppedBatchRows(_ n: Int) { batchDrops.add(n) }
+}
+
+private final class BatchDropCounter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var n = 0
+  var value: Int { lock.lock(); defer { lock.unlock() }; return n }
+  func add(_ k: Int) { lock.lock(); n += k; lock.unlock() }
 }
 
 /// `kline` 事件。`x == true` 表示这根收了（§4.4）。
@@ -401,12 +431,20 @@ public struct KlineEvent: Sendable, Equatable, Decodable {
     interval = try k.decode(String.self, forKey: .i)
     openTime = try k.decode(Int64.self, forKey: .t)
     closed = (try? k.decode(Bool.self, forKey: .x)) ?? false
+    // 不是有限值（`nan`、`inf`、`1e400`）整帧丢掉：一根末根的量成了 NaN，整根都画不对。
     func d(_ key: Inner) throws -> Double {
+      let v: Double
       if let s = try? k.decode(String.self, forKey: key) {
-        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
-        return v
+        guard let parsed = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
+        v = parsed
+      } else {
+        v = try k.decode(Double.self, forKey: key)
       }
-      return try k.decode(Double.self, forKey: key)
+      guard let finite = finiteDouble(v) else {
+        WireNumber.noteDropped()
+        throw FeedError.badResponse("K 线字段不是有限值")
+      }
+      return finite
     }
     // `V` 是这根到目前为止的主动买成交量。币安的 kline 推流一直带着它，
     // 但网关、镜像、回放都可能不给：拿不到就留 NaN，绝不填 0。
@@ -438,15 +476,26 @@ public struct TradeEvent: Sendable, Equatable, Decodable {
     let c = try decoder.container(keyedBy: K.self)
     symbol = try c.decode(String.self, forKey: .s)
     func num(_ key: K) throws -> Double {
+      let v: Double
       if let s = try? c.decode(String.self, forKey: key) {
-        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
-        return v
+        guard let parsed = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
+        v = parsed
+      } else {
+        v = try c.decode(Double.self, forKey: key)
       }
-      return try c.decode(Double.self, forKey: key)
+      guard let finite = finiteDouble(v) else {
+        WireNumber.noteDropped()
+        throw FeedError.badResponse("成交字段不是有限值")
+      }
+      return finite
     }
     tradeID = try c.decodeIfPresent(Int64.self, forKey: .t)
     price = try num(.p)
     qty = try num(.q)
+    guard price > 0, qty >= 0 else {
+      WireNumber.noteDropped()
+      throw FeedError.badResponse("成交价量越界")
+    }
     timeMs = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0
   }
 
@@ -482,14 +531,26 @@ public struct AggTradeEvent: Sendable, Equatable, Decodable {
     let c = try decoder.container(keyedBy: K.self)
     symbol = try c.decode(String.self, forKey: .s)
     func num(_ key: K) throws -> Double {
+      let v: Double
       if let s = try? c.decode(String.self, forKey: key) {
-        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
-        return v
+        guard let parsed = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
+        v = parsed
+      } else {
+        v = try c.decode(Double.self, forKey: key)
       }
-      return try c.decode(Double.self, forKey: key)
+      guard let finite = finiteDouble(v) else {
+        WireNumber.noteDropped()
+        throw FeedError.badResponse("成交字段不是有限值")
+      }
+      return finite
     }
     price = try num(.p)
     qty = try num(.q)
+    // 主动买卖桶按量累加：负量、零价、非有限值进去一笔，这一根的买卖比就全废了。
+    guard price > 0, qty >= 0 else {
+      WireNumber.noteDropped()
+      throw FeedError.badResponse("成交价量越界")
+    }
     aggID = try c.decodeIfPresent(Int64.self, forKey: .a)
     isBuyerMaker = (try? c.decode(Bool.self, forKey: .m)) ?? false
     timeMs = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0
@@ -540,6 +601,11 @@ public struct DepthSnapshot: Sendable, Equatable, Decodable {
     try (rows ?? []).map { row in
       guard row.count >= 2, let price = row[0].doubleValue, let qty = row[1].doubleValue else {
         throw FeedError.badResponse("盘口档位不是数字")
+      }
+      // 非有限值或越界的档位：整帧丢掉（五档快照本来就是整帧替换，丢一帧等下一帧即可）。
+      guard price.isFinite, qty.isFinite, price > 0, qty >= 0 else {
+        WireNumber.noteDropped()
+        throw FeedError.badResponse("盘口档位不是有限值")
       }
       return DepthLevel(price: price, qty: qty)
     }

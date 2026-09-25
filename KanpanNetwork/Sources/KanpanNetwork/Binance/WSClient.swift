@@ -62,6 +62,16 @@ public actor BinanceWS {
   /// 所以控制帧一条一条发、条条隔这么久（4 条/秒，离上限还有一半余量），
   /// 而且睡醒了只看「现在想要哪套流」——中间那些一闪而过的周期自然就被合并掉了。
   private let controlGapMs: Double = 250
+  /// 当前连接最近一帧**有效行情**的时刻（`nowMs()` 口径），常驻看门狗读它（第②③层）。
+  private var lastMarketMs = 0.0
+  /// 当前连接最近一帧**任何**报文的时刻（行情、ping、订阅应答都算），第①层的证据。
+  private var lastFrameMs = 0.0
+  /// 当前连接的常驻看门狗。一条连接一个，不再每收一帧起一组任务。
+  private var watchdogTask: Task<Void, Never>?
+  /// 看门狗掐掉连接时记下的原因（收帧那边只会看到 socket 被掐的错误）。
+  private var cutReason: String?
+  /// 不在当前订阅集里、被丢掉的组合流报文数（旧流退订前的尾巴、服务器多推的）。
+  public private(set) var droppedForeignFrames = 0
 
   public init(hosts: BinanceHosts = .default,
               factory: WSSocketFactory = URLSessionSocketFactory(),
@@ -87,6 +97,8 @@ public actor BinanceWS {
 
   public var currentConnectionID: Int { connectionID }
   public var currentStreams: [String] { streams.sorted() }
+  /// 退避当前在第几档（测试用）。
+  var backoffAttempt: Int { backoff.attempt }
   /// 真正生效的第②层窗口（毫秒），就是传进来的 `silenceMs`。线路由用户定死、
   /// 一条连接不在几个域名之间竞速，所以不再有「有候选就夹到 15 秒」的钳子。
   public var firstFrameSilenceMs: Double { silenceMs }
@@ -104,6 +116,9 @@ public actor BinanceWS {
     streams = Set(initial)
     stopped = false
     retireRun()
+    // 换一轮就是一次新的开始：上一轮攒下的退避档位不许带过来。否则上一轮断了几次，
+    // 新品种的第一次断线就直接从 8 秒、16 秒起跳。
+    backoff.reset()
     let (s, c) = AsyncStream<WSEvent>.makeStream(bufferingPolicy: .unbounded)
     continuation = c
     runGeneration += 1
@@ -119,6 +134,7 @@ public actor BinanceWS {
   /// 而关一条 WebSocket 要等一次真的往返，等在这儿就是首屏白白多等一个 RTT。
   private func retireRun() {
     runTask?.cancel(); runTask = nil
+    watchdogTask?.cancel(); watchdogTask = nil
     syncTask?.cancel(); syncTask = nil
     syncToken += 1
     let dying = socket, sink = continuation
@@ -131,6 +147,7 @@ public actor BinanceWS {
     stopped = true
     runTask?.cancel()
     runTask = nil
+    watchdogTask?.cancel(); watchdogTask = nil
     syncTask?.cancel()
     syncTask = nil
     syncToken += 1
@@ -248,6 +265,8 @@ public actor BinanceWS {
         if stopped || Task.isCancelled { break }
         log("WS 断了：\(error)")
       }
+      watchdogTask?.cancel(); watchdogTask = nil
+      cutReason = nil
       guard generation == runGeneration else { return }
       // 先把共享字段交出去再去 await。`cancel()` 要等一次真的往返，这中间完全可能
       // 又起了新的一轮（回前台重启 WS 就是这个时序）；放在 await 之后清的话，
@@ -282,27 +301,31 @@ public actor BinanceWS {
     }
   }
 
-  /// 收帧，直到断开或静默超时。
+  /// 收帧，直到断开或被看门狗掐掉。
+  ///
+  /// 收帧这一路只 `await socket.receive()`：静默判定全交给这条连接的常驻看门狗
+  /// （`startWatchdog`）。原来每收一帧都起一组 `withThrowingTaskGroup` 加一个计时任务，
+  /// 热门品种一秒几十帧，就是一秒建销几十组任务。
   private func pump(_ s: WSSocket, generation: Int, connection: Int,
                     sink: AsyncStream<WSEvent>.Continuation) async throws {
-    var lastMarketMs = await nowMs()
-    /// 最近一帧**任何**报文的时刻（行情、ping、订阅应答都算）。这是「传输层还通着」
-    /// 的证据，和「行情有没有变」（`lastMarketMs`）是两件事，A-07 的第①层和第③层
-    /// 各看一个。
+    let started = await nowMs()
+    lastMarketMs = started
+    lastFrameMs = started
+    cutReason = nil
     // 开 `KANPAN_LOG=1` 时每 5 秒报一次收帧量：连上了但界面不跳的时候，这一行
     // 能立刻分清是「帧根本没来」还是「帧来了但没画出去」。
-    var lastFrameMs = lastMarketMs
     var frames = 0
-    var reportMs = lastMarketMs
-    // 探针状态跟着这条连接活，跨帧保留。
-    let keepaliveState = KeepaliveState()
+    var reportMs = started
+    startWatchdog(s, generation: generation, connection: connection)
     while !stopped, !Task.isCancelled {
-      let remaining = max(1, silenceMs - (await nowMs() - lastMarketMs))
-      // 第一帧有效行情之前：静默就是「订阅没生效」，照旧重连（第②层）。
-      // 之后：静默合法，只拿它当保活探针的节拍，连接留着（第①③层）。
-      let frame = try await receiveFrame(s, quietMs: remaining, quietSinceMs: lastMarketMs,
-                                         aliveSinceMs: lastFrameMs, keepalive: gotFrame,
-                                         probe: keepaliveState)
+      let frame: WSFrame
+      do {
+        frame = try await s.receive()
+      } catch {
+        // 看门狗掐的：带上它记下的原因，日志里分得清是「静默」还是「对端断了」。
+        if connection == connectionID, let why = cutReason { throw FeedError.badResponse(why) }
+        throw error
+      }
       // 收帧是挂着等的，一等可能就是几十秒。醒来先确认自己还是当前这一轮、
       // 手上这条连接也还是当前那条：不是的话这条帧属于一条已经退场的连接，
       // 既不该投出去，也不该拿它去清退避。
@@ -319,7 +342,14 @@ public actor BinanceWS {
         guard let env = try? Self.decoder.decode(StreamEnvelope.self, from: data),
               let payload = env.payload else { continue }   // SUBSCRIBE 的应答没有 e 字段，忽略
         if case .other = payload { continue }
-        lastMarketMs = await nowMs()
+        // 组合流报文自带流名：不在「现在想要的那套流」里的一律丢掉。退订那一帧在路上的
+        // 那一会儿，旧品种、旧周期的报文还会进来，投出去就是新品种的图上跳出旧品种的价。
+        // 裸报文（单流连接）没有流名，没法按名过滤，照旧放行。
+        if let name = env.stream, !wants(stream: name) {
+          droppedForeignFrames += 1
+          continue
+        }
+        lastMarketMs = lastFrameMs
         if !gotFrame { gotFrame = true; backoff.reset() }
         sink.yield(.payload(payload))
         frames += 1
@@ -331,84 +361,108 @@ public actor BinanceWS {
     }
   }
 
+  /// 这个组合流名是不是当前订阅集里的。币安回的流名大小写与订阅时一致（`markPrice` 带大写），
+  /// 这里仍按不分大小写比，免得网关或上游改了大小写就把整条流当成外来报文丢光。
+  private func wants(stream name: String) -> Bool {
+    if streams.contains(name) { return true }
+    let lowered = name.lowercased()
+    return streams.contains { $0.lowercased() == lowered }
+  }
+
+  /// 看门狗读的那几样：这条连接还在不在、有没有过有效行情、最近一帧行情 / 任何帧的时刻。
+  private func watchState(generation: Int, connection: Int)
+    -> (gotFrame: Bool, lastMarketMs: Double, lastFrameMs: Double)? {
+    guard !stopped, generation == runGeneration, connection == connectionID, socket != nil else { return nil }
+    return (gotFrame, lastMarketMs, lastFrameMs)
+  }
+
+  /// 看门狗判死：记下原因再掐 socket。`URLSessionWebSocketTask.receive()` 不理会任务取消，
+  /// 只有掐掉它挂着的收帧才会带着错误回来。
+  private func cut(_ s: WSSocket, generation: Int, connection: Int, reason: String) async {
+    guard generation == runGeneration, connection == connectionID else { return }
+    cutReason = reason
+    await s.cancel()
+  }
+
   /// 当前时刻，毫秒。真机上走 `MonoClock`，只有测试注了虚拟时钟时才去问 `pacer`。
   private func nowMs() async -> Double {
     systemClock ? MonoClock.nowMs() : await pacer.nowMs()
   }
 
-  /// 等一帧。等不到就按三层看门狗决定「继续等」还是「判定断了」（A-07）。
+  /// 常驻静默看门狗：每条连接一个任务，按三层窗口决定「接着睡」还是「判定断了」（A-07）。
   ///
-  /// - Parameters:
-  ///   - quietMs: 这一轮先安静等多久（第②③层的窗口）。
-  ///   - keepalive: 第一帧有效行情到过了吗。到过就走保活：行情静默不拆连接，
-  ///     只在静默时主动 ping；还没到过就维持原来的「静默即重连」。
+  /// - 第一帧有效行情之前：`silenceMs` 内一帧行情都没有就掐（第②层，连保活都不探）。
+  /// - 之后：行情静默合法（第③层）；只在「任何帧」静默满一拍（`min(silenceMs, 传输窗口/2)`）时
+  ///   主动 ping 一次。探通了连接留着；探不通隔一拍（`min(拍, 传输窗口/4)`）再探，
+  ///   连续 `transportSilenceMs` 既无帧也无 pong 才掐（第①层）。
   ///
-  /// 判定断了那一路**必须先把 socket 掐掉再抛错**。`URLSessionWebSocketTask.receive()`
-  /// 是用 `withCheckedContinuation` 包出来的，不理会任务取消：光让计时任务抛错，
-  /// `withThrowingTaskGroup` 退出前还要等那条收帧任务，而它永远不回来——整个
-  /// 看门狗就这么被自己挂死。线路被静默丢弃（代理黑洞、NAT 超时）时正是这种局面：
-  /// 连接看着还「活着」，窗口到了也没有任何反应。只有 `cancel()` 能让挂着的
-  /// `receive()` 带着错误返回。
-  ///
-  /// 反过来，**保活探通了就绝不许掐** ——那才是 A-07 说的那个 bug：把「行情没更新」
-  /// 当成「连接死了」，于是夜里每隔十几秒重连一次，换来的还是同样的静默。
-  private func receiveFrame(_ s: WSSocket, quietMs: Double, quietSinceMs: Double,
-                            aliveSinceMs: Double, keepalive: Bool,
-                            probe: KeepaliveState) async throws -> WSFrame {
+  /// 判死那一路**必须先掐 socket**：`receive()` 只认 `cancel()`。反过来，保活探通了就绝不许掐
+  /// ——那才是 A-07 说的那个 bug：把「行情没更新」当成「连接死了」。
+  /// 探针状态跟着这条连接活（不是每帧一份），整夜静默「保活正常」那句只写一次。
+  private func startWatchdog(_ s: WSSocket, generation: Int, connection: Int) {
+    watchdogTask?.cancel()
     let pacer = self.pacer
     let log = self.log
     let probeMs = keepaliveProbeMs
     let deadMs = transportSilenceMs
+    let firstFrameMs = max(1, silenceMs)
     // 行情静默期间的探针节拍。
     let gap = max(1, min(silenceMs, transportSilenceMs / 2))
-    // 探针没答上之后隔多久再探。**不许空转**：这一路和别的等待一样走注入的时钟，
-    // 写成 `window = 1` 的话，虚拟时钟下就是 1kHz 的干转，真机上也是每毫秒一次系统调用。
+    // 探针没答上之后隔多久再探。**不许空转**：和别的等待一样走注入的时钟。
     let probeGap = max(1, min(gap, transportSilenceMs / 4))
-    // 时间一律读注入的时钟（`nowMs()` 的同一套口径）：一半用 pacer、一半用 `Date()`
-    // 的话，测试里的虚拟时钟和真实调度会各算一半，谁都说不清到底静默了多久。
     let systemClock = self.systemClock
     let clock: @Sendable () async -> Double = { systemClock ? MonoClock.nowMs() : await pacer.nowMs() }
-    return try await withThrowingTaskGroup(of: WSFrame.self) { g in
-      g.addTask { try await s.receive() }
-      g.addTask {
-        // 最近一次「传输层还在」的证据：进来时是上一帧报文的时刻（ping 也算）。
-        var lastAlive = aliveSinceMs
-        // 第一拍等多久：首帧行情之前按第②层的窗口；之后按探针节拍，
-        // 而且要扣掉刚才那一帧已经用掉的时间，免得每收一个 ping 就白探一次。
-        var window = keepalive ? max(1, gap - (await clock() - aliveSinceMs)) : quietMs
-        while true {
-          try await pacer.sleep(ms: window)
-          let quietFor = await clock() - quietSinceMs
-          guard keepalive else {
-            await s.cancel()
-            throw FeedError.badResponse("\(Int(quietFor / 1000)) 秒没有任何有效行情，主动重连")
+    let probe = KeepaliveState()
+    watchdogTask = Task { [weak self] in
+      // 最近一次探针探通的时刻。
+      var probedAlive = -Double.greatestFiniteMagnitude
+      var window = firstFrameMs
+      while !Task.isCancelled {
+        do { try await pacer.sleep(ms: max(1, window)) } catch { return }
+        guard let self,
+              let state = await self.watchState(generation: generation, connection: connection) else { return }
+        let now = await clock()
+        guard state.gotFrame else {
+          // 第②层：订阅没生效。
+          let quiet = now - state.lastMarketMs
+          if quiet >= firstFrameMs {
+            await self.cut(s, generation: generation, connection: connection,
+                           reason: "\(Int(quiet / 1000)) 秒没有任何有效行情，主动重连")
+            return
           }
-          if await s.keepalive(timeoutMs: probeMs) {
-            // 传输层活着：行情静默是合法的，连接留着，下一拍再探。
-            lastAlive = await clock()
-            // 只在**状态变化**时写日志（状态挂在连接上，跨帧不重置）：整夜静默每 15 秒
-            // 刷一条一样的话，等于把日志烧掉。
-            if await probe.enter(.alive) {
-              log("WS 行情静默 \(Int(quietFor / 1000))s，传输层保活正常，连接保留")
-            }
-            window = gap
-            continue
-          }
-          if await probe.enter(.lost) {
-            log("WS 保活探针没答上，\(Int(deadMs / 1000)) 秒内再探不通就重连")
-          }
-          let silent = await clock() - lastAlive
-          guard silent < deadMs else {
-            await s.cancel()
-            throw FeedError.badResponse("传输层静默 \(Int(silent / 1000)) 秒（既无帧也无 pong），重连")
-          }
-          // 还没到 30 秒：隔一拍再探，别急着拆，也别在这儿干转。
-          window = min(probeGap, max(1, deadMs - silent))
+          window = firstFrameMs - quiet
+          continue
         }
+        let sinceAlive = now - max(state.lastFrameMs, probedAlive)
+        if sinceAlive < gap {
+          // 这一拍里来过帧（或刚探通过）：睡到下一个该探的点。
+          window = gap - sinceAlive
+          continue
+        }
+        let quietFor = now - state.lastMarketMs
+        if await s.keepalive(timeoutMs: probeMs) {
+          // 传输层活着：行情静默是合法的，连接留着，下一拍再探。
+          probedAlive = await clock()
+          if await probe.enter(.alive) {
+            log("WS 行情静默 \(Int(quietFor / 1000))s，传输层保活正常，连接保留")
+          }
+          window = gap
+          continue
+        }
+        if await probe.enter(.lost) {
+          log("WS 保活探针没答上，\(Int(deadMs / 1000)) 秒内再探不通就重连")
+        }
+        // 探针在路上的那一会儿可能来过帧：重新取一次。
+        guard let latest = await self.watchState(generation: generation, connection: connection) else { return }
+        let silent = await clock() - max(latest.lastFrameMs, probedAlive)
+        guard silent < deadMs else {
+          await self.cut(s, generation: generation, connection: connection,
+                         reason: "传输层静默 \(Int(silent / 1000)) 秒（既无帧也无 pong），重连")
+          return
+        }
+        // 还没到窗口：隔一拍再探，别急着拆，也别在这儿干转。
+        window = min(probeGap, max(1, deadMs - silent))
       }
-      let first = try await g.next()!
-      g.cancelAll()
-      return first
     }
   }
 }

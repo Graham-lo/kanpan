@@ -135,12 +135,18 @@ enum DepthWire {
     return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
   }
 
+  /// 只收有限值：`"nan"`、`"inf"`、`"1e400"` 这类解得开却不是有限值的当缺失。
+  /// 调用方见到缺失就丢掉整帧，并由调用方 `WireNumber.noteDropped()` 记一笔（这里不记，免得一帧记两次）。
   static func number(_ value: Any?) -> Double? {
+    let v: Double
     switch value {
-    case let s as String: return Double(s)
-    case let n as NSNumber: return n.doubleValue
+    case let s as String:
+      guard let parsed = Double(s) else { return nil }
+      v = parsed
+    case let n as NSNumber: v = n.doubleValue
     default: return nil
     }
+    return v.isFinite ? v : nil
   }
 
   static func integer(_ value: Any?) -> Int64? {
@@ -151,14 +157,15 @@ enum DepthWire {
     }
   }
 
-  /// `[[价, 量, ...], ...]` → 档位；价乘 `price`、量乘 `quantity`（见 `DepthBook.priceFactor`）。坏档整条丢掉。
+  /// `[[价, 量, ...], ...]` → 档位；价乘 `price`、量乘 `quantity`（见 `DepthBook.priceFactor`）。
+  /// 坏档（解不开、非有限值、越界）整条丢掉——调用方拿到 nil 就丢整帧——并记一笔。
   static func levels(_ value: Any?, price: Double = 1, quantity: Double = 1) -> [BookLevel]? {
     guard let rows = value as? [[Any]] else { return value == nil ? [] : nil }
     var out: [BookLevel] = []
     out.reserveCapacity(rows.count)
     for row in rows {
       guard row.count >= 2, let p = number(row[0]), let q = number(row[1]),
-            p.isFinite, q.isFinite, p > 0, q >= 0 else { return nil }
+            p.isFinite, q.isFinite, p > 0, q >= 0 else { WireNumber.noteDropped(); return nil }
       out.append(BookLevel(price: p * price, quantity: q * quantity))
     }
     return out

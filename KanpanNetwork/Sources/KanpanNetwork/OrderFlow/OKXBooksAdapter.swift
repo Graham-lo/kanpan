@@ -92,13 +92,16 @@ public struct OKXBooksAdapter: DepthFeedAdapter {
           let items = message["data"] as? [[String: Any]] else { return [] }
     switch arg["channel"] as? String {
     case "trades":
-      return items.compactMap { t in
+      var out: [VenueMessage] = []
+      for t in items {
+        // 价量解得开却不是有限值或越界：整帧丢掉并记一笔（坏帧里别的成交同样不可信）。
         guard let p = DepthWire.number(t["px"]), let q = DepthWire.number(t["sz"]),
-              p > 0, q > 0, p.isFinite, q.isFinite,
-              let side = t["side"] as? String, side == "buy" || side == "sell" else { return nil }
-        return VenueMessage(book.id, .trade(book.trade(price: p, quantity: q, hit: side == "buy" ? .ask : .bid,
-                                                       timeMs: DepthWire.integer(t["ts"]) ?? 0)))
+              p > 0, q >= 0, p.isFinite, q.isFinite else { WireNumber.noteDropped(); return [] }
+        guard q > 0, let side = t["side"] as? String, side == "buy" || side == "sell" else { continue }
+        out.append(VenueMessage(book.id, .trade(book.trade(price: p, quantity: q, hit: side == "buy" ? .ask : .bid,
+                                                           timeMs: DepthWire.integer(t["ts"]) ?? 0))))
       }
+      return out
     case "books":
       guard let action = message["action"] as? String, items.count == 1 else { return [] }
       let item = items[0]
