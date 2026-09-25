@@ -43,19 +43,22 @@ final class SymbolPreviewStore {
   /// 一出生就是这台设备选的线路：从前是「直连 + 空网关表」，选了网关的人长按一行，
   /// K 线和费率照样直连交易所，持仓量和供应量干脆没得问（审查 14）。
   @ObservationIgnored private var resolver = RouteResolver.current
-  @ObservationIgnored private var jobs: [String: Task<Void, Never>] = [:]
+  /// 在路上的取数，一个品种最多一笔（同一只连按几次不重复发）。带一个票号：
+  /// 换线路作废掉的旧任务收尾时只清自己那一格，不会把新发的那笔从表里抹掉
+  /// （抹掉了下一次长按就会再发一笔重复的）。
+  @ObservationIgnored private var jobs: [String: (ticket: UUID, task: Task<Void, Never>)] = [:]
   /// 最近用过的在后面。满了从前面扔。
-  @ObservationIgnored private var recent: [String] = []
+  @ObservationIgnored private var recent = PreviewRecentKeys(capacity: SymbolPreviewStore.capacity)
 
   /// 换线路：手上这批数是上一条路取的，整批作废。
   func configure(route next: RouteResolver) {
     guard next.route != resolver.route else { return }
     resolver = next
-    for job in jobs.values { job.cancel() }
+    for job in jobs.values { job.task.cancel() }
     jobs.removeAll()
     bars.removeAll()
     stats.removeAll()
-    recent.removeAll()
+    recent = PreviewRecentKeys(capacity: Self.capacity)
   }
 
   /// 正在看的那张图捎回来的费率（`markPrice@1s`）。它比 REST 那口还新，
@@ -79,6 +82,8 @@ final class SymbolPreviewStore {
   /// 那两个统计也是，费率过了保鲜期才重新取。三样都齐就什么都不做。
   func warm(symbol: String, base: String) {
     let key = InstrumentID.canonical(symbol)
+    // 按过就算「最近用过」，满了顺手扔最旧的：以前只在取到数时才修剪，取数一直失败时
+    // 这张「最近」表会无限长。
     touch(key)
     let needsBars = bars[key] == nil
     let needsStats = stats[key] == nil
@@ -88,7 +93,8 @@ final class SymbolPreviewStore {
     let proxies = resolver.route.apiHosts
     let caps = service.capabilities(for: key)
     let src = caps.openInterestSource, upstream = caps.upstream
-    jobs[key] = Task { [weak self] in
+    let ticket = UUID()
+    let task = Task { [weak self] in
       // 费率和 K 线同时出发：两笔都是这张卡等着画的，串起来等于让人多等一趟。
       async let rate: FundingSnapshot? = needsFunding ? await service.funding(for: key) : nil
       if needsBars {
@@ -100,7 +106,7 @@ final class SymbolPreviewStore {
         FundingBook.shared.note(rate: snapshot.rate, nextFundingTimeMs: snapshot.nextFundingTimeMs,
                                 for: key, upstream: upstream)
       }
-      guard needsStats, !proxies.isEmpty else { self?.jobs[key] = nil; return }
+      guard needsStats, !proxies.isEmpty else { self?.finish(key, ticket); return }
       async let meta = MarketStatsClient.shared.meta(symbol: key, base: base, hosts: proxies)
       async let oi = MarketStatsClient.shared.openInterest(symbol: key, source: src, hosts: proxies,
                                                            maxAge: MarketStatsClient.openInterestFresh)
@@ -109,33 +115,47 @@ final class SymbolPreviewStore {
         totalSupply: (await meta)?.totalSupply.flatMap { $0.isFinite && $0 > 0 ? $0 : nil })
       if Task.isCancelled { return }
       self?.put(row, for: key)
-      self?.jobs[key] = nil
+      self?.finish(key, ticket)
     }
+    jobs[key] = (ticket, task)
+  }
+
+  /// 一笔取数收尾：只清自己那一格。
+  private func finish(_ key: String, _ ticket: UUID) {
+    if jobs[key]?.ticket == ticket { jobs[key] = nil }
   }
 
   private func put(_ rows: [Bar], for key: String) {
     bars[key] = rows
     touch(key)
-    trim()
   }
 
   private func put(_ row: Stats, for key: String) {
     stats[key] = row
     touch(key)
-    trim()
   }
 
   private func touch(_ key: String) {
-    recent.removeAll { $0 == key }
-    recent.append(key)
-  }
-
-  private func trim() {
-    while recent.count > Self.capacity {
-      let victim = recent.removeFirst()
+    for victim in recent.touch(key) {
       bars.removeValue(forKey: victim)
       stats.removeValue(forKey: victim)
     }
+  }
+}
+
+/// 预览卡缓存的「最近用过」表（LRU）：最近的在后面，超过容量从前面扔，返回被扔掉的键。
+struct PreviewRecentKeys: Equatable {
+  let capacity: Int
+  private(set) var keys: [String] = []
+  init(capacity: Int) { self.capacity = max(1, capacity) }
+  mutating func touch(_ key: String) -> [String] {
+    keys.removeAll { $0 == key }
+    keys.append(key)
+    let overflow = keys.count - capacity
+    guard overflow > 0 else { return [] }
+    let victims = Array(keys.prefix(overflow))
+    keys.removeFirst(overflow)
+    return victims
   }
 }
 
