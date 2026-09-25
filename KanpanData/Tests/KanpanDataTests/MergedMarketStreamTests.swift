@@ -83,4 +83,61 @@ struct MergedMarketStreamTests {
     await merged.stop()
     pump.cancel()
   }
+
+  /// 换订阅 / 开连接都慢、而且「落定」记在完成那一刻的假连接：第一次 replace 慢、之后快，
+  /// 专门造「先发的后到」。
+  final class SlowStream: MarketStream, @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    private(set) var settled: [[StreamTopic]] = []
+    private(set) var inFlight = 0
+    func start(topics: [StreamTopic]) async -> AsyncStream<WSEvent> {
+      try? await Task.sleep(nanoseconds: 80_000_000)
+      lock.withLock { settled.append(topics) }
+      return AsyncStream { _ in }
+    }
+    func replace(topics: [StreamTopic]) async {
+      let n = lock.withLock { calls += 1; inFlight += 1; return calls }
+      try? await Task.sleep(nanoseconds: n == 1 ? 150_000_000 : 5_000_000)
+      lock.withLock { settled.append(topics); inFlight -= 1 }
+    }
+    func stop() async {}
+    var firstFrameSilenceMs: Double { get async { 60_000 } }
+    var currentConnectionID: Int { get async { 1 } }
+    var last: [StreamTopic]? { lock.withLock { settled.last } }
+    var busy: Bool { lock.withLock { inFlight > 0 } }
+  }
+
+  @Test("两次并发 replace：最终订阅等于最后一次（先发的慢请求后到也不能盖回去）")
+  func concurrentReplaceEndsOnLast() async throws {
+    let slow = SlowStream()
+    let merged = MergedMarketStream { _ in slow }
+    _ = await merged.start(topics: [.ticker(symbol: "BTCUSDT")])
+    let a: [StreamTopic] = [.ticker(symbol: "ETHUSDT")]
+    let b: [StreamTopic] = [.ticker(symbol: "SOLUSDT")]
+    let first = Task { await merged.replace(topics: a) }
+    #expect(await waitUntil(2) { slow.busy }, "第一次 replace 该已经在路上")
+    let second = Task { await merged.replace(topics: b) }
+    await first.value; await second.value
+    #expect(slow.last == b)
+    // 无序的 want 也一样：最后写下的那份说了算。
+    merged.want(a); merged.want(b); merged.want(a)
+    #expect(await waitUntil(2) { slow.last == a && !slow.busy })
+    await merged.stop()
+  }
+
+  @Test("并发 replace 同时加一家新交易所：只开一条连接")
+  func concurrentReplaceOpensOneConnectionPerVenue() async throws {
+    let factory = Factory()
+    let merged = MergedMarketStream { factory.make($0) }
+    _ = await merged.start(topics: [.ticker(symbol: "BTCUSDT")])
+    let both: [StreamTopic] = [.ticker(symbol: "BTCUSDT"), .ticker(symbol: "coinbase/spot/BTC-USD")]
+    async let x: Void = merged.replace(topics: both)
+    async let y: Void = merged.replace(topics: both)
+    async let z: Void = merged.replace(topics: both)
+    _ = await (x, y, z)
+    #expect(factory.streams.filter { $0.0 == "coinbase" }.count == 1)
+    #expect(factory.streams.filter { $0.0 == "binance" }.count == 1)
+    await merged.stop()
+  }
 }

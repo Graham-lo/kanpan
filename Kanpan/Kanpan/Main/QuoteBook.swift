@@ -615,7 +615,8 @@ final class QuoteBook {
     let names = streamNames()
     guard names != subscribedStreams else { return }
     subscribedStreams = names
-    Task { await socket.replace(topics: names) }
+    // 同步写进期望集：合并推送自己只留一个对账任务追最新的一份，不会被乱序的 Task 覆盖回旧订阅。
+    socket.want(names)
   }
 
   /// 每 5 秒报一次列表这条流收了多少行情、其中多少不在订阅集里被丢掉。
@@ -1180,8 +1181,9 @@ final class QuoteBook {
     self.socket = socket
     let names = streamNames()
     subscribedStreams = names
+    socket.want(names)
     pump = Task { [weak self] in
-      let events = await socket.start(topics: names)
+      let events = await socket.open()
       for await event in events {
         guard let self, !Task.isCancelled, generation == self.session.generation else { break }
         switch event {
