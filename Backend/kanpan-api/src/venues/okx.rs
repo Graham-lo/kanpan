@@ -76,6 +76,11 @@ pub async fn funding()->Result<Arc<Vec<Funding>>> {
    let table=parse_funding(&body);
    // 上游回了个空表（换信封、限速回 code≠0）不当新表存：别拿一张空表盖掉好表。
    if table.is_empty() {return funding_cache().fresh(FUNDING_MAX_AGE).ok_or_else(ApiError::missing)}
+   // 币安合约表十分钟一份、同进程共用；这里最多等它五秒，等不到就先给原名。
+   let table=match tokio::time::timeout(Duration::from_secs(5),crate::market_meta::exchange_info()).await {
+    Ok(Ok(info))=>with_binance_aliases(table,&info),
+    _=>table,
+   };
    Ok(funding_cache().store(table))
   },
   Err(e)=>funding_cache().fresh(FUNDING_MAX_AGE).ok_or(e),
@@ -83,14 +88,75 @@ pub async fn funding()->Result<Arc<Vec<Funding>>> {
 }
 
 /// `BTCUSDT` -> `BTC-USDT-SWAP`; an instrument id passed in as-is stays intact.
-pub fn instrument(symbol:&str)->String {
+pub fn instrument(symbol:&str)->String {resolve(symbol).instrument}
+
+/// 手机问的那只币安永续在 OKX 上对应哪一只，以及两边的计量单位差几位。
+///
+/// 币安把单价极小的币挂成「N 个币」一个单位（`1000PEPEUSDT`、`1000000MOGUSDT`、
+/// `1MBABYDOGEUSDT`），价格按 N 个币报、数量按 N 个币记。OKX 不这么挂——2026-09-26
+/// 拉 `GET /api/v5/public/instruments?instType=SWAP` 实测 492 只永续里以数字开头的只有
+/// `0G` / `1INCH` / `2Z` 三只真名字，PEPE 就是 `PEPE-USDT-SWAP`（ctVal 10000000，价格按
+/// 一个币报）。所以 `1000PEPEUSDT` 以前被拼成 `1000PEPE-USDT-SWAP`，OKX 没这只，网关
+/// 线路上这些币的「仓」「额」「费率」全是空的。现在剥掉前缀去问，拿回来的价格乘回去、
+/// 币量除回去，手机收到的还是币安那只合约的单位。
+#[derive(Clone,Debug,PartialEq)]
+pub struct Resolved {pub instrument:String,pub scale:f64}
+pub fn resolve(symbol:&str)->Resolved {
  let up=symbol.to_ascii_uppercase();
- if up.contains('-') {return if up.ends_with("-SWAP"){up}else{format!("{up}-SWAP")}}
+ // 直接给了 OKX 品种号的，照它原样问，不换算。
+ if up.contains('-') {return Resolved{instrument:if up.ends_with("-SWAP"){up}else{format!("{up}-SWAP")},scale:1.0}}
  let clean:String=up.chars().filter(char::is_ascii_alphanumeric).collect();
  for quote in QUOTES {
-  if let Some(rest)=clean.strip_suffix(quote)&& !rest.is_empty() {return format!("{rest}-{quote}-SWAP")}
+  if let Some(rest)=clean.strip_suffix(quote)&& !rest.is_empty() {
+   let (base,scale)=crate::market_meta::strip_multiplier(rest);
+   return Resolved{instrument:format!("{base}-{quote}-SWAP"),scale}
+  }
  }
- format!("{clean}-USDT-SWAP")
+ Resolved{instrument:format!("{clean}-USDT-SWAP"),scale:1.0}
+}
+
+/// 把十进制原文的小数点右移 `log10(scale)` 位（`0.0000123` × 1000 → `0.0123`）。
+/// 走字符串不走 `f64`：OKX 给的价格原文照原样传给手机，乘一下不该多出一串尾数。
+fn shift_decimal(text:&str,scale:f64)->String {
+ let places=scale.log10().round();
+ if !(1.0..=18.0).contains(&places) {return text.to_owned()}
+ let places=places as usize;
+ let (sign,body)=text.strip_prefix('-').map_or(("",text),|b|("-",b));
+ let (int,frac)=body.split_once('.').unwrap_or((body,""));
+ let frac=format!("{frac:0<places$}");
+ let (moved,rest)=frac.split_at(places);
+ let int=format!("{int}{moved}");
+ let int=int.trim_start_matches('0');
+ let int=if int.is_empty() {"0"} else {int};
+ if rest.is_empty() {format!("{sign}{int}")} else {format!("{sign}{int}.{rest}")}
+}
+impl Ticker {
+ /// 换成币安那只打包合约的单位：价格乘 N、币量除 N（成交额不变）。
+ fn in_units_of(self,scale:f64)->Ticker {
+  if scale==1.0 {return self}
+  Ticker{last:shift_decimal(&self.last,scale),open:shift_decimal(&self.open,scale),
+   high:shift_decimal(&self.high,scale),low:shift_decimal(&self.low,scale),
+   base_volume:self.base_volume/scale,time:self.time}
+ }
+}
+
+/// 资金费率和计量单位无关，但手机按自己那只合约的代号对表（`1000PEPEUSDT`），
+/// OKX 那行只会叫 `PEPEUSDT`。按币安合约表给打包的那几只各补一行同样的费率。
+/// 合约表拿不到就只给原名——少几只打包币的费率，不妨碍别的。
+pub fn with_binance_aliases(mut table:Vec<Funding>,exchange_info:&Value)->Vec<Funding> {
+ let mut aliases:HashMap<String,Vec<String>>=HashMap::new();
+ for row in exchange_info["symbols"].as_array().into_iter().flatten() {
+  let (Some(symbol),Some(base),Some(quote))=(row["symbol"].as_str(),row["baseAsset"].as_str(),row["quoteAsset"].as_str()) else {continue};
+  if !FUNDING_QUOTES.contains(&quote) {continue}
+  let (plain,scale)=crate::market_meta::strip_multiplier(base);
+  if scale==1.0 {continue}
+  aliases.entry(format!("{plain}{quote}")).or_default().push(symbol.to_owned());
+ }
+ let extra:Vec<Funding>=table.iter().flat_map(|f|aliases.get(&f.symbol).into_iter().flatten().map(|alias|Funding{symbol:alias.clone(),..f.clone()})).collect();
+ table.extend(extra);
+ table.sort_by(|a,b|a.symbol.cmp(&b.symbol));
+ table.dedup_by(|a,b|a.symbol==b.symbol);
+ table
 }
 
 /// OKX sends every swap at once: `oiCcy` is coin-denominated, `oiUsd` notional.
@@ -111,7 +177,9 @@ pub async fn open_interest(symbol:&str)->Result<OpenInterest> {
   // 一刻钟没刷成功就不再拿旧表答题：持仓量是分钟级的量。
   None=>match get_json(OI_URL).await {Ok(body)=>cache().store(parse_oi(&body)),Err(e)=>cache().fresh(OI_MAX_AGE).ok_or(e)?}
  };
- table.get(&instrument(symbol)).copied().ok_or_else(ApiError::missing)
+ let Resolved{instrument,scale}=resolve(symbol);
+ // 币的个数换成币安那只合约的单位（`1000PEPE` 一个算一千个币）；美元名义值不变。
+ table.get(&instrument).map(|oi|OpenInterest{open_interest:oi.open_interest/scale,..*oi}).ok_or_else(ApiError::missing)
 }
 
 // -------------------------------------------------------------------- 24h 行情
@@ -254,9 +322,10 @@ async fn vwap_for(inst:&str)->Option<f64> {
 
 /// 一只永续的 24h 行情（带 USDT 成交额）。`symbol` 是币安写法（`BTCUSDT`）。
 pub async fn ticker(symbol:&str)->Result<Value> {
- let inst=instrument(symbol);
+ let Resolved{instrument:inst,scale}=resolve(symbol);
  let (t,p)=tokio::join!(ticker_raw(&inst),vwap_for(&inst));
- Ok(ticker_payload(&symbol.to_ascii_uppercase(),&t?,p))
+ // 均价跟着价格一起乘 N、币量除 N：两者相乘的成交额原样不动。
+ Ok(ticker_payload(&symbol.to_ascii_uppercase(),&t?.in_units_of(scale),p.map(|p|p*scale)))
 }
 
 // -------------------------------------------------------------------- 持仓量历史
@@ -318,8 +387,14 @@ async fn pace() {
 
 /// 不晚于 `end_time`（含）的最多 `limit` 条，按时间升序。`end_time` 缺省就是「到现在」。
 pub async fn oi_history(symbol:&str,period:&str,limit:usize,end_time:Option<i64>,now:i64)->Result<Arc<Vec<OiPoint>>> {
+ let Resolved{instrument:inst,scale}=resolve(symbol);
+ // 缓存按 OKX 品种号存 OKX 的原数，换算放到出口：`PEPEUSDT` 和 `1000PEPEUSDT` 共用同一份。
+ let points=oi_history_okx(&inst,period,limit,end_time,now).await?;
+ if scale==1.0 {return Ok(points)}
+ Ok(Arc::new(points.iter().map(|p|OiPoint{coins:p.coins/scale,..*p}).collect()))
+}
+async fn oi_history_okx(inst:&str,period:&str,limit:usize,end_time:Option<i64>,now:i64)->Result<Arc<Vec<OiPoint>>> {
  let bar=okx_period(period).ok_or(ApiError::bad("unsupported_period"))?;
- let inst=instrument(symbol);
  let limit=limit.clamp(1,OI_HISTORY_MAX);
  // 最近几分钟以内的 `end_time` 都当「最新一页」：手机每次给的都是自己的 now，按毫秒当键就永远不中。
  let latest=end_time.is_none_or(|t|t>=now-300_000);
@@ -390,6 +465,49 @@ mod tests {
   assert_eq!(instrument("BTCUSDT"),"BTC-USDT-SWAP");
   assert_eq!(instrument("btc-usdt-swap"),"BTC-USDT-SWAP");
   assert_eq!(instrument("PEPE-USDT"),"PEPE-USDT-SWAP");
+ }
+ /// OKX 永续没有 `1000PEPE-USDT-SWAP` 这种打包写法（2026-09-26 实测 instruments?instType=SWAP，
+ /// 以数字开头的只有 `0G` / `1INCH` / `2Z`）：币安的打包代号剥掉前缀去问，带回倍数。
+ #[test]
+ fn binance_bundle_symbols_map_to_the_plain_okx_swap_with_their_scale() {
+  assert_eq!(resolve("1000PEPEUSDT"),Resolved{instrument:"PEPE-USDT-SWAP".into(),scale:1000.0});
+  assert_eq!(resolve("1000000MOGUSDT"),Resolved{instrument:"MOG-USDT-SWAP".into(),scale:1e6});
+  assert_eq!(resolve("1MBABYDOGEUSDT"),Resolved{instrument:"BABYDOGE-USDT-SWAP".into(),scale:1e6});
+  assert_eq!(resolve("1INCHUSDT"),Resolved{instrument:"1INCH-USDT-SWAP".into(),scale:1.0});
+  assert_eq!(resolve("BTCUSDT"),Resolved{instrument:"BTC-USDT-SWAP".into(),scale:1.0});
+  // 直接给了 OKX 品种号的原样问。
+  assert_eq!(resolve("1000PEPE-USDT-SWAP").scale,1.0);
+ }
+ #[test]
+ fn bundle_tickers_come_back_in_the_binance_units() {
+  assert_eq!(shift_decimal("0.0000123",1000.0),"0.0123");
+  assert_eq!(shift_decimal("0.00001",1000.0),"0.01");
+  assert_eq!(shift_decimal("12",1000.0),"12000");
+  assert_eq!(shift_decimal("0.000000123456",1e6),"0.123456");
+  assert_eq!(shift_decimal("1.5",1.0),"1.5");
+  let t=Ticker{last:"0.0000123".into(),open:"0.0000120".into(),high:"0.0000125".into(),low:"0.0000119".into(),base_volume:5e12,time:1};
+  let payload=ticker_payload("1000PEPEUSDT",&t.clone().in_units_of(1000.0),Some(0.0000122*1000.0));
+  assert_eq!(payload["ticker"]["lastPrice"],"0.0123");
+  assert_eq!(payload["ticker"]["openPrice"],"0.0120");
+  assert_eq!(payload["ticker"]["volume"],"5000000000");
+  // 成交额和不换算时一样。
+  assert_eq!(payload["ticker"]["quoteVolume"],ticker_payload("PEPEUSDT",&t,Some(0.0000122))["ticker"]["quoteVolume"]);
+ }
+ #[test]
+ fn bundle_contracts_get_the_same_funding_row_under_their_binance_name() {
+  let table=vec![
+   Funding{symbol:"BTCUSDT".into(),rate:0.0001,next_funding_time:1},
+   Funding{symbol:"PEPEUSDT".into(),rate:-0.0002,next_funding_time:2}];
+  let info=json!({"symbols":[
+   {"symbol":"BTCUSDT","baseAsset":"BTC","quoteAsset":"USDT"},
+   {"symbol":"1000PEPEUSDT","baseAsset":"1000PEPE","quoteAsset":"USDT"},
+   {"symbol":"1INCHUSDT","baseAsset":"1INCH","quoteAsset":"USDT"},
+   {"symbol":"1000PEPEUSDC","baseAsset":"1000PEPE","quoteAsset":"USDC"}]});
+  let out=with_binance_aliases(table,&info);
+  assert_eq!(out.iter().map(|f|f.symbol.as_str()).collect::<Vec<_>>(),["1000PEPEUSDT","BTCUSDT","PEPEUSDT"]);
+  assert_eq!(out[0],Funding{symbol:"1000PEPEUSDT".into(),rate:-0.0002,next_funding_time:2});
+  // 合约表是空的（拿不到）就只有原名。
+  assert_eq!(with_binance_aliases(vec![Funding{symbol:"PEPEUSDT".into(),rate:0.0,next_funding_time:1}],&json!({})).len(),1);
  }
 
  #[test]
