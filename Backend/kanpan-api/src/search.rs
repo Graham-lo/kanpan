@@ -113,6 +113,15 @@ fn sorted_unique(mut items:Vec<Value>)->Vec<Value> {
  let mut result:Vec<Value>=vec![];
  for item in items {if result.iter().any(|v|v["range"]["symbol"]==item["range"]["symbol"]&&v["range"]["start"].as_i64()<item["range"]["end"].as_i64()&&v["range"]["end"].as_i64()>item["range"]["start"].as_i64()){continue}result.push(item)}result
 }
+/// 一个候选的分数；这段行情画不成可比的图（横盘到零振幅、坏 OHLC、根数不够）时是 `None`。
+///
+/// 以前这里是两个 `?`：一个候选的几何错误会冒成整个租约的错误，`position` 不前进，
+/// 下一个租约又撞上同一个候选，三次之后整个检索记成 `market_unavailable` 失败——
+/// 一个坏候选让其余几百个候选一个都比不了。候选的毛病只该让这个候选落选。
+fn candidate_score(query:&[chart_match::Candle],bars:&[scorebook_core::domain::criteria::Bar])->Option<f64> {
+ let candidate=chart_match::from_bars(bars).ok()?;
+ chart_match::rerank(query,&candidate,false).ok().map(|m|m.score).filter(|s|s.is_finite())
+}
 /// 一个租约处理多少个候选、同时向币安取几个（见 `run_one` 里的说明）。
 const SEARCH_BATCH:usize=48;
 const SEARCH_CONCURRENCY:usize=4;
@@ -129,6 +138,9 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  sqlx::query("UPDATE review_searches SET status='running',lease_id=$3,lease_until=now()+interval '120 seconds',attempts=attempts+1 WHERE user_id=$1 AND id=$2").bind(owner).bind(id).bind(lease).execute(&mut *tx).await?;tx.commit().await?;
  let work=async {
   let bars=range_bars(market,&q.range,q.cutoff).await?;let candles=core(chart_match::from_bars(&bars))?;
+  // 查询这一段自己能不能归一化，在比任何候选之前一次说清：它不行就是整个检索不行（照旧
+  // 走失败分支）；它行，那后面每个候选的几何错误就只可能是那个候选的，逐个跳过即可。
+  core(chart_match::normalized(&candles,false))?;
   let candidates:Vec<Candidate>=match old_candidates{Some(v)=>parse(v)?,None=>candidates(s,owner,&q,&core(chart_match::descriptor(&candles))?).await?};
   // 每个租约 48 个候选、同时取 4 个。每个候选都要去币安取一次 K 线，原来一个一个取、
   // 一租约 16 个：300 个候选要 19 个租约，租约之间 worker 还要睡一秒，线上一次
@@ -147,10 +159,11 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   for candidate in &batch {
    let Some(bars)=fetched.next().await else{break};
    match bars {
-    Ok(bars)=>{
-     let score=core(chart_match::rerank(&candles,&core(chart_match::from_bars(&bars))?,false))?.score;checked+=1;
-     if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}
-    }
+    Ok(bars)=>match candidate_score(&candles,&bars) {
+     Some(score)=>{checked+=1;if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}}
+     // 这个候选这段行情画不成图（横盘到零振幅、坏 OHLC、根数不够）：它自己的事，跳过。
+     None=>{}
+    },
     // 取不到行情是「这会儿」的事（本分钟的权重账本满了、币安在冷却、网络抖了），
     // 不是这个候选的事：停在这里、下一分钟从它接着比，不能把它当成「比过、没比上」
     // 跳过去——原来就是这么跳的，结果同一个查询忙时闲时比上的候选不一样多。
@@ -184,6 +197,31 @@ mod tests {
  /// 查询向量只能出现在 MATERIALIZED 的 CTE 里——排序键一旦写成 `embedding<=>$1…`
  /// 这种索引认得的形状，规划器就可能改走 HNSW，候选数随执行计划塌到几十个（1d 通用计划
  /// 线上实测 53/300）。真正的证据是线上 EXPLAIN；这条只钉住 SQL 的形状别被改回去。
+ use super::candidate_score;
+ use chrono::{TimeZone,Utc};
+ use scorebook_core::domain::{chart_match,criteria::Bar};
+ fn bars(n:usize,price:impl Fn(usize)->f64)->Vec<Bar> {
+  (0..n).map(|i|{
+   let (o,c)=(price(i),price(i+1));
+   let start=Utc.timestamp_opt(1_700_000_000+i as i64*60,0).unwrap();
+   Bar{start,end:start+chrono::Duration::seconds(60),open:format!("{o}"),high:format!("{}",o.max(c)+0.5),low:format!("{}",o.min(c)-0.5),close:format!("{c}"),volume:None}
+  }).collect()
+ }
+ fn wave(i:usize)->f64 {100.0+9.0*(i as f64*0.2).sin()}
+ /// 一个画不成图的候选只让自己落选，不再冒成整个检索的错误（以前 `?` 让整批租约失败、
+ /// 三次后整个检索 market_unavailable）。能比的候选照常出分。
+ #[test]
+ fn a_candidate_that_cannot_be_drawn_is_skipped_not_fatal() {
+  let query=chart_match::from_bars(&bars(40,wave)).unwrap();
+  assert!(candidate_score(&query,&bars(40,wave)).is_some_and(|s|s>0.9),"同一段走势比自己");
+  let flat:Vec<Bar>=bars(40,|_|100.0).into_iter().map(|mut b|{b.high="100".into();b.low="100".into();b})
+   .collect();
+  assert_eq!(candidate_score(&query,&flat),None,"零振幅：flat_chart_geometry");
+  assert_eq!(candidate_score(&query,&bars(8,wave)),None,"根数不够 16");
+  let mut broken=bars(40,wave);broken[5].high="1".into();
+  assert_eq!(candidate_score(&query,&broken),None,"坏 OHLC");
+  assert_eq!(candidate_score(&query,&[]),None);
+ }
  #[test]
  fn public_nearest_is_exact_and_plan_independent() {
   let sql=PUBLIC_NEAREST_SQL;
