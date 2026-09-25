@@ -41,15 +41,24 @@ enum PersonalSyncCodec {
     }
     return result
   }
-  static func settings(_ prefs: Prefs) throws -> SyncObject {
-    let all = try JSONDecoder().decode([String: KanpanAccount.JSONValue].self, from: PrefsCodec.encode(prefs))
+  /// 设置编不出字节（`PrefsCodec.encoded` 返回 nil）。编码那一侧已经记了日志。
+  ///
+  /// 抛出来而不是拿空体往下走：空体差分出来就是「这个人把所有设置都清空了」，推上去等于抹掉云端那份。
+  struct UnencodablePrefs: Error {}
+  /// 设置的整份线上字段表。`encode` 只给单测换：默认就是 `PrefsCodec.encoded`。
+  static func prefsFields(_ prefs: Prefs, encode: (Prefs) -> Data? = PrefsCodec.encoded) throws -> [String: KanpanAccount.JSONValue] {
+    guard let data = encode(prefs) else { throw UnencodablePrefs() }
+    return try JSONDecoder().decode([String: KanpanAccount.JSONValue].self, from: data)
+  }
+  static func settings(_ prefs: Prefs, encode: (Prefs) -> Data? = PrefsCodec.encoded) throws -> SyncObject {
+    let all = try prefsFields(prefs, encode: encode)
     var object = SyncObject(collection: "settings", id: "chart")
     object.body = flatten(all.filter { fields.contains($0.key) })
     object.body["rsiRange"] = .array([.number(prefs.rsiLower), .number(prefs.rsiUpper)])
     return object
   }
-  static func apply(_ object: SyncObject, to local: Prefs) throws -> Prefs {
-    var all = try JSONDecoder().decode([String: KanpanAccount.JSONValue].self, from: PrefsCodec.encode(local))
+  static func apply(_ object: SyncObject, to local: Prefs, encode: (Prefs) -> Data? = PrefsCodec.encoded) throws -> Prefs {
+    var all = try prefsFields(local, encode: encode)
     let values = expand(object.body)
     for key in fields where values[key] != nil { all[key] = values[key] }
     if case .array(let range) = values["rsiRange"], range.count == 2 { all["rsiLower"] = range[0]; all["rsiUpper"] = range[1] }

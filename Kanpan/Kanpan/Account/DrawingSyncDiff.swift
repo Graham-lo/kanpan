@@ -12,6 +12,10 @@ struct SyncCaptureBatch {
   var owns: (SyncObject) -> Bool
 
   /// 加上推出来的删除之后，真正交给 `SyncStore.capture` 的那一批。
+  ///
+  /// `local` 传的是 `SyncArchive.appliedLocal`（本机装进去的那一版）。里头已经是删除的不再推删除；
+  /// 本机那一版还活着、云端却已经删了的（云端和用户两边都删了），交给 `SyncStore.stage`
+  /// 认出「记账里已经是删除」，一条操作都不记。
   func withDeletions(against local: some Sequence<SyncObject>) -> [SyncObject] {
     let keys = Set(objects.map(\.key))
     let deleted = local.filter { owns($0) && !$0.deleted && !keys.contains($0.key) }

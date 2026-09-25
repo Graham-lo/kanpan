@@ -171,6 +171,63 @@ import Testing
     #expect(reopened.archive.local[chartKey]?.body["skin"] == .string("terra"))
   }
 
+  /// (e) 启动对账同一个错的另一条入口：底稿还在时，盘上（设备那份）等于底稿、不等于 `local`。
+  /// 对着 `appliedLocal` 比：盘上等于底稿就什么都不补、什么都不记；盘上在底稿之上又改了一个字段，
+  /// 就只记那一个字段。
+  @Test func startupReconcileComparesAgainstTheAppliedVersion() async throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let server = FakeSyncServer()
+    let store = try appliedStore(root, server)
+    server.seed(stamped(server, "settings", "chart", ["skin": .string("terra"), "barSpacing": .number(6)], revision: 2))
+    try store.receive(server.page(["settings"]))
+    try store.capture(chart("moss", 8), device: device)      // 本机有一条待发（本机说了算）
+    #expect(store.archive.local[chartKey]?.body == chart("terra", 8).body)
+    #expect(store.archive.shelved[chartKey]?.object?.body == chart("moss", 8).body)
+    await store.flush()
+    let reopened = try SyncStore(directory: root)             // 冷启动
+    let onDisk = chart("moss", 8)
+
+    // 前向对账：盘上就是用户眼前那一版，没有要补进正式文件的。拿 `local` 比会把 terra 补进来。
+    #expect(reopened.startupCorrections(in: ["settings"], onDisk: [onDisk]).isEmpty)
+    #expect(reopened.archive.appliedLocal[chartKey]?.body == onDisk.body, "设置那一档的对账基线")
+    // 盘上等于底稿：整份再记一遍也一条操作都不多。
+    try reopened.capture(onDisk, device: device)
+    #expect(reopened.archive.operations.count == 1)
+    // 盘上在底稿之上改了一个字段：只记那一个字段，云端的 terra 不动。
+    try reopened.capture(chart("moss", 10), device: device)
+    #expect(reopened.archive.operations.count == 2)
+    #expect(reopened.archive.operations.last?.fields == ["barSpacing": .number(10)])
+    #expect(reopened.archive.operations.last?.action == "patch")
+    #expect(reopened.archive.local[chartKey]?.body == chart("terra", 10).body)
+    // 盘上真的缺着用户那一改（落存档之后、落正式文件之前进程没了）：补的是用户那一版，不是云端那份。
+    let behind = reopened.startupCorrections(in: ["settings"], onDisk: [chart("moss", 6)])
+    #expect(behind.map(\.body) == [chart("moss", 10).body])
+  }
+
+  /// (f) 云端删了、用户在装之前也删了同一个对象：不再多发一条删除，底稿随之作废并落盘。
+  @Test func bothSidesDeletingSendsNothing() async throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let server = FakeSyncServer()
+    let store = try SyncStore(directory: root)
+    let line = stamped(server, "drawings", "binance/usd_m/BTCUSDT/a", ["symbol": .string("BTCUSDT")], revision: 1)
+    server.seed(line)
+    try store.receive(server.page(["drawings"]))
+    try store.markApplied(at: 1)
+    var tombstone = line; tombstone.deleted = true; tombstone.revision = 2
+    server.seed(tombstone)
+    try store.receive(server.page(["drawings"]))
+    #expect(store.archive.appliedLocal[line.key]?.deleted == false)
+
+    // 桥上的推法：本机档案里已经没有它，本机那一版里它还活着 → 推出一条删除交给记账。
+    var gone = try #require(store.archive.appliedLocal[line.key]); gone.deleted = true
+    try store.capture([gone], device: device)
+    #expect(store.archive.operations.isEmpty, "\(store.archive.operations.map(\.action))")
+    #expect(store.archive.shelved[line.key] == nil)
+    #expect(store.archive.appliedLocal[line.key]?.deleted == true)
+    await store.flush()
+    #expect(try SyncStore(directory: root).archive.shelved.isEmpty, "底稿作废要落盘")
+  }
+
   // MARK: - B
 
   /// 两批：第一批推上去了、第二批断网。第一批那几个字段确实在云端了，`onPushed` 必须报它们一次。

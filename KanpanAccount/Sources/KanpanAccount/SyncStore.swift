@@ -371,11 +371,18 @@ final class ArchiveWriter: @unchecked Sendable {
   /// 只认 `holdsLocal` 的对象——有待发操作或未了结的拒绝记录，才说明这一版是
   /// 用户刚改的、还没推上去的。云端下发的那些不在此列，否则就成了拿存档去
   /// 回滚正式文件。
+  ///
+  /// 「这一版」取的是 `appliedLocal`（有底稿用底稿）：云端推过、还没装的字段不在这儿补，
+  /// 它们等 `applyPending()` 连同 `markApplied` 一起装。
   public func unpersistedLocalChanges(in collections: Set<String>, onDisk: [SyncObject]) -> [SyncObject] {
     var disk: [String: SyncObject] = [:]
     for object in onDisk where collections.contains(object.collection) { disk[object.key] = object }
     var out: [SyncObject] = []
-    for (key, object) in archive.local where collections.contains(object.collection) {
+    // 对着 `appliedLocal` 比，不对着 `local`：底稿还在时 `local` 是「云端那份叠上用户动过的字段」，
+    // 用户眼前（正式文件该是）的那一版是底稿。拿 `local` 补进正式文件，等于没经 `markApplied`
+    // 就把云端的改动装进来、底稿却还留着——下一次记账拿底稿一比，云端那几项全成了
+    // 「用户改的」，带着新时间戳推回去（和 `stage` 里修掉的是同一个错，另一条入口）。
+    for (key, object) in archive.appliedLocal where collections.contains(object.collection) {
       guard archive.holdsLocal(object.collection, object.id) else { continue }
       let current = disk[key]
       if object.deleted {
@@ -424,7 +431,8 @@ final class ArchiveWriter: @unchecked Sendable {
     var staged = archive
     var changed = false
     for value in values where stage(value, device: device, importing: batch, owning: ownedKeys, into: &staged) { changed = true }
-    guard changed else { return }
+    // 一条操作都没产生、底稿却换了（见 `stage` 里「两边都删了」那一段）也要落盘。
+    guard changed || staged.shelved != archive.shelved else { return }
     try transaction { $0 = staged }
   }
   /// 把一个对象记进给定的存档副本，返回「有没有真的产生一条操作」。
@@ -479,6 +487,13 @@ final class ArchiveWriter: @unchecked Sendable {
     let ledger = a.local[value.key]
     let base = a.objects[value.key] ?? SyncObject(collection: value.collection, id: value.id)
     if batch != nil && base.deleted { return false }
+    // 要删的对象在记账里已经是删除（云端删了、或者本机已经记过一条删除）：没有东西可推。
+    // 用户眼前那一版现在也是「没了」，和 `local` 对上了，底稿作废。不拦的话，云端删、用户
+    // 也删的那个对象（底稿里还活着）会多发一条删除。
+    if value.deleted, ledger?.deleted == true {
+      a.shelved[value.key] = nil
+      return false
+    }
     // 有底稿就拿底稿比（见上）。三种情况退回拿云端那份比（从前的做法）、底稿作废：
     // - 底稿说本机装的那一版里**没有**它：手上这份要么是本机自己另起的同一个键
     //   （设置单例、同一只品种的自选），要么是调用方明说要删的——都不是从某一版改出来的，没有底稿可言；

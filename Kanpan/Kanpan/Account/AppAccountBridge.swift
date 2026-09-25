@@ -1,4 +1,5 @@
 import Foundation
+import os
 import UIKit
 import KanpanCore
 import KanpanAccount
@@ -8,6 +9,8 @@ import ReviewUI
 
 /// Connects existing stores to account storage. MarketModel and the chart engine are unchanged.
 @MainActor final class AppAccountBridge {
+  /// 设置编不出字节（`PrefsCodec.encoded` 返回 nil）时留一句：那一次写盘整段跳过，绝不写空档。
+  private static let log = Logger(subsystem: "com.kanpan.app", category: "account")
   let files: AccountFiles
   private let account: AccountFeature
   private let prefs: PrefsStore
@@ -202,7 +205,11 @@ import ReviewUI
     let marker = files.root.appendingPathComponent("legacy-imported.json")
     guard !FileManager.default.fileExists(atPath: marker.path) else { return }
     let guest = try files.directory(user: nil)
-    let values: [(String, Data)] = [("prefs.json", PrefsCodec.encode(prefs.prefs)), ("symbols.json", try JSONEncoder().encode(symbols.prefs)), ("draws.json", try JSONEncoder().encode(drawings.storedArchive))]
+    // 设置编不出字节就不搬这一份（`PrefsCodec.encoded` 返回 nil），不能往访客目录写一个空的 prefs.json：
+    // 空档读回来是出厂值，再被当成「这个人的设置」推上去。
+    let encodedPrefs = PrefsCodec.encoded(prefs.prefs)
+    if encodedPrefs == nil { Self.log.error("legacy prefs unencodable, skipped migrating prefs.json") }
+    let values: [(String, Data)] = (encodedPrefs.map { [("prefs.json", $0)] } ?? []) + [("symbols.json", try JSONEncoder().encode(symbols.prefs)), ("draws.json", try JSONEncoder().encode(drawings.storedArchive))]
     for (name, data) in values {
       let target = guest.appendingPathComponent(name)
       if !FileManager.default.fileExists(atPath: target.path) { try data.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
@@ -266,8 +273,11 @@ import ReviewUI
     // 办：先找同步存档里本机上一次记下的那份，绝不拿出厂值当「本机刚改的」推上云端。
     let profileOwner = user?.id.uuidString ?? ("guest:" + files.guestBatch.uuidString)
     let verdict = prefs.diagnose(nextStorage, owner: profileOwner)
+    // 「本机上一次记下的那份」是本机装进去的那一版（`appliedLocal`，底稿还在时就是底稿），
+    // 不是云端推过来、还没装的 `local`；本机那一版里压根没有设置对象时才退回 `local`。
     let archivedSettings = try nextSync.flatMap { sync in
-      try sync.archive.local[PersonalSyncCodec.settings(nextPrefs).key].flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
+      let key = try PersonalSyncCodec.settings(nextPrefs).key
+      return (sync.archive.appliedLocal[key] ?? sync.archive.local[key]).flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
     }
     let recovery = SettingsRecovery.plan(verdict, onDisk: nextPrefs, baseline: archivedSettings)
     nextPrefs = recovery.prefs
@@ -359,8 +369,12 @@ import ReviewUI
     // Complete all fallible disk preparation before replacing any visible account state.
     // 这三份以前每次冷启动都原样重写一遍，只是为了「确保文件在」。读一次小 JSON 比
     // 一次原子写（临时文件 + rename + fsync）便宜得多，只在内容真的不一样时才落盘。
-    let encodedPrefs = PrefsCodec.encode(nextPrefs)
-    if encodedPrefs != nextStorage.prefsData(forKey: PrefsCodec.key) { nextStorage.setPrefsData(encodedPrefs, forKey: PrefsCodec.key) }
+    // 编不出字节就不写：盘上那份原样留着，绝不拿空 Data 盖掉它。
+    if let encodedPrefs = PrefsCodec.encoded(nextPrefs) {
+      if encodedPrefs != nextStorage.prefsData(forKey: PrefsCodec.key) { nextStorage.setPrefsData(encodedPrefs, forKey: PrefsCodec.key) }
+    } else {
+      Self.log.error("prepare: prefs unencodable, kept prefs.json on disk untouched")
+    }
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
     if encodedSymbols != nextStorage.symbolPrefsData(forKey: SymbolPrefsStore.defaultsKey) { nextStorage.setSymbolPrefsData(encodedSymbols, forKey: SymbolPrefsStore.defaultsKey) }
     if nextStorage.error != nil { throw AccountError.storage }
@@ -380,7 +394,10 @@ import ReviewUI
       // 就必须生成一条操作，不管和存档里那份比起来像不像。`ChartLayoutReconcile`
       // 留着兜老档（装了脏标识之前就存在的那些安装，它们一个标识都没有）。
       let dirty = PrefsStore.storedStamp(in: nextStorage)?.isDirty ?? false
-      let baseline = nextSync.archive.local[settings.key].flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
+      // 对着本机装进去的那一版比（`appliedLocal`）：底稿还在时 `local` 是云端推过来、还没装的，
+      // 盘上这份等于底稿、不等于它，拿它比就会把云端的改动判成「盘上有没记上的改动」。
+      // 判成 `.recapture` 之后记账那一步（`SyncStore.stage`）也是拿底稿差分的，两头一致。
+      let baseline = nextSync.archive.appliedLocal[settings.key].flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
       // 盘上那份不可信时一条操作都不记（`SettingsRecovery.Plan.mayCapture`）。
       if recovery.mayCapture, dirty || ChartLayoutReconcile.decide(onDisk: nextPrefs, baseline: baseline) == .recapture {
         try nextSync.capture([settings], device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
@@ -778,6 +795,16 @@ import ReviewUI
       ? SyncOverlay.symbols(rebuiltFrom: objects.filter { $0.collection == "favorites" || $0.collection == "groups" }, keeping: symbols.prefs)
       : symbols.prefs
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
+    // 设置要写盘的字节也在这一段编好：编不出来（`PrefsCodec.encoded` 返回 nil）就整批不装、
+    // 等下一轮重来——第二段绝不写一份空档进去，第三段也不会把没落盘的那一代推给界面。
+    var encodedPrefs: Data?
+    if let nextPrefs, nextPrefs != prefs.prefs {
+      guard let data = PrefsCodec.encoded(nextPrefs) else {
+        Self.log.error("applyPending: prefs unencodable, batch left pending")
+        throw AccountError.storage
+      }
+      encodedPrefs = data
+    }
     // 云端手上还躺着同名的分组对象（两台设备、或访客档案与账号各建了一个「加密」）：
     // 重建那一步已经按名字并成一格了，这里记下「被并掉的 id → 留下的 id」，发布之后
     // 再记一次账——把多余的分组对象推删除、挂在上面的自选改挂过去，云端跟着收敛成一份。
@@ -792,8 +819,8 @@ import ReviewUI
     // 这一批之后，把刚装进来的云端那一代盖回旧的。这条路不是手指上的路
     // （它本来后面就跟着一次 `flushNow()`），准阻塞。
     sync.flushNow()
-    if let nextPrefs, nextPrefs != prefs.prefs {
-      personal?.setPrefsData(PrefsCodec.encode(nextPrefs), forKey: PrefsCodec.key)
+    if let encodedPrefs {
+      personal?.setPrefsData(encodedPrefs, forKey: PrefsCodec.key)
     }
     if nextSymbols != symbols.prefs {
       personal?.setSymbolPrefsData(encodedSymbols, forKey: SymbolPrefsStore.defaultsKey)
