@@ -127,8 +127,8 @@ struct MainScreen: View {
   /// 这就是原来那个「冷启动自选盖层」的去处。以前得专门铺一层 `overlay`（不能用
   /// `fullScreenCover`：UIKit 的 present 一定会先画一帧宿主，实测漏出 0.57 s 的
   /// 行情页）。改成标签栏之后这件事自己就成立了——第一帧画的就是 `tab` 指着的那一页。
-  /// 初值只是「还不知道」的占位。档案装进来（`boot()` 里同步装访客那份、
-  /// 账号那份随 `account.restore()` 异步到）之后由 `honorProfile()` 定。
+  /// 初值只是「还不知道」的占位。档案装进来（`boot()` 里同步装上次那个人的那份、
+  /// `account.restore()` 异步核对登录态）之后由 `honorProfile()` 定。
   ///
   /// 初值不再写死 `.chart`：上一次档案判定的落点在本机有一份镜像（`LaunchLandingMirror`），
   /// 判的是自选页就从第一帧起画自选——登录用户的档案要等 `account.restore()` 回来，
@@ -144,7 +144,7 @@ struct MainScreen: View {
   @State private var didPrimeFavorites = false
   /// `boot()` 已经把行情、报价簿、品种表这套线全接好了吗。
   ///
-  /// `honorProfile()` 在 `boot()` **中间**也会被调到（冷启动同步装访客档案那一下），
+  /// `honorProfile()` 在 `boot()` **中间**也会被调到（冷启动同步装上次那个人的档案那一下），
   /// 那一刻行情还没开张、报价簿还没 configure，不能去动它们——`boot()` 自己接着
   /// 就会拿着刚装好的档案把这两件事做对。
   @State private var live = false
@@ -1812,7 +1812,7 @@ struct MainScreen: View {
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
         symbolSearch.reset()
         // 用户自己换号 / 退登，要把人从自选页带走（别让他对着上一个账号的表）。
-        // 冷启动那一段不算：装访客档案、以及 `account.restore()` 把登录态读回来，
+        // 冷启动那一段不算：装上次那个人的档案、以及 `account.restore()` 把登录态读回来，
         // 走的是同一条路，那时候该停哪一格交给 `honorProfile()` 按真档案定。
         // 例外：从设置里推进来的朋友页点「登录」（设置那一叠是 [朋友, 账号]）——登完退回
         // 朋友页，和原来朋友页是半屏时「登完再把朋友页开回来」同一个意思，不把人丢到行情页。
@@ -1831,8 +1831,8 @@ struct MainScreen: View {
       }
       // 档案真的装进来之后才谈「该开哪张图、该停在哪一格、该用哪个周期」。
       bridge.onProfileReady = { honorProfile() }
-      // 冷启动这一段（装访客档案 → 等 `account.restore()`）里手上可能还是访客那份
-      // 空档案，落地页不能拿它当真，所以先把旗子举起来再装档案。
+      // 冷启动这一段（装上次那个人的档案 → 等 `account.restore()`）里手上可能还是访客那份
+      // 空档案（上次没登录、或钥匙串读不出人），落地页不能拿它当真，所以先把旗子举起来再装档案。
       awaitingAccount = true
       try bridge.activate()
       accountBridge = bridge; bridge.focus(market.symbol)

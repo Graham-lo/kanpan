@@ -215,6 +215,12 @@ struct PrefsPersistenceTests {
   func 翻转立刻落盘() {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    // 「允许翻转」关着时图报回来的翻转不算数（图必然是不翻转的，那不是用户的选择）。
+    store.noteInversion(main: true, subs: [.macd])
+    #expect(!store.prefs.mainInverted)
+    #expect(store.prefs.subInverted.isEmpty)
+    #expect(box.keys.isEmpty)
+    store.update { $0.allowMainInversion = true; $0.allowSubInversion = true }
     store.noteInversion(main: true, subs: [.macd])
     #expect(store.prefs.mainInverted)
     #expect(store.prefs.subInverted == [.macd])
@@ -222,6 +228,11 @@ struct PrefsPersistenceTests {
     let snapshot = store.prefs
     store.noteInversion(main: true, subs: [.macd])
     #expect(store.prefs == snapshot)
+    // 关掉「允许翻转」后图解除翻转并报回 false：用户上次的记录要留着，再打开时图还能翻回去。
+    store.update { $0.allowMainInversion = false; $0.allowSubInversion = false }
+    store.noteInversion(main: false, subs: [])
+    #expect(store.prefs.mainInverted)
+    #expect(store.prefs.subInverted == [.macd])
   }
 
   @Test("落在 UserDefaults 的键就是 kanpan.prefs.v2")

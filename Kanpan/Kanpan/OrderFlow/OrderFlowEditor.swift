@@ -106,7 +106,7 @@ struct OrderFlowEditor: View {
             .accessibilityIdentifier("orderflow.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
-          Button("保存") { save(); dismiss() }
+          Button("保存") { Haptics.step(); save(); dismiss() }
             .fontWeight(.semibold)
             .foregroundStyle(t.amber)
             .accessibilityIdentifier("orderflow.save")
