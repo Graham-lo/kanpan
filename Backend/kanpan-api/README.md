@@ -155,8 +155,9 @@ The importer reads Binance's futures REST paths through `www.binance.com` (the `
 `POST /v1/shares` sends only native `Drawing` values (`points` are adapted to the
 existing sync validator's `anchors`), symbol, interval, view and alerted drawing
 IDs. It atomically makes both accounts friends. `GET /v1/shares/inbox` returns
-`{items,cursor}` inside the normal data envelope. Pass that RFC3339 cursor as
-`after` on the next pull; opened/kept changes also participate in incremental
+`{items,cursor}` inside the normal data envelope. Pass that cursor back verbatim as
+`after` on the next pull (an RFC3339 instant, or `instant~id` when the page was
+truncated, so letters sharing one instant never stall the cursor); opened/kept changes also participate in incremental
 pulls. A per-recipient transaction lock and server timestamp prevent concurrent
 sends from falling behind a cursor. `GET /v1/friends`,
 `POST /v1/friends` (`{"username"}`; adds the name to the caller's list only,

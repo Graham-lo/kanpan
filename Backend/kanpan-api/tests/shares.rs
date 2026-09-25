@@ -92,3 +92,30 @@ async fn shares_are_private_make_friends_and_keep_independent_lines() {
  assert_eq!(status,429);
  w.close().await;
 }
+
+/// 同一时刻的信超过一页（一次批量改动就能让几百封落在同一个事务时刻上）：游标带上 id，
+/// 翻页一路翻到底、一封不漏也不原地打转。以前游标只有时刻、按 `>=` 接着拉，
+/// 每次都拉回同一页前两百封，后面的永远拿不到。
+#[tokio::test]
+async fn an_inbox_of_letters_sharing_one_instant_pages_through_to_the_end() {
+ let w=boot().await;
+ let a=signup(&w.app,"qa_page_a").await;let b=signup(&w.app,"qa_page_b").await;
+ let total=kanpan_api::share::INBOX_PAGE+50;
+ for n in 0..total {
+  sqlx::query("INSERT INTO shares(id,from_user,to_user,symbol,interval,view_from,view_to,drawings,created_at) VALUES($1,$2,$3,'BTCUSDT','1h',1,2,'[]',date_trunc('hour',now())-interval '1 hour'+interval '0.123456 seconds')")
+   .bind(format!("page{n:04}")).bind(a.id).bind(b.id).execute(&w.admin).await.unwrap();
+ }
+ let mut seen=std::collections::BTreeSet::new();let mut after:Option<String>=None;let mut pages=0;
+ loop {
+  let route=match &after {Some(c)=>format!("/v1/shares/inbox?after={}",c.replace('+',"%2B")),None=>"/v1/shares/inbox".into()};
+  let (status,v)=request(&w.app,&route,"GET",Some(&b.token),None,json!({})).await;assert_eq!(status,200,"{v}");
+  let items=v["data"]["items"].as_array().unwrap();
+  for item in items {assert!(seen.insert(item["id"].as_str().unwrap().to_owned()),"同一封不该在后一页再出现：{}",item["id"]);}
+  pages+=1;assert!(pages<=4,"游标没有往前走");
+  after=Some(v["data"]["cursor"].as_str().unwrap().to_owned());
+  if items.is_empty() {break}
+ }
+ assert_eq!(seen.len(),total,"每一封都拿到了");
+ assert_eq!(request(&w.app,"/v1/shares/inbox?after=not-a-cursor","GET",Some(&b.token),None,json!({})).await.0,400);
+ w.close().await;
+}
