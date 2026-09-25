@@ -899,6 +899,23 @@ pub(crate) async fn get_json(url:&str)->Result<Value> {
 /// * `Carry` 这一轮问不出来——页面抓不到、汇率缺这个币种、价格表里没有这个合约。
 ///   留着上一轮的数字（还要过七天上限那一关），而不是当成「没有市值」。
 enum Priceable {Value(f64,Valuation),Blank,Carry}
+/// 按合约记的那几条警告，同一个键一个 UTC 日只进一次 WARN，其余降成 DEBUG。
+///
+/// 每一只 ETF 的 `stocks/<代码>` 都答不出一家公司（stockanalysis 把 ETF 放在别的路径下），
+/// 留空是对的，但每轮刷新（失败后十分钟一轮）都给每只 ETF 各记一条 WARN，一天几百条，真正该看的
+/// 那一条（某只股票的页面突然换了人）就淹在里面了。每个键第一次仍然是 WARN，
+/// 一天之内重复的只是同一件已经报过的事。
+fn first_today(seen:&mut HashMap<String,u64>,key:&str,now:SystemTime)->bool {
+ let day=now.duration_since(SystemTime::UNIX_EPOCH).map(|d|d.as_secs()/86_400).unwrap_or(0);
+ // 表只留今天的键：股票合约也就一两百只，而这一步让它跨多少天都不会长。
+ seen.retain(|_,seen_day|*seen_day==day);
+ seen.insert(key.to_owned(),day).is_none()
+}
+fn warn_daily(key:&str,message:std::fmt::Arguments<'_>) {
+ static SEEN:OnceLock<std::sync::Mutex<HashMap<String,u64>>>=OnceLock::new();
+ let fresh=first_today(&mut SEEN.get_or_init(Default::default).lock().unwrap_or_else(|e|e.into_inner()),key,SystemTime::now());
+ if fresh {tracing::warn!("{message}")} else {tracing::debug!("{message}")}
+}
 async fn equity_price(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f64>,prices:&HashMap<String,f64>)->Priceable {
  // 没有登记过页面的名字：不猜地址，这个合约就是没有市值。
  let Some(path)=listing(contract.kind,&contract.base) else {return Priceable::Blank};
@@ -907,7 +924,7 @@ async fn equity_price(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f
  // 汇率缺这个币种就跳过它这一轮。绝不把缺失的汇率当成 1——那等于把 1369 韩元
  // 报成 1369 美元。
  let Some(rate)=fx.get(listing_currency(&path)).copied().filter(|rate|*rate>0.0) else {
-  tracing::warn!("Supply: no rate for {}, {} carried this round",listing_currency(&path),contract.symbol);
+  warn_daily(&format!("rate:{}",contract.symbol),format_args!("Supply: no rate for {}, {} carried this round",listing_currency(&path),contract.symbol));
   return Priceable::Carry;
  };
  let url=format!("{STOCKANALYSIS}{path}/__data.json");
@@ -923,7 +940,7 @@ async fn equity_price(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f
  };
  let (code,keyword)=expected_identity(&contract.base,&path);
  if !page_is(&body,&code,keyword) {
-  tracing::warn!("Supply: {} answered with another company's page; publishing nothing",path);
+  warn_daily(&format!("page:{path}"),format_args!("Supply: {path} answered with another company's page; publishing nothing"));
   return Priceable::Blank;
  }
  let Some(cap)=parse_stockanalysis_cap(&body) else {return Priceable::Blank};
@@ -1702,6 +1719,19 @@ mod tests {
   assert!(unit_changed(180.0,90.0),"2 拆 1：股价腰斩，旧 k 会把市值报成一半");
   assert!(unit_changed(90.0,180.0),"合股同理");
   assert!(unit_changed(0.0,180.0),"不知道旧价格时不敢留");
+ }
+ /// 同一只 ETF 的「不是这家公司」一天只 WARN 一次；别的代码各自第一次照样 WARN；
+ /// 过了 UTC 零点又是新的一天。表只留当天的键，不会随天数长。
+ #[test]
+ fn a_repeated_warning_is_raised_once_per_code_per_day() {
+  let day=|d:u64,h:u64|SystemTime::UNIX_EPOCH+Duration::from_secs(d*86_400+h*3_600);
+  let mut seen=HashMap::new();
+  assert!(first_today(&mut seen,"page:stocks/SPY",day(20_000,1)));
+  assert!(!first_today(&mut seen,"page:stocks/SPY",day(20_000,1)),"同一轮重复");
+  assert!(!first_today(&mut seen,"page:stocks/SPY",day(20_000,23)),"同一天的下一轮刷新");
+  assert!(first_today(&mut seen,"page:stocks/QQQ",day(20_000,23)),"别的代码不受牵连");
+  assert!(first_today(&mut seen,"page:stocks/SPY",day(20_001,0)),"第二天再报一次");
+  assert_eq!(seen.len(),1,"昨天的键清掉了");
  }
  #[test]
  fn a_capitalisation_reads_in_every_spelling_these_pages_use() {
