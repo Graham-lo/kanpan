@@ -90,6 +90,38 @@ struct AccountCredentialFallbackTests {
     #expect(journal.events == ["prepare:alice", "apply:alice", "sync"], "\(journal.events)")
     #expect(feature.user?.id == alice.id)
   }
+
+  @Test("冷启动按上次那个人预装了档案、钥匙串里却确实没有凭据：退回访客那份")
+  func preloadedOwnerWithoutCredentialsFallsBackToGuest() async throws {
+    let vault = LockedVault(nil); vault.unlock()
+    let client = try AccountClient(baseURL: URL(string: "https://" + Self.host)!, vault: vault)
+    let feature = AccountFeature(client: client)
+    let journal = Journal()
+    feature.lastOwner = { [alice] in alice }
+    feature.onPrepareAccount = { [journal] owner in
+      journal.events.append("prepare:" + (owner?.email ?? "guest"))
+      return { journal.events.append("apply:" + (owner?.email ?? "guest")) }
+    }
+    await feature.restore()
+    #expect(journal.events == ["prepare:guest", "apply:guest"], "\(journal.events)")
+    #expect(feature.user == nil)
+    #expect(!feature.credentialsPending)
+  }
+
+  @Test("上次就是访客、钥匙串里也没人：restore 什么都不装")
+  func guestStaysGuestWithoutRemounting() async throws {
+    let vault = LockedVault(nil); vault.unlock()
+    let client = try AccountClient(baseURL: URL(string: "https://" + Self.host)!, vault: vault)
+    let feature = AccountFeature(client: client)
+    let journal = Journal()
+    feature.lastOwner = { nil }
+    feature.onPrepareAccount = { [journal] owner in
+      journal.events.append("prepare:" + (owner?.email ?? "guest"))
+      return { journal.events.append("apply:" + (owner?.email ?? "guest")) }
+    }
+    await feature.restore()
+    #expect(journal.events.isEmpty, "\(journal.events)")
+  }
 }
 
 /// 推送 token 的补发账本（审查 17）。

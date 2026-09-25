@@ -85,7 +85,7 @@ import KanpanCore
     }
   }
   func restore() async {
-    guard let client else { return }
+    guard let client else { releasePreloadedOwner(); return }
     let started = generation
     let saved = await client.savedUser()
     guard generation == started else { return }
@@ -93,10 +93,23 @@ import KanpanCore
       // 钥匙串读不动（锁屏被后台拉起之类）：不当成「没登录」。按上次那个人把本地档案
       // 装上，同步停着，稍后再读（审查 17）。真的没登录过的人 `credentialsUnavailable`
       // 是 false，照旧直接返回。
-      if await client.credentialsUnavailable, generation == started { holdLastOwner(started: started) }
+      if await client.credentialsUnavailable {
+        if generation == started { holdLastOwner(started: started) }
+      } else if generation == started {
+        releasePreloadedOwner()
+      }
       return
     }
     await adopt(saved, started: started)
+  }
+  /// 冷启动时桥已经按「上次那个人」把账号档案装上了（`AppAccountBridge.activate()`），
+  /// 可钥匙串里确实没有这个人的凭据（会话失效被清掉、客户端没配）：退回访客那份，
+  /// 和从前「冷启动先装访客、restore 读不到人就停在访客」是同一个结果。
+  /// 上次就是访客（`lastOwner == nil`）时什么都不做。
+  private func releasePreloadedOwner() {
+    guard user == nil, lastOwner?() != nil else { return }
+    do { let apply = try onPrepareAccount?(nil); apply?() }
+    catch { self.error = error.localizedDescription }
   }
   /// 把钥匙串里读到的那个人装上。`restore()` 与「凭据欠着之后终于读到了」共用。
   private func adopt(_ saved: AccountUser, started: Int) async {

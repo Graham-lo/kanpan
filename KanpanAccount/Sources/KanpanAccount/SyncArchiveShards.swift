@@ -42,6 +42,19 @@ import Foundation
 struct ArchiveShard: Codable, Equatable, Sendable {
   var objects: [String: SyncObject] = [:]
   var local: [String: SyncObject] = [:]
+  /// 这一片里那几个对象的底稿（`SyncArchive.shelved`）。和 `local` 同片存：
+  /// 底稿通常就是一整条画线的几何，放 head 里会让每次提交都把它重写一遍。
+  var shelved: [String: ShelvedObject] = [:]
+  init(objects: [String: SyncObject] = [:], local: [String: SyncObject] = [:], shelved: [String: ShelvedObject] = [:]) {
+    self.objects = objects; self.local = local; self.shelved = shelved
+  }
+  /// 手写解码：`shelved` 是后加的，老分片里没有这个键，合成解码会 `keyNotFound`。
+  init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    objects = try c.decodeIfPresent([String: SyncObject].self, forKey: .objects) ?? [:]
+    local = try c.decodeIfPresent([String: SyncObject].self, forKey: .local) ?? [:]
+    shelved = try c.decodeIfPresent([String: ShelvedObject].self, forKey: .shelved) ?? [:]
+  }
 }
 
 struct ArchiveHead: Codable, Sendable {
@@ -69,15 +82,19 @@ enum ArchiveDisk {
   /// 进程级：目录 → 上次提交的那一套。**只准在 `ArchiveWriter.queue` 上读写。**
   nonisolated(unsafe) static var committed: [String: CommittedArchive] = [:]
 
-  static func shardKey(_ object: SyncObject) -> String {
-    guard object.collection == "drawings", let slash = object.id.lastIndex(of: "/") else { return object.collection }
-    return "drawings/" + object.id[..<slash]
+  static func shardKey(_ object: SyncObject) -> String { shardKey(collection: object.collection, id: object.id) }
+  static func shardKey(collection: String, id: String) -> String {
+    guard collection == "drawings", let slash = id.lastIndex(of: "/") else { return collection }
+    return "drawings/" + id[..<slash]
   }
   static func split(_ archive: SyncArchive) -> (head: SyncArchive, shards: [String: ArchiveShard]) {
-    var head = archive; head.objects = [:]; head.local = [:]
+    var head = archive; head.objects = [:]; head.local = [:]; head.shelved = [:]
     var shards: [String: ArchiveShard] = [:]
     for (key, object) in archive.objects { shards[shardKey(object), default: ArchiveShard()].objects[key] = object }
     for (key, object) in archive.local { shards[shardKey(object), default: ArchiveShard()].local[key] = object }
+    for (key, shelf) in archive.shelved {
+      shards[shardKey(collection: shelf.collection, id: shelf.id), default: ArchiveShard()].shelved[key] = shelf
+    }
     return (head, shards)
   }
   static func join(_ head: SyncArchive, _ shards: some Sequence<ArchiveShard>) -> SyncArchive {
@@ -85,6 +102,7 @@ enum ArchiveDisk {
     for shard in shards {
       archive.objects.merge(shard.objects) { _, new in new }
       archive.local.merge(shard.local) { _, new in new }
+      archive.shelved.merge(shard.shelved) { _, new in new }
     }
     return archive
   }

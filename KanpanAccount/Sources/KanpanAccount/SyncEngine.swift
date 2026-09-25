@@ -115,7 +115,19 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
   /// 跑一轮。
   @discardableResult public func run(_ plan: Plan) async throws -> Outcome {
     var outcome = Outcome()
-    try await push(into: &outcome)
+    do {
+      try await push(into: &outcome)
+    } catch {
+      // 多批推送推到一半断了：前面几批的回执已经入账，那几个字段确实在云端了，
+      // 这一轮不报就再也没人报——它们的脏标记会一直挂着，这个字段从此不再跟着云端走。
+      // 所以照样报一次（队列里剩下的记成 dropped，挡住同名字段被误清），再把错误抛出去。
+      // 这一轮不算数了（换了账号、又起了一轮）就不报：那是别人的档案。
+      if stillCurrent() {
+        for op in store.archive.operations { track(op, into: &outcome.dropped) }
+        onPushed(outcome.acked, outcome.dropped)
+      }
+      throw error
+    }
     onPushed(outcome.acked, outcome.dropped)
     for scope in Self.scopes(for: plan) {
       try await pull(scope)
@@ -190,12 +202,15 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
       try checkpoint()
       let receipts = Dictionary(result.results.map { ($0.operationId, Set($0.droppedFields ?? [])) },
                                 uniquingKeysWith: { a, _ in a })
+      var acked = Set<String>(), dropped = Set<String>()
       for op in batch where op.key == trackedKey {
-        guard let missed = receipts[op.id] else { outcome.dropped.formUnion(op.fields.keys); continue }  // 没回执 = 没认掉
-        outcome.acked.formUnion(op.fields.keys.filter { !missed.contains($0) })
-        outcome.dropped.formUnion(missed)
+        guard let missed = receipts[op.id] else { dropped.formUnion(op.fields.keys); continue }  // 没回执 = 没认掉
+        acked.formUnion(op.fields.keys.filter { !missed.contains($0) })
+        dropped.formUnion(missed)
       }
+      // 回执入账成功之后才算进这一轮：入账抛错时这一批还留在队列里，由收尾那句记成 dropped。
       try store.acknowledge(result)
+      outcome.acked.formUnion(acked); outcome.dropped.formUnion(dropped)
       // 服务端没认掉任何一条就别空转。
       guard store.archive.operations.count < before else { break }
     }

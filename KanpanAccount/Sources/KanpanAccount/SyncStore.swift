@@ -107,6 +107,17 @@ public struct SyncResult: Codable, Sendable {
 }
 public struct SyncPushResponse: Codable, Sendable { public var results: [SyncResult]; public var serverTime: Int64 }
 public struct SyncPage: Codable, Sendable { public var objects: [SyncObject]; public var next: String?; public var cursor: Int64; public var serverTime: Int64 }
+/// 本机**已经装进正式文件**的那一份，在云端把 `local` 往前推之前留下来的底稿（见 `SyncArchive.shelved`）。
+///
+/// `object == nil` 表示「本机装的那一版里压根没有这个对象」（云端新带来的）。
+public struct ShelvedObject: Codable, Sendable, Equatable {
+  public var collection: String
+  public var id: String
+  public var object: SyncObject?
+  public init(collection: String, id: String, object: SyncObject?) {
+    self.collection = collection; self.id = id; self.object = object
+  }
+}
 public struct SyncArchive: Codable, Sendable {
   public var version = 1
   public var operations: [SyncOperation] = []
@@ -134,6 +145,20 @@ public struct SyncArchive: Codable, Sendable {
   /// 被服务端顶回来、已经从待发队列里拿走，但**用户的值还留在本机**的那些操作。
   /// 一个对象最多留最近的一条。它们不在 `operations` 里，所以不堵队列、不算 `pending`。
   public var rejected: [RejectedOperation] = []
+  /// 云端把 `local` 往前推了、**但还没装进本机**的那些对象，本机眼前那一版的底稿。
+  ///
+  /// `local` 身兼两职：它是「云端已经收到 / 下发的那一份」，也是 `stage` 差分用的
+  /// 「本机上一次的样子」。拉取（`receive`）和回执（`acknowledge`）会把云端那份写进 `local`，
+  /// 到 `applyPending()` 真的装进正式文件之前，这两件事就不是同一份了：用户眼前还是旧的，
+  /// `local` 已经是新的。这段窗口里用户改了**别的**字段，拿用户那份和 `local` 一比，
+  /// 云端刚带来的那几项全成了「用户改回去了」，推上去就把别人的改动回滚掉；
+  /// 云端新带来的对象不在正式文件里，`withDeletions` 还会把它当成「用户删了」推一条删除。
+  ///
+  /// 所以云端第一次盖掉一个对象的 `local` 时，先把原来那份（本机眼前那一版）放在这里：
+  /// `stage` 拿它做差分基线，只把用户真动过的字段叠到云端那份上；桥上判删除用
+  /// `appliedLocal`（`local` 用这里的底稿换回去）。`markApplied` 装完就把对应表的底稿清掉。
+  /// 同一个对象只认第一份底稿——之后云端再怎么推，用户眼前的都还是那一版。
+  public var shelved: [String: ShelvedObject] = [:]
   public init() {}
   /// 手写解码，**因为 Swift 合成出来的那份不认属性默认值**：老存档里没有
   /// `rejected` 这个键，合成解码会直接 `keyNotFound` 抛出去，`SyncStore.init`
@@ -153,6 +178,22 @@ public struct SyncArchive: Codable, Sendable {
     logical = try c.decodeIfPresent(UInt64.self, forKey: .logical) ?? 0
     offset = try c.decodeIfPresent(Int64.self, forKey: .offset) ?? 0
     rejected = try c.decodeIfPresent([RejectedOperation].self, forKey: .rejected) ?? []
+    shelved = try c.decodeIfPresent([String: ShelvedObject].self, forKey: .shelved) ?? [:]
+  }
+  /// 本机**装进正式文件的那一版**：`local` 里被云端推过、还没装的那几项换回底稿（`shelved`），
+  /// 底稿是「本来没有」的就去掉。判「用户删了哪几个对象」必须拿它比，不能拿 `local`。
+  public var appliedLocal: [String: SyncObject] {
+    guard !shelved.isEmpty else { return local }
+    var out = local
+    for (key, shelf) in shelved { out[key] = shelf.object }
+    return out
+  }
+  /// 云端要把 `local[key]` 换成 `next` 之前调：内容真的变了、而且这是装完之后的第一次，
+  /// 就把原来那份留成底稿。
+  mutating func shelve(before next: SyncObject) {
+    let key = next.key
+    guard shelved[key] == nil, SyncStore.differs(local[key], next) else { return }
+    shelved[key] = ShelvedObject(collection: next.collection, id: next.id, object: local[key])
   }
   /// 这个对象上有没有「本机说了算」的理由：待发操作，**或者**一条还没了结的拒绝记录。
   ///
@@ -304,6 +345,8 @@ final class ArchiveWriter: @unchecked Sendable {
     try transaction { a in
       a.lastApplied = time
       if let covering { a.unapplied = a.unapplied.map { $0.subtracting(covering) } } else { a.unapplied = [] }
+      // 装进去的就是 `local` 本身：这几张表上用户眼前那一版又和 `local` 对上了，底稿作废。
+      if let covering { a.shelved = a.shelved.filter { !covering.contains($0.value.collection) } } else { a.shelved = [:] }
     }
   }
   /// 把这几张表记成「欠着，下次要装」（`nil` = 全部）。全量同步用它换一次整份合并，
@@ -417,12 +460,40 @@ final class ArchiveWriter: @unchecked Sendable {
   ///
   /// 表由调用方给（app 侧是 `PersonalSyncCodec.ownedKeys`，从编码器本身派生，不是手抄的
   /// 清单）；不给表就是从前的行为，`KanpanAccount` 自己不认识任何一个业务字段。
+  ///
+  /// ## 差分基线是「本机眼前那一版」，不是「云端推过来的那一版」
+  ///
+  /// 云端推过 `local`、本机还没装（`shelved` 里有底稿）时，用户手上这份是从**底稿**改出来的。
+  /// 这时拿底稿做差分，只把用户真动过的字段叠到 `local`（云端那份）上：
+  /// 云端带来的字段原样留着，等 `applyPending()` 一起装进本机，不会被当成「用户改回去了」推上去。
+  /// 用户一个字段都没动（手上这份就等于底稿），什么都不记——整表记账时那些没碰过的对象就是这样。
+  /// 底稿用不上的几种情况（本机装的那一版里没有它、云端那份已经删了而用户在改它……）
+  /// 退回从前的做法，拿云端那份差分，见函数体里那一段。
+  ///
+  /// `stamp` 给了就用它当这条操作的时间戳 / 逻辑钟（`retryRejected` 补推时沿用被拒那条的），
+  /// 不给就是「现在」。
   private func stage(_ value: SyncObject, device: UUID, importing batch: UUID?,
-                     owning ownedKeys: [String: Set<String>], into a: inout SyncArchive) -> Bool {
+                     owning ownedKeys: [String: Set<String>], into a: inout SyncArchive,
+                     stamp: (timestamp: Int64, logical: UInt64)? = nil) -> Bool {
     var value = value
-    let previous = a.local[value.key]
+    let ledger = a.local[value.key]
     let base = a.objects[value.key] ?? SyncObject(collection: value.collection, id: value.id)
     if batch != nil && base.deleted { return false }
+    // 有底稿就拿底稿比（见上）。三种情况退回拿云端那份比（从前的做法）、底稿作废：
+    // - 底稿说本机装的那一版里**没有**它：手上这份要么是本机自己另起的同一个键
+    //   （设置单例、同一只品种的自选），要么是调用方明说要删的——都不是从某一版改出来的，没有底稿可言；
+    // - 底稿是墓碑、手上却是活的：同上，本机自己又建了一个；
+    // - 云端那份已经是删除 / 没有，而用户手上是活的：改一个别处删掉的对象，要发带全量字段的 `restore`。
+    var shelf = a.shelved[value.key]
+    if let current = shelf {
+      let applied = current.object
+      if applied == nil
+        || (applied?.deleted == true && !value.deleted)
+        || ((ledger == nil || ledger?.deleted == true) && !value.deleted) {
+        a.shelved[value.key] = nil; shelf = nil
+      }
+    }
+    let previous = shelf.map(\.object) ?? ledger
     var changed = value.body.filter { previous?.body[$0.key] != $0.value }
     let owned = ownedKeys[value.collection]
     for key in previous?.body.keys ?? Dictionary<String, JSONValue>().keys where value.body[key] == nil {
@@ -431,13 +502,29 @@ final class ArchiveWriter: @unchecked Sendable {
     // 带回外来键之后才判「到底有没有变」：只差一个外来键的两份 body 带回来就一模一样，
     // 这时候再往队列里塞一条 fields 空空如也的操作，是白白跑一趟跨洋请求。
     guard previous?.body != value.body || previous?.deleted != value.deleted else { return false }
-    let action = value.deleted ? "delete" : (previous?.deleted == true || base.deleted) ? "restore" : "patch"
+    // 记进 `local` 的新一版：没有底稿时就是用户这份；有底稿时是云端那份叠上用户动过的字段。
+    var next = value
+    if shelf != nil, let ledger {
+      next = ledger
+      for key in changed.keys {
+        if let field = value.body[key] { next.body[key] = field } else { next.body.removeValue(forKey: key) }
+      }
+      next.deleted = value.deleted
+    }
+    let action = value.deleted ? "delete" : (ledger?.deleted == true || base.deleted) ? "restore" : "patch"
     let op = SyncOperation(collection: value.collection, objectId: value.id, deviceId: device,
-      baseRevision: base.revision, generation: base.generation, timestamp: Int64(Date().timeIntervalSince1970 * 1000) + a.offset,
-      logical: a.logical + 1, action: action, fields: changed, importBatch: batch,
+      baseRevision: base.revision, generation: base.generation,
+      timestamp: stamp?.timestamp ?? Int64(Date().timeIntervalSince1970 * 1000) + a.offset,
+      logical: stamp?.logical ?? a.logical + 1, action: action, fields: changed, importBatch: batch,
       // 本地依赖链：这个对象上队列里的最后一条就是我的前驱。
       dependsOn: a.operations.last { $0.collection == value.collection && $0.objectId == value.id }?.id)
-    a.logical += 1; a.operations.append(op); a.local[value.key] = value
+    if stamp == nil { a.logical += 1 }
+    a.operations.append(op); a.local[value.key] = next
+    // 用户眼前那一版现在就是 `value`：和新记的 `local` 一样就不再需要底稿，不一样就把底稿挪到这一版。
+    if shelf != nil {
+      a.shelved[value.key] = SyncStore.differs(value, next)
+        ? ShelvedObject(collection: value.collection, id: value.id, object: value) : nil
+    }
     return true
   }
 
@@ -618,24 +705,43 @@ final class ArchiveWriter: @unchecked Sendable {
   /// （下面那句 `staged.local[record.key] = remote`），云端带着的遗留字段一个不少。
   /// 少传这张表，被拒的那条操作就会原样再差出同一个 null、再被拒一次，
   /// 每轮全量同步换一次跨洋 400。
+  ///
+  /// **补推那条沿用被拒那条的 `timestamp` / `logical`。** 字段级「后写赢」比的是时间戳：
+  /// 用户改的那一刻是当初，不是这次补推的时刻。拿「现在」去补，别的设备在这中间做的
+  /// 更新的改动就会被一条旧意图压下去。
+  ///
+  /// **已知局限：拒绝记录是按对象锁的，不是按字段。** 一条拒绝记录挡住的是整个对象
+  /// （`holdsLocal`），期间云端别的设备对这个对象**别的字段**的改动进得了 `objects`、
+  /// 进不了 `local`，要等这条记录了结（补推成功 / 本地和云端对上）之后的下一次拉取才落到本机。
+  /// 补推的差分拿的是整份本地值对整份云端值，只要本地值里还留着旧的那几项，
+  /// 也会一并差出来——要做到字段级，得把 `RejectedOperation` 改成只记被拒的那几个字段。
   public func retryRejected(device: UUID, owning ownedKeys: [String: Set<String>] = [:]) throws {
     guard !archive.rejected.isEmpty else { return }
     var staged = archive
-    var changed = false
+    var resolved = false
     var keep: [RejectedOperation] = []
     for record in staged.rejected {
-      guard let local = staged.local[record.key] else { continue }
+      guard let local = staged.local[record.key] else { resolved = true; continue }
       let remote = staged.objects[record.key] ?? SyncObject(collection: record.collection, id: record.objectId)
-      guard local.body != remote.body || local.deleted != remote.deleted else { continue }
+      guard local.body != remote.body || local.deleted != remote.deleted else { resolved = true; continue }
       guard !staged.operations.contains(where: { $0.key == record.key }) else { keep.append(record); continue }
       // `stage` 是拿 `local` 做差分的，而这儿 `local` 就是用户的值本身——先把记账
       // 退回云端那份，`stage` 才能重新差出「本地和云端不一样的那几项」。这一下只动
-      // 存档里的记账，用户眼前的值（prefs / draws.json）一个字都没碰。
+      // 存档里的记账，用户眼前的值（prefs / draws.json）一个字都没碰。底稿（`shelved`）
+      // 同理先挪开：这里要的就是对云端那份的差分，不是对用户眼前那一版的。
       staged.local[record.key] = remote
-      if stage(local, device: device, importing: nil, owning: ownedKeys, into: &staged) { changed = true }
-      keep.append(record)
+      let shelf = staged.shelved.removeValue(forKey: record.key)
+      let restaged = stage(local, device: device, importing: nil, owning: ownedKeys, into: &staged,
+                           stamp: (record.operation.timestamp, record.operation.logical))
+      if let shelf { staged.shelved[record.key] = shelf }
+      if restaged {
+        keep.append(record)
+      } else {
+        // 带回外来键之后和云端那份一模一样：没有东西可补，记录了结，`local` 就是云端那份。
+        resolved = true
+      }
     }
-    guard changed || keep.count != staged.rejected.count else { return }
+    guard resolved || keep.count != staged.rejected.count || staged.operations.count != archive.operations.count else { return }
     staged.rejected = keep
     try transaction { $0 = staged }
   }
@@ -698,6 +804,7 @@ final class ArchiveWriter: @unchecked Sendable {
         }
         if !a.holdsLocal(result.object.collection, result.object.id) {
           if Self.differs(a.local[result.object.key], result.object) { a.unapplied?.insert(result.object.collection) }
+          a.shelve(before: result.object)
           a.local[result.object.key] = result.object
         }
       }
@@ -705,7 +812,7 @@ final class ArchiveWriter: @unchecked Sendable {
   }
   /// 云端这份和本机记账里那份是不是两样内容（版本号不算）。每条回执都会抬版本号，
   /// 那不是新内容；只有内容不同，这张表才记进 `unapplied`。
-  private static func differs(_ local: SyncObject?, _ remote: SyncObject) -> Bool {
+  nonisolated static func differs(_ local: SyncObject?, _ remote: SyncObject) -> Bool {
     guard let local else { return true }
     return local.body != remote.body || local.deleted != remote.deleted
   }
@@ -717,6 +824,7 @@ final class ArchiveWriter: @unchecked Sendable {
         // 有待发操作**或者**有未了结的拒绝记录，就都别让云端那份盖掉本机的值。
         if !a.holdsLocal(object.collection, object.id) {
           if Self.differs(a.local[object.key], object) { a.unapplied?.insert(object.collection) }
+          a.shelve(before: object)
           a.local[object.key] = object
         }
       }

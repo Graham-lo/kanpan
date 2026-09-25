@@ -67,6 +67,7 @@ import ReviewUI
     try migrateLegacy()
     dropSharedSearchHistory()
     dropLegacySymbols()
+    dropLegacyPrefs()
     account.onPrepareAccount = { [weak self] user in guard let self else { return {} }; return try self.prepare(user) }
     account.onSynchronize = { [weak self] in self?.synchronize(manual: true) }
     account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
@@ -136,7 +137,16 @@ import ReviewUI
   /// 赋值——冷启动这一次装档案调的是默认空闭包，宿主根本不知道档案已经换过了
   /// （R3-2：没登录过的人「上次看的那张图 / 落地页」整套失效）。现在拆成两步：
   /// 构造 → 宿主挂回调 → `activate()`，第一次装档案也走完整的通知。
-  func activate() throws { try prepare(nil)() }
+  ///
+  /// **登录过的人直接装他自己那份**（`AccountFiles.lastOwner`，registry.json 里同步读得到的
+  /// 身份，不带令牌）。从前一律先装访客那份顶着，等 `account.restore()` 异步读完钥匙串再换：
+  /// 冷启动先按访客的设置 / 自选 / 画线铺一整屏，约 0.2s 后整屏换成账号那份——
+  /// 周期、指标、涨跌色都要跳一次；而且 `prepare(nil)` 会把 `lastOwner` 抹掉，
+  /// 钥匙串读不动时的「按上次那个人装」（审查 17）在冷启动这条路上从来没生效过。
+  /// 现在 `restore()` 读到的是同一个人时，`prepare(saved)` 撞上 `preparedOwner` 当场返回，
+  /// 一次都不重装；读到「没有登录」时由 `AccountFeature.restore()` 退回访客那份。
+  /// 没登录过的人（`lastOwner == nil`）照旧装访客那份，R3-2 那条链不变。
+  func activate() throws { try prepare(files.lastOwner)() }
   /// 把 `UserDefaults.standard` 里那份旧的历史搜索一次性清掉，不归给任何身份。
   ///
   /// 这份历史是多个身份混在一起的——这台机器上所有登录过的人搜的词都记在同一个键里，
@@ -173,6 +183,20 @@ import ReviewUI
   private func dropLegacySymbols() {
     UserDefaults.standard.removeObject(forKey: SymbolPrefsStore.defaultsKey)
     UserDefaults.standard.removeObject(forKey: SymbolPrefsStore.legacyDefaultsKey)
+  }
+  /// 同理清掉 `UserDefaults.standard` 里那份旧的设置（`PrefsCodec.key`）与它的脏标识。
+  ///
+  /// 设置的真身在账号目录的 `prefs.json`（`PersonalFileStorage`）；`MainScreen` 那个
+  /// `PrefsStore` 在档案到货之前先挂在本机柜子上，于是这份副本要么是搬家那一刻冻住的，
+  /// 要么是「上一次启动在档案装上之前写下的」某个人的设置——冷启动第一帧读到它，
+  /// 就是先按一份不属于任何人的旧设置开张。第一帧真正要的皮肤 / 深浅 / 涨跌色走
+  /// `LaunchThemeMirror`，这份副本不再有读者。
+  ///
+  /// **哨兵（`SettingsSentinel.storageKey`）不清**：它是故意留在本机柜子上的，用来分辨
+  /// 「档案被清空」和「第一次装」。时机、幂等性同 `dropLegacySymbols()`。
+  private func dropLegacyPrefs() {
+    UserDefaults.standard.removeObject(forKey: PrefsCodec.key)
+    UserDefaults.standard.removeObject(forKey: SettingsStamp.storageKey)
   }
   private func migrateLegacy() throws {
     let marker = files.root.appendingPathComponent("legacy-imported.json")
@@ -447,7 +471,9 @@ import ReviewUI
       if let error = personal?.error { account.syncStatus = error; return false }
       // 一次事务记完：自选每条都带 `order`，往头部插一个品种会让后面每一条都变，
       // 逐条 capture 等于整档重写 N 次。删除只在这一批覆盖到的范围里推（`SyncCaptureBatch.owns`）。
-      try sync.capture(batch.withDeletions(against: sync.archive.local.values),
+      // 删除拿「本机装进正式文件的那一版」比（`appliedLocal`），不拿 `local`：云端新带来、
+      // 还没装进本机的对象不在正式文件里，拿 `local` 比会把它当成「用户删了」推一条删除。
+      try sync.capture(batch.withDeletions(against: sync.archive.appliedLocal.values),
                        device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
       // **落盘立刻发起，但不在主线程上等它写完。**
       //
@@ -655,7 +681,11 @@ import ReviewUI
         // **只清服务端认下的那几个字段。** 被隔离的、被 `droppedFields` 丢掉的、
         // 还在队列里没发的，脏标记全都留着——下次启动本地照样赢。放在拉取之前：
         // 拉取断了，已经推上去的那几个字段也确实在云端了。
-        engine.onPushed = { [weak self] acked, dropped in self?.prefs.syncPushed(marks, acked: acked, dropped: dropped) }
+        // 回调时再确认一次这一轮还算数：换了账号，`prefs` 已经是另一份档案，不许替它清脏标记。
+        engine.onPushed = { [weak self] acked, dropped in
+          guard let self, epoch == requestEpoch, taskID == runID else { return }
+          prefs.syncPushed(marks, acked: acked, dropped: dropped)
+        }
         let drawingsPrefix = requestedSymbol.isEmpty ? nil : InstrumentID.canonical(requestedSymbol) + "/"
         let outcome: SyncEngine.Outcome
         switch plan {

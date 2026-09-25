@@ -76,6 +76,9 @@ enum LaunchMirror {
 enum LaunchThemeMirror {
   static let skinKey = "kanpan.launch.skin"
   static let themeKey = "kanpan.launch.theme"
+  /// 涨跌配色（红涨绿跌 / 绿涨红跌）。和底色同一个理由：第一帧的 K 线、涨跌字就已经按它上色了，
+  /// 档案晚到再换一次就是整屏红绿对调的一闪。
+  static let redUpKey = "kanpan.launch.redUp"
 
   /// 镜像里记着的皮肤与深浅。没记过、或记的东西形状不对，都退回出厂值。
   static var choice: (skin: ThemeSkin, theme: ThemeChoice) {
@@ -85,7 +88,14 @@ enum LaunchThemeMirror {
     return (skin, theme)
   }
 
-  /// 档案还没到货时先拿它顶上：一份只有皮肤与深浅当真的 `Prefs`。
+  /// 镜像里记着的涨跌配色。没记过就退回出厂值。
+  static var redUp: Bool {
+    let d = LaunchMirror.defaults
+    guard d.object(forKey: redUpKey) != nil else { return Prefs.defaults.redUp }
+    return d.bool(forKey: redUpKey)
+  }
+
+  /// 档案还没到货时先拿它顶上：一份只有皮肤、深浅与涨跌配色当真的 `Prefs`。
   ///
   /// 只兑现这两项是有意的。其余偏好（周期、副图、域名……）各有自己的到货路径，
   /// 在这儿猜一遍只会多一次「先按镜像开、再按档案改」的抖动；底色不一样——
@@ -95,14 +105,16 @@ enum LaunchThemeMirror {
     let c = choice
     value.skin = c.skin
     value.theme = c.theme
+    value.redUp = redUp
     return value
   }
 
-  /// 落盘时同步一次。没变就不写。
-  static func set(skin: ThemeSkin, theme: ThemeChoice) {
+  /// 落盘时同步一次。没变就不写。`redUp` 不传就不动那一格（老调用点照旧编译）。
+  static func set(skin: ThemeSkin, theme: ThemeChoice, redUp: Bool? = nil) {
     let d = LaunchMirror.defaults
     if d.string(forKey: skinKey) != skin.rawValue { d.set(skin.rawValue, forKey: skinKey) }
     if d.string(forKey: themeKey) != theme.rawValue { d.set(theme.rawValue, forKey: themeKey) }
+    if let redUp, d.object(forKey: redUpKey) == nil || d.bool(forKey: redUpKey) != redUp { d.set(redUp, forKey: redUpKey) }
   }
 }
 
