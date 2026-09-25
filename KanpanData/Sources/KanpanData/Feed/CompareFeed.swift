@@ -40,7 +40,7 @@ public actor CompareFeed {
   private var sources: [String: Interval] = [:]
   private var generation = UUID()
   private var data: [String: FeedComposer] = [:]
-  private var target: ClosedRange<Int64>?
+  private(set) var target: ClosedRange<Int64>?
   private var covered: [String: ClosedRange<Int64>] = [:]
   private var loads: [String: Task<Void, Never>] = [:]
   private var retries: [String: Task<Void, Never>] = [:]
@@ -51,10 +51,25 @@ public actor CompareFeed {
   private var flush: Task<Void, Never>?
   private var sink: AsyncStream<[Snapshot]>.Continuation?
   private var connected = false
+  /// 主图更新的收件箱（审查 P2-4）。调用方原来每次 `Task { await feed.updateMain(main) }`：
+  /// 几个 Task 到达先后不定，旧的主图可能盖掉新的；更糟的是赶在 `start` 之前到的那次
+  /// 因为对比品种还没定下来被直接丢掉，`start` 再拿创建那一刻的旧主图定取数范围。
+  /// 现在走 `post(main:)`：同步投进这只只留最新一份的信箱，`start` 之后由一条任务按顺序取出来交给
+  /// `updateMain`——顺序由投递顺序定，不看 Task 调度。
+  private let mainInbox: AsyncStream<BarSeries>
+  private nonisolated let mainPost: AsyncStream<BarSeries>.Continuation
+  private var inboxPump: Task<Void, Never>?
 
   public init(provider: @escaping Providers, stream: any MarketStream, pacer: any Pacer = SystemPacer()) {
     provide = provider; ws = stream; self.pacer = pacer
+    (mainInbox, mainPost) = AsyncStream<BarSeries>.makeStream(bufferingPolicy: .bufferingNewest(1))
   }
+
+  deinit { mainPost.finish() }
+
+  /// 主图变了（加载了更早的历史、末根走了）：同步投递，不用起 Task。只留最新一份，
+  /// `start` 之前投的也不丢，`start` 一完就按它补齐范围。
+  public nonisolated func post(main: BarSeries) { mainPost.yield(main) }
 
   /// 按用户选的线路取数：每只对比品种找它自己那一家，推送按家合流（一家一条连接）。
   public init(resolver: RouteResolver, log: FeedLog = .silent) {
@@ -63,6 +78,7 @@ public actor CompareFeed {
       VenueRegistry.descriptor(venue).map { resolver.provider(venue: $0.id).makeStream(silenceMs: nil, log: log) }
     }
     pacer = SystemPacer()
+    (mainInbox, mainPost) = AsyncStream<BarSeries>.makeStream(bufferingPolicy: .bufferingNewest(1))
   }
 
   private func provider(for key: String) -> (any MarketProvider)? {
@@ -103,6 +119,15 @@ public actor CompareFeed {
     publish()
     guard !unique.isEmpty, !main.isEmpty else { await ws.stop(); return }
     updateMain(main)
+    if inboxPump == nil {
+      let inbox = mainInbox
+      inboxPump = Task { [weak self] in
+        for await next in inbox {
+          guard let self else { return }
+          await self.updateMain(next)
+        }
+      }
+    }
     let stream = await ws.start(topics: topics)
     guard generation == token, !Task.isCancelled else { return }
     pump = Task { [weak self] in
@@ -253,6 +278,7 @@ public actor CompareFeed {
   }
 
   public func stop() async {
+    inboxPump?.cancel(); inboxPump = nil
     retire(); keys = []; sources = [:]; data = [:]; covered = [:]; target = nil
     let previous = sink; sink = nil; previous?.finish()
     await ws.stop()

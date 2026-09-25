@@ -134,3 +134,31 @@ import KanpanNetwork
     await feed.stop()
   }
 }
+
+extension CompareFeedTests {
+  /// 审查 P2-4：主图更新走同步投递的信箱，不再各起一个 Task。
+  @Test("start 之前投递的主图不丢：start 一完就按它补齐范围", .timeLimit(.minutes(1)))
+  func mainPostedBeforeStartIsNotLost() async {
+    let all = bars(650)
+    let (feed, _) = feed(History(all))
+    feed.post(main: main(all))
+    await feed.start(keys: ["binance/usd_m/ETHUSDT"], main: main(Array(all.suffix(200))))
+    #expect(await waitUntil(10) { await feed.target?.lowerBound == t0 })
+    #expect(await waitUntil(10) { await feed.current.first?.series.count == 650 })
+    await feed.stop()
+  }
+
+  @Test("连着投递几份主图：最后一份说了算", .timeLimit(.minutes(1)))
+  func lastPostedMainWins() async {
+    let all = bars(650)
+    let (feed, _) = feed(History(all))
+    await feed.start(keys: ["binance/usd_m/ETHUSDT"], main: main(Array(all.suffix(200))))
+    let last = main(Array(all.suffix(300)))
+    for n in stride(from: 650, to: 300, by: -50) { feed.post(main: main(Array(all.suffix(n)))) }
+    feed.post(main: last)
+    #expect(await waitUntil(10) { await feed.target == last.firstTime...last.lastTime })
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    #expect(await feed.target == last.firstTime...last.lastTime, "之前投的旧主图不许后到盖回去")
+    await feed.stop()
+  }
+}

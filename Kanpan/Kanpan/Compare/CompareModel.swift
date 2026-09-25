@@ -50,7 +50,9 @@ import KanpanChart
       stopFeed(); snapshots = []; alignment = nil
       return
     }
-    if let feed { Task { await feed.updateMain(main) }; return }
+    // 同步投进对比流的信箱（审查 P2-4）：以前每次起一个 Task，先后不定，旧主图会盖掉新的，
+    // 赶在 `start` 之前到的还会被丢掉。
+    if let feed { feed.post(main: main); return }
     let created = CompareFeed(resolver: RouteResolver(route: route))
     feed = created
     let token = generation
