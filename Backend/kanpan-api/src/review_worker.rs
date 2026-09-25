@@ -8,6 +8,17 @@ use sqlx::Row;
 use uuid::Uuid;
 
 struct Job {owner:Uuid,id:Uuid,record:Uuid,kind:String,lease:Uuid}
+/// 一条任务**连续**失败几次就不再认领。`attempts` 在认领时 +1，没做完但这一回算成功
+/// （还在等行情、或者行情源被封锁这种已知情形）时归零，所以它数的是「上次成功以来认领了
+/// 几次」；做完了（`finished`）就原样留着，当作这条任务一共被认领了几回。计算报错、
+/// 记录读不出来、worker 半路崩掉（租约过期）都会让它一路涨上去。以前没有上限，一条
+/// 坏任务每两分钟被认领一次、永远报同一个错。
+pub const MAX_ATTEMPTS:i32=5;
+/// 连续失败到头了：这一回不再做，把任务标成结束。
+fn exhausted(attempts:i32)->bool {attempts>=MAX_ATTEMPTS}
+/// 这一回的结局算不算「又失败了一次」。行情源在本节点被封锁不算：那是已知的长期状态，
+/// 已经按一天一次退避，换节点或解封之后要能自己恢复，不能五天后就永远放弃。
+fn counts_as_failure(error:Option<&ApiError>)->bool {error.is_some_and(|e|e.1!=crate::review_market::BLOCKED)}
 async fn claim(s:&AppState)->Result<Option<Job>> {
  let mut tx=s.pool.begin().await?;
  let owner:Option<Uuid>=sqlx::query_scalar("SELECT user_id FROM review_dispatch WHERE next_at<=now() ORDER BY next_at,user_id FOR UPDATE SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
@@ -15,11 +26,20 @@ async fn claim(s:&AppState)->Result<Option<Job>> {
  sqlx::query("UPDATE review_dispatch SET next_at=now()+interval '2 seconds' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;
  tx.commit().await?;
  let mut tx=s.personal(owner).await?;
- let row=sqlx::query("SELECT id,record_id,kind FROM review_jobs WHERE user_id=$1 AND NOT finished AND next_at<=now() AND (lease_until IS NULL OR lease_until<now()) ORDER BY next_at,id FOR UPDATE SKIP LOCKED LIMIT 1").bind(owner).fetch_optional(&mut *tx).await?;
+ let row=sqlx::query("SELECT id,record_id,kind,attempts FROM review_jobs WHERE user_id=$1 AND NOT finished AND next_at<=now() AND (lease_until IS NULL OR lease_until<now()) ORDER BY next_at,id FOR UPDATE SKIP LOCKED LIMIT 1").bind(owner).fetch_optional(&mut *tx).await?;
  let Some(row)=row else {
   sqlx::query("UPDATE review_dispatch SET next_at=COALESCE((SELECT min(greatest(next_at,COALESCE(lease_until,next_at))) FROM review_jobs WHERE user_id=$1 AND NOT finished),now()+interval '1 hour') WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;return Ok(None)
  };
- let lease=Uuid::new_v4();let id:Uuid=row.get("id");
+ let id:Uuid=row.try_get("id")?;
+ let attempts:i32=row.try_get("attempts")?;
+ if exhausted(attempts) {
+  // 标成结束（finished 且 attempts ≥ MAX_ATTEMPTS 就是「失败放弃」），租约清掉，调度往后推。
+  sqlx::query("UPDATE review_jobs SET finished=true,lease_id=NULL,lease_until=NULL WHERE user_id=$1 AND id=$2").bind(owner).bind(id).execute(&mut *tx).await?;
+  tx.commit().await?;
+  tracing::error!(%owner,job=%id,"Review job failed {attempts} times in a row; marked failed and no longer retried");
+  return Ok(None)
+ }
+ let lease=Uuid::new_v4();
  sqlx::query("UPDATE review_jobs SET lease_id=$3,lease_until=now()+interval '120 seconds',attempts=attempts+1 WHERE user_id=$1 AND id=$2").bind(owner).bind(id).bind(lease).execute(&mut *tx).await?;
  tx.commit().await?;Ok(Some(Job{owner,id,record:row.get("record_id"),kind:row.get("kind"),lease}))
 }
@@ -129,6 +149,7 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  if active.is_none(){return Ok(true)}
  let value:Value=sqlx::query_scalar("SELECT record FROM review_records WHERE user_id=$1 AND id=$2 FOR UPDATE").bind(j.owner).bind(j.record).fetch_one(&mut *tx).await?;
  let mut fresh:NativeRecord=parse(value)?;let mut done=fresh.voided;let mut delay=30i32;
+ let failed=counts_as_failure(computation.as_ref().err());
  if !fresh.voided {match computation {
   Ok(Output::Index(vector,hash))=>{
    fresh.eligible=fresh.draft.original_claimed.is_none()&&(fresh.submitted-fresh.draft.created).abs()<=60_000&&fresh.draft.rule.expires>fresh.submitted&&fresh.draft.rule.direction!="observe";
@@ -144,7 +165,7 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
    fresh.assessment=Some(a);sqlx::query("UPDATE review_records SET checkpoint=COALESCE($3,checkpoint) WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).bind(c).execute(&mut *tx).await?;
    delay=if c.is_some_and(|at|at<now-60_000){2}else if fresh.draft.rule.confirmation=="trade_touch"{5}else{30};
   },
-  Err(e)=>{
+  Err(ref e)=>{
    // A regional block is not a transient fault. Retrying it every 60 seconds
    // left one permanent ghost job per record, polling an upstream that will
    // keep saying no. Back off a day instead of giving up entirely, so a node
@@ -153,13 +174,22 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
    if j.kind=="assess"&&fresh.assessment.as_ref().is_none_or(|a|!matches!(a.outcome.as_str(),"realized"|"unrealized"|"observation")){fresh.assessment=Some(NativeAssessment{outcome:"needs_verification".into(),reason:if region{"行情源在本节点被封锁"}else{"行情待补齐"}.into(),event_at:None,assessed_at:now});}}
  }}
  sqlx::query("UPDATE review_records SET record=$3,changed_at=now() WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).bind(json!(fresh)).execute(&mut *tx).await?;
- sqlx::query("UPDATE review_jobs SET finished=$4,lease_id=NULL,lease_until=NULL,next_at=now()+make_interval(secs=>$5) WHERE user_id=$1 AND id=$2 AND lease_id=$3").bind(j.owner).bind(j.id).bind(j.lease).bind(done).bind(delay).execute(&mut *tx).await?;
+ sqlx::query("UPDATE review_jobs SET finished=$4,lease_id=NULL,lease_until=NULL,next_at=now()+make_interval(secs=>$5),attempts=CASE WHEN $6 OR $4 THEN attempts ELSE 0 END WHERE user_id=$1 AND id=$2 AND lease_id=$3").bind(j.owner).bind(j.id).bind(j.lease).bind(done).bind(delay).bind(failed).execute(&mut *tx).await?;
  sqlx::query("UPDATE review_dispatch SET next_at=least(next_at,now()+make_interval(secs=>$2)) WHERE user_id=$1").bind(j.owner).bind(delay).execute(&mut *tx).await?;
  tx.commit().await?;Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
+ /// 连续五次失败之后不再认领；封锁不算失败（按天退避、能自己恢复），成功把计数归零。
+ #[test] fn a_job_is_given_up_after_five_failures_in_a_row() {
+  assert!(!super::exhausted(4));
+  assert!(super::exhausted(super::MAX_ATTEMPTS));
+  assert_eq!(super::MAX_ATTEMPTS,5);
+  assert!(!super::counts_as_failure(None),"a success resets the count");
+  assert!(super::counts_as_failure(Some(&crate::error::ApiError::bad("upstream"))));
+  assert!(!super::counts_as_failure(Some(&crate::error::ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,crate::review_market::BLOCKED))),"a regional block keeps its daily retry");
+ }
  use super::*;
  fn record(confirmation:&str)->NativeRecord {
   let now=1_800_000_000_000i64;
