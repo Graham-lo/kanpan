@@ -18,7 +18,7 @@
 use axum::{Router,extract::{Path,Query},http::{StatusCode,header},response::{IntoResponse,Response},routing::get};
 use crate::binance_gate;
 use chrono::{DateTime,Datelike,NaiveDate,NaiveDateTime,Utc};
-use std::collections::{HashMap,HashSet,VecDeque};
+use std::collections::{HashMap,VecDeque};
 use std::future::Future;
 use std::io::Read;
 use std::path::PathBuf;
@@ -38,6 +38,11 @@ const EPOCH:i64=1_598_918_400_000; // 2020-09-01 UTC
 const LANES:usize=16;
 /// Background filling runs narrower than a request the user is waiting on.
 const PREFETCH_LANES:usize=4;
+/// 一遍补档没补干净（源在拒、网络断了）之后，多久才许同一只品种再来一遍。
+const PREFETCH_RETRY:i64=10*60_000;
+/// 补档连着几天都没问到（不是「没有」，是没问到）就先停下，等 `PREFETCH_RETRY` 之后再来：
+/// 源在歇（`cold_until`）的时候每一天都会立刻失败，一路扫回 2020 年只是白转。
+const PREFETCH_GIVE_UP:u32=3;
 /// The gate every download passes, so a backfill cannot take the whole host.
 const GATE:usize=24;
 /// Parsed days held in memory. A day is ~4.6 KB of pairs, so this is ~19 MB —
@@ -431,7 +436,8 @@ struct Store {
  /// One download per (symbol, day) even when several charts ask at once.
  inflight:Mutex<HashMap<String,Arc<tokio::sync::Mutex<()>>>>,
  gate:Semaphore,
- prefetching:Mutex<HashSet<Arc<str>>>,
+ /// 每只品种的补档走到哪一步了。只留「在跑」和今天跑完的：过了一天就丢（见 `spawn_prefetch`）。
+ prefetching:Mutex<HashMap<Arc<str>,Prefetch>>,
  /// 连着被拒了几次。抓到任何一个回答（包括 404）就清零。
  refusals:AtomicU32,
  /// 这个源歇到什么时候（`clock` 的毫秒）；0 表示没在歇。
@@ -456,6 +462,31 @@ impl Memory {
   self.map.get(stem).map(|(day,_)|day.clone())
  }
 }
+/// 一只品种的补档：在跑，或者在 `at`（`clock` 毫秒）跑完了、补干净了没有。
+#[derive(Clone,Copy,Debug,PartialEq)]
+enum Prefetch {Running,Done{at:i64,clean:bool}}
+/// 补档任务怎么结束都要把「在跑」改掉：正常跑完、提前停下、panic 都一样。以前这一格只进
+/// 不出，一只品种第一遍补档不管成没成，这个进程里就再也不会补第二遍；早就没人看的品种
+/// 也一直挂在里面。`clean` 默认 false，只有跑到底且没有一天失败才置 true。
+struct PrefetchDone {store:Arc<Store>,symbol:Arc<str>,clean:bool}
+impl Drop for PrefetchDone {
+ fn drop(&mut self) {
+  let at=self.store.clock.now();
+  if let Ok(mut map)=self.store.prefetching.lock() {map.insert(self.symbol.clone(),Prefetch::Done{at,clean:self.clean});}
+ }
+}
+/// 这一只现在该不该起一遍补档。顺手把过时的格子清掉：补干净过的只管当天
+/// （明天多结算出一天，而且品种可能早没人看了），没补干净的只挡 `PREFETCH_RETRY`。
+fn prefetch_due(map:&mut HashMap<Arc<str>,Prefetch>,symbol:&str,now:i64)->bool {
+ let today=now.div_euclid(DAY);
+ map.retain(|_,p|match *p {
+  Prefetch::Running=>true,
+  Prefetch::Done{at,clean:true}=>at.div_euclid(DAY)==today,
+  Prefetch::Done{at,clean:false}=>now-at<PREFETCH_RETRY,
+ });
+ !map.contains_key(symbol)
+}
+
 /// What the cache directory holds, so eviction never has to stat it again.
 ///
 /// `bytes` 不含 0 字节的缺口标记，`files` 含——两条上限分别看这两个数。
@@ -693,9 +724,9 @@ impl Store {
  /// Fill a symbol's archive backwards from yesterday while nobody is waiting.
  ///
  /// It stops after a month of consecutive absent days, which is how the listing
- /// date announces itself, and it runs once per symbol per process: the days it
- /// would add on a second pass are the recent ones, which a chart request
- /// fetches anyway.
+ /// date announces itself. A clean pass runs once per symbol per UTC day (the next
+ /// day has one more settled day to add); a pass that could not reach the archive
+ /// stops early and may run again after `PREFETCH_RETRY`. See `prefetch_due`.
  /// The boot warm-up: `WARM_LANES` symbols at a time, each walking its own days
  /// backwards from yesterday. Per-symbol rather than per-day so the "thirty
  /// absent days means this contract was not listed yet" test stays meaningful —
@@ -735,17 +766,20 @@ impl Store {
 
  fn spawn_prefetch(self:&Arc<Self>,symbol:Arc<str>) {
   {
-   let Ok(mut running)=self.prefetching.lock() else {return};
-   if !running.insert(symbol.clone()) {return}
+   let Ok(mut map)=self.prefetching.lock() else {return};
+   if !prefetch_due(&mut map,&symbol,self.clock.now()) {return}
+   map.insert(symbol.clone(),Prefetch::Running);
   }
   let store=self.clone();
   tokio::spawn(async move {
+   let mut done=PrefetchDone{store:store.clone(),symbol:symbol.clone(),clean:false};
+   let (mut failed,mut failed_in_a_row)=(0u32,0u32);
    let last=store.clock.now().div_euclid(DAY)-1;
    let first=EPOCH.div_euclid(DAY);
    let mut absent=0;
    let mut day=last;
    let mut tasks=tokio::task::JoinSet::new();
-   while day>=first&&absent<30 {
+   while day>=first&&absent<30&&failed_in_a_row<PREFETCH_GIVE_UP {
     while tasks.len()<PREFETCH_LANES&&day>=first&&absent<30 {
      let at=day;
      day-=1;
@@ -761,15 +795,18 @@ impl Store {
     }
     if tasks.is_empty() {break}
     match tasks.join_next().await {
-     Some(Ok(Ok(Day::Absent)))=>absent+=1,
-     Some(Ok(Ok(Day::Points(_))))=>absent=0,
-     _=>{}
+     Some(Ok(Ok(Day::Absent)))=>{absent+=1;failed_in_a_row=0},
+     Some(Ok(Ok(Day::Points(_))))=>{absent=0;failed_in_a_row=0},
+     Some(_)=>{failed+=1;failed_in_a_row+=1},
+     None=>{}
     }
     // Background work yields the host to whoever is actually waiting.
     tokio::time::sleep(Duration::from_millis(40)).await;
    }
    tasks.abort_all();
-   tracing::debug!("Open interest archive filled for {symbol}");
+   done.clean=failed==0;
+   if failed>0 {tracing::debug!("Open interest archive for {symbol}: {failed} day(s) not reached, retried later")}
+   else {tracing::debug!("Open interest archive filled for {symbol}");}
   });
  }
 }
@@ -919,6 +956,58 @@ mod tests {
   upstream.publish(one_day());
   assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Absent)),"永久缺口不受那条短 TTL 影响");
   assert_eq!(upstream.asked(),1,"再也不问上游");
+ }
+
+ // ---------------------------------------- 补档那一格有进有出
+
+ /// 等一只品种的补档跑完（「在跑」被换掉）。
+ async fn prefetch_settles(store:&Arc<Store>,symbol:&str)->Prefetch {
+  for _ in 0..500 {
+   if let Some(p)=store.prefetching.lock().unwrap().get(symbol).copied() && p!=Prefetch::Running {return p}
+   tokio::time::sleep(Duration::from_millis(20)).await;
+  }
+  panic!("prefetch for {symbol} never finished");
+ }
+
+ /// **没问到归档的那一遍补档不会把这只品种永远挡在门外**；补干净的那一遍当天不再重跑，
+ /// 第二天格子被清掉；早没人问的品种也不会一直挂着。以前这一格只进不出。
+ #[tokio::test]
+ async fn a_prefetch_that_could_not_reach_the_archive_is_tried_again_later() {
+  let dir=tempfile::tempdir().expect("temp dir");
+  let day=EPOCH.div_euclid(DAY)+400;
+  let (store,upstream,clock)=store_at(dir.path(),day*DAY+12*3_600_000);
+  upstream.refuse(true);
+  store.spawn_prefetch(Arc::from("ETHUSDT"));
+  let Prefetch::Done{clean,..}=prefetch_settles(&store,"ETHUSDT").await else {unreachable!()};
+  assert!(!clean,"every day was refused");
+  let asked=upstream.asked();
+  assert!(asked<=2*PREFETCH_GIVE_UP as u64+2*PREFETCH_LANES as u64,"stops early instead of walking back to 2020 ({asked} asks)");
+
+  // 刚失败完：不马上重来。
+  store.spawn_prefetch(Arc::from("ETHUSDT"));
+  assert!(matches!(store.prefetching.lock().unwrap().get("ETHUSDT"),Some(Prefetch::Done{clean:false,..})));
+
+  // 过了重试间隔、源也好了：再来一遍，这次补干净（一路 404，三十天后停）。
+  clock.fetch_add(PREFETCH_RETRY.max(SOURCE_COOLDOWN)+1,Ordering::Relaxed);
+  upstream.refuse(false);
+  store.spawn_prefetch(Arc::from("ETHUSDT"));
+  assert_eq!(store.prefetching.lock().unwrap().get("ETHUSDT").copied(),Some(Prefetch::Running));
+  let Prefetch::Done{clean,..}=prefetch_settles(&store,"ETHUSDT").await else {unreachable!()};
+  assert!(clean);
+  store.spawn_prefetch(Arc::from("ETHUSDT"));
+  assert!(matches!(store.prefetching.lock().unwrap().get("ETHUSDT"),Some(Prefetch::Done{clean:true,..})),"a clean pass is not repeated the same day");
+
+  // 第二天：昨天那一格过时了，别的品种一来就把它清掉。
+  clock.fetch_add(DAY,Ordering::Relaxed);
+  let mut map=store.prefetching.lock().unwrap();
+  assert!(prefetch_due(&mut map,"BTCUSDT",clock.load(Ordering::Relaxed)));
+  assert!(!map.contains_key("ETHUSDT"),"yesterday's finished symbol is not kept around");
+ }
+
+ #[test] fn a_running_prefetch_is_never_started_twice() {
+  let mut map=HashMap::new();
+  map.insert(Arc::<str>::from("ETHUSDT"),Prefetch::Running);
+  assert!(!prefetch_due(&mut map,"ETHUSDT",i64::MAX/2));
  }
 
  // ---------------------------------------- 被拒的源歇一会儿（A-T18）
