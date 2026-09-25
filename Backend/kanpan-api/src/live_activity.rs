@@ -224,8 +224,23 @@ pub async fn end_fired(s:&AppState,apns:Option<&Apns>,owner:Uuid,alert_id:&str,q
  if targets.is_empty() {return Ok(())}
  let state=fired_state(quote.price,quote.change,line,at,at);
  let now=at/1000;
- for row in targets {settle(s,apns,owner,row,&state,Event::End,now).await?}
+ // 一个人两台设备各有一块活动：一台的推送或删行失败，另一台照样要结束。
+ each_logged(targets,"ending a fired live activity",|row|settle(s,apns,owner,row,&state,Event::End,now)).await;
  Ok(())
+}
+
+/// 挨个做完，**一个失败不拦住后面的**：失败的那一个记一条 error 日志，数一下，接着做下一个。
+///
+/// 心跳以前在任何一步上 `?`：某个人的事务开不出来、某一行删不掉、某一次推送之后的写库
+/// 失败，整拍直接返回，排在他后面的所有人这一分钟都收不到更新（按 id 排序，所以总是同一批人
+/// 吃亏）。返回失败的个数，给测试和调用方看。
+async fn each_logged<T,F,Fut>(items:impl IntoIterator<Item=T>,what:&str,mut run:F)->usize
+where F:FnMut(T)->Fut,Fut:std::future::Future<Output=Result<()>> {
+ let mut failed=0;
+ for item in items {
+  if let Err(e)=run(item).await {failed+=1;tracing::error!("Live activity: {what} failed, moving on to the next one: {e:?}")}
+ }
+ failed
 }
 
 /// 一拍心跳：所有人所有登记在册的活动各走一次 `next_step`。
@@ -241,47 +256,53 @@ pub async fn beat(s:&AppState,apns:Option<&Apns>,quotes:&BTreeMap<String,Quote>)
  loop {
   let owners:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM account_users WHERE disabled_at IS NULL AND ($1::uuid IS NULL OR id>$1) ORDER BY id LIMIT 100").bind(after).fetch_all(&s.pool).await?;
   if owners.is_empty() {break}
-  for owner in &owners {
-   let rows={
-    let mut tx=match s.personal(*owner).await {Ok(tx)=>tx,Err(_)=>continue};
-    // 一次把活动和它盯的那条提醒读齐：提醒没了（LEFT JOIN 出 NULL）正是「该结束」的
-    // 判据之一，分两次读就得处理「读完活动之后提醒才被删」那种中间态。
-    let rows=sqlx::query("SELECT t.device_id,t.token,t.environment,t.activity_id,t.alert_id,\
-     EXTRACT(EPOCH FROM (now()-COALESCE(t.started_at,t.updated_at)))::double precision AS age,\
-     w.symbol,w.lines,w.status,w.fired_at \
-     FROM device_push_tokens t LEFT JOIN alert_watches w ON w.user_id=t.user_id AND w.alert_id=t.alert_id \
-     WHERE t.user_id=$1 AND t.kind='liveActivity'")
-     .bind(owner).fetch_all(&mut *tx).await?;
-    tx.commit().await?;rows
-   };
-   for r in rows {
-    let registration=Registration{
-     device:r.get("device_id"),token:r.get("token"),environment:r.get("environment"),
-     activity_id:r.get("activity_id"),alert_id:r.get("alert_id"),
-     age:r.get::<Option<f64>,_>("age").unwrap_or_default(),
-    };
-    let status:Option<String>=r.get("status");
-    let fired_at:Option<i64>=r.get("fired_at");
-    let step=next_step(registration.activity_id.is_some(),registration.age,status.as_deref(),fired_at);
-    if step==Step::Idle {continue}
-    let symbol:Option<String>=r.get("symbol");
-    let quote=symbol.as_deref().and_then(|s|quotes.get(s)).copied().unwrap_or_default();
-    // 线要按**此刻**重算：斜线的价随时间走，锁屏上那个数不能是画线那一天的。
-    let lines:Vec<Line>=r.get::<Option<Value>,_>("lines").and_then(|v|serde_json::from_value(v).ok()).unwrap_or_default();
-    let line=line_price(&lines,quote.price,at);
-    let (state,event)=match step {
-     Step::Update=>(content_state(quote.price,quote.change,line,None,at),Event::Update),
-     Step::End(fired)=>(match fired {
-      Some(fired)=>fired_state(quote.price,quote.change,line,fired,at),
-      None=>content_state(quote.price,quote.change,line,None,at),
-     },Event::End),
-     Step::Idle=>continue,
-    };
-    settle(s,apns,*owner,&registration,&state,event,now).await?;
-   }
-  }
+  each_logged(owners.iter().copied(),"a heartbeat for one account",|owner|beat_owner(s,apns,quotes,owner,at,now)).await;
   after=owners.last().copied();
  }
+ Ok(())
+}
+
+/// 一个人的一拍：读他登记的活动，挨个推。某一块推送 / 删行失败只记日志，不拦他的下一块。
+async fn beat_owner(s:&AppState,apns:Option<&Apns>,quotes:&BTreeMap<String,Quote>,owner:Uuid,at:i64,now:i64)->Result<()> {
+ let rows={
+  let mut tx=s.personal(owner).await?;
+  // 一次把活动和它盯的那条提醒读齐：提醒没了（LEFT JOIN 出 NULL）正是「该结束」的
+  // 判据之一，分两次读就得处理「读完活动之后提醒才被删」那种中间态。
+  let rows=sqlx::query("SELECT t.device_id,t.token,t.environment,t.activity_id,t.alert_id,\
+   EXTRACT(EPOCH FROM (now()-COALESCE(t.started_at,t.updated_at)))::double precision AS age,\
+   w.symbol,w.lines,w.status,w.fired_at \
+   FROM device_push_tokens t LEFT JOIN alert_watches w ON w.user_id=t.user_id AND w.alert_id=t.alert_id \
+   WHERE t.user_id=$1 AND t.kind='liveActivity'")
+   .bind(owner).fetch_all(&mut *tx).await?;
+  tx.commit().await?;rows
+ };
+ let mut work=vec![];
+ for r in rows {
+  let registration=Registration{
+   device:r.try_get("device_id")?,token:r.try_get("token")?,environment:r.try_get("environment")?,
+   activity_id:r.try_get("activity_id")?,alert_id:r.try_get("alert_id")?,
+   age:r.try_get::<Option<f64>,_>("age")?.unwrap_or_default(),
+  };
+  let status:Option<String>=r.try_get("status")?;
+  let fired_at:Option<i64>=r.try_get("fired_at")?;
+  let step=next_step(registration.activity_id.is_some(),registration.age,status.as_deref(),fired_at);
+  if step==Step::Idle {continue}
+  let symbol:Option<String>=r.try_get("symbol")?;
+  let quote=symbol.as_deref().and_then(|s|quotes.get(s)).copied().unwrap_or_default();
+  // 线要按**此刻**重算：斜线的价随时间走，锁屏上那个数不能是画线那一天的。
+  let lines:Vec<Line>=r.try_get::<Option<Value>,_>("lines")?.and_then(|v|serde_json::from_value(v).ok()).unwrap_or_default();
+  let line=line_price(&lines,quote.price,at);
+  let (state,event)=match step {
+   Step::Update=>(content_state(quote.price,quote.change,line,None,at),Event::Update),
+   Step::End(fired)=>(match fired {
+    Some(fired)=>fired_state(quote.price,quote.change,line,fired,at),
+    None=>content_state(quote.price,quote.change,line,None,at),
+   },Event::End),
+   Step::Idle=>continue,
+  };
+  work.push((registration,state,event));
+ }
+ each_logged(work.iter(),"one live activity heartbeat",|(registration,state,event)|settle(s,apns,owner,registration,state,*event,now)).await;
  Ok(())
 }
 
@@ -450,6 +471,16 @@ mod tests {
   assert_eq!(distance(Some(100.0),Some(0.0)),None);
  }
  /// 事件名是契约里那两个字符串，客户端按它分「更新」和「结束」。
+ /// 心跳里一个失败不拦住后面的：三个里第二个出错，第三个照样做完，失败数是 1。
+ #[tokio::test] async fn one_failing_item_does_not_stop_the_heartbeat() {
+  let done=std::cell::RefCell::new(vec![]);
+  let failed=each_logged([1,2,3],"test",|n|{
+   done.borrow_mut().push(n);
+   async move {if n==2 {Err(crate::error::ApiError::bad("boom"))} else {Ok(())}}
+  }).await;
+  assert_eq!(failed,1);
+  assert_eq!(*done.borrow(),vec![1,2,3],"the item after the failure still ran");
+ }
  #[test] fn the_two_events_are_update_and_end() {
   assert_eq!(Event::Update.name(),"update");
   assert_eq!(Event::End.name(),"end");
