@@ -217,12 +217,31 @@ final class AlertStore: ObservableObject {
   }
 
   /// 跟着画线存档对一遍账。返回真表示真的动了东西。
+  ///
+  /// 拿上一次见过的那份画线存档（`seenDrawings`）当「删之前」：上一份里有、这一份里没有的线
+  /// 是本机刚删的，提醒跟着删；说不清来历的缺线只暂停、标「画线已不存在」，不删
+  /// （见 `AlertArchive.reconcile`）。
   @discardableResult
   func reconcile(with drawings: DrawArchive, now: Double = Date().timeIntervalSince1970 * 1000) -> Bool {
+    let previous = seenDrawings
+    seenDrawings = drawings
     var next = archive
-    guard AlertArchive.reconcile(&next, with: drawings, now: now) else { return false }
+    guard AlertArchive.reconcile(&next, with: drawings, previous: previous, now: now) else { return false }
     write { $0 = next }
     return true
+  }
+
+  /// 记下此刻的画线存档，当下一次对账的「删之前」，但不对账。宿主在画线存档换档
+  /// （登录 / 换号）、云端推下来之后调它，本机第一次删线就能级联到提醒。
+  func noteDrawings(_ drawings: DrawArchive) { seenDrawings = drawings }
+
+  /// 上一次对账（或 `noteDrawings`）见过的画线存档。
+  private var seenDrawings: DrawArchive?
+
+  /// 显式级联：这几条线被删了，挂在上面的提醒一并删掉（删除照常同步上去）。
+  func removeAlerts(symbol: String, drawingIDs: Set<String>) {
+    guard !drawingIDs.isEmpty else { return }
+    write { _ = $0.removeAlerts(symbol: symbol, drawingIDs: drawingIDs) }
   }
 
   // ---------------------------------------------------------------- 落盘
@@ -255,6 +274,8 @@ final class AlertStore: ObservableObject {
   func useStorage(_ store: AlertFileStore, archive: AlertArchive) {
     self.store = store
     generation += 1
+    // 换了人，上一个人的画线存档不能再当「删之前」。
+    seenDrawings = nil
     self.archive = archive
   }
 

@@ -129,6 +129,24 @@ struct AlertStoreTests {
     #expect(store.all.isEmpty)
   }
 
+  @Test("没见过这条线就缺线：只暂停不删；noteDrawings 记过之后本机删线才级联")
+  func missingLineIsPausedUntilSeenDeleted() {
+    let store = fresh()
+    let alert = store.add(drawing: hline("d1"), symbol: "BTCUSDT", now: 5)!
+    // 同步先到了提醒、线还没到：这一次对账不许删。
+    #expect(store.reconcile(with: DrawArchive(), now: 10) == true)
+    #expect(store.alert(id: alert.id)?.status == .paused)
+    // 线到了：恢复。
+    var drawings = DrawArchive()
+    drawings["BTCUSDT"] = [hline("d1")]
+    store.noteDrawings(drawings)
+    #expect(store.reconcile(with: drawings, now: 20) == true)
+    #expect(store.alert(id: alert.id)?.status == .active)
+    // 本机把线删了：级联删。
+    #expect(store.reconcile(with: DrawArchive(), now: 30) == true)
+    #expect(store.all.isEmpty)
+  }
+
   @Test("存满了就说一声，不悄悄丢")
   func aFullArchiveSaysSo() {
     let store = fresh()

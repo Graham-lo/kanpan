@@ -267,7 +267,9 @@ enum AlertRecordText {
       }
       return parts.joined(separator: " · ")
     case .paused:
-      return conditionInline ? "已暂停 · " + alert.condition.title : "已暂停"
+      // 画线提醒只有「线找不到」这一种暂停（`AlertArchive.reconcile`）。
+      let label = AlertArchive.isDrawingMissing(alert) ? AlertArchive.drawingMissingNote : "已暂停"
+      return conditionInline ? label + " · " + alert.condition.title : label
     case .active:
       return conditionInline ? alert.condition.title : "生效中"
     }
