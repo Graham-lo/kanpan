@@ -116,7 +116,9 @@ fn jittered(d:Duration)->Duration {d.mul_f64(rand::random_range(0.5..1.5))}
 #[derive(Clone,Debug)]
 pub struct Route {pub venue:VenueInfo,pub events:mpsc::Sender<Event>}
 
-enum HubCmd {Add(Vec<Route>),Remove(Vec<String>,mpsc::Sender<Event>),Resubscribe(String),Up(u64),Gone(u64)}
+/// `Crashed`：一条连接的任务 panic 了，没走到发 `Gone` 那一步。池子摘掉这一格、把它挂着的
+/// 簿重新分出去（新开连接），不然那几本簿就挂在一条死连接上，再也收不到帧。
+enum HubCmd {Add(Vec<Route>),Remove(Vec<String>,mpsc::Sender<Event>),Resubscribe(String),Up(u64),Gone(u64),Crashed(u64)}
 
 /// `Replace`：同一本簿换了跟踪器（旧的停了、新的起来，或者旧的崩了没来得及退）——连接不动，
 /// 只把帧改投给新的那个跟踪器。
@@ -126,7 +128,7 @@ fn hub()->&'static mpsc::UnboundedSender<HubCmd> {
  static HUB:OnceLock<mpsc::UnboundedSender<HubCmd>>=OnceLock::new();
  HUB.get_or_init(|| {
   let (tx,rx)=mpsc::unbounded_channel();
-  tokio::spawn(manage(rx,tx.clone()));
+  crate::supervise::spawn_essential("orderflow-hub",manage(rx,tx.clone()));
   tx
  })
 }
@@ -173,7 +175,14 @@ impl Pool {
   let now=Instant::now();
   let venues:HashMap<String,Route>=routes.iter().map(|r|(r.venue.id.clone(),r.clone())).collect();
   self.slots.insert(id,Slot{kind,venues,tx,born:now,up:false,moving:false,rotate_at:now+ROTATE_AFTER+jitter,replaces});
-  tokio::spawn(run(id,kind,routes,rx,hub_tx.clone()));
+  let task=tokio::spawn(run(id,kind,routes,rx,hub_tx.clone()));
+  let hub_tx=hub_tx.clone();
+  tokio::spawn(async move {
+   if let Err(e)=task.await && e.is_panic() {
+    tracing::error!("Orderflow hub: connection {id} ({kind:?}) panicked; its books move to a fresh connection");
+    let _=hub_tx.send(HubCmd::Crashed(id));
+   }
+  });
   id
  }
 
@@ -236,6 +245,14 @@ impl Pool {
    for id in &hit {slot.venues.remove(id);}
    let _=slot.tx.send(ConnCmd::Drop(hit));
   }
+ }
+
+ /// 一条连接的任务 panic 了：摘掉这一格，它挂着的、跟踪器还活着的簿重新走一遍 `add`
+ /// （另找连接或新开）。跟踪器已经关掉的那几本就此放下。
+ fn crashed(&mut self,id:u64,hub_tx:&mpsc::UnboundedSender<HubCmd>) {
+  let Some(slot)=self.slots.remove(&id) else {return};
+  let routes:Vec<Route>=slot.venues.into_values().filter(|r|!r.events.is_closed()).collect();
+  if !routes.is_empty() {self.add(routes,hub_tx)}
  }
 
  fn resubscribe(&mut self,id:&str) {
@@ -365,6 +382,7 @@ async fn manage(mut rx:mpsc::UnboundedReceiver<HubCmd>,hub_tx:mpsc::UnboundedSen
     Some(HubCmd::Resubscribe(id))=>pool.resubscribe(&id),
     Some(HubCmd::Up(id))=>pool.up(id),
     Some(HubCmd::Gone(id))=>{pool.slots.remove(&id);},
+    Some(HubCmd::Crashed(id))=>pool.crashed(id,&hub_tx),
     None=>return,
    },
    _=tick.tick()=>{let now=Instant::now();pool.due_drops(now);pool.flush(now,&hub_tx);},
@@ -700,6 +718,28 @@ mod tests {
   // 新跟踪器自己的 remove 照常生效。
   pool.remove(&["binance:usdtPerp:AUSDT".to_string()],&new_events);
   assert!(pool.slots.values().all(|s|!s.venues.contains_key("binance:usdtPerp:AUSDT")));
+ }
+
+ /// 连接任务 panic 了（没发 Gone）：它那一格被摘掉，活着的簿重新排队开新连接，
+ /// 跟踪器已经关掉的簿不再带上。
+ #[tokio::test(start_paused=true)] async fn books_on_a_crashed_connection_move_to_a_fresh_one() {
+  let (live,_live_rx)=mpsc::channel(8);
+  let (dead,dead_rx)=mpsc::channel(8);
+  let (hub_tx,_hub_rx)=mpsc::unbounded_channel();
+  let mut pool=Pool::default();
+  let t0=Instant::now();
+  pool.add(vec![route("binance","usdtPerp","AUSDT",&live),route("binance","usdtPerp","BUSDT",&dead)],&hub_tx);
+  pool.flush(t0+BATCH_MAX,&hub_tx);
+  let crashed=*pool.slots.iter().find(|(_,s)|s.kind==Kind::BinanceUmDepth).map(|(id,_)|id).unwrap();
+  drop(dead_rx);
+  pool.crashed(crashed,&hub_tx);
+  assert!(!pool.slots.contains_key(&crashed),"the dead connection's slot is gone");
+  let queued:Vec<&str>=pool.pending[&Kind::BinanceUmDepth].routes.iter().map(|r|r.venue.id.as_str()).collect();
+  assert_eq!(queued,vec!["binance:usdtPerp:AUSDT"],"the live book is queued for a fresh connection, the closed tracker's is not");
+  pool.flush(t0+2*BATCH_MAX,&hub_tx);
+  assert!(pool.slots.values().any(|s|s.kind==Kind::BinanceUmDepth&&s.venues.contains_key("binance:usdtPerp:AUSDT")));
+  // 已经不在的那一格再报一次也无事。
+  pool.crashed(crashed,&hub_tx);
  }
 
  #[test] fn pacing_is_per_exchange_family() {

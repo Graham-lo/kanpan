@@ -411,7 +411,7 @@ impl Book {
   for index in 0..self.feeds.len() {
    if activity.running[index] {continue}
    activity.running[index]=true;
-   tokio::spawn(run(self.clone(),index));
+   crate::supervise::spawn_logged("orderflow-instruments",crate::supervise::Life::Once,run(self.clone(),index));
   }
  }
  /// 这个循环该不该停；该停就顺手把它记成不在跑。
@@ -425,7 +425,17 @@ impl Book {
 
 /// 一张表的后台循环：成功隔 10 分钟再拉，失败隔 30 秒再试，旧表一直留着用；
 /// 每次该拉之前看一眼，最近一小时没人问就停。
+/// 循环 panic 时把「在跑」放掉，下一次有人问就能重新起。只管 panic 这一种：正常停下时
+/// `idle` 已经在锁里放掉了，这里再放一次会把紧接着新起的那一条的标志也抹掉。
+struct ReleaseOnPanic<'a>(&'a Book,usize);
+impl Drop for ReleaseOnPanic<'_> {
+ fn drop(&mut self) {
+  if std::thread::panicking() {self.0.activity.lock().unwrap_or_else(|e|e.into_inner()).running[self.1]=false;}
+ }
+}
+
 async fn run(book:Arc<Book>,index:usize) {
+ let _release=ReleaseOnPanic(&book,index);
  let Feed{source,held}=&book.feeds[index];
  loop {
   let wait=match tokio::time::timeout(FETCH_TIMEOUT+Duration::from_secs(5),(source.fetch)()).await {

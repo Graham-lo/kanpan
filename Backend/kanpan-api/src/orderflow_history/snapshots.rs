@@ -89,7 +89,7 @@ pub fn request(r:Request) {
  static LANE_TX:OnceLock<Vec<mpsc::UnboundedSender<Request>>>=OnceLock::new();
  let lanes=LANE_TX.get_or_init(|| LANES.iter().map(|&lane| {
   let (tx,rx)=mpsc::unbounded_channel();
-  tokio::spawn(run(lane,rx));
+  crate::supervise::spawn_essential("orderflow-snapshots",run(lane,rx));
   tx
  }).collect());
  let index=LANES.iter().position(|l|*l==Lane::of(&r.venue)).unwrap_or(0);

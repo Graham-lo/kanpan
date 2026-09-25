@@ -8,7 +8,13 @@
 //! 进程级重启把「这条任务的状态是不是还干净」这个问题一并交给了一个全新的进程，
 //! 也让 `NRestarts` 成为一个看得见的计数。
 use std::future::Future;
+use std::sync::{Arc,OnceLock,atomic::{AtomicBool,Ordering}};
+use std::time::Duration;
 use tokio::sync::mpsc;
+
+/// 进程里那个 Supervisor 的报丧通道，给 [`spawn_essential`] 用。只有 main 调了
+/// [`Supervisor::adopt_essentials`] 才有；测试里没有，那时只记 error 日志。
+static ESSENTIAL:OnceLock<mpsc::UnboundedSender<String>>=OnceLock::new();
 
 /// 一条后台任务该活多久。
 #[derive(Clone,Copy,Debug,PartialEq)]
@@ -27,6 +33,9 @@ impl Supervisor {
  pub fn spawn<F>(&self,name:&'static str,life:Life,task:F) where F:Future<Output=()>+Send+'static {
   self.watch(name,life,tokio::spawn(task))
  }
+ /// 让模块里自己起的那些「全局单例」任务（[`spawn_essential`]）死了也报到这里来。
+ /// main 在起服务 / worker 时调一次；进程里只认第一个。
+ pub fn adopt_essentials(&self) {let _=ESSENTIAL.set(self.tx.clone());}
  /// 看着一条已经起好的任务。
  pub fn watch(&self,name:&'static str,life:Life,handle:tokio::task::JoinHandle<()>) {
   let tx=self.tx.clone();
@@ -78,6 +87,62 @@ pub fn outcome(cause:&Cause)->anyhow::Result<()> {
  match cause.lock().unwrap_or_else(|p|p.into_inner()).take() {Some(e)=>Err(e),None=>Ok(())}
 }
 
+/// 起一条后台任务，死得不对（panic；`Forever` 的还包括返回了）就记一条 error。
+///
+/// 给那些「死了下一次有人要时会重新起」的任务用：它们不值得拖着整个进程重启，
+/// 但以前是裸 `tokio::spawn`、JoinHandle 丢掉，panic 了日志里什么都没有。
+pub fn spawn_logged<F>(name:&'static str,life:Life,task:F) where F:Future<Output=()>+Send+'static {
+ let handle=tokio::spawn(task);
+ tokio::spawn(async move {
+  if let Some(why)=verdict(life,handle.await) {tracing::error!(task=name,"Background task died: {why}");}
+ });
+}
+
+/// 模块里自己起的全局单例循环（连接池的管家、各家行情的分发中枢之类）：它们一死，这一摊
+/// 就静默地停了（手里的发送端还在，命令发进去没人收），又没法原地重建（状态全在它自己手里）。
+/// 所以按 `Supervisor` 的同一个规矩办：记 error，报给进程的 Supervisor，由它收尾退出、
+/// systemd 拉起一个干净的进程。没有 Supervisor（测试）时只记日志。
+pub fn spawn_essential<F>(name:&'static str,task:F) where F:Future<Output=()>+Send+'static {
+ let handle=tokio::spawn(task);
+ tokio::spawn(async move {
+  if let Some(why)=verdict(Life::Forever,handle.await) {
+   tracing::error!(task=name,"Essential background task died: {why}");
+   if let Some(tx)=ESSENTIAL.get() {let _=tx.send(format!("background task `{name}` {why}"));}
+  }
+ });
+}
+
+/// 一条无状态的常驻循环：死了（panic 或返回）记 error，歇一会儿原地再起。连着死得快就
+/// 越歇越久（1 秒起、翻倍、封顶 1 分钟）；活过 5 分钟再死，从 1 秒重新算。
+pub fn spawn_restarting<M,F>(name:&'static str,make:M) where M:Fn()->F+Send+'static,F:Future<Output=()>+Send+'static {
+ tokio::spawn(async move {
+  let mut backoff=RESTART_FIRST;
+  loop {
+   let born=tokio::time::Instant::now();
+   let why=verdict(Life::Forever,tokio::spawn(make()).await).unwrap_or_default();
+   if born.elapsed()>=RESTART_HEALTHY {backoff=RESTART_FIRST}
+   tracing::error!(task=name,"Background task died: {why}; restarting in {backoff:?}");
+   tokio::time::sleep(backoff).await;
+   backoff=(backoff*2).min(RESTART_MAX);
+  }
+ });
+}
+const RESTART_FIRST:Duration=Duration::from_secs(1);
+const RESTART_MAX:Duration=Duration::from_secs(60);
+const RESTART_HEALTHY:Duration=Duration::from_secs(300);
+
+/// 「有一个在跑」的标志，拿到了就握着，**怎么结束都放掉**：正常返回、提前 return、panic。
+/// 以前是函数末尾手写一句 `store(false)`，任务一 panic 这句就跳过了，标志永远是 true，
+/// 那件事在这个进程里再也起不来。
+pub struct Running(Arc<AtomicBool>);
+impl Running {
+ /// 标志空着就占上；已经有人在跑就返回 None。
+ pub fn claim(flag:&Arc<AtomicBool>)->Option<Self> {
+  (!flag.swap(true,Ordering::AcqRel)).then(||Self(flag.clone()))
+ }
+}
+impl Drop for Running {fn drop(&mut self) {self.0.store(false,Ordering::Release)}}
+
 /// 一条任务结束的方式算不算出事；算就给出一句死因。
 fn verdict(life:Life,outcome:Result<(),tokio::task::JoinError>)->Option<String> {
  match outcome {
@@ -122,6 +187,45 @@ mod tests {
   let handle=tokio::spawn(async {std::future::pending::<()>().await});
   s.watch("idle",Life::Forever,handle);
   assert!(tokio::time::timeout(Duration::from_millis(100),s.failure()).await.is_err(),"one-shot finishing cleanly is not a death");
+ }
+
+ /// 标志随守卫走：panic 了也放掉，下一次还能占上。
+ #[tokio::test]
+ async fn a_running_flag_is_released_even_when_the_task_panics() {
+  let flag=Arc::new(AtomicBool::new(false));
+  let claim=Running::claim(&flag).expect("free");
+  assert!(Running::claim(&flag).is_none(),"only one at a time");
+  let outcome=tokio::spawn(async move {let _claim=claim;panic!("hot layer blew up")}).await;
+  assert!(outcome.is_err());
+  assert!(!flag.load(Ordering::Acquire),"released by the panic's unwind");
+  assert!(Running::claim(&flag).is_some(),"and can be claimed again");
+ }
+
+ /// 无状态的常驻循环 panic 之后原地再起；第二次起来的那一条正常转下去。
+ #[tokio::test(start_paused=true)]
+ async fn a_restarting_loop_comes_back_after_a_panic() {
+  let starts=Arc::new(std::sync::atomic::AtomicUsize::new(0));
+  let counter=starts.clone();
+  spawn_restarting("layers",move ||{
+   let n=counter.fetch_add(1,Ordering::SeqCst);
+   async move {if n==0 {panic!("first run dies")} std::future::pending::<()>().await}
+  });
+  tokio::time::sleep(Duration::from_secs(5)).await;
+  assert_eq!(starts.load(Ordering::SeqCst),2,"restarted once, then kept running");
+ }
+
+ /// 全局单例死了：没有 Supervisor 时只记日志、不 panic 不退出（测试进程还活着就是证明）；
+ /// 有 Supervisor 时报到它那里去。
+ #[tokio::test]
+ async fn an_essential_task_reports_its_death_to_the_adopting_supervisor() {
+  let s=Supervisor::new();
+  s.adopt_essentials();
+  spawn_essential("hub",async {panic!("manager blew up")});
+  // 别的测试也可能先占了 ESSENTIAL；只在它就是这个 Supervisor 时断言收到。
+  if ESSENTIAL.get().is_some_and(|tx|tx.same_channel(&s.tx)) {
+   let e=tokio::time::timeout(Duration::from_secs(5),s.failure()).await.expect("reported");
+   assert!(e.to_string().contains("`hub` panicked: manager blew up"),"{e}");
+  }
  }
 
  #[test]

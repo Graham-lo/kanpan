@@ -282,7 +282,7 @@ fn hub()->&'static mpsc::UnboundedSender<Cmd> {
  static H:OnceLock<mpsc::UnboundedSender<Cmd>>=OnceLock::new();
  H.get_or_init(||{
   let (tx,rx)=mpsc::unbounded_channel();
-  tokio::spawn(Hub::default().run(rx));
+  crate::supervise::spawn_essential("coinbase-hub",Hub::default().run(rx));
   tx
  })
 }

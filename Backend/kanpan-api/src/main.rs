@@ -8,7 +8,7 @@ async fn main()->anyhow::Result<()> {
  // so no database. Answered before the pool, or it would demand a connection
  // string it has no reason to hold.
  if command=="metrics" {
-  let supervisor=Supervisor::new();
+  let supervisor=Supervisor::new();supervisor.adopt_essentials();
   supervisor.watch("oi-warm",Life::Once,kanpan_api::oi_archive::spawn_warm());
   let address:SocketAddr=std::env::var("KANPAN_BIND").unwrap_or_else(|_|"127.0.0.1:8794".into()).parse()?;
   let listener=tokio::net::TcpListener::bind(address).await?;
@@ -38,7 +38,7 @@ async fn main()->anyhow::Result<()> {
   // 每个循环各自一条任务、各自被看着：任何一条 panic 或者退出了，进程以非零码退出，
   // 交给 systemd 拉起。原来它们 `join!` 在一起，一条 panic 掉整个 worker 还活着、
   // 那一摊活却再也没人干（见 `kanpan_api::supervise`）。
-  let supervisor=Supervisor::new();
+  let supervisor=Supervisor::new();supervisor.adopt_essentials();
   {
    let (s,market)=(s.clone(),market.clone());
    supervisor.spawn("review",Life::Forever,async move {loop {
@@ -79,7 +79,7 @@ async fn main()->anyhow::Result<()> {
  anyhow::ensure!(command=="serve","Use serve, metrics, worker, migrate or reset-password <username>");
  // 三条后台任务都被看着：常驻的两条返回或 panic、预热那条 panic，都让进程以非零码
  // 退出（先给在途请求 `supervise::DRAIN` 收尾），交给 systemd 拉起。
- let supervisor=Supervisor::new();
+ let supervisor=Supervisor::new();supervisor.adopt_essentials();
  // Public supply data has no owner and no database; warm it before the first request.
  supervisor.watch("market-meta",Life::Forever,kanpan_api::market_meta::spawn_refresh());
  // Daily closes are history, not a cache: the sweep and the route share this

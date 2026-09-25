@@ -726,7 +726,9 @@ impl Registry {
 }
 
 /// 热点那一路要取 150 次持仓历史（约 45 秒），单独起任务，不挡着资源采样与闸门。
-async fn recompute_hot(registry:Arc<Registry>,running:Arc<AtomicBool>) {
+async fn recompute_hot(registry:Arc<Registry>,running:crate::supervise::Running) {
+ // 守卫握到函数结束：以前是末尾一句 `store(false)`，中途 panic 就跳过了，热点层从此再也不重算。
+ let _running=running;
  let result=async {
   let info=crate::market_meta::exchange_info().await.ok()?;
   let tickers=layers::ticker_map(&*layers::tickers().await.ok()?);
@@ -743,7 +745,6 @@ async fn recompute_hot(registry:Arc<Registry>,running:Arc<AtomicBool>) {
   },
   None=>tracing::warn!("Orderflow history: hot layer not recomputed (contract list or tickers unavailable), keeping the last one"),
  }
- running.store(false,Ordering::Relaxed);
 }
 
 /// 层的循环：每 15 秒采一次资源；每分钟过一遍闸门，到点重算固定（10 分钟对一次合约表）、山寨（UTC 0 点）、
@@ -796,9 +797,9 @@ async fn run_layers(registry:Arc<Registry>,enabled:Enabled) {
        Err(_)=>tracing::warn!("Orderflow history: tickers unavailable, alts layer retried next minute"),
       }
      }
-     if enabled.hot&&now-hot_at>=HOT_EVERY_MS&&!hot_running.swap(true,Ordering::Relaxed) {
+     if enabled.hot&&now-hot_at>=HOT_EVERY_MS && let Some(claim)=crate::supervise::Running::claim(&hot_running) {
       hot_at=now;
-      tokio::spawn(recompute_hot(registry.clone(),hot_running.clone()));
+      crate::supervise::spawn_logged("orderflow-hot",crate::supervise::Life::Once,recompute_hot(registry.clone(),claim));
      }
     }
     // 起来的头十分钟每分钟一行现状，之后十分钟一行。
@@ -825,7 +826,8 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
     registry.start(&mut entries,base,now,false,|e|e.requested=now);
    }
   }
-  tokio::spawn(run_layers(registry.clone(),enabled));
+  // 层的循环没有自己的状态要保（时刻都从 0 重算，第一次 tick 就把各层重新对一遍），死了原地再起。
+  {let registry=registry.clone();crate::supervise::spawn_restarting("orderflow-layers",move ||run_layers(registry.clone(),enabled));}
   let mut sweep=tokio::time::interval_at(tokio::time::Instant::now()+SWEEP,SWEEP);
   // 进程起来一分钟后先清一次，之后每小时一次。
   let mut purge=tokio::time::interval_at(tokio::time::Instant::now()+Duration::from_secs(60),PURGE);
