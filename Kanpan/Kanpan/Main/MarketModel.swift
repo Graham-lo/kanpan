@@ -255,23 +255,28 @@ final class MarketModel {
   /// 「首屏取不到行情」这类用例挂在 CI 上时，恰恰只有这一格能回答「哪条路、哪个主机、
   /// 第几步断的」，空着等于把唯一的现场证据丢了。
   ///
-  /// 两个开关**都只在 DEBUG 构建里读**（审查 C-02）：正式包一律静音，
+  /// 两个开关**都只在 DEBUG 构建里读**（审查 C-02）：正式包不打印、不收诊断，
   /// 同一个二进制不该因为启动环境不同而多出一条日志通路。
+  ///
+  /// 不论哪种构建，失败那几类行都记进 `FeedFailureTrail`（Caches 里 200 行的小文件），
+  /// 真机上出了「跳空」「只剩一根」这种事，事后才有现场可查。
   private static let log: FeedLog = {
+    let trail = FeedFailureTrail.shared
     #if DEBUG
     let env = ProcessInfo.processInfo.environment
     let stdout = env["KANPAN_LOG"] == "1"
     let collect = env["KANPAN_CHART_DIAGNOSTICS"] == "1"
-    guard stdout || collect else { return .silent }
+    guard stdout || collect else { return FeedLog { trail.note($0) } }
     return FeedLog { line in
+      trail.note(line)
       if stdout { print(line) }
       Task { @MainActor in MarketNetworkDiagnostics.shared.lines = String((MarketNetworkDiagnostics.shared.lines + "\n" + line).suffix(8000)) }
     }
     #else
-    // 正式包一律静音。写成 `#if DEBUG … #else` 而不是 `#if !DEBUG … #else`，
+    // 正式包只留失败记录。写成 `#if DEBUG … #else` 而不是 `#if !DEBUG … #else`，
     // 是为了让「所有读启动环境的地方都在 `#if DEBUG` 里」这句话能被一条机械扫描
     // 直接证明（审查 C-02 的收口证据），不必人工再读一遍取反分支。
-    return .silent
+    return FeedLog { trail.note($0) }
     #endif
   }()
 

@@ -77,6 +77,10 @@ public actor MarketFeed {
   /// 重连 / 回前台那一发补缺的句柄。原来它是个没人拿着的裸 `Task`：停掉这份 feed、
   /// 切走品种之后它照样在路上，回来还会对着新品种的序列做一次 `endBackfill`。
   private var backfillTask: Task<Void, Never>?
+  /// 首屏 / 补缺失败之后的自愈那一发（见 `scheduleHeal`）。
+  private var healTask: Task<Void, Never>?
+  /// 这一轮失败以来已经自愈过几次。成功落地、换品种都清零。
+  private var healAttempt = 0
   /// 期望的运行状态（前台=要连着，后台=可以挂起）与它的版本号。
   ///
   /// 进后台那记 25 秒的闹钟醒来时，人可能早就回到前台、WS 也已经重新连上了。
@@ -107,6 +111,17 @@ public actor MarketFeed {
   /// 首屏历史最多发几次。上游偶发的 429 / 5xx 退避重试到这个次数为止，
   /// 之后才亮「历史行情暂未加载，点此重试」把决定权交回给用户。
   static let firstFillAttempts = 3
+  /// 首屏 / 补缺失败之后自己再试的间隔（毫秒），用完为止。
+  ///
+  /// 原来失败了就只剩两条路：用户点横幅，或者等线路巡检——币安那档报错后 60 秒内
+  /// 不探、之后 20 秒一轮，探通了还要整张图重拉 1500 根。于是一次随手的 429 / 断网
+  /// 抖动，图上就是「只剩一根」或「中间缺一截像跳空」挂一分多钟（2026-09-25 真机：
+  /// ONDO 空图、BTC 5m 跳空，「跑一会又恢复正常」）。这里只重发失败的那一小段，
+  /// 几秒内补回来；全部用完还不行，再交给巡检和横幅。
+  static let healDelaysMs: [Double] = [2_000, 4_000, 8_000, 16_000, 30_000]
+  /// 上游给的截止时间超过这么久（真封禁）就不在这儿等——那是巡检和「点此重试」的事，
+  /// 这里等于是替用户挂一个长睡的任务（A.3.4 / A-T05 的边界不动）。
+  static let healMaxWaitMs: Double = 60_000
   /// 首屏之后在后台往回多铺到这个根数。
   ///
   /// app 里首发只拉 300 根——够画一屏，弱网上也快。代价是往左一拖就要现拉，
@@ -219,6 +234,7 @@ public actor MarketFeed {
     // 不然它还会占着 `isBackfilling`，新品种的补缺要等它回来才排得上。
     backfillTask?.cancel(); backfillTask = nil
     deepenTask?.cancel(); deepenTask = nil
+    healTask?.cancel(); healTask = nil; healAttempt = 0
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
     lastTickEmitMs = -.infinity
     lastKlineReceivedMs = -.infinity; lastTickerReceivedMs = -.infinity
@@ -333,6 +349,8 @@ public actor MarketFeed {
   public func enterBackground() {
     writeSnapshotNow()
     backgroundTask?.cancel()
+    // 后台不自愈：回前台那一下自己会补（`enterForeground`）。
+    healTask?.cancel(); healTask = nil
     wantsForeground = false
     lifecycleEpoch &+= 1
     let epoch = lifecycleEpoch
@@ -412,6 +430,7 @@ public actor MarketFeed {
     loadTask?.cancel(); loadTask = nil
     backfillTask?.cancel(); backfillTask = nil
     deepenTask?.cancel(); deepenTask = nil
+    healTask?.cancel(); healTask = nil
     backgroundTask?.cancel(); backgroundTask = nil
     stopReconcile()
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
@@ -779,7 +798,9 @@ public actor MarketFeed {
                     quickFirst: Bool = false) async {
     guard current(request) else { return }
     await fillOnce(symbol: sym, interval: iv, since: since, selection: request, quickFirst: quickFirst)
-    guard current(request), gapFrom > 0, sym == symbol, iv == interval, !composer.isBackfilling else { return }
+    // 首屏本身失败时已经排了自愈（`healTask`），这里别紧跟着再撞一次。
+    guard current(request), gapFrom > 0, sym == symbol, iv == interval, !composer.isBackfilling,
+          healTask == nil else { return }
     composer.beginBackfill()
     await backfill(symbol: sym, interval: iv, selection: request)
   }
@@ -887,6 +908,7 @@ public actor MarketFeed {
       }
       await cache.put(composer.series)
       guard current(request) else { return }
+      healAttempt = 0
       emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
@@ -910,8 +932,12 @@ public actor MarketFeed {
       gapTask?.cancel()
       guard current(request), !Task.isCancelled else { return }
       log("拉 \(sym)|\(iv.rawValue) 失败：\(error)")
+      // 快照打了底、首屏却没拉下来：快照末根到现在那段是空的，WS 推来的新根会直接
+      // 接在快照后面，中间就是一个洞。记下来，自愈（或下一次重连）按缺口补。
+      noteGap(at: since)
       emit(.historyError("历史行情暂未加载，点此重试"))
       emit(.status(.offline))
+      scheduleHeal(after: error, selection: request)
       return
     }
 
@@ -934,6 +960,9 @@ public actor MarketFeed {
       } catch {
         guard current(request), !Task.isCancelled else { return }
         log("补缺失败，保留最新行情：\(error)")
+        // 原来这段缺口失败了就没人记着，只能等重连或整张图重拉。记下来，
+        // `fill` 收尾那次补缺和自愈都会接着补它。
+        noteGap(at: since)
         emit(.historyError("行情缺口暂未补齐，点此重试"))
       }
     }
@@ -1006,6 +1035,7 @@ public actor MarketFeed {
       let added = composer.endBackfill(with: bars)
       await cache.put(composer.series)
       guard current(request) else { return }
+      healAttempt = 0
       emit(.series(composer.series))
       emit(.historyError(nil))
       log("补缺 startTime=\(from) → \(bars.count) 根，净增 \(added)，队列已合并")
@@ -1015,6 +1045,59 @@ public actor MarketFeed {
       log("补缺失败：\(error)")
       composer.endBackfill(with: [])
       noteGap(at: from)          // 没补成，这段还欠着
+      scheduleHeal(after: error, selection: request)
+    }
+  }
+
+  // ------------------------------------------------------------------ 自愈
+
+  /// 首屏或补缺失败之后，隔一会儿自己再试一次（间隔见 `healDelaysMs`）。
+  ///
+  /// 在途只有一发；上游给了截止时间（429 / 418 / 本机限流器拒发）就至少等到那一刻，
+  /// 截止时间太远（真封禁）就不排——那种情形撞多少次都一样，还会把封禁续长。
+  private func scheduleHeal(after error: any Error, selection request: UUID) {
+    guard current(request), wantsForeground, !stopped, healTask == nil else { return }
+    guard healAttempt < Self.healDelaysMs.count else {
+      log("自愈 \(healAttempt) 次仍未补齐，交给线路巡检与「点此重试」")
+      return
+    }
+    var wait = Self.healDelaysMs[healAttempt]
+    if let limited = error as? UpstreamError, let after = limited.retryAfter {
+      guard after * 1000 <= Self.healMaxWaitMs else {
+        log("上游要求等 \(Int(after)) 秒，不自愈，交给线路巡检与「点此重试」")
+        return
+      }
+      wait = max(wait, after * 1000 + 500)
+    }
+    healAttempt += 1
+    let sym = symbol, iv = interval
+    log("\(Int(wait / 1000)) 秒后自愈第 \(healAttempt) 次 \(sym)|\(iv.rawValue)")
+    healTask = Task { [weak self, pacer] in
+      try? await pacer.sleep(ms: wait)
+      guard !Task.isCancelled else { return }
+      await self?.heal(symbol: sym, interval: iv, selection: request)
+    }
+  }
+
+  private func heal(symbol sym: String, interval iv: Interval, selection request: UUID) async {
+    healTask = nil
+    guard current(request), wantsForeground, !stopped, sym == symbol, iv == interval else { return }
+    // 已经有一发在路上（重连补缺、回前台补发首屏）：它失败了自己会再排自愈。
+    guard !filling, !composer.isBackfilling else { return }
+    if composer.series.count < Self.snapshotFloor {
+      filling = true
+      loadTask?.cancel()
+      loadTask = Task { [weak self] in
+        await self?.fill(symbol: sym, interval: iv, since: 0, selection: request, quickFirst: true)
+      }
+      log("自愈：重发首屏 \(sym)|\(iv.rawValue)")
+    } else if gapFrom > 0 {
+      composer.beginBackfill()
+      backfillTask?.cancel()
+      backfillTask = Task { [weak self] in
+        await self?.backfill(symbol: sym, interval: iv, selection: request)
+      }
+      log("自愈：补缺口 \(sym)|\(iv.rawValue)")
     }
   }
 

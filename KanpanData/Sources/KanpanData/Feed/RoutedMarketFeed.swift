@@ -1,7 +1,7 @@
 import Foundation
 import KanpanCore
 import KanpanNetwork
-import Synchronization
+import os
 
 /// Switches complete feeds. Business views never merge candles from different exchanges.
 ///
@@ -12,7 +12,7 @@ public actor RoutedMarketFeed {
   private let log: FeedLog
   /// 这是本进程里第几条行情流（诊断日志用：同一进程里冒出第二条就说明界面那一层整个重建过）。
   private let serial = RoutedMarketFeed.serials.withLock { $0 += 1; return $0 }
-  private static let serials = Mutex(0)
+  private static let serials = OSAllocatedUnfairLock(initialState: 0)
   private let paths: Paths
   private var freshHistory = false
   private let resolver: Resolver
@@ -450,6 +450,7 @@ public actor RoutedMarketFeed {
     // 刚报错那 60 秒内不去探：feed 自己还在重试，探了也是重复打同一条线。
     let ready = Date() >= historyRetry ? await healthy(chosen, symbol: sym, interval: iv) : false
     guard request == selection, foreground, !Task.isCancelled, chosenKey == key(current.capabilities) else { return }
+    log("线路巡检 \(sym)|\(iv.rawValue)：历史仍失败，\(ready ? "探通，整张重拉" : "未恢复，亮「暂时无法连接」")")
     if ready { await activate() } else { unavailable(request) }
   }
   private func refreshPolledTicker(_ chosen: any MarketProvider, symbol: String, selection request: UUID) async {
