@@ -477,7 +477,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  }
  t.model.stop();
  t.write_ended().await;
- hub::remove(t.model.venue_ids());
+ hub::remove(t.model.venue_ids(),&t.events);
  drop(t);
  let _=tokio::time::timeout(Duration::from_secs(10),writer).await;
  tracing::info!("Orderflow history: {base} stopped");

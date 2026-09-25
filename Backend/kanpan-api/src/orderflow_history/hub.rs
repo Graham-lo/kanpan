@@ -116,9 +116,11 @@ fn jittered(d:Duration)->Duration {d.mul_f64(rand::random_range(0.5..1.5))}
 #[derive(Clone,Debug)]
 pub struct Route {pub venue:VenueInfo,pub events:mpsc::Sender<Event>}
 
-enum HubCmd {Add(Vec<Route>),Remove(Vec<String>),Resubscribe(String),Up(u64),Gone(u64)}
+enum HubCmd {Add(Vec<Route>),Remove(Vec<String>,mpsc::Sender<Event>),Resubscribe(String),Up(u64),Gone(u64)}
 
-enum ConnCmd {Assign(Vec<Route>),Drop(Vec<String>),Resubscribe(String)}
+/// `Replace`：同一本簿换了跟踪器（旧的停了、新的起来，或者旧的崩了没来得及退）——连接不动，
+/// 只把帧改投给新的那个跟踪器。
+enum ConnCmd {Assign(Vec<Route>),Replace(Vec<Route>),Drop(Vec<String>),Resubscribe(String)}
 
 fn hub()->&'static mpsc::UnboundedSender<HubCmd> {
  static HUB:OnceLock<mpsc::UnboundedSender<HubCmd>>=OnceLock::new();
@@ -134,8 +136,9 @@ pub fn add(venues:Vec<VenueInfo>,events:&mpsc::Sender<Event>) {
  if venues.is_empty() {return}
  let _=hub().send(HubCmd::Add(venues.into_iter().map(|venue|Route{venue,events:events.clone()}).collect()));
 }
-/// 这些簿不要了（跟踪器停了）。
-pub fn remove(ids:Vec<String>) {if !ids.is_empty() {let _=hub().send(HubCmd::Remove(ids));}}
+/// 这些簿不要了（跟踪器停了）。`events` 是停掉的那个跟踪器的收件口：只摘**它自己**挂上去的，
+/// 同一本簿已经被新起来的跟踪器接手的话不动（新旧交替时旧的这句 remove 往往晚到）。
+pub fn remove(ids:Vec<String>,events:&mpsc::Sender<Event>) {if !ids.is_empty() {let _=hub().send(HubCmd::Remove(ids,events.clone()));}}
 /// 流内快照的簿接不上了：OKX 退订再订这一本；Coinbase 整条重连。
 pub fn resubscribe(id:String) {let _=hub().send(HubCmd::Resubscribe(id));}
 
@@ -176,17 +179,28 @@ impl Pool {
 
  fn add(&mut self,routes:Vec<Route>,hub_tx:&mpsc::UnboundedSender<HubCmd>) {
   let now=Instant::now();
-  let known:HashSet<(Kind,String)>=self.slots.values().flat_map(|s|s.venues.keys().map(move|id|(s.kind,id.clone()))).collect();
   let mut okx=Vec::new();
   for route in routes {
    for &kind in feeds::kinds_of(&route.venue) {
-    if known.contains(&(kind,route.venue.id.clone())) {continue}
+    // 已经挂在某条连接上：挂的要是别的跟踪器的收件口（旧跟踪器停了 / 崩了、它的 remove
+    // 还没到或者永远不会到），就地换成新的，否则新跟踪器永远收不到这本簿的帧。
+    // 一本簿在换新 / 合并的重叠期里会同时挂在新旧两条连接上，两条都要换。
+    let mut present=false;
+    for slot in self.slots.values_mut().filter(|s|s.kind==kind) {
+     let Some(old)=slot.venues.get_mut(&route.venue.id) else {continue};
+     present=true;
+     if old.events.same_channel(&route.events) {continue}
+     tracing::info!("Orderflow history: {} connection now delivers {} to its new tracker",kind.label(),route.venue.id);
+     *old=route.clone();
+     let _=slot.tx.send(ConnCmd::Replace(vec![route.clone()]));
+    }
+    if present {continue}
     match kind {
      Kind::Coinbase=>{self.spawn(kind,vec![route.clone()],Vec::new(),hub_tx);},
      Kind::Okx=>okx.push(route.clone()),
      _=>{
       let p=self.pending.entry(kind).or_insert_with(||Pending{routes:Vec::new(),since:now,last:now});
-      if p.routes.iter().any(|r|r.venue.id==route.venue.id) {continue}
+      if let Some(queued)=p.routes.iter_mut().find(|r|r.venue.id==route.venue.id) {*queued=route.clone();continue}
       p.routes.push(route.clone());p.last=now;
      },
     }
@@ -212,11 +226,12 @@ impl Pool {
   }
  }
 
- fn remove(&mut self,ids:&[String]) {
+ fn remove(&mut self,ids:&[String],events:&mpsc::Sender<Event>) {
   let set:HashSet<&String>=ids.iter().collect();
-  for p in self.pending.values_mut() {p.routes.retain(|r|!set.contains(&r.venue.id));}
+  let mine=|r:&Route|set.contains(&r.venue.id)&&r.events.same_channel(events);
+  for p in self.pending.values_mut() {p.routes.retain(|r|!mine(r));}
   for slot in self.slots.values_mut() {
-   let hit:Vec<String>=slot.venues.keys().filter(|id|set.contains(id)).cloned().collect();
+   let hit:Vec<String>=slot.venues.values().filter(|r|mine(r)).map(|r|r.venue.id.clone()).collect();
    if hit.is_empty() {continue}
    for id in &hit {slot.venues.remove(id);}
    let _=slot.tx.send(ConnCmd::Drop(hit));
@@ -346,7 +361,7 @@ async fn manage(mut rx:mpsc::UnboundedReceiver<HubCmd>,hub_tx:mpsc::UnboundedSen
   tokio::select! {
    cmd=rx.recv()=>match cmd {
     Some(HubCmd::Add(routes))=>pool.add(routes,&hub_tx),
-    Some(HubCmd::Remove(ids))=>pool.remove(&ids),
+    Some(HubCmd::Remove(ids,events))=>pool.remove(&ids,&events),
     Some(HubCmd::Resubscribe(id))=>pool.resubscribe(&id),
     Some(HubCmd::Up(id))=>pool.up(id),
     Some(HubCmd::Gone(id))=>{pool.slots.remove(&id);},
@@ -416,6 +431,8 @@ impl Conn {
 fn apply_offline(conn:&mut Conn,cmd:ConnCmd) {
  match cmd {
   ConnCmd::Assign(routes)=>for r in routes {conn.insert(r)},
+  // 重连时按「重连」通知所有挂着的跟踪器，新跟踪器那时自然收到 Opened。
+  ConnCmd::Replace(routes)=>for r in routes {if conn.routes.contains_key(&r.venue.id) {conn.routes.insert(r.venue.id.clone(),r);}},
   ConnCmd::Drop(ids)=>{conn.drop_ids(&ids);},
   ConnCmd::Resubscribe(_)=>{},
  }
@@ -500,6 +517,19 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
       for r in &fresh {to_sub.push(r.venue.instrument.clone());conn.insert(r.clone());}
       let refs:Vec<&Route>=fresh.iter().collect();
       conn.announce(&refs,|venues|Event::Opened{venues,connection}).await;
+     },
+     Some(ConnCmd::Replace(routes))=>{
+      let swapped:Vec<Route>=routes.into_iter().filter(|r|conn.routes.contains_key(&r.venue.id)).collect();
+      for r in &swapped {conn.routes.insert(r.venue.id.clone(),r.clone());}
+      // 新跟踪器手上没有簿：按「连上了」通知它；OKX 退订再订拿一份流内快照，Coinbase 的
+      // 快照只在订阅时给、序号按整条连接计，只能整条重连（和 Resubscribe 同一条路）。
+      let refs:Vec<&Route>=swapped.iter().collect();
+      conn.announce(&refs,|venues|Event::Opened{venues,connection}).await;
+      match kind {
+       Kind::Okx=>to_resub.extend(swapped.iter().map(|r|r.venue.instrument.clone())),
+       Kind::Coinbase if !swapped.is_empty()=>break,
+       _=>{},
+      }
      },
      Some(ConnCmd::Drop(ids))=>{
       let dropped=conn.drop_ids(&ids);
@@ -607,7 +637,7 @@ mod tests {
   pool.add(vec![route("binance","usdtPerp","BUSDT",&events)],&hub_tx);
   assert!(pool.pending.get(&Kind::BinanceUmDepth).is_none_or(|p|p.routes.is_empty()));
   // 退掉：从所有挂着它的连接上拿下。
-  pool.remove(&["binance:usdtPerp:AUSDT".to_string()]);
+  pool.remove(&["binance:usdtPerp:AUSDT".to_string()],&events);
   assert!(pool.slots.values().all(|s|!s.venues.contains_key("binance:usdtPerp:AUSDT")));
  }
 
@@ -633,6 +663,43 @@ mod tests {
   pool.maintain(late,&hub_tx);
   assert!(pool.slots[&merged].moving);
   assert_eq!(pool.slots.len(),2);
+ }
+
+/// 同一本簿换了跟踪器（旧的停了或崩了，收件口已关）：新跟踪器的 add 不能因为「这本已经挂着」
+ /// 被跳过，要把挂着的那条改投给新的；旧跟踪器晚到的 remove 只摘它自己的，不能把新的摘掉。
+ #[tokio::test(start_paused=true)] async fn a_restarted_tracker_takes_over_books_still_held_for_its_closed_predecessor() {
+  let (old_events,old_rx)=mpsc::channel(8);
+  let (hub_tx,_hub_rx)=mpsc::unbounded_channel();
+  let mut pool=Pool::default();
+  let t0=Instant::now();
+  pool.add(vec![route("binance","usdtPerp","AUSDT",&old_events),route("okx","usdtPerp","A-USDT-SWAP",&old_events)],&hub_tx);
+  pool.flush(t0+BATCH_MAX,&hub_tx);
+  let before=pool.slots.len();
+  // 旧跟踪器崩了：收件口关了，remove 永远不会来。
+  drop(old_rx);
+  let (new_events,_new_rx)=mpsc::channel(8);
+  pool.add(vec![route("binance","usdtPerp","AUSDT",&new_events),route("okx","usdtPerp","A-USDT-SWAP",&new_events)],&hub_tx);
+  assert_eq!(pool.slots.len(),before,"不新开连接，就地改投");
+  for slot in pool.slots.values() {
+   for r in slot.venues.values() {
+    assert!(r.events.same_channel(&new_events),"{} 仍投给已经关掉的旧跟踪器",r.venue.id);
+   }
+  }
+  // 旧跟踪器（正常停的那种）晚到的 remove：只摘它自己的，一本都不动。
+  pool.remove(&["binance:usdtPerp:AUSDT".to_string(),"okx:usdtPerp:A-USDT-SWAP".to_string()],&old_events);
+  assert!(pool.slots.values().any(|s|s.venues.contains_key("binance:usdtPerp:AUSDT")));
+  assert!(pool.slots.values().any(|s|s.venues.contains_key("okx:usdtPerp:A-USDT-SWAP")));
+  // 还在攒批的那种也一样：排着的旧收件口换成新的。
+  let (a,_a_rx)=mpsc::channel(8);
+  let (b,_b_rx)=mpsc::channel(8);
+  pool.add(vec![route("binance","usdtPerp","CUSDT",&a)],&hub_tx);
+  pool.add(vec![route("binance","usdtPerp","CUSDT",&b)],&hub_tx);
+  let queued=&pool.pending[&Kind::BinanceUmDepth].routes;
+  assert_eq!(queued.len(),1);
+  assert!(queued[0].events.same_channel(&b));
+  // 新跟踪器自己的 remove 照常生效。
+  pool.remove(&["binance:usdtPerp:AUSDT".to_string()],&new_events);
+  assert!(pool.slots.values().all(|s|!s.venues.contains_key("binance:usdtPerp:AUSDT")));
  }
 
  #[test] fn pacing_is_per_exchange_family() {
