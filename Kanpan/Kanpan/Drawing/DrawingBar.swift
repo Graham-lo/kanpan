@@ -511,6 +511,9 @@ struct DrawingSheet: View {
   /// 当前品种的报价小数位。价格输入框照它显示——原来是 `0...12`，BTC 的一条趋势线
   /// 端点会写成 `77017.099999999`，那串尾巴既不是用户填的也不是图上画的。
   var decimals: Int = 2
+  /// 图表那一档时区（设置里的「本地 / UTC / UTC+8」）。端点时间的日期钮照它显示，
+  /// 和时间轴、十字线读数同一个口径——不给就是系统时区，切到 UTC 时会差出 8 小时。
+  var timeZone: TimeZone = .autoupdatingCurrent
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelTheme) private var theme
   /// 当前左划开着的是哪一行。一张表同一时刻只许开一行（见 `SwipeToDelete`）。
@@ -518,7 +521,7 @@ struct DrawingSheet: View {
   var body: some View {
     if panel == .style, let item = controller.selected {
       // 样式面板只占下面一截：调颜色粗细的时候得能看见改的是哪条线（第二批 10）。
-      DrawingStyleEditor(controller: controller, item: item, decimals: decimals)
+      DrawingStyleEditor(controller: controller, item: item, decimals: decimals, timeZone: timeZone)
         .presentationDetents([.fraction(0.4), .large])
         .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.4)))
         .presentationBackground(theme.app)
@@ -620,6 +623,7 @@ private struct DrawingStyleEditor: View {
   var controller: DrawingController
   @State var item: Drawing
   var decimals: Int = 2
+  var timeZone: TimeZone = .autoupdatingCurrent
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelTheme) private var theme
   @State private var levelText = ""
@@ -650,6 +654,7 @@ private struct DrawingStyleEditor: View {
         Section {
           ForEach(item.points.indices, id: \.self) { index in
             DatePicker("点 \(index + 1) 时间", selection: Binding(get: { Date(timeIntervalSince1970: item.points[index].t / 1000) }, set: { item.points[index].t = $0.timeIntervalSince1970 * 1000 }))
+              .environment(\.timeZone, timeZone)
             HStack {
               Text("点 \(index + 1) 价格")
               TextField("价格", value: $item.points[index].p, format: .number.precision(.fractionLength(max(0, decimals))))

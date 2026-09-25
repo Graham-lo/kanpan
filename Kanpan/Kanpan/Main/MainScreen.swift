@@ -519,7 +519,8 @@ struct MainScreen: View {
     .sheet(item: $draw.panel) { panel in
       // 主题显式灌进去：这张表里的「画线列表」和「样式」都要跟着皮肤走
       // （和 `IndicatorPanel` 里那张编辑表一个做法）。
-      DrawingSheet(controller: draw, panel: panel, decimals: market.info.priceDecimals)
+      DrawingSheet(controller: draw, panel: panel, decimals: market.info.priceDecimals,
+                   timeZone: prefs.timeZone.offsetMinutes.timeZone)
         .environment(\.panelTheme, theme)
     }
     // 竖屏的「绘图」面板是一张半屏表单；横屏走 `drawToolsLayer` 那块贴边卡片，
