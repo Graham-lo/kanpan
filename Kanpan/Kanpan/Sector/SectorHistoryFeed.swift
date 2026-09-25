@@ -37,8 +37,19 @@ import KanpanNetwork
 
   /// 两趟之间隔多久。日线一天换一次，一小时问一趟已经比需要的勤快。
   private static let refreshSeconds: TimeInterval = 3600
-  /// 循环的步长。取失败了下一步就再试一次，不必等满一小时。
-  private static let tickSeconds: TimeInterval = 600
+  /// 循环的步长（取到了之后隔多久看一眼到没到一小时）。
+  static let tickSeconds: TimeInterval = 600
+  /// 取失败后第一次重试等多久；之后每次乘 3，封顶 `tickSeconds`（审查 P2-6）。
+  static let firstRetrySeconds: TimeInterval = 5
+
+  /// 连续失败 `failures` 次之后隔多久再试。原来失败了也是死等 10 分钟：进页那一趟碰上
+  /// 网络抖一下，「5 日」那颗药丸就要缺 10 分钟。现在 5 秒、15 秒、45 秒…往上翻，
+  /// 封顶 10 分钟——一直取不到也只是每 10 分钟问一次，不会越问越密。
+  static func retryDelay(failures: Int) -> TimeInterval {
+    guard failures > 0 else { return tickSeconds }
+    let exponent = Double(min(failures - 1, 16))
+    return min(firstRetrySeconds * pow(3, exponent), tickSeconds)
+  }
 
   // MARK: 外部接线
 
@@ -69,9 +80,10 @@ import KanpanNetwork
 
   private func run() async {
     loadCache()
+    var failures = 0
     while !Task.isCancelled {
-      if stale { await pull() }
-      try? await Task.sleep(for: .seconds(Self.tickSeconds))
+      if stale { failures = await pull() ? 0 : failures + 1 }
+      try? await Task.sleep(for: .seconds(Self.retryDelay(failures: failures)))
     }
   }
 
@@ -80,12 +92,15 @@ import KanpanNetwork
     return Date().timeIntervalSince(last) >= Self.refreshSeconds
   }
 
-  private func pull() async {
-    guard let backend, let body = try? await backend.get(Self.path, timeout: 8) else { return }
-    guard let parsed = Self.decode(body) else { return }
+  /// 取一趟。取到并解得开返回 true（哪怕是过期那份被 `apply` 拦下，也算「问过了」，一小时后再问）。
+  private func pull() async -> Bool {
+    guard let backend, let body = try? await backend.get(Self.path, timeout: 8) else { return false }
+    guard !Task.isCancelled else { return false }
+    guard let parsed = Self.decode(body) else { return false }
     lastPull = Date()
     apply(parsed)
     Self.writeCache(body)
+    return true
   }
 
   /// 网络和磁盘两条路都从这儿进，一道闸：过期的不要（服务端算不出今天那份时会拿
