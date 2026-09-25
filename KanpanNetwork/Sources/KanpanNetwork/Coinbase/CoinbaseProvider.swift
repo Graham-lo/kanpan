@@ -30,7 +30,8 @@ public struct CoinbaseProvider: MarketProvider {
     venue: venue, market: market, upstream: venue,
     nativeIntervals: nativeIntervals, aggregatedFrom: aggregatedFrom,
     // 四页（4 × 350）。首屏只要一页：一次请求就画出来，深度交给后台加深。
-    maxKlines: 4 * pageSize, initialKlines: 300,
+    // 补缺也是这四页：`contiguousTail` 先按时钟算要多少根，超过就直接报 `.gapTooLong`。
+    maxKlines: 4 * pageSize, maxTailBars: 4 * pageSize, initialKlines: 300,
     liveKlineIntervals: [.m5],
     hasTickerStream: true, hasMarkPrice: false, hasFunding: false,
     openInterestSource: nil, hasMicrostructure: false, hasDerivativeMetrics: false,
@@ -240,7 +241,7 @@ public struct CoinbaseProvider: MarketProvider {
     let source = capabilities.source(for: interval)
     let now = Int64(clock().timeIntervalSince1970 * 1000)
     let needed = Int(max(0, (now - from) / max(source.stepMs, 1)) + 2)
-    guard needed <= capabilities.maxKlines else { throw FeedError.badResponse("断线时间较长，需要重新加载行情") }
+    guard needed <= capabilities.maxTailBars else { throw FeedError.gapTooLong }
     return try await fetchBars(symbol: symbol, interval: source, count: needed, startTime: from, endTime: nil)
   }
 

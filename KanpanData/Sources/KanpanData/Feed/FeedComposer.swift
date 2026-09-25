@@ -7,7 +7,7 @@ import KanpanNetwork
 ///
 /// - `k.x == false` → 覆盖末根；`k.x == true` 或 `k.t > 末根` → 追加。
 /// - 比末根还早的事件丢掉（乱序到达）。
-/// - 补缺期间收到的 WS 事件排队，补完按 openTime 去重合并。
+/// - 补缺期间收到的 WS 事件（K 线与逐笔）排队，补完按到达顺序重放。
 /// 一次逐笔折线的落点。
 public enum TickFold: Sendable, Equatable {
   /// 没动序列：价格不合法、时间比末根还早、补缺中、或者序列还空着。
@@ -20,8 +20,16 @@ public enum TickFold: Sendable, Equatable {
 
 public struct FeedComposer: Sendable {
   public private(set) var series: BarSeries
-  /// 补缺期间排队的事件。
-  public private(set) var queued: [Bar] = []
+  /// 补缺期间排队的事件（K 线与逐笔按到达顺序排在同一条队里，补完按原顺序重放）。
+  private var pending: [Pending] = []
+  /// 补缺期间排队的 K 线（只读视图，日志和验收用）。
+  public var queued: [Bar] {
+    pending.compactMap { if case .bar(let b) = $0 { return b } else { return nil } }
+  }
+  /// 补缺期间排队的逐笔数。
+  public var queuedTicks: Int {
+    pending.reduce(0) { n, e in if case .tick = e { return n + 1 } else { return n } }
+  }
   public private(set) var isBackfilling = false
   /// 丢掉的过期事件数，日志和验收用。
   public private(set) var droppedStale = 0
@@ -30,7 +38,13 @@ public struct FeedComposer: Sendable {
   public private(set) var lastTickMs: Int64 = 0
   /// 收到过 `x=true` 的最大 openTime：这一根交易所自己宣布收线了，是定论。
   public private(set) var lastClosedTime: Int64 = 0
+  /// 实时推送（K 线或逐笔）改过序列的次数。REST 回包按「发请求时的号」判断末根
+  /// 是不是在路上被推送改过——逐笔改了末根也要算，否则慢一拍的 REST 会把它盖回去。
   public private(set) var wsRevision: UInt64 = 0
+  private enum Pending: Sendable {
+    case bar(Bar)
+    case tick(price: Double, qty: Double, timeMs: Int64, tradeID: Int64?)
+  }
   private var lastEvent: KlineEvent?
   private var lastTradeID: Int64?
 
@@ -67,7 +81,7 @@ public struct FeedComposer: Sendable {
   public mutating func apply(bar: Bar) -> Bool {
     guard bar.isValidMarketBar else { return false }
     if isBackfilling {
-      queued.append(bar)
+      pending.append(.bar(bar))
       return false
     }
     if series.count > 0, bar.openTime < series.lastTime {
@@ -92,8 +106,19 @@ public struct FeedComposer: Sendable {
                                  tradeID: Int64? = nil) -> TickFold {
     guard price.isFinite, price > 0, timeMs >= lastTickMs else { return .ignored }
     if timeMs == lastTickMs, (tradeID ?? -1) <= (lastTradeID ?? -1) { return .ignored }
-    // 补缺期间不折：REST 马上就要拿权威值整段盖过来，这会儿改末根只会打架。
-    guard !isBackfilling, series.count > 0 else { return .ignored }
+    // 补缺期间先不折（REST 马上拿权威值整段盖过来，这会儿改末根只会打架），但也不能丢：
+    // 排进和 K 线同一条队，补完按到达顺序重放——丢了的话，只靠逐笔拼末根的那几档
+    // （Coinbase 非 5 分钟周期）补缺那几百毫秒里的成交就永远缺在末根上。
+    if isBackfilling {
+      pending.append(.tick(price: price, qty: qty, timeMs: timeMs, tradeID: tradeID))
+      lastTickMs = timeMs; lastTradeID = tradeID
+      return .ignored
+    }
+    return fold(price: price, qty: qty, timeMs: timeMs, tradeID: tradeID)
+  }
+
+  private mutating func fold(price: Double, qty: Double, timeMs: Int64, tradeID: Int64?) -> TickFold {
+    guard series.count > 0 else { return .ignored }
     let t = Aggregator.bucketStart(ms: timeMs, interval: series.interval)
     let last = series.lastTime
     if t < last {
@@ -118,10 +143,12 @@ public struct FeedComposer: Sendable {
       // 要不要重画的，一根没变的末根重画多少次都是同一张图。
       guard b != before else { return .ignored }
       _ = series.upsert(b)
+      wsRevision &+= 1
       return .updated
     }
     _ = series.upsert(Bar(openTime: t, open: price, high: price, low: price, close: price, volume: vol))
     lastTickMs = timeMs; lastTradeID = tradeID
+    wsRevision &+= 1
     return .appended
   }
 
@@ -138,9 +165,19 @@ public struct FeedComposer: Sendable {
     let before = series.count
     merge(bars)
     isBackfilling = false
-    let q = queued
-    queued.removeAll()
-    for b in q { _ = apply(bar: b) }
+    let q = pending
+    pending.removeAll()
+    // REST 回包里最新那根可能已经含了排队期间的一部分成交：落在它里面的逐笔只折价不加量
+    // （量交给下一次对表按大者取），落在它之后新开的那几根才连量一起折，免得重复计量。
+    let restLast = series.count > 0 ? series.lastTime : Int64.min
+    for event in q {
+      switch event {
+      case .bar(let b): _ = apply(bar: b)
+      case .tick(let price, let qty, let timeMs, let tradeID):
+        let newer = Aggregator.bucketStart(ms: timeMs, interval: series.interval) > restLast
+        _ = fold(price: price, qty: newer ? qty : 0, timeMs: timeMs, tradeID: tradeID)
+      }
+    }
     return series.count - before
   }
 
@@ -196,7 +233,7 @@ public struct FeedComposer: Sendable {
   /// 整段换掉（切品种 / 周期、REST 拉满一屏）。
   public mutating func replace(_ s: BarSeries) {
     series = s
-    queued.removeAll()
+    pending.removeAll()
     isBackfilling = false
     lastTickMs = 0
     lastClosedTime = 0

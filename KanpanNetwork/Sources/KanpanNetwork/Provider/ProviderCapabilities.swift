@@ -21,6 +21,9 @@ public struct ProviderCapabilities: Sendable, Equatable {
   public var aggregatedFrom: [Interval: Interval]
   /// 一次 `klines` 调用最多要多少根（按源周期计）。超过交易所单页上限时由提供者自己翻页。
   public var maxKlines: Int
+  /// `contiguousTail` 一次最多能接上多长的缺口（按源周期计）。超过它就接不上了：
+  /// 快照不拿来打底、补缺直接整段重拉一屏换掉，不然图上会留一个永久的洞。
+  public var maxTailBars: Int
   /// 首屏第一发要多深（按源周期计）。浅的一发先画出来，深度交给后台加深。
   public var initialKlines: Int
   /// 有原生实时 K 线推送的源周期。不在里面的周期靠逐笔成交在本地拼末根，
@@ -57,7 +60,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
 
   public init(venue: String, market: String, upstream: String? = nil,
               nativeIntervals: Set<Interval>, aggregatedFrom: [Interval: Interval] = [:],
-              maxKlines: Int, initialKlines: Int, liveKlineIntervals: Set<Interval>,
+              maxKlines: Int, maxTailBars: Int? = nil, initialKlines: Int, liveKlineIntervals: Set<Interval>,
               hasTickerStream: Bool, hasMarkPrice: Bool, hasFunding: Bool,
               openInterestSource: String?, hasMicrostructure: Bool, hasDerivativeMetrics: Bool,
               hasOpenInterestHistory: Bool = false, hasOpenInterestArchive: Bool = false,
@@ -65,7 +68,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
               quoteAssets: [String]) {
     self.venue = venue; self.market = market; self.upstream = upstream ?? venue
     self.nativeIntervals = nativeIntervals; self.aggregatedFrom = aggregatedFrom
-    self.maxKlines = maxKlines; self.initialKlines = initialKlines
+    self.maxKlines = maxKlines; self.maxTailBars = maxTailBars ?? maxKlines; self.initialKlines = initialKlines
     self.liveKlineIntervals = liveKlineIntervals
     self.hasTickerStream = hasTickerStream; self.hasMarkPrice = hasMarkPrice; self.hasFunding = hasFunding
     self.openInterestSource = openInterestSource; self.hasMicrostructure = hasMicrostructure

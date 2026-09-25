@@ -256,7 +256,8 @@ public actor MarketFeed {
       seeded = true
       log("内存命中 \(key) \(hit.count) 根")
     } else if snapshotEnabled, let snap = SeriesStore.read(symbol: symbol, interval: interval, in: paths.series),
-              Self.seedUsable(snap, sourceStepMs: caps.source(for: interval).stepMs, nowMs: await pacer.nowMs()) {
+              Self.seedUsable(snap, sourceStepMs: caps.source(for: interval).stepMs, nowMs: wallNowMs(),
+                              maxTailBars: caps.maxTailBars) {
       guard current(requested) else { return }
       composer.replace(snap)
       emit(.series(snap))
@@ -363,6 +364,8 @@ public actor MarketFeed {
   }
 
   public func enterForeground() async {
+    // stop 之后的回前台（宿主已经把这条 feed 收了、通知晚到）不许把连接和补缺重新拉起来。
+    guard !stopped else { return }
     backgroundTask?.cancel()
     backgroundTask = nil
     // 先把「现在要连着」这件事记下来，再去做后面那些 await。25 秒的闹钟哪怕
@@ -824,19 +827,43 @@ public actor MarketFeed {
 
   /// 快照还能不能拿来打底：中间欠的那段要在 `contiguousTail` 的翻页能力之内。
   /// `sourceStepMs` 是这一档真正去网上拉的那一档（源周期）的步长：缺口按源周期根数算，
-  /// 因为补缺翻的是源周期的页。
-  static func seedUsable(_ snap: BarSeries, sourceStepMs step: Int64, nowMs: Double) -> Bool {
+  /// 因为补缺翻的是源周期的页。`nowMs` 必须是墙上时钟（和 K 线 openTime 同一把尺）——
+  /// 原来传的是 `pacer.nowMs()`（开机以来的单调毫秒），和 openTime 一比永远是负数，
+  /// 这道闸在真机上从来没拦下过任何快照。
+  /// `maxTailBars` 是这家提供者补缺的上限（Coinbase 只有 1400 根），接不上的快照不打底。
+  static func seedUsable(_ snap: BarSeries, sourceStepMs step: Int64, nowMs: Double,
+                         maxTailBars: Int = .max) -> Bool {
     guard snap.count > 0 else { return false }
     guard step > 0 else { return false }
     let gap = Int64(nowMs) - snap.lastTime
     guard gap > 0 else { return true }
-    return gap / step <= maxSeedGapBars
+    let bars = gap / step
+    return bars <= maxSeedGapBars && bars + 2 <= Int64(maxTailBars)
+  }
+
+  /// 墙上时钟，毫秒（和 K 线 openTime 同一把尺）。
+  private func wallNowMs() -> Double { clock().timeIntervalSince1970 * 1000 }
+
+  /// 从 `from` 那根接到现在要多少根源周期的 K 线（和 `contiguousTail` 的算法一致：多留两根余量）。
+  private func tailBars(from: Int64, interval iv: Interval) -> Int {
+    let step = max(caps.source(for: iv).stepMs, 1)
+    let now = Int64(wallNowMs())
+    return Int(max(0, (now - from) / step)) + 2
   }
 
   /// 拉满一屏。`since > 0` 时并行启动快照到现在的缺口回补（§4.3 冷启动时序）。
+  ///
+  /// `replacingGap > 0`：从这根起断档太长、`contiguousTail` 接不上（`maxTailBars`），
+  /// 这一发拉回来的最新一屏**整段换掉**手上的序列，不和旧序列合并（合并就是留一个洞）。
+  /// `since` 的缺口本身太长时同样整段换掉。
   private func fillOnce(symbol sym: String, interval iv: Interval, since: Int64, selection request: UUID,
-                        quickFirst: Bool = false) async {
+                        quickFirst: Bool = false, replacingGap: Int64 = 0) async {
     guard current(request) else { return }
+    // 快照 / 内存序列打了底、但离现在已经超出补缺上限：先别并行发补缺（注定 `.gapTooLong`），
+    // 最新一屏回来直接整段换掉。
+    let sinceTooLong = since > 0 && !caps.isAggregated(iv) && tailBars(from: since, interval: iv) > caps.maxTailBars
+    let replacing = replacingGap > 0 || sinceTooLong
+    if sinceTooLong { log("快照末根到现在超过补缺上限 \(caps.maxTailBars) 根，最新一屏回来整段换掉") }
     defer { if current(request), sym == symbol, iv == interval { filling = false } }
     // 首屏小页：和完整那发并行发出去，谁先回谁先画。它只在图还空着时落地，
     // 完整那发要是先回来，这一发回来什么都不做。
@@ -857,10 +884,11 @@ public actor MarketFeed {
     // 窗口里的实时末根会被算进基线，`preservingLiveTail` 判成 false，陈旧的 REST
     // 回包就把活着的末根盖回去。
     let gapRevision = composer.wsRevision
-    let gapTask: Task<[Bar], Error>? = (since > 0 && !caps.isAggregated(iv))
+    let gapTask: Task<[Bar], Error>? = (since > 0 && !caps.isAggregated(iv) && !replacing)
       ? Task { [provider] in try await provider.contiguousTail(symbol: sym, interval: iv, from: since) }
       : nil
     if gapTask != nil { await Task.yield() }
+    var bars: [Bar] = []
     do {
       // 先取最新窗口并发布，让用户先看到当前行情；快照到现在的旧缺口
       // 另行补齐。旧实现把这两步串成“先补缺、再取最新”，直连黑洞时
@@ -872,7 +900,6 @@ public actor MarketFeed {
       // 看上去就像「只有 K 线没加载」。上游一个随机的 429/5xx 不该把图钉死在
       // 那儿等用户去点横幅，所以这里自己退避重试几轮。只在失败路径上生效，
       // 顺利的首屏一次也不会多等。
-      var bars: [Bar] = []
       var attempt = 0
       while true {
         attempt += 1
@@ -897,14 +924,19 @@ public actor MarketFeed {
       guard current(request), sym == symbol, iv == interval else { return }
       if caps.isAggregated(iv) {
         let src = BarSeries(symbol: sym, interval: caps.source(for: iv), bars: MarketSeries.dedup(bars))
-        if var source = sourceComposer {
+        if var source = sourceComposer, !replacing {
           source.merge(bars, preservingLiveTail: source.wsRevision != sourceRevision)
           sourceComposer = source
         } else { sourceComposer = FeedComposer(series: src) }
         composer.replace(Aggregator.bucket(series: sourceComposer!.series, into: iv))
       } else {
         sourceComposer = nil
-        composer.merge(bars, preservingLiveTail: composer.wsRevision != revision)
+        if replacing {
+          composer.replace(BarSeries(symbol: sym, interval: iv, bars: MarketSeries.dedup(bars)))
+          log("断档过长，最新一屏 \(bars.count) 根整段换掉旧序列")
+        } else {
+          composer.merge(bars, preservingLiveTail: composer.wsRevision != revision)
+        }
       }
       await cache.put(composer.series)
       guard current(request) else { return }
@@ -932,9 +964,11 @@ public actor MarketFeed {
       gapTask?.cancel()
       guard current(request), !Task.isCancelled else { return }
       log("拉 \(sym)|\(iv.rawValue) 失败：\(error)")
+      // 断档过长那一路是带着补缺状态进来的：放掉排队的推送，别把序列卡在补缺里。
+      if composer.isBackfilling { composer.endBackfill(with: []) }
       // 快照打了底、首屏却没拉下来：快照末根到现在那段是空的，WS 推来的新根会直接
       // 接在快照后面，中间就是一个洞。记下来，自愈（或下一次重连）按缺口补。
-      noteGap(at: since)
+      noteGap(at: replacingGap > 0 ? replacingGap : since)
       emit(.historyError("历史行情暂未加载，点此重试"))
       emit(.status(.offline))
       scheduleHeal(after: error, selection: request)
@@ -944,7 +978,7 @@ public actor MarketFeed {
     // 聚出来的周期（1y 这类）没有可直接对齐的历史缺口；其它周期在最新窗口
     // 已显示后再补快照缺口。缺口失败时保留最新序列和实时 WS，不把整条
     // 可用行情降级为离线。
-    if since > 0, !caps.isAggregated(iv) {
+    if since > 0, !caps.isAggregated(iv), !replacing {
       do {
         let gap: [Bar]
         if let gapTask { gap = try await gapTask.value }
@@ -957,6 +991,15 @@ public actor MarketFeed {
         log("补缺 startTime=\(since) → \(gap.count) 根")
       } catch is CancellationError {
         return
+      } catch FeedError.gapTooLong {
+        // 时钟没看出来、提供者自己翻到头才发现接不上：同样拿最新一屏整段换掉，不记缺口、不重试。
+        guard current(request), sym == symbol, iv == interval, !bars.isEmpty else { return }
+        composer.replace(BarSeries(symbol: sym, interval: iv, bars: MarketSeries.dedup(bars)))
+        await cache.put(composer.series)
+        guard current(request) else { return }
+        emit(.historyError(nil))
+        emit(.series(composer.series))
+        log("快照缺口超过补缺上限，最新一屏 \(bars.count) 根整段换掉旧序列")
       } catch {
         guard current(request), !Task.isCancelled else { return }
         log("补缺失败，保留最新行情：\(error)")
@@ -1029,6 +1072,14 @@ public actor MarketFeed {
       await fillOnce(symbol: sym, interval: iv, since: 0, selection: request)
       return
     }
+    // 断档超过补缺上限（Coinbase 1400 根、币安 6000 根）：`contiguousTail` 注定接不上，
+    // 失败了再记缺口、再自愈也只会一遍遍撞同一堵墙，图上留个永久的洞。直接整段重拉一屏换掉。
+    let pending = tailBars(from: from, interval: iv)
+    if pending > caps.maxTailBars {
+      log("断档 \(pending) 根超过补缺上限 \(caps.maxTailBars)，整段重拉一屏")
+      await fillOnce(symbol: sym, interval: iv, since: 0, selection: request, replacingGap: from)
+      return
+    }
     do {
       let bars = try await provider.contiguousTail(symbol: sym, interval: iv, from: from)
       guard current(request), sym == symbol, iv == interval else { return }
@@ -1039,6 +1090,10 @@ public actor MarketFeed {
       emit(.series(composer.series))
       emit(.historyError(nil))
       log("补缺 startTime=\(from) → \(bars.count) 根，净增 \(added)，队列已合并")
+    } catch FeedError.gapTooLong {
+      guard current(request), sym == symbol, iv == interval else { return }
+      log("补缺接不上（断档超过提供者翻页能力），整段重拉一屏")
+      await fillOnce(symbol: sym, interval: iv, since: 0, selection: request, replacingGap: from)
     } catch {
       guard current(request) else { return }
       emit(.historyError("行情缺口暂未补齐，点此重试"))
@@ -1155,6 +1210,12 @@ public actor MarketFeed {
     // 正好撞上这一条：序列里只剩 WS 推来的那一根，落盘之后下次冷启动读回来还是
     // 一根，图就永远停在「行情加载中」。宁可不存。
     guard snapshotEnabled, composer.series.count >= Self.snapshotFloor else { return }
+    // 欠着没补上的缺口、而缺口之后又接了推送来的新根：序列中间有个洞，落盘就把洞带进
+    // 下次冷启动（快照打底后只从它的末根往后补，洞在中间永远补不上）。宁可留着上一份。
+    guard gapFrom == 0 || composer.series.lastTime <= gapFrom else {
+      log("有未补齐的缺口（自 \(gapFrom) 起），这次不落快照")
+      return
+    }
     lastSnapshotMs = Self.monotonicMs()
     let series = composer.series
     let dir = paths.series

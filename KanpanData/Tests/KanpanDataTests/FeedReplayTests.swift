@@ -479,7 +479,8 @@ struct FeedReplayTests {
     let server = FakeServer(pacer: pacer) { ex.reply(for: $0) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer,
+                          clock: clock(near: ex0.history.last?.openTime ?? snapLast), reconcileMs: 0)
 
     let firstEvent = Counter()
     let stream = await feed.events()

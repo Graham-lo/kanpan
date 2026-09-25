@@ -35,6 +35,16 @@ public func makeSeries(_ symbol: String, _ iv: Interval, count: Int, t0: Int64 =
   BarSeries(symbol: symbol, interval: iv, bars: makeBars(t0: t0, step: iv.stepMs, count: count))
 }
 
+/// 停在 `ms`（毫秒）之后 `aheadMs` 的墙上时钟。
+///
+/// 夹具的 K 线都在 2023 年（`t0 = 1_700_000_000_000`），而 `MarketFeed` 判「快照离现在多远」
+/// 「缺口有几根」用的是墙上时钟：拿真的 `Date()` 去比，快照一律「太旧」、缺口一律「太长」，
+/// 用例验的补缺路径根本走不到。要走补缺那一路的用例，把时钟钉在夹具末根附近。
+public func clock(near ms: Int64, aheadMs: Int64 = 60_000) -> @Sendable () -> Date {
+  let at = Date(timeIntervalSince1970: Double(ms + aheadMs) / 1000)
+  return { at }
+}
+
 
 
 // ---------------------------------------------------------------- 稳态

@@ -98,8 +98,8 @@ struct FeedBlockedRetryTests {
     let ws = BinanceWS(factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: SystemPacer()),
                        pacer: SystemPacer())
     let logged = Waits()
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0,
-                          log: FeedLog { logged.note($0) })
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, clock: clock(near: seed.lastTime),
+                          reconcileMs: 0, log: FeedLog { logged.note($0) })
 
     let seen = Seen()
     let stream = await feed.events()
@@ -190,8 +190,8 @@ struct FeedBlockedRetryTests {
     let ws = BinanceWS(factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: SystemPacer()),
                        pacer: SystemPacer())
     let logged = Waits()
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0,
-                          log: FeedLog { logged.note($0) })
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, clock: clock(near: seed.lastTime),
+                          reconcileMs: 0, log: FeedLog { logged.note($0) })
     let seen = Seen()
     let stream = await feed.events()
     let pump = Task { for await update in stream { await seen.note(update) } }
@@ -267,7 +267,8 @@ struct FeedBlockedRetryTests {
     defer { try? FileManager.default.removeItem(at: paths.root) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer,
+                          clock: clock(near: rec.klines.last?.openTime ?? closedBar.openTime), reconcileMs: 0)
     _ = await feed.events()
     await feed.start(symbol: "BTCUSDT", interval: .m1)
     #expect(await waitUntil(20) { await deck.progress() >= stepCount - 1 })

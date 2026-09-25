@@ -257,7 +257,7 @@ public actor BinanceREST {
     var cursor = from
     var result: [Bar] = []
     let now = Int64(Date().timeIntervalSince1970 * 1000)
-    for p in 0..<4 {
+    for p in 0..<Self.maxTailPages {
       try Task.checkCancellation()
       // 只有第一页按需；能翻到第二页说明第一页被拉满了，那就是真的断了很久，
       // 后面几页照旧按整页拉。
@@ -269,8 +269,13 @@ public actor BinanceREST {
       if page.count < limit { return result }
       cursor = last.openTime + 1
     }
-    throw FeedError.badResponse("断线时间较长，需要重新加载行情")
+    throw FeedError.gapTooLong
   }
+
+  /// `contiguousTail` 最多翻几页。
+  static let maxTailPages = 4
+  /// `contiguousTail` 最多能接上的根数（`ProviderCapabilities.maxTailBars`）。
+  public static let maxTailBars = maxTailPages * maxKlines
 
   /// 最新一屏：拉满 `limit` 根，返回 `BarSeries`。1y 会在这儿聚出来。
   public func latestSeries(symbol: String, interval: Interval, limit: Int = maxKlines) async throws -> BarSeries {

@@ -146,4 +146,7 @@ public enum FeedError: Error, Sendable, Equatable {
   /// 这家交易所没有这项能力（现货没有资金费率、持仓量……）。上层按能力位本来就不会来问，
   /// 真撞上了就是调用方漏看了能力位。
   case unsupported(String)
+  /// 断档超过 `contiguousTail` 的翻页能力（`ProviderCapabilities.maxTailBars`）：接不上了，
+  /// 上层应整段重拉一屏换掉，而不是一遍遍重试补缺。
+  case gapTooLong
 }

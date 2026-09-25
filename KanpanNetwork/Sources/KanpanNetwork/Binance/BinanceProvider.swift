@@ -117,7 +117,7 @@ public struct BinanceProvider: MarketProvider {
       return ProviderCapabilities(
         venue: venue, market: market, upstream: upstream.rawValue,
         nativeIntervals: nativeIntervals, aggregatedFrom: BinanceREST.aggregatedFrom,
-        maxKlines: BinanceREST.maxKlines,
+        maxKlines: BinanceREST.maxKlines, maxTailBars: BinanceREST.maxTailBars,
         // 直连一次就要满深度：`MarketFeed.fillOnce` 看见首发深于一屏会另外并行发一发
         // 300 根的小页，谁先回谁先画（弱网上先看见图，满深度回来再铺开）。
         initialKlines: 1800,
@@ -143,7 +143,7 @@ public struct BinanceProvider: MarketProvider {
       return ProviderCapabilities(
         venue: venue, market: market, upstream: upstream.rawValue,
         nativeIntervals: nativeIntervals, aggregatedFrom: BinanceREST.aggregatedFrom,
-        maxKlines: BinanceREST.maxKlines, initialKlines: 300,
+        maxKlines: BinanceREST.maxKlines, maxTailBars: BinanceREST.maxTailBars, initialKlines: 300,
         liveKlineIntervals: nativeIntervals,
         hasTickerStream: true, hasMarkPrice: false, hasFunding: true,
         openInterestSource: "okx", hasMicrostructure: false, hasDerivativeMetrics: false,

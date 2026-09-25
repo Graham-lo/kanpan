@@ -62,7 +62,7 @@ struct FeedHealTests {
                                         limiter: RateLimiter(pacer: pacer, minGapMs: 0),
                                         pacer: pacer),
                       ws: BinanceWS(factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: SystemPacer())),
-                      paths: paths, pacer: pacer, reconcileMs: 0)
+                      paths: paths, pacer: pacer, clock: clock(near: FeedHealTests.last), reconcileMs: 0)
   }
 
   private func tempPaths() -> Paths {
