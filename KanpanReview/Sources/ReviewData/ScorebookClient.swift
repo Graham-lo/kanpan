@@ -91,6 +91,8 @@ public enum ReviewFailure {
     // 原来它们跟着 503 走到下面那条「服务端暂时不可用，稍后自动重试」，可找相似根本不会自动重试。
     case "search_cancelled": return "这次查找已取消"
     case "search_incomplete": return "行情暂不完整，请稍后重试"
+    // 轮询总时长用完（`ReviewPollSchedule`）：服务端那边还没跑完，先停下，不是失败。
+    case "search_timeout": return "查找用时太长，已先停下，请稍后重试"
     default: break
     }
     switch status {

@@ -507,11 +507,21 @@ import ReviewData
         await cancellation?.value
         try Task.checkCancellation()
         var job = try await client.startSearch(range: range, cutoff: cutoff, scope: scope, id: id)
+        // 退避 + 总时长封顶（审查 P2-2）：见 `ReviewPollSchedule`。
+        let started = ContinuousClock.now
+        var schedule = ReviewPollSchedule()
         while job.status == "queued" || job.status == "running" {
           try Task.checkCancellation(); guard epoch == requestEpoch && searchGeneration == generation else { return }
           if let total = job.total, total > 0 { searchProgress = "正在比对 \(job.checked ?? 0)/\(total)" }
-          try await Task.sleep(for: .seconds(2))
-          job = try await client.searchStatus(id)
+          let elapsed = started.duration(to: .now) / .seconds(1)
+          guard let wait = schedule.next(checked: job.checked, elapsed: elapsed) else {
+            // 等太久了：撤掉服务端那个任务，停在可重试（查找页那颗「重试」）。
+            try? await client.cancelSearch(id)
+            throw ReviewPollSchedule.timedOut
+          }
+          try await Task.sleep(for: .seconds(wait))
+          do { job = try await client.searchStatus(id) }
+          catch where ReviewPollSchedule.keepsPolling(after: error) { continue }
         }
         guard job.status == "completed" else { throw ScorebookError.http(503, job.status == "cancelled" ? "search_cancelled" : "search_incomplete") }
         let result = try await client.searchResults(id)
