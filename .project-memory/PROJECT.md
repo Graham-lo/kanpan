@@ -573,3 +573,15 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   - 「碰到」一律改叫「价格达到」（`Condition.touch.title`、`LineAlertPhrase`、`AlertMessage` 示例；服务端 `alerts.rs` 协调方另改 `de5d6c54`）。
   - 顺手修两处挡绿的存量：`AlertRecordText.venueLine` 直接点了交易所名（`venue-isolation` 红），改从 `VenueRegistry.descriptor(_:).displayName` 取；`ToastCenter.plainSeconds` 读 `KANPAN_TEST_TOAST_SECONDS` 没关进 `#if DEBUG`（`ReleaseHookScanTests` 红）。
   - 验收截图 `docs/acceptance/提醒-2026-09-25/v3-创建页-青苔浅/深.png`、`v3-全部预警-青苔浅/深.png`，另有空态、删一条后、编辑页（16 Pro）；空态整页居中（`containerRelativeFrame`）；UI 用例 `AlertsFlowUITests`：`testAFiredAlertIsDeletedAndHidden`（种一条 fired → 总表空态、创建页无记录、去掉种子重开仍空）、`testComposePageV3ScreensHideFired`、TypedPrice 用例改成「响过即删」；「盯一个」锁屏用例删掉。
+
+## 18. 深度 bug 审查整改（云端同步 / WS / 设置项 / 后端，2026-09-26，`07954c38` → `fa57d317`，27 个提交）
+
+- 用户原话：「对代码做一次深度全面各模块的 bug 审查，特别是云端同步 ws，设置项各种问题，最近老是出现一些莫名其妙的 bug。然后从根因上去修复这些问题，由你来决断」。四组并行审查（同步、设置、后端、WS/杂项），每组只修根因，不加开关。
+- **状态：本地已改 → 已推送 `fa57d317` → 服务端已部署（04:15 CST，备份 `orderflow-vps:/opt/kanpan-backups/review-20260926-041034/`，含旧二进制、service.env、源码包、全库 pg_dump；两服务 active、`/health` 200、日志无 error）→ Release 真机包已装 iPhone 16 Pro（未由用户验收）。**
+- **同步（`8279a7f4` `77039139`）**：差分基线改成「本机已装的那一版」（`SyncArchive.shelved` 底稿 + `appliedLocal`），启动对账不再拿远端当基线把本机刚改的覆盖回去；推送断在半路按批 `onPushed` 报已落地字段；拒绝记录 `retryRejected` 能了结；两边都删了不再补发删除；偏好编码失败（`PrefsCodec.encoded` 可失败）不写空档、不推空；冷启动 `activate()` 装上次那个人的档案（`files.lastOwner`），不再先装访客档再切。已知取舍：拒绝记录的锁按对象不按字段；`account.user` 在恢复完成前为 nil。
+- **设置项（`8b944b7b` `8c891f3f`）**：PrefsCodec 升 v3（键仍 `kanpan.prefs.v2`），常用周期 `factoryQuicks` 迁移只对老档做一次（无版本号的老数据跳过该迁移）；恢复默认保留线路等 deviceOnly 字段；撤销改成字段范围 `restore(fields, from:)` 只还原自己那几项；`onChange(of: prefs.interval)` 不再被别的字段误触发；`noteInversion` 受「允许翻转」开关约束，关掉开关不再把用户的翻转记录抹成 false。settings-test 164/164。
+- **WS / 行情（`9ac8962f` … `55c075af`）**：控制帧发送失败当场重连；Coinbase 新订阅无首帧先重发再重连、按频道记错（`topicErrors`）；`WireNumber` 只收有限数；WSSocket 单帧上限 8 MiB；`MergedMarketStream` 改「期望集 + 唯一对账任务」，乱序 Task 不再把订阅覆盖回旧的、不再给同一家开两条连接；簿流 `DepthStream` 运行态机 + 轮次号，stop 后不被晚到的 start 拉起；K 线断档超补缺上限（`ProviderCapabilities.maxTailBars`：币安 6000 / Coinbase 1400）整段重拉不留洞；对比主品种走只留最新的信箱；预览卡最近使用表改成有容量 LRU；小组件、板块历史、复盘找相似的取数都改成退避重试且有上限。已知取舍：很安静的 Coinbase 频道可能多一次重连。
+- **提醒（`4541d69b` `a78dea3d` `fa57d317`）**：Webhook 只由服务端发一次（登录用户客户端不发，`serverSendsWebhooks` 按档案前缀 `u-` 判；迟报 10 分钟截止）；画线暂时读不到时提醒先暂停标「画线已不存在」，画线回来自动恢复；档案装好 / 云端推下来之后把画线存档记给提醒存档当「删之前」，第一次删线就级联删提醒。
+- **后端（`557c66f4` … `38c3f65e`，12 个）**：评估器按 90 秒无帧判死重连，超 200 路分片且提醒优先；`supervise.rs` 收编模块自起的常驻任务（单例 hub 死了进程退出交给 systemd `Restart=on-failure`，可重启的自己拉起，`Running` 守卫 panic 也复位）；同步字段校验放行 Unicode 基础币合约名；Webhook 客户端 `redirect::Policy::none`；APNs 403 过期令牌作废缓存重签重试一次；维护清理分批删除；复盘任务连续失败 5 次放弃；OKX 1000 倍打包合约映射与换算；分享收件箱「时间~id」复合游标；订单流共享连接池新 tracker 接手旧路由。后端单测 374/374 + 集成套件绿，clippy 无新告警。
+- 测试：account 126、settings 164、main-ios 90、app-logic 587 + 烟测 4、review 全绿、data 249、network 196，`Tools/check-venue-isolation.sh` 336 文件通过（WS 组三处注释点了交易所名，已改）。
+- 部署后日志里 `market_meta` 的「stocks/SPY 等 answered with another company's page; publishing nothing」WARN 是 09-20 第四轮定的既定行为（ETF 在 stockanalysis 没有 `stocks/` 页，宁可留空不猜），每天几百条，与本轮无关，未动。
