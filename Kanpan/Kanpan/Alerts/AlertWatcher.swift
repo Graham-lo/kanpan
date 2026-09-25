@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import KanpanAccount
 import KanpanCore
 import UIKit
 
@@ -21,8 +22,10 @@ import UIKit
 ///    不该在开 app 的那一瞬间集体弹一遍。
 /// 3. app 不在前台那一下变的（从后台回来拉一次同步就会看到），补一条本地通知。
 ///    没有 APNs 权限的现在，这是提醒能走到用户眼前的**唯一**一条路。
-/// 4. 填了 Webhook 的，本机判响的那一次由这里往那个地址 POST（`AlertWebhook`）；
-///    服务端判响、同步换下来的那种服务端已经发过，这里不再发第二遍。
+/// 4. 填了 Webhook 的：**登录着一律由服务端发**——本机判响的那一次随同步报上去，服务端
+///    看到 `active → fired` 就替它发，服务端自己判响的也是它发，同一道闸里只发一封
+///    （`AlertWebhook` 头注释）。只有没登录时（服务端不知道这条提醒）才由这里、只为本机判响
+///    的那一次往那个地址 POST。
 /// 5. **触发即删**（2026-09-25 v3，用户：「默认就是触发一次就删除啊，不要搞重复提醒」）：
 ///    上面几件做完，把这一拍里所有已触发的（复盘到点除外）交给 `AlertStore.purgeFired`
 ///    从存档里删掉。删走的是 `write`，账号桥照常记一笔，同步推上去的是这几条的删除。
@@ -38,6 +41,10 @@ final class AlertWatcher: ObservableObject {
   var priceDecimals: (String) -> Int? = { _ in nil }
   /// 触发时读当前账号的选择，不捕获启动时的偏好快照。
   var sound: () -> AlertSound = { .default }
+  /// 此刻装着的是不是一个账号的档案（登录着）。登录着 Webhook 由服务端发，这里不发。
+  /// 看的是 `AccountFiles.currentProfile`：提醒存档就装在这份档案里，它是账号档案
+  /// （`u-…`）时这条提醒的变动一定走账号同步到服务端；访客档案（`local/…`）不同步。
+  var serverSendsWebhooks: () -> Bool = { AccountFiles.currentProfile.hasPrefix("u-") }
 
   private weak var store: AlertStore?
   private var bag: Set<AnyCancellable> = []
@@ -97,8 +104,8 @@ final class AlertWatcher: ObservableObject {
     // 后台回来那一下则是它把人叫住。
     let decimals = priceDecimals(alert.symbol)
     AlertNotifications.present(alert, decimals: decimals, sound: sound())
-    if alert.webhook != nil, let store, store.firedLocally(alert), let price = alert.firedPrice,
-       let at = alert.firedAt {
+    if alert.webhook != nil, !serverSendsWebhooks(), let store, store.firedLocally(alert),
+       let price = alert.firedPrice, let at = alert.firedAt {
       AlertWebhook.fire(alert, price: price, decimals: decimals, at: at)
     }
     guard foreground else { return }

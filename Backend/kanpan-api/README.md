@@ -174,6 +174,37 @@ After `ops/install.py`, explicitly restart `kanpan-api kanpan-worker` and verify
 The main Caddyfile must forward both the bare and nested shares/friends paths;
 no market gateway routing changes are needed.
 
+## Alert webhooks: the server is the single sender
+
+A signed-in user's webhook is sent **only by the server**, exactly once per fire:
+
+- The evaluator's own fire goes through `alerts::record_fired`
+  (`UPDATE … WHERE status='active'`), and only the winner posts.
+- A fire the client judged locally reaches the server as an ordinary sync push
+  (`status:"fired"`, `firedAt`, `firedPrice`). `alerts::materialize` reads the
+  previous status `FOR UPDATE` under the per-user sync advisory lock; on an
+  `active` (or first-seen) → `fired` transition with a finite `firedPrice` and a
+  `firedAt` no older than 10 minutes it returns a `ReportedFire`, and `sync::push`
+  posts it after the transaction commits. Both paths flip the same row, so
+  whichever arrives second sees `fired` already and sends nothing.
+- A signed-out client (guest profile, nothing synced) still posts its own local fire;
+  that is the only case the app sends (`AlertWatcher.serverSendsWebhooks`).
+
+A stale report (the phone was offline longer than 10 minutes) is recorded but not
+posted — the signal is out of date by then. Delivery never follows redirects; a 3xx
+counts as a failure, and the host must be public (`webhook_allowed`).
+
+## Alert evaluator streams
+
+The evaluator subscribes klines for alerted symbols plus movers and `@ticker` for
+symbols with a live activity, sharded at 200 streams per Binance connection, up to
+5 connections. Alert klines come first, then live-activity tickers, then movers;
+anything past the cap is dropped with a warn that lists the dropped streams.
+Coinbase is capped at 200 products the same way. A connection (or any one shard)
+that stays silent for 90 s (Binance) / 30 s (Coinbase) is torn down and
+reconnected. If a round's database read of movers or live symbols fails, the
+error is logged and the previous round's set is kept.
+
 ## Alert live activities
 
 `POST /v1/devices/push-token` accepts `kind:"liveActivity"` and then *requires*

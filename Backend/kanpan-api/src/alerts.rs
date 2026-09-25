@@ -154,14 +154,23 @@ fn crosses(previous:f64,close:f64,line:f64)->bool {
 ///
 /// 每次都整行覆盖，所以用户把被提醒的那条线拖到别处、客户端用同一个 alert id 重传
 /// `lines` 时，`lines` 与 `armedAt` 是一起换掉的，评估器下一帧就用新几何。
-pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,object:&Object)->Result<()> {
+///
+/// **Webhook 只由服务端发**（2026-09-26）。客户端（登录着）本机判响之后不再自己 POST，只把
+/// 「响了」照常同步上来；这里看到这一行从 `active` 变成 `fired` 就返回一封待发的
+/// Webhook，由 `sync::push` 在事务**提交之后**发（事务回滚、客户端重推时不会多发一封）。
+/// 和评估器自己判响（[`record_fired`]）走的是同一道闸：都在这个人的同步咨询锁里、都只认
+/// `active → fired` 这一次转变，谁先到谁发，后到的那一方看到的已经是 `fired`，一封都不发。
+pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,object:&Object)->Result<Option<ReportedFire>> {
  let keep=!object.deleted
   && matches!(object.body.get("kind").and_then(Value::as_str),Some("drawing"|"price"|"reviewDue"))
   && object.body.get("symbol").and_then(Value::as_str).is_some();
  if !keep {
   sqlx::query("DELETE FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(&object.id).execute(&mut **tx).await?;
-  return Ok(())
+  return Ok(None)
  }
+ // 调用方（`sync::push`）已经拿着这个人的同步咨询锁，这一句读到的状态在提交前不会被评估器改掉。
+ let before:Option<String>=sqlx::query_scalar("SELECT status FROM alert_watches WHERE user_id=$1 AND alert_id=$2 FOR UPDATE")
+  .bind(owner).bind(&object.id).fetch_optional(&mut **tx).await?;
  let text=|k:&str|object.body.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
  let number=|k:&str|object.body.get(k).and_then(Value::as_f64);
  sqlx::query("INSERT INTO alert_watches(user_id,alert_id,kind,symbol,market,drawing_id,lines,condition,title,armed_at,status,fired_at,fired_price,due_at,review_id,\
@@ -188,7 +197,63 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
   .bind(optional_text(object,"webhookText"))
   .bind(optional_text(object,"note"))
   .execute(&mut **tx).await?;
- Ok(())
+ Ok(reported_fire(before.as_deref(),owner,object,chrono::Utc::now().timestamp_millis()))
+}
+
+/// 客户端报上来的一次触发，服务端要替它发的那封 Webhook。
+#[derive(Debug)]
+pub struct ReportedFire {alert_id:String,url:String,body:Value}
+
+/// 客户端报上来的「响了」多久以内还替它发 Webhook。Webhook 常接交易机器人，隔了很久才到的
+/// 「到价」是个过时信号，宁可不发（离线时客户端自己也发不出去，从前就是这个结果）。
+const REPORTED_FIRE_FRESH_MS:i64=10*60*1000;
+
+/// 这一次物化是不是「客户端把一条活动提醒报成了已触发」，是的话组好那封 Webhook。
+///
+/// - 只认 `active → fired`：原来就是 `fired`（评估器先响了、或者同一次触发重推）不再发；
+/// - 物化表里原来没有这一行（新对象一上来就是已触发）也认，但只认刚刚响的；
+/// - 只有价格类（画线 / 裸价格）有 Webhook，复盘到点没有；
+/// - 没填地址、没有触发价、触发时刻太久以前的都不发。
+fn reported_fire(before:Option<&str>,owner:Uuid,object:&Object,now:i64)->Option<ReportedFire> {
+ let text=|k:&str|object.body.get(k).and_then(Value::as_str);
+ if text("status")!=Some("fired")||!matches!(before,None|Some("active")) {return None}
+ if !matches!(text("kind"),Some("drawing"|"price")) {return None}
+ let url=text("webhook").filter(|u|!u.is_empty())?.to_string();
+ let price=object.body.get("firedPrice").and_then(Value::as_f64).filter(|p|p.is_finite())?;
+ let at=object.body.get("firedAt").and_then(Value::as_f64)? as i64;
+ if now-at>REPORTED_FIRE_FRESH_MS {
+  tracing::info!("Alert {} was reported fired {}s ago; its webhook is too stale to send",object.id,(now-at)/1000);
+  return None
+ }
+ let mut lines:Vec<Line>=serde_json::from_value(object.body.get("lines").cloned().unwrap_or_else(||json!([]))).unwrap_or_default();
+ for line in &mut lines {sort_points(&mut line.points)}
+ let owned=|k:&str|text(k).filter(|v|!v.is_empty()).map(str::to_string);
+ let watch=Watch{owner,alert_id:object.id.clone(),symbol:text("symbol")?.to_string(),drawing_id:owned("drawingID"),
+  title:text("title").unwrap_or_default().to_string(),lines,armed_at:object.body.get("armedAt").and_then(Value::as_f64).unwrap_or_default() as i64,
+  condition:Condition::of(text("condition").unwrap_or("touch")),market:text("market").unwrap_or(BINANCE).to_string(),
+  webhook:Some(url.clone()),webhook_text:owned("webhookText"),note:owned("note")};
+ Some(ReportedFire{alert_id:object.id.clone(),body:webhook_body(&watch,price,at),url})
+}
+
+/// 发一封 Webhook：另起任务，不挂住调用方（最坏 8 秒 + 3 秒 + 8 秒）。发不出去只留日志。
+/// 内网 / 本机地址不发（[`webhook_allowed`]）。
+fn post_webhook(alert_id:String,url:String,body:Value) {
+ if !webhook_allowed(&url) {
+  tracing::warn!("Alert {alert_id} has a webhook to a local or private address ({}); not posting",webhook_host(&url));
+  return
+ }
+ tokio::spawn(async move {
+  if let Err(e)=deliver_webhook(webhook_client(),&url,&body,WEBHOOK_RETRY).await {
+   tracing::warn!("Alert {alert_id} fired but its webhook to {} failed: {e}",webhook_host(&url));
+  }
+ });
+}
+/// `sync::push` 提交之后调：替客户端报上来的那几次触发发 Webhook。
+pub fn send_reported(fires:Vec<ReportedFire>) {
+ for f in fires {
+  tracing::info!("Alert {} was reported fired by a client; posting its webhook",f.alert_id);
+  post_webhook(f.alert_id,f.url,f.body);
+ }
 }
 
 /// 可空的文本字段：null、缺、空串都是 `None`。
@@ -252,8 +317,17 @@ async fn push_token(State(s):State<AppState>,i:Identity,Json(v):Json<TokenBody>)
 /// 秒出帧——后者正是 `Backend/kanpan-gateway/stream_hub.py` 一直在用的那条。
 /// 改这一行之前先在 VPS 上实测，别信握手成功。
 const STREAM:&str="wss://fstream.binance.com/market/stream";
-/// 币安对组合流的上限是 200 条/连接。十来个用户远够不着，够不着也要有个说法。
-const MAX_STREAMS:usize=200;
+/// 币安 U 本位组合流一条连接最多 200 路。超了就分到多条连接上（[`shard`]）。
+const STREAMS_PER_CONNECTION:usize=200;
+/// 评估器最多开几条币安连接：一千路。同一 IP 5 分钟只准新建 300 条连接，还要留给行情转发
+/// 与订单流，不能随品种无底洞地开；真到这个数，排在最后的（见 [`streams_of`] 的优先级）不订并打 warn。
+const MAX_CONNECTIONS:usize=5;
+/// Coinbase 那一支只开一条连接，一条连接最多订这么多个产品。
+const MAX_COINBASE_PRODUCTS:usize=200;
+/// 币安连接多久一帧都没有就当它死了（见 [`Silence`]）。
+const BINANCE_SILENCE:Duration=Duration::from_secs(90);
+/// Coinbase 订着心跳频道，每秒一帧；三十秒一帧都没有就当它死了。
+const COINBASE_SILENCE:Duration=Duration::from_secs(30);
 
 /// 怎么算「穿过」。和客户端 `Alert.Condition` 一一对应的两档。
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
@@ -306,10 +380,12 @@ async fn load(s:&AppState,market:&str)->Result<Loaded> {
  let mut movers=vec![];
  let mut live=vec![];
  let mut after:Option<Uuid>=None;
+ let mut seen=std::collections::HashSet::new();
  loop {
   let owners:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM account_users WHERE disabled_at IS NULL AND ($1::uuid IS NULL OR id>$1) ORDER BY id LIMIT 100").bind(after).fetch_all(&s.pool).await?;
   if owners.is_empty(){break}
   for owner in &owners {
+   seen.insert(*owner);
    let mut tx=match s.personal(*owner).await {Ok(tx)=>tx,Err(_)=>continue};
    // `price` 和 `drawing` 同一种形状（`lines`），一起读。
    let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition,market,webhook,webhook_text,note FROM alert_watches WHERE user_id=$1 AND status='active' AND kind IN ('drawing','price') AND market=$2")
@@ -323,12 +399,30 @@ async fn load(s:&AppState,market:&str)->Result<Loaded> {
     due.push(Due{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),review_id:review_id.unwrap_or_default(),
      title:r.get("title"),due_at:r.get::<Option<i64>,_>("due_at").unwrap_or(now)});
    }}
+   // 下面两句读的是别的表（设置、自选、推送登记）。以前出错就 `unwrap_or` 成「没开 / 没有」：
+   // 一次读库抖动就把这个人的波动闸复位（下一轮又能响一遍）、把锁屏活动的 ticker 退订。
+   // 现在各包一个保存点——出错只回滚到保存点，事务不进 aborted 状态——打 error，沿用
+   // 上一轮成功读到的那份（`LastGood`）。
    // 自选波动：每一支只读这家交易所的自选（币安的组合流订不了别家的代号）。
-   if let Some(mover)=crate::watch_move::load_mover(&mut tx,*owner,venue_of(market)).await.unwrap_or(None) {movers.push(mover)}
+   let read={
+    let mut sp=sqlx::Acquire::begin(&mut tx).await?;
+    let read=crate::watch_move::load_mover(&mut sp,*owner,venue_of(market)).await;
+    if read.is_ok() {sp.commit().await?} else {sp.rollback().await?}
+    read
+   };
+   if let Some(mover)=last_good().lock().unwrap_or_else(std::sync::PoisonError::into_inner).mover(market,*owner,read) {movers.push(mover)}
    // 同一个事务里顺手问一句「这个人有实时活动盯着哪些品种」：那些品种要多订一条
    // `@ticker`（24h 涨跌幅只有那条流里有）。没有活动的时候这一句什么都不返回，
    // 订阅串和从前一模一样。
-   if market==BINANCE {live.extend(crate::live_activity::active_symbols(&mut tx,*owner).await.unwrap_or_default());}
+   if market==BINANCE {
+    let read={
+     let mut sp=sqlx::Acquire::begin(&mut tx).await?;
+     let read=crate::live_activity::active_symbols(&mut sp,*owner).await;
+     if read.is_ok() {sp.commit().await?} else {sp.rollback().await?}
+     read
+    };
+    live.extend(last_good().lock().unwrap_or_else(std::sync::PoisonError::into_inner).live(*owner,read));
+   }
    tx.commit().await?;
    for r in rows {
     let mut lines:Vec<Line>=match serde_json::from_value(r.get::<Value,_>("lines")) {
@@ -349,7 +443,45 @@ async fn load(s:&AppState,market:&str)->Result<Loaded> {
   after=owners.last().copied();
  }
  live.sort();live.dedup();
+ last_good().lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(market,&seen);
  Ok(Loaded{watches:out,due,movers,live})
+}
+
+/// 每个人上一轮**成功**读到的自选波动设置（按交易所分）与实时活动盯着的品种。
+/// 读失败时沿用它，而不是当成「没有」（见 [`load`]）。
+#[derive(Default)]
+struct LastGood {
+ movers:std::collections::HashMap<(String,Uuid),Option<crate::watch_move::Mover>>,
+ live:std::collections::HashMap<Uuid,Vec<String>>,
+}
+fn last_good()->&'static std::sync::Mutex<LastGood> {
+ static LAST:std::sync::OnceLock<std::sync::Mutex<LastGood>>=std::sync::OnceLock::new();
+ LAST.get_or_init(Default::default)
+}
+impl LastGood {
+ fn mover<E:std::fmt::Debug>(&mut self,market:&str,owner:Uuid,read:std::result::Result<Option<crate::watch_move::Mover>,E>)->Option<crate::watch_move::Mover> {
+  match read {
+   Ok(v)=>{self.movers.insert((market.to_string(),owner),v.clone());v}
+   Err(e)=>{
+    tracing::error!("Watch-move settings for {owner} could not be read ({e:?}); keeping last round's");
+    self.movers.get(&(market.to_string(),owner)).cloned().flatten()
+   }
+  }
+ }
+ fn live<E:std::fmt::Debug>(&mut self,owner:Uuid,read:std::result::Result<Vec<String>,E>)->Vec<String> {
+  match read {
+   Ok(v)=>{self.live.insert(owner,v.clone());v}
+   Err(e)=>{
+    tracing::error!("Live activities for {owner} could not be read ({e:?}); keeping last round's");
+    self.live.get(&owner).cloned().unwrap_or_default()
+   }
+  }
+ }
+ /// 这一轮没出现的人（停用了、删了）不再留着他的上一份。
+ fn retain(&mut self,market:&str,seen:&std::collections::HashSet<Uuid>) {
+  self.movers.retain(|(m,owner),_|m!=market||seen.contains(owner));
+  if market==BINANCE {self.live.retain(|owner,_|seen.contains(owner));}
+ }
 }
 
 /// 触发：物化表置 fired + 往同步日志写一条 op，**同一个事务**。返回「这一下真的是我触发的」。
@@ -404,16 +536,7 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
  // 就一条都发不出去。另起一个任务去发——最坏要 8 秒 + 3 秒 + 8 秒，不能让这一条的
  // 对面慢吞吞地把后面所有提醒的落库和推送一起挂住。发不出去只留日志，不回滚状态。
  if let Some(url)=w.webhook.as_deref().filter(|u|!u.is_empty()) {
-  if webhook_allowed(url) {
-   let (url,body,alert_id)=(url.to_string(),webhook_body(w,price,at),w.alert_id.clone());
-   tokio::spawn(async move {
-    if let Err(e)=deliver_webhook(crate::http::shared(),&url,&body,WEBHOOK_RETRY).await {
-     tracing::warn!("Alert {alert_id} fired but its webhook to {} failed: {e}",webhook_host(&url));
-    }
-   });
-  } else {
-   tracing::warn!("Alert {} has a webhook to a local or private address ({}); not posting",w.alert_id,webhook_host(url));
-  }
+  post_webhook(w.alert_id.clone(),url.to_string(),webhook_body(w,price,at));
  }
  let Some(apns)=apns else {
   // 没有 APNs 密钥时这就是终点，而且是一个完整的终点：状态已经落库、op 已经写进
@@ -548,7 +671,21 @@ fn webhook_allowed(url:&str)->bool {
   Err(_)=>true,
  }
 }
-/// POST 一次；网络错误或 5xx 等 `retry` 之后再试一次。4xx 是对面明确不收，不重试。
+/// Webhook 专用的出站客户端：**不跟重定向**。
+///
+/// 进程里别的出站请求都走 `http::shared()`，但那个客户端默认跟最多十跳重定向，而
+/// [`webhook_allowed`] 只查得到用户填的那一个地址——对面回一个 `302 Location: http://127.0.0.1:…`
+/// 就能让服务端替它去敲本机上的服务（SSRF）。所以这里单独一个不跟跳转的客户端，3xx 一律按失败记。
+fn webhook_client()->&'static reqwest::Client {
+ static CLIENT:std::sync::OnceLock<reqwest::Client>=std::sync::OnceLock::new();
+ CLIENT.get_or_init(||reqwest::Client::builder()
+  .timeout(WEBHOOK_TIMEOUT)
+  .connect_timeout(crate::http::CONNECT_TIMEOUT)
+  .redirect(reqwest::redirect::Policy::none())
+  .build().expect("webhook HTTP client"))
+}
+/// POST 一次；网络错误或 5xx 等 `retry` 之后再试一次。4xx 是对面明确不收，不重试；
+/// 3xx（客户端不跟跳转，见 [`webhook_client`]）也按失败记、不重试。
 /// 返回最后一次失败的原因，给调用方留日志。
 async fn deliver_webhook(client:&reqwest::Client,url:&str,body:&Value,retry:Duration)->std::result::Result<(),String> {
  use reqwest::header::{CONTENT_TYPE,USER_AGENT};
@@ -561,6 +698,7 @@ async fn deliver_webhook(client:&reqwest::Client,url:&str,body:&Value,retry:Dura
    .body(payload.clone()).send().await;
   match sent {
    Ok(r) if r.status().is_success()=>return Ok(()),
+   Ok(r) if r.status().is_redirection()=>return Err(format!("HTTP {} (redirects are not followed)",r.status().as_u16())),
    Ok(r) if r.status().is_server_error()=>last=format!("HTTP {}",r.status().as_u16()),
    Ok(r)=>return Err(format!("HTTP {}",r.status().as_u16())),
    // 错误文本里可能带着整条地址，只留类别。
@@ -860,8 +998,9 @@ async fn binance(s:&AppState,effects:Effects) {
   movers.refresh(&fresh.movers);
   // 复盘到点不看价：有没有 K 线流都要按时判，所以放在「一个品种都没有」那条岔路前面。
   effects.due(fresh.due);
-  let symbols=symbols_of(&fresh.watches,&movers.symbols());
-  let streams=streams_of(&symbols,&fresh.live);
+  let wanted=wanted(&fresh.watches,&movers.symbols());
+  let symbols=wanted.symbols();
+  let streams=streams_of(&wanted,&fresh.live);
   watches=effects.idle(fresh.watches);
   if symbols.is_empty() {
    // 一条提醒都没有的时候也要走心跳：提醒刚被删掉、而它的活动还挂在别人锁屏上的
@@ -878,29 +1017,82 @@ async fn binance(s:&AppState,effects:Effects) {
   }
  }
 }
-/// 要订的品种：有活动价格提醒的，加上开着自选波动提醒的人的自选。
-fn symbols_of(watches:&[Watch],movers:&std::collections::BTreeSet<String>)->Vec<String> {
- let mut all:Vec<String>=watches.iter().map(|w|w.symbol.clone()).chain(movers.iter().cloned()).collect();
- all.sort();all.dedup();
- if all.len()>MAX_STREAMS {
-  tracing::warn!("{} symbols have alerts but one combined stream carries {MAX_STREAMS}; the rest are not watched",all.len());
-  all.truncate(MAX_STREAMS);
- }
- all
+/// 要订的品种，分两档：有活动价格提醒的（`alerts`），和只因为自选波动提醒才要订的（`movers`，
+/// 已去掉和 `alerts` 重复的）。两档各自排好序，订不下的时候先舍后一档。
+#[derive(Debug,Default,PartialEq)]
+struct Wanted {alerts:Vec<String>,movers:Vec<String>}
+impl Wanted {
+ /// 全部品种，提醒的在前。
+ fn symbols(&self)->Vec<String> {self.alerts.iter().chain(&self.movers).cloned().collect()}
 }
-/// 这一轮要订的流。
+fn wanted(watches:&[Watch],movers:&std::collections::BTreeSet<String>)->Wanted {
+ let mut alerts:Vec<String>=watches.iter().map(|w|w.symbol.clone()).collect();
+ alerts.sort();alerts.dedup();
+ let movers=movers.iter().filter(|s|alerts.binary_search(s).is_err()).cloned().collect();
+ Wanted{alerts,movers}
+}
+/// 这一轮要订的流，**按优先级排好**：订不下时从尾巴上舍（[`shard`]）。
 ///
-/// K 线是每个有提醒的品种都要的；`@ticker` 只给**正被实时活动盯着**的那几个品种加——
-/// 24h 涨跌幅只有那条流里有，而锁屏上要显示它。没有活动时这个函数吐出来的东西和从前
-/// 一字不差，所以「没人用实时活动」这个常态下评估器的上游负载一点没变。
-/// 两种流共用一条连接（币安的组合流上限 200 条），不新开连接、也不碰 REST 那道限流闸。
-fn streams_of(symbols:&[String],live:&[String])->Vec<String> {
- let mut out:Vec<String>=symbols.iter().map(|s|format!("{}@kline_1m",s.to_lowercase())).collect();
+/// 1. 有活动价格提醒的品种的 K 线——漏了就是漏响，最要紧；
+/// 2. 正被实时活动盯着的品种的 `@ticker`——24h 涨跌幅只有那条流里有，锁屏上要显示它；
+///    没有提醒的品种就算登记过活动也不订（那条活动下一拍就会被结束掉）；
+/// 3. 只因为自选波动提醒才订的品种的 K 线。
+///
+/// 没有实时活动、也没人开波动提醒时，吐出来的和从前一字不差。
+fn streams_of(wanted:&Wanted,live:&[String])->Vec<String> {
+ let kline=|s:&String|format!("{}@kline_1m",s.to_lowercase());
+ let mut out:Vec<String>=wanted.alerts.iter().map(kline).collect();
  for symbol in live {
-  if out.len()>=MAX_STREAMS {break}
-  if symbols.iter().any(|s|s==symbol) {out.push(format!("{}@ticker",symbol.to_lowercase()))}
+  if wanted.alerts.binary_search(symbol).is_ok() {out.push(format!("{}@ticker",symbol.to_lowercase()))}
  }
+ out.extend(wanted.movers.iter().map(kline));
  out
+}
+/// 把流按每条连接 [`STREAMS_PER_CONNECTION`] 路切开，最多 [`MAX_CONNECTIONS`] 条；
+/// 第二个返回值是装不下、这一轮不订的那些流（按优先级已经是最不要紧的那一截）。
+fn shard(streams:&[String])->(Vec<Vec<String>>,Vec<String>) {
+ let cap=STREAMS_PER_CONNECTION*MAX_CONNECTIONS;
+ let (kept,dropped)=streams.split_at(streams.len().min(cap));
+ (kept.chunks(STREAMS_PER_CONNECTION).map(<[String]>::to_vec).collect(),dropped.to_vec())
+}
+/// Coinbase 一条连接订不下时从尾巴上舍（提醒的品种在前），并把舍掉的品种写进 warn。
+fn capped(mut symbols:Vec<String>,max:usize,label:&str)->Vec<String> {
+ if symbols.len()>max {
+  let dropped=symbols.split_off(max);
+  tracing::warn!("{label}: {} product(s) wanted but one connection carries {max}; not watching {}",max+dropped.len(),dropped.join(","));
+ }
+ symbols
+}
+
+/// 「多久一帧都没有就当连接死了」，按**截止时刻**算。
+///
+/// 以前是每次 `select!` 都新建一个 `timeout(90s, stream.next())`，而同一个 `select!` 里
+/// 还有一个十秒一拍的刷新：每拍一次，那个九十秒就被丢掉重来一次，永远走不到头——
+/// 连接半死不活（TCP 没断、对面不再发）时评估器就一直挂在那儿，提醒全都不响。
+/// 现在记下每条连接最后一帧的时刻，截止时刻是其中最早那条 + 限度，刷新拍子碰不到它。
+struct Silence {last:Vec<tokio::time::Instant>,limit:Duration}
+impl Silence {
+ fn new(connections:usize,limit:Duration)->Self {Self{last:vec![tokio::time::Instant::now();connections.max(1)],limit}}
+ /// 第 `i` 条连接来了一帧（任何帧都算，ping 也算）。
+ fn heard(&mut self,i:usize) {if let Some(t)=self.last.get_mut(i) {*t=tokio::time::Instant::now()}}
+ /// 最久没出声的那一条，和它的截止时刻。
+ fn deadline(&self)->(usize,tokio::time::Instant) {
+  let (i,t)=self.last.iter().enumerate().min_by_key(|(_,t)|**t).map(|(i,t)|(i,*t)).unwrap_or((0,tokio::time::Instant::now()));
+  (i,t+self.limit)
+ }
+}
+/// 评估器读循环一次醒来的原因。
+enum Wake<T> {Frame(Option<T>),Refresh,Settle,Silent(usize)}
+/// 等下一件事：来一帧、刷新到点、（Coinbase）收盘到点、或者某条连接沉默过了截止时刻。
+/// `stream.next()` 可以安全地被取消（没读到的帧还在流里），所以每次重新 `select!` 不丢帧。
+async fn wake<S:futures_util::Stream+Unpin>(stream:&mut S,silence:&Silence,refresh:&mut tokio::time::Interval,settle:Option<&mut tokio::time::Interval>)->Wake<S::Item> {
+ let (quiet,deadline)=silence.deadline();
+ tokio::select! {
+  frame=stream.next()=>Wake::Frame(frame),
+  _=refresh.tick()=>Wake::Refresh,
+  _=async {match settle {Some(i)=>{i.tick().await;},None=>std::future::pending::<()>().await}}=>Wake::Settle,
+  _=tokio::time::sleep_until(deadline)=>Wake::Silent(quiet),
+ }
 }
 /// 到点了就走一拍实时活动的心跳。**六十秒一拍**，不是每来一帧推一次：前台由客户端自己
 /// 更新，这一拍只为被挂起的 app 而存在。发信交给 [`work`]，这里只看钟、抄一份行情。
@@ -913,12 +1105,30 @@ fn heartbeat(effects:&Effects,quotes:&BTreeMap<String,Quote>,beat:&mut std::time
 /// 一次连接的生命周期。要订的流变了就返回，让外层重连。
 #[allow(clippy::too_many_arguments)]
 async fn session(s:&AppState,effects:&Effects,streams:&[String],watches:&mut Vec<Watch>,movers:&mut crate::watch_move::Movers,closes:&mut Closes,quotes:&mut BTreeMap<String,Quote>,beat:&mut std::time::Instant)->anyhow::Result<()> {
- let url=format!("{STREAM}?streams={}",streams.join("/"));
- let (mut stream,_)=tokio_tungstenite::connect_async(&url).await?;
+ let (shards,dropped)=shard(streams);
+ if !dropped.is_empty() {
+  tracing::warn!("Alert evaluator: {} stream(s) wanted but {MAX_CONNECTIONS} connection(s) × {STREAMS_PER_CONNECTION} carry {}; not watching {}",
+   streams.len(),STREAMS_PER_CONNECTION*MAX_CONNECTIONS,dropped.join(","));
+ }
+ let mut connections=Vec::with_capacity(shards.len());
+ for shard in &shards {
+  let url=format!("{STREAM}?streams={}",shard.join("/"));
+  let (ws,_)=tokio::time::timeout(Duration::from_secs(15),tokio_tungstenite::connect_async(&url)).await??;
+  connections.push(ws);
+ }
+ let count=connections.len();
+ // 几条连接并成一条流，每帧带着它来自第几条；某一条自己断了，末尾补一个 `None` 让这里知道
+ // （`select_all` 本身只会默默地把断掉的那条摘掉，剩下的照常出帧，断的那一截就没人管了）。
+ let mut stream=futures_util::stream::select_all(connections.into_iter().enumerate().map(|(i,ws)|
+  ws.map(move|m|(i,Some(m))).chain(futures_util::stream::once(futures_util::future::ready((i,None))))));
  // 新连上的这一条和上一条之间有缺口：断线前那一根记下的「收盘」不是真收盘，
  // 波动判定要的五分钟前参照全部作废，从缺口重新开始（缺口不冒充零波动）。
  movers.forget_prices();
- tracing::info!("Alert evaluator watching {} stream(s)",streams.len());
+ if count>1 {
+  tracing::info!("Alert evaluator watching {} stream(s) over {count} connections",streams.len()-dropped.len());
+ } else {
+  tracing::info!("Alert evaluator watching {} stream(s)",streams.len()-dropped.len());
+ }
  // 先连上再补：补的那几秒里新帧在连接里排着，一帧不丢；反过来先补后连，补完到连上
  // 之间收掉的那一根就又漏了。
  for candle in backfill(BINANCE,closes,chrono::Utc::now().timestamp_millis()).await {
@@ -926,13 +1136,17 @@ async fn session(s:&AppState,effects:&Effects,streams:&[String],watches:&mut Vec
  }
  let mut refresh=tokio::time::interval(Duration::from_secs(10));
  refresh.tick().await;
+ // 币安每三分钟发一次 ping，正常品种的 1m K 线每秒都有好几帧。某一条连接九十秒一帧都没有
+ // 只有一种解释：它已经死了而 TCP 还没告诉我们。读循环里不再有写库和推送，
+ // 所以这条死线不会再被自己的慢动作撞上。
+ let mut silence=Silence::new(count,BINANCE_SILENCE);
  loop {
-  tokio::select! {
-   // 币安每三分钟发一次 ping，正常品种的 1m K 线每秒都有好几帧。九十秒一帧都没有
-   // 只有一种解释：这条连接已经死了而 TCP 还没告诉我们。读循环里不再有写库和推送，
-   // 所以这条死线不会再被自己的慢动作撞上。
-   frame=tokio::time::timeout(Duration::from_secs(90),stream.next())=>{
-    let Some(frame)=frame? else {anyhow::bail!("the stream closed")};
+  match wake(&mut stream,&silence,&mut refresh,None).await {
+   Wake::Silent(i)=>anyhow::bail!("connection {} of {count} sent nothing for {}s",i+1,BINANCE_SILENCE.as_secs()),
+   Wake::Frame(None)=>anyhow::bail!("the stream closed"),
+   Wake::Frame(Some((i,None)))=>anyhow::bail!("connection {} of {count} closed",i+1),
+   Wake::Frame(Some((i,Some(frame))))=>{
+    silence.heard(i);
     let message=frame?;
     let Some(text)=message.into_text().ok() else {continue};
     if let Some(candle)=parse(&text) {
@@ -951,16 +1165,17 @@ async fn session(s:&AppState,effects:&Effects,streams:&[String],watches:&mut Vec
      if change.is_some() {quote.change=change}
     }
    }
-   _=refresh.tick()=>{
+   Wake::Settle=>{},
+   Wake::Refresh=>{
     match load(s,BINANCE).await {
      Ok(fresh)=>{
       movers.refresh(&fresh.movers);
       effects.due(fresh.due);
-      let changed=streams_of(&symbols_of(&fresh.watches,&movers.symbols()),&fresh.live)!=streams;
+      let changed=streams_of(&wanted(&fresh.watches,&movers.symbols()),&fresh.live)!=streams;
       *watches=effects.idle(fresh.watches);
       if changed {return Ok(())}
      }
-     Err(_)=>tracing::warn!("Alerts could not be refreshed; keeping the current set"),
+     Err(e)=>tracing::warn!("Alerts could not be refreshed ({e:?}); keeping the current set"),
     }
     heartbeat(effects,quotes,beat);
    }
@@ -1122,7 +1337,7 @@ async fn coinbase(s:&AppState,effects:Effects) {
    Err(_)=>{tracing::warn!("Coinbase alerts could not be loaded; will retry");tokio::time::sleep(Duration::from_secs(10)).await;continue}
   };
   movers.refresh(&fresh.movers);
-  let symbols=symbols_of(&fresh.watches,&movers.symbols());
+  let symbols=capped(wanted(&fresh.watches,&movers.symbols()).symbols(),MAX_COINBASE_PRODUCTS,"Coinbase alert evaluator");
   if symbols.is_empty() {closes.clear();tokio::time::sleep(Duration::from_secs(10)).await;continue}
   closes.retain(|symbol,_|symbols.contains(symbol));
   if let Err(e)=coinbase_session(s,&effects,&symbols,effects.idle(fresh.watches),&mut movers,&mut closes).await {
@@ -1151,11 +1366,15 @@ async fn coinbase_session(s:&AppState,effects:&Effects,symbols:&[String],mut wat
  let mut refresh=tokio::time::interval(Duration::from_secs(10));
  refresh.tick().await;
  let mut settle=tokio::time::interval(Duration::from_secs(1));
+ // 截止时刻算法见 [`Silence`]：以前这里的三十秒超时每秒被收盘拍子冲掉一次，永远到不了。
+ let mut silence=Silence::new(1,COINBASE_SILENCE);
  loop {
   let mut candles=vec![];
-  tokio::select! {
-   frame=tokio::time::timeout(Duration::from_secs(30),stream.next())=>{
-    let Some(frame)=frame? else {anyhow::bail!("the stream closed")};
+  match wake(&mut stream,&silence,&mut refresh,Some(&mut settle)).await {
+   Wake::Silent(_)=>anyhow::bail!("Coinbase sent nothing for {}s",COINBASE_SILENCE.as_secs()),
+   Wake::Frame(frame)=>{
+    let Some(frame)=frame else {anyhow::bail!("the stream closed")};
+    silence.heard(0);
     let text=match frame? {
      Message::Text(text)=>text,
      Message::Ping(p)=>{stream.send(Message::Pong(p)).await?;continue}
@@ -1168,18 +1387,20 @@ async fn coinbase_session(s:&AppState,effects:&Effects,symbols:&[String],mut wat
      candles.extend(bars.trade(&symbol,time,price));
     }
    }
-   _=settle.tick()=>{
+   Wake::Settle=>{
     candles.extend(bars.settle(chrono::Utc::now().timestamp_millis()));
    }
-   _=refresh.tick()=>{
+   Wake::Refresh=>{
     match load(s,COINBASE).await {
      Ok(fresh)=>{
       movers.refresh(&fresh.movers);
-      let changed=symbols_of(&fresh.watches,&movers.symbols())!=symbols;
+      let mut next=wanted(&fresh.watches,&movers.symbols()).symbols();
+      next.truncate(MAX_COINBASE_PRODUCTS);
+      let changed=next!=symbols;
       watches=effects.idle(fresh.watches);
       if changed {return Ok(())}
      }
-     Err(_)=>tracing::warn!("Coinbase alerts could not be refreshed; keeping the current set"),
+     Err(e)=>tracing::warn!("Coinbase alerts could not be refreshed ({e:?}); keeping the current set"),
     }
    }
   }
@@ -1529,20 +1750,93 @@ mod tests {
    Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into(),webhook:None,webhook_text:None,note:None},
    Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Close,market:BINANCE.into(),webhook:None,webhook_text:None,note:None},
   ];
-  let symbols=symbols_of(&watches,&Default::default());
-  assert_eq!(symbols,vec!["BTCUSDT".to_string(),"ETHUSDT".to_string()],"同一品种只订一次，顺序稳定");
-  // 开着自选波动提醒的人的自选也要订，和提醒品种合并去重。
-  let movers:std::collections::BTreeSet<String>=["SOLUSDT".to_string(),"BTCUSDT".to_string()].into();
-  assert_eq!(symbols_of(&watches,&movers),vec!["BTCUSDT".to_string(),"ETHUSDT".to_string(),"SOLUSDT".to_string()]);
+  let only=wanted(&watches,&Default::default());
+  assert_eq!(only.symbols(),vec!["BTCUSDT".to_string(),"ETHUSDT".to_string()],"同一品种只订一次，顺序稳定");
+  // 开着自选波动提醒的人的自选也要订，和提醒品种合并去重；提醒的排在前面。
+  let movers:std::collections::BTreeSet<String>=["SOLUSDT".to_string(),"BTCUSDT".to_string(),"ADAUSDT".to_string()].into();
+  let both=wanted(&watches,&movers);
+  assert_eq!(both.symbols(),vec!["BTCUSDT".to_string(),"ETHUSDT".to_string(),"ADAUSDT".to_string(),"SOLUSDT".to_string()]);
   // 没有实时活动时和从前一字不差：常态下上游负载一点没变。
-  assert_eq!(streams_of(&symbols,&[]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m");
-  // 有活动盯着 BTC 时才多一条 @ticker，而且只多那一个品种的。
-  assert_eq!(streams_of(&symbols,&["BTCUSDT".to_string()]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m/btcusdt@ticker");
+  assert_eq!(streams_of(&only,&[]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m");
+  // 有活动盯着 BTC 时才多一条 @ticker，而且只多那一个品种的；排在波动提醒的 K 线前面。
+  assert_eq!(streams_of(&only,&["BTCUSDT".to_string()]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m/btcusdt@ticker");
+  assert_eq!(streams_of(&both,&["BTCUSDT".to_string()]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m/btcusdt@ticker/adausdt@kline_1m/solusdt@kline_1m");
   // 没有提醒的品种就算登记过活动也不订：那条活动下一拍就会被结束掉。
-  assert_eq!(streams_of(&symbols,&["SOLUSDT".to_string()]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m");
-  // 一条连接 200 条流封顶，加 ticker 也不许越过它。
-  let many:Vec<String>=(0..MAX_STREAMS).map(|i|format!("S{i}USDT")).collect();
-  assert_eq!(streams_of(&many,&many).len(),MAX_STREAMS);
+  assert_eq!(streams_of(&only,&["SOLUSDT".to_string()]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m");
+ }
+ /// 超过一条连接的 200 路不再硬截断：分到多条连接上；真到上限，舍掉的是优先级最低的那一截
+ /// （波动提醒的自选 → 实时活动的 ticker → 最后才轮到提醒品种），并且列在 warn 里。
+ #[test] fn streams_beyond_one_connection_are_sharded_and_alerts_are_dropped_last() {
+  let watch=|symbol:String|Watch{owner:Uuid::nil(),alert_id:symbol.clone(),symbol,drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into(),webhook:None,webhook_text:None,note:None};
+  // 450 路：三条连接，200 / 200 / 50，一路不丢。
+  let alerts:Vec<Watch>=(0..300).map(|i|watch(format!("A{i:04}USDT"))).collect();
+  let movers:std::collections::BTreeSet<String>=(0..150).map(|i|format!("M{i:04}USDT")).collect();
+  let streams=streams_of(&wanted(&alerts,&movers),&[]);
+  let (shards,dropped)=shard(&streams);
+  assert_eq!(shards.iter().map(Vec::len).collect::<Vec<_>>(),vec![200,200,50]);
+  assert!(dropped.is_empty());
+  assert_eq!(shards.concat(),streams,"切开前后一路不多一路不少、顺序不变");
+  // 超过五条连接的一千路：提醒品种的 K 线一条都不舍，舍的是排在最后的波动提醒自选。
+  let alerts:Vec<Watch>=(0..900).map(|i|watch(format!("A{i:04}USDT"))).collect();
+  let movers:std::collections::BTreeSet<String>=(0..400).map(|i|format!("M{i:04}USDT")).collect();
+  let live:Vec<String>=(0..50).map(|i|format!("A{i:04}USDT")).collect();
+  let streams=streams_of(&wanted(&alerts,&movers),&live);
+  let (shards,dropped)=shard(&streams);
+  assert_eq!(shards.len(),MAX_CONNECTIONS);
+  assert!(shards.iter().all(|s|s.len()==STREAMS_PER_CONNECTION));
+  let kept=shards.concat();
+  assert!((0..900).all(|i|kept.contains(&format!("a{i:04}usdt@kline_1m"))),"提醒品种的 K 线全在");
+  assert!((0..50).all(|i|kept.contains(&format!("a{i:04}usdt@ticker"))),"实时活动的 ticker 排在波动自选前面");
+  assert_eq!(dropped.len(),900+50+400-1000);
+  assert!(dropped.iter().all(|s|s.starts_with('m')),"舍掉的只有波动提醒的自选");
+  // Coinbase 一条连接：同样从尾巴上舍。
+  let symbols:Vec<String>=(0..250).map(|i|format!("P{i}-USD")).collect();
+  assert_eq!(capped(symbols.clone(),MAX_COINBASE_PRODUCTS,"test"),symbols[..MAX_COINBASE_PRODUCTS].to_vec());
+ }
+ /// 死连接判定按截止时刻算：十秒一拍的刷新、一秒一拍的收盘都冲不掉它。以前每拍一次就把
+ /// `timeout(90s)` 重新计时，一条不再出帧的连接永远不会被判死。
+ #[tokio::test(start_paused=true)] async fn a_connection_that_goes_quiet_is_given_up_ninety_seconds_after_its_last_frame() {
+  let start=tokio::time::Instant::now();
+  // 第 30 秒来一帧，之后再也没有。
+  let mut stream=futures_util::stream::once(async {tokio::time::sleep(Duration::from_secs(30)).await;1}).chain(futures_util::stream::pending()).boxed();
+  let mut silence=Silence::new(1,BINANCE_SILENCE);
+  let mut refresh=tokio::time::interval(Duration::from_secs(10));
+  refresh.tick().await;
+  let mut settle=tokio::time::interval(Duration::from_secs(1));
+  let (mut refreshes,mut settles,mut frames)=(0,0,0);
+  let quiet=loop {
+   match wake(&mut stream,&silence,&mut refresh,Some(&mut settle)).await {
+    Wake::Frame(Some(_))=>{frames+=1;silence.heard(0)},
+    Wake::Frame(None)=>panic!("the test stream never ends"),
+    Wake::Refresh=>refreshes+=1,
+    Wake::Settle=>settles+=1,
+    Wake::Silent(i)=>break i,
+   }
+  };
+  assert_eq!(quiet,0);
+  assert_eq!(frames,1);
+  assert_eq!(start.elapsed(),Duration::from_secs(30)+BINANCE_SILENCE,"最后一帧之后整整九十秒");
+  assert!(refreshes>=11&&settles>=100,"刷新 {refreshes} 拍、收盘 {settles} 拍都没把截止时刻往后推");
+ }
+ /// 分片之后每条连接各算各的：一条一直在出帧，另一条死了，照样在九十秒时认出死的那条。
+ #[tokio::test(start_paused=true)] async fn one_dead_shard_is_caught_even_while_the_others_keep_talking() {
+  use futures_util::stream;
+  let start=tokio::time::Instant::now();
+  let chatty=stream::unfold((),|_|async {tokio::time::sleep(Duration::from_secs(1)).await;Some((0usize,()))});
+  let dead=stream::pending::<usize>();
+  let mut merged=stream::select_all([chatty.boxed(),dead.map(|_|1usize).boxed()]);
+  let mut silence=Silence::new(2,BINANCE_SILENCE);
+  let mut refresh=tokio::time::interval(Duration::from_secs(10));
+  refresh.tick().await;
+  let quiet=loop {
+   match wake(&mut merged,&silence,&mut refresh,None).await {
+    Wake::Frame(Some(i))=>silence.heard(i),
+    Wake::Silent(i)=>break i,
+    _=>{},
+   }
+  };
+  assert_eq!(quiet,1,"认出的是不出帧的那一条");
+  assert_eq!(start.elapsed(),BINANCE_SILENCE);
  }
  /// Coinbase 没有 1 分钟推送：逐笔拼出来的 K 线要在极值刷新时判触线、在收完时判收盘。
  #[test] fn coinbase_trades_build_minute_bars_that_close_on_the_next_minute_or_after_settling() {
@@ -1774,12 +2068,16 @@ mod tests {
 
  /// 本机起一个假接收端：按顺序回 `statuses` 里的状态码，把每一个请求（头 + body）交回来。
  async fn receiver(statuses:Vec<u16>)->(String,tokio::sync::mpsc::UnboundedReceiver<(String,Vec<u8>)>) {
+  receiver_with(statuses.into_iter().map(|s|(s,String::new())).collect()).await
+ }
+ /// 同上，每次回话可以多带几行头（`Location: …`）。
+ async fn receiver_with(replies:Vec<(u16,String)>)->(String,tokio::sync::mpsc::UnboundedReceiver<(String,Vec<u8>)>) {
   use tokio::io::{AsyncReadExt,AsyncWriteExt};
   let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
   let url=format!("http://{}/hook",listener.local_addr().unwrap());
   let (tx,rx)=tokio::sync::mpsc::unbounded_channel();
   tokio::spawn(async move {
-   for status in statuses {
+   for (status,extra) in replies {
     let Ok((mut socket,_))=listener.accept().await else {return};
     let mut buffer=vec![];let mut chunk=[0u8;4096];
     let (head,body)=loop {
@@ -1792,7 +2090,7 @@ mod tests {
      break (head,buffer[split+4..split+4+length].to_vec());
     };
     tx.send((head,body)).unwrap();
-    socket.write_all(format!("HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+    socket.write_all(format!("HTTP/1.1 {status} X\r\n{extra}Content-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
     socket.shutdown().await.ok();
    }
   });
@@ -1830,6 +2128,17 @@ mod tests {
   tokio::time::sleep(Duration::from_millis(100)).await;
   assert!(rx.try_recv().is_err(),"4xx 不重试");
  }
+ /// 对面回 302 指向本机别的端口：不跟过去（那就是 SSRF 的路子），按失败记、不重试。
+ #[tokio::test] async fn a_webhook_never_follows_a_redirect() {
+  let (inner,mut inner_rx)=receiver(vec![200]).await;
+  let (url,mut rx)=receiver_with(vec![(302,format!("Location: {inner}\r\n")),(200,String::new())]).await;
+  let result=deliver_webhook(webhook_client(),&url,&json!({"event":"alert"}),Duration::from_millis(20)).await;
+  assert_eq!(result,Err("HTTP 302 (redirects are not followed)".into()));
+  assert!(rx.recv().await.is_some());
+  tokio::time::sleep(Duration::from_millis(100)).await;
+  assert!(rx.try_recv().is_err(),"3xx 不重试");
+  assert!(inner_rx.try_recv().is_err(),"跳转目标一封都没收到");
+ }
  /// 连不上（对面没人听）也按网络错误重试一次，最后报「连不上」，不带地址。
  #[tokio::test] async fn a_webhook_to_nobody_retries_then_reports_a_connect_failure() {
   let port={let l=std::net::TcpListener::bind("127.0.0.1:0").unwrap();l.local_addr().unwrap().port()};
@@ -1837,5 +2146,54 @@ mod tests {
   let result=deliver_webhook(crate::http::shared(),&format!("http://127.0.0.1:{port}/hook"),&json!({}),Duration::from_millis(200)).await;
   assert_eq!(result,Err("could not connect".into()));
   assert!(started.elapsed()>=Duration::from_millis(200),"中间等了一次重试间隔");
+ }
+ /// 客户端报上来的触发：只有 `active → fired` 那一次替它发 Webhook，body 和评估器自己判响时一字不差。
+ fn reported(status:&str,fired_at:i64)->Object {
+  let body:BTreeMap<String,Value>=[
+   ("kind",json!("price")),("symbol",json!("BTCUSDT")),("market",json!("binance/usd_m")),("title",json!("BTC 涨到 84,662.2")),
+   ("condition",json!("touch")),("armedAt",json!(0)),("lines",json!([{"points":[{"t":0.0,"p":84_662.2}],"extendLeft":true,"extendRight":true}])),
+   ("status",json!(status)),("firedAt",json!(fired_at)),("firedPrice",json!(84_670.5)),("webhook",json!("https://hooks.example.com/x")),
+  ].into_iter().map(|(k,v)|(k.to_string(),v)).collect();
+  Object{collection:"alerts".into(),id:"binance/usd_m/BTCUSDT/a1".into(),body,fields:BTreeMap::new(),revision:3,deleted:false,generation:0}
+ }
+ #[test] fn a_client_reported_fire_posts_the_webhook_exactly_once() {
+  let at=1_758_732_240_000;
+  let object=reported("fired",at);
+  let fire=reported_fire(Some("active"),Uuid::nil(),&object,at+5_000).expect("active → fired sends");
+  assert_eq!(fire.url,"https://hooks.example.com/x");
+  let mut expected=hooked(None);
+  expected.lines=vec![line(&[(0.0,84_662.2)],true,true)];
+  assert_eq!(fire.body,webhook_body(&expected,84_670.5,at),"和评估器判响时发的是同一份");
+  // 评估器已经先响了（行已经是 fired），或者同一次触发又推了一遍：不发。
+  assert!(reported_fire(Some("fired"),Uuid::nil(),&object,at+5_000).is_none());
+  // 暂停着的提醒被报成已触发不是一次到价（客户端不会这样报），不发。
+  assert!(reported_fire(Some("paused"),Uuid::nil(),&object,at+5_000).is_none());
+  // 还是 active 的普通编辑：不发。
+  assert!(reported_fire(Some("active"),Uuid::nil(),&reported("active",at),at).is_none());
+  // 物化表里原来没有这一行、一上来就是已触发：刚响的认，隔了很久的不认。
+  assert!(reported_fire(None,Uuid::nil(),&object,at+60_000).is_some());
+  assert!(reported_fire(Some("active"),Uuid::nil(),&object,at+REPORTED_FIRE_FRESH_MS+1).is_none(),"过时的到价信号不发");
+  // 没填地址、复盘到点：不发。
+  let mut bare=reported("fired",at);bare.body.remove("webhook");
+  assert!(reported_fire(Some("active"),Uuid::nil(),&bare,at).is_none());
+  let mut due=reported("fired",at);due.body.insert("kind".into(),json!("reviewDue"));
+  assert!(reported_fire(Some("active"),Uuid::nil(),&due,at).is_none());
+ }
+ /// 读波动设置 / 实时活动出错时沿用上一轮成功读到的那份，不当成「没有」。
+ #[test] fn a_failed_read_keeps_last_rounds_movers_and_live_symbols() {
+  let mut last=LastGood::default();
+  let owner=Uuid::from_u128(7);
+  let mover=crate::watch_move::Mover{owner,threshold:0.03,symbols:["BTCUSDT".to_string()].into()};
+  assert_eq!(last.mover(BINANCE,owner,Ok::<_,()>(Some(mover.clone()))),Some(mover.clone()));
+  assert_eq!(last.mover(BINANCE,owner,Err("db hiccup")),Some(mover.clone()),"出错沿用上一轮");
+  assert_eq!(last.mover(COINBASE,owner,Err("db hiccup")),None,"另一家交易所没有上一轮就是没有");
+  assert_eq!(last.live(owner,Ok::<_,()>(vec!["BTCUSDT".to_string()])),vec!["BTCUSDT".to_string()]);
+  assert_eq!(last.live(owner,Err("db hiccup")),vec!["BTCUSDT".to_string()]);
+  // 真的关了（读成功、读到「没开」）就是没开。
+  assert_eq!(last.mover(BINANCE,owner,Ok::<_,()>(None)),None);
+  assert_eq!(last.mover(BINANCE,owner,Err("db hiccup")),None);
+  // 这一轮没出现的人清掉。
+  last.retain(BINANCE,&Default::default());
+  assert!(last.live.is_empty()&&last.movers.is_empty());
  }
 }

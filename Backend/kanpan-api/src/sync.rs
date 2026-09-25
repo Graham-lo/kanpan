@@ -311,6 +311,9 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
  let device:Uuid=sqlx::query_scalar("SELECT device_id FROM account_sessions WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL").bind(i.session).bind(i.user).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
  let mut results=vec![];
+ // 客户端报上来的「响了」要替它发的 Webhook（`alerts::materialize`）。事务提交之后才发：
+ // 回滚了就当没报过，客户端重推时再发，不会多一封。
+ let mut fires=vec![];
  for op in v.operations {
   op.validate()?;if op.device_id!=device{return Err(ApiError::bad("invalid_device"))}
   let hash=digest(serde_json::to_vec(&op)?);
@@ -331,7 +334,7 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   // 提醒对象落库的同一口气里刷新物化表：评估器读的是 alert_watches，不是 sync_objects。
   // 放在同一个事务里，所以「同步成功了但评估器还在用旧几何」这个中间态不存在——
   // 用户把被提醒的线拖到别处、客户端用同一个 alert id 重传 lines，下一帧就是新形状。
-  if next.collection==ALERTS {crate::alerts::materialize(&mut tx,i.user,&next).await?;}
+  if next.collection==ALERTS {fires.extend(crate::alerts::materialize(&mut tx,i.user,&next).await?);}
   let cursor:i64=sqlx::query_scalar("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(i.user).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).fetch_one(&mut *tx).await?;
   // `droppedFields` is always present, so a client can tell "this server does not
   // report drops" (field absent) from "nothing was dropped" (empty list). Older
@@ -339,7 +342,9 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   let result=json!({"operationId":op.id,"object":next,"cursor":cursor,"droppedFields":op.unknown_fields()});
   sqlx::query("INSERT INTO sync_operations(user_id,id,digest,result) VALUES($1,$2,$3,$4)").bind(i.user).bind(op.id).bind(hash).bind(&result).execute(&mut *tx).await?;results.push(result);
  }
- tx.commit().await?;Ok(envelope(json!({"results":results,"serverTime":Utc::now().timestamp_millis()})))
+ tx.commit().await?;
+ crate::alerts::send_reported(fires);
+ Ok(envelope(json!({"results":results,"serverTime":Utc::now().timestamp_millis()})))
 }
 async fn bootstrap(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Result<Json<Value>> {
  if let Some(c)=&v.collection{collection(c)?}

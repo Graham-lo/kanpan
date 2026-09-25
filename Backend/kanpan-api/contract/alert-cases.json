@@ -3,6 +3,11 @@
  "whatThisIs": "提醒判定的共用夹具：一根 K 线对一条提醒响不响、响在哪条线的哪个价。客户端 AlertEvaluator.hit 与服务端 alerts.rs 的 judge 各跑一遍，结论必须一字不差。",
  "howToMaintain": "手工维护。改判定规则时先在这里加 / 改用例，两边的测试（KanpanCore AlertCasesContractTests、Rust alerts::tests::every_shared_alert_case_agrees）会各自告诉你哪一边还没跟上。时间是毫秒整数，价格是有限数。",
  "fields": "condition: touch | close；armedAt 毫秒；lines 与同步线上的 alerts.lines 同形；bar.openTime/low/high 必有，close/previousClose 可缺（缺 previousClose 就是「没有上一根」），closed 是币安 kline 的 k.x；expect 为 null 表示不响，否则 {line: alert.lines 下标, price: 线在这一刻的价}。服务端只返回价，line 下标只有客户端核对。",
+ "webhook": {
+  "whoSends": "登录着：只有服务端发。客户端本机判响后只把 status=fired、firedAt、firedPrice 随同步推上去；服务端在同步事务里（咨询锁之下）看到这条提醒由 active（或首次出现）变成 fired、firedAt 在 10 分钟之内，就在事务提交后替它发一封；服务端评估器自己判响的那次也是它发。两条路共用 alert_items 的 status='active' 这道闸，一次到价只发一封。没登录：服务端不知道这条提醒，客户端只为本机判响的那一次自己发。",
+  "body": "{event:\"alert\", alertId, symbol, market, name, title, condition, once:true, target, price, firedAt, time, note, text}；price 是触发价（客户端报上来的用 firedPrice），firedAt 毫秒，time 是 ISO 时间，text 按用户的文案模板填好；客户端 AlertWebhook 与服务端 webhook_body 同一个形状。",
+  "transport": "POST JSON，不跟随重定向，3xx 按失败记；服务端只发 http/https 且主机不是本机、内网、链路本地地址（防 SSRF）。"
+ },
  "cases": [
   {
    "name": "touch-inside",
