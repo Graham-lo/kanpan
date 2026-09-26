@@ -249,7 +249,42 @@ public enum ReviewStorageError: LocalizedError {
           let date = values.contentModificationDate, let size = values.fileSize else { return nil }
     return FileStamp(date: date, size: size)
   }
-  public func transaction(_ edit: (inout ReviewArchive) throws -> Void) throws {
+  public func transaction(_ edit: (inout ReviewArchive) throws -> Void) throws { try commit(edit, write: true) }
+
+  /// 改动立刻进内存（`archive` 当场就是新的），落盘最多晚 `stageInterval`。
+  ///
+  /// 只给同步引擎用，而且只用在「丢了也能靠幂等重发补回来」的那几笔上：发成功之后把
+  /// 这条摘下队列、把服务端回的那份并进记录。一轮要是没来得及落盘就被杀，下次开档
+  /// 那几条还在队列里，原样重发（同一个幂等键、同一份 body），服务端认成同一次。
+  /// 发之前要改写 body 的那一笔（更新类的 `expectedRevision`）不走这里，照旧
+  /// `transaction`——那一份必须先在盘上，重发才一模一样。
+  ///
+  /// 原来这几笔全是 `transaction`：离线攒 N 条再联网，一轮要把整份主档（N 条记录 +
+  /// 还剩的队列，每条都带着图表设置与画线快照）编码、原子写 2N 遍，写盘量是 N² 级的。
+  /// 2000 条（约 40 MB 的主档）跑空队列要 4001 次整份写、Debug 下 6 分钟，全压在主线程上。
+  ///
+  /// 攒着的这一笔由下一次任何落盘（`transaction` / 过了 `stageInterval` 的 `stage` /
+  /// `flush`）一起带走；引擎每一轮收尾都 `flush`。
+  public func stage(_ edit: (inout ReviewArchive) throws -> Void) throws {
+    try commit(edit, write: Double(Self.uptime() &- writtenAt) / 1_000_000_000 >= stageInterval)
+  }
+  /// 把 `stage` 攒着的改动写下去。没攒着就是空操作，不碰盘。
+  public func flush() throws {
+    guard staged else { return }
+    try commit({ _ in }, write: true)
+  }
+  /// `stage` 最多攒多久就得落一次盘。测试里调大，好数「这一轮到底写了几次」。
+  public var stageInterval: TimeInterval = 2
+  /// 内存比盘上新（有 `stage` 过、还没写下去的改动）。
+  public private(set) var staged = false
+  /// 主档整份写了几次（测试据此判断一轮同步是不是 N² 级的写盘）。
+  public private(set) var writes = 0
+  /// 上一次整份写主档的时刻（单调钟，纳秒）。
+  private var writtenAt: UInt64 = 0
+  /// 「过了多久」读单调钟：墙上时间被拨回去，节流就会一等几个小时。
+  static func uptime() -> UInt64 { clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) }
+
+  private func commit(_ edit: (inout ReviewArchive) throws -> Void, write: Bool) throws {
     guard readable else { throw ReviewStorageError.unreadable }
     // Recheck before writing: never overwrite a future version or externally corrupted file.
     //
@@ -257,7 +292,7 @@ public enum ReviewStorageError: LocalizedError {
     // 只为了确认「还是 version 1」。这条保护针对的是「文件被别人换过」，而不是
     // 「文件本来就是我们写的」：所以先 stat 一下，指纹和上次我们自己写下去的那份
     // 对得上就直接写，对不上（或者压根没记过）才真去读一遍。
-    if FileManager.default.fileExists(atPath: url.path) {
+    if write, FileManager.default.fileExists(atPath: url.path) {
       let now = Self.fingerprint(url)
       if stamp == nil || now == nil || now != stamp {
         guard let current = try? JSONDecoder().decode(ReviewArchive.self, from: Data(contentsOf: url)), current.version == 1 else {
@@ -267,7 +302,10 @@ public enum ReviewStorageError: LocalizedError {
       }
     }
     var next = archive; try edit(&next)
-    if cloudCache {
+    // 云端缓存的裁剪只在真落盘时做：它每次要把整张记录表过一遍（量字节、比对上次量过的那份），
+    // 放在每一笔 `stage` 上，一轮几千笔就又是 N² 级。晚两秒再裁不改变结果——裁掉的只会是
+    // 服务端另有一份、又挤出了最近 200 条的那些，而这个集合只会越来越大。
+    if cloudCache && write {
       let protected = Set(next.queue.map(\.recordId))
       var bytes = 0, count = 0
       var measured: [UUID: (record: ReviewRecord, size: Int)] = [:]
@@ -283,9 +321,11 @@ public enum ReviewStorageError: LocalizedError {
       }
       sizes = measured
     }
+    guard write else { archive = next; staged = true; return }
     let data = try JSONEncoder().encode(next)
     try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     stamp = Self.fingerprint(url)
+    writes += 1; writtenAt = Self.uptime(); staged = false
     archive = next
     try? flushReplay()
   }

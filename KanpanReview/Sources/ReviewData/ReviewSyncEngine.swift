@@ -48,7 +48,20 @@ import ReviewDomain
   }
 
   /// 跑一轮。返回 `true` 表示队列跑空、第一页也并进来了（宿主据此报「同步完成」）。
+  ///
+  /// 发成功之后的那几笔（摘下队列、并进服务端那份）走 `ReviewStore.stage`：内存当场改，
+  /// 盘上最多晚两秒，一轮收尾统一 `flush`。原来每条操作都是两次整份主档写，离线攒 N 条
+  /// 再联网是 N² 级的写盘（2000 条 4001 次整份写）。这一轮不算数了（换了账号）就不 flush：
+  /// 那时同一个目录可能已经被新开的一份档案接手，拿这份旧的去盖会把它刚写下的东西抹掉；
+  /// 没落盘的那几条下次开档还在队列里，同键同 body 重发，服务端认成同一次。
   public func run() async -> Bool {
+    let completed = await drain()
+    guard stillCurrent() else { return false }
+    do { try store.flush() } catch { onNotice(error.localizedDescription); return false }
+    return completed
+  }
+
+  private func drain() async -> Bool {
     do {
       while var operation = store.archive.queue.first {
         try checkpoint()
@@ -61,9 +74,13 @@ import ReviewDomain
             body["expectedRevision"] = current.revision
             operation.body = try JSONSerialization.data(withJSONObject: body)
           }
+          // 更新类的 body 刚被改写过，必须先在盘上再发：重发要一模一样（`JSONSerialization`
+          // 的键序每次启动都可能不同，下次开档重算出来的字节未必一样）。新建和图的 body
+          // 从入队起就没变过，这个标记丢了重发也一样，跟着下一次落盘走。
+          let rebased = operation.kind != "create" && operation.kind != "shot"
           operation.attempted = true
           let pending = operation
-          guard commit({ archive in
+          guard commit(durable: rebased, { archive in
             if let index = archive.queue.firstIndex(where: { $0.id == pending.id }) { archive.queue[index] = pending }
           }) else { return false }
         }
@@ -87,7 +104,7 @@ import ReviewDomain
             // 图没有「人写的内容」可裁决：服务端不收（太大、记录没了）或者本机的图已经
             // 不在了，重发多少次都一样，挂成冲突只会让人面对一条他什么也做不了的提示。
             // 安静摘掉，记录本身不受影响。
-            guard commit({ archive in archive.queue.removeAll { $0.id == operation.id } }) else { return false }
+            guard commit(durable: false, { archive in archive.queue.removeAll { $0.id == operation.id } }) else { return false }
             continue
           case .conflict, .rejected:
             // 这条再也发不出去了。摘下来，队列接着往下跑。
@@ -96,7 +113,7 @@ import ReviewDomain
           }
         }
         try checkpoint()
-        guard commit({ archive in
+        guard commit(durable: false, { archive in
           archive.queue.removeAll { $0.id == operation.id }
           if let remote, let i = archive.records.firstIndex(where: { $0.id == remote.id }) {
             var merged = Self.adopt(remote, over: archive.records[i])
@@ -143,8 +160,9 @@ import ReviewDomain
     guard stillCurrent() else { throw CancellationError() }
   }
 
-  @discardableResult private func commit(_ edit: (inout ReviewArchive) throws -> Void) -> Bool {
-    do { try store.transaction(edit); onChange(); return true }
+  /// `durable: false` 的那几笔只是「丢了靠幂等重发补回来」的进度，交给 `stage` 攒着落。
+  @discardableResult private func commit(durable: Bool = true, _ edit: (inout ReviewArchive) throws -> Void) -> Bool {
+    do { if durable { try store.transaction(edit) } else { try store.stage(edit) }; onChange(); return true }
     catch { onNotice(error.localizedDescription); return false }
   }
 
