@@ -217,7 +217,11 @@ public struct BarSeries: Sendable, Equatable {
   /// 向前补历史：接在最前面，`t0` 跟着走（§7 补历史触发）。
   public mutating func prepend(_ bars: [Bar]) {
     guard !bars.isEmpty else { return }
-    let sorted = bars.sorted { $0.openTime < $1.openTime }
+    // 同一个 openTime 只留一根（后到的为准）：翻页时页边界可能重一根，两根同时刻的 K 线
+    // 会让 `index(atTime:)` 与 `openTime` 列的「严格递增」前提同时失效。
+    var byTime: [Int64: Bar] = [:]
+    for b in bars { byTime[b.openTime] = b }
+    let sorted = byTime.values.sorted { $0.openTime < $1.openTime }
     let cut = sorted.filter { count == 0 || $0.openTime < t0 }
     guard !cut.isEmpty else { return }
     // 补在前面的这段和原来的 t0 之间可能缺根，`cut` 自己也可能带洞：先无条件摊开

@@ -155,6 +155,19 @@ struct BarSeriesTests {
     #expect(s.count == before)
   }
 
+  /// 翻页拼起来的那批里自己带重根（页边界重一根）：只留一根、后到的为准，
+  /// 整段仍严格等距、下标与时间一一对应。
+  @Test("补历史的那批自带重根")
+  func prependDedupesBatch() {
+    var s = regular(10)
+    let t0 = s.t0, step = s.step
+    s.prepend([bar(t0 - 2 * step, 1), bar(t0 - step, 2), bar(t0 - step, 3), bar(t0 - 3 * step, 4)])
+    #expect(s.count == 13)
+    #expect(s.openTime.isEmpty, "去重之后整段严格等距，列应该丢掉")
+    #expect(s.close[2] == 3.5, "同一时刻留后到的那根")
+    for i in 0..<s.count { #expect(s.index(atTime: Double(s.time(at: i))) == i) }
+  }
+
   /// 不等距周期补历史时 openTime 表要跟着长，不能错位。
   @Test("不等距周期补历史")
   func prependIrregular() {
