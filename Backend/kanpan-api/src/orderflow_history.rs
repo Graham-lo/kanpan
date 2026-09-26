@@ -177,11 +177,96 @@ struct Write {step:f64,rows:Vec<(BigOrder,i64)>}
 /// 本地全开 154 只时，几十个跟踪任务同一时刻刷盘把池子占满，账号请求拿连接要等 2–3 秒（sqlx 慢获取告警）。
 static WRITE_SLOTS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(3);
 
+/// 写失败之后隔多久再写：从 1 秒起翻倍，最多 1 分钟。
+const WRITE_RETRY_MIN:Duration=Duration::from_secs(1);
+const WRITE_RETRY_MAX:Duration=Duration::from_secs(60);
+/// 跟踪停了之后还没写进去的最多再试多久（跟踪那边只等写库 10 秒，之后这里自己收尾）。
+const WRITE_DRAIN:Duration=Duration::from_secs(60);
+/// 一只币积压的行最多留多少：库长时间写不进去时先丢挂着的（它们一分钟之内会整行重写），再丢结束得最早的。
+const PENDING_CAP:usize=50_000;
+
+/// 还没写进库的行，一单只留一份。同一单后来的那份盖掉前面的——但结束的不被挂着的盖回去，
+/// 和库里 upsert 的 `WHERE end_ms IS NULL` 同一个规矩。写失败的留在这里跟下一批一起写。
+#[derive(Default)]
+struct Pending {rows:HashMap<LiveKey,(f64,BigOrder,i64)>}
+
+impl Pending {
+ fn add(&mut self,w:Write) {
+  for (order,seen) in w.rows {
+   let key:LiveKey=(order.venue_id.clone(),order.side,order.bucket,order.first_seen_ms);
+   if self.rows.get(&key).is_some_and(|(_,o,_)|o.end_ms.is_some()&&order.end_ms.is_none()) {continue}
+   self.rows.insert(key,(w.step,order,seen));
+  }
+  if self.rows.len()>PENDING_CAP {self.shed();}
+ }
+ /// 超了上限：先丢挂着的，还超就丢结束得最早的。返回丢了几行。
+ fn shed(&mut self)->usize {
+  let before=self.rows.len();
+  self.rows.retain(|_,(_,o,_)|o.end_ms.is_some());
+  if self.rows.len()>PENDING_CAP {
+   let mut oldest:Vec<(i64,LiveKey)>=self.rows.iter().map(|(k,(_,o,_))|(o.end_ms.unwrap_or(i64::MIN),k.clone())).collect();
+   oldest.sort_unstable_by_key(|(end,_)|*end);
+   for (_,key) in oldest.into_iter().take(self.rows.len()-PENDING_CAP) {self.rows.remove(&key);}
+  }
+  before-self.rows.len()
+ }
+ fn is_empty(&self)->bool {self.rows.is_empty()}
+ /// 按步长分组、每组最多 500 行一批：写进去的从积压里拿掉，写失败的那一批与后面的都留着。
+ fn batches(&self)->Vec<(f64,Vec<LiveKey>)> {
+  let mut groups:HashMap<u64,Vec<LiveKey>>=HashMap::new();
+  for (key,(step,_,_)) in &self.rows {groups.entry(step.to_bits()).or_default().push(key.clone());}
+  groups.into_iter().flat_map(|(step,keys)|keys.chunks(500).map(|c|(f64::from_bits(step),c.to_vec())).collect::<Vec<_>>()).collect()
+ }
+ async fn flush(&mut self,pool:&PgPool,base:&str)->sqlx::Result<()> {
+  for (step,keys) in self.batches() {
+   let rows:Vec<(BigOrder,i64)>=keys.iter().filter_map(|k|self.rows.get(k).map(|(_,o,s)|(o.clone(),*s))).collect();
+   store::upsert(pool,base,step,&rows).await?;
+   for k in &keys {self.rows.remove(k);}
+  }
+  Ok(())
+ }
+}
+
+/// 一只币的写库任务。库写不进去（重启、连接池满、语句超时）时整批留着退避重写，同时照常收跟踪那边发来的，
+/// 不让跟踪任务卡在 `send` 上；原来失败就记一条日志丢掉，结束的单丢了，库里那行就一直挂成「进行中」。
 async fn writer(pool:PgPool,base:String,mut rx:mpsc::Receiver<Write>) {
- while let Some(w)=rx.recv().await {
-  if w.rows.is_empty() {continue}
-  let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
-  if let Err(e)=store::upsert(&pool,&base,w.step,&w.rows).await {tracing::warn!("Orderflow history: {base} write of {} rows failed: {e}",w.rows.len());}
+ let mut pending=Pending::default();
+ let mut backoff=WRITE_RETRY_MIN;
+ let mut open=true;
+ let mut drain_until=None;
+ loop {
+  if pending.is_empty() {
+   if !open {return}
+   match rx.recv().await {Some(w)=>pending.add(w),None=>return}
+  }
+  while let Ok(w)=rx.try_recv() {pending.add(w);}
+  let result={
+   let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
+   pending.flush(&pool,&base).await
+  };
+  match result {
+   Ok(())=>backoff=WRITE_RETRY_MIN,
+   Err(e)=>{
+    tracing::warn!("Orderflow history: {base} write failed ({} rows waiting, retry in {backoff:?}): {e}",pending.rows.len());
+    let wake=tokio::time::Instant::now()+backoff;
+    backoff=(backoff*2).min(WRITE_RETRY_MAX);
+    // 等的时候接着收，不让跟踪那边的 send 堵住。
+    while open {
+     tokio::select! {
+      _=tokio::time::sleep_until(wake)=>break,
+      w=rx.recv()=>match w {Some(w)=>pending.add(w),None=>open=false},
+     }
+    }
+    if !open {
+     let until=*drain_until.get_or_insert_with(||tokio::time::Instant::now()+WRITE_DRAIN);
+     if tokio::time::Instant::now()>=until {
+      tracing::warn!("Orderflow history: {base} stopped with {} rows unwritten (restore / purge will close them)",pending.rows.len());
+      return;
+     }
+     tokio::time::sleep_until(wake.min(until)).await;
+    }
+   },
+  }
  }
 }
 
@@ -896,6 +981,44 @@ mod tests {
   assert!(LIVE_REWRITE_MS<model::STALE_MS);
   changed_live(Vec::new(),&mut written,120_000);
   assert!(written.is_empty(),"不再挂着的不留");
+ }
+
+ #[test] fn pending_writes_keep_the_latest_row_and_never_reopen_an_end() {
+  use model::Status;
+  let order=|bucket:i64,notional:f64,end:Option<i64>|BigOrder{venue_id:"binance:usdtPerp:BTCUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),
+   side:book::Side::Bid,bucket,price:59_950.0,first_seen_ms:1_000,end_ms:end,status:if end.is_some() {Status::Cancelled} else {Status::Live},
+   initial_notional:6e6,notional,filled_notional:0.0,threshold:5e6,vanished_notional:None};
+  let mut p=Pending::default();
+  p.add(Write{step:100.0,rows:vec![(order(599,6e6,None),10_000),(order(598,6e6,None),10_000)]});
+  // 第一批写失败留着；这期间 599 结束了、598 量变了。
+  p.add(Write{step:100.0,rows:vec![(order(599,6e6,Some(20_000)),20_000)]});
+  p.add(Write{step:100.0,rows:vec![(order(598,7e6,None),25_000)]});
+  // 晚到的一份「599 还挂着」不能把结束盖回去。
+  p.add(Write{step:100.0,rows:vec![(order(599,6e6,None),26_000)]});
+  assert_eq!(p.rows.len(),2,"一单一份");
+  let get=|b:i64|p.rows.values().find(|(_,o,_)|o.bucket==b).unwrap();
+  assert_eq!(get(599).1.end_ms,Some(20_000));
+  assert_eq!((get(598).1.notional,get(598).2),(7e6,25_000));
+  // 步长不同分两批，每批最多 500 行。
+  p.add(Write{step:50.0,rows:(0..1_200).map(|b|(order(10_000+b,6e6,None),30_000)).collect()});
+  let batches=p.batches();
+  assert!(batches.iter().all(|(_,k)|k.len()<=500));
+  assert_eq!(batches.iter().filter(|(s,_)|*s==100.0).map(|(_,k)|k.len()).sum::<usize>(),2);
+  assert_eq!(batches.iter().filter(|(s,_)|*s==50.0).map(|(_,k)|k.len()).sum::<usize>(),1_200);
+ }
+
+ #[test] fn pending_writes_shed_live_rows_before_ends() {
+  use model::Status;
+  let order=|bucket:i64,end:Option<i64>|BigOrder{venue_id:"a".into(),exchange:"币安".into(),product:"spot".into(),side:book::Side::Ask,bucket,price:1.0,
+   first_seen_ms:0,end_ms:end,status:if end.is_some() {Status::Lost} else {Status::Live},initial_notional:1.0,notional:1.0,filled_notional:0.0,threshold:1.0,vanished_notional:None};
+  let mut p=Pending::default();
+  p.add(Write{step:1.0,rows:(0..10).map(|b|(order(b,None),0)).collect()});
+  p.add(Write{step:1.0,rows:(0..PENDING_CAP as i64).map(|b|(order(100+b,Some(b)),b)).collect()});
+  assert_eq!(p.rows.len(),PENDING_CAP,"挂着的先丢（一分钟内会整行重写）");
+  assert!(p.rows.values().all(|(_,o,_)|o.end_ms.is_some()));
+  p.add(Write{step:1.0,rows:vec![(order(-1,Some(1_000_000)),1_000_000)]});
+  assert_eq!(p.rows.len(),PENDING_CAP);
+  assert!(!p.rows.values().any(|(_,o,_)|o.end_ms==Some(0)),"还超就丢结束得最早的");
  }
 
  #[test] fn calibration_waits_for_every_book_to_connect_and_its_snapshot() {

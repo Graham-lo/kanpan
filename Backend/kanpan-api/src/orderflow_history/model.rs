@@ -260,7 +260,16 @@ impl Model {
    order.threshold=threshold.unwrap_or(order.threshold);
    let track=self.tracks.entry(order.venue_id.clone()).or_default();
    let peak=order.initial_notional.max(order.notional);
-   track.live.insert((order.side,order.bucket),Live::new(order,seen_ms,peak));
+   let key=(order.side,order.bucket);
+   // 同一档读回两条（上一条的结束没写进库、同一档又起了一条）：留最后看到的那条，另一条按它自己最后
+   // 一次看到失联结束。原来后读的直接把先读的盖掉，被盖掉的那行在库里永远挂成「进行中」。
+   let (keep,lose)=match track.live.remove(&key) {
+    Some(prev) if (prev.seen,prev.order.first_seen_ms)>(seen_ms,order.first_seen_ms)=>(prev,Live::new(order,seen_ms,peak)),
+    Some(prev)=>(Live::new(order,seen_ms,peak),prev),
+    None=>{track.live.insert(key,Live::new(order,seen_ms,peak));continue},
+   };
+   self.ended.push(end_lost(lose.order,lose.seen));
+   track.live.insert(key,keep);
   }
  }
 
@@ -648,6 +657,28 @@ mod tests {
   let live=r.live();
   assert_eq!(live.len(),1);
   assert_eq!((live[0].bucket,live[0].first_seen_ms),(599,0),"读回来的那条接着跟，不另起一条");
+ }
+
+ #[test] fn restore_keeps_one_order_per_level_and_closes_the_other() {
+  // 上一条的结束没写进库、同一档又起了一条：库里同一档两行都挂着。
+  let mut r=Rig::new();
+  let order=|first:i64|BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:599,
+   price:59_950.0,first_seen_ms:first,end_ms:None,status:Status::Live,initial_notional:1.2*T,notional:1.2*T,filled_notional:0.0,threshold:T,vanished_notional:None};
+  for rows in [
+   vec![Restored{order:order(100_000),step:100.0,seen_ms:599_000},Restored{order:order(0),step:100.0,seen_ms:300_000}],
+   vec![Restored{order:order(0),step:100.0,seen_ms:300_000},Restored{order:order(100_000),step:100.0,seen_ms:599_000}],
+  ] {
+   let mut r2=Rig::new();
+   r2.m.restore(rows,600_000);
+   let live=r2.m.live();
+   assert_eq!(live.len(),1);
+   assert_eq!((live[0].0.first_seen_ms,live[0].1),(100_000,599_000),"留最后看到的那条，与读回的先后无关");
+   assert_eq!(r2.m.ended.len(),1,"另一条不能悄悄丢掉：写一条失联结束");
+   let o=&r2.m.ended[0];
+   assert_eq!((o.first_seen_ms,o.status,o.end_ms),(0,Status::Lost,Some(300_000)));
+  }
+  r.m.restore(vec![Restored{order:order(0),step:100.0,seen_ms:599_000}],600_000);
+  assert!(r.m.ended.is_empty());
  }
 
  #[test] fn restored_orders_beyond_snapshot_coverage_wait_for_a_delta() {

@@ -97,16 +97,27 @@ async fn delete_ended_before(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u6
  }
 }
 
-/// 每小时一次：3 天以前结束的删掉；没在跟踪的 base 上缺席超过两分钟的挂单按最后一次看到时失联结束；
+/// 正在跟的 base 上，挂着的行多久没刷新 `seen_ms` 就算没人管了：跟踪器手里的单最迟每 60 秒 + 15 秒重写一次
+/// （库写不进去时在写库任务里退避重写），读回时两分钟没见的也已经当场结束——还这么久没动的，
+/// 是结束那一笔没写进库、跟踪器手里已经没有的行。留足余量，不去碰跟踪器手里的。
+pub const ORPHAN_MS:i64=30*60_000;
+
+/// 挂着的行按最后一次看到失联结束的截止时刻：没在跟的缺席两分钟就算，正在跟的要等 `ORPHAN_MS`。
+pub fn stale_cutoff(tracked:bool,now:i64)->i64 {now-if tracked {ORPHAN_MS} else {STALE_MS}}
+
+/// 每小时一次：3 天以前结束的删掉；挂着却很久没看到的按最后一次看到时失联结束（截止见 `stale_cutoff`）；
 /// 估算体积超过闸门就从最旧的删起。返回（删了几行，失联结束几行）。
+///
+/// 原来只收没在跟的 base：正在跟的 base 上结束那笔没写进库的行，要等这只 base 停掉或进程重启才会结束，
+/// 主币永远不停，图上那条线就一直画到「现在」。
 pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u64)> {
  let bases=bases(pool).await?;
  let mut deleted=0;
  for base in &bases {deleted+=delete_ended_before(pool,base,now-RETENTION_MS).await?;}
  let mut closed=0;
- for base in bases.iter().filter(|b|!tracked.contains(b)) {
+ for base in &bases {
   closed+=sqlx::query("UPDATE orderflow_orders SET status='lost',end_ms=GREATEST(first_seen_ms,seen_ms),vanished_notional=NULL \
-   WHERE base=$1 AND end_ms IS NULL AND seen_ms<$2").bind(base).bind(now-STALE_MS).execute(pool).await?.rows_affected();
+   WHERE base=$1 AND end_ms IS NULL AND seen_ms<$2").bind(base).bind(stale_cutoff(tracked.contains(base),now)).execute(pool).await?.rows_affected();
  }
  // 总量闸门：表文件（pg_total_relation_size）超过 20 GB 才动手；删到「行数 × 每行占用」估出来的
  // 实际占用低于 18 GB。行数用 reltuples（上一次 ANALYZE 的估计，够用），删完按删掉的行数往下扣。
@@ -155,6 +166,15 @@ mod tests {
    filled_notional:0.0,threshold:5e6,vanished_notional:end.map(|_|6e6)}
  }
 
+ #[test] fn tracked_bases_close_only_rows_the_tracker_no_longer_rewrites() {
+  let now=100*DAY_MS;
+  assert_eq!(stale_cutoff(false,now),now-STALE_MS);
+  assert_eq!(stale_cutoff(true,now),now-ORPHAN_MS);
+  // 跟踪器手里的行最迟 60 秒 + 一次 15 秒刷盘就会重写 seen_ms；写库退避最长 1 分钟。都远在 ORPHAN_MS 以内。
+  let rewrite=super::super::LIVE_REWRITE_MS+super::super::FLUSH.as_millis() as i64+super::super::WRITE_RETRY_MAX.as_millis() as i64;
+  assert!(rewrite*10<ORPHAN_MS);
+ }
+
  #[tokio::test]
  async fn writes_reads_and_rolls() {
   let Some(pool)=isolated_pool().await else {return};
@@ -184,9 +204,16 @@ mod tests {
   assert_eq!(touch(&pool,"ZZT",now,true).await.unwrap(),now);
   assert_eq!(touch(&pool,"ZZT",now+9,false).await.unwrap(),now);
   assert!(recent_bases(&pool,now+10).await.unwrap().contains(&"ZZT".to_string()));
+  // 正在跟的 base：跟踪器手里的行两分钟没刷新不动，满 ORPHAN_MS 才收。
+  let (deleted,_)=purge(&pool,now+STALE_MS+10,&["ZZT".to_string()]).await.unwrap();
+  assert!(deleted>=1);
+  assert_eq!(super::live(&pool,"ZZT").await.unwrap().len(),1,"正在跟：两分钟没刷新不收");
+  let (_,closed)=purge(&pool,now+ORPHAN_MS+10,&["ZZT".to_string()]).await.unwrap();
+  assert!(closed>=1,"结束没写进库的行，正在跟也要收");
+  assert!(super::live(&pool,"ZZT").await.unwrap().is_empty());
   // 滚动清理：3 天以前结束的删掉；没在跟的 base 上缺席的挂单失联结束。
-  let (deleted,closed)=purge(&pool,now+STALE_MS+10,&[]).await.unwrap();
-  assert!(deleted>=1&&closed>=1);
+  let (_,closed)=purge(&pool,now+STALE_MS+10,&[]).await.unwrap();
+  assert_eq!(closed,0,"已经收过了");
   // 窗口拉到 6 天前：4 号要是没删会落在这里面。
   let rest=range(&pool,"ZZT",now-6*DAY_MS,now+STALE_MS).await.unwrap();
   assert!(rest.iter().all(|o|o.bucket!=4));
