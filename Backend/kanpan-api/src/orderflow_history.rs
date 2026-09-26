@@ -24,7 +24,8 @@
 //!   缺席超过 2 分钟的按最后一次看到时失联结束。每小时滚动清理一次（3 天 + 20 GB 闸门）。
 //! * 接口 `GET /v1/market/orderflow/history?base=&from=&to=`：`to` 缺省为此刻，`from` 缺省为
 //!   `to` 前 24 小时，区间最长 3 天；回 `{base, thresholds, trackedSinceMs, orders}`，gzip。
-//!   没在跟的币回空表、`trackedSinceMs` 为此刻，并从这一刻开始跟（按需层）。
+//!   没在跟的币回空表、`trackedSinceMs` 为此刻，并从这一刻开始跟（按需层）。`trackedSinceMs` 是这一段连着跟的起点：
+//!   跟踪器断过十分钟以上（停掉、没人要）再起跟，从起跟那一刻重新算（0026 的 `alive_ms`）。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
 mod feeds;
@@ -201,6 +202,8 @@ const WRITE_RETRY_MIN:Duration=Duration::from_secs(1);
 const WRITE_RETRY_MAX:Duration=Duration::from_secs(60);
 /// 跟踪停了之后还没写进去的最多再试多久（跟踪那边只等写库 10 秒，之后这里自己收尾）。
 const WRITE_DRAIN:Duration=Duration::from_secs(60);
+/// 写库任务手里没有积压时多久记一次「还活着」（`orderflow_bases.alive_ms`，见 `store::continuous_since`）。
+const ALIVE_EVERY:Duration=Duration::from_secs(60);
 /// 一只币积压的行最多留多少：库长时间写不进去时先丢挂着的（它们一分钟之内会整行重写），再丢结束得最早的。
 const PENDING_CAP:usize=50_000;
 
@@ -248,20 +251,30 @@ impl Pending {
 
 /// 一只币的写库任务。库写不进去（重启、连接池满、语句超时）时整批留着退避重写，同时照常收跟踪那边发来的，
 /// 不让跟踪任务卡在 `send` 上；原来失败就记一条日志丢掉，结束的单丢了，库里那行就一直挂成「进行中」。
+/// 手里的都写进去了，每分钟记一次「还活着」。
 async fn writer(pool:PgPool,base:String,mut rx:mpsc::Receiver<Write>) {
  let mut pending=Pending::default();
  let mut backoff=WRITE_RETRY_MIN;
  let mut open=true;
  let mut drain_until=None;
+ let mut alive_at=tokio::time::Instant::now();
  loop {
   if pending.is_empty() {
    if !open {return}
-   match rx.recv().await {Some(w)=>pending.add(w),None=>return}
+   tokio::select! {
+    w=rx.recv()=>match w {Some(w)=>pending.add(w),None=>return},
+    _=tokio::time::sleep_until(alive_at)=>{},
+   }
   }
   while let Ok(w)=rx.try_recv() {pending.add(w);}
   let result={
    let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
-   pending.flush(&pool,&base).await
+   let mut result=pending.flush(&pool,&base).await;
+   if result.is_ok()&&tokio::time::Instant::now()>=alive_at {
+    result=store::alive(&pool,&base,now_ms()).await;
+    if result.is_ok() {alive_at=tokio::time::Instant::now()+ALIVE_EVERY;}
+   }
+   result
   };
   match result {
    Ok(())=>backoff=WRITE_RETRY_MIN,
@@ -530,7 +543,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
   tokio::select! {_=stop.changed()=>return,_=tokio::time::sleep(delay)=>{}}
  }
  let Some((venues,thresholds,crypto))=prepare(&base,&mut stop).await else {return};
- if let Err(e)=store::touch(&pool,&base,now_ms(),false).await {tracing::warn!("Orderflow history: {base} not recorded: {e}");}
+ if let Err(e)=store::start(&pool,&base,now_ms()).await {tracing::warn!("Orderflow history: {base} not recorded: {e}");}
  let needed=!crypto;
  let mut published=thresholds;
  if needed {published.usdt_perp=None;}
@@ -979,9 +992,9 @@ async fn history(State(s):State<AppState>,Params(q):Params<HistoryQuery>)->Resul
  let now=now_ms();
  let (from,to)=window(q.from,q.to,now).map_err(ApiError::bad)?;
  let thresholds=REGISTRY.get().map(|r|r.request(&q.base,now)).unwrap_or_default();
- let since=store::touch(&s.pool,&q.base,now,true).await?;
+ let (since,alive)=store::touch(&s.pool,&q.base,now).await?;
  let orders=store::range(&s.pool,&q.base,from,to).await?;
- let tracked_since=since.max(now-MAX_SPAN_MS);
+ let tracked_since=store::continuous_since(since,alive,now).max(now-MAX_SPAN_MS);
  let mut response=Json(serde_json::json!({"base":q.base,"thresholds":thresholds,"trackedSinceMs":tracked_since,"orders":orders})).into_response();
  response.headers_mut().insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
  Ok(response)

@@ -72,11 +72,37 @@ pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<Big
  Ok(rows.iter().filter_map(order).collect())
 }
 
-/// 有人要这只 base：记下时刻；第一次要的记下「从这一刻起有历史」。返回 since。
-pub async fn touch(pool:&PgPool,base:&str,now:i64,requested:bool)->sqlx::Result<i64> {
- sqlx::query_scalar("INSERT INTO orderflow_bases(base,since_ms,requested_ms) VALUES($1,$2,$3) \
-  ON CONFLICT(base) DO UPDATE SET requested_ms=GREATEST(orderflow_bases.requested_ms,EXCLUDED.requested_ms) RETURNING since_ms")
-  .bind(base).bind(now).bind(if requested {now} else {0}).fetch_one(pool).await
+/// 跟踪器最后一次活着距今超过这么久，就算上一段断了：历史从下一次起跟的那一刻重新算起。
+/// 跟踪器活着时每分钟记一次（见 `alive`）；部署重启那一两分钟不算断。
+pub const GAP_MS:i64=10*60_000;
+
+/// 历史从什么时候起是连着的：上一段断了（最后一次活着早于 `GAP_MS` 以前）就是此刻；
+/// 从没记过活着（新 base，或 0026 之前的老行）照旧用 since。
+pub fn continuous_since(since:i64,alive:Option<i64>,now:i64)->i64 {
+ match alive {Some(alive) if alive<now-GAP_MS=>now.max(since),_=>since}
+}
+
+/// 有人要这只 base：记下时刻；第一次要的记下「从这一刻起有历史」。返回（since，最后一次活着）。
+pub async fn touch(pool:&PgPool,base:&str,now:i64)->sqlx::Result<(i64,Option<i64>)> {
+ sqlx::query_as("INSERT INTO orderflow_bases(base,since_ms,requested_ms) VALUES($1,$2,$2) \
+  ON CONFLICT(base) DO UPDATE SET requested_ms=GREATEST(orderflow_bases.requested_ms,EXCLUDED.requested_ms) RETURNING since_ms,alive_ms")
+  .bind(base).bind(now).fetch_one(pool).await
+}
+
+/// 跟踪器起跟：第一次跟的记下 since；上一段断了的把 since 重置到此刻（原来 since 永不更新，
+/// 停了几天再跟，手机拿到的历史起点还是几天前，中间没跟的那段被当成「没有大单」）。
+pub async fn start(pool:&PgPool,base:&str,now:i64)->sqlx::Result<()> {
+ sqlx::query("INSERT INTO orderflow_bases(base,since_ms,requested_ms,alive_ms) VALUES($1,$2,0,$2) \
+  ON CONFLICT(base) DO UPDATE SET since_ms=CASE WHEN orderflow_bases.alive_ms<$3 THEN GREATEST(orderflow_bases.since_ms,EXCLUDED.since_ms) \
+  ELSE orderflow_bases.since_ms END,alive_ms=EXCLUDED.alive_ms")
+  .bind(base).bind(now).bind(now-GAP_MS).execute(pool).await?;
+ Ok(())
+}
+
+/// 跟踪器还活着、手里的都写进库了。
+pub async fn alive(pool:&PgPool,base:&str,now:i64)->sqlx::Result<()> {
+ sqlx::query("UPDATE orderflow_bases SET alive_ms=GREATEST(alive_ms,$2) WHERE base=$1").bind(base).bind(now).execute(pool).await?;
+ Ok(())
 }
 
 /// 进程起来时接着跟哪些：最近 24 小时有人要过的，按最近要的先后。
@@ -166,6 +192,17 @@ mod tests {
    filled_notional:0.0,threshold:5e6,vanished_notional:end.map(|_|6e6)}
  }
 
+ #[test] fn history_starts_over_after_a_gap_in_tracking() {
+  let now=100*DAY_MS;
+  assert_eq!(continuous_since(now-2*DAY_MS,Some(now-30_000),now),now-2*DAY_MS,"一直在跟");
+  assert_eq!(continuous_since(now-2*DAY_MS,Some(now-GAP_MS+1),now),now-2*DAY_MS,"重启那一会儿不算断");
+  assert_eq!(continuous_since(now-2*DAY_MS,Some(now-DAY_MS),now),now,"停了一天：从此刻起算");
+  assert_eq!(continuous_since(now,None,now),now,"新 base");
+  assert_eq!(continuous_since(now-2*DAY_MS,None,now),now-2*DAY_MS,"0026 之前的老行：不知道断没断，照旧");
+  // 心跳一分钟一次，远在断开判定以内。
+  assert!(super::super::ALIVE_EVERY.as_millis() as i64*5<=GAP_MS);
+ }
+
  #[test] fn tracked_bases_close_only_rows_the_tracker_no_longer_rewrites() {
   let now=100*DAY_MS;
   assert_eq!(stale_cutoff(false,now),now-STALE_MS);
@@ -200,10 +237,17 @@ mod tests {
   let again=order(5,now,None);
   upsert(&pool,"ZZT",100.0,&[(again.clone(),now+2)]).await.unwrap();
   assert_eq!(super::live(&pool,"ZZT").await.unwrap(),vec![Restored{order:again,step:100.0,seen_ms:now+2}]);
-  // since 只写一次；最近 24 小时要过的才接着跟。
-  assert_eq!(touch(&pool,"ZZT",now,true).await.unwrap(),now);
-  assert_eq!(touch(&pool,"ZZT",now+9,false).await.unwrap(),now);
+  // since 只在第一次写；最近 24 小时要过的才接着跟。
+  assert_eq!(touch(&pool,"ZZT",now).await.unwrap(),(now,None));
+  assert_eq!(touch(&pool,"ZZT",now+9).await.unwrap(),(now,None));
   assert!(recent_bases(&pool,now+10).await.unwrap().contains(&"ZZT".to_string()));
+  // 起跟、活着：since 不动；断了十分钟以上再起跟：since 重置到那一刻。
+  start(&pool,"ZZT",now+10).await.unwrap();
+  alive(&pool,"ZZT",now+60_000).await.unwrap();
+  start(&pool,"ZZT",now+120_000).await.unwrap();
+  assert_eq!(touch(&pool,"ZZT",now+120_001).await.unwrap(),(now,Some(now+120_000)),"重启那一两分钟不算断");
+  start(&pool,"ZZT",now+120_000+GAP_MS+1).await.unwrap();
+  assert_eq!(touch(&pool,"ZZT",now+120_000+GAP_MS+2).await.unwrap().0,now+120_000+GAP_MS+1);
   // 正在跟的 base：跟踪器手里的行两分钟没刷新不动，满 ORPHAN_MS 才收。
   let (deleted,_)=purge(&pool,now+STALE_MS+10,&["ZZT".to_string()]).await.unwrap();
   assert!(deleted>=1);

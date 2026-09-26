@@ -140,3 +140,14 @@ SELECT to_regclass('sync_snapshots');                                           
 SELECT count(*) FROM sync_operations WHERE created_at<now()-interval '31 days';   -- 清理后应为 0
 SELECT count(*) FROM sync_change_floors;                                          -- 清理后 >0（有人有过旧变更时）
 ```
+
+## 0026 上线（2026-09-26 后端审查 B5）
+
+`orderflow_bases` 加一列可空的 `alive_ms`，跟着 `ops/install.py` 的 `migrate` 走，不需要手工 SQL。
+老行是 NULL，表示「不知道上一段断没断」，照旧用原来的 `since_ms`——部署那一下不会把正在跟的
+历史起点清成此刻。新二进制起来后每只在跟的 base 每分钟写一次 `alive_ms`；之后停过十分钟以上
+再起跟的 base，`since_ms` 重置到起跟那一刻。旧二进制不读也不写这一列，migrate 与 restart 之间无影响。
+
+```sql
+SELECT count(*) FILTER (WHERE alive_ms IS NOT NULL), count(*) FROM orderflow_bases;  -- 重启几分钟后前者 ≈ 在跟的只数
+```
