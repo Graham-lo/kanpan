@@ -33,7 +33,6 @@ struct FavoritesView: View {
   /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
   var store: PrefsStore
   var redUp: Bool
-  var updatedAt: Date?
   var feedStatus: FeedStatus
   var feedDiagnostics: String? = nil
   var onVisible: (String) -> Void
@@ -156,7 +155,10 @@ struct FavoritesView: View {
         FavoritesHeader(prefs: model.prefs, editing: editing, more: more,
                         theme: theme, width: geometry.size.width,
                         content: headerBar).equatable()
-        if symbols.isEmpty { emptyState } else { listSheet }
+        // 顺序只在这儿算一次，往下传给列表（原来每一行 `symbols.first`、每次露面 /
+        // 离场都各算一遍，一行一趟 O(自选数)）。
+        let order = symbols
+        if order.isEmpty { emptyState } else { listSheet(order) }
       }
       .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
       .overlayPreferenceValue(MenuAnchors.self) { anchors in
@@ -199,7 +201,10 @@ struct FavoritesView: View {
         action()
       }
     }
-    .onChange(of: model.tickers.isEmpty) { _, empty in
+    // 读的是 `hasQuotes`，不是 `tickers.isEmpty`：后者一读，整页就登记在整张报价表上，
+    // 每来一批报价整页 body 连同每一行跟着重跑（整机压测 2026-09-26）。
+    .onChange(of: model.hasQuotes) { _, has in
+      let empty = !has
       // 报价表空掉只是数据状态——设置里直连↔网关切一下，`QuoteBook` 就 reset 一次、
       // 把整张表清空。它不是用户的动作，不该拿来推翻用户正在做的事：以前这儿顺手
       // `editing = false`，人正拖着排顺序，别处切一次线路，模式当场没了。
@@ -509,17 +514,17 @@ struct FavoritesView: View {
   /// 用户看过对比之后选了「融合」：纸的四条边把屏幕切成「底」和「纸」两层，去掉之后
   /// 头部、分类段、列表读成同一块材料。玻璃原本干的活是替文字挡光斑，现在交给
   /// `AuroraBackdrop` 底部那层同色渐变。行与行之间只剩一根两头淡出的发丝线。
-  private var listSheet: some View {
+  private func listSheet(_ order: [String]) -> some View {
     // 只加一层 `ScrollViewReader`——它不画任何东西，版面一个像素都不动（审查 C-08）。
     ScrollViewReader { reader in
-      list
+      list(order)
         // 回到这一页时落回原来那一行（审查 C-08 与 §P3-6 合成了同一条路，
         // 见 `restoreScrollAnchor`）。
         .onAppear { restoreScrollAnchor(reader) }
     }
   }
 
-  private var list: some View {
+  private func list(_ symbols: [String]) -> some View {
     List {
       ForEach(symbols, id: \.self) { symbol in
         // 划开露的那三颗砖。原来这儿挂的是两条 `.swipeActions`，砖底一半是系统红
@@ -790,10 +795,9 @@ struct FavoritesView: View {
         }
         Button("取消自选", role: .destructive) { removeFavorites([symbol]) }
       } preview: {
-        SymbolPreviewCard(symbol: symbol, info: model.info(for: symbol),
-                          ticker: displayQuote(symbol), store: previews,
-                          stale: !model.listing(of: symbol).hasLivePrice,
-                          recentChange: { historyChange(symbol, hours: $0) })
+        FavoritePreview(symbol: symbol, info: model.info(for: symbol),
+                        cell: model.quoteCell(symbol), store: previews,
+                        stale: !model.listing(of: symbol).hasLivePrice)
           .environment(\.panelTheme, theme)
       }
     } else {
@@ -801,89 +805,25 @@ struct FavoritesView: View {
     }
   }
 
+  /// 一行。跟着行情跳的那一截（价、涨跌、迷你走势、出场动画）住在 `FavoriteQuoteRow`
+  /// 自己的 body 里，读的是这一只的 `QuoteCell`——整页 body 一个报价都不读（整机压测 2026-09-26）。
   private func row(_ symbol: String, first: Bool) -> some View {
     let info = model.info(for: symbol)
-    // 这一行还有没有实时价可言，判据只有「目录里查出来的那一档」（审查 B-06 / 复核项 4）。
-    // 停牌 / 已下架 / 还没开盘 / 目录里根本没有这个代号的自选**照旧留在表里**，
-    // 只是最后那口真价变灰，所有由实时价算出来的数（额、幅、涨跌幅）留空——
-    // 不显示、也不解释。目录还没到的时候不算，那会把整页自选一起打灰。
-    let stale = !model.listing(of: symbol).hasLivePrice
-    let ticker = stale ? nil : displayQuote(symbol)
-    let base = info?.base ?? SymbolInfo.placeholder(symbol: symbol).base
-    let volumeText = ticker.map { $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) : "—" } ?? "—"
-    let value = ticker?.changePercent ?? .nan
-    let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
-    let quote = quoteParts(symbol)
-    // 行本身（徽章、字号、药丸、左右边距、发丝线）是和板块内品种表共用的 `LiuliSymbolRow`
-    // （UI 审查 2026-09-24：两份手抄已经漂开）。这一页只管往里填什么。
-    return LiuliSymbolRow(
-      symbol: symbol, base: base, quote: quoteLabel(symbol),
-      asset: info.map { SymbolClassifier.classify($0).asset },
-      isNew: NewListingMark.shows(info), first: first,
-      priceText: quote.priceText, priceInk: quote.priceInk, priceSkeleton: quote.skeleton,
-      priceID: "favorites.price." + symbol,
-      change: quote.change, changeText: quote.changeText, changePending: !stale,
-      changeID: "favorites.change." + symbol,
-      openID: "favorites.open." + symbol,
-      onOpen: { selectOrOpen(symbol) }
-    ) {
-      // 副文案只剩成交额（2026-09-25 用户把振幅去掉了）；写全称不写单字「额」。
-      Text("成交额 " + volumeText)
-        .foregroundStyle(theme.ink3)
-    } accessory: {
-      if !editing, sparkline {
-        Sparkline(values: sparkValues(symbol), color: trend)
-          .frame(width: 44, height: 24)
-      }
-    }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.32), value: displayQuote(symbol) != nil)
+    return FavoriteQuoteRow(
+      symbol: symbol, info: info,
+      base: info?.base ?? SymbolInfo.placeholder(symbol: symbol).base,
+      quote: quoteLabel(symbol),
+      first: first,
+      // 这一行还有没有实时价可言，判据只有「目录里查出来的那一档」（审查 B-06 / 复核项 4）。
+      stale: !model.listing(of: symbol).hasLivePrice,
+      cell: model.quoteCell(symbol),
+      editing: editing,
+      frozen: editing ? editQuotes[symbol] : nil,
+      sparkline: !editing && sparkline,
+      reduceMotion: reduceMotion,
+      onOpen: { selectOrOpen(symbol) })
   }
 
-  /// 走势线取的是详情那条历史订阅里的分钟线，不另开请求。
-  private func sparkValues(_ symbol: String) -> [Double] {
-    guard let bars = model.historyBars[symbol], bars.count > 4 else { return [] }
-    let tail = Array(bars.suffix(60))
-    let step = max(1, tail.count / 30)
-    var picked = stride(from: 0, to: tail.count, by: step).map { tail[$0].close }
-    if let last = tail.last?.close, picked.last != last { picked.append(last) }
-    return picked
-  }
-
-  /// 右边那一列要填的东西：价、价的墨色、要不要骨架、涨跌幅。
-  private func quoteParts(_ symbol: String)
-    -> (priceText: String, priceInk: Color, skeleton: Bool, change: Double, changeText: String) {
-    let ticker = displayQuote(symbol)
-    let info = model.info(for: symbol)
-    // 和 `row(_:first:)` 同一个判据（审查 B-06 / 复核项 4）。
-    let stale = !model.listing(of: symbol).hasLivePrice
-    let price = ticker?.last ?? .nan
-    // 小数位由品种自己说（`priceDecimals`，按 `tickSize` 推）。目录里没有这个代号时走全 app 唯一那把
-    // 梯子，不再在这一页写死 2 位（审查 B-07）。`fmtPrice` 而不是 `fmtNum`：0.0000004 这种
-    // 合法极小价按 2 位四舍五入会写成 `0.00`，那等于说这东西不值钱。
-    let decimals = info?.displayDecimals(for: price) ?? priceDecimalsFallback(price)
-    let change: Double = stale ? .nan : (ticker?.changePercent ?? .nan)
-    // 骨架块只表示「还在路上」。已下架 / 还没开盘的行不摆骨架，摆「—」，
-    // 否则那块灰底会永远亮着，读起来像永远加载不完。
-    let skeleton = !price.isFinite && !stale
-    // 没有实时价时最后那口真价照旧摆着，只是退成次要文字色——不加标签、不弹窗。
-    let priceInk: Color = stale ? skin.ink4 : theme.ink
-    // 涨跌一律带「+ / −」（UI 审查 2026-09-24：全 app 跌幅一种写法，不再用小三角说方向）。
-    // 还没到的涨跌和还没到的价格用同一种骨架：药丸只剩一块底，不写字。
-    let changeText = changePercentText(change)
-    return (SymbolRowText.price(price, decimals: decimals), priceInk, skeleton, change, changeText)
-  }
-
-  // MARK: - 近 N 小时涨跌
-
-  /// 长按预览卡上「1小时 / 4小时」那两格（审查 U9：行内展开收掉之后，这两格搬去了卡上）。
-  /// 取数还是列表为迷你走势线订的那份逐分钟走势，所以只有看过的行才有。
-  private func historyChange(_ symbol: String, hours: Int) -> Double? {
-    let target = Int64(Date().timeIntervalSince1970 * 1000) - Int64(hours) * 3_600_000
-    guard let bar = model.historyBars[symbol]?.last(where: { $0.openTime <= target }),
-          target - bar.openTime < 60_000, bar.open > 0,
-          let price = displayQuote(symbol)?.last else { return nil }
-    return (price / bar.open - 1) * 100
-  }
   private func selectOrOpen(_ symbol: String) {
     // 有砖划开着的时候，点行任何一处都是「先把砖收回去」，不是一次正常的点击——
     // 不接这一下，人划开之后想反悔只能再划一次（`SwipeDeleteProxy` 那只手的用意）。
@@ -1128,6 +1068,121 @@ private struct AuroraBackdrop: View {
                               intent: .defaultIntent) else { return nil }
     return Image(decorative: image, scale: 1)
   }()
+}
+
+// MARK: - 按行订阅的那一截
+
+/// 自选表一行里跟着行情跳的那部分。
+///
+/// 它自己读 `QuoteCell`（这一只的价与分钟线），所以一批报价进来只叫醒价真变了的那几行；
+/// 整页 body 不读任何报价，也就不跟着每批报价重跑（整机压测 2026-09-26：原来 300 只自选
+/// 每来一批，整页 body 连同每一行各算一遍，每一行还要再把自选表过滤一遍）。
+/// 版面、字号、配色一个像素都没动——算法和原来 `row(_:first:)` / `quoteParts` 一字不差，
+/// 只是挪到了这儿。
+private struct FavoriteQuoteRow: View {
+  let symbol: String
+  let info: SymbolInfo?
+  let base: String
+  let quote: String
+  let first: Bool
+  /// 目录说它没有实时价（停牌 / 下架 / 未开盘 / 目录里没有）：派生值留空、最后那口价退灰。
+  let stale: Bool
+  let cell: QuoteCell
+  let editing: Bool
+  /// 调整顺序期间冻住的那口报价（`FavoritesEditSession.quotes`）。
+  let frozen: Ticker?
+  let sparkline: Bool
+  let reduceMotion: Bool
+  let onOpen: () -> Void
+
+  @Environment(\.panelTheme) private var theme
+  private var skin: LiuliSkin { LiuliSkin(theme: theme) }
+
+  /// 编辑行布局不随每批WS报价重建；退出编辑立刻读取最新行情。
+  private var shown: Ticker? { editing ? frozen : cell.ticker }
+
+  var body: some View {
+    let display = shown
+    let ticker = stale ? nil : display
+    let volumeText = ticker.map { $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) : "—" } ?? "—"
+    let value = ticker?.changePercent ?? .nan
+    let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
+    let price = display?.last ?? .nan
+    // 小数位由品种自己说（`priceDecimals`，按 `tickSize` 推）。目录里没有这个代号时走全 app 唯一那把
+    // 梯子，不再在这一页写死 2 位（审查 B-07）。`fmtPrice` 而不是 `fmtNum`：0.0000004 这种
+    // 合法极小价按 2 位四舍五入会写成 `0.00`，那等于说这东西不值钱。
+    let decimals = info?.displayDecimals(for: price) ?? priceDecimalsFallback(price)
+    let change: Double = stale ? .nan : (display?.changePercent ?? .nan)
+    // 骨架块只表示「还在路上」。已下架 / 还没开盘的行不摆骨架，摆「—」，
+    // 否则那块灰底会永远亮着，读起来像永远加载不完。
+    let skeleton = !price.isFinite && !stale
+    // 没有实时价时最后那口真价照旧摆着，只是退成次要文字色——不加标签、不弹窗。
+    let priceInk: Color = stale ? skin.ink4 : theme.ink
+    // 行本身（徽章、字号、药丸、左右边距、发丝线）是和板块内品种表共用的 `LiuliSymbolRow`
+    // （UI 审查 2026-09-24：两份手抄已经漂开）。这一页只管往里填什么。
+    return LiuliSymbolRow(
+      symbol: symbol, base: base, quote: quote,
+      asset: info.map { SymbolClassifier.classify($0).asset },
+      isNew: NewListingMark.shows(info), first: first,
+      priceText: SymbolRowText.price(price, decimals: decimals), priceInk: priceInk, priceSkeleton: skeleton,
+      priceID: "favorites.price." + symbol,
+      // 涨跌一律带「+ / −」（UI 审查 2026-09-24：全 app 跌幅一种写法，不再用小三角说方向）。
+      // 还没到的涨跌和还没到的价格用同一种骨架：药丸只剩一块底，不写字。
+      change: change, changeText: changePercentText(change), changePending: !stale,
+      changeID: "favorites.change." + symbol,
+      openID: "favorites.open." + symbol,
+      onOpen: onOpen
+    ) {
+      // 副文案只剩成交额（2026-09-25 用户把振幅去掉了）；写全称不写单字「额」。
+      Text("成交额 " + volumeText)
+        .foregroundStyle(theme.ink3)
+    } accessory: {
+      if sparkline {
+        Sparkline(values: Self.sparkValues(cell.bars), color: trend)
+          .frame(width: 44, height: 24)
+      }
+    }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.32), value: display != nil)
+  }
+
+  /// 走势线取的是详情那条历史订阅里的分钟线，不另开请求。
+  static func sparkValues(_ bars: [Bar]?) -> [Double] {
+    guard let bars, bars.count > 4 else { return [] }
+    let tail = Array(bars.suffix(60))
+    let step = max(1, tail.count / 30)
+    var picked = stride(from: 0, to: tail.count, by: step).map { tail[$0].close }
+    if let last = tail.last?.close, picked.last != last { picked.append(last) }
+    return picked
+  }
+}
+
+/// 长按预览卡，同样按行读自己那一格——预览的内容在整页 body 求值时就会被造出来，
+/// 放在整页里读报价，整页又会登记回整张报价表上。
+private struct FavoritePreview: View {
+  let symbol: String
+  let info: SymbolInfo?
+  let cell: QuoteCell
+  let store: SymbolPreviewStore
+  let stale: Bool
+
+  var body: some View {
+    let ticker = cell.ticker
+    let bars = cell.bars
+    SymbolPreviewCard(symbol: symbol, info: info, ticker: ticker, store: store, stale: stale,
+                      recentChange: { Self.historyChange(bars: bars, price: ticker?.last, hours: $0) })
+  }
+
+  // MARK: - 近 N 小时涨跌
+
+  /// 长按预览卡上「1小时 / 4小时」那两格（审查 U9：行内展开收掉之后，这两格搬去了卡上）。
+  /// 取数还是列表为迷你走势线订的那份逐分钟走势，所以只有看过的行才有。
+  static func historyChange(bars: [Bar]?, price: Double?, hours: Int, now: Date = Date()) -> Double? {
+    let target = Int64(now.timeIntervalSince1970 * 1000) - Int64(hours) * 3_600_000
+    guard let bar = bars?.last(where: { $0.openTime <= target }),
+          target - bar.openTime < 60_000, bar.open > 0,
+          let price else { return nil }
+    return (price / bar.open - 1) * 100
+  }
 }
 
 // MARK: - 走势线与小三角

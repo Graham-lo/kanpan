@@ -8,6 +8,25 @@ import KanpanCore
 // 不认识网络，也不认识 KanpanData——品种表和行情都是灌进来的，
 // 宿主通过 QuoteBook 灌入行情，模型只维护展示与个人选品状态。
 
+/// 一只品种此刻摆在行上的那口报价与那段分钟线——自选表**按行订阅**用的格子。
+///
+/// 自选页原来每一行都在整页 body 里读 `tickers` / `historyBars`：任何一只跳一下，
+/// 整页 body 连同每一行一起重算（整机压测 2026-09-26：300 只自选、一批报价只变三五只，
+/// 也是 300 行全算一遍）。现在行里跟着行情跳的那一截自己读自己这一格，
+/// 一批报价只叫醒价真变了的那几行，整页 body 不动。
+///
+/// `ticker` 的口径和 `SymbolPickerModel.ticker(for:)` 一字不差：真价优先，没有就是种子。
+@MainActor
+@Observable
+final class QuoteCell {
+  fileprivate(set) var ticker: Ticker?
+  fileprivate(set) var bars: [Bar]?
+  fileprivate init(ticker: Ticker?, bars: [Bar]?) {
+    self.ticker = ticker
+    self.bars = bars
+  }
+}
+
 @MainActor
 @Observable
 final class SymbolPickerModel {
@@ -37,12 +56,22 @@ final class SymbolPickerModel {
     index = Dictionary(catalog.map { (InstrumentID.canonical($0.symbol), $0) }, uniquingKeysWith: { a, _ in a })
   }
   /// symbol（大写）→ 24h 行情。
-  private(set) var tickers: [String: Ticker] = [:]
+  ///
+  /// **不参与观察**（整机压测 2026-09-26）：谁在 body 里读它，谁就登记在整张表上，
+  /// 自选里任何一只跳一下都要跟着重算。要跟着某一只跳的读 `quoteCell(_:)`，
+  /// 要知道「整张表动过了」的读 `quoteRevision`，要知道「空不空」的读 `hasQuotes`。
+  @ObservationIgnored private(set) var tickers: [String: Ticker] = [:]
+  /// 报价表里有没有东西。只在「空 ↔ 不空」翻的那一下才写，自选页拿它代替
+  /// `tickers.isEmpty`——后者一读就把整页登记到整张报价表上，每批报价都得重跑。
+  private(set) var hasQuotes = false
+  /// 按行订阅的格子（见 `QuoteCell`）。只有露过面的行才有，不观察——格子自己是被观察的。
+  @ObservationIgnored private var cells: [String: QuoteCell] = [:]
   /// 报价表或品种表每变一次就加一。自选页拿它当排序缓存的键（审查 C3）：
   /// 版本没动，排好的那份顺序就还作数，不必每求值一次 body 就把整张表重排一遍。
   /// 品种表也算在里面，因为「有没有实时价」（`listing(of:)`）决定一行沉不沉底。
   private(set) var quoteRevision: UInt64 = 0
-  private(set) var historyBars: [String: [Bar]] = [:]
+  /// 同 `tickers`，不参与观察；行上的迷你走势读 `quoteCell(_:).bars`。
+  @ObservationIgnored private(set) var historyBars: [String: [Bar]] = [:]
   /// 自选与最近。改完立刻落盘。
   private(set) var prefs = SymbolPrefs()
   /// 搜索框里的原文。改它分区就重算。
@@ -183,8 +212,34 @@ final class SymbolPickerModel {
     for t in batch {
       let symbol = InstrumentID.canonical(t.symbol)
       tickers[symbol] = t
-
+      if let cell = cells[symbol], cell.ticker != t { cell.ticker = t }
     }
+    noteQuotesPresence()
+  }
+
+  /// 这一只的格子。行第一次露面时现建，建的时候按 `ticker(for:)` 与手上的分钟线填好。
+  func quoteCell(_ symbol: String) -> QuoteCell {
+    let key = SymbolPrefs.key(symbol)
+    if let cell = cells[key] { return cell }
+    let cell = QuoteCell(ticker: ticker(for: key), bars: historyBars[key])
+    cells[key] = cell
+    return cell
+  }
+
+  /// 报价表整体换过一轮（退订、清空）之后，格子按 `ticker(for:)` 的口径重新对一遍：
+  /// 真价没了就退回种子，种子也没有就是 nil。只写真变了的格子。
+  private func resyncCells() {
+    guard !cells.isEmpty else { return }
+    let seeds = seedTickers?() ?? [:]
+    for (key, cell) in cells {
+      let now = tickers[key] ?? seeds[key]
+      if cell.ticker != now { cell.ticker = now }
+    }
+  }
+
+  private func noteQuotesPresence() {
+    let has = !tickers.isEmpty
+    if has != hasQuotes { hasQuotes = has }
   }
 
   /// 自选行尾的迷你走势线和长按预览卡上 1 小时 / 4 小时涨跌用的分钟线。一份 245 根约 8 KB，
@@ -196,8 +251,11 @@ final class SymbolPickerModel {
     if historyBars[symbol] == nil, historyBars.count >= Self.historyCapacity,
        let victim = historyBars.keys.sorted().first {
       historyBars.removeValue(forKey: victim)
+      cells[victim]?.bars = nil
     }
-    historyBars[symbol] = Array(bars.suffix(245))
+    let kept = Array(bars.suffix(245))
+    historyBars[symbol] = kept
+    cells[symbol]?.bars = kept
   }
 
   /// 已退订报价不继续冒充实时；只清数字，不碰收藏/分类/顺序。
@@ -205,12 +263,16 @@ final class SymbolPickerModel {
     guard tickers.keys.contains(where: { !symbols.contains($0) }) else { return }
     tickers = tickers.filter { symbols.contains($0.key) }
     quoteRevision &+= 1
+    noteQuotesPresence()
+    resyncCells()
     if sectionsActive { rebuild() }
   }
 
   func clearQuotes() {
     tickers.removeAll(keepingCapacity: true)
     quoteRevision &+= 1
+    noteQuotesPresence()
+    resyncCells()
     rebuild()
   }
 
