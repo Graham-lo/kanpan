@@ -129,7 +129,7 @@ final class MarketModel {
   private(set) var capabilities: ProviderCapabilities
   /// `capabilities` 是替哪只品种定的（规范写法）。冷换品种之后、`.provider` 事件到之前，
   /// `capabilities` 仍是上一只那家的——按它去取新品种的持仓量会取错家（跨交易所换品种时
-  /// Coinbase → 币安一次都不取、币安 → Coinbase 拿币安口径去问）。
+  /// 从没有持仓量的那家换过来就一次都不取，反过来则拿旧家的口径去问新家）。
   @ObservationIgnored private var capabilitiesSymbol: String
   private(set) var historyError: String?
   private(set) var routing: MarketRoutingState = .idle
@@ -372,11 +372,13 @@ final class MarketModel {
     statsTask?.cancel(); statsTask = nil
     pump?.cancel()
     pump = nil
+    linkSweep?.cancel(); linkSweep = nil
     Task { [feed] in await feed.stop() }
   }
 
   func enterBackground() {
     foreground = false
+    trackLink()
     updateMicrostructure()
     statsTask?.cancel(); statsTask = nil     // 后台不轮询持仓量
     Task { [feed] in await feed.enterBackground() }
@@ -384,6 +386,7 @@ final class MarketModel {
 
   func enterForeground() {
     foreground = true
+    trackLink()
     updateMicrostructure()
     if pump != nil { refreshFunding(); startStats() }
     Task { [feed] in await feed.enterForeground() }
@@ -497,7 +500,42 @@ final class MarketModel {
     case .oi:
       break                                   // 副图 OI 由指标层自己取
     case .status(let s):
-      status = s
+      noteFeedStatus(s)
+    }
+  }
+
+  // ---------------------------------------------------------------- 连接断了多久
+
+  /// 连接不在 `.live` 满这么多秒，屏上那口价就不再当「现在的价」摆（顶栏整块灰显）。
+  /// 平常的闪断（退避第一拍 1 秒、重连几百毫秒）在这之内接上，肉眼看不见灰一下。
+  static let linkGrace: TimeInterval = 5
+  /// 前台里连接从哪一刻起不在 `.live`。nil = 连着，或者在后台（后台不算，回前台重新起算）。
+  @ObservationIgnored private var linkDownSince: Date?
+  @ObservationIgnored private var linkSweep: Task<Void, Never>?
+  /// 连接断了已经超过 `linkGrace`。
+  private(set) var linkDown = false
+
+  /// 推送连接报了新状态。
+  func noteFeedStatus(_ s: FeedStatus, now: Date = Date()) {
+    status = s
+    trackLink(now: now)
+  }
+
+  /// 「断了多久」这件事和费率寿命一样：时间流过去本身不是事件，断线之后也不会再有帧进来
+  /// 触发重算，所以断的那一刻挂一拍，到点替它扫一次。
+  private func trackLink(now: Date = Date()) {
+    guard foreground, status != .live else {
+      linkSweep?.cancel(); linkSweep = nil; linkDownSince = nil
+      if linkDown { linkDown = false }
+      return
+    }
+    guard linkDownSince == nil else { return }
+    linkDownSince = now
+    linkSweep?.cancel()
+    linkSweep = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(Self.linkGrace + 0.05))
+      guard !Task.isCancelled else { return }
+      self?.sweepDisplayLifetimes()
     }
   }
 
@@ -730,6 +768,8 @@ final class MarketModel {
 
   /// 顶栏上「拿到的时候是对的、现在不一定还对」的那几格，寿命在这儿统一扫。
   func sweepDisplayLifetimes(now: Date = Date()) {
+    let down = linkDownSince.map { now.timeIntervalSince($0) >= Self.linkGrace } ?? false
+    if down != linkDown { linkDown = down }
     // 垫上的那口（`seedStats`）没有流帧，按它在簿里记下的时刻算寿命。
     fundingExpired = HeaderStats.expired(frameMs: max(markTime, funding?.timeMs ?? 0), now: now,
                                          maxAge: HeaderStats.fundingMaxAge)
@@ -737,8 +777,10 @@ final class MarketModel {
 
   /// 这口价还能不能当「现在的价」看。假 = 顶栏整块灰显，额 / 费率 / 市值显示 `--`。
   ///
-  /// 两种情形都算不新鲜：
+  /// 三种情形都算不新鲜：
   /// * `tickerStale`——换线路之后新线路还没推第一帧，屏上是上一条线路留下的那口价；
+  /// * `linkDown`——推送连接断了超过 `linkGrace`（弱网、飞行模式、电梯里）：流不推了，
+  ///   屏上那口价停在断线那一刻，不能再摆出一副实时的样子；
   /// * 品种已经不在交易（`SymbolInfo.status.hasLivePrice == false`，也就是已下架 /
   ///   已交割 / 还没开盘）——那种合约没有「现在的价」这回事，最后那口成交价不该
   ///   摆出一副实时的样子（审查 B-06）。
@@ -746,7 +788,7 @@ final class MarketModel {
   /// **临时停牌（`.halted`）不在内**（审查复核项 3）：美股永续和贵金属每天收盘都是
   /// 这一档，它们的身份和外观一律照正常合约走；收盘之后价格自然停着不动，
   /// 那一面由 `tickerStale` 这条价格不新鲜的规则去说，不必让状态再说一遍。
-  var priceFresh: Bool { !tickerStale && info.status.hasLivePrice }
+  var priceFresh: Bool { !tickerStale && !linkDown && info.status.hasLivePrice }
 
   /// 顶栏费率那一格真正要显示的值。
   var displayedFundingRate: Double? { fundingExpired ? nil : funding?.fundingRate }

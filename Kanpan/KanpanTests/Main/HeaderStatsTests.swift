@@ -212,6 +212,45 @@ struct HeaderStatsTests {
     #expect(!model.priceFresh)
   }
 
+  /// 断网 / 弱网：推送连接不在 `.live` 超过宽限，顶栏那口价就不再当实时价摆（整机压测 2026-09-26）。
+  @MainActor
+  @Test("推送连接断了超过宽限，顶栏的价就不算新鲜；闪断看不见，后台不算")
+  func droppedLinkMakesThePriceStale() {
+    let model = MarketModel(symbol: "BTCUSDT", endpoints: .default)
+    let grace = MarketModel.linkGrace
+    let t0 = Date()
+    model.noteFeedStatus(.live, now: t0)
+    #expect(model.priceFresh)
+    // 闪断：宽限之内接上，一下都不灰。
+    model.noteFeedStatus(.reconnecting, now: t0)
+    model.sweepDisplayLifetimes(now: t0.addingTimeInterval(1))
+    #expect(model.priceFresh, "闪断一秒顶栏就灰了一下")
+    model.noteFeedStatus(.live, now: t0.addingTimeInterval(1.5))
+    model.sweepDisplayLifetimes(now: t0.addingTimeInterval(60))
+    #expect(model.priceFresh)
+    // 真断了：一路 offline → reconnecting（中途换档不重新起算），过了宽限就灰。
+    let t1 = t0.addingTimeInterval(100)
+    model.noteFeedStatus(.offline, now: t1)
+    model.noteFeedStatus(.reconnecting, now: t1.addingTimeInterval(grace - 1))
+    model.sweepDisplayLifetimes(now: t1.addingTimeInterval(grace + 0.1))
+    #expect(!model.priceFresh, "断线之后顶栏那口价还是全彩，看起来就是实时价")
+    model.noteFeedStatus(.live, now: t1.addingTimeInterval(grace + 2))
+    #expect(model.priceFresh, "重新连上了还灰着")
+    // 后台里断开不算；回前台还没连上，从回来那一刻重新起算。
+    model.enterBackground()
+    let t2 = t1.addingTimeInterval(200)
+    model.noteFeedStatus(.offline, now: t2)
+    model.sweepDisplayLifetimes(now: t2.addingTimeInterval(600))
+    #expect(model.priceFresh)
+    model.enterForeground()
+    let back = Date()
+    model.sweepDisplayLifetimes(now: back.addingTimeInterval(1))
+    #expect(model.priceFresh, "回前台那一下就灰了：后台断开的时长被算了进来")
+    model.sweepDisplayLifetimes(now: back.addingTimeInterval(grace + 1))
+    #expect(!model.priceFresh)
+    model.stop()
+  }
+
   /// 统计轮询要有一台 kanpan-api 主机才会开（`.default` 是空表，`startStats` 直接收手）。
   /// 给一个本机必然拒连的地址：轮询真的挂上，但一口请求也出不了这台机器。
   static let statsEndpoints = MarketEndpoints(gateways: [], api: ["127.0.0.1:9"])
