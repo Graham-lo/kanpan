@@ -15,10 +15,10 @@ use serde_json::value::RawValue;
 pub const EXPORT_LIMIT:usize=20*1024*1024;
 /// 同一时刻只做一份导出。
 ///
-/// 一份导出要把一个人的全部数据读成 JSON 树再序列化，进程里摊开的是数据量的三倍多
-/// （实测 12 MB 的数据一份摊开 ≈ 39 MiB）。额度是每人每小时十次，不管并发：以前
-/// 八次同时点下去进程涨 314 MiB，几个人同时导、或者一个人连点，就够把 `MemoryMax=1G`
-/// 的 serve 连同订单流一起顶掉。导出是偶尔点一次的事，排队等几百毫秒没人察觉。
+/// 一份导出在进程里摊开的内存是数据量的几倍（原文、成品，以前还有一棵 JSON 树）。
+/// 额度是每人每小时十次，不管并发：以前八次 12 MB 的导出同时点下去进程涨 285 MiB，
+/// 几个人同时导、或者一个人连点，就够把 `MemoryMax=1G` 的 serve 连同订单流一起顶掉。
+/// 导出是偶尔点一次的事，排队等几百毫秒没人察觉。
 static EXPORT_GATE:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(1);
 /// 这个人的数据至少有多大：各表正文按文本长度相加，只算下界（不含键名与外壳）。
 ///
@@ -51,8 +51,8 @@ async fn export(State(s):State<AppState>,who:Identity)->Result<Response> {
  // 每一段都在同一个 RLS 事务里、并且显式按 user_id 过滤：双保险，谁也读不到别人的行。
  let (username,created):(String,chrono::DateTime<chrono::Utc>)=sqlx::query_as("SELECT email,created_at FROM account_users WHERE id=$1").bind(who.user).fetch_one(&mut *tx).await?;
  // 每一段都让数据库直接给 JSON 原文（`::text`），进程里只转交、不解析成树：
- // 以前读成 `serde_json::Value` 再序列化，12 MB 的数据一份导出在进程里摊开 ≈ 39 MiB，
- // 而且（macOS 实测）每导一次常驻内存就多留二十来 MB 不还；原文转交则只有「原文 + 成品」两份。
+ // 以前读成 `serde_json::Value` 再序列化，一份导出在进程里摊开数据量的三倍多；
+ // 原文转交则只有「原文 + 成品」两份。
  let one=|sql:&'static str| sqlx::query_scalar::<_,String>(sql).bind(who.user);
  let sync=crate::sync::export(&mut tx,who.user).await?;
  let episodes=one("SELECT coalesce(jsonb_agg(to_jsonb(e)-'user_id' ORDER BY anchor_at),'[]')::text FROM review_episodes e WHERE user_id=$1").fetch_one(&mut *tx).await?;
