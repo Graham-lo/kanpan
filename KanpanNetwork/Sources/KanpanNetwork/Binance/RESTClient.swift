@@ -162,6 +162,10 @@ public actor BinanceREST {
     let dto: ExchangeInfoDTO
     do { dto = try JSONDecoder().decode(ExchangeInfoDTO.self, from: data) }
     catch { throw FeedError.badResponse("解不开品种表：\(error)") }
+    // 坏行单独丢（`LenientList`）；一行都解不开才算整份解不开。
+    if dto.symbols.isEmpty, dto.droppedSymbols > 0 {
+      throw FeedError.badResponse("解不开品种表：\(dto.droppedSymbols) 行全部无效")
+    }
     // 准入条件仍是原来那四条，只有第四条换了作用（审查 B-04 / B-06）：
     // ① `baseAsset` 不是稳定币（USDC/FDUSD… 的普通永续不进产品范围）；
     // ② `quoteAsset == "USDT"`；③ `contractType` 只收两种永续（交割合约不收）；
@@ -209,7 +213,10 @@ public actor BinanceREST {
   /// 费率不是有限数的那几行（交割合约回的是空串）直接略过，不拿 `nan` 顶位。
   public func fundingAll() async throws -> [String: FundingSnapshot] {
     let data = try await fetch(hosts.premiumIndexAll(), weight: 10)
-    let rows = try decode([PremiumIndexDTO].self, data)
+    // 坏一行只丢那一行；一行都解不开才抛，不拿一张空表冒充「全市场都没有费率」。
+    let list = try decode(LenientList<PremiumIndexDTO>.self, data)
+    if list.items.isEmpty, list.dropped > 0 { throw FeedError.badResponse("全市场费率 \(list.dropped) 行全部无效") }
+    let rows = list.items
     var out: [String: FundingSnapshot] = [:]
     out.reserveCapacity(rows.count)
     for dto in rows {
@@ -329,7 +336,8 @@ public actor BinanceREST {
     let data = try await Deadline.run(seconds: timeout) {
       try await self.fetch(url, weight: 40, attempts: 1, timeout: timeout)
     }
-    let rows = try decode([Ticker24hDTO].self, data)
+    // 坏一行只丢那一行（`LenientList`），全丢光由下面「为空」那句抛。
+    let rows = try decode(LenientList<Ticker24hDTO>.self, data).items
     let tickers = rows.map(\.ticker).filter { $0.last.isFinite && $0.last > 0 && !$0.symbol.isEmpty }
     guard !tickers.isEmpty else { throw FeedError.badResponse("全市场报价为空") }
     return tickers

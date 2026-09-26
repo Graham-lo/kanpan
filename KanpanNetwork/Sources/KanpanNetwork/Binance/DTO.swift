@@ -84,7 +84,48 @@ struct ExchangeInfoDTO: Decodable {
       return pow(10, -Double(pricePrecision))
     }
   }
+  /// 解得开的那些行。**坏一行只丢那一行**：原来整张表是一个 `[Symbol]`，
+  /// 五百多行里有一行缺了 `pricePrecision`（上游新挂的合约、网关替身表里的一行），
+  /// 整张品种表就解不开，刷新失败、搜索和自选只能一直吃旧表。
   var symbols: [Symbol]
+  /// 解不开、被丢掉的行数。全丢光时由调用方当「解不开」抛（审查 B-05 的语义不变）。
+  var droppedSymbols: Int
+
+  private enum CodingKeys: String, CodingKey { case symbols }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    let list = try c.decode(LenientList<Symbol>.self, forKey: .symbols)
+    symbols = list.items
+    droppedSymbols = list.dropped
+  }
+}
+
+/// 一整批（品种表、全市场行情、全市场费率）里坏一行只丢那一行。
+///
+/// 解不开的元素也得让容器往前走一格，所以每一格包一层永不抛错的 `Slot`——
+/// 直接 `try? decode(Element.self)` 失败时容器停在原地，后面的行一个都读不到。
+/// 整体不是数组照样抛：那是整份响应不对，不是某一行坏了。
+struct LenientList<Element: Decodable>: Decodable {
+  var items: [Element]
+  var dropped: Int
+
+  private struct Slot: Decodable {
+    let value: Element?
+    init(from decoder: Decoder) throws { value = try? Element(from: decoder) }
+  }
+
+  init(from decoder: Decoder) throws {
+    var rows = try decoder.unkeyedContainer()
+    var items: [Element] = []
+    var dropped = 0
+    while !rows.isAtEnd {
+      guard let slot = try? rows.decode(Slot.self) else { break }
+      if let value = slot.value { items.append(value) } else { dropped += 1 }
+    }
+    self.items = items
+    self.dropped = dropped
+  }
 }
 
 /// 只为了从 `filters` 这种异构数组里挑两个字段，不值得写 9 个 struct。
@@ -112,25 +153,27 @@ enum JSONValue: Decodable {
 
 // ---------------------------------------------------------------- 24h 行情
 
+/// 只有代号和最新价是这一行的立身之本；涨跌幅、高低、成交额缺了（网关替身行、
+/// 刚挂牌还没有 24h 统计的合约）只是那一格留空（NaN），不把整行、更不把整批丢掉。
 struct Ticker24hDTO: Decodable {
   var symbol: String
   var lastPrice: String
   var priceChange: String?
-  var priceChangePercent: String
+  var priceChangePercent: String?
   var openPrice: String?
-  var highPrice: String
-  var lowPrice: String
-  var quoteVolume: String
+  var highPrice: String?
+  var lowPrice: String?
+  var quoteVolume: String?
   var closeTime: Int64?
   var lastId: Int64?
 
   var ticker: Ticker {
     Ticker(symbol: symbol,
            last: Double(lastPrice) ?? .nan,
-           changePercent: Double(priceChangePercent) ?? .nan,
-           high: Double(highPrice) ?? .nan,
-           low: Double(lowPrice) ?? .nan,
-           quoteVolume: Double(quoteVolume) ?? .nan, open24h: openPrice.flatMap(Double.init),
+           changePercent: priceChangePercent.flatMap(Double.init) ?? .nan,
+           high: highPrice.flatMap(Double.init) ?? .nan,
+           low: lowPrice.flatMap(Double.init) ?? .nan,
+           quoteVolume: quoteVolume.flatMap(Double.init) ?? .nan, open24h: openPrice.flatMap(Double.init),
            timeMs: closeTime, lastTradeID: lastId, priceChange: priceChange.flatMap(Double.init))
   }
 }

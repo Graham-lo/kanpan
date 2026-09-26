@@ -93,4 +93,19 @@ struct ExchangeInfoStatusTests {
     let empty = try Self.body([])
     #expect(try BinanceREST.parseExchangeInfo(empty).isEmpty)
   }
+
+  /// 五百多行里有一行缺了必填字段（新挂的合约、网关替身表里的一行）：只丢那一行，
+  /// 不能让整张品种表解不开、刷新失败、搜索和自选一直吃旧表。一行都解不开才算解不开。
+  @Test("坏一行只丢那一行；全部坏掉才抛")
+  func badRowDropsOnlyItself() throws {
+    var broken = Self.row("BADUSDT", status: "TRADING")
+    broken["pricePrecision"] = nil
+    let mixed = try JSONSerialization.data(withJSONObject: ["symbols": [
+      Self.row("AUSDT", status: "TRADING"), broken, "garbage", Self.row("CUSDT", status: "TRADING"),
+    ] as [Any]])
+    let list = try BinanceREST.parseExchangeInfo(mixed)
+    #expect(list.map(\.id.symbol) == ["AUSDT", "CUSDT"])
+    let allBad = try JSONSerialization.data(withJSONObject: ["symbols": [broken, "garbage"] as [Any]])
+    #expect(throws: (any Error).self) { try BinanceREST.parseExchangeInfo(allBad) }
+  }
 }

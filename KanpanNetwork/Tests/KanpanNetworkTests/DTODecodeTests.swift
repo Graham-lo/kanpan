@@ -129,6 +129,40 @@ struct PremiumIndexTests {
     #expect(path?.query == nil)
   }
 
+  /// 全市场的两张整表（24h 行情、资金费率）：坏一行只丢那一行；一行都解不开才抛。
+  /// 24h 行情里只有代号和最新价是必需的，缺了高低 / 成交额只是那一格留空。
+  @Test("全市场 24h 与费率：坏行只丢自己，缺次要字段的行照收，全坏才抛")
+  func wholeMarketTablesDropOnlyBadRows() async throws {
+    let pacer = StepPacer()
+    let server = FakeServer { url in
+      if url.path == "/fapi/v1/premiumIndex" {
+        return json("""
+        [{"symbol":"BTCUSDT","lastFundingRate":"0.0001"},{"symbol":"ETHUSDT"},42,
+         {"symbol":"SOLUSDT","lastFundingRate":"0.0002","nextFundingTime":1}]
+        """)
+      }
+      return json("""
+      [{"symbol":"BTCUSDT","lastPrice":"90000","priceChangePercent":"1","highPrice":"91000","lowPrice":"89000","quoteVolume":"5"},
+       {"symbol":"NEWUSDT","lastPrice":"1.5"},
+       {"lastPrice":"3"},
+       "garbage"]
+      """)
+    }
+    let rest = BinanceREST(transport: FakeTransport(server),
+                           limiter: RateLimiter(pacer: pacer, minGapMs: 0), pacer: pacer)
+    let tickers = try await rest.tickers24h()
+    #expect(tickers.map { InstrumentID($0.symbol).symbol } == ["BTCUSDT", "NEWUSDT"])
+    #expect(tickers[1].last == 1.5 && tickers[1].high.isNaN && tickers[1].quoteVolume.isNaN)
+    let funding = try await rest.fundingAll()
+    #expect(Set(funding.keys) == ["BTCUSDT", "SOLUSDT"])
+
+    let broken = FakeServer { _ in json(#"[{"symbol":"BTCUSDT"},7]"#) }
+    let bad = BinanceREST(transport: FakeTransport(broken),
+                          limiter: RateLimiter(pacer: pacer, minGapMs: 0), pacer: pacer)
+    await #expect(throws: (any Error).self) { _ = try await bad.fundingAll() }
+    await #expect(throws: (any Error).self) { _ = try await bad.tickers24h() }
+  }
+
   /// 提供者那一层：整表按完整品种 key 交出去。直连问币安本家；网关上的 OKX 替身
   /// 问网关的替身整表，绝不落到币安的 `premiumIndex` 上（不混源）。
   @Test("全市场费率：直连问本家，网关问替身自己的整表，键都是完整品种 key")
