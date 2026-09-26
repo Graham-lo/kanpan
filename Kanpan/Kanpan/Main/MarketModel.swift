@@ -448,9 +448,7 @@ final class MarketModel {
         }
       }
     case .tradeQuote(let quote):
-      guard quote.symbol == symbol else { return }
-      tradeQuote = quote
-      onPrice?(quote.symbol, quote.price, quote.timeMs)
+      acceptTrade(quote)
     case .ticker(let t):
       guard InstrumentID.canonical(t.symbol) == InstrumentID.canonical(symbol) else { return }
       let tookTurnover = turnoverCarry.note(t)
@@ -736,6 +734,13 @@ final class MarketModel {
     return value
   }
 
+  /// 逐笔成交：只收当前品种的。
+  func acceptTrade(_ quote: TradeQuote) {
+    guard quote.symbol == symbol else { return }
+    tradeQuote = quote
+    onPrice?(quote.symbol, quote.price, quote.timeMs)
+  }
+
   // ---------------------------------------------------------------- 切换
 
   func switchTo(symbol newSymbol: String? = nil, interval newInterval: Interval? = nil) {
@@ -770,6 +775,9 @@ final class MarketModel {
     restoreOI()
     if cold {
       ticker = nil
+      // 上一只的最后一笔成交不能顶着新品种的名字留着：「创建提醒」的现价先取它，
+      // 冷门合约迟迟没有逐笔时会一直拿上一只的价当这一只的。
+      tradeQuote = nil
       turnoverCarry.reset()
       tickerStale = false
       volumeUnit = nil                      // 单位按品种记，换品种就重新认

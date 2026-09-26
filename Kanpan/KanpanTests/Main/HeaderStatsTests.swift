@@ -211,4 +211,23 @@ struct HeaderStatsTests {
     model.noteSymbolRejected("BTCUSDT")
     #expect(!model.priceFresh)
   }
+
+  /// 「创建提醒」的现价先取最后一笔成交：换品种之后上一只的那笔不能留着。
+  @MainActor
+  @Test("换品种之后，上一只的最后一笔成交不再算这一只的")
+  func coldSwitchDropsTheLastTrade() {
+    let model = MarketModel(symbol: "BTCUSDT", endpoints: .default)
+    model.acceptTrade(TradeQuote(symbol: "BTCUSDT", price: 65_000, timeMs: 1_700_000_000_000, tradeID: 1))
+    #expect(model.tradeQuote?.price == 65_000)
+    // 晚到的别家成交不收。
+    model.acceptTrade(TradeQuote(symbol: "ETHUSDT", price: 3_000, timeMs: 1_700_000_000_100, tradeID: 2))
+    #expect(model.tradeQuote?.price == 65_000)
+    model.switchTo(symbol: "ETHUSDT")
+    #expect(model.tradeQuote == nil)
+    // 只换周期不是冷切换，这一只自己的成交留着。
+    model.acceptTrade(TradeQuote(symbol: "ETHUSDT", price: 3_000, timeMs: 1_700_000_000_200, tradeID: 3))
+    model.switchTo(interval: .h4)
+    #expect(model.tradeQuote?.price == 3_000)
+    model.stop()
+  }
 }
