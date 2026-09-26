@@ -304,16 +304,7 @@ import ReviewUI
       nextAlerts.alerts += guestAlerts.alerts.filter { !claimedAlerts.contains($0.id) }
       nextSymbols.absorb(guest: guestSymbols)
       let guestReview = try ReviewStore(directory: claim.directory)
-      try nextReview.transaction { archive in
-        for var record in guestReview.archive.records where record.serverId == nil && !archive.records.contains(where: { $0.id == record.id }) {
-          record.draft = sanitize(record.draft); archive.records.append(record)
-        }
-        for var op in guestReview.archive.queue where !archive.queue.contains(where: { $0.id == op.id }) {
-          guard archive.records.contains(where: { $0.id == op.recordId && $0.serverId == nil }) else { continue }
-          if op.kind == "create", let value = try? JSONDecoder().decode(ReviewDraft.self, from: op.body) { op.body = try JSONEncoder().encode(sanitize(value)); op.attempted = nil }
-          archive.queue.append(op)
-        }
-      }
+      try nextReview.transaction { archive in try Self.absorbGuestReview(guestReview.archive, into: &archive, sanitize: sanitize) }
       // 草稿与重温进度是两份**侧文件**，各自有自己的落盘位置，不能只改主档里那份镜像：
       // 草稿只写进 `archive.draft` 的话，下次 `ReviewStore.init` 会拿账号目录里那份
       // 写着「现在没有草稿」的 `draft-v1.json` 把它盖掉（游客写了一半的那条当场消失），
@@ -461,6 +452,25 @@ import ReviewUI
       // 上一次运行拉回来了、但没装进本机就没了的那一批，在这儿补装（B4）。
       // 判据在存档里，所以断电重开照样看得出来，不用等下一轮全量。
       if nextSync?.needsApply == true { pendingApply = true; resumeApply() }
+    }
+  }
+  /// 访客的复盘并进账号：只收访客**本机独有**（没有 serverId）、账号里还没有的记录，
+  /// 以及挂在这些本机独有记录上的待发操作；新建那一笔的 body 顺手洗一遍图表设置快照。
+  ///
+  /// 按 id 查表，不在循环里 `contains(where:)`：原来两层线性查找是「访客条数 × 账号条数」
+  /// （队列那一段还要再乘一次记录条数），访客离线攒了几千条时整段压在登录那一下的主线程上。
+  nonisolated static func absorbGuestReview(_ guest: ReviewArchive, into archive: inout ReviewArchive,
+                                sanitize: (ReviewDraft) -> ReviewDraft) throws {
+    var claimed = Set(archive.records.map(\.id))
+    for var record in guest.records where record.serverId == nil && !claimed.contains(record.id) {
+      record.draft = sanitize(record.draft); archive.records.append(record); claimed.insert(record.id)
+    }
+    let localOnly = Set(archive.records.lazy.filter { $0.serverId == nil }.map(\.id))
+    var queued = Set(archive.queue.map(\.id))
+    for var op in guest.queue where !queued.contains(op.id) {
+      guard localOnly.contains(op.recordId) else { continue }
+      if op.kind == "create", let value = try? JSONDecoder().decode(ReviewDraft.self, from: op.body) { op.body = try JSONEncoder().encode(sanitize(value)); op.attempted = nil }
+      archive.queue.append(op); queued.insert(op.id)
     }
   }
   private func sanitize(_ input: ReviewDraft) -> ReviewDraft {
