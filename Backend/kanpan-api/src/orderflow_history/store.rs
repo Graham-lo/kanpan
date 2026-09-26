@@ -66,16 +66,31 @@ pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<Big
 /// 超过 `cap` 条时留最新的：先按出现时刻倒序取 `cap` 条、再翻回升序。原来升序取前 `cap` 条，截掉的恰好是
 /// 最新的那一段——图的右沿（此刻）空着，手机的增量游标也从截断处往后接，永远补不上。
 async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,cap:i64)->sqlx::Result<Vec<BigOrder>> {
+ let mut orders=Vec::new();
+ range_each(pool,base,from,to,cap,|o|orders.push(o)).await?;
+ Ok(orders)
+}
+
+/// 同 `range`，但一行一行交出来、不攒成一整张表（历史接口直接边读边写 JSON）。
+///
+/// 原来 `fetch_all` 把 20 万行 `PgRow` 全攒在手里，再转成 `BigOrder`、再转成 `serde_json::Value` 树、
+/// 再序列化：一个请求常驻内存涨 690 MB（答复本身 62 MB），serve 的上限一共 1 GB。
+/// 翻回升序交给库做（外面再套一层 ORDER BY），这里就能按到达顺序直接往外交。
+pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,cap:i64,mut each:impl FnMut(BigOrder))->sqlx::Result<usize> {
+ use futures_util::TryStreamExt;
  let cols=COLUMNS;
- let sql=format!("SELECT * FROM (\
+ let sql=format!("SELECT * FROM (SELECT * FROM (\
   SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL AND first_seen_ms<=$3 \
   UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>=$2 AND end_ms<=$3 \
   UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>$3 AND first_seen_ms<=$3\
-  ) t ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4");
- let rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).fetch_all(pool).await?;
- let mut orders:Vec<BigOrder>=rows.iter().filter_map(order).collect();
- orders.reverse();
- Ok(orders)
+  ) t ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4) newest \
+  ORDER BY first_seen_ms,venue_id,side,bucket");
+ let mut rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).fetch(pool);
+ let mut n=0;
+ while let Some(row)=rows.try_next().await? {
+  if let Some(o)=order(&row) {each(o);n+=1;}
+ }
+ Ok(n)
 }
 
 /// 跟踪器最后一次活着距今超过这么久，就算上一段断了：历史从下一次起跟的那一刻重新算起。

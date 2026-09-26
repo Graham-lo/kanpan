@@ -41,9 +41,9 @@ use crate::error::{ApiError,Params,Result};
 use crate::orderflow_instruments::{self as instruments,Exchange,Product,Venue};
 use axum::extract::State;
 use axum::http::{HeaderValue,header};
-use axum::response::{IntoResponse,Response};
+use axum::response::Response;
 use axum::routing::get;
-use axum::{Json,Router};
+use axum::Router;
 use book::{Action,Sequence,VenueInfo};
 use feeds::Event;
 use layers::Enabled;
@@ -1089,9 +1089,55 @@ async fn history(State(s):State<AppState>,Params(q):Params<HistoryQuery>)->Resul
   let (since,alive)=store::touch(&s.pool,&q.base,now).await?;
   (thresholds,store::continuous_since(since,alive,now).max(now-MAX_SPAN_MS))
  } else {(Thresholds::default(),now)};
- let orders=store::range(&s.pool,&q.base,from,to).await?;
- let mut response=Json(serde_json::json!({"base":q.base,"thresholds":thresholds,"trackedSinceMs":tracked_since,"orders":orders})).into_response();
- response.headers_mut().insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
+ reply(&s.pool,&q.base,from,to,thresholds,tracked_since).await
+}
+
+/// 同一时刻最多几个历史请求在读库、组答复。一个请求最多 `store::MAX_ROWS` 行、答复约 60 MB；
+/// 接口不要登录，不限的话几个同时到就能把 serve（上限 1 GB）撑爆，还占满 8 条库连接里的一大半。
+static HISTORY_READS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(2);
+/// 答复按这么大一块一块攒：不攒成一整块连续内存（翻倍扩容时新旧两块同时在）。
+const REPLY_CHUNK:usize=64*1024;
+
+/// 攒答复的 JSON：写满一块封一块。
+#[derive(Default)]
+struct Chunks {done:Vec<axum::body::Bytes>,current:Vec<u8>,len:usize}
+impl std::io::Write for Chunks {
+ fn write(&mut self,buf:&[u8])->std::io::Result<usize> {
+  if self.current.capacity()==0 {self.current.reserve_exact(REPLY_CHUNK);}
+  self.current.extend_from_slice(buf);
+  self.len+=buf.len();
+  if self.current.len()>=REPLY_CHUNK {self.done.push(std::mem::take(&mut self.current).into());}
+  Ok(buf.len())
+ }
+ fn flush(&mut self)->std::io::Result<()> {Ok(())}
+}
+
+/// 读区间、组答复：一行一行从库里读、一行一行写成 JSON，不攒整张表、不经 `serde_json::Value`。
+/// 形状同原来的 `{"base","thresholds","trackedSinceMs","orders":[…]}`（键的先后不同，客户端按名取）。
+async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,thresholds:Thresholds,tracked_since:i64)->Result<Response> {
+ use std::io::Write as _;
+ let busy=||ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable");
+ let _slot=HISTORY_READS.acquire().await.map_err(|_|busy())?;
+ let mut out=Chunks::default();
+ let head=serde_json::json!({"base":base,"thresholds":thresholds,"trackedSinceMs":tracked_since}).to_string();
+ let _=write!(out,"{},\"orders\":[",&head[..head.len()-1]);
+ let mut first=true;
+ let mut failed=None;
+ store::range_each(pool,base,from,to,store::MAX_ROWS,|o| {
+  if failed.is_some() {return}
+  if !first {let _=out.write_all(b",");}
+  first=false;
+  if let Err(e)=serde_json::to_writer(&mut out,&o) {failed=Some(e);}
+ }).await?;
+ if let Some(e)=failed {tracing::warn!("Orderflow history: {base} reply not serialized: {e}");return Err(busy())}
+ let _=out.write_all(b"]}");
+ let Chunks{mut done,current,len}=out;
+ if !current.is_empty() {done.push(current.into());}
+ let mut response=Response::new(axum::body::Body::from_stream(futures_util::stream::iter(done.into_iter().map(Ok::<_,std::convert::Infallible>))));
+ let headers=response.headers_mut();
+ headers.insert(header::CONTENT_TYPE,HeaderValue::from_static("application/json"));
+ headers.insert(header::CONTENT_LENGTH,HeaderValue::from(len));
+ headers.insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
  Ok(response)
 }
 
@@ -1332,6 +1378,82 @@ mod tests {
   p.written(&rows);
   assert_eq!(p.rows.len(),1,"没动的那行写完拿掉");
   assert_eq!(p.rows.values().next().unwrap().1.end_ms,Some(20_000),"更新过的留着下一批写");
+ }
+
+ /// 本进程此刻的常驻内存（KiB）。
+ fn rss_kib()->u64 {
+  let out=std::process::Command::new("ps").args(["-o","rss=","-p",&std::process::id().to_string()]).output().unwrap();
+  String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0)
+ }
+
+ /// 压测（2026-09-26）：历史接口不要登录，一个请求就能把一只 base 三天内的单全拉回来（上限 `store::MAX_ROWS` 20 万行）。
+ /// 线上 serve 单元 `MemoryMax=1G`，和订单流跟踪、账号同步在同一个进程里——几个这样的请求同时到，
+ /// 整个进程不能被 OOM 杀掉。塞满 20 万行，量一个请求、四个并发请求的常驻内存峰值。
+ /// 重：插 20 万行、读四遍，`python3 ops/test.py --lib -- orderflow_history::tests::history --ignored --nocapture`。
+ #[ignore] #[tokio::test(flavor="multi_thread",worker_threads=4)] async fn history_reply_memory_stays_bounded_at_the_row_cap() {
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let base="ZZMEM";
+  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  let rows=store::MAX_ROWS;
+  sqlx::query("INSERT INTO orderflow_orders(base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms) \
+   SELECT $1,'binance:usdtPerp:ZZMEMUSDT','币安','usdtPerp',CASE WHEN g%2=0 THEN 'bid' ELSE 'ask' END,g,g*1.5,1000000+g,1000000+g+60000,'cancelled',6e6,5.5e6,1.25e5,5e6,5.9e6,100,1000000+g+60000 \
+   FROM generate_series(1,$2::bigint) g").bind(base).bind(rows).execute(&pool).await.unwrap();
+  let (from,to)=(1_000_000,1_000_000+rows+120_000);
+  let run=|pool:PgPool|async move {
+   let response=reply(&pool,base,from,to,Thresholds::default(),from).await.unwrap();
+   axum::body::to_bytes(response.into_body(),usize::MAX).await.unwrap().len()
+  };
+  let sample=|stop:Arc<AtomicBool>,peak:Arc<AtomicU64>|std::thread::spawn(move||while !stop.load(Ordering::SeqCst) {peak.fetch_max(rss_kib(),Ordering::SeqCst);std::thread::sleep(Duration::from_millis(5));});
+  let mut report=Vec::new();
+  for parallel in [1usize,4] {
+   let base_rss=rss_kib();
+   let (stop,peak)=(Arc::new(AtomicBool::new(false)),Arc::new(AtomicU64::new(0)));
+   let h=sample(stop.clone(),peak.clone());
+   let started=std::time::Instant::now();
+   let mut set=tokio::task::JoinSet::new();
+   for _ in 0..parallel {set.spawn(run(pool.clone()));}
+   let mut bytes=0;
+   while let Some(n)=set.join_next().await {bytes=n.unwrap();}
+   stop.store(true,Ordering::SeqCst);h.join().unwrap();
+   let grew=peak.load(Ordering::SeqCst).saturating_sub(base_rss)/1024;
+   println!("{parallel} 个请求 × {rows} 行：答复 {} MB，常驻内存峰值涨 {grew} MB（起步 {} MB），{} ms",bytes/1_000_000,base_rss/1024,started.elapsed().as_millis());
+   report.push(grew);
+  }
+  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  assert!(report[0]<150,"一个历史请求让常驻内存涨了 {} MB（答复本身 62 MB）",report[0]);
+  assert!(report[1]<300,"四个并发的历史请求让常驻内存涨了 {} MB（serve 的上限一共 1 GB）",report[1]);
+ }
+
+ /// 边读边写出来的答复和原来整张表转 `Value` 的答复逐字段一致。
+ #[tokio::test] async fn history_reply_matches_the_whole_table_shape() {
+  use model::Status;
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let base="ZZREPLY";
+  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  let order=|bucket:i64,first:i64,end:Option<i64>|BigOrder{venue_id:"binance:usdtPerp:ZZREPLYUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),
+   side:if bucket%2==0 {book::Side::Bid} else {book::Side::Ask},bucket,price:bucket as f64*0.1,first_seen_ms:first,end_ms:end,
+   status:if end.is_some() {Status::Filled} else {Status::Live},initial_notional:6e6,notional:5.5e6,filled_notional:1.25e5,threshold:5e6,
+   vanished_notional:end.map(|_|5.9e6)};
+  let rows:Vec<(BigOrder,i64)>=(0..1_500).map(|b|(order(b,1_000+b*7,(b%3!=0).then_some(900_000+b)),900_000+b)).collect();
+  store::upsert(&pool,base,0.1,&rows).await.unwrap();
+  let thresholds=Thresholds{spot:Some(1e6),usdt_perp:Some(5e6),coin_perp:None,delivery:None,step:Some(0.1)};
+  let response=reply(&pool,base,0,1_000_000,thresholds,123).await.unwrap();
+  assert_eq!(response.headers()[header::CONTENT_TYPE],"application/json");
+  let declared:usize=response.headers()[header::CONTENT_LENGTH].to_str().unwrap().parse().unwrap();
+  let body=axum::body::to_bytes(response.into_body(),usize::MAX).await.unwrap();
+  assert_eq!(body.len(),declared);
+  let got:Value=serde_json::from_slice(&body).unwrap();
+  let orders=store::range(&pool,base,0,1_000_000).await.unwrap();
+  let want=serde_json::json!({"base":base,"thresholds":thresholds,"trackedSinceMs":123,"orders":orders});
+  // 比的是客户端收到的文本解析出来的样子：两边都过一遍「写成文本再解析」，免得 serde_json 解析浮点时的末位舍入差异混进来。
+  let want:Value=serde_json::from_slice(&serde_json::to_vec(&want).unwrap()).unwrap();
+  assert_eq!(got,want);
+  assert_eq!(got["orders"].as_array().unwrap().len(),1_500);
+  // 一行都没有也是合法的 JSON。
+  let empty=reply(&pool,"ZZNONE",0,1_000_000,Thresholds::default(),0).await.unwrap();
+  let got:Value=serde_json::from_slice(&axum::body::to_bytes(empty.into_body(),usize::MAX).await.unwrap()).unwrap();
+  assert_eq!(got["orders"],serde_json::json!([]));
+  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
 
  #[test] fn a_restart_does_not_reset_the_idle_clock() {
