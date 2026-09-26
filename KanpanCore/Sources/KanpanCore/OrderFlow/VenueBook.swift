@@ -14,6 +14,8 @@ public struct VenueBook: Sendable {
   private var buffered: [BookDelta] = []
   private var pendingSnapshot: BookSnapshot?
   private var connection = 0
+  /// 拿快照整本重建过几次（压测与回归用例看「等增量追上快照」时有没有逐条重建）。
+  private(set) var bootstrapAttempts = 0
 
   public init(venue: OrderFlowVenue) {
     self.venue = venue
@@ -74,6 +76,12 @@ public struct VenueBook: Sendable {
       if buffered.count > OrderFlowModel.bufferCapacity {
         buffered.removeFirst(buffered.count - OrderFlowModel.bufferCapacity)
       }
+      // 快照已经在等增量追上来（上一次对序号时缓冲里一条都够不着它）：这一条还够不着的话结果不会变，
+      // 不必再拿快照把整本簿重写一遍。原来流比 REST 慢的那几秒里每来一条增量就整本重建一次
+      // （清表、写回快照 2000 档、裁远处），直到增量追上快照为止。
+      if let pending = pendingSnapshot, !book.sequenceModel.reaches(snapshot: pending.lastUpdateID, delta) {
+        return .none
+      }
       return tryBootstrap(nowMs: nowMs)
     case .trade:
       return .none
@@ -100,6 +108,7 @@ public struct VenueBook: Sendable {
 
   private mutating func tryBootstrap(nowMs: Int64) -> OrderFlowModel.Action {
     guard let snapshot = pendingSnapshot else { return .none }
+    bootstrapAttempts += 1
     do {
       switch try book.bootstrap(snapshot, buffered: buffered) {
       case .ready:

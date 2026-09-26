@@ -56,3 +56,43 @@ final class OrderFlowLateSnapshotTests: XCTestCase {
     XCTAssertTrue(book.isReady)
   }
 }
+
+// 压测 · 快照比增量流新（流落后 REST 几秒）：等增量追上来的这段时间不逐条整本重建。
+
+final class OrderFlowWaitingForOverlapTests: XCTestCase {
+  private let binance = OrderFlowVenue(exchange: "binance", label: "币安", product: .usdtPerp, instrument: "ETHUSDT",
+                                       notional: .linear(multiplier: 1), sequenceModel: .previousFinalOverlap,
+                                       snapshotInBand: false)
+
+  private func level(_ price: Double, _ quantity: Double) -> BookLevel { BookLevel(price: price, quantity: quantity) }
+
+  /// 币安 REST 那种 1000 档快照，最后序号 1000。
+  private func bigSnapshot() -> BookSnapshot {
+    BookSnapshot(lastUpdateID: 1_000, requestedLevels: 1_000,
+                 bids: (1...1_000).map { level(1_600 - Double($0) / 100, 1) },
+                 asks: (1...1_000).map { level(1_600 + Double($0) / 100, 1) })
+  }
+
+  func testLaggingDeltasDoNotRebuildTheBookEach() {
+    var book = VenueBook(venue: binance)
+    _ = book.connectionOpened()
+    XCTAssertEqual(book.applySnapshot(bigSnapshot(), nowMs: 0), .none)
+    XCTAssertFalse(book.isReady)
+    XCTAssertEqual(book.bootstrapAttempts, 1)
+    // 流落后：999 条增量都在快照之前。
+    for id in Int64(1)...999 {
+      XCTAssertEqual(book.ingest(.delta(BookDelta(firstUpdateID: id, finalUpdateID: id, previousFinalUpdateID: id - 1,
+                                                  bids: [level(1_599, Double(id))], asks: [])), nowMs: id), .none)
+    }
+    XCTAssertFalse(book.isReady)
+    XCTAssertEqual(book.bootstrapAttempts, 1, "够不着快照的增量不触发整本重建")
+    // 追上来：这一条覆盖快照的最后序号，接上。
+    XCTAssertEqual(book.ingest(.delta(BookDelta(firstUpdateID: 1_000, finalUpdateID: 1_001, previousFinalUpdateID: 999,
+                                                bids: [level(1_599.5, 7)], asks: [])), nowMs: 1_000), .none)
+    XCTAssertTrue(book.isReady)
+    XCTAssertEqual(book.bootstrapAttempts, 2)
+    XCTAssertEqual(book.book.quantity(at: 1_599.5, side: .bid), 7)
+    XCTAssertEqual(book.book.quantity(at: 1_599, side: .bid), 1, "快照之前的增量不落进簿里")
+    XCTAssertEqual(book.book.lastUpdateID, 1_001)
+  }
+}

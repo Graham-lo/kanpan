@@ -26,6 +26,15 @@ public enum DepthSequenceModel: Sendable, Equatable {
   case previousFinalExact
   /// 整条连接一个递增序号：每条 first == final == prev+1，不带 pu。
   case strictIncrementing
+
+  /// 这条缓冲增量够不够得着最后序号是 `lastUpdateID` 的快照：够得着的第一条就是对序号的那一条；
+  /// 一条都够不着时快照比缓冲新，只能等增量追上来。
+  func reaches(snapshot lastUpdateID: Int64, _ delta: BookDelta) -> Bool {
+    switch self {
+    case .rangeOverlap, .strictIncrementing, .previousFinalExact: delta.finalUpdateID > lastUpdateID
+    case .previousFinalOverlap: delta.finalUpdateID >= lastUpdateID
+    }
+  }
 }
 
 public struct BookSnapshot: Sendable, Equatable {
@@ -216,13 +225,8 @@ public struct LocalBook: Sendable {
     trimFarLevels()
 
     let L = snapshot.lastUpdateID
-    let firstIndex: Int? = switch sequenceModel {
-    case .rangeOverlap, .strictIncrementing, .previousFinalExact:
-      buffered.firstIndex { $0.finalUpdateID > L }
-    case .previousFinalOverlap:
-      buffered.firstIndex { $0.finalUpdateID >= L }
-    }
-    guard let firstIndex else { return .waitingForOverlap }
+    let model = sequenceModel
+    guard let firstIndex = buffered.firstIndex(where: { model.reaches(snapshot: L, $0) }) else { return .waitingForOverlap }
 
     let first = buffered[firstIndex]
     try validateIdentity(first.connection)
