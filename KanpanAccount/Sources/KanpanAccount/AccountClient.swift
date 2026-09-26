@@ -35,6 +35,12 @@ public actor AccountClient {
   /// 单飞和代际都在它身上，所以多开几个客户端也只会刷一次（A-06）。
   private let coordinator: RefreshCoordinator
   private let session: URLSession
+  /// 大件下载（导出我的数据）走的那一个：整体时限放宽到五分钟。
+  ///
+  /// 普通请求的整体时限是 30 秒，导出上限却是 20 MB（`Backend/kanpan-api/src/export.rs`
+  /// 的 `EXPORT_LIMIT`）：跨洋链路上几百 KB/s 就要四五十秒，大账号的导出永远在第 30 秒
+  /// 被掐断，点多少次都拿不到——而服务端每次都照样把整份打出来（一小时十次的额度也在烧）。
+  private let bulkSession: URLSession
   private var saved: SavedAccount? { didSet { ownerMirror.set(saved?.user.id) } }
   /// `saved` 里是谁的镜像，给不在 actor 上的调用方同步读（见 `currentOwner`）。
   private nonisolated let ownerMirror = OwnerMirror()
@@ -67,10 +73,8 @@ public actor AccountClient {
       AccountClient.isAllowed(baseURL, options: options) else { throw AccountError.invalidURL }
     self.baseURL = baseURL; self.vault = vault
     self.coordinator = RefreshCoordinator.shared(slot: vault.slotIdentifier)
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.timeoutIntervalForRequest = 15
-    configuration.timeoutIntervalForResource = 30
-    self.session = session ?? URLSession(configuration: configuration, delegate: NoRedirect(), delegateQueue: nil)
+    self.session = session ?? URLSession(configuration: AccountClient.configuration(bulk: false), delegate: NoRedirect(), delegateQueue: nil)
+    self.bulkSession = session ?? URLSession(configuration: AccountClient.configuration(bulk: true), delegate: NoRedirect(), delegateQueue: nil)
     // 槽里那份凭据是别人签的（换了网关、DEBUG 指到了别处）就当作没有会话：
     // 不把它删掉（云端只是同步通道，换回去还得认），只是不拿它出门。
     // 读不动不抛：客户端照样建起来，只是先记着「凭据欠着」（审查 17）。以前这里 `try`
@@ -83,6 +87,16 @@ public actor AccountClient {
     // 构造器里给 `saved` 赋值不触发 didSet，镜像要自己补一次。
     ownerMirror.set(saved?.user.id)
   }
+  /// 两种请求的时限。大件（`bulkPaths`）的单次停顿给到 60 秒（服务端要先把整份导出
+  /// 从库里捞齐才开始发第一个字节），整体给到 5 分钟。
+  static func configuration(bulk: Bool) -> URLSessionConfiguration {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = bulk ? 60 : 15
+    configuration.timeoutIntervalForResource = bulk ? 300 : 30
+    return configuration
+  }
+  /// 走大件那一个会话的路径。
+  static let bulkPaths: Set<String> = ["v1/auth/me/export"]
   /// 槽里那份凭据是别人签的（换了网关、DEBUG 指到了别处）就当作没有会话。
   static func admit(_ stored: SavedAccount?, baseURL: URL) -> SavedAccount? {
     stored.flatMap { AccountClient.accepts($0, baseURL: baseURL) ? $0 : nil }
@@ -253,7 +267,7 @@ public actor AccountClient {
     request.setValue(contentType, forHTTPHeaderField: "Content-Type")
     if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
     if let key { request.setValue(key.uuidString, forHTTPHeaderField: "Idempotency-Key") }
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await (AccountClient.bulkPaths.contains(String(head)) ? bulkSession : session).data(for: request)
     guard let response = response as? HTTPURLResponse else { throw AccountError.invalidResponse }
     guard (200..<300).contains(response.statusCode) else {
       let failure = try? JSONDecoder().decode(FailureEnvelope.self, from: data).error

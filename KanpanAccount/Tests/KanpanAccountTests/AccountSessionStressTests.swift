@@ -265,6 +265,18 @@ struct AccountSessionStressTests {
     #expect(server.received == 1)
   }
 
+  /// 导出上限是 20 MB（服务端 `EXPORT_LIMIT`），普通请求的整体时限只有 30 秒：跨洋几百 KB/s
+  /// 的链路上大账号的导出永远在第 30 秒被掐断。导出走单独那一个会话，时限按 20 MB 算够。
+  @Test("导出走放宽时限的那一个会话")
+  func 导出时限() {
+    #expect(AccountClient.bulkPaths.contains("v1/auth/me/export"))
+    let bulk = AccountClient.configuration(bulk: true), plain = AccountClient.configuration(bulk: false)
+    // 20 MB 在 100 KB/s 上要 200 秒左右：整体时限不能短于它。
+    #expect(bulk.timeoutIntervalForResource >= 20 * 1024 / 100)
+    #expect(bulk.timeoutIntervalForRequest > plain.timeoutIntervalForRequest, "服务端要先从库里捞齐才发第一个字节")
+    #expect(plain.timeoutIntervalForResource == 30, "别的请求不跟着放宽")
+  }
+
   // MARK: - 并发撞墙只刷一次
 
   /// access 到期那一刻五十个请求一起要令牌：只许一趟刷新出门，服务端账本上零重用。
