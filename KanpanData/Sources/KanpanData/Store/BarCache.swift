@@ -61,18 +61,35 @@ public actor BarCache {
     evict()
   }
 
+  /// 带代次的放入：`since` 之后清过（内存警告 / 整个清空）就不放，返回假。
+  ///
+  /// 给后台预热用。预热从发请求到拿回数据隔着一趟网络，清缓存可能正好落在这中间；
+  /// 原来拿回来照样 `put`，刚清出来的内存又被灌回去（压测 2026-09-26：
+  /// 三个槽路上的 8 份在警告之后全部回填，缓存从 1 对回到 9 对）。判断和放入在同一个 actor 调用里，没有缝。
+  @discardableResult
+  public func put(_ series: BarSeries, ifGeneration since: Int) -> Bool {
+    guard since == generation else { return false }
+    put(series)
+    return true
+  }
+
+  /// 清过几次（`purge` / `removeAll` 各加一）。见 `put(_:ifGeneration:)`。
+  public private(set) var generation = 0
+
   public func remove(_ key: SeriesKey) {
     store[key] = nil
     lru.removeAll { $0 == key }
   }
 
   public func removeAll() {
+    generation &+= 1
     store.removeAll()
     lru.removeAll()
   }
 
   /// 内存警告：只留当前这对（§4.3）。
   public func purge(keeping key: SeriesKey?) {
+    generation &+= 1
     for k in lru where k != key { store[k] = nil }
     lru = lru.filter { $0 == key }
   }

@@ -585,6 +585,8 @@ public actor RoutedMarketFeed {
            have.count >= MarketFeed.firstScreenLimit / 2,
            Int64(Date().timeIntervalSince1970 * 1000) - have.lastTime < 3 * job.interval.stepMs { continue }
         do {
+          // 发请求之前记下缓存的代次：拿回来之前缓存被清过（内存警告），这一份就不往内存里放。
+          let generation = await cache.generation
           let bars = try await job.provider.klines(symbol: job.symbol, interval: job.interval, limit: MarketFeed.firstScreenLimit)
           guard !bars.isEmpty else { continue }
           let series = BarSeries(symbol: job.symbol, interval: job.interval, bars: MarketSeries.dedup(bars))
@@ -592,7 +594,7 @@ public actor RoutedMarketFeed {
           // 快照一关，要么这份还没写（不写了），要么已经写了（跟着被清掉），不会漏一份在盘上。
           guard !Task.isCancelled, let self,
                 try await self.persistPrefetched(series, in: job.dir) else { return }
-          await cache.put(series)
+          await cache.put(series, ifGeneration: generation)
           done += 1
         } catch {
           // 原来是「一个失败就整轮收工」。可自选里留着一个已下市的代号
@@ -666,13 +668,34 @@ public actor RoutedMarketFeed {
     foreground = false; monitor?.cancel(); stopOrderFlow(forgetChart: false); await feed?.enterBackground()
   }
   public func enterForeground() async { foreground = true; await feed?.enterForeground(); startMonitoring(); startOrderFlow() }
-  public func memoryWarning() async { await feed?.memoryWarning() }
+  /// 内存警告：整条路由的 K 线缓存只留当前这一对，所有预热槽一起叫停。
+  ///
+  /// 原来只是转给当前那份 feed（`feed?.memoryWarning()`）。两个洞：
+  /// - 预热槽（自选、换周期、板块列表、行情页各槽）一个都不停。清缓存那一刻还在路上的几份，
+  ///   拿回来照样塞进缓存，排在后面的接着拉、接着塞——清出来的内存几秒内又灌回去；
+  /// - 路由上暂时没挂 feed（首次起图前、换线路 / 换交易所时旧的已摘下、新的还没挂上）时，
+  ///   这一下警告整个丢了。
+  /// 缓存本来就是整条路由共用一份（跨线路、跨交易所），所以在这里直接清，不经过 feed。
+  /// 提供者表不动：它们不持有 K 线，里面的限流封禁账本丢了反而会在恢复后把交易所打得更狠。
+  public func memoryWarning() async {
+    cancelPrefetching()
+    let keep = symbol.isEmpty ? nil : SeriesKey(symbol, interval)
+    await cache.purge(keeping: keep)
+    let left = await cache.count
+    log("内存警告 #\(serial)：预热全停，缓存只留 \(keep?.description ?? "（无）")，剩 \(left) 对")
+  }
 
   // ---------------------------------------------------------------- 测试缝
 
   /// 当前这条线路上、WS 等第一帧行情的窗口（毫秒）。两档线路都该是 60 秒：
   /// 提供者建推送时已经清空了竞速候选，「有竞速候选就夹到 15 秒」的钳子够不着（A-07 第②层）。
   func wsSilenceMsForTests() async -> Double? { await feed?.wsSilenceMsForTests() }
+  /// 测试用：整条路由共用的那份内存缓存里此刻有哪几对。
+  func cacheKeysForTests() async -> [SeriesKey] { await cache.keys }
+  /// 测试用：还挂着预热任务的槽有几个（自选、换周期、板块列表、行情页各槽）。
+  var warmSlotsForTests: Int {
+    [prefetchTask, warmTask, listPrefetchTask].compactMap { $0 }.count + prewarmTasks.count
+  }
   public func stop() async {
     selection = UUID(); route = UUID(); monitor?.cancel(); pump?.cancel()
     cancelPrefetching()
