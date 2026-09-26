@@ -171,9 +171,15 @@ public enum ReviewStorageError: LocalizedError {
 
   /// 超过 `budget` 就按「最久没看」删图，删到回到预算以内。
   ///
-  /// 只删**能再要回来**的：已经上过云（有 `serverId`）、队列里没有它的任何一条（图那条
-  /// 还没传上去的更不能删）、也不是手上那条草稿。删掉的那张哪天再翻到，`loadShot`
-  /// 会从服务端再要一次。本机独有的图一张都不删——宁可超预算。
+  /// 只删**能再要回来**的：队列里没有它的任何一条（图那条还没传上去的更不能删）、
+  /// 不是手上那条草稿、也不是主档里只活在本机的记录（没有 `serverId`）。删掉的那张
+  /// 哪天再翻到，`loadShot` 会从服务端再要一次。本机独有的图一张都不删——宁可超预算。
+  ///
+  /// 主档里已经没有记录认领的那张（记录被云端缓存那趟裁掉、或者从服务端翻页时现要回来的）
+  /// 同样能删：和 `pruneShots` 一个口径。原来这儿只认「主档里有、而且带 `serverId`」的，
+  /// 孤儿一张都不删——离线攒几百条再联网跑空队列，云端缓存把旧记录裁到只剩 200 条，
+  /// 旧记录的图全成了孤儿；这时超预算，删掉的反而是那 200 条还看得见的记录的图，
+  /// 几百张孤儿原样留着，照样超预算，要等下一次换档案 `pruneShots` 才清。
   @discardableResult public func trimShots(budget: Int = ReviewStore.shotBudget) -> Int {
     guard readable else { return 0 }
     let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
@@ -186,11 +192,11 @@ public enum ReviewStorageError: LocalizedError {
     }
     var total = entries.reduce(0) { $0 + $1.size }
     guard total > budget else { return 0 }
-    let pinned = Set(archive.queue.map(\.recordId)).union(archive.draft.map { [$0.id] } ?? [])
-    let cloud = Set(archive.records.filter { $0.serverId != nil }.map(\.id))
+    var kept = Set(archive.queue.map(\.recordId)).union(archive.draft.map { [$0.id] } ?? [])
+    kept.formUnion(archive.records.lazy.filter { $0.serverId == nil }.map(\.id))
     var removed = 0
     for entry in entries.sorted(by: { $0.used < $1.used }) where total > budget {
-      guard cloud.contains(entry.id), !pinned.contains(entry.id) else { continue }
+      guard !kept.contains(entry.id) else { continue }
       if (try? FileManager.default.removeItem(at: entry.url)) != nil { total -= entry.size; removed += 1 }
     }
     return removed

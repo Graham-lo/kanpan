@@ -81,4 +81,48 @@ final class ReviewShotStorageTests: XCTestCase {
     XCTAssertTrue(store.hasShot(a.id))
     XCTAssertFalse(store.hasShot(b.id))
   }
+
+  /// 孤儿图（主档里已经没有记录认领）也能按 LRU 删；本机独有的、队列里的、草稿那张照旧不动。
+  ///
+  /// 真实的样子：离线攒了几百条、每条一张图，联网跑空队列后云端缓存把旧记录裁到只剩
+  /// 最近 200 条，旧记录的 400 张图成了孤儿。原来 `trimShots` 只认「主档里有、带 serverId」，
+  /// 超预算时删掉的是那 200 条还看得见的记录的图，400 张孤儿一张不动，删完照样超预算。
+  @MainActor func testTrimEvictsOrphanShotsBeforeTheVisibleOnes() throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = try ReviewStore(directory: directory)
+    let visible = (0..<200).map { _ in record(cloud: true) }
+    let local = (0..<5).map { _ in record(cloud: false) }
+    let queued = record(cloud: true)
+    let orphans = (0..<400).map { _ in UUID() }
+    var pending = ReviewDraft(range: ReviewRange(symbol: "BTCUSDT", interval: "1m", start: 0, end: 180_000, bars: 3),
+                              reference: 100, high: 110, low: 90, now: 240_000)
+    pending.id = UUID()
+    let draft = pending
+    try store.transaction {
+      $0.records = visible + local + [queued]
+      $0.queue = [ReviewOperation(recordId: queued.id, kind: "shot", body: Data())]
+      $0.draft = draft
+    }
+    // 孤儿、本机独有、队列里、草稿那张都比看得见的旧：按老口径它们一张都删不掉。
+    let bytes = Data(count: 1000)
+    var age = -100_000.0
+    for id in orphans + local.map(\.id) + [queued.id, draft.id] + visible.map(\.id) {
+      try FileManager.default.createDirectory(at: store.paths.shots, withIntermediateDirectories: true)
+      try bytes.write(to: store.paths.shot(id))
+      try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: age)], ofItemAtPath: store.paths.shot(id).path)
+      age += 10
+    }
+    let budget = 250 * 1000
+    let removed = store.trimShots(budget: budget)
+    let left = try FileManager.default.contentsOfDirectory(atPath: store.paths.shots.path).count
+    XCTAssertLessThanOrEqual(left * 1000, budget, "删完回到预算以内")
+    XCTAssertEqual(removed, 400 + 200 + 5 + 2 - 250)
+    XCTAssertTrue(visible.allSatisfy { store.hasShot($0.id) }, "看得见的 200 条一张不删")
+    XCTAssertTrue(local.allSatisfy { store.hasShot($0.id) }, "本机独有的不删")
+    XCTAssertTrue(store.hasShot(queued.id), "还没传上去的不删")
+    XCTAssertTrue(store.hasShot(draft.id), "草稿那张不删")
+    XCTAssertEqual(orphans.filter { store.hasShot($0) }.count, 400 - removed, "删的全是孤儿，最旧的先走")
+    XCTAssertTrue(orphans.suffix(400 - removed).allSatisfy { store.hasShot($0) })
+  }
 }
