@@ -372,8 +372,8 @@ impl VenueBook {
  /// 这一档本地知不知道（快照截断时覆盖范围以外、又没推过的档不知道）。簿没就绪一律不知道。
  pub fn knows(&self,side:Side,price:f64)->bool {self.is_ready()&&self.book.knows(side,price)}
 
- /// 这一拍按桶合计的美元名义（中间价两侧 `radius_bps` 以内），簿没就绪返回 None。
- pub fn buckets(&mut self,step:f64,radius_bps:f64)->Option<HashMap<(Side,i64),Bucket>> {
+ /// 这一拍按桶合计的美元名义（中间价两侧 `radius_bps` 以内）与此刻的中间价，簿没就绪返回 None。
+ pub fn buckets(&mut self,step:f64,radius_bps:f64)->Option<(HashMap<(Side,i64),Bucket>,f64)> {
   if !self.is_ready() {return None}
   let notional=self.venue.notional;
   let mut out:HashMap<(Side,i64),Bucket>=HashMap::new();
@@ -384,7 +384,7 @@ impl VenueBook {
    value.notional+=usd;
    if usd>value.top {value.top=usd;value.price=price;}
   });
-  mid.map(|_|out)
+  mid.map(|mid|(out,mid))
  }
 }
 

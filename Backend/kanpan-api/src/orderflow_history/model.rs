@@ -17,6 +17,10 @@ use std::collections::{HashMap,HashSet};
 pub const SCAN_RADIUS_BPS:f64=1_000.0;
 /// 一本簿连续这么久没就绪，它还挂着的单按最后一次看到的时刻结束。
 pub const STALE_MS:i64=120_000;
+/// 一条挂着的单连续这么久落在「本地不知道」的价位上（快照没盖到、增量也没推过），就按最后一次
+/// 真看到它的时刻失联结束。看不见不等于没了，所以先等；但不能无限等——它要是在我们没连上的
+/// 时候就撤了，交易所不会再为这个价位推增量，原来这条单会一直挂成「进行中」。
+pub const UNKNOWN_MS:i64=600_000;
 const CONFIRM_SAMPLES:u32=2;
 const CONFIRM_MS:i64=300;
 const EXIT_RATIO:f64=0.5;
@@ -180,7 +184,12 @@ struct Pending {first:i64,samples:u32,remaining:f64}
 
 #[derive(Clone,Debug)]
 /// `peak`：挂着期间见过的最大名义（读回来的按首次与最后名义取大），结束判定的分母。
-struct Live {order:BigOrder,seen:i64,ending:Option<Pending>,peak:f64}
+/// `seen`：写库的「最后一次看到」，价位不知道的时候也往前走（重启时别因为两分钟没见就判失联）；
+/// `sighted`：真在簿里看到它的最后时刻，失联结束记这个；`unknown_since`：从哪一拍起看不见它的价位。
+struct Live {order:BigOrder,seen:i64,sighted:i64,unknown_since:Option<i64>,ending:Option<Pending>,peak:f64}
+impl Live {
+ fn new(order:BigOrder,seen:i64,peak:f64)->Self {Live{order,seen,sighted:seen,unknown_since:None,ending:None,peak}}
+}
 
 /// 一本簿以及它上面的单。`book` 为 None：读回来的单所在的簿这一轮没订（交割换季、交易所下架）。
 #[derive(Default)]
@@ -251,7 +260,7 @@ impl Model {
    order.threshold=threshold.unwrap_or(order.threshold);
    let track=self.tracks.entry(order.venue_id.clone()).or_default();
    let peak=order.initial_notional.max(order.notional);
-   track.live.insert((order.side,order.bucket),Live{order,seen:seen_ms,ending:None,peak});
+   track.live.insert((order.side,order.bucket),Live::new(order,seen_ms,peak));
   }
  }
 
@@ -303,7 +312,10 @@ impl Model {
   for (id,track) in self.tracks.iter_mut() {
    let Some(book)=track.book.as_mut() else {continue};
    let Some(threshold)=thresholds.of(book.venue.product).filter(|t|*t>0.0) else {continue};
-   let Some(map)=book.buckets(step,SCAN_RADIUS_BPS) else {continue};
+   let Some((map,mid))=book.buckets(step,SCAN_RADIUS_BPS) else {continue};
+   let reach=SCAN_RADIUS_BPS/10_000.0;
+   // 价格已经走出扫描半径的单：不再看它，也就判不了成交还是撤单。
+   let outside=|side:Side,price:f64|match side {Side::Bid=>price<mid*(1.0-reach),Side::Ask=>price>mid*(1.0+reach)};
    let (label,product)=(book.venue.label,book.venue.product);
    track.seen=Some(now);
 
@@ -311,13 +323,20 @@ impl Model {
    let exit=threshold*EXIT_RATIO;
    let live_keys:HashSet<Key>=track.live.keys().copied().collect();
    let mut finished=Vec::new();
+   let mut lost=Vec::new();
    for (key,l) in track.live.iter_mut() {
     match map.get(key) {
-     Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.peak=l.peak.max(v.notional);l.seen=now;l.ending=None;},
+     Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.peak=l.peak.max(v.notional);l.seen=now;l.sighted=now;l.unknown_since=None;l.ending=None;},
+     _ if outside(key.0,l.order.price)=>lost.push(*key),
      // 这一档在快照覆盖范围以外、增量也没推过（币安 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
-     // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判。
-     _ if !book.knows(key.0,l.order.price)=>{l.seen=now;},
+     // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判；
+     // 等满 `UNKNOWN_MS` 还没推到，按最后一次真看到的时刻失联结束。
+     _ if !book.knows(key.0,l.order.price)=>{
+      let since=*l.unknown_since.get_or_insert(now);
+      if now-since>=UNKNOWN_MS {lost.push(*key)} else {l.seen=now}
+     },
      other=>{
+      l.unknown_since=None;
       let mut p=l.ending.unwrap_or(Pending{first:now,samples:0,remaining:0.0});
       p.samples+=1;
       p.remaining=other.map_or(0.0,|v|v.notional);  // 确认期间还在掉就按最后一拍剩的算
@@ -327,6 +346,9 @@ impl Model {
    }
    for (key,p) in finished {
     if let Some(l)=track.live.remove(&key) {self.ended.push(end(l.order,p.first,p.remaining,l.peak));}
+   }
+   for key in lost {
+    if let Some(l)=track.live.remove(&key) {self.ended.push(end_lost(l.order,l.sighted));}
    }
 
    // 2. 新过门槛的桶：确认两拍才出现。这一拍刚结束的桶这一拍不起候选（照手机那份）。
@@ -342,7 +364,7 @@ impl Model {
       price:c.price,first_seen_ms:c.first,end_ms:None,status:Status::Live,initial_notional:c.initial,notional:c.notional,
       filled_notional:c.filled,threshold,vanished_notional:None};
      let peak=c.initial.max(c.notional);
-     track.live.insert(*key,Live{order,seen:now,ending:None,peak});
+     track.live.insert(*key,Live::new(order,now,peak));
     }
    }
    // 这一拍没再过门槛的候选作废（「连续」两拍）。
@@ -356,7 +378,7 @@ impl Model {
   if now-started<STALE_MS {return}
   for track in self.tracks.values_mut() {
    if now-track.seen.unwrap_or(started)<STALE_MS||track.live.is_empty() {continue}
-   for (_,l) in track.live.drain() {self.ended.push(end_lost(l.order,l.seen));}
+   for (_,l) in track.live.drain() {self.ended.push(end_lost(l.order,l.sighted));}
   }
  }
 
@@ -369,7 +391,7 @@ impl Model {
  pub fn stop(&mut self) {
   for track in self.tracks.values_mut() {
    track.candidates.clear();
-   for (_,l) in track.live.drain() {self.ended.push(end_lost(l.order,l.seen));}
+   for (_,l) in track.live.drain() {self.ended.push(end_lost(l.order,l.sighted));}
   }
  }
 
@@ -652,6 +674,19 @@ mod tests {
   assert_eq!((o.status,o.end_ms),(Status::Cancelled,Some(601_000)));
   assert!((o.vanished_notional.unwrap()-1.5*T).abs()<1.0);
   assert!(r.live().is_empty());
+  // 一直没有增量推到它：不能永远挂着。等满 UNKNOWN_MS 按读回来时的最后一次看到失联结束。
+  let mut r=Rig::new();
+  let order=BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:595,
+   price:59_500.0,first_seen_ms:0,end_ms:None,status:Status::Live,initial_notional:1.2*T,notional:1.2*T,filled_notional:0.0,threshold:T,vanished_notional:None};
+  r.m.restore(vec![Restored{order,step:100.0,seen_ms:599_900}],600_000);
+  r.truncated("a",&[(60_000.0,1.0),(59_990.0,1.0)],&[ASK],600_000);
+  r.m.evaluate(600_000);
+  r.m.evaluate(600_000+UNKNOWN_MS-1);
+  assert!(r.m.ended.is_empty(),"还在等");
+  r.m.evaluate(600_000+UNKNOWN_MS);
+  let o=&r.m.ended[0];
+  assert_eq!((o.status,o.end_ms),(Status::Lost,Some(599_900)),"按真看到的最后一刻结束，不按等待期间刷新的那个");
+  assert!(r.live().is_empty());
   // 覆盖范围以内的不受影响：快照里没有就是没有。
   let mut r=Rig::new();
   let order=BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:599,
@@ -660,6 +695,19 @@ mod tests {
   r.truncated("a",&[(60_000.0,1.0),(59_990.0,1.0)],&[ASK],600_000);
   r.m.evaluate(600_000);r.m.evaluate(600_300);
   assert_eq!(r.m.ended[0].status,Status::Cancelled);
+ }
+
+#[test] fn an_order_the_price_ran_away_from_is_lost_not_cancelled() {
+  // 墙在 59 950；价格涨到 67 000，扫描半径（10%）的下沿是 60 300，墙已经在外面了。
+  // 原来它和「没了」一样走撤单确认，两拍后判成「已撤销、剩 0」——其实只是不看了。
+  let mut r=Rig::new();
+  appear(&mut r,1.2*T);
+  r.m.evaluate(1_000);
+  r.book("a",&[(66_990.0,1.0),(59_950.0,1.2*T/59_950.0)],&[(67_010.0,1.0)],2_000);
+  r.m.evaluate(2_000);
+  let o=&r.m.ended[0];
+  assert_eq!((o.status,o.end_ms,o.vanished_notional),(Status::Lost,Some(1_000),None));
+  assert!(r.live().is_empty());
  }
 
  #[test] fn step_change_ends_everything_threshold_change_keeps_it() {
