@@ -533,6 +533,11 @@ struct ChartHost: UIViewRepresentable {
       // （`proxy.window(for:)` 欠的那一下照样兑现），不先闪一张空图。
       if holdOnEmpty, let old = box.chart.state, old.series.count > 0 { return }
       box.chart.state = nil
+      // 存档那份也一起断档。它只在图上有东西时才更新，留着就是更早那只的视野、十字线、
+      // 倍率：冷切到一只没快照的品种（图空一轮），再点回那只，下面 `chart.state ?? savedState`
+      // 会把那份陈年存档当成「上一张图」，走「同品种同周期」那条路，把很久以前的视野和
+      // 十字线原样搬回来，而不是像换品种那样回到最新。
+      proxy?.savedState = nil
       box.pending = .reset
       return
     }
