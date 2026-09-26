@@ -52,6 +52,11 @@ struct SectorPage: View {
   @Binding var route: [SectorRoute]
   /// 「5 日」要的日线收盘。取不到就是空，页面回到只有今日的样子，不提示。
   @State private var historyFeed = SectorHistoryFeed()
+  /// 这一屏的算料按输入缓存（压测 M2）。以前 body 每跑一次就把聚合、兜底桶、覆盖数
+  /// 整套重算一遍——下钻、返回、改排序、偏好里任何一项变动都会让它重跑，
+  /// 而这些事一样口径输入都没动。现在只在行情、品种表、日线收盘、市场、选的那一档
+  /// 真变了时才算。
+  @State private var snapshots = SectorMemo<SnapshotKey, Snapshot>()
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
   /// 停在哪个市场。
@@ -88,8 +93,17 @@ struct SectorPage: View {
     var history: SectorHistory
   }
 
-  private func snapshot() -> Snapshot {
-    let market = market
+  /// 快照里从偏好读的那两项。在算之前读出来当钥匙，偏好里别的字段变了不算「输入变了」；
+  /// 行情、品种表、日线收盘这几样由 `SectorMemo` 盯着它们自己的变动。
+  private struct SnapshotKey: Equatable {
+    var market: SectorMarket
+    var preferred: SectorWindow
+  }
+
+  /// 只从参数和行情源取料，不再读偏好（见 `SnapshotKey`）。
+  private func snapshot(_ key: SnapshotKey) -> Snapshot {
+    let market = key.market
+    let preferredWindow = key.preferred
     let buckets = feed.fallbackBuckets(for: market)
     let quotes = feed.quotes
     let history = historyFeed.history
@@ -125,7 +139,8 @@ struct SectorPage: View {
   }
 
   var body: some View {
-    let snap = snapshot()
+    let key = SnapshotKey(market: market, preferred: preferredWindow)
+    let snap = snapshots.value(for: key) { snapshot(key) }
     return ZStack {
       // 上面压了品种列表就把板块列表整个从可及性树里摘掉：它被盖住了，读屏不该读它，
       // 市场胶囊那套 id 也就不会同时出现两份。
@@ -634,5 +649,45 @@ struct SectorHairline: View {
     LinearGradient(colors: [.clear, skin.rule, skin.rule, .clear],
                    startPoint: .leading, endPoint: .trailing)
       .frame(height: 0.5).pageHorizontalInset()
+  }
+}
+
+/// 按输入缓存一份派生结果，输入没变就不再算（压测 M2 / L1）。
+///
+/// 「输入」分两种：调用方显式递进来的钥匙（从偏好、参数里读的值），以及算的时候
+/// 读到的可观察状态（行情源的 `quotes`、品种表、日线收盘）。后一种不用调用方一一列出来：
+/// 算的那一趟包在 `withObservationTracking` 里，读到的任何一项一变，这份就作废，
+/// 同时把 `stale` 拨一下让读它的视图重跑——缓存命中时视图不再直接读那些状态，
+/// 靠这一下才知道该重画。
+@MainActor @Observable final class SectorMemo<Key: Equatable, Value> {
+  /// 作废一次拨一下。视图每次取值都读它，作废后才会被叫回来重算。
+  private var stale: UInt64 = 0
+  @ObservationIgnored private var entry: (key: Key, value: Value)?
+  /// 第几趟算。上一趟留下的变动回调晚到时，不许作废这一趟的结果。
+  @ObservationIgnored private var token: UInt64 = 0
+  /// 真算了几次（用例数它；板块页也拿它当「上一层口径换过了」的戳递给品种列表）。
+  @ObservationIgnored private(set) var computations = 0
+
+  func value(for key: Key, compute: () -> Value) -> Value {
+    _ = stale
+    if let entry, entry.key == key { return entry.value }
+    token &+= 1
+    let generation = token
+    let value = withObservationTracking(compute) { [weak self] in
+      if Thread.isMainThread {
+        MainActor.assumeIsolated { self?.invalidate(generation) }
+      } else {
+        Task { @MainActor [weak self] in self?.invalidate(generation) }
+      }
+    }
+    entry = (key, value)
+    computations += 1
+    return value
+  }
+
+  private func invalidate(_ generation: UInt64) {
+    guard generation == token, entry != nil else { return }
+    entry = nil
+    stale &+= 1
   }
 }
