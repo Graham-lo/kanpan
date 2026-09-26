@@ -928,10 +928,10 @@ struct FavoritesView: View {
     let target = model.prefs.groups.first { $0.name == name }?.id
     let before = symbols.compactMap { model.favoriteSnapshot($0) }.filter { target == nil || $0.group != target }
     guard !before.isEmpty, let group = model.assign(before.map(\.symbol), toCategory: name) else { return }
-    session.offerUndo("已移到「\(name)」") {
+    session.offerUndo("已移到「\(name)」", model.undoable {
       before.forEach { model.assign($0.symbol, to: $0.group) }
       if !existed, !model.prefs.groupForSymbol.values.contains(group) { model.deleteGroup(group) }
-    }
+    })
   }
 
   /// 取消自选 —— 这一页上**唯一**的移除口子（左滑、长按菜单，都走它）。
@@ -948,9 +948,9 @@ struct FavoritesView: View {
     guard !snapshots.isEmpty else { return }
     Haptics.warning()
     list.forEach { model.removeFavorite($0) }
-    session.offerUndo("已移除") {
+    session.offerUndo("已移除", model.undoable {
       model.restoreFavorites(snapshots)
-    }
+    })
   }
 
   // MARK: - 空自选

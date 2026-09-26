@@ -288,4 +288,28 @@ struct SymbolPickerModelTests {
     #expect(touched.hit)
     #expect(m.sections.flatMap(\.rows).first { $0.id == "binance/usd_m/BTCUSDT" }?.ticker?.last == btc.last)
   }
+
+  @Test("删自选后换了账号，提示条上的撤销不能把上一个人的自选写进新档案")
+  func undoDoesNotCrossAProfileSwitch() throws {
+    let (m, _) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"]))
+    let snapshot = try #require(m.favoriteSnapshot("binance/usd_m/ETHUSDT"))
+    m.removeFavorite("binance/usd_m/ETHUSDT")
+    let undo = m.undoable { m.restoreFavorites([snapshot]) }
+
+    let other = MemoryPrefsStorage()
+    let otherStore = SymbolPrefsStore(storage: other, key: "t")
+    m.useStorage(otherStore, prefs: SymbolPrefs(favorites: ["binance/usd_m/SOLUSDT"]))
+    undo()
+    #expect(m.prefs.favorites == ["binance/usd_m/SOLUSDT"])
+    #expect(!otherStore.load().favorites.contains("binance/usd_m/ETHUSDT"))
+  }
+
+  @Test("没换档案时撤销照常放回原位")
+  func undoWorksWithinTheSameProfile() throws {
+    let (m, _) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"]))
+    let snapshot = try #require(m.favoriteSnapshot("binance/usd_m/BTCUSDT"))
+    m.removeFavorite("binance/usd_m/BTCUSDT")
+    m.undoable { m.restoreFavorites([snapshot]) }()
+    #expect(m.prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
+  }
 }

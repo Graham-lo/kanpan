@@ -194,7 +194,7 @@ struct SectorSymbolList: View {
     guard let before = picker.favoriteSnapshot(symbol) else { return }
     Haptics.warning()
     picker.removeFavorite(symbol)
-    ToastCenter.shared.say("已移除") { picker.restoreFavorites([before]) }
+    ToastCenter.shared.say("已移除", undo: picker.undoable { picker.restoreFavorites([before]) })
   }
 
   /// 卡上那几格要一份 `Ticker`。板块页手里是 `SectorQuote`，价和涨跌照这一行写的来

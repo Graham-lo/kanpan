@@ -347,6 +347,23 @@ final class SymbolPickerModel {
   /// 移除之前替调用方拍一张快照（撤销要用）。
   func favoriteSnapshot(_ symbol: String) -> FavoriteSnapshot? { prefs.snapshot(of: symbol) }
 
+  /// 现在挂着的是第几份档案。`useStorage(_:prefs:)`（登录、退登、换账号）每换一次加一。
+  @ObservationIgnored private(set) var profileEpoch = 0
+
+  /// 把一个撤销动作钉在**此刻这份档案**上：档案换过之后再点就什么都不做。
+  ///
+  /// 「已移除 · 撤销」那条提示条要留五秒，动作存在全 app 那唯一一条提示里
+  /// （`ToastCenter`），不跟着自选页走。这五秒里换了账号（会话被顶掉、退登、登录），
+  /// 快照里的是上一个人的自选——照旧 `restoreFavorites` 就会把它们写进新账号的档案、
+  /// 再推上他的云端。
+  func undoable(_ action: @escaping () -> Void) -> () -> Void {
+    let epoch = profileEpoch
+    return { [weak self] in
+      guard let self, self.profileEpoch == epoch else { return }
+      action()
+    }
+  }
+
   /// 撤销「移除自选」：照快照放回原来的位置和分类。
   ///
   /// 走的是和别处一模一样的 `commit()`——落盘、推同步、重挂行情订阅一样不少，
@@ -576,6 +593,7 @@ final class SymbolPickerModel {
 
   func useStorage(_ store: SymbolPrefsStore, prefs: SymbolPrefs) {
     self.store = store; self.prefs = prefs; query = ""
+    profileEpoch += 1
     // 换了档案（登录 / 退登）就是换了一份「最近看过」，桌面那几格要跟着换人。
     HomeShortcuts.refresh(recents: prefs.recents)
     rebuild()
