@@ -195,4 +195,23 @@ struct RateLimitTests {
     }
     #expect(seen.count > 1)
   }
+
+  /// 被掐掉的请求不许记账：换品种时整批撤掉的预取，走进限流器的那一刻就已经取消了，
+  /// 它既没出站，也不该占一分钟窗口里的权重、端点配额和最小间隔。
+  @Test("已取消的调用不记权重、不记端点配额")
+  func cancelledAcquireLeavesNoTrace() async throws {
+    let limiter = RateLimiter(pacer: SystemPacer(), budget: 100, minGapMs: 0)
+    let quota = EndpointQuota.futuresData
+    let task = Task { () async throws -> Void in
+      withUnsafeCurrentTask { $0?.cancel() }
+      try await limiter.acquire(weight: 7, quota: quota)
+    }
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(await limiter.usedWeight() == 0)
+    #expect(await limiter.usedRequests(quota) == 0)
+    // 没被掐的照常记。
+    try await limiter.acquire(weight: 7, quota: quota)
+    #expect(await limiter.usedWeight() == 7)
+    #expect(await limiter.usedRequests(quota) == 1)
+  }
 }

@@ -114,6 +114,11 @@ public actor RateLimiter {
   ///   `waitableBanMs` 长，这一笔**没有出站**。
   public func acquire(weight: Int, quota: EndpointQuota? = nil) async throws {
     while true {
+      // 每一圈都先看一眼取消，而且必须在记账之前：真机时钟读时刻不挂起，一笔已经被
+      // 掐掉的请求（换品种时整批撤掉的预取）走到底会照样把权重、端点配额和最小间隔
+      // 记上，然后才在调用方那句 `checkCancellation` 里退场——一分钟窗口里凭空多出
+      // 一截没出站的账，后面真要发的请求白白排队。
+      try Task.checkCancellation()
       let now = await nowMs()
       prune(now: now)
 
