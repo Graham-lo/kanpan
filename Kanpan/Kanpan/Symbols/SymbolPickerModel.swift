@@ -370,7 +370,7 @@ final class SymbolPickerModel {
   /// 不走 `applySynced` 那条「只存不推」的近路，否则这一下在别的设备上等于没发生。
   func restoreFavorites(_ items: [FavoriteSnapshot]) {
     guard !items.isEmpty else { return }
-    prefs.restore(items)
+    prefs.restore(items, fallback: currentGroup)
     commit()
   }
 

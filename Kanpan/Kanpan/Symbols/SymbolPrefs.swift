@@ -206,16 +206,27 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   /// 照快照把它们放回原来的位置和分组（「已移除 · 撤销」走这条路）。
   ///
   /// 按下标从小到大插：快照里的下标是「移除之前」那一刻的，批量删掉三个再一起撤销时
-  /// 从小到大插回去，每一个都正好落回自己原来那一格。分类可能在这五秒里被删掉了，
-  /// 认不出来就让它回到「未分类」，而不是指向一个不存在的分类 id。
-  mutating func restore(_ items: [FavoriteSnapshot]) {
+  /// 从小到大插回去，每一个都正好落回自己原来那一格。
+  ///
+  /// 分类可能在这五秒里没了（「…」里「删除当前分类」、另一台设备同步过来的删除）。
+  /// 那一类原来的成员已经被 `deleteGroup` 挪进了 `group(selected)`，撤销回来的这一只
+  /// 跟它们去同一格：`fallback` 传的就是删的那一刻用的同一个「此刻停在哪一类」。
+  /// 一个分类都不剩才让它回到「未分类」——那一格此刻就是页面显示的东西。
+  ///
+  /// 原来是分类没了就一律回「未分类」：还有别的分类在时，分类页只按分类列（`favorites(in:)`），
+  /// 撤销回来的那一只在自选页上**哪一格都找不到**，要等下一次目录到手补分类才冒出来，
+  /// 而且补进去的是按资产类型新开的一类——他刚删掉的那一类又被开了回来。
+  mutating func restore(_ items: [FavoriteSnapshot], fallback: String? = nil) {
     for item in items.sorted(by: { $0.index < $1.index }) {
       let s = Self.key(item.symbol)
       guard !s.isEmpty, !favorites.contains(s) else { continue }
       favorites.insert(s, at: min(max(item.index, 0), favorites.count))
       if let group = item.group, groups.contains(where: { $0.id == group }) {
         groupForSymbol[s] = group
+      } else if item.group != nil, let group = self.group(fallback) {
+        groupForSymbol[s] = group
       } else {
+        // 原来就没分类（老存档里的未分类成员），或者一个分类都不剩：照原样不分类。
         groupForSymbol.removeValue(forKey: s)
       }
     }
