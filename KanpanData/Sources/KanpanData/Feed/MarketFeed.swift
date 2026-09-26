@@ -73,6 +73,16 @@ public actor MarketFeed {
   /// 等真去发补缺请求时末根早跑到后面去了，从那儿拉只会拿回一根，中间欠的那段
   /// 永远补不回来（`apply(bar:)` 又会把它的报文当乱序丢掉，这根就定格在半截上）。
   private var gapFrom: Int64 = 0
+  /// 记过几次缺口、最近一次记在哪根。补缺不再「一出发就把缺口取走」：取走之后这一发
+  /// 被取消（回前台掐掉上一发、重连换下一发），缺口就随之蒸发，排队的推送放行后
+  /// 序列中间留一个永久的洞，还会被快照带进下次冷启动。现在缺口一直记着，补成了才清；
+  /// 补的途中又记了新缺口（又断了一次）就只清掉补上的那段，留下新记的那一处。
+  private var gapSerial = 0
+  private var lastGapNote: Int64 = 0
+  /// 补缺的「持有人」号。`composer.beginBackfill()` 一律经 `beginBackfillTurn()`，
+  /// 每开一轮换一个号。被取消的那一发回来时号还对得上，说明没人接手它的队列，
+  /// 得由它自己放行（见 `releaseAbandonedBackfill`）；号对不上就是已有新的一发在管。
+  private var backfillEpoch = 0
   private var backgroundTask: Task<Void, Never>?
   /// 重连 / 回前台那一发补缺的句柄。原来它是个没人拿着的裸 `Task`：停掉这份 feed、
   /// 切走品种之后它照样在路上，回来还会对着新品种的序列做一次 `endBackfill`。
@@ -396,6 +406,13 @@ public actor MarketFeed {
     // 末根还是原来那根，WS 一帧（合约 kline 约 250ms 一条）就能把它带回来；
     // 万一 WS 没起来，对表任务 10 秒后也会用 limit=2 把它捞回来。
     // 原来这儿是无条件补缺，等于每次回前台都白花一个请求。
+    // 已经有一发补缺在途（重连 / 自愈派的；或是上面那句 cancel 掉的上一发——它收尾时
+    // 自己放行队列、记缺口、重派）：不再叠一发打同一段的请求。缺口现在补成了才清，
+    // 不先挡住的话，每次在补缺途中切回来都会多打一发。
+    guard !composer.isBackfilling else {
+      log("回前台时已有补缺在途，不再叠一发")
+      return
+    }
     guard pendingBars() > 1 else {
       log("回前台缺口不足一根，跳过补缺，交给 WS 和对表")
       return
@@ -403,9 +420,9 @@ public actor MarketFeed {
     // 补缺期间把 WS 事件挂起来排队。原来这条路径没有 `beginBackfill`，于是
     // 这一发 REST 在路上的时候 `reconcileOnce` 的 `!composer.isBackfilling`
     // 拦不住它，两边会同时朝同一段末根发请求、各自合并各自的结果。
-    composer.beginBackfill()
+    let turn = beginBackfillTurn()
     loadTask = Task { [weak self] in
-      await self?.backfill(symbol: sym, interval: iv, selection: request)
+      await self?.backfill(symbol: sym, interval: iv, selection: request, turn: turn)
     }
   }
 
@@ -549,11 +566,11 @@ public actor MarketFeed {
       // 之后自己会接着补。
       guard !filling, composer.series.count > 0 else { break }
       // 重连成功：先补缺再让 WS 落地（§4.4）。
-      composer.beginBackfill()
       let sym = symbol, iv = interval
       backfillTask?.cancel()
+      let turn = beginBackfillTurn()
       backfillTask = Task { [weak self] in
-        await self?.backfill(symbol: sym, interval: iv, selection: request)
+        await self?.backfill(symbol: sym, interval: iv, selection: request, turn: turn)
       }
     case .status(let s):
       if s != .live { takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000)); emit(.takerTail(nil)); emit(.depth(nil)) }
@@ -607,14 +624,27 @@ public actor MarketFeed {
   private func noteGap(at t: Int64) {
     guard t > 0 else { return }
     gapFrom = gapFrom > 0 ? min(gapFrom, t) : t
+    gapSerial &+= 1
+    lastGapNote = t
   }
 
-  /// 取走缺口起点，没欠着就用 `fallback`（当前末根）。取走即清，补失败的那条路上
-  /// 再记回去——留着的话 `fill` 末尾那次补缺会和 1M/1y 的整段重拉互相叫下去。
-  private func takeGap(orElse fallback: Int64) -> Int64 {
-    let t = gapFrom > 0 ? min(gapFrom, fallback) : fallback
-    gapFrom = 0
-    return t
+  /// 这一发补缺从哪根补起：欠着缺口就从缺口起，否则从当前末根起。只看不清——
+  /// 缺口要等真补上了才清（`settleGap`），半路被取消的那一发不能把它带走。
+  private func peekGap(orElse fallback: Int64) -> Int64 {
+    gapFrom > 0 ? min(gapFrom, fallback) : fallback
+  }
+
+  /// 从 `serial` 那一刻起欠着的缺口已经补上了。这期间又记过新缺口（补的途中又断了一次）
+  /// 就只留最近记的那一处：补缺期间推送只进队列、末根不动，途中记下的都是同一根。
+  private func settleGap(since serial: Int) {
+    gapFrom = gapSerial == serial ? 0 : lastGapNote
+  }
+
+  /// 开一轮补缺：WS 事件从此排队，并换一个持有人号交给那一发 `backfill`。
+  private func beginBackfillTurn() -> Int {
+    composer.beginBackfill()
+    backfillEpoch &+= 1
+    return backfillEpoch
   }
 
   private func applyKline(_ k: KlineEvent, now: Double) {
@@ -804,8 +834,8 @@ public actor MarketFeed {
     // 首屏本身失败时已经排了自愈（`healTask`），这里别紧跟着再撞一次。
     guard current(request), gapFrom > 0, sym == symbol, iv == interval, !composer.isBackfilling,
           healTask == nil else { return }
-    composer.beginBackfill()
-    await backfill(symbol: sym, interval: iv, selection: request)
+    let turn = beginBackfillTurn()
+    await backfill(symbol: sym, interval: iv, selection: request, turn: turn)
   }
 
   /// 首屏小页落地。只在图还空着的时候画——完整那发已经到了就什么都不做，
@@ -863,6 +893,7 @@ public actor MarketFeed {
     // 最新一屏回来直接整段换掉。
     let sinceTooLong = since > 0 && !caps.isAggregated(iv) && tailBars(from: since, interval: iv) > caps.maxTailBars
     let replacing = replacingGap > 0 || sinceTooLong
+    let gapSerialAtStart = gapSerial
     if sinceTooLong { log("快照末根到现在超过补缺上限 \(caps.maxTailBars) 根，最新一屏回来整段换掉") }
     defer { if current(request), sym == symbol, iv == interval { filling = false } }
     // 首屏小页：和完整那发并行发出去，谁先回谁先画。它只在图还空着时落地，
@@ -933,6 +964,8 @@ public actor MarketFeed {
         sourceComposer = nil
         if replacing {
           composer.replace(BarSeries(symbol: sym, interval: iv, bars: MarketSeries.dedup(bars)))
+          // 整段换成了最新一屏，之前欠的缺口都不存在了（补缺那一发不再预先取走它）。
+          settleGap(since: gapSerialAtStart)
           log("断档过长，最新一屏 \(bars.count) 根整段换掉旧序列")
         } else {
           composer.merge(bars, preservingLiveTail: composer.wsRevision != revision)
@@ -995,6 +1028,7 @@ public actor MarketFeed {
         // 时钟没看出来、提供者自己翻到头才发现接不上：同样拿最新一屏整段换掉，不记缺口、不重试。
         guard current(request), sym == symbol, iv == interval, !bars.isEmpty else { return }
         composer.replace(BarSeries(symbol: sym, interval: iv, bars: MarketSeries.dedup(bars)))
+        settleGap(since: gapSerialAtStart)
         await cache.put(composer.series)
         guard current(request) else { return }
         emit(.historyError(nil))
@@ -1063,11 +1097,51 @@ public actor MarketFeed {
   }
 
   /// 重连 / 回前台后补缺：从末根开始重拉，排队的 WS 事件补完再放行。
-  private func backfill(symbol sym: String, interval iv: Interval, selection request: UUID) async {
+  ///
+  /// `turn` 是 `beginBackfillTurn()` 发的持有人号。下面每条正常收尾的路都会放行队列
+  /// （`endBackfill` 或整段 `replace`）；被取消的路不会——所以出来之后还挂着补缺、
+  /// 号也还是自己的，就由 `releaseAbandonedBackfill` 收尾。
+  private func backfill(symbol sym: String, interval iv: Interval, selection request: UUID, turn: Int) async {
+    await backfillOnce(symbol: sym, interval: iv, selection: request)
+    releaseAbandonedBackfill(symbol: sym, interval: iv, selection: request, turn: turn)
+  }
+
+  /// 被取消的补缺收尾。
+  ///
+  /// 原来补缺在途被取消（回前台那句 `loadTask?.cancel()`、`fill` 末尾那发跟着首屏
+  /// 一起被掐）时直接 return：`isBackfilling` 永远挂着，之后所有 WS 推送只进队列、
+  /// 不再落到序列上——最后一根定格不动，队列随推送无上限地涨；回前台又因为
+  /// 「缺口不足一根」不补，`heal` / `fill` 末尾见 `isBackfilling` 也都让路，没人能解开。
+  ///
+  /// 换了品种 / 停了（`selection` 变了）就什么都不碰：新品种的状态 `switchTo` 已经
+  /// 重置过。号对不上说明已经有新的一发接手了这份队列，也不碰。
+  private func releaseAbandonedBackfill(symbol sym: String, interval iv: Interval, selection request: UUID,
+                                        turn: Int) {
+    guard selection == request, sym == symbol, iv == interval, turn == backfillEpoch,
+          composer.isBackfilling else { return }
+    // 队列一放行末根就往后跳；它和队列里第一条推送之间那段没补上，记成缺口
+    // （补缺期间末根不动，记的正是开始排队的那一根）。
+    if composer.series.count > 0 { noteGap(at: composer.series.lastTime) }
+    composer.endBackfill(with: [])
+    emit(.series(composer.series))
+    log("补缺半路被取消，放行排队的推送，缺口自 \(gapFrom) 起留待补齐")
+    // 前台、没有首屏 / 自愈在途：没人会再来补这一段，自己重派一发（新任务，没被取消）。
+    guard wantsForeground, !stopped, !filling, healTask == nil, gapFrom > 0 else { return }
+    backfillTask?.cancel()
+    let next = beginBackfillTurn()
+    backfillTask = Task { [weak self] in
+      await self?.backfill(symbol: sym, interval: iv, selection: request, turn: next)
+    }
+  }
+
+  private func backfillOnce(symbol sym: String, interval iv: Interval, selection request: UUID) async {
     guard current(request) else { return }
-    // 先取走缺口：下面几条路都不能把它留着，不然会和 `fill` 末尾那次补缺叫下去。
-    let from = takeGap(orElse: composer.series.count > 0 ? composer.series.lastTime : 0)
+    let serial = gapSerial
+    let from = peekGap(orElse: composer.series.count > 0 ? composer.series.lastTime : 0)
     guard !caps.isAggregated(iv), composer.series.count > 0, from > 0 else {
+      // 聚出来的周期 / 空序列走整段重拉，缺口在这儿就算了结：留着的话 `fill` 末尾那次
+      // 补缺会和 1M/1y 的整段重拉互相叫下去。
+      settleGap(since: serial)
       composer.endBackfill(with: [])
       await fillOnce(symbol: sym, interval: iv, since: 0, selection: request)
       return
@@ -1083,6 +1157,7 @@ public actor MarketFeed {
     do {
       let bars = try await provider.contiguousTail(symbol: sym, interval: iv, from: from)
       guard current(request), sym == symbol, iv == interval else { return }
+      settleGap(since: serial)
       let added = composer.endBackfill(with: bars)
       await cache.put(composer.series)
       guard current(request) else { return }
@@ -1147,10 +1222,10 @@ public actor MarketFeed {
       }
       log("自愈：重发首屏 \(sym)|\(iv.rawValue)")
     } else if gapFrom > 0 {
-      composer.beginBackfill()
       backfillTask?.cancel()
+      let turn = beginBackfillTurn()
       backfillTask = Task { [weak self] in
-        await self?.backfill(symbol: sym, interval: iv, selection: request)
+        await self?.backfill(symbol: sym, interval: iv, selection: request, turn: turn)
       }
       log("自愈：补缺口 \(sym)|\(iv.rawValue)")
     }
