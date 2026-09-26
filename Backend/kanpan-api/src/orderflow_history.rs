@@ -268,7 +268,14 @@ async fn writer(pool:PgPool,base:String,mut rx:mpsc::Receiver<Write>) {
   }
   while let Ok(w)=rx.try_recv() {pending.add(w);}
   let result={
-   let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
+   // 排库连接（全进程 3 条）的时候也接着收：两百多只一起刷盘时可能要排上好一阵，这期间通道满了跟踪任务就卡在 send 上。
+   let slot=loop {
+    tokio::select! {
+     slot=WRITE_SLOTS.acquire()=>break slot,
+     w=rx.recv(),if open=>match w {Some(w)=>pending.add(w),None=>open=false},
+    }
+   };
+   let Ok(_slot)=slot else {return};
    let mut result=pending.flush(&pool,&base).await;
    if result.is_ok()&&tokio::time::Instant::now()>=alive_at {
     result=store::alive(&pool,&base,now_ms()).await;
@@ -1167,6 +1174,24 @@ mod tests {
   let task=r.retiring.lock().unwrap().remove("ZZT").expect("停掉的任务留给下一任等");
   tokio::time::timeout(Duration::from_secs(1),task).await.unwrap().unwrap();
   drop(release);
+ }
+
+ #[tokio::test] async fn the_writer_keeps_taking_rows_while_it_waits_for_a_connection_slot() {
+  use model::Status;
+  let order=|bucket:i64|BigOrder{venue_id:"binance:usdtPerp:ZZWUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),
+   side:book::Side::Bid,bucket,price:1.0,first_seen_ms:1_000,end_ms:None,status:Status::Live,
+   initial_notional:6e6,notional:6e6,filled_notional:0.0,threshold:5e6,vanished_notional:None};
+  // 三条写库连接全被别的币占着。
+  let held=WRITE_SLOTS.acquire_many(3).await.unwrap();
+  let (tx,rx)=mpsc::channel::<Write>(2);
+  let task=tokio::spawn(writer(PgPool::connect_lazy("postgres://nobody@127.0.0.1:1/none").unwrap(),"ZZW".into(),rx));
+  // 远超通道容量的一串：写库任务在排连接时也要接着收，跟踪那边的 send 不能卡住。
+  let sent=tokio::time::timeout(Duration::from_secs(2),async {
+   for b in 0..50 {tx.send(Write{step:1.0,rows:vec![(order(b),10_000)]}).await.unwrap();}
+  }).await;
+  assert!(sent.is_ok(),"排连接的时候通道没人收，跟踪任务卡在 send 上");
+  drop(held);
+  task.abort();
  }
 
  #[test] fn unlisted_bases_are_not_tracked() {
