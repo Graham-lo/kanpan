@@ -6,10 +6,11 @@ import ReviewDomain
 public struct ReviewBook: View {
   @Bindable var feature: ReviewFeature
   @Environment(\.reviewTheme) private var t
-  @State private var filter = ""
   @State private var savedOpen = false
   public init(feature: ReviewFeature) { self.feature = feature }
   public var body: some View {
+    // 一次 body 只取一次：过滤、分组都在 feature 里按输入缓存（`bookSections`）。
+    let sections = feature.bookSections
     NavigationStack {
       VStack(spacing: 0) {
         // 顶部：战绩摘要卡 + 三颗筛选（审计 §2.4）。原来是「待办 / 记录 / 战绩」三段
@@ -28,17 +29,17 @@ public struct ReviewBook: View {
           }
           switch feature.tab {
           case "todo":
-            group("待处理", records: filtered.filter { $0.needsAction })
-            group("等答案", records: filtered.filter { $0.outcome == .waiting && !$0.needsAction })
-          case "decided": group(nil, records: filtered.filter(\.isDecided))
-          default: group(nil, records: filtered)
+            group("待处理", records: sections.pending)
+            group("等答案", records: sections.waiting)
+          case "decided": group(nil, records: sections.decided)
+          default: group(nil, records: sections.all)
           }
           if feature.historyLoading { ProgressView().frame(maxWidth: .infinity).listRowBackground(t.app).listRowSeparator(.hidden) }
           if let error = feature.historyError {
             Text(error).font(ReviewType.body).foregroundStyle(t.danger).listRowBackground(t.app)
-            Button("重试") { Task { if feature.nextPage != nil && !feature.history.isEmpty { await feature.loadMoreHistory() } else { await feature.loadHistory(query: filter) } } }.listRowBackground(t.app)
+            Button("重试") { Task { if feature.nextPage != nil && !feature.history.isEmpty { await feature.loadMoreHistory() } else { await feature.loadHistory(query: feature.bookQuery) } } }.listRowBackground(t.app)
           }
-          if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
+          if sections.all.isEmpty && !feature.historyLoading && feature.historyError == nil {
             // 空状态一行字就够（§2G5）。只是一行字，不再是「记一笔」的第三个入口（审查 U6）：
             // 记一笔只留图表设置那一行和右上角的「+」，同一件事不摆三处。
             Text(feature.tab == "todo" ? "没有待判定的" : "还没有记录")
@@ -59,7 +60,8 @@ public struct ReviewBook: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(t.app)
-        .searchable(text: $filter, prompt: "搜品种或笔记")
+        // 字落在 feature 上，停手约 200ms 才落定成 `bookQuery`：本地过滤和服务端搜索都认那个。
+        .searchable(text: $feature.bookSearchText, prompt: "搜品种或笔记")
       }
       // iPad 满屏时这一列封顶居中，不然筛选摊成 1300pt、行里的胜率被甩到一米外。
       .readableColumn()
@@ -92,9 +94,9 @@ public struct ReviewBook: View {
       .navigationDestination(item: $feature.selectedRecord) { id in
         ReviewRecordView(feature: feature, id: id)
       }
-      .refreshable { feature.synchronize(manual: true); await feature.loadHistory(query: filter) }
-      .task(id: feature.tab) { await feature.loadHistory(query: filter) }
-      .task(id: filter) { do { try await Task.sleep(for: .milliseconds(350)); await feature.loadHistory(query: filter) } catch {} }
+      .refreshable { feature.synchronize(manual: true); await feature.loadHistory(query: feature.bookQuery) }
+      // 搜索词落定后的重拉在 feature 里（`commitBookQuery`），这儿只管换筛选。
+      .task(id: feature.tab) { await feature.loadHistory(query: feature.bookQuery) }
     }
     .tint(t.accent)
   }
@@ -156,7 +158,6 @@ public struct ReviewBook: View {
     .accessibilityIdentifier("review.chip.\(tag)")
     .accessibilityAddTraits(on ? .isSelected : [])
   }
-  private var filtered: [ReviewRecord] { feature.bookRecords.filter { filter.isEmpty || $0.draft.range.symbol.localizedCaseInsensitiveContains(filter) || $0.draft.text.localizedCaseInsensitiveContains(filter) } }
   @ViewBuilder private func group(_ title: String?, records: [ReviewRecord]) -> some View {
     if !records.isEmpty {
       Section {

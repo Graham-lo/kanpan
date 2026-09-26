@@ -5,7 +5,10 @@ import ReviewDomain
 import ReviewData
 
 @MainActor @Observable public final class ReviewFeature {
-  public var bookOpen = false
+  public var bookOpen = false {
+    // 复盘本关上时搜索框回到空：原来那串字是 `ReviewBook` 自己的 `@State`，每开一次就是新的。
+    didSet { if oldValue && !bookOpen { clearBookSearch() } }
+  }
   public var captureOpen = false
   public var searchOpen = false
   /// 这一轮「找相似」是从哪条记录上发起的。宿主拿它记住重温的来路：看完某个相似
@@ -13,7 +16,7 @@ import ReviewData
   public var searchRecord: UUID?
   public var selectedRecord: UUID?
   public var draft: ReviewDraft?
-  public private(set) var records: [ReviewRecord] = []
+  public private(set) var records: [ReviewRecord] = [] { didSet { recordsRevision &+= 1 } }
   public private(set) var matches: [ReviewMatch] = []
   public private(set) var statistics: [ReviewStatsGroup] = []
   /// 战绩按哪一版判定规则算的。服务端战绩响应里带着；没拉到之前就是本机草稿用的那一版。
@@ -119,7 +122,7 @@ import ReviewData
   @ObservationIgnored private var syncAgain: Bool?
   public var autoSync = true
   public private(set) var nextPage: String?
-  public private(set) var history: [ReviewRecord] = []
+  public private(set) var history: [ReviewRecord] = [] { didSet { historyRevision &+= 1 } }
   public private(set) var historyLoading = false
   public private(set) var historyError: String?
   private var historyGeneration = UUID()
@@ -138,12 +141,30 @@ import ReviewData
   /// 已经在云端的旧记录仍然只由分页说了算，不然往下接页会接出重复行。
   /// 搜过词之后不补——那种视图的口径在服务端，本地补进去就是串行。
   public var bookRecords: [ReviewRecord] {
+    // 这几样每次都要真的读一遍：它们是被观察的，缓存命中时不读，SwiftUI 就登记不上，
+    // 记录或服务端页变了列表也不会重画。读一个数组只是拿引用，不花 O(n)。
+    let key = BookKey(records: recordsRevision, history: historyRevision,
+                      pending: store?.archive.queue.map(\.recordId) ?? [],
+                      loaded: historyLoaded, query: historyQuery, connected: isConnected)
+    _ = records; _ = history
+    if let cached = bookCache, cached.key == key { return cached.value }
+    let value = buildBookRecords()
+    bookCache = (key, value); bookBuilds &+= 1
+    return value
+  }
+  /// 真正拼那一列。原来每次读 `bookRecords` 都跑一遍，而且每一条服务端记录都
+  /// `records.first(where:)` 线性找本机那份——H 条 × R 条的比较，复盘本 body 一次读三遍，
+  /// 搜索框每敲一字又同步读一遍（压测 2026-09-26：H=R=3000 时每字约 1350 万次 UUID 比较）。
+  /// 现在按 id 建一次索引（`recordIndex`，记录不变就不重建），整列按输入缓存。
+  private func buildBookRecords() -> [ReviewRecord] {
     guard isConnected && historyLoaded else { return records }
     let pending = Set(store?.archive.queue.map(\.recordId) ?? [])
+    let index = recordIndex
     // 待上传的、以及被隔离成冲突的，本机那份才是人刚写下的内容——和 `record(_:)`
     // 一个口径，不然同一条记录在列表上和点进去之后是两个样子。
     let page = history.map { item -> ReviewRecord in
-      guard let local = records.first(where: { $0.id == item.id }) else { return item }
+      guard let at = index[item.id] else { return item }
+      let local = records[at]
       return pending.contains(item.id) || local.conflict != nil ? local : item
     }
     guard historyQuery.isEmpty else { return page }
@@ -154,8 +175,83 @@ import ReviewData
     guard !extras.isEmpty else { return page }
     return (page + extras).sorted { $0.draft.created > $1.draft.created }
   }
+  /// `bookRecords` 的缓存键：任何一样变了才重拼。
+  private struct BookKey: Equatable {
+    var records: Int, history: Int, pending: [UUID], loaded: Bool, query: String, connected: Bool
+  }
+  @ObservationIgnored private var recordsRevision = 0
+  @ObservationIgnored private var historyRevision = 0
+  @ObservationIgnored private var bookCache: (key: BookKey, value: [ReviewRecord])?
+  @ObservationIgnored private var sectionsCache: (key: BookKey, query: String, value: ReviewBookSections)?
+  @ObservationIgnored private var recordIndexCache: (revision: Int, map: [UUID: Int])?
+  /// 测试用：`bookRecords` / `bookSections` / 按 id 的索引各真拼过几次。
+  @ObservationIgnored private(set) var bookBuilds = 0
+  @ObservationIgnored private(set) var sectionBuilds = 0
+  @ObservationIgnored private(set) var indexBuilds = 0
+  /// 本机记录按 id 的位置。同一个 id 出现两次时认前面那条，和原来的 `first(where:)` 一致。
+  private var recordIndex: [UUID: Int] {
+    if let cached = recordIndexCache, cached.revision == recordsRevision { return cached.map }
+    var map = [UUID: Int](minimumCapacity: records.count)
+    for (at, record) in records.enumerated() where map[record.id] == nil { map[record.id] = at }
+    recordIndexCache = (recordsRevision, map); indexBuilds &+= 1
+    return map
+  }
+
+  // MARK: - 复盘本的搜索框
+
+  /// 搜索框里此刻的字（`ReviewBook` 的 `.searchable` 绑在这儿）。
+  ///
+  /// 列表不跟着每一个字重算：停手 `bookSearchDebounce` 之后才落到 `bookQuery`，
+  /// 本地过滤和服务端搜索都认 `bookQuery`。清空是一下子的事，不等。
+  public var bookSearchText = "" { didSet { if bookSearchText != oldValue { scheduleBookQuery() } } }
+  /// 落定的搜索词。
+  public private(set) var bookQuery = ""
+  /// 停手多久才算落定。
+  @ObservationIgnored public var bookSearchDebounce: Duration = .milliseconds(200)
+  /// 等那一下的办法。测试换成手拨的，不靠墙钟睡。
+  @ObservationIgnored var bookSearchSleep: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+  @ObservationIgnored private var bookQueryTask: Task<Void, Never>?
+  /// 测试用：搜索词真落定过几次。
+  @ObservationIgnored private(set) var bookQueryCommits = 0
+  private func scheduleBookQuery() {
+    bookQueryTask?.cancel(); bookQueryTask = nil
+    let text = bookSearchText
+    guard !text.isEmpty else { commitBookQuery(text); return }
+    let wait = bookSearchDebounce
+    bookQueryTask = Task { [weak self] in
+      do { try await self?.bookSearchSleep(wait) } catch { return }
+      guard !Task.isCancelled, let self, self.bookSearchText == text else { return }
+      self.commitBookQuery(text)
+    }
+  }
+  private func commitBookQuery(_ text: String) {
+    guard text != bookQuery else { return }
+    bookQuery = text; bookQueryCommits &+= 1
+    // 服务端那一页也按落定的词重拉。原来是 `ReviewBook` 上一个 `.task(id: filter)` 睡 350ms 再拉。
+    if bookOpen && isConnected { Task { await loadHistory(query: text) } }
+  }
+  /// 测试用：等最后一次输入落定（或被取消）。
+  func settleBookSearch() async { await bookQueryTask?.value }
+  private func clearBookSearch() {
+    bookQueryTask?.cancel(); bookQueryTask = nil
+    bookSearchText = ""
+    if !bookQuery.isEmpty { bookQuery = "" }
+  }
+
+  /// 复盘本这一屏要摆的几组：按落定的搜索词过滤一遍，再一趟分进「待处理 / 等答案 / 已判定」。
+  /// 输入（`bookRecords` 的键、搜索词）不变就不重算——body 里读几次都是同一份。
+  public var bookSections: ReviewBookSections {
+    let rows = bookRecords
+    let query = bookQuery
+    // `bookRecords` 刚把 `bookCache` 填好，键就在那儿。
+    guard let key = bookCache?.key else { return ReviewBookSections(rows, query: query) }
+    if let cached = sectionsCache, cached.key == key, cached.query == query { return cached.value }
+    let value = ReviewBookSections(rows, query: query)
+    sectionsCache = (key, query, value); sectionBuilds &+= 1
+    return value
+  }
   public func record(_ id: UUID) -> ReviewRecord? {
-    let local = records.first(where: { $0.id == id })
+    let local = recordIndex[id].map { records[$0] }
     // 还在队列里、或者被隔离成冲突的，本机那份才是人刚写下的内容。
     if store?.archive.queue.contains(where: { $0.recordId == id }) == true || local?.conflict != nil { return local }
     return history.first(where: { $0.id == id }) ?? local
@@ -179,7 +275,7 @@ import ReviewData
   /// 白读一遍、白建一个目录。
   public init() {}
   public func activate(store: ReviewStore, client: ScorebookClient?) {
-    syncTask?.cancel(); cancelSearch(); epoch = UUID(); syncID = UUID()
+    syncTask?.cancel(); cancelSearch(); epoch = UUID(); syncID = UUID(); clearBookSearch()
     attachmentCache = [:]; attachmentOrder = []
     self.store = store; self.client = client; store.cloudCache = client != nil
     syncing = false; syncAgain = nil; searching = false; matches = []; statistics = []; searchID = nil; searchGeneration = UUID(); searchNext = nil; savedMatchIDs = []
@@ -642,3 +738,28 @@ import ReviewData
 
 /// 复盘里一件事的结果，宿主按它出触觉（P2.9）。
 public enum ReviewFeedback: Sendable, Equatable { case done, removed }
+
+/// 复盘本一屏的几组（`ReviewFeature.bookSections`）。一趟过滤、一趟分组。
+public struct ReviewBookSections: Sendable {
+  /// 过滤后的全部（「全部」那一档，空状态也看它）。
+  public let all: [ReviewRecord]
+  /// 待处理：`needsAction`。
+  public let pending: [ReviewRecord]
+  /// 等答案：还在等、又不欠人处理的。
+  public let waiting: [ReviewRecord]
+  /// 已判定。
+  public let decided: [ReviewRecord]
+  init(_ rows: [ReviewRecord], query: String) {
+    var all: [ReviewRecord] = [], pending: [ReviewRecord] = [], waiting: [ReviewRecord] = [], decided: [ReviewRecord] = []
+    all.reserveCapacity(rows.count)
+    for record in rows {
+      guard query.isEmpty || record.draft.range.symbol.localizedCaseInsensitiveContains(query)
+              || record.draft.text.localizedCaseInsensitiveContains(query) else { continue }
+      all.append(record)
+      let acts = record.needsAction
+      if acts { pending.append(record) } else if record.outcome == .waiting { waiting.append(record) }
+      if record.isDecided { decided.append(record) }
+    }
+    self.all = all; self.pending = pending; self.waiting = waiting; self.decided = decided
+  }
+}
