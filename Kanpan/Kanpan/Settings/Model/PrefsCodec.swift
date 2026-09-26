@@ -369,8 +369,10 @@ extension Prefs: Codable {
     if let v = bool(.favoritesAmount) { favoritesAmount = v }
     if let v = bool(.favoritesSparkline) { favoritesSparkline = v }
     // 分类 id 是本机生成的 UUID 串，认不认得出交给 `SymbolPrefs.group(_:)`；
-    // 这儿只拦长度，128 这个数和服务端 `sync_validation.rs` 给它的上限逐字相同。
-    if let raw = str(.favoritesGroup), raw.count <= 128 { favoritesGroup = raw }
+    // 这儿只拦长度，128 这个数和服务端 `sync_validation.rs` 给它的上限逐字相同——
+    // 服务端 `string(v, 128)` 数的是 **UTF-8 字节**，所以这儿也数字节，不数字符：
+    // 原来 `raw.count` 数的是字形簇，128 个汉字（384 字节）本地收下、推上去整条被拒。
+    if let raw = str(.favoritesGroup), raw.utf8.count <= 128 { favoritesGroup = raw }
     if let raw = str(.sectorMarket), let v = SectorMarket(rawValue: raw) { sectorMarket = v }
     if let raw = str(.sectorWindow), let v = SectorWindow(rawValue: raw) { sectorWindow = v }
     // 这两项和服务端 `sync_validation.rs` 的值规则逐字对齐：排序只认枚举里那几档，
