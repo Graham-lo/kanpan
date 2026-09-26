@@ -87,7 +87,11 @@ public struct VenueBook: Sendable {
   }
 
   /// REST 快照到了：和已缓冲的增量对序号。
+  ///
+  /// 簿已经就绪（这条连接上一份快照接上了、之后一直按增量走）时迟到的快照一律不理：它只会比簿旧，
+  /// 拿它去 bootstrap 会把就绪的簿整本盖回旧快照、打回「拉快照中」，接着第一条增量对不上又要再拉一份。
   mutating func applySnapshot(_ snapshot: BookSnapshot, nowMs: Int64) -> OrderFlowModel.Action {
+    guard !isReady else { return .none }
     var snapshot = snapshot
     snapshot.connection = connection
     pendingSnapshot = snapshot

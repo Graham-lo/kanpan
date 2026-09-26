@@ -451,18 +451,26 @@ public actor OrderFlowFeed {
     }
   }
 
+  /// 在拉快照的那个任务里跑（actor 方法跟着调用方的任务走），所以 `Task.isCancelled` 就是「这一份被作废了没有」。
+  ///
+  /// 作废了（断线、换连接、停了）一律不理：拉快照那头「没被取消」的检查和这里之间隔着一次 actor 跳转，
+  /// 断线 + 新连接起的新任务可能就排在中间——原来这里照样清掉 `snapshotTasks[venue]`（清掉的是新任务那一格，
+  /// 同一本簿于是能同时拉两份），还把旧连接那一份快照塞给新连接的簿。
   private func applied(_ snapshot: BookSnapshot, venue: String, stream index: Int) async {
-    snapshotTasks[venue] = nil
+    guard !Task.isCancelled else { return }
     let action = model.applySnapshot(venue, snapshot, nowMs: clock())
     if action == .fetchSnapshot {
-      // 快照比缓冲的增量还旧（或对不上）：等一小会儿让增量攒起来再拉，别连打。
-      try? await pacer.sleep(ms: 500)
-      guard !stopped else { return }
+      // 快照比缓冲的增量还旧（或对不上）：等一小会儿让增量攒起来再拉，别连打。等的这段时间这一格仍记着
+      // 本任务：期间断线照样能把它作废，增量那头要求的重拉也不会另起一份。
+      do { try await pacer.sleep(ms: 500) } catch { return }
+      guard !stopped, !Task.isCancelled else { return }
     }
+    snapshotTasks[venue] = nil
     await perform(action, venue: venue, stream: index)
   }
 
   private func snapshotFailed(_ venue: String, _ message: String) {
+    guard !Task.isCancelled else { return }
     snapshotTasks[venue] = nil
     log("主力订单流 \(symbol) \(venue) \(message)")
   }
