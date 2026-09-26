@@ -153,6 +153,32 @@ async fn a_wrong_password_is_told_apart_from_a_dead_session() {
  s.pool.close().await;admin.close().await;
 }
 
+/// 改密码、删账号上验旧密码和登录共用同一本失败账：以前只有登录记账，拿着一张令牌的人
+/// 可以在改密码上无限次试旧密码。现在猜错五次锁一分钟，锁着时猜对也改不了、删不了、
+/// 登录不了；回的码照旧是 wrong_password（登录那边照旧 401），协议不变。
+#[tokio::test]
+async fn guessing_the_old_password_counts_against_the_same_lock_as_login() {
+ let (s,app,admin)=boot().await;
+ let peer="192.0.2.72:19000";let username=name("guess");let d=device("A phone");
+ let a=signup(&app,&username,&d).await;let at=a["accessToken"].as_str().unwrap().to_string();
+ for _ in 0..5 {
+  let (status,v)=request(&app,"/v1/auth/password/change","POST",peer,&[],Some(&at),json!({"currentPassword":"Wrongpass123","newPassword":"Passcode456"})).await;
+  assert_eq!((status.as_u16(),v["error"]["code"].as_str()),(401,Some("wrong_password")),"{v}");
+ }
+ let (status,v)=request(&app,"/v1/auth/password/change","POST",peer,&[],Some(&at),json!({"currentPassword":"Passcode123","newPassword":"Passcode456"})).await;
+ assert_eq!((status.as_u16(),v["error"]["code"].as_str()),(401,Some("wrong_password")),"锁着的时候猜对也改不了：{v}");
+ let (status,_)=request(&app,"/v1/auth/account","DELETE",peer,&[],Some(&at),json!({"password":"Passcode123"})).await;
+ assert_eq!(status,401,"锁着的时候也删不了");
+ let (status,_)=request(&app,"/v1/auth/login","POST",peer,&[],None,json!({"username":username,"password":"Passcode123","device":d})).await;
+ assert_eq!(status,401,"同一本账：改密码上猜错，登录也锁着");
+ sqlx::query("DELETE FROM account_limits WHERE key=$1").bind(s.secrets.keyed(&format!("login:{username}"))).execute(&admin).await.unwrap();
+ let (status,v)=request(&app,"/v1/auth/password/change","POST",peer,&[],Some(&at),json!({"currentPassword":"Passcode123","newPassword":"Passcode456"})).await;
+ assert_eq!(status,200,"锁过了就照常：{v}");
+ let left:i64=sqlx::query_scalar("SELECT count(*) FROM account_limits WHERE key=$1").bind(s.secrets.keyed(&format!("login:{username}"))).fetch_one(&admin).await.unwrap();
+ assert_eq!(left,0,"改成功后失败账清零");
+ s.pool.close().await;admin.close().await;
+}
+
 // ---- 每一类设备同时只准一台在线（2026-09-19）----
 //
 // 手机一类、平板一类、电脑一类：一部 iPhone + 一台 iPad + 一台 Mac 同时在线是允许的，

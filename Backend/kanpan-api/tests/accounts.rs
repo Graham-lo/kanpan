@@ -92,6 +92,9 @@ async fn real_postgres_accounts_isolation_and_retry() {
  // A five-attempt lock applies even when the next password is correct.
  for _ in 0..5 {assert_eq!(request(&app,"/v1/auth/login","POST",None,json!({"email":"bob_test","password":"wrongpass","device":b_device})).await.0,401);}
  assert_eq!(request(&app,"/v1/auth/login","POST",None,json!({"email":"bob_test","password":"Passcode123","device":b_device})).await.0,401);
+ // 删账号和登录共用同一本失败账：锁着的时候拿对的密码也删不掉。
+ assert_eq!(request(&app,"/v1/auth/account","DELETE",Some(bt),json!({"password":"Passcode123"})).await.0,401);
+ sqlx::query("DELETE FROM account_limits WHERE key=$1").bind(s.secrets.keyed("login:bob_test")).execute(&admin).await.unwrap();
  let (status,v)=request(&app,"/v1/auth/account","DELETE",Some(bt),json!({"password":"Passcode123"})).await;assert_eq!(status,200,"{v}");
  assert_eq!(request(&app,"/v1/auth/me","GET",Some(bt),json!({})).await.0,401);
  let remaining:i64=sqlx::query_scalar("SELECT count(*) FROM sync_objects WHERE user_id=$1").bind(Uuid::parse_str(b["user"]["id"].as_str().unwrap()).unwrap()).fetch_one(&admin).await.unwrap();assert_eq!(remaining,0);
