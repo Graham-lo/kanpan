@@ -109,10 +109,90 @@ pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
   .merge(auth::routes()).merge(export::routes()).merge(legal::routes()).merge(sync::routes()).merge(alerts::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(market_depth::routes()).merge(orderflow_instruments::routes()).merge(orderflow_history::routes()).merge(market_relay::routes()).merge(sector_history::routes()).merge(oi_archive::routes()).merge(venues::routes())
   .layer(DefaultBodyLimit::max(512*1024))
+  // 在超时那层里面：排队等名额的时间也算进三十秒。
+  .layer(axum::middleware::from_fn(session_slots))
   // 一个请求最多占住一条连接三十秒。池子只有八条连接，一个卡死的查询就能把
   // 剩下的人一起挡在门外；超时之后连接回池，客户端本来也早就重试了。
   .layer(tower_http::timeout::TimeoutLayer::with_status_code(axum::http::StatusCode::REQUEST_TIMEOUT,Duration::from_secs(30)))
   .with_state(s)
+}
+
+/// 同一把登录令牌（一台设备的一个会话）同时最多有几个请求在处理。
+pub const SESSION_SLOTS:usize=3;
+type Slots=std::sync::Mutex<std::collections::HashMap<u64,Arc<tokio::sync::Semaphore>>>;
+static SESSION_GATES:std::sync::LazyLock<(std::collections::hash_map::RandomState,Slots)>=std::sync::LazyLock::new(Default::default);
+/// 一个人不能把连接池一个人占满。
+///
+/// 池子八条连接给所有人共用，而几乎每条带登录的路都要在事务里拿**这个人自己的**锁
+/// （同步 / 复盘 / 分享各一把 advisory 锁，还有账号行、同步对象行的行锁；worker 记已触发
+/// 提醒时也拿同步那一把）。那把锁一旦被慢事务攥着，这个人同时发来的每个请求都会
+/// 先拿一条连接、再在锁上干等到锁等上限（5 秒）——他发十六个，八条连接就全被他占着等，
+/// 其他人一个都进不来。压测：锁住一个账号、他同时发 16 个请求，其他人的 80 个请求从
+/// 0.2 秒拖到 9.8 秒。
+///
+/// 所以按令牌限并发：同一把 Bearer 令牌同时最多 [`SESSION_SLOTS`] 个请求往下走，多出来的
+/// 在进程里排队，**不占连接**。按令牌而不是按账号，是因为这里还没查库、不知道是谁；
+/// 一个账号每类设备只准一台在线，实际就是一两台设备。令牌只取哈希当键，内存里不留原文。
+/// 伪造的令牌只限得住它自己。名额在处理函数返回答复头时就还——流式的答复体慢慢发，
+/// 不占名额（那段时间也不占连接）。
+async fn session_slots(req:axum::extract::Request,next:axum::middleware::Next)->axum::response::Response {
+ use std::hash::BuildHasher;
+ let Some(token)=req.headers().get("authorization").and_then(|h|h.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")) else {return next.run(req).await};
+ let (hasher,gates)=&*SESSION_GATES;let key=hasher.hash_one(token);
+ let gate=gates.lock().unwrap_or_else(|e|e.into_inner()).entry(key).or_insert_with(||Arc::new(tokio::sync::Semaphore::new(SESSION_SLOTS))).clone();
+ let lease=SessionLease{key,gate};
+ let _slot=lease.gate.acquire().await.expect("Session gate is never closed");
+ next.run(req).await
+}
+/// 请求结束（包括超时那层把它半路丢掉）时，没人再用这把令牌的闸就从表里拿掉：
+/// 表的大小跟着在途的令牌数走，不随时间长。
+struct SessionLease {key:u64,gate:Arc<tokio::sync::Semaphore>}
+impl Drop for SessionLease {
+ fn drop(&mut self) {
+  let mut map=SESSION_GATES.1.lock().unwrap_or_else(|e|e.into_inner());
+  // 表里一份、这里一份：别的请求都已经不拿着它了（拿的时候也要先过这把锁）。
+  if Arc::strong_count(&self.gate)==2 {map.remove(&self.key);}
+ }
+}
+#[cfg(test)]
+mod session_slots_tests {
+ use super::*;
+ use axum::{body::Body,http::Request,routing::get};
+ use std::sync::atomic::{AtomicUsize,Ordering};
+ use tower::ServiceExt;
+ fn gate_open(token:&str)->bool {use std::hash::BuildHasher;let (h,g)=&*SESSION_GATES;g.lock().unwrap().contains_key(&h.hash_one(token))}
+ /// 同一把令牌同时来 12 个请求：同时在处理的不超过名额，全部做完后闸从表里拿掉；
+ /// 另一把令牌不受它排队的影响。
+ #[tokio::test(flavor="multi_thread",worker_threads=4)]
+ async fn one_token_is_held_to_its_slots_and_its_gate_is_released() {
+  static NOW:AtomicUsize=AtomicUsize::new(0);static PEAK:AtomicUsize=AtomicUsize::new(0);
+  let app:Router=Router::new().route("/slow",get(||async {let n=NOW.fetch_add(1,Ordering::SeqCst)+1;PEAK.fetch_max(n,Ordering::SeqCst);tokio::time::sleep(Duration::from_millis(100)).await;NOW.fetch_sub(1,Ordering::SeqCst);"ok"}))
+   .route("/fast",get(||async {"ok"})).layer(axum::middleware::from_fn(session_slots));
+  let token="slots-test-token-a";
+  let mut set=tokio::task::JoinSet::new();
+  for _ in 0..12 {let app=app.clone();set.spawn(async move {app.oneshot(Request::get("/slow").header("authorization",format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap().status()});}
+  tokio::time::sleep(Duration::from_millis(30)).await;
+  let t=std::time::Instant::now();
+  let other=app.clone().oneshot(Request::get("/fast").header("authorization","Bearer slots-test-token-b").body(Body::empty()).unwrap()).await.unwrap();
+  assert_eq!(other.status(),200);assert!(t.elapsed()<Duration::from_millis(50),"another token waited {:?}",t.elapsed());
+  while let Some(r)=set.join_next().await {assert_eq!(r.unwrap(),200);}
+  assert_eq!(PEAK.load(Ordering::SeqCst),SESSION_SLOTS);
+  assert!(!gate_open(token),"a finished token left its gate behind");
+ }
+ /// 超时那层把排队中、处理中的请求半路丢掉，闸同样要还、要从表里拿掉。
+ #[tokio::test]
+ async fn a_request_dropped_mid_flight_releases_its_gate() {
+  let app:Router=Router::new().route("/hang",get(||async {std::future::pending::<()>().await;"never"})).layer(axum::middleware::from_fn(session_slots))
+   .layer(tower_http::timeout::TimeoutLayer::with_status_code(axum::http::StatusCode::REQUEST_TIMEOUT,Duration::from_millis(50)));
+  let token="slots-test-token-c";
+  let mut set=tokio::task::JoinSet::new();
+  for _ in 0..6 {let app=app.clone();set.spawn(async move {app.oneshot(Request::get("/hang").header("authorization",format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap().status()});}
+  while let Some(r)=set.join_next().await {assert_eq!(r.unwrap(),408);}
+  assert!(!gate_open(token),"timed-out requests left the gate behind");
+  // 名额也都还回来了：再来一个照样能进（仍然挂住、再超时，而不是排不上队）。
+  let st=app.oneshot(Request::get("/hang").header("authorization",format!("Bearer {token}")).body(Body::empty()).unwrap()).await.unwrap().status();
+  assert_eq!(st,408);assert!(!gate_open(token));
+ }
 }
 
 pub mod review_domain;
