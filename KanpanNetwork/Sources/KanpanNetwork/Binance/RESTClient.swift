@@ -58,7 +58,7 @@ public actor BinanceREST {
       tried += 1
       do { try await limiter.acquire(weight: weight, quota: quota) }
       catch let error as BinanceError where error.isBlocked {
-        log("上游封禁未解除（还剩 \(Int((error.retryAfter ?? 0).rounded(.up))) 秒），这一笔不发：\(url.path)")
+        log("上游封禁未解除（还剩 \(BinanceError.wholeSeconds(error.retryAfter ?? 0)) 秒），这一笔不发：\(url.path)")
         throw BinanceError(status: error.status, code: error.code, msg: error.msg,
                            url: url.absoluteString, retryAfter: error.retryAfter,
                            reason: .blocked)
@@ -74,7 +74,7 @@ public actor BinanceREST {
         // 走网关/对冲那条路时，上游的状态码是被 transport 吞掉再抛出来的，
         // 到不了下面 `reply.status` 那段。不在这儿记一笔，限流器就永远不知道
         // 自己已经被 ban 了，只会接着往枪口上撞——表现成「用一会儿涨跌幅全空」。
-        log("限流 \(error.status)（\(error.proxied ? "网关上游" : "上游")），Retry-After=\(error.retryAfter.map { "\(Int($0.rounded(.up)))s" } ?? "无")\(error.proxied ? "，只冷却那台网关" : "，记录罚停")")
+        log("限流 \(error.status)（\(error.proxied ? "网关上游" : "上游")），Retry-After=\(error.retryAfter.map { "\(BinanceError.wholeSeconds($0))s" } ?? "无")\(error.proxied ? "，只冷却那台网关" : "，记录罚停")")
         // 网关转述的限流不罚我们自己这把限流器：被限的是网关的出口 IP，
         // 该歇的是那台网关（`MarketRESTTransport` 已按 `Retry-After` 记下冷却）。
         if !error.proxied {
@@ -105,7 +105,7 @@ public actor BinanceREST {
       }
       let err = decodeError(reply, url: url)
       if err.isRateLimited {
-        log("限流 \(reply.status)，Retry-After=\(err.retryAfter.map { "\(Int($0.rounded(.up)))s" } ?? "无")，记录罚停")
+        log("限流 \(reply.status)，Retry-After=\(err.retryAfter.map { "\(BinanceError.wholeSeconds($0))s" } ?? "无")，记录罚停")
         await limiter.penalize(status: err.status, retryAfterSeconds: err.retryAfter)
         if tried < attempts, !err.isIPBan {
           continue

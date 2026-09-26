@@ -15,9 +15,15 @@ actor CoinbaseRateLimiter {
   /// 被 429 罚停到这个时刻。
   private var blockedUntilMs: Double = -.infinity
 
-  init(perSecond: Double = 10, pacer: Pacer = SystemPacer()) {
+  /// 罚停还剩多久以内就原地等掉；再长就当场抛 `.blocked`，把「点此重试」交回用户。
+  /// 和币安那把 `RateLimiter.waitableBanMs` 同一个数、同一个道理。
+  private let waitableBanMs: Double
+
+  init(perSecond: Double = 10, pacer: Pacer = SystemPacer(),
+       waitableBanMs: Double = RateLimiter.waitableBanMs) {
     self.gapMs = 1000 / max(1, perSecond)
     self.pacer = pacer
+    self.waitableBanMs = waitableBanMs
   }
 
   /// 排一个出站的位置。排到了才返回。
@@ -31,7 +37,13 @@ actor CoinbaseRateLimiter {
     while true {
       try Task.checkCancellation()
       let now = await pacer.nowMs()
-      let wait = max(blockedUntilMs - now, lastSendMs + gapMs - now)
+      // 原来罚停多久都一声不吭地睡：`Retry-After: 60` 就让首屏、补缺静默挂一分钟，
+      // 界面上既没有错误也没有重试；值再大就等于永远挂住。
+      let banRemaining = blockedUntilMs - now
+      if banRemaining > waitableBanMs {
+        throw UpstreamError.blocked(seconds: banRemaining / 1000)
+      }
+      let wait = max(banRemaining, lastSendMs + gapMs - now)
       if wait <= 0 {
         lastSendMs = now
         return
@@ -43,6 +55,7 @@ actor CoinbaseRateLimiter {
   /// 被限流了：从现在起这么久谁都不许再发。
   func penalize(seconds: TimeInterval) async {
     let now = await pacer.nowMs()
-    blockedUntilMs = max(blockedUntilMs, now + max(0.1, seconds) * 1000)
+    let secs = UpstreamError.sanitizedRetryAfter(seconds) ?? 1
+    blockedUntilMs = max(blockedUntilMs, now + max(0.1, secs) * 1000)
   }
 }

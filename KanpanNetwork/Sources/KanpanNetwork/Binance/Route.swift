@@ -129,7 +129,7 @@ public actor MarketRESTTransport: HTTPTransport {
       // 业务层会当成普通故障接着往枪口上撞（A-05 / A.10）。
       if let limit = gatewayLimitRemaining() {
         let banned = limit.upstreamStatus == 418 || limit.upstreamStatus == 403
-        log("网关上游限流未解除（上游 \(limit.upstreamStatus)，还剩 \(Int(limit.remaining.rounded(.up))) 秒），\(url.path) 这一笔不发")
+        log("网关上游限流未解除（上游 \(limit.upstreamStatus)，还剩 \(BinanceError.wholeSeconds(limit.remaining)) 秒），\(url.path) 这一笔不发")
         throw BinanceError(status: banned ? 418 : 429,
                            msg: "网关上游限流未解除（上游 \(limit.upstreamStatus)）",
                            url: url.absoluteString, retryAfter: limit.remaining,
@@ -156,7 +156,7 @@ public actor MarketRESTTransport: HTTPTransport {
         // 冷却期内要按原类别（418/403 封禁、429 超频）重放，不能一律降级成 429。
         if let upstream = raced.limits[candidate.host] {
           gatewayLimited[candidate.host] = GatewayLimit(until: deadline, upstreamStatus: upstream)
-          log("网关 \(candidate.host) 上游限流（\(upstream)），歇 \(Int(seconds.rounded(.up))) 秒")
+          log("网关 \(candidate.host) 上游限流（\(upstream)），歇 \(BinanceError.wholeSeconds(seconds)) 秒")
         } else {
           gatewayLimited[candidate.host] = nil
         }
@@ -385,7 +385,7 @@ public actor MarketRESTTransport: HTTPTransport {
       // 418（IP ban）和 403（币安对被封出口也会回这个）都是 IP 级封禁，起步 2 分钟；
       // 429 只是超频，起步 10 秒。
       let banned = code == 418 || code == 403
-      let said = max(body?.retryAfter ?? 0, header ?? 0)
+      let said = max(BinanceError.sanitizedRetryAfter(body?.retryAfter) ?? 0, header ?? 0)
       let seconds = said > 0 ? said
         : (banned ? RateLimiter.ipBanFloorSeconds : RateLimiter.rateLimitFloorSeconds)
       let who = [body?.source, upstream.isEmpty ? nil : upstream].compactMap { $0 }.joined(separator: " ")
@@ -399,7 +399,7 @@ public actor MarketRESTTransport: HTTPTransport {
     case "upstream_blocked":
       // 地域拒绝不是「忙一下」：这台网关的出口被上游按地区拒了，10 秒后再问还是同一堵墙。
       // 上游说了多久就听它的，没说按 60 秒（和网关自己记的那一档一致）。
-      let said = max(body?.retryAfter ?? 0, header ?? 0)
+      let said = max(BinanceError.sanitizedRetryAfter(body?.retryAfter) ?? 0, header ?? 0)
       let geoSeconds = said > 0 ? said : gatewayGeoCooldownSeconds
       return GatewayFailure(cooldown: geoSeconds,
                             error: BinanceError(status: 451, code: body?.code,

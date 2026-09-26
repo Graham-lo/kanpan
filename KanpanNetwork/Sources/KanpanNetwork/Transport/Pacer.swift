@@ -14,7 +14,9 @@ public struct SystemPacer: Pacer {
   }
   public func sleep(ms: Double) async throws {
     guard ms > 0 else { return }
-    try await Task.sleep(nanoseconds: UInt64(ms * 1e6))
+    // `UInt64(inf)`、`UInt64(≥ 1.8e19)` 会直接崩。一年以上的睡眠在这个 app 里不存在，
+    // 真碰上就当它睡一年（照样认取消）。
+    try await Task.sleep(nanoseconds: UInt64(min(ms, 365 * 86_400_000) * 1e6))
   }
 }
 

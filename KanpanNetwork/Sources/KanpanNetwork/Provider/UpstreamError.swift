@@ -67,15 +67,15 @@ public struct UpstreamError: Error, Sendable, Equatable, CustomStringConvertible
   public static func blocked(seconds: TimeInterval, upstreamStatus: Int = 429,
                              url: String? = nil) -> UpstreamError {
     UpstreamError(status: 429, code: nil,
-                 msg: "上游封禁未解除（\(upstreamStatus)），还要等 \(Int(seconds.rounded(.up))) 秒",
-                 url: url, retryAfter: max(0, seconds), reason: .blocked)
+                 msg: "上游封禁未解除（\(upstreamStatus)），还要等 \(wholeSeconds(seconds)) 秒",
+                 url: url, retryAfter: sanitizedRetryAfter(seconds) ?? 0, reason: .blocked)
   }
 
   public var description: String {
     var s = "HTTP \(status)"
     if reason != .http { s += " \(reason.rawValue)" }
     if let code { s += " code=\(code)" }
-    if let retryAfter { s += " retryAfter=\(Int(retryAfter.rounded(.up)))s" }
+    if let retryAfter { s += " retryAfter=\(Self.wholeSeconds(retryAfter))s" }
     if let msg { s += " \(msg)" }
     if let url { s += " \(url)" }
     return s
@@ -114,14 +114,34 @@ public struct UpstreamError: Error, Sendable, Equatable, CustomStringConvertible
   /// 只读秒数的话，发 HTTP-date 的那一边就等于没给（A-03）。
   public static func retryAfterSeconds(_ raw: String?, now: Date = Date()) -> TimeInterval? {
     guard let text = raw?.trimmingCharacters(in: .whitespaces), !text.isEmpty else { return nil }
-    if let seconds = Double(text) { return seconds > 0 ? seconds : nil }
+    if let seconds = Double(text) { return sanitizedRetryAfter(seconds) }
     for formatter in httpDateFormatters {
       if let date = formatter.date(from: text) {
-        let seconds = date.timeIntervalSince(now)
-        return seconds > 0 ? seconds : nil
+        return sanitizedRetryAfter(date.timeIntervalSince(now))
       }
     }
     return nil
+  }
+
+  /// 上游说的「歇多久」最多听多久：币安文档里 IP 封禁最长 3 天。
+  ///
+  /// 原来 `Retry-After` 解出来是多少就用多少：`inf`、`1e400`、`1e30`、年份 9999 的
+  /// HTTP-date 都原样往下传，第一个 `Int(x.rounded(.up))`（日志、错误文案）或
+  /// `UInt64(ms * 1e6)`（`SystemPacer.sleep`）当场让整个 app 闪退；有限但巨大的值
+  /// 则把进程共用的限流器封到几十年后，只有杀进程才解。代理、强制门户、
+  /// 配错的网关都可能吐出这种头，所以在入口把它收成「有限、正、至多 3 天」。
+  public static let maxRetryAfterSeconds: TimeInterval = 3 * 86_400
+
+  /// 非有限、非正 → nil（等于没给）；过大 → 封顶。
+  public static func sanitizedRetryAfter(_ seconds: Double?) -> TimeInterval? {
+    guard let seconds, seconds.isFinite, seconds > 0 else { return nil }
+    return min(seconds, maxRetryAfterSeconds)
+  }
+
+  /// 秒数 → 给人看的整数秒。任何 Double 进来都不会崩（`Int(inf)` 会）。
+  static func wholeSeconds(_ seconds: Double) -> Int {
+    guard seconds.isFinite else { return seconds > 0 ? Int(maxRetryAfterSeconds) : 0 }
+    return Int(min(max(seconds, -maxRetryAfterSeconds), maxRetryAfterSeconds).rounded(.up))
   }
 
   /// HTTP-date 的三种写法（RFC 9110 §5.6.7）。`DateFormatter` 不便宜，建一次存着。

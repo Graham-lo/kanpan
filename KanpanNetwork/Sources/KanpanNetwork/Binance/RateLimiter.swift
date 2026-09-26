@@ -136,7 +136,9 @@ public actor RateLimiter {
         continue
       }
       let used = spent.reduce(0) { $0 + $1.weight }
-      if used + weight > budget {
+      // 窗口已经空了还不够，就是这一笔本身比整个预算还重（预算被 `apply(rules:)` 调得
+      // 比单笔权重还小）：原来会每 60 秒醒一次、永远不放行也不报错。空窗口时放它走。
+      if used > 0, used + weight > budget {
         // 等最老的那笔滑出窗口。
         let wait = (spent.first.map { $0.at + windowMs - now } ?? windowMs) + 1
         try await pacer.sleep(ms: max(1, wait))
@@ -166,7 +168,7 @@ public actor RateLimiter {
   /// 拿到了线上的响应就该走 `penalize(status:retryAfterSeconds:)`。
   public func penalize(retryAfterSeconds: Double?) async {
     penaltyCount += 1
-    let secs = retryAfterSeconds ?? min(30, pow(2, Double(penaltyCount - 1)))
+    let secs = UpstreamError.sanitizedRetryAfter(retryAfterSeconds) ?? min(30, pow(2, Double(penaltyCount - 1)))
     await ban(seconds: secs, status: 429)
   }
 
@@ -178,8 +180,8 @@ public actor RateLimiter {
   public func penalize(status: Int, retryAfterSeconds: Double?) async {
     penaltyCount += 1
     let secs: Double
-    if let retryAfterSeconds, retryAfterSeconds > 0 {
-      secs = retryAfterSeconds
+    if let said = UpstreamError.sanitizedRetryAfter(retryAfterSeconds) {
+      secs = said
     } else if status == 418 {
       secs = Self.ipBanFloorSeconds
     } else {
@@ -190,7 +192,7 @@ public actor RateLimiter {
 
   private func ban(seconds: Double, status: Int) async {
     let now = await nowMs()
-    let until = now + max(0, seconds) * 1000
+    let until = now + (UpstreamError.sanitizedRetryAfter(seconds) ?? 0) * 1000
     if until >= blockedUntilMs { blockedStatus = status }
     blockedUntilMs = max(blockedUntilMs, until)
   }
@@ -227,6 +229,9 @@ public actor RateLimiter {
     guard usedWeight > local else { return }
     spent.append((at: now, weight: usedWeight - local))
   }
+
+  /// 窗口里记着的权重（测试用）。
+  var spentWeightForTests: Int { spent.reduce(0) { $0 + $1.weight } }
 
   /// 封禁还剩多久（毫秒）。0 表示没在封禁期内。
   public func banRemainingMs() async -> Double {
