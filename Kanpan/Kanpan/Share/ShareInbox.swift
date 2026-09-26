@@ -42,7 +42,7 @@ import KanpanCore
   func activate(directory: URL, owner: UUID?, cache: Cache, api: AccountClient?) {
     task?.cancel(); task = nil; epoch = UUID(); busy = false; pullAgain = false; notice = nil
     self.directory = directory; self.owner = owner; self.cache = cache
-    client = owner == nil ? nil : api.map { ShareClient(api: $0) }
+    client = owner == nil ? nil : api.map { ShareClient(api: $0, owner: owner) }
     items = owner == nil ? [] : cache.items; friends = owner == nil ? [] : cache.friends
     shots = [:]; shotOrder = []
   }

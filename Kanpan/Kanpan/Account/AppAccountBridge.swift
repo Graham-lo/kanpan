@@ -406,8 +406,11 @@ import ReviewUI
     }
     let client: ScorebookClient?
     if user != nil, let api = account.client {
+      // 钉住这份档案的主人：复盘的上传 / 拉取属于这个人，换号之后还在途的那一趟
+      // 当场取消，不带着下一个人的令牌出门（`AccountClient.data(owner:)`）。
+      let profile = user?.id
       client = ScorebookClient { path, method, body, key in
-        try await api.data(path, method: method, body: body, key: key)
+        try await api.data(path, method: method, body: body, key: key, owner: profile)
       }
     } else { client = nil }
     let previouslyPrepared = preparedOwner
@@ -591,7 +594,7 @@ import ReviewUI
     Task { [weak self] in
       var ok = true
       for data in bodies where ok {
-        ok = (try? await api.data("v1/devices/push-token", method: "POST", body: data)) != nil
+        ok = (try? await api.data("v1/devices/push-token", method: "POST", body: data, owner: owner)) != nil
       }
       self?.pushLedger.finish(token: token, owner: owner, ok: ok)
     }
@@ -667,7 +670,7 @@ import ReviewUI
       if case .push = plan { queuedPush = (queuedPush ?? false) || manual }
       return
     }
-    guard let sync, let api = account.client, owner != nil, manual || sync.archive.autoSync else { return }
+    guard let sync, let api = account.client, let owner, manual || sync.archive.autoSync else { return }
     let requestEpoch = epoch; let requestedSymbol = symbol
     let runID = UUID(); taskID = runID
     account.syncStatus = "同步中"
@@ -694,7 +697,9 @@ import ReviewUI
         let marks = prefs.dirtyMarks
         // 推、拉、谁赢、出错怎么退都在 `SyncEngine` 里（`KanpanAccount`，swift test 直接测）；
         // 桥上只管这一轮算不算数、推完清哪些脏标记、拉完要不要装进本机。
-        let engine = SyncEngine(store: sync, transport: HTTPSyncTransport(client: api),
+        // 传输钉在这份同步存档的主人上：换号之后这一轮还在途的推 / 拉当场取消，
+        // A 的待发操作不会带着 B 的令牌进 B 的云端，B 的对象也不会写进 A 的存档。
+        let engine = SyncEngine(store: sync, transport: HTTPSyncTransport(client: api, owner: owner),
                                 device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
         engine.stillCurrent = { [weak self] in self.map { $0.epoch == requestEpoch && $0.taskID == runID } ?? false }
         engine.onProgress = { [weak self] in self?.updateStatus() }
