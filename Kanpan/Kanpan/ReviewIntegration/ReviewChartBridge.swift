@@ -233,7 +233,7 @@ import ReviewUI
         mode = .replay; replayLastTime = nil
         // 第一次进来才重设视野（80 根）：这是「打开这条记录」，不是「推进一根」。
         updateReplay(feature: feature, reset: true); loading = false
-      } catch is CancellationError {} catch { if loadID == request { loading = false; notice = error.localizedDescription } }
+      } catch is CancellationError {} catch { if loadID == request { loading = false; notice = Self.message(for: error) } }
     }
   }
   func openMatch(_ match: ReviewMatch, cutoff: Int64, feature: ReviewFeature, live: ChartState?,
@@ -291,7 +291,7 @@ import ReviewUI
         // （再点一次「后一根」、或者播放走到下一拍）才显形——看起来就是「翻到头了没反应，
         // 隔一会儿又突然多出来一截」。不 `reset`：人自己挑的视野不能被这趟补数顶掉。
         updateReplay(feature: feature)
-      } catch is CancellationError {} catch { if request == loadID { notice = error.localizedDescription; playing = false; playback?.cancel() } }
+      } catch is CancellationError {} catch { if request == loadID { notice = Self.message(for: error); playing = false; playback?.cancel() } }
     }
   }
   func jumpToJudgment(feature: ReviewFeature) {
@@ -360,7 +360,18 @@ import ReviewUI
     BarSeries(symbol: s.symbol, interval: s.interval, t0: s.t0, open: Array(s.open.prefix(count)), high: Array(s.high.prefix(count)), low: Array(s.low.prefix(count)), close: Array(s.close.prefix(count)), volume: Array(s.volume.prefix(count)), takerBuy: Array(s.takerBuy.prefix(count)), openTime: Array(s.openTime.prefix(count)))
   }
 }
-private enum ReviewBridgeError: LocalizedError {
+extension ReviewChartBridge {
+  /// 重温取数失败时摆在图上的那句话。自己判出来的几种（没历史、有缺口、区间太长）照原话说；
+  /// 取 K 线那一路抛上来的（超时、断网、解码）一律只说「暂时取不到」——原来直接摆
+  /// `localizedDescription`，弱网下是「请求超时。」这类系统原文，非本地化错误还会拼出
+  /// 「未能完成操作。（KanpanData.XXX错误 0。）」把类型名露给人看。原始错误不上屏。
+  static func message(for error: Error) -> String {
+    if let own = error as? ReviewBridgeError, let text = own.errorDescription { return text }
+    return "这段历史暂时取不到，稍后再试"
+  }
+}
+
+enum ReviewBridgeError: LocalizedError {
   case noHistory, historyGap, rangeTooLarge
   var errorDescription: String? { switch self { case .noHistory: "这段历史暂时无法获取"; case .historyGap: "这段行情有缺口，暂不进入重温"; case .rangeTooLarge: "区间过长，请缩短后重温" } }
 }
