@@ -200,7 +200,7 @@ static WRITE_SLOTS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(3);
 /// 写失败之后隔多久再写：从 1 秒起翻倍，最多 1 分钟。
 const WRITE_RETRY_MIN:Duration=Duration::from_secs(1);
 const WRITE_RETRY_MAX:Duration=Duration::from_secs(60);
-/// 跟踪停了之后还没写进去的最多再试多久（跟踪那边只等写库 10 秒，之后这里自己收尾）。
+/// 跟踪停了之后还没写进去的最多再试多久（跟踪任务等写库任务结束才算收完尾，见 `Registry::stop`）。
 const WRITE_DRAIN:Duration=Duration::from_secs(60);
 /// 写库任务手里没有积压时多久记一次「还活着」（`orderflow_bases.alive_ms`，见 `store::continuous_since`）。
 const ALIVE_EVERY:Duration=Duration::from_secs(60);
@@ -538,7 +538,12 @@ async fn prepare(base:&str,stop:&mut watch::Receiver<bool>)->Option<(Vec<Venue>,
  }
 }
 
-async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop:watch::Receiver<bool>,priority:Arc<AtomicU8>,delay:Duration) {
+async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop:watch::Receiver<bool>,priority:Arc<AtomicU8>,delay:Duration,
+ after:Option<JoinHandle<()>>) {
+ // 上一任还在收尾：等它把结束的单写进库，再读回挂着的。
+ if let Some(previous)=after {
+  tokio::select! {_=stop.changed()=>return,_=previous=>{}}
+ }
  if !delay.is_zero() {
   tokio::select! {_=stop.changed()=>return,_=tokio::time::sleep(delay)=>{}}
  }
@@ -605,7 +610,8 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  t.write_ended().await;
  hub::remove(t.model.venue_ids(),&t.events);
  drop(t);
- let _=tokio::time::timeout(Duration::from_secs(10),writer).await;
+ // 等写库任务写完手里的（它自己最多再试 `WRITE_DRAIN`）：注册表按这个任务结束判断收尾完了。
+ let _=writer.await;
  tracing::info!("Orderflow history: {base} stopped");
 }
 
@@ -672,6 +678,8 @@ struct Registry {
  shed:AtomicU8,
  /// 成批起跟踪时下一只排到什么时候。
  next_start:Mutex<tokio::time::Instant>,
+ /// 停掉了、还在收尾（结束挂着的单、把积压写进库）的跟踪任务。同一只马上又被起跟时，新的等旧的收完尾再读回挂着的单。
+ retiring:Mutex<HashMap<String,JoinHandle<()>>>,
 }
 
 static REGISTRY:OnceLock<Arc<Registry>>=OnceLock::new();
@@ -681,7 +689,7 @@ type Entries=HashMap<String,Entry>;
 impl Registry {
  fn new(pool:PgPool)->Self {
   Self{pool,entries:Mutex::new(HashMap::new()),lists:Mutex::new(Lists::default()),over:AtomicBool::new(false),shed:AtomicU8::new(0),
-   next_start:Mutex::new(tokio::time::Instant::now())}
+   next_start:Mutex::new(tokio::time::Instant::now()),retiring:Mutex::new(HashMap::new())}
  }
  fn lock(&self)->std::sync::MutexGuard<'_,Entries> {self.entries.lock().unwrap_or_else(|e|e.into_inner())}
  fn shed(&self)->u8 {self.shed.load(Ordering::Relaxed)}
@@ -700,23 +708,32 @@ impl Registry {
   let (stop,rx)=watch::channel(false);
   let (shared,thresholds)=watch::channel(Thresholds::default());
   let priority=Arc::new(AtomicU8::new(Layer::Hot as u8));
-  let task=tokio::spawn(track(self.pool.clone(),base.to_string(),shared,rx,priority.clone(),self.delay(immediate)));
+  let after=self.retiring.lock().unwrap_or_else(|e|e.into_inner()).remove(base);
+  let task=tokio::spawn(track(self.pool.clone(),base.to_string(),shared,rx,priority.clone(),self.delay(immediate),after));
   let mut e=Entry{major:false,fixed:false,alt_until:0,hot_until:0,hot_seen:0,requested:0,priority,stop,thresholds,task};
   tag(&mut e);
   if let Some(layer)=e.layer(now,self.shed()) {e.priority.store(layer as u8,Ordering::Relaxed);}
   entries.insert(base.to_string(),e);
  }
 
- fn stop(entries:&mut Entries,base:&str,why:&str) {
-  if let Some(e)=entries.remove(base) {let _=e.stop.send(true);tracing::info!("Orderflow history: {base} {why}");}
+ /// 停掉一只：发停止信号，任务交给 `retiring` 收尾。原来停了就不管：同一只紧接着又被要（踢出按需后马上有人看、
+ /// 掉出热点又进按需），新任务读回的「挂着的单」里有旧任务正要写成失联结束的——旧的结束一落库，
+ /// 新任务手里那几条再写都被 `WHERE end_ms IS NULL` 挡掉，墙还在、历史里却断在停的那一刻。
+ fn stop(&self,entries:&mut Entries,base:&str,why:&str) {
+  let Some(e)=entries.remove(base) else {return};
+  let _=e.stop.send(true);
+  tracing::info!("Orderflow history: {base} {why}");
+  let mut retiring=self.retiring.lock().unwrap_or_else(|e|e.into_inner());
+  retiring.retain(|_,task|!task.is_finished());
+  retiring.insert(base.to_string(),e.task);
  }
 
  /// 满了就踢按需 / 热点里最久没人要的那只（主币、固定、山寨不踢）。踢不动返回 false。
- fn make_room(entries:&mut Entries,now:i64)->bool {
+ fn make_room(&self,entries:&mut Entries,now:i64)->bool {
   if entries.len()<MAX_BASES {return true}
   let victim=entries.iter().filter(|(_,e)|e.evictable(now)).min_by_key(|(b,e)|(e.wanted_at(),(*b).clone())).map(|(b,_)|b.clone());
   let Some(victim)=victim else {return false};
-  Self::stop(entries,&victim,"evicted for room");
+  self.stop(entries,&victim,"evicted for room");
   true
  }
 
@@ -731,8 +748,8 @@ impl Registry {
   }
   if self.over() {tracing::info!("Orderflow history: {base} requested but the resource gate is over, not tracking");return Thresholds::default()}
   let demand:Vec<(i64,String)>=entries.iter().filter(|(_,e)|e.only_on_demand(now)).map(|(b,e)|(e.requested,b.clone())).collect();
-  if demand.len()>=MAX_ON_DEMAND && let Some((_,victim))=demand.into_iter().min() {Self::stop(&mut entries,&victim,"evicted from on-demand for a newer request");}
-  if Self::make_room(&mut entries,now) {self.start(&mut entries,base,now,true,|e|e.requested=now);}
+  if demand.len()>=MAX_ON_DEMAND && let Some((_,victim))=demand.into_iter().min() {self.stop(&mut entries,&victim,"evicted from on-demand for a newer request");}
+  if self.make_room(&mut entries,now) {self.start(&mut entries,base,now,true,|e|e.requested=now);}
   Thresholds::default()
  }
 
@@ -743,12 +760,12 @@ impl Registry {
  fn settle(&self,entries:&mut Entries,now:i64) {
   let shed=self.shed();
   let gone:Vec<String>=entries.iter().filter(|(_,e)|e.layer(now,shed).is_none()).map(|(b,_)|b.clone()).collect();
-  for base in gone {Self::stop(entries,&base,"no longer wanted, stopped");}
+  for base in gone {self.stop(entries,&base,"no longer wanted, stopped");}
   let mut tails:Vec<(i64,String)>=entries.iter().filter(|(_,e)|e.only_hot(now)&&e.hot_until!=LISTED).map(|(b,e)|(e.hot_seen,b.clone())).collect();
   let hot=entries.values().filter(|e|e.only_hot(now)).count();
   if hot>layers::MAX_HOT {
    tails.sort();
-   for (_,base) in tails.into_iter().take(hot-layers::MAX_HOT) {Self::stop(entries,&base,"dropped off the hot list, cap reached");}
+   for (_,base) in tails.into_iter().take(hot-layers::MAX_HOT) {self.stop(entries,&base,"dropped off the hot list, cap reached");}
   }
   for e in entries.values() {if let Some(layer)=e.layer(now,shed) {e.priority.store(layer as u8,Ordering::Relaxed);}}
  }
@@ -775,7 +792,7 @@ impl Registry {
   let (mut started,mut refused)=(0,0);
   for base in list {
    if entries.contains_key(base) {continue}
-   if shed_here||self.over()||!Self::make_room(&mut entries,now) {refused+=1;continue}
+   if shed_here||self.over()||!self.make_room(&mut entries,now) {refused+=1;continue}
    self.start(&mut entries,base,now,false,|e|match layer {
     Layer::Fixed=>e.fixed=true,
     Layer::Alt=>e.alt_until=LISTED,
@@ -1133,6 +1150,23 @@ mod tests {
   assert!(!c.due(1,2*day,2,0,false),"一本都没就绪不重标");
   let mut crypto=Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
   assert!(!crypto.due(0,0,0,0,false),"币不标");
+ }
+
+ #[tokio::test] async fn a_base_started_again_waits_for_its_previous_tracker() {
+  let r=Registry::new(PgPool::connect_lazy("postgres://nobody@127.0.0.1:1/none").unwrap());
+  let (release,wait)=tokio::sync::oneshot::channel::<()>();
+  let previous=tokio::spawn(async move {let _=wait.await;});
+  r.retiring.lock().unwrap().insert("ZZT".into(),previous);
+  {let mut entries=r.lock();r.start(&mut entries,"ZZT",0,true,|e|e.requested=1);}
+  assert!(r.retiring.lock().unwrap().is_empty(),"上一任交给了新任务");
+  tokio::time::sleep(Duration::from_millis(50)).await;
+  assert!(!r.lock()["ZZT"].task.is_finished(),"上一任没收完尾：新任务在等，还没去读回挂着的单");
+  // 停掉：任务进 retiring 收尾；等的时候被停就直接结束。
+  {let mut entries=r.lock();r.stop(&mut entries,"ZZT","stopped by the test");}
+  assert!(!r.lock().contains_key("ZZT"));
+  let task=r.retiring.lock().unwrap().remove("ZZT").expect("停掉的任务留给下一任等");
+  tokio::time::timeout(Duration::from_secs(1),task).await.unwrap().unwrap();
+  drop(release);
  }
 
  #[test] fn unlisted_bases_are_not_tracked() {
