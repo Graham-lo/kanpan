@@ -163,6 +163,16 @@ public struct BarSeries: Sendable, Equatable {
     return dHi < dLo ? hi : lo
   }
 
+  /// 第一根 openTime ≥ `t` 的下标；整条都早于 `t` 就是 `count`。二分，两种存法（省列 / 带列）都成立。
+  public func firstIndex(atOrAfter t: Int64) -> Int {
+    var lo = 0, hi = count
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if time(at: mid) < t { lo = mid + 1 } else { hi = mid }
+    }
+    return lo
+  }
+
   public func bar(at i: Int) -> Bar {
     Bar(
       openTime: time(at: i), open: open[i], high: high[i], low: low[i], close: close[i],
@@ -212,6 +222,26 @@ public struct BarSeries: Sendable, Equatable {
     if bar.openTime == last { replaceLast(with: bar); return true }
     if bar.openTime > last { append(bar); return true }
     return false
+  }
+
+  /// 从下标 `index` 起整段换成 `bars`（须按 openTime 严格递增、且都晚于 `index` 之前那根）。
+  ///
+  /// 前缀一根不动，只碰尾巴。REST 对表每 5 秒一次、补缺每次断线一次，改的都是末尾几根；
+  /// 原来 `FeedComposer.merge` 为此把整条拆进字典、排序、再整条重建，序列往回翻得越深越慢
+  /// （6 万根一次一百多毫秒，全压在 feed actor 上，那段时间推送帧一帧都处理不了）。
+  /// 省列的不变量照守：接的时候交给 `append` 逐根判，接完整段若重新严格等距（补缺把洞填上了）
+  /// 就把列丢掉，和构造器造出来的是同一条。
+  public mutating func replaceSuffix(from index: Int, with bars: [Bar]) {
+    let k = max(0, min(index, count))
+    if !openTime.isEmpty { openTime.removeSubrange(k...) }
+    open.removeSubrange(k...); high.removeSubrange(k...); low.removeSubrange(k...)
+    close.removeSubrange(k...); volume.removeSubrange(k...)
+    if k < takerBuy.count { takerBuy.removeSubrange(k...) }
+    if count == 0 { openTime = [] }
+    for bar in bars { append(bar) }
+    if !openTime.isEmpty, !interval.isIrregular, Self.isStrictlyRegular(openTime, t0: t0, step: step) {
+      openTime = []
+    }
   }
 
   /// 向前补历史：接在最前面，`t0` 跟着走（§7 补历史触发）。

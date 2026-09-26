@@ -206,9 +206,14 @@ public struct FeedComposer: Sendable {
       series = BarSeries(symbol: series.symbol, interval: series.interval, bars: MarketSeries.dedup(bars))
       return
     }
+    // 只拆「入参最早那根」往后的尾巴：更早的每一根入参都碰不到，原样留着。原来整条拆进字典、
+    // 排序、整条重建，对表每 5 秒改末尾三根也要把往回翻出来的几万根全过一遍。
+    let earliest = bars.lazy.map(\.openTime).min() ?? series.lastTime
+    let from = series.firstIndex(atOrAfter: earliest)
     var m: [Int64: Bar] = [:]
-    m.reserveCapacity(series.count + bars.count)
-    for i in 0..<series.count { m[series.time(at: i)] = series.bar(at: i) }
+    m.reserveCapacity(series.count - from + bars.count)
+    for i in from..<series.count { m[series.time(at: i)] = series.bar(at: i) }
+    lastMergeSpan = series.count - from
     // 不假设入参有序：取最大的那个 openTime 当「还在走的那根」。
     let live = bars.lazy.map(\.openTime).max()
     for b in bars {
@@ -219,8 +224,11 @@ public struct FeedComposer: Sendable {
       m[b.openTime] = b
     }
     let merged = m.keys.sorted().map { m[$0]! }
-    series = BarSeries(symbol: series.symbol, interval: series.interval, bars: merged)
+    series.replaceSuffix(from: from, with: merged)
   }
+
+  /// 最近一次 `merge` 拆开重排的既有根数（测试用：对表只该碰尾巴）。
+  private(set) var lastMergeSpan = 0
 
   /// 向前补历史。返回真正接上去的根数。
   @discardableResult
