@@ -370,6 +370,9 @@ final class QuoteBook {
     }
   }
 
+  /// 这一只最后一次真正收到值的本机时刻（磁盘垫的种子价没有）。小组件拿它给不带时刻的行情补时刻。
+  func receivedTime(_ symbol: String) -> Date? { receivedAt[symbol] }
+
   private func isFresh(_ symbol: String) -> Bool {
     guard raw[symbol] != nil, let at = receivedAt[symbol] else { return false }
     return Date().timeIntervalSince(at) < Self.freshSeconds

@@ -1633,7 +1633,7 @@ struct MainScreen: View {
           },
           closes: closes, skin: prefs.skin, appearance: prefs.theme, redUp: prefs.redUp,
           refresh: RouteResolver(policy: prefs.routePolicy).defaultProvider.widgetRefresh,
-          basis: prefs.changeBasis)
+          basis: prefs.changeBasis, receivedAt: { quotes.receivedTime($0) })
       },
       shape: {
         let symbols = picker.prefs, prefs = store.prefs

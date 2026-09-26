@@ -13,7 +13,8 @@ import WidgetKit
 ///   `reloadAllTimelines` 记额度，但也没必要逐帧重画桌面。
 /// - **离开前台**：写最后一份（不再重载，桌面那份由系统 15 分钟刷一次、扩展自己补价）。
 ///
-/// 中号的折线要一段收盘价：自选每只 15 分钟取一次 1 小时 × 24 根，只在前台取。
+/// 中号的折线要一段收盘价：只给桌面上中号小组件正在画的那几只取（扩展记在
+/// `WidgetSparklineWants` 里），每只 15 分钟取一次 1 小时 × 24 根，只在前台取。
 @MainActor
 final class WidgetFeed {
   typealias Collect = @MainActor (_ closes: [String: [Double]]) -> WidgetSnapshot?
@@ -36,6 +37,9 @@ final class WidgetFeed {
   private var ledger = WidgetClosesLedger(every: WidgetFeed.closesEvery, retry: 60, concurrency: WidgetFeed.closesConcurrency)
   private var closesJobs: [String: Task<Void, Never>] = [:]
   private var lastSymbols: [String] = []
+  /// 上一次读到的「形状」。观察追的是整只偏好结构体（`Prefs` / `SymbolPrefs`），里面任何一个
+  /// 字段变了都会通知——换周期、捏合缩放、扫图记最近看过，都会来一次；只有这串真的变了才写。
+  private var lastShape: [String]?
 
   init(directory: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: WidgetSnapshot.appGroup)) {
     self.directory = directory
@@ -52,12 +56,14 @@ final class WidgetFeed {
 
   private func track() {
     guard let shape else { return }
-    _ = withObservationTracking { shape() } onChange: { [weak self] in
-      Task { @MainActor [weak self] in
-        self?.track()
-        self?.flush(reload: true)
-      }
+    let now = withObservationTracking { shape() } onChange: { [weak self] in
+      Task { @MainActor [weak self] in self?.track() }
     }
+    // 整机压测 2026-09-26：原来一有通知就整份折快照、编码、落盘、叫扩展重排时间线，
+    // 连续扫图 / 切周期 / 缩放松手的每一下都在主线程上付这一整趟。
+    defer { lastShape = now }
+    guard let last = lastShape, last != now else { return }
+    flush(reload: true)
   }
 
   /// 报价簿又出了一批。
@@ -102,9 +108,20 @@ final class WidgetFeed {
     loadCloses()
   }
 
+  /// 要取走势的那几只：中号小组件正在画、而且还在自选里的。一只中号都没摆就一发不取。
+  static func sparklineTargets(favorites: [String], wanted: Set<String>) -> [String] {
+    favorites.filter { wanted.contains($0) }
+  }
+
   private func loadCloses() {
     guard foreground, let fetchCloses else { return }
-    for symbol in lastSymbols {
+    let wanted = directory.map { WidgetSparklineWants.symbols(in: $0) } ?? []
+    let targets = Self.sparklineTargets(favorites: lastSymbols, wanted: wanted)
+    // 不再画的那几只：手里那段收盘价和账本那一行一起放掉（通宵挂着不越攒越多）。
+    let keep = Set(targets)
+    if closes.keys.contains(where: { !keep.contains($0) }) { closes = closes.filter { keep.contains($0.key) } }
+    ledger.retain(keep)
+    for symbol in targets {
       guard let ticket = ledger.begin(symbol, now: Date()) else { continue }
       closesJobs[symbol] = Task { @MainActor [weak self] in
         let values = await fetchCloses(symbol)
@@ -124,9 +141,15 @@ final class WidgetFeed {
   // MARK: 折快照
 
   /// 把 app 手上的东西折成一份快照。纯函数，单独拎出来好测。
+  ///
+  /// 每一格的时刻：行情自己带的；没带就用 app 收到它的那一刻（`receivedAt`）；两样都没有
+  /// （磁盘上垫的种子价）写 0——小组件把 0 当「时刻不明」：不淡化，扩展自己补到的价也能盖上去。
+  /// 原来兜底成「现在」：没带时刻的种子价每 30 秒被重新盖一次「现在」，30 分钟淡化对它失效，
+  /// 而且扩展补回来的真价时刻比它旧，会被 `apply` 当旧价拒掉。
   static func snapshot(symbols: SymbolPrefs, quotes: [String: Ticker], decimals: (String) -> Int?,
                        closes: [String: [Double]], skin: ThemeSkin, appearance: ThemeChoice, redUp: Bool,
                        refresh: WidgetSnapshot.Refresh?, basis: ChangeBasis,
+                       receivedAt: (String) -> Date? = { _ in nil },
                        now: Date = Date()) -> WidgetSnapshot {
     let order = symbols.favorites
     let groups = symbols.groups.map { group in
@@ -140,7 +163,8 @@ final class WidgetFeed {
       let open = change.isFinite && change > -100 ? ticker.last / (1 + change / 100) : nil
       table[symbol] = WidgetSnapshot.Quote(symbol: symbol, price: ticker.last, change: change, decimals: decimals(symbol),
                                            closes: Array((closes[symbol] ?? []).suffix(WidgetSnapshot.sparkLimit)),
-                                           timeMs: ticker.timeMs ?? Int64(now.timeIntervalSince1970 * 1000), open: open)
+                                           timeMs: ticker.timeMs ?? receivedAt(symbol).map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0,
+                                           open: open)
     }
     return WidgetSnapshot(updatedAt: Int64(now.timeIntervalSince1970 * 1000), favorites: order, groups: groups,
                           quotes: table,
@@ -159,7 +183,8 @@ final class WidgetFeed {
 /// - `begin`：到点了、这只没有在路上、在路上的不超过并发数，才发一张票；
 /// - `finish`：只认这只**当前**那张票，并且票的时刻要比已收下的那份**严格更新**（单调递增）；
 ///   成功一刻钟后再取，失败一分钟后再来；
-/// - `cancelAll`：在路上的全作废，并且这几只立刻算「到点」。
+/// - `cancelAll`：在路上的全作废，并且这几只立刻算「到点」；
+/// - `retain`：只留还要画的那几只，别的（不在路上的）整行放掉。
 struct WidgetClosesLedger {
   struct Ticket: Equatable, Sendable {
     let symbol: String
@@ -206,5 +231,12 @@ struct WidgetClosesLedger {
   mutating func cancelAll() {
     for symbol in inFlight.keys { dueAt[symbol] = nil }
     inFlight.removeAll()
+  }
+
+  mutating func retain(_ symbols: Set<String>) {
+    let flying = inFlight
+    let keep = { (symbol: String) in symbols.contains(symbol) || flying[symbol] != nil }
+    if dueAt.keys.contains(where: { !keep($0) }) { dueAt = dueAt.filter { keep($0.key) } }
+    if acceptedAt.keys.contains(where: { !keep($0) }) { acceptedAt = acceptedAt.filter { keep($0.key) } }
   }
 }

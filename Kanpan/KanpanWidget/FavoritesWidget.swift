@@ -54,6 +54,10 @@ struct SymbolProvider: AppIntentTimelineProvider {
     let now = Date()
     let entry = QuoteEntry(date: now, snapshot: snapshot, symbol: chosen)
     let focus = snapshot?.focus(symbol: chosen)
+    // 告诉 app 这一格画的是谁：app 只给这几只取走势（`WidgetSparklineWants`）。
+    if let focus, let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: WidgetSnapshot.appGroup) {
+      WidgetSparklineWants.note(focus.symbol, in: container, now: now)
+    }
     let stale = WidgetFreshness.staleEntryDate(focus.map { [$0] } ?? [], after: now)
       .map { QuoteEntry(date: $0, snapshot: snapshot, symbol: chosen) }
     return Timeline(entries: [entry] + (stale.map { [$0] } ?? []), policy: .after(now.addingTimeInterval(refreshEvery)))
