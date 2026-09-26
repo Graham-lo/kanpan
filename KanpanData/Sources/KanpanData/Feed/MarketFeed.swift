@@ -545,6 +545,8 @@ public actor MarketFeed {
   /// 之后被处理就会派这一发（生产上「快照到连上」之间那段确实缺）。用例必须等它
   /// 结束再放报文 / 再数补缺请求，否则量到的是机器快慢，不是被测的行为。
   var isBackfillingForTests: Bool { composer.isBackfilling }
+  /// 聚出来的周期（1y 这类）背后的源序列。用例拿它验「只重算末桶」和整段重聚一致。
+  var sourceSeriesForTests: BarSeries? { sourceComposer?.series }
   /// 这份 feed 的 WS 在等第一帧行情时用的窗口（毫秒，A-07 第②层）。
   func wsSilenceMsForTests() async -> Double { await ws.firstFrameSilenceMs }
 
@@ -653,10 +655,7 @@ public actor MarketFeed {
       guard var src = sourceComposer, src.series.count > 0 else { return }
       guard src.apply(k) else { return }
       sourceComposer = src
-      composer.replace(Aggregator.bucket(series: src.series, into: interval))
-      emit(.historyError(nil))
-      emit(.series(composer.series))
-      scheduleSnapshot()
+      refreshAggregate(touching: k.bar.openTime, now: now)
       return
     }
     let before = composer.series.count > 0 ? composer.series.lastTime : 0
@@ -675,6 +674,56 @@ public actor MarketFeed {
     scheduleSnapshot()
   }
 
+  /// 源周期动了一下（时刻 `t` 所在那根）之后，把聚出来的周期跟着更新。
+  ///
+  /// 原来每收一条源周期报文（逐笔成交更密）都把整条源序列重聚一遍（Coinbase 3m 从 1m
+  /// 聚，一次扫 1500 根），再往主线程抛一整条 `.series` 外加一条 `.historyError(nil)`——
+  /// 完全绕开 80ms 合帧闸门：一秒几十笔成交就是几十次整图重算、几十份整条序列拷贝。
+  /// 现在只重算 `t` 所在的桶到末尾那几个桶，按普通末根走 `emitTick`：同一根上的更新
+  /// 进闸门，开了新桶（结构性变化）立刻放行，和非聚合周期一个规矩。
+  ///
+  /// 动到的是更早的桶、聚合序列还空着、或者正在补缺排队：整段重聚一次，走原来的路。
+  private func refreshAggregate(touching t: Int64, now: Double) {
+    guard let src = sourceComposer?.series, src.count > 0 else { return }
+    let iv = interval
+    let touched = Aggregator.bucketStart(ms: t, interval: iv)
+    let before = composer.series.count > 0 ? composer.series.lastTime : 0
+    guard composer.series.count > 0, touched >= before, !composer.isBackfilling else {
+      composer.replace(Aggregator.bucket(series: src, into: iv))
+      emit(.historyError(nil))
+      emit(.series(composer.series))
+      scheduleSnapshot()
+      return
+    }
+    // 从聚合序列现在的末桶起重算：开了新桶时，上一桶收尾的那几根也一起算进去。
+    var i = src.count
+    while i > 0, src.time(at: i - 1) >= before { i -= 1 }
+    guard i < src.count else { return }
+    var tail: [Bar] = []
+    for j in i..<src.count {
+      let start = Aggregator.bucketStart(ms: src.time(at: j), interval: iv)
+      if let k = tail.indices.last, tail[k].openTime == start {
+        tail[k].high = max(tail[k].high, src.high[j])
+        tail[k].low = min(tail[k].low, src.low[j])
+        tail[k].close = src.close[j]
+        tail[k].volume += src.volume[j]
+        tail[k].takerBuy += src.takerBuy[j]   // NaN 照样传染，和 `Aggregator.bucket` 一致
+      } else {
+        tail.append(Bar(openTime: start, open: src.open[j], high: src.high[j], low: src.low[j],
+                        close: src.close[j], volume: src.volume[j], takerBuy: src.takerBuy[j]))
+      }
+    }
+    var changed = false
+    for bar in tail {
+      let n = composer.series.count
+      if n > 0, composer.series.lastTime == bar.openTime, composer.series.bar(at: n - 1) == bar { continue }
+      if composer.apply(bar: bar) { changed = true }
+    }
+    guard changed else { return }
+    emitTick(force: composer.series.lastTime != before, now: now)
+    scheduleSnapshot()
+  }
+
   // ------------------------------------------------------------------ 逐笔折线
 
   /// 一次报价折进当前那根（细节见 `FeedComposer.applyTick`）。
@@ -686,10 +735,7 @@ public actor MarketFeed {
       guard src.applyTick(price: price, qty: qty, timeMs: timeMs, tradeID: tradeID) != .ignored
       else { return }
       sourceComposer = src
-      composer.replace(Aggregator.bucket(series: src.series, into: interval))
-      emit(.historyError(nil))
-      emit(.series(composer.series))
-      scheduleSnapshot()
+      refreshAggregate(touching: timeMs, now: now)
       return
     }
     switch composer.applyTick(price: price, qty: qty, timeMs: timeMs, tradeID: tradeID) {
