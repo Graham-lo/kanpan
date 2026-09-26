@@ -268,3 +268,29 @@ mod migrations {
  }
 }
 
+#[cfg(test)]
+mod install_script {
+ const INSTALL:&str=include_str!("../ops/install.py");
+
+ /// 角色已经在的时候 CREATE ROLE 那句什么都不做；口令必须无条件按 service.env 对齐，
+ /// 否则卷在、env 新生成（或从别处恢复）时服务每次连库都认证失败。
+ #[test] fn the_app_role_password_follows_service_env_every_run() {
+  assert!(INSTALL.lines().any(|l|l.starts_with("sql(f\"ALTER ROLE kanpan_app ")&&l.contains("PASSWORD '{password}'")),
+   "install.py 要在顶层无条件 ALTER ROLE kanpan_app PASSWORD");
+ }
+
+ /// 升级时服务在跑，`enable --now` 不会重启它们；migrate 之后跑着的必须换成新二进制。
+ #[test] fn running_services_are_restarted_after_migrate() {
+  let migrate=INSTALL.find("kanpan-api','migrate'").expect("migrate step");
+  let restart=INSTALL.find("'try-restart','kanpan-api','kanpan-worker'").expect("try-restart step");
+  let reload=INSTALL.find("'daemon-reload'").expect("daemon-reload step");
+  assert!(migrate<reload && reload<restart,"顺序要是 migrate → daemon-reload → try-restart");
+ }
+
+ /// 备份是 docker exec 进容器 pg_dump；开机补跑时 docker 必须已经起来。
+ #[test] fn the_backup_waits_for_docker() {
+  let unit=INSTALL.split("kanpan-backup.service').write_text(").nth(1).expect("backup unit");
+  let unit=&unit[..unit.find("[Service]").expect("service section")];
+  assert!(unit.contains("After=docker.service")&&unit.contains("Requires=docker.service"));
+ }
+}

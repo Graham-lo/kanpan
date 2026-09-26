@@ -67,6 +67,11 @@ def sql(query):
 # 时候也做得到，而下一步走 TCP 的 migrate 做不到。顺序不能反。
 if reset_admin:sql(f"ALTER ROLE kanpan_admin PASSWORD '{admin}';")
 sql(f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='kanpan_app') THEN CREATE ROLE kanpan_app LOGIN PASSWORD '{password}' NOSUPERUSER NOBYPASSRLS; END IF; END $$;")
+# 角色已经在的时候上面那句什么都不做，口令还是卷里原来那一把；而服务连库用的是
+# service.env 里这一把。两份对不上的常见路子：卷在、service.env 是新生成的（库里没账号时
+# 允许重装）、或者 service.env 从别处恢复回来。那样装完服务每次连库都是认证失败。
+# 所以每次都把角色的口令与属性按 service.env 对齐一遍——幂等，口令没变时等于没做。
+sql(f"ALTER ROLE kanpan_app LOGIN PASSWORD '{password}' NOSUPERUSER NOBYPASSRLS;")
 # 迁移前先看有没有老事务卡着。迁移里的 CREATE INDEX／ALTER TABLE 要拿表锁，
 # 而就算按 migrations/README.md 写成无锁的 CREATE INDEX CONCURRENTLY，它也要等自己开始
 # 之前就已经在跑的事务全部结束；一个忘了提交的 psql 窗口就能把升级挂在那里，
@@ -140,8 +145,12 @@ WantedBy=multi-user.target
 cache='CacheDirectory=kanpan-api\nEnvironment=KANPAN_OI_CACHE=/var/cache/kanpan-api/oi\n'
 pathlib.Path('/etc/systemd/system/kanpan-api.service').write_text(unit.replace('[Install]',cache+'[Install]'))
 pathlib.Path('/etc/systemd/system/kanpan-worker.service').write_text(unit.replace('Kanpan accounts and personal sync','Kanpan review and maintenance worker').replace('kanpan-api serve','kanpan-api worker'))
+# backup.sh 用 docker exec 去 kanpan-postgres 里 pg_dump。Persistent=true 的定时器在开机后
+# 会立刻补跑错过的那一次，这时 docker 可能还没起来，那一天的备份就白白失败了。
 pathlib.Path('/etc/systemd/system/kanpan-backup.service').write_text("""[Unit]
 Description=Kanpan database backup
+Requires=docker.service
+After=docker.service
 [Service]
 Type=oneshot
 ExecStart=/bin/sh /opt/kanpan-api/ops/backup.sh
@@ -157,5 +166,9 @@ Persistent=true
 WantedBy=timers.target
 """)
 subprocess.run(['systemctl','daemon-reload'],check=True)
+# 升级时服务早就在跑：`enable --now` 对在跑的服务什么都不做，于是 migrate 已经把表改了，
+# 跑着的还是旧二进制（0021 删掉 sync_snapshots 之后旧二进制的每次推送都回 500），
+# 直到有人想起来手工 restart。try-restart 只重启正在跑的那几个，没在跑的交给下一句拉起。
+subprocess.run(['systemctl','try-restart','kanpan-api','kanpan-worker'],check=True)
 subprocess.run(['systemctl','enable','--now','kanpan-api','kanpan-worker','kanpan-backup.timer'],check=True)
 print('Dedicated account database and nonprivileged API enabled; no mail service.')

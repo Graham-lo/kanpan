@@ -121,7 +121,7 @@ DROP INDEX CONCURRENTLY IF EXISTS review_searches_due;
 ## 0021 / 0022 上线怎么排（2026-09-24 深度审查 A1 / A3）
 
 两条都跟着 `ops/install.py` 的 `migrate` 走，**不需要手工 SQL、不需要停 worker**，
-但 migrate 之后要**紧接着 restart**：
+但 migrate 之后要**紧接着 restart**——`install.py` 在 migrate 之后会自己 `systemctl try-restart kanpan-api kanpan-worker`：
 
 - **0021**：`DROP TABLE IF EXISTS sync_snapshots`。新二进制已经不写也不清这张表。
   migrate 与 restart 之间那几秒，旧二进制的推送会因为表不存在回 500；失败的事务整体回滚、
