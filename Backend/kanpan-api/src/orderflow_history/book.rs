@@ -293,6 +293,8 @@ impl VenueBook {
  }
  pub fn is_ready(&self)->bool {self.book.quality==Quality::Ready&&self.ready_since.is_some()}
  pub fn is_online(&self)->bool {self.online}
+ /// 这一轮从什么时候起就绪（没就绪为 None）。
+ pub fn ready_since(&self)->Option<i64> {self.ready_since}
 
  /// 新连接：换代号、清簿。快照不在流里的要去拉一份。
  pub fn opened(&mut self,connection:u64)->Action {

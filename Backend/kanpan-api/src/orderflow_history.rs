@@ -84,6 +84,20 @@ const SNAPSHOT_RETRY_MAX_MS:i64=5*60_000;
 
 /// 连着失败 `failures` 次（≥ 1）之后隔多久再排。
 fn snapshot_backoff(failures:u32)->i64 {SNAPSHOT_RETRY_MS.saturating_mul(1i64<<failures.saturating_sub(1).min(20)).min(SNAPSHOT_RETRY_MAX_MS)}
+/// 簿就绪撑过这么久才算真的接上了：之后再断档是新的一轮，马上重同步；撑不到就算这一轮重同步没成。
+const RESYNC_STABLE_MS:i64=60_000;
+
+/// 一次重同步（拿到的快照接不上、就绪之后断档、流内快照迟迟不来）要隔多久再做（毫秒，0 = 马上）。
+/// `failures` 是这本簿连着没成的次数（和拉不到快照共用一个数）：就绪撑过 `RESYNC_STABLE_MS` 的从头算，
+/// 一轮里第一次马上做，之后按 `snapshot_backoff` 往后排。
+/// 原来这几条路都是马上重拉 / 重订：快照一直接不上（REST 快照落后于流、序号规则对不上）或刚就绪就断档的簿
+/// 每轮只隔 0.5 秒又排一份，主币层的一本就能把整条通道每分钟 30 份的配额吃光（拉不到的那条路 2026-09-25
+/// 已经退避了，这几条没有）；流内快照的簿则是一轮一次重订，OKX 按小时算的订阅次数、Coinbase 整条连接跟着耗。
+fn resync_delay(failures:&mut u32,ready_since:Option<i64>,now:i64)->i64 {
+ if ready_since.is_some_and(|t|now-t>=RESYNC_STABLE_MS) {*failures=0}
+ *failures=failures.saturating_add(1);
+ if *failures==1 {0} else {snapshot_backoff(*failures-1)}
+}
 /// 没变化的挂着的单多久重写一次（刷新 `seen_ms`）；须小于 `model::STALE_MS`（120 秒）。
 const LIVE_REWRITE_MS:i64=60_000;
 const SNAPSHOT_SETTLE:Duration=Duration::from_millis(500);
@@ -445,6 +459,16 @@ impl Tracker {
   snapshots::request(snapshots::Request{venue:info,epoch,priority:self.priority.clone(),not_before:tokio::time::Instant::now()+settle,events:self.events.clone(),current});
  }
 
+ /// 帧或快照引出的重同步：一轮里第一次马上做，连着没成的按退避排进 `retry`（见 `resync_delay`）。
+ /// 已经排着一次的不再加码（流内快照的簿等快照期间每分钟会再要一次）。
+ fn resync(&mut self,venue:&str,action:Action,ready_since:Option<i64>,now:i64) {
+  if action==Action::None||self.retry.contains_key(venue) {return}
+  let failures=self.failures.entry(venue.to_string()).or_insert(0);
+  let delay=resync_delay(failures,ready_since,now);
+  if *failures==6 {tracing::warn!("Orderflow history: {venue} snapshot failed or did not line up 6 times in a row, retrying every {}s at most",SNAPSHOT_RETRY_MAX_MS/1000);}
+  if delay==0 {self.act(venue,action)} else {self.retry.insert(venue.to_string(),now+delay);}
+ }
+
  fn handle(&mut self,event:Event) {
   let now=now_ms();
   match event {
@@ -468,8 +492,9 @@ impl Tracker {
     self.sync_epoch(&id);
    },
    Event::Frame{venue,connection,message}=>{
+    let ready_since=self.model.book_mut(&venue).and_then(|b|b.ready_since());
     let action=self.model.ingest(&venue,connection,message,now);
-    self.act(&venue,action);
+    self.resync(&venue,action,ready_since,now);
    },
    Event::Trade{venue,trade,id}=>{
     if let Some(id)=id {
@@ -485,11 +510,11 @@ impl Tracker {
     // 排队期间断过线：这份是上一轮的，新一轮的请求在 opened 时已经排上了。
     if book.epoch!=epoch {return}
     match snapshot {
-     Some(s)=>{self.failures.remove(&venue);let action=book.snapshot(s,now);self.act(&venue,action);},
+     Some(s)=>{let ready_since=book.ready_since();let action=book.snapshot(s,now);self.resync(&venue,action,ready_since,now);},
      None=>{
       let failures=self.failures.entry(venue.clone()).or_insert(0);
       *failures+=1;
-      if *failures==6 {tracing::warn!("Orderflow history: {venue} snapshot failed 6 times in a row, retrying every {}s at most",SNAPSHOT_RETRY_MAX_MS/1000);}
+      if *failures==6 {tracing::warn!("Orderflow history: {venue} snapshot failed or did not line up 6 times in a row, retrying every {}s at most",SNAPSHOT_RETRY_MAX_MS/1000);}
       let at=now+snapshot_backoff(*failures);
       self.retry.insert(venue,at);
      },
@@ -498,13 +523,15 @@ impl Tracker {
   }
  }
 
- /// 到点的重拉：只拉还连着、还没就绪、快照不在流里的簿。
+ /// 到点的重拉 / 重订：只管还连着、还没就绪的簿（快照在流里的重订，不在的拉 REST）。
  fn due_retries(&mut self,now:i64) {
   let due:Vec<String>=self.retry.iter().filter(|(_,at)|**at<=now).map(|(v,_)|v.clone()).collect();
   for venue in due {
    self.retry.remove(&venue);
-   let wanted=self.open.contains(&venue)&&self.model.book_mut(&venue).is_some_and(|b|!b.venue.in_band&&!b.is_ready());
-   if wanted {self.fetch(&venue,Duration::ZERO);}
+   if !self.open.contains(&venue) {continue}
+   let Some(book)=self.model.book_mut(&venue) else {continue};
+   if book.is_ready() {continue}
+   if book.venue.in_band {hub::resubscribe(venue)} else {self.fetch(&venue,Duration::ZERO)}
   }
  }
 
@@ -1223,6 +1250,22 @@ mod tests {
   let (mut t,mut n,mut f)=(0i64,0,1u32);
   while t<3_600_000 {t+=snapshot_backoff(f);f+=1;n+=1;}
   assert!(n<20,"{n}");
+ }
+
+ #[test] fn resyncs_back_off_until_the_book_holds_for_a_minute() {
+  let mut f=0u32;
+  // 快照接不上 / 就绪没撑住：一轮里第一次马上，之后 2、4、8 秒……
+  assert_eq!((0..5).map(|i|resync_delay(&mut f,None,i)).collect::<Vec<_>>(),vec![0,2_000,4_000,8_000,16_000]);
+  // 就绪了 59 秒又断档：还算这一轮没成。
+  assert_eq!(resync_delay(&mut f,Some(100_000),159_000),32_000);
+  // 撑过一分钟：新的一轮，马上重同步。
+  assert_eq!(resync_delay(&mut f,Some(200_000),260_000),0);
+  assert_eq!(f,1);
+  // 拉不到快照也记在同一个数上：接着退避，不从头算。
+  f=3;
+  assert_eq!(resync_delay(&mut f,None,0),snapshot_backoff(3));
+  let mut f=u32::MAX;
+  assert_eq!(resync_delay(&mut f,None,0),SNAPSHOT_RETRY_MAX_MS,"不溢出");
  }
 
  #[test] fn calibration_waits_for_every_book_to_connect_and_its_snapshot() {

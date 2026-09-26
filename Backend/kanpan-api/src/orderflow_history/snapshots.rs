@@ -247,6 +247,65 @@ mod tests {
   }
  }
 
+ /// 一本主币层的簿，拿到的快照每次都接不上（REST 快照落后于流），同一条通道上还有 60 本山寨等首份快照。
+ /// 按真的 `VenueBook` 对序号、真的限速器与出队顺序模拟 10 分钟：接不上之后马上重排（原来）对按 `resync_delay` 退避。
+ fn starve(backoff:bool)->(usize,usize,Option<Duration>) {
+  use super::super::book::{Action,Delta,Message,VenueBook};
+  let (tx,_rx)=mpsc::channel(1);
+  let start=Instant::now();
+  let req=|id:&str,p:u8,at:Instant|Request{venue:VenueInfo{id:id.into(),..venue("usdtPerp",Notional::Linear(1.0))},epoch:1,
+   priority:Arc::new(AtomicU8::new(p)),not_before:at,events:tx.clone(),current:Arc::new(AtomicU64::new(1))};
+  let mut book=VenueBook::new(venue("usdtPerp",Notional::Linear(1.0)));
+  assert_eq!(book.opened(1),Action::FetchSnapshot);
+  book.ingest(Message::Delta(Delta{first:1_000,last:1_010,prev:Some(999),..Delta::default()}),0);
+  let mut queue=vec![(0u64,req("bad",0,start))];
+  queue.extend((1..=60u64).map(|i|(i,req("alt",3,start))));
+  let mut seq=61u64;
+  let mut l=Limiter::new(PER_MINUTE,WINDOW,MIN_GAP);
+  let end=start+Duration::from_secs(600);
+  let (mut t,mut reply)=(start,None::<Instant>);
+  let (mut bad,mut alts,mut last_alt,mut failures)=(0,0,None,0u32);
+  while t<end {
+   if let Some(at)=reply && at<=t {
+    reply=None;
+    let now=at.duration_since(start).as_millis() as i64;
+    let ready=book.ready_since();
+    let action=book.snapshot(Snapshot{last:500,requested:1000,bids:vec![(99.0,1.0)],asks:vec![(101.0,1.0)]},now);
+    assert_eq!(action,Action::FetchSnapshot,"快照比缓冲的增量旧，接不上");
+    let delay=if backoff {super::super::resync_delay(&mut failures,ready,now)} else {0};
+    // 马上重排的走 SNAPSHOT_SETTLE（0.5 秒），退避的到点由 due_retries 不等就排。
+    let not_before=at+if delay==0 {Duration::from_millis(500)} else {Duration::from_millis(delay as u64)};
+    queue.push((seq,req("bad",0,not_before)));seq+=1;
+    continue;
+   }
+   let wait=l.wait(t);
+   if wait.is_none() && let Some(i)=pick(&queue,t) {
+    let (_,r)=queue.swap_remove(i);
+    l.record(t);
+    if r.venue.id=="bad" {bad+=1;reply=Some(t+Duration::from_millis(300));} else {alts+=1;last_alt=Some(t.duration_since(start));}
+    continue;
+   }
+   let mut next=end;
+   match wait {
+    Some(w)=>next=next.min(t+w),
+    None=>if let Some(e)=queue.iter().map(|(_,r)|r.not_before).filter(|x|*x>t).min() {next=next.min(e)},
+   }
+   if let Some(at)=reply {next=next.min(at)}
+   t=next.max(t+Duration::from_millis(1));
+  }
+  (bad,alts,last_alt)
+ }
+
+ #[test] fn a_book_whose_snapshots_never_line_up_does_not_starve_the_lane() {
+  let (bad,alts,last)=starve(false);
+  println!("接不上马上重排：10 分钟里那一本拉了 {bad} 份，60 本山寨拿到 {alts} 本，最后一本 {:?}",last.map(|d|d.as_secs()));
+  let (bad,alts,last)=starve(true);
+  println!("按 resync_delay 退避：10 分钟里那一本拉了 {bad} 份，60 本山寨拿到 {alts} 本，最后一本 {:?}",last.map(|d|d.as_secs()));
+  assert_eq!(alts,60,"同一条通道上的别的簿都要拿到快照");
+  assert!(bad<=12,"一本接不上的簿 10 分钟拉了 {bad} 份");
+  assert!(last.is_some_and(|d|d<Duration::from_secs(180)),"60 本山寨的最后一本 {last:?} 才拿到");
+ }
+
  #[test] fn priority_then_first_come() {
   let now=Instant::now();
   let (tx,_rx)=mpsc::channel(1);
