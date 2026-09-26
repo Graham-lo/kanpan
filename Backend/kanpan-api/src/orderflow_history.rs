@@ -13,7 +13,7 @@
 //!   五层，总数最多 220 只，满了只踢按需与热点里最久没人要的；详见 `layers.rs`。
 //!   `KANPAN_ORDERFLOW_LAYERS` 选开哪几层，缺省全开。
 //! * **手机的行情转发永远优先**：这里的连接与 REST 全部自己开、自己限速（各家额度的一小份），
-//!   资源闸门（RSS > 2.5 GB 或最近一分钟 CPU > 300%）一过就不再新增，并按热点 → 山寨 → 固定卸层，
+//!   资源闸门（RSS > 2.5 GB 或最近一分钟 CPU > 300%，且不超过所在 cgroup 上限的四分之三）一过就不再新增，并按热点 → 山寨 → 固定卸层，
 //!   转发那一侧一概不动。
 //! * 非币默认门槛：T = round125(0.03 × D)，夹 [5 万, 200 万]，D 为各 U 本位永续簿中间价 ±1% 以内买卖两侧美元之和；
 //!   簿全部拿到首个快照时标定；有簿还没连上或快照还在排队就接着等（最多 10 分钟），不再有簿在等
@@ -861,6 +861,9 @@ impl Registry {
     tracing::warn!("Orderflow history: resource gate over ({}), shedding {}",load.describe(),shed_label(shed+1));
     let mut entries=self.lock();
     self.settle(&mut entries,now);
+    drop(entries);
+    // 卸下的跟踪任务要一会儿才收完尾、放掉簿；下一分钟的闸门看的是还回去之后的 RSS。
+    tokio::spawn(async {tokio::time::sleep(Duration::from_secs(20)).await;resources::release_free_memory();});
    } else {
     tracing::warn!("Orderflow history: resource gate still over ({}) with only majors and on-demand left",load.describe());
    }
