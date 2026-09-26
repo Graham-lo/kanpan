@@ -253,4 +253,28 @@ final class ReviewArchiveTests: XCTestCase {
     XCTAssertEqual(store.pruneShots(), 1)
     XCTAssertFalse(store.hasShot(record.id))
   }
+
+  /// 进度写失败了，「还有没写的」标记不许跟着丢：下一次落盘接着写，重开读得回来。
+  ///
+  /// 原来 `flushReplay` 先摘标记再写：这一次写失败，之后顺手带的每一下都是空操作，
+  /// 这段进度只剩内存里一份，进程一退就没了。
+  @MainActor func testFailedReplayWriteIsRetriedByTheNextFlush() throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = try ReviewStore(directory: directory)
+    let id = UUID()
+    try store.saveReplay(id, position: ReviewReplayPosition(cursor: 1, speed: 1, usedAt: 1_000))
+    // 第一笔立刻写；把那个位置换成一个目录，下一次原子写（改名覆盖）必然失败。
+    try FileManager.default.removeItem(at: store.paths.replay)
+    try FileManager.default.createDirectory(at: store.paths.replay, withIntermediateDirectories: false)
+    try store.saveReplay(id, position: ReviewReplayPosition(cursor: 2, speed: 4, usedAt: 2_000))
+    XCTAssertThrowsError(try store.flushReplay())
+    try FileManager.default.removeItem(at: store.paths.replay)
+
+    try store.flushReplay()
+    XCTAssertTrue(FileManager.default.fileExists(atPath: store.paths.replay.path), "失败之后的下一次 flush 必须真写")
+    let reopened = try ReviewStore(directory: directory)
+    XCTAssertEqual(reopened.allReplay[id.uuidString]?.cursor, 2)
+    XCTAssertEqual(reopened.allReplay[id.uuidString]?.speed, 4)
+  }
 }

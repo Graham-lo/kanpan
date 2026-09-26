@@ -47,7 +47,10 @@ public enum ReviewStorageError: LocalizedError {
   /// 重温进度的节流（见 `saveReplay`）。
   private static let replayThrottle: TimeInterval = 2
   private var replayPending: Task<Void, Never>?
-  private var replayWrittenAt = Date.distantPast
+  /// 上一次写进度的时刻（单调钟，纳秒）；nil 是这份档案还没写过。原来用墙上时间：
+  /// 手机时间往回拨一小时，`saveReplay` 算出来的「还得等」就是一小时，那一小时里的
+  /// 进度全挂在一个睡着的 Task 上，中途被杀就丢了。
+  private var replayWrittenAt: UInt64?
   private var replayDirty = false
 
   /// 三个文件，**只有主档坏了才拒绝开门**。
@@ -352,7 +355,8 @@ public enum ReviewStorageError: LocalizedError {
     Self.evict(&next, keeping: id.uuidString)
     positions = next
     replayDirty = true
-    let wait = Self.replayThrottle - Date().timeIntervalSince(replayWrittenAt)
+    let elapsed = replayWrittenAt.map { Double(Self.uptime() &- $0) / 1_000_000_000 } ?? .infinity
+    let wait = Self.replayThrottle - elapsed
     guard wait > 0 else { try flushReplay(); return }
     guard replayPending == nil else { return }
     replayPending = Task { [weak self] in
@@ -364,12 +368,17 @@ public enum ReviewStorageError: LocalizedError {
   }
 
   /// 把攒着的重温进度立刻写下去。停止播放 / 离开重温时调，没攒着东西就是空操作。
+  ///
+  /// 写成功了才摘掉「有没写的」标记。原来是先摘再写：这一次写失败（磁盘满、文件保护下
+  /// 锁屏后台写不进），标记已经没了，之后的 `transaction` / `saveDraft` 顺手带的那一下
+  /// 全是空操作，这一段进度只剩内存里一份，进程一退就丢。
+  /// 时刻照样先记：写失败也按节流来，别每走一根 K 线就再撞一次墙。
   public func flushReplay() throws {
     replayPending?.cancel(); replayPending = nil
     guard replayDirty else { return }
-    replayDirty = false
-    replayWrittenAt = Date()
+    replayWrittenAt = Self.uptime()
     try JSONEncoder().encode(positions).write(to: replayURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    replayDirty = false
   }
   /// 读一条进度，顺手记一笔「刚看过」。
   ///
