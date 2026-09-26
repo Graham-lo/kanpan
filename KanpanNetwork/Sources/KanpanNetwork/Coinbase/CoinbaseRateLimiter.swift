@@ -10,7 +10,10 @@ actor CoinbaseRateLimiter {
 
   private let gapMs: Double
   private let pacer: Pacer
-  private var nextSlotMs: Double = 0
+  /// 上一笔真正放行的时刻。
+  private var lastSendMs: Double = -.infinity
+  /// 被 429 罚停到这个时刻。
+  private var blockedUntilMs: Double = -.infinity
 
   init(perSecond: Double = 10, pacer: Pacer = SystemPacer()) {
     self.gapMs = 1000 / max(1, perSecond)
@@ -18,18 +21,28 @@ actor CoinbaseRateLimiter {
   }
 
   /// 排一个出站的位置。排到了才返回。
+  ///
+  /// **放行的那一刻才记账**，不预订。原来是进门就把 `nextSlot` 往后推一格再去睡：
+  /// 睡着的那一笔被取消（换品种、离开页面整批撤掉的取数），它订下的那一格照样留着，
+  /// 后来的人得把这些没人用的格子一格格等过去——撤掉二十笔，下一笔真请求就平白多等
+  /// 两秒。现在每一圈醒来都按「上一笔真出站的时刻」和「罚停截止」重算，
+  /// 取消的人什么也没留下。
   func acquire() async throws {
-    let now = await pacer.nowMs()
-    let slot = max(now, nextSlotMs)
-    nextSlotMs = slot + gapMs
-    let wait = slot - now
-    if wait > 0 { try await pacer.sleep(ms: wait) }
-    try Task.checkCancellation()
+    while true {
+      try Task.checkCancellation()
+      let now = await pacer.nowMs()
+      let wait = max(blockedUntilMs - now, lastSendMs + gapMs - now)
+      if wait <= 0 {
+        lastSendMs = now
+        return
+      }
+      try await pacer.sleep(ms: wait)
+    }
   }
 
   /// 被限流了：从现在起这么久谁都不许再发。
   func penalize(seconds: TimeInterval) async {
     let now = await pacer.nowMs()
-    nextSlotMs = max(nextSlotMs, now + max(0.1, seconds) * 1000)
+    blockedUntilMs = max(blockedUntilMs, now + max(0.1, seconds) * 1000)
   }
 }

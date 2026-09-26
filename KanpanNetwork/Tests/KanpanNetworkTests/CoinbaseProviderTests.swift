@@ -19,6 +19,28 @@ struct CoinbaseDTOTests {
     #expect(CoinbaseDTO.isoMs("garbage") == nil)
   }
 
+  /// 步长不是 10 的整数次幂时（`0.25`、`0.5`、`0.005`），小数位按字面数，不按 `⌈-log10⌉`。
+  @Test("小数位按步长的字面数：0.25 是两位，末尾的 0 不算，科学计数法按指数折算")
+  func decimalsFromLiteral() throws {
+    #expect(CoinbaseDTO.decimals("0.25") == 2)
+    #expect(CoinbaseDTO.decimals("0.5") == 1)
+    #expect(CoinbaseDTO.decimals("0.005") == 3)
+    #expect(CoinbaseDTO.decimals("0.01") == 2)
+    #expect(CoinbaseDTO.decimals("0.010") == 2)
+    #expect(CoinbaseDTO.decimals("0.00000001") == 8)
+    #expect(CoinbaseDTO.decimals("1") == 0)
+    #expect(CoinbaseDTO.decimals("10") == 0)
+    #expect(CoinbaseDTO.decimals("1.0") == 0)
+    #expect(CoinbaseDTO.decimals("1e-8") == 8)
+    #expect(CoinbaseDTO.decimals("2.5E-3") == 4)
+    let body = Data(#"""
+    {"products":[{"product_id":"QTR-USD","price":"3.25","price_increment":"0.25","base_increment":"0.5",
+      "quote_currency_id":"USD","status":"online","product_type":"SPOT"}]}
+    """#.utf8)
+    let info = try #require(try CoinbaseProvider.products(body).first?.symbolInfo)
+    #expect(info.pricePrecision == 2 && info.quantityPrecision == 1 && info.tickSize == 0.25)
+  }
+
   @Test("K 线页：降序 → 升序，秒 → 毫秒，字符串 → 数")
   func candlesAscending() throws {
     let body = Data(#"""
@@ -243,5 +265,40 @@ struct CoinbaseWSTests {
     #expect(await waitUntil(5) { await bench.connects >= 2 })
     #expect(await bench.socket(1)?.closed == true)
     await ws.stop()
+  }
+}
+
+@Suite("Coinbase 限速")
+struct CoinbaseRateLimiterTests {
+  /// 排着队的请求被整批撤掉（换品种、离开页面）之后，下一笔真请求只等正常的一格间隔，
+  /// 不替那些撤掉的请求把它们订过的格子一格格等过去。
+  @Test("取消的排队请求不留下占位")
+  func cancelledWaitersReleaseTheirSlots() async throws {
+    let pacer = ManualPacer()
+    let limiter = CoinbaseRateLimiter(perSecond: 10, pacer: pacer)
+    try await limiter.acquire()
+    let queued = (0..<5).map { _ in Task { try await limiter.acquire() } }
+    for _ in 0..<200 where await pacer.sleeping < queued.count { await Task.yield() }
+    #expect(await pacer.sleeping == queued.count)
+    queued.forEach { $0.cancel() }
+    for task in queued { _ = try? await task.value }
+    await pacer.advance(100)
+    let next = Task { try await limiter.acquire() }
+    for _ in 0..<50 { await Task.yield() }
+    let stuck = await pacer.sleeping
+    await pacer.drain()
+    _ = try? await next.value
+    #expect(stuck == 0)
+  }
+
+  @Test("429 罚停：从现在起整把歇够再放行，之后恢复正常间隔")
+  func penaltyBlocksEveryone() async throws {
+    let pacer = StepPacer()
+    let limiter = CoinbaseRateLimiter(perSecond: 10, pacer: pacer)
+    try await limiter.acquire()
+    await limiter.penalize(seconds: 2)
+    try await limiter.acquire()
+    try await limiter.acquire()
+    #expect(await pacer.sleepLog() == [2000, 100])
   }
 }

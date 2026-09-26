@@ -20,8 +20,15 @@ enum CoinbaseDTO {
 
   // ---------------------------------------------------------------- 品种表 / 24h 行情
 
+  /// 坏一行只丢那一行（`LenientList`）：几百个币对里有一行缺了 `product_id`，
+  /// 不能让整张品种表和全市场行情一起解不开。
   struct Products: Decodable {
     var products: [Product]
+    private enum CodingKeys: String, CodingKey { case products }
+    init(from decoder: Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      products = try c.decode(LenientList<Product>.self, forKey: .products).items
+    }
   }
 
   struct Product: Decodable {
@@ -54,8 +61,8 @@ enum CoinbaseDTO {
       let base = (base_display_symbol?.isEmpty == false ? base_display_symbol : base_currency_id) ?? product_id
       let step = base_increment.flatMap(Double.init) ?? 0
       return SymbolInfo(symbol: CoinbaseDTO.key(product_id), base: base.uppercased(), quote: CoinbaseDTO.quote,
-                        pricePrecision: CoinbaseDTO.decimals(tick),
-                        quantityPrecision: step > 0 ? CoinbaseDTO.decimals(step) : 8,
+                        pricePrecision: price_increment.map(CoinbaseDTO.decimals) ?? 0,
+                        quantityPrecision: step > 0 ? base_increment.map(CoinbaseDTO.decimals) ?? 8 : 8,
                         tickSize: tick,
                         // Coinbase 现货只有币（美元计价的币对），按币安 `underlyingType` 的口径
                         // 标成 `COIN`：徽章、搜索的「加密」筛选、自选分类判据都认这一个字段。
@@ -73,9 +80,21 @@ enum CoinbaseDTO {
     }
   }
 
-  static func decimals(_ step: Double) -> Int {
-    guard step > 0, step.isFinite else { return 0 }
-    return max(0, min(12, Int((-log10(step)).rounded(.up))))
+  /// 步长要几位小数才写得下：**按交易所给的那串字面数**，末尾的 0 不算。
+  ///
+  /// 原来是 `⌈-log10(步长)⌉`，只对 10 的整数次幂成立：`0.25` 算出来是 1 位，
+  /// 价格按一位小数摆，`x.25` / `x.75` 这些合法的价位全被四舍五入成相邻的档，
+  /// 图上的价格刻度和最新价都对不上成交。字面数本来就在报文里，数它最准，
+  /// 也不经过一次浮点换算。科学计数法（`1e-8`、`2.5E-3`）按指数折算。
+  static func decimals(_ text: String) -> Int {
+    let t = text.trimmingCharacters(in: .whitespaces).lowercased()
+    if let e = t.firstIndex(of: "e") {
+      let exponent = Int(t[t.index(after: e)...]) ?? 0
+      return max(0, min(12, decimals(String(t[..<e])) - exponent))
+    }
+    guard let dot = t.firstIndex(of: ".") else { return 0 }
+    let fraction = t[t.index(after: dot)...].reversed().drop { $0 == "0" }
+    return max(0, min(12, fraction.count))
   }
 
   /// Coinbase 口径的 24h 行情 → 看盘的 `Ticker`。
