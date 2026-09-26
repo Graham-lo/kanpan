@@ -538,7 +538,7 @@ struct OrderFlowAdapterTests {
     let events = await stream.start()
     #expect(await waitUntil(5) { await deck.stats().connects >= 2 })
     #expect(await waitUntil(5) { await lines.all.contains { $0.contains("缓冲满了丢了帧") } })
-    // 立即重拨（不走退避）；读出来的是最新的几条，末尾是新连接。
+    // 整条重拨（照常退避，快进钟下 1 ms 级）；读出来的是最新的几条，末尾是新连接。
     let log = EventLog()
     let reader = Task { for await e in events { await log.note(e) } }
     #expect(await waitUntil(5) { await log.lines.contains { $0.hasPrefix("connected") } })

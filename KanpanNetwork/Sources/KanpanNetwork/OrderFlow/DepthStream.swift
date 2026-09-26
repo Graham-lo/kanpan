@@ -18,7 +18,7 @@ public enum DepthStreamEvent: Sendable {
 /// - 静默看门狗是每条连接一个常驻任务（记最后收帧时刻，醒来看一眼），不再每收一帧起一个 task group
 ///   加一个 sleep——BTC 十三本簿每秒一两百帧，那样每秒要建销一两百组任务。
 /// - 事件缓冲有上限（`bufferLimit` 条，满了丢最旧的）。真丢了帧，这条连接上的簿就有了断档：
-///   主动整条重拨，调用方收到 `.connected` 按新连接重建每本簿，不靠内存兜着越积越多。
+///   整条重拨（照常退避，见 `overflowed`），调用方收到 `.connected` 按新连接重建每本簿，不靠内存兜着越积越多。
 public actor DepthStream {
   /// 事件缓冲最多几条（一条是一帧解出来的消息）。按每秒两百帧算约 2.5 秒：调用方卡这么久就算跟不上了。
   public static let bufferLimit = 512
@@ -33,6 +33,11 @@ public actor DepthStream {
   private var connection = 0
   /// 主动要求重连：不退避、不算失败。
   private var skipBackoff = false
+  /// 这条连接是因为调用方跟不上、缓冲溢出才断的。溢出不是「主动要求」：调用方持续慢时每次重拨都
+  /// 立刻再溢出，照旧不退避就是一条几毫秒一次的重拨风暴（每次还要让币安那几本各打一发 REST 快照）。
+  private var overflowed = false
+  /// 溢出断开时，连接要连着活满这么久才算「那次只是偶发」、退避清零；短于它说明调用方一直跟不上，接着涨。
+  public static let overflowStableMs: Double = 60_000
   /// 拨第几条候选。连上了却一条消息都没收到就断的，下次换下一条（网关主 → 备）。
   private var candidate = 0
   private var gotMessages = false
@@ -147,6 +152,7 @@ public actor DepthStream {
         socket = s
         connection += 1
         skipBackoff = false
+        overflowed = false
         cutReason = nil
         log("深度 \(adapter.name) 连上 #\(connection)")
         sink.yield(.connected(connection))
@@ -169,13 +175,20 @@ public actor DepthStream {
       guard !Task.isCancelled else { return }
       sink.yield(.disconnected(reason))
       if !gotMessages { candidate += 1 }
-      if skipBackoff {
+      if overflowed {
+        // 缓冲溢出：照常退避。连着活满 `overflowStableMs` 才算偶发、清零；
+        // 调用方一直跟不上的话每次连上没多久就又溢出，档位一路涨到上限，不会连成风暴。
+        overflowed = false
+        skipBackoff = false
+        if let connectedAt {
+          backoff.settle(deliveredData: true, uptimeMs: await pacer.nowMs() - connectedAt, stableMs: Self.overflowStableMs)
+        }
+      } else if skipBackoff {
         skipBackoff = false
         log("深度 \(adapter.name) 断了（\(reason)），立刻重连")
         continue
-      }
-      // 收到过消息、又连着活满一段才算稳住过，退避清零；连上推几帧就被踢的接着涨（见 `Backoff.settle`）。
-      if let connectedAt {
+      } else if let connectedAt {
+        // 收到过消息、又连着活满一段才算稳住过，退避清零；连上推几帧就被踢的接着涨（见 `Backoff.settle`）。
         backoff.settle(deliveredData: gotMessages, uptimeMs: await pacer.nowMs() - connectedAt)
       }
       let wait = backoff.next()
@@ -211,7 +224,8 @@ public actor DepthStream {
         gotMessages = true
         if case .dropped = sink.yield(.messages(messages)) {
           // 调用方跟不上，最旧的一帧被挤掉了：这条连接上的簿有了断档，整条重拨、各本簿按新连接重建。
-          skipBackoff = true
+          // 重拨要走退避（见 `overflowed`）：调用方慢不是一次重拨治得好的。
+          overflowed = true
           throw FeedError.badResponse("处理不过来，缓冲满了丢了帧，整条重订")
         }
       }
