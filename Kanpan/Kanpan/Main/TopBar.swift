@@ -365,10 +365,9 @@ struct PriceRow: View {
 }
 
 /// 复盘按钮上的角标。单独成一个视图，是为了让「数欠着几条」这件事只跟着复盘记录走：
-/// `pendingCount` 每读一次都要把全部记录过滤一遍（几千条），原来是顶栏在自己的 body 里
-/// 读好再传下来，而顶栏跟着逐笔成交一秒重画好几次——每一跳都白扫一遍复盘本。
-/// 现在顶栏只把 feature 这个引用递下来：引用没变，SwiftUI 不重跑这里的 body；
-/// 这里的 body 只登记了 `records`，记录真变了才重数。
+/// 原来 `pendingCount` 是顶栏在自己的 body 里读好再传下来，而顶栏跟着逐笔成交一秒
+/// 重画好几次——每一跳都白读一遍。现在顶栏只把 feature 这个引用递下来：引用没变，
+/// SwiftUI 不重跑这里的 body；`pendingCount` 本身也已在 feature 里缓存，记录真变了才重数。
 struct ReviewCountBadge: View {
   let review: ReviewFeature
   let theme: PanelTheme
