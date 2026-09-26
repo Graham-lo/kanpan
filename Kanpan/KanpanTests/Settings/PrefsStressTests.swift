@@ -27,14 +27,14 @@ struct PrefsStressTests {
   }
 
   /// 出厂那份编出来的全部键，加上只读不写的旧键和几个认不出的键。
-  private static let keys: [String] = {
+  nonisolated private static let keys: [String] = {
     let object = (try? JSONSerialization.jsonObject(with: PrefsCodec.encoded(.defaults)!)) as? [String: Any] ?? [:]
     return object.keys.sorted() + ["orderFlowFilledBid", "orderFlowFilledAsk", "orderFlowCancelledBid",
                                    "orderFlowCancelledAsk", "styleID", "recordButtonX", "apiHost", "未来的键"]
   }()
 
   /// 认得出的字面量池：周期、指标、各个枚举的取值，混上认不出的。
-  private static let words: [String] = {
+  nonisolated private static let words: [String] = {
     var out = Interval.allCases.map(\.rawValue) + IndicatorID.allCases.map(\.rawValue)
     let object = (try? JSONSerialization.jsonObject(with: PrefsCodec.encoded(.defaults)!)) as? [String: Any] ?? [:]
     out += object.values.compactMap { $0 as? String }
@@ -45,10 +45,10 @@ struct PrefsStressTests {
     return out
   }()
 
-  private static let numbers: [Double] = [0, -0.0, 1, -1, 0.5, 1.6, 2, 4, 40, 40.1, 100, 399, 400, 401, 1e9,
+  nonisolated private static let numbers: [Double] = [0, -0.0, 1, -1, 0.5, 1.6, 2, 4, 40, 40.1, 100, 399, 400, 401, 1e9,
                                           1e308, -1e308, 5e-324, 0.1, 0.09, 50, 50.5, 3.141_592_653_589_793]
 
-  private func scalar(_ rng: inout Seeded) -> Any {
+  nonisolated private func scalar(_ rng: inout Seeded) -> Any {
     switch Int.random(in: 0..<6, using: &rng) {
     case 0: return Self.words.randomElement(using: &rng)!
     case 1: return Self.numbers.randomElement(using: &rng)!
@@ -59,7 +59,7 @@ struct PrefsStressTests {
     }
   }
 
-  private func value(_ rng: inout Seeded, depth: Int = 0) -> Any {
+  nonisolated private func value(_ rng: inout Seeded, depth: Int = 0) -> Any {
     switch Int.random(in: 0..<(depth > 1 ? 1 : 4), using: &rng) {
     case 0: return scalar(&rng)
     case 1:
@@ -83,7 +83,7 @@ struct PrefsStressTests {
     }
   }
 
-  private func archive(_ rng: inout Seeded) -> Data {
+  nonisolated private func archive(_ rng: inout Seeded) -> Data {
     var object: [String: Any] = [:]
     for key in Self.keys where Int.random(in: 0..<3, using: &rng) > 0 { object[key] = value(&rng) }
     object["v"] = [-1, 0, 1, 2, 2, 3, 3, 4, 999, "3", NSNull()].randomElement(using: &rng)!
@@ -91,7 +91,7 @@ struct PrefsStressTests {
   }
 
   /// 服务端字节上限（`sync_validation.rs`：`string(v, 128)` / `string(v, 64)` 数的是 UTF-8 字节）。
-  private func withinServerLimits(_ data: Data) -> Bool {
+  nonisolated private func withinServerLimits(_ data: Data) -> Bool {
     guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
     for key in ["favoritesGroup", "drawToolGroup"] {
       if let s = object[key] as? String, s.utf8.count > 128 { return false }
@@ -106,7 +106,7 @@ struct PrefsStressTests {
   }
 
   /// 两份设置里值不一样的字段（字典按键排好再比，免得把打印顺序当成差异）。
-  private func diff(_ a: Prefs, _ b: Prefs) -> String {
+  nonisolated private func diff(_ a: Prefs, _ b: Prefs) -> String {
     func object(_ p: Prefs) -> [String: Any] {
       (try? JSONSerialization.jsonObject(with: PrefsCodec.encode(p))) as? [String: Any] ?? [:]
     }
@@ -116,7 +116,11 @@ struct PrefsStressTests {
   }
 
   @Test("3000 份随机坏档：解一次编一次之后就不再变、落盘有界、字段都过得了服务端的字节上限")
-  func randomArchivesSettleInOneRound() throws {
+  // 不占主线程：解编是纯值运算，3000 份（最大一份十几 MB）在 Debug 里要跑一阵，
+  // 挂在 MainActor 上时整个测试进程别的主线程用例全排在它后面，带时限的那几条会被饿到超时。
+  // 必须是 async：同步的 nonisolated 函数在调用方的执行器上跑（这里就是套件的 MainActor），
+  // 只有 nonisolated async 才一定换到全局执行器上（SE-0338）。
+  nonisolated func randomArchivesSettleInOneRound() async throws {
     var rng = Seeded(state: 0x5EED_2026_0926)
     var largestInput = 0, largestOutput = 0
     for trial in 0..<3_000 {
