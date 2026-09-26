@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import os
 
 struct ShareWindow: Codable, Equatable, Sendable {
   var from: Double
@@ -26,11 +27,7 @@ struct ShareItem: Codable, Equatable, Identifiable, Sendable {
     SymbolInfo.placeholder(symbol: symbol).base
   }
   var createdDate: Date? { Self.date(createdAt) }
-  static func date(_ raw: String) -> Date? {
-    let parser = ISO8601DateFormatter()
-    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
-  }
+  static func date(_ raw: String) -> Date? { ShareDates.parse(raw) }
   /// 原顺序与样式保留，只换身份。偏好的提醒按旧 / 新 id 映射。
   func copies(ids: [String]? = nil) -> [Drawing] {
     drawings.enumerated().map { index, drawing in
@@ -65,5 +62,39 @@ struct SharePreviewInterval {
   mutating func userPicked() { changedByUser = true }
   func restore(current: Interval) -> Interval? {
     !changedByUser && current == shared && before != shared ? before : nil
+  }
+}
+
+/// 分享里那几个 RFC3339 时间串的解析与盖戳。
+///
+/// 以前每解析一次就新建一个 `ISO8601DateFormatter`（带小数秒的那个认不出，再建第二个），
+/// 朋友页每一行的 body、每次拉收件箱按留存期过滤都逐条走这一步；一个格式器建出来要几十微秒，
+/// 三百封信一趟就是十几毫秒全压在主线程上（压测 M3）。现在整个进程只有这两个，
+/// 格式器不保证跨线程同时用安全，所以一律在同一把锁里用。
+enum ShareDates {
+  private struct Formatters {
+    /// 服务端的原串带小数秒（微秒）。
+    let fractional: ISO8601DateFormatter
+    /// 不带小数秒的；本机「已读 / 留下」盖的戳也是这一种。
+    let plain: ISO8601DateFormatter
+  }
+  private static let formatters = OSAllocatedUnfairLock(uncheckedState: Formatters(
+    fractional: {
+      let parser = ISO8601DateFormatter()
+      parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      return parser
+    }(),
+    plain: ISO8601DateFormatter()))
+
+  static func parse(_ raw: String) -> Date? {
+    formatters.withLockUnchecked { $0.fractional.date(from: raw) ?? $0.plain.date(from: raw) }
+  }
+  /// 本机「已读 / 留下」的时间戳，和原来 `ISO8601DateFormatter().string(from:)` 同一格式。
+  static func stamp(_ date: Date = Date()) -> String {
+    formatters.withLockUnchecked { $0.plain.string(from: date) }
+  }
+  /// 两个格式器是谁。给用例核对「整个进程只建了这一份」。
+  static var identities: [ObjectIdentifier] {
+    formatters.withLockUnchecked { [ObjectIdentifier($0.fractional), ObjectIdentifier($0.plain)] }
   }
 }
