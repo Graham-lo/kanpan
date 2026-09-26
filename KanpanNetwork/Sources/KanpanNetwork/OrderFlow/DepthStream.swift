@@ -11,8 +11,8 @@ public enum DepthStreamEvent: Sendable {
 
 /// 一条深度连接（上面可能有好几本簿）：拨号、收帧、解码，断了按退避重连；`silenceMs` 内一帧都没有
 /// 就当断了；适配器要保活的，连上后按它给的间隔发。
-/// 簿怎么维护不归它管（KanpanCore `OrderFlowModel`）；本地簿要求重来时调 `resubscribe(_:)`
-/// （适配器能单本重订就只重订那几本，否则整条重拨）或 `reconnect()`。
+/// 簿怎么维护不归它管（KanpanCore `OrderFlowModel`）；本地簿要求重来时调 `resubscribe(_:connection:)`
+/// （适配器能单本重订就只重订那几本，否则整条重拨）或 `reconnect(connection:)`，带上做判断时所在的连接号。
 ///
 /// 审查第 37 项：
 /// - 静默看门狗是每条连接一个常驻任务（记最后收帧时刻，醒来看一眼），不再每收一帧起一个 task group
@@ -113,7 +113,16 @@ public actor DepthStream {
   }
 
   /// 掐掉当前连接立刻重拨（流内快照的那家整条连接一个序号，要重新拿 snapshot 只能这样）。
-  public func reconnect() async {
+  ///
+  /// `connection` 是调用方据以做出这个判断的那条连接的号（它收到的 `.connected(n)`）。事件流是带缓冲的：
+  /// 调用方处理到旧连接的积压消息、要求重拨时，这边可能已经换上了新连接——那条新连接没做错任何事，
+  /// 不许被一条过期的判断掐掉。号对不上、或此刻根本没有连接（正在退避），就什么都不做。
+  /// 传 nil 表示「不管哪条，掐当前的」。
+  public func reconnect(connection id: Int? = nil) async {
+    if let id, id != connection || socket == nil {
+      log("深度 \(adapter.name) 重拨请求针对 #\(id)，当前是 #\(connection)\(socket == nil ? "（未连上）" : "")，不理会")
+      return
+    }
     skipBackoff = true
     let s = socket
     socket = nil
@@ -122,12 +131,15 @@ public actor DepthStream {
 
   /// 这几本簿要重新拿流内快照：适配器会单本重订（OKX 退订再订那一个 instId）就只重订它们，
   /// 同一条连接上的别的簿不受影响；不会（或发不出去）就整条重拨。返回 true 表示走的是单本重订。
+  /// `connection` 同 `reconnect(connection:)`：针对的是已经换下去的旧连接就什么都不做、返回 false。
   @discardableResult
-  public func resubscribe(_ venueIDs: [String]) async -> Bool {
+  public func resubscribe(_ venueIDs: [String], connection id: Int? = nil) async -> Bool {
     guard let s = socket, !venueIDs.isEmpty else { return false }
+    if let id, id != connection { return false }
+    let current = connection
     var messages: [String] = []
-    for id in venueIDs {
-      guard let m = adapter.resubscribeMessages(venueID: id) else { await reconnect(); return false }
+    for v in venueIDs {
+      guard let m = adapter.resubscribeMessages(venueID: v) else { await reconnect(connection: current); return false }
       messages += m
     }
     do {
@@ -135,7 +147,7 @@ public actor DepthStream {
       log("深度 \(adapter.name) 单本重订 \(venueIDs.joined(separator: ","))")
       return true
     } catch {
-      await reconnect()
+      await reconnect(connection: current)
       return false
     }
   }

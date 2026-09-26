@@ -77,4 +77,45 @@ struct StressDepthStreamTests {
     await pacer.drain()
     withExtendedLifetime(events) {}
   }
+
+  @Test("针对旧连接的重拨 / 单本重订到达时新连接已经换上 → 不理会，新连接不被掐；针对当前连接的照常生效",
+        .timeLimit(.minutes(1)))
+  func staleRequestsLeaveTheNewConnectionAlone() async throws {
+    let bench = StormBench()
+    let pacer = ManualPacer()
+    let stream = DepthStream(adapter: StormDepthAdapter(bench: bench), pacer: pacer, silenceMs: 1e12,
+                             backoff: Backoff(baseMs: 1000, capMs: 30_000, jitter: .none))
+    let events = await stream.start()
+    let reader = Task { for await _ in events {} }
+
+    #expect(await waitUntil(5) { await bench.connects == 1 })
+    let first = try #require(await bench.latest())
+    await first.push(.text("x"))
+    // 服务器掐掉 #1；退避后换上 #2。调用方手里还有 #1 的积压消息，据此做出的判断都是过期的。
+    await first.push(.closed("服务器踢了"))
+    // #1 被掐之后、#2 连上之前（退避中）到的过期重拨：什么都不做。
+    #expect(await waitUntil(5) { (await pacer.nextWakeIn).map { $0 < 1e9 } ?? false })
+    await stream.reconnect(connection: 1)
+    #expect(await advanceThroughBackoff(pacer))
+    #expect(await waitUntil(5) { await bench.connects == 2 })
+    let second = try #require(await bench.latest())
+    #expect(await waitUntil(5) { await second.receiving == 1 })
+
+    await stream.reconnect(connection: 1)
+    #expect(await stream.resubscribe(["v"], connection: 1) == false)
+    #expect(await staysFalse(for: 0.2) { await bench.connects > 2 }, "过期的重拨掐掉了新连接")
+    #expect(await second.cancelCalls == 0)
+    #expect(await second.sent.isEmpty, "过期的单本重订发到了新连接上")
+
+    // 针对当前这条的照常生效：单本重订发出去，整条重拨立刻拨（主动要求，不退避）。
+    #expect(await stream.resubscribe(["v"], connection: 2))
+    #expect(await second.sent == ["resub v"])
+    await stream.reconnect(connection: 2)
+    #expect(await waitUntil(5) { await bench.connects == 3 })
+    #expect(await second.cancelCalls >= 1)
+
+    await stream.stop()
+    reader.cancel()
+    await pacer.drain()
+  }
 }

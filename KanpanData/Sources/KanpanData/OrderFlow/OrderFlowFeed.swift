@@ -116,6 +116,9 @@ public actor OrderFlowFeed {
   private var snapshotTasks: [String: Task<Void, Never>] = [:]
   /// 正在单本重订、还没等到新快照的簿：簿 → (哪条连接, 什么时候发的)。等太久（订阅被吞了）就整条重拨兜底。
   private var resubscribing: [String: (stream: Int, sinceMs: Int64)] = [:]
+  /// 每条深度流上本地已经处理到的连接号（最近一次 `.connected(n)`）。要求重订 / 重拨时带上它：
+  /// 事件流有缓冲，处理旧连接积压的消息时流那边可能已经换了新连接，过期的判断不许掐新连接。
+  private var connectionOf: [Int: Int] = [:]
   /// 单本重订等快照最多等多久，过了就整条重拨。
   static let resubscribeTimeoutMs: Int64 = 10_000
   private var lastEmitted: OrderFlowSnapshot?
@@ -279,7 +282,7 @@ public actor OrderFlowFeed {
     historyFetch?.cancel(); historyFetch = nil; historyGeneration += 1
     schemeTask?.cancel(); schemeTask = nil
     snapshotTasks.values.forEach { $0.cancel() }; snapshotTasks = [:]
-    let dying = streams; streams = []; adapters = []
+    let dying = streams; streams = []; adapters = []; connectionOf = [:]
     for s in dying { await s.stop() }
     save()
   }
@@ -360,7 +363,8 @@ public actor OrderFlowFeed {
     let books = adapters[index].books
     let now = clock()
     switch event {
-    case .connected:
+    case .connected(let id):
+      connectionOf[index] = id
       for book in books {
         resubscribing[book.id] = nil
         cancelSnapshot(book.id)
@@ -399,7 +403,8 @@ public actor OrderFlowFeed {
   }
 
   private func resubscribe(_ venues: [String], stream index: Int, nowMs: Int64) async {
-    if await streams[index].resubscribe(venues) {
+    guard let connection = connectionOf[index] else { return }
+    if await streams[index].resubscribe(venues, connection: connection) {
       for venue in venues { resubscribing[venue] = (index, nowMs) }
     }
   }
@@ -411,8 +416,9 @@ public actor OrderFlowFeed {
     resubscribing = resubscribing.filter { !stale.contains($0.value.stream) }
     for index in stale.sorted() where index < streams.count {
       let stream = streams[index]
+      guard let connection = connectionOf[index] else { continue }
       log("主力订单流 \(symbol) \(adapters[index].name) 单本重订 \(Self.resubscribeTimeoutMs / 1000) 秒没等到快照，整条重连")
-      Task { await stream.reconnect() }
+      Task { await stream.reconnect(connection: connection) }
     }
   }
 
