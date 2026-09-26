@@ -1083,7 +1083,19 @@ fn resumable<'a>(recent:&'a [(String,i64)],admit:&HashSet<&str>,now:i64)->Vec<(&
 
 /// 起跟踪：主币、最近 24 小时有人要过的（最多 20 只），再按 `KANPAN_ORDERFLOW_LAYERS` 起固定 / 山寨 / 热点；
 /// 之后每十分钟清一遍、每小时滚动清理。
+/// 订单流自己的库连接池最多几条：写库 3（`WRITE_SLOTS`）+ 读历史 2（`HISTORY_READS`）+ 起跟 / 读回 / 记要过 / 清理 1。
+const OWN_POOL:u32=6;
+static POOL:OnceLock<PgPool>=OnceLock::new();
+
+/// 订单流单开一个池子，和账号、同步、提醒等用户接口的池子（serve 共 8 条）分开：连同一个库、同一套语句死线。
+/// 原来共用那 8 条，写库、读历史各有名额，但起跟读回、记要过、每小时清理都不占名额，库一慢（表锁、慢盘、清理删大批）
+/// 订单流就能把 8 条全攥住，登录、同步推拉拿连接要一直等到它们放手。
+fn own_pool(api:&PgPool)->PgPool {
+ crate::pool_options(true).max_connections(OWN_POOL).connect_lazy_with((*api.connect_options()).clone())
+}
+
 pub fn spawn(pool:PgPool)->JoinHandle<()> {
+ let pool=POOL.get_or_init(||own_pool(&pool)).clone();
  tokio::spawn(async move {
   let registry=REGISTRY.get_or_init(||Arc::new(Registry::new(pool.clone()))).clone();
   let enabled=Enabled::from_env();
@@ -1150,14 +1162,15 @@ async fn history(State(s):State<AppState>,Params(q):Params<HistoryQuery>)->Resul
  let (from,to)=window(q.from,q.to,now).map_err(ApiError::bad)?;
  // 三家都没挂的 base（打错的、早下架的）：不起跟踪、不记进 orderflow_bases。原来照样起一只按需跟踪，
  // 占着按需层的名额（满了还会把真有人在看的踢掉），prepare 每 30 秒空转一次、一跟 24 小时，重启后还会被接着跟。
+ let pool=POOL.get().unwrap_or(&s.pool);
  let tracked=REGISTRY.get().is_some_and(|r|r.is_tracked(&q.base));
  let admit=admitted(tracked,instruments::listed(&q.base).await);
  let (thresholds,tracked_since)=if admit {
   let thresholds=REGISTRY.get().map(|r|r.request(&q.base,now)).unwrap_or_default();
-  let (since,alive)=store::touch(&s.pool,&q.base,now).await?;
+  let (since,alive)=store::touch(pool,&q.base,now).await?;
   (thresholds,store::continuous_since(since,alive,now).max(now-MAX_SPAN_MS))
  } else {(Thresholds::default(),now)};
- reply(&s.pool,&q.base,from,to,thresholds,tracked_since).await
+ reply(pool,&q.base,from,to,thresholds,tracked_since).await
 }
 
 /// 同一时刻最多几个历史请求在读库、组答复。一个请求最多 `store::MAX_ROWS` 行、答复约 60 MB；
@@ -1319,6 +1332,38 @@ mod tests {
   stop_tx.send(true).unwrap();
   tokio::time::timeout(Duration::from_secs(200),tracker).await.expect("停了要能退出").unwrap();
   assert_eq!(dropped,0,"重取期间收件口没人收，满了丢帧");
+ }
+
+ /// 订单流表被锁住 3 秒（同样代表慢盘、清理删大批）：订单流这边照常的一阵活——三个写库、两个读历史、六只起跟读回、
+ /// 一次清理——全卡在库上。量账号这类用户接口此时拿连接要等多久：和订单流共用 serve 的 8 条（原来）对订单流单开池子。
+ #[tokio::test(flavor="multi_thread",worker_threads=4)] async fn orderflow_load_never_starves_the_user_api_of_connections() {
+  let Some(isolated)=store::tests::isolated_pool().await else {return};
+  let options=(*isolated.connect_options()).clone();
+  let mut report=Vec::new();
+  for own in [false,true] {
+   let api=crate::pool_options(true).connect_with(options.clone()).await.unwrap();
+   let orderflow=if own {own_pool(&api)} else {api.clone()};
+   let mut locker=isolated.begin().await.unwrap();
+   sqlx::query("LOCK TABLE orderflow_orders IN ACCESS EXCLUSIVE MODE").execute(&mut *locker).await.unwrap();
+   let mut load=tokio::task::JoinSet::new();
+   let row=BigOrder{venue_id:"binance:usdtPerp:ZZPOOLUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Bid,bucket:1,price:1.0,
+    first_seen_ms:1,end_ms:None,status:model::Status::Live,initial_notional:6e6,notional:6e6,filled_notional:0.0,threshold:5e6,vanished_notional:None};
+   for i in 0..3 {let (p,row)=(orderflow.clone(),row.clone());load.spawn(async move {let _=store::upsert(&p,&format!("ZZPOOL{i}"),1.0,&[(row,1)]).await;});}
+   for _ in 0..2 {let p=orderflow.clone();load.spawn(async move {let _=reply(&p,"ZZPOOL",0,1,Thresholds::default(),0).await;});}
+   for i in 0..6 {let p=orderflow.clone();load.spawn(async move {let _=store::live(&p,&format!("ZZPOOL{i}")).await;});}
+   {let p=orderflow.clone();load.spawn(async move {let _=store::purge(&p,0,&[]).await;});}
+   tokio::time::sleep(Duration::from_millis(300)).await;
+   let started=std::time::Instant::now();
+   sqlx::query("SELECT 1").execute(&api).await.unwrap();
+   let waited=started.elapsed().as_millis();
+   locker.rollback().await.unwrap();
+   while load.join_next().await.is_some() {}
+   sqlx::query("DELETE FROM orderflow_orders WHERE base LIKE 'ZZPOOL%'").execute(&isolated).await.unwrap();
+   println!("{}：订单流卡在库上时，用户接口拿一条连接等了 {waited} ms",if own {"订单流单开池子"} else {"共用 8 条"});
+   report.push(waited);
+   orderflow.close().await;api.close().await;
+  }
+  assert!(report[1]<500,"订单流卡住时用户接口等了 {} ms",report[1]);
  }
 
  #[test] fn resyncs_back_off_until_the_book_holds_for_a_minute() {
