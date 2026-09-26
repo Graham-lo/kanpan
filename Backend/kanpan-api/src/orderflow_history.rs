@@ -562,8 +562,10 @@ async fn prepare(base:&str,stop:&mut watch::Receiver<bool>)->Option<(Vec<Venue>,
 async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop:watch::Receiver<bool>,priority:Arc<AtomicU8>,delay:Duration,
  after:Option<JoinHandle<()>>) {
  // 上一任还在收尾：等它把结束的单写进库，再读回挂着的。
- if let Some(previous)=after {
-  tokio::select! {_=stop.changed()=>return,_=previous=>{}}
+ // 等的时候被停：什么也不做，但照样等上一任收完尾再结束——注册表把这个任务当成「上一任」交给下一任等，
+ // 它先走了下一任就等了个空，会和还在落库的上一任同时跑（起停反复时的链）。
+ if let Some(mut previous)=after {
+  tokio::select! {biased;_=stop.changed()=>{let _=previous.await;return},_=&mut previous=>{}}
  }
  if !delay.is_zero() {
   tokio::select! {_=stop.changed()=>return,_=tokio::time::sleep(delay)=>{}}
@@ -1191,12 +1193,44 @@ mod tests {
   assert!(r.retiring.lock().unwrap().is_empty(),"上一任交给了新任务");
   tokio::time::sleep(Duration::from_millis(50)).await;
   assert!(!r.lock()["ZZT"].task.is_finished(),"上一任没收完尾：新任务在等，还没去读回挂着的单");
-  // 停掉：任务进 retiring 收尾；等的时候被停就直接结束。
+  // 停掉：任务进 retiring 收尾。等的时候被停不做事，但要等上一任收完尾才算结束——
+  // 下一任等的是它，它先走了，下一任就会赶在上一任落库之前读回挂着的单。
   {let mut entries=r.lock();r.stop(&mut entries,"ZZT","stopped by the test");}
   assert!(!r.lock().contains_key("ZZT"));
   let task=r.retiring.lock().unwrap().remove("ZZT").expect("停掉的任务留给下一任等");
-  tokio::time::timeout(Duration::from_secs(1),task).await.unwrap().unwrap();
+  tokio::time::sleep(Duration::from_millis(50)).await;
+  assert!(!task.is_finished(),"上一任还在收尾：停掉的这一任要替下一任接着等");
   drop(release);
+  tokio::time::timeout(Duration::from_secs(1),task).await.unwrap().unwrap();
+ }
+
+ /// 压测（2026-09-26）：一只在按需 / 热点边上反复进出，起了停、停了起，上一任一直没收完尾。
+ /// 原来等上一任的时候被停就直接返回、手里上一任的句柄随之丢掉：retiring 里记的是这个早已结束的任务，
+ /// 下一任等它等了个空，和还在落库的上一任同时跑——同一只两个跟踪器，读回的挂着的单被旧任务的失联结束盖掉。
+ /// 500 轮起停之后，retiring 里那一个必须还在等最早那一任；最早那一任一结束，整条链收干净、不漏任务。
+ #[tokio::test(flavor="multi_thread",worker_threads=2)] async fn start_stop_churn_never_lets_two_trackers_overlap() {
+  let r=Registry::new(PgPool::connect_lazy("postgres://nobody@127.0.0.1:1/none").unwrap());
+  let metrics=tokio::runtime::Handle::current().metrics();
+  let baseline=metrics.num_alive_tasks();
+  let (release,wait)=tokio::sync::oneshot::channel::<()>();
+  let finished=Arc::new(AtomicBool::new(false));
+  let flag=finished.clone();
+  let first=tokio::spawn(async move {let _=wait.await;flag.store(true,Ordering::SeqCst);});
+  r.retiring.lock().unwrap().insert("ZZC".into(),first);
+  for round in 0..500 {
+   {let mut entries=r.lock();r.start(&mut entries,"ZZC",0,true,|e|e.requested=1);}
+   {let mut entries=r.lock();r.stop(&mut entries,"ZZC","churn");}
+   if round%50==0 {tokio::task::yield_now().await;}
+  }
+  tokio::time::sleep(Duration::from_millis(100)).await;
+  let last=r.retiring.lock().unwrap().remove("ZZC").expect("最后一任在 retiring 里");
+  assert!(!last.is_finished(),"最早那一任还没收完尾，最后一任（下一任要等的）不能已经结束");
+  assert!(!finished.load(Ordering::SeqCst));
+  drop(release);
+  tokio::time::timeout(Duration::from_secs(5),last).await.expect("链收不干净").unwrap();
+  assert!(finished.load(Ordering::SeqCst),"最后一任结束之前最早那一任必须已经结束");
+  tokio::time::sleep(Duration::from_millis(50)).await;
+  assert!(metrics.num_alive_tasks()<=baseline,"漏了任务：{} 个活着（起步 {baseline}）",metrics.num_alive_tasks());
  }
 
  #[tokio::test] async fn the_writer_keeps_taking_rows_while_it_waits_for_a_connection_slot() {
