@@ -261,23 +261,20 @@ struct FeedReplayTests {
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
     let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
 
-    let seen = Counter()
+    // 消费端照图表那样拿事件重建自己那份序列：`.series` 整段替换、`.lastBar` 按 openTime 上插。
+    let seen = SeenBars()
     let stream = await feed.events()
     let pump = Task {
-      for await e in stream { if case .lastBar = e.event { seen.bump() } }
+      for await e in stream {
+        switch e.event {
+        case .series(let s): seen.replace(s)
+        case .lastBar(let b): seen.upsert(b)
+        default: break
+        }
+      }
     }
     await feed.start(symbol: "BTCUSDT", interval: .m1)
     #expect(await waitUntil(20) { await deck.progress() >= rec.lines.count })
-    // 末根事件够密：闸门没有把实时推送掐掉。
-    //
-    // 阈值从「≥ 报文数的一半」放宽到 1/8，是因为 kline 报文现在也要过 80ms 合帧闸门
-    // （`MarketFeed.emitTick`，原来 kline 是 `force: true` 直接绕过去的）。
-    // 这份录制是把 32 分钟的行情在几十毫秒里放完的——牌堆里没有任何 `.silence`，
-    // 帧与帧之间等于零间隔，被加速了上千倍，闸门自然合得很狠（实测 2090 条报文
-    // 合成 655 次末根事件）。真机上单品种的 kline 流约每 250ms 一条，拍子是 80ms，
-    // 每条照样立刻放行，这条链路上的事件密度并不会变。
-    #expect(await waitUntil(5) { seen.value > rec.klines.count / 8 })
-
     let want = ex.bars(now: rec.lines.count)
     // 牌堆把帧发完 ≠ 报文已经落进序列：中间还隔着 socket → AsyncStream → MarketFeed
     // 三道手，末根还要过 `tickCoalesceMs` 的合并。发完就立刻读 `currentSeries`，
@@ -289,6 +286,14 @@ struct FeedReplayTests {
     #expect(await converged(feed, want))
 
     let got = await feed.currentSeries
+    // 闸门没有把实时推送掐掉的判据：只靠事件重建出来的序列和 feed 手里的一样——
+    // 录制里每一根都到过消费端，而且是定盘值。这是结构性保证（开新根 / 收线那一帧
+    // `force: true` 不过 80ms 拍子；补缺合并完整段 `.series` 替换；换桶时上一根补发定盘值），
+    // 和调度快慢无关。以前这里断言的是「末根事件数 > kline 报文数的 1/8」：这份录制把
+    // 32 分钟的行情在几十毫秒里放完，`FastPacer` 又是按真实时间缩放的（80ms 拍子 = 80µs 真实），
+    // 合掉多少完全看 actor 那一刻轮没轮上——整包并行跑时实测掉到 1/8 以下挂掉，
+    // 单跑同一条又永远过。密度本身另有 `TickCoalesceTests` 用确定的时刻逐帧验。
+    #expect(await waitUntil(20) { seen.matches(got) }, "\(seen.mismatch(got) ?? "")")
     #expect(got.count == want.count)
     #expect(firstDiff(got, want) == nil, "\(firstDiff(got, want) ?? "")")
     // openTime 严格递增、等距、无重复。
@@ -579,4 +584,29 @@ final class Waits: @unchecked Sendable {
   private var lines: [String] = []
   func note(_ s: String) { lock.lock(); lines.append(s); lock.unlock() }
   func all() -> [String] { lock.lock(); defer { lock.unlock() }; return lines }
+}
+
+
+/// 消费端按事件重建的序列（按 openTime 存）。泵在别的任务里写，断言在测试任务里读。
+private final class SeenBars: @unchecked Sendable {
+  private let lock = NSLock()
+  private var bars: [Int64: Bar] = [:]
+  func replace(_ s: BarSeries) {
+    var next: [Int64: Bar] = [:]
+    for i in 0..<s.count { let b = s.bar(at: i); next[b.openTime] = b }
+    lock.withLock { bars = next }
+  }
+  func upsert(_ b: Bar) { lock.withLock { bars[b.openTime] = b } }
+  func matches(_ s: BarSeries) -> Bool { mismatch(s) == nil }
+  /// 第一处对不上的描述；全对返回 nil。
+  func mismatch(_ s: BarSeries) -> String? {
+    let mine = lock.withLock { bars }
+    guard mine.count == s.count else { return "重建 \(mine.count) 根，feed \(s.count) 根" }
+    for i in 0..<s.count {
+      let b = s.bar(at: i)
+      guard let m = mine[b.openTime] else { return "重建里没有 openTime=\(b.openTime)" }
+      if m != b { return "openTime=\(b.openTime) 重建 \(m) ≠ feed \(b)" }
+    }
+    return nil
+  }
 }
