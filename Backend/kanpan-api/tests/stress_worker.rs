@@ -69,3 +69,28 @@ async fn a_searcher_with_nothing_due_does_not_stall_the_next_one() {
  assert!(kanpan_api::search::run_one(&w.s,&Market::wave()).await.unwrap(),"排在前面的人没活，也该接着认领到后面那个人的检索");
  w.close().await;
 }
+
+/// 一条检索每次都做到一半就把 worker 弄没了（进程被杀、任务 panic）：它不走「行情取不到」
+/// 那条数到 3 次就标失败的分支，只是租约两分钟后过期。以前认领时不看 `attempts`，
+/// 它会一直被再认领到 24 小时后过期，每两分钟弄崩一次 worker。
+#[tokio::test]
+async fn a_search_that_keeps_killing_the_worker_is_given_up() {
+ let w=boot().await;
+ let who=signup(&w.app,"sk").await;
+ let hour=3_600_000;let cutoff=Utc::now().timestamp_millis()/hour*hour;
+ let query=json!({"range":{"venue":"binance","market":"usd_m","symbol":"BTCUSDT","interval":"1h","start":cutoff-16*hour,"end":cutoff,"bars":16},"cutoff":cutoff,"scope":"history"});
+ let (status,v)=request(&w.app,"/v1/native-review/searches","POST",Some(&who.token),Some(Uuid::new_v4()),query).await;
+ assert_eq!(status,200,"{v}");
+ // 模拟前三次认领都在半路没了：状态停在 running、租约已过期、认领计数到了上限。
+ sqlx::query("UPDATE review_searches SET status='running',attempts=$2,lease_id=gen_random_uuid(),lease_until=now()-interval '1 second' WHERE user_id=$1").bind(who.id).bind(kanpan_api::search::MAX_ATTEMPTS).execute(&w.admin).await.unwrap();
+ sqlx::query("UPDATE search_dispatch SET next_at=now() WHERE user_id=$1").bind(who.id).execute(&w.admin).await.unwrap();
+ sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '1 day' WHERE user_id<>$1").bind(who.id).execute(&w.admin).await.unwrap();
+ kanpan_api::search::run_one(&w.s,&Market::wave()).await.unwrap();
+ let (state,error,attempts):(String,Option<String>,i32)=sqlx::query_as("SELECT status,error,attempts FROM review_searches WHERE user_id=$1").bind(who.id).fetch_one(&w.admin).await.unwrap();
+ assert_eq!(state,"failed");assert_eq!(error.as_deref(),Some("search_failed"));
+ assert_eq!(attempts,kanpan_api::search::MAX_ATTEMPTS,"放弃时不该再认领一次");
+ // 之后再怎么轮也不会再被认领。
+ sqlx::query("UPDATE search_dispatch SET next_at=now() WHERE user_id=$1").bind(who.id).execute(&w.admin).await.unwrap();
+ assert!(!kanpan_api::search::run_one(&w.s,&Market::wave()).await.unwrap());
+ w.close().await;
+}

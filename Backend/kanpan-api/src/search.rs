@@ -131,6 +131,8 @@ pub async fn work(s:&AppState,market:&dyn MarketDataProvider,idle:std::time::Dur
 }
 /// 一个租约最多换几个人去找能做的检索（同 `review_worker::claim`）。
 const CLAIM_OWNERS:usize=8;
+/// 一条检索被认领多少次还没做完就不再认领（租约过期也算一次）。
+pub const MAX_ATTEMPTS:i32=3;
 pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let mut claimed=None;
  for _ in 0..CLAIM_OWNERS {
@@ -142,6 +144,16 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   let row=sqlx::query("SELECT * FROM review_searches WHERE user_id=$1 AND status IN ('queued','running') AND next_at<=now() AND expires_at>now() AND (lease_until IS NULL OR lease_until<now()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1").bind(owner).fetch_optional(&mut *tx).await?;
   // 这个人此刻没有能做的：调度往后推，换下一个人，而不是空手回去让循环睡一秒。
   let Some(row)=row else{sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '10 seconds' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;continue};
+  // 已经被认领过 MAX_ATTEMPTS 次还没做完：每次都是做到一半 worker 被杀、任务半路 panic
+  // 这类不走下面 Err 分支的情形（那条分支自己数到 3 次就标失败）。不在这里截住，
+  // 它每两分钟租约一过期就被再认领一次，一直到 24 小时后过期，每次都把 worker 再弄崩一回。
+  let attempts:i32=row.get("attempts");
+  if attempts>=MAX_ATTEMPTS {
+   let id:Uuid=row.get("id");
+   sqlx::query("UPDATE review_searches SET status='failed',error='search_failed',lease_id=NULL,lease_until=NULL WHERE user_id=$1 AND id=$2").bind(owner).bind(id).execute(&mut *tx).await?;tx.commit().await?;
+   tracing::error!(%owner,search=%id,"Search claimed {attempts} times without finishing; marked failed");
+   continue
+  }
   claimed=Some((owner,tx,row));break
  }
  let Some((owner,mut tx,row))=claimed else{return Ok(false)};
