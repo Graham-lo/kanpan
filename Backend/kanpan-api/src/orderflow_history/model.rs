@@ -321,7 +321,25 @@ impl Model {
   for (id,track) in self.tracks.iter_mut() {
    let Some(book)=track.book.as_mut() else {continue};
    let Some(threshold)=thresholds.of(book.venue.product).filter(|t|*t>0.0) else {continue};
-   let Some((map,mid))=book.buckets(step,SCAN_RADIUS_BPS) else {continue};
+   let Some((map,mid))=book.buckets(step,SCAN_RADIUS_BPS) else {
+    // 簿没就绪。候选作废：「连续两拍」跨不过簿从头来过。
+    track.candidates.clear();
+    // 连接通着、在等快照 / 重同步（断线重连后同一条连接上的 200 本簿排队拿 REST 快照，最后一本要等
+    // 6 分多钟）：簿上每一档都只是暂时不知道，和快照覆盖范围以外的档同一个处理——不算断线，
+    // 等满 `UNKNOWN_MS` 还没看到才按最后一次真看到失联结束。断着的不动 `seen`，走 `expire_stale`。
+    let online=book.is_online();
+    if online {track.seen=Some(now);}
+    let mut lost=Vec::new();
+    for (key,l) in track.live.iter_mut() {
+     l.ending=None;
+     let since=*l.unknown_since.get_or_insert(now);
+     if online {if now-since>=UNKNOWN_MS {lost.push(*key)} else {l.seen=now}}
+    }
+    for key in lost {
+     if let Some(l)=track.live.remove(&key) {self.ended.push(end_lost(l.order,l.sighted));}
+    }
+    continue
+   };
    let reach=SCAN_RADIUS_BPS/10_000.0;
    // 价格已经走出扫描半径的单：不再看它，也就判不了成交还是撤单。
    let outside=|side:Side,price:f64|match side {Side::Bid=>price<mid*(1.0-reach),Side::Ask=>price>mid*(1.0+reach)};
@@ -382,7 +400,8 @@ impl Model {
   self.expire_stale(now,started);
  }
 
- /// 一本簿超过 `STALE_MS` 没就绪（或这一轮根本没订到），它还挂着的单按最后一次看到时失联结束。
+ /// 一本簿断线超过 `STALE_MS`（或这一轮根本没订到），它还挂着的单按最后一次看到时失联结束。
+ /// 连着但在等快照的不算（见 `evaluate`）。
  fn expire_stale(&mut self,now:i64,started:i64) {
   if now-started<STALE_MS {return}
   for track in self.tracks.values_mut() {
@@ -630,6 +649,63 @@ mod tests {
   r.m.evaluate(121_000);
   let o=&r.m.ended[0];
   assert_eq!((o.status,o.end_ms,o.vanished_notional),(Status::Lost,Some(1_000),None));
+ }
+
+ /// 压测（2026-09-26）：一条币安 U 本位深度连接挂 200 本簿，断线重连后 200 本都要 REST 快照，
+ /// 快照队每分钟 30 本，最后一本要等 6 分多钟（见 snapshots.rs 的排队用例）。等快照的那段时间
+ /// 连接是通的、簿只是还没就绪——不能按「断线两分钟」把它上面的单判失联，否则同一面墙在历史里
+ /// 断成两截（前一截「失联」、快照到了又当新单冒出来）。重启后读回来的单同理。
+ #[test] fn a_book_waiting_for_its_snapshot_after_a_reconnect_keeps_its_orders() {
+  let mut r=Rig::new();
+  appear(&mut r,1.2*T);
+  r.m.evaluate(1_000);
+  // 断线、一秒后重连上了，快照在排队：连接 2 上一直没有快照。
+  r.m.closed("a",1);
+  r.m.evaluate(1_500);
+  assert_eq!(r.m.book_mut("a").unwrap().opened(2),super::super::book::Action::None);
+  let mut now=2_000;
+  while now<=400_000 {r.m.evaluate(now);now+=500;}
+  assert!(r.m.ended.is_empty(),"排队等快照 6 分多钟：不判失联，实际结束 {:?}",r.m.ended.iter().map(|o|(o.status,o.end_ms)).collect::<Vec<_>>());
+  assert_eq!(r.live().len(),1);
+  // 快照到了、墙还在：接着跟原来那条，不另起一条。
+  let s=Snapshot{last:100,requested:1000,bids:wall(1.2*T),asks:vec![ASK]};
+  r.m.ingest("a",2,Message::Snapshot(s),400_000);
+  r.m.evaluate(400_000);r.m.evaluate(400_300);
+  let live=r.live();
+  assert_eq!(live.len(),1);
+  assert_eq!(live[0].first_seen_ms,0,"同一面墙：接着跟读回的那条");
+  assert!(r.m.ended.is_empty());
+ }
+
+ #[test] fn a_book_that_never_gets_its_snapshot_still_ends_its_orders() {
+  // 连接通着但快照一直拿不到（REST 被封）：不能永远挂着——等满 UNKNOWN_MS 按最后一次真看到失联结束。
+  let mut r=Rig::new();
+  appear(&mut r,1.2*T);
+  r.m.evaluate(1_000);
+  r.m.closed("a",1);
+  r.m.book_mut("a").unwrap().opened(2);
+  r.m.evaluate(1_500);
+  r.m.evaluate(1_500+UNKNOWN_MS-1);
+  assert!(r.m.ended.is_empty());
+  r.m.evaluate(1_500+UNKNOWN_MS);
+  let o=&r.m.ended[0];
+  assert_eq!((o.status,o.end_ms),(Status::Lost,Some(1_000)));
+ }
+
+ #[test] fn candidates_do_not_survive_a_reconnect() {
+  // 「连续两拍」跨不过断线：断线前一拍 + 重连后一拍不能凑成出现。
+  let mut r=Rig::new();
+  r.book("a",&wall(1.2*T),&[ASK],0);
+  r.m.evaluate(0);
+  r.m.closed("a",1);
+  r.m.book_mut("a").unwrap().opened(2);
+  r.m.evaluate(500);
+  let s=Snapshot{last:100,requested:1000,bids:wall(1.2*T),asks:vec![ASK]};
+  r.m.ingest("a",2,Message::Snapshot(s),1_000);
+  r.m.evaluate(1_000);
+  assert!(r.live().is_empty(),"重连后只看到一拍");
+  r.m.evaluate(1_300);
+  assert_eq!(r.live()[0].first_seen_ms,1_000);
  }
 
  #[test] fn stale_connection_frames_are_dropped() {

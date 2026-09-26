@@ -281,19 +281,24 @@ pub struct VenueBook {
  pub epoch:u64,
  /// 流内快照的簿从什么时候起在等快照（开了、断档要重订之后第一条增量的时刻）。
  waiting_since:Option<i64>,
+ /// 挂在一条连着的连接上（开过、之后没断）。连着但没就绪 = 在等快照 / 重同步，簿上的单只是暂时
+ /// 看不见；断着 = 真的收不到，按断线处理（见 `Model::evaluate`）。
+ online:bool,
 }
 
 impl VenueBook {
  pub fn new(venue:VenueInfo)->Self {
   let book=LocalBook::new(venue.sequence);
-  Self{venue,book,ready_since:None,buffered:VecDeque::new(),pending:None,connection:0,previous:None,epoch:0,waiting_since:None}
+  Self{venue,book,ready_since:None,buffered:VecDeque::new(),pending:None,connection:0,previous:None,epoch:0,waiting_since:None,online:false}
  }
  pub fn is_ready(&self)->bool {self.book.quality==Quality::Ready&&self.ready_since.is_some()}
+ pub fn is_online(&self)->bool {self.online}
 
  /// 新连接：换代号、清簿。快照不在流里的要去拉一份。
  pub fn opened(&mut self,connection:u64)->Action {
   self.connection=connection;
   self.previous=None;
+  self.online=true;
   self.epoch+=1;
   self.book.begin_resync();
   self.buffered.clear();self.pending=None;self.ready_since=None;self.waiting_since=None;
@@ -327,7 +332,7 @@ impl VenueBook {
 
  /// 断线：回到「等重连」。
  pub fn closed(&mut self) {
-  self.previous=None;self.epoch+=1;self.book.begin_resync();self.buffered.clear();self.pending=None;self.ready_since=None;self.waiting_since=None;
+  self.previous=None;self.online=false;self.epoch+=1;self.book.begin_resync();self.buffered.clear();self.pending=None;self.ready_since=None;self.waiting_since=None;
  }
 
  pub fn ingest(&mut self,message:Message,now:i64)->Action {

@@ -223,6 +223,30 @@ mod tests {
   assert!(sent.len()>=PER_MINUTE*10-1,"不能限得比 30/分还紧：{}",sent.len());
  }
 
+ /// 压测（2026-09-26）：一条 U 本位深度连接断了，挂在上面的 200 本簿同时要快照。
+ /// 这条队每分钟 30 本，最后一本要等 6 分 19 秒、有 140 本等过两分钟（`STALE_MS`）；重启时整个进程的 U 本位簿（`MAX_BASES` 220 个品种
+ /// 的永续 + 主币交割，按 260 算）同时要，最后一本等 8 分 19 秒。等快照期间簿上的单按「价位不知道」
+ /// 处理（model.rs `UNKNOWN_MS`），这个上限必须盖得住排队时长，不然排在后面的簿上的单会被误判失联。
+ #[test] fn a_full_connection_reconnecting_is_served_within_the_unknown_window() {
+  let (tx,_rx)=mpsc::channel(1);
+  for books in [super::super::feeds::Kind::BinanceUmDepth.capacity(),260] {
+   let start=Instant::now();
+   let r=||Request{venue:venue("usdtPerp",Notional::Linear(1.0)),epoch:1,priority:Arc::new(AtomicU8::new(0)),not_before:start,events:tx.clone(),current:Arc::new(AtomicU64::new(1))};
+   let mut queue:Vec<(u64,Request)>=(0..books as u64).map(|i|(i,r())).collect();
+   let mut l=Limiter::new(PER_MINUTE,WINDOW,MIN_GAP);
+   let mut t=start;
+   let (mut last,mut late)=(Duration::ZERO,0);
+   while !queue.is_empty() {
+    match l.wait(t) {
+     None=>{let i=pick(&queue,t).unwrap();queue.swap_remove(i);l.record(t);last=t.duration_since(start);if last.as_millis()>=super::super::model::STALE_MS as u128 {late+=1}},
+     Some(w)=>t+=w,
+    }
+   }
+   println!("{books} 本同时要快照：最后一本等 {}s，{late} 本等过 STALE_MS",last.as_secs());
+   assert!(last.as_millis()<super::super::model::UNKNOWN_MS as u128,"{books} 本：最后一本等 {}s，超过了等快照的容忍上限",last.as_secs());
+  }
+ }
+
  #[test] fn priority_then_first_come() {
   let now=Instant::now();
   let (tx,_rx)=mpsc::channel(1);
