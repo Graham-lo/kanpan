@@ -105,10 +105,16 @@ public struct DrawingPreferences: Sendable, Equatable, Codable {
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     let fallback = DrawingPreferences()
-    favorites = try c.decodeIfPresent([Drawing.Kind].self, forKey: .favorites) ?? fallback.favorites
+    // 收藏与样式同 `variants`：逐条解、解不开的那一条丢掉，别整份抛。整份抛的代价很大——
+    // 本机存档里它会连累 `DrawArchive` 整份解不开（所有品种的画线一起没了），云端那份
+    // 则在 `SyncOverlay` 里被整份跳过，磁吸、画法记忆、别的工具样式从此一个都同步不过来。
+    // 以后的版本多一种线型、多一把工具，老版本读到的就是这种「只有一条认不出」的数据。
+    let favs = (try? c.decodeIfPresent([String].self, forKey: .favorites)) ?? nil
+    favorites = favs.map { $0.compactMap(Drawing.Kind.init(rawValue:)) } ?? fallback.favorites
     magnet = try c.decodeIfPresent(Bool.self, forKey: .magnet) ?? fallback.magnet
     continuous = try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? fallback.continuous
-    styles = try c.decodeIfPresent([String: DrawingStyle].self, forKey: .styles) ?? fallback.styles
+    let rawStyles = (try? c.decodeIfPresent([String: TolerantStyle].self, forKey: .styles)) ?? nil
+    styles = rawStyles.map { $0.compactMapValues(\.style) } ?? fallback.styles
     // 按字符串解、认不出的丢掉，别整份抛：以后的版本多了一种画法，老版本读到它
     // 不该连自选、设置一起落不了地（理由同上面那段）。
     let raw = (try? c.decodeIfPresent([String: String].self, forKey: .variants)) ?? nil
@@ -190,7 +196,9 @@ public struct DrawArchive: Sendable, Equatable, Codable {
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     version = try c.decodeIfPresent(Int.self, forKey: .version) ?? Self.currentVersion
-    preferences = try c.decodeIfPresent(DrawingPreferences.self, forKey: .preferences) ?? DrawingPreferences()
+    // 工具偏好坏了只丢偏好，不能连累下面的画线一起解不开。
+    preferences = ((try? c.decodeIfPresent(DrawingPreferences.self, forKey: .preferences)) ?? nil)
+      ?? DrawingPreferences()
     // 逐条解，不是整桶解（2026-09-20）。
     //
     // 新版本每加一把工具，`Drawing.Kind` 就多一个 rawValue；老版本的 app 认不得它，
@@ -203,6 +211,12 @@ public struct DrawArchive: Sendable, Equatable, Codable {
       return kept.isEmpty ? nil : kept
     })
   }
+}
+
+/// 一把工具的样式：解得开就留下，解不开（比如以后多出来的线型）就当没记过。
+private struct TolerantStyle: Decodable {
+  let style: DrawingStyle?
+  init(from decoder: Decoder) throws { style = try? DrawingStyle(from: decoder) }
 }
 
 /// 解得开就留下，解不开就当没有这一条。

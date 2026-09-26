@@ -116,6 +116,27 @@ struct DrawingVariantTests {
     let newer = try JSONDecoder().decode(DrawingPreferences.self, from: Data(future.utf8))
     #expect(newer.variants == ["vline": .crossLine])
 
+    // 收藏里多了一把不认识的工具、某把工具的样式用了一种不认识的线型：只丢那一条，
+    // 磁吸、画法记忆、其余工具的样式照读。
+    let mixed = #"{"favorites":["trend","laserBeam"],"magnet":false,"styles":{"#
+      + #""trend":{"lineWidth":2,"dash":"solid","filled":true,"levels":[]},"#
+      + #""hline":{"lineWidth":2,"dash":"wavy","filled":true,"levels":[]}},"#
+      + #""variants":{"trend":"extended"}}"#
+    let tolerant = try JSONDecoder().decode(DrawingPreferences.self, from: Data(mixed.utf8))
+    #expect(tolerant.favorites == [.trend])
+    #expect(tolerant.magnet == false)
+    #expect(tolerant.styles.keys.sorted() == ["trend"])
+    #expect(tolerant.styles["trend"]?.lineWidth == 2)
+    #expect(tolerant.variants == ["trend": .extended])
+
+    // 偏好整份是坏的（类型都不对），画线存档里的线也不能跟着一起丢。
+    let line = Drawing(kind: .hline, points: [DrawPoint(t: 1, p: 2)])
+    let lineJSON = String(decoding: try JSONEncoder().encode(line), as: UTF8.self)
+    let broken = #"{"v":3,"preferences":{"magnet":"yes"},"d":{"BTCUSDT":["# + lineJSON + "]}}"
+    let kept = try JSONDecoder().decode(DrawArchive.self, from: Data(broken.utf8))
+    #expect(kept["BTCUSDT"].map(\.id) == [line.id])
+    #expect(kept.preferences == DrawingPreferences())
+
     // 整份画线存档（`draws.json`）里的偏好也一样。
     var archive = DrawArchive()
     archive.preferences = prefs
