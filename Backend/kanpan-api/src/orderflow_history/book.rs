@@ -14,6 +14,9 @@ use std::collections::{BTreeMap,BTreeSet,HashMap,VecDeque};
 pub const RETAIN_BPS:f64=2.0*SCAN_RADIUS_BPS;
 /// 等快照时最多缓冲几条增量。
 pub const BUFFER:usize=5_000;
+/// 流内快照（OKX、Coinbase）的簿开了这么久还只收到增量、没等到快照：快照那一帧被丢了（跟踪器堵住时
+/// 帧会被丢），再等也等不来，重订一次。正常订上一两秒内就到。
+pub const IN_BAND_SNAPSHOT_WAIT_MS:i64=60_000;
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq,Hash,PartialOrd,Ord)]
 pub enum Side {Bid,Ask}
@@ -276,12 +279,14 @@ pub struct VenueBook {
  /// 这本簿第几次从头开始（连上新连接、断线各加一）。REST 快照按它认：排队期间换了连接（平滑交接）
  /// 不加，排着的快照照样能用；断过线重来就加，旧快照丢掉。
  pub epoch:u64,
+ /// 流内快照的簿从什么时候起在等快照（开了、断档要重订之后第一条增量的时刻）。
+ waiting_since:Option<i64>,
 }
 
 impl VenueBook {
  pub fn new(venue:VenueInfo)->Self {
   let book=LocalBook::new(venue.sequence);
-  Self{venue,book,ready_since:None,buffered:VecDeque::new(),pending:None,connection:0,previous:None,epoch:0}
+  Self{venue,book,ready_since:None,buffered:VecDeque::new(),pending:None,connection:0,previous:None,epoch:0,waiting_since:None}
  }
  pub fn is_ready(&self)->bool {self.book.quality==Quality::Ready&&self.ready_since.is_some()}
 
@@ -291,7 +296,7 @@ impl VenueBook {
   self.previous=None;
   self.epoch+=1;
   self.book.begin_resync();
-  self.buffered.clear();self.pending=None;self.ready_since=None;
+  self.buffered.clear();self.pending=None;self.ready_since=None;self.waiting_since=None;
   if self.venue.in_band {Action::None} else {Action::FetchSnapshot}
  }
 
@@ -322,15 +327,15 @@ impl VenueBook {
 
  /// 断线：回到「等重连」。
  pub fn closed(&mut self) {
-  self.previous=None;self.epoch+=1;self.book.begin_resync();self.buffered.clear();self.pending=None;self.ready_since=None;
+  self.previous=None;self.epoch+=1;self.book.begin_resync();self.buffered.clear();self.pending=None;self.ready_since=None;self.waiting_since=None;
  }
 
  pub fn ingest(&mut self,message:Message,now:i64)->Action {
   let in_band=self.venue.in_band;
   match message {
    Message::Snapshot(s)=>match self.book.replace(&s) {
-    Ok(())=>{self.ready_since=Some(now);Action::None},
-    Err(_)=>{self.ready_since=None;if in_band {Action::Resubscribe} else {Action::FetchSnapshot}},
+    Ok(())=>{self.ready_since=Some(now);self.waiting_since=None;Action::None},
+    Err(_)=>{self.ready_since=None;self.waiting_since=None;if in_band {Action::Resubscribe} else {Action::FetchSnapshot}},
    },
    Message::Delta(d)=>{
     if self.book.quality==Quality::Ready {
@@ -338,19 +343,25 @@ impl VenueBook {
       Ok(())=>Action::None,
       Err(_)=>{
        self.ready_since=None;
-       if in_band {return Action::Resubscribe}
+       if in_band {self.waiting_since=None;return Action::Resubscribe}
        self.buffered.clear();self.buffered.push_back(d);self.pending=None;
        Action::FetchSnapshot
       },
      };
     }
-    if in_band {return Action::None}
+    if in_band {
+     // 增量在来、快照迟迟不到：那一帧丢了，原来就一直干等到这条连接断。
+     let since=*self.waiting_since.get_or_insert(now);
+     if now-since<IN_BAND_SNAPSHOT_WAIT_MS {return Action::None}
+     self.waiting_since=Some(now);
+     return Action::Resubscribe;
+    }
     self.buffered.push_back(d);
     while self.buffered.len()>BUFFER {self.buffered.pop_front();}
     self.try_bootstrap(now)
    },
    Message::Reset=>{
-    self.book.mark_gapped();self.ready_since=None;self.buffered.clear();self.pending=None;
+    self.book.mark_gapped();self.ready_since=None;self.buffered.clear();self.pending=None;self.waiting_since=None;
     if in_band {Action::Resubscribe} else {Action::FetchSnapshot}
    },
   }
@@ -445,6 +456,27 @@ mod tests {
   assert_eq!(b.epoch,epoch+1,"真断线换代");
   let mut fresh=VenueBook::new(futures_venue());
   assert_eq!(fresh.handover(7),Action::FetchSnapshot,"没开过的簿按新连接从头开");
+ }
+
+ #[test] fn an_in_band_book_whose_snapshot_was_dropped_resubscribes() {
+  let mut b=VenueBook::new(VenueInfo{id:"okx:usdtPerp:BTC-USDT-SWAP".into(),exchange:"okx",label:"OKX",product:"usdtPerp",instrument:"BTC-USDT-SWAP".into(),
+   notional:super::super::model::Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true});
+  assert_eq!(b.opened(3),Action::None,"流内快照：等它自己来");
+  // 快照那一帧被丢了，只来增量。
+  assert_eq!(b.ingest(Message::Delta(delta(11,11,Some(10),&[])),1_000),Action::None);
+  assert_eq!(b.ingest(Message::Delta(delta(12,12,Some(11),&[])),1_000+IN_BAND_SNAPSHOT_WAIT_MS-1),Action::None);
+  assert_eq!(b.ingest(Message::Delta(delta(13,13,Some(12),&[])),1_000+IN_BAND_SNAPSHOT_WAIT_MS),Action::Resubscribe,"等满一分钟重订");
+  assert_eq!(b.ingest(Message::Delta(delta(14,14,Some(13),&[])),2_000+IN_BAND_SNAPSHOT_WAIT_MS),Action::None,"重订了再等一分钟，不连着发");
+  // 快照到了：就绪，之后的增量照常接。
+  assert_eq!(b.ingest(Message::Snapshot(snap(20,&[(99.0,1.0)],&[(101.0,1.0)])),3_000+IN_BAND_SNAPSHOT_WAIT_MS),Action::None);
+  assert!(b.is_ready());
+  assert_eq!(b.ingest(Message::Delta(delta(21,21,Some(20),&[])),10*IN_BAND_SNAPSHOT_WAIT_MS),Action::None);
+  // 正常订上：快照一两秒内到，不重订。
+  let mut c=b.clone();
+  c.opened(4);
+  assert_eq!(c.ingest(Message::Delta(delta(30,30,Some(29),&[])),0),Action::None);
+  assert_eq!(c.ingest(Message::Snapshot(snap(31,&[(99.0,1.0)],&[(101.0,1.0)])),1_500),Action::None);
+  assert!(c.is_ready());
  }
 
  #[test] fn futures_need_pu_and_okx_needs_exact_prev() {
