@@ -55,8 +55,11 @@ public actor BinanceWS {
   private var stopped = false
   private var backoff = Backoff()
   /// 这条连接上有没有真收到过帧。连上就清退避是不够的——一连上就被掐的
-  /// 「假连上」会把退避永远按在 1 秒，反而是最凶的重连风暴。收到第一帧才算数。
+  /// 「假连上」会把退避永远按在 1 秒，反而是最凶的重连风暴。收到帧、并且活满
+  /// `Backoff.stableUptimeMs` 才算数（断开时由 `Backoff.settle` 记账）。
   private var gotFrame = false
+  /// 当前这条连接连上的时刻（`nowMs()` 口径），断开时算它活了多久。
+  private var connectedAtMs = 0.0
   /// 币安对每条连接的**入站**消息限速 10 条/秒，超了不是报错，是直接把你踢下线。
   /// 一次切换要发 UNSUBSCRIBE + SUBSCRIBE 两条，手指一路划过去很容易打满。
   /// 所以控制帧一条一条发、条条隔这么久（4 条/秒，离上限还有一半余量），
@@ -243,6 +246,8 @@ public actor BinanceWS {
   private func loop(generation: Int, sink: AsyncStream<WSEvent>.Continuation) async {
     while !stopped, !Task.isCancelled, generation == runGeneration {
       var connection = 0
+      // 这一趟没连上的话，收尾记账不能拿上一条连接的「收到过帧」来算。
+      gotFrame = false
       do {
         // 首连用 URL 带上流；重连也一样，省一次 SUBSCRIBE 往返。
         let connectingStreams = streams
@@ -279,6 +284,10 @@ public actor BinanceWS {
       guard generation == runGeneration else { return }
       if stopped || Task.isCancelled { break }
       sink.yield(.status(.reconnecting))
+      // 这条连接收到过行情、又连着活满一段，才算稳住过：退避清零。连上推一两帧就被踢的不算。
+      if connection != 0 {
+        backoff.settle(deliveredData: gotFrame, uptimeMs: await nowMs() - connectedAtMs)
+      }
       let wait = backoff.next()
       log("WS 退避 \(Int(wait))ms 后重连（第 \(backoff.attempt) 次）")
       do { try await pacer.sleep(ms: wait) } catch { break }
@@ -309,6 +318,7 @@ public actor BinanceWS {
   private func pump(_ s: WSSocket, generation: Int, connection: Int,
                     sink: AsyncStream<WSEvent>.Continuation) async throws {
     let started = await nowMs()
+    connectedAtMs = started
     lastMarketMs = started
     lastFrameMs = started
     cutReason = nil
@@ -350,7 +360,7 @@ public actor BinanceWS {
           continue
         }
         lastMarketMs = lastFrameMs
-        if !gotFrame { gotFrame = true; backoff.reset() }
+        gotFrame = true
         sink.yield(.payload(payload))
         frames += 1
         if lastMarketMs - reportMs >= 5000 {

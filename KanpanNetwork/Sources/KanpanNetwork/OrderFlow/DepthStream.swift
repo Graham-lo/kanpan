@@ -138,10 +138,12 @@ public actor DepthStream {
   private func loop(_ sink: AsyncStream<DepthStreamEvent>.Continuation) async {
     while !Task.isCancelled {
       var reason = "连接失败"
+      var connectedAt: Double?
       do {
         gotMessages = false
         let s = try await adapter.connect(candidate: candidate)
         guard !Task.isCancelled else { await s.cancel(); return }
+        connectedAt = await pacer.nowMs()
         socket = s
         connection += 1
         skipBackoff = false
@@ -171,6 +173,10 @@ public actor DepthStream {
         skipBackoff = false
         log("深度 \(adapter.name) 断了（\(reason)），立刻重连")
         continue
+      }
+      // 收到过消息、又连着活满一段才算稳住过，退避清零；连上推几帧就被踢的接着涨（见 `Backoff.settle`）。
+      if let connectedAt {
+        backoff.settle(deliveredData: gotMessages, uptimeMs: await pacer.nowMs() - connectedAt)
       }
       let wait = backoff.next()
       log("深度 \(adapter.name) 断了（\(reason)），\(Int(wait))ms 后重连")
@@ -202,7 +208,6 @@ public actor DepthStream {
       case .text(let text):
         let messages = adapter.decode(text)
         guard !messages.isEmpty else { continue }
-        backoff.reset()
         gotMessages = true
         if case .dropped = sink.yield(.messages(messages)) {
           // 调用方跟不上，最旧的一帧被挤掉了：这条连接上的簿有了断档，整条重拨、各本簿按新连接重建。

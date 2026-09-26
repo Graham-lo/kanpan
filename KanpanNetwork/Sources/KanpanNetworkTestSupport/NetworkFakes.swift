@@ -52,6 +52,10 @@ public actor ManualPacer: Pacer {
   /// 免得拨了个空。
   public var sleeping: Int { waiters.count }
   public func sleepLog() -> [Double] { slept }
+  /// 挂着的里头最早那个还有多久醒（毫秒）；没人挂着就是 nil。
+  /// 压测里「拨到下一个醒点」用它，不必一格一格地拨（几万次 `advance` 会把协作线程池占满，
+  /// 饿住同一进程里并行跑的别的用例）。
+  public var nextWakeIn: Double? { waiters.values.map(\.deadline).min().map { max(0, $0 - now) } }
 
   public func sleep(ms: Double) async throws {
     guard ms > 0 else { return }

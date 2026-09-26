@@ -214,12 +214,17 @@ public actor CoinbaseWS: MarketStream {
   private func loop(generation: Int, sink: AsyncStream<WSEvent>.Continuation) async {
     var candidate = 0
     while !stopped, !Task.isCancelled, generation == runGeneration {
+      // 每一趟重新算：这一趟没连上的话，「收到过行情」不能沿用上一条连接的——否则连不上的
+      // 那条地址永远不会被换掉，退避也会被一条早就断了的好连接清零。
+      gotMarket = false
+      var connected = false
       do {
         guard !urls.isEmpty else { throw FeedError.badResponse("没有可用的推送地址") }
         let url = urls[candidate % urls.count]
         let s = try await factory.connect(to: url)
         guard generation == runGeneration, !Task.isCancelled else { await s.cancel(); return }
         socket = s; sent = []; gotMarket = false; confirmed = []; pending = [:]; cutReason = nil
+        connected = true
         connectionID += 1
         let connection = connectionID
         log("Coinbase WS 连上 #\(connection) \(url.absoluteString)")
@@ -243,6 +248,10 @@ public actor CoinbaseWS: MarketStream {
       // 没收到过行情就断的那条地址先换一个（网关主 → 备）。
       if !gotMarket { candidate += 1 }
       sink.yield(.status(.reconnecting))
+      // 收到过行情、又连着活满一段才算稳住过，退避清零（见 `Backoff.settle`）。
+      if connected {
+        backoff.settle(deliveredData: gotMarket, uptimeMs: await pacer.nowMs() - connectedAtMs)
+      }
       let wait = backoff.next()
       log("Coinbase WS 退避 \(Int(wait))ms 后重连（第 \(backoff.attempt) 次）")
       do { try await pacer.sleep(ms: wait) } catch { break }
@@ -275,7 +284,7 @@ public actor CoinbaseWS: MarketStream {
           confirmed.insert(key); pending[key] = nil
         }
         let payloads = CoinbaseDTO.payloads(decoded, candleInterval: Self.candleInterval)
-        if !payloads.isEmpty, !gotMarket { gotMarket = true; backoff.reset() }
+        if !payloads.isEmpty { gotMarket = true }
         for p in payloads { sink.yield(.payload(p)) }
       }
     }

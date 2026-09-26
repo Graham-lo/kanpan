@@ -52,6 +52,22 @@ public struct Backoff: Sendable, Equatable {
   /// 连上了就归零。
   public mutating func reset() { attempt = 0 }
 
+  /// 一条连接要连着活满多久，断开时才算「稳住过」、把退避清零。
+  /// 参照 reconnecting-websocket 的 `minUptime`（默认 5 秒）。
+  public static let stableUptimeMs: Double = 5_000
+
+  /// 一条连接收尾时记账：收到过有效数据、**并且**连着活满 `stableMs`，才算稳住过，退避清零；
+  /// 否则档位接着往上涨。
+  ///
+  /// 只看「收到过帧」是不够的（2026-09-26 压测）：服务器或代理连上就推一两帧再踢——超了入站
+  /// 限速被踢、中间盒子掐长连接——每条连接都「收到过帧」，每次都清零，退避永远停在第一档，
+  /// 客户端 1 秒一次地重连下去。300 条这样的连接档位一直是 1，5 分钟正好 300 条，顶满币安单 IP
+  /// 的连接额度。连上就清零更糟（「假连上」），所以两样都要：有数据，而且活得够久。
+  public mutating func settle(deliveredData: Bool, uptimeMs: Double,
+                              stableMs: Double = Backoff.stableUptimeMs) {
+    if deliveredData, uptimeMs >= stableMs { reset() }
+  }
+
   public static func == (lhs: Backoff, rhs: Backoff) -> Bool {
     lhs.baseMs == rhs.baseMs && lhs.capMs == rhs.capMs && lhs.attempt == rhs.attempt
   }
