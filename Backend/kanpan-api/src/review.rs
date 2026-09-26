@@ -1,7 +1,7 @@
 use crate::review_domain as domain;
 // Native records are authoritative here; charts remain in the existing app/market stack.
 use crate::{AppState,auth::Identity,crypto::digest,envelope,error::{ApiError,Params,Payload,Result,Route}};
-use axum::{Router,Json,extract::{State,DefaultBodyLimit},routing::{get,post},http::HeaderMap};
+use axum::{Router,Json,extract::{State,DefaultBodyLimit,Request},routing::{get,post},http::HeaderMap,handler::Handler,middleware::{Next,from_fn},response::Response};
 use base64::{Engine,engine::general_purpose::{STANDARD,URL_SAFE_NO_PAD}};
 use chrono::Utc;
 use scorebook_core::{api::native_review::*,domain::{statistics}};
@@ -21,15 +21,31 @@ pub fn routes()->Router<AppState> {
  // base64 之后三四百 KB 起步。限在 3 MiB——解码后必须 ≤ 2 MiB（见 `shot_put`），
  // 3 MiB 正好兜住 base64 的 4/3 膨胀加 JSON 外壳，再多一个字节都不收。
  .route("/v1/native-review/records/{id}/shot",post(shot_put).get(shot_get)
-  .layer(DefaultBodyLimit::max(3*1024*1024)))
+  .layer(DefaultBodyLimit::max(3*1024*1024)).layer(from_fn(image_slot)))
  .route("/v1/native-review/statistics",get(stats))
  // 修订记录（P3.7）：这一条记录从记下到现在的每一版规则 / 判定 / 复盘，只读。
  .route("/v1/native-review/records/{id}/revisions",get(revisions))
  // 补图（P3.7）：人事后从相册里挑的图，一条记录最多三张。上传那一条单独放宽体积：
  // 单张解码后 ≤ 5 MiB，base64 膨胀 4/3 再加 JSON 外壳，7 MiB 正好兜住。
  .route("/v1/native-review/records/{id}/attachments",get(attachments))
- .route("/v1/native-review/attachments",post(attachment_put).layer(DefaultBodyLimit::max(ATTACHMENT_BODY_LIMIT)))
- .route("/v1/native-review/attachments/{id}",get(attachment_get).delete(attachment_delete))
+ .route("/v1/native-review/attachments",post(attachment_put).layer(DefaultBodyLimit::max(ATTACHMENT_BODY_LIMIT)).layer(from_fn(image_slot)))
+ .route("/v1/native-review/attachments/{id}",get(attachment_get.layer(from_fn(image_slot))).delete(attachment_delete))
+}
+/// 截图与补图的收发同时最多几份在进程里摊开。
+///
+/// 一张 5 MiB 的补图，从请求体、反序列化出的 base64 串、解码后的字节到交给数据库的
+/// 那份拷贝，一次上传要在进程里摊开十几到二十几 MB；下载反过来也是字节、base64、JSON
+/// 各一份。以前这几条路没有并发上限：39 张同时上传（额度要解码、拿锁之后才查，
+/// 所以第四张起虽然都回 409，内存照样先摊开了）进程涨 633 MiB，而线上 serve 单元
+/// `MemoryMax=1G`、订单流跟踪也在这个进程里。
+///
+/// 名额在**读请求体之前**拿：中间件跑在提取器前面，排队的请求正文还留在套接字里，
+/// 不占进程内存；排不上的由外层 30 秒超时回 408，客户端照常重试。
+pub const IMAGE_SLOTS:usize=4;
+static IMAGE_GATE:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(IMAGE_SLOTS);
+async fn image_slot(req:Request,next:Next)->Response {
+ let _slot=IMAGE_GATE.acquire().await.expect("the image gate is never closed");
+ next.run(req).await
 }
 pub fn parse<T:serde::de::DeserializeOwned>(value:Value)->Result<T> {Ok(serde_json::from_value(value)?)}
 /// 领域层的校验码就是服务端的真话：原样透出来，客户端才知道是区间不对、规则不对
