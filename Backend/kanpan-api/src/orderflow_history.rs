@@ -127,12 +127,24 @@ fn info(v:&Venue)->VenueInfo {
 /// 币安 U 本位永续（门槛分档、是不是币、推步长都看它）。
 fn binance_perp(venues:&[Venue])->Option<&Venue> {venues.iter().find(|v|v.exchange==Exchange::Binance&&v.product==Product::UsdtPerp)}
 
-/// 是不是币：币安 U 本位永续的 `underlyingType` 为 COIN；币安没有这只永续的按币算。
-async fn is_crypto(perp:Option<&Venue>)->bool {
- let Some(perp)=perp else {return true};
- let Ok(info)=crate::market_meta::exchange_info().await else {return true};
- info["symbols"].as_array().and_then(|rows|rows.iter().find(|s|s["symbol"].as_str()==Some(perp.instrument.as_str())))
-  .and_then(|s|s["underlyingType"].as_str()).is_none_or(|t|t=="COIN")
+/// 是不是币：主币是；跟踪器已经判过的照旧（`known`）；币安没有这只 U 本位永续的按币算；
+/// 否则看它在合约表里的 `underlyingType` 是不是 COIN。合约表拿不到（`info` 为 None）回 None：不知道就不猜。
+///
+/// 原来拿不到合约表一律按币算：那一刻起跟的美股按币的成交额分档拿门槛、也不按簿深标定，一直错到这只停掉；
+/// 每小时重算门槛时再撞上一次失败，已经在标定的美股也会被换成币的门槛。
+fn crypto_kind(base:&str,perp:Option<&Venue>,known:Option<bool>,info:Option<&Value>)->Option<bool> {
+ if model::is_major(base) {return Some(true)}
+ if let Some(known)=known {return Some(known)}
+ let Some(perp)=perp else {return Some(true)};
+ let info=info?;
+ Some(info["symbols"].as_array().and_then(|rows|rows.iter().find(|s|s["symbol"].as_str()==Some(perp.instrument.as_str())))
+  .and_then(|s|s["underlyingType"].as_str()).is_none_or(|t|t=="COIN"))
+}
+
+async fn is_crypto(base:&str,perp:Option<&Venue>,known:Option<bool>)->Option<bool> {
+ if let Some(kind)=crypto_kind(base,perp,known,None) {return Some(kind)}
+ let info=crate::market_meta::exchange_info().await.ok()?;
+ crypto_kind(base,perp,known,Some(&info))
 }
 
 fn number(v:&Value)->Option<f64> {
@@ -165,13 +177,14 @@ async fn derived_step(venues:&[Venue],day:i64)->Option<f64> {
 
 /// 这只币此刻的默认门槛与步长（步长可能还是 None：收盘没拉到），以及它是不是币。
 /// 非币的 U 本位门槛这里给的是回退值 200 万，真正用的是跟踪器按簿深标定的那个。
-async fn resolve(base:&str,venues:&[Venue],now:i64)->(Thresholds,bool) {
+/// `known`：跟踪器起跟时已经判过是不是币，重算门槛时沿用；还没判过而合约表拿不到时回 None。
+async fn resolve(base:&str,venues:&[Venue],now:i64,known:Option<bool>)->Option<(Thresholds,bool)> {
  let perp=binance_perp(venues);
- let crypto=model::is_major(base)||is_crypto(perp).await;
+ let crypto=is_crypto(base,perp,known).await?;
  let turnover=match perp {Some(p) if crypto&&!model::is_major(base)=>layers::turnover(&p.instrument).await,_=>None};
  let mut t=model::defaults(base,crypto,turnover);
  if t.step.is_none() {t.step=derived_step(venues,model::reference_day(now)).await;}
- (t,crypto)
+ Some((t,crypto))
 }
 
 // ------------------------------------------------------------------ 一只币的跟踪
@@ -502,9 +515,12 @@ fn changed_live(rows:Vec<(BigOrder,i64)>,written:&mut HashMap<LiveKey,(f64,f64,f
 async fn prepare(base:&str,stop:&mut watch::Receiver<bool>)->Option<(Vec<Venue>,Thresholds,bool)> {
  loop {
   let venues=instruments::venues(base).await;
-  let (thresholds,crypto)=resolve(base,&venues,now_ms()).await;
-  if !venues.is_empty()&&thresholds.step.is_some() {return Some((venues,thresholds,crypto))}
-  tracing::info!("Orderflow history: {base} not ready ({} venues, step {:?}), retrying",venues.len(),thresholds.step);
+  let resolved=if venues.is_empty() {None} else {resolve(base,&venues,now_ms(),None).await};
+  match resolved {
+   Some((thresholds,crypto)) if thresholds.step.is_some()=>return Some((venues,thresholds,crypto)),
+   Some((thresholds,_))=>tracing::info!("Orderflow history: {base} not ready ({} venues, step {:?}), retrying",venues.len(),thresholds.step),
+   None=>tracing::info!("Orderflow history: {base} not ready ({} venues, coin or not unknown), retrying",venues.len()),
+  }
   tokio::select! {_=stop.changed()=>return None,_=tokio::time::sleep(RESOLVE_RETRY)=>{}}
  }
 }
@@ -559,14 +575,12 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
    _=refresh.tick()=>{
     let venues=instruments::venues(&base).await;
     let now=now_ms();
-    if now-resolved_at>=THRESHOLDS_EVERY_MS {
-     let (mut next,_)=resolve(&base,&venues,now).await;
-     if next.step.is_some() {
-      t.planned=next;
-      if t.calibration.needed {next.usdt_perp=t.calibration.value;}
-      if next!=t.model.thresholds {tracing::info!("Orderflow history: {base} thresholds {:?} -> {next:?}",t.model.thresholds);t.model.set_thresholds(next,now);t.shared.send_replace(next);}
-      resolved_at=now;resolved_day=model::reference_day(now);
-     }
+    if now-resolved_at>=THRESHOLDS_EVERY_MS
+     && let Some((mut next,_))=resolve(&base,&venues,now,Some(!t.calibration.needed)).await && next.step.is_some() {
+     t.planned=next;
+     if t.calibration.needed {next.usdt_perp=t.calibration.value;}
+     if next!=t.model.thresholds {tracing::info!("Orderflow history: {base} thresholds {:?} -> {next:?}",t.model.thresholds);t.model.set_thresholds(next,now);t.shared.send_replace(next);}
+     resolved_at=now;resolved_day=model::reference_day(now);
     }
     t.add_venues(&venues);
     t.write_ended().await;
@@ -1033,6 +1047,19 @@ mod tests {
   p.add(Write{step:1.0,rows:vec![(order(-1,Some(1_000_000)),1_000_000)]});
   assert_eq!(p.rows.len(),PENDING_CAP);
   assert!(!p.rows.values().any(|(_,o,_)|o.end_ms==Some(0)),"还超就丢结束得最早的");
+ }
+
+ #[test] fn coin_or_not_is_never_guessed() {
+  let perp=Venue{exchange:Exchange::Binance,product:Product::UsdtPerp,instrument:"NVDAUSDT".into(),margin:None,
+   notional:instruments::Notional::Linear{multiplier:1.0},tick:0.01,expiry_ms:None,price_scale:None,listed_base:"NVDA".into()};
+  let info=serde_json::json!({"symbols":[{"symbol":"NVDAUSDT","underlyingType":"EQUITY"},{"symbol":"DOGEUSDT","underlyingType":"COIN"}]});
+  assert_eq!(crypto_kind("NVDA",Some(&perp),None,Some(&info)),Some(false));
+  assert_eq!(crypto_kind("NVDA",Some(&perp),None,None),None,"合约表拿不到：不知道，不按币算");
+  assert_eq!(crypto_kind("NVDA",Some(&perp),Some(false),None),Some(false),"起跟时判过的，重算门槛时沿用");
+  assert_eq!(crypto_kind("BTC",Some(&perp),None,None),Some(true),"主币不用查");
+  assert_eq!(crypto_kind("FOO",None,None,None),Some(true),"币安没有这只永续：按币算");
+  let doge=Venue{instrument:"DOGEUSDT".into(),listed_base:"DOGE".into(),..perp.clone()};
+  assert_eq!(crypto_kind("DOGE",Some(&doge),None,Some(&info)),Some(true));
  }
 
  #[test] fn snapshot_retries_back_off_to_five_minutes() {
