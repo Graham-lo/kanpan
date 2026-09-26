@@ -231,6 +231,24 @@ struct HeaderStatsTests {
     model.stop()
   }
 
+  /// 跨交易所冷换品种：`.provider` 报到之前，持仓量按新品种自己那家取（整机压测 2026-09-26）。
+  @MainActor
+  @Test("冷换到另一家交易所的品种，持仓量来源立刻跟着新品种走")
+  func coldCrossVenueSwitchUsesNewSymbolsStatsSource() {
+    let model = MarketModel(symbol: "coinbase/spot/BTC-USD", endpoints: Self.statsEndpoints)
+    let coinbase = model.capabilities
+    #expect(coinbase.openInterestSource == nil, "前提：Coinbase 现货没有持仓量")
+    model.switchTo(symbol: "BTCUSDT")
+    // 离线单测里 `.provider` 不会到：`capabilities` 仍是 Coinbase 那份，统计口径不能跟着它。
+    #expect(model.capabilities == coinbase, "前提：.provider 还没到")
+    #expect(model.statsCapabilities.openInterestSource == "binance")
+    #expect(model.isPollingStats)
+    #expect(model.pollingStatsSource == "binance", "轮询还按上一只（Coinbase）的口径取，持仓量那格会一直是「—」")
+    model.switchTo(symbol: "coinbase/spot/ETH-USD")
+    #expect(model.statsCapabilities.openInterestSource == nil)
+    model.stop()
+  }
+
   /// 「创建提醒」的现价先取最后一笔成交：换品种之后上一只的那笔不能留着。
   @MainActor
   @Test("换品种之后，上一只的最后一笔成交不再算这一只的")

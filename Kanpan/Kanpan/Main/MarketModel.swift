@@ -127,6 +127,10 @@ final class MarketModel {
   /// 当前这份行情的提供者能做什么（哪家、哪条上游、有没有费率 / 持仓量 / 衍生统计）。
   /// 顶栏哪几格写「—」、副图给不给看，全按它办；从不问「这是哪家交易所」。
   private(set) var capabilities: ProviderCapabilities
+  /// `capabilities` 是替哪只品种定的（规范写法）。冷换品种之后、`.provider` 事件到之前，
+  /// `capabilities` 仍是上一只那家的——按它去取新品种的持仓量会取错家（跨交易所换品种时
+  /// Coinbase → 币安一次都不取、币安 → Coinbase 拿币安口径去问）。
+  @ObservationIgnored private var capabilitiesSymbol: String
   private(set) var historyError: String?
   private(set) var routing: MarketRoutingState = .idle
   /// 最近一次 WS 推进来的时刻。顶栏圆点长按时报「多久没动了」——
@@ -182,6 +186,7 @@ final class MarketModel {
     let resolver = RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: endpoints, log: MarketModel.log)
     let provider = resolver.provider(forSymbol: canonical)
     self.capabilities = provider.capabilities
+    self.capabilitiesSymbol = canonical
     self.oiSource = OISource(provider: provider, gateways: resolver.route.gateways, store: Self.oiStore(for: provider.capabilities))
     self.feed = RoutedMarketFeed(endpoints: endpoints, log: MarketModel.log)
     self.catalog = CatalogBox(Self.catalogs(resolver))
@@ -410,7 +415,7 @@ final class MarketModel {
       // 而他什么都没做，只是我们换了台机器取数。备用线路本来就未必有这个品种，
       // 那样会一直空着。留着上一条线路的最后一口价，灰显标明「这是旧的」（§2B #54），
       // 新线路第一帧到了就自己转正。
-      capabilities = next; tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
+      capabilities = next; capabilitiesSymbol = InstrumentID.canonical(symbol); tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
       turnoverCarry.reset()
       funding = nil; fundingExpired = false
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
@@ -503,6 +508,15 @@ final class MarketModel {
 
   /// 持仓量 / 供应量轮询此刻挂没挂着（给单测看）。
   var isPollingStats: Bool { statsTask != nil }
+  /// 眼下这条轮询按哪家取持仓量（给单测看；没在轮询时是上一轮的值，别单独信它）。
+  @ObservationIgnored private(set) var pollingStatsSource: String?
+
+  /// 顶栏统计该按哪家的能力取：`.provider` 已经为这只报过到就认它（可能是备用线路那家），
+  /// 还没报到（冷换品种的空档）就按线路给这只品种定的那家——和 `seedStats` 同一个口径。
+  var statsCapabilities: ProviderCapabilities {
+    capabilitiesSymbol == InstrumentID.canonical(symbol)
+      ? capabilities : resolver.provider(forSymbol: symbol).capabilities
+  }
 
   /// 供应量取一次（客户端缓存一天），持仓量按 `oiPollSeconds` 续着取。
   /// 两条都失败就让那两格一直是 `--`，不报错、不弹窗。
@@ -512,7 +526,8 @@ final class MarketModel {
     // 宽限期里换线路（`.provider`）、换品种（冷 `switchTo`）从前都会无条件重开这条
     // 45 秒一轮的循环，一直跑到进程被挂起；回前台 `enterForeground` 会补开，这里只管拦。
     guard foreground else { return }
-    let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = resolver.route.apiHosts
+    let sym = symbol, src = statsCapabilities.openInterestSource, base = info.base, proxies = resolver.route.apiHosts
+    pollingStatsSource = src
     guard !proxies.isEmpty else {
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
       forwardEarnings = nil; revenue = nil
