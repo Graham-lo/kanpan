@@ -220,6 +220,8 @@ fn in_order<T>(control:&mut mpsc::UnboundedReceiver<T>,first:T,inbox:&mut mpsc::
 struct Write {step:f64,rows:Vec<(BigOrder,i64)>}
 /// 跟踪任务到写库任务的通道长度。
 const WRITES_QUEUE:usize=256;
+/// 跟踪任务的收件口：连接任务往里 `try_send`，满了就丢帧（簿断档、重拉快照）。
+const INBOX:usize=8192;
 
 /// 所有币的写库任务合起来最多同时占这么多条库连接：连接池一共 8 条，还要留给账号、同步与读历史的请求。
 /// 本地全开 154 只时，几十个跟踪任务同一时刻刷盘把池子占满，账号请求拿连接要等 2–3 秒（sqlx 慢获取告警）。
@@ -562,6 +564,22 @@ impl Tracker {
   }
  }
 
+ /// 重取的品种表与门槛到了：换门槛、补订新挂牌的。
+ async fn refreshed(&mut self,r:Refreshed) {
+  if let Some(mut next)=r.thresholds {
+   self.planned=next;
+   if self.calibration.needed {next.usdt_perp=self.calibration.value;}
+   if next!=self.model.thresholds {
+    tracing::info!("Orderflow history: {} thresholds {:?} -> {next:?}",self.base,self.model.thresholds);
+    self.model.set_thresholds(next,now_ms());
+    self.shared.send_replace(next);
+   }
+  }
+  self.add_venues(&r.venues);
+  self.write_ended().await;
+  tracing::debug!("Orderflow history: {} {}/{} books ready, {} live",self.model.base,self.model.ready_count(),self.model.venue_ids().len(),self.model.live_count());
+ }
+
  async fn write_ended(&mut self) {
   let ended=self.model.take_ended();
   if ended.is_empty() {return}
@@ -600,6 +618,60 @@ fn changed_live(rows:Vec<(BigOrder,i64)>,written:&mut HashMap<LiveKey,(f64,f64,f
  out
 }
 
+/// 品种表与门槛的一次重取：品种表每次都取，门槛到点才重算（`thresholds` 为 None = 这次没算或没算出步长）。
+struct Refreshed {venues:Vec<Venue>,thresholds:Option<Thresholds>}
+
+/// 每 `every` 重取一次品种表、每小时（跨 UTC 日立刻）重算一次门槛，结果发回跟踪任务。跟踪任务停了（收口关了）就退出，
+/// 取到一半也不等。
+/// 原来这些在跟踪任务的 select 里就地 await：网络慢时一次要几十秒到几分钟（每个请求 20 秒超时，山寨要 24h 行情与两份
+/// 日线，行情那份在单飞锁后面排、失败不缓存，排在后面的挨个再超时一遍），这期间收件口没人收，连接任务往满口
+/// `try_send` 的帧全丢，簿断档、重拉快照。
+async fn refresher<F,Fut>(tx:mpsc::Sender<Refreshed>,every:Duration,mut fetch:F)
+where F:FnMut(bool)->Fut,Fut:std::future::Future<Output=Refreshed> {
+ let mut tick=tokio::time::interval_at(tokio::time::Instant::now()+every,every);
+ tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+ let (mut resolved_at,mut resolved_day)=(now_ms(),model::reference_day(now_ms()));
+ loop {
+  tokio::select! {_=tx.closed()=>return,_=tick.tick()=>{}}
+  let now=now_ms();
+  let due=now-resolved_at>=THRESHOLDS_EVERY_MS||model::reference_day(now)!=resolved_day;
+  let r=tokio::select! {_=tx.closed()=>return,r=fetch(due)=>r};
+  if r.thresholds.is_some() {resolved_at=now;resolved_day=model::reference_day(now);}
+  if tx.send(r).await.is_err() {return}
+ }
+}
+
+/// 跟踪任务的主循环：收帧、评估、刷盘；品种表与门槛由 `refresher` 在旁边取，取好了发回来就地换上。
+/// 停了把跟踪器交回去收尾。
+async fn run<F,Fut>(mut t:Tracker,mut inbox:mpsc::Receiver<Event>,mut control_rx:mpsc::UnboundedReceiver<Event>,mut stop:watch::Receiver<bool>,
+ every:Duration,fetch:F)->Tracker
+where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+Send+'static {
+ let mut evaluate=tokio::time::interval(EVALUATE);
+ evaluate.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+ let mut flush=tokio::time::interval_at(tokio::time::Instant::now()+FLUSH,FLUSH);
+ let (refreshed_tx,mut refreshed)=mpsc::channel::<Refreshed>(1);
+ let refresher=tokio::spawn(refresher(refreshed_tx,every,fetch));
+ loop {
+  tokio::select! {
+   _=stop.changed()=>break,
+   Some(event)=control_rx.recv()=>{t.handle(event);while let Ok(event)=control_rx.try_recv() {t.handle(event);}},
+   // 一口气把排着的都吃掉再评估，别让评估插在一串帧中间。
+   Some(event)=inbox.recv()=>in_order(&mut control_rx,event,&mut inbox,|event|t.handle(event)),
+   _=evaluate.tick()=>{
+    let now=now_ms();
+    t.calibrate(now);
+    if t.calibrating() {t.model.trim();} else {t.model.evaluate(now);}
+    t.due_retries(now);
+    t.write_ended().await;
+   },
+   _=flush.tick()=>t.write_live().await,
+   Some(r)=refreshed.recv()=>t.refreshed(r).await,
+  }
+ }
+ refresher.abort();
+ t
+}
+
 /// 拿品种表与门槛，直到步长有了。停了返回 None。
 async fn prepare(base:&str,stop:&mut watch::Receiver<bool>)->Option<(Vec<Venue>,Thresholds,bool)> {
  loop {
@@ -631,8 +703,8 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  let mut published=thresholds;
  if needed {published.usdt_perp=None;}
  shared.send_replace(published);
- let (events,mut inbox)=mpsc::channel::<Event>(8192);
- let (control,mut control_rx)=mpsc::unbounded_channel::<Event>();
+ let (events,inbox)=mpsc::channel::<Event>(INBOX);
+ let (control,control_rx)=mpsc::unbounded_channel::<Event>();
  let (writes,rx)=mpsc::channel::<Write>(WRITES_QUEUE);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
  let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,control,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
@@ -646,43 +718,12 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  t.write_ended().await;
  t.add_venues(&venues);
  (t.calibration.since,t.calibration.subscribed)=(now_ms(),now_ms());
- let mut evaluate=tokio::time::interval(EVALUATE);
- evaluate.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
- let mut flush=tokio::time::interval_at(tokio::time::Instant::now()+FLUSH,FLUSH);
- let mut refresh=tokio::time::interval_at(tokio::time::Instant::now()+REFRESH,REFRESH);
- let (mut resolved_at,mut resolved_day)=(now_ms(),model::reference_day(now_ms()));
- loop {
-  tokio::select! {
-   _=stop.changed()=>break,
-   Some(event)=control_rx.recv()=>{t.handle(event);while let Ok(event)=control_rx.try_recv() {t.handle(event);}},
-   // 一口气把排着的都吃掉再评估，别让评估插在一串帧中间。
-   Some(event)=inbox.recv()=>in_order(&mut control_rx,event,&mut inbox,|event|t.handle(event)),
-   _=evaluate.tick()=>{
-    let now=now_ms();
-    t.calibrate(now);
-    if t.calibrating() {t.model.trim();} else {t.model.evaluate(now);}
-    t.due_retries(now);
-    t.write_ended().await;
-    // 跨 UTC 日：步长按新的前一日收盘重算。
-    if model::reference_day(now)!=resolved_day {resolved_at=0;}
-   },
-   _=flush.tick()=>t.write_live().await,
-   _=refresh.tick()=>{
-    let venues=instruments::venues(&base).await;
-    let now=now_ms();
-    if now-resolved_at>=THRESHOLDS_EVERY_MS
-     && let Some((mut next,_))=resolve(&base,&venues,now,Some(!t.calibration.needed)).await && next.step.is_some() {
-     t.planned=next;
-     if t.calibration.needed {next.usdt_perp=t.calibration.value;}
-     if next!=t.model.thresholds {tracing::info!("Orderflow history: {base} thresholds {:?} -> {next:?}",t.model.thresholds);t.model.set_thresholds(next,now);t.shared.send_replace(next);}
-     resolved_at=now;resolved_day=model::reference_day(now);
-    }
-    t.add_venues(&venues);
-    t.write_ended().await;
-    tracing::debug!("Orderflow history: {} {}/{} books ready, {} live",t.model.base,t.model.ready_count(),t.model.venue_ids().len(),t.model.live_count());
-   },
-  }
- }
+ let fetch={let base=base.clone();move |due:bool|{let base=base.clone();async move {
+  let venues=instruments::venues(&base).await;
+  let thresholds=if due {resolve(&base,&venues,now_ms(),Some(crypto)).await.map(|(t,_)|t).filter(|t|t.step.is_some())} else {None};
+  Refreshed{venues,thresholds}
+ }}};
+ let mut t=run(t,inbox,control_rx,stop,REFRESH,fetch).await;
  t.model.stop();
  t.write_ended().await;
  hub::remove(t.model.venue_ids(),&t.events);
@@ -1250,6 +1291,34 @@ mod tests {
   let (mut t,mut n,mut f)=(0i64,0,1u32);
   while t<3_600_000 {t+=snapshot_backoff(f);f+=1;n+=1;}
   assert!(n<20,"{n}");
+ }
+
+ /// 重取品种表 / 门槛在网络慢时要很久（每个请求 20 秒超时；山寨要 24h 行情和两份日线，行情那份在单飞锁后面排，
+ /// 失败不缓存、排在后面的挨个再超时一遍）。这期间跟踪任务照样收帧：按每秒 100 帧推，重取卡 100 秒，一帧都不丢。
+ #[tokio::test(start_paused=true)] async fn a_slow_refresh_never_stops_the_tracker_draining_frames() {
+  let (events,inbox)=mpsc::channel::<Event>(INBOX);
+  let (control,control_rx)=mpsc::unbounded_channel::<Event>();
+  let (writes,_writes_rx)=mpsc::channel::<Write>(WRITES_QUEUE);
+  let (shared,_)=watch::channel(Thresholds::default());
+  let thresholds=Thresholds{step:Some(1.0),..Default::default()};
+  let t=Tracker{base:"ZZSLOW".into(),model:Model::new("ZZSLOW",thresholds),events:events.clone(),control,open:HashSet::new(),inflight:HashMap::new(),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
+  let (stop_tx,stop)=watch::channel(false);
+  let slow=|_due:bool|async {tokio::time::sleep(Duration::from_secs(100)).await;Refreshed{venues:vec![],thresholds:None}};
+  let tracker=tokio::spawn(run(t,inbox,control_rx,stop,Duration::from_secs(1),slow));
+  let (mut sent,mut dropped)=(0u32,0u32);
+  for _ in 0..(120*100) {
+   match events.try_send(Event::Frame{venue:"binance:usdtPerp:ZZSLOWUSDT".into(),connection:1,message:book::Message::Reset}) {
+    Ok(())=>sent+=1,
+    Err(_)=>dropped+=1,
+   }
+   tokio::time::sleep(Duration::from_millis(10)).await;
+  }
+  println!("重取卡 100 秒、每秒 100 帧推 120 秒：收下 {sent} 帧，丢 {dropped} 帧（收件口 {INBOX} 格）");
+  stop_tx.send(true).unwrap();
+  tokio::time::timeout(Duration::from_secs(200),tracker).await.expect("停了要能退出").unwrap();
+  assert_eq!(dropped,0,"重取期间收件口没人收，满了丢帧");
  }
 
  #[test] fn resyncs_back_off_until_the_book_holds_for_a_minute() {
