@@ -345,6 +345,10 @@ final class ChartProxy {
   /// （`clampView` 会先把视野顶在现有数据的左边缘上，图自己会去要更多历史，
   /// 下一批到了再铺一次），但不能无限期地等着，否则它会在很久以后冷不丁跳出来。
   fileprivate var wantsWindow: (symbol: String, interval: Interval, view: ViewWindow, tries: Int)?
+  /// 这笔账上一次兑现时序列最早那根的时间。兑现过一次之后，只有序列真的往前长了
+  /// （历史补到了）才再铺一次——否则每来一根新 K 线（`updateUIView` 每跳都来）都会把
+  /// 视野重新夹回左缘，人在这几秒里的拖动、惯性全被拽回去。
+  private var windowAppliedFirst: Int64?
 
   /// 一笔账最多跨多少轮渲染。约等于数据来回两三趟的量。
   private static let windowAttempts = 30
@@ -352,11 +356,12 @@ final class ChartProxy {
   /// 等这个品种的这一档数据到了，把视野铺成 `window`。
   func show(window: ViewWindow, symbol: String, interval: Interval) {
     wantsWindow = (InstrumentID.canonical(symbol), interval, window, 0)
+    windowAppliedFirst = nil
     box?.setNeedsLayout()
   }
 
   /// 人自己动了手（换档、换品种、在图上拖），这笔账就作废——别在他后来做的事上面盖一层。
-  func cancelWindow() { wantsWindow = nil }
+  func cancelWindow() { wantsWindow = nil; windowAppliedFirst = nil }
 
   /// 这一轮该不该把视野铺过去。对不上的序列先记一笔次数，等下一轮。
   fileprivate func window(for series: BarSeries) -> ViewWindow? {
@@ -365,9 +370,11 @@ final class ChartProxy {
     wantsWindow?.tries = want.tries + 1
     guard series.count > 0, want.interval == series.interval,
           want.symbol == InstrumentID.canonical(series.symbol) else { return nil }
+    if let first = windowAppliedFirst, series.firstTime >= first { return nil }
+    windowAppliedFirst = series.firstTime
     // 历史已经补到那一段的左边了：这笔账兑现完就销。还没补到就先铺一次（视野会被夹在
     // 现有数据的左缘，图当场去要历史），账留着，下一批数据到了再铺准。
-    if Double(series.firstTime) <= want.view.from { wantsWindow = nil }
+    if Double(series.firstTime) <= want.view.from { cancelWindow() }
     // 铺完再补报一次视野。这一下是在 SwiftUI 的更新里发生的（`updateUIView` →
     // `applyPending`），那一轮里 `onViewChanged` 报出去的位置到不了 `@State`：
     // 实测铺进历史之后，周期条行尾那颗「最新」不露面，人就没路回来了。
@@ -649,10 +656,16 @@ struct ChartHost: UIViewRepresentable {
             let series = box.chart.state?.series, series.count > 0 else { return }
       onBarSpacing(view.barSpacing(step: series.step, plotW: layout.plotW))
     }
+    // 手指一落到图上，扫图横滑欠着的那笔「铺到某段时间」就作废：人自己在摆视野了。
+    box.chart.onInteractionBegan = { [weak proxy] in
+      proxy?.cancelWindow()
+      #if DEBUG
+        // P2.2：DEBUG 包里每一次画布手势都让帧探针采一段，Release 一行都不进。
+        // 抬手后再多采一小会儿，甩出去的惯性滑行也算在这一段里。
+        ChartGestureFrames.began()
+      #endif
+    }
     #if DEBUG
-      // P2.2：DEBUG 包里每一次画布手势都让帧探针采一段，Release 一行都不进。
-      // 抬手后再多采一小会儿，甩出去的惯性滑行也算在这一段里。
-      box.chart.onInteractionBegan = { ChartGestureFrames.began() }
       // M5 A5.2：「收到行情事件 → 画进图层」计时，只在带 KANPAN_EVENT_DRAW_PROBE=1 启动时挂。
       if EventDrawProbe.enabled {
         box.chart.onAdoptedForProbe = { EventDrawProbe.shared.adopted(dirty: $0) }

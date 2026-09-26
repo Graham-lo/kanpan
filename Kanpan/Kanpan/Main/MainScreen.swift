@@ -353,6 +353,7 @@ struct MainScreen: View {
                    // 目录还没载回来时点一行，以前只换图不记「最近」——同一个动作在
                    // 目录加载前后结果不一样，而且这张图下次冷启动也回不来。
                    picker.visit(symbol)
+                   proxy.cancelWindow()
                    session.show(symbol: symbol)
                  }
                },
@@ -1763,6 +1764,10 @@ struct MainScreen: View {
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
       endSharePreview()
+      // 换品种的每一条路都从这儿过（自选、搜索、品种页、板块、深链、扫图、画线台）：
+      // 扫图横滑提的那笔「铺到某段时间」只属于那一下横滑，换了别的路就作废。扫图自己
+      // 在 `open(linkedSymbol:)` 之后才提新的那笔，不受这句影响。
+      proxy.cancelWindow()
       symbolSearch.reset()
       // 挑完品种落到行情页：自选、搜索、品种整页三条路都是「去看哪张图」。
       // 从别的一格走进来的，记下来路，顶栏那颗返回才回得去。
@@ -1889,6 +1894,7 @@ struct MainScreen: View {
       // 上次看的那张图。`boot()` 中途调到这儿时行情还没开张，那一次交给
       // `market.start(symbol:)` 直接开对，不在这儿切。
       if live, let last = profile.recents.first, last != market.symbol {
+        proxy.cancelWindow()
         session.show(symbol: last)
       }
     }
@@ -1955,6 +1961,7 @@ struct MainScreen: View {
     if tab != .chart { chartOrigin = tab }
     tab = .chart; didLeaveLaunch = true
     picker.visit(symbol)
+    proxy.cancelWindow()
     session.show(symbol: symbol)
   }
 

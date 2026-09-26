@@ -90,4 +90,35 @@ struct ChartHostSwitchTests {
     #expect(back.isAtLatest, "切回来被搬回了很久以前那段历史")
     #expect(back.state?.crosshair == nil, "切回来冒出了上一次的十字线")
   }
+
+  @Test("扫图欠的「铺到某段时间」兑现后，新 K 线不再把人拖动过的视野拽回左缘")
+  func windowDebtDoesNotFightTheUser() async throws {
+    let (window, feed, proxy) = mount()
+    defer { window.isHidden = true }
+    let a = series("AAAUSDT")
+    feed.state = state(a)
+    await settle(window) { proxy.box?.chart.chartLayout != nil && proxy.box?.chart.state?.series.symbol == "AAAUSDT" }
+    // 在看 A 的一段早于 B 上市的历史时横滑到 B：B 的数据只从 A 中段开始。
+    let want = ViewWindow(to: Double(a.time(at: 120)), span: Double(a.step) * 80)
+    proxy.show(window: want, symbol: "BBBUSDT", interval: .h1)
+    var b = series("BBBUSDT", count: 300, t0: a.time(at: 300))
+    feed.state = state(b)
+    await settle(window) { proxy.box?.chart.state?.series.symbol == "BBBUSDT" }
+    let chart = try #require(proxy.box?.chart)
+    let clamped = try #require(chart.state?.view)
+    #expect(clamped.from <= Double(b.firstTime) + Double(b.step) * 2, "前提：账兑现了一次，视野夹在 B 的左缘")
+
+    // 人往右拖了一段（直接改图上的视野，和手势写回的是同一个字段）。
+    var s = try #require(chart.state)
+    let dragged = ViewWindow(to: Double(b.time(at: 200)), span: clamped.span)
+    s.view = dragged
+    chart.state = s
+    // 行情照常一根根来。
+    for k in 0..<3 {
+      _ = b.upsert(Bar(openTime: b.lastTime + b.step, open: 100, high: 101, low: 99, close: 100, volume: Double(k)))
+      feed.state = state(b)
+      await settle(window) { proxy.box?.chart.state?.series.count == b.count }
+      #expect(proxy.box?.chart.state?.view.to == dragged.to, "第 \(k + 1) 根新 K 线把视野拽回了左缘")
+    }
+  }
 }
