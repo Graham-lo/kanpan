@@ -121,6 +121,15 @@ public actor OrderFlowFeed {
   private var connectionOf: [Int: Int] = [:]
   /// 单本重订等快照最多等多久，过了就整条重拨。
   static let resubscribeTimeoutMs: Int64 = 10_000
+  /// 每条深度流当前这条连接建好的时刻；断了、或已经决定整条重拨时清掉。
+  private var connectedAtMs: [Int: Int64] = [:]
+  /// 这条连接上已经催过首帧快照的簿（一条连接只催一次）。
+  private var nudgedOnConnection: Set<String> = []
+  /// 每本簿这一轮一共催过几次：品种在交易所那头已经没了、订阅永远不回快照时，不能无限催下去。
+  private var firstSnapshotNudges: [String: Int] = [:]
+  /// 快照在流里的那几家（OKX、Coinbase）：连上这么久一本簿还没收到首帧快照，就单本重订一次。
+  static let firstSnapshotTimeoutMs: Int64 = 15_000
+  static let maxFirstSnapshotNudges = 3
   private var lastEmitted: OrderFlowSnapshot?
   private var lastEmitMs: Int64 = .min / 2
   private var lastSaveMs: Int64 = 0
@@ -282,7 +291,7 @@ public actor OrderFlowFeed {
     historyFetch?.cancel(); historyFetch = nil; historyGeneration += 1
     schemeTask?.cancel(); schemeTask = nil
     snapshotTasks.values.forEach { $0.cancel() }; snapshotTasks = [:]
-    let dying = streams; streams = []; adapters = []; connectionOf = [:]
+    let dying = streams; streams = []; adapters = []; connectionOf = [:]; connectedAtMs = [:]
     for s in dying { await s.stop() }
     save()
   }
@@ -365,8 +374,10 @@ public actor OrderFlowFeed {
     switch event {
     case .connected(let id):
       connectionOf[index] = id
+      connectedAtMs[index] = now
       for book in books {
         resubscribing[book.id] = nil
+        nudgedOnConnection.remove(book.id)
         cancelSnapshot(book.id)
         await perform(model.connectionOpened(book.id), venue: book.id, stream: index)
       }
@@ -384,6 +395,7 @@ public actor OrderFlowFeed {
         await perform(action, venue: venue, stream: index)
       }
     case .disconnected(let reason):
+      connectedAtMs[index] = nil
       // 断线期间簿不再可信：回到「拉快照中」，重连后再重建。
       for book in books {
         model.disconnected(book.id)
@@ -417,8 +429,33 @@ public actor OrderFlowFeed {
     for index in stale.sorted() where index < streams.count {
       let stream = streams[index]
       guard let connection = connectionOf[index] else { continue }
+      connectedAtMs[index] = nil
       log("主力订单流 \(symbol) \(adapters[index].name) 单本重订 \(Self.resubscribeTimeoutMs / 1000) 秒没等到快照，整条重连")
       Task { await stream.reconnect(connection: connection) }
+    }
+  }
+
+  /// 快照在流里的那几家：首次订阅没回快照（订阅被中继或交易所吞了）的簿原来永远不会就绪——
+  /// 流内快照的簿没就绪时增量一律不收、也不会触发任何动作，只有断档和重连才会重订。
+  /// 连上 `firstSnapshotTimeoutMs` 还没就绪、也没在重订的，单本重订一次（不能单本重订的那家就整条重拨），
+  /// 之后仍没等到就走「单本重订超时 → 整条重拨」那条路。每本一轮最多催 `maxFirstSnapshotNudges` 次，
+  /// 免得交易所那头已经没了的品种把同连接的别的簿一遍遍拖下水。
+  private func nudgeSilentBooks(nowMs: Int64) {
+    for (index, since) in connectedAtMs.sorted(by: { $0.key < $1.key })
+    where nowMs - since >= Self.firstSnapshotTimeoutMs && index < adapters.count {
+      let tracked = Set(model.venues.map(\.id))
+      let silent = adapters[index].books.map(\.venue).filter { venue in
+        venue.snapshotInBand && tracked.contains(venue.id) && !model.isReady(venue.id)
+          && resubscribing[venue.id] == nil && !nudgedOnConnection.contains(venue.id)
+          && firstSnapshotNudges[venue.id, default: 0] < Self.maxFirstSnapshotNudges
+      }.map(\.id)
+      guard !silent.isEmpty else { continue }
+      for venue in silent {
+        nudgedOnConnection.insert(venue)
+        firstSnapshotNudges[venue, default: 0] += 1
+      }
+      log("主力订单流 \(symbol) \(adapters[index].name) 连上 \(Self.firstSnapshotTimeoutMs / 1000) 秒没收到快照，重订 \(silent.joined(separator: " "))")
+      Task { await self.resubscribe(silent, stream: index, nowMs: nowMs) }
     }
   }
 
@@ -627,6 +664,7 @@ public actor OrderFlowFeed {
     guard !stopped else { return }
     let now = clock()
     escalateStaleResubscribes(nowMs: now)
+    nudgeSilentBooks(nowMs: now)
     if calibrating { calibrate(nowMs: now) }
     pumpHistory()
     // 标定之前出「加载中」、不带门槛与默认：面板那时按品种事实查表（兜底 200 万），标定完换成标定值。

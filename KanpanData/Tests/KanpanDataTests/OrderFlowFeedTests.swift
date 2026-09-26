@@ -303,6 +303,63 @@ struct OrderFlowFeedTests {
     await feed.stop()
   }
 
+  @Test("压测 · 流内快照那家首次订阅没回快照（被吞了）：连上 15 秒单本重订一次，快照到了照常就绪；不到 15 秒不动", .timeLimit(.minutes(1)))
+  func silentFirstSubscribeIsNudgedOnce() async throws {
+    let okx = ScriptAdapter(
+      name: "okx", books: [okxSpot, okxCoin],
+      script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))],
+               "coin": [VenueMessage(okxCoin.id, .snapshot(deepSnapshot(last: 100)))]],
+      resubscribable: true)
+    let clock = TestClock()
+    let frames = Frames()
+    let feed = makeFeed([okx], dir: nil, frames: frames, clock: clock)
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    let socket = try #require(await okx.snapshots.socket(0))
+    await socket.push(.text("coin"))
+    #expect(await waitUntil(5) { await frames.last?.venues.filter(\.ready).count == 1 })
+    clock.advance(OrderFlowFeed.firstSnapshotTimeoutMs - 1_000)
+    #expect(await staysFalse(for: 0.2) { await socket.sent.isEmpty == false })
+    clock.advance(2_000)
+    #expect(await waitUntil(5) { await socket.sent == ["unsubscribe \(okxSpot.id)", "subscribe \(okxSpot.id)"] },
+            "只重订没回快照的那本，就绪的那本不动")
+    #expect(await staysFalse(for: 0.2) { await socket.sent.count > 2 }, "一条连接只催一次")
+    await socket.push(.text("snap"))
+    #expect(await waitUntil(5) { await frames.last?.venues.filter(\.ready).count == 2 })
+    #expect(await okx.snapshots.connects == 1)
+    #expect(await socket.cancelCalls == 0)
+    await feed.stop()
+  }
+
+  @Test("压测 · 交易所那头已经没了的品种（订阅永远不回快照）：催 3 次（每次单本重订 → 10 秒后整条重拨）就停，不再无限重拨", .timeLimit(.minutes(1)))
+  func deadInstrumentStopsAfterThreeNudges() async throws {
+    let okx = ScriptAdapter(name: "okx", books: [okxSpot], script: [:], resubscribable: true)
+    let clock = TestClock()
+    let feed = makeFeed([okx], dir: nil, frames: Frames(), clock: clock)
+    await feed.start()
+    // 钟边等边拨（每次轮询拨 0.5 秒）：不依赖数据层什么时候处理到 `.connected`。
+    for round in 1...OrderFlowFeed.maxFirstSnapshotNudges {
+      #expect(await waitUntil(5) { await okx.snapshots.connects == round })
+      let socket = try #require(await okx.snapshots.socket(round - 1))
+      #expect(await waitUntil(5) { clock.advance(500); return await socket.sent.last == "subscribe \(okxSpot.id)" },
+              "第 \(round) 次：连上 15 秒没快照，单本重订")
+      #expect(await waitUntil(5) { clock.advance(500); return await okx.snapshots.connects == round + 1 },
+              "第 \(round) 次：重订 10 秒还没快照，整条重拨")
+    }
+    let rounds = OrderFlowFeed.maxFirstSnapshotNudges
+    let last = try #require(await okx.snapshots.socket(rounds))
+    // 再拨 10 分钟虚拟时间。
+    for _ in 0..<60 {
+      clock.advance(10_000)
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    let connects = await okx.snapshots.connects
+    let sent = await last.sent
+    #expect(connects == rounds + 1, "催满 \(rounds) 次之后不再重拨，实际拨了 \(connects) 次")
+    #expect(sent.isEmpty, "催满之后新连接上也不再重订")
+    await feed.stop()
+  }
+
   @Test("快照 503 按 Retry-After 再拉一次；4xx 就不再重试", .timeLimit(.minutes(1)))
   func snapshotRetry() async throws {
     let delta = BookDelta(firstUpdateID: 95, finalUpdateID: 101, previousFinalUpdateID: 94)
