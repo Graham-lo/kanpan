@@ -106,7 +106,12 @@ public enum ApplyOutcome: Sendable, Equatable { case applied, duplicateIgnored }
 struct BookSideLevels: Sendable {
   let isBid: Bool
   private(set) var levels: [Double: Double] = [:]
-  /// 快照之后增量推过的价位（含推成 0 的）。快照被截断时，覆盖范围以外只有这些是本地知道的。
+  /// 快照被截断时，覆盖范围以外、快照之后被增量推成 0、又在保留区间以内的价位：本地「知道那里是空的」。
+  /// 覆盖范围以外推成正数的不记——收下了就在 `levels` 里（`knows` 看得见），因为在保留区间外没收就不知道。
+  ///
+  /// 原来凡是增量推过的价（含推成正数、含保留区间外被拒收的）一律记进来，只有重新同步才清：
+  /// 快照永远截断的那几家（币安 1000 档、OKX 400 档）一条连接跑几天，它随「出现过的不同价位」只涨不落；
+  /// 被拒收的远价还被当成「知道、是 0」。现在它最多是保留区间里的价位格数，裁远处时一起裁。
   private(set) var touched: Set<Double> = []
   private var best: Double?
   private var bestStale = false
@@ -128,6 +133,15 @@ struct BookSideLevels: Sendable {
   }
 
   mutating func touch(_ price: Double) { touched.insert(price) }
+  mutating func forget(_ price: Double) { touched.remove(price) }
+
+  /// 保留区间挪了：区间以外那些「知道是空的」价位不再记（回到「不知道」，偏保守）。
+  mutating func pruneTouched(keepingFrom floor: Double, to ceiling: Double) {
+    guard !touched.isEmpty else { return }
+    var far: [Double] = []
+    for price in touched where price < floor || price > ceiling { far.append(price) }
+    for price in far { touched.remove(price) }
+  }
 
   mutating func removeAll() {
     levels.removeAll(keepingCapacity: true); touched.removeAll(); best = nil; bestStale = false
@@ -368,6 +382,10 @@ public struct LocalBook: Sendable {
       if price <= ceiling { body(.ask, price, quantity) } else if let keep, price > keep.ceiling { farAsks.append(price) }
     }
     bids.remove(farBids); asks.remove(farAsks)
+    if let keep {
+      bids.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
+      asks.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
+    }
     retained = keep
     return mid
   }
@@ -387,8 +405,12 @@ public struct LocalBook: Sendable {
   private mutating func applyLevels(_ delta: BookDelta) {
     Self.write(delta.bids, into: &bids, within: retained)
     Self.write(delta.asks, into: &asks, within: retained)
-    if bidsLimited { for level in delta.bids where Self.valid(level) { bids.touch(level.price) } }
-    if asksLimited { for level in delta.asks where Self.valid(level) { asks.touch(level.price) } }
+    if bidsLimited, let floor = coverage.bidFloor {
+      Self.noteBeyondCoverage(delta.bids, into: &bids, beyond: { $0 < floor }, within: retained)
+    }
+    if asksLimited, let ceiling = coverage.askCeiling {
+      Self.noteBeyondCoverage(delta.asks, into: &asks, beyond: { $0 > ceiling }, within: retained)
+    }
     sourceEventTimeMs = delta.eventTimeMs
   }
 
@@ -397,7 +419,8 @@ public struct LocalBook: Sendable {
   private var asksLimited: Bool { coverage.requestedLevels > 0 && coverage.snapshotAskLevels >= coverage.requestedLevels }
 
   /// 这一档本地知不知道。快照被截断时（币安 REST 只给 1000 档，BTC 现货合起来才盘口两侧 0.3%），
-  /// 快照最远一档以外的价位本地并不知道有没有——只有增量推过的（含推成 0 的）才知道；
+  /// 快照最远一档以外的价位本地并不知道有没有——只有增量推来、还在表里的，或推成 0、在保留区间以内的才知道
+  /// （推来的正数在保留区间外被拒收，仍是不知道）；
   /// 覆盖范围以内「表里没有」就是没有。快照完整（回的档数不到要的数、或流里整本推来）整侧都知道。
   /// 主力订单流靠它区分「墙没了」和「墙在快照盖不到的地方」：重启后读回来的、离盘口 2%–10% 的单
   /// 不能因为新快照没盖到就判成撤单。
@@ -405,10 +428,21 @@ public struct LocalBook: Sendable {
     switch side {
     case .bid:
       guard bidsLimited, let floor = coverage.bidFloor else { return true }
-      return price >= floor || bids.touched.contains(price)
+      return price >= floor || bids.levels[price] != nil || bids.touched.contains(price)
     case .ask:
       guard asksLimited, let ceiling = coverage.askCeiling else { return true }
-      return price <= ceiling || asks.touched.contains(price)
+      return price <= ceiling || asks.levels[price] != nil || asks.touched.contains(price)
+    }
+  }
+
+  /// 覆盖范围以外的增量档记账（见 `BookSideLevels.touched`）：推成 0、在保留区间以内的记成「知道是空的」；
+  /// 推成正数的不记（收下了看 `levels`，没收下就是不知道），之前记过的一并忘掉；覆盖范围以内的本来就知道，不记。
+  private static func noteBeyondCoverage(_ levels: [BookLevel], into side: inout BookSideLevels,
+                                         beyond: (Double) -> Bool,
+                                         within band: (floor: Double, ceiling: Double)?) {
+    for level in levels where valid(level) && beyond(level.price) {
+      let inBand = band.map { level.price >= $0.floor && level.price <= $0.ceiling } ?? true
+      if level.quantity == 0, inBand { side.touch(level.price) } else { side.forget(level.price) }
     }
   }
 
@@ -438,6 +472,8 @@ public struct LocalBook: Sendable {
           let keep = retainedBand(mid: (bestBid + bestAsk) / 2, bestBid: bestBid, bestAsk: bestAsk) else { return }
     bids.remove(bids.levels.keys.filter { $0 < keep.floor })
     asks.remove(asks.levels.keys.filter { $0 > keep.ceiling })
+    bids.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
+    asks.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
     retained = keep
   }
 
