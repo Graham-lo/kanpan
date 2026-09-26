@@ -48,9 +48,10 @@ struct FavoriteLandingTests {
   }
 
   @Test("点星星之后搜索词还在，页面上的东西一个不动")
-  func starDoesNotDisturbTheList() throws {
+  func starDoesNotDisturbTheList() async throws {
     let m = model()
     m.query = "eth"
+    await m.settleSearch()
     let before = m.sections.flatMap { $0.rows.map(\.id) }
     #expect(m.toggleFavorite("binance/usd_m/ETHUSDT"))
     #expect(m.query == "eth")                                   // 不清词

@@ -4,7 +4,7 @@ import KanpanCore
 
 @MainActor @Suite("Exchange sectors are independent of favorites")
 struct MarketSectorTests {
-  @Test func combinedFiltersNeverMoveFolders() {
+  @Test func combinedFiltersNeverMoveFolders() async {
     let info = [
       SymbolInfo(symbol: "binance/usd_m/BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.1, underlyingType: "COIN", underlyingSubTypes: ["Crypto", "PoW"]),
       SymbolInfo(symbol: "binance/usd_m/ETHUSDT", base: "ETH", pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN", underlyingSubTypes: ["Crypto", "Layer-1"]),
@@ -20,6 +20,7 @@ struct MarketSectorTests {
     model.sectorFilter = "pow"
     #expect(model.sections.flatMap(\.rows).map(\.id) == ["binance/usd_m/BTCUSDT"])
     model.query = "eth"
+    await model.settleSearch()
     #expect(model.isEmpty)
     model.marketFilter = "us"
     #expect(model.sectorFilter == nil)

@@ -248,6 +248,7 @@ struct SymbolStatusTests {
     // 再搜一遍同一个词：表里已经有了，不再问。
     m.query = ""
     m.query = "ASTERUSDT"
+    await m.settleSearch()
     #expect(await box.asked == ["ASTERUSDT"])
   }
 
@@ -256,9 +257,10 @@ struct SymbolStatusTests {
     let m = model(catalog())
     let box = Counter()
     m.onMissingSymbol = { symbol in await box.note(symbol); return nil }
-    m.query = "ZZ"           // 太短
-    m.query = "ZZ-"          // 带杂字符
-    m.query = "BTC"          // 有命中
+    // 每一个都等它落定：连敲会被去抖并成最后一个，那样中间两个等于没测。
+    m.query = "ZZ"; await m.settleSearch()           // 太短
+    m.query = "ZZ-"; await m.settleSearch()          // 带杂字符
+    m.query = "BTC"; await m.settleSearch()          // 有命中
     // 给异步一点时间，确认确实一趟都没发。
     try? await Task.sleep(nanoseconds: 120_000_000)
     #expect(await box.asked.isEmpty)

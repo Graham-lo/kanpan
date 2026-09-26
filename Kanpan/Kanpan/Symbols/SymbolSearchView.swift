@@ -63,6 +63,17 @@ struct SymbolSearchView: View {
 
   private var trimmed: String { model.query.trimmingCharacters(in: .whitespacesAndNewlines) }
   private var searching: Bool { !trimmed.isEmpty }
+  /// 摆「结果」还是「历史 / 最近」：按**已经搭好**的那个词（`settledQuery`）判，不按框里的字。
+  /// 搜索停手才在后台搭（压测收尾 2026-09-26），按框里的字判的话，敲下第一个字到结果回来那
+  /// 一百多毫秒里会先闪一帧「没有这个品种」。
+  private var showsResults: Bool {
+    !model.settledQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+  /// 「热门」还没排出来、也还轮得到它（没有历史、没有最近）的时候才跟着报价表的版本号；
+  /// 排出来之后就不再读它——否则每来一批报价整页 body 都要重跑一遍。
+  private var awaitingHot: Bool {
+    hot.isEmpty && history.terms.isEmpty && model.prefs.recents.isEmpty
+  }
 
   /// 搜索态下那唯一一个分区（`SymbolSections.build` 有查询时只回一组）。
   private var hits: SymbolSection? { model.sections.first { $0.kind == .search } }
@@ -72,8 +83,9 @@ struct SymbolSearchView: View {
   /// 不占位、不解释，表到了它自己就出来。存几个就摆几个（`SymbolPrefs.recentLimit`，
   /// 10 个）：这里原来另截到 8 个，存下的最后两个永远看不见。
   private var recents: [SymbolRow] {
+    // 价不在这儿取：行自己读 `quoteCell`（`SearchQuoteRow`），跳一只只重画那一行。
     model.prefs.recents.compactMap { model.info(for: $0) }.prefix(SymbolPrefs.recentLimit).map {
-      SymbolRow(match: SymbolMatch(info: $0), ticker: model.ticker(for: $0.symbol))
+      SymbolRow(match: SymbolMatch(info: $0), ticker: nil)
     }
   }
 
@@ -84,7 +96,7 @@ struct SymbolSearchView: View {
         LazyVStack(alignment: .leading, spacing: 0) {
           // 剪贴板里像是有个品种时，最上面摆一个系统的粘贴按钮。
           if !searching, offerPaste { clipboardRow }
-          if searching { results } else { resting }
+          if showsResults { results } else { resting }
           Color.clear.frame(height: Space.xxl)
         }
       }
@@ -121,7 +133,7 @@ struct SymbolSearchView: View {
       await lookAtClipboard()
     }
     // 目录或行情比这一页晚到时，到了再排一次；排出来之后就不再动。
-    .onChange(of: model.quoteRevision) { refreshHot() }
+    .onChange(of: awaitingHot ? model.quoteRevision : 0) { refreshHot() }
     .onDisappear {
       focused = false
       model.setSectionsActive(false)
@@ -201,7 +213,7 @@ struct SymbolSearchView: View {
     // 有了历史或最近，这一组就让位，不和它们抢位置。
     if history.terms.isEmpty, rows.isEmpty {
       let hotRows = hot.compactMap { key in
-        model.info(for: key).map { SymbolRow(match: SymbolMatch(info: $0), ticker: model.ticker(for: $0.symbol)) }
+        model.info(for: key).map { SymbolRow(match: SymbolMatch(info: $0), ticker: nil) }
       }
       if !hotRows.isEmpty {
         groupHead("热门") { EmptyView() }
@@ -280,13 +292,13 @@ struct SymbolSearchView: View {
   private func rowList(_ rows: [SymbolRow]) -> some View {
     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
       if index > 0 { SymbolRowDivider() }
-      SymbolRowView(row: row,
-                    isFavorite: model.isFavorite(row.id),
-                    theme: rowTheme,
-                    onStar: {
-                      if model.toggleFavorite(row.id, info: row.info) { onStarred?(row.id) }
-                    },
-                    onPick: { pick(row.info) })
+      SearchQuoteRow(row: row, cell: model.quoteCell(row.id),
+                     isFavorite: model.isFavorite(row.id),
+                     theme: rowTheme,
+                     onStar: {
+                       if model.toggleFavorite(row.id, info: row.info) { onStarred?(row.id) }
+                     },
+                     onPick: { pick(row.info) })
         .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
         .onDisappear { onRowVisibility?(row.id, false) }
     }
@@ -348,6 +360,27 @@ struct SymbolSearchView: View {
   private func close() {
     model.query = ""
     onClose()
+  }
+}
+
+// ============================================================ 自己读价的一行
+
+/// 搜索页的一行：外形就是 `SymbolRowView`，价从这一只的 `QuoteCell` 现读。
+///
+/// 整页不再为「最近 / 热门」里的价登记在整张报价表上（压测收尾 2026-09-26）：哪一只跳了，
+/// 只有那一行重画。格子没价（还没到）时退回分区里带的那一口。
+private struct SearchQuoteRow: View {
+  let row: SymbolRow
+  let cell: QuoteCell
+  let isFavorite: Bool
+  let theme: PanelTheme
+  let onStar: () -> Void
+  let onPick: () -> Void
+
+  var body: some View {
+    var live = row
+    if let ticker = cell.ticker { live.ticker = ticker }
+    return SymbolRowView(row: live, isFavorite: isFavorite, theme: theme, onStar: onStar, onPick: onPick)
   }
 }
 

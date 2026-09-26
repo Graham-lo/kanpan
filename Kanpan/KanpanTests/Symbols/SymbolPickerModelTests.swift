@@ -74,14 +74,16 @@ struct SymbolPickerModelTests {
     #expect(m.sections.map(\.kind) == [.favorites, .recents, .all])
   }
 
-  @Test("改搜索词，分区立刻跟着变")
-  func queryRebuilds() {
+  @Test("改搜索词，停手落定后分区跟着变；清空当场回来")
+  func queryRebuilds() async {
     let (m, _) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"]))
     #expect(m.sections.count == 2)
     m.query = "eth"
+    await m.settleSearch()
     #expect(m.sections.count == 1)
     #expect(m.sections[0].rows.map(\.id) == ["binance/usd_m/ETHUSDT", "binance/usd_m/ETHFIUSDT", "binance/usd_m/ETHWUSDT"])
     m.query = "zzz"
+    await m.settleSearch()
     #expect(m.isEmpty)
     m.query = ""
     #expect(m.sections.count == 2)

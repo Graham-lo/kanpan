@@ -54,7 +54,11 @@ final class SymbolPickerModel {
   /// `@Observable` 会把存储属性改写成计算属性，属性观察器放在这儿只会让人猜。
   private func reindex() {
     index = Dictionary(catalog.map { (InstrumentID.canonical($0.symbol), $0) }, uniquingKeysWith: { a, _ in a })
+    catalogKeys = Set(index.keys)
   }
+  /// `index` 的键，搭分区要（「目录里根本没有」和「被药丸筛掉」分开）。跟着 `reindex` 一起算，
+  /// 不再每敲一个字重建一遍。
+  @ObservationIgnored private var catalogKeys: Set<String> = []
   /// symbol（大写）→ 24h 行情。
   ///
   /// **不参与观察**（整机压测 2026-09-26）：谁在 body 里读它，谁就登记在整张表上，
@@ -74,8 +78,18 @@ final class SymbolPickerModel {
   @ObservationIgnored private(set) var historyBars: [String: [Bar]] = [:]
   /// 自选与最近。改完立刻落盘。
   private(set) var prefs = SymbolPrefs()
-  /// 搜索框里的原文。改它分区就重算。
-  var query: String = "" { didSet { if query != oldValue { rebuild() } } }
+  /// 搜索框里的原文。改它分区就重算——但不是当场、也不在主线程上（压测收尾 2026-09-26）：
+  /// 停手 `searchDebounce` 之后在后台搭一遍，只认最后一次输入（`scheduleSearch()`）。
+  /// 清空是例外，当场回到没搜的那一页。
+  var query: String = "" { didSet { if query != oldValue { scheduleSearch() } } }
+  /// 眼下这份 `sections` 是按哪个词搭的。打字到落定之间它落后于 `query`；
+  /// 页面拿它决定摆「结果」还是「历史 / 最近」，免得还没搭好就先闪一帧「没有这个品种」。
+  private(set) var settledQuery = ""
+  /// 停手多久才搭。测试可以调短。
+  @ObservationIgnored var searchDebounce: Duration = .milliseconds(150)
+  @ObservationIgnored private var searchTask: Task<Void, Never>?
+  /// 每一次「要按新输入重搭」加一；后台搭完回来对不上号就扔掉。
+  @ObservationIgnored private var searchGeneration: UInt64 = 0
   var marketFilter = "all" { didSet { sectorFilter = nil; rebuildFilter() } }
   var sectorFilter: String? { didSet { rebuildFilter() } }
   private(set) var markets: [String] = []
@@ -674,14 +688,77 @@ final class SymbolPickerModel {
     rebuild()
   }
 
-  private func rebuild() {
-    // `catalogKeys` 给的是**没筛过**的那份目录：被药丸筛掉的自选照旧不列，
-    // 目录里根本没有的那个代号才算「未知」（审查复核项 4）。
+  /// 真价优先、没有就垫种子的那份报价（`ticker(for:)` 同一个口径）。
+  private func shownTickers() -> [String: Ticker] {
     var shown = tickers
     if let seeds = seedTickers?(), !seeds.isEmpty { shown.merge(seeds) { live, _ in live } }
-    sections = SymbolSections.build(catalog: filteredCatalog, tickers: shown, prefs: prefs,
-                                    query: query, catalogKeys: Set(index.keys))
+    return shown
+  }
+
+  /// 当场按此刻的输入搭一遍（目录到了、自选改了、报价表清了、换档案、页面露面）。
+  /// 这些都是一次性的事，不是每敲一字；顺手作废还在路上的那一趟后台搭建——
+  /// 它拿的是更早的快照，晚到了会把这一版盖回去。
+  private func rebuild() {
+    searchGeneration &+= 1
+    searchTask?.cancel(); searchTask = nil
+    // `catalogKeys` 给的是**没筛过**的那份目录：被药丸筛掉的自选照旧不列，
+    // 目录里根本没有的那个代号才算「未知」（审查复核项 4）。
+    sections = SymbolSections.build(catalog: filteredCatalog, tickers: shownTickers(), prefs: prefs,
+                                    query: query, catalogKeys: catalogKeys)
+    settle(query)
+  }
+
+  /// 敲了一个字（压测收尾 2026-09-26，整机线移交第 3 项）。
+  ///
+  /// 从前 `query` 的 didSet 直接 `rebuild()`：每敲一个字都在主线程上把整份目录按拼音 / 别名
+  /// 匹配、按成交额排序、再搭分区，连敲几个字就是几遍，键盘跟着一顿一顿。现在：
+  /// - 清空当场回来（没搜的那一页便宜，而且人要立刻看到历史与最近）；
+  /// - 其余停手 `searchDebounce` 才搭，快照在主线程上取、`SymbolSections.build` 在后台跑；
+  /// - 每一次输入加一个号，回来对不上号（又敲了字、或者期间当场重搭过）就扔掉，
+  ///   落定的永远是最后一次输入。
+  /// 页面不在（`sectionsActive` 为假）就不搭，露面时 `setSectionsActive(true)` 会当场搭。
+  private func scheduleSearch() {
+    if SymbolQuery.normalize(query).isEmpty { rebuild(); return }
+    searchGeneration &+= 1
+    searchTask?.cancel(); searchTask = nil
+    guard sectionsActive else { return }
+    let generation = searchGeneration, delay = searchDebounce
+    searchTask = Task { [weak self] in
+      if delay > .zero { try? await Task.sleep(for: delay) }
+      guard !Task.isCancelled else { return }
+      await self?.runSearch(generation)
+    }
+  }
+
+  private func runSearch(_ generation: UInt64) async {
+    guard generation == searchGeneration else { return }
+    let catalog = filteredCatalog, shown = shownTickers(), prefs = prefs, query = query, keys = catalogKeys
+    let built = await Task.detached(priority: .userInitiated) {
+      SymbolSections.build(catalog: catalog, tickers: shown, prefs: prefs, query: query, catalogKeys: keys)
+    }.value
+    guard generation == searchGeneration, !Task.isCancelled else { return }
+    // 后台搭的那几毫秒里报价可能又跳了：行上的价按此刻的报价表补一遍再交出去。
+    var fresh = built
+    for s in fresh.indices {
+      for r in fresh[s].rows.indices {
+        if let t = tickers[fresh[s].rows[r].id] { fresh[s].rows[r].ticker = t }
+      }
+    }
+    sections = fresh
+    settle(query)
+  }
+
+  private func settle(_ query: String) {
+    if settledQuery != query { settledQuery = query }
     lookUpMissingSymbolIfNeeded()
+  }
+
+  /// 等还在路上的那一趟搜索落定（测试用；界面不等它）。
+  func settleSearch() async {
+    while let task = searchTask {
+      await task.value
+      if searchTask == task { searchTask = nil }
+    }
   }
 
   /// 搜了一个词、一条都没命中，而这个词看着就是个合约代号：问一次目录（审查 B-06）。
@@ -691,7 +768,7 @@ final class SymbolPickerModel {
   private func lookUpMissingSymbolIfNeeded() {
     guard let onMissingSymbol, let section = sections.first, section.kind == .search,
           section.rows.isEmpty else { return }
-    let want = SymbolQuery.normalize(query).uppercased()
+    let want = SymbolQuery.normalize(settledQuery).uppercased()
     // 只有「看着就像个合约代号」的词才去问：中文（粘进来的「比特币」）和带
     // 分隔符的写法都不是代号，问了也是白问一趟。`isLetter` 对汉字是 true，
     // 所以这儿必须连 `isASCII` 一起要。
