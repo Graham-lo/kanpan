@@ -19,7 +19,11 @@ extension AccountFeature {
       do {
         let raw = try await client.data("v1/auth/me/export")
         guard started == generation else { return }
-        let url = try Self.writeExport(raw)
+        // 解开、排版、落盘挪出主线程：服务端导出上限 20 MB（`export.rs`），整份解成对象树
+        // 再排版写回，M4 上就要 0.4–0.5 秒、排出来四十多 MB；这个 Task 继承主线程，
+        // 原来就在主线程上做，手机上整屏卡住将近一秒。
+        let url = try await Task.detached(priority: .userInitiated) { try Self.writeExport(raw) }.value
+        guard started == generation else { return }
         ChartSnapshotRenderer.present(url)
       } catch {
         if started == generation { self.error = error.localizedDescription }
