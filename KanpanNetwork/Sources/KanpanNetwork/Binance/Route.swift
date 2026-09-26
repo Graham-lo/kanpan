@@ -31,6 +31,9 @@ public actor MarketRESTTransport: HTTPTransport {
     let upstreamStatus: Int
   }
   private var gatewayLimited: [String: GatewayLimit] = [:]
+  /// 每台网关最近一次赢下竞速的时刻。几场竞速并发时账本按「谁的消息新」记：一场没有赢家的竞速
+  /// 途中这台在别的请求上刚赢过，这场的失败就是旧消息，不再给它记冷却。
+  private var lastWin: [String: Date] = [:]
   private var preferred: String?
   /// 路由账本的版本号。换线路、清冷却都会把它 +1。
   /// 一场竞速要等好几秒，赢家回来的时候用户可能已经换了线路、或者刚按过重试，
@@ -141,6 +144,7 @@ public actor MarketRESTTransport: HTTPTransport {
     // 竞速前记下路由账本的版本。竞速要等好几秒，这中间用户完全可能换了线路
     // 或者按了重试（两者都会清冷却），那时这一场的输赢属于上一档，不能再记账。
     let epoch = routeEpoch
+    let raceBegan = Date()
     let raced = await Self.race(plan)
     guard let winner = raced.winner else {
       // 是这一笔自己被取消了（换品种、换线路把上一份 feed 停掉），不是网关不行：
@@ -148,16 +152,20 @@ public actor MarketRESTTransport: HTTPTransport {
       try Task.checkCancellation()
       guard epoch == routeEpoch else { throw failure }
       for candidate in plan.candidates {
+        // 这场竞速途中它在并发的另一笔上刚赢过：它现在是好的，这场的失败不作数。
+        if let won = lastWin[candidate.host], won >= raceBegan { continue }
         let seconds = raced.retryAfter[candidate.host] ?? Self.gatewayCooldownSeconds
         let deadline = Date().addingTimeInterval(seconds)
-        gatewayRetry[candidate.host] = deadline
+        // 只往后延、不往前缩：并发的另一场刚按上游限流给它记了 120 秒，这场的 10 秒不能把它盖短。
+        gatewayRetry[candidate.host] = max(gatewayRetry[candidate.host] ?? deadline, deadline)
         // 上游限流是「这台网关的出口被按住了」：冷却按它自己报的秒数走（可以是 120 秒），
         // 两台各记各的——一台被限不代表另一台也被限。上游那个状态码也一起记下来，
         // 冷却期内要按原类别（418/403 封禁、429 超频）重放，不能一律降级成 429。
         if let upstream = raced.limits[candidate.host] {
-          gatewayLimited[candidate.host] = GatewayLimit(until: deadline, upstreamStatus: upstream)
+          let until = max(gatewayLimited[candidate.host]?.until ?? deadline, deadline)
+          gatewayLimited[candidate.host] = GatewayLimit(until: until, upstreamStatus: upstream)
           log("网关 \(candidate.host) 上游限流（\(upstream)），歇 \(BinanceError.wholeSeconds(seconds)) 秒")
-        } else {
+        } else if let limit = gatewayLimited[candidate.host], limit.until <= Date() {
           gatewayLimited[candidate.host] = nil
         }
       }
@@ -208,12 +216,20 @@ public actor MarketRESTTransport: HTTPTransport {
   }
 
   /// 网关赢了之后的记账。
+  ///
+  /// 赢家刚证明自己是好的：并发的另一场（发得晚、先收尾、两台都超时）给它记下的冷却与上游限流一并清掉。
+  /// 原来这里只冷却输家、不碰赢家，账本「后写者赢」：那一场的冷却留在赢家身上，两台都在冷却里，
+  /// 接下来 10 秒每一笔都报「网关都在冷却里」，而赢家刚刚才回了一份好数据。
   private func settle(_ winner: GatewaySuccess, plan: GatewayPlan) {
     preferred = winner.host
+    lastWin[winner.host] = Date()
+    gatewayRetry[winner.host] = nil
+    gatewayLimited[winner.host] = nil
     // 这一轮输掉的网关先歇一会儿：它可能只是慢或者被黑洞吃了，
-    // 别让每一行都去把同一场竞速重开一遍。
+    // 别让每一行都去把同一场竞速重开一遍。只往后延，不把别处记的更长的冷却盖短。
+    let deadline = Date().addingTimeInterval(Self.gatewayCooldownSeconds)
     for candidate in plan.candidates where candidate.host != winner.host {
-      gatewayRetry[candidate.host] = Date().addingTimeInterval(Self.gatewayCooldownSeconds)
+      gatewayRetry[candidate.host] = max(gatewayRetry[candidate.host] ?? deadline, deadline)
     }
   }
 
