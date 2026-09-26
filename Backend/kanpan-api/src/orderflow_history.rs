@@ -112,8 +112,14 @@ const SAMPLE:Duration=Duration::from_secs(15);
 const LAYER_TICK:Duration=Duration::from_secs(60);
 const HOT_EVERY_MS:i64=60*60*1000;
 const FIXED_EVERY_MS:i64=10*60*1000;
-/// 资源闸门连续多少分钟不超才放回一层。
+/// 资源闸门连续多少分钟离线够远才放回一层（一层反复顶超时翻倍，见 [`Gate`]）。
 const SHED_RECOVER_MINUTES:u32=10;
+/// 放回的层反复把进程顶超时，等待最多翻到多少分钟。
+const SHED_RECOVER_CAP_MINUTES:u32=120;
+/// 放回之后多久之内又超算「这一层装不下」。
+const SHED_FLAP_MS:i64=30*60_000;
+/// 放回之后撑过多久没被再卸，等待回到 `SHED_RECOVER_MINUTES`。
+const SHED_HOLD_MS:i64=60*60_000;
 
 fn now_ms()->i64 {chrono::Utc::now().timestamp_millis()}
 
@@ -746,6 +752,47 @@ impl Layer {
 /// 资源闸门卸到第几层：0 不卸，1 卸热点，2 再卸山寨，3 再卸固定。主币与按需不卸。
 fn shed_label(level:u8)->&'static str {match level {0=>"nothing",1=>"hot",2=>"hot+alts",_=>"hot+alts+fixed"}}
 
+/// 闸门这一分钟该做什么。
+#[derive(Clone,Copy,Debug,PartialEq)]
+enum Step {Hold,Shed,Floor,Restore(u32)}
+
+/// 资源闸门的状态：超了卸一层；离线够远（[`resources::Load::calm`]）连续若干分钟放回一层。
+///
+/// 放回的等待按层记、会翻倍（和 BGP 的路由抖动抑制、Kubernetes HPA 的缩容稳定窗一个思路）：一层放回来半小时内
+/// 又把进程顶超，说明这台机器现在装不下它，下次等两倍（10 → 20 → 40 → 80 → 120 分钟封顶）；放回来撑过一小时，
+/// 等待回到十分钟。原来只看「这一分钟没超」、固定等十分钟：卸了热点刚好在线下、放回来又超的时候每 13 分钟翻一次，
+/// 6 小时 27 次，每次热点 30 只全部停了重起（拉品种表、收盘、订阅、排快照额度、挂着的单记失联再读回）。
+#[derive(Debug)]
+struct Gate {clear:u32,wait:[u32;3],restored_at:[Option<i64>;3]}
+
+impl Default for Gate {fn default()->Self {Self{clear:0,wait:[SHED_RECOVER_MINUTES;3],restored_at:[None;3]}}}
+
+impl Gate {
+ fn step(&mut self,load:&resources::Load,shed:u8,now:i64)->Step {
+  for (wait,at) in self.wait.iter_mut().zip(self.restored_at.iter_mut()) {
+   if at.is_some_and(|t|now-t>=SHED_HOLD_MS) {*wait=SHED_RECOVER_MINUTES;*at=None;}
+  }
+  if load.over() {
+   self.clear=0;
+   if shed>=3 {return Step::Floor}
+   let layer=shed as usize;
+   if self.restored_at[layer].take().is_some_and(|t|now-t<SHED_FLAP_MS) {
+    self.wait[layer]=(self.wait[layer]*2).min(SHED_RECOVER_CAP_MINUTES);
+   }
+   return Step::Shed;
+  }
+  if shed==0 {return Step::Hold}
+  if !load.calm() {self.clear=0;return Step::Hold}
+  self.clear+=1;
+  let layer=shed as usize-1;
+  let need=self.wait[layer];
+  if self.clear<need {return Step::Hold}
+  self.clear=0;
+  self.restored_at[layer]=Some(now);
+  Step::Restore(need)
+ }
+}
+
 /// 在榜上（没有截止时刻）。
 const LISTED:i64=i64::MAX;
 
@@ -946,15 +993,14 @@ impl Registry {
   }
  }
 
- /// 资源闸门（每分钟）：超了就不再新增，并卸一层；连续 10 分钟不超放回一层、重新套名单。
- fn gate(&self,now:i64,clear:&mut u32) {
+ /// 资源闸门（每分钟）：超了就不再新增，并卸一层；放回一层的时机由 [`Gate`] 定，放回时重新套名单。
+ fn gate(&self,now:i64,gate:&mut Gate) {
   let load=resources::last();
   let over=load.over();
   self.over.store(over,Ordering::Relaxed);
   let shed=self.shed();
-  if over {
-   *clear=0;
-   if shed<3 {
+  match gate.step(&load,shed,now) {
+   Step::Shed=>{
     self.shed.store(shed+1,Ordering::Relaxed);
     tracing::warn!("Orderflow history: resource gate over ({}), shedding {}",load.describe(),shed_label(shed+1));
     let mut entries=self.lock();
@@ -962,20 +1008,17 @@ impl Registry {
     drop(entries);
     // 卸下的跟踪任务要一会儿才收完尾、放掉簿；下一分钟的闸门看的是还回去之后的 RSS。
     tokio::spawn(async {tokio::time::sleep(Duration::from_secs(20)).await;resources::release_free_memory();});
-   } else {
-    tracing::warn!("Orderflow history: resource gate still over ({}) with only majors and on-demand left",load.describe());
-   }
-  } else if shed>0 {
-   *clear+=1;
-   if *clear>=SHED_RECOVER_MINUTES {
-    *clear=0;
+   },
+   Step::Floor=>tracing::warn!("Orderflow history: resource gate still over ({}) with only majors and on-demand left",load.describe()),
+   Step::Restore(waited)=>{
     self.shed.store(shed-1,Ordering::Relaxed);
-    tracing::info!("Orderflow history: resource gate clear for {SHED_RECOVER_MINUTES} minutes ({}), now shedding {}",load.describe(),shed_label(shed-1));
+    tracing::info!("Orderflow history: resource gate clear for {waited} minutes ({}), now shedding {}",load.describe(),shed_label(shed-1));
     let lists=std::mem::take(&mut *self.lists.lock().unwrap_or_else(|e|e.into_inner()));
     self.apply(Layer::Fixed,&lists.fixed,now);
     self.apply(Layer::Alt,&lists.alts,now);
     self.apply(Layer::Hot,&lists.hot,now);
-   }
+   },
+   Step::Hold=>{},
   }
  }
 
@@ -1021,7 +1064,7 @@ async fn run_layers(registry:Arc<Registry>,enabled:Enabled) {
  tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
  // 0 而不是 i64::MIN：`now - i64::MIN` 会溢出（Release 下绕成负数，层永远不起）。
  let (mut fixed_at,mut hot_at,mut alts_day)=(0i64,0i64,None::<i64>);
- let mut clear=0u32;
+ let mut gate=Gate::default();
  let mut missing_named:Option<Vec<String>>=None;
  let hot_running=Arc::new(AtomicBool::new(false));
  let started=now_ms();
@@ -1031,7 +1074,7 @@ async fn run_layers(registry:Arc<Registry>,enabled:Enabled) {
    _=sample.tick()=>{resources::sample();},
    _=tick.tick()=>{
     let now=now_ms();
-    registry.gate(now,&mut clear);
+    registry.gate(now,&mut gate);
     let info=if enabled.fixed||enabled.alts||enabled.hot {
      match crate::market_meta::exchange_info().await {
       Ok(info)=>Some(info),
@@ -1413,6 +1456,50 @@ mod tests {
   assert!(!c.due(1,2*day,2,0,false),"一本都没就绪不重标");
   let mut crypto=Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
   assert!(!crypto.due(0,0,0,0,false),"币不标");
+ }
+
+ /// 按分钟模拟闸门：只卸热点那一层时 RSS 是 `base(分钟)`，热点放回来之后它的簿三分钟里填满、再多 `hot` 字节。
+ /// 返回每次放回、每次卸层的分钟，和最后卸到第几层。
+ fn simulate_gate(minutes:i64,base:impl Fn(i64)->u64,hot:u64)->(Vec<i64>,Vec<i64>,u8) {
+  let unit=resources::Limits{memory_bytes:Some(1<<30),cpu_percent:Some(200.0)};
+  let mut gate=Gate::default();
+  let (mut shed,mut hot_since)=(1u8,None::<i64>);
+  let (mut restores,mut sheds)=(Vec::new(),Vec::new());
+  for m in 1..=minutes {
+   let ramp=hot_since.map_or(0,|t|hot*((m-t).min(3) as u64)/3);
+   let load=resources::Load{rss_bytes:Some(base(m)+ramp),cpu_percent:Some(40.0),limits:unit};
+   match gate.step(&load,shed,m*60_000) {
+    Step::Shed=>{shed+=1;if shed==1 {hot_since=None;}sheds.push(m);},
+    Step::Restore(_)=>{shed-=1;if shed==0 {hot_since=Some(m);}restores.push(m);},
+    Step::Floor|Step::Hold=>{},
+   }
+  }
+  (restores,sheds,shed)
+ }
+
+ /// 压测（2026-09-26）：卸掉热点后余量刚好够、放回来又超——放回、超、卸、十分钟后再放回，一直翻。
+ /// 每翻一次热点 30 只全部停了重起：拉品种表、收盘、订阅、快照额度排队、挂着的单全记失联再读回。
+ #[test] fn the_gate_does_not_flap_a_layer_that_keeps_pushing_it_over() {
+  let mb=1_000_000u64;
+  // 线是 1 GB 单元的四分之三 = 805 MB；卸了热点 600 MB，热点 250 MB。
+  let (restores,sheds,_)=simulate_gate(6*60,|_|600*mb,250*mb);
+  eprintln!("6 小时放回 {} 次、卸层 {} 次；放回在第 {:?} 分钟",restores.len(),sheds.len(),restores);
+  assert!(restores.len()<=6,"6 小时里热点被放回 {} 次（每次 30 只停了重起）",restores.len());
+  assert_eq!(restores.first(),Some(&10),"第一次仍是连续十分钟不超就放回");
+
+  // 放回来不超的层：十分钟放回，之后一直不卸。
+  let (restores,sheds,shed)=simulate_gate(6*60,|_|600*mb,100*mb);
+  assert_eq!((restores,sheds,shed),(vec![10],vec![],0));
+
+  // 翻过几次之后负载真的降下来了（别的占用走了）：不能永远卸着，最多等一个封顶的间隔就放回并留住。
+  let (restores,_,shed)=simulate_gate(8*60,|m|if m<150 {600*mb} else {300*mb},250*mb);
+  let back=*restores.last().unwrap();
+  assert_eq!(shed,0,"负载降了之后热点要回来");
+  assert!(back>=150&&back<=150+SHED_RECOVER_CAP_MINUTES as i64+1,"负载在第 150 分钟降下来，第 {back} 分钟才放回");
+
+  // 贴着线下（没超、但离线不到一成五）不算清：放回来一点就超，不去试。
+  let (restores,_,shed)=simulate_gate(6*60,|_|760*mb,50*mb);
+  assert_eq!((restores.len(),shed),(0,1),"离线太近不放回：{restores:?}");
  }
 
  #[tokio::test] async fn a_base_started_again_waits_for_its_previous_tracker() {

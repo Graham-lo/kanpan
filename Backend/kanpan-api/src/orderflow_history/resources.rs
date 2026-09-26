@@ -3,8 +3,8 @@
 //! * 进程自己读 `/proc/self/status`（VmRSS）与 `/proc/self/stat`（utime + stime），每 15 秒采一次；
 //!   CPU 按最近一分钟的增量算（100% = 一个核跑满）。
 //! * RSS > 2.5 GB（2.5×10⁹ 字节）或最近一分钟 CPU > 300% 算「超」：超的那一分钟起停止新增并卸掉热点、告警；
-//!   下一分钟还超再卸山寨，再下一分钟卸固定（见 `orderflow_history.rs` 的 `Registry::gate`）；连续 10 分钟
-//!   不超再一层层加回来。主币、按需（用户点开的）与行情中继一概不动。
+//!   下一分钟还超再卸山寨，再下一分钟卸固定（见 `orderflow_history.rs` 的 `Registry::gate`）；RSS 与 CPU 都退到线的
+//!   85% 以下连续 10 分钟再一层层加回来（一层放回后半小时内又顶超，下次等两倍，封顶 2 小时）。主币、按需（用户点开的）与行情中继一概不动。
 //! * 线还要落在进程所在 cgroup 的上限（systemd 单元的 `MemoryMax` / `CPUQuota`）的四分之三以内：`ops/install.py`
 //!   装的单元是 1 GB / 200%，原来的 2.5 GB / 300% 永远碰不到——内存先撞 1 GB 整个进程被 OOM 杀掉（账号、同步、
 //!   行情转发一起断），CPU 被限在 200% 量不出 300%，闸门形同虚设。
@@ -25,6 +25,9 @@ const MIN_SPAN:Duration=Duration::from_secs(10);
 
 /// 闸门的线最多占 cgroup 上限的这么多。
 const CGROUP_SHARE:f64=0.75;
+/// 卸了层之后，RSS 与 CPU 都退到线的这么多以下才算「清」、开始数放回的分钟：贴着线下的时候放回一层，
+/// 这一层自己的簿一填满就又超了。
+const CALM_SHARE:f64=0.85;
 
 /// 进程所在 cgroup 给的上限（没设就是 `None`）。
 #[derive(Clone,Copy,Debug,Default,PartialEq)]
@@ -45,6 +48,10 @@ pub struct Load {pub rss_bytes:Option<u64>,pub cpu_percent:Option<f64>,pub limit
 impl Load {
  pub fn over(&self)->bool {
   self.rss_bytes.is_some_and(|r|r>self.limits.rss_line())||self.cpu_percent.is_some_and(|c|c>self.limits.cpu_line())
+ }
+ /// 离线够远，可以试着放回一层。读不到的一项当作清（和 [`Load::over`] 一致）。
+ pub fn calm(&self)->bool {
+  self.rss_bytes.is_none_or(|r|(r as f64)<=self.limits.rss_line() as f64*CALM_SHARE)&&self.cpu_percent.is_none_or(|c|c<=self.limits.cpu_line()*CALM_SHARE)
  }
  pub fn describe(&self)->String {
   let rss=self.rss_bytes.map_or("?".into(),|r|format!("{:.0} MB",r as f64/1e6));
@@ -158,6 +165,10 @@ mod tests {
   assert!(Load{rss_bytes:Some(MAX_RSS_BYTES+1),cpu_percent:None,limits:none}.over());
   assert!(Load{rss_bytes:None,cpu_percent:Some(301.0),limits:none}.over());
   assert!(!Load::default().over(),"读不到（macOS）当作没超");
+  assert!(Load::default().calm());
+  assert!(!Load{rss_bytes:Some(MAX_RSS_BYTES),cpu_percent:None,limits:none}.calm(),"在线上不算清");
+  assert!(Load{rss_bytes:Some(MAX_RSS_BYTES/2),cpu_percent:Some(200.0),limits:none}.calm());
+  assert!(!Load{rss_bytes:Some(MAX_RSS_BYTES/2),cpu_percent:Some(280.0),limits:none}.calm(),"CPU 贴着线不算清");
  }
 
  #[test] fn the_gate_sits_inside_the_units_own_limits() {
