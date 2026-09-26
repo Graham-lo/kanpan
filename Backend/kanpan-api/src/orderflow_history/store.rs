@@ -111,9 +111,9 @@ pub async fn alive(pool:&PgPool,base:&str,now:i64)->sqlx::Result<()> {
  Ok(())
 }
 
-/// 进程起来时接着跟哪些：最近 24 小时有人要过的，按最近要的先后。
-pub async fn recent_bases(pool:&PgPool,now:i64)->sqlx::Result<Vec<String>> {
- sqlx::query_scalar("SELECT base FROM orderflow_bases WHERE requested_ms>=$1 ORDER BY requested_ms DESC").bind(now-DAY_MS).fetch_all(pool).await
+/// 进程起来时接着跟哪些：最近 24 小时有人要过的（连同最后一次要的时刻），按最近要的先后。
+pub async fn recent_bases(pool:&PgPool,now:i64)->sqlx::Result<Vec<(String,i64)>> {
+ sqlx::query_as("SELECT base,requested_ms FROM orderflow_bases WHERE requested_ms>=$1 ORDER BY requested_ms DESC").bind(now-DAY_MS).fetch_all(pool).await
 }
 
 async fn bases(pool:&PgPool)->sqlx::Result<Vec<String>> {sqlx::query_scalar("SELECT base FROM orderflow_bases").fetch_all(pool).await}
@@ -247,7 +247,7 @@ mod tests {
   // since 只在第一次写；最近 24 小时要过的才接着跟。
   assert_eq!(touch(&pool,"ZZT",now).await.unwrap(),(now,None));
   assert_eq!(touch(&pool,"ZZT",now+9).await.unwrap(),(now,None));
-  assert!(recent_bases(&pool,now+10).await.unwrap().contains(&"ZZT".to_string()));
+  assert!(recent_bases(&pool,now+10).await.unwrap().contains(&("ZZT".to_string(),now+9)),"带回最后一次要的时刻");
   // 起跟、活着：since 不动；断了十分钟以上再起跟：since 重置到那一刻。
   start(&pool,"ZZT",now+10).await.unwrap();
   alive(&pool,"ZZT",now+60_000).await.unwrap();

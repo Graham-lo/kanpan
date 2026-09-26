@@ -961,6 +961,12 @@ async fn run_layers(registry:Arc<Registry>,enabled:Enabled) {
  }
 }
 
+/// 进程起来时接着跟的按需币，带着库里记的最后一次要的时刻（不是现在）：原来一律记成现在，每重启一次就把
+/// 闲置的 24 小时从头算，23 小时前看过一眼的币又被多跟一整天，发版勤的时候一直跟下去、占着按需层名额。
+fn resumable<'a>(recent:&'a [(String,i64)],admit:&HashSet<&str>,now:i64)->Vec<(&'a str,i64)> {
+ recent.iter().filter(|(b,r)|admit.contains(b.as_str())&&now-r<IDLE_MS).take(MAX_ON_DEMAND).map(|(b,r)|(b.as_str(),*r)).collect()
+}
+
 /// 起跟踪：主币、最近 24 小时有人要过的（最多 20 只），再按 `KANPAN_ORDERFLOW_LAYERS` 起固定 / 山寨 / 热点；
 /// 之后每十分钟清一遍、每小时滚动清理。
 pub fn spawn(pool:PgPool)->JoinHandle<()> {
@@ -976,13 +982,13 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
   }
   // 已经不挂了的（或者修复之前打错的代号被记进来的）不再接着跟。
   let mut admit=HashSet::new();
-  for base in recent.iter().filter(|b|!ALWAYS.contains(&b.as_str())&&instruments::valid_base(b)) {
+  for (base,_) in recent.iter().filter(|(b,_)|!ALWAYS.contains(&b.as_str())&&instruments::valid_base(b)) {
    if admitted(false,instruments::listed(base).await) {admit.insert(base.as_str());}
   }
   {
    let mut entries=registry.lock();
-   for base in recent.iter().filter(|b|admit.contains(b.as_str())).take(MAX_ON_DEMAND) {
-    registry.start(&mut entries,base,now,false,|e|e.requested=now);
+   for (base,requested) in resumable(&recent,&admit,now) {
+    registry.start(&mut entries,base,now,false,|e|e.requested=requested);
    }
   }
   // 层的循环没有自己的状态要保（时刻都从 0 重算，第一次 tick 就把各层重新对一遍），死了原地再起。
@@ -1193,6 +1199,20 @@ mod tests {
   assert!(sent.is_ok(),"排连接的时候通道没人收，跟踪任务卡在 send 上");
   drop(held);
   task.abort();
+ }
+
+ #[test] fn a_restart_does_not_reset_the_idle_clock() {
+  let now=10*store::DAY_MS;
+  let hour=3_600_000;
+  let recent=vec![("AAA".to_string(),now-23*hour),("BBB".to_string(),now-hour),("CCC".to_string(),now-2*hour)];
+  let admit:HashSet<&str>=["AAA","BBB"].into_iter().collect();
+  let got=resumable(&recent,&admit,now);
+  assert_eq!(got,vec![("AAA",now-23*hour),("BBB",now-hour)],"库里记的时刻原样带回；没放行的不接着跟");
+  // 23 小时前要过的：重启后一小时多一点就到 24 小时闲置，照常停，不因为重启再多跟一天。
+  assert!(now+hour+1-got[0].1>=IDLE_MS);
+  let full:Vec<(String,i64)>=(0..30).map(|i|(format!("B{i}"),now-i)).collect();
+  let admit_all:HashSet<&str>=full.iter().map(|(b,_)|b.as_str()).collect();
+  assert_eq!(resumable(&full,&admit_all,now).len(),MAX_ON_DEMAND);
  }
 
  #[test] fn unlisted_bases_are_not_tracked() {
