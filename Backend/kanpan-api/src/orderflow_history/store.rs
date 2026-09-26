@@ -61,10 +61,13 @@ pub async fn live(pool:&PgPool,base:&str)->sqlx::Result<Vec<Restored>> {
 ///
 /// 拆成三段各走各的索引：还挂着的；在窗口里结束的（结束时刻的区间扫）；跨过窗口右沿才结束的。
 /// 写成一句 `end_ms IS NULL OR end_ms >= from` 的话，拉最近一天也要把整个月结束的行都扫一遍。
+/// 线上走 [`range_each`]（边读边交）；攒成一张表的这两个只给测试核对结果用。
+#[cfg(test)]
 pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<BigOrder>> {range_capped(pool,base,from,to,MAX_ROWS).await}
 
 /// 超过 `cap` 条时留最新的：先按出现时刻倒序取 `cap` 条、再翻回升序。原来升序取前 `cap` 条，截掉的恰好是
 /// 最新的那一段——图的右沿（此刻）空着，手机的增量游标也从截断处往后接，永远补不上。
+#[cfg(test)]
 async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,cap:i64)->sqlx::Result<Vec<BigOrder>> {
  let mut orders=Vec::new();
  range_each(pool,base,from,to,cap,|o|orders.push(o)).await?;
