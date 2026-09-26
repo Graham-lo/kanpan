@@ -380,7 +380,7 @@ final class MarketModel {
   func enterForeground() {
     foreground = true
     updateMicrostructure()
-    if pump != nil { startStats() }
+    if pump != nil { refreshFunding(); startStats() }
     Task { [feed] in await feed.enterForeground() }
   }
   func memoryWarning() { Task { [feed] in await feed.memoryWarning() } }
@@ -501,10 +501,17 @@ final class MarketModel {
   /// 持仓量轮询间隔。OI 本来就是分钟级统计，再密只是白跑请求。
   private static let oiPollSeconds: UInt64 = 45
 
+  /// 持仓量 / 供应量轮询此刻挂没挂着（给单测看）。
+  var isPollingStats: Bool { statsTask != nil }
+
   /// 供应量取一次（客户端缓存一天），持仓量按 `oiPollSeconds` 续着取。
   /// 两条都失败就让那两格一直是 `--`，不报错、不弹窗。
   private func startStats() {
-    statsTask?.cancel()
+    statsTask?.cancel(); statsTask = nil
+    // 后台不轮询（`enterBackground` 收掉的那条不许被别的路重新拉起来）。进后台之后的
+    // 宽限期里换线路（`.provider`）、换品种（冷 `switchTo`）从前都会无条件重开这条
+    // 45 秒一轮的循环，一直跑到进程被挂起；回前台 `enterForeground` 会补开，这里只管拦。
+    guard foreground else { return }
     let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = resolver.route.apiHosts
     guard !proxies.isEmpty else {
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
@@ -613,6 +620,8 @@ final class MarketModel {
 
   /// 这一只所在那家的费率簿比 `FundingBook.refreshEvery` 旧就拉整表，表可用之后再垫一次。
   private func refreshFunding(delay: Duration = .zero) {
+    // 同 `startStats`：后台不拉整表，回前台 `enterForeground` 补一次。
+    guard foreground else { return }
     let sym = symbol
     FundingBook.shared.refreshIfStale(provider: resolver.provider(forSymbol: sym), delay: delay) { [weak self] in
       self?.seedFunding(for: sym)

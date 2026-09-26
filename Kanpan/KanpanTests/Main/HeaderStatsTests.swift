@@ -212,6 +212,25 @@ struct HeaderStatsTests {
     #expect(!model.priceFresh)
   }
 
+  /// 统计轮询要有一台 kanpan-api 主机才会开（`.default` 是空表，`startStats` 直接收手）。
+  /// 给一个本机必然拒连的地址：轮询真的挂上，但一口请求也出不了这台机器。
+  static let statsEndpoints = MarketEndpoints(gateways: [], api: ["127.0.0.1:9"])
+
+  /// 进了后台，持仓量轮询不许被换品种 / 换线路重新拉起来（整机压测 2026-09-26）。
+  @MainActor
+  @Test("后台里冷切换不重开持仓量轮询，回前台再开")
+  func backgroundColdSwitchDoesNotRestartStatsPolling() {
+    let model = MarketModel(symbol: "BTCUSDT", endpoints: Self.statsEndpoints)
+    // 前提：前台冷切换确实会开轮询——否则下面那句断言什么都证明不了。
+    model.switchTo(symbol: "ETHUSDT")
+    #expect(model.isPollingStats, "前台冷切换没开轮询，这条用例验不到东西")
+    model.enterBackground()
+    #expect(!model.isPollingStats)
+    model.switchTo(symbol: "SOLUSDT")
+    #expect(!model.isPollingStats, "后台里换品种把 45 秒一轮的持仓量轮询又拉起来了")
+    model.stop()
+  }
+
   /// 「创建提醒」的现价先取最后一笔成交：换品种之后上一只的那笔不能留着。
   @MainActor
   @Test("换品种之后，上一只的最后一笔成交不再算这一只的")
