@@ -81,10 +81,21 @@ extension ShareClient: ShareInboxService {}
   func activate(directory: URL, owner: UUID?, cache: Cache, service: (any ShareInboxService)?) {
     task?.cancel(); task = nil; epoch = UUID(); busy = false; pullAgain = false; notice = nil
     self.directory = directory; self.owner = owner; self.cache = cache
+    // 老版本存下的信没裁过，装进来时补一刀（进门的上限，见 `ShareItem.capDrawings`）。
+    for index in self.cache.items.indices { Self.intake(&self.cache.items[index]) }
     client = owner == nil ? nil : service
-    items = owner == nil ? [] : cache.items; friends = owner == nil ? [] : cache.friends
+    items = owner == nil ? [] : self.cache.items; friends = owner == nil ? [] : cache.friends
     for job in loading.values { job.cancel() }
     loading = [:]; thumbs = [:]; thumbOrder = []
+  }
+  nonisolated private static let log = Logger(subsystem: "com.kanpan.app", category: "share")
+  /// 一封信进门：线按每品种上限裁，裁了就记一行。
+  private static func intake(_ item: inout ShareItem) {
+    let dropped = item.capDrawings()
+    if dropped > 0 {
+      let id = item.id, key = item.key
+      log.notice("intake cap (inbox): share \(id, privacy: .public) on \(key, privacy: .public) over \(DrawArchive.perSymbolLimit) lines, dropped \(dropped) oldest")
+    }
   }
   private func refreshUnseen() {
     let next = items.filter { $0.openedAt == nil }
@@ -126,6 +137,7 @@ extension ShareClient: ShareInboxService {}
         try Task.checkCancellation(); guard epoch == generation else { return }
         var merged = Dictionary(uniqueKeysWithValues: cache.items.map { ($0.id, $0) })
         for var item in page.items {
+          Self.intake(&item)
           if cache.pending[item.id] != nil {
             item.openedAt = item.openedAt ?? merged[item.id]?.openedAt
             item.keptAt = item.keptAt ?? merged[item.id]?.keptAt

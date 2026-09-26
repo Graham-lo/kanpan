@@ -157,7 +157,8 @@ public struct DrawArchive: Sendable, Equatable, Codable {
     return output
   }
 
-  /// 存档保留全部对象；交互创建限制不能裁掉同步合并的数据。
+  /// 下标本身不裁：交互上「满了就不让画」由 `hasRoom(for:)` 管，外面进来的由 `capToLimit()` 在
+  /// 进门那一刻管（见下）。
   public subscript(symbol: String) -> [Drawing] {
     get { bySymbol[InstrumentID.canonical(symbol)] ?? [] }
     set {
@@ -184,6 +185,58 @@ public struct DrawArchive: Sendable, Equatable, Codable {
   /// 用户画满 50 条时挤掉第一条他多半根本没看见。
   public func hasRoom(for symbol: String) -> Bool {
     self[symbol].count < Self.perSymbolLimit
+  }
+
+  /// 一条线「多老」：它在同步里第一次被写下的那一刻（服务端每个字段都记着写入时的
+  /// 客户端时间戳与逻辑钟，取最早那个字段的就是这条线诞生的那一笔）。大的新。
+  public struct Age: Sendable, Comparable, Hashable {
+    public var timestamp: Int64
+    public var logical: UInt64
+    public init(timestamp: Int64, logical: UInt64) { self.timestamp = timestamp; self.logical = logical }
+    public static func < (a: Age, b: Age) -> Bool { (a.timestamp, a.logical) < (b.timestamp, b.logical) }
+  }
+
+  /// 进门的上限：同步拉下来的、访客档案并进来的、启动前向对账补回来的，每一桶最多
+  /// `perSymbolLimit` 条，多出来的**从最老的丢起**。留下的那几条保持原来在桶里的先后。
+  /// 返回每个品种丢了几条（没丢的不列），调用方拿去记日志。
+  ///
+  /// 为什么在进门时裁，而不是在渲染里特判（压测收尾 2026-09-26 第 10 项）：交互上一只品种画满
+  /// 50 条就不让再画，可同步合并和访客合并从来不看这个数——别的设备、老版本带来的几百条原样
+  /// 落进存档，图上每一帧都要把它们全部过一遍（300 条约 20 ms 一帧）。渲染里特判等于在最热的
+  /// 那条路上每帧多做一次裁剪，还会出现「存档里有、图上没有」的两套口径；进门裁一次，
+  /// 存档、同步、图上看到的就是同一份。
+  ///
+  /// ## 「最老」怎么排
+  ///
+  /// - 有 `age` 的（云端见过的）按 `Age` 排，同龄按 id——**每台设备、每一次应用排出来都一样**。
+  ///   不能按数组位置：同步那一路每次应用时，上次留下的 50 条在桶头、没留下的又被追加到桶尾，
+  ///   按位置「留尾巴」就会每应用一次换一批，图上的线来回跳。
+  /// - 没有 `age` 的（本机新画、云端还没确认；访客档案带来的）算最新，彼此之间按桶里的先后。
+  ///   不给 `age` 时整桶就是按桶里的先后（本机落笔顺序，头上最老）。
+  @discardableResult
+  public mutating func capToLimit(age: (Drawing) -> Age? = { _ in nil }) -> [String: Int] {
+    var dropped: [String: Int] = [:]
+    for (key, bucket) in bySymbol where bucket.count > Self.perSymbolLimit {
+      let ages = bucket.map(age)
+      let ranked = bucket.indices.sorted { i, j in
+        switch (ages[i], ages[j]) {
+        case let (x?, y?): x == y ? bucket[i].id < bucket[j].id : x < y
+        case (nil, nil): i < j
+        case (nil, _?): false
+        case (_?, nil): true
+        }
+      }
+      let keep = Set(ranked.suffix(Self.perSymbolLimit))
+      dropped[key] = bucket.count - Self.perSymbolLimit
+      bySymbol[key] = bucket.indices.filter(keep.contains).map { bucket[$0] }
+    }
+    return dropped
+  }
+
+  /// 一串画线里最新的 `perSymbolLimit` 条（数组尾上的那几条）。收件箱里一封信带的线走这一条：
+  /// 信里的顺序就是发信人桶里的先后。
+  public static func newest(_ drawings: [Drawing]) -> [Drawing] {
+    drawings.count > perSymbolLimit ? Array(drawings.suffix(perSymbolLimit)) : drawings
   }
 
   // 键名短是故意的：这份文件会跟着 app 一起备份，没必要为可读性多占字节。

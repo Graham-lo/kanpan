@@ -299,6 +299,9 @@ import ReviewUI
       for (key, values) in guestDrawings.bySymbol {
         let existing = Set(nextDrawings[key].map(\.id)); nextDrawings[key] += values.filter { !existing.contains($0.id) }
       }
+      // 两份各自不满 50、并起来超了：进门就裁（丢最老的），别让多出来的先被记成导入操作推上去、
+      // 下一轮再推一遍删除（压测收尾第 10 项，规则见 `DrawArchive.capToLimit()`）。
+      SyncOverlay.capDrawings(&nextDrawings, ages: SyncOverlay.drawingAges(nextSync.map { Array($0.archive.local.values) } ?? []), from: "guest")
       if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("draws.json").path) { nextDrawings.preferences = guestDrawings.preferences; adopted.insert("drawingPreferences") }
       let claimedAlerts = Set(nextAlerts.alerts.map(\.id))
       nextAlerts.alerts += guestAlerts.alerts.filter { !claimedAlerts.contains($0.id) }
@@ -369,6 +372,9 @@ import ReviewUI
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
     if encodedSymbols != nextStorage.symbolPrefsData(forKey: SymbolPrefsStore.defaultsKey) { nextStorage.setSymbolPrefsData(encodedSymbols, forKey: SymbolPrefsStore.defaultsKey) }
     if nextStorage.error != nil { throw AccountError.storage }
+    // 启动前向对账补回来的、以及老版本已经把几百条原样落在盘上的，这次装档案顺手裁到上限。
+    // 「多老」按同步存档里的全量算（没登录就是本机落笔顺序），和 `applyPending` 同一把尺。
+    SyncOverlay.capDrawings(&nextDrawings, ages: SyncOverlay.drawingAges(nextSync.map { Array($0.archive.local.values) } ?? []), from: "load")
     if nextDrawings != loadedDrawings { try drawStore.save(nextDrawings) }
     if nextAlerts != loadedAlerts { try alertStore.save(nextAlerts) }
     if let nextSync {
@@ -803,6 +809,8 @@ import ReviewUI
     var archive = drawings.storedArchive
     if wants("drawings", "drawingPreferences") {
       SyncOverlay.drawings(objects.filter { $0.collection == "drawings" || $0.collection == "drawingPreferences" }, onto: &archive)
+      // 进门的上限（压测收尾第 10 项）：别的设备、老版本推上来的几百条不原样落进来。
+      SyncOverlay.capDrawings(&archive, ages: SyncOverlay.drawingAges(objects), from: "sync")
     }
     var alertArchive = alerts.archive
     if wants("alerts") { SyncOverlay.alerts(objects.filter { $0.collection == "alerts" }, onto: &alertArchive) }

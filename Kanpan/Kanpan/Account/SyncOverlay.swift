@@ -1,6 +1,7 @@
 import Foundation
 import KanpanCore
 import KanpanAccount
+import os
 
 /// 把同步存档里的对象叠到本机正式档案上——**只此一处**。
 ///
@@ -32,6 +33,8 @@ enum SyncOverlay {
   /// `kind`；整批抛出去的话 `pendingApply` 一直挂着，每次重试都在同一条上翻车，这台设备从此
   /// 再也收不到任何设置、自选、画线。跳过的那条：它要是本机说了算的，待发操作还在队列里；
   /// 要是云端的，下一次应用还会再来。
+  ///
+  /// 这里不裁上限：裁要看**整份**存档里每条线多老，调用方叠完之后拿 `local` 全量调 `capDrawings`。
   static func drawings(_ objects: some Sequence<SyncObject>, onto archive: inout DrawArchive) {
     for object in objects {
       if object.collection == "drawingPreferences" {
@@ -50,6 +53,41 @@ enum SyncOverlay {
       else { archive[name].append(drawing) }
     }
   }
+
+  /// 进门的上限（压测收尾第 10 项，规则见 `DrawArchive.capToLimit`）：每只品种最多 50 条，
+  /// 多出来的丢最老的、记一行日志。`ages` 给 `drawingAges(sync.archive.local.values)`——
+  /// 必须是**全量**，只给一部分的话没给到的那几条会被当成「最新」留下。
+  ///
+  /// 裁掉的线下一次这一桶记账时会推成删除（`SyncCaptureBatch.withDeletions`），云端和别的设备
+  /// 也跟着收敛到同一份；因为「多老」每台设备算出来都一样，各自裁掉的也是同一批。
+  @discardableResult
+  static func capDrawings(_ archive: inout DrawArchive, ages: [String: DrawArchive.Age] = [:], from source: String) -> [String: Int] {
+    let dropped = archive.capToLimit { ages[$0.id] }
+    for (symbol, count) in dropped.sorted(by: { $0.key < $1.key }) {
+      log.notice("intake cap (\(source, privacy: .public)): \(symbol, privacy: .public) over \(DrawArchive.perSymbolLimit) lines, dropped \(count) oldest")
+    }
+    return dropped
+  }
+
+  /// 每条线（本地 id）多老：取同步对象各字段写入戳里最早的那个（服务端 `Stamp`：
+  /// `timestamp` 客户端毫秒 + `logical` 逻辑钟）。云端还没确认过、一个戳都没有的不列——
+  /// 它们是本机最新的改动。
+  static func drawingAges(_ objects: some Sequence<SyncObject>) -> [String: DrawArchive.Age] {
+    var ages: [String: DrawArchive.Age] = [:]
+    for object in objects where object.collection == "drawings" && !object.deleted {
+      let stamps = object.fields.values.compactMap { value -> DrawArchive.Age? in
+        guard case .object(let stamp) = value, case .number(let time)? = stamp["timestamp"],
+              time.isFinite else { return nil }
+        var logical: UInt64 = 0
+        if case .number(let l)? = stamp["logical"], l.isFinite, l >= 0 { logical = UInt64(l) }
+        return DrawArchive.Age(timestamp: Int64(time), logical: logical)
+      }
+      if let first = stamps.min() { ages[localID(object)] = first }
+    }
+    return ages
+  }
+
+  private static let log = Logger(subsystem: "com.kanpan.app", category: "drawings")
 
   /// 提醒。服务端判出触发之后会自己写一条 `patch`（`status` / `firedAt` / `firedPrice`），
   /// 就是从这儿落进本机的——所以它既管「别的设备加的提醒」，也管「它响了」。

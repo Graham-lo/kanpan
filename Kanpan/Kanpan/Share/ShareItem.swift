@@ -28,6 +28,16 @@ struct ShareItem: Codable, Equatable, Identifiable, Sendable {
   }
   var createdDate: Date? { Self.date(createdAt) }
   static func date(_ raw: String) -> Date? { ShareDates.parse(raw) }
+  /// 一封信带进来的线按每品种上限裁（`DrawArchive.newest`：丢最老的，也就是数组头上的）。
+  /// 预览时这几条直接画在图上、留下时整批落进这只品种的桶，所以进门就裁，不在渲染里特判
+  /// （压测收尾第 10 项）。`alerted` 里指向被裁掉那几条的 id 自然对不上，不用管。
+  /// 返回裁掉了几条。
+  @discardableResult
+  mutating func capDrawings() -> Int {
+    let before = drawings.count
+    drawings = DrawArchive.newest(drawings)
+    return before - drawings.count
+  }
   /// 原顺序与样式保留，只换身份。偏好的提醒按旧 / 新 id 映射。
   func copies(ids: [String]? = nil) -> [Drawing] {
     drawings.enumerated().map { index, drawing in

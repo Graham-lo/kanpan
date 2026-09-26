@@ -29,7 +29,9 @@ struct DrawStressTests {
     return item
   }
 
-  /// 200 个品种各 15 条，外加一只同步并出来的 600 条（交互上限只挡新画，不裁同步来的）。
+  /// 200 个品种各 15 条，外加一只 600 条的大桶。存档模型、落盘、`SyncOverlay.drawings` 叠对象这几层
+  /// 本身都不裁（老版本会留下这样的盘）；上限在进门那一步由调用方裁（`SyncOverlay.capDrawings`，
+  /// 压测收尾第 10 项，见 `SyncOverlayTests`）。
   private func archive() -> DrawArchive {
     var a = DrawArchive()
     var n = 0

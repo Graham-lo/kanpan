@@ -44,6 +44,61 @@ import KanpanCore
     #expect(local.preferences == before)
   }
 
+  /// 进门的上限（压测收尾第 10 项）：本机 20 条（云端早就见过）+ 云端新来 300 条 + 本机刚画、
+  /// 云端还没确认的 1 条 → 叠完裁到 50：按各字段写入戳里最早的那个排，丢最老的；
+  /// 没确认过的算最新。**再应用一次（`local` 字典换个顺序喂）留下的还是同一批**——
+  /// 按数组位置「留尾巴」的话，上次留下的在桶头、没留下的又追加到桶尾，每应用一次换一批。
+  @Test func drawingsCapKeepsNewestStablyAcrossApplies() throws {
+    func stamped(_ archive: DrawArchive, at time: (String) -> Int64) throws -> [SyncObject] {
+      try PersonalSyncCodec.drawings(archive).filter { $0.collection == "drawings" }.map { object in
+        var object = object
+        let t = time(SyncOverlay.localID(object))
+        for (i, key) in object.body.keys.sorted().enumerated() {
+          // 诞生那一笔之后又改过一次点位：最早的那个戳才是它多老。
+          let when = key == "points" ? t + 9_000_000 : t
+          object.fields[key] = .object(["revision": .number(1), "timestamp": .number(Double(when)), "logical": .number(Double(i)),
+                                        "device_id": .string("d"), "operation_id": .string("o")])
+        }
+        object.revision = 3
+        return object
+      }
+    }
+    var local = DrawArchive()
+    local[btc] = (0..<20).map { drawing("l\($0)") }
+    var cloud = local
+    cloud[btc] += (0..<300).map { drawing("c\($0)", price: Double($0)) }
+    let wire = try stamped(cloud) { id in id.hasPrefix("l") ? 1_000 + Int64(id.dropFirst())! : 2_000 + Int64(id.dropFirst())! }
+    var unacked = try #require(try PersonalSyncCodec.drawings(DrawArchive(bySymbol: [btc: [drawing("mine")]])).first { $0.collection == "drawings" })
+    unacked.fields = [:]
+    local[btc].append(drawing("mine"))
+    let all = wire + [unacked]
+    let ages = SyncOverlay.drawingAges(all)
+    #expect(ages["c7"]?.timestamp == 2_007)
+    #expect(ages["mine"] == nil)
+
+    var once = local
+    SyncOverlay.drawings(all, onto: &once)
+    let dropped = SyncOverlay.capDrawings(&once, ages: ages, from: "test")
+    print("[压测收尾·画线进门上限] 同步叠进来：本机 21 + 云端新 300 → \(once[btc].count) 条，丢 \(dropped.values.reduce(0, +)) 条")
+    #expect(dropped == [InstrumentID.canonical(btc): 271])
+    // 留下的保持桶里原来的先后：「mine」本来就在本机桶里、排在新来的前面。
+    #expect(once[btc].first?.id == "mine")
+    #expect(Set(once[btc].map(\.id)) == Set((250..<300).map { "c\($0)" }).subtracting(["c250"]).union(["mine"]))
+    // 再来两次，喂的顺序倒过来、打乱：一条不换。
+    var twice = once
+    SyncOverlay.drawings(all.reversed(), onto: &twice)
+    #expect(SyncOverlay.capDrawings(&twice, ages: SyncOverlay.drawingAges(all.reversed()), from: "test").values.reduce(0, +) == 271)
+    #expect(twice == once)
+    var thrice = once
+    SyncOverlay.drawings(all.shuffled(), onto: &thrice)
+    SyncOverlay.capDrawings(&thrice, ages: ages, from: "test")
+    #expect(thrice == once)
+    // 不给年龄（访客合并、收件箱之外的本机盘）：按桶里的先后，头上最老。
+    var plain = DrawArchive(); plain[btc] = (0..<60).map { drawing("p\($0)") }
+    SyncOverlay.capDrawings(&plain, from: "test")
+    #expect(plain[btc].map(\.id) == (10..<60).map { "p\($0)" })
+  }
+
   /// 提醒：删 → 移除；活 → 按 id 覆盖。
   @Test func alertsReplaceAndRemove() throws {
     let a = Alert(kind: .price, symbol: btc, armedAt: 1, title: "BTC 到 100", created: 1)

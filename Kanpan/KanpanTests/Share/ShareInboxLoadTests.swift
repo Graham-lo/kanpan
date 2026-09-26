@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import KanpanAccount
+import KanpanCore
 import UIKit
 @testable import Kanpan
 
@@ -197,6 +198,36 @@ private final class CountingShareService: ShareInboxService, @unchecked Sendable
     // 换账号：跟着清空。
     inbox.activate(directory: dir, owner: nil, cache: ShareInbox.Cache(), service: nil)
     #expect(inbox.unseen.isEmpty)
+  }
+
+  // ---------------------------------------------------------------- 进门上限
+
+  /// 一封信带 300 条线（压测收尾第 10 项）：进门就裁到每品种上限、丢最老的，预览画的、
+  /// 「留下」落进桶的都是这 50 条；老版本存下的没裁过的信，装档案时也补一刀。
+  @Test func inboxCapsLettersToPerSymbolLimit() async throws {
+    let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+    func letter(_ id: String, lines: Int) -> ShareItem {
+      var item = items(1)[0]; item.id = id
+      item.drawings = (0..<lines).map { Drawing(id: "\(id)-\($0)", kind: .hline, points: [DrawPoint(t: 1, p: Double($0))]) }
+      item.alerted = item.drawings.map(\.id)
+      return item
+    }
+    let big = letter("big", lines: 300), small = letter("small", lines: 3)
+    let inbox = ShareInbox()
+    inbox.activate(directory: dir, owner: UUID(), cache: ShareInbox.Cache(), service: CountingShareService(items: [big, small], jpeg: jpeg()))
+    inbox.pull(); try await settle(inbox)
+    let got = try #require(inbox.items.first { $0.id == "big" })
+    print("[压测收尾·画线进门上限] 收件箱一封 300 条 → \(got.drawings.count) 条")
+    #expect(got.drawings.map(\.id) == (250..<300).map { "big-\($0)" })
+    #expect(inbox.items.first { $0.id == "small" }?.drawings.count == 3)
+    let kept = try inbox.prepareKeep(got)
+    #expect(kept.count == DrawArchive.perSymbolLimit)
+    #expect(got.preferred(in: kept).count == DrawArchive.perSymbolLimit)
+    // 老缓存里没裁过的那封。
+    var stale = ShareInbox.Cache(); stale.items = [big]
+    let reloaded = ShareInbox()
+    reloaded.activate(directory: dir, owner: UUID(), cache: stale, service: nil)
+    #expect(reloaded.items.first?.drawings.count == DrawArchive.perSymbolLimit)
   }
 
   // ---------------------------------------------------------------- 弱网：回执毒丸
