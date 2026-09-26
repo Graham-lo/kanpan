@@ -59,15 +59,57 @@ final class AlertActivityController: ObservableObject {
                               updatedAt: Int64(t), firedPrice: fired ? alert.firedPrice : nil)
   }
 
-  /// 启动时把上一次留下的那块接回来（app 被杀过，活动还挂在锁屏上）。
-  func adopt(alerts: [KanpanCore.Alert]) {
-    guard activity == nil, let existing = Activity<AlertActivityAttributes>.activities.first else { return }
-    guard let alert = alerts.first(where: { Self.syncID($0) == existing.attributes.alertID }), alert.isActive else {
-      let id = existing.id
-      Task.detached { await Self.end(id: id, nil, policy: .immediate) }
-      return
+  /// 接回锁屏上挂着的那几块，谁留谁收（纯函数，`adopt` 按它办）。
+  ///
+  /// - 挨个看**所有**活动，不只看第一个：系统里可能挂着不止一块（上一个版本、换号前留下的）。
+  /// - 对得上一条生效中的提醒、手上又还没挂着一块的，接回来（一台设备只挂一块）；
+  ///   已经接着一块时，别的对得上的也收掉。
+  /// - 对不上的：档案**已经落定**（`settled`，账号核完了）才收；还没落定就先放着——
+  ///   冷启动那一刻手上可能还是设备级那份访客提醒表，登录用户的提醒要等账号桥把他的档案
+  ///   装进来才看得见，那时候收就是把他的活动当场结束（整机压测 2026-09-26）。
+  struct AdoptPlan: Equatable {
+    /// 要接回来的那一块：（活动 id，提醒 id）。
+    var attach: (activityID: String, alertID: String)?
+    /// 要收掉的活动 id。
+    var end: [String] = []
+
+    static func == (l: Self, r: Self) -> Bool {
+      l.attach?.activityID == r.attach?.activityID && l.attach?.alertID == r.attach?.alertID && l.end == r.end
     }
-    attach(existing, alert: alert)
+  }
+
+  static func adoptPlan(activities: [(id: String, alertID: String)], alerts: [KanpanCore.Alert],
+                        attachedID: String?, settled: Bool) -> AdoptPlan {
+    var byID: [String: KanpanCore.Alert] = [:]
+    for alert in alerts where alert.isActive { byID[syncID(alert)] = byID[syncID(alert)] ?? alert }
+    var plan = AdoptPlan()
+    var holding = attachedID != nil
+    for existing in activities where existing.id != attachedID {
+      if let alert = byID[existing.alertID] {
+        if holding { plan.end.append(existing.id) }
+        else { plan.attach = (existing.id, alert.id); holding = true }
+      } else if settled {
+        plan.end.append(existing.id)
+      }
+    }
+    return plan
+  }
+
+  /// 把上一次留下的那几块接回来（app 被杀过，活动还挂在锁屏上）。
+  ///
+  /// 宿主在**档案到货**时调（`MainScreen.honorProfile()`：冷启动装上次那个人的档案、
+  /// 账号核完、登录 / 退登 / 换号），`alerts` 永远是那一刻档案主人的提醒表；
+  /// `settled` 为假（还在等 `account.restore()`）时对不上的先不收。
+  func adopt(alerts: [KanpanCore.Alert], settled: Bool) {
+    let live = Activity<AlertActivityAttributes>.activities
+    guard !live.isEmpty else { return }
+    let plan = Self.adoptPlan(activities: live.map { ($0.id, $0.attributes.alertID) }, alerts: alerts,
+                              attachedID: activity?.id, settled: settled)
+    for id in plan.end { Task.detached { await Self.end(id: id, nil, policy: .immediate) } }
+    if let pick = plan.attach, let existing = live.first(where: { $0.id == pick.activityID }),
+       let alert = alerts.first(where: { $0.id == pick.alertID }) {
+      attach(existing, alert: alert)
+    }
   }
 
   /// 行上那颗「盯一个」。已经在盯这条就是不盯了。

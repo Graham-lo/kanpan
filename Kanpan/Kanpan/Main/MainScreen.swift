@@ -1577,8 +1577,9 @@ struct MainScreen: View {
       mover?.observe(tickers)
       for t in tickers { activities?.observe(symbol: t.symbol, price: t.last, change: t.changePercent / 100) }
     }
-    // app 被杀过、锁屏上那块还挂着：接回来继续跟价。
-    activities.adopt(alerts: alerts.all)
+    // app 被杀过、锁屏上那块还挂着：接回来继续跟价——但不在这儿接。这一刻 `alerts` 手上
+    // 还是设备级那份（访客的）提醒表，登录用户的提醒要等账号桥装档案（`alerts.useStorage`）
+    // 才看得见；在这儿接会把他的活动当场收掉。接回挪到 `honorProfile()`（档案到货）。
     alertWatcher.priceDecimals = { [picker] symbol in
       picker.info(for: symbol)?.knownPriceDecimals
     }
@@ -1892,6 +1893,8 @@ struct MainScreen: View {
   /// 就是会漏的结构**，所以统一挂到「档案到货」这一个事件上
   /// （`AppAccountBridge.onProfileReady`，冷启动、登录、退登、云端设置落地都会响）。
   private func honorProfile() {
+    // 锁屏上挂着的实时活动按**这一刻档案主人**的提醒表接回来；账号还没核完时对不上的先放着。
+    activities.adopt(alerts: alerts.all, settled: !awaitingAccount)
     let profile = picker.prefs
     if !didLeaveLaunch {
       // 落地页：有自选就停在自选。还在等 `account.restore()` 的那一小段里手上挂的
