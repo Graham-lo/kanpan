@@ -107,9 +107,13 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     // 调用方拼出来的，出门的时候每个名字只有一格，挂在被并掉那一类上的成员改挂过去。
     let (merged, remap) = Self.mergeSameNamed(unique)
     let live = Set(merged.map(\.id))
+    // 按集合查成员：原来是在数组上 `contains`，归属表每一条都把整份自选扫一遍，
+    // 1500 只自选读一次档要 0.16 s（读档这条路还要过两遍 init），而拖排序每一下
+    // （`moveVisible`）也要过一遍 init。
+    let members = Set(self.favorites)
     self.groups = merged
     self.groupForSymbol = InstrumentID.migrate(groupForSymbol).mapValues { remap[$0] ?? $0 }
-      .filter { self.favorites.contains($0.key) && live.contains($0.value) }
+      .filter { members.contains($0.key) && live.contains($0.value) }
     // 老存档里那个分类可能早就被删了，读进来就洗掉——免得迁移把一个指向空气的
     // id 搬进 `Prefs.favoritesGroup`。被并掉的那一类改指留下的那一类。
     self.legacySelectedGroup = legacySelectedGroup.map { remap[$0] ?? $0 }.flatMap { live.contains($0) ? $0 : nil }
