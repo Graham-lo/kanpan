@@ -317,7 +317,12 @@ extension Prefs: Codable {
     if let v = bool(.adaptiveIndicators) { adaptiveIndicators = v }
     if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = Prefs.clampPortraitHeight(v) }
     if let v = try? c.decode(Double.self, forKey: .rsiUpper), v.isFinite { rsiUpper = min(100, max(1, v)) }
-    if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = min(rsiUpper - 1, max(0, v)) }
+    if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = v }
+    // 下轨一律在两条都读完之后再夹，**不管档里有没有下轨这个键**：原来夹在「读到下轨」那一支里，
+    // 档里只有上轨（半截档、手改档、下轨写成了别的类型）时下轨留在出厂的 30，上轨却是读出来的 1——
+    // 图上的超买超卖带整个倒过来，推上去的 `rsiRange` 是 `[30, 1]`，服务端要求 `a[0] < a[1]`，
+    // 整条 settings 操作被顶回去；再编一次又被 `sanitized` 夹成 0，同一份档解两次得到两个样子。
+    rsiLower = min(rsiUpper - 1, max(0, rsiLower))
     if let raw = try? c.decode([String: [Int]].self, forKey: .hiddenOutputs) {
       for (key, values) in raw {
         if let id = IndicatorID(rawValue: key) { hiddenOutputs[id] = Set(values.filter { (0..<21).contains($0) }) }

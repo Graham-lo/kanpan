@@ -343,6 +343,11 @@ extension Prefs {
     var target = fieldMap(incoming)
     let source = fieldMap(local)
     guard !target.isEmpty, !source.isEmpty else { return incoming }
+    // RSI 上下轨在线上是**一个**键（`rsiRange`），推的时候成对推，留的时候也得成对留：
+    // 原来只脏了上轨时只抄上轨，本地的上轨 20 拼上云端的下轨 30，拼出一对倒挂的轨，
+    // 下一次推上去的 `[30, 20]` 被服务端「a[0] < a[1]」整条拒掉。
+    var fields = fields
+    if !fields.isDisjoint(with: SettingsWire.rsiFields) { fields.formUnion(SettingsWire.rsiFields) }
     for name in fields { target[name] = source[name] }
     guard let data = try? JSONSerialization.data(withJSONObject: target) else { return incoming }
     return PrefsCodec.decode(data)
