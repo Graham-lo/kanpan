@@ -60,16 +60,38 @@ impl Supervisor {
 pub const DRAIN:std::time::Duration=std::time::Duration::from_secs(10);
 /// 死因的存放处：`shutdown` 的信号 future 把它写进去，`serve` 返回之后取出来当退出原因。
 pub type Cause=std::sync::Arc<std::sync::Mutex<Option<anyhow::Error>>>;
+/// 该收尾退出的那一下：Ctrl-C（SIGINT），或者 SIGTERM。
+///
+/// systemd 的 `stop` / `restart`（也就是每一次部署）发的是 SIGTERM。以前这里只听 Ctrl-C，
+/// 而 tokio 不替 SIGTERM 装处理器，于是它按默认动作当场杀掉进程：`with_graceful_shutdown`
+/// 与 [`DRAIN`] 在线上一次都没走到过，在途请求（登录、同步推送）全被重置。
+///
+/// SIGTERM 的处理器在这个函数**被调用时**就装好，不等返回的 future 第一次被轮询：
+/// 否则起服务到第一次轮询之间来的 SIGTERM 仍是默认动作。所以要在运行时里调用。
+pub fn stop_signal()->impl Future<Output=()>+Send+'static {
+ #[cfg(unix)]
+ let term=tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate());
+ async move {
+  #[cfg(unix)]
+  match term {
+   Ok(mut term)=>{tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{}}}
+   Err(e)=>{tracing::error!("SIGTERM handler unavailable ({e}); only Ctrl-C stops gracefully");let _=tokio::signal::ctrl_c().await;}
+  }
+  #[cfg(not(unix))]
+  {let _=tokio::signal::ctrl_c().await;}
+ }
+}
 impl Supervisor {
- /// 给 axum `with_graceful_shutdown` 用的信号：Ctrl-C，或者某条后台任务死了。
+ /// 给 axum `with_graceful_shutdown` 用的信号：[`stop_signal`]（Ctrl-C 或 SIGTERM），或者某条后台任务死了。
  /// 后者把死因写进返回的 [`Cause`]，并挂一个 [`DRAIN`] 的兜底——在途请求收不干净
  /// 也不会让一个少了后台任务的进程一直挂着。
  pub fn shutdown(self)->(impl Future<Output=()>+Send+'static,Cause) {
+  let stop=stop_signal();
   let cause:Cause=Default::default();
   let slot=cause.clone();
   (async move {
    tokio::select! {
-    _=tokio::signal::ctrl_c()=>{}
+    _=stop=>{}
     e=self.failure()=>{
      *slot.lock().unwrap_or_else(|p|p.into_inner())=Some(e);
      tokio::spawn(async {
@@ -160,6 +182,18 @@ fn verdict(life:Life,outcome:Result<(),tokio::task::JoinError>)->Option<String> 
 mod tests {
  use super::*;
  use std::time::Duration;
+
+ /// systemd 停服发的是 SIGTERM：它必须走进优雅关闭，而不是按默认动作当场杀掉进程
+ /// （那样这条测试连同整个测试进程都会死掉）。
+ #[cfg(unix)]
+ #[tokio::test]
+ async fn sigterm_starts_the_graceful_shutdown() {
+  let (stop,cause)=Supervisor::new().shutdown();
+  let status=std::process::Command::new("kill").args(["-TERM",&std::process::id().to_string()]).status().unwrap();
+  assert!(status.success());
+  tokio::time::timeout(Duration::from_secs(5),stop).await.expect("SIGTERM 要让 with_graceful_shutdown 的信号落下");
+  assert!(outcome(&cause).is_ok(),"停服不是后台任务死了，退出码是 0");
+ }
 
  #[tokio::test]
  async fn a_panicking_task_is_reported_by_name() {

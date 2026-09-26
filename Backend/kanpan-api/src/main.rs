@@ -71,7 +71,7 @@ async fn main()->anyhow::Result<()> {
   supervisor.spawn("alerts-coinbase",Life::Forever,kanpan_api::alerts::run_coinbase(s.clone(),apns));
   tokio::select! {
    e=supervisor.failure()=>return Err(e),
-   _=tokio::signal::ctrl_c()=>{}
+   _=kanpan_api::supervise::stop_signal()=>{}
   }
   return Ok(());
 
