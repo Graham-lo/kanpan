@@ -190,6 +190,18 @@ async fn resolve(base:&str,venues:&[Venue],now:i64,known:Option<bool>)->Option<(
 
 // ------------------------------------------------------------------ 一只币的跟踪
 
+/// 收件口里的一串帧按生效顺序处理：每一帧之前先把连接的开、交接、断吃掉。连接任务总是先发 Opened
+/// 再推这条连接的帧，所以拿到一帧时它前面那条 Opened 已经在 `control` 里了，不会被帧抢先
+/// （抢先的帧会因为簿还不认这条连接被丢掉）。
+fn in_order<T>(control:&mut mpsc::UnboundedReceiver<T>,first:T,inbox:&mut mpsc::Receiver<T>,mut handle:impl FnMut(T)) {
+ while let Ok(c)=control.try_recv() {handle(c);}
+ handle(first);
+ while let Ok(event)=inbox.try_recv() {
+  while let Ok(c)=control.try_recv() {handle(c);}
+  handle(event);
+ }
+}
+
 /// 写库只走一个任务：挂着的与结束的按到达先后写，不会乱序把结束翻回挂着。
 struct Write {step:f64,rows:Vec<(BigOrder,i64)>}
 
@@ -345,6 +357,8 @@ struct Tracker {
  base:String,
  model:Model,
  events:mpsc::Sender<Event>,
+ /// 连接的开、交接、断（不丢，见 `hub.rs`）。
+ control:mpsc::UnboundedSender<Event>,
  open:HashSet<String>,
  /// 排着的快照：簿 → 那份请求的 epoch。
  inflight:HashMap<String,u64>,
@@ -375,7 +389,7 @@ impl Tracker {
   if fresh.is_empty() {return}
   tracing::debug!("Orderflow history: {} tracks {}",self.base,fresh.iter().map(|v|v.id.as_str()).collect::<Vec<_>>().join(", "));
   for v in &fresh {self.model.add_venue(v.clone());}
-  hub::add(fresh,&self.events);
+  hub::add(fresh,&self.events,&self.control);
  }
 
  fn sync_epoch(&mut self,id:&str) {
@@ -561,9 +575,10 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  if needed {published.usdt_perp=None;}
  shared.send_replace(published);
  let (events,mut inbox)=mpsc::channel::<Event>(8192);
+ let (control,mut control_rx)=mpsc::unbounded_channel::<Event>();
  let (writes,rx)=mpsc::channel::<Write>(256);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
- let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
+ let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,control,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
   epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority,writes,
   calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
@@ -582,11 +597,9 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  loop {
   tokio::select! {
    _=stop.changed()=>break,
-   Some(event)=inbox.recv()=>{
-    t.handle(event);
-    // 一口气把排着的都吃掉再评估，别让评估插在一串帧中间。
-    while let Ok(event)=inbox.try_recv() {t.handle(event);}
-   },
+   Some(event)=control_rx.recv()=>{t.handle(event);while let Ok(event)=control_rx.try_recv() {t.handle(event);}},
+   // 一口气把排着的都吃掉再评估，别让评估插在一串帧中间。
+   Some(event)=inbox.recv()=>in_order(&mut control_rx,event,&mut inbox,|event|t.handle(event)),
    _=evaluate.tick()=>{
     let now=now_ms();
     t.calibrate(now);
@@ -1213,6 +1226,19 @@ mod tests {
   let full:Vec<(String,i64)>=(0..30).map(|i|(format!("B{i}"),now-i)).collect();
   let admit_all:HashSet<&str>=full.iter().map(|(b,_)|b.as_str()).collect();
   assert_eq!(resumable(&full,&admit_all,now).len(),MAX_ON_DEMAND);
+ }
+
+ #[test] fn connection_events_take_effect_before_the_frames_sent_after_them() {
+  let (control_tx,mut control)=mpsc::unbounded_channel();
+  let (frames_tx,mut inbox)=mpsc::channel(4);
+  frames_tx.try_send("frame on the old connection").unwrap();
+  control_tx.send("opened").unwrap();
+  frames_tx.try_send("frame 1 on the new connection").unwrap();
+  frames_tx.try_send("frame 2 on the new connection").unwrap();
+  let first=inbox.try_recv().unwrap();
+  let mut seen=Vec::new();
+  in_order(&mut control,first,&mut inbox,|e|seen.push(e));
+  assert_eq!(seen,["opened","frame on the old connection","frame 1 on the new connection","frame 2 on the new connection"]);
  }
 
  #[test] fn unlisted_bases_are_not_tracked() {

@@ -33,7 +33,10 @@
 //! Coinbase：一本一条连接，新建至少隔 250 毫秒；簿要重订就整条重连。
 //!
 //! 帧送给跟踪器用 `try_send`：某个跟踪器堵住了只丢它自己的帧（丢帧 = 序号断档，簿自己重同步），
-//! 不拖慢同一条连接上的其它币；Opened / Handover / Closed 这几种要紧的带 2 秒超时地等。
+//! 不拖慢同一条连接上的其它币。Opened / Handover / Closed 这几种要紧的走跟踪器另一个不限长的收件口，
+//! 一条都不丢、也不等（原来和帧挤一个口、堵住 2 秒就丢：丢了 Opened 的簿一直不认新连接的帧，
+//! 到下一次重连——币安要 23 小时——才恢复）。跟踪器每处理一帧之前先把这个口里的吃掉，所以先发的
+//! Opened 一定先于这条连接的帧生效。
 //! 每分钟打一行各种连接的条数、簿数、流数、帧数与丢帧数。
 use super::book::VenueInfo;
 use super::feeds::{self,Decoded,Decoder,Event,Kind,KINDS};
@@ -51,7 +54,6 @@ const PING:Duration=Duration::from_secs(20);
 const IDLE:Duration=Duration::from_secs(60);
 const CONNECT:Duration=Duration::from_secs(15);
 const SEND:Duration=Duration::from_secs(10);
-const DELIVER:Duration=Duration::from_secs(2);
 /// 新连接连上之后最多等多久第一帧，再告诉池子「我接手了」。
 const UP_AFTER:Duration=Duration::from_secs(5);
 /// 交接重叠期：新连接接手之后旧连接再推多久。
@@ -112,9 +114,9 @@ fn jittered(d:Duration)->Duration {d.mul_f64(rand::random_range(0.5..1.5))}
 
 // ------------------------------------------------------------------ 对外
 
-/// 一本簿挂到哪个跟踪器。
+/// 一本簿挂到哪个跟踪器：`events` 收帧（满了就丢），`control` 收连接的开、交接、断（不丢）。
 #[derive(Clone,Debug)]
-pub struct Route {pub venue:VenueInfo,pub events:mpsc::Sender<Event>}
+pub struct Route {pub venue:VenueInfo,pub events:mpsc::Sender<Event>,pub control:mpsc::UnboundedSender<Event>}
 
 /// `Crashed`：一条连接的任务 panic 了，没走到发 `Gone` 那一步。池子摘掉这一格、把它挂着的
 /// 簿重新分出去（新开连接），不然那几本簿就挂在一条死连接上，再也收不到帧。
@@ -134,9 +136,9 @@ fn hub()->&'static mpsc::UnboundedSender<HubCmd> {
 }
 
 /// 这些簿开始要推送。
-pub fn add(venues:Vec<VenueInfo>,events:&mpsc::Sender<Event>) {
+pub fn add(venues:Vec<VenueInfo>,events:&mpsc::Sender<Event>,control:&mpsc::UnboundedSender<Event>) {
  if venues.is_empty() {return}
- let _=hub().send(HubCmd::Add(venues.into_iter().map(|venue|Route{venue,events:events.clone()}).collect()));
+ let _=hub().send(HubCmd::Add(venues.into_iter().map(|venue|Route{venue,events:events.clone(),control:control.clone()}).collect()));
 }
 /// 这些簿不要了（跟踪器停了）。`events` 是停掉的那个跟踪器的收件口：只摘**它自己**挂上去的，
 /// 同一本簿已经被新起来的跟踪器接手的话不动（新旧交替时旧的这句 remove 往往晚到）。
@@ -424,13 +426,10 @@ impl Conn {
  }
  fn instruments(&self)->Vec<String> {self.routes.values().map(|r|r.venue.instrument.clone()).collect()}
 
- /// 给这些簿各自的跟踪器发一条要紧的（Opened / Handover / Closed）。只订成交的连接不发。
- async fn announce(&self,routes:&[&Route],make:impl Fn(Vec<String>)->Event) {
+ /// 给这些簿各自的跟踪器发一条要紧的（Opened / Handover / Closed）：走不丢的那个口，不等。只订成交的连接不发。
+ fn announce(&self,routes:&[&Route],make:impl Fn(Vec<String>)->Event) {
   if !self.kind.carries_books() {return}
-  for r in routes {
-   if r.events.is_closed() {continue}
-   let _=tokio::time::timeout(DELIVER,r.events.send(make(vec![r.venue.id.clone()]))).await;
-  }
+  for r in routes {let _=r.control.send(make(vec![r.venue.id.clone()]));}
  }
 
  /// 帧送给跟踪器：堵住了就丢（记数），不拖别的币。
@@ -506,7 +505,7 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
   let all:Vec<Route>=conn.routes.values().cloned().collect();
   let refs:Vec<&Route>=all.iter().collect();
   // 首次连上：可能是接手旧连接上的簿（换新 / 合并），也可能是全新的簿——跟踪器按簿此刻连没连着分辨。
-  if first {conn.announce(&refs,|venues|Event::Handover{venues,connection}).await} else {conn.announce(&refs,|venues|Event::Opened{venues,connection}).await}
+  if first {conn.announce(&refs,|venues|Event::Handover{venues,connection})} else {conn.announce(&refs,|venues|Event::Opened{venues,connection})}
   let started=Instant::now();
   let mut announced_up=!first;
   let up_deadline=started+UP_AFTER;
@@ -534,7 +533,7 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
       let fresh:Vec<Route>=routes.into_iter().filter(|r|!conn.routes.contains_key(&r.venue.id)).collect();
       for r in &fresh {to_sub.push(r.venue.instrument.clone());conn.insert(r.clone());}
       let refs:Vec<&Route>=fresh.iter().collect();
-      conn.announce(&refs,|venues|Event::Opened{venues,connection}).await;
+      conn.announce(&refs,|venues|Event::Opened{venues,connection});
      },
      Some(ConnCmd::Replace(routes))=>{
       let swapped:Vec<Route>=routes.into_iter().filter(|r|conn.routes.contains_key(&r.venue.id)).collect();
@@ -542,7 +541,7 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
       // 新跟踪器手上没有簿：按「连上了」通知它；OKX 退订再订拿一份流内快照，Coinbase 的
       // 快照只在订阅时给、序号按整条连接计，只能整条重连（和 Resubscribe 同一条路）。
       let refs:Vec<&Route>=swapped.iter().collect();
-      conn.announce(&refs,|venues|Event::Opened{venues,connection}).await;
+      conn.announce(&refs,|venues|Event::Opened{venues,connection});
       match kind {
        Kind::Okx=>to_resub.extend(swapped.iter().map(|r|r.venue.instrument.clone())),
        Kind::Coinbase if !swapped.is_empty()=>break,
@@ -553,7 +552,7 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
       let dropped=conn.drop_ids(&ids);
       if kind==Kind::Okx {to_unsub.extend(dropped.iter().map(|r|r.venue.instrument.clone()));}
       let refs:Vec<&Route>=dropped.iter().collect();
-      conn.announce(&refs,|venues|Event::Closed{venues,connection}).await;
+      conn.announce(&refs,|venues|Event::Closed{venues,connection});
       if conn.routes.is_empty() {let _=tokio::time::timeout(Duration::from_secs(1),tx.close()).await;break 'life}
      },
      Some(ConnCmd::Resubscribe(id))=>match kind {
@@ -595,7 +594,7 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
   let _=tokio::time::timeout(Duration::from_secs(1),tx.close()).await;
   let all:Vec<Route>=conn.routes.values().cloned().collect();
   let refs:Vec<&Route>=all.iter().collect();
-  conn.announce(&refs,|venues|Event::Closed{venues,connection}).await;
+  conn.announce(&refs,|venues|Event::Closed{venues,connection});
   // 活过一分钟的算正常断开，退避从头来。
   if started.elapsed()>Duration::from_secs(60) {backoff=Duration::from_secs(1)}
   let until=Instant::now()+jittered(backoff);
@@ -618,9 +617,27 @@ mod tests {
  use super::super::model::Notional;
 
  fn route(exchange:&'static str,product:&'static str,instrument:&str,events:&mpsc::Sender<Event>)->Route {
+  let (control,_)=mpsc::unbounded_channel();
   let notional=if product=="coinPerp" {Notional::Inverse(100.0)} else {Notional::Linear(1.0)};
   Route{venue:VenueInfo{id:format!("{exchange}:{product}:{instrument}"),exchange,label:"x",product,instrument:instrument.into(),notional,price_scale:1.0,
-   sequence:Sequence::PreviousFinalOverlap,in_band:exchange!="binance"},events:events.clone()}
+   sequence:Sequence::PreviousFinalOverlap,in_band:exchange!="binance"},events:events.clone(),control}
+ }
+
+ #[test] fn connection_events_are_never_dropped_when_the_tracker_is_behind() {
+  let (events,_rx)=mpsc::channel(1);
+  let mut r=route("binance","usdtPerp","AUSDT",&events);
+  let (control,mut control_rx)=mpsc::unbounded_channel();
+  r.control=control;
+  // 跟踪器堵住了：帧的口满着。
+  events.try_send(Event::Trade{venue:r.venue.id.clone(),trade:super::super::book::Trade{price:1.0,quantity:1.0,hit:super::super::book::Side::Bid},id:None}).unwrap();
+  let mut conn=Conn{kind:Kind::BinanceUmDepth,routes:HashMap::new(),decoder:Decoder::new(Kind::BinanceUmDepth)};
+  conn.insert(r.clone());
+  conn.announce(&[&r],|venues|Event::Opened{venues,connection:7});
+  assert!(matches!(control_rx.try_recv(),Ok(Event::Opened{connection:7,..})),"帧的口满着，Opened 照样送到");
+  // 只订成交的连接不发。
+  let trades=Conn{kind:Kind::BinanceUmTrades,routes:HashMap::new(),decoder:Decoder::new(Kind::BinanceUmTrades)};
+  trades.announce(&[&r],|venues|Event::Closed{venues,connection:7});
+  assert!(control_rx.try_recv().is_err());
  }
 
  /// 池子的排布（不开连接：连接任务起在测试运行时里，连不上外网也只是退避）。
