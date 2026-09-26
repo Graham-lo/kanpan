@@ -9,9 +9,7 @@ public protocol Pacer: Sendable {
 
 public struct SystemPacer: Pacer {
   public init() {}
-  public func nowMs() async -> Double {
-    Double(DispatchTime.now().uptimeNanoseconds) / 1e6
-  }
+  public func nowMs() async -> Double { MonoClock.nowMs() }
   public func sleep(ms: Double) async throws {
     guard ms > 0 else { return }
     // `UInt64(inf)`、`UInt64(≥ 1.8e19)` 会直接崩。一年以上的睡眠在这个 app 里不存在，
@@ -30,6 +28,14 @@ public struct SystemPacer: Pacer {
 ///
 /// 注了虚拟时钟的路径不能绕过 `Pacer`（虚拟时间里这把钟是不动的），
 /// 所以各处都按 `pacer is SystemPacer` 分流，只有真机那一路走这里。
-enum MonoClock {
-  static func nowMs() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e6 }
+///
+/// **手机睡着的时间也要算进去。** 原来读的是 `DispatchTime.now().uptimeNanoseconds`
+/// （`mach_absolute_time`），它在设备睡眠时是停的：锁屏一小时、CPU 真睡着的那几十分钟
+/// 这把钟一格不走。于是锁屏前挨的 418 / 429 封禁、一分钟权重窗口、网关冷却，解锁回来
+/// 在这把钟上都还「没过去」——上游早解禁了，限流器还当场拒发、界面挂着「点此重试」。
+/// `CLOCK_MONOTONIC_RAW`（`mach_continuous_time`）睡着也走、也不受改系统时间影响，
+/// 这才是「过了多久」该用的那把。`SystemPacer.nowMs()`、`MarketFeed` 的节流钟都读这里，
+/// 三处必须是同一个量。
+public enum MonoClock {
+  public static func nowMs() -> Double { Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1e6 }
 }

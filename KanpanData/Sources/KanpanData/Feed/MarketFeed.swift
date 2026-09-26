@@ -1365,8 +1365,9 @@ public actor MarketFeed {
   ///
   /// 这些地方要的只是「两件事之间隔了多久」。`Pacer` 是给**可控睡眠**用的协议，
   /// 拿它当钟表读，每读一次就是一次跨 actor 的 `await`（读一个 `DispatchTime` 而已，
-  /// 却要挂起、切执行器、再恢复）。单调时钟不跨 actor，也不受系统时间被改动影响。
-  static func monotonicMs() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e6 }
+  /// 却要挂起、切执行器、再恢复）。单调时钟不跨 actor，也不受系统时间被改动影响；
+  /// 读的是 `MonoClock`（设备睡着也走的那把），和 `SystemPacer.nowMs()` 是同一个量。
+  static func monotonicMs() -> Double { MonoClock.nowMs() }
 
   /// 当前时刻，毫秒。真机上就是上面那把单调钟（和 `SystemPacer.nowMs()` 同一个量），
   /// 只有测试注了虚拟时钟时才真的去问 `pacer`——回放用例要在被加速的时间里

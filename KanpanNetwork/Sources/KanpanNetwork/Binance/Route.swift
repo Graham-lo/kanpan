@@ -17,7 +17,11 @@ public actor MarketRESTTransport: HTTPTransport {
   private let source: BinanceUpstream
   private let log: FeedLog
   private let transport: any HTTPTransport
-  private var gatewayRetry: [String: Date] = [:]
+  /// 冷却账本的钟（秒）。原来记的是 `Date()`（墙上时间）：用户把系统时间往回拨一小时，
+  /// 刚记下的 10 秒冷却就变成一小时零 10 秒，两台网关一起挂在「都在冷却里」；往前拨则提前失效。
+  /// 冷却要的只是「过了多久」，走 `MonoClock`（单调、设备睡着也走）。测试注虚拟钟。
+  private let now: @Sendable () -> TimeInterval
+  private var gatewayRetry: [String: TimeInterval] = [:]
   /// 因为**上游限流**而歇的那些网关：截止时间 + 上游当时给的状态码。
   ///
   /// 和 `gatewayRetry` 分开记是为了别把类别丢掉：冷却期内再来的请求仍然是「限流」，
@@ -26,14 +30,14 @@ public actor MarketRESTTransport: HTTPTransport {
   /// 状态码也必须记：418 / 403 是 IP 级封禁，429 只是超频，业务层对两者的处理不一样。
   /// 只留截止时间的话，冷却期内重放出去的错误一律变成 429，封禁就被降级成超频了。
   private struct GatewayLimit: Sendable {
-    let until: Date
+    let until: TimeInterval
     /// 上游当时回的状态码（网关 `upstream_status`：418 / 429 / 403）。
     let upstreamStatus: Int
   }
   private var gatewayLimited: [String: GatewayLimit] = [:]
   /// 每台网关最近一次赢下竞速的时刻。几场竞速并发时账本按「谁的消息新」记：一场没有赢家的竞速
   /// 途中这台在别的请求上刚赢过，这场的失败就是旧消息，不再给它记冷却。
-  private var lastWin: [String: Date] = [:]
+  private var lastWin: [String: TimeInterval] = [:]
   private var preferred: String?
   /// 路由账本的版本号。换线路、清冷却都会把它 +1。
   /// 一场竞速要等好几秒，赢家回来的时候用户可能已经换了线路、或者刚按过重试，
@@ -74,7 +78,12 @@ public actor MarketRESTTransport: HTTPTransport {
 
   public init(source: BinanceUpstream, route: MarketRoute, transport: any HTTPTransport = URLSessionTransport(),
               log: FeedLog = .silent) {
-    self.source = source; self.route = route; self.transport = transport; self.log = log
+    self.init(source: source, route: route, transport: transport, log: log, now: { MonoClock.nowMs() / 1000 })
+  }
+
+  init(source: BinanceUpstream, route: MarketRoute, transport: any HTTPTransport, log: FeedLog,
+       now: @escaping @Sendable () -> TimeInterval) {
+    self.source = source; self.route = route; self.transport = transport; self.log = log; self.now = now
   }
 
   /// 测试用的旧写法：线路 + 网关表。
@@ -144,7 +153,7 @@ public actor MarketRESTTransport: HTTPTransport {
     // 竞速前记下路由账本的版本。竞速要等好几秒，这中间用户完全可能换了线路
     // 或者按了重试（两者都会清冷却），那时这一场的输赢属于上一档，不能再记账。
     let epoch = routeEpoch
-    let raceBegan = Date()
+    let raceBegan = now()
     let raced = await Self.race(plan)
     guard let winner = raced.winner else {
       // 是这一笔自己被取消了（换品种、换线路把上一份 feed 停掉），不是网关不行：
@@ -155,7 +164,7 @@ public actor MarketRESTTransport: HTTPTransport {
         // 这场竞速途中它在并发的另一笔上刚赢过：它现在是好的，这场的失败不作数。
         if let won = lastWin[candidate.host], won >= raceBegan { continue }
         let seconds = raced.retryAfter[candidate.host] ?? Self.gatewayCooldownSeconds
-        let deadline = Date().addingTimeInterval(seconds)
+        let deadline = now() + seconds
         // 只往后延、不往前缩：并发的另一场刚按上游限流给它记了 120 秒，这场的 10 秒不能把它盖短。
         gatewayRetry[candidate.host] = max(gatewayRetry[candidate.host] ?? deadline, deadline)
         // 上游限流是「这台网关的出口被按住了」：冷却按它自己报的秒数走（可以是 120 秒），
@@ -165,7 +174,7 @@ public actor MarketRESTTransport: HTTPTransport {
           let until = max(gatewayLimited[candidate.host]?.until ?? deadline, deadline)
           gatewayLimited[candidate.host] = GatewayLimit(until: until, upstreamStatus: upstream)
           log("网关 \(candidate.host) 上游限流（\(upstream)），歇 \(BinanceError.wholeSeconds(seconds)) 秒")
-        } else if let limit = gatewayLimited[candidate.host], limit.until <= Date() {
+        } else if let limit = gatewayLimited[candidate.host], limit.until <= now() {
           gatewayLimited[candidate.host] = nil
         }
       }
@@ -222,12 +231,12 @@ public actor MarketRESTTransport: HTTPTransport {
   /// 接下来 10 秒每一笔都报「网关都在冷却里」，而赢家刚刚才回了一份好数据。
   private func settle(_ winner: GatewaySuccess, plan: GatewayPlan) {
     preferred = winner.host
-    lastWin[winner.host] = Date()
+    lastWin[winner.host] = now()
     gatewayRetry[winner.host] = nil
     gatewayLimited[winner.host] = nil
     // 这一轮输掉的网关先歇一会儿：它可能只是慢或者被黑洞吃了，
     // 别让每一行都去把同一场竞速重开一遍。只往后延，不把别处记的更长的冷却盖短。
-    let deadline = Date().addingTimeInterval(Self.gatewayCooldownSeconds)
+    let deadline = now() + Self.gatewayCooldownSeconds
     for candidate in plan.candidates where candidate.host != winner.host {
       gatewayRetry[candidate.host] = max(gatewayRetry[candidate.host] ?? deadline, deadline)
     }
@@ -285,7 +294,7 @@ public actor MarketRESTTransport: HTTPTransport {
     if endpoint == "ticker", expectedSymbol.isEmpty { endpoint = "tickers" }
     let expectedInterval = queryItems.first(where: { $0.name == "interval" })?.value ?? ""
     var candidates: [GatewayCandidate] = []
-    for host in ordered where Date() >= (gatewayRetry[host] ?? .distantPast) {
+    for host in ordered where now() >= (gatewayRetry[host] ?? -.infinity) {
       guard var parts = URLComponents(string: "https://" + host), parts.host != nil,
             parts.user == nil, parts.password == nil, parts.path.isEmpty, parts.query == nil else { continue }
       parts.path = "/market/v1/" + endpoint
@@ -459,10 +468,10 @@ public actor MarketRESTTransport: HTTPTransport {
   ///
   /// 取「最早能用的那台」：它就是这一笔最快的出路，剩余秒数和类别都该按它说。
   private func gatewayLimitRemaining() -> (remaining: TimeInterval, upstreamStatus: Int)? {
-    let now = Date()
-    gatewayLimited = gatewayLimited.filter { $0.value.until > now }
+    let t = now()
+    gatewayLimited = gatewayLimited.filter { $0.value.until > t }
     guard let earliest = gatewayLimited.values.min(by: { $0.until < $1.until }) else { return nil }
-    return (max(0, earliest.until.timeIntervalSince(now)), earliest.upstreamStatus)
+    return (max(0, earliest.until - t), earliest.upstreamStatus)
   }
 
   /// 从网关信封里取出载荷，顺手把同源校验做掉。
