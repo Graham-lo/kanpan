@@ -1,5 +1,6 @@
 import KanpanCore
 import KanpanData
+import ReviewUI
 import SwiftUI
 
 /// 顶栏：品种名 · 放大镜（§9.1）。
@@ -30,8 +31,9 @@ struct TopBar: View {
   @State private var iconTapCount = 0
   var theme: PanelTheme
   var symbol: String
-  /// 复盘本里还欠着答案的条数。0 就不画角标。
-  var reviewCount: Int = 0
+  /// 复盘本：角标画它还欠着答案的条数，0 就不画。传的是整只 feature 而不是算好的数——
+  /// 数由下面的 `ReviewCountBadge` 自己在它的 body 里读，见那边的注释。
+  var review: ReviewFeature?
   /// 有来路就有返回。非 nil 时最左边多一颗返回箭头，回到把人送进这张图的那一页
   /// （板块下钻、自选行）。从底栏直接点进来的「图表」没有来路，这颗就不画——
   /// 常驻标签栏那一格自己就是家，返回无处可去。
@@ -92,16 +94,7 @@ struct TopBar: View {
           iconButton(ReviewGlyph(theme: theme), label: "复盘", action: onReview)
             .accessibilityIdentifier("top.review")
             .overlay(alignment: .topTrailing) {
-              if reviewCount > 0 {
-                Text("\(min(reviewCount, 99))")
-                  // 角标里也是字，一样守 11pt 这个下限。
-                  .font(TypeScale.caption2Emph)
-                  .foregroundStyle(theme.badgeInk)
-                  .padding(.horizontal, Space.xs).padding(.vertical, Space.xxs)
-                  .background(theme.amber, in: Capsule())
-                  .offset(x: 5, y: -3)
-                  .allowsHitTesting(false)
-              }
+              if let review { ReviewCountBadge(review: review, theme: theme) }
             }
         }
 
@@ -368,5 +361,36 @@ struct PriceRow: View {
       .foregroundStyle(missing || stale ? theme.ink3 : (tint ?? theme.ink))
       .gridColumnAlignment(.trailing)
       .accessibilityIdentifier(id)
+  }
+}
+
+/// 复盘按钮上的角标。单独成一个视图，是为了让「数欠着几条」这件事只跟着复盘记录走：
+/// `pendingCount` 每读一次都要把全部记录过滤一遍（几千条），原来是顶栏在自己的 body 里
+/// 读好再传下来，而顶栏跟着逐笔成交一秒重画好几次——每一跳都白扫一遍复盘本。
+/// 现在顶栏只把 feature 这个引用递下来：引用没变，SwiftUI 不重跑这里的 body；
+/// 这里的 body 只登记了 `records`，记录真变了才重数。
+struct ReviewCountBadge: View {
+  let review: ReviewFeature
+  let theme: PanelTheme
+  #if DEBUG
+    /// 测试用：这块 body 一共求值了几次。
+    static var bodies = 0
+  #endif
+
+  var body: some View {
+    #if DEBUG
+      let _ = Self.bodies += 1
+    #endif
+    let count = review.pendingCount
+    if count > 0 {
+      Text("\(min(count, 99))")
+        // 角标里也是字，一样守 11pt 这个下限。
+        .font(TypeScale.caption2Emph)
+        .foregroundStyle(theme.badgeInk)
+        .padding(.horizontal, Space.xs).padding(.vertical, Space.xxs)
+        .background(theme.amber, in: Capsule())
+        .offset(x: 5, y: -3)
+        .allowsHitTesting(false)
+    }
   }
 }

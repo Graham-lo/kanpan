@@ -208,7 +208,7 @@ struct MainHeaderView<Card: View>: View {
       // 「放到图表里」——它是看着某张图时才想起来的事。角标是还欠着答案的条数。
       TopBar(
         theme: theme, symbol: market.symbol,
-        reviewCount: review.pendingCount,
+        review: review,
         // 有来路才有返回。复盘态走的是另一副页头（`ReplayHeaderView`），不经过这儿。
         onBack: onBack,
         onReview: onReview,
