@@ -1017,7 +1017,8 @@ fn admitted(tracked:bool,listed:Option<bool>)->bool {tracked||listed!=Some(false
 /// 校验并补齐区间：`to` 缺省此刻，`from` 缺省 `to` 前 24 小时，最长 3 天。
 fn window(from:Option<i64>,to:Option<i64>,now:i64)->std::result::Result<(i64,i64),&'static str> {
  let to=to.unwrap_or(now);
- let from=from.unwrap_or(to-DEFAULT_SPAN_MS);
+ // to 是请求带来的任意 i64：i64::MIN 附近直接减会溢出（调试构建里是 panic，发布构建靠回绕碰巧判成 invalid_range）。
+ let from=from.unwrap_or(to.saturating_sub(DEFAULT_SPAN_MS));
  if from<0||to<0||from>to {return Err("invalid_range")}
  if to-from>MAX_SPAN_MS {return Err("range_too_long")}
  Ok((from,to))
@@ -1210,6 +1211,9 @@ mod tests {
   assert_eq!(window(Some(now-3*store::DAY_MS-1),None,now),Err("range_too_long"));
   assert_eq!(window(Some(9),Some(5),now),Err("invalid_range"));
   assert_eq!(window(Some(-1),Some(5),now),Err("invalid_range"));
+  assert_eq!(window(None,Some(i64::MIN),now),Err("invalid_range"),"极端的 to 不溢出");
+  assert_eq!(window(Some(0),Some(i64::MAX),now),Err("range_too_long"));
+  assert_eq!(window(Some(i64::MAX),None,now),Err("invalid_range"));
  }
 
  #[test] fn previous_close_prefers_the_utc_day_row() {
