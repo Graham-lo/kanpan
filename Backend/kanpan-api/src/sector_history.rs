@@ -132,7 +132,7 @@ pub fn parse_daily_closes(body:&Value,now_ms:i64)->Vec<(NaiveDate,f64,f64)> {
  let Some(rows)=body.as_array() else {return Vec::new()};
  let mut out=Vec::with_capacity(rows.len());
  for row in rows {
-  if !row[6].as_i64().is_some_and(|close_time|close_time<now_ms) {continue}
+  if row[6].as_i64().is_none_or(|close_time|close_time>=now_ms) {continue}
   let Some(day)=row[0].as_i64().and_then(DateTime::from_timestamp_millis).map(|t|t.date_naive()) else {continue};
   let (Some(close),Some(volume))=(num(&row[4]),num(&row[7])) else {continue};
   if close<=0.0||volume<0.0 {continue}

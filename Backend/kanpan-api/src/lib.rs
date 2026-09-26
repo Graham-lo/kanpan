@@ -151,7 +151,7 @@ mod migrations {
   // 同一事务刚创建的表上建索引不会锁旧表；已有表仍必须 CONCURRENTLY。
   let fresh_tables:Vec<&str>=body.split("create table ").skip(1).filter_map(|v|{
    let v=v.strip_prefix("if not exists ").unwrap_or(v);
-   v.split(|c:char|c==' '||c=='(').next().filter(|t|!t.is_empty())
+   v.split([' ','(']).next().filter(|t|!t.is_empty())
   }).collect();
   for statement in &statements {
    for (verb,rest) in index_clauses(statement) {
@@ -216,7 +216,7 @@ mod migrations {
   let mut pieces=Vec::new();let mut depth=0i32;let mut quoted=false;let mut piece=String::new();
   for c in actions.chars() {
    match c {
-    '\''=>quoted=!quoted,
+    '\''=>quoted^=true,
     '(' if !quoted=>depth+=1,
     ')' if !quoted=>depth-=1,
     ',' if !quoted && depth==0=>{pieces.push(std::mem::take(&mut piece));continue}
@@ -228,7 +228,7 @@ mod migrations {
   pieces.into_iter().filter_map(|piece|{
    let rest=piece.trim().strip_prefix("add ")?;
    let rest=rest.strip_prefix("column ").unwrap_or(rest);
-   let first=rest.split(|c:char|c==' '||c=='(').next().unwrap_or_default();
+   let first=rest.split([' ','(']).next().unwrap_or_default();
    if ["constraint","primary","unique","foreign","check","exclude"].contains(&first) {return None}
    Some(rest.to_owned())
   }).collect()

@@ -257,6 +257,9 @@ impl VenueInfo {
 #[derive(Clone,Copy,Debug,Default,PartialEq)]
 pub struct Bucket {pub notional:f64,pub top:f64,pub price:f64}
 
+/// 一拍里按（侧，桶号）合计的桶。
+pub type Buckets=HashMap<(Side,i64),Bucket>;
+
 #[derive(Clone,Debug)]
 pub struct VenueBook {
  pub venue:VenueInfo,
@@ -373,10 +376,10 @@ impl VenueBook {
  pub fn knows(&self,side:Side,price:f64)->bool {self.is_ready()&&self.book.knows(side,price)}
 
  /// 这一拍按桶合计的美元名义（中间价两侧 `radius_bps` 以内）与此刻的中间价，簿没就绪返回 None。
- pub fn buckets(&mut self,step:f64,radius_bps:f64)->Option<(HashMap<(Side,i64),Bucket>,f64)> {
+ pub fn buckets(&mut self,step:f64,radius_bps:f64)->Option<(Buckets,f64)> {
   if !self.is_ready() {return None}
   let notional=self.venue.notional;
-  let mut out:HashMap<(Side,i64),Bucket>=HashMap::new();
+  let mut out:Buckets=HashMap::new();
   let mid=self.book.for_each_within(radius_bps,|side,price,quantity| {
    let usd=notional.usd(price,quantity);
    if usd<=0.0 {return}
