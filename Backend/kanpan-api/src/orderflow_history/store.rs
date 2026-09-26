@@ -61,15 +61,21 @@ pub async fn live(pool:&PgPool,base:&str)->sqlx::Result<Vec<Restored>> {
 ///
 /// 拆成三段各走各的索引：还挂着的；在窗口里结束的（结束时刻的区间扫）；跨过窗口右沿才结束的。
 /// 写成一句 `end_ms IS NULL OR end_ms >= from` 的话，拉最近一天也要把整个月结束的行都扫一遍。
-pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<BigOrder>> {
+pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<BigOrder>> {range_capped(pool,base,from,to,MAX_ROWS).await}
+
+/// 超过 `cap` 条时留最新的：先按出现时刻倒序取 `cap` 条、再翻回升序。原来升序取前 `cap` 条，截掉的恰好是
+/// 最新的那一段——图的右沿（此刻）空着，手机的增量游标也从截断处往后接，永远补不上。
+async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,cap:i64)->sqlx::Result<Vec<BigOrder>> {
  let cols=COLUMNS;
  let sql=format!("SELECT * FROM (\
   SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL AND first_seen_ms<=$3 \
   UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>=$2 AND end_ms<=$3 \
   UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>$3 AND first_seen_ms<=$3\
-  ) t ORDER BY first_seen_ms,venue_id,side,bucket LIMIT $4");
- let rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(MAX_ROWS).fetch_all(pool).await?;
- Ok(rows.iter().filter_map(order).collect())
+  ) t ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4");
+ let rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).fetch_all(pool).await?;
+ let mut orders:Vec<BigOrder>=rows.iter().filter_map(order).collect();
+ orders.reverse();
+ Ok(orders)
 }
 
 /// 跟踪器最后一次活着距今超过这么久，就算上一段断了：历史从下一次起跟的那一刻重新算起。
@@ -226,6 +232,7 @@ mod tests {
   let got=range(&pool,"ZZT",now-DAY_MS,now).await.unwrap();
   assert_eq!(got.iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3,1],"按出现时刻升序，4 天前结束的不在最近一天里");
   assert_eq!(range(&pool,"ZZT",now-DAY_MS,now-5_000_000).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3],"右沿之后才出现的（挂着的 1 号）不回，跨过右沿的 3 号要回");
+  assert_eq!(range_capped(&pool,"ZZT",now-DAY_MS,now,2).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![3,1],"超了上限留最新的，仍按升序");
   // 结束写进去之后，晚到的一批「挂着」翻不回去。
   let mut ended=live.clone();ended.end_ms=Some(now);ended.status=Status::Filled;
   upsert(&pool,"ZZT",100.0,&[(ended.clone(),now)]).await.unwrap();
