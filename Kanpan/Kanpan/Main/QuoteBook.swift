@@ -197,7 +197,42 @@ final class QuoteBook {
     return nil
     #endif
   }
-  private(set) var status: FeedStatus = .reconnecting
+  private(set) var status: FeedStatus = .reconnecting { didSet { if status != oldValue { trackLink() } } }
+
+  // ---------------------------------------------------------------- 连接断了多久
+
+  /// 列表这条推送连接断满宽限了（口径同顶栏：`MarketModel.linkGrace`，bfc1c816）。
+  /// 自选表拿它把每一行的价和涨跌退成灰——断网 / 弱网 / 电梯里，重连退避一直转，
+  /// 列表上那些价却一直全彩摆着，读起来就是实时价（整机压测 2026-09-26）。
+  /// 只在翻的那一下写，一次断线最多叫醒自选页两次。
+  private(set) var linkDown = false
+  @ObservationIgnored private var link = LinkGrace()
+  @ObservationIgnored private var linkSweep: Task<Void, Never>?
+
+  /// 前台里这条连接**该连着**（`needsConnection`）却不在 `.live` 就起算；
+  /// 连上、进后台、没人要这条连接了都当场停表复原。
+  /// 用 `needsConnection` 而不是「有没有 pump」：断网（`online == false`）时根本不起 pump，
+  /// 可那正是要灰的情形。
+  private func trackLink(now: Date = Date()) {
+    let waiting = needsConnection && status != .live
+    if link.track(waiting: waiting, now: now) {
+      linkSweep?.cancel()
+      linkSweep = Task { [weak self] in
+        try? await Task.sleep(for: .seconds(LinkGrace.seconds + 0.05))
+        guard !Task.isCancelled else { return }
+        self?.sweepLink()
+      }
+    } else if !waiting {
+      linkSweep?.cancel(); linkSweep = nil
+    }
+    sweepLink(now: now)
+  }
+
+  /// 到点替「时间流过去」扫一次。测试也从这儿推时钟。
+  func sweepLink(now: Date = Date()) {
+    let down = link.isDown(now: now)
+    if down != linkDown { linkDown = down }
+  }
 
   /// 排查「列表连上了但不跳」：`KANPAN_LOG=1` 时把这条流的连接和收帧量打出来。
   /// 图那条流一直有日志，列表这条一直是哑的——两边都不跳的时候根本分不清是谁的问题。
@@ -533,6 +568,8 @@ final class QuoteBook {
   }
 
   private func reconcileConnection() {
+    // 该不该连着变了（前后台、列表露面、自选有没有）：断线计时跟着对一遍。
+    defer { trackLink() }
     if needsConnection {
       idleTeardown?.cancel(); idleTeardown = nil
       guard pump == nil else { return } // 健康前台会话跨页面继续，价格无需重取。
@@ -1350,6 +1387,7 @@ final class QuoteBook {
     favorites = []
     alerted.removeAll()
     teardown()   // 它自己会落一次盘
+    trackLink()  // 不该再有连接了：停表、复原
     discardBatches()
     onUpdate = nil; onReset = nil; onScopeChange = nil; onHistory = nil
     onPrice = nil

@@ -508,7 +508,7 @@ final class MarketModel {
 
   /// 连接不在 `.live` 满这么多秒，屏上那口价就不再当「现在的价」摆（顶栏整块灰显）。
   /// 平常的闪断（退避第一拍 1 秒、重连几百毫秒）在这之内接上，肉眼看不见灰一下。
-  static let linkGrace: TimeInterval = 5
+  static let linkGrace: TimeInterval = LinkGrace.seconds
   /// 前台里连接从哪一刻起不在 `.live`。nil = 连着，或者在后台（后台不算，回前台重新起算）。
   @ObservationIgnored private var linkDownSince: Date?
   @ObservationIgnored private var linkSweep: Task<Void, Never>?

@@ -33,6 +33,9 @@ struct FavoritesView: View {
   /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
   var store: PrefsStore
   var redUp: Bool
+  /// 列表那条推送连接断了已经满宽限（`QuoteBook.linkDown`，口径同顶栏 `MarketModel.linkGrace`）。
+  /// 为真时每一行的价和涨跌照旧摆着，只退成灰——那已经不是「现在的价」了。
+  var linkDown: Bool = false
   var feedStatus: FeedStatus
   var feedDiagnostics: String? = nil
   var onVisible: (String) -> Void
@@ -816,6 +819,7 @@ struct FavoritesView: View {
       first: first,
       // 这一行还有没有实时价可言，判据只有「目录里查出来的那一档」（审查 B-06 / 复核项 4）。
       stale: !model.listing(of: symbol).hasLivePrice,
+      linkDown: linkDown,
       cell: model.quoteCell(symbol),
       editing: editing,
       frozen: editing ? editQuotes[symbol] : nil,
@@ -1087,6 +1091,8 @@ private struct FavoriteQuoteRow: View {
   let first: Bool
   /// 目录说它没有实时价（停牌 / 下架 / 未开盘 / 目录里没有）：派生值留空、最后那口价退灰。
   let stale: Bool
+  /// 推送连接断满宽限：数字照旧摆着，价和涨跌一起退灰（口径同顶栏，见 `MarketModel.linkGrace`）。
+  let linkDown: Bool
   let cell: QuoteCell
   let editing: Bool
   /// 调整顺序期间冻住的那口报价（`FavoritesEditSession.quotes`）。
@@ -1117,7 +1123,8 @@ private struct FavoriteQuoteRow: View {
     // 否则那块灰底会永远亮着，读起来像永远加载不完。
     let skeleton = !price.isFinite && !stale
     // 没有实时价时最后那口真价照旧摆着，只是退成次要文字色——不加标签、不弹窗。
-    let priceInk: Color = stale ? skin.ink4 : theme.ink
+    // 连接断满宽限也一样：价还是那口价，但已经不是「现在」的了。
+    let priceInk: Color = (stale || linkDown) ? skin.ink4 : theme.ink
     // 行本身（徽章、字号、药丸、左右边距、发丝线）是和板块内品种表共用的 `LiuliSymbolRow`
     // （UI 审查 2026-09-24：两份手抄已经漂开）。这一页只管往里填什么。
     return LiuliSymbolRow(
@@ -1129,6 +1136,7 @@ private struct FavoriteQuoteRow: View {
       // 涨跌一律带「+ / −」（UI 审查 2026-09-24：全 app 跌幅一种写法，不再用小三角说方向）。
       // 还没到的涨跌和还没到的价格用同一种骨架：药丸只剩一块底，不写字。
       change: change, changeText: changePercentText(change), changePending: !stale,
+      changeMuted: linkDown,
       changeID: "favorites.change." + symbol,
       openID: "favorites.open." + symbol,
       onOpen: onOpen
@@ -1138,10 +1146,12 @@ private struct FavoriteQuoteRow: View {
         .foregroundStyle(theme.ink3)
     } accessory: {
       if sparkline {
-        Sparkline(values: Self.sparkValues(cell.bars), color: trend)
+        Sparkline(values: Self.sparkValues(cell.bars), color: linkDown ? skin.ink4 : trend)
           .frame(width: 44, height: 24)
       }
     }
+    // 只挂在辅助功能树上，界面上看不见：用例靠它确认断线灰显（整机压测 2026-09-26）。
+    .accessibilityValue(linkDown ? "stale" : "")
     .animation(reduceMotion ? nil : .easeOut(duration: 0.32), value: display != nil)
   }
 

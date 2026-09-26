@@ -124,3 +124,46 @@ struct FavoritesRowObservationTests {
     #expect(fires({ _ = m.hasQuotes }, after: { m.apply([Self.ticker(0, last: 5)]) }))
   }
 }
+
+/// 自选行断线灰显的计时（整机线移交第 1 项）：口径和顶栏 bfc1c816 同一条。
+@Suite("自选 · 断线计时")
+@MainActor
+struct LinkGraceTests {
+
+  @Test("闪断看不见；真断满 5 秒算断；中途换档不重新起算；接上 / 不该连着就当场复原")
+  func graceWindow() {
+    var link = LinkGrace()
+    let t0 = Date(timeIntervalSince1970: 1_000)
+    #expect(LinkGrace.seconds == 5)
+    #expect(MarketModel.linkGrace == LinkGrace.seconds, "顶栏和自选表的宽限不是同一个数")
+
+    // 闪断 1 秒又接上。
+    let started = link.track(waiting: true, now: t0)
+    #expect(started, "起算那一刻要告诉持有者挂一拍")
+    #expect(!link.isDown(now: t0.addingTimeInterval(1)))
+    link.track(waiting: false, now: t0.addingTimeInterval(1))
+    #expect(!link.isDown(now: t0.addingTimeInterval(60)))
+
+    // 真断：offline → reconnecting 中途换档不重新起算。
+    let t1 = t0.addingTimeInterval(100)
+    let restarted = link.track(waiting: true, now: t1)
+    #expect(restarted)
+    let again = link.track(waiting: true, now: t1.addingTimeInterval(4))
+    #expect(!again, "换档重新起算了")
+    #expect(!link.isDown(now: t1.addingTimeInterval(4.9)))
+    #expect(link.isDown(now: t1.addingTimeInterval(5)))
+    // 一接上立刻复原。
+    link.track(waiting: false, now: t1.addingTimeInterval(9))
+    #expect(!link.isDown(now: t1.addingTimeInterval(9)))
+
+    // 进后台（不该连着）也当场停表；回前台从回来那一刻重新起算。
+    let t2 = t1.addingTimeInterval(100)
+    link.track(waiting: true, now: t2)
+    link.track(waiting: false, now: t2.addingTimeInterval(2))
+    let back = t2.addingTimeInterval(600)
+    let resumed = link.track(waiting: true, now: back)
+    #expect(resumed)
+    #expect(!link.isDown(now: back.addingTimeInterval(1)), "后台那段时长被算了进来")
+    #expect(link.isDown(now: back.addingTimeInterval(5.1)))
+  }
+}

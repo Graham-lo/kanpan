@@ -61,6 +61,9 @@ struct ChangePill: View {
   /// 为 `false` 时缺值写「—」（已下架、停牌这种确实没有的）。
   var pending = false
   var id: String? = nil
+  /// 数还是那个数，但已经不是「现在」的了（推送连接断满宽限）：字和底一起退成弱墨，
+  /// 不再用涨跌色说方向。版面不动。
+  var muted = false
 
   @Environment(\.panelTheme) private var theme
   /// 固定宽：`−12.34%` 这种最长的也放得下；字号放大时跟着长。
@@ -72,7 +75,7 @@ struct ChangePill: View {
     // 方向按写出来的那个数判，不按原始值：−0.004% 写出来是「+0.00%」，颜色也得跟着算涨，
     // 否则一颗绿字写着「+」（红涨绿跌时）会被读成「涨」和「跌」各说各的。
     let up = !(text.hasPrefix("\u{2212}") || text.hasPrefix("-"))
-    let tint = finite ? (up ? theme.up : theme.down) : SymbolRowInk.faint(theme)
+    let tint = finite && !muted ? (up ? theme.up : theme.down) : SymbolRowInk.faint(theme)
     let shape = RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
     // 淡底 + 涨跌色字（2026-09-25 用户否掉实心红绿底：「之前的淡红淡绿其实就很好」）：
     // 底 14% 的涨跌色、0.5pt 30% 的描边，字就是涨跌色本身；横排定宽照旧。
@@ -170,6 +173,8 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
   let change: Double
   let changeText: String
   var changePending: Bool
+  /// 涨跌药丸退灰（见 `ChangePill.muted`）。
+  var changeMuted: Bool
   let changeID: String
   let openID: String
   let onOpen: () -> Void
@@ -184,7 +189,8 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
   init(symbol: String, base: String, quote: String,
        asset: SymbolClassification.Asset? = nil, isNew: Bool = false, first: Bool,
        priceText: String, priceInk: Color? = nil, priceSkeleton: Bool = false, priceID: String,
-       change: Double, changeText: String, changePending: Bool = false, changeID: String,
+       change: Double, changeText: String, changePending: Bool = false, changeMuted: Bool = false,
+       changeID: String,
        openID: String, onOpen: @escaping () -> Void,
        @ViewBuilder detail: () -> Detail,
        @ViewBuilder accessory: () -> Accessory) {
@@ -201,6 +207,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
     self.change = change
     self.changeText = changeText
     self.changePending = changePending
+    self.changeMuted = changeMuted
     self.changeID = changeID
     self.openID = openID
     self.onOpen = onOpen
@@ -261,7 +268,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
           }
         }
         .accessibilityIdentifier(priceID)
-      ChangePill(value: change, text: changeText, pending: changePending, id: changeID)
+      ChangePill(value: change, text: changeText, pending: changePending, id: changeID, muted: changeMuted)
     }
   }
 }
