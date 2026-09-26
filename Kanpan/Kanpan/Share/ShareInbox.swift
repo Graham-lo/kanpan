@@ -26,13 +26,15 @@ extension ShareClient: ShareInboxService {}
     var pending: [String: Bool] = [:]
     var copies: [String: [String]] = [:]
   }
-  private(set) var items: [ShareItem] = []
+  private(set) var items: [ShareItem] = [] { didSet { refreshUnseen() } }
   private(set) var friends: [ShareFriend] = []
   private(set) var busy = false
   private(set) var revision = 0
   @ObservationIgnored private var pullAgain = false
   var notice: String?
-  var unseen: [ShareItem] { items.filter { $0.openedAt == nil } }
+  /// 还没打开过的信。`items` 一变就算一次存起来——主页头部那张卡的一次 body 里要读它三遍，
+  /// 以前每读一遍都把整个收件箱过滤一遍（压测 L3）。
+  private(set) var unseen: [ShareItem] = []
   @ObservationIgnored private var cache = Cache()
   @ObservationIgnored private var directory: URL?
   @ObservationIgnored private var owner: UUID?
@@ -83,6 +85,10 @@ extension ShareClient: ShareInboxService {}
     items = owner == nil ? [] : cache.items; friends = owner == nil ? [] : cache.friends
     for job in loading.values { job.cancel() }
     loading = [:]; thumbs = [:]; thumbOrder = []
+  }
+  private func refreshUnseen() {
+    let next = items.filter { $0.openedAt == nil }
+    if next != unseen { unseen = next }
   }
   private var cacheFile: URL? { directory?.appendingPathComponent("shares.json") }
   /// 马上写、写不成就抛。「留下」要先确认新 id 落了盘才能把线交出去，走这条。

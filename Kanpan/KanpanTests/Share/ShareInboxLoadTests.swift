@@ -162,4 +162,30 @@ private final class CountingShareService: ShareInboxService, @unchecked Sendable
     #expect(try JSONDecoder().decode(ShareInbox.Cache.self, from: Data(contentsOf: file)).cursor == "new")
   }
 
+  // ---------------------------------------------------------------- L3：未读名单
+
+  @Test func unseenIsStoredNotRefilteredPerRead() async throws {
+    let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+    let service = CountingShareService(items: items(300), jpeg: jpeg())
+    let inbox = ShareInbox()
+    inbox.activate(directory: dir, owner: UUID(), cache: ShareInbox.Cache(), service: service)
+    inbox.pull(); try await settle(inbox)
+    // 主页头部那张卡一次 body 里读三遍：三遍拿到的是同一份存储，不是各过滤一遍现造的。
+    func storage(_ list: [ShareItem]) -> UnsafeRawPointer? { list.withUnsafeBufferPointer { UnsafeRawPointer($0.baseAddress) } }
+    let reads = (0..<3).map { _ in storage(inbox.unseen) }
+    #expect(reads.allSatisfy { $0 != nil && $0 == reads[0] })
+    #expect(inbox.unseen.count == 300)
+    // 拉一次、内容没变：还是那一份，读它的视图不被叫回来重画。
+    inbox.pull(); try await settle(inbox)
+    #expect(storage(inbox.unseen) == reads[0])
+    // 打开一封：马上少一封，换成新的一份。
+    inbox.opened(inbox.items[5])
+    #expect(inbox.unseen.count == 299)
+    #expect(!inbox.unseen.contains { $0.id == inbox.items[5].id })
+    #expect(storage(inbox.unseen) != reads[0])
+    try await settle(inbox)
+    // 换账号：跟着清空。
+    inbox.activate(directory: dir, owner: nil, cache: ShareInbox.Cache(), service: nil)
+    #expect(inbox.unseen.isEmpty)
+  }
 }
