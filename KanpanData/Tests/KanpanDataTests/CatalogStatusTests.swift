@@ -136,6 +136,30 @@ struct CatalogStatusTests {
     #expect(await server.urls().count == 2)                 // 冷却过了才再试
   }
 
+  @Test("拉不到时退回的老代次表上标下架：写回盘上仍记老代次，下次冷启动照样重拉")
+  func markDelistedKeepsTheFallbackSchema() async throws {
+    let p = tempPaths()
+    defer { try? FileManager.default.removeItem(at: p.root) }
+    // 盘上是 schema 6 的表，时刻还在 TTL 内；上游这一回拉不到，只能退回它。
+    try seedDisk([info("BTCUSDT"), info("ETHUSDT")], at: 1_000, schema: 6, p)
+    let (rest, _) = makeREST({ _ in HTTPReply(status: 500, body: Data()) })
+    let catalog = SymbolCatalog(rest: rest, paths: p)
+    #expect(await catalog.all(now: 2_000).count == 2)
+
+    await catalog.markDelisted("ETHUSDT")
+    let disk = try readDisk(p)
+    #expect(disk.schema == 6)          // 不是当前代次
+    #expect(disk.at == 1_000)
+    #expect(disk.list.first { $0.id.symbol == "ETHUSDT" }?.status == .delisted)
+
+    // 下次冷启动：TTL 还没过，但老代次不许直接用，得去拉一次。
+    let body = try infoBody([("BTCUSDT", "TRADING"), ("SOLUSDT", "TRADING")])
+    let (fresh, server) = makeREST({ _ in HTTPReply(status: 200, body: body) })
+    let reborn = SymbolCatalog(rest: fresh, paths: p)
+    #expect(await reborn.all(now: 3_000).map(\.id.symbol) == ["BTCUSDT", "SOLUSDT"])
+    #expect(await server.urls().count == 1)
+  }
+
   // ---------------------------------------------------------------- B-T14
 
   @Test("B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉")

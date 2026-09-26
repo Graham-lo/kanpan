@@ -188,8 +188,10 @@ public actor SymbolCatalog {
       symbols.append(.placeholder(symbol: s, status: .delisted))
     }
     log("品种表标记下架 \(s)")
-    // 盘上那份也改掉，否则下次冷启动它又是「正常挂牌」。代次不动：这不是一次刷新。
-    writeDisk(symbols, at: loadedAtMs)
+    // 盘上那份也改掉，否则下次冷启动它又是「正常挂牌」。代次与时刻都不动：这不是一次刷新。
+    // 手里这份若是拉不到时退回的老代次表，写回去也得记老代次——记成当前代次的话，
+    // 下次冷启动 `cached` 会把一张缺行缺字段的老表当成新表直接用到 TTL 过期。
+    writeDisk(symbols, at: loadedAtMs, schema: loadedSchema)
   }
 
   /// 这个错误是不是「交易所不认这个代号」。
@@ -217,9 +219,10 @@ public actor SymbolCatalog {
     return try? JSONDecoder().decode(Disk.self, from: d)
   }
 
-  private func writeDisk(_ list: [SymbolInfo], at: Int64) {
+  private func writeDisk(_ list: [SymbolInfo], at: Int64, schema: Int? = nil) {
     try? paths.ensureRoot()
-    guard let d = try? JSONEncoder().encode(Disk(schema: Self.schema, at: at, list: list)) else { return }
+    let disk = Disk(schema: schema ?? Self.schema, at: at, list: list)
+    guard let d = try? JSONEncoder().encode(disk) else { return }
     try? d.write(to: paths.exchangeInfo, options: .atomic)
   }
 }
