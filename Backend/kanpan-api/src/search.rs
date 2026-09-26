@@ -159,10 +159,10 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   for candidate in &batch {
    let Some(bars)=fetched.next().await else{break};
    match bars {
-    Ok(bars)=>match candidate_score(&candles,&bars) {
-     Some(score)=>{checked+=1;if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}}
-     // 这个候选这段行情画不成图（横盘到零振幅、坏 OHLC、根数不够）：它自己的事，跳过。
-     None=>{}
+    // 这个候选这段行情画不成图（横盘到零振幅、坏 OHLC、根数不够）是它自己的事：跳过。
+    Ok(bars)=>if let Some(score)=candidate_score(&candles,&bars) {
+     checked+=1;
+     if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}
     },
     // 取不到行情是「这会儿」的事（本分钟的权重账本满了、币安在冷却、网络抖了），
     // 不是这个候选的事：停在这里、下一分钟从它接着比，不能把它当成「比过、没比上」
