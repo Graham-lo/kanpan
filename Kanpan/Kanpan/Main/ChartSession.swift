@@ -308,7 +308,12 @@ struct LiveCompareObservers: ViewModifier {
       let _ = FrameProbe.shared.countBody("MainDiagnosticsOverlay")
       VStack {
         Text(market.capabilities.upstream).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.source").accessibilityValue(market.status.rawValue)
-        Text(MarketNetworkDiagnostics.shared.lines).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.network")
+        // 网络日志（最多 8000 字、每出一笔请求就追加一行）只挂在无障碍标签上，不当正文排：
+        // 原来是 `Text(lines)`——1pt、0.01 透明也照样整段断行、塑形、栅格化，每追加一行重来一遍。
+        // 整机压测 2026-09-26 采样：连切品种 / 周期时主线程九成时间耗在这段字上，
+        // 量出来的「卡顿」几乎全是这个探针自己的。用例读的是 `.label`，照旧拿得到全文。
+        Text("network").font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.network")
+          .accessibilityLabel(MarketNetworkDiagnostics.shared.lines)
         // 根宽的三份拷贝，排查「捏完杀 app」那个 bug 用：
         // `stored` = `PrefsStore` 手上这份（`update` 是同步落盘的，它等于盘上那份）；
         // `live` = `ChartViewport` 内存里那份；图自己量出来的那份在 `chart.canvas` 的
@@ -318,6 +323,10 @@ struct LiveCompareObservers: ViewModifier {
           .accessibilityValue("stored=\(store.prefs.barSpacing);live=\(viewport.barSpacing);token=\(viewport.adoptToken)")
         // 主力订单流手上这份大单：条数、最早一条的出现时刻、还挂着的条数。用例拿「最早出现」比启动时刻，
         // 早于启动就只能是从服务端历史并进来的（本机日志只记本机看见过的）。
+        // 主线程卡顿账（`MainThreadHangLog`）：压测用例前后各读一次，看这一轮卡了几次、最长多久。
+        Text("hangs").font(.system(size: 1)).opacity(0.01)
+          .accessibilityIdentifier("main.hangs")
+          .accessibilityValue(MainThreadHangLog.shared.summary)
         Text("orderflow").font(.system(size: 1)).opacity(0.01)
           .accessibilityIdentifier("orderflow.diagnostics")
           .accessibilityValue(orderFlowSummary)
