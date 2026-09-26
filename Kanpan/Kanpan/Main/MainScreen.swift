@@ -1874,7 +1874,7 @@ struct MainScreen: View {
     } catch {
       // 桥没建起来（存储目录不可写之类）：档案换不进来了，但手上这份仍然是从本机
       // 读出来的真档案，落地页同样要兑现一次——不能因为同步坏了就把人扔回行情页。
-      say(error.localizedDescription)
+      say(AccountFeature.message(error) ?? AccountFeature.genericFailure)
       awaitingAccount = false
       honorProfile()
     }

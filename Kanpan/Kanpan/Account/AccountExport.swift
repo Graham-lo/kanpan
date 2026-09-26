@@ -26,7 +26,7 @@ extension AccountFeature {
         guard started == generation else { return }
         ChartSnapshotRenderer.present(url)
       } catch {
-        if started == generation { self.error = error.localizedDescription }
+        if started == generation { show(error) }
       }
     }
   }

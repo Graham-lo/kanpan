@@ -88,7 +88,7 @@ import KanpanCore
         }
         #endif
         client = try AccountClient(baseURL: url, vault: KeychainCredentialVault(service: service))
-      } catch { self.error = error.localizedDescription }
+      } catch { show(error) }
     }
   }
   func restore() async {
@@ -116,7 +116,7 @@ import KanpanCore
   private func releasePreloadedOwner() {
     guard user == nil, lastOwner?() != nil else { return }
     do { let apply = try onPrepareAccount?(nil); apply?() }
-    catch { self.error = error.localizedDescription }
+    catch { show(error) }
   }
   /// 把钥匙串里读到的那个人装上。`restore()` 与「凭据欠着之后终于读到了」共用。
   private func adopt(_ saved: AccountUser, started: Int) async {
@@ -129,7 +129,7 @@ import KanpanCore
       let apply = try onPrepareAccount?(saved); apply?()
       user = saved; email = saved.email
       onSynchronize?()
-    } catch { self.error = error.localizedDescription }
+    } catch { show(error) }
   }
   /// 凭据欠着：先按上次那个人装档案，再排一次「稍后再读」。
   private func holdLastOwner(started: Int) {
@@ -138,7 +138,7 @@ import KanpanCore
       do {
         let apply = try onPrepareAccount?(owner); apply?()
         user = owner; email = owner.email
-      } catch { self.error = error.localizedDescription }
+      } catch { show(error) }
     }
     scheduleCredentialRetry(started: started)
   }
@@ -289,12 +289,13 @@ import KanpanCore
     needsReauthentication = false; replacedNotice = nil; endCredentialWait()
     do { let apply = try onPrepareAccount?(nil); apply?() }
     catch { failure = failure ?? error }
-    if let failure { error = failure.localizedDescription }
+    if let failure { show(failure) }
   }
   /// 同步那边报上来的错误统一从这儿进：把「该重新登录了」这一种单独挑出来。
   func report(sync error: any Error) {
     lost(error)
-    syncStatus = error.localizedDescription
+    // 作废的旧请求（换号、退登之后回来的）不念，状态照旧由下一次 `updateStatus` 写。
+    if let message = Self.message(error) { syncStatus = message }
   }
   /// 「这条会话还算不算数」这一问，两个入口（同步、账号页）给的是同一个答案。
   private func lost(_ error: any Error) {
@@ -313,8 +314,48 @@ import KanpanCore
   /// 账号页上的错误统一从这儿进（同 `report(sync:)`，只是摆在另一处）。
   private func note(_ error: any Error) {
     lost(error)
-    self.error = error.localizedDescription
+    show(error)
   }
+  /// 把一个错误摆到账号页上那一行红字：一律过 `message(_:)`，作废的请求不念。
+  func show(_ error: any Error) {
+    if let message = Self.message(error) { self.error = message }
+  }
+  /// 账号页红字、设置页账号行右边那句能说的话——**只有这几句固定的中文**。
+  ///
+  /// 原来各处直接 `error.localizedDescription`（压测收尾 2026-09-26，整机线移交第 6 项）：
+  /// `AccountError` 自己带中文没事，可别的错误原样漏到界面上——作废的请求是
+  /// 「The operation couldn’t be completed. (Swift.CancellationError error 1.)」，
+  /// 本机档案读不动时是某个存储类型的名字，断网是系统那句（跟着系统语言，可能是英文），
+  /// 解不开的回包是「The data couldn’t be read…」。和 `ShareClient.message` 同一个做法：
+  /// 认得的错误给固定的话，认不得的一律给一句兜底，绝不把类型名、系统原文念出来。
+  ///
+  /// 返回 nil：这个错误不该说（请求已经作废）。
+  nonisolated static func message(_ error: any Error) -> String? {
+    switch error {
+    case let value as AccountError:
+      return value.localizedDescription
+    case is CancellationError:
+      return nil
+    case let value as URLError:
+      switch value.code {
+      case .cancelled: return nil
+      case .timedOut: return "连接超时，请稍后重试"
+      case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff,
+           .callIsActive:
+        return "网络不可用，请检查网络后重试"
+      default: return "暂时连不上账号服务，请稍后重试"
+      }
+    case is DecodingError, is EncodingError:
+      return AccountError.invalidResponse.localizedDescription
+    case let value as CocoaError where value.isFileError:
+      return AccountError.storage.localizedDescription
+    default:
+      if (error as NSError).domain == NSPOSIXErrorDomain { return AccountError.storage.localizedDescription }
+      return genericFailure
+    }
+  }
+  /// 认不得的错误那一句。和 `AccountError.http(_, _)` 的兜底同一句话。
+  nonisolated static let genericFailure = "暂未成功，请稍后重试"
   func loadDevices() async {
     guard let client else { return }
     let started = generation
