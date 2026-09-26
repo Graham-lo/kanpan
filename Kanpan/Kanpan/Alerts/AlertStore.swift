@@ -11,7 +11,10 @@ import KanpanCore
 /// 才动内存与界面），这样账号桥那边两摊东西能排在同一次提交里。
 @MainActor
 final class AlertStore: ObservableObject {
-  @Published private(set) var archive: AlertArchive
+  @Published private(set) var archive: AlertArchive {
+    // 存档一变，总表那份排好的分段与行跟着作废；下次有人读再排一趟（压测收尾第 5 项）。
+    didSet { cachedRows = nil }
+  }
   /// 存档变了就响一次；账号桥挂在这儿记账 + 同步。
   var onChange: ((AlertArchive) -> Void)?
   /// 正式文件（`alerts.json`）那次写什么时候真的发生。和画线那儿
@@ -63,6 +66,22 @@ final class AlertStore: ObservableObject {
   #endif
 
   var all: [Alert] { archive.alerts }
+
+  /// 总表（「全部预警」）摆的那一列：分段、按品种分组、排好序、摊平成行。
+  ///
+  /// 原来总表 body 每跑一趟都 `AlertRecordText.sections(store.all)` 现排一遍（过滤、
+  /// 两次排序、按品种分组），而 body 会被任何一次写、`notice`、宿主换一口价叫醒。
+  /// 现在只在存档变了之后第一次读的时候排一趟，读多少遍都不再排。
+  var listRows: [AlertListItem] {
+    if let cachedRows { return cachedRows }
+    let rows = AlertListItem.rows(AlertRecordText.sections(archive.alerts))
+    cachedRows = rows
+    listRowBuilds += 1
+    return rows
+  }
+  private var cachedRows: [AlertListItem]?
+  /// 总表那一列排过几趟。只给单测数次数用。
+  private(set) var listRowBuilds = 0
   /// 界面上看得见的那些：已触发只是「通知 / Webhook 发出去之前」的一瞬间，不展示
   /// （复盘到点例外，它的「已到点」就是给人看的，一天后由 `ReviewDueAlerts` 清）。
   var visible: [Alert] { archive.alerts.filter(AlertRecordText.isVisible) }

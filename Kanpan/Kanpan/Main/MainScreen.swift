@@ -1700,6 +1700,7 @@ struct MainScreen: View {
       },
       zone: prefs.timeZone.offsetMinutes,
       quote: { text in alertQuote(text, live: live) },
+      decimals: { [picker] symbol in picker.info(for: InstrumentID.canonical(symbol))?.knownPriceDecimals },
       prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
       releaseQuote: { [weak quotes] in quotes?.releaseNamed() })
   }

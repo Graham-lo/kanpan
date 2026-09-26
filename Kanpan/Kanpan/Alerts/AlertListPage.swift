@@ -10,6 +10,10 @@ struct AlertListContext {
   var zone: TZOffset = .system
   /// 按用户打的代号查品种与现价（创建 / 编辑页要）。
   var quote: (String) -> PriceAlertQuote? = { _ in nil }
+  /// 总表行上那口价按几位小数写（按提醒存的规范键查目录）。**一口价都不读**：
+  /// 总表只要小数位，原来借 `quote` 拿，而从创建页推进来的那张 `quote` 是带现价的——
+  /// 读了图上那只的逐笔，整张总表就跟着每一笔成交重跑。
+  var decimals: (String) -> Int? = { _ in nil }
   /// 创建 / 编辑页定了品种之后叫一声，宿主去要一口价。
   var prepareQuote: (String) -> Void = { _ in }
   /// 创建 / 编辑页关了叫一声，宿主放掉 `prepareQuote` 点名要的那一只（图上那只照旧）。
@@ -69,18 +73,24 @@ struct AlertListPage: View {
       .navigationBarTitleDisplayMode(.inline)
   }
 
+  /// 2026-09-26 压测收尾第 5 项：原来是 `ScrollView { VStack }`，body 里现排
+  /// `AlertRecordText.sections(store.all)`，两百条提醒一次全建出来；存档任何一次写
+  /// （删一条、同步落一版、`notice`）都把整页连同每一行重跑一遍。现在：
+  ///
+  /// - 排好的那一列由 `AlertStore.listRows` 缓存，存档不变不再排；
+  /// - `LazyVStack` 只建看得见的行；分组卡片摊成一片一片（`AlertCardSlice`，首片上圆角、
+  ///   末片下圆角），样子和原来整张卡片一样；
+  /// - 记录行是 `Equatable`（`AlertListRecord`），写一次只有输入真变了的那几行重画——
+  ///   删一条：它自己、它那组的段头（数量）、段标题（数量）、以及接替它首尾位置的那一行。
   private var list: some View {
-    let sections = AlertRecordText.sections(store.all)
+    let rows = store.listRows
     return ScrollView {
-      VStack(alignment: .leading, spacing: 0) {
-        if sections.isEmpty {
+      Group {
+        if rows.isEmpty {
           empty.transition(.opacity)
         } else {
-          ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-            sectionView(section)
-              .padding(.top, index == 0 ? 0 : Space.section)
-              // 一段删空了整段（标题 + 卡片）淡出；最后一条删掉时空态淡入，不闪。
-              .transition(.opacity)
+          LazyVStack(alignment: .leading, spacing: 0) {
+            ForEach(rows) { item in cell(item) }
           }
         }
       }
@@ -97,35 +107,32 @@ struct AlertListPage: View {
     .accessibilityIdentifier("alerts.page")
   }
 
-  /// 一段：卡片外的分组标题 + 一张分组卡片。价格 / 画线两段卡片里按品种分，
+  /// 一行：段标题（卡片外）、品种段头、记录。价格 / 画线两段卡片里按品种分，
   /// 复盘到点那段不分品种（标题里已经写着品种）。
-  private func sectionView(_ section: AlertRecordText.Section) -> some View {
-    VStack(alignment: .leading, spacing: Space.s) {
-      AlertCardTitle(text: section.title)
+  @ViewBuilder
+  private func cell(_ item: AlertListItem) -> some View {
+    switch item {
+    case let .title(kind, text, first):
+      AlertCardTitle(text: text)
         .contentTransition(.numericText())
-      AlertGroupCard {
-        ForEach(section.groups) { group in
-          if section.kind != .reviewDue {
-            AlertSymbolHeader(symbol: group.symbol, count: group.alerts.count)
-              .transition(.opacity)
-          }
-          ForEach(Array(group.alerts.enumerated()), id: \.element.id) { index, alert in
-            AlertRecordRow(
-              alert: alert,
-              title: AlertRecordText.title(alert, withSymbol: section.kind == .reviewDue),
-              meta: AlertRecordText.meta(alert, zone: context.zone,
-                                         decimals: context.quote(InstrumentID(alert.symbol).display)?.decimals,
-                                         conditionInline: true),
-              divider: index < group.alerts.count - 1 || group.id != section.groups.last?.id,
-              onTap: { context.onOpen(alert) },
-              onDelete: { withAnimation(.snappy) { store.remove(id: alert.id) } })
-            .transition(AlertRecordRow.removal)
-          }
-        }
-      }
+        .padding(.top, first ? 0 : Space.section)
+        .padding(.bottom, Space.s)
+        // 一段删空了整段淡出；最后一条删掉时空态淡入，不闪。
+        .transition(.opacity)
+        .accessibilityIdentifier("alerts.section.\(kind.rawValue)")
+    case let .header(_, symbol, count, top):
+      AlertSymbolHeader(symbol: symbol, count: count)
+        .modifier(AlertCardSlice(top: top, bottom: false))
+        .transition(.opacity)
+    case let .record(alert, withSymbol, divider, top, bottom):
+      AlertListRecord(alert: alert, withSymbol: withSymbol, zone: context.zone,
+                      decimals: context.decimals(alert.symbol),
+                      divider: divider, top: top, bottom: bottom,
+                      onTap: { [context] in context.onOpen(alert) },
+                      onDelete: { [store] in withAnimation(.snappy) { store.remove(id: alert.id) } })
+        .equatable()
+        .transition(AlertRecordRow.removal)
     }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("alerts.section.\(section.kind.rawValue)")
   }
 
   /// 空态：一枚实心图标 + 一句短字（UI 审查 2026-09-24：空态 = 36 图标 + 15 字，不写解释句）。
@@ -142,5 +149,78 @@ struct AlertListPage: View {
     .containerRelativeFrame(.vertical) { height, _ in max(0, height - Space.m - Space.section) }
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("alerts.empty")
+  }
+}
+
+/// 总表摊平后的一行。纯值，`AlertStore.listRows` 缓存的就是它。
+enum AlertListItem: Identifiable, Equatable {
+  /// 卡片外的段标题（「价格提醒 3」）。`first`：第一段上面不留段距。
+  case title(kind: KanpanCore.Alert.Kind, text: String, first: Bool)
+  /// 卡片里一个品种的段头。`top`：卡片的第一片（上圆角）。
+  case header(kind: KanpanCore.Alert.Kind, symbol: String, count: Int, top: Bool)
+  /// 一条提醒。`withSymbol`：标题里带品种（复盘到点那段）；`bottom`：卡片的最后一片（下圆角）。
+  case record(alert: KanpanCore.Alert, withSymbol: Bool, divider: Bool, top: Bool, bottom: Bool)
+
+  var id: String {
+    switch self {
+    case let .title(kind, _, _): "title/" + kind.rawValue
+    // 同一只品种可能同时在价格、画线两段里有段头。
+    case let .header(kind, symbol, _, _): "head/" + kind.rawValue + "/" + symbol
+    case let .record(alert, _, _, _, _): "alert/" + alert.id
+    }
+  }
+
+  /// 分段摊成行。分隔线与首尾圆角的口径和原来整张卡片一致：组里最后一条、且是卡片里最后一组
+  /// 的最后一条才不画线。
+  static func rows(_ sections: [AlertRecordText.Section]) -> [AlertListItem] {
+    var out: [AlertListItem] = []
+    for (index, section) in sections.enumerated() {
+      out.append(.title(kind: section.kind, text: section.title, first: index == 0))
+      var top = true
+      for (g, group) in section.groups.enumerated() {
+        if section.kind != .reviewDue {
+          out.append(.header(kind: section.kind, symbol: group.symbol, count: group.alerts.count, top: top))
+          top = false
+        }
+        let lastGroup = g == section.groups.count - 1
+        for (i, alert) in group.alerts.enumerated() {
+          let lastInGroup = i == group.alerts.count - 1
+          out.append(.record(alert: alert, withSymbol: section.kind == .reviewDue,
+                             divider: !(lastInGroup && lastGroup), top: top, bottom: lastInGroup && lastGroup))
+          top = false
+        }
+      }
+    }
+    return out
+  }
+}
+
+/// 总表的一条记录：`AlertRecordRow` 套上卡片的那一片。按值比较（闭包不算——它们只认
+/// 这一行自己的 id），SwiftUI 据此跳过没变的行。
+struct AlertListRecord: View, Equatable {
+  var alert: KanpanCore.Alert
+  var withSymbol: Bool
+  var zone: TZOffset
+  var decimals: Int?
+  var divider: Bool
+  var top: Bool
+  var bottom: Bool
+  var onTap: () -> Void
+  var onDelete: () -> Void
+
+  nonisolated static func == (l: Self, r: Self) -> Bool {
+    l.alert == r.alert && l.withSymbol == r.withSymbol && l.zone == r.zone && l.decimals == r.decimals
+      && l.divider == r.divider && l.top == r.top && l.bottom == r.bottom
+  }
+
+  var body: some View {
+    AlertRecordRow(
+      alert: alert,
+      title: AlertRecordText.title(alert, withSymbol: withSymbol),
+      meta: AlertRecordText.meta(alert, zone: zone, decimals: decimals, conditionInline: true),
+      divider: divider,
+      onTap: onTap,
+      onDelete: onDelete)
+    .modifier(AlertCardSlice(top: top, bottom: bottom))
   }
 }

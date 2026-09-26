@@ -37,6 +37,25 @@ struct AlertGroupCard<Content: View>: View {
   }
 }
 
+/// 分组卡片摊开成一片一片（总表是 `LazyVStack`，整张卡片没法包住懒加载的行）：
+/// 每片同一个 `raised2` 底，卡片第一片上圆角、最后一片下圆角，拼起来和 `AlertGroupCard` 一样。
+struct AlertCardSlice: ViewModifier {
+  var top: Bool
+  var bottom: Bool
+  @Environment(\.panelTheme) private var t
+
+  func body(content: Content) -> some View {
+    let shape = UnevenRoundedRectangle(
+      topLeadingRadius: top ? Radius.m : 0, bottomLeadingRadius: bottom ? Radius.m : 0,
+      bottomTrailingRadius: bottom ? Radius.m : 0, topTrailingRadius: top ? Radius.m : 0,
+      style: .continuous)
+    content
+      .frame(maxWidth: .infinity)
+      .background(AlertPageStyle.card(t))
+      .clipShape(shape)
+  }
+}
+
 /// 卡片里行与行之间那条发丝线：从标签那一格起，不通到卡片左缘（iOS 分组表的惯例）。
 struct AlertCardDivider: View {
   /// 左边再让出多少（记录行前面有一颗圆点，线从文字起）。
