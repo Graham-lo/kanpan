@@ -908,11 +908,13 @@ public struct ChartRenderer {
   /// 倒计时文案。最后一根的收盘时刻 = 它的 openTime + 周期，收盘已过给 `nil`。
   ///
   /// 用 `series.time(at:)` 拿 openTime 而不是 `t0 + i * step`：1M 这种不等距周期
-  /// 只有查表才是对的。
+  /// 只有查表才是对的。收盘时刻同理：1M / 1y 的 `step` 只是名义 30 / 365 天，
+  /// 拿它加会让 31 天的月在最后一天提前「收盘」、2 月多数出两天，得按日历走一格。
   func countdownText(now: Double) -> String? {
     let b = state.series
     guard b.count > 0 else { return nil }
-    let close = Double(b.time(at: b.count - 1)) + Double(b.step)
+    let open = b.time(at: b.count - 1)
+    let close = Double(b.interval.isIrregular ? b.interval.advancing(open, by: 1) : open + b.step)
     return fmtCountdown(msRemaining: close - now)
   }
 
@@ -923,7 +925,13 @@ public struct ChartRenderer {
   /// 1 天两个坎上各变一次，所以把坎两侧各探一下，取最宽的那个。
   func countdownTemplate() -> String? {
     guard state.options.countdown, state.series.count > 0 else { return nil }
-    let step = Double(state.series.step)
+    // 不等距周期的剩余时间最长能到一整个日历月 / 年（31 天、366 天），名义步长探不到。
+    let day = 86_400_000.0
+    let step = switch state.series.interval {
+    case .mo1: 31 * day
+    case .y1: 366 * day
+    default: Double(state.series.step)
+    }
     let probes = [step, 86_400_000, 86_399_000, 3_600_000, 3_599_000].filter { $0 > 0 && $0 <= step }
     let texts = probes.compactMap { fmtCountdown(msRemaining: $0) }
     return texts.max { Double($0.width(ChartFont.tiny)) < Double($1.width(ChartFont.tiny)) }

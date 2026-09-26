@@ -160,6 +160,39 @@ struct ChartOptionsRenderTests {
     #expect(ChartRenderer(state: st).countdownText(now: close + 1) == nil)
   }
 
+  /// 月线的末根按日历月收盘，不是名义 30 天：2026-01 那根 2 月 1 日 00:00 才收，
+  /// 2026-02 那根 3 月 1 日收（只有 28 天）。
+  @Test("月线倒计时按日历月算收盘")
+  func countdownMonthly() {
+    func monthly(_ opens: [Int64]) -> ChartState {
+      let n = opens.count
+      let series = BarSeries(
+        symbol: "BTCUSDT", interval: .mo1, t0: opens[0],
+        open: .init(repeating: 1, count: n), high: .init(repeating: 2, count: n),
+        low: .init(repeating: 0.5, count: n), close: .init(repeating: 1.5, count: n),
+        volume: .init(repeating: 10, count: n), openTime: opens)
+      var st = Evidence.state(dark: false, size: Self.size)
+      st.series = series
+      st.options.countdown = true
+      return st
+    }
+    let dec: Int64 = 1_764_547_200_000  // 2025-12-01 UTC
+    let jan: Int64 = 1_767_225_600_000  // 2026-01-01 UTC
+    let feb: Int64 = 1_769_904_000_000  // 2026-02-01 UTC
+    let mar: Int64 = 1_772_323_200_000  // 2026-03-01 UTC
+    let day = 86_400_000.0
+    // 1 月的第 31 天：名义步长会说「已经收了」，实际还有一天。
+    let january = ChartRenderer(state: monthly([dec, jan]))
+    #expect(january.countdownText(now: Double(feb) - day) == "1d 00:00")
+    #expect(january.countdownText(now: Double(feb)) == nil)
+    // 2 月初：离收盘只有 28 天，不是 30 天。
+    let february = ChartRenderer(state: monthly([jan, feb]))
+    #expect(february.countdownText(now: Double(feb)) == "28d 00:00")
+    #expect(february.countdownText(now: Double(mar)) == nil)
+    // 量轴宽的模板要探到 31 天那一档。
+    #expect(february.countdownTemplate()?.hasPrefix("31d") == true)
+  }
+
   /// `nowMs == nil` 时整帧必须和倒计时关着一模一样——`ChartState` 是纯值，
   /// 同一份 state 必须给同一张图，时间只能从外面喂进来。
   @Test("nowMs 为空时不影响任何几何")
