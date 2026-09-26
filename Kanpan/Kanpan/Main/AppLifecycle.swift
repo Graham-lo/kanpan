@@ -60,6 +60,12 @@ final class AppLifecycle {
   /// 这一轮「离开前台」是不是已经落过盘了。`.inactive` 紧接着 `.background`，
   /// 不拦一下会白跑两遍。回到 `.active` 时放开。
   private var flushedSinceActive = false
+  /// 资源这一轮是不是已经按「进后台」收过摊了。`enter()` 只在收过之后才跑，`leave()` 也只跑一遍。
+  ///
+  /// 没有这道闸时 `.inactive → .active`（拉一下通知中心、弹一次系统框、Face ID）
+  /// 也会把所有资源 `enter()` 一遍——明明没有 `leave()` 过：K 线整段重发一次、统计轮询
+  /// 被掐掉重开、账号与复盘各打一趟同步。这和上面「`.inactive` 不动资源」的口径自相矛盾。
+  private var resourcesAway = false
 
   private init() {}
 
@@ -138,9 +144,13 @@ final class AppLifecycle {
     switch phase {
     case .active:
       flushedSinceActive = false
+      guard resourcesAway else { return }
+      resourcesAway = false
       for r in resources.values { r.enter() }
     case .background:
       leaveForeground(final: false)
+      guard !resourcesAway else { return }
+      resourcesAway = true
       for r in resources.values { r.leave() }
     default:
       // `.inactive`：人已经把手指放上了 app 切换器，或者正要被弹窗盖住。

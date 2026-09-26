@@ -73,6 +73,37 @@ struct RootLifecycleTests {
     life.phaseChanged(to: .active)
   }
 
+  @Test("只到过 .inactive 就回来：资源一下都不动；连着两次 .background 只收一次摊")
+  func inactiveRoundTripLeavesResourcesAlone() {
+    let life = AppLifecycle.shared
+    life.phaseChanged(to: .active)              // 从「在前台」起步，别吃上一条用例留下的状态
+    let left = Box(0), entered = Box(0)
+    let token = life.registerResources(id: "bt17.inactive",
+                                       leave: { [left] in left.value += 1 },
+                                       enter: { [entered] in entered.value += 1 })
+    defer { life.unregisterResources(token: token); life.phaseChanged(to: .active) }
+
+    // 拉一下通知中心 / 弹一次系统框：没进过后台，就没有「回前台」可言。
+    life.phaseChanged(to: .inactive)
+    life.phaseChanged(to: .active)
+    #expect(left.value == 0)
+    #expect(entered.value == 0)
+
+    // 真进后台：收一次；再报一次后台也不重收（重收会把宽限闹钟往后推）。
+    life.phaseChanged(to: .inactive)
+    life.phaseChanged(to: .background)
+    life.phaseChanged(to: .background)
+    #expect(left.value == 1)
+    #expect(entered.value == 0)
+
+    // 回来：经 .inactive 到 .active，续一次，且只续一次。
+    life.phaseChanged(to: .inactive)
+    life.phaseChanged(to: .active)
+    life.phaseChanged(to: .active)
+    #expect(left.value == 1)
+    #expect(entered.value == 1)
+  }
+
   @Test("迟到的旧宿主注销不掉新宿主那条落盘钩子")
   func staleHookTokenCannotUnregisterTheLiveOne() {
     let life = AppLifecycle.shared
