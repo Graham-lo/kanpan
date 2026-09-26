@@ -242,11 +242,39 @@ fn post_webhook(alert_id:String,url:String,body:Value) {
   tracing::warn!("Alert {alert_id} has a webhook to a local or private address ({}); not posting",webhook_host(&url));
   return
  }
+ if !spawn_webhook(alert_id.clone(),url.clone(),body,WEBHOOK_RETRY) {
+  tracing::warn!("Alert {alert_id} fired but {WEBHOOK_BACKLOG} webhooks are already waiting; not posting to {}",webhook_host(&url));
+ }
+}
+/// 同时连出去的 Webhook 最多几封。一封最坏攥着一条连接 8 + 3 + 8 秒。
+const WEBHOOK_IN_FLIGHT:usize=16;
+/// 排着的（含正在发的）最多几封，再多就丢、留日志。按 16 路、每封最坏 19 秒算，
+/// 排在最后的那封也在五分钟内发出——和「报上来的触发十分钟内才替它发」同一个量级，
+/// 再往后排的发出去也是过时信号。
+const WEBHOOK_BACKLOG:usize=256;
+static WEBHOOK_SLOTS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(WEBHOOK_IN_FLIGHT);
+static WEBHOOK_QUEUED:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+/// 排一封 Webhook。排满了返回 `false`，一封都不发。
+///
+/// 以前每封都裸 `tokio::spawn`、没有任何上限：推送接口没有额度，一次 push 100 条
+/// 「已触发」就是 100 条同时出去的连接，对面慢一点，几秒就攒出上千条，撞上 serve
+/// 默认 1024 的文件描述符上限，accept 都失败，整个 API 停摆（压测：400 封打到一个
+/// 只收不回的地址，同时开着 400 条连接）。
+fn spawn_webhook(alert_id:String,url:String,body:Value,retry:Duration)->bool {
+ use std::sync::atomic::Ordering;
+ if WEBHOOK_QUEUED.fetch_add(1,Ordering::SeqCst)>=WEBHOOK_BACKLOG {WEBHOOK_QUEUED.fetch_sub(1,Ordering::SeqCst);return false}
+ /// 任务怎么结束（发完、失败、运行时关停把它丢掉）都要把排队数还回去。
+ struct Queued;
+ impl Drop for Queued {fn drop(&mut self) {WEBHOOK_QUEUED.fetch_sub(1,Ordering::SeqCst);}}
+ let queued=Queued;
  tokio::spawn(async move {
-  if let Err(e)=deliver_webhook(webhook_client(),&url,&body,WEBHOOK_RETRY).await {
+  let _queued=queued;
+  let Ok(_slot)=WEBHOOK_SLOTS.acquire().await else {return};
+  if let Err(e)=deliver_webhook(webhook_client(),&url,&body,retry).await {
    tracing::warn!("Alert {alert_id} fired but its webhook to {} failed: {e}",webhook_host(&url));
   }
  });
+ true
 }
 /// `sync::push` 提交之后调：替客户端报上来的那几次触发发 Webhook。
 pub fn send_reported(fires:Vec<ReportedFire>) {
@@ -2127,6 +2155,30 @@ mod tests {
   assert!(rx.recv().await.is_some());
   tokio::time::sleep(Duration::from_millis(100)).await;
   assert!(rx.try_recv().is_err(),"4xx 不重试");
+ }
+ /// 一口气报上来几百次触发、对面又是个只收不回的黑洞：同时连过去的不能跟着涨。
+ ///
+ /// 以前每封都裸 `tokio::spawn`，一次 push 100 条「已触发」就是 100 个任务，每个最长
+ /// 攥着一条出站连接 8 + 3 + 8 秒；推送没有额度，几秒就能攒出上千条连接，撞上 serve
+ /// 默认 1024 的文件描述符上限，连 accept 都失败，整个 API 停摆。
+ #[tokio::test(flavor="multi_thread",worker_threads=4)] async fn a_burst_of_webhooks_to_a_black_hole_stays_bounded() {
+  use std::sync::atomic::{AtomicUsize,Ordering};
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let url=format!("http://{}/hook",listener.local_addr().unwrap());
+  let open=std::sync::Arc::new(AtomicUsize::new(0));let peak=std::sync::Arc::new(AtomicUsize::new(0));
+  let (o,p)=(open.clone(),peak.clone());
+  tokio::spawn(async move {
+   let mut held=vec![];
+   // 只收不回：连接一直挂着，直到客户端自己超时断开。
+   while let Ok((socket,_))=listener.accept().await {let now=o.fetch_add(1,Ordering::SeqCst)+1;p.fetch_max(now,Ordering::SeqCst);held.push(socket);}
+  });
+  const BURST:usize=400;
+  let accepted=(0..BURST).filter(|n|spawn_webhook(format!("a{n}"),url.clone(),json!({"event":"alert"}),Duration::from_millis(20))).count();
+  tokio::time::sleep(Duration::from_millis(1500)).await;
+  let peak=peak.load(Ordering::SeqCst);
+  eprintln!("webhook burst: {BURST} posted, {accepted} queued, peak concurrent connections {peak}");
+  assert!(peak<=WEBHOOK_IN_FLIGHT,"{peak} webhook connections open at once");
+  assert!(accepted<=WEBHOOK_BACKLOG,"{accepted} webhooks queued");
  }
  /// 对面回 302 指向本机别的端口：不跟过去（那就是 SSRF 的路子），按失败记、不重试。
  #[tokio::test] async fn a_webhook_never_follows_a_redirect() {
