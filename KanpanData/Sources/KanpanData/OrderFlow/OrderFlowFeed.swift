@@ -127,7 +127,7 @@ public actor OrderFlowFeed {
   private var nudgedOnConnection: Set<String> = []
   /// 每本簿这一轮一共催过几次：品种在交易所那头已经没了、订阅永远不回快照时，不能无限催下去。
   private var firstSnapshotNudges: [String: Int] = [:]
-  /// 快照在流里的那几家（OKX、Coinbase）：连上这么久一本簿还没收到首帧快照，就单本重订一次。
+  /// 快照在流里给的那几家：连上这么久一本簿还没收到首帧快照，就单本重订一次。
   static let firstSnapshotTimeoutMs: Int64 = 15_000
   static let maxFirstSnapshotNudges = 3
   private var lastEmitted: OrderFlowSnapshot?
