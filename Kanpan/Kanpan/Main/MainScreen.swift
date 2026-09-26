@@ -567,7 +567,7 @@ struct MainScreen: View {
     .onAppear { wireReview() }
     // 提醒：深链 / 通知点开的是总表，图上十字线那颗药丸开的是新建页（右上「全部预警」再推进总表）。
     .sheet(item: $alertSheet) { route in
-      AlertSheetView(route: route, store: alerts, context: alertListContext,
+      AlertSheetView(route: route, store: alerts, context: alertListContext(live: route != .list),
                      onCreated: { alert in
                        alertSheet = nil
                        say("已加提醒 · " + alert.title)
@@ -1647,7 +1647,11 @@ struct MainScreen: View {
 
   /// 新建价格提醒那一页问的：用户打的这串是哪只品种、现价多少。
   /// 「ETH」认成 `ETHUSDT`；图上那只取逐笔，别的取报价簿。
-  private func alertQuote(_ text: String) -> PriceAlertQuote? {
+  ///
+  /// `live == false`：只认品种、给小数位，**一口价都不读**。提醒总表（深链 / 通知点开的那张）
+  /// 每一行都拿这个闭包只为了要小数位；读了图上那只的逐笔（`tradeQuote`）就等于让整张表
+  /// 订阅了逐笔成交——几百条提醒、其中一条挂在图上那只，每笔成交整张表重排、每行重建。
+  private func alertQuote(_ text: String, live: Bool = true) -> PriceAlertQuote? {
     let raw = text.trimmingCharacters(in: .whitespaces).uppercased()
     guard !raw.isEmpty else { return nil }
     // 输入框里是给人看的代号（「BTCUSDT」「ETH」「BTC/USD」），报价簿、目录、提醒存的都是完整 key。
@@ -1664,7 +1668,9 @@ struct MainScreen: View {
     guard let symbol else { return nil }
     let price: Double?
     let change: Double?
-    if symbol == main {
+    if !live {
+      price = nil; change = nil
+    } else if symbol == main {
       price = market.tradeQuote?.price ?? market.ticker?.last ?? quotes.observedQuote(symbol)?.last
       // 涨跌幅和行情页头部同一个数（`displayedTicker`），品种卡上那口价的颜色才和头部对得上。
       change = session.displayedTicker?.changePercent ?? quotes.observedQuote(symbol)?.changePercent
@@ -1680,7 +1686,9 @@ struct MainScreen: View {
   }
 
   /// 提醒总表与新建页要的宿主能力（点一行去哪儿、时区、查价）。
-  private var alertListContext: AlertListContext {
+  ///
+  /// `live`：这张表里有没有要现价的页（新建 / 编辑）。只有总表的那张（`.list`）传假。
+  private func alertListContext(live: Bool) -> AlertListContext {
     AlertListContext(
       onOpen: { alert in
         alertSheet = nil
@@ -1690,7 +1698,7 @@ struct MainScreen: View {
         draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
       },
       zone: prefs.timeZone.offsetMinutes,
-      quote: { text in alertQuote(text) },
+      quote: { text in alertQuote(text, live: live) },
       prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
       releaseQuote: { [weak quotes] in quotes?.releaseNamed() })
   }
