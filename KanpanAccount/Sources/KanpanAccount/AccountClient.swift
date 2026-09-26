@@ -35,7 +35,9 @@ public actor AccountClient {
   /// 单飞和代际都在它身上，所以多开几个客户端也只会刷一次（A-06）。
   private let coordinator: RefreshCoordinator
   private let session: URLSession
-  private var saved: SavedAccount?
+  private var saved: SavedAccount? { didSet { ownerMirror.set(saved?.user.id) } }
+  /// `saved` 里是谁的镜像，给不在 actor 上的调用方同步读（见 `currentOwner`）。
+  private nonisolated let ownerMirror = OwnerMirror()
   private var access: AccountTokens?
   private var accessDeadline: TimeInterval = 0
   private var revocation: Task<Void, Never>?
@@ -54,6 +56,10 @@ public actor AccountClient {
   public var needsReauthentication: Bool { lostAuthentication }
   /// 被同一类设备顶下去时，顶掉它的是哪一类设备。没被顶就是 `nil`。
   public var replacedDeviceKind: DeviceKind? { replacement }
+  /// 客户端这一刻替谁发请求（`nil` = 没登录，或者钥匙串还读不动）。
+  ///
+  /// 不用 `await` 就能读：同步传输在构造的那一刻就要把属主钉住（`HTTPSyncTransport`）。
+  public nonisolated var currentOwner: UUID? { ownerMirror.value }
   public init(baseURL: URL, vault: any CredentialVault = KeychainCredentialVault(),
               session: URLSession? = nil, options: Options = Options()) throws {
     guard baseURL.scheme == "https" || (baseURL.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "")),
@@ -74,6 +80,8 @@ public actor AccountClient {
     // 上一次运行里被顶下去了：身份还在（本机档案照常认得出这是谁的），但令牌已经没了。
     // 开机就知道这条会话不作数，一个字节都不用发出去再问一遍。
     if let kind = saved?.replacedBy { lostAuthentication = true; replacement = kind }
+    // 构造器里给 `saved` 赋值不触发 didSet，镜像要自己补一次。
+    ownerMirror.set(saved?.user.id)
   }
   /// 槽里那份凭据是别人签的（换了网关、DEBUG 指到了别处）就当作没有会话。
   static func admit(_ stored: SavedAccount?, baseURL: URL) -> SavedAccount? {
@@ -113,16 +121,19 @@ public actor AccountClient {
   }
   public func savedUser() -> AccountUser? { retryCredentials(); return saved?.user }
   public func savedDevice() -> AccountDevice? { retryCredentials(); return saved?.device }
+  /// `owner`：这趟请求是替谁发的。给了的话，客户端这一刻是别人（或者没人）就不出门、
+  /// 发到一半换了人就不认回来的结果，一律抛 `CancellationError`。替某个档案干活的
+  /// 调用方（同步、复盘）都该给——它们手上的数据属于那个人，换号之后再发出去就是
+  /// 把 A 的东西带着 B 的令牌送进 B 的云端。`nil` = 不钉（登录、注册这类本来就不属于谁的）。
   public func request<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: Data? = nil,
-                                             key: UUID? = nil, authenticated: Bool = true, as type: T.Type = T.self) async throws -> T {
-    let data = try await data(path, method: method, body: body, key: key, authenticated: authenticated)
+                                             key: UUID? = nil, authenticated: Bool = true, owner: UUID? = nil,
+                                             as type: T.Type = T.self) async throws -> T {
+    let data = try await data(path, method: method, body: body, key: key, authenticated: authenticated, owner: owner)
     return try JSONDecoder().decode(Envelope<T>.self, from: data).data
   }
-  public func data(_ path: String, method: String = "GET", body: Data? = nil, key: UUID? = nil, authenticated: Bool = true, contentType: String = "application/json") async throws -> Data {
-    // 「被顶下去」从这一处进。它可能发生在两个地方：拿着 access 令牌访问任何接口，
-    // 或者刷新那一趟。两条路都收在这儿，省得各写一遍、各漏一处。
-    do { return try await perform(path, method: method, body: body, key: key, authenticated: authenticated, contentType: contentType) }
-    catch AccountError.sessionReplaced(let kind) { replaced(by: kind); throw AccountError.sessionReplaced(kind) }
+  public func data(_ path: String, method: String = "GET", body: Data? = nil, key: UUID? = nil, authenticated: Bool = true,
+                   contentType: String = "application/json", owner: UUID? = nil) async throws -> Data {
+    try await perform(path, method: method, body: body, key: key, authenticated: authenticated, contentType: contentType, owner: owner)
   }
   /// 服务端说这条会话被同一类设备顶掉了。
   ///
@@ -132,26 +143,65 @@ public actor AccountClient {
   /// ——云端只是同步通道，不是可用性依赖。所以这儿留下的是一份「认得出是谁、
   /// 但出不了门」的存档，界面照常摆着这个人的东西，只是同步停着。
   private func replaced(by kind: DeviceKind) {
+    guard saved?.replacedBy != kind || replacement != kind else { return }
     lostAuthentication = true; replacement = kind
     access = nil; accessDeadline = 0
     guard var stored = saved else { return }
     stored.refreshToken = ""; stored.refreshRequestId = nil; stored.replacedBy = kind
     try? vault.write(stored); saved = stored
   }
-  private func perform(_ path: String, method: String, body: Data?, key: UUID?, authenticated: Bool, contentType: String) async throws -> Data {
-    let epoch = await coordinator.generation
-    let token = authenticated ? try await accessToken() : nil
+  /// 一趟请求从出门到回来，只替**出门那一刻的那条会话**（以及 `owner` 那个人）说话。
+  ///
+  /// 在途的时候人可能已经换了（退登、换号、同一个人重新登录都会让代际往前走一格）。
+  /// 这时候它带回来的任何结论——`session_replaced`、401、刷新被拒、甚至是成功的数据——
+  /// 说的都是上一条会话，一律变成 `CancellationError`，一个字都不许落到新会话身上。
+  /// 以前（2026-09-26 压测前）有三个口子：
+  /// - 「被顶下去」在 `data()` 里收，不看代际：A 的旧请求在 B 登录之后回来一个
+  ///   `session_replaced`，B 刚写进钥匙串的 refresh 当场被清空、记成被顶，B 被登出；
+  /// - 拿令牌那一步在 `do` 外面：旧会话的刷新被拒 / 被取消，原样的 401、`URLError`
+  ///   漏给调用方，账号页会把它念成「登录已失效」「网络错误」；
+  /// - 按 A 起的同步那一轮在换号之后照样发：令牌是 B 的，推的是 A 的操作。
+  ///
+  /// 所以每过一个等待点都重新对一次（`admit`），出错时先对代际、再决定要不要记「被顶」。
+  private func perform(_ path: String, method: String, body: Data?, key: UUID?, authenticated: Bool, contentType: String, owner: UUID?) async throws -> Data {
+    let epoch = coordinator.generation
     do {
-      let result = try await send(path, method: method, body: body, key: key, token: token, contentType: contentType)
-      guard await coordinator.generation == epoch else { throw CancellationError() }; return result
-    } catch AccountError.http(401, _) where authenticated {
-      guard await coordinator.generation == epoch else { throw CancellationError() }
-      // Several requests can return 401 for the same old access token; don't rotate again.
-      if access?.accessToken == token { access = nil }
-      let refreshed = try await accessToken()
-      let result = try await send(path, method: method, body: body, key: key, token: refreshed, contentType: contentType)
-      guard await coordinator.generation == epoch else { throw CancellationError() }; return result
+      try admit(epoch, owner: owner)
+      let token = authenticated ? try await accessToken(epoch: epoch) : nil
+      do {
+        try admit(epoch, owner: owner)
+        let result = try await send(path, method: method, body: body, key: key, token: token, contentType: contentType)
+        try admit(epoch, owner: owner); return result
+      } catch AccountError.http(401, _) where authenticated {
+        try admit(epoch, owner: owner)
+        // 同一把旧 access 撞墙的可能有好几个：只有手上还是这一把的才作废它，别连刷两次。
+        if access?.accessToken == token { access = nil; accessDeadline = 0 }
+        let refreshed = try await accessToken(epoch: epoch, stale: token)
+        try admit(epoch, owner: owner)
+        let result = try await send(path, method: method, body: body, key: key, token: refreshed, contentType: contentType)
+        try admit(epoch, owner: owner); return result
+      }
+    } catch {
+      guard isCurrent(epoch, owner: owner) else { throw CancellationError() }
+      // 「被顶下去」从这一处进。它可能发生在两个地方：拿着 access 令牌访问任何接口，
+      // 或者刷新那一趟。两条路都收在这儿，而且是**确认了还是这条会话之后**才收。
+      if case AccountError.sessionReplaced(let kind) = error { replaced(by: kind) }
+      throw error
     }
+  }
+  /// 这趟请求还算不算数：代际没换、`owner`（给了的话）还是客户端现在替的那个人。
+  ///
+  /// 钥匙串读不动时 `saved` 是空的，这不等于换了人：那时候认不出是谁，就不当它是别人
+  /// （让后面拿令牌那一步照旧报「凭据欠着」，而不是把同步悄悄取消掉）。
+  private func isCurrent(_ epoch: UUID, owner: UUID?) -> Bool {
+    guard coordinator.generation == epoch else { return false }
+    guard let owner else { return true }
+    return saved?.user.id == owner || (saved == nil && vaultUnreadable)
+  }
+  private func admit(_ epoch: UUID, owner: UUID?) throws {
+    if owner != nil, saved == nil { retryCredentials() }
+    guard isCurrent(epoch, owner: owner) else { throw CancellationError() }
+    if owner != nil, saved == nil, vaultUnreadable { throw AccountError.credentialsUnavailable }
   }
   /// 路径守卫：这条路径能不能拼到 baseURL 后面出门。
   ///
@@ -214,7 +264,9 @@ public actor AccountClient {
     }
     return data
   }
-  private func accessToken() async throws -> String {
+  /// 拿一把能用的 access。`epoch` 是请求出门时的代际；`stale` 是刚被服务端拒掉的那一把
+  /// （它不能再被当成「还新鲜」递回来）。
+  private func accessToken(epoch: UUID, stale: String? = nil) async throws -> String {
     if let access, ProcessInfo.processInfo.systemUptime < accessDeadline { return access.accessToken }
     // 凭据欠着：先再读一次；还读不动就报「稍后再试」，**不是** 401——一个 401 会被
     // 上层当成「登录失效」把人推去重新登录，而他其实什么都没丢。
@@ -223,18 +275,21 @@ public actor AccountClient {
     if let replacement { throw AccountError.sessionReplaced(replacement) }
     if lostAuthentication { throw AccountError.reauthenticationRequired }
     guard saved != nil else { throw AccountError.http(401, "authentication_failed") }
-    let epoch = await coordinator.generation
     do {
       // 领跑还是搭车由协调者说了算：同一槽凭据上只有一趟刷新真的出门（A-06）。
-      let value = try await coordinator.refresh { [weak self] in
+      // 代际已经换了的话协调者不让上车——旧会话的请求不许替新会话开一趟刷新。
+      let value = try await coordinator.refresh(epoch: epoch) { [weak self] in
         guard let self else { throw CancellationError() }
-        return try await self.performRefresh()
+        return try await self.performRefresh(epoch: epoch, stale: stale)
       }
-      guard await coordinator.generation == epoch else { throw CancellationError() }
-      try adopt(value)
+      guard coordinator.generation == epoch else { throw CancellationError() }
+      try take(value)
       return value.accessToken
     } catch {
-      guard await coordinator.generation == epoch else { throw error }
+      // 查完就改，中间没有等待点：`accept` / `signOut` 进门第一件事就是换代际，
+      // 所以这里看到的代际还对，就一定还是这条会话。以前这一步要 `await` 协调者，
+      // 跳出去的那一刻 `accept(B)` 插进来，旧会话的 401 就把 B 记成了「该重新登录」。
+      guard coordinator.generation == epoch else { throw CancellationError() }
       // 只有服务端**明确拒绝**才算「该重新登录了」。断网、超时、502 都只是这一趟没成，
       // 下一趟还得照常重试——否则在飞机上开一次 app 就把人推到登录页，再也不重试了。
       //
@@ -248,7 +303,15 @@ public actor AccountClient {
     }
   }
   /// 真的去刷那一趟。只有协调者选中的**领跑者**会走到这儿。
-  private func performRefresh() async throws -> AccountTokens {
+  ///
+  /// 令牌在这里（班车里）就落到钥匙串，而不是等领跑者回来再落：班车撤掉之前新令牌已经
+  /// 在手上，后面来的人直接用，不会因为「领跑者还没回来」再开一趟（压测里同一把 access
+  /// 撞墙的五十个请求，以前四成的轮次刷了两次）。
+  private func performRefresh(epoch: UUID, stale: String?) async throws -> AccountTokens {
+    guard coordinator.generation == epoch else { throw CancellationError() }
+    // 上一趟刚落地（它的领跑者还没回来、或者搭车的人还没醒）：手上的 access 还新鲜、
+    // 也不是调用方刚被拒的那一把，就直接用它，不再出门。
+    if let access, access.accessToken != stale, ProcessInfo.processInfo.systemUptime < accessDeadline { return access }
     // 先把槽里最新的那份读回来：共用这一槽的另一个实例可能刚刚轮换过令牌，
     // 手上这份已经作废了，拿它去刷就是「令牌重用」，整条会话家族会被吊销。
     if let stored = try? vault.read(), AccountClient.accepts(stored, baseURL: baseURL), stored.user.id == saved?.user.id {
@@ -265,22 +328,33 @@ public actor AccountClient {
     struct Refresh: Encodable { var refreshToken: String; var requestId: UUID; var device: AccountDevice }
     let body = try JSONEncoder().encode(Refresh(refreshToken: saved.refreshToken, requestId: requestId, device: saved.device))
     let data = try await send("v1/auth/refresh", method: "POST", body: body, key: requestId, token: nil)
-    return try JSONDecoder().decode(Envelope<AccountTokens>.self, from: data).data
+    let value = try JSONDecoder().decode(Envelope<AccountTokens>.self, from: data).data
+    // 刷新在途的时候人换了（退登、换号、同一个人重新登录）：这对令牌属于上一条会话，
+    // 不许写回钥匙串盖掉新会话的那一份。
+    guard coordinator.generation == epoch, let current = self.saved, value.user.id == current.user.id else { throw CancellationError() }
+    try persist(value, device: current.device)
+    return value
   }
-  /// 把刷新回来的这一对令牌落到自己这份状态里。发起者和搭车的都要走这一步。
-  private func adopt(_ value: AccountTokens) throws {
+  /// 把班车的结果接到自己手上。领跑者在班车里已经落过了，这里只剩搭车的人
+  /// （包括共用这一槽凭据的别的客户端）：**只动内存，不写钥匙串**——钥匙串里那份
+  /// 领跑者写过了，再写一遍不但是白写，醒得晚的人还可能拿一把旧的盖掉更新的。
+  private func take(_ value: AccountTokens) throws {
     guard let saved, value.user.id == saved.user.id else { throw CancellationError() }
-    try persist(value, device: saved.device)
+    guard access?.accessToken != value.accessToken else { return }
+    try persist(value, device: saved.device, write: false)
   }
   public func accept(_ tokens: AccountTokens, device: AccountDevice) async throws {
+    // 第一件事就换代际，而且是同步的一步：从这一刻起，在途的一切（包括正等着搭车、
+    // 正等着落令牌的）都只属于上一条会话。
+    coordinator.invalidate()
     lostAuthentication = false; replacement = nil; access = nil; accessDeadline = 0
-    await coordinator.invalidate()
     try persist(tokens, device: device)
   }
-  private func persist(_ tokens: AccountTokens, device: AccountDevice) throws {
+  private func persist(_ tokens: AccountTokens, device: AccountDevice, write: Bool = true) throws {
     let next = SavedAccount(user: tokens.user, sessionId: tokens.sessionId, device: device,
                             refreshToken: tokens.refreshToken, origin: AccountClient.origin(of: baseURL))
-    try vault.write(next); saved = next; access = tokens; vaultUnreadable = false
+    if write { try vault.write(next) }
+    saved = next; access = tokens; vaultUnreadable = false
     accessDeadline = ProcessInfo.processInfo.systemUptime + max(0, min(900, Double(tokens.expiresAt - tokens.serverTime) / 1000) - 30)
   }
   /// 退登分两步，而且两步的地位不一样。
@@ -292,14 +366,15 @@ public actor AccountClient {
   /// **网络那一步尽力而为**：它在后台跑，离线退登照样是退登（云端只是同步通道）。
   /// 界面不等它——等它就得等满一次超时。
   public func signOut() async throws {
+    // 这一槽的凭据要作废，不只是我手上这一份：共用它的其他客户端也得跟着走。
+    // 第一件事就换代际（同步的一步，见 `accept`），在途的请求从这一刻起都作废。
+    coordinator.invalidate()
     let credential = saved
     let token = access?.accessToken
     // `vaultUnreadable` 也清：人已经退了，钥匙串那次删哪怕没删成，稍后一次「读到了」
     // 也不许把退掉的凭据翻回来。
     saved = nil; access = nil; accessDeadline = 0; lostAuthentication = false; replacement = nil
     vaultUnreadable = false
-    // 这一槽的凭据要作废，不只是我手上这一份：共用它的其他客户端也得跟着走。
-    await coordinator.invalidate()
     var failure: (any Error)?
     do { try vault.write(nil) } catch { failure = error }
     revocation = Task { await self.revoke(credential, access: token) }
@@ -332,4 +407,12 @@ public actor AccountClient {
       catch AccountError.http { return } catch AccountError.sessionReplaced { return } catch { continue }
     }
   }
+}
+
+/// `AccountClient.saved` 里是谁的镜像：一把锁护着的一个 id，任何线程都能同步读。
+final class OwnerMirror: @unchecked Sendable {
+  private let lock = NSLock()
+  private var id: UUID?
+  var value: UUID? { lock.withLock { id } }
+  func set(_ next: UUID?) { lock.withLock { id = next } }
 }

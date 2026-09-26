@@ -21,14 +21,26 @@ import Foundation
 }
 
 /// 生产用的那一份：走 `AccountClient`（令牌、刷新、被顶下线、错误分类都在它里面）。
+///
+/// **一条传输只替一个人发**（2026-09-26 压测）。同步那一轮是按某个人的档案起的，手上的
+/// 待发操作、要写进去的同步存档都是那个人的；客户端却是全 app 共用的，换号之后它替的
+/// 已经是另一个人了。以前传输只认「客户端现在是谁」：A 那一轮在换成 B 之后再发一趟，
+/// A 的操作就带着 B 的令牌进了 B 的云端，拉回来的则是 B 的对象写进 A 的同步存档。
+/// 现在构造的那一刻把属主钉住，客户端换了人，这条传输一个字节都不再发（`CancellationError`）。
 public struct HTTPSyncTransport: SyncTransport {
   public let client: AccountClient
-  public init(client: AccountClient) { self.client = client }
+  /// 这条传输替谁发。`nil` = 构造时客户端认不出是谁（没登录、钥匙串还读不动），不钉。
+  public let owner: UUID?
+  /// 默认钉在构造那一刻客户端替的那个人身上。
+  public init(client: AccountClient) { self.init(client: client, owner: client.currentOwner) }
+  /// 调用方明确知道这一轮是替谁同步的（档案的主人）就直接给：客户端已经换了人、
+  /// 档案还没来得及换过去的那一小段里，这样建出来的传输也不会替错人发。
+  public init(client: AccountClient, owner: UUID?) { self.client = client; self.owner = owner }
   public func push(_ body: Data, key: UUID) async throws -> SyncPushResponse {
-    try await client.request("v1/sync/operations", method: "POST", body: body, key: key)
+    try await client.request("v1/sync/operations", method: "POST", body: body, key: key, owner: owner)
   }
   public func bootstrap(collection: String, prefix: String?, after: String?) async throws -> SyncPage {
-    try await client.request(Self.bootstrapPath(collection: collection, prefix: prefix, after: after))
+    try await client.request(Self.bootstrapPath(collection: collection, prefix: prefix, after: after), owner: owner)
   }
   /// 拉取那一页的路径。单独拿出来是为了测「查询串拼对了没有」（前缀里的 `/` 要原样过去）。
   public static func bootstrapPath(collection: String, prefix: String?, after: String?) -> String {

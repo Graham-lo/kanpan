@@ -112,7 +112,7 @@ struct ClientHardeningTests {
     try await waitUntil("第一个客户端的刷新已经上路") { GateStubProtocol.server.calls("/v1/auth/refresh").count == 1 }
     async let two: Probe = second.request("v1/auth/me")
     let coordinator = RefreshCoordinator.shared(slot: vault.slotIdentifier)
-    try await waitUntil("第二个客户端搭上了同一班车") { await coordinator.joinedFlights == 1 }
+    try await waitUntil("第二个客户端搭上了同一班车") { coordinator.joinedFlights == 1 }
     GateStubProtocol.gate.open()
     let (a, b) = try await (one, two)
     #expect(a.ok == true, "搭车的和发起的都得拿到结果")
