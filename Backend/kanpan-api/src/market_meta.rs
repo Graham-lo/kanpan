@@ -803,9 +803,32 @@ fn oi_payload(symbol:&str,oi:&OpenInterest)->Value {
 
 // --------------------------------------------------------------------- caches
 
-pub(crate) struct Cache<T> {slot:std::sync::RwLock<Option<(Instant,Arc<T>)>>}
+/// 上游刚失败过这么久之内，同一份表 / 同一只的调用方直接拿失败，不再出站。
+///
+/// 单飞之后，排在出站那一位后面的调用方拿到锁时如果它失败了，原来会一个接一个自己再去试：
+/// 上游挂着（黑洞、20 秒超时）时，排着的几十个请求变成几十次串行的 20 秒，全部撞 30 秒
+/// 的请求超时。刚失败过就一起失败，各调用方本来就有「旧表兜底」。
+pub(crate) const FAILURE_HOLD:Duration=Duration::from_secs(2);
+pub(crate) struct Cache<T> {slot:std::sync::RwLock<Option<(Instant,Arc<T>)>>,turn:tokio::sync::Mutex<Option<Instant>>}
 impl<T> Cache<T> {
- pub(crate) fn new()->Self {Self{slot:std::sync::RwLock::new(None)}}
+ pub(crate) fn new()->Self {Self{slot:std::sync::RwLock::new(None),turn:tokio::sync::Mutex::new(None)}}
+ /// 新的就直接给；过期了只让一个调用方出站（单飞），同时到的其余调用方等它、然后读它存下的那份。
+ ///
+ /// 原来是「不新就各自出站」：一整张表的接口（币安全部合约价、OKX 全部持仓量 / 资金费率）
+ /// 冷启动或者刚过期时同时来二十个请求，就是二十次同样的整表出站，耗的是这个出口 IP 的
+ /// 限速权重——撞了 429，同一进程里币安那道闸会把所有币安出站一起停掉。
+ /// 失败不存；刚失败过（[`FAILURE_HOLD`] 内）直接回失败，由调用方拿旧表兜底。
+ pub(crate) async fn refresh<F,Fut>(&self,ttl:Duration,fetch:F)->Result<Arc<T>>
+ where F:FnOnce()->Fut,Fut:Future<Output=Result<T>> {
+  if let Some(value)=self.fresh(ttl) {return Ok(value)}
+  let mut failed=self.turn.lock().await;
+  if let Some(value)=self.fresh(ttl) {return Ok(value)}
+  if failed.is_some_and(|at|at.elapsed()<FAILURE_HOLD) {return Err(upstream())}
+  match fetch().await {
+   Ok(value)=>{*failed=None;Ok(self.store(value))},
+   Err(e)=>{*failed=Some(Instant::now());Err(e)},
+  }
+ }
  fn read(&self)->Option<(Instant,Arc<T>)> {self.slot.read().unwrap_or_else(|e|e.into_inner()).clone()}
  pub(crate) fn fresh(&self,ttl:Duration)->Option<Arc<T>> {self.read().filter(|(at,_)|at.elapsed()<ttl).map(|(_,v)|v)}
  fn stale(&self)->Option<Arc<T>> {self.read().map(|(_,v)|v)}
@@ -824,16 +847,48 @@ impl<T> Cache<T> {
  }
 }
 /// Per-symbol slots for the one upstream that answers a single symbol at a time.
-struct Recent<T> {slots:std::sync::Mutex<HashMap<String,(Instant,T)>>}
+///
+/// 每只一把单飞锁：同一只冷的时候同时来两百个请求，只出站一次。原来没有单飞，而且满
+/// 512 只就整表清空——随机代号每次都穿透缓存、顺手把热门代号冲掉。现在代号先对过合约表
+/// （[`binance_listed`]），键的个数以合约数为界；满了只挤掉最旧的那一只。
+struct Recent<T> {slots:std::sync::Mutex<HashMap<String,(Instant,std::result::Result<T,()>)>>,gates:std::sync::Mutex<HashMap<String,Arc<tokio::sync::Mutex<()>>>>}
+/// 币安 U 本位合约目前五六百只；给足余量。
+const RECENT_CAPACITY:usize=4096;
 impl<T:Clone> Recent<T> {
- fn new()->Self {Self{slots:std::sync::Mutex::new(HashMap::new())}}
- fn get(&self,key:&str,ttl:Duration)->Option<T> {
-  self.slots.lock().unwrap_or_else(|e|e.into_inner()).get(key).filter(|(at,_)|at.elapsed()<ttl).map(|(_,v)|v.clone())
+ fn new()->Self {Self{slots:std::sync::Mutex::new(HashMap::new()),gates:std::sync::Mutex::new(HashMap::new())}}
+ /// 新的就给；刚失败过（[`FAILURE_HOLD`] 内）给失败；否则 `None`。
+ fn peek(&self,key:&str,ttl:Duration)->Option<Result<T>> {
+  match self.slots.lock().unwrap_or_else(|e|e.into_inner()).get(key) {
+   Some((at,Ok(v))) if at.elapsed()<ttl=>Some(Ok(v.clone())),
+   Some((at,Err(()))) if at.elapsed()<FAILURE_HOLD=>Some(Err(upstream())),
+   _=>None,
+  }
  }
- fn put(&self,key:&str,value:T) {
+ fn put(&self,key:&str,value:std::result::Result<T,()>) {
   let mut slots=self.slots.lock().unwrap_or_else(|e|e.into_inner());
-  if slots.len()>=512 {slots.clear()}
+  if slots.len()>=RECENT_CAPACITY && !slots.contains_key(key) {
+   if let Some(oldest)=slots.iter().min_by_key(|(_,(at,_))|*at).map(|(k,_)|k.clone()) {slots.remove(&oldest);}
+  }
   slots.insert(key.to_owned(),(Instant::now(),value));
+ }
+ async fn get_or_fetch<F,Fut>(&self,key:&str,ttl:Duration,fetch:F)->Result<T>
+ where F:FnOnce()->Fut,Fut:Future<Output=Result<T>> {
+  if let Some(hit)=self.peek(key,ttl) {return hit}
+  let gate=self.gates.lock().unwrap_or_else(|e|e.into_inner()).entry(key.to_owned()).or_default().clone();
+  let turn=RecentTurn{gates:&self.gates,key,gate};
+  let _held=turn.gate.lock().await;
+  if let Some(hit)=self.peek(key,ttl) {return hit}
+  let result=fetch().await;
+  self.put(key,result.as_ref().map(Clone::clone).map_err(|_|()));
+  result
+ }
+}
+/// 这一只没人再等了就把它的单飞锁从表里拿掉（包括请求被超时那层半路丢掉的时候）。
+struct RecentTurn<'a> {gates:&'a std::sync::Mutex<HashMap<String,Arc<tokio::sync::Mutex<()>>>>,key:&'a str,gate:Arc<tokio::sync::Mutex<()>>}
+impl Drop for RecentTurn<'_> {
+ fn drop(&mut self) {
+  let mut gates=self.gates.lock().unwrap_or_else(|e|e.into_inner());
+  if Arc::strong_count(&self.gate)==2 {gates.remove(self.key);}
  }
 }
 fn price_cache()->&'static Cache<HashMap<String,f64>> {static C:OnceLock<Cache<HashMap<String,f64>>>=OnceLock::new();C.get_or_init(Cache::new)}
@@ -1243,27 +1298,32 @@ pub fn spawn_refresh()->tokio::task::JoinHandle<()> {
  })
 }
 async fn binance_price(symbol:&str)->Option<f64> {
- let prices=match price_cache().fresh(LIVE_TTL) {
-  Some(prices)=>prices,
-  None=>match get_json(BINANCE_PRICES).await {
-   Ok(body)=>price_cache().store(parse_binance_prices(&body)),
-   // Without a price the notional is simply absent; the amount still stands.
-   // 旧价格只在五分钟内还算价格：再往前的价格乘上现在的持仓量，算出来的是一个
-   // 哪个时刻都不成立的名义金额，不如不给（A-02 / B-03）。
-   Err(_)=>price_cache().fresh(OI_PRICE_MAX_AGE)?,
-  }
+ let prices=match price_cache().refresh(LIVE_TTL,||async {get_json(BINANCE_PRICES).await.map(|body|parse_binance_prices(&body))}).await {
+  Ok(prices)=>prices,
+  // Without a price the notional is simply absent; the amount still stands.
+  // 旧价格只在五分钟内还算价格：再往前的价格乘上现在的持仓量，算出来的是一个
+  // 哪个时刻都不成立的名义金额，不如不给（A-02 / B-03）。
+  Err(_)=>price_cache().fresh(OI_PRICE_MAX_AGE)?,
  };
  prices.get(symbol).copied()
 }
+/// 这只代号在不在币安的合约表里。表拿不到时（`None`）不拦——宁可多出站一次，也不因为
+/// 合约表那条路慢了就把持仓量整个答成没有。
+async fn binance_listed(symbol:&str)->Option<bool> {
+ let info=tokio::time::timeout(Duration::from_secs(5),exchange_info()).await.ok()?.ok()?;
+ Some(listed(&info,symbol))
+}
+fn listed(info:&Value,symbol:&str)->bool {
+ info["symbols"].as_array().is_some_and(|rows|rows.iter().any(|row|row["symbol"].as_str()==Some(symbol)))
+}
 async fn binance_open_interest(symbol:&str)->Result<OpenInterest> {
- let mut oi=match binance_oi_cache().get(symbol,LIVE_TTL) {
-  Some(oi)=>oi,
-  None=>{
-   let body=get_json(&format!("{BINANCE_OI}{symbol}")).await?;
-   let oi=parse_binance_oi(&body).ok_or(ApiError(StatusCode::SERVICE_UNAVAILABLE,"invalid_market_response"))?;
-   binance_oi_cache().put(symbol,oi);oi
-  }
- };
+ // 这条路不要登录：任意代号都会变成一次出站、占这个出口 IP 的限速权重。不在合约表里的
+ // 代号币安本来就答不出来，在这里就回「没有」，不出站、也不进缓存。
+ if binance_listed(symbol).await==Some(false) {return Err(ApiError::missing())}
+ let mut oi=binance_oi_cache().get_or_fetch(symbol,LIVE_TTL,||async {
+  let body=get_json(&format!("{BINANCE_OI}{symbol}")).await?;
+  parse_binance_oi(&body).ok_or(ApiError(StatusCode::SERVICE_UNAVAILABLE,"invalid_market_response"))
+ }).await?;
  oi.value=binance_price(symbol).await.map(|price|oi.open_interest*price);
  Ok(oi)
 }
@@ -1935,11 +1995,67 @@ mod tests {
  #[test]
  fn per_symbol_slots_expire_too() {
   let recent=Recent::new();
-  recent.put("BTCUSDT",OpenInterest{open_interest:1.0,value:None,time:0});
-  assert!(recent.get("BTCUSDT",Duration::from_secs(60)).is_some());
-  assert!(recent.get("ETHUSDT",Duration::from_secs(60)).is_none());
+  recent.put("BTCUSDT",Ok(OpenInterest{open_interest:1.0,value:None,time:0}));
+  assert!(recent.peek("BTCUSDT",Duration::from_secs(60)).is_some_and(|r|r.is_ok()));
+  assert!(recent.peek("ETHUSDT",Duration::from_secs(60)).is_none());
   std::thread::sleep(Duration::from_millis(20));
-  assert!(recent.get("BTCUSDT",Duration::from_millis(5)).is_none());
+  assert!(recent.peek("BTCUSDT",Duration::from_millis(5)).is_none());
+ }
+ /// 同一只冷的时候同时来两百个请求：只出站一次，两百个都拿到同一个数；
+ /// 做完之后这只的单飞锁从表里拿掉。
+ #[tokio::test(flavor="multi_thread",worker_threads=4)]
+ async fn a_cold_symbol_is_fetched_once_for_a_burst() {
+  static CALLS:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+  let recent=Arc::new(Recent::<f64>::new());
+  let mut set=tokio::task::JoinSet::new();
+  for _ in 0..200 {let recent=recent.clone();set.spawn(async move {recent.get_or_fetch("BTCUSDT",LIVE_TTL,||async {CALLS.fetch_add(1,Ordering::SeqCst);tokio::time::sleep(Duration::from_millis(50)).await;Ok(7.0)}).await});}
+  while let Some(r)=set.join_next().await {assert_eq!(r.unwrap().unwrap(),7.0);}
+  assert_eq!(CALLS.load(Ordering::SeqCst),1,"a burst on one cold symbol went upstream more than once");
+  assert!(recent.gates.lock().unwrap().is_empty(),"the per-symbol gate outlived its callers");
+ }
+ /// 上游挂了：排在后面的不再一个接一个自己去试（每次最长 20 秒），刚失败过就一起失败。
+ #[tokio::test(flavor="multi_thread",worker_threads=4)]
+ async fn a_failing_symbol_is_not_retried_by_every_waiter() {
+  static CALLS:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+  let recent=Arc::new(Recent::<f64>::new());
+  let mut set=tokio::task::JoinSet::new();
+  for _ in 0..50 {let recent=recent.clone();set.spawn(async move {recent.get_or_fetch("BTCUSDT",LIVE_TTL,||async {CALLS.fetch_add(1,Ordering::SeqCst);tokio::time::sleep(Duration::from_millis(50)).await;Err(upstream())}).await});}
+  while let Some(r)=set.join_next().await {assert!(r.unwrap().is_err());}
+  assert_eq!(CALLS.load(Ordering::SeqCst),1);
+ }
+ /// 满了只挤掉最旧的一只，刚刚问过的热门代号还在。
+ #[test]
+ fn a_full_symbol_cache_evicts_only_the_oldest() {
+  let recent=Recent::<f64>::new();
+  recent.put("OLDEST",Ok(1.0));
+  for n in 1..RECENT_CAPACITY {recent.put(&format!("S{n}"),Ok(1.0));}
+  recent.put("BTCUSDT",Ok(2.0));
+  let slots=recent.slots.lock().unwrap();
+  assert_eq!(slots.len(),RECENT_CAPACITY);
+  assert!(!slots.contains_key("OLDEST")&&slots.contains_key("S1")&&slots.contains_key("BTCUSDT"));
+ }
+ /// 整张表的缓存同样单飞：两百个同时到只出站一次；失败的那一次之后等着的一起失败。
+ #[tokio::test(flavor="multi_thread",worker_threads=4)]
+ async fn a_whole_table_refresh_is_fetched_once_for_a_burst() {
+  static CALLS:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+  let cache=Arc::new(Cache::<u32>::new());
+  let mut set=tokio::task::JoinSet::new();
+  for _ in 0..200 {let cache=cache.clone();set.spawn(async move {cache.refresh(LIVE_TTL,||async {CALLS.fetch_add(1,Ordering::SeqCst);tokio::time::sleep(Duration::from_millis(50)).await;Ok(9)}).await});}
+  while let Some(r)=set.join_next().await {assert_eq!(*r.unwrap().unwrap(),9);}
+  assert_eq!(CALLS.load(Ordering::SeqCst),1);
+  static FAILS:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+  let cold=Arc::new(Cache::<u32>::new());
+  let mut set=tokio::task::JoinSet::new();
+  for _ in 0..50 {let cold=cold.clone();set.spawn(async move {cold.refresh(LIVE_TTL,||async {FAILS.fetch_add(1,Ordering::SeqCst);tokio::time::sleep(Duration::from_millis(50)).await;Err::<u32,_>(upstream())}).await.is_err()});}
+  while let Some(r)=set.join_next().await {assert!(r.unwrap());}
+  assert_eq!(FAILS.load(Ordering::SeqCst),1);
+ }
+ /// 不在合约表里的代号不出站。
+ #[test]
+ fn only_listed_contracts_count_as_symbols() {
+  let info=json!({"symbols":[{"symbol":"BTCUSDT"},{"symbol":"1000PEPEUSDT"}]});
+  assert!(listed(&info,"BTCUSDT")&&listed(&info,"1000PEPEUSDT"));
+  assert!(!listed(&info,"ZZZZ123USDT")&&!listed(&json!({}),"BTCUSDT"));
  }
 
  // ------------------------------------------------ 刷新调度（单飞、分两次发布、快照）

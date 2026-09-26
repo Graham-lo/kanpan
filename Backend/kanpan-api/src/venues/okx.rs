@@ -70,19 +70,19 @@ pub fn funding_payload(table:&[Funding])->Value {
 }
 
 pub async fn funding()->Result<Arc<Vec<Funding>>> {
- if let Some(table)=funding_cache().fresh(FUNDING_TTL) {return Ok(table)}
- match get_json(FUNDING_URL).await {
-  Ok(body)=>{
-   let table=parse_funding(&body);
-   // 上游回了个空表（换信封、限速回 code≠0）不当新表存：别拿一张空表盖掉好表。
-   if table.is_empty() {return funding_cache().fresh(FUNDING_MAX_AGE).ok_or_else(ApiError::missing)}
-   // 币安合约表十分钟一份、同进程共用；这里最多等它五秒，等不到就先给原名。
-   let table=match tokio::time::timeout(Duration::from_secs(5),crate::market_meta::exchange_info()).await {
-    Ok(Ok(info))=>with_binance_aliases(table,&info),
-    _=>table,
-   };
-   Ok(funding_cache().store(table))
-  },
+ // 单飞：过期时同时到的请求只出站一次（见 `Cache::refresh`）。
+ let fresh=funding_cache().refresh(FUNDING_TTL,||async {
+  let table=parse_funding(&get_json(FUNDING_URL).await?);
+  // 上游回了个空表（换信封、限速回 code≠0）不当新表存：别拿一张空表盖掉好表。
+  if table.is_empty() {return Err(ApiError::missing())}
+  // 币安合约表十分钟一份、同进程共用；这里最多等它五秒，等不到就先给原名。
+  Ok(match tokio::time::timeout(Duration::from_secs(5),crate::market_meta::exchange_info()).await {
+   Ok(Ok(info))=>with_binance_aliases(table,&info),
+   _=>table,
+  })
+ }).await;
+ match fresh {
+  Ok(table)=>Ok(table),
   Err(e)=>funding_cache().fresh(FUNDING_MAX_AGE).ok_or(e),
  }
 }
@@ -172,10 +172,11 @@ pub fn parse_oi(body:&Value)->HashMap<String,OpenInterest> {
 }
 
 pub async fn open_interest(symbol:&str)->Result<OpenInterest> {
- let table=match cache().fresh(LIVE_TTL) {
-  Some(table)=>table,
+ // 单飞：过期时同时到的请求只出站一次（见 `Cache::refresh`）。
+ let table=match cache().refresh(LIVE_TTL,||async {get_json(OI_URL).await.map(|body|parse_oi(&body))}).await {
+  Ok(table)=>table,
   // 一刻钟没刷成功就不再拿旧表答题：持仓量是分钟级的量。
-  None=>match get_json(OI_URL).await {Ok(body)=>cache().store(parse_oi(&body)),Err(e)=>cache().fresh(OI_MAX_AGE).ok_or(e)?}
+  Err(e)=>cache().fresh(OI_MAX_AGE).ok_or(e)?,
  };
  let Resolved{instrument,scale}=resolve(symbol);
  // 币的个数换成币安那只合约的单位（`1000PEPE` 一个算一千个币）；美元名义值不变。
