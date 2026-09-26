@@ -125,14 +125,26 @@ fn candidate_score(query:&[chart_match::Candle],bars:&[scorebook_core::domain::c
 /// 一个租约处理多少个候选、同时向币安取几个（见 `run_one` 里的说明）。
 const SEARCH_BATCH:usize=48;
 const SEARCH_CONCURRENCY:usize=4;
+/// worker 的「找相似」循环：有活就接着做，没活才睡 `idle`（见 `supervise::poll_loop`）。
+pub async fn work(s:&AppState,market:&dyn MarketDataProvider,idle:std::time::Duration) {
+ crate::supervise::poll_loop("Search",idle,||run_one(s,market)).await
+}
+/// 一个租约最多换几个人去找能做的检索（同 `review_worker::claim`）。
+const CLAIM_OWNERS:usize=8;
 pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
- let mut tx=s.pool.begin().await?;
- let owner:Option<Uuid>=sqlx::query_scalar("SELECT user_id FROM search_dispatch WHERE next_at<=now() ORDER BY next_at,user_id FOR UPDATE SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
- let Some(owner)=owner else{return Ok(false)};
- sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '1 second' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;
- let mut tx=s.personal(owner).await?;
- let row=sqlx::query("SELECT * FROM review_searches WHERE user_id=$1 AND status IN ('queued','running') AND next_at<=now() AND expires_at>now() AND (lease_until IS NULL OR lease_until<now()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1").bind(owner).fetch_optional(&mut *tx).await?;
- let Some(row)=row else{sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '10 seconds' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;return Ok(false)};
+ let mut claimed=None;
+ for _ in 0..CLAIM_OWNERS {
+  let mut tx=s.pool.begin().await?;
+  let owner:Option<Uuid>=sqlx::query_scalar("SELECT user_id FROM search_dispatch WHERE next_at<=now() ORDER BY next_at,user_id FOR UPDATE SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
+  let Some(owner)=owner else{return Ok(false)};
+  sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '1 second' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;
+  let mut tx=s.personal(owner).await?;
+  let row=sqlx::query("SELECT * FROM review_searches WHERE user_id=$1 AND status IN ('queued','running') AND next_at<=now() AND expires_at>now() AND (lease_until IS NULL OR lease_until<now()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1").bind(owner).fetch_optional(&mut *tx).await?;
+  // 这个人此刻没有能做的：调度往后推，换下一个人，而不是空手回去让循环睡一秒。
+  let Some(row)=row else{sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '10 seconds' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;continue};
+  claimed=Some((owner,tx,row));break
+ }
+ let Some((owner,mut tx,row))=claimed else{return Ok(false)};
  let id:Uuid=row.get("id");let lease=Uuid::new_v4();let q:NativeSearch=parse(row.get("query"))?;let attempts:i32=row.get("attempts");
  let old_candidates:Option<Value>=row.get("candidates");let mut position:usize=row.get::<i32,_>("position") as usize;let mut checked=row.get::<i32,_>("checked");let mut items:Vec<Value>=parse(row.get("items"))?;
  sqlx::query("UPDATE review_searches SET status='running',lease_id=$3,lease_until=now()+interval '120 seconds',attempts=attempts+1 WHERE user_id=$1 AND id=$2").bind(owner).bind(id).bind(lease).execute(&mut *tx).await?;tx.commit().await?;

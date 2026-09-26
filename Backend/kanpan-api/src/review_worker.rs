@@ -19,7 +19,13 @@ fn exhausted(attempts:i32)->bool {attempts>=MAX_ATTEMPTS}
 /// 这一回的结局算不算「又失败了一次」。行情源在本节点被封锁不算：那是已知的长期状态，
 /// 已经按一天一次退避，换节点或解封之后要能自己恢复，不能五天后就永远放弃。
 fn counts_as_failure(error:Option<&ApiError>)->bool {error.is_some_and(|e|e.1!=crate::review_market::BLOCKED)}
+/// 认领一条任务。一个人手上此刻没有能做的（全在等、全在租约里、或刚被判「失败放弃」），
+/// 就换下一个到期的人，而不是空手回去让循环睡一觉：以前每遇到一个这样的人，整个队列
+/// 就白等两秒。换人最多 `CLAIM_OWNERS` 次——调度行被别的事务锁着时，同一个人可能一直
+/// 排在最前面，不设上限就会原地打转。
+const CLAIM_OWNERS:usize=8;
 async fn claim(s:&AppState)->Result<Option<Job>> {
+ for _ in 0..CLAIM_OWNERS {
  let mut tx=s.pool.begin().await?;
  let owner:Option<Uuid>=sqlx::query_scalar("SELECT user_id FROM review_dispatch WHERE next_at<=now() ORDER BY next_at,user_id FOR UPDATE SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
  let Some(owner)=owner else{return Ok(None)};
@@ -28,7 +34,7 @@ async fn claim(s:&AppState)->Result<Option<Job>> {
  let mut tx=s.personal(owner).await?;
  let row=sqlx::query("SELECT id,record_id,kind,attempts FROM review_jobs WHERE user_id=$1 AND NOT finished AND next_at<=now() AND (lease_until IS NULL OR lease_until<now()) ORDER BY next_at,id FOR UPDATE SKIP LOCKED LIMIT 1").bind(owner).fetch_optional(&mut *tx).await?;
  let Some(row)=row else {
-  sqlx::query("UPDATE review_dispatch SET next_at=COALESCE((SELECT min(greatest(next_at,COALESCE(lease_until,next_at))) FROM review_jobs WHERE user_id=$1 AND NOT finished),now()+interval '1 hour') WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;return Ok(None)
+  sqlx::query("UPDATE review_dispatch SET next_at=COALESCE((SELECT min(greatest(next_at,COALESCE(lease_until,next_at))) FROM review_jobs WHERE user_id=$1 AND NOT finished),now()+interval '1 hour') WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;continue
  };
  let id:Uuid=row.try_get("id")?;
  let attempts:i32=row.try_get("attempts")?;
@@ -37,11 +43,21 @@ async fn claim(s:&AppState)->Result<Option<Job>> {
   sqlx::query("UPDATE review_jobs SET finished=true,lease_id=NULL,lease_until=NULL WHERE user_id=$1 AND id=$2").bind(owner).bind(id).execute(&mut *tx).await?;
   tx.commit().await?;
   tracing::error!(%owner,job=%id,"Review job failed {attempts} times in a row; marked failed and no longer retried");
-  return Ok(None)
+  continue
  }
  let lease=Uuid::new_v4();
  sqlx::query("UPDATE review_jobs SET lease_id=$3,lease_until=now()+interval '120 seconds',attempts=attempts+1 WHERE user_id=$1 AND id=$2").bind(owner).bind(id).bind(lease).execute(&mut *tx).await?;
- tx.commit().await?;Ok(Some(Job{owner,id,record:row.get("record_id"),kind:row.get("kind"),lease}))
+ tx.commit().await?;return Ok(Some(Job{owner,id,record:row.get("record_id"),kind:row.get("kind"),lease}))
+ }
+ Ok(None)
+}
+/// worker 的「判定」循环：有活就一条接一条地做，队列空了才睡 `idle`。
+///
+/// 以前是每做完一条都睡两秒（在 `main.rs` 里），整个 worker 一秒最多判半条：每个人
+/// 自己的调度行本来就按两秒一条限着，全局再睡两秒，六个人各有一条到期的任务就要排
+/// 十二秒，`trade_touch` 那种五秒一查的记录永远追不上。
+pub async fn work(s:&AppState,market:&dyn MarketDataProvider,idle:std::time::Duration) {
+ crate::supervise::poll_loop("Review",idle,||run_one(s,market)).await
 }
 pub async fn range_bars(market:&dyn MarketDataProvider,r:&ChartRange,cutoff:i64)->Result<Vec<Bar>> {
  let iv=core(domain::validate_range(r,cutoff))?;

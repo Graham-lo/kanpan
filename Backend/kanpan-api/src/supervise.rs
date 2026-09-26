@@ -269,3 +269,18 @@ mod tests {
   assert_eq!(verdict(Life::Once,outcome).as_deref(),Some("panicked: bad 3"));
  }
 }
+
+/// 轮询型后台循环的共同骨架：`step` 回 `Ok(true)`（这一步做了事）就立刻做下一步，
+/// 回 `Ok(false)`（没活）或出错才睡 `idle`。
+///
+/// 「每一步之后都睡」会把吞吐钉死在一步一个 `idle`，积压时越排越长；「做完就接着做」
+/// 由 `step` 自己保证不空转——它回 `true` 必须是真的认领到、做掉了一件事。
+pub async fn poll_loop<F,Fut>(name:&'static str,idle:std::time::Duration,mut step:F) where F:FnMut()->Fut,Fut:Future<Output=crate::error::Result<bool>> {
+ loop {
+  match step().await {
+   Ok(true)=>tokio::task::yield_now().await,
+   Ok(false)=>tokio::time::sleep(idle).await,
+   Err(e)=>{tracing::warn!("{name} work will retry ({e:?})");tokio::time::sleep(idle).await}
+  }
+ }
+}

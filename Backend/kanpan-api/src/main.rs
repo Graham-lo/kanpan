@@ -41,19 +41,13 @@ async fn main()->anyhow::Result<()> {
   let supervisor=Supervisor::new();supervisor.adopt_essentials();
   {
    let (s,market)=(s.clone(),market.clone());
-   supervisor.spawn("review",Life::Forever,async move {loop {
-    if let Err(e)=kanpan_api::review_worker::run_one(&s,&*market).await {tracing::warn!("Review work will retry ({e:?})");}
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-   }});
+   supervisor.spawn("review",Life::Forever,async move {kanpan_api::review_worker::work(&s,&*market,std::time::Duration::from_secs(2)).await});
   }
   // Chart search is the one job a person actively waits on, and this host is
   // shared by fewer than ten of them: poll every second, not every two.
   {
    let (s,market)=(s.clone(),market.clone());
-   supervisor.spawn("search",Life::Forever,async move {loop {
-    if let Err(e)=kanpan_api::search::run_one(&s,&*market).await {tracing::warn!("Search work will retry ({e:?})");}
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-   }});
+   supervisor.spawn("search",Life::Forever,async move {kanpan_api::search::work(&s,&*market,std::time::Duration::from_secs(1)).await});
   }
   {
    let s=s.clone();
