@@ -11,14 +11,18 @@ extension AccountFeature {
   func exportData() {
     guard let client, !exporting else { return }
     exporting = true; error = nil
+    // 导出要几秒。这中间退了登（或换了号），回来的是上一个人的全部数据：
+    // 不落盘、不弹分享面板，客户端作废旧请求抛的错也不念。
+    let started = generation
     Task {
       defer { exporting = false }
       do {
         let raw = try await client.data("v1/auth/me/export")
+        guard started == generation else { return }
         let url = try Self.writeExport(raw)
         ChartSnapshotRenderer.present(url)
       } catch {
-        self.error = error.localizedDescription
+        if started == generation { self.error = error.localizedDescription }
       }
     }
   }

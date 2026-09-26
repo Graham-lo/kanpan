@@ -26,7 +26,14 @@ import KanpanCore
   /// 从前它照样 `onPrepareAccount(旧人)` 把旧档案装回去——刚退出的人又被登回来，
   /// 刚登上的 B 被 A 的档案盖掉（审查 B.10 BT-22）。号对不上就说明这次 restore 已经
   /// 过时，什么都不装。
-  @ObservationIgnored private var generation = 0
+  ///
+  /// 账号页上那几件在路上的事（设备列表、踢设备、导出）也认它：出发时记下号，回来时
+  /// 号变了就说明人已经换了（或者退了），回来的东西一概不认——不摆到新人的页上，
+  /// 也不把客户端作废旧请求时抛的 `CancellationError` 念成一句错。
+  @ObservationIgnored private(set) var generation = 0
+  /// 正在踢的那几台设备。同一行连点两下只发一趟：点的是「本机」那一行时，第二趟会在
+  /// 第一趟退登之后出门，拿着已经没有的凭据撞一个 401 回来。
+  @ObservationIgnored private var revoking: Set<UUID> = []
   @ObservationIgnored var onPrepareAccount: ((AccountUser?) throws -> (@MainActor () -> Void))?
   @ObservationIgnored var onSynchronize: (() -> Void)?
   @ObservationIgnored var onAutoSync: ((Bool) -> Void)?
@@ -310,16 +317,24 @@ import KanpanCore
   }
   func loadDevices() async {
     guard let client else { return }
-    do { devices = try await client.request("v1/auth/devices", as: AccountDevices.self).devices }
-    catch { note(error) }
+    let started = generation
+    do {
+      let list = try await client.request("v1/auth/devices", as: AccountDevices.self).devices
+      guard started == generation else { return }
+      devices = list
+    } catch { if started == generation { note(error) } }
   }
   func revoke(_ item: AccountSessionDevice) {
-    guard let client else { return }
+    guard let client, !revoking.contains(item.id) else { return }
+    revoking.insert(item.id)
+    let started = generation
     Task {
+      defer { revoking.remove(item.id) }
       do {
         let _: AccountOK = try await client.request("v1/auth/devices/" + item.id.uuidString, method: "DELETE")
+        guard started == generation else { return }
         if item.current { await logout() } else { await loadDevices() }
-      } catch { note(error) }
+      } catch { if started == generation { note(error) } }
     }
   }
 }
