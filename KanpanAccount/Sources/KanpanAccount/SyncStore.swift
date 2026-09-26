@@ -203,6 +203,24 @@ public struct SyncArchive: Codable, Sendable {
     operations.contains { $0.collection == collection && $0.objectId == id }
       || rejected.contains { $0.collection == collection && $0.objectId == id }
   }
+  /// `holdsLocal` 为真的全部键，一次算好。
+  ///
+  /// `holdsLocal` 每问一次都把整条队列和拒绝记录扫一遍。单问一次无所谓；
+  /// 在「对每个对象问一次」的循环里（拉回一页、启动对账）就是 O(对象 × 队列)：
+  /// 离线攒 4000 条、拉回 4000 个对象，Release 下光这一句就是半秒主线程（压测 2026-09-26）。
+  /// 循环里一律先拿这个集合，再逐个查。
+  func heldKeys() -> Set<String> {
+    var keys = Set<String>(minimumCapacity: operations.count + rejected.count)
+    for op in operations { keys.insert(op.key) }
+    for record in rejected { keys.insert(record.key) }
+    return keys
+  }
+  /// 队列里每个对象的**最后一条**操作的 id（`stage` 找本地前驱用）。
+  func lastOperations() -> [String: UUID] {
+    var last = [String: UUID](minimumCapacity: operations.count)
+    for op in operations { last[op.key] = op.id }
+    return last
+  }
 }
 
 /// 存档落盘器：一条串行队列，把「编码 + 原子写」整段挪出主线程。
@@ -378,12 +396,13 @@ final class ArchiveWriter: @unchecked Sendable {
     var disk: [String: SyncObject] = [:]
     for object in onDisk where collections.contains(object.collection) { disk[object.key] = object }
     var out: [SyncObject] = []
+    let held = archive.heldKeys()
     // 对着 `appliedLocal` 比，不对着 `local`：底稿还在时 `local` 是「云端那份叠上用户动过的字段」，
     // 用户眼前（正式文件该是）的那一版是底稿。拿 `local` 补进正式文件，等于没经 `markApplied`
     // 就把云端的改动装进来、底稿却还留着——下一次记账拿底稿一比，云端那几项全成了
     // 「用户改的」，带着新时间戳推回去（和 `stage` 里修掉的是同一个错，另一条入口）。
     for (key, object) in archive.appliedLocal where collections.contains(object.collection) {
-      guard archive.holdsLocal(object.collection, object.id) else { continue }
+      guard held.contains(object.key) else { continue }
       let current = disk[key]
       if object.deleted {
         // 已经不在正式文件里了就没什么可补的。
@@ -406,8 +425,9 @@ final class ArchiveWriter: @unchecked Sendable {
   /// 先删后加。现在一步给出，调用方统一交给 `SyncOverlay` 去落。
   public func startupCorrections(in collections: Set<String>, onDisk: [SyncObject]) -> [SyncObject] {
     var out = unpersistedLocalChanges(in: collections, onDisk: onDisk)
+    let held = archive.heldKeys()
     for (_, cloud) in archive.objects where cloud.deleted && collections.contains(cloud.collection) {
-      guard !archive.holdsLocal(cloud.collection, cloud.id) else { continue }
+      guard !held.contains(cloud.key) else { continue }
       out.append(cloud)
     }
     return out.sorted { $0.key < $1.key }
@@ -430,7 +450,12 @@ final class ArchiveWriter: @unchecked Sendable {
     guard !values.isEmpty else { return }
     var staged = archive
     var changed = false
-    for value in values where stage(value, device: device, importing: batch, owning: ownedKeys, into: &staged) { changed = true }
+    // 一批不止一个对象时，每个对象的本地前驱查一张一次建好的表；逐个往回扫整条队列
+    // 是 O(对象 × 队列)——换档案后第一次整份记账几千条画线、队列里又攒着几千条时，
+    // 这一句能在主线程上吃掉秒级（压测 2026-09-26）。单个对象往回扫反而更快，不建表。
+    var predecessors = values.count > 1 ? staged.lastOperations() : nil
+    for value in values where stage(value, device: device, importing: batch, owning: ownedKeys,
+                                    into: &staged, predecessors: &predecessors) { changed = true }
     // 一条操作都没产生、底稿却换了（见 `stage` 里「两边都删了」那一段）也要落盘。
     guard changed || staged.shelved != archive.shelved else { return }
     try transaction { $0 = staged }
@@ -480,8 +505,12 @@ final class ArchiveWriter: @unchecked Sendable {
   ///
   /// `stamp` 给了就用它当这条操作的时间戳 / 逻辑钟（`retryRejected` 补推时沿用被拒那条的），
   /// 不给就是「现在」。
+  ///
+  /// `predecessors` 是 `SyncArchive.lastOperations()` 那张表（批量时由调用方建一次、这里顺手维护）；
+  /// 给 `nil` 就往回扫队列找。两条路找到的是同一条。
   private func stage(_ value: SyncObject, device: UUID, importing batch: UUID?,
                      owning ownedKeys: [String: Set<String>], into a: inout SyncArchive,
+                     predecessors: inout [String: UUID]?,
                      stamp: (timestamp: Int64, logical: UInt64)? = nil) -> Bool {
     var value = value
     let ledger = a.local[value.key]
@@ -532,9 +561,11 @@ final class ArchiveWriter: @unchecked Sendable {
       timestamp: stamp?.timestamp ?? Int64(Date().timeIntervalSince1970 * 1000) + a.offset,
       logical: stamp?.logical ?? a.logical + 1, action: action, fields: changed, importBatch: batch,
       // 本地依赖链：这个对象上队列里的最后一条就是我的前驱。
-      dependsOn: a.operations.last { $0.collection == value.collection && $0.objectId == value.id }?.id)
+      dependsOn: predecessors.map { $0[value.key] }
+        ?? a.operations.last { $0.collection == value.collection && $0.objectId == value.id }?.id)
     if stamp == nil { a.logical += 1 }
     a.operations.append(op); a.local[value.key] = next
+    predecessors?[value.key] = op.id
     // 用户眼前那一版现在就是 `value`：和新记的 `local` 一样就不再需要底稿，不一样就把底稿挪到这一版。
     if shelf != nil {
       a.shelved[value.key] = SyncStore.differs(value, next)
@@ -735,11 +766,14 @@ final class ArchiveWriter: @unchecked Sendable {
     var staged = archive
     var resolved = false
     var keep: [RejectedOperation] = []
+    // 队列里已经有操作的键、各键的本地前驱：一次建好，别每条记录扫一遍队列。
+    var queued = Set(staged.operations.map(\.key))
+    var predecessors: [String: UUID]? = staged.lastOperations()
     for record in staged.rejected {
       guard let local = staged.local[record.key] else { resolved = true; continue }
       let remote = staged.objects[record.key] ?? SyncObject(collection: record.collection, id: record.objectId)
       guard local.body != remote.body || local.deleted != remote.deleted else { resolved = true; continue }
-      guard !staged.operations.contains(where: { $0.key == record.key }) else { keep.append(record); continue }
+      guard !queued.contains(record.key) else { keep.append(record); continue }
       // `stage` 是拿 `local` 做差分的，而这儿 `local` 就是用户的值本身——先把记账
       // 退回云端那份，`stage` 才能重新差出「本地和云端不一样的那几项」。这一下只动
       // 存档里的记账，用户眼前的值（prefs / draws.json）一个字都没碰。底稿（`shelved`）
@@ -747,9 +781,11 @@ final class ArchiveWriter: @unchecked Sendable {
       staged.local[record.key] = remote
       let shelf = staged.shelved.removeValue(forKey: record.key)
       let restaged = stage(local, device: device, importing: nil, owning: ownedKeys, into: &staged,
+                           predecessors: &predecessors,
                            stamp: (record.operation.timestamp, record.operation.logical))
       if let shelf { staged.shelved[record.key] = shelf }
       if restaged {
+        queued.insert(record.key)
         keep.append(record)
       } else {
         // 带回外来键之后和云端那份一模一样：没有东西可补，记录了结，`local` 就是云端那份。
@@ -796,33 +832,81 @@ final class ArchiveWriter: @unchecked Sendable {
     guard !mine.isEmpty else { return }
     try transaction { a in
       a.offset = response.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
+      // ## 为什么先建索引
+      //
+      // 从前每条回执都把整条队列扫五遍（找这条、删这条、改依赖、改同对象后续、`holdsLocal`），
+      // 一批 100 条回执就是 500 遍；离线攒 n 条推空是 O(n²)——压测 2026-09-26 Release 下
+      // 8000 条推空要 9.8 秒主线程，Debug 24 秒。现在队列只扫一遍建表，逐条回执只查表，
+      // 删除攒到最后一次做。**结果和从前逐条处理完全一样**，下面每一步都注明对应从前哪一句。
+      var position: [UUID: Int] = [:]          // 操作 id → 下标
+      var dependents: [UUID: [Int]] = [:]       // 前驱 id → 眼下依赖它的那几条
+      var byKey: [String: [Int]] = [:]          // 对象 → 它在队列里的那几条
+      var queued: [String: Int] = [:]           // 对象 → 还在队列里的条数（`holdsLocal` 的前一半）
+      for (index, op) in a.operations.enumerated() {
+        if position[op.id] == nil { position[op.id] = index }
+        if let parent = op.dependsOn { dependents[parent, default: []].append(index) }
+        byKey[op.key, default: []].append(index)
+        queued[op.key, default: 0] += 1
+      }
+      var removed = [Bool](repeating: false, count: a.operations.count)
+      var rejectedKeys = Set(a.rejected.map(\.key))    // `holdsLocal` 的后一半
+      var rejectedCleared = false
+      // 发没发过只看入账前：还留在队列里的操作，这一轮里谁都没被回执，`sent` 里的状态不会变。
+      let sentBefore = a.sent
+      // 同对象后续操作的版本对齐，从前每条回执当场改一遍，后一条回执覆盖前一条；
+      // 结果只取决于「最后一条」，所以记下来最后统一改一次。
+      var latest: [String: SyncObject] = [:]          // restore 对齐到这个对象最后一条回执
+      var latestRestore: [String: SyncObject] = [:]   // 其余只在回执的是我自己的 restore 时对齐代次
       for result in mine {
-        let acked = a.operations.first { $0.id == result.operationId }
-        a.objects[result.object.key] = result.object
-        a.operations.removeAll { $0.id == result.operationId }; a.sent.remove(result.operationId)
+        let key = result.object.key
+        // 从前：`a.operations.first { $0.id == result.operationId }`，再 `removeAll` 掉它。
+        var acked: SyncOperation?
+        if let index = position[result.operationId], !removed[index] {
+          acked = a.operations[index]
+          removed[index] = true
+          queued[a.operations[index].key, default: 1] -= 1
+        }
+        a.objects[key] = result.object
+        a.sent.remove(result.operationId)
         // 断链：依赖这条的后续操作接到它的前驱上。
-        for index in a.operations.indices where a.operations[index].dependsOn == result.operationId {
-          a.operations[index].dependsOn = acked?.dependsOn
+        if let children = dependents.removeValue(forKey: result.operationId) {
+          let alive = children.filter { !removed[$0] }
+          for index in alive { a.operations[index].dependsOn = acked?.dependsOn }
+          if let parent = acked?.dependsOn, !alive.isEmpty { dependents[parent, default: []].append(contentsOf: alive) }
         }
-        let generationIsMine = acked?.action == "restore"
-        for index in a.operations.indices where !a.sent.contains(a.operations[index].id) && a.operations[index].key == result.object.key {
-          if a.operations[index].action == "restore" {
-            a.operations[index].baseRevision = result.object.revision
-            a.operations[index].generation = result.object.generation
-          } else if generationIsMine {
-            a.operations[index].generation = result.object.generation
-          }
-        }
+        latest[key] = result.object
+        if acked?.action == "restore" { latestRestore[key] = result.object }
         // 这一条终于推上去了，而且云端那份已经和本机一样：那条拒绝记录可以了结。
-        if let local = a.local[result.object.key], local.body == result.object.body, local.deleted == result.object.deleted {
-          a.rejected.removeAll { $0.key == result.object.key }
+        if let local = a.local[key], local.body == result.object.body, local.deleted == result.object.deleted,
+           rejectedKeys.remove(key) != nil {
+          rejectedCleared = true
         }
-        if !a.holdsLocal(result.object.collection, result.object.id) {
-          if Self.differs(a.local[result.object.key], result.object) { a.unapplied?.insert(result.object.collection) }
+        if (queued[key] ?? 0) == 0 && !rejectedKeys.contains(key) {
+          if Self.differs(a.local[key], result.object) { a.unapplied?.insert(result.object.collection) }
           a.shelve(before: result.object)
-          a.local[result.object.key] = result.object
+          a.local[key] = result.object
         }
       }
+      // 还没发出去的同对象操作：
+      // - `restore`：`baseRevision` 和 `generation` 都对齐回执里的对象；
+      // - 其余：只在回执的是我自己这条链上的 `restore` 时对齐 `generation`。
+      for (key, object) in latest {
+        for index in byKey[key] ?? [] where !removed[index] && !sentBefore.contains(a.operations[index].id) {
+          if a.operations[index].action == "restore" {
+            a.operations[index].baseRevision = object.revision
+            a.operations[index].generation = object.generation
+          } else if let mine = latestRestore[key] {
+            a.operations[index].generation = mine.generation
+          }
+        }
+      }
+      if removed.contains(true) {
+        var kept: [SyncOperation] = []
+        kept.reserveCapacity(a.operations.count)
+        for (index, op) in a.operations.enumerated() where !removed[index] { kept.append(op) }
+        a.operations = kept
+      }
+      if rejectedCleared { a.rejected.removeAll { !rejectedKeys.contains($0.key) } }
     }
   }
   /// 云端这份和本机记账里那份是不是两样内容（版本号不算）。每条回执都会抬版本号，
@@ -834,10 +918,12 @@ final class ArchiveWriter: @unchecked Sendable {
   public func receive(_ page: SyncPage) throws {
     try transaction { a in
       a.offset = page.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
+      // 这一页里队列和拒绝记录都不变，「本机说了算」的键一次算好。
+      let held = a.heldKeys()
       for object in page.objects {
         a.objects[object.key] = object
         // 有待发操作**或者**有未了结的拒绝记录，就都别让云端那份盖掉本机的值。
-        if !a.holdsLocal(object.collection, object.id) {
+        if !held.contains(object.key) {
           if Self.differs(a.local[object.key], object) { a.unapplied?.insert(object.collection) }
           a.shelve(before: object)
           a.local[object.key] = object
