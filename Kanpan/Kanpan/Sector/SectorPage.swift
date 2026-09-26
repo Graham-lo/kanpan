@@ -339,7 +339,8 @@ struct SectorPage: View {
                        decimalsForBase: { feed.priceDecimals(forBase: $0) }, store: store,
                        onBack: pop, onPick: onPickSymbol, onScanList: onScanList,
                        onRowsShown: onListShown, onRowsHidden: onListHidden,
-                       previews: previews, picker: picker)
+                       previews: previews, picker: picker,
+                       inputs: snapshots.computations)
     case .pop:
       Color.clear.onAppear { pop() }
     }

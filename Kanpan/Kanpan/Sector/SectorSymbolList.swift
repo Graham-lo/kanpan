@@ -39,6 +39,10 @@ struct SectorSymbolList: View {
   var previews: SymbolPreviewStore?
   /// 长按菜单里动自选的那几项要它。没接线时菜单里只剩「打开」。
   var picker: SymbolPickerModel?
+  /// 上一层口径重算过几次（`SectorPage` 递 `SectorMemo.computations`）。品种表换了之后
+  /// 全名与小数位跟着变，但那两个闭包读的是行情源里按代次缓存的索引、观察不到，
+  /// 靠这个戳让这一层也重排。
+  var inputs: Int = 0
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -52,12 +56,40 @@ struct SectorSymbolList: View {
     nonmutating set { store.update { $0.sectorSort = newValue.rawValue } }
   }
 
+  /// 排好的行按输入缓存（压测 L1）。以前 body 每跑一次都把成员逐个取价、算窗口涨跌、
+  /// 排序、格式化重做一遍，而滚动预取、长按、偏好里别的字段变动都会让 body 重跑。
+  @State private var rowMemo = SectorMemo<RowsKey, [SectorSymbolRow]>()
+
+  /// 决定这张表长什么样的全部输入。行情只取成员自己那几只：别的板块的价跳了，
+  /// 这张表不用重排。
+  struct RowsKey: Equatable {
+    var members: [String]
+    var quotes: [SectorQuote?]
+    var frontier: [String]
+    var sort: SectorSymbolSort
+    var window: SectorWindow
+    var history: SectorHistory
+    var inputs: Int
+  }
+
+  static func rowsKey(members: [String], quotes: [String: SectorQuote], frontier: [String],
+                      sort: SectorSymbolSort, window: SectorWindow, history: SectorHistory,
+                      inputs: Int) -> RowsKey {
+    RowsKey(members: members, quotes: members.map { quotes[$0] }, frontier: frontier,
+            sort: sort, window: window, history: history, inputs: inputs)
+  }
+
   var body: some View {
-    let rows = SectorSymbolRow.build(members: members, quotes: quotes,
-                                     symbolForBase: symbolForBase,
-                                     decimalsForBase: decimalsForBase,
-                                     frontier: Set(stat.frontier), sort: sort,
-                                     window: window, history: history)
+    let sort = sort
+    let key = Self.rowsKey(members: members, quotes: quotes, frontier: stat.frontier,
+                           sort: sort, window: window, history: history, inputs: inputs)
+    let rows = rowMemo.value(for: key) {
+      SectorSymbolRow.build(members: members, quotes: quotes,
+                            symbolForBase: symbolForBase,
+                            decimalsForBase: decimalsForBase,
+                            frontier: Set(stat.frontier), sort: sort,
+                            window: window, history: history)
+    }
     return VStack(spacing: 0) {
       header
       sortBar(rows.count)

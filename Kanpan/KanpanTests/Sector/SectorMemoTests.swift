@@ -100,4 +100,38 @@ import KanpanNetwork
     #expect(memo.computations == 2)
   }
 
+  // ---------------------------------------------------------------- L1：品种列表的行
+
+  private func rowsKey(_ quotes: [String: SectorQuote], sort: SectorSymbolSort = .change,
+                       inputs: Int = 0) -> SectorSymbolList.RowsKey {
+    SectorSymbolList.rowsKey(members: ["BTC", "ETH"], quotes: quotes, frontier: ["BTC"], sort: sort,
+                             window: .today, history: .empty, inputs: inputs)
+  }
+
+  @Test("品种列表：成员的价没变就不重排，别的板块跳价也不算")
+  func rowsOnlyFollowTheirOwnInputs() {
+    let memo = SectorMemo<SectorSymbolList.RowsKey, [SectorSymbolRow]>()
+    var quotes = ["BTC": quote("BTC", 1), "ETH": quote("ETH", 2), "SOL": quote("SOL", 3)]
+    var builds = 0
+    func rows(_ key: SectorSymbolList.RowsKey) -> [SectorSymbolRow] {
+      memo.value(for: key) {
+        builds += 1
+        return SectorSymbolRow.build(members: key.members, quotes: quotes, symbolForBase: { $0 + "USDT" },
+                                     frontier: Set(key.frontier), sort: key.sort)
+      }
+    }
+    let first = rows(rowsKey(quotes))
+    #expect(first.map(\.base) == ["ETH", "BTC"])
+    // 滚动预取、长按、偏好里别的字段：body 重跑但输入没动。
+    for _ in 0..<5 { _ = rows(rowsKey(quotes)) }
+    quotes["SOL"] = quote("SOL", -9)
+    _ = rows(rowsKey(quotes))
+    #expect(builds == 1)
+    // 成员的价变了、排序换了、上一层口径换了（品种表）：各重排一次。
+    quotes["BTC"] = quote("BTC", 5)
+    #expect(rows(rowsKey(quotes)).map(\.base) == ["BTC", "ETH"])
+    _ = rows(rowsKey(quotes, sort: .volume))
+    _ = rows(rowsKey(quotes, sort: .volume, inputs: 1))
+    #expect(builds == 4)
+  }
 }
