@@ -104,11 +104,28 @@ fn email(raw:&str)->Result<String> {
 fn password(v:&str)->Result<()> {
  if v.chars().count()<8 || v.len()>128 || !v.chars().any(|c|c.is_ascii_alphabetic()) || !v.chars().any(|c|c.is_ascii_digit()) {return Err(ApiError::bad("invalid_password"))} Ok(())
 }
+/// Argon2 同时最多算几份。
+///
+/// 每一份（默认参数）要 19 MiB 的工作区外加一整核的 CPU。以前 `hash` / `verify` 直接
+/// 丢进 `spawn_blocking`，来多少次登录就同时开多少份：同一个地址一分钟有 60 次登录额度，
+/// 连不存在的用户名也要拿假哈希算一遍，所以不用注册就能一口气开 60 份 ≈ 1.1 GB——
+/// 线上 serve 单元 `MemoryMax=1G`，进程连同同住的订单流跟踪一起被 OOM 杀掉
+/// （2026-09-26 压测：48 路并发，RSS 两秒内涨 539 MiB）。
+///
+/// 两份对应单元的 `CPUQuota=200%`：多开并不会算得更快，只会多占内存。排队的请求
+/// 此时既不攥连接也不攥锁（Argon2 本来就在事务外面算），等得太久由外层的三十秒超时收走。
+static PASSWORD_SLOTS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(2);
+/// 拿到名额之后在阻塞线程上跑 `work`。名额跟着闭包走、算完才还：请求被超时或断线
+/// 丢掉时，已经开跑的那份 Argon2 还在占内存，名额不能提前放出去让下一份也开跑。
+async fn with_password_slot<T:Send+'static>(work:impl FnOnce()->T+Send+'static)->Option<T> {
+ let slot=PASSWORD_SLOTS.acquire().await.ok()?;
+ tokio::task::spawn_blocking(move||{let _slot=slot;work()}).await.ok()
+}
 async fn hash(s:&AppState,v:String)->Result<String> {
- let secret=s.secrets.clone(); tokio::task::spawn_blocking(move||secret.hash_password(&v)).await.map_err(|_|ApiError::bad("password_unavailable"))?
+ let secret=s.secrets.clone(); with_password_slot(move||secret.hash_password(&v)).await.ok_or(ApiError::bad("password_unavailable"))?
 }
 async fn verify(s:&AppState,v:String,h:String)->Result<bool> {
- let secret=s.secrets.clone(); tokio::task::spawn_blocking(move||secret.verify_password(&v,&h)).await.map_err(|_|ApiError::unauthorized())
+ let secret=s.secrets.clone(); with_password_slot(move||secret.verify_password(&v,&h)).await.ok_or_else(ApiError::unauthorized)
 }
 async fn lock_email(tx:&mut Transaction<'_,Postgres>,email:&str)->Result<()> {
  sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))").bind(format!("account:{email}")).execute(&mut **tx).await?; Ok(())
