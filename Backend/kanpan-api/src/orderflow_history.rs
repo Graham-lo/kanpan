@@ -204,6 +204,8 @@ fn in_order<T>(control:&mut mpsc::UnboundedReceiver<T>,first:T,inbox:&mut mpsc::
 
 /// 写库只走一个任务：挂着的与结束的按到达先后写，不会乱序把结束翻回挂着。
 struct Write {step:f64,rows:Vec<(BigOrder,i64)>}
+/// 跟踪任务到写库任务的通道长度。
+const WRITES_QUEUE:usize=256;
 
 /// 所有币的写库任务合起来最多同时占这么多条库连接：连接池一共 8 条，还要留给账号、同步与读历史的请求。
 /// 本地全开 154 只时，几十个跟踪任务同一时刻刷盘把池子占满，账号请求拿连接要等 2–3 秒（sqlx 慢获取告警）。
@@ -251,18 +253,44 @@ impl Pending {
   for (key,(step,_,_)) in &self.rows {groups.entry(step.to_bits()).or_default().push(key.clone());}
   groups.into_iter().flat_map(|(step,keys)|keys.chunks(500).map(|c|(f64::from_bits(step),c.to_vec())).collect::<Vec<_>>()).collect()
  }
- async fn flush(&mut self,pool:&PgPool,base:&str)->sqlx::Result<()> {
-  for (step,keys) in self.batches() {
-   let rows:Vec<(BigOrder,i64)>=keys.iter().filter_map(|k|self.rows.get(k).map(|(_,o,s)|(o.clone(),*s))).collect();
-   store::upsert(pool,base,step,&rows).await?;
-   for k in &keys {self.rows.remove(k);}
+ /// 一批要写的行此刻的样子（前面几批写的时候被上限丢掉的跳过）。
+ fn rows_for(&self,keys:&[LiveKey])->Vec<(LiveKey,BigOrder,i64)> {
+  keys.iter().filter_map(|k|self.rows.get(k).map(|(_,o,s)|(k.clone(),o.clone(),*s))).collect()
+ }
+ /// 这一批写进去了：从积压里拿掉——只拿掉写库期间没再变过的；变了的（新的一份、刚结束）留着下一批写。
+ fn written(&mut self,rows:&[(LiveKey,BigOrder,i64)]) {
+  for (k,o,s) in rows {
+   if self.rows.get(k).is_some_and(|(_,now,seen)|now==o&&seen==s) {self.rows.remove(k);}
   }
-  Ok(())
  }
 }
 
-/// 一只币的写库任务。库写不进去（重启、连接池满、语句超时）时整批留着退避重写，同时照常收跟踪那边发来的，
-/// 不让跟踪任务卡在 `send` 上；原来失败就记一条日志丢掉，结束的单丢了，库里那行就一直挂成「进行中」。
+/// 等一条写库语句的时候照样收跟踪那边发来的：库慢（锁、autovacuum、慢盘，serve 的语句死线是 20 秒）时
+/// 不收的话，通道一满跟踪任务就卡在 `send` 上，帧口没人收，连接任务往满的口里 `try_send` 的帧全丢。
+async fn receiving<T>(work:impl std::future::Future<Output=T>,rx:&mut mpsc::Receiver<Write>,open:&mut bool,pending:&mut Pending)->T {
+ tokio::pin!(work);
+ loop {
+  tokio::select! {
+   out=&mut work=>return out,
+   w=rx.recv(),if *open=>match w {Some(w)=>pending.add(w),None=>*open=false},
+  }
+ }
+}
+
+/// 把积压的按批写进去，写的时候照样收（见 `receiving`）。
+async fn flush(pool:&PgPool,base:&str,rx:&mut mpsc::Receiver<Write>,open:&mut bool,pending:&mut Pending)->sqlx::Result<()> {
+ for (step,keys) in pending.batches() {
+  let rows=pending.rows_for(&keys);
+  if rows.is_empty() {continue}
+  let batch:Vec<(BigOrder,i64)>=rows.iter().map(|(_,o,s)|(o.clone(),*s)).collect();
+  receiving(store::upsert(pool,base,step,&batch),rx,open,pending).await?;
+  pending.written(&rows);
+ }
+ Ok(())
+}
+
+/// 一只币的写库任务。库写不进去（重启、连接池满、语句超时）时整批留着退避重写；排连接、写库、退避的时候
+/// 都照常收跟踪那边发来的，不让跟踪任务卡在 `send` 上；原来失败就记一条日志丢掉，结束的单丢了，库里那行就一直挂成「进行中」。
 /// 手里的都写进去了，每分钟记一次「还活着」。
 async fn writer(pool:PgPool,base:String,mut rx:mpsc::Receiver<Write>) {
  let mut pending=Pending::default();
@@ -288,9 +316,9 @@ async fn writer(pool:PgPool,base:String,mut rx:mpsc::Receiver<Write>) {
     }
    };
    let Ok(_slot)=slot else {return};
-   let mut result=pending.flush(&pool,&base).await;
+   let mut result=flush(&pool,&base,&mut rx,&mut open,&mut pending).await;
    if result.is_ok()&&tokio::time::Instant::now()>=alive_at {
-    result=store::alive(&pool,&base,now_ms()).await;
+    result=receiving(store::alive(&pool,&base,now_ms()),&mut rx,&mut open,&mut pending).await;
     if result.is_ok() {alive_at=tokio::time::Instant::now()+ALIVE_EVERY;}
    }
    result
@@ -578,7 +606,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  shared.send_replace(published);
  let (events,mut inbox)=mpsc::channel::<Event>(8192);
  let (control,mut control_rx)=mpsc::unbounded_channel::<Event>();
- let (writes,rx)=mpsc::channel::<Write>(256);
+ let (writes,rx)=mpsc::channel::<Write>(WRITES_QUEUE);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
  let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,control,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
   epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority,writes,
@@ -1249,6 +1277,61 @@ mod tests {
   assert!(sent.is_ok(),"排连接的时候通道没人收，跟踪任务卡在 send 上");
   drop(held);
   task.abort();
+ }
+
+ /// 压测（2026-09-26）：库慢的时候（一条长事务攥着表锁、autovacuum、磁盘慢）写库任务正卡在一批 upsert 上，
+ /// 跟踪那边照常每 500 ms 发一批结束的单。原来刷盘时不收：通道 256 格一满，跟踪任务卡在 `send` 上，
+ /// 不再收 8192 格的帧口，连接任务往满的口里 `try_send` 的帧全丢（DROPS），簿断档、重拉快照、快照队雪崩。
+ #[tokio::test(flavor="multi_thread",worker_threads=2)] async fn a_slow_database_write_never_blocks_the_tracker() {
+  use model::Status;
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let order=|n:i64|BigOrder{venue_id:"binance:usdtPerp:ZZSLOWUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),
+   side:book::Side::Bid,bucket:n,price:n as f64,first_seen_ms:1_000+n,end_ms:Some(2_000+n),status:Status::Cancelled,
+   initial_notional:6e6,notional:6e6,filled_notional:0.0,threshold:5e6,vanished_notional:Some(6e6)};
+  // 库这边：一条事务把表锁住 3 秒（写库任务的 upsert 就卡在这把锁上，和真实的慢语句一样不报错、只是不回）。
+  let mut lock=pool.begin().await.unwrap();
+  sqlx::query("LOCK TABLE orderflow_orders IN EXCLUSIVE MODE").execute(&mut *lock).await.unwrap();
+  let (tx,rx)=mpsc::channel::<Write>(WRITES_QUEUE);
+  let task=tokio::spawn(writer(pool.clone(),"ZZSLOW".into(),rx));
+  tx.send(Write{step:1.0,rows:vec![(order(0),2_000)]}).await.unwrap();
+  tokio::time::sleep(Duration::from_millis(200)).await;
+  let hold=Duration::from_secs(3);
+  let releaser=tokio::spawn(async move {tokio::time::sleep(hold).await;lock.commit().await.unwrap();});
+  // 跟踪那边：两倍通道长度的结束单，一条一条发（每拍一条）。
+  let started=std::time::Instant::now();
+  let mut slowest=Duration::ZERO;
+  for n in 1..=2*WRITES_QUEUE as i64 {
+   let t=std::time::Instant::now();
+   tx.send(Write{step:1.0,rows:vec![(order(n),2_000+n)]}).await.unwrap();
+   slowest=slowest.max(t.elapsed());
+  }
+  let total=started.elapsed();
+  println!("库锁 {}s 期间发 {} 批：共 {}ms，单次 send 最久 {}ms",hold.as_secs(),2*WRITES_QUEUE,total.as_millis(),slowest.as_millis());
+  releaser.await.unwrap();
+  drop(tx);
+  tokio::time::timeout(Duration::from_secs(30),task).await.expect("写库任务收不了尾").unwrap();
+  let written:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_orders WHERE base='ZZSLOW' AND end_ms IS NOT NULL").fetch_one(&pool).await.unwrap();
+  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZSLOW'").execute(&pool).await.unwrap();
+  assert!(slowest<Duration::from_millis(200),"库慢的时候跟踪任务卡在 send 上 {}ms",slowest.as_millis());
+  assert_eq!(written,2*WRITES_QUEUE as i64+1,"锁一放，积压的全部写进去");
+ }
+
+ /// 刷盘途中同一单又来了新的一份：写进去的是旧的那份，新的那份不能跟着从积压里拿掉。
+ #[test] fn a_row_updated_while_its_batch_is_being_written_stays_pending() {
+  use model::Status;
+  let order=|notional:f64,end:Option<i64>|BigOrder{venue_id:"v".into(),exchange:"币安".into(),product:"usdtPerp".into(),
+   side:book::Side::Bid,bucket:1,price:1.0,first_seen_ms:1_000,end_ms:end,status:if end.is_some() {Status::Cancelled} else {Status::Live},
+   initial_notional:6e6,notional,filled_notional:0.0,threshold:5e6,vanished_notional:None};
+  let mut p=Pending::default();
+  p.add(Write{step:1.0,rows:vec![(order(6e6,None),10_000),(BigOrder{bucket:2,..order(6e6,None)},10_000)]});
+  let batches=p.batches();
+  assert_eq!(batches.len(),1);
+  let rows=p.rows_for(&batches[0].1);
+  // 这一批在库里的时候：bucket 1 更新了、bucket 2 没动。
+  p.add(Write{step:1.0,rows:vec![(order(7e6,Some(20_000)),20_000)]});
+  p.written(&rows);
+  assert_eq!(p.rows.len(),1,"没动的那行写完拿掉");
+  assert_eq!(p.rows.values().next().unwrap().1.end_ms,Some(20_000),"更新过的留着下一批写");
  }
 
  #[test] fn a_restart_does_not_reset_the_idle_clock() {

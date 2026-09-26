@@ -174,10 +174,10 @@ pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u6
 pub async fn size(pool:&PgPool)->sqlx::Result<i64> {sqlx::query_scalar("SELECT pg_total_relation_size('orderflow_orders')").fetch_one(pool).await}
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
  use super::*;
 
- async fn isolated_pool()->Option<PgPool> {
+ pub(in super::super) async fn isolated_pool()->Option<PgPool> {
   let (Ok(admin),Ok(url),Ok(role))=(std::env::var("KANPAN_TEST_ADMIN_URL"),std::env::var("KANPAN_TEST_DATABASE_URL"),std::env::var("KANPAN_TEST_ROLE")) else {
    eprintln!("Skipping the orderflow_orders database assertions: run ops/test.py for an isolated PostgreSQL");
    return None;
