@@ -75,8 +75,14 @@ const REFRESH:Duration=Duration::from_secs(10*60);
 const THRESHOLDS_EVERY_MS:i64=60*60*1000;
 const SWEEP:Duration=Duration::from_secs(10*60);
 const PURGE:Duration=Duration::from_secs(60*60);
-/// 快照失败之后隔多久再排；排之前先等一小会儿让增量攒起来（照手机那份）。
+/// 快照失败之后隔多久再排：第一次 2 秒，之后每连着失败一次翻倍，最多 5 分钟；拿到一份就从头算。
+/// 原来一律 2 秒：一本簿的快照一直拿不到（下架 / 结算中回 400、回的东西解析不了），它每 2 秒排一次，
+/// 在限速队里（每条通道每分钟 30 份）按层抢在前面，主币上的一本就能把整条通道的配额吃光，别的簿都等不到快照。
 const SNAPSHOT_RETRY_MS:i64=2_000;
+const SNAPSHOT_RETRY_MAX_MS:i64=5*60_000;
+
+/// 连着失败 `failures` 次（≥ 1）之后隔多久再排。
+fn snapshot_backoff(failures:u32)->i64 {SNAPSHOT_RETRY_MS.saturating_mul(1i64<<failures.saturating_sub(1).min(20)).min(SNAPSHOT_RETRY_MAX_MS)}
 /// 没变化的挂着的单多久重写一次（刷新 `seen_ms`）；须小于 `model::STALE_MS`（120 秒）。
 const LIVE_REWRITE_MS:i64=60_000;
 const SNAPSHOT_SETTLE:Duration=Duration::from_millis(500);
@@ -310,6 +316,8 @@ struct Tracker {
  /// 排着的快照：簿 → 那份请求的 epoch。
  inflight:HashMap<String,u64>,
  retry:HashMap<String,i64>,
+ /// 每本簿连着失败了几次快照（拿到一份清零）。
+ failures:HashMap<String,u32>,
  /// 每本簿此刻的 epoch，快照队列按它丢过期的请求。
  epochs:HashMap<String,Arc<AtomicU64>>,
  /// 每本簿最后一笔成交号（换连接的重叠期里两条连接都推同一笔，按号去重）。
@@ -402,8 +410,14 @@ impl Tracker {
     // 排队期间断过线：这份是上一轮的，新一轮的请求在 opened 时已经排上了。
     if book.epoch!=epoch {return}
     match snapshot {
-     Some(s)=>{let action=book.snapshot(s,now);self.act(&venue,action);},
-     None=>{self.retry.insert(venue,now+SNAPSHOT_RETRY_MS);},
+     Some(s)=>{self.failures.remove(&venue);let action=book.snapshot(s,now);self.act(&venue,action);},
+     None=>{
+      let failures=self.failures.entry(venue.clone()).or_insert(0);
+      *failures+=1;
+      if *failures==6 {tracing::warn!("Orderflow history: {venue} snapshot failed 6 times in a row, retrying every {}s at most",SNAPSHOT_RETRY_MAX_MS/1000);}
+      let at=now+snapshot_backoff(*failures);
+      self.retry.insert(venue,at);
+     },
     }
    },
   }
@@ -508,7 +522,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  let (events,mut inbox)=mpsc::channel::<Event>(8192);
  let (writes,rx)=mpsc::channel::<Write>(256);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
- let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),
+ let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
   epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority,writes,
   calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
@@ -1019,6 +1033,15 @@ mod tests {
   p.add(Write{step:1.0,rows:vec![(order(-1,Some(1_000_000)),1_000_000)]});
   assert_eq!(p.rows.len(),PENDING_CAP);
   assert!(!p.rows.values().any(|(_,o,_)|o.end_ms==Some(0)),"还超就丢结束得最早的");
+ }
+
+ #[test] fn snapshot_retries_back_off_to_five_minutes() {
+  assert_eq!((1..=9).map(snapshot_backoff).collect::<Vec<_>>(),vec![2_000,4_000,8_000,16_000,32_000,64_000,128_000,256_000,300_000]);
+  assert_eq!(snapshot_backoff(u32::MAX),SNAPSHOT_RETRY_MAX_MS);
+  // 一直拿不到的一本：一小时里只占十几份配额，不是 1800 份。
+  let (mut t,mut n,mut f)=(0i64,0,1u32);
+  while t<3_600_000 {t+=snapshot_backoff(f);f+=1;n+=1;}
+  assert!(n<20,"{n}");
  }
 
  #[test] fn calibration_waits_for_every_book_to_connect_and_its_snapshot() {

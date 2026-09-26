@@ -158,7 +158,7 @@ async fn run(lane:Lane,mut rx:mpsc::UnboundedReceiver<Request>) {
  }
 }
 
-/// 发出去、回一个事件给跟踪器。失败回 None，由跟踪器 2 秒后再排。
+/// 发出去、回一个事件给跟踪器。失败回 None，由跟踪器退避再排（2 秒起翻倍，最多 5 分钟）。
 async fn fetch(lane:Lane,r:Request) {
  let snapshot=get(lane,&r.venue).await;
  let _=r.events.send(Event::Snapshot{venue:r.venue.id.clone(),epoch:r.epoch,snapshot}).await;
