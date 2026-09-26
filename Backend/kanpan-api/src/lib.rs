@@ -131,32 +131,140 @@ mod migrations {
    let Some(number)=name.split('_').next().and_then(|v|v.parse::<u32>().ok()) else {continue};
    if number<=10 || !name.ends_with(".sql") {continue}
    let sql=std::fs::read_to_string(dir.join(&name)).expect("readable migration");
-   // 注释里写着「CREATE INDEX」不算语句。
-   let body=sql.lines().filter(|l|!l.trim_start().starts_with("--")).collect::<Vec<_>>().join("\n").to_lowercase();
-   // 同一事务刚创建的表上建索引不会锁旧表；已有表仍必须 CONCURRENTLY。
-   let fresh_tables:Vec<_>=body.split("create table ").skip(1).filter_map(|v|v.split_whitespace().next()).collect();
-   let body=body.split(';').filter(|statement| {
-    let statement=statement.trim();
-    !(statement.starts_with("create index ") && !statement.starts_with("create index concurrently ")
-      && fresh_tables.iter().any(|table|statement.contains(&format!(" on {table}("))))
-   }).collect::<Vec<_>>().join(";");
-   assert_eq!(body.matches("create index").count(),body.matches("create index concurrently").count(),"{name}：建索引要 CONCURRENTLY，否则升级时整张表的写都在排队");
-   // 删索引同样要 CONCURRENTLY：普通 DROP INDEX 拿的是表上的 ACCESS EXCLUSIVE，
-   // 一边排在长查询后面，一边把后面所有的读写都堵在自己后面。
-   assert_eq!(body.matches("drop index").count(),body.matches("drop index concurrently").count(),"{name}：删索引也要 CONCURRENTLY，普通 DROP INDEX 要拿表上的 ACCESS EXCLUSIVE");
-   if body.contains("create index")||body.contains("drop index") {
-    assert_eq!(sql.lines().next().map(str::trim),Some("-- no-transaction"),"{name}：CONCURRENTLY 不能在事务里跑，首行必须是 -- no-transaction");
-   }
-   // 不在事务里的那种迁移，一个文件只许放一条语句。sqlx 仍旧是把整份文件当**一条**
-   // 简单查询发过去，而 Postgres 对「一条简单查询里有多个命令」会自己包一个隐式事务
-   // ——于是 CONCURRENTLY 照样会报 cannot run inside a transaction block。
-   if sql.starts_with("-- no-transaction") {
-    assert_eq!(body.matches(';').count(),1,"{name}：不在事务里的迁移一个文件只能放一条语句（多条会被 Postgres 包进隐式事务）");
-   }
-   for clause in body.split("add column").skip(1) {
-    let clause=clause.split(';').next().unwrap_or_default();
-    assert!(!clause.contains("not null")||clause.contains("default"),"{name}：加 NOT NULL 列要带常量默认值，否则旧行会把迁移顶回来");
-   }
+   if let Err(problem)=check(&name,&sql) {panic!("{problem}")}
   }
  }
+
+ /// 已经上线、校验和钉死了的例外。0023 把 NOT VALID 与 VALIDATE 放在了同一个事务里：
+ /// ADD CONSTRAINT 拿的 ACCESS EXCLUSIVE 要到提交才放，VALIDATE 的整表扫描就是在这把锁
+ /// 底下做的，NOT VALID 一点没省下来。那张表只有每人几行推送令牌，扫一遍是毫秒级，
+ /// 而改文件会让 sqlx 在每台已经跑过它的库上拒绝启动，所以留着、只在这里记一笔。
+ const APPLIED_EXCEPTIONS:&[&str]=&["0023_review_due_push_token.sql"];
+
+ /// 一份 0011 起的迁移守不守规矩。不守就说出哪条、为什么。
+ fn check(name:&str,sql:&str)->Result<(),String> {
+  // 注释里写着「CREATE INDEX」不算语句。空白一律压成一个空格，大小写不论——
+  // `CREATE\n  UNIQUE INDEX` 和 `create unique index` 是同一句话。
+  let body=sql.lines().filter(|l|!l.trim_start().starts_with("--")).collect::<Vec<_>>().join("\n").to_lowercase();
+  let body=body.split_whitespace().collect::<Vec<_>>().join(" ").replace(" (","(");
+  let statements:Vec<&str>=body.split(';').map(str::trim).filter(|s|!s.is_empty()).collect();
+  // 同一事务刚创建的表上建索引不会锁旧表；已有表仍必须 CONCURRENTLY。
+  let fresh_tables:Vec<&str>=body.split("create table ").skip(1).filter_map(|v|{
+   let v=v.strip_prefix("if not exists ").unwrap_or(v);
+   v.split(|c:char|c==' '||c=='(').next().filter(|t|!t.is_empty())
+  }).collect();
+  for statement in &statements {
+   for (verb,rest) in index_clauses(statement) {
+    let on_fresh=verb=="create" && fresh_tables.iter().any(|table|statement.contains(&format!(" on {table}(")));
+    if !rest.starts_with("concurrently ") && !on_fresh {
+     return Err(if verb=="create" {format!("{name}：建索引要 CONCURRENTLY，否则升级时整张表的写都在排队")}
+      else {format!("{name}：删索引也要 CONCURRENTLY，普通 DROP INDEX 要拿表上的 ACCESS EXCLUSIVE")});
+    }
+   }
+  }
+  let concurrent=statements.iter().any(|s|index_clauses(s).iter().any(|(_,rest)|rest.starts_with("concurrently ")));
+  if concurrent && sql.lines().next().map(str::trim)!=Some("-- no-transaction") {
+   return Err(format!("{name}：CONCURRENTLY 不能在事务里跑，首行必须是 -- no-transaction"));
+  }
+  // 不在事务里的那种迁移，一个文件只许放一条语句。sqlx 仍旧是把整份文件当**一条**
+  // 简单查询发过去，而 Postgres 对「一条简单查询里有多个命令」会自己包一个隐式事务
+  // ——于是 CONCURRENTLY 照样会报 cannot run inside a transaction block。
+  if sql.starts_with("-- no-transaction") && statements.len()!=1 {
+   return Err(format!("{name}：不在事务里的迁移一个文件只能放一条语句（多条会被 Postgres 包进隐式事务）"));
+  }
+  for statement in &statements {
+   for column in added_columns(statement) {
+    if column.contains("not null") && !column.contains("default ") {
+     return Err(format!("{name}：加 NOT NULL 列要带常量默认值，否则旧行会把迁移顶回来"));
+    }
+    if let Some(default)=column.split("default ").nth(1) && is_function_call(default) {
+     return Err(format!("{name}：加列的默认值要是常量，函数默认值（clock_timestamp()、gen_random_uuid() 之类）会让整张表按行重写、全程锁表"));
+    }
+   }
+  }
+  // 同一个事务里先 NOT VALID 再 VALIDATE，等于没有 NOT VALID：前一句拿的 ACCESS EXCLUSIVE
+  // 要到提交才放，整表扫描还是在它底下做。VALIDATE 要单独一个文件。
+  if body.contains(" not valid") && body.contains("validate constraint") && !APPLIED_EXCEPTIONS.contains(&name) {
+   return Err(format!("{name}：NOT VALID 和 VALIDATE CONSTRAINT 在同一个事务里，扫描照样在 ACCESS EXCLUSIVE 底下做；VALIDATE 挪到下一份迁移"));
+  }
+  Ok(())
+ }
+
+ /// 一条语句里的每处 `create [unique] index …` / `drop index …`，连同它后面的正文。
+ /// DO 块里 EXECUTE 的动态 SQL 也算——它们一样拿锁。
+ fn index_clauses(statement:&str)->Vec<(&'static str,&str)> {
+  let mut found=Vec::new();
+  for (verb,pattern) in [("create","create index "),("create","create unique index "),("drop","drop index ")] {
+   let mut from=0;
+   while let Some(at)=statement[from..].find(pattern) {
+    let start=from+at+pattern.len();
+    found.push((verb,&statement[start..]));
+    from=start;
+   }
+  }
+  found
+ }
+
+ /// ALTER TABLE 里每一个加列动作的列定义。`ADD COLUMN` 的 COLUMN 可以省，
+ /// 一条 ALTER TABLE 也可以用逗号挂好几个动作。
+ fn added_columns(statement:&str)->Vec<String> {
+  let Some(actions)=statement.strip_prefix("alter table ") else {return Vec::new()};
+  let actions=actions.strip_prefix("if exists ").unwrap_or(actions);
+  let actions=actions.strip_prefix("only ").unwrap_or(actions);
+  // 跳过表名。
+  let Some((_,actions))=actions.split_once(' ') else {return Vec::new()};
+  let mut pieces=Vec::new();let mut depth=0i32;let mut quoted=false;let mut piece=String::new();
+  for c in actions.chars() {
+   match c {
+    '\''=>quoted=!quoted,
+    '(' if !quoted=>depth+=1,
+    ')' if !quoted=>depth-=1,
+    ',' if !quoted && depth==0=>{pieces.push(std::mem::take(&mut piece));continue}
+    _=>{}
+   }
+   piece.push(c);
+  }
+  pieces.push(piece);
+  pieces.into_iter().filter_map(|piece|{
+   let rest=piece.trim().strip_prefix("add ")?;
+   let rest=rest.strip_prefix("column ").unwrap_or(rest);
+   let first=rest.split(|c:char|c==' '||c=='(').next().unwrap_or_default();
+   if ["constraint","primary","unique","foreign","check","exclude"].contains(&first) {return None}
+   Some(rest.to_owned())
+  }).collect()
+ }
+
+ /// 默认值是不是一个函数调用（`now()`、`gen_random_uuid()`）。字面量、`'[]'::jsonb`、
+ /// 括起来的常量表达式都不是。
+ fn is_function_call(default:&str)->bool {
+  let name:String=default.chars().take_while(|c|c.is_ascii_alphanumeric()||*c=='_'||*c=='.').collect();
+  !name.is_empty() && !name.chars().next().is_some_and(|c|c.is_ascii_digit()) && default[name.len()..].starts_with('(')
+ }
+
+ #[test] fn the_guard_catches_what_the_rules_forbid() {
+  let bad=[
+   ("unique index","CREATE UNIQUE INDEX shares_one ON shares(to_user);"),
+   ("line-broken index","CREATE\n  INDEX shares_two\n ON shares(to_user);"),
+   ("plain drop","DROP INDEX shares_inbox;"),
+   ("concurrently inside a transaction","CREATE INDEX CONCURRENTLY shares_three ON shares(to_user);"),
+   ("two statements without a transaction","-- no-transaction\nCREATE INDEX CONCURRENTLY a ON shares(x);\nCREATE INDEX CONCURRENTLY b ON shares(y);"),
+   ("not null without default","ALTER TABLE shares ADD COLUMN pinned boolean NOT NULL;"),
+   ("not null without the COLUMN keyword","ALTER TABLE shares ADD pinned boolean NOT NULL;"),
+   ("second action of one alter","ALTER TABLE shares ADD COLUMN a text, ADD COLUMN b text NOT NULL;"),
+   ("function default","ALTER TABLE shares ADD COLUMN token uuid NOT NULL DEFAULT gen_random_uuid();"),
+   ("validate in the same transaction","ALTER TABLE shares ADD CONSTRAINT c CHECK (x>0) NOT VALID;\nALTER TABLE shares VALIDATE CONSTRAINT c;"),
+  ];
+  for (why,sql) in bad {assert!(check("9999_bad.sql",sql).is_err(),"{why} 应该被拦下");}
+  let good=[
+   ("concurrent index alone","-- no-transaction\nCREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS a ON shares(x);"),
+   ("index on a table made in the same file","CREATE TABLE IF NOT EXISTS fresh (x int);\nCREATE INDEX IF NOT EXISTS fresh_x ON fresh (x);"),
+   ("nullable column","ALTER TABLE shares ADD COLUMN IF NOT EXISTS note text;"),
+   ("constant default","ALTER TABLE shares ADD COLUMN IF NOT EXISTS venue text NOT NULL DEFAULT 'binance';"),
+   ("cast constant default","ALTER TABLE shares ADD COLUMN lines jsonb NOT NULL DEFAULT '[]'::jsonb;"),
+   ("constraint is not a column","ALTER TABLE shares ADD CONSTRAINT c CHECK (x IN ('a','b')) NOT VALID;"),
+   ("index named in a comment","-- CREATE INDEX x ON shares(y)\nALTER TABLE shares ADD COLUMN note text;"),
+  ];
+  for (why,sql) in good {assert_eq!(check("9999_good.sql",sql),Ok(()),"{why} 不该被拦");}
+ }
 }
+
