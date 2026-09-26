@@ -198,11 +198,34 @@ final class AlertStore: ObservableObject {
   /// 复盘到点那一种不看价，`price` 传 nil。
   @discardableResult
   func markFired(id: String, at time: Double, price: Double?) -> Alert? {
-    guard var alert = archive[id], alert.status == .active else { return nil }
-    alert.status = .fired; alert.firedAt = time; alert.firedPrice = price
-    localFires[id] = time
-    write { $0[id] = alert }
-    return alert
+    markFired(ids: [id], at: time, price: price).first
+  }
+
+  /// 同一口价一起响的那一批：**一次** `write`。
+  ///
+  /// 一口价同时穿过几十条线（大跌那一分钟、一只品种上挂满了画线提醒）时，从前是逐条
+  /// `markFired`，每一条都整份拷贝存档、整表记一次同步账、排一次 alerts.json 落盘，
+  /// `@Published` 也跟着发同样多次——`AlertWatcher` 每一次都 `purgeFired` 一遍，
+  /// 又是同样多次整份写。N 条一起响就是 2N 次整表记账、2N 份落盘。
+  /// 现在一批只写一次，`AlertWatcher` 收到一次、报完一次删掉。
+  /// 返回真的被这一次标成已触发的那几条（已经不是 active 的跳过），顺序同 `ids`。
+  @discardableResult
+  func markFired(ids: [String], at time: Double, price: Double?) -> [Alert] {
+    guard !ids.isEmpty else { return [] }
+    let wanted = Set(ids)
+    var fired: [String: Alert] = [:]
+    var next = archive
+    for i in next.alerts.indices where wanted.contains(next.alerts[i].id) && next.alerts[i].status == .active {
+      next.alerts[i].status = .fired
+      next.alerts[i].firedAt = time
+      next.alerts[i].firedPrice = price
+      fired[next.alerts[i].id] = next.alerts[i]
+    }
+    guard !fired.isEmpty else { return [] }
+    for id in fired.keys { localFires[id] = time }
+    write { $0 = next }
+    var seen = Set<String>()
+    return ids.compactMap { id in seen.insert(id).inserted ? fired[id] : nil }
   }
 
   /// 本机自己判响的那几次（id → `firedAt`）。同步换下来的「服务端已经响过」不经

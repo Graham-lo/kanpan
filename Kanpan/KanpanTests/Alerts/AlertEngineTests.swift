@@ -352,4 +352,55 @@ struct AlertEngineTests {
     #expect(booked == [1])
     #expect(store.alert(id: alert.id)?.status == .fired)
   }
+
+  // ---------------------------------------------------------------- 压测：满额存档
+
+  @Test("满额 200 条挂在一只品种上，一根桶穿过 150 条线：一次写、一次记账、一次落盘，150 条全响")
+  func oneBarCrossingManyLinesWritesOnce() {
+    let store = fresh()
+    for i in 1...AlertArchive.limit { arm(store, price: Double(i), id: "d\(i)") }
+    #expect(store.all.count == AlertArchive.limit)
+    var booked = 0, saved = 0
+    store.onChange = { _ in booked += 1 }
+    store.persistence = { job in saved += 1; job() }
+    let engine = AlertEngine()
+    engine.attach(store)
+
+    engine.observe(symbol: "BTCUSDT", price: 0.5, timeMs: minute(0) + 1_000)
+    #expect(booked == 0)
+    // 同一桶里一口拉到 150.5：低 0.5、高 150.5，1…150 这 150 条线全被碰到。
+    engine.observe(symbol: "BTCUSDT", price: 150.5, timeMs: minute(0) + 2_000)
+    #expect(booked == 1)
+    #expect(saved == 1)
+    let fired = store.all.filter { $0.status == .fired }
+    #expect(fired.count == 150)
+    #expect(Set(fired.map(\.firedPrice)) == [150.5])
+    #expect(Set(fired.map(\.firedAt)).count == 1)
+
+    // 再来一口不会再响、也不会再写。
+    engine.observe(symbol: "BTCUSDT", price: 150.4, timeMs: minute(0) + 3_000)
+    #expect(booked == 1)
+  }
+
+  @Test("200 条分在 40 只品种上：一口价只判自己那只，别的品种一条不动")
+  func perSymbolIndexOnlyJudgesItsOwnSymbol() {
+    let store = fresh()
+    let symbols = (0..<40).map { "S\($0)USDT" }
+    for i in 0..<AlertArchive.limit {
+      arm(store, symbol: symbols[i % 40], price: 100, id: "d\(i)")
+    }
+    let engine = AlertEngine()
+    engine.attach(store)
+    #expect(engine.watched.count == 40)
+    var booked = 0
+    store.onChange = { _ in booked += 1 }
+    engine.observe(symbol: "s7usdt", price: 100, timeMs: minute(0) + 1_000)
+    let fired = store.all.filter { $0.status == .fired }
+    #expect(fired.count == AlertArchive.limit / 40)
+    #expect(Set(fired.map(\.symbol)) == [InstrumentID.canonical("S7USDT")])
+    #expect(booked == 1)
+    // 判定索引跟着存档同步换：同一只品种紧接着再来一口，响过的那几条不再进判定、也不再写。
+    engine.observe(symbol: "S7USDT", price: 100, timeMs: minute(0) + 2_000)
+    #expect(booked == 1)
+  }
 }

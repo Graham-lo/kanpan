@@ -71,6 +71,11 @@ final class AlertEngine: ObservableObject {
   /// 现在挂着活动提醒的那些品种（一律大写）。每一口价先过这一关——绝大多数 tick
   /// 在这儿就被挡掉了，不用去扫整张存档。
   private(set) var watched: Set<String> = []
+  /// 品种（规范代号）→ 这只品种上会被价判的提醒（活动中的画线 / 价格提醒、有线）。
+  ///
+  /// 从前每一口价都拿 `InstrumentID.canonical` 把整张存档（最多 200 条）过一遍，
+  /// 列表流一秒一帧、几十只盯着的品种，就是每秒上千次解析代号；现在一口价只取自己那一格。
+  private var live: [String: [Alert]] = [:]
   private var foreground = true
 
   /// 盘上要多订哪些品种。宿主接到 `QuoteBook.setAlertedSymbols(_:)`。
@@ -80,7 +85,14 @@ final class AlertEngine: ObservableObject {
     guard self.store !== store else { return }
     bag.removeAll()
     self.store = store
+    live = Self.index(store.archive)
     settle(store.archive)
+    // 判定用的那份按品种的索引**同步**跟着存档换（`@Published` 在 willSet 里发的就是新值）：
+    // 下面 `settle` 排到下一拍，中间进来的那口价要是拿旧索引判，刚改过条件、刚重新上膛的
+    // 提醒会按改之前的样子判一遍。这一步只是纯计算、不改存档，放在发布途中是安全的。
+    store.$archive
+      .sink { [weak self] archive in self?.live = Self.index(archive) }
+      .store(in: &bag)
     store.$archive
       .receive(on: RunLoop.main)
       .sink { [weak self] archive in self?.settle(archive) }
@@ -112,9 +124,8 @@ final class AlertEngine: ObservableObject {
   /// 一行都改不到。app 不在前台时不判——那一段归服务端和本机那条日历通知。
   func settleDue(now: Double = Date().timeIntervalSince1970 * 1000) {
     guard foreground, let store else { return }
-    for alert in store.all where AlertEvaluator.dueHit(alert, now: now) {
-      store.markFired(id: alert.id, at: now, price: nil)
-    }
+    let due = store.all.filter { AlertEvaluator.dueHit($0, now: now) }.map(\.id)
+    store.markFired(ids: due, at: now, price: nil)
   }
 
   /// 存档变了：重算要盯的品种；刚同步下来、已经过了点的复盘到点当场判掉。
@@ -123,11 +134,7 @@ final class AlertEngine: ObservableObject {
       // 下一拍再判：这一拍还在 `$archive` 的回调里，当场 `markFired` 就是在发布途中改它。
       Task { @MainActor [weak self] in self?.settleDue() }
     }
-    let next = Set(
-      archive.alerts
-        .filter { $0.isActive && ($0.kind == .drawing || $0.kind == .price) && !$0.lines.isEmpty }
-        .map { InstrumentID.canonical($0.symbol) }
-        .filter { !$0.isEmpty })
+    let next = Set(Self.index(archive).keys)
     if next != watched {
       #if DEBUG
       let added = next.subtracting(watched)
@@ -221,14 +228,22 @@ final class AlertEngine: ObservableObject {
   /// `firedPrice` 记的是**现价**，不是线价——和服务端 `fire(…, candle.close, at)`
   /// 一致，通知正文那句「现价 X」说的也是它。
   private func evaluate(_ symbol: String, bar: AlertEvaluator.Bar, price: Double) {
-    guard let store, !store.all.isEmpty else { return }
-    // 先取一份快照：`markFired` 会当场换掉 `archive`。
-    let candidates = store.all.filter { $0.isActive && InstrumentID.canonical($0.symbol) == symbol }
-    guard !candidates.isEmpty else { return }
-    let now = Date().timeIntervalSince1970 * 1000
-    for alert in candidates where AlertEvaluator.hit(alert, bar: bar) != nil {
-      store.markFired(id: alert.id, at: now, price: price)
+    guard let store, let candidates = live[symbol], !candidates.isEmpty else { return }
+    let hits = candidates.filter { AlertEvaluator.hit($0, bar: bar) != nil }.map(\.id)
+    guard !hits.isEmpty else { return }
+    // 同一口价响的一起落：一次写、一次记账、一次发布（`AlertStore.markFired(ids:)`）。
+    store.markFired(ids: hits, at: Date().timeIntervalSince1970 * 1000, price: price)
+  }
+
+  /// 存档 → 按品种的判定索引。条件和 `watched` 是同一份：活动中、画线或价格、有线。
+  private static func index(_ archive: AlertArchive) -> [String: [Alert]] {
+    var index: [String: [Alert]] = [:]
+    for alert in archive.alerts where alert.isActive && (alert.kind == .drawing || alert.kind == .price) && !alert.lines.isEmpty {
+      let key = InstrumentID.canonical(alert.symbol)
+      guard !key.isEmpty else { continue }
+      index[key, default: []].append(alert)
     }
+    return index
   }
 
   // ---------------------------------------------------------------- 测试用
