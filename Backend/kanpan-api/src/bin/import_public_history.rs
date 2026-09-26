@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Datelike, Duration, Utc};
 use reqwest::Client;
 use scorebook_core::domain::{chart_match, criteria::Bar, instrument, interval::Interval};
 use serde_json::Value;
@@ -284,6 +284,30 @@ fn make_feature(bars: &[Bar]) -> Result<Feature> {
     })
 }
 
+/// 这根 K 线在绝对网格上是第几根：固定长度的周期按开盘秒数整除（周线、三日线的网格
+/// 原点不在纪元上，但同一网格上的开盘时刻整除出来仍是一串连续整数），月线按日历月数。
+fn bar_number(interval: Interval, start: DateTime<Utc>) -> i64 {
+    match interval.fixed_seconds() {
+        Some(step) => start.timestamp().div_euclid(step),
+        None => i64::from(start.year()) * 12 + i64::from(start.month0()),
+    }
+}
+
+/// 把拉回来的一段 K 线切成索引窗口：窗口的起点落在绝对编号是 `stride` 整数倍的那根上。
+///
+/// 以前按「这一段里的第 0、stride、2·stride 根」切，而这一段的起点是 `now - days`，
+/// 每次导入都往后挪；stride > 1 时两次导入切出来的窗口互相错开，唯一键
+/// (start_at, end_at, …) 一个也撞不上，于是每跑一次就多一整套几乎重叠的窗口，
+/// 找相似的候选被同一段行情的错位副本塞满。对齐到绝对编号后，重跑只会补上新长出来的窗口。
+fn aligned_windows(bars: &[Bar], interval: Interval, window: usize, stride: usize) -> Vec<&[Bar]> {
+    let stride = i64::try_from(stride.max(1)).unwrap_or(i64::MAX);
+    (0..bars.len())
+        .filter(|&offset| offset + window <= bars.len())
+        .filter(|&offset| bar_number(interval, bars[offset].start).rem_euclid(stride) == 0)
+        .map(|offset| &bars[offset..offset + window])
+        .collect()
+}
+
 async fn insert_windows(pool: &sqlx::PgPool, source: &str, symbol: &str, interval: &str, windows: &[&[Bar]]) -> Result<usize> {
     let features: Vec<Feature> = windows.iter().map(|bars| make_feature(bars)).collect::<Result<_>>()?;
     let mut inserted = 0usize;
@@ -341,11 +365,8 @@ async fn main() -> Result<()> {
                     continue;
                 }
             };
-            let windows: Vec<&[Bar]> = (0..)
-                .map(|n| n * cfg.stride)
-                .take_while(|offset| offset + cfg.window <= bars.len())
-                .map(|offset| &bars[offset..offset + cfg.window])
-                .collect();
+            let exact = Interval::exact(interval).map_err(|_| anyhow::anyhow!("invalid interval"))?;
+            let windows = aligned_windows(&bars, exact, cfg.window, cfg.stride);
             seen += windows.len();
             inserted += insert_windows(&pool, &cfg.source, symbol, interval, &windows).await?;
             eprintln!("indexed {}/{symbol}/{interval}: {} bars, {} windows", cfg.source, bars.len(), windows.len());
@@ -356,4 +377,52 @@ async fn main() -> Result<()> {
         bail!("failed: {}", failed.join(","));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn series(interval: Interval, first: DateTime<Utc>, count: usize) -> Vec<Bar> {
+        (0..count)
+            .map(|n| {
+                let start = interval.add_bars(first, n as i64);
+                Bar { start, end: interval.add_bars(start, 1), open: "1".into(), high: "1".into(), low: "1".into(), close: "1".into(), volume: None }
+            })
+            .collect()
+    }
+
+    fn keys(windows: &[&[Bar]]) -> Vec<(i64, i64)> {
+        windows.iter().map(|w| (ms(w[0].start), ms(w[w.len() - 1].end))).collect()
+    }
+
+    /// 两次导入的起点差了几根（`now - days` 往后挪了），重叠那段切出来的窗口必须一模一样，
+    /// 唯一键才撞得上、重跑才不会攒出一套错位的副本。
+    #[test]
+    fn reruns_that_start_later_cut_the_same_windows() {
+        for name in ["15m", "1h", "4h", "1d", "1w", "1M"] {
+            let interval = Interval::exact(name).unwrap();
+            let origin = interval.floor(DateTime::from_timestamp(1_700_000_000, 0).unwrap());
+            let first = series(interval, origin, 300);
+            let later = series(interval, interval.add_bars(origin, 7), 300);
+            let a = keys(&aligned_windows(&first, interval, 64, 16));
+            let b = keys(&aligned_windows(&later, interval, 64, 16));
+            assert!(!a.is_empty() && !b.is_empty(), "{name}");
+            let overlap_start = ms(later[0].start);
+            let overlap_end = ms(first[first.len() - 1].end);
+            let inside = |k: &&(i64, i64)| k.0 >= overlap_start && k.1 <= overlap_end;
+            assert_eq!(a.iter().filter(inside).collect::<Vec<_>>(), b.iter().filter(inside).collect::<Vec<_>>(), "{name}");
+        }
+    }
+
+    #[test]
+    fn windows_are_full_length_and_start_on_the_grid() {
+        let interval = Interval::exact("1h").unwrap();
+        let origin = interval.floor(DateTime::from_timestamp(1_700_000_000, 0).unwrap());
+        let bars = series(interval, interval.add_bars(origin, 5), 200);
+        let windows = aligned_windows(&bars, interval, 64, 16);
+        assert!(windows.iter().all(|w| w.len() == 64 && bar_number(interval, w[0].start) % 16 == 0));
+        let starts: Vec<i64> = windows.iter().map(|w| bar_number(interval, w[0].start)).collect();
+        assert!(starts.windows(2).all(|p| p[1] - p[0] == 16));
+    }
 }
