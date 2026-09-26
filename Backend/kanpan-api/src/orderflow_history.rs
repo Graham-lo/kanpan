@@ -737,6 +737,7 @@ impl Registry {
  }
 
  fn tracked(&self)->Vec<String> {self.lock().keys().cloned().collect()}
+ fn is_tracked(&self,base:&str)->bool {self.lock().contains_key(base)}
 
  /// 不该再跟的停掉、先后重排、热点层（含掉榜还在跟的）超过 30 只就停掉最早掉榜的。
  fn settle(&self,entries:&mut Entries,now:i64) {
@@ -948,7 +949,15 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
   {
    let mut entries=registry.lock();
    for base in ALWAYS {registry.start(&mut entries,base,now,false,|e|e.major=true);}
-   for base in recent.iter().filter(|b|!ALWAYS.contains(&b.as_str())&&instruments::valid_base(b)).take(MAX_ON_DEMAND) {
+  }
+  // 已经不挂了的（或者修复之前打错的代号被记进来的）不再接着跟。
+  let mut admit=HashSet::new();
+  for base in recent.iter().filter(|b|!ALWAYS.contains(&b.as_str())&&instruments::valid_base(b)) {
+   if admitted(false,instruments::listed(base).await) {admit.insert(base.as_str());}
+  }
+  {
+   let mut entries=registry.lock();
+   for base in recent.iter().filter(|b|admit.contains(b.as_str())).take(MAX_ON_DEMAND) {
     registry.start(&mut entries,base,now,false,|e|e.requested=now);
    }
   }
@@ -978,6 +987,9 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
 #[serde(deny_unknown_fields)]
 struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>}
 
+/// 要不要为这只 base 起跟踪、记进库：已经在跟的照旧；合约表判得了而三家都没挂的不起；判不了（表还没拉到）的放行。
+fn admitted(tracked:bool,listed:Option<bool>)->bool {tracked||listed!=Some(false)}
+
 /// 校验并补齐区间：`to` 缺省此刻，`from` 缺省 `to` 前 24 小时，最长 3 天。
 fn window(from:Option<i64>,to:Option<i64>,now:i64)->std::result::Result<(i64,i64),&'static str> {
  let to=to.unwrap_or(now);
@@ -991,10 +1003,16 @@ async fn history(State(s):State<AppState>,Params(q):Params<HistoryQuery>)->Resul
  if !instruments::valid_base(&q.base) {return Err(ApiError::bad("invalid_base"))}
  let now=now_ms();
  let (from,to)=window(q.from,q.to,now).map_err(ApiError::bad)?;
- let thresholds=REGISTRY.get().map(|r|r.request(&q.base,now)).unwrap_or_default();
- let (since,alive)=store::touch(&s.pool,&q.base,now).await?;
+ // 三家都没挂的 base（打错的、早下架的）：不起跟踪、不记进 orderflow_bases。原来照样起一只按需跟踪，
+ // 占着按需层的名额（满了还会把真有人在看的踢掉），prepare 每 30 秒空转一次、一跟 24 小时，重启后还会被接着跟。
+ let tracked=REGISTRY.get().is_some_and(|r|r.is_tracked(&q.base));
+ let admit=admitted(tracked,instruments::listed(&q.base).await);
+ let (thresholds,tracked_since)=if admit {
+  let thresholds=REGISTRY.get().map(|r|r.request(&q.base,now)).unwrap_or_default();
+  let (since,alive)=store::touch(&s.pool,&q.base,now).await?;
+  (thresholds,store::continuous_since(since,alive,now).max(now-MAX_SPAN_MS))
+ } else {(Thresholds::default(),now)};
  let orders=store::range(&s.pool,&q.base,from,to).await?;
- let tracked_since=store::continuous_since(since,alive,now).max(now-MAX_SPAN_MS);
  let mut response=Json(serde_json::json!({"base":q.base,"thresholds":thresholds,"trackedSinceMs":tracked_since,"orders":orders})).into_response();
  response.headers_mut().insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
  Ok(response)
@@ -1115,6 +1133,13 @@ mod tests {
   assert!(!c.due(1,2*day,2,0,false),"一本都没就绪不重标");
   let mut crypto=Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
   assert!(!crypto.due(0,0,0,0,false),"币不标");
+ }
+
+ #[test] fn unlisted_bases_are_not_tracked() {
+  assert!(!admitted(false,Some(false)),"三家都没挂：不跟");
+  assert!(admitted(false,Some(true)));
+  assert!(admitted(false,None),"表还没拉到：判不了就放行");
+  assert!(admitted(true,Some(false)),"已经在跟的（刚下架）照旧");
  }
 
  #[test] fn window_defaults_and_limits() {

@@ -517,6 +517,17 @@ pub async fn venues(base:&str)->Vec<Venue> {
  pick(&tables,base,chrono::Utc::now().timestamp_millis())
 }
 
+/// 三家有没有哪家在挂这只：有 `Some(true)`，都没有 `Some(false)`；有哪张表还没拉到（判不了）`None`。
+pub async fn listed(base:&str)->Option<bool> {
+ let tables=snapshot(book()).await;
+ listed_in(&tables,base,chrono::Utc::now().timestamp_millis())
+}
+
+pub fn listed_in(tables:&[(Exchange,Option<Arc<Table>>)],base:&str,now_ms:i64)->Option<bool> {
+ if !pick(tables,base,now_ms).is_empty() {return Some(true)}
+ tables.iter().all(|(_,t)|t.is_some()).then_some(false)
+}
+
 async fn instruments(Params(query):Params<InstrumentsQuery>)->Response {
  if !valid_base(&query.base) {return ApiError::bad("invalid_base").into_response()}
  let tables=snapshot(book()).await;
@@ -648,6 +659,17 @@ mod tests {
   // OKX 的 USDT 交割按同样的规则收（线性，面值按币）。
   let eth=pick(&tables,"ETH",NOW);
   assert_eq!(serde_json::to_value(&eth).unwrap(),json!([{"exchange":"okx","product":"delivery","instrument":"ETH-USDT-261225","margin":"usdt","notional":{"kind":"linear","multiplier":0.1},"tick":0.01,"expiryMs":1798185600000_i64}]));
+ }
+
+ #[test]
+ fn listed_is_only_false_when_every_table_says_so() {
+  let tables=all();
+  assert_eq!(listed_in(&tables,"BTC",NOW),Some(true));
+  assert_eq!(listed_in(&tables,"NOSUCHCOIN",NOW),Some(false));
+  let mut partial=all();
+  partial[6].1=None;
+  assert_eq!(listed_in(&partial,"BTC",NOW),Some(true),"币安有就够了");
+  assert_eq!(listed_in(&partial,"NOSUCHCOIN",NOW),None,"Coinbase 那张还没拉到：判不了");
  }
 
  #[test]
