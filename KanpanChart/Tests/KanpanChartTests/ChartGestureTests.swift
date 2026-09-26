@@ -359,3 +359,61 @@ private func stroke(
     #expect(moved, "一直往左挪，视野一次都没动")
   }
 }
+
+// ---------------------------------------------------------------- 手指按着时换了一张图
+
+/// 整机压测（2026-09-26）：手指按着图拖的同时，宿主把图换成了另一档 / 另一只。
+/// 上一轮手势的起点记的是旧序列的时间，拿它接着拖会把视野、根宽带歪，还被当成用户意图报出去。
+@MainActor
+@Suite("换图时作废进行中的手势") struct GestureAcrossSwitchTests {
+  private func minuteState(from s: ChartState, plotW: Double) -> ChartState {
+    let h = s.series
+    let series = BarSeries(
+      symbol: h.symbol, interval: .m1, t0: h.lastTime - Int64(h.count - 1) * Interval.m1.stepMs,
+      step: Interval.m1.stepMs, open: h.open, high: h.high, low: h.low, close: h.close, volume: h.volume)
+    var next = s
+    next.series = series
+    next.view = ViewMath.reset(series: series, plotW: plotW, spacing: AICoinBehavior.initialSpacing)
+    return next
+  }
+
+  @Test("拖到一半换周期：新图视野不被旧起点带歪，也不报「用户根宽」")
+  func dragAcrossIntervalSwitch() throws {
+    let (v, L) = try makeView()
+    var userReports: [ViewWindow] = []
+    v.onUserViewChanged = { userReports.append($0) }
+    let t = FakeTouch(CGPoint(x: 200, y: 120))
+    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
+    for (i, x) in [180.0, 160, 140].enumerated() {
+      t.point = CGPoint(x: x, y: 121)
+      v.touchesMoved([t], with: FakeEvent(ms: 10_016 + Double(i) * 16))
+    }
+    #expect(v.gesture.mode == .pan)
+    #expect(!userReports.isEmpty, "前提：换图之前是真的在拖")
+
+    let switched = minuteState(from: v.state!, plotW: L.plotW)
+    v.state = switched
+    userReports.removeAll()
+    for (i, x) in [135.0, 120, 100].enumerated() {
+      t.point = CGPoint(x: x, y: 121)
+      v.touchesMoved([t], with: FakeEvent(ms: 10_100 + Double(i) * 16))
+    }
+    #expect(v.state?.view == switched.view, "新图的视野不该被上一张图的手势起点拖走")
+    #expect(userReports.isEmpty, "换图后的余下动作不是用户对新图的意图")
+    v.touchesEnded([t], with: FakeEvent(ms: 10_200))
+    #expect(v.gesture.touches.isEmpty)
+    #expect(v.state?.series.interval == .m1)
+  }
+
+  @Test("按下后没等到长按就换了周期：新图上不冒十字线")
+  func longPressAcrossIntervalSwitch() async throws {
+    let (v, L) = try makeView(magnet: false)
+    let t = FakeTouch(CGPoint(x: 180, y: 120))
+    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
+    v.state = minuteState(from: v.state!, plotW: L.plotW)
+    try await Task.sleep(for: .milliseconds(560))
+    #expect(v.state?.crosshair == nil)
+    v.touchesEnded([t], with: FakeEvent(ms: 11_000))
+    #expect(v.state?.crosshair == nil)
+  }
+}

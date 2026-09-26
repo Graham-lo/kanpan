@@ -124,6 +124,14 @@ public final class ChartView: UIView {
     // 不经过 `nil`——动画不掐，下一帧就用旧图的时间坐标把新视野盖掉，新图一打开就滑到别处。
     if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval {
       animation = nil
+      // 手指还按着的那一轮手势也是上一张图的：它的起点（`startView` / `startTransform` /
+      // `startRange`）记的是旧序列的时间和旧品种的价格区间，下一下 `touchesMoved` 拿它拖、
+      // 再 `clampView` 进新序列——1h 切 1m 时根宽被夹成最细、1m 切 1h 被夹成最粗，还走
+      // `onUserViewChanged` 被当成「用户想要的根宽」落盘，之后每次换品种都按这个极端值开图；
+      // 换品种刚做的「回到最新」也被这一下盖掉。挂着的长按也会在新图上冒出十字线。
+      // 这一轮手势到此为止：手指不抬也不再动图，抬手只做几何收尾。`touches` 留着，
+      // 「还有没有指头按着」照旧靠它判。
+      gesture.reset()
     }
     // 手指按着一个目标的这段时间里视野钉死（见 `beginAxisFreeze`）：外面灌进来的
     // 那份视野一律让位——新 K 线到货时 `AICoinBehavior.reconcile` 会把视野右移一格，
