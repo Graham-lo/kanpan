@@ -150,7 +150,10 @@ struct TickCoalesceTests {
     #expect(await waitUntil(15) { await ticks.first(of: t1) != nil }, "开新根必须推一次末根事件")
     #expect(await ticks.firstAny != nil)
     // 同一根上那 9 帧确实被收着（拍子排过），不然这条用例证明不了什么。
-    #expect(await pacer.sleepLog().isEmpty == false, "同一根上的帧就该进闸门")
+    // 要等：那一拍是闸门里另起的 Task 去钟上登记的，新根一到就把它 cancel 了，它却仍会跑到
+    // `pacer.sleep` 记一笔再退场——只是什么时候跑轮到执行器排。整套一起跑、机器忙时，
+    // 读 `sleepLog` 那一刻它可能还没轮上（2026-09-26 压测轮里整套跑翻过一次红）。
+    #expect(await waitUntil(15) { await pacer.sleepLog().isEmpty == false }, "同一根上的帧就该进闸门")
     await feed.stop()
     await pacer.drain()
   }
