@@ -16,7 +16,7 @@ import ReviewData
   public var searchRecord: UUID?
   public var selectedRecord: UUID?
   public var draft: ReviewDraft?
-  public private(set) var records: [ReviewRecord] = [] { didSet { recordsRevision &+= 1 } }
+  public private(set) var records: [ReviewRecord] = [] { didSet { recordsRevision &+= 1; retally() } }
   public private(set) var matches: [ReviewMatch] = []
   public private(set) var statistics: [ReviewStatsGroup] = []
   /// 战绩按哪一版判定规则算的。服务端战绩响应里带着；没拉到之前就是本机草稿用的那一版。
@@ -266,7 +266,28 @@ import ReviewData
   @ObservationIgnored private var client: ScorebookClient?
   @ObservationIgnored private var searchTask: Task<Void, Never>?
   @ObservationIgnored private var syncTask: Task<Void, Never>?
-  public var pendingCount: Int { records.filter(\.needsAction).count }
+  /// 欠着要人处理的几条（复盘按钮角标、复盘本「待判定 N」）。
+  ///
+  /// 原来是计算属性，每读一次把全部记录过滤一遍；顶栏角标、复盘本的筹码条、战绩卡各读各的，
+  /// 复盘本一次 body 光这几个数就扫 5 遍记录。现在 `records` 一变就一趟数完（`retally()`），
+  /// 数没变不赋值——读它的视图只在这个数真变了才重画。
+  public private(set) var pendingCount = 0
+  /// 战绩卡上本机现算的那几个数，和 `pendingCount` 同一趟数出来。
+  public private(set) var tally = ReviewTally()
+  /// 测试用：真数过几趟。
+  @ObservationIgnored private(set) var tallyPasses = 0
+  private func retally() {
+    var next = ReviewTally(), pending = 0
+    for record in records {
+      if record.needsAction { pending += 1 }
+      guard !record.voided else { continue }
+      next.live += 1
+      if record.outcome == .realized { next.realized += 1 } else if record.outcome == .unrealized { next.unrealized += 1 }
+    }
+    tallyPasses &+= 1
+    if pendingCount != pending { pendingCount = pending }
+    if tally != next { tally = next }
+  }
   public var isConnected: Bool { client != nil }
 
   /// 不带档案也能构造：档案由宿主在装好账号那一刻 `activate(store:client:)` 注进来
@@ -762,4 +783,12 @@ public struct ReviewBookSections: Sendable {
     }
     self.all = all; self.pending = pending; self.waiting = waiting; self.decided = decided
   }
+}
+
+/// 本机记录的几个数（战绩卡）：没作废的几条、其中判对 / 判错各几条。
+public struct ReviewTally: Equatable, Sendable {
+  public var live = 0
+  public var realized = 0
+  public var unrealized = 0
+  public init() {}
 }

@@ -102,9 +102,8 @@ public struct ReviewBook: View {
   }
   /// 战绩摘要卡。数字是本机这份记录现算的（离线也有）；点开是服务端算的分组战绩。
   private var summary: some View {
-    let live = feature.records.filter { !$0.voided }
-    let right = live.filter { $0.outcome == .realized }.count
-    let wrong = live.filter { $0.outcome == .unrealized }.count
+    // 三个数和角标同一趟数好（`ReviewFeature.tally`），这里不再每次 body 把记录扫三遍。
+    let tally = feature.tally
     return NavigationLink { ReviewStatisticsView(feature: feature) } label: {
       // 「判定规则 criteria-v2」不再上屏（UI 整改 P3）：那是服务端判定算法的版本号，
       // 是审计字段，不是给交易员看的（kanpan-no-engineering-status-fields）。
@@ -116,7 +115,7 @@ public struct ReviewBook: View {
           Image(systemName: "chevron.right").font(.system(size: ReviewControl.chevron, weight: .semibold)).foregroundStyle(t.ink3)
         }
         HStack(spacing: ReviewSpace.xxl) {
-          stat("记录", live.count); stat("判对", right); stat("判错", wrong)
+          stat("记录", tally.live); stat("判对", tally.realized); stat("判错", tally.unrealized)
         }
       }
       .padding(ReviewInset.cardCompact)
@@ -137,7 +136,8 @@ public struct ReviewBook: View {
   private var chips: some View {
     HStack(spacing: ReviewSpace.s) {
       chip("全部", tag: "all")
-      chip(feature.pendingCount > 0 ? "待判定 \(feature.pendingCount)" : "待判定", tag: "todo")
+      let pending = feature.pendingCount
+      chip(pending > 0 ? "待判定 \(pending)" : "待判定", tag: "todo")
       chip("已判定", tag: "decided")
       Spacer(minLength: 0)
     }
