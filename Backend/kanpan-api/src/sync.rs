@@ -237,9 +237,13 @@ pub async fn settings_body(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uu
  Ok(read_object(tx,owner,SETTINGS,SETTINGS_OBJECT).await?.map(|o|json!(o.body)))
 }
 /// 「导出我的数据」里的同步那一段：全部活着的对象，连同字段戳与最后修改时间。
-pub async fn export(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<Value> {
- Ok(sqlx::query_scalar("SELECT coalesce(jsonb_agg(jsonb_build_object('collection',collection,'id',id,'body',body,'fields',fields,'revision',revision,'changedAt',changed_at) ORDER BY collection,id),'[]') FROM sync_objects WHERE user_id=$1 AND NOT deleted")
-  .bind(owner).fetch_one(&mut **tx).await?)
+///
+/// 按数据库给出的 JSON 原文交回去（`::text`），不在进程里解析成 JSON 树：导出只是
+/// 原样转交，树只会把内存摊大几倍（见 `export.rs` 顶上的说明）。
+pub async fn export(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<Box<serde_json::value::RawValue>> {
+ let text:String=sqlx::query_scalar("SELECT coalesce(jsonb_agg(jsonb_build_object('collection',collection,'id',id,'body',body,'fields',fields,'revision',revision,'changedAt',changed_at) ORDER BY collection,id),'[]')::text FROM sync_objects WHERE user_id=$1 AND NOT deleted")
+  .bind(owner).fetch_one(&mut **tx).await?;
+ Ok(serde_json::value::RawValue::from_string(text)?)
 }
 
 // ------------------------------------------------------------------ 保留窗口

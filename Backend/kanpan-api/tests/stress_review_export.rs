@@ -1,4 +1,4 @@
-//! 复盘图片的内存压测（2026-09-26 后端压测）。都在隔离库里跑。
+//! 复盘图片与「导出我的数据」的内存压测（2026-09-26 后端压测）。都在隔离库里跑。
 //!
 //! 这两条路的共同点是「一次请求在进程里摊开几十 MB」：一张 5 MB 的补图从请求体到
 //! base64 串、解码后的字节、交给数据库的那份拷贝要摊四份；一次导出要把一个人的全部
@@ -112,3 +112,50 @@ async fn attachment_download_burst_keeps_memory_bounded() {
  assert!(grew<200,"{BURST} 次 5 MB 补图下载同时到，进程涨了 {grew} MiB");
  w.close().await;
 }
+
+/// 往一个人名下直接灌 `mb` MB 的同步对象（绕过推送接口：这里测的是导出，不是推送）。
+async fn stuff(w:&World,owner:Uuid,mb:usize) {
+ sqlx::query("INSERT INTO sync_objects(user_id,collection,id,body,revision) SELECT $1,'drawings','big'||g,jsonb_build_object('pad',repeat('x',10000),'n',g),1 FROM generate_series(1,$2) g")
+  .bind(owner).bind((mb*100) as i32).execute(&w.admin).await.unwrap();
+}
+
+/// 几次导出同时到：内存不能按「数据量 × 并发数 × JSON 树的膨胀系数」涨。
+///
+/// 「做完之后还占着多少」只打印不断言：macOS 的分配器会把释放的大块缓存起来再用，
+/// 一轮一次导出时 footprint 会停在一个平台上，这不是进程漏了，断言它只会测到分配器。
+#[tokio::test(flavor="multi_thread",worker_threads=8)]
+async fn concurrent_exports_keep_memory_bounded() {
+ if !in_own_process("concurrent_exports_keep_memory_bounded") {return}
+ let w=boot().await;let a=signup(&w.app,"sexp").await;
+ stuff(&w,a.id,12).await;
+ const BURST:usize=8;
+ let base=rss_kib();let (stop,peak,h)=sample_rss();let started=std::time::Instant::now();
+ let mut set=tokio::task::JoinSet::new();
+ for _ in 0..BURST {let app=w.app.clone();let t=a.token.clone();set.spawn(async move {hit(&app,"GET","/v1/auth/me/export",&t,Bytes::new()).await});}
+ let mut codes=std::collections::BTreeMap::<u16,usize>::new();
+ while let Some(c)=set.join_next().await {*codes.entry(c.unwrap().as_u16()).or_default()+=1;}
+ stop.store(true,Ordering::SeqCst);h.join().unwrap();
+ let grew=peak.load(Ordering::SeqCst).saturating_sub(base)/1024;
+ let kept=rss_kib().saturating_sub(base)/1024;
+ println!("export burst: {BURST} × 12 MB, codes {codes:?}, RSS base {} MiB, peak +{grew} MiB, settled +{kept} MiB, {:?}",base/1024,started.elapsed());
+ assert_eq!(codes.get(&200).copied(),Some(BURST),"{codes:?}");
+ assert!(grew<100,"{BURST} 次 12 MB 导出同时到，进程涨了 {grew} MiB");
+ w.close().await;
+}
+
+/// 超过上限的导出：要在把数据读进进程之前就回 413，而不是读完、摊开、再发现太大。
+#[tokio::test(flavor="multi_thread",worker_threads=8)]
+async fn an_oversized_export_is_refused_before_loading() {
+ if !in_own_process("an_oversized_export_is_refused_before_loading") {return}
+ let w=boot().await;let a=signup(&w.app,"sexq").await;
+ stuff(&w,a.id,80).await;
+ let base=rss_kib();let (stop,peak,h)=sample_rss();let started=std::time::Instant::now();
+ let status=hit(&w.app,"GET","/v1/auth/me/export",&a.token,Bytes::new()).await;
+ stop.store(true,Ordering::SeqCst);h.join().unwrap();
+ let grew=peak.load(Ordering::SeqCst).saturating_sub(base)/1024;
+ println!("oversized export: 80 MB → {status}, RSS base {} MiB, peak +{grew} MiB, {:?}",base/1024,started.elapsed());
+ assert_eq!(status,413);
+ assert!(grew<40,"80 MB 的数据回一个 413，进程涨了 {grew} MiB");
+ w.close().await;
+}
+
