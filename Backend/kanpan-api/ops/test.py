@@ -1,5 +1,5 @@
 """Use a fresh database and a non-owner login role, never the production data."""
-import os, pathlib, subprocess, uuid, shlex, secrets
+import os, pathlib, subprocess, sys, uuid, shlex, secrets
 from urllib.parse import urlsplit, urlunsplit
 root=pathlib.Path(__file__).resolve().parents[1]
 # The already running local PG container is infrastructure only; no Scorebook tables are touched.
@@ -34,7 +34,10 @@ try:
  env['KANPAN_TEST_ROLE']=role
  # --workspace 而不是 --package kanpan-api：领域逻辑住在 vendor/scorebook-core，
  # 复盘的判定规则就在那里，只跑 kanpan-api 等于把它那几十条单测一直晾着。
- result=subprocess.run(['cargo','test','--workspace','--','--test-threads=1'],cwd=root,env=env)
+ # 带参数时只跑点名的那部分：`ops/test.py --test stress_sync -- --ignored`。`--` 前面的
+ # 交给 cargo，后面的交给测试二进制；`--test-threads=1` 两种情况都在。
+ extra=sys.argv[1:];cargo_args,test_args=(extra[:extra.index('--')],extra[extra.index('--')+1:]) if '--' in extra else (extra,[])
+ result=subprocess.run(['cargo','test',*(cargo_args or ['--workspace']),'--','--test-threads=1',*test_args],cwd=root,env=env)
 finally:
  admin(f'DROP DATABASE {name} WITH (FORCE); DROP ROLE {role};')
  print('Isolated test database and role removed.',flush=True)
