@@ -908,8 +908,8 @@ pub(crate) fn http()->&'static reqwest::Client {crate::http::shared()}
 /// 三处都要它（这里的分类刷新、`sector_history` 的日线扫描、`oi_archive` 的预热名单），
 /// 以前各自取一遍，同一份几百 KB 的合约表十分钟里能从币安拉三次，占的是同一道按 IP
 /// 算的限速（审查 A7）。现在进程里只留一份，`EXCHANGE_INFO_TTL` 之内谁要都给这一份；
-/// 过期时同时来的几个调用方只有第一个出站，其余等它的结果（单飞）。失败不缓存——
-/// 各调用方本来就有自己的重试节奏。
+/// 过期时同时来的几个调用方只有第一个出站，其余等它的结果（单飞）。失败不缓存，但刚失败过
+/// （[`FAILURE_HOLD`] 内）排在锁后面的调用方一起拿失败，不挨个再出站一遍。
 pub async fn exchange_info()->Result<Arc<Value>> {
  static SHARED:OnceLock<Shared>=OnceLock::new();
  SHARED.get_or_init(Shared::default).get(EXCHANGE_INFO_TTL,||get_json(EXCHANGE_INFO)).await
@@ -917,18 +917,26 @@ pub async fn exchange_info()->Result<Arc<Value>> {
 /// 合约表多久算新。合约上下架一天几次，刷新循环 600 秒一轮，十分钟正好让
 /// 同一轮里的三个调用方共用一份。
 pub(crate) const EXCHANGE_INFO_TTL:Duration=Duration::from_secs(10*60);
-/// 一份共享的上游应答：TTL 内复用，过期时单飞。
+/// 一份共享的上游应答：TTL 内复用，过期时单飞，刚失败过一起失败。
+///
+/// 以前失败什么都不记：上游黑洞时第一个调用方等满 20 秒超时放锁，排在后面的下一个拿到锁
+/// 又出站一次、再等 20 秒，一个接一个。合约表（持仓量先对它、订单流、板块、持仓量归档）
+/// 与 24h 行情表（订单流的门槛）都走这里，排着的调用方越多卡得越久，出站也一次没省。
 #[derive(Default)]
-pub(crate) struct Shared {slot:tokio::sync::Mutex<Option<(Instant,Arc<Value>)>>}
+pub(crate) struct Shared {slot:tokio::sync::Mutex<(Option<(Instant,Arc<Value>)>,Option<Instant>)>}
 impl Shared {
  pub(crate) async fn get<F,Fut>(&self,ttl:Duration,fetch:F)->Result<Arc<Value>>
  where F:FnOnce()->Fut,Fut:Future<Output=Result<Value>> {
-  // 锁跨着出站拿：过期那一刻同时到的调用方排在这把锁后面，拿到锁时缓存已经是新的。
+  // 锁跨着出站拿：过期那一刻同时到的调用方排在这把锁后面，拿到锁时缓存已经是新的，
+  // 或者刚失败过、直接拿失败。
   let mut slot=self.slot.lock().await;
-  if let Some((at,value))=slot.as_ref() && at.elapsed()<ttl {return Ok(value.clone())}
-  let fresh=Arc::new(fetch().await?);
-  *slot=Some((Instant::now(),fresh.clone()));
-  Ok(fresh)
+  let (value,failed)=&mut *slot;
+  if let Some((at,value))=value.as_ref() && at.elapsed()<ttl {return Ok(value.clone())}
+  if failed.is_some_and(|at|at.elapsed()<FAILURE_HOLD) {return Err(upstream())}
+  match fetch().await {
+   Ok(fresh)=>{let fresh=Arc::new(fresh);*value=Some((Instant::now(),fresh.clone()));*failed=None;Ok(fresh)},
+   Err(e)=>{*failed=Some(Instant::now());Err(e)},
+  }
  }
 }
 pub(crate) async fn get_json(url:&str)->Result<Value> {
@@ -1518,11 +1526,33 @@ mod tests {
   // 过期了就再取一次。
   shared.get(Duration::ZERO,fetch(calls.clone())).await.unwrap();
   assert_eq!(calls.load(Ordering::SeqCst),2);
-  // 失败不进缓存：下一次照样出站，而且拿到的是新的那份。
+  // 失败不进缓存，但 FAILURE_HOLD 之内紧跟着来的不再出站、一起拿失败。
   let failing=Arc::new(Shared::default());
   assert!(failing.get(Duration::from_secs(60),||async {Err(upstream())}).await.is_err());
+  assert!(failing.get(Duration::from_secs(60),fetch(calls.clone())).await.is_err());
+  assert_eq!(calls.load(Ordering::SeqCst),2,"刚失败过，不该再出站");
+  // 过了 FAILURE_HOLD 就照样出站，拿到的是新的那份。
+  failing.slot.lock().await.1=Some(Instant::now()-FAILURE_HOLD);
   failing.get(Duration::from_secs(60),fetch(calls.clone())).await.unwrap();
   assert_eq!(calls.load(Ordering::SeqCst),3);
+ }
+ /// 上游黑洞（每次出站都卡到超时再失败）时排在锁后面的 50 个调用方：以前一个接一个
+ /// 再出站、再卡一遍，50 次出站、50 倍的等待；现在 1 次出站，其余拿同一个失败。
+ #[tokio::test]
+ async fn a_failing_shared_table_is_not_retried_by_every_waiter() {
+  static CALLS:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+  let shared=Arc::new(Shared::default());
+  let started=Instant::now();
+  let waiters=(0..50).map(|_|{let shared=shared.clone();tokio::spawn(async move {
+   shared.get(Duration::from_secs(60),||async {
+    CALLS.fetch_add(1,Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    Err::<Value,_>(upstream())
+   }).await.is_err()
+  })}).collect::<Vec<_>>();
+  for w in waiters {assert!(w.await.unwrap())}
+  assert_eq!(CALLS.load(Ordering::SeqCst),1,"50 个排队的只该出站一次");
+  assert!(started.elapsed()<Duration::from_millis(1000),"排队的不该各等一遍超时：{:?}",started.elapsed());
  }
  #[test]
  fn quote_assets_come_off_the_symbol() {
