@@ -50,7 +50,9 @@ import KanpanNetwork
   }
 
   private var visible = false
-  private var foreground = true
+  /// app 在不在前台（宿主经 `AppLifecycle` 那道「真进过后台才收资源」的闸来设）。
+  /// 板块页读它转给 `SectorHistoryFeed`：那一份是页面自己的，宿主够不着。
+  private(set) var foreground = true
   private var job: Task<Void, Never>?
 
   /// 两趟之间隔多久。板块是聚合值，10 秒足够；权重 40 的请求一分钟六趟，

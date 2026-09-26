@@ -31,6 +31,7 @@ import KanpanNetwork
 
   @ObservationIgnored private var backend: BackendClient?
   @ObservationIgnored private var visible = false
+  @ObservationIgnored private var foreground = true
   @ObservationIgnored private var job: Task<Void, Never>?
   @ObservationIgnored private var lastPull: Date?
   @ObservationIgnored private var loadedCache = false
@@ -69,12 +70,24 @@ import KanpanNetwork
     restart()
   }
 
+  /// app 在不在前台。和 `SectorFeed` 同一口径：停在板块页进后台，SwiftUI 不发
+  /// `onDisappear`，只看 `visible` 的话这条循环在后台宽限期里照跑（失败时 5 / 15 秒
+  /// 就再打一发），回前台才由这里补上（`stale` 决定要不要真取）。
+  func setForeground(_ on: Bool) {
+    guard on != foreground else { return }
+    foreground = on
+    restart()
+  }
+
+  /// 取数循环此刻挂没挂着（给单测看）。
+  var isRunning: Bool { job != nil }
+
   // MARK: 取数
 
   private func restart() {
     job?.cancel()
     job = nil
-    guard visible, let backend, !backend.hosts.isEmpty else { return }
+    guard visible, foreground, let backend, !backend.hosts.isEmpty else { return }
     job = Task { [weak self] in await self?.run() }
   }
 

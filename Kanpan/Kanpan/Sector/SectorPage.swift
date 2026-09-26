@@ -161,6 +161,7 @@ struct SectorPage: View {
     .onAppear {
       feed.setVisible(true)
       historyFeed.configure(backend: feed.backend)
+      historyFeed.setForeground(feed.foreground)
       historyFeed.setVisible(true)
     }
     .onDisappear {
@@ -170,6 +171,8 @@ struct SectorPage: View {
     // 网关名单是宿主在启动时配进 `feed` 的，可能比这一页出现得晚一步；
     // 换线路时也会变。变一次就重新接一次线，免得「5 日」那一档等到下次进页才活。
     .onChange(of: feed.backend) { _, next in historyFeed.configure(backend: next) }
+    // 前后台跟着宿主给 `feed` 设的那一位走（`historyFeed` 是这一页自己的，宿主够不着）。
+    .onChange(of: feed.foreground) { _, on in historyFeed.setForeground(on) }
   }
 
   /// 最上面那一层如果是品种列表，是哪个板块。
