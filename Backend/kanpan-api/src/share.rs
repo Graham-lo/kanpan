@@ -119,7 +119,15 @@ async fn send(State(s):State<AppState>,who:Identity,Payload(v):Payload<Send>)->R
 }
 /// 收件箱一页最多这么多封。
 pub const INBOX_PAGE:usize=200;
-/// 收件箱的游标。客户端当它是不透明的字符串，原样放回 `after`。
+/// 收件箱一页的画线（`drawings` + `alerted` 的 JSON 原文）最多这么多字节；至少一封，
+/// 哪怕它自己就超了（单封受发信请求体 512 KiB 限制，本来就有上限）。
+///
+/// 原来一页只按封数截：谁都能给任何一个知道用户名的人发信（发信时自动互加好友），
+/// 一个账号每分钟 20 封、一封 512 KiB，攒到两百封一页就是约 100 MB 的 jsonb——
+/// 整页读进进程、解成 `Value` 树（膨胀好几倍）、再序列化一遍。压测 250 封 × 480 KB，
+/// 收件人同时拉三次首页，serve 涨 754 MiB（线上 `MemoryMax=1G`，订单流跟踪同在一个进程）。
+/// 正常的信几 KB 一封，两百封远到不了这条线，页长不变。
+pub const INBOX_BYTES:i64=4*1024*1024;
 #[derive(Clone,Debug,PartialEq)]
 pub enum InboxCursor {
  /// 没截断：本次查询的时刻，下次取改动时刻 `>=` 它的（RFC3339，和以前的游标一模一样）。
@@ -146,14 +154,21 @@ impl InboxCursor {
   }
  }
 }
-/// 这一页之后客户端下次该从哪儿接着拉：没截断回 `now`，截断了回这一页最后一封。
-pub fn inbox_cursor(rows:&[(DateTime<Utc>,String)],now:DateTime<Utc>)->InboxCursor {
- match rows.get(INBOX_PAGE-1) {
-  Some((changed,id)) if rows.len()>INBOX_PAGE=>InboxCursor::After(*changed,id.clone()),
+/// 这一页之后客户端下次该从哪儿接着拉：没截断回 `now`，截断了（封数或字节到顶、
+/// 后面还有）回这一页最后一封。
+pub fn inbox_cursor(page:&[(DateTime<Utc>,String)],more:bool,now:DateTime<Utc>)->InboxCursor {
+ match page.last() {
+  Some((changed,id)) if more=>InboxCursor::After(*changed,id.clone()),
   _=>InboxCursor::Since(now),
  }
 }
-async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->Result<Json<Value>> {
+#[derive(serde::Serialize)] #[serde(rename_all="camelCase")]
+struct Letter {id:String,from:String,symbol:String,market:String,interval:String,view:Span,drawings:Box<serde_json::value::RawValue>,alerted:Box<serde_json::value::RawValue>,
+ created_at:DateTime<Utc>,opened_at:Option<DateTime<Utc>>,kept_at:Option<DateTime<Utc>>,reply_to:Option<String>}
+#[derive(serde::Serialize)] struct Span {from:i64,to:i64}
+#[derive(serde::Serialize)] struct Inbox {items:Vec<Letter>,cursor:String}
+#[derive(serde::Serialize)] struct InboxEnvelope {data:Inbox}
+async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->Result<Json<InboxEnvelope>> {
  let (after,after_id)=match v.after.as_deref().map(InboxCursor::parse) {
   None=>(None,None),
   Some(None)=>return Err(ApiError::bad("invalid_cursor")),
@@ -164,13 +179,27 @@ async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->
  // 列表不带截图（`shot` 每封最多 300 KB，原来 `SELECT s.*` 把它们整列读出来又丢掉）；
  // 截图走 `GET /v1/shares/{id}/shot` 单取。按改动时刻正序分页，多取一行判断截断没有；
  // 客户端自己按创建时间排序，不依赖这里的顺序。
- let mut rows=sqlx::query("SELECT s.id,s.symbol,s.market,s.interval,s.view_from,s.view_to,s.drawings,s.alerted,s.created_at,s.opened_at,s.kept_at,s.reply_to,u.email AS sender,greatest(s.created_at,s.opened_at,s.kept_at) AS changed FROM shares s JOIN account_users u ON u.id=s.from_user WHERE to_user=$1 AND ($2::timestamptz IS NULL OR ($3::text IS NULL AND greatest(s.created_at,s.opened_at,s.kept_at)>=$2) OR ($3::text IS NOT NULL AND (greatest(s.created_at,s.opened_at,s.kept_at),s.id)>($2,$3))) ORDER BY changed,s.id LIMIT $4")
-  .bind(who.user).bind(after).bind(after_id).bind(INBOX_PAGE as i64+1).fetch_all(&mut *tx).await?;
+ //
+ // 页长两道闸都在库里判：先按封数取 `INBOX_PAGE + 1` 封的键和大小，再按累计字节截，
+ // 只有截下来的那几封才把画线原文带出来——超出预算的画线不进这个进程。画线按 JSON
+ // 原文转交（`RawValue`），不解成树。
+ let rows=sqlx::query("WITH keys AS (SELECT s.id,greatest(s.created_at,s.opened_at,s.kept_at) AS changed,octet_length(s.drawings::text)+octet_length(s.alerted::text) AS size FROM shares s WHERE to_user=$1 AND ($2::timestamptz IS NULL OR ($3::text IS NULL AND greatest(s.created_at,s.opened_at,s.kept_at)>=$2) OR ($3::text IS NOT NULL AND (greatest(s.created_at,s.opened_at,s.kept_at),s.id)>($2,$3))) ORDER BY changed,s.id LIMIT $4),
+  page AS (SELECT id,changed,row_number() OVER w AS n,sum(size) OVER w-size AS before,count(*) OVER () AS fetched FROM keys WINDOW w AS (ORDER BY changed,id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))
+  SELECT s.id,s.symbol,s.market,s.interval,s.view_from,s.view_to,s.drawings::text AS drawings,s.alerted::text AS alerted,s.created_at,s.opened_at,s.kept_at,s.reply_to,u.email AS sender,p.changed,p.fetched
+  FROM page p JOIN shares s ON s.id=p.id JOIN account_users u ON u.id=s.from_user WHERE p.n<=$5 AND (p.n=1 OR p.before<$6) ORDER BY p.changed,p.id")
+  .bind(who.user).bind(after).bind(after_id).bind(INBOX_PAGE as i64+1).bind(INBOX_PAGE as i64).bind(INBOX_BYTES).fetch_all(&mut *tx).await?;
  let now:DateTime<Utc>=sqlx::query_scalar("SELECT clock_timestamp()").fetch_one(&mut *tx).await?;
- let cursor=inbox_cursor(&rows.iter().map(|r|(r.get::<DateTime<Utc>,_>("changed"),r.get::<String,_>("id"))).collect::<Vec<_>>(),now).encode();
- rows.truncate(INBOX_PAGE);
- let items:Vec<Value>=rows.iter().map(|r|json!({"id":r.get::<String,_>("id"),"from":r.get::<String,_>("sender"),"symbol":r.get::<String,_>("symbol"),"market":r.get::<String,_>("market"),"interval":r.get::<String,_>("interval"),"view":{"from":r.get::<i64,_>("view_from"),"to":r.get::<i64,_>("view_to")},"drawings":r.get::<Value,_>("drawings"),"alerted":r.get::<Value,_>("alerted"),"createdAt":r.get::<DateTime<Utc>,_>("created_at"),"openedAt":r.get::<Option<DateTime<Utc>>,_>("opened_at"),"keptAt":r.get::<Option<DateTime<Utc>>,_>("kept_at"),"replyTo":r.get::<Option<String>,_>("reply_to")})).collect();
- tx.commit().await?;Ok(envelope(json!({"items":items,"cursor":cursor})))
+ tx.commit().await?;
+ let fetched=rows.first().map_or(0,|r|r.get::<i64,_>("fetched") as usize);
+ let keys:Vec<_>=rows.iter().map(|r|(r.get::<DateTime<Utc>,_>("changed"),r.get::<String,_>("id"))).collect();
+ let cursor=inbox_cursor(&keys,fetched>rows.len(),now).encode();
+ let raw=|text:String|serde_json::value::RawValue::from_string(text);
+ let mut items=Vec::with_capacity(rows.len());
+ for r in rows {
+  items.push(Letter{id:r.get("id"),from:r.get("sender"),symbol:r.get("symbol"),market:r.get("market"),interval:r.get("interval"),view:Span{from:r.get("view_from"),to:r.get("view_to")},
+   drawings:raw(r.get("drawings"))?,alerted:raw(r.get("alerted"))?,created_at:r.get("created_at"),opened_at:r.get("opened_at"),kept_at:r.get("kept_at"),reply_to:r.get("reply_to")});
+ }
+ Ok(Json(InboxEnvelope{data:Inbox{items,cursor}}))
 }
 async fn put_shot(State(s):State<AppState>,who:Identity,Route(id):Route<String>,headers:HeaderMap,body:Bytes)->Result<Json<Value>> {
  if body.len()>300*1024 {return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE,"shot_too_large"))}
@@ -246,17 +275,18 @@ async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Re
   let t=|n:i64|DateTime::<Utc>::from_timestamp(1_800_000_000+n,0).unwrap();
   let now=t(10_000);
   let row=|n:i64|(t(n),format!("id{n:04}"));
-  assert_eq!(inbox_cursor(&[],now),InboxCursor::Since(now));
+  assert_eq!(inbox_cursor(&[],false,now),InboxCursor::Since(now));
   let full:Vec<_>=(0..INBOX_PAGE as i64).map(row).collect();
-  assert_eq!(inbox_cursor(&full,now),InboxCursor::Since(now),"刚好一页不算截断");
-  let over:Vec<_>=(0..=INBOX_PAGE as i64).map(row).collect();
-  assert_eq!(inbox_cursor(&over,now),InboxCursor::After(t(INBOX_PAGE as i64-1),format!("id{:04}",INBOX_PAGE-1)),"多出来的那一封下次还拿得到");
+  assert_eq!(inbox_cursor(&full,false,now),InboxCursor::Since(now),"刚好一页不算截断");
+  assert_eq!(inbox_cursor(&full,true,now),InboxCursor::After(t(INBOX_PAGE as i64-1),format!("id{:04}",INBOX_PAGE-1)),"多出来的那一封下次还拿得到");
+  // 按字节截的页只有几封：同样停在这一页最后一封。
+  assert_eq!(inbox_cursor(&full[..3],true,now),InboxCursor::After(t(2),"id0002".into()));
  }
  /// 同一时刻的信超过一页：游标带上 id，下一页从这一刻里排在它后面的那封接着拉，不会原地打转。
  #[test] fn a_page_of_letters_sharing_one_instant_still_moves_the_cursor() {
   let at=DateTime::<Utc>::from_timestamp(1_800_000_000,123_456_000).unwrap();
-  let rows:Vec<_>=(0..=INBOX_PAGE).map(|n|(at,format!("id{n:04}"))).collect();
-  let cursor=inbox_cursor(&rows,at);
+  let rows:Vec<_>=(0..INBOX_PAGE).map(|n|(at,format!("id{n:04}"))).collect();
+  let cursor=inbox_cursor(&rows,true,at);
   assert_eq!(cursor,InboxCursor::After(at,format!("id{:04}",INBOX_PAGE-1)));
   // 编出去再读回来是同一个游标；以前那种纯时刻的游标仍然认。
   assert_eq!(InboxCursor::parse(&cursor.encode()),Some(cursor.clone()));

@@ -159,3 +159,46 @@ async fn an_oversized_export_is_refused_before_loading() {
  w.close().await;
 }
 
+
+/// 往一个人的收件箱直接灌 `n` 封分享，每封的画线约 `kb` KB（发信接口的请求体上限是 512 KiB，
+/// 所以单封最大就是这个量级；绕过接口是因为发信有每分钟 20 封的额度）。
+async fn fill_inbox(w:&World,from:Uuid,to:Uuid,n:usize,kb:usize) {
+ sqlx::query("INSERT INTO shares(id,from_user,to_user,symbol,interval,view_from,view_to,drawings,created_at) SELECT 'stress'||lpad(g::text,16,'0'),$1,$2,'BTCUSDT','1h',1,2,(SELECT jsonb_agg(jsonb_build_object('id','d'||k,'kind','hline','pad',repeat('y',1000))) FROM generate_series(1,$4) k),now()-make_interval(secs=>$3-g) FROM generate_series(1,$3) g")
+  .bind(from).bind(to).bind(n as i32).bind(kb as i32).execute(&w.admin).await.unwrap();
+}
+
+/// 收件箱几次同时拉：一页不能按「200 封 × 单封上限 512 KB × JSON 树的膨胀系数」摊开。
+/// 分享画线谁都能发给任何一个知道用户名的人（发信时自动互加好友），塞满一个人的收件箱
+/// 只要一个账号。改完之后还要能一页页翻到底，一封不少、一封不重。
+#[tokio::test(flavor="multi_thread",worker_threads=8)]
+async fn a_full_inbox_page_keeps_memory_bounded() {
+ if !in_own_process("a_full_inbox_page_keeps_memory_bounded") {return}
+ let w=boot().await;let from=signup(&w.app,"sinf").await;let to=signup(&w.app,"sint").await;
+ const SHARES:usize=250;
+ fill_inbox(&w,from.id,to.id,SHARES,480).await;
+ const BURST:usize=3;
+ let base=rss_kib();let (stop,peak,h)=sample_rss();let started=std::time::Instant::now();
+ let mut set=tokio::task::JoinSet::new();
+ for _ in 0..BURST {let app=w.app.clone();let t=to.token.clone();set.spawn(async move {hit(&app,"GET","/v1/shares/inbox",&t,Bytes::new()).await});}
+ let mut codes=std::collections::BTreeMap::<u16,usize>::new();
+ while let Some(c)=set.join_next().await {*codes.entry(c.unwrap().as_u16()).or_default()+=1;}
+ stop.store(true,Ordering::SeqCst);h.join().unwrap();
+ let grew=peak.load(Ordering::SeqCst).saturating_sub(base)/1024;
+ println!("inbox burst: {BURST} × first page of {SHARES} shares × ~480 KB, codes {codes:?}, RSS base {} MiB, peak +{grew} MiB, {:?}",base/1024,started.elapsed());
+ assert_eq!(codes.get(&200).copied(),Some(BURST),"{codes:?}");
+ // 一页的量要翻完：一封不少、一封不重，游标最后落回「没截断」。
+ let mut seen=std::collections::HashSet::new();let mut after:Option<String>=None;let mut pages=0;
+ loop {
+  let path=match &after {Some(c)=>format!("/v1/shares/inbox?after={}",c.replace('+',"%2B").replace(':',"%3A").replace('~',"%7E")),None=>"/v1/shares/inbox".into()};
+  let (st,v)=request(&w.app,&path,"GET",Some(&to.token),None,serde_json::Value::Null).await;assert_eq!(st,200,"{v}");
+  pages+=1;
+  for item in v["data"]["items"].as_array().unwrap() {assert!(seen.insert(item["id"].as_str().unwrap().to_string()),"duplicate {}",item["id"]);}
+  let cursor=v["data"]["cursor"].as_str().unwrap().to_string();
+  if !cursor.contains('~') {break}
+  after=Some(cursor);assert!(pages<=SHARES,"paging never ends");
+ }
+ println!("inbox walk: {} shares in {pages} pages",seen.len());
+ assert_eq!(seen.len(),SHARES);
+ assert!(grew<100,"{BURST} 次收件箱首页同时拉，进程涨了 {grew} MiB");
+ w.close().await;
+}
