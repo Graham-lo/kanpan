@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import KanpanAccount
 import UIKit
 @testable import Kanpan
 
@@ -26,7 +27,16 @@ private final class CountingShareService: ShareInboxService, @unchecked Sendable
     }, cursor: "c")
   }
   func friends() async throws -> [ShareFriend] { [] }
-  func mark(_ id: String, kept: Bool) async throws { lock.withLock { _ = opened.insert(id) } }
+  /// 回执一律按这个错误失败（nil = 照常收下）。
+  var markError: Error? {
+    get { lock.withLock { _markError } }
+    set { lock.withLock { _markError = newValue } }
+  }
+  private var _markError: Error?
+  func mark(_ id: String, kept: Bool) async throws {
+    if let error = markError { throw error }
+    lock.withLock { _ = opened.insert(id) }
+  }
   func shot(_ id: String) async throws -> Data {
     let fail = lock.withLock { () -> Bool in
       shots[id, default: 0] += 1
@@ -187,5 +197,38 @@ private final class CountingShareService: ShareInboxService, @unchecked Sendable
     // 换账号：跟着清空。
     inbox.activate(directory: dir, owner: nil, cache: ShareInbox.Cache(), service: nil)
     #expect(inbox.unseen.isEmpty)
+  }
+
+  // ---------------------------------------------------------------- 弱网：回执毒丸
+
+  /// 一条回执碰上永久错误（不止 404）也要丢掉，不能每次拉取都卡在它身上（整机压测 2026-09-26）。
+  @Test func deadReceiptDoesNotBlockTheInbox() async throws {
+    let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+    let service = CountingShareService(items: items(3), jpeg: jpeg())
+    service.markError = AccountError.http(400, "bad_id")
+    var cache = ShareInbox.Cache(); cache.pending = ["gone": false]
+    let inbox = ShareInbox()
+    inbox.activate(directory: dir, owner: UUID(), cache: cache, service: service)
+    inbox.pull(); try await settle(inbox)
+    #expect(inbox.items.count == 3, "一条永远发不出去的回执把收件箱堵死了")
+    #expect(inbox.notice == nil)
+  }
+
+  /// 连不上 / 5xx 的回执照旧留着，下次再发。
+  @Test func transientReceiptFailureIsKeptForRetry() async throws {
+    let dir = try folder(); defer { try? FileManager.default.removeItem(at: dir) }
+    let service = CountingShareService(items: items(3), jpeg: jpeg())
+    service.markError = AccountError.http(503, "unavailable")
+    var cache = ShareInbox.Cache(); cache.pending = ["s1": true]
+    let inbox = ShareInbox()
+    inbox.activate(directory: dir, owner: UUID(), cache: cache, service: service)
+    inbox.pull(); try await settle(inbox)
+    #expect(inbox.notice != nil)
+    service.markError = nil
+    inbox.pull(); try await settle(inbox)
+    #expect(inbox.notice == nil)
+    #expect(inbox.items.count == 3)
+    #expect(ShareInbox.receiptIsDead(404) && ShareInbox.receiptIsDead(400) && ShareInbox.receiptIsDead(409))
+    #expect(!ShareInbox.receiptIsDead(401) && !ShareInbox.receiptIsDead(429) && !ShareInbox.receiptIsDead(503))
   }
 }

@@ -152,10 +152,18 @@ extension ShareClient: ShareInboxService {}
       }
     }
   }
+  /// 这条回执服务端永远不会收：信没了（404，未留下且过了留存期）、这封信的号不认（400）之类。
+  /// 只有连不上、5xx、限流（429）、超时（408）和登录这一关（401 / 403，换号 / 重登之后还要发）才留着重试。
+  ///
+  /// 整机压测 2026-09-26：原来只放过 404。一条回执碰上别的永久错误，`flush` 每次都在它身上抛错，
+  /// 整个 `pull` 跟着失败——收件箱再也刷不出新信，底下一直挂着「暂时连不上」。
+  static func receiptIsDead(_ code: Int) -> Bool {
+    (400..<500).contains(code) && ![401, 403, 408, 429].contains(code)
+  }
   private func flush(client: any ShareInboxService, generation: UUID) async throws {
     for (id, keep) in cache.pending {
       do { try await client.mark(id, kept: keep) }
-      catch AccountError.http(404, _) {} // 未留下且已过留存期的信，无需继续回执。
+      catch AccountError.http(let code, _) where Self.receiptIsDead(code) {}
       try Task.checkCancellation(); guard epoch == generation else { throw CancellationError() }
       // 发「已读」期间又点了「留下」，新回执不能被旧完成盖掉。
       if cache.pending[id] == keep { cache.pending[id] = nil; persist() }

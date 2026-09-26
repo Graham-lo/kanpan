@@ -45,6 +45,7 @@ struct ShareClient: Sendable {
       default: return value.localizedDescription
       }
     }
-    return "暂时连不上，请重试"
+    // 不带「请重试」：朋友页收件箱底下那行自己就是个「· 重试」按钮，带上就成了「…请重试 · 重试」。
+    return "暂时连不上"
   }
 }
