@@ -119,16 +119,20 @@ pub fn perpetuals(body:&Value)->Vec<String> {
 /// `[[openTime,open,high,low,close,volume,closeTime,quoteAssetVolume,…],…]`,
 /// oldest first, into `(UTC day, close, quote volume)`.
 ///
-/// The last row is dropped unread: a daily candle asked for at 00:10 ends with
-/// the day that started ten minutes ago, whose close is whatever the price
-/// happens to be right now. Writing it would put a number in the table that
-/// changes all day, and every window that touched it would move under the
-/// phone. Only complete days are stored.
-pub fn parse_daily_closes(body:&Value)->Vec<(NaiveDate,f64,f64)> {
+/// Only candles whose `closeTime` is already behind `now_ms` are read: a daily
+/// candle asked for at 00:10 ends with the day that started ten minutes ago,
+/// whose close is whatever the price happens to be right now. Writing it would
+/// put a number in the table that changes all day, and every window that
+/// touched it would move under the phone.
+///
+/// 原来是「不看就扔掉最后一行」：上游那一刻还没长出今天那根（新日刚开、这只合约
+/// 还没成交，或者回来的是一只停在 BREAK 里的合约）时，扔掉的是**昨天那根完整的**，
+/// 于是这只合约永远缺昨天、每轮都被当成「还欠一天」。按收盘时间判，才只扔真没收完的。
+pub fn parse_daily_closes(body:&Value,now_ms:i64)->Vec<(NaiveDate,f64,f64)> {
  let Some(rows)=body.as_array() else {return Vec::new()};
- let complete=rows.len().saturating_sub(1);
- let mut out=Vec::with_capacity(complete);
- for row in &rows[..complete] {
+ let mut out=Vec::with_capacity(rows.len());
+ for row in rows {
+  if !row[6].as_i64().is_some_and(|close_time|close_time<now_ms) {continue}
   let Some(day)=row[0].as_i64().and_then(DateTime::from_timestamp_millis).map(|t|t.date_naive()) else {continue};
   let (Some(close),Some(volume))=(num(&row[4]),num(&row[7])) else {continue};
   if close<=0.0||volume<0.0 {continue}
@@ -186,9 +190,17 @@ pub async fn rebuild(pool:&PgPool,asof:NaiveDate)->sqlx::Result<Arc<Snapshot>> {
  // route sets `Cache-Control` and so builds its own response rather than
  // returning `Json`.
  let body=serde_json::to_vec(&json!({"data":payload(asof,&rows)})).unwrap_or_default();
- let snapshot=Arc::new(Snapshot{asof,body});
- *cache().write().unwrap_or_else(|e|e.into_inner())=Some(snapshot.clone());
- Ok(snapshot)
+ Ok(install(Arc::new(Snapshot{asof,body})))
+}
+
+/// 放进缓存，但不许往回退。午夜前后可能同时有几次重建在跑：日任务 23:59 起的那次
+/// 是给昨天算的，请求 00:00 起的是给今天算的；昨天那次后完成的话，原来会把今天的
+/// 盖掉，下一个请求又得重建一遍。日期更早的那份照样返回给调它的人，只是不进缓存。
+fn install(snapshot:Arc<Snapshot>)->Arc<Snapshot> {install_into(cache(),snapshot)}
+fn install_into(slot:&RwLock<Option<Arc<Snapshot>>>,snapshot:Arc<Snapshot>)->Arc<Snapshot> {
+ let mut slot=slot.write().unwrap_or_else(|e|e.into_inner());
+ if slot.as_ref().is_none_or(|current|current.asof<=snapshot.asof) {*slot=Some(snapshot.clone())}
+ snapshot
 }
 
 // -------------------------------------------------------------- the collection
@@ -229,7 +241,9 @@ impl Klines for Binance {
  }
 }
 /// 一个品种这一轮的结果。`Banned` 是整轮的事，不是这一个品种的事。
-enum Fetch {Body(Value),Skip,Banned}
+/// `Skip` 是上游明说这一只没有（404、451 这类 4xx），今天再问也一样；
+/// `Retry` 是上游或网络这一下没接住（5xx、连接断），过几分钟再问多半就有了。
+enum Fetch {Body(Value),Skip,Retry,Banned}
 
 /// One contract's daily candles.
 ///
@@ -251,12 +265,12 @@ async fn klines(source:&dyn Klines,symbol:&str)->Fetch {
    Reply::Body(body)=>return Fetch::Body(body),
    Reply::Status(status,retry_after)=>{
     if binance_gate::note(status,retry_after.as_deref()) {return Fetch::Banned}
-    return Fetch::Skip;
+    return if status>=500 {Fetch::Retry} else {Fetch::Skip};
    }
    Reply::Transport=>{if attempt+1<TRANSPORT_TRIES {tokio::time::sleep(TRANSPORT_PAUSE).await}}
   }
  }
- Fetch::Skip
+ Fetch::Retry
 }
 
 async fn upsert(pool:&PgPool,symbol:&str,bars:&[(NaiveDate,f64,f64)])->sqlx::Result<()> {
@@ -293,8 +307,20 @@ async fn prune(pool:&PgPool,live:&[String])->sqlx::Result<()> {
  Ok(())
 }
 
+/// 一轮收集的结果。
+#[derive(Debug,Default,PartialEq)]
+pub struct Collected {
+ pub written:usize,
+ pub skipped:usize,
+ /// 上游或网络这一下没接住、写库失败的品种数。有就让这一轮按 `RETRY` 再来：
+ /// 原来它们和 404 一起记成「跳过」、这一轮照样算成功，要等到明天 00:10 才再问，
+ /// 新上市的合约因此白等一整天才有第一根历史。
+ pub transient:usize,
+ pub banned:bool,
+}
+
 /// Three weeks of candles for each contract in `targets`, upserted as they
-/// arrive. Returns `(rows written, contracts skipped, ran into a ban)`.
+/// arrive.
 ///
 /// The list is given rather than derived so the caller can hand over only the
 /// contracts that are actually short of history: one request a second means a
@@ -303,22 +329,24 @@ async fn prune(pool:&PgPool,live:&[String])->sqlx::Result<()> {
 ///
 /// 撞上封禁就停本轮，下一轮再来：接着往下走只会把几百个品种各自记成一次失败，
 /// 同时把封禁越撞越久。
-pub async fn collect(pool:&PgPool,targets:&[String])->anyhow::Result<(usize,usize,bool)> {
- let (mut written,mut skipped)=(0usize,0usize);
+pub async fn collect(pool:&PgPool,targets:&[String])->Collected {
+ let mut out=Collected::default();
  for symbol in targets {
   let body=match klines(&Binance,symbol).await {
    Fetch::Body(body)=>body,
-   Fetch::Skip=>{tracing::warn!("Daily closes: {symbol} unavailable, skipped");skipped+=1;continue}
-   Fetch::Banned=>return Ok((written,skipped,true)),
+   Fetch::Skip=>{tracing::warn!("Daily closes: {symbol} unavailable, skipped");out.skipped+=1;continue}
+   Fetch::Retry=>{tracing::warn!("Daily closes: {symbol} did not answer, will retry");out.transient+=1;continue}
+   Fetch::Banned=>{out.banned=true;return out}
   };
-  let bars=parse_daily_closes(&body);
-  if bars.is_empty() {skipped+=1;continue}
+  // 新上市、还没有一根收完的日线：今天本来就没什么可存，不是失败。
+  let bars=parse_daily_closes(&body,Utc::now().timestamp_millis());
+  if bars.is_empty() {out.skipped+=1;continue}
   match upsert(pool,symbol,&bars).await {
-   Ok(())=>written+=bars.len(),
-   Err(e)=>{tracing::warn!("Daily closes: {symbol} not stored ({e})");skipped+=1}
+   Ok(())=>out.written+=bars.len(),
+   Err(e)=>{tracing::warn!("Daily closes: {symbol} not stored ({e})");out.transient+=1}
   }
  }
- Ok((written,skipped,false))
+ out
 }
 
 /// Which contracts already have the newest day a finished sweep would have
@@ -349,14 +377,23 @@ pub async fn sweep(pool:&PgPool)->anyhow::Result<usize> {
  anyhow::ensure!(!symbols.is_empty(),"exchangeInfo listed no tradable perpetual");
  let yesterday=window_day(Utc::now().date_naive(),1);
  let targets=missing(&symbols,&collected(pool,yesterday).await?);
- let (written,skipped,banned)=if targets.is_empty() {(0,0,false)} else {collect(pool,&targets).await?};
+ let round=if targets.is_empty() {Collected::default()} else {collect(pool,&targets).await};
  prune(pool,&symbols).await?;
- tracing::info!("Daily closes: {} contracts, {} to collect, {written} rows written, {skipped} skipped",
-  symbols.len(),targets.len());
- // 本轮被封禁打断：已经写下的那些留着，这一轮算失败，让 `spawn_daily` 按 RETRY
- // 再来一次。到时候要是封禁还在，第一个品种出站前就会被闸门拦住，代价是零。
- anyhow::ensure!(!banned,"Binance is holding this egress; the round stopped early");
- Ok(written)
+ tracing::info!("Daily closes: {} contracts, {} to collect, {} rows written, {} skipped, {} to retry",
+  symbols.len(),targets.len(),round.written,round.skipped,round.transient);
+ settle(&round)?;
+ Ok(round.written)
+}
+
+/// 这一轮算不算完。算不完就让 `spawn_daily` 按 RETRY 再来一次——下一轮只问还缺的，
+/// 已经写下的不会重问。
+///
+/// 被封禁打断：到时候要是封禁还在，第一个品种出站前就会被闸门拦住，代价是零。
+/// 有品种没接住（5xx、断连、写库失败）：十分钟后再问它们，而不是等到明天。
+fn settle(round:&Collected)->anyhow::Result<()> {
+ anyhow::ensure!(!round.banned,"Binance is holding this egress; the round stopped early");
+ anyhow::ensure!(round.transient==0,"{} contracts did not answer; asking them again shortly",round.transient);
+ Ok(())
 }
 
 /// The daily job, started from `serve` beside `market_meta::spawn_refresh`.
@@ -463,14 +500,48 @@ mod tests {
    // 00:10 UTC on the 18th: this one closes tonight.
    bar("2026-09-18","103.5","7"),
   ]);
-  let bars=parse_daily_closes(&body);
+  let now=ms("2026-09-18")+600_000;
+  let bars=parse_daily_closes(&body,now);
   assert_eq!(bars.len(),3,"the day in progress must not be stored");
   assert_eq!(bars[0],(day("2026-09-15"),100.5,1000.0));
   assert_eq!(bars[2].0,day("2026-09-17"));
   // A single candle is only the day in progress, so nothing is complete.
-  assert!(parse_daily_closes(&json!([bar("2026-09-18","103.5","7")])).is_empty());
-  assert!(parse_daily_closes(&json!([])).is_empty());
-  assert!(parse_daily_closes(&json!({"code":-1121})).is_empty());
+  assert!(parse_daily_closes(&json!([bar("2026-09-18","103.5","7")]),now).is_empty());
+  assert!(parse_daily_closes(&json!([]),now).is_empty());
+  assert!(parse_daily_closes(&json!({"code":-1121}),now).is_empty());
+ }
+
+ /// 上游还没长出今天那根时，最后一根就是昨天那根完整的——不能因为它排在最后就扔掉。
+ #[test]
+ fn a_finished_last_candle_is_kept() {
+  let body=json!([bar("2026-09-16","101.5","1100"),bar("2026-09-17","102.5","1200")]);
+  let bars=parse_daily_closes(&body,ms("2026-09-18")+600_000);
+  assert_eq!(bars.iter().map(|b|b.0).collect::<Vec<_>>(),vec![day("2026-09-16"),day("2026-09-17")]);
+  // 收盘时间读不出来的行不知道收没收完，不存。
+  let unknown=json!([[ms("2026-09-16"),"1","2","0","101.5","10",null,"1100",1,"1","1","0"]]);
+  assert!(parse_daily_closes(&unknown,ms("2026-09-18")).is_empty());
+ }
+
+ /// 午夜前后给昨天算的那次重建后完成，也不能把给今天算好的缓存换回去。
+ #[test]
+ fn an_older_rebuild_does_not_replace_a_newer_cache() {
+  // 自己的一格，不碰进程里那份：别的测试要用它。
+  let slot=RwLock::new(None);
+  install_into(&slot,Arc::new(Snapshot{asof:day("2026-09-18"),body:b"today".to_vec()}));
+  let late=install_into(&slot,Arc::new(Snapshot{asof:day("2026-09-17"),body:b"yesterday".to_vec()}));
+  assert_eq!(late.body,b"yesterday","the caller still gets what it built");
+  let kept=|slot:&RwLock<Option<Arc<Snapshot>>>|slot.read().unwrap().as_ref().map(|s|s.body.clone());
+  assert_eq!(kept(&slot),Some(b"today".to_vec()));
+  install_into(&slot,Arc::new(Snapshot{asof:day("2026-09-19"),body:b"tomorrow".to_vec()}));
+  assert_eq!(kept(&slot),Some(b"tomorrow".to_vec()),"a newer day still replaces it");
+ }
+
+ /// 5xx 和断连是「过一会儿再问」，这一轮不算完；404 是这一只今天没有，这一轮照样算完。
+ #[test]
+ fn a_round_with_unanswered_contracts_is_retried_soon() {
+  assert!(settle(&Collected{written:40,skipped:2,..Default::default()}).is_ok());
+  assert!(settle(&Collected{written:40,transient:1,..Default::default()}).is_err());
+  assert!(settle(&Collected{banned:true,..Default::default()}).is_err());
  }
 
  #[test]
@@ -483,7 +554,7 @@ mod tests {
    bar("2026-09-19","105.0","1300"),
    bar("2026-09-20","106.0","1400"),
   ]);
-  let bars=parse_daily_closes(&body);
+  let bars=parse_daily_closes(&body,ms("2026-09-20")+600_000);
   assert_eq!(bars,vec![(day("2026-09-15"),100.0,1000.0),(day("2026-09-19"),105.0,1300.0)]);
  }
 
@@ -719,6 +790,8 @@ mod tests {
   let missing=Refusing{status:404,retry_after:None,asked:std::sync::atomic::AtomicUsize::new(0)};
   assert!(matches!(klines(&missing,"GONEUSDT").await,Fetch::Skip));
   assert!(binance_gate::wait().is_none(),"a 404 is not a ban");
+  let down=Refusing{status:503,retry_after:None,asked:std::sync::atomic::AtomicUsize::new(0)};
+  assert!(matches!(klines(&down,"BUSYUSDT").await,Fetch::Retry),"a 5xx is worth asking again today");
   binance_gate::clear();
  }
 }
