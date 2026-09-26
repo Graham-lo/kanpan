@@ -147,14 +147,22 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
   // MARK: - 推
 
   private func push(into outcome: inout Outcome) async throws {
-    // 撞过一次「这条永远不会成功」之后改成一条一条发，把坏的那条揪出来单独隔离。
-    var oneByOne = false
+    // 撞过一次「这条永远不会成功」之后，在**那一批里**对半切着发，把坏的那条揪出来单独隔离。
+    //
+    // `suspects` 是队首这几条：一起发会被服务端按语义整批顶回来，坏的那条就在里头。
+    // 每次只发它的前一半——前一半过了，坏的在剩下那段里；前一半也被顶，就把嫌疑缩到这一半。
+    // 缩到一条还被顶就是它，隔离掉，嫌疑清零，**回到整批发**。
+    //
+    // 从前是一个撞过就再也不复位的 `oneByOne`：一条坏操作之后，这一轮里队列剩下的每一条
+    // 都单独一个跨洋请求。离线攒了 5000 条、第 50 条是坏的，就是 4950 次往返
+    // （压测 2026-09-26：5000 条、第 50 条坏，修前 5001 个请求，修后 57 个）。
+    var suspects = 0
     var resyncs = Self.resyncBudget
     // 这一轮的字节上限。撞过 413 就对半砍，砍到单条也过不去时把那条隔离掉。
     var budget = batchBytes
     while !store.archive.operations.isEmpty {
       try checkpoint()
-      let batch = store.nextBatch(limit: oneByOne ? 1 : batchLimit, maxBytes: budget)
+      let batch = store.nextBatch(limit: suspects > 0 ? max(1, suspects / 2) : batchLimit, maxBytes: budget)
       let ids = batch.map(\.id)
       let payload = try JSONEncoder().encode(SyncPushRequest(batch))
       if payload.count > budget {
@@ -162,6 +170,7 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
         // 隔离掉，本地值与脏标记一个不动。
         track(batch[0], into: &outcome.dropped)
         try store.quarantine(batch[0].id, reason: "payload_too_large")
+        suspects = max(0, suspects - 1)
         onProgress()
         continue
       }
@@ -192,10 +201,12 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
         // 语义错误：重试只会把整条队列堵死。先揪出是哪一条，再单独隔离——
         // **本地值和脏标记一个都不动**，下次启动本地照样赢（B3）。
         try checkpoint()
-        guard batch.count == 1 else { oneByOne = true; continue }
+        guard batch.count == 1 else { suspects = batch.count; continue }
         let reason: String = { if case .http(_, let code) = error { return code }; return "request_failed" }()
         try store.quarantine(batch[0].id, reason: reason)
         track(batch[0], into: &outcome.dropped)
+        // 揪出来了。嫌疑段里剩下的要是还有坏的，整批发时会再被顶一次、再切一次。
+        suspects = 0
         onProgress()
         continue
       }
@@ -211,6 +222,8 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
       // 回执入账成功之后才算进这一轮：入账抛错时这一批还留在队列里，由收尾那句记成 dropped。
       try store.acknowledge(result)
       outcome.acked.formUnion(acked); outcome.dropped.formUnion(dropped)
+      // 这一段过了：坏的那条在嫌疑段剩下的部分里。
+      if suspects > 0 { suspects = max(0, suspects - batch.count) }
       // 服务端没认掉任何一条就别空转。
       guard store.archive.operations.count < before else { break }
     }

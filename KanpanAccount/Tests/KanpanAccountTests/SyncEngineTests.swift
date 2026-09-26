@@ -359,6 +359,37 @@ import Testing
     #expect(r.store.archive.local["drawings:binance/usd_m/BTCUSDT/1"]?.body["text"] == .string("坏"))
   }
 
+  /// 压测 2026-09-26：一条坏操作只让**它所在那一批**切开来找，找完回到整批发。
+  /// 从前撞过一次就一条一条发到这一轮结束——2000 条、第 50 条是坏的，1951 个跨洋请求。
+  @Test func onePermanentErrorOnlySplitsItsOwnBatch() async throws {
+    let r = try rig(); defer { try? FileManager.default.removeItem(at: r.root) }
+    let count = 2000
+    try r.store.capture((0..<count).map { line($0, text: $0 == 50 ? "坏" : "好") }, device: r.device)
+    r.server.refuse = { $0.fields["text"] == .string("坏") ? "invalid_operation" : nil }
+
+    let outcome = try await r.engine.run(.push)
+    #expect(r.store.archive.operations.isEmpty)
+    #expect(r.store.archive.rejected.map(\.objectId) == ["binance/usd_m/BTCUSDT/50"])
+    #expect(r.server.objects.count == count - 1)
+    // 整批 20 次 + 在那一批 100 条里对半找（每层最多两次）≈ 2·log₂100；给足余量也远小于逐条的 1951。
+    #expect(r.transport.pushes.count <= count / 100 + 16)
+    // 找完之后回到整批：除了被切开的那一批，其余都是满的 100 条。
+    #expect(outcome.batches.filter { $0 == 100 }.count >= count / 100 - 2)
+  }
+
+  /// 同一批里有两条坏的：两条都被揪出来、各自隔离，其余照样推上去。
+  @Test func twoPermanentErrorsInOneBatchAreBothIsolated() async throws {
+    let r = try rig(); defer { try? FileManager.default.removeItem(at: r.root) }
+    try r.store.capture((0..<300).map { line($0, text: [7, 93].contains($0) ? "坏" : "好") }, device: r.device)
+    r.server.refuse = { $0.fields["text"] == .string("坏") ? "invalid_operation" : nil }
+
+    _ = try await r.engine.run(.push)
+    #expect(r.store.archive.operations.isEmpty)
+    #expect(Set(r.store.archive.rejected.map(\.objectId)) == ["binance/usd_m/BTCUSDT/7", "binance/usd_m/BTCUSDT/93"])
+    #expect(r.server.objects.count == 298)
+    #expect(r.transport.pushes.count <= 3 + 2 * 16)
+  }
+
   @Test func droppedFieldsAreReportedAsNotLanded() async throws {
     let r = try rig(); defer { try? FileManager.default.removeItem(at: r.root) }
     var chart = SyncObject(collection: "settings", id: "chart")
