@@ -53,7 +53,8 @@ struct FriendsPage: View {
     // `children: .contain` 让它只当容器，里头的行各留各的名字。
     VStack(spacing: 0) {
       ScrollView {
-        VStack(spacing: 0) {
+        // 懒加载：收件箱攒到几百封时，只有滚进屏幕的那十来行才建视图、才去要缩略图（压测 H2）。
+        LazyVStack(spacing: 0) {
           if signedIn { content } else { signedOut }
         }
         .padding(.top, Space.xs)

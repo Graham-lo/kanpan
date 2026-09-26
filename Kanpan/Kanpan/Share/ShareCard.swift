@@ -97,11 +97,14 @@ struct ShareThumbnail: View {
   var inbox: ShareInbox
   var height: CGFloat = AlertPromptBar.height
   var corner: CGFloat = Radius.xs
-  @State private var bytes: Data?
+  /// 拿到的那张图和它属于哪封信。卡片换成下一封时旧图不能顶着新信的名字留在那儿。
+  @State private var loaded: (id: String, image: UIImage)?
   @Environment(\.panelTheme) private var theme
   var body: some View {
+    // 行滚出屏幕再滚回来（朋友页是懒加载的列表）状态就没了，先拿内存里现成的那张顶上，不闪占位图。
+    let image = loaded?.id == item.id ? loaded?.image : inbox.cachedThumbnail(item.id)
     Group {
-      if let bytes, let image = UIImage(data: bytes) {
+      if let image {
         Image(uiImage: image).resizable().scaledToFill()
       } else {
         Image(systemName: "chart.xyaxis.line").font(TypeScale.body).foregroundStyle(theme.ink3)
@@ -109,8 +112,20 @@ struct ShareThumbnail: View {
     }
     .frame(width: Hit.min, height: height).clipped()
     .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-    .task(id: item.id + "-" + String(inbox.revision)) { bytes = await inbox.shot(item.id) }
+    // 已经有图的行只认信的 id；只有还没拿到图的（发的人截图还没传完、上一趟没拉下来）
+    // 才跟着收件箱每拉一次重试一次。以前每拉一次，所有行的任务全部重跑（压测 H2）。
+    .task(id: Self.loadKey(id: item.id, hasImage: image != nil, revision: inbox.revision)) {
+      // 内存里现成的那张也记到自己身上，之后被淘汰出内存也不会退回占位图。
+      if let image { if loaded?.id != item.id { loaded = (item.id, image) }; return }
+      guard let fresh = await inbox.thumbnail(item.id) else { return }
+      loaded = (item.id, fresh)
+    }
     .accessibilityHidden(true)
+  }
+  /// 缩略图任务的身份。有图的行只认 id；`revision` 只在还没拿到图时才读（自动闭包），
+  /// 有图的行连这个属性都不碰，收件箱每拉一次也不会让它们重画。
+  static func loadKey(id: String, hasImage: Bool, revision: @autoclosure () -> Int) -> String {
+    hasImage ? id : id + "#" + String(revision())
   }
 }
 
