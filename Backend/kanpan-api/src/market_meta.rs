@@ -851,7 +851,9 @@ impl<T> Cache<T> {
 /// 每只一把单飞锁：同一只冷的时候同时来两百个请求，只出站一次。原来没有单飞，而且满
 /// 512 只就整表清空——随机代号每次都穿透缓存、顺手把热门代号冲掉。现在代号先对过合约表
 /// （[`binance_listed`]），键的个数以合约数为界；满了只挤掉最旧的那一只。
-struct Recent<T> {slots:std::sync::Mutex<HashMap<String,(Instant,std::result::Result<T,()>)>>,gates:std::sync::Mutex<HashMap<String,Arc<tokio::sync::Mutex<()>>>>}
+/// 每只代号一格：什么时候取的、取到了什么（`Err(())` 是记下的失败）。
+type Slots<T>=HashMap<String,(Instant,std::result::Result<T,()>)>;
+struct Recent<T> {slots:std::sync::Mutex<Slots<T>>,gates:std::sync::Mutex<HashMap<String,Arc<tokio::sync::Mutex<()>>>>}
 /// 币安 U 本位合约目前五六百只；给足余量。
 const RECENT_CAPACITY:usize=4096;
 impl<T:Clone> Recent<T> {
@@ -866,9 +868,8 @@ impl<T:Clone> Recent<T> {
  }
  fn put(&self,key:&str,value:std::result::Result<T,()>) {
   let mut slots=self.slots.lock().unwrap_or_else(|e|e.into_inner());
-  if slots.len()>=RECENT_CAPACITY && !slots.contains_key(key) {
-   if let Some(oldest)=slots.iter().min_by_key(|(_,(at,_))|*at).map(|(k,_)|k.clone()) {slots.remove(&oldest);}
-  }
+  if slots.len()>=RECENT_CAPACITY && !slots.contains_key(key)
+   && let Some(oldest)=slots.iter().min_by_key(|(_,(at,_))|*at).map(|(k,_)|k.clone()) {slots.remove(&oldest);}
   slots.insert(key.to_owned(),(Instant::now(),value));
  }
  async fn get_or_fetch<F,Fut>(&self,key:&str,ttl:Duration,fetch:F)->Result<T>
@@ -923,7 +924,9 @@ pub(crate) const EXCHANGE_INFO_TTL:Duration=Duration::from_secs(10*60);
 /// 又出站一次、再等 20 秒，一个接一个。合约表（持仓量先对它、订单流、板块、持仓量归档）
 /// 与 24h 行情表（订单流的门槛）都走这里，排着的调用方越多卡得越久，出站也一次没省。
 #[derive(Default)]
-pub(crate) struct Shared {slot:tokio::sync::Mutex<(Option<(Instant,Arc<Value>)>,Option<Instant>)>}
+pub(crate) struct Shared {slot:tokio::sync::Mutex<SharedSlot>}
+/// 上一份好的应答（什么时候取的、内容），以及上一次失败的时刻。
+type SharedSlot=(Option<(Instant,Arc<Value>)>,Option<Instant>);
 impl Shared {
  pub(crate) async fn get<F,Fut>(&self,ttl:Duration,fetch:F)->Result<Arc<Value>>
  where F:FnOnce()->Fut,Fut:Future<Output=Result<Value>> {
