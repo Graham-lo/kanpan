@@ -90,6 +90,52 @@ struct ChartLifecycleTests {
     #expect(v.link == nil, "离屏不该建 CADisplayLink")
   }
 
+  @Test("甩出去还在滑的时候换周期 / 换品种：惯性当场作废，不拿旧图的视野盖新图")
+  func switchingChartCancelsFling() throws {
+    for change in ["interval", "symbol"] {
+      let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
+      let v = ChartView(frame: window.bounds)
+      window.addSubview(v)
+      var s = lifecycleState()
+      let step = Double(s.series.step)
+      s.view = ViewWindow(to: Double(s.series.t0) + step * 200, span: step * 120)  // 停在历史里，两头都不贴边
+      v.state = s
+      _ = try #require(v.chartLayout, "布局没建起来，后面都别测了")
+
+      // 快速往右一甩再松手：起一段惯性。
+      let t = FakeTouch(CGPoint(x: 100, y: 300))
+      v.touchesBegan([t], with: FakeEvent(ms: 10_000))
+      for i in 1...4 {
+        t.point = CGPoint(x: 100 + Double(i) * 40, y: 300)
+        v.touchesMoved([t], with: FakeEvent(ms: 10_000 + Double(i) * 16))
+      }
+      v.touchesEnded([t], with: FakeEvent(ms: 10_070))
+      _ = try #require(v.animation, "松手要起一段惯性")
+
+      // 宿主换图：新序列连同它自己的视野一起直接赋进来（不经过 nil）。
+      let old = s.series
+      let interval: Interval = change == "interval" ? .m15 : .h1
+      let symbol = change == "symbol" ? "ETHUSDT" : "BTCUSDT"
+      let series = BarSeries(
+        symbol: symbol, interval: interval, t0: old.t0, step: interval.stepMs,
+        open: old.open, high: old.high, low: old.low, close: old.close, volume: old.volume)
+      var next = try #require(v.state)
+      next.series = series
+      let fresh = ViewWindow(to: Double(series.lastTime) + Double(series.step) / 2,
+                             span: Double(series.step) * 120)
+      next.view = fresh
+      v.state = next
+
+      #expect(v.animation == nil, "换了张图（\(change)），上一张图的惯性就该停")
+      // 帧循环下一拍要是还在，就会拿旧图的起点把新视野盖掉；停了就一拍都不会再写。
+      _ = v.animation?(CACurrentMediaTime() + 0.05)
+      let after = try #require(v.state)
+      #expect(after.view == fresh, "新图的视野要原样留着（\(change)）")
+      #expect(after.series.symbol.hasSuffix(symbol) && after.series.interval == interval)  // 图会把代号规范成带线路前缀的写法
+      v.removeFromSuperview()
+    }
+  }
+
   @Test("不在窗口上不建画线那条帧循环")
   func drawingLinkOffscreenBuildsNothing() throws {
     let v = ChartView(frame: CGRect(x: 0, y: 0, width: 390, height: 700))

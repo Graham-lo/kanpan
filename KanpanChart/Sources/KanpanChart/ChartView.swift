@@ -102,7 +102,7 @@ public final class ChartView: UIView {
   var drawingKeyCache: (raw: String, key: String) = ("", "")
 
   /// 新来的一份 state 相对上一份要先摆正的几件事。纯粹改值，不碰任何副作用以外的状态
-  /// （手势候选、补历史的门、冻结这三样「换了张图就作废」的账在这里一并销掉）。
+  /// （手势候选、补历史的门、冻结、在演的视野动画这几样「换了张图就作废」的账在这里一并销掉）。
   private func normalized(_ incoming: ChartState, after old: ChartState) -> ChartState {
     var next = incoming
     if old.options.dataDisplay != next.options.dataDisplay || old.options.crossPrice != next.options.crossPrice
@@ -118,6 +118,12 @@ public final class ChartView: UIView {
       gesture.endAxisTapCandidate()
       gesture.askedHistory = false
       cancelAxisFreeze()
+    }
+    // 惯性 / 回弹 / 回到最新那段动画也是上一张图的：它每帧拿起步那一刻的旧视野往下推，
+    // 再写回 `state`。宿主换品种、换周期时是直接把新序列连同算好的新视野一起赋进来的，
+    // 不经过 `nil`——动画不掐，下一帧就用旧图的时间坐标把新视野盖掉，新图一打开就滑到别处。
+    if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval {
+      animation = nil
     }
     // 手指按着一个目标的这段时间里视野钉死（见 `beginAxisFreeze`）：外面灌进来的
     // 那份视野一律让位——新 K 线到货时 `AICoinBehavior.reconcile` 会把视野右移一格，
