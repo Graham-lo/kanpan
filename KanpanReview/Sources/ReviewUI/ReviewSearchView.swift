@@ -132,34 +132,134 @@ struct ReviewMatchRow: View {
     .contentShape(Rectangle())
   }
 }
+/// 回放条：退出 · 播放 / 暂停（播到尾变「重播」）· 进度线 · 倍速 · 关键点跳转。
+///
+/// 原来还有「前一根」「后一根」两颗（2026-09-28 用户：「前一根后一根都没什么用，谁看行情也不是
+/// 一根根点」）——去掉了，定位靠按住拖进度线。进度线夹在播放与倍速中间：一行放得下，点按区照样
+/// 44 高，不必为它另起一行把 K 线再压矮一截。
 public struct ReviewReplayControls: View {
-  public var time: Int64
   public var playing: Bool
+  public var ended: Bool
   public var speed: Int
-  public var onStep: (Int) -> Void
+  /// 交易回放叫「开仓处」，笔记回放叫「判断处」。
+  public var keyTitle: String
+  public var track: ReviewReplayTrack?
+  public var position: Int
+  public var onScrub: (Bool) -> Void
+  public var onSeek: (Int) -> Void
   public var onPlay: () -> Void
   public var onSpeed: () -> Void
-  public var onJudgment: () -> Void
+  public var onKey: () -> Void
   public var onExit: () -> Void
   @Environment(\.reviewTheme) private var t
-  public init(time: Int64, playing: Bool, speed: Int, onStep: @escaping (Int) -> Void, onPlay: @escaping () -> Void, onSpeed: @escaping () -> Void, onJudgment: @escaping () -> Void, onExit: @escaping () -> Void) {
-    self.time = time; self.playing = playing; self.speed = speed; self.onStep = onStep; self.onPlay = onPlay; self.onSpeed = onSpeed; self.onJudgment = onJudgment; self.onExit = onExit
+  public init(playing: Bool, ended: Bool, speed: Int, keyTitle: String, track: ReviewReplayTrack?, position: Int,
+              onScrub: @escaping (Bool) -> Void, onSeek: @escaping (Int) -> Void, onPlay: @escaping () -> Void,
+              onSpeed: @escaping () -> Void, onKey: @escaping () -> Void, onExit: @escaping () -> Void) {
+    self.playing = playing; self.ended = ended; self.speed = speed; self.keyTitle = keyTitle; self.track = track
+    self.position = position; self.onScrub = onScrub; self.onSeek = onSeek; self.onPlay = onPlay
+    self.onSpeed = onSpeed; self.onKey = onKey; self.onExit = onExit
   }
   public var body: some View {
     HStack(spacing: 0) {
-      Button("退出", action: onExit).hitTarget()
-      Spacer(minLength: ReviewSpace.xs)
-      Button { onStep(-1) } label: { Image(systemName: "backward.end.fill").frame(width: ReviewControl.hit, height: ReviewControl.hit) }.accessibilityLabel("前一根")
-      Button(action: onPlay) { Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: ReviewControl.hit, height: ReviewControl.hit) }.accessibilityLabel(playing ? "暂停" : "播放")
-      Button { onStep(1) } label: { Image(systemName: "forward.end.fill").frame(width: ReviewControl.hit, height: ReviewControl.hit) }.accessibilityLabel("后一根")
-      Button("\(speed)×", action: onSpeed).frame(width: ReviewControl.hit, height: ReviewControl.hit)
-      Spacer(minLength: ReviewSpace.xs)
-      Button("判断处", action: onJudgment).padding(.horizontal, ReviewSpace.xs).hitTarget()
+      Button("退出", action: onExit).padding(.horizontal, ReviewSpace.xs).hitTarget()
+      // 三个记号共用同一块 44 × 44：播放 ↔ 暂停 ↔ 重播换来换去，旁边的东西不跟着跳。
+      Button(action: onPlay) {
+        Image(systemName: ended ? "arrow.counterclockwise" : playing ? "pause.fill" : "play.fill")
+          .font(ReviewType.bodyEmph)
+          .frame(width: ReviewControl.hit, height: ReviewControl.hit)
+          .contentShape(Rectangle())
+      }
+      .accessibilityLabel(ended ? "重播" : playing ? "暂停" : "播放")
+      ReviewReplayScrubber(track: track, position: position, onScrub: onScrub, onSeek: onSeek)
+        .padding(.horizontal, ReviewSpace.xs)
+      Button("\(speed)×", action: onSpeed)
+        .monospacedDigit()
+        .frame(width: ReviewControl.hit, height: ReviewControl.hit)
+        .contentShape(Rectangle())
+        .accessibilityLabel("倍速 \(speed)×")
+      Button(keyTitle, action: onKey).padding(.horizontal, ReviewSpace.xs).hitTarget()
     }
     .font(ReviewType.body)
+    .lineLimit(1)
     .tint(t.accent)
     .padding(.horizontal, ReviewSpace.s)
     // 不再垫自己的底（UI 整改 P3）：原来一条 `raised` 横在图下面，和页面底拼出一道硬边
     // （kanpan-no-seams-one-continuous-surface）。按钮直接落在页面那块材料上。
+  }
+}
+
+/// 回放进度线：2pt 细线，已播的一段 accent、没播的 ink3 两成；刻度 1 × 6；点按区 44 高。
+/// 按住拖：游标跟着手指走，一个 8pt 圆点跟着指尖、松手 0.15 秒淡出；越过刻度轻震一下；
+/// 松手就停在那儿，原来在播接着播、原来停着接着停（播停由桥管，这里只报「按下 / 松开」）。
+struct ReviewReplayScrubber: View {
+  var track: ReviewReplayTrack?
+  var position: Int
+  var onScrub: (Bool) -> Void
+  var onSeek: (Int) -> Void
+  @Environment(\.reviewTheme) private var t
+  @State private var dragging = false
+  @State private var knob = false
+  @State private var last: Int?
+  @State private var ticks = 0
+
+  var body: some View {
+    GeometryReader { geo in
+      let width = max(1, geo.size.width)
+      let played = track?.fraction(of: position) ?? 0
+      ZStack(alignment: .leading) {
+        Capsule().fill(t.ink3.opacity(0.2)).frame(height: ReviewSpace.xxs)
+        Capsule().fill(t.accent).frame(width: width * played, height: ReviewSpace.xxs)
+        ForEach(Array((track?.markFractions ?? []).enumerated()), id: \.offset) { _, mark in
+          Rectangle()
+            .fill(mark <= played ? t.accent : t.ink2)
+            .frame(width: 1, height: ReviewSpace.s - ReviewSpace.xxs)
+            .offset(x: width * mark - 0.5)
+        }
+        Circle()
+          .fill(t.accent)
+          .frame(width: ReviewSpace.s, height: ReviewSpace.s)
+          .offset(x: width * played - ReviewSpace.xs)
+          .opacity(knob ? 1 : 0)
+      }
+      .frame(width: width, height: ReviewControl.hit)
+      .contentShape(Rectangle())
+      .gesture(
+        DragGesture(minimumDistance: 0)
+          .onChanged { value in
+            guard let track else { return }
+            if !dragging {
+              dragging = true; last = position; onScrub(true)
+              withAnimation(.easeOut(duration: 0.15)) { knob = true }
+            }
+            let index = track.index(at: Double(value.location.x / width))
+            if let from = last, from != index {
+              if track.crossesMark(from: from, to: index) { ticks += 1 }
+              last = index
+              onSeek(index)
+            }
+          }
+          .onEnded { _ in
+            guard dragging else { return }
+            dragging = false; last = nil; onScrub(false)
+            withAnimation(.easeOut(duration: 0.15)) { knob = false }
+          }
+      )
+    }
+    .frame(height: ReviewControl.hit)
+    .frame(minWidth: ReviewControl.hit)
+    .sensoryFeedback(.selection, trigger: ticks)
+    .accessibilityElement()
+    .accessibilityIdentifier("review.replay.progress")
+    .accessibilityLabel("回放进度")
+    .accessibilityValue("\(Int(((track?.fraction(of: position) ?? 0) * 100).rounded()))%")
+    .accessibilityAdjustableAction { direction in
+      guard let track else { return }
+      let stride = max(1, (track.upper - track.lower) / 20)
+      switch direction {
+      case .increment: onSeek(min(track.upper, position + stride))
+      case .decrement: onSeek(max(track.lower, position - stride))
+      @unknown default: break
+      }
+    }
   }
 }

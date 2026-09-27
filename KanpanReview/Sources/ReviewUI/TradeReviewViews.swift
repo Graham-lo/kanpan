@@ -246,6 +246,7 @@ public struct TradeRecordView: View {
 
   @ViewBuilder private func content(_ item: TradeItem) -> some View {
     let round = item.round
+    ScrollViewReader { scroller in
     List {
       Section { header(round) }.listRowBackground(t.raised)
       Section {
@@ -255,8 +256,13 @@ public struct TradeRecordView: View {
         }
         .frame(height: 220)
         .clipShape(RoundedRectangle(cornerRadius: ReviewRadius.s, style: .continuous))
-        .listRowInsets(EdgeInsets(top: ReviewSpace.s, leading: ReviewSpace.m, bottom: ReviewSpace.s, trailing: ReviewSpace.m))
         .accessibilityIdentifier("trade.detail.chart")
+        // 已平仓的一笔：点图（或正中那颗播放圆片）一下就回到行情图上把这笔从头播一遍（3d）。
+        // 持仓中的没有圆片、图也不可点。
+        .contentShape(Rectangle())
+        .onTapGesture { if !round.isOpen { replay(item) } }
+        .overlay { if !round.isOpen { TradeReplayPlayDisc { replay(item) } } }
+        .listRowInsets(EdgeInsets(top: ReviewSpace.s, leading: ReviewSpace.m, bottom: ReviewSpace.s, trailing: ReviewSpace.m))
       }.listRowBackground(t.raised)
       ReviewSection("成交") {
         ForEach(round.fills, id: \.id) { fill in fillRow(fill, round) }
@@ -290,6 +296,7 @@ public struct TradeRecordView: View {
         }
       }
       .listRowBackground(t.raised)
+      .id(Self.noteAnchor)
       let views = feature.views(for: round)
       if !views.isEmpty {
         ReviewSection("对应的观点") {
@@ -308,6 +315,26 @@ public struct TradeRecordView: View {
     .onAppear { syncNote(item) }
     .onChange(of: item.record?.note) { syncNote(item) }
     .onDisappear { if item.record != nil, note != (item.record?.note?.text ?? "") { save(item) } }
+    // 看完回放回到这里：这笔还没写过「当时怎么想」，就直接滚到那一节、把输入框点亮——
+    // 刚看完当时的走势，正是写的时候；写过了就停在顶上。不弹任何提示。
+    .task(id: feature.focusTradeNote) {
+      guard feature.focusTradeNote else { return }
+      feature.focusTradeNote = false
+      guard (item.record?.note?.text ?? "").isEmpty else { return }
+      // 等推入动画落定再滚，不然滚动和推入叠在一起会闪一下。
+      try? await Task.sleep(for: .milliseconds(350))
+      withAnimation { scroller.scrollTo(Self.noteAnchor, anchor: .center) }
+      if item.record != nil && feature.isConnected { typing = true }
+    }
+    }
+  }
+
+  private static let noteAnchor = "trade.detail.noteSection"
+
+  private func replay(_ item: TradeItem) {
+    typing = false
+    feature.bookOpen = false
+    feature.onReplayTrade(item)
   }
 
   private func header(_ round: TradeRound) -> some View {

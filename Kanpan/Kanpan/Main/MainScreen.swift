@@ -1219,6 +1219,8 @@ struct MainScreen: View {
     case record(UUID)
     /// 某条记录的「找相似」结果。退出时把记录和那张搜索层一并开回来。
     case search(UUID)
+    /// 复盘本「交易」里的某一笔（自动复盘 3d 交易回放）。退出时回到这笔的详情。
+    case trade(String)
   }
 
   private func reviewState(_ state: ChartState?) -> ChartState? {
@@ -1265,6 +1267,23 @@ struct MainScreen: View {
       showChartForReview()
       replayOrigin = .record(record.id)
       reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), route: route.route)
+    }
+    // 交易回放（自动复盘 3d）：详情页点一下图，回到行情图上把这笔从开仓前一路播到平仓后。
+    // 周期先认人此刻图上那一档（`prefs.interval`，偏好里没有按品种记的周期），
+    // 这笔在它上面落不进 10–200 根才退回服务端那份、再退回按持仓时长挑（`TradeReplayPlan`）。
+    review.onReplayTrade = { item in
+      endSharePreview(); dismissPanel(); draw.finish()
+      showChartForReview()
+      replayOrigin = .trade(item.id)
+      reviewChart.openTrade(item, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)),
+                            route: route.route, preferred: store.prefs.interval)
+    }
+    // 停在开仓、平仓那根时最轻的一下；播到尾不震。
+    reviewChart.onTradeMark = { Haptics.tap() }
+    // 取不到数：那一个吐司说一句，自己退回这笔的详情，不留人在一张空图上。
+    reviewChart.onTradeFailed = { text in
+      say(text)
+      endReview(backToOrigin: true)
     }
     // 卡片上改起止时刻（P3.7）：吸附、重算目标失效、把图挪过去，都在图这一头做。
     review.onEditRange = { start, end in reviewChart.editRange(start: start, end: end, feature: review) }
@@ -1317,9 +1336,13 @@ struct MainScreen: View {
     let replaying = reviewChart.mode == .replay
     let origin = replayOrigin
     replayOrigin = nil
+    let fromTrade = reviewChart.trade != nil
+    let noteEmpty = (reviewChart.trade?.note ?? "").isEmpty
     if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
     else { reviewChart.exitReplay(feature: review) }
-    guard backToOrigin, replaying, let origin else { return }
+    // 交易回放取数失败时可能还没进回放态，照样要把人送回那笔的详情。
+    guard backToOrigin, let origin else { return }
+    if case .trade = origin {} else if !replaying { return }
     switch origin {
     case .record(let id):
       review.bookOpen = true
@@ -1328,6 +1351,12 @@ struct MainScreen: View {
       review.bookOpen = true
       review.selectedRecord = id
       review.searchOpen = true
+    case .trade(let id):
+      // 回到这笔的详情；还没写过「当时怎么想」就滚到那一节、点亮输入框（刚看完正是写的时候）。
+      review.trades.segment = .trades
+      review.focusTradeNote = fromTrade && noteEmpty
+      review.selectedTrade = id
+      review.bookOpen = true
     }
     review.synchronize()
   }
@@ -1365,10 +1394,15 @@ struct MainScreen: View {
   /// 所以照旧排在图下面——被它顶掉的是主底栏，见 `portraitBody`（§2G4）。
   @ViewBuilder private var replayControls: some View {
     if reviewChart.mode == .replay {
-      ReviewReplayControls(time: reviewChart.replayTime, playing: reviewChart.playing, speed: reviewChart.speed,
-        onStep: { reviewChart.step($0, feature: review) }, onPlay: { reviewChart.togglePlay(feature: review) },
+      // 原来有「前一根」「后一根」两颗 → 去掉，定位靠拖进度线（2026-09-28）。
+      ReviewReplayControls(playing: reviewChart.playing, ended: reviewChart.ended, speed: reviewChart.speed,
+        keyTitle: reviewChart.trade != nil ? "开仓处" : "判断处",
+        track: reviewChart.track, position: reviewChart.cursor,
+        onScrub: { reviewChart.scrub($0, feature: review) },
+        onSeek: { reviewChart.seek(to: $0, feature: review) },
+        onPlay: { reviewChart.togglePlay(feature: review) },
         onSpeed: { reviewChart.cycleSpeed() },
-        onJudgment: { reviewChart.jumpToJudgment(feature: review) },
+        onKey: { reviewChart.jumpToKey(feature: review) },
         onExit: { endReview(backToOrigin: true) })
       .environment(\.reviewTheme, theme.review)
     }

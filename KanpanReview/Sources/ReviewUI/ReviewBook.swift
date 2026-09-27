@@ -35,6 +35,10 @@ public struct ReviewBook: View {
       .navigationDestination(item: $feature.selectedRecord) { id in
         ReviewRecordView(feature: feature, id: id)
       }
+      // 交易回放退出来（自动复盘 3d）：复盘本重新打开时直接翻回那笔交易的详情。
+      .navigationDestination(item: $feature.selectedTrade) { id in
+        TradeRecordView(feature: feature, id: id)
+      }
       .refreshable {
         if feature.trades.segment == .trades { feature.trades.onPull(); await feature.trades.synchronize(); return }
         feature.synchronize(manual: true); await feature.loadHistory(query: feature.bookQuery)

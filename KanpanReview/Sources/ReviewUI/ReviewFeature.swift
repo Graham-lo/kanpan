@@ -15,6 +15,10 @@ import ReviewData
   /// 行情退出来，人该站回那条记录和它的搜索层上，而不是被扔在一张行情图上。
   public var searchRecord: UUID?
   public var selectedRecord: UUID?
+  /// 复盘本打开时直接落在哪一笔交易的详情上（交易回放退出来回到这里，和 `selectedRecord` 同一个做法）。
+  public var selectedTrade: String?
+  /// 回到那笔详情时要不要把「当时怎么想」那一格摆到眼前（还没写过才摆）。详情页用过一次就清掉。
+  public var focusTradeNote = false
   public var draft: ReviewDraft?
   public private(set) var records: [ReviewRecord] = [] { didSet { recordsRevision &+= 1; retally() } }
   public private(set) var matches: [ReviewMatch] = []
@@ -77,6 +81,8 @@ import ReviewData
 
   public var onOpenChart: (ReviewRecord) -> Void = { _ in }
   public var onOpenMatch: (ReviewMatch, Int64) -> Void = { _, _ in }
+  /// 详情页点那张复盘图：宿主关上复盘本、切到行情图，把这一笔从开仓前播到平仓后（自动复盘 3d）。
+  public var onReplayTrade: (TradeItem) -> Void = { _ in }
   public var onCapture: () -> Void = {}
   /// 「记一笔」的那一刻，把当前这张图离屏画成一张 PNG（§4.3）。
   ///
@@ -308,6 +314,7 @@ import ReviewData
     syncing = false; syncAgain = nil; searching = false; matches = []; statistics = []; searchID = nil; searchGeneration = UUID(); searchNext = nil; savedMatchIDs = []
     nextPage = nil; searchError = nil; statisticsError = nil; history = []; historyGeneration = UUID(); historyLoading = false; historyError = nil; historyLoaded = false
     bookOpen = false; captureOpen = false; searchOpen = false; selectedRecord = nil; searchRecord = nil
+    selectedTrade = nil; focusTradeNote = false
     reload()
     // 换进一份档案（冷启动、登录、退登）时扫一次没人认领的图；不挂定时器（审查 D4）。
     store.pruneShots()

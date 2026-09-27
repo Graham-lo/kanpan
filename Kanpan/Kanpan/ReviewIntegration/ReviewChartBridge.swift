@@ -28,6 +28,20 @@ import ReviewUI
   @ObservationIgnored var onSpeedChange: (Int) -> Void = { _ in }
   var cursor = 0
   var replayRecord: ReviewRecord?
+  /// 交易回放（自动复盘 3d）这一趟：哪一笔、按什么节奏播、开仓那一停带出的那句话。
+  /// 笔记重温时是 `nil`。
+  struct TradeSession: Equatable {
+    let id: String
+    let plan: TradeReplayPlan
+    let note: String?
+  }
+  var trade: TradeSession?
+  /// 交易回放停在开仓那一根的 1.2 秒里，页头下面那一行「当时怎么想」。
+  var caption: String?
+  /// 交易回放停在开仓 / 平仓那一根时轻震一下（宿主接 `Haptics.tap`）。
+  @ObservationIgnored var onTradeMark: () -> Void = {}
+  /// 交易回放取不到数：宿主用那一个吐司说一句、退回这笔的详情。
+  @ObservationIgnored var onTradeFailed: (String) -> Void = { _ in }
   var notice: String?
   /// 回放那一卷 K 线，以及推进时喂给图的那一段（增量追加、画线快照只解一次，见 `ReviewReplayTape`）。
   private var tape: ReviewReplayTape?
@@ -41,7 +55,7 @@ import ReviewUI
   /// 上限跟着真实时间走。
   ///
   /// 冻住的代价 2026-09-21 在兼容性矩阵上现了形（三台机器一起红）：刚记下的笔记，
-  /// 打开时最后一根正是当时的最新收盘，上限也就冻在了那一秒。之后再点「后一根」，
+  /// 打开时最后一根正是当时的最新收盘，上限也就冻在了那一秒。之后再往后播（当时还有「后一根」按钮），
   /// `loadReplayPage(forward:)` 算出来的 `start >= end`，后来收的那些 K 线永远取不回来，
   /// 光标顶在末根上——按了没反应。复盘要挡的是「记录当时看不见的未来」，
   /// 不是「打开这条记录之后又过去的时间」。
@@ -51,6 +65,10 @@ import ReviewUI
   /// 上一拍那根最新 K 线的开盘时刻。用来判断「人还跟着播放头吗」（审查 B-05）。
   private var replayLastTime: Int64?
   private var replayProvider: (any MarketProvider)?
+  /// 这一卷是哪只品种（补页时用）。
+  private var replayKey: String?
+  /// 手指按在进度线上：播放那一拍先让一让。
+  private var scrubbing = false
   private var pageTask: Task<Void, Never>?
   private var paging = false
   var active: Bool { mode != .live }
@@ -162,15 +180,75 @@ import ReviewUI
       ? RouteResolver(route: route).ownDataProvider(venue: record.draft.range.venue) : nil
     open(record, feature: feature, live: live, provider: provider, cutoff: cutoff)
   }
+
+  /// 两种回放开始取数前的同一段收拾：停播、撤掉上一趟的取数与补页、换一个请求号。
+  private func beginLoad(provider: any MarketProvider) -> UUID {
+    playback?.cancel(); playing = false; loadTask?.cancel(); pageTask?.cancel(); paging = false; loading = true
+    scrubbing = false; caption = nil
+    replayProvider = provider
+    let request = UUID(); loadID = request
+    return request
+  }
+
+  /// 回放要取的一卷：哪只、什么周期、从哪到哪、带不带画线快照。
+  private struct TapeRequest {
+    let key: String
+    let shortSymbol: String
+    let interval: Interval
+    let start: Int64
+    let end: Int64
+    let drawingSnapshot: Data?
+  }
+
+  /// 两种回放（笔记重温、交易回放）共用的取数：分页取本家 K 线、验连续、落卷、定精度，
+  /// 返回装好这一卷的底图。中途被新的一趟顶掉返回 `nil`。
+  private func fetchTape(_ request: TapeRequest, base: ChartState, provider: any MarketProvider,
+                         feature: ReviewFeature, id: UUID) async throws -> ChartState? {
+    let caps = provider.capabilities
+    let interval = request.interval, end = request.end
+    var start = request.start
+    var fetched: [Bar] = []
+    while start < end {
+      try Task.checkCancellation()
+      let page = try await provider.klines(symbol: request.key, interval: interval, limit: caps.maxKlines, startTime: start, endTime: end - 1)
+      guard let last = page.last else { break }
+      fetched.append(contentsOf: page)
+      let next = Self.closeTime(last.openTime, interval: caps.source(for: interval))
+      guard next > start else { break }; start = next
+      guard fetched.count <= 6000 else { throw ReviewBridgeError.rangeTooLarge }
+    }
+    try Task.checkCancellation(); guard loadID == id else { return nil }
+    let series = MarketSeries.series(symbol: request.key, interval: interval, bars: fetched, capabilities: caps)
+    let ordered = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
+      Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
+    }
+    guard ordered.count >= 3 else { throw ReviewBridgeError.noHistory }
+    for i in 1..<ordered.count where Self.closeTime(ordered[i - 1].openTime, interval: interval) != ordered[i].openTime { throw ReviewBridgeError.historyGap }
+    tape = ReviewReplayTape(symbol: request.key, interval: interval, bars: ordered,
+                            drawingSnapshot: request.drawingSnapshot)
+    replayKey = request.key
+    var base = base
+    base.series = BarSeries(symbol: request.key, interval: interval, bars: ordered)
+    // 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
+    let decimals = feature.priceDecimals(request.key)
+      ?? (base.symbol.symbol == request.key ? base.symbol.knownPriceDecimals : nil)
+      ?? ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] })
+      ?? priceDecimalsFallback(ordered.last!.close)
+    base.symbol = SymbolInfo(symbol: request.key, base: request.shortSymbol, pricePrecision: decimals,
+                             tickSize: pow(10, -Double(decimals)))
+    // 存储的显示位数与这次替换的品种一起更新。
+    base.decimals = base.symbol.priceDecimals
+    return base
+  }
+
   /// 回放取数认的是记录所属那一家的本家数据（`RouteResolver.ownDataProvider`）。
   private func open(_ record: ReviewRecord, feature: ReviewFeature, live: ChartState?,
                     provider: (any MarketProvider)?, cutoff: Int64?) {
     guard let interval = Interval(rawValue: record.draft.range.interval), let provider
     else { notice = "这个市场暂未接入原生行情"; return }
     guard var base = live else { notice = "等待行情加载"; return }
-    playback?.cancel(); playing = false; loadTask?.cancel(); pageTask?.cancel(); paging = false; loading = true
-    replayProvider = provider
-    let request = UUID(); loadID = request
+    let request = beginLoad(provider: provider)
+    trade = nil
     replayCutoff = cutoff
     // 这一次取数的三个边界得用同一个上限，中途别让钟走掉一根。
     let limit = replayLimit
@@ -188,42 +266,15 @@ import ReviewUI
     // No live OI or later annotations may enter the replay indicator engine.
     base.oi = nil; base.subs.removeAll { $0 == .oi }; base.drawings = []
     base.crosshair = nil; base.nowMs = nil
+    let tapeRequest = TapeRequest(key: range.key, shortSymbol: range.shortSymbol, interval: interval,
+                                  start: windowStart, end: end, drawingSnapshot: record.draft.drawingSnapshot)
     loadTask = Task {
       do {
-        let caps = provider.capabilities
-        var start = windowStart
-        var fetched: [Bar] = []
-        while start < end {
-          try Task.checkCancellation()
-          let page = try await provider.klines(symbol: range.key, interval: interval, limit: caps.maxKlines, startTime: start, endTime: end - 1)
-          guard let last = page.last else { break }
-          fetched.append(contentsOf: page)
-          let next = Self.closeTime(last.openTime, interval: caps.source(for: interval))
-          guard next > start else { break }; start = next
-          guard fetched.count <= 6000 else { throw ReviewBridgeError.rangeTooLarge }
-        }
-        try Task.checkCancellation(); guard loadID == request else { return }
-        let series = MarketSeries.series(symbol: range.key, interval: interval, bars: fetched, capabilities: caps)
-        let ordered = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
-          Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
-        }
-        guard ordered.count >= 3 else { throw ReviewBridgeError.noHistory }
-        for i in 1..<ordered.count where Self.closeTime(ordered[i - 1].openTime, interval: interval) != ordered[i].openTime { throw ReviewBridgeError.historyGap }
-        tape = ReviewReplayTape(symbol: range.key, interval: interval, bars: ordered,
-                                drawingSnapshot: record.draft.drawingSnapshot)
-        base.series = BarSeries(symbol: range.key, interval: interval, bars: ordered)
-        // 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
-        let decimals = feature.priceDecimals(range.key)
-          ?? (base.symbol.symbol == range.key ? base.symbol.knownPriceDecimals : nil)
-          ?? ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] })
-          ?? priceDecimalsFallback(ordered.last!.close)
-        base.symbol = SymbolInfo(symbol: range.key, base: range.shortSymbol, pricePrecision: decimals,
-                                 tickSize: pow(10, -Double(decimals)))
-        // 存储的显示位数与这次替换的品种一起更新。
-        base.decimals = base.symbol.priceDecimals
+        guard let base = try await fetchTape(tapeRequest, base: base, provider: provider, feature: feature, id: request)
+        else { return }
         replayBase = base; replayRecord = record; speed = preferredSpeed()
         let saved = savedPosition
-        cursor = max(2, ordered.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= saved }) ?? 2)
+        cursor = max(2, bars.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= saved }) ?? 2)
         // 只有从别的模式（实时、取景）进回放才换一张新画布：那时图表那棵树会按 `mode`
         // 重建，旧 proxy 指着的是上一张图。已经在回放里再开一条（「跳到判断处」要重新取数、
         // 从「找相似」直接换一条记录）必须留着同一张：树的 id 没变，`ChartView` 不会重建，
@@ -236,6 +287,56 @@ import ReviewUI
       } catch is CancellationError {} catch { if loadID == request { loading = false; notice = Self.message(for: error) } }
     }
   }
+
+  /// 交易回放（自动复盘 3d）：已平仓的一笔，从详情页点一下图就回到行情图上，
+  /// 从开仓前 20 根自动播到平仓后 5 根。
+  ///
+  /// * 品种、交易所取自这一回合；数据走那一家的本家接口（和笔记重温同一个取数口）。
+  /// * 周期按 `TradeReplayPlan.interval` 的优先级挑：人自己的周期 → 服务端复盘图的周期 → 按持仓时长挑。
+  /// * 取数这段不弹任何东西：图先换成这只品种、这个周期的空图（人当前的样式），数一到就开播；
+  ///   取不到交给宿主说一句、退回这笔的详情（`onTradeFailed`）。
+  /// * 不记游标（不写 `rememberReplay`）：交易回放每次都是从头看一遍这笔单子，
+  ///   它的「位置」没有意义；倍速照旧跟着人走。
+  /// * 不画副图、对比、持仓量和画线：这张图只讲这一笔。
+  func openTrade(_ item: TradeItem, feature: ReviewFeature, live: ChartState?, route: MarketRoute,
+                 preferred: Interval?) {
+    let round = item.round
+    let spec = item.record?.result?.chart
+    guard let plan = TradeReplayPlan(round: round, spec: spec, preferred: preferred) else { return }
+    guard VenueRegistry.descriptor(round.venue)?.market == round.market,
+          let provider = RouteResolver(route: route).ownDataProvider(venue: round.venue)
+    else { onTradeFailed("这个市场暂未接入原生行情"); return }
+    guard var base = live else { onTradeFailed("等待行情加载"); return }
+    let request = beginLoad(provider: provider)
+    replayRecord = nil; replayCutoff = nil; tape = nil; replayBase = nil; replayKey = nil
+    let key = round.instrument.key
+    let note = item.record?.note?.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    trade = TradeSession(id: item.id, plan: plan, note: note?.isEmpty == false ? note : nil)
+    base.oi = nil; base.subs = []; base.compare = []; base.percentAxis = false; base.external = [:]
+    base.drawings = []; base.crosshair = nil; base.nowMs = nil; base.depth = nil; base.orderFlow = nil
+    base.series = BarSeries(symbol: key, interval: plan.interval, bars: [])
+    if mode != .replay { proxy = ChartProxy() }
+    state = base; mode = .replay; replayLastTime = nil; cursor = 0
+    let window = plan.fetchWindow(spec: spec)
+    let tapeRequest = TapeRequest(key: key, shortSymbol: SymbolInfo.placeholder(symbol: key).base,
+                                  interval: plan.interval, start: window.start,
+                                  end: min(window.end, ReviewClock.now), drawingSnapshot: nil)
+    loadTask = Task {
+      do {
+        guard let base = try await fetchTape(tapeRequest, base: base, provider: provider, feature: feature, id: request)
+        else { return }
+        guard bars.contains(where: { $0.openTime >= plan.openBar }) else { throw ReviewBridgeError.noHistory }
+        replayBase = base; speed = preferredSpeed()
+        cursor = index(atOrBefore: plan.startBar)
+        updateReplay(feature: feature, reset: true); loading = false
+        // 先静止 0.8 秒让人看清起点，再自己开播。
+        startPlayback(feature: feature, holdMs: TradeReplayPlan.holdMs)
+      } catch is CancellationError {} catch {
+        if loadID == request { loading = false; onTradeFailed(Self.message(for: error)) }
+      }
+    }
+  }
+
   func openMatch(_ match: ReviewMatch, cutoff: Int64, feature: ReviewFeature, live: ChartState?,
                  route: MarketRoute) {
     var draft = ReviewDraft(range: match.range, reference: 1, high: 1, low: 1, now: cutoff)
@@ -247,24 +348,124 @@ import ReviewUI
     speed = speed == 4 ? 1 : speed * 2
     onSpeedChange(speed)
   }
+
+  /// 卷里开盘时刻不晚于 `time` 的最后一根（游标最小是 2：图上至少要有三根）。
+  private func index(atOrBefore time: Int64) -> Int {
+    max(2, bars.lastIndex(where: { $0.openTime <= time }) ?? 2)
+  }
+
+  /// 回放条上那根进度线。交易回放：开仓前 20 根 → 平仓后 5 根，刻度在开仓、平仓两根；
+  /// 笔记回放：这卷首根 → 末根，刻度在判断那根（往前补了历史，线跟着长）。
+  var track: ReviewReplayTrack? {
+    guard mode == .replay, !loading, bars.count >= 3 else { return nil }
+    if let plan = trade?.plan {
+      return ReviewReplayTrack(lower: index(atOrBefore: plan.startBar), upper: index(atOrBefore: plan.stopBar),
+                               marks: [index(atOrBefore: plan.openBar), index(atOrBefore: plan.closeBar)])
+    }
+    guard let record = replayRecord, let interval = replayBase?.series.interval else { return nil }
+    let judgment = record.submitted ?? record.draft.created
+    let mark = bars.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= judgment })
+    return ReviewReplayTrack(lower: 2, upper: bars.count - 1, marks: mark.map { [max(2, $0)] } ?? [])
+  }
+
+  /// 播到尾了：播放钮变「重播」。交易回放是走到平仓后第 5 根；笔记回放是走到最后一根、
+  /// 而且下一根还没收盘（再往后没有可看的了）。
+  var ended: Bool {
+    guard mode == .replay, !loading, !playing, bars.count >= 3 else { return false }
+    if trade != nil, let track { return cursor >= track.upper }
+    guard trade == nil, replayRecord != nil, cursor >= bars.count - 1, !paging, let last = bars.last,
+          let interval = replayBase?.series.interval else { return false }
+    return Self.closeTime(Self.closeTime(last.openTime, interval: interval), interval: interval) > replayLimit
+  }
+
+  /// 交易回放此刻的浮动盈亏（比值），只在持仓那一段有。
+  var floatingReturn: Double? {
+    guard let plan = trade?.plan, let series = state?.series, series.count > 0, let close = series.close.last
+    else { return nil }
+    return plan.floatingReturn(close: close, at: series.lastTime)
+  }
+
   func step(_ amount: Int, feature: ReviewFeature) {
     if amount > 0 && cursor >= bars.count - 2 { loadReplayPage(forward: true, feature: feature) }
     if amount < 0 && cursor <= 2 { loadReplayPage(forward: false, feature: feature) }
     cursor = min(max(2, cursor + amount), max(2, bars.count - 1)); updateReplay(feature: feature)
     if cursor >= bars.count - 1 && !paging { playing = false; playback?.cancel() }
   }
+
+  /// 播放钮：播 ↔ 停；播到尾是「重播」，从头再来。
   func togglePlay(feature: ReviewFeature) {
-    playing.toggle(); playback?.cancel()
-    guard playing else { return }
+    guard mode == .replay, !loading, bars.count >= 3 else { return }
+    if ended { restart(feature: feature); return }
+    if playing { playing = false; playback?.cancel() } else { startPlayback(feature: feature) }
+  }
+
+  /// 一秒一根 × 倍速往前走。交易回放走到开仓、平仓那根各停 1.2 秒、轻震一下
+  /// （开仓那一停带出「当时怎么想」），走到平仓后第 5 根自己停下、不震。
+  /// 手指按在进度线上时这一拍让一让，松手接着播。
+  private func startPlayback(feature: ReviewFeature, holdMs: Int = 0) {
+    playback?.cancel(); playing = true; caption = nil
     playback = Task {
+      if holdMs > 0 { do { try await Task.sleep(for: .milliseconds(holdMs)) } catch { return } }
       while !Task.isCancelled && playing {
         do { try await Task.sleep(for: .milliseconds(1000 / max(1, speed))) } catch { return }
-        step(1, feature: feature)
+        guard playing, !scrubbing else { continue }
+        caption = nil
+        guard let plan = trade?.plan else { step(1, feature: feature); continue }
+        guard let track, cursor < track.upper else { playing = false; return }
+        cursor += 1; updateReplay(feature: feature)
+        let bar = bars[cursor].openTime
+        if cursor >= track.upper || plan.finished(at: bar) { playing = false; return }
+        if plan.pauses(at: bar) {
+          onTradeMark()
+          if plan.isOpenBar(bar), let note = trade?.note { caption = note }
+          do { try await Task.sleep(for: .milliseconds(TradeReplayPlan.pauseMs)) } catch { return }
+          if playing { caption = nil }
+        }
       }
     }
   }
+
+  /// 「重播」：回到起点（交易是开仓前 20 根，笔记是圈的那段起点），重设视野，接着播。
+  func restart(feature: ReviewFeature) {
+    if let plan = trade?.plan {
+      cursor = index(atOrBefore: plan.startBar)
+    } else if let record = replayRecord {
+      let start = record.draft.range.start
+      cursor = max(2, bars.firstIndex(where: { $0.openTime >= start }) ?? 2)
+    }
+    caption = nil; replayLastTime = nil
+    updateReplay(feature: feature, reset: true)
+    startPlayback(feature: feature)
+  }
+
+  /// 拖进度线：游标跟着手指走，视野跟着播放头、根宽不动。
+  func seek(to index: Int, feature: ReviewFeature) {
+    guard mode == .replay, !loading, bars.count >= 3 else { return }
+    var target = min(max(2, index), bars.count - 1)
+    if trade != nil, let track { target = min(max(track.lower, target), track.upper) }
+    guard target != cursor else { return }
+    cursor = target; caption = nil; replayLastTime = nil
+    updateReplay(feature: feature)
+  }
+
+  /// 按下 / 松开进度线。松手停在哪就是哪，原来在播接着播；笔记回放拖到卷的两头就去补一页。
+  func scrub(_ active: Bool, feature: ReviewFeature) {
+    scrubbing = active
+    guard !active, trade == nil, mode == .replay, bars.count >= 3 else { return }
+    if cursor >= bars.count - 2 { loadReplayPage(forward: true, feature: feature) }
+    if cursor <= 2 { loadReplayPage(forward: false, feature: feature) }
+  }
+
+  /// 回放条最右那颗：交易回放「开仓处」，笔记回放「判断处」。
+  func jumpToKey(feature: ReviewFeature) {
+    guard let plan = trade?.plan else { jumpToJudgment(feature: feature); return }
+    guard mode == .replay, !loading, bars.count >= 3 else { return }
+    cursor = index(atOrBefore: plan.openBar); caption = nil
+    updateReplay(feature: feature, reset: true)
+  }
+
   func loadReplayPage(forward: Bool, feature: ReviewFeature) {
-    guard !paging, let provider = replayProvider, let record = replayRecord, let base = replayBase, let first = bars.first, let last = bars.last else { return }
+    guard !paging, trade == nil, let provider = replayProvider, let key = replayKey, let base = replayBase, let first = bars.first, let last = bars.last else { return }
     let interval = base.series.interval
     let start = forward ? Self.closeTime(last.openTime, interval: interval) : Self.shifted(first.openTime, interval: interval, bars: -500)
     let end = forward ? min(replayLimit, Self.shifted(start, interval: interval, bars: 500)) : first.openTime
@@ -273,9 +474,9 @@ import ReviewUI
     pageTask = Task {
       defer { if request == loadID { paging = false } }
       do {
-        let fetched = try await provider.klines(symbol: record.draft.range.key, interval: interval, limit: min(1000, provider.capabilities.maxKlines), startTime: start, endTime: end - 1)
+        let fetched = try await provider.klines(symbol: key, interval: interval, limit: min(1000, provider.capabilities.maxKlines), startTime: start, endTime: end - 1)
         try Task.checkCancellation(); guard request == loadID else { return }
-        let series = MarketSeries.series(symbol: record.draft.range.key, interval: interval, bars: fetched, capabilities: provider.capabilities)
+        let series = MarketSeries.series(symbol: key, interval: interval, bars: fetched, capabilities: provider.capabilities)
         let page = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
           Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
         }
@@ -288,7 +489,7 @@ import ReviewUI
         tape?.replace(bars: combined); cursor = max(2, bars.firstIndex(where: { $0.openTime == position }) ?? 2)
         // 取回来了就得画上去。`bars` 只是这边的一个数组，屏幕上那张图是 `updateReplay`
         // 按 `cursor` 现切的；不补这一句，往前翻到头拿回来的五百根要等到人再动一下
-        // （再点一次「后一根」、或者播放走到下一拍）才显形——看起来就是「翻到头了没反应，
+        // （再拖一下进度线、或者播放走到下一拍）才显形——看起来就是「翻到头了没反应，
         // 隔一会儿又突然多出来一截」。不 `reset`：人自己挑的视野不能被这趟补数顶掉。
         updateReplay(feature: feature)
       } catch is CancellationError {} catch { if request == loadID { notice = Self.message(for: error); playing = false; playback?.cancel() } }
@@ -337,24 +538,27 @@ import ReviewUI
   /// 于是人在回放里放大看一根的细节，按一下「下一根」就被缩回 80 根，拖去看历史也
   /// 会被拽回最右边。那颗按钮等于一次次把人的手拨开。
   private func updateReplay(feature: ReviewFeature, reset: Bool = false) {
-    guard var base = replayBase, let record = replayRecord, !bars.isEmpty,
-          let series = tape?.series(through: cursor) else { return }
+    guard var base = replayBase, !bars.isEmpty, let series = tape?.series(through: cursor) else { return }
     // 往后推一根只追加那一根（图表认得出「后面长了一根」，指标只算末根）；
     // 画线快照整条回放只解一次。原来每一拍都整段重摊、整份重解（第 25 项）。
     base.series = series
     let known = Self.closeTime(base.series.lastTime, interval: base.series.interval)
-    if known >= record.draft.created { base.drawings = tape?.drawings() ?? [] }
+    if let record = replayRecord, known >= record.draft.created { base.drawings = tape?.drawings() ?? [] }
     let window = ReviewReplayViewport.next(current: liveWindow, previousLastTime: replayLastTime,
                                            lastTime: base.series.lastTime, step: base.series.step, reset: reset)
     base.view = ViewWindow(to: window.to, span: window.span)
     replayLastTime = base.series.lastTime
     state = base
     if let chart = proxy.box?.chart { chart.state = base }
-    feature.rememberReplay(record.id, position: ReviewReplayPosition(cursor: known, speed: speed))
+    // 交易回放不记游标（见 `openTrade`）：只有笔记重温才记下看到哪儿。
+    if let record = replayRecord {
+      feature.rememberReplay(record.id, position: ReviewReplayPosition(cursor: known, speed: speed))
+    }
   }
   func exitReplay(feature: ReviewFeature) {
     playing = false; playback?.cancel(); loadTask?.cancel(); pageTask?.cancel(); paging = false; replayProvider = nil; loadID = UUID(); loading = false
-    state = nil; replayBase = nil; tape = nil; replayRecord = nil; mode = .live; proxy = ChartProxy()
+    state = nil; replayBase = nil; tape = nil; replayRecord = nil; replayKey = nil; mode = .live; proxy = ChartProxy()
+    trade = nil; caption = nil; scrubbing = false
   }
   private func slice(_ s: BarSeries, count: Int) -> BarSeries {
     BarSeries(symbol: s.symbol, interval: s.interval, t0: s.t0, open: Array(s.open.prefix(count)), high: Array(s.high.prefix(count)), low: Array(s.low.prefix(count)), close: Array(s.close.prefix(count)), volume: Array(s.volume.prefix(count)), takerBuy: Array(s.takerBuy.prefix(count)), openTime: Array(s.openTime.prefix(count)))

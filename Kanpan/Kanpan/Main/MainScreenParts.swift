@@ -380,7 +380,8 @@ struct MainChartView: View {
       if let error = market.historyError, !reviewChart.active {
         ChartHistoryRetry(theme: theme, text: error) { market.retryHistory() }
       }
-      if reviewChart.loading {
+      // 交易回放取数时什么都不弹（3d）：图已经换成这只品种的空图，数一到就开播。
+      if reviewChart.loading && reviewChart.trade == nil {
         ChartLoadingBadge(theme: theme)
       }
       // 提示条压在图区上沿（§10.8），不占版面高度，所以走 overlay 不进 VStack。
@@ -448,17 +449,34 @@ struct ReplayHeaderView: View {
   var body: some View {
     // 字和颜色走令牌（UI 整改 P3）：标题 17 semibold `ink`，时刻 12 `ink3`，开高低收 12 等宽 `ink2`。
     // 原来一律系统默认色，深色皮肤下是纯白，和页面上别处的墨色不是一个调子。
+    let symbol = InstrumentID(bridge.state?.series.symbol ?? "").display
+    let hasBars = (bridge.state?.series.count ?? 0) > 0
     VStack(alignment: .leading, spacing: Space.xs) {
-      Text("重温 · " + InstrumentID(bridge.state?.series.symbol ?? "").display)
-        .font(TypeScale.title).foregroundStyle(t.ink)
+      // 交易回放（3d）叫「回放 · 品种 · 周期」，笔记还叫「重温 · 品种」。
+      Group {
+        if let trade = bridge.trade {
+          Text("回放 · " + symbol + " · " + trade.plan.interval.display)
+        } else {
+          Text("重温 · " + symbol)
+        }
+      }
+      .font(TypeScale.title).foregroundStyle(t.ink).lineLimit(1)
+      .accessibilityIdentifier("review.replay.title")
       // 时间跟着**这张图自己的时区档**走，和时间轴、十字线、选区标签同一口径（审查 B-08）。
       // `Text(Date, style:)` 认的是设备时区：图表切到「交易所」之后，这一行和轴上
-      // 写着两个时刻。
-      HStack {
-        Text(fmtFull(ms: Double(bridge.replayTime),
-                     offsetMinutes: (bridge.state?.timezone ?? fallbackZone).offsetMinutes))
-        Spacer()
-      }.font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink3)
+      // 写着两个时刻。交易回放拿着仓的那一段，行尾挂一颗浮动盈亏。
+      HStack(spacing: Space.s) {
+        if hasBars {
+          Text(fmtFull(ms: Double(bridge.replayTime),
+                       offsetMinutes: (bridge.state?.timezone ?? fallbackZone).offsetMinutes))
+            .font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink3).lineLimit(1)
+        }
+        Spacer(minLength: 0)
+        if let value = bridge.floatingReturn {
+          TradeReplayCapsule(value: value).environment(\.reviewTheme, t.review)
+        }
+      }
+      .frame(minHeight: bridge.trade != nil ? Space.xl : nil)
       if let series = bridge.state?.series, let open = series.open.last, let high = series.high.last, let low = series.low.last, let close = series.close.last {
         // 小数位由品种自己说（审查 B-07）：原来按「有效数字 1–7 位」写，
         // 回放头部的开高低收和顶栏的最新价能是两种写法。
@@ -474,6 +492,10 @@ struct ReplayHeaderView: View {
             HStack(spacing: Space.s) { l; c }
           }
         }.font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink2).lineLimit(1)
+      }
+      // 走到开仓那根停下的 1.2 秒里，这一行浮出「当时怎么想」原文；这笔没写过就不留这一行。
+      if bridge.trade?.note != nil {
+        TradeReplayCaption(text: bridge.caption).environment(\.reviewTheme, t.review)
       }
     }.pageHorizontalInset().padding(.vertical, Space.s)
   }

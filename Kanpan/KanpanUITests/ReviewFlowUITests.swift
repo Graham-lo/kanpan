@@ -9,8 +9,8 @@ import XCTest
 //    XCUITest 看不见画布上的像素。所以那一层在 `KANPAN_CHART_DIAGNOSTICS=1` 下
 //    额外报一个数：这一帧到底画了几个记号（见 `RangeOverlayView.report(marks:)`）。
 //    切周期、切品种、横过去再转回来，这个数怎么变，就是用户眼里记号在不在。
-// 2. **回放里那颗「后一根」会不会把人的视野拽回去**（审查 B-05）。这条只能端到端验：
-//    要的是「手真的拖过图之后，再按一下步进」，而手势写的是 `ChartView.state.view`，
+// 2. **回放往前走会不会把人的视野拽回去**（审查 B-05）。这条只能端到端验：
+//    要的是「手真的拖过图之后，再往前播几根」，而手势写的是 `ChartView.state.view`，
 //    只有真机/模拟器上才有那一层。
 //
 // 两条用例各用一棵全新的档案子树（`KANPAN_PERSISTENCE_PROFILE`），互不继承对方
@@ -181,13 +181,16 @@ final class ReviewFlowUITests: KanpanUICase {
 
   // ------------------------------------------------------------ B.5：回放不许抢视野（B-05）
 
-  /// 回放里拖去看历史，按「后一根」视野留在原地；只有「判断处」才重铺。
+  /// 回放里拖去看历史，播放往前走视野留在原地；只有「判断处」才重铺。
   ///
   /// 这就是审查 B-05 说的那件事：每走一根都写死「80 根、右缘贴最新」，于是人放大看
-  /// 一根的细节、或者往回拖看前因，按一下步进就被拽回去——那颗按钮等于一次次把人的
-  /// 手拨开。修在 `ReviewReplayViewport.next(current:…:reset:)`，`reset` 只有两处给
+  /// 一根的细节、或者往回拖看前因，走一根就被拽回去——等于一次次把人的手拨开。
+  /// 修在 `ReviewReplayViewport.next(current:…:reset:)`，`reset` 只有两处给
   /// `true`：刚打开一条记录、人点「判断处」。这条用例验的是屏幕上那份视野
   /// （手势写进 `ChartView.state.view` 的那份），不是 bridge 里的快照。
+  ///
+  /// 原来播放条有「前一根」「后一根」，这条用例靠它们一根根走 → 2026-09-28 去掉了
+  /// （「谁看行情也不是一根根点」），定位靠拖进度线、往前走靠播放，用例跟着改。
   func testSteppingThroughAReplayKeepsTheViewportTheUserChose() throws {
     XCTAssertTrue(waitForLiveChart(), "没等到行情：\(chartInfo())")
     XCTAssertTrue(recordOnce(), "记一笔这条路没走通")
@@ -201,49 +204,51 @@ final class ReviewFlowUITests: KanpanUICase {
     replay.tap()
 
     // 回放条起来 + 这张重放的图真的有 K 线了，才谈得上视野。
-    let step = app.buttons["后一根"]
-    XCTAssertTrue(step.waitForExistence(timeout: Self.long), "没进回放（回放条没出来）")
+    let progress = app.descendants(matching: .any)["review.replay.progress"]
+    XCTAssertTrue(progress.waitForExistence(timeout: Self.long), "没进回放（进度线没出来）")
+    XCTAssertFalse(app.buttons["前一根"].exists || app.buttons["后一根"].exists, "前一根 / 后一根该去掉了")
     XCTAssertTrue(waitUntil(timeout: Self.long, poll: 0.5) { (self.chartInfo()["bars"] as? Int ?? 0) > 0 },
                   "回放的图一根 K 线都没有：\(chartInfo())")
     let opened = chartInfo()
     let span = try XCTUnwrap(opened["span"] as? Double)
     shot("复盘-回放-刚打开")
 
-    // ---- 先退一根：给「后一根」腾出往前走的余地
+    // ---- 拖进度线往回退：给播放腾出往前走的余地
     //
     // 这一笔是刚记下的，记在**最新那根已收盘 K 线**上，回放的游标一进来就落在这段历史的
-    // 最后一根上——此刻它前面本来就没有下一根（下一根还没收盘，交易所也给不出来）。
-    // 原来这条用例进来就按「后一根」，能不能走得动全看记录与开回放之间有没有正好收了
-    // 一根新的：收了就绿、没收就红，96 台次的矩阵里 16 Pro / 17e / Air 红、15 /
-    // 17 Pro Max 绿，红的就是这个。用例要验的是「按「后一根」不会把人的视野拽回最右边」，
-    // 不是「未来那根 K 线存不存在」，所以先退一根，让往前那一下一定有地方可去。
-    let back = app.buttons["前一根"]
-    XCTAssertTrue(back.exists, "回放条上没有「前一根」")
+    // 最后一根上——此刻它前面本来就没有下一根。用例要验的是「往前走不会把人的视野拽回
+    // 最右边」，不是「未来那根 K 线存不存在」，所以先把进度线拖回中间。
     let openedBars = try XCTUnwrap(opened["bars"] as? Int)
-    back.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["bars"] as? Int ?? 0) < openedBars },
-                  "按了「前一根」但回放没往回退：\(chartInfo())")
+    progress.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+      .press(forDuration: 0.15, thenDragTo: progress.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+    XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["bars"] as? Int ?? .max) < openedBars },
+                  "拖了进度线但回放没往回退：\(chartInfo())")
+    XCTAssertTrue(app.buttons["播放"].exists, "拖完进度线该保持原来的停着")
 
-    // ---- 手动往回拖，离开最新那一根
+    // ---- 手动往回拖图，离开播放头
+    let seeked = chartInfo()
+    let seekedTo = try XCTUnwrap(seeked["to"] as? Double)
     dragChartRight()
     XCTAssertTrue(waitUntil(timeout: Self.short) {
-      (self.chartInfo()["to"] as? Double ?? .infinity) < (opened["to"] as? Double ?? 0) - span * 0.05
+      (self.chartInfo()["to"] as? Double ?? .infinity) < seekedTo - span * 0.05
     }, "拖了一下回放的图，视野没动：\(chartInfo())")
     let panned = chartInfo()
     let pannedTo = try XCTUnwrap(panned["to"] as? Double)
     XCTAssertEqual(try XCTUnwrap(panned["span"] as? Double), span, accuracy: span * 0.01,
                    "拖动不该改一屏的根数")
 
-    // ---- 按「后一根」：视野留在原地
-    step.tap()
+    // ---- 播放往前走几根再停：视野留在原地
+    app.buttons["播放"].tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["bars"] as? Int ?? 0) > (panned["bars"] as? Int ?? 0) },
-                  "按了「后一根」但回放没往前走：\(chartInfo())")
+                  "按了播放但回放没往前走：\(chartInfo())")
+    app.buttons["暂停"].tap()
+    XCTAssertTrue(app.buttons["播放"].waitForExistence(timeout: Self.short), "按了暂停没停")
     let stepped = chartInfo()
     XCTAssertEqual(try XCTUnwrap(stepped["to"] as? Double), pannedTo, accuracy: span * 0.02,
-                   "按一下「后一根」，视野被拽回最右边了：\(stepped)")
+                   "播放往前走，视野被拽回最右边了：\(stepped)")
     XCTAssertEqual(try XCTUnwrap(stepped["span"] as? Double), span, accuracy: span * 0.01,
-                   "按一下「后一根」，一屏的根数被改回默认值了：\(stepped)")
-    shot("复盘-回放-拖开后按后一根视野不动")
+                   "播放往前走，一屏的根数被改回默认值了：\(stepped)")
+    shot("复盘-回放-拖开后播放视野不动")
 
     // ---- 「判断处」才是人自己要求换地方，这时候才重铺
     app.buttons["判断处"].tap()
@@ -254,7 +259,7 @@ final class ReviewFlowUITests: KanpanUICase {
 
     // ---- 退出回到实时图
     app.buttons["退出"].tap()
-    XCTAssertTrue(waitUntil(timeout: Self.long) { !step.exists && self.app.buttons[Ids.intervalChart].exists },
+    XCTAssertTrue(waitUntil(timeout: Self.long) { !progress.exists && self.app.buttons[Ids.intervalChart].exists },
                   "点「退出」没回到实时行情页")
   }
 

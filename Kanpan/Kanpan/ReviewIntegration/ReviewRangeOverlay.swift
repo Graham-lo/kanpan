@@ -28,6 +28,12 @@ struct ReviewRangeOverlay: UIViewRepresentable {
     view.accent = UIColor(theme.amber)
     view.canvas = UIColor(theme.chartBG)
     view.subdued = UIColor(theme.ink3)
+    // 交易回放那支画笔（3d）：三角用图上的涨跌色（不是图外文字那支加深版），小字 `ink2`。
+    view.tradePainter.up = UIColor(Color(hex: theme.chart.up))
+    view.tradePainter.down = UIColor(Color(hex: theme.chart.down))
+    view.tradePainter.canvas = UIColor(theme.chartBG)
+    view.tradePainter.label = UIColor(theme.ink2)
+    if bridge.trade == nil { view.tradePainter.reset() }
     view.feature = feature; view.bridge = bridge
     view.proxy = bridge.active ? bridge.proxy : liveProxy
     view.draft = (bridge.mode == .capture && !suppressed) ? feature.draft : nil
@@ -47,6 +53,13 @@ final class RangeOverlayView: UIView {
   weak var proxy: ChartProxy?
   var draft: ReviewDraft?
   var records: [ReviewRecord] = []
+  /// 交易回放的成交三角与均价虚线（`TradeReplayOverlay.swift`）。画在这同一张画布上，
+  /// 原因见那边的说明：图表的两个回调槽位只有一个，已经归这一层。
+  lazy var tradePainter: TradeReplayPainter = {
+    let painter = TradeReplayPainter()
+    painter.redraw = { [weak self] in self?.setNeedsDisplay() }
+    return painter
+  }()
   /// 这张图上要画哪几条：记录与图没变就给上一次的答案（原来每一帧都把全部记录筛一遍）。
   private var marks = ReviewMarkFilter()
   /// 见 `ReviewRangeOverlay.suppressed`。回放态那一支不吃 `records`，所以得单独挡一道。
@@ -165,6 +178,15 @@ final class RangeOverlayView: UIView {
     if probe.accessibilityValue != value { probe.accessibilityValue = value }
   }
 
+  /// 交易回放那一帧：画了几枚成交、游标走到哪根、开平仓各在哪根、一根多长（毫秒）。
+  /// `TradeReplayUITests` 拖进度线之后靠它判「游标到没到平仓那根」——画布上的三角看不见。
+  private func reportTrade(_ plan: TradeReplayPlan, state: ChartState) {
+    guard Self.diagnostics else { return }
+    let shown = plan.visibleMarks(through: state.series.lastTime).count
+    let value = "\(shown)/\(plan.marks.count) trade last=\(state.series.lastTime) open=\(plan.openBar) close=\(plan.closeBar) step=\(plan.step)"
+    if probe.accessibilityValue != value { probe.accessibilityValue = value }
+  }
+
   /// 诊断口挂在一块 1×1 的探针上，不把这一层自己变成无障碍元素。
   ///
   /// 上面那段说「平时这一层压根不是无障碍元素……不会挡住底下那张 `chart.canvas`」——
@@ -255,6 +277,9 @@ final class RangeOverlayView: UIView {
         if !spot.isNull, spot.width > 8 { hotspots.append((spot, record.id)) }
       }
       report(marks: mine.count, state: state)
+    } else if let trade = bridge?.trade, bridge?.mode == .replay {
+      tradePainter.paint(trade, state: state, chart: chart, layout: layout, ctx: ctx)
+      reportTrade(trade.plan, state: state)
     } else if let record = bridge?.replayRecord, state.series.lastTime >= record.draft.range.start {
       // Outcomes and target annotations stay hidden until the judgment is known.
       if ReviewChartBridge.closeTime(state.series.lastTime, interval: state.series.interval) >= record.draft.created {
