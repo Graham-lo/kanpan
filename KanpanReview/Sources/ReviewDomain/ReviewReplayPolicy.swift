@@ -123,6 +123,30 @@ public struct ReviewReplayTrack: Sendable, Equatable {
 
 // ============================================================ 交易回放（自动复盘 3d）
 
+/// 回放的倍速：由我按这一趟有多少根来挑，不让人去调、也不记。
+///
+/// 一秒一根 × 倍速，只有 1× / 2× / 4× 三档。目标是整趟（连同进来那一静、开仓平仓那两停）
+/// 落在 20–40 秒：最慢那一档能落进 40 秒就用它，都落不进就 4×；根数少到 1× 也不满 20 秒的，
+/// 不再往慢里拖——一秒一根已经是读得清的速度。
+///
+/// 2026-09-28 走查交易回放时量到：1 小时周期一笔 48 根按 1× 整趟 54 秒，太拖；
+/// 同一天「收设置项」把原来存在偏好里的倍速（`replaySpeed`）一并收掉。
+public enum ReplayPace {
+  public static let steps = [1, 2, 4]
+  public static let target = 20...40
+
+  /// `bars` 是要走的根数，`fixedMs` 是不随倍速变的停顿（进来那一静、中途几停）。
+  public static func speed(bars: Int, fixedMs: Int = 0) -> Int {
+    let fixed = Double(max(0, fixedMs)) / 1000
+    return steps.first { Double(max(0, bars)) / Double($0) + fixed <= Double(target.upperBound) } ?? steps.last!
+  }
+
+  /// 按这一档走完要几秒（给测试与走查报数用）。
+  public static func seconds(bars: Int, speed: Int, fixedMs: Int = 0) -> Double {
+    Double(max(0, bars)) / Double(max(1, speed)) + Double(max(0, fixedMs)) / 1000
+  }
+}
+
 /// 已平仓的一笔，在行情图上从开仓前一段一路播到平仓后几根：这一段要的全部纯算术。
 ///
 /// 目标是把这笔单子还原成当时的场景——当时 K 线怎么走、在哪一根进、在哪一根出。

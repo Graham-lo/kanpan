@@ -777,11 +777,15 @@ struct MainScreen: View {
 
   private var landscapeBody: some View {
     HStack(spacing: 0) {
-      IntervalRail(
-        theme: theme, quick: prefs.quickIntervals, current: market.interval,
-        onPick: pick(interval:), onMore: { panel = .period }
-      )
-      .background(theme.app)
+      // 复盘那几张图（回放、取景）不摆周期栏，和竖屏的 `IntervalRow` 一样：那张图的周期
+      // 是这笔单子 / 这条记录定的，点了只会在回放底下把行情的周期换掉。
+      if !reviewChart.active {
+        IntervalRail(
+          theme: theme, quick: prefs.quickIntervals, current: market.interval,
+          onPick: pick(interval:), onMore: { panel = .period }
+        )
+        .background(theme.app)
+      }
       VStack(spacing: 0) {
         if reviewChart.mode == .replay { reviewHeader } else {
         // 价和涨跌在 `LiveLandscapeHeadline` 自己的 body 里取：逐笔推送只叫醒那一行。
@@ -1264,7 +1268,7 @@ struct MainScreen: View {
       endSharePreview(); dismissPanel(); draw.finish()
       showChartForReview()
       replayOrigin = .record(record.id)
-      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), route: route.route)
+      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? session.styleState(chartInput)), route: route.route)
     }
     // 交易回放（自动复盘 3d）：详情页点一下图，回到行情图上把这笔从开仓前一路播到平仓后。
     // 周期先认人此刻图上那一档（`prefs.interval`，偏好里没有按品种记的周期），
@@ -1273,7 +1277,7 @@ struct MainScreen: View {
       endSharePreview(); dismissPanel(); draw.finish()
       showChartForReview()
       replayOrigin = .trade(item.id)
-      reviewChart.openTrade(item, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)),
+      reviewChart.openTrade(item, feature: review, live: reviewState(proxy.box?.chart.state ?? session.styleState(chartInput)),
                             route: route.route, preferred: store.prefs.interval)
     }
     // 停在开仓、平仓那根时最轻的一下；播到尾不震。

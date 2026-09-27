@@ -26,6 +26,23 @@ final class TradeReplayPlanTests: XCTestCase {
                fills: fills, updatedAt: 1)
   }
 
+  // MARK: - 倍速由我挑（整趟 20–40 秒，1× / 2× / 4×）
+
+  func testPacePicksTheSlowestStepThatFitsFortySeconds() {
+    let fixed = TradeReplayPlan.holdMs + 2 * TradeReplayPlan.pauseMs
+    // 走查量到的那一笔：1 小时 48 根，1× 要 51 秒多 → 2×，约 27 秒。
+    XCTAssertEqual(ReplayPace.speed(bars: 48, fixedMs: fixed), 2)
+    XCTAssertTrue(ReplayPace.target.contains(Int(ReplayPace.seconds(bars: 48, speed: 2, fixedMs: fixed))))
+    // 短单：1× 就在 40 秒里，不往快里赶。
+    XCTAssertEqual(ReplayPace.speed(bars: 30, fixedMs: fixed), 1)
+    XCTAssertEqual(ReplayPace.speed(bars: 5), 1)
+    // 长单：2× 也超，4×。
+    XCTAssertEqual(ReplayPace.speed(bars: 120, fixedMs: fixed), 4)
+    // 再长也封顶 4×，不再往上加。
+    XCTAssertEqual(ReplayPace.speed(bars: 800), 4)
+    XCTAssertEqual(ReplayPace.speed(bars: -3), 1)
+  }
+
   // MARK: - 周期怎么挑（用户 2026-09-28 定的顺序）
 
   /// 人自己的周期在前：这笔在他那张图上落在 10–200 根里就用它，哪怕服务端给了别的。

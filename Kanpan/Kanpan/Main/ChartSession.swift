@@ -178,6 +178,17 @@ final class ChartSession {
   /// 三种情形各自算一份真的（见 `ViewIntent`）。
   func liveState(_ input: ChartInput) -> ChartState? {
     guard let s = market.series, s.symbol == market.symbol, s.interval == market.interval, s.count > 0 else { return nil }
+    return compose(input, series: s)
+  }
+
+  /// 复盘那几张图（交易回放、笔记重温、取景）只要一份「人当前的样式」当底，序列会整条换掉。
+  /// 行情还没到（断网、刚启动、线路冷却）时也给一份空序列的底——否则交易回放会被
+  /// 「等待行情加载」挡在门外，而它根本不看这只品种此刻的行情，取不到当时的 K 线自有它的话说。
+  func styleState(_ input: ChartInput) -> ChartState {
+    liveState(input) ?? compose(input, series: BarSeries(symbol: market.symbol, interval: market.interval, bars: []))
+  }
+
+  private func compose(_ input: ChartInput, series s: BarSeries) -> ChartState {
     let prefs = input.prefs
     // 上下翻转跟着人走，不跟着品种走：换品种时这份 state 是新造的，翻转要是不从设置里
     // 带出来，图就会自己翻回去。（「允许翻转」开关 2026-09-28 收掉，手势直接生效、再双击翻回。）

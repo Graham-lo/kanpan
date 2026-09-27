@@ -296,7 +296,7 @@ import ReviewUI
   /// * 取数这段不弹任何东西：图先换成这只品种、这个周期的空图（人当前的样式），数一到就开播；
   ///   取不到交给宿主说一句、退回这笔的详情（`onTradeFailed`）。
   /// * 不记游标（不写 `rememberReplay`）：交易回放每次都是从头看一遍这笔单子，
-  ///   它的「位置」没有意义；倍速照旧跟着人走。
+  ///   它的「位置」没有意义；倍速按这一趟的根数自己挑（`ReplayPace`）。
   /// * 不画副图、对比、持仓量和画线：这张图只讲这一笔。
   func openTrade(_ item: TradeItem, feature: ReviewFeature, live: ChartState?, route: MarketRoute,
                  preferred: Interval?) {
@@ -326,8 +326,11 @@ import ReviewUI
         guard let base = try await fetchTape(tapeRequest, base: base, provider: provider, feature: feature, id: request)
         else { return }
         guard bars.contains(where: { $0.openTime >= plan.openBar }) else { throw ReviewBridgeError.noHistory }
-        replayBase = base; speed = preferredSpeed()
+        replayBase = base
         cursor = index(atOrBefore: plan.startBar)
+        // 倍速按这一趟的根数挑（`ReplayPace`）：整趟连同进来那一静、开仓平仓两停落在 20–40 秒。
+        speed = ReplayPace.speed(bars: index(atOrBefore: plan.stopBar) - cursor,
+                                 fixedMs: TradeReplayPlan.holdMs + 2 * TradeReplayPlan.pauseMs)
         updateReplay(feature: feature, reset: true); loading = false
         // 先静止 0.8 秒让人看清起点，再自己开播。
         startPlayback(feature: feature, holdMs: TradeReplayPlan.holdMs)
