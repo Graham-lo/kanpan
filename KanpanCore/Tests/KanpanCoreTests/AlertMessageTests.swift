@@ -104,4 +104,26 @@ struct AlertMessageTests {
     #expect(testBody["event"] as? String == "test")
     #expect(Set(testBody.keys) == Set(body.keys))
   }
+
+  @Test("条件提醒的 POST 身体：condition 是 rule.type、target 是 null，多带 rule / detail / value")
+  func conditionPayload() throws {
+    let a = Alert.condition(symbol: "BTCUSDT", rule: .funding(side: .above, rate: "0.0005"), now: Self.t0)
+    let obs = ConditionObservation(at: Self.t0, price: 84_671.2, detail: "预测费率 0.0612% · 14 分钟后结算",
+                                   value: .object(["rate": .string("0.000612")]))
+    let payload = AlertWebhookPayload(event: .alert, alert: a, price: obs.price, decimals: 1, at: Self.t0, observation: obs)
+    let body = try #require(try JSONSerialization.jsonObject(with: payload.json()) as? [String: Any])
+    #expect(Set(body.keys) == ["event", "alertId", "symbol", "market", "name", "title", "condition", "once",
+                               "target", "price", "firedAt", "time", "note", "text", "rule", "detail", "value"])
+    #expect(body["condition"] as? String == "funding")
+    #expect(body["target"] is NSNull)
+    #expect(body["title"] as? String == "BTC 资金费率高于 0.05%")
+    #expect(body["text"] as? String == "BTC 资金费率高于 0.05%，预测费率 0.0612% · 14 分钟后结算")
+    #expect(body["detail"] as? String == "预测费率 0.0612% · 14 分钟后结算")
+    let rule = try #require(body["rule"] as? [String: Any])
+    #expect(rule["type"] as? String == "funding" && rule["rate"] as? String == "0.0005")
+    #expect((body["value"] as? [String: Any])?["rate"] as? String == "0.000612")
+    // 模板里的 {数值}。
+    #expect(AlertMessage.render(template: "{条件}|{数值}|{目标价}|{价格}", alert: a, price: 84_671.2, decimals: 1,
+                                at: Self.t0, detail: "d") == "资金费率高于 0.05%|d||84,671")
+  }
 }

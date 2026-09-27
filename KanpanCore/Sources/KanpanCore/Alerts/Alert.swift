@@ -20,11 +20,15 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   ///   到期时刻、`reviewID` 是记录 id、`lines` 为空；服务端到点把它置成 `fired` 并推送，
   ///   本机另排一条本地通知当双保险。记录判完 / 作废 / 删掉之后自动清掉。
   ///
+  /// - `condition`：条件提醒（费率 / 持仓量 / 均线 / 大单，`docs/条件提醒-协议-2026-09-27.md`）。
+  ///   条件在 `rule` 里，`lines` 为空、`condition` 固定 `touch`（不参与判定）、市场只能是币安 U 本位。
+  ///   服务端常驻判；app 在前台时 `ConditionAlertEngine` 也判，谁先判到谁响（只响一次靠 `status`）。
+  ///
   /// 自选五分钟波动不在这里：它不是一条条提醒对象，是 `settings/chart` 里的开关与阈值
   /// （`watchMoveAlert` / `watchMoveThreshold`），判定在 `WatchMove` / 服务端 `watch_move.rs`。
   /// 规格见 docs/待办交接-Codex-2026-09-22.md P3.1。
   public enum Kind: String, Sendable, Codable, CaseIterable {
-    case drawing, price, reviewDue
+    case drawing, price, reviewDue, condition
   }
 
   /// 怎么算「穿过」。
@@ -80,6 +84,8 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   public var webhook: String?
   /// Webhook 里 `text` 那一句的模板，占位符见 `AlertMessage`。nil 用出厂模板。
   public var webhookText: String?
+  /// 条件提醒的条件（`kind == .condition` 时必有）。别的种类为 nil，线上写 `null`。
+  public var rule: AlertRule?
 
   public init(id: String = Alert.newID(), kind: Kind = .drawing, symbol: String,
               market: String = Alert.market, drawingID: String? = nil,
@@ -88,7 +94,8 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
               firedAt: Double? = nil, firedPrice: Double? = nil,
               dueAt: Double? = nil, reviewID: String? = nil,
               title: String, created: Double,
-              note: String? = nil, webhook: String? = nil, webhookText: String? = nil) {
+              note: String? = nil, webhook: String? = nil, webhookText: String? = nil,
+              rule: AlertRule? = nil) {
     self.id = id; self.kind = kind; self.symbol = InstrumentID.canonical(symbol.contains("/") ? symbol : market + "/" + symbol); self.market = InstrumentID(self.symbol).marketKey
     self.drawingID = drawingID; self.lines = lines; self.condition = condition
     self.armedAt = armedAt; self.once = once; self.status = status
@@ -96,6 +103,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     self.dueAt = dueAt; self.reviewID = reviewID; self.title = title; self.created = created
     self.note = Alert.blankIsNil(note); self.webhook = Alert.blankIsNil(webhook)
     self.webhookText = Alert.blankIsNil(webhookText)
+    self.rule = rule
   }
 
   // ---------------------------------------------------------------- 线协议
@@ -103,17 +111,18 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   private enum CodingKeys: String, CodingKey {
     case id, kind, symbol, market, drawingID, lines, condition, armedAt, once
     case status, firedAt, firedPrice, dueAt, reviewID, title, created
-    case note, webhook, webhookText
+    case note, webhook, webhookText, rule
   }
 
-  /// **可空的那八个永远写出来，空就写 null**，不许省略。
+  /// **可空的那九个永远写出来，空就写 null**，不许省略。
   ///
   /// 理由和画线那条 `text` 一模一样（见 `PersonalSyncCodec.drawings` 的注释）：
   /// `SyncStore.stage` 是拿前后两份 body 逐键做差分的，一个「先前有、现在没有」的键会被
   /// 翻译成删除。省略和 null 在这儿不是一回事——省略会让「用户把触发记录清掉」这种改动
-  /// 时有时无。服务端的 null 白名单正好放行这八个（`drawingID` / `firedAt` /
-  /// `firedPrice` / `dueAt` / `reviewID` / `note` / `webhook` / `webhookText`），
-  /// 别的键一个 null 都不许发。后三个是 2026-09-25「从图上加提醒」加的，两边同一天对齐。
+  /// 时有时无。服务端的 null 白名单正好放行这九个（`drawingID` / `firedAt` /
+  /// `firedPrice` / `dueAt` / `reviewID` / `note` / `webhook` / `webhookText` / `rule`），
+  /// 别的键一个 null 都不许发。`note` 起三个是 2026-09-25「从图上加提醒」加的，`rule` 是
+  /// 2026-09-27 条件提醒加的（`docs/条件提醒-协议-2026-09-27.md`），都是两边同一天对齐。
   public func encode(to encoder: any Encoder) throws {
     var c = encoder.container(keyedBy: CodingKeys.self)
     try c.encode(id, forKey: .id)
@@ -135,6 +144,8 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     try c.encode(Alert.blankIsNil(note), forKey: .note)
     try c.encode(Alert.blankIsNil(webhook), forKey: .webhook)
     try c.encode(Alert.blankIsNil(webhookText), forKey: .webhookText)
+    // 同样永远写出（空写 null）：它在 `ownedKeys` 里，省略会被差分成删除。
+    try c.encode(rule, forKey: .rule)
   }
 
   /// 解码一律给得起兜底：从云端换下来的那份可能是别的版本写的，少一个键不该整条读不出来。
@@ -162,6 +173,14 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     note = Alert.blankIsNil(try? c.decodeIfPresent(String.self, forKey: .note))
     webhook = Alert.blankIsNil(try? c.decodeIfPresent(String.self, forKey: .webhook))
     webhookText = Alert.blankIsNil(try? c.decodeIfPresent(String.self, forKey: .webhookText))
+    // 老版本没有这个键；`null` 或不是对象都当没有。认不得的条件整份留在 `.unknown` 里。
+    if case .object? = try? c.decodeIfPresent(RuleJSON.self, forKey: .rule) {
+      rule = try? c.decodeIfPresent(AlertRule.self, forKey: .rule)
+    } else {
+      rule = nil
+    }
+    // 协议第 5 节：body 里有 `rule` 对象，`kind` 一律是 condition（将来的 kind 退回 drawing 时也救回来）。
+    if rule != nil { kind = .condition }
   }
 
   /// 空串、全是空白都当没填（nil）。解码与 app 端落账共用。
@@ -225,6 +244,21 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     return Alert(kind: .price, symbol: symbol, lines: [line], condition: condition, armedAt: now,
                  title: priceTitle(symbol: symbol, target: target, current: current, label: label),
                  created: now, note: note.map(clip(note:)), webhook: webhook, webhookText: webhookText)
+  }
+
+  /// 建一条条件提醒（协议第 1 节）：`lines` 空、`condition` 固定 touch、市场只能是币安 U 本位；
+  /// 标题是「BTC 资金费率高于 0.05%」——和服务端 `title` 为空时补的默认标题同一句。
+  public static func condition(symbol: String, rule: AlertRule, now: Double,
+                               webhook: String? = nil, webhookText: String? = nil,
+                               note: String? = nil) -> Alert {
+    Alert(kind: .condition, symbol: symbol, market: Alert.market, lines: [], condition: .touch,
+          armedAt: now, title: conditionTitle(symbol: symbol, rule: rule), created: now,
+          note: note.map(clip(note:)), webhook: webhook, webhookText: webhookText, rule: rule)
+  }
+
+  /// 「BTC 资金费率高于 0.05%」。
+  public static func conditionTitle(symbol: String, rule: AlertRule) -> String {
+    "\(name(of: symbol)) \(rule.phrase)"
   }
 
   /// 备注的上限：30 个字形（按用户看到的「字」数，一个 emoji 算一个）。
