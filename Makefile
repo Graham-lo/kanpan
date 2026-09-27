@@ -24,7 +24,7 @@ DEVICES := \
 DEVICE ?= iPhone 16 Pro
 
 .PHONY: help doctor venue-isolation core-test presentation-test network-test data-test chart-build chart-test \
-	symbols-test settings-test sector-test scan-test alerts-test diag-test deeplink-test account-codec-test \
+	symbols-test settings-test sector-test scan-test alerts-test exchange-test diag-test deeplink-test account-codec-test \
 	diag-ios-test main-ios-test app-logic-test sync-contract backend-test account-test review-test test \
 	test-release core-test-release presentation-test-release network-test-release data-test-release account-test-release \
 	app-logic-test-release chart-test-release main-ios-test-release review-test-release diag-ios-test-release \
@@ -40,11 +40,12 @@ help:
 	@echo "chart-test   跑 KanpanChart 单测（需要一台模拟器）"
 	@echo "account-test 跑 KanpanAccount 单测（登录、退登、被顶下线、同步编解码）"
 	@echo "review-test  跑 KanpanReview 单测（需要一台模拟器）"
-	@echo "app-logic-test  跑 KanpanTests 除 Main 外的八组（自选 / 设置 / 板块 / 诊断 / 同步字段 / 链接 / 扫图 / 提醒，需要一台模拟器）+ 交易所隔离检查"
+	@echo "exchange-test   KanpanTests 的 Exchange 组：自动复盘的只读账户（签名、只读校验、分页、水位、节流、Keychain、端点扫描，需要一台模拟器）"
+	@echo "app-logic-test  跑 KanpanTests 除 Main、Exchange 外的八组（自选 / 设置 / 板块 / 诊断 / 同步字段 / 链接 / 扫图 / 提醒，需要一台模拟器）+ 交易所隔离检查"
 	@echo "diag-ios-test   只跑帧探针冒烟那一套（它也在 diag-test / app-logic-test 里）"
 	@echo "main-ios-test   KanpanTests 的 Main 组：主屏生命周期用例（需要一台模拟器）"
 	@echo "backend-test 跑 kanpan-api 的库内单测（cargo test --lib，不需要 Postgres）"
-	@echo "test         core / presentation / network / data / app-logic / chart / main-ios / account / review 全跑"
+	@echo "test         core / presentation / network / data / app-logic / exchange / chart / main-ios / account / review 全跑"
 	@echo "test-release 同一套按 Release 配置再跑一遍（各目标加 -release 后缀可单跑）"
 	@echo "strict       全部包按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
@@ -190,6 +191,12 @@ scan-test:
 alerts-test:
 	$(call app_test,Alerts)
 
+# 自动复盘的只读交易所账户（`Kanpan/Kanpan/Exchange/`）：签名向量、非只读 Key 拒收且不落 Keychain、
+# 分页拼接、水位前进、5 分钟节流、Keychain 往返，以及「源码里没有能动钱的端点」扫描。
+# 拼回合的纯逻辑在 KanpanCore/Trades，跑 core-test。单独成一组挂在 `test` 上，app-logic-test 里不再重跑。
+exchange-test:
+	$(call app_test,Exchange)
+
 # 诊断：MetricKit 摘要、落盘、帧统计，以及帧探针冒烟（CADisplayLink / CFRunLoopObserver 真跑，单独一趟）。
 diag-test:
 	$(call app_test,Diagnostics)
@@ -213,9 +220,10 @@ diag-ios-test:
 main-ios-test:
 	$(call app_test,Main)
 
-# 除 Main 之外的八组一次编一次跑（分开跑要编八遍），外加帧探针单独那一趟、交易所隔离检查。
+# 除 Main、Exchange 之外的八组一次编一次跑（分开跑要编八遍），外加帧探针单独那一趟、交易所隔离检查。
+# Exchange 组由 exchange-test 单独挂在 `test` 上。
 app-logic-test: venue-isolation
-	$(call app_test,--except Main)
+	$(call app_test,--except Main Exchange)
 	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD) $(APP_SMOKE)
 
 # 交易所隔离守卫：某家交易所的名字只许出现在它自己的提供者目录与 VenueRegistry 里。
@@ -272,7 +280,7 @@ review-test:
 	cd $(REVIEW) && $(XCODEBUILD) test -scheme KanpanReview \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
 
-test: core-test presentation-test network-test data-test app-logic-test chart-test main-ios-test account-test review-test
+test: core-test presentation-test network-test data-test app-logic-test exchange-test chart-test main-ios-test account-test review-test
 
 # ---------------------------------------------------------------- Release 回归
 # 审查 C-05 的另一半：`Kanpan.xcscheme` 的 TestAction 是 Debug，上面那条 `test` 也全是
@@ -311,7 +319,7 @@ data-test-release:
 	cd $(DATA) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 account-test-release:
 	cd $(ACCOUNT) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-# 和 Debug 档的 app-logic-test 同一份分组，少一组就等于那一组的 Release 没人测。
+# 和 Debug 档的 app-logic-test + exchange-test 同一份分组，少一组就等于那一组的 Release 没人测。
 app-logic-test-release: venue-isolation
 	$(call app_test_release,--except Main)
 	$(XCODEBUILD) test $(APP_TEST_FLAGS) -derivedDataPath $(APP_DD_RELEASE) $(APP_RELEASE_FLAGS) $(APP_SMOKE)
