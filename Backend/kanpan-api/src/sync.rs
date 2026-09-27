@@ -127,7 +127,16 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // RETIRED_SETTINGS_FIELDS 里）。服务端只校验、不读。
  "orderFlowOverrides",
  "orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled",
+ // 条件提醒（docs/条件提醒-协议-2026-09-27.md 第 6 节）：设置 › 通知里「品种上新与下架」开关。
+ // 服务端 `listing_watch.rs` 读它；见下面的 SERVER_AHEAD_SETTINGS_FIELDS。
+ "notifyListingChanges",
 ];
+/// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
+///
+/// 服务端总是先于客户端部署，所以一个新设置在一段时间里只在这边有。对账测试把契约
+/// ∪ 这张表当成「客户端会发的」；客户端把它生成进契约之后，这里那一项就是冗余的，
+/// 删掉即可（留着也不会让测试变红）。这里只能放**已经在 SETTINGS_FIELDS 里、并且有值规则**的名字。
+pub const SERVER_AHEAD_SETTINGS_FIELDS:&[&str]=&["notifyListingChanges"];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
 pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
@@ -145,11 +154,14 @@ pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
 // 注意 `market` 在这个集合里是 `"binance/usd_m"` 整串，而 `drawings`/`favorites` 的
 // `market` 是 `"usd_m"`、场所另放在 `venue`。这不是笔误，是方案文档 2.2 写死的形状，
 // 所以值规则也按集合分开写——把两者混成一条规则会让客户端发上来的整条 op 400。
-pub const ALERT_FIELDS:[&str;18]=[
+pub const ALERT_FIELDS:[&str;19]=[
  "kind","symbol","market","drawingID","lines","condition","armedAt","once",
  "status","firedAt","firedPrice","dueAt","reviewID","title","created",
  // 从图上加提醒：备注、Webhook 地址、Webhook 文案模板（值规则见 sync_validation）。
  "note","webhook","webhookText",
+ // 条件提醒（`kind:"condition"`）的条件本体：费率 / 持仓量 / 均线 / 大单。
+ // 形状见 docs/条件提醒-协议-2026-09-27.md 第 2 节与 `conditions::Rule`。
+ "rule",
 ];
 pub fn allowlist(c:&str)->&'static [&'static str] {
  match c {SETTINGS=>SETTINGS_FIELDS,DRAWING_PREFERENCES=>&DRAWING_PREFERENCE_FIELDS,DRAWINGS=>&DRAWING_FIELDS,FAVORITES=>&FAVORITE_FIELDS,GROUPS=>&GROUP_FIELDS,ALERTS=>&ALERT_FIELDS,_=>&[]}
@@ -482,7 +494,9 @@ mod tests {
  #[test] fn the_allowlist_is_what_ios_sends() {
   let mut have:Vec<String>=allowlist("settings").iter().map(|s|s.to_string()).collect();
   have.sort_unstable();
-  let want=contract_wire_keys();
+  let mut want=contract_wire_keys();
+  for ahead in SERVER_AHEAD_SETTINGS_FIELDS {if !want.iter().any(|k|k==ahead) {want.push(ahead.to_string())}}
+  want.sort_unstable();
   let missing:Vec<_>=want.iter().filter(|k|!have.contains(k)).collect();
   let extra:Vec<_>=have.iter().filter(|k|!want.contains(k)).collect();
   assert!(missing.is_empty()&&extra.is_empty(),
@@ -501,7 +515,7 @@ mod tests {
    ("favorites",&["symbol","market","venue","groupId","order","alerts"][..]),
    ("groups",&["name","order","members"][..]),
    ("alerts",&["kind","symbol","market","drawingID","lines","condition","armedAt","once","status","firedAt","firedPrice","dueAt","reviewID","title","created",
-    "note","webhook","webhookText"][..]),
+    "note","webhook","webhookText","rule"][..]),
   ];
   for (collection,want) in expected {
    let (mut have,mut want)=(allowlist(collection).to_vec(),want.to_vec());
@@ -538,7 +552,7 @@ mod tests {
   };
   // The probe sweep would be vacuous if `field` said yes to anything, so prove it discriminates.
   assert!(!accepts("telepathy"),"a name with no rule must be refused for every probe");
-  for key in contract_wire_keys() {
+  for key in contract_wire_keys().into_iter().chain(SERVER_AHEAD_SETTINGS_FIELDS.iter().map(|k|k.to_string())) {
    assert!(accepts(&key),
     "`{key}` is on the settings allowlist but sync_validation::field has no rule that accepts \
      any probe value for it. Either the rule is missing — and the field is a poison pill that \

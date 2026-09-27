@@ -62,7 +62,10 @@ async fn main()->anyhow::Result<()> {
   // 东西，提醒的其余部分不该等它。币安、Coinbase 各一条常驻评估循环，各自被看着。
   let apns=kanpan_api::apns::Apns::from_env().map(Arc::new);
   supervisor.spawn("alerts",Life::Forever,kanpan_api::alerts::run(s.clone(),apns.clone()));
-  supervisor.spawn("alerts-coinbase",Life::Forever,kanpan_api::alerts::run_coinbase(s.clone(),apns));
+  supervisor.spawn("alerts-coinbase",Life::Forever,kanpan_api::alerts::run_coinbase(s.clone(),apns.clone()));
+  // 条件提醒（费率、持仓量、均线；大单在 serve 里，跟踪器在那边）与品种状态通知。
+  supervisor.spawn("conditions",Life::Forever,kanpan_api::conditions::run(s.clone(),apns.clone()));
+  supervisor.spawn("listing-watch",Life::Forever,kanpan_api::listing_watch::run(s.clone(),apns));
   tokio::select! {
    e=supervisor.failure()=>return Err(e),
    _=kanpan_api::supervise::stop_signal()=>{}
@@ -81,6 +84,8 @@ async fn main()->anyhow::Result<()> {
  supervisor.watch("daily-close",Life::Forever,kanpan_api::sector_history::spawn_daily(s.pool.clone()));
  // 主力订单流的历史：常驻跟踪各家挂单簿、判出来的大单写进库，同一进程回 `/v1/market/orderflow/history`。
  supervisor.watch("orderflow-history",Life::Forever,kanpan_api::orderflow_history::spawn(s.pool.clone()));
+ // 大单条件提醒：跟踪器每评估一次簿当场判（`conditions::walls`），触发与刷新在这条任务里。
+ supervisor.spawn("condition-walls",Life::Forever,kanpan_api::conditions::walls::run(s.clone(),kanpan_api::apns::Apns::from_env().map(Arc::new)));
  // The open interest archive keeps its own disk cache; index it before the
  // first chart asks rather than inside that request. It finishes by design.
  supervisor.watch("oi-warm",Life::Once,kanpan_api::oi_archive::spawn_warm());

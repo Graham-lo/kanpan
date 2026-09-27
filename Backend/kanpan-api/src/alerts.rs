@@ -148,6 +148,9 @@ fn crosses(previous:f64,close:f64,line:f64)->bool {
 /// - `price`：裸价格「到价提醒」。客户端把目标价摊成一条两端都延伸的水平线放进
 ///   `lines`，所以评估器对它和画线提醒是**同一套**判法，不需要第二套几何。
 /// - `reviewDue`：复盘到点。没有线，按 `due_at` 判；`review_id` 给推送的深链用。
+/// - `condition`：条件提醒（费率 / 持仓量 / 均线 / 大单），条件本体存进 `rule` 列，
+///   由 `conditions`（worker）与 `conditions::walls`（serve）判；这里的价格评估器按
+///   `kind IN ('drawing','price')` 读，看不见它们。
 ///
 /// 删除、认不得的 kind 一律把行删掉——评估器读的就是这张表，删掉就等于停评估，
 /// 不需要第二处开关。暂停与已触发照样留着行（`status` 列挡住评估）。
@@ -162,7 +165,7 @@ fn crosses(previous:f64,close:f64,line:f64)->bool {
 /// `active → fired` 这一次转变，谁先到谁发，后到的那一方看到的已经是 `fired`，一封都不发。
 pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,object:&Object)->Result<Option<ReportedFire>> {
  let keep=!object.deleted
-  && matches!(object.body.get("kind").and_then(Value::as_str),Some("drawing"|"price"|"reviewDue"))
+  && matches!(object.body.get("kind").and_then(Value::as_str),Some("drawing"|"price"|"reviewDue"|"condition"))
   && object.body.get("symbol").and_then(Value::as_str).is_some();
  if !keep {
   sqlx::query("DELETE FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(&object.id).execute(&mut **tx).await?;
@@ -174,12 +177,12 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
  let text=|k:&str|object.body.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
  let number=|k:&str|object.body.get(k).and_then(Value::as_f64);
  sqlx::query("INSERT INTO alert_watches(user_id,alert_id,kind,symbol,market,drawing_id,lines,condition,title,armed_at,status,fired_at,fired_price,due_at,review_id,\
-  webhook,webhook_text,note,updated_at) \
-  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now()) \
+  webhook,webhook_text,note,rule,updated_at) \
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now()) \
   ON CONFLICT(user_id,alert_id) DO UPDATE SET kind=excluded.kind,symbol=excluded.symbol,market=excluded.market,drawing_id=excluded.drawing_id,\
   lines=excluded.lines,condition=excluded.condition,title=excluded.title,armed_at=excluded.armed_at,status=excluded.status,\
   fired_at=excluded.fired_at,fired_price=excluded.fired_price,due_at=excluded.due_at,review_id=excluded.review_id,\
-  webhook=excluded.webhook,webhook_text=excluded.webhook_text,note=excluded.note,updated_at=now()")
+  webhook=excluded.webhook,webhook_text=excluded.webhook_text,note=excluded.note,rule=excluded.rule,updated_at=now()")
   .bind(owner).bind(&object.id).bind(text("kind")).bind(text("symbol"))
   .bind(object.body.get("market").and_then(Value::as_str).unwrap_or(BINANCE))
   .bind(object.body.get("drawingID").and_then(Value::as_str))
@@ -196,6 +199,8 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
   .bind(optional_text(object,"webhook"))
   .bind(optional_text(object,"webhookText"))
   .bind(optional_text(object,"note"))
+  // 条件提醒的条件本体；别的 kind（以及 `rule: null`）存 NULL。
+  .bind(object.body.get("rule").filter(|v|v.is_object()).cloned())
   .execute(&mut **tx).await?;
  Ok(reported_fire(before.as_deref(),owner,object,chrono::Utc::now().timestamp_millis()))
 }
@@ -237,7 +242,7 @@ fn reported_fire(before:Option<&str>,owner:Uuid,object:&Object,now:i64)->Option<
 
 /// 发一封 Webhook：另起任务，不挂住调用方（最坏 8 秒 + 3 秒 + 8 秒）。发不出去只留日志。
 /// 内网 / 本机地址不发（[`webhook_allowed`]）。
-fn post_webhook(alert_id:String,url:String,body:Value) {
+pub(crate) fn post_webhook(alert_id:String,url:String,body:Value) {
  if !webhook_allowed(&url) {
   tracing::warn!("Alert {alert_id} has a webhook to a local or private address ({}); not posting",webhook_host(&url));
   return
@@ -636,7 +641,6 @@ pub fn webhook_money(v:f64)->String {
 /// 把模板里的占位符换成这一次的值。**一遍扫完**：备注里要是写了 `{价格}`，它就是字面的
 /// `{价格}`，不会被第二轮替换再换一次。认不得的 `{…}` 原样留着。空模板用默认模板。
 pub fn render_webhook_text(template:Option<&str>,f:&WebhookFill)->String {
- let template=template.filter(|t|!t.trim().is_empty()).unwrap_or(DEFAULT_WEBHOOK_TEXT);
  let value=|key:&str|->Option<String> {Some(match key {
   "品种"=>webhook_name(f.market,f.symbol),
   "代号"=>f.symbol.to_string(),
@@ -647,6 +651,11 @@ pub fn render_webhook_text(template:Option<&str>,f:&WebhookFill)->String {
   "备注"=>f.note.to_string(),
   _=>return None,
  })};
+ render_template(template,DEFAULT_WEBHOOK_TEXT,value)
+}
+/// 模板替换本身（价格提醒与条件提醒共用）：一遍扫完，认不得的 `{…}` 原样留着，空模板用 `default`。
+pub fn render_template(template:Option<&str>,default:&str,value:impl Fn(&str)->Option<String>)->String {
+ let template=template.filter(|t|!t.trim().is_empty()).unwrap_or(default);
  let mut out=String::new();
  let mut rest=template;
  while let Some(start)=rest.find('{') {

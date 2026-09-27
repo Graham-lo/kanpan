@@ -133,7 +133,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
  // 客户端的 diff 把「这次不写这个 key」发成 null，拒收它就等于整条 op 400。
  if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text")
   // note / webhook / webhookText（从图上加提醒）：客户端永远写出这三个键，空就是 null。
-  || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID"|"note"|"webhook"|"webhookText")
+  || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID"|"note"|"webhook"|"webhookText"|"rule")
   || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
  if collection==SETTINGS {
   if p.len()>1 {
@@ -183,7 +183,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "favoritesGroup"=>string(v,128),
    "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
     |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
-    |"orderFlowSpot"|"orderFlowContract"|"orderFlowShowFilled"|"orderFlowShowCancelled"=>v.is_boolean(),
+    |"orderFlowSpot"|"orderFlowContract"|"orderFlowShowFilled"|"orderFlowShowCancelled"
+    // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
+    |"notifyListingChanges"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }
  }
@@ -219,7 +221,11 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   (GROUPS,"members")=>v.as_array().is_some_and(|a|a.len()<=2000&&a.iter().all(|v|string(v,100))),
   // ——— 提醒（方案文档 2.2） ———
   // 三种都真的在用（P3.1）：`drawing` / `price` 按线判，`reviewDue` 按 `dueAt` 判。
-  (ALERTS,"kind")=>one_of(v,&["drawing","price","reviewDue"]),
+  // `condition`（2026-09-27）：费率 / 持仓量 / 均线 / 大单，条件本体在 `rule` 里，只有服务端判。
+  (ALERTS,"kind")=>one_of(v,&["drawing","price","reviewDue","condition"]),
+  // 条件提醒的条件本体（docs/条件提醒-协议-2026-09-27.md 第 2 节）。已知 `type` 严格校验，
+  // 认不得的 `type` 收下不判（`conditions::Rule::Unknown`）；null 见上面的可空名单。
+  (ALERTS,"rule")=>crate::conditions::valid_rule(v),
   // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
   // venue）。形状是文档定的，照抄，不要「统一」。
   (ALERTS,"market")=>v=="binance/usd_m"||v=="coinbase/spot",
@@ -256,9 +262,18 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
 /// to remember on its own that null means empty. Miss it once and the old caption is back on
 /// screen. Runs after the field merge and before validation, so what is stored is already
 /// canonical.
+///
+/// 同一个地方还做一件规范化：**提醒上有 `rule` 对象，`kind` 就是 `condition`**
+/// （条件提醒协议第 5 节）。老客户端认不得 `condition` 这个 kind，解成 `drawing`、下次记账时
+/// 又原样编码成 `drawing` 发上来；`rule` 它不认识，只能原样留在对象上。不改回来的话，
+/// 那条 op 会因为「画线提醒没有线」整条 400、堵住那台手机的队列，条件也就丢了。
 pub fn clear_tombstones(value:&mut Object) {
  if value.collection==DRAWINGS && value.body.get("text").is_some_and(Value::is_null) {
   value.body.insert("text".into(),Value::String(String::new()));
+ }
+ if value.collection==ALERTS && value.body.get("rule").is_some_and(Value::is_object)
+  && value.body.get("kind").and_then(Value::as_str)!=Some("condition") {
+  value.body.insert("kind".into(),Value::String("condition".into()));
  }
 }
 pub fn identity(venue:&str,market:&str,symbol:&str)->bool {
@@ -300,6 +315,10 @@ pub fn object(value:&Object)->Result<()> {
   // 价格提醒（画线与裸价格）要有线可判：`lines` 字段本身允许空数组，是因为复盘到点那一种
   // 不看价、没有线；但一条没有线的价格提醒是永远不会响的死提醒。
   if matches!(kind,"drawing"|"price") && value.body.get("lines").and_then(Value::as_array).is_none_or(Vec::is_empty) {
+   return Err(ApiError::bad("invalid_alert"))
+  }
+  // 条件提醒：必须带条件本体，而且只在币安 U 本位上（四种条件的数据都只来自那里）。
+  if kind=="condition" && (!value.body.get("rule").is_some_and(Value::is_object) || market!=crate::alerts::BINANCE) {
    return Err(ApiError::bad("invalid_alert"))
   }
   // 复盘到点必须说得出「什么时候」和「哪一条」：评估器按 dueAt 判，推送的深链靠 reviewID。

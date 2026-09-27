@@ -667,6 +667,13 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
     let now=now_ms();
     t.calibrate(now);
     if t.calibrating() {t.model.trim();} else {t.model.evaluate(now);}
+    // 大单条件提醒（`conditions::walls`）：有人挂着这只 base 的才摊出来，评估完当场判，不等写库。
+    if !t.calibrating()&&crate::conditions::walls::watching(&t.base) {
+     let walls:Vec<crate::conditions::walls::WallView>=t.model.live().into_iter().map(|(o,_)|crate::conditions::walls::WallView{
+      key:format!("{}/{}/{}/{}",o.venue_id,o.product,o.side.wire(),o.bucket),exchange:o.exchange,product:o.product,side:o.side.wire(),
+      price:o.price,notional:o.notional,first_seen_ms:o.first_seen_ms}).collect();
+     crate::conditions::walls::observe(&t.base,&walls,now);
+    }
     t.due_retries(now);
     t.write_ended().await;
    },
@@ -1185,6 +1192,17 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>}
+
+/// 条件提醒（大单墙）要这只 base 在跟：和手机打开这只品种走同一条路（按需层、记进 `orderflow_bases`）。
+/// 返回它此刻是否在跟（或刚起跟）；三家都没挂的不起。
+pub(crate) async fn want(base:&str,now:i64)->bool {
+ if !instruments::valid_base(base) {return false}
+ let Some(registry)=REGISTRY.get() else {return false};
+ if !admitted(registry.is_tracked(base),instruments::listed(base).await) {return false}
+ registry.request(base,now);
+ if let Some(pool)=POOL.get() && let Err(e)=store::touch(pool,base,now).await {tracing::warn!("Orderflow history: {base} could not be recorded as wanted: {e}")}
+ registry.is_tracked(base)
+}
 
 /// 要不要为这只 base 起跟踪、记进库：已经在跟的照旧；合约表判得了而三家都没挂的不起；判不了（表还没拉到）的放行。
 fn admitted(tracked:bool,listed:Option<bool>)->bool {tracked||listed!=Some(false)}
