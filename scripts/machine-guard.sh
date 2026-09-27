@@ -351,12 +351,23 @@ cmd_zombie_gc() {
   return 0
 }
 
-# Docker 按需：没人连着它里面的 Postgres（5432）就退出，要用时 open -a Docker 再开；
+# Docker 按需：没人连着它里面的 Postgres 就退出，要用时 open -a Docker 再开；
 # 想临时保住 touch $STATE/docker.keep
+# 「有人在用」= 任何 Docker 容器对外映射的宿主端口上有 ESTABLISHED 连接，端口从 docker ps 实时取
+# （kanpan-api 的测试库映射在 55432、Scorebook 的在 5432；2026-09-27 之前写死 .5432 ，
+# 结果测试库永远判成闲置、每 10 分钟被退一次，把 ops/test.py --workspace 跑断）。
+# docker ps 拿不到端口（daemon 还没起来）时按「在用」处理，不退。
 cmd_docker_gc() {
   [ -f "$STATE/docker.keep" ] && return 0
   pgrep -xq 'Docker Desktop' || { rm -f "$STATE/.docker-idle"; return 0; }
-  local c; c=$(netstat -an 2>/dev/null | grep -E '\.5432 ' | grep -c ESTABLISHED)
+  local ports c=0 pt
+  ports=$(docker ps --format '{{.Ports}}' 2>/dev/null | grep -oE ':[0-9]+->' | tr -d ':->' | sort -u)
+  [ -n "$ports" ] || ports="5432 55432"
+  # 有在跑的 rust 测试进程也算在用（连接是短命的，netstat 那一瞬间可能正好没有）
+  pgrep -qf 'target/(debug|release)/deps/' && c=1
+  for pt in $ports; do
+    c=$((c + $(netstat -an 2>/dev/null | grep -E "\.${pt} " | grep -c ESTABLISHED)))
+  done
   if [ "${c:-0}" -eq 0 ]; then
     local mark="$STATE/.docker-idle" n=0
     [ -f "$mark" ] && n=$(cat "$mark")
