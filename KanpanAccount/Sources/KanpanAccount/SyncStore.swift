@@ -124,6 +124,8 @@ public struct SyncArchive: Codable, Sendable {
   public var sent: Set<UUID> = []
   public var objects: [String: SyncObject] = [:]
   public var local: [String: SyncObject] = [:]
+  /// 原来是同步页「自动同步」开关的真身。2026-09-28 那颗开关收掉（收设置项 H，登录了就一直同步），
+  /// app 不再读写它；字段留着只为老存档照常解码、写回去不丢。
   public var autoSync = true
   public var lastSync: Int64?
   /// **真正把拉下来那批装进本机**的时刻，和 `lastSync`（拉到哪儿了）分开记。

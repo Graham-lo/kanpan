@@ -73,7 +73,6 @@ import ReviewUI
     dropLegacyPrefs()
     account.onPrepareAccount = { [weak self] user in guard let self else { return {} }; return try self.prepare(user) }
     account.onSynchronize = { [weak self] in self?.synchronize(manual: true) }
-    account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
     account.lastOwner = { [weak self] in self?.files.lastOwner }
     prefs.onChange = { [weak self] _ in self?.captureSettings() }
     symbols.onPrefsChange = { [weak self] _ in self?.captureSymbols() }
@@ -629,14 +628,21 @@ import ReviewUI
     guard let data = try? JSONSerialization.data(withJSONObject: ["activityId": activityID]) else { return }
     Task { _ = try? await api.data("v1/devices/live-activity/end", method: "POST", body: data) }
   }
-  private func setAutoSync(_ enabled: Bool) {
-    do {
-      try sync?.transaction { $0.autoSync = enabled }; updateStatus()
-      if enabled { run(.push, manual: false) } else { task?.cancel(); task = nil; taskID = UUID(); review.pauseAutomaticSync() }
-    } catch { account.report(sync: error) }
+  /// 自动同步开没开。登录了就一直同步：原来同步页上有一颗「自动同步」开关（存在
+  /// `SyncArchive.autoSync` 里，关掉时状态写「已暂停」），2026-09-28 收掉（收设置项 H）——
+  /// 登录就是为了跨设备同步，关掉它只会让两台设备悄悄分叉。老存档里存着 `false` 的也不再认，
+  /// 升级上来的那台当场恢复同步。
+  ///
+  /// DEBUG 包留一个测试后门 `KANPAN_TEST_HOLD_SYNC=1`：这一次启动只在点「立即同步」时推拉，
+  /// 跨设备并发用例（P4.5）靠它让两台各自攒着改动不推。正式包没有这一行。
+  private static var automaticSync: Bool {
+    #if DEBUG
+      if ProcessInfo.processInfo.environment["KANPAN_TEST_HOLD_SYNC"] == "1" { return false }
+    #endif
+    return true
   }
   private func updateStatus() {
-    account.autoSync = sync?.archive.autoSync ?? true; review.autoSync = account.autoSync
+    review.autoSync = Self.automaticSync
     account.pending = (sync?.archive.operations.count ?? 0) + review.pendingUploads
     account.lastSync = sync?.archive.lastSync.map { Date(timeIntervalSince1970: Double($0) / 1000) }
     // 被隔离的那几条要说出来：它们不在 `pending` 里（不会永远挂着归不了零），
@@ -645,7 +651,7 @@ import ReviewUI
     // 数是从**存档**里读的，不是内存里的一个数组：那些改动重启之后还在本机、
     // 还没推上去，这句话重启之后也就还得成立（B3）。
     let stuck = sync?.archive.rejected.count ?? 0
-    account.syncStatus = owner == nil ? "" : !account.autoSync ? "已暂停" : account.pending > 0 ? "待同步"
+    account.syncStatus = owner == nil ? "" : account.pending > 0 ? "待同步"
       : stuck > 0 ? "\(stuck) 项暂未同步"
       : account.lastSync == nil ? "尚未同步" : "已同步"
   }
@@ -664,7 +670,7 @@ import ReviewUI
     let due = needsBootstrap || Date().timeIntervalSince(lastBootstrap) >= Self.bootstrapInterval
     run(manual || due ? .full : .push, manual: manual)
     submitPushToken()
-    // 分享不是个人同步：暂停自动同步也照样收信。只在登录 / 前台拉取入口挂一次。
+    // 分享不是个人同步：只在登录 / 前台拉取入口挂一次。
     let current = epoch; let running = task
     Task { [weak self] in
       await running?.value
@@ -694,7 +700,7 @@ import ReviewUI
       if case .push = plan { queuedPush = (queuedPush ?? false) || manual }
       return
     }
-    guard let sync, let api = account.client, let owner, manual || sync.archive.autoSync else { return }
+    guard let sync, let api = account.client, let owner, manual || Self.automaticSync else { return }
     let requestEpoch = epoch; let requestedSymbol = symbol
     let runID = UUID(); taskID = runID
     account.syncStatus = "同步中"

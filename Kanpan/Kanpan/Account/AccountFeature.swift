@@ -36,7 +36,6 @@ import KanpanCore
   @ObservationIgnored private var revoking: Set<UUID> = []
   @ObservationIgnored var onPrepareAccount: ((AccountUser?) throws -> (@MainActor () -> Void))?
   @ObservationIgnored var onSynchronize: (() -> Void)?
-  @ObservationIgnored var onAutoSync: ((Bool) -> Void)?
   /// 上一次装进来的是哪个登录的人（`AccountFiles.lastOwner`，只有身份没有令牌）。
   /// 钥匙串读不动时靠它把那个人的本地档案照常装上。
   @ObservationIgnored var lastOwner: (() -> AccountUser?)?
@@ -50,7 +49,7 @@ import KanpanCore
   /// （`protectedDataDidBecomeAvailable`）时当场再读一次。
   @ObservationIgnored private var credentialRetry: Task<Void, Never>?
   @ObservationIgnored private var unlockObserver: (any NSObjectProtocol)?
-  var autoSync = true
+  // `autoSync`（同步页「自动同步」开关）2026-09-28 收掉（收设置项 H）：登录了就一直同步。
   var syncStatus = ""
   var lastSync: Date?
   var pending = 0

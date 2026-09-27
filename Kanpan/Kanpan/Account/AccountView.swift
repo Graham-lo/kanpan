@@ -214,7 +214,7 @@ struct AccountView: View {
     List {
       expired
       Section {
-        Toggle("自动同步", isOn: Binding(get: { feature.autoSync }, set: { feature.onAutoSync?($0) }))
+        // 「自动同步」开关 2026-09-28 收掉（收设置项 H）：登录了就一直同步，这一页只报状态、给「立即同步」。
         LabeledContent("上次同步") { if let last = feature.lastSync { Text(last, style: .relative) } else { Text("尚未同步") } }
         if !feature.syncStatus.isEmpty { Text(feature.syncStatus).foregroundStyle(theme.ink3) }
         if feature.pending > 0 { LabeledContent("待同步", value: "\(feature.pending) 项") }

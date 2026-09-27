@@ -145,7 +145,7 @@ struct MePage: View {
   /// 「我这台机器上的东西新不新」：有没推上去的就报几项，推完了报多久以前。
   /// 同步真出错时换成那句错误：按 §2G 的规矩同步失败只在这一处说一次，复盘本里不再重复。
   static func syncMeta(_ account: AccountFeature, now: Date = Date()) -> String {
-    let canned: Set<String> = ["", "已暂停", "待同步", "尚未同步", "已同步", "同步中"]
+    let canned: Set<String> = ["", "待同步", "尚未同步", "已同步", "同步中"]
     if !canned.contains(account.syncStatus) { return account.syncStatus }
     if account.pending > 0 { return "待同步 \(account.pending) 项" }
     guard let at = account.lastSync else { return "尚未同步" }

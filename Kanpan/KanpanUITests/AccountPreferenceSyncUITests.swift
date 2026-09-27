@@ -139,7 +139,9 @@ import CoreGraphics
   /// 自报「平板」——账号规则是每类设备只许一台在线，两台都报「手机」的话，后登的会把
   /// 先登的踢下线，那测的就是踢人而不是并发。规则本身一行没动。
   ///
-  /// **「同时」怎么造**：两台都关掉「自动同步」再改，改动只进各自的待发队列；
+  /// **「同时」怎么造**：两台都带 `KANPAN_TEST_HOLD_SYNC=1` 启动（DEBUG 后门：这一次启动只在点
+  /// 「立即同步」时推拉——同步页上的「自动同步」开关 2026-09-28 收掉了，收设置项 H）再改，
+  /// 改动只进各自的待发队列；
   /// 然后按一个刻意的顺序推上去——**手里拿着较旧改动的那台最后推**。这样「后推的赢」和
   /// 「新改的赢」给出的答案不一样，用例才分得出服务端到底按哪条规矩合并：
   ///
@@ -169,6 +171,12 @@ import CoreGraphics
     register(user, step: "A 注册 \(user)")
     setFavorite("ETHUSDT", on: true, step: "A 加基线自选 ETH")
     syncNow(step: "A 把基线推上去")
+    // 收设置项 H：同步页只报状态、给「立即同步」，没有「自动同步」开关——登录了就一直同步。
+    openSyncPage(step: "H 看同步页")
+    XCTAssertFalse(app.switches["自动同步"].exists, "同步页上不该再有「自动同步」开关\n\(app.debugDescription)")
+    XCTAssertFalse(app.staticTexts["已暂停"].exists, "同步状态不该再出现「已暂停」")
+    shot("H-同步页没有自动同步开关")
+    leaveAccount(step: "H 看同步页")
     expectTheme(skin: "sage", mode: "跟随系统", step: "A 基线配色")
     app.terminate()
 
@@ -180,21 +188,19 @@ import CoreGraphics
     expectFavorites(present: ["ETHUSDT"], absent: [], step: "B 拉到的基线自选")
     app.terminate()
 
-    // ---- T1：A 暂停同步后改
-    app = makeApp(profile: profileA)
+    // ---- T1：A 攒着不推地改
+    app = makeApp(profile: profileA, hold: true)
     app.launch()
     XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "A 重启后没见到底栏")
-    setAutoSync(false, step: "A 暂停自动同步")
     setTheme(skin: "terra", mode: "跟随系统", step: "T1 A 皮肤改陶土")
     setFavorite("SOLUSDT", on: true, step: "T1 A 加 SOL")
     settle()
     app.terminate()
 
-    // ---- T2：B 暂停同步后改（它看不见 A 的 T1——A 还没推）
-    app = makeApp(profile: profileB, kind: "tablet")
+    // ---- T2：B 攒着不推地改（它看不见 A 的 T1——A 还没推）
+    app = makeApp(profile: profileB, kind: "tablet", hold: true)
     app.launch()
     XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "B 重启后没见到底栏")
-    setAutoSync(false, step: "B 暂停自动同步")
     expectTheme(skin: "sage", mode: "跟随系统", step: "B 改之前应当还是基线（A 的 T1 没推）")
     setTheme(skin: "classic", mode: "浅色", step: "T2 B 皮肤经典、深浅浅色")
     setFavorite("DOGEUSDT", on: true, step: "T2 B 加 DOGE")
@@ -204,20 +210,18 @@ import CoreGraphics
     app.terminate()
 
     // ---- T3：A 改深浅并推（连同 T1 那批）。B 的 T2 还压在 B 的队列里
-    app = makeApp(profile: profileA)
+    app = makeApp(profile: profileA, hold: true)
     app.launch()
     XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "A 第三次起没见到底栏")
     setTheme(skin: "terra", mode: "深色", step: "T3 A 深浅改深色")
-    setAutoSync(true, step: "A 恢复自动同步")
     syncNow(step: "A 推 T1 + T3")
     expectTheme(skin: "terra", mode: "深色", step: "A 推完（B 还没推）应当是自己那份")
     app.terminate()
 
     // ---- B 最后推：拿着较旧的深浅改动
-    app = makeApp(profile: profileB, kind: "tablet")
+    app = makeApp(profile: profileB, kind: "tablet", hold: true)
     app.launch()
     XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "B 第三次起没见到底栏")
-    setAutoSync(true, step: "B 恢复自动同步")
     syncNow(step: "B 推 T2 并拉合并结果")
     expectTheme(skin: "classic", mode: "深色",
                 step: "B 收敛：皮肤取 B 的 T2（比 A 的 T1 新），深浅取 A 的 T3（比 B 的 T2 新，虽然 B 后推）",
@@ -252,9 +256,11 @@ import CoreGraphics
 
   // ------------------------------------------------------------ 启动与环境
 
-  private func makeApp(profile: String, kind: String? = nil) -> XCUIApplication {
+  private func makeApp(profile: String, kind: String? = nil, hold: Bool = false) -> XCUIApplication {
     let value = XCUIApplication()
     if let kind { value.launchEnvironment["KANPAN_TEST_DEVICE_KIND"] = kind }
+    // 这一次启动只在点「立即同步」时推拉（DEBUG 后门，见 `AppAccountBridge.automaticSync`）。
+    if hold { value.launchEnvironment["KANPAN_TEST_HOLD_SYNC"] = "1" }
     value.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     value.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = profile
     value.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = api
@@ -551,20 +557,6 @@ import CoreGraphics
     XCTAssertTrue(sync.waitForExistence(timeout: 20), "\(step)：账号页上没有「同步」\n\(app.debugDescription)")
     sync.tap()
     XCTAssertTrue(app.buttons["立即同步"].waitForExistence(timeout: 20), "\(step)：同步页没打开\n\(app.debugDescription)")
-  }
-
-  /// 同步页上的「自动同步」开关。SwiftUI 的 Toggle 在列表里整行是一个 switch，
-  /// 点中心有时落在文字上不翻，所以点完看值，没翻再点右侧的开关本体。
-  private func setAutoSync(_ on: Bool, step: String) {
-    openSyncPage(step: step)
-    let toggle = app.switches["自动同步"]
-    XCTAssertTrue(toggle.waitForExistence(timeout: 20), "\(step)：同步页上没有「自动同步」\n\(app.debugDescription)")
-    func isOn() -> Bool { (toggle.value as? String) == "1" }
-    if isOn() != on { toggle.tap() }
-    if !waitUntil(3, { isOn() == on }) { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap() }
-    XCTAssertTrue(waitUntil(5) { isOn() == on }, "\(step)：「自动同步」没切到 \(on)\n\(app.debugDescription)")
-    if !on { XCTAssertTrue(waitUntil(5) { self.app.staticTexts["已暂停"].exists }, "\(step)：暂停后状态不是「已暂停」") }
-    leaveAccount(step: step)
   }
 
   /// 从账号页退回页面本身（`account.back` 在子页是「返回」、在账号页是「收起」）。
