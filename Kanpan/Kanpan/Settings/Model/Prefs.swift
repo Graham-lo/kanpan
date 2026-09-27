@@ -150,6 +150,10 @@ struct Prefs: Sendable, Equatable {
   /// 点数——`Layout` 拿它和主图权重一起分配当前视口，所以同一个值在两种朝向下给出
   /// 的是同一个比例。拆成横竖两份等于「设置跟着页面走」，恰恰是要避免的那一类。
   var subHeightOverrides: [IndicatorID: Double] = [:]
+  /// 指标按周期分组记忆（2026-09-27）：上面那几项（连同 `candleKind` / `priceMode`）永远是
+  /// **当前周期所在组**的那一份，另外两组记在这里。规则与形状见 `IndicatorLayouts.swift`。
+  /// 没分过叉的人这里永远是空的，三组共用顶层那一份。
+  var indicatorLayouts = IndicatorLayoutMemory()
 
   // ---------------------------------------------------------------- 网络
   /// 行情线路：直连（默认）/ 网关。选了哪条就走哪条，代码不做自动切换。

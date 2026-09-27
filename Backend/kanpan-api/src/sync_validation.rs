@@ -37,6 +37,20 @@ fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()
 fn integers(v:&Value,count:usize,lo:i64,hi:i64)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_i64().is_some_and(|n|n>=lo&&n<=hi)))}
 fn names(v:&Value,count:usize,names:&[&str])->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(|s|names.contains(&s))))}
 fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)}
+/// 一组的指标布局（客户端 `IndicatorLayout`，Kanpan/Kanpan/Settings/Model/IndicatorLayouts.swift）：
+/// 键是顶层那七个同名字段的子集，值的规则也和顶层逐项相同——顶层那份是三组共用的，
+/// 这里是某一组分了叉之后自己的那份。缺的键在客户端跟共用那份走，所以不要求七个都在。
+fn indicator_layout(v:&Value)->bool {
+ v.as_object().is_some_and(|o|o.iter().all(|(k,v)|match k.as_str() {
+  "overlays"=>names(v,OVERLAY_INDICATORS.len(),OVERLAY_INDICATORS),
+  "subs"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
+  "params"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&integers(v,20,1,400))),
+  "hiddenOutputs"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&integers(v,21,0,20))),
+  "subHeightOverrides"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&number(v,0.25,5.0))),
+  "candleKind"|"priceMode"=>string(v,64),
+  _=>false,
+ }))
+}
 /// 提醒的 Webhook 地址：≤ 1024 字节、`http://` 或 `https://` 开头、不含空白。
 fn webhook(v:&Value)->bool {
  v.as_str().is_some_and(|s|s.len()<=1024&&(s.starts_with("http://")||s.starts_with("https://"))&&!s.chars().any(char::is_whitespace))
@@ -137,6 +151,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
  if collection==SETTINGS {
   if p.len()>1 {
+   // 指标按周期分组记忆（2026-09-27）：`indicatorLayouts/<minute|hour|day>` 是分了叉的那一组的
+   // 整份布局，第二段是组名不是指标名，所以要排在下面那道「第二段必须是指标」之前。
+   if p[0]=="indicatorLayouts" {return p.len()==2&&matches!(p[1],"minute"|"hour"|"day")&&indicator_layout(v)}
    if !indicator(p[1]) {return false}
    return match p[0] {
     "params"=>p.len()==2&&integers(v,20,1,400),

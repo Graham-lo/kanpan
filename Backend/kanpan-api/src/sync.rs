@@ -108,6 +108,9 @@ pub fn strip_retired(object:&mut Object) {
 pub const SETTINGS_FIELDS:&[&str]=&[
  "compareSymbols",
  "overlays","subs","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
+ // 指标按周期分组记忆（2026-09-27）：上面那几项是三组共用的一份，分了叉的组各自的整份
+ // 布局走 `indicatorLayouts/<minute|hour|day>`。
+ "indicatorLayouts",
  "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
  "magnet","countdown","depth","orderFlow","lastLine","sinceChange","candleKind","gridChoice","bodyChoice",
  "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
@@ -547,7 +550,7 @@ mod tests {
    json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),json!({}),
   ];
   let accepts=|key:&str|{
-   [key.to_string(),format!("{key}/MA"),format!("{key}/MA/0")].iter()
+   [key.to_string(),format!("{key}/MA"),format!("{key}/MA/0"),format!("{key}/hour")].iter()
     .any(|path|probes.iter().any(|v|crate::sync_validation::field("settings",path,v)))
   };
   // The probe sweep would be vacuous if `field` said yes to anything, so prove it discriminates.
@@ -571,6 +574,33 @@ mod tests {
   assert_eq!(object.body["variants/trend"],json!("extended"));
   assert_eq!(object.body["variants/vline"],json!("crossLine"));
   assert!(op("drawingPreferences",&[("variants/trend",json!("telekinesis"))]).validate().is_err());
+ }
+ /// 指标按周期分组记忆（2026-09-27）：分了叉的那一组整份布局走 `indicatorLayouts/<组>`，
+ /// 过白名单、过值校验、真的合并；null 是「这一组并回共用」；组名、布局里的键与值都按规则拒。
+ #[test] fn indicator_layouts_per_interval_group_are_stored() {
+  let hour=json!({"overlays":["MA","EMA"],"subs":["VOL","KDJ"],"params":{"MA":[7,25,99]},
+   "hiddenOutputs":{"MA":[2]},"subHeightOverrides":{"KDJ":1.2},"candleKind":"heikin","priceMode":"log"});
+  let fields=[("indicatorLayouts/hour",hour.clone()),("indicatorLayouts/day",json!({"subs":["RSI"]}))];
+  let operation=op("settings",&fields);
+  assert!(operation.validate().is_ok());
+  assert!(operation.unknown_fields().is_empty());
+  let object=applied("settings",&fields);
+  assert_eq!(object.body["indicatorLayouts/hour"],hour);
+  assert_eq!(object.body["indicatorLayouts/day"],json!({"subs":["RSI"]}));
+  assert!(op("settings",&[("indicatorLayouts/minute",Value::Null)]).validate().is_ok(),"null = 这一组回到共用");
+  for (path,value) in [
+   ("indicatorLayouts/8h",json!({})),                         // 组名只有三个
+   ("indicatorLayouts",json!({"hour":{}})),                   // 必须拍平到组
+   ("indicatorLayouts/hour/subs",json!(["VOL"])),             // 不再往下拆
+   ("indicatorLayouts/hour",json!({"skin":"sage"})),          // 皮肤不属于分组布局
+   ("indicatorLayouts/hour",json!({"subs":["MA"]})),          // 主图指标放不进副图
+   ("indicatorLayouts/hour",json!({"params":{"NOPE":[1]}})),  // 认不出的指标
+   ("indicatorLayouts/hour",json!({"params":{"MA":[0]}})),    // 参数越界
+   ("indicatorLayouts/hour",json!({"subHeightOverrides":{"VOL":9.0}})),
+   ("indicatorLayouts/hour",json!(["VOL"])),                  // 不是对象
+  ] {
+   assert!(!crate::sync_validation::field("settings",path,&value),"{path} = {value} must be refused");
+  }
  }
  /// 铃声同时通过字段白名单、值校验与实际合并。
  #[test] fn alert_sound_is_accepted_and_invalid_values_are_refused() {

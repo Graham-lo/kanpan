@@ -238,13 +238,19 @@ final class PrefsStore {
   // 看到某处「手势改完了内存值却要等一会儿才更新」，那是 bug，不是设计。
 
   /// 唯一的改法。没真改动就不落盘，免得每次滑动都写一遍。
+  ///
+  /// 指标按周期分组记忆（2026-09-27）也在这一步理顺：改的是指标布局，就只改当前周期那一组
+  /// （那一组第一次被改时分叉、浮一句「……现在单独记」）；改的是周期、而且换了组，顶层那几项
+  /// 在**同一次赋值里**换成新组那份，图拿到的第一帧就是新布局。见 `settleIndicatorLayouts`。
   func update(_ change: (inout Prefs) -> Void) {
     var next = prefs
     change(&next)
+    let forked = next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
     persist(marking: changed)
+    if let forked { note(forked.forkNotice) }
   }
 
   /// 带提示的改法：`change` 返回一句话就说明这次没改成（原型的 toast）。
@@ -252,10 +258,12 @@ final class PrefsStore {
     var next = prefs
     let why = change(&next)
     if let why { note(why); return }
+    let forked = next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
     persist(marking: changed)
+    if let forked { note(forked.forkNotice) }
   }
 
   /// 开 / 关一个指标。
@@ -269,11 +277,32 @@ final class PrefsStore {
     let before = prefs
     var next = prefs
     let why = next.toggle(id)
+    let forked = next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
     persist(marking: changed)
-    if let why { note(why, undo: { [weak self] in self?.restore(changed, from: before) }) }
+    // 分叉那一句每组只说一次，不能被「已换下」那一句盖掉：两件事同一下发生时并成一句。
+    let text = [forked?.forkNotice, why].compactMap { $0 }.joined(separator: "；")
+    guard !text.isEmpty else { return }
+    note(text, undo: why == nil ? nil : { [weak self] in self?.restore(changed, from: before) })
+  }
+
+  /// 指标页底部「恢复这一组的默认」：当前周期所在组的布局回到出厂，别的组一个不碰。
+  ///
+  /// 没分叉的组点它，等于这一组以出厂那份分叉出去（其余组仍共用原来那份），所以第一次
+  /// 说的是「……现在单独记」；已经分过叉的说「已恢复这一组的默认」。两种都带「撤销」，
+  /// 撤销只还原这一下改到的字段（`restore(_:from:)`）。已经是出厂那份时什么都不做。
+  func resetIndicatorLayoutForCurrentGroup() {
+    let before = prefs
+    var next = prefs
+    next.indicatorLayout = .factory
+    let forked = next.settleIndicatorLayouts(after: prefs)
+    guard next != prefs else { return }
+    let changed = Prefs.changedStampedFields(from: prefs, to: next)
+    prefs = next
+    persist(marking: changed)
+    note(forked?.forkNotice ?? "已恢复这一组的默认", undo: { [weak self] in self?.restore(changed, from: before) })
   }
 
   // ---------------------------------------------------------------- 图上量出来的习惯

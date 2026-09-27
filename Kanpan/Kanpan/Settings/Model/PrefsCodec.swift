@@ -134,6 +134,8 @@ extension Prefs: Codable {
     case barSpacing, mainInverted, subInverted
     case adaptiveIndicators, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeightOverrides
+    // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份。上面那七个老键写三组共用的那份。
+    case indicatorLayouts
     // `apiHost` / `streamHost`（自定义行情域名）2026-09-24 删了：设置里早就没有入口，
     // 线路只剩直连 / 网关两档，主机一律由 `RouteResolver` 定。旧存档里的这两个键解码时忽略。
     case routePolicy
@@ -157,7 +159,6 @@ extension Prefs: Codable {
     try c.encode(skin.rawValue, forKey: .skin)
     try c.encode(ambientTheme, forKey: .ambientTheme)
     try c.encode(redUp, forKey: .redUp)
-    try c.encode(priceMode.rawValue, forKey: .priceMode)
     try c.encode(magnet, forKey: .magnet)
     try c.encode(depth, forKey: .depth)
     try c.encode(orderFlow, forKey: .orderFlow)
@@ -170,7 +171,6 @@ extension Prefs: Codable {
     try c.encode(keepAwake, forKey: .keepAwake)
     try c.encode(timeZone.rawValue, forKey: .timeZone)
     try c.encode(changeBasis.rawValue, forKey: .changeBasis)
-    try c.encode(candleKind.rawValue, forKey: .candleKind)
     try c.encode(gridChoice.rawValue, forKey: .gridChoice)
     try c.encode(bodyChoice.rawValue, forKey: .bodyChoice)
     try c.encode(lastLine, forKey: .lastLine)
@@ -186,16 +186,18 @@ extension Prefs: Codable {
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
     try c.encode(adaptiveIndicators, forKey: .adaptiveIndicators)
     try c.encode(portraitHeight, forKey: .portraitHeight)
-    try c.encode(Dictionary(uniqueKeysWithValues: hiddenOutputs.map { ($0.key.rawValue, $0.value.sorted()) }), forKey: .hiddenOutputs)
     try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
     try c.encode(rsiUpper, forKey: .rsiUpper)
     try c.encode(rsiLower, forKey: .rsiLower)
-    try c.encode(overlays.map(\.rawValue), forKey: .overlays)
-    try c.encode(subs.map(\.rawValue), forKey: .subs)
-    // 字典键是 enum，直接 encode 会变成交错数组；摊成 [String: …] 才是人能看懂的 JSON。
-    try c.encode(Dictionary(uniqueKeysWithValues: params.map { ($0.key.rawValue, $0.value) }),
-                 forKey: .params)
-    try c.encode(Dictionary(uniqueKeysWithValues: subHeightOverrides.map { ($0.key.rawValue, $0.value) }), forKey: .subHeightOverrides)
+    // 指标布局：老键写三组共用的那份，分了叉的组写进 `indicatorLayouts`（空表也写，键永远在）。
+    let book = layoutBook
+    try Prefs.encode(book.shared, into: &c)
+    var groups = c.nestedContainer(keyedBy: IntervalGroup.self, forKey: .indicatorLayouts)
+    for group in IntervalGroup.allCases {
+      guard let fork = book.forks[group] else { continue }
+      var one = groups.nestedContainer(keyedBy: CodingKeys.self, forKey: group)
+      try Prefs.encode(fork, into: &one)
+    }
     try c.encode(routePolicy.rawValue, forKey: .routePolicy)
     try c.encode(favoritesSort, forKey: .favoritesSort)
     try c.encode(favoritesAscending, forKey: .favoritesAscending)
@@ -211,6 +213,53 @@ extension Prefs: Codable {
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
     try c.encode(watchMoveThreshold, forKey: .watchMoveThreshold)
+  }
+
+  /// 一组指标布局的七个键。顶层（共用的那份）和 `indicatorLayouts/<组>` 里写法一样。
+  private static func encode(_ layout: IndicatorLayout, into c: inout KeyedEncodingContainer<CodingKeys>) throws {
+    let l = layout.sanitized
+    try c.encode(l.priceMode.rawValue, forKey: .priceMode)
+    try c.encode(l.candleKind.rawValue, forKey: .candleKind)
+    try c.encode(Dictionary(uniqueKeysWithValues: l.hiddenOutputs.map { ($0.key.rawValue, $0.value.sorted()) }), forKey: .hiddenOutputs)
+    try c.encode(l.overlays.map(\.rawValue), forKey: .overlays)
+    try c.encode(l.subs.map(\.rawValue), forKey: .subs)
+    // 字典键是 enum，直接 encode 会变成交错数组；摊成 [String: …] 才是人能看懂的 JSON。
+    try c.encode(Dictionary(uniqueKeysWithValues: l.params.map { ($0.key.rawValue, $0.value) }), forKey: .params)
+    try c.encode(Dictionary(uniqueKeysWithValues: l.subHeightOverrides.map { ($0.key.rawValue, $0.value) }), forKey: .subHeightOverrides)
+  }
+
+  /// 反过来：档里有哪一键就整项换掉哪一项，没有的留着 `layout` 原来的值
+  /// （顶层从出厂起步；分叉那份从共用的那份起步——半截的分叉档缺的项就跟共用的走）。
+  /// 认不出的字面量、放错位置的指标、越界的数，规则和原来顶层那几段一模一样。
+  private static func decode(_ c: KeyedDecodingContainer<CodingKeys>, into layout: inout IndicatorLayout) {
+    func str(_ k: CodingKeys) -> String? { (try? c.decodeIfPresent(String.self, forKey: k)) ?? nil }
+    func strs(_ k: CodingKeys) -> [String]? { (try? c.decodeIfPresent([String].self, forKey: k)) ?? nil }
+    if let raw = str(.priceMode), let v = PriceMode(rawValue: raw) { layout.priceMode = v }
+    if let raw = str(.candleKind), let v = CandleKind(rawValue: raw) { layout.candleKind = v }
+    if let raw = try? c.decode([String: [Int]].self, forKey: .hiddenOutputs) {
+      var out: [IndicatorID: Set<Int>] = [:]
+      for (key, values) in raw {
+        if let id = IndicatorID(rawValue: key) { out[id] = Set(values.filter { (0..<21).contains($0) }) }
+      }
+      layout.hiddenOutputs = out
+    }
+    if let raw = strs(.overlays) { layout.overlays = Prefs.ids(raw, placement: .main) }
+    if let raw = strs(.subs) { layout.subs = Array(Prefs.ids(raw, placement: .sub).prefix(Prefs.maxSubs)) }
+    if let raw = (try? c.decodeIfPresent([String: [Int]].self, forKey: .params)) ?? nil {
+      var out: [IndicatorID: [Int]] = [:]
+      for (k, v) in raw {
+        guard let id = IndicatorID(rawValue: k) else { continue }   // 认不出的指标直接丢
+        out[id] = IndicatorParamRule.sanitize(v, for: id)           // 越界的夹回来
+      }
+      layout.params = out
+    }
+    if let raw = try? c.decode([String: Double].self, forKey: .subHeightOverrides) {
+      var out: [IndicatorID: Double] = [:]
+      for (key, scale) in raw {
+        if let id = IndicatorID(rawValue: key), id.placement == .sub, scale.isFinite { out[id] = min(2, max(0.5, scale)) }
+      }
+      layout.subHeightOverrides = out
+    }
   }
 
   /// 历次出厂的常用行。存档里一字不差地躺着其中一串，就说明用户从没动过常用行。
@@ -265,7 +314,6 @@ extension Prefs: Codable {
     if let v = bool(.ambientTheme) { ambientTheme = v }
     if let v = bool(.redUp) { redUp = v }
 
-    if let raw = str(.priceMode), let v = PriceMode(rawValue: raw) { priceMode = v }
     if let v = bool(.magnet) { magnet = v }
     if let v = bool(.depth) { depth = v }
     if let v = bool(.orderFlow) { orderFlow = v }
@@ -296,7 +344,6 @@ extension Prefs: Codable {
 
     // 「图表」面板那几项。认不出的字面量一律退回默认（多半是降级回旧版本，
     // 或者手改存档手抖），不能因为一个字符串就让整档作废。
-    if let raw = str(.candleKind), let v = CandleKind(rawValue: raw) { candleKind = v }
     if let raw = str(.gridChoice), let v = GridChoice(rawValue: raw) { gridChoice = v }
     // 旧存档里的 `"style"`（「跟随风格」那一档）读成实心：风格表只剩一套，两者等价。
     if let raw = str(.bodyChoice) { bodyChoice = raw == "style" ? .solid : BodyChoice(rawValue: raw) ?? bodyChoice }
@@ -323,11 +370,6 @@ extension Prefs: Codable {
     // 图上的超买超卖带整个倒过来，推上去的 `rsiRange` 是 `[30, 1]`，服务端要求 `a[0] < a[1]`，
     // 整条 settings 操作被顶回去；再编一次又被 `sanitized` 夹成 0，同一份档解两次得到两个样子。
     rsiLower = min(rsiUpper - 1, max(0, rsiLower))
-    if let raw = try? c.decode([String: [Int]].self, forKey: .hiddenOutputs) {
-      for (key, values) in raw {
-        if let id = IndicatorID(rawValue: key) { hiddenOutputs[id] = Set(values.filter { (0..<21).contains($0) }) }
-      }
-    }
 
     if let raw = try? c.decode([String: [Int: Hex]].self, forKey: .indicatorColors) {
       for (key, values) in raw {
@@ -335,29 +377,20 @@ extension Prefs: Codable {
         indicatorColors[id] = values.filter { (0..<21).contains($0.key) && $0.value.value.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil }
       }
     }
-    if let raw = strs(.overlays) {
-      overlays = Prefs.ids(raw, placement: .main)
-    }
-    if let raw = strs(.subs) {
-      subs = Array(Prefs.ids(raw, placement: .sub).prefix(Prefs.maxSubs))
-    }
-
-    if let raw = (try? c.decodeIfPresent([String: [Int]].self, forKey: .params)) ?? nil {
-      var out: [IndicatorID: [Int]] = [:]
-      for (k, v) in raw {
-        guard let id = IndicatorID(rawValue: k) else { continue }   // 认不出的指标直接丢
-        out[id] = IndicatorParamRule.sanitize(v, for: id)           // 越界的夹回来
-      }
-      params = out
-    }
-
-    if let raw = try? c.decode([String: Double].self, forKey: .subHeightOverrides) {
-      for (key, scale) in raw {
-        if let id = IndicatorID(rawValue: key), id.placement == .sub, scale.isFinite {
-          subHeightOverrides[id] = min(2, max(0.5, scale))
-        }
+    // 指标布局。老键是三组共用的那份（老档案、老客户端只有这一份——它就是迁移源：
+    // 没有 `indicatorLayouts` 的档读出来三组共用它，谁也没分叉）；分了叉的组从共用那份起步再盖。
+    var shared = indicatorLayout
+    Prefs.decode(c, into: &shared)
+    var book = IndicatorLayoutBook(shared: shared)
+    if let groups = try? c.nestedContainer(keyedBy: IntervalGroup.self, forKey: .indicatorLayouts) {
+      for group in IntervalGroup.allCases {
+        guard let one = try? groups.nestedContainer(keyedBy: CodingKeys.self, forKey: group) else { continue }
+        var fork = shared
+        Prefs.decode(one, into: &fork)
+        book.forks[group] = fork
       }
     }
+    adopt(book)
 
     // 认不出的值（比如旧版本的「自动」）退回直连。
     if let raw = str(.routePolicy), let v = MarketRoutePolicy(rawValue: raw) { routePolicy = v }

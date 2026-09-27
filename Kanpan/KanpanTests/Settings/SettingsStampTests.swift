@@ -61,7 +61,9 @@ struct SettingsStampTests {
     store.update { $0.subHeightOverrides[.vol] = 120 }
     store.update { $0.subs = [.vol, .macd] }
     store.update { $0.indicatorColors[.macd] = [0: "#FF0000"] }
-    #expect(store.dirtyFields == ["subHeightOverrides", "subs", "indicatorColors"])
+    // 2026-09-27 起副图高度、副图顺序属于「这一组的指标布局」：出厂周期是 1h，第一改就让
+    // 小时组分叉，记脏的是 `indicatorLayouts`；共用那份（老键 subs / subHeightOverrides）没动。
+    #expect(store.dirtyFields == ["indicatorLayouts", "indicatorColors"])
   }
 
   // ---------------------------------------------------------------- 清
@@ -125,23 +127,32 @@ struct SettingsStampTests {
 
   // ------------------------------------------------ 清：拍平之后的那些线上路径
 
-  @Test("嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params")
+  @Test("嵌套字段发上去的是拍平后的路径：indicatorColors/MA/0 和 indicatorColors/EMA/1 都认下了就清 indicatorColors")
   func clearsNestedWirePaths() {
     let (store, _, _) = makeStore()
-    store.update { $0.params[.ma] = [7, 30, 60]; $0.params[.ema] = [9, 21] }
-    #expect(store.dirtyFields == ["params"], "脏标识记的是顶层字段名，不是拍平后的路径")
+    store.update { $0.indicatorColors[.ma] = [0: "#FF0000"]; $0.indicatorColors[.ema] = [1: "#00FF00"] }
+    #expect(store.dirtyFields == ["indicatorColors"], "脏标识记的是顶层字段名，不是拍平后的路径")
 
-    // 线上收到的是 `PersonalSyncCodec.flatten` 拍出来的路径，不是 `params` 本身。
-    store.syncPushed(store.dirtyMarks, acked: ["params/MA", "params/EMA"])
+    // 线上收到的是 `PersonalSyncCodec.flatten` 拍出来的路径，不是 `indicatorColors` 本身。
+    store.syncPushed(store.dirtyMarks, acked: ["indicatorColors/MA/0", "indicatorColors/EMA/1"])
     #expect(store.dirtyFields.isEmpty,
-            "服务端都认下了还留着脏标识的话，云端那份 params 永远打不赢本地——另一台设备改的指标参数再也收不到")
+            "服务端都认下了还留着脏标识的话，云端那份永远打不赢本地——另一台设备改的东西再也收不到")
   }
 
-  @Test("subHeightOverrides/MACD 被认下就清 subHeightOverrides")
+  @Test("改指标参数：记脏的是 indicatorLayouts，indicatorLayouts/hour 被认下就清")
+  func clearsGroupLayoutWirePath() {
+    let (store, _, _) = makeStore()
+    store.update { $0.params[.ma] = [7, 30, 60]; $0.params[.ema] = [9, 21] }
+    #expect(store.dirtyFields == ["indicatorLayouts"], "出厂周期 1h：改参数让小时组分叉，老键 params（共用那份）不动")
+    store.syncPushed(store.dirtyMarks, acked: ["indicatorLayouts/hour"])
+    #expect(store.dirtyFields.isEmpty)
+  }
+
+  @Test("拖副图分隔线：indicatorLayouts/hour 被认下就清")
   func clearsNestedSubHeightOverride() {
     let (store, _, _) = makeStore()
     store.update { $0.subHeightOverrides[.macd] = 140 }
-    store.syncPushed(store.dirtyMarks, acked: ["subHeightOverrides/MACD"])
+    store.syncPushed(store.dirtyMarks, acked: ["indicatorLayouts/hour"])
     #expect(store.dirtyFields.isEmpty, "拖一次副图分隔线就让这个字段从此永远脏着，每轮同步都白推一份 settings")
   }
 
@@ -156,14 +167,14 @@ struct SettingsStampTests {
   @Test("一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着")
   func keepsFieldWhenOneWirePathIsDropped() {
     let (store, _, _) = makeStore()
-    store.update { $0.params[.ma] = [7, 30, 60]; $0.params[.ema] = [9, 21] }
-    // 服务端认下了这条操作，但 `params/EMA` 那一项没收下。
-    store.syncPushed(store.dirtyMarks, acked: ["params/MA"], dropped: ["params/EMA"])
-    #expect(store.dirtyFields == ["params"],
+    store.update { $0.indicatorColors[.ma] = [0: "#FF0000"]; $0.indicatorColors[.ema] = [1: "#00FF00"] }
+    // 服务端认下了这条操作，但 `indicatorColors/EMA/1` 那一项没收下。
+    store.syncPushed(store.dirtyMarks, acked: ["indicatorColors/MA/0"], dropped: ["indicatorColors/EMA/1"])
+    #expect(store.dirtyFields == ["indicatorColors"],
             "兄弟路径被丢掉时还把整个字段清掉，等于把没推上去的那一改当成推过了，下次回拉照样盖回去")
 
     // 补推一次、这回一条都没丢：到这儿才能清。
-    store.syncPushed(store.dirtyMarks, acked: ["params/MA", "params/EMA"])
+    store.syncPushed(store.dirtyMarks, acked: ["indicatorColors/MA/0", "indicatorColors/EMA/1"])
     #expect(store.dirtyFields.isEmpty)
   }
 

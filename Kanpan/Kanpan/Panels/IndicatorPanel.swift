@@ -62,6 +62,16 @@ struct IndicatorPage: View {
 
       compareSection
       orderFlowSection
+
+      // 指标按周期分组记忆（2026-09-27）唯一的管理入口：当前周期所在那一组回到出厂，别的组不动。
+      // 已经是出厂那份时点不动（`PanelRow` 在禁用时自己换禁用色阶）。
+      PanelRow(name: "恢复这一组的默认", divider: false, onTap: {
+        store.resetIndicatorLayoutForCurrentGroup()
+        Haptics.warning()
+      })
+      .padding(.top, Space.xl)
+      .disabled(prefs.indicatorLayout == .factory)
+      .accessibilityIdentifier("indicator.resetGroup")
     }
     .sheet(item: $editing) { id in
       if id == .orderFlow {

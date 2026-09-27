@@ -98,6 +98,9 @@ enum PrefsFieldPlan {
     "keepAwake": .synced, "timeZone": .synced, "changeBasis": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
     "subHeightOverrides": .synced,
+    // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份，线上拍平成 `indicatorLayouts/<组>`。
+    // 上面那七个老键仍写三组共用的那份（老客户端照旧同步，也是迁移源）。
+    "indicatorLayouts": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
     "favoritesSort": .synced, "favoritesAscending": .synced, "favoritesAmount": .synced,
     "favoritesSparkline": .synced, "favoritesGroup": .synced,

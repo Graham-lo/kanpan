@@ -252,7 +252,14 @@ struct PrefsPersistenceTests {
     let a = PrefsStore(storage: box, cache: UnavailableMarketCache())
     a.update { $0 = Self.mutated() }
     let b = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    #expect(b.prefs == Self.mutated())
+    #expect(b.prefs == a.prefs)
+    // 整份换进来的指标布局落在它自己周期（15m）那一组：那一组分叉，共用那份还是出厂。
+    #expect(b.prefs.indicatorLayout == Self.mutated().indicatorLayout)
+    #expect(b.prefs.isLayoutForked(.minute))
+    #expect(b.prefs.layoutBook.shared == Prefs.defaults.indicatorLayout)
+    var rest = b.prefs
+    rest.indicatorLayouts = Self.mutated().indicatorLayouts
+    #expect(rest == Self.mutated(), "指标布局以外的字段原样读回")
   }
 
   @Test("没真改动就不落盘")
