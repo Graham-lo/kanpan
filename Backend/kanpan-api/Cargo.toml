@@ -36,6 +36,9 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["std", "sink"] }
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["use_pem", "rust_crypto"] }
+# 交易复盘的金额与比例：协议要求十进制字符串、按 decimal 算、四舍六入五成双（`round_dp`）。
+# 浮点在这里会把 0.1+0.2 这类误差写进用户的盈亏里。
+rust_decimal = { version = "1.42", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # `test-util` is what lets the ban-gate and cooldown tests run on paused time:

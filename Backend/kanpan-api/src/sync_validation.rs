@@ -311,6 +311,88 @@ pub fn object(value:&Object)->Result<()> {
  Ok(())
 }
 
+// ——— 交易复盘的回合（`docs/交易复盘-协议-2026-09-27.md` 第 1、2 节）———
+//
+// 回合是手机从交易所成交机械拼出来的，所以这里只校验协议列为「必填」的键，未知键原样放行
+// （协议第 1 节：客户端升级加字段时老服务端不能整条拒收，2026-09-19 同步白名单的坑）。
+// 数字一律是十进制字符串，按 decimal 解，不经过浮点。
+
+/// 一份回合最多几笔成交。请求体上限 6 MiB、一笔成交三百来字节，一万笔已经是整批的上限了。
+pub const ROUND_MAX_FILLS:usize=10_000;
+/// 服务端认得的回合结构版本。
+pub const ROUND_VERSION:i64=1;
+/// 最早收得下的时刻：2017-01-01（币安开张之前不会有成交）。
+const EARLIEST_MS:i64=1_483_228_800_000;
+/// 允许手机时钟比服务器快这么多。
+const CLOCK_SKEW_MS:i64=300_000;
+/// 协议第 1 节的十进制字符串：可带前导 `-`，一个 `.`，不带 `+`、指数、千分位。
+/// 整数部分最多 12 位、小数部分最多 18 位：价格 × 数量在 `rust_decimal` 的 28 位里放得下，
+/// 算浮盈浮亏时不会溢出。
+pub fn decimal(s:&str)->Option<rust_decimal::Decimal> {
+ let body=s.strip_prefix('-').unwrap_or(s);
+ let (whole,fraction)=match body.split_once('.') {Some((w,f))=>(w,Some(f)),None=>(body,None)};
+ if whole.is_empty()||whole.len()>12||!whole.bytes().all(|c|c.is_ascii_digit()) {return None}
+ if let Some(f)=fraction && (f.is_empty()||f.len()>18||!f.bytes().all(|c|c.is_ascii_digit())) {return None}
+ s.parse().ok()
+}
+fn dec(v:&Value)->Option<rust_decimal::Decimal> {v.as_str().and_then(decimal)}
+fn positive(v:&Value)->bool {dec(v).is_some_and(|d|d.is_sign_positive()&&!d.is_zero())}
+fn non_negative(v:&Value)->bool {dec(v).is_some_and(|d|d.is_zero()||d.is_sign_positive())}
+/// 资产代号：`USDT`、`BNB`、`1000SHIB` 这类，只有 ASCII 大写与数字。
+fn asset(v:&Value)->bool {v.as_str().is_some_and(|s|(1..=20).contains(&s.len())&&s.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))}
+/// 交易所给的 id（成交号、订单号）：数字转成的字符串，这里只要是一段可见 ASCII。
+fn exchange_id(v:&Value)->bool {v.as_str().is_some_and(|s|(1..=64).contains(&s.len())&&s.bytes().all(|c|c.is_ascii_graphic()))}
+fn millis(v:&Value,now:i64)->Option<i64> {v.as_i64().filter(|t|*t>=EARLIEST_MS&&*t<=now+CLOCK_SKEW_MS)}
+/// 一份回合过不过协议。只看必填键；错了一律 `invalid_round`，版本比服务端新是 `unsupported_round_version`。
+pub fn trade_round(v:&Value,now:i64)->Result<()> {
+ let bad=||ApiError::bad("invalid_round");
+ let o=v.as_object().ok_or_else(bad)?;
+ let version=o.get("version").and_then(Value::as_i64).ok_or_else(bad)?;
+ if version>ROUND_VERSION {return Err(ApiError::bad("unsupported_round_version"))}
+ if version<1 {return Err(bad())}
+ let text=|k:&str|o.get(k).and_then(Value::as_str).ok_or_else(bad);
+ if uuid::Uuid::parse_str(text("id")?).is_err() {return Err(bad())}
+ if !identity(text("venue")?,text("market")?,text("symbol")?)||(text("venue")?,text("market")?)!=("binance","usd_m") {return Err(bad())}
+ let tag=text("accountTag")?;
+ if !(1..=32).contains(&tag.len())||!tag.bytes().all(|c|c.is_ascii_alphanumeric()||c==b'_'||c==b'-') {return Err(bad())}
+ let side=text("positionSide")?;let direction=text("direction")?;let status=text("status")?;
+ if !matches!(side,"BOTH"|"LONG"|"SHORT")||!matches!(direction,"long"|"short")||!matches!(status,"open"|"closed") {return Err(bad())}
+ if (side=="LONG"&&direction!="long")||(side=="SHORT"&&direction!="short") {return Err(bad())}
+ let get=|k:&str|o.get(k).ok_or_else(bad);
+ if !asset(get("quoteAsset")?) {return Err(bad())}
+ let opened=millis(get("openedAt")?,now).ok_or_else(bad)?;
+ let closed=get("closedAt")?;let holding=get("holdingMs")?;let close_avg=get("closeAvgPrice")?;
+ let closed=if closed.is_null() {None} else {Some(millis(closed,now).filter(|c|*c>=opened).ok_or_else(bad)?)};
+ match (status,closed) {("closed",Some(_))|("open",None)=>{},_=>return Err(bad())}
+ match closed {
+  Some(c)=>if holding.as_i64()!=Some(c-opened)||!positive(close_avg) {return Err(bad())},
+  None=>if !holding.is_null()||!(close_avg.is_null()||positive(close_avg)) {return Err(bad())},
+ }
+ let updated=millis(get("updatedAt")?,now).filter(|u|*u>=opened&&closed.is_none_or(|c|*u>=c)).ok_or_else(bad)?;
+ if !positive(get("openAvgPrice")?)||!positive(get("openedQty")?) {return Err(bad())}
+ for k in ["closedQty","maxQty","peakNotional"] {if !non_negative(get(k)?) {return Err(bad())}}
+ for k in ["realizedPnl","commission","funding","netPnl"] {if dec(get(k)?).is_none() {return Err(bad())}}
+ let leverage=get("leverage")?;
+ if !leverage.is_null()&&leverage.as_i64().is_none_or(|l|!(1..=1000).contains(&l)) {return Err(bad())}
+ let fees=get("commissionByAsset")?.as_object().ok_or_else(bad)?;
+ if fees.len()>32||fees.iter().any(|(k,v)|!asset(&Value::String(k.clone()))||dec(v).is_none()) {return Err(bad())}
+ if !get("commissionUnpriced")?.is_boolean() {return Err(bad())}
+ let fills=get("fills")?.as_array().ok_or_else(bad)?;
+ if fills.is_empty()||fills.len()>ROUND_MAX_FILLS {return Err(bad())}
+ let last=closed.unwrap_or(updated);let mut previous=opened;
+ for f in fills {
+  let f=f.as_object().ok_or_else(bad)?;
+  let get=|k:&str|f.get(k).ok_or_else(bad);
+  if !exchange_id(get("id")?)||!exchange_id(get("orderId")?)||!asset(get("commissionAsset")?) {return Err(bad())}
+  let time=get("time")?.as_i64().filter(|t|*t>=previous&&*t<=last).ok_or_else(bad)?;previous=time;
+  if !one_of(get("side")?,&["BUY","SELL"])||get("positionSide")?.as_str()!=Some(side)||!one_of(get("role")?,&["open","add","reduce","close"]) {return Err(bad())}
+  if !positive(get("price")?)||!positive(get("qty")?)||!non_negative(get("quoteQty")?) {return Err(bad())}
+  if dec(get("commission")?).is_none()||dec(get("realizedPnl")?).is_none() {return Err(bad())}
+  if !get("maker")?.is_boolean()||!get("split")?.is_boolean() {return Err(bad())}
+ }
+ Ok(())
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;
