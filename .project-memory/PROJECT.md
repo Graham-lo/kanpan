@@ -701,6 +701,8 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 **验收**：每组 `make app-logic-test` 全过、`make sync-contract`（后端 lib 全过），受影响的 UI 用例在 16 Pro 上跑过；截图在 `docs/acceptance/收设置项-2026-09-28/`（前缀 A–H 各组；`iPhone16Pro-{我的设置-上,我的设置-下,图表设置}-{青苔,陶土,经典}` 三套皮肤；`iPhone16Pro-十字线-*`）。取证用例 `SettingsTrimEvidenceUITests`：两张设置页三套皮肤里被收掉的 id 都不在、没有孤立分隔线与空节；命中区只有图表设置「盘口」开关 `chart.depth` 量出 42×42（`PanelSwitch` 的 `rowHitTarget` 借行内边距，面板里放宽到 42 的既有口径）；app 以 `TZ=America/New_York` 启动，1 小时线十字线读数仍是上海时间（例：开盘 UTC 20:00 的那根写 `04:00`，纽约是 16:00），日线读数是「某日 08:00」= UTC 0 点开盘。
 
+**部署**（2026-09-28 05:49:27 CST，主 VPS `/opt/kanpan-api`，源码 = origin/main `5ebb7f49` 的 `Backend/kanpan-api`，覆盖收设置项 A–E、G、复盘组 `1a144fef` 的退役字段表 `RETIRED_SETTINGS_FIELDS`、`watch_move.rs` 自动幅度与共用夹具、以及 §26 的 `habitLearning` / `learnedDefaults` 白名单）：备份 `/opt/kanpan-backups/settings-trim-20260928-054524/`（旧 API / worker 二进制、当刻 `src/` 与 `contract/`）→ rsync `src contract tests migrations ops Cargo.*` → `touch src/*.rs` → `flock cargo build --release`（3m28s）→ `ops/install.py` → `systemctl restart kanpan-api kanpan-worker`，两者 active、`ExecMainStartTimestamp` = `Mon 2026-09-28 05:49:27 CST`；只读验证 127.0.0.1:8794 `/health` 200、`/v1/sync/changes` 无令牌 401。回滚 = 把备份里的二进制拷回 `target/release/` 再 restart。退役字段在线上的端到端验证与有界负载测试归到压测那一轮（§27）。
+
 ## 26. 按我的习惯自动调整（2026-09-28）
 
 「我的 › 设置 › 通用」一颗开关「按我的习惯自动调整」（`Prefs.habitLearning`，出厂开、随账号同步），开着时下面一行「已学到的」推进一页只读列表（学到了什么 · 依据几次），页底红字「清除已学到的」确认一次。没有说明文案。
