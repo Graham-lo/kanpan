@@ -124,9 +124,6 @@ import KanpanAccount
     //   分类标签整条去掉之后这个键就没东西可存了，客户端既不发也不收；服务端同理留着。
     // - `compactValues`：「简化指标数值」开关。2026-09-23 起数额一律 K / M / B / T、价格原样，
     //   不再交给用户选，开关连同 Prefs 字段收掉；服务端同理留着。
-    //
-    // 注意 `wireOnlyKeys` 不能整组减掉：`rsiRange` 也在那一组里，但它是客户端把
-    // `rsiUpper` / `rsiLower` **合成出来发上去**的键，客户端确实替它说话。
     let serverKnownButUnsent: Set<String> = ["styleID", "routePolicy", "drawToolGroup", "compactValues"]
     for key in serverKnownButUnsent {
       #expect(contract.wireOnlyKeys[key] != nil, "`\(key)` 客户端不发，契约里就得写清楚它为什么只在线上存在")
@@ -146,7 +143,8 @@ import KanpanAccount
       settings 的顶层键对不上：多出来 \(top.subtracting(expected).sorted())，
       少了 \(expected.subtracting(PersonalSyncCodec.nested).subtracting(top).sorted())。
       """)
-    #expect(top.contains("rsiRange"), "`rsiRange` 是客户端合成出来发的，它是自己的字段")
+    #expect(!top.contains("rsiRange"), "RSI 上下限 2026-09-28 收掉（收设置项 C 组），不再合成 `rsiRange` 发上去")
+    #expect(!owned.contains { $0 == "hiddenOutputs" || $0.hasPrefix("hiddenOutputs/") }, "指标「输出」开关 2026-09-28 收掉")
     #expect(!top.contains("styleID"), "`styleID` 客户端早就不发了，替它说话等于提议把它删掉")
     // 2026-09-24 两端删掉的两个键：云端老 body 里还躺着，客户端不替它们说话，
     // 于是它们是「外来键」——原样留着、不会被差分成 null 推上去。
@@ -160,7 +158,7 @@ import KanpanAccount
 
   /// 一份把每个指标都改过的设置，发出去的键一个不许落在表外。
   ///
-  /// `params` / `indicatorColors` / `hiddenOutputs` / `subHeightOverrides`
+  /// `params` / `indicatorColors` / `subHeightOverrides`
   /// 拍平之后是 `<字段>/<指标>` 乃至 `<字段>/<指标>/<输出序号>`：一份出厂设置只拍得出
   /// 其中几条，所以这儿按 `IndicatorID.allCases` 铺满了再比。
   @Test("每个指标的嵌套路径都在表里")
@@ -168,7 +166,6 @@ import KanpanAccount
     var prefs = Prefs.defaults
     for (index, id) in IndicatorID.allCases.enumerated() {
       prefs.params[id] = [index + 1]
-      prefs.hiddenOutputs[id] = [0]
       prefs.indicatorColors[id] = [0: Hex("#123456"), 20: Hex("#654321")]
       prefs.subHeightOverrides[id] = 1.5
     }

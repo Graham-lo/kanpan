@@ -223,7 +223,6 @@ final class ChartSession {
     result.externalSupported = market.capabilities.hasDerivativeMetrics
     result.subInverted = prefs.subInverted
     result.paletteSeed = input.seed
-    result.hiddenOutputs = prefs.hiddenOutputs
     result.indicatorColors = prefs.indicatorColors
     result.percentAxis = input.comparing
     if input.comparing { result.options.drawings = false }
@@ -236,7 +235,6 @@ final class ChartSession {
         return palette[slot % palette.count]
       },
       names: { names[$0] ?? String($0.split(separator: "/").last ?? "") })
-    result.rsiUpper = prefs.rsiUpper; result.rsiLower = prefs.rsiLower
     return result
   }
 }

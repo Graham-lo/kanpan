@@ -178,41 +178,21 @@ struct SettingsStampTests {
     #expect(store.dirtyFields.isEmpty)
   }
 
-  @Test("rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段")
-  func clearsBothRSIBoundsOnRangeAck() {
-    let (store, _, _) = makeStore()
-    store.update { $0.rsiLower = 25; $0.rsiUpper = 75 }
-    #expect(store.dirtyFields == ["rsiLower", "rsiUpper"])
-    store.syncPushed(store.dirtyMarks, acked: [SettingsWire.rsiRange])
-    #expect(store.dirtyFields.isEmpty)
-
-    // 反过来：rsiRange 被丢掉，上下轨两个都得留着。
-    store.update { $0.rsiLower = 30 }
-    store.syncPushed(store.dirtyMarks, acked: [], dropped: [SettingsWire.rsiRange])
-    #expect(store.dirtyFields == ["rsiLower"])
-  }
-
-  @Test("线上键名对得上，RSI 那一对来回都不丢")
+  @Test("线上键名与本地字段名一一相同（RSI 上下限那一对合成键 2026-09-28 收掉了）")
   func wireKeysLineUp() {
     // 脏标识认的字段名，映到线上之后必须全都是服务端那张表上的键。
     for field in Prefs.stampedFieldNames {
       let key = SettingsWire.key(for: field)
-      #expect(Prefs.syncedFieldNames.contains(key) || key == SettingsWire.rsiRange,
-              "\(field) 映出来的 \(key) 不在同步清单上，脏标识和要发上去的字段对不上")
-      #expect(SettingsWire.fields(for: key).contains(field), "\(key) 映不回 \(field)")
+      #expect(Prefs.syncedFieldNames.contains(key), "\(field) 映出来的 \(key) 不在同步清单上，脏标识和要发上去的字段对不上")
+      #expect(SettingsWire.fields(for: key) == [field], "\(key) 映不回 \(field)")
     }
-    // 唯一那处对不齐：上下轨两个本地字段 ↔ 线上一个 rsiRange。
-    #expect(SettingsWire.key(for: "rsiLower") == "rsiRange")
-    #expect(SettingsWire.key(for: "rsiUpper") == "rsiRange")
-    #expect(SettingsWire.fields(for: "rsiRange") == ["rsiLower", "rsiUpper"])
+    #expect(SettingsWire.fields(for: "indicatorColors/MA/0") == ["indicatorColors"])
 
     let (store, _, _) = makeStore()
-    store.update { $0.rsiLower = 25 }
-    #expect(store.dirtyFields == ["rsiLower"])
-    #expect(store.stamp.dirtyWireKeys == ["rsiRange"], "发上去的是 rsiRange，对账就得按这个键")
-    // 服务端认下 rsiRange，要清的是**两个**本地字段里那个脏的。
-    store.syncPushed(store.dirtyMarks, acked: ["rsiRange"])
-    #expect(store.dirtyFields.isEmpty, "rsiRange 的回执映不回上下轨的话，这一项的脏标识永远清不掉")
+    store.update { $0.indicatorColors[.ma] = [0: "#FF0000"] }
+    #expect(store.dirtyFields == ["indicatorColors"])
+    store.syncPushed(store.dirtyMarks, acked: ["indicatorColors/MA/0"])
+    #expect(store.dirtyFields.isEmpty)
   }
 
   // ---------------------------------------------------------------- 合

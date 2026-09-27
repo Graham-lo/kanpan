@@ -54,7 +54,6 @@
     "favoritesGroup" : "synced",
     "favoritesSort" : "synced",
     "favoritesSparkline" : "synced",
-    "hiddenOutputs" : "synced",
     "indicatorColors" : "synced",
     "indicatorLayouts" : "synced",
     "interval" : "synced",
@@ -75,8 +74,6 @@
     "redUp" : "synced",
     "reviewSearchScope" : "synced",
     "routePolicy" : "deviceOnly",
-    "rsiLower" : "syncedMerged",
-    "rsiUpper" : "syncedMerged",
     "sectorMarket" : "synced",
     "sectorSort" : "synced",
     "sectorWindow" : "synced",
@@ -88,7 +85,7 @@
     "watchMoveAlert" : "synced",
     "watchMoveThreshold" : "synced"
   },
-  "fieldClassesNote" : "synced=随账号同步、线上用自己的名字；syncedMerged=随账号同步但线上并成别的键（见 wireOnlyKeys）；deviceOnly=这台机器 / 这张网的属性，不跟人走；derivedLocal=自动累积的统计，不跟人也不同步。",
+  "fieldClassesNote" : "synced=随账号同步、线上用自己的名字；deviceOnly=这台机器 / 这张网的属性，不跟人走；derivedLocal=自动累积的统计，不跟人也不同步。",
   "generatedBy" : "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
   "generatedFrom" : "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
   "howToRegenerate" : "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），然后在仓库根跑 `make sync-contract`。改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、order_flow_limits_are_the_contract_ones 与 binance_scaled_prefixes_are_the_contract_ones。",
@@ -113,7 +110,7 @@
     "DMI",
     "CVD"
   ],
-  "indicatorIDsNote" : "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——`params` / `hiddenOutputs` / `indicatorColors` / `subHeightOverrides` 这些带指标名的路径，第二段只认这份词表，不在表里的整条操作 400。",
+  "indicatorIDsNote" : "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——`params` / `indicatorColors` / `subHeightOverrides` 这些带指标名的路径，第二段只认这份词表，不在表里的整条操作 400。",
   "orderFlow" : {
     "baseMaxLength" : 20,
     "binanceScaledPrefixes" : [
@@ -184,7 +181,6 @@
     "favoritesGroup",
     "favoritesSort",
     "favoritesSparkline",
-    "hiddenOutputs",
     "indicatorColors",
     "indicatorLayouts",
     "interval",
@@ -205,7 +201,6 @@
     "redUp",
     "reviewSearchScope",
     "routePolicy",
-    "rsiRange",
     "sectorMarket",
     "sectorSort",
     "sectorWindow",
@@ -223,7 +218,6 @@
     "compactValues" : "「简化指标数值」开关。2026-09-23 起数额（量、均量、持仓量、成交量差）一律 K / M / B / T、价格与振荡类读数一律原样不缩写，这件事不再交给用户选，开关连同 Prefs 字段一起收掉，客户端既不发也不收。服务端仍然认这个键：库里存着的老 body 还带着它，直接从 SETTINGS_FIELDS 删掉，下一次合并到那条对象上会因为这个键没有值规则整条 400；真要下线它，走 sync.rs 的 RETIRED_SETTINGS_FIELDS 两端退役（strip_retired 会顺手把存量 body 洗掉）。老客户端单纯多发一个服务端不认的键，如今只会被丢掉并在 droppedFields 里报回，不再堵队列。",
     "drawToolGroup" : "「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、分类标签整条去掉之后，客户端既不发也不收了（见 Drawing.Kind.palette）。服务端仍然认这个键：库里存着的老 body 还带着它，直接从 SETTINGS_FIELDS 删掉，下一次合并到那条对象上会因为这个键没有值规则整条 400；真要下线它，走 sync.rs 的 RETIRED_SETTINGS_FIELDS 两端退役（strip_retired 会顺手把存量 body 洗掉）。老客户端单纯多发一个服务端不认的键，如今只会被丢掉并在 droppedFields 里报回，不再堵队列。",
     "routePolicy" : "直连 / 网关那两档。2026-09-19 起是本机字段（PrefsFieldClass.deviceOnly）：它说的是这台手机这张网连得通哪一头，不跟着人走，新客户端既不发也不收。服务端仍然认这个键：库里存着的老 body 还带着它，直接从 SETTINGS_FIELDS 删掉，下一次合并到那条对象上会因为这个键没有值规则整条 400；真要下线它，走 sync.rs 的 RETIRED_SETTINGS_FIELDS 两端退役（strip_retired 会顺手把存量 body 洗掉）。老客户端单纯多发一个服务端不认的键，如今只会被丢掉并在 droppedFields 里报回，不再堵队列。",
-    "rsiRange" : "客户端的 rsiUpper / rsiLower 合成的一个键（PrefsFieldClass.syncedMerged）；那两个字段自己的名字从不上线，所以服务端只认合成后的 rsiRange。",
     "styleID" : "十二款蜡烛造型那一阵子的选择，客户端早就不发了。服务端仍然认这个键：库里存着的老 body 还带着它，直接从 SETTINGS_FIELDS 删掉，下一次合并到那条对象上会因为这个键没有值规则整条 400；真要下线它，走 sync.rs 的 RETIRED_SETTINGS_FIELDS 两端退役（strip_retired 会顺手把存量 body 洗掉）。老客户端单纯多发一个服务端不认的键，如今只会被丢掉并在 droppedFields 里报回，不再堵队列。"
   },
   "wireOnlyKeysNote" : "服务端认、客户端不发的键，以及它们为什么只在线上存在。"

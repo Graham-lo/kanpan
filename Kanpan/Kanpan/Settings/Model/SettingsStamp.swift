@@ -78,7 +78,7 @@ struct SettingsStamp: Codable, Equatable, Sendable {
     pushedAt = max(pushedAt, now)
   }
 
-  /// 交给对账用的**线上键名**。`rsiLower` / `rsiUpper` 在这里并成 `rsiRange` 一个键。
+  /// 交给对账用的**线上键名**（今天与本地字段名一一相同，见 `SettingsWire`）。
   var dirtyWireKeys: Set<String> { Set(dirty.keys.map(SettingsWire.key(for:))) }
 
   /// 服务端认掉（ACK）了哪几个线上键，就清哪几个本地字段。
@@ -250,18 +250,18 @@ enum SettingsCacheDoctor {
 // MARK: - 本地字段名 ↔ 线上键名
 
 /// 脏标识认的是**本地字段名**（也就是 `Prefs.syncedFieldNames` 那张白名单里的键，
-/// flatten 之前的那一层），而推上去的操作认的是**线上键名**。两边有两处对不齐：
+/// flatten 之前的那一层），而推上去的操作认的是**线上键名**。两边对不齐的地方：
 ///
-/// 1. `rsiLower` / `rsiUpper` 在 `PersonalSyncCodec.settings` 里被合成 `rsiRange`
-///    一个数组键发出去，`apply` 再把它拆回两个。所以任一变脏，线上认的都是 `rsiRange`；
-///    反过来 ACK 回来一个 `rsiRange`，要清的是**两个**本地字段。
-/// 2. **嵌套字段被 `PersonalSyncCodec.flatten` 拍成了带斜杠的路径。** 本地一个
-///    `params` 字段，上线之后是 `params/MA`、`params/EMA`、`params/VOL`… 一串；
-///    `indicatorColors` 更深一层，是 `indicatorColors/MACD/0`。
-///    `subHeightOverrides`、`hiddenOutputs` 同理。服务端 ACK 回来的、
-///    `droppedFields` 里报回来的，全是这些**路径**，不是顶层字段名。
+/// **嵌套字段被 `PersonalSyncCodec.flatten` 拍成了带斜杠的路径。** 本地一个
+/// `params` 字段，上线之后是 `params/MA`、`params/EMA`、`params/VOL`… 一串；
+/// `indicatorColors` 更深一层，是 `indicatorColors/MACD/0`。
+/// `subHeightOverrides` 同理。服务端 ACK 回来的、
+/// `droppedFields` 里报回来的，全是这些**路径**，不是顶层字段名。
 ///
-/// 第 2 条曾经漏掉过，代价是**所有嵌套字段的脏标识永远清不掉**（2026-09-19 实测：
+/// （原来还有一处：`rsiLower` / `rsiUpper` 合成 `rsiRange` 一个键发出去。RSI 上下限
+/// 2026-09-28 收设置项 C 组收掉，定在 70 / 30，这层映射连同 `.syncedMerged` 一起撤了。）
+///
+/// 这一条曾经漏掉过，代价是**所有嵌套字段的脏标识永远清不掉**（2026-09-19 实测：
 /// 某个账号的 `settings-stamp.json` 里 `dirty` 一直挂着 `subHeightOverrides`，
 /// 而云端那份 `body` 明明已经收下了 `subHeightOverrides/MACD`）。后果有两层：
 /// 一是 `PrefsStore.applySynced` 里 `Prefs.keeping(dirtyFields, …)` 会让云端的
@@ -274,21 +274,17 @@ enum SettingsCacheDoctor {
 /// 要么是脏标识永远清不掉（一直以为没推成功），要么是清错了（把没推上去的改动当成
 /// 推过了，下次回拉照样盖回去）。
 enum SettingsWire {
-  static let rsiRange = "rsiRange"
-  static let rsiFields: Set<String> = ["rsiLower", "rsiUpper"]
-
   /// 本地字段名 → 线上键名。
   ///
   /// 这一头不用管拍平：脏标识本来就只记顶层字段名，`params` 映出去还是 `params`。
-  static func key(for field: String) -> String { rsiFields.contains(field) ? rsiRange : field }
+  static func key(for field: String) -> String { field }
 
   /// 线上键名（含拍平后的路径）→ 本地字段名。
   ///
-  /// `rsiRange` 映回上下轨两个；带斜杠的路径取**第一段**（`params/MA` → `params`，
+  /// 带斜杠的路径取**第一段**（`params/MA` → `params`，
   /// `indicatorColors/MACD/0` → `indicatorColors`），因为拍平只在顶层字段的值里往下拆，
   /// 顶层字段名自己不含斜杠（见 `PersonalSyncCodec.flatten` / `expand`）。
   static func fields(for key: String) -> Set<String> {
-    if key == rsiRange { return rsiFields }
     guard let slash = key.firstIndex(of: "/") else { return [key] }
     return [String(key[key.startIndex..<slash])]
   }
@@ -312,12 +308,9 @@ extension Prefs {
   /// 换档案时**留在本机**、不被新档案覆盖的那些字段（`PersonalSyncCodec.keepDeviceFields`）。
   static let deviceOnlyFieldNames: Set<String> = PrefsFieldPlan.names(.deviceOnly)
 
-  /// 打脏标识时认的字段。
-  ///
-  /// 就是上面那张白名单，外加 RSI 的上下轨：它俩在同步对象里被合成 `rsiRange`
-  /// 一个键发出去（见 `SettingsWire`），键名和本地字段名对不上，但它们照样是
-  /// 「用户改过的体验类设置」，一样要能挡住云端回拉——也就是 `.syncedMerged` 那一档。
-  static let stampedFieldNames: Set<String> = PrefsFieldPlan.names([.synced, .syncedMerged])
+  /// 打脏标识时认的字段：就是上面那张白名单。（2026-09-28 之前还外加 RSI 上下轨——
+  /// 它俩在线上合成 `rsiRange` 一个键，属 `.syncedMerged` 那一档；收设置项 C 组收掉了。）
+  static let stampedFieldNames: Set<String> = PrefsFieldPlan.names(.synced)
 
   /// 两份档案之间，**哪些体验类字段真的变了**。
   ///
@@ -343,11 +336,6 @@ extension Prefs {
     var target = fieldMap(incoming)
     let source = fieldMap(local)
     guard !target.isEmpty, !source.isEmpty else { return incoming }
-    // RSI 上下轨在线上是**一个**键（`rsiRange`），推的时候成对推，留的时候也得成对留：
-    // 原来只脏了上轨时只抄上轨，本地的上轨 20 拼上云端的下轨 30，拼出一对倒挂的轨，
-    // 下一次推上去的 `[30, 20]` 被服务端「a[0] < a[1]」整条拒掉。
-    var fields = fields
-    if !fields.isDisjoint(with: SettingsWire.rsiFields) { fields.formUnion(SettingsWire.rsiFields) }
     for name in fields { target[name] = source[name] }
     guard let data = try? JSONSerialization.data(withJSONObject: target) else { return incoming }
     return PrefsCodec.decode(data)

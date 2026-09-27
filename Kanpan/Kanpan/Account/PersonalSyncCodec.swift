@@ -11,7 +11,8 @@ enum PersonalSyncCodec {
   /// 包看不见 app 靶子里的这个文件。**一份清单，两处用**——别在这儿再抄一份。
   static var fields: Set<String> { Prefs.syncedFieldNames }
   /// `indicatorLayouts/<组>`（2026-09-27）的值是一整组布局对象，只拍一层；`null` = 那一组回到共用。
-  static let nested: Set<String> = ["params", "indicatorColors", "hiddenOutputs", "subHeightOverrides", "indicatorLayouts", "styles", "variants"]
+  // `hiddenOutputs` 2026-09-28 收掉（收设置项 C 组），不再发也不再收。
+  static let nested: Set<String> = ["params", "indicatorColors", "subHeightOverrides", "indicatorLayouts", "styles", "variants"]
   static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
     var result: [String: KanpanAccount.JSONValue] = [:]
     for (key, value) in value {
@@ -55,14 +56,12 @@ enum PersonalSyncCodec {
     let all = try prefsFields(prefs, encode: encode)
     var object = SyncObject(collection: "settings", id: "chart")
     object.body = flatten(all.filter { fields.contains($0.key) })
-    object.body["rsiRange"] = .array([.number(prefs.rsiLower), .number(prefs.rsiUpper)])
     return object
   }
   static func apply(_ object: SyncObject, to local: Prefs, encode: (Prefs) -> Data? = PrefsCodec.encoded) throws -> Prefs {
     var all = try prefsFields(local, encode: encode)
     let values = expand(object.body)
     for key in fields where values[key] != nil { all[key] = values[key] }
-    if case .array(let range) = values["rsiRange"], range.count == 2 { all["rsiLower"] = range[0]; all["rsiUpper"] = range[1] }
     return try JSONDecoder().decode(Prefs.self, from: JSONEncoder().encode(all))
   }
   /// 换档案（登录 / 退登 / 切账号）时，从内存里那份**留在本机**、不被新档案覆盖的字段。
@@ -264,13 +263,13 @@ enum PersonalSyncCodec {
 
   /// 指标输出的序号上限。
   ///
-  /// `PrefsCodec` 解码 `indicatorColors` / `hiddenOutputs` 时按 `0..<21` 夹，服务端
+  /// `PrefsCodec` 解码 `indicatorColors` 时按 `0..<21` 夹，服务端
   /// `sync_validation.rs` 的值规则也是 `n <= 20`。两边本来就是同一个数，这儿跟着它们走。
   private static let maxOutputIndex = 20
 
   /// 每一个同步字段都填满了的一份设置。
   ///
-  /// 嵌套的那几摊（`params` / `indicatorColors` / `hiddenOutputs` /
+  /// 嵌套的那几摊（`params` / `indicatorColors` /
   /// `subHeightOverrides`）拍平之后是 `<字段>/<指标>` 甚至 `<字段>/<指标>/<输出序号>`，
   /// 一份出厂设置只拍得出其中几条，所以这儿按 `IndicatorID.allCases` × `0...maxOutputIndex`
   /// 全部铺满——铺不满的话，用户把某个指标的自定义颜色清掉时，那一条就成了「外来键」
@@ -283,7 +282,6 @@ enum PersonalSyncCodec {
     let colors = Dictionary(uniqueKeysWithValues: (0...maxOutputIndex).map { ($0, Hex("#ffffff")) })
     for id in IndicatorID.allCases {
       prefs.params[id] = prefs.params[id] ?? []
-      prefs.hiddenOutputs[id] = []
       prefs.indicatorColors[id] = colors
       prefs.subHeightOverrides[id] = 1
     }

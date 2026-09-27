@@ -4,19 +4,16 @@ import KanpanCore
 
 @Suite("指标草稿与图表设置")
 struct ChartFoundationPrefsTests {
-  @Test("常用指标取消不改原值、保存连同输出和阈值生效")
+  @Test("常用指标取消不改原值、保存后参数生效")
   func drafts() {
     for id in [IndicatorID.ma, .ema, .vol, .oi, .macd, .kdj, .rsi] {
       var prefs = Prefs()
       let before = prefs
       var draft = IndicatorDraft(id: id, prefs: prefs)
       if !draft.params.isEmpty { draft.params[0] += 1 }
-      draft.hidden.insert(0); draft.upper = 80
       #expect(prefs == before)
       draft.save(into: &prefs)
-      #expect(prefs.hiddenOutputs[id] == [0])
       if !draft.params.isEmpty { #expect(prefs.params(for: id)[0] == before.params(for: id)[0] + 1) }
-      if id == .rsi { #expect(prefs.rsiUpper == 80) }
     }
   }
 
@@ -24,8 +21,6 @@ struct ChartFoundationPrefsTests {
   func persistence() {
     var prefs = Prefs()
     prefs.portraitHeight = 0.9
-    prefs.rsiUpper = 80; prefs.rsiLower = 20
-    prefs.hiddenOutputs = [.ma: [0, 2], .kdj: [2], .macd: [1, 2]]
     prefs.subHeightOverrides = [.vol: 0.73, .rsi: 1.42]
     // 副图上限收到三个之后（`Prefs.maxSubs`），读档时多出来的会被裁掉，
     // 所以这儿摆满三个来验往返——摆五个验的就不是「落盘读回一致」，

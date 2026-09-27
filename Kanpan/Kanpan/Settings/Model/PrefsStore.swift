@@ -392,7 +392,7 @@ final class PrefsStore {
   ///   - pushed: 推上去那一刻的脏字段快照。只清「时刻没变的」那几个，推的过程中
   ///     用户又改过的那些留着（见 `SettingsStamp.clear`）。
   ///   - acked: 服务端**真收下了**的那些**线上键名 / 路径**。嵌套字段在线上是拍平的
-  ///     （`params/MA`、`indicatorColors/MACD/0`），`rsiRange` 会映回上下轨两个字段，
+  ///     （`params/MA`、`indicatorColors/MACD/0`），
   ///     映射见 `SettingsWire`。
   ///   - dropped: 同一批里**没落地**的那些线上键名 / 路径：被 `droppedFields` 顶回来的、
   ///     没回执的、被隔离的。一个顶层字段在线上是好几条路径，只要有一条在这儿，

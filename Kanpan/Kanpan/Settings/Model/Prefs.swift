@@ -94,9 +94,9 @@ struct Prefs: Sendable, Equatable {
   /// 删了解码会踩空、版本号又不许动；留这段注释是免得下一个人以为哪儿漏了写入。
   var portraitHeight = 0.5
   var indicatorColors: [IndicatorID: [Int: Hex]] = [:]
-  var hiddenOutputs: [IndicatorID: Set<Int>] = [:]
-  var rsiUpper = 70.0
-  var rsiLower = 30.0
+  // 「指标输出」开关（`hiddenOutputs`，指标编辑页「输出」一节）与 RSI 上下限（`rsiUpper` / `rsiLower`，
+  // 线上合成 `rsiRange`）2026-09-28 收掉（收设置项 C 组）：线一律全画（不想要哪条均线就左滑删掉那个周期），
+  // RSI 超买超卖线定在 70 / 30（`ChartState` 的出厂值）。老存档、云端老 body 里的这些键读时忽略，服务端退役。
   // 「盯盘时不锁屏」（`keepAwake`）2026-09-28 收掉：图表页在前台就常亮、离开图表页或退后台放手，
   // 不再交给用户开关（`KeepAwakeGate`）。
   // 这儿原来还有 `launchSnapshot`（§4.3 的「启动快照」开关）。2026-09-24 审查 U13 把它从

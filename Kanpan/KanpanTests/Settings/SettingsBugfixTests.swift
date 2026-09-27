@@ -124,34 +124,23 @@ struct SettingsBugfixTests {
   func 改回默认() {
     var p = Prefs.defaults
     p.params[.rsi] = [9]
-    p.hiddenOutputs[.macd] = [0]
+    p.indicatorColors[.ma] = [0: "#FF0000"]
     var d = IndicatorDraft(id: .rsi, prefs: p)
     d.params = IndicatorID.rsi.defaultParams
     d.save(into: &p)
-    var m = IndicatorDraft(id: .macd, prefs: p)
-    m.hidden = []
+    var m = IndicatorDraft(id: .ma, prefs: p)
+    m.colors = [:]
     m.save(into: &p)
     #expect(p == .defaults)
   }
 
-  @Test("RSI 上下限：下限不低于上限就不存；合法的照存")
-  func RSI上下限() {
-    var p = Prefs.defaults
-    var d = IndicatorDraft(id: .rsi, prefs: p)
-    d.upper = 40; d.lower = 60
-    #expect(!d.boundsValid)
-    d.save(into: &p)
-    #expect(p.rsiUpper == Prefs.defaults.rsiUpper && p.rsiLower == Prefs.defaults.rsiLower)
-    d.lower = 40
-    #expect(!d.boundsValid)
-    d.upper = 80; d.lower = 20
-    #expect(d.boundsValid)
-    d.save(into: &p)
-    #expect(p.rsiUpper == 80 && p.rsiLower == 20)
-    // 别的指标不受这条约束。
-    var macd = IndicatorDraft(id: .macd, prefs: p)
-    macd.upper = 10; macd.lower = 90
-    #expect(macd.boundsValid)
+  @Test("RSI 上下限与指标「输出」开关收掉之后：老档里的这几个键读进来被忽略，不影响别的字段")
+  func RSI与输出收掉() throws {
+    let old = #"{"v":3,"rsiUpper":80,"rsiLower":20,"hiddenOutputs":{"MA":[0,2]},"params":{"RSI":[9]}}"#
+    let p = PrefsCodec.decode(Data(old.utf8))
+    #expect(p.params[.rsi]?.first == 9)
+    let text = String(data: try #require(PrefsCodec.encoded(p)), encoding: .utf8) ?? ""
+    for key in ["rsiUpper", "rsiLower", "hiddenOutputs"] { #expect(!text.contains(key), "\(key) 不该再写进档里") }
   }
 
   // MARK: 10 · 编码不写空档、不写非有限数
@@ -161,15 +150,12 @@ struct SettingsBugfixTests {
     var p = Prefs.defaults
     p.barSpacing = .nan
     p.portraitHeight = .infinity
-    p.rsiUpper = .nan
-    p.rsiLower = -.infinity
     p.watchMoveThreshold = .nan
     p.subHeightOverrides = [.macd: .nan, .vol: 5]
     let data = try #require(PrefsCodec.encoded(p))
     #expect(!data.isEmpty)
     let back = PrefsCodec.decode(data)
     #expect(back.barSpacing.isFinite && back.portraitHeight.isFinite)
-    #expect(back.rsiUpper.isFinite && back.rsiLower.isFinite && back.rsiLower < back.rsiUpper)
     #expect(back.watchMoveThreshold.isFinite)
     #expect(back.subHeightOverrides[.macd] == nil)
     #expect(back.subHeightOverrides[.vol] == 2)

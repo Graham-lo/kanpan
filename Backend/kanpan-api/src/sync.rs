@@ -73,6 +73,9 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 ///   `allowSubInversion`（翻转手势直接生效）、`adaptiveIndicators`（常开）。
 /// - 复盘 `replaySpeed`（回放倍速）：每一趟按要走的根数自动挑 1 / 2 / 4×（整趟 20–40 秒），
 ///   回放条上那颗倍速键只改这一趟、不再存。
+/// - C 组（指标）`hiddenOutputs`（指标编辑页「输出」开关，线一律全画）、`rsiRange`（客户端
+///   `rsiUpper` / `rsiLower` 合成的键，RSI 超买超卖线定在 70 / 30）。`indicatorLayouts/<组>`
+///   里嵌着的 `hiddenOutputs` 仍按老规则放行（老客户端还会发），新客户端读时忽略。
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
  "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
  // 收设置项 A 组（2026-09-28）。
@@ -82,6 +85,8 @@ pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favorit
  "dataDisplay","crossPrice","allowMainInversion","allowSubInversion","adaptiveIndicators",
  // 收设置项 · 复盘（2026-09-28）。
  "replaySpeed",
+ // 收设置项 C 组（2026-09-28）。
+ "hiddenOutputs","rsiRange",
 ];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
@@ -127,7 +132,7 @@ pub fn strip_retired(object:&mut Object) {
 // A slice rather than `[&str;N]`: adding a field should not also mean editing a length.
 pub const SETTINGS_FIELDS:&[&str]=&[
  "compareSymbols",
- "overlays","subs","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
+ "overlays","subs","subHeightOverrides","params","indicatorColors",
  // 指标按周期分组记忆（2026-09-27）：上面那几项是三组共用的一份，分了叉的组各自的整份
  // 布局走 `indicatorLayouts/<minute|hour|day>`。
  "indicatorLayouts",
@@ -227,9 +232,6 @@ pub fn merge(mut object:Object,op:&Operation,now:i64)->Result<Object> {
    if accept {object.body.insert(path.clone(),value.clone());object.fields.insert(path.clone(),json!(stamp));}
   }
  }
- // Dependent settings are updated and validated atomically.
- if let Some(v)=object.body.get("rsiRange")
-  && !v.as_array().is_some_and(|a|a.len()==2&&a[0].as_f64().is_some_and(|lo|lo>=0.0&&a[1].as_f64().is_some_and(|hi|hi>lo&&hi<=100.0))) {return Err(ApiError::bad("invalid_rsi_range"))}
  if let Some(v)=object.body.get("lineWidth")&& !v.as_f64().is_some_and(|n|n>0.0&&n<=12.0){return Err(ApiError::bad("invalid_line_width"))}
  crate::sync_validation::clear_tombstones(&mut object);
  strip_retired(&mut object);
@@ -828,5 +830,28 @@ mod tests {
   let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
   assert_eq!(merged.body["reviewSearchScope"],json!("private"));
   assert!(!merged.body.contains_key("replaySpeed")&&!merged.fields.contains_key("replaySpeed"),"replaySpeed 没被清掉");
+ }
+ /// 收设置项 C 组（2026-09-28，指标）：`hiddenOutputs`（含 `hiddenOutputs/<指标>` 这种拍平路径）
+ /// 与 `rsiRange` 退役。老版本推上来只丢字段；老 body 里一条倒挂的 `rsiRange` 也不再让合并 400；
+ /// `indicatorLayouts/<组>` 里嵌着的 `hiddenOutputs` 仍放行（新客户端读时忽略）。
+ #[test] fn trimmed_settings_group_c_are_dropped_and_stripped() {
+  for name in ["hiddenOutputs","rsiRange"] {
+   assert!(RETIRED_SETTINGS_FIELDS.contains(&name)&&!SETTINGS_FIELDS.contains(&name),"{name} 应已退役");
+  }
+  let operation=op("settings",&[("hiddenOutputs/MA",json!([0,2])),("rsiRange",json!([30,70])),("params/RSI",json!([9]))]);
+  assert!(operation.validate().is_ok(),"老版本带着 C 组字段推上来不能整条 400");
+  let mut named=operation.unknown_fields();named.sort();
+  assert_eq!(named,vec!["hiddenOutputs/MA".to_string(),"rsiRange".to_string()]);
+  let mut stored=blank("settings","chart");
+  for (path,value) in [("hiddenOutputs/MACD",json!([1])),("rsiRange",json!([80,20]))] {
+   stored.body.insert(path.into(),value);stored.fields.insert(path.into(),json!({"revision":1}));
+  }
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["params/RSI"],json!([9]));
+  for path in ["hiddenOutputs/MACD","hiddenOutputs/MA","rsiRange"] {
+   assert!(!merged.body.contains_key(path)&&!merged.fields.contains_key(path),"{path} 没被清掉");
+  }
+  assert!(crate::sync_validation::field("settings","indicatorLayouts/hour",&json!({"hiddenOutputs":{"MA":[2]}})),
+   "老客户端分组布局里嵌着的 hiddenOutputs 仍要放行");
  }
 }

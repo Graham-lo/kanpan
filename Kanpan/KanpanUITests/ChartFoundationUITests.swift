@@ -104,7 +104,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 拿偏移重试去掩盖**产品的命中区问题**，这儿的丢点已经取证证明不是命中区的事：
   ///
   /// 2026-09-18 全量 13 台矩阵上，iPhone 16 Plus 和 iPhone 17 Pro 各红一次，都卡在
-  /// `testMAParameterCancelAndSaveOutput` 关 MA 输出的那一下。取证做到了 app 里面——
+  /// `testMAParameterCancelAndSaveOutput`（2026-09-28 收设置项 C 组后改成 `testMAParameterCancelAndNoOutputSwitches`）关 MA 输出的那一下。取证做到了 app 里面——
   /// 临时给 `IndicatorPanel` 那个 `Toggle` 的 setter 挂一个计数器，再用「开面板 → 点一下
   /// → 关面板」的探针跑 40 轮，复现出没翻的那一次：点前点后元素的 frame 一模一样
   /// （`(20, 519.3, 390, 52.3)`），`isHittable` 为真，而 setter 的计数一动没动。
@@ -1357,7 +1357,9 @@ final class ChartFoundationUITests: XCTestCase {
     shot("关闭十字线-实时头部恢复")
   }
 
-  func testMAParameterCancelAndSaveOutput() throws {
+  /// 取消不动参数；编辑页里没有「输出」开关（2026-09-28 收设置项 C 组收掉，线一律全画），
+  /// RSI 也没有上限 / 下限两格（超买超卖线定在 70 / 30）。
+  func testMAParameterCancelAndNoOutputSwitches() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
     XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
@@ -1370,20 +1372,38 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertEqual(info()["ma"] as? [Int], original)
     XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
-    let output = app.switches["indicator.output.0"]
-    XCTAssertTrue(output.waitForExistence(timeout: 5))
-    XCTAssertEqual(output.value as? String, "1")
-    // SwiftUI 把整行暴露成这个开关，真正认点击的只有右边那颗滑块（见 `flip`）。
-    flip(output, to: "0")
-    shot("MA草稿-输出已关闭")
-    app.buttons["保存"].tap(); closePanel()
-    XCTAssertTrue(wait { self.info()["hiddenMA"] as? [Int] == [0] })
-    shot("MA输出关闭-曲线图例同步")
+    XCTAssertTrue(app.textFields["indicator.param.0.field"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.switches["indicator.output.0"].exists, "「输出」开关已收掉")
+    XCTAssertFalse(app.staticTexts["输出"].exists, "「输出」一节已收掉")
+    shot("MA编辑-无输出开关")
+    app.buttons["取消"].tap(); closePanel()
+    XCTAssertEqual((info()["hiddenMA"] as? [Int]) ?? [], [], "线一律全画")
+    // RSI 出厂不在副图上：先开它，编辑入口才出来。
+    XCTAssertTrue(app.openIndicatorPage())
+    let scroll = app.scrollViews["panel.content"]
+    let toggle = app.buttons["indicator.switch.RSI"]
+    for _ in 0..<5 {
+      if toggle.exists, toggle.isHittable, scroll.frame.contains(toggle.frame) { break }
+      scroll.swipeUp()
+    }
+    XCTAssertTrue(toggle.waitForExistence(timeout: 5)); toggle.tap()
+    let rsi = app.buttons["indicator.edit.RSI"]
+    for _ in 0..<5 {
+      if rsi.exists, rsi.isHittable, scroll.frame.contains(rsi.frame) { break }
+      scroll.swipeDown()
+    }
+    XCTAssertTrue(rsi.waitForExistence(timeout: 5))
+    rsi.tap()
+    XCTAssertTrue(app.textFields["indicator.param.0.field"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.textFields["indicator.rsi.upper.field"].exists, "RSI 上限已收掉")
+    XCTAssertFalse(app.textFields["indicator.rsi.lower.field"].exists, "RSI 下限已收掉")
+    shot("RSI编辑-只剩周期")
+    app.buttons["取消"].tap(); closePanel()
   }
   /// 均线周期能直接打字，也能加一条、删一条。
   ///
   /// 点进去原值就整段选上，直接打新的数就是换掉它（2026-09-20 起这一格没有加减了）；
-  /// 手指还停在框里直接按「保存」，那一格也要算数。顺带把加减线时输出开关和颜色
+  /// 手指还停在框里直接按「保存」，那一格也要算数。顺带把加减线时颜色
   /// 跟着挪位的那段逻辑走一遍。
   func testMAPeriodsTypedAndAddRemove() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])

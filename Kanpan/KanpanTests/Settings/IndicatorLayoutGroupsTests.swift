@@ -50,7 +50,6 @@ struct IndicatorLayoutGroupsTests {
     #expect(book.shared.overlays == [.ema])
     #expect(book.shared.subs == [.vol, .rsi])
     #expect(book.shared.params[.ema] == [9, 21])
-    #expect(book.shared.hiddenOutputs[.rsi] == [0])
     #expect(book.shared.subHeightOverrides[.rsi] == 1.5)
     #expect(book.shared.candleKind == .heikin)
     #expect(book.shared.priceMode == .linear)

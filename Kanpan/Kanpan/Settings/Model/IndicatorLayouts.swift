@@ -25,10 +25,10 @@ import KanpanCore
 //
 // ## 落盘 / 线上长什么样
 //
-// - 老键（`overlays` / `subs` / `params` / `hiddenOutputs` / `subHeightOverrides` /
+// - 老键（`overlays` / `subs` / `params` / `subHeightOverrides` /
 //   `candleKind` / `priceMode`）写**共用的那份**：老客户端只认这一份，照旧同步；它就是迁移源。
 // - 新键 `indicatorLayouts` = `{minute?, hour?, day?}`，只写分了叉的组，每组一个对象，
-//   对象里是同名的那七个键、值的写法和顶层一样。线上拍平成 `indicatorLayouts/<组>`，
+//   对象里是同名的那六个键（2026-09-28 前还有 `hiddenOutputs`，老档里读时忽略）、值的写法和顶层一样。线上拍平成 `indicatorLayouts/<组>`，
 //   `null` 就是「这一组回到共用」。
 
 /// 周期分组。`rawValue` 是存档与线上的键名，和服务端 `sync_validation.rs` 逐字相同。
@@ -62,7 +62,6 @@ struct IndicatorLayout: Sendable, Equatable {
   var overlays: [IndicatorID]
   var subs: [IndicatorID]
   var params: [IndicatorID: [Int]]
-  var hiddenOutputs: [IndicatorID: Set<Int>]
   var subHeightOverrides: [IndicatorID: Double]
   var candleKind: CandleKind
   var priceMode: PriceMode
@@ -96,15 +95,15 @@ struct IndicatorLayoutMemory: Sendable, Equatable {
 }
 
 extension Prefs {
-  /// 当前周期所在组的布局（就是顶层那七项）。
+  /// 当前周期所在组的布局（就是顶层那六项）。
   var indicatorLayout: IndicatorLayout {
     get {
-      IndicatorLayout(overlays: overlays, subs: subs, params: params, hiddenOutputs: hiddenOutputs,
+      IndicatorLayout(overlays: overlays, subs: subs, params: params,
                       subHeightOverrides: subHeightOverrides, candleKind: candleKind, priceMode: priceMode)
     }
     set {
       overlays = newValue.overlays; subs = newValue.subs; params = newValue.params
-      hiddenOutputs = newValue.hiddenOutputs; subHeightOverrides = newValue.subHeightOverrides
+      subHeightOverrides = newValue.subHeightOverrides
       candleKind = newValue.candleKind; priceMode = newValue.priceMode
     }
   }

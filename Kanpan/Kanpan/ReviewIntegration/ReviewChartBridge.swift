@@ -265,7 +265,7 @@ import ReviewUI
     if let data = record.draft.chartSettings, let prefs = try? PersonalSyncCodec.snapshotPrefs(data) {
       base.options = prefs.chartOptions; base.params = prefs.params
       base.overlays = prefs.overlays; base.subs = prefs.subs.filter { $0 != .oi }
-      base.indicatorColors = prefs.indicatorColors; base.hiddenOutputs = prefs.hiddenOutputs
+      base.indicatorColors = prefs.indicatorColors
       base.price = PriceTransform(mode: prefs.priceMode)
     }
     // No live OI or later annotations may enter the replay indicator engine.

@@ -69,8 +69,6 @@ enum PrefsCodec {
     var p = prefs
     p.barSpacing = Prefs.clampSpacing(p.barSpacing)
     p.portraitHeight = Prefs.clampPortraitHeight(p.portraitHeight)
-    p.rsiUpper = p.rsiUpper.isFinite ? min(100, max(1, p.rsiUpper)) : Prefs.defaults.rsiUpper
-    p.rsiLower = p.rsiLower.isFinite ? min(p.rsiUpper - 1, max(0, p.rsiLower)) : min(p.rsiUpper - 1, Prefs.defaults.rsiLower)
     p.watchMoveThreshold = WatchMove.clampThreshold(p.watchMoveThreshold)
     p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
@@ -136,9 +134,11 @@ extension Prefs: Codable {
     case orderFlowFilledBid, orderFlowFilledAsk, orderFlowCancelledBid, orderFlowCancelledAsk
     case candleKind
     case barSpacing, mainInverted, subInverted
-    case portraitHeight, hiddenOutputs, rsiUpper, rsiLower
+    // `hiddenOutputs`、`rsiUpper`、`rsiLower` 2026-09-28 收掉（收设置项 C 组），老档里的这几个键读时忽略；
+    // `indicatorLayouts/<组>` 里嵌着的 `hiddenOutputs` 同样忽略。
+    case portraitHeight
     case overlays, subs, params, subHeightOverrides
-    // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份。上面那七个老键写三组共用的那份。
+    // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份。上面那六个老键写三组共用的那份。
     case indicatorLayouts
     // `apiHost` / `streamHost`（自定义行情域名）2026-09-24 删了：设置里早就没有入口，
     // 线路只剩直连 / 网关两档，主机一律由 `RouteResolver` 定。旧存档里的这两个键解码时忽略。
@@ -176,8 +176,6 @@ extension Prefs: Codable {
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
     try c.encode(portraitHeight, forKey: .portraitHeight)
     try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
-    try c.encode(rsiUpper, forKey: .rsiUpper)
-    try c.encode(rsiLower, forKey: .rsiLower)
     // 指标布局：老键写三组共用的那份，分了叉的组写进 `indicatorLayouts`（空表也写，键永远在）。
     let book = layoutBook
     try Prefs.encode(book.shared, into: &c)
@@ -204,12 +202,11 @@ extension Prefs: Codable {
     try c.encode(notifyListingChanges, forKey: .notifyListingChanges)
   }
 
-  /// 一组指标布局的七个键。顶层（共用的那份）和 `indicatorLayouts/<组>` 里写法一样。
+  /// 一组指标布局的六个键。顶层（共用的那份）和 `indicatorLayouts/<组>` 里写法一样。
   private static func encode(_ layout: IndicatorLayout, into c: inout KeyedEncodingContainer<CodingKeys>) throws {
     let l = layout.sanitized
     try c.encode(l.priceMode.rawValue, forKey: .priceMode)
     try c.encode(l.candleKind.rawValue, forKey: .candleKind)
-    try c.encode(Dictionary(uniqueKeysWithValues: l.hiddenOutputs.map { ($0.key.rawValue, $0.value.sorted()) }), forKey: .hiddenOutputs)
     try c.encode(l.overlays.map(\.rawValue), forKey: .overlays)
     try c.encode(l.subs.map(\.rawValue), forKey: .subs)
     // 字典键是 enum，直接 encode 会变成交错数组；摊成 [String: …] 才是人能看懂的 JSON。
@@ -225,13 +222,6 @@ extension Prefs: Codable {
     func strs(_ k: CodingKeys) -> [String]? { (try? c.decodeIfPresent([String].self, forKey: k)) ?? nil }
     if let raw = str(.priceMode), let v = PriceMode(rawValue: raw) { layout.priceMode = v }
     if let raw = str(.candleKind), let v = CandleKind(rawValue: raw) { layout.candleKind = v }
-    if let raw = try? c.decode([String: [Int]].self, forKey: .hiddenOutputs) {
-      var out: [IndicatorID: Set<Int>] = [:]
-      for (key, values) in raw {
-        if let id = IndicatorID(rawValue: key) { out[id] = Set(values.filter { (0..<21).contains($0) }) }
-      }
-      layout.hiddenOutputs = out
-    }
     if let raw = strs(.overlays) { layout.overlays = Prefs.ids(raw, placement: .main) }
     if let raw = strs(.subs) { layout.subs = Array(Prefs.ids(raw, placement: .sub).prefix(Prefs.maxSubs)) }
     if let raw = (try? c.decodeIfPresent([String: [Int]].self, forKey: .params)) ?? nil {
@@ -330,13 +320,6 @@ extension Prefs: Codable {
     if let v = bool(.mainInverted) { mainInverted = v }
     if let raw = strs(.subInverted) { subInverted = Set(Prefs.ids(raw, placement: .sub)) }
     if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = Prefs.clampPortraitHeight(v) }
-    if let v = try? c.decode(Double.self, forKey: .rsiUpper), v.isFinite { rsiUpper = min(100, max(1, v)) }
-    if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = v }
-    // 下轨一律在两条都读完之后再夹，**不管档里有没有下轨这个键**：原来夹在「读到下轨」那一支里，
-    // 档里只有上轨（半截档、手改档、下轨写成了别的类型）时下轨留在出厂的 30，上轨却是读出来的 1——
-    // 图上的超买超卖带整个倒过来，推上去的 `rsiRange` 是 `[30, 1]`，服务端要求 `a[0] < a[1]`，
-    // 整条 settings 操作被顶回去；再编一次又被 `sanitized` 夹成 0，同一份档解两次得到两个样子。
-    rsiLower = min(rsiUpper - 1, max(0, rsiLower))
 
     if let raw = try? c.decode([String: [Int: Hex]].self, forKey: .indicatorColors) {
       for (key, values) in raw {

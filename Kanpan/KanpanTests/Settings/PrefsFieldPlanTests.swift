@@ -68,9 +68,9 @@ struct PrefsFieldPlanTests {
   func derivedSetsComeFromTheTable() {
     #expect(Prefs.syncedFieldNames == PrefsFieldPlan.names(.synced))
     #expect(Prefs.deviceOnlyFieldNames == PrefsFieldPlan.names(.deviceOnly))
-    #expect(Prefs.stampedFieldNames == Prefs.syncedFieldNames.union(SettingsWire.rsiFields))
-    // `.syncedMerged` 的定义就是「打脏标识认它，但不以自己的名字上云」。
-    #expect(PrefsFieldPlan.names(.syncedMerged) == SettingsWire.rsiFields)
+    // 原来还有一档 `.syncedMerged`（RSI 上下限合成 `rsiRange`），2026-09-28 收设置项 C 组撤掉，
+    // 打脏标识认的字段就是随账号同步的那些。
+    #expect(Prefs.stampedFieldNames == Prefs.syncedFieldNames)
     #expect(Prefs.syncedFieldNames.isDisjoint(with: Prefs.deviceOnlyFieldNames))
   }
 
@@ -431,7 +431,6 @@ enum SettingsFieldContract {
         + "the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、"
         + "order_flow_limits_are_the_contract_ones 与 binance_scaled_prefixes_are_the_contract_ones。",
       fieldClassesNote: "synced=随账号同步、线上用自己的名字；"
-        + "syncedMerged=随账号同步但线上并成别的键（见 wireOnlyKeys）；"
         + "deviceOnly=这台机器 / 这张网的属性，不跟人走；"
         + "derivedLocal=自动累积的统计，不跟人也不同步。",
       fieldClasses: PrefsFieldPlan.table.mapValues(\.rawValue),
@@ -445,7 +444,7 @@ enum SettingsFieldContract {
       wireOnlyKeys: PrefsFieldPlan.wireOnlyKeys,
       indicatorIDsNote: "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。"
         + "服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——"
-        + "`params` / `hiddenOutputs` / `indicatorColors` / `subHeightOverrides` 这些带指标名的路径，"
+        + "`params` / `indicatorColors` / `subHeightOverrides` 这些带指标名的路径，"
         + "第二段只认这份词表，不在表里的整条操作 400。",
       indicatorIDs: IndicatorID.allCases.map(\.rawValue),
       overlayIndicatorIDsNote: "画在主图上的那几种（`IndicatorID.placement == .main`）。"

@@ -142,7 +142,7 @@ struct PrefsStressTests {
     let good = String(data: PrefsCodec.encoded(.defaults)!, encoding: .utf8)!
     let broken = [
       good.replacingOccurrences(of: "\"barSpacing\":4", with: "\"barSpacing\":1e999"),
-      good.replacingOccurrences(of: "\"rsiUpper\":", with: "\"rsiUpper\":-1e999,\"x\":"),
+      good.replacingOccurrences(of: "\"portraitHeight\":", with: "\"portraitHeight\":-1e999,\"x\":"),
       String(good.prefix(good.count / 2)),
       "{\"v\":2,\"quickIntervals\":[\"5m\",\"30m\",\"1h\",\"4h\",\"1d\"],\"skin\":\"terra\"}",
       "{\"v\":3,\"quickIntervals\":[\"5m\",\"30m\",\"1h\",\"4h\",\"1d\"],\"skin\":\"terra\"}",
@@ -152,12 +152,11 @@ struct PrefsStressTests {
       let prefs = PrefsCodec.decode(Data(text.utf8))
       let encoded = try #require(PrefsCodec.encoded(prefs))
       #expect(PrefsCodec.decode(encoded) == prefs)
-      #expect(prefs.barSpacing.isFinite && prefs.rsiUpper.isFinite && prefs.rsiLower < prefs.rsiUpper)
+      #expect(prefs.barSpacing.isFinite && prefs.portraitHeight.isFinite)
     }
-    // 只有上轨、没有下轨（或者下轨类型不对）：下轨也要夹到上轨以下，一次就定。
+    // RSI 上下限 2026-09-28 收掉（收设置项 C 组）：老档里的这两个键怎么写都只是被忽略。
     for text in ["{\"v\":3,\"rsiUpper\":1}", "{\"v\":3,\"rsiUpper\":20,\"rsiLower\":\"x\"}"] {
       let prefs = PrefsCodec.decode(Data(text.utf8))
-      #expect(prefs.rsiLower < prefs.rsiUpper)
       #expect(PrefsCodec.decode(PrefsCodec.encoded(prefs)!) == prefs)
     }
     // 停在哪一类：服务端按 UTF-8 字节数 128 封顶，本地也按字节收。
@@ -186,17 +185,5 @@ struct PrefsStressTests {
     #expect(changes == 150)
     #expect(PrefsStore.load(from: box).portraitHeight == store.prefs.portraitHeight)
     #expect(store.dirtyFields.contains("portraitHeight"))
-  }
-
-  /// 只脏了上轨时回拉：上下轨成对留本地的，不拼出一对倒挂的轨。
-  @Test func rsiRailsAreKeptAsAPair() {
-    var local = Prefs.defaults; local.rsiUpper = 20; local.rsiLower = 10
-    var cloud = Prefs.defaults; cloud.rsiUpper = 80; cloud.rsiLower = 30
-    for dirty: Set<String> in [["rsiUpper"], ["rsiLower"], ["rsiUpper", "rsiLower"]] {
-      let merged = Prefs.keeping(dirty, of: local, over: cloud)
-      #expect(merged.rsiUpper == 20 && merged.rsiLower == 10)
-    }
-    let untouched = Prefs.keeping(["redUp"], of: local, over: cloud)
-    #expect(untouched.rsiUpper == 80 && untouched.rsiLower == 30)
   }
 }

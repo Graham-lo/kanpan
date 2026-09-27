@@ -45,6 +45,7 @@ fn indicator_layout(v:&Value)->bool {
   "overlays"=>names(v,OVERLAY_INDICATORS.len(),OVERLAY_INDICATORS),
   "subs"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
   "params"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&integers(v,20,1,400))),
+  // 2026-09-28 收设置项 C 组起客户端不再发、读时忽略；老客户端还会带着，照老规则放行。
   "hiddenOutputs"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&integers(v,21,0,20))),
   "subHeightOverrides"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&number(v,0.25,5.0))),
   "candleKind"|"priceMode"=>string(v,64),
@@ -157,7 +158,6 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    if !indicator(p[1]) {return false}
    return match p[0] {
     "params"=>p.len()==2&&integers(v,20,1,400),
-    "hiddenOutputs"=>p.len()==2&&integers(v,21,0,20),
     "indicatorColors"=>p.len()==3&&p[2].parse::<u8>().is_ok_and(|n|n<=20)&&color(v),
     "subHeightOverrides"=>p.len()==2&&number(v,0.25,5.0),_=>false
    }
@@ -167,7 +167,6 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // `subInverted` is a set of sub-panel ids, same vocabulary as `subs`.
    "subInverted"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
    "quickIntervals"=>intervals(v,10),"interval"=>v.as_str().is_some_and(is_synced_interval),
-   "rsiRange"=>v.as_array().is_some_and(|a|a.len()==2&&number(&a[0],0.0,100.0)&&number(&a[1],0.0,100.0)&&a[0].as_f64()<a[1].as_f64()),
    "portraitHeight"=>number(v,0.1,1.0),
    // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.
    "barSpacing"=>number(v,1.6,40.0),

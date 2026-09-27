@@ -49,14 +49,8 @@ import Foundation
 enum PrefsFieldClass: String, Sendable, CaseIterable {
   /// 随账号同步，线上就用它自己的字段名。
   case synced
-  /// 随账号同步，但**线上不是它自己的键**——由 `SettingsWire` 合成另一个键发出去
-  /// （今天只有 `rsiLower` / `rsiUpper` 合成 `rsiRange`）。
-  ///
-  /// 单独一档是因为 `PersonalSyncCodec.settings` 用 `synced` 那张表在**拍平后的 JSON 顶层键**
-  /// 上做过滤：把这两个放进 `synced`，发上去就会多两个服务端从没听说过的顶层键，
-  /// 被 `droppedFields` 顶回来；不放进来又没法打脏标识。所以它们进 `stampedFieldNames`、
-  /// 不进 `syncedFieldNames`。
-  case syncedMerged
+  // 原来还有一档 `syncedMerged`（随账号同步、线上并成别的键——只有 `rsiLower` / `rsiUpper` 合成
+  // `rsiRange`）。RSI 上下限 2026-09-28 收设置项 C 组收掉，这一档没了成员，一起撤掉。
   /// 留在本机：这是**这台机器自己的属性**，换档案（登录 / 退登 / 切账号）时不被新档案覆盖。
   case deviceOnly
   /// 留在本机：**自动生成的统计**，不跟人、也不同步。
@@ -90,11 +84,11 @@ enum PrefsFieldPlan {
     "priceMode": .synced, "depth": .synced, "orderFlow": .synced, "candleKind": .synced,
     "barSpacing": .synced, "mainInverted": .synced, "subInverted": .synced,
     "portraitHeight": .synced,
-    "indicatorColors": .synced, "hiddenOutputs": .synced,
+    "indicatorColors": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
     "subHeightOverrides": .synced,
     // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份，线上拍平成 `indicatorLayouts/<组>`。
-    // 上面那七个老键仍写三组共用的那份（老客户端照旧同步，也是迁移源）。
+    // 上面那六个老键仍写三组共用的那份（老客户端照旧同步，也是迁移源）。
     "indicatorLayouts": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
     "favoritesSort": .synced, "favoritesAscending": .synced, "favoritesAmount": .synced,
@@ -119,9 +113,7 @@ enum PrefsFieldPlan {
     // B 组：magnet、countdown、gridChoice、bodyChoice、lastLine、sinceChange、viewAnchor、priceBias、
     // dataDisplay、crossPrice、allowMainInversion、allowSubInversion、adaptiveIndicators。
     // 复盘：replaySpeed（回放倍速改为按根数自动挑，见 `ReplayPace`）。
-
-    // ------------------------------------------------- 跟着人走，但线上并成一个键
-    "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,
+    // C 组：hiddenOutputs（指标「输出」开关）、rsiUpper / rsiLower（线上合成的 rsiRange）。
 
     // ---------------------------------------------------------------- 留在这台机器上
     // 走直连还是走 VPS 网关，是这台手机所处网络的属性，不是他的习惯。`routePolicy`
@@ -162,8 +154,6 @@ enum PrefsFieldPlan {
   private static let keptForStoredBodies = "服务端仍然认这个键：库里存着的老 body 还带着它，直接从 SETTINGS_FIELDS 删掉，下一次合并到那条对象上会因为这个键没有值规则整条 400；真要下线它，走 sync.rs 的 RETIRED_SETTINGS_FIELDS 两端退役（strip_retired 会顺手把存量 body 洗掉）。老客户端单纯多发一个服务端不认的键，如今只会被丢掉并在 droppedFields 里报回，不再堵队列。"
 
   static let wireOnlyKeys: [String: String] = [
-    "rsiRange": "客户端的 rsiUpper / rsiLower 合成的一个键（PrefsFieldClass.syncedMerged）；"
-      + "那两个字段自己的名字从不上线，所以服务端只认合成后的 rsiRange。",
     "styleID": "十二款蜡烛造型那一阵子的选择，客户端早就不发了。"
       + Self.keptForStoredBodies,
     "drawToolGroup": "「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、"

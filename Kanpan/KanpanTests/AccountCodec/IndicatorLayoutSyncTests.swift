@@ -23,7 +23,7 @@ struct IndicatorLayoutSyncTests {
     return p
   }
 
-  @Test("发出去：老键是共用那份，分叉的组各一条 indicatorLayouts/<组>，七项全在；三条路径都在 ownedKeys 里")
+  @Test("发出去：老键是共用那份，分叉的组各一条 indicatorLayouts/<组>，六项全在；三条路径都在 ownedKeys 里")
   func wireShape() throws {
     let body = try PersonalSyncCodec.settings(forked()).body
     #expect(body["subs"] == .array(AICoinBehavior.subpanels.map { .string($0.rawValue) }), "老键写共用那份，不是当前组的")
@@ -31,7 +31,7 @@ struct IndicatorLayoutSyncTests {
     guard case .object(let hour) = body["indicatorLayouts/hour"] else {
       Issue.record("indicatorLayouts/hour 不是对象：\(String(describing: body["indicatorLayouts/hour"]))"); return
     }
-    #expect(Set(hour.keys) == ["overlays", "subs", "params", "hiddenOutputs", "subHeightOverrides", "candleKind", "priceMode"])
+    #expect(Set(hour.keys) == ["overlays", "subs", "params", "subHeightOverrides", "candleKind", "priceMode"])
     #expect(hour["subs"] == .array([.string("KDJ")]))
     #expect(hour["candleKind"] == .string("heikin"))
     #expect(body["indicatorLayouts/day"] != nil)

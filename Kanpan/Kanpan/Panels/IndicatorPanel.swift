@@ -329,10 +329,8 @@ private struct IndicatorEditor: View {
   /// 这一份接手了审查 C-07 原来那个 `pendingText`：那条账是「手指落在保存上的那一刻，
   /// SwiftUI 先跑按钮动作还是先跑失焦回调没有保证，框里显示 999 存进去的是 9」。
   /// 现在「保存」走 `committed()`——在同一个调用栈里把手上这几格算进去再落盘，
-  /// 一样不依赖失焦时序，而且连 RSI 上下限那两格也一并管上了。
+  /// 一样不依赖失焦时序。
   @State private var typing: [ParamFocus: String] = [:]
-  /// 按「保存」时 RSI 下限不低于上限：这一次没存，两格标红，直到改了其中一格。
-  @State private var rsiInvalid = false
   init(store: PrefsStore, id: IndicatorID) {
     self.store = store; _draft = State(initialValue: IndicatorDraft(id: id, prefs: store.prefs))
   }
@@ -361,27 +359,14 @@ private struct IndicatorEditor: View {
           } else {
             ForEach(Array(draft.params.indices), id: \.self) { paramRow($0) }
           }
-          if draft.id == .rsi {
-            numberRow(.upper, label: "上限", value: Int(draft.upper), identifier: "indicator.rsi.upper.field", invalid: rsiInvalid)
-            numberRow(.lower, label: "下限", value: Int(draft.lower), identifier: "indicator.rsi.lower.field", invalid: rsiInvalid)
-          }
+          // RSI 的超买 / 超卖线 2026-09-28 起定在 70 / 30（收设置项 C 组），不再给上下限两格。
         } header: {
           PanelFormSectionTitle(text: "参数")
         }
         .listRowBackground(t.raised)
 
-        Section {
-          ForEach(Array(draft.outputs.enumerated()), id: \.offset) { index, name in
-            Toggle(name, isOn: Binding(get: { !draft.hidden.contains(index) }, set: { on in
-              if on { draft.hidden.remove(index) } else { draft.hidden.insert(index) }
-            }))
-            .foregroundStyle(t.ink)
-            .accessibilityIdentifier("indicator.output.\(index)")
-          }
-        } header: {
-          PanelFormSectionTitle(text: "输出")
-        }
-        .listRowBackground(t.raised)
+        // 「输出」一节（逐条线的显示开关）2026-09-28 收掉（收设置项 C 组）：线一律全画，
+        // 不想要哪条均线就在上面左滑删掉那个周期。
 
         if draft.id == .ma || draft.id == .ema || draft.id == .vwap {
           Section {
@@ -450,16 +435,9 @@ private struct IndicatorEditor: View {
     .presentationBackground(t.app)
   }
 
-  /// 「保存」。RSI 下限不低于上限时不存、不关，两格标红——原来两格打字时互相夹，
-  /// 想把 30/70 改成 75/85，先打上限 85 没事，先打下限 75 就被夹成 69，存进去的不是他打的。
+  /// 「保存」：先把手上还在打的那格算进去，再落盘、关面板。
   private func save() {
     let final = committed()
-    guard final.boundsValid else {
-      draft = final; typing.removeAll()
-      rsiInvalid = true
-      Haptics.warning()
-      return
-    }
     store.updateByHand { final.save(into: &$0) }
     dismiss()
   }
@@ -483,18 +461,14 @@ private struct IndicatorEditor: View {
   }
 
   /// 一行「名字 + 数字框」。框里显示的是「正在打的字」，没在打就是 draft 里的数。
-  private func numberRow(_ field: ParamFocus, label: String, value: Int, identifier: String, invalid: Bool = false) -> some View {
+  private func numberRow(_ field: ParamFocus, label: String, value: Int, identifier: String) -> some View {
     ParamField(label: label,
                text: Binding(get: { typing[field] ?? String(value) },
-                             set: { text in
-                               typing[field] = String(text.filter(\.isNumber).prefix(3))
-                               if field == .upper || field == .lower { rsiInvalid = false }
-                             }),
+                             set: { text in typing[field] = String(text.filter(\.isNumber).prefix(3)) }),
                field: field,
                focus: $focus,
                theme: t,
-               identifier: identifier,
-               invalid: invalid)
+               identifier: identifier)
   }
 
   /// 把一格打完的字落进 draft。
@@ -509,11 +483,6 @@ private struct IndicatorEditor: View {
     case .param(let index):
       guard draft.params.indices.contains(index) else { return }
       draft.params[index] = IndicatorParamRule.clamp(n)
-    case .upper, .lower:
-      // 两格各管各的，只夹 0…100。原来上限夹的下沿跟着下限走、下限夹的上沿跟着上限走，
-      // 于是先改哪一格决定了存进去的是什么；「下限低于上限」留到保存那一下再比（`save()`）。
-      let v = Double(min(100, max(0, n)))
-      if field == .upper { draft.upper = v } else { draft.lower = v }
     }
   }
 
@@ -554,8 +523,7 @@ private struct IndicatorEditor: View {
     draft.params.append(next)
   }
 
-  /// 删一条线时，输出开关和线条颜色都按位置存着，得跟着往前挪一格，
-  /// 否则关掉的是别人那条、颜色也串到隔壁去了。
+  /// 删一条线时，线条颜色按位置存着，得跟着往前挪一格，否则颜色串到隔壁去了。
   /// 删一条之前先把手上那格提交掉、把「正在打的字」全抹掉：那几个字面值是按行号存的，
   /// 行一挪就串到隔壁去了。
   private func removePeriods(_ offsets: IndexSet) {
@@ -564,7 +532,6 @@ private struct IndicatorEditor: View {
     commitAll(); focus = nil
     for index in offsets.sorted(by: >) {
       draft.params.remove(at: index)
-      draft.hidden = Set(draft.hidden.compactMap { $0 == index ? nil : ($0 > index ? $0 - 1 : $0) })
       draft.colors = Dictionary(uniqueKeysWithValues: draft.colors.compactMap { key, value in
         key == index ? nil : (key > index ? (key - 1, value) : (key, value))
       })
@@ -572,16 +539,14 @@ private struct IndicatorEditor: View {
   }
 }
 
-/// 这张表上要打字的那几格：参数逐格一个，RSI 的上下限各一个。
+/// 这张表上要打字的那几格：参数逐格一个。
 enum ParamFocus: Hashable {
   case param(Int)
-  case upper
-  case lower
 }
 
 /// 一格能直接打字的数。
 ///
-/// 它只管显示和拿焦点：只收数字、最多三位（参数上限 400、RSI 上限 100），
+/// 它只管显示和拿焦点：只收数字、最多三位（参数上限 400），
 /// 打字途中不夹也不回写——图按中间值重算一次画面就乱跳，而且删到空的那一瞬是非法的。
 /// 值什么时候落进 draft、非法了怎么办，全在 `IndicatorEditor` 那边一处说了算。
 private struct ParamField: View {
@@ -591,8 +556,6 @@ private struct ParamField: View {
   var focus: FocusState<ParamFocus?>.Binding
   var theme: PanelTheme
   var identifier: String
-  /// 这一格的值存不进去（RSI 下限不低于上限）：字和底边标红。
-  var invalid: Bool = false
 
   var body: some View {
     HStack(spacing: Space.m) {
@@ -605,20 +568,14 @@ private struct ParamField: View {
         .multilineTextAlignment(.trailing)
         .font(TypeScale.body)
         .monospacedDigit()
-        .foregroundStyle(invalid ? theme.danger : theme.ink)
+        .foregroundStyle(theme.ink)
         .frame(width: Hit.min + Space.m)
         .padding(.horizontal, Space.s)
         .padding(.vertical, Space.s)
         .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
-        .overlay {
-          RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-            .strokeBorder(theme.danger, lineWidth: 1)
-            .opacity(invalid ? 1 : 0)
-        }
         .focused(focus, equals: field)
         .accessibilityIdentifier(identifier)
         .accessibilityLabel(label)
-        .accessibilityHint(invalid ? "下限要低于上限" : "")
     }
   }
 }
