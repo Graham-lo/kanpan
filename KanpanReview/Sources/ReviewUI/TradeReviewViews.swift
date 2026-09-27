@@ -113,13 +113,18 @@ struct TradeRow: View {
             .foregroundStyle(round.direction == .long ? t.up : t.down)
           if let leverage = round.leverage { Text("\(leverage)x").font(ReviewType.caption).foregroundStyle(t.ink3) }
         }
+        // 持仓时长不许折行（09-27 截图里「已持 4 小时 22 分」被右边的胶囊和小图挤成两行）；
+        // 挤不下时先截日期那一截的尾巴，时长整段保住。
         HStack(spacing: ReviewSpace.s) {
           Text(round.isOpen ? "已持 " + TradeLabels.holding(ReviewClock.now - round.openedAt) : TradeLabels.holding(round.holdingMs))
+            .fixedSize(horizontal: true, vertical: false)
           Text(feature.dayTime(round.closedAt ?? round.openedAt))
+            .truncationMode(.tail)
         }
+        .lineLimit(1)
         .font(ReviewType.caption).foregroundStyle(t.ink3).monospacedDigit()
       }
-      Spacer(minLength: ReviewSpace.s)
+      Spacer(minLength: ReviewSpace.xs)
       if round.isOpen {
         Text("持仓中").font(ReviewType.captionEmph).foregroundStyle(t.accent)
           .padding(.horizontal, ReviewSpace.s).frame(minHeight: 22)
