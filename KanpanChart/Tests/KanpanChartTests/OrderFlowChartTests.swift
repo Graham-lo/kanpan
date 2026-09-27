@@ -1166,4 +1166,37 @@ struct OrderFlowChartTests {
     #expect(r.orderFlowFrame(pane: L.main, range: range, L: L).bands.count == orders.count - 1)
   }
 
+
+  @Test("轻点：点在蜡烛高低范围内是 K 线的（出十字线），哪怕底下垫着一条大单带子；点在蜡烛外的带子上才出详情卡")
+  func tapOnCandleBeatsOrderFlowBand() throws {
+    let (r, _) = Self.renderer()
+    let L = r.layout(size: Self.size)
+    let b = r.state.series
+    let bands = frame(r).bands
+    var overlap: CGPoint?
+    var clear: CGPoint?
+    for band in bands {
+      let by = Double(band.frame.midY)
+      for i in 0..<b.count {
+        let cx = r.state.view.x(Double(b.time(at: i)), plotW: L.plotW)
+        guard cx > Double(band.frame.minX) + 1, cx < Double(band.frame.maxX) - 1, cx > 0, cx < L.plotW else { continue }
+        let yHi = y(r, b.high[i]), yLo = y(r, b.low[i])
+        if by > yHi + 1, by < yLo - 1, overlap == nil { overlap = CGPoint(x: cx, y: by) }
+        if (by < yHi - ChartRenderer.candleHitSlop - 2 || by > yLo + ChartRenderer.candleHitSlop + 2), clear == nil {
+          clear = CGPoint(x: cx, y: by)
+        }
+      }
+    }
+    // 夹具里 ±0.2% 的单必然横穿最近几根蜡烛，也必然有一段落在蜡烛外。
+    let onCandle = try #require(overlap)
+    let offCandle = try #require(clear)
+    // 冲突点：两边都认——带子的 44pt 命中区盖住了蜡烛，以前这里出的是详情卡。
+    #expect(r.orderFlowHit(at: onCandle, size: Self.size) != nil)
+    #expect(r.candleHit(at: onCandle, size: Self.size))
+    // 蜡烛外的带子上：不是 K 线，照旧出卡片。
+    #expect(!r.candleHit(at: offCandle, size: Self.size))
+    #expect(r.orderFlowHit(at: offCandle, size: Self.size) != nil)
+    // 主图外（价格轴上）不算蜡烛。
+    #expect(!r.candleHit(at: CGPoint(x: L.plotW + 5, y: onCandle.y), size: Self.size))
+  }
 }

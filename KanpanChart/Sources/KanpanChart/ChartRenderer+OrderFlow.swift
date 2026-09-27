@@ -345,6 +345,33 @@ extension ChartRenderer {
     return Self.orderFlowHit(frame.bands, x: x, y: y, touch: true)?.group
   }
 
+  /// 轻点这一下是不是点在一根 K 线上（视图坐标）：横向落在那一根的格子里（不足 8pt 按 8pt 算），
+  /// 纵向落在它的高低范围上下各放 `candleHitSlop` 以内（收盘价画法只认收盘那一点）。
+  /// K 线是主体、大单只垫在蜡烛底下——点在蜡烛上要出十字线，不让位给底下那条带子的详情卡。
+  public func candleHit(at point: CGPoint, size: CGSize) -> Bool {
+    let s = state.series
+    guard !s.isEmpty else { return false }
+    let L = layout(size: size)
+    let x = Double(point.x), y = Double(point.y)
+    guard x >= 0, x <= L.plotW, y >= L.main.y, y <= L.main.y + L.main.h else { return false }
+    let i = s.index(atTime: state.view.t(atX: x, plotW: L.plotW))
+    guard s.close.indices.contains(i) else { return false }
+    let spacing = state.view.barSpacing(step: s.step, plotW: L.plotW)
+    let cx = state.view.x(Double(s.time(at: i)), plotW: L.plotW)
+    guard abs(x - cx) <= max(spacing / 2, 4) else { return false }
+    let closeOnly = state.options.kind == .line
+    var hi = closeOnly ? s.close[i] : s.high[i], lo = closeOnly ? s.close[i] : s.low[i]
+    // 平均 K 线画出来的那一根可能越过真实高低，一并算进去。
+    if state.options.kind == .heikin, let ha = heikin?.bar(i) { hi = max(hi, ha.h); lo = min(lo, ha.l) }
+    let range = priceRange(size: size), mode = state.effectivePriceMode
+    let y1 = KanpanCore.yOf(hi, pane: L.main, range: range, mode: mode)
+    let y2 = KanpanCore.yOf(lo, pane: L.main, range: range, mode: mode)
+    return y >= min(y1, y2) - Self.candleHitSlop && y <= max(y1, y2) + Self.candleHitSlop
+  }
+
+  /// 点蜡烛的纵向容差（pt）：影线只有一两 pt 粗，手指点不那么准。
+  static let candleHitSlop = 6.0
+
   /// 十字线停在哪条带上：只看主图，十字线交点用 `orderFlowHit` 同样的容差。
   func orderFlowHovered(_ bands: [OrderFlowBand], pane: Pane, range: PriceRange, L: Layout) -> OrderFlowBand? {
     guard let cross = state.crosshair, cross.pane == nil, !bands.isEmpty, !state.series.isEmpty else { return nil }

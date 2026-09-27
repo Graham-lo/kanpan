@@ -611,7 +611,8 @@ extension ChartView {
     gesture.lastPlotTap = (ms: now, x: Double(p.x), y: Double(p.y))
     // 主力订单流：点在一条色带（一桶一段合并的那条）上就选中它（出详情卡、描边），再点同一条收起，点别的换过去；
     // 选中时点空白处只收卡，不顺手开十字线。「同一条」按 `orderFlowIsSelected` 认（段起点前移过也算同一条）。
-    if let renderer, let hit = renderer.orderFlowHit(at: p, size: bounds.size) {
+    // 点在蜡烛上（高低范围内）永远是 K 线的：出十字线，不被垫在底下的大单带子截走。
+    if let renderer, !renderer.candleHit(at: p, size: bounds.size), let hit = renderer.orderFlowHit(at: p, size: bounds.size) {
       selectOrderFlow(renderer.orderFlowIsSelected(hit) ? nil : hit.key)
       return
     }
