@@ -3,7 +3,7 @@ import KanpanCore
 import SwiftUI
 import UIKit
 
-/// 周期条：钉住的那几档横排 + 行尾「最新 | 更多 ▾ · 指标 · 画线 · 图表设置」（§9.1）。
+/// 周期条：钉住的那几档横排 + 行尾「最新 | 更多 ▾ · 分析 · 图表设置」（§9.1）。
 ///
 /// 档位一律写中文短写（`Interval.shortLabel`：5分 / 1时 / 1周 / 1月，审查 U12）——
 /// 以前条上 `1m` 和「更多」网格里的 `1M` 只差一个大小写，一分钟和一个月靠眼力分。
@@ -15,9 +15,8 @@ import UIKit
 ///
 /// **条上最多六档**（`Prefs.maxQuick`，2026-09-21 定），**出厂就把六格放满**
 /// （`Interval.quick` = `5m 30m 1h 4h 1d 1w`）。这一行要同时放下六档、行尾的
-/// 「最新」、「更多」、「指标」和图表设置，还得在最窄的 iPhone 16 Pro（402pt，内容 370pt）上
+/// 「最新」、「更多」、「分析」（09-28 之前叫「指标」）和图表设置，还得在最窄的 iPhone 16 Pro（402pt，内容 370pt）上
 /// 一个字都不截——六档是实测排得下的上限，所以钉位本身就卡在六个，排版只对「≤6 档」负责。
-/// 2026-09-27 起行尾还多一颗「画线」记号（见下面「画线」一段），预算重算过。
 ///
 /// **排版预算**（2026-09-24 加「指标」时逐项算过，13pt semibold）：六档 + 每格 2×2 内距、
 /// 「最新」8 前缝 + 药丸、分隔线 17、「更多 ▾」53.8、「指标」44、图表设置记号 31
@@ -44,19 +43,14 @@ import UIKit
 /// 右端原来还有「画线」「记一笔」，用户的话是「这个功能不是经常用到啊」「记和画线都
 /// 放到图表栏目里」，两个都收进图表设置那一页（见 `ChartPanel`）；后来画线又去了底栏最左那格。
 ///
-/// **画线 2026-09-27 回到条尾**（用户：「画线你的建议也是对的」，方案
-/// `docs/方案-我的-自动复盘-周期分组指标-2026-09-27.md` §1.2）：底栏收成四格、腾出「我的」，
-/// 画线落在「指标」和图表设置之间，是一颗 24pt 记号（底栏旧折线记号的缩小版，只留一颗金点，
-/// `IntervalDrawGlyph`）。点它的行为一个字没改：把这张图横过来进画线工作台，画完自动转回。
-/// 画线进行中亮成当前档那颗琥珀软胶囊；对比期间置灰点不动（逻辑从旧底栏 `drawingEnabled` 原样搬来）。
-///
-/// 加这一颗之后的预算（13pt semibold，出厂六档字宽 139.0，16 Pro 行宽 370）：自然画法下画线
-/// 占 44（记号两边各 10），出厂六档 + 「最新」要 378.6，排不下；方案给的唯一退路是把画线与图表
-/// 设置两颗记号的间距收到 8pt——画线版面收成 34（右边那 10 让给图表设置自己的 8pt 前缝），
-/// 要 368.6，排得下（`tailMode`）。判断一律按「最新」在场算，所以「最新」进出时行尾不跳。
-/// 17 Pro Max（行宽 400）自然画法就排得下。用户自己钉出特别宽的组合（15分 30分 12时 …）时
-/// 连这一步都不够，才再把「指标」的 44pt 最窄宽度和画线左边的空也收掉（命中区照旧 44，往两边伸），
-/// 仍不缩字、不截字；再不够就让这一行往页边距里伸，绝不把头部和图表顶宽（见 `body`）。
+/// 2026-09-27 画线曾回到条尾（「指标」与图表设置之间一颗 24pt 记号），行尾成了四件：
+/// 16 Pro 六档满钉 + 「最新」在场只剩 1.2pt，还得把画线与图表设置两颗记号挤到 8pt，
+/// 两块 44pt 命中区叠了 10pt。**2026-09-28 用户定：画线和指标并列归到一个大类「分析」**（「周期条中的
+/// 画线和指标能不能归到一个大类，只放三个，更多，原来是指标，设置，不然布局会有问题」）——
+/// 行尾那格从「指标」改名「分析」（两个字，宽度不变；「工具」不能用，横屏画线台的工具选择器
+/// 已经叫这个），点开的面板分四节：画线 · 指标 · 对比 · 主力订单流（`IndicatorPage`，
+/// 画线那节是 `drawSection`）。行尾回到三件，为四件加的那套挤法（`TailMode`）一并撤掉。
+/// 点「画线」的行为一个字没改：收面板，横过来进画线工作台。
 ///
 /// 2026-09-24 行尾加了「指标」（用户：「现在指标这个大类放到周期条中，我看周期条还可以塞下
 /// 一个大分类」），同一天「返回刚才」按用户要求整个删掉（「不需要这个功能」）。
@@ -90,16 +84,10 @@ struct IntervalBar: View {
   var onPin: (Interval) -> Void
   /// 「最新」：把视野拽回末根。
   var onLatest: () -> Void
-  /// 行尾「指标」：直接开指标页（`Panel.indicators`），不用先进图表设置再推一层。
+  /// 行尾「分析」：直接开分析面板（`Panel.indicators`：画线 · 指标 · 对比 · 主力订单流）。
   var onIndicators: () -> Void
   /// 行尾图表设置那颗记号：开图表设置那一页（`Panel.chart`）。记一笔也在那一页上。
   var onChart: () -> Void
-  /// 行尾「画线」：横过来进画线工作台（2026-09-27 从底栏搬来，见文件头）。
-  var onDraw: () -> Void = {}
-  /// 画线进行中：那颗记号亮成琥珀软胶囊。
-  var drawing = false
-  /// 对比期间画不了线：记号置灰、点不动。
-  var drawEnabled = true
 
   /// 条上排哪几档：**只有钉住的那些**，按 `Interval.allCases` 从短到长。
   ///
@@ -126,7 +114,7 @@ struct IntervalBar: View {
   var body: some View {
     // 缝全交给格子自己（等宽 + 文字居中），所以这一层 `spacing` 是 0：行尾那几件
     // 各自带着自己的留白——「最新」自带 8pt 的前缝，分隔线两侧各 8pt，
-    // 「更多」「指标」本来就有 44pt 的命中区兜着，画线的留白按 `TailMode` 算。
+    // 「更多」「分析」本来就有 44pt 的命中区兜着。
     ZStack {
       // 量这一行**能给多少**（不是这一行排出来多宽——挤不下时横排会比给的更宽，
       // 拿它判断就永远「排得下」）。`Color.clear` 在 ZStack 里只吃提议的宽度，量到的就是
@@ -148,21 +136,21 @@ struct IntervalBar: View {
         .accessibilityIdentifier("interval.more")
         .accessibilityLabel(currentOffBar ? "更多周期，当前 \(current.display)" : "更多周期")
         .accessibilityAddTraits(currentOffBar ? [.isSelected] : [])
-        // 「指标」：平文字、**没有下箭头**——「更多」的箭头说的是「从条上往下拉一张网格」，
-        // 这颗开的是一张面板（指标页），不是这根条的延伸。开之前先把网格收起来。
-        tail("指标", bleeds: tailMode == .tight) {
+        // 「分析」：平文字、**没有下箭头**——「更多」的箭头说的是「从条上往下拉一张网格」，
+        // 这颗开的是一张面板（分析面板），不是这根条的延伸。开之前先把网格收起来。
+        // 09-24 到 09-28 它叫「指标」；画线并进来之后「指标」只是面板里的一节名。
+        tail("分析") {
           if gridOpen { withAnimation(.easeOut(duration: 0.2)) { gridOpen = false } }
           onIndicators()
         }
         .accessibilityIdentifier("interval.indicators")
-        .accessibilityLabel("指标")
-        drawButton
+        .accessibilityLabel("分析")
         // 图表设置只画一颗记号（审查 U12）：原来写的「图表」和底栏那一格同名，
         // 点开的却是设置面板；读屏照旧读得出它是什么。版面只占记号本身（见 `chartButton`）。
         chartButton
       }
     }
-    // 排不下（用户钉出极宽的组合、最后一档退路也用完）时，让这一行往页边距里伸，
+    // 排不下（用户钉出极宽的组合、格子内距也收光了）时，让这一行往页边距里伸，
     // 不许按自己的宽度把外面撑宽——那会把头部和图表一起顶出屏幕（见 `textSize` 那段）。
     .frame(minWidth: 0, maxWidth: .infinity)
     // 两头 `Inset.page`（16 Pro 16 / 17 Pro Max 20）：和头部内容的左缘对齐（UI 审查 2026-09-24 §4.3 #23）。
@@ -221,7 +209,7 @@ struct IntervalBar: View {
   /// 「最新」那颗药丸。
   ///
   /// 这是整条上**唯一还带底色的动作**（`raised2`）：它是随状态冒出来的一件事，
-  /// 得让人一眼看见它来了；「更多」「指标」和图表设置是常驻的入口，平文字就够。
+  /// 得让人一眼看见它来了；「更多」「分析」和图表设置是常驻的入口，平文字就够。
   private func actionPill(_ title: String, action: @escaping () -> Void) -> some View {
     // 命中区横着最窄 44pt；药丸本身（字 + 两边 8）不到 44 时，多出来的那一点
     // 往两边伸进前缝和分隔线的留白里，**不占版面**——这一行排版是按药丸本身算的。
@@ -269,38 +257,18 @@ struct IntervalBar: View {
     return max(0, min(Space.xxs, (share * 4).rounded(.down) / 4))
   }
 
-  /// 行尾那几件按自己的版面宽度一共占多少：「最新」（在场时）+ 分隔线 + 「更多 ▾」+「指标」
-  /// + 画线 + 图表设置。和下面各自的画法一一对应，改了画法这儿要跟着改。
-  private var tailWidth: CGFloat { tailWidth(tailMode, latest: !atLatest) }
-
-  private func tailWidth(_ mode: TailMode, latest showsLatest: Bool) -> CGFloat {
-    let latest = showsLatest ? Space.s + Self.pillWidth("最新", size: textSize) : 0
+  /// 行尾那几件按自己的版面宽度一共占多少：「最新」（在场时）+ 分隔线 + 「更多 ▾」+「分析」
+  /// + 图表设置。和下面各自的画法一一对应，改了画法这儿要跟着改。
+  ///
+  /// 2026-09-27 画线进条尾时这儿多过一套三档挤法（`TailMode`：natural / snug / tight），
+  /// 只为四件排得下；09-28 画线与指标并列进「分析」面板、行尾回到三件，最宽的六档组合加「最新」
+  /// 也只需收格子内距（`chipPad`），那套挤法撤了。
+  private var tailWidth: CGFloat {
+    let latest = atLatest ? 0 : Space.s + Self.pillWidth("最新", size: textSize)
     let divider = 1 + Space.s * 2
     let more = max(Hit.min, Self.rawTextWidth(moreTitle, size: textSize) + 3 + 9 + Space.s * 2)
-    return latest + divider + more + indicatorsWidth(mode) + Self.drawSlot(mode) + Self.chartSlot
-  }
-
-  /// 「指标」的版面宽：平时最窄 44（命中区顺带当留白），最挤那一档收回字 + 两边 8。
-  private func indicatorsWidth(_ mode: TailMode) -> CGFloat {
-    let natural = Self.rawTextWidth("指标", size: textSize) + Space.s * 2
-    return mode == .tight ? natural : max(Hit.min, natural)
-  }
-
-  /// 行尾排法的三档，按「最新」在场算（它进出时行尾不跳）：
-  ///
-  /// - `natural`：画线和别的动作一样占 44，记号两边各 10；
-  /// - `snug`：方案唯一的退路——画线与图表设置两颗记号的间距收到 8pt（画线版面 34）；
-  /// - `tight`：只有用户钉出极宽的组合才会到这儿，「指标」和画线左边的空也收掉，
-  ///   动作之间一律 8pt。三档都不缩字、不截字，命中区都还是 44。
-  enum TailMode { case natural, snug, tight }
-
-  private var tailMode: TailMode {
-    guard barWidth > 0 else { return .natural }
-    let text = list.reduce(0) { $0 + Self.rawTextWidth($1.shortLabel, size: textSize) }
-    for mode in [TailMode.natural, .snug] where text + tailWidth(mode, latest: true) <= barWidth {
-      return mode
-    }
-    return .tight
+    let analysis = max(Hit.min, Self.rawTextWidth("分析", size: textSize) + Space.s * 2)
+    return latest + divider + more + analysis + Self.chartSlot
   }
 
   /// 「最新」药丸本身多宽（字 + 两边 8）。
@@ -337,7 +305,7 @@ struct IntervalBar: View {
   /// 钉住的那几档，各占一个等宽的格子，平分行里剩下的宽度。
   ///
   /// 这里没有滚动、没有渐隐：档数封在六个（见 `list`），行尾那几件（「最新」/ 分隔线 /
-  /// 更多 / 指标 / 图表设置）各自按自然宽度先占好位子，剩下的全归这一排。挤不下时只收
+  /// 更多 / 分析 / 图表设置）各自按自然宽度先占好位子，剩下的全归这一排。挤不下时只收
   /// 格子内距（`chipPad`）。最窄的 iPhone 16 Pro 上六档照样一个字不截——
   /// `IntervalSlotUITests` 量的就是这个。
   ///
@@ -363,8 +331,8 @@ struct IntervalBar: View {
     .accessibilityIdentifier("interval.quick")
     #if DEBUG
     // 验收用的读数（只进 DEBUG 包）：这一排实际分到的宽度（`rowWidth`，量出来的）减去六档字宽
-    // 与内距，就是「不缩字、不截字」还剩几个点；负数就是字被顶出去了。2026-09-27 画线搬进行尾后，
-    // 「16 Pro 六档满钉 + 最新在场排得下」这条验收拿它在模拟器上实测（`MeAndFourTabsEvidenceUITests`）。
+    // 与内距，就是「不缩字、不截字」还剩几个点；负数就是字被顶出去了。「16 Pro 六档满钉 + 最新在场
+    // 排得下」这条验收拿它在模拟器上实测（`MeAndFourTabsEvidenceUITests`）。
     .accessibilityValue(layoutReport)
     #endif
   }
@@ -373,7 +341,7 @@ struct IntervalBar: View {
   private var layoutReport: String {
     let text = list.reduce(0) { $0 + Self.rawTextWidth($1.shortLabel, size: textSize) }
     let slack = rowWidth - text - chipPad * 2 * CGFloat(list.count)
-    return String(format: "余量 %.2f · 行尾 %@ · 内距 %.2f · 条宽 %.1f", slack, "\(tailMode)", chipPad, barWidth)
+    return String(format: "余量 %.2f · 内距 %.2f · 条宽 %.1f", slack, chipPad, barWidth)
   }
   #endif
 
@@ -475,17 +443,13 @@ struct IntervalBar: View {
   /// 「更多」展开时、或者当前档没钉在条上（它替那一档说话）时才亮起来：字变强调色、
   /// 底下垫同一套 10% 的淡底（和当前档一个规矩）。
   ///
-  /// 「更多」带下箭头（那是从条上往下拉出一张网格，展开时箭头翻上去）；「指标」没有箭头，
+  /// 「更多」带下箭头（那是从条上往下拉出一张网格，展开时箭头翻上去）；「分析」没有箭头，
   /// 它开的是一张面板；图表设置那颗只有记号、没有字（审查 U12，见 `VectorIcon.adjust`）。
-  /// `bleeds`：最挤那一档（`TailMode.tight`）里命中区照旧 44，但版面只占字 + 两边 8，
-  /// 多出来那一点往两边伸，不占版面（和「最新」药丸一个做法）。
   private func tail(
     _ title: String, chevron: Bool = false,
-    on: Bool = false, flipped: Bool = false, bleeds: Bool = false, action: @escaping () -> Void
+    on: Bool = false, flipped: Bool = false, action: @escaping () -> Void
   ) -> some View {
-    let natural = Self.rawTextWidth(title, size: textSize) + Space.s * 2
-    let bleed = bleeds ? max(0, Hit.min - natural) / 2 : 0
-    return tailButton(on: on, action: action) {
+    tailButton(on: on, action: action) {
       HStack(spacing: 3) {
         Text(title).font(.system(size: textSize, weight: .semibold))
         if chevron {
@@ -493,7 +457,6 @@ struct IntervalBar: View {
         }
       }
     }
-    .padding(.horizontal, -bleed)
   }
 
   private func tailButton<Label: View>(
@@ -505,7 +468,7 @@ struct IntervalBar: View {
       .padding(.horizontal, Space.s)
       .frame(height: ControlMetrics.pillHeight)
       .background { if on { Capsule().fill(theme.amberSoft) } }
-      // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（「指标」两个字 + 两边 8pt 只有
+      // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（「分析」两个字 + 两边 8pt 只有
       // 41.8pt，差的从这儿补上）。这 44pt 顺带成了动作之间的留白。
       // 图表设置那颗贴左放：多出来的 13pt 要往右伸进页边距（见 `chartButton`）。
       .frame(minWidth: Hit.min, minHeight: Hit.min, alignment: bleedsTrailing ? .leading : .center)
@@ -523,54 +486,6 @@ struct IntervalBar: View {
 
   /// 图表设置那颗在版面上占多宽：记号 15pt + 两边 8pt。
   private static let chartSlot: CGFloat = 15 + Space.s * 2
-
-  /// 画线记号本身多大（方案 §1.2：24pt）。
-  private static let drawGlyph: CGFloat = 24
-
-  /// 画线在版面上占多宽（见 `TailMode`）。`snug` 把右边那 10 让掉，和图表设置记号之间只剩
-  /// 图表设置自己的 8pt 前缝；`tight` 连左边也只剩「指标」自己的 8pt 后缝。
-  private static func drawSlot(_ mode: TailMode) -> CGFloat {
-    let natural = max(Hit.min, drawGlyph + Space.s * 2)
-    let side = (natural - drawGlyph) / 2
-    switch mode {
-    case .natural: return natural
-    case .snug: return natural - side
-    case .tight: return drawGlyph
-    }
-  }
-
-  /// 行尾「画线」。版面按 `drawSlot` 算，命中区不管哪一档都是 44×44、以记号为中心往两边伸
-  /// ——伸出去的那几点落在邻居的留白里，不占版面（和「最新」药丸一个做法）。
-  /// 进行中垫一层当前档那颗琥珀软胶囊（背景，不参与布局）。
-  private var drawButton: some View {
-    let mode = tailMode
-    let slot = Self.drawSlot(mode)
-    // 记号在版面里的位置：`snug` 贴右（左边留 10），另外两档居中。
-    let lead = mode == .snug ? slot - Self.drawGlyph : (slot - Self.drawGlyph) / 2
-    let bleed = (Hit.min - Self.drawGlyph) / 2
-    return Button(action: onDraw) {
-      IntervalDrawGlyph(theme: theme, size: Self.drawGlyph)
-        .background {
-          if drawing {
-            Capsule().fill(theme.amberSoft)
-              .frame(width: Self.drawGlyph + Space.s, height: ControlMetrics.pillHeight)
-          }
-        }
-        .frame(width: Hit.min, height: Hit.min)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .disabled(!drawEnabled)
-    .opacity(drawEnabled ? 1 : ControlMetrics.disabledOpacity)
-    .padding(.vertical, -8)
-    .fixedSize(horizontal: true, vertical: false)
-    // 命中区 44 宽，版面只占 `slot`：左右各收回记号外面那一截，记号落在 `lead` 处。
-    .padding(.leading, lead - bleed)
-    .padding(.trailing, slot - lead - Self.drawGlyph - bleed)
-    .accessibilityIdentifier("interval.draw")
-    .accessibilityLabel("画线")
-    .accessibilityAddTraits(drawing ? [.isSelected] : [])
-  }
 
   /// 行尾图表设置那颗记号。**版面只占记号本身**（`chartSlot` = 31pt），44pt 的命中区
   /// 往右伸 13pt 进页边距（16 Pro 16 / 17 Pro Max 20，伸得进去）：2026-09-24 行尾多了
@@ -627,9 +542,6 @@ struct IntervalRow: View {
   var onLatest: () -> Void
   var onIndicators: () -> Void
   var onChart: () -> Void
-  var onDraw: () -> Void
-  var drawing: Bool
-  var drawEnabled: Bool
   let readout: CrosshairReadout
   let context: CrosshairContext
   /// 十字线那颗「创建提醒」点了。
@@ -640,8 +552,7 @@ struct IntervalRow: View {
       IntervalBar(
         theme: theme, quick: quick, current: current, atLatest: atLatest,
         gridOpen: $gridOpen, onPick: onPick, onPin: onPin,
-        onLatest: onLatest, onIndicators: onIndicators, onChart: onChart,
-        onDraw: onDraw, drawing: drawing, drawEnabled: drawEnabled)
+        onLatest: onLatest, onIndicators: onIndicators, onChart: onChart)
         .modifier(YieldsToCrosshair(readout: readout, context: context, gridOpen: $gridOpen))
       CrosshairActionBar(readout: readout, context: context, theme: theme, onAlert: onAlert)
     }

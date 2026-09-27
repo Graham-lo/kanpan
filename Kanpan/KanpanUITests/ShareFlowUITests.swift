@@ -140,7 +140,7 @@ import XCTest
     XCTAssertTrue(found, "留下后提醒没有同步到服务端")
     assertLayout(); attach("留下并加入提醒")
     // 画线台上不再有纸飞机（分享只留图表设置里那一个入口）：横竖屏各看一眼。
-    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")  // 2026-09-27 底栏四格：画线在周期条行尾
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")  // 画线在分析面板第一节（2026-09-28）
     XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: 15))
     XCTAssertFalse(app.buttons["draw.send"].exists, "横屏画线台上还挂着纸飞机")
     // 画线进行中横屏侧栏整条收起，用手把机器转回竖屏再看一眼。

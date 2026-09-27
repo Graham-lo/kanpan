@@ -653,13 +653,14 @@ struct MainScreen: View {
     .ignoresSafeArea(.keyboard, edges: draw.active ? [] : .bottom)
   }
 
-  /// 周期条行尾那颗「画线」：把当前这张图横过来画（`draw.toggle()` 会触发
+  /// 「分析」面板第一节那一行「画线」：把当前这张图横过来画（`draw.toggle()` 会触发
   /// `onChange(of: draw.active)` 里的转屏）。用户定的是「用户当前看的这张图作为
   /// 画线的目标，直接实现即可」——不问品种，画的就是眼前这张。
   ///
   /// 原来这是底栏最左那一格「画线」的动作（写在 `switchTo(tab:)` 的一个分支里）；
-  /// 2026-09-27 底栏收成四格，画线搬到周期条行尾，动作原样搬过来：对比期间不响应
-  /// （那颗记号同时置灰），画线进行中再点一下就是收起。
+  /// 2026-09-27 底栏收成四格，画线搬到周期条行尾；2026-09-28 行尾收回三件，画线和指标并列
+  /// 归进「分析」这个大类（`IndicatorPage.drawSection`），动作原样搬过来：对比期间不响应
+  /// （那一行同时置灰），面板已经先收了（`dismissPanel` 在这儿再兜一次）。
   private func startDrawing() {
     guard !comparing else { return }
     dismissPanel()
@@ -715,12 +716,10 @@ struct MainScreen: View {
         onPick: pick(interval:),
         onPin: { iv in store.attempt { $0.toggleQuick(iv) } },
         onLatest: { proxy.scrollToLatest() },
-        // 指标页（`Panel.indicators`）：和图表设置一样不连着关，开着它一次调好几项。
+        // 分析面板（`Panel.indicators`：画线 · 指标 · 对比 · 主力订单流）：和图表设置一样不连着关。
         onIndicators: { panel = .indicators },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart },
-        // 画线（2026-09-27 从底栏搬来）：对比期间置灰，画线进行中亮成琥珀软胶囊。
-        onDraw: startDrawing, drawing: draw.active, drawEnabled: !comparing,
         readout: crosshairReadout, context: crosshairContext,
         onAlert: newAlert(at:)
       ) }
@@ -947,9 +946,12 @@ struct MainScreen: View {
   /// 面板里的动作，竖屏 sheet 与横屏侧栏共用这一份（见 `PanelActions`）。
   /// 以前侧栏那份是手抄的，比 sheet 少了「记一笔」「对比」两个动作。
   private var panelActions: PanelActions {
-    PanelActions(onPickInterval: pick(interval:), onRecord: chartRecordAction,
+    // 分析面板第一节「画线」：复盘回放 / 已经在画（横屏画线台的侧栏）时不排，对比期间置灰。
+    let onDraw: (() -> Void)? = reviewChart.active || draw.active ? nil : { startDrawing() }
+    return PanelActions(onPickInterval: pick(interval:), onRecord: chartRecordAction,
                  onShare: chartShareAction, onAddCompare: { showComparePicker = true },
-                 compareNames: compareNames, onSend: chartSendAction, sendBlocked: shareSendBlocked,
+                 compareNames: compareNames, onDraw: onDraw, drawEnabled: !comparing,
+                 onSend: chartSendAction, sendBlocked: shareSendBlocked,
                  orderFlow: market.orderFlow, symbol: market.symbol)
   }
 

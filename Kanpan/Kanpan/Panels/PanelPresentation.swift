@@ -20,6 +20,10 @@ import KanpanCore
 /// 指标页只剩周期条这一个入口，并把「对比」从图表设置接了过来（指标 · 对比 · 主力订单流三节）；
 /// 「图表设置」只剩这张图 · K 线 · 显示 · 价格轴。底栏也从五格收成四格（图表 · 自选 · 板块分类 · 我的），
 /// 「设置」是「我的」里推进去的一页，「画线」进了周期条行尾。
+///
+/// 2026-09-28 行尾收回三件：那格「指标」改名「分析」，面板也叫「分析」，分四节
+/// 画线 · 指标 · 对比 · 主力订单流——画线与指标并列，「指标」从此只是面板里的一节名。
+/// 枚举值仍叫 `indicators`（面板状态、测试 id 都挂在它上面，改名没有好处）。
 enum Panel: String, Identifiable, CaseIterable, Sendable {
   case period, chart, indicators
 
@@ -31,7 +35,7 @@ enum Panel: String, Identifiable, CaseIterable, Sendable {
     // 「图表」这个名字给了标签栏那一格（整张行情页），面板只管图上那些设置，
     // 所以它叫「图表设置」——同名两个东西会让人不知道自己点开的是哪个。
     case .chart: "图表设置"
-    case .indicators: "指标"
+    case .indicators: "分析"
     }
   }
 }
@@ -142,6 +146,10 @@ struct PanelActions {
   var onShare: (() -> Void)? = nil
   var onAddCompare: (() -> Void)? = nil
   var compareNames: [String: String] = [:]
+  /// 指标页第一节「画线」（2026-09-28 从周期条行尾归进来）。复盘回放、已经在画时传 nil，那一节不排。
+  var onDraw: (() -> Void)? = nil
+  /// 对比期间画不了线：那一行置灰、点不动。
+  var drawEnabled = true
   var onSend: (() -> Void)? = nil
   var sendBlocked: String? = nil
   /// 主力订单流的胶水与当前品种：指标页「主力订单流 › 门槛」那张表拿它显示这只币此刻生效的门槛。
@@ -164,10 +172,11 @@ struct PanelContent: View {
       ChartPanel(store: store, onRecord: actions.onRecord, onShare: actions.onShare,
                  onSend: actions.onSend, sendBlocked: actions.sendBlocked)
     case .indicators:
-      // 从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
+      // 「分析」面板（画线 · 指标 · 对比 · 主力订单流）。从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
       // 选中反馈长在指标页各控件的动作上（`PrefsStore.updateByHand`），两条路一样。
       IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol,
-                    onAddCompare: actions.onAddCompare, compareNames: actions.compareNames)
+                    onAddCompare: actions.onAddCompare, compareNames: actions.compareNames,
+                    onDraw: actions.onDraw, drawEnabled: actions.drawEnabled)
     }
   }
 }

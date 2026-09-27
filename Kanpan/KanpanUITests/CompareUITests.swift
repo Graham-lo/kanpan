@@ -114,9 +114,12 @@ import UIKit
   func testIntervalsCrosshairPanLandscapeAndReview() throws {
     app.launchEnvironment["KANPAN_TEST_COMPARE_SYMBOLS"] = keys.joined(separator: ",")
     app.launch(); ready(3)
-    // 2026-09-27 底栏四格：画线入口在周期条行尾，对比时同样点不动。
-    XCTAssertTrue(app.buttons["interval.draw"].waitForExistence(timeout: 10), "周期条行尾没有「画线」")
-    XCTAssertFalse(app.buttons["interval.draw"].isEnabled)
+    // 画线入口 09-28 起是「分析」面板第一节那一行：对比时置灰点不动。看完收面板，后面按图操作。
+    XCTAssertTrue(app.openIndicatorPage(), "周期条「分析」没开出分析面板")
+    let draw = app.buttons[Ids.indicatorDraw]
+    XCTAssertTrue(draw.waitForExistence(timeout: 10), "分析面板第一节没有「画线」")
+    XCTAssertFalse(draw.isEnabled, "对比期间分析面板「画线」还点得动")
+    app.closeOpenPanel()
     XCTAssertEqual(info()["overlays"] as? [String], [])
     XCTAssertEqual(info()["drawingsVisible"] as? Bool, false)
     shot("BTC-ETH-SOL-DOGE-1m")

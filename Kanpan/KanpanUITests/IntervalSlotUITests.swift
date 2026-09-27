@@ -434,15 +434,15 @@ final class IntervalSlotUITests: KanpanUICase {
       file: file, line: line)
   }
 
-  /// 行尾「最新 | 更多 ▾ · 指标 · 画线 · 图表设置」都在屏上、点得着，一件也没压到末档上，
-  /// 也没被推出屏幕右沿。「画线」2026-09-27 底栏四格时从标签栏搬到这里，排在「指标」之后。
+  /// 行尾「最新 | 更多 ▾ · 分析 · 图表设置」都在屏上、点得着，一件也没压到末档上，
+  /// 也没被推出屏幕右沿。「画线」09-27 到 09-28 在这儿待过一天，现在和指标并列在「分析」面板里。
   private func assertTailFits(_ list: [String], _ what: String,
                               file: StaticString = #filePath, line: UInt = #line) {
     guard let m = stripLayout(list) else { return XCTFail("找不到周期条", file: file, line: line) }
     let lastChip = list.compactMap { m.chips[$0] }.map(\.maxX).max() ?? m.row.maxX
     let screen = app.windows.firstMatch.frame
     var prevMaxX = lastChip
-    for id in [Ids.latestButton, Ids.intervalMore, Ids.intervalIndicators, Ids.intervalDraw, Ids.intervalChart] {
+    for id in [Ids.latestButton, Ids.intervalMore, Ids.intervalIndicators, Ids.intervalChart] {
       let b = app.buttons[id]
       XCTAssertTrue(b.exists && b.isHittable, "\(what)：\(id) 点不着", file: file, line: line)
       XCTAssertGreaterThanOrEqual(b.frame.minX, lastChip - 0.5,
@@ -456,34 +456,37 @@ final class IntervalSlotUITests: KanpanUICase {
     }
   }
 
-  // ------------------------------------------------------------ 行尾「指标」
+  // ------------------------------------------------------------ 行尾「分析」
 
-  /// 周期条行尾「指标」：点它直接开指标页（不经「图表设置」）；左上角那颗关面板，
-  /// 不是退回「图表设置」。「更多」网格开着时点它，网格先收起来。
+  /// 周期条行尾「分析」（09-24 到 09-28 叫「指标」）：点它直接开分析面板（不经「图表设置」）；
+  /// 左上角那颗关面板，不是退回「图表设置」。「更多」网格开着时点它，网格先收起来。
   func testIndicatorsOpensIndicatorPage() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
     let entry = app.buttons[Ids.intervalIndicators]
-    XCTAssertTrue(entry.waitForExistence(timeout: Self.short) && entry.isHittable, "周期条上没有「指标」")
-    XCTAssertEqual(entry.label, "指标")
+    XCTAssertTrue(entry.waitForExistence(timeout: Self.short) && entry.isHittable, "周期条上没有「分析」")
+    XCTAssertEqual(entry.label, "分析")
 
-    // 网格开着时点「指标」：网格收起、面板开出来。
+    // 网格开着时点「分析」：网格收起、面板开出来。
     app.buttons[Ids.intervalMore].tap()
     XCTAssertTrue(app.buttons[Ids.periodRow("4h")].waitForExistence(timeout: Self.short), "「更多」网格没打开")
     entry.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons[Ids.periodRow("4h")].exists },
-                  "点「指标」之后「更多」网格没收起来")
+                  "点「分析」之后「更多」网格没收起来")
     let marker = app.buttons[Ids.indicatorSwitch("RSI")]
-    XCTAssertTrue(marker.waitForExistence(timeout: Self.short), "点「指标」没开出指标页")
+    XCTAssertTrue(marker.waitForExistence(timeout: Self.short), "点「分析」没开出分析面板")
     let header = app.staticTexts["panel.header"]
-    XCTAssertTrue(header.exists && header.label == "指标", "面板标题不是「指标」：\(header.label)")
-    XCTAssertFalse(app.buttons["chart.more"].exists, "开出来的是图表设置，不是指标页")
-    // 2026-09-27：指标页分三节（指标 · 对比 · 主力订单流），对比整节从图表设置搬了过来。
-    XCTAssertTrue(app.descendants(matching: .any)["compare.add"].firstMatch.exists, "指标页里没有「对比」一节")
-    shot("30-周期条指标-开出指标页")
+    XCTAssertTrue(header.exists && header.label == "分析", "面板标题不是「分析」：\(header.label)")
+    XCTAssertFalse(app.buttons["chart.more"].exists, "开出来的是图表设置，不是分析面板")
+    // 2026-09-28：分析面板分四节（画线 · 指标 · 对比 · 主力订单流），画线在最上面。
+    let draw = app.buttons[Ids.indicatorDraw]
+    XCTAssertTrue(draw.exists, "分析面板里没有「画线」一节")
+    XCTAssertLessThan(draw.frame.maxY, marker.frame.minY, "「画线」不在指标之上")
+    XCTAssertTrue(app.descendants(matching: .any)["compare.add"].firstMatch.exists, "分析面板里没有「对比」一节")
+    shot("30-周期条分析-开出分析面板")
 
     // 左上角那颗：关面板，不退回「图表设置」。
     app.buttons["panel.done"].tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !marker.exists }, "左上角那颗没关掉指标页")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !marker.exists }, "左上角那颗没关掉分析面板")
     XCTAssertFalse(app.buttons["chart.more"].exists, "左上角那颗退回了图表设置，而不是关面板")
     XCTAssertTrue(waitUntil(timeout: Self.short) { entry.isHittable }, "面板关了周期条没回来")
   }

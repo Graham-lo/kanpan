@@ -29,12 +29,13 @@ enum Ids {
   // 周期条
   static func intervalChip(_ raw: String) -> String { "interval.chip.\(raw)" }
   static let intervalMore = "interval.more"
-  /// 周期条行尾「指标」（2026-09-24）：直接开指标页（`Panel.indicators`），不经图表设置。
+  /// 周期条行尾「分析」（2026-09-24 加时叫「指标」，09-28 画线并进来后改名）：直接开分析面板
+  /// （`Panel.indicators`：画线 · 指标 · 对比 · 主力订单流），不经图表设置。id 沿用旧名。
   static let intervalIndicators = "interval.indicators"
-  /// 周期条行尾「画线」（2026-09-27 底栏四格起）：排在「指标」和图表设置之间，点它对着眼前这张图
-  /// 横过去开画，行为和原来底栏最左那格「画线」一字不差。只在行情页竖屏、非复盘态有（周期条只长在那儿），
-  /// 对比期间置灰点不动，画线进行中带 `isSelected`。
-  static let intervalDraw = "interval.draw"
+  /// 分析面板第一节「画线」那一行（2026-09-28 从周期条行尾归进来，原来的 `interval.draw` 删了）：
+  /// 点它先收面板，再对着眼前这张图横过去开画，行为和原来周期条那颗记号一字不差。
+  /// 复盘回放、已经在画（横屏侧栏里开的分析面板）时这一节不排；对比期间置灰点不动。
+  static let indicatorDraw = "indicator.draw"
   /// UI 测试沙盒里铺出来的那六档（`PrefsStore.uiTestQuick`）。
   ///
   /// 出厂默认也是六档（`Interval.quick` = 5m 30m 1h 4h 1d 1w，2026-09-21 放满），
@@ -44,8 +45,8 @@ enum Ids {
   static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h"]
   // 底栏
   /// 2026-09-27 底栏四格：从左到右「图表 · 自选 · 板块分类 · 我的」，四格各是一整页，
-  /// 切到哪一页它都还在（常驻标签栏，2026-09-18 起）。原来的五格里「画线」搬去了周期条行尾
-  /// （`intervalDraw`），「设置」收进了「我的」里推进去的一层（`meSettings`）；
+  /// 切到哪一页它都还在（常驻标签栏，2026-09-18 起）。原来的五格里「画线」搬去了周期条行尾、
+  /// 09-28 又归进「分析」面板第一节（`indicatorDraw`），「设置」收进了「我的」里推进去的一层（`meSettings`）；
   /// 顶栏那颗带角标的「复盘」同一天撤了，复盘本从「我的 › 复盘本」进（`meReview`），
   /// 待判定角标挂在「我的」记号右上（`bottomMeBadge`，0 时不画）。
   /// 要量图区下沿就用标签栏任意一格。
@@ -59,7 +60,7 @@ enum Ids {
   static let bottomMeBadge = "bottom.me.badge"
   /// 周期行右端的图表设置：这张图（记一笔、分享）· K 线 · 显示 · 价格轴 · 更多设置。
   /// 面板名和标签名要分清——标签栏那一格叫「图表」，是整页。指标、对比、主力订单流
-  /// 2026-09-27 起都不在这张面板里，走周期条的「指标」（`intervalIndicators`）。
+  /// 2026-09-27 起都不在这张面板里，走周期条的「分析」（`intervalIndicators`）。
   static let intervalChart = "interval.chart"
   // 「我的」页（`MePage`，容器 `me.page`，自带 NavigationStack，下一层都是系统返回）
   static let mePage = "me.page"
@@ -400,7 +401,7 @@ class KanpanUICase: XCTestCase {
     XCTAssertTrue(app.openReviewBookFromMe(), "「我的 › 复盘本」没开出复盘本", file: file, line: line)
   }
 
-  /// 周期条「指标」→ 指标页 → 均线的「参数与颜色」。均线在「主图叠加」最上面，开出来就看得见。
+  /// 周期条「分析」→ 分析面板 → 均线的「参数与颜色」。均线在「主图叠加」最上面，开出来就看得见。
   ///
   /// C-07（保存的不是显示的那个数）和 C.10 第 8 条（数字键盘挡不挡主动作）都要从这儿进去，
   /// 所以摆在底座上，别两个文件各抄一份。
@@ -408,9 +409,9 @@ class KanpanUICase: XCTestCase {
     let edit = app.buttons["indicator.edit.MA"]
     // 面板可能还开着（上一步刚从编辑器 dismiss 回来），开着就直接用。
     if !edit.exists {
-      XCTAssertTrue(app.openIndicatorPage(), "点周期条「指标」没进到指标页", file: file, line: line)
+      XCTAssertTrue(app.openIndicatorPage(), "点周期条「分析」没进到分析面板", file: file, line: line)
       let toggle = app.buttons[Ids.indicatorSwitch("MA")]
-      expectExists(toggle, Self.short, "指标页里没有均线开关", file: file, line: line)
+      expectExists(toggle, Self.short, "分析面板里没有均线开关", file: file, line: line)
       if !edit.exists {
         toggle.tap()
         expectExists(edit, Self.short, "打开均线之后没露出「参数与颜色」", file: file, line: line)
@@ -512,10 +513,10 @@ extension XCUIApplication {
     return true
   }
 
-  /// 点周期条行尾的「画线」（2026-09-27 底栏四格起它从底栏最左那格搬到了这儿）。它对着用户
-  /// 当前正看的这张图开画，不再问品种（用户：「用户当前看的这张图作为画线的目标」）。
-  /// 周期条只长在行情页上，所以人在别的页（自选、板块、我的）时先点底栏「图表」回来再点——
-  /// 原来底栏那格在哪一页都点得到，现在多这一步。面板开着时先收掉（周期条被半屏压着点不到）。
+  /// 点「分析」→ 第一节「画线」（2026-09-27 底栏四格起它从底栏最左那格搬到周期条行尾，
+  /// 09-28 行尾收回三件、和指标并列进「分析」面板）。它对着用户当前正看的这张图开画，不再问品种
+  /// （用户：「用户当前看的这张图作为画线的目标」）。人在别的页（自选、板块、我的）时
+  /// `openIndicatorPage` 先点底栏「图表」回来；别的面板开着先收掉。
   ///
   /// 点完先横过去（`kanpan-landscape-is-for-drawing`：横屏就是画线的工作台）。
   /// 用例里按坐标点的位置都是按竖屏量的，所以要竖屏画线态的用例走
@@ -523,18 +524,14 @@ extension XCUIApplication {
   /// 「横屏画一半转回竖屏接着画」走的那条路。画线进行中横屏侧栏整条收起
   /// （「画线 / 竖屏」和画线栏的「完成」重复，2026-09-23），所以没有按钮可按。
   @discardableResult func tapDrawEntry() -> Bool {
-    let entry = buttons[Ids.intervalDraw]
-    if !entry.exists {
-      closeOpenPanel()
-      let chartTab = buttons[Ids.bottomChart]
-      if !entry.exists, chartTab.waitForExistence(timeout: 5) { chartTab.tap() }
-    }
+    guard openIndicatorPage() else { return false }
+    let entry = buttons[Ids.indicatorDraw]
     guard entry.waitForExistence(timeout: 10) else { return false }
     entry.tap()
     return true
   }
 
-  /// 半屏面板开着就按「完成」收掉（指标页左上那颗也叫 `panel.done`）。没开就什么都不做。
+  /// 半屏面板开着就按「完成」收掉（分析面板左上那颗也叫 `panel.done`）。没开就什么都不做。
   func closeOpenPanel() {
     let header = staticTexts[Ids.panelHeader]
     for _ in 0..<3 where header.exists {
@@ -544,8 +541,8 @@ extension XCUIApplication {
     }
   }
 
-  /// 周期条行尾「指标」→ 指标页（2026-09-27 起这是唯一入口：图表设置里那一行「指标」撤了）。
-  /// 指标页三节：指标（正在用 / 主图叠加 / 副图）· 对比 · 主力订单流。已经在指标页就直接认；
+  /// 周期条行尾「分析」→ 分析面板（2026-09-27 起这是唯一入口：图表设置里那一行「指标」撤了）。
+  /// 四节：画线 · 指标（开着的几项 / 主图叠加 / 副图）· 对比 · 主力订单流。已经在这张面板上就直接认；
   /// 别的面板开着（图表设置、周期网格）先收掉，人在别的页先回行情页。
   @discardableResult func openIndicatorPage() -> Bool {
     let marker = buttons["indicator.switch.RSI"]

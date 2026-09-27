@@ -48,7 +48,7 @@ final class IntervalLabelUITests: KanpanUICase {
     save("U12-周期条-更多替没钉住的档说话")
 
     // 横屏画线台左边那条周期栏。
-    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")
     XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: Self.long), "点「画线」没横过来")
     XCTAssertTrue(app.buttons["更多周期"].waitForExistence(timeout: Self.long), "横屏周期栏底下没有「更多周期」")
     Thread.sleep(forTimeInterval: 1)

@@ -57,7 +57,7 @@ final class OrderFlowHistoryUITests: KanpanUICase {
   }
 
   private func turnOnOrderFlow() {
-    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
     let toggle = app.buttons[Ids.indicatorSwitch("ORDERFLOW")]
     expectExists(toggle, Self.short, "指标页里没有「主力订单流」一节")
     toggle.tap()

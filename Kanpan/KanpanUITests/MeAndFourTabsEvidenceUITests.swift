@@ -1,15 +1,18 @@
 import UIKit
 import XCTest
 
-// ============================================================ 阶段 1 取证：四格底栏 · 我的 · 画线进周期条
+// ============================================================ 阶段 1 取证：四格底栏 · 我的 · 行尾「分析」（画线与指标并列）
 //
 // 2026-09-27 方案「我的 · 自动复盘 · 周期分组指标」§1 的验收（`docs/方案-我的-自动复盘-周期分组指标-2026-09-27.md`）：
 //
-// 1. **周期条宽度**：出厂六档（5分 30分 1时 4时 1日 1周）满钉、「最新」在场时，行尾四件
-//    （更多 ▾ · 指标 · 画线 · 图表设置）加进来仍然排得下，不缩字、不截字。读的是周期排
+// 1. **周期条宽度**：出厂六档（5分 30分 1时 4时 1日 1周）满钉、「最新」在场时，行尾三件
+//    （更多 ▾ · 分析 · 图表设置）排得下，不缩字、不截字。读的是周期排
 //    `interval.quick` 在 DEBUG 包里挂的读数（实际分到的宽度 − 六档字宽与内距，见 `IntervalBar.layoutReport`），
-//    外加几何：画线与图表设置两颗都在页边距以内、互不重叠、各自的命中区够 44。
-// 2. **截图**：浅色下青苔 / 陶土 / 经典三套皮肤，各拍「我的」、行情页、指标页三张，
+//    外加几何：三件都在页边距以内、互不重叠、各自的命中区够 44。
+//    2026-09-27 这里是四件（画线夹在指标与图表设置之间，16 Pro 只剩 1.2pt、两颗记号命中区叠 10pt）；
+//    09-28 用户定画线和指标并列归到一个大类：行尾那格「指标」改名「分析」，行尾回到三件，
+//    分析面板四节 画线 · 指标 · 对比 · 主力订单流（画线那一行 `indicator.draw`）。
+// 2. **截图**：浅色下青苔 / 陶土 / 经典三套皮肤，各拍「我的」、行情页、分析面板三张（文件名仍叫「指标」），
 //    落到 `docs/acceptance/我的与四格底栏-2026-09-27/<机型>-<页>-<皮肤>.png`。
 //    机型从窗口宽认（402 = iPhone 16 Pro、440 = iPhone 17 Pro Max），同一份用例两台各跑一遍。
 //
@@ -55,7 +58,7 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
 
   // ------------------------------------------------------------ 1. 周期条宽度
 
-  func testIntervalBarFitsSixPlusLatestWithDraw() throws {
+  func testIntervalBarFitsSixPlusLatest() throws {
     XCTAssertTrue(waitForLiveChart(), "图没活")
     // 往回推一段，「最新」出场——这是最挤的那一刻。
     let latest = app.buttons["chart.latest"]
@@ -70,11 +73,9 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
     note("周期条|\(deviceTag)|\(report)")
     let slack = report.split(separator: " ").dropFirst().first.flatMap { Double($0) }
     XCTAssertNotNil(slack, "读不到周期排的余量：\(report)")
-    XCTAssertGreaterThanOrEqual(slack ?? -1, 0, "六档 + 最新 + 行尾四件排不下：\(report)")
-    if deviceTag == "iPhone16Pro" {
-      // 16 Pro 上按预算只剩画线与图表设置之间收到 8pt 这一条退路（`snug`），不该落到 `tight`。
-      XCTAssertFalse(report.contains("tight"), "16 Pro 出厂六档落到了最挤那一档：\(report)")
-    }
+    XCTAssertGreaterThanOrEqual(slack ?? -1, 0, "六档 + 最新 + 行尾三件排不下：\(report)")
+    // 出厂六档在两台上都用不着收格子内距（2pt 原样）：收内距是留给用户钉出特别宽的组合时的退路。
+    XCTAssertTrue(report.contains("内距 2.00"), "出厂六档就开始收格子内距了：\(report)")
 
     // 六档每一颗都在、字没被截（标签是完整的周期名）。
     for raw in ["5m", "30m", "1h", "4h", "1d", "1w"] {
@@ -84,17 +85,20 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
     }
 
     let window = app.windows.firstMatch.frame
-    let draw = app.buttons["interval.draw"], chart = app.buttons["interval.chart"]
+    let chart = app.buttons["interval.chart"]
     let indicators = app.buttons["interval.indicators"], more = app.buttons["interval.more"]
-    XCTAssertTrue(draw.exists, "周期条行尾没有画线")
-    note("行尾|最新 \(latest.frame)|更多 \(more.frame)|指标 \(indicators.frame)|画线 \(draw.frame)|图表设置 \(chart.frame)|窗口 \(window.width)")
-    // 顺序：更多 · 指标 · 画线 · 图表设置。
-    XCTAssertLessThan(more.frame.midX, indicators.frame.midX)
-    XCTAssertLessThan(indicators.frame.midX, draw.frame.midX)
-    XCTAssertLessThan(draw.frame.midX, chart.frame.midX)
+    XCTAssertFalse(app.buttons["interval.draw"].exists, "周期条行尾不该再有画线")
+    note("行尾|最新 \(latest.frame)|更多 \(more.frame)|分析 \(indicators.frame)|图表设置 \(chart.frame)|窗口 \(window.width)")
+    // 顺序：最新 | 更多 · 分析 · 图表设置，命中区两两不叠。
+    XCTAssertLessThanOrEqual(latest.frame.maxX, more.frame.minX + 0.5, "「最新」和「更多」叠了")
+    XCTAssertEqual(indicators.label, "分析", "行尾那格不叫「分析」")
+    XCTAssertLessThanOrEqual(more.frame.maxX, indicators.frame.minX + 0.5, "「更多」和「分析」叠了")
+    XCTAssertLessThanOrEqual(indicators.frame.maxX, chart.frame.minX + 0.5, "「分析」和图表设置叠了")
     // 命中区不小于 44。
-    XCTAssertGreaterThanOrEqual(draw.frame.width, 43.5, "画线的命中区不到 44：\(draw.frame)")
-    XCTAssertGreaterThanOrEqual(draw.frame.height, 43.5, "画线的命中区不到 44：\(draw.frame)")
+    for (name, b) in [("更多", more), ("分析", indicators), ("图表设置", chart)] {
+      XCTAssertGreaterThanOrEqual(b.frame.width, 43.5, "\(name)的命中区不到 44：\(b.frame)")
+      XCTAssertGreaterThanOrEqual(b.frame.height, 43.5, "\(name)的命中区不到 44：\(b.frame)")
+    }
     // 图表设置那颗的右缘不出窗口。
     XCTAssertLessThanOrEqual(chart.frame.maxX, window.maxX + 0.5, "图表设置被挤出屏：\(chart.frame)")
     shot("周期条最挤", "青苔")
@@ -120,11 +124,15 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
       RunLoop.main.run(until: Date().addingTimeInterval(1.0))
       shot("行情", tag)
 
-      // 指标页（周期条行尾「指标」直达）：三节 指标 · 对比 · 主力订单流。
+      // 分析面板（周期条行尾「分析」直达）：四节 画线 · 指标 · 对比 · 主力订单流，画线在最上面。
       app.buttons["interval.indicators"].tap()
-      XCTAssertTrue(app.buttons["indicator.switch.RSI"].waitForExistence(timeout: Self.short), "\(tag)：指标页没开出来")
+      XCTAssertTrue(app.buttons["indicator.switch.RSI"].waitForExistence(timeout: Self.short), "\(tag)：分析面板没开出来")
+      XCTAssertEqual(app.staticTexts["panel.header"].label, "分析", "\(tag)：面板标题不是「分析」")
+      let draw = app.buttons["indicator.draw"]
+      XCTAssertTrue(draw.exists && draw.isEnabled, "\(tag)：分析面板第一节没有能点的「画线」")
+      XCTAssertLessThan(draw.frame.maxY, app.buttons["indicator.switch.RSI"].frame.minY, "\(tag)：「画线」不在指标之上")
       RunLoop.main.run(until: Date().addingTimeInterval(0.8))
-      shot("指标", tag)
+      shot("分析", tag)
       // 往下滚到「对比」与「主力订单流」两节，再拍一张下半页。
       let orderFlow = app.buttons["indicator.switch.ORDERFLOW"]
       let window = app.windows.firstMatch
@@ -133,10 +141,10 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
           .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62)))
       }
-      XCTAssertTrue(app.buttons["compare.add"].exists, "\(tag)：指标页没有「对比」节")
-      XCTAssertTrue(orderFlow.exists, "\(tag)：指标页没有「主力订单流」节")
+      XCTAssertTrue(app.buttons["compare.add"].exists, "\(tag)：分析面板没有「对比」节")
+      XCTAssertTrue(orderFlow.exists, "\(tag)：分析面板没有「主力订单流」节")
       RunLoop.main.run(until: Date().addingTimeInterval(0.6))
-      shot("指标下半", tag)
+      shot("分析下半", tag)
       dismissSheet(until: app.buttons["indicator.switch.RSI"])
     }
   }

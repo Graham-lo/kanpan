@@ -75,7 +75,7 @@ final class IndicatorLayoutGroupsEvidenceUITests: KanpanUICase {
   }
 
   private func toggle(_ raw: String) {
-    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
     let button = app.buttons[Ids.indicatorSwitch(raw)]
     expectExists(button, Self.short, "指标页里没有 \(raw) 的开关")
     scrollPanel(to: button)

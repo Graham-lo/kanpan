@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 import KanpanCore
 
-/// 「指标」页：周期条行尾「指标」直达（`Panel.indicators`），半屏面板里的一整页。
+/// 「分析」面板：周期条行尾「分析」直达（`Panel.indicators`），半屏面板里的一整页。
+/// 四节：**画线 · 指标 · 对比 · 主力订单流**（2026-09-28 起；之前这一页和行尾那格都叫「指标」）。
 ///
 /// 2026-09-18 指标并进「图表设置」时，是十三个开关连同每个开着的指标底下那块「参数与颜色」
 /// 一股脑铺在那一页上的——再往下还有一段「副图顺序」。开得越多，这一页越长，坐标轴、
@@ -19,6 +20,11 @@ import KanpanCore
 /// 「图表设置」里那一行「指标」同一天撤了，这一页从此只有周期条这一条路进来，没有上一层可回，
 /// 左上角那颗就是关面板。
 ///
+/// 2026-09-28 画线和指标并列归到一个大类「分析」（用户：「周期条中的画线和指标能不能归到一个大类，
+/// 只放三个，更多，原来是指标，设置，不然布局会有问题」）：周期条行尾四件挤得命中区互相叠，
+/// 画线那颗记号挪进这一页、排在最上面单成一节，行尾回到「更多 ▾ · 分析 · 图表设置」三件，
+/// 这一页的标题跟着行尾改叫「分析」，「指标」只作第二节的节名。
+///
 /// 参数编辑那层 sheet 和面板提示仍挂在这一层自己身上。
 struct IndicatorPage: View {
   var store: PrefsStore
@@ -30,6 +36,11 @@ struct IndicatorPage: View {
   var onAddCompare: (() -> Void)? = nil
   /// 对比品种键 → 显示名（主界面按品种表算好递进来，这儿不查表）。
   var compareNames: [String: String] = [:]
+  /// 「画线」：关面板、把这张图横过来进画线工作台。复盘回放、已经在画时调用方传 nil，
+  /// 「画线」这一节整节不排（和对比那节同一个判法）。
+  var onDraw: (() -> Void)? = nil
+  /// 对比期间画不了线：那一行置灰、点不动（原来周期条那颗记号的 `drawEnabled`）。
+  var drawEnabled = true
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -43,13 +54,18 @@ struct IndicatorPage: View {
   private static let overlayPalette = IndicatorID.mainPalette.filter { $0 != .orderFlow }
 
   var body: some View {
-    PanelSheet(title: "指标", subtitle: nil) {
-      if !prefs.overlays.isEmpty || !prefs.subs.isEmpty {
-        PanelGroupTitle(text: "正在用")
+    PanelSheet(title: Panel.indicators.title, subtitle: nil) {
+      drawSection
+
+      // 「指标」这一节：节名压在开着的那几项上（原来这里叫「正在用」），下面是两段开关。
+      // 一项都没开时不让两行节名叠在一起，节名并进第一段的标题里。
+      let inUse = !prefs.overlays.isEmpty || !prefs.subs.isEmpty
+      if inUse {
+        PanelGroupTitle(text: "指标")
         InUseList(store: store, onEdit: { editing = $0 })
       }
 
-      PanelGroupTitle(text: "主图叠加")
+      PanelGroupTitle(text: inUse ? "主图叠加" : "指标 · 主图叠加")
       ForEach(Self.overlayPalette, id: \.self) { id in
         row(id, last: id == Self.overlayPalette.last)
       }
@@ -79,6 +95,24 @@ struct IndicatorPage: View {
       } else {
         IndicatorEditor(store: store, id: id).environment(\.panelTheme, t)
       }
+    }
+  }
+
+  /// 画线：一行，行尾是原来周期条上那颗 24pt 记号（`IntervalDrawGlyph`）。点它先收面板，
+  /// 再做原来周期条上那颗做的事（`MainScreen.startDrawing`：横屏进画线工作台，画完自动转回）。
+  /// 横屏侧栏里开的这一页（`sideDismiss` 那条路）不排——侧栏在，要么已经在画，要么手边就有
+  /// `ToolRail` 那一格「画线」。
+  @ViewBuilder private var drawSection: some View {
+    if let onDraw, sideDismiss == nil {
+      PanelGroupTitle(text: "画线")
+      // 行名不重复「画线」：分组标题已经念过一遍（2026-09-24 审查 U4，和主力订单流那节同一条规矩）。
+      PanelRow(name: "开始画线", divider: false, onTap: { close(); onDraw() }) {
+        IntervalDrawGlyph(theme: t, size: 24)
+          .opacity(drawEnabled ? 1 : ControlMetrics.disabledOpacity)
+          .accessibilityHidden(true)
+      }
+      .disabled(!drawEnabled)
+      .accessibilityIdentifier("indicator.draw")
     }
   }
 

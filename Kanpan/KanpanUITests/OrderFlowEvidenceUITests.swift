@@ -59,7 +59,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
 
   /// 图表面板 → 指标 → 打开「主力订单流」→ 收面板。
   private func turnOnOrderFlow() {
-    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
     let toggle = app.buttons[Ids.indicatorSwitch("ORDERFLOW")]
     expectExists(toggle, Self.short, "指标页里没有「主力订单流」一节")
     toggle.tap()
@@ -350,7 +350,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
 
   /// 周期条「指标」→ 指标页「主力订单流」一节里的「门槛」行 → 参数表（2026-09-27 起不在「正在用」里）。
   private func openOrderFlowEditor() {
-    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
     let edit = app.buttons["indicator.edit.ORDERFLOW"].firstMatch
     expectExists(edit, Self.short, "「主力订单流」一节里没有「门槛」那一行")
     edit.tap()

@@ -165,7 +165,7 @@ import XCTest
     // **600ms 内再入。** 上一程的方向锁这时多半还在释放路上；新锁必须压得住它，
     // 不然用户刚横过来屏幕自己就转回去了。
     Thread.sleep(forTimeInterval: 0.4)
-    XCTAssertTrue(app.tapDrawEntry(), "没点到周期条行尾的「画线」")
+    XCTAssertTrue(app.tapDrawEntry(), "没点到分析面板里的「画线」")
     XCTAssertTrue(wait(seconds: 10) { self.isLandscape() }, "600ms 内再入没横过来")
     // 横着待满一秒半：旧锁的释放要是会动新锁，这一秒半里它就会自己转回去。
     let deadline = Date().addingTimeInterval(1.5)

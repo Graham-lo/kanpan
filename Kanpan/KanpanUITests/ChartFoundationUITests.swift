@@ -476,9 +476,10 @@ final class ChartFoundationUITests: XCTestCase {
     row.tap()
     XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "binance/usd_m/SNDKUSDT" })
     XCTAssertTrue(app.buttons["interval.chart"].exists)
-    // 「画线」2026-09-18 起是标签栏最左那一格；2026-09-27 底栏四格后搬到周期条行尾——
-    // 从自选页点进来的行情页上也该在。
-    XCTAssertTrue(app.buttons[Ids.intervalDraw].exists)
+    // 「画线」2026-09-18 起是标签栏最左那一格；2026-09-27 底栏四格后搬到周期条行尾，09-28 归进
+    // 「分析」面板第一节——从自选页点进来的行情页上，行尾是「分析」这个大类入口。
+    XCTAssertTrue(app.buttons[Ids.intervalIndicators].exists)
+    XCTAssertFalse(app.buttons["interval.draw"].exists, "周期条行尾不该再有「画线」")
     XCTAssertFalse(app.buttons["bottom.draw"].exists, "底栏不该再有「画线」那一格")
   }
 
@@ -520,7 +521,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(app.buttons["favorites.more"].exists, "普通前后台切换不重置首页")
   }
 
-  /// 底栏四格轮一圈（外加周期条行尾的「画线」），报价还在跳。
+  /// 底栏四格轮一圈（外加分析面板里的「画线」），报价还在跳。
   ///
   /// 2026-09-27 底栏四格：画线搬到周期条行尾（只在行情页），「设置」那一格换成「我的」，
   /// 设置从「我的」推进去。下面是 2026-09-18 五格时的原话，路线照着换了。
@@ -543,16 +544,19 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15), "有自选时冷启动该停在自选页")
     XCTAssertTrue(wait(seconds: 30) { price.exists && price.label != "—" }, "自选页第一轮报价没来")
 
-    // ① 图表 → 画线：画线入口在行情页周期条行尾，自选页上没有；对着这张图直接开画，
-    // 点完横过去（横屏就是画线的工作台）。
-    XCTAssertFalse(app.buttons[Ids.intervalDraw].exists, "自选页上不该有周期条的「画线」")
+    // ① 图表 → 分析 → 画线：画线入口是分析面板第一节（09-28 从周期条行尾归进来），自选页上
+    // 没有周期条；对着这张图直接开画，点完横过去（横屏就是画线的工作台）。
+    XCTAssertFalse(app.buttons[Ids.intervalIndicators].exists, "自选页上不该有周期条的「分析」")
     app.buttons["bottom.chart"].tap()
-    let draw = app.buttons[Ids.intervalDraw]
-    XCTAssertTrue(draw.waitForExistence(timeout: 20), "行情页周期条行尾没有「画线」")
+    let indicators = app.buttons[Ids.intervalIndicators]
+    XCTAssertTrue(indicators.waitForExistence(timeout: 20), "行情页周期条行尾没有「分析」")
+    indicators.tap()
+    let draw = app.buttons[Ids.indicatorDraw]
+    XCTAssertTrue(draw.waitForExistence(timeout: 10), "分析面板第一节没有「画线」")
     draw.tap()
     // 画线进行中横屏侧栏整条收起，出口是画线栏上的「完成」，点完自动转回竖屏。
     let finish = app.buttons["draw.finish"]
-    XCTAssertTrue(finish.waitForExistence(timeout: 25), "点周期条「画线」没进画线态")
+    XCTAssertTrue(finish.waitForExistence(timeout: 25), "点分析面板「画线」没进画线态")
     XCTAssertFalse(app.buttons["land.exit"].exists, "画线进行中横屏侧栏还在")
     finish.tap()
 

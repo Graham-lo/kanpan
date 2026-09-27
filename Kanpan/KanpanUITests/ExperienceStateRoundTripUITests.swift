@@ -406,7 +406,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
                   "点一下图，十字线没收掉")
     var drawBaseline = baseline
     drawBaseline.crosshair = false
-    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")
     let landscapeSymbol = app.descendants(matching: .any)
       .matching(identifier: Ids.landscapeSymbol).firstMatch
     expectExists(landscapeSymbol, Self.long, "点「画线」没横过去")
@@ -453,7 +453,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     let dropped = bornSubs[0]
 
     // 2026-09-27：指标页只从周期条行尾「指标」开（图表设置里那一行撤了）。
-    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
     let header = app.staticTexts[Ids.panelHeader]
     expectExists(header, Self.short, "指标页面板没开出来")
     let toggle = app.buttons[Ids.indicatorSwitch(dropped)]

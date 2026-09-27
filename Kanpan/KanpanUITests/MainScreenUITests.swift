@@ -326,7 +326,7 @@ final class MainScreenUITests: KanpanUICase {
   /// （用户：「行情页面的指标放到图表里作为一个子栏目」）。2026-09-24 周期条行尾多了「指标」，
   /// 2026-09-27 起指标页**只**从那颗开（图表设置里那一行撤了），页里三节：指标 · 对比 · 主力订单流。
   func testIndicatorPanelOpensAndCloses() {
-    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
     expectExists(macd, Self.short, "指标页里没有副图那几栏")
     expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标页里没有主图叠加")
@@ -368,7 +368,8 @@ final class MainScreenUITests: KanpanUICase {
   // ---------------------------------------------------------------- 画线
 
   /// 画线按钮：点「画线」直接横过去，转回竖屏画线栏还在，「完成」退出；
-  /// 退出后还能再进一次，再点一次「画线」把它收掉。
+  /// 退出后还能再进一次。画线进行中「分析」面板里不排「画线」那一节（2026-09-28 起入口在面板里，
+  /// 原来周期条那颗记号能再点一下收掉，现在退出只走「完成」这一处）。
   ///
   /// 第三批最后一版把独立的「横屏」撤了——画线本来就要更大的地方，所以点「画线」
   /// 就横屏。`enterDrawingInPortrait()` 走的是「横过去再用手把机器转回来」，
@@ -384,8 +385,8 @@ final class MainScreenUITests: KanpanUICase {
 
     XCTAssertTrue(app.enterDrawingInPortrait(), "第二次进画线态失败")
     expectExists(trend, Self.short, "第二次进画线态失败")
-    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")
-    expectGone(trend, Self.short, "再点一次「画线」没退出画线态")
+    app.buttons[Ids.drawFinish].tap()
+    expectGone(trend, Self.short, "第二次点「完成」没退出画线态")
   }
 
   /// 画线横屏是一张**原始 K 线**：副图和主图均线全不画。
@@ -402,7 +403,7 @@ final class MainScreenUITests: KanpanUICase {
     XCTAssertFalse(subsBefore.isEmpty, "竖屏默认就该有副图，否则这条用例验不到东西")
     XCTAssertFalse(overlaysBefore.isEmpty, "竖屏默认就该有均线，否则这条用例验不到东西")
 
-    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")
     // 横屏那行品种名早就不是按钮了——竖屏的品种名不再开换品种弹层之后，横屏这一行
     // 跟着退回纯图例（`LandscapeHeadline` 只有 `accessibilityElement(children: .combine)`，
     // 没有 `.isButton`）。用例还按 `app.buttons` 找它，于是 iPhone、iPad 一台不落地
@@ -433,7 +434,7 @@ final class MainScreenUITests: KanpanUICase {
     func shot(_ name: String) {
       let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
     }
-    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")
     let symbol = app.descendants(matching: .any).matching(identifier: Ids.landscapeSymbol).firstMatch
     expectExists(symbol, Self.long, "点「画线」没横过去")
     XCTAssertTrue(symbol.label.contains("BTC") && symbol.label.contains("/USDT") && !symbol.label.contains("BTCUSDT"),
