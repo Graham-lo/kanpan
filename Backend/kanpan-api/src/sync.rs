@@ -131,7 +131,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "orderFlowOverrides",
  "orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled",
  // 条件提醒（docs/条件提醒-协议-2026-09-27.md 第 6 节）：设置 › 通知里「品种上新与下架」开关。
- // 服务端 `listing_watch.rs` 读它；见下面的 SERVER_AHEAD_SETTINGS_FIELDS。
+ // 服务端 `listing_watch.rs` 读它；2026-09-27 客户端已生成进契约（原先挂在 SERVER_AHEAD_SETTINGS_FIELDS 里）。
  "notifyListingChanges",
 ];
 /// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
@@ -139,7 +139,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
 /// 服务端总是先于客户端部署，所以一个新设置在一段时间里只在这边有。对账测试把契约
 /// ∪ 这张表当成「客户端会发的」；客户端把它生成进契约之后，这里那一项就是冗余的，
 /// 删掉即可（留着也不会让测试变红）。这里只能放**已经在 SETTINGS_FIELDS 里、并且有值规则**的名字。
-pub const SERVER_AHEAD_SETTINGS_FIELDS:&[&str]=&["notifyListingChanges"];
+pub const SERVER_AHEAD_SETTINGS_FIELDS:&[&str]=&[];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
 pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
