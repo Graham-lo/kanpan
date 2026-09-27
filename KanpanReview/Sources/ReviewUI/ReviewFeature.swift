@@ -294,8 +294,14 @@ import ReviewData
   /// （冷启动先装访客那份，登录后换账号那份）。以前这儿自己在 `local/` 开一份档案，
   /// 那是账号化之前的老位置，只剩迁移还读它（`ReviewPaths.legacy`）——每次冷启动
   /// 白读一遍、白建一个目录。
-  public init() {}
+  /// 复盘本「交易」这一半（自动复盘 3c）。和观点共用一份账号档案目录与通道。
+  public let trades = TradeReviewFeature()
+
+  public init() {
+    trades.onNotice = { [weak self] text in self?.notice = text }
+  }
   public func activate(store: ReviewStore, client: ScorebookClient?) {
+    trades.activate(directory: store.paths.directory, client: client)
     syncTask?.cancel(); cancelSearch(); epoch = UUID(); syncID = UUID(); clearBookSearch()
     attachmentCache = [:]; attachmentOrder = []
     self.store = store; self.client = client; store.cloudCache = client != nil

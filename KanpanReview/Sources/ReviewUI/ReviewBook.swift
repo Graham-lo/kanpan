@@ -13,6 +13,41 @@ public struct ReviewBook: View {
     let sections = feature.bookSections
     NavigationStack {
       VStack(spacing: 0) {
+        // 「观点 · 交易」（自动复盘 3c）：交易那一面是交易所成交自动拼出来的回合。
+        ReviewSegment(options: [("观点", TradeReviewFeature.Segment.views), ("交易", .trades)],
+                      selection: Bindable(feature.trades).segment, id: "review.segment")
+          .reviewPageInset().padding(.top, ReviewSpace.xs)
+        if feature.trades.segment == .trades {
+          TradeBookList(feature: feature)
+        } else {
+          viewsBody(sections)
+        }
+      }
+      // iPad 满屏时这一列封顶居中，不然筛选摊成 1300pt、行里的胜率被甩到一米外。
+      .readableColumn()
+      .background(t.app)
+      .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
+      .toolbar { toolbar }
+      // 「已记下 · 查看」、图上点记号都先把 id 放进 `selectedRecord` 再开复盘本（§2F2），
+      // 这一行负责把它翻到那条上。列表里正常点进去走的还是 `NavigationLink`，
+      // 两条路互不干扰；退回列表时把 id 清掉，免得下次开复盘本又自己弹进去。
+      .navigationDestination(isPresented: $savedOpen) { ReviewSavedMatchesView(feature: feature) }
+      .navigationDestination(item: $feature.selectedRecord) { id in
+        ReviewRecordView(feature: feature, id: id)
+      }
+      .refreshable {
+        if feature.trades.segment == .trades { feature.trades.onPull(); await feature.trades.synchronize(); return }
+        feature.synchronize(manual: true); await feature.loadHistory(query: feature.bookQuery)
+      }
+      // 搜索词落定后的重拉在 feature 里（`commitBookQuery`），这儿只管换筛选。
+      .task(id: feature.tab) { await feature.loadHistory(query: feature.bookQuery) }
+      // 复盘本一打开就去交易所拉一次（宿主自己按 5 分钟节流）。
+      .task { feature.trades.onPull() }
+    }
+    .tint(t.accent)
+  }
+  @ViewBuilder private func viewsBody(_ sections: ReviewBookSections) -> some View {
+      VStack(spacing: 0) {
         // 顶部：战绩摘要卡 + 三颗筛选（审计 §2.4）。原来是「待办 / 记录 / 战绩」三段
         // 分段控件：战绩是和记录并列的第三页，人要先切过去才知道自己打得怎么样。
         // 现在战绩浓缩成一张摘要卡常驻顶上，点开才是完整的分组战绩；下面的列表只剩
@@ -63,11 +98,8 @@ public struct ReviewBook: View {
         // 字落在 feature 上，停手约 200ms 才落定成 `bookQuery`：本地过滤和服务端搜索都认那个。
         .searchable(text: $feature.bookSearchText, prompt: "搜品种或笔记")
       }
-      // iPad 满屏时这一列封顶居中，不然筛选摊成 1300pt、行里的胜率被甩到一米外。
-      .readableColumn()
-      .background(t.app)
-      .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
-      .toolbar {
+  }
+  @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         // 左上角是系统关闭钮，和提醒总表同一套（UI 整改 P1b / P3）：复盘本是整屏盖上来的，
         // 关掉回到图上；推进去的战绩、记录详情、已存案例走系统返回。标识沿用 `review.back`。
         ToolbarItem(placement: .topBarLeading) {
@@ -86,19 +118,6 @@ public struct ReviewBook: View {
             .accessibilityLabel("更多")
             .accessibilityIdentifier("review.menu")
         }
-      }
-      // 「已记下 · 查看」、图上点记号都先把 id 放进 `selectedRecord` 再开复盘本（§2F2），
-      // 这一行负责把它翻到那条上。列表里正常点进去走的还是 `NavigationLink`，
-      // 两条路互不干扰；退回列表时把 id 清掉，免得下次开复盘本又自己弹进去。
-      .navigationDestination(isPresented: $savedOpen) { ReviewSavedMatchesView(feature: feature) }
-      .navigationDestination(item: $feature.selectedRecord) { id in
-        ReviewRecordView(feature: feature, id: id)
-      }
-      .refreshable { feature.synchronize(manual: true); await feature.loadHistory(query: feature.bookQuery) }
-      // 搜索词落定后的重拉在 feature 里（`commitBookQuery`），这儿只管换筛选。
-      .task(id: feature.tab) { await feature.loadHistory(query: feature.bookQuery) }
-    }
-    .tint(t.accent)
   }
   /// 战绩摘要卡。数字是本机这份记录现算的（离线也有）；点开是服务端算的分组战绩。
   private var summary: some View {
@@ -174,6 +193,17 @@ struct ReviewStatisticsView: View {
   @Bindable var feature: ReviewFeature
   @Environment(\.reviewTheme) private var t
   var body: some View {
+    VStack(spacing: 0) {
+      ReviewSegment(options: [("观点", TradeReviewFeature.Segment.views), ("交易", .trades)],
+                    selection: Bindable(feature.trades).segment, id: "review.stats.segment")
+        .reviewPageInset().padding(.top, ReviewSpace.xs)
+      if feature.trades.segment == .trades { TradeStatisticsList(feature: feature) } else { viewsList }
+    }
+    .background(t.app)
+    .readableColumn()
+    .navigationTitle("战绩").navigationBarTitleDisplayMode(.inline)
+  }
+  private var viewsList: some View {
     List {
       if !feature.isConnected {
         // 没登录不是「出错」，是这一页还没轮到它：一句话 + 一颗「登录」，不给「重试」——
@@ -206,8 +236,6 @@ struct ReviewStatisticsView: View {
     .listStyle(.plain)
     .scrollContentBackground(.hidden)
     .background(t.app)
-    .readableColumn()
-    .navigationTitle("战绩").navigationBarTitleDisplayMode(.inline)
     .task { await feature.loadStatistics() }
   }
 }
@@ -338,6 +366,7 @@ public struct ReviewRecordView: View {
                 .listRowInsets(EdgeInsets(top: ReviewSpace.s, leading: ReviewSpace.m, bottom: ReviewSpace.s, trailing: ReviewSpace.m))
             }.listRowBackground(t.raised)
           }
+          TradeLinksSection(feature: feature, record: record)
           if feature.isConnected { ReviewAttachmentsSection(feature: feature, record: record) }
           ReviewSection("市场的答案") { Text(record.outcome.title).font(ReviewType.bodyEmph).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(ReviewType.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)

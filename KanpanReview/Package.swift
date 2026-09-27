@@ -12,10 +12,12 @@ let package = Package(name: "KanpanReview", platforms: [.iOS(.v26), .macOS(.v14)
   // ReviewData 认 KanpanAccount 只为一件事：app 里复盘走的是账号那条带 token 的通道，
   // 失败抛的是 `AccountError`，队列要按它的状态码决定「留着重发 / 摘出来裁决」
   // （`AccountError: ReviewFailureStatus`，见 ScorebookClient.swift）。KanpanAccount 是
-  // 零依赖的叶子包，不会把别的东西带进来。
+  // 零依赖的叶子包，不会把别的东西带进来。ReviewData 直接认 KanpanCore 是为了交易复盘：
+  // 上传的回合（`TradeRound`）与它的十进制口径就住在 KanpanCore 的 Trades 里。
   dependencies: [.package(path: "../KanpanCore"), .package(path: "../KanpanAccount")],
   targets: [.target(name: "ReviewDomain", dependencies: [.product(name: "KanpanCore", package: "KanpanCore")], swiftSettings: strict),
-    .target(name: "ReviewData", dependencies: ["ReviewDomain", .product(name: "KanpanAccount", package: "KanpanAccount")], swiftSettings: strict),
+    .target(name: "ReviewData", dependencies: ["ReviewDomain", .product(name: "KanpanAccount", package: "KanpanAccount"),
+                                             .product(name: "KanpanCore", package: "KanpanCore")], swiftSettings: strict),
     .target(name: "ReviewUI", dependencies: ["ReviewDomain", "ReviewData",
                                              .product(name: "KanpanCore", package: "KanpanCore")], swiftSettings: strict),
     // 三个测试目标分三层，和报告 B.5 的客户端那张表一一对上：
@@ -24,6 +26,7 @@ let package = Package(name: "KanpanReview", platforms: [.iOS(.v26), .macOS(.v14)
     // 存在的修饰符，macOS 上编不过，所以整包跑法是
     // `xcodebuild test -scheme KanpanReview -destination 'platform=iOS Simulator,…'`。
     .testTarget(name: "ReviewDomainTests", dependencies: ["ReviewDomain", "ReviewData"], swiftSettings: strict),
-    .testTarget(name: "ReviewDataTests", dependencies: ["ReviewDomain", "ReviewData"], swiftSettings: strict),
+    .testTarget(name: "ReviewDataTests", dependencies: ["ReviewDomain", "ReviewData", .product(name: "KanpanCore", package: "KanpanCore"),
+                                                        .product(name: "KanpanAccount", package: "KanpanAccount")], swiftSettings: strict),
     .testTarget(name: "ReviewUITests", dependencies: ["ReviewDomain", "ReviewData", "ReviewUI",
                                                       .product(name: "KanpanAccount", package: "KanpanAccount")], swiftSettings: strict)])
