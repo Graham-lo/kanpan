@@ -114,6 +114,12 @@ struct Prefs: Sendable, Equatable {
   /// 设置 › 通知「品种上新与停牌下架」，出厂关，随账号同步。服务端 `listing_watch.rs` 读它推送；
   /// 没有 APNs 密钥时 app 在前台 / 每次同步去拉 `/v1/alerts/listing-notices` 当本地通知出（`ListingNotices`）。
   var notifyListingChanges: Bool = false
+  /// 设置 › 通用「按我的习惯自动调整」，出厂开，随账号同步。关掉：学到的全清、不再记。
+  /// 规则与日志都在 `Habits/`，这里只是开关。
+  var habitLearning: Bool = true
+  /// 按习惯学到的结论（`LearnedDefaults`：每只的开图周期、每类的价格轴、板块窗口、波动提醒灵敏度），
+  /// 整份一个键随账号同步（≤ 16 KB）；行为日志只在本机，不上传。
+  var learnedDefaults: LearnedDefaults = .empty
 
   // ---------------------------------------------------------------- 指标
   /// 主图叠加，按打开先后排。默认 `[.ma]`。

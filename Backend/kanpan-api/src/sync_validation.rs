@@ -80,6 +80,31 @@ fn order_flow_overrides(v:&Value)->bool {
  }))
 }
 fn one_of(v:&Value,all:&[&str])->bool {v.as_str().is_some_and(|s|all.contains(&s))}
+/// 「按我的习惯自动调整」学到的结论（客户端 `LearnedDefaults`，Kanpan/Kanpan/Habits/LearnedDefaults.swift）：
+/// `{ intervals?: {品种: 条}, priceAxis?: {类别: 条}, sectorWindow?: {市场: 条}, watchMove?: {品种: 条} }`，
+/// 每条 `{ v, n, at }`——v 是学到的值、n 依据几次（非负整数）、at 最近一次的秒级时刻。
+/// 整份序列化 ≤ 16 KB（客户端 `LearnedDefaults.maxBytes`，写之前按最旧的先丢裁到这以内）。
+/// 值的规则和客户端 `LearnedDefaults.sanitized()` 逐项对齐：周期同 `interval`，价格轴只有
+/// 线性 / 对数（百分比不学），板块只有今日 / 5 日，灵敏度系数 0.5…2。
+const LEARNED_DEFAULTS_MAX_BYTES:usize=16_384;
+const LEARNED_KEY_MAX_LEN:usize=128;
+fn learned_defaults(v:&Value)->bool {
+ fn entry(e:&Value,value:&dyn Fn(&Value)->bool)->bool {
+  e.as_object().is_some_and(|o|o.len()==3&&o.contains_key("v")&&o.contains_key("n")&&o.contains_key("at"))
+   &&value(&e["v"])&&e["n"].as_u64().is_some()&&number(&e["at"],0.0,9e15)
+ }
+ fn table(t:&Value,key:&dyn Fn(&str)->bool,value:&dyn Fn(&Value)->bool)->bool {
+  t.as_object().is_some_and(|m|m.iter().all(|(k,e)|!k.is_empty()&&k.len()<=LEARNED_KEY_MAX_LEN&&key(k)&&entry(e,value)))
+ }
+ serde_json::to_string(v).is_ok_and(|s|s.len()<=LEARNED_DEFAULTS_MAX_BYTES)
+ && v.as_object().is_some_and(|o|o.iter().all(|(k,t)|match k.as_str() {
+  "intervals"=>table(t,&|_|true,&|v|v.as_str().is_some_and(is_synced_interval)),
+  "priceAxis"=>table(t,&|k|["crypto","equity","metal","index","other"].contains(&k),&|v|one_of(v,&["linear","log"])),
+  "sectorWindow"=>table(t,&|k|["crypto","us"].contains(&k),&|v|one_of(v,&["today","d5"])),
+  "watchMove"=>table(t,&|_|true,&|v|number(v,0.5,2.0)),
+  _=>false,
+ }))
+}
 fn symbol(v:&Value)->bool {
  v.as_str().is_some_and(|s|coinbase_symbol(s)||binance_symbol(s))
 }
@@ -182,6 +207,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "reviewSearchScope"=>one_of(v,&["history","private"]),
    "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
    "orderFlowOverrides"=>order_flow_overrides(v),
+   "learnedDefaults"=>learned_defaults(v),
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
    // A tab label on the drawing panel, not an enum with any server meaning; the client
@@ -196,7 +222,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "redUp"|"depth"|"orderFlow"|"compactValues"
     |"mainInverted"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
     // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
-    |"notifyListingChanges"=>v.is_boolean(),
+    |"notifyListingChanges"
+    // 设置 › 通用「按我的习惯自动调整」。
+    |"habitLearning"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),_=>false
   }
  }

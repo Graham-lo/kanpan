@@ -103,6 +103,8 @@ enum PrefsFieldPlan {
     // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）。
     // 六合四之前的 `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 在服务端 RETIRED_SETTINGS_FIELDS 里退役。
     "orderFlowOverrides": .synced,
+    // 「按我的习惯自动调整」：开关 + 学到的结论（整份一个对象，≤ 16 KB）。行为日志只在本机。
+    "habitLearning": .synced, "learnedDefaults": .synced,
 
     // 2026-09-28「收设置项」收掉的字段不在这张表里了，线上在服务端 `RETIRED_SETTINGS_FIELDS` 退役
     // （老客户端发上来丢掉并在 droppedFields 报回，库里老 body 下次合并时洗掉）。逐项清单与恢复办法见

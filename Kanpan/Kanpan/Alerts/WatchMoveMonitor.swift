@@ -23,6 +23,8 @@ import Observation
 @MainActor
 final class WatchMoveMonitor {
   var onEvent: ((WatchMove.Event) -> Void)?
+  /// 按品种的灵敏度倍数（「按我的习惯自动调整」学到的，`Habits.watchMoveFactor`）；没接就是 1。
+  var sensitivity: (@MainActor (String) -> Double)?
 
   private(set) var enabled = false
   private(set) var favorites: Set<String> = []
@@ -92,7 +94,8 @@ final class WatchMoveMonitor {
     guard favorites.contains(key) else { return }
     let stamp = timeMs > 0 ? timeMs : Int64(Date().timeIntervalSince1970 * 1000)
     let open = stamp - stamp % WatchMove.barMs
-    if let event = tracker.observe(symbol: key, barOpen: open, price: price, closed: closed) {
+    if let event = tracker.observe(symbol: key, barOpen: open, price: price, closed: closed,
+                                   sensitivity: sensitivity?(key) ?? 1) {
       onEvent?(event)
     }
   }

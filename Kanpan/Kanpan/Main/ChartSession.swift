@@ -57,6 +57,12 @@ final class ChartSession {
     market.switchTo(symbol: symbol)
   }
 
+  /// 换品种并同时换周期（按习惯开图时一步到位，不先按旧周期拉一遍再换）。
+  func show(symbol: String, interval: Interval) {
+    readout.clear()
+    market.switchTo(symbol: symbol, interval: interval)
+  }
+
   /// 换周期。十字线同理。
   func show(interval: Interval) {
     readout.clear()

@@ -2244,7 +2244,7 @@ mod tests {
  #[test] fn a_failed_read_keeps_last_rounds_movers_and_live_symbols() {
   let mut last=LastGood::default();
   let owner=Uuid::from_u128(7);
-  let mover=crate::watch_move::Mover{owner,symbols:["BTCUSDT".to_string()].into()};
+  let mover=crate::watch_move::Mover{owner,symbols:["BTCUSDT".to_string()].into(),factors:Default::default()};
   assert_eq!(last.mover(BINANCE,owner,Ok::<_,()>(Some(mover.clone()))),Some(mover.clone()));
   assert_eq!(last.mover(BINANCE,owner,Err("db hiccup")),Some(mover.clone()),"出错沿用上一轮");
   assert_eq!(last.mover(COINBASE,owner,Err("db hiccup")),None,"另一家交易所没有上一轮就是没有");

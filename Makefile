@@ -25,7 +25,7 @@ DEVICE ?= iPhone 16 Pro
 
 .PHONY: help doctor venue-isolation core-test presentation-test network-test data-test chart-build chart-test \
 	symbols-test settings-test sector-test scan-test alerts-test exchange-test diag-test deeplink-test account-codec-test \
-	diag-ios-test main-ios-test app-logic-test sync-contract backend-test account-test review-test test \
+	diag-ios-test main-ios-test app-logic-test habits-test sync-contract backend-test account-test review-test test \
 	test-release core-test-release presentation-test-release network-test-release data-test-release account-test-release \
 	app-logic-test-release chart-test-release main-ios-test-release review-test-release diag-ios-test-release \
 	strict evidence fixtures feed app-test ui-test ui-test-one build device-release install-release \
@@ -181,6 +181,10 @@ settings-test:
 # 和品种列表的值与文案（`SectorRows`：小数位听品种表的、缺数不许伪排序）。
 sector-test:
 	$(call app_test,Sector)
+
+# 「按我的习惯自动调整」（`Kanpan/Kanpan/Habits/`）：四条规则的推断、日志的保留与合并、结论表的容错与 16 KB 上限。
+habits-test:
+	$(call app_test,Habits)
 
 # 连续扫图的纯算术（§10.1）：冻结下来的那张名单怎么走一只（`ScanList`）。
 scan-test:

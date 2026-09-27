@@ -69,6 +69,7 @@ struct ChartPanel: View {
   var sendBlocked: String? = nil
 
   @Environment(\.panelTheme) private var t
+  @Environment(\.habits) private var habits
   @Environment(\.dismiss) private var dismiss
   /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
   @Environment(\.panelDismiss) private var sideDismiss
@@ -136,8 +137,12 @@ struct ChartPanel: View {
 
       PanelGroupTitle(text: "价格轴")
       PanelRow(name: "刻度", divider: false) {
-        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode,
-                     id: "chart.priceMode") { v in store.updateByHand { $0.priceMode = v } }
+        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: habits?.effectivePriceMode(prefs) ?? prefs.priceMode,
+                     id: "chart.priceMode") { v in
+          // 手动换的这一档先记成这一类品种的一笔（按习惯时它立刻生效），再照旧写进设置。
+          habits?.notePriceAxisPicked(v)
+          store.updateByHand { $0.priceMode = v }
+        }
       }
     }
   }

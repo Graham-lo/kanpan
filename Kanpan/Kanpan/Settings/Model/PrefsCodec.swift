@@ -71,6 +71,7 @@ enum PrefsCodec {
     p.portraitHeight = Prefs.clampPortraitHeight(p.portraitHeight)
     p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
+    p.learnedDefaults = p.learnedDefaults.sanitized()
     return p
   }
 
@@ -152,6 +153,8 @@ extension Prefs: Codable {
     // `watchMoveThreshold` 2026-09-28 收掉（收设置项 E 组），老档读时忽略。
     case watchMoveAlert
     case notifyListingChanges
+    // 「按我的习惯自动调整」（2026-09-28）：开关 + 学到的结论（整份一个对象）。
+    case habitLearning, learnedDefaults
   }
 
   func encode(to encoder: Encoder) throws {
@@ -194,6 +197,8 @@ extension Prefs: Codable {
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
     try c.encode(notifyListingChanges, forKey: .notifyListingChanges)
+    try c.encode(habitLearning, forKey: .habitLearning)
+    try c.encode(learnedDefaults, forKey: .learnedDefaults)
   }
 
   /// 一组指标布局的六个键。顶层（共用的那份）和 `indicatorLayouts/<组>` 里写法一样。
@@ -347,6 +352,9 @@ extension Prefs: Codable {
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }
     if let v = bool(.notifyListingChanges) { notifyListingChanges = v }
+    if let v = bool(.habitLearning) { habitLearning = v }
+    // 结论表自己宽容解码（坏的那一条丢掉、别的留着），整份读不出就当没学到。
+    if let v = (try? c.decodeIfPresent(LearnedDefaults.self, forKey: .learnedDefaults)) ?? nil { learnedDefaults = v }
 
     if let raw = strs(.compareSymbols) { compareSymbols = Prefs.cleanCompareSymbols(raw) }
     PrefsCodec.migrate(&self, from: archived, archivedQuicks: archivedQuicks)

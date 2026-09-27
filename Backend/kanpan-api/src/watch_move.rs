@@ -108,12 +108,16 @@ impl Gate {
 #[derive(Default,Clone,Debug)]
 pub struct Tracker {series:BTreeMap<String,Series>,gates:BTreeMap<(String,Direction),Gate>}
 impl Tracker {
- /// 幅度按这只自己的波动自动定（[`auto_threshold`]）。
- pub fn observe(&mut self,symbol:&str,bar_open:i64,price:f64,closed:bool)->Option<Event> {
+ /// 幅度按这只自己的波动自动定（[`auto_threshold`]），再乘 `factor`（「按我的习惯自动调整」学到的
+ /// 灵敏度倍数，夹在 0.5–2，出厂 1）。客户端 `WatchMove.Tracker.observe(…, sensitivity:)` 同一个乘法。
+ pub fn observe(&mut self,symbol:&str,bar_open:i64,price:f64,closed:bool)->Option<Event> {self.observe_scaled(symbol,bar_open,price,closed,1.0)}
+ /// 同 [`Tracker::observe`]，幅度再乘学到的灵敏度倍数。
+ pub fn observe_scaled(&mut self,symbol:&str,bar_open:i64,price:f64,closed:bool,factor:f64)->Option<Event> {
   let key=symbol.to_uppercase();
   let series=self.series.entry(key.clone()).or_default();
   let change=series.observe(bar_open,price,closed)?;
-  let limit=series.threshold/100.0;
+  let factor=if factor.is_finite() {factor.clamp(FACTOR_MIN,FACTOR_MAX)} else {1.0};
+  let limit=series.threshold*factor/100.0;
   let window=bar_open-bar_open.rem_euclid(WINDOW_MS);
   let mut fired=None;
   for direction in [Direction::Up,Direction::Down] {
@@ -147,9 +151,17 @@ pub fn title(symbol:&str,event:&Event)->String {
  format!("{short} 五分钟{verb} {:.2}%",event.change.abs()*100.0)
 }
 
-/// 一个开着自选波动提醒的人：自选里的品种（幅度按波动自动定，不是设置）。
-#[derive(Clone,Debug,PartialEq)]
-pub struct Mover {pub owner:Uuid,pub symbols:BTreeSet<String>}
+/// 一个开着自选波动提醒的人：自选里的品种（幅度按波动自动定，不是设置），
+/// 外加「按我的习惯自动调整」学到的每只灵敏度倍数（没有就是 1）。
+#[derive(Clone,Debug,PartialEq,Default)]
+pub struct Mover {pub owner:Uuid,pub symbols:BTreeSet<String>,pub factors:BTreeMap<String,f64>}
+impl Mover {
+ pub fn factor(&self,symbol:&str)->f64 {self.factors.get(symbol).copied().unwrap_or(1.0)}
+}
+
+/// 灵敏度倍数的夹紧范围，和客户端 `LearnedDefaults.factorRange` 一致。
+const FACTOR_MIN:f64=0.5;
+const FACTOR_MAX:f64=2.0;
 
 /// 这个人开着没有；开着就把**这家交易所**的自选读回来。在 `alerts::load`
 /// 那个个人事务里调用，每家交易所的评估器各读各的（币安的组合流订不了 `BTC-USD`）。
@@ -158,7 +170,21 @@ pub async fn load_mover(tx:&mut Transaction<'_,Postgres>,owner:Uuid,venue:&str)-
  let settings=crate::sync::settings_body(tx,owner).await?;
  if !enabled(settings.as_ref()) {return Ok(None)}
  let favorites=crate::sync::live_objects(tx,owner,crate::sync::FAVORITES).await?;
- Ok(Some(Mover{owner,symbols:favorite_symbols(&favorites,venue)}))
+ Ok(Some(Mover{owner,symbols:favorite_symbols(&favorites,venue),factors:learned_factors(settings.as_ref(),venue)}))
+}
+/// 设置里 `learnedDefaults.watchMove` 的倍数，只取这家交易所的（键是客户端的规范品种键
+/// `binance/usd_m/BTCUSDT`，裸代号按币安算）。开关 `habitLearning` 明确关着就一律不用。
+fn learned_factors(settings:Option<&Value>,venue:&str)->BTreeMap<String,f64> {
+ let Some(body)=settings else {return BTreeMap::new()};
+ if body.get("habitLearning").and_then(Value::as_bool)==Some(false) {return BTreeMap::new()}
+ let Some(table)=body.get("learnedDefaults").and_then(|l|l.get("watchMove")).and_then(Value::as_object) else {return BTreeMap::new()};
+ table.iter().filter_map(|(key,entry)|{
+  let parts:Vec<&str>=key.split('/').collect();
+  let (v,symbol)=match parts.as_slice() {[s]=>(crate::instruments::DEFAULT_VENUE,*s),[v,_,s]=>(*v,*s),_=>return None};
+  if v!=venue||symbol.is_empty() {return None}
+  let f=entry.get("v").and_then(Value::as_f64).filter(|f|f.is_finite())?;
+  Some((symbol.to_uppercase(),f.clamp(FACTOR_MIN,FACTOR_MAX)))
+ }).collect()
 }
 /// 自选里这家交易所的品种（大写、去重）。老客户端写的自选没有 `venue`，按裸代号的默认交易所（币安）算。
 fn favorite_symbols(favorites:&[crate::sync::Object],venue:&str)->BTreeSet<String> {
@@ -194,7 +220,7 @@ impl Movers {
   let mut out=vec![];
   for (owner,(mover,tracker)) in &mut self.people {
    if !mover.symbols.contains(symbol) {continue}
-   if let Some(event)=tracker.observe(symbol,bar_open,price,closed) {out.push((*owner,event))}
+   if let Some(event)=tracker.observe_scaled(symbol,bar_open,price,closed,mover.factor(symbol)) {out.push((*owner,event))}
   }
   out
  }
@@ -353,7 +379,7 @@ mod tests {
   assert!(enabled(Some(&json!({"watchMoveAlert":true,"watchMoveThreshold":900.0}))));
  }
  fn mover(owner:u128,symbols:&[&str])->Mover {
-  Mover{owner:Uuid::from_u128(owner),symbols:symbols.iter().map(|s|s.to_string()).collect()}
+  Mover{owner:Uuid::from_u128(owner),symbols:symbols.iter().map(|s|s.to_string()).collect(),factors:BTreeMap::new()}
  }
  /// 改自选：拿掉的品种不再判，加回来从缺口重新开始。
  #[test] fn changing_favorites_changes_what_is_watched() {
@@ -388,6 +414,30 @@ mod tests {
    fav("c",serde_json::json!({"symbol":"BTC-USD","venue":"coinbase"})),fav("d",serde_json::json!({"symbol":""})),fav("e",serde_json::json!({"venue":"binance"}))];
   assert_eq!(favorite_symbols(&all,"binance"),BTreeSet::from(["BTCUSDT".to_owned()]));
   assert_eq!(favorite_symbols(&all,"coinbase"),BTreeSet::from(["BTC-USD".to_owned()]));
+ }
+ /// 「按我的习惯自动调整」学到的灵敏度倍数：只取这家交易所的，夹在 0.5–2，开关关着一律不用；乘在自动幅度上。
+ #[test] fn learned_factors_scale_the_threshold() {
+  let body=json!({"learnedDefaults":{"watchMove":{
+   "binance/usd_m/BTCUSDT":{"v":2.0,"n":3,"at":1.0},"ethusdt":{"v":0.5,"n":1,"at":1.0},
+   "coinbase/spot/BTC-USD":{"v":1.6,"n":2,"at":1.0},"binance/usd_m/SOLUSDT":{"v":9.0,"n":1,"at":1.0},"bad/key":{"v":2.0,"n":1,"at":1.0}}}});
+  let f=learned_factors(Some(&body),"binance");
+  assert_eq!(f.get("BTCUSDT"),Some(&2.0));
+  assert_eq!(f.get("ETHUSDT"),Some(&0.5));
+  assert_eq!(f.get("SOLUSDT"),Some(&2.0),"越界夹回 2");
+  assert_eq!(f.len(),3);
+  assert_eq!(learned_factors(Some(&body),"coinbase").get("BTC-USD"),Some(&1.6));
+  let mut off=body.clone();off["habitLearning"]=json!(false);
+  assert!(learned_factors(Some(&off),"binance").is_empty(),"开关关着不用");
+  assert!(learned_factors(None,"binance").is_empty());
+
+  let mut m=Movers::default();
+  let mut dull=mover(1,&["BTCUSDT"]);dull.factors=f.clone();
+  m.refresh(&[dull,mover(2,&["BTCUSDT"])]);
+  for n in 0..5 {m.observe("BTCUSDT",minute(n),100.0,true);}
+  let hits=m.observe("BTCUSDT",minute(5),101.6,false);
+  assert_eq!(hits.iter().map(|h|h.0).collect::<Vec<_>>(),vec![Uuid::from_u128(2)],"2× 的那位 1.6% 不响");
+  let hits=m.observe("BTCUSDT",minute(5),103.1,false);
+  assert_eq!(hits.iter().map(|h|h.0).collect::<Vec<_>>(),vec![Uuid::from_u128(1)],"过了 3% 才响");
  }
  #[test] fn a_reconnect_forgets_prices_but_keeps_the_gates() {
   let mut m=Movers::default();

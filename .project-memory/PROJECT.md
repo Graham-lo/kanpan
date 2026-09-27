@@ -683,3 +683,16 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **来源**：保留，从「更多」里提到卡片上直接一行菜单。
 - **回放倍速** `replaySpeed`（原偏好 1/2/4×、`.synced`）：字段删了（`Prefs` / `PrefsCodec` / `PrefsFieldPlan`），笔记「在图上重温」与交易回放一律按 `ReplayPace.speed(bars:)` 自动挑——在 1 / 2 / 4× 里挑最慢的一档、让这一趟落在 40 秒内（交易回放 3d 那一轮已经这样挑，这一轮笔记重温也改成按从游标到卷尾的根数挑）；回放条上的倍速键还在，点了只管这一趟、不落盘不同步（`ReviewChartBridge.cycleSpeed`）。§23 里「倍速记住 / 偏好里记着」的说法作废。服务端 `Backend/kanpan-api/src/sync.rs` 把 `replaySpeed` 从 `SETTINGS_FIELDS` 挪进 `RETIRED_SETTINGS_FIELDS`（老客户端推上来的丢掉并在 `droppedFields` 里点名、存量设置体下次合并时剥掉，`trimmed_replay_speed_is_dropped_and_stripped`），`sync_validation.rs` 删了它的取值规则；`make sync-contract` 重生契约后 `SERVER_AHEAD` / `CLIENT_AHEAD` 都为空。**服务端这一改要部署**才能让老客户端的 `replaySpeed` 被剥掉（不部署也不坏：新客户端不再推这个字段）。
 - **验收**：`make review-test`（17 Pro Max）150 通过；`make sync-contract` + backend lib 449 通过；UI（17 Pro Max）`ReviewInteractionUITests.testCaptureFollowsViewportAndTapToOpen`（取代原 `testCaptureRangePickersEdgeScrollAndTapToOpen`：卡上没有时间钮 / 更多 / 把握、拖图区间跟着走、捏图根数跟着变、记下后点图上记号开详情）、`testCaptureCardInThreeSkins`（实测：开卡 99 根 → 拖图 98 根且时段前移 → 捏图 25 根），回放回归 `ReviewFlowUITests.testSteppingThroughAReplayKeepsTheViewportTheUserChose`、`TradeReplayWalkthroughUITests.testPaceOpenPauseCapsuleAutoStopAndReturn`，以及 `ChartFoundationUITests.testRecordSitsOutsideTheChart`，全过。截图 `docs/acceptance/收设置项-2026-09-28/iPhone17ProMax-取景卡-{青苔,陶土,经典}.png`。
+
+## 26. 按我的习惯自动调整（2026-09-28）
+
+「我的 › 设置 › 通用」一颗开关「按我的习惯自动调整」（`Prefs.habitLearning`，出厂开、随账号同步），开着时下面一行「已学到的」推进一页只读列表（学到了什么 · 依据几次），页底红字「清除已学到的」确认一次。没有说明文案。
+
+- **模块**：全部在 `Kanpan/Kanpan/Habits/`——`HabitLog`（本机行为日志：30 天、上限 2000 条、同一格一小时内合并，只在本机、不上云）、`LearnedDefaults`（结论，一个同步字段，≤ 16 KB，最多 80 只品种）、`HabitInference`（纯推断：半衰期 7 天的时间衰减加权、多数票、倍数阶梯夹紧）、`Habits`（`@Observable` 门面：记录、推断、给出要用的值）、`HabitSettingsView`（两行设置 + 「已学到的」页）。外面只有薄钩子：`MainScreen`（换品种时问 `opening`、图表用 `chartPrefs` 覆盖价格轴、`habitFocus` 交给观察者记停留）、`SectorPage`（启动后每个市场套一次、记每次选择）、`ChartPanel`（价格轴显示有效值、手动切记一票）。单测 `KanpanTests/Habits`（`make habits-test`），UI `HabitLearningUITests`。
+- **四条规则**：
+  1. 按品种的打开周期：图表页在前台、没被搜索/复盘/画线挡住时按停留时长记账（单段 5 秒起、30 分钟封顶），7 天半衰期加权，某周期累计 ≥ 120 秒且领先就是结论；只在「换到另一只品种」那一刻套用（写 `prefs.interval` 并一步切过去），进来后手动换周期照常生效；周期条钉住项永远不学不动。
+  2. 按品种类别（加密 / 美股 / 贵金属 / 指数 / 其它）的价格轴线性 / 对数：停留加权，手动在图表面板切一次额外记一票；结论只作用于图表那一份 prefs 的覆盖（`chartPrefs`），不写回 `prefs.priceMode`，百分比轴永远不被覆盖。
+  3. 板块页今日 / 5 日：每个市场最近 10 次选择的多数（至少 3 次），每次启动每个市场套一次。
+  4. 异动提醒灵敏度：按品种，连续两次响了没点开 → 倍数上一格，响后 15 分钟内点开 → 下一格；阶梯 0.5 · 0.63 · 0.8 · 1 · 1.25 · 1.6 · 2，乘在自动波动门槛上（客户端 `WatchMove.Tracker.observe(…, sensitivity:)`；服务端 `watch_move::Tracker::observe_scaled`，倍数从设置里的 `learnedDefaults.watchMove` 按交易所取、`habitLearning` 关着不用）。
+- **开关语义**：关掉立刻回出厂行为、停止记录、清空结论与日志；已经写进去的当前周期、板块窗口保持原样（那是当时的状态，不是覆盖）。「清除已学到的」只清结论与日志，开关不动。
+- **同步**：`habitLearning`（bool）、`learnedDefaults`（JSON，服务端 `sync_validation.rs` 逐项校验结构与取值、≤ 16 KB）两个字段进 `PrefsFieldPlan` 与服务端 `SETTINGS_FIELDS`，契约 `make sync-contract` 两边无差。行为日志不上传。测试环境 `KANPAN_TEST_HABIT_SCALE` 把停留时长放大（仅 DEBUG + 测试档）。

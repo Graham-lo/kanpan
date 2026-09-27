@@ -42,6 +42,7 @@ struct SectorPage: View {
   var picker: SymbolPickerModel?
 
   @Environment(\.panelTheme) private var theme
+  @Environment(\.habits) private var habits
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   /// 压在板块列表上面的那一层。空 = 只有列表；最多一层（某个板块的品种列表）。
@@ -159,6 +160,7 @@ struct SectorPage: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("sector.page")
     .onAppear {
+      applyLearnedWindow()
       feed.setVisible(true)
       historyFeed.configure(backend: feed.backend)
       historyFeed.setForeground(feed.foreground)
@@ -292,7 +294,10 @@ struct SectorPage: View {
                             id: "sector.window." + $0.rawValue)
                     },
                     selection: snap.window,
-                    pick: { value in store.update { $0.sectorWindow = value } })
+                    pick: { value in
+                      habits?.noteSectorWindow(market: market, window: value)
+                      store.update { $0.sectorWindow = value }
+                    })
       Spacer(minLength: 0)
     }
     .pageHorizontalInset()
@@ -312,6 +317,14 @@ struct SectorPage: View {
   private func switchMarket(_ value: SectorMarket) {
     store.update { $0.sectorMarket = value }
     route = []
+    applyLearnedWindow()
+  }
+
+  /// 按习惯落这个市场常看的那一档（`Habits` 定，每次启动每个市场只落一次，落完照样能手动换）。
+  private func applyLearnedWindow() {
+    if let window = habits?.sectorWindowToApply(market: market, current: preferredWindow) {
+      store.update { $0.sectorWindow = window }
+    }
   }
 
   // MARK: - 第二层：某个板块的品种列表

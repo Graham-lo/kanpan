@@ -145,15 +145,18 @@ public enum WatchMove {
     var gates: [GateKey: Gate] = [:]
     public init() {}
 
-    /// 喂一口价。幅度按这只自己的波动自动定（`autoThreshold`）。
-    public mutating func observe(symbol: String, barOpen: Int64, price: Double, closed: Bool = false) -> Event? {
+    /// 喂一口价。幅度按这只自己的波动自动定（`autoThreshold`），再乘 `sensitivity`
+    /// （「按我的习惯自动调整」学到的倍数，0.5–2，出厂 1；只乘不改自动定出来的那个数）。
+    public mutating func observe(symbol: String, barOpen: Int64, price: Double, closed: Bool = false,
+                                 sensitivity: Double = 1) -> Event? {
       let key = InstrumentID.canonical(symbol)
       guard !key.isEmpty else { return nil }
       var s = series[key] ?? Series()
       let change = s.observe(barOpen: barOpen, price: price, closed: closed)
       series[key] = s
       guard let change else { return nil }
-      let limit = s.threshold / 100
+      let factor = sensitivity.isFinite ? min(max(sensitivity, 0.5), 2) : 1
+      let limit = s.threshold * factor / 100
       let window = barOpen - barOpen % WatchMove.windowMs
       var fired: Event?
       for direction in Direction.allCases {

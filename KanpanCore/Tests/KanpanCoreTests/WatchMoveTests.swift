@@ -35,6 +35,26 @@ import Testing
     #expect(WatchMove.title(for: e) == "BTC 五分钟跌 1.60%")
   }
 
+  @Test("灵敏度倍数乘在自动幅度上：2× 要过 3%，0.5× 过 0.75% 就响；越界夹回 0.5–2")
+  func sensitivityScalesTheAutoThreshold() {
+    var dull = WatchMove.Tracker()
+    warm(&dull)
+    #expect(dull.observe(symbol: "BTCUSDT", barOpen: minute(5), price: 101.6, sensitivity: 2) == nil)
+    #expect(dull.observe(symbol: "BTCUSDT", barOpen: minute(5), price: 103.1, sensitivity: 2) != nil)
+
+    var keen = WatchMove.Tracker()
+    warm(&keen)
+    #expect(keen.observe(symbol: "BTCUSDT", barOpen: minute(5), price: 100.8, sensitivity: 0.5) != nil)
+
+    var wild = WatchMove.Tracker()
+    warm(&wild)
+    // 10× 夹成 2×：3.1% 照样响；0.01× 夹成 0.5×：0.7% 不响。
+    #expect(wild.observe(symbol: "BTCUSDT", barOpen: minute(5), price: 103.1, sensitivity: 10) != nil)
+    var tiny = WatchMove.Tracker()
+    warm(&tiny)
+    #expect(tiny.observe(symbol: "BTCUSDT", barOpen: minute(5), price: 100.7, sensitivity: 0.01) == nil)
+  }
+
   @Test("没过幅度不响")
   func smallMoveIsQuiet() {
     var t = WatchMove.Tracker()

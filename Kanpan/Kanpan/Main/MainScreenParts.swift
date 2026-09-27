@@ -61,6 +61,8 @@ struct MainScreenObservers: ViewModifier {
   let reviewChartNotice: String?
   let reviewBookOpen: Bool
   let reviewRecords: [ReviewRecord]
+  /// 此刻图上在看什么（`Habits` 按它计停留）。
+  let habitFocus: HabitFocus
 
   // 动作。收到的都是 `onChange` 给的**新值**，和搬家之前那些闭包收到的一模一样。
   let onPhase: (ScenePhase) -> Void
@@ -90,6 +92,7 @@ struct MainScreenObservers: ViewModifier {
   let onReviewChartNotice: (String?) -> Void
   let onReviewBookOpen: () -> Void
   let onReviewRecords: ([ReviewRecord]) -> Void
+  let onHabitFocus: (HabitFocus) -> Void
 
   // 分成四段挂，是因为三十一个 `onChange` 串成一条表达式会让类型检查器超时
   // （`unable to type-check this expression in reasonable time`）。顺序和从前一样。
@@ -166,6 +169,7 @@ struct MainScreenObservers: ViewModifier {
     // 复盘的待办本来就有到期时间，这儿把它兑现成一条到点响的本地通知（方案 2.3 末条）。
     // 整批重排，便宜且不会对不上账。
     .onChange(of: reviewRecords, initial: true) { _, list in onReviewRecords(list) }
+    .onChange(of: habitFocus, initial: true) { _, focus in onHabitFocus(focus) }
   }
 }
 

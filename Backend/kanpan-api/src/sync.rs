@@ -163,6 +163,9 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 条件提醒（docs/条件提醒-协议-2026-09-27.md 第 6 节）：设置 › 通知里「品种上新与下架」开关。
  // 服务端 `listing_watch.rs` 读它；2026-09-27 客户端已生成进契约（原先挂在 SERVER_AHEAD_SETTINGS_FIELDS 里）。
  "notifyListingChanges",
+ // 「按我的习惯自动调整」（2026-09-28）：开关 + 学到的结论（整份一个对象，≤ 16 KB，
+ // 规则见 `sync_validation::learned_defaults`）。行为日志只在手机上，不上传。
+ "habitLearning","learnedDefaults",
 ];
 /// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
 ///
@@ -666,6 +669,40 @@ mod tests {
               json!({"BTC":{"spot":1.1e9}}),json!({"BTC":{"step":0}}),json!({"BTC":{"step":1e7}}),
               json!({"BTC":{"spot":"1000000"}}),json!({"BTC":{"swap":1e6}}),json!({"BTC":1e6}),Value::Object(many)] {
    assert!(!field("settings","orderFlowOverrides",&bad),"{bad}");
+  }
+ }
+ /// 「按我的习惯自动调整」：开关是布尔、结论表按 `learned_defaults` 的规则收，越界的一律拒。
+ #[test] fn habit_learning_settings_are_accepted_and_bounded() {
+  use crate::sync_validation::field;
+  assert!(SETTINGS_FIELDS.contains(&"habitLearning")&&SETTINGS_FIELDS.contains(&"learnedDefaults"));
+  let operation=op("settings",&[("habitLearning",json!(false)),("learnedDefaults",json!({}))]);
+  assert!(operation.validate().is_ok());
+  assert!(operation.unknown_fields().is_empty());
+  let merged=merge(blank("settings","chart"),&operation,1_800_000_000_000).unwrap();
+  assert_eq!(merged.body["habitLearning"],json!(false));
+  assert!(!field("settings","habitLearning",&json!("on")));
+  let at=1_790_000_000.5;
+  for good in [json!({}),
+               json!({"intervals":{"binance/usd_m/BTCUSDT":{"v":"4h","n":3,"at":at}}}),
+               json!({"intervals":{"coinbase/spot/ETH-USD":{"v":"8h","n":0,"at":0}},
+                      "priceAxis":{"crypto":{"v":"log","n":5,"at":at},"equity":{"v":"linear","n":1,"at":at}},
+                      "sectorWindow":{"crypto":{"v":"d5","n":6,"at":at},"us":{"v":"today","n":3,"at":at}},
+                      "watchMove":{"binance/usd_m/SOLUSDT":{"v":1.6,"n":4,"at":at},"binance/usd_m/XRPUSDT":{"v":0.5,"n":2,"at":at}}})] {
+   assert!(field("settings","learnedDefaults",&good),"{good}");
+  }
+  let e=|v:Value|json!({"v":v,"n":1,"at":at});
+  let huge:serde_json::Map<String,Value>=(0..400).map(|i|(format!("binance/usd_m/COIN{i:04}USDT"),e(json!("1h")))).collect();
+  for bad in [json!(null),json!([]),json!({"intervals":[]}),json!({"other":{}}),
+              json!({"intervals":{"BTC":e(json!("7h"))}}),json!({"intervals":{"":e(json!("1h"))}}),
+              json!({"intervals":{"x".repeat(129):e(json!("1h"))}}),
+              json!({"intervals":{"BTC":{"v":"1h","n":1}}}),json!({"intervals":{"BTC":{"v":"1h","n":-1,"at":at}}}),
+              json!({"intervals":{"BTC":{"v":"1h","n":1.5,"at":at}}}),json!({"intervals":{"BTC":{"v":"1h","n":1,"at":-1}}}),
+              json!({"intervals":{"BTC":{"v":"1h","n":1,"at":at,"x":1}}}),
+              json!({"priceAxis":{"crypto":e(json!("percent"))}}),json!({"priceAxis":{"fx":e(json!("log"))}}),
+              json!({"sectorWindow":{"crypto":e(json!("d20"))}}),json!({"sectorWindow":{"eu":e(json!("today"))}}),
+              json!({"watchMove":{"BTC":e(json!(2.5))}}),json!({"watchMove":{"BTC":e(json!(0.4))}}),json!({"watchMove":{"BTC":e(json!("1"))}}),
+              json!({"intervals":Value::Object(huge)})] {
+   assert!(!field("settings","learnedDefaults",&bad),"{bad}");
   }
  }
  #[test] fn watch_move_settings_are_accepted_and_bounded() {

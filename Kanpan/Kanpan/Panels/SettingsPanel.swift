@@ -98,6 +98,8 @@ struct SettingsPanel: View {
     AlertSettingsSection(preferences: store)
 
     PanelGroupTitle(text: "通用")
+    // 「按我的习惯自动调整」开关 + 「已学到的」（模块在 `Habits/`）。
+    HabitSettingsRows(store: store)
     // 「朋友」原来排在这一组最上面，2026-09-27 搬去「我的 › 朋友与收件箱」。
     aboutRow
     // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就

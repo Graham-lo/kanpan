@@ -182,6 +182,9 @@ struct MainScreen: View {
   @State private var conditionEngine = ConditionAlertEngine()
   /// 自选五分钟波动提醒的前台那一半（P3.1）。
   @State private var watchMove = WatchMoveMonitor()
+  /// 「按我的习惯自动调整」（`Habits/`）：换品种挑周期、价格轴、板块窗口、波动提醒灵敏度。
+  /// 这儿只读结论、报事件，规则全在模块里。
+  @State private var habits = Habits()
   /// 桌面小组件的快照写手（P3.2）。
   @State private var widgetFeed = WidgetFeed()
   /// 提醒那一张表：总表（`hkline://alerts`、通知点开）或新建页（图上十字线那颗药丸）。
@@ -435,6 +438,12 @@ struct MainScreen: View {
       reviewChartNotice: reviewChart.notice,
       reviewBookOpen: review.bookOpen,
       reviewRecords: review.records,
+      habitFocus: HabitFocus(
+        symbol: market.symbol, interval: market.interval,
+        category: picker.info(for: market.symbol).map(HabitCategory.init),
+        priceMode: prefs.priceMode,
+        visible: tab == .chart && phase == .active && !review.bookOpen && !reviewChart.active
+          && draw.previewing == nil && !draw.active && !symbolSearch.isActive),
       onPhase: { now in AppLifecycle.shared.phaseChanged(to: now) },
       onDeepLink: { consumeDeepLink() },
       onMicrostructure: { visible in market.setChartVisible(visible) },
@@ -507,7 +516,8 @@ struct MainScreen: View {
         alerts.settleReviewDue(ReviewDueAlerts.plan(items: list.map(ReviewDueAlerts.Item.init(record:)),
                                                     existing: alerts.all,
                                                     now: Date().timeIntervalSince1970 * 1000))
-      })
+      },
+      onHabitFocus: { focus in habits.setFocus(focus) })
   }
 
   var body: some View {
@@ -543,6 +553,7 @@ struct MainScreen: View {
     }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
+    .environment(\.habits, habits)
     .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen && !accountInMe }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
     // 从朋友页点「登录」进来的：登完回到朋友页，不把人丢在「我的」上。
     .onChange(of: account.presented) { _, open in
@@ -1415,7 +1426,7 @@ struct MainScreen: View {
   /// 逐笔的那一半（序列、持仓量、深度、倒计时）由 `ChartSession.liveState` 在
   /// `MainChartView` 自己的 body 里现取——宿主这儿一个都不读，推送就叫不醒它。
   private var chartInput: ChartInput {
-    ChartInput(prefs: prefs, seed: seed, overlays: visibleOverlays, subs: visibleSubs, subScale: subScale,
+    ChartInput(prefs: habits.chartPrefs(prefs), seed: seed, overlays: visibleOverlays, subs: visibleSubs, subScale: subScale,
                drawingCanvasOnly: drawingCanvasOnly, comparing: comparing,
                compareKeys: compareKeys, compareNames: compareNames)
   }
@@ -1685,7 +1696,9 @@ struct MainScreen: View {
   /// 价在 `wireAlerts` 那两条流上一起喂。响了：通知中心留一条 + 震一下 + 浮条「查看」。
   private func wireWatchMove() {
     watchMove.follow { [weak store] in store?.prefs.watchMoveAlert ?? false }
-    watchMove.onEvent = { [weak store] event in
+    watchMove.sensitivity = { [habits] key in habits.watchMoveFactor(for: key) }
+    watchMove.onEvent = { [weak store, habits] event in
+      habits.noteWatchMoveFired(event.symbol)
       let decimals = picker.info(for: event.symbol).map(\.priceDecimals)
       AlertNotifications.present(event, decimals: decimals, sound: store?.prefs.alertSound ?? .default)
       UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
@@ -1806,6 +1819,7 @@ struct MainScreen: View {
 
   /// 只由 `BootOnce` 调（它保证一辈子只进来一次）。别在别处直接调它。
   private func boot() {
+    habits.bind(store)
     wireLifecycle()
     wireAlerts()
     wireWatchMove()
@@ -1877,7 +1891,7 @@ struct MainScreen: View {
       if tab != .chart { chartOrigin = tab }
       tab = .chart; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
-      session.show(symbol: info.symbol)
+      show(symbol: info.symbol, info: info)
     }
     picker.setLoader(market.catalogLoader)
     market.knownInfo = { [picker] in picker.info(for: $0) }
@@ -2067,7 +2081,19 @@ struct MainScreen: View {
     tab = .chart; didLeaveLaunch = true
     picker.visit(symbol)
     proxy.cancelWindow()
-    session.show(symbol: symbol)
+    show(symbol: symbol, info: nil)
+  }
+
+  /// 换品种的最后一步：这只按习惯该开哪个周期由 `Habits` 定（学到了、和眼下不同才换），
+  /// 周期写进偏好再一步切过去——不先按旧周期拉一遍。同一只、没学到就只是换品种。
+  private func show(symbol: String, info: SymbolInfo?) {
+    let learned = habits.opening(symbol: symbol, info: info, current: market.interval)
+    guard let learned, InstrumentID.canonical(symbol) != market.symbol else {
+      session.show(symbol: symbol)
+      return
+    }
+    store.update { $0.interval = learned }
+    session.show(symbol: symbol, interval: learned)
   }
 
   private func openLinkedSearch() {
