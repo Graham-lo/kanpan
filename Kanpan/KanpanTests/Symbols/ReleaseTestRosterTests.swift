@@ -51,6 +51,8 @@ struct ReleaseTestRosterTests {
   /// 两条都必须是**运行环境不成立**的门（窄窗、没给显式开关），不许是
   /// 「数据没来就跳过」那种——那种跳的是产品的毛病，正是 C.9 点名的假绿。
   static let skipGates: [String: String] = [
+    "ConditionAlertsUITests.swift":
+      "条件提醒端到端要在线上等真行情（1 分钟 MA5 站上），没给 KANPAN_E2E_CONDITION=1 就记成「未执行」。",
     "IPadLayoutUITests.swift": "窗口宽度不到 700pt 时，iPad 宽屏封顶这件事无从谈起。",
     "UITestSupport.swift":
       "`ManualTool.skipUnlessRequested`：会写进这台设备上用户正式自选存档的手动工具，"

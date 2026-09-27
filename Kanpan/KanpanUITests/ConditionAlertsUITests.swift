@@ -50,8 +50,10 @@ import XCTest
   }
 
   func testConditionAlertsSyncFireAndVanish() async throws {
-    try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_E2E_CONDITION"] == "1",
-                      "端到端要等真行情，给 KANPAN_E2E_CONDITION=1 才跑（未执行，不等于通过）")
+    // 环境门（`ReleaseTestRosterTests.skipGates` 名册上有它）：不许写成 `XCTSkipUnless`。
+    guard ProcessInfo.processInfo.environment["KANPAN_E2E_CONDITION"] == "1" else {
+      throw XCTSkip("端到端要等真行情，给 KANPAN_E2E_CONDITION=1 才跑（未执行，不等于通过）")
+    }
     // 1 分钟 MA5 站上要等真行情，首跑实测十分钟才等到一次；默认十分钟的执行时限不够。
     executionTimeAllowance = 30 * 60
     let name = try await registerOverHTTP()
