@@ -4,13 +4,15 @@
 # 某一家交易所的名字、域名、「以 USDT 结尾就是币安」这类判断，只许出现在：
 #   - KanpanNetwork/Sources/KanpanNetwork/<交易所>/   （那一家的提供者）
 #   - KanpanNetwork/Sources/KanpanNetwork/Provider/VenueRegistry.swift（唯一的交易所清单）
+#   - Kanpan/Kanpan/Exchange/<交易所>/   （那一家的只读账户，自动复盘用）
+#   - Kanpan/Kanpan/Exchange/ExchangeAccountRegistry.swift（只读账户的交易所清单）
 # 其余源码一律只认 `MarketProvider` 与 `ProviderCapabilities`。测试不在此列。
 # 接新交易所时把它的目录加进 VENUE_DIRS。见 docs/多交易所-接入指南.md。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VENUE_DIRS='^KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|OrderFlow)/'
-REGISTRY='^KanpanNetwork/Sources/KanpanNetwork/Provider/VenueRegistry\.swift$'
+VENUE_DIRS='^(KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|OrderFlow)|Kanpan/Kanpan/Exchange/(Binance))/'
+REGISTRY='^(KanpanNetwork/Sources/KanpanNetwork/Provider/VenueRegistry|Kanpan/Kanpan/Exchange/ExchangeAccountRegistry)\.swift$'
 PATTERN='Binance\|Coinbase\|fapi\.binance\|coinbase\.com\|hasSuffix("USDT")'
 
 files=$(git ls-files --cached --others --exclude-standard -- '*.swift' \
