@@ -26,6 +26,16 @@ systemd-run --quiet --pipe --wait --collect -p DynamicUser=yes \
 
 `/privacy`、`/terms` 两张静态页，正文在 `src/legal.rs`，改文案 = 改那里再部署。Caddy 需要把这两个路径转发到 `127.0.0.1:8794`（和 `/v1/auth/*` 同一个上游）。
 
+## 条件提醒与品种状态通知（2026-09-27）
+
+协议见 `docs/条件提醒-协议-2026-09-27.md`，代码在 `src/conditions.rs`、`src/conditions/walls.rs`、`src/listing_watch.rs`，迁移 0029（`alert_watches.rule`）、0030（`listing_catalog` / `listing_events` / `listing_notices`）。
+
+- worker 里两个常驻任务：`conditions`（费率 / 持仓量 / 均线，每 15 秒重读一次活动条件提醒）、`listing-watch`（每 10 分钟对一次币安 U 本位与 Coinbase 现货品种表）；serve 里一个：`condition-walls`（订单流跟踪器每 0.5 秒评估后回调判大单，每 10 秒重读大单提醒）。任一任务死掉进程退出，由 systemd 拉起。
+- 看状态：`journalctl -u kanpan-worker | grep -E "Condition|Funding conditions|Listing watch"`；`journalctl -u kanpan-api | grep -i "wall"`。没有 APNs 密钥时每次触发 / 每条通知记一行 info（「recorded, not pushed」），状态照常同步。
+- 查某人的条件提醒：`SELECT alert_id,status,rule,fired_at,fired_price FROM alert_watches WHERE kind='condition'`（要 BYPASSRLS 角色）。
+- 品种状态：`SELECT * FROM listing_events ORDER BY id DESC LIMIT 20`；目录 `listing_catalog`。第一次跑只建基线不发事件；某一轮品种数不到上一轮一半会 warn 并跳过。事件与通知 30 天后清掉。
+- 认不得的 `rule.type`（客户端先上了新条件）：收下存着，worker 打一行 warn，不判。
+
 ## 主力订单流：常驻跟踪（2026-09-25 分层版）
 
 serve 进程里常驻跟踪各家挂单簿，按默认门槛判出逐单大单写进 `orderflow_orders`，手机从

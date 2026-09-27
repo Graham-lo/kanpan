@@ -197,6 +197,34 @@ A stale report (the phone was offline longer than 10 minutes) is recorded but no
 posted — the signal is out of date by then. Delivery never follows redirects; a 3xx
 counts as a failure, and the host must be public (`webhook_allowed`).
 
+## Condition alerts and listing notices
+
+Contract: `docs/条件提醒-协议-2026-09-27.md`. An `alerts` object with `kind:"condition"` carries a
+`rule` object (`funding` / `openInterestChange` / `maCross` / `orderflowWall`); it must be on
+`binance/usd_m`. `sync_validation` checks the known rule types strictly (decimal strings, bounds,
+13 intervals, `length` 1…1000, ≤ 1 KiB) and accepts an unknown `type` (stored, never judged). A body
+that has a `rule` object is canonicalised back to `kind:"condition"` before validation, so an old
+client that re-encodes the unknown kind as `drawing` still gets a 200. `alert_watches.rule`
+(migration 0029) holds the rule; price and drawing alerts keep `rule = NULL` and their evaluator is
+unchanged.
+
+Judging lives in `src/conditions.rs` (`kanpan-worker`, task `conditions`): funding once per settlement
+inside the last 15 min (`premiumIndex`, one call a minute), open interest once per new 5-min point
+(`openInterestHist`, polled every 30 s once the point is due, one call per symbol), MA at each bar
+close (`klines`, one call per symbol + interval, merged across users). Walls are judged in
+`kanpan-api serve` (task `condition-walls`, `src/conditions/walls.rs`) from the orderflow tracker's
+0.5 s evaluation; a watched base is kept tracked on demand. Every fire goes through
+`alerts::record_fired` (`WHERE status='active'`) in the same transaction as the sync op, then the
+webhook and the push (`kind:"alert"`).
+
+`src/listing_watch.rs` (`kanpan-worker`, task `listing-watch`) diffs Binance USDⓈ-M `exchangeInfo`
+and Coinbase USD spot products every 10 minutes against `listing_catalog` (migration 0030) and writes
+`listing_events` (`listed` / `delistScheduled` / `halted` / `resumed` / `delisted`). A user whose
+`settings.notifyListingChanges` is `true` gets `listed` events and events on their favourites, once
+per event (`listing_notices`, RLS), within 1 hour of the event; `GET /v1/alerts/listing-notices`
+lists the last 30 days. The first round only seeds; a round with fewer than half of last round's
+live symbols is skipped.
+
 ## Alert evaluator streams
 
 The evaluator subscribes klines for alerted symbols plus movers and `@ticker` for
