@@ -4,17 +4,18 @@ import KanpanCore
 import KanpanData
 import KanpanNetwork
 
-/// 「指标 › 主力订单流」那张表：当前这只币的过滤门槛（按产品各一格）、价格步长，以及四个显示开关。
+/// 「指标 › 主力订单流」那张表：当前这只币的过滤门槛（按产品各一格）与价格步长。
 ///
-/// 门槛和步长是**按币**存的（`Prefs.orderFlowOverrides[base]`），显示开关全品种共用一份；
-/// 两样都随账号同步。和别的指标参数表同一个规矩：按「保存」才一次性生效，取消 / 下滑都不存
+/// 门槛和步长是**按币**存的（`Prefs.orderFlowOverrides[base]`），随账号同步。原来表底还有「显示」一节
+/// 四个开关（现货 / 合约 / 已成交 / 已撤销），2026-09-28 收掉（收设置项 D 组）：一律全画，
+/// 现货与合约按颜色分、已成交满色、没吃到的淡一档。和别的指标参数表同一个规矩：按「保存」才一次性生效，取消 / 下滑都不存
 /// （门槛边打边生效的话，把 5000000 改成 3000000 的路上会先按「3」把所有单都判成大单）。
 ///
 /// 只摆这只币真的在订的产品：非币（美股、金银）只有 U 本位永续一格。
 /// 数值一律手动输入框，没有加减（`kanpan-no-steppers-use-text-fields`）。
 struct OrderFlowEditor: View {
   var store: PrefsStore
-  /// 当前品种；nil 时（预览、品种信息还没到）只摆显示开关。
+  /// 当前品种；nil 时（预览、品种信息还没到）表里是空的，只有「取消」「保存」。
   var link: OrderFlowLink?
   var symbol: String
 
@@ -25,12 +26,10 @@ struct OrderFlowEditor: View {
   @State private var typing: [OrderFlowField: String] = [:]
   /// 打过、提交过的数（按格记）；只有这几格会写进改动表，别的格原样沿用。
   @State private var edited: [OrderFlowField: Double] = [:]
-  @State private var display: OrderFlowDisplay
   @State private var resetting = false
 
   init(store: PrefsStore, link: OrderFlowLink?, symbol: String) {
     self.store = store; self.link = link; self.symbol = symbol
-    _display = State(initialValue: store.prefs.orderFlowDisplay)
   }
 
   private var facts: OrderFlowFacts? { link?.currentFacts.flatMap { OrderFlowBase.isValid($0.overrideKey) ? $0 : nil } }
@@ -71,16 +70,6 @@ struct OrderFlowEditor: View {
           }
           .listRowBackground(t.raised)
         }
-
-        Section {
-          toggle("现货", \.spot, "spot")
-          toggle("合约", \.contract, "contract")
-          toggle("已成交", \.filled, "filled")
-          toggle("已撤销", \.cancelled, "cancelled")
-        } header: {
-          PanelFormSectionTitle(text: "显示")
-        }
-        .listRowBackground(t.raised)
       }
       // 行至少 44（HIG 命中区，`Inset.rowMin`）；表里三级字：行名 / 输入 15、K·M 读数 12、分组标题 11。
       .environment(\.defaultMinListRowHeight, Inset.rowMin)
@@ -115,13 +104,6 @@ struct OrderFlowEditor: View {
     }
     .tint(t.amber)
     .presentationBackground(t.app)
-  }
-
-  private func toggle(_ name: String, _ key: WritableKeyPath<OrderFlowDisplay, Bool>, _ id: String) -> some View {
-    Toggle(name, isOn: Binding(get: { display[keyPath: key] }, set: { display[keyPath: key] = $0 }))
-      .font(TypeScale.body)
-      .foregroundStyle(t.ink)
-      .accessibilityIdentifier("orderflow.show.\(id)")
   }
 
   /// 一行「名字 + 数字框 + 读数」。门槛框右边小字给 K / M / B 读法，免得数零。
@@ -178,18 +160,14 @@ struct OrderFlowEditor: View {
     return min(range.upperBound, max(range.lowerBound, value))
   }
 
-  /// 落盘：显示开关整组写；门槛 / 步长只写打过的那几格，和默认一样的那格从改动表里拿掉。
+  /// 落盘：门槛 / 步长只写打过的那几格，和默认一样的那格从改动表里拿掉。
   private func save() {
     for field in typing.keys { commit(field) }
-    let next = display
-    guard let facts else { store.update { $0.orderFlowDisplay = next }; return }
+    guard let facts else { return }
     let base = facts.overrideKey
     let override = Self.override(defaults: feedDefaults, existing: resetting ? nil : store.prefs.orderFlowOverrides[base],
                                  edited: edited)
-    store.update {
-      $0.orderFlowDisplay = next
-      $0.setOrderFlowOverride(override, for: base)
-    }
+    store.update { $0.setOrderFlowOverride(override, for: base) }
   }
 
   /// 保存时写进改动表的那一份（纯函数，`OrderFlowPrefsTests` 测它）：在原来那份上改打过的那几格；

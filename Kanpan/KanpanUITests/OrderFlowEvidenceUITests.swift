@@ -401,22 +401,16 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     // 门槛调低后，新出现的 U本位永续大单里应有名义在 100 万–500 万之间的（证据写在日志里）。
     shot("改门槛后")
 
-    // 显示开关：关掉「合约」，图上只剩现货。
+    // 显示开关（现货 / 合约 / 已成交 / 已撤销）2026-09-28 收掉（收设置项 D 组）：表里只剩门槛与步长，
+    // 图上一律全画——现货与合约按颜色分，已成交满色、没吃到的淡一档。
     openOrderFlowEditor()
-    let contract = app.switches["orderflow.show.contract"]
-    expectExists(contract, Self.short, "参数表里没有「合约」开关")
-    if !contract.isHittable { app.swipeUp() }
-    contract.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-    XCTAssertTrue(waitUntil(timeout: 3) { (contract.value as? String) == "0" }, "「合约」开关没关上")
-    shot("参数表-关合约")
-    app.buttons["orderflow.save"].tap()
-    closePanels()
-    let onlySpot = waitUntil(timeout: 20, poll: 0.5) {
-      let b = self.bands(); return b.allSatisfy { ($0["product"] as? String) == "spot" }
+    XCTAssertTrue(app.textFields["orderflow.step.field"].waitForExistence(timeout: Self.short))
+    for id in ["spot", "contract", "filled", "cancelled"] {
+      XCTAssertFalse(app.switches["orderflow.show.\(id)"].exists, "参数表里还有「\(id)」显示开关")
     }
-    print("取证|关合约|bands=\(bands().map { $0["product"] ?? "" })")
-    XCTAssertTrue(onlySpot, "关掉合约后图上还有合约大单：\(bands())")
-    shot("只看现货")
+    shot("参数表-无显示开关")
+    app.buttons["orderflow.cancel"].tap()
+    closePanels()
   }
 
   /// 表外币（DOGE，没有固定门槛表，默认按 24h 成交额分档）的参数表保存（审查第 30 项）。

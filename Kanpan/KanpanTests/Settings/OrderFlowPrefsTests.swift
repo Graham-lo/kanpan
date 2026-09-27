@@ -5,35 +5,30 @@ import KanpanCore
 
 @Suite("主力订单流 · 设置")
 struct OrderFlowPrefsTests {
-  @Test("出厂：没有改过的币、四个显示开关全开")
+  @Test("出厂：没有改过的币（显示开关 2026-09-28 收掉，图上走 ChartState 的出厂值 .all）")
   func defaults() {
     let prefs = Prefs.defaults
     #expect(prefs.orderFlowOverrides.isEmpty)
-    #expect(prefs.orderFlowDisplay == .all)
   }
 
-  @Test("改过的门槛与显示开关落盘再读回一字不差")
+  @Test("改过的门槛落盘再读回一字不差")
   func roundTrip() {
     var prefs = Prefs.defaults
     prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000, step: 50), for: "BTC")
     prefs.setOrderFlowOverride(OrderFlowOverride(usdtPerp: 1_500_000), for: "TSLA")
-    prefs.orderFlowDisplay.cancelled = false
-    prefs.orderFlowDisplay.spot = false
     let back = PrefsCodec.decode(PrefsCodec.encode(prefs))
     #expect(back.orderFlowOverrides == prefs.orderFlowOverrides)
-    #expect(back.orderFlowDisplay == prefs.orderFlowDisplay)
-    #expect(!back.orderFlowSpot && !back.orderFlowShowCancelled && back.orderFlowContract && back.orderFlowShowFilled)
   }
 
-  @Test("六合四迁移：老存档里按买卖拆开的旧键按「买 || 卖」读成一个；新键在就只认新键")
-  func migratesSixTogglesToFour() {
-    let old = PrefsCodec.decode(Data(#"{"v":2,"orderFlowFilledBid":false,"orderFlowFilledAsk":true,"orderFlowCancelledBid":false,"orderFlowCancelledAsk":false}"#.utf8))
-    #expect(old.orderFlowShowFilled, "只关了一侧：合并后那一类还看得见")
-    #expect(!old.orderFlowShowCancelled, "两侧都关：合并后关")
-    let both = PrefsCodec.decode(Data(#"{"v":2,"orderFlowShowCancelled":true,"orderFlowCancelledBid":false,"orderFlowCancelledAsk":false}"#.utf8))
-    #expect(both.orderFlowShowCancelled, "新键优先")
-    let fresh = String(decoding: PrefsCodec.encode(Prefs.defaults), as: UTF8.self)
-    #expect(!fresh.contains("orderFlowFilledBid") && !fresh.contains("orderFlowCancelledAsk"), "旧键只读不写")
+  @Test("老存档里的显示开关（四个新键、六合四之前的旧键）读时忽略，也不再写")
+  func retiredDisplaySwitchesAreIgnored() {
+    let old = PrefsCodec.decode(Data(#"{"v":2,"orderFlow":true,"orderFlowSpot":false,"orderFlowShowCancelled":false,"orderFlowFilledBid":false,"orderFlowCancelledAsk":false}"#.utf8))
+    #expect(old.orderFlow)
+    let fresh = String(decoding: PrefsCodec.encode(old), as: UTF8.self)
+    for key in ["orderFlowSpot", "orderFlowContract", "orderFlowShowFilled", "orderFlowShowCancelled",
+                "orderFlowFilledBid", "orderFlowCancelledAsk"] {
+      #expect(!fresh.contains(key), "\(key) 不该再写进档里")
+    }
   }
 
   @Test("越界的项丢掉，一项不剩等于恢复默认；认不出的 base 不收")
@@ -61,7 +56,7 @@ struct OrderFlowPrefsTests {
     #expect(prefs.orderFlowOverrides["C0"]?.spot == 3_000_000)
   }
 
-  @Test("坏档：一只坏的不拖垮整张表，越界项丢、开关类型不对就退默认")
+  @Test("坏档：一只坏的不拖垮整张表，越界项丢")
   func tolerantDecode() throws {
     let json = """
     {"v":2,"orderFlowOverrides":{"BTC":{"spot":2000000,"step":0},"eth":{"spot":2000000},"SOL":{"spot":1},
@@ -69,20 +64,17 @@ struct OrderFlowPrefsTests {
     """
     let prefs = PrefsCodec.decode(Data(json.utf8))
     #expect(prefs.orderFlowOverrides == ["BTC": OrderFlowOverride(spot: 2_000_000), "XAU": OrderFlowOverride(usdtPerp: 3_000_000)])
-    #expect(!prefs.orderFlowSpot && prefs.orderFlowContract)
     // 整张表不是对象（坏档）→ 退空表，别的字段照读。
     let bad = PrefsCodec.decode(Data(#"{"v":2,"orderFlowOverrides":[1,2],"orderFlow":true}"#.utf8))
     #expect(bad.orderFlowOverrides.isEmpty && bad.orderFlow)
   }
 
-  @Test("门槛与开关都跟着人走（随账号同步）")
+  @Test("门槛跟着人走（随账号同步）；显示开关已收掉")
   func synced() {
-    for name in ["orderFlowOverrides", "orderFlowSpot", "orderFlowContract", "orderFlowShowFilled",
-                 "orderFlowShowCancelled"] {
-      #expect(PrefsFieldPlan.table[name] == .synced, "\(name)")
-      #expect(Prefs.syncedFieldNames.contains(name), "\(name)")
-    }
-    for retired in ["orderFlowFilledBid", "orderFlowFilledAsk", "orderFlowCancelledBid", "orderFlowCancelledAsk"] {
+    #expect(PrefsFieldPlan.table["orderFlowOverrides"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("orderFlowOverrides"))
+    for retired in ["orderFlowFilledBid", "orderFlowFilledAsk", "orderFlowCancelledBid", "orderFlowCancelledAsk",
+                    "orderFlowSpot", "orderFlowContract", "orderFlowShowFilled", "orderFlowShowCancelled"] {
       #expect(PrefsFieldPlan.table[retired] == nil && !Prefs.syncedFieldNames.contains(retired), "\(retired)")
     }
   }

@@ -76,6 +76,8 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 /// - C 组（指标）`hiddenOutputs`（指标编辑页「输出」开关，线一律全画）、`rsiRange`（客户端
 ///   `rsiUpper` / `rsiLower` 合成的键，RSI 超买超卖线定在 70 / 30）。`indicatorLayouts/<组>`
 ///   里嵌着的 `hiddenOutputs` 仍按老规则放行（老客户端还会发），新客户端读时忽略。
+/// - D 组（主力订单流）`orderFlowSpot` / `orderFlowContract` / `orderFlowShowFilled` /
+///   `orderFlowShowCancelled`：四个显示开关收掉，一律全画（现货合约按色分、已成交满色、没吃到的淡一档）。
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
  "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
  // 收设置项 A 组（2026-09-28）。
@@ -87,6 +89,8 @@ pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favorit
  "replaySpeed",
  // 收设置项 C 组（2026-09-28）。
  "hiddenOutputs","rsiRange",
+ // 收设置项 D 组（2026-09-28）。
+ "orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled",
 ];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
@@ -149,11 +153,9 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "alertSound",
  // 自选五分钟波动提醒（P3.1）：开关 + 幅度（百分数）。服务端 `watch_move.rs` 读这两个。
  "watchMoveAlert","watchMoveThreshold",
- // 主力订单流（2026-09-24 逐单模型）：用户改过门槛 / 步长的那几只 base（整张表一个键），
- // 以及四个显示开关（现货 / 合约 / 已成交 / 已撤销；六合四之前按买卖拆开的四个旧键在
- // RETIRED_SETTINGS_FIELDS 里）。服务端只校验、不读。
+ // 主力订单流（2026-09-24 逐单模型）：用户改过门槛 / 步长的那几只 base（整张表一个键）。
+ // 服务端只校验、不读。四个显示开关（以及更早按买卖拆开的旧键）在 RETIRED_SETTINGS_FIELDS 里。
  "orderFlowOverrides",
- "orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled",
  // 条件提醒（docs/条件提醒-协议-2026-09-27.md 第 6 节）：设置 › 通知里「品种上新与下架」开关。
  // 服务端 `listing_watch.rs` 读它；2026-09-27 客户端已生成进契约（原先挂在 SERVER_AHEAD_SETTINGS_FIELDS 里）。
  "notifyListingChanges",
@@ -638,19 +640,16 @@ mod tests {
  /// 自选波动提醒的两项设置：过白名单、过值规则、真的合并进去；越界的一律拒。
  #[test] fn order_flow_settings_are_accepted_and_bounded() {
   use crate::sync_validation::field;
-  for key in ["orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled"] {
-   assert!(SETTINGS_FIELDS.contains(&key));
-   assert!(field("settings",key,&json!(false))&&!field("settings",key,&json!(0))&&!field("settings",key,&json!(null)),"{key}");
-  }
   // 六合四：按买卖拆开的四个旧键退役——老版本推上来只丢字段不丢操作，存量 body 合并时洗掉。
-  let old=op("settings",&[("orderFlowFilledBid",json!(false)),("orderFlowCancelledAsk",json!(false)),("orderFlowShowFilled",json!(false))]);
+  // （合出来的四个显示开关 2026-09-28 也退役了，见 `trimmed_settings_group_d_are_dropped_and_stripped`。）
+  let old=op("settings",&[("orderFlowFilledBid",json!(false)),("orderFlowCancelledAsk",json!(false)),("orderFlowOverrides",json!({}))]);
   assert!(old.validate().is_ok(),"老版本带着旧开关推上来不能整条 400");
   let mut dropped=old.unknown_fields();dropped.sort();
   assert_eq!(dropped,vec!["orderFlowCancelledAsk".to_string(),"orderFlowFilledBid".to_string()]);
   let mut stored=blank("settings","chart");
   stored.body.insert("orderFlowCancelledBid".into(),json!(true));
   let merged=merge(stored,&old,1_800_000_000_000).unwrap();
-  assert_eq!(merged.body["orderFlowShowFilled"],json!(false));
+  assert_eq!(merged.body["orderFlowOverrides"],json!({}));
   assert!(!merged.body.contains_key("orderFlowCancelledBid")&&!merged.body.contains_key("orderFlowFilledBid"));
   assert!(SETTINGS_FIELDS.contains(&"orderFlowOverrides"));
   for good in [json!({}),json!({"BTC":{"spot":2000000.0,"step":50}}),json!({"PEPE":{"usdtPerp":1000}}),
@@ -853,5 +852,24 @@ mod tests {
   }
   assert!(crate::sync_validation::field("settings","indicatorLayouts/hour",&json!({"hiddenOutputs":{"MA":[2]}})),
    "老客户端分组布局里嵌着的 hiddenOutputs 仍要放行");
+ }
+ /// 收设置项 D 组（2026-09-28，主力订单流四个显示开关）：老版本推上来只丢字段，门槛表照常合并；老 body 下次合并洗掉。
+ #[test] fn trimmed_settings_group_d_are_dropped_and_stripped() {
+  let names=["orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled"];
+  for name in names {
+   assert!(RETIRED_SETTINGS_FIELDS.contains(&name)&&!SETTINGS_FIELDS.contains(&name),"{name} 应已退役");
+  }
+  let mut fields:Vec<(&str,Value)>=names.iter().map(|n|(*n,json!(false))).collect();
+  fields.push(("orderFlowOverrides",json!({"BTC":{"spot":2000000.0}})));
+  let operation=op("settings",&fields);
+  assert!(operation.validate().is_ok(),"老版本带着 D 组字段推上来不能整条 400");
+  let mut named=operation.unknown_fields();named.sort();
+  let mut expected:Vec<String>=names.iter().map(|s|s.to_string()).collect();expected.sort();
+  assert_eq!(named,expected);
+  let mut stored=blank("settings","chart");
+  for name in names {stored.body.insert(name.into(),json!(false));stored.fields.insert(name.into(),json!({"revision":1}));}
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["orderFlowOverrides"],json!({"BTC":{"spot":2000000.0}}));
+  for name in names {assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");}
  }
 }

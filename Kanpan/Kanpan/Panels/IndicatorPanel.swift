@@ -146,22 +146,22 @@ struct IndicatorPage: View {
   @ViewBuilder private var orderFlowSection: some View {
     PanelGroupTitle(text: IndicatorID.orderFlow.name)
     // 行名不再重复「主力订单流」：分组标题已经念过一遍（2026-09-24 审查 U4 同一条规矩）。
-    PanelRow(name: "在图上显示", swatch: t.swatch(.orderFlow), divider: prefs.orderFlow) {
+    // 「门槛」那一行只在这只币的品种信息到了之后才出：那张表里只剩门槛与步长两节
+    // （显示开关 2026-09-28 收设置项 D 组收掉），没有品种信息时点进去是一张空表。
+    let base = prefs.orderFlow ? orderFlow?.currentFacts?.overrideKey : nil
+    PanelRow(name: "在图上显示", swatch: t.swatch(.orderFlow), divider: base != nil) {
       PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
         .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
     }
-    if prefs.orderFlow {
-      let base = orderFlow?.currentFacts?.overrideKey
-      let meta = base.map { "\($0) · " + (prefs.orderFlowOverrides[$0] == nil ? "默认门槛" : "已改门槛") } ?? ""
+    if let base {
+      let meta = "\(base) · " + (prefs.orderFlowOverrides[base] == nil ? "默认门槛" : "已改门槛")
       PanelRow(name: "门槛", divider: false, onTap: { editing = .orderFlow }) {
         HStack(spacing: Space.s) {
-          if !meta.isEmpty {
-            Text(meta).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
-          }
+          Text(meta).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
           VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
         }
       }
-      .accessibilityLabel(meta.isEmpty ? "门槛" : "门槛，\(meta)")
+      .accessibilityLabel("门槛，\(meta)")
       .accessibilityIdentifier("indicator.edit.\(IndicatorID.orderFlow.rawValue)")
     }
   }

@@ -49,16 +49,11 @@ struct Prefs: Sendable, Equatable {
   /// 整张表一个字段是**有意接受的取舍**（审查 5.9 / 第 42 项）：两台设备在同一段离线时间里各改一只币，
   /// 后写的会把先写的整张盖掉。要不盖就得让服务端按 base 做字段级合并，那是一套新的合并规则，
   /// 而一个人同时在两台设备上改两只币的门槛极少见（用户规模也就几个人），改错了再改一次即可。
-  /// 显示开关拆成独立字段是因为那几个是全品种共用的高频开关，两台设备各关一项的概率高得多。
   var orderFlowOverrides: [String: OrderFlowOverride] = [:]
-  /// 主力订单流的四个显示开关：现货 / 合约 / 已成交 / 已撤销（跟人走、全品种共用，只管画不画、不影响跟踪）。
-  /// 拆成四个字段而不是一个对象，是为了两台设备各关一项时同步不互相覆盖。合起来读写走 `orderFlowDisplay`。
-  /// 原来已成交 / 已撤销按买卖各拆两个（`orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask`），
-  /// 审查第 41 项合成一个；老存档读的时候按「买 || 卖」迁过来（`PrefsCodec`），服务端把旧四个键退役。
-  var orderFlowSpot = true
-  var orderFlowContract = true
-  var orderFlowShowFilled = true
-  var orderFlowShowCancelled = true
+  // 主力订单流的四个显示开关（`orderFlowSpot` / `orderFlowContract` / `orderFlowShowFilled` /
+  // `orderFlowShowCancelled`，「指标 › 主力订单流」表底「显示」一节）2026-09-28 收掉（收设置项 D 组）：
+  // 一律全画——现货与合约本来就按颜色分，已成交的画满色、没吃到的（撤单或还挂着）淡一档，
+  // 靠画法区分而不是藏起来。图上走 `ChartState.orderFlowDisplay` 的出厂值 `.all`。
   /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
   var candleKind: CandleKind = .candle
   // 2026-09-28 收设置项 B 组：网格、阳线实心 / 空心、实时价格线、本根倒计时、至今涨幅、
@@ -314,18 +309,6 @@ struct Prefs: Sendable, Equatable {
   /// 0.75 是照「主图不动」反推的：主图权重 3、三个副图各 w，
   /// 想让每格 ≈79pt 而主图留在 ≈317pt，解出来正好 w = 0.75。
   static let defaultSubScale: Double = 0.75
-
-  /// 主力订单流的显示开关（四个字段合起来）。
-  var orderFlowDisplay: OrderFlowDisplay {
-    get {
-      OrderFlowDisplay(spot: orderFlowSpot, contract: orderFlowContract, filled: orderFlowShowFilled,
-                       cancelled: orderFlowShowCancelled)
-    }
-    set {
-      orderFlowSpot = newValue.spot; orderFlowContract = newValue.contract
-      orderFlowShowFilled = newValue.filled; orderFlowShowCancelled = newValue.cancelled
-    }
-  }
 
   /// 主力订单流改过的门槛 / 步长最多记多少只。服务端 `sync_validation.rs` 同一个数。
   static let maxOrderFlowOverrides = 200

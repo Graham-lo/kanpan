@@ -197,7 +197,6 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "favoritesGroup"=>string(v,128),
    "redUp"|"depth"|"orderFlow"|"compactValues"
     |"mainInverted"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
-    |"orderFlowSpot"|"orderFlowContract"|"orderFlowShowFilled"|"orderFlowShowCancelled"
     // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
     |"notifyListingChanges"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),_=>false

@@ -127,11 +127,10 @@ extension Prefs: Codable {
     // `adaptiveIndicators` 2026-09-28 收掉（收设置项 B 组）：图一律按 `Prefs.chartOptions` 的定值画，
     // 老存档、云端老 body 里的这些键读时忽略，服务端退役。
     case depth, orderFlow, priceMode
-    // 主力订单流的门槛 / 步长改动与四个显示开关（2026-09-24 逐单模型那一轮加的，全是加法）。
+    // 主力订单流的门槛 / 步长改动（2026-09-24 逐单模型那一轮加的）。四个显示开关（`orderFlowSpot`、
+    // `orderFlowContract`、`orderFlowShowFilled`、`orderFlowShowCancelled`）以及更早按买卖拆开的
+    // `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 2026-09-28 收掉（收设置项 D 组），老档读时忽略。
     case orderFlowOverrides
-    case orderFlowSpot, orderFlowContract, orderFlowShowFilled, orderFlowShowCancelled
-    // 只读不写：六合四之前按买卖拆开的四个旧键，老存档里读出来迁成「买 || 卖」（审查第 41 项）。
-    case orderFlowFilledBid, orderFlowFilledAsk, orderFlowCancelledBid, orderFlowCancelledAsk
     case candleKind
     case barSpacing, mainInverted, subInverted
     // `hiddenOutputs`、`rsiUpper`、`rsiLower` 2026-09-28 收掉（收设置项 C 组），老档里的这几个键读时忽略；
@@ -167,10 +166,6 @@ extension Prefs: Codable {
     try c.encode(depth, forKey: .depth)
     try c.encode(orderFlow, forKey: .orderFlow)
     try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
-    try c.encode(orderFlowSpot, forKey: .orderFlowSpot)
-    try c.encode(orderFlowContract, forKey: .orderFlowContract)
-    try c.encode(orderFlowShowFilled, forKey: .orderFlowShowFilled)
-    try c.encode(orderFlowShowCancelled, forKey: .orderFlowShowCancelled)
     try c.encode(barSpacing, forKey: .barSpacing)
     try c.encode(mainInverted, forKey: .mainInverted)
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
@@ -299,20 +294,6 @@ extension Prefs: Codable {
       for base in raw.keys.sorted() where orderFlowOverrides.count < Prefs.maxOrderFlowOverrides {
         if OrderFlowBase.isValid(base), let value = raw[base]?.normalized { orderFlowOverrides[base] = value }
       }
-    }
-    if let v = bool(.orderFlowSpot) { orderFlowSpot = v }
-    if let v = bool(.orderFlowContract) { orderFlowContract = v }
-    // 新键优先；没有新键的老存档按旧的买卖两键迁：两侧有一侧开着就算开（只关了一侧的人，
-    // 合并后那一类还看得见，比整类都藏掉少丢信息）。
-    if let v = bool(.orderFlowShowFilled) {
-      orderFlowShowFilled = v
-    } else if bool(.orderFlowFilledBid) != nil || bool(.orderFlowFilledAsk) != nil {
-      orderFlowShowFilled = (bool(.orderFlowFilledBid) ?? true) || (bool(.orderFlowFilledAsk) ?? true)
-    }
-    if let v = bool(.orderFlowShowCancelled) {
-      orderFlowShowCancelled = v
-    } else if bool(.orderFlowCancelledBid) != nil || bool(.orderFlowCancelledAsk) != nil {
-      orderFlowShowCancelled = (bool(.orderFlowCancelledBid) ?? true) || (bool(.orderFlowCancelledAsk) ?? true)
     }
     // 存档里的根间距同样夹一道：手改过存档、或者以后动了上下限，都不能让图开在
     // 一个画不出来的宽度上。

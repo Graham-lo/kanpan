@@ -100,11 +100,9 @@ enum PrefsFieldPlan {
     "watchMoveAlert": .synced, "watchMoveThreshold": .synced,
     // 条件提醒协议第 6 节：设置 › 通知「品种上新与停牌下架」。
     "notifyListingChanges": .synced,
-    // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）与四个显示开关。
+    // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）。
     // 六合四之前的 `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 在服务端 RETIRED_SETTINGS_FIELDS 里退役。
     "orderFlowOverrides": .synced,
-    "orderFlowSpot": .synced, "orderFlowContract": .synced,
-    "orderFlowShowFilled": .synced, "orderFlowShowCancelled": .synced,
 
     // 2026-09-28「收设置项」收掉的字段不在这张表里了，线上在服务端 `RETIRED_SETTINGS_FIELDS` 退役
     // （老客户端发上来丢掉并在 droppedFields 报回，库里老 body 下次合并时洗掉）。逐项清单与恢复办法见
@@ -114,6 +112,7 @@ enum PrefsFieldPlan {
     // dataDisplay、crossPrice、allowMainInversion、allowSubInversion、adaptiveIndicators。
     // 复盘：replaySpeed（回放倍速改为按根数自动挑，见 `ReplayPace`）。
     // C 组：hiddenOutputs（指标「输出」开关）、rsiUpper / rsiLower（线上合成的 rsiRange）。
+    // D 组：orderFlowSpot、orderFlowContract、orderFlowShowFilled、orderFlowShowCancelled（主力订单流「显示」开关）。
 
     // ---------------------------------------------------------------- 留在这台机器上
     // 走直连还是走 VPS 网关，是这台手机所处网络的属性，不是他的习惯。`routePolicy`
