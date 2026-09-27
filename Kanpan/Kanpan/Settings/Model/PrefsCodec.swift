@@ -147,6 +147,7 @@ extension Prefs: Codable {
     case replaySpeed, reviewSearchScope
     case alertSound
     case watchMoveAlert, watchMoveThreshold
+    case notifyListingChanges
   }
 
   func encode(to encoder: Encoder) throws {
@@ -213,6 +214,7 @@ extension Prefs: Codable {
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
     try c.encode(watchMoveThreshold, forKey: .watchMoveThreshold)
+    try c.encode(notifyListingChanges, forKey: .notifyListingChanges)
   }
 
   /// 一组指标布局的七个键。顶层（共用的那份）和 `indicatorLayouts/<组>` 里写法一样。
@@ -417,6 +419,7 @@ extension Prefs: Codable {
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }
+    if let v = bool(.notifyListingChanges) { notifyListingChanges = v }
     if let v = (try? c.decodeIfPresent(Double.self, forKey: .watchMoveThreshold)) ?? nil {
       watchMoveThreshold = WatchMove.clampThreshold(v)
     }

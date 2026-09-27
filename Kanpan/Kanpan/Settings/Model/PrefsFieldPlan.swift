@@ -109,6 +109,8 @@ enum PrefsFieldPlan {
     "replaySpeed": .synced, "reviewSearchScope": .synced,
     "alertSound": .synced,
     "watchMoveAlert": .synced, "watchMoveThreshold": .synced,
+    // 条件提醒协议第 6 节：设置 › 通知「品种上新与停牌下架」。
+    "notifyListingChanges": .synced,
     // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）与四个显示开关。
     // 六合四之前的 `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 在服务端 RETIRED_SETTINGS_FIELDS 里退役。
     "orderFlowOverrides": .synced,

@@ -260,6 +260,21 @@ enum AlertRecordText {
       return "触到你画的" + line
     case .reviewDue:
       return alert.title.isEmpty ? KanpanCore.Alert.name(of: alert.symbol) : alert.title
+    case .condition:
+      // 「费率高于 0.05%」「1h 收盘站上 MA 20」；总表里前面带品种名。
+      let text = alert.rule?.rowText ?? "条件提醒"
+      return withSymbol ? KanpanCore.Alert.name(of: alert.symbol) + " " + text : text
+    }
+  }
+
+  /// 条件提醒那一行的灰字：它是哪一类条件。
+  static func conditionLabel(_ rule: AlertRule?) -> String {
+    switch rule {
+    case .funding: "资金费率"
+    case .openInterestChange: "持仓量"
+    case .maCross: "均线"
+    case .orderflowWall: "大单墙"
+    default: "条件提醒"
     }
   }
 
@@ -288,10 +303,14 @@ enum AlertRecordText {
     case .paused:
       // 画线提醒只有「线找不到」这一种暂停（`AlertArchive.reconcile`）。
       let label = AlertArchive.isDrawingMissing(alert) ? AlertArchive.drawingMissingNote : "已暂停"
-      return conditionInline ? label + " · " + alert.condition.title : label
+      return conditionInline ? label + " · " + conditionText(alert) : label
     case .active:
-      return conditionInline ? alert.condition.title : "生效中"
+      return conditionInline ? conditionText(alert) : "生效中"
     }
+  }
+
+  private static func conditionText(_ alert: KanpanCore.Alert) -> String {
+    alert.kind == .condition ? conditionLabel(alert.rule) : alert.condition.title
   }
 
   /// 界面上看得见的：已触发的不列（v3 触发即删，删掉之前那一拍也不露脸）；
@@ -318,7 +337,7 @@ enum AlertRecordText {
     var id: String { kind.rawValue }
     var title: String {
       switch kind {
-      case .price: "价格提醒 \(count)"
+      case .price, .condition: "价格提醒 \(count)"
       case .drawing: "画线提醒 \(count)"
       case .reviewDue: "复盘到点 \(count)"
       }
@@ -332,11 +351,13 @@ enum AlertRecordText {
   }
 
   /// 「全部预警」的分段：价格提醒、画线提醒两组，有复盘到点再单列一段；空的段不出。
+  /// 条件提醒（费率 / 持仓量 / 均线 / 大单）归在「价格」那一段里，不另起第三段。
   static func sections(_ alerts: [KanpanCore.Alert]) -> [Section] {
     let visible = alerts.filter(isVisible)
     var out: [Section] = []
     for kind in [KanpanCore.Alert.Kind.price, .drawing] {
-      let mine = visible.filter { $0.kind == kind }.sorted { $0.created > $1.created }
+      let mine = visible.filter { $0.kind == kind || (kind == .price && $0.kind == .condition) }
+        .sorted { $0.created > $1.created }
       guard !mine.isEmpty else { continue }
       var order: [String] = []
       var bySymbol: [String: [KanpanCore.Alert]] = [:]

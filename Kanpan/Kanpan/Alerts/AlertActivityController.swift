@@ -117,7 +117,7 @@ final class AlertActivityController: ObservableObject {
   func toggle(_ alert: KanpanCore.Alert, price: Double?, change: Double?, decimals: Int?, redUp: Bool) -> Bool {
     if watching == alert.id { stop(); return false }
     stop()
-    guard alert.isActive, alert.kind != .reviewDue, available else { return false }
+    guard alert.isActive, alert.kind != .reviewDue, alert.kind != .condition, available else { return false }
     let attributes = AlertActivityAttributes(symbol: alert.symbol, alertID: Self.syncID(alert),
                                              toolLabel: Self.toolLabel(alert), decimals: decimals, redUp: redUp)
     let state = Self.state(for: alert, price: price, change: change)

@@ -172,6 +172,39 @@ final class AlertStore: ObservableObject {
     return alert
   }
 
+  /// 条件提醒（`docs/条件提醒-协议-2026-09-27.md`）：创建提醒页选了费率 / 持仓量 / 均线 / 大单时走这一口。
+  /// 同一只品种已经有一条条件一模一样的活动提醒就不再建第二条，把这次填的 Webhook 落到那一条上。
+  /// 只在币安 U 本位上建（服务端按整串卡 `binance/usd_m`）。
+  @discardableResult
+  func addCondition(symbol: String, rule: AlertRule, webhook: String? = nil,
+                    now: Double = Date().timeIntervalSince1970 * 1000) -> Alert? {
+    let symbol = InstrumentID.canonical(symbol)
+    guard !symbol.isEmpty, InstrumentID(symbol).marketKey == Alert.market, rule.isKnown else { return nil }
+    if let same = archive.alerts.first(where: { $0.kind == .condition && $0.isActive && $0.symbol == symbol && $0.rule == rule }) {
+      return updateCondition(id: same.id, rule: rule, webhook: webhook, now: now) ?? same
+    }
+    guard archive.hasRoom else { notice = "提醒最多 \(AlertArchive.limit) 条"; return nil }
+    let alert = Alert.condition(symbol: symbol, rule: rule, now: now, webhook: Self.clean(webhook: webhook))
+    write { $0.alerts.append(alert) }
+    return alert
+  }
+
+  /// 编辑一条条件提醒。条件变了就改标题、从现在起重新布防（和价格提醒挪价一个道理）；
+  /// 只改 Webhook 不动布防。
+  @discardableResult
+  func updateCondition(id: String, rule: AlertRule, webhook: String?,
+                       now: Double = Date().timeIntervalSince1970 * 1000) -> Alert? {
+    guard var alert = archive[id], alert.kind == .condition, rule.isKnown else { return nil }
+    if alert.rule != rule {
+      alert.rule = rule
+      alert.title = Alert.conditionTitle(symbol: alert.symbol, rule: rule)
+      alert.armedAt = now; alert.status = .active; alert.firedAt = nil; alert.firedPrice = nil
+    }
+    alert.webhook = Self.clean(webhook: webhook)
+    write { $0[id] = alert }
+    return alert
+  }
+
   /// Webhook 地址：去掉首尾空白，不合法就当没填（表单那边已经拦了，这里兜底）。
   static func clean(webhook: String?) -> String? {
     guard let url = webhook?.trimmingCharacters(in: .whitespacesAndNewlines), Alert.isValidWebhook(url) else { return nil }
@@ -219,7 +252,7 @@ final class AlertStore: ObservableObject {
     write { archive in
       archive.alerts.removeAll { ids.contains($0.id) && $0.status == .fired && $0.kind != .reviewDue }
     }
-    for id in ids where archive[id] == nil { localFires[id] = nil }
+    for id in ids where archive[id] == nil { localFires[id] = nil; observations[id] = nil }
   }
 
   /// 响了。前台评估和服务端推下来的那条走同一个口，`once` 保证只记一次。
@@ -255,6 +288,26 @@ final class AlertStore: ObservableObject {
     var seen = Set<String>()
     return ids.compactMap { id in seen.insert(id).inserted ? fired[id] : nil }
   }
+
+  /// 条件提醒本机判到的那一下（`ConditionAlertEngine`）：先存下观测，再按同一个口标已触发。
+  /// 观测只在内存里（通知正文与 Webhook 的 `detail` / `value`），报完随那条提醒一起删掉。
+  @discardableResult
+  func markFired(id: String, observation: ConditionObservation) -> Alert? {
+    guard let alert = archive[id], alert.isActive else { return nil }
+    observations[id] = observation
+    guard let fired = markFired(id: id, at: observation.at, price: observation.price) else {
+      observations[id] = nil; return nil
+    }
+    return fired
+  }
+
+  /// 这一次触发本机判到的观测（本机判到的条件提醒才有）。
+  func observation(for alert: Alert) -> ConditionObservation? {
+    guard alert.kind == .condition, firedLocally(alert) else { return nil }
+    return observations[alert.id]
+  }
+
+  private var observations: [String: ConditionObservation] = [:]
 
   /// 本机自己判响的那几次（id → `firedAt`）。同步换下来的「服务端已经响过」不经
   /// `markFired`，不在这里。`AlertWatcher` 靠它决定 Webhook 由谁发：本机判响的本机发，

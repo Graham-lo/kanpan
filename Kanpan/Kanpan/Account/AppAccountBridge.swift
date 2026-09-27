@@ -670,7 +670,15 @@ import ReviewUI
       await running?.value
       guard let self, epoch == current else { return }
       inbox.pull()
+      pullListingNotices()
     }
+  }
+
+  /// 设置里开着「品种上新与停牌下架」就去拉一次服务端记下的品种状态通知（`ListingNotices`）。
+  /// 回前台（`synchronize`）和每一轮同步跑完都叫；两次太近的那次由 `ListingNotices` 自己挡掉。
+  func pullListingNotices() {
+    guard prefs.prefs.notifyListingChanges, let api = account.client, let owner else { return }
+    ListingNotices.pull(api: api, owner: owner, sound: prefs.prefs.alertSound)
   }
   /// 上一轮还在跑时被挡下来的那次推送（值是它的 `manual`）。跑完补上。
   ///
@@ -754,6 +762,7 @@ import ReviewUI
         try sync.markFetched(at: Int64(Date().timeIntervalSince1970 * 1000))
         if pendingApply || sync.needsApply { try applyPending() }
         updateStatus()
+        pullListingNotices()
         // 复盘同步只跟着全量走：登录 / 恢复会话 / 手动 / 到点的回前台。
         if case .full = plan { review.synchronize(manual: manual) }
       } catch is CancellationError { if requestEpoch == epoch && taskID == runID { updateStatus() } }

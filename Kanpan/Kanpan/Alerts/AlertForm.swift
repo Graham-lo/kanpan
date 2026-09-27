@@ -32,6 +32,50 @@ struct AlertDraft {
   var target: Double
   var condition: KanpanCore.Alert.Condition
   var webhook: String?
+  /// 条件提醒（费率 / 持仓量 / 均线 / 大单墙）的条件；nil 是价格提醒（`target` + `condition`）。
+  var rule: AlertRule? = nil
+}
+
+/// 条件提醒要的默认值，宿主按那只品种算（`MainScreen.alertConditions`）。
+/// 整个是 nil = 这只 / 这时不给条件提醒：没登录（条件由服务端判，要账号），或者不是币安 U 本位。
+struct ConditionAlertDefaults: Equatable {
+  /// 均线的周期：图上当前那一档（1 年不在可选里，退到 1 日）。
+  var interval: String
+  /// 均线的 N：主图第一条 MA 的参数。
+  var maLength: Int
+  /// 大单墙的金额：这只品种 U 本位合约此刻生效的主力订单流门槛；还不知道就 nil。
+  var wallThreshold: Double?
+}
+
+/// 创建页「条件」那一格能选的六样：前两样是价格提醒的两种判法，后四样是条件提醒。
+enum AlertFormKind: String, Hashable, CaseIterable {
+  case touch, close, funding, openInterest, ma, wall
+
+  var title: String {
+    switch self {
+    case .touch: KanpanCore.Alert.Condition.touch.title
+    case .close: KanpanCore.Alert.Condition.close.title
+    case .funding: "资金费率"
+    case .openInterest: "持仓量变化"
+    case .ma: "均线"
+    case .wall: "大单挂单墙"
+    }
+  }
+
+  var isCondition: Bool { self != .touch && self != .close }
+
+  static let priceKinds: [AlertFormKind] = [.touch, .close]
+  static let conditionKinds: [AlertFormKind] = [.funding, .openInterest, .ma, .wall]
+
+  init?(rule: AlertRule?) {
+    switch rule {
+    case .funding: self = .funding
+    case .openInterestChange: self = .openInterest
+    case .maCross: self = .ma
+    case .orderflowWall: self = .wall
+    default: return nil
+    }
+  }
 }
 
 extension AlertStore {
@@ -40,6 +84,15 @@ extension AlertStore {
   /// 才问权限。编辑（`editing` 给了 id）不再问。
   @discardableResult
   func commit(_ draft: AlertDraft, editing id: String? = nil) -> KanpanCore.Alert? {
+    if let rule = draft.rule {
+      if let id { return updateCondition(id: id, rule: rule, webhook: draft.webhook) }
+      guard let alert = addCondition(symbol: draft.quote.symbol, rule: rule, webhook: draft.webhook) else { return nil }
+      Task {
+        await AlertNotifications.requestAuthorization()
+        await MainActor.run { PushRegistration.startIfAuthorized() }
+      }
+      return alert
+    }
     let label = draft.quote.current(draft.target)
     if let id {
       return update(id: id, target: draft.target, current: draft.quote.price, label: label,
@@ -79,6 +132,10 @@ extension AlertStore {
 ///    价格提醒点行进编辑。
 ///
 /// 只响一次，响完就删（`AlertWatcher`，2026-09-25 v3）；没有「每次」「再次提醒」。
+///
+/// 2026-09-27 条件提醒（`docs/条件提醒-协议-2026-09-27.md`）：登录了、又是币安 U 本位的品种，
+/// 「条件」那一格从两段分段换成一个菜单，多出资金费率 / 持仓量变化 / 均线 / 大单挂单墙四样；
+/// 换条件只换条件卡里上面那几行参数，别的不动。没登录或者别的市场，这一页和原来一模一样。
 struct AlertForm: View {
   /// 图上那只给人看的代号（宿主交的是 `InstrumentID.display`）。
   var initialSymbol: String
@@ -100,10 +157,20 @@ struct AlertForm: View {
   var onEditRecord: (String) -> Void = { _ in }
   /// 行尾垃圾桶删一条。
   var onDeleteRecord: (String) -> Void = { _ in }
+  /// 条件提醒的默认值；nil = 这一页不给条件提醒（见 `ConditionAlertDefaults`）。
+  var conditions: ConditionAlertDefaults? = nil
   var onSave: (AlertDraft) -> Void
 
   @State private var priceText = ""
   @State private var condition: KanpanCore.Alert.Condition = .touch
+  @State private var kind: AlertFormKind = .touch
+  @State private var fundingSide: AlertRule.Side = .above
+  @State private var fundingText = "0.05"
+  @State private var oiText = "3"
+  @State private var maInterval = "1h"
+  @State private var maLengthText = "20"
+  @State private var maSide: AlertRule.Side = .above
+  @State private var wallText = "1M"
   @State private var webhookOn = false
   @State private var webhookURL = ""
   @State private var testing = false
@@ -114,7 +181,7 @@ struct AlertForm: View {
   /// 页面左右边距（`panelPageInset` 按屏宽给 16 / 20，即 `Inset.page`）。
   @Environment(\.panelHPad) private var hPad
 
-  private enum Field: Hashable { case price, url }
+  private enum Field: Hashable { case price, url, param }
 
   /// 品种卡那一行的高度：徽章 28 + 两行字，比普通行（44）高一档。
   private static let symbolRowHeight = Inset.rowMin + Space.m
@@ -180,11 +247,18 @@ struct AlertForm: View {
   private func seed(_ quote: PriceAlertQuote?) {
     guard !seeded else { return }
     seeded = true
+    if let conditions {
+      maInterval = conditions.interval
+      maLengthText = String(conditions.maLength)
+      if let wall = conditions.wallThreshold, wall >= 10_000 { wallText = AlertRule.units(wall) }
+    }
     if let existing {
       if let target = existing.targetPrice {
         priceText = ReviewLabels.price(target, decimals: quote?.decimals)
       }
       condition = existing.condition
+      kind = existing.condition == .close ? .close : .touch
+      if existing.kind == .condition { seed(rule: existing.rule) }
       webhookOn = existing.webhook != nil
       webhookURL = existing.webhook ?? ""
     } else if let initialPrice {
@@ -192,6 +266,37 @@ struct AlertForm: View {
     }
     // 没带价进来（预览、以后别的入口）直接对准价格框；图上带着价进来、或者编辑，先让人看全整页。
     if existing == nil, initialPrice == nil { focus = .price }
+  }
+
+  /// 编辑一条条件提醒：把它的条件摊回参数行。
+  private func seed(rule: AlertRule?) {
+    guard let picked = AlertFormKind(rule: rule) else { return }
+    kind = picked
+    switch rule {
+    case let .funding(side, rate):
+      fundingSide = side; fundingText = AlertRule.percent(rate, dp: 6)
+    case let .openInterestChange(threshold):
+      oiText = AlertRule.percent(threshold, dp: 4)
+    case let .maCross(interval, length, side):
+      maInterval = interval; maLengthText = String(length); maSide = side
+    case let .orderflowWall(threshold):
+      wallText = AlertRule.units(AlertRule.decimal(threshold).map { NSDecimalNumber(decimal: $0).doubleValue } ?? 0)
+    default: break
+    }
+  }
+
+  /// 「条件」那一格能选哪几样。编辑时只在同一类里换（价格提醒换不成条件提醒，反之亦然）。
+  private var kinds: [AlertFormKind] {
+    if let existing { return existing.kind == .condition ? AlertFormKind.conditionKinds : AlertFormKind.priceKinds }
+    return conditions == nil ? AlertFormKind.priceKinds : AlertFormKind.priceKinds + AlertFormKind.conditionKinds
+  }
+
+  private func pick(_ next: AlertFormKind) {
+    focus = nil
+    withAnimation(.snappy) {
+      kind = next
+      if !next.isCondition { condition = next == .close ? .close : .touch }
+    }
   }
 
   // ---------------------------------------------------------------- 品种卡
@@ -240,43 +345,206 @@ struct AlertForm: View {
 
   private func conditionCard(_ quote: PriceAlertQuote?) -> some View {
     AlertGroupCard {
-      // 价格：一口输入井（v3，用户：「价格可以编辑吧」——原来一串裸数字看不出能改）。
-      // 井底取页面底色（比卡片深一层，和条件分段的槽同一个底），`Radius.s` 圆角，
-      // 前面一枚小铅笔；聚焦时描一圈强调色。整行点哪儿都进输入框（标签那一截也算）。
-      HStack(spacing: Space.m) {
-        label("价格")
-        priceWell(quote)
+      // 换条件只换这几行参数；下面的「条件」那一格不动。
+      switch kind {
+      case .touch, .close: priceRows(quote)
+      case .funding: fundingRows
+      case .openInterest: openInterestRows
+      case .ma: maRows
+      case .wall: wallRows
       }
-      .padding(.horizontal, Inset.card)
-      .padding(.vertical, Space.xs)
-      .frame(minHeight: Inset.rowMin)
-      .contentShape(Rectangle())
-      .onTapGesture { focus = .price }
-
-      // 离现价多远：和价格同一格，中间不划线。
-      Text(hintText(quote))
-        .font(TypeScale.caption).monospacedDigit()
-        .foregroundStyle(t.ink3)
-        .lineLimit(1)
-        // 跟着输入实时变：数字滚动换，不整句闪。
-        .contentTransition(.numericText())
-        .animation(.snappy, value: priceText)
-        .frame(maxWidth: .infinity, minHeight: Self.hintHeight, alignment: .topLeading)
-        .padding(.horizontal, Inset.card)
-        .accessibilityIdentifier("alerts.new.current")
       AlertCardDivider()
-
-      HStack(spacing: Space.m) {
-        label("条件")
-        Spacer(minLength: Space.s)
-        PanelSegment(options: KanpanCore.Alert.Condition.allCases.map { ($0.title, $0) },
-                     selection: condition, id: "alerts.new.condition",
-                     track: AlertPageStyle.background(t)) { condition = $0 }
-      }
-      .padding(.horizontal, Inset.card)
-      .padding(.vertical, PanelMetrics.vPad)
-      .frame(minHeight: Inset.rowMin)
+      conditionRow
     }
+  }
+
+  @ViewBuilder private func priceRows(_ quote: PriceAlertQuote?) -> some View {
+    // 价格：一口输入井（v3，用户：「价格可以编辑吧」——原来一串裸数字看不出能改）。
+    // 井底取页面底色（比卡片深一层，和条件分段的槽同一个底），`Radius.s` 圆角，
+    // 前面一枚小铅笔；聚焦时描一圈强调色。整行点哪儿都进输入框（标签那一截也算）。
+    HStack(spacing: Space.m) {
+      label("价格")
+      priceWell(quote)
+    }
+    .padding(.horizontal, Inset.card)
+    .padding(.vertical, Space.xs)
+    .frame(minHeight: Inset.rowMin)
+    .contentShape(Rectangle())
+    .onTapGesture { focus = .price }
+
+    // 离现价多远：和价格同一格，中间不划线。
+    Text(hintText(quote))
+      .font(TypeScale.caption).monospacedDigit()
+      .foregroundStyle(t.ink3)
+      .lineLimit(1)
+      // 跟着输入实时变：数字滚动换，不整句闪。
+      .contentTransition(.numericText())
+      .animation(.snappy, value: priceText)
+      .frame(maxWidth: .infinity, minHeight: Self.hintHeight, alignment: .topLeading)
+      .padding(.horizontal, Inset.card)
+      .accessibilityIdentifier("alerts.new.current")
+  }
+
+  /// 「条件」：只有价格那两样时是原来的两段分段；有条件提醒时换成一个菜单（六样一段放不下）。
+  private var conditionRow: some View {
+    HStack(spacing: Space.m) {
+      label("条件")
+      Spacer(minLength: Space.s)
+      if kinds.count <= 2 {
+        PanelSegment(options: kinds.map { ($0.title, $0) },
+                     selection: kind, id: "alerts.new.condition",
+                     track: AlertPageStyle.background(t)) { pick($0) }
+      } else {
+        Menu {
+          ForEach(kinds, id: \.self) { item in
+            Button { pick(item) } label: {
+              if item == kind { Label(item.title, systemImage: "checkmark") } else { Text(item.title) }
+            }
+            .accessibilityIdentifier("alerts.new.kind." + item.rawValue)
+          }
+        } label: {
+          menuLabel(kind.title)
+        }
+        .accessibilityIdentifier("alerts.new.condition")
+      }
+    }
+    .padding(.horizontal, Inset.card)
+    .padding(.vertical, PanelMetrics.vPad)
+    .frame(minHeight: Inset.rowMin)
+  }
+
+  // ---------------------------------------------------------------- 条件提醒的参数行
+
+  /// 资金费率：方向 + 费率（百分数，可以是负的，所以不用纯数字键盘）。
+  @ViewBuilder private var fundingRows: some View {
+    paramRow("方向") {
+      Spacer(minLength: Space.s)
+      PanelSegment(options: [("高于", AlertRule.Side.above), ("低于", AlertRule.Side.below)],
+                   selection: fundingSide, id: "alerts.new.side",
+                   track: AlertPageStyle.background(t)) { fundingSide = $0 }
+    }
+    AlertCardDivider()
+    paramRow("费率") {
+      inputWell(text: $fundingText, placeholder: "0.05", keyboard: .numbersAndPunctuation,
+                id: "alerts.new.rate", title: "费率", suffix: "%")
+    }
+  }
+
+  /// 1 小时持仓量变化超过 X%。
+  private var openInterestRows: some View {
+    paramRow("1 小时变化超过") {
+      inputWell(text: $oiText, placeholder: "3", keyboard: .decimalPad,
+                id: "alerts.new.oi", title: "变化超过", suffix: "%")
+    }
+  }
+
+  /// 周期 + MA N + 站上 / 跌破。周期默认图上那一档，N 默认主图第一条 MA。
+  @ViewBuilder private var maRows: some View {
+    paramRow("周期") {
+      Spacer(minLength: Space.s)
+      Menu {
+        ForEach(AlertRule.maIntervals, id: \.self) { raw in
+          Button { maInterval = raw } label: {
+            let text = Interval(rawValue: raw)?.display ?? raw
+            if raw == maInterval { Label(text, systemImage: "checkmark") } else { Text(text) }
+          }
+        }
+      } label: {
+        menuLabel(Interval(rawValue: maInterval)?.display ?? maInterval)
+      }
+      .accessibilityIdentifier("alerts.new.interval")
+    }
+    AlertCardDivider()
+    paramRow("均线") {
+      inputWell(text: $maLengthText, placeholder: "20", keyboard: .numberPad,
+                id: "alerts.new.length", title: "均线", prefix: "MA")
+    }
+    AlertCardDivider()
+    paramRow("收盘") {
+      Spacer(minLength: Space.s)
+      PanelSegment(options: [("站上", AlertRule.Side.above), ("跌破", AlertRule.Side.below)],
+                   selection: maSide, id: "alerts.new.side",
+                   track: AlertPageStyle.background(t)) { maSide = $0 }
+    }
+  }
+
+  /// 出现超过 X 的大单挂单墙。金额写 K / M / B，默认这只品种的主力订单流门槛。
+  private var wallRows: some View {
+    paramRow("金额超过") {
+      inputWell(text: $wallText, placeholder: "1M", keyboard: .asciiCapable,
+                id: "alerts.new.wall", title: "金额超过")
+    }
+  }
+
+  private func paramRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    HStack(spacing: Space.m) {
+      label(title)
+      content()
+    }
+    .padding(.horizontal, Inset.card)
+    .padding(.vertical, Space.xs)
+    .frame(minHeight: Inset.rowMin)
+  }
+
+  private func menuLabel(_ text: String) -> some View {
+    HStack(spacing: Space.xs) {
+      Text(text)
+        .font(TypeScale.body)
+        .foregroundStyle(t.ink)
+        .lineLimit(1)
+      Image(systemName: "chevron.up.chevron.down")
+        .font(TypeScale.caption)
+        .foregroundStyle(t.ink3)
+        .accessibilityHidden(true)
+    }
+    .frame(minHeight: Hit.min)
+    .contentShape(Rectangle())
+  }
+
+  /// 参数的输入井：和价格井同一个画法（页面底色的井、小铅笔、聚焦描强调色）。
+  private func inputWell(text: Binding<String>, placeholder: String, keyboard: UIKeyboardType,
+                         id: String, title: String, prefix: String? = nil, suffix: String? = nil) -> some View {
+    let focused = focus == .param
+    return HStack(spacing: Space.s) {
+      Image(systemName: "pencil")
+        .font(TypeScale.caption)
+        .foregroundStyle(focused ? t.amber : t.ink3)
+        .accessibilityHidden(true)
+      if let prefix {
+        Spacer(minLength: 0)
+        Text(prefix)
+          .font(TypeScale.caption)
+          .foregroundStyle(t.ink3)
+      }
+      TextField(placeholder, text: text)
+        .keyboardType(keyboard)
+        .textInputAutocapitalization(.characters)
+        .autocorrectionDisabled()
+        .multilineTextAlignment(.trailing)
+        .font(TypeScale.bodyEmph).monospacedDigit()
+        .foregroundStyle(t.ink)
+        .focused($focus, equals: .param)
+        .fixedSize(horizontal: prefix != nil, vertical: false)
+        .accessibilityIdentifier(id)
+        .accessibilityLabel(title)
+      if let suffix {
+        Text(suffix)
+          .font(TypeScale.caption)
+          .foregroundStyle(t.ink3)
+      }
+    }
+    .padding(.horizontal, Space.m)
+    .padding(.vertical, Space.s)
+    .frame(maxWidth: .infinity)
+    .background {
+      let well = RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
+      well.fill(AlertPageStyle.background(t))
+        .overlay { well.fill(focused ? t.amberSoft : .clear) }
+        .overlay { well.strokeBorder(focused ? t.amberLine : .clear, lineWidth: 1) }
+    }
+    .animation(.easeOut(duration: Self.focusFade), value: focused)
+    .contentShape(Rectangle())
+    .onTapGesture { focus = .param }
   }
 
   private func priceWell(_ quote: PriceAlertQuote?) -> some View {
@@ -395,11 +663,17 @@ struct AlertForm: View {
   private func sendTest(_ quote: PriceAlertQuote?) {
     let quote = quote ?? PriceAlertQuote(symbol: InstrumentID.canonical(symbolKey), price: nil, decimals: nil)
     let price = quote.price ?? target ?? 0
+    let now = Date().timeIntervalSince1970 * 1000
     // 不带推送内容也不带备注：发的就是默认模板，和真触发时一模一样。
-    let draft = KanpanCore.Alert.price(
-      symbol: quote.symbol, target: target ?? price, current: quote.price,
-      label: quote.current(target ?? price), now: Date().timeIntervalSince1970 * 1000,
-      condition: condition)
+    let draft: KanpanCore.Alert
+    if kind.isCondition {
+      guard let rule else { return }
+      draft = KanpanCore.Alert.condition(symbol: quote.symbol, rule: rule, now: now)
+    } else {
+      draft = KanpanCore.Alert.price(
+        symbol: quote.symbol, target: target ?? price, current: quote.price,
+        label: quote.current(target ?? price), now: now, condition: condition)
+    }
     let sent = existing.map { var a = draft; a.id = $0.id; return a } ?? draft
     let url = webhookURL
     testing = true
@@ -440,13 +714,30 @@ struct AlertForm: View {
   /// 卡片色 `raised2` 在上面分得开，两种情况都用 `PanelDisabled`。
   private var disabledFill: Color { PanelDisabled.fill(t) }
 
-  /// 能交了吗：品种认得、价是正数、开着 Webhook 时地址合法。
+  /// 能交了吗：品种认得、价是正数（条件提醒：参数在协议的范围里）、开着 Webhook 时地址合法。
   private func draft(_ quote: PriceAlertQuote?) -> AlertDraft? {
-    guard let quote, let target else { return nil }
+    guard let quote else { return nil }
     let url = webhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
     if webhookOn, !KanpanCore.Alert.isValidWebhook(url) { return nil }
+    if kind.isCondition {
+      guard let rule else { return nil }
+      return AlertDraft(quote: quote, target: 0, condition: .touch, webhook: webhookOn ? url : nil, rule: rule)
+    }
+    guard let target else { return nil }
     return AlertDraft(quote: quote, target: target, condition: condition,
                       webhook: webhookOn ? url : nil)
+  }
+
+  /// 参数行拼出来的条件；写得不成数、超出协议范围都是 nil（主按钮灰着）。
+  private var rule: AlertRule? {
+    let built: AlertRule? = switch kind {
+    case .touch, .close: nil
+    case .funding: AlertRule.ratio(percent: fundingText).map { .funding(side: fundingSide, rate: $0) }
+    case .openInterest: AlertRule.ratio(percent: oiText).map { .openInterestChange(threshold: $0) }
+    case .ma: Int(maLengthText.trimmingCharacters(in: .whitespaces)).map { .maCross(interval: maInterval, length: $0, side: maSide) }
+    case .wall: AlertRule.amount(wallText).map { .orderflowWall(threshold: $0) }
+    }
+    return built?.checked
   }
 
   /// 用户打的价。逗号当千分位扔掉；非正数、读不出来的都不算。
@@ -472,7 +763,8 @@ struct AlertForm: View {
             meta: AlertRecordText.meta(alert, zone: zone, decimals: quote?.decimals,
                                        conditionInline: true),
             divider: index < records.count - 1,
-            onTap: alert.kind == .price ? { onEditRecord(alert.id) } : nil,
+            onTap: alert.kind == .price || (alert.kind == .condition && alert.rule?.isKnown == true)
+              ? { onEditRecord(alert.id) } : nil,
             onDelete: { withAnimation(.snappy) { onDeleteRecord(alert.id) } })
           .transition(AlertRecordRow.removal)
         }
@@ -530,7 +822,8 @@ struct AlertComposeSheet: View {
                 records: AlertRecordText.records(store.all, symbol: key),
                 zone: context.zone,
                 onEditRecord: { editing = $0 },
-                onDeleteRecord: { store.remove(id: $0) }) { draft in
+                onDeleteRecord: { store.remove(id: $0) },
+                conditions: context.conditions(key)) { draft in
         if let alert = store.commit(draft) { Haptics.success(); onCreated(alert) }
       }
       .toolbar {
@@ -551,7 +844,8 @@ struct AlertComposeSheet: View {
         if let alert = store.all.first(where: { $0.id == id }) {
           AlertForm(initialSymbol: InstrumentID(alert.symbol).display, existing: alert,
                     resolve: context.quote, prepare: context.prepareQuote,
-                    release: context.releaseQuote, zone: context.zone) { draft in
+                    release: context.releaseQuote, zone: context.zone,
+                    conditions: context.conditions(InstrumentID.canonical(alert.symbol))) { draft in
             if store.commit(draft, editing: id) != nil { Haptics.success() }
           }
         }

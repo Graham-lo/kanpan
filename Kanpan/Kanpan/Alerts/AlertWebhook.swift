@@ -43,9 +43,11 @@ enum AlertWebhook {
   }
 
   /// 提醒响了：后台发，失败隔 3 秒重试一次，再失败只记日志。
-  static func fire(_ alert: Alert, price: Double, decimals: Int?, at ms: Double) {
+  static func fire(_ alert: Alert, price: Double, decimals: Int?, at ms: Double,
+                   observation: ConditionObservation? = nil) {
     guard let url = alert.webhook, Alert.isValidWebhook(url) else { return }
-    let payload = AlertWebhookPayload(event: .alert, alert: alert, price: price, decimals: decimals, at: ms)
+    let payload = AlertWebhookPayload(event: .alert, alert: alert, price: price, decimals: decimals, at: ms,
+                                      observation: observation)
     Task.detached(priority: .utility) {
       let first = await post(payload, to: url)
       if first.ok { return }

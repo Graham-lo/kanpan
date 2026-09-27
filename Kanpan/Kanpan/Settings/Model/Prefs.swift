@@ -132,6 +132,9 @@ struct Prefs: Sendable, Equatable {
   var watchMoveAlert: Bool = false
   /// 波动幅度（百分数），出厂 1.5，手动输入，夹在 `WatchMove.thresholdRange` 里。
   var watchMoveThreshold: Double = WatchMove.defaultThreshold
+  /// 设置 › 通知「品种上新与停牌下架」，出厂关，随账号同步。服务端 `listing_watch.rs` 读它推送；
+  /// 没有 APNs 密钥时 app 在前台 / 每次同步去拉 `/v1/alerts/listing-notices` 当本地通知出（`ListingNotices`）。
+  var notifyListingChanges: Bool = false
 
   // ---------------------------------------------------------------- 指标
   /// 主图叠加，按打开先后排。默认 `[.ma]`。

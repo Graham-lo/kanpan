@@ -179,6 +179,8 @@ struct MainScreen: View {
   @StateObject private var activities = AlertActivityController()
   /// 前台的到价判定。没有 APNs 密钥，它是提醒在这台手机上唯一会响的那条路。
   @StateObject private var alertEngine = AlertEngine()
+  /// 条件提醒（费率 / 持仓量 / 均线 / 大单墙）的前台判定；主判定在服务端，谁先判到谁响。
+  @State private var conditionEngine = ConditionAlertEngine()
   /// 自选五分钟波动提醒的前台那一半（P3.1）。
   @State private var watchMove = WatchMoveMonitor()
   /// 桌面小组件的快照写手（P3.2）。
@@ -1523,6 +1525,7 @@ struct MainScreen: View {
       reviewDue.setForeground(false)
       // 判定也一起停：桶断了就不算连着，回来那一下不拿断口两侧的价去算穿越。
       alertEngine.setForeground(false)
+      conditionEngine.setForeground(false)
       watchMove.setForeground(false)
       // 小组件：离开前台写最后一份，之后由系统按 15 分钟刷、扩展自己补价。
       widgetFeed.setForeground(false)
@@ -1533,6 +1536,7 @@ struct MainScreen: View {
       alertWatcher.setForeground(true)
       reviewDue.setForeground(true)
       alertEngine.setForeground(true)
+      conditionEngine.setForeground(true)
       watchMove.setForeground(true)
       widgetFeed.setForeground(true)
       // 回到前台先拉一次同步：服务端判到价、写回 `status=fired`，这一趟就是
@@ -1611,6 +1615,15 @@ struct MainScreen: View {
     // （和 `teardown.onTeardown` 那儿同一个理由）。
     alertEngine.attach(alerts)
     alertEngine.onWatchlist = { [weak quotes] symbols in quotes?.setAlertedSymbols(symbols) }
+    conditionEngine.price = { [weak session] symbol in
+      guard let session else { return nil }
+      let key = InstrumentID.canonical(symbol)
+      if InstrumentID.canonical(session.market.symbol) == key,
+         let p = session.market.tradeQuote?.price ?? session.market.ticker?.last { return p }
+      return session.quotes.raw[key]?.last
+    }
+    conditionEngine.orderFlow = { [weak session] in session?.market.orderFlow.snapshot }
+    conditionEngine.attach(alerts)
     market.onPrice = { [weak engine = alertEngine, weak mover = watchMove, weak activities, weak quotes, weak lineAlert] symbol, price, timeMs in
       engine?.observe(symbol: symbol, price: price, timeMs: timeMs)
       mover?.observe(symbol: symbol, price: price, timeMs: timeMs)
@@ -1747,7 +1760,20 @@ struct MainScreen: View {
       quote: { text in alertQuote(text, live: live) },
       decimals: { [picker] symbol in picker.info(for: InstrumentID.canonical(symbol))?.knownPriceDecimals },
       prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
-      releaseQuote: { [weak quotes] in quotes?.releaseNamed() })
+      releaseQuote: { [weak quotes] in quotes?.releaseNamed() },
+      conditions: { symbol in alertConditions(symbol) })
+  }
+
+  /// 创建提醒页的条件提醒默认值。条件提醒要账号（服务端判、跨设备同步），而且协议只收币安 U 本位：
+  /// 没登录或别的市场给 nil，页上就只有「价格达到 / 收盘穿过」。
+  private func alertConditions(_ symbol: String) -> ConditionAlertDefaults? {
+    let key = InstrumentID.canonical(symbol)
+    guard account.user != nil, InstrumentID(key).marketKey == KanpanCore.Alert.market else { return nil }
+    let raw = market.interval.rawValue
+    let interval = AlertRule.maIntervals.contains(raw) ? raw : "1d"
+    let length = prefs.params[.ma]?.first ?? IndicatorID.ma.defaultParams.first ?? 20
+    return ConditionAlertDefaults(interval: interval, maLength: min(max(length, 1), AlertRule.maxLength),
+                                  wallThreshold: market.orderFlow.effectiveThresholds(symbol: key)?.usdtPerp)
   }
 
   /// 站到某一条复盘记录上（通知、提醒总表、到点浮条都走这儿）。

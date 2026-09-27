@@ -103,8 +103,16 @@ final class AlertWatcher: ObservableObject {
     // 通知中心里留一条：前台时 `willPresent` 会把横幅压掉（界面上已经有浮条了），
     // 后台回来那一下则是它把人叫住。
     let decimals = priceDecimals(alert.symbol)
-    AlertNotifications.present(alert, decimals: decimals, sound: sound())
-    if alert.webhook != nil, !serverSendsWebhooks(), let store, store.firedLocally(alert),
+    // 条件提醒：本机判到的有那一句观测（`ConditionAlertEngine`），服务端判到、同步下来的只有价，按种类补一句。
+    let observation = store?.observation(for: alert)
+    AlertNotifications.present(alert, decimals: decimals, sound: sound(), detail: observation?.detail)
+    if alert.kind == .condition {
+      // 服务端只替**它自己判到的**条件提醒发 Webhook（`alerts::reported_fire` 只认画线 / 价格两类），
+      // 所以本机判到的由本机发，登没登录都一样。
+      if alert.webhook != nil, let store, store.firedLocally(alert), let price = alert.firedPrice, let at = alert.firedAt {
+        AlertWebhook.fire(alert, price: price, decimals: decimals, at: at, observation: observation)
+      }
+    } else if alert.webhook != nil, !serverSendsWebhooks(), let store, store.firedLocally(alert),
        let price = alert.firedPrice, let at = alert.firedAt {
       AlertWebhook.fire(alert, price: price, decimals: decimals, at: at)
     }

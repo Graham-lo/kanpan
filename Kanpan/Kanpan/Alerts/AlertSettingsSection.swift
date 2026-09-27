@@ -39,6 +39,7 @@ struct AlertSettingsSection: View {
       .accessibilityIdentifier("alerts.sound.open")
       .accessibilityValue(preferences.prefs.alertSound.title)
       watchMoveRows
+      listingRow
     }
     .navigationDestination(isPresented: $showSound) { AlertSoundPage(store: preferences) }
     .toolbar {
@@ -66,7 +67,7 @@ struct AlertSettingsSection: View {
   /// 自选波动提醒：一个开关，开着时下面一格幅度（手动输入，没有口径可选）。
   @ViewBuilder private var watchMoveRows: some View {
     let on = preferences.prefs.watchMoveAlert
-    PanelRow(name: "自选波动提醒", divider: on) {
+    PanelRow(name: "自选波动提醒") {
       PanelSwitch(isOn: on) {
         commitThreshold()
         preferences.update { $0.watchMoveAlert.toggle() }
@@ -74,7 +75,7 @@ struct AlertSettingsSection: View {
       .accessibilityIdentifier("alerts.watchMove")
     }
     if on {
-      PanelRow(name: "五分钟涨跌超过", divider: false) {
+      PanelRow(name: "五分钟涨跌超过") {
         HStack(spacing: Space.xs) {
           TextField("", text: $thresholdText)
             .keyboardType(.decimalPad)
@@ -95,6 +96,16 @@ struct AlertSettingsSection: View {
       .onAppear { thresholdText = Self.format(preferences.prefs.watchMoveThreshold) }
       .onChange(of: thresholdFocused) { _, focused in if !focused { commitThreshold() } }
       .onDisappear(perform: commitThreshold)
+    }
+  }
+
+  /// 品种上新与停牌下架：开着时前台与每次同步去服务端拉一遍（`ListingNotices`），新的各出一条本地通知。
+  private var listingRow: some View {
+    PanelRow(name: "品种上新与停牌下架", divider: false) {
+      PanelSwitch(isOn: preferences.prefs.notifyListingChanges) {
+        preferences.update { $0.notifyListingChanges.toggle() }
+      }
+      .accessibilityIdentifier("alerts.listing")
     }
   }
 

@@ -71,6 +71,8 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate, @unc
     // token），真推来了（服务端还没部署 0023）就压掉，免得和本机那条重复。
     if kind == "reviewDue" { return ReviewDueReminders.channel == .remote ? [.banner, .list, .sound] : [] }
     guard request.content.categoryIdentifier == Self.category else { return [.banner, .list, .sound] }
+    // 品种上新与停牌下架（`ListingNotices` 拉下来出的本地通知）：前台没有浮条替它说，照常弹横幅。
+    if request.identifier.hasPrefix(ListingNotices.idPrefix) { return [.banner, .list, .sound] }
     // 价格提醒、自选波动保留所选声音与通知中心条目。
     return request.identifier.hasPrefix("alert.") || request.identifier.hasPrefix("move.") ? [.list, .sound] : [.list]
   }
@@ -125,10 +127,13 @@ extension AlertNotifications {
   /// 服务端判的到价，客户端只负责让它被看见。app 在前台时 `willPresent` 会把横幅压掉，
   /// 留在通知中心里；在后台回来的那一下（`AppLifecycle` 进前台 → 拉一次同步）发出来的，
   /// 用户点开就直接到那条线上。
-  static func present(_ alert: Alert, decimals: Int? = nil, sound: AlertSound) {
+  ///
+  /// 条件提醒的正文是触发时观测到的那一句（`detail`，「预测费率 0.0612% · 14 分钟后结算」）；
+  /// 服务端判到、同步下来的没有那一句，按种类补（`ConditionJudge.fallbackDetail`）。
+  static func present(_ alert: Alert, decimals: Int? = nil, sound: AlertSound, detail: String? = nil) {
     let content = UNMutableNotificationContent()
     content.title = alert.title.isEmpty ? "提醒" : alert.title
-    if let body = body(for: alert, decimals: decimals) { content.body = body }
+    if let body = body(for: alert, decimals: decimals, detail: detail) { content.body = body }
     content.sound = sound.fileName.map { UNNotificationSound(named: UNNotificationSoundName(rawValue: $0)) } ?? .default
     content.categoryIdentifier = category
     if let link = link(for: alert) { content.userInfo = [linkKey: link] }
@@ -139,8 +144,11 @@ extension AlertNotifications {
   /// 通知正文：「现价 84,670.5」。没有现价就不写。
   /// 2026-09-25 起不再接备注（创建提醒页已经没有备注这一格，用户：「也不需要备注啊」）；
   /// 老提醒身上即便还留着一句备注，也不往通知里写。
-  static func body(for alert: Alert, decimals: Int?) -> String? {
-    alert.firedPrice.map { "现价 " + AlertMessage.groupedPrice($0, decimals: decimals) }
+  static func body(for alert: Alert, decimals: Int?, detail: String? = nil) -> String? {
+    if alert.kind == .condition {
+      return detail ?? ConditionJudge.fallbackDetail(rule: alert.rule, price: alert.firedPrice)
+    }
+    return alert.firedPrice.map { "现价 " + AlertMessage.groupedPrice($0, decimals: decimals) }
   }
 
   /// 自选波动响了：通知中心留一条，点开就是那只品种。id 带窗口，同一个窗口重复 `add`

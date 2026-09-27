@@ -18,6 +18,8 @@ struct AlertListContext {
   var prepareQuote: (String) -> Void = { _ in }
   /// 创建 / 编辑页关了叫一声，宿主放掉 `prepareQuote` 点名要的那一只（图上那只照旧）。
   var releaseQuote: () -> Void = {}
+  /// 这只品种（规范键）能不能建条件提醒、默认值是什么。nil = 不给（没登录、不是币安 U 本位）。
+  var conditions: (String) -> ConditionAlertDefaults? = { _ in nil }
 }
 
 /// 提醒总表：「全部预警」。

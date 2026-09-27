@@ -221,7 +221,7 @@ import KanpanAccount
   /// 服务端 `sync_validation.rs` 的 `ALERT_FIELDS` 是同样十八个，多一个键整条操作
   /// 被拒、队列跟着堵（见 `ownedKeys` 的注释）。所以这条是**跨端契约**，
   /// 改字段名之前先去看服务端那张表。
-  @Test("提醒发出去的键就是表 2.2 那十五个加备注 / Webhook 三个")
+  @Test("提醒发出去的键就是表 2.2 那十五个加备注 / Webhook 三个，再加条件提醒的 rule")
   func theAlertKeysAreExactlyTheContract() throws {
     let alert = Alert(id: "a1", symbol: "BTCUSDT", drawingID: "d1",
                       lines: [AlertLine(points: [DrawPoint(t: 1, p: 2)], extendRight: true)],
@@ -234,7 +234,8 @@ import KanpanAccount
     #expect(Set(object.body.keys) == ["kind", "symbol", "market", "drawingID", "lines", "condition",
                                       "armedAt", "once", "status", "firedAt", "firedPrice",
                                       "dueAt", "reviewID", "title", "created",
-                                      "note", "webhook", "webhookText"])
+                                      "note", "webhook", "webhookText", "rule"])
+    #expect(object.body["rule"] == .null, "画线提醒的 rule 写 null")
     #expect(PersonalSyncCodec.ownedKeys["alerts"] == Set(object.body.keys))
     // 服务端对 `alerts.market` 卡的是整串，不是画线那种 venue + market 拆两半。
     #expect(object.body["market"] == .string("binance/usd_m"))
