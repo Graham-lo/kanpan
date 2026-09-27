@@ -151,6 +151,8 @@ async fn assess(market:&dyn MarketDataProvider,r:&NativeRecord,checkpoint:Option
 }
 pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let Some(j)=claim(s).await? else {return Ok(false)};
+ // 交易复盘的结果任务：记录不是观点复盘的形状，下面那段解析不了它（协议第 4 节）。
+ if j.kind==crate::review_trade::JOB {return crate::review_trade::run_job(s,market,j.owner,j.id,j.record,j.lease).await}
  let mut tx=s.personal(j.owner).await?;
  let row=sqlx::query("SELECT record,checkpoint FROM review_records WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
  let r:NativeRecord=parse(row.get("record"))?;let checkpoint:Option<i64>=row.get("checkpoint");tx.commit().await?;

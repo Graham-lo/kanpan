@@ -119,12 +119,15 @@ async fn create(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(in
  let response=json!({"record":visible});finish(&mut tx,i.user,key,&request,&response).await?;tx.commit().await?;Ok(envelope(response))
 }
 #[derive(Serialize,Deserialize)] struct Cursor {submitted:i64,id:Uuid}
-#[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct Filter {after:Option<String>,symbol:Option<String>,state:Option<String>,q:Option<String>,todo:Option<bool>,decided:Option<bool>}
+#[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct Filter {after:Option<String>,symbol:Option<String>,state:Option<String>,q:Option<String>,todo:Option<bool>,decided:Option<bool>,kind:Option<String>}
 async fn list(State(s):State<AppState>,i:Identity,Params(f):Params<Filter>)->Result<Json<Value>> {
+ // 交易复盘（`kind=trade`）是另一种记录，形状和排序都不同：单独一页（协议 3.3）。
+ // 不带 kind 的老请求一字不变，只是不再把交易复盘混进来——老客户端解不开它。
+ match f.kind.as_deref() {None=>{},Some("trade")=>return crate::review_trade::list(s,i.user,f.after,f.symbol).await,Some(_)=>return Err(ApiError::bad("invalid_filter"))}
  let cursor=if let Some(v)=f.after {if v.len()>200{return Err(ApiError::bad("invalid_cursor"))}Some(serde_json::from_slice::<Cursor>(&URL_SAFE_NO_PAD.decode(v).map_err(|_|ApiError::bad("invalid_cursor"))?)?)}else{None};
  if f.q.as_ref().is_some_and(|q|q.len()>200)||f.symbol.as_ref().is_some_and(|s|s.len()>40)||f.state.as_ref().is_some_and(|s|!matches!(s.as_str(),"waiting"|"needs_verification"|"realized"|"unrealized"|"observation"|"voided")){return Err(ApiError::bad("invalid_filter"))}
  let mut tx=s.personal(i.user).await?;
- let rows=sqlx::query("SELECT record,submitted,id,group_pending FROM review_records WHERE user_id=$1 AND ($2::bigint IS NULL OR (submitted,id)<($2,$3)) AND ($4::text IS NULL OR symbol=$4) AND ($5::text IS NULL OR CASE WHEN record->>'voided'='true' THEN 'voided' ELSE COALESCE(record#>>'{assessment,outcome}',CASE WHEN record#>>'{draft,rule,direction}'='observe' THEN 'observation' ELSE 'waiting' END) END=$5) AND ($6::text IS NULL OR strpos(lower(record#>>'{draft,text}'),lower($6))>0 OR strpos(lower(symbol),lower($6))>0) AND (NOT $7 OR (record->>'voided'='false' AND (record#>>'{draft,rule,direction}'<>'observe') AND (record#>>'{reflection,publishedAt}' IS NULL OR record#>>'{assessment,outcome}' IN ('waiting','needs_verification') OR group_pending))) AND (NOT $8 OR (record->>'voided'='false' AND record#>>'{reflection,publishedAt}' IS NOT NULL AND NOT group_pending AND COALESCE(record#>>'{assessment,outcome}','') NOT IN ('waiting','needs_verification'))) ORDER BY submitted DESC,id DESC LIMIT 51")
+ let rows=sqlx::query("SELECT record,submitted,id,group_pending FROM review_records WHERE user_id=$1 AND record->>'kind' IS DISTINCT FROM 'trade' AND ($2::bigint IS NULL OR (submitted,id)<($2,$3)) AND ($4::text IS NULL OR symbol=$4) AND ($5::text IS NULL OR CASE WHEN record->>'voided'='true' THEN 'voided' ELSE COALESCE(record#>>'{assessment,outcome}',CASE WHEN record#>>'{draft,rule,direction}'='observe' THEN 'observation' ELSE 'waiting' END) END=$5) AND ($6::text IS NULL OR strpos(lower(record#>>'{draft,text}'),lower($6))>0 OR strpos(lower(symbol),lower($6))>0) AND (NOT $7 OR (record->>'voided'='false' AND (record#>>'{draft,rule,direction}'<>'observe') AND (record#>>'{reflection,publishedAt}' IS NULL OR record#>>'{assessment,outcome}' IN ('waiting','needs_verification') OR group_pending))) AND (NOT $8 OR (record->>'voided'='false' AND record#>>'{reflection,publishedAt}' IS NOT NULL AND NOT group_pending AND COALESCE(record#>>'{assessment,outcome}','') NOT IN ('waiting','needs_verification'))) ORDER BY submitted DESC,id DESC LIMIT 51")
  .bind(i.user).bind(cursor.as_ref().map(|c|c.submitted)).bind(cursor.as_ref().map(|c|c.id)).bind(f.symbol).bind(f.state).bind(f.q).bind(f.todo.unwrap_or(false)).bind(f.decided.unwrap_or(false)).fetch_all(&mut *tx).await?;
  let mut next=None;let mut records=vec![];
  for row in rows.iter().take(50) {let mut record:Value=row.get("record");record["groupPending"]=json!(row.get::<bool,_>("group_pending"));records.push(record);}
@@ -148,6 +151,9 @@ async fn change(s:&AppState,owner:Uuid,id:Uuid,key:Uuid,kind:&str,body:Value)->R
  let request=json!({"id":id,"kind":kind,"body":body});let mut tx=s.personal(owner).await?;lock(&mut tx,owner).await?;
  if let Some(v)=cached(&mut tx,owner,key,&request).await? {return Ok(envelope(v))}
  let row=sqlx::query("SELECT record,group_pending,assessment_revision FROM review_records WHERE user_id=$1 AND id=$2 FOR UPDATE").bind(owner).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+ // 交易复盘没有复盘 / 作废 / 分组这几样（它的备注走 `/trades/{id}/note`）：明说不支持，
+ // 而不是让它在解析观点复盘的形状时报一个看不懂的 invalid_payload。
+ if row.get::<Value,_>("record")["kind"]=="trade" {return Err(ApiError::bad("invalid_change"))}
  let mut record:NativeRecord=parse(row.get("record"))?;
  if body["expectedRevision"].as_i64()!=Some(record.revision){return Err(ApiError::conflict("record_revision_changed"))}
  if record.voided {return Err(ApiError::conflict("record_voided"))}
@@ -311,7 +317,7 @@ async fn stats(State(s):State<AppState>,i:Identity)->Result<Json<Value>> {
  // record shipped every reflection and its five-deep history out of Postgres
  // and through serde on every call; the projection keeps the payload to what
  // the summary actually reads.
- let rows=sqlx::query("SELECT record->'draft' AS draft,(record->>'serverId')::uuid AS server_id,(record->>'submitted')::bigint AS submitted,COALESCE(record->'assessment'->>'outcome','pending') AS state,(record->>'eligible')::bool AS eligible,(record->>'voided')::bool AS voided,episode_id,group_pending FROM review_records WHERE user_id=$1 ORDER BY submitted,id").bind(i.user).fetch_all(&mut *tx).await?;
+ let rows=sqlx::query("SELECT record->'draft' AS draft,(record->>'serverId')::uuid AS server_id,(record->>'submitted')::bigint AS submitted,COALESCE(record->'assessment'->>'outcome','pending') AS state,(record->>'eligible')::bool AS eligible,(record->>'voided')::bool AS voided,episode_id,group_pending FROM review_records WHERE user_id=$1 AND record->>'kind' IS DISTINCT FROM 'trade' ORDER BY submitted,id").bind(i.user).fetch_all(&mut *tx).await?;
  let mut samples=vec![];let mut comparable=vec![];let mut labels=BTreeMap::new();let mut comparable_labels=BTreeMap::new();
  for row in rows {let d:NativeDraft=parse(row.get("draft"))?;let sig=signature(&d);let relative=comparable_signature(&d);
   labels.entry(sig.clone()).or_insert_with(||format!("{} · {} · {}",d.range.symbol,match d.origin.as_str(){"chart_first"=>"图在先","thought_first"=>"想法在先","interwoven"=>"两者交织",_=>"不确定"},if d.rule.confirmation=="bar_close"{"收盘"}else{"触价"}));
