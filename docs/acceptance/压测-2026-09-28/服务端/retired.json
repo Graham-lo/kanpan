@@ -1,0 +1,65 @@
+{
+ "user": "test_retired_0928_5d03",
+ "push": {
+  "status": 200,
+  "body": {
+   "data": {
+    "results": [
+     {
+      "cursor": 63669,
+      "droppedFields": [
+       "favoritesSort",
+       "replaySpeed",
+       "timeZone"
+      ],
+      "object": {
+       "body": {
+        "interval": "4h",
+        "skin": "terra"
+       },
+       "collection": "settings",
+       "deleted": false,
+       "fields": {
+        "interval": {
+         "deviceId": "1570e877-70fb-4e04-a4bf-edc0070e7bf2",
+         "logical": 1,
+         "operationId": "334a84c6-f903-437c-be20-a890e9e5433c",
+         "revision": 1,
+         "timestamp": 1790546911920
+        },
+        "skin": {
+         "deviceId": "1570e877-70fb-4e04-a4bf-edc0070e7bf2",
+         "logical": 1,
+         "operationId": "334a84c6-f903-437c-be20-a890e9e5433c",
+         "revision": 1,
+         "timestamp": 1790546911920
+        }
+       },
+       "generation": 0,
+       "id": "chart",
+       "revision": 1
+      },
+      "operationId": "334a84c6-f903-437c-be20-a890e9e5433c"
+     }
+    ],
+    "serverTime": 1790546911941
+   }
+  }
+ },
+ "droppedFields": [
+  "favoritesSort",
+  "replaySpeed",
+  "timeZone"
+ ],
+ "resendIdentical": true,
+ "bootstrapBody": {
+  "interval": "4h",
+  "skin": "terra"
+ },
+ "bootstrapFieldKeys": [
+  "interval",
+  "skin"
+ ],
+ "ok": true,
+ "deleted": 200
+}

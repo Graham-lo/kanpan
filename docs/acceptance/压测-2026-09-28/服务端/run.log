@@ -1,0 +1,32 @@
+[setup] 10 accounts / 20 devices in 1.7s, prefix test_stress_0928_a624_
+[load] start 06:01:53 workers=50
+[sample] 06:02:09 req=2258 5xx=0 rss=268MB load=2.1 pg=active|3 idle|18 idle in transaction|2 active=active active active active active
+[sample] 06:02:25 req=4372 5xx=0 rss=268MB load=3.13 pg=active|4 idle|16 idle in transaction|3 active=active active active active active
+[sample] 06:02:41 req=6420 5xx=0 rss=268MB load=3.82 pg=active|5 idle|15 idle in transaction|3 active=active active active active active
+[sample] 06:02:57 req=8399 5xx=0 rss=268MB load=3.03 pg=active|7 idle|15 idle in transaction|1 active=active active active active active
+[sample] 06:03:12 req=10409 5xx=0 rss=268MB load=2.65 pg=active|4 idle|13 idle in transaction|6 active=active active active active active
+[sample] 06:03:28 req=12411 5xx=0 rss=268MB load=3.06 pg=active|8 idle|12 idle in transaction|3 active=active active active active active
+[sample] 06:03:44 req=14770 5xx=0 rss=268MB load=4.09 pg=active|3 idle|17 idle in transaction|3 active=active active active active active
+[sample] 06:04:00 req=17045 5xx=0 rss=268MB load=4.22 pg=active|5 idle|14 idle in transaction|4 active=active active active active active
+[sample] 06:04:17 req=19029 5xx=0 rss=268MB load=4.98 pg=active|5 idle|17 idle in transaction|2 active=active active active active active
+[sample] 06:04:32 req=21194 5xx=0 rss=268MB load=4.92 pg=active|4 idle|14 idle in transaction|5 active=active active active active active
+[sample] 06:04:48 req=23238 5xx=0 rss=268MB load=5.3 pg=active|4 idle|14 idle in transaction|5 active=active active active active active
+[sample] 06:05:04 req=25121 5xx=0 rss=268MB load=4.34 pg=active|7 idle|11 idle in transaction|5 active=active active active active active
+[sample] 06:05:20 req=26770 5xx=0 rss=268MB load=3.51 pg=active|9 idle|13 idle in transaction|1 active=active active active active active
+[sample] 06:05:36 req=28965 5xx=0 rss=268MB load=3.29 pg=active|4 idle|16 idle in transaction|3 active=active active active active active
+[sample] 06:05:52 req=31289 5xx=0 rss=268MB load=4.57 pg=active|5 idle|15 idle in transaction|3 active=active active active active active
+[sample] 06:06:08 req=33520 5xx=0 rss=268MB load=6.05 pg=active|7 idle|13 idle in transaction|3 active=active active active active active
+[sample] 06:06:23 req=35348 5xx=0 rss=268MB load=6.7 pg=active|5 idle|17 idle in transaction|1 active=active active active active active
+[sample] 06:06:39 req=37417 5xx=0 rss=268MB load=6.74 pg=active|5 idle|15 idle in transaction|3 active=active active active active active
+[load] end 06:06:53 elapsed 300.5s
+[cleanup] [('test_stress_0928_a624_00', 200), ('test_stress_0928_a624_01', 200), ('test_stress_0928_a624_02', 200), ('test_stress_0928_a624_03', 200), ('test_stress_0928_a624_04', 200), ('test_stress_0928_a624_05', 200), ('test_stress_0928_a624_06', 200), ('test_stress_0928_a624_07', 200), ('test_stress_0928_a624_08', 200), ('test_stress_0928_a624_09', 200)]
+alerts.listing-notices     n=  4011 rps= 13.35 p50=122.0 p95=353.3 p99=538.2 max=922.2 {'200': 4011}
+review.detail              n=  3188 rps= 10.61 p50=120.8 p95=336.6 p99=543.1 max=909.2 {'200': 3188}
+review.records             n=  3901 rps= 12.98 p50=121.1 p95=332.1 p99=535.2 max=914.4 {'200': 3901}
+review.statistics          n=  3218 rps= 10.71 p50=124.8 p95=368.7 p99=593.0 max=893.4 {'200': 3218}
+setup.push                 n=    10 rps=  0.03 p50=0 p95=0 p99=0 max=0 {'200': 10}
+setup.review.create        n=    20 rps=  0.07 p50=0 p95=0 p99=0 max=0 {'200': 20}
+sync.bootstrap             n=  5486 rps= 18.26 p50=145.9 p95=416.8 p99=620.5 max=1190.6 {'200': 5486}
+sync.changes               n=  6930 rps= 23.06 p50=143.6 p95=426.0 p99=651.1 max=1045.6 {'200': 6930}
+sync.push                  n= 10998 rps= 36.60 p50=194.7 p95=544.6 p99=776.9 max=1733.2 {'200': 10998}
+sync.push.resend           n=  1606 rps=  5.34 p50=149.2 p95=428.6 p99=676.8 max=975.0 {'200': 1606}

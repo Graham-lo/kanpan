@@ -1,0 +1,404 @@
+{
+ "prefix": "test_stress_0928_a624_",
+ "config": {
+  "duration": 300,
+  "workers": 50,
+  "accounts": 10,
+  "sample": 15,
+  "think_lo": 100,
+  "think_hi": 300,
+  "out": "result.json",
+  "retired": false
+ },
+ "weights": [
+  [
+   "sync.push",
+   28
+  ],
+  [
+   "sync.push.resend",
+   4
+  ],
+  [
+   "sync.changes",
+   18
+  ],
+  [
+   "sync.bootstrap",
+   14
+  ],
+  [
+   "alerts.listing-notices",
+   10
+  ],
+  [
+   "review.records",
+   10
+  ],
+  [
+   "review.detail",
+   8
+  ],
+  [
+   "review.statistics",
+   8
+  ]
+ ],
+ "elapsed": 300.5,
+ "deleted": [
+  [
+   "test_stress_0928_a624_00",
+   200
+  ],
+  [
+   "test_stress_0928_a624_01",
+   200
+  ],
+  [
+   "test_stress_0928_a624_02",
+   200
+  ],
+  [
+   "test_stress_0928_a624_03",
+   200
+  ],
+  [
+   "test_stress_0928_a624_04",
+   200
+  ],
+  [
+   "test_stress_0928_a624_05",
+   200
+  ],
+  [
+   "test_stress_0928_a624_06",
+   200
+  ],
+  [
+   "test_stress_0928_a624_07",
+   200
+  ],
+  [
+   "test_stress_0928_a624_08",
+   200
+  ],
+  [
+   "test_stress_0928_a624_09",
+   200
+  ]
+ ],
+ "endpoints": {
+  "alerts.listing-notices": {
+   "n": 4011,
+   "rps": 13.35,
+   "codes": {
+    "200": 4011
+   },
+   "p50": 122.0,
+   "p95": 353.3,
+   "p99": 538.2,
+   "max": 922.2
+  },
+  "review.detail": {
+   "n": 3188,
+   "rps": 10.61,
+   "codes": {
+    "200": 3188
+   },
+   "p50": 120.8,
+   "p95": 336.6,
+   "p99": 543.1,
+   "max": 909.2
+  },
+  "review.records": {
+   "n": 3901,
+   "rps": 12.98,
+   "codes": {
+    "200": 3901
+   },
+   "p50": 121.1,
+   "p95": 332.1,
+   "p99": 535.2,
+   "max": 914.4
+  },
+  "review.statistics": {
+   "n": 3218,
+   "rps": 10.71,
+   "codes": {
+    "200": 3218
+   },
+   "p50": 124.8,
+   "p95": 368.7,
+   "p99": 593.0,
+   "max": 893.4
+  },
+  "setup.push": {
+   "n": 10,
+   "rps": 0.03,
+   "codes": {
+    "200": 10
+   },
+   "p50": 0,
+   "p95": 0,
+   "p99": 0,
+   "max": 0
+  },
+  "setup.review.create": {
+   "n": 20,
+   "rps": 0.07,
+   "codes": {
+    "200": 20
+   },
+   "p50": 0,
+   "p95": 0,
+   "p99": 0,
+   "max": 0
+  },
+  "sync.bootstrap": {
+   "n": 5486,
+   "rps": 18.26,
+   "codes": {
+    "200": 5486
+   },
+   "p50": 145.9,
+   "p95": 416.8,
+   "p99": 620.5,
+   "max": 1190.6
+  },
+  "sync.changes": {
+   "n": 6930,
+   "rps": 23.06,
+   "codes": {
+    "200": 6930
+   },
+   "p50": 143.6,
+   "p95": 426.0,
+   "p99": 651.1,
+   "max": 1045.6
+  },
+  "sync.push": {
+   "n": 10998,
+   "rps": 36.6,
+   "codes": {
+    "200": 10998
+   },
+   "p50": 194.7,
+   "p95": 544.6,
+   "p99": 776.9,
+   "max": 1733.2
+  },
+  "sync.push.resend": {
+   "n": 1606,
+   "rps": 5.34,
+   "codes": {
+    "200": 1606
+   },
+   "p50": 149.2,
+   "p95": 428.6,
+   "p99": 676.8,
+   "max": 975.0
+  }
+ },
+ "samples": [
+  {
+   "t": 1790546509.6,
+   "tag": "before",
+   "apiRssMB": 210,
+   "workerRssMB": 34,
+   "load1": 0.95,
+   "memAvailMB": 4777,
+   "pg": "active|1 idle|21",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546528.2,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 2.1,
+   "memAvailMB": 4670,
+   "pg": "active|3 idle|18 idle in transaction|2",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546544.1,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 3.13,
+   "memAvailMB": 4672,
+   "pg": "active|4 idle|16 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546560.1,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 3.82,
+   "memAvailMB": 4663,
+   "pg": "active|5 idle|15 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546576.2,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 3.03,
+   "memAvailMB": 4657,
+   "pg": "active|7 idle|15 idle in transaction|1",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546592.0,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 2.65,
+   "memAvailMB": 4646,
+   "pg": "active|4 idle|13 idle in transaction|6",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546607.9,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 3.06,
+   "memAvailMB": 4652,
+   "pg": "active|8 idle|12 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546623.9,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 4.09,
+   "memAvailMB": 4644,
+   "pg": "active|3 idle|17 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546639.8,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 4.22,
+   "memAvailMB": 4659,
+   "pg": "active|5 idle|14 idle in transaction|4",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546655.7,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 4.98,
+   "memAvailMB": 4647,
+   "pg": "active|5 idle|17 idle in transaction|2",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546672.1,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 4.92,
+   "memAvailMB": 4656,
+   "pg": "active|4 idle|14 idle in transaction|5",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546687.8,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 5.3,
+   "memAvailMB": 4653,
+   "pg": "active|4 idle|14 idle in transaction|5",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546703.6,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 4.34,
+   "memAvailMB": 4657,
+   "pg": "active|7 idle|11 idle in transaction|5",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546719.6,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 3.51,
+   "memAvailMB": 4651,
+   "pg": "active|9 idle|13 idle in transaction|1",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546735.5,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 3.29,
+   "memAvailMB": 4658,
+   "pg": "active|4 idle|16 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546751.2,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 4.57,
+   "memAvailMB": 4659,
+   "pg": "active|5 idle|15 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546767.1,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 6.05,
+   "memAvailMB": 4644,
+   "pg": "active|7 idle|13 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546783.1,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 6.7,
+   "memAvailMB": 4636,
+   "pg": "active|5 idle|17 idle in transaction|1",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546798.9,
+   "tag": "load",
+   "apiRssMB": 268,
+   "workerRssMB": 34,
+   "load1": 6.74,
+   "memAvailMB": 4647,
+   "pg": "active|5 idle|15 idle in transaction|3",
+   "active": "active active active active active"
+  },
+  {
+   "t": 1790546821.4,
+   "tag": "after+5s",
+   "apiRssMB": 249,
+   "workerRssMB": 34,
+   "load1": 5.8,
+   "memAvailMB": 4671,
+   "pg": "active|1 idle|21 idle in transaction|1",
+   "active": "active active active active active"
+  }
+ ]
+}
