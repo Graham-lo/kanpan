@@ -67,6 +67,15 @@ final class AppLifecycle {
   /// 被掐掉重开、账号与复盘各打一趟同步。这和上面「`.inactive` 不动资源」的口径自相矛盾。
   private var resourcesAway = false
 
+  /// 此刻 app 是不是在后台。只在登记资源时问一次，用例里可以换掉。
+  ///
+  /// 2026-09-27 起 Info.plist 带了 `UIBackgroundModes: fetch`（自动复盘在系统空闲时拉成交），
+  /// 系统可以把 app **直接冷启动在后台**：这时场景一开始就是 `.background`，`scenePhase`
+  /// 没有「变成」后台那一下，`phaseChanged(.background)` 不来，资源照前台那样开着；
+  /// 等人真点开 app 走到 `.active`，闸又以为没收过摊、`enter()` 不跑——回来的连接、
+  /// 轮询都是后台被挂起时掐断的那一份。所以登记那一刻若已在后台，就当已经进过后台。
+  var isInBackground: @MainActor () -> Bool = { UIApplication.shared.applicationState == .background }
+
   private init() {}
 
   // ---------------------------------------------------------------- 登记
@@ -110,6 +119,12 @@ final class AppLifecycle {
     let displaced = resources[id]
     resources[id] = Resources(token: token, leave: leave, enter: enter)
     displaced?.leave()
+    // 登记时已在后台（后台冷启动，或进后台之后才接上的新根）：这份一接上就按「离开前台」
+    // 收摊，回到 `.active` 时和其它的一起 `enter()`。
+    if resourcesAway || isInBackground() {
+      resourcesAway = true
+      leave()
+    }
     return token
   }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import KanpanCore
 import ReviewUI
 
 /// 底栏第四格「我的」：个人的东西都从这一页进（2026-09-27 用户定的，方案
@@ -35,6 +36,8 @@ struct MePage: View {
   /// 身下那条标签栏的高度。宿主的 `safeAreaInset` 进不了 `NavigationStack`，
   /// 这一页和推进来的每一层都自己让出这一截。
   var bottomInset: CGFloat = 0
+  /// 交易所只读账户（自动复盘 3c）：交易所那一行、复盘本的交易那半句都从它来。
+  var exchange: ExchangeReviewBridge = .shared
 
   @Environment(\.panelTheme) private var t
   @Environment(\.accountFeature) private var account
@@ -45,14 +48,14 @@ struct MePage: View {
         VStack(spacing: Space.l) {
           card { accountRow }
           card {
-            row("复盘本", reviewStatus, id: "me.review", action: onReviewBook)
+            row("复盘本", reviewStatus, tradeStatus, id: "me.review", action: onReviewBook)
             divider
             row("全部预警", alertStatus, id: "me.alerts") { path.append(.alerts) }
           }
           card {
             row("朋友与收件箱", friendsStatus, id: "me.friends") { path.append(.friends) }
             divider
-            row("交易所账户", "未接入", id: "me.exchange") { path.append(.exchange) }
+            row("交易所账户", exchangeStatus, id: "me.exchange") { path.append(.exchange) }
           }
           card {
             row("设置", nil, id: "me.settings") { path.append(.settings) }
@@ -103,11 +106,29 @@ struct MePage: View {
     }
   }
 
-  /// 复盘本：「观点 N 条 · 待判定 N」（方案 §2；交易那半句等交易所接进来再写）。
-  /// 待判定和底栏角标同一个数，0 就不写。
+  /// 复盘本第一行：「观点 N 条 · 待判定 N」（方案 §2）。待判定和底栏角标同一个数，0 就不写。
   private var reviewStatus: String {
     let base = "观点 \(review.tally.live) 条"
     return review.pendingCount > 0 ? base + " · 待判定 \(review.pendingCount)" : base
+  }
+
+  /// 复盘本第二行（交易那半句）：「交易 上周 N 笔 · 净盈亏 ±X · 胜率 Y%」；
+  /// 没接交易所、本机也没有回合就是「接入交易所账户后自动生成」。上周那一张和复盘本里的周报同一个口径。
+  private var tradeStatus: String {
+    guard exchange.connected || !review.trades.items.isEmpty else { return "接入交易所账户后自动生成" }
+    let s = review.trades.weekly(now: Int64(Date().timeIntervalSince1970 * 1000), calendar: review.calendar).summary
+    guard s.count > 0 else { return "交易 上周 0 笔" }
+    return "交易 上周 \(s.count) 笔 · 净盈亏 \(TradeLabels.money(s.netPnl)) · 胜率 \(TradeLabels.percent(s.winRate))"
+  }
+
+  /// 交易所账户：「未接入」或「币安合约 · 上次同步 x 分钟前」。
+  private var exchangeStatus: String {
+    guard let status = exchange.status else { return "未接入" }
+    let name = exchange.venue.displayName
+    if exchange.pulling { return name + " · 同步中" }
+    guard let at = status.watermark else { return name + " · 还没同步" }
+    let ago = TradeLabels.ago(at, now: Int64(Date().timeIntervalSince1970 * 1000))
+    return name + (ago == "刚刚" ? " · 刚同步" : " · 上次同步 " + ago)
   }
 
   /// 全部预警：还在等的价格 / 画线提醒几条（复盘到点不算，它在复盘本里说）。
@@ -147,8 +168,8 @@ struct MePage: View {
     Rectangle().fill(t.line).frame(height: 1 / 3).padding(.leading, Inset.card)
   }
 
-  /// 一块：标题一行、状态一行，行尾一枚灰箭头。整行都能点，最矮 44。
-  private func row(_ title: String, _ status: String?, id: String, chevron: Bool = true,
+  /// 一块：标题一行、状态一行（复盘本多一行交易那半句），行尾一枚灰箭头。整行都能点，最矮 44。
+  private func row(_ title: String, _ status: String?, _ second: String? = nil, id: String, chevron: Bool = true,
                    action: @escaping () -> Void) -> some View {
     Button(action: action) {
       HStack(spacing: Space.s) {
@@ -156,6 +177,9 @@ struct MePage: View {
           Text(title).font(TypeScale.heading).foregroundStyle(t.ink)
           if let status {
             Text(status).font(TypeScale.caption).foregroundStyle(t.ink3).monospacedDigit()
+          }
+          if let second {
+            Text(second).font(TypeScale.caption).foregroundStyle(t.ink3).monospacedDigit()
           }
         }
         .lineLimit(1)
@@ -181,16 +205,4 @@ enum MeRoute: Hashable {
   case alerts
   case exchange
   case settings
-}
-
-/// 交易所账户：这一阶段只占个位，推进来只有一个标题（方案 §3：只读 API 接入在后面的阶段做）。
-struct ExchangeAccountsPage: View {
-  @Environment(\.panelTheme) private var t
-
-  var body: some View {
-    t.app.ignoresSafeArea()
-      .navigationTitle("交易所账户")
-      .navigationBarTitleDisplayMode(.inline)
-      .accessibilityIdentifier("me.exchange.page")
-  }
 }

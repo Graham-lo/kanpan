@@ -10,13 +10,19 @@ enum ExchangeAccountRegistry {
   struct Venue: Sendable, Hashable {
     let venue: String
     let market: String
-    /// 界面上的名字。
-    let displayName: String
+    /// 交易所的中文名（接入页那一行「币安 · 合约」的前半）。
+    let exchangeName: String
+    /// 产品的中文名（后半）。
+    let productName: String
+    /// 界面上连写的名字（「我的」那一行的状态：「币安合约 · 上次同步 …」）。
+    var displayName: String { exchangeName + productName }
+    /// 接入页上那一行：「币安 · 合约」。
+    var rowTitle: String { exchangeName + " · " + productName }
   }
 
   /// 第一期只有币安 U 本位合约。
   static let binanceFutures = Venue(venue: BinanceProvider.venue, market: BinanceProvider.market,
-                                    displayName: "币安合约")
+                                    exchangeName: "币安", productName: "合约")
 
   static let supported: [Venue] = [binanceFutures]
 

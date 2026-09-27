@@ -13,6 +13,8 @@ struct KanpanApp: App {
     // 但这时候不该拨行情、订 MetricKit、写真沙盒——那些会和用例抢同一份状态。
     guard !Self.hostsUnitTests else { return }
     DiagnosticsCenter.shared.start()
+    // 交易所只读账户的后台刷新（自动复盘）：系统要求在启动结束前登记。
+    ExchangeReviewBridge.registerBackgroundRefresh()
     // 老版本留在 defaults 里、已经没人读的镜像键，清一次（见 `LaunchMirror.retiredKeys`）。
     LaunchMirror.sweepRetired()
     // 趁界面还没起来，把到行情域名的连接先握好（见 `LaunchPrewarm`）。

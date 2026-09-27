@@ -49,6 +49,7 @@ struct RootLifecycleTests {
   @Test("迟到的旧宿主注销不掉新宿主那份资源登记")
   func staleResourceTokenCannotUnregisterTheLiveOne() {
     let life = AppLifecycle.shared
+    life.phaseChanged(to: .active)              // 从「在前台」起步，别吃上一条用例留下的状态
     let oldLeft = Box(0), newLeft = Box(0)
     let before = life.resourceCount
 
@@ -102,6 +103,33 @@ struct RootLifecycleTests {
     life.phaseChanged(to: .active)
     #expect(left.value == 1)
     #expect(entered.value == 1)
+  }
+
+  @Test("直接冷启动在后台（系统替自动复盘拉成交）：一登记就收摊，第一次到前台续一次")
+  func backgroundColdLaunchLeavesOnRegisterAndEntersOnFirstActive() {
+    let life = AppLifecycle.shared
+    life.phaseChanged(to: .active)
+    let probe = life.isInBackground
+    life.isInBackground = { true }              // 场景一开始就是 .background，没有「变成后台」那一下
+    let left = Box(0), entered = Box(0)
+    let token = life.registerResources(id: "bt17.coldBackground",
+                                       leave: { [left] in left.value += 1 },
+                                       enter: { [entered] in entered.value += 1 })
+    life.isInBackground = probe
+    defer { life.unregisterResources(token: token); life.phaseChanged(to: .active) }
+    #expect(left.value == 1)
+    #expect(entered.value == 0)
+
+    // 后台任务跑完、系统又报一次后台：不重收。
+    life.phaseChanged(to: .background)
+    #expect(left.value == 1)
+
+    // 人点开 app：续一次，而且只续一次。
+    life.phaseChanged(to: .inactive)
+    life.phaseChanged(to: .active)
+    life.phaseChanged(to: .active)
+    #expect(entered.value == 1)
+    #expect(left.value == 1)
   }
 
   @Test("迟到的旧宿主注销不掉新宿主那条落盘钩子")

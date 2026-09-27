@@ -91,6 +91,19 @@
   <!-- 提醒「盯一个」的锁屏 / 灵动岛实时活动。 -->
   <key>NSSupportsLiveActivities</key>
   <true/>
+  <!--
+    自动复盘（3c）：接了交易所只读账户之后，系统空闲时顺手拉一次成交，
+    下次打开复盘本不用等。标识和 `ExchangeReviewBridge.refreshTaskID` 同一个；
+    注册在 `KanpanApp.init`（跑单测的宿主进程不注册）。
+  -->
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>fetch</string>
+  </array>
+  <key>BGTaskSchedulerPermittedIdentifiers</key>
+  <array>
+    <string>com.yj27y32.hkline.exchange-refresh</string>
+  </array>
   <!-- Handoff：行情页登记的「品种 + 周期」（P3.4，见 `ChartHandoff`）。 -->
   <key>NSUserActivityTypes</key>
   <array>

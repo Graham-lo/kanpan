@@ -1030,7 +1030,7 @@ struct MainScreen: View {
     case .alerts:
       AnyView(AlertListPage(store: alerts, context: alertListContext(live: false), presentedAsSheet: false))
     case .exchange:
-      AnyView(ExchangeAccountsPage())
+      AnyView(ExchangeAccountPage())
     case .settings:
       AnyView(SettingsPanel(store: store, asPage: true))
     }
@@ -1270,7 +1270,27 @@ struct MainScreen: View {
       replayOrigin = review.searchRecord.map { .search($0) }
       reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), route: route.route)
     }
+    wireExchangeReview()
     review.synchronize()
+  }
+  /// 交易所只读账户 → 复盘本的交易那一面（自动复盘 3c）。复盘图用行情这张图的样式、
+  /// 跟着用户选的行情线路取历史 K 线；复盘本里「接入交易所账户后自动生成」那一行
+  /// 推到「我的 › 交易所账户」（复盘本已经在那颗按钮里自己收起来了）。
+  private func wireExchangeReview() {
+    let bridge = ExchangeReviewBridge.shared
+    bridge.baseState = { reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)) }
+    bridge.resolver = { route }
+    // 复盘包给的是品种键（`InstrumentID.key`），徽章认的是基础币。
+    review.trades.badge = { key in
+      AnyView(CoinBadge(base: SymbolInfo.placeholder(symbol: key).base, size: 28).environment(\.panelTheme, theme))
+    }
+    review.trades.onConnect = {
+      if tab != .me { switchTo(tab: .me) }
+      mePath = [.exchange]
+    }
+    bridge.attach(review: review)
+    // 后台冷启动（系统替自动复盘拉成交）时不起前台那条 5 分钟的环，等真到前台再起。
+    bridge.setForeground(UIApplication.shared.applicationState != .background)
   }
   private func startReviewCapture() {
     endSharePreview(); dismissPanel(); draw.finish()
@@ -1504,6 +1524,7 @@ struct MainScreen: View {
       watchMove.setForeground(false)
       // 小组件：离开前台写最后一份，之后由系统按 15 分钟刷、扩展自己补价。
       widgetFeed.setForeground(false)
+      ExchangeReviewBridge.shared.setForeground(false)
     } enter: {
       grace.end()
       session.setForeground(true); sectorFeed.setForeground(true)
@@ -1515,6 +1536,7 @@ struct MainScreen: View {
       // 回到前台先拉一次同步：服务端判到价、写回 `status=fired`，这一趟就是
       // 已触发的提醒走到用户眼前的那条路（没有 APNs 时它是唯一一条）。
       accountBridge?.synchronize(); review.synchronize()
+      ExchangeReviewBridge.shared.setForeground(true)
     }
     // 根真的没了才停机（场景断开、根被顶掉）。判据是 `@State` 存储的寿命，
     // 不是 `onDisappear`——后者在盖 cover、切标签、转屏时都会响，那时候停流
