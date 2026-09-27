@@ -149,6 +149,11 @@ final class PrefsStore {
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
        selectedStorage.prefsData(forKey: PrefsCodec.key) == nil {
       self.prefs.quickIntervals = PrefsStore.uiTestQuick
+      // 要量出厂那六档（或别的组合）排版的用例从这儿换（周期条宽度验收，2026-09-27）。
+      if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_QUICK"] {
+        let pinned = raw.split(separator: ",").compactMap { Interval(rawValue: String($0)) }
+        if !pinned.isEmpty { self.prefs.quickIntervals = Array(pinned.prefix(Prefs.maxQuick)) }
+      }
       if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_COMPARE_SYMBOLS"] {
         self.prefs.compareSymbols = Prefs.cleanCompareSymbols(raw.split(separator: ",").map(String.init))
       }

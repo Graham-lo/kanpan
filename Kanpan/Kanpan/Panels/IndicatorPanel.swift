@@ -2,18 +2,22 @@ import SwiftUI
 import UIKit
 import KanpanCore
 
-/// 「图表设置 › 指标」：面板里推进去的一整层。2026-09-24 起周期条行尾的「指标」也直接开它
-/// （`Panel.indicators`），那条路上没有上一层，`onBack` 为 nil，左上角那颗关面板。
+/// 「指标」页：周期条行尾「指标」直达（`Panel.indicators`），半屏面板里的一整页。
 ///
 /// 2026-09-18 指标并进「图表设置」时，是十三个开关连同每个开着的指标底下那块「参数与颜色」
 /// 一股脑铺在那一页上的——再往下还有一段「副图顺序」。开得越多，这一页越长，坐标轴、
 /// 网格那几行被推到三四屏之后。2026-09-23 用户的话是「新加的指标全部堆积在图表里，
-/// 应该在图表中增加一个指标，点击指标跳到专门的指标设置页面」，于是：
+/// 应该在图表中增加一个指标，点击指标跳到专门的指标设置页面」，于是有了这一页：
 ///
-/// - 「图表设置」上只剩一行「指标」，右边写着开着的是哪几个（`summary`）；
-/// - 点进来，最上面「正在用」一段只列开着的指标，参数直接写在行上，点一行进参数表，
+/// - 最上面「正在用」一段只列开着的指标，参数直接写在行上，点一行进参数表，
 ///   副图那几行右端的把手拖动就是换顺序——原来单独那段「副图顺序」并进来了；
 /// - 下面两段只有开关，不再夹参数块。
+///
+/// 2026-09-27（方案「我的 · 自动复盘 · 周期分组指标」§1.3）：这一页分三节——
+/// **指标 · 对比 · 主力订单流**。「对比」整节从「图表设置」搬了过来，主力订单流也从「主图叠加」
+/// 那排开关里拎出来单成一节（开关 + 门槛）。三样都是「往图上叠一层东西」，一个入口开关完；
+/// 「图表设置」里那一行「指标」同一天撤了，这一页从此只有周期条这一条路进来，没有上一层可回，
+/// 左上角那颗就是关面板。
 ///
 /// 参数编辑那层 sheet 和面板提示仍挂在这一层自己身上。
 struct IndicatorPage: View {
@@ -21,23 +25,33 @@ struct IndicatorPage: View {
   /// 主力订单流的胶水与当前品种（它那张表要显示这只币此刻生效的门槛）。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
-  /// 「‹」回上一层（「图表设置」）。nil = 从周期条直接开的，左上角那颗关面板。
-  var onBack: (() -> Void)? = nil
+  /// 「添加对比品种」：关面板、开品种搜索。此刻不能对比（复盘回放、横屏画线台）时调用方传 nil，
+  /// 「对比」这一节整节不排。
+  var onAddCompare: (() -> Void)? = nil
+  /// 对比品种键 → 显示名（主界面按品种表算好递进来，这儿不查表）。
+  var compareNames: [String: String] = [:]
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
+  @Environment(\.dismiss) private var dismiss
+  /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
+  @Environment(\.panelDismiss) private var sideDismiss
 
   private var prefs: Prefs { store.prefs }
+  /// 对比那几个动作要先收面板再做（搜索页、看得见图），竖屏 sheet / 横屏侧栏一律走这里。
+  private var close: PanelCloser { PanelCloser(side: sideDismiss, sheet: dismiss) }
+  /// 主图叠加那排开关里不再有主力订单流——它单成了一节。
+  private static let overlayPalette = IndicatorID.mainPalette.filter { $0 != .orderFlow }
 
   var body: some View {
-    PanelSheet(title: "指标", subtitle: nil, onBack: onBack) {
-      if !prefs.overlays.isEmpty || !prefs.subs.isEmpty || prefs.orderFlow {
+    PanelSheet(title: "指标", subtitle: nil) {
+      if !prefs.overlays.isEmpty || !prefs.subs.isEmpty {
         PanelGroupTitle(text: "正在用")
-        InUseList(store: store, orderFlowBase: orderFlow?.currentFacts?.overrideKey, onEdit: { editing = $0 })
+        InUseList(store: store, onEdit: { editing = $0 })
       }
 
       PanelGroupTitle(text: "主图叠加")
-      ForEach(IndicatorID.mainPalette, id: \.self) { id in
-        row(id, last: id == IndicatorID.mainPalette.last)
+      ForEach(Self.overlayPalette, id: \.self) { id in
+        row(id, last: id == Self.overlayPalette.last)
       }
 
       // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
@@ -45,6 +59,9 @@ struct IndicatorPage: View {
       ForEach(IndicatorID.subPalette, id: \.self) { id in
         row(id, last: id == IndicatorID.subPalette.last)
       }
+
+      compareSection
+      orderFlowSection
     }
     .sheet(item: $editing) { id in
       if id == .orderFlow {
@@ -55,18 +72,62 @@ struct IndicatorPage: View {
     }
   }
 
+  /// 对比 K 线（`Kanpan/Kanpan/Compare/`）：最多三只，颜色跟皮肤色板走，不给选。
+  /// 原样搬自「图表设置」（2026-09-27），标识不变：`compare.add` / `compare.remove.<键>` / `compare.clear`。
+  @ViewBuilder private var compareSection: some View {
+    if let onAddCompare {
+      PanelGroupTitle(text: "对比")
+      // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶。
+      PanelRow(name: "添加对比品种", divider: !prefs.compareSymbols.isEmpty, onTap: { close(); onAddCompare() })
+        .disabled(prefs.compareSymbols.count >= 3)
+        .accessibilityIdentifier("compare.add")
+      ForEach(prefs.compareSymbols, id: \.self) { key in
+        PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
+          Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
+            Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("compare.remove." + key)
+        }
+      }
+      if !prefs.compareSymbols.isEmpty {
+        PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; close() })
+          .accessibilityIdentifier("compare.clear")
+      }
+    }
+  }
+
+  /// 主力订单流：一颗开关，开着时底下多一行「门槛」进它那张表（原来在「正在用」里点它那一行进）。
+  /// 行右写这只币的门槛动没动过。标识沿用 `indicator.switch.ORDERFLOW` / `indicator.edit.ORDERFLOW`。
+  @ViewBuilder private var orderFlowSection: some View {
+    PanelGroupTitle(text: IndicatorID.orderFlow.name)
+    // 行名不再重复「主力订单流」：分组标题已经念过一遍（2026-09-24 审查 U4 同一条规矩）。
+    PanelRow(name: "在图上显示", swatch: t.swatch(.orderFlow), divider: prefs.orderFlow) {
+      PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
+        .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
+    }
+    if prefs.orderFlow {
+      let base = orderFlow?.currentFacts?.overrideKey
+      let meta = base.map { "\($0) · " + (prefs.orderFlowOverrides[$0] == nil ? "默认门槛" : "已改门槛") } ?? ""
+      PanelRow(name: "门槛", divider: false, onTap: { editing = .orderFlow }) {
+        HStack(spacing: Space.s) {
+          if !meta.isEmpty {
+            Text(meta).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
+          }
+          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+        }
+      }
+      .accessibilityLabel(meta.isEmpty ? "门槛" : "门槛，\(meta)")
+      .accessibilityIdentifier("indicator.edit.\(IndicatorID.orderFlow.rawValue)")
+    }
+  }
+
   private func row(_ id: IndicatorID, last: Bool) -> some View {
     let on = prefs.isOn(id)
     return PanelRow(name: id.name, swatch: t.swatch(id), divider: !last) {
       PanelSwitch(isOn: on) { store.byHand { $0.toggleIndicator(id) } }
         .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }
-  }
-
-  /// 「图表设置」上那一行右边的字：开着的指标按图上从上到下的次序报名字。
-  static func summary(_ prefs: Prefs) -> String {
-    let on = prefs.overlays.filter { $0.placement == .main } + (prefs.orderFlow ? [.orderFlow] : []) + prefs.subs
-    return on.isEmpty ? "都关着" : on.map(\.name).joined(separator: " · ")
   }
 }
 
@@ -76,10 +137,9 @@ struct IndicatorPage: View {
 ///
 /// 拖法沿用原来「副图顺序」那一段（§10.6）：行高固定，位移除以行高就是挪几格，松手就定。
 /// 主图叠加不排序——几条均线叠在同一张图上，谁先谁后看不出来。
+/// 主力订单流 2026-09-27 起不在这一段：它单成一节，门槛从那一节的「门槛」行进。
 private struct InUseList: View {
   var store: PrefsStore
-  /// 当前品种去掉缩放前缀的币名（主力订单流那一行报这只币的门槛动没动过）。
-  var orderFlowBase: String? = nil
   var onEdit: (IndicatorID) -> Void
   @Environment(\.panelTheme) private var t
 
@@ -90,7 +150,7 @@ private struct InUseList: View {
   private static let rowH: CGFloat = Inset.rowMin
 
   private var prefs: Prefs { store.prefs }
-  /// 这一段里有没有带把手的行（副图）。有的话，没把手的行（主图叠加、订单流）在同一个位置
+  /// 这一段里有没有带把手的行（副图）。有的话，没把手的行（主图叠加）在同一个位置
   /// 垫一块同宽的空位，参数和「›」才落在同一条竖线上（UI 整改 P2）。
   private var hasHandles: Bool { !prefs.subs.isEmpty }
 
@@ -99,8 +159,6 @@ private struct InUseList: View {
       ForEach(prefs.overlays.filter { $0.placement == .main }, id: \.self) { id in
         line(id, index: nil)
       }
-      // 主力订单流的开关是自己一个字段，不在 overlays 里；参数位写「改过」表示这只币的门槛动过。
-      if prefs.orderFlow { line(.orderFlow, index: nil) }
       ForEach(Array(prefs.subs.enumerated()), id: \.element) { index, id in
         line(id, index: index)
           .background(dragging == id ? t.raised2 : .clear)
@@ -113,9 +171,7 @@ private struct InUseList: View {
   }
 
   private func line(_ id: IndicatorID, index: Int?) -> some View {
-    let params = id == .orderFlow
-      ? orderFlowBase.map { "\($0) · " + (prefs.orderFlowOverrides[$0] == nil ? "默认门槛" : "已改门槛") } ?? ""
-      : prefs.params(for: id).map(String.init).joined(separator: " · ")
+    let params = prefs.params(for: id).map(String.init).joined(separator: " · ")
     let resized = id.placement == .sub && prefs.subHeightOverrides[id] != nil
     return HStack(spacing: 0) {
       Button { onEdit(id) } label: {
@@ -199,7 +255,7 @@ private struct InUseList: View {
 
 #if DEBUG
 #Preview("指标") {
-  PanelPreviewHost { store in IndicatorPage(store: store, onBack: {}) }
+  PanelPreviewHost { store in IndicatorPage(store: store, onAddCompare: {}) }
 }
 #endif
 

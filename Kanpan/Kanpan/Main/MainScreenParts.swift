@@ -183,7 +183,6 @@ struct MainScreenObservers: ViewModifier {
 struct MainHeaderView<Card: View>: View {
   let theme: PanelTheme
   let market: MarketModel
-  let review: ReviewFeature
   /// 那口价、涨跌和诊断串都在这块自己的 body 里向会话现取（审查 21）：逐笔推送只叫醒头部，
   /// 不叫醒宿主。
   let session: ChartSession
@@ -191,7 +190,6 @@ struct MainHeaderView<Card: View>: View {
   /// 「要不要加提醒」/ 分享卡在场没有：价格行和读数行照旧占位，只是透明。
   let cardVisible: Bool
   let onBack: (() -> Void)?
-  let onReview: () -> Void
   let onSearch: () -> Void
   let onScan: (ScanDirection) -> Void
   let card: Card
@@ -204,14 +202,11 @@ struct MainHeaderView<Card: View>: View {
     VStack(spacing: Space.s) {
       // 顶栏没有自选星了（用户 2026-09-18 定的）：加自选统一在搜索页和自选页的
       // 品种行上做，那儿看得见一整列，挑着加；顶栏这一颗紧贴品种名，只会误触。
-      // 复盘从底栏挪到了这儿：底栏换成常驻标签栏之后那四格是分页，复盘按用户的话
-      // 「放到图表里」——它是看着某张图时才想起来的事。角标是还欠着答案的条数。
+      // 复盘那颗 2026-09-27 也撤了：复盘本进了「我的」页，待判定角标挂在底栏「我的」记号上。
       TopBar(
         theme: theme, symbol: market.symbol,
-        review: review,
         // 有来路才有返回。复盘态走的是另一副页头（`ReplayHeaderView`），不经过这儿。
         onBack: onBack,
-        onReview: onReview,
         onSearch: onSearch)
       ZStack {
         PriceRow(theme: theme, instrument: market.symbol, ticker: session.rollingTicker, lastPrice: session.readoutPrice,

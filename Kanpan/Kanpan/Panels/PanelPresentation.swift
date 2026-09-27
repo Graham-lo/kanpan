@@ -8,14 +8,18 @@ import KanpanCore
 
 /// 哪个面板。
 ///
-/// 2026-09-18 底栏改成常驻标签栏（画线 · 图表 · 自选 · 设置）之后，这儿只剩两张：
+/// 2026-09-18 底栏改成常驻标签栏（当时是画线 · 图表 · 自选 · 设置）之后，这儿只剩两张：
 /// 「设置」升成了标签栏上的一整页，不再是半屏；「指标」整段并进了「图表设置」，
 /// 成为它里头的一个子栏目——用户的话是「行情页面的指标放到图表里作为一个子栏目」。
 /// 半屏 sheet 从此只留给这种「从某一页里叫出来的子面板」，不承载标签本身。
 ///
 /// 2026-09-24 周期条行尾多了一个「指标」大类入口（用户：「现在指标这个大类放到周期条中」），
-/// 它直接开指标页（`indicators`）——和「图表设置 › 指标」是同一页，只是没有上一层可回，
-/// 左上角那颗就是关面板。「图表设置」里那条推进去的路保持不变。
+/// 它直接开指标页（`indicators`），左上角那颗就是关面板。
+///
+/// 2026-09-27（方案「我的 · 自动复盘 · 周期分组指标」§1.3）：「图表设置 › 指标」那条推进去的路撤了，
+/// 指标页只剩周期条这一个入口，并把「对比」从图表设置接了过来（指标 · 对比 · 主力订单流三节）；
+/// 「图表设置」只剩这张图 · K 线 · 显示 · 价格轴。底栏也从五格收成四格（图表 · 自选 · 板块分类 · 我的），
+/// 「设置」是「我的」里推进去的一页，「画线」进了周期条行尾。
 enum Panel: String, Identifiable, CaseIterable, Sendable {
   case period, chart, indicators
 
@@ -140,7 +144,7 @@ struct PanelActions {
   var compareNames: [String: String] = [:]
   var onSend: (() -> Void)? = nil
   var sendBlocked: String? = nil
-  /// 主力订单流的胶水与当前品种：「指标 › 主力订单流」那张表拿它显示这只币此刻生效的门槛。
+  /// 主力订单流的胶水与当前品种：指标页「主力订单流 › 门槛」那张表拿它显示这只币此刻生效的门槛。
   /// 传的是引用而不是算好的值——大单帧每半秒一次，算好的值挂在这里会让主界面跟着重算。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
@@ -158,13 +162,12 @@ struct PanelContent: View {
     case .period: IntervalGridPanel(store: store, onPick: actions.onPickInterval)
     case .chart:
       ChartPanel(store: store, onRecord: actions.onRecord, onShare: actions.onShare,
-                 onSend: actions.onSend, sendBlocked: actions.sendBlocked,
-                 onAddCompare: actions.onAddCompare, compareNames: actions.compareNames,
-                 orderFlow: actions.orderFlow, symbol: actions.symbol)
+                 onSend: actions.onSend, sendBlocked: actions.sendBlocked)
     case .indicators:
       // 从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
       // 选中反馈长在指标页各控件的动作上（`PrefsStore.updateByHand`），两条路一样。
-      IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol)
+      IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol,
+                    onAddCompare: actions.onAddCompare, compareNames: actions.compareNames)
     }
   }
 }

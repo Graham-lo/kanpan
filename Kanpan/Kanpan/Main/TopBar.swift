@@ -17,11 +17,10 @@ import SwiftUI
 /// 自选星也在同一天撤了：加自选统一在搜索页和自选页的行上做（那儿一行一颗星，
 /// 看着列表挑着加），顶栏这一颗既和它们重复，又贴着品种名最容易误触。
 ///
-/// 2026-09-18 右上角多了一颗「复盘」。底栏那天换成了常驻标签栏（画线 · 图表 ·
-/// 自选 · 设置），复盘按用户的话「放到图表里」——它是看着某张图时才想起来的事，
-/// 所以落在行情页顶栏，挨着搜索。待办条数照旧画成一颗角标。
-/// 2026-09-24（审查 U6）它的记号从借来的「指标」折线换成专属的 `ReviewGlyph`（一本带书签的
-/// 复盘本）。这颗只负责**进复盘本**；「记一笔」只留两处：图表设置里的那一行、复盘本右上角的「+」。
+/// 2026-09-18 到 09-26 右上角还有一颗「复盘」（带待判定角标）。2026-09-27 撤了（方案
+/// `docs/方案-我的-自动复盘-周期分组指标-2026-09-27.md` §1.4）：复盘本是「我的」页里的一块，
+/// 角标挂到底栏「我的」记号上；「记一笔」仍在图表设置「这张图」与复盘本右上角的「+」，
+/// 深链 `hkline://review/<id>` 和到点通知的去处不变。顶栏只剩徽章 + 品种名 + 放大镜。
 ///
 /// 字号、间距、图标一律取 `DesignTokens` 的令牌（UI 审查 2026-09-24 §4.3 #4–#12），别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
@@ -31,14 +30,10 @@ struct TopBar: View {
   @State private var iconTapCount = 0
   var theme: PanelTheme
   var symbol: String
-  /// 复盘本：角标画它还欠着答案的条数，0 就不画。传的是整只 feature 而不是算好的数——
-  /// 数由下面的 `ReviewCountBadge` 自己在它的 body 里读，见那边的注释。
-  var review: ReviewFeature?
   /// 有来路就有返回。非 nil 时最左边多一颗返回箭头，回到把人送进这张图的那一页
   /// （板块下钻、自选行）。从底栏直接点进来的「图表」没有来路，这颗就不画——
   /// 常驻标签栏那一格自己就是家，返回无处可去。
   var onBack: (() -> Void)?
-  var onReview: (() -> Void)?
   var onSearch: () -> Void
 
   /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
@@ -83,28 +78,14 @@ struct TopBar: View {
 
       Spacer(minLength: 0)
 
-      // 右上角这两颗单独成一组，间距 12 不是 8。
-      //
-      // 托底 32pt（`ControlMetrics.iconDisc`，UI 审查 2026-09-24 从 30 调上来），命中区撑到
-      // 44×44（见 `iconButton`）。两颗之间的**步距**必须 ≥44 才不会让两块命中区叠在一起——
-      // 叠上了就会出现「明明点的是搜索，开的是复盘」这种谁也说不清的一下。32 + 12 = 44，
-      // 正好首尾相接：缝里没有点不着的死区，也没有归属不清的重叠带。
-      HStack(spacing: Space.m) {
-        if let onReview {
-          iconButton(ReviewGlyph(theme: theme), label: "复盘", action: onReview)
-            .accessibilityIdentifier("top.review")
-            .overlay(alignment: .topTrailing) {
-              if let review { ReviewCountBadge(review: review, theme: theme) }
-            }
-        }
-
-        iconButton(VectorIcon.search(16), label: "搜索品种", action: onSearch)
-          .accessibilityIdentifier("top.search")
-      }
+      // 右上角只剩放大镜。托底 32pt（`ControlMetrics.iconDisc`），命中区撑到 44×44（见 `iconButton`）。
+      // 原来它左边还有复盘那颗（两颗步距 32 + 12 = 44，命中区首尾相接），2026-09-27 撤了。
+      iconButton(VectorIcon.search(16), label: "搜索品种", action: onSearch)
+        .accessibilityIdentifier("top.search")
     }
   }
 
-  /// 最左边那颗返回。和右上角两颗圆按钮同一副托底（32pt `raised` 圆 + 二级墨色），
+  /// 最左边那颗返回。和右上角放大镜同一副托底（32pt `raised` 圆 + 二级墨色），
   /// 箭头 16pt semibold（UI 审查 2026-09-24 §4.3 #12）。
   private func backButton(_ action: @escaping () -> Void) -> some View {
     Button {
@@ -361,35 +342,5 @@ struct PriceRow: View {
       .foregroundStyle(missing || stale ? theme.ink3 : (tint ?? theme.ink))
       .gridColumnAlignment(.trailing)
       .accessibilityIdentifier(id)
-  }
-}
-
-/// 复盘按钮上的角标。单独成一个视图，是为了让「数欠着几条」这件事只跟着复盘记录走：
-/// 原来 `pendingCount` 是顶栏在自己的 body 里读好再传下来，而顶栏跟着逐笔成交一秒
-/// 重画好几次——每一跳都白读一遍。现在顶栏只把 feature 这个引用递下来：引用没变，
-/// SwiftUI 不重跑这里的 body；`pendingCount` 本身也已在 feature 里缓存，记录真变了才重数。
-struct ReviewCountBadge: View {
-  let review: ReviewFeature
-  let theme: PanelTheme
-  #if DEBUG
-    /// 测试用：这块 body 一共求值了几次。
-    static var bodies = 0
-  #endif
-
-  var body: some View {
-    #if DEBUG
-      let _ = Self.bodies += 1
-    #endif
-    let count = review.pendingCount
-    if count > 0 {
-      Text("\(min(count, 99))")
-        // 角标里也是字，一样守 11pt 这个下限。
-        .font(TypeScale.caption2Emph)
-        .foregroundStyle(theme.badgeInk)
-        .padding(.horizontal, Space.xs).padding(.vertical, Space.xxs)
-        .background(theme.amber, in: Capsule())
-        .offset(x: 5, y: -3)
-        .allowsHitTesting(false)
-    }
   }
 }

@@ -28,7 +28,7 @@ struct PanelSheet<Content: View>: View {
   var asPage: Bool = false
   /// 标题行右端那一个字按钮（如提醒总表的「新建」）。一页最多一个。
   var action: PanelSheetAction? = nil
-  /// 面板里推进去的下一层（「图表设置 › 指标」）：左上角的「‹」回上一层，不关面板。
+  /// 面板里推进去的下一层（「图表设置 › 更多设置」「分享」）：左上角的「‹」回上一层，不关面板。
   var onBack: (() -> Void)? = nil
   @ViewBuilder var content: () -> Content
 

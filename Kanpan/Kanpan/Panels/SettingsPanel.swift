@@ -23,89 +23,49 @@ import KanpanNetwork
 ///
 /// 2026-09-18 起它是标签栏最右边那一整页，不再是半屏（`asPage`）。用户定的是
 /// 「这四个底部栏都单独是一个页面」——设置里要翻的东西不少，半屏拉上拉下本来就别扭。
+///
+/// 2026-09-27 起它不再占底栏一格：底栏收成四格，最右那格换成「我的」（`MePage`），
+/// 设置从「我的」推进来一层（`MeRoute.settings`，系统返回、底栏常驻）。原来排在最上面的
+/// 账号那一行、通用组里的「朋友」那一行随之删掉——两样都在「我的」里各占一块，
+/// 同一个动作只留一个入口（`kanpan-one-entry-per-action`）。导航栈归「我的」，这一页不再自带。
 struct SettingsPanel: View {
   var store: PrefsStore
-  /// 当作标签栏上的整页画：不要左上角的「‹」，底色用页面底色。
+  /// 当作推进来的整页画：系统导航栏、底色用页面底色。false 只剩预览在用（`PanelSheet` 那一版）。
   var asPage = false
-  var onFriends: (() -> Void)?
 
   @Environment(\.panelTheme) private var t
-  @Environment(\.accountFeature) private var account
 
   private var prefs: Prefs { store.prefs }
 
-  /// 整页时推进设置自己这个导航栈的那几层（账号、朋友）。路径住在宿主（`MainScreen`）：
-  /// 登录成功要退回、点开一条收到的线要清空，都得宿主能动它。nil = 不推，走宿主的表。
-  var path: Binding<[SettingsRoute]>? = nil
-  /// 每一层画什么由宿主给——朋友页要的收件箱、打开收到的线，都在宿主那儿。
-  var destination: ((SettingsRoute) -> AnyView)? = nil
-  /// 账号那一行。整页时推一层账号页（系统返回，底栏常驻）；nil 走 `account.open()` 那张表。
-  var onAccount: (() -> Void)? = nil
-  /// 整页时身下那条标签栏的高度。宿主的 `safeAreaInset` 进不了 `NavigationStack`，
-  /// 这一页和推进来的每一层都自己让出这一截，滚到底最后一行才在标签栏上沿以内。
-  var bottomInset: CGFloat = 0
+  // selection 触觉长在各个控件的动作上（`PrefsStore.updateByHand`），不挂在 `prefs` 上：
+  // 挂在值上的话，这一页开着时云端落地、别处改设置也会震。
+  var body: some View { page }
 
-  var body: some View {
-    page
-      // 账号页由**一个** presenter 持有（审查 C-06）。
-      //
-      // 这一页当标签栏整页画的时候，它是长在根视图树里的一节，而根那一层
-      // （`MainScreen`）已经拿同一个 `account.presented` 挂了一张 `.sheet`。
-      // 两个 presenter 抢同一个布尔：SwiftUI 只认一个，另一个的呈现状态没人收，
-      // 「关掉之后要点两下才再开」这类症状就是从那儿来的。所以整页时这儿不挂，
-      // 点账号入口只是把布尔置位，开页的事交给根。
-      //
-      // `asPage == false` 的那条路留着：那时这一页自己是一张 sheet，账号页得叠在
-      // 它上面，根的 sheet 够不着——那才是「真正作为上层 sheet 的设置上下文」。
-      .modifier(AccountPresenter(account: asPage ? nil : account))
-      // selection 触觉长在各个控件的动作上（`PrefsStore.updateByHand`），不挂在 `prefs` 上：
-      // 挂在值上的话，这一页开着时云端落地、别处改设置也会震。
-  }
-
-  /// 整页走系统 `NavigationStack`：行内标题 17 semibold、滚动时系统自己的边缘效果
+  /// 整页走系统导航栏：行内标题 17 semibold、滚动时系统自己的边缘效果
   /// （UI 审查 2026-09-24 定的导航写法：标签页整页与它钻进去的子页一律系统导航栏，
-  /// 面板 / 半屏里的子页才用 `PanelSheet` 的「‹」）。半屏那条路（`asPage == false`，
-  /// 预览与旧入口）仍是 `PanelSheet`，两条路各走各的，同一条路径上不中途换写法。
+  /// 面板 / 半屏里的子页才用 `PanelSheet` 的「‹」）。栈是「我的」那一个（`MePage`），
+  /// 标签栏让出的那一截由它给每一层补（`safeAreaPadding`），这儿不再管。
   @ViewBuilder private var page: some View {
     if asPage {
-      // 设置 → 账号 / 朋友推在这个栈里（UI 整改 P2，2026-09-25）：底栏常驻、系统返回，
-      // 回来时滚动位置还在。别的入口（图表面板、分享、深链）进来的仍是表。
-      NavigationStack(path: path ?? .constant([])) {
-        ScrollView {
-          VStack(spacing: 0) { rows }
-            .padding(.top, Space.xs)
-            .padding(.bottom, Space.l)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .accessibilityIdentifier("panel.content")
-        .safeAreaPadding(.bottom, bottomInset)
-        .background(t.app.ignoresSafeArea())
-        .navigationTitle("设置")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: SettingsRoute.self) { route in
-          destination?(route).safeAreaPadding(.bottom, bottomInset)
-        }
+      ScrollView {
+        VStack(spacing: 0) { rows }
+          .padding(.top, Space.xs)
+          .padding(.bottom, Space.l)
       }
-      // 行文、分组标题、皮肤卡左右跟页面外边距走：16 Pro 上 16，17 Pro Max 上 20。
-      .panelPageInset()
+      .scrollBounceBehavior(.basedOnSize)
+      .accessibilityIdentifier("panel.content")
+      .background(t.app.ignoresSafeArea())
+      .navigationTitle("设置")
+      .navigationBarTitleDisplayMode(.inline)
     } else {
       PanelSheet(title: "设置", subtitle: nil) { rows }
     }
   }
 
   /// 分组照 UI 审查 §4.4：配色 / 深浅（`DisplaySettingsSection`）之后是「行情」「通知」
-  /// 「通用」三组，只有组名、没有说明文字。账号那一行照系统设置的习惯排在最上面，自己不成组。
+  /// 「通用」三组，只有组名、没有说明文字。账号那一行 2026-09-27 搬去「我的」的账号卡。
   /// 进下一页的行尾一律是箭头；就地动作（恢复、清除）是强调色的字，整行都能点。
   @ViewBuilder private var rows: some View {
-    if let account {
-      // 登录后这一行报的是「上次同步多久以前」，不是「成功」——「成功」说的是
-      // 上一次请求的结果，用户想知道的是「我这台机器上的东西新不新」。
-      PanelRow(name: account.user?.email ?? "登录",
-               meta: account.user == nil ? nil : syncMeta(account),
-               onTap: { if let onAccount { onAccount() } else { account.open() } }) {
-        nextPageMark
-      }.accessibilityIdentifier("settings.account")
-    }
     DisplaySettingsSection(store: store)
 
     PanelGroupTitle(text: "行情")
@@ -160,13 +120,7 @@ struct SettingsPanel: View {
     AlertSettingsSection(preferences: store)
 
     PanelGroupTitle(text: "通用")
-    // 「朋友」原来和「提醒」同一组；提醒那一行走了，它不单独顶一个同名分组标题（审查 U13），
-    // 排在通用组最上面。
-    if let onFriends {
-      PanelRow(name: "朋友", onTap: onFriends) {
-        nextPageMark
-      }.accessibilityIdentifier("settings.friends")
-    }
+    // 「朋友」原来排在这一组最上面，2026-09-27 搬去「我的 › 朋友与收件箱」。
     aboutRow
     // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
     // 撤得回来。直接恢复，右边留一颗「撤销」五秒。
@@ -176,12 +130,6 @@ struct SettingsPanel: View {
     .accessibilityIdentifier("settings.reset")
     // 清缓存是排查用的，平时用不着，放在最底（2026-09-24 审查 U13）。
     cacheRow
-  }
-
-  /// 进下一页的行尾箭头。全 app 列表箭头一个尺寸（`ControlMetrics.chevron`），灰色——
-  /// 强调色留给就地动作（「恢复」「清除」「隐私政策」）。
-  private var nextPageMark: some View {
-    VectorIcon.chevronRight(ControlMetrics.chevron).foregroundStyle(t.ink3)
   }
 
   // MARK: - 行
@@ -248,19 +196,6 @@ struct SettingsPanel: View {
     store.note("已恢复默认", undo: { store.restore(changed, from: before) })
   }
 
-  /// 账号行右边那句。同步真出错时它换成那句错误——按 §2G 的规矩，
-  /// 同步失败只在这一处说一次，复盘本里不再重复。
-  private func syncMeta(_ account: AccountFeature) -> String {
-    let canned: Set<String> = ["", "已暂停", "待同步", "尚未同步", "已同步", "同步中"]
-    if !canned.contains(account.syncStatus) { return account.syncStatus }
-    guard let at = account.lastSync else { return "尚未同步" }
-    let age = Int(Date().timeIntervalSince(at))
-    if age < 60 { return "刚刚同步" }
-    if age < 3600 { return "上次同步 \(age / 60) 分钟前" }
-    if age < 86_400 { return "上次同步 \(age / 3600) 小时前" }
-    return "上次同步 \(age / 86_400) 天前"
-  }
-
   // MARK: - 分段选项
 
   /// A6.9。三档照原型：本地 / UTC / 交易所，第三档字面写「UTC+8」（审查 U13：「UTC」「交易所」
@@ -277,25 +212,3 @@ struct SettingsPanel: View {
   PanelPreviewHost { store in SettingsPanel(store: store) }
 }
 #endif
-
-/// 把账号页挂在调用方自己这一层。`account` 为 nil 时整段不挂——
-/// 那说明账号呈现权在别人手里（见 `SettingsPanel` 里那段说明）。
-private struct AccountPresenter: ViewModifier {
-  var account: AccountFeature?
-  func body(content: Content) -> some View {
-    if let account {
-      content.sheet(isPresented: Binding(get: { account.presented },
-                                         set: { account.presented = $0 })) {
-        AccountView(feature: account)
-      }
-    } else {
-      content
-    }
-  }
-}
-
-/// 设置整页推进去的那几层。
-enum SettingsRoute: Hashable {
-  case account
-  case friends
-}

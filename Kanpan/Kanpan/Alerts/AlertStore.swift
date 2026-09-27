@@ -13,7 +13,7 @@ import KanpanCore
 final class AlertStore: ObservableObject {
   @Published private(set) var archive: AlertArchive {
     // 存档一变，总表那份排好的分段与行跟着作废；下次有人读再排一趟（压测收尾第 5 项）。
-    didSet { cachedRows = nil }
+    didSet { cachedRows = nil; cachedLiveCount = nil }
   }
   /// 存档变了就响一次；账号桥挂在这儿记账 + 同步。
   var onChange: ((AlertArchive) -> Void)?
@@ -87,6 +87,15 @@ final class AlertStore: ObservableObject {
   var visible: [Alert] { archive.alerts.filter(AlertRecordText.isVisible) }
   var sorted: [Alert] { archive.sorted }
   var activeCount: Int { archive.alerts.filter(\.isActive).count }
+  /// 「我的 › 全部预警」那行「生效中 N」：还在等的价格 / 画线提醒（复盘到点不算，它归复盘本）。
+  /// 「我的」页跟着宿主一起重画，所以和 `listRows` 一样只在存档变了之后数一趟（2026-09-27）。
+  var liveCount: Int {
+    if let cachedLiveCount { return cachedLiveCount }
+    let n = archive.alerts.reduce(0) { $0 + ($1.isActive && $1.kind != .reviewDue ? 1 : 0) }
+    cachedLiveCount = n
+    return n
+  }
+  private var cachedLiveCount: Int?
   func alerts(symbol: String) -> [Alert] { archive.alerts(symbol: symbol) }
   func alertedDrawingIDs(symbol: String) -> Set<String> { archive.alertedDrawingIDs(symbol: symbol) }
   func alert(id: String) -> Alert? { archive[id] }

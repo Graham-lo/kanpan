@@ -24,7 +24,7 @@ import KanpanCore
 /// 2026-09-18 这一页又收进了整段「指标」，面板名字也从「图表」改成了「图表设置」。
 /// 用户的话是「行情页面的指标放到图表里作为一个子栏目」：底栏换成常驻标签栏之后，
 /// 「图表」是标签栏上那一整页的名字，指标不再单独占一格。
-/// 同一轮里「画线」那行也走了——它升成了标签栏最左边的一格，直接画当前这张图。
+/// 同一轮里「画线」那行也走了——它升成了标签栏最左边的一格（2026-09-27 又从标签栏搬到周期条行尾）。
 ///
 /// 2026-09-23 又收了两处：
 ///
@@ -42,6 +42,12 @@ import KanpanCore
 /// （读数位置、十字线取价、轴翻转、网格、阳线、视图锚点、倒计时、至今涨幅）收进最后
 /// 一行「更多设置」推进去的一层（`morePage`），和「指标」同一种推法，「‹」回来不关面板。
 /// 「指标」分组下第一行又叫「指标」的那个分组标题撤了；「记一笔」「分享」的解释灰字也撤了。
+///
+/// 2026-09-27（方案「我的 · 自动复盘 · 周期分组指标」§1.3）：「对比」整节和「指标」那一行搬进了
+/// 指标页——周期条行尾的「指标」直达那一页，它现在分三节：指标 · 对比 · 主力订单流。这一页只剩
+/// **这张图 · K 线 · 显示 · 价格轴** 四组（外加推进去的「更多设置」）。「这张图」仍排在最前：
+/// 它是动作不是设置，半屏打开第一眼就要看得见。上面 2026-09-18 / 09-23 两段里说的「指标并进
+/// 这一页」「指标收成一行」都已成为历史；「画线」也不在标签栏了，同一天搬到了周期条行尾。
 struct ChartPanel: View {
   var store: PrefsStore
   /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
@@ -53,11 +59,6 @@ struct ChartPanel: View {
   var onSend: (() -> Void)?
   /// 发线此刻为什么发不了（没登录 / 图上没线）；nil 表示能发。
   var sendBlocked: String? = nil
-  var onAddCompare: (() -> Void)? = nil
-  var compareNames: [String: String] = [:]
-  /// 主力订单流的胶水与当前品种（见 `PanelActions.orderFlow`）。
-  var orderFlow: OrderFlowLink? = nil
-  var symbol: String = ""
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -76,9 +77,6 @@ struct ChartPanel: View {
   var body: some View {
     ZStack {
       switch page {
-      case .indicators:
-        IndicatorPage(store: store, orderFlow: orderFlow, symbol: symbol, onBack: { page = .main })
-          .transition(.move(edge: .trailing))
       case .more:
         morePage
           .transition(.move(edge: .trailing))
@@ -116,59 +114,34 @@ struct ChartPanel: View {
         }
       }
 
-      // 对比 K 线（`Kanpan/Kanpan/Compare/`）：最多三只，颜色跟皮肤色板走，不给选。
-      if let onAddCompare {
-        PanelGroupTitle(text: "对比")
-        // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶（原来画面上毫无变化）。
-        PanelRow(name: "添加对比品种", onTap: { close(); onAddCompare() })
-          .disabled(prefs.compareSymbols.count >= 3)
-          .accessibilityIdentifier("compare.add")
-        ForEach(prefs.compareSymbols, id: \.self) { key in
-          PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
-            Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
-              Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("compare.remove." + key)
-          }
-        }
-        if !prefs.compareSymbols.isEmpty {
-          PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; close() })
-            .accessibilityIdentifier("compare.clear")
-        }
-      }
-
-      // 指标排在最前：一天里开关指标的次数远多于改坐标轴和网格。
-      // 分组标题就叫「图上」——原来叫「指标」，底下第一行又叫「指标」，念出来是两遍。
-      PanelGroupTitle(text: "图上")
-      PanelRow(name: "指标", onTap: { page = .indicators }) {
-        HStack(spacing: Space.s) {
-          Text(IndicatorPage.summary(prefs))
-            .font(PanelFont.meta).foregroundStyle(t.ink3)
-            .lineLimit(1).truncationMode(.tail)
-          chevron
-        }
-      }
-      .accessibilityIdentifier("chart.indicators")
-      PanelRow(name: "画法") {
+      // 2026-09-27 起这一页只剩四组：这张图 · K 线 · 显示 · 价格轴。「对比」整节和「指标」那一行
+      // 搬进了指标页（周期条行尾「指标」直达，见 `IndicatorPage`）——对比、主力订单流和指标一样
+      // 是「往图上叠一层东西」，开关它们的人要的是同一个入口，不是先进图表设置再推一层。
+      PanelGroupTitle(text: "K 线")
+      PanelRow(name: "画法", divider: false) {
         PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
                      id: "chart.candleKind") { v in
           store.updateByHand { $0.candleKind = v }
         }
       }
-      PanelRow(name: "价格轴") {
-        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.updateByHand { $0.priceMode = v } }
-      }
+
+      PanelGroupTitle(text: "显示")
       switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
         .accessibilityIdentifier("chart.lastLine")
       // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
-      switchRow("盘口", nil, prefs.depth, id: "chart.depth") { $0.depth = $1 }
+      switchRow("盘口", nil, prefs.depth, divider: false, id: "chart.depth") { $0.depth = $1 }
+
+      PanelGroupTitle(text: "价格轴")
+      PanelRow(name: "刻度") {
+        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode,
+                     id: "chart.priceMode") { v in store.updateByHand { $0.priceMode = v } }
+      }
       PanelRow(name: "更多设置", divider: false, onTap: { page = .more }) { chevron }
         .accessibilityIdentifier("chart.more")
     }
   }
 
-  /// 「更多设置」：一调就不再动的开关。和「指标」一样是面板里推进去的一层。
+  /// 「更多设置」：一调就不再动的开关。面板里推进去的一层，「‹」回来不关面板。
   private var morePage: some View {
     PanelSheet(title: "更多设置", subtitle: nil, onBack: { page = .main }) {
       PanelGroupTitle(text: "读数与坐标轴")
@@ -249,7 +222,7 @@ struct ChartPanel: View {
     }
   }
 
-  enum Page: Hashable { case main, indicators, more, share }
+  enum Page: Hashable { case main, more, share }
 
   // MARK: - 分段选项
 

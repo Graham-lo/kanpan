@@ -192,12 +192,14 @@ struct MainScreen: View {
   @State private var showFriendPicker = false
   /// 朋友页上点了「登录」：账号页收起、而且真登上了，就把朋友页再打开。
   @State private var friendsAfterLogin = false
-  /// 设置整页自己那个导航栈的路径：设置 → 账号 / 朋友是推进去的一层（UI 整改 P2，2026-09-25），
-  /// 底栏常驻、系统返回。别的入口（图表面板、分享、深链）仍开表。离开设置这一格就清空。
-  @State private var settingsPath: [SettingsRoute] = []
-  /// 标签栏量出来的高度。设置整页是个 `NavigationStack`，下面那句 `safeAreaInset` 顶不进
-  /// 导航栈里的页（UIKit 的导航控制器不收 SwiftUI 加的这份 inset），滚到底「清理存储空间」
-  /// 会压在标签栏底下——所以把高度量出来，由设置页自己在栈里补上。
+  /// 「我的」整页自己那个导航栈的路径：账号 / 朋友 / 全部预警 / 交易所账户 / 设置都是推进去的
+  /// 一层，底栏常驻、系统返回。原来这是设置整页的栈（UI 整改 P2，2026-09-25）；2026-09-27 底栏
+  /// 收成四格，设置成了「我的」里推进去的一页，账号与朋友也从设置挪到「我的」，栈跟着搬过来。
+  /// 别的入口（分享、深链）仍开表。离开「我的」这一格就清空。
+  @State private var mePath: [MeRoute] = []
+  /// 标签栏量出来的高度。「我的」整页是个 `NavigationStack`，下面那句 `safeAreaInset` 顶不进
+  /// 导航栈里的页（UIKit 的导航控制器不收 SwiftUI 加的这份 inset），推进来的设置页滚到底
+  /// 「清理存储空间」会压在标签栏底下——所以把高度量出来，由「我的」在栈里给每一层补上。
   @State private var tabBarHeight: CGFloat = 0
   @State private var shareDraft: ShareOutbound?
   @State private var shareShot: Data?
@@ -542,22 +544,22 @@ struct MainScreen: View {
     }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
-    .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen && !accountInSettings }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
-    // 从朋友页点「登录」进来的：登完回到朋友页，不把人丢在设置页上。
+    .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen && !accountInMe }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
+    // 从朋友页点「登录」进来的：登完回到朋友页，不把人丢在「我的」上。
     .onChange(of: account.presented) { _, open in
-      // 推在设置里的账号页：登成功 / 退登（`presented` 落回 false）就退回上一层。
-      if !open, settingsPath.last == .account { settingsPath.removeLast() }
+      // 推在「我的」里的账号页：登成功 / 退登（`presented` 落回 false）就退回上一层。
+      if !open, mePath.last == .account { mePath.removeLast() }
       guard !open, friendsAfterLogin else { return }
       friendsAfterLogin = false
       guard account.user != nil else { return }
       Task { try? await Task.sleep(for: .milliseconds(350)); showFriends = true }
     }
     // 反过来：用户在推进来的账号页上按了系统返回，账号页就算收起了。
-    .onChange(of: settingsPath) { old, new in
+    .onChange(of: mePath) { old, new in
       if old.last == .account, new.last != .account, account.presented { account.presented = false }
     }
     .onChange(of: tab) { _, next in
-      if next != .settings, !settingsPath.isEmpty { settingsPath = [] }
+      if next != .me, !mePath.isEmpty { mePath = [] }
     }
     .fullScreenCover(isPresented: $review.bookOpen) {
       ReviewBook(feature: review)
@@ -604,18 +606,16 @@ struct MainScreen: View {
   private var portraitBody: some View {
     Group {
       switch tab {
-      // 「画线」不是一张页：点它是把当前这张图横过来画，所以它落在行情页上。
-      case .chart, .draw: chartPage
+      case .chart: chartPage
       case .favorites:
         if landingHeld, picker.prefs.favorites.isEmpty { FavoritesLandingPlaceholder() }
         else { favoritesPage }
       case .sectors: sectorPage
-      case .settings: SettingsPanel(store: store, asPage: true,
-                                    onFriends: { settingsPath.append(.friends) },
-                                    path: $settingsPath,
-                                    destination: settingsDestination,
-                                    onAccount: openAccountInSettings,
-                                    bottomInset: tabBarHeight)
+      // 2026-09-27：第四格从「设置」换成「我的」，设置是那一页里推进去的一层。
+      case .me: MePage(store: store, review: review, alerts: alerts, inbox: inbox,
+                       path: $mePath, destination: meDestination,
+                       onReviewBook: { dismissPanel(); review.bookOpen = true; review.synchronize() },
+                       onAccount: openAccountInMe, bottomInset: tabBarHeight)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -624,7 +624,7 @@ struct MainScreen: View {
     // 要跑题。两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」）。
     .safeAreaInset(edge: .bottom, spacing: 0) {
       if !reviewChart.active {
-        TabBar(theme: theme, current: tab, drawing: draw.active, drawingEnabled: !comparing, onPick: switchTo(tab:))
+        TabBar(theme: theme, current: tab, review: review, onPick: switchTo(tab:))
           .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { tabBarHeight = $0 }
       }
     }
@@ -653,26 +653,29 @@ struct MainScreen: View {
     .ignoresSafeArea(.keyboard, edges: draw.active ? [] : .bottom)
   }
 
-  /// 换一格标签。
-  ///
-  /// 「画线」那一格是个动作：先回到行情页，再横过去画（`draw.toggle()` 会触发
+  /// 周期条行尾那颗「画线」：把当前这张图横过来画（`draw.toggle()` 会触发
   /// `onChange(of: draw.active)` 里的转屏）。用户定的是「用户当前看的这张图作为
   /// 画线的目标，直接实现即可」——不问品种，画的就是眼前这张。
+  ///
+  /// 原来这是底栏最左那一格「画线」的动作（写在 `switchTo(tab:)` 的一个分支里）；
+  /// 2026-09-27 底栏收成四格，画线搬到周期条行尾，动作原样搬过来：对比期间不响应
+  /// （那颗记号同时置灰），画线进行中再点一下就是收起。
+  private func startDrawing() {
+    guard !comparing else { return }
+    dismissPanel()
+    endSharePreview()
+    if reviewChart.active { endReview() }
+    // 周期条只长在行情页上，这两句多半是空转；留着是为了深链 / 快捷方式以后直接叫它时来路不丢。
+    if tab != .chart { chartOrigin = tab }
+    tab = .chart
+    draw.toggle()
+  }
+
+  /// 换一格标签。
   private func switchTo(tab next: Tab) {
     dismissPanel()
     didLeaveLaunch = true
     landingHeld = false
-    guard next != .draw else {
-      guard !comparing else { return }
-      endSharePreview()
-      if reviewChart.active { endReview() }
-      // 从别的一格点「画线」等于被带到了图上：这一格就是来路，画完退得回去。
-      // 本来就在图上的话来路不变（可能是板块或自选带进来的，别把它抹了）。
-      if tab != .chart { chartOrigin = tab }
-      tab = .chart
-      draw.toggle()
-      return
-    }
     // 底栏是常驻标签栏，自己点一格就是「回家」——上一次的来路作废，
     // 顶栏那颗返回跟着收起来。
     chartOrigin = nil
@@ -716,6 +719,8 @@ struct MainScreen: View {
         onIndicators: { panel = .indicators },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart },
+        // 画线（2026-09-27 从底栏搬来）：对比期间置灰，画线进行中亮成琥珀软胶囊。
+        onDraw: startDrawing, drawing: draw.active, drawEnabled: !comparing,
         readout: crosshairReadout, context: crosshairContext,
         onAlert: newAlert(at:)
       ) }
@@ -952,12 +957,11 @@ struct MainScreen: View {
   /// 它那四十来层嵌套摘出去之后才不会算进 `body` 的类型深度里，这一层只接线。
   private var header: some View {
     MainHeaderView(
-      theme: theme, market: market, review: review,
+      theme: theme, market: market,
       session: session, context: crosshairContext,
       cardVisible: headerCardVisible,
       // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
       onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
-      onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
       onSearch: { dismissPanel(); symbolSearch.openSearch() },
       onScan: { scan($0) },
       card: shareAndAlertCard(inHeader: true))
@@ -1012,22 +1016,29 @@ struct MainScreen: View {
   }
   /// 朋友页没登录时那颗「登录」。朋友页和账号页都挂在根这一层，同一时刻只能开一张：
   /// 先收朋友页，等它退场再开账号页（和 `beginShareSend` 收面板再开发送表同一个等法）。
-  /// 账号页此刻推在设置的导航栈里（根上那张账号表就不开）。
-  private var accountInSettings: Bool { tab == .settings && settingsPath.last == .account }
-  /// 设置整页推进去的那几层画什么（`SettingsRoute`）。
-  private func settingsDestination(_ route: SettingsRoute) -> AnyView {
+  /// 账号页此刻推在「我的」的导航栈里（根上那张账号表就不开）。
+  private var accountInMe: Bool { tab == .me && mePath.last == .account }
+  /// 「我的」推进去的那几层画什么（`MeRoute`）。
+  private func meDestination(_ route: MeRoute) -> AnyView {
     switch route {
     case .account:
       AnyView(AccountView(feature: account, pushed: true))
     case .friends:
       AnyView(FriendsPage(inbox: inbox, loggedIn: account.user != nil,
-                          onLogin: openAccountInSettings, onOpen: openShare, pushed: true))
+                          onLogin: openAccountInMe, onOpen: openShare, pushed: true))
+    // 总表那一张：不要现价（`live: false`），系统返回（`presentedAsSheet: false`）。
+    case .alerts:
+      AnyView(AlertListPage(store: alerts, context: alertListContext(live: false), presentedAsSheet: false))
+    case .exchange:
+      AnyView(ExchangeAccountsPage())
+    case .settings:
+      AnyView(SettingsPanel(store: store, asPage: true))
     }
   }
-  /// 设置里点账号那一行，或推进来的朋友页上点「登录」：账号页推一层，不再另开一张表。
+  /// 「我的」账号卡，或推进来的朋友页上点「登录」：账号页推一层，不再另开一张表。
   /// 登成功自己退回上一层（上面那条 `onChange(of: account.presented)`）——从朋友页来的回到朋友页。
-  private func openAccountInSettings() {
-    if settingsPath.last != .account { settingsPath.append(.account) }
+  private func openAccountInMe() {
+    if mePath.last != .account { mePath.append(.account) }
     account.open()
   }
   private func loginFromFriends() {
@@ -1247,6 +1258,7 @@ struct MainScreen: View {
     review.onFeedback = { $0 == .done ? Haptics.success() : Haptics.warning() }
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
+      showChartForReview()
       replayOrigin = .record(record.id)
       reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), route: route.route)
     }
@@ -1254,6 +1266,7 @@ struct MainScreen: View {
     review.onEditRange = { start, end in reviewChart.editRange(start: start, end: end, feature: review) }
     review.onOpenMatch = { match, cutoff in
       endSharePreview(); dismissPanel(); draw.finish()
+      showChartForReview()
       replayOrigin = review.searchRecord.map { .search($0) }
       reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), route: route.route)
     }
@@ -1261,8 +1274,16 @@ struct MainScreen: View {
   }
   private func startReviewCapture() {
     endSharePreview(); dismissPanel(); draw.finish()
+    showChartForReview()
     reviewChart.beginCapture(feature: review, live: reviewState(proxy.box?.chart.state ?? session.liveState(chartInput)), prefs: prefs)
   }
+  /// 复盘本里要上图的三件事（「+」取景、在图上重温、找相似的结果）都画在行情页上。
+  /// 2026-09-27 底栏四格之后复盘本从「我的 › 复盘本」开，人此刻站在「我的」那一格——
+  /// 不先切回「图表」，取景卡和回放条就画在一张看不见的页上，点了等于没反应。
+  private func showChartForReview() {
+    if tab != .chart { switchTo(tab: .chart) }
+  }
+
   /// 退出复盘。
   ///
   /// `backToOrigin` 只有回放条上那颗「退出」才给 true——它是人主动说「看完了」，
@@ -1834,10 +1855,10 @@ struct MainScreen: View {
         // 用户自己换号 / 退登，要把人从自选页带走（别让他对着上一个账号的表）。
         // 冷启动那一段不算：装上次那个人的档案、以及 `account.restore()` 把登录态读回来，
         // 走的是同一条路，那时候该停哪一格交给 `honorProfile()` 按真档案定。
-        // 例外：从设置里推进来的朋友页点「登录」（设置那一叠是 [朋友, 账号]）——登完退回
+        // 例外：从「我的」推进来的朋友页点「登录」（那一叠是 [朋友, 账号]）——登完退回
         // 朋友页，和原来朋友页是半屏时「登完再把朋友页开回来」同一个意思，不把人丢到行情页。
         if !awaitingAccount {
-          if !(tab == .settings && settingsPath.contains(.friends)) { tab = .chart }
+          if !(tab == .me && mePath.contains(.friends)) { tab = .chart }
           didLeaveLaunch = true
         }
         // 正勾着的那次批量编辑跟着走：换了号，表就不是刚才那张表了，

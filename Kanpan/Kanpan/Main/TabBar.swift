@@ -1,8 +1,9 @@
 import SwiftUI
 import UIKit
 import KanpanCore
+import ReviewUI
 
-/// 底栏那五格。
+/// 底栏那四格。
 ///
 /// 2026-09-18 它从「几个入口按钮」改成了常驻标签栏。用户的话是「大部分 app 把常用的
 /// 大分页都固定在底部，比如 tv 和推特都是，底部是固定的，切换页面下面还是那样」——
@@ -10,34 +11,32 @@ import KanpanCore
 /// 人不知道自己在第几层，只能一路退回去。现在每一格各是一张整页，底栏永远在，
 /// 换页就是换一格。
 ///
-/// 顺序是用户定死的：**画线 · 图表 · 自选 · 板块分类 · 设置**。他的话是「本来行情 app
-/// 这个就很重要」——画线值一格；「复盘放到图表里」，所以复盘不在底栏上（它挪到了行情页
-/// 顶栏那颗带角标的按钮），「指标」也不在（并进了「图表设置」）。
+/// 2026-09-27 用户定的四格：**图表 · 自选 · 板块分类 · 我的**（方案
+/// `docs/方案-我的-自动复盘-周期分组指标-2026-09-27.md` §1.1，用户：「我的确实是对的，
+/// 画线你的建议也是对的」）。原来五格里最左的「画线」不是一张页、只是一个动作（把眼前这张图
+/// 横过来画），占一整格却从来不能「停」在那儿；它挪到了行情页周期条行尾（`IntervalBar`
+/// 的 `interval.draw`），就在它要画的那张图旁边。于是 `Tab.draw` 和那个只为它存在的
+/// `isRestingPlace` 一起删掉——四格现在每一格都是能停下来的家。
 ///
-/// 「板块分类」是第四格，2026-09-18 晚随板块气泡页一起落地。它只有这一格——加密和美股
-/// 是那一页顶上的硬切换，**不会**再为美股开第六格。
+/// 最右那格从「设置」换成「我的」：账号、复盘本、全部预警、朋友与收件箱、交易所账户、设置
+/// 六块收在一页上（`MePage`）。顶栏那颗复盘按钮撤了，复盘还欠着答案的条数改挂在「我的」
+/// 记号右上角（`ReviewCountBadge`）。
+///
+/// 「板块分类」只有这一格——加密和美股是那一页顶上的硬切换，**不会**再为美股开一格。
 enum Tab: String, CaseIterable, Sendable {
-  case draw, chart, favorites, sectors, settings
+  case chart, favorites, sectors, me
 
   var title: String {
     switch self {
-    case .draw: "画线"
     case .chart: "图表"
     case .favorites: "自选"
     case .sectors: "板块分类"
-    case .settings: "设置"
+    case .me: "我的"
     }
   }
-
-  /// 能不能停在这一格。
-  ///
-  /// 「画线」是个动作不是去处：点它是「把当前这张图横过来画」，画完自动转回行情页
-  /// （见 `kanpan-landscape-is-for-drawing`）。所以它永远不是那个「回来之后还停在
-  /// 这儿」的格子，选中态只在真的在画的时候亮。
-  var isRestingPlace: Bool { self != .draw }
 }
 
-/// 常驻标签栏：五格等宽，谁亮着谁是当前页。
+/// 常驻标签栏：四格等宽，谁亮着谁是当前页。
 ///
 /// 2026-09-18 白天这一版的底子是「釉面卡片」：选中那格坐在一枚 40 的釉面方块上，记号是白的，
 /// 没选中的三格身下垫一层极淡的同色釉、记号是灰的。那一版解决的是「底栏不能说自己的视觉语言」，
@@ -61,14 +60,15 @@ enum Tab: String, CaseIterable, Sendable {
 /// （原型 SVG 的 viewBox），蜡烛补回影线、齿轮换成六齿加挖空的环、画线换成折线只留一颗金点，
 /// 并补上第四格「板块分类」那四颗气泡。三支釉的口径原型里就是照着这个文件写的，没有出入。
 ///
-/// 交互一点没动：顺序、`isRestingPlace` 和 `bottom.*` 标识都照旧，只是多了一格。
+/// 2026-09-27 收成四格（见 `Tab`）：记号尺寸、釉、明暗、没有自己的底全都不动，
+/// 「画线」那格连同它的置灰逻辑搬去了周期条，「设置」的齿轮换成「我的」那枚人形。
 struct TabBar: View {
   var theme: PanelTheme
-  /// 停在哪一页。`draw` 不会是它——见 `Tab.isRestingPlace`。
+  /// 停在哪一页。
   var current: Tab
-  /// 正在画线。这时候亮的是最左边那格，而不是身下那张行情页。
-  var drawing: Bool
-  var drawingEnabled = true
+  /// 复盘本：「我的」记号右上角那颗待判定角标数的就是它（2026-09-27 从顶栏复盘按钮挪过来）。
+  /// 传整只 feature 而不是算好的数，理由同 `ReviewCountBadge`。
+  var review: ReviewFeature? = nil
   var onPick: (Tab) -> Void
 
   /// 记号的边长。18 → 20 → 32 → 36 → 26 → 27。往 36 推那几档是为了治「太素」，可推上去之后
@@ -81,8 +81,8 @@ struct TabBar: View {
   /// 一格的宽。
   private static let cellW: CGFloat = 52
 
-  /// 亮着的是哪一格。
-  private var active: Tab { drawing ? .draw : current }
+  /// 亮着的是哪一格。画线进行中也还是「图表」——画线不再占底栏的格子。
+  private var active: Tab { current }
 
   var body: some View {
     HStack(spacing: 0) {
@@ -103,14 +103,18 @@ struct TabBar: View {
     let on = tab == active
     return Button { onPick(tab) } label: {
       TabGlyph(tab: tab, theme: theme, on: on)
+        // 角标挂在记号外面：记号自己那层 64% 的压暗不该连角标一起压（要一眼看得见）。
+        .overlay(alignment: .topTrailing) {
+          if tab == .me, let review {
+            ReviewCountBadge(review: review, theme: theme).offset(x: 7, y: -4)
+          }
+        }
         .frame(width: Self.cellW, height: Self.cellH)
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .disabled(tab == .draw && !drawingEnabled)
-    .opacity(tab == .draw && !drawingEnabled ? 0.35 : 1)
     .accessibilityLabel(tab.title)
     .accessibilityAddTraits(on ? [.isSelected] : [])
   }
@@ -150,7 +154,7 @@ struct TabBar: View {
   }
 }
 
-/// 底栏那五个记号。
+/// 底栏那四个记号（2026-09-27 之前是五个，画线那枚缩小后搬去了周期条：`IntervalDrawGlyph`）。
 ///
 /// **它们是实心的，不是线框。** 2026-09-18 之前这几个是单色细描边的示意图——两点连一线的
 /// 「画线」、方框加引线的「蜡烛」、六角螺母的「设置」。用户连否两版：「太工程太后台风」
@@ -160,18 +164,17 @@ struct TabBar: View {
 /// **它们也是有颜色的。** 白天那一版把记号画成一个白、几个灰，颜色全交给身下那枚釉面方块；
 /// 晚上用户在板块气泡原型上挑中了反过来的画法——方块没有了，颜色长在记号上。每个记号用皮肤的
 /// 两支颜色填：**主色**（`theme.amber`，青苔的墨绿 / 陶土的赤陶）和**暖金**（`seed.amber`，
-/// 图上那支暖色）。同一条栏上五个记号分三支釉，深浅冷暖各就各位，这就是用户说的
+/// 图上那支暖色）。同一条栏上四个记号分三支釉，深浅冷暖各就各位，这就是用户说的
 /// 「颜色搭配也很好看」：
 ///
-/// - **画线**：一道两折的折线，尾端按一颗金色的锚点。画在图上的线就是这个样子，
-///   比钢笔更直说它是干什么的。
 /// - **图表**：三根圆角蜡烛，外侧两根主色、中间一根金的；外侧两根各带一截圆头影线。
 ///   影线是这枚记号唯一的细部，收在 2.8 宽的圆角柱里，不会退回线框那一路。
 /// - **自选**：一颗圆角饱满的五角星，整颗是金的。一栏里只有它是纯暖色，所以一眼找得到。
 /// - **板块分类**：四颗大小不一的气泡，两颗主色、一颗金、一颗浅主色。这正是板块页上那幅画面
 ///   ——大小说幅度、位置说强弱——缩到一枚记号里，所以它不用画任何别的东西就已经说清楚了。
-/// - **设置**：六枚圆头的齿从身子上鼓出来，中间挖一个孔。孔走 `destinationOut`，露出来的是
-///   **身下那块材料**（页面的极光），填一块固定的底色会在深浅两套皮肤上各错一个色。
+/// - **我的**：一个人形——主色的肩身、金色的头，头和肩之间留一道缝。2026-09-27 替下了
+///   「设置」那枚齿轮（设置成了「我的」里的一行）。和其余三枚同一种画法：实心、圆润、两支釉，
+///   不是线框（`kanpan-icons-are-not-wireframes`）。
 private struct TabGlyph: View {
   var tab: Tab
   var theme: PanelTheme
@@ -184,11 +187,10 @@ private struct TabGlyph: View {
   var body: some View {
     Group {
       switch tab {
-      case .draw: trendline
       case .chart: candles
       case .favorites: star
       case .sectors: bubbles
-      case .settings: gear
+      case .me: person
       }
     }
     .frame(width: TabBar.glyph, height: TabBar.glyph)
@@ -223,20 +225,7 @@ private struct TabGlyph: View {
     LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: UnitPoint(x: 0.35, y: 1))
   }
 
-  // MARK: 五个形
-
-  /// 画线：一道两折的折线，尾端按一颗金色的锚点。
-  ///
-  /// 之前那版是一道平滑的曲线加两头两颗点。定稿原型收成了折线加一颗点——曲线在 27 点上
-  /// 读起来像一道随手划的弧，折线才是「在图上连出来的一条趋势」；两颗点也多了，
-  /// 一栏之内的暖色有星和这一颗就够，再多就散了。
-  private var trendline: some View {
-    ZStack {
-      shape([.path("M3.4 17.6 8.5 12.1l3.4 3 6.4-8.2")])
-        .stroke(accentGlaze, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
-      shape([.circle(x: 19.1, y: 5.9, r: 2.5)]).fill(goldGlaze)
-    }
-  }
+  // MARK: 四个形
 
   /// 图表：三根圆角蜡烛，外侧两根主色、中间一根金的，外侧两根各带一截影线。
   ///
@@ -276,52 +265,39 @@ private struct TabGlyph: View {
     }
   }
 
-  /// 设置：六枚圆头的齿从身子上鼓出来，中间挖一个孔。
-  ///
-  /// 六枚齿是同一根圆角柱绕着 (12, 12) 转六次——`box` 是 24、框是正方形，所以
-  /// `rotationEffect` 的默认锚点正好落在 (12, 12) 上，不用自己算变换。
-  /// 孔走 `destinationOut`：底栏不许有自己的底，页面的材料要从这个孔里透上来。
-  private var gear: some View {
+  /// 我的：一个人形。肩身是一块下沿平、上沿圆的主色，头是一颗金色的圆，两块之间留 1.3 的缝，
+  /// 缩到 27 点也读得出「头」和「肩」。金只给头：一栏里暖色有星和这一颗就够（和原来折线那颗
+  /// 金色锚点同一个分量），整身金会和旁边的星抢。
+  private var person: some View {
     ZStack {
-      ForEach(0..<6, id: \.self) { i in
-        shape([.rect(x: 10.5, y: 1.3, w: 3, h: 5.2, r: 1.5)])
-          .fill(accentGlaze)
-          .rotationEffect(.degrees(Double(i) * 60))
-      }
-      shape([.circle(x: 12, y: 12, r: 7.4)]).fill(accentGlaze)
-      shape([.circle(x: 12, y: 12, r: 3.1)]).fill(.black).blendMode(.destinationOut)
+      shape([.path("M3.6 19.4c0-4.5 3.8-7.6 8.4-7.6s8.4 3.1 8.4 7.6v.3c0 .9-.7 1.6-1.6 1.6H5.2"
+                   + "c-.9 0-1.6-.7-1.6-1.6v-.3z")])
+        .fill(accentGlaze)
+      shape([.circle(x: 12, y: 6.6, r: 3.9)]).fill(goldGlaze)
     }
-    .compositingGroup()
   }
 
   private func shape(_ items: [IconItem]) -> IconShape { IconShape(box: Self.box, items: items) }
 }
 
-/// 顶栏「复盘」那颗的记号：一本合着的复盘本，右上角夹一条金色书签（审查 U6）。
+/// 周期条行尾「画线」那颗记号：底栏原来那枚折线记号的缩小版（2026-09-27 画线从底栏挪进周期条，
+/// 方案 §1.2）。形一个点不改——一道两折的主色折线，尾端一颗金色锚点——只是框从 27 缩到 24，
+/// 和行尾那几颗同高。坐标仍按 24 的框排，和底栏几枚同一个坐标系、同一副釉
+/// （`TabBar.lift` 是 fileprivate 的，所以它住在这个文件里）。
 ///
-/// 原来借的是横屏工具栏「指标」那枚线框折线——摆在行情页顶栏，看上去就是「指标」，
-/// 和复盘毫无关系。现在按底栏那五枚的画法单独画一枚：实心、带釉、主色本身配金色书签，
-/// 本身上挖两道「字行」露出身后的托底。坐标同样按 24 的框排。
-///
-/// 托底仍是顶栏那枚 30pt 中性圆（`TopBar.iconButton`）——颜色只长在记号上，
-/// 不拿强调色把整颗按钮填满，免得和旁边的价格抢视线。
-struct ReviewGlyph: View {
+/// 不压暗、不放大：周期条上「亮」的表达是身下那颗琥珀软胶囊（`IntervalBar.tailButton`），
+/// 不是记号自己的明暗。
+struct IntervalDrawGlyph: View {
   var theme: PanelTheme
-  var size: Double = 17
+  var size: Double = 24
 
   private static let box: Double = 24
 
   var body: some View {
     ZStack {
-      shape([.rect(x: 4.2, y: 2.6, w: 15.6, h: 18.8, r: 3.4)]).fill(accentGlaze)
-      // 两道字行：一长一短，挖穿本身，露出托底。
-      shape([.rect(x: 7.6, y: 12.2, w: 8.8, h: 2.3, r: 1.15),
-             .rect(x: 7.6, y: 16.1, w: 5.6, h: 2.3, r: 1.15)])
-        .fill(.black).blendMode(.destinationOut)
-      // 书签：从本子上沿垂下来，尾巴剪一个燕尾口，四个角都是圆的。
-      shape([.path("M12.6 1.9h4.2c.5 0 .9.4.9.9v7.5c0 .45-.52.7-.87.42L14.7 9.1l-2.13 1.62"
-                   + "c-.35.28-.87.03-.87-.42V2.8c0-.5.4-.9.9-.9z")])
-        .fill(goldGlaze)
+      shape([.path("M3.4 17.6 8.5 12.1l3.4 3 6.4-8.2")])
+        .stroke(accentGlaze, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+      shape([.circle(x: 19.1, y: 5.9, r: 2.5)]).fill(goldGlaze)
     }
     .compositingGroup()
     .frame(width: size, height: size)
@@ -334,6 +310,40 @@ struct ReviewGlyph: View {
     LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: UnitPoint(x: 0.35, y: 1))
   }
   private func shape(_ items: [IconItem]) -> IconShape { IconShape(box: Self.box, items: items) }
+}
+
+/// 复盘还欠着答案的条数：底栏「我的」记号右上角那颗主题色小圆点（2026-09-27 从顶栏复盘按钮上
+/// 挪过来，方案 §1.4）。0 就不画。
+///
+/// 单独成一个视图，是为了让「数欠着几条」这件事只跟着复盘记录走：宿主（底栏、再往上是
+/// `MainScreen`）跟着行情一秒重画好几次，只要递下来的 feature 引用没变，SwiftUI 就不重跑
+/// 这里的 body；`pendingCount` 本身也已在 feature 里缓存，记录真变了才重数。
+struct ReviewCountBadge: View {
+  let review: ReviewFeature
+  let theme: PanelTheme
+  #if DEBUG
+    /// 测试用：这块 body 一共求值了几次。
+    static var bodies = 0
+  #endif
+
+  var body: some View {
+    #if DEBUG
+      let _ = Self.bodies += 1
+    #endif
+    let count = review.pendingCount
+    if count > 0 {
+      Text("\(min(count, 99))")
+        // 角标里也是字，一样守 11pt 这个下限。
+        .font(TypeScale.caption2Emph)
+        .monospacedDigit()
+        .foregroundStyle(theme.badgeInk)
+        .padding(.horizontal, Space.xs).padding(.vertical, Space.xxs)
+        .frame(minWidth: 16)
+        .background(theme.amber, in: Capsule())
+        .allowsHitTesting(false)
+        .accessibilityIdentifier("bottom.me.badge")
+    }
+  }
 }
 
 /// 一句话提示（原型 `.toast`）。
