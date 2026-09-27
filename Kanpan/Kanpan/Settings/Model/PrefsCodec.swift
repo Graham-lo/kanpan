@@ -143,9 +143,10 @@ extension Prefs: Codable {
     // 线路只剩直连 / 网关两档，主机一律由 `RouteResolver` 定。旧存档里的这两个键解码时忽略。
     case routePolicy
     // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
-    case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline
+    // `favoritesSort` / `favoritesAscending` / `favoritesAmount` / `favoritesSparkline` / `sectorSort`
+    // 2026-09-28 收掉（收设置项 G）：老存档里的键读时忽略，服务端退役。
     case favoritesGroup
-    case sectorMarket, sectorWindow, sectorSort
+    case sectorMarket, sectorWindow
     case lastDrawTool
     // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：老存档里的键读时忽略，服务端退役。
     case reviewSearchScope
@@ -184,14 +185,9 @@ extension Prefs: Codable {
       try Prefs.encode(fork, into: &one)
     }
     try c.encode(routePolicy.rawValue, forKey: .routePolicy)
-    try c.encode(favoritesSort, forKey: .favoritesSort)
-    try c.encode(favoritesAscending, forKey: .favoritesAscending)
-    try c.encode(favoritesAmount, forKey: .favoritesAmount)
-    try c.encode(favoritesSparkline, forKey: .favoritesSparkline)
     try c.encode(favoritesGroup, forKey: .favoritesGroup)
     try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
-    try c.encode(sectorSort, forKey: .sectorSort)
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
@@ -332,10 +328,6 @@ extension Prefs: Codable {
 
     // 他在各页上摆出来的样子。全走 `decodeIfPresent`：老存档里一个都没有，
     // 缺了就留在上面那份 `.defaults` 给的出厂值上。
-    if let raw = str(.favoritesSort), Prefs.favoriteSorts.contains(raw) { favoritesSort = raw }
-    if let v = bool(.favoritesAscending) { favoritesAscending = v }
-    if let v = bool(.favoritesAmount) { favoritesAmount = v }
-    if let v = bool(.favoritesSparkline) { favoritesSparkline = v }
     // 分类 id 是本机生成的 UUID 串，认不认得出交给 `SymbolPrefs.group(_:)`；
     // 这儿只拦长度，128 这个数和服务端 `sync_validation.rs` 给它的上限逐字相同——
     // 服务端 `string(v, 128)` 数的是 **UTF-8 字节**，所以这儿也数字节，不数字符：
@@ -343,10 +335,9 @@ extension Prefs: Codable {
     if let raw = str(.favoritesGroup), raw.utf8.count <= 128 { favoritesGroup = raw }
     if let raw = str(.sectorMarket), let v = SectorMarket(rawValue: raw) { sectorMarket = v }
     if let raw = str(.sectorWindow), let v = SectorWindow(rawValue: raw) { sectorWindow = v }
-    // 这两项和服务端 `sync_validation.rs` 的值规则逐字对齐：排序只认枚举里那几档，
-    // 画线工具只认 `Drawing.Kind` 里有的（或空串 = 没用过）。认不出的退回出厂值，
-    // 不让一个手改 / 更高版本写下的字面量躺进档里、再被推上去整条拒收。
-    if let raw = str(.sectorSort), SectorSymbolSort(rawValue: raw) != nil { sectorSort = raw }
+    // 和服务端 `sync_validation.rs` 的值规则逐字对齐：画线工具只认 `Drawing.Kind` 里有的
+    // （或空串 = 没用过）。认不出的退回出厂值，不让一个手改 / 更高版本写下的字面量躺进档里、
+    // 再被推上去整条拒收。
     if let raw = str(.lastDrawTool) { lastDrawTool = raw.isEmpty || Drawing.Kind(rawValue: raw) != nil ? raw : "" }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }

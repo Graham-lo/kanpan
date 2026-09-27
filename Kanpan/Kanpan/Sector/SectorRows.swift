@@ -5,17 +5,8 @@ import KanpanCore
 // 这一份不 import SwiftUI——值与文案和视图分开，KanpanTests 的 Sector 组直接测它
 // （审查 B-07 / B.5：小数位和排序这两条规则以前只能靠肉眼在真机上看）。
 
-/// 品种列表的排序。原型 `.lsort` 那两颗。
-enum SectorSymbolSort: String, CaseIterable, Sendable {
-  case change, volume
-
-  var title: String {
-    switch self {
-    case .change: "涨跌幅"
-    case .volume: "成交额"
-    }
-  }
-}
+// 品种列表的排序原来有「涨跌幅 / 成交额」两档（`SectorSymbolSort`，原型 `.lsort` 那两颗），
+// 2026-09-28 收掉（收设置项 G）：一律按当前窗口的涨跌幅降序。
 
 /// 板块品种列表里的一行。
 ///
@@ -69,7 +60,6 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
                     symbolForBase: (String) -> String,
                     decimalsForBase: (String) -> Int? = { _ in nil },
                     frontier: Set<String> = [],
-                    sort: SectorSymbolSort,
                     window: SectorWindow = .today,
                     history: SectorHistory = .empty) -> [SectorSymbolRow] {
     let rows = members.compactMap { base -> SectorSymbolRow? in
@@ -83,21 +73,12 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
     }
     // 并列（以及一整排「—」）按代号排，免得两次刷新之间互换位置。
     //
-    // 两档都要先把非数压到最低档再比（审查 B.5）：NaN 参与 `>` 时任何比较都是假，
+    // 先把非数压到最低档再比（审查 B.5）：NaN 参与 `>` 时任何比较都是假，
     // 排序谓词就不再是严格弱序——同一份数据两次刷新能排出两个顺序，行会自己换位。
-    switch sort {
-    case .change:
-      return rows.sorted { a, b in
-        let x = a.pct.isFinite ? a.pct : -.infinity
-        let y = b.pct.isFinite ? b.pct : -.infinity
-        return x == y ? a.base < b.base : x > y
-      }
-    case .volume:
-      return rows.sorted { a, b in
-        let x = a.quoteVolume.isFinite ? a.quoteVolume : -.infinity
-        let y = b.quoteVolume.isFinite ? b.quoteVolume : -.infinity
-        return x == y ? a.base < b.base : x > y
-      }
+    return rows.sorted { a, b in
+      let x = a.pct.isFinite ? a.pct : -.infinity
+      let y = b.pct.isFinite ? b.pct : -.infinity
+      return x == y ? a.base < b.base : x > y
     }
   }
 }

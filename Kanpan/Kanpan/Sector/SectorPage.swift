@@ -352,7 +352,7 @@ struct SectorPage: View {
       SectorSymbolList(stat: stat, members: members, quotes: feed.quotes,
                        window: snap.window, history: snap.history, medianD20: d20,
                        symbolForBase: symbolForBase,
-                       decimalsForBase: { feed.priceDecimals(forBase: $0) }, store: store,
+                       decimalsForBase: { feed.priceDecimals(forBase: $0) },
                        onBack: pop, onPick: onPickSymbol, onScanList: onScanList,
                        onRowsShown: onListShown, onRowsHidden: onListHidden,
                        previews: previews, picker: picker,

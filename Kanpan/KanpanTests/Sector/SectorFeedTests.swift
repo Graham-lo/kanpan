@@ -251,7 +251,7 @@ struct SectorFeedTests {
 
     // 一路带到列表上：那条「—」分支得真的走得到。
     let rows = SectorSymbolRow.build(members: ["BTC", "SOL"], quotes: feed.quotes,
-                                     symbolForBase: { $0 + "USDT" }, sort: .volume)
+                                     symbolForBase: { $0 + "USDT" })
     #expect(rows.map(\.base) == ["SOL", "BTC"])
     #expect(rows[0].volumeText == "4.20K")
     #expect(rows[1].volumeText == "—")

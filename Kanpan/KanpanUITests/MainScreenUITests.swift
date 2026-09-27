@@ -208,6 +208,11 @@ final class MainScreenUITests: KanpanUICase {
     let symbolRow = app.buttons.matching(
       NSPredicate(format: "identifier BEGINSWITH %@", "sector.open.")).firstMatch
     expectExists(symbolRow, Self.long, "板块的品种列表里一行都没有")
+    // 收设置项 G（2026-09-28）：「涨跌幅 / 成交额」两颗排序小块收掉了，一律按涨跌幅排。
+    let sortChips = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sector.sort."))
+    XCTAssertEqual(sortChips.count, 0, "板块品种列表上还摆着排序小块")
+    let listShot = XCTAttachment(screenshot: app.screenshot())
+    listShot.name = "G-板块品种列表没有排序小块"; listShot.lifetime = .keepAlways; add(listShot)
     symbolRow.tap()
 
     let back = app.buttons[Ids.topBack]
@@ -228,6 +233,15 @@ final class MainScreenUITests: KanpanUICase {
     expectExists(app.buttons["favorites.more"], Self.long, "有自选时冷启动该停在自选页")
     let row = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
     expectExists(row, Self.long, "自选页上没有 BTCUSDT 这一行")
+    // 收设置项 G（2026-09-28）：「…」里的「显示迷你走势」收掉了，只剩调整顺序（与删除当前分类）。
+    app.buttons["favorites.more"].tap()
+    expectExists(app.buttons["favorites.edit"], Self.short, "「…」没展开")
+    XCTAssertFalse(app.buttons["favorites.sparkline"].exists, "「…」里还有迷你走势开关")
+    let menuShot = XCTAttachment(screenshot: app.screenshot())
+    menuShot.name = "G-自选页菜单没有迷你走势"; menuShot.lifetime = .keepAlways; add(menuShot)
+    // 点菜单外面收起来（透明遮罩吃这一下）。
+    app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).tap()
+    expectGone(app.buttons["favorites.edit"], Self.short, "点菜单外面没收起")
     row.tap()
 
     let back = app.buttons[Ids.topBack]

@@ -14,7 +14,7 @@ struct SectorSymbolList: View {
   /// 板块成员（大写 base）。兜底桶也走这条路。
   var members: [String]
   var quotes: [String: SectorQuote]
-  /// 看今日还是看 5 日。大数字、每行的涨跌、领涨、以及「涨跌幅」那颗排序都跟着它。
+  /// 看今日还是看 5 日。大数字、每行的涨跌、领涨、以及这张表的顺序都跟着它。
   var window: SectorWindow = .today
   /// 日线收盘。今日那一档用不着。
   var history: SectorHistory = .empty
@@ -23,13 +23,11 @@ struct SectorSymbolList: View {
   var symbolForBase: (String) -> String
   /// 这个 base 对应品种的价格小数位。品种表还没到就返回 nil（见 `SectorSymbolRow.priceText`）。
   var decimalsForBase: (String) -> Int? = { _ in nil }
-  /// 这张列表按什么排，存在哪。见 `sort`。
-  var store: PrefsStore
   var onBack: () -> Void
   /// 点中一行：交出完整 symbol。
   var onPick: (String) -> Void
   /// 点进图表的那一刻把**这张表当时的顺序**交出去，供顶栏横滑连续扫图（§10.1）。
-  /// 顺序是 `SectorSymbolRow.build` 按当前排序口径现算的，外面拿不到，只能这儿递。
+  /// 顺序是 `SectorSymbolRow.build` 按当前窗口的涨跌幅现算的，外面拿不到，只能这儿递。
   var onScanList: ([String]) -> Void = { _ in }
   /// 列表摆出来（以及排在最前面的那几只换了）时交出前几行的完整 symbol，宿主拿去预取
   /// K 线；列表收起时叫 `onRowsHidden` 撤掉。点进去的那一只第一帧就有图。
@@ -48,13 +46,9 @@ struct SectorSymbolList: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
-  /// 这张列表按什么排。原来是裸 `@AppStorage("sector.sort")`，跟着这台机器走；
-  /// 2026-09-19 按「用手改过的状态跟着人走」搬进 `Prefs.sectorSort`，随账号同步。
-  /// 认不出的字面量（降级回旧版本、手改存档）退回出厂的「涨跌幅」。
-  private var sort: SectorSymbolSort {
-    get { SectorSymbolSort(rawValue: store.prefs.sectorSort) ?? .change }
-    nonmutating set { store.update { $0.sectorSort = newValue.rawValue } }
-  }
+  // 这张列表一律按当前窗口的涨跌幅降序（和上一层板块列表同一个口径）。原来头部下面有
+  // 「涨跌幅 / 成交额」两颗排序小块（`sector.sort.*`，存 `Prefs.sectorSort` 随账号同步），
+  // 2026-09-28 收掉（收设置项 G）：看板块就是看谁在动，成交额每行副文案里已经写着。
 
   /// 排好的行按输入缓存（压测 L1）。以前 body 每跑一次都把成员逐个取价、算窗口涨跌、
   /// 排序、格式化重做一遍，而滚动预取、长按、偏好里别的字段变动都会让 body 重跑。
@@ -66,33 +60,30 @@ struct SectorSymbolList: View {
     var members: [String]
     var quotes: [SectorQuote?]
     var frontier: [String]
-    var sort: SectorSymbolSort
     var window: SectorWindow
     var history: SectorHistory
     var inputs: Int
   }
 
   static func rowsKey(members: [String], quotes: [String: SectorQuote], frontier: [String],
-                      sort: SectorSymbolSort, window: SectorWindow, history: SectorHistory,
+                      window: SectorWindow, history: SectorHistory,
                       inputs: Int) -> RowsKey {
     RowsKey(members: members, quotes: members.map { quotes[$0] }, frontier: frontier,
-            sort: sort, window: window, history: history, inputs: inputs)
+            window: window, history: history, inputs: inputs)
   }
 
   var body: some View {
-    let sort = sort
     let key = Self.rowsKey(members: members, quotes: quotes, frontier: stat.frontier,
-                           sort: sort, window: window, history: history, inputs: inputs)
+                           window: window, history: history, inputs: inputs)
     let rows = rowMemo.value(for: key) {
       SectorSymbolRow.build(members: members, quotes: quotes,
                             symbolForBase: symbolForBase,
                             decimalsForBase: decimalsForBase,
-                            frontier: Set(stat.frontier), sort: sort,
+                            frontier: Set(stat.frontier),
                             window: window, history: history)
     }
     return VStack(spacing: 0) {
       header
-      sortBar(rows.count)
       ScrollView {
         LazyVStack(spacing: 0) {
           ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
@@ -175,28 +166,12 @@ struct SectorSymbolList: View {
   /// 头部右边那个聚合涨跌幅：和页标题同一档（17），medium（原 19，不在阶梯上）。
   private static let headlinePct = ScaledFont(TypeScale.title.size, .medium, relativeTo: .headline)
 
-  private func sortBar(_ count: Int) -> some View {
-    // 排序小块和搜索页历史词、品种整页筛选同一种（`SymbolChip`）：看得见 28、点击区 44。
-    HStack(spacing: Space.s) {
-      ForEach(SectorSymbolSort.allCases, id: \.rawValue) { value in
-        SymbolChip(title: value.title, selected: sort == value) { sort = value }
-          .accessibilityIdentifier("sector.sort." + value.rawValue)
-      }
-      Spacer(minLength: 0)
-      Text("\(count) 个")
-        .font(TypeScale.caption2).monospacedDigit()
-        .foregroundStyle(skin.ink4)
-    }
-    .pageHorizontalInset()
-    .padding(.top, Space.xxs)
-  }
-
   // MARK: - 长按预览
 
   /// 和自选页同一张卡，菜单是它的子集：「打开」加一颗收藏开关。
   /// 这儿的品种多半还不在自选里，所以那一项平时是「加入自选」——看板块就是在挑东西，
   /// 挑中了顺手收走，不用先切回自选页再搜一遍；已经在自选里的写「取消自选」。
-  /// 没有「调整顺序」（这张表的顺序归排序口径管），也没有「移到分类」——2026-09-24
+  /// 没有「调整顺序」（这张表的顺序按涨跌幅自动排），也没有「移到分类」——2026-09-24
   /// 收拢入口（审查 U8）：移到分类只在自选页上做（左滑、长按菜单两处），分类本来就是
   /// 那一页的东西，在板块里改了也看不见改到了哪儿。
   @ViewBuilder private func previewable(_ item: SectorSymbolRow, _ content: some View,

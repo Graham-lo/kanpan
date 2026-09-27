@@ -160,16 +160,9 @@ struct Prefs: Sendable, Equatable {
   // 一律搬进这里跟着人走——每一项都同时进了 `PersonalSyncCodec.fields`，
   // 一个都不在 `keepDeviceFields` 里（它们都不是「这台手机的属性」）。
 
-  /// 自选表的排序口径：`custom`（自选顺序）/ `name` / `price` / `change` / `volume`。
-  /// 2026-09-25 起自选页不再有排序 UI，字段只为协议兼容保留、页面不读它。
-  var favoritesSort: String = "custom"
-  /// 排序方向。2026-09-25 起自选页不再有排序 UI，字段只为协议兼容保留、页面不读它。
-  var favoritesAscending: Bool = false
-  /// 涨跌那一列看涨跌额还是涨跌幅。2026-09-25 起自选页不再有排序 UI（涨跌固定显示涨跌幅），
-  /// 字段只为协议兼容保留、页面不读它。
-  var favoritesAmount: Bool = false
-  /// 行尾那条迷你走势线。默认不画，想看的人在「…」里自己打开。
-  var favoritesSparkline: Bool = false
+  // `favoritesSort` / `favoritesAscending` / `favoritesAmount`（自选排序口径、方向、涨跌额）与
+  // `favoritesSparkline`（行尾迷你走势）2026-09-28 收掉（收设置项 G）：自选表永远按自选顺序、
+  // 涨跌固定写涨跌幅、行尾不画走势线。老存档里的键读时忽略，服务端退役。
   /// 自选页停在哪个分类。空串 = 还没挑过，按第一个分类开。
   ///
   /// 2026-09-19 从 `SymbolPrefs.selectedGroupID` 搬过来的。它本来和自选名单、分组名单
@@ -189,9 +182,8 @@ struct Prefs: Sendable, Equatable {
   /// 今日，而那一刻「今日 / 5 日」的切换条整条都不画。把那个降级结果回写到这儿，
   /// 等于在一个当时根本没有入口的页面上永久改掉了他的选择，数据齐了也回不来。
   var sectorWindow: SectorWindow = .today
-  /// 板块里那张品种列表的排序口径（`SectorSymbolSort` 的 rawValue）。
-  /// 存字符串不存枚举：那个枚举住在 app target 里，这一层（`KanpanSettings`）看不见它。
-  var sectorSort: String = "change"
+  // `sectorSort`（板块品种列表按涨跌幅 / 成交额排）2026-09-28 收掉（收设置项 G）：
+  // 一律按当前窗口的涨跌幅降序，和上一层板块列表同一个口径。
 
   /// 最近用过的那把画线工具（`Drawing.Kind` 的 rawValue），用来在工具面板上预选高亮。
   ///
@@ -219,14 +211,6 @@ struct Prefs: Sendable, Equatable {
   /// 等于没钉。现在这一行只保证「≤6 档 + 行尾固定槽位 + 更多 + 图表」在 iPhone SE
   /// 到 Pro Max 上都一行放得下、一个字不截，六档就是实测排得下的上限。
   static let maxQuick = 6
-
-  /// 自选表认得的排序口径。存档里写着别的（降级回旧版本、手改存档）就退回 `custom`。
-  ///
-  /// **这张表和服务端 `sync_validation.rs` 的 `favoritesSort` 白名单是同一张。**
-  /// 这边多一档、那边没加，含这个值的 `settings` 操作会被整条拒掉、把同步队列堵住
-  /// （2026-09-19 那次十九个字段的教训）。`alert` 是 2026-09-20 随提醒功能加的
-  /// 「离提醒线最近」。
-  static let favoriteSorts: Set<String> = ["custom", "name", "price", "change", "volume", "alert"]
 
   /// 「找相似」认得的两档范围。
   static let searchScopes: Set<String> = ["history", "private"]

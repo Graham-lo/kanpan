@@ -48,30 +48,29 @@ struct SectorRowTests {
       quotes: ["BTC": quote("BTC", pct: 1, volume: 9, price: 76_585.123),
                "PEPE": quote("PEPE", pct: 2, volume: 8, price: 0.00000123)],
       symbolForBase: { $0 + "USDT" },
-      decimalsForBase: { ["BTC": 2, "PEPE": 8][$0] },
-      sort: .volume)
-    #expect(rows.map(\.base) == ["BTC", "PEPE"])
-    #expect(rows[0].priceText == "76,585.12")
-    #expect(rows[1].priceText == "0.00000123")
+      decimalsForBase: { ["BTC": 2, "PEPE": 8][$0] })
+    #expect(rows.map(\.base) == ["PEPE", "BTC"])
+    #expect(rows[1].priceText == "76,585.12")
+    #expect(rows[0].priceText == "0.00000123")
   }
 
   // ---------------------------------------------------------------- B.5
 
-  @Test("成交额缺数的行排在最后，而且两次排出来一样")
-  func invalidVolumesNeverPseudoOrder() {
+  @Test("排序只按涨跌幅，成交额再大也不插队，而且两次排出来一样")
+  func rowsAreOrderedByChangeOnly() {
+    // 板块品种列表的「成交额」那档排序 2026-09-28 收掉（收设置项 G）。
     let quotes: [String: SectorQuote] = [
-      "AAA": quote("AAA", pct: 1, volume: .nan, price: 1),
-      "BBB": quote("BBB", pct: 1, volume: 5_000, price: 1),
+      "AAA": quote("AAA", pct: 1, volume: 9_000_000, price: 1),
+      "BBB": quote("BBB", pct: 3, volume: 5_000, price: 1),
       "CCC": quote("CCC", pct: 1, volume: .nan, price: 1),
-      "DDD": quote("DDD", pct: 1, volume: 9_000, price: 1),
+      "DDD": quote("DDD", pct: -2, volume: 9_000, price: 1),
     ]
     let members = ["AAA", "BBB", "CCC", "DDD"]
     let first = SectorSymbolRow.build(members: members, quotes: quotes,
-                                      symbolForBase: { $0 + "USDT" }, sort: .volume)
-    #expect(first.map(\.base) == ["DDD", "BBB", "AAA", "CCC"])
-    // 顺序不许随成员名单的次序变——那正是非数参与比较时会发生的事。
+                                      symbolForBase: { $0 + "USDT" })
+    #expect(first.map(\.base) == ["BBB", "AAA", "CCC", "DDD"])
     let again = SectorSymbolRow.build(members: members.reversed(), quotes: quotes,
-                                      symbolForBase: { $0 + "USDT" }, sort: .volume)
+                                      symbolForBase: { $0 + "USDT" })
     #expect(again.map(\.base) == first.map(\.base))
   }
 
@@ -111,7 +110,7 @@ struct SectorRowTests {
     ]
     let members = ["CCC", "AAA", "DDD", "BBB"]
     let rows = SectorSymbolRow.build(members: members, quotes: quotes,
-                                     symbolForBase: { $0 + "USDT" }, sort: .change)
+                                     symbolForBase: { $0 + "USDT" })
     #expect(rows.map(\.base) == ["DDD", "BBB", "AAA", "CCC"])
     #expect(rows[2].signedText == "—")
   }

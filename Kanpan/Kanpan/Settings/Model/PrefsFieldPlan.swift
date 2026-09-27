@@ -91,9 +91,8 @@ enum PrefsFieldPlan {
     // 上面那六个老键仍写三组共用的那份（老客户端照旧同步，也是迁移源）。
     "indicatorLayouts": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
-    "favoritesSort": .synced, "favoritesAscending": .synced, "favoritesAmount": .synced,
-    "favoritesSparkline": .synced, "favoritesGroup": .synced,
-    "sectorMarket": .synced, "sectorWindow": .synced, "sectorSort": .synced,
+    "favoritesGroup": .synced,
+    "sectorMarket": .synced, "sectorWindow": .synced,
     "lastDrawTool": .synced,
     "reviewSearchScope": .synced,
     "alertSound": .synced,
@@ -116,6 +115,8 @@ enum PrefsFieldPlan {
     // C 组：hiddenOutputs（指标「输出」开关）、rsiUpper / rsiLower（线上合成的 rsiRange）。
     // D 组：orderFlowSpot、orderFlowContract、orderFlowShowFilled、orderFlowShowCancelled（主力订单流「显示」开关）。
     // E 组：watchMoveThreshold（自选波动提醒的幅度，改为按波动自动定，见 `WatchMove.autoThreshold`）。
+    // G 组：favoritesSort、favoritesAscending、favoritesAmount、favoritesSparkline（自选页排序与迷你走势）、
+    // sectorSort（板块品种列表排序，固定按涨跌幅）。
 
     // ---------------------------------------------------------------- 留在这台机器上
     // 走直连还是走 VPS 网关，是这台手机所处网络的属性，不是他的习惯。`routePolicy`

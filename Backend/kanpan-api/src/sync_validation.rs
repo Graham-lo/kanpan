@@ -198,12 +198,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "compareSymbols"=>v.as_array().is_some_and(|a|a.len()<=3 && a.iter().all(compare_key) && a.iter().enumerate().all(|(i,v)| !a[..i].contains(v))),
    "skin"=>one_of(v,&["sage","terra","classic"]),
    "routePolicy"=>one_of(v,&["direct","gateway"]),
-   // `alert`（离提醒线最近）是 2026-09-20 随提醒功能加的。这一档和客户端
-   // `Prefs.favoriteSorts` 是同一张表，少一个值就会把整条 settings 操作顶回去。
-   "favoritesSort"=>one_of(v,&["custom","name","price","change","volume","alert"]),
    "sectorMarket"=>one_of(v,&["crypto","us"]),
    "sectorWindow"=>one_of(v,&["today","d5","d20"]),
-   "sectorSort"=>one_of(v,&["change","volume"]),
    "reviewSearchScope"=>one_of(v,&["history","private"]),
    "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
    "orderFlowOverrides"=>order_flow_overrides(v),
@@ -220,7 +216,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // `_=>false` fallthrough rejects the whole operation with a 400.
    "favoritesGroup"=>string(v,128),
    "redUp"|"depth"|"orderFlow"|"compactValues"
-    |"mainInverted"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
+    |"mainInverted"|"watchMoveAlert"
     // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
     |"notifyListingChanges"
     // 设置 › 通用「按我的习惯自动调整」。
@@ -684,15 +680,16 @@ mod tests {
   assert!(field("settings","subInverted",&json!(["VOL","MACD"]))&&!field("settings","subInverted",&json!(["MA"])));
   assert!(field("settings","quickIntervals",&json!(["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h"])));
   assert!(field("settings","skin",&json!("classic"))&&field("settings","routePolicy",&json!("gateway")));
-  assert!(field("settings","favoritesSort",&json!("volume"))&&!field("settings","favoritesSort",&json!("marketCap")));
-  assert!(field("settings","favoritesSort",&json!("alert")),"客户端多了「离提醒线最近」这一档，白名单要跟着加");
-  assert!(field("settings","sectorWindow",&json!("d20"))&&field("settings","sectorMarket",&json!("us"))&&field("settings","sectorSort",&json!("change")));
+  assert!(field("settings","sectorWindow",&json!("d20"))&&field("settings","sectorMarket",&json!("us")));
+  for name in ["favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline","sectorSort"] {
+   assert!(!field("settings",name,&json!("volume"))&&!field("settings",name,&json!(true)),"{name} 已退役（收设置项 G 组）");
+  }
   assert!(field("settings","reviewSearchScope",&json!("private"))&&!field("settings","reviewSearchScope",&json!("world")));
   assert!(field("settings","lastDrawTool",&json!(""))&&field("settings","lastDrawTool",&json!("gannFan"))&&!field("settings","lastDrawTool",&json!("laser")));
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");
-  for flag in ["mainInverted","favoritesAscending","favoritesAmount","favoritesSparkline"] {
+  for flag in ["mainInverted","watchMoveAlert"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");
   }
  }

@@ -80,6 +80,9 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 ///   `orderFlowShowCancelled`：四个显示开关收掉，一律全画（现货合约按色分、已成交满色、没吃到的淡一档）。
 /// - E 组（提醒）`watchMoveThreshold`：自选波动提醒的幅度不再让人填，按每只自己最近一天的
 ///   1 分钟波动自动定（`watch_move::auto_threshold`，客户端同一个公式）。
+/// - G 组（自选页 / 板块页）`favoritesSort` / `favoritesAscending` / `favoritesAmount`（自选页
+///   2026-09-25 起就没有排序 UI，永远按自选顺序、涨跌写涨跌幅）、`favoritesSparkline`（行尾迷你
+///   走势开关，收掉后不画）、`sectorSort`（板块品种列表一律按当前窗口涨跌幅降序）。
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
  "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
  // 收设置项 A 组（2026-09-28）。
@@ -95,6 +98,8 @@ pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favorit
  "orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled",
  // 收设置项 E 组（2026-09-28）。
  "watchMoveThreshold",
+ // 收设置项 G 组（2026-09-28）。
+ "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline","sectorSort",
 ];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
@@ -148,12 +153,12 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "depth","orderFlow","candleKind",
  "compactValues","barSpacing","mainInverted","subInverted","interval",
  "routePolicy",
- // How the person left each page looking: sort order, which market, which tool.
- "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline",
+ // How the person left each page looking: which category, which market, which tool.
+ // 自选排序 / 迷你走势与板块排序（收设置项 G 组）在 RETIRED_SETTINGS_FIELDS 里。
  // Which category the favorites page is parked on. It used to live in the phone's own symbol
  // archive (`SymbolPrefs.selectedGroupID`), so it never followed the person to a second device.
  "favoritesGroup",
- "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","reviewSearchScope",
+ "sectorMarket","sectorWindow","drawToolGroup","lastDrawTool","reviewSearchScope",
  "alertSound",
  // 自选五分钟波动提醒（P3.1）：开关。幅度按波动自动定，`watchMoveThreshold` 已退役。
  "watchMoveAlert",
@@ -926,5 +931,28 @@ mod tests {
   let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
   assert_eq!(merged.body["watchMoveAlert"],json!(true));
   assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");
+ }
+ /// 收设置项 G 组（2026-09-28，自选排序 / 迷你走势、板块排序）：老版本推上来只丢这五个字段，
+ /// 同一条里的分类、板块窗口照常合并；库里老 body 带着的下次合并洗掉。
+ #[test] fn trimmed_settings_group_g_are_dropped_and_stripped() {
+  let retired:[(&str,Value);5]=[("favoritesSort",json!("volume")),("favoritesAscending",json!(true)),
+   ("favoritesAmount",json!(true)),("favoritesSparkline",json!(true)),("sectorSort",json!("volume"))];
+  for (name,_) in &retired {
+   assert!(RETIRED_SETTINGS_FIELDS.contains(name)&&!SETTINGS_FIELDS.contains(name),"{name} 应已退役");
+  }
+  let mut fields:Vec<(&str,Value)>=retired.iter().cloned().collect();
+  fields.push(("sectorWindow",json!("d5")));
+  fields.push(("favoritesGroup",json!("g1")));
+  let operation=op("settings",&fields);
+  assert!(operation.validate().is_ok(),"老版本带着 G 组字段推上来不能整条 400");
+  let mut named=operation.unknown_fields();named.sort();
+  let mut expected:Vec<String>=retired.iter().map(|(n,_)|n.to_string()).collect();expected.sort();
+  assert_eq!(named,expected);
+  let mut stored=blank("settings","chart");
+  for (name,value) in &retired {stored.body.insert((*name).into(),value.clone());stored.fields.insert((*name).into(),json!({"revision":1}));}
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["sectorWindow"],json!("d5"));
+  assert_eq!(merged.body["favoritesGroup"],json!("g1"));
+  for (name,_) in &retired {assert!(!merged.body.contains_key(*name)&&!merged.fields.contains_key(*name),"{name} 没被清掉");}
  }
 }

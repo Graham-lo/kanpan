@@ -102,10 +102,10 @@ import KanpanNetwork
 
   // ---------------------------------------------------------------- L1：品种列表的行
 
-  private func rowsKey(_ quotes: [String: SectorQuote], sort: SectorSymbolSort = .change,
+  private func rowsKey(_ quotes: [String: SectorQuote], window: SectorWindow = .today,
                        inputs: Int = 0) -> SectorSymbolList.RowsKey {
-    SectorSymbolList.rowsKey(members: ["BTC", "ETH"], quotes: quotes, frontier: ["BTC"], sort: sort,
-                             window: .today, history: .empty, inputs: inputs)
+    SectorSymbolList.rowsKey(members: ["BTC", "ETH"], quotes: quotes, frontier: ["BTC"],
+                             window: window, history: .empty, inputs: inputs)
   }
 
   @Test("品种列表：成员的价没变就不重排，别的板块跳价也不算")
@@ -117,7 +117,7 @@ import KanpanNetwork
       memo.value(for: key) {
         builds += 1
         return SectorSymbolRow.build(members: key.members, quotes: quotes, symbolForBase: { $0 + "USDT" },
-                                     frontier: Set(key.frontier), sort: key.sort)
+                                     frontier: Set(key.frontier), window: key.window)
       }
     }
     let first = rows(rowsKey(quotes))
@@ -127,11 +127,11 @@ import KanpanNetwork
     quotes["SOL"] = quote("SOL", -9)
     _ = rows(rowsKey(quotes))
     #expect(builds == 1)
-    // 成员的价变了、排序换了、上一层口径换了（品种表）：各重排一次。
+    // 成员的价变了、窗口换了、上一层口径换了（品种表）：各重排一次。
     quotes["BTC"] = quote("BTC", 5)
     #expect(rows(rowsKey(quotes)).map(\.base) == ["BTC", "ETH"])
-    _ = rows(rowsKey(quotes, sort: .volume))
-    _ = rows(rowsKey(quotes, sort: .volume, inputs: 1))
+    _ = rows(rowsKey(quotes, window: .d5))
+    _ = rows(rowsKey(quotes, window: .d5, inputs: 1))
     #expect(builds == 4)
   }
 }

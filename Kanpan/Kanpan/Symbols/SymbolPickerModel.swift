@@ -74,7 +74,7 @@ final class SymbolPickerModel {
   /// 版本没动，排好的那份顺序就还作数，不必每求值一次 body 就把整张表重排一遍。
   /// 品种表也算在里面，因为「有没有实时价」（`listing(of:)`）决定一行沉不沉底。
   private(set) var quoteRevision: UInt64 = 0
-  /// 同 `tickers`，不参与观察；行上的迷你走势读 `quoteCell(_:).bars`。
+  /// 同 `tickers`，不参与观察；长按预览卡读 `quoteCell(_:).bars`。
   @ObservationIgnored private(set) var historyBars: [String: [Bar]] = [:]
   /// 自选与最近。改完立刻落盘。
   private(set) var prefs = SymbolPrefs()
@@ -256,7 +256,7 @@ final class SymbolPickerModel {
     if has != hasQuotes { hasQuotes = has }
   }
 
-  /// 自选行尾的迷你走势线和长按预览卡上 1 小时 / 4 小时涨跌用的分钟线。一份 245 根约 8 KB，
+  /// 长按预览卡上 1 小时 / 4 小时涨跌用的分钟线（行尾迷你走势 2026-09-28 收掉了）。一份 245 根约 8 KB，
   /// 三十几份也就几百 KB——按「机器资源可以大方用」的口径，翻一整张自选表
   /// 也不用互相挤掉。
   static let historyCapacity = 40
@@ -480,7 +480,7 @@ final class SymbolPickerModel {
   // **2026-09-19 那个字段搬去了 `Prefs.favoritesGroup`**：他停在哪一类是「把自选页摆成
   // 什么样」，和自选表按什么排、板块看今日还是 5 日是同一等级的东西，该跟着体验类设置
   // 一起走；留在自选档案里它只能跟着这台机器。切换现在由 `FavoritesView` 直接写
-  // `PrefsStore`（和那一页上 `favoritesSort` / `favoritesSparkline` 走同一条路），
+  // `PrefsStore`（`store.update`），
   // 这一层只负责在需要「此刻是哪一类」时通过 `selectedGroupSource` 问一声。
   //
   // 更早还有一个 `pickedGroupThisRun` 记号配 `resetSelectedGroup()`，执行「冷启动回到

@@ -29,7 +29,7 @@ struct FavoritesView: View {
   var session: FavoritesEditSession
   /// 搜索页的历史词仓。自选页自己开搜索页（见 `search`），所以得跟着传进来。
   var history: SearchHistory
-  /// 这一页上「他摆出来的样子」存在哪：迷你走势开不开、停在哪一类。
+  /// 这一页上「他摆出来的样子」存在哪：停在哪一类。
   /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
   var store: PrefsStore
   var redUp: Bool
@@ -77,19 +77,18 @@ struct FavoritesView: View {
   /// 落脚点已经还原过了吗。还原之前不记新的——列表刚铺开时最上面那几行会先
   /// `onAppear`，那时候记下来的是「第一行」，正好把要还原的那个盖掉。
   @State private var anchorRestored = false
-  // 这张表「他摆成了什么样」：画不画迷你走势线、停在哪一类。
+  // 这张表「他摆成了什么样」：停在哪一类（`selected`，住在 `Prefs.favoritesGroup`）。
   //
   // 这类状态住在 `Prefs` 里（见 `Prefs` 末尾那一节），随账号同步，未登录记在访客档案。
   // 判据是「这是他改出来的习惯，还是这个对象自己的属性」：前者跟着人走，换台设备登
   // 同一个账号还是这个样子；同一台机器上换个人登进来，就不该还是上一个人摆的样子。
-  // 写法是直接赋值（`sparkline.toggle()`），底下走的是 `store.update`。
+  //
+  // 行尾「迷你走势」开关（`favoritesSparkline`，菜单行 `favorites.sparkline`）2026-09-28
+  // 收掉（收设置项 G）：出厂就不画，列表行尾不再摆走势线；分钟线仍订着，给长按预览卡的
+  // 1 小时 / 4 小时涨跌用。
   //
   // 调整顺序开着没有、调整期间冻住的报价不落盘（冷启动举着半做完的动作进来更吓人），
   // 住在宿主手里的 `FavoritesEditSession`。
-  private var sparkline: Bool {
-    get { store.prefs.favoritesSparkline }
-    nonmutating set { store.update { $0.favoritesSparkline = newValue } }
-  }
   @State private var moving: MoveRequest?
   private struct MoveRequest: Identifiable { let id = UUID(); let symbols: [String] }
   /// 他停在哪一类。和上面几项一样住在 `Prefs` 里（`favoritesGroup`），随账号同步——
@@ -263,7 +262,7 @@ struct FavoritesView: View {
   /// 「N 个品种 · 排序」，合计约 160pt）太占地方：搜索只要一颗图标，分类挪上来和它
   /// 同一行，空间留给品种行。字号、间距、命中区都走 `DesignTokens`。
   ///
-  /// 「…」装的是调整顺序、迷你走势开关、删除当前分类——全是**这一页**的事，
+  /// 「…」装的是调整顺序、删除当前分类——全是**这一页**的事，
   /// 所以记号用「…」而不是齿轮：齿轮在标签栏最右边，那颗才是整个 app 的设置。
   private var headerBar: some View {
     HStack(spacing: Space.s) {
@@ -484,8 +483,6 @@ struct FavoritesView: View {
   private var moreList: some View {
     VStack(spacing: 0) {
       moreRow(editing ? "完成调整" : "调整顺序", icon: "arrow.up.arrow.down", id: "favorites.edit") { toggleEditing() }
-      moreRow(sparkline ? "隐藏迷你走势" : "显示迷你走势", icon: sparkline ? "waveform.slash" : "waveform",
-              id: "favorites.sparkline") { sparkline.toggle() }
       if let group = deletableGroup {
         moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { Haptics.warning(); model.deleteGroup(group.id) }
       }
@@ -808,7 +805,7 @@ struct FavoritesView: View {
     }
   }
 
-  /// 一行。跟着行情跳的那一截（价、涨跌、迷你走势、出场动画）住在 `FavoriteQuoteRow`
+  /// 一行。跟着行情跳的那一截（价、涨跌、出场动画）住在 `FavoriteQuoteRow`
   /// 自己的 body 里，读的是这一只的 `QuoteCell`——整页 body 一个报价都不读（整机压测 2026-09-26）。
   private func row(_ symbol: String, first: Bool) -> some View {
     let info = model.info(for: symbol)
@@ -823,7 +820,6 @@ struct FavoritesView: View {
       cell: model.quoteCell(symbol),
       editing: editing,
       frozen: editing ? editQuotes[symbol] : nil,
-      sparkline: !editing && sparkline,
       reduceMotion: reduceMotion,
       onOpen: { selectOrOpen(symbol) })
   }
@@ -1097,7 +1093,6 @@ private struct FavoriteQuoteRow: View {
   let editing: Bool
   /// 调整顺序期间冻住的那口报价（`FavoritesEditSession.quotes`）。
   let frozen: Ticker?
-  let sparkline: Bool
   let reduceMotion: Bool
   let onOpen: () -> Void
 
@@ -1111,8 +1106,6 @@ private struct FavoriteQuoteRow: View {
     let display = shown
     let ticker = stale ? nil : display
     let volumeText = ticker.map { $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) : "—" } ?? "—"
-    let value = ticker?.changePercent ?? .nan
-    let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
     let price = display?.last ?? .nan
     // 小数位由品种自己说（`priceDecimals`，按 `tickSize` 推）。目录里没有这个代号时走全 app 唯一那把
     // 梯子，不再在这一页写死 2 位（审查 B-07）。`fmtPrice` 而不是 `fmtNum`：0.0000004 这种
@@ -1145,24 +1138,11 @@ private struct FavoriteQuoteRow: View {
       Text("成交额 " + volumeText)
         .foregroundStyle(theme.ink3)
     } accessory: {
-      if sparkline {
-        Sparkline(values: Self.sparkValues(cell.bars), color: linkDown ? skin.ink4 : trend)
-          .frame(width: 44, height: 24)
-      }
+      EmptyView()
     }
     // 只挂在辅助功能树上，界面上看不见：用例靠它确认断线灰显（整机压测 2026-09-26）。
     .accessibilityValue(linkDown ? "stale" : "")
     .animation(reduceMotion ? nil : .easeOut(duration: 0.32), value: display != nil)
-  }
-
-  /// 走势线取的是详情那条历史订阅里的分钟线，不另开请求。
-  static func sparkValues(_ bars: [Bar]?) -> [Double] {
-    guard let bars, bars.count > 4 else { return [] }
-    let tail = Array(bars.suffix(60))
-    let step = max(1, tail.count / 30)
-    var picked = stride(from: 0, to: tail.count, by: step).map { tail[$0].close }
-    if let last = tail.last?.close, picked.last != last { picked.append(last) }
-    return picked
   }
 }
 
@@ -1185,63 +1165,13 @@ private struct FavoritePreview: View {
   // MARK: - 近 N 小时涨跌
 
   /// 长按预览卡上「1小时 / 4小时」那两格（审查 U9：行内展开收掉之后，这两格搬去了卡上）。
-  /// 取数还是列表为迷你走势线订的那份逐分钟走势，所以只有看过的行才有。
+  /// 取数是列表为每一行订的那份逐分钟走势，所以只有看过的行才有。
   static func historyChange(bars: [Bar]?, price: Double?, hours: Int, now: Date = Date()) -> Double? {
     let target = Int64(now.timeIntervalSince1970 * 1000) - Int64(hours) * 3_600_000
     guard let bar = bars?.last(where: { $0.openTime <= target }),
           target - bar.openTime < 60_000, bar.open > 0,
           let price else { return nil }
     return (price / bar.open - 1) * 100
-  }
-}
-
-// MARK: - 走势线与小三角
-
-private struct Sparkline: View {
-  let values: [Double]
-  let color: Color
-
-  var body: some View {
-    GeometryReader { geometry in
-      let size = geometry.size
-      let points = points(in: size)
-      if points.count > 1 {
-        ZStack {
-          shape(points, closing: size.height).fill(
-            LinearGradient(colors: [color.opacity(0.28), color.opacity(0)],
-                           startPoint: .top, endPoint: .bottom))
-          shape(points, closing: nil).stroke(
-            color, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
-          if let last = points.last {
-            Circle().fill(color).opacity(0.18).frame(width: 10, height: 10).position(last)
-            Circle().fill(color).frame(width: 4.4, height: 4.4).position(last)
-          }
-        }
-      }
-    }.accessibilityHidden(true)
-  }
-
-  private func points(in size: CGSize) -> [CGPoint] {
-    guard values.count > 1 else { return [] }
-    let low = values.min() ?? 0, high = values.max() ?? 0
-    let span = high - low
-    return values.enumerated().map { index, value in
-      let ratio = span == 0 ? 0.5 : (value - low) / span
-      return CGPoint(x: CGFloat(index) / CGFloat(values.count - 1) * (size.width - 4) + 2,
-                     y: size.height - 3 - CGFloat(ratio) * (size.height - 7))
-    }
-  }
-
-  private func shape(_ points: [CGPoint], closing bottom: CGFloat?) -> Path {
-    var path = Path()
-    path.move(to: points[0])
-    for point in points.dropFirst() { path.addLine(to: point) }
-    if let bottom, let last = points.last {
-      path.addLine(to: CGPoint(x: last.x, y: bottom))
-      path.addLine(to: CGPoint(x: points[0].x, y: bottom))
-      path.closeSubpath()
-    }
-    return path
   }
 }
 

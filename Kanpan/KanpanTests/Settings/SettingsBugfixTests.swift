@@ -190,10 +190,16 @@ struct SettingsBugfixTests {
     #expect(decode(#"{"lastDrawTool":""}"#).lastDrawTool == "")
   }
 
-  @Test("板块排序只认枚举里的两个")
-  func 板块排序() {
-    #expect(decode(#"{"sectorSort":"marketCap"}"#).sectorSort == "change")
-    #expect(decode(#"{"sectorSort":"volume"}"#).sectorSort == "volume")
+  @Test("收设置项 G：自选排序 / 迷你走势、板块排序的老键读进来即丢，旁边的键照常认")
+  func 收设置项G老键() {
+    let old = decode(#"{"favoritesSort":"volume","favoritesAscending":true,"favoritesAmount":true,"favoritesSparkline":true,"sectorSort":"volume","sectorWindow":"d5","favoritesGroup":"g1"}"#)
+    #expect(old.sectorWindow == .d5)
+    #expect(old.favoritesGroup == "g1")
+    let obj = (try? JSONSerialization.jsonObject(with: PrefsCodec.encode(old))) as? [String: Any] ?? [:]
+    for key in ["favoritesSort", "favoritesAscending", "favoritesAmount", "favoritesSparkline", "sectorSort"] {
+      #expect(obj[key] == nil, "\(key) 不再写出去")
+      #expect(!Prefs.syncedFieldNames.contains(key), "\(key) 不再随账号同步")
+    }
   }
 
   // MARK: 2 · 图认偏好那一侧的翻转
