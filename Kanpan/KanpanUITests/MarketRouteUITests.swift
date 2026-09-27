@@ -17,7 +17,7 @@ final class MarketRouteUITests: KanpanUICase {
   private func route(_ title: String) -> XCUIElement { app.buttons["settings.routePolicy.\(title)"] }
 
   private func openSettings() {
-    app.buttons[Ids.bottomSettings].tap()
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")  // 2026-09-27 底栏四格
     expectExists(route("直连"), Self.short, "设置页里没有「行情线路」的「直连」")
     expectExists(route("网关"), Self.short, "设置页里没有「行情线路」的「网关」")
     XCTAssertFalse(app.buttons["settings.routePolicy.自动"].exists, "「自动」档应该已经没有了")

@@ -70,8 +70,8 @@ import XCTest
     }
     XCTAssertTrue(wait { (info()["bars"] as? Int ?? 0) > 300 }, "OKX history must prepend: \(info()) network=\(app.staticTexts["market.network"].label)")
     let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "网关线路-OKX历史"; shot.lifetime = .keepAlways; add(shot)
-    app.buttons["bottom.settings"].tap()
-    app.buttons["settings.account"].tap()
+    // 账号卡 2026-09-27 起在「我的」页最上面（原来是「设置 › 账号」）。
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
     XCTAssertTrue(app.buttons["注册"].waitForExistence(timeout: 5)); app.buttons["注册"].tap()
     let name = "test_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
     createdAccount = String(name)
@@ -84,7 +84,7 @@ import XCTest
     XCTAssertTrue(wait(25) { !app.accountView.exists }, app.debugDescription)
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
-    app.buttons["bottom.settings"].tap(); app.buttons["settings.account"].tap()
+    XCTAssertTrue(app.openAccountFromMe(), "重启后「我的 › 账号」没推出账号页")
     XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", String(name).lowercased())).firstMatch.waitForExistence(timeout: 10), "Account survives restart")
     let accountShot = XCTAttachment(screenshot: app.screenshot()); accountShot.name = "用户名注册持久化"; accountShot.lifetime = .keepAlways; add(accountShot)
     app.buttons["注销账号"].tap()

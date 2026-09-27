@@ -6,7 +6,10 @@ import UIKit
 
 @testable import Kanpan
 
-/// 整机压测 2026-09-26：顶栏跟着逐笔成交重画时，复盘角标不能跟着把整本复盘记录过滤一遍。
+/// 整机压测 2026-09-26：宿主跟着逐笔成交重画时，复盘角标不能跟着把整本复盘记录过滤一遍。
+///
+/// 当时角标挂在顶栏的复盘按钮上；2026-09-27 顶栏那颗按钮撤了，角标搬到底栏「我的」记号的右上角
+/// （`TabBar` → `ReviewCountBadge`）。底栏同样挂在跟着行情重画的 `MainScreen` 身上，所以这条照样要守。
 @MainActor
 struct ReviewBadgeIsolationTests {
   @Observable final class Tick { var n = 0 }
@@ -18,9 +21,10 @@ struct ReviewBadgeIsolationTests {
     let count: Count
     var body: some View {
       let _ = count.bodies += 1
-      // 父视图读 tick：每跳一口它就重算，和顶栏跟着行情重画是同一回事。
-      TopBar(theme: PanelTheme(dark: false), symbol: "BTC \(tick.n)", review: review,
-             onReview: {}, onSearch: {})
+      // 父视图读 tick：每跳一口它就重算，和底栏的宿主跟着行情重画是同一回事。
+      // `onPick` 抓着这一口的数：闭包每次都是新的，底栏自己的 body 一定跟着重算。
+      let n = tick.n
+      TabBar(theme: PanelTheme(dark: false), current: .chart, review: review, onPick: { _ in _ = n })
     }
   }
 
@@ -43,10 +47,10 @@ struct ReviewBadgeIsolationTests {
       controller.view.setNeedsLayout()
       controller.view.layoutIfNeeded()
     }
-    // 顶栏确实跟着重画了……
+    // 宿主确实跟着重画了……
     #expect(host.bodies - hostFirst >= 20, "父视图只重算了 \(host.bodies - hostFirst) 次，这条量不到")
     // ……而角标一次都没重算。
-    #expect(ReviewCountBadge.bodies == first, "顶栏跳 20 口，角标重算了 \(ReviewCountBadge.bodies - first) 次")
+    #expect(ReviewCountBadge.bodies == first, "宿主跳 20 口，角标重算了 \(ReviewCountBadge.bodies - first) 次")
     window.isHidden = true
   }
 }

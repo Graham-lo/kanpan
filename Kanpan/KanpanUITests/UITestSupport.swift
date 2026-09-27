@@ -31,6 +31,10 @@ enum Ids {
   static let intervalMore = "interval.more"
   /// 周期条行尾「指标」（2026-09-24）：直接开指标页（`Panel.indicators`），不经图表设置。
   static let intervalIndicators = "interval.indicators"
+  /// 周期条行尾「画线」（2026-09-27 底栏四格起）：排在「指标」和图表设置之间，点它对着眼前这张图
+  /// 横过去开画，行为和原来底栏最左那格「画线」一字不差。只在行情页竖屏、非复盘态有（周期条只长在那儿），
+  /// 对比期间置灰点不动，画线进行中带 `isSelected`。
+  static let intervalDraw = "interval.draw"
   /// UI 测试沙盒里铺出来的那六档（`PrefsStore.uiTestQuick`）。
   ///
   /// 出厂默认也是六档（`Interval.quick` = 5m 30m 1h 4h 1d 1w，2026-09-21 放满），
@@ -39,26 +43,35 @@ enum Ids {
   /// 2026-09-21 从七档收到六档，上限一起从 10 收到 6。
   static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h"]
   // 底栏
-  /// 2026-09-18 起底栏是一条**常驻标签栏**：从左到右「画线 · 图表 · 自选 · 板块分类 · 设置」，
-  /// 五格各是一整页，切到哪一页它都还在（用户：「大部分 app 把常用的大分页都固定在底部」）。
-  /// 所以不再有「复盘」「指标」两格——复盘挪进了顶栏那颗带角标的按钮（`topReview`），
-  /// 指标整段并进了「图表设置」面板（`intervalChart` 开的那张）。
-  /// 要量图区下沿就用标签栏任意一格，这儿沿用第一格。
+  /// 2026-09-27 底栏四格：从左到右「图表 · 自选 · 板块分类 · 我的」，四格各是一整页，
+  /// 切到哪一页它都还在（常驻标签栏，2026-09-18 起）。原来的五格里「画线」搬去了周期条行尾
+  /// （`intervalDraw`），「设置」收进了「我的」里推进去的一层（`meSettings`）；
+  /// 顶栏那颗带角标的「复盘」同一天撤了，复盘本从「我的 › 复盘本」进（`meReview`），
+  /// 待判定角标挂在「我的」记号右上（`bottomMeBadge`，0 时不画）。
+  /// 要量图区下沿就用标签栏任意一格。
   ///
-  /// 第五格「板块分类」是同一天加的：加密／美股在那一页里用顶部硬切换，
-  /// 不占底栏第六格（`kanpan-bottom-tab-bar`）。
-  static let bottomDraw = "bottom.draw"
+  /// 「板块分类」那一格里加密／美股用顶部硬切换，不另占底栏（`kanpan-bottom-tab-bar`）。
   static let bottomChart = "bottom.chart"
   static let bottomFavorites = "bottom.favorites"
   static let bottomSectors = "bottom.sectors"
-  static let bottomSettings = "bottom.settings"
-  /// 顶栏的「复盘」：右上角那颗带待办角标的按钮，开复盘本。
-  static let topReview = "top.review"
-  /// 周期行右端的图表设置：网格、阳线实心/空心、价格轴，外加整段指标开关，都在这张
-  /// 名叫「图表设置」的面板里。面板名和标签名要分清——标签栏那一格叫「图表」，是整页。
+  static let bottomMe = "bottom.me"
+  /// 「我的」记号右上的复盘待判定数。
+  static let bottomMeBadge = "bottom.me.badge"
+  /// 周期行右端的图表设置：这张图（记一笔、分享）· K 线 · 显示 · 价格轴 · 更多设置。
+  /// 面板名和标签名要分清——标签栏那一格叫「图表」，是整页。指标、对比、主力订单流
+  /// 2026-09-27 起都不在这张面板里，走周期条的「指标」（`intervalIndicators`）。
   static let intervalChart = "interval.chart"
-  /// 「画线」：标签栏最左那一格，任何一页上点它都直接在当前这张图上开画。
-  static let drawEntry = "bottom.draw"
+  // 「我的」页（`MePage`，容器 `me.page`，自带 NavigationStack，下一层都是系统返回）
+  static let mePage = "me.page"
+  /// 账号卡：没登录是「账号 / 登录 / 注册」，点了推账号页；登录了行尾多一颗 `me.account.sync`。
+  static let meAccount = "me.account"
+  static let meAccountSync = "me.account.sync"
+  /// 复盘本：开的是整屏 `ReviewBook`，不是推一层。
+  static let meReview = "me.review"
+  static let meAlerts = "me.alerts"
+  static let meFriends = "me.friends"
+  static let meExchange = "me.exchange"
+  static let meSettings = "me.settings"
   /// 横屏工具栏上的「竖屏」。以前只有 iPad 有，第三批 17 起手机也有。
   /// 画线进行中整条侧栏收起（2026-09-23），只有不画线的横屏里才找得到它。
   static let landscapeExit = "land.exit"
@@ -356,10 +369,11 @@ class KanpanUICase: XCTestCase {
                   "面板拖不下去、点图也不收", file: file, line: line)
   }
 
-  /// 离开设置页，回到行情页。
+  /// 离开设置页（或「我的」里推进去的任何一层），回到行情页。
   ///
-  /// 设置 2026-09-18 起不是半屏面板而是标签栏上的一整页：既拖不走，也没有「完成」，
-  /// 离开它就是切到别的标签，所以它不能走 `dismissSheet(until:)`。
+  /// 设置 2026-09-27 起是「我的」里推进去的一层（底栏四格），它不是半屏面板，
+  /// 既拖不走也没有「完成」，所以不能走 `dismissSheet(until:)`。离开它最干脆的一下是点底栏「图表」：
+  /// 切走「我的」那一格时宿主会把推进去的那一叠清空（`MainScreen.mePath`），下次进「我的」落在根上。
   func leaveSettings(file: StaticString = #filePath, line: UInt = #line) {
     let chartTab = app.buttons[Ids.bottomChart]
     XCTAssertTrue(chartTab.waitForExistence(timeout: Self.short), "标签栏上没有「图表」",
@@ -369,19 +383,24 @@ class KanpanUICase: XCTestCase {
                   "点了「图表」还没回到行情页", file: file, line: line)
   }
 
-  // ------------------------------------------------------------ 常走的两条路
+  // ------------------------------------------------------------ 常走的几条路
 
-  /// 标签栏 →「设置」整页。
-  func openSettingsPage(file: StaticString = #filePath, line: UInt = #line) {
-    let tab = app.buttons[Ids.bottomSettings]
-    XCTAssertTrue(tab.waitForExistence(timeout: Self.short), "标签栏上没有「设置」",
-                  file: file, line: line)
-    tab.tap()
-    XCTAssertTrue(app.buttons[Ids.settingsMagnet].waitForExistence(timeout: Self.short),
-                  "点了「设置」没进设置整页", file: file, line: line)
+  /// 底栏「我的」→ 那一页的根（六块：账号、复盘本、全部预警、朋友、交易所、设置）。
+  func openMe(file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertTrue(app.openMePage(), "点了底栏「我的」没落到「我的」页的根上", file: file, line: line)
   }
 
-  /// 图表设置面板 → 均线的「参数与颜色」。指标那一段排在面板最上面，开出来就看得见。
+  /// 「我的 › 设置」整页（2026-09-27 起设置不再占底栏一格，是「我的」里推进去的一层）。
+  func openSettingsPage(file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没进到设置页", file: file, line: line)
+  }
+
+  /// 「我的 › 复盘本」：整屏的 `ReviewBook`（顶栏那颗复盘 2026-09-27 撤了）。
+  func openReviewBook(file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertTrue(app.openReviewBookFromMe(), "「我的 › 复盘本」没开出复盘本", file: file, line: line)
+  }
+
+  /// 周期条「指标」→ 指标页 → 均线的「参数与颜色」。均线在「主图叠加」最上面，开出来就看得见。
   ///
   /// C-07（保存的不是显示的那个数）和 C.10 第 8 条（数字键盘挡不挡主动作）都要从这儿进去，
   /// 所以摆在底座上，别两个文件各抄一份。
@@ -389,15 +408,9 @@ class KanpanUICase: XCTestCase {
     let edit = app.buttons["indicator.edit.MA"]
     // 面板可能还开着（上一步刚从编辑器 dismiss 回来），开着就直接用。
     if !edit.exists {
-      if !app.buttons[Ids.intervalChart].exists { leaveSettings(file: file, line: line) }
-      let entry = app.buttons[Ids.intervalChart]
-      expectExists(entry, Self.short, "周期行右端没有图表设置那颗", file: file, line: line)
-      entry.tap()
-      expectExists(app.staticTexts[Ids.panelHeader], Self.short, "图表设置面板没开出来",
-                   file: file, line: line)
-      XCTAssertTrue(app.openIndicatorPage(), "点了「指标」没进到指标页", file: file, line: line)
+      XCTAssertTrue(app.openIndicatorPage(), "点周期条「指标」没进到指标页", file: file, line: line)
       let toggle = app.buttons[Ids.indicatorSwitch("MA")]
-      expectExists(toggle, Self.short, "图表设置面板里没有均线开关", file: file, line: line)
+      expectExists(toggle, Self.short, "指标页里没有均线开关", file: file, line: line)
       if !edit.exists {
         toggle.tap()
         expectExists(edit, Self.short, "打开均线之后没露出「参数与颜色」", file: file, line: line)
@@ -413,8 +426,8 @@ class KanpanUICase: XCTestCase {
 
 extension XCUIApplication {
   /// 账号页的出口。表里、以及账号页的子页（同步、设备……）是左上那颗 `account.back`；
-  /// 设置 → 账号推进来的顶层（UI 整改 P2，2026-09-25）用的是系统返回，它没有我们的标识符。
-  /// 账号页 / 朋友页在不在。从设置进去是推进设置那一叠（2026-09-25 P2），SwiftUI 会把
+  /// 「我的 › 账号」推进来的顶层（2026-09-27 起，原来是设置 → 账号）用的是系统返回，它没有我们的标识符。
+  /// 账号页 / 朋友页在不在。从「我的」进去是推进「我的」那一叠，SwiftUI 会把
   /// 页面容器的标识符并到它唯一的滚动视图上，类型不再是 Other；别处开的仍是 sheet（Other）。
   /// 所以按标识符找任意类型。
   var accountView: XCUIElement { descendants(matching: .any).matching(identifier: "account.view").firstMatch }
@@ -499,8 +512,10 @@ extension XCUIApplication {
     return true
   }
 
-  /// 点标签栏最左的「画线」。它对着用户当前正看的这张图开画，不再问品种
-  /// （用户：「用户当前看的这张图作为画线的目标」），所以这儿就是干干净净一下。
+  /// 点周期条行尾的「画线」（2026-09-27 底栏四格起它从底栏最左那格搬到了这儿）。它对着用户
+  /// 当前正看的这张图开画，不再问品种（用户：「用户当前看的这张图作为画线的目标」）。
+  /// 周期条只长在行情页上，所以人在别的页（自选、板块、我的）时先点底栏「图表」回来再点——
+  /// 原来底栏那格在哪一页都点得到，现在多这一步。面板开着时先收掉（周期条被半屏压着点不到）。
   ///
   /// 点完先横过去（`kanpan-landscape-is-for-drawing`：横屏就是画线的工作台）。
   /// 用例里按坐标点的位置都是按竖屏量的，所以要竖屏画线态的用例走
@@ -508,20 +523,41 @@ extension XCUIApplication {
   /// 「横屏画一半转回竖屏接着画」走的那条路。画线进行中横屏侧栏整条收起
   /// （「画线 / 竖屏」和画线栏的「完成」重复，2026-09-23），所以没有按钮可按。
   @discardableResult func tapDrawEntry() -> Bool {
-    let entry = buttons[Ids.bottomDraw]
+    let entry = buttons[Ids.intervalDraw]
+    if !entry.exists {
+      closeOpenPanel()
+      let chartTab = buttons[Ids.bottomChart]
+      if !entry.exists, chartTab.waitForExistence(timeout: 5) { chartTab.tap() }
+    }
     guard entry.waitForExistence(timeout: 10) else { return false }
     entry.tap()
     return true
   }
 
-  /// 图表设置面板上那一行「指标」→ 同一张面板里推进去的指标页。
-  /// 2026-09-23 起指标开关与参数都在这一页上，图表面板本身只留一行摘要。已经在指标页就直接认。
+  /// 半屏面板开着就按「完成」收掉（指标页左上那颗也叫 `panel.done`）。没开就什么都不做。
+  func closeOpenPanel() {
+    let header = staticTexts[Ids.panelHeader]
+    for _ in 0..<3 where header.exists {
+      let done = buttons[Ids.panelDone].firstMatch
+      if done.exists, done.isHittable { done.tap() }
+      if header.waitForNonExistence(timeout: 3) { return }
+    }
+  }
+
+  /// 周期条行尾「指标」→ 指标页（2026-09-27 起这是唯一入口：图表设置里那一行「指标」撤了）。
+  /// 指标页三节：指标（正在用 / 主图叠加 / 副图）· 对比 · 主力订单流。已经在指标页就直接认；
+  /// 别的面板开着（图表设置、周期网格）先收掉，人在别的页先回行情页。
   @discardableResult func openIndicatorPage() -> Bool {
     let marker = buttons["indicator.switch.RSI"]
     if marker.exists { return true }
-    let row = buttons["chart.indicators"]
-    guard row.waitForExistence(timeout: 8) else { return false }
-    row.tap()
+    closeOpenPanel()
+    let entry = buttons[Ids.intervalIndicators]
+    if !entry.exists {
+      let chartTab = buttons[Ids.bottomChart]
+      if chartTab.waitForExistence(timeout: 5) { chartTab.tap() }
+    }
+    guard entry.waitForExistence(timeout: 8) else { return false }
+    entry.tap()
     return marker.waitForExistence(timeout: 8)
   }
 
@@ -634,6 +670,71 @@ extension XCUIApplication {
     }
     swatch.tap()
     return true
+  }
+
+  // ------------------------------------------------------------ 「我的」（2026-09-27 底栏四格）
+
+  /// 底栏「我的」→ 那一页的根。返回是否真的落在根上（认 `me.settings` 那一行）。
+  ///
+  /// 已经在「我的」里推进去一层（设置、账号、朋友……）时，再点「我的」那一格不会退回根
+  /// （宿主只在切**走**那一格时清空推进来的那一叠），所以先切到「图表」再切回来——
+  /// 这比一层层按系统返回稳：返回按钮的标识符随上一层标题变。面板开着先收掉。
+  @discardableResult func openMePage() -> Bool {
+    let root = buttons[Ids.meSettings]
+    if root.exists { return true }
+    closeOpenPanel()
+    let meTab = buttons[Ids.bottomMe]
+    guard meTab.waitForExistence(timeout: 10) else { return false }
+    if navigationBars.firstMatch.exists, buttons[Ids.bottomChart].exists {
+      buttons[Ids.bottomChart].tap()
+      _ = buttons[Ids.intervalChart].waitForExistence(timeout: 5)
+    }
+    for _ in 0..<2 {
+      meTab.tap()
+      if root.waitForExistence(timeout: 10) { return true }
+    }
+    return false
+  }
+
+  /// 「我的」根上的某一行（`me.account` / `me.review` / `me.alerts` / `me.friends` /
+  /// `me.exchange` / `me.settings`）。只负责点，到没到由调用方认各自的招牌元素。
+  @discardableResult func tapMeRow(_ id: String) -> Bool {
+    guard openMePage() else { return false }
+    let row = buttons[id]
+    guard row.waitForExistence(timeout: 8) else { return false }
+    for _ in 0..<4 where !row.isHittable { swipeUp() }
+    row.tap()
+    return true
+  }
+
+  /// 「我的 › 设置」。到没到认设置页上的吸附开关（`settings.magnet`）。
+  @discardableResult func openSettingsFromMe() -> Bool {
+    if buttons[Ids.settingsMagnet].exists { return true }
+    guard tapMeRow(Ids.meSettings) else { return false }
+    return buttons[Ids.settingsMagnet].waitForExistence(timeout: 10)
+  }
+
+  /// 「我的 › 账号卡」→ 推进来的账号页（原来是「设置 › 账号」那一行，2026-09-27 搬过来）。
+  @discardableResult func openAccountFromMe() -> Bool {
+    if accountView.exists { return true }
+    guard tapMeRow(Ids.meAccount) else { return false }
+    return accountView.waitForExistence(timeout: 10)
+  }
+
+  /// 「我的 › 朋友与收件箱」→ 推进来的朋友页（原来是「设置 › 朋友」）。
+  @discardableResult func openFriendsFromMe() -> Bool {
+    if friendsPage.exists { return true }
+    guard tapMeRow(Ids.meFriends) else { return false }
+    return friendsPage.waitForExistence(timeout: 10)
+  }
+
+  /// 「我的 › 复盘本」→ 整屏复盘本（认左上那颗 `review.back`）。
+  /// 复盘本从「我的」开，按 `review.back` 收起后人还在「我的」页上，不是行情页。
+  @discardableResult func openReviewBookFromMe() -> Bool {
+    let back = buttons["review.back"]
+    if back.exists { return true }
+    guard tapMeRow(Ids.meReview) else { return false }
+    return back.waitForExistence(timeout: 15)
   }
 
   /// 标签栏的「自选」→ 完整自选页。返回是否真的到了自选页。

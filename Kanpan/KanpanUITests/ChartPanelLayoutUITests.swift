@@ -3,8 +3,11 @@ import XCTest
 /// 图表设置面板的头一层要一屏放得下（审查 U4 / U5）。
 ///
 /// 原来这一页十七八行、要滚三屏，一调就不再动的开关和每天都碰的挤在一起。现在头一层
-/// 只留这张图的动作、对比、指标、画法、价格轴、实时价格线、盘口，其余收进最后一行
+/// 只留这张图的动作、画法、实时价格线、盘口、价格轴，其余收进最后一行
 /// 「更多设置」推进去的那一层；「‹」从里层回来不关面板。
+///
+/// 2026-09-27 底栏四格：「对比」整节和「指标」那一行搬进了指标页（周期条行尾「指标」直达），
+/// 头一层只剩 这张图 · K 线 · 显示 · 价格轴 四组。
 @MainActor final class ChartPanelLayoutUITests: XCTestCase {
   private var app: XCUIApplication!
   private var canvas: XCUIElement { app.otherElements["chart.canvas"] }
@@ -51,14 +54,23 @@ import XCTest
       window.contains(more.frame) }, object: nil)], timeout: 5) == .completed
     XCTAssertTrue(fits, "拉到整屏后「更多设置」仍在屏幕外，头一层还要滚：\(more.frame) / \(window)")
     XCTAssertTrue(more.isHittable, "「更多设置」点不到")
-    XCTAssertTrue(app.buttons["chart.indicators"].isHittable, "「指标」不在头一层")
+    // 头一层四组：这张图 · K 线 · 显示 · 价格轴（2026-09-27）。
+    for title in ["这张图", "K 线", "显示", "价格轴"] {
+      XCTAssertTrue(app.staticTexts[title].exists, "头一层少了「\(title)」这一组")
+    }
+    for id in ["chart.record", "chart.share", "chart.lastLine", "chart.depth", "chart.priceMode.线性", "chart.priceMode.对数", "chart.priceMode.百分比"] {
+      XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) 不在头一层")
+    }
+    XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "chart.candleKind.")).firstMatch.exists,
+                  "头一层没有「画法」分段")
+    // 「指标」那一行和「对比」整节已经搬进指标页，这一页不该再有。
+    for id in ["chart.indicators", "compare.add", "compare.clear"] {
+      XCTAssertFalse(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) 还在图表设置里")
+    }
     // 低频开关不在头一层。
     for id in ["chart.allowMainInversion", "chart.allowSubInversion", "chart.countdown", "chart.sinceChange"] {
       XCTAssertFalse(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) 还在头一层")
     }
-    // 「指标」分组下第一行又叫「指标」：分组标题不能再叫「指标」。
-    XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "指标")).count, 1,
-                   "「指标」这两个字在头一层出现了不止一次")
     shot("U4-图表设置-头一层-整屏")
 
     more.tap()

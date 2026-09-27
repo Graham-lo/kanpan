@@ -3,7 +3,8 @@ import XCTest
 
 // ============================================================ 主力订单流 · 验收取证（2026-09-24，逐单模型）
 //
-// 以用户的身份打开「主力订单流」：图表面板 → 指标 → 主图叠加里的开关，等大单真的画出来再拍图。
+// 以用户的身份打开「主力订单流」：周期条「指标」→ 指标页「主力订单流」一节的开关（2026-09-27 起自成一节），
+// 等大单真的画出来再拍图。
 // 模型照 CoinAnk「主力大额挂单」：一只币同时订现货（三家）、U 本位永续、币本位永续、交割各本簿，
 // 某家某个产品上一个价位的挂单名义 ≥ 该产品门槛就是一条大单，从首次出现那根 K 线画到撤单 / 成交
 // （还挂着的画到右缘）。用例：
@@ -58,17 +59,16 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
 
   /// 图表面板 → 指标 → 打开「主力订单流」→ 收面板。
   private func turnOnOrderFlow() {
-    app.buttons[Ids.intervalChart].tap()
-    XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
     let toggle = app.buttons[Ids.indicatorSwitch("ORDERFLOW")]
-    expectExists(toggle, Self.short, "主图叠加里没有「主力订单流」")
+    expectExists(toggle, Self.short, "指标页里没有「主力订单流」一节")
     toggle.tap()
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
     dismissSheet(until: macd)
     // 上面那一下「完成」只从指标页退回面板根页；面板整张收掉，底栏和画布才点得到。
     let header = app.staticTexts[Ids.panelHeader].firstMatch
     dismissSheet(until: header)
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists }, "图表设置面板收不掉")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists }, "指标页收不掉")
   }
 
   /// 等簿就绪并且至少画出一条大单；返回等了几秒。
@@ -348,12 +348,11 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 16) + value)
   }
 
-  /// 图表面板 → 指标 → 「正在用」里的主力订单流那一行 → 参数表。
+  /// 周期条「指标」→ 指标页「主力订单流」一节里的「门槛」行 → 参数表（2026-09-27 起不在「正在用」里）。
   private func openOrderFlowEditor() {
-    app.buttons[Ids.intervalChart].tap()
-    XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
     let edit = app.buttons["indicator.edit.ORDERFLOW"].firstMatch
-    expectExists(edit, Self.short, "「正在用」里没有主力订单流那一行")
+    expectExists(edit, Self.short, "「主力订单流」一节里没有「门槛」那一行")
     edit.tap()
     expectExists(app.buttons["orderflow.save"], Self.short, "点了主力订单流没开出参数表")
   }
@@ -364,7 +363,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     if macd.waitForExistence(timeout: Self.short) { dismissSheet(until: macd) }
     let header = app.staticTexts[Ids.panelHeader].firstMatch
     if header.exists { dismissSheet(until: header) }
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists }, "图表设置面板收不掉")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists }, "指标页收不掉")
   }
 
   func testThresholdEditTakesEffect() {
@@ -387,10 +386,10 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     retype("orderflow.threshold.spot.field", "300000")
     shot("参数表-改门槛")
     app.buttons["orderflow.save"].tap()
-    // 回到指标页，「正在用」那一行报「已改门槛」。
+    // 回到指标页，「主力订单流」一节的「门槛」行报「已改门槛」。
     let edit = app.buttons["indicator.edit.ORDERFLOW"].firstMatch
     XCTAssertTrue(waitUntil(timeout: Self.short) { edit.exists && edit.label.contains("已改门槛") },
-                  "保存后「正在用」没报已改门槛：\(edit.label)")
+                  "保存后「门槛」行没报已改门槛：\(edit.label)")
     closePanels()
 
     XCTAssertTrue(waitUntil(timeout: 20, poll: 0.5) {
@@ -466,7 +465,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     shot("DOGE-参数表-改门槛")
     app.buttons["orderflow.save"].tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { edit.exists && edit.label.contains("已改门槛") },
-                  "DOGE 改成 \(Int(target)) 保存后「正在用」没报已改门槛：\(edit.label)")
+                  "DOGE 改成 \(Int(target)) 保存后「门槛」行没报已改门槛：\(edit.label)")
     closePanels()
     XCTAssertTrue(waitUntil(timeout: 20, poll: 0.5) { self.thresholds()["usdtPerp"] == target },
                   "DOGE 新门槛 \(Int(target)) 没到簿那一层：\(thresholds())")

@@ -24,17 +24,20 @@ final class PresenterAndStateUITests: KanpanUICase {
   /// `.sheet(isPresented: account.presented)`，而它是长在根视图树里的，根上那一个
   /// （`MainScreen`）绑的是同一个布尔。两个 presenter 抢一个开关：SwiftUI 只认一个，
   /// 另一个的状态没人收，于是出现「关掉之后要点两下才再开」这类症状。
-  func testAccountHasExactlyOnePresenterFromSettingsPage() {
-    openSettingsPage()
-    let entry = app.buttons["settings.account"]
-    expectExists(entry, Self.short, "设置整页上没有账号入口")
+  ///
+  /// 2026-09-27 底栏四格：账号入口从设置页搬到「我的」顶上那张账号卡（`me.account`），
+  /// 账号页由「我的」自己的导航栈推进来；「只许一张账号页、关掉之后点一下就开」这件事照旧要守。
+  func testAccountHasExactlyOnePresenterFromMePage() {
+    openMe()
+    let entry = app.buttons[Ids.meAccount]
+    expectExists(entry, Self.short, "「我的」页上没有账号卡")
     entry.tap()
 
     let view = app.descendants(matching: .any).matching(identifier: "account.view")
     XCTAssertTrue(waitUntil(timeout: Self.short) { view.count > 0 }, "点了账号入口没开出账号页")
     XCTAssertEqual(view.count, 1, "屏幕上同时有 \(view.count) 张账号页——两个 presenter 抢同一个开关")
 
-    // 关掉。左上角那颗「‹」是账号页唯一的出口（设置里推进来的是系统返回）。
+    // 关掉。「我的」里推进来的是系统返回（`accountExit` 两种都认）。
     let back = app.accountExit
     expectExists(back, Self.short, "账号页上没有返回")
     back.tap()
@@ -42,7 +45,7 @@ final class PresenterAndStateUITests: KanpanUICase {
 
     // 再开。这一下必须一次就中——「要点两下」正是两个 presenter 留下的那份脏状态。
     XCTAssertTrue(waitUntil(timeout: Self.short) { entry.exists && entry.isHittable },
-                  "账号页收走之后设置页上的入口没回来")
+                  "账号页收走之后「我的」页上的账号卡没回来")
     entry.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { view.count > 0 }, "第二次点账号入口一下没开（要点两下）")
     XCTAssertEqual(view.count, 1, "第二次开出了 \(view.count) 张账号页")
@@ -176,11 +179,11 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
   }
 
   func testFavoritesKeepsTheScrollPositionAcrossTabs() {
-    roundTrip(away: "设置") {
-      let settings = app.buttons[Ids.bottomSettings]
-      expectExists(settings, Self.short)
-      settings.tap()
-      expectExists(app.buttons[Ids.settingsMagnet], Self.short, "没进设置整页")
+    roundTrip(away: "我的") {
+      let me = app.buttons[Ids.bottomMe]
+      expectExists(me, Self.short)
+      me.tap()
+      expectExists(app.buttons[Ids.meSettings], Self.short, "没进「我的」整页")
     }
   }
 

@@ -188,10 +188,9 @@ final class ReviewInteractionUITests: KanpanUICase {
     app.buttons["记下"].tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["记下"].exists }, "取景卡没收回去")
 
-    let entry = app.buttons[Ids.topReview]
-    guard expectExists(entry, Self.short, "顶栏没有「复盘」") else { return }
-    entry.tap()
-    guard expectExists(app.buttons["review.back"], Self.long, "「复盘」没开出复盘本") else { return }
+    // 2026-09-27 底栏四格：顶栏那颗复盘撤了，复盘本从「我的 › 复盘本」进。
+    XCTAssertTrue(app.openReviewBookFromMe(), "「我的 › 复盘本」没开出复盘本")
+    guard expectExists(app.buttons["review.back"], Self.long, "「复盘本」没开出复盘本") else { return }
 
     // 摘要卡 + 三枚筛选。
     let summary = app.buttons["review.summary"]
@@ -395,8 +394,8 @@ final class ReviewInteractionUITests: KanpanUICase {
     guard savedOne else { closeAccount(user); return }
 
     // 复盘本「…」→「已存案例」：刚存的那一条在。
-    app.buttons[Ids.topReview].tap()
-    guard expectExists(app.buttons["review.back"], Self.long, "「复盘」没开出复盘本") else { return }
+    XCTAssertTrue(app.openReviewBookFromMe(), "「我的 › 复盘本」没开出复盘本")  // 2026-09-27 底栏四格
+    guard expectExists(app.buttons["review.back"], Self.long, "「复盘本」没开出复盘本") else { return }
     app.buttons["review.menu"].tap()
     let saved = app.buttons["review.menu.saved"]
     guard expectExists(saved, Self.short, "「…」里没有「已存案例」") else { return }
@@ -412,15 +411,10 @@ final class ReviewInteractionUITests: KanpanUICase {
 
   private func openAccountPage() {
     if app.accountView.exists { return }
-    if !app.buttons["settings.account"].exists {
-      let tab = app.buttons[Ids.bottomSettings]
-      expectExists(tab, Self.long, "底栏上没有设置格")
-      tab.tap()
-    }
-    let row = app.buttons["settings.account"]
-    expectExists(row, Self.long, "设置页上没有账号行 settings.account")
-    row.tap()
-    expectExists(app.accountView, Self.long, "点了账号行但账号页没打开")
+    // 2026-09-27 底栏四格：账号从「我的」顶上那张账号卡推进去（原来是「设置 › 账号」）。
+    expectExists(app.buttons[Ids.bottomMe], Self.long, "底栏上没有「我的」格")
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
+    expectExists(app.accountView, Self.long, "点了账号卡但账号页没打开")
   }
 
   private func fill(username: String?) {

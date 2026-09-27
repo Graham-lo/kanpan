@@ -159,8 +159,7 @@ import XCTest
     waitForChart(app)
 
     // 自己造一个账号（现造的测试口令，不碰任何真账号）。
-    app.buttons["bottom.settings"].tap()
-    app.buttons["settings.account"].tap()
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")  // 2026-09-27 底栏四格
     XCTAssertTrue(app.buttons["注册"].waitForExistence(timeout: 10))
     app.buttons["注册"].tap()
     app.textFields["account.email"].tap()
@@ -186,8 +185,7 @@ import XCTest
     shot.name = "冷启动之后的布局（登录）"; shot.lifetime = .keepAlways; add(shot)
 
     // 收尾：把测试账号删掉，不在后端留垃圾。
-    restarted.buttons["bottom.settings"].tap()
-    restarted.buttons["settings.account"].tap()
+    XCTAssertTrue(restarted.openAccountFromMe(), "「我的 › 账号」没推出账号页")  // 2026-09-27 底栏四格
     XCTAssertTrue(restarted.buttons["注销账号"].waitForExistence(timeout: 15))
     restarted.buttons["注销账号"].tap()
     typeSecret(restarted, password)
@@ -223,8 +221,7 @@ import XCTest
     openChart(app)
 
     // 自己造一个账号（现造的测试口令，不碰任何真账号）。
-    app.buttons["bottom.settings"].tap()
-    app.buttons["settings.account"].tap()
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")  // 2026-09-27 底栏四格
     XCTAssertTrue(app.buttons["注册"].waitForExistence(timeout: 10))
     app.buttons["注册"].tap()
     app.textFields["account.email"].tap()
@@ -271,8 +268,7 @@ import XCTest
       "拖过一下再冷启动，旧宽度不许被写回去：松手 \(pinched)，回来 \(spacing(third))")
 
     // 收尾：把测试账号删掉，不在后端留垃圾。
-    third.buttons["bottom.settings"].tap()
-    third.buttons["settings.account"].tap()
+    XCTAssertTrue(third.openAccountFromMe(), "「我的 › 账号」没推出账号页")  // 2026-09-27 底栏四格
     XCTAssertTrue(third.buttons["注销账号"].waitForExistence(timeout: 15))
     third.buttons["注销账号"].tap()
     typeSecret(third, password)

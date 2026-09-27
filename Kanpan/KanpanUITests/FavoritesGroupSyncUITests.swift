@@ -65,7 +65,7 @@ import XCTest
     // ---- A 设备：注册、摆两个分类、停在第二个
     let a = makeApp(profile: profileA)
     a.launch()
-    XCTAssertTrue(a.buttons["bottom.settings"].waitForExistence(timeout: 90),
+    XCTAssertTrue(a.buttons["bottom.me"].waitForExistence(timeout: 90),
                   "A 设备（profile=\(profileA)）起了 90s 还没见到底栏\n\(a.debugDescription)")
     created.append(account)
     register(a, step: "A 设备注册 \(account)")
@@ -96,7 +96,7 @@ import XCTest
     // ---- B 设备：全新档案，登同一个账号
     let b = makeApp(profile: profileB)
     b.launch()
-    XCTAssertTrue(b.buttons["bottom.settings"].waitForExistence(timeout: 90),
+    XCTAssertTrue(b.buttons["bottom.me"].waitForExistence(timeout: 90),
                   "B 设备（profile=\(profileB)）起了 90s 还没见到底栏\n\(b.debugDescription)")
     login(b, step: "B 设备登录 \(account)")
     // 登录本身就会拉一次全量，这儿再点一下「立即同步」并等它报「已同步」，为的是
@@ -148,7 +148,7 @@ import XCTest
     // ---- A 设备：老账号，云端已经有「加密」「美股」
     let a = makeApp(profile: profileA)
     a.launch()
-    XCTAssertTrue(a.buttons["bottom.settings"].waitForExistence(timeout: 90),
+    XCTAssertTrue(a.buttons["bottom.me"].waitForExistence(timeout: 90),
                   "A 设备（profile=\(profileA)）起了 90s 还没见到底栏\n\(a.debugDescription)")
     created.append(account)
     register(a, step: "A 设备注册 \(account)")
@@ -162,7 +162,7 @@ import XCTest
     // ---- B 设备：全新安装，访客状态下自己攒出同名的两类
     let b = makeApp(profile: profileB)
     b.launch()
-    XCTAssertTrue(b.buttons["bottom.settings"].waitForExistence(timeout: 90),
+    XCTAssertTrue(b.buttons["bottom.me"].waitForExistence(timeout: 90),
                   "B 设备（profile=\(profileB)）起了 90s 还没见到底栏\n\(b.debugDescription)")
     openFavorites(b, step: "B 设备（访客）进自选页")
     addFavoriteFromSearch(b, symbol: "SOLUSDT", step: "B 设备（访客）加一个币")
@@ -192,7 +192,7 @@ import XCTest
     // 同一个账号每一类设备只许一台在线（两个档案在同一台模拟器上都算「手机」），B 登录时
     // A 已经被顶下线了；A 这边照用户的路点「重新登录」登回来，登录那一下就会拉一次全量。
     a.launch()
-    XCTAssertTrue(a.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 设备重开没见到底栏\n\(a.debugDescription)")
+    XCTAssertTrue(a.buttons["bottom.me"].waitForExistence(timeout: 90), "A 设备重开没见到底栏\n\(a.debugDescription)")
     relogin(a, step: "A 设备重新登录 \(account)")
     syncNow(a, step: "A 设备拉回合并后的那份")
     openFavorites(a, step: "A 设备同步后进自选页")
@@ -258,13 +258,10 @@ import XCTest
   // 这边两台机器一个人，所以 `app` 得当参数传进来。
 
   private func openAccount(_ app: XCUIApplication, step: String) {
+    // 2026-09-27 底栏四格：账号从「我的」顶上的账号卡推进去（原来是「设置 › 账号」）。
     if !app.accountView.exists {
-      let tab = app.buttons["bottom.settings"]
-      XCTAssertTrue(tab.waitForExistence(timeout: 60), "\(step)：底栏上没有设置格\n\(app.debugDescription)")
-      tab.tap()
-      let row = app.buttons["settings.account"]
-      XCTAssertTrue(row.waitForExistence(timeout: 20), "\(step)：设置页上没有账号行\n\(app.debugDescription)")
-      row.tap()
+      XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 60), "\(step)：底栏上没有「我的」格\n\(app.debugDescription)")
+      XCTAssertTrue(app.openAccountFromMe(), "\(step)：「我的 › 账号」没推出账号页\n\(app.debugDescription)")
     }
     XCTAssertTrue(app.accountView.waitForExistence(timeout: 20),
                   "\(step)：账号页没打开\n\(app.debugDescription)")

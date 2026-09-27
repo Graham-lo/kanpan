@@ -335,9 +335,8 @@ import XCTest
     // ④ 三套皮肤各看一眼。
     for skin in ["sage", "terra", "classic"] {
       closeSheet()
-      let settingsTab = app.buttons["bottom.settings"]
-      XCTAssertTrue(settingsTab.waitForExistence(timeout: 8), "标签栏上没有「设置」")
-      settingsTab.tap()
+      // 2026-09-27 底栏四格：设置从「我的」推进去。
+      XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
       XCTAssertTrue(selectSkin(skin), "没能换到皮肤「\(skin)」")
       XCTAssertTrue(openAlertsPage(), "皮肤「\(skin)」下开不出总表")
       shot("05-提醒总表-" + skin)
@@ -399,9 +398,8 @@ import XCTest
 
   /// 换皮肤 + 深浅，停在设置页上。
   private func applySkin(_ skin: String, mode: String) {
-    let settingsTab = app.buttons["bottom.settings"]
-    XCTAssertTrue(settingsTab.waitForExistence(timeout: 10), "标签栏上没有「设置」")
-    settingsTab.tap()
+    // 2026-09-27 底栏四格：设置从「我的」推进去。
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     XCTAssertTrue(selectSkin(skin), "没能换到皮肤「\(skin)」")
     let segment = app.buttons["display.mode." + mode]
     XCTAssertTrue(segment.waitForExistence(timeout: 8), "设置页上没有深浅档 \(mode)")
@@ -597,9 +595,8 @@ import XCTest
 
   /// 设置页「通知」一组。
   private func openNotificationSettings() {
-    let settingsTab = app.buttons["bottom.settings"]
-    XCTAssertTrue(settingsTab.waitForExistence(timeout: 10), "标签栏上没有「设置」")
-    settingsTab.tap()
+    // 2026-09-27 底栏四格：设置从「我的」推进去。
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     XCTAssertTrue(app.staticTexts["通知"].waitForExistence(timeout: 10), "设置页里没有「通知」一组")
   }
 

@@ -57,15 +57,14 @@ final class OrderFlowHistoryUITests: KanpanUICase {
   }
 
   private func turnOnOrderFlow() {
-    app.buttons[Ids.intervalChart].tap()
-    XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
     let toggle = app.buttons[Ids.indicatorSwitch("ORDERFLOW")]
-    expectExists(toggle, Self.short, "主图叠加里没有「主力订单流」")
+    expectExists(toggle, Self.short, "指标页里没有「主力订单流」一节")
     toggle.tap()
     dismissSheet(until: app.buttons[Ids.indicatorSwitch("MACD")])
     let header = app.staticTexts[Ids.panelHeader].firstMatch
     dismissSheet(until: header)
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists }, "图表设置面板收不掉")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists }, "指标页收不掉")
   }
 
   func testServerHistoryAfterColdStart() {

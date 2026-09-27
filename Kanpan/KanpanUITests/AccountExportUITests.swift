@@ -30,7 +30,8 @@ import XCTest
     app.launch()
 
     // 「关于」：版本号与构建号一行，右边两条链接。
-    tap("bottom.settings")
+    // 设置 2026-09-27 起是「我的」里推进去的一层。
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没进到设置页")
     let about = app.descendants(matching: .any)["settings.about"]
     for _ in 0..<6 where !about.isHittable { app.swipeUp() }
     XCTAssertTrue(about.waitForExistence(timeout: 10), "设置里没有「关于」")
@@ -41,17 +42,15 @@ import XCTest
     attach("01-设置-关于")
 
     // 登录 → 账号页 → 导出。
-    for _ in 0..<6 where !app.buttons["settings.account"].isHittable { app.swipeDown() }
-    tap("settings.account")
+    // 账号卡在「我的」页最上面（原来是设置里一行）。
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
     let username = app.textFields["account.email"]
     XCTAssertTrue(username.waitForExistence(timeout: 10)); username.tap(); username.typeText(name)
     let secure = app.secureTextFields["account.password"]; secure.tap(); secure.typeText(password)
     tap("account.submit")
     XCTAssertTrue(wait(45) { !self.app.accountView.exists }, "登录未完成")
-    // 登录成功会回到图表页，再从底栏回设置。
-    if !app.buttons["settings.account"].waitForExistence(timeout: 3) { tap("bottom.settings") }
-    for _ in 0..<6 where !app.buttons["settings.account"].isHittable { app.swipeDown() }
-    tap("settings.account")
+    // 登录成功，推进来的账号页自己退回「我的」；再点账号卡进已登录的账号页。
+    XCTAssertTrue(app.openAccountFromMe(), "登录后「我的 › 账号」没推出账号页")
     tap("account.export")
     attach("02-账号页-导出")
     // 系统分享面板的标题里是文件名。

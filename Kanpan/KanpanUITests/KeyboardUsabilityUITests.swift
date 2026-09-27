@@ -112,10 +112,8 @@ final class KeyboardUsabilityUITests: KanpanUICase {
   /// 走的是**登录**，而且用一个随机的用户名配一个错口令：服务端只会答一句不对，
   /// 不会在生产库里留下任何账号（注册才会），这条因此可以挂进常规回归。
   func testAccountFormAndItsErrorStayReachableWithTheKeyboardUp() {
-    openSettingsPage()
-    let entry = app.buttons["settings.account"]
-    expectExists(entry, Self.short, "设置整页上没有账号入口")
-    entry.tap()
+    // 2026-09-27 底栏四格：账号从「我的」顶上的账号卡推进去。
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
     expectExists(app.descendants(matching: .any).matching(identifier: "account.view").firstMatch,
                  Self.short, "账号页没开")
 

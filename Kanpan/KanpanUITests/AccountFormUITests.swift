@@ -125,16 +125,12 @@ import UIKit
   // MARK: - 小工具
 
   private func openAccount() {
-    tap("bottom.settings"); tap("settings.account")
-    XCTAssertTrue(app.accountView.waitForExistence(timeout: 10))
+    // 2026-09-27 底栏四格：账号卡在「我的」页最上面（原来是「设置 › 账号」）。
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
   }
   private func openFriends() {
-    tap("bottom.settings")
-    let friends = app.buttons["settings.friends"]
-    XCTAssertTrue(friends.waitForExistence(timeout: 10))
-    if !friends.isHittable { app.scrollViews.firstMatch.swipeUp() }
-    friends.tap()
-    XCTAssertTrue(app.friendsPage.waitForExistence(timeout: 10))
+    // 朋友 2026-09-27 起在「我的 › 朋友与收件箱」（原来是设置里一行）。
+    XCTAssertTrue(app.openFriendsFromMe(), "「我的 › 朋友与收件箱」没推出朋友页")
   }
   /// 口令要逐字符敲：整串 `typeText` 会被「强密码」建议气泡吃掉。
   @discardableResult private func typePassword(_ text: String) -> XCUIElement {

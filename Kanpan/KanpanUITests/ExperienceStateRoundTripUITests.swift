@@ -397,7 +397,16 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
 
     // ---------------------------------------------------------- 三、画线横竖往返
 
-    XCTAssertTrue(app.tapDrawEntry(), "标签栏上没有「画线」")
+    // 2026-09-27 底栏四格：「画线」搬到周期条行尾。十字线活着时整条周期条让位给
+    // 「提醒我」那颗药丸、点不着（ae1e7a4），画线入口也跟着让位——人得先点一下图把十字线收掉
+    // 才够得着它（原来底栏那一格不受十字线影响）。所以这一段的对照基线是「十字线收掉之后」，
+    // 其余各项（周期、根宽、副图次序与高度、均线、线、手动 Y、离最新多远）照旧逐项对。
+    canvasPoint(200, min(140, try XCTUnwrap(chartInfo()["mainH"] as? Double) / 2)).tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false },
+                  "点一下图，十字线没收掉")
+    var drawBaseline = baseline
+    drawBaseline.crosshair = false
+    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")
     let landscapeSymbol = app.descendants(matching: .any)
       .matching(identifier: Ids.landscapeSymbol).firstMatch
     expectExists(landscapeSymbol, Self.long, "点「画线」没横过去")
@@ -422,7 +431,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
 
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.snapshot().subs == baseline.subs },
                   "转回竖屏，副图还没回来：\(chartInfo()["subs"] ?? "?")")
-    expectSameChart(snapshot(), baseline, "画线横竖往返之后")
+    expectSameChart(snapshot(), drawBaseline, "画线横竖往返之后")
     shot("横竖往返之后的图表")
   }
 
@@ -443,12 +452,12 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     XCTAssertFalse(bornSubs.isEmpty, "出厂就该有副图，否则这条用例验不到东西")
     let dropped = bornSubs[0]
 
-    app.buttons[Ids.intervalChart].tap()
+    // 2026-09-27：指标页只从周期条行尾「指标」开（图表设置里那一行撤了）。
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「指标」没开出指标页")
     let header = app.staticTexts[Ids.panelHeader]
-    expectExists(header, Self.short, "图表设置面板没开出来")
-    XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
+    expectExists(header, Self.short, "指标页面板没开出来")
     let toggle = app.buttons[Ids.indicatorSwitch(dropped)]
-    expectExists(toggle, Self.short, "图表设置面板里没有 \(dropped) 的开关")
+    expectExists(toggle, Self.short, "指标页里没有 \(dropped) 的开关")
     scrollPanelContent(to: toggle)
     toggle.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) {

@@ -26,10 +26,11 @@ final class IntervalLabelUITests: KanpanUICase {
     // 行情页上不再有一个写着「图表」的字：底栏只有图标，条尾也换成了记号。
     XCTAssertFalse(app.staticTexts["图表"].exists, "行情页上还有「图表」两个字")
     entry.tap()
-    XCTAssertTrue(app.buttons["chart.indicators"].waitForExistence(timeout: Self.short), "点图表设置那颗没开出图表设置面板")
+    // 2026-09-27：图表设置里不再有「指标」那一行，拿最后一行「更多设置」认这张面板。
+    XCTAssertTrue(app.buttons["chart.more"].waitForExistence(timeout: Self.short), "点图表设置那颗没开出图表设置面板")
     save("U12-图表设置面板")
     app.buttons[Ids.panelDone].tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["chart.indicators"].exists }, "图表设置面板没收")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["chart.more"].exists }, "图表设置面板没收")
 
     // 「更多」网格：十四档照旧都在。
     app.buttons[Ids.intervalMore].tap()
@@ -47,7 +48,7 @@ final class IntervalLabelUITests: KanpanUICase {
     save("U12-周期条-更多替没钉住的档说话")
 
     // 横屏画线台左边那条周期栏。
-    XCTAssertTrue(app.tapDrawEntry(), "标签栏上没有「画线」")
+    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")
     XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: Self.long), "点「画线」没横过来")
     XCTAssertTrue(app.buttons["更多周期"].waitForExistence(timeout: Self.long), "横屏周期栏底下没有「更多周期」")
     Thread.sleep(forTimeInterval: 1)

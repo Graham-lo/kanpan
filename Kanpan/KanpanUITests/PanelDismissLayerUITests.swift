@@ -73,7 +73,7 @@ import XCTest
 
   /// 横屏画线台：样式表是整屏的，收起走表上的「取消」；图表盒子里不再有第二层收起面板。
   func testLandscapeStyleSheetHasNoSecondDismissLayer() throws {
-    XCTAssertTrue(app.tapDrawEntry(), "底栏没有画线入口")
+    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有画线入口")
     XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: 15), "点画线没转到横屏画线台")
     let chip = app.buttons["draw.hline"]
     XCTAssertTrue(chip.waitForExistence(timeout: 8), "横屏画线台上没有水平线")

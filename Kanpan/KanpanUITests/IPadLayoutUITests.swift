@@ -84,8 +84,8 @@ final class IPadLayoutUITests: KanpanUICase {
   func testReviewBookLoginGateKeepsAReadableColumn() throws {
     try skipUnlessWide()
 
-    app.buttons[Ids.topReview].tap()
-    expectExists(app.buttons["review.back"], Self.long, "顶栏的「复盘」没开复盘本")
+    // 2026-09-27 底栏四格：顶栏那颗复盘撤了，复盘本从「我的 › 复盘本」进。
+    openReviewBook()
     shot("iPad-复盘本-未登录")
 
     let tabs = app.descendants(matching: .any)["review.chips"]
@@ -139,12 +139,8 @@ final class IPadReviewBookSignedInUITests: KanpanUICase {
     created.append(user)
     register(user)
 
-    // 注册成功之后落地页由 `onProfileReady()` 决定，先回行情页——顶栏的「复盘」在那儿。
-    app.buttons[Ids.bottomChart].tap()
-    let entry = app.buttons[Ids.topReview]
-    expectExists(entry, Self.long, "登录之后行情页顶栏上没有「复盘」")
-    entry.tap()
-    expectExists(app.buttons["review.back"], Self.long, "顶栏的「复盘」没开复盘本")
+    // 2026-09-27 底栏四格：复盘本从「我的 › 复盘本」进（顶栏那颗撤了）。
+    openReviewBook()
 
     let tabs = app.descendants(matching: .any)["review.chips"]
     expectExists(tabs, Self.short, "复盘本上没有「全部 / 待判定 / 已判定」那一排筛选")
@@ -178,15 +174,10 @@ final class IPadReviewBookSignedInUITests: KanpanUICase {
 
   private func openAccountPage() {
     if app.accountView.exists { return }
-    if !app.buttons["settings.account"].exists {
-      let tab = app.buttons[Ids.bottomSettings]
-      expectExists(tab, Self.long, "底栏上没有设置格")
-      tab.tap()
-    }
-    let row = app.buttons["settings.account"]
-    expectExists(row, Self.long, "设置页上没有账号行 settings.account")
-    row.tap()
-    expectExists(app.accountView, Self.long, "点了账号行但账号页没打开")
+    // 2026-09-27 底栏四格：账号从「我的」顶上那张账号卡推进去（原来是「设置 › 账号」）。
+    expectExists(app.buttons[Ids.bottomMe], Self.long, "底栏上没有「我的」格")
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
+    expectExists(app.accountView, Self.long, "点了账号卡但账号页没打开")
   }
 
   /// 口令要逐字符敲：整串 `typeText` 会被 iOS 的「强密码」建议气泡吃掉，只剩最后一个字符。

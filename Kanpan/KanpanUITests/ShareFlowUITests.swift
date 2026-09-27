@@ -140,7 +140,7 @@ import XCTest
     XCTAssertTrue(found, "留下后提醒没有同步到服务端")
     assertLayout(); attach("留下并加入提醒")
     // 画线台上不再有纸飞机（分享只留图表设置里那一个入口）：横竖屏各看一眼。
-    tap("bottom.draw")
+    XCTAssertTrue(app.tapDrawEntry(), "周期条行尾没有「画线」")  // 2026-09-27 底栏四格：画线在周期条行尾
     XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: 15))
     XCTAssertFalse(app.buttons["draw.send"].exists, "横屏画线台上还挂着纸飞机")
     // 画线进行中横屏侧栏整条收起，用手把机器转回竖屏再看一眼。
@@ -200,16 +200,14 @@ import XCTest
       XCTAssertEqual(String(describing: current[key]!), String(describing: baseline[key]!), "布局变了：\(key)", file: file, line: line)
     }
   }
+  /// 2026-09-27 底栏四格：朋友与收件箱从「我的」推进去（原来是「设置 › 朋友」）。
   private func openFromFriends() {
-    tap("bottom.settings")
-    let friends = app.buttons["settings.friends"]
-    if !friends.isHittable { app.scrollViews.firstMatch.swipeUp() }
-    tap("settings.friends")
+    XCTAssertTrue(app.openFriendsFromMe(), "「我的 › 朋友」没推出朋友页")
     tap("share.item." + sharedID)
     XCTAssertTrue(app.buttons["share.exit"].waitForExistence(timeout: 20))
   }
   private func loginUI(_ person: [String: String]) {
-    tap("bottom.settings"); tap("settings.account")
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
     let username = app.textFields["account.email"]
     XCTAssertTrue(username.waitForExistence(timeout: 10)); username.tap(); username.typeText(person["username"]!)
     let password = app.secureTextFields["account.password"]; password.tap(); password.typeText(person["password"]!)

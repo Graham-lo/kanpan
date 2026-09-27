@@ -16,8 +16,9 @@ final class AlertSoundUITests: XCTestCase {
       app.launchEnvironment["KANPAN_TEST_ROUTE_POLICY"] = "gateway"
     }
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 30))
-    app.buttons["bottom.settings"].tap()
+    // 设置 2026-09-27 起是「我的」里推进去的一层（底栏四格）。
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没进到设置页")
   }
 
   override func tearDown() async throws { app.terminate() }
@@ -60,8 +61,8 @@ final class AlertSoundUITests: XCTestCase {
     shot("设置通知组-玻璃")
     app.terminate()
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 30))
-    app.buttons["bottom.settings"].tap()
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.openSettingsFromMe(), "重启后「我的 › 设置」没进到设置页")
     openSounds()
     XCTAssertEqual(app.buttons["alerts.sound.glass"].value as? String, "已选")
     shot("重启-玻璃")
@@ -107,7 +108,7 @@ final class AlertSoundUITests: XCTestCase {
     allow.tap()
     let finish = app.buttons["draw.finish"]
     if finish.exists { finish.tap() }
-    app.buttons["bottom.settings"].tap()
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没进到设置页")
     openSounds()
     app.buttons["alerts.sound.default"].tap()
     XCTAssertEqual(app.buttons["alerts.sound.default"].value as? String, "已选")

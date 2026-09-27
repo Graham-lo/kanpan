@@ -347,7 +347,7 @@ final class ChartFoundationUITests: XCTestCase {
   func testExternalIndicatorsAndDepthRoundTrip() throws {
     executionTimeAllowance = 900 // 三次开图、线路往返与二十次品种切换都在同一条用例里。
     func toggleIndicator(_ id: String) {
-      app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+      XCTAssertTrue(app.openIndicatorPage())
       let toggle = app.buttons["indicator.switch." + id]
       revealChartControl(toggle); toggle.tap(); closePanel()
     }
@@ -389,7 +389,7 @@ final class ChartFoundationUITests: XCTestCase {
     }
     let switchingLog = XCTAttachment(string: switches.joined(separator: "\n"))
     switchingLog.name = "连续切换20次-订阅与盘口品种一致"; switchingLog.lifetime = .keepAlways; add(switchingLog)
-    app.buttons["bottom.settings"].tap()
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     let gateway = app.buttons["settings.routePolicy.网关"]
     for _ in 0..<8 { if gateway.isHittable { break }; app.swipeUp() }
     gateway.tap(); leaveSettings()
@@ -398,7 +398,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait { self.info()["renderedDepthRows"] as? Int == 0 })
     XCTAssertEqual((info()["subs"] as? [String])?.count, 3)
     shot("网关-三副图空态")
-    app.buttons["bottom.settings"].tap()
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     let direct = app.buttons["settings.routePolicy.直连"]
     for _ in 0..<8 { if direct.isHittable { break }; app.swipeUp() }
     direct.tap(); leaveSettings()
@@ -476,8 +476,10 @@ final class ChartFoundationUITests: XCTestCase {
     row.tap()
     XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "binance/usd_m/SNDKUSDT" })
     XCTAssertTrue(app.buttons["interval.chart"].exists)
-    // 「画线」2026-09-18 起是标签栏最左那一格，常驻——从自选页点进来也该在。
-    XCTAssertTrue(app.buttons["bottom.draw"].exists)
+    // 「画线」2026-09-18 起是标签栏最左那一格；2026-09-27 底栏四格后搬到周期条行尾——
+    // 从自选页点进来的行情页上也该在。
+    XCTAssertTrue(app.buttons[Ids.intervalDraw].exists)
+    XCTAssertFalse(app.buttons["bottom.draw"].exists, "底栏不该再有「画线」那一格")
   }
 
   /// 左滑一行，等「移到分类」那颗砖露出来（`SwipeToDelete`，`swipe.favorites.move`）。
@@ -509,7 +511,7 @@ final class ChartFoundationUITests: XCTestCase {
     }, "自选价格未连续刷新")
     shot("冷启动自选-实时价格与涨跌幅")
     app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
-    // 标签栏常驻，`bottom.settings` 在哪一页都在，拿它判不出落到哪儿了；
+    // 标签栏常驻，`bottom.me` 在哪一页都在，拿它判不出落到哪儿了；
     // 「图表设置」那颗按钮只有行情页有，用它当准星。
     XCTAssertTrue(app.buttons["interval.chart"].waitForExistence(timeout: 8))
     XCUIDevice.shared.press(.home)
@@ -518,7 +520,10 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(app.buttons["favorites.more"].exists, "普通前后台切换不重置首页")
   }
 
-  /// 底栏五格轮一圈，报价还在跳。
+  /// 底栏四格轮一圈（外加周期条行尾的「画线」），报价还在跳。
+  ///
+  /// 2026-09-27 底栏四格：画线搬到周期条行尾（只在行情页），「设置」那一格换成「我的」，
+  /// 设置从「我的」推进去。下面是 2026-09-18 五格时的原话，路线照着换了。
   ///
   /// 2026-09-18 底栏改成常驻标签栏（画线 · 图表 · 自选 · 板块分类 · 设置），每一格都是独立一页
   /// （用户：「这四个底部拦都单独是一个页面」「切换页面下面还是那样」）。多页来回切
@@ -528,7 +533,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 同一天加的第五格「板块分类」也走进这一圈：它自己另起一条 24h 全市场轮询
   /// （`SectorFeed`，只在可见且前台时跑），最容易出的事就是它启停的时候顺手把
   /// 行情页那条订阅也带停了，所以它必须夹在中间走一遍。
-  func testQuotesKeepTickingAcrossAllFiveTabs() throws {
+  func testQuotesKeepTickingAcrossAllFourTabs() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
     // 这条会真画一根线，给它一份只属于自己的档案，别把画线留给后面的用例。
@@ -538,11 +543,16 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15), "有自选时冷启动该停在自选页")
     XCTAssertTrue(wait(seconds: 30) { price.exists && price.label != "—" }, "自选页第一轮报价没来")
 
-    // ① 画线：对着用户当前看的这张图直接开画，点完横过去（横屏就是画线的工作台）。
-    app.buttons["bottom.draw"].tap()
+    // ① 图表 → 画线：画线入口在行情页周期条行尾，自选页上没有；对着这张图直接开画，
+    // 点完横过去（横屏就是画线的工作台）。
+    XCTAssertFalse(app.buttons[Ids.intervalDraw].exists, "自选页上不该有周期条的「画线」")
+    app.buttons["bottom.chart"].tap()
+    let draw = app.buttons[Ids.intervalDraw]
+    XCTAssertTrue(draw.waitForExistence(timeout: 20), "行情页周期条行尾没有「画线」")
+    draw.tap()
     // 画线进行中横屏侧栏整条收起，出口是画线栏上的「完成」，点完自动转回竖屏。
     let finish = app.buttons["draw.finish"]
-    XCTAssertTrue(finish.waitForExistence(timeout: 25), "从自选页点「画线」没进画线态")
+    XCTAssertTrue(finish.waitForExistence(timeout: 25), "点周期条「画线」没进画线态")
     XCTAssertFalse(app.buttons["land.exit"].exists, "画线进行中横屏侧栏还在")
     finish.tap()
 
@@ -554,11 +564,12 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["bottom.sectors"].tap()
     XCTAssertTrue(app.otherElements["sector.page"].waitForExistence(timeout: 15), "点「板块分类」没进板块页")
     XCTAssertTrue(app.buttons["sector.market.us"].exists, "板块页顶上没有「美股」那一档")
-    XCTAssertTrue(app.buttons["bottom.settings"].exists, "板块页上没有标签栏")
+    XCTAssertTrue(app.buttons[Ids.bottomMe].exists, "板块页上没有标签栏")
 
-    // ④ 设置：整页，不是半屏。
-    app.buttons["bottom.settings"].tap()
-    XCTAssertTrue(app.buttons["settings.magnet"].waitForExistence(timeout: 10), "点「设置」没进设置页")
+    // ④ 我的：整页；设置从这里推进去，也是整页，不是半屏。
+    app.buttons[Ids.bottomMe].tap()
+    XCTAssertTrue(app.buttons[Ids.meSettings].waitForExistence(timeout: 10), "点「我的」没进「我的」页")
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     XCTAssertFalse(app.buttons["panel.done"].exists, "设置是整页，不该有半屏那颗「完成」")
     XCTAssertTrue(app.buttons["bottom.favorites"].exists, "设置页上没有标签栏")
 
@@ -570,12 +581,12 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 25) {
       if price.exists { values.insert(price.label) }
       return values.count >= 2
-    }, "五页轮一圈之后自选报价不再刷新")
-    shot("标签栏-五页轮一圈后报价仍在刷新")
+    }, "四格轮一圈之后自选报价不再刷新")
+    shot("标签栏-四格轮一圈后报价仍在刷新")
   }
 
   func testChangeBasisUpdatesFavorites() throws {
-    app.buttons["bottom.settings"].tap()
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     let basis = app.buttons["settings.changeBasis"]
     XCTAssertTrue(basis.waitForExistence(timeout: 5)); basis.tap()
     let option = app.buttons["上海8点 / UTC 0点"]
@@ -637,8 +648,8 @@ final class ChartFoundationUITests: XCTestCase {
     // 自选页每切走一次就整个重建（`MainScreen.portraitBody` 里的 `switch tab` 只留
     // 当前那一格），这个模式原来是页面自己的 `@State`，跟着一起死。现在它住在宿主手里
     // （`FavoritesEditSession`），活过重建但不落盘。
-    app.buttons["bottom.settings"].tap()
-    XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists }, "没切到设置页")
+    app.buttons[Ids.bottomMe].tap()
+    XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists }, "没切到「我的」页")
     app.buttons["bottom.favorites"].tap()
     XCTAssertTrue(app.buttons["favorites.editToggle"].waitForExistence(timeout: 8), "切一格再回来，调整顺序自己退了")
     // 调整顺序下整页读的是冻住的那份报价。页面重建之后它要重新填上，别让行里空着。
@@ -852,7 +863,7 @@ final class ChartFoundationUITests: XCTestCase {
     for (skin, mode, background) in [("sage", "浅色", "#F3F7F4"), ("sage", "深色", "#0B120F"),
                                      ("terra", "浅色", "#FBF6F0"), ("terra", "深色", "#16100C"),
                                      ("classic", "浅色", "#FFFFFF"), ("classic", "深色", "#0D111C")] {
-      app.buttons["bottom.settings"].tap()
+      XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")  // 2026-09-27 底栏四格
       let card = app.buttons["display.theme." + skin]
       XCTAssertTrue(card.waitForExistence(timeout: 5), "配色卡要在树里：\(skin)")
       // 面板是往上推出来的：`waitForExistence` 一过就去问 `isHittable`，问到的是
@@ -1310,7 +1321,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 再开一个 RSI，最早那个被换下去、总数仍是三个，图整体高度还等于可视区高度
   /// （`height == viewportH` 就是「没有整页滚动」），新开的那格把手也点得到。
   func testThreeSubpanelsFitWithoutPageScroll() throws {
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     let toggle = app.buttons["indicator.switch.RSI"]
     let scroll = app.scrollViews["panel.content"]
     for _ in 0..<5 {
@@ -1354,7 +1365,7 @@ final class ChartFoundationUITests: XCTestCase {
 
   func testMAParameterCancelAndSaveOutput() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     // 手指还停在输入框里就按「取消」：一个参数都不许动（2026-09-20 加减改输入框后的验收 c）。
     let field = app.textFields["indicator.param.0.field"]
@@ -1363,7 +1374,7 @@ final class ChartFoundationUITests: XCTestCase {
     field.typeText("77")
     app.buttons["取消"].tap(); closePanel()
     XCTAssertEqual(info()["ma"] as? [Int], original)
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     let output = app.switches["indicator.output.0"]
     XCTAssertTrue(output.waitForExistence(timeout: 5))
@@ -1382,7 +1393,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 跟着挪位的那段逻辑走一遍。
   func testMAPeriodsTypedAndAddRemove() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
 
     let field = app.textFields["indicator.param.0.field"]
@@ -1402,7 +1413,7 @@ final class ChartFoundationUITests: XCTestCase {
     })
     shot("均线周期-手输并加一条")
 
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     let last = app.cells.containing(.textField,
                                     identifier: "indicator.param.\(original.count).field").firstMatch
@@ -1424,7 +1435,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 「保存」那一格也算数、按「取消」一个参数都不变；最后空着提交要回落到原值。
   func testParamFieldsReplaceSteppers() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     let field = app.textFields["indicator.param.0.field"]
     XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -1442,14 +1453,14 @@ final class ChartFoundationUITests: XCTestCase {
     shot("均线参数-保存后第一条是169")
     let saved = try XCTUnwrap(info()["ma"] as? [Int])
 
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     field.tap(); field.typeText("42")
     app.buttons["取消"].tap(); closePanel()
     XCTAssertEqual(info()["ma"] as? [Int], saved, "取消之后参数动了")
 
-    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     field.tap()
@@ -1686,7 +1697,7 @@ extension ChartFoundationUITests {
 
   func testIndicatorColorSaveCancelAndRestart() throws {
     func edit(_ id: String, color: String, save: Bool) {
-      app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
+      XCTAssertTrue(app.openIndicatorPage())
       if !app.buttons["indicator.edit.\(id)"].exists { app.buttons["indicator.switch.\(id)"].tap() }
       app.buttons["indicator.edit.\(id)"].tap()
       let swatch = app.buttons["indicator.color.0.\(color)"].firstMatch
@@ -1926,7 +1937,7 @@ extension ChartFoundationUITests {
       // 在 iPad 上走的是 `expandedChart`，不是转屏），所以这儿没有横屏工具栏也没有「竖屏」。
       // 出口该在的地方是画线：那条路由 `AICoinBaseUITests` 守着。
       XCTAssertFalse(app.buttons["land.exit"].exists, "iPad 转个屏就进了横屏工作台")
-      XCTAssertTrue(app.buttons["bottom.settings"].isHittable, "iPad 横过来底栏没了")
+      XCTAssertTrue(app.buttons[Ids.bottomMe].isHittable, "iPad 横过来底栏没了")
     } else {
       // 横屏工具栏常驻一颗「竖屏」。以前这儿断言它**不存在**，理由是「手机转回去就行了」——
       // 可锁了方向的手机转不回去，进了横屏就只能杀进程，横屏成了单程票（见 `LandscapeChrome`）。

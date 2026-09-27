@@ -57,8 +57,8 @@ import CoreGraphics
       let last = XCTAttachment(screenshot: app.screenshot())
       last.name = "收尾"; last.lifetime = .keepAlways; add(last)
     }
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90),
-                  "第 1 步：干净档案（profile=\(profile)）起 app 之后 90s 还没见到底栏设置格\n\(app.debugDescription)")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90),
+                  "第 1 步：干净档案（profile=\(profile)）起 app 之后 90s 还没见到底栏「我的」格\n\(app.debugDescription)")
 
     // ---- 第 2 步：注册 A
     let userA = Self.randomName()
@@ -164,7 +164,7 @@ import CoreGraphics
     // ---- 基线：A 注册，加 ETH，推上去；B 登录拉到同一份
     app = makeApp(profile: profileA)
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 起了 90s 还没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "A 起了 90s 还没见到底栏")
     created.append(user)
     register(user, step: "A 注册 \(user)")
     setFavorite("ETHUSDT", on: true, step: "A 加基线自选 ETH")
@@ -174,7 +174,7 @@ import CoreGraphics
 
     app = makeApp(profile: profileB, kind: "tablet")
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 起了 90s 还没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "B 起了 90s 还没见到底栏")
     login(user, step: "B（平板）登录 \(user)")
     syncNow(step: "B 拉基线")
     expectFavorites(present: ["ETHUSDT"], absent: [], step: "B 拉到的基线自选")
@@ -183,7 +183,7 @@ import CoreGraphics
     // ---- T1：A 暂停同步后改
     app = makeApp(profile: profileA)
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 重启后没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "A 重启后没见到底栏")
     setAutoSync(false, step: "A 暂停自动同步")
     setTheme(skin: "terra", mode: "跟随系统", step: "T1 A 皮肤改陶土")
     setFavorite("SOLUSDT", on: true, step: "T1 A 加 SOL")
@@ -193,7 +193,7 @@ import CoreGraphics
     // ---- T2：B 暂停同步后改（它看不见 A 的 T1——A 还没推）
     app = makeApp(profile: profileB, kind: "tablet")
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 重启后没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "B 重启后没见到底栏")
     setAutoSync(false, step: "B 暂停自动同步")
     expectTheme(skin: "sage", mode: "跟随系统", step: "B 改之前应当还是基线（A 的 T1 没推）")
     setTheme(skin: "classic", mode: "浅色", step: "T2 B 皮肤经典、深浅浅色")
@@ -206,7 +206,7 @@ import CoreGraphics
     // ---- T3：A 改深浅并推（连同 T1 那批）。B 的 T2 还压在 B 的队列里
     app = makeApp(profile: profileA)
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 第三次起没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "A 第三次起没见到底栏")
     setTheme(skin: "terra", mode: "深色", step: "T3 A 深浅改深色")
     setAutoSync(true, step: "A 恢复自动同步")
     syncNow(step: "A 推 T1 + T3")
@@ -216,7 +216,7 @@ import CoreGraphics
     // ---- B 最后推：拿着较旧的深浅改动
     app = makeApp(profile: profileB, kind: "tablet")
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 第三次起没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "B 第三次起没见到底栏")
     setAutoSync(true, step: "B 恢复自动同步")
     syncNow(step: "B 推 T2 并拉合并结果")
     expectTheme(skin: "classic", mode: "深色",
@@ -229,7 +229,7 @@ import CoreGraphics
     // ---- A 再拉一次，应当和 B 一模一样
     app = makeApp(profile: profileA)
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 第四次起没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "A 第四次起没见到底栏")
     syncNow(step: "A 拉合并结果")
     expectTheme(skin: "classic", mode: "深色", step: "A 收敛到同一份", timeout: 60)
     expectFavorites(present: ["SOLUSDT", "DOGEUSDT"], absent: ["ETHUSDT"], step: "A 收敛后的自选")
@@ -241,7 +241,7 @@ import CoreGraphics
     app.terminate()
     app = makeApp(profile: profileB, kind: "tablet")
     app.launch()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 第四次起没见到底栏")
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 90), "B 第四次起没见到底栏")
     syncNow(step: "B 拉合并后的新改动")
     expectTheme(skin: "sage", mode: "深色", step: "合并之后队列仍通：B 拿到 A 的新皮肤", timeout: 60)
     shot("P45-B-队列仍通")
@@ -268,14 +268,12 @@ import CoreGraphics
 
   // ------------------------------------------------------------ 账号页
 
-  /// 账号页没开就从底栏「设置」那一格进去开。已经开着就原样返回。
+  /// 账号页没开就从底栏「我的」→ 账号卡进去开（2026-09-27 底栏四格，原来是「设置 › 账号」）。
+  /// 已经开着就原样返回。
   private func openAccount(step: String) {
     if !app.accountView.exists {
-      goToSettings(step: step)
-      let row = app.buttons["settings.account"]
-      XCTAssertTrue(row.waitForExistence(timeout: 20),
-                    "\(step)：设置页上没有账号行 settings.account\n\(app.debugDescription)")
-      row.tap()
+      XCTAssertTrue(app.openAccountFromMe(),
+                    "\(step)：「我的 › 账号」没推出账号页\n\(app.debugDescription)")
     }
     XCTAssertTrue(app.accountView.waitForExistence(timeout: 20),
                   "\(step)：点了账号行但账号页没打开\n\(app.debugDescription)")
@@ -354,13 +352,12 @@ import CoreGraphics
 
   // ------------------------------------------------------------ 配色
 
-  /// 底栏「设置」那一格。已经在设置页上（皮肤卡在树上）就不再点一次。
+  /// 「我的 › 设置」（2026-09-27 起设置不占底栏一格）。已经在设置页上（皮肤卡在树上）就不再点一次。
   private func goToSettings(step: String) {
     if app.buttons["display.theme.sage"].exists { return }
-    let tab = app.buttons["bottom.settings"]
-    XCTAssertTrue(tab.waitForExistence(timeout: 60),
-                  "\(step)：底栏上没有设置格 bottom.settings\n\(app.debugDescription)")
-    tab.tap()
+    XCTAssertTrue(app.buttons["bottom.me"].waitForExistence(timeout: 60),
+                  "\(step)：底栏上没有「我的」格 bottom.me\n\(app.debugDescription)")
+    XCTAssertTrue(app.openSettingsFromMe(), "\(step)：「我的 › 设置」没进到设置页\n\(app.debugDescription)")
     XCTAssertTrue(app.buttons["display.theme.sage"].waitForExistence(timeout: 20),
                   "\(step)：进了设置页但没有配色卡\n\(app.debugDescription)")
   }

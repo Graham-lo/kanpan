@@ -51,10 +51,17 @@ import UIKit
     let state = XCTAttachment(string: String(describing: info()))
     state.name = name + "-读数"; state.lifetime = .keepAlways; add(state)
   }
+  /// 对比整节 2026-09-27 起搬进了指标页（周期条行尾「指标」直达），不再在图表设置里。
   func panel() {
-    let button = app.buttons["interval.chart"]
+    let button = app.buttons["interval.indicators"]
     XCTAssertTrue(button.waitForExistence(timeout: 10)); button.tap()
     XCTAssertTrue(app.descendants(matching: .any)["compare.add"].firstMatch.waitForExistence(timeout: 10))
+  }
+  /// 图表设置（周期条行尾那颗）：「记一笔」「更多设置」还在这一页。
+  func chartPanel() {
+    let button = app.buttons["interval.chart"]
+    XCTAssertTrue(button.waitForExistence(timeout: 10)); button.tap()
+    XCTAssertTrue(app.buttons["chart.more"].waitForExistence(timeout: 10))
   }
   func closePanel() {
     let done = app.buttons["panel.done"]
@@ -107,14 +114,16 @@ import UIKit
   func testIntervalsCrosshairPanLandscapeAndReview() throws {
     app.launchEnvironment["KANPAN_TEST_COMPARE_SYMBOLS"] = keys.joined(separator: ",")
     app.launch(); ready(3)
-    XCTAssertFalse(app.buttons["bottom.draw"].isEnabled)
+    // 2026-09-27 底栏四格：画线入口在周期条行尾，对比时同样点不动。
+    XCTAssertTrue(app.buttons["interval.draw"].waitForExistence(timeout: 10), "周期条行尾没有「画线」")
+    XCTAssertFalse(app.buttons["interval.draw"].isEnabled)
     XCTAssertEqual(info()["overlays"] as? [String], [])
     XCTAssertEqual(info()["drawingsVisible"] as? Bool, false)
     shot("BTC-ETH-SOL-DOGE-1m")
     try assertPercentReadout()
 
     // 用产品已有的「收盘价」档验证十字线、图例与右轴同口径。
-    panel()
+    chartPanel()
     XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
     // 面板上有两个「收盘价」（K 线画法、十字线读数），这里要的是十字线那一档。
     // 只滚面板自己的列表：页面上还有别的滚动区，`scrollViews.firstMatch` 可能落在
@@ -156,7 +165,7 @@ import UIKit
     XCUIDevice.shared.orientation = .portrait
     ready(3, interval: "1d")
     shot("对比-竖屏恢复")
-    panel(); app.buttons["chart.record"].tap()
+    chartPanel(); app.buttons["chart.record"].tap()
     let dismiss = app.buttons["收起"]
     XCTAssertTrue(dismiss.waitForExistence(timeout: 10))
     XCTAssertEqual(info()["percentAxis"] as? Bool, false)
@@ -171,11 +180,9 @@ import UIKit
     app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io"
     app.launch(); ready(0)
     addCompare("ETHUSDT"); addCompare("SOLUSDT"); addCompare("DOGEUSDT"); ready(3)
+    /// 2026-09-27 底栏四格：账号从「我的」顶上那张账号卡推进去。
     func openAccount() {
-      app.buttons["bottom.settings"].tap()
-      let row = app.buttons["settings.account"]
-      XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
-      XCTAssertTrue(app.accountView.waitForExistence(timeout: 15))
+      XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
     }
     func credentials() {
       let user = app.textFields["account.email"]
@@ -198,7 +205,7 @@ import UIKit
     createdAccount = (name, password)
     openAccount(); app.buttons["注册"].tap(); credentials()
     // 产品的立即同步入口，待同步消失后才切到全新的本地档案。
-    // 注册成功后账号页收起、回到原页面，要从设置页重新进账号。
+    // 注册成功后账号页收起、回到「我的」，要从账号卡重新进账号。
     openAccount()
     let sync = app.buttons["同步"]
     XCTAssertTrue(sync.waitForExistence(timeout: 20)); sync.tap()

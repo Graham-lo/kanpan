@@ -156,11 +156,10 @@ final class ReviewModuleE2EUITests: KanpanUICase {
 
   /// 打开复盘本里那一条，看到「当时那张图」。
   private func openRecordWithShot(step: String) -> Bool {
-    let entry = app.buttons[Ids.topReview]
-    if !entry.exists { app.buttons[Ids.bottomChart].tap() }
-    guard expectExists(entry, Self.long, "\(step)：顶栏没有「复盘」") else { return false }
-    entry.tap()
-    guard expectExists(app.buttons["review.back"], Self.long, "\(step)：「复盘」没开出复盘本") else { return false }
+    // 2026-09-27 底栏四格：顶栏那颗复盘撤了，复盘本从「我的 › 复盘本」进。
+    guard expectExists(app.buttons[Ids.bottomMe], Self.long, "\(step)：底栏没有「我的」") else { return false }
+    XCTAssertTrue(app.openReviewBookFromMe(), "\(step)：「我的 › 复盘本」没开出复盘本")
+    guard expectExists(app.buttons["review.back"], Self.long, "\(step)：「复盘本」没开出复盘本") else { return false }
     if app.buttons["review.chip.all"].exists { app.buttons["review.chip.all"].tap() }
     let row = app.buttons.matching(NSPredicate(format: "label CONTAINS '看多'")).firstMatch
     guard expectExists(row, Self.long, "\(step)：复盘本里没有那条看多的记录") else { shot(step + "-没有记录"); return false }
@@ -187,15 +186,10 @@ final class ReviewModuleE2EUITests: KanpanUICase {
 
   private func openAccountPage() {
     if app.accountView.exists { return }
-    if !app.buttons["settings.account"].exists {
-      let tab = app.buttons[Ids.bottomSettings]
-      expectExists(tab, Self.long, "底栏上没有设置格")
-      tab.tap()
-    }
-    let row = app.buttons["settings.account"]
-    expectExists(row, Self.long, "设置页上没有账号行 settings.account")
-    row.tap()
-    expectExists(app.accountView, Self.long, "点了账号行但账号页没打开")
+    // 2026-09-27 底栏四格：账号从「我的」顶上那张账号卡推进去（原来是「设置 › 账号」）。
+    expectExists(app.buttons[Ids.bottomMe], Self.long, "底栏上没有「我的」格")
+    XCTAssertTrue(app.openAccountFromMe(), "「我的 › 账号」没推出账号页")
+    expectExists(app.accountView, Self.long, "点了账号卡但账号页没打开")
   }
 
   private func fill(username: String?) {

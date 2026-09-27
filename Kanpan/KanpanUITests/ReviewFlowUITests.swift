@@ -81,13 +81,12 @@ final class ReviewFlowUITests: KanpanUICase {
     return saved
   }
 
-  /// 顶栏「复盘」→ 复盘本的「全部」那一枚筛选（默认落在「待判定」，而「只记录」的那条
+  /// 「我的 › 复盘本」→ 复盘本的「全部」那一枚筛选（默认落在「待判定」，而「只记录」的那条
   /// 既不待处理也不等答案，本来就不该出现在待判定里）。
+  /// 2026-09-27 底栏四格：顶栏那颗复盘撤了，复盘本只从「我的」进；收起之后人停在「我的」页。
   private func openBookRecords(file: StaticString = #filePath, line: UInt = #line) {
-    let entry = app.buttons[Ids.topReview]
-    guard expectExists(entry, Self.short, "顶栏没有「复盘」", file: file, line: line) else { return }
-    entry.tap()
-    guard expectExists(app.buttons["review.back"], Self.long, "「复盘」没开出复盘本", file: file, line: line)
+    XCTAssertTrue(app.openReviewBookFromMe(), "「我的 › 复盘本」没开出复盘本", file: file, line: line)
+    guard expectExists(app.buttons["review.back"], Self.long, "「复盘本」没开出复盘本", file: file, line: line)
     else { return }
     let records = app.buttons["review.chip.all"]
     if records.waitForExistence(timeout: Self.short) { records.tap() }
@@ -145,7 +144,10 @@ final class ReviewFlowUITests: KanpanUICase {
     XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: Self.short), "「记录」里一行都没有")
     shot("复盘-复盘本记录里有这一条")
     app.buttons["review.back"].tap()
-    expectExists(app.buttons[Ids.intervalChart], Self.long, "复盘本退不回行情页")
+    // 复盘本是从「我的」开的，收起来回到「我的」；再切回「图表」看记号。
+    expectExists(app.buttons[Ids.meSettings], Self.long, "复盘本收起之后没回到「我的」页")
+    app.buttons[Ids.bottomChart].tap()
+    expectExists(app.buttons[Ids.intervalChart], Self.long, "从「我的」切不回行情页")
     expectMarks(1, "从复盘本回来，记号没了")
 
     // ---- 横过去再转回来

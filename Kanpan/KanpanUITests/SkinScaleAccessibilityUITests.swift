@@ -53,11 +53,12 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     ("top.lastPrice", "最新价"),
     ("top.changePercent", "涨跌幅"),
     ("interval.chart", "周期行右端的图表设置"),
-    ("bottom.draw", "底栏画线"),
+    // 2026-09-27 底栏四格：画线搬到周期条行尾，「设置」那一格换成「我的」。
+    ("interval.draw", "周期行尾的画线"),
     ("bottom.chart", "底栏图表"),
     ("bottom.favorites", "底栏自选"),
     ("bottom.sectors", "底栏板块分类"),
-    ("bottom.settings", "底栏设置"),
+    ("bottom.me", "底栏我的"),
   ]
 
   // ------------------------------------------------------------ 六皮肤 × 大字号
@@ -122,9 +123,10 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     XCTAssertTrue(symbolLabel.hasPrefix("当前品种 "), "顶栏品种名念出来是「\(symbolLabel)」")
     XCTAssertEqual(app.buttons[Ids.searchButton].label, "搜索品种",
                    "放大镜念出来是「\(app.buttons[Ids.searchButton].label)」")
-    for (id, title) in [("bottom.draw", "画线"), ("bottom.chart", "图表"),
+    // 2026-09-27 底栏四格：图表 · 自选 · 板块分类 · 我的；画线在周期条行尾，同样念中文。
+    for (id, title) in [("interval.draw", "画线"), ("bottom.chart", "图表"),
                         ("bottom.favorites", "自选"), ("bottom.sectors", "板块分类"),
-                        ("bottom.settings", "设置")] {
+                        ("bottom.me", "我的")] {
       XCTAssertEqual(app.buttons[id].label, title,
                      "\(id) 念出来是「\(app.buttons[id].label)」，不是中文的「\(title)」")
     }

@@ -83,9 +83,9 @@ final class FavoritesUndoUITests: KanpanUICase {
   }
 
   private func openSettingsRow(_ id: String) -> XCUIElement {
-    let tab = app.buttons["bottom.settings"]
-    XCTAssertTrue(tab.waitForExistence(timeout: Self.long), "标签栏上没有「设置」")
-    tab.tap()
+    // 2026-09-27 底栏四格：设置从「我的」推进去。
+    XCTAssertTrue(app.buttons[Ids.bottomMe].waitForExistence(timeout: Self.long), "标签栏上没有「我的」")
+    XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     let row = app.descendants(matching: .any).matching(identifier: id).firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: Self.long), "设置页上没有 \(id)")
     for _ in 0..<4 where !row.isHittable { app.swipeUp() }
@@ -116,9 +116,9 @@ final class FavoritesUndoUITests: KanpanUICase {
 
   /// 换一套皮肤再回行情页。皮肤卡的 id 是 `display.theme.<sage|terra|classic>`。
   private func setSkin(_ skin: String) {
-    XCTAssertTrue(tapButton(app.buttons[Ids.bottomSettings], Self.long) {
-      self.app.buttons["display.theme.sage"].exists
-    }, "点「设置」没进设置页")
+    XCTAssertTrue(app.buttons[Ids.bottomMe].waitForExistence(timeout: Self.long), "标签栏上没有「我的」")
+    XCTAssertTrue(app.openSettingsFromMe() && app.buttons["display.theme.sage"].waitForExistence(timeout: Self.long),
+                  "「我的 › 设置」没进设置页")
     let card = app.buttons["display.theme." + skin]
     expectExists(card, Self.long, "设置页上没有皮肤卡 \(skin)")
     if (card.value as? String) != "已选" { card.tap() }

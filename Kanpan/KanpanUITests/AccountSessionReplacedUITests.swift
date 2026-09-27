@@ -127,8 +127,8 @@ import UIKit
     app = makeApp(profile: profile)
     app.launch()
     defer { shot("收尾") }
-    try check(app.buttons["bottom.settings"].waitForExistence(timeout: 90),
-              "第 1 步：干净档案（profile=\(profile)）起 app 之后 90s 还没见到底栏设置格\n\(app.debugDescription)")
+    try check(app.buttons["bottom.me"].waitForExistence(timeout: 90),
+              "第 1 步：干净档案（profile=\(profile)）起 app 之后 90s 还没见到底栏「我的」格\n\(app.debugDescription)")
 
     // ---- 第 1 步：app 内注册 = 第一台（本机）
     let user = Self.randomName()
@@ -235,17 +235,14 @@ import UIKit
 
   // ------------------------------------------------------------ 账号页
 
-  /// 账号页没开就从底栏「设置」那一格进去开。已经开着就原样返回。
+  /// 账号页没开就从底栏「我的」→ 账号卡进去开（2026-09-27 底栏四格，原来是「设置 › 账号」）。
+  /// 已经开着就原样返回。
   private func openAccount(step: String) throws {
     if !app.accountView.exists {
-      let tab = app.buttons["bottom.settings"]
-      try check(tab.waitForExistence(timeout: 60),
-                "\(step)：底栏上没有设置格 bottom.settings\n\(app.debugDescription)")
-      tab.tap()
-      let row = app.buttons["settings.account"]
-      try check(row.waitForExistence(timeout: 20),
-                "\(step)：设置页上没有账号行 settings.account\n\(app.debugDescription)")
-      row.tap()
+      try check(app.buttons["bottom.me"].waitForExistence(timeout: 60),
+                "\(step)：底栏上没有「我的」格 bottom.me\n\(app.debugDescription)")
+      try check(app.openAccountFromMe(),
+                "\(step)：「我的 › 账号」没推出账号页\n\(app.debugDescription)")
     }
     try check(app.accountView.waitForExistence(timeout: 20),
               "\(step)：点了账号行但账号页没打开\n\(app.debugDescription)")
