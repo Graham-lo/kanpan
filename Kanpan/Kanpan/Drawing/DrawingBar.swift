@@ -511,9 +511,6 @@ struct DrawingSheet: View {
   /// 当前品种的报价小数位。价格输入框照它显示——原来是 `0...12`，BTC 的一条趋势线
   /// 端点会写成 `77017.099999999`，那串尾巴既不是用户填的也不是图上画的。
   var decimals: Int = 2
-  /// 图表那一档时区（设置里的「本地 / UTC / UTC+8」）。端点时间的日期钮照它显示，
-  /// 和时间轴、十字线读数同一个口径——不给就是系统时区，切到 UTC 时会差出 8 小时。
-  var timeZone: TimeZone = .autoupdatingCurrent
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelTheme) private var theme
   /// 当前左划开着的是哪一行。一张表同一时刻只许开一行（见 `SwipeToDelete`）。
@@ -521,7 +518,7 @@ struct DrawingSheet: View {
   var body: some View {
     if panel == .style, let item = controller.selected {
       // 样式面板只占下面一截：调颜色粗细的时候得能看见改的是哪条线（第二批 10）。
-      DrawingStyleEditor(controller: controller, item: item, decimals: decimals, timeZone: timeZone)
+      DrawingStyleEditor(controller: controller, item: item)
         .presentationDetents([.fraction(0.4), .large])
         .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.4)))
         .presentationBackground(theme.app)
@@ -622,8 +619,6 @@ struct DrawingSheet: View {
 private struct DrawingStyleEditor: View {
   var controller: DrawingController
   @State var item: Drawing
-  var decimals: Int = 2
-  var timeZone: TimeZone = .autoupdatingCurrent
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelTheme) private var theme
   @State private var levelText = ""
@@ -638,9 +633,9 @@ private struct DrawingStyleEditor: View {
         Section {
           DrawingColorControl(title: "颜色", color: Binding(get: { item.color ?? "#D6A64F" }, set: { item.color = $0 }))
           LineWidthPicker(width: $item.lineWidth)
-          Picker("线型", selection: $item.dash) { ForEach(Drawing.Dash.allCases, id: \.self) { Text($0.title).tag($0) } }
-          if item.kind.usesFill { Toggle("背景填充", isOn: $item.filled) }
-          Toggle("锁定位置", isOn: $item.locked)
+          // 2026-09-28 收设置项 F：样式只剩颜色与粗细。线型（实 / 虚 / 点）与「背景填充」
+          // 不再给选——新线一律实线、带填充的工具一律带填充；老线存着的虚线 / 不填充照旧画。
+          // 「锁定位置」挪到图上：画线台里长按一条线锁上 / 解开（`ChartView` 的长按锁定）。
           // 「换一种画法」：同一族里形状一样，只差延伸到哪儿、端点画不画箭头。
           // 面板上只摆十二把，向右延伸 / 两端延伸 / 箭头 / 十字线就活在这几行里——
           // 用户是看着图上那条线换的，不用先认识五个名字。
@@ -651,21 +646,7 @@ private struct DrawingStyleEditor: View {
           PanelFormSectionTitle(text: "样式")
         }
         .listRowBackground(theme.raised)
-        Section {
-          ForEach(item.points.indices, id: \.self) { index in
-            DatePicker("点 \(index + 1) 时间", selection: Binding(get: { Date(timeIntervalSince1970: item.points[index].t / 1000) }, set: { item.points[index].t = $0.timeIntervalSince1970 * 1000 }))
-              .environment(\.timeZone, timeZone)
-            HStack {
-              Text("点 \(index + 1) 价格")
-              TextField("价格", value: $item.points[index].p, format: .number.precision(.fractionLength(max(0, decimals))))
-                .keyboardType(.decimalPad).multilineTextAlignment(.trailing).accessibilityIdentifier("draw.price.\(index)")
-            }
-          }
-        } header: {
-          PanelFormSectionTitle(text: "坐标")
-        }
-        .disabled(item.locked)
-        .listRowBackground(theme.raised)
+        // 「坐标」一节（每个点的日期钮与价格输入框）也删了：点位在图上拖，不在表里敲。
         if item.kind.usesText {
           Section {
             TextField("写点什么", text: $item.text, axis: .vertical).lineLimit(1...4)
@@ -708,8 +689,8 @@ private struct DrawingStyleEditor: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("保存") {
             if item.kind.usesLevels, let levels = parsedLevels { item.levels = levels }
-            // 只有颜色 / 粗细 / 线型 / 填充 / 比例真的动过，才把它提成这类工具以后的默认。
-            // 只挪了端点、改了文字、上了个锁的，别人下次画的线不该跟着变。
+            // 只有颜色 / 粗细 / 比例真的动过，才把它提成这类工具以后的默认。
+            // 只换了画法、改了文字的，下次画的线不该跟着变。
             controller.update(item, promoteStyle: DrawingStyle(item) != original); dismiss()
           }.disabled(!item.isValid || (item.kind.usesLevels && parsedLevels == nil)).accessibilityIdentifier("draw.save")
         }

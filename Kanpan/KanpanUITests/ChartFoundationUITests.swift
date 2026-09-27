@@ -170,7 +170,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 这一行是一排直接摆开的按钮（`DrawingKindSwapRow`，标识 `draw.swap.<kind>`）。
   /// 原来是 `Picker` 的弹出菜单，半屏时往上弹出面板、「向右延伸」点不到，2026-09-23 改掉。
   ///
-  /// 它排在「颜色 / 粗细 / 线型 / 锁定位置」后面，而样式表起手停在 0.4 屏高——
+  /// 它排在「颜色 / 粗细」后面，而样式表起手停在 0.4 屏高——
   /// 这一行落在下沿以外，`Form` 是懒加载的，**压根不在无障碍树里**（查 `exists`
   /// 返回 false，不是「在但点不着」）。所以找不着就先把半屏拖成整屏，再找；
   /// 粗细那一档早就吃过同一个亏（见 `testDrawingWidthPresets` 里那段）。
@@ -1634,15 +1634,24 @@ extension ChartFoundationUITests {
     // 「换一种画法」：面板上只摆十二把，射线活在线段这一族的这一行里
     // （`Drawing.Kind.swaps`）。换完点数不变，所以这条线原地变成射线、id 也不换。
     switchDrawKind(to: "向右延伸")
-    // 锁定只在样式表里（「锁定位置」那一行，2026-09-23 选中栏撤掉了「⋯」）。
-    // `switchDrawKind` 已经把表拖成整屏，这一行就在「画法」上面。
-    let lock = app.switches["锁定位置"]
-    XCTAssertTrue(lock.waitForExistence(timeout: 5), "样式表里没有「锁定位置」")
-    flip(lock, to: "1")
+    // 样式表只剩颜色与粗细（收设置项 F）：线型、填充、锁定、坐标都不在这张表里了。
+    XCTAssertFalse(app.switches["锁定位置"].exists, "样式表里还有「锁定位置」")
+    XCTAssertFalse(app.switches["背景填充"].exists, "样式表里还有「背景填充」")
+    XCTAssertFalse(app.buttons["线型"].exists || app.staticTexts["线型"].exists, "样式表里还有「线型」")
+    XCTAssertFalse(app.textFields["draw.price.0"].exists, "样式表里还有端点价格输入框")
+    shot("画线-样式表只剩颜色粗细")
     app.buttons["draw.save"].tap()
     XCTAssertTrue(wait { self.info()["drawingColors"] as? [String] == ["#4A90E2"] })
     XCTAssertEqual(info()["drawingKinds"] as? [String], ["ray"], "换画法没生效，或者被 isValid 挡掉了")
+    // 锁定挪到图上：按住线不动 400ms 锁上，再按一次解开，第三次再锁上。
+    let onLine = canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 160, dy: 130))
+    onLine.press(forDuration: 0.9)
+    XCTAssertTrue(wait { self.info()["drawingLocked"] as? [Bool] == [true] }, "长按线没有锁上：\(info())")
+    onLine.press(forDuration: 0.9)
+    XCTAssertTrue(wait { self.info()["drawingLocked"] as? [Bool] == [false] }, "再长按一次没有解开")
+    onLine.press(forDuration: 0.9)
     XCTAssertTrue(wait { self.info()["drawingLocked"] as? [Bool] == [true] })
+    XCTAssertEqual(info()["drawingCount"] as? Int, 1, "长按不该多落一条")
     let ids = try XCTUnwrap(info()["drawingIDs"] as? [String])
     shot("画线-换成射线并锁定")
     app.buttons["draw.finish"].tap()

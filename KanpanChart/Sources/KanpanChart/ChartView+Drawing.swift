@@ -82,6 +82,14 @@ final class DrawingSession {
   var startPoint: CGPoint = .zero
   var beganMs: Double = 0
   var moved: Double = 0
+  /// 按在一条线上等长按的那根手指，和到点要做的「锁 / 解锁」。
+  ///
+  /// 锁定原来是样式表里的一个开关（「锁定位置」），要先选中、点「样式」、翻到那一行。
+  /// 2026-09-28 收设置项 F 把它挪到图上：画线台里按住一条线不动 400ms（和十字线同一个
+  /// `ChartGesture.longPressMs`），锁上或解开，手里震一下。手指挪出 `longPressSlopPt`、
+  /// 抬起、第二根手指落下，这一下都作废。
+  var lockTouch: UITouch?
+  var lockPress: DispatchWorkItem?
 
   weak var overlay: DrawingOverlayView?
   var link: CADisplayLink?
@@ -107,6 +115,9 @@ public enum DrawingFeedback: Sendable, Equatable {
   case rejected
   /// 拿掉了线：删选中的、清空（原来的 warning 那一下）。
   case removed
+  /// 长按一条线把它锁住 / 解开（收设置项 F：样式表里的「锁定位置」开关挪到了图上）。
+  case locked
+  case unlocked
 }
 
 /// 「轻点」的时长上限：按下到抬起 < 500ms 且位移 < 4pt 才算落笔。
@@ -246,6 +257,7 @@ extension ChartView {
   /// 工具、选中、待落点、拖动——「手上正在做的」全部放下。线和撤销栈在真值里，不动。
   private func resetDrawingInteraction() {
     guard let d = drawingSessionIfLoaded else { return }
+    cancelDrawingLockPress()
     d.preview = nil
     d.selected = nil
     d.pending = nil
@@ -270,6 +282,7 @@ extension ChartView {
     guard let session = drawingSessionIfLoaded else { return }
     session.link?.invalidate()
     session.link = nil
+    cancelDrawingLockPress()
     session.claimed = nil
     session.drag = nil
     session.preview = nil
@@ -466,8 +479,8 @@ extension ChartView {
     } ?? (s.series.count - 1)))
     var item = Drawing(kind: .hline, points: [DrawPoint(t: stamp, p: price)])
     if let style = d.styles[Drawing.Kind.hline.rawValue] {
-      item.color = style.color; item.lineWidth = style.lineWidth; item.dash = style.dash
-      item.filled = style.filled; item.levels = style.levels
+      // 线型与填充不跟记住的样式走（收设置项 F，理由见 `DrawingPreferences.newDrawing`）。
+      item.color = style.color; item.lineWidth = style.lineWidth; item.levels = style.levels
     }
     guard item.isValid else { return false }
     commitDrawings(drawings + [item])
@@ -769,6 +782,8 @@ extension ChartView {
   }
 
   func drawingTouchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    // 不管这一下是什么，上一根手指等着的长按锁定都作废：多了一根手指就是捏合，不是长按。
+    cancelDrawingLockPress()
     startDrawingLink()
     let d = drawing
     // 每一根落下的手指都要刷新这个时刻，**包括转给图表手势的那些**。
@@ -851,9 +866,14 @@ extension ChartView {
       return
     }
 
+    // 按在一条线上：先把长按锁定排上（十字线在的时候这一下是用来收十字线的，不算）。
+    // 选中的、没锁的线下面照样被拖线收走，没动够 400ms 就是拖，停住不动才是锁。
+    let pressed = d.tool == nil && state?.crosshair == nil ? drawHitTest(q, axes: axes) : nil
+    if let pressed { scheduleDrawingLockPress(id: pressed.id, touch: t) }
+
     // On a phone, first tap to select, then drag. Passing a finger over an
     // unselected endpoint must not accidentally edit a drawing instead of panning.
-    if d.tool == nil, let hit = drawHitTest(q, axes: axes), d.selected == hit.id,
+    if d.tool == nil, let hit = pressed, d.selected == hit.id,
       let from = drawings.first(where: { $0.id == hit.id }), !from.locked, var s = state
     {
       d.claimed = t
@@ -870,11 +890,17 @@ extension ChartView {
     }
 
     touchesBegan(touches, with: event)
-    if d.tool != nil { gesture.cancelLongPress() }
+    // 按在线上的长按归锁定，十字线让开；按在空白处的长按照旧出十字线。
+    if d.tool != nil || pressed != nil { gesture.cancelLongPress() }
   }
 
   func drawingTouchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
     let d = drawing
+    if let lt = d.lockTouch, touches.contains(lt) {
+      let q = lt.location(in: self)
+      let dx = Double(q.x - d.startPoint.x), dy = Double(q.y - d.startPoint.y)
+      if (dx * dx + dy * dy).squareRoot() > ChartGesture.longPressSlopPt { cancelDrawingLockPress() }
+    }
     guard let t = d.claimed, touches.contains(t), let axes = drawAxes else {
       touchesMoved(touches, with: event)
       return
@@ -891,6 +917,7 @@ extension ChartView {
 
   func drawingTouchesEnded(_ touches: Set<UITouch>, with event: UIEvent?, cancelled: Bool) {
     let d = drawing
+    if let lt = d.lockTouch, touches.contains(lt) { cancelDrawingLockPress() }
     guard let t = d.claimed, touches.contains(t) else {
       finishUnclaimed(touches, with: event, cancelled: cancelled)
       return
@@ -1006,6 +1033,48 @@ extension ChartView {
       touchesEnded(touches, with: event)
     }
     if gesture.touches.isEmpty { d.navigating = false }
+  }
+
+  // MARK: - 长按锁定
+
+  private func scheduleDrawingLockPress(id: String, touch: UITouch) {
+    let d = drawing
+    let work = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      let d = self.drawing
+      guard d.lockTouch === touch else { return }
+      d.lockPress = nil; d.lockTouch = nil
+      self.toggleDrawingLock(id: id, holding: touch)
+    }
+    d.lockPress = work; d.lockTouch = touch
+    DispatchQueue.main.asyncAfter(deadline: .now() + ChartGesture.longPressMs / 1000, execute: work)
+  }
+
+  func cancelDrawingLockPress() {
+    guard let d = drawingSessionIfLoaded else { return }
+    d.lockPress?.cancel()
+    d.lockPress = nil; d.lockTouch = nil
+  }
+
+  /// 长按到点：这条线锁上（或解开）、选中它，这一程手指剩下的移动和抬手都不再有动作。
+  private func toggleDrawingLock(id: String, holding touch: UITouch) {
+    let d = drawing
+    guard d.editable, d.tool == nil, let i = drawings.firstIndex(where: { $0.id == id }) else { return }
+    if d.claimed === touch {
+      // 选中的线被拖线收走了这根手指：拖动作废（手指没挪出 6pt，预览本来就和真值一样）。
+      d.drag = nil; d.preview = nil; d.loupe = nil
+    } else {
+      // 交给图表的那一程：清掉模式，之后的移动不平移、抬手也不算轻点。
+      gesture.cancelLongPress()
+      gesture.mode = nil
+    }
+    var next = drawings
+    next[i].locked.toggle()
+    let locked = next[i].locked
+    d.selected = id
+    commitDrawings(next) { $0.drawingPreviewID = nil }
+    drawingChanged(items: drawings)
+    feedback(locked ? .locked : .unlocked)
   }
 
   /// 把这一下轻点从图表手势里摘掉：`mode` 一清，`finishTouches` 的轻点、甩、双击

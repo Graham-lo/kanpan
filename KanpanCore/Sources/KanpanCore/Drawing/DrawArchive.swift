@@ -87,8 +87,9 @@ public struct DrawingPreferences: Sendable, Equatable, Codable {
     let kind = kind(for: tool, variants: variants)
     var item = Drawing(kind: kind, points: points)
     if let style = styles[kind.rawValue] ?? styles[tool.rawValue] {
-      item.color = style.color; item.lineWidth = style.lineWidth; item.dash = style.dash
-      item.filled = style.filled; item.levels = style.levels
+      // 线型与填充 2026-09-28 起不再给选（收设置项 F）：记住的样式里就算存着虚线 / 不填充
+      // （老版本提上来的默认），新线也按默认的实线、填充落——用户已经没有地方把它改回来了。
+      item.color = style.color; item.lineWidth = style.lineWidth; item.levels = style.levels
     }
     return item
   }

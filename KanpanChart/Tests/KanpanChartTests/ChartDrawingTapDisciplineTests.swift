@@ -167,3 +167,84 @@ struct ChartDrawingTapDisciplineTests {
     #expect(v.selectedDrawingID == line.id, "画线态下选不中了")
   }
 }
+
+/// 长按一条线 = 锁上 / 解开（收设置项 F，2026-09-28：样式表里的「锁定位置」挪到图上）。
+@MainActor
+@Suite("画线：长按线锁定")
+struct ChartDrawingLongPressLockTests {
+  private func lineView() throws -> (ChartView, Drawing) {
+    let (v, axes) = try disciplineView()
+    // `disciplineView` 的那扇窗是个局部变量，要等下一次自动释放池排空才真的走——
+    // 走的那一刻图离窗、`teardownDrawingLink` 把半截交互（包括等着的长按）全收掉。
+    // 这几条用例恰好要跨过那一刻去等定时器，所以先在这儿就让图离窗，别让它半路发生。
+    v.removeFromSuperview()
+    let line = Drawing(kind: .trend,
+                       a: DrawPoint(t: axes.t(atX: 100), p: axes.p(atY: 300)),
+                       b: DrawPoint(t: axes.t(atX: 300), p: axes.p(atY: 300)))
+    v.setDrawings([line])
+    v.drawingEditable = true
+    return (v, line)
+  }
+
+  /// 按住、（可选）挪一下、等到 `settled` 成立或 3 秒到点再抬手。
+  ///
+  /// 不拿固定的 600ms 睡：Swift Testing 并行跑套件，主线程被别的用例占着时 400ms 的
+  /// 定时器会晚到，固定睡法在那种时候就是随机红。
+  private func hold(_ v: ChartView, at q: CGPoint, ms: Double = 10_000, moveTo: CGPoint? = nil,
+                    until settled: @MainActor () -> Bool) async throws {
+    let t = TapTouch(q)
+    v.drawingTouchesBegan([t], with: TapEvent(ms: ms))
+    if let moveTo {
+      t.point = moveTo
+      v.drawingTouchesMoved([t], with: TapEvent(ms: ms + 50))
+    }
+    try await Task.sleep(for: .milliseconds(450))
+    for _ in 0..<50 where !settled() { try await Task.sleep(for: .milliseconds(50)) }
+    v.drawingTouchesEnded([t], with: TapEvent(ms: ms + 3_000), cancelled: false)
+  }
+
+  @Test("没选中的线：按住不动就锁上、选中它，再按一次解开，震法分得出")
+  func holdTogglesLock() async throws {
+    let (v, line) = try lineView()
+    var events: [DrawingFeedback] = []
+    v.onDrawingFeedback = { events.append($0) }
+    try await hold(v, at: CGPoint(x: 200, y: 300)) { v.drawings.first?.locked == true }
+    #expect(v.drawings.first?.locked == true, "按住没锁上")
+    #expect(v.selectedDrawingID == line.id, "锁上之后要选中它，选中栏上才看得见「已锁定」")
+    #expect(v.state?.crosshair == nil, "按在线上的长按归锁定，不该再出十字线")
+    try await hold(v, at: CGPoint(x: 200, y: 300), ms: 20_000) { v.drawings.first?.locked == false }
+    #expect(v.drawings.first?.locked == false, "再按一次没解开")
+    #expect(events == [.locked, .unlocked])
+    #expect(v.drawings.count == 1)
+  }
+
+  @Test("选中的线：按住不动锁上，端点不跟着手指走；锁上之后拖不动")
+  func holdOnSelectedLocksWithoutMoving() async throws {
+    let (v, line) = try lineView()
+    v.selectedDrawingID = line.id
+    try await hold(v, at: CGPoint(x: 200, y: 300)) { v.drawings.first?.locked == true }
+    let locked = try #require(v.drawings.first)
+    #expect(locked.locked)
+    #expect(locked.points == line.points, "锁的那一下把线挪了")
+  }
+
+  @Test("手指挪开了就不是长按：不锁")
+  func movingCancelsTheLock() async throws {
+    let (v, _) = try lineView()
+    // 挪开之后等满一秒（长按定时器 400ms，就算晚到也早该响过了）。
+    try await hold(v, at: CGPoint(x: 200, y: 300), moveTo: CGPoint(x: 240, y: 300)) { false }
+    #expect(v.drawings.first?.locked == false)
+  }
+
+  @Test("空白处长按照旧出十字线，不碰线")
+  func holdOnBlankStillShowsCrosshair() async throws {
+    let (v, _) = try lineView()
+    let t = TapTouch(CGPoint(x: 200, y: 450))
+    v.drawingTouchesBegan([t], with: TapEvent(ms: 10_000))
+    try await Task.sleep(for: .milliseconds(450))
+    for _ in 0..<50 where v.state?.crosshair == nil { try await Task.sleep(for: .milliseconds(50)) }
+    #expect(v.state?.crosshair != nil, "空白处的长按不出十字线了")
+    v.drawingTouchesEnded([t], with: TapEvent(ms: 10_700), cancelled: false)
+    #expect(v.drawings.first?.locked == false)
+  }
+}

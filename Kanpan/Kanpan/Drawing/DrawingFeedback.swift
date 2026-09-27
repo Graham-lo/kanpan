@@ -36,7 +36,7 @@ enum DrawingHints {
 /// 画线那几下震动（审查 23.2：触觉是产品策略，不住在图表包里）。
 ///
 /// 图只说发生了什么（`DrawingFeedback`），震法和搬家前 `ChartHaptics` 里那几下一样：
-/// 落点吸住 = selection，没落成 = rigid 0.7，拿掉了线 = warning。
+/// 落点吸住 = selection，没落成 = rigid 0.7，拿掉了线 = warning；长按锁住 = medium，解开 = light。
 @MainActor
 enum DrawingHaptics {
   private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
@@ -46,6 +46,9 @@ enum DrawingHaptics {
     case .snapped: Haptics.step()
     case .rejected: rigid.prepare(); rigid.impactOccurred(intensity: 0.7)
     case .removed: Haptics.warning()
+    // 长按锁住是「落定」的一下（medium），解开轻一点（light），手里分得出是锁了还是开了。
+    case .locked: Haptics.press()
+    case .unlocked: Haptics.tap()
     }
   }
 }

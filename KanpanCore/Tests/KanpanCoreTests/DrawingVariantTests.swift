@@ -96,6 +96,17 @@ struct DrawingVariantTests {
     #expect(prefs.styles["trend"]?.color == Hex("#FF0000"), "两份样式互不覆盖")
   }
 
+  @Test("线型与填充不再给选：记住的样式里存着虚线 / 不填充，新线也按实线、填充落")
+  func newLinesIgnoreRememberedDashAndFill() {
+    var prefs = DrawingPreferences()
+    var old = Drawing(kind: .rectangle, points: two)
+    old.color = Hex("#FF0000"); old.lineWidth = 2; old.dash = .dotted; old.filled = false
+    prefs.styles["rectangle"] = DrawingStyle(old)
+    let next = prefs.newDrawing(tool: .rectangle, points: two)
+    #expect(next.color == Hex("#FF0000") && next.lineWidth == 2, "颜色粗细照旧跟记住的走")
+    #expect(next.dash == .solid && next.filled, "线型填充已经没有地方改回来，新线不许继承")
+  }
+
   @Test("存档往返；老存档与云端缺 variants 键照常读；认不出的画法丢掉不整份抛")
   func codableToleratesMissingAndUnknown() throws {
     var prefs = DrawingPreferences()
