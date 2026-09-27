@@ -15,56 +15,51 @@ struct PrefsDefaultsTests {
     #expect(p.overlays == [.ma])                     // chart.js: this.overlays = ['MA']
     #expect(p.subs == [.vol, .oi, .macd])                 // chart.js: this.subs = ['MACD','RSI']
     #expect(p.priceMode == .log)                  // chart.js: price.mode = 'linear'
-    #expect(!p.magnet)                                // chart.js: this.magnet = true
     #expect(p.timeZone == .exchange)                 // 2026-09-28 起不是设置项：全 app 一律上海 UTC+8
     #expect(p.redUp == true)                         // 国内习惯红涨绿跌，出厂即如此
     #expect(p.theme == .system)                      // app.js: 'auto'
-    #expect(!p.countdown)                             // §10.4 默认开
     #expect(p.routePolicy == .direct)                // 行情线路出厂直连，没有「自动」
   }
 
-  @Test("「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效")
+  @Test("「图表设置」只剩画法：别的都是定值（收设置项 B 组）")
   func 图表默认() {
     let p = Prefs.defaults
     #expect(p.candleKind == .candle)      // 平均K线是可选项，不是默认口径
-    #expect(p.gridChoice == .off)       // 不画网格，和手机 AICoin 一致
-    #expect(p.bodyChoice == .solid)       // 阳线实心，同上
-    #expect(p.viewAnchor == .right)       // 复位到最新时最新一根靠右——现状
-    #expect(p.priceBias == .center)       // 蜡烛在主图区里居中——现状
-    #expect(p.lastLine)                   // 最新价横线 + 右轴胶囊，默认开
     #expect(p.chartOptions.drawings)      // 画好的线看得见；显隐只按品种管，没有全局开关
-    #expect(p.sinceChange == false)       // 十字线上多报一段涨跌幅，默认不报
     // 根宽出厂就是图表底座那个常数：没缩放过的人看到的第一屏和以前一模一样。
     #expect(p.barSpacing == AICoinBehavior.initialSpacing)
-    #expect(!p.mainInverted)              // 上下翻转是可选项，出厂不翻
+    #expect(!p.mainInverted)              // 上下翻转出厂不翻
     #expect(p.subInverted.isEmpty)
   }
 
-  @Test("chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏")
+  @Test("chartOptions：收掉的十三项一律交定值给引擎，只有画法和网格跟人走")
   func 取用入口() {
-    #expect(!Prefs.defaults.chartOptions.countdown)   // 接的是已有的 countdown，不是另一个开关
-
     var p = Prefs.defaults
     p.candleKind = .heikin
-    p.gridChoice = .off
-    p.bodyChoice = .hollowUp
-    p.lastLine = false
-    p.sinceChange = true
-    p.viewAnchor = .left
-    p.priceBias = .up
-    p.countdown = false
-
     let o = p.chartOptions
     #expect(o.kind == .heikin)
-    #expect(o.grid == .off)
-    #expect(o.body == .hollowUp)
-    #expect(o.lastLine == false)
+    #expect(o.body == .solid)            // 阳线一律实心
+    #expect(o.lastLine)                  // 实时价格线常在
     #expect(o.drawings)                  // 全局「显示画线」已撤，恒为 true
-    #expect(o.sinceChange)
-    #expect(o.anchor == .left)
-    #expect(o.bias == .up)
-    #expect(o.countdown == false)
-    #expect(o != ChartOptions())
+    #expect(o.countdown)                 // 本根倒计时常开（周期最短 1 分钟，每档都画）
+    #expect(o.sinceChange)               // 十字线顺带报到最新价的涨跌幅
+    #expect(o.anchor == .right)
+    #expect(o.bias == .center)
+    #expect(o.dataDisplay == .top)       // 长按时开高低收写在头部
+    #expect(o.crossPrice == .selected)
+    #expect(o.allowMainInversion && o.allowSubInversion)  // 翻转手势直接生效
+    #expect(o.adaptiveIndicators)
+  }
+
+  @Test("网格按皮肤：经典照 AICoin 不画，青苔 / 陶土画自己皮肤色的淡网格")
+  func 网格跟皮肤() {
+    var p = Prefs.defaults
+    p.skin = .classic
+    #expect(p.chartOptions.grid == .off)
+    p.skin = .sage
+    #expect(p.chartOptions.grid == .on)
+    p.skin = .terra
+    #expect(p.chartOptions.grid == .on)
   }
 
   @Test("每个指标的默认参数直接取 Core，不另抄一份")

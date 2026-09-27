@@ -349,15 +349,17 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     expectExists(sectorMember, Self.long, "板块的品种列表里一行都没有")
     let sectorMemberID = sectorMember.identifier
 
-    // 设置：改一项（十字线磁吸），它就是这一页上「他摆出来的样子」。
+    // 设置：改一项（品种上新与停牌下架），它就是这一页上「他摆出来的样子」。
+    // 原来改的是「十字线吸附」，那一行 2026-09-28 收掉了（收设置项 B 组）。
     openSettingsPage()
-    let magnet = app.buttons[Ids.settingsMagnet]
-    expectExists(magnet, Self.short, "设置页上没有十字线磁吸")
+    let magnet = app.buttons["alerts.listing"]
+    expectExists(magnet, Self.short, "设置页上没有「品种上新与停牌下架」")
+    for _ in 0..<4 where !magnet.isHittable { app.swipeUp() }
     let magnetBefore = magnet.value as? String ?? "?"
     magnet.tap()
     let magnetWant = magnetBefore == "开" ? "关" : "开"
     XCTAssertTrue(waitUntil(timeout: Self.short) { (magnet.value as? String) == magnetWant },
-                  "点了十字线磁吸没翻过去：\(magnetBefore) → \(magnet.value as? String ?? "?")")
+                  "点了上新下架开关没翻过去：\(magnetBefore) → \(magnet.value as? String ?? "?")")
 
     // 回图表：逐项对数。
     leaveSettings()
@@ -390,7 +392,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
 
     // 回设置：刚改的那一项还在。
     openSettingsPage()
-    XCTAssertEqual(magnet.value as? String, magnetWant, "切回设置，刚改的十字线磁吸弹回去了")
+    XCTAssertEqual(magnet.value as? String, magnetWant, "切回设置，刚改的上新下架开关弹回去了")
 
     leaveSettings()
     expectSameChart(snapshot(), baseline, "又走了板块→自选→设置再回图表")

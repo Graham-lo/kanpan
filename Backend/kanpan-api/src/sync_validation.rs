@@ -198,12 +198,12 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // Being on the allowlist without a rule here would make the field a poison pill — the
    // `_=>false` fallthrough rejects the whole operation with a 400.
    "favoritesGroup"=>string(v,128),
-   "redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
+   "redUp"|"depth"|"orderFlow"|"compactValues"
     |"mainInverted"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
     |"orderFlowSpot"|"orderFlowContract"|"orderFlowShowFilled"|"orderFlowShowCancelled"
     // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
     |"notifyListingChanges"=>v.is_boolean(),
-   "theme"|"styleID"|"priceMode"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"=>string(v,64),_=>false
+   "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),_=>false
   }
  }
  if collection==DRAWING_PREFERENCES {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),

@@ -53,13 +53,13 @@ struct SettingsBugfixTests {
   @MainActor
   func 恢复默认留线路() {
     let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
-    store.update { $0.routePolicy = .gateway; $0.redUp = false; $0.magnet = true }
+    store.update { $0.routePolicy = .gateway; $0.redUp = false; $0.depth = true }
     var arrivals: [ChartLayoutArrival] = []
     store.onAdopt = { _, why in arrivals.append(why) }
     let changed = store.resetToDefaults()
     #expect(store.prefs.routePolicy == .gateway)
     #expect(store.prefs.redUp == Prefs.defaults.redUp)
-    #expect(store.prefs.magnet == Prefs.defaults.magnet)
+    #expect(store.prefs.depth == Prefs.defaults.depth)
     #expect(!changed.contains("routePolicy"))
     #expect(changed.contains("redUp"))
     #expect(arrivals == [.ownerSwitched])

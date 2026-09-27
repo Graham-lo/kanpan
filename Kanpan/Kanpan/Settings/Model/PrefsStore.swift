@@ -311,12 +311,11 @@ final class PrefsStore {
   ///
   /// 这个不节流：它是一次双击就翻一下的离散动作，一次写一次；`update` 自己会挡住
   /// 没真改动的那些回调（图每改一次状态都会报一遍）。
-  /// 图上报回来的翻转状态。「允许翻转」关着时图必然是不翻转的，那不是用户的选择，
-  /// 不写进 `mainInverted` / `subInverted`——留着用户上次的记录，再打开开关时图还能翻回去。
+  /// 「允许翻转」那两颗开关 2026-09-28 收掉了，双击手势直接生效，图报回来什么就记什么。
   func noteInversion(main: Bool, subs: Set<IndicatorID>) {
     update {
-      if $0.allowMainInversion { $0.mainInverted = main }
-      if $0.allowSubInversion { $0.subInverted = subs }
+      $0.mainInverted = main
+      $0.subInverted = subs
     }
   }
 

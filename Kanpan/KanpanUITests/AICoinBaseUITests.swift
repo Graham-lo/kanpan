@@ -78,55 +78,33 @@ final class AICoinBaseUITests: XCTestCase {
     shot("01-冷启动-AICoin默认")
     // 这儿原来还挨个点那四张风格卡（经典 / 圆角 / 空心 / 轮廓），验「换风格不动版面尺寸」。
     // 风格表收成 AICoin 一套之后（见 `CandleStyle`）没有第二款可换，这一段跟着撤。
-    // 「阳线实心 / 空心」这一档还在「图表」面板上，它同样不该动版面：造型是造型，
-    // 间距、主图高度、时间轴位置不归它管——改用它来验同一件事。
+    // 「阳线实心 / 空心」2026-09-28 收掉（收设置项 B 组，阳线一律实心），改用同一张面板上
+    // 「K 线 · 画法」的「平均K线」来验同一件事：造型是造型，间距、主图高度、时间轴位置不归它管。
     app.buttons["interval.chart"].tap()
-    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
-    let hollow = app.buttons["chart.bodyChoice.空心"]
-    XCTAssertTrue(hollow.waitForExistence(timeout: 8), "图表面板没开出来")
-    hollow.tap()
+    let heikin = app.buttons["chart.candleKind.平均K线"]
+    XCTAssertTrue(heikin.waitForExistence(timeout: 8), "图表面板没开出来")
+    heikin.tap()
     for key in ["span", "plotW", "mainH", "timeY", "bodyW", "spacing"] {
       XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double),
-                     accuracy: 0.001, "切成空心阳线改变了\(key)")
+                     accuracy: 0.001, "换成平均K线改变了\(key)")
     }
-    shot("02-空心阳线-尺寸保持")
-    app.buttons["chart.bodyChoice.实心"].tap()
+    shot("02-平均K线-尺寸保持")
+    app.buttons["chart.candleKind.蜡烛"].tap()
     // 图表面板是配置页，选完不自己收；后面全是点图的动作，先把它收掉。
-    app.closeChartPanelFromMore()
-    XCTAssertTrue(wait { !hollow.exists }, "图表面板没收回去")
+    app.closeChartPanel()
+    XCTAssertTrue(wait { !heikin.exists }, "图表面板没收回去")
     let point = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.2))
     point.tap()
     XCTAssertTrue(wait { info()["crosshair"] as? Bool == true })
     shot("03-单击十字线")
     point.tap()
     XCTAssertTrue(wait { info()["crosshair"] as? Bool == false })
-    // 主轴翻转现在默认关着（一次误触把整张图倒过来，代价远大于用处），
-    // 所以先验「默认双击价格轴不翻」，再去图表面板打开它，验它确实还能翻。
+    // 「主轴允许翻转」开关 2026-09-28 收掉（收设置项 B 组）：双击价格轴直接翻，再双击翻回来。
     let axis = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.2))
     axis.doubleTap()
-    XCTAssertFalse(wait({ info()["inverted"] as? Bool == true }, seconds: 3),
-                   "开关关着的时候双击价格轴不该翻转")
-    // 每个面板标题右边常驻一颗「完成」，那是明确的出口——比往下拽靠谱。
-    let closePanel = { app.closeChartPanelFromMore() }
-    app.buttons["interval.chart"].tap()
-    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
-    let allowInvert = app.buttons["chart.allowMainInversion"]
-    XCTAssertTrue(allowInvert.waitForExistence(timeout: 8), "图表面板里没有「主轴允许翻转」")
-    allowInvert.tap()
-    XCTAssertTrue(wait { allowInvert.value as? String == "开" }, "开关没打开")
-    closePanel()
-    XCTAssertTrue(wait { !allowInvert.exists }, "图表面板没收回去")
+    XCTAssertTrue(wait { info()["inverted"] as? Bool == true }, "双击价格轴没翻：\(info())")
     axis.doubleTap()
-    XCTAssertTrue(wait { info()["inverted"] as? Bool == true }, "开了开关还是翻不了：\(info())")
-    axis.doubleTap()
-    XCTAssertTrue(wait { info()["inverted"] as? Bool == false })
-    app.buttons["interval.chart"].tap()
-    XCTAssertTrue(app.openChartMorePage())
-    XCTAssertTrue(allowInvert.waitForExistence(timeout: 8))
-    allowInvert.tap()
-    XCTAssertTrue(wait { allowInvert.value as? String == "关" }, "开关没关回去")
-    closePanel()
-    XCTAssertTrue(wait { !allowInvert.exists })
+    XCTAssertTrue(wait { info()["inverted"] as? Bool == false }, "再双击没翻回来")
     let axisStart = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.20))
     let axisEnd = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.32))
     axisStart.press(forDuration: 0.05, thenDragTo: axisEnd)

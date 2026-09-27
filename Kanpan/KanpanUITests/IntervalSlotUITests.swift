@@ -476,7 +476,7 @@ final class IntervalSlotUITests: KanpanUICase {
     XCTAssertTrue(marker.waitForExistence(timeout: Self.short), "点「分析」没开出分析面板")
     let header = app.staticTexts["panel.header"]
     XCTAssertTrue(header.exists && header.label == "分析", "面板标题不是「分析」：\(header.label)")
-    XCTAssertFalse(app.buttons["chart.more"].exists, "开出来的是图表设置，不是分析面板")
+    XCTAssertFalse(app.buttons[Ids.chartPanelMarker].exists, "开出来的是图表设置，不是分析面板")
     // 2026-09-28：分析面板分四节（画线 · 指标 · 对比 · 主力订单流），画线在最上面。
     let draw = app.buttons[Ids.indicatorDraw]
     XCTAssertTrue(draw.exists, "分析面板里没有「画线」一节")
@@ -487,7 +487,7 @@ final class IntervalSlotUITests: KanpanUICase {
     // 左上角那颗：关面板，不退回「图表设置」。
     app.buttons["panel.done"].tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { !marker.exists }, "左上角那颗没关掉分析面板")
-    XCTAssertFalse(app.buttons["chart.more"].exists, "左上角那颗退回了图表设置，而不是关面板")
+    XCTAssertFalse(app.buttons[Ids.chartPanelMarker].exists, "左上角那颗退回了图表设置，而不是关面板")
     XCTAssertTrue(waitUntil(timeout: Self.short) { entry.isHittable }, "面板关了周期条没回来")
   }
 }

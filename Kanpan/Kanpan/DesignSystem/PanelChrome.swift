@@ -216,11 +216,11 @@ private struct LongPress: ViewModifier {
 struct PanelSegment<Value: Hashable>: View {
   var options: [(String, Value)]
   var selection: Value
-  /// 给每一档挂 `<前缀>.<档位文字>` 的标识（比如 `chart.bodyChoice.空心`）。
+  /// 给每一档挂 `<前缀>.<档位文字>` 的标识（比如 `chart.priceMode.对数`）。
   ///
   /// 分段这一排必须走这里，不能像开关那样把标识挂在 `PanelRow` 上：挂在行上的标识会
   /// **原样传给行里每一个无障碍元素**，开关那种一行只有一个元素的没事，分段却会让两三颗
-  /// 按钮顶着同一个标识，`app.buttons["chart.bodyChoice"]` 拿到的是一团分不开的东西，
+  /// 按钮顶着同一个标识，`app.buttons["chart.priceMode"]` 拿到的是一团分不开的东西，
   /// 用例只能退回按坐标猜。所以分段行一律把行上的标识撤掉，改从这里逐档下发。
   var id: String? = nil
   /// 槽的底色。缺省 `raised2`（整页铺在 `raised` 上的设置行）；放进本身就是 `raised2` 的

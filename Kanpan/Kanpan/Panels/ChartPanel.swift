@@ -49,6 +49,13 @@ import KanpanCore
 /// 它是动作不是设置，半屏打开第一眼就要看得见。上面 2026-09-18 / 09-23 两段里说的「指标并进
 /// 这一页」「指标收成一行」都已成为历史；「画线」也不在标签栏了，同一天搬到了周期条行尾，
 /// 09-28 又和指标并列归进行尾「分析（画线 · 指标 · 对比 · 主力订单流）」那张面板（同一个 `IndicatorPage`）。
+///
+/// 2026-09-28 收设置项 B 组：「更多设置」那一层整页撤掉，「实时价格线」一行也撤了。那一层里的
+/// 读数位置、十字线取价、主 / 副轴允许翻转、指标区域自适应、网格、阳线、横向 / 纵向位置、
+/// 本根倒计时、至今涨幅，连同设置页的「十字线吸附到 K 线」，一律由 `Prefs.chartOptions` 定值
+/// （网格按皮肤：经典照 AICoin 不画，青苔 / 陶土画自己皮肤色的淡网格；翻转手势直接生效）。
+/// 这一页只剩真正属于个人习惯的：K 线画法、盘口、价格轴刻度。恢复某一项见
+/// `.project-memory/PROJECT.md`「收设置项」一节与 tag settings-before-trim-2026-09-28。
 struct ChartPanel: View {
   var store: PrefsStore
   /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
@@ -78,9 +85,6 @@ struct ChartPanel: View {
   var body: some View {
     ZStack {
       switch page {
-      case .more:
-        morePage
-          .transition(.move(edge: .trailing))
       case .share:
         if let onShare, let onSend {
           ShareChooser(onImage: { close(); onShare() },
@@ -127,73 +131,14 @@ struct ChartPanel: View {
       }
 
       PanelGroupTitle(text: "显示")
-      switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
-        .accessibilityIdentifier("chart.lastLine")
       // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
       switchRow("盘口", nil, prefs.depth, divider: false, id: "chart.depth") { $0.depth = $1 }
 
       PanelGroupTitle(text: "价格轴")
-      PanelRow(name: "刻度") {
+      PanelRow(name: "刻度", divider: false) {
         PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode,
                      id: "chart.priceMode") { v in store.updateByHand { $0.priceMode = v } }
       }
-      PanelRow(name: "更多设置", divider: false, onTap: { page = .more }) { chevron }
-        .accessibilityIdentifier("chart.more")
-    }
-  }
-
-  /// 「更多设置」：一调就不再动的开关。面板里推进去的一层，「‹」回来不关面板。
-  private var morePage: some View {
-    PanelSheet(title: "更多设置", subtitle: nil, onBack: { page = .main }) {
-      PanelGroupTitle(text: "读数与坐标轴")
-      PanelRow(name: "K 线数据") {
-        PanelSegment(options: [("K线内", CandleDataDisplay.inside), ("顶部", .top), ("跟随K线", .follow)],
-                     selection: prefs.dataDisplay, id: "chart.dataDisplay") { v in store.updateByHand { $0.dataDisplay = v } }
-      }
-      PanelRow(name: "十字线") {
-        PanelSegment(options: [("选中价", CrossPriceMode.selected), ("收盘价", .close)], selection: prefs.crossPrice,
-                     id: "chart.crossPrice") { v in store.updateByHand { $0.crossPrice = v } }
-      }
-      switchRow("主轴允许翻转", nil, prefs.allowMainInversion,
-                id: "chart.allowMainInversion") { $0.allowMainInversion = $1 }
-      switchRow("副轴允许翻转", nil, prefs.allowSubInversion,
-                id: "chart.allowSubInversion") { $0.allowSubInversion = $1 }
-      switchRow("指标区域自适应", nil, prefs.adaptiveIndicators, divider: false) { $0.adaptiveIndicators = $1 }
-
-      PanelGroupTitle(text: "K 线")
-      PanelRow(name: "网格") {
-        PanelSegment(options: ChartPanel.grids, selection: prefs.gridChoice,
-                     id: "chart.gridChoice") { v in
-          store.updateByHand { $0.gridChoice = v }
-        }
-      }
-      PanelRow(name: "阳线") {
-        PanelSegment(options: ChartPanel.bodies, selection: prefs.bodyChoice,
-                     id: "chart.bodyChoice") { v in
-          store.updateByHand { $0.bodyChoice = v }
-        }
-      }
-      PanelRow(name: "横向位置") {
-        PanelSegment(options: ChartPanel.anchors, selection: prefs.viewAnchor,
-                     id: "chart.viewAnchor") { v in
-          store.updateByHand { $0.viewAnchor = v }
-        }
-      }
-      PanelRow(name: "纵向位置", divider: false) {
-        PanelSegment(options: ChartPanel.biases, selection: prefs.priceBias,
-                     id: "chart.priceBias") { v in
-          store.updateByHand { $0.priceBias = v }
-        }
-      }
-
-      PanelGroupTitle(text: "显示")
-      switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
-        .accessibilityIdentifier("chart.countdown")
-      // 「显示画线」那一行 2026-09-23 撤了：画线页「更多」里有「全部隐藏」，两颗开关管同一件事。
-      switchRow("至今涨幅", nil, prefs.sinceChange, divider: false) {
-        $0.sinceChange = $1
-      }
-      .accessibilityIdentifier("chart.sinceChange")
     }
   }
 
@@ -212,8 +157,7 @@ struct ChartPanel: View {
 
   // MARK: - 行
 
-  /// `id` 给用例一个把手：这几个开关控制的是「双击轴翻不翻转」这类默认关掉的行为，
-  /// 没有把手就只能靠点坐标去猜哪一行是哪一行。
+  /// `id` 给用例一个把手：没有把手就只能靠点坐标去猜哪一行是哪一行。
   private func switchRow(_ name: String, _ meta: String?, _ on: Bool, divider: Bool = true,
                          id: String? = nil,
                          _ set: @escaping (inout Prefs, Bool) -> Void) -> some View {
@@ -223,17 +167,13 @@ struct ChartPanel: View {
     }
   }
 
-  enum Page: Hashable { case main, more, share }
+  enum Page: Hashable { case main, share }
 
   // MARK: - 分段选项
 
   /// 字面写在这儿而不是取枚举的 `display`：面板上要的是短词（「空心」），
   /// 枚举那边给的是完整名字（「阳线空心」），两处用途不同，和 `SettingsPanel` 一个办法。
   static let kinds: [(String, CandleKind)] = [("蜡烛", .candle), ("平均K线", .heikin), ("收盘价", .line)]
-  static let grids: [(String, GridChoice)] = [("显示", .on), ("隐藏", .off)]
-  static let bodies: [(String, BodyChoice)] = [("实心", .solid), ("空心", .hollowUp)]
-  static let anchors: [(String, ViewAnchor)] = [("偏左", .left), ("居中", .center), ("靠右", .right)]
-  static let biases: [(String, PriceBias)] = [("偏上", .up), ("居中", .center), ("偏下", .down)]
 }
 
 #if DEBUG

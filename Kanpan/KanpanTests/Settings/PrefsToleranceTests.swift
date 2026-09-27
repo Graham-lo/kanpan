@@ -42,33 +42,24 @@ struct PrefsToleranceTests {
     #expect(p.timeZone == .exchange)   // 时区不再是设置项：老存档里写什么都读成上海 UTC+8
   }
 
-  @Test("「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项")
+  @Test("「图表」那几项：认不出的字面量退回默认；收掉的十三个老键读时忽略")
   func 脏图表枚举() {
     let p = decode(#"""
-    {"candleKind":"garbage","gridChoice":"garbage","bodyChoice":"garbage",
-     "viewAnchor":"garbage","priceBias":"garbage"}
+    {"candleKind":"garbage","gridChoice":"on","bodyChoice":"hollowUp",
+     "viewAnchor":"left","priceBias":"up","dataDisplay":"follow","crossPrice":"close",
+     "magnet":false,"countdown":false,"lastLine":false,"sinceChange":false,
+     "allowMainInversion":false,"allowSubInversion":false,"adaptiveIndicators":false}
     """#)
     #expect(p.candleKind == Prefs.defaults.candleKind)
-    #expect(p.gridChoice == Prefs.defaults.gridChoice)
-    #expect(p.bodyChoice == Prefs.defaults.bodyChoice)
-    #expect(p.viewAnchor == Prefs.defaults.viewAnchor)
-    #expect(p.priceBias == Prefs.defaults.priceBias)
-    #expect(p == .defaults)                 // 全都认不出，等于这几项压根没写过
+    #expect(p == .defaults)                 // 收掉的键老存档里写什么都不影响读出来的样子
+    let o = p.chartOptions
+    #expect(o.body == .solid && o.lastLine && o.countdown && o.sinceChange)
+    #expect(o.anchor == .right && o.bias == .center && o.dataDisplay == .top && o.crossPrice == .selected)
+    #expect(o.allowMainInversion && o.allowSubInversion && o.adaptiveIndicators)
 
     // 一个坏的不能把同一档里好的那个带下水
-    let q = decode(#"{"gridChoice":"garbage","bodyChoice":"hollowUp"}"#)
-    #expect(q.gridChoice == .off)
-    #expect(q.bodyChoice == .hollowUp)
-
-    // 旧存档里的 `"style"`（撤掉的「跟随风格」那一档）读成实心——风格表只剩一套，两者等价。
-    #expect(decode(#"{"bodyChoice":"style"}"#).bodyChoice == .solid)
-  }
-
-  @Test("「图表」的开关：类型不对退回默认")
-  func 脏图表开关() {
-    let p = decode(#"{"lastLine":"开","sinceChange":[true]}"#)
-    #expect(p.lastLine == Prefs.defaults.lastLine)
-    #expect(p.sinceChange == Prefs.defaults.sinceChange)
+    let q = decode(#"{"candleKind":"garbage","priceMode":"linear"}"#)
+    #expect(q.priceMode == .linear)
   }
 
   @Test("指标：认不出的丢掉、重复的去重、放错位置的剔掉")
@@ -105,8 +96,8 @@ struct PrefsToleranceTests {
   /// 老存档里还带着，读的时候认不出来、直接忽略，别的字段照常读回来。
   @Test("已删掉的旧键：老存档带着也不碍事")
   func 已删旧键() {
-    let p = decode(#"{"showDrawings":false,"subHeights":{"MACD":"large"},"lastLine":false,"subHeightOverrides":{"MACD":1.2}}"#)
-    #expect(p.lastLine == false)
+    let p = decode(#"{"showDrawings":false,"subHeights":{"MACD":"large"},"depth":true,"subHeightOverrides":{"MACD":1.2}}"#)
+    #expect(p.depth)
     #expect(p.subHeightOverrides[.macd] == 1.2)
     #expect(p.scale(for: .macd) == 1.2)
     #expect(p.scale(for: .rsi) == Prefs.defaultSubScale)   // 老的「大」档不再生效
@@ -147,8 +138,8 @@ struct PrefsToleranceTests {
     let box = InMemoryPrefsStorage(["kanpan.prefs.v1": "坏了".data(using: .utf8)!])
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
     #expect(store.prefs == .defaults)
-    store.update { $0.magnet = false }
-    #expect(PrefsStore.load(from: box).magnet == false)
+    store.update { $0.depth = true }
+    #expect(PrefsStore.load(from: box).depth)
   }
 }
 

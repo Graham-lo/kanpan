@@ -300,24 +300,23 @@ final class MainScreenUITests: KanpanUICase {
 
   /// 「图表」面板：开得出来、改得动、收得回去。
   ///
-  /// 这条原来验的是那张四选一的「K 线风格」卡。风格表收成 AICoin 一套之后（见
-  /// `CandleStyle`）卡撤了，改用同一张面板上的「阳线」实心 / 空心来验同一件事：
+  /// 这条原来验的是那张四选一的「K 线风格」卡，后来改验「阳线」实心 / 空心；
+  /// 阳线那一档 2026-09-28 收掉（收设置项 B 组）之后改用「K 线 · 画法」验同一件事：
   /// 它是多项配置页里的一行，所以选完**不**自动收（规矩①：单选面板即选即收，
-  /// 配置页不连着关）——这页上还有网格、画法、价格轴要一起调，收掉反而碍事。
-  /// 选完调回「实心」，不给下一条用例留状态。
+  /// 配置页不连着关）——这页上还有盘口、价格轴要一起调，收掉反而碍事。
+  /// 选完调回「蜡烛」，不给下一条用例留状态。
   func testChartPanelTogglesCandleBody() {
     app.buttons[Ids.intervalChart].tap()
-    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
-    let solid = app.buttons[Ids.chartBody("实心")], hollow = app.buttons[Ids.chartBody("空心")]
-    expectExists(hollow, Self.short, "点周期行右端的图表设置没开出图表面板")
-    hollow.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { hollow.isSelected }, "选了「空心」它自己没变成选中")
-    XCTAssertFalse(solid.isSelected, "同一时刻只能有一档选中")
-    XCTAssertTrue(hollow.exists, "配置页不该选一下就自己收起")
+    let candle = app.buttons[Ids.chartKind("蜡烛")], heikin = app.buttons[Ids.chartKind("平均K线")]
+    expectExists(heikin, Self.short, "点周期行右端的图表设置没开出图表面板")
+    heikin.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { heikin.isSelected }, "选了「平均K线」它自己没变成选中")
+    XCTAssertFalse(candle.isSelected, "同一时刻只能有一档选中")
+    XCTAssertTrue(heikin.exists, "配置页不该选一下就自己收起")
 
-    solid.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { solid.isSelected }, "调不回「实心」")
-    dismissSheet(until: hollow)
+    candle.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { candle.isSelected }, "调不回「蜡烛」")
+    dismissSheet(until: heikin)
   }
 
   /// 指标：开得出来、收得回去。多项配置页，选完**不**自动收（规矩①的另一半）。
@@ -343,11 +342,11 @@ final class MainScreenUITests: KanpanUICase {
   /// 2026-09-27 底栏四格：设置从「我的」推进去（系统返回），整页、底栏仍在。
   func testSettingsPanelOpensAndCloses() {
     XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
-    let magnet = app.buttons[Ids.settingsMagnet]
-    expectExists(magnet, Self.short, "没进设置页")
+    let marker = app.buttons[Ids.settingsPage]
+    expectExists(marker, Self.short, "没进设置页")
     XCTAssertFalse(app.buttons[Ids.panelDone].exists, "整页不该有半屏那颗「完成」")
     leaveSettings()
-    expectGone(magnet, Self.short, "切回「图表」之后还停在设置页")
+    expectGone(marker, Self.short, "切回「图表」之后还停在设置页")
   }
 
   /// 交互规矩②：手指落到面板以外（这里点的是 K 线图）面板就收起。
@@ -359,7 +358,7 @@ final class MainScreenUITests: KanpanUICase {
     // 拿不到行情不是「这条用例不适用」，是环境或产品断了，该红就红。
     XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
     app.buttons[Ids.intervalChart].tap()
-    let macd = app.buttons["chart.more"]
+    let macd = app.buttons[Ids.chartPanelMarker]
     expectExists(macd, Self.short, "图表设置面板没开出来")
     chartPoint().tap()
     expectGone(macd, Self.short, "点了图，面板没收起")

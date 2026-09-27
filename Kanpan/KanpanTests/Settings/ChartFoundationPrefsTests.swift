@@ -23,9 +23,7 @@ struct ChartFoundationPrefsTests {
   @Test("全部新增设置落盘并容错读取")
   func persistence() {
     var prefs = Prefs()
-    prefs.portraitHeight = 0.9; prefs.dataDisplay = .follow; prefs.crossPrice = .close
-    prefs.allowMainInversion = false; prefs.allowSubInversion = true
-    prefs.adaptiveIndicators = true
+    prefs.portraitHeight = 0.9
     prefs.rsiUpper = 80; prefs.rsiLower = 20
     prefs.hiddenOutputs = [.ma: [0, 2], .kdj: [2], .macd: [1, 2]]
     prefs.subHeightOverrides = [.vol: 0.73, .rsi: 1.42]
@@ -35,8 +33,11 @@ struct ChartFoundationPrefsTests {
     prefs.subs = [.vol, .oi, .macd]
     #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)) == prefs)
     let restored = PrefsCodec.decode(PrefsCodec.encode(prefs))
-    #expect(restored.chartOptions.dataDisplay == .follow)
-    #expect(restored.chartOptions.allowSubInversion)
+    // 数据展示、十字线价格、翻转许可、指标自适应 2026-09-28 起收成定值（收设置项 B 组）
+    #expect(restored.chartOptions.dataDisplay == .top)
+    #expect(restored.chartOptions.crossPrice == .selected)
+    #expect(restored.chartOptions.allowMainInversion && restored.chartOptions.allowSubInversion)
+    #expect(restored.chartOptions.adaptiveIndicators)
     #expect(restored.chartOptions.portraitHeight == 0.9)
   }
 

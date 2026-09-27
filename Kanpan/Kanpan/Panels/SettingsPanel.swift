@@ -79,11 +79,7 @@ struct SettingsPanel: View {
         store.updateByHand { $0.redUp = v }
       }
     }
-    // 画线「更多」里还有一颗「吸附到 K 线」：那颗管画线端点，这颗管长按出来的十字线，
-    // 两件事、两个出厂档位（`Prefs.magnet` 的注释）。同一个动词、各自写明主语，
-    // 不再一个叫「磁吸」一个叫「吸附」（审查 U13）。
-    switchRow("十字线吸附到 K 线", nil, prefs.magnet) { $0.magnet = $1 }
-      .accessibilityIdentifier("settings.magnet")
+    // 「十字线吸附到 K 线」2026-09-28 收掉（收设置项 B 组）：长按出来的十字线一律吸到 K 线上。
     // 「启动快照」不再摆出来（2026-09-24 审查 U13）：它是工程开关，用户没有理由关它。
     // 字段也一起删了，启动快照一律开着（`MainScreen.boot`）。
 
@@ -113,13 +109,6 @@ struct SettingsPanel: View {
   }
 
   // MARK: - 行
-
-  private func switchRow(_ name: String, _ meta: String?, _ on: Bool,
-                         _ set: @escaping (inout Prefs, Bool) -> Void) -> some View {
-    PanelRow(name: name, meta: meta) {
-      PanelSwitch(isOn: on) { store.updateByHand { set(&$0, !on) } }
-    }
-  }
 
   /// 「关于」（P3.6）：版本号、构建号，和托管在账号服务上的两张静态页。
   /// 正文由 `kanpan-api` 的 `/privacy`、`/terms` 发（`legal.rs`），这里只放链接，

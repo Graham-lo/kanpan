@@ -58,7 +58,8 @@ enum Ids {
   static let bottomMe = "bottom.me"
   /// 「我的」记号右上的复盘待判定数。
   static let bottomMeBadge = "bottom.me.badge"
-  /// 周期行右端的图表设置：这张图（记一笔、分享）· K 线 · 显示 · 价格轴 · 更多设置。
+  /// 周期行右端的图表设置：这张图（记一笔、分享）· K 线 · 显示 · 价格轴。
+  /// 「更多设置」那一层 2026-09-28 整层收掉（收设置项 B 组）。
   /// 面板名和标签名要分清——标签栏那一格叫「图表」，是整页。指标、对比、主力订单流
   /// 2026-09-27 起都不在这张面板里，走周期条的「分析」（`intervalIndicators`）。
   static let intervalChart = "interval.chart"
@@ -88,12 +89,15 @@ enum Ids {
   static let searchQuery = "search.query"
   static let searchAll = "search.all"
   // 面板里各自的「招牌元素」：拿它在不在，判断面板开没开
-  /// 「图表」面板里「阳线」那一行的某一档（实心 / 空心）。风格卡撤掉之后，拿它当这张面板的招牌元素。
-  static func chartBody(_ raw: String) -> String { "chart.bodyChoice.\(raw)" }
+  /// 「图表设置」面板的招牌元素：「显示 · 盘口」那颗开关。阳线实心 / 空心 2026-09-28 收掉之后换成它。
+  static let chartPanelMarker = "chart.depth"
+  /// 「K 线 · 画法」的某一档（蜡烛 / 平均K线 / 收盘价）。
+  static func chartKind(_ raw: String) -> String { "chart.candleKind.\(raw)" }
   static func periodRow(_ raw: String) -> String { "period.row.\(raw)" }
   static func periodPin(_ raw: String) -> String { "period.pin.\(raw)" }
   static func indicatorSwitch(_ raw: String) -> String { "indicator.switch.\(raw)" }
-  static let settingsMagnet = "settings.magnet"
+  /// 设置页的招牌元素：「行情线路 · 直连」。原来认的「十字线吸附」2026-09-28 收掉了。
+  static let settingsPage = "settings.routePolicy.直连"
   /// 半屏面板顶上的标题。当作往下甩的把手用（它在滚动区外面，甩它动的是面板不是内容）。
   static let panelHeader = "panel.header"
   /// 每张半屏面板标题右边那颗常驻「完成」：面板唯一明确的出口。
@@ -558,26 +562,14 @@ extension XCUIApplication {
     return marker.waitForExistence(timeout: 8)
   }
 
-  /// 图表设置面板最后一行「更多设置」→ 推进去的那一层（读数、轴翻转、网格、阳线、
-  /// 视图锚点、倒计时、至今涨幅这些一调就不再动的开关，审查 U4）。已经在那一层就直接认。
-  @discardableResult func openChartMorePage() -> Bool {
-    let marker = buttons["chart.allowMainInversion"]
-    if marker.exists { return true }
-    let row = buttons["chart.more"]
-    guard row.waitForExistence(timeout: 8) else { return false }
-    row.tap()
-    return marker.waitForExistence(timeout: 8)
-  }
-
-  /// 收掉图表设置面板，不管眼下在头一层还是「更多设置」那一层：
-  /// 在里层先点「‹」退回头一层，再点一次「‹」收面板。
-  @discardableResult func closeChartPanelFromMore() -> Bool {
+  /// 收掉图表设置面板（2026-09-28 起只有一层，「更多设置」那一层收掉了）：点标题右边的「完成」。
+  @discardableResult func closeChartPanel() -> Bool {
+    let marker = buttons[Ids.chartPanelMarker]
     let done = buttons["panel.done"]
-    let more = buttons["chart.more"]
-    if !more.exists, done.exists { done.tap(); _ = more.waitForExistence(timeout: 5) }
-    guard more.exists, done.exists else { return !done.exists }
+    guard marker.exists else { return true }
+    guard done.exists else { return false }
     done.tap()
-    return waitUntilGone(more, timeout: 8)
+    return waitUntilGone(marker, timeout: 8)
   }
 
   @discardableResult func enterDrawingInPortrait() -> Bool {
@@ -704,11 +696,11 @@ extension XCUIApplication {
     return true
   }
 
-  /// 「我的 › 设置」。到没到认设置页上的吸附开关（`settings.magnet`）。
+  /// 「我的 › 设置」。到没到认设置页上「行情线路 · 直连」那一档（`Ids.settingsPage`）。
   @discardableResult func openSettingsFromMe() -> Bool {
-    if buttons[Ids.settingsMagnet].exists { return true }
+    if buttons[Ids.settingsPage].exists { return true }
     guard tapMeRow(Ids.meSettings) else { return false }
-    return buttons[Ids.settingsMagnet].waitForExistence(timeout: 10)
+    return buttons[Ids.settingsPage].waitForExistence(timeout: 10)
   }
 
   /// 「我的 › 账号卡」→ 推进来的账号页（原来是「设置 › 账号」那一行，2026-09-27 搬过来）。

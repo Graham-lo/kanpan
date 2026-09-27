@@ -162,7 +162,7 @@ struct IndicatorLayoutGroupsTests {
   @Test("皮肤、网格、指标配色、订单流开关这些不属于分组布局，改了不分叉")
   func nonLayoutEditsDoNotFork() {
     let (store, _) = makeStore()
-    store.update { $0.skin = .terra; $0.gridChoice = .on; $0.lastLine = false }
+    store.update { $0.skin = .terra; $0.depth = true }
     store.update { $0.indicatorColors[.ma] = [0: Hex("#ff0000")] }
     store.toggleIndicator(.orderFlow)
     #expect(store.prefs.layoutBook.forks.isEmpty)

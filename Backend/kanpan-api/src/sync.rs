@@ -67,10 +67,17 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 /// 收之前的代码在 tag `settings-before-trim-2026-09-28`）：
 /// - A 组 `ambientTheme`（按屏幕亮度切深浅）、`timeZone`（全 app 固定上海 UTC+8）、
 ///   `changeBasis`（涨跌幅口径按品种类型自动定）、`keepAwake`（图表页在前台就常亮）。
+/// - B 组（图表设置）`magnet`（十字线常吸附）、`countdown` / `lastLine` / `sinceChange`（常开）、
+///   `gridChoice`（按皮肤：经典不画、青苔 / 陶土淡网格）、`bodyChoice`（实心）、`viewAnchor`（靠右）、
+///   `priceBias`（居中）、`dataDisplay`（顶部）、`crossPrice`（选中价）、`allowMainInversion` /
+///   `allowSubInversion`（翻转手势直接生效）、`adaptiveIndicators`（常开）。
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
  "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
  // 收设置项 A 组（2026-09-28）。
  "ambientTheme","timeZone","changeBasis","keepAwake",
+ // 收设置项 B 组（2026-09-28）。
+ "magnet","countdown","lastLine","sinceChange","gridChoice","bodyChoice","viewAnchor","priceBias",
+ "dataDisplay","crossPrice","allowMainInversion","allowSubInversion","adaptiveIndicators",
 ];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
@@ -121,9 +128,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 布局走 `indicatorLayouts/<minute|hour|day>`。
  "indicatorLayouts",
  "portraitHeight","quickIntervals","theme","skin","styleID","redUp","priceMode",
- "magnet","countdown","depth","orderFlow","lastLine","sinceChange","candleKind","gridChoice","bodyChoice",
- "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
- "adaptiveIndicators","compactValues","barSpacing","mainInverted","subInverted","interval",
+ "depth","orderFlow","candleKind",
+ "compactValues","barSpacing","mainInverted","subInverted","interval",
  "routePolicy",
  // How the person left each page looking: sort order, which market, which tool.
  "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline",
@@ -781,5 +787,27 @@ mod tests {
   let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
   assert_eq!(merged.body["redUp"],json!(false));
   for name in names {assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");}
+ }
+ /// 收设置项 B 组（2026-09-28，图表设置那十三项）：同 A 组，老版本推上来只丢字段，老 body 下次合并洗掉。
+ /// 画线偏好里的 `magnet`（画线端点吸附）是另一个集合里的同名字段，不受影响。
+ #[test] fn trimmed_settings_group_b_are_dropped_and_stripped() {
+  let names=["magnet","countdown","lastLine","sinceChange","gridChoice","bodyChoice","viewAnchor","priceBias",
+   "dataDisplay","crossPrice","allowMainInversion","allowSubInversion","adaptiveIndicators"];
+  for name in names {
+   assert!(RETIRED_SETTINGS_FIELDS.contains(&name)&&!SETTINGS_FIELDS.contains(&name),"{name} 应已退役");
+  }
+  let mut fields:Vec<(&str,Value)>=names.iter().map(|n|(*n,json!(true))).collect();
+  fields.push(("depth",json!(true)));
+  let operation=op("settings",&fields);
+  assert!(operation.validate().is_ok(),"老版本带着 B 组字段推上来不能整条 400");
+  let mut named=operation.unknown_fields();named.sort();
+  let mut expected:Vec<String>=names.iter().map(|s|s.to_string()).collect();expected.sort();
+  assert_eq!(named,expected);
+  let mut stored=blank("settings","chart");
+  for name in names {stored.body.insert(name.into(),json!("old"));stored.fields.insert(name.into(),json!({"revision":1}));}
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["depth"],json!(true));
+  for name in names {assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");}
+  assert!(!retired_field(DRAWING_PREFERENCES,"magnet"),"画线偏好的吸附不在退役表里");
  }
 }

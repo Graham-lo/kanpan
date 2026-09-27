@@ -26,11 +26,11 @@ final class IntervalLabelUITests: KanpanUICase {
     // 行情页上不再有一个写着「图表」的字：底栏只有图标，条尾也换成了记号。
     XCTAssertFalse(app.staticTexts["图表"].exists, "行情页上还有「图表」两个字")
     entry.tap()
-    // 2026-09-27：图表设置里不再有「指标」那一行，拿最后一行「更多设置」认这张面板。
-    XCTAssertTrue(app.buttons["chart.more"].waitForExistence(timeout: Self.short), "点图表设置那颗没开出图表设置面板")
+    // 2026-09-27：图表设置里不再有「指标」那一行；「更多设置」09-28 也收了，拿「盘口」开关认这张面板。
+    XCTAssertTrue(app.buttons[Ids.chartPanelMarker].waitForExistence(timeout: Self.short), "点图表设置那颗没开出图表设置面板")
     save("U12-图表设置面板")
     app.buttons[Ids.panelDone].tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["chart.more"].exists }, "图表设置面板没收")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons[Ids.chartPanelMarker].exists }, "图表设置面板没收")
 
     // 「更多」网格：十四档照旧都在。
     app.buttons[Ids.intervalMore].tap()

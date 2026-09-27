@@ -25,8 +25,6 @@ struct PrefsPersistenceTests {
     p.theme = .dark
     p.redUp = false
     p.priceMode = .log
-    p.magnet = false
-    p.countdown = false
     p.overlays = [.boll, .ema]
     // 这里从前摆的是 `.atr`，2026-09-22 它退役了（面板上没有，读存档时会被滤掉），
     // 拿它当「改过的样子」就永远读不回来。换成同样在副图的动向指标。
@@ -35,12 +33,6 @@ struct PrefsPersistenceTests {
     p.subHeightOverrides = [.dmi: 1.3, .vol: 0.6]
     p.routePolicy = .gateway
     p.candleKind = .heikin
-    p.gridChoice = .off
-    p.bodyChoice = .hollowUp
-    p.lastLine = false
-    p.sinceChange = true
-    p.viewAnchor = .left
-    p.priceBias = .up
     p.barSpacing = 9.5
     p.mainInverted = true
     p.subInverted = [.vol]
@@ -73,12 +65,7 @@ struct PrefsPersistenceTests {
   func 图表往返() {
     let back = PrefsCodec.decode(PrefsCodec.encode(Self.mutated()))
     #expect(back.candleKind == .heikin)
-    #expect(back.gridChoice == .off)
-    #expect(back.bodyChoice == .hollowUp)
-    #expect(back.lastLine == false)
-    #expect(back.sinceChange)
-    #expect(back.viewAnchor == .left)
-    #expect(back.priceBias == .up)
+    #expect(back.priceMode == .log)
   }
 
   /// 用户报的那件事：「缩小了 K 线让它显示更多的 K 线，回到自选点另一个品种，
@@ -213,12 +200,7 @@ struct PrefsPersistenceTests {
   func 翻转立刻落盘() {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    // 「允许翻转」关着时图报回来的翻转不算数（图必然是不翻转的，那不是用户的选择）。
-    store.noteInversion(main: true, subs: [.macd])
-    #expect(!store.prefs.mainInverted)
-    #expect(store.prefs.subInverted.isEmpty)
-    #expect(box.keys.isEmpty)
-    store.update { $0.allowMainInversion = true; $0.allowSubInversion = true }
+    // 「允许翻转」开关 2026-09-28 收掉：图报回来的翻转直接记。
     store.noteInversion(main: true, subs: [.macd])
     #expect(store.prefs.mainInverted)
     #expect(store.prefs.subInverted == [.macd])
@@ -226,11 +208,10 @@ struct PrefsPersistenceTests {
     let snapshot = store.prefs
     store.noteInversion(main: true, subs: [.macd])
     #expect(store.prefs == snapshot)
-    // 关掉「允许翻转」后图解除翻转并报回 false：用户上次的记录要留着，再打开时图还能翻回去。
-    store.update { $0.allowMainInversion = false; $0.allowSubInversion = false }
+    // 再双击一下翻回来，同样立刻记下。
     store.noteInversion(main: false, subs: [])
-    #expect(store.prefs.mainInverted)
-    #expect(store.prefs.subInverted == [.macd])
+    #expect(!store.prefs.mainInverted)
+    #expect(store.prefs.subInverted.isEmpty)
   }
 
   @Test("落在 UserDefaults 的键就是 kanpan.prefs.v2")
@@ -265,9 +246,9 @@ struct PrefsPersistenceTests {
   func 空改不写() {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    store.update { $0.magnet = false }            // Current default
+    store.update { $0.depth = false }             // Current default
     #expect(box.keys.isEmpty)
-    store.update { $0.magnet = true }
+    store.update { $0.depth = true }
     #expect(box.keys == Self.oneSave)
   }
 
@@ -302,10 +283,12 @@ struct PrefsPersistenceTests {
     #expect(obj["subHeights"] == nil)
     // 「图表」那几项也是 rawValue，不是枚举的序号
     #expect(obj["candleKind"] as? String == "candle")
-    #expect(obj["gridChoice"] as? String == "off")
-    #expect(obj["viewAnchor"] as? String == "right")
-    #expect(obj["priceBias"] as? String == "center")
-    #expect(obj["lastLine"] as? Bool == true)
+    #expect(obj["priceMode"] as? String == "log")
+    // 收设置项 A / B 组收掉的键不再写出去（2026-09-28）。
+    for key in ["gridChoice", "viewAnchor", "priceBias", "lastLine", "magnet", "countdown", "dataDisplay",
+                "allowMainInversion", "adaptiveIndicators", "keepAwake", "timeZone"] {
+      #expect(obj[key] == nil, "\(key)")
+    }
   }
 }
 

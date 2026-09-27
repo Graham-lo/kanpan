@@ -64,7 +64,7 @@ final class DynamicTypeUITests: KanpanUICase {
     // 设置整页
     openSettingsPage()
     shot("AX3-设置")
-    assertInWindow([Ids.settingsMagnet], page: "设置")
+    assertInWindow([Ids.settingsPage], page: "设置")
 
     // 提醒总表。2026-09-25 起设置里没有「提醒」那一行了，走通知 / 深链那条路（`hkline://alerts`）。
     do {

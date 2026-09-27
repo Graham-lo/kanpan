@@ -34,7 +34,7 @@ final class ReviewEntryUITests: KanpanUICase {
     // 图表设置里那一行还在。
     app.buttons[Ids.intervalChart].tap()
     XCTAssertTrue(app.buttons["chart.record"].waitForExistence(timeout: Self.short), "图表设置里没有「记一笔」")
-    XCTAssertTrue(app.closeChartPanelFromMore(), "图表设置收不起来")
+    XCTAssertTrue(app.closeChartPanel(), "图表设置收不起来")
 
     // 「我的 › 复盘本」只进复盘本。
     openMe()

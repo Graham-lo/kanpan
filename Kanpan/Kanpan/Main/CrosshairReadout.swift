@@ -50,7 +50,8 @@ struct CrosshairContext {
   /// 时区**口径**，不是一个偏移数（审查 B-08）。本地那一档要按被格式化的那一刻
   /// 去问时区数据库，否则夏天看冬季的历史 K 线，整段时间会整体平移一小时。
   var offsetMinutes: TZOffset
-  /// 「顶部」那档显示模式开着吗（`prefs.dataDisplay == .top`）。
+  /// 「顶部」那档显示模式开着吗。2026-09-28 起 K 线数据位置定死在「顶部」，宿主恒传 `true`；
+  /// 留着这个口子是给复盘、预览这类不想要头部读数的宿主。
   var enabled: Bool
 }
 
@@ -200,5 +201,15 @@ struct YieldsToCrosshair: ViewModifier {
         guard now, gridOpen else { return }
         withAnimation(.easeOut(duration: 0.2)) { gridOpen = false }
       }
+  }
+}
+
+extension ChartState {
+  /// 同一张图，十字线读数改画在图里（「K 线内」那一档）。给没有头部读数的宿主用——
+  /// 眼下只有复盘回放：它的页头（`ReplayHeaderView`）只写回放走到的那根，不跟十字线。
+  var readingInside: ChartState {
+    var copy = self
+    copy.options.dataDisplay = .inside
+    return copy
   }
 }

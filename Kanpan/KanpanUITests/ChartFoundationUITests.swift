@@ -1343,28 +1343,17 @@ final class ChartFoundationUITests: XCTestCase {
     shot("一屏三副图-无需滚动")
   }
 
+  /// 长按出来的十字线：开高低收写在头部（「数据展示」2026-09-28 收成「顶部」定值，收设置项 B 组，
+  /// 原来「K 线内 / 顶部 / 跟随 K 线」三档在「更多设置」里）；收起十字线头部回到实时。
   func testDataModesClearHeaderAndSelection() throws {
-    app.buttons["interval.chart"].tap()
-    app.buttons["顶部"].tap(); closePanel()
     selectMain()
     XCTAssertTrue(app.staticTexts["chart.topOHLC"].waitForExistence(timeout: 8))
     shot("顶部-历史OHLC")
-    // 十字线开着时，周期条那一行让位给十字线操作行（2026-09-25 起只剩「涨到 / 跌到 X 提醒我」一颗，
-    // 最早是 `2045efe`、`9f449e2` 起的四颗），「图表」钮不在手指够得着的地方——人要先在图上点一下收起十字线，
-    // 周期条回来了才去开面板。这条用例写在那之前，一直在十字线开着时点「图表」。
+    // 十字线开着时，周期条那一行让位给十字线操作行（2026-09-25 起只剩一颗提醒药丸）。
     XCTAssertFalse(app.buttons["interval.chart"].isHittable, "十字线开着时周期条应让位给操作行")
     selectMain()
     XCTAssertTrue(wait { self.info()["crosshair"] as? Bool == false })
     XCTAssertTrue(wait(seconds: 5) { !self.app.staticTexts["chart.topOHLC"].exists }, "收起十字线后头部应回到实时")
-    app.buttons["interval.chart"].tap()
-    app.buttons["跟随K线"].tap(); closePanel()
-    XCTAssertFalse(app.staticTexts["chart.topOHLC"].exists)
-    selectMain()
-    XCTAssertTrue(wait { self.info()["crosshair"] as? Bool == true })
-    shot("跟随K线-单一容器")
-    selectMain()
-    XCTAssertTrue(wait { self.info()["crosshair"] as? Bool == false })
-    XCTAssertFalse(app.staticTexts["chart.topOHLC"].exists)
     shot("关闭十字线-实时头部恢复")
   }
 
@@ -1915,23 +1904,21 @@ extension ChartFoundationUITests {
     XCTAssertFalse(app.buttons["chart.expand"].exists)
     shot("手机-简化入口")
     // 这儿原来挨个点四张风格卡再重启验持久化。风格表收成 AICoin 一套之后（见
-    // `CandleStyle`）卡撤了，改用同一张面板上的「阳线」实心 / 空心走同一条路：
-    // 改一下、收面板、杀进程重开，看它还在不在。
+    // `CandleStyle`）卡撤了；「阳线」实心 / 空心 2026-09-28 也收掉了（收设置项 B 组），
+    // 改用同一张面板上「K 线 · 画法」的「平均K线」走同一条路：改一下、收面板、杀进程重开，看它还在不在。
     app.buttons["interval.chart"].tap()
-    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
-    let body = app.buttons["chart.bodyChoice.空心"]
+    let body = app.buttons["chart.candleKind.平均K线"]
     XCTAssertTrue(body.waitForExistence(timeout: 5), "图表面板没开出来")
     XCTAssertFalse(app.buttons["style.card.aicoin"].exists, "风格卡还在")
     body.tap()
-    shot("手机-图表阳线实心空心")
+    shot("手机-图表K线画法")
     closePanel()
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     app.buttons["interval.chart"].tap()
-    XCTAssertTrue(app.openChartMorePage())
-    XCTAssertTrue(wait { self.app.buttons["chart.bodyChoice.空心"].isSelected },
-                  "重启之后阳线画法没留住")
-    app.buttons["chart.bodyChoice.实心"].tap()
+    XCTAssertTrue(wait { self.app.buttons["chart.candleKind.平均K线"].isSelected },
+                  "重启之后 K 线画法没留住")
+    app.buttons["chart.candleKind.蜡烛"].tap()
     closePanel()
     // 用户拿起手机旋转，不需要先点按钮。
     XCUIDevice.shared.orientation = .landscapeLeft
@@ -1960,10 +1947,9 @@ extension ChartFoundationUITests {
     landscapeShot.name = "手机-自动横屏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)
     XCUIDevice.shared.orientation = .portrait
     XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width < self.canvas.frame.height && self.app.buttons["interval.chart"].isHittable })
-    // 手机转一圈回来，刚选的阳线画法还在。
+    // 手机转一圈回来，刚选的 K 线画法还在。
     app.buttons["interval.chart"].tap()
-    XCTAssertTrue(app.openChartMorePage())
-    XCTAssertTrue(wait { self.app.buttons["chart.bodyChoice.实心"].isSelected }, "转一圈回来阳线画法丢了")
+    XCTAssertTrue(wait { self.app.buttons["chart.candleKind.蜡烛"].isSelected }, "转一圈回来 K 线画法丢了")
     closePanel()
   }
 }

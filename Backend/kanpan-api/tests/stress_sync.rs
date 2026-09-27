@@ -75,7 +75,7 @@ async fn converge(rounds:usize,pushers:usize) {
      // 一半落在同一毫秒上（平局只靠逻辑钟 / 设备 id / op id 分），一半散开。
      let ts=if n%2==0 {now-1_000} else {now-rng.random_range(0..3_600_000)};let logical=rng.random_range(0..4u64);
      let o=match rng.random_range(0..10) {
-      0..=3=>op(dev.id,"settings","chart","patch",ts,logical,json!({"theme":themes[rng.random_range(0..4)],"barSpacing":rng.random_range(2..40) as f64,"magnet":rng.random_bool(0.5),"skin":skins[rng.random_range(0..3)]})),
+      0..=3=>op(dev.id,"settings","chart","patch",ts,logical,json!({"theme":themes[rng.random_range(0..4)],"barSpacing":rng.random_range(2..40) as f64,"depth":rng.random_bool(0.5),"skin":skins[rng.random_range(0..3)]})),
       4..=8=>{let k=rng.random_range(0..20);op(dev.id,"drawings",&drawing_id(k),"patch",ts,logical,json!({"color":{"value":format!("#{:06x}",rng.random_range(0..0xffffff))},"lineWidth":rng.random_range(1..6) as f64,"text":format!("t{}",rng.random_range(0..1_000_000))}))}
       // 删除只落在 15..20 这五条上，前 15 条留着验 LWW。
       _=>op(dev.id,"drawings",&drawing_id(15+rng.random_range(0..5)),"delete",ts,logical,json!({})),

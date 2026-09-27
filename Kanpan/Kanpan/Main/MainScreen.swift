@@ -975,7 +975,7 @@ struct MainScreen: View {
   /// 序列不在这儿取（审查 21）：`crosshairContext` 在宿主 body 里求值，这儿读一次
   /// `market.series` 就等于让每根新 K 线都把整页叫起来。它交给读数视图在十字线真在场时现取。
   private var crosshairContext: CrosshairContext {
-    session.crosshairContext(timeZone: prefs.timeZone.offsetMinutes, enabled: prefs.dataDisplay == .top)
+    session.crosshairContext(timeZone: prefs.timeZone.offsetMinutes, enabled: true)
   }
 
   /// 「图表设置」里的「记一笔」。复盘回放里没有「记」这回事、预览别人的线时那张图不是
@@ -1477,7 +1477,7 @@ struct MainScreen: View {
   /// 倒计时那一秒记在 `ChartSession.nowMs` 上，只有图读它（审查 21：以前它是这儿的
   /// `@State`，每一秒整页重求值一次）。
   private func heartbeat() async {
-    await session.heartbeat(active: beating, countdown: { prefs.countdown }, onBeat: {})
+    await session.heartbeat(active: beating, countdown: { true }, onBeat: {})
   }
 
   // ---------------------------------------------------------------- 动作

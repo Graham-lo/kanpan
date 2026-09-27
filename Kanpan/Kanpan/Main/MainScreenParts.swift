@@ -313,7 +313,9 @@ struct MainChartView: View {
       ChartHost(
         portrait: portrait,
         renderingActive: renderingActive,
-        state: reviewChart.active ? reviewChart.state : session.liveState(input),
+        // 回放态的页头（`ReplayHeaderView`）不带十字线读数：K 线数据定在「顶部」（`Prefs.chartOptions`）
+        // 之后，回放里长按就得把开高低收画回图里，否则选中那根一个数都读不到。
+        state: reviewChart.active ? reviewChart.state.map { reviewChart.mode == .replay ? $0.readingInside : $0 } : session.liveState(input),
         holdOnEmpty: !reviewChart.active && market.holdsFrame,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
         onView: { view in

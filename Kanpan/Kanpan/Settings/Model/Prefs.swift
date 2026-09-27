@@ -36,16 +36,10 @@ struct Prefs: Sendable, Equatable {
   var compareSymbols: [String] = []
   /// 价格轴 常规 / 对数 / 百分比（A6.8）。
   var priceMode: PriceMode = .log
-  /// 十字线磁吸（§7 长按那一行）：长按出来的十字线吸不吸到最近那根 K 线的价位上。
-  /// 设置页里写「十字线磁吸」，出厂**关**。
-  ///
-  /// 注释以前写的是「原型 `chart.magnet = true`」，和下面这行 `false` 对不上——
-  /// 原型那个值早就按实机手感翻掉了，注释没跟着改。
-  ///
-  /// 另外还有一个 `DrawingPreferences.magnet`（画线栏上的「吸附」，出厂**开**），
-  /// 两者**不合并**：一个管看盘时读价，一个管画线时端点对齐，出厂档位本来就该不一样。
-  var magnet: Bool = false
-  /// 本根倒计时，默认关；前台时钟独立更新。
+  // 「十字线吸附到 K 线」（`magnet`）2026-09-28 收掉了：看盘时长按出来的十字线一律吸到最近那根
+  // K 线的价位上（`ChartSession` 里写死 `magnet: true`）。画线栏上的「吸附」是另一件事
+  // （`DrawingPreferences.magnet`），不受影响。恢复见 tag settings-before-trim-2026-09-28。
+  /// 盘口。默认关。
   var depth: Bool = false
   /// 主图指标「主力订单流」：簿里过门槛的大单画到 K 线上。默认关。
   var orderFlow: Bool = false
@@ -65,27 +59,12 @@ struct Prefs: Sendable, Equatable {
   var orderFlowContract = true
   var orderFlowShowFilled = true
   var orderFlowShowCancelled = true
-  var countdown: Bool = false
   /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
   var candleKind: CandleKind = .candle
-  /// 共用网格，默认关闭；旧存档的跟随风格枚举按共用默认解析。
-  var gridChoice: GridChoice = .off
-  /// 阳线实体：实心 / 空心。默认实心，也就是 AICoin 的画法。
-  var bodyChoice: BodyChoice = .solid
-  /// 最新价横线 + 右轴胶囊。默认开。
-  var lastLine: Bool = true
-  /// 十字线打开时，多报一段「选中那根到最新价」的涨跌幅。默认关。
-  var sinceChange: Bool = false
-  /// 复位到最新时，最新一根落在横向哪儿。默认靠右（现状）。
-  var viewAnchor: ViewAnchor = .right
-  /// 蜡烛在主图区里整体偏上 / 居中 / 偏下。总留白量不变，只改上下分配，
-  /// 所以蜡烛大小不变，只是位置挪。默认居中（现状）。
-  var priceBias: PriceBias = .center
-  var dataDisplay: CandleDataDisplay = .inside
-  var crossPrice: CrossPriceMode = .selected
-  /// 默认关，理由见 `ChartOptions.allowMainInversion`。
-  var allowMainInversion = false
-  var allowSubInversion = false
+  // 2026-09-28 收设置项 B 组：网格、阳线实心 / 空心、实时价格线、本根倒计时、至今涨幅、
+  // 横向 / 纵向位置、K 线数据位置、十字线取价、主 / 副轴允许翻转、指标区域自适应这十二项
+  // 不再给人调，一律按 `chartOptions` 里写的定值画（理由写在那儿）。老存档与云端老 body
+  // 里的这些键读时忽略，服务端把它们退役了。恢复见 tag settings-before-trim-2026-09-28。
   /// 用户缩放到的根间距（pt）。
   ///
   /// 「我要一屏看多少根」是**人的习惯**，不是某个品种的属性：以前它只活在图自己身上，
@@ -98,11 +77,11 @@ struct Prefs: Sendable, Equatable {
   /// 那一份手一动就变——用户捏完立刻换周期换品种，靠的是它。
   var barSpacing: Double = AICoinBehavior.initialSpacing
   /// 主图上下翻转（双击价格轴）。和根间距同理：是「我习惯怎么看」，不是这个品种的属性。
-  /// 要 `allowMainInversion` 开着才生效——开关关掉时不认这一份，免得翻过去再也翻不回来。
+  /// 原来要先在设置里打开「主轴允许翻转」才认，2026-09-28 起开关收掉、手势直接生效，
+  /// 再双击一下就翻回来。
   var mainInverted = false
-  /// 哪几个副图被上下翻转（双击副图那一侧）。同上，要 `allowSubInversion` 开着才生效。
+  /// 哪几个副图被上下翻转（双击副图那一侧）。同上，手势直接生效。
   var subInverted: Set<IndicatorID> = []
-  var adaptiveIndicators = false
   /// 主图在竖屏里占多少（0…1，越大主图越高）。**只有读端，没有写端。**
   ///
   /// 读端是活的：`ChartRenderer` 拿它算主图权重（`ChartContentLayout.mainWeight`）。
@@ -284,22 +263,27 @@ struct Prefs: Sendable, Equatable {
   var chartOptions: ChartOptions {
     var o = ChartOptions()
     o.kind = candleKind
-    o.grid = gridChoice
-    o.body = bodyChoice
-    o.lastLine = lastLine
+    // 网格：「经典」照 AICoin 手机端，默认不画；青苔 / 陶土画一层自己皮肤色的淡网格
+    // （`Palette.canvas` 里网格取皮肤的 `line`，在各自的底上对比度约 1.1–1.2）。
+    o.grid = skin == .classic ? .off : .on
+    o.body = .solid                  // 阳线一律实心（AICoin 画法）
+    o.lastLine = true                // 最新价横线 + 右轴胶囊常在
     // 画线显隐只按品种管（画线页「更多」里的「全部隐藏」）。原来还有一个全局的
     // `showDrawings`，和那颗按品种的开关打架——关了全局那颗，画线栏上怎么点都看不见线；
     // 2026-09-23 撤了入口，2026-09-24 连字段带同步白名单两端一起删了。
     o.drawings = true
-    o.countdown = countdown          // 「本根倒计时」早就有了，这里接的是同一个字段
-    o.sinceChange = sinceChange
-    o.anchor = viewAnchor
-    o.bias = priceBias
-    o.dataDisplay = dataDisplay
-    o.crossPrice = crossPrice
-    o.allowMainInversion = allowMainInversion
-    o.allowSubInversion = allowSubInversion
-    o.adaptiveIndicators = adaptiveIndicators
+    // 本根倒计时常开：周期最短就是 1 分钟（`Interval.m1`），每一档都画。
+    o.countdown = true
+    o.sinceChange = true             // 十字线打开时顺带报「选中那根到最新价」的涨跌幅
+    o.anchor = .right                // 回到最新时最新一根靠右
+    o.bias = .center                 // 蜡烛在主图区里上下居中
+    // K 线数据：长按出十字线时开高低收写在头部（「顶部」那档），不在图里再盖一块框。
+    o.dataDisplay = .top
+    o.crossPrice = .selected         // 十字线读的是手指选中的价位
+    // 主 / 副轴翻转：双击手势直接生效，再双击翻回；翻转状态仍跟着人走（`mainInverted` / `subInverted`）。
+    o.allowMainInversion = true
+    o.allowSubInversion = true
+    o.adaptiveIndicators = true      // 主图图例折行时往下让位，不压蜡烛
     o.portraitHeight = portraitHeight
     // 副图高度（`subHeightOverrides`）**不**走这里：它改的是分区怎么切，归 `Layout`，
     // 由主界面另行接线。放进来会变成两条路各说各话。

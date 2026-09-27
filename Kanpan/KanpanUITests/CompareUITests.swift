@@ -57,11 +57,11 @@ import UIKit
     XCTAssertTrue(button.waitForExistence(timeout: 10)); button.tap()
     XCTAssertTrue(app.descendants(matching: .any)["compare.add"].firstMatch.waitForExistence(timeout: 10))
   }
-  /// 图表设置（周期条行尾那颗）：「记一笔」「更多设置」还在这一页。
+  /// 图表设置（周期条行尾那颗）：「记一笔」还在这一页。
   func chartPanel() {
     let button = app.buttons["interval.chart"]
     XCTAssertTrue(button.waitForExistence(timeout: 10)); button.tap()
-    XCTAssertTrue(app.buttons["chart.more"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons[Ids.chartPanelMarker].waitForExistence(timeout: 10))
   }
   func closePanel() {
     let done = app.buttons["panel.done"]
@@ -105,7 +105,9 @@ import UIKit
     let legend = try XCTUnwrap(d["compareLegend"] as? [[String: String]])
     XCTAssertEqual(legend.first?["label"], label)
     if d["crosshair"] as? Bool == true {
-      XCTAssertEqual(d["crossAxisLabel"] as? String, label)
+      // 读数跟手指的价位走，不再等于收盘那一档；只验它是百分比口径。
+      let axis = try XCTUnwrap(d["crossAxisLabel"] as? String)
+      XCTAssertTrue(axis.hasSuffix("%"), "对比时十字线右轴读数不是百分比：\(axis)")
     }
     let ticks = try XCTUnwrap(d["compareTicks"] as? [Double])
     XCTAssertTrue(ticks.contains(0))
@@ -125,22 +127,8 @@ import UIKit
     shot("BTC-ETH-SOL-DOGE-1m")
     try assertPercentReadout()
 
-    // 用产品已有的「收盘价」档验证十字线、图例与右轴同口径。
-    chartPanel()
-    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
-    // 面板上有两个「收盘价」（K 线画法、十字线读数），这里要的是十字线那一档。
-    // 只滚面板自己的列表：页面上还有别的滚动区，`scrollViews.firstMatch` 可能落在
-    // 别处，划了也滚不到面板里。用手指拖而不是 swipe，免得面板被撑满屏。
-    let closeMode = app.buttons["chart.crossPrice.收盘价"]
-    let content = app.scrollViews["panel.content"]
-    XCTAssertTrue(content.waitForExistence(timeout: 5))
-    for _ in 0..<12 {
-      if closeMode.exists && closeMode.isHittable && content.frame.contains(closeMode.frame) { break }
-      let up = !closeMode.exists || closeMode.frame.midY > content.frame.midY
-      content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.3))
-        .press(forDuration: 0.1, thenDragTo: content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.3 : 0.7)))
-    }
-    XCTAssertTrue(closeMode.isHittable); closeMode.tap(); app.closeChartPanelFromMore()
+    // 十字线：图例按选中那根报、右轴那颗读数跟手指的价位走（「十字线价格」2026-09-28 收成
+    // 「选中价位」定值，收设置项 B 组），两边都要是对比的百分比口径。
     let h = try XCTUnwrap(info()["mainH"] as? Double)
     let point = canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 170, dy: h * 0.55))
     point.press(forDuration: 0.8)

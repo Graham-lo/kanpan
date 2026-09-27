@@ -124,17 +124,19 @@ extension Prefs: Codable {
     // `ambientTheme`（按屏幕亮度切深浅）、`keepAwake`（盯盘不锁屏）、`timeZone`（时区三档）、
     // `changeBasis`（涨跌幅起点）2026-09-28 收掉（收设置项 A 组）：老存档、云端老 body 里还带着
     // 这几个键，读的时候认不出来直接忽略，服务端在 RETIRED_SETTINGS_FIELDS 里退役。
-    case depth, orderFlow, priceMode, magnet, countdown
+    // `magnet`（十字线吸附）、`countdown`、`gridChoice`、`bodyChoice`、`lastLine`、`sinceChange`、
+    // `viewAnchor`、`priceBias`、`dataDisplay`、`crossPrice`、`allowMainInversion`、`allowSubInversion`、
+    // `adaptiveIndicators` 2026-09-28 收掉（收设置项 B 组）：图一律按 `Prefs.chartOptions` 的定值画，
+    // 老存档、云端老 body 里的这些键读时忽略，服务端退役。
+    case depth, orderFlow, priceMode
     // 主力订单流的门槛 / 步长改动与四个显示开关（2026-09-24 逐单模型那一轮加的，全是加法）。
     case orderFlowOverrides
     case orderFlowSpot, orderFlowContract, orderFlowShowFilled, orderFlowShowCancelled
     // 只读不写：六合四之前按买卖拆开的四个旧键，老存档里读出来迁成「买 || 卖」（审查第 41 项）。
     case orderFlowFilledBid, orderFlowFilledAsk, orderFlowCancelledBid, orderFlowCancelledAsk
-    case candleKind, gridChoice, bodyChoice, lastLine, sinceChange
-    case viewAnchor, priceBias
-    case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
+    case candleKind
     case barSpacing, mainInverted, subInverted
-    case adaptiveIndicators, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
+    case portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeightOverrides
     // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份。上面那七个老键写三组共用的那份。
     case indicatorLayouts
@@ -161,7 +163,6 @@ extension Prefs: Codable {
     try c.encode(theme.rawValue, forKey: .theme)
     try c.encode(skin.rawValue, forKey: .skin)
     try c.encode(redUp, forKey: .redUp)
-    try c.encode(magnet, forKey: .magnet)
     try c.encode(depth, forKey: .depth)
     try c.encode(orderFlow, forKey: .orderFlow)
     try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
@@ -169,21 +170,9 @@ extension Prefs: Codable {
     try c.encode(orderFlowContract, forKey: .orderFlowContract)
     try c.encode(orderFlowShowFilled, forKey: .orderFlowShowFilled)
     try c.encode(orderFlowShowCancelled, forKey: .orderFlowShowCancelled)
-    try c.encode(countdown, forKey: .countdown)
-    try c.encode(gridChoice.rawValue, forKey: .gridChoice)
-    try c.encode(bodyChoice.rawValue, forKey: .bodyChoice)
-    try c.encode(lastLine, forKey: .lastLine)
-    try c.encode(sinceChange, forKey: .sinceChange)
-    try c.encode(viewAnchor.rawValue, forKey: .viewAnchor)
-    try c.encode(priceBias.rawValue, forKey: .priceBias)
-    try c.encode(dataDisplay, forKey: .dataDisplay)
-    try c.encode(crossPrice, forKey: .crossPrice)
-    try c.encode(allowMainInversion, forKey: .allowMainInversion)
-    try c.encode(allowSubInversion, forKey: .allowSubInversion)
     try c.encode(barSpacing, forKey: .barSpacing)
     try c.encode(mainInverted, forKey: .mainInverted)
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
-    try c.encode(adaptiveIndicators, forKey: .adaptiveIndicators)
     try c.encode(portraitHeight, forKey: .portraitHeight)
     try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
     try c.encode(rsiUpper, forKey: .rsiUpper)
@@ -313,7 +302,6 @@ extension Prefs: Codable {
     if let raw = str(.skin), let v = ThemeSkin(rawValue: raw) { skin = v }
     if let v = bool(.redUp) { redUp = v }
 
-    if let v = bool(.magnet) { magnet = v }
     if let v = bool(.depth) { depth = v }
     if let v = bool(.orderFlow) { orderFlow = v }
     // 改过的门槛 / 步长：认不出的 base、越界的数一项一项丢，不让一只坏档拖垮整张表。
@@ -336,28 +324,11 @@ extension Prefs: Codable {
     } else if bool(.orderFlowCancelledBid) != nil || bool(.orderFlowCancelledAsk) != nil {
       orderFlowShowCancelled = (bool(.orderFlowCancelledBid) ?? true) || (bool(.orderFlowCancelledAsk) ?? true)
     }
-    if let v = bool(.countdown) { countdown = v }
-
-    // 「图表」面板那几项。认不出的字面量一律退回默认（多半是降级回旧版本，
-    // 或者手改存档手抖），不能因为一个字符串就让整档作废。
-    if let raw = str(.gridChoice), let v = GridChoice(rawValue: raw) { gridChoice = v }
-    // 旧存档里的 `"style"`（「跟随风格」那一档）读成实心：风格表只剩一套，两者等价。
-    if let raw = str(.bodyChoice) { bodyChoice = raw == "style" ? .solid : BodyChoice(rawValue: raw) ?? bodyChoice }
-    if let v = bool(.lastLine) { lastLine = v }
-    if let v = bool(.sinceChange) { sinceChange = v }
-    if let raw = str(.viewAnchor), let v = ViewAnchor(rawValue: raw) { viewAnchor = v }
-    if let raw = str(.priceBias), let v = PriceBias(rawValue: raw) { priceBias = v }
-
-    if let raw = str(.dataDisplay), let v = CandleDataDisplay(rawValue: raw) { dataDisplay = v }
-    if let raw = str(.crossPrice), let v = CrossPriceMode(rawValue: raw) { crossPrice = v }
-    if let v = bool(.allowMainInversion) { allowMainInversion = v }
-    if let v = bool(.allowSubInversion) { allowSubInversion = v }
     // 存档里的根间距同样夹一道：手改过存档、或者以后动了上下限，都不能让图开在
     // 一个画不出来的宽度上。
     if let v = try? c.decode(Double.self, forKey: .barSpacing) { barSpacing = Prefs.clampSpacing(v) }
     if let v = bool(.mainInverted) { mainInverted = v }
     if let raw = strs(.subInverted) { subInverted = Set(Prefs.ids(raw, placement: .sub)) }
-    if let v = bool(.adaptiveIndicators) { adaptiveIndicators = v }
     if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = Prefs.clampPortraitHeight(v) }
     if let v = try? c.decode(Double.self, forKey: .rsiUpper), v.isFinite { rsiUpper = min(100, max(1, v)) }
     if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = v }

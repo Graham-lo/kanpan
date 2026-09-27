@@ -24,7 +24,7 @@ final class SettingsWordingUITests: KanpanUICase {
     openSettingsPage()
     shot("设置-上半")
 
-    for text in ["涨跌配色", "外观", "十字线吸附到 K 线", "行情线路"] {
+    for text in ["涨跌配色", "外观", "行情线路"] {
       XCTAssertTrue(labeled(text).firstMatch.waitForExistence(timeout: Self.short), "设置页上没有「\(text)」")
     }
     for old in ["开盘时间", "十字线磁吸", "自动护眼配色", "随屏幕明暗切换", "交易所", "启动快照",
@@ -33,10 +33,12 @@ final class SettingsWordingUITests: KanpanUICase {
     }
     // 2026-09-28「收设置项」收掉的几行一个都不许回来：口径按品种自动定、时间一律上海 UTC+8、
     // 看图时自动常亮、缓存自己按上限清。
-    for retired in ["涨跌幅起点", "按屏幕亮度切换深浅", "时区", "盯盘时不锁屏", "清理存储空间", "清缓存"] {
+    for retired in ["涨跌幅起点", "按屏幕亮度切换深浅", "时区", "盯盘时不锁屏", "清理存储空间", "清缓存",
+                    "十字线吸附到 K 线"] {
       XCTAssertFalse(labeled(retired).firstMatch.exists, "已收掉的「\(retired)」又回到设置页了")
     }
-    for id in ["settings.changeBasis", "settings.keepAwake", "settings.clearCache", "display.ambient"] {
+    for id in ["settings.changeBasis", "settings.keepAwake", "settings.clearCache", "display.ambient",
+               "settings.magnet"] {
       XCTAssertFalse(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) 还在")
     }
 

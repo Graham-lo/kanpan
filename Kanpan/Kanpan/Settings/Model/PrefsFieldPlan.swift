@@ -87,13 +87,9 @@ enum PrefsFieldPlan {
     "compareSymbols": .synced,
     "interval": .synced, "quickIntervals": .synced,
     "theme": .synced, "skin": .synced, "redUp": .synced,
-    "priceMode": .synced, "magnet": .synced, "countdown": .synced, "depth": .synced, "orderFlow": .synced, "candleKind": .synced,
-    "gridChoice": .synced, "bodyChoice": .synced, "lastLine": .synced,
-    "sinceChange": .synced, "viewAnchor": .synced, "priceBias": .synced,
-    "dataDisplay": .synced, "crossPrice": .synced,
-    "allowMainInversion": .synced, "allowSubInversion": .synced,
+    "priceMode": .synced, "depth": .synced, "orderFlow": .synced, "candleKind": .synced,
     "barSpacing": .synced, "mainInverted": .synced, "subInverted": .synced,
-    "adaptiveIndicators": .synced, "portraitHeight": .synced,
+    "portraitHeight": .synced,
     "indicatorColors": .synced, "hiddenOutputs": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
     "subHeightOverrides": .synced,
@@ -120,6 +116,8 @@ enum PrefsFieldPlan {
     // （老客户端发上来丢掉并在 droppedFields 报回，库里老 body 下次合并时洗掉）。逐项清单与恢复办法见
     // `.project-memory/PROJECT.md`「收设置项」一节；恢复某一项从 tag settings-before-trim-2026-09-28 取代码。
     // A 组：ambientTheme、keepAwake、timeZone、changeBasis。
+    // B 组：magnet、countdown、gridChoice、bodyChoice、lastLine、sinceChange、viewAnchor、priceBias、
+    // dataDisplay、crossPrice、allowMainInversion、allowSubInversion、adaptiveIndicators。
 
     // ------------------------------------------------- 跟着人走，但线上并成一个键
     "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,

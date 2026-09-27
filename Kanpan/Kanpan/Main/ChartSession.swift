@@ -180,10 +180,9 @@ final class ChartSession {
     guard let s = market.series, s.symbol == market.symbol, s.interval == market.interval, s.count > 0 else { return nil }
     let prefs = input.prefs
     // 上下翻转跟着人走，不跟着品种走：换品种时这份 state 是新造的，翻转要是不从设置里
-    // 带出来，图就会自己翻回去。开关关掉时不认存档里那一份——否则翻过去之后把开关一关，
-    // 就再也没有把它翻回来的入口了。
+    // 带出来，图就会自己翻回去。（「允许翻转」开关 2026-09-28 收掉，手势直接生效、再双击翻回。）
     var price = PriceTransform(mode: prefs.priceMode)
-    price.inverted = prefs.allowMainInversion && prefs.mainInverted
+    price.inverted = prefs.mainInverted
     var result = ChartState(
       series: s,
       symbol: market.info,
@@ -196,7 +195,7 @@ final class ChartSession {
       params: prefs.params,
       timezone: prefs.timeZone,
       oi: market.oi,
-      magnet: prefs.magnet,
+      magnet: true,  // 十字线吸附 2026-09-28 起常开（收设置项 B 组）
       decimals: market.info.priceDecimals,
       options: prefs.chartOptions,
       nowMs: nowMs,
@@ -211,7 +210,7 @@ final class ChartSession {
     // 多空比、主动买卖、基差没有。
     result.oiSupported = market.capabilities.hasOpenInterestHistory
     result.externalSupported = market.capabilities.hasDerivativeMetrics
-    result.subInverted = prefs.allowSubInversion ? prefs.subInverted : []
+    result.subInverted = prefs.subInverted
     result.paletteSeed = input.seed
     result.hiddenOutputs = prefs.hiddenOutputs
     result.indicatorColors = prefs.indicatorColors
