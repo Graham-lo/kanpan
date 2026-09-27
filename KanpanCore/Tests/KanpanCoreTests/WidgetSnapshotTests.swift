@@ -68,6 +68,13 @@ import Testing
     let open = daily.quotes["BTCUSDT"]!.open!
     daily.apply(symbol: "BTCUSDT", price: open * 1.05, rollingChange: 9, timeMs: 2_000)
     #expect(abs(daily.quotes["BTCUSDT"]!.change - 5) < 1e-9)
+
+    // 口径按品种走：整张快照是滚动的，这一只自己说按日，就按日重算。
+    var mixed = snapshot(rolling: true)
+    mixed.quotes["BTCUSDT"]!.rolling = false
+    let mixedOpen = mixed.quotes["BTCUSDT"]!.open!
+    mixed.apply(symbol: "BTCUSDT", price: mixedOpen * 1.02, rollingChange: 9, timeMs: 2_000)
+    #expect(abs(mixed.quotes["BTCUSDT"]!.change - 2) < 1e-9)
   }
 
   @Test("折线：单位方框里从左到右，高的在上；平的居中；不足两点为空")

@@ -61,8 +61,17 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 /// display switches went from six to four — filled and cancelled are no longer split by side. The
 /// client now sends `orderFlowShowFilled` / `orderFlowShowCancelled` and migrates its own archive as
 /// bid || ask; stored bodies still carrying the four old names are cleaned on their next merge.
+///
+/// 2026-09-28「收设置项」（只有必须由用户自己定的才留成设置，其余由客户端定默认、自动适应；
+/// 逐项的 Prefs 字段、面板位置与恢复办法见 `.project-memory/PROJECT.md`「收设置项」一节，
+/// 收之前的代码在 tag `settings-before-trim-2026-09-28`）：
+/// - A 组 `ambientTheme`（按屏幕亮度切深浅）、`timeZone`（全 app 固定上海 UTC+8）、
+///   `changeBasis`（涨跌幅口径按品种类型自动定）、`keepAwake`（图表页在前台就常亮）。
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
- "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk"];
+ "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
+ // 收设置项 A 组（2026-09-28）。
+ "ambientTheme","timeZone","changeBasis","keepAwake",
+];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
 /// the Widget's pinned-first ordering only ever saw an empty list. Same treatment as the settings
@@ -111,11 +120,11 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 指标按周期分组记忆（2026-09-27）：上面那几项是三组共用的一份，分了叉的组各自的整份
  // 布局走 `indicatorLayouts/<minute|hour|day>`。
  "indicatorLayouts",
- "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
+ "portraitHeight","quickIntervals","theme","skin","styleID","redUp","priceMode",
  "magnet","countdown","depth","orderFlow","lastLine","sinceChange","candleKind","gridChoice","bodyChoice",
  "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
- "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
- "keepAwake","routePolicy",
+ "adaptiveIndicators","compactValues","barSpacing","mainInverted","subInverted","interval",
+ "routePolicy",
  // How the person left each page looking: sort order, which market, which tool.
  "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline",
  // Which category the favorites page is parked on. It used to live in the phone's own symbol
@@ -682,7 +691,7 @@ mod tests {
   assert!(op("settings",&[("skin",json!("neon"))]).validate().is_err());
   assert!(op("settings",&[("interval",json!("7h"))]).validate().is_err());
   assert!(op("settings",&[("replaySpeed",json!(3))]).validate().is_err());
-  assert!(op("settings",&[("keepAwake",json!("yes"))]).validate().is_err());
+  assert!(op("settings",&[("redUp",json!("yes"))]).validate().is_err());
  }
  #[test] fn a_malformed_path_is_still_refused() {
   for path in ["","../secrets","params/../..","_internal","a//b",&"x".repeat(161)] {
@@ -752,5 +761,25 @@ mod tests {
   let object=merge(blank("settings","chart"),&operation,1_800_000_000_000).unwrap();
   assert_eq!(object.body["barSpacing"],json!(9.5));
   assert!(!object.body.contains_key("showDrawings")&&!object.body.contains_key("subHeights"));
+ }
+ /// 收设置项 A 组（2026-09-28）：`ambientTheme` / `timeZone` / `changeBasis` / `keepAwake`
+ /// 两端都收掉了。老版本推上来只丢这几个字段、别的照常合并；已经存下的 body 里带着它们的，
+ /// 下一次合并时被清掉，不会因为没有值规则把整条对象拖死。
+ #[test] fn trimmed_settings_group_a_are_dropped_and_stripped() {
+  let names=["ambientTheme","timeZone","changeBasis","keepAwake"];
+  for name in names {
+   assert!(RETIRED_SETTINGS_FIELDS.contains(&name)&&!SETTINGS_FIELDS.contains(&name),"{name} 应已退役");
+  }
+  let operation=op("settings",&[("ambientTheme",json!(true)),("timeZone",json!("local")),("changeBasis",json!("utcMidnight")),
+   ("keepAwake",json!(false)),("redUp",json!(false))]);
+  assert!(operation.validate().is_ok(),"老版本带着 A 组字段推上来不能整条 400");
+  let mut named=operation.unknown_fields();named.sort();
+  let mut expected:Vec<String>=names.iter().map(|s|s.to_string()).collect();expected.sort();
+  assert_eq!(named,expected);
+  let mut stored=blank("settings","chart");
+  for name in names {stored.body.insert(name.into(),json!("old"));stored.fields.insert(name.into(),json!({"revision":1}));}
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["redUp"],json!(false));
+  for name in names {assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");}
  }
 }

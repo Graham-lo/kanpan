@@ -39,6 +39,8 @@ struct MainScreenObservers: ViewModifier {
   let phase: ScenePhase
   let deepLink: DeepLink?
   let microstructureVisible: Bool
+  /// 图表页在屏幕上（底栏停在图表、复盘本没盖着）：常亮只在这时候开。
+  let chartOnScreen: Bool
   let syncGate: Bool
   let reviewScope: String
   let routePolicy: MarketRoutePolicy
@@ -66,12 +68,9 @@ struct MainScreenObservers: ViewModifier {
   let onMicrostructure: (Bool) -> Void
   let onSubs: ([IndicatorID]) -> Void
   let onDepth: (Bool) -> Void
-  let onComfort: () -> Void
   let onSyncGate: () -> Void
   let onReviewScope: (String) -> Void
   let onPrefsReviewScope: (String) -> Void
-  let onTimeZone: (TZChoice) -> Void
-  let onChangeBasis: (ChangeBasis) -> Void
   let onInterval: (Interval) -> Void
   let onRoutePolicy: (MarketRoutePolicy) -> Void
   let onFundingRate: (Double?) -> Void
@@ -113,14 +112,12 @@ struct MainScreenObservers: ViewModifier {
     .onChange(of: prefs.depth) { _, on in onDepth(on) }
   }
 
-  // 原 `observedContent`：亮度 / 皮肤 / 常亮 / 云端设置 / 找相似范围 / 时区。
+  // 原 `observedContent`：常亮 / 云端设置 / 找相似范围。
   private func displaySection<V: View>(_ view: V) -> some View {
     view
-    .onReceive(NotificationCenter.default.publisher(for: UIScreen.brightnessDidChangeNotification)) { _ in onComfort() }
-    .onChange(of: prefs.ambientTheme) { _, _ in onComfort() }
-    .onChange(of: prefs.theme) { _, _ in onComfort() }
-    // 常亮：退后台 / 低电量模式且电量 ≤20% 时放手，回前台再按设置设回（P2.10）。
-    .modifier(KeepAwakeGate(enabled: prefs.keepAwake, phase: phase))
+    // 常亮：看图时不锁屏，离开图表页 / 退后台 / 低电量模式且电量 ≤20% 时放手（P2.10）。
+    // 2026-09-28 起不再是设置项，图表页在屏幕上就开。
+    .modifier(KeepAwakeGate(enabled: chartOnScreen, phase: phase))
     // 面板 / 画线 / 复盘开着的时候云端设置是被挡下来的（会把人正在做的事掀掉）。
     // 关掉的这一刻补跑一次，别让人等下一轮全量（300 秒）。
     .onChange(of: syncGate) { _, open in if open { onSyncGate() } }
@@ -129,15 +126,11 @@ struct MainScreenObservers: ViewModifier {
     // 「没真改动就不写」挡住回环，不会你来我往。
     .onChange(of: reviewScope) { _, value in onReviewScope(value) }
     .onChange(of: prefs.reviewSearchScope) { _, value in onPrefsReviewScope(value) }
-    // 时区那一档也要跟着改：设置里从「本地」切到「交易所」，复盘本、找相似列表、
-    // 到期轮盘要和 K 线时间轴一起换口径（审查 B-08）。
-    .onChange(of: prefs.timeZone) { _, value in onTimeZone(value) }
   }
 
   // 原 `marketContent`：线路、口径、行情源、品种表、自选、报价、停留。
   private func marketSection<V: View>(_ view: V) -> some View {
     view
-    .onChange(of: prefs.changeBasis) { _, next in onChangeBasis(next) }
     // 偏好里的周期不是经周期条改的（云端落地、撤销、恢复默认），图也要跟上。
     // 周期条那条路是先改偏好、再当场 `session.show`，到这儿两边已经一样，什么都不做。
     .onChange(of: prefs.interval) { _, next in onInterval(next) }

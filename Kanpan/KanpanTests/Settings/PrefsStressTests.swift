@@ -96,8 +96,8 @@ struct PrefsStressTests {
     for key in ["favoritesGroup", "drawToolGroup"] {
       if let s = object[key] as? String, s.utf8.count > 128 { return false }
     }
-    for key in ["theme", "priceMode", "timeZone", "candleKind", "gridChoice", "bodyChoice", "viewAnchor",
-                "priceBias", "dataDisplay", "crossPrice", "changeBasis"] {
+    for key in ["theme", "priceMode", "candleKind", "gridChoice", "bodyChoice", "viewAnchor",
+                "priceBias", "dataDisplay", "crossPrice"] {
       if let s = object[key] as? String, s.utf8.count > 64 { return false }
     }
     if let quick = object["quickIntervals"] as? [Any], quick.count > 10 { return false }

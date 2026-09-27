@@ -60,17 +60,6 @@ final class FavoritesUndoUITests: KanpanUICase {
   // 以前设置页说话走的是它自己的 `PanelToast`，和自选页那条不是一回事；现在全 app 只有
   // `ToastCenter` 那一条。这两条量的是：设置页上说的话出现在同一条上、带着同一颗「撤销」。
 
-  func testClearingTheCacheCanBeUndone() {
-    let clear = openSettingsRow("settings.clearCache")
-    clear.tap()
-    let undo = app.buttons["toast.undo"]
-    XCTAssertTrue(undo.waitForExistence(timeout: Self.short), "清缓存之后底下没有「撤销」")
-    XCTAssertTrue(app.staticTexts["已清理存储空间"].exists, "那一条上写的不是「已清理存储空间」")
-    shot("13-设置-已清缓存撤销")
-    undo.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !undo.exists }, "点了「撤销」提示没收起来")
-  }
-
   func testRestoringDefaultsCanBeUndone() {
     let reset = openSettingsRow("settings.reset")
     reset.tap()

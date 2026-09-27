@@ -121,8 +121,10 @@ extension Prefs: Codable {
     // `launchSnapshot`（启动快照开关）同一天删：界面上早没有入口，启动快照一律开着。
     // 它一直是 deviceOnly，从没上过服务端，老存档里的键读的时候忽略。
     case indicatorColors
-    case ambientTheme
-    case depth, orderFlow, priceMode, magnet, countdown, keepAwake, timeZone, changeBasis
+    // `ambientTheme`（按屏幕亮度切深浅）、`keepAwake`（盯盘不锁屏）、`timeZone`（时区三档）、
+    // `changeBasis`（涨跌幅起点）2026-09-28 收掉（收设置项 A 组）：老存档、云端老 body 里还带着
+    // 这几个键，读的时候认不出来直接忽略，服务端在 RETIRED_SETTINGS_FIELDS 里退役。
+    case depth, orderFlow, priceMode, magnet, countdown
     // 主力订单流的门槛 / 步长改动与四个显示开关（2026-09-24 逐单模型那一轮加的，全是加法）。
     case orderFlowOverrides
     case orderFlowSpot, orderFlowContract, orderFlowShowFilled, orderFlowShowCancelled
@@ -158,7 +160,6 @@ extension Prefs: Codable {
     try c.encode(quickIntervals.map(\.rawValue), forKey: .quickIntervals)
     try c.encode(theme.rawValue, forKey: .theme)
     try c.encode(skin.rawValue, forKey: .skin)
-    try c.encode(ambientTheme, forKey: .ambientTheme)
     try c.encode(redUp, forKey: .redUp)
     try c.encode(magnet, forKey: .magnet)
     try c.encode(depth, forKey: .depth)
@@ -169,9 +170,6 @@ extension Prefs: Codable {
     try c.encode(orderFlowShowFilled, forKey: .orderFlowShowFilled)
     try c.encode(orderFlowShowCancelled, forKey: .orderFlowShowCancelled)
     try c.encode(countdown, forKey: .countdown)
-    try c.encode(keepAwake, forKey: .keepAwake)
-    try c.encode(timeZone.rawValue, forKey: .timeZone)
-    try c.encode(changeBasis.rawValue, forKey: .changeBasis)
     try c.encode(gridChoice.rawValue, forKey: .gridChoice)
     try c.encode(bodyChoice.rawValue, forKey: .bodyChoice)
     try c.encode(lastLine, forKey: .lastLine)
@@ -313,7 +311,6 @@ extension Prefs: Codable {
     // 焊在一起，现在拆成了两根轴，认不出来的字面量一律退回出厂的「跟随系统 + 青苔」。
     if let raw = str(.theme), let v = ThemeChoice(rawValue: raw) { theme = v }
     if let raw = str(.skin), let v = ThemeSkin(rawValue: raw) { skin = v }
-    if let v = bool(.ambientTheme) { ambientTheme = v }
     if let v = bool(.redUp) { redUp = v }
 
     if let v = bool(.magnet) { magnet = v }
@@ -340,9 +337,6 @@ extension Prefs: Codable {
       orderFlowShowCancelled = (bool(.orderFlowCancelledBid) ?? true) || (bool(.orderFlowCancelledAsk) ?? true)
     }
     if let v = bool(.countdown) { countdown = v }
-    if let v = bool(.keepAwake) { keepAwake = v }
-    if let raw = str(.changeBasis), let v = ChangeBasis(rawValue: raw) { changeBasis = v }
-    if let raw = str(.timeZone), let v = TZChoice(rawValue: raw) { timeZone = v }
 
     // 「图表」面板那几项。认不出的字面量一律退回默认（多半是降级回旧版本，
     // 或者手改存档手抖），不能因为一个字符串就让整档作废。

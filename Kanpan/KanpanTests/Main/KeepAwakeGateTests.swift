@@ -2,7 +2,8 @@ import SwiftUI
 import Testing
 @testable import Kanpan
 
-// P2.10：「盯盘时不锁屏」只在前台、且不是低电量快没电的时候才真的撑住屏幕。
+// P2.10：看图时不锁屏——只在图表页在屏幕上、app 在前台、且不是低电量快没电的时候才真的撑住屏幕。
+// 2026-09-28 起它不再是设置项，`enabled` 是「图表页在屏幕上」。
 @Suite("常亮开关")
 struct KeepAwakeGateTests {
   private func wants(
@@ -11,10 +12,10 @@ struct KeepAwakeGateTests {
     KeepAwakeGate.wantsIdleTimerDisabled(enabled: enabled, phase: phase, lowPower: lowPower, battery: battery)
   }
 
-  @Test("设置关着就不撑")
+  @Test("不在图表页就不撑")
   func off() { #expect(!wants(false)) }
 
-  @Test("前台按设置撑住，退后台放手，回前台再撑")
+  @Test("图表页在前台撑住，退后台放手，回前台再撑")
   func phases() {
     #expect(wants(true, .active))
     #expect(!wants(true, .background))

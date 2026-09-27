@@ -198,12 +198,12 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // Being on the allowlist without a rule here would make the field a poison pill — the
    // `_=>false` fallthrough rejects the whole operation with a 400.
    "favoritesGroup"=>string(v,128),
-   "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
-    |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
+   "redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
+    |"mainInverted"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"
     |"orderFlowSpot"|"orderFlowContract"|"orderFlowShowFilled"|"orderFlowShowCancelled"
     // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
     |"notifyListingChanges"=>v.is_boolean(),
-   "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
+   "theme"|"styleID"|"priceMode"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"=>string(v,64),_=>false
   }
  }
  if collection==DRAWING_PREFERENCES {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
@@ -671,7 +671,7 @@ mod tests {
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(field("settings","replaySpeed",&json!(4))&&!field("settings","replaySpeed",&json!(8)));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");
-  for flag in ["mainInverted","keepAwake","favoritesAscending","favoritesAmount","favoritesSparkline"] {
+  for flag in ["mainInverted","favoritesAscending","favoritesAmount","favoritesSparkline"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");
   }
  }

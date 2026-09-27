@@ -28,7 +28,10 @@ final class QuoteBook {
   /// 那一页在自己的 body 里读它，价到了就只叫醒那一页。
   private(set) var namedQuote: Ticker?
   private(set) var lastListUpdate: Date?
-  private(set) var basis: ChangeBasis = .rolling24h
+  /// 品种代号 → 品种表那一行。涨跌幅口径按品种类型定（`ChangeBasis.automatic`，2026-09-28 起
+  /// 不再是设置项），而品种表在宿主那儿（`SymbolPickerModel`），异步才载进来——所以交一个查表
+  /// 函数进来，表到了宿主再叫 `catalogDidChange()`。查不到的按代号占位行判（XAU 这种认得出来）。
+  @ObservationIgnored var symbolInfo: (String) -> SymbolInfo? = { _ in nil }
   private var latestReceived: [String: QuoteState] = [:]
   /// 线路 × 主机。每个品种找它那一家的提供者要数据（`provider(for:)`）。
   /// 一出生就是这台设备当前的线路（`RouteResolver.current`），`configure` 之前也不会偷偷直连。
@@ -455,11 +458,26 @@ final class QuoteBook {
     VenueRegistry.all.map { resolver.provider(venue: $0.id).capabilities.upstream }
   }
 
-  func configure(route: RouteResolver, basis: ChangeBasis) {
+  /// 这只品种的涨跌幅口径：加密看滚动 24 小时，有交易日的（美股 / ETF / 贵金属 / 指数…）看 UTC 0 点起。
+  func basis(for symbol: String) -> ChangeBasis {
+    ChangeBasis.automatic(for: symbolInfo(symbol) ?? SymbolInfo.placeholder(symbol: symbol))
+  }
+
+  /// 按日口径的那些品种共用的一档边界：UTC 0 点（上海 08:00）。滚动口径的品种不需要边界。
+  private static func dayBoundary() -> Int64? {
+    ChangeBasis.utcMidnight.boundary(now: Int64(Date().timeIntervalSince1970 * 1000))
+  }
+
+  /// 品种表到了 / 换了：各只的口径可能从「说不上来」变成了按日，补取开盘价、按新口径重发一遍。
+  func catalogDidChange() {
+    for symbol in wanted { watchBaseline(symbol) }
+    publish(Array(raw.values))
+  }
+
+  func configure(route: RouteResolver) {
     let next = route.logging(to: Self.log)
     let changedHost = next.route != resolver.route
     let changedSource = Self.upstreams(next) != Self.upstreams(resolver)
-    let changedBasis = basis != self.basis
     if changedSource {
       // 手里这批是旧上游的：先落进旧上游自己的分区，再换。
       persistQuotes(); persistBaselines()
@@ -492,8 +510,7 @@ final class QuoteBook {
       if changedSource { discardBatches() } else { flushCoalesced() }
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll(); historyRequested.removeAll()
     }
-    self.basis = basis
-    if changedHost || changedSource || changedBasis { resetBaselineRequests() }
+    if changedHost || changedSource { resetBaselineRequests() }
     if (changedHost || changedSource), needsConnection { restartStream(clearing: changedSource) }
     restoreQuotes()
     if changedSource { restoreBaselines() }
@@ -759,6 +776,7 @@ final class QuoteBook {
 
   func presented(_ ticker: Ticker) -> Ticker {
     var value = ticker
+    let basis = basis(for: ticker.symbol)
     let start = basis.boundary(now: Int64(Date().timeIntervalSince1970 * 1000))
     let opening = opens[ticker.symbol]
     value.changePercent = basis.percent(last: ticker.last, rolling: ticker.changePercent,
@@ -822,7 +840,7 @@ final class QuoteBook {
   }
 
   private func watchBaseline(_ symbol: String) {
-    guard let boundary, jobs[symbol] == nil,
+    guard let boundary, jobs[symbol] == nil, basis(for: symbol) != .rolling24h,
           opens[symbol]?.time != boundary || provisionalOpens.contains(symbol),
           Date().timeIntervalSince(failedAt[symbol] ?? .distantPast) > retryDelay(symbol) else { return }
     queue.insert(symbol); drain()
@@ -842,7 +860,7 @@ final class QuoteBook {
     // 兜底的认主点。退登到一张空自选表时宿主不一定会再交一次 `setFavorites`，
     // 而一秒一拍地比一个字符串是免费的。
     retargetProfile()
-    let next = basis.boundary(now: Int64(Date().timeIntervalSince1970 * 1000))
+    let next = Self.dayBoundary()
     if next != boundary { rollBoundary(to: next) }
     for symbol in wanted { watchBaseline(symbol) }
     for symbol in visibleRows { requestQuote(symbol) }
@@ -870,7 +888,7 @@ final class QuoteBook {
     // 这一刻的现价离当档开盘早就差出十万八千里，顶上去就等于编了一个接近
     // 零的涨跌幅摆在那儿——宁可留空等 REST 取回真值。
     if let next, now - next <= Self.provisionalWindowMs {
-      for (symbol, ticker) in raw where opens[symbol]?.time != next {
+      for (symbol, ticker) in raw where opens[symbol]?.time != next && basis(for: symbol) != .rolling24h {
         guard isFresh(symbol), ticker.last.isFinite, ticker.last > 0 else { continue }
         opens[symbol] = (next, ticker.last)
         provisionalOpens.insert(symbol)

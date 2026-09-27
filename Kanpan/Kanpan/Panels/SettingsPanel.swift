@@ -5,9 +5,13 @@ import KanpanNetwork
 
 /// 设置面板（A6.3 / A6.7 / A6.8 / A6.9 / A6.10 / A6.11）。
 ///
-/// 条目顺序：先照原型（外观 · 涨跌配色 · 时区 · 十字线吸附），再按任务书 §10.6 追加
-/// 原型里没有的那几项（盯盘时不锁屏 · 行情线路 · 清理存储空间）。原型里的
-/// 「演示实时跳动」是原型自己的假数据开关，不进 app。
+/// 条目顺序：先照原型（外观 · 涨跌配色 · 十字线吸附），再按任务书 §10.6 追加
+/// 原型里没有的「行情线路」。原型里的「演示实时跳动」是原型自己的假数据开关，不进 app。
+///
+/// 2026-09-28「收设置项」：只有必须由用户自己定的（配色、深浅、涨跌配色、线路）才留在这儿。
+/// 「按屏幕亮度切换深浅」「涨跌幅起点」「时区」「盯盘时不锁屏」「清理存储空间」五行收掉——
+/// 口径按品种类型自动定、时间一律上海 UTC+8、看图时自动常亮、缓存各自按上限自清。
+/// 想恢复某一项看 tag `settings-before-trim-2026-09-28` 与 `.project-memory/PROJECT.md` 那一节。
 ///
 /// 和「图表」的分界：**画在图上的东西归图表面板**。原型那份「价格轴」和「本根倒计时」
 /// 在两边各有一份，改的却是同一个字段，现在只留图表那边（见 `ChartPanel`）。
@@ -16,7 +20,8 @@ import KanpanNetwork
 /// 用户的话是界面上不要出现行情源 / 线路这类后台字段——那几行是工程排查用的，
 /// 摆在设置里只会让人以为「是不是我哪儿设错了」。`apiHost` / `streamHost` 两个字段、
 /// 「智能行情线路」开关 2026-09-24 都整条删了：主机一律由 `RouteResolver` 按线路给。
-/// 唯一留下的是清缓存（界面上写「清理存储空间」）：那是用户真会想干的一件事。
+/// 清缓存那一行（「清理存储空间」）2026-09-28 也收了：各处缓存都有自己的上限、满了自己淘汰
+/// （K 线 2000 条 / 512 MB、持仓量 20 MB LRU、快照 300 KB），而且都在 Caches/ 里，系统空间紧时会自己清。
 ///
 /// 没有「确定」也没有「取消」：改一下立刻生效、立刻落盘，并给一次 selection 触觉
 /// （只在手指拨到的那一下，`PrefsStore.updateByHand`）。
@@ -74,34 +79,11 @@ struct SettingsPanel: View {
         store.updateByHand { $0.redUp = v }
       }
     }
-    PanelRow(name: "涨跌幅起点") {
-      // 自带标签的 `Menu(_:)` 会用系统强调色（蓝），整页就这一处跳出配色之外。
-      // 自己搭标签，颜色从 `PanelTheme` 取。
-      Menu {
-        ForEach(ChangeBasis.allCases, id: \.self) { basis in
-          Button(basis.title) { store.updateByHand { $0.changeBasis = basis } }
-        }
-      } label: {
-        HStack(spacing: Space.xs) {
-          Text(prefs.changeBasis.title).font(PanelFont.seg)
-          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7)
-        }
-        .foregroundStyle(t.amber)
-        .rowHitTarget()
-      }.accessibilityIdentifier("settings.changeBasis")
-    }
-    PanelRow(name: "时区") {
-      PanelSegment(options: SettingsPanel.zones, selection: prefs.timeZone) { v in
-        store.updateByHand { $0.timeZone = v }
-      }
-    }
     // 画线「更多」里还有一颗「吸附到 K 线」：那颗管画线端点，这颗管长按出来的十字线，
     // 两件事、两个出厂档位（`Prefs.magnet` 的注释）。同一个动词、各自写明主语，
     // 不再一个叫「磁吸」一个叫「吸附」（审查 U13）。
     switchRow("十字线吸附到 K 线", nil, prefs.magnet) { $0.magnet = $1 }
       .accessibilityIdentifier("settings.magnet")
-    switchRow("盯盘时不锁屏", nil, prefs.keepAwake) { $0.keepAwake = $1 }
-      .accessibilityIdentifier("settings.keepAwake")
     // 「启动快照」不再摆出来（2026-09-24 审查 U13）：它是工程开关，用户没有理由关它。
     // 字段也一起删了，启动快照一律开着（`MainScreen.boot`）。
 
@@ -124,12 +106,10 @@ struct SettingsPanel: View {
     aboutRow
     // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
     // 撤得回来。直接恢复，右边留一颗「撤销」五秒。
-    PanelRow(name: "恢复默认", onTap: { resetAll() }) {
+    PanelRow(name: "恢复默认", divider: false, onTap: { resetAll() }) {
       Text("恢复").font(PanelFont.seg).foregroundStyle(t.amber)
     }
     .accessibilityIdentifier("settings.reset")
-    // 清缓存是排查用的，平时用不着，放在最底（2026-09-24 审查 U13）。
-    cacheRow
   }
 
   // MARK: - 行
@@ -139,23 +119,6 @@ struct SettingsPanel: View {
     PanelRow(name: name, meta: meta) {
       PanelSwitch(isOn: on) { store.updateByHand { set(&$0, !on) } }
     }
-  }
-
-  /// A6.11：清的是 `KanpanData.Paths` 指的那几处，不是另拼一套目录。
-  ///
-  /// 右边不再报「占了多少 MB」：那个数字是给我们排查用的，用户看到它只会开始
-  /// 琢磨「多少算多」。「已清理存储空间」那一句带着「撤销」才说（P2.7）——它不是报喜，
-  /// 是这一下还能反悔；只报成功、没有下一步可做的提示仍然不说（2026-09-21）。
-  private var cacheRow: some View {
-    // 行名写用户得到什么（空间），不写我们清的是什么（缓存）（审查 U13）。清的都是
-    // 没了还能原样取回的行情数据，偏好、画线、自选一样不碰（`MarketCacheTests`）。
-    // 点下去先给五秒反悔，过了才真清（P2.7），所以这里不再转圈。整行都能点，
-    // 和「恢复默认」同一种写法（UI 审查：「清除」原来只有 26×14 的字能点）。
-    PanelRow(name: "清理存储空间", divider: false,
-             onTap: { Haptics.warning(); store.clearCacheLater() }) {
-      Text("清除").font(PanelFont.seg).foregroundStyle(t.amber)
-    }
-    .accessibilityIdentifier("settings.clearCache")
   }
 
   /// 「关于」（P3.6）：版本号、构建号，和托管在账号服务上的两张静态页。
@@ -197,10 +160,6 @@ struct SettingsPanel: View {
   }
 
   // MARK: - 分段选项
-
-  /// A6.9。三档照原型：本地 / UTC / 交易所，第三档字面写「UTC+8」（审查 U13：「UTC」「交易所」
-  /// 并排像同一件事）。文字取 `TZChoice.display`，不在这儿另写一份。
-  static let zones: [(String, TZChoice)] = TZChoice.allCases.map { ($0.display, $0) }
 
   /// 行情线路两档。顺序照 `MarketRoutePolicy.allCases`：直连 / 网关。
   static let routes: [(String, MarketRoutePolicy)] =

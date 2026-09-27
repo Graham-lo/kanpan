@@ -39,7 +39,7 @@ struct PrefsToleranceTests {
     #expect(p.interval == .h1)
     #expect(p.theme == .system)
     #expect(p.priceMode == .log)
-    #expect(p.timeZone == .local)
+    #expect(p.timeZone == .exchange)   // 时区不再是设置项：老存档里写什么都读成上海 UTC+8
   }
 
   @Test("「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项")

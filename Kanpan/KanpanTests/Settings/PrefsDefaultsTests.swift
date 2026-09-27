@@ -16,11 +16,10 @@ struct PrefsDefaultsTests {
     #expect(p.subs == [.vol, .oi, .macd])                 // chart.js: this.subs = ['MACD','RSI']
     #expect(p.priceMode == .log)                  // chart.js: price.mode = 'linear'
     #expect(!p.magnet)                                // chart.js: this.magnet = true
-    #expect(p.timeZone == .local)                    // chart.js: this.tz = 'local'
+    #expect(p.timeZone == .exchange)                 // 2026-09-28 起不是设置项：全 app 一律上海 UTC+8
     #expect(p.redUp == true)                         // 国内习惯红涨绿跌，出厂即如此
     #expect(p.theme == .system)                      // app.js: 'auto'
     #expect(!p.countdown)                             // §10.4 默认开
-    #expect(p.keepAwake)                             // §10.4 默认开
     #expect(p.routePolicy == .direct)                // 行情线路出厂直连，没有「自动」
   }
 

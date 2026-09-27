@@ -86,7 +86,7 @@ enum PrefsFieldPlan {
     // ---------------------------------------------------------------- 跟着人走
     "compareSymbols": .synced,
     "interval": .synced, "quickIntervals": .synced,
-    "theme": .synced, "skin": .synced, "ambientTheme": .synced, "redUp": .synced,
+    "theme": .synced, "skin": .synced, "redUp": .synced,
     "priceMode": .synced, "magnet": .synced, "countdown": .synced, "depth": .synced, "orderFlow": .synced, "candleKind": .synced,
     "gridChoice": .synced, "bodyChoice": .synced, "lastLine": .synced,
     "sinceChange": .synced, "viewAnchor": .synced, "priceBias": .synced,
@@ -95,7 +95,6 @@ enum PrefsFieldPlan {
     "barSpacing": .synced, "mainInverted": .synced, "subInverted": .synced,
     "adaptiveIndicators": .synced, "portraitHeight": .synced,
     "indicatorColors": .synced, "hiddenOutputs": .synced,
-    "keepAwake": .synced, "timeZone": .synced, "changeBasis": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
     "subHeightOverrides": .synced,
     // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份，线上拍平成 `indicatorLayouts/<组>`。
@@ -116,6 +115,11 @@ enum PrefsFieldPlan {
     "orderFlowOverrides": .synced,
     "orderFlowSpot": .synced, "orderFlowContract": .synced,
     "orderFlowShowFilled": .synced, "orderFlowShowCancelled": .synced,
+
+    // 2026-09-28「收设置项」收掉的字段不在这张表里了，线上在服务端 `RETIRED_SETTINGS_FIELDS` 退役
+    // （老客户端发上来丢掉并在 droppedFields 报回，库里老 body 下次合并时洗掉）。逐项清单与恢复办法见
+    // `.project-memory/PROJECT.md`「收设置项」一节；恢复某一项从 tag settings-before-trim-2026-09-28 取代码。
+    // A 组：ambientTheme、keepAwake、timeZone、changeBasis。
 
     // ------------------------------------------------- 跟着人走，但线上并成一个键
     "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,

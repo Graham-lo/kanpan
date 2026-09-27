@@ -589,19 +589,20 @@ final class ChartFoundationUITests: XCTestCase {
     shot("标签栏-四格轮一圈后报价仍在刷新")
   }
 
-  func testChangeBasisUpdatesFavorites() throws {
+  /// 涨跌幅口径 2026-09-28 起不再是设置项：按品种类型自动定（加密滚动 24 小时）。
+  /// 设置页上没有那一行，自选页的涨跌格照样是带「%」的涨跌幅。
+  func testChangeBasisIsAutomatic() throws {
     XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
-    let basis = app.buttons["settings.changeBasis"]
-    XCTAssertTrue(basis.waitForExistence(timeout: 5)); basis.tap()
-    let option = app.buttons["上海8点 / UTC 0点"]
-    XCTAssertTrue(wait { option.exists && option.isHittable }); option.tap()
+    let reset = app.descendants(matching: .any).matching(identifier: "settings.reset").firstMatch
+    XCTAssertTrue(reset.waitForExistence(timeout: 5), "设置页没画出来")
+    XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "settings.changeBasis").firstMatch.exists,
+                   "涨跌幅起点已收掉，设置页上不该再有")
     leaveSettings()
     XCTAssertTrue(app.openFavorites())
     addFavoriteFromSearch("BTCUSDT")
-    // 自选页的涨跌格固定显示涨跌幅，口径跟设置走：改完直接看那一格是带「%」的涨跌幅。
     let change = app.staticTexts["favorites.change.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(wait(seconds: 40) { change.exists && change.label.contains("%") })
-    shot("自选-上海8点统一涨跌幅")
+    shot("自选-涨跌幅口径自动")
   }
 
   /// 「调整顺序」：批量编辑（勾选、全选、底部编辑条）2026-09-24 删了（审查 §3.3，判过「不做」），

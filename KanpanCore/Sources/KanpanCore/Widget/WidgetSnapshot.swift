@@ -34,11 +34,14 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     /// 涨跌幅口径的那口开盘价。小组件自己补到新价时拿它重算涨跌幅；
     /// 滚动 24 小时口径下这一格没用（交易所直接给百分比）。
     public var open: Double?
+    /// 这一只的涨跌幅口径是不是滚动 24 小时。2026-09-28 起口径按品种类型定（加密滚动、
+    /// 美股 / 贵金属 / 指数按 UTC 0 点），一张快照里两种都有；nil 是旧快照，照快照整体那一格。
+    public var rolling: Bool?
 
     public init(symbol: String, price: Double, change: Double, decimals: Int?, closes: [Double] = [],
-                timeMs: Int64, open: Double? = nil) {
+                timeMs: Int64, open: Double? = nil, rolling: Bool? = nil) {
       self.symbol = symbol; self.price = price; self.change = change; self.decimals = decimals
-      self.closes = closes; self.timeMs = timeMs; self.open = open
+      self.closes = closes; self.timeMs = timeMs; self.open = open; self.rolling = rolling
     }
 
     public var base: String { Alert.base(of: symbol) }
@@ -82,7 +85,8 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
   /// 旧快照里是 `fapiHost` / `hostMarket` 两栏（永远指向直连域名，网关线路下也照打直连），
   /// 解码时忽略它们、这一栏是 nil，下一次 app 写快照就补上。
   public var refresh: Refresh?
-  /// 涨跌幅口径是不是滚动 24 小时。
+  /// 涨跌幅口径是不是滚动 24 小时——旧快照整张一个口径时的那一格；新快照每只自己带
+  /// （`Quote.rolling`），这一格只给没带的那只兜底。
   public var rolling: Bool
 
   public init(updatedAt: Int64, favorites: [String], groups: [Group], quotes: [String: Quote],
@@ -201,7 +205,7 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     guard price.isFinite, price > 0, var quote = quotes[symbol], timeMs >= quote.timeMs else { return }
     quote.price = price
     quote.timeMs = timeMs
-    if rolling {
+    if quote.rolling ?? rolling {
       if let rollingChange, rollingChange.isFinite { quote.change = rollingChange }
     } else if let open = quote.open, open > 0 {
       quote.change = (price / open - 1) * 100

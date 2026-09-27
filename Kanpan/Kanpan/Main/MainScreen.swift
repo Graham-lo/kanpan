@@ -50,7 +50,6 @@ import KanpanAccount
 struct MainScreen: View {
   @State private var account = AccountFeature()
   @State private var accountBridge: AppAccountBridge?
-  @State private var comfort = DisplayComfort()
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   /// 图上这个品种只是个占位。真正「上次看的那张图」要等档案（访客或账号）装进来
   /// 才知道，见 `honorProfile()`；`boot()` 里 `market.start(symbol:)` 会拿着那份
@@ -249,7 +248,8 @@ struct MainScreen: View {
 
   private var prefs: Prefs { store.prefs }
 
-  private var effectiveTheme: ThemeChoice { prefs.ambientTheme ? (comfort.automaticTheme ?? prefs.theme) : prefs.theme }
+  /// 深浅只听设置里那一档（跟随系统 / 浅 / 深）；「按屏幕亮度切换」2026-09-28 收掉了。
+  private var effectiveTheme: ThemeChoice { prefs.theme }
   private var seed: PaletteSeed { effectiveTheme.seed(skin: prefs.skin, systemDark: scheme == .dark) }
   private var dark: Bool { seed.dark }
   private var theme: PanelTheme { PanelTheme(seed: seed, redUp: prefs.redUp) }
@@ -415,6 +415,7 @@ struct MainScreen: View {
       phase: phase,
       deepLink: DeepLinkRouter.shared.pending,
       microstructureVisible: microstructureVisible,
+      chartOnScreen: tab == .chart && !review.bookOpen,
       syncGate: syncGate,
       reviewScope: review.searchScope,
       routePolicy: prefs.routePolicy,
@@ -439,21 +440,18 @@ struct MainScreen: View {
       onMicrostructure: { visible in market.setChartVisible(visible) },
       onSubs: { subs in market.setExternalIndicators(subs, depth: prefs.depth) },
       onDepth: { on in market.setExternalIndicators(prefs.subs, depth: on) },
-      onComfort: { refreshComfort() },
       onSyncGate: { accountBridge?.resumeApply() },
       onReviewScope: { value in store.update { $0.reviewSearchScope = value } },
       onPrefsReviewScope: { value in review.searchScope = value },
-      onTimeZone: { value in review.timezone = value },
-      onChangeBasis: { next in session.configure(route: route, basis: next) },
       onInterval: { next in followProfileInterval(next) },
       onRoutePolicy: { next in
         let route = RouteResolver(policy: next)
-        session.configure(route: route, basis: prefs.changeBasis)
+        session.configure(route: route)
         sectorFeed.configure(route: route)
         previews.configure(route: route)
       },
       onFundingRate: { rate in previews.note(funding: rate, for: market.symbol) },
-      onCatalog: { sectorFeed.setCatalog(picker.catalog) },
+      onCatalog: { sectorFeed.setCatalog(picker.catalog); quotes.catalogDidChange() },
       onListVisible: { on in quotes.setVisible(on) },
       onFavorites: { symbols in settleFavorites(symbols) },
       onSymbol: { symbol in
@@ -1479,15 +1477,7 @@ struct MainScreen: View {
   /// 倒计时那一秒记在 `ChartSession.nowMs` 上，只有图读它（审查 21：以前它是这儿的
   /// `@State`，每一秒整页重求值一次）。
   private func heartbeat() async {
-    await session.heartbeat(active: beating, countdown: { prefs.countdown }, onBeat: { refreshComfort() })
-  }
-
-  private func refreshComfort() {
-    let screen = proxy.box?.window?.screen ?? UIApplication.shared.connectedScenes
-      .compactMap { $0 as? UIWindowScene }.first(where: { $0.activationState == .foregroundActive })?.screen
-    comfort.tick(prefs: prefs, active: phase == .active,
-      brightness: Double(screen?.brightness ?? 0.5), systemDark: scheme == .dark,
-      animated: !systemReduceMotion)
+    await session.heartbeat(active: beating, countdown: { prefs.countdown }, onBeat: {})
   }
 
   // ---------------------------------------------------------------- 动作
@@ -1726,13 +1716,13 @@ struct MainScreen: View {
           },
           closes: closes, skin: prefs.skin, appearance: prefs.theme, redUp: prefs.redUp,
           refresh: RouteResolver(policy: prefs.routePolicy).defaultProvider.widgetRefresh,
-          basis: prefs.changeBasis, receivedAt: { quotes.receivedTime($0) })
+          basis: { quotes.basis(for: $0) }, receivedAt: { quotes.receivedTime($0) })
       },
       shape: {
         let symbols = picker.prefs, prefs = store.prefs
         return symbols.favorites + ["|"] + symbols.groups.map { $0.id + ":" + $0.name }
           + symbols.groupForSymbol.map { $0.key + "=" + $0.value }.sorted()
-          + [prefs.skin.rawValue, prefs.theme.rawValue, String(prefs.redUp), prefs.changeBasis.rawValue,
+          + [prefs.skin.rawValue, prefs.theme.rawValue, String(prefs.redUp),
              prefs.routePolicy.rawValue]
       },
       fetchCloses: { [quotes] symbol in await quotes.closes(symbol: symbol) })
@@ -1852,7 +1842,9 @@ struct MainScreen: View {
       picker.markDelisted(symbol)
       market.noteSymbolRejected(symbol)
     }
-    session.configure(route: route, basis: prefs.changeBasis)
+    // 涨跌幅口径按品种类型定（加密滚动 24 小时、美股 / 贵金属 / 指数按 UTC 0 点），报价簿按代号查表。
+    quotes.symbolInfo = { [picker] in picker.info(for: $0) }
+    session.configure(route: route)
     // 自选表要赶在 `setChartSymbol` 前面：后者会重算订阅范围，那时候如果自选还是空的，
     // `configure` 刚恢复出来的那批报价就会被裁到只剩图上这一个品种。
     //
@@ -1994,7 +1986,7 @@ struct MainScreen: View {
   /// 这三件事以前各修各的，而且各漏各的：品种去读 `SymbolPrefsStore()` 那个没注入
   /// 存储的柜子（写在账号文件里、读在 UserDefaults 里）；周期只在 `boot()` 里读一次，
   /// 那一刻档案还没装进来，读到的是出厂 1h，而 `subs` /
-  /// `changeBasis` 各自有 `onChange` 兜底、唯独它没有；落地页则挂在 `onSwitch` 上，
+  /// `changeBasis`（2026-09-28 已收掉）各自有 `onChange` 兜底、唯独它没有；落地页则挂在 `onSwitch` 上，
   /// 没登录过的人一次都不响。它们是同一个时序病根——**逐个字段补 `onChange` 本身
   /// 就是会漏的结构**，所以统一挂到「档案到货」这一个事件上
   /// （`AppAccountBridge.onProfileReady`，冷启动、登录、退登、云端设置落地都会响）。

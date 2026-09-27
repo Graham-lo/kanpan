@@ -63,7 +63,7 @@ struct WidgetFeedStressTests {
     feed.bind(collect: { closes in
       WidgetFeed.snapshot(symbols: prefs, quotes: [:], decimals: { _ in nil },
                           closes: closes, skin: Prefs.defaults.skin, appearance: .system, redUp: false,
-                          refresh: nil, basis: .rolling24h)
+                          refresh: nil, basis: { _ in .rolling24h })
     }, shape: { [] }, fetchCloses: { symbol in calls.add(symbol); return nil })
     feed.flush(reload: false)
     await settle { !calls.all.isEmpty }
@@ -113,7 +113,7 @@ struct WidgetFeedStressTests {
     let a = prefs.favorites[0], b = prefs.favorites[1]
     let snap = WidgetFeed.snapshot(symbols: prefs, quotes: [a: ticker(a), b: ticker(b)],
                                    decimals: { _ in nil }, closes: [:], skin: Prefs.defaults.skin, appearance: .system,
-                                   redUp: false, refresh: nil, basis: .rolling24h,
+                                   redUp: false, refresh: nil, basis: { _ in .rolling24h },
                                    receivedAt: { $0 == a ? received : nil },
                                    now: received.addingTimeInterval(3600))
     #expect(snap.quotes[a]?.timeMs == 1_800_000_000_000)

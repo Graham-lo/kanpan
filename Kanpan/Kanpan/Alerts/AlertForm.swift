@@ -151,8 +151,8 @@ struct AlertForm: View {
   var release: () -> Void = {}
   /// 这只品种还没触发的提醒（已排好序，见 `AlertRecordText.records`）。只有新建页摆。
   var records: [KanpanCore.Alert] = []
-  /// 记录里的时间按设置里那档时区写。
-  var zone: TZOffset = .system
+  /// 记录里的时间一律按上海 UTC+8 写（2026-09-28 起时区不再是设置项）。
+  var zone: TZOffset = TZChoice.exchange.offsetMinutes
   /// 点一条价格提醒：推进它的编辑页。
   var onEditRecord: (String) -> Void = { _ in }
   /// 行尾垃圾桶删一条。

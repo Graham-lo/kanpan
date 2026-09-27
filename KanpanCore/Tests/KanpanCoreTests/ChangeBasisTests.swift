@@ -32,4 +32,25 @@ struct ChangeBasisTests {
     #expect(ticker.amplitude24h == nil)
   }
 
+  /// 2026-09-28 收设置项：口径按品种类型自动定，不再由用户选。
+  @Test("加密看滚动24小时，美股/ETF/贵金属/大宗/TradFi指数看UTC0点，说不上来的按滚动")
+  func automaticByKind() {
+    func info(_ symbol: String, _ type: String?, contract: String? = "PERPETUAL") -> SymbolInfo {
+      let base = SymbolInfo.placeholder(symbol: symbol).base
+      return SymbolInfo(symbol: symbol, base: base, pricePrecision: 2, tickSize: 0.01, underlyingType: type,
+                        contractType: contract)
+    }
+    #expect(ChangeBasis.automatic(for: info("BTCUSDT", "COIN")) == .rolling24h)
+    #expect(ChangeBasis.automatic(for: info("TSLAUSDT", "EQUITY", contract: "TRADIFI_PERPETUAL")) == .utcMidnight)
+    #expect(ChangeBasis.automatic(for: info("QQQUSDT", "EQUITY", contract: "TRADIFI_PERPETUAL")) == .utcMidnight)
+    #expect(ChangeBasis.automatic(for: info("XAUUSDT", "COMMODITY", contract: "TRADIFI_PERPETUAL")) == .utcMidnight)
+    #expect(ChangeBasis.automatic(for: info("CLUSDT", "COMMODITY", contract: "TRADIFI_PERPETUAL")) == .utcMidnight)
+    #expect(ChangeBasis.automatic(for: info("SPXUSDT", "INDEX", contract: "TRADIFI_PERPETUAL")) == .utcMidnight)
+    // 币安按 `PERPETUAL` 挂的币指数（BTCDOM 这类）全天候交易，和币一样看滚动。
+    #expect(ChangeBasis.automatic(for: info("BTCDOMUSDT", "INDEX")) == .rolling24h)
+    #expect(ChangeBasis.automatic(for: info("OPENAIUSDT", "PREMARKET")) == .rolling24h)
+    // 目录还没到：只有代号。XAU 本身就是资产代码，认得出；认不出的按交易所原样给的滚动 24 小时。
+    #expect(ChangeBasis.automatic(for: .placeholder(symbol: "XAUUSDT")) == .utcMidnight)
+    #expect(ChangeBasis.automatic(for: .placeholder(symbol: "NEWTHINGUSDT")) == .rolling24h)
+  }
 }

@@ -58,13 +58,12 @@ struct PanelHost<Content: View>: View {
 
   @Environment(\.colorScheme) private var systemScheme
 
-  @Environment(\.panelTheme) private var inheritedTheme
-  private var seed: PaletteSeed { store.prefs.ambientTheme ? inheritedTheme.seed : store.prefs.seed(systemDark: systemScheme == .dark) }
+  private var seed: PaletteSeed { store.prefs.seed(systemDark: systemScheme == .dark) }
 
   var body: some View {
     content()
       .environment(\.panelTheme, PanelTheme(seed: seed, redUp: store.prefs.redUp))
-      .preferredColorScheme(store.prefs.ambientTheme ? (seed.dark ? .dark : .light) : store.prefs.theme.forced)
+      .preferredColorScheme(store.prefs.theme.forced)
       .presentationDetents([.medium, .large])
       .presentationDragIndicator(.visible)
       .presentationBackground { Color(hex: seed.raised) }

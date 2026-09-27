@@ -65,8 +65,8 @@ final class ChartSession {
 
   /// 换线路 / 换涨跌口径。行情那条（`MarketModel`）自己认 `RouteResolver.current`，
   /// 这儿交的是报价簿那条。
-  func configure(route: RouteResolver, basis: ChangeBasis) {
-    quotes.configure(route: route, basis: basis)
+  func configure(route: RouteResolver) {
+    quotes.configure(route: route)
   }
 
   /// 进出前台。顺序照旧：对比 → 行情 → 报价簿。

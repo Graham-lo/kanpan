@@ -27,8 +27,6 @@ struct PrefsPersistenceTests {
     p.priceMode = .log
     p.magnet = false
     p.countdown = false
-    p.keepAwake = false
-    p.timeZone = .exchange
     p.overlays = [.boll, .ema]
     // 这里从前摆的是 `.atr`，2026-09-22 它退役了（面板上没有，读存档时会被滤掉），
     // 拿它当「改过的样子」就永远读不回来。换成同样在副图的动向指标。

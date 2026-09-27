@@ -25,7 +25,6 @@ struct ChartFoundationPrefsTests {
     var prefs = Prefs()
     prefs.portraitHeight = 0.9; prefs.dataDisplay = .follow; prefs.crossPrice = .close
     prefs.allowMainInversion = false; prefs.allowSubInversion = true
-    prefs.changeBasis = .shanghaiMidnight
     prefs.adaptiveIndicators = true
     prefs.rsiUpper = 80; prefs.rsiLower = 20
     prefs.hiddenOutputs = [.ma: [0, 2], .kdj: [2], .macd: [1, 2]]

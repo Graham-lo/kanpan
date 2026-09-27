@@ -6,8 +6,8 @@ import SwiftUI
 struct AlertListContext {
   /// 点一行：去那条线上（复盘到点去那条记录）。宿主接成深链。
   var onOpen: (KanpanCore.Alert) -> Void = { _ in }
-  /// 时间按用户在设置里选的那档时区写。
-  var zone: TZOffset = .system
+  /// 时间一律按上海 UTC+8 写（2026-09-28 起时区不再是设置项）。
+  var zone: TZOffset = TZChoice.exchange.offsetMinutes
   /// 按用户打的代号查品种与现价（创建 / 编辑页要）。
   var quote: (String) -> PriceAlertQuote? = { _ in nil }
   /// 总表行上那口价按几位小数写（按提醒存的规范键查目录）。**一口价都不读**：

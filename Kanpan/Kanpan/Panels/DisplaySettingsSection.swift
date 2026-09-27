@@ -1,8 +1,8 @@
 import SwiftUI
 import KanpanCore
 
-/// 配色分两根轴：选哪一套（青苔 / 陶土），和跟不跟系统深浅。
-/// 亮度阈值与滞回留在 `BrightnessThemePolicy` 里，界面上不解释。
+/// 配色分两根轴：选哪一套（青苔 / 陶土 / 经典），和跟不跟系统深浅。
+/// 「按屏幕亮度切换深浅」2026-09-28 收掉了：深浅只有跟随系统 / 浅 / 深三档。
 struct DisplaySettingsSection: View {
   var store: PrefsStore
   @Environment(\.panelTheme) private var theme
@@ -10,11 +10,8 @@ struct DisplaySettingsSection: View {
   /// 皮肤卡这一排和上下的行站在同一条竖线上：整页里跟页面外边距走（`panelPageInset()`）。
   @Environment(\.panelHPad) private var hPad
 
-  /// 配色卡按哪种深浅画。「按屏幕亮度切换」开着时深浅不由 `theme` 定，由亮度策略定
-  /// （`MainScreen.effectiveTheme` / `PanelHost` 算好的那一份，经 `panelTheme` 传下来）；
-  /// 原来这儿只看 `theme`，亮度把整页切成深色了，几张卡还按浅色画。
+  /// 配色卡按哪种深浅画：和整页一样，只看「外观」那一档。
   private var dark: Bool {
-    if store.prefs.ambientTheme { return theme.dark }
     switch store.prefs.theme {
     case .system: return scheme == .dark
     case .light: return false
@@ -37,18 +34,11 @@ struct DisplaySettingsSection: View {
     // 外面这层没人按名字找，删掉就是了。
 
     PanelGroupTitle(text: "深浅")
-    PanelRow(name: "外观") {
+    PanelRow(name: "外观", divider: false) {
       PanelSegment(options: ThemeChoice.allCases.map { ($0.display, $0) },
                    selection: store.prefs.theme, id: "display.mode") { choice in
-        store.updateByHand { $0.theme = choice; $0.ambientTheme = false }
+        store.updateByHand { $0.theme = choice }
       }
-    }
-    // 原来叫「自动护眼配色 · 随屏幕明暗切换」，和上面「外观」里的「跟随系统」读起来像
-    // 同一件事（审查 U13）。两者不合并：「跟随系统」跟的是系统深色模式，这颗跟的是屏幕
-    // 亮度（`BrightnessThemePolicy`）。只改字面，写清它按什么切，不要副标题。
-    PanelRow(name: "按屏幕亮度切换深浅") {
-      PanelSwitch(isOn: store.prefs.ambientTheme) { store.updateByHand { $0.ambientTheme.toggle() } }
-        .accessibilityIdentifier("display.ambient")
     }
   }
 

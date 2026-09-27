@@ -24,8 +24,8 @@ struct Prefs: Sendable, Equatable {
   var theme: ThemeChoice = .system
   /// 配色：青苔（冷）/ 陶土（暖）。出厂青苔。
   var skin: ThemeSkin = .sage
-  // Keep the manual choice intact; automatic brightness selection is runtime-only.
-  var ambientTheme = false
+  // 「按屏幕亮度切换深浅」（`ambientTheme`）2026-09-28 收掉：深浅只有跟随系统 / 浅 / 深三档，
+  // 系统自己的「自动」外观已经管了昼夜切换，再按屏幕亮度切一层只会两套规则打架。
   /// 涨跌对调（A6.7）。国内看盘习惯是红涨绿跌，出厂就给红涨；
   /// 老用户存档里存过什么就还是什么，这儿只改「从没设过」的那一档默认值。
   var redUp: Bool = true
@@ -118,14 +118,19 @@ struct Prefs: Sendable, Equatable {
   var hiddenOutputs: [IndicatorID: Set<Int>] = [:]
   var rsiUpper = 70.0
   var rsiLower = 30.0
-  /// 盯盘时不锁屏（§10.4，默认开）。
-  var keepAwake: Bool = true
+  // 「盯盘时不锁屏」（`keepAwake`）2026-09-28 收掉：图表页在前台就常亮、离开图表页或退后台放手，
+  // 不再交给用户开关（`KeepAwakeGate`）。
   // 这儿原来还有 `launchSnapshot`（§4.3 的「启动快照」开关）。2026-09-24 审查 U13 把它从
   // 设置页撤了，字段随后也删掉：界面上改不了的开关，谁要是以前关过，就永远关着、
   // 再也打不开——冷启动一直是空图。启动快照现在无条件开着（`MainScreen.boot`）。
-  /// 时区（A6.9）。Core 的 `TZChoice` 是原型的口径：本地 / UTC / 交易所（界面上写「UTC+8」）。
-  var timeZone: TZChoice = .local
-  var changeBasis: ChangeBasis = .rolling24h
+  /// 时区：全 app 一律按上海时间（UTC+8）显示——K 线时间轴、十字线、提醒与复盘的时刻。
+  ///
+  /// 2026-09-28 起不再是设置项（原来是「本地 / UTC / UTC+8」三档的存储字段，同步白名单两端已退役）。
+  /// 留成只读的计算属性，是为了读它的各处（图表、复盘、提醒）不用各自再写一遍口径。
+  /// 这只管**显示**：日线及以上的 K 线边界是交易所给的 UTC 0 点（上海 08:00），不跟着它挪。
+  var timeZone: TZChoice { .exchange }
+  // 「涨跌幅起点」（`changeBasis`）2026-09-28 收掉：口径按品种类型自动定（`ChangeBasis.automatic`）——
+  // 加密看滚动 24 小时，美股 / ETF / 贵金属 / 指数这类有交易日的看 UTC 0 点起。
   /// 所有价格提醒共用，随账号同步；复盘到期通知不使用此项。
   var alertSound: AlertSound = .default
   /// 自选五分钟波动提醒（P3.1），出厂关。判定只有一种，见 `WatchMove`。

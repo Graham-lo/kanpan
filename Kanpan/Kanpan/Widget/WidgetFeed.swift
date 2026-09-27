@@ -148,7 +148,7 @@ final class WidgetFeed {
   /// 而且扩展补回来的真价时刻比它旧，会被 `apply` 当旧价拒掉。
   static func snapshot(symbols: SymbolPrefs, quotes: [String: Ticker], decimals: (String) -> Int?,
                        closes: [String: [Double]], skin: ThemeSkin, appearance: ThemeChoice, redUp: Bool,
-                       refresh: WidgetSnapshot.Refresh?, basis: ChangeBasis,
+                       refresh: WidgetSnapshot.Refresh?, basis: (String) -> ChangeBasis,
                        receivedAt: (String) -> Date? = { _ in nil },
                        now: Date = Date()) -> WidgetSnapshot {
     let order = symbols.favorites
@@ -164,14 +164,14 @@ final class WidgetFeed {
       table[symbol] = WidgetSnapshot.Quote(symbol: symbol, price: ticker.last, change: change, decimals: decimals(symbol),
                                            closes: Array((closes[symbol] ?? []).suffix(WidgetSnapshot.sparkLimit)),
                                            timeMs: ticker.timeMs ?? receivedAt(symbol).map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0,
-                                           open: open)
+                                           open: open, rolling: basis(symbol) == .rolling24h)
     }
     return WidgetSnapshot(updatedAt: Int64(now.timeIntervalSince1970 * 1000), favorites: order, groups: groups,
                           quotes: table,
                           light: WidgetSnapshot.Colors(seed: skin.seed(dark: false), redUp: redUp),
                           dark: WidgetSnapshot.Colors(seed: skin.seed(dark: true), redUp: redUp),
                           appearance: WidgetSnapshot.Appearance(rawValue: appearance.rawValue) ?? .auto,
-                          refresh: refresh, rolling: basis == .rolling24h)
+                          refresh: refresh, rolling: true)
   }
 }
 
