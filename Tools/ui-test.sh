@@ -46,7 +46,7 @@ if [ -n "$ONLY_TESTING" ]; then
   IFS=',' read -r -a TEST_IDS <<< "$ONLY_TESTING"
   for test_id in "${TEST_IDS[@]}"; do TEST_ARGS+=("-only-testing:$test_id"); done
 fi
-BUNDLE_ID=com.mdd.kanpan
+BUNDLE_ID=com.yj27y32.hkline   # 09-24 c7ff9afb 起的包名；写错了 uninstall 静默落空，上一轮的偏好就一直留在模拟器里
 WORKSPACE=Kanpan.xcworkspace
 SCHEME=Kanpan
 
