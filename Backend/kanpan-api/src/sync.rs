@@ -78,6 +78,8 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 ///   里嵌着的 `hiddenOutputs` 仍按老规则放行（老客户端还会发），新客户端读时忽略。
 /// - D 组（主力订单流）`orderFlowSpot` / `orderFlowContract` / `orderFlowShowFilled` /
 ///   `orderFlowShowCancelled`：四个显示开关收掉，一律全画（现货合约按色分、已成交满色、没吃到的淡一档）。
+/// - E 组（提醒）`watchMoveThreshold`：自选波动提醒的幅度不再让人填，按每只自己最近一天的
+///   1 分钟波动自动定（`watch_move::auto_threshold`，客户端同一个公式）。
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
  "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
  // 收设置项 A 组（2026-09-28）。
@@ -91,6 +93,8 @@ pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favorit
  "hiddenOutputs","rsiRange",
  // 收设置项 D 组（2026-09-28）。
  "orderFlowSpot","orderFlowContract","orderFlowShowFilled","orderFlowShowCancelled",
+ // 收设置项 E 组（2026-09-28）。
+ "watchMoveThreshold",
 ];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
@@ -151,8 +155,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "favoritesGroup",
  "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","reviewSearchScope",
  "alertSound",
- // 自选五分钟波动提醒（P3.1）：开关 + 幅度（百分数）。服务端 `watch_move.rs` 读这两个。
- "watchMoveAlert","watchMoveThreshold",
+ // 自选五分钟波动提醒（P3.1）：开关。幅度按波动自动定，`watchMoveThreshold` 已退役。
+ "watchMoveAlert",
  // 主力订单流（2026-09-24 逐单模型）：用户改过门槛 / 步长的那几只 base（整张表一个键）。
  // 服务端只校验、不读。四个显示开关（以及更早按买卖拆开的旧键）在 RETIRED_SETTINGS_FIELDS 里。
  "orderFlowOverrides",
@@ -665,13 +669,13 @@ mod tests {
   }
  }
  #[test] fn watch_move_settings_are_accepted_and_bounded() {
-  for (key,value) in [("watchMoveAlert",json!(true)),("watchMoveAlert",json!(false)),("watchMoveThreshold",json!(1.5)),("watchMoveThreshold",json!(0.1)),("watchMoveThreshold",json!(50))] {
+  for (key,value) in [("watchMoveAlert",json!(true)),("watchMoveAlert",json!(false))] {
    let operation=op("settings",&[(key,value.clone())]);
    assert!(operation.validate().is_ok(),"{key}={value}");
    assert!(operation.unknown_fields().is_empty(),"{key} 要在白名单里");
    assert_eq!(applied("settings",&[(key,value.clone())]).body[key],value);
   }
-  for (key,bad) in [("watchMoveAlert",json!(1)),("watchMoveThreshold",json!(0)),("watchMoveThreshold",json!(51)),("watchMoveThreshold",json!("1.5")),("watchMoveThreshold",json!(null))] {
+  for (key,bad) in [("watchMoveAlert",json!(1)),("watchMoveAlert",json!(null))] {
    assert!(op("settings",&[(key,bad.clone())]).validate().is_err(),"{key} 不该收 {bad}");
   }
  }
@@ -871,5 +875,19 @@ mod tests {
   let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
   assert_eq!(merged.body["orderFlowOverrides"],json!({"BTC":{"spot":2000000.0}}));
   for name in names {assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");}
+ }
+ /// 收设置项 E 组：`watchMoveThreshold` 退役。老客户端连同开关一起推上来：开关照收，幅度丢掉并报回；
+ /// 库里老 body 带着的幅度下次合并洗掉（`watch_move::enabled` 本来也不再看它）。
+ #[test] fn trimmed_settings_group_e_are_dropped_and_stripped() {
+  let name="watchMoveThreshold";
+  assert!(RETIRED_SETTINGS_FIELDS.contains(&name)&&!SETTINGS_FIELDS.contains(&name),"{name} 应已退役");
+  let operation=op("settings",&[("watchMoveAlert",json!(true)),(name,json!(2.5))]);
+  assert!(operation.validate().is_ok(),"老版本带着幅度推上来不能整条 400");
+  assert_eq!(operation.unknown_fields(),vec![name.to_string()]);
+  let mut stored=blank("settings","chart");
+  stored.body.insert(name.into(),json!(1.5));stored.fields.insert(name.into(),json!({"revision":1}));
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["watchMoveAlert"],json!(true));
+  assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");
  }
 }

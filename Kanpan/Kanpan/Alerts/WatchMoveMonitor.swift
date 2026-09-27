@@ -10,9 +10,9 @@ import Observation
 ///
 /// - **盯谁**：当前账号的自选（宿主在 `settleFavorites` 那一拍交进来）。自选改了，
 ///   拿掉的品种连同它的闸一起忘掉。
-/// - **开关与幅度**：设置里的 `watchMoveAlert` / `watchMoveThreshold`（随账号同步，
-///   服务端读同一份）。关掉就把状态全清——再打开从缺口重新开始，不拿关着那段时间的
-///   陈价去比。
+/// - **开关**：设置里的 `watchMoveAlert`（随账号同步，服务端读同一份）。关掉就把状态
+///   全清——再打开从缺口重新开始，不拿关着那段时间的陈价去比。幅度不是设置，按每只
+///   自己最近的 1 分钟波动自动定（`WatchMove.autoThreshold`，收设置项 E 组）。
 /// - **喂价**：和 `AlertEngine` 同两条流（图上那只走逐笔，别的走报价簿的列表流），
 ///   按交易所时刻切成 1 分钟桶。服务端订的是同一个交易所的 1 分钟 K 线，两边参照
 ///   的是同一根的收盘价。
@@ -25,16 +25,15 @@ final class WatchMoveMonitor {
   var onEvent: ((WatchMove.Event) -> Void)?
 
   private(set) var enabled = false
-  private(set) var threshold = WatchMove.defaultThreshold
   private(set) var favorites: Set<String> = []
   private var tracker = WatchMove.Tracker()
   private var foreground = true
 
-  private var read: (@MainActor () -> (enabled: Bool, threshold: Double))?
+  private var read: (@MainActor () -> Bool)?
 
-  /// 跟着设置走：`read` 读出开关与幅度，读到的任何一项一变就重读一次
+  /// 跟着设置走：`read` 读出开关，一变就重读一次
   /// （`withObservationTracking`，`PrefsStore` 是 `@Observable`）。
-  func follow(_ read: @escaping @MainActor () -> (enabled: Bool, threshold: Double)) {
+  func follow(_ read: @escaping @MainActor () -> Bool) {
     self.read = read
     track()
   }
@@ -44,12 +43,11 @@ final class WatchMoveMonitor {
     let value = withObservationTracking { read() } onChange: { [weak self] in
       Task { @MainActor [weak self] in self?.track() }
     }
-    configure(enabled: value.enabled, threshold: value.threshold)
+    configure(enabled: value)
   }
 
   /// 设置变了。关掉就全清。
-  func configure(enabled: Bool, threshold: Double) {
-    self.threshold = WatchMove.clampThreshold(threshold)
+  func configure(enabled: Bool) {
     guard enabled != self.enabled else { return }
     self.enabled = enabled
     if !enabled { tracker = WatchMove.Tracker() }
@@ -94,7 +92,7 @@ final class WatchMoveMonitor {
     guard favorites.contains(key) else { return }
     let stamp = timeMs > 0 ? timeMs : Int64(Date().timeIntervalSince1970 * 1000)
     let open = stamp - stamp % WatchMove.barMs
-    if let event = tracker.observe(symbol: key, barOpen: open, price: price, closed: closed, threshold: threshold) {
+    if let event = tracker.observe(symbol: key, barOpen: open, price: price, closed: closed) {
       onEvent?(event)
     }
   }
@@ -105,7 +103,7 @@ final class WatchMoveMonitor {
     guard !injected, enabled, environment["KANPAN_TEST_PROFILE"] == "1",
           let symbol = environment["KANPAN_TEST_WATCHMOVE"].map(Self.key), favorites.contains(symbol) else { return }
     injected = true
-    // 隔两秒再喂：让用例先把开关与幅度那一格截完图。
+    // 隔两秒再喂：让用例先把开关那一格截完图。
     Task { @MainActor [weak self] in
       try? await Task.sleep(for: .seconds(Self.testInjectDelay))
       self?.injectTestMove(symbol: symbol)
@@ -114,9 +112,10 @@ final class WatchMoveMonitor {
 
   static let testInjectDelay: Double = 2
 
-  /// UI 用例在模拟器上走一遍「响一次」的完整链路：真行情五分钟里未必动 1.5%，
+  /// UI 用例在模拟器上走一遍「响一次」的完整链路：真行情五分钟里未必动那么多，
   /// 所以从启动环境 `KANPAN_TEST_WATCHMOVE=<代号>`（配 `KANPAN_TEST_PROFILE=1`）认一只，
-  /// 开关一打开（且这只在自选里）就往这只品种上喂六根合成的 1 分钟价——前五根收在 100、第六根 102（+2%）。时间戳放在
+  /// 开关一打开（且这只在自选里）就往这只品种上喂六根合成的 1 分钟价——前五根收在 100、第六根 102（+2%，
+  /// 这时还不满 30 个收益，幅度是 1.5%）。时间戳放在
   /// 一天以后，真行情的帧全比它早，会被当成乱序的旧帧挡掉，不会搅进来。
   /// 走的是和真行情完全一样的 `observe`：开关、自选、阈值、去重一道都不绕。
   func injectTestMove(symbol: String, now: Double = Date().timeIntervalSince1970 * 1000) {

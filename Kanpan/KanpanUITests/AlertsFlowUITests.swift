@@ -419,7 +419,7 @@ import XCTest
   }
 
   /// 设置页「通知」一组（铃声 / 自选波动 / 通知权限都在这儿）→ 图上药丸「创建提醒」→ 创建页
-  /// （右上「全部预警」）→ Webhook 打开只填地址 → 创建 → 总表那一行带链接记号、不再有备注、
+  /// （右上「全部预警」）→ Webhook 只填地址（没有开关）→ 创建 → 总表那一行带链接记号、不再有备注、
   /// 行尾一枚垃圾桶 → 回创建页点「当前提醒」那一行进编辑页、按钮是「保存」、地址还在。
   /// 青苔浅、青苔深各走一遍。
   func testNotificationSettingsComposeAndListScreens() throws {
@@ -449,12 +449,11 @@ import XCTest
       shot("新建提醒-全部预警按钮-" + tag)
 
       if mode == "浅色" {
-        // Webhook 打开：只露出一个地址框和卡片下那行脚注 +「发一条测试」，没有推送内容、没有备注。
-        let webhook = app.switches["alerts.new.webhook"]
-        XCTAssertTrue(webhook.waitForExistence(timeout: 5), "创建页没有 Webhook 开关")
-        webhook.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).tap()
+        // Webhook 只有一个地址框，没有开关（填了就发）；有字才露出脚注 +「发一条测试」，没有推送内容、没有备注。
+        XCTAssertFalse(app.switches["alerts.new.webhook"].exists, "Webhook 开关该撤了")
         let url = app.textFields["alerts.new.webhook.url"]
-        XCTAssertTrue(url.waitForExistence(timeout: 5), "打开 Webhook 没露出地址框")
+        XCTAssertTrue(url.waitForExistence(timeout: 5), "创建页没有 Webhook 地址框")
+        XCTAssertFalse(app.staticTexts["触发时向这个地址发一条 JSON"].exists, "地址还空着就露出了脚注")
         url.tap()
         url.typeText("https://example.com/hook")
         XCTAssertTrue(app.buttons["alerts.new.webhook.test"].waitForExistence(timeout: 5), "没有「发一条测试」")
@@ -517,15 +516,15 @@ import XCTest
     // 价填得离现价远一些：真行情几分钟里碰到了，这条就会被「触发即删」带走，截图就不稳了。
     replace(app.textFields["alerts.new.price"], with: "10000")
     if app.keyboards.firstMatch.exists { app.buttons["完成"].firstMatch.tap() }
-    let webhook = app.switches["alerts.new.webhook"]
-    XCTAssertTrue(webhook.waitForExistence(timeout: 5), "没有 Webhook 开关")
-    webhook.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).tap()
+    XCTAssertFalse(app.switches["alerts.new.webhook"].exists, "Webhook 开关该撤了")
     let url = app.textFields["alerts.new.webhook.url"]
-    XCTAssertTrue(url.waitForExistence(timeout: 5), "打开 Webhook 没露出地址框")
+    XCTAssertTrue(url.waitForExistence(timeout: 5), "没有 Webhook 地址框")
     let create = app.buttons["alerts.new.create"]
-    XCTAssertFalse(create.isEnabled, "地址还空着主按钮就能按")
+    XCTAssertTrue(wait(seconds: 5) { create.isEnabled }, "地址空着就是不发 Webhook，主按钮该按得下去")
     url.tap()
-    url.typeText("https://example.com/hook")
+    url.typeText("example")
+    XCTAssertTrue(wait(seconds: 3) { !create.isEnabled }, "地址写得不对主按钮还能按")
+    replace(url, with: "https://example.com/hook")
     XCTAssertTrue(wait(seconds: 3) { create.isEnabled }, "填好地址主按钮还按不下去")
     app.buttons["完成"].firstMatch.tap()
     createAndExpectToast("v3")
@@ -680,17 +679,16 @@ import XCTest
     shot("11-记一笔之后的到点提醒")
   }
 
-  /// 自选五分钟波动：设置页「通知」一组里那颗开关默认关着，打开、幅度默认 1.5%；
-  /// 自选里的 BTC 五分钟涨 2%（启动环境 `KANPAN_TEST_WATCHMOVE` 喂的一段）→ 浮条说出来。
+  /// 自选五分钟波动：设置页「通知」一组里只有一颗开关（幅度按波动自动定，收设置项 E 组），
+  /// 打开后不再露出幅度输入框；自选里的 BTC 五分钟涨 2%（启动环境 `KANPAN_TEST_WATCHMOVE`
+  /// 喂的一段，不满 30 个收益用 1.5%）→ 浮条说出来。
   func testWatchMoveSwitchFiresOnAFavorite() throws {
     openNotificationSettings()
     let toggle = app.descendants(matching: .any).matching(identifier: "alerts.watchMove").firstMatch
     XCTAssertTrue(toggle.waitForExistence(timeout: 8), "设置页「通知」里没有「自选波动提醒」开关")
-    XCTAssertFalse(app.textFields["alerts.watchMove.threshold"].exists, "开关默认应当关着")
     toggle.tap()
-    let threshold = app.textFields["alerts.watchMove.threshold"]
-    XCTAssertTrue(threshold.waitForExistence(timeout: 5), "打开之后没露出幅度")
-    XCTAssertEqual(threshold.value as? String, "1.5", "幅度默认不是 1.5")
+    XCTAssertFalse(app.textFields["alerts.watchMove.threshold"].waitForExistence(timeout: 2), "幅度输入框该撤了")
+    XCTAssertFalse(app.staticTexts["五分钟涨跌超过"].exists, "幅度那一行该撤了")
     shot("12-自选波动开关")
     XCTAssertTrue(app.staticTexts["BTC 五分钟涨 2.00%"].waitForExistence(timeout: 20),
                   "自选里的 BTC 五分钟涨 2% 没响：\(app.debugDescription)")

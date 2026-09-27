@@ -166,12 +166,12 @@ struct P31AlertKindsTests {
 
   // ---------------------------------------------------------------- 自选波动
 
-  private func monitor(favorites: [String] = ["BTCUSDT"], threshold: Double = 1.5) -> (WatchMoveMonitor, Box) {
+  private func monitor(favorites: [String] = ["BTCUSDT"]) -> (WatchMoveMonitor, Box) {
     let m = WatchMoveMonitor()
     let box = Box()
     m.onEvent = { box.events.append($0) }
     m.setFavorites(favorites)
-    m.configure(enabled: true, threshold: threshold)
+    m.configure(enabled: true)
     return (m, box)
   }
 
@@ -269,22 +269,40 @@ struct P31AlertKindsTests {
   func switchingOffStops() {
     let (m, box) = monitor()
     warm(m)
-    m.configure(enabled: false, threshold: 1.5)
+    m.configure(enabled: false)
     m.observe(symbol: "BTCUSDT", price: 110, timeMs: minute(5) + 1_000)
     #expect(box.events.isEmpty)
-    m.configure(enabled: true, threshold: 1.5)
+    m.configure(enabled: true)
     m.observe(symbol: "BTCUSDT", price: 110, timeMs: minute(5) + 2_000)
     #expect(box.events.isEmpty, "关着那段的价不算数")
   }
 
-  @Test("幅度按设置：3% 时 2% 不响")
-  func thresholdFollowsTheSetting() {
-    let (m, box) = monitor(threshold: 3)
-    warm(m)
-    m.observe(symbol: "BTCUSDT", price: 102, timeMs: minute(5) + 1_000)
-    #expect(box.events.isEmpty)
-    m.observe(symbol: "BTCUSDT", price: 103.1, timeMs: minute(5) + 2_000)
-    #expect(box.events.count == 1)
+  /// 一小时每分钟在 `a`、`b` 两个价之间来回（收益一正一负、幅度相同）。
+  private func oscillate(_ m: WatchMoveMonitor, _ a: Double, _ b: Double, minutes: Int64 = 60) {
+    for n in Int64(0)..<minutes { m.observe(symbol: "BTCUSDT", price: n % 2 == 0 ? a : b, timeMs: minute(n) + 10_000) }
+  }
+
+  @Test("幅度不是设置：不满 30 个收益用 1.5%，之后按这只自己的 1 分钟波动定（收设置项 E 组）")
+  func thresholdFollowsVolatility() {
+    // 刚开始盯（五根）：1.5%，1.4% 不响、1.6% 响——和原来的出厂值一样。
+    let (fresh, freshBox) = monitor()
+    warm(fresh)
+    fresh.observe(symbol: "BTCUSDT", price: 101.4, timeMs: minute(5) + 1_000)
+    #expect(freshBox.events.isEmpty)
+    fresh.observe(symbol: "BTCUSDT", price: 101.6, timeMs: minute(5) + 2_000)
+    #expect(freshBox.events.count == 1)
+
+    // 安静的一只（每分钟 ±0.02%）：幅度落到下限 0.5%，0.8% 就响（原来 1.5% 一声不响）。
+    let (quiet, quietBox) = monitor()
+    oscillate(quiet, 100, 100.02)
+    quiet.observe(symbol: "BTCUSDT", price: 100.02 * 1.008, timeMs: minute(60) + 1_000)
+    #expect(quietBox.events.map(\.direction) == [.up])
+
+    // 很野的一只（每分钟 ±0.6%）：幅度 ≈ 9.9%，5% 不响（原来 1.5% 会一直响）。
+    let (wild, wildBox) = monitor()
+    oscillate(wild, 100, 100.6)
+    wild.observe(symbol: "BTCUSDT", price: 100.6 * 1.05, timeMs: minute(60) + 1_000)
+    #expect(wildBox.events.isEmpty)
   }
 
   @Test("切后台断过：回来不拿断口两侧的价比")

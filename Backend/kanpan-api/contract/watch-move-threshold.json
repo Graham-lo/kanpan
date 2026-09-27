@@ -1,0 +1,128 @@
+{
+ "version": 1,
+ "whatThisIs": "自选五分钟波动提醒的自动幅度（收设置项 E 组，2026-09-28 起不再让人填）。客户端 WatchMove.autoThreshold 与服务端 watch_move::auto_threshold 各算一遍，并各自用 Tracker 逐根喂同一串收盘价再核一次，结论必须一致（容差 1e-6 个百分点）。",
+ "formula": "r = ln(close[t] / close[t-1])，只取开盘时刻正好相差 1 分钟的相邻两根；取最近至多 maxReturns 个；不满 minReturns 个 → fallbackPercent；否则 σ1 = madScale × median(|r|)（偶数个取中间两个的平均），σ5 = √5 · σ1，幅度 = clamp(5 · σ5 × 100, floorPercent, ceilingPercent)（百分数）。",
+ "howToMaintain": "手工维护，expectPercent 由独立脚本按 formula 算出。收盘价按 segments 生成：从 start 起，每段 count 步，段内第偶数步 ×(1+stepPercent/100)、第奇数步 ÷(1+stepPercent/100)。改公式先改这里。",
+ "constants": {
+  "fallbackPercent": 1.5,
+  "floorPercent": 0.5,
+  "ceilingPercent": 10.0,
+  "minReturns": 30,
+  "maxReturns": 1440,
+  "madScale": 1.4826
+ },
+ "cases": [
+  {
+   "name": "不满 30 个收益用 1.5%",
+   "why": "29 个收益（30 根收盘价），哪怕波动很大也先用原出厂值。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 29,
+     "stepPercent": 3
+    }
+   ],
+   "expectPercent": 1.5
+  },
+  {
+   "name": "正好 30 个收益就按波动算",
+   "why": "±0.1% 来回 30 次：5·√5·1.4826·ln(1.001) ≈ 1.657%。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 30,
+     "stepPercent": 0.1
+    }
+   ],
+   "expectPercent": 1.6567689452
+  },
+  {
+   "name": "安静的币夹到下限 0.5%",
+   "why": "±0.02% 来回：算出来约 0.33%，夹到 0.5%。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 120,
+     "stepPercent": 0.02
+    }
+   ],
+   "expectPercent": 0.5
+  },
+  {
+   "name": "很野的币夹到上限 10%",
+   "why": "±2% 来回：算出来约 33%，夹到 10%。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 60,
+     "stepPercent": 2
+    }
+   ],
+   "expectPercent": 10.0
+  },
+  {
+   "name": "没夹住的中间值",
+   "why": "±0.6% 来回：约 9.92%，在上下限之间原样用。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 60,
+     "stepPercent": 0.6
+    }
+   ],
+   "expectPercent": 9.9158652134
+  },
+  {
+   "name": "偶数个收益取中间两个的平均",
+   "why": "16 个 0.1% + 16 个 0.3%：中位数是 ln(1.001) 与 ln(1.003) 的平均。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 16,
+     "stepPercent": 0.1
+    },
+    {
+     "count": 16,
+     "stepPercent": 0.3
+    }
+   ],
+   "expectPercent": 3.311058109
+  },
+  {
+   "name": "中位数不被插针带偏",
+   "why": "100 个 ±0.2% 里夹 20 个 ±5%：中位数仍是 0.2% 那一档。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 50,
+     "stepPercent": 0.2
+    },
+    {
+     "count": 20,
+     "stepPercent": 5
+    },
+    {
+     "count": 50,
+     "stepPercent": 0.2
+    }
+   ],
+   "expectPercent": 3.3118836027
+  },
+  {
+   "name": "只看最近 1440 个收益",
+   "why": "先 2000 个 ±3%（若全算进去中位数就是 3%），再 1440 个 ±0.2%：只按后面这一天算。",
+   "start": 100,
+   "segments": [
+    {
+     "count": 2000,
+     "stepPercent": 3
+    },
+    {
+     "count": 1440,
+     "stepPercent": 0.2
+    }
+   ],
+   "expectPercent": 3.3118836027
+  }
+ ]
+}

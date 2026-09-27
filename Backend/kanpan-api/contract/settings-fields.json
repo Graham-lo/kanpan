@@ -78,8 +78,7 @@
     "subInverted" : "synced",
     "subs" : "synced",
     "theme" : "synced",
-    "watchMoveAlert" : "synced",
-    "watchMoveThreshold" : "synced"
+    "watchMoveAlert" : "synced"
   },
   "fieldClassesNote" : "synced=随账号同步、线上用自己的名字；deviceOnly=这台机器 / 这张网的属性，不跟人走；derivedLocal=自动累积的统计，不跟人也不同步。",
   "generatedBy" : "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
@@ -202,8 +201,7 @@
     "subInverted",
     "subs",
     "theme",
-    "watchMoveAlert",
-    "watchMoveThreshold"
+    "watchMoveAlert"
   ],
   "wireKeysNote" : "线上真正会出现的 settings 顶层键 = synced 的字段名 + wireOnlyKeys。Backend/kanpan-api/src/sync.rs 的 SETTINGS_FIELDS 必须逐字等于这一集合。少一个：客户端推上来的这个键被服务端丢掉（在 droppedFields 里报回），那个字段从此悄悄不同步；库里已经存着它的 body 还会在下一次合并时整条 400——要下线一个键，走 sync.rs 的 RETIRED_SETTINGS_FIELDS。多一个而 sync_validation::field 没配值规则：同一种死法，_=>false 让整条操作 400。",
   "wireOnlyKeys" : {

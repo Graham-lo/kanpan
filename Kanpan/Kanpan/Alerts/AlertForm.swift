@@ -171,7 +171,6 @@ struct AlertForm: View {
   @State private var maLengthText = "20"
   @State private var maSide: AlertRule.Side = .above
   @State private var wallText = "1M"
-  @State private var webhookOn = false
   @State private var webhookURL = ""
   @State private var testing = false
   @State private var seeded = false
@@ -204,7 +203,7 @@ struct AlertForm: View {
           .padding(.top, Space.xl)
         notifyCard
           .padding(.top, Space.xl)
-        if webhookOn { webhookFootnote(quote) }
+        if hasWebhook { webhookFootnote(quote) }
         mainButton(quote)
           .padding(.top, Space.xl)
         if existing == nil, !records.isEmpty {
@@ -217,6 +216,7 @@ struct AlertForm: View {
       .padding(.horizontal, hPad)
       .padding(.top, Space.m)
       .padding(.bottom, Space.section)
+      .animation(.snappy, value: hasWebhook)
     }
     .scrollBounceBehavior(.basedOnSize)
     .scrollDismissesKeyboard(.interactively)
@@ -259,7 +259,6 @@ struct AlertForm: View {
       condition = existing.condition
       kind = existing.condition == .close ? .close : .touch
       if existing.kind == .condition { seed(rule: existing.rule) }
-      webhookOn = existing.webhook != nil
       webhookURL = existing.webhook ?? ""
     } else if let initialPrice {
       priceText = quote?.label(initialPrice) ?? String(initialPrice)
@@ -591,47 +590,35 @@ struct AlertForm: View {
 
   // ---------------------------------------------------------------- 通知卡
 
+  /// 填了地址就发、空着就不发——没有单独的开关（收设置项 E 组，2026-09-28）。
   private var notifyCard: some View {
     AlertGroupCard {
       HStack(spacing: Space.m) {
         label("Webhook")
-        Spacer(minLength: Space.s)
-        Toggle("Webhook", isOn: Binding(get: { webhookOn }, set: { on in
-          withAnimation(.snappy) { webhookOn = on }
-          if on, webhookURL.isEmpty { focus = .url }
-        }))
-        .labelsHidden()
-        .tint(t.amber)
-        .accessibilityIdentifier("alerts.new.webhook")
+        TextField("https://", text: $webhookURL)
+          .keyboardType(.URL)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+          // 地址键盘的回车键写「完成」，按下就收键盘，露出下面的主按钮。
+          .submitLabel(.done)
+          .onSubmit { focus = nil }
+          .multilineTextAlignment(.trailing)
+          .font(TypeScale.bodyEmph)
+          .foregroundStyle(t.ink)
+          .focused($focus, equals: .url)
+          .accessibilityIdentifier("alerts.new.webhook.url")
+          .accessibilityLabel("Webhook 地址")
       }
       .padding(.horizontal, Inset.card)
       .frame(minHeight: Inset.rowMin)
-
-      if webhookOn {
-        AlertCardDivider()
-        HStack(spacing: Space.m) {
-          label("地址")
-          TextField("https://", text: $webhookURL)
-            .keyboardType(.URL)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            // 地址键盘的回车键写「完成」，按下就收键盘，露出下面的主按钮。
-            .submitLabel(.done)
-            .onSubmit { focus = nil }
-            .multilineTextAlignment(.trailing)
-            .font(TypeScale.bodyEmph)
-            .foregroundStyle(t.ink)
-            .focused($focus, equals: .url)
-            .accessibilityIdentifier("alerts.new.webhook.url")
-            .accessibilityLabel("地址")
-        }
-        .padding(.horizontal, Inset.card)
-        .frame(minHeight: Inset.rowMin)
-        .contentShape(Rectangle())
-        .onTapGesture { focus = .url }
-      }
+      .contentShape(Rectangle())
+      .onTapGesture { focus = .url }
     }
   }
+
+  private var trimmedWebhook: String { webhookURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+  /// 地址框里有字就算要发（写得不对主按钮灰着，不会悄悄当成不发）。
+  private var hasWebhook: Bool { !trimmedWebhook.isEmpty }
 
   /// 卡片下面一行脚注：发的是什么，旁边「发一条测试」。结果走全局提示条，不占页面。
   private func webhookFootnote(_ quote: PriceAlertQuote?) -> some View {
@@ -714,18 +701,18 @@ struct AlertForm: View {
   /// 卡片色 `raised2` 在上面分得开，两种情况都用 `PanelDisabled`。
   private var disabledFill: Color { PanelDisabled.fill(t) }
 
-  /// 能交了吗：品种认得、价是正数（条件提醒：参数在协议的范围里）、开着 Webhook 时地址合法。
+  /// 能交了吗：品种认得、价是正数（条件提醒：参数在协议的范围里）、填了 Webhook 地址时地址合法。
   private func draft(_ quote: PriceAlertQuote?) -> AlertDraft? {
     guard let quote else { return nil }
-    let url = webhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
-    if webhookOn, !KanpanCore.Alert.isValidWebhook(url) { return nil }
+    let url = trimmedWebhook
+    if hasWebhook, !KanpanCore.Alert.isValidWebhook(url) { return nil }
     if kind.isCondition {
       guard let rule else { return nil }
-      return AlertDraft(quote: quote, target: 0, condition: .touch, webhook: webhookOn ? url : nil, rule: rule)
+      return AlertDraft(quote: quote, target: 0, condition: .touch, webhook: hasWebhook ? url : nil, rule: rule)
     }
     guard let target else { return nil }
     return AlertDraft(quote: quote, target: target, condition: condition,
-                      webhook: webhookOn ? url : nil)
+                      webhook: hasWebhook ? url : nil)
   }
 
   /// 参数行拼出来的条件；写得不成数、超出协议范围都是 nil（主按钮灰着）。

@@ -181,8 +181,6 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "sectorSort"=>one_of(v,&["change","volume"]),
    "reviewSearchScope"=>one_of(v,&["history","private"]),
    "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
-   // 自选波动提醒的幅度（百分数），和客户端 `WatchMove.thresholdRange` 同一个区间。
-   "watchMoveThreshold"=>number(v,0.1,50.0),
    "orderFlowOverrides"=>order_flow_overrides(v),
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),

@@ -10,16 +10,28 @@ import Foundation
 ///   这一口就不判——既不响，也不把「已经回到阈值以内」记上。
 /// - **去重**：同品种、同方向、同一个对齐的五分钟窗口（开盘时刻按 5 分钟取整）
 ///   只响一次；响过之后，幅度要先回到阈值以内（「退出阈值」）才重新上膛。
+/// - **幅度按这只自己的波动自动定**（收设置项 E 组，2026-09-28 起不再让人填）：
+///   取这只最近至多 1440 根相邻 1 分钟收盘价的对数收益 r（只算开盘时刻正好差 1 分钟的
+///   两根，缺口两边不连），σ1 = 1.4826 × median(|r|)（MAD 稳健估计，不被几根插针带偏），
+///   σ5 = √5 · σ1，幅度 = clamp(5 · σ5, 0.5%, 10%)；不满 30 个收益时用 1.5%（原出厂值）。
+///   BTC 这种安静的大币落在 0.5% 附近，山寨币自动放宽——一个数对所有品种都合适是不可能的。
+///   两端共用夹具 `Backend/kanpan-api/contract/watch-move-threshold.json`。
 ///
 /// 前台（`WatchMoveMonitor`）与服务端（`Backend/kanpan-api/src/watch_move.rs`）按
 /// 这同一段文字各实现一份，两边都拿 1 分钟 K 线的收盘价当参照。
 public enum WatchMove {
   public static let barMs: Int64 = 60_000
   public static let windowMs: Int64 = 300_000
-  /// 出厂幅度（百分数）。
-  public static let defaultThreshold = 1.5
-  /// 用户能填的范围（百分数）。服务端 `sync_validation.rs` 卡同一个区间。
-  public static let thresholdRange: ClosedRange<Double> = 0.1...50
+  /// 收益不够（不满 `minReturns` 个）时的幅度（百分数），即原来的出厂值。
+  public static let fallbackThreshold = 1.5
+  /// 自动幅度的上下限（百分数）。
+  public static let thresholdRange: ClosedRange<Double> = 0.5...10
+  /// 至少这么多个 1 分钟收益才信得过估计。
+  public static let minReturns = 30
+  /// 最多看最近这么多个 1 分钟收益（一天）。
+  public static let maxReturns = 1440
+  /// MAD → σ 的换算系数（正态下 σ = 1.4826 × MAD）。
+  public static let madScale = 1.4826
 
   public enum Direction: String, Sendable, CaseIterable { case up, down }
 
@@ -33,10 +45,17 @@ public enum WatchMove {
     public var window: Int64
   }
 
-  /// 把用户输入的幅度夹进合法区间；读不出来的退回出厂值。
-  public static func clampThreshold(_ value: Double) -> Double {
-    guard value.isFinite else { return defaultThreshold }
-    return min(max(value, thresholdRange.lowerBound), thresholdRange.upperBound)
+  /// 自动幅度（百分数）：`returns` 是按时间先后排的 1 分钟对数收益，只看最后 `maxReturns` 个。
+  /// 服务端 `watch_move::auto_threshold` 一字对一字。
+  public static func autoThreshold(returns: [Double]) -> Double {
+    let recent = returns.suffix(maxReturns).filter(\.isFinite).map(abs).sorted()
+    guard recent.count >= minReturns else { return fallbackThreshold }
+    let n = recent.count
+    let median = n % 2 == 1 ? recent[n / 2] : (recent[n / 2 - 1] + recent[n / 2]) / 2
+    let sigma5 = (5.0).squareRoot() * madScale * median
+    let percent = 5 * sigma5 * 100
+    guard percent.isFinite else { return fallbackThreshold }
+    return min(max(percent, thresholdRange.lowerBound), thresholdRange.upperBound)
   }
 
   /// 通知标题：「BTC 五分钟涨 1.82%」。服务端 `watch_move::title` 一字不差。
@@ -45,14 +64,35 @@ public enum WatchMove {
     return Alert.name(of: event.symbol) + " 五分钟" + verb + " " + String(format: "%.2f%%", abs(event.change) * 100)
   }
 
-  /// 一只品种的 1 分钟收盘价（最近七根够用）。
+  /// 一只品种的 1 分钟收盘价（最近七根够用）与估幅度用的收益（最近 `maxReturns` 个）。
   struct Series: Sendable, Equatable {
     /// 开盘时刻 → 收盘价，只存已经收了的。
     var closes: [Int64: Double] = [:]
     var currentOpen: Int64?
     var currentClose: Double?
+    /// 相邻两根收盘价的对数收益，按时间先后。断线只扔收盘价、不扔它（缺口两边本来就不连）。
+    var returns: [Double] = []
+    /// 按 `returns` 算好的幅度（百分数），收一根重算一次，不是每口价都排一遍序。
+    var threshold = WatchMove.fallbackThreshold
 
     public init() {}
+
+    /// 这一根收了。第一次收才记收益；前一分钟那一根也收着，才算一个收益。
+    mutating func commit(open: Int64, close: Double) {
+      let fresh = closes[open] == nil
+      closes[open] = close
+      guard fresh, let previous = closes[open - WatchMove.barMs], previous > 0 else { return }
+      returns.append(Foundation.log(close / previous))
+      if returns.count > WatchMove.maxReturns { returns.removeFirst(returns.count - WatchMove.maxReturns) }
+      threshold = WatchMove.autoThreshold(returns: returns)
+    }
+
+    /// 断过线：收盘价与这一根作废，收益与幅度留着。
+    mutating func forgetPrices() {
+      closes.removeAll()
+      currentOpen = nil
+      currentClose = nil
+    }
 
     /// 喂一口价。`closed == true` 表示这一根到这儿已经收了（服务端的 `k.x`）。
     /// 返回这一口的五分钟涨跌幅；参照那一根缺着就返回 nil。
@@ -60,11 +100,11 @@ public enum WatchMove {
       guard price.isFinite, price > 0 else { return nil }
       if let open = currentOpen, barOpen < open { return nil }   // 乱序的旧帧一概不要
       if let open = currentOpen, let close = currentClose, barOpen > open {
-        closes[open] = close   // 换根了 ⇒ 上一根收了
+        commit(open: open, close: close)   // 换根了 ⇒ 上一根收了
       }
       currentOpen = barOpen
       currentClose = price
-      if closed { closes[barOpen] = price }
+      if closed { commit(open: barOpen, close: price) }
       closes = closes.filter { $0.key >= barOpen - 7 * WatchMove.barMs }
       guard let reference = closes[barOpen - WatchMove.windowMs], reference > 0 else { return nil }
       return price / reference - 1
@@ -105,16 +145,15 @@ public enum WatchMove {
     var gates: [GateKey: Gate] = [:]
     public init() {}
 
-    /// 喂一口价。`threshold` 是百分数（1.5 = 1.5%）。
-    public mutating func observe(symbol: String, barOpen: Int64, price: Double, closed: Bool = false,
-                                 threshold: Double) -> Event? {
+    /// 喂一口价。幅度按这只自己的波动自动定（`autoThreshold`）。
+    public mutating func observe(symbol: String, barOpen: Int64, price: Double, closed: Bool = false) -> Event? {
       let key = InstrumentID.canonical(symbol)
       guard !key.isEmpty else { return nil }
       var s = series[key] ?? Series()
       let change = s.observe(barOpen: barOpen, price: price, closed: closed)
       series[key] = s
       guard let change else { return nil }
-      let limit = WatchMove.clampThreshold(threshold) / 100
+      let limit = s.threshold / 100
       let window = barOpen - barOpen % WatchMove.windowMs
       var fired: Event?
       for direction in Direction.allCases {
@@ -137,8 +176,16 @@ public enum WatchMove {
       gates = gates.filter { keys.contains($0.key.symbol) }
     }
 
-    /// 断过（切后台、关掉开关）：收盘价全扔，闸留着——同一个窗口里回来不许再响一次。
-    public mutating func forgetPrices() { series.removeAll() }
+    /// 断过（切后台）：收盘价全扔，闸留着——同一个窗口里回来不许再响一次；
+    /// 估幅度的收益也留着（缺口两边不连，不会算出假收益），回来不用再等三十分钟。
+    public mutating func forgetPrices() {
+      for key in series.keys { series[key]?.forgetPrices() }
+    }
+
+    /// 这只现在的幅度（百分数）。没见过的品种是 `fallbackThreshold`。
+    public func threshold(for symbol: String) -> Double {
+      series[InstrumentID.canonical(symbol)]?.threshold ?? WatchMove.fallbackThreshold
+    }
 
     public var symbols: Set<String> { Set(series.keys) }
   }

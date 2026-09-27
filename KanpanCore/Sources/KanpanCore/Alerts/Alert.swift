@@ -24,8 +24,8 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   ///   条件在 `rule` 里，`lines` 为空、`condition` 固定 `touch`（不参与判定）、市场只能是币安 U 本位。
   ///   服务端常驻判；app 在前台时 `ConditionAlertEngine` 也判，谁先判到谁响（只响一次靠 `status`）。
   ///
-  /// 自选五分钟波动不在这里：它不是一条条提醒对象，是 `settings/chart` 里的开关与阈值
-  /// （`watchMoveAlert` / `watchMoveThreshold`），判定在 `WatchMove` / 服务端 `watch_move.rs`。
+  /// 自选五分钟波动不在这里：它不是一条条提醒对象，是 `settings/chart` 里的一个开关
+  /// （`watchMoveAlert`，幅度按波动自动定），判定在 `WatchMove` / 服务端 `watch_move.rs`。
   /// 规格见 docs/待办交接-Codex-2026-09-22.md P3.1。
   public enum Kind: String, Sendable, Codable, CaseIterable {
     case drawing, price, reviewDue, condition

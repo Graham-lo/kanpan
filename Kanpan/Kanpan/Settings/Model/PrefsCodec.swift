@@ -69,7 +69,6 @@ enum PrefsCodec {
     var p = prefs
     p.barSpacing = Prefs.clampSpacing(p.barSpacing)
     p.portraitHeight = Prefs.clampPortraitHeight(p.portraitHeight)
-    p.watchMoveThreshold = WatchMove.clampThreshold(p.watchMoveThreshold)
     p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
     return p
@@ -150,7 +149,8 @@ extension Prefs: Codable {
     // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：老存档里的键读时忽略，服务端退役。
     case reviewSearchScope
     case alertSound
-    case watchMoveAlert, watchMoveThreshold
+    // `watchMoveThreshold` 2026-09-28 收掉（收设置项 E 组），老档读时忽略。
+    case watchMoveAlert
     case notifyListingChanges
   }
 
@@ -193,7 +193,6 @@ extension Prefs: Codable {
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
-    try c.encode(watchMoveThreshold, forKey: .watchMoveThreshold)
     try c.encode(notifyListingChanges, forKey: .notifyListingChanges)
   }
 
@@ -348,9 +347,6 @@ extension Prefs: Codable {
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }
     if let v = bool(.notifyListingChanges) { notifyListingChanges = v }
-    if let v = (try? c.decodeIfPresent(Double.self, forKey: .watchMoveThreshold)) ?? nil {
-      watchMoveThreshold = WatchMove.clampThreshold(v)
-    }
 
     if let raw = strs(.compareSymbols) { compareSymbols = Prefs.cleanCompareSymbols(raw) }
     PrefsCodec.migrate(&self, from: archived, archivedQuicks: archivedQuicks)

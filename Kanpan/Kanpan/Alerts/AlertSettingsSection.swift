@@ -13,9 +13,6 @@ struct AlertSettingsSection: View {
   var preferences: PrefsStore
 
   @State private var showSound = false
-  /// 自选波动的幅度，编辑时的那一格字。离开输入框才落盘（`kanpan-persist-on-gesture-end`）。
-  @State private var thresholdText = ""
-  @FocusState private var thresholdFocused: Bool
   /// 通知权限那一行的开关（见 `AlertPermission`）。这一组自己养一个，别处不看它。
   @StateObject private var permission = AlertPermission()
   /// 「回前台再查一遍」那份登记。用户点了权限那一行就去了系统设置，回来时这一页还开着、
@@ -42,13 +39,6 @@ struct AlertSettingsSection: View {
       listingRow
     }
     .navigationDestination(isPresented: $showSound) { AlertSoundPage(store: preferences) }
-    .toolbar {
-      // 数字键盘没有回车键，收不起来（视觉审查 2.9 #5）。
-      ToolbarItemGroup(placement: .keyboard) {
-        Spacer()
-        Button("完成") { thresholdFocused = false }
-      }
-    }
     .task { await permission.refresh() }
     .onAppear {
       guard lifecycle == nil else { return }
@@ -64,38 +54,14 @@ struct AlertSettingsSection: View {
     }
   }
 
-  /// 自选波动提醒：一个开关，开着时下面一格幅度（手动输入，没有口径可选）。
-  @ViewBuilder private var watchMoveRows: some View {
-    let on = preferences.prefs.watchMoveAlert
+  /// 自选波动提醒：只有一个开关。幅度不让人填（收设置项 E 组，2026-09-28）——按每只自己
+  /// 最近一天的 1 分钟波动自动定（`WatchMove.autoThreshold`），BTC 落在 0.5% 附近、山寨自动放宽。
+  private var watchMoveRows: some View {
     PanelRow(name: "自选波动提醒") {
-      PanelSwitch(isOn: on) {
-        commitThreshold()
+      PanelSwitch(isOn: preferences.prefs.watchMoveAlert) {
         preferences.update { $0.watchMoveAlert.toggle() }
       }
       .accessibilityIdentifier("alerts.watchMove")
-    }
-    if on {
-      PanelRow(name: "五分钟涨跌超过") {
-        HStack(spacing: Space.xs) {
-          TextField("", text: $thresholdText)
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
-            .font(TypeScale.body).monospacedDigit()
-            .foregroundStyle(t.ink)
-            .frame(width: Hit.min)
-            .padding(.horizontal, Space.s)
-            .padding(.vertical, Space.s)
-            .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
-            .focused($thresholdFocused)
-            .onSubmit(commitThreshold)
-            .accessibilityIdentifier("alerts.watchMove.threshold")
-            .accessibilityLabel("五分钟涨跌超过")
-          Text("%").font(TypeScale.body).foregroundStyle(t.ink3)
-        }
-      }
-      .onAppear { thresholdText = Self.format(preferences.prefs.watchMoveThreshold) }
-      .onChange(of: thresholdFocused) { _, focused in if !focused { commitThreshold() } }
-      .onDisappear(perform: commitThreshold)
     }
   }
 
@@ -107,22 +73,6 @@ struct AlertSettingsSection: View {
       }
       .accessibilityIdentifier("alerts.listing")
     }
-  }
-
-  private func commitThreshold() {
-    let text = thresholdText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
-    guard !text.isEmpty else { return }
-    let value = Double(text).map(WatchMove.clampThreshold) ?? preferences.prefs.watchMoveThreshold
-    thresholdText = Self.format(value)
-    guard value != preferences.prefs.watchMoveThreshold else { return }
-    preferences.update { $0.watchMoveThreshold = value }
-  }
-
-  static func format(_ value: Double) -> String {
-    var text = String(format: "%.2f", value)
-    while text.hasSuffix("0") { text.removeLast() }
-    if text.hasSuffix(".") { text.removeLast() }
-    return text
   }
 }
 

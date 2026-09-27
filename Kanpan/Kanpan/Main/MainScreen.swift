@@ -1682,12 +1682,10 @@ struct MainScreen: View {
     }
   }
 
-  /// 自选五分钟波动提醒（P3.1）：开关与幅度跟着设置走，自选在 `settleFavorites` 交进去，
+  /// 自选五分钟波动提醒（P3.1）：开关跟着设置走（幅度按波动自动定），自选在 `settleFavorites` 交进去，
   /// 价在 `wireAlerts` 那两条流上一起喂。响了：通知中心留一条 + 震一下 + 浮条「查看」。
   private func wireWatchMove() {
-    watchMove.follow { [weak store] in
-      (store?.prefs.watchMoveAlert ?? false, store?.prefs.watchMoveThreshold ?? WatchMove.defaultThreshold)
-    }
+    watchMove.follow { [weak store] in store?.prefs.watchMoveAlert ?? false }
     watchMove.onEvent = { [weak store] event in
       let decimals = picker.info(for: event.symbol).map(\.priceDecimals)
       AlertNotifications.present(event, decimals: decimals, sound: store?.prefs.alertSound ?? .default)

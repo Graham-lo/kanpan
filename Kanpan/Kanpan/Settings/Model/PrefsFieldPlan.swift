@@ -97,7 +97,7 @@ enum PrefsFieldPlan {
     "lastDrawTool": .synced,
     "reviewSearchScope": .synced,
     "alertSound": .synced,
-    "watchMoveAlert": .synced, "watchMoveThreshold": .synced,
+    "watchMoveAlert": .synced,
     // 条件提醒协议第 6 节：设置 › 通知「品种上新与停牌下架」。
     "notifyListingChanges": .synced,
     // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）。
@@ -113,6 +113,7 @@ enum PrefsFieldPlan {
     // 复盘：replaySpeed（回放倍速改为按根数自动挑，见 `ReplayPace`）。
     // C 组：hiddenOutputs（指标「输出」开关）、rsiUpper / rsiLower（线上合成的 rsiRange）。
     // D 组：orderFlowSpot、orderFlowContract、orderFlowShowFilled、orderFlowShowCancelled（主力订单流「显示」开关）。
+    // E 组：watchMoveThreshold（自选波动提醒的幅度，改为按波动自动定，见 `WatchMove.autoThreshold`）。
 
     // ---------------------------------------------------------------- 留在这台机器上
     // 走直连还是走 VPS 网关，是这台手机所处网络的属性，不是他的习惯。`routePolicy`

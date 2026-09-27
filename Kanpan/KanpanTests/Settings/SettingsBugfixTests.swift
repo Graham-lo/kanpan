@@ -150,13 +150,11 @@ struct SettingsBugfixTests {
     var p = Prefs.defaults
     p.barSpacing = .nan
     p.portraitHeight = .infinity
-    p.watchMoveThreshold = .nan
     p.subHeightOverrides = [.macd: .nan, .vol: 5]
     let data = try #require(PrefsCodec.encoded(p))
     #expect(!data.isEmpty)
     let back = PrefsCodec.decode(data)
     #expect(back.barSpacing.isFinite && back.portraitHeight.isFinite)
-    #expect(back.watchMoveThreshold.isFinite)
     #expect(back.subHeightOverrides[.macd] == nil)
     #expect(back.subHeightOverrides[.vol] == 2)
     #expect(back.portraitHeight <= 1)
