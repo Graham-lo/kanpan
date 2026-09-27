@@ -293,13 +293,18 @@ extension ChartRenderer {
   ///      一样近取名义大的、再取 id 小的（结果稳定）；
   ///   3. 都不沾：落在某堵跨桶主墙的范围括号上（横向放宽同上，轻点时放到 44 pt）就认那堵墙，几堵叠着取名义大的。
   ///      范围里的空白处不再算——那里已经不画东西了。
+  ///
+  /// 轻点（`touch`）只认看得清的那几条：底噪（`.noise`，1 pt、≤ 35%）点不中——一屏几百条淡线一条挨一条，
+  /// 各放一圈命中区就把整张主图铺满了，点哪儿都出卡、十字线开不出来（压测 2026-09-28，LINK 15 分钟 6000+ 单）；
+  /// 44 pt 的放宽也只给主档（`.main`，一屏最多 6 条、写着金额），次档按十字线的容差。底噪照旧能用十字线停上去看。
   static func orderFlowHit(_ bands: [OrderFlowBand], x: Double, y: Double, touch: Bool = false) -> OrderFlowBand? {
+    let bands = touch ? bands.filter { $0.role != .noise } : bands
     let half = { (b: OrderFlowBand) in max(Double(b.frame.height), orderFlowHitHeight) / 2 }
     let slopX = { (b: OrderFlowBand) in
-      touch ? max(orderFlowHitSlopX, (orderFlowTouchTarget - Double(b.frame.width)) / 2) : orderFlowHitSlopX
+      touch && b.role == .main ? max(orderFlowHitSlopX, (orderFlowTouchTarget - Double(b.frame.width)) / 2) : orderFlowHitSlopX
     }
     let slopY = { (b: OrderFlowBand) in
-      touch ? max(orderFlowHitSlop, (orderFlowTouchTarget - 2 * half(b)) / 2) : orderFlowHitSlop
+      touch && b.role == .main ? max(orderFlowHitSlop, (orderFlowTouchTarget - 2 * half(b)) / 2) : orderFlowHitSlop
     }
     let inX = { (b: OrderFlowBand) in
       x >= Double(b.frame.minX) - slopX(b) && x <= Double(b.frame.maxX) + slopX(b)

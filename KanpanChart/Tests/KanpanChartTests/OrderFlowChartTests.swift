@@ -608,6 +608,52 @@ struct OrderFlowChartTests {
     #expect(OrderFlowGroup.groups([lo, bridge, hi], minLifeMs: b.step, step: step).count == 2)
   }
 
+  @Test("轻点只认主档与次档：底噪点不中（十字线照旧认），44 pt 放宽只给主档，次档按 8 / 4 pt")
+  func touchIgnoresNoise() throws {
+    var (r, step, b0) = wallRenderer()
+    let pane = r.layout(size: Self.size).main
+    let count = 25
+    let pitch = (pane.h - 40) / Double(count)
+    var orders: [BigOrder] = []
+    for i in 0..<count {
+      let p = price(r, atY: pane.y + 20 + pitch * Double(i))
+      var o = wallOrder(r, step: step, bucket: b0 + Int64(3 * i), from: 30, to: 5, notional: Double(40 - i) * 1_250_000)
+      o.price = p
+      o.threshold = 5_000_000
+      orders.append(o)
+    }
+    r.state.orderFlow?.orders = orders
+    let f = frame(r)
+    // 第 22 名：上下邻居也都是底噪。
+    let noise = try #require(f.bands.first { $0.key == OrderFlowGroupKey(orders[21]) })
+    #expect(noise.role == .noise)
+    let secondary = try #require(f.bands.first { $0.role == .secondary })
+    let main = try #require(f.bands.first { $0.role == .main })
+    // 底噪：点正中也不出卡；十字线（非轻点）照旧认得。
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: noise.frame.midX, y: noise.frame.midY, touch: true)?.role != .noise)
+    #expect(ChartRenderer.orderFlowHit([noise], x: noise.frame.midX, y: noise.frame.midY, touch: true) == nil)
+    #expect(ChartRenderer.orderFlowHit([noise], x: noise.frame.midX, y: noise.frame.midY)?.key == noise.key)
+    #expect(r.orderFlowHit(at: CGPoint(x: noise.frame.midX, y: noise.frame.midY), size: Self.size)?.key != noise.key)
+    // 次档：点在线上认，离开超过 4 + 8 pt 就不认（不再放到 44 pt）。
+    let sh = max(secondary.frame.height, ChartRenderer.orderFlowHitHeight) / 2
+    #expect(ChartRenderer.orderFlowHit([secondary], x: secondary.frame.midX, y: secondary.frame.midY, touch: true)?.key == secondary.key)
+    #expect(ChartRenderer.orderFlowHit([secondary], x: secondary.frame.midX, y: secondary.frame.midY + sh + 7.9, touch: true)?.key == secondary.key)
+    #expect(ChartRenderer.orderFlowHit([secondary], x: secondary.frame.midX, y: secondary.frame.midY + sh + 8.1, touch: true) == nil)
+    // 主档：仍放到 44 pt。
+    let mh = max(main.frame.height, ChartRenderer.orderFlowHitHeight) / 2
+    let reach = (ChartRenderer.orderFlowTouchTarget - 2 * mh) / 2
+    #expect(ChartRenderer.orderFlowHit([main], x: main.frame.midX, y: main.frame.midY + mh + reach - 0.1, touch: true)?.key == main.key)
+    // 整张主图不再铺满命中区：竖着每 2 pt 扫一遍，底噪那几行上点不出卡的比例要过半。
+    var misses = 0, total = 0
+    var yy = noise.frame.midY - pitch / 2
+    while yy < noise.frame.midY + pitch / 2 {
+      total += 1
+      if r.orderFlowHit(at: CGPoint(x: noise.frame.midX, y: yy), size: Self.size) == nil { misses += 1 }
+      yy += 2
+    }
+    #expect(misses * 2 > total, "底噪那一行 \(misses)/\(total) 点不中")
+  }
+
   @Test("屏内排名：前 6 名主（2 / 2.5 pt、写金额），7–18 名次（1 pt、70%、不写），其余底噪（1 pt、35%）；挂着的底噪升成次")
   func rankRoles() throws {
     var (r, step, b0) = wallRenderer()
