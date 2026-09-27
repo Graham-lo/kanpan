@@ -35,6 +35,21 @@ public enum ReviewInterval: String, Sendable, Codable, CaseIterable {
     }
   }
 
+  /// 记一笔时「到期」的默认值（收设置项 2026-09-28）：取景卡上不再摆到期时间钮，
+  /// 按周期定——分钟线看一天、小时线看一周、日线看一个月；更长的周期（3 天、周、月）
+  /// 各往后放一档（三个月、一年），都落在服务端「最远 366 天」以内。
+  /// 人在图上拖到期那根虚线（`expiryEdited`）就以人为准，这里不再管。
+  public var defaultHorizonMillis: Int64 {
+    let day: Int64 = 86_400_000
+    switch self {
+    case .m1, .m3, .m5, .m15, .m30: return day
+    case .h1, .h2, .h4, .h6, .h8, .h12: return 7 * day
+    case .d1: return 30 * day
+    case .d3, .w1: return 90 * day
+    case .mo1: return 365 * day
+    }
+  }
+
   /// `[start, end)` 里装得下多少根完整 K 线（毫秒时间戳）。
   ///
   /// 固定长度周期按秒数整除，和 Rust 的 `(end - start).num_seconds().div_euclid(step)`
@@ -79,7 +94,6 @@ public enum ReviewContract {
   public static let directions = ["long", "short", "observe"]
   public static let confirmations = ["bar_close", "trade_touch"]
   public static let origins = ["chart_first", "thought_first", "interwoven", "unknown"]
-  public static let confidences = [50, 60, 70, 80, 90]
   /// 本机时钟最多可以比服务器快多少（服务端：`draft.created > now + 60_000` 就拒）。
   public static let createdAheadMillis: Int64 = 60_000
   /// 正文按 **UTF-8 字节**算，不是字符数——服务端量的是 `String::len()`。
@@ -126,7 +140,6 @@ public enum ReviewContract {
     guard rule.version == ruleVersion else { return "复盘规则已更新，请升级后再记" }
     guard directions.contains(rule.direction.rawValue), confirmations.contains(rule.confirmation.rawValue),
           origins.contains(draft.origin.rawValue) else { return "复盘规则已更新，请升级后再记" }
-    if let confidence = draft.confidence, !confidences.contains(confidence) { return "请选择有效把握" }
     guard draft.created >= 0, draft.created <= now + createdAheadMillis else { return "本机时间和实际时间差得太远，请先校准" }
     guard draft.text.utf8.count <= textMaxBytes else { return "这段话太长了，精简一下再记" }
     if let settings = draft.chartSettings, base64Length(settings) > chartSettingsMaxBytes { return "图表设置太大，暂时记不下" }

@@ -1245,9 +1245,6 @@ struct MainScreen: View {
       guard let state = reviewState(box?.chart.state), let size = box?.chart.bounds.size, size.width > 0 else { return nil }
       return ChartSnapshotRenderer.png(state: state, size: size, head: chartShotHead, theme: theme)
     }
-    // 回放倍速跟着人走：初值从偏好来，那颗按钮一改就写回去（R3-4）。
-    reviewChart.preferredSpeed = { store.prefs.replaySpeed }
-    reviewChart.onSpeedChange = { value in store.update { $0.replaySpeed = Prefs.clampSpeed(value) } }
     // 「找相似」的范围同理。`ReviewUI` 那个包看不见 `Prefs`，所以在这儿对接两头：
     // 这一句灌初值，下面 `lifecycleContent` 里那两条 `onChange` 管往返（R3-5）。
     review.searchScope = prefs.reviewSearchScope
@@ -1287,8 +1284,6 @@ struct MainScreen: View {
       say(text)
       endReview(backToOrigin: true)
     }
-    // 卡片上改起止时刻（P3.7）：吸附、重算目标失效、把图挪过去，都在图这一头做。
-    review.onEditRange = { start, end in reviewChart.editRange(start: start, end: end, feature: review) }
     review.onOpenMatch = { match, cutoff in
       endSharePreview(); dismissPanel(); draw.finish()
       showChartForReview()

@@ -148,7 +148,8 @@ extension Prefs: Codable {
     case favoritesGroup
     case sectorMarket, sectorWindow, sectorSort
     case lastDrawTool
-    case replaySpeed, reviewSearchScope
+    // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：老存档里的键读时忽略，服务端退役。
+    case reviewSearchScope
     case alertSound
     case watchMoveAlert, watchMoveThreshold
     case notifyListingChanges
@@ -196,7 +197,6 @@ extension Prefs: Codable {
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
     try c.encode(sectorSort, forKey: .sectorSort)
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
-    try c.encode(replaySpeed, forKey: .replaySpeed)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
@@ -380,7 +380,6 @@ extension Prefs: Codable {
     // 不让一个手改 / 更高版本写下的字面量躺进档里、再被推上去整条拒收。
     if let raw = str(.sectorSort), SectorSymbolSort(rawValue: raw) != nil { sectorSort = raw }
     if let raw = str(.lastDrawTool) { lastDrawTool = raw.isEmpty || Drawing.Kind(rawValue: raw) != nil ? raw : "" }
-    if let v = (try? c.decodeIfPresent(Int.self, forKey: .replaySpeed)) ?? nil { replaySpeed = Prefs.clampSpeed(v) }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }

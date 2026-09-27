@@ -194,9 +194,7 @@ final class ReviewContractReconciliationTests: XCTestCase {
     let origins = quoted(try firstMatch("draft\\.origin\\.as_str\\(\\), ([^)]*)\\)", draft, "来源枚举")[1])
     XCTAssertEqual(ReviewContract.origins, origins, "来源枚举对不上：服务端 \(origins)")
 
-    let confidences = try firstMatch("!\\[([0-9,_ ]+)\\]\\.contains\\(&v\\)", draft, "把握档位")[1]
-      .split(separator: ",").compactMap { number(String($0)) }
-    XCTAssertEqual(ReviewContract.confidences.map(Int64.init), confidences, "把握档位对不上：服务端 \(confidences)")
+    // 「把握」客户端 2026-09-28 不再写（收设置项），服务端那一档校验仍在、老记录照收——没有可对的清单了。
 
     let ahead = try firstMatch("draft\\.created > now \\+ ([0-9_]+)", draft, "本机时钟容差")[1]
     XCTAssertEqual(ReviewContract.createdAheadMillis, number(ahead), "本机时钟最多能快多少，两边对不上")

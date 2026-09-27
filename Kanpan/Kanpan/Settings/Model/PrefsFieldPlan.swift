@@ -101,7 +101,7 @@ enum PrefsFieldPlan {
     "favoritesSparkline": .synced, "favoritesGroup": .synced,
     "sectorMarket": .synced, "sectorWindow": .synced, "sectorSort": .synced,
     "lastDrawTool": .synced,
-    "replaySpeed": .synced, "reviewSearchScope": .synced,
+    "reviewSearchScope": .synced,
     "alertSound": .synced,
     "watchMoveAlert": .synced, "watchMoveThreshold": .synced,
     // 条件提醒协议第 6 节：设置 › 通知「品种上新与停牌下架」。
@@ -118,6 +118,7 @@ enum PrefsFieldPlan {
     // A 组：ambientTheme、keepAwake、timeZone、changeBasis。
     // B 组：magnet、countdown、gridChoice、bodyChoice、lastLine、sinceChange、viewAnchor、priceBias、
     // dataDisplay、crossPrice、allowMainInversion、allowSubInversion、adaptiveIndicators。
+    // 复盘：replaySpeed（回放倍速改为按根数自动挑，见 `ReplayPace`）。
 
     // ------------------------------------------------- 跟着人走，但线上并成一个键
     "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,

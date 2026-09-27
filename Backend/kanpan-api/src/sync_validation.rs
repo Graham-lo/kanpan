@@ -171,9 +171,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "portraitHeight"=>number(v,0.1,1.0),
    // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.
    "barSpacing"=>number(v,1.6,40.0),
-   // Only 1 / 2 / 4, per `Prefs.clampSpeed`.
    "compareSymbols"=>v.as_array().is_some_and(|a|a.len()<=3 && a.iter().all(compare_key) && a.iter().enumerate().all(|(i,v)| !a[..i].contains(v))),
-   "replaySpeed"=>v.as_i64().is_some_and(|n|matches!(n,1|2|4)),
    "skin"=>one_of(v,&["sage","terra","classic"]),
    "routePolicy"=>one_of(v,&["direct","gateway"]),
    // `alert`（离提醒线最近）是 2026-09-20 随提醒功能加的。这一档和客户端
@@ -669,7 +667,6 @@ mod tests {
   assert!(field("settings","lastDrawTool",&json!(""))&&field("settings","lastDrawTool",&json!("gannFan"))&&!field("settings","lastDrawTool",&json!("laser")));
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
-  assert!(field("settings","replaySpeed",&json!(4))&&!field("settings","replaySpeed",&json!(8)));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");
   for flag in ["mainInverted","favoritesAscending","favoritesAmount","favoritesSparkline"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");

@@ -199,9 +199,8 @@ struct Prefs: Sendable, Equatable {
   /// 这儿记的只是「上次用的是哪把」这个习惯。
   var lastDrawTool: String = ""
 
-  /// 回放倍速。**是人的习惯，不是这条记录的属性**——调到 4× 退出去，再进另一条记录
-  /// 也该还是 4×。游标位置按记录存（`ReviewReplayPosition.cursor`），那个不跟着人走。
-  var replaySpeed: Int = 1
+  // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：每一趟回放按根数自己挑
+  // （`ReplayPace`，整趟 20–40 秒），回放条上那颗倍速键只改这一趟，不再存。
   /// 「找相似」的搜索范围：`history`（市场历史）/ `private`（我的记录）。
   var reviewSearchScope: String = "history"
 
@@ -230,9 +229,6 @@ struct Prefs: Sendable, Equatable {
 
   /// 「找相似」认得的两档范围。
   static let searchScopes: Set<String> = ["history", "private"]
-
-  /// 回放倍速只有 1 / 2 / 4 三档（`ReviewReplayControls` 上那颗按钮就是这么转的）。
-  static func clampSpeed(_ value: Int) -> Int { [1, 2, 4].contains(value) ? value : 1 }
 
   /// 根间距存进档案之前夹一道。
   ///

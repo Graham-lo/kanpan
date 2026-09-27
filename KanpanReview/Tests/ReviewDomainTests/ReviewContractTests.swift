@@ -135,16 +135,36 @@ final class ReviewContractTests: XCTestCase {
     XCTAssertNotNil(ReviewContract.failure(value, now: now))
   }
 
-  func testConfidenceMustBeOneOfTheFiveSteps() {
-    var value = draft()
-    value.confidence = 65
-    XCTAssertNotNil(ReviewContract.failure(value, now: now))
-    for step in ReviewContract.confidences {
-      value.confidence = step
-      XCTAssertNil(ReviewContract.failure(value, now: now), "\(step) 是合法档位")
+  /// 「把握」2026-09-28 收掉了：老档案 / 服务端回来的记录里带着照样解得开，再存就不带了。
+  func testRetiredConfidenceIsReadAndDropped() throws {
+    let value = draft()
+    var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any])
+    XCTAssertNil(json["confidence"], "新记的不该再写「把握」")
+    json["confidence"] = 70
+    let old = try JSONDecoder().decode(ReviewDraft.self, from: JSONSerialization.data(withJSONObject: json))
+    XCTAssertEqual(old.id, value.id)
+    XCTAssertNil(ReviewContract.failure(old, now: now), "带着老「把握」的记录照样合法")
+    let again = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as? [String: Any])
+    XCTAssertNil(again["confidence"], "读进来的老「把握」不该被写回去")
+  }
+
+  /// 到期不再让人选：分钟线一天、小时线一周、日线一个月；人拖过那根虚线就以人为准。
+  func testDefaultExpiryFollowsTheInterval() {
+    let day: Int64 = 86_400_000
+    XCTAssertEqual(ReviewInterval.m15.defaultHorizonMillis, day)
+    XCTAssertEqual(ReviewInterval.m1.defaultHorizonMillis, day)
+    XCTAssertEqual(ReviewInterval.h1.defaultHorizonMillis, 7 * day)
+    XCTAssertEqual(ReviewInterval.h4.defaultHorizonMillis, 7 * day)
+    XCTAssertEqual(ReviewInterval.d1.defaultHorizonMillis, 30 * day)
+    for interval in ReviewInterval.allCases {
+      XCTAssertLessThanOrEqual(interval.defaultHorizonMillis, ReviewContract.horizonMaxMillis, "\(interval) 的默认到期超出服务端上限")
     }
-    value.confidence = nil
-    XCTAssertNil(ReviewContract.failure(value, now: now), "不填把握也是合法的")
+    var value = draft()
+    value.settleDefaultExpiry(now: now + 5_000)
+    XCTAssertEqual(value.rule.expires, now + 5_000 + ReviewDraft.horizon(interval: value.range.interval))
+    value.rule.expires = now + 3 * day; value.rule.expiryEdited = true
+    value.settleDefaultExpiry(now: now + 9_000)
+    XCTAssertEqual(value.rule.expires, now + 3 * day, "人拖过到期线就不许再改")
   }
 
   /// 正文量的是 **UTF-8 字节**（服务端 `String::len()`），不是字符数。

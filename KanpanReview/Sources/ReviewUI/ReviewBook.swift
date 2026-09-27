@@ -262,9 +262,6 @@ struct ReviewRecordRow: View {
       Text(record.draft.text.isEmpty ? "未写原话" : record.draft.text).font(ReviewType.body).lineLimit(2).foregroundStyle(record.draft.text.isEmpty ? t.ink3 : t.ink2)
       HStack {
         Text(record.draft.rule.direction.title); Text(record.draft.origin.title)
-        // 「把握」填了就在这儿露一个小百分比（§2F4）：当时觉得有几成，事后回看才对得上
-        // 「我是不是总在七成的时候栽」。没填就不占位置。
-        if let confidence = record.draft.confidence { Text("把握 \(confidence)%").monospacedDigit() }
         // 记于什么时候。跟着图表那一档时区写（审查 B-08）：原来是
         // `Text(Date, style: .date)`，只有日期、而且认设备时区——图表在「交易所」档上，
         // 同一条记录在选区标签上写 1/6、在这儿写 1/5。
@@ -339,9 +336,6 @@ public struct ReviewRecordView: View {
           }
           ReviewSection("当时") {
             LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(Interval.shortLabel(raw: record.draft.range.interval))")
-            if let confidence = record.draft.confidence {
-              LabeledContent("把握", value: "\(confidence)%")
-            }
             if record.draft.rule.direction != .observe {
               LabeledContent("目标", value: price(record.draft.rule.target, record))
               LabeledContent("失效", value: price(record.draft.rule.invalidation, record))

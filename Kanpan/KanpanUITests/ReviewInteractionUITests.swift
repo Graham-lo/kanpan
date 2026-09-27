@@ -4,8 +4,8 @@ import XCTest
 //
 // 规格表（docs/待办交接-Codex-2026-09-22.md「P3.7」）里每一项都要在 app 里真的走一遍：
 //
-// 1. 取景卡上的起止时间钮：改一下，选区（卡片抬头的根数）跟着变；
-// 2. 拖选区贴到图的左边按住，图自己往更早的那头滚，选区跟着长（贴边自动滚动）；
+// 1–2. 取景（收设置项 2026-09-28 改）：圈的就是图上看得见的那一段——拖图、捏图，卡片上那行
+//      「x 根 · 起 – 止」跟着变；原来的起止时间钮、贴边自动滚动一并收掉；
 // 3. 非圈选时点图上已画的记录，打开它的详情；
 // 4. 复盘本：摘要卡 + 「全部 · 待判定 · 已判定」（「判定规则 criteria-v2」UI 整改 P3 撤了，断言它不再上屏）、
 //    「…」里的「已存案例」、详情里的「修订记录」（复盘改两次看得到两版）、补图。
@@ -52,11 +52,10 @@ final class ReviewInteractionUITests: KanpanUICase {
     print("P37|" + text)
   }
 
-  /// 取景卡抬头那一行「N 根 · 1时」里的 N。
+  /// 取景卡上那一行「N 根 · 起 – 止」里的 N。
   private func captureBars() -> Int? {
-    let label = app.staticTexts.matching(NSPredicate(format: "label CONTAINS ' 根 · '")).firstMatch
-    guard let snap = try? label.snapshot() else { return nil }
-    return Int(snap.label.prefix(while: \.isNumber))
+    guard let label = captureRange() else { return nil }
+    return Int(label.prefix(while: \.isNumber))
   }
 
   private func markReport() -> String? {
@@ -74,77 +73,52 @@ final class ReviewInteractionUITests: KanpanUICase {
     return expectExists(app.buttons["记下"], Self.short, "点「记一笔」没开出取景卡")
   }
 
-  /// 紧凑时间钮里「时刻」那一半：点开是一组滚轮，把小时那一轮往上拨一下。
-  private func nudgeHour(_ picker: XCUIElement, earlier: Bool) {
-    let buttons = picker.buttons
-    let time = buttons.count > 1 ? buttons.element(boundBy: buttons.count - 1) : picker
-    time.tap()
-    let wheel = app.pickerWheels.firstMatch
-    guard wheel.waitForExistence(timeout: Self.short) else {
-      XCTFail("点了时间钮没出滚轮：\(app.debugDescription)"); return
-    }
-    let raw = wheel.value as? String ?? "?"
-    note("滚轮原值=\(raw)")
-    // 能拨一格就精确拨一格：扫一下会连滚好几格，凌晨时段（02 点）往前扫会绕回到
-    // 同一天的 22 点——比「现在」还晚，终点钮被夹回原处，选区根数不变，用例就随钟点红。
-    if let hour = Int(raw.filter(\.isNumber)), earlier ? hour > 0 : hour < 23 {
-      wheel.adjust(toPickerWheelValue: String(format: "%02d", earlier ? hour - 1 : hour + 1))
-    } else {
-      // 实测：往下扫是往后拨（16 点 → 20 点），往上扫是往前拨。
-      if earlier { wheel.swipeUp() } else { wheel.swipeDown() }
-    }
-    _ = XCTWaiter.wait(for: [XCTestExpectation(description: "settle")], timeout: 1.2)
-    note("滚轮新值=\(wheel.value as? String ?? "?")")
-  }
-
-  private func dismissPopover() {
-    // 紧凑时间钮的弹层点外面就收：点顶栏统计块那一片（点穿了也无害）。
-    app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.15)).tap()
-    _ = XCTWaiter.wait(for: [XCTestExpectation(description: "settle")], timeout: 0.8)
+  /// 取景卡上那一行「x 根 · 起 – 止」（收设置项 2026-09-28 起只读）。
+  private func captureRange() -> String? {
+    (try? app.staticTexts["review.capture.range"].snapshot())?.label
   }
 
   // ------------------------------------------------------------ 1–3：图上的三件事
 
-  func testCaptureRangePickersEdgeScrollAndTapToOpen() throws {
+  /// 取景：圈的就是图上看得见的那一段（收设置项 2026-09-28）。原来这条用例拨卡片上的
+  /// 起止时间钮、再拖选区贴边自动滚；那两样都收掉了——现在拖图、捏图就是在圈，
+  /// 卡片上只读一行「x 根 · 起 – 止」。把握、到期也不再在卡片上。
+  func testCaptureFollowsViewportAndTapToOpen() throws {
     XCTAssertTrue(waitForLiveChart(), "没等到行情")
     guard openCapture() else { return }
-    shot("P37-01-取景卡-起止时间钮")
-    let start = app.datePickers["review.capture.start"], end = app.datePickers["review.capture.end"]
-    guard expectExists(start, Self.short, "取景卡上没有「起」时间钮"),
-          expectExists(end, Self.short, "取景卡上没有「止」时间钮") else { return }
-    let before = captureBars()
-    note("起止钮之前 根数=\(before ?? -1)")
+    shot("P37-01-取景卡-只读区间")
+    let rangeLine = app.staticTexts["review.capture.range"]
+    guard expectExists(rangeLine, Self.short, "取景卡上没有「x 根 · 起 – 止」那一行") else { return }
+    XCTAssertFalse(app.datePickers.firstMatch.exists, "取景卡上不该再有时间钮")
+    XCTAssertFalse(app.buttons["review.capture.more"].exists, "取景卡上不该再有「更多」")
+    XCTAssertFalse(app.staticTexts["把握"].exists, "取景卡上不该再有「把握」")
+    XCTAssertTrue(app.staticTexts["来源"].exists, "「来源」该直接摆在卡片上")
+    let before = captureBars(), beforeText = captureRange() ?? ""
+    note("打开取景卡 \(beforeText)")
+    XCTAssertGreaterThanOrEqual(before ?? 0, 3, "取景区间不足三根：\(beforeText)")
 
-    // 起点往前拨：选区变长。
-    nudgeHour(start, earlier: true)
-    shot("P37-02-起点时间滚轮")
-    dismissPopover()
-    let afterStart = captureBars()
-    note("改起点之后 根数=\(afterStart ?? -1)")
-    XCTAssertNotEqual(afterStart, before, "改了起点，选区根数没变")
-    shot("P37-03-改起点之后选区跟着变")
-
-    // 终点往前拨：选区变短。
-    nudgeHour(end, earlier: true)
-    dismissPopover()
-    let afterEnd = captureBars()
-    note("改终点之后 根数=\(afterEnd ?? -1)")
-    XCTAssertNotEqual(afterEnd, afterStart, "改了终点，选区根数没变")
-    shot("P37-04-改终点之后")
-
-    // 贴边自动滚动：从图中间起一段新选区，拖到左边缘按住 3 秒。
+    // 往右拖图（看更早的）：区间跟着视野往前挪。拖的是图的上半截，下半截压着取景卡。
     let canvas = app.otherElements["chart.canvas"]
     guard expectExists(canvas, Self.short, "取景态下没有图") else { return }
-    let from = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.45))
-    let edge = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.45))
-    from.press(forDuration: 0.15, thenDragTo: edge, withVelocity: .slow, thenHoldForDuration: 3.0)
-    let scrolled = captureBars() ?? 0
-    note("贴边按住 3 秒之后 根数=\(scrolled)")
-    shot("P37-05-贴边自动滚动之后")
-    // 从 55% 拖到 0% 本身只够盖住半屏（竖屏 1h 大约 30–40 根）；滚起来才会远超一屏。
-    XCTAssertGreaterThan(scrolled, 120, "贴边按住 3 秒选区只有 \(scrolled) 根——图没有自己往前滚")
+    canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.2))
+      .press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.2)))
+    XCTAssertTrue(waitUntil(timeout: Self.short) { (self.captureRange() ?? beforeText) != beforeText },
+                  "拖了图，取景区间没跟着视野走：\(captureRange() ?? "-")")
+    let panned = captureRange() ?? ""
+    note("拖图之后 \(panned)")
+    shot("P37-02-拖图之后区间跟着走")
 
-    // 记下这一笔，再用默认选区记一笔（落在屏幕右侧、一定看得见），去点它。
+    // 捏图：看得见的根数变了，卡片上的根数跟着变。合成的捏小在模拟器上有时不生效
+    // （见 `ChartLayoutPersistenceUITests.pinchUntilLayoutChanges`），不动就改捏大。
+    let beforePinch = captureBars()
+    canvas.pinch(withScale: 0.4, velocity: -1)
+    if !waitUntil(timeout: 2, { self.captureBars() != beforePinch }) { canvas.pinch(withScale: 2.6, velocity: 1) }
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.captureBars() != beforePinch },
+                  "捏了图，取景根数没变：\(captureRange() ?? "-")")
+    note("捏图之后 \(captureRange() ?? "-")")
+    shot("P37-03-捏图之后根数跟着变")
+
+    // 记下这一笔，再开一次取景直接记一笔（区间就是当前这一屏、一定看得见），去点它。
     app.buttons["记下"].tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["记下"].exists }, "取景卡没收回去")
     guard openCapture() else { return }
@@ -174,6 +148,49 @@ final class ReviewInteractionUITests: KanpanUICase {
     if app.buttons["review.back"].exists { app.buttons["review.back"].tap() }
     let back = app.navigationBars.buttons.firstMatch
     if detail.exists, back.exists { back.tap(); if app.buttons["review.back"].waitForExistence(timeout: 3) { app.buttons["review.back"].tap() } }
+  }
+
+  /// 取景卡三套皮肤各一张（收设置项 2026-09-28 验收）：只读区间一行、来源一行，
+  /// 没有起止钮、把握、到期。切到「看多」让目标 / 失效两条线和两个价框也上屏。
+  func testCaptureCardInThreeSkins() throws {
+    let out = URL(fileURLWithPath: "/Users/mdd/zhk/kanpan/docs/acceptance/收设置项-2026-09-28", isDirectory: true)
+    let tag: String = switch Int(app.windows.firstMatch.frame.width.rounded()) {
+    case 402: "iPhone16Pro"
+    case 440: "iPhone17ProMax"
+    case let w: "宽\(w)"
+    }
+    for (skin, name) in [("sage", "青苔"), ("terra", "陶土"), ("classic", "经典")] {
+      XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没开出来")
+      let card = app.buttons["display.theme." + skin]
+      XCTAssertTrue(card.waitForExistence(timeout: Self.short), "设置页上没有皮肤卡 \(skin)")
+      for _ in 0..<3 where (card.value as? String) != "已选" {
+        if waitUntil(timeout: Self.short, { card.isHittable }) { card.tap() }
+        else { card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        _ = waitUntil(timeout: 3) { (card.value as? String) == "已选" }
+      }
+      let light = app.buttons["display.mode.浅色"]
+      if light.waitForExistence(timeout: Self.short), !light.isSelected { light.tap() }
+      app.navigationBars.buttons.firstMatch.tap()
+      let chartTab = app.buttons[Ids.bottomChart]
+      XCTAssertTrue(chartTab.waitForExistence(timeout: Self.short), "底栏没有图表那格")
+      chartTab.tap()
+      XCTAssertTrue(waitForLiveChart(), "没等到行情")
+      guard openCapture() else { return }
+      let long = app.buttons["看多"]
+      if long.waitForExistence(timeout: Self.short) { long.tap() }
+      XCTAssertTrue(app.staticTexts["review.capture.range"].waitForExistence(timeout: Self.short), "取景卡上没有区间那一行")
+      XCTAssertFalse(app.datePickers.firstMatch.exists, "取景卡上不该再有时间钮")
+      XCTAssertFalse(app.staticTexts["把握"].exists, "取景卡上不该再有「把握」")
+      XCTAssertFalse(app.staticTexts["到期"].exists, "取景卡上不该再有「到期」")
+      _ = waitUntil(timeout: 1.5) { false }   // 等选区与线画稳
+      let screenshot = XCUIScreen.main.screenshot()
+      let file = "\(tag)-取景卡-\(name)"
+      let a = XCTAttachment(screenshot: screenshot); a.name = file; a.lifetime = .keepAlways; add(a)
+      try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+      try? screenshot.pngRepresentation.write(to: out.appendingPathComponent(file + ".png"))
+      app.buttons["收起"].tap()
+      XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["记下"].exists }, "取景卡没收回去")
+    }
   }
 
   // ------------------------------------------------------------ 4：复盘本

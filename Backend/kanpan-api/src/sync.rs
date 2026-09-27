@@ -71,6 +71,8 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 ///   `gridChoice`（按皮肤：经典不画、青苔 / 陶土淡网格）、`bodyChoice`（实心）、`viewAnchor`（靠右）、
 ///   `priceBias`（居中）、`dataDisplay`（顶部）、`crossPrice`（选中价）、`allowMainInversion` /
 ///   `allowSubInversion`（翻转手势直接生效）、`adaptiveIndicators`（常开）。
+/// - 复盘 `replaySpeed`（回放倍速）：每一趟按要走的根数自动挑 1 / 2 / 4×（整趟 20–40 秒），
+///   回放条上那颗倍速键只改这一趟、不再存。
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favoritesExpanded",
  "orderFlowFilledBid","orderFlowFilledAsk","orderFlowCancelledBid","orderFlowCancelledAsk",
  // 收设置项 A 组（2026-09-28）。
@@ -78,6 +80,8 @@ pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favorit
  // 收设置项 B 组（2026-09-28）。
  "magnet","countdown","lastLine","sinceChange","gridChoice","bodyChoice","viewAnchor","priceBias",
  "dataDisplay","crossPrice","allowMainInversion","allowSubInversion","adaptiveIndicators",
+ // 收设置项 · 复盘（2026-09-28）。
+ "replaySpeed",
 ];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
@@ -136,7 +140,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // Which category the favorites page is parked on. It used to live in the phone's own symbol
  // archive (`SymbolPrefs.selectedGroupID`), so it never followed the person to a second device.
  "favoritesGroup",
- "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","replaySpeed","reviewSearchScope",
+ "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","reviewSearchScope",
  "alertSound",
  // 自选五分钟波动提醒（P3.1）：开关 + 幅度（百分数）。服务端 `watch_move.rs` 读这两个。
  "watchMoveAlert","watchMoveThreshold",
@@ -696,7 +700,6 @@ mod tests {
   }
   assert!(op("settings",&[("skin",json!("neon"))]).validate().is_err());
   assert!(op("settings",&[("interval",json!("7h"))]).validate().is_err());
-  assert!(op("settings",&[("replaySpeed",json!(3))]).validate().is_err());
   assert!(op("settings",&[("redUp",json!("yes"))]).validate().is_err());
  }
  #[test] fn a_malformed_path_is_still_refused() {
@@ -809,5 +812,21 @@ mod tests {
   assert_eq!(merged.body["depth"],json!(true));
   for name in names {assert!(!merged.body.contains_key(name)&&!merged.fields.contains_key(name),"{name} 没被清掉");}
   assert!(!retired_field(DRAWING_PREFERENCES,"magnet"),"画线偏好的吸附不在退役表里");
+ }
+ /// 收设置项 · 复盘（2026-09-28）：`replaySpeed` 两端收掉，倍速每趟按根数自动挑。老版本推上来
+ /// 只丢这个字段（连原来就不合法的 3 也不再整条 400），`reviewSearchScope` 照常合并；老 body 下次合并洗掉。
+ #[test] fn trimmed_replay_speed_is_dropped_and_stripped() {
+  assert!(RETIRED_SETTINGS_FIELDS.contains(&"replaySpeed")&&!SETTINGS_FIELDS.contains(&"replaySpeed"));
+  for speed in [json!(4),json!(3)] {
+   let operation=op("settings",&[("replaySpeed",speed.clone()),("reviewSearchScope",json!("private"))]);
+   assert!(operation.validate().is_ok(),"老版本带着 replaySpeed {speed} 推上来不能整条 400");
+   assert_eq!(operation.unknown_fields(),vec!["replaySpeed".to_string()]);
+  }
+  let operation=op("settings",&[("replaySpeed",json!(2)),("reviewSearchScope",json!("private"))]);
+  let mut stored=blank("settings","chart");
+  stored.body.insert("replaySpeed".into(),json!(4));stored.fields.insert("replaySpeed".into(),json!({"revision":1}));
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["reviewSearchScope"],json!("private"));
+  assert!(!merged.body.contains_key("replaySpeed")&&!merged.fields.contains_key("replaySpeed"),"replaySpeed 没被清掉");
  }
 }

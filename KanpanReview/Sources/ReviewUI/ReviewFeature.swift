@@ -89,15 +89,6 @@ import ReviewData
   /// 画图的本事在 app 里（`ChartSnapshotRenderer`），这个包看不见它，所以由宿主注进来。
   /// 没接线就没有图：记录照记，详情里那一格整个不出现——不写「无截图」。
   @ObservationIgnored public var captureShot: (@MainActor () -> Data?)?
-  /// 卡片上改起止时刻（P3.7）：落到哪根 K 线、目标失效要不要跟着区间重算、图要不要挪过去，
-  /// 都得看这张图手里的那串 K 线——这个包看不见，所以宿主注进来，和图上拖手柄走同一段吸附。
-  /// 没接线时只原样记下时刻。
-  @ObservationIgnored public var onEditRange: (@MainActor (_ start: Int64, _ end: Int64) -> Void)?
-  public func editRange(start: Int64, end: Int64) {
-    if let onEditRange { onEditRange(start, end); return }
-    guard end > start else { return }
-    draft?.range.start = start; draft?.range.end = end; saveDraft()
-  }
   /// 已经读进内存的那几张图。视图每帧都要问「这条有没有图」，不能每次都去读盘。
   /// 只留最近看过的几张：一张 PNG 几百 KB，攒多了就是白占内存。
   @ObservationIgnored private var shotCache: [UUID: Data] = [:]
@@ -348,6 +339,9 @@ import ReviewData
     // 草稿搁了一天再按保存，`expires` 还停在昨天，本地量的是昨天的 created 所以通过，
     // 服务端量的是今天的 created，`expires <= created`，400。
     value.created = now
+    // 到期同理（收设置项 2026-09-28，卡片上不再有到期时间钮）：没在图上拖过那根虚线，
+    // 就从此刻起按周期往后放（分钟一天、小时一周、日线一个月）。
+    value.settleDefaultExpiry(now: now)
     if let error = value.validation(at: now) { notice = error; return false }
     do {
       let record = ReviewRecord(draft: value)

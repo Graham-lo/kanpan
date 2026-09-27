@@ -104,7 +104,8 @@ public struct ReviewDraft: Codable, Sendable, Equatable, Identifiable {
   public var range: ReviewRange
   public var rule: ReviewRule
   public var text = ""
-  public var confidence: Int?
+  // 「把握」（confidence，50–90）2026-09-28 收掉了（收设置项）：只读不写——老档案、服务端
+  // 回来的记录里带着也照样解得开（这个键不在 CodingKeys 里，解码时直接略过），新记的不再带。
   public var origin: ReviewOrigin = .chartFirst
   public var created: Int64
   public var chartSettings: Data?
@@ -112,7 +113,18 @@ public struct ReviewDraft: Codable, Sendable, Equatable, Identifiable {
   public var originalClaimed: Int64?
   public init(range: ReviewRange, reference: Double, high: Double, low: Double, now: Int64) {
     self.range = range; self.created = now
-    self.rule = ReviewRule(reference: reference, target: high, invalidation: low, expires: now + 86_400_000)
+    self.rule = ReviewRule(reference: reference, target: high, invalidation: low,
+                           expires: now + Self.horizon(interval: range.interval))
+  }
+  /// 到期默认值按周期定（`ReviewInterval.defaultHorizonMillis`）；认不出的周期给一天。
+  public static func horizon(interval: String) -> Int64 {
+    ReviewInterval(rawValue: interval)?.defaultHorizonMillis ?? 86_400_000
+  }
+  /// 保存那一刻重新落到期：人没在图上拖过那根虚线，就从「此刻」起按周期往后放。
+  /// 草稿搁了一天再记，到期不会还停在圈选那天。
+  public mutating func settleDefaultExpiry(now: Int64) {
+    guard !rule.expiryEdited else { return }
+    rule.expires = now + Self.horizon(interval: range.interval)
   }
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -120,7 +132,6 @@ public struct ReviewDraft: Codable, Sendable, Equatable, Identifiable {
     range = try c.decode(ReviewRange.self, forKey: .range)
     rule = try c.decode(ReviewRule.self, forKey: .rule)
     text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
-    confidence = try c.decodeIfPresent(Int.self, forKey: .confidence)
     origin = try c.decodeIfPresent(ReviewOrigin.self, forKey: .origin) ?? .unknown
     created = try c.decode(Int64.self, forKey: .created)
     chartSettings = try c.decodeIfPresent(Data.self, forKey: .chartSettings)

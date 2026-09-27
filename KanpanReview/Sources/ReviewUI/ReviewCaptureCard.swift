@@ -10,26 +10,21 @@ public struct ReviewCaptureCard: View {
   public init(feature: ReviewFeature, onSave: @escaping () -> Void, onClose: @escaping () -> Void) {
     self.feature = feature; self.onSave = onSave; self.onClose = onClose
   }
-  /// 「更多」展开没有。把握、来源、到期这三样不是每一笔都要动的（有默认值），
-  /// 卡片竖屏只给 280pt，常开着会把「一句话」挤出第一屏（UI 整改 P3）。
-  @State private var moreOpen = false
-  private static let moreEnd = "review.capture.moreEnd"
   public var body: some View {
     if let draft = feature.draft {
       VStack(spacing: 0) {
         // 抬头钉在顶上、不跟着滚：「收起」随时够得着。
         HStack(alignment: .center, spacing: ReviewSpace.s) {
           Text("记一笔").font(ReviewType.title).foregroundStyle(t.ink)
-          Text("\(draft.range.bars) 根 · \(Interval.shortLabel(raw: draft.range.interval))")
-            .font(ReviewType.caption).monospacedDigit().foregroundStyle(t.ink3)
+          Text(Interval.shortLabel(raw: draft.range.interval))
+            .font(ReviewType.caption).foregroundStyle(t.ink3)
           Spacer()
           Button("收起", action: onClose).font(ReviewType.control).foregroundStyle(t.ink2).hitTarget()
         }
         .padding(.horizontal, ReviewInset.card)
-        ScrollViewReader { reader in
         ScrollView {
           VStack(alignment: .leading, spacing: ReviewSpace.m) {
-            rangePickers(draft)
+            rangeLine(draft)
             ReviewSegment(options: ReviewDirection.allCases.map { ($0.title, $0) },
                           selection: binding(\.rule.direction, fallback: .observe), id: "review.capture.direction")
             if draft.rule.direction != .observe {
@@ -63,22 +58,15 @@ public struct ReviewCaptureCard: View {
             TextField("一句话（可选）", text: binding(\.text, fallback: ""), axis: .vertical)
               .lineLimit(1...3)
               .reviewField()
-            more(draft)
-            Color.clear.frame(height: 0).id(Self.moreEnd)
+            menuRow("来源") {
+              Picker("来源", selection: binding(\.origin, fallback: .chartFirst)) {
+                ForEach(ReviewOrigin.allCases, id: \.self) { Text($0.title).tag($0) }
+              }
+            }
           }
           .padding(.horizontal, ReviewInset.card)
           .padding(.bottom, ReviewSpace.xs)
         }.scrollDismissesKeyboard(.interactively)
-        // 卡片只有 280pt 高：「更多」展开的那几行落在可视区下面，点开时顺手滚到它们露出来。
-        .onChange(of: moreOpen) { _, open in
-          // 等展开的那几行先排进布局（下一拍）再滚，不然滚到的是展开前的底。
-          guard open else { return }
-          Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(50))
-            withAnimation(.easeOut(duration: 0.2)) { reader.scrollTo(Self.moreEnd, anchor: .bottom) }
-          }
-        }
-        }
         // 「记下」钉在卡片底边、不跟着滚。卡片竖屏只给 280pt（横屏 150pt），连「只记录」
         // 这一档的内容都比它高，按钮原来排在滚动区最末尾——一打开就在可视区外，得先往下
         // 滑才点得到（ReviewFlowUITests 两条就卡在这儿：点下去落在卡片外面）。
@@ -103,73 +91,17 @@ public struct ReviewCaptureCard: View {
         .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: draft.range, cutoff: feature.searchCutoff) }
     }
   }
-  /// 起止两颗紧凑时间钮（P3.7）。时区和复盘本、选区标签同一档（`ReviewLabels.range` 用的
-  /// `tzOffset`）；「止」写的是最后一根的开盘时刻——和图上那根蜡烛对得上，存下来的仍是收盘边界。
-  /// 改完交给宿主吸附到整根 K 线，图上的选区跟着挪（`feature.editRange`）。
-  private func rangePickers(_ draft: ReviewDraft) -> some View {
-    let step = max(1, (draft.range.end - draft.range.start) / Int64(max(1, draft.range.bars)))
-    let lastOpen = draft.range.end - step
-    func date(_ ms: Int64) -> Date { Date(timeIntervalSince1970: Double(ms) / 1000) }
-    func ms(_ d: Date) -> Int64 { Int64((d.timeIntervalSince1970 * 1000).rounded()) }
-    // 上下两行：并排放两颗「日期 + 时刻」会比竖屏宽，把整张卡撑出屏幕。
-    return VStack(alignment: .leading, spacing: ReviewSpace.xs) {
-      DatePicker("起", selection: Binding(get: { date(draft.range.start) }, set: {
-        guard let value = feature.draft else { return }
-        feature.editRange(start: ms($0), end: value.range.end)
-      }), in: ...date(lastOpen), displayedComponents: [.date, .hourAndMinute])
-        .accessibilityIdentifier("review.capture.start")
-      DatePicker("止", selection: Binding(get: { date(lastOpen) }, set: {
-        guard let value = feature.draft else { return }
-        feature.editRange(start: value.range.start, end: ms($0) + step)
-      }), in: date(draft.range.start)...date(ReviewClock.now), displayedComponents: [.date, .hourAndMinute])
-        .accessibilityIdentifier("review.capture.end")
-    }
-    .font(ReviewType.body).foregroundStyle(t.ink2)
-    .datePickerStyle(.compact)
-    .environment(\.timeZone, feature.tzOffset.timeZone)
-  }
-  /// 「更多 ⌄」：把握、来源、到期。收着的时候一行 44，展开后每样一行 44。
-  @ViewBuilder private func more(_ draft: ReviewDraft) -> some View {
-    VStack(alignment: .leading, spacing: 0) {
-      Button { withAnimation(.easeOut(duration: 0.2)) { moreOpen.toggle() } } label: {
-        HStack(spacing: ReviewSpace.xs) {
-          Text("更多").font(ReviewType.control)
-          Image(systemName: "chevron.down").font(.system(size: ReviewControl.chevron, weight: .semibold))
-            .rotationEffect(.degrees(moreOpen ? 180 : 0))
-          Spacer()
-        }
-        .foregroundStyle(t.ink2)
-        .frame(minHeight: ReviewControl.hit)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("review.capture.more")
-      .accessibilityValue(moreOpen ? "已展开" : "已收起")
-      if moreOpen {
-        if draft.rule.direction != .observe {
-          DatePicker("到期", selection: Binding(get: { Date(timeIntervalSince1970: Double(feature.draft?.rule.expires ?? ReviewClock.now) / 1000) }, set: {
-            feature.draft?.rule.expires = Int64($0.timeIntervalSince1970 * 1000); feature.draft?.rule.expiryEdited = true; feature.saveDraft()
-          }), in: Date()..., displayedComponents: [.date, .hourAndMinute])
-            .font(ReviewType.body).foregroundStyle(t.ink2)
-            .frame(minHeight: ReviewControl.hit)
-            // 挑到期时刻用的时区 = 复盘本里写这个时刻用的时区（审查 B-08）。
-            // 不灌的话这颗原生轮盘认设备时区：在「交易所」档上设 20:00，
-            // 记录详情里会写成 12:00。
-            .environment(\.timeZone, feature.tzOffset.timeZone)
-        }
-        menuRow("把握") {
-          Picker("把握", selection: binding(\.confidence, fallback: nil)) {
-            Text("未填写").tag(Int?.none)
-            ForEach([50, 60, 70, 80, 90], id: \.self) { Text("\($0)%").tag(Optional($0)) }
-          }
-        }
-        menuRow("来源") {
-          Picker("来源", selection: binding(\.origin, fallback: .chartFirst)) {
-            ForEach(ReviewOrigin.allCases, id: \.self) { Text($0.title).tag($0) }
-          }
-        }
-      }
-    }
+  /// 圈的是哪一段（收设置项 2026-09-28）：就是图上看得见的那一段，从最左一根到最右一根
+  /// 已收盘的 K 线（`ReviewChartBridge.followViewport`）。原来这儿是起、止两颗时间钮，
+  /// 现在只读一行——想圈哪段就拖图、捏图，这一行跟着变。时刻写法和复盘本、找相似列表
+  /// 同一个纯函数（`ReviewLabels.range`），同一档时区。
+  private func rangeLine(_ draft: ReviewDraft) -> some View {
+    Text(ReviewLabels.range(bars: draft.range.bars, start: draft.range.start, end: draft.range.end,
+                            offsetMinutes: feature.tzOffset))
+      .font(ReviewType.body).monospacedDigit().foregroundStyle(t.ink2)
+      .lineLimit(1).minimumScaleFactor(0.8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityIdentifier("review.capture.range")
   }
   private func menuRow<P: View>(_ title: String, @ViewBuilder picker: () -> P) -> some View {
     HStack {

@@ -16,16 +16,10 @@ import ReviewUI
   var playing = false
   /// 此刻的回放倍速（1 / 2 / 4）。
   ///
-  /// **倍速是人的习惯，不是这条记录的属性。** 以前它从 `ReviewReplayPosition` 里读
-  /// （每条记录各存一份），于是调到 4× 点「退出」再进同一条记录回 1×，换一条记录
-  /// 也回 1×——那颗按钮改的东西没有一条路径留得住。现在初值从偏好来
-  /// （`Prefs.replaySpeed`，随账号同步），改一下就写回去；游标位置仍按记录存，
-  /// 那个是这条记录自己的属性，没跟着一起动。
+  /// 每一趟打开时按要走的根数自己挑（`ReplayPace`，整趟落在 20–40 秒）；回放条上那颗
+  /// 倍速键只改这一趟，退出就忘。2026-09-28 收设置项之前它存在偏好里（`Prefs.replaySpeed`，
+  /// 随账号同步），人要先调一次才看得舒服——现在由我按这一段有多长定好。
   var speed = 1
-  /// 偏好里那一份倍速。宿主接上（见 `MainScreen.wireReview`）。
-  @ObservationIgnored var preferredSpeed: () -> Int = { 1 }
-  /// 倍速改了，写回偏好。宿主接上。
-  @ObservationIgnored var onSpeedChange: (Int) -> Void = { _ in }
   var cursor = 0
   var replayRecord: ReviewRecord?
   /// 交易回放（自动复盘 3d）这一趟：哪一笔、按什么节奏播、开仓那一停带出的那句话。
@@ -125,11 +119,16 @@ import ReviewUI
     let closed = (0..<s.count).filter { Self.closeTime(s.time(at: $0), interval: s.interval) <= now }
     guard let last = closed.last, closed.count >= 3 else { notice = "至少需要 3 根已收盘 K 线"; return }
     live.series = slice(s, count: last + 1); live.crosshair = nil; live.nowMs = nil
+    // 圈的就是图上看得见的那一段（收设置项 2026-09-28）：打开取景卡时视野里最左到最右
+    // 那几根已收盘的 K 线；看不见一根（视野整个落在最新一根右边）就退回最后 49 根。
+    let visible = Self.visibleClosed(live.series, view: live.view)
+    let right = visible?.right ?? last, left = visible?.left ?? max(0, right - 48)
     var draft: ReviewDraft
     if let saved = feature.draft, saved.reusable(venue: liveVenue, symbol: s.symbol, interval: s.interval.rawValue) {
+      // 没记完的那一笔：写的话、方向、改过的价都留着，区间换成眼下这一屏。
       draft = saved
+      Self.snap(&draft, left: left, right: right, series: live.series)
     } else {
-      let right = min(last, s.index(atTime: live.view.to)), left = max(0, right - 48)
       draft = ReviewDraft(range: ReviewRange(venue: liveVenue, symbol: s.symbol, interval: s.interval.rawValue,
         start: s.time(at: left), end: Self.closeTime(s.time(at: right), interval: s.interval), bars: right - left + 1),
         reference: s.close.last ?? s.close[last], high: s.high[left...right].max() ?? 0,
@@ -140,7 +139,7 @@ import ReviewUI
     proxy = ChartProxy(); state = live; mode = .capture; feature.begin(draft)
   }
   /// 选区落到第 `left…right` 根：起止写成那两根的开盘 / 收盘边界，目标、失效没被手改过的
-  /// 就跟着区间的高低点重算。图上拖手柄和卡片上改时刻走的是这同一段（P3.7）。
+  /// 就跟着区间的高低点重算。打开取景卡和之后拖图、捏图（`followViewport`）走的是这同一段。
   static func snap(_ draft: inout ReviewDraft, left: Int, right: Int, series s: BarSeries) {
     guard s.count > 0 else { return }
     let left = max(0, min(s.count - 1, left)), right = max(left, min(s.count - 1, right))
@@ -151,25 +150,31 @@ import ReviewUI
     if !draft.rule.targetEdited { draft.rule.target = draft.rule.direction == .short ? low : high }
     if !draft.rule.invalidationEdited { draft.rule.invalidation = draft.rule.direction == .short ? high : low }
   }
-  /// 卡片上两颗时间钮改出来的起止（`ReviewFeature.editRange`）。挑到的时刻落在哪根 K 线里
-  /// 就吸到哪根（向下取整，不是就近——「从 10:05 起」说的是 10:00 那根）；少于三根时
-  /// 由没动的那一头让位；选区不在屏上就把图挪过去，人改完一眼就能看见它落在哪。
-  func editRange(start: Int64, end: Int64, feature: ReviewFeature) {
-    guard mode == .capture, var draft = feature.draft,
-          let s = proxy.box?.chart.state?.series ?? state?.series, s.count >= 3 else { return }
-    func floorIndex(_ t: Int64) -> Int {
-      var i = s.index(atTime: Double(t))
-      while i > 0 && s.time(at: i) > t { i -= 1 }
-      return i
+  /// 视野里看得见的那几根（收设置项 2026-09-28）：一根 K 线的中点落在视野里就算看得见，
+  /// 取最左、最右两根；不足三根时往左补齐。取景时这卷 K 线已经切掉了没收盘的那一根，
+  /// 所以这里拿到的都是已收盘的。一根都看不见（视野整个在数据外面）给 `nil`。
+  static func visibleClosed(_ s: BarSeries, view: ViewWindow) -> (left: Int, right: Int)? {
+    guard s.count >= 3 else { return nil }
+    let (lo, hi) = visibleRange(view: view, series: s)
+    var left: Int?, right: Int?
+    for i in lo...hi {
+      let open = s.time(at: i), mid = (Double(open) + Double(closeTime(open, interval: s.interval))) / 2
+      guard mid >= view.from, mid <= view.to else { continue }
+      if left == nil { left = i }
+      right = i
     }
-    var left = floorIndex(start), right = floorIndex(end - 1)
-    if right - left < 2 {
-      if start != draft.range.start { left = max(0, right - 2) } else { right = min(s.count - 1, left + 2) }
-      if right - left < 2 { left = max(0, right - 2); right = min(s.count - 1, left + 2) }
-    }
-    Self.snap(&draft, left: left, right: right, series: s)
-    feature.draft = draft; feature.saveDraft()
-    proxy.box?.chart.reveal(from: Double(draft.range.start), to: Double(draft.range.end))
+    guard let l = left, let r = right else { return nil }
+    return r - l >= 2 ? (l, r) : (max(0, r - 2), max(r, min(s.count - 1, 2)))
+  }
+  /// 取景时人拖图、捏图，区间跟着视野走（收设置项 2026-09-28，替掉卡片上的起止时间钮）。
+  /// 这一层画完一帧就叫一次（`RangeOverlayView.attach`）；区间没变就什么都不写。
+  /// 落盘不在这儿：手指一离开屏幕由宿主存一次（`onInteractionEnded`），收起、记下时也各存一次。
+  func followViewport(feature: ReviewFeature) {
+    guard mode == .capture, var draft = feature.draft, let chart = proxy.box?.chart.state,
+          let (left, right) = Self.visibleClosed(chart.series, view: chart.view) else { return }
+    let before = draft
+    Self.snap(&draft, left: left, right: right, series: chart.series)
+    if draft != before { feature.draft = draft }
   }
   func endCapture(feature: ReviewFeature) {
     feature.saveDraft(); feature.captureOpen = false; mode = .live; state = nil; proxy = ChartProxy()
@@ -272,9 +277,11 @@ import ReviewUI
       do {
         guard let base = try await fetchTape(tapeRequest, base: base, provider: provider, feature: feature, id: request)
         else { return }
-        replayBase = base; replayRecord = record; speed = preferredSpeed()
+        replayBase = base; replayRecord = record
         let saved = savedPosition
         cursor = max(2, bars.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= saved }) ?? 2)
+        // 倍速按从游标播到这卷末尾还有几根挑（`ReplayPace`）。
+        speed = ReplayPace.speed(bars: bars.count - 1 - cursor)
         // 只有从别的模式（实时、取景）进回放才换一张新画布：那时图表那棵树会按 `mode`
         // 重建，旧 proxy 指着的是上一张图。已经在回放里再开一条（「跳到判断处」要重新取数、
         // 从「找相似」直接换一条记录）必须留着同一张：树的 id 没变，`ChartView` 不会重建，
@@ -346,10 +353,9 @@ import ReviewUI
     draft.rule.expires = cutoff
     open(ReviewRecord(draft: draft), feature: feature, live: live, route: route, cutoff: cutoff)
   }
-  /// 回放条上那颗倍速按钮：1× → 2× → 4× → 1×。写回偏好，跟着人走。
+  /// 回放条上那颗倍速按钮：1× → 2× → 4× → 1×。只管这一趟，不存。
   func cycleSpeed() {
     speed = speed == 4 ? 1 : speed * 2
-    onSpeedChange(speed)
   }
 
   /// 卷里开盘时刻不晚于 `time` 的最后一根（游标最小是 2：图上至少要有三根）。

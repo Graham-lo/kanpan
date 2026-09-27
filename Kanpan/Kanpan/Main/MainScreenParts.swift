@@ -333,7 +333,10 @@ struct MainChartView: View {
         // **这一路只收用户手上的动作**（`ChartHost.onBarSpacing` ← `ChartView.onUserViewChanged`）。
         // 程序自己摆出来的视野绝不会走到这儿——那正是用户那个 bug 的「杀法甲」。
         onBarSpacing: { if !reviewChart.active { viewport.userIsZooming(to: $0) } },
-        onInteractionEnded: { if !reviewChart.active { viewport.interactionEnded() } },
+        // 取景时拖图、捏图就是在圈区间（`ReviewChartBridge.followViewport`）：手指一离开就存草稿。
+        onInteractionEnded: {
+          if !reviewChart.active { viewport.interactionEnded() } else if reviewChart.mode == .capture { review.saveDraft() }
+        },
         adoptToken: viewport.adoptToken,
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
