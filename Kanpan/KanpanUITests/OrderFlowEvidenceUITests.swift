@@ -228,15 +228,25 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     let card = app.descendants(matching: .any)["chart.orderFlowCard"]
     let outDir = Self.outDir.deletingLastPathComponent().appendingPathComponent("主力订单流-2026-09-25", isDirectory: true)
     try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
-    /// 点一条线的左半段（避开右端的金额签），返回选中的 id。
+    /// 点一条线的左半段（避开右端的金额签），返回选中的 id。点在蜡烛高低范围里的那一下归 K 线（出十字线，
+    /// 见 `ChartRenderer.candleHit`），所以沿着线换几个落点，出了十字线就在原处再点一下收掉再换。
     func select(_ band: [String: Any]) -> String {
       let plotW = chartInfo()["plotW"] as? Double ?? 300
       let bx = band["x"] as? Double ?? 0, bw = band["w"] as? Double ?? 0, by = band["y"] as? Double ?? 0
-      let x = min(plotW - 2, max(1, bx + bw * 0.35))
-      origin.withOffset(CGVector(dx: x, dy: by)).tap()
-      _ = waitUntil(timeout: 3) { !(self.chartInfo()["orderFlowSelected"] as? String ?? "").isEmpty }
-      let id = chartInfo()["orderFlowSelected"] as? String ?? ""
-      print("取证|详情卡|点在 (\(x), \(by))|band=\(band)|selected=\(id)")
+      var id = ""
+      for f in [0.35, 0.2, 0.5, 0.1, 0.62, 0.05, 0.28, 0.42] {
+        let x = min(plotW - 2, max(1, bx + bw * f))
+        origin.withOffset(CGVector(dx: x, dy: by)).tap()
+        _ = waitUntil(timeout: 2) { !(self.chartInfo()["orderFlowSelected"] as? String ?? "").isEmpty
+          || self.chartInfo()["crosshair"] as? Bool == true }
+        id = chartInfo()["orderFlowSelected"] as? String ?? ""
+        print("取证|详情卡|点在 (\(x), \(by))|band=\(band)|selected=\(id)")
+        if !id.isEmpty { break }
+        if chartInfo()["crosshair"] as? Bool == true {
+          origin.withOffset(CGVector(dx: x, dy: by)).tap()
+          _ = waitUntil(timeout: 2) { self.chartInfo()["crosshair"] as? Bool != true }
+        }
+      }
       return id
     }
     func ranked(range: Bool, role: String = "main") -> [[String: Any]] {
