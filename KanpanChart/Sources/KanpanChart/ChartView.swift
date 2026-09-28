@@ -412,6 +412,22 @@ public final class ChartView: UIView {
       c.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
       layer.addSublayer(c)
     }
+    // 主力订单流的墙在后台算好了：上一帧是拿旧的那份顶着画的就重画（见 `orderFlowWallsReady`）。
+    // 选择子式的观察者随视图释放自动摘掉，不用在 deinit 里撤。
+    NotificationCenter.default.addObserver(self, selector: #selector(orderFlowWallsReady(_:)),
+                                           name: ChartRenderer.OrderFlowWallCache.readyNotification, object: nil)
+  }
+
+  /// 后台并墙算完一份（主线程上发来）。这只图上一帧拿的是旧的（或还一份都没有）才动：换一只新盒子让下一帧按新的算，
+  /// cross 层（金额签、图例、选中）必重画，底图只在它也是拿旧的画的时候重画；选中 / 十字线停着的那一单跟着再报一次。
+  @objc private func orderFlowWallsReady(_ note: Notification) {
+    guard let box = renderer?.orderFlowCache, box.servedStale else { return }
+    let plot = box.plotStale
+    renderer?.orderFlowCache = ChartRenderer.OrderFlowCache()
+    setNeedsRedraw(plot ? [.plot, .cross] : .cross)
+    if let s = state, s.crosshair != nil || s.orderFlowSelected != nil || orderFlowFocus != nil {
+      fireOrderFlowFocus(renderer?.orderFlowFocus(size: bounds.size))
+    }
   }
 
   // ---------------------------------------------------------------- 尺寸与屏幕
@@ -459,7 +475,9 @@ public final class ChartView: UIView {
       // 触点和 claimed 一起收掉：手指是随着视图一起离开的，留着那半截状态，
       // 回来第一下会被当成上一次拖动的续拍。
       teardownDrawingLink()
+      renderer?.orderFlowPrepareInBackground = false
     } else {
+      renderer?.orderFlowPrepareInBackground = true
       if renderScale != lastScale { setNeedsLayout() }
       if !dirty.isEmpty { resumeLink() }
     }
@@ -510,6 +528,8 @@ public final class ChartView: UIView {
     // 就在缓存里，取一下不花钱。
     let layoutBefore = layers.contains(.viewport) ? chartLayout : nil
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
+    // 挂在窗口上才把并墙交给后台（离屏渲染、快照取证要这一帧就画全）。
+    renderer?.orderFlowPrepareInBackground = window != nil
     renderer?.guestDrawings = guestDrawings; renderer?.ownDimmed = ownDimmed
     var parts = Self.changed(from: old, to: s)
     if let layoutBefore, !parts.contains(.cross), chartLayout != layoutBefore { parts.insert(.cross) }

@@ -41,6 +41,9 @@ public struct ChartRenderer {
   private var viewportCache = ViewportCache()
   /// 主力订单流色块的几何：再加上快照与显示开关变了才失效，十字线动不失效。见 `OrderFlowCache`。
   var orderFlowCache = OrderFlowCache()
+  /// 主力订单流的并墙（与视野无关的那一半）放到后台算：快照换了、还没算好时先拿同一只的上一份顶着画，
+  /// 不在主线程上等（见 `OrderFlowWallCache.lookup`）。挂在窗口上的图表视图打开；离屏渲染、分享图、测试不开，照旧同步算。
+  var orderFlowPrepareInBackground = false
 
   public init(state: ChartState) {
     self.state = state

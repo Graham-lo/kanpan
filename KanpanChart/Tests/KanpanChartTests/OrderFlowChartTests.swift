@@ -1514,13 +1514,150 @@ struct OrderFlowPerfBenchTests {
     #expect(dropped.notional > 0)
   }
 
+  // ---------------------------------------------------------------- D2：并墙挪到后台
+
+  typealias WallCache = ChartRenderer.OrderFlowWallCache
+
+  static func wallKey(_ symbol: String, _ orders: [BigOrder], step: Double) -> WallCache.Key {
+    .init(symbol: symbol, orders: orders, display: OrderFlowDisplay(), step: step, gapMs: 60_000, minLifeMs: 60_000)
+  }
+
+  static func smallOrders(_ n: Int = 3000) -> (orders: [BigOrder], step: Double) {
+    orders(series: benchSeries(count: 2000, interval: .m1), count: n)
+  }
+
+  @Test("后台并墙：没算好先给同一只的上一份（不给别的品种的），算好之后与同步算的逐堵相同")
+  func backgroundLookupServesSameLaneOnly() {
+    let cache = WallCache(capacity: 3)
+    let (orders, step) = Self.smallOrders()
+    let a = Self.wallKey("BTCUSDT", orders, step: step)
+    // 一份都没有：不给、不阻塞，交给后台。
+    #expect(cache.lookup(a) == nil)
+    cache.waitUntilIdle()
+    let hitA = cache.lookup(a)
+    #expect(hitA?.exact == true)
+    var changed = orders
+    changed[0].notional *= 2
+    let b = Self.wallKey("BTCUSDT", changed, step: step)
+    // 同一只换了快照：先给 a 那份顶着。
+    let stale = cache.lookup(b)
+    #expect(stale?.exact == false)
+    #expect(stale?.entry.walls.map(\.group) == hitA?.entry.walls.map(\.group))
+    // 别的品种、同一份单子：旧品种的那份不能顶到它头上。
+    let c = Self.wallKey("ETHUSDT", changed, step: step)
+    #expect(cache.lookup(c) == nil)
+    // 换了显示开关也是另一条道。
+    var hidden = b; hidden.display.spot = false
+    #expect(cache.lookup(hidden) == nil)
+    cache.waitUntilIdle()
+    let exact = cache.lookup(b)
+    #expect(exact?.exact == true)
+    #expect(exact?.entry.walls.map(\.group) == WallCache.compute(b).walls.map(\.group))
+    #expect(exact?.entry.live == WallCache.compute(b).live)
+  }
+
+  @Test("同一份快照只算一次：连着问几遍、后台还没算完也不重复排队")
+  func backgroundSameSnapshotComputedOnce() {
+    let cache = WallCache(capacity: 3)
+    let (orders, step) = Self.smallOrders()
+    let a = Self.wallKey("BTCUSDT", orders, step: step)
+    for _ in 0..<5 { _ = cache.lookup(a) }
+    cache.waitUntilIdle()
+    for _ in 0..<5 { #expect(cache.lookup(a)?.exact == true) }
+    #expect(cache.computed == 1)
+    // 同步取同一把也不再算。
+    _ = cache.entry(a)
+    #expect(cache.computed == 1)
+  }
+
+  @Test("排队只留最新一把；先请求的那份晚算完也不会被当成更新的那份顶上去")
+  func backgroundLatestWins() {
+    let cache = WallCache(capacity: 3)
+    let (orders, step) = Self.smallOrders()
+    var keys: [WallCache.Key] = []
+    for i in 0..<6 {
+      var o = orders
+      o[i].notional *= 3
+      keys.append(Self.wallKey("BTCUSDT", o, step: step))
+    }
+    for k in keys.prefix(5) { _ = cache.lookup(k) }
+    cache.waitUntilIdle()
+    // 最后请求的那一把一定算了；中间还没开算的被顶掉，不白算。
+    #expect(cache.lookup(keys[4])?.exact == true)
+    #expect(cache.computed <= 3)
+    // 拿旧的顶着时给的是最后请求的那一份。
+    #expect(cache.lookup(keys[5])?.entry.walls.map(\.group) == WallCache.compute(keys[4]).walls.map(\.group))
+
+    // 模拟晚到：代数 20 的先存进来，代数 10 的（先请求的）后存进来。
+    let fresh = WallCache(capacity: 3)
+    fresh.store(keys[1], WallCache.compute(keys[1]), generation: 20)
+    fresh.store(keys[0], WallCache.compute(keys[0]), generation: 10)
+    #expect(fresh.lookup(keys[5])?.entry.walls.map(\.group) == WallCache.compute(keys[1]).walls.map(\.group))
+    // 满了踢代数最小的，不是最后存进来的。
+    fresh.store(keys[2], WallCache.compute(keys[2]), generation: 30)
+    fresh.store(keys[3], WallCache.compute(keys[3]), generation: 40)
+    #expect(fresh.lookup(keys[0])?.exact != true)
+    #expect(fresh.lookup(keys[3])?.exact == true)
+    fresh.waitUntilIdle()
+  }
+
+  @Test("图表视图那条路：快照换了这一帧不在主线程上并墙，先按上一份画、记下「顶着的」，后台算好换盒子后与同步画的逐条相同")
+  func rendererServesStaleThenCatchesUp() {
+    var base = Self.state(interval: .m1, visible: 300)
+    let sym = "D2STALEUSDT"
+    base.symbol = benchSymbol(sym)
+    base.orderFlow?.symbol = sym
+    var r = ChartRenderer(state: base)
+    r.orderFlowPrepareInBackground = true
+    _ = bandsCold(r)
+    WallCache.shared.waitUntilIdle()
+    r.orderFlowCache = ChartRenderer.OrderFlowCache()
+    let first = bandsCold(r)
+    #expect(!r.orderFlowCache.servedStale)
+    #expect(first == bandsCold(ChartRenderer(state: base)))
+
+    var next = base
+    next.orderFlow?.orders.removeLast(500)
+    next.orderFlow?.asOfMs += 1000
+    r.state = next
+    let during = bandsCold(r)
+    #expect(r.orderFlowCache.servedStale)
+    #expect(!during.bands.isEmpty)
+    WallCache.shared.waitUntilIdle()
+    r.orderFlowCache = ChartRenderer.OrderFlowCache()
+    #expect(bandsCold(r) == bandsCold(ChartRenderer(state: next)))
+    #expect(!r.orderFlowCache.servedStale)
+
+    // 换品种：旧品种那份不顶到新品种上，先空着。
+    var other = next
+    other.symbol = benchSymbol("D2OTHERUSDT")
+    other.orderFlow?.symbol = "D2OTHERUSDT"
+    other.orderFlow?.asOfMs += 1
+    r.state = other
+    #expect(bandsCold(r).bands.isEmpty)
+    #expect(r.orderFlowCache.servedStale)
+    WallCache.shared.waitUntilIdle()
+    r.orderFlowCache = ChartRenderer.OrderFlowCache()
+    #expect(bandsCold(r) == bandsCold(ChartRenderer(state: other)))
+  }
+
   @Test("2 万单：并墙 + 排名 + 落带、静止一帧、拖动一帧、选中墙在屏外时拖动一帧")
   func bench() {
     let ctx = benchContext(size: Self.size, scale: Self.scale)
-    // 热身一轮（首个档位会吃到进程冷启动的抖动），不记。
+    // 热身（首个档位会吃到进程冷启动的抖动），不记。原来只画 5 帧，第一个档位（1m.v300）的
+    // p95 常年比后面的档位高一截；改成拖着图连画 2 秒，把 CPU 频率与缓存都热起来。
     do {
-      let r = ChartRenderer(state: Self.state(interval: .m1, visible: 300))
-      _ = benchRun(rounds: 5) { _ in draw(r, ctx) }
+      let base = Self.state(interval: .m1, visible: 300)
+      var r = ChartRenderer(state: base)
+      var next = base
+      let t0 = ContinuousClock.now
+      var i = 0
+      while t0.duration(to: .now) < .seconds(2) {
+        i += 1
+        next.view = ViewWindow(to: base.view.to - Double(base.series.step) * Double(i % 20 + 1), span: base.view.span)
+        r.state = next
+        draw(r, ctx)
+      }
     }
     for (interval, visible) in Self.cases {
       let tag = "\(interval.rawValue).v\(visible)"
@@ -1585,6 +1722,47 @@ struct OrderFlowPerfBenchTests {
           parts[3].append(benchMs(t.duration(to: .now)))
         }
         for (name, xs) in zip(["recalc", "plot", "live", "cross"], parts) { Self.report("\(tag).frame.pan.\(name)", xs) }
+      }
+
+      // 快照更新一帧：订单流推来一份新快照（内容变了、数组是新的），换 state + 画一帧。
+      // `.sync`：原来的做法，并墙（切段 / 去碎屑 / 并墙 / 建组 + 排序）同步做在这一帧里。
+      // 不带后缀的：图表视图的做法（`orderFlowPrepareInBackground`），这一帧先拿上一份顶着画，并墙交给后台；
+      // `.ready`：后台算好之后那一帧（换盒子、按新的一份重画三层）。每轮之间等后台排空（实盘快照一秒一份，
+      // 早就算完了），等的时间不计。
+      do {
+        var snap = base
+        var counter = 0
+        func bump() {
+          counter += 1
+          var f = flow
+          f.orders[counter % f.orders.count].notional *= 1.01
+          f.asOfMs += Int64(counter) * 1000
+          snap.orderFlow = f
+        }
+        Self.report("\(tag).frame.snapshot_update.sync", benchRun(rounds: 15) { _ in
+          bump(); r.state = snap; draw(r, ctx)
+        })
+        r.orderFlowPrepareInBackground = true
+        var update: [Double] = [], ready: [Double] = []
+        for i in -3..<20 {
+          ChartRenderer.OrderFlowWallCache.shared.waitUntilIdle()
+          r.orderFlowCache = ChartRenderer.OrderFlowCache()  // 上一轮「算好了」那一下（与计时无关）
+          bump()
+          var t = ContinuousClock.now
+          r.state = snap
+          draw(r, ctx)
+          let u = benchMs(t.duration(to: .now))
+          ChartRenderer.OrderFlowWallCache.shared.waitUntilIdle()
+          t = .now
+          r.orderFlowCache = ChartRenderer.OrderFlowCache()
+          draw(r, ctx)
+          let d = benchMs(t.duration(to: .now))
+          if i >= 0 { update.append(u); ready.append(d) }
+        }
+        Self.report("\(tag).frame.snapshot_update", update)
+        Self.report("\(tag).frame.snapshot_ready", ready)
+        r.orderFlowPrepareInBackground = false
+        r.state = base
       }
 
       // 选中一堵墙，再把视野往左挪到它起点之前（它完全看不见，屏里照旧是满屏的单）。

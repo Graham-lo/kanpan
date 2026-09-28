@@ -151,68 +151,178 @@ extension ChartRenderer {
     var entries: [(pane: Pane, range: PriceRange, plotW: Double, ladder: CGRect?, frame: OrderFlowFrame)] = []
     /// 真算了几次（测试核对缓存有没有生效）。
     var computed = 0
+    /// 这个 state 下取到的那一份墙（`orderFlowEntry`），同一只盒子里只取一次。
+    var entry: OrderFlowWallCache.Entry?
+    /// 那一份是拿同一条道上旧快照的顶着的（后台还在算这一份）。
+    var servedStale = false
+    /// 底图（plot 层）是拿旧的那份画的：后台算好后要连底图一起重画，不只是 cross 层。
+    var plotStale = false
   }
 
   /// 与视野无关的那一半：过显示开关 → 切段 → 去碎屑 → 并墙 → 建组 → 按 `drawOrder` 排好。只随快照里的单、显示开关、
   /// 步长、周期（切段容差与最短寿命）变。`OrderFlowCache` 存的是落在这一屏的几何，视野一动 `recalc` 就换新盒子，
   /// 以前连这一半一起每帧重算：2 万单时拖图一帧 20–68 ms（压测 2026-09-28，`OrderFlowPerfBenchTests`）。
-  /// 所以另放一只进程内的小缓存，按内容认（单子数组先比存储是否同一块，同一份快照是 O(1)），最多留两份
-  /// （主图一份、刚切走的一份）。
+  /// 所以另放一只进程内的小缓存，按内容认（单子数组先比存储是否同一块，同一份快照是 O(1)），最多留三份
+  /// （主图此刻这份、上一份——新快照算好之前先拿它顶着画——和刚切走的一份）。
+  ///
+  /// 第二轮（2026-09-28）：快照每推来一份新的，这一半在主线程上同步重算，2 万单 1 分钟图那一帧 25–38 ms。
+  /// 现在图表视图走 `lookup`：没命中就交给后台一条串行队列去算（同一把键只算一次，排队的只留最新那把），
+  /// 当下先拿同一条「道」上（同品种、同显示开关、同步长、同周期）最近算好的那份画，别的品种的一份也不给；
+  /// 算好了在主线程发 `readyNotification`，图表视图据此重画。
   final class OrderFlowWallCache: @unchecked Sendable {
-    struct Key: Equatable {
+    struct Key: Equatable, Sendable {
+      /// 品种（规范名）。同一条道只认同一只：切品种那一拍，旧品种晚到的一份不能顶到新品种上。
+      var symbol: String = ""
       var orders: [BigOrder]
       var display: OrderFlowDisplay
       var step: Double?
       var gapMs: Int64
       var minLifeMs: Int64
+
+      /// 除单子以外都一样：同一只、同一种画法，只是快照换了一份。旧的那份可以先顶着画。
+      func sameLane(_ o: Key) -> Bool {
+        symbol == o.symbol && display == o.display && step == o.step && gapMs == o.gapMs && minLifeMs == o.minLifeMs
+      }
     }
     /// 一堵墙：建好的组，以及它（按段算的）横向起止——结束是 nil 表示有一段还挂着，画到主图右缘。
-    struct Wall {
+    struct Wall: Sendable {
       var group: OrderFlowGroup
       var startMs: Int64
       var endMs: Int64?
     }
     /// 一份：全部墙（按 `drawOrder` 排好），以及过了显示开关、还挂着的单（图例合计只看它们）。
-    struct Entry {
+    struct Entry: Sendable {
       var walls: [Wall]
       var live: [BigOrder]
     }
+    /// 后台算好一份时在主线程发出（`object` 是这只缓存）。图表视图收到后看自己上一帧是不是拿旧的顶着画的，是就重画。
+    static let readyNotification = Notification.Name("KanpanChart.OrderFlowWallCache.ready")
     static let shared = OrderFlowWallCache()
-    static let capacity = 2
+    static let capacity = 3
+
+    private let capacity: Int
     private let lock = NSLock()
-    private var entries: [(key: Key, entry: Entry)] = []
+    /// 存着的几份与各自的代数（后请求的代数大）。挑「同一条道上的旧份」时取代数最大的，满了踢代数最小的——
+    /// 先请求的那份就算晚算完、晚存进来，也不会被当成更新的那份。
+    private var entries: [(key: Key, entry: Entry, generation: UInt64)] = []
+    private var generation: UInt64 = 0
+    /// 后台正在算的那把、排着队的那把（只留最新的一把：新快照来了，还没开算的旧快照就不必算了）。
+    private var running: Key?
+    private var pending: (key: Key, generation: UInt64)?
+    private let queue = DispatchQueue(label: "KanpanChart.OrderFlowWallCache", qos: .userInitiated)
     /// 真算了几次（测试核对缓存有没有生效）。
     private(set) var computed = 0
 
+    init(capacity: Int = OrderFlowWallCache.capacity) { self.capacity = capacity }
+
+    /// 同步取：没命中就在调用方线程上算（离屏渲染、分享图、测试走这条）。
     func entry(_ key: Key) -> Entry {
       lock.lock()
-      if let i = entries.firstIndex(where: { $0.key == key }) {
-        let hit = entries[i].entry
+      if let hit = entries.first(where: { $0.key == key }) {
         lock.unlock()
-        return hit
+        return hit.entry
       }
+      generation += 1
+      let g = generation
       lock.unlock()
+      let entry = Self.compute(key)
+      store(key, entry, generation: g)
+      return entry
+    }
+
+    /// 不阻塞地取：命中给 `(那份, true)`；没命中就把这把键交给后台（在算或排着的就不再交），先给同一条道上最新的那份
+    /// `(旧份, false)`，一份都没有给 nil。
+    func lookup(_ key: Key) -> (entry: Entry, exact: Bool)? {
+      lock.lock()
+      defer { lock.unlock() }
+      if let hit = entries.first(where: { $0.key == key }) { return (hit.entry, true) }
+      if running != key && pending?.key != key {
+        generation += 1
+        let idle = running == nil && pending == nil
+        pending = (key, generation)
+        if idle { queue.async { [self] in drain() } }
+      }
+      let stale = entries.filter { $0.key.sameLane(key) }.max { $0.generation < $1.generation }
+      return stale.map { ($0.entry, false) }
+    }
+
+    /// 后台队列上：一把一把算到排空。
+    private func drain() {
+      while true {
+        lock.lock()
+        guard let next = pending else { running = nil; lock.unlock(); return }
+        pending = nil
+        running = next.key
+        lock.unlock()
+        let entry = Self.compute(next.key)
+        store(next.key, entry, generation: next.generation)
+        lock.lock(); running = nil; lock.unlock()
+        DispatchQueue.main.async { [self] in
+          NotificationCenter.default.post(name: Self.readyNotification, object: self)
+        }
+      }
+    }
+
+    /// 存一份。模块内可见是给测试模拟「先请求的那份晚算完」。
+    func store(_ key: Key, _ entry: Entry, generation g: UInt64) {
+      lock.lock()
+      computed += 1
+      entries.removeAll { $0.key == key }
+      if entries.count >= capacity, let i = entries.indices.min(by: { entries[$0].generation < entries[$1].generation }) {
+        entries.remove(at: i)
+      }
+      entries.append((key, entry, g))
+      lock.unlock()
+    }
+
+    /// 测试用：等后台把排着的都算完（在后台队列上排一个空活，它跑到时前面的都已算完）。
+    func waitUntilIdle() {
+      while true {
+        queue.sync {}
+        lock.lock()
+        let busy = running != nil || pending != nil
+        lock.unlock()
+        if !busy { return }
+      }
+    }
+
+    static func compute(_ key: Key) -> Entry {
       let shown = key.orders.filter { key.display.shows($0) }
       let parts = OrderFlowGroup.dropShortLived(OrderFlowGroup.segments(shown, gapMs: key.gapMs), minLifeMs: key.minLifeMs)
       var walls = OrderFlowGroup.walls(parts, gapMs: key.gapMs).compactMap { wall in
         wall.group(step: key.step).map { Wall(group: $0, startMs: wall.startMs, endMs: wall.endMs) }
       }
       walls.sort { OrderFlowGroup.drawOrder($0.group, $1.group) }
-      let entry = Entry(walls: walls, live: shown.filter(\.isLive))
-      lock.lock()
-      computed += 1
-      entries.removeAll { $0.key == key }
-      if entries.count >= Self.capacity { entries.removeFirst() }
-      entries.append((key, entry))
-      lock.unlock()
-      return entry
+      return Entry(walls: walls, live: shown.filter(\.isLive))
     }
   }
 
+  func orderFlowWallKey(_ flow: OrderFlowSnapshot) -> OrderFlowWallCache.Key {
+    .init(symbol: flow.symbol, orders: flow.orders, display: state.orderFlowDisplay,
+          step: flow.thresholds.step, gapMs: orderFlowMergeGapMs, minLifeMs: orderFlowMinLifeMs)
+  }
+
   /// 这份快照在当前显示开关、周期下的那一份（全部墙按 `drawOrder` 排好、还挂着的单），走 `OrderFlowWallCache`。
+  /// 图表视图（`orderFlowPrepareInBackground`）不在主线程上算：没算好就先给同一条道上旧的那份（没有就空），
+  /// 并在 `OrderFlowCache` 上记一笔「拿旧的顶着」，等后台算好再重画。同一只盒子（同一个 state）里只取一次。
   func orderFlowEntry(_ flow: OrderFlowSnapshot) -> OrderFlowWallCache.Entry {
-    OrderFlowWallCache.shared.entry(.init(orders: flow.orders, display: state.orderFlowDisplay, step: flow.thresholds.step,
-                                          gapMs: orderFlowMergeGapMs, minLifeMs: orderFlowMinLifeMs))
+    let box = orderFlowCache
+    if let memo = box.entry { return memo }
+    let key = orderFlowWallKey(flow)
+    let entry: OrderFlowWallCache.Entry
+    if orderFlowPrepareInBackground {
+      if let found = OrderFlowWallCache.shared.lookup(key) {
+        entry = found.entry
+        if !found.exact { box.servedStale = true }
+      } else {
+        entry = .init(walls: [], live: [])
+        box.servedStale = true
+      }
+    } else {
+      entry = OrderFlowWallCache.shared.entry(key)
+    }
+    box.entry = entry
+    return entry
   }
 
   func orderFlowWalls(_ flow: OrderFlowSnapshot) -> [OrderFlowWallCache.Wall] { orderFlowEntry(flow).walls }
@@ -714,6 +824,7 @@ extension ChartRenderer {
   @discardableResult
   func drawOrderFlow(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Int {
     let frame = orderFlowBands(pane: pane, range: range, L: L)
+    if orderFlowCache.servedStale { orderFlowCache.plotStale = true }
     guard !frame.bands.isEmpty else { return 0 }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
