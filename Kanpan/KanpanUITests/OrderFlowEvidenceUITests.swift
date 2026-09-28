@@ -266,7 +266,9 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
       for word in ["总金额", "总数量", "开始", "状态", "持续"] {
         XCTAssertTrue(text.contains(word), "详情卡缺「\(word)」：\(text)")
       }
-      XCTAssertTrue(["在场", "已撤", "已成交"].contains { text.contains($0) }, "详情卡没写状态：\(text)")
+      // 「在场」「在场 · 成交 X%」「成交 X% · 撤 Y%」「已成交」「已撤」；不再有「已成交 X%」（第二轮 D5）。
+      XCTAssertTrue(["在场", "已撤", "已成交", " · 撤 "].contains { text.contains($0) }, "详情卡没写状态：\(text)")
+      XCTAssertNil(text.range(of: #"已成交 \d"#, options: .regularExpression), "部分成交不该写成「已成交 X%」：\(text)")
       for venue in ["币安", "OKX", "Coinbase", "永续", "交割", "还有"] {
         XCTAssertFalse(text.contains(venue), "详情卡不该列交易所 / 产品行（出现了「\(venue)」）：\(text)")
       }

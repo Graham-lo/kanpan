@@ -297,7 +297,11 @@ public final class ChartView: UIView {
           "orderFlowFocus": orderFlow?.focus.map {
             ["id": $0.group.key.id, "selected": $0.selected, "anchorX": $0.anchorX, "bandY": $0.bandY,
              "bandHalf": $0.bandHalf, "books": $0.group.books.count, "cardMaxW": $0.cardMaxWidth,
-             "cardMaxH": $0.cardPlacement.maxHeight, "cardBelow": $0.cardPlacement.below] as [String: Any]
+             "cardMaxH": $0.cardPlacement.maxHeight, "cardBelow": $0.cardPlacement.below,
+             "cardTop": $0.cardPlacement.top, "cardLeading": $0.cardPlacement.leading,
+             "cardCompact": $0.cardPlacement.compact, "cardCoversCandle": $0.cardPlacement.coversCandle,
+             "candleTop": $0.candle.map { $0.top as Any } ?? NSNull(),
+             "candleBottom": $0.candle.map { $0.bottom as Any } ?? NSNull()] as [String: Any]
           } ?? [:],
           "orderFlowAdoptions": orderFlowAdoptions,
           "orderFlowPlotDirties": orderFlowPlotDirties,

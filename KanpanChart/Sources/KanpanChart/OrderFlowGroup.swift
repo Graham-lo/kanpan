@@ -447,7 +447,13 @@ public struct OrderFlowGroup: Sendable, Equatable {
   public var price: Double { derived.price }
 }
 
-/// 详情卡的尺寸上限与摆位（app 那边按这个排，放在图表包里好单测）。卡只有三行，不再按高度算列几本簿。
+/// 详情卡的尺寸上限与摆位（app 那边按这个排，放在图表包里好单测）。卡只有三行（主图矮时两行），不再按高度算列几本簿。
+///
+/// 摆位（2026-09-28 订单簿压测第二轮 D4）：卡放在焦点带所在半边的**对面**、贴主图的远端边缘——带在上半边，
+/// 卡贴主图下沿；带在下半边，卡贴图例下方的上沿。横向摆在焦点（十字线 / 线中点）的另一侧，贴绘图区那一侧的边。
+/// 原来卡紧贴着带摆（带下 6 pt 往下排），手指按在线上时卡正好压在手指旁那几根 K 线上，读数和 K 线一起被挡。
+/// 卡还要躲开十字线那根 K 线（影线的高低）：卡的高度段和它纵向重叠时，先把卡宽收到 K 线这一侧以外
+/// （不窄于 `minWidth`）；收不下就换到带所在这一半的远端（带不越过）；两边都不行照旧（主图矮、K 线贯穿整张图时）。
 public enum OrderFlowCardBudget {
   /// 卡宽不超过图区（绘图区宽）的这个比例。
   public static let widthFraction = 0.85
@@ -455,16 +461,96 @@ public enum OrderFlowCardBudget {
   public static let heightFraction = 0.55
   /// 卡与焦点带之间留的空。
   public static let bandGap = 6.0
+  /// 卡与绘图区左右边留的空（app 的 `Space.s`）。
+  public static let sideInset = 8.0
+  /// 卡与十字线那根 K 线之间至少留的空。
+  public static let candleGap = 4.0
+  /// 三行卡的高（13 pt 标题 + 两行 12 pt + 内边距 12 × 2；app 的 `OrderFlowDetailCardTests` 量着）。
+  public static let fullHeight = 80.0
+  /// 两行卡的高（标题 + 总金额 / 状态）。
+  public static let compactHeight = 60.0
+  /// 主图能摆卡的那一段（图例下沿到主图下沿）矮于这个就出两行卡（D6）。
+  public static let compactBelow = 200.0
+  /// 为了躲 K 线把卡收窄时，最窄收到这么宽（三行卡写得下「开始 09-28 20:44 状态 在场」、标题可缩到 0.8 倍）。
+  public static let minWidth = 220.0
 
   /// 卡能占的最大宽度。
   public static func maxWidth(plotW: Double) -> Double { max(0, plotW * widthFraction) }
 
-  /// 卡摆在焦点带的上面还是下面、最多能多高：主图 55% 封顶，并且不越过焦点带（带上、带下取宽的一边）。
-  public static func placement(bandY: Double, bandHalf: Double, top: Double, bottom: Double,
-                               mainHeight: Double) -> (below: Bool, maxHeight: Double) {
-    let above = bandY - bandHalf - bandGap - top
-    let below = bottom - (bandY + bandHalf + bandGap)
-    let room = max(above, below)
-    return (below >= above, max(0, min(mainHeight * heightFraction, room)))
+  /// 卡摆在哪。坐标都是图表视图坐标（pt）。
+  public struct Placement: Sendable, Equatable {
+    /// true = 卡在下半边、贴主图下沿（带在上半边）；false = 卡在上半边、贴图例下的上沿。
+    public var below: Bool
+    /// true = 卡贴绘图区左边（焦点在右半边）。
+    public var leading: Bool
+    /// 卡能占的那一段：`top` 起、高 `maxHeight`；卡在这段里贴远端（`below` 贴底，否则贴顶）。
+    public var top: Double
+    public var maxHeight: Double
+    /// 卡最宽多少（85% 绘图区，或为躲 K 线收窄后的宽）。
+    public var maxWidth: Double
+    /// 两行卡：主图矮（能摆卡那段 < `compactBelow`），或这段放不下三行卡。
+    public var compact: Bool
+    /// 卡的高度段和十字线那根 K 线躲不开（主图矮、K 线贯穿整张图）。
+    public var coversCandle: Bool
+
+    public init(below: Bool, leading: Bool, top: Double, maxHeight: Double, maxWidth: Double, compact: Bool,
+                coversCandle: Bool) {
+      self.below = below; self.leading = leading; self.top = top; self.maxHeight = maxHeight
+      self.maxWidth = maxWidth; self.compact = compact; self.coversCandle = coversCandle
+    }
+  }
+
+  /// 十字线那根 K 线在图上占的范围（影线高低、实体左右）。
+  public struct Candle: Sendable, Equatable {
+    public var left: Double, right: Double, top: Double, bottom: Double
+    public init(left: Double, right: Double, top: Double, bottom: Double) {
+      self.left = left; self.right = right; self.top = top; self.bottom = bottom
+    }
+  }
+
+  /// 卡摆在焦点带对面那一半的远端、最多能多高多宽（见类型说明）。
+  /// `top` / `bottom` 是主图能摆卡的那一段（图例下沿 + 4 … 主图下沿），`mainHeight` 是主图整块的高。
+  public static func placement(bandY: Double, bandHalf: Double, top: Double, bottom: Double, mainHeight: Double,
+                               plotW: Double, anchorX: Double, candle: Candle?) -> Placement {
+    let compactMain = bottom - top < compactBelow
+    let leading = anchorX > plotW / 2
+    let fullW = maxWidth(plotW: plotW)
+    let cap = mainHeight * heightFraction
+    // 一半的候选：卡在带下（贴主图下沿）或带上（贴上沿），能占的段不越过带。
+    func zone(below: Bool) -> (top: Double, height: Double) {
+      let room = below ? bottom - (bandY + bandHalf + bandGap) : (bandY - bandHalf - bandGap) - top
+      let h = max(0, min(cap, room))
+      return (below ? bottom - h : top, h)
+    }
+    // 卡贴远端时实际占的高度段（按卡的名义高，不按能占的段）。
+    func cardSpan(below: Bool, height: Double, compact: Bool) -> (lo: Double, hi: Double) {
+      let h = min(height, compact ? compactHeight : fullHeight)
+      return below ? (bottom - h, bottom) : (top, top + h)
+    }
+    func make(below: Bool) -> (Placement, fits: Bool) {
+      let z = zone(below: below)
+      let compact = compactMain || z.height < fullHeight
+      var p = Placement(below: below, leading: leading, top: z.top, maxHeight: z.height, maxWidth: fullW,
+                        compact: compact, coversCandle: false)
+      guard let c = candle else { return (p, true) }
+      let span = cardSpan(below: below, height: z.height, compact: compact)
+      let overlaps = c.top < span.hi + candleGap && c.bottom > span.lo - candleGap
+      guard overlaps else { return (p, true) }
+      // 卡贴那一侧的边：收窄到 K 线以外。
+      let side = leading ? c.left - candleGap - sideInset : plotW - sideInset - (c.right + candleGap)
+      if side >= minWidth {
+        p.maxWidth = min(fullW, side)
+        return (p, true)
+      }
+      p.coversCandle = true
+      return (p, false)
+    }
+    let below = bandY <= (top + bottom) / 2
+    let first = make(below: below)
+    if first.fits { return first.0 }
+    // 对面那一半躲不开 K 线：带这一半的远端放得下卡、也躲得开，就摆那儿。
+    let other = make(below: !below)
+    if other.fits, other.0.maxHeight >= (other.0.compact ? compactHeight : fullHeight) { return other.0 }
+    return first.0
   }
 }

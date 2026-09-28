@@ -78,19 +78,24 @@ public struct ChartOrderFlowFocus: Sendable, Equatable {
   public var mainHeight: Double
   /// 快照时刻（还挂着的单算持续时长用）。
   public var asOfMs: Int64
+  /// 十字线那根 K 线（影线高低、实体左右）；轻点选中时没有十字线，是 nil。卡片不盖住它。
+  public var candle: OrderFlowCardBudget.Candle?
 
   public init(group: OrderFlowGroup, selected: Bool, anchorX: Double, bandY: Double, bandHalf: Double, plotW: Double,
-              mainTop: Double, mainBottom: Double, mainHeight: Double, asOfMs: Int64) {
+              mainTop: Double, mainBottom: Double, mainHeight: Double, asOfMs: Int64,
+              candle: OrderFlowCardBudget.Candle? = nil) {
     self.group = group; self.selected = selected; self.anchorX = anchorX; self.bandY = bandY; self.bandHalf = bandHalf
     self.plotW = plotW; self.mainTop = mainTop; self.mainBottom = mainBottom; self.mainHeight = mainHeight
-    self.asOfMs = asOfMs
+    self.asOfMs = asOfMs; self.candle = candle
   }
 
-  /// 卡片最宽多少、摆在带上还是带下、最高多少（`OrderFlowCardBudget`）。
-  public var cardMaxWidth: Double { OrderFlowCardBudget.maxWidth(plotW: plotW) }
-  public var cardPlacement: (below: Bool, maxHeight: Double) {
-    OrderFlowCardBudget.placement(bandY: bandY, bandHalf: bandHalf, top: mainTop, bottom: mainBottom, mainHeight: mainHeight)
+  /// 卡片摆在哪、最宽最高多少、三行还是两行（`OrderFlowCardBudget.placement`：带的对面那一半、贴远端、躲十字线那根 K 线）。
+  public var cardPlacement: OrderFlowCardBudget.Placement {
+    OrderFlowCardBudget.placement(bandY: bandY, bandHalf: bandHalf, top: mainTop, bottom: mainBottom,
+                                  mainHeight: mainHeight, plotW: plotW, anchorX: anchorX, candle: candle)
   }
+  /// 卡片最宽多少（躲 K 线时会收窄）。
+  public var cardMaxWidth: Double { cardPlacement.maxWidth }
 }
 
 extension ChartRenderer {
@@ -673,9 +678,20 @@ extension ChartRenderer {
     let L = layout(size: size), range = priceRange(size: size)
     guard let hit = orderFlowFocusBand(pane: L.main, range: range, L: L) else { return nil }
     let anchorX: Double
+    var candle: OrderFlowCardBudget.Candle?
     if hit.hovered, let cross = state.crosshair {
       let i = min(max(0, cross.index), state.series.count - 1)
       anchorX = state.view.x(Double(state.series.time(at: i)), plotW: L.plotW)
+      // 十字线那根 K 线：平均 K 线换的是四个价，影线范围按画出来的那根算。
+      let b = state.series
+      let bar = heikin?.bar(i) ?? (o: b.open[i], h: b.high[i], l: b.low[i], c: b.close[i])
+      let map = PriceMapping(range: range, mode: state.effectivePriceMode)
+      let hy = map.y(bar.h, pane: L.main), ly = map.y(bar.l, pane: L.main)
+      let half = max(2, state.view.barSpacing(step: b.step, plotW: L.plotW) / 2)
+      if hy.isFinite, ly.isFinite {
+        candle = OrderFlowCardBudget.Candle(left: anchorX - half, right: anchorX + half,
+                                            top: max(L.main.y, min(hy, ly)), bottom: min(L.main.y + L.main.h, max(hy, ly)))
+      }
     } else if let band = hit.band {
       anchorX = Double(band.frame.midX)
     } else {
@@ -688,7 +704,8 @@ extension ChartRenderer {
     return ChartOrderFlowFocus(group: hit.group, selected: !hit.hovered, anchorX: anchorX, bandY: bandY,
                                bandHalf: bandHalf, plotW: L.plotW,
                                mainTop: L.main.y + mainLegendInset(plotW: L.plotW) + 4,
-                               mainBottom: L.main.y + L.main.h, mainHeight: L.main.h, asOfMs: flow.asOfMs)
+                               mainBottom: L.main.y + L.main.h, mainHeight: L.main.h, asOfMs: flow.asOfMs,
+                               candle: candle)
   }
 
   private func computeOrderFlowBands(pane: Pane, range: PriceRange, L: Layout, ladder: CGRect?) -> OrderFlowFrame {

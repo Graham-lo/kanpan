@@ -9,11 +9,12 @@ import SwiftUI
 ///   - 标题：「83,600.0 · 委托卖单 · 合约」；跨几个桶的墙写价位范围「83,900 – 84,400」
 ///     （最低桶的桶价 – 最高桶的桶价 + 步长），单价位的段写那一个价，都带千分位；右上「持续 X」
 ///     （标题优先，放不下时时长短写成「X 小时 Y 分」）；
-///   - 两行键值：总金额 / 总数量，开始 / 状态（在场 / 在场 · 成交 X% / 已撤 / 已成交 X%）。
+///   - 两行键值：总金额 / 总数量，开始 / 状态（在场 / 在场 · 成交 X% / 成交 X% · 撤 Y% / 已成交 / 已撤）；
+///     主图矮（能摆卡那段 < 200 pt）时两行：标题 + 总金额 / 状态。
 /// 不列交易所：哪几家、哪种合约是聚合进来的，用户要的是「这里有多大一堵墙、挂了多久、还在不在」
 /// （2026-09-25 用户：「详情卡不列交易所」），所以原先一本簿一行的表、折叠行都删了。
-/// 尺寸：宽不超过绘图区的 85%，高不超过主图的 55%，而且不越过那条线的命中带——摆在它的上面或下面
-/// （哪边空得多摆哪边），横向摆在焦点（十字线 / 线中点）的另一侧。点空白处收起，点另一条换成那一条。
+/// 尺寸：宽不超过绘图区的 85%，高不超过主图的 55%，而且不越过那条线的命中带；摆在带所在半边的对面、贴主图远端，
+/// 横向摆在焦点（十字线 / 线中点）的另一侧，不盖住十字线那根 K 线（`OrderFlowCardBudget.placement`）。点空白处收起，点另一条换成那一条。
 ///
 /// 挂法和十字线读数一样：这一层自己观察 `CrosshairReadout.orderFlow`，跟着焦点重求值的
 /// 只有它，图和主屏的 body 不跟着动。卡片**不接触摸**（`allowsHitTesting(false)`）——
@@ -32,19 +33,31 @@ struct OrderFlowDetailLayer: View {
   var body: some View {
     if !hidden, let focus = readout.orderFlow {
       let place = focus.cardPlacement
-      let gap = OrderFlowCardBudget.bandGap
-      // 焦点在右半边就摆左边，反之摆右边；带下空得多就贴着带下沿往下排，否则贴着带上沿往上排。
-      let alignment = Alignment(horizontal: focus.anchorX > focus.plotW / 2 ? .leading : .trailing,
-                                vertical: place.below ? .top : .bottom)
-      let top = place.below ? focus.bandY + focus.bandHalf + gap : focus.bandY - focus.bandHalf - gap - place.maxHeight
-      OrderFlowDetailCard(focus: focus, theme: theme, base: base, decimals: decimals, timeZone: timeZone,
-                          maxWidth: focus.cardMaxWidth, maxHeight: place.maxHeight)
-        .frame(width: max(0, focus.plotW - 2 * Space.s), height: max(0, place.maxHeight), alignment: alignment)
-        .clipped()
-        .offset(x: Space.s, y: top)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .allowsHitTesting(false)
+      let inset = OrderFlowCardBudget.sideInset
+      // 卡在带的对面那一半、贴远端（带在上半边就贴主图下沿，反之贴上沿），横向贴焦点另一侧的边（D4）。
+      let alignment = Alignment(horizontal: place.leading ? .leading : .trailing, vertical: place.below ? .bottom : .top)
+      // 主图矮或那一段放不下三行就出两行卡（D6）；万一两行也放不下，照样整张画出来（不裁），
+      // 按贴远端的方向往带那边伸——内容被裁掉比盖住一点带更糟（原来 `.clipped()` 把状态行裁掉一半）。
+      Group {
+        if place.compact {
+          card(focus, compact: true, place: place)
+        } else {
+          ViewThatFits(in: .vertical) {
+            card(focus, compact: false, place: place)
+            card(focus, compact: true, place: place)
+          }
+        }
+      }
+      .frame(width: max(0, focus.plotW - 2 * inset), height: max(0, place.maxHeight), alignment: alignment)
+      .offset(x: inset, y: place.top)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .allowsHitTesting(false)
     }
+  }
+
+  private func card(_ focus: ChartOrderFlowFocus, compact: Bool, place: OrderFlowCardBudget.Placement) -> some View {
+    OrderFlowDetailCard(focus: focus, theme: theme, base: base, decimals: decimals, timeZone: timeZone,
+                        maxWidth: place.maxWidth, compact: compact)
   }
 }
 
@@ -55,7 +68,8 @@ struct OrderFlowDetailCard: View {
   let decimals: Int
   let timeZone: TZOffset
   let maxWidth: Double
-  let maxHeight: Double
+  /// 两行卡（主图矮时）：标题 + 总金额 / 状态，不写总数量与开始（D6）。
+  var compact = false
 
   private var group: OrderFlowGroup { focus.group }
 
@@ -91,31 +105,13 @@ struct OrderFlowDetailCard: View {
           }
           .font(TypeScale.caption2).foregroundStyle(theme.ink3)
         }
-        Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xs) {
-          ForEach(lines.pairs.indices, id: \.self) { i in
-            let pair = lines.pairs[i]
-            GridRow {
-              Text(pair.0.label).foregroundStyle(theme.ink3)
-              Text(pair.0.value).foregroundStyle(theme.ink)
-              Text(pair.1.label).foregroundStyle(theme.ink3).padding(.leading, Space.m - Space.s)
-              if i == lines.pairs.count - 1 {
-                Text(pair.1.value).font(TypeScale.captionEmph).foregroundStyle(color(lines.state))
-              } else {
-                Text(pair.1.value).foregroundStyle(theme.ink)
-              }
-            }
-          }
-        }
-        .font(TypeScale.caption)
-        .monospacedDigit()
-        // 「总数量 12.35M 1000SATS」这类长币名 + 大金额整行比卡宽：数字缩一点，不截成「12.3…」。
-        .minimumScaleFactor(0.8)
+        OrderFlowCardPairs(lines: lines, theme: theme, compact: compact)
       }
       .lineLimit(1)
       .fixedSize(horizontal: false, vertical: true)
       .padding(Inset.cardCompact)
       .frame(maxWidth: maxWidth, alignment: .leading)
-      // 高度贴着内容（三行，约 80 pt）；万一主图矮到放不下，由外层按上限裁掉。
+      // 高度贴着内容（三行约 77 pt、两行约 58 pt，`OrderFlowCardBudget.fullHeight / compactHeight` 按它留）。
       .background(theme.raised.opacity(0.96), in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
       .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous).strokeBorder(theme.line, lineWidth: 1))
       .clipShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
@@ -123,6 +119,64 @@ struct OrderFlowDetailCard: View {
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(lines.spoken)
       .accessibilityIdentifier("chart.orderFlowCard")
+    }
+  }
+}
+
+/// 卡上的键值行（三行卡两行、两行卡一行）。拆出来是为了单测量它的理想宽：16 Pro 上卡宽约 300 pt，
+/// 「开始 09-28 20:44 状态 成交 40% · 撤 60%」要整句放得下（D5）。
+struct OrderFlowCardPairs: View {
+  let lines: OrderFlowCardText
+  let theme: PanelTheme
+  var compact = false
+  /// 状态那格的写法：nil 由 ViewThatFits 按宽挑；单测用它量每一档的理想宽。
+  var statusFit: StatusFit? = nil
+
+  enum StatusFit { case spaced, tight, bare }
+
+  var body: some View {
+    Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xs) {
+      let rows = compact ? [lines.compactPair] : lines.pairs
+      ForEach(rows.indices, id: \.self) { i in
+        let pair = rows[i]
+        GridRow {
+          Text(pair.0.label).foregroundStyle(theme.ink3)
+          Text(pair.0.value).foregroundStyle(theme.ink)
+          if i == rows.count - 1 {
+            // 状态：「状态」和值合成一格、跨后两列——「状态」比上一行的「总数量」窄一个字，不再按「总数量」
+            // 占满第三列，值往左挪 12 pt。部分成交后撤写「成交 40% · 撤 60%」，16 Pro 上卡宽约 300 pt：
+            // 放不下先去掉空格，再放不下（不到 1% 带小数那句）连「状态」两字也让掉，两个数都留着（D5）。
+            Group {
+              if let statusFit {
+                status(statusFit, label: pair.1.label)
+              } else {
+                ViewThatFits(in: .horizontal) {
+                  status(.spaced, label: pair.1.label)
+                  status(.tight, label: pair.1.label)
+                  status(.bare, label: pair.1.label)
+                }
+              }
+            }
+            .padding(.leading, Space.m - Space.s)
+            .gridCellColumns(2)
+          } else {
+            Text(pair.1.label).foregroundStyle(theme.ink3).padding(.leading, Space.m - Space.s)
+            Text(pair.1.value).foregroundStyle(theme.ink)
+          }
+        }
+      }
+    }
+    .font(TypeScale.caption)
+    .monospacedDigit()
+    // 「总数量 12.35M 1000SATS」这类长币名 + 大金额整行比卡宽：数字缩一点，不截成「12.3…」。
+    .minimumScaleFactor(0.8)
+  }
+
+  private func status(_ fit: StatusFit, label: String) -> some View {
+    HStack(spacing: Space.s) {
+      if fit != .bare { Text(label).foregroundStyle(theme.ink3) }
+      Text(fit == .spaced ? lines.statusText : lines.statusTight)
+        .font(TypeScale.captionEmph).foregroundStyle(color(lines.state))
     }
   }
 
@@ -156,6 +210,12 @@ struct OrderFlowCardText {
   var durationCompact: String
   /// 两行键值：总金额 / 总数量，开始 / 状态。
   var pairs: [(Cell, Cell)]
+  /// 两行卡（主图矮时）的那一行键值：总金额 / 状态。
+  var compactPair: (Cell, Cell)
+  /// 状态：「在场」「在场 · 成交 19%」「成交 40% · 撤 60%」「已成交」「已撤」。
+  var statusText: String
+  /// 状态放不下时去掉空格的写法（「成交40%·撤60%」）。
+  var statusTight: String
   /// 状态的颜色档。
   var state: State
 
@@ -177,23 +237,47 @@ struct OrderFlowCardText {
     let totalQty = group.books.reduce(0) { $0 + qty($1.notional, $1.latest.price) }
     let status = Self.status(group)
     state = status.state
+    statusText = status.text
+    statusTight = Self.tight(status.text)
+    let amount = Cell(label: "总金额", value: fmtVol(group.notional) + " USDT")
+    let statusCell = Cell(label: "状态", value: status.text)
     pairs = [
-      (Cell(label: "总金额", value: fmtVol(group.notional) + " USDT"),
-       Cell(label: "总数量", value: Self.quantity(totalQty) + " " + base)),
-      (Cell(label: "开始", value: Self.monthDayTime(ms: Double(group.firstSeenMs), timeZone: timeZone)),
-       Cell(label: "状态", value: status.text)),
+      (amount, Cell(label: "总数量", value: Self.quantity(totalQty) + " " + base)),
+      (Cell(label: "开始", value: Self.monthDayTime(ms: Double(group.firstSeenMs), timeZone: timeZone)), statusCell),
     ]
+    compactPair = (amount, statusCell)
   }
 
-  /// 整堵墙的状态：还有一单挂着就是「在场」（吃过的补一句成交比例）；都结束了，吃过就是「已成交 X%」，
-  /// 一口没吃（撤单、失联）是「已撤」。比例和图上深浅同一个判据（`OrderFlowGroup.hasFill` / `fillRatio`）。
+  /// 去掉数字、百分号、间隔点两边的空格：「成交 40% · 撤 60%」→「成交40%·撤60%」。
+  static func tight(_ text: String) -> String {
+    text.replacingOccurrences(of: " · ", with: "·").replacingOccurrences(of: " ", with: "")
+  }
+
+  /// 整堵墙的状态：还有一单挂着就是「在场」（吃过的补一句成交比例）；都结束了——
+  ///   - 全吃掉（比例写出来是 100%）是「已成交」；
+  ///   - 吃了一部分、剩下的撤了是「成交 40% · 撤 60%」（两数相加恰好 100，撤的按写出来的成交比例补齐）；
+  ///   - 一口没吃（撤单、失联）是「已撤」。
+  /// 原来吃过一口的一律写「已成交 38%」，读起来像成交了、其实六成多是撤的（订单簿压测第二轮 D5）。
+  /// 比例和图上深浅同一个判据（`OrderFlowGroup.hasFill` / `fillRatio`）。
   static func status(_ group: OrderFlowGroup) -> (text: String, state: State) {
-    let pct = percent(group.fillRatio)
     // 挂着的写「在场 · 成交 19%」不写「已成交」：16 Pro 上卡宽约 300 pt，「开始 09-28 20:44 状态 在场 · 已成交 19%」
     // 一行放不下，截成「在场 · 已成交 1…」（压测 2026-09-28 十字线取证）——比例恰恰是被截掉的那一截。
-    if group.isLive { return (group.hasFill ? "在场 · 成交 " + pct : "在场", .live) }
-    if group.hasFill { return ("已成交 " + pct, .filled) }
-    return ("已撤", .cancelled)
+    if group.isLive { return (group.hasFill ? "在场 · 成交 " + percent(group.fillRatio) : "在场", .live) }
+    guard group.hasFill else { return ("已撤", .cancelled) }
+    guard let split = fillSplit(group.fillRatio) else { return ("已成交", .filled) }
+    return ("成交 " + split.filled + " · 撤 " + split.cancelled, .filled)
+  }
+
+  /// 部分成交的「成交 / 撤」两个百分数，两数相加恰好 100：1% 以上按整数（「40%」「60%」），
+  /// 不到 1% 留一位小数（「0.4%」「99.6%」，免得小成交写成 0%）。写出来是 100% 的返回 nil（算全成交）。
+  static func fillSplit(_ ratio: Double) -> (filled: String, cancelled: String)? {
+    let v = min(100, max(0, ratio * 100))
+    if v >= 1 {
+      let f = Int(v.rounded())
+      return f >= 100 ? nil : ("\(f)%", "\(100 - f)%")
+    }
+    let tenths = max(1, Int((v * 10).rounded()))  // 吃过一口就至少 0.1%
+    return (toFixed(Double(tenths) / 10, 1) + "%", toFixed(Double(1000 - tenths) / 10, 1) + "%")
   }
 
   /// 「38%」；不到 10% 留一位小数（「0.4%」），免得小成交写成 0%。

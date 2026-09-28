@@ -1018,26 +1018,96 @@ struct OrderFlowChartTests {
   func cardBudget() throws {
     typealias B = OrderFlowCardBudget
     #expect(B.maxWidth(plotW: 400) == 340)
-    // 带在上面：卡摆下面，最高 55% 主图；带在下面：摆上面，最高不越过带。
-    let top = B.placement(bandY: 60, bandHalf: 3, top: 20, bottom: 420, mainHeight: 400)
-    #expect(top.below && abs(top.maxHeight - 220) < 1e-9)
-    let low = B.placement(bandY: 380, bandHalf: 3, top: 20, bottom: 420, mainHeight: 400)
-    #expect(!low.below && abs(low.maxHeight - 220) < 1e-9)
+    let place = { (bandY: Double, top: Double, bottom: Double, main: Double) in
+      B.placement(bandY: bandY, bandHalf: 3, top: top, bottom: bottom, mainHeight: main, plotW: 400, anchorX: 100, candle: nil)
+    }
+    // 带在上面：卡在下半边、贴主图下沿，最高 55% 主图；带在下面：卡在上半边、贴上沿。
+    let top = place(60, 20, 420, 400)
+    #expect(top.below && abs(top.maxHeight - 220) < 1e-9 && abs(top.top - 200) < 1e-9)
+    #expect(!top.leading && top.maxWidth == 340 && !top.compact && !top.coversCandle)
+    let low = place(380, 20, 420, 400)
+    #expect(!low.below && abs(low.maxHeight - 220) < 1e-9 && low.top == 20)
     // 带在中间偏上、主图矮：摆下面，最高就是带下沿到主图下沿（140 < 55% × 280）。
-    let mid = B.placement(bandY: 150, bandHalf: 4, top: 20, bottom: 300, mainHeight: 280)
-    #expect(mid.below && mid.maxHeight == 140)
-    // 焦点带出来的上限：宽按绘图区、高按主图；卡躲的是命中带，线细也按 8 pt 高算。
+    let mid = B.placement(bandY: 150, bandHalf: 4, top: 20, bottom: 300, mainHeight: 280, plotW: 400, anchorX: 300, candle: nil)
+    #expect(mid.below && mid.maxHeight == 140 && mid.top == 160 && mid.leading)
+    // 焦点带出来的上限：宽按绘图区、高按主图；卡躲的是命中带，线细也按 8 pt 高算。轻点选中没有十字线那根 K 线。
     var (r, orders) = Self.renderer()
     r.state.orderFlowSelected = OrderFlowGroupKey(orders[0])
     let focus = try #require(r.orderFlowFocus(size: Self.size))
     let L = r.layout(size: Self.size)
+    #expect(focus.candle == nil)
     #expect(focus.cardMaxWidth == L.plotW * 0.85)
     #expect(focus.mainHeight == L.main.h)
     #expect(focus.bandHalf == ChartRenderer.orderFlowHitHeight / 2)
-    let place = focus.cardPlacement
-    #expect(place.maxHeight <= L.main.h * 0.55)
-    if place.below { #expect(focus.bandY + focus.bandHalf + 6 + place.maxHeight <= focus.mainBottom + 1e-9) }
-    else { #expect(focus.bandY - focus.bandHalf - 6 - place.maxHeight >= focus.mainTop - 1e-9) }
+    let p = focus.cardPlacement
+    #expect(p.maxHeight <= L.main.h * 0.55)
+    if p.below {
+      #expect(focus.bandY + focus.bandHalf + 6 <= p.top + 1e-9)
+      #expect(abs(p.top + p.maxHeight - focus.mainBottom) < 1e-9, "贴主图下沿")
+    } else {
+      #expect(p.top + p.maxHeight <= focus.bandY - focus.bandHalf - 6 + 1e-9)
+      #expect(p.top == focus.mainTop, "贴图例下的上沿")
+    }
+  }
+
+  @Test("D4 详情卡在带的对面那一半、贴远端，不盖住十字线那根 K 线")
+  func cardAvoidsCrosshairCandle() throws {
+    typealias B = OrderFlowCardBudget
+    typealias C = B.Candle
+    // 主图 20…420（高 400），带在上半边 y = 100：卡在下半边贴下沿，高度段按三行卡 340…420。
+    func place(anchorX: Double, candle: C?, bandY: Double = 100, top: Double = 20, bottom: Double = 420) -> B.Placement {
+      B.placement(bandY: bandY, bandHalf: 4, top: top, bottom: bottom, mainHeight: bottom - top, plotW: 360,
+                  anchorX: anchorX, candle: candle)
+    }
+    // K 线在上半边（影线 60…150），碰不着下沿那一段：卡照常 85% 宽。
+    let clear = place(anchorX: 60, candle: C(left: 56, right: 64, top: 60, bottom: 150))
+    #expect(clear.below && !clear.leading && clear.maxWidth == 306 && !clear.coversCandle)
+    // K 线在左边、影线伸到下沿那一段（300…400）：卡在右侧收窄到 K 线右边以外（360 - 8 - (64 + 4) = 284）。
+    let narrow = place(anchorX: 60, candle: C(left: 56, right: 64, top: 300, bottom: 400))
+    #expect(narrow.below && !narrow.leading && abs(narrow.maxWidth - 284) < 1e-9 && !narrow.coversCandle)
+    #expect(360 - B.sideInset - narrow.maxWidth >= 64 + B.candleGap - 1e-9, "卡的左缘在 K 线右边以外")
+    // K 线在正中（右侧只剩 ~ 160 pt，窄过 minWidth）、影线伸进下沿那一段：换到带这一半的上沿；
+    // 带上方只有 100 - 4 - 6 - 20 = 70 pt，放不下三行卡（80），出两行卡（60）。
+    let center = place(anchorX: 180, candle: C(left: 176, right: 184, top: 300, bottom: 400))
+    #expect(!center.below && center.top == 20 && center.compact && !center.coversCandle)
+    // 带上方也放不下两行卡（带在 y = 80：上方 50 pt）：躲不开，照旧摆在对面、标出来。
+    let stuck = place(anchorX: 180, candle: C(left: 176, right: 184, top: 300, bottom: 400), bandY: 80)
+    #expect(stuck.below && stuck.coversCandle && stuck.maxWidth == 306)
+    // 带压得低一点（y = 180，仍在上半边），带上方 20…170 放得下：卡换到上沿，K 线在下面碰不着。
+    let flipped = place(anchorX: 180, candle: C(left: 176, right: 184, top: 300, bottom: 400), bandY: 180)
+    #expect(!flipped.below && flipped.top == 20 && !flipped.coversCandle && flipped.maxWidth == 306)
+    // 影线离下沿那一段还有空（K 线低点 330，卡顶 340，差 10 ≥ 4）：不用收窄。
+    let gap = place(anchorX: 180, candle: C(left: 176, right: 184, top: 250, bottom: 330))
+    #expect(gap.below && gap.maxWidth == 306 && !gap.coversCandle)
+  }
+
+  @Test("D4 十字线停在线上：卡的高度段与那根 K 线不重叠，或横向躲开")
+  func crosshairCardSkipsCandle() throws {
+    var (r, _) = Self.renderer()
+    let L = r.layout(size: Self.size)
+    let f = frame(r)
+    // 每条带都按一遍十字线，焦点在的时候卡不能和那根 K 线的影线范围相交（躲不开的会标出来）。
+    var checked = 0
+    for band in f.bands {
+      let x = Double(band.frame.minX + band.frame.width * 0.3)
+      let t = r.state.view.t(atX: x, plotW: L.plotW)
+      let i = r.state.series.index(atTime: t)
+      r.state.crosshair = Crosshair(index: i, price: price(r, atY: Double(band.frame.midY)))
+      guard let focus = r.orderFlowFocus(size: Self.size), let c = focus.candle else { continue }
+      checked += 1
+      #expect(c.top <= c.bottom && c.left < c.right)
+      let p = focus.cardPlacement
+      let h = min(p.maxHeight, p.compact ? OrderFlowCardBudget.compactHeight : OrderFlowCardBudget.fullHeight)
+      let lo = p.below ? p.top + p.maxHeight - h : p.top, hi = lo + h
+      let x0 = p.leading ? OrderFlowCardBudget.sideInset : L.plotW - OrderFlowCardBudget.sideInset - p.maxWidth
+      let x1 = x0 + p.maxWidth
+      let overlap = c.top < hi && c.bottom > lo && c.left < x1 && c.right > x0
+      #expect(!overlap || p.coversCandle, "卡 \(x0)…\(x1) × \(lo)…\(hi) 盖住了 K 线 \(c)")
+      // 卡不越过命中带。
+      if p.below { #expect(p.top >= focus.bandY + focus.bandHalf + OrderFlowCardBudget.bandGap - 1e-9) }
+      else { #expect(p.top + p.maxHeight <= focus.bandY - focus.bandHalf - OrderFlowCardBudget.bandGap + 1e-9) }
+    }
+    #expect(checked > 0)
   }
 
   @Test("深浅：被吃过（成交名义 > 0）是本色，一口没成交往底色混 45%；撤单 / 失联不再另画")
