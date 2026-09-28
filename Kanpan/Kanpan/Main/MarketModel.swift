@@ -111,10 +111,10 @@ final class MarketModel {
   /// 单位和值同生同死：值被清掉时单位也要清，否则下一个品种会沿用上一个的坎。
   private(set) var openInterestUnit: VolUnit?
   private(set) var totalSupply: Double?
-  /// 股票的估值底数（美元），跟供应量同一条 `meta` 来、同生同死；顶栏「Fwd PE / P/S」用。
+  /// 股票的估值底数（美元），跟供应量同一条 `meta` 来、同生同死；顶栏「FPE / P/S」用。
   private(set) var forwardEarnings: Double?
   private(set) var revenue: Double?
-  /// 这只是什么（币 / 股票 / 金属…）。顶栏第六格按它决定摆「OI/MC」还是「Fwd PE」，
+  /// 这只是什么（币 / 股票 / 金属…）。顶栏第六格按它决定摆「OI/MC」还是「FPE」，
   /// 别的类别不摆；目录还没到时是「不知道」，那一格先不出现。
   var asset: SymbolClassification.Asset { SymbolClassifier.classify(info).asset }
   /// 顶栏「仓」那一格显示的数。就是美元名义，没有第二个来源。

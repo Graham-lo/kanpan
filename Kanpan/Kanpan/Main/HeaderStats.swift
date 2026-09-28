@@ -54,7 +54,7 @@ enum HeaderStats {
   ///
   /// * **币**：`OI/MC` = 持仓量 ÷ 总市值——就是左边「仓」「市值」两格那两个数相除，
   ///   衡量一个币的合约杠杆有多重（大币零点几个百分点，热门山寨能到几十个百分点）。
-  /// * **股票**：`Fwd PE` = 市值 ÷ 一致预期的未来十二个月净利润；预期亏损的公司没有
+  /// * **股票**：`FPE` = 市值 ÷ 一致预期的未来十二个月净利润；预期亏损的公司没有
   ///   远期市盈率，改给 `P/S` = 市值 ÷ 过去十二个月营收（亏损成长股看的就是它）。
   ///   两项底数后端从同一张上市页读，比率在这儿拿**正在显示的那口价**现除，所以跟
   ///   「市值」那一格永远是同一口价。
@@ -74,9 +74,9 @@ enum HeaderStats {
       guard let cap, let oi = positive(openInterest) else { return ("OI/MC", nil) }
       return ("OI/MC", ratioText(oi / cap * 100) + "%")
     case .equity:
-      if let e = positive(forwardEarnings) { return ("Fwd PE", cap.map { ratioText($0 / e) }) }
+      if let e = positive(forwardEarnings) { return ("FPE", cap.map { ratioText($0 / e) }) }
       if let r = positive(revenue) { return ("P/S", cap.map { ratioText($0 / r) }) }
-      return ("Fwd PE", nil)
+      return ("FPE", nil)
     case .preciousMetal, .commodity, .index, .preMarket, .other:
       return nil
     }

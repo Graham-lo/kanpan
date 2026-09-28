@@ -296,7 +296,7 @@ struct PriceRow: View {
   /// 每列按最宽的实值分配；间距固定，不缩字、不截字、不换行。
   /// 列距 16、标签↔值 8、行距 2：三行总高约 47pt（原来 53），不向图表借高度。
   /// 六格：左列仓 / 市值 / 结算，右列额 / 费率 / 估值（振幅 2026-09-25 去掉，
-  /// 同日用户要把第六格补成估值：币 OI/MC，股票 Fwd PE 或 P/S，别的类别没有这一格）。
+  /// 同日用户要把第六格补成估值：币 OI/MC，股票 FPE 或 P/S，别的类别没有这一格）。
   private var stats: some View {
     HStack(alignment: .top, spacing: Space.l) {
       statColumn {
@@ -369,7 +369,7 @@ struct PriceRow: View {
   static func valuationTerm(_ label: String) -> GlossaryTerm? {
     switch label {
     case "OI/MC": .oiToMarketCap
-    case "Fwd PE": .forwardPE
+    case "FPE": .forwardPE
     case "P/S": .priceToSales
     default: nil
     }

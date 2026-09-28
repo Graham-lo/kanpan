@@ -22,7 +22,7 @@ extension GlossaryTerm {
 
   static let forwardPE = GlossaryTerm(
     id: "forwardPE",
-    title: "Fwd PE · 预期市盈率",
+    title: "FPE · 预期市盈率",
     body: "市值除以分析师预期的未来一年净利润。\n大致是按预期的赚钱速度，要多少年才能赚回现在的市值；越低越便宜。")
 
   static let priceToSales = GlossaryTerm(

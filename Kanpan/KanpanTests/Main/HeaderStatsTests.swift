@@ -149,7 +149,7 @@ struct HeaderStatsTests {
     }
   }
 
-  @Test("第六格：股票给 Fwd PE，预期亏损的给 P/S，按正在显示的那口价现除")
+  @Test("第六格：股票给 FPE，预期亏损的给 P/S，按正在显示的那口价现除")
   func equityValuation() {
     // NVDA 形状：市值 5.42T、远期利润 = 5.42T / 18.72。价涨一成，远期市盈率跟着涨一成。
     let earnings = 5.42e12 / 18.72
@@ -158,7 +158,7 @@ struct HeaderStatsTests {
       HeaderStats.valuationCell(asset: .equity, openInterest: 9e9, totalSupply: supply, price: price,
                                 forwardEarnings: earnings, revenue: 302.97e9, fresh: true)
     }
-    #expect(at(180)?.label == "Fwd PE")
+    #expect(at(180)?.label == "FPE")
     #expect(at(180)?.value == "18.7")
     #expect(at(198)?.value == "20.6")
     // RIVN 形状：没有远期利润，只剩营收 → P/S。
@@ -166,10 +166,10 @@ struct HeaderStatsTests {
                                          forwardEarnings: nil, revenue: 5.88e9, fresh: true)
     #expect(loss?.label == "P/S")
     #expect(loss?.value == "3.77")
-    // 两项都没有（ETF 这类）：格子仍叫 Fwd PE，值是破折号；股票不会显示 OI/MC。
+    // 两项都没有（ETF 这类）：格子仍叫 FPE，值是破折号；股票不会显示 OI/MC。
     let none = HeaderStats.valuationCell(asset: .equity, openInterest: 9e9, totalSupply: supply, price: 180,
                                          forwardEarnings: nil, revenue: nil, fresh: true)
-    #expect(none?.label == "Fwd PE")
+    #expect(none?.label == "FPE")
     #expect(none?.value == nil)
     // 价不新鲜：同一套规矩。
     #expect(HeaderStats.valuationCell(asset: .equity, openInterest: nil, totalSupply: supply, price: 180,
