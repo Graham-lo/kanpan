@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-updown="red-up">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 币安 CloudFront 对带 sslip.io 来源页的请求直接回 403（且不带跨域头），所以一律不发 Referer -->
+<meta name="referrer" content="no-referrer">
+<title>Hkline · 网页版原型</title>
+<link rel="stylesheet" href="app.css?v=2">
+</head>
+<body>
+<div id="app">
+  <header class="app-header">
+    <a class="brand" href="#chart" aria-label="Hkline 首页"><span class="mark" data-icon="logo:icon-24"></span>Hkline</a>
+    <nav class="nav" aria-label="主导航">
+      <a href="#chart" data-page="chart">图表</a>
+      <a href="#sectors" data-page="sectors">板块</a>
+      <a href="#review" data-page="review">复盘</a>
+    </nav>
+    <div class="header-spacer"></div>
+    <button class="search-trigger" id="searchTrigger" aria-label="搜索品种"><span data-icon="search:icon-16"></span><span>搜索品种、代号、中文名</span><kbd>⌘</kbd><kbd>K</kbd></button>
+    <div class="header-actions">
+      <button class="ibtn" id="hdrAlerts" data-tip="提醒" aria-label="提醒"><span data-icon="bell"></span></button>
+      <button class="ibtn" id="hdrTheme" data-tip="切换深浅色" aria-label="切换深浅色"><span data-icon="moon"></span></button>
+      <button class="avatar" id="hdrAvatar" data-tip="我的" aria-label="我的">M</button>
+    </div>
+  </header>
+
+  <main id="pages" style="min-height:0;display:grid">
+    <!-- 图表 -->
+    <section class="page" id="page-chart" aria-label="图表">
+      <div class="card chart-toolbar" id="toolbar"></div>
+      <div class="card drawbar" id="drawbar" role="toolbar" aria-label="画线工具" aria-orientation="vertical"></div>
+      <div class="chart-area" id="chartArea" data-layout="1"></div>
+      <aside class="card side-panel" id="sidePanel"></aside>
+      <nav class="card rail" id="rail" aria-label="侧栏"></nav>
+    </section>
+
+    <!-- 板块 -->
+    <section class="page" id="page-sectors" aria-label="板块">
+      <div class="card sec-list" id="secList"></div>
+      <div class="card sec-members" id="secMembers"></div>
+      <div class="card sec-preview" id="secPreview"></div>
+    </section>
+
+    <!-- 复盘 -->
+    <section class="page" id="page-review" aria-label="复盘"></section>
+
+    <!-- 我的 -->
+    <section class="page" id="page-me" aria-label="我的">
+      <nav class="card me-nav" id="meNav" aria-label="我的"></nav>
+      <div class="card me-body scroll" id="meBody"></div>
+    </section>
+
+    <!-- 设计规范 -->
+    <section class="page scroll" id="page-spec" aria-label="设计规范"></section>
+  </main>
+</div>
+
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+<div class="toast-host" id="toasts" aria-live="polite"></div>
+
+<button class="proto-fab" id="protoFab" aria-label="原型控制台">原型</button>
+<div class="proto-panel" id="protoPanel"></div>
+
+<script src="seed.js"></script>
+<script src="icons.js?v=2"></script>
+<script src="data.js?v=2"></script>
+<script src="chart.js?v=2"></script>
+<script src="app.js?v=2"></script>
+<script src="pages.js?v=2"></script>
+</body>
+</html>
