@@ -297,4 +297,33 @@ struct BackgroundGraceTests {
     }
     #expect(ended.value == [7])
   }
+
+  @Test("订单流落盘（订单簿压测第二轮 7）：进后台、失去焦点、关图各要一段后台额度，落完盘就还，只还一次")
+  func orderFlowSaveHoldsGraceUntilDone() async {
+    let begun = Box<[Int]>([]), ended = Box<[Int]>([]), next = Box<Int>(100)
+    let model = MarketModel(symbol: "BTCUSDT", interval: .h1, endpoints: .default)
+    model.makeSaveGrace = {
+      next.value += 1
+      let handle = next.value
+      return BackgroundGrace(seconds: 9_999,
+                             begin: { [begun] _ in
+                               MainActor.assumeIsolated { begun.value.append(handle) }
+                               return UIBackgroundTaskIdentifier(rawValue: handle)
+                             },
+                             end: { [ended] id in
+                               MainActor.assumeIsolated { ended.value.append(id.rawValue) }
+                             })
+    }
+    model.enterBackground()
+    model.saveOrderFlowNow()
+    #expect(begun.value == [101, 102], "进后台、失去焦点当下就要额度")
+    for _ in 0..<40 where ended.value.count < 2 { await spin(0.05) }
+    #expect(ended.value.sorted() == [101, 102], "落完盘就还（没有 27 秒定时器兜着也得还）")
+    model.stop()
+    #expect(begun.value == [101, 102, 103], "关图也要一段")
+    for _ in 0..<40 where ended.value.count < 3 { await spin(0.05) }
+    #expect(ended.value.sorted() == [101, 102, 103])
+    await spin(0.1)
+    #expect(ended.value.count == 3, "只还一次")
+  }
 }

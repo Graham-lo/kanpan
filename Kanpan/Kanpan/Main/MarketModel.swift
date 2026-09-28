@@ -171,6 +171,9 @@ final class MarketModel {
   /// 拿一口一口的价去折 1 分钟桶。界面从不读这个属性，别让 `@Observable` 跟踪它。
   @ObservationIgnored var onPrice: ((String, Double, Int64) -> Void)?
   private var foreground = true
+  /// 落订单流日志时要的那段后台额度（订单簿压测第二轮 7）：进后台、关图、失去焦点时各要一段，
+  /// 落完盘就还，系统提前收回或到点也还。可注入是为了测「落完就还、只还一次」。
+  @ObservationIgnored var makeSaveGrace: () -> BackgroundGrace = { BackgroundGrace(seconds: 25) }
   /// 补历史一次只放一发在路上，别一路拖着就连喊十几次。
   private var loading = false
 
@@ -373,7 +376,9 @@ final class MarketModel {
     pump?.cancel()
     pump = nil
     linkSweep?.cancel(); linkSweep = nil
-    Task { [feed] in await feed.stop() }
+    // 关图：订单流停下时会落一次盘（`OrderFlowFeed.stop`），这一步可能正赶上场景断开、进程随后被挂起，
+    // 所以先把它这条落完再还额度。
+    withSaveGrace { [feed] in await feed.stop() }
   }
 
   func enterBackground() {
@@ -381,7 +386,26 @@ final class MarketModel {
     trackLink()
     updateMicrostructure()
     statsTask?.cancel(); statsTask = nil     // 后台不轮询持仓量
-    Task { [feed] in await feed.enterBackground() }
+    // 进后台：停订单流并等它把日志落完盘（`RoutedMarketFeed.enterBackground` 会 await 到落盘结束）。
+    // 原来这里只起一个 Task 就走：共用的 27 秒额度（`BackgroundGrace`，主屏那一份）一回前台就还，
+    // 两份额度谁先到谁说了算；这段自己要一份，落完就还（订单簿压测第二轮 7）。
+    withSaveGrace { [feed] in await feed.enterBackground() }
+  }
+
+  /// 不停订阅，只把订单流日志马上落一次盘：app 失去焦点（下拉控制中心、切到多任务界面）时调。
+  /// 真进后台还会再落一次；大单没变、游标没往前走就不写（`OrderFlowFeed.save`），不必节流。
+  func saveOrderFlowNow() {
+    withSaveGrace { [feed] in await feed.saveOrderFlowNow() }
+  }
+
+  /// 要一段后台额度跑 `work`，跑完（或系统收回、到点）就还。
+  private func withSaveGrace(_ work: @escaping @Sendable () async -> Void) {
+    let grace = makeSaveGrace()
+    grace.begin()
+    Task { @MainActor in
+      await work()
+      grace.end()
+    }
   }
 
   func enterForeground() {

@@ -1561,6 +1561,10 @@ struct MainScreen: View {
     // 手指抬起那一刻就该写完了（`ChartViewport.interactionEnded`），这一条纯属保险：
     // 万一有一次捏合还卡在那 400ms 的降采样里，人就把 app 切走了。
     let viewportHook = AppLifecycle.shared.register(id: "viewport", priority: .data) { viewport.willLeaveForeground() }
+    // 订单流日志：失去焦点就落一次（进后台时停订单流还会再落），落完盘才还后台额度（`MarketModel.saveOrderFlowNow`）。
+    let orderFlowHook = AppLifecycle.shared.register(id: "orderflow", priority: .data) { [weak market] in
+      market?.saveOrderFlowNow()
+    }
     let reviewHook = AppLifecycle.shared.register(id: "review", priority: .data) {
       review.saveDraft()
       if reviewChart.playing { reviewChart.togglePlay(feature: review) }
@@ -1611,6 +1615,7 @@ struct MainScreen: View {
     teardown.onTeardown { [session, sectorFeed, grace] in
       AppLifecycle.shared.unregisterResources(token: feedsToken)
       AppLifecycle.shared.unregister(hook: viewportHook)
+      AppLifecycle.shared.unregister(hook: orderFlowHook)
       AppLifecycle.shared.unregister(hook: reviewHook)
       // `MemoryWarningRelay` 那条不撤：它登记的是 `[weak market]`，模型一释放就成了
       // 空操作；按 id 撤反而可能把新根刚登记的那份摘掉。
