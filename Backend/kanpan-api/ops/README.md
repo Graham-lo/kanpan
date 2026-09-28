@@ -127,3 +127,47 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 ### 上线
 
 `~/Desktop/kanpan-api-orderflow-rollout.sh`（在开发机上跑）：备份二进制与两张表 → 从 `origin/main` 打包同步源码 → VPS 上 `cargo build --release` → `ops/install.py` → 先 `KANPAN_ORDERFLOW_LAYERS=fixed` 重启、10 分钟后打印 CPU / RSS / 连接数 / 跟踪数 → 切全开再重启、10 分钟后再打印 → 只读核对（SNDK 的 `thresholds.usdtPerp` 等于日志里标定的值，BTC / SOXL / XAU / 一只热点有数据，没有告警刷屏）。可重跑。
+
+**只重启一次。** `ops/install.py` 末尾自己会 `systemctl try-restart kanpan-api kanpan-worker`（再 `enable --now` 拉起没在跑的），所以部署 = 同步源码 → `cargo build --release` → `ops/install.py`，到此为止，**之后不要再 `systemctl restart` 一次**。上面那个 rollout 脚本「install.py 之后再重启」是分层上线那一次要切 `KANPAN_ORDERFLOW_LAYERS` 才需要的，日常部署别照抄。原因：每重启一次，订单流跟踪就停一次、非币要重新排币安快照标定（09-27 一次等过 237 秒），标定期间延后读回的行还带着旧的 `seen_ms`；两次重启挨着，第二次读回时这批行已经超过 `STALE_MS`，会被当成失联、再当新单冒出来——09-27 四次部署的尖峰就是这么来的。
+
+### 停机：挂着的单交接给下一次启动（2026-09-28）
+
+`kanpan-api serve` 收到 SIGTERM（`systemctl restart/stop`、install.py 的 try-restart）之后，两件事**并行**进行：
+
+1. axum 的 `with_graceful_shutdown` 开始排空 HTTP：不再接新连接，等进行中的请求答完；
+2. 同一时刻 `orderflow_history::shutdown()` 开始收尾：把全局 `CLOSING` 置上 → 每只跟踪中的品种停止评估、把手里的已结束行写完、把新出现 / 移动过的挂着的行交给写库任务，并把所有挂着的单的 `(主键, seen_ms)` 交上来（最多等 2 秒）→ **一条** `UPDATE … FROM unnest(…)` 把这些行的 `seen_ms` 刷到停机那一刻（只往前刷，已结束的行不碰）→ 等各品种的写库任务排空。
+
+整段收尾最多 10 秒（`SHUTDOWN_LIMIT`），到点不等了，照常退出；两件事都结束进程才退出（systemd 默认 `TimeoutStopSec` 90 秒，远够）。挂着的单**不会**在停机时被判结束，下次启动 `restore` 读回来时 `seen_ms` 是新的，照常续上。
+
+journalctl 里看这一行（数字是示例；`journalctl -u kanpan-api -n 50 | grep 'Orderflow history: shutdown'`）：
+
+```
+Orderflow history: shutdown kept 3412 live orders on 196 bases (seen_ms refreshed on 3398 rows), all writers drained in 640 ms
+```
+
+- `refreshed` 比 `live` 少一点是正常的：刚出现、写库任务还没落盘的行由写库任务自己带着新的 `seen_ms` 写进去；
+- `refreshed on failed rows` 表示那条 UPDATE 在 10 秒内没做完或失败了（数据库慢 / 断了），下次启动那批行按旧 `seen_ms` 判，可能出现一批失联；
+- 若是 warn 级的 `… N trackers still writing after 10000 ms; their rows are left to restore / purge`：有品种的写库没在 10 秒内排空，没写进去的已结束行会丢（挂着的仍由下次启动读回）。
+- 进程是因为后台任务挂掉而退出的（supervisor 的排空只给 10 秒再 `exit(1)`）时，这段收尾可能来不及，和以前一样靠下次启动 `restore`。
+
+### 数据库容器的内存（2026-09-28）
+
+`ops/install.py` 只在 `kanpan-postgres` 容器**不存在**时新建它，新建的参数已经改成 `--memory 1536m` 加 `postgres -c shared_buffers=512MB`（原来 512m、缺省 128MB，订单流几张表的索引常驻不下，`/history` 回回读盘）。**已经在跑的线上容器 install.py 一个字不改**，要在 VPS 上手工执行下面三步（改一次就行，重复执行无害）：
+
+```bash
+# 1. 容器内存上限：512m → 1536m（swap 同值，即不给 swap）。在线生效，不重启容器。
+docker update --memory 1536m --memory-swap 1536m kanpan-postgres
+
+# 2. shared_buffers：128MB → 512MB。写进数据卷里的 postgresql.auto.conf，重启后生效、以后一直生效。
+docker exec kanpan-postgres psql -U kanpan_admin -d kanpan -c "ALTER SYSTEM SET shared_buffers = '512MB'"
+
+# 3. shared_buffers 只在 Postgres 启动时读，必须重启一次容器。
+docker restart kanpan-postgres
+
+# 核对
+docker inspect -f '{{.HostConfig.Memory}}' kanpan-postgres          # 1610612736
+docker exec kanpan-postgres psql -U kanpan_admin -d kanpan -Atc "SHOW shared_buffers"   # 512MB
+```
+
+第 3 步数据库停几秒（`docker restart` 先发 SIGTERM，Postgres 快速关机加启动、这个库的规模一般 3–10 秒）。这几秒里 `kanpan-api serve` / `kanpan-worker` 的请求会报数据库错误，连接池自己重连，**不用重启 kanpan-api**；订单流的写库批次写失败会在下一轮重试。挑用户少的时候做，最好不要和部署挨着做（部署那次重启已经让订单流停过一次了）。先做第 1 步再做第 3 步：上限没放大之前把 shared_buffers 调大，容器可能被 OOM 杀掉。
+

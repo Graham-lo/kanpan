@@ -35,10 +35,33 @@ pub async fn upsert(pool:&PgPool,base:&str,step:f64,rows:&[(BigOrder,i64)])->sql
   });
   q.push(" ON CONFLICT(base,venue_id,side,bucket,first_seen_ms) DO UPDATE SET price=EXCLUDED.price,end_ms=EXCLUDED.end_ms,status=EXCLUDED.status,\
    notional=EXCLUDED.notional,filled_notional=EXCLUDED.filled_notional,threshold=EXCLUDED.threshold,vanished_notional=EXCLUDED.vanished_notional,\
-   seen_ms=EXCLUDED.seen_ms WHERE orderflow_orders.end_ms IS NULL");
+   seen_ms=CASE WHEN EXCLUDED.end_ms IS NULL THEN GREATEST(orderflow_orders.seen_ms,EXCLUDED.seen_ms) ELSE EXCLUDED.seen_ms END \
+   WHERE orderflow_orders.end_ms IS NULL");
   q.build().execute(pool).await?;
  }
  Ok(())
+}
+
+/// 停机时要刷的一条挂着的单：主键加最后一次看到的时刻。
+pub struct SeenRow<'a> {pub base:&'a str,pub venue_id:&'a str,pub side:Side,pub bucket:i64,pub first_seen_ms:i64,pub seen_ms:i64}
+
+/// 停机收尾：一句 UPDATE 把所有挂着的单的 `seen_ms` 刷到跟踪器手里的最后一次看到。只动还挂着的行；
+/// 只往后推不往前拉（写库任务同时在写的一批里 `seen_ms` 可能更旧，`upsert` 对挂着的行也取大的，两边谁后落都不倒退）。
+/// 库里还没有的（刚出现、还没刷过盘的）不在这里插，交给写库任务。返回改了几行。
+pub async fn refresh_seen(pool:&PgPool,rows:&[SeenRow<'_>])->sqlx::Result<u64> {
+ if rows.is_empty() {return Ok(0)}
+ let base:Vec<&str>=rows.iter().map(|r|r.base).collect();
+ let venue:Vec<&str>=rows.iter().map(|r|r.venue_id).collect();
+ let side:Vec<&str>=rows.iter().map(|r|r.side.wire()).collect();
+ let bucket:Vec<i64>=rows.iter().map(|r|r.bucket).collect();
+ let first:Vec<i64>=rows.iter().map(|r|r.first_seen_ms).collect();
+ let seen:Vec<i64>=rows.iter().map(|r|r.seen_ms).collect();
+ let done=sqlx::query("UPDATE orderflow_orders o SET seen_ms=v.seen_ms \
+  FROM unnest($1::text[],$2::text[],$3::text[],$4::bigint[],$5::bigint[],$6::bigint[]) AS v(base,venue_id,side,bucket,first_seen_ms,seen_ms) \
+  WHERE o.base=v.base AND o.venue_id=v.venue_id AND o.side=v.side AND o.bucket=v.bucket AND o.first_seen_ms=v.first_seen_ms \
+  AND o.end_ms IS NULL AND o.seen_ms<v.seen_ms")
+  .bind(base).bind(venue).bind(side).bind(bucket).bind(first).bind(seen).execute(pool).await?;
+ Ok(done.rows_affected())
 }
 
 fn order(row:&sqlx::postgres::PgRow)->Option<BigOrder> {
@@ -63,14 +86,14 @@ pub async fn live(pool:&PgPool,base:&str)->sqlx::Result<Vec<Restored>> {
 /// 写成一句 `end_ms IS NULL OR end_ms >= from` 的话，拉最近一天也要把整个月结束的行都扫一遍。
 /// 线上走 [`range_each`]（边读边交）；攒成一张表的这两个只给测试核对结果用。
 #[cfg(test)]
-pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<BigOrder>> {range_capped(pool,base,from,to,MAX_ROWS).await}
+pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<BigOrder>> {range_capped(pool,base,from,to,0,MAX_ROWS).await}
 
 /// 超过 `cap` 条时留最新的：先按出现时刻倒序取 `cap` 条、再翻回升序。原来升序取前 `cap` 条，截掉的恰好是
 /// 最新的那一段——图的右沿（此刻）空着，手机的增量游标也从截断处往后接，永远补不上。
 #[cfg(test)]
-async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,cap:i64)->sqlx::Result<Vec<BigOrder>> {
+async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:i64)->sqlx::Result<Vec<BigOrder>> {
  let mut orders=Vec::new();
- range_each(pool,base,from,to,cap,|o|orders.push(o)).await?;
+ range_each(pool,base,from,to,min_life,cap,|o|orders.push(o)).await?;
  Ok(orders)
 }
 
@@ -79,21 +102,30 @@ async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,cap:i64)->sqlx::Res
 /// 原来 `fetch_all` 把 20 万行 `PgRow` 全攒在手里，再转成 `BigOrder`、再转成 `serde_json::Value` 树、
 /// 再序列化：一个请求常驻内存涨 690 MB（答复本身 62 MB），serve 的上限一共 1 GB。
 /// 翻回升序交给库做（外面再套一层 ORDER BY），这里就能按到达顺序直接往外交。
-pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,cap:i64,mut each:impl FnMut(BigOrder))->sqlx::Result<usize> {
+///
+/// `min_life`（毫秒，0 = 不滤）：已结束的单寿命（`end_ms − first_seen_ms`）短于它的不回，还挂着的一律回。
+/// 写在结束的那两路各自的 WHERE 里（挂着的那一路没有结束时刻，不滤），`LIMIT` 之前就滤掉，
+/// 20 万行的上限留给真要的行；仍走 `(base, end_ms)` 那条索引，只是多一个行过滤条件。
+pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:i64,mut each:impl FnMut(BigOrder))->sqlx::Result<usize> {
  use futures_util::TryStreamExt;
- let cols=COLUMNS;
- let sql=format!("SELECT * FROM (SELECT * FROM (\
-  SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL AND first_seen_ms<=$3 \
-  UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>=$2 AND end_ms<=$3 \
-  UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>$3 AND first_seen_ms<=$3\
-  ) t ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4) newest \
-  ORDER BY first_seen_ms,venue_id,side,bucket");
- let mut rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).fetch(pool);
+ let sql=range_sql();
+ let mut rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).bind(min_life).fetch(pool);
  let mut n=0;
  while let Some(row)=rows.try_next().await? {
   if let Some(o)=order(&row) {each(o);n+=1;}
  }
  Ok(n)
+}
+
+/// `range_each` 的查询：$1 base、$2 from、$3 to、$4 行数上限、$5 最短寿命。三路都要走得上 `orderflow_orders_end`（测试里 EXPLAIN 核对）。
+pub(super) fn range_sql()->String {
+ let cols=COLUMNS;
+ format!("SELECT * FROM (SELECT * FROM (\
+  SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL AND first_seen_ms<=$3 \
+  UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>=$2 AND end_ms<=$3 AND end_ms-first_seen_ms>=$5 \
+  UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>$3 AND first_seen_ms<=$3 AND end_ms-first_seen_ms>=$5\
+  ) t ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4) newest \
+  ORDER BY first_seen_ms,venue_id,side,bucket")
 }
 
 /// 跟踪器最后一次活着距今超过这么久，就算上一段断了：历史从下一次起跟的那一刻重新算起。
@@ -236,6 +268,59 @@ pub(super) mod tests {
   assert!(rewrite*10<ORPHAN_MS);
  }
 
+ /// `minLifeMs`：已结束的单寿命短于它的不回（边界上的回），还挂着的不管多短一律回；三路 UNION 里结束的两路都滤。
+ #[tokio::test]
+ async fn min_life_drops_only_short_ended_orders() {
+  let Some(pool)=isolated_pool().await else {return};
+  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZM'").execute(&pool).await.unwrap();
+  let now=100*DAY_MS;
+  let rows=[
+   (order(1,now-1_000,None),now),                                 // 挂着、才 1 秒
+   (order(2,now-3_600_000,Some(now-3_600_000+299_999)),now),      // 窗口里结束、差 1 ms 到 5 分钟
+   (order(3,now-3_000_000,Some(now-3_000_000+300_000)),now),      // 窗口里结束、正好 5 分钟
+   (order(4,now-2*DAY_MS,Some(now-DAY_MS+1)),now),                 // 窗口里结束、活了一天多 1 ms
+   (order(5,now-10_000,Some(now+5_000)),now+5_000),               // 跨过右沿才结束、15 秒
+   (order(6,now-600_000,Some(now+5_000)),now+5_000),              // 跨过右沿才结束、10 分 5 秒
+  ];
+  upsert(&pool,"ZZM",100.0,&rows).await.unwrap();
+  let buckets=|v:Vec<BigOrder>|v.iter().map(|o|o.bucket).collect::<Vec<_>>();
+  assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,0,MAX_ROWS).await.unwrap()),vec![4,2,3,6,5,1],"0 = 不滤");
+  assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,300_000,MAX_ROWS).await.unwrap()),vec![4,3,6,1],"短于 5 分钟的结束单不回，正好 5 分钟的回，挂着的回");
+  assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,86_400_000,MAX_ROWS).await.unwrap()),vec![4,1],"上限一天：只剩挂着的与活满一天的");
+  assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,300_000,2).await.unwrap()),vec![6,1],"先滤再截：上限只留给要回的行");
+  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZM'").execute(&pool).await.unwrap();
+ }
+
+ /// 停机那一句 UPDATE：只刷还挂着的行，只往后推；库里没有的不插。写库任务同时落一批更旧的 `seen_ms` 也拉不回去。
+ #[tokio::test]
+ async fn shutdown_refresh_moves_live_seen_forward_only() {
+  let Some(pool)=isolated_pool().await else {return};
+  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZS','ZZS2')").execute(&pool).await.unwrap();
+  let now=100*DAY_MS;
+  let (a,b,c)=(order(1,now-60_000,None),order(2,now-60_000,None),order(3,now-60_000,Some(now-1_000)));
+  upsert(&pool,"ZZS",100.0,&[(a.clone(),now-50_000),(b.clone(),now-5_000),(c.clone(),now-1_000)]).await.unwrap();
+  upsert(&pool,"ZZS2",100.0,&[(a.clone(),now-50_000)]).await.unwrap();
+  let row=|base,o:&BigOrder,seen|SeenRow{base,venue_id:"binance:usdtPerp:BTCUSDT",side:o.side,bucket:o.bucket,first_seen_ms:o.first_seen_ms,seen_ms:seen};
+  let d=order(4,now-1,None);
+  let rows=[row("ZZS",&a,now),row("ZZS",&b,now-9_000),row("ZZS",&c,now),row("ZZS",&d,now),row("ZZS2",&a,now-40_000)];
+  assert_eq!(refresh_seen(&pool,&rows).await.unwrap(),2,"a 与 ZZS2 的 a；b 更旧不动、c 已结束不动、d 库里没有不插");
+  assert_eq!(refresh_seen(&pool,&[]).await.unwrap(),0);
+  let seen=|base:&'static str,bucket:i64|{let pool=pool.clone();async move {
+   sqlx::query_scalar::<_,i64>("SELECT seen_ms FROM orderflow_orders WHERE base=$1 AND bucket=$2").bind(base).bind(bucket).fetch_optional(&pool).await.unwrap()}};
+  assert_eq!((seen("ZZS",1).await,seen("ZZS",2).await,seen("ZZS",3).await,seen("ZZS",4).await,seen("ZZS2",1).await),
+   (Some(now),Some(now-5_000),Some(now-1_000),None,Some(now-40_000)));
+  // 写库任务晚落一批旧的：挂着的行 seen_ms 取大的，量照写。
+  let mut moved=a.clone();moved.notional=7e6;
+  upsert(&pool,"ZZS",100.0,&[(moved,now-30_000)]).await.unwrap();
+  assert_eq!(seen("ZZS",1).await,Some(now));
+  assert_eq!(sqlx::query_scalar::<_,f64>("SELECT notional FROM orderflow_orders WHERE base='ZZS' AND bucket=1").fetch_one(&pool).await.unwrap(),7e6);
+  // 结束的照写结束那一刻（可以比挂着时写的 seen_ms 早：失联按最后一次真看到结束）。
+  let mut lost=a.clone();lost.end_ms=Some(now-55_000);lost.status=Status::Lost;
+  upsert(&pool,"ZZS",100.0,&[(lost,now-55_000)]).await.unwrap();
+  assert_eq!(seen("ZZS",1).await,Some(now-55_000));
+  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZS','ZZS2')").execute(&pool).await.unwrap();
+ }
+
  #[tokio::test]
  async fn writes_reads_and_rolls() {
   let Some(pool)=isolated_pool().await else {return};
@@ -250,7 +335,7 @@ pub(super) mod tests {
   let got=range(&pool,"ZZT",now-DAY_MS,now).await.unwrap();
   assert_eq!(got.iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3,1],"按出现时刻升序，4 天前结束的不在最近一天里");
   assert_eq!(range(&pool,"ZZT",now-DAY_MS,now-5_000_000).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3],"右沿之后才出现的（挂着的 1 号）不回，跨过右沿的 3 号要回");
-  assert_eq!(range_capped(&pool,"ZZT",now-DAY_MS,now,2).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![3,1],"超了上限留最新的，仍按升序");
+  assert_eq!(range_capped(&pool,"ZZT",now-DAY_MS,now,0,2).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![3,1],"超了上限留最新的，仍按升序");
   // 结束写进去之后，晚到的一批「挂着」翻不回去。
   let mut ended=live.clone();ended.end_ms=Some(now);ended.status=Status::Filled;
   upsert(&pool,"ZZT",100.0,&[(ended.clone(),now)]).await.unwrap();

@@ -92,6 +92,13 @@ async fn main()->anyhow::Result<()> {
  let address:SocketAddr=std::env::var("KANPAN_BIND").unwrap_or_else(|_|"127.0.0.1:8794".into()).parse()?;
  let listener=tokio::net::TcpListener::bind(address).await?;
  let (stop,cause)=supervisor.shutdown();
- axum::serve(listener,kanpan_api::router(s).into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(stop).await?;
+ // 退出信号一落（SIGTERM / Ctrl-C / 后台任务死了），订单流的停机收尾（挂着的单刷 `seen_ms`、积压写完，最多 10 秒）
+ // 和 axum 的优雅退出（不再接新连接、等在途请求答完）同时开始；两边都完了进程才退。
+ let (fired,signalled)=tokio::sync::oneshot::channel::<()>();
+ let stop=async move {stop.await;let _=fired.send(());};
+ let orderflow=tokio::spawn(async move {if signalled.await.is_ok() {kanpan_api::orderflow_history::shutdown().await}});
+ let served=axum::serve(listener,kanpan_api::router(s).into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(stop).await;
+ let _=orderflow.await;
+ served?;
  kanpan_api::supervise::outcome(&cause)
 }

@@ -56,7 +56,9 @@ else:
   dbfile.write_text('POSTGRES_USER=kanpan_admin\nPOSTGRES_DB=kanpan\nPOSTGRES_PASSWORD='+admin+'\n');dbfile.chmod(0o600)
   print('database.env 不在，已生成一把新的数据库管理员口令；service.env 里的 PEPPER 与 ENCRYPTION_KEY 未改动。')
 if subprocess.run(['docker','inspect','kanpan-postgres'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode!=0:
- subprocess.run(['docker','run','-d','--name','kanpan-postgres','--restart','unless-stopped','--memory','512m','--cpus','0.75','--env-file',str(dbfile),'-p','127.0.0.1:55434:5432','-v','kanpan-postgres:/var/lib/postgresql/data','pgvector/pgvector:0.8.2-pg17'],check=True,stdout=subprocess.DEVNULL)
+ # 只管新建的容器：已经在的一个字不改（它的内存上限与 shared_buffers 要手工改，见 ops/README.md「数据库容器的内存」）。
+ # 1536m / shared_buffers=512MB（2026-09-28）：原来 512m 与缺省 128MB，订单流表常驻的那几张索引放不下，历史读取回回去盘上。
+ subprocess.run(['docker','run','-d','--name','kanpan-postgres','--restart','unless-stopped','--memory','1536m','--cpus','0.75','--env-file',str(dbfile),'-p','127.0.0.1:55434:5432','-v','kanpan-postgres:/var/lib/postgresql/data','pgvector/pgvector:0.8.2-pg17','postgres','-c','shared_buffers=512MB'],check=True,stdout=subprocess.DEVNULL)
 for _ in range(30):
  if subprocess.run(['docker','exec','kanpan-postgres','pg_isready','-h','127.0.0.1','-U','kanpan_admin','-d','kanpan'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0:break
  time.sleep(1)
@@ -169,6 +171,7 @@ subprocess.run(['systemctl','daemon-reload'],check=True)
 # 升级时服务早就在跑：`enable --now` 对在跑的服务什么都不做，于是 migrate 已经把表改了，
 # 跑着的还是旧二进制（0021 删掉 sync_snapshots 之后旧二进制的每次推送都回 500），
 # 直到有人想起来手工 restart。try-restart 只重启正在跑的那几个，没在跑的交给下一句拉起。
+# 所以部署脚本在 install.py 之后**不要再 restart 一次**：每重启一次，订单流跟踪就停一次、非币再排一次快照标定。
 subprocess.run(['systemctl','try-restart','kanpan-api','kanpan-worker'],check=True)
 subprocess.run(['systemctl','enable','--now','kanpan-api','kanpan-worker','kanpan-backup.timer'],check=True)
 print('Dedicated account database and nonprivileged API enabled; no mail service.')

@@ -29,7 +29,10 @@ chacha20poly1305 = "0.10"
 subtle = "2"
 zeroize = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2"] }
-tower-http = { version = "0.6", features = ["limit", "timeout", "compression-gzip"] }
+tower-http = { version = "0.6", features = ["limit", "timeout"] }
+# 订单流历史接口自己压 gzip（压好的体要进缓存，见 `orderflow_history::Answers`），不再经 tower-http 的压缩层。
+# 后端用 zlib-rs（纯 Rust，锁文件里本来就有）：同级别比缺省的 miniz_oxide 快一些。
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

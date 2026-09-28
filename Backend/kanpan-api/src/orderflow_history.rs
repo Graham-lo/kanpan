@@ -22,8 +22,13 @@
 //! * 写库：挂着的单每 15 秒刷一次，只写新出现的、名义 / 成交 / 门槛变了 1% 以上的、以及 60 秒没写过的
 //!   （刷新 `seen_ms`）；结束的单一结束就写；所有币合起来最多同时占 3 条库连接。进程重启读回挂着的单，
 //!   缺席超过 2 分钟的按最后一次看到时失联结束。每小时滚动清理一次（3 天 + 20 GB 闸门）。
-//! * 接口 `GET /v1/market/orderflow/history?base=&from=&to=`：`to` 缺省为此刻，`from` 缺省为
-//!   `to` 前 24 小时，区间最长 3 天；回 `{base, thresholds, trackedSinceMs, orders}`，gzip。
+//! * 停机（SIGTERM）：和 axum 排空 HTTP 并行，各品种停止评估、写完手里的行，挂着的单**不结束**，
+//!   一条 `UPDATE … FROM unnest` 把它们的 `seen_ms` 刷到停机那一刻，交给下次启动读回；整段最多 10 秒（见「停机」一节）。
+//! * 接口 `GET /v1/market/orderflow/history?base=&from=&to=&minLifeMs=`：`to` 缺省为此刻，`from` 缺省为
+//!   `to` 前 24 小时，区间最长 3 天；`minLifeMs`（0 到 1 天，缺省 0）滤掉存活不到它的已结束单，挂着的照回；
+//!   回 `{base, thresholds, trackedSinceMs, orders}`，自己压 gzip（请求带 `Accept-Encoding: gzip` 时）。
+//!   同一 (品种, from/to 所在分钟, minLifeMs, 是否 gzip) 的请求只读一次库：并发的等同一次读，
+//!   读完的压缩体缓存 60 秒（最多 64 份、32 MB，按最久没用的踢），区间按整分钟放宽读。
 //!   没在跟的币回空表、`trackedSinceMs` 为此刻，并从这一刻开始跟（按需层）。`trackedSinceMs` 是这一段连着跟的起点：
 //!   跟踪器断过十分钟以上（停掉、没人要）再起跟，从起跟那一刻重新算（0026 的 `alive_ms`）。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
@@ -598,19 +603,30 @@ impl Tracker {
  }
 
  async fn write_live(&mut self) {
-  let rows=changed_live(self.model.live(),&mut self.written,now_ms());
+  let rows=changed_live(self.model.live(),&mut self.written,now_ms(),LIVE_REWRITE_MS);
   if rows.is_empty() {return}
   let _=self.writes.send(Write{step:self.step(),rows}).await;
+ }
+
+ /// 停机（SIGTERM）：挂着的照旧挂着，不 `model.stop()` 判失联——下一个进程读回来接着跟。结束了还没写的、
+ /// 新出现或变过还没写的交给写库任务；所有挂着的单的「最后一次看到」交回去，由 [`shutdown`] 一句 UPDATE 刷掉
+ /// （原来停机前最后一次刷 `seen_ms` 可能是 60 秒前，再加停机、起跟、标定就过了 `model::STALE_MS`）。
+ async fn hand_over(&mut self)->Final {
+  self.write_ended().await;
+  let live=self.model.live();
+  let rows=changed_live(live.clone(),&mut self.written,now_ms(),i64::MAX);
+  if !rows.is_empty() {let _=self.writes.send(Write{step:self.step(),rows}).await;}
+  Final{base:self.base.clone(),live:live.into_iter().map(|(o,seen)|((o.venue_id,o.side,o.bucket,o.first_seen_ms),seen)).collect()}
  }
 }
 
 /// 一条挂着的单在库里的身份：簿、侧、桶、出现时刻。
 type LiveKey=(String,book::Side,i64,i64);
 
-/// 这一轮要写的挂着的单：新出现的、量或成交或门槛变了 1% 以上的、以及上次写已经过了 `LIVE_REWRITE_MS` 的
+/// 这一轮要写的挂着的单：新出现的、量或成交或门槛变了 1% 以上的、以及上次写已经过了 `rewrite_after`（`LIVE_REWRITE_MS`）的
 /// （`seen_ms` 要赶在 `model::STALE_MS` 之前刷新，重启读回时才不会被当成失联）。220 只全开时每 15 秒整表重写
 /// 一遍是本地实测里 Postgres 出现慢语句的原因，大部分墙在两次刷新之间根本没动。
-fn changed_live(rows:Vec<(BigOrder,i64)>,written:&mut HashMap<LiveKey,(f64,f64,f64,i64)>,now:i64)->Vec<(BigOrder,i64)> {
+fn changed_live(rows:Vec<(BigOrder,i64)>,written:&mut HashMap<LiveKey,(f64,f64,f64,i64)>,now:i64,rewrite_after:i64)->Vec<(BigOrder,i64)> {
  let moved=|a:f64,b:f64|(a-b).abs()>b.abs()*0.01;
  let mut keep=HashSet::new();
  let mut out=Vec::new();
@@ -619,7 +635,7 @@ fn changed_live(rows:Vec<(BigOrder,i64)>,written:&mut HashMap<LiveKey,(f64,f64,f
   let fresh=(order.notional,order.filled_notional,order.threshold);
   let due=match written.get(&key) {
    None=>true,
-   Some(&(n,f,t,at))=>moved(fresh.0,n)||moved(fresh.1,f)||moved(fresh.2,t)||now-at>=LIVE_REWRITE_MS,
+   Some(&(n,f,t,at))=>moved(fresh.0,n)||moved(fresh.1,f)||moved(fresh.2,t)||now-at>=rewrite_after,
   };
   if due {written.insert(key.clone(),(fresh.0,fresh.1,fresh.2,now));out.push((order,seen));}
   keep.insert(key);
@@ -652,9 +668,10 @@ where F:FnMut(bool)->Fut,Fut:std::future::Future<Output=Refreshed> {
 }
 
 /// 跟踪任务的主循环：收帧、评估、刷盘；品种表与门槛由 `refresher` 在旁边取，取好了发回来就地换上。
-/// 停了把跟踪器交回去收尾。
+/// 停了（`stop`）或进程要退出（`closing`，见 [`shutdown`]）把跟踪器交回去收尾；后者第二个值为 true。
+#[allow(clippy::too_many_arguments)]
 async fn run<F,Fut>(mut t:Tracker,mut inbox:mpsc::Receiver<Event>,mut control_rx:mpsc::UnboundedReceiver<Event>,mut stop:watch::Receiver<bool>,
- every:Duration,fetch:F)->Tracker
+ mut closing:watch::Receiver<bool>,every:Duration,fetch:F)->(Tracker,bool)
 where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+Send+'static {
  let mut evaluate=tokio::time::interval(EVALUATE);
  evaluate.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -663,6 +680,8 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
  let refresher=tokio::spawn(refresher(refreshed_tx,every,fetch));
  loop {
   tokio::select! {
+   // 发送端没了（只有测试里会）是 false，这一支本轮不再参与。
+   true=async {closing.wait_for(|c|*c).await.is_ok()}=>{refresher.abort();return (t,true)},
    _=stop.changed()=>break,
    Some(event)=control_rx.recv()=>{t.handle(event);while let Ok(event)=control_rx.try_recv() {t.handle(event);}},
    // 一口气把排着的都吃掉再评估，别让评估插在一串帧中间。
@@ -686,7 +705,7 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
   }
  }
  refresher.abort();
- t
+ (t,false)
 }
 
 /// 拿品种表与门槛，直到步长有了。停了返回 None。
@@ -740,7 +759,16 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
   let thresholds=if due {resolve(&base,&venues,now_ms(),Some(crypto)).await.map(|(t,_)|t).filter(|t|t.step.is_some())} else {None};
   Refreshed{venues,thresholds}
  }}};
- let mut t=run(t,inbox,control_rx,stop,REFRESH,fetch).await;
+ let _active=Active::enter();
+ let (mut t,closing)=run(t,inbox,control_rx,stop,CLOSING.subscribe(),REFRESH,fetch).await;
+ if closing {
+  let handed=t.hand_over().await;
+  if let Some(tx)=FINALS.lock().unwrap_or_else(|e|e.into_inner()).as_ref() {let _=tx.send(handed);}
+  drop(t);
+  // 写库任务把交过去的写完（和平时停一样最多再试 `WRITE_DRAIN`；停机收尾最多等 `SHUTDOWN_LIMIT`，到点进程就退了）。
+  let _=writer.await;
+  return;
+ }
  t.model.stop();
  t.write_ended().await;
  hub::remove(t.model.venue_ids(),&t.events);
@@ -748,6 +776,80 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  // 等写库任务写完手里的（它自己最多再试 `WRITE_DRAIN`）：注册表按这个任务结束判断收尾完了。
  let _=writer.await;
  tracing::info!("Orderflow history: {base} stopped");
+}
+
+// ------------------------------------------------------------------ 停机
+
+/// 进程要退出了（SIGTERM，也就是每一次部署）：跟踪任务不再把挂着的单判成失联，交出手里的就结束。
+static CLOSING:std::sync::LazyLock<watch::Sender<bool>>=std::sync::LazyLock::new(||watch::channel(false).0);
+/// 停机时跟踪任务交出来的挂着的单送到这里（[`shutdown`] 装上）。
+static FINALS:Mutex<Option<mpsc::UnboundedSender<Final>>>=Mutex::new(None);
+/// 读回挂着的单之后、到写库任务收完尾之前的跟踪任务有几个。
+static ACTIVE:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+/// 停机收尾整段最多多久（systemd 的 `TimeoutStopSec` 缺省 90 秒；和 HTTP 的优雅退出同时进行）。
+pub const SHUTDOWN_LIMIT:Duration=Duration::from_secs(10);
+/// 其中等跟踪任务交单最多多久：它们在主循环里，信号一到下一拍就交，正常几毫秒。
+const SHUTDOWN_COLLECT:Duration=Duration::from_secs(2);
+
+/// 一只 base 停机时交出来的：每条挂着的单的身份与最后一次看到的时刻。
+struct Final {base:String,live:Vec<(LiveKey,i64)>}
+
+struct Active;
+impl Active {fn enter()->Self {ACTIVE.fetch_add(1,Ordering::SeqCst);Self}}
+impl Drop for Active {fn drop(&mut self) {ACTIVE.fetch_sub(1,Ordering::SeqCst);}}
+
+/// 停机收尾的结果（写进日志）。
+#[derive(Debug,PartialEq)]
+struct Closed {bases:usize,live:usize,refreshed:Option<u64>,writing:usize,elapsed_ms:u128}
+
+/// 进程收到 SIGTERM 之后调用（`main.rs`，和 axum 的优雅退出同时开始）：
+/// 1. 让所有跟踪任务停下、交出挂着的单（不判失联）；结束了还没写的、刚出现还没写的交给各自的写库任务；
+/// 2. 一句 UPDATE 刷掉所有挂着的单的 `seen_ms`；
+/// 3. 等写库任务写完；
+///
+/// 整段最多 [`SHUTDOWN_LIMIT`]，到点不再等（没写进去的留给下次读回 / 清理收掉）。日志一行
+/// `Orderflow history: shutdown …`。没有跟踪器（备用节点、测试）什么也不做。
+pub async fn shutdown() {
+ let Some(pool)=POOL.get() else {return};
+ let (tx,rx)=mpsc::unbounded_channel();
+ *FINALS.lock().unwrap_or_else(|e|e.into_inner())=Some(tx);
+ CLOSING.send_replace(true);
+ let expected=ACTIVE.load(Ordering::SeqCst);
+ let closed=close(pool,rx,expected,&ACTIVE,SHUTDOWN_COLLECT,SHUTDOWN_LIMIT).await;
+ FINALS.lock().unwrap_or_else(|e|e.into_inner()).take();
+ let Closed{bases,live,refreshed,writing,elapsed_ms}=closed;
+ let refreshed=refreshed.map_or("failed".to_string(),|n|n.to_string());
+ if writing==0 {
+  tracing::info!("Orderflow history: shutdown kept {live} live orders on {bases} bases (seen_ms refreshed on {refreshed} rows), all writers drained in {elapsed_ms} ms");
+ } else {
+  tracing::warn!("Orderflow history: shutdown kept {live} live orders on {bases} bases (seen_ms refreshed on {refreshed} rows), {writing} trackers still writing after {elapsed_ms} ms; their rows are left to restore / purge");
+ }
+}
+
+/// [`shutdown`] 的本体（测试直接调）：收交单（到齐 `expected` 份或 `collect` 到点）、一句 UPDATE、等 `active` 归零，整段不超过 `limit`。
+async fn close(pool:&PgPool,mut rx:mpsc::UnboundedReceiver<Final>,expected:usize,active:&std::sync::atomic::AtomicUsize,collect:Duration,limit:Duration)->Closed {
+ let started=tokio::time::Instant::now();
+ let deadline=started+limit;
+ let collected=started+collect.min(limit);
+ let mut finals=Vec::new();
+ while finals.len()<expected {
+  tokio::select! {
+   f=rx.recv()=>match f {Some(f)=>finals.push(f),None=>break},
+   _=tokio::time::sleep_until(collected)=>break,
+  }
+ }
+ while let Ok(f)=rx.try_recv() {finals.push(f);}
+ let rows:Vec<store::SeenRow>=finals.iter().flat_map(|f|f.live.iter().map(|((venue,side,bucket,first),seen)|store::SeenRow{
+  base:&f.base,venue_id:venue,side:*side,bucket:*bucket,first_seen_ms:*first,seen_ms:*seen})).collect();
+ let refreshed=match tokio::time::timeout_at(deadline,store::refresh_seen(pool,&rows)).await {
+  Ok(Ok(n))=>Some(n),
+  Ok(Err(e))=>{tracing::warn!("Orderflow history: shutdown could not refresh seen_ms of {} live orders: {e}",rows.len());None},
+  Err(_)=>{tracing::warn!("Orderflow history: shutdown gave up refreshing seen_ms of {} live orders at {limit:?}",rows.len());None},
+ };
+ while active.load(Ordering::SeqCst)>0&&tokio::time::Instant::now()<deadline {
+  tokio::time::sleep(Duration::from_millis(20).min(deadline-tokio::time::Instant::now())).await;
+ }
+ Closed{bases:finals.len(),live:rows.len(),refreshed,writing:active.load(Ordering::SeqCst),elapsed_ms:started.elapsed().as_millis()}
 }
 
 // ------------------------------------------------------------------ 跟哪些币
@@ -1195,7 +1297,15 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>}
+struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>,#[serde(rename="minLifeMs")] min_life_ms:Option<i64>}
+
+/// `minLifeMs` 最大一天：再长就没什么单剩下了，也免得任意 i64 进 SQL。
+const MAX_MIN_LIFE_MS:i64=store::DAY_MS;
+
+/// 校验 `minLifeMs`：缺省 0（不过滤），0..=一天，其余回 `invalid_query`（和解析不了的查询串同一个码）。
+fn min_life(v:Option<i64>)->std::result::Result<i64,&'static str> {
+ match v.unwrap_or(0) {v @ 0..=MAX_MIN_LIFE_MS=>Ok(v),_=>Err("invalid_query")}
+}
 
 /// 条件提醒（大单墙）要这只 base 在跟：和手机打开这只品种走同一条路（按需层、记进 `orderflow_bases`）。
 /// 返回它此刻是否在跟（或刚起跟）；三家都没挂的不起。
@@ -1221,10 +1331,11 @@ fn window(from:Option<i64>,to:Option<i64>,now:i64)->std::result::Result<(i64,i64
  Ok((from,to))
 }
 
-async fn history(State(s):State<AppState>,Params(q):Params<HistoryQuery>)->Result<Response> {
+async fn history(State(s):State<AppState>,headers:axum::http::HeaderMap,Params(q):Params<HistoryQuery>)->Result<Response> {
  if !instruments::valid_base(&q.base) {return Err(ApiError::bad("invalid_base"))}
  let now=now_ms();
  let (from,to)=window(q.from,q.to,now).map_err(ApiError::bad)?;
+ let min_life=min_life(q.min_life_ms).map_err(ApiError::bad)?;
  // 三家都没挂的 base（打错的、早下架的）：不起跟踪、不记进 orderflow_bases。原来照样起一只按需跟踪，
  // 占着按需层的名额（满了还会把真有人在看的踢掉），prepare 每 30 秒空转一次、一跟 24 小时，重启后还会被接着跟。
  let pool=POOL.get().unwrap_or(&s.pool);
@@ -1235,7 +1346,109 @@ async fn history(State(s):State<AppState>,Params(q):Params<HistoryQuery>)->Resul
   let (since,alive)=store::touch(pool,&q.base,now).await?;
   (thresholds,store::continuous_since(since,alive,now).max(now-MAX_SPAN_MS))
  } else {(Thresholds::default(),now)};
- reply(pool,&q.base,from,to,thresholds,tracked_since).await
+ // 同一窗口（按分钟取整）的请求合并成一次读库，答好的压缩体留 60 秒；读的区间放宽到整分钟（左边往前取整、
+ // 右边补到这一分钟末），合并进来的每个请求拿到的都是它要的区间的超集——客户端按单号合并，多几条不要紧。
+ let key=Key::new(&q.base,from,to,min_life,accepts_gzip(&headers));
+ let (from,to)=key.window();
+ let gzip=key.gzip;
+ let answer=ANSWERS.get_or_build(key,||reply(pool,&q.base,from,to,min_life,thresholds,tracked_since,gzip)).await?;
+ Ok(answer.response())
+}
+
+/// 客户端收不收 gzip：`Accept-Encoding` 里有 `gzip`（或 `*`）且 q 不为 0。手机的 URLSession 总是带着。
+fn accepts_gzip(headers:&axum::http::HeaderMap)->bool {
+ headers.get_all(header::ACCEPT_ENCODING).iter().filter_map(|v|v.to_str().ok()).flat_map(|v|v.split(',')).any(|item| {
+  let mut parts=item.split(';').map(str::trim);
+  let name=parts.next().unwrap_or("");
+  let q=parts.find_map(|p|p.strip_prefix("q=")).map_or(Some(1.0),|q|q.trim().parse::<f32>().ok());
+  (name.eq_ignore_ascii_case("gzip")||name=="*")&&q.is_some_and(|q|q>0.0)
+ })
+}
+
+// ------------------------------------------------------------------ 答复缓存
+
+/// 缓存里一份答好的体留多久。
+const ANSWER_TTL:Duration=Duration::from_secs(60);
+/// 最多留几份、合计多少字节（压缩后的体）；超了先扔最久没用的。单份超过总额的不留（照常回给等着的请求）。
+const ANSWER_ENTRIES:usize=64;
+const ANSWER_BYTES:usize=32*1024*1024;
+
+/// 合并与缓存的键：base、起止按分钟取整、`minLifeMs`、回不回 gzip。
+#[derive(Clone,Debug,PartialEq,Eq,Hash)]
+struct Key {base:String,from_minute:i64,to_minute:i64,min_life:i64,gzip:bool}
+impl Key {
+ fn new(base:&str,from:i64,to:i64,min_life:i64,gzip:bool)->Self {
+  Self{base:base.to_owned(),from_minute:from.div_euclid(60_000),to_minute:to.div_euclid(60_000),min_life,gzip}
+ }
+ /// 这一键实际读的区间：起点那一分钟的开头到终点那一分钟的末尾。
+ fn window(&self)->(i64,i64) {(self.from_minute*60_000,self.to_minute*60_000+59_999)}
+}
+
+/// 答好的体：一块一块的（压缩的或原文），合计字节数。块是 `Bytes`，发给几个请求只是加引用计数。
+#[derive(Clone,Debug)]
+struct Answer {chunks:Arc<[axum::body::Bytes]>,len:usize,gzip:bool}
+impl Answer {
+ fn response(&self)->Response {
+  let chunks=self.chunks.clone();
+  let mut response=Response::new(axum::body::Body::from_stream(futures_util::stream::iter((0..chunks.len()).map(move|i|Ok::<_,std::convert::Infallible>(chunks[i].clone())))));
+  let headers=response.headers_mut();
+  headers.insert(header::CONTENT_TYPE,HeaderValue::from_static("application/json"));
+  headers.insert(header::CONTENT_LENGTH,HeaderValue::from(self.len));
+  headers.insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
+  headers.insert(header::VARY,HeaderValue::from_static("accept-encoding"));
+  if self.gzip {headers.insert(header::CONTENT_ENCODING,HeaderValue::from_static("gzip"));}
+  response
+ }
+}
+
+/// 一个键一格：第一个到的请求读库、组答复，同时到的等它（`OnceCell`）；它失败了（或被取消）下一个等着的接着自己读。
+#[derive(Default)]
+struct Slot {answer:tokio::sync::OnceCell<(Answer,tokio::time::Instant)>,used:AtomicU64}
+
+#[derive(Default)]
+struct Answers {slots:Mutex<HashMap<Key,Arc<Slot>>>,tick:AtomicU64}
+static ANSWERS:std::sync::LazyLock<Answers>=std::sync::LazyLock::new(Answers::default);
+
+impl Answers {
+ async fn get_or_build<F,Fut>(&self,key:Key,build:F)->Result<Answer> where F:FnOnce()->Fut,Fut:std::future::Future<Output=Result<Answer>> {
+  let slot={
+   let mut slots=self.slots.lock().unwrap_or_else(|e|e.into_inner());
+   let now=tokio::time::Instant::now();
+   if slots.get(&key).is_some_and(|s|s.answer.get().is_some_and(|(_,at)|now.duration_since(*at)>=ANSWER_TTL)) {slots.remove(&key);}
+   let slot=slots.entry(key).or_default().clone();
+   slot.used.store(self.tick.fetch_add(1,Ordering::Relaxed)+1,Ordering::Relaxed);
+   slot
+  };
+  let answer=slot.answer.get_or_try_init(||async {Ok::<_,ApiError>((build().await?,tokio::time::Instant::now()))}).await.map(|(a,_)|a.clone());
+  drop(slot);
+  self.trim();
+  answer
+ }
+
+ /// 扔掉过期的、没人等着又没答成的格；再按最久没用的先扔，直到条数与字节都在额度以内。
+ fn trim(&self) {
+  let mut slots=self.slots.lock().unwrap_or_else(|e|e.into_inner());
+  let now=tokio::time::Instant::now();
+  slots.retain(|_,s|match s.answer.get() {Some((a,at))=>a.len<=ANSWER_BYTES&&now.duration_since(*at)<ANSWER_TTL,None=>Arc::strong_count(s)>1});
+  loop {
+   let ready=slots.iter().filter_map(|(k,s)|s.answer.get().map(|(a,_)|(k,a.len,s.used.load(Ordering::Relaxed))));
+   let (mut count,mut bytes,mut oldest)=(0usize,0usize,None::<(&Key,u64)>);
+   for (k,len,used) in ready {
+    count+=1;bytes+=len;
+    if oldest.is_none_or(|(_,u)|used<u) {oldest=Some((k,used));}
+   }
+   if count<=ANSWER_ENTRIES&&bytes<=ANSWER_BYTES {break}
+   let Some((k,_))=oldest else {break};
+   let k=k.clone();
+   slots.remove(&k);
+  }
+ }
+
+ #[cfg(test)]
+ fn cached(&self)->(usize,usize) {
+  let slots=self.slots.lock().unwrap();
+  slots.values().filter_map(|s|s.answer.get()).fold((0,0),|(n,b),(a,_)|(n+1,b+a.len))
+ }
 }
 
 /// 同一时刻最多几个历史请求在读库、组答复。一个请求最多 `store::MAX_ROWS` 行、答复约 60 MB；
@@ -1258,18 +1471,29 @@ impl std::io::Write for Chunks {
  fn flush(&mut self)->std::io::Result<()> {Ok(())}
 }
 
-/// 读区间、组答复：一行一行从库里读、一行一行写成 JSON，不攒整张表、不经 `serde_json::Value`。
+/// 答复写到哪：原文直接攒块，gzip 边写边压再攒块（原来整块原文交给压缩层，缓存不了压好的体）。
+/// 压缩前垫一层 64 KB 缓冲：serde_json 一个记号写一次，每次都进 deflate 的话 ETH 24h（3 万行、10 MB）要 0.7 s，垫了之后压缩只占零头。
+#[allow(clippy::large_enum_variant)] // 一次答复一个，不值得装箱。
+enum Sink {Plain(Chunks),Gzip(std::io::BufWriter<flate2::write::GzEncoder<Chunks>>)}
+impl std::io::Write for Sink {
+ fn write(&mut self,buf:&[u8])->std::io::Result<usize> {match self {Self::Plain(c)=>c.write(buf),Self::Gzip(g)=>g.write(buf)}}
+ fn flush(&mut self)->std::io::Result<()> {Ok(())}
+}
+
+/// 读区间、组答复：一行一行从库里读、一行一行写成 JSON（要 gzip 就边写边压），不攒整张表、不经 `serde_json::Value`。
 /// 形状同原来的 `{"base","thresholds","trackedSinceMs","orders":[…]}`（键的先后不同，客户端按名取）。
-async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,thresholds:Thresholds,tracked_since:i64)->Result<Response> {
+/// `min_life` 大于 0 时不回寿命短于它的已结束单（挂着的照回），见 `store::range_each`。
+#[allow(clippy::too_many_arguments)]
+async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,thresholds:Thresholds,tracked_since:i64,gzip:bool)->Result<Answer> {
  use std::io::Write as _;
  let busy=||ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable");
  let _slot=HISTORY_READS.acquire().await.map_err(|_|busy())?;
- let mut out=Chunks::default();
+ let mut out=if gzip {Sink::Gzip(std::io::BufWriter::with_capacity(REPLY_CHUNK,flate2::write::GzEncoder::new(Chunks::default(),flate2::Compression::default())))} else {Sink::Plain(Chunks::default())};
  let head=serde_json::json!({"base":base,"thresholds":thresholds,"trackedSinceMs":tracked_since}).to_string();
  let _=write!(out,"{},\"orders\":[",&head[..head.len()-1]);
  let mut first=true;
  let mut failed=None;
- store::range_each(pool,base,from,to,store::MAX_ROWS,|o| {
+ store::range_each(pool,base,from,to,min_life,store::MAX_ROWS,|o| {
   if failed.is_some() {return}
   if !first {let _=out.write_all(b",");}
   first=false;
@@ -1277,18 +1501,17 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,thresholds:Thresholds,trac
  }).await?;
  if let Some(e)=failed {tracing::warn!("Orderflow history: {base} reply not serialized: {e}");return Err(busy())}
  let _=out.write_all(b"]}");
- let Chunks{mut done,current,len}=out;
+ let chunks=match out {
+  Sink::Plain(c)=>c,
+  Sink::Gzip(g)=>g.into_inner().map_err(|e|e.into_error()).and_then(|g|g.finish()).map_err(|e|{tracing::warn!("Orderflow history: {base} reply not compressed: {e}");busy()})?,
+ };
+ let Chunks{mut done,current,len}=chunks;
  if !current.is_empty() {done.push(current.into());}
- let mut response=Response::new(axum::body::Body::from_stream(futures_util::stream::iter(done.into_iter().map(Ok::<_,std::convert::Infallible>))));
- let headers=response.headers_mut();
- headers.insert(header::CONTENT_TYPE,HeaderValue::from_static("application/json"));
- headers.insert(header::CONTENT_LENGTH,HeaderValue::from(len));
- headers.insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
- Ok(response)
+ Ok(Answer{chunks:done.into(),len,gzip})
 }
 
 pub fn routes()->Router<AppState> {
- Router::new().route(PATH,get(history)).route_layer(tower_http::compression::CompressionLayer::new())
+ Router::new().route(PATH,get(history))
 }
 
 #[cfg(test)]
@@ -1300,14 +1523,14 @@ mod tests {
   let order=|notional:f64,filled:f64|BigOrder{venue_id:"binance:usdtPerp:BTCUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Bid,
    bucket:599,price:59_950.0,first_seen_ms:1_000,end_ms:None,status:Status::Live,initial_notional:6e6,notional,filled_notional:filled,threshold:5e6,vanished_notional:None};
   let mut written=HashMap::new();
-  assert_eq!(changed_live(vec![(order(6e6,0.0),0)],&mut written,0).len(),1,"新出现的写");
-  assert!(changed_live(vec![(order(6.03e6,0.0),15_000)],&mut written,15_000).is_empty(),"动了不到 1% 不写");
-  assert_eq!(changed_live(vec![(order(6.2e6,0.0),30_000)],&mut written,30_000).len(),1,"量动了写");
-  assert_eq!(changed_live(vec![(order(6.2e6,1e5),45_000)],&mut written,45_000).len(),1,"成交动了写");
-  assert!(changed_live(vec![(order(6.2e6,1e5),60_000)],&mut written,60_000).is_empty());
-  assert_eq!(changed_live(vec![(order(6.2e6,1e5),105_000)],&mut written,105_000).len(),1,"一分钟没写过：刷新 seen_ms");
+  assert_eq!(changed_live(vec![(order(6e6,0.0),0)],&mut written,0,LIVE_REWRITE_MS).len(),1,"新出现的写");
+  assert!(changed_live(vec![(order(6.03e6,0.0),15_000)],&mut written,15_000,LIVE_REWRITE_MS).is_empty(),"动了不到 1% 不写");
+  assert_eq!(changed_live(vec![(order(6.2e6,0.0),30_000)],&mut written,30_000,LIVE_REWRITE_MS).len(),1,"量动了写");
+  assert_eq!(changed_live(vec![(order(6.2e6,1e5),45_000)],&mut written,45_000,LIVE_REWRITE_MS).len(),1,"成交动了写");
+  assert!(changed_live(vec![(order(6.2e6,1e5),60_000)],&mut written,60_000,LIVE_REWRITE_MS).is_empty());
+  assert_eq!(changed_live(vec![(order(6.2e6,1e5),105_000)],&mut written,105_000,LIVE_REWRITE_MS).len(),1,"一分钟没写过：刷新 seen_ms");
   assert!(LIVE_REWRITE_MS<model::STALE_MS);
-  changed_live(Vec::new(),&mut written,120_000);
+  changed_live(Vec::new(),&mut written,120_000,LIVE_REWRITE_MS);
   assert!(written.is_empty(),"不再挂着的不留");
  }
 
@@ -1384,7 +1607,8 @@ mod tests {
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   let (stop_tx,stop)=watch::channel(false);
   let slow=|_due:bool|async {tokio::time::sleep(Duration::from_secs(100)).await;Refreshed{venues:vec![],thresholds:None}};
-  let tracker=tokio::spawn(run(t,inbox,control_rx,stop,Duration::from_secs(1),slow));
+  let (_closing_tx,closing)=watch::channel(false);
+  let tracker=tokio::spawn(run(t,inbox,control_rx,stop,closing,Duration::from_secs(1),slow));
   let (mut sent,mut dropped)=(0u32,0u32);
   for _ in 0..(120*100) {
    match events.try_send(Event::Frame{venue:"binance:usdtPerp:ZZSLOWUSDT".into(),connection:1,message:book::Message::Reset}) {
@@ -1397,6 +1621,86 @@ mod tests {
   stop_tx.send(true).unwrap();
   tokio::time::timeout(Duration::from_secs(200),tracker).await.expect("停了要能退出").unwrap();
   assert_eq!(dropped,0,"重取期间收件口没人收，满了丢帧");
+ }
+
+ fn tracker(base:&str)->(Tracker,mpsc::Receiver<Event>,mpsc::UnboundedReceiver<Event>,mpsc::Receiver<Write>) {
+  let (events,inbox)=mpsc::channel::<Event>(INBOX);
+  let (control,control_rx)=mpsc::unbounded_channel::<Event>();
+  let (writes,writes_rx)=mpsc::channel::<Write>(WRITES_QUEUE);
+  let (shared,_)=watch::channel(Thresholds::default());
+  let thresholds=Thresholds{step:Some(100.0),usdt_perp:Some(5e6),..Default::default()};
+  let t=Tracker{base:base.into(),model:Model::new(base,thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
+  (t,inbox,control_rx,writes_rx)
+ }
+
+ /// SIGTERM：跟踪任务不把挂着的单判成失联（原来停机走的是和「不再跟」同一条路，`model.stop()` 把手里的全写成失联，
+ /// 靠下一个进程读回时 `WHERE end_ms IS NULL` 以外的行都认不回来）。结束了还没写的、从没写过的交给写库任务，
+ /// 所有挂着的单的最后一次看到交回去一句 UPDATE 刷掉。
+ #[tokio::test(start_paused=true)] async fn sigterm_hands_live_orders_over_instead_of_ending_them() {
+  use model::Status;
+  let (mut t,inbox,control_rx,mut writes_rx)=tracker("ZZBYE");
+  let now=now_ms();
+  let order=|bucket:i64|BigOrder{venue_id:"binance:usdtPerp:ZZBYEUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Bid,
+   bucket,price:bucket as f64*100.0,first_seen_ms:now-600_000,end_ms:None,status:Status::Live,initial_notional:6e6,notional:6e6,filled_notional:0.0,
+   threshold:5e6,vanished_notional:None};
+  // 1、2 挂着（1 已经写过库），3 缺席太久读回来当场失联、还没写。
+  t.model.restore(vec![Restored{order:order(1),step:100.0,seen_ms:now-10_000},Restored{order:order(2),step:100.0,seen_ms:now-20_000},
+   Restored{order:order(3),step:100.0,seen_ms:now-10*60_000}],now);
+  t.written.insert(("binance:usdtPerp:ZZBYEUSDT".into(),book::Side::Bid,1,now-600_000),(6e6,0.0,5e6,now-30_000));
+  let (_stop_tx,stop)=watch::channel(false);
+  let (closing_tx,closing)=watch::channel(false);
+  let never=|_due:bool|std::future::pending::<Refreshed>();
+  let running=tokio::spawn(run(t,inbox,control_rx,stop,closing,Duration::from_secs(600),never));
+  tokio::time::sleep(Duration::from_secs(3)).await;
+  closing_tx.send(true).unwrap();
+  let (mut t,closing)=tokio::time::timeout(Duration::from_secs(1),running).await.expect("一拍之内交回").unwrap();
+  assert!(closing);
+  let handed=t.hand_over().await;
+  assert_eq!(t.model.live_count(),2,"挂着的照旧挂着");
+  assert_eq!(handed.base,"ZZBYE");
+  let mut live:Vec<(i64,i64)>=handed.live.iter().map(|((_,_,bucket,_),seen)|(*bucket,*seen)).collect();
+  live.sort();
+  assert_eq!(live.iter().map(|(b,_)|*b).collect::<Vec<_>>(),vec![1,2],"两条挂着的都交回去刷 seen_ms");
+  let ended=writes_rx.try_recv().unwrap();
+  assert_eq!(ended.rows.iter().map(|(o,_)|(o.bucket,o.status)).collect::<Vec<_>>(),vec![(3,Status::Lost)],"没写的结束单先交写库");
+  let fresh=writes_rx.try_recv().unwrap();
+  assert_eq!(fresh.rows.iter().map(|(o,_)|o.bucket).collect::<Vec<_>>(),vec![2],"从没写过的挂着的交写库；写过的只刷 seen_ms");
+  assert!(writes_rx.try_recv().is_err());
+ }
+
+ /// 停机收尾：收齐交单、一句 UPDATE、等写库任务；写库任务迟迟不完也在上限内返回。
+ #[tokio::test] async fn shutdown_refreshes_seen_once_and_never_outlives_its_limit() {
+  use model::Status;
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZQ1','ZZQ2')").execute(&pool).await.unwrap();
+  let now=now_ms();
+  let order=|base:&str,bucket:i64|BigOrder{venue_id:format!("binance:usdtPerp:{base}USDT"),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Ask,
+   bucket,price:1.0,first_seen_ms:now-600_000,end_ms:None,status:Status::Live,initial_notional:6e6,notional:6e6,filled_notional:0.0,threshold:5e6,vanished_notional:None};
+  store::upsert(&pool,"ZZQ1",1.0,&[(order("ZZQ1",1),now-70_000),(order("ZZQ1",2),now-70_000)]).await.unwrap();
+  store::upsert(&pool,"ZZQ2",1.0,&[(order("ZZQ2",1),now-70_000)]).await.unwrap();
+  let key=|base:&str,bucket:i64|->LiveKey {(format!("binance:usdtPerp:{base}USDT"),book::Side::Ask,bucket,now-600_000)};
+  let (tx,rx)=mpsc::unbounded_channel();
+  tx.send(Final{base:"ZZQ1".into(),live:vec![(key("ZZQ1",1),now-1_000),(key("ZZQ1",2),now-2_000)]}).unwrap();
+  tx.send(Final{base:"ZZQ2".into(),live:vec![(key("ZZQ2",1),now-3_000)]}).unwrap();
+  let active=std::sync::atomic::AtomicUsize::new(0);
+  let closed=close(&pool,rx,2,&active,Duration::from_secs(2),Duration::from_secs(10)).await;
+  assert_eq!((closed.bases,closed.live,closed.refreshed,closed.writing),(2,3,Some(3),0));
+  assert!(closed.elapsed_ms<1_000,"都到齐了不空等：{} ms",closed.elapsed_ms);
+  let seen:Vec<i64>=sqlx::query_scalar("SELECT seen_ms FROM orderflow_orders WHERE base IN ('ZZQ1','ZZQ2') ORDER BY base,bucket").fetch_all(&pool).await.unwrap();
+  assert_eq!(seen,vec![now-1_000,now-2_000,now-3_000]);
+  // 少到一份、写库任务一直没完：到交单上限先刷已到的，到整段上限返回。
+  let (tx,rx)=mpsc::unbounded_channel();
+  tx.send(Final{base:"ZZQ2".into(),live:vec![(key("ZZQ2",1),now)]}).unwrap();
+  let active=std::sync::atomic::AtomicUsize::new(1);
+  let started=std::time::Instant::now();
+  let closed=close(&pool,rx,2,&active,Duration::from_millis(200),Duration::from_millis(600)).await;
+  let took=started.elapsed().as_millis();
+  assert_eq!((closed.bases,closed.refreshed,closed.writing),(1,Some(1),1));
+  assert!((600..1_500).contains(&took),"整段上限 600 ms，用了 {took} ms");
+  drop(tx);
+  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZQ1','ZZQ2')").execute(&pool).await.unwrap();
  }
 
  /// 订单流表被锁住 3 秒（同样代表慢盘、清理删大批）：订单流这边照常的一阵活——三个写库、两个读历史、六只起跟读回、
@@ -1414,7 +1718,7 @@ mod tests {
    let row=BigOrder{venue_id:"binance:usdtPerp:ZZPOOLUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Bid,bucket:1,price:1.0,
     first_seen_ms:1,end_ms:None,status:model::Status::Live,initial_notional:6e6,notional:6e6,filled_notional:0.0,threshold:5e6,vanished_notional:None};
    for i in 0..3 {let (p,row)=(orderflow.clone(),row.clone());load.spawn(async move {let _=store::upsert(&p,&format!("ZZPOOL{i}"),1.0,&[(row,1)]).await;});}
-   for _ in 0..2 {let p=orderflow.clone();load.spawn(async move {let _=reply(&p,"ZZPOOL",0,1,Thresholds::default(),0).await;});}
+   for _ in 0..2 {let p=orderflow.clone();load.spawn(async move {let _=reply(&p,"ZZPOOL",0,1,0,Thresholds::default(),0,true).await;});}
    for i in 0..6 {let p=orderflow.clone();load.spawn(async move {let _=store::live(&p,&format!("ZZPOOL{i}")).await;});}
    {let p=orderflow.clone();load.spawn(async move {let _=store::purge(&p,0,&[]).await;});}
    tokio::time::sleep(Duration::from_millis(300)).await;
@@ -1696,7 +2000,7 @@ mod tests {
    FROM generate_series(1,$2::bigint) g").bind(base).bind(rows).execute(&pool).await.unwrap();
   let (from,to)=(1_000_000,1_000_000+rows+120_000);
   let run=|pool:PgPool|async move {
-   let response=reply(&pool,base,from,to,Thresholds::default(),from).await.unwrap();
+   let response=reply(&pool,base,from,to,0,Thresholds::default(),from,false).await.unwrap().response();
    axum::body::to_bytes(response.into_body(),usize::MAX).await.unwrap().len()
   };
   let sample=|stop:Arc<AtomicBool>,peak:Arc<AtomicU64>|std::thread::spawn(move||while !stop.load(Ordering::SeqCst) {peak.fetch_max(rss_kib(),Ordering::SeqCst);std::thread::sleep(Duration::from_millis(5));});
@@ -1720,6 +2024,65 @@ mod tests {
   assert!(report[1]<300,"四个并发的历史请求让常驻内存涨了 {} MB（serve 的上限一共 1 GB）",report[1]);
  }
 
+ /// 计时（2026-09-28 第二轮）：照线上 ETH 24 小时的量（30,887 行、六个产品、约 1% 挂着）摆一份，
+ /// 量走整条 `history` 取数路径（`ANSWERS.get_or_build` + `reply`）的首次读、缓存命中、五个并发同窗口、以及 `minLifeMs=60000`。
+ /// `python3 ops/test.py --lib -- orderflow_history::tests::eth_day --ignored --nocapture`。
+ #[ignore] #[tokio::test(flavor="multi_thread",worker_threads=4)] async fn eth_day_first_read_and_cache_hit() {
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let base="ZZETH";
+  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  let (t0,day)=(1_790_000_000_000i64,86_400_000i64);
+  // 六成是一分钟内就撤的，其余活几分钟到两小时；g%97==0 的挂着到现在。
+  sqlx::query("INSERT INTO orderflow_orders(base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms) \
+   SELECT $1,(ARRAY['binance:usdtPerp:ETHUSDT','binance:spot:ETHUSDT','binance:coinPerp:ETHUSD_PERP','okx:usdtPerp:ETH-USDT-SWAP','okx:spot:ETH-USDT','coinbase:spot:ETH-USD'])[1+g%6], \
+    (ARRAY['币安','币安','币安','OKX','OKX','Coinbase'])[1+g%6],(ARRAY['usdtPerp','spot','coinPerp','usdtPerp','spot','spot'])[1+g%6], \
+    CASE WHEN g%2=0 THEN 'bid' ELSE 'ask' END,2400+(g*31)%600,(2400+(g*31)%600)::float8, \
+    $2+(g::bigint*2797)%($3-7200000), \
+    CASE WHEN g%97=0 THEN NULL ELSE $2+(g::bigint*2797)%($3-7200000)+CASE WHEN g%10<6 THEN 5000+(g*131)%55000 ELSE 60000+(g::bigint*7919)%7140000 END END, \
+    CASE WHEN g%97=0 THEN 'live' WHEN g%5=0 THEN 'filled' WHEN g%7=0 THEN 'lost' ELSE 'cancelled' END, \
+    1e6+(g*7717)%9000000,1e6+(g*4211)%8000000,(g*977)%500000,CASE WHEN g%6 IN (1,4,5) THEN 1e6 ELSE 5e6 END,1e6+(g*3331)%7000000,1,$2+$3 \
+   FROM generate_series(1,30887) g").bind(base).bind(t0).bind(day).execute(&pool).await.unwrap();
+  sqlx::query("ANALYZE orderflow_orders").execute(&pool).await.unwrap();
+  let thresholds=Thresholds{spot:Some(1e6),usdt_perp:Some(5e6),coin_perp:Some(5e6),delivery:None,step:Some(1.0)};
+  let (from,to)=(t0+30_000,t0+day+30_000);
+  let get=|min_life:i64|{let pool=pool.clone();async move {
+   let key=Key::new(base,from,to,min_life,true);
+   let (from,to)=key.window();
+   let started=std::time::Instant::now();
+   let answer=ANSWERS.get_or_build(key,||reply(&pool,base,from,to,min_life,thresholds,t0,true)).await.unwrap();
+   (started.elapsed().as_secs_f64()*1000.0,answer.len)
+  }};
+  // 先把表页读进 Postgres 的缓存，量的是线上「热态」那一种（线上报告里 ETH 24h 热态 0.55 s）。
+  store::range_each(&pool,base,from-60_000,to+60_000,0,store::MAX_ROWS,|_|{}).await.unwrap();
+  let started=std::time::Instant::now();
+  let rows=store::range_each(&pool,base,from-60_000,to+60_000,0,store::MAX_ROWS,|_|{}).await.unwrap();
+  let read=started.elapsed().as_secs_f64()*1000.0;
+  let (first,bytes)=get(0).await;
+  let hits:Vec<f64>={let mut v=Vec::new();for _ in 0..5 {v.push(get(0).await.0);}v};
+  // 五个并发、同一个新窗口（minLifeMs 不同 → 新键）：只读一次库，五个一起拿到。
+  let started=std::time::Instant::now();
+  let mut set=tokio::task::JoinSet::new();
+  for _ in 0..5 {let g=get(60_000);set.spawn(g);}
+  let mut sizes=Vec::new();
+  while let Some(r)=set.join_next().await {sizes.push(r.unwrap().1);}
+  let concurrent=started.elapsed().as_secs_f64()*1000.0;
+  let (filtered_hit,filtered_bytes)=get(60_000).await;
+  println!("ETH 24h 形状 {rows} 行：光读库 {read:.1} ms；整条路径首次 {first:.1} ms（gzip 后 {:.2} MB）；缓存命中 {} ms",bytes as f64/1e6,
+   hits.iter().map(|h|format!("{h:.3}")).collect::<Vec<_>>().join(" / "));
+  println!("minLifeMs=60000：五个并发同窗口共 {concurrent:.1} ms（各拿 {:.2} MB），之后命中 {filtered_hit:.3} ms",filtered_bytes as f64/1e6);
+  // 带 minLifeMs 的三路 UNION 仍走 `orderflow_orders_end`，不退成顺序扫。
+  let plan:Vec<String>=sqlx::query_scalar(&format!("EXPLAIN {}",store::range_sql())).bind(base).bind(from).bind(to).bind(store::MAX_ROWS).bind(60_000i64)
+   .fetch_all(&pool).await.unwrap();
+  println!("EXPLAIN（minLifeMs=60000）：\n{}",plan.join("\n"));
+  let plan=plan.join("\n");
+  assert!(plan.matches("orderflow_orders_end").count()>=3,"三路都该用 orderflow_orders_end：\n{plan}");
+  assert!(!plan.contains("Seq Scan"),"不许顺序扫：\n{plan}");
+  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  assert!(sizes.iter().all(|&n|n==filtered_bytes));
+  assert!(filtered_bytes<bytes,"滤掉一分钟内的已结束单之后答复应该更小");
+  assert!(hits.iter().all(|&h|h<5.0),"命中不碰库，应在毫秒以内：{hits:?}");
+ }
+
  /// 边读边写出来的答复和原来整张表转 `Value` 的答复逐字段一致。
  #[tokio::test] async fn history_reply_matches_the_whole_table_shape() {
   use model::Status;
@@ -1733,8 +2096,9 @@ mod tests {
   let rows:Vec<(BigOrder,i64)>=(0..1_500).map(|b|(order(b,1_000+b*7,(b%3!=0).then_some(900_000+b)),900_000+b)).collect();
   store::upsert(&pool,base,0.1,&rows).await.unwrap();
   let thresholds=Thresholds{spot:Some(1e6),usdt_perp:Some(5e6),coin_perp:None,delivery:None,step:Some(0.1)};
-  let response=reply(&pool,base,0,1_000_000,thresholds,123).await.unwrap();
+  let response=reply(&pool,base,0,1_000_000,0,thresholds,123,false).await.unwrap().response();
   assert_eq!(response.headers()[header::CONTENT_TYPE],"application/json");
+  assert!(response.headers().get(header::CONTENT_ENCODING).is_none());
   let declared:usize=response.headers()[header::CONTENT_LENGTH].to_str().unwrap().parse().unwrap();
   let body=axum::body::to_bytes(response.into_body(),usize::MAX).await.unwrap();
   assert_eq!(body.len(),declared);
@@ -1745,10 +2109,25 @@ mod tests {
   let want:Value=serde_json::from_slice(&serde_json::to_vec(&want).unwrap()).unwrap();
   assert_eq!(got,want);
   assert_eq!(got["orders"].as_array().unwrap().len(),1_500);
+  // gzip 的那份解开和原文逐字节相同，头上标着 gzip、长度是压缩后的长度。
+  let zipped=reply(&pool,base,0,1_000_000,0,thresholds,123,true).await.unwrap().response();
+  assert_eq!(zipped.headers()[header::CONTENT_ENCODING],"gzip");
+  let declared:usize=zipped.headers()[header::CONTENT_LENGTH].to_str().unwrap().parse().unwrap();
+  let packed=axum::body::to_bytes(zipped.into_body(),usize::MAX).await.unwrap();
+  assert_eq!(packed.len(),declared);
+  assert!(packed.len()*4<body.len(),"压缩后 {} 字节，原文 {}",packed.len(),body.len());
+  let mut unpacked=Vec::new();
+  std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&packed[..]),&mut unpacked).unwrap();
+  assert_eq!(unpacked,body);
   // 一行都没有也是合法的 JSON。
-  let empty=reply(&pool,"ZZNONE",0,1_000_000,Thresholds::default(),0).await.unwrap();
-  let got:Value=serde_json::from_slice(&axum::body::to_bytes(empty.into_body(),usize::MAX).await.unwrap()).unwrap();
-  assert_eq!(got["orders"],serde_json::json!([]));
+  for gzip in [false,true] {
+   let empty=reply(&pool,"ZZNONE",0,1_000_000,0,Thresholds::default(),0,gzip).await.unwrap().response();
+   let raw=axum::body::to_bytes(empty.into_body(),usize::MAX).await.unwrap();
+   let mut text=Vec::new();
+   if gzip {std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&raw[..]),&mut text).unwrap();} else {text=raw.to_vec();}
+   let got:Value=serde_json::from_slice(&text).unwrap();
+   assert_eq!(got["orders"],serde_json::json!([]));
+  }
   sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
 
@@ -1784,6 +2163,122 @@ mod tests {
   assert!(admitted(false,Some(true)));
   assert!(admitted(false,None),"表还没拉到：判不了就放行");
   assert!(admitted(true,Some(false)),"已经在跟的（刚下架）照旧");
+ }
+
+ #[test] fn min_life_is_zero_to_one_day() {
+  assert_eq!(min_life(None),Ok(0));
+  assert_eq!(min_life(Some(0)),Ok(0));
+  assert_eq!(min_life(Some(300_000)),Ok(300_000));
+  assert_eq!(min_life(Some(86_400_000)),Ok(86_400_000));
+  assert_eq!(min_life(Some(86_400_001)),Err("invalid_query"));
+  assert_eq!(min_life(Some(-1)),Err("invalid_query"));
+  assert_eq!(min_life(Some(i64::MIN)),Err("invalid_query"));
+ }
+
+ /// 查询串里的 `minLifeMs`：解析不了的、越界的都是 400 `invalid_query`，蛇形名字算多给的参数。
+ #[tokio::test] async fn bad_min_life_is_400_invalid_query() {
+  use axum::{body::Body,http::{Request,StatusCode}};
+  use http_body_util::BodyExt;
+  use tower::ServiceExt;
+  let app=||Router::<()>::new().route(PATH,get(|Params(q):Params<HistoryQuery>|async move {min_life(q.min_life_ms).map_err(ApiError::bad).map(|v|v.to_string())}));
+  for (query,want) in [("base=ETH",Ok("0")),("base=ETH&minLifeMs=0",Ok("0")),("base=ETH&minLifeMs=300000",Ok("300000")),("base=ETH&minLifeMs=86400000",Ok("86400000")),
+   ("base=ETH&minLifeMs=86400001",Err("invalid_query")),("base=ETH&minLifeMs=-1",Err("invalid_query")),("base=ETH&minLifeMs=abc",Err("invalid_query")),
+   ("base=ETH&minLifeMs=1.5",Err("invalid_query")),("base=ETH&minLifeMs=99999999999999999999",Err("invalid_query")),("base=ETH&min_life_ms=5",Err("invalid_query"))] {
+   let reply=app().oneshot(Request::builder().uri(format!("{PATH}?{query}")).body(Body::empty()).unwrap()).await.unwrap();
+   let status=reply.status();
+   let body=reply.into_body().collect().await.unwrap().to_bytes();
+   match want {
+    Ok(v)=>{assert_eq!(status,StatusCode::OK,"{query}");assert_eq!(&body[..],v.as_bytes(),"{query}");},
+    Err(code)=>{assert_eq!(status,StatusCode::BAD_REQUEST,"{query}");assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["error"]["code"],code,"{query}");},
+   }
+  }
+ }
+
+ #[test] fn gzip_is_sent_only_when_accepted() {
+  let with=|v:&str|{let mut h=axum::http::HeaderMap::new();h.insert(header::ACCEPT_ENCODING,HeaderValue::from_str(v).unwrap());accepts_gzip(&h)};
+  assert!(with("gzip, deflate, br"),"URLSession 的缺省");
+  assert!(with("br;q=1.0, GZIP;q=0.5"));
+  assert!(with("*"));
+  assert!(!with("br"));
+  assert!(!with("identity"));
+  assert!(!with("gzip;q=0"));
+  assert!(!with("gzip;q=0.0, br"));
+  assert!(!accepts_gzip(&axum::http::HeaderMap::new()));
+ }
+
+ fn answer(tag:u8,len:usize)->Answer {Answer{chunks:vec![axum::body::Bytes::from(vec![tag;len])].into(),len,gzip:true}}
+
+ #[test] fn keys_merge_within_a_minute_and_read_the_whole_minutes() {
+  let a=Key::new("ETH",5*60_000,9*60_000+1,0,true);
+  assert_eq!(a,Key::new("ETH",5*60_000+59_999,9*60_000+59_999,0,true),"同一分钟里的起止合成一个键");
+  assert_ne!(a,Key::new("ETH",6*60_000,9*60_000,0,true));
+  assert_ne!(a,Key::new("ETH",5*60_000,9*60_000,300_000,true),"minLifeMs 不同不混");
+  assert_ne!(a,Key::new("ETH",5*60_000,9*60_000,0,false),"原文与 gzip 各一份");
+  assert_ne!(a,Key::new("BTC",5*60_000,9*60_000,0,true));
+  assert_eq!(a.window(),(5*60_000,9*60_000+59_999),"读的区间是合进来的每个请求的超集");
+ }
+
+ /// 两个同样的请求同时到：只读一次库，两个拿到同一份；59 秒内再来的直接回缓存，满 60 秒再读一次。
+ #[tokio::test(start_paused=true)] async fn identical_requests_read_the_database_once_for_sixty_seconds() {
+  let cache=Answers::default();
+  let reads=AtomicU64::new(0);
+  let build=|tag:u8|{let reads=&reads;move||async move {reads.fetch_add(1,Ordering::SeqCst);tokio::time::sleep(Duration::from_millis(200)).await;Ok(answer(tag,10))}};
+  let key=||Key::new("ETH",0,86_400_000,0,true);
+  let (a,b)=tokio::join!(cache.get_or_build(key(),build(1)),cache.get_or_build(key(),build(2)));
+  assert_eq!(reads.load(Ordering::SeqCst),1,"同时到的第二个等第一个的结果");
+  assert_eq!((&a.unwrap().chunks[0][..],&b.unwrap().chunks[0][..]),(&[1u8;10][..],&[1u8;10][..]));
+  // 答好（读库 200 ms 之后）起算：59.9 秒还是缓存，满 60 秒重读。
+  tokio::time::advance(Duration::from_millis(59_900)).await;
+  let c=cache.get_or_build(key(),build(3)).await.unwrap();
+  assert_eq!((reads.load(Ordering::SeqCst),c.chunks[0][0]),(1,1),"不满 60 秒：缓存");
+  tokio::time::advance(Duration::from_millis(100)).await;
+  let d=cache.get_or_build(key(),build(4)).await.unwrap();
+  assert_eq!((reads.load(Ordering::SeqCst),d.chunks[0][0]),(2,4),"满 60 秒：重读");
+  // minLifeMs 不同的不混：各读各的。
+  let e=cache.get_or_build(Key::new("ETH",0,86_400_000,300_000,true),build(5)).await.unwrap();
+  assert_eq!((reads.load(Ordering::SeqCst),e.chunks[0][0]),(3,5));
+  let f=cache.get_or_build(key(),build(6)).await.unwrap();
+  assert_eq!((reads.load(Ordering::SeqCst),f.chunks[0][0]),(3,4));
+  assert_eq!(cache.cached(),(2,20));
+ }
+
+ /// 读库失败不进缓存：等着的和后来的接着自己读；第一个请求被取消（客户端断开）也一样。
+ #[tokio::test(start_paused=true)] async fn failures_and_cancelled_reads_are_not_cached() {
+  let cache=Answers::default();
+  let key=||Key::new("ETH",0,1,0,true);
+  let failed=cache.get_or_build(key(),||async {Err::<Answer,_>(ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable"))}).await;
+  assert!(failed.is_err());
+  assert_eq!(cache.cached(),(0,0));
+  assert!(cache.slots.lock().unwrap().is_empty(),"没人等着的空格清掉");
+  let ok=cache.get_or_build(key(),||async {Ok(answer(7,3))}).await.unwrap();
+  assert_eq!(ok.chunks[0][0],7);
+  let cancelled=tokio::time::timeout(Duration::from_millis(50),cache.get_or_build(Key::new("SOL",0,1,0,true),||async {tokio::time::sleep(Duration::from_secs(5)).await;Ok(answer(8,3))})).await;
+  assert!(cancelled.is_err());
+  let next=cache.get_or_build(Key::new("SOL",0,1,0,true),||async {Ok(answer(9,3))}).await.unwrap();
+  assert_eq!(next.chunks[0][0],9);
+ }
+
+ /// 条数最多 64、字节最多 32 MB，超了先扔最久没用的；单份超过 32 MB 的不留。
+ #[tokio::test(start_paused=true)] async fn the_cache_is_bounded_and_drops_the_least_recently_used() {
+  let cache=Answers::default();
+  let key=|i:i64|Key::new("ETH",i*60_000,i*60_000,0,true);
+  for i in 0..70 {cache.get_or_build(key(i),||async {Ok(answer(1,100))}).await.unwrap();}
+  assert_eq!(cache.cached(),(ANSWER_ENTRIES,ANSWER_ENTRIES*100));
+  assert!(!cache.slots.lock().unwrap().contains_key(&key(5)),"最早的几份先扔");
+  assert!(cache.slots.lock().unwrap().contains_key(&key(69)));
+  let cache=Answers::default();
+  let mb=1024*1024;
+  for i in 0..3 {cache.get_or_build(key(i),||async move {Ok(answer(1,10*mb))}).await.unwrap();}
+  assert_eq!(cache.cached(),(3,30*mb));
+  // 0 号最早，但刚用过一次（命中，不读）：再进一份超了 32 MB，扔的是 1 号。
+  assert_eq!(cache.get_or_build(key(0),||async {Ok(answer(2,1))}).await.unwrap().chunks[0][0],1);
+  cache.get_or_build(key(3),||async move {Ok(answer(1,10*mb))}).await.unwrap();
+  let kept=|c:&Answers|->HashSet<i64> {c.slots.lock().unwrap().keys().map(|k|k.from_minute).collect()};
+  assert_eq!(kept(&cache),[0,2,3].into_iter().collect());
+  assert_eq!(cache.cached(),(3,30*mb));
+  let huge=cache.get_or_build(key(9),||async move {Ok(answer(3,33*mb))}).await.unwrap();
+  assert_eq!(huge.len,33*mb,"照常回");
+  assert_eq!(kept(&cache),[0,2,3].into_iter().collect(),"但不留，也不因为它把别的挤掉");
  }
 
  #[test] fn window_defaults_and_limits() {
