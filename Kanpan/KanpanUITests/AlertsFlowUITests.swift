@@ -646,7 +646,10 @@ import XCTest
     XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "alerts.new.nudge")).count, 0,
                    "±% 快捷该撤了")
     XCTAssertFalse(app.textFields["alerts.new.note"].exists, "备注该撤了")
-    XCTAssertEqual(app.textFields.count, 1, "页上只该有价格这一个输入框（Webhook 关着）")
+    // 收设置项 E（1ca7d543）之后 Webhook 没有开关、地址框常驻，所以页上两个输入框：价格与 Webhook 地址，
+    // 没有第三个（备注、推送模板都撤了）。
+    let fields = app.textFields.allElementsBoundByIndex.map(\.identifier).sorted()
+    XCTAssertEqual(fields, ["alerts.new.price", "alerts.new.webhook.url"], "页上只该有价格与 Webhook 地址两个输入框：\(fields)")
     let price = app.textFields["alerts.new.price"]
     replace(price, with: "")
     XCTAssertTrue(wait(seconds: 5) { self.hint.label == "输入一个价格" }, "价格空着小字没说：\(hint.label)")
