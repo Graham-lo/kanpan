@@ -114,7 +114,7 @@ final class MarketModel {
   /// 股票的估值底数（美元），跟供应量同一条 `meta` 来、同生同死；顶栏「FPE / P/S」用。
   private(set) var forwardEarnings: Double?
   private(set) var revenue: Double?
-  /// 这只是什么（币 / 股票 / 金属…）。顶栏第六格按它决定摆「OI/MC」还是「FPE」，
+  /// 这只是什么（币 / 股票 / 金属…）。顶栏第六格按它决定摆「O/M」还是「FPE」，
   /// 别的类别不摆；目录还没到时是「不知道」，那一格先不出现。
   var asset: SymbolClassification.Asset { SymbolClassifier.classify(info).asset }
   /// 顶栏「仓」那一格显示的数。就是美元名义，没有第二个来源。

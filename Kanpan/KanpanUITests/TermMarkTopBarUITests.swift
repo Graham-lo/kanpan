@@ -118,7 +118,7 @@ final class TermMarkTopBarUITests: KanpanUICase {
     XCTAssertEqual(note.frame.midY, search.frame.midY, accuracy: 1, "三颗不在一条线上")
     XCTAssertLessThan(app.symbolLabel.frame.maxX, note.frame.minX, "品种名压到了「记一笔」上")
 
-    // 六格：仓 · 额 · 估值（BTC 是 OI/MC）各一颗问号；市值、费率、结算一看就懂，不挂。
+    // 六格：仓 · 额 · 估值（BTC 是 O/M）各一颗问号；市值、费率、结算一看就懂，不挂。
     for term in ["openInterest", "turnover", "oiToMarketCap"] {
       XCTAssertTrue(any("term." + term).waitForExistence(timeout: Self.long), "六格里没有 term.\(term)")
     }

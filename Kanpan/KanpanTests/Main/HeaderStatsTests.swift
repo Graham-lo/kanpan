@@ -128,12 +128,12 @@ struct HeaderStatsTests {
     #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: at(30), now: now) == "<1分")
   }
 
-  @Test("第六格：币给 OI/MC，就是「仓」÷「市值」")
+  @Test("第六格：币给 O/M，就是「仓」÷「市值」")
   func cryptoOpenInterestToCap() {
     // 供应量 1 亿 × 价 10 = 市值 10 亿；持仓 2,500 万 → 2.50%。
     let cell = HeaderStats.valuationCell(asset: .crypto, openInterest: 25e6, totalSupply: 1e8, price: 10,
                                          forwardEarnings: nil, revenue: nil, fresh: true)
-    #expect(cell?.label == "OI/MC")
+    #expect(cell?.label == "O/M")
     #expect(cell?.value == "2.50%")
     // 量级跟着位数走：BTC 那种零点几、山寨几十。
     #expect(HeaderStats.valuationCell(asset: .crypto, openInterest: 4.3e9, totalSupply: 1e10, price: 100,
@@ -144,7 +144,7 @@ struct HeaderStatsTests {
     for (oi, supply, fresh) in [(nil, 1e8, true), (25e6, nil, true), (25e6, 1e8, false)] as [(Double?, Double?, Bool)] {
       let blank = HeaderStats.valuationCell(asset: .crypto, openInterest: oi, totalSupply: supply, price: 10,
                                             forwardEarnings: nil, revenue: nil, fresh: fresh)
-      #expect(blank?.label == "OI/MC")
+      #expect(blank?.label == "O/M")
       #expect(blank?.value == nil)
     }
   }
@@ -166,7 +166,7 @@ struct HeaderStatsTests {
                                          forwardEarnings: nil, revenue: 5.88e9, fresh: true)
     #expect(loss?.label == "P/S")
     #expect(loss?.value == "3.77")
-    // 两项都没有（ETF 这类）：格子仍叫 FPE，值是破折号；股票不会显示 OI/MC。
+    // 两项都没有（ETF 这类）：格子仍叫 FPE，值是破折号；股票不会显示 O/M。
     let none = HeaderStats.valuationCell(asset: .equity, openInterest: 9e9, totalSupply: supply, price: 180,
                                          forwardEarnings: nil, revenue: nil, fresh: true)
     #expect(none?.label == "FPE")

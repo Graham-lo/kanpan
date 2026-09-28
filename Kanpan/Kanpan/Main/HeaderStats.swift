@@ -52,7 +52,7 @@ enum HeaderStats {
 
   /// 第六格：按品种类别给一个估值比率（用户 2026-09-25 定的）。
   ///
-  /// * **币**：`OI/MC` = 持仓量 ÷ 总市值——就是左边「仓」「市值」两格那两个数相除，
+  /// * **币**：`O/M` = 持仓量 ÷ 总市值——就是左边「仓」「市值」两格那两个数相除，
   ///   衡量一个币的合约杠杆有多重（大币零点几个百分点，热门山寨能到几十个百分点）。
   /// * **股票**：`FPE` = 市值 ÷ 一致预期的未来十二个月净利润；预期亏损的公司没有
   ///   远期市盈率，改给 `P/S` = 市值 ÷ 过去十二个月营收（亏损成长股看的就是它）。
@@ -71,8 +71,8 @@ enum HeaderStats {
     }()
     switch asset {
     case .crypto:
-      guard let cap, let oi = positive(openInterest) else { return ("OI/MC", nil) }
-      return ("OI/MC", ratioText(oi / cap * 100) + "%")
+      guard let cap, let oi = positive(openInterest) else { return ("O/M", nil) }
+      return ("O/M", ratioText(oi / cap * 100) + "%")
     case .equity:
       if let e = positive(forwardEarnings) { return ("FPE", cap.map { ratioText($0 / e) }) }
       if let r = positive(revenue) { return ("P/S", cap.map { ratioText($0 / r) }) }

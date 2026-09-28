@@ -17,7 +17,7 @@ extension GlossaryTerm {
 
   static let oiToMarketCap = GlossaryTerm(
     id: "oiToMarketCap",
-    title: "OI/MC · 持仓÷市值",
+    title: "O/M · 持仓÷市值",
     body: "合约持仓量除以这个币的总市值。\n比例越高，说明合约上押的钱相对现货越多，价格越容易被合约带着大起大落。")
 
   static let forwardPE = GlossaryTerm(
