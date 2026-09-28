@@ -17,8 +17,8 @@ enum SectorWindowChoice {
   static let todayTitle = "今日"
   static let d5Title = "5 日"
 
-  /// 某一档窗口在屏上叫什么。`d20` 不是一个模式（它只是 5 日那档头部补的一句），
-  /// 所以除了 `d5` 都按今日那个名字写。
+  /// 某一档窗口在屏上叫什么。`d20` 不是一个模式（原来只是 5 日那档头部补的一句，
+  /// 2026-09-28 副文案收成一句「跑赢大盘」后界面上已不出现），所以除了 `d5` 都按今日那个名字写。
   static func title(_ window: SectorWindow) -> String {
     window == .d5 ? d5Title : todayTitle
   }

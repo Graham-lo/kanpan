@@ -31,9 +31,11 @@ final class ReviewEntryUITests: KanpanUICase {
     XCTAssertFalse(app.descendants(matching: .any)[Ids.bottomMeBadge].firstMatch.exists,
                    "全新档案没有待判定，「我的」上不该有角标")
 
-    // 图表设置里那一行还在。
+    // 2026-09-28 顶栏方案 B：「记一笔」在顶栏右侧；图表设置里那一行撤了。
+    XCTAssertTrue(app.buttons[Ids.topNote].waitForExistence(timeout: Self.short), "顶栏没有「记一笔」")
     app.buttons[Ids.intervalChart].tap()
-    XCTAssertTrue(app.buttons["chart.record"].waitForExistence(timeout: Self.short), "图表设置里没有「记一笔」")
+    XCTAssertTrue(app.buttons[Ids.chartPanelMarker].waitForExistence(timeout: Self.short), "图表设置没开出来")
+    XCTAssertFalse(app.buttons["chart.record"].exists, "图表设置里还留着「记一笔」")
     XCTAssertTrue(app.closeChartPanel(), "图表设置收不起来")
 
     // 「我的 › 复盘本」只进复盘本。

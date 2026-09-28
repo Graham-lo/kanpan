@@ -47,6 +47,9 @@ struct PanelTheme: Sendable, Equatable {
   var ink: Color { Color(hex: seed.ink) }
   var ink2: Color { Color(hex: seed.ink2) }
   var ink3: Color { Color(hex: Palette.secondaryInk(seed)) }
+  /// 行情停住时最新价与涨跌小字的颜色，比 `ink3` 再淡一档、仍读得清（见 `Palette.staleInk`）。
+  /// 只给这两处用；六格的值停住时照旧是 `ink3`。
+  var staleInk: Color { Color(hex: Palette.staleInk(seed)) }
 
   // 强调：当前项、动作字、选中态。名字还叫 `amber` 是因为全 app 几百处都这么写着，
   // 换名字的收益抵不上一次全量改动的风险；它取的是配色自己的强调色（青苔的墨绿、

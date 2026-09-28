@@ -187,6 +187,9 @@ struct MainHeaderView<Card: View>: View {
   /// 「要不要加提醒」/ 分享卡在场没有：价格行和读数行照旧占位，只是透明。
   let cardVisible: Bool
   let onBack: (() -> Void)?
+  /// 顶栏「记一笔」「分享」两颗圆片；nil 时那颗不排。
+  let onNote: (() -> Void)?
+  let onShare: (() -> Void)?
   let onSearch: () -> Void
   let onScan: (ScanDirection) -> Void
   let card: Card
@@ -204,6 +207,8 @@ struct MainHeaderView<Card: View>: View {
         theme: theme, symbol: market.symbol,
         // 有来路才有返回。复盘态走的是另一副页头（`ReplayHeaderView`），不经过这儿。
         onBack: onBack,
+        onNote: onNote,
+        onShare: onShare,
         onSearch: onSearch)
       ZStack {
         PriceRow(theme: theme, instrument: market.symbol, ticker: session.rollingTicker, lastPrice: session.readoutPrice,

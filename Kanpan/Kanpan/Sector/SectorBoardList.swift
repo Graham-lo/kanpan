@@ -33,6 +33,8 @@ struct SectorBoardList: View {
       }
       .padding(.top, Space.xs).padding(.bottom, Space.s)
     }
+    // 底栏身后铺着一道渐变（`TabBar.fade`），最后一行要停在它上沿以上。
+    .contentMargins(.bottom, TabBar.fadeClearance, for: .scrollContent)
     .scrollIndicators(.hidden)
     // 先成组再挂 id，否则这个 id 会盖掉底下每一行自己的（见 `SectorPage`）。
     .accessibilityElement(children: .contain)
@@ -54,10 +56,14 @@ struct SectorBoardList: View {
       VStack(alignment: .leading, spacing: Space.xxs) {
         Text(stat.name).font(TypeScale.body).foregroundStyle(theme.ink)
           .lineLimit(1).minimumScaleFactor(0.85)
-        Text(SectorSubtitle.row(stat))
-          .font(TypeScale.caption).monospacedDigit()
-          .foregroundStyle(theme.ink3)
-          .lineLimit(dynamicTypeSize > .large ? 2 : 1).minimumScaleFactor(0.9)
+        let subtitle = SectorSubtitle.row(stat)
+        if !subtitle.isEmpty {
+          Text(subtitle)
+            .font(TypeScale.caption).monospacedDigit()
+            .foregroundStyle(theme.ink3)
+            .lineLimit(dynamicTypeSize > .large ? 2 : 1).minimumScaleFactor(0.9)
+            .accessibilityIdentifier("sector.board.breadth." + stat.id)
+        }
       }.frame(maxWidth: .infinity, alignment: .leading)
       Text(sectorPctText(stat.pct))
         .font(TypeScale.footnoteEmph).monospacedDigit()

@@ -49,11 +49,15 @@ import XCTest
       window.contains(last.frame) }, object: nil)], timeout: 5) == .completed
     XCTAssertTrue(fits, "「价格轴 · 刻度」在屏幕外，面板还要滚：\(last.frame) / \(window)")
     XCTAssertTrue(last.isHittable, "「价格轴 · 刻度」点不到")
-    // 四组：这张图 · K 线 · 显示 · 价格轴（2026-09-27）。
-    for title in ["这张图", "K 线", "显示", "价格轴"] {
+    // 三组：K 线 · 显示 · 价格轴（2026-09-28 顶栏方案 B 起「这张图」整节搬到顶栏）。
+    for title in ["K 线", "显示", "价格轴"] {
       XCTAssertTrue(app.staticTexts[title].exists, "面板少了「\(title)」这一组")
     }
-    for id in ["chart.record", "chart.share", "chart.depth", "chart.priceMode.线性", "chart.priceMode.对数", "chart.priceMode.百分比"] {
+    XCTAssertFalse(app.staticTexts["这张图"].exists, "图表设置里还有「这张图」")
+    for id in ["chart.record", "chart.share"] {
+      XCTAssertFalse(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) 还在面板上")
+    }
+    for id in ["chart.depth", "chart.priceMode.线性", "chart.priceMode.对数", "chart.priceMode.百分比"] {
       XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) 不在面板上")
     }
     XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "chart.candleKind.")).firstMatch.exists,

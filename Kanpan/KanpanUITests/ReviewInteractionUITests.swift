@@ -64,11 +64,9 @@ final class ReviewInteractionUITests: KanpanUICase {
   }
 
   private func openCapture() -> Bool {
-    let entry = app.buttons[Ids.intervalChart]
-    guard expectExists(entry, Self.short, "周期行右端没有图表设置那颗") else { return false }
-    entry.tap()
-    let record = app.buttons["chart.record"]
-    guard expectExists(record, Self.short, "「图表」面板里没有「记一笔」") else { return false }
+    // 2026-09-28 顶栏方案 B：「记一笔」是顶栏右侧那颗书本圆片，不再在图表设置里。
+    let record = app.buttons[Ids.topNote]
+    guard expectExists(record, Self.short, "顶栏没有「记一笔」那颗") else { return false }
     record.tap()
     return expectExists(app.buttons["记下"], Self.short, "点「记一笔」没开出取景卡")
   }

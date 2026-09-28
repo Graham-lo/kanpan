@@ -24,8 +24,12 @@ import KanpanCore
 /// 2026-09-28 行尾收回三件：那格「指标」改名「分析」，面板也叫「分析」，分四节
 /// 画线 · 指标 · 对比 · 主力订单流——画线与指标并列，「指标」从此只是面板里的一节名。
 /// 枚举值仍叫 `indicators`（面板状态、测试 id 都挂在它上面，改名没有好处）。
+///
+/// 同一天（顶栏方案 B）多了一张 `share`：「图表设置 › 这张图 › 分享」那条推进去的路撤了，
+/// 分享改成顶栏右侧一颗圆片；两种分享（图片 / 画线）都能用时，点它开这张面板，里头就是
+/// 原来那层二选一 `ShareChooser`，左上角那颗是关面板。
 enum Panel: String, Identifiable, CaseIterable, Sendable {
-  case period, chart, indicators
+  case period, chart, indicators, share
 
   var id: String { rawValue }
 
@@ -36,6 +40,7 @@ enum Panel: String, Identifiable, CaseIterable, Sendable {
     // 所以它叫「图表设置」——同名两个东西会让人不知道自己点开的是哪个。
     case .chart: "图表设置"
     case .indicators: "分析"
+    case .share: "分享"
     }
   }
 }
@@ -134,14 +139,15 @@ struct PanelSide<Content: View>: View {
   }
 }
 
-/// 两张面板里那些「由宿主页决定能不能做」的动作。竖屏 sheet 和横屏侧栏拿的是
-/// **同一份**，所以两边不会再一边有「记一笔」一边没有（审查 16.2）。
+/// 面板里那些「由宿主页决定能不能做」的动作。竖屏 sheet 和横屏侧栏拿的是
+/// **同一份**（审查 16.2）。
 ///
-/// 某个动作此刻做不了（复盘回放里没有「记一笔」、预览别人的线时不能发线），
+/// 某个动作此刻做不了（复盘回放里没有画线、预览别人的线时不能发线），
 /// 宿主页就把那一项传 nil，面板里那一行直接不排——面板自己不判断横竖屏。
+/// 「记一笔」2026-09-28 起在顶栏上，不再经过面板。
 struct PanelActions {
   var onPickInterval: ((Interval) -> Void)? = nil
-  var onRecord: (() -> Void)? = nil
+  /// 分享成图片（`share` 面板的「图片」格）。
   var onShare: (() -> Void)? = nil
   var onAddCompare: (() -> Void)? = nil
   var compareNames: [String: String] = [:]
@@ -168,8 +174,9 @@ struct PanelContent: View {
     switch which {
     case .period: IntervalGridPanel(store: store, onPick: actions.onPickInterval)
     case .chart:
-      ChartPanel(store: store, onRecord: actions.onRecord, onShare: actions.onShare,
-                 onSend: actions.onSend, sendBlocked: actions.sendBlocked)
+      ChartPanel(store: store)
+    case .share:
+      SharePanel(onImage: actions.onShare, onLines: actions.onSend, linesBlocked: actions.sendBlocked)
     case .indicators:
       // 「分析」面板（画线 · 指标 · 对比 · 主力订单流）。从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
       // 选中反馈长在指标页各控件的动作上（`PrefsStore.updateByHand`），两条路一样。
@@ -177,6 +184,26 @@ struct PanelContent: View {
                     onAddCompare: actions.onAddCompare, compareNames: actions.compareNames,
                     onDraw: actions.onDraw, drawEnabled: actions.drawEnabled)
     }
+  }
+}
+
+/// 顶栏「分享」开的那张面板：图片 / 画线二选一。选完先收面板再做——出图要看见图，
+/// 发线要换成选朋友那一层。两样里缺一样时宿主页不会开这张面板（直接走能走的那一种），
+/// 这里仍按缺的那格不排兜底。
+struct SharePanel: View {
+  var onImage: (() -> Void)?
+  var onLines: (() -> Void)?
+  var linesBlocked: String?
+
+  @Environment(\.dismiss) private var dismiss
+  @Environment(\.panelDismiss) private var sideDismiss
+
+  var body: some View {
+    let close = PanelCloser(side: sideDismiss, sheet: dismiss)
+    ShareChooser(onImage: { close(); onImage?() },
+                 onLines: { close(); onLines?() },
+                 linesBlocked: onLines == nil ? "此刻发不了画线" : linesBlocked,
+                 onBack: nil)
   }
 }
 

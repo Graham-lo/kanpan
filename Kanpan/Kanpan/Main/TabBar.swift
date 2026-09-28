@@ -69,7 +69,17 @@ struct TabBar: View {
   /// 复盘本：「我的」记号右上角那颗待判定角标数的就是它（2026-09-27 从顶栏复盘按钮挪过来）。
   /// 传整只 feature 而不是算好的数，理由同 `ReviewCountBadge`。
   var review: ReviewFeature? = nil
+  /// 身后那道「透明 → 页面底色」渐变的终点色：每页传**自己的**底色令牌（自选是 `AuroraBackdrop`
+  /// 的底、板块是 `SectorSkin.ground`、我的是 `app`）。nil 就不铺——行情页的图不在栏身后滚，
+  /// 那道渐变上沿会压淡 K 线图下沿的时间轴。
+  var fade: Color? = nil
   var onPick: (Tab) -> Void
+
+  /// 渐变多高：从栏的下沿（home 条上沿）往上 96pt，比栏自己（58）高出 38pt。
+  static let fadeHeight: CGFloat = 96
+  /// 挂在这条栏上的滚动页，内容底部要多让出的一截：滚到最底时最后一行完整地停在渐变上沿以上，
+  /// 记号周围没有文字。滚到中间时记号下面那一行被渐变压淡，不是硬切（2026-09-28）。
+  static let fadeClearance: CGFloat = 50
 
   /// 记号的边长。18 → 20 → 32 → 36 → 26 → 27。往 36 推那几档是为了治「太素」，可推上去之后
   /// 整条栏在屏幕上占了 112 点，用户看真机的话是「而且显得占比那么大」「不仅浪费空间，
@@ -95,6 +105,8 @@ struct TabBar: View {
     .padding(.top, 8)
     .padding(.bottom, 0)
     .background { glowBed }
+    // 渐变垫在灯座下面：先把滚进栏身后的那一截内容压回页面底色，灯座再浮在上面。
+    .background(alignment: .bottom) { if let fade { fadeBed(fade) } }
     .animation(.spring(response: 0.34, dampingFraction: 0.82), value: active)
   }
 
@@ -117,6 +129,25 @@ struct TabBar: View {
     .buttonStyle(.plain)
     .accessibilityLabel(tab.title)
     .accessibilityAddTraits(on ? [.isSelected] : [])
+  }
+
+  /// 栏身后那道渐变（2026-09-28 用户定：底栏保留融合、但内容不再和记号重叠）。
+  ///
+  /// 栏自己**仍然没有底**（`kanpan-bottom-bar-has-no-surface-of-its-own`）：这一道用的是页面自己的
+  /// 底色，从透明化到实色，读起来是「页面的材料在这儿收住了」，不是另起一块底板。
+  /// 0% 全透明，45% 处 86%，70% 处到实色，一直铺到屏幕下沿（home 条那一截）。不吃点按。
+  private func fadeBed(_ ground: Color) -> some View {
+    LinearGradient(stops: [
+      .init(color: ground.opacity(0), location: 0),
+      .init(color: ground.opacity(0.86), location: 0.45),
+      .init(color: ground, location: 0.70),
+      .init(color: ground, location: 1),
+    ], startPoint: .top, endPoint: .bottom)
+    .frame(height: Self.fadeHeight)
+    // home 条那一截：同一个底色贴着栏的下沿一直铺到屏幕最下面。
+    .background(alignment: .bottom) { ground.frame(height: 1).ignoresSafeArea(edges: .bottom) }
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
   }
 
   /// 底栏那一段的「灯座」：一团从屏幕下沿往上化开的强调色光，穿过 home 条一直铺满整条栏。
@@ -298,6 +329,42 @@ struct IntervalDrawGlyph: View {
       shape([.path("M3.4 17.6 8.5 12.1l3.4 3 6.4-8.2")])
         .stroke(accentGlaze, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
       shape([.circle(x: 19.1, y: 5.9, r: 2.5)]).fill(goldGlaze)
+    }
+    .compositingGroup()
+    .frame(width: size, height: size)
+    .shadow(color: .black.opacity(theme.dark ? 0.26 : 0.12), radius: 1.5, y: 0.8)
+  }
+
+  private var accentGlaze: LinearGradient { glaze(TabBar.lift(theme.seed.accent, 0.42), theme.amber) }
+  private var goldGlaze: LinearGradient { glaze(TabBar.lift(theme.seed.amber, 0.34), Color(hex: theme.seed.amber)) }
+  private func glaze(_ top: Color, _ bottom: Color) -> LinearGradient {
+    LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: UnitPoint(x: 0.35, y: 1))
+  }
+  private func shape(_ items: [IconItem]) -> IconShape { IconShape(box: Self.box, items: items) }
+}
+
+/// 「记一笔」那颗记号：一本带书签的复盘本（2026-09-24 审查 U6 为顶栏「复盘」画的专属记号，
+/// 09-27 顶栏撤掉复盘时一并删了；09-28 乙方案把它请回顶栏，给右上角那颗「记一笔」用，
+/// 形一个点没改，从 `656fe59d^` 原样取回）。
+/// 本子是主色，两道字行从本子上挖穿、露出托底，书签是金的。坐标按 24 的框排，
+/// 和底栏几枚同一个坐标系、同一副釉（`TabBar.lift` 是 fileprivate 的，所以它住在这个文件里）。
+struct ReviewGlyph: View {
+  var theme: PanelTheme
+  var size: Double = 17
+
+  private static let box: Double = 24
+
+  var body: some View {
+    ZStack {
+      shape([.rect(x: 4.2, y: 2.6, w: 15.6, h: 18.8, r: 3.4)]).fill(accentGlaze)
+      // 两道字行：一长一短，挖穿本身，露出托底。
+      shape([.rect(x: 7.6, y: 12.2, w: 8.8, h: 2.3, r: 1.15),
+             .rect(x: 7.6, y: 16.1, w: 5.6, h: 2.3, r: 1.15)])
+        .fill(.black).blendMode(.destinationOut)
+      // 书签：从本子上沿垂下来，尾巴剪一个燕尾口，四个角都是圆的。
+      shape([.path("M12.6 1.9h4.2c.5 0 .9.4.9.9v7.5c0 .45-.52.7-.87.42L14.7 9.1l-2.13 1.62"
+                   + "c-.35.28-.87.03-.87-.42V2.8c0-.5.4-.9.9-.9z")])
+        .fill(goldGlaze)
     }
     .compositingGroup()
     .frame(width: size, height: size)

@@ -105,24 +105,23 @@ enum SectorBoardOrder {
   }
 }
 
-/// 板块的副文案：`18 个品种 · 15/18 跑赢大盘` 再接一段 `tail`。
+/// 板块的副文案：只有一句 `15/21 跑赢大盘`。
 ///
-/// 板块列表每一行和品种列表头部说的是同一句，只有末段不同（列表行接成交额，
-/// 品种列表看 5 日时接「20 日」），所以句子只在这儿拼一次。
+/// 板块列表每一行和品种列表头部说的是同一句，所以句子只在这儿拼一次。
+/// 2026-09-28 用户定：原来前面的「21 个品种」、后面的「· 成交额 4.86B」（下钻页看 5 日时是
+/// 「· 20 日 +12.1%」）都去掉——分母已经说了有几只，成交额在每一行上各有一格，
+/// 这一句只回答「整体在动还是一只在爆」。
 ///
 /// 有行情成员不到 `minEligibleMembers` 个的板块（`desci` 就一只 BIO）没有「广度」可言
-/// ——一只币的涨跌不是板块强弱。这种少写「跑赢大盘」那一段，不解释为什么。
+/// ——一只币的涨跌不是板块强弱。这种给空串，调用处整行不画，不解释为什么。
 enum SectorSubtitle {
-  static func text(_ stat: SectorStat, tail: String) -> String {
-    let head = "\(stat.memberCount) 个品种"
-    guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
-    return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢大盘" + tail
+  static func text(_ stat: SectorStat) -> String {
+    guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return "" }
+    return "\(stat.outperformCount)/\(stat.memberCount) 跑赢大盘"
   }
 
-  /// 板块列表里的一行：末段是成交额，拿不到就整段不写（`sectorVolumeClause`）。
-  static func row(_ stat: SectorStat) -> String {
-    text(stat, tail: sectorVolumeClause(stat.quoteVolume))
-  }
+  /// 板块列表里的一行。和下钻页头部同一句。
+  static func row(_ stat: SectorStat) -> String { text(stat) }
 
   /// 页头标题旁那行规模：`28 个板块 · 526 个品种`。品种数是去重后、这段窗口上
   /// 真算得出收益的那些，不是各板块成员数相加（一个品种可以同时属于好几个板块）。
@@ -154,15 +153,8 @@ func sectorVolumeText(_ value: Double) -> String {
   value.isFinite ? fmtVol(value) : "—"
 }
 
-/// 成交额在**副文案**里的那一段：`· 成交额 1.2B`。
-///
-/// 拿不到就整段不写，不印「· 成交额 —」——一整列的「—」是废话，它既不是一格空位，
-/// 也没告诉用户任何事（OKX 那条线路上全市场都没有以 USDT 结算的成交额，就会是这样）。
-/// 和同一句里「20 日」那一段缺数时的处理一致：少一段，不解释。
-/// 成交额的写法只有这两个出口，别再各处自己拼。
-func sectorVolumeClause(_ value: Double) -> String {
-  value.isFinite ? " · 成交额 " + sectorVolumeText(value) : ""
-}
+// 原来这儿还有副文案里那一段「· 成交额 1.2B」的出口（`sectorVolumeClause`），
+// 2026-09-28 副文案收成一句「跑赢大盘」后没有调用处了，一并删掉。成交额的写法只剩上面这一个出口。
 
 /// `+1.23%` / `−0.45%`，两位小数带符号——全 app 唯一那把 `changePercentText`（审查 U9）。
 func sectorPctText(_ value: Double) -> String { changePercentText(value) }

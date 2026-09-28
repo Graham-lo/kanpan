@@ -283,4 +283,16 @@ struct SkinPaletteTests {
       }
     }
   }
+
+  /// 行情停住时价格变的那支色：比 `ink3` 淡、但对页面底仍 ≥ 3 : 1（「不要太灰」），
+  /// 而且淡得看得出来——和 `ink3` 的对比度至少差 1.2 档，不然停没停一眼分不清。
+  @Test func staleInkIsFainterThanInk3ButReadable() {
+    for seed in Self.seeds {
+      let stale = Palette.staleInk(seed)
+      let staleC = Palette.contrast(stale, seed.app)
+      let ink3C = Palette.contrast(Palette.secondaryInk(seed), seed.app)
+      #expect(staleC >= 3, "\(seed.skin) \(seed.dark) staleInk 对底只有 \(staleC)")
+      #expect(ink3C - staleC >= 1.2, "\(seed.skin) \(seed.dark) staleInk 和 ink3 差得太少")
+    }
+  }
 }

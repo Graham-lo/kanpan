@@ -344,13 +344,8 @@ struct SectorPage: View {
       let stat = snap.stats.first { $0.id == id }
         ?? SectorDrillDecision.placeholder(id: id, market: market, buckets: snap.buckets)
       let members = members(of: id, snap)
-      // 20 日不是一个模式，只是 5 日那一档里头部补的一句。没有 20 日数据就不补。
-      let d20 = snap.window == .d5
-        ? SectorAggregator.windowMedian(members: members, quotes: feed.quotes,
-                                        history: snap.history, window: .d20)
-        : nil
       SectorSymbolList(stat: stat, members: members, quotes: feed.quotes,
-                       window: snap.window, history: snap.history, medianD20: d20,
+                       window: snap.window, history: snap.history,
                        symbolForBase: symbolForBase,
                        decimalsForBase: { feed.priceDecimals(forBase: $0) },
                        onBack: pop, onPick: onPickSymbol, onScanList: onScanList,

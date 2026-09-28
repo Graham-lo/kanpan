@@ -163,7 +163,7 @@ final class ChartSession {
   var quoteDiagnostics: String {
     #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" else { return "" }
-    return "symbol=\(market.symbol);last=\(displayedTicker?.last ?? .nan);time=\(displayedTicker?.timeMs ?? 0)"
+    return "symbol=\(market.symbol);last=\(displayedTicker?.last ?? .nan);time=\(displayedTicker?.timeMs ?? 0);fresh=\(market.priceFresh ? 1 : 0)"
     #else
     return ""
     #endif

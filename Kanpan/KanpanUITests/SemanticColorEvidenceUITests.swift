@@ -517,11 +517,9 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     applySageNight("找相似")
     XCTAssertTrue(waitForLiveChart(), "没等到行情：\(chartInfo())")
 
-    let entry = app.buttons[Ids.intervalChart]
-    expectExists(entry, Self.short, "周期行右端没有图表设置那颗")
-    entry.tap()
-    let record = app.buttons["chart.record"]
-    expectExists(record, Self.short, "「图表」面板里没有「记一笔」")
+    // 2026-09-28 顶栏方案 B：「记一笔」是顶栏右侧那颗书本圆片。
+    let record = app.buttons[Ids.topNote]
+    expectExists(record, Self.short, "顶栏没有「记一笔」那颗")
     record.tap()
     let similar = app.buttons["找相似"]
     expectExists(similar, Self.long, "点「记一笔」没开出取景卡")

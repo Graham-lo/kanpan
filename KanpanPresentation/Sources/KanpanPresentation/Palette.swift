@@ -279,6 +279,23 @@ public enum Palette: Sendable {
   /// 小字用的第三级墨色。六套种子都是手配的，直接用。
   public static func secondaryInk(_ t: PaletteSeed) -> Hex { t.ink3 }
 
+  /// 行情停住时最新价和涨跌小字的颜色（2026-09-28 用户定：「行情停住时价格文字变灰，不要太灰」）。
+  ///
+  /// 比 `ink3` 再淡一档：对页面底色约 3.3 : 1（`ink3` 是 4.9–5.4 : 1），22pt 的价格和 13pt medium 的
+  /// 涨跌小字都还读得清——它说的是「这个数不新鲜了」，不是「这个控件点不了」，所以不用中性灰，
+  /// 各套皮肤沿用自己 `ink3` 的色相往底色混（青苔偏绿、陶土偏褐）。
+  /// 取值：`ink3` 向 `app` 混到对比度刚好不低于 3.3。守卫在 `SkinPaletteTests`。
+  public static func staleInk(_ t: PaletteSeed) -> Hex {
+    switch (t.skin, t.dark) {
+    case (.sage, false): "#7D8A83"
+    case (.sage, true): "#5C6B64"
+    case (.terra, false): "#92867A"
+    case (.terra, true): "#736559"
+    case (.classic, false): "#85908A"
+    case (.classic, true): "#5C6A68"
+    }
+  }
+
   // ---------------------------------------------------------------- 主力订单流四色
 
   /// 主力订单流的线色：合约买 / 卖、现货买 / 卖（2026-09-25）。

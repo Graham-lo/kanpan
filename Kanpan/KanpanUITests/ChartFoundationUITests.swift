@@ -206,9 +206,9 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(app.buttons["review.record"].exists, "主图上不该再浮着「记」")
     XCTAssertFalse(app.buttons["interval.record"].exists, "「记」不该再占周期条的常驻格")
     let span = try XCTUnwrap(info()["span"] as? Double)
-    app.buttons["interval.chart"].tap()
-    let record = app.buttons["chart.record"]
-    XCTAssertTrue(record.waitForExistence(timeout: 10), "「图表」面板里没有「记一笔」")
+    // 2026-09-28 顶栏方案 B：「记一笔」是顶栏右侧那颗书本圆片。
+    let record = app.buttons[Ids.topNote]
+    XCTAssertTrue(record.waitForExistence(timeout: 10), "顶栏没有「记一笔」那颗")
     record.tap()
     // 点一下开的是复盘取景卡（`ReviewCaptureCard`）：从出来到收回去，图的横向视野一格不许动。
     let close = app.buttons["收起"]

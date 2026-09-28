@@ -613,6 +613,17 @@ struct MainScreen: View {
   ///
   /// 换成 `safeAreaInset` 之后，页面仍然铺满整屏（它的底一直流到 home 条），底栏只是浮在
   /// 它上面的一排记号，同时把页面内容往上顶开一栏的高度——内容不会被压住，底也不再断。
+  /// 底栏身后那道渐变的终点色：每页用自己的底色令牌（见 `TabBar.fade`）。
+  /// 行情页不铺——图不在栏身后滚，渐变上沿会压淡时间轴。
+  private var tabBarFade: Color? {
+    switch tab {
+    case .chart: nil
+    case .favorites: FavoritesView.pageGround(theme)
+    case .sectors: SectorSkin(theme: theme).ground
+    case .me: theme.app
+    }
+  }
+
   private var portraitBody: some View {
     Group {
       switch tab {
@@ -625,7 +636,7 @@ struct MainScreen: View {
       case .me: MePage(store: store, review: review, alerts: alerts, inbox: inbox,
                        path: $mePath, destination: meDestination,
                        onReviewBook: { dismissPanel(); review.bookOpen = true; review.synchronize() },
-                       onAccount: openAccountInMe, bottomInset: tabBarHeight)
+                       onAccount: openAccountInMe, bottomInset: tabBarHeight + TabBar.fadeClearance)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -634,7 +645,7 @@ struct MainScreen: View {
     // 要跑题。两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」）。
     .safeAreaInset(edge: .bottom, spacing: 0) {
       if !reviewChart.active {
-        TabBar(theme: theme, current: tab, review: review, onPick: switchTo(tab:))
+        TabBar(theme: theme, current: tab, review: review, fade: tabBarFade, onPick: switchTo(tab:))
           .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { tabBarHeight = $0 }
       }
     }
@@ -962,7 +973,7 @@ struct MainScreen: View {
   private var panelActions: PanelActions {
     // 分析面板第一节「画线」：复盘回放 / 已经在画（横屏画线台的侧栏）时不排，对比期间置灰。
     let onDraw: (() -> Void)? = reviewChart.active || draw.active ? nil : { startDrawing() }
-    return PanelActions(onPickInterval: pick(interval:), onRecord: chartRecordAction,
+    return PanelActions(onPickInterval: pick(interval:),
                  onShare: chartShareAction, onAddCompare: { showComparePicker = true },
                  compareNames: compareNames, onDraw: onDraw, drawEnabled: !comparing,
                  onSend: chartSendAction, sendBlocked: shareSendBlocked,
@@ -978,9 +989,22 @@ struct MainScreen: View {
       cardVisible: headerCardVisible,
       // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
       onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
+      onNote: chartRecordAction.map { record in { dismissPanel(); record() } },
+      onShare: headerShareAction,
       onSearch: { dismissPanel(); symbolSearch.openSearch() },
       onScan: { scan($0) },
       card: shareAndAlertCard(inHeader: true))
+  }
+
+  /// 顶栏「分享」（方案 B，2026-09-28）：图片、画线两样都能走时开 `Panel.share` 二选一；
+  /// 只剩一样（预览别人的线时没有「发线」）就直接走那一样，不多弹一层。
+  private var headerShareAction: (() -> Void)? {
+    switch (chartShareAction, chartSendAction) {
+    case (nil, nil): return nil
+    case (let image?, nil): return { dismissPanel(); image() }
+    case (nil, let send?): return send
+    case (_?, _?): return { panel = .share }
+    }
   }
 
   /// 读数那一小块要的、**不跟着手指走**的那几样输入。十字线本身不在这儿——
@@ -992,7 +1016,7 @@ struct MainScreen: View {
     session.crosshairContext(timeZone: prefs.timeZone.offsetMinutes, enabled: true)
   }
 
-  /// 「图表设置」里的「记一笔」。复盘回放里没有「记」这回事、预览别人的线时那张图不是
+  /// 顶栏「记一笔」（2026-09-28 前在「图表设置 › 这张图」里）。复盘回放里没有「记」这回事、预览别人的线时那张图不是
   /// 「我的图」，这两种情形返回 nil，那一条直接不排。
   ///
   /// **不按横竖屏拦**（审查 16.2，2026-09-24 定）：以前这里还多一条 `!landscape`，

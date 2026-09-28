@@ -22,6 +22,13 @@ import SwiftUI
 /// 角标挂到底栏「我的」记号上；「记一笔」仍在图表设置「这张图」与复盘本右上角的「+」，
 /// 深链 `hkline://review/<id>` 和到点通知的去处不变。顶栏只剩徽章 + 品种名 + 放大镜。
 ///
+/// 2026-09-28（乙方案）右上角变成一簇三颗圆片，从左到右「记一笔 · 分享 · 搜索」：
+/// 用户的话是「记一笔」「分享」不该藏在图表设置里，它们是看着这张图时才会做的动作，
+/// 就放在这张图的顶上。记一笔用早先顶栏那本带书签的复盘本记号（`ReviewGlyph`），
+/// 分享用系统的分享符号。图表设置里原来那一节「这张图」整节撤掉。三颗步距 12
+/// （32 + 12 = 44，命中区首尾相接，缝里没有死区）。左侧只剩返回圆片和品种名，
+/// 品种名仍然不是按钮。
+///
 /// 字号、间距、图标一律取 `DesignTokens` 的令牌（UI 审查 2026-09-24 §4.3 #4–#12），别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
 /// 层级：品种名 16 semibold（`TypeScale.heading`，不用 bold——它不该比 22 的价格更「黑」）
@@ -34,6 +41,10 @@ struct TopBar: View {
   /// （板块下钻、自选行）。从底栏直接点进来的「图表」没有来路，这颗就不画——
   /// 常驻标签栏那一格自己就是家，返回无处可去。
   var onBack: (() -> Void)?
+  /// 「记一笔」：把这张图存进复盘本。复盘回放、画线预览这类没有「这张图」可记的时候传 nil，圆片不画。
+  var onNote: (() -> Void)? = nil
+  /// 「分享」：这张图的图片或画线（两种都能用时弹二选一）。没有可分享的时候传 nil，圆片不画。
+  var onShare: (() -> Void)? = nil
   var onSearch: () -> Void
 
   /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
@@ -72,16 +83,31 @@ struct TopBar: View {
         }
         .lineLimit(1)
       }
+      // 品种名先让右边三颗圆片：三颗固定 32 + 12 + 32 + 12 + 32 = 120，余下的全归品种名
+      // （16 Pro 有返回时 ≥ 170pt，`PUMPBTC/USDT 永续` 放得下）。真放不下时先压计价币，
+      // 基础币最后才截——`layoutPriority` 让它比右边的 Spacer 先拿宽度。
+      .layoutPriority(1)
       .accessibilityElement(children: .combine)
       .accessibilityLabel("当前品种 \(InstrumentID(symbol).display)")
       .accessibilityIdentifier("top.symbol")
 
       Spacer(minLength: 0)
 
-      // 右上角只剩放大镜。托底 32pt（`ControlMetrics.iconDisc`），命中区撑到 44×44（见 `iconButton`）。
-      // 原来它左边还有复盘那颗（两颗步距 32 + 12 = 44，命中区首尾相接），2026-09-27 撤了。
-      iconButton(VectorIcon.search(16), label: "搜索品种", action: onSearch)
-        .accessibilityIdentifier("top.search")
+      // 右上角一簇三颗：记一笔 · 分享 · 搜索。托底 32pt（`ControlMetrics.iconDisc`），
+      // 命中区撑到 44×44（见 `iconButton`），步距 12 让相邻两颗的命中区正好首尾相接。
+      HStack(spacing: Space.m) {
+        if let onNote {
+          iconButton(ReviewGlyph(theme: theme, size: 20), label: "记一笔", action: onNote)
+            .accessibilityIdentifier("top.note")
+        }
+        if let onShare {
+          iconButton(Image(systemName: "square.and.arrow.up").font(.system(size: 15, weight: .semibold)),
+                     label: "分享", action: onShare)
+            .accessibilityIdentifier("top.share")
+        }
+        iconButton(VectorIcon.search(16), label: "搜索品种", action: onSearch)
+          .accessibilityIdentifier("top.search")
+      }
     }
   }
 
@@ -185,8 +211,8 @@ struct PriceRow: View {
   /// 下一次资金费率结算的时刻（`MarkPriceTick.nextFundingTime`）。「结算」那一格
   /// 读它；没有就显示破折号（见 `HeaderStats.fundingCountdownText`）。
   var nextFundingTimeMs: Int64?
-  /// 这口价不能当「现在的价」看：上一条线路留下的，或者这个品种已经不在交易了。
-  /// 灰显，不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
+  /// 这口价不能当「现在的价」看：上一条线路留下的、断流超过宽限，或者这个品种已经不在交易了。
+  /// 最新价和涨跌小字换成 `staleInk`（比 `ink3` 再淡一档，2026-09-28），不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
   /// 它自己就亮回来（§2B #54）。
   ///
   /// 除了灰显，它还会把「额 / 市值 / 费率」几格压成 `—`（审查 B.8）：那几个数
@@ -208,7 +234,7 @@ struct PriceRow: View {
         Text(lastText)
           .font(TypeScale.price)
           .monospacedDigit()
-          .foregroundStyle(lastPrice == nil || stale ? theme.ink3 : tint)
+          .foregroundStyle(lastPrice == nil ? theme.ink3 : stale ? theme.staleInk : tint)
           // 跳价时逐位滚过去（P2.8），只动变了的那几位；「减少动效」下直接换字。
           .contentTransition(reduceMotion ? .identity : .numericText(value: lastPrice ?? 0))
           .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: lastText)
@@ -221,7 +247,7 @@ struct PriceRow: View {
         Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
           .font(TypeScale.footnoteEmph)
           .monospacedDigit()
-          .foregroundStyle(stale || ticker?.priceChange == nil || pct == nil ? theme.ink3 : tint)
+          .foregroundStyle(ticker?.priceChange == nil || pct == nil ? theme.ink3 : stale ? theme.staleInk : tint)
           .accessibilityIdentifier("top.changePercent")
       }
       .lineLimit(1)
@@ -274,15 +300,15 @@ struct PriceRow: View {
   private var stats: some View {
     HStack(alignment: .top, spacing: Space.l) {
       statColumn {
-        statRow("仓", openInterestText, id: "top.openInterest")
+        statRow("仓", openInterestText, id: "top.openInterest", term: .openInterest)
         statRow("市值", marketCapText, id: "top.marketCap")
         settlementRow
       }
       statColumn {
-        statRow("额", turnoverText, id: "top.turnover")
-        statRow("费率", fundingText, id: "top.funding", tint: frTint)
+        statRow("额", turnoverText, id: "top.turnover", term: .turnover)
+        statRow("费率", fundingText, id: "top.funding", tint: frTint, term: .fundingRate)
         if let cell = valuationCell {
-          statRow(cell.label, cell.value, id: "top.valuation")
+          statRow(cell.label, cell.value, id: "top.valuation", term: Self.valuationTerm(cell.label))
         }
       }
     }
@@ -297,9 +323,9 @@ struct PriceRow: View {
   }
 
   private func statRow(_ label: String, _ value: String?, id: String,
-                       tint: Color? = nil) -> some View {
+                       tint: Color? = nil, term: GlossaryTerm? = nil) -> some View {
     GridRow {
-      statLabel(label)
+      statLabel(label, term: term)
       statValue(value ?? "—", missing: value == nil, id: id, tint: tint)
     }
   }
@@ -307,7 +333,7 @@ struct PriceRow: View {
   /// 倒计时独立刷新，缺数与其它格一样显示破折号。
   private var settlementRow: some View {
     GridRow {
-      statLabel("结算")
+      statLabel("结算", term: .settlement)
       TimelineView(.periodic(from: .now, by: 30)) { context in
         statValue(countdownText(now: context.date) ?? "—",
                   missing: countdownText(now: context.date) == nil, id: "top.settlement")
@@ -327,11 +353,26 @@ struct PriceRow: View {
     return r > 0 ? theme.up : theme.down
   }
 
-  private func statLabel(_ text: String) -> some View {
-    Text(text)
-      .font(TypeScale.caption2)
-      .foregroundStyle(theme.ink3)
-      .gridColumnAlignment(.leading)
+  /// 标签后面可以挂一颗术语问号（`TermMark`）：颜色跟着标签、命中区 32 但不撑大这一行。
+  /// 「市值」一看就懂，不挂。
+  private func statLabel(_ text: String, term: GlossaryTerm? = nil) -> some View {
+    HStack(spacing: 0) {
+      Text(text)
+      if let term { TermMark(term, theme: theme) }
+    }
+    .font(TypeScale.caption2)
+    .foregroundStyle(theme.ink3)
+    .gridColumnAlignment(.leading)
+  }
+
+  /// 第六格的标签是哪一种估值，就挂哪一条解释。
+  static func valuationTerm(_ label: String) -> GlossaryTerm? {
+    switch label {
+    case "OI/MC": .oiToMarketCap
+    case "Fwd PE": .forwardPE
+    case "P/S": .priceToSales
+    default: nil
+    }
   }
 
   private func statValue(_ text: String, missing: Bool, id: String,

@@ -18,8 +18,6 @@ struct SectorSymbolList: View {
   var window: SectorWindow = .today
   /// 日线收盘。今日那一档用不着。
   var history: SectorHistory = .empty
-  /// 这个板块的 20 日中位数。只在 5 日那一档、且真有 20 日数据时才有值。
-  var medianD20: Double?
   var symbolForBase: (String) -> String
   /// 这个 base 对应品种的价格小数位。品种表还没到就返回 nil（见 `SectorSymbolRow.priceText`）。
   var decimalsForBase: (String) -> Int? = { _ in nil }
@@ -95,6 +93,8 @@ struct SectorSymbolList: View {
         }
         .padding(.bottom, Space.s)
       }
+      // 底栏身后铺着一道渐变（`TabBar.fade`），最后一行要停在它上沿以上。
+      .contentMargins(.bottom, TabBar.fadeClearance, for: .scrollContent)
       .scrollIndicators(.hidden)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -116,23 +116,12 @@ struct SectorSymbolList: View {
 
   /// 原型 `enterList()`：返回、记号、板块名、一行副文案，右边是聚合涨跌幅。
   ///
-  /// 副文案 `17 个品种 · 14/17 跑赢大盘 · 成交额 4.86B` 和板块列表每行的完全同一格式
-  /// （同一个 `SectorSubtitle`）。「跑赢大盘」几家说的是整体在动还是一只在爆——右边那个大字只说动了多少，这两件事
-  /// 分不开。涨跌幅不在这行重写一遍（右边已经有了），分母是有行情的成员数，
-  /// 页面上不出现算法名，也不出现目录登记数。
-  ///
-  /// 看 5 日的时候最后一段换成「20 日 +12.1%」：两段窗口摆在一起，才知道这一周的劲
-  /// 是刚起来的还是月线上一直就有。20 日只在这儿出现一次，不做成第三颗药丸。
-  /// 没有 20 日数据就只剩前两段——不写「暂无」，也不解释；成交额拿不到时那一段
-  /// 也是整个不写（`sectorVolumeClause`），不排一句「成交额 —」。
-  private var subtitle: String {
-    let tail: String = if window == .d5 {
-      medianD20.map { " · 20 日 " + sectorPctText($0) } ?? ""
-    } else {
-      sectorVolumeClause(stat.quoteVolume)
-    }
-    return SectorSubtitle.text(stat, tail: tail)
-  }
+  /// 副文案只有一句 `14/17 跑赢大盘`，和板块列表每行同一句（同一个 `SectorSubtitle`）。
+  /// 「跑赢大盘」几家说的是整体在动还是一只在爆——右边那个大字只说动了多少，这两件事
+  /// 分不开。分母是有行情的成员数，页面上不出现算法名，也不出现目录登记数。
+  /// 2026-09-28 起品种数、成交额（以及 5 日那档补的「20 日」）都不再写（用户定），
+  /// 成员不够、没有广度可言的板块这一行整个不画。
+  private var subtitle: String { SectorSubtitle.text(stat) }
 
   private var header: some View {
     HStack(spacing: Space.s) {
@@ -147,12 +136,14 @@ struct SectorSymbolList: View {
         Text(stat.name).font(TypeScale.title).foregroundStyle(theme.ink)
           .lineLimit(1).minimumScaleFactor(0.8)
         // 副文案 11 是下限，不再缩到 0.6 倍（6.6pt）挤进一行；放不下就折到第二行。
-        Text(subtitle)
-          .font(TypeScale.caption2).monospacedDigit()
-          .foregroundStyle(skin.ink4)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityIdentifier("sector.list.breadth")
+        if !subtitle.isEmpty {
+          Text(subtitle)
+            .font(TypeScale.caption2).monospacedDigit()
+            .foregroundStyle(skin.ink4)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("sector.list.breadth")
+        }
       }
       Spacer(minLength: Space.s)
       Text(sectorPctText(stat.pct))

@@ -64,6 +64,11 @@ struct PanelSheet<Content: View>: View {
           if let subtitle {
             Text(subtitle).font(PanelFont.sub).foregroundStyle(t.ink3)
           }
+          #if DEBUG
+          // UI 用例的探针：面板标题后挂一个问号，验证术语卡从 sheet / 横屏侧栏里点开时
+          // 仍落在最上层（`GlossaryPresenter` 从最顶上那层 presented VC 往上叠）。正式包没有这一段。
+          if PanelSheetProbe.glossary { TermMark(PanelSheetProbe.term, theme: t) }
+          #endif
         }
         Spacer(minLength: 0)
         if let action {
@@ -97,6 +102,15 @@ struct PanelSheet<Content: View>: View {
     .accessibilityLabel(title)
   }
 }
+
+#if DEBUG
+/// `KANPAN_TEST_GLOSSARY_PROBE=1`：面板标题后挂一个术语问号（只给 UI 用例用）。
+enum PanelSheetProbe {
+  static let glossary = ProcessInfo.processInfo.environment["KANPAN_TEST_GLOSSARY_PROBE"] == "1"
+  /// 自己一个 id（`term.probe`），不和顶栏那几个撞名。
+  static let term = GlossaryTerm(id: "probe", title: "探针", body: "只在 UI 用例里出现：验证术语卡从面板里点开时落在最上层。")
+}
+#endif
 
 /// `PanelSheet` 标题行右端的字按钮。
 struct PanelSheetAction {

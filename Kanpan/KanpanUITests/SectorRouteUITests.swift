@@ -61,27 +61,14 @@ final class SectorRouteUITests: KanpanUICase {
     XCTAssertEqual(numbers.count, 2, "规模那行不是「N 个板块 · M 个品种」：\(scale.label)")
     XCTAssertTrue(numbers.allSatisfy { $0 > 0 }, "规模那行有个 0：\(scale.label)")
 
-    // 行是 `children: .contain`，副文案是行里的一块 `staticText`，直接按内容找。
-    let subtitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "个品种"))
+    // 副文案 2026-09-28 起只有「a/n 跑赢大盘」一句（不再写品种数与成交额）。
+    let subtitles = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sector.board.breadth."))
       .allElementsBoundByIndex.prefix(12).map { $0.label }
-      .filter { $0 != scale.label }
     XCTAssertFalse(subtitles.isEmpty, "板块列表里一句副文案都没读到")
-    // 提到成交额的，必须是真数。
-    XCTAssertFalse(subtitles.contains { $0.contains("成交额 —") || $0.contains("成交额 0.00") },
-                   "板块副文案里出现了假的成交额：\(subtitles)")
-    if !subtitles.contains(where: { $0.contains("成交额") }) {
-      // 这条线路（OKX）根本没有以 USDT 结算的成交额。那就一个字都别提。
-      let note = XCTAttachment(string: """
-        行情源 = okx（币安 REST 被 KANPAN_TEST_BINANCE_REST_DOWN 按死）。
-        OKX V5 的 /market/tickers 不发以计价币结算的成交额（volCcy24h 是按币算的量），
-        网关照实把 quoteVolume 留空，所以板块副文案里那一段整个不写。
-        规模：\(scale.label)
-        板块列表抽样：\(subtitles)
-        """)
-      note.name = "网关线路没有成交额的原因"
-      note.lifetime = .keepAlways
-      add(note)
-    }
+    XCTAssertTrue(subtitles.allSatisfy { $0.range(of: #"^\d+/\d+ 跑赢大盘$"#, options: .regularExpression) != nil },
+                  "板块副文案不是「a/n 跑赢大盘」：\(subtitles)")
+    XCTAssertFalse(subtitles.contains { $0.contains("成交额") || $0.contains("个品种") },
+                   "板块副文案里还写着品种数或成交额：\(subtitles)")
 
     let sheet = XCTAttachment(screenshot: app.screenshot())
     sheet.name = "网关-板块列表"

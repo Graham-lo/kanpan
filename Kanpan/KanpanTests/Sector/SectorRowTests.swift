@@ -86,18 +86,10 @@ struct SectorRowTests {
     #expect(row.volumeText == sectorVolumeText(.nan))
   }
 
-  @Test("副文案里缺成交额就整段不写，不排一列「成交额 —」")
-  func missingVolumeDropsTheWholeClause() {
-    // 板块副文案（板块列表每一行、下钻页的标题行）走的是另一个出口：
-    // 有数才带这一段，没有就少一段。网关那条线路上全市场都没有 USDT 成交额，
-    // 整列印「· 成交额 —」既不是空位也不传达任何事。
-    #expect(sectorVolumeClause(1_234_000) == " · 成交额 1.23M")
-    #expect(sectorVolumeClause(1_234_000).hasSuffix(sectorVolumeText(1_234_000)))
-    #expect(sectorVolumeClause(.nan) == "")
-    #expect(sectorVolumeClause(.infinity) == "")
-    #expect(!sectorVolumeClause(.nan).contains("成交额"))
-    // 两个出口不许换着用：值格永远有字，副文案段缺数时永远是空串。
+  @Test("成交额值格缺数时写「—」，永远有字")
+  func missingVolumeCellStillHasText() {
     #expect(!sectorVolumeText(.nan).isEmpty)
+    #expect(sectorVolumeText(1_234_000) == "1.23M")
   }
 
   @Test("涨跌幅缺数的行也沉到最后并按代号定序")
@@ -144,19 +136,17 @@ struct SectorRowTests {
     #expect(SectorBoardOrder.sorted(got.reversed()).map(\.id) == got.map(\.id))
   }
 
-  @Test("每行副文案：N 个品种 · x/N 跑赢大盘 · 成交额")
+  @Test("副文案只有一句：x/N 跑赢大盘（2026-09-28 起不写品种数与成交额）")
   func boardSubtitleSpellsOutTheBenchmark() {
-    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 5, breadth: 0.6))
-            == "5 个品种 · 3/5 跑赢大盘 · 成交额 1.20B")
-    // 拿不到成交额：那一段整个不写。
-    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 5, breadth: 0.6, volume: .nan))
-            == "5 个品种 · 3/5 跑赢大盘")
-    // 成员不够三家：「跑赢大盘」那段不写（两只币的涨跌不是板块强弱）。
-    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 2, breadth: 0.5))
-            == "2 个品种 · 成交额 1.20B")
-    // 下钻页 5 日那档换尾巴，前两段同一个出口。
-    #expect(SectorSubtitle.text(board("l1", pct: 1), tail: " · 20 日 +3.00%")
-            == "5 个品种 · 3/5 跑赢大盘 · 20 日 +3.00%")
+    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 5, breadth: 0.6)) == "3/5 跑赢大盘")
+    // 成交额有没有都一样：这一句里没有它。
+    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 5, breadth: 0.6, volume: .nan)) == "3/5 跑赢大盘")
+    // 成员不够三家：没有广度可言，给空串（调用处整行不画）。
+    #expect(SectorSubtitle.row(board("l1", pct: 1, members: 2, breadth: 0.5)) == "")
+    // 下钻页头部和列表行同一个出口、同一句。
+    #expect(SectorSubtitle.text(board("l1", pct: 1)) == SectorSubtitle.row(board("l1", pct: 1)))
+    #expect(!SectorSubtitle.row(board("l1", pct: 1)).contains("个品种"))
+    #expect(!SectorSubtitle.row(board("l1", pct: 1)).contains("成交额"))
   }
 
   @Test("页头规模：N 个板块 · M 个品种")

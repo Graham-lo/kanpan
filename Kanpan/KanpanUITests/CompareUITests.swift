@@ -156,7 +156,7 @@ import UIKit
     XCUIDevice.shared.orientation = .portrait
     ready(3, interval: "1d")
     shot("对比-竖屏恢复")
-    chartPanel(); app.buttons["chart.record"].tap()
+    app.buttons[Ids.topNote].tap()  // 顶栏「记一笔」（2026-09-28 方案 B）
     let dismiss = app.buttons["收起"]
     XCTAssertTrue(dismiss.waitForExistence(timeout: 10))
     XCTAssertEqual(info()["percentAxis"] as? Bool, false)

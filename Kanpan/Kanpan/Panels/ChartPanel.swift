@@ -56,73 +56,26 @@ import KanpanCore
 /// （网格按皮肤：经典照 AICoin 不画，青苔 / 陶土画自己皮肤色的淡网格；翻转手势直接生效）。
 /// 这一页只剩真正属于个人习惯的：K 线画法、盘口、价格轴刻度。恢复某一项见
 /// `.project-memory/PROJECT.md`「收设置项」一节与 tag settings-before-trim-2026-09-28。
+///
+/// 2026-09-28（顶栏方案 B）：「这张图」整节撤掉。「记一笔」「分享」是动作不是设置，藏在图表设置
+/// 第一组里要先点齿轮才看得见；现在是行情页顶栏右侧的两颗圆片（`top.note` / `top.share`），
+/// 分享两种都能用时弹的二选一改由 `Panel.share` 单独一张面板承载（仍是 `ShareChooser`）。
+/// 上面几段里讲「这张图」排在最前的都已成为历史。这一页只剩 **K 线 · 显示 · 价格轴**。
 struct ChartPanel: View {
   var store: PrefsStore
-  /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
-  var onRecord: (() -> Void)?
-  /// 分享成图片：把当前这张图离屏画成一张 PNG 交给系统分享面板
-  /// （见 `ChartSnapshotRenderer`）。同样地，没有图可分享时调用方传 nil。
-  var onShare: (() -> Void)?
-  /// 分享画线：发给账号里的朋友。复盘回放和预览别人的线时传 nil。
-  var onSend: (() -> Void)?
-  /// 发线此刻为什么发不了（没登录 / 图上没线）；nil 表示能发。
-  var sendBlocked: String? = nil
 
   @Environment(\.panelTheme) private var t
   @Environment(\.habits) private var habits
-  @Environment(\.dismiss) private var dismiss
-  /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
-  @Environment(\.panelDismiss) private var sideDismiss
-  /// 面板里推进去的是哪一层。
-  @State private var page: Page = .main
 
   private var prefs: Prefs { store.prefs }
 
-  /// 关自己的唯一出口。设置那些行不连着关（一次调好几项），但顶上那个**动作**
-  /// 必须先把面板收掉——记一笔要看见图。竖屏是 sheet、横屏是侧栏，
-  /// 面板本身不该知道是哪种，所以一律走这里。
-  private var close: PanelCloser { PanelCloser(side: sideDismiss, sheet: dismiss) }
-
   var body: some View {
-    ZStack {
-      switch page {
-      case .share:
-        if let onShare, let onSend {
-          ShareChooser(onImage: { close(); onShare() },
-                       onLines: { close(); onSend() },
-                       linesBlocked: sendBlocked,
-                       onBack: { page = .main })
-            .transition(.move(edge: .trailing))
-        }
-      case .main:
-        settings
-          .transition(.move(edge: .leading))
-      }
-    }
-    .animation(.easeOut(duration: 0.22), value: page)
-    .clipped()
     // 触觉不再挂 `.sensoryFeedback(trigger: prefs)`：外层一句、里层各一句，改一项震两下；
     // 而且云端落地、图上翻转这些不是手指拨的改动也会震。现在震动长在控件动作上
     // （`PrefsStore.updateByHand`），只有真拨到了才震一下。
-  }
-
-  private var settings: some View {
     PanelSheet(title: "图表设置", subtitle: nil) {
-      if onRecord != nil || onShare != nil || onSend != nil {
-        PanelGroupTitle(text: "这张图")
-        if let onRecord {
-          PanelRow(name: "记一笔", divider: onShare != nil || onSend != nil, onTap: { close(); onRecord() })
-            .accessibilityIdentifier("chart.record")
-        }
-        if onShare != nil || onSend != nil {
-          PanelRow(name: "分享", divider: false, onTap: share) { chevron }
-            .accessibilityIdentifier("chart.share")
-        }
-      }
-
-      // 2026-09-27 起这一页只剩四组：这张图 · K 线 · 显示 · 价格轴。「对比」整节和「指标」那一行
-      // 搬进了指标页（周期条行尾「指标」直达，09-28 起叫「分析」，见 `IndicatorPage`）——对比、主力订单流和指标一样
-      // 是「往图上叠一层东西」，开关它们的人要的是同一个入口，不是先进图表设置再推一层。
+      // 2026-09-28 起这一页只剩三组：K 线 · 显示 · 价格轴。「这张图」（记一笔 / 分享）搬到了
+      // 行情页顶栏右侧的两颗圆片（`TopBar` 方案 B），「对比」「指标」在分析页（`IndicatorPage`）。
       PanelGroupTitle(text: "K 线")
       PanelRow(name: "画法", divider: false) {
         PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
@@ -147,19 +100,6 @@ struct ChartPanel: View {
     }
   }
 
-  private var chevron: some View {
-    VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
-  }
-
-  /// 只有一种分享能用时直接走那一种，两种都在才弹二选一。
-  private func share() {
-    switch (onShare, onSend) {
-    case (let image?, nil): close(); image()
-    case (nil, let send?): close(); send()
-    default: page = .share
-    }
-  }
-
   // MARK: - 行
 
   /// `id` 给用例一个把手：没有把手就只能靠点坐标去猜哪一行是哪一行。
@@ -171,8 +111,6 @@ struct ChartPanel: View {
         .accessibilityIdentifier(id ?? "")
     }
   }
-
-  enum Page: Hashable { case main, share }
 
   // MARK: - 分段选项
 

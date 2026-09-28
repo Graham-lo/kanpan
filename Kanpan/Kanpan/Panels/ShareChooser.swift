@@ -11,12 +11,16 @@ import SwiftUI
 /// 面板本身是 sheet，背后已经有系统那一层遮罩，叠起来就是两层变暗。现在和「指标」
 /// 「更多设置」同一种推法：面板里推进去一层，「‹」回到图表设置，不关面板，只有一层遮罩。
 /// 竖屏 sheet 和横屏侧栏里都是同一个样子。
+///
+/// 2026-09-28（顶栏方案 B）：它不再是图表设置里推进去的一层，而是顶栏「分享」开的
+/// 一张独立面板（`Panel.share` / `SharePanel`），`onBack` 传 nil，左上角就是关面板。
 struct ShareChooser: View {
   var onImage: () -> Void
   var onLines: () -> Void
   /// 画线那格为什么发不了；nil 就是能发。
   var linesBlocked: String?
-  var onBack: () -> Void
+  /// nil 时左上角是关面板（独立面板出场时就是这样）。
+  var onBack: (() -> Void)? = nil
 
   @Environment(\.panelTheme) private var t
 

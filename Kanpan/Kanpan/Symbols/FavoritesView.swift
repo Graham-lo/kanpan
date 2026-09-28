@@ -640,6 +640,8 @@ struct FavoritesView: View {
     // 它就闪出来，那一两秒里点那一格会没反应。这一页本来也没打算露系统滚动条。
     .scrollIndicators(.hidden)
     .scrollContentBackground(.hidden)
+    // 底栏身后铺着一道渐变（`TabBar.fade`），最后一行要停在它上沿以上。
+    .contentMargins(.bottom, TabBar.fadeClearance, for: .scrollContent)
     .environment(\.defaultMinListRowHeight, 0)
     // List 占满剩下的整屏：长按把一行拖到最后一行下面，落点还在列表里。
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -926,6 +928,11 @@ struct FavoritesView: View {
 /// 皮肤原色在浅底上糊成一片，冷光才托得住玻璃。
 /// 经典（白）又是例外中的例外：它的底就是那张 AICoin 白，直接用种子的 `ground`，
 /// 光斑仍借青苔那三团。
+extension FavoritesView {
+  /// 这一页的底色（`AuroraBackdrop` 的底）。底栏身后那道渐变收在它上面（`TabBar.fade`）。
+  static func pageGround(_ theme: PanelTheme) -> Color { LiuliSkin(theme: theme).ground }
+}
+
 private struct LiuliSkin {
   let theme: PanelTheme
   var seed: PaletteSeed { theme.seed }

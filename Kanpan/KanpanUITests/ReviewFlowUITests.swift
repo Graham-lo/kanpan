@@ -67,11 +67,9 @@ final class ReviewFlowUITests: KanpanUICase {
   /// 那条早退分支）。卡片收回去就算记成了：`saveRecord()` 失败时卡片会留在屏幕上。
   @discardableResult
   private func recordOnce(file: StaticString = #filePath, line: UInt = #line) -> Bool {
-    let entry = app.buttons[Ids.intervalChart]
-    guard expectExists(entry, Self.short, "周期行右端没有图表设置那颗", file: file, line: line) else { return false }
-    entry.tap()
-    let record = app.buttons["chart.record"]
-    guard expectExists(record, Self.short, "「图表」面板里没有「记一笔」", file: file, line: line) else { return false }
+    // 2026-09-28 顶栏方案 B：「记一笔」是顶栏右侧那颗书本圆片。
+    let record = app.buttons[Ids.topNote]
+    guard expectExists(record, Self.short, "顶栏没有「记一笔」那颗", file: file, line: line) else { return false }
     record.tap()
     let save = app.buttons["记下"]
     guard expectExists(save, Self.short, "点「记一笔」没开出取景卡", file: file, line: line) else { return false }

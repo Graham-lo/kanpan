@@ -24,6 +24,9 @@ enum Ids {
   /// 人是「走进」这张图的，这颗把他原路送回去（并且原来那一页下钻到哪层还在哪层）。
   /// 从底栏直接点「图表」是回家，不是走进来，那时它不该在——冷启动更不该有。
   static let topBack = "top.back"
+  /// 顶栏右侧「记一笔」「分享」两颗圆片（2026-09-28 方案 B，原来在「图表设置 › 这张图」里）。
+  static let topNote = "top.note"
+  static let topShare = "top.share"
   /// 底栏「自选」那一格。标签栏常驻，任何一页上都点得到。
   static let favoritesTab = "bottom.favorites"
   // 周期条
@@ -58,7 +61,7 @@ enum Ids {
   static let bottomMe = "bottom.me"
   /// 「我的」记号右上的复盘待判定数。
   static let bottomMeBadge = "bottom.me.badge"
-  /// 周期行右端的图表设置：这张图（记一笔、分享）· K 线 · 显示 · 价格轴。
+  /// 周期行右端的图表设置：K 线 · 显示 · 价格轴（「这张图」2026-09-28 搬到顶栏 `topNote` / `topShare`）。
   /// 「更多设置」那一层 2026-09-28 整层收掉（收设置项 B 组）。
   /// 面板名和标签名要分清——标签栏那一格叫「图表」，是整页。指标、对比、主力订单流
   /// 2026-09-27 起都不在这张面板里，走周期条的「分析」（`intervalIndicators`）。
