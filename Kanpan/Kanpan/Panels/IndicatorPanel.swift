@@ -130,7 +130,7 @@ struct IndicatorPage: View {
           Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
             Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
           }
-          .buttonStyle(.plain)
+          .buttonStyle(PanelPlainButtonStyle())
           .accessibilityIdentifier("compare.remove." + key)
         }
       }
@@ -235,7 +235,7 @@ private struct InUseList: View {
         .frame(height: Self.rowH)
         .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(PanelPlainButtonStyle())
       .accessibilityLabel(params.isEmpty ? id.name : "\(id.name)，\(params)")
       .accessibilityIdentifier("indicator.edit.\(id.rawValue)")
 
@@ -246,7 +246,7 @@ private struct InUseList: View {
             .frame(height: Self.rowH)
             .hitTarget()
         }
-          .buttonStyle(.plain)
+          .buttonStyle(PanelPlainButtonStyle())
           .padding(.leading, Space.s)
           .accessibilityIdentifier("indicator.height.reset.\(id.rawValue)")
       }

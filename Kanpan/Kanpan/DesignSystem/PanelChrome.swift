@@ -37,6 +37,8 @@ struct PanelSheet<Content: View>: View {
   @Environment(\.panelDismiss) private var sideDismiss
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelHPad) private var hPad
+  /// 正文的滚动闸：滚着的时候正文里的按钮不认点按（见 `PanelScrollGate`）。
+  @State private var gate = PanelScrollGate()
 
   var body: some View {
     VStack(spacing: 0) {
@@ -85,8 +87,10 @@ struct PanelSheet<Content: View>: View {
         VStack(spacing: 0) { content() }
           .padding(.top, Space.xs)
           .padding(.bottom, Space.l)
+          .environment(\.panelScrollGate, gate)
       }
       .scrollBounceBehavior(.basedOnSize)
+      .onScrollPhaseChange { _, phase in gate.note(phase) }
       .accessibilityIdentifier("panel.content")
     }
     .background(asPage ? t.app : t.raised)
@@ -149,7 +153,7 @@ struct PanelRow<Trailing: View>: View {
 
     if let onTap {
       Button(action: onTap) { row }
-        .buttonStyle(.plain)
+        .buttonStyle(PanelPlainButtonStyle())
         .modifier(LongPress(action: onLongPress))
     } else {
       row.modifier(LongPress(action: onLongPress))
@@ -253,7 +257,7 @@ struct PanelSegment<Value: Hashable>: View {
             .frame(minHeight: Hit.min)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PanelPlainButtonStyle())
         .accessibilityIdentifier(id.map { "\($0).\(text)" } ?? "")
         .accessibilityAddTraits(on ? [.isSelected] : [])
       }
@@ -313,7 +317,7 @@ struct PanelSwitch: View {
       .animation(.easeOut(duration: 0.18), value: isOn)
       .rowHitTarget()
     }
-    .buttonStyle(.plain)
+    .buttonStyle(PanelPlainButtonStyle())
     .accessibilityAddTraits(.isButton)
     .accessibilityValue(isOn ? "开" : "关")
   }
@@ -360,3 +364,78 @@ struct PanelFormSectionTitle: View {
 // 面板从前自己养一条 `PanelToast`（主界面那条被半屏面板盖住了）。P2.7 起全 app 只有一条
 // 提示 `ToastCenter`，画在所有面板之上；面板里 `store.note(...)` 说的话由宿主
 // （`MainScreen` 的 `onStoreNotice`）转过去，这里不再画任何东西。
+
+// MARK: - 滚动闸
+
+/// 面板正文的滚动闸（压测 2026-09-28）。
+///
+/// 手指在「平滑异同」这类整行按钮上停一下（0.1–0.3 秒）再往上拖：正文跟着手指滚，手指抬起时
+/// 仍压在同一行上，SwiftUI 的 `Button` 没被滚动取消，参数页就弹出来了——16 Pro 模拟器上
+/// 分析面板半屏这样拖，停 0.1 秒的 4 次开 1 次、停 0.3 秒的 3 次开 3 次；落在开关行上就是
+/// 悄悄把一个指标开了或关了。只在正文上 `allowsHitTesting(false)` 挡不住已经按下去的那一下
+/// （实测停 0.3 秒的照样 3 / 3），所以闸落在「按钮真要动作」那一刻。
+///
+/// 规矩照系统列表：按下之后正文滚过（哪怕抬手时已经停了）就不算点；滚着的时候点一下只是停住。
+/// 不按「停稳后多久」判——那样滚停之后马上点的那一下会被吞（第一版用 0.25 秒宽限，
+/// 对比 K 线用例里先把「添加对比品种」滚进来再点就点不开）。只记计数，不触发重画。
+@MainActor final class PanelScrollGate {
+  private(set) var active = false
+  /// 每起一次滚动加一；按钮按下时记下它，动作时对不上就是按下之后滚过。
+  private(set) var session = 0
+
+  func note(_ phase: ScrollPhase) {
+    if phase == .idle {
+      active = false
+    } else {
+      if !active { session &+= 1 }
+      active = true
+    }
+  }
+
+  func allowsTap(pressedAt mark: Int?) -> Bool {
+    guard !active else { return false }
+    guard let mark else { return true }
+    return mark == session
+  }
+}
+
+extension EnvironmentValues {
+  /// 当前所在面板正文的滚动闸；不在面板正文里时为 nil（一律放行）。
+  @Entry var panelScrollGate: PanelScrollGate? = nil
+}
+
+/// 面板正文里的按钮一律用它代替 `.plain`：样子照 `.plain`（按下时淡一点），只是按下之后
+/// 正文滚过的那一下不动作。
+struct PanelPlainButtonStyle: PrimitiveButtonStyle {
+  func makeBody(configuration: Configuration) -> some View { GatedButton(configuration: configuration) }
+
+  /// 按下那一刻闸上的滚动计数；引用盒子，改它不重画。
+  @MainActor private final class PressMark { var session: Int? }
+
+  private struct GatedButton: View {
+    let configuration: Configuration
+    @Environment(\.panelScrollGate) private var gate
+    @State private var mark = PressMark()
+
+    var body: some View {
+      Button {
+        let ok = gate?.allowsTap(pressedAt: mark.session) ?? true
+        mark.session = nil
+        if ok { configuration.trigger() }
+      } label: {
+        configuration.label
+      }
+      .buttonStyle(PressTracking { mark.session = gate?.session })
+    }
+  }
+
+  /// 只为拿到「按下」那一刻；外观照 `.plain`。
+  private struct PressTracking: ButtonStyle {
+    let onPress: () -> Void
+    func makeBody(configuration: Configuration) -> some View {
+      configuration.label
+        .opacity(configuration.isPressed ? 0.75 : 1)
+        .onChange(of: configuration.isPressed) { _, pressed in if pressed { onPress() } }
+    }
+  }
+}
