@@ -23,9 +23,13 @@ pub const SCAN_RADIUS_BPS:f64=1_000.0;
 pub const EXIT_RADIUS_BPS:f64=1_500.0;
 /// 一本簿连续这么久没就绪，它还挂着的单按最后一次看到的时刻结束。
 pub const STALE_MS:i64=120_000;
-/// 一条挂着的单连续这么久落在「本地不知道」的价位上（快照没盖到、增量也没推过），就按最后一次
-/// 真看到它的时刻失联结束。看不见不等于没了，所以先等；但不能无限等——它要是在我们没连上的
-/// 时候就撤了，交易所不会再为这个价位推增量，原来这条单会一直挂成「进行中」。
+/// 簿连着但没就绪（在排 REST 快照 / 重同步）时，一条挂着的单连续这么久看不见，就按最后一次真看到它的
+/// 时刻失联结束：整本簿都暂时不知道，先等；但快照一直拿不到（REST 被封）时不能无限等。
+///
+/// 簿就绪、只是这一档在快照覆盖区间以外（币安合约 1000 档、现货 5000 档、OKX 400 档之外，增量也没推过）的
+/// 不受这个上限（2026-09-28 起）：原来等满 600 s 就判失联，重启后远处的长寿命墙每次多失联 130–290 条、
+/// 中位寿命 2–17 小时，而且认不回来（本地簿里没有那一档，要等它被动过才会重新出现）。现在那种单一直挂着，
+/// 直到增量推到它再照常判，或者价格走出 `EXIT_RADIUS_BPS` 失联。
 pub const UNKNOWN_MS:i64=600_000;
 const CONFIRM_SAMPLES:u32=2;
 const CONFIRM_MS:i64=300;
@@ -363,13 +367,12 @@ impl Model {
     let here=if beyond(key.0,far_edge,SCAN_RADIUS_BPS) {book.bucket(key.0,key.1,step)} else {map.get(key).copied()};
     match here {
      Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.peak=l.peak.max(v.notional);l.seen=now;l.sighted=now;l.unknown_since=None;l.ending=None;},
-     // 这一档在快照覆盖范围以外、增量也没推过（币安 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
-     // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判；
-     // 等满 `UNKNOWN_MS` 还没推到，按最后一次真看到的时刻失联结束。
-     _ if !book.knows(key.0,l.order.price)=>{
-      let since=*l.unknown_since.get_or_insert(now);
-      if now-since>=UNKNOWN_MS {lost.push(*key)} else {l.seen=now}
-     },
+     // 这一档在快照覆盖区间以外、增量也没推过（币安合约 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
+     // 2%–10% 外读回来的单全在这里；OKX 只到 400 档）：看不见不等于没了——不判撤单、不判失联、不记消失的
+     // 名义、不开始确认，也不受 `UNKNOWN_MS` 的上限，等增量推到它（或覆盖区间外扩到它）再照常判，
+     // 价格走出退出半径才失联（上面那条）。`seen` 照走，下次重启读回时不会因为「两分钟没见」判失联。
+     // 覆盖区间以外也起不了新单：本地表里只有推过的档，没推过的档根本不在 `map` 里。
+     _ if !book.knows(key.0,l.order.price)=>{l.seen=now;l.unknown_since=None;l.ending=None;},
      other=>{
       l.unknown_since=None;
       let mut p=l.ending.unwrap_or(Pending{first:now,samples:0,remaining:0.0});
@@ -848,19 +851,36 @@ mod tests {
   assert_eq!((o.status,o.end_ms),(Status::Cancelled,Some(601_000)));
   assert!((o.vanished_notional.unwrap()-1.5*T).abs()<1.0);
   assert!(r.live().is_empty());
-  // 一直没有增量推到它：不能永远挂着。等满 UNKNOWN_MS 按读回来时的最后一次看到失联结束。
+  // 一直没有增量推到它（2026-09-28 起）：不受 UNKNOWN_MS 的上限，20 分钟后仍挂着、seen 照走；
+  // 别处远档推过的增量也不让它变成「知道」（币安是全簿增量，覆盖区间不外扩）。价格走出 15% 才失联。
   let mut r=Rig::new();
   let order=BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:595,
    price:59_500.0,first_seen_ms:0,end_ms:None,status:Status::Live,initial_notional:1.2*T,notional:1.2*T,filled_notional:0.0,threshold:T,vanished_notional:None};
   r.m.restore(vec![Restored{order,step:100.0,seen_ms:599_900}],600_000);
   r.truncated("a",&[(60_000.0,1.0),(59_990.0,1.0)],&[ASK],600_000);
   r.m.evaluate(600_000);
-  r.m.evaluate(600_000+UNKNOWN_MS-1);
-  assert!(r.m.ended.is_empty(),"还在等");
-  r.m.evaluate(600_000+UNKNOWN_MS);
-  let o=&r.m.ended[0];
-  assert_eq!((o.status,o.end_ms),(Status::Lost,Some(599_900)),"按真看到的最后一刻结束，不按等待期间刷新的那个");
-  assert!(r.live().is_empty());
+  r.delta("a",&[(59_000.0,3.0)],&[],600_500);
+  for t in (600_000+UNKNOWN_MS..=600_000+2*UNKNOWN_MS).step_by(60_000) {r.m.evaluate(t);}
+  assert!(r.m.ended.is_empty(),"20 分钟后仍挂着：不判撤单、不判失联");
+  assert_eq!(r.m.live(),vec![(r.live()[0].clone(),600_000+2*UNKNOWN_MS)],"seen 照走");
+  assert!((r.live()[0].notional-1.2*T).abs()<1.0&&r.live()[0].vanished_notional.is_none());
+  // 簿断线、重连在等快照：那段仍按 UNKNOWN_MS 等（整本不知道），拿到快照、它又落在覆盖以外就接着挂。
+  r.m.closed("a",1);
+  r.m.book_mut("a").unwrap().opened(2);
+  r.m.evaluate(2_000_000);
+  r.m.evaluate(2_000_000+UNKNOWN_MS-1);
+  assert!(r.m.ended.is_empty());
+  // 价格跌到 69 000 以下：59 500 离中间价超过 15%，按最后一次真看到的时刻失联（不是等待期间刷新的 seen）。
+  let mut r2=Rig::new();
+  let order=BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:595,
+   price:59_500.0,first_seen_ms:0,end_ms:None,status:Status::Live,initial_notional:1.2*T,notional:1.2*T,filled_notional:0.0,threshold:T,vanished_notional:None};
+  r2.m.restore(vec![Restored{order,step:100.0,seen_ms:599_900}],600_000);
+  r2.truncated("a",&[(60_000.0,1.0),(59_990.0,1.0)],&[ASK],600_000);
+  r2.m.evaluate(600_000);
+  r2.truncated("a",&[(70_990.0,1.0),(70_980.0,1.0)],&[(71_010.0,1.0)],700_000);
+  r2.m.evaluate(700_000);
+  let o=&r2.m.ended[0];
+  assert_eq!((o.status,o.end_ms,o.vanished_notional),(Status::Lost,Some(599_900),None),"按真看到的最后一刻结束");
   // 覆盖范围以内的不受影响：快照里没有就是没有。
   let mut r=Rig::new();
   let order=BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket:599,
@@ -869,6 +889,70 @@ mod tests {
   r.truncated("a",&[(60_000.0,1.0),(59_990.0,1.0)],&[ASK],600_000);
   r.m.evaluate(600_000);r.m.evaluate(600_300);
   assert_eq!(r.m.ended[0].status,Status::Cancelled);
+ }
+
+ /// OKX `books` 只到前 400 档（原来按全簿处理，`requested = usize::MAX`）：一面墙被挤到第 401 档以外，
+ /// 重订拿到的快照里没有它，原来两拍后判「已撤销、剩 0」。现在它在覆盖区间以外，不判撤单、不判失联，
+ /// 20 分钟后仍挂着；等新进窗口的档带着量推来、覆盖区间外扩盖过它，再照常判。
+ #[test] fn an_okx_wall_past_the_four_hundredth_level_is_not_cancelled() {
+  let v=VenueInfo{id:"okx:spot:BTC-USDT".into(),exchange:"okx",label:"OKX",product:"spot",instrument:"BTC-USDT".into(),
+   notional:Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true};
+  let mut r=Rig::with(v);
+  let ladder=|n:usize|->Vec<(f64,f64)> {(0..n).map(|i|(60_000.0-i as f64,0.01)).collect()};
+  let okx=|r:&mut Rig,bids:Vec<(f64,f64)>,now:i64| {
+   r.seq+=1;
+   let s=Snapshot{last:r.seq,requested:400,bids,asks:vec![ASK]};
+   r.m.ingest("okx:spot:BTC-USDT",1,Message::Snapshot(s),now);
+  };
+  let delta=|r:&mut Rig,bids:&[(f64,f64)],now:i64| {
+   r.seq+=1;
+   let d=super::super::book::Delta{first:r.seq,last:r.seq,prev:Some(r.seq-1),bids:bids.to_vec(),asks:vec![]};
+   r.m.ingest("okx:spot:BTC-USDT",1,Message::Delta(d),now);
+  };
+  // 399 档零碎 + 59 500 那面 1.2M 的墙正好是第 400 档。
+  let mut first=ladder(399);first.push((59_500.0,1.2*T/59_500.0));
+  okx(&mut r,first,0);
+  r.m.evaluate(0);r.m.evaluate(300);
+  assert_eq!(r.live().len(),1);
+  // 盘口多了档，重订拿到的 400 档到 59 601 为止：墙在第 401 档以外。
+  okx(&mut r,ladder(400),1_000);
+  for t in (1_000..=1_000+2*UNKNOWN_MS).step_by(30_000) {r.m.evaluate(t);}
+  assert!(r.m.ended.is_empty(),"不判撤单、不判失联");
+  assert_eq!(r.live().len(),1);
+  assert_eq!(r.m.live()[0].1,1_000+2*UNKNOWN_MS,"seen 照走");
+  // 远处推成 0 的档不外扩（分不清撤了还是被挤出窗口）。
+  delta(&mut r,&[(59_450.0,0.0)],1_300_000);
+  r.m.evaluate(1_300_000);r.m.evaluate(1_300_300);
+  assert!(r.m.ended.is_empty());
+  // 新进窗口的 59 450 带量推来：覆盖区间外扩过了 59 500，那一档没被推过就是真没了——照常判撤单。
+  delta(&mut r,&[(59_450.0,0.02)],1_400_000);
+  r.m.evaluate(1_400_000);r.m.evaluate(1_400_300);
+  let o=&r.m.ended[0];
+  assert_eq!((o.status,o.end_ms),(Status::Cancelled,Some(1_400_000)));
+  assert!((o.vanished_notional.unwrap()-1.2*T).abs()<1.0);
+ }
+
+ /// 覆盖区间外扩之后，那一档的墙照常跟：还在就更新，被吃掉按成交结束。
+ #[test] fn a_wall_inside_the_extended_okx_coverage_is_judged_as_usual() {
+  let v=VenueInfo{id:"o".into(),exchange:"okx",label:"OKX",product:"spot",instrument:"BTC-USDT".into(),
+   notional:Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true};
+  let mut r=Rig::with(v);
+  let delta=|r:&mut Rig,bids:&[(f64,f64)],now:i64| {
+   r.seq+=1;
+   let d=super::super::book::Delta{first:r.seq,last:r.seq,prev:Some(r.seq-1),bids:bids.to_vec(),asks:vec![]};
+   r.m.ingest("o",1,Message::Delta(d),now);
+  };
+  r.seq+=1;
+  let s=Snapshot{last:r.seq,requested:2,bids:vec![(60_000.0,1.0),(59_990.0,1.0)],asks:vec![ASK,(60_020.0,1.0)]};
+  r.m.ingest("o",1,Message::Snapshot(s),0);
+  // 窗口伸到 59 500：那面墙带量推来，起新单。
+  delta(&mut r,&[(59_500.0,1.2*T/59_500.0)],100);
+  r.m.evaluate(100);r.m.evaluate(400);
+  assert_eq!(r.live().len(),1);
+  r.trade("o",59_500.0,1.2*T/59_500.0,Side::Bid,500);
+  delta(&mut r,&[(59_500.0,0.0)],600);
+  r.m.evaluate(600);r.m.evaluate(900);
+  assert_eq!(r.m.ended[0].status,Status::Filled);
  }
 
  #[test] fn an_order_the_price_ran_away_from_is_lost_not_cancelled() {

@@ -53,15 +53,32 @@ pub struct Gap;
 
 /// 一侧的价位。正的有限浮点数按位比较与按值比较同序，所以用位做键、拿有序表取最优价。
 ///
-/// 快照被截断时（币安 REST 只给 1000 档，BTC 现货合起来才盘口两侧 0.3%），比快照最远一档还远的价位
-/// 本地并不知道有没有：`extent` 记快照最远那一档，`touched` 记此后增量推过的价位（含推成 0 的）。
-/// 覆盖范围以内「表里没有」就是没有；以外的只有推过的才算知道。快照完整（返回的档数不到要的数、
-/// 或者流里整本推来）时 `extent` 是 None，整侧都算知道。
+/// 快照被截断时（币安 REST 合约给 1000 档、现货 5000 档，OKX `books` 频道 400 档），比快照最远一档还远的
+/// 价位本地并不知道有没有：`extent` 记快照最远那一档（覆盖区间的远端）。覆盖范围以内「表里没有」就是没有；
+/// 以外的看这本簿的增量是哪一种（`window`）：
+///
+/// * 全簿增量（币安）：交易所为整本簿推变动，但快照以外、此后没动过的档本地永远拿不到——一个远处的价位被推过，
+///   只说明那一个价位知道了，它和覆盖区间之间的档仍然不知道。所以覆盖区间不外扩，推过的价位逐个记在
+///   `touched` 里（含推成 0 的）。
+/// * 窗口增量（OKX 400 档）：交易所只维护前 400 档那个窗口，价格走动时新进窗口的档会带着量推过来。推来一个
+///   比覆盖区间还远、量不为 0 的档，说明窗口已经伸到那里，其间的档要有早就推过了——覆盖区间外扩到那一档。
+///   推成 0 的远档不外扩（分不清是撤了还是被挤出窗口）。
+///
+/// 快照完整（返回的档数不到要的数，Coinbase 整本推来）时 `extent` 是 None，整侧都算知道。
 #[derive(Clone,Debug,Default)]
-struct Levels {map:BTreeMap<u64,f64>,extent:Option<f64>,touched:BTreeSet<u64>}
+struct Levels {map:BTreeMap<u64,f64>,extent:Option<f64>,touched:BTreeSet<u64>,window:bool}
 impl Levels {
  fn set(&mut self,price:f64,quantity:f64) {if quantity==0.0 {self.map.remove(&price.to_bits());} else {self.map.insert(price.to_bits(),quantity);}}
- fn touch(&mut self,price:f64) {if self.extent.is_some() {self.touched.insert(price.to_bits());}}
+ /// 增量推到一档：在覆盖区间以外时，窗口簿外扩覆盖区间、全簿增量记下这一个价位。区间以内的什么也不做。
+ fn touch(&mut self,price:f64,quantity:f64,far_is_low:bool) {
+  let Some(e)=self.extent else {return};
+  if !(if far_is_low {price<e} else {price>e}) {return}
+  if self.window {if quantity>0.0 {self.extent=Some(price)}} else {self.touched.insert(price.to_bits());}
+ }
+ /// 覆盖区间以内（O(1)，不看逐价记下的）。
+ fn covers(&self,price:f64,far_is_low:bool)->bool {
+  match self.extent {None=>true,Some(e)=>if far_is_low {price>=e} else {price<=e}}
+ }
  fn best_bid(&self)->Option<f64> {self.map.last_key_value().map(|(k,_)|f64::from_bits(*k))}
  fn best_ask(&self)->Option<f64> {self.map.first_key_value().map(|(k,_)|f64::from_bits(*k))}
  /// 丢掉低于 `floor` 的。
@@ -71,10 +88,7 @@ impl Levels {
  fn clear(&mut self) {self.map.clear();self.extent=None;self.touched.clear();}
  /// 这一档本地知不知道：覆盖范围以内都知道，以外的只有增量推过的才知道。`far_is_low`：买盘越远价越低。
  fn knows(&self,price:f64,far_is_low:bool)->bool {
-  match self.extent {
-   None=>true,
-   Some(e)=>(if far_is_low {price>=e} else {price<=e})||self.touched.contains(&price.to_bits()),
-  }
+  self.covers(price,far_is_low)||self.touched.contains(&price.to_bits())
  }
 }
 
@@ -96,7 +110,12 @@ pub struct LocalBook {
 }
 
 impl LocalBook {
- pub fn new(sequence:Sequence)->Self {Self{sequence,quality:Quality::Bootstrapping,last:None,bids:Levels::default(),asks:Levels::default(),retained:None}}
+ pub fn new(sequence:Sequence)->Self {
+  // OKX（`seqId/prevSeqId`）的 `books` 频道是 400 档窗口增量，其余三种是全簿增量（见 `Levels`）。
+  let window=sequence==Sequence::PreviousFinalExact;
+  let side=||Levels{window,..Levels::default()};
+  Self{sequence,quality:Quality::Bootstrapping,last:None,bids:side(),asks:side(),retained:None}
+ }
 
  /// REST 快照对缓冲增量。`Ok(true)` 就绪，`Ok(false)` 还没有能接上的增量（等）。
  pub fn bootstrap(&mut self,s:&Snapshot,buffered:&VecDeque<Delta>)->Result<bool,Gap> {
@@ -179,8 +198,11 @@ impl LocalBook {
 
  fn apply_levels(&mut self,d:&Delta) {
   write(&d.bids,&mut self.bids,self.retained);write(&d.asks,&mut self.asks,self.retained);
-  for &(p,q) in &d.bids {if p.is_finite()&&p>0.0&&q.is_finite()&&q>=0.0 {self.bids.touch(p);}}
-  for &(p,q) in &d.asks {if p.is_finite()&&p>0.0&&q.is_finite()&&q>=0.0 {self.asks.touch(p);}}
+  // 留存带以外的正量档不进表（`write`），也不拿来外扩覆盖区间。
+  let retained=self.retained;
+  let kept=|p:f64,q:f64|p.is_finite()&&p>0.0&&q.is_finite()&&q>=0.0&&!retained.is_some_and(|(f,c)|q>0.0&&(p<f||p>c));
+  for &(p,q) in &d.bids {if kept(p,q) {self.bids.touch(p,q,true);}}
+  for &(p,q) in &d.asks {if kept(p,q) {self.asks.touch(p,q,false);}}
  }
 
  /// 这一档本地知不知道（见 `Levels`）。不知道的：不在表里不等于没了。
@@ -550,7 +572,7 @@ mod tests {
 
  #[test] fn a_truncated_snapshot_only_covers_as_far_as_its_last_level() {
   // 币安 REST 快照要 1000 档只给到 1000 档：比最远那档更远的价位本地不知道，直到增量推过它。
-  let mut book=LocalBook::new(Sequence::PreviousFinalExact);
+  let mut book=LocalBook::new(Sequence::PreviousFinalOverlap);
   let bids:Vec<Level>=vec![(60_000.0,1.0),(59_990.0,1.0)];
   book.replace(&Snapshot{last:1,requested:2,bids:bids.clone(),asks:vec![(60_010.0,1.0)]}).unwrap();
   assert!(book.knows(Side::Bid,59_995.0),"覆盖范围以内不在表里就是没有");
@@ -562,11 +584,32 @@ mod tests {
   assert!(!book.knows(Side::Bid,59_400.0));
   book.apply(&delta(3,3,Some(2),&[(59_400.0,2.0)])).unwrap();
   assert!(book.knows(Side::Bid,59_400.0)&&book.quantity(Side::Bid,59_400.0)==2.0);
-  // 完整快照（档数不到要的数）整侧都知道；流里整本推来的（requested = MAX）也是。
+  // 完整快照（档数不到要的数）整侧都知道；Coinbase 流里整本推来的（requested = MAX）也是。
   book.replace(&Snapshot{last:4,requested:1000,bids,asks:vec![(60_010.0,1.0)]}).unwrap();
   assert!(book.knows(Side::Bid,59_500.0)&&book.knows(Side::Bid,1.0));
   book.mark_gapped();
   assert!(book.knows(Side::Bid,1.0),"簿本身空了由上层（VenueBook::is_ready）挡");
+ }
+
+ #[test] fn an_okx_window_book_extends_its_coverage_when_a_farther_level_arrives() {
+  // OKX `books` 只维护前 400 档：快照最远一档以外不知道；价格走动时新进窗口的档带着量推来，覆盖区间跟着外扩。
+  let mut book=LocalBook::new(Sequence::PreviousFinalExact);
+  book.replace(&Snapshot{last:1,requested:2,bids:vec![(60_000.0,1.0),(59_990.0,1.0)],asks:vec![(60_010.0,1.0),(60_020.0,1.0)]}).unwrap();
+  assert!(!book.knows(Side::Bid,59_700.0)&&!book.knows(Side::Bid,59_500.0));
+  book.apply(&delta(2,2,Some(1),&[(59_600.0,0.0)])).unwrap();
+  assert!(!book.knows(Side::Bid,59_600.0),"推成 0 的远档不外扩：分不清撤了还是被挤出窗口");
+  book.apply(&delta(3,3,Some(2),&[(59_600.0,2.0)])).unwrap();
+  assert!(book.knows(Side::Bid,59_700.0)&&book.knows(Side::Bid,59_600.0),"新进窗口的档带量推来：其间的档都知道了");
+  assert!(!book.knows(Side::Bid,59_500.0),"更远的仍不知道");
+  assert!(!book.knows(Side::Ask,60_500.0),"两侧各算各的");
+  book.apply(&delta(4,4,Some(3),&[(10_000.0,5.0)])).unwrap();
+  assert!(!book.knows(Side::Bid,59_500.0),"留存带以外的档不进表，也不外扩");
+  // 全簿增量（币安）不外扩：远处推过一档只说明那一档，其间的仍不知道。
+  let mut full=LocalBook::new(Sequence::PreviousFinalOverlap);
+  let buffered:VecDeque<Delta>=[delta(95,101,Some(94),&[])].into();
+  full.bootstrap(&Snapshot{last:100,requested:2,bids:vec![(60_000.0,1.0),(59_990.0,1.0)],asks:vec![(60_010.0,1.0)]},&buffered).unwrap();
+  full.apply(&delta(102,102,Some(101),&[(59_600.0,2.0)])).unwrap();
+  assert!(full.knows(Side::Bid,59_600.0)&&!full.knows(Side::Bid,59_700.0));
  }
 
  #[test] fn bucket_floors_and_snaps_float_noise() {

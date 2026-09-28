@@ -23,7 +23,13 @@ pub const CM:&str="wss://dstream.binance.com/stream";
 pub const SPOT:&str="wss://data-stream.binance.vision/stream";
 pub const OKX:&str="wss://ws.okx.com:8443/ws/v5/public";
 pub const COINBASE:&str="wss://advanced-trade-ws.coinbase.com";
+/// 币安 REST 深度快照要几档：合约（U 本位、币本位）最多 1000；现货最多 5000（权重 250，见 `snapshots`）。
 pub const SNAPSHOT_LEVELS:usize=1000;
+pub const SPOT_SNAPSHOT_LEVELS:usize=5000;
+/// OKX `books` 频道：快照与增量都只到前 400 档（窗口增量，见 `book::Levels`）。
+pub const OKX_BOOK_LEVELS:usize=400;
+/// 这本币安簿的 REST 快照要几档。
+pub fn snapshot_levels(venue:&VenueInfo)->usize {if venue.product=="spot" {SPOT_SNAPSHOT_LEVELS} else {SNAPSHOT_LEVELS}}
 /// 币安一条组合流最多带几路。官方上限 1024，这里按 200：URL 不至于太长，一条断了影响面也小。
 pub const MAX_STREAMS:usize=200;
 /// OKX 一条连接最多挂几本簿（每本 books + trades 两个频道）。OKX 没有硬上限，50 本一条时单条的推送量
@@ -206,7 +212,7 @@ impl Decoder {
     let (Some(action),[item])=(frame["action"].as_str(),items.as_slice()) else {return Vec::new()};
     let (Some(seq),Some(bids),Some(asks))=(int(&item["seqId"]),levels(&item["bids"],venue),levels(&item["asks"],venue)) else {return Vec::new()};
     let message=match action {
-     "snapshot"=>Message::Snapshot(Snapshot{last:seq,requested:usize::MAX,bids,asks}),
+     "snapshot"=>Message::Snapshot(Snapshot{last:seq,requested:OKX_BOOK_LEVELS,bids,asks}),
      "update"=>{
       let Some(prev)=int(&item["prevSeqId"]) else {return Vec::new()};
       if seq<prev {Message::Reset} else {Message::Delta(Delta{first:seq,last:seq,prev:Some(prev),bids,asks})}
@@ -260,7 +266,7 @@ impl Decoder {
 }
 
 pub fn parse_snapshot(body:&Value,venue:&VenueInfo)->Option<Snapshot> {
- Some(Snapshot{last:int(&body["lastUpdateId"])?,requested:SNAPSHOT_LEVELS,bids:levels(&body["bids"],venue)?,asks:levels(&body["asks"],venue)?})
+ Some(Snapshot{last:int(&body["lastUpdateId"])?,requested:snapshot_levels(venue),bids:levels(&body["bids"],venue)?,asks:levels(&body["asks"],venue)?})
 }
 
 #[cfg(test)]
@@ -333,7 +339,7 @@ mod tests {
  #[test] fn okx_books_and_trades() {
   let d=decoder(Kind::Okx,&[v("okx","usdtPerp","BTC-USDT-SWAP",Notional::Linear(0.01),1.0)]);
   let snap=d.decode(r#"{"arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"action":"snapshot","data":[{"bids":[["60000","10","0","1"]],"asks":[["60001","2","0","1"]],"seqId":9,"prevSeqId":-1}]}"#);
-  assert!(matches!(snap.as_slice(),[Decoded::Book(_,Message::Snapshot(s))] if s.last==9&&s.bids.len()==1));
+  assert!(matches!(snap.as_slice(),[Decoded::Book(_,Message::Snapshot(s))] if s.last==9&&s.bids.len()==1&&s.requested==400),"OKX 快照只到 400 档，不是全簿");
   let reset=d.decode(r#"{"arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"action":"update","data":[{"bids":[],"asks":[],"seqId":3,"prevSeqId":9}]}"#);
   assert!(matches!(reset.as_slice(),[Decoded::Book(_,Message::Reset)]));
   let trades=d.decode(r#"{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"px":"60000","sz":"3","side":"buy"}]}"#);
@@ -357,5 +363,8 @@ mod tests {
   let venue=v("binance","usdtPerp","BTCUSDT",Notional::Linear(1.0),1.0);
   let s=parse_snapshot(&serde_json::json!({"lastUpdateId":77,"bids":[["60000","1"]],"asks":[["60001","2"]]}),&venue).unwrap();
   assert_eq!((s.last,s.requested,s.bids.len()),(77,1000,1));
+  let spot=v("binance","spot","BTCUSDT",Notional::Linear(1.0),1.0);
+  let s=parse_snapshot(&serde_json::json!({"lastUpdateId":78,"bids":[["60000","1"]],"asks":[["60001","2"]]}),&spot).unwrap();
+  assert_eq!(s.requested,5000,"现货快照要 5000 档");
  }
 }

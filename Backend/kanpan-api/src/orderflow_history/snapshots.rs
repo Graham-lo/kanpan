@@ -3,13 +3,18 @@
 //! 币安的 REST 权重按 IP 算，和手机行情转发（`market_relay`）、行情元数据、板块历史共用一份。
 //! 订单流跟踪最多拿四分之一，绝不把 IP 撞到 429：
 //!
-//! | 通道 | 端点 | limit=1000 的权重 | IP 每分钟权重 | 这里每分钟最多 | 占比 |
-//! | --- | --- | --- | --- | --- | --- |
-//! | U 本位 | `www.binance.com/fapi/v1/depth` | 20 | 2400 | 30 次（600） | 25% |
-//! | 币本位 | `www.binance.com/dapi/v1/depth` | 20 | 2400 | 30 次（600） | 25% |
-//! | 现货 | `data-api.binance.vision/api/v3/depth` | 50 | 6000 | 30 次（1500） | 25% |
+//! | 通道 | 端点 | 要几档 | 一次的权重 | IP 每分钟权重 | 这里每分钟最多 | 占比 |
+//! | --- | --- | --- | --- | --- | --- | --- |
+//! | U 本位 | `www.binance.com/fapi/v1/depth` | 1000（上限） | 20 | 2400 | 30 次（600） | 25% |
+//! | 币本位 | `www.binance.com/dapi/v1/depth` | 1000（上限） | 20 | 2400 | 30 次（600） | 25% |
+//! | 现货 | `data-api.binance.vision/api/v3/depth` | 5000（上限） | 250 | 6000 | 20 次（5000） | 83% |
 //!
-//! * 每条通道一个滑动窗口：任意 60 秒内最多 30 次、两次之间至少 1 秒（令牌桶的严格版：
+//! 现货 2026-09-28 起要 5000 档（原来 1000 档、权重 50、每分钟 30 次）：1000 档只盖 BTC 现货盘口两侧
+//! 0.3% 上下，重启后 10% 以内的远墙大半落在快照覆盖以外、只能按「不知道」挂着。`data-api.binance.vision`
+//! 这个主机上别的请求只有 K 线（权重 2）与 exchangeInfo（每天几次），占比高也撞不到 6000；
+//! 20 次一分钟，重启时 200 本现货簿同时要，最后一本约 9 分 20 秒拿到，仍在 `UNKNOWN_MS` 以内。
+//!
+//! * 每条通道一个滑动窗口：任意 60 秒内最多 30 次（现货 20 次）、两次之间至少 1 秒（令牌桶的严格版：
 //!   容量 30 的桶在一开始会一口气放出 30 次、下一分钟再放 30 次，那一个窗口里就是 60 次）。超了的排队，不丢。
 //! * 队里按层排先后：主币 → 有人在看的（按需）→ 固定 → 山寨 → 热点，同层先来先走。层由注册表随时改
 //!   （`Arc<AtomicU8>`），排着的请求跟着变。
@@ -32,8 +37,10 @@ use tokio::time::Instant;
 const UM_REST:&str="https://www.binance.com/fapi/v1/depth";
 const CM_REST:&str="https://www.binance.com/dapi/v1/depth";
 const SPOT_REST:&str="https://data-api.binance.vision/api/v3/depth";
-/// 每条通道任意 60 秒内最多几次。
+/// 合约两条通道任意 60 秒内最多几次。
 pub const PER_MINUTE:usize=30;
+/// 现货通道任意 60 秒内最多几次（5000 档一次权重 250，20 × 250 = 5000 / 6000）。
+pub const SPOT_PER_MINUTE:usize=20;
 const WINDOW:Duration=Duration::from_secs(60);
 const MIN_GAP:Duration=Duration::from_secs(1);
 const TIMEOUT:Duration=Duration::from_secs(10);
@@ -52,8 +59,10 @@ impl Lane {
  fn label(self)->&'static str {match self {Lane::Um=>"um",Lane::Cm=>"cm",Lane::Spot=>"spot"}}
  fn url(self,venue:&VenueInfo)->String {
   let base=match self {Lane::Um=>UM_REST,Lane::Cm=>CM_REST,Lane::Spot=>SPOT_REST};
-  format!("{base}?symbol={}&limit={}",venue.instrument.to_uppercase(),feeds::SNAPSHOT_LEVELS)
+  format!("{base}?symbol={}&limit={}",venue.instrument.to_uppercase(),feeds::snapshot_levels(venue))
  }
+ /// 这条通道任意 60 秒内最多几次。
+ pub fn per_minute(self)->usize {match self {Lane::Spot=>SPOT_PER_MINUTE,Lane::Um|Lane::Cm=>PER_MINUTE}}
  /// 这条通道还要停多久（429 / 418 之后）。
  fn hold(self)->Option<Duration> {
   match self {
@@ -123,7 +132,7 @@ fn pick(queue:&[(u64,Request)],now:Instant)->Option<usize> {
 async fn run(lane:Lane,mut rx:mpsc::UnboundedReceiver<Request>) {
  let mut queue:Vec<(u64,Request)>=Vec::new();
  let mut seq=0u64;
- let mut limiter=Limiter::new(PER_MINUTE,WINDOW,MIN_GAP);
+ let mut limiter=Limiter::new(lane.per_minute(),WINDOW,MIN_GAP);
  let (mut sent,mut longest)=(0usize,Duration::ZERO);
  let mut report=tokio::time::interval_at(Instant::now()+REPORT,REPORT);
  loop {
@@ -202,7 +211,10 @@ mod tests {
   let spot=venue("spot",Notional::Linear(1.0));
   assert_eq!((Lane::of(&um),Lane::of(&cm),Lane::of(&spot)),(Lane::Um,Lane::Cm,Lane::Spot));
   assert_eq!(Lane::Um.url(&um),"https://www.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=1000");
-  assert_eq!(Lane::Spot.url(&spot),"https://data-api.binance.vision/api/v3/depth?symbol=BTCUSDT&limit=1000");
+  assert_eq!(Lane::Spot.url(&spot),"https://data-api.binance.vision/api/v3/depth?symbol=BTCUSDT&limit=5000");
+  assert_eq!(Lane::Cm.url(&cm),"https://www.binance.com/dapi/v1/depth?symbol=BTCUSDT&limit=1000");
+  assert_eq!((Lane::Um.per_minute(),Lane::Cm.per_minute(),Lane::Spot.per_minute()),(30,30,20));
+  assert!(Lane::Spot.per_minute()*250<=6000,"现货 5000 档一次权重 250，一分钟不能超过 IP 的 6000");
   assert!(binance_gate::covers(&Lane::Cm.url(&cm))&&!binance_gate::covers(&Lane::Spot.url(&spot)));
  }
 
@@ -227,13 +239,15 @@ mod tests {
  /// 这条队每分钟 30 本，最后一本要等 6 分 19 秒、有 140 本等过两分钟（`STALE_MS`）；重启时整个进程的 U 本位簿（`MAX_BASES` 220 个品种
  /// 的永续 + 主币交割，按 260 算）同时要，最后一本等 8 分 19 秒。等快照期间簿上的单按「价位不知道」
  /// 处理（model.rs `UNKNOWN_MS`），这个上限必须盖得住排队时长，不然排在后面的簿上的单会被误判失联。
+ /// 现货 2026-09-28 起每分钟 20 本：两条满载的现货连接（200 本）同时要，最后一本也要在 `UNKNOWN_MS` 以内。
  #[test] fn a_full_connection_reconnecting_is_served_within_the_unknown_window() {
   let (tx,_rx)=mpsc::channel(1);
-  for books in [super::super::feeds::Kind::BinanceUmDepth.capacity(),260] {
+  let spot=2*super::super::feeds::Kind::BinanceSpot.capacity();
+  for (product,books) in [("usdtPerp",super::super::feeds::Kind::BinanceUmDepth.capacity()),("usdtPerp",260),("spot",spot)] {
    let start=Instant::now();
-   let r=||Request{venue:venue("usdtPerp",Notional::Linear(1.0)),epoch:1,priority:Arc::new(AtomicU8::new(0)),not_before:start,events:tx.clone(),current:Arc::new(AtomicU64::new(1))};
+   let r=||Request{venue:venue(product,Notional::Linear(1.0)),epoch:1,priority:Arc::new(AtomicU8::new(0)),not_before:start,events:tx.clone(),current:Arc::new(AtomicU64::new(1))};
    let mut queue:Vec<(u64,Request)>=(0..books as u64).map(|i|(i,r())).collect();
-   let mut l=Limiter::new(PER_MINUTE,WINDOW,MIN_GAP);
+   let mut l=Limiter::new(Lane::of(&venue(product,Notional::Linear(1.0))).per_minute(),WINDOW,MIN_GAP);
    let mut t=start;
    let (mut last,mut late)=(Duration::ZERO,0);
    while !queue.is_empty() {
@@ -242,7 +256,7 @@ mod tests {
      Some(w)=>t+=w,
     }
    }
-   println!("{books} 本同时要快照：最后一本等 {}s，{late} 本等过 STALE_MS",last.as_secs());
+   println!("{product} {books} 本同时要快照：最后一本等 {}s，{late} 本等过 STALE_MS",last.as_secs());
    assert!(last.as_millis()<super::super::model::UNKNOWN_MS as u128,"{books} 本：最后一本等 {}s，超过了等快照的容忍上限",last.as_secs());
   }
  }
