@@ -3,7 +3,7 @@
 //! * 四种序列规则：币安现货 `U/u`（rangeOverlap）、币安合约 `U/u/pu`（previousFinalOverlap）、
 //!   OKX `seqId/prevSeqId`（previousFinalExact）、Coinbase 整条连接的 `sequence_num`（strictIncrementing）。
 //! * 快照不在流里的（币安）先缓冲增量、等 REST 快照对上序号；快照在流里的（OKX、Coinbase）收到首帧就绪。
-//! * 本地只留中间价两侧扫描半径两倍以内的价位（`RETAIN_BPS`）。
+//! * 本地只留中间价两侧扫描半径两倍以内的价位（`RETAIN_BPS`）；OKX 滑动窗口簿不裁（本来就封顶 400 档，见 `Levels`）。
 //! * 价与量进来时已经换成「每个币」的口径（币安 `1000PEPE` 这种除掉缩放），名义美元不变。
 //!
 //! 和手机那份的差别只有一处：连接代号的核对放在上一层（`VenueBook`），旧连接的迟到帧在进簿之前就丢了。
@@ -60,20 +60,23 @@ pub struct Gap;
 /// * 全簿增量（币安）：交易所为整本簿推变动，但快照以外、此后没动过的档本地永远拿不到——一个远处的价位被推过，
 ///   只说明那一个价位知道了，它和覆盖区间之间的档仍然不知道。所以覆盖区间不外扩，推过的价位逐个记在
 ///   `touched` 里（含推成 0 的）。
-/// * 窗口增量（OKX 400 档）：交易所只维护前 400 档那个窗口，价格走动时新进窗口的档会带着量推过来。推来一个
-///   比覆盖区间还远、量不为 0 的档，说明窗口已经伸到那里，其间的档要有早就推过了——覆盖区间外扩到那一档。
-///   推成 0 的远档不外扩（分不清是撤了还是被挤出窗口）。
+/// * 滑动窗口（OKX `books` 400 档，`window` 为窗口档数）：交易所只维护前 400 档，一档被挤出窗口时推的是
+///   数量 0，和真撤单长得一样（2026-09-28 客户端连 OKX 实测）。所以不看快照的覆盖区间，按表本身判：
+///   表满了（到窗口档数）时只有窗口最深一档以内知道——被挤出去的那档删掉之后落在新的最深一档外面，读成
+///   「不知道」；真撤掉窗口里的一档时，第 401 档会带着量补进来、落在更深处，撤掉的那档仍在窗口内，读成「没了」。
+///   表不满说明整本簿都在窗口里，整侧都知道。窗口簿不裁留存带（裁了表就不是窗口，「最深一档」失效），
+///   本来就封顶在窗口档数。与客户端 `LocalBook.knows` 的 slidingWindow 分支同一规则。
 ///
-/// 快照完整（返回的档数不到要的数，Coinbase 整本推来）时 `extent` 是 None，整侧都算知道。
+/// 全簿增量的快照完整（返回的档数不到要的数，Coinbase 整本推来）时 `extent` 是 None，整侧都算知道。
 #[derive(Clone,Debug,Default)]
-struct Levels {map:BTreeMap<u64,f64>,extent:Option<f64>,touched:BTreeSet<u64>,window:bool}
+struct Levels {map:BTreeMap<u64,f64>,extent:Option<f64>,touched:BTreeSet<u64>,window:usize}
 impl Levels {
  fn set(&mut self,price:f64,quantity:f64) {if quantity==0.0 {self.map.remove(&price.to_bits());} else {self.map.insert(price.to_bits(),quantity);}}
- /// 增量推到一档：在覆盖区间以外时，窗口簿外扩覆盖区间、全簿增量记下这一个价位。区间以内的什么也不做。
- fn touch(&mut self,price:f64,quantity:f64,far_is_low:bool) {
+ /// 全簿增量推到一档：在覆盖区间以外时记下这一个价位（含推成 0 的）。区间以内的、以及窗口簿，什么也不做。
+ fn touch(&mut self,price:f64,far_is_low:bool) {
+  if self.window>0 {return}
   let Some(e)=self.extent else {return};
-  if !(if far_is_low {price<e} else {price>e}) {return}
-  if self.window {if quantity>0.0 {self.extent=Some(price)}} else {self.touched.insert(price.to_bits());}
+  if if far_is_low {price<e} else {price>e} {self.touched.insert(price.to_bits());}
  }
  /// 覆盖区间以内（O(1)，不看逐价记下的）。
  fn covers(&self,price:f64,far_is_low:bool)->bool {
@@ -87,7 +90,13 @@ impl Levels {
  fn keep_to(&mut self,ceiling:f64) {let _=self.map.split_off(&(ceiling.to_bits()+1));let _=self.touched.split_off(&(ceiling.to_bits()+1));}
  fn clear(&mut self) {self.map.clear();self.extent=None;self.touched.clear();}
  /// 这一档本地知不知道：覆盖范围以内都知道，以外的只有增量推过的才知道。`far_is_low`：买盘越远价越低。
+ /// 窗口簿：表满了只有最深一档以内知道（有序表的首尾，O(log n)），不满整侧都知道。
  fn knows(&self,price:f64,far_is_low:bool)->bool {
+  if self.window>0 {
+   if self.map.len()<self.window {return true}
+   let deepest=if far_is_low {self.map.first_key_value()} else {self.map.last_key_value()};
+   return deepest.is_none_or(|(k,_)|if far_is_low {price>=f64::from_bits(*k)} else {price<=f64::from_bits(*k)});
+  }
   self.covers(price,far_is_low)||self.touched.contains(&price.to_bits())
  }
 }
@@ -111,8 +120,9 @@ pub struct LocalBook {
 
 impl LocalBook {
  pub fn new(sequence:Sequence)->Self {
-  // OKX（`seqId/prevSeqId`）的 `books` 频道是 400 档窗口增量，其余三种是全簿增量（见 `Levels`）。
-  let window=sequence==Sequence::PreviousFinalExact;
+  // OKX（`seqId/prevSeqId`）的 `books` 频道是 400 档滑动窗口，其余三种是全簿增量（见 `Levels`）。
+  // 窗口档数按快照要的档数定（`bootstrap` / `replace` 里改），拿到快照之前先记成「窗口簿、档数未定」。
+  let window=if sequence==Sequence::PreviousFinalExact {usize::MAX} else {0};
   let side=||Levels{window,..Levels::default()};
   Self{sequence,quality:Quality::Bootstrapping,last:None,bids:side(),asks:side(),retained:None}
  }
@@ -125,6 +135,7 @@ impl LocalBook {
   self.bids.clear();self.asks.clear();self.retained=None;
   write(&s.bids,&mut self.bids,None);write(&s.asks,&mut self.asks,None);
   self.bids.extent=extent(&s.bids,s.requested,true);self.asks.extent=extent(&s.asks,s.requested,false);
+  self.window_from(s.requested);
   self.check_not_crossed()?;
   self.trim_far();
   let l=s.last;
@@ -172,6 +183,7 @@ impl LocalBook {
   self.begin_resync();
   write(&s.bids,&mut self.bids,None);write(&s.asks,&mut self.asks,None);
   self.bids.extent=extent(&s.bids,s.requested,true);self.asks.extent=extent(&s.asks,s.requested,false);
+  self.window_from(s.requested);
   self.last=Some(s.last);
   self.quality=Quality::Ready;
   self.check_not_crossed()?;
@@ -201,8 +213,8 @@ impl LocalBook {
   // 留存带以外的正量档不进表（`write`），也不拿来外扩覆盖区间。
   let retained=self.retained;
   let kept=|p:f64,q:f64|p.is_finite()&&p>0.0&&q.is_finite()&&q>=0.0&&!retained.is_some_and(|(f,c)|q>0.0&&(p<f||p>c));
-  for &(p,q) in &d.bids {if kept(p,q) {self.bids.touch(p,q,true);}}
-  for &(p,q) in &d.asks {if kept(p,q) {self.asks.touch(p,q,false);}}
+  for &(p,q) in &d.bids {if kept(p,q) {self.bids.touch(p,true);}}
+  for &(p,q) in &d.asks {if kept(p,q) {self.asks.touch(p,false);}}
  }
 
  /// 这一档本地知不知道（见 `Levels`）。不知道的：不在表里不等于没了。
@@ -212,7 +224,13 @@ impl LocalBook {
 
  fn band(mid:f64,bid:f64,ask:f64)->(f64,f64) {let f=RETAIN_BPS/10_000.0;((mid*(1.0-f)).min(bid),(mid*(1.0+f)).max(ask))}
 
+ /// 窗口簿：窗口档数就是快照要的档数。
+ fn window_from(&mut self,requested:usize) {
+  if self.bids.window>0 {self.bids.window=requested;self.asks.window=requested;}
+ }
+
  fn trim_far(&mut self) {
+  if self.bids.window>0 {return}
   let (Some(bid),Some(ask))=(self.bids.best_bid(),self.asks.best_ask()) else {return};
   let keep=Self::band((bid+ask)/2.0,bid,ask);
   self.bids.keep_from(keep.0);self.asks.keep_to(keep.1);
@@ -227,6 +245,7 @@ impl LocalBook {
   let (floor,ceiling)=(mid*(1.0-f),mid*(1.0+f));
   for (k,q) in self.bids.map.range(floor.to_bits()..) {body(Side::Bid,f64::from_bits(*k),*q)}
   for (k,q) in self.asks.map.range(..=ceiling.to_bits()) {body(Side::Ask,f64::from_bits(*k),*q)}
+  if self.bids.window>0 {return Some(mid)}
   let keep=Self::band(mid,bid,ask);
   self.bids.keep_from(keep.0);self.asks.keep_to(keep.1);
   self.retained=Some(keep);
@@ -560,7 +579,8 @@ mod tests {
  }
 
  #[test] fn far_levels_are_dropped_and_zero_removes() {
-  let mut book=LocalBook::new(Sequence::PreviousFinalExact);
+  // 全簿增量才裁留存带（OKX 窗口簿不裁，见 `an_okx_sliding_window_knows_only_down_to_its_deepest_level_when_full`）。
+  let mut book=LocalBook::new(Sequence::PreviousFinalOverlap);
   book.replace(&snap(1,&[(99.0,1.0),(50.0,9.0)],&[(101.0,1.0),(200.0,9.0)])).unwrap();
   assert_eq!(book.quantity(Side::Bid,50.0),0.0,"中间价两侧 20% 以外不留");
   assert_eq!(book.quantity(Side::Ask,200.0),0.0);
@@ -591,19 +611,27 @@ mod tests {
   assert!(book.knows(Side::Bid,1.0),"簿本身空了由上层（VenueBook::is_ready）挡");
  }
 
- #[test] fn an_okx_window_book_extends_its_coverage_when_a_farther_level_arrives() {
-  // OKX `books` 只维护前 400 档：快照最远一档以外不知道；价格走动时新进窗口的档带着量推来，覆盖区间跟着外扩。
+ #[test] fn an_okx_sliding_window_knows_only_down_to_its_deepest_level_when_full() {
+  // OKX `books` 只维护前 N 档（这里 N = 3）：一档被挤出窗口时推 0，和真撤单一样；表满了只有最深一档以内知道。
   let mut book=LocalBook::new(Sequence::PreviousFinalExact);
-  book.replace(&Snapshot{last:1,requested:2,bids:vec![(60_000.0,1.0),(59_990.0,1.0)],asks:vec![(60_010.0,1.0),(60_020.0,1.0)]}).unwrap();
-  assert!(!book.knows(Side::Bid,59_700.0)&&!book.knows(Side::Bid,59_500.0));
-  book.apply(&delta(2,2,Some(1),&[(59_600.0,0.0)])).unwrap();
-  assert!(!book.knows(Side::Bid,59_600.0),"推成 0 的远档不外扩：分不清撤了还是被挤出窗口");
-  book.apply(&delta(3,3,Some(2),&[(59_600.0,2.0)])).unwrap();
-  assert!(book.knows(Side::Bid,59_700.0)&&book.knows(Side::Bid,59_600.0),"新进窗口的档带量推来：其间的档都知道了");
-  assert!(!book.knows(Side::Bid,59_500.0),"更远的仍不知道");
-  assert!(!book.knows(Side::Ask,60_500.0),"两侧各算各的");
-  book.apply(&delta(4,4,Some(3),&[(10_000.0,5.0)])).unwrap();
-  assert!(!book.knows(Side::Bid,59_500.0),"留存带以外的档不进表，也不外扩");
+  book.replace(&Snapshot{last:1,requested:3,bids:vec![(60_000.0,1.0),(59_990.0,1.0),(59_900.0,5.0)],asks:vec![(60_010.0,1.0)]}).unwrap();
+  assert!(book.knows(Side::Bid,59_900.0)&&book.knows(Side::Bid,59_950.0),"最深一档以内都知道");
+  assert!(!book.knows(Side::Bid,59_800.0),"表满了：最深一档以外不知道");
+  assert!(book.knows(Side::Ask,70_000.0),"卖盘只有 1 档 < 3：整侧都在窗口里");
+  // 盘口多出一档，59 900 被挤出窗口（同一帧推 0）：它落在新的最深一档 59 990 以外，读成「不知道」而不是「没了」。
+  book.apply(&delta(2,2,Some(1),&[(59_995.0,1.0),(59_900.0,0.0)])).unwrap();
+  assert_eq!(book.quantity(Side::Bid,59_900.0),0.0);
+  assert!(!book.knows(Side::Bid,59_900.0),"被挤出窗口：看不见，不是撤了");
+  // 窗口里的 59 990 真撤了：第 N+1 档（59 900）带着量补进来、落在更深处，59 990 仍在窗口内——读成「没了」。
+  book.apply(&delta(3,3,Some(2),&[(59_990.0,0.0),(59_900.0,5.0)])).unwrap();
+  assert!(book.knows(Side::Bid,59_990.0)&&book.quantity(Side::Bid,59_990.0)==0.0,"真撤单：知道且没了");
+  assert!(book.knows(Side::Bid,59_900.0),"补进来的那档又在窗口里了");
+  // 盘口变薄、表不满：整侧都知道。
+  book.apply(&delta(4,4,Some(3),&[(59_995.0,0.0)])).unwrap();
+  assert!(book.knows(Side::Bid,10_000.0));
+  // 窗口簿不裁留存带：远在留存带外的档也在表里（窗口本来就封顶）。
+  book.apply(&delta(5,5,Some(4),&[(10_000.0,5.0)])).unwrap();
+  assert_eq!(book.quantity(Side::Bid,10_000.0),5.0);
   // 全簿增量（币安）不外扩：远处推过一档只说明那一档，其间的仍不知道。
   let mut full=LocalBook::new(Sequence::PreviousFinalOverlap);
   let buffered:VecDeque<Delta>=[delta(95,101,Some(94),&[])].into();
