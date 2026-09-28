@@ -134,9 +134,19 @@ extension ChartRenderer {
     let ink: Hex
   }
 
+  /// 底噪的画法（只管画，命中、选中、诊断仍按 `OrderFlowFrame.bands` 里逐条的带）：同一像素行、同色的并成一条。
+  struct OrderFlowStroke: Equatable {
+    var frame: CGRect
+    let color: Hex
+    /// 并进来的几条里排名最前的那条在底噪里的名次（0 起），超上限时按它丢。
+    var rank: Int
+  }
+
   struct OrderFlowFrame: Equatable {
     /// 画的先后排好的线：底噪在前，整条的其次（彼此不重叠），细线在后。
     var bands: [OrderFlowBand] = []
+    /// 底噪实际画的那几条（`orderFlowMergeNoise`）：并过行、封过顶，按名次排。
+    var noiseStrokes: [OrderFlowStroke] = []
     var labels: [OrderFlowLabel] = []
     /// 可视区里还挂着（且开着显示）的大单各侧合计（逐单求和）。
     var bidTotal = 0.0
@@ -183,6 +193,12 @@ extension ChartRenderer {
       func sameLane(_ o: Key) -> Bool {
         symbol == o.symbol && display == o.display && step == o.step && gapMs == o.gapMs && minLifeMs == o.minLifeMs
       }
+
+      /// 同一条道、单子数组是同一块存储：O(1)。
+      func sameStorage(_ o: Key) -> Bool {
+        sameLane(o) && orders.count == o.orders.count
+          && orders.withUnsafeBufferPointer { a in o.orders.withUnsafeBufferPointer { a.baseAddress == $0.baseAddress } }
+      }
     }
     /// 一堵墙：建好的组，以及它（按段算的）横向起止——结束是 nil 表示有一段还挂着，画到主图右缘。
     struct Wall: Sendable {
@@ -215,10 +231,23 @@ extension ChartRenderer {
 
     init(capacity: Int = OrderFlowWallCache.capacity) { self.capacity = capacity }
 
+    /// 找存着的那一份（调用方持锁）：先按存储认（O(1)），认不出再逐单比内容、从新往旧比；按内容认出来的
+    /// 把存着的键换成这一份数组，下一帧就能按存储认。原来按存储以外一律逐单比、从旧往新：新快照内容没变
+    /// （或同样多单、只改了后面几单）时，拖图每一帧都要把两万单从头比一遍、比过两三份旧的才轮到对的那份，
+    /// 一帧 0.5 ms 起（压测 2026-09-28 第二轮 D1）。
+    private func hitIndex(_ key: Key) -> Int? {
+      if let i = entries.firstIndex(where: { $0.key.sameStorage(key) }) { return i }
+      let order = entries.indices.sorted { entries[$0].generation > entries[$1].generation }
+      guard let i = order.first(where: { entries[$0].key == key }) else { return nil }
+      entries[i].key = key
+      return i
+    }
+
     /// 同步取：没命中就在调用方线程上算（离屏渲染、分享图、测试走这条）。
     func entry(_ key: Key) -> Entry {
       lock.lock()
-      if let hit = entries.first(where: { $0.key == key }) {
+      if let i = hitIndex(key) {
+        let hit = entries[i]
         lock.unlock()
         return hit.entry
       }
@@ -235,7 +264,7 @@ extension ChartRenderer {
     func lookup(_ key: Key) -> (entry: Entry, exact: Bool)? {
       lock.lock()
       defer { lock.unlock() }
-      if let hit = entries.first(where: { $0.key == key }) { return (hit.entry, true) }
+      if let i = hitIndex(key) { return (entries[i].entry, true) }
       if running != key && pending?.key != key {
         generation += 1
         let idle = running == nil && pending == nil
@@ -338,6 +367,11 @@ extension ChartRenderer {
   /// 不透明度：主 1、次 0.7、底噪 0.35。
   static let orderFlowSecondaryAlpha = 0.7
   static let orderFlowNoiseAlpha = 0.35
+  /// 底噪一屏最多画几条（并行之后）：超出的丢名义最小的。1 分钟 2 万单一屏 500 多条底噪，逐条填一遍 2.4 ms
+  /// （压测 2026-09-28 第二轮 D1）；35% 的 1 pt 淡线挤成一片时多画的几百条也看不出来。
+  static let orderFlowNoiseDrawMax = 200
+  /// 同一行上两段横向隔得不超过这么多（pt）就算相邻、并成一条。
+  static let orderFlowNoiseJoin = 0.5
   /// 跨桶主墙的价位范围括号「]」：宽 3 pt（竖笔与上下两个钩都是 1.5 pt）、段色 70%，和金额签之间留 1 pt。
   /// 首版把整个范围画成实心：BTC 1 分钟图上一堵 5 桶（500 美元）的墙高 213 pt、盖住三分之一张图的 K 线；第二版 16% 淡色
   /// + 实心芯仍压在蜡烛上面；第三版垫到蜡烛下面、10% 淡底，经典深底上两堵墙把整张图染成紫色（2026-09-25 验收）。
@@ -399,6 +433,24 @@ extension ChartRenderer {
     let base = orderFlowBaseColor(side: side, contract: contract)
     return hasFill ? base : Palette.orderFlowUnfilled(base, bg: state.colors.bg, maxMix: Self.orderFlowLightMix)
   }
+
+  /// 八种画法色（类 × 侧 × 深浅，下标 `(合约 ? 4 : 0) + (卖 ? 2 : 0) + (被吃过 ? 1 : 0)`），按图区底色记下来：
+  /// 浅色档要二分找混色比例，八种一起算一遍 0.08 ms，原来拖图每帧都算（第二轮 D1）。
+  func orderFlowPalette() -> [Hex] {
+    let bg = state.colors.bg
+    Self.orderFlowPaletteLock.lock()
+    defer { Self.orderFlowPaletteLock.unlock() }
+    if let hit = Self.orderFlowPaletteMemo[bg] { return hit }
+    let palette: [Hex] = [false, true].flatMap { contract in
+      [BookSide.bid, .ask].flatMap { side in [false, true].map { orderFlowColor(side: side, contract: contract, hasFill: $0) } }
+    }
+    if Self.orderFlowPaletteMemo.count >= 16 { Self.orderFlowPaletteMemo.removeAll() }
+    Self.orderFlowPaletteMemo[bg] = palette
+    return palette
+  }
+
+  private nonisolated(unsafe) static var orderFlowPaletteMemo: [Hex: [Hex]] = [:]
+  private static let orderFlowPaletteLock = NSLock()
 
   func orderFlowColor(_ order: BigOrder) -> Hex {
     orderFlowColor(side: order.side, contract: order.product.isContract, hasFill: order.hasFill)
@@ -648,10 +700,13 @@ extension ChartRenderer {
     //    挂着的那几单随墙一起在缓存里挑好，不再每帧扫整份快照。
     var frame = OrderFlowFrame()
     let entry = orderFlowEntry(flow)
-    for order in entry.live {
+    // 先按时间粗筛（两个整数比较），落在这一屏以外的不再逐条二分找 K 线：1 分钟 2 万单时挂着的两千单、
+    // 三千多堵墙每帧各二分一两次，拖图一帧光这里就 0.6 ms（压测 2026-09-28 第二轮 D1）。筛法与逐条算的结果完全一致。
+    let (tLo, tHi) = orderFlowVisibleTimes(spacing: spacing, plotW: L.plotW)
+    // 「首见那根的左缘在主图右缘以左」恰好就是 `firstSeenMs < tHi`（见 `orderFlowVisibleTimes`），不必再逐单二分。
+    for order in entry.live where order.firstSeenMs < tHi {
       let cy = y(order.price)
-      guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h,
-            let x0 = orderFlowBarX(order.firstSeenMs, spacing: spacing, plotW: L.plotW)?.left, x0 < L.plotW else { continue }
+      guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h else { continue }
       if order.side == .bid { frame.bidTotal += order.notional } else { frame.askTotal += order.notional }
     }
 
@@ -662,23 +717,9 @@ extension ChartRenderer {
     //    横向范围：墙起点那根的左缘到墙结束那根的右缘，有一单还挂着就到主图右缘。
     var visible: [(group: OrderFlowGroup, left: Double, right: Double)] = []
     for wall in entry.walls {
-      guard let x0 = orderFlowBarX(wall.startMs, spacing: spacing, plotW: L.plotW)?.left else { continue }
-      let x1: Double
-      if let end = wall.endMs {
-        guard let bar = orderFlowBarX(end, spacing: spacing, plotW: L.plotW) else { continue }
-        x1 = bar.right
-      } else {
-        x1 = L.plotW
-      }
-      let left = max(0, x0), right = min(L.plotW, max(x1, x0 + 1))
-      let group = wall.group
-      guard right > left, left < L.plotW else { continue }
-      // 画出来的只有代表价那条线（括号要两端都在主图里才立），所以只认代表价落在主图里的墙。
-      // 原来跨桶的墙按「价位范围和主图有交集」算：代表价在主图外、线被裁掉看不见的墙照样占排名，
-      // 把看得见的墙挤出「主」那 6 位（压测 2026-09-28：BTC 1m 一屏 49 条里 5 条画在主图外）。
-      let cy = y(group.price)
-      guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h else { continue }
-      visible.append((group, left, right))
+      guard wall.startMs < tHi, (wall.endMs ?? .max) >= tLo,
+            let span = orderFlowWallSpan(wall, pane: pane, spacing: spacing, plotW: L.plotW, y: y) else { continue }
+      visible.append((wall.group, span.left, span.right))
     }
     guard !visible.isEmpty else { return frame }
     // 屏内排名：画法名义从大到小，一样的先起的在前，再按键（`drawOrder`）。墙在缓存里已按它排好，筛出来的子序列顺序不变。
@@ -688,13 +729,13 @@ extension ChartRenderer {
     //    跨桶的主墙另记价位范围（最低桶价 … 最高桶价 + 步长），在段右端立一枚范围括号；范围比线还窄、任一端出了主图、
     //    或和已立的括号在同一 x 上纵向重叠就不立（只留名义大的那枚）。括号不占线的位。
     var noise: [OrderFlowBand] = [], full: [OrderFlowBand] = [], thin: [OrderFlowBand] = []
+    var noiseColor: [Int] = []
     var occupied: [CGRect] = [], brackets: [CGRect] = []
     // 颜色只有 侧 × 类 × 深浅 八种：先算好。原来每条带各算一遍 `orderFlowColor`——浅色档要二分找混色比例、
     // 每步都格式化一次十六进制串，一屏几百条带光配色就要几毫秒（压测 2026-09-28）。
-    let palette: [Hex] = [false, true].flatMap { contract in
-      [BookSide.bid, .ask].flatMap { side in [false, true].map { orderFlowColor(side: side, contract: contract, hasFill: $0) } }
-    }
-    let colorOf = { (g: OrderFlowGroup) in palette[(g.contract ? 4 : 0) + (g.side == .bid ? 0 : 2) + (g.hasFill ? 1 : 0)] }
+    let palette = orderFlowPalette()
+    let colorIndex = { (g: OrderFlowGroup) in (g.contract ? 4 : 0) + (g.side == .bid ? 0 : 2) + (g.hasFill ? 1 : 0) }
+    let colorOf = { (g: OrderFlowGroup) in palette[colorIndex(g)] }
     for (rank, (group, left, right)) in visible.enumerated() {
       var role: OrderFlowRole = rank < Self.orderFlowMainCount ? .main
         : rank < Self.orderFlowRankedCount ? .secondary : .noise
@@ -705,6 +746,7 @@ extension ChartRenderer {
       if role == .noise {
         noise.append(OrderFlowBand(group: group, frame: line(Self.orderFlowNoiseLine), color: color, dark: group.hasFill,
                                    thin: false, role: .noise, alpha: Self.orderFlowNoiseAlpha))
+        noiseColor.append(colorIndex(group))
         continue
       }
       let whole: CGRect
@@ -742,6 +784,7 @@ extension ChartRenderer {
       if clash { thin.append(band) } else { full.append(band) }
     }
     frame.bands = noise + full + thin
+    frame.noiseStrokes = Self.orderFlowMergeNoise(noise, colorIndex: noiseColor, max: Self.orderFlowNoiseDrawMax)
     frame.labels = orderFlowLabels(full.filter { $0.role == .main }, pane: pane, L: L, spacing: spacing, ladder: ladder)
     return frame
   }
@@ -797,6 +840,118 @@ extension ChartRenderer {
     return labels
   }
 
+  /// `color` 以 `alpha` 叠在 `bg` 上读出来的颜色（不透明）。按三元组记下来：一帧只有十来种。
+  static func orderFlowPremixed(_ color: Hex, alpha: Double, bg: Hex) -> Hex {
+    guard alpha < 1 else { return color }
+    let key = PremixKey(color: color, alpha: alpha, bg: bg)
+    premixLock.lock()
+    defer { premixLock.unlock() }
+    if let hit = premixMemo[key] { return hit }
+    let value = mixHex(color, bg, 1 - alpha)
+    if premixMemo.count >= 256 { premixMemo.removeAll() }
+    premixMemo[key] = value
+    return value
+  }
+
+  private struct PremixKey: Hashable {
+    let color: Hex, alpha: Double, bg: Hex
+  }
+  private nonisolated(unsafe) static var premixMemo: [PremixKey: Hex] = [:]
+  private static let premixLock = NSLock()
+
+  /// 底噪按像素行并：线顶对齐到整 pt（1 pt 线正好占一行像素，挪动不超过半 pt），同一行、同色（侧 × 类 × 深浅，
+  /// `colorIndex`）、横向重叠或相隔不超过 `orderFlowNoiseJoin` 的并成一条（左右取并集，名次取最前的）；
+  /// 并完超过 `max` 条就按名次留前 `max` 条（名义小的先丢）。输出按名次排。`noise` 须按名次排好。
+  static func orderFlowMergeNoise(_ noise: [OrderFlowBand], colorIndex: [Int], max: Int) -> [OrderFlowStroke] {
+    guard !noise.isEmpty else { return [] }
+    let h = orderFlowNoiseLine
+    // (颜色, 行, 左, 右, 名次)，按 颜色 → 行 → 左 排，一趟扫过去并。
+    var items: [(color: Int, row: Int, left: Double, right: Double, rank: Int)] = []
+    items.reserveCapacity(noise.count)
+    for (rank, band) in noise.enumerated() {
+      let row = Int((Double(band.frame.midY) - h / 2).rounded())
+      items.append((colorIndex[rank], row, Double(band.frame.minX), Double(band.frame.maxX), rank))
+    }
+    items.sort { a, b in
+      a.color != b.color ? a.color < b.color : a.row != b.row ? a.row < b.row : a.left < b.left
+    }
+    var out: [OrderFlowStroke] = []
+    var cur = items[0]
+    let flush = { (c: (color: Int, row: Int, left: Double, right: Double, rank: Int)) in
+      out.append(OrderFlowStroke(frame: CGRect(x: c.left, y: Double(c.row), width: c.right - c.left, height: h),
+                                 color: noise[c.rank].color, rank: c.rank))
+    }
+    for item in items.dropFirst() {
+      if item.color == cur.color, item.row == cur.row, item.left <= cur.right + orderFlowNoiseJoin {
+        cur.right = Swift.max(cur.right, item.right)
+        if item.rank < cur.rank { cur.rank = item.rank }
+      } else {
+        flush(cur)
+        cur = item
+      }
+    }
+    flush(cur)
+    out.sort { $0.rank < $1.rank }
+    if out.count > max { out.removeSubrange(max...) }
+    return out
+  }
+
+  /// 一堵墙在这一屏的横向范围：墙起点那根的左缘到墙结束那根的右缘（还挂着的到主图右缘），至少 1 pt；
+  /// 横向不落在主图里、或代表价（画线的那个价）不在主图里的给 nil。
+  /// 画出来的只有代表价那条线（括号要两端都在主图里才立），所以只认代表价落在主图里的墙。
+  /// 原来跨桶的墙按「价位范围和主图有交集」算：代表价在主图外、线被裁掉看不见的墙照样占排名，
+  /// 把看得见的墙挤出「主」那 6 位（压测 2026-09-28：BTC 1m 一屏 49 条里 5 条画在主图外）。
+  private func orderFlowWallSpan(_ wall: OrderFlowWallCache.Wall, pane: Pane, spacing: Double, plotW: Double,
+                                 y: (Double) -> Double) -> (left: Double, right: Double)? {
+    guard let x0 = orderFlowBarX(wall.startMs, spacing: spacing, plotW: plotW)?.left else { return nil }
+    let x1: Double
+    if let end = wall.endMs {
+      guard let bar = orderFlowBarX(end, spacing: spacing, plotW: plotW) else { return nil }
+      x1 = bar.right
+    } else {
+      x1 = plotW
+    }
+    let left = max(0, x0), right = min(plotW, max(x1, x0 + 1))
+    guard right > left, left < plotW else { return nil }
+    let cy = y(wall.group.price)
+    guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h else { return nil }
+    return (left, right)
+  }
+
+  /// 不做时间粗筛、逐墙算出这一屏落进来几堵（只给测试核对粗筛没丢墙）。
+  func orderFlowFrameUnfiltered(size: CGSize) -> Int {
+    guard let flow = orderFlowSnapshot, flow.phase == .ready, !state.series.isEmpty else { return 0 }
+    let L = layout(size: size)
+    let range = priceRange(size: size), mode = state.effectivePriceMode
+    let spacing = state.view.barSpacing(step: state.series.step, plotW: L.plotW)
+    let y = { (p: Double) in KanpanCore.yOf(p, pane: L.main, range: range, mode: mode) }
+    return orderFlowEntry(flow).walls.filter {
+      orderFlowWallSpan($0, pane: L.main, spacing: spacing, plotW: L.plotW, y: y) != nil
+    }.count
+  }
+
+  /// 这一屏在时间上的粗筛界：起点 ≥ `hi` 的（起点那根的左缘已在主图右缘以外）、结束 < `lo` 的（结束那根的右缘
+  /// 在 -1 pt 以左，连 1 pt 的最短线也落不进来）一定看不见。和 `orderFlowBarX` 用同一套「时刻落在哪根」，
+  /// 所以筛掉的恰好是逐条算也会丢的。
+  private func orderFlowVisibleTimes(spacing: Double, plotW: Double) -> (lo: Int64, hi: Int64) {
+    let b = state.series
+    let n = b.count
+    guard n > 0 else { return (.max, .min) }
+    let cx = { (i: Int) in self.state.view.x(Double(b.time(at: i)), plotW: plotW) }
+    // 第一根满足 pred 的下标（pred 随下标单调由假变真）；都不满足给 n。
+    let first = { (pred: (Int) -> Bool) -> Int in
+      var lo = 0, hi = n
+      while lo < hi {
+        let mid = (lo + hi) / 2
+        if pred(mid) { hi = mid } else { lo = mid + 1 }
+      }
+      return lo
+    }
+    let iL = first { cx($0) + spacing / 2 > -1 }
+    let iR = first { cx($0) - spacing / 2 >= plotW }
+    return (iL < n ? b.time(at: iL) : .max, iR < n ? b.time(at: iR) : .max)
+  }
+
   /// 某一时刻落在哪根 K 线上，那根的左右缘。蜡烛中心落在 openTime 上（见 `drawCandles`），左右各半根。
   /// 早于整段序列的给左右都是负无穷：首见早于序列就从最左画起（夹到 0），结束早于序列就整条不画。
   private func orderFlowBarX(_ ms: Int64, spacing: Double, plotW: Double) -> (left: Double, right: Double)? {
@@ -828,13 +983,37 @@ extension ChartRenderer {
     guard !frame.bands.isEmpty else { return 0 }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
-    for band in frame.bands {
-      ctx.setAlpha(CGFloat(band.alpha))
-      ctx.setFillColor(Paint.cg(band.color))
-      ctx.fill(band.frame)
+    // 底噪画并过行、封过顶的那几条（1 分钟一屏 500 多条 → 200 条以内）；整条、细线逐条画。
+    // 半透明的线改成「先和图区底色混好、再不透明地填」：线直接画在底色（和一两道网格发丝线）上，混好的颜色
+    // 与 35% / 70% 叠上去读起来一样，但不透明填是整行拷贝、半透明填要逐像素混，同样的面积快四到五倍——
+    // 1 分钟一屏还挂着的次档就有两三百条、每条横贯到主图右缘，逐条半透明填要 1.9 ms（第二轮 D1）。
+    // 代价：两条线交叠处不再叠深（后画的盖住先画的），线压着的网格发丝线不再透出来——1 pt 宽，看不出。
+    // 按「色 × 不透明度」归好批、一批只设一次色（层内同色的挨着画：整条彼此不重叠，细线同色重叠处看不出先后）；
+    // 每条仍单独 `fill(rect)`——一次 `fill([CGRect])` 走的是通用路径光栅化，实测比逐条填慢一倍（第二轮 D1）。
+    let bg = state.colors.bg
+    var batches: [(color: Hex, alpha: Double, rects: [CGRect])] = []
+    let flushBatches = {
+      for batch in batches {
+        ctx.setFillColor(Paint.cg(Self.orderFlowPremixed(batch.color, alpha: batch.alpha, bg: bg)))
+        for rect in batch.rects { ctx.fill(rect) }
+      }
+      batches.removeAll(keepingCapacity: true)
     }
+    let add = { (rect: CGRect, color: Hex, alpha: Double) in
+      if let i = batches.firstIndex(where: { $0.alpha == alpha && $0.color == color }) {
+        batches[i].rects.append(rect)
+      } else {
+        batches.append((color, alpha, [rect]))
+      }
+    }
+    for stroke in frame.noiseStrokes { add(stroke.frame, stroke.color, Self.orderFlowNoiseAlpha) }
+    flushBatches()
+    for band in frame.bands where band.role != .noise && !band.thin { add(band.frame, band.color, band.alpha) }
+    flushBatches()
+    for band in frame.bands where band.thin { add(band.frame, band.color, band.alpha) }
+    flushBatches()
     ctx.setAlpha(CGFloat(Self.orderFlowBracketAlpha))
-    for band in frame.bands {
+    for band in frame.bands where band.role == .main {
       guard let bracket = band.bracket else { continue }
       drawOrderFlowBracket(ctx, bracket, color: band.color)
     }

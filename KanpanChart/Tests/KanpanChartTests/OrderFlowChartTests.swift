@@ -1641,6 +1641,78 @@ struct OrderFlowPerfBenchTests {
     #expect(bandsCold(r) == bandsCold(ChartRenderer(state: other)))
   }
 
+  @Test("D1 底噪按像素行并：同行同色相邻的并成一条，不同色 / 不同行 / 隔开的不并，封顶时留名次最前的")
+  func noiseMergeRules() throws {
+    let r = ChartRenderer(state: Self.state(interval: .m1, visible: 300))
+    let g = try #require(bandsCold(r).bands.first).group
+    let band = { (x0: Double, x1: Double, y: Double, color: Hex) in
+      ChartRenderer.OrderFlowBand(group: g, frame: CGRect(x: x0, y: y - 0.5, width: x1 - x0, height: 1), color: color,
+                                  dark: false, thin: false, role: .noise, alpha: ChartRenderer.orderFlowNoiseAlpha)
+    }
+    let a: Hex = "#112233", b: Hex = "#445566"
+    // 0、1 同行同色重叠 → 一条；2 同行同色隔 0.4 pt → 也并；3 同行不同色；4 下一行；5 同行同色隔 3 pt。
+    let noise = [band(10, 40, 100.2, a), band(30, 60, 100.4, a), band(60.4, 70, 100.1, a), band(10, 40, 100.2, b),
+                 band(10, 40, 101.6, a), band(73, 80, 100.2, a)]
+    let out = ChartRenderer.orderFlowMergeNoise(noise, colorIndex: [0, 0, 0, 1, 0, 0], max: 200)
+    #expect(out.count == 4)
+    let first = try #require(out.first)
+    #expect(first.rank == 0)
+    #expect(first.frame == CGRect(x: 10, y: 100, width: 60, height: 1))
+    #expect(out.map(\.rank) == [0, 3, 4, 5])
+    #expect(out.allSatisfy { $0.frame.height == 1 && $0.frame.minY == $0.frame.minY.rounded() })
+    // 封顶：留名次最前的两条。
+    let capped = ChartRenderer.orderFlowMergeNoise(noise, colorIndex: [0, 0, 0, 1, 0, 0], max: 2)
+    #expect(capped.map(\.rank) == [0, 3])
+  }
+
+  @Test("D1 1 分钟 2 万单：底噪画的条数封在 200 以内且比逐条少，名义最大的那条在画，丢的只有名次靠后的；最小的那条仍选得中")
+  func noiseMergedOnDenseMinuteChart() throws {
+    for visible in [300, 1500] {
+      var r = ChartRenderer(state: Self.state(interval: .m1, visible: visible))
+      let frame = bandsCold(r)
+      let noise = frame.bands.filter { $0.role == .noise }
+      let strokes = frame.noiseStrokes
+      #expect(noise.count > ChartRenderer.orderFlowNoiseDrawMax)
+      #expect(strokes.count <= ChartRenderer.orderFlowNoiseDrawMax)
+      #expect(strokes.count < noise.count)
+      let covered = { (b: ChartRenderer.OrderFlowBand) in
+        strokes.contains { s in
+          s.color == b.color && abs(Double(s.frame.midY) - Double(b.frame.midY)) <= 0.5
+            && s.frame.minX <= b.frame.minX && s.frame.maxX >= b.frame.maxX
+        }
+      }
+      #expect(covered(try #require(noise.first)))
+      for (rank, b) in noise.enumerated() where !covered(b) {
+        #expect(strokes.count == ChartRenderer.orderFlowNoiseDrawMax)
+        #expect(try #require(strokes.last).rank < rank)
+      }
+      // 命中 / 选中仍按逐条的带：名义最小的一条底噪（多半没画出来）选中后照样找得到、详情卡照出。
+      let smallest = try #require(noise.last)
+      var sel = r.state
+      sel.orderFlowSelected = smallest.key
+      r.state = sel
+      let focus = try #require(r.orderFlowFocus(size: Self.size))
+      #expect(focus.group.key == smallest.key)
+    }
+  }
+
+  @Test("D1 按时间粗筛不改结果：拖到最左、最右、中间，筛过的与整份逐条算的一样（与日线同一把尺）")
+  func visibleTimeFilterKeepsFrames() {
+    for interval in [Interval.m1, .d1] {
+      let base = Self.state(interval: interval, visible: 300)
+      let step = Double(base.series.step)
+      for shift in [0.0, -150, -2990, -5990, 40] {
+        var s = base
+        s.view = ViewWindow(to: base.view.to + step * shift, span: base.view.span)
+        let r = ChartRenderer(state: s)
+        let frame = bandsCold(r)
+        // 逐墙核对：每一条带都在主图横向范围里、并且没有一堵落在屏里的墙被丢（数条数与不筛时一致）。
+        #expect(frame.bands.allSatisfy { $0.frame.maxX > 0 && $0.frame.minX < r.layout(size: Self.size).plotW })
+        #expect(frame.bands.count == r.orderFlowFrameUnfiltered(size: Self.size))
+      }
+    }
+  }
+
   @Test("2 万单：并墙 + 排名 + 落带、静止一帧、拖动一帧、选中墙在屏外时拖动一帧")
   func bench() {
     let ctx = benchContext(size: Self.size, scale: Self.scale)
