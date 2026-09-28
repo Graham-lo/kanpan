@@ -396,6 +396,8 @@ extension ChartRenderer {
   static let orderFlowLabelInset = 4.0
   static let orderFlowLabelRadius = 4.0
   static let orderFlowLabelGap = 2.0
+  /// 挂着的墙的签坐在线上方，签底离线的上沿这么多（pt）；上方会进图例就翻到线下方、同样留这么多（第二轮 D3）。
+  static let orderFlowLabelLineGap = 2.0
   static let orderFlowLabelAlpha = 0.85
   static let orderFlowLabelMax = 6
   /// 签让位时离自己的线最多挪多远（两枚签高）；再远就读不出是哪条线的，不放。
@@ -791,8 +793,10 @@ extension ChartRenderer {
 
   /// 金额签（只给「主」里没被压细的，按排名）：还挂着的贴主图右缘（价格刻度列左侧、不进刻度列）、
   /// 不进顶上图例那几行（`mainLegendInset`）、开着盘口时不压盘口梯（挪到梯子左边，`orderFlowDodgeLadder`）、
-  /// 已结束的放在结束点右侧（放不下就往左收到主图右缘以内）；纵向居中在线上。
-  /// 和已放下的签撞了（留 2 pt）：挪到撞上那枚的上方或下方，取离自己的线近的、不再撞任何一枚、
+  /// 已结束的放在结束点右侧（放不下就往左收到主图右缘以内）。
+  /// 纵向：已结束的居中在线上（签在线的右边，不压线）；挂着的签底坐在线上方 2 pt（`orderFlowLabelLineGap`）——
+  /// 原来也居中，签贴主图右缘正好把线最新那一截（挂单此刻的位置）盖住（第二轮 D3）；上方会进图例、或撞了已放下的签而下方不撞，就翻到线下方 2 pt。
+  /// 和已放下的签撞了（留 2 pt）：挪到撞上那枚的上方或下方，取离自己本该在的位置近的、不再撞任何一枚、
   /// 没出主图、离线不超过 32 pt 的那个位置；都不行就不放。名义大的先放，所以让位的总是名义小的。一屏最多 6 枚。
   private func orderFlowLabels(_ mains: [OrderFlowBand], pane: Pane, L: Layout, spacing: Double,
                                ladder: CGRect?) -> [OrderFlowLabel] {
@@ -815,10 +819,26 @@ extension ChartRenderer {
       guard x >= 0 else { continue }
       let mid = Double(band.frame.midY)
       let clamp = { (top: Double) in min(max(top, ceiling), pane.y + pane.h - h) }
-      var rect = Self.orderFlowDodgeLadder(CGRect(x: x, y: clamp(mid - h / 2), width: w, height: h), ladder: ladder)
-      guard rect.minX >= 0 else { continue }
-      // 线在图例那几行里（价高出了定标区）：签夹到图例下沿后离线太远就不放，免得签认错线。
-      guard abs(Double(rect.midY) - mid) <= Self.orderFlowLabelMaxShift else { continue }
+      // 想放的位置：挂着的先线上方、再线下方（上方撞了别的签、或会进图例时）；已结束的居中。
+      let wants: [Double]
+      if band.group.isLive {
+        let half = Double(band.frame.height) / 2, lift = Self.orderFlowLabelLineGap
+        let above = mid - half - lift - h, below = mid + half + lift
+        wants = above >= ceiling ? [above, below] : [below]
+      } else {
+        wants = [mid - h / 2]
+      }
+      let preferred = wants[0] + h / 2
+      let place = { (top: Double) -> CGRect? in
+        let r = Self.orderFlowDodgeLadder(CGRect(x: x, y: clamp(top), width: w, height: h), ladder: ladder)
+        // 线在图例那几行里（价高出了定标区）：签夹到图例下沿后离线太远就不放，免得签认错线。
+        guard r.minX >= 0, abs(Double(r.midY) - mid) <= Self.orderFlowLabelMaxShift else { return nil }
+        return r
+      }
+      guard var rect = place(wants[0]) else { continue }
+      if collides(rect), let other = wants.dropFirst().lazy.compactMap(place).first(where: { !collides($0) }) {
+        rect = other
+      }
       if collides(rect) {
         let hits = labels.filter { l in
           l.frame.minX < rect.maxX && l.frame.maxX > rect.minX
@@ -829,7 +849,7 @@ extension ChartRenderer {
           .filter { $0 >= ceiling && $0 + h <= pane.y + pane.h && abs($0 + h / 2 - mid) <= Self.orderFlowLabelMaxShift }
           .map { Self.orderFlowDodgeLadder(CGRect(x: x, y: $0, width: w, height: h), ladder: ladder) }
           .filter { $0.minX >= 0 && !collides($0) }
-          .min { abs(Double($0.midY) - mid) < abs(Double($1.midY) - mid) }
+          .min { abs(Double($0.midY) - preferred) < abs(Double($1.midY) - preferred) }
         guard let fit = fits else { continue }
         rect = fit
       }

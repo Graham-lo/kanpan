@@ -872,7 +872,13 @@ struct OrderFlowChartTests {
                   || a.frame.maxY + gap <= b.frame.minY + 1e-9 || b.frame.maxY + gap <= a.frame.minY + 1e-9)
       }
     }
-    #expect(f.labels.contains { $0.text == "5.3M" })
+    // 5.3M 那条（挂着）夹在 10M 挂单与 10M 已结束两条之间、各隔 10 pt：第二轮 D3 起挂着的签坐在线上方，
+    // 10M 的签占住了它上下两处和夹缝，名义小的让位不放。单拿出来照旧写「5.3M」。
+    do {
+      var one = r
+      one.state.orderFlow?.orders = [orders[3]]
+      #expect(frame(one).labels.map(\.text) == ["5.3M"])
+    }
     // 字色取近黑与白里对比度高的那个；深底蔚蓝按亮度一刀切会取到白（3.6:1），按对比度取近黑；两个都不到 4.5 用纯黑。
     #expect(ChartRenderer.orderFlowLabelInk("#E1D610") == "#141414")
     #expect(ChartRenderer.orderFlowLabelInk("#8A149F") == "#FFFFFF")
@@ -891,7 +897,7 @@ struct OrderFlowChartTests {
     let nl = try #require(n.labels.first)
     #expect(abs(nl.frame.minX - min(n.bands[0].frame.maxX + inset, L.plotW - inset - nl.frame.width)) < 1e-9)
 
-    // 两条线上下隔 6 pt：线不相碍（都是整条），签 16 pt 高会碰——名义大的居中在自己线上，小的挪到它上方。
+    // 两条线上下隔 6 pt：线不相碍（都是整条），签 16 pt 高会碰——名义大的坐在自己线上方 2 pt，小的挪到它上方。
     let seen = b.time(at: b.count - 30) + 1
     let big = Self.order(.usdtPerp, .bid, price: p, firstSeen: seen, notional: 20_000_000, initial: 20_000_000, bucket: 1)
     let small = Self.order(.coinPerp, .ask, price: price(r, atY: cy - 6), firstSeen: seen, bucket: 2)
@@ -901,7 +907,8 @@ struct OrderFlowChartTests {
     #expect(c.labels.count == 2)
     let bl = try #require(c.labels.first { $0.key == OrderFlowGroupKey(big) })
     let sl = try #require(c.labels.first { $0.key == OrderFlowGroupKey(small) })
-    #expect(abs(bl.frame.midY - cy) < 1e-9, "名义大的不挪")
+    let bigLine = try #require(c.bands.first { $0.key == OrderFlowGroupKey(big) })
+    #expect(abs(bl.frame.maxY - (bigLine.frame.minY - ChartRenderer.orderFlowLabelLineGap)) < 1e-9, "名义大的不挪：签底在线上方 2 pt")
     #expect(sl.frame.maxY <= bl.frame.minY - gap + 1e-9, "小的让到上方")
     #expect(abs(sl.frame.midY - (cy - 6)) <= ChartRenderer.orderFlowLabelMaxShift)
 
@@ -936,6 +943,46 @@ struct OrderFlowChartTests {
       #expect(r.drawOrderFlowLabels(context.cgContext, pane: L.main, range: r.priceRange(size: Self.size), L: L) == 1)
     }
     #expect(image.cgImage != nil)
+  }
+
+  @Test("D3 挂着的签坐在线上方 2 pt、贴右缘，不压线；已结束的照旧在结束点右侧居中；上方会进图例就翻到线下方 2 pt")
+  func liveLabelSitsAboveLine() throws {
+    var (r, _) = Self.renderer()
+    let L = r.layout(size: Self.size)
+    let legend = r.mainLegendInset(plotW: L.plotW)
+    let lift = ChartRenderer.orderFlowLabelLineGap, inset = ChartRenderer.orderFlowLabelInset
+    let b = r.state.series
+    let seen = b.time(at: b.count - 30) + 1
+    let midY = L.main.y + L.main.h * 0.5
+    let live = Self.order(.usdtPerp, .bid, price: price(r, atY: midY), firstSeen: seen, bucket: 1)
+    let ended = Self.order(.usdtPerp, .ask, price: price(r, atY: midY + 60), firstSeen: seen,
+                           end: b.time(at: b.count - 10) + 1, status: .cancelled, bucket: 2)
+    r.state.orderFlow?.orders = [live, ended]
+    let f = frame(r)
+    let line = try #require(f.bands.first { $0.key == OrderFlowGroupKey(live) })
+    let label = try #require(f.labels.first { $0.key == line.key })
+    #expect(abs(label.frame.maxY - (line.frame.minY - lift)) < 1e-9, "签底在线上沿上方 2 pt：\(label.frame) 线 \(line.frame)")
+    #expect(!label.frame.intersects(line.frame), "不压线")
+    #expect(abs(label.frame.maxX - (L.plotW - inset)) < 1e-9, "右对齐贴主图右缘")
+    let endLine = try #require(f.bands.first { $0.key == OrderFlowGroupKey(ended) })
+    let endLabel = try #require(f.labels.first { $0.key == endLine.key })
+    #expect(abs(endLabel.frame.midY - endLine.frame.midY) < 1e-9, "已结束的签在结束点右侧、居中")
+
+    // 线在图例下沿下方 8 pt：上方放不下（会进图例），翻到线下方 2 pt。
+    let high = Self.order(.usdtPerp, .bid, price: price(r, atY: L.main.y + legend + 8), firstSeen: seen, bucket: 3)
+    r.state.orderFlow?.orders = [high]
+    let g = frame(r)
+    let hl = try #require(g.bands.first)
+    let hLabel = try #require(g.labels.first)
+    #expect(abs(hLabel.frame.minY - (hl.frame.maxY + lift)) < 1e-9, "翻到线下方 2 pt：\(hLabel.frame) 线 \(hl.frame)")
+    #expect(hLabel.frame.minY >= L.main.y + legend - 1e-9)
+    // 线离图例下沿够远（签高 16 + 2 + 线半宽）：照旧在上方。
+    let roomy = Self.order(.usdtPerp, .bid, price: price(r, atY: L.main.y + legend + 24), firstSeen: seen, bucket: 4)
+    r.state.orderFlow?.orders = [roomy]
+    let k = frame(r)
+    let kl = try #require(k.bands.first), kLabel = try #require(k.labels.first)
+    #expect(abs(kLabel.frame.maxY - (kl.frame.minY - lift)) < 1e-9)
+    #expect(kLabel.frame.minY >= L.main.y + legend - 1e-9)
   }
 
   @Test("金额签不进顶上图例那几行（压测 2026-09-28）：线在图例带里，签夹到图例下沿；夹下来离线超过 32 pt 就不放")
