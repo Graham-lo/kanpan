@@ -19,7 +19,13 @@ final class TradeReplayWalkthroughUITests: KanpanUICase {
   override var extraLaunchEnvironment: [String: String] {
     var env = ["KANPAN_PERSISTENCE_PROFILE": profile, "KANPAN_EXCHANGE_FIXTURE": "1",
                "KANPAN_EXCHANGE_FIXTURE_KEY": "DEMOREADONLY7C31"]
-    if name.contains("HistoryUnavailable") { env["KANPAN_TEST_BINANCE_REST_DOWN"] = "1" }
+    if name.contains("HistoryUnavailable") {
+      env["KANPAN_TEST_BINANCE_REST_DOWN"] = "1"
+      // 那句提示只停 1.6 秒，比 XCUITest 一次「等空闲 + 查询」还短：REST 按死时一点就失败，
+      // 提示在详情页刚推回来那一两秒里出完就收，查询常常落在它之后（压测 2026-09-28 录屏里
+      // 第 1.5 秒已经亮着、查询一直没看见）。拉到 6 秒，同 AlertsFlowUITests。
+      env["KANPAN_TEST_TOAST_SECONDS"] = "6"
+    }
     return env
   }
 
