@@ -51,6 +51,40 @@ struct OrderFlowChartTests {
     return r.orderFlowFrame(pane: L.main, range: r.priceRange(size: Self.size), L: L)
   }
 
+  /// 视野往右多留 `px` 的空白（最新那根离主图右缘 `px`）：贴右缘的金额签底下没有 K 线，不触发「挂着的签躲 K 线」
+  /// （那条规则另有用例 `liveLabelDodgesLatestCandles`）。要在第一次取 `frame` 之前调。
+  static func clearRight(_ r: inout ChartRenderer, px: Double = 140) {
+    let plotW = r.layout(size: size).plotW
+    r.state.view.to += px / plotW * r.state.view.span
+  }
+
+  /// 画出来的蜡烛（含影线，3 倍屏尺寸，实体与影线取宽的那个）里和 `rect` 相交的那些根的下标。
+  static func candlesUnder(_ r: ChartRenderer, _ rect: CGRect) -> [Int] {
+    let L = r.layout(size: size), b = r.state.series, range = r.priceRange(size: size)
+    let m = candleMetrics(spacing: r.state.view.barSpacing(step: b.step, plotW: L.plotW), scale: 3)
+    let halfW = max(m.bodyW, m.wickW) / 2
+    return (0..<b.count).filter { i in
+      let cx = r.state.view.x(Double(b.time(at: i)), plotW: L.plotW)
+      let hiY = KanpanCore.yOf(b.high[i], pane: L.main, range: range, mode: r.state.effectivePriceMode)
+      let loY = KanpanCore.yOf(b.low[i], pane: L.main, range: range, mode: r.state.effectivePriceMode)
+      return cx + halfW > Double(rect.minX) && cx - halfW < Double(rect.maxX)
+        && hiY < Double(rect.maxY) && loY > Double(rect.minY)
+    }
+  }
+
+  /// 已结束的签落在规则允许的几处之一：结束点右侧（居中 / 线上方 / 线下方）、结束点左侧线的范围里（线上方 / 线下方）、
+  /// 或从右侧居中往右让过去（居中在线上、左缘更靠右）。
+  static func endedLabelAtAllowedSpot(_ label: ChartRenderer.OrderFlowLabel, band: ChartRenderer.OrderFlowBand, plotW: Double) -> Bool {
+    let inset = ChartRenderer.orderFlowLabelInset, lift = ChartRenderer.orderFlowLabelLineGap
+    let f = label.frame, l = band.frame
+    let xR = min(l.maxX + inset, plotW - inset - f.width), xL = l.maxX - inset - f.width
+    let centered = abs(f.midY - l.midY) < 1e-9
+    let offLine = abs(f.maxY - (l.minY - lift)) < 1e-9 || abs(f.minY - (l.maxY + lift)) < 1e-9
+    if abs(f.minX - xR) < 1e-9 { return centered || offLine }
+    if abs(f.minX - xL) < 1e-9, xL >= l.minX { return offLine }
+    return f.minX > xR && centered
+  }
+
   /// 主图上某一价位的 y，和某一 y 对应的价。
   func y(_ r: ChartRenderer, _ price: Double) -> Double {
     KanpanCore.yOf(price, pane: r.layout(size: Self.size).main, range: r.priceRange(size: Self.size),
@@ -200,6 +234,7 @@ struct OrderFlowChartTests {
   @Test("切段：同桶两单空档远大于容差时画两条，各自的起止、名义、深浅只在段内算")
   func segmentsSplitOnLongGap() throws {
     var (r, orders) = Self.renderer()
+    Self.clearRight(&r)
     let b = r.state.series
     let p = orders[0].price
     let L = r.layout(size: Self.size)
@@ -521,6 +556,7 @@ struct OrderFlowChartTests {
   @Test("开着盘口：挂着的签不压盘口梯，挪到梯子左边、纵向不动；跨桶墙的括号跟着签走；没开盘口照旧贴右缘")
   func labelsDodgeDepthLadder() throws {
     var (r, step, b0) = wallRenderer()
+    Self.clearRight(&r)
     let L = r.layout(size: Self.size)
     let px = r.state.series.close.last!
     // 贴着最新价挂一堵 3 桶的卖墙（名义最大，一定是主、一定写签）、再挂一单远离盘口的。
@@ -554,6 +590,7 @@ struct OrderFlowChartTests {
   @Test("范围括号：同一 x 上两枚纵向重叠只留名义大的那枚，不错开 x；两堵墙的芯线、金额签都照旧")
   func overlappingBracketsKeepLarger() throws {
     var (r, _) = Self.renderer()
+    Self.clearRight(&r)
     let p = r.state.series.close.last!
     let step = p * 0.001
     r.state.orderFlow?.thresholds.step = step
@@ -845,6 +882,7 @@ struct OrderFlowChartTests {
   @Test("金额签：只给主档整条；挂着的贴主图右缘、结束的在结束点右侧；纵向撞了名义小的让位（挪 ≤ 32 pt，挪不开就不放）")
   func labels() throws {
     var (r, orders) = Self.renderer()
+    Self.clearRight(&r)
     let L = r.layout(size: Self.size)
     let inset = ChartRenderer.orderFlowLabelInset, gap = ChartRenderer.orderFlowLabelGap
     let f = frame(r)
@@ -862,7 +900,10 @@ struct OrderFlowChartTests {
       if band.group.isLive { #expect(abs(label.frame.maxX - (L.plotW - inset)) < 1e-9, "挂着的贴主图右缘") }
       else {
         let want = min(band.frame.maxX + inset, L.plotW - inset - label.frame.width)
-        #expect(abs(label.frame.minX - want) < 1e-9, "结束的在结束点右侧")
+        // 结束点上有蜡烛时抬到线上下方、或收到结束点左侧线的上下方、再不行往右让（居中在线上）；否则贴在结束点右侧。
+        #expect(abs(label.frame.minX - want) < 1e-9 && abs(label.frame.midY - band.frame.midY) < 1e-9
+                  || Self.endedLabelAtAllowedSpot(label, band: band, plotW: L.plotW),
+                "结束的在结束点旁：\(label.frame)，本该 \(want)")
       }
     }
     // 签彼此不叠。
@@ -895,7 +936,9 @@ struct OrderFlowChartTests {
     let n = frame(r)
     #expect(n.bands.count == 1 && n.labels.count == 1)
     let nl = try #require(n.labels.first)
-    #expect(abs(nl.frame.minX - min(n.bands[0].frame.maxX + inset, L.plotW - inset - nl.frame.width)) < 1e-9)
+    let nlWant = min(n.bands[0].frame.maxX + inset, L.plotW - inset - nl.frame.width)
+    #expect(nl.frame.minX >= nlWant - 1e-9 && Self.endedLabelAtAllowedSpot(nl, band: n.bands[0], plotW: L.plotW),
+            "窄段的签只有结束点右侧那几处（左侧放不进一根宽的线里）：\(nl.frame)")
 
     // 两条线上下隔 6 pt：线不相碍（都是整条），签 16 pt 高会碰——名义大的坐在自己线上方 2 pt，小的挪到它上方。
     let seen = b.time(at: b.count - 30) + 1
@@ -966,7 +1009,8 @@ struct OrderFlowChartTests {
     #expect(abs(label.frame.maxX - (L.plotW - inset)) < 1e-9, "右对齐贴主图右缘")
     let endLine = try #require(f.bands.first { $0.key == OrderFlowGroupKey(ended) })
     let endLabel = try #require(f.labels.first { $0.key == endLine.key })
-    #expect(abs(endLabel.frame.midY - endLine.frame.midY) < 1e-9, "已结束的签在结束点右侧、居中")
+    #expect(Self.endedLabelAtAllowedSpot(endLabel, band: endLine, plotW: L.plotW),
+            "已结束的签居中在线上；压着蜡烛才抬到线上方 / 下方或让开：\(endLabel.frame) 线 \(endLine.frame)")
 
     // 线在图例下沿下方 8 pt：上方放不下（会进图例），翻到线下方 2 pt。
     let high = Self.order(.usdtPerp, .bid, price: price(r, atY: L.main.y + legend + 8), firstSeen: seen, bucket: 3)
@@ -1012,6 +1056,216 @@ struct OrderFlowChartTests {
     } else {
       #expect(g.labels.allSatisfy { $0.frame.minY >= L.main.y + legend - 1e-9 })
     }
+  }
+
+  @Test("挂着的签贴右缘会压到最新那几根 K 线（含影线）：往左让到压着的最右一根左侧 2 pt、不压任何一根、仍在线上方；墙离最新 K 线远照旧贴右缘")
+  func liveLabelDodgesLatestCandles() throws {
+    var (r, _) = Self.renderer()
+    let L = r.layout(size: Self.size)
+    let b = r.state.series
+    let seen = b.time(at: b.count - 30) + 1
+    let inset = ChartRenderer.orderFlowLabelInset, lift = ChartRenderer.orderFlowLabelLineGap
+    let spacing = r.state.view.barSpacing(step: b.step, plotW: L.plotW)
+    // 蜡烛画出来的左右缘：照 `drawCandles` 同一套尺寸（3 倍屏），实体与影线取宽的那个。
+    let m = candleMetrics(spacing: spacing, scale: 3)
+    let halfW = max(m.bodyW, m.wickW) / 2
+    let cx = { (i: Int) in r.state.view.x(Double(b.time(at: i)), plotW: L.plotW) }
+    let hiY = { (i: Int) in self.y(r, b.high[i]) }, loY = { (i: Int) in self.y(r, b.low[i]) }
+    let covers = { (rect: CGRect, i: Int) in
+      cx(i) + halfW > Double(rect.minX) && cx(i) - halfW < Double(rect.maxX)
+        && hiY(i) < Double(rect.maxY) && loY(i) > Double(rect.minY)
+    }
+    // 签贴右缘时的横向范围里的那几根，取最高的那根（影线最长），墙挂在它高低价正中。
+    let w = ChartRenderer.orderFlowLabelWidth(ChartRenderer.orderFlowAmount(10_000_000))
+    let right = L.plotW - inset
+    let under = (0..<b.count).filter { cx($0) + halfW > right - w && cx($0) - halfW < right }
+    let tall = try #require(under.max { loY($0) - hiY($0) < loY($1) - hiY($1) }, "最新那几根落在贴右缘的签底下")
+    #expect(loY(tall) - hiY(tall) > 8, "夹具里最新那几根要有一根够高：\(loY(tall) - hiY(tall)) pt")
+    let near = Self.order(.usdtPerp, .bid, price: (b.high[tall] + b.low[tall]) / 2, firstSeen: seen, bucket: 1)
+    r.state.orderFlow?.orders = [near]
+    let f = frame(r)
+    let line = try #require(f.bands.first)
+    // 不躲的话签在哪：贴右缘、签底在线上方 2 pt。它确实压着蜡烛。
+    let naive = CGRect(x: right - w, y: Double(line.frame.minY) - lift - ChartRenderer.orderFlowLabelHeight,
+                       width: w, height: ChartRenderer.orderFlowLabelHeight)
+    let hit = try #require(under.filter { covers(naive, $0) }.max(), "贴右缘的签压着最新那几根")
+    let label = try #require(f.labels.first, "躲开 K 线后仍写金额")
+    #expect(label.frame.maxX < cx(hit) - halfW, "签 \(label.frame) 在压着的最右一根（#\(hit)，左缘 \(cx(hit) - halfW)）左侧")
+    #expect(abs(label.frame.maxY - (line.frame.minY - lift)) < 1e-9, "仍坐在线上方 2 pt：\(label.frame) 线 \(line.frame)")
+    let still = (0..<b.count).filter { covers(label.frame, $0) }
+    #expect(still.isEmpty, "挪完不再压任何一根：\(still)")
+    // 签右缘紧贴它让开的那一根（纵向压着签原位置的某一根）左侧 2 pt（实体按像素取整，容差 1 pt）。
+    let gapToBlocker = (0..<b.count).filter { hiY($0) < Double(label.frame.maxY) && loY($0) > Double(label.frame.minY) }
+      .map { cx($0) - halfW - Double(label.frame.maxX) }.filter { $0 > 0 }.min()
+    #expect(gapToBlocker.map { $0 >= ChartRenderer.orderFlowLabelCandleGap && $0 <= ChartRenderer.orderFlowLabelCandleGap + 1 } == true,
+            "签右缘离右边压着的那根留 2 pt：\(String(describing: gapToBlocker))")
+
+    // 同一夹具，墙挪到签底下那几根够不着的地方（签在线上方：签框 = 线 y − 19.25 … 线 y − 3.25）：
+    // 最高价以上（签底在最高那根影线以上）放得下就放上面，否则放最低价以下（签顶在最低那根以下）。签不压蜡烛，照旧贴右缘。
+    let ceil = under.map(hiY).min()!, floor = under.map(loY).max()!
+    let legendBottom = L.main.y + r.mainLegendInset(plotW: L.plotW)
+    let aboveY = ceil - 4, belowY = floor + 22
+    let farY = try #require(aboveY - 20 >= legendBottom ? aboveY : belowY + 4 <= L.main.y + L.main.h ? belowY : nil,
+                            "夹具主图里放得下一条不压蜡烛的线：影线 \(ceil) … \(floor)，主图 \(legendBottom) … \(L.main.y + L.main.h)")
+    let far = Self.order(.usdtPerp, .bid, price: price(r, atY: farY), firstSeen: seen, bucket: 2)
+    r.state.orderFlow?.orders = [far]
+    let g = frame(r)
+    let farLine = try #require(g.bands.first)
+    let farLabel = try #require(g.labels.first)
+    #expect(abs(farLabel.frame.maxX - right) < 1e-9, "不压蜡烛就贴右缘：\(farLabel.frame)")
+    #expect(abs(farLabel.frame.maxY - (farLine.frame.minY - lift)) < 1e-9)
+    // 跨桶的墙：括号跟着让开的签走（右缘仍紧贴签左侧 1 pt），不留在贴右缘时的名义落点。
+    let mid = (b.high[tall] + b.low[tall]) / 2, step = mid * 0.001
+    r.state.orderFlow?.thresholds.step = step
+    let b0 = Int64((mid / step).rounded(.down)) - 1
+    let wallOrders = (b0...(b0 + 2)).map { wallOrder(r, step: step, bucket: $0, from: 20) }
+    r.state.orderFlow?.orders = wallOrders
+    let wf = frame(r)
+    let wall = try #require(wf.bands.first { $0.group.bucketCount == 3 }, "\(wf.bands.map(\.key.id))")
+    let wallLabel = try #require(wf.labels.first { $0.key == wall.key })
+    let bracket = try #require(wall.bracket, "三桶的主墙立括号")
+    #expect(wallLabel.frame.maxX < right - 1, "夹具：签让开了 K 线 \(wallLabel.frame)")
+    #expect((0..<b.count).allSatisfy { !covers(wallLabel.frame, $0) })
+    #expect(abs(bracket.maxX - (wallLabel.frame.minX - ChartRenderer.orderFlowBracketGap)) < 1e-6,
+            "括号 \(bracket) 跟着签 \(wallLabel.frame)")
+    r.state.orderFlow?.thresholds.step = nil
+  }
+
+  @Test("已结束的签在结束点右侧压到蜡烛：先看结束点两侧线上方 / 下方能不能不挪就放下，都压着就往右让到压着的最右一根右侧 2 pt、居中在线上；跨桶的括号跟着签走；哪儿都压着就取盖得最少的")
+  func endedLabelDodgesCandles() throws {
+    var (r, _) = Self.renderer()
+    // 放大三倍（格宽 4 → 12 pt）：默认密度下签底下十根挨着的蜡烛总有一根够到签，让到哪儿都压着；放大后才有空档可让。
+    r.state.view.span /= 3
+    let L = r.layout(size: Self.size)
+    let b = r.state.series
+    let inset = ChartRenderer.orderFlowLabelInset, gap = ChartRenderer.orderFlowLabelCandleGap
+    let h = ChartRenderer.orderFlowLabelHeight, lift = ChartRenderer.orderFlowLabelLineGap
+    let spacing = r.state.view.barSpacing(step: b.step, plotW: L.plotW)
+    let cx = { (i: Int) in r.state.view.x(Double(b.time(at: i)), plotW: L.plotW) }
+    let hiY = { (i: Int) in self.y(r, b.high[i]) }, loY = { (i: Int) in self.y(r, b.low[i]) }
+    // 墙的价位放在某根蜡烛顶端往下 7 pt：签居中（顶 = 影线顶 − 1）、线上方、线下方三处都压着这根（它得高过 10 pt）；
+    // 线只有两根宽，结束点左侧放不下签；让到这根右侧 2 pt 处（签居中在线上）不再压别的蜡烛——夹具里挑满足这些的最靠左一根。
+    let half = max(1, spacing / 3 + 0.5)
+    let w = ChartRenderer.orderFlowLabelWidth(ChartRenderer.orderFlowAmount(10_000_000))
+    let candidates = (b.count - 40)..<(b.count - 12)
+    let tall = try #require(candidates.first { i in
+      let landing = CGRect(x: cx(i) + half + gap, y: hiY(i) - 1, width: w, height: h)
+      return loY(i) - hiY(i) > 10 && cx(i - 3) - spacing / 2 >= 0 && Self.candlesUnder(r, landing).isEmpty
+        && landing.maxX <= L.plotW - inset
+    }, "夹具里要有这么一根")
+    let level = price(r, atY: hiY(tall) + h / 2 - 1)
+    let seen = b.time(at: tall - 3) + 1, end = b.time(at: tall - 1) + 1
+    let ended = Self.order(.usdtPerp, .ask, price: level, firstSeen: seen, end: end, status: .cancelled, bucket: 3)
+    r.state.orderFlow?.orders = [ended]
+    let f = frame(r)
+    let line = try #require(f.bands.first), label = try #require(f.labels.first, "让开后仍写金额")
+    #expect(abs(line.frame.maxX - (cx(tall) - spacing / 2)) < 1, "夹具：线在那根高蜡烛左缘结束 \(line.frame.maxX) vs \(cx(tall) - spacing / 2)")
+    #expect(label.frame.minX > line.frame.maxX + inset, "签往右让开了：\(label.frame)")
+    #expect(abs(label.frame.midY - line.frame.midY) < 1e-9, "居中在线上")
+    #expect(Self.candlesUnder(r, label.frame).isEmpty, "不压任何一根：\(Self.candlesUnder(r, label.frame))")
+    #expect(label.frame.maxX <= L.plotW - inset + 1e-9)
+    #expect(abs(Double(label.frame.minX) - (cx(tall) + half + gap)) < 1e-6, "签左缘 = 那根右缘 + 2 pt：\(label.frame)")
+    // 那根之上还有一小截空：线上方放得下就不横向挪（签仍在结束点右侧、抬到线上方 2 pt）。
+    let low = price(r, atY: hiY(tall) + h + lift + 1 + 4)
+    r.state.orderFlow?.orders = [Self.order(.usdtPerp, .ask, price: low, firstSeen: seen, end: end, status: .cancelled, bucket: 3)]
+    let g = frame(r)
+    let sLine = try #require(g.bands.first), sLabel = try #require(g.labels.first)
+    let aboveRect = CGRect(x: sLine.frame.maxX + inset, y: sLine.frame.minY - lift - h, width: w, height: h)
+    if Self.candlesUnder(r, aboveRect).isEmpty {
+      #expect(abs(sLabel.frame.minX - (sLine.frame.maxX + inset)) < 1e-9 && abs(sLabel.frame.maxY - (sLine.frame.minY - lift)) < 1e-9,
+              "上方放得下就不横向挪：\(sLabel.frame) 线 \(sLine.frame)")
+    }
+    #expect(Self.endedLabelAtAllowedSpot(sLabel, band: sLine, plotW: L.plotW))
+    // 哪儿都压着（视野里全是蜡烛、让到右缘外）：签照样有，落在五处里盖蜡烛最少的那处。
+    var dense = r
+    dense.state.view.to = Double(b.time(at: tall)) + Double(b.step) / 2
+    let dLine0 = Self.order(.usdtPerp, .ask, price: level, firstSeen: seen, end: end, status: .cancelled, bucket: 3)
+    dense.state.orderFlow?.orders = [dLine0]
+    let dL = dense.layout(size: Self.size)
+    let df = dense.orderFlowFrame(pane: dL.main, range: dense.priceRange(size: Self.size), L: dL)
+    let dLine = try #require(df.bands.first), dLabel = try #require(df.labels.first, "让不开也要有签")
+    #expect(Self.endedLabelAtAllowedSpot(dLabel, band: dLine, plotW: dL.plotW), "\(dLabel.frame) 线 \(dLine.frame)")
+    // 跨桶的已结束墙：括号跟着让开的签走（右缘仍紧贴签左侧 1 pt）。
+    let step = level * 0.001
+    r.state.orderFlow?.thresholds.step = step
+    let b0 = Int64((level / step).rounded(.down)) - 1
+    let wallOrders = (b0...(b0 + 2)).map { wallOrder(r, step: step, bucket: $0, from: b.count - tall + 3, to: b.count - tall + 1) }
+    r.state.orderFlow?.orders = wallOrders
+    let wf = frame(r)
+    let wall = try #require(wf.bands.first { $0.group.bucketCount == 3 }, "\(wf.bands.map(\.key.id))")
+    let wallLabel = try #require(wf.labels.first { $0.key == wall.key })
+    let bracket = try #require(wall.bracket, "三桶的主墙立括号")
+    #expect(!wall.group.isLive && Self.endedLabelAtAllowedSpot(wallLabel, band: wall, plotW: L.plotW), "\(wallLabel.frame)")
+    #expect(abs(bracket.maxX - (wallLabel.frame.minX - ChartRenderer.orderFlowBracketGap)) < 1e-6,
+            "括号 \(bracket) 跟着签 \(wallLabel.frame)")
+    r.state.orderFlow?.thresholds.step = nil
+  }
+
+  /// 把 `body` 画进一张和图一样大的位图（1 倍、y 朝下，行号 = 视图坐标 y），返回 RGBA。
+  static func bitmap(_ body: (CGContext) -> Void) throws -> [UInt8] {
+    let w = Int(size.width), h = Int(size.height)
+    var bytes = [UInt8](repeating: 0, count: w * h * 4)
+    try bytes.withUnsafeMutableBytes { buffer in
+      let ctx = try #require(CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8,
+                                       bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      ctx.translateBy(x: 0, y: CGFloat(h))
+      ctx.scaleBy(x: 1, y: -1)
+      UIGraphicsPushContext(ctx)
+      body(ctx)
+      UIGraphicsPopContext()
+    }
+    return bytes
+  }
+
+  /// 位图里 y ∈ [y0, y1)、x ∈ [0, plotW) 画上了东西的像素数。
+  static func inked(_ bytes: [UInt8], rows y0: Double, _ y1: Double, plotW: Double) -> Int {
+    let w = Int(size.width)
+    var count = 0
+    for row in max(0, Int(y0.rounded(.up)))..<min(Int(size.height), Int(y1.rounded(.down))) {
+      for col in 0..<min(w, Int(plotW)) where bytes[(row * w + col) * 4 + 3] > 0 { count += 1 }
+    }
+    return count
+  }
+
+  @Test("墙的价位落进主图图例区：线（含选中重画的那一条）不画进图例那几行，图例下沿以下照画；几何、点选、图例合计照旧")
+  func linesStayOutOfLegend() throws {
+    var (r, _) = Self.renderer()
+    let L = r.layout(size: Self.size), range = r.priceRange(size: Self.size)
+    let legend = r.mainLegendInset(plotW: L.plotW)
+    #expect(legend > 12, "开着主力，图例至少两行")
+    let b = r.state.series
+    let seen = b.time(at: b.count - 30) + 1
+    let inY = L.main.y + legend / 2, outY = L.main.y + legend + 40
+    let inside = Self.order(.usdtPerp, .bid, price: price(r, atY: inY), firstSeen: seen, bucket: 1)
+    let below = Self.order(.usdtPerp, .ask, price: price(r, atY: outY), firstSeen: seen, notional: 8_000_000, bucket: 2)
+    r.state.orderFlow?.orders = [inside, below]
+    let f = frame(r)
+    let inBand = try #require(f.bands.first { $0.key == OrderFlowGroupKey(inside) }, "图例区里的墙照样有几何")
+    let outBand = try #require(f.bands.first { $0.key == OrderFlowGroupKey(below) })
+    #expect(inBand.frame.maxY < L.main.y + legend && inBand.frame.minY > L.main.y, "线在图例区里：\(inBand.frame)")
+    #expect(outBand.frame.minY > L.main.y + legend)
+    #expect(ChartRenderer.orderFlowHit(f.bands, x: Double(inBand.frame.midX), y: Double(inBand.frame.midY))?.key == inBand.key,
+            "点选照旧认得图例区里的那条")
+    #expect(f.bidTotal == inside.notional && f.askTotal == below.notional, "图例合计照旧")
+
+    let bytes = try Self.bitmap { ctx in
+      #expect(r.drawOrderFlow(ctx, pane: L.main, range: range, L: L) == 2)
+    }
+    #expect(Self.inked(bytes, rows: L.main.y, L.main.y + legend, plotW: L.plotW) == 0, "图例区里一个像素都不画")
+    let outInk = Self.inked(bytes, rows: Double(outBand.frame.minY) - 1, Double(outBand.frame.maxY) + 1, plotW: L.plotW)
+    #expect(outInk > Int(outBand.frame.width), "图例下沿以下的线照画：\(outInk) 像素")
+
+    // 选中图例区里那一条：crossLayer 上的描边重画也不进图例区。
+    r.state.orderFlowSelected = inBand.key
+    var drew = false
+    let hover = try Self.bitmap { ctx in drew = r.drawOrderFlowHover(ctx, pane: L.main, range: range, L: L) }
+    #expect(drew)
+    #expect(Self.inked(hover, rows: L.main.y, L.main.y + legend, plotW: L.plotW) == 0)
+    // 选中图例下沿以下那一条照画。
+    r.state.orderFlowSelected = outBand.key
+    let hover2 = try Self.bitmap { ctx in _ = r.drawOrderFlowHover(ctx, pane: L.main, range: range, L: L) }
+    #expect(Self.inked(hover2, rows: Double(outBand.frame.minY) - 2, Double(outBand.frame.maxY) + 2, plotW: L.plotW) > 0)
   }
 
   @Test("详情卡上限：宽 ≤ 85% 绘图区、高 ≤ 55% 主图且不越过线的命中带（至少 8 pt 高）")

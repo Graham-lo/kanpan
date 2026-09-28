@@ -38,6 +38,8 @@ import UIKit
 //      六套皮肤 × 四色 × 深浅两档都 ≥ 4.5:1，测试守着）；一屏最多 6 枚（`orderFlowLabelMax`）；
 //      11 pt medium 等宽（HIG 下限，同 app 的 `TypeScale.caption2Emph`）、高 16、左右 4、圆角 4、签间至少 2。
 //      签之间纵向撞了按名义让位：名义小的挪到撞上那枚的上方或下方（离自己的线最多 32 pt），挪不开就不放。
+//      挂着的签贴右缘时纵向压到最新那几根 K 线（含影线）就往左让到压着的最右一根左侧 2 pt，一直让到不压任何一根，
+//      让出主图左缘就不放（2026-09-29，`orderFlowCandleDodge`）。
 //      签画在 crossLayer：金额每拍都在抖，不能拖着底图重画（审查 31）。
 //   5b. **颜色**（2026-09-25 改）：不再用皮肤涨跌色——合约的买卖单拿 `t.up / t.down` 画，压在同色蜡烛上就看不见。
 //      K 线涨跌在全部六套种子里是绿 134°–165°、红 356°–6°，离两者都 ≥ 60° 的色相只剩黄（≈ 66°–74°）和
@@ -54,6 +56,9 @@ import UIKit
 // 存的是那堵墙的 `OrderFlowGroupKey`——墙里最早那一段的键，含段的起点；墙续长、并进后来的段都不变，
 // 并进更早的段按 `OrderFlowGroup.covers` 认回来）。选中的那条在 crossLayer 上重画一遍并描 1 pt 正文色边，
 // app 按它出「一段一卡」的详情卡；这时图里的开高低收框不画。
+//
+// 线、底噪、括号只画在主图图例区（`mainLegendInset`）以下（2026-09-29）：价格轴按 K 线定标，墙的价位可以落进图例那几行，
+// 线会从「主力 买 … 卖 …」「均线 …」的字中间穿过去。命中、排名、图例合计照旧按整块主图算，只是图例区里不画。
 //
 // 层序（2026-09-25 改）：`draw` 在网格之后、蜡烛之前调 `drawOrderFlow`——线与范围括号垫在蜡烛、均线、画线、
 // 最新价（liveLayer）下面，副图（成交量等）本来就不画大单。选中那一条（描边重画）、金额签、图例画在 crossLayer。几何（`orderFlowFrame`）按（快照、显示开关、
@@ -403,6 +408,8 @@ extension ChartRenderer {
   static let orderFlowLabelGap = 2.0
   /// 挂着的墙的签坐在线上方，签底离线的上沿这么多（pt）；上方会进图例就翻到线下方、同样留这么多（第二轮 D3）。
   static let orderFlowLabelLineGap = 2.0
+  /// 签躲 K 线时离压着的那根蜡烛这么多（pt）：挂着的往左让，签右缘离蜡烛左缘；已结束的往右让，签左缘离蜡烛右缘。
+  static let orderFlowLabelCandleGap = 2.0
   static let orderFlowLabelAlpha = 0.85
   static let orderFlowLabelMax = 6
   /// 签让位时离自己的线最多挪多远（两枚签高）；再远就读不出是哪条线的，不放。
@@ -498,6 +505,33 @@ extension ChartRenderer {
                                               height: orderFlowLabelHeight), ladder: ladder)
     let right = Double(nominal.minX) - orderFlowBracketGap
     return CGRect(x: right - orderFlowBracketWidth, y: top, width: orderFlowBracketWidth, height: bottom - top)
+  }
+
+  /// 签躲 K 线横向挪了（`orderFlowCandleDodge`：挂着的往左、已结束的往右），范围括号跟着签走：右缘仍紧贴签左侧 1 pt，
+  /// 纵向不动。挪过去和排名更前、已立的括号在同一 x 上纵向重叠的就不立（与 `computeOrderFlowBands` 里的去重同一规则）。
+  /// 签没放下的括号留在名义落点。只有签真挪了的才重建，其余原样。
+  static func orderFlowBracketsFollowLabels(_ bands: [OrderFlowBand], labels: [OrderFlowLabel]) -> [OrderFlowBand] {
+    guard bands.contains(where: { $0.bracket != nil }), !labels.isEmpty else { return bands }
+    var kept: [CGRect] = []
+    return bands.map { band in
+      guard var k = band.bracket else { return band }
+      var moved = false
+      if let label = labels.first(where: { $0.key == band.key }) {
+        let right = Double(label.frame.minX) - orderFlowBracketGap
+        if abs(Double(k.maxX) - right) > 1e-9 {
+          k.origin.x = CGFloat(right) - k.width
+          moved = true
+        }
+      }
+      if kept.contains(where: { $0.minX < k.maxX && $0.maxX > k.minX && $0.minY < k.maxY && $0.maxY > k.minY }) {
+        return OrderFlowBand(group: band.group, frame: band.frame, color: band.color, dark: band.dark, thin: band.thin,
+                             role: band.role, alpha: band.alpha, bracket: nil)
+      }
+      kept.append(k)
+      guard moved else { return band }
+      return OrderFlowBand(group: band.group, frame: band.frame, color: band.color, dark: band.dark, thin: band.thin,
+                           role: band.role, alpha: band.alpha, bracket: k)
+    }
   }
 
   /// 签（含 2 pt 间隙）和盘口梯那一块交叠就挪到梯子左边，纵向不动。原来挂着的签贴主图右缘，
@@ -802,22 +836,33 @@ extension ChartRenderer {
                                alpha: alpha, bracket: kept)
       if clash { thin.append(band) } else { full.append(band) }
     }
+    frame.labels = orderFlowLabels(full.filter { $0.role == .main }, pane: pane, range: range, L: L, spacing: spacing,
+                                   ladder: ladder)
+    full = Self.orderFlowBracketsFollowLabels(full, labels: frame.labels)
     frame.bands = noise + full + thin
     frame.noiseStrokes = Self.orderFlowMergeNoise(noise, colorIndex: noiseColor, max: Self.orderFlowNoiseDrawMax)
-    frame.labels = orderFlowLabels(full.filter { $0.role == .main }, pane: pane, L: L, spacing: spacing, ladder: ladder)
     return frame
   }
 
   /// 金额签（只给「主」里没被压细的，按排名）：还挂着的贴主图右缘（价格刻度列左侧、不进刻度列）、
   /// 不进顶上图例那几行（`mainLegendInset`）、开着盘口时不压盘口梯（挪到梯子左边，`orderFlowDodgeLadder`）、
   /// 已结束的放在结束点右侧（放不下就往左收到主图右缘以内）。
+  /// 签纵向压到签底下那几根 K 线（含影线）就横向让开（`orderFlowCandleDodge`）：挂着的往左让到压着的最右一根左侧 2 pt，
+  /// 让出主图左缘就不放（上方让不开再试线下方）；已结束的往右让到压着的最左一根右侧 2 pt，出了主图右缘就不放。
+  /// 已结束的先试五个位置——结束点右侧居中、右侧线上方、右侧线下方、结束点左侧（签在自己线的范围里）线上方、线下方——
+  /// 哪个不用横向挪就用哪个（签仍贴在结束点上），都压着蜡烛才取右侧居中往右让过去的；让出主图右缘就在五处里取
+  /// 盖住蜡烛面积最少的那处（密到哪儿都是蜡烛时签不能没有：金额是这堵墙最要紧的一个数，K 线只被 85% 不透明的一小块盖住）。
+  /// 原来墙贴着最新价时，签正好盖住最新那几根的影线和实体；结束点就是价格穿过墙的地方，蜡烛必然在那儿，
+  /// 已结束的签也照样盖着（第三轮验收截图「BTC-1m-金额签」里的「84.9M」）。
   /// 纵向：已结束的居中在线上（签在线的右边，不压线）；挂着的签底坐在线上方 2 pt（`orderFlowLabelLineGap`）——
   /// 原来也居中，签贴主图右缘正好把线最新那一截（挂单此刻的位置）盖住（第二轮 D3）；上方会进图例、或撞了已放下的签而下方不撞，就翻到线下方 2 pt。
   /// 和已放下的签撞了（留 2 pt）：挪到撞上那枚的上方或下方，取离自己本该在的位置近的、不再撞任何一枚、
   /// 没出主图、离线不超过 32 pt 的那个位置；都不行就不放。名义大的先放，所以让位的总是名义小的。一屏最多 6 枚。
-  private func orderFlowLabels(_ mains: [OrderFlowBand], pane: Pane, L: Layout, spacing: Double,
+  private func orderFlowLabels(_ mains: [OrderFlowBand], pane: Pane, range: PriceRange, L: Layout, spacing: Double,
                                ladder: CGRect?) -> [OrderFlowLabel] {
     let h = Self.orderFlowLabelHeight, gap = Self.orderFlowLabelGap
+    // 签躲 K 线：一屏只建一次（映射、半根宽都是这一屏的），逐签只查签底下那几根。
+    let candleDodge = mains.isEmpty ? nil : orderFlowCandleDodge(pane: pane, range: range, plotW: L.plotW, spacing: spacing)
     let bg = state.colors.bg
     // 签的上界是图例下沿（`mainLegendInset`，K 线定标也从这里起算）：原来夹在主图顶上，
     // 价位靠上的挂单签会盖在「均线 … / 主力 买 … 卖 …」那几行读数上。
@@ -836,23 +881,56 @@ extension ChartRenderer {
       guard x >= 0 else { continue }
       let mid = Double(band.frame.midY)
       let clamp = { (top: Double) in min(max(top, ceiling), pane.y + pane.h - h) }
-      // 想放的位置：挂着的先线上方、再线下方（上方撞了别的签、或会进图例时）；已结束的居中。
-      let wants: [Double]
-      if band.group.isLive {
-        let half = Double(band.frame.height) / 2, lift = Self.orderFlowLabelLineGap
-        let above = mid - half - lift - h, below = mid + half + lift
-        wants = above >= ceiling ? [above, below] : [below]
+      let live = band.group.isLive
+      let half = Double(band.frame.height) / 2, lift = Self.orderFlowLabelLineGap
+      let above = mid - half - lift - h, below = mid + half + lift
+      // 想放的位置（横向落点 × 签顶），按先后：
+      // 挂着的：贴右缘、线上方；再线下方（上方撞了别的签、会进图例、或躲 K 线让出了主图左缘时）。
+      // 已结束的：结束点右侧居中、右侧线上方、右侧线下方；再结束点左侧（签右缘 = 结束点 − 4 pt，整枚在线的横向范围里才算）
+      // 线上方、线下方——这五处哪个不用横向挪就用哪个（签仍贴在结束点上），都压着蜡烛才取右侧居中往右让过去的。
+      let xL = Double(band.frame.maxX) - Self.orderFlowLabelInset - w
+      let wants: [(x: Double, top: Double, left: Bool)]
+      if live {
+        wants = (above >= ceiling ? [above, below] : [below]).map { (x, $0, false) }
       } else {
-        wants = [mid - h / 2]
+        var w0: [(x: Double, top: Double, left: Bool)] = above >= ceiling
+          ? [(x, mid - h / 2, false), (x, above, false), (x, below, false)] : [(x, mid - h / 2, false), (x, below, false)]
+        if xL >= max(0, Double(band.frame.minX)) {
+          if above >= ceiling { w0.append((xL, above, true)) }
+          w0.append((xL, below, true))
+        }
+        wants = w0
       }
-      let preferred = wants[0] + h / 2
-      let place = { (top: Double) -> CGRect? in
-        let r = Self.orderFlowDodgeLadder(CGRect(x: x, y: clamp(top), width: w, height: h), ladder: ladder)
+      let preferred = wants[0].top + h / 2
+      // 横向：先躲盘口梯，再躲 K 线（挂着的往左、让出主图左缘给 nil；已结束的往右、出了主图右缘给 nil）。
+      let shift = { (want: CGRect) -> CGRect? in
+        let r = Self.orderFlowDodgeLadder(want, ladder: ladder)
+        guard let candleDodge else { return r }
+        return candleDodge.dodge(r, !live)
+      }
+      let place = { (want: (x: Double, top: Double, left: Bool)) -> CGRect? in
         // 线在图例那几行里（价高出了定标区）：签夹到图例下沿后离线太远就不放，免得签认错线。
-        guard r.minX >= 0, abs(Double(r.midY) - mid) <= Self.orderFlowLabelMaxShift else { return nil }
+        guard let r = shift(CGRect(x: want.x, y: clamp(want.top), width: w, height: h)),
+              r.minX >= 0, abs(Double(r.midY) - mid) <= Self.orderFlowLabelMaxShift else { return nil }
+        // 结束点左侧的两处只在不用横向挪时算数（往右挪就回到结束点右侧那几处了）。
+        if want.left, abs(Double(r.minX) - want.x) > 1e-9 { return nil }
         return r
       }
-      guard var rect = place(wants[0]) else { continue }
+      let first: CGRect?
+      if live {
+        first = wants.lazy.compactMap(place).first
+      } else {
+        let placed = wants.compactMap { want in place(want).map { (rect: $0, moved: abs(Double($0.minX) - want.x) > 1e-9) } }
+        // 五处里先取不用横向挪、也不压蜡烛的；没有就取右侧居中往右让过去的；连那个也让出了主图，
+        // 就在五处（不挪）里取盖住蜡烛面积最少的——签不能没有，金额是这堵墙最要紧的一个数。
+        let nominal = wants.compactMap { want -> CGRect? in
+          let r = Self.orderFlowDodgeLadder(CGRect(x: want.x, y: clamp(want.top), width: w, height: h), ladder: ladder)
+          return r.minX >= 0 && abs(Double(r.midY) - mid) <= Self.orderFlowLabelMaxShift ? r : nil
+        }
+        first = placed.first { !$0.moved }?.rect ?? placed.first?.rect
+          ?? nominal.min { (candleDodge?.overlap($0) ?? 0) < (candleDodge?.overlap($1) ?? 0) }
+      }
+      guard var rect = first else { continue }
       if collides(rect), let other = wants.dropFirst().lazy.compactMap(place).first(where: { !collides($0) }) {
         rect = other
       }
@@ -864,7 +942,7 @@ extension ChartRenderer {
         let tops = hits.flatMap { [Double($0.frame.minY) - gap - h, Double($0.frame.maxY) + gap] }
         let fits = tops
           .filter { $0 >= ceiling && $0 + h <= pane.y + pane.h && abs($0 + h / 2 - mid) <= Self.orderFlowLabelMaxShift }
-          .map { Self.orderFlowDodgeLadder(CGRect(x: x, y: $0, width: w, height: h), ladder: ladder) }
+          .compactMap { shift(CGRect(x: x, y: $0, width: w, height: h)) }
           .filter { $0.minX >= 0 && !collides($0) }
           .min { abs(Double($0.midY) - preferred) < abs(Double($1.midY) - preferred) }
         guard let fit = fits else { continue }
@@ -875,6 +953,115 @@ extension ChartRenderer {
                                    ink: Self.orderFlowLabelInk(shown)))
     }
     return labels
+  }
+
+  /// 金额签躲 K 线：给一枚签的框，签横向范围里有蜡烛（含影线；平均 K 线按画出来的那根，收盘价画法按那一截折线）
+  /// 和它纵向重叠，就把签横向挪开，纵向不动；挪过去又压到下一根就接着让，直到不压任何一根。不压就原样返回。
+  /// `toRight` 为假（挂着的）往左让：签右缘 = 压着的最右一根左缘 − 2 pt，让出主图左缘（x < 0）给 nil；
+  /// 为真（已结束的）往右让：签左缘 = 压着的最左一根右缘 + 2 pt，出了主图右缘（价格刻度列左侧 4 pt）给 nil。
+  /// 蜡烛横向按「中心 ± 格宽 / 3 + 0.5 pt」算（实体宽是格宽的 2/3、按设备像素取整，最多多出一个像素）。
+  /// 每帧拖图都会走到：先二分找到签一侧缘的那一根，再朝让的方向逐根看，看到整根落在签另一侧以外就停——只查签底下那几根。
+  /// `overlap` 给一枚签的框算它盖住的蜡烛面积（pt²，各根与签相交的矩形之和）：已结束的签几处都压着时取盖得最少的那处。
+  struct OrderFlowCandleProbe {
+    let dodge: (CGRect, _ toRight: Bool) -> CGRect?
+    let overlap: (CGRect) -> Double
+  }
+
+  func orderFlowCandleDodge(pane: Pane, range: PriceRange, plotW: Double, spacing: Double) -> OrderFlowCandleProbe {
+    let b = state.series
+    let n = b.count
+    let view = state.view
+    let map = PriceMapping(range: range, mode: state.effectivePriceMode)
+    let ha = heikin
+    let closeOnly = state.options.kind == .line
+    let half = max(1, spacing / 3 + 0.5)
+    let gap = Self.orderFlowLabelCandleGap
+    let cx = { (i: Int) in view.x(Double(b.time(at: i)), plotW: plotW) }
+    // 第 i 根画出来的纵向范围（y 小的在上）。
+    let extent = { (i: Int) -> (top: Double, bottom: Double) in
+      var hi: Double, lo: Double
+      if closeOnly {
+        // 收盘价折线：这一格里是前后两段各半截，端点在相邻两根收盘价的中点。
+        let c = b.close[i]
+        let prev = i > 0 ? (b.close[i - 1] + c) / 2 : c, next = i + 1 < n ? (b.close[i + 1] + c) / 2 : c
+        hi = max(c, prev, next); lo = min(c, prev, next)
+      } else if let bar = ha?.bar(i) {
+        hi = bar.h; lo = bar.l
+      } else {
+        hi = b.high[i]; lo = b.low[i]
+      }
+      let y1 = map.y(hi, pane: pane), y2 = map.y(lo, pane: pane)
+      return (min(y1, y2), max(y1, y2))
+    }
+    let limit = plotW - Self.orderFlowLabelInset
+    let hits = { (i: Int, r: CGRect) -> Bool in
+      let e = extent(i)
+      return e.top.isFinite && e.bottom.isFinite && e.top < Double(r.maxY) && e.bottom > Double(r.minY)
+    }
+    let overlap = { (r: CGRect) -> Double in
+      guard n > 0 else { return 0 }
+      var lo = 0, hi = n
+      while lo < hi {
+        let mid = (lo + hi) / 2
+        if cx(mid) + half > Double(r.minX) { hi = mid } else { lo = mid + 1 }
+      }
+      var total = 0.0
+      var i = lo
+      while i < n {
+        let c = cx(i)
+        if c - half >= Double(r.maxX) { break }
+        let e = extent(i)
+        if e.top.isFinite, e.bottom.isFinite {
+          let dy = min(e.bottom, Double(r.maxY)) - max(e.top, Double(r.minY))
+          let dx = min(c + half, Double(r.maxX)) - max(c - half, Double(r.minX))
+          if dy > 0, dx > 0 { total += dx * dy }
+        }
+        i += 1
+      }
+      return total
+    }
+    let dodge = { (rect: CGRect, toRight: Bool) -> CGRect? in
+      guard n > 0 else { return rect }
+      var r = rect
+      var lo = 0, hi = n
+      if toRight {
+        // 第一根右缘 > 签左缘的（右缘随下标单调增）；从它起往右看。
+        while lo < hi {
+          let mid = (lo + hi) / 2
+          if cx(mid) + half > Double(r.minX) { hi = mid } else { lo = mid + 1 }
+        }
+        var i = lo
+        while i < n {
+          let c = cx(i)
+          let right = c + half
+          if c - half >= Double(r.maxX) { break }
+          if right > Double(r.minX), hits(i, r) {
+            r.origin.x = CGFloat(right + gap)
+            if Double(r.maxX) > limit { return nil }
+          }
+          i += 1
+        }
+        return r
+      }
+      // 第一根左缘 ≥ 签右缘的（左缘随下标单调增）；它左边那根起往左看。
+      while lo < hi {
+        let mid = (lo + hi) / 2
+        if cx(mid) - half >= Double(r.maxX) { hi = mid } else { lo = mid + 1 }
+      }
+      var i = lo - 1
+      while i >= 0 {
+        let c = cx(i)
+        let left = c - half
+        if c + half <= Double(r.minX) { break }
+        if left < Double(r.maxX), hits(i, r) {
+          r.origin.x = CGFloat(left - gap) - r.width
+          if r.minX < 0 { return nil }
+        }
+        i -= 1
+      }
+      return r
+    }
+    return OrderFlowCandleProbe(dodge: dodge, overlap: overlap)
   }
 
   /// `color` 以 `alpha` 叠在 `bg` 上读出来的颜色（不透明）。按三元组记下来：一帧只有十来种。
@@ -1011,6 +1198,13 @@ extension ChartRenderer {
     return (frame.bands, frame.labels, focus.map { !$0.selected } ?? false, focus)
   }
 
+  /// 线、底噪、括号（以及选中重画的那一条）能画到的范围：主图里图例区（`mainLegendInset`，K 线定标也从这里起算）以下。
+  /// 墙的价位可以落进图例那几行（价格轴按 K 线定标），原来线就从「主力 买 … 卖 …」「均线 …」的字中间穿过去（2026-09-29）。
+  func orderFlowPlotClip(pane: Pane, plotW: Double) -> CGRect {
+    let top = min(max(0, mainLegendInset(plotW: plotW)), pane.h)
+    return CGRect(x: 0, y: pane.y + top, width: plotW, height: pane.h - top)
+  }
+
   /// 在 plotLayer 上画线（在蜡烛之前调，垫在 K 线下面）：底噪、整条、细线依次，最后是跨桶主墙的范围括号。
   /// 返回画了几条（给测试核对）。
   @discardableResult
@@ -1019,7 +1213,8 @@ extension ChartRenderer {
     if orderFlowCache.servedStale { orderFlowCache.plotStale = true }
     guard !frame.bands.isEmpty else { return 0 }
     ctx.saveGState()
-    ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
+    // 只画在图例区以下（见文件头）：墙的价位落进图例那几行时线不从字中间穿过去。
+    ctx.clip(to: orderFlowPlotClip(pane: pane, plotW: L.plotW))
     // 底噪画并过行、封过顶的那几条（1 分钟一屏 500 多条 → 200 条以内）；整条、细线逐条画。
     // 半透明的线改成「先和图区底色混好、再不透明地填」：线直接画在底色（和一两道网格发丝线）上，混好的颜色
     // 与 35% / 70% 叠上去读起来一样，但不透明填是整行拷贝、半透明填要逐像素混，同样的面积快四到五倍——
@@ -1085,7 +1280,7 @@ extension ChartRenderer {
   func drawOrderFlowHover(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Bool {
     guard let band = orderFlowFocusBand(pane: pane, range: range, L: L)?.band else { return false }
     ctx.saveGState()
-    ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
+    ctx.clip(to: orderFlowPlotClip(pane: pane, plotW: L.plotW))
     if let bracket = band.bracket { drawOrderFlowBracket(ctx, bracket, color: band.color) }
     ctx.setFillColor(Paint.cg(state.colors.text))
     ctx.fill(band.frame.insetBy(dx: -1, dy: -1))
