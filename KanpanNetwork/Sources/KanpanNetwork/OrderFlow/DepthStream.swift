@@ -159,8 +159,10 @@ public actor DepthStream {
       do {
         gotMessages = false
         let s = try await adapter.connect(candidate: candidate)
+        // 查完「没被收掉」到登记这条连接之间不许再有 await：原来这里先 `await pacer.nowMs()` 再 `socket = s`，
+        // 那一跳里 stop() / 新的 start() 插进来（teardown 时 socket 还是空的），醒来照样登记、起保活，
+        // 再撞上取消直接 return——这条 socket 没人掐、保活一直发，还改写了新一轮的连接号与保活（压测 2026-09-28）。
         guard !Task.isCancelled else { await s.cancel(); return }
-        connectedAt = await pacer.nowMs()
         socket = s
         connection += 1
         skipBackoff = false
@@ -169,8 +171,11 @@ public actor DepthStream {
         log("深度 \(adapter.name) 连上 #\(connection)")
         sink.yield(.connected(connection))
         startKeepAlive(s)
-        lastFrameMs = await pacer.nowMs()
+        // 从这里起 socket 已登记：被收掉时由 stop / start 的 teardown 掐它，这边醒来只管走人、不碰共享状态。
+        let now = await pacer.nowMs()
         guard !Task.isCancelled else { throw CancellationError() }
+        connectedAt = now
+        lastFrameMs = now
         startWatchdog(s, connection: connection)
         try await pump(s, sink)
       } catch {
@@ -193,7 +198,9 @@ public actor DepthStream {
         overflowed = false
         skipBackoff = false
         if let connectedAt {
-          backoff.settle(deliveredData: true, uptimeMs: await pacer.nowMs() - connectedAt, stableMs: Self.overflowStableMs)
+          let now = await pacer.nowMs()
+          guard !Task.isCancelled else { return }  // 退避档位是跨轮共享的，已被收掉的这一轮不许再改
+          backoff.settle(deliveredData: true, uptimeMs: now - connectedAt, stableMs: Self.overflowStableMs)
         }
       } else if skipBackoff {
         skipBackoff = false
@@ -201,7 +208,9 @@ public actor DepthStream {
         continue
       } else if let connectedAt {
         // 收到过消息、又连着活满一段才算稳住过，退避清零；连上推几帧就被踢的接着涨（见 `Backoff.settle`）。
-        backoff.settle(deliveredData: gotMessages, uptimeMs: await pacer.nowMs() - connectedAt)
+        let now = await pacer.nowMs()
+        guard !Task.isCancelled else { return }
+        backoff.settle(deliveredData: gotMessages, uptimeMs: now - connectedAt)
       }
       let wait = backoff.next()
       log("深度 \(adapter.name) 断了（\(reason)），\(Int(wait))ms 后重连")
@@ -226,7 +235,10 @@ public actor DepthStream {
   private func pump(_ s: any WSSocket, _ sink: AsyncStream<DepthStreamEvent>.Continuation) async throws {
     while !Task.isCancelled {
       let frame = try await s.receive()
-      lastFrameMs = await pacer.nowMs()
+      let now = await pacer.nowMs()
+      // 被收掉的旧一轮醒来不许改新一轮的最后收帧时刻、「收到过消息」这些共享状态。
+      guard !Task.isCancelled else { return }
+      lastFrameMs = now
       switch frame {
       case .ping: try await s.pong()
       case .closed(let why): throw FeedError.badResponse("连接关闭：\(why)")

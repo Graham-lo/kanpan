@@ -840,3 +840,76 @@ extension OrderFlowFeedTests {
     #expect(slot.view?.from == 1_500)
   }
 }
+
+// MARK: - 压测（2026-09-28）
+
+extension OrderFlowFeedTests {
+  @Test("压测 · 连切 20 只：每只都真连上、出墙、再停；停完订阅对象整个释放（无循环引用），连接全关，日志各落一份",
+        .timeLimit(.minutes(2)))
+  func twentySwitchesLeaveNothingBehind() async throws {
+    let dir = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    weak var previous: OrderFlowFeed?
+    var sockets: [GateSocket] = []
+    for round in 0..<20 {
+      let binance = ScriptAdapter(
+        name: "binance", books: [binancePerp],
+        script: ["d1": [VenueMessage(binancePerp.id, .delta(BookDelta(firstUpdateID: 95, finalUpdateID: 101,
+                                                                      previousFinalUpdateID: 94)))]],
+        snapshots: [.success(deepSnapshot(last: 100))])
+      let okx = ScriptAdapter(name: "okx", books: [okxSpot],
+                              script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))]])
+      let frames = Frames()
+      var feed: OrderFlowFeed? = makeFeed([binance, okx], dir: dir, frames: frames)
+      weak var current = feed
+      await feed?.start()
+      #expect(await waitUntil(5) { await binance.snapshots.calls == [binancePerp.id] })
+      #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+      await binance.snapshots.socket(0)?.push(.text("d1"))
+      await okx.snapshots.socket(0)?.push(.text("snap"))
+      #expect(await waitUntil(5) { await frames.last?.orders.count == 2 }, "第 \(round + 1) 只没出墙")
+      await feed?.stop()
+      feed = nil
+      // 上一只早该没了；这一只停完也要没。
+      #expect(previous == nil, "第 \(round) 只的订阅对象没释放")
+      // 停完之后还在收尾的子任务（`[weak self]`）要一小会儿才放手：最多等 5 秒。
+      var waited = 0
+      while current != nil, waited < 500 { try await Task.sleep(nanoseconds: 10_000_000); waited += 1 }
+      #expect(current == nil, "第 \(round + 1) 只停完订阅对象还被持着（泄漏）")
+      previous = current
+      for a in [binance, okx] {
+        for i in 0..<(await a.snapshots.connects) { sockets.append(try #require(await a.snapshots.socket(i))) }
+      }
+    }
+    for (i, s) in sockets.enumerated() { #expect(await s.closed, "第 \(i + 1) 条连接停了之后还开着") }
+    #expect(sockets.count == 40)
+    let file = OrderFlowFeed.journalFile(in: dir, symbol: symbolKey)
+    #expect(OrderFlowJournal.decode(try Data(contentsOf: file)) != nil)
+  }
+
+  @Test("压测 · 日志文件坏了（截断 / 乱码 / 空）：照常起订、照常出墙，停时用新的一份把坏的盖掉",
+        .timeLimit(.minutes(1)))
+  func corruptJournalIsIgnoredAndOverwritten() async throws {
+    for (name, bytes) in [("截断", Data("{\"version\":1,\"symbol\":\"binance/usd_m/ETH".utf8)),
+                          ("乱码", Data((0..<2_048).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 7) })),
+                          ("空", Data())] {
+      let dir = tempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = OrderFlowFeed.journalFile(in: dir, symbol: symbolKey)
+      try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try bytes.write(to: file)
+      let okx = ScriptAdapter(name: "okx", books: [okxSpot],
+                              script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))]])
+      let frames = Frames()
+      let feed = makeFeed([okx], dir: dir, frames: frames)
+      await feed.start()
+      #expect(await feed.modelForTests().orders.isEmpty, "坏日志（\(name)）不该读出任何单")
+      #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+      await okx.snapshots.socket(0)?.push(.text("snap"))
+      #expect(await waitUntil(5) { await frames.last?.orders.count == 1 }, "坏日志（\(name)）之后没照常出墙")
+      await feed.stop()
+      let saved = try #require(OrderFlowJournal.decode(try Data(contentsOf: file)), "坏日志（\(name)）没被新的一份盖掉")
+      #expect(saved.orders.count == 1)
+    }
+  }
+}

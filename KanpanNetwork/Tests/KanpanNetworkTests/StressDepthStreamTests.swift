@@ -119,3 +119,102 @@ struct StressDepthStreamTests {
     await pacer.drain()
   }
 }
+
+// MARK: - 订单簿压测（2026-09-28）：连上之后、登记连接之前的那一跳
+
+/// 连上后要问一次钟（`pacer.nowMs()`，actor 跳转）：这一跳里 `stop()` / 再 `start()` 能插进来。
+/// 这个钟可以把指定的前 n 次 `nowMs()` 挂住，等测试放行；睡眠走真时钟（保活要真的一拍一拍发）。
+private actor GatedClock: Pacer {
+  private var armed = 0
+  private let gate = Gate()
+  private(set) var parked = 0
+  func arm(_ n: Int) { armed = n }
+  func release() async { await gate.open() }
+  func nowMs() async -> Double {
+    if armed > 0 {
+      armed -= 1
+      parked += 1
+      await gate.wait()
+    }
+    return MonoClock.nowMs()
+  }
+  nonisolated func sleep(ms: Double) async throws {
+    try await Task.sleep(nanoseconds: UInt64(max(0, min(ms, 3_600_000)) * 1_000_000))
+  }
+}
+
+/// 发 `GateSocket` 的深度适配器，带 OKX 那种定时保活（20ms 一句，好观察）。
+private struct GatedDepthAdapter: DepthFeedAdapter {
+  let bench: GateSocketBench
+  var name: String { "压测深度·闸" }
+  var books: [DepthBook] { [] }
+  var streamURLs: [URL] { [URL(string: "wss://depth.invalid/ws")!] }
+  func connect(candidate: Int) async throws -> any WSSocket { try await bench.connect(to: streamURLs[0]) }
+  func decode(_ text: String) -> [VenueMessage] { [VenueMessage("v", .reset)] }
+  func fetchSnapshot(venueID: String) async throws -> BookSnapshot { throw FeedError.badResponse("不拉快照") }
+  var keepAlive: DepthKeepAlive? { DepthKeepAlive(text: "ping", everyMs: 20) }
+  func resubscribeMessages(venueID: String) -> [String]? { nil }
+}
+
+@Suite("压测 · 深度流连上那一跳里被停 / 被重开")
+struct DepthStreamConnectRaceTests {
+
+  @Test("连上后问钟的那一跳里 stop() → 这条 socket 必须被掐、保活不许留下来一直发",
+        .timeLimit(.minutes(1)))
+  func stopDuringConnectHopCancelsTheSocket() async throws {
+    let bench = GateSocketBench()
+    let clock = GatedClock()
+    await clock.arm(1)
+    let stream = DepthStream(adapter: GatedDepthAdapter(bench: bench), pacer: clock, silenceMs: 1e12)
+    let events = await stream.start()
+    let reader = Task { for await _ in events {} }
+    #expect(await waitUntil(5) { await clock.parked == 1 })
+    let first = try #require(await bench.socket(1))
+    await stream.stop()
+    await clock.release()
+    // 旧代码：醒来照样 `socket = s`、起保活，再撞上取消直接 return——这条 socket 没人掐，保活每 20ms 发一句。
+    #expect(await waitUntil(2) { await first.cancelCalls >= 1 }, "stop 之后连上的那条 socket 没被掐（泄漏）")
+    try await Task.sleep(nanoseconds: 150_000_000)
+    let sentAfterStop = await first.sent.count
+    #expect(await staysFalse(for: 0.2) { await first.sent.count > sentAfterStop }, "stop 之后保活还在发")
+    #expect(await bench.live() == 0)
+    reader.cancel()
+  }
+
+  @Test("连上后问钟的那一跳里又 start() 了一轮 → 旧 socket 被掐、新一轮的连接号 / 保活不被旧一轮改写",
+        .timeLimit(.minutes(1)))
+  func restartDuringConnectHopLeavesTheNewRunAlone() async throws {
+    let bench = GateSocketBench()
+    let clock = GatedClock()
+    await clock.arm(1)
+    let stream = DepthStream(adapter: GatedDepthAdapter(bench: bench), pacer: clock, silenceMs: 1e12)
+    let oldEvents = await stream.start()
+    let oldReader = Task { for await _ in oldEvents {} }
+    #expect(await waitUntil(5) { await clock.parked == 1 })
+    let first = try #require(await bench.socket(1))
+
+    // 新一轮：连上 #2、拿到它的连接号。
+    let events = await stream.start()
+    var iterator = events.makeAsyncIterator()
+    guard case .connected(let id)? = await iterator.next() else { Issue.record("新一轮没连上"); return }
+    let second = try #require(await bench.socket(2))
+    #expect(await waitUntil(5) { await second.receiving == 1 })
+    // 前一个迭代器已不在等，换一个接着读（AsyncStream 只禁止同时两个在等）。
+    let reader = Task { for await _ in events {} }
+
+    await clock.release()
+    #expect(await waitUntil(2) { await first.cancelCalls >= 1 }, "旧一轮连上的 #1 没被掐")
+    try await Task.sleep(nanoseconds: 150_000_000)
+    #expect(await bench.live() == 1, "同时活着不止一条连接")
+    // 新一轮的保活还在发（旧代码里旧一轮的 startKeepAlive 把它 cancel 了）。
+    let sent = await second.sent.count
+    #expect(await waitUntil(2) { await second.sent.count > sent }, "新一轮的保活被旧一轮掐了")
+    // 调用方按自己收到的连接号要求重拨：必须生效（旧代码里旧一轮把连接号又加了一，这句被当成过期请求不理）。
+    await stream.reconnect(connection: id)
+    #expect(await waitUntil(5) { await bench.connects == 3 }, "按当前连接号重拨被当成过期请求")
+    #expect(await second.cancelCalls >= 1)
+
+    await stream.stop()
+    reader.cancel(); oldReader.cancel()
+  }
+}

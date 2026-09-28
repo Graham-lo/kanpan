@@ -626,3 +626,64 @@ private actor EventLog {
     }
   }
 }
+
+// MARK: - 压测（2026-09-28）：每帧解码的开销
+
+extension OrderFlowAdapterTests {
+  private static func stressMs(_ runs: Int, _ body: () -> Void) -> (p50: Double, max: Double) {
+    var xs: [Double] = []
+    for _ in 0..<runs {
+      let t0 = DispatchTime.now().uptimeNanoseconds
+      body()
+      xs.append(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6)
+    }
+    xs.sort()
+    return (xs[xs.count / 2], xs.last!)
+  }
+
+  private static func f(_ x: Double) -> String { String(format: "%.3f", x) }
+
+  @Test("压测 · 解码：币安 500 档增量、OKX 400 档快照 / 200 档增量、Coinbase 3 万档整本快照，各一帧多久（在深度流 actor 上同步解）")
+  func decodeCostOfHeavyFrames() {
+    func levels(_ n: Int, from: Double, step: Double, okx: Bool) -> String {
+      "[" + (0..<n).map { k in
+        let p = String(format: "%.1f", from + Double(k) * step)
+        return okx ? #"[""# + p + #"","12.5","0","3"]"# : #"[""# + p + #"","0.753"]"#
+      }.joined(separator: ",") + "]"
+    }
+    // 币安 U 本位：一帧 500 档（两侧各 250）。
+    let binance = Self.binance(.um, [Self.umPerp], .direct)
+    let bText = #"{"stream":"btcusdt@depth@100ms","data":{"e":"depthUpdate","E":1700000000123,"T":1700000000120,"s":"BTCUSDT","U":100,"u":105,"pu":99,"b":"#
+      + levels(250, from: 60_000, step: -0.1, okx: false) + #","a":"# + levels(250, from: 60_000.1, step: 0.1, okx: false) + "}}"
+    guard case .delta(let d)? = binance.decode(bText).first?.message else { Issue.record("币安没解出增量"); return }
+    #expect(d.bids.count + d.asks.count == 500)
+    let b = Self.stressMs(200) { _ = binance.decode(bText) }
+
+    // OKX：首帧快照 400 档（books 频道两侧各 400，这里取 200 + 200 的一半深度看量级）+ 更新 200 档。
+    let okx = Self.okx()
+    let oSnap = Self.okxFrame("snapshot", seq: 10, prev: -1, bids: levels(400, from: 60_000, step: -0.1, okx: true),
+                              asks: levels(400, from: 60_000.1, step: 0.1, okx: true))
+    let oUpd = Self.okxFrame("update", seq: 11, prev: 10, bids: levels(100, from: 60_000, step: -0.1, okx: true),
+                             asks: levels(100, from: 60_000.1, step: 0.1, okx: true))
+    guard case .snapshot(let s)? = okx.decode(oSnap).first?.message else { Issue.record("OKX 没解出快照"); return }
+    #expect(s.bids.count == 400 && s.asks.count == 400)
+    let os = Self.stressMs(100) { _ = okx.decode(oSnap) }
+    let ou = Self.stressMs(200) { _ = okx.decode(oUpd) }
+
+    // Coinbase：level2 订阅回来的整本快照（BTC-USD 实际两侧合计上万档），每档带一个 ISO 时间。
+    let cb = CoinbaseLevel2Adapter(book: Self.coinbaseBook)
+    let rows = (0..<30_000).map { k -> String in
+      let bid = k % 2 == 0
+      let p = String(format: "%.2f", bid ? 60_000 - Double(k / 2) * 0.01 : 60_000.01 + Double(k / 2) * 0.01)
+      return #"{"side":""# + (bid ? "bid" : "offer") + #"","event_time":"2026-09-24T01:02:03.456789Z","price_level":""# + p + #"","new_quantity":"0.0123"}"#
+    }
+    let cText = #"{"channel":"l2_data","sequence_num":1,"events":[{"type":"snapshot","product_id":"BTC-USD","updates":["#
+      + rows.joined(separator: ",") + "]}]}"
+    guard case .snapshot(let cs)? = cb.decode(cText).first?.message else { Issue.record("Coinbase 没解出快照"); return }
+    #expect(cs.bids.count + cs.asks.count == 30_000)
+    let c = Self.stressMs(10) { _ = cb.decode(cText) }
+    print("【订单簿压测】解码 币安 500 档增量（\(bText.utf8.count / 1024) KB）p50 \(Self.f(b.p50)) ms / max \(Self.f(b.max)) ms；"
+      + "OKX 800 档快照 p50 \(Self.f(os.p50)) ms、200 档更新 p50 \(Self.f(ou.p50)) ms；"
+      + "Coinbase 3 万档整本（\(cText.utf8.count / 1024) KB）p50 \(Self.f(c.p50)) ms / max \(Self.f(c.max)) ms")
+  }
+}
