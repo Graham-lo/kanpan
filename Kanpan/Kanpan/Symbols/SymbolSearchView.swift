@@ -69,10 +69,14 @@ struct SymbolSearchView: View {
   private var showsResults: Bool {
     !model.settledQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
-  /// 「热门」还没排出来、也还轮得到它（没有历史、没有最近）的时候才跟着报价表的版本号；
-  /// 排出来之后就不再读它——否则每来一批报价整页 body 都要重跑一遍。
+  /// 「热门」还没排满、也还轮得到它（没有历史、没有最近）的时候才跟着报价表的版本号；
+  /// 排满之后就不再读它——否则每来一批报价整页 body 都要重跑一遍。
+  ///
+  /// 按「排满」判而不是按「排出来」判（压测 2026-09-28）：新装第一次开搜索页时全市场那份
+  /// 24h 行情（`seedTickers`）常常还在路上，手里只有图上那一只的报价，原来这一拍排出
+  /// 「热门」一行就定住了，之后整表到了也不再排，这一组永远只有一只。
   private var awaitingHot: Bool {
-    hot.isEmpty && history.terms.isEmpty && model.prefs.recents.isEmpty
+    hot.count < SymbolSections.hotLimit && history.terms.isEmpty && model.prefs.recents.isEmpty
   }
 
   /// 搜索态下那唯一一个分区（`SymbolSections.build` 有查询时只回一组）。
@@ -224,8 +228,10 @@ struct SymbolSearchView: View {
   }
 
   private func refreshHot() {
-    guard hot.isEmpty, history.terms.isEmpty, recents.isEmpty else { return }
-    hot = model.hotSymbols()
+    guard hot.count < SymbolSections.hotLimit, history.terms.isEmpty, recents.isEmpty else { return }
+    let next = model.hotSymbols()
+    // 只会越排越满：整表没到之前手里那几只照旧摆着，不因为某一拍少了一只就缩回去。
+    if next.count > hot.count { hot = next }
   }
 
   // ---------------------------------------------------------------- 打了字：结果
