@@ -52,6 +52,19 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     guard expectExists(long, Self.short, "取景卡上没有「看多」") else { return }
     long.tap()
     shot("01-取景卡-看多")
+    // 到期按记下时的周期给默认（1a144fef：分钟级 1 天、小时级 1 周、日线 1 个月、3 日 / 周线 90 天、
+    // 月线 365 天，同 `ReviewInterval.defaultHorizonMillis`）；原来这里写死 1 天，出厂周期是小时级时
+    // 拨出来的「到期前 30 秒」其实还差六天，通知当然等不到。
+    let interval = chartInfo()["interval"] as? String ?? ""
+    let day: TimeInterval = 86_400
+    let horizon: TimeInterval = switch interval {
+    case "1d": 30 * day
+    case "3d", "1w": 90 * day
+    case "1M": 365 * day
+    case let raw where raw.hasSuffix("h"): 7 * day
+    default: day
+    }
+    note("记下时的周期：\(interval)，到期默认 \(Int(horizon / day)) 天")
     app.buttons["记下"].tap()
     let recordedAt = Date()
     // 第一次记有方向的一笔：系统问一次通知权限（装机后第一次才有这个弹窗）。
@@ -84,7 +97,7 @@ final class ReviewModuleE2EUITests: KanpanUICase {
     closeBook()
 
     // ---- 4. 到点提醒：拨到到期前 30 秒，退到后台等系统通知
-    let due = recordedAt.addingTimeInterval(86_400)
+    let due = recordedAt.addingTimeInterval(horizon)
     let lead: TimeInterval = 30
     shift = String(Int(due.timeIntervalSinceNow - lead))
     app.terminate()
