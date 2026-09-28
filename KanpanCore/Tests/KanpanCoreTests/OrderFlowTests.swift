@@ -565,7 +565,7 @@ final class OrderFlowModelTests: XCTestCase {
   }
 
   /// 加码后撤：挂出 1908 万、加到 6360 万后整张撤掉，其间被吃了 1590 万。按首次名义算够八成（会判已成交），
-  /// 按跌破前最后一拍的 6360 万算只成交了四分之一——是撤的。
+  /// 按掉过的 6360 万算只成交了四分之一——是撤的。
   func testAddedThenPulledIsCancelled() {
     var model = inBand(okx)
     _ = model.evaluate(nowMs: 0)
@@ -573,8 +573,11 @@ final class OrderFlowModelTests: XCTestCase {
     set(&model, okx, seq: 2, bid: level(1_590, 40_000))
     XCTAssertEqual(model.evaluate(nowMs: 1_000).orders[0].notional, 1_590 * 40_000)
     _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10_000, hitSide: .bid, timeMs: 0)), nowMs: 1_100)
-    XCTAssertEqual(model.evaluate(nowMs: 1_200).orders[0].fillRatio, 0.25, accuracy: 1e-9, "挂着的按此刻名义算")
-    set(&model, okx, seq: 3, bid: level(1_590, 0))
+    XCTAssertEqual(model.evaluate(nowMs: 1_200).orders[0].fillRatio, 0, accuracy: 1e-9, "墙还没掉：成交先记着待对账")
+    set(&model, okx, seq: 3, bid: level(1_590, 30_000))
+    XCTAssertEqual(model.evaluate(nowMs: 1_300).orders[0].fillRatio, 1_590 * 10_000 / (1_590 * 30_000), accuracy: 1e-9,
+                   "掉了 1590 万、成交 1590 万：对上；挂着的按此刻名义算")
+    set(&model, okx, seq: 4, bid: level(1_590, 0))
     _ = model.evaluate(nowMs: 1_500)
     let order = model.evaluate(nowMs: 2_000).orders[0]
     XCTAssertEqual(order.status, .cancelled)
@@ -583,8 +586,8 @@ final class OrderFlowModelTests: XCTestCase {
   }
 
   /// 减仓后被吃：挂出 1908 万，先撤到 636 万（还在退出线 250 万以上），再被吃掉 556.5 万跌破退出线。
-  /// 消失的按峰值算是 1828 万，成交 556.5 万只有三成——撤的多，判已撤销（卡片上写「部分成交」）。
-  func testShrunkThenEatenIsCancelledAgainstThePeak() {
+  /// 消失的按掉过的总量算是 1828 万，成交 556.5 万只有三成——撤的多，判已撤销（卡片上写「部分成交」）。
+  func testShrunkThenEatenIsCancelledAgainstAllItLost() {
     var model = inBand(okx)
     _ = model.evaluate(nowMs: 0)
     _ = model.evaluate(nowMs: 500)
@@ -623,8 +626,8 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(order.filledNotional, 1_590 * 170, accuracy: 1e-6)
   }
 
-  /// 加码后被吃：挂出 1908 万、加到 4770 万，被吃掉 4600 万——按峰值算消失的部分几乎全是成交，已成交。
-  func testGrownThenEatenIsFilledAgainstThePeak() {
+  /// 加码后被吃：挂出 1908 万、加到 4770 万，被吃掉 4600 万——消失的部分几乎全是成交，已成交。
+  func testGrownThenEatenIsFilledAgainstAllItLost() {
     var model = inBand(okx)
     _ = model.evaluate(nowMs: 0)
     _ = model.evaluate(nowMs: 500)
@@ -636,6 +639,71 @@ final class OrderFlowModelTests: XCTestCase {
     let order = model.evaluate(nowMs: 2_000).orders[0]
     XCTAssertEqual(order.status, .filled)
     XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 29_900, accuracy: 1e-6)
+  }
+
+  /// 成交只有和「墙掉了一截」在 5 秒内对上才算吃掉它的：成交在前、深度掉在后（两条连接错位）对得上；
+  /// 成交过了 5 秒墙才没，那笔成交早已作废——是撤的（原来记一辈子，判成已成交）。
+  func testFillsOnlyCountWhenTheWallShrinksWithinTheWindow() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 11_000, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    _ = model.evaluate(nowMs: 1_000); _ = model.evaluate(nowMs: 3_000)
+    set(&model, okx, seq: 2, bid: level(1_590, 0))
+    _ = model.evaluate(nowMs: 4_000)
+    let filled = model.evaluate(nowMs: 4_400).orders[0]
+    XCTAssertEqual(filled.status, .filled)
+    XCTAssertEqual(filled.filledNotional, 1_590 * 11_000, accuracy: 1e-6)
+
+    var late = inBand(okx)
+    _ = late.evaluate(nowMs: 0)
+    _ = late.evaluate(nowMs: 500)
+    _ = late.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 11_000, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    _ = late.evaluate(nowMs: 1_000); _ = late.evaluate(nowMs: 3_000); _ = late.evaluate(nowMs: 6_000)
+    set(&late, okx, seq: 2, bid: level(1_590, 0))
+    _ = late.evaluate(nowMs: 9_000)
+    let cancelled = late.evaluate(nowMs: 9_400).orders[0]
+    XCTAssertEqual(cancelled.status, .cancelled)
+    XCTAssertEqual(cancelled.filledNotional, 0)
+    XCTAssertEqual(cancelled.vanishedNotional ?? 0, 1_590 * 12_000, accuracy: 1e-6)
+  }
+
+  /// 被吃一截、补回来、再撤：掉了 2 截，只有第 1 截是成交——按峰值算会判已成交，按掉过的总量算是撤的。
+  func testEatenThenRefilledThenPulledIsCancelledWithHalfFilled() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10_000, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    set(&model, okx, seq: 2, bid: level(1_590, 2_000))  // 318 万，退出线上：掉了 1590 万
+    XCTAssertEqual(model.evaluate(nowMs: 700).orders[0].filledNotional, 1_590 * 10_000, accuracy: 1e-6)
+    set(&model, okx, seq: 3, bid: level(1_590, 12_000))  // 补回来
+    XCTAssertEqual(model.evaluate(nowMs: 20_000).orders[0].status, .live)
+    set(&model, okx, seq: 4, bid: level(1_590, 0))  // 整张撤掉：又掉 1908 万
+    _ = model.evaluate(nowMs: 30_000)
+    let order = model.evaluate(nowMs: 30_400).orders[0]
+    XCTAssertEqual(order.status, .cancelled, "掉了 3498 万只成交 1590 万")
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 22_000, accuracy: 1e-6)
+    XCTAssertEqual(order.filledNotional, 1_590 * 10_000, accuracy: 1e-6)
+    XCTAssertEqual(order.fillRatio, 10_000.0 / 22_000, accuracy: 1e-9)
+  }
+
+  /// 跌破退出线、确认那一拍掉的量当时就量：两拍内又补回来，那一截也不漏。
+  func testDipBelowExitLineThenRecoverKeepsTheDipInVanished() {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 11_900, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    set(&model, okx, seq: 2, bid: level(1_590, 100))  // 跌破退出线：先确认
+    XCTAssertEqual(model.evaluate(nowMs: 1_000).orders[0].status, .live)
+    set(&model, okx, seq: 3, bid: level(1_590, 12_000))  // 补回来
+    let back = model.evaluate(nowMs: 1_200).orders[0]
+    XCTAssertEqual(back.status, .live)
+    XCTAssertEqual(back.filledNotional, 1_590 * 11_900, accuracy: 1e-6, "跌破那一拍掉的 11 900 个当时就和成交对上")
+    set(&model, okx, seq: 4, bid: level(1_590, 0))
+    _ = model.evaluate(nowMs: 20_000)
+    let order = model.evaluate(nowMs: 20_400).orders[0]
+    XCTAssertEqual(order.status, .cancelled)
+    XCTAssertEqual(order.vanishedNotional ?? 0, 1_590 * 23_900, accuracy: 1e-6)
   }
 
   /// 旧版日志没有「消失掉的名义」：读回来按名义算，不崩、不改判定。
@@ -676,6 +744,12 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(Set(frame.orders.map(\.product)), [.usdtPerp, .spot])
     _ = model.ingest(coinbase.id, .trade(OrderFlowTrade(price: 1_590, quantity: 100, hitSide: .bid, timeMs: 0)), nowMs: 600)
     _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    // 两本簿上那一档各掉对应的量，成交才对得上账。
+    // Coinbase 是严格递增的序号、不带上一条的序号。
+    XCTAssertEqual(model.ingest(coinbase.id, .delta(BookDelta(firstUpdateID: 2, finalUpdateID: 2, previousFinalUpdateID: nil,
+                                                              bids: [level(1_590, 900)], asks: [], eventTimeMs: 0)),
+                                nowMs: 0), .none)
+    set(&model, okx, seq: 2, bid: level(1_590, 11_990))
     let after = model.evaluate(nowMs: 700).orders
     XCTAssertEqual(after.first { $0.exchange == "Coinbase" }?.filledNotional, 159_000)
     XCTAssertEqual(after.first { $0.exchange == "OKX" }?.filledNotional, 15_900, "Coinbase 的成交不记进 OKX 那一单")
@@ -693,6 +767,7 @@ final class OrderFlowModelTests: XCTestCase {
     _ = model.evaluate(nowMs: 0)  // OKX 1590 成了候选
     _ = model.ingest(coinbase.id, .trade(OrderFlowTrade(price: 1_590, quantity: 100, hitSide: .bid, timeMs: 0)), nowMs: 100)
     _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 20, hitSide: .bid, timeMs: 0)), nowMs: 100)
+    set(&model, okx, seq: 2, bid: level(1_590, 11_980))
     let order = model.evaluate(nowMs: 500).orders.first { $0.exchange == "OKX" }
     XCTAssertEqual(order?.filledNotional, 31_800)
   }
@@ -710,6 +785,7 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(order.initialNotional, 6_000_000)
     XCTAssertEqual(order.product, .coinPerp)
     _ = model.ingest(coinM.id, .trade(OrderFlowTrade(price: 1_590, quantity: 1_000, hitSide: .bid, timeMs: 0)), nowMs: 500)
+    set(&model, coinM, seq: 102, bid: level(1_590, 599_000))
     XCTAssertEqual(model.evaluate(nowMs: 600).orders[0].filledNotional, 10_000)
   }
 
@@ -946,13 +1022,17 @@ final class OrderFlowModelTests: XCTestCase {
     let journal = try XCTUnwrap(first.journal(nowMs: 600))
     var model = inBand(okx, restored: journal)
     _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10, hitSide: .bid, timeMs: 0)), nowMs: 700)
+    set(&model, okx, seq: 2, bid: level(1_590, 11_990))
+    _ = model.evaluate(nowMs: 700)
     XCTAssertEqual(model.orders.first?.filledNotional, 15_900, "读回来的挂单照样记成交")
     var higher = thresholds
     higher.usdtPerp = 6_000_000
     model.setThresholds(higher)
     _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10, hitSide: .bid, timeMs: 0)), nowMs: 800)
+    set(&model, okx, seq: 3, bid: level(1_590, 11_980))
+    _ = model.evaluate(nowMs: 800)
     XCTAssertEqual(model.orders.first?.filledNotional, 31_800, "改门槛之后留下的挂单照样记成交")
-    set(&model, okx, seq: 2, bid: level(1_590, 0))
+    set(&model, okx, seq: 4, bid: level(1_590, 0))
     _ = model.evaluate(nowMs: 1_000)
     _ = model.evaluate(nowMs: 1_400)
     XCTAssertEqual(model.orders.first?.isLive, false)

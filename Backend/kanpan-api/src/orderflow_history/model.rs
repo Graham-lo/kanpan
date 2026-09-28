@@ -35,6 +35,13 @@ const CONFIRM_SAMPLES:u32=2;
 const CONFIRM_MS:i64=300;
 const EXIT_RATIO:f64=0.5;
 const FILLED_RATIO:f64=0.8;
+/// 成交与「墙掉了一截」对账的时间窗：一笔成交只有在它前后 `MATCH_MS` 内簿上这一档真的少了对应的量，才记作
+/// 吃掉这堵墙的成交；掉的量与成交对不上的那部分是撤的。原来把挂着期间这一档的每一笔成交都累进
+/// `filled_notional`，被吃一截又补回来、反复几轮再撤掉的墙，累计成交远超最后消失的量，结束时一律判成
+/// 「已成交」（线上 2026-09-28：24 小时判已成交的 5 797 条里 995 条活过 10 分钟且累计成交超首次名义一半以上，
+/// 107 条累计成交是消失量的 3 倍以上）。窗口取 5 秒：深度与成交走两条连接，币安合约深度 250–500 ms 一帧、
+/// 这里每 500 ms 评估一轮，两三秒内的错位要容得下；撤单前 5 秒内恰好有的成交会被算进去，比原来记一辈子好得多。
+const MATCH_MS:i64=5_000;
 
 // ------------------------------------------------------------------ 名义与门槛
 
@@ -187,18 +194,45 @@ pub struct Restored {pub order:BigOrder,pub step:f64,pub seen_ms:i64}
 type Key=(Side,i64);
 
 #[derive(Clone,Debug)]
-struct Candidate {first:i64,samples:u32,initial:f64,notional:f64,price:f64,filled:f64}
+struct Candidate {first:i64,samples:u32,initial:f64,notional:f64,price:f64,filled:f64,dropped:f64}
 
 #[derive(Clone,Copy,Debug)]
 struct Pending {first:i64,samples:u32,remaining:f64}
 
+/// 一堵墙的成交对账（见 `MATCH_MS`）：`fill` 是这一档上还没对上「掉了一截」的成交、`drop` 是还没对上成交的
+/// 掉量，各记最早一笔的时刻，超过 `MATCH_MS` 没对上就作废；`vanished` 是挂着期间掉过的量的总和
+/// （被吃一截、补回来、再掉一截：两截都算），结束判定的分母；`level` 是上次量过掉量时这一档的名义——
+/// 跌破退出线在确认的那几拍里也照量（`BigOrder::notional` 那几拍不动），补回来了也不漏掉那一截。
+#[derive(Clone,Copy,Debug,Default,PartialEq)]
+pub struct Matching {pub fill:f64,pub fill_since:Option<i64>,pub drop:f64,pub drop_since:Option<i64>,pub vanished:f64,pub level:f64}
+impl Matching {
+ fn at(level:f64)->Self {Matching{level,..Matching::default()}}
+ fn add_fill(&mut self,usd:f64,now:i64) {if usd>0.0 {self.fill+=usd;self.fill_since.get_or_insert(now);}}
+ fn add_drop(&mut self,usd:f64,now:i64) {if usd>0.0 {self.drop+=usd;self.vanished+=usd;self.drop_since.get_or_insert(now);}}
+ /// 这一拍这一档剩 `notional`：比上次量的少了就是掉了一截。
+ fn observe(&mut self,notional:f64,now:i64) {let n=notional.max(0.0);self.add_drop(self.level-n,now);self.level=n;}
+ /// 对上的那部分记进 `filled_notional`；剩下超过时间窗的作废。
+ fn settle(&mut self,order:&mut BigOrder,now:i64) {
+  let m=self.fill.min(self.drop);
+  if m>0.0 {order.filled_notional+=m;self.fill-=m;self.drop-=m;}
+  if self.fill<=0.0 {self.fill=0.0;self.fill_since=None;}
+  if self.drop<=0.0 {self.drop=0.0;self.drop_since=None;}
+  if self.fill_since.is_some_and(|t|now-t>MATCH_MS) {self.fill=0.0;self.fill_since=None;}
+  if self.drop_since.is_some_and(|t|now-t>MATCH_MS) {self.drop=0.0;self.drop_since=None;}
+ }
+}
+
 #[derive(Clone,Debug)]
-/// `peak`：挂着期间见过的最大名义（读回来的按首次与最后名义取大），结束判定的分母。
+/// `matching`：成交对账与消失总量（读回来的按「首次名义 − 最后名义」起算）。
 /// `seen`：写库的「最后一次看到」，价位不知道的时候也往前走（重启时别因为两分钟没见就判失联）；
 /// `sighted`：真在簿里看到它的最后时刻，失联结束记这个；`unknown_since`：从哪一拍起看不见它的价位。
-struct Live {order:BigOrder,seen:i64,sighted:i64,unknown_since:Option<i64>,ending:Option<Pending>,peak:f64}
+struct Live {order:BigOrder,seen:i64,sighted:i64,unknown_since:Option<i64>,ending:Option<Pending>,matching:Matching}
 impl Live {
- fn new(order:BigOrder,seen:i64,peak:f64)->Self {Live{order,seen,sighted:seen,unknown_since:None,ending:None,peak}}
+ fn new(order:BigOrder,seen:i64,matching:Matching)->Self {Live{order,seen,sighted:seen,unknown_since:None,ending:None,matching}}
+ fn restored(order:BigOrder,seen:i64)->Self {
+  let matching=Matching{vanished:(order.initial_notional-order.notional).max(0.0),level:order.notional,..Matching::default()};
+  Self::new(order,seen,matching)
+ }
 }
 
 /// 一本簿以及它上面的单。`book` 为 None：读回来的单所在的簿这一轮没订（交割换季、交易所下架）。
@@ -218,12 +252,16 @@ fn confirmed(samples:u32,first:i64,now:i64)->bool {samples>=CONFIRM_SAMPLES&&now
 
 /// 跌破退出线：消失掉的那部分里成交够八成算已成交，否则已撤销。
 ///
-/// 消失掉的 = 挂着期间见过的最大名义（`peak`）− 结束时剩下的。不用「跌破前最后一拍」：
+/// 消失掉的 = 挂着期间每一拍掉的量之和（`Matching::vanished`）+ 最后一拍掉到剩下的那一截。不用「跌破前最后一拍」：
 /// 线上实测一面 340 万的现货墙十几拍里被一点点撤到 52 万，最后一拍只差 2 万，
-/// 27 万的零星成交就把它判成了「已成交」；按峰值算消失了 290 万，成交不到一成——是撤的。
+/// 27 万的零星成交就把它判成了「已成交」；按掉过的总量算消失了 290 万，成交不到一成——是撤的。
 /// 也不用首次名义：挂出 1M、加到 5M 再撤掉，按首次算只要成交 0.8M 就判已成交，其实 4M 是撤的。
-fn end(mut order:BigOrder,at:i64,remaining:f64,peak:f64)->BigOrder {
- let vanished=(peak.max(order.notional)-remaining.max(0.0)).max(0.0);
+/// 也不用峰值：被吃 1M 又补 1M 再撤 1M，按峰值只消失 1M、成交 1M 判已成交，其实掉了 2M、撤了一半。
+/// 成交只算与掉量在时间窗内对上的（`MATCH_MS`），最后一截在这里对一次。
+fn end(mut order:BigOrder,at:i64,remaining:f64,mut matching:Matching)->BigOrder {
+ matching.observe(remaining,at);
+ matching.settle(&mut order,at);
+ let vanished=matching.vanished;
  order.vanished_notional=Some(vanished);
  order.status=if vanished>0.0&&order.filled_notional>=vanished*FILLED_RATIO {Status::Filled} else {Status::Cancelled};
  order.end_ms=Some(order.first_seen_ms.max(at));
@@ -269,14 +307,13 @@ impl Model {
    let mut order=order;
    order.threshold=threshold.unwrap_or(order.threshold);
    let track=self.tracks.entry(order.venue_id.clone()).or_default();
-   let peak=order.initial_notional.max(order.notional);
    let key=(order.side,order.bucket);
    // 同一档读回两条（上一条的结束没写进库、同一档又起了一条）：留最后看到的那条，另一条按它自己最后
    // 一次看到失联结束。原来后读的直接把先读的盖掉，被盖掉的那行在库里永远挂成「进行中」。
    let (keep,lose)=match track.live.remove(&key) {
-    Some(prev) if (prev.seen,prev.order.first_seen_ms)>(seen_ms,order.first_seen_ms)=>(prev,Live::new(order,seen_ms,peak)),
-    Some(prev)=>(Live::new(order,seen_ms,peak),prev),
-    None=>{track.live.insert(key,Live::new(order,seen_ms,peak));continue},
+    Some(prev) if (prev.seen,prev.order.first_seen_ms)>(seen_ms,order.first_seen_ms)=>(prev,Live::restored(order,seen_ms)),
+    Some(prev)=>(Live::restored(order,seen_ms),prev),
+    None=>{track.live.insert(key,Live::restored(order,seen_ms));continue},
    };
    self.ended.push(end_lost(lose.order,lose.seen));
    track.live.insert(key,keep);
@@ -308,18 +345,19 @@ impl Model {
   book.ingest(message,now)
  }
 
- /// 成交走单独的连接（币安 U 本位深度与成交分两路），不看连接代号，直接记进同一本簿这一侧这个桶。
- pub fn trade(&mut self,id:&str,trade:Trade) {
+ /// 成交走单独的连接（币安 U 本位深度与成交分两路），不看连接代号，直接记进同一本簿这一侧这个桶——
+ /// 先记成「待对账」，下一轮评估里和这一档掉的量对上才算吃掉这堵墙的成交（`MATCH_MS`）。
+ pub fn trade(&mut self,id:&str,trade:Trade,now:i64) {
   let Some(step)=self.thresholds.step else {return};
-  if let Some(track)=self.tracks.get_mut(id) {Self::attribute(track,trade,step);}
+  if let Some(track)=self.tracks.get_mut(id) {Self::attribute(track,trade,step,now);}
  }
 
- fn attribute(track:&mut Track,trade:Trade,step:f64) {
+ fn attribute(track:&mut Track,trade:Trade,step:f64,now:i64) {
   let Some(book)=track.book.as_ref() else {return};
   let usd=book.venue.notional.usd(trade.price,trade.quantity);
   if usd<=0.0 {return}
   let key=(trade.hit,bucket_index(trade.price,step));
-  if let Some(l)=track.live.get_mut(&key) {l.order.filled_notional+=usd;}
+  if let Some(l)=track.live.get_mut(&key) {l.matching.add_fill(usd,now);}
   if let Some(c)=track.candidates.get_mut(&key) {c.filled+=usd;}
  }
 
@@ -366,7 +404,12 @@ impl Model {
     let far_edge=match key.0 {Side::Bid=>key.1 as f64*step,Side::Ask=>(key.1+1) as f64*step};
     let here=if beyond(key.0,far_edge,SCAN_RADIUS_BPS) {book.bucket(key.0,key.1,step)} else {map.get(key).copied()};
     match here {
-     Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.peak=l.peak.max(v.notional);l.seen=now;l.sighted=now;l.unknown_since=None;l.ending=None;},
+     Some(v) if v.notional>=exit=>{
+      l.matching.observe(v.notional,now);
+      l.order.notional=v.notional;l.order.price=v.price;
+      l.matching.settle(&mut l.order,now);
+      l.seen=now;l.sighted=now;l.unknown_since=None;l.ending=None;
+     },
      // 这一档在快照覆盖区间以外、增量也没推过（币安合约 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
      // 2%–10% 外读回来的单全在这里；OKX 窗口簿满 400 档时最深一档以外的，含被挤出窗口推了 0 的）：
      // 看不见不等于没了——不判撤单、不判失联、不记消失的
@@ -379,12 +422,13 @@ impl Model {
       let mut p=l.ending.unwrap_or(Pending{first:now,samples:0,remaining:0.0});
       p.samples+=1;
       p.remaining=other.map_or(0.0,|v|v.notional);  // 确认期间还在掉就按最后一拍剩的算
+      l.matching.observe(p.remaining,now);l.matching.settle(&mut l.order,now);  // 掉的这一截现在就量，补回来也不漏
       if confirmed(p.samples,p.first,now) {finished.push((*key,p));} else {l.ending=Some(p);}
      },
     }
    }
    for (key,p) in finished {
-    if let Some(l)=track.live.remove(&key) {self.ended.push(end(l.order,p.first,p.remaining,l.peak));}
+    if let Some(l)=track.live.remove(&key) {self.ended.push(end(l.order,p.first,p.remaining,l.matching));}
    }
    for key in lost {
     if let Some(l)=track.live.remove(&key) {self.ended.push(end_lost(l.order,l.sighted));}
@@ -395,15 +439,20 @@ impl Model {
    for (key,v) in map.iter().filter(|(k,v)|v.notional>=threshold&&!live_keys.contains(k)) {
     touched.insert(*key);
     let Bucket{notional,price,..}=*v;
-    let c=track.candidates.entry(*key).or_insert(Candidate{first:now,samples:0,initial:notional,notional,price,filled:0.0});
-    c.samples+=1;c.notional=notional;c.price=price;
+    let c=track.candidates.entry(*key).or_insert(Candidate{first:now,samples:0,initial:notional,notional,price,filled:0.0,dropped:0.0});
+    c.samples+=1;c.dropped+=(c.notional-notional).max(0.0);c.notional=notional;c.price=price;
     if confirmed(c.samples,c.first,now) {
      let c=track.candidates.remove(key).expect("candidate just updated");
      let order=BigOrder{venue_id:id.clone(),exchange:label.to_string(),product:product.to_string(),side:key.0,bucket:key.1,
       price:c.price,first_seen_ms:c.first,end_ms:None,status:Status::Live,initial_notional:c.initial,notional:c.notional,
-      filled_notional:c.filled,threshold,vanished_notional:None};
-     let peak=c.initial.max(c.notional);
-     track.live.insert(*key,Live::new(order,now,peak));
+      filled_notional:0.0,threshold,vanished_notional:None};
+     // 确认那两拍里的成交与掉量一起带进来对账（原来直接把成交记成 `filled_notional`）。
+     let mut matching=Matching::at(c.notional);
+     matching.add_fill(c.filled,c.first);
+     matching.add_drop(c.dropped,c.first);
+     let mut l=Live::new(order,now,matching);
+     l.matching.settle(&mut l.order,now);
+     track.live.insert(*key,l);
     }
    }
    // 这一拍没再过门槛的候选作废（「连续」两拍）。
@@ -482,7 +531,7 @@ mod tests {
    let d=super::super::book::Delta{first:self.seq,last:self.seq,prev:None,bids:bids.to_vec(),asks:asks.to_vec()};
    self.m.ingest(id,1,Message::Delta(d),now);
   }
-  fn trade(&mut self,id:&str,price:f64,qty:f64,hit:Side,_now:i64) {self.m.trade(id,Trade{price,quantity:qty,hit});}
+  fn trade(&mut self,id:&str,price:f64,qty:f64,hit:Side,now:i64) {self.m.trade(id,Trade{price,quantity:qty,hit},now);}
   fn live(&self)->Vec<BigOrder> {self.m.live().into_iter().map(|(o,_)|o).collect()}
  }
  // 现价 60 000：卖一 60 010；一面 1.2M 的买单墙放在 59 950（桶 599）。
@@ -648,8 +697,61 @@ mod tests {
   r.book("a",&wall(1.2*T),&[ASK],0);
   r.m.evaluate(0);
   r.trade("a",59_950.0,0.2*T/59_950.0,Side::Bid,100);
+  r.book("a",&wall(1.0*T),&[ASK],200);
   r.m.evaluate(300);
-  assert!((r.live()[0].filled_notional-0.2*T).abs()<1.0);
+  assert!((r.live()[0].filled_notional-0.2*T).abs()<1.0,"确认那两拍里被吃掉的 0.2M 带进来");
+  // 确认期间墙没掉：成交不是吃它的，不记。
+  let mut r=Rig::new();
+  r.book("a",&wall(1.2*T),&[ASK],0);
+  r.m.evaluate(0);
+  r.trade("a",59_950.0,0.2*T/59_950.0,Side::Bid,100);
+  r.m.evaluate(300);
+  assert_eq!(r.live()[0].filled_notional,0.0);
+ }
+
+ #[test] fn fills_only_count_when_the_wall_shrinks_within_the_window() {
+  // 成交在前、深度掉在后（两条连接错位）：5 秒内对得上。
+  let mut r=Rig::new();
+  appear(&mut r,1.2*T);
+  r.trade("a",59_950.0,1.0*T/59_950.0,Side::Bid,500);
+  r.m.evaluate(1_000);r.m.evaluate(3_000);
+  r.book("a",&[(60_000.0,1.0)],&[ASK],4_000);
+  r.m.evaluate(4_000);r.m.evaluate(4_300);
+  let o=&r.m.take_ended()[0];
+  assert_eq!(o.status,Status::Filled);
+  assert!((o.filled_notional-1.0*T).abs()<1.0);
+  // 成交过了 5 秒墙才没：那笔成交早就作废，是撤的。原来记一辈子，判成已成交。
+  let mut r=Rig::new();
+  appear(&mut r,1.2*T);
+  r.trade("a",59_950.0,1.0*T/59_950.0,Side::Bid,500);
+  r.m.evaluate(1_000);r.m.evaluate(3_000);r.m.evaluate(6_000);
+  r.book("a",&[(60_000.0,1.0)],&[ASK],9_000);
+  r.m.evaluate(9_000);r.m.evaluate(9_300);
+  let o=&r.m.take_ended()[0];
+  assert_eq!((o.status,o.filled_notional),(Status::Cancelled,0.0));
+  assert!((o.vanished_notional.unwrap()-1.2*T).abs()<1.0);
+ }
+
+ #[test] fn a_wall_eaten_then_refilled_then_pulled_is_cancelled_with_half_filled() {
+  // 线上 2026-09-28 的形状：被吃 1M、补回 1M、再撤 1.2M——掉了 2.2M，只有 1M 是成交。
+  // 原来按峰值算消失 1.2M、成交累计 1M（八成以上）判已成交。
+  let mut r=Rig::new();
+  appear(&mut r,1.2*T);
+  r.trade("a",59_950.0,1.0*T/59_950.0,Side::Bid,500);
+  r.book("a",&wall(0.2*T),&[ASK],600);r.m.evaluate(600);
+  assert_eq!(r.m.ended.len(),0,"0.2M 在退出线下，先确认");
+  r.book("a",&wall(1.2*T),&[ASK],700);r.m.evaluate(700);
+  assert_eq!((r.live().len(),r.m.ended.len()),(1,0),"补回来了，还是同一堵墙");
+  assert!((r.live()[0].filled_notional-1.0*T).abs()<1.0,"跌破那一拍掉的 1M 当时就和成交对上");
+  r.m.evaluate(20_000);
+  r.trade("a",59_950.0,0.3*T/59_950.0,Side::Bid,20_100);
+  r.book("a",&wall(0.9*T),&[ASK],20_200);r.m.evaluate(20_200);
+  assert!((r.live()[0].filled_notional-1.3*T).abs()<1.0,"再掉 0.3M、成交 0.3M：对上");
+  r.book("a",&[(60_000.0,1.0)],&[ASK],30_000);r.m.evaluate(30_000);r.m.evaluate(30_300);
+  let o=&r.m.take_ended()[0];
+  assert_eq!(o.status,Status::Cancelled,"掉了 2.2M 只成交 1.3M（59%）");
+  assert!((o.vanished_notional.unwrap()-2.2*T).abs()<1.0,"1M + 0.3M + 最后 0.9M");
+  assert!((o.filled_notional-1.3*T).abs()<1.0);
  }
 
  #[test] fn verdict_uses_the_vanished_part_not_the_initial_notional() {
@@ -689,7 +791,7 @@ mod tests {
   assert!((o.filled_notional-0.27*T).abs()<1.0);
  }
 
- #[test] fn a_wall_that_grows_then_is_eaten_is_filled_against_its_peak() {
+ #[test] fn a_wall_that_grows_then_is_eaten_is_filled_against_all_it_lost() {
   let mut r=Rig::new();
   appear(&mut r,1.2*T);
   r.book("a",&wall(3.0*T),&[ASK],400);r.m.evaluate(400);

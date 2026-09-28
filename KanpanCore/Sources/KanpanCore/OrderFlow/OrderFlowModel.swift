@@ -54,7 +54,8 @@ public struct BigOrder: Sendable, Equatable, Identifiable, Codable {
   public var initialNotional: Double
   /// 此刻的名义；结束了就是结束前最后一次过门槛时的名义。
   public var notional: Double
-  /// 出现以来打到这一侧这个桶的主动成交（美元，只算这本簿自己的逐笔）。
+  /// 出现以来吃掉这堵墙的主动成交（美元，只算这本簿自己的逐笔）：打到这一侧这个桶、且前后 `OrderFlowDefaults.fillMatchMs`
+  /// 内簿上这一档真的少了对应的量的那部分（`OrderFlowModel.Matching`）；墙没掉的时候的成交不算。
   public var filledNotional: Double
   /// 这一单所属产品此刻的门槛（画厚度用）。
   public var threshold: Double
@@ -230,8 +231,8 @@ public struct OrderFlowModel: Sendable {
   private var liveIndex: [CandidateKey: Int] = [:]
   private var ending: [String: Pending] = [:]
   private var lastSeen: [String: Int64] = [:]
-  /// 挂着期间见过的最大名义（按单 id）；结束判定的分母。读回来的按首次与最后名义取大。
-  private var peak: [String: Double] = [:]
+  /// 成交对账与消失总量（按单 id，见 `Matching`）；结束判定的分母是它的 `vanished`。
+  private var matching: [String: Matching] = [:]
   private var venueSeen: [String: Int64] = [:]
   private var startedMs: Int64?
   /// 读回来的那份，步长还不知道（等前一日收盘）时先放着。
@@ -259,6 +260,58 @@ public struct OrderFlowModel: Sendable {
     var notional: Double
     var price: Double
     var filled = 0.0
+    /// 确认那几拍里掉过的量（美元），出现时和 `filled` 一起对账。
+    var dropped = 0.0
+  }
+
+  /// 一堵墙的成交对账（服务端 `model.rs` 的 `Matching` 同一套规则）：`fill` 是这一档上还没对上「掉了一截」的成交、
+  /// `drop` 是还没对上成交的掉量，各记最早一笔的时刻，超过 `OrderFlowDefaults.fillMatchMs` 没对上就作废；
+  /// `vanished` 是挂着期间掉过的量的总和（被吃一截、补回来、再掉一截：两截都算），结束判定的分母；
+  /// `level` 是上次量过掉量时这一档的名义——跌破退出线在确认的那几拍里也照量（`BigOrder.notional` 那几拍不动），
+  /// 补回来了也不漏掉那一截。
+  ///
+  /// 原来把挂着期间这一档的每一笔成交都累进 `filledNotional`：被吃一截又补回来、反复几轮再撤掉的墙，
+  /// 累计成交远超最后消失的量，结束时一律判「已成交」（服务端 2026-09-28 实测：24 小时判已成交的 5 797 条里
+  /// 995 条活过 10 分钟且累计成交超首次名义一半以上）。
+  struct Matching: Sendable {
+    var fill = 0.0
+    var fillSince: Int64?
+    var drop = 0.0
+    var dropSince: Int64?
+    var vanished = 0.0
+    var level: Double
+
+    init(level: Double, vanished: Double = 0) { self.level = level; self.vanished = vanished }
+    /// 读回来 / 服务端并进来的挂单：掉过的先按「首次名义 − 此刻名义」起算。
+    init(restored order: BigOrder) {
+      self.init(level: order.notional, vanished: max(0, order.initialNotional - order.notional))
+    }
+
+    mutating func addFill(_ usd: Double, nowMs: Int64) {
+      guard usd > 0 else { return }
+      fill += usd
+      if fillSince == nil { fillSince = nowMs }
+    }
+    mutating func addDrop(_ usd: Double, nowMs: Int64) {
+      guard usd > 0 else { return }
+      drop += usd; vanished += usd
+      if dropSince == nil { dropSince = nowMs }
+    }
+    /// 这一拍这一档剩 `notional`：比上次量的少了就是掉了一截。
+    mutating func observe(_ notional: Double, nowMs: Int64) {
+      let n = max(0, notional)
+      addDrop(level - n, nowMs: nowMs)
+      level = n
+    }
+    /// 对上的那部分记进 `filledNotional`；剩下超过时间窗的作废。
+    mutating func settle(into filled: inout Double, nowMs: Int64) {
+      let m = min(fill, drop)
+      if m > 0 { filled += m; fill -= m; drop -= m }
+      if fill <= 0 { fill = 0; fillSince = nil }
+      if drop <= 0 { drop = 0; dropSince = nil }
+      if let t = fillSince, nowMs - t > OrderFlowDefaults.fillMatchMs { fill = 0; fillSince = nil }
+      if let t = dropSince, nowMs - t > OrderFlowDefaults.fillMatchMs { drop = 0; dropSince = nil }
+    }
   }
 
   struct Pending: Sendable {
@@ -315,7 +368,7 @@ public struct OrderFlowModel: Sendable {
   public mutating func ingest(_ venueID: String, _ message: DepthMessage, nowMs: Int64) -> Action {
     guard let venue = books[venueID]?.venue else { return .none }
     if case .trade(let trade) = message {
-      attribute(trade, venueID: venueID, notional: venue.notional)
+      attribute(trade, venueID: venueID, notional: venue.notional, nowMs: nowMs)
       return .none
     }
     return books[venueID]?.ingest(message, nowMs: nowMs) ?? .none
@@ -326,14 +379,15 @@ public struct OrderFlowModel: Sendable {
     books[venueID]?.applySnapshot(snapshot, nowMs: nowMs) ?? .none
   }
 
-  /// 成交记进同一本簿这一侧这个桶上还挂着的大单，以及正在确认中的候选。别的簿的成交不记（见文件头）。
-  private mutating func attribute(_ trade: OrderFlowTrade, venueID: String, notional: OrderFlowNotional) {
+  /// 成交先记成「待对账」到同一本簿这一侧这个桶上还挂着的大单（下一拍评估里和这一档掉的量对上才算吃掉它的成交，
+  /// 见 `Matching`），以及正在确认中的候选。别的簿的成交不记（见文件头）。
+  private mutating func attribute(_ trade: OrderFlowTrade, venueID: String, notional: OrderFlowNotional, nowMs: Int64) {
     guard let scheme else { return }
     let usd = notional.usd(price: trade.price, quantity: trade.quantity)
     guard usd > 0 else { return }
     let bucket = scheme.index(of: trade.price)
     let key = CandidateKey(venue: venueID, key: BucketKey(side: trade.hitSide, index: bucket))
-    if let i = liveIndex[key], orders[i].isLive { orders[i].filledNotional += usd }
+    if let i = liveIndex[key], orders[i].isLive { matching[orders[i].id]?.addFill(usd, nowMs: nowMs) }
     candidates[key]?.filled += usd
   }
 
@@ -350,7 +404,7 @@ public struct OrderFlowModel: Sendable {
       scheme = nextScheme
       if !orders.isEmpty { journalDirty = true }
       restoredHistory = nil
-      orders.removeAll(); candidates.removeAll(); ending.removeAll(); lastSeen.removeAll(); peak.removeAll()
+      orders.removeAll(); candidates.removeAll(); ending.removeAll(); lastSeen.removeAll(); matching.removeAll()
       remoteSeen.removeAll()
       restoreIfPossible()
       reindex()
@@ -373,7 +427,7 @@ public struct OrderFlowModel: Sendable {
     let live = Set(orders.map(\.id))
     ending = ending.filter { live.contains($0.key) }
     lastSeen = lastSeen.filter { live.contains($0.key) }
-    peak = peak.filter { live.contains($0.key) }
+    matching = matching.filter { live.contains($0.key) }
     remoteSeen = remoteSeen.filter { live.contains($0.key) }
     if orders.count != before { journalDirty = true }
   }
@@ -394,7 +448,7 @@ public struct OrderFlowModel: Sendable {
     orders = journal.orders.sorted(by: Self.chronological)
     for order in orders where order.isLive {
       lastSeen[order.id] = journal.savedAtMs
-      peak[order.id] = max(order.initialNotional, order.notional)
+      matching[order.id] = Matching(restored: order)
     }
     if orders.contains(where: \.isLive) { restoredAtMs = journal.savedAtMs }
     requalify()
@@ -498,9 +552,10 @@ public struct OrderFlowModel: Sendable {
         }
         let here = outerKeys.contains(key) ? outer[key] : map[key]
         if let value = here, value.notional >= exitLine {
+          matching[oid]?.observe(value.notional, nowMs: nowMs)
           orders[i].notional = value.notional
           orders[i].price = value.price
-          peak[oid] = max(peak[oid] ?? orders[i].initialNotional, value.notional)
+          matching[oid]?.settle(into: &orders[i].filledNotional, nowMs: nowMs)
           lastSeen[oid] = nowMs
           ending[oid] = nil
         } else if !book.knows(key.side, price: orders[i].price) {
@@ -514,6 +569,9 @@ public struct OrderFlowModel: Sendable {
           var pending = ending[oid] ?? Pending(firstMs: nowMs, remaining: 0)
           pending.samples += 1
           pending.remaining = here?.notional ?? 0  // 确认期间还在掉就按最后一拍剩的算
+          // 掉的这一截现在就量、就对账：回头补上来了（`testDipAndRecoverStaysLive`）也不漏。
+          matching[oid]?.observe(pending.remaining, nowMs: nowMs)
+          matching[oid]?.settle(into: &orders[i].filledNotional, nowMs: nowMs)
           if Self.confirmed(samples: pending.samples, firstMs: pending.firstMs, nowMs: nowMs) {
             end(i, atMs: pending.firstMs, remaining: pending.remaining)
             ending[oid] = nil
@@ -530,18 +588,23 @@ public struct OrderFlowModel: Sendable {
         var c = candidates[ck] ?? Candidate(firstMs: nowMs, initial: value.notional, notional: value.notional,
                                             price: value.price)
         c.samples += 1
+        c.dropped += max(0, c.notional - value.notional)
         c.notional = value.notional
         c.price = value.price
         if Self.confirmed(samples: c.samples, firstMs: c.firstMs, nowMs: nowMs) {
-          let order = BigOrder(venueID: id, exchange: book.venue.label, product: book.venue.product,
+          var order = BigOrder(venueID: id, exchange: book.venue.label, product: book.venue.product,
                                side: key.side, bucket: key.index, price: c.price, firstSeenMs: c.firstMs,
-                               initialNotional: c.initial, notional: c.notional, filledNotional: c.filled,
-                               threshold: threshold)
+                               initialNotional: c.initial, notional: c.notional, threshold: threshold)
+          // 确认那两拍里的成交与掉量一起带进来对账（原来直接把成交记成 `filledNotional`）。
+          var m = Matching(level: c.notional)
+          m.addFill(c.filled, nowMs: c.firstMs)
+          m.addDrop(c.dropped, nowMs: c.firstMs)
+          m.settle(into: &order.filledNotional, nowMs: nowMs)
           orders.append(order)
           liveIndex[ck] = orders.count - 1
           appended = true
           lastSeen[order.id] = nowMs
-          peak[order.id] = max(c.initial, c.notional)
+          matching[order.id] = m
           candidates[ck] = nil
           journalDirty = true
         } else {
@@ -578,21 +641,25 @@ public struct OrderFlowModel: Sendable {
 
   /// 跌破退出线：消失掉的那部分名义里成交够八成算已成交，否则已撤销。`remaining` 是确认结束的最后一拍桶里还剩的。
   ///
-  /// 消失掉的 = 挂着期间见过的最大名义（`peak`）− 结束时剩下的。不用首次名义：
+  /// 消失掉的 = 挂着期间每一拍掉的量之和（`Matching.vanished`）+ 最后一拍掉到剩下的那一截。不用首次名义：
   /// 挂出 1M、加到 5M 再撤掉，按首次名义算只要成交 0.8M 就判「已成交」，其实 4M 是撤的。
   /// 也不用「跌破前最后一拍的名义」：线上实测（2026-09-24）一面 340 万的现货墙十几拍里被一点点撤到 52 万，
-  /// 最后一拍只差 2 万，27 万零星成交就把它判成了「已成交」；按峰值算消失了 290 万、成交不到一成——是撤的。
+  /// 最后一拍只差 2 万，27 万零星成交就把它判成了「已成交」；按掉过的总量算消失了 290 万、成交不到一成——是撤的。
+  /// 也不用峰值：被吃 1M 又补 1M 再撤 1M，按峰值只消失 1M、成交 1M 判已成交，其实掉了 2M、撤了一半。
+  /// 成交只算与掉量在时间窗内对上的（`Matching`），最后一截在这里对一次。
   /// 先撤一半再被吃掉剩下的，按这个口径是「已撤销 · 成交 43%」（卡片上写「部分成交」）。
   private mutating func end(_ i: Int, atMs: Int64, remaining: Double) {
     let order = orders[i]
-    let top = max(peak[order.id] ?? 0, order.initialNotional, order.notional)
-    let vanished = max(0, top - max(0, remaining))
+    var m = matching[order.id] ?? Matching(restored: order)
+    m.observe(remaining, nowMs: atMs)
+    m.settle(into: &orders[i].filledNotional, nowMs: atMs)
+    let vanished = m.vanished
     orders[i].vanishedNotional = vanished
-    orders[i].status = vanished > 0 && order.filledNotional >= vanished * OrderFlowDefaults.filledRatio
+    orders[i].status = vanished > 0 && orders[i].filledNotional >= vanished * OrderFlowDefaults.filledRatio
       ? .filled : .cancelled
     orders[i].endMs = max(order.firstSeenMs, atMs)
     lastSeen[order.id] = nil
-    peak[order.id] = nil
+    matching[order.id] = nil
     remoteSeen[order.id] = nil
     journalDirty = true
   }
@@ -615,7 +682,7 @@ public struct OrderFlowModel: Sendable {
     orders[i].endMs = max(orders[i].firstSeenMs, atMs)
     orders[i].vanishedNotional = nil
     lastSeen[oid] = nil
-    peak[oid] = nil
+    matching[oid] = nil
     ending[oid] = nil
     remoteSeen[oid] = nil
     journalDirty = true
@@ -639,7 +706,7 @@ public struct OrderFlowModel: Sendable {
       let alive = Set(orders.lazy.filter(\.isLive).map(\.id))
       ending = ending.filter { alive.contains($0.key) }
       lastSeen = lastSeen.filter { alive.contains($0.key) }
-      peak = peak.filter { alive.contains($0.key) }
+      matching = matching.filter { alive.contains($0.key) }
       remoteSeen = remoteSeen.filter { alive.contains($0.key) }
     }
     return orders.count != before
@@ -743,7 +810,7 @@ public struct OrderFlowModel: Sendable {
         matches.forEach { removed.insert($0) }
         added.append(remote)
         lastSeen[remote.id] = nowMs
-        peak[remote.id] = max(remote.initialNotional, remote.notional)
+        matching[remote.id] = Matching(restored: remote)
         remoteSeen[remote.id] = nowMs
       }
     }
@@ -762,7 +829,7 @@ public struct OrderFlowModel: Sendable {
     let alive = Set(orders.lazy.filter(\.isLive).map(\.id))
     ending = ending.filter { alive.contains($0.key) }
     lastSeen = lastSeen.filter { alive.contains($0.key) }
-    peak = peak.filter { alive.contains($0.key) }
+    matching = matching.filter { alive.contains($0.key) }
     remoteSeen = remoteSeen.filter { alive.contains($0.key) }
     // 已经有单挂着的桶上的候选作废（不然两拍后又冒出一条同键的挂单）。
     candidates = candidates.filter { liveIndex[$0.key] == nil }
@@ -779,7 +846,7 @@ public struct OrderFlowModel: Sendable {
     return a.firstSeenMs < bEnd && b.firstSeenMs < aEnd
   }
 
-  /// 本机正在跟的这条接上服务端那条：出现时刻、首次名义取服务端的，成交与峰值取两边大的，
+  /// 本机正在跟的这条接上服务端那条：出现时刻、首次名义取服务端的，成交取两边大的、掉过的量按新的首次名义补齐，
   /// 此刻名义与价位仍是本机簿上的。出现时刻一变 id 就变，按单 id 记的几张表跟着换键。
   private mutating func adopt(_ i: Int, remote: BigOrder, nowMs: Int64) {
     let old = orders[i]
@@ -790,10 +857,12 @@ public struct OrderFlowModel: Sendable {
     let newID = orders[i].id
     if newID != oldID {
       lastSeen[newID] = lastSeen.removeValue(forKey: oldID)
-      peak[newID] = peak.removeValue(forKey: oldID)
+      matching[newID] = matching.removeValue(forKey: oldID)
       ending[newID] = ending.removeValue(forKey: oldID)
     }
-    peak[newID] = max(peak[newID] ?? 0, remote.initialNotional, remote.notional, old.notional, old.initialNotional)
+    var m = matching[newID] ?? Matching(restored: orders[i])
+    m.vanished = max(m.vanished, remote.initialNotional - old.notional)
+    matching[newID] = m
     if lastSeen[newID] == nil { lastSeen[newID] = nowMs }
     remoteSeen[oldID] = nil
     remoteSeen[newID] = nowMs

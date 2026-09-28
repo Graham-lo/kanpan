@@ -519,7 +519,7 @@ impl Tracker {
      if id<=*last {return}
      *last=id;
     }
-    self.model.trade(&venue,trade);
+    self.model.trade(&venue,trade,now);
    },
    Event::Snapshot{venue,epoch,snapshot}=>{
     if self.inflight.get(&venue)==Some(&epoch) {self.inflight.remove(&venue);}

@@ -26,8 +26,8 @@ final class OrderFlowHistoryTests: XCTestCase {
     return model
   }
 
-  private func shrinkWall(_ model: inout OrderFlowModel) {
-    _ = model.ingest(okx.id, .delta(BookDelta(firstUpdateID: 2, finalUpdateID: 2, previousFinalUpdateID: 1,
+  private func shrinkWall(_ model: inout OrderFlowModel, seq: Int64 = 2) {
+    _ = model.ingest(okx.id, .delta(BookDelta(firstUpdateID: seq, finalUpdateID: seq, previousFinalUpdateID: seq - 1,
                                               bids: [level(1_590, 150)], asks: [], eventTimeMs: 0)), nowMs: 0)
   }
 
@@ -140,11 +140,13 @@ final class OrderFlowHistoryTests: XCTestCase {
     XCTAssertEqual(merged.filledNotional, 3_000_000)
     XCTAssertEqual(merged.notional, 19_080_000, accuracy: 1)
     _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 100, hitSide: .bid, timeMs: 1_100)), nowMs: 1_100)
+    _ = model.ingest(okx.id, .delta(BookDelta(firstUpdateID: 2, finalUpdateID: 2, previousFinalUpdateID: 1,
+                                              bids: [level(1_590, 11_900)], asks: [], eventTimeMs: 0)), nowMs: 0)
     let frame = model.evaluate(nowMs: 1_500)
     XCTAssertEqual(frame.orders.count, 1, "不因为出现时刻换了又冒出一条")
     XCTAssertEqual(frame.orders[0].filledNotional, 3_159_000, accuracy: 1)
     // 本机簿上那一桶撤了：本机照常判结束。
-    shrinkWall(&model)
+    shrinkWall(&model, seq: 3)
     _ = model.evaluate(nowMs: 2_000)
     let ended = model.evaluate(nowMs: 2_500).orders[0]
     XCTAssertEqual(ended.status, .cancelled)
