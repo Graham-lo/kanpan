@@ -93,6 +93,12 @@ public struct QuoteState: Sendable {
   /// 手里的成交额是哪一刻的（交易所时间）；`nil` 表示还没有成交额。
   public var turnoverTimeMs: Int64? { turnover.value == nil ? nil : (turnover.timeMs ?? 0) }
   var hasTurnover: Bool { turnover.value != nil }
+  /// 手里有没有交易所的 24h 统计帧（涨跌额、涨跌幅、高低都靠它）。
+  ///
+  /// 和「值里有没有成交额」是两回事：成交额可以从盘上恢复的那份先垫进来
+  /// （`receiveTurnover`），垫了之后 `value.quoteVolume` 就是有限值，但统计仍然是空的——
+  /// 报价簿判「这只要不要去补统计」必须看这一位，不能看成交额。
+  public var hasStatistics: Bool { statistics != nil }
 
   @discardableResult public mutating func receive(_ next: TradeQuote) -> Bool {
     guard next.price.isFinite, next.price > 0, next.timeMs > 0, next.tradeID >= 0,

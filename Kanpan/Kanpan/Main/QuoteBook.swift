@@ -721,7 +721,7 @@ final class QuoteBook {
     var state = quoteState(trade.symbol)
     guard state.receive(trade), var ticker = state.value else { return }
     latestReceived[trade.symbol] = state
-    if ticker.quoteVolume.isFinite {
+    if state.hasStatistics {
       session.receive(trade.symbol)
       receivedAt[trade.symbol] = Date()
     } else {
@@ -730,6 +730,14 @@ final class QuoteBook {
       // 不发，发出去的回来也因为版本对不上被扔掉（逐笔成交几百毫秒一条，REST 回来前
       // 必然又到了一笔），顶栏的涨跌、额、振幅就一直是「—」。成交和统计的先后
       // 由 `QuoteState` 自己按成交号 / 时间判，用不着会话版本来挡。
+      //
+      // 判据必须是「有没有统计」（`hasStatistics`），不能是「值里有没有成交额」：
+      // 盘上恢复过的品种（冷启动时图上那只必然是）第一次见到就把旧成交额垫进了
+      // `QuoteState`（`quoteState(_:)`），于是拼出来的成交值成交额是有限的、统计却是空的。
+      // 2026-09-28 深链打开 BTCUSDT 后涨跌行 30 秒还是「—」就是这么来的：按成交额判
+      // 走进了上面那支，每一笔成交都顶一次会话版本、记一次「刚收到」，REST 既不再发、
+      // 发出去的也回不来，`MarketModel` 那路的 24h 帧又不进报价簿——BTC 逐笔一百多毫秒
+      // 一条，这只永远补不上统计。
       requestQuote(trade.symbol)
       // 统计补回来之前，先拿手里那份（盘上恢复的、种子）的统计垫着，只换最新价，
       // 别让顶栏在这一两百毫秒里退成一排「—」。

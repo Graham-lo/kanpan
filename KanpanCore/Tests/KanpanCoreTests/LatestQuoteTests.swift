@@ -56,6 +56,28 @@ struct QuoteStateTests {
   func trade(_ price: Double, time: Int64 = 2000, id: Int64 = 20) -> TradeQuote {
     TradeQuote(symbol: "BTCUSDT", price: price, timeMs: time, tradeID: id)
   }
+  /// 2026-09-28：盘上恢复的成交额先垫进来、再来一笔成交——值里成交额是有限的，
+  /// 但统计（涨跌额、涨跌幅）仍然是空的。报价簿要靠 `hasStatistics` 分辨这一状态，
+  /// 不能拿「成交额是不是有限」当「已经有统计」（那样 REST 补统计永远不发，顶栏涨跌一直「—」）。
+  @Test("垫了盘上成交额的成交值不算有统计")
+  func turnoverPaddedTradeHasNoStatistics() {
+    var state = QuoteState()
+    var restored = ticker(100, time: 1000, id: 10)
+    restored.priceChange = 3
+    #expect({ state.receiveTurnover(restored) }() == false, "只垫成交额，还没有值")
+    #expect(!state.hasStatistics)
+    #expect({ state.receive(trade(101)) }())
+    #expect(state.value?.quoteVolume == 1000, "成交额是垫进来的那份")
+    #expect(state.value?.priceChange == nil)
+    #expect(state.value?.changePercent.isNaN == true)
+    #expect(!state.hasStatistics, "有成交额不等于有统计")
+    var stats = ticker(101, time: 1990, id: 19)
+    stats.priceChange = 4
+    #expect({ state.receive(stats) }())
+    #expect(state.hasStatistics)
+    #expect(state.value?.priceChange == 4, "统计到了才有涨跌额（价没再变，不补差）")
+    #expect(state.value?.changePercent == 1)
+  }
   @Test func delayedStatisticsCannotOverwriteLivePrice() {
     var state = QuoteState()
     #expect({ state.receive(trade(120)) }())
