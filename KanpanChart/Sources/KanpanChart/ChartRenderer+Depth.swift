@@ -8,17 +8,28 @@ extension ChartRenderer {
     let color: Hex
   }
 
-  /// 买卖各五档固定行高，分界贴最新价；整架平移进主图，不参与定标。
-  func depthRows(pane: Pane, range: PriceRange, L: Layout) -> [DepthRow] {
+  /// 盘口梯占的那一块：贴主图右缘、最长那档的宽（64 pt）× 十行的高（69 pt），不看此刻每档多长——
+  /// 金额签躲它（`orderFlowLabels`），签在十字线层、深度一跳只重画实时层，按每档实际长短躲会躲旧了。
+  /// 没开盘口、深度不是这只、簿是空的、主图放不下十行就是 nil（这时也一行不画）。
+  func depthEnvelope(pane: Pane, range: PriceRange, L: Layout) -> CGRect? {
     guard let book = state.depth, book.symbol == state.symbol.symbol,
-          let price = state.series.close.last else { return [] }
+          let price = state.series.close.last else { return nil }
     let largest = (book.bids + book.asks).map(\.quantity).max() ?? 0
-    let rowHeight = 6.0, gap = 1.0, height = 69.0
-    guard largest > 0, pane.h >= height, L.plotW > 0 else { return [] }
+    let height = 69.0
+    guard largest > 0, pane.h >= height, L.plotW > 0 else { return nil }
     let priceY = KanpanCore.yOf(price, pane: pane, range: range, mode: state.price.mode)
-    guard priceY.isFinite else { return [] }
+    guard priceY.isFinite else { return nil }
     let top = max(pane.y, min(pane.y + pane.h - height, priceY - height / 2))
     let maxWidth = min(64.0, L.plotW)
+    return CGRect(x: L.plotW - maxWidth, y: top, width: maxWidth, height: height)
+  }
+
+  /// 买卖各五档固定行高，分界贴最新价；整架平移进主图，不参与定标。
+  func depthRows(pane: Pane, range: PriceRange, L: Layout) -> [DepthRow] {
+    guard let envelope = depthEnvelope(pane: pane, range: range, L: L), let book = state.depth else { return [] }
+    let largest = (book.bids + book.asks).map(\.quantity).max() ?? 0
+    let rowHeight = 6.0, gap = 1.0
+    let top = Double(envelope.minY), maxWidth = Double(envelope.width)
     // 卖一、买一紧邻中间的空隙；缺档保持空行，不拿另一侧补足。
     let asks = book.asks.enumerated().map { (4 - $0.offset, $0.element, state.colors.down) }
     let bids = book.bids.enumerated().map { (5 + $0.offset, $0.element, state.colors.up) }

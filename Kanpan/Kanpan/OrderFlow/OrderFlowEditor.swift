@@ -118,10 +118,10 @@ struct OrderFlowEditor: View {
       }
       .font(TypeScale.body).foregroundStyle(t.ink)
       Spacer(minLength: Space.s)
-      if suffix != nil, let amount = Double(text), amount > 0 {
+      if suffix != nil, let amount = Double(Self.sanitize(text)), amount > 0 {
         Text(Self.compact(amount)).font(PanelFont.meta).monospacedDigit().foregroundStyle(t.ink3)
       }
-      TextField("", text: Binding(get: { text }, set: { typing[field] = String($0.filter { $0.isNumber || $0 == "." }.prefix(14)) }),
+      TextField("", text: Binding(get: { text }, set: { accept($0, field) }),
                 prompt: Text("自动").foregroundStyle(t.ink3))
         .keyboardType(.decimalPad)
         .multilineTextAlignment(.trailing)
@@ -153,10 +153,60 @@ struct OrderFlowEditor: View {
     }
   }
 
+  /// 框里打进来的字：过滤后和原样一样就直接收；不一样就先收原样、下一轮主循环再换成过滤后的。
+  /// 在同一次编辑里改写绑定值，TextField 不刷新显示（压测 2026-09-28：打「1..5」存的是 1.5，框里却一直是「1..5」）。
+  /// 下一轮换之前又打了字就不换，交给那一次。
+  private func accept(_ raw: String, _ field: OrderFlowField) {
+    let clean = Self.sanitize(raw)
+    typing[field] = raw
+    guard clean != raw else { return }
+    DispatchQueue.main.async {
+      if typing[field] == raw { typing[field] = clean }
+    }
+  }
+
   /// 一格打完：空的、不是数的当没改；越界的夹回边上（框里显示什么就存什么）。
   private func commit(_ field: OrderFlowField) {
-    guard let text = typing.removeValue(forKey: field), let value = Double(text), value > 0 else { return }
+    guard let raw = typing.removeValue(forKey: field), let value = Double(Self.sanitize(raw)), value > 0 else { return }
     edited[field] = Self.clamp(value, field)
+  }
+
+  /// 框里只留 ASCII 数字和一个小数点（至多 14 位）。数字键盘打不出别的，要防的是粘贴：
+  /// 全角数字 / 全角句点 / 中文句号先转半角（原来 `isNumber` 把「５」「五」这类也放进来，`Double` 解析失败，
+  /// 保存时那一格被静默丢掉）；千分位逗号、空格、「美元」这类字丢掉；第二个小数点起丢掉（原来「3..5」整格作废）；
+  /// 数字后面跟着的「万 / 亿 / K / M / B」按倍数展开（原来粘「500万」只剩「500」，再被夹到门槛下限 1000）。
+  /// 科学计数法（「1e9」「2.5E6」「1e-6」）整串先按数认：原来逐字过滤把 e 丢掉，粘「1e9」框里剩「19」（压测 2026-09-28）。
+  /// 只放行数字、小数点、e/E、正负号，免得「0xE」这类十六进制串被 `Double` 当成 14 认进来。
+  nonisolated static func sanitize(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespaces)
+    if trimmed.contains(where: { $0 == "e" || $0 == "E" }), trimmed.allSatisfy({ "0123456789.eE+-".contains($0) }),
+       let value = Double(trimmed), value.isFinite, value > 0, value < 1e14 {
+      return plain(value)
+    }
+    var digits = "", dot = false, scale = 1.0
+    for ch in raw {
+      var c = ch
+      if ch.unicodeScalars.count == 1, let v = ch.unicodeScalars.first?.value {
+        switch v {
+        case 0xFF10...0xFF19: c = Character(UnicodeScalar(v - 0xFF10 + 0x30)!)
+        case 0xFF0E, 0x3002: c = "."
+        default: break
+        }
+      }
+      if c.isASCII, c.isNumber {
+        guard scale == 1, digits.count < 14 else { continue }
+        digits.append(c)
+      } else if c == "." {
+        guard !dot, scale == 1, digits.count < 14 else { continue }
+        dot = true; digits.append(c)
+      } else if scale == 1, digits.contains(where: \.isNumber),
+                let unit = ["万": 1e4, "亿": 1e8, "k": 1e3, "K": 1e3, "m": 1e6, "M": 1e6, "b": 1e9, "B": 1e9][c] {
+        scale = unit
+      }
+    }
+    guard scale != 1, let value = Double(digits) else { return digits }
+    let scaled = value * scale
+    return scaled.isFinite && scaled < 1e14 ? plain(scaled) : digits
   }
 
   static func clamp(_ value: Double, _ field: OrderFlowField) -> Double {
@@ -195,7 +245,7 @@ struct OrderFlowEditor: View {
   }
 
   /// 框里的数：整数不带小数点，小数去掉尾零。
-  static func plain(_ value: Double) -> String {
+  nonisolated static func plain(_ value: Double) -> String {
     if value >= 1, value == value.rounded() { return String(Int64(value)) }
     var s = String(format: "%.8f", value)
     while s.hasSuffix("0") { s.removeLast() }

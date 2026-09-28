@@ -114,15 +114,62 @@ public struct OrderFlowGroup: Sendable, Equatable {
     public func contains(_ ms: Int64) -> Bool { start <= ms && ms <= (end ?? .max) }
   }
 
-  public var key: OrderFlowGroupKey
+  public var key: OrderFlowGroupKey { didSet { derive() } }
   /// 按首见先后排的全部单。
-  public var members: [BigOrder]
+  public var members: [BigOrder] { didSet { derive() } }
   /// 一本簿一桶一行，按此刻名义从大到小（名义一样按簿名、再按桶）。
-  public var books: [Book]
+  public var books: [Book] { didSet { derive() } }
   /// 墙里的各段（一桶可以有几段），按起点排。
-  public var spans: [Span]
+  public var spans: [Span] { didSet { derive() } }
   /// 步长（`OrderFlowSnapshot.thresholds.step`）：算价位范围用；不知道时按各行的价。
   public var step: Double?
+
+  /// 由 members / books / spans 推出来的量，建组时（和它们被改时）算一次存下。原来每读一次都把整堵墙 reduce 一遍，
+  /// 排序比较器里 `drawNotional` / `firstSeenMs` 一对一对地反复算：2 万单时一屏落带要 17–60 ms（压测 2026-09-28）。
+  private struct Derived: Sendable, Equatable {
+    var notional = 0.0, filledNotional = 0.0, fillBase = 0.0, drawNotional = 0.0, price = 0.0
+    var hasFill = false, isLive = false
+    var quarters = 0
+    var firstSeenMs: Int64 = 0
+    var endMs: Int64?
+    var bucketLow: Int64 = 0, bucketHigh: Int64 = 0
+    var bucketCount = 0
+  }
+  private var derived = Derived()
+
+  private mutating func derive() {
+    var d = Derived()
+    // 求和顺序和原来的 reduce 一样（按 books 的顺序），浮点结果逐位不变。
+    var top: BigOrder?
+    for b in books {
+      d.notional += b.notional
+      d.filledNotional += b.filledNotional
+      d.fillBase += b.fillBase
+      d.hasFill = d.hasFill || b.hasFill
+      d.quarters += b.latest.thicknessQuarters
+      d.drawNotional += Double(b.latest.thicknessQuarters) * b.latest.threshold / 4
+      if let t = top {
+        let q = b.latest.thicknessQuarters, tq = t.thicknessQuarters
+        if q != tq ? tq < q : t.id > b.latest.id { top = b.latest }
+      } else {
+        top = b.latest
+      }
+    }
+    d.price = top?.price ?? 0
+    var first = Int64.max, end: Int64?, live = false
+    for m in members {
+      first = min(first, m.firstSeenMs)
+      if m.isLive { live = true }
+      if let e = m.endMs { end = max(end ?? e, e) }
+    }
+    d.firstSeenMs = members.isEmpty ? 0 : first
+    d.isLive = live
+    d.endMs = live ? nil : end
+    d.bucketLow = spans.map(\.bucket).min() ?? key.bucket
+    d.bucketHigh = spans.map(\.bucket).max() ?? key.bucket
+    d.bucketCount = Set(spans.map(\.bucket)).count
+    derived = d
+  }
 
   /// 把几单合成一条带；空的给 nil。不检查它们是不是同侧同类、桶与时间连着，调用方按 `segments` / `walls` 分好组。
   /// `spans` 不给就按成员一桶一格（每桶最早首见到最晚结束）。
@@ -167,6 +214,7 @@ public struct OrderFlowGroup: Sendable, Equatable {
     self.spans = (spans ?? Array(perBucket.values)).sorted {
       $0.start != $1.start ? $0.start < $1.start : $0.bucket < $1.bucket
     }
+    derive()
   }
 
   /// 两段之间的空档不超过这么久就并成一段的下限：撤了马上挂回来仍算同一堵墙。
@@ -352,10 +400,10 @@ public struct OrderFlowGroup: Sendable, Equatable {
   public var contract: Bool { key.contract }
 
   /// 最低、最高的桶。
-  public var bucketLow: Int64 { spans.map(\.bucket).min() ?? key.bucket }
-  public var bucketHigh: Int64 { spans.map(\.bucket).max() ?? key.bucket }
+  public var bucketLow: Int64 { derived.bucketLow }
+  public var bucketHigh: Int64 { derived.bucketHigh }
   /// 并了几个桶。
-  public var bucketCount: Int { Set(spans.map(\.bucket)).count }
+  public var bucketCount: Int { derived.bucketCount }
   /// 跨了不止一个桶（详情卡标题写价位范围、每行带价）。
   public var isRange: Bool { bucketCount > 1 }
   /// 价位范围：最低桶的桶价 … 最高桶的桶价 + 步长。不知道步长时按各行的价。
@@ -369,41 +417,34 @@ public struct OrderFlowGroup: Sendable, Equatable {
   }
 
   /// 此刻的名义：各行（一本簿一桶）最近那一单的名义之和（图上标签、详情卡的合计）。
-  public var notional: Double { books.reduce(0) { $0 + $1.notional } }
+  public var notional: Double { derived.notional }
   /// 全部单的成交名义之和。
-  public var filledNotional: Double { books.reduce(0) { $0 + $1.filledNotional } }
+  public var filledNotional: Double { derived.filledNotional }
   /// 成交比例：成交之和 ÷ 各单分母之和（封顶 1）。
   public var fillRatio: Double {
-    let base = books.reduce(0) { $0 + $1.fillBase }
+    let base = derived.fillBase
     return base > 0 ? min(1, max(0, filledNotional / base)) : 0
   }
   /// 任何一单被吃过就画深色。
-  public var hasFill: Bool { books.contains { $0.hasFill } }
+  public var hasFill: Bool { derived.hasFill }
   /// 有一单还挂着。
-  public var isLive: Bool { members.contains(where: \.isLive) }
+  public var isLive: Bool { derived.isLive }
   /// 最早的首见。
-  public var firstSeenMs: Int64 { members.map(\.firstSeenMs).min() ?? 0 }
+  public var firstSeenMs: Int64 { derived.firstSeenMs }
   /// 最晚的结束；有一单还挂着就是 nil（画到右缘）。
-  public var endMs: Int64? {
-    if members.contains(where: \.isLive) { return nil }
-    return members.compactMap(\.endMs).max()
-  }
+  public var endMs: Int64? { derived.endMs }
 
   /// 画粗细用的「门槛四分之一格」之和：各行最近那一单的 `thicknessQuarters` 相加。
   /// 只由逐单的 `renderKey` 决定——名义在一格里抖，粗细和挤压都不变，底图不用重画。
-  public var quarters: Int { books.reduce(0) { $0 + $1.latest.thicknessQuarters } }
+  public var quarters: Int { derived.quarters }
   /// 粗细档（0…4）。
   public var tier: Int { BigOrder.thicknessTier(quarters: quarters) }
   /// 排先后（主次、谁被压成细线、谁留标签）用的名义：按四分之一格折回美元，同样只由 `renderKey` 决定。
-  public var drawNotional: Double { books.reduce(0) { $0 + Double($1.latest.thicknessQuarters) * $1.latest.threshold / 4 } }
+  public var drawNotional: Double { derived.drawNotional }
 
   /// 代表价（次墙、底噪的细线画在这里；被压成细线的也画在这里）：四分之一格最多的那一行最近那一单的价
   /// （一样多取 id 小的，结果稳定）。
-  public var price: Double {
-    books.map(\.latest).max { a, b in
-      a.thicknessQuarters != b.thicknessQuarters ? a.thicknessQuarters < b.thicknessQuarters : a.id > b.id
-    }?.price ?? 0
-  }
+  public var price: Double { derived.price }
 }
 
 /// 详情卡的尺寸上限与摆位（app 那边按这个排，放在图表包里好单测）。卡只有三行，不再按高度算列几本簿。

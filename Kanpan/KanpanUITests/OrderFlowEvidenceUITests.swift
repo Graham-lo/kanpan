@@ -661,6 +661,284 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: 30) { !(self.chartInfo()["orderFlowPhase"] as? String ?? "").isEmpty },
                   "打开开关后没开始订簿")
   }
+
+  // ------------------------------------------------------------ 7. 订单簿压测 · 展示层取证（2026-09-28）
+  //
+  // 以交易员身份：主力订单流 + 盘口一起开，BTC / ETH / SOL / DOGE 各看 1m 与 15m（每格停 25 秒，合计三分多钟），
+  // 每一屏做几何自检（带不粗过 2.5 pt、不出主图、价位离现价 ±25% 以内——出了就是旧品种的残留；
+  // 金额签不出主图、两两不叠、不压在盘口梯上），再换四套皮肤、捏合缩放 / 平移、十字线与详情卡、
+  // 快切品种 20 次、来回切周期 10 次、进后台再回来。只记录不中断：问题攒起来最后一起断言，截图一张不少。
+  // 图落在 `docs/acceptance/订单簿压测-2026-09-28/`。
+
+  private static let stressDir = outDir.deletingLastPathComponent()
+    .appendingPathComponent("订单簿压测-2026-09-28", isDirectory: true)
+
+  private func stressShot(_ name: String) {
+    let image = app.screenshot()
+    let a = XCTAttachment(screenshot: image); a.name = name; a.lifetime = .keepAlways; add(a)
+    try? FileManager.default.createDirectory(at: Self.stressDir, withIntermediateDirectories: true)
+    try? image.pngRepresentation.write(to: Self.stressDir.appendingPathComponent("\(Self.shortDevice)-\(name).png"))
+    let info = chartInfo()
+    print("取证|压测|\(name)|symbol=\(info["symbol"] ?? "")|interval=\(info["interval"] ?? "")|phase=\(info["orderFlowPhase"] ?? "")|orders=\(info["orderFlowOrders"] ?? 0)|bands=\(bands().count)|labels=\((info["orderFlowLabels"] as? [[String: Any]] ?? []).count)|depth=\(info["depthSymbol"] ?? "")/\(info["renderedDepthRows"] ?? 0)")
+  }
+
+  /// 盘口梯占的那一块（`ChartRenderer.depthRows`：宽 64、高 69、以最新价为中心、夹在主图里）；没画就是 nil。
+  private func ladderRect(_ info: [String: Any]) -> CGRect? {
+    guard (info["renderedDepthRows"] as? Int ?? 0) > 0, info["percentAxis"] as? Bool != true else { return nil }
+    let plotW = info["plotW"] as? Double ?? 0, mainH = info["mainH"] as? Double ?? 0
+    let top = info["mainPriceTop"] as? Double ?? 0, bottom = info["mainPriceBottom"] as? Double ?? 0
+    let close = info["lastClose"] as? Double ?? 0
+    guard top > bottom, close > 0, mainH >= 69 else { return nil }
+    let y = (top - close) / (top - bottom) * mainH
+    let minY = max(0, min(mainH - 69, y - 34.5))
+    return CGRect(x: plotW - min(64, plotW), y: minY, width: min(64, plotW), height: 69)
+  }
+
+  /// 这一屏的几何问题（空 = 干净）。`stale` 单列：价位离现价超过 25% 的带只可能是别的品种残留下来的。
+  private func layoutIssues(_ what: String) -> (issues: [String], stale: [String], labelOnLadder: Int) {
+    let info = chartInfo()
+    let plotW = info["plotW"] as? Double ?? 0, mainH = info["mainH"] as? Double ?? 0
+    let close = info["lastClose"] as? Double ?? 0
+    var issues: [String] = [], stale: [String] = []
+    for b in bands() {
+      let x = b["x"] as? Double ?? 0, w = b["w"] as? Double ?? 0, y = b["y"] as? Double ?? 0, h = b["h"] as? Double ?? 0
+      if h > 2.5 { issues.append("\(what)：带粗 \(h) pt") }
+      if x < -0.5 || x + w > plotW + 0.5 { issues.append("\(what)：带出了绘图区 x=\(x) w=\(w) plotW=\(plotW)") }
+      if y < -0.5 || y > mainH + 0.5 { issues.append("\(what)：带出了主图 y=\(y) mainH=\(mainH)") }
+      for key in ["priceLow", "priceHigh"] {
+        if let p = b[key] as? Double, close > 0, abs(p - close) / close > 0.25 {
+          stale.append("\(what)：\(b["id"] ?? "") \(key)=\(p) 现价 \(close)")
+        }
+      }
+    }
+    let labels = (info["orderFlowLabels"] as? [[String: Any]] ?? []).map {
+      (text: $0["text"] as? String ?? "", r: CGRect(x: $0["x"] as? Double ?? 0, y: $0["y"] as? Double ?? 0,
+                                                    width: $0["w"] as? Double ?? 0, height: $0["h"] as? Double ?? 0))
+    }
+    for l in labels where l.r.minX < -0.5 || l.r.maxX > plotW + 0.5 || l.r.minY < -0.5 || l.r.maxY > mainH + 0.5 {
+      issues.append("\(what)：签「\(l.text)」出了主图 \(l.r)")
+    }
+    for (i, a) in labels.enumerated() {
+      for b in labels[(i + 1)...] where a.r.intersects(b.r) { issues.append("\(what)：签「\(a.text)」与「\(b.text)」重叠") }
+    }
+    var onLadder = 0
+    if let ladder = ladderRect(info) {
+      for l in labels where l.r.intersects(ladder) {
+        onLadder += 1
+        issues.append("\(what)：签「\(l.text)」\(l.r) 压在盘口梯 \(ladder) 上")
+      }
+    }
+    return (issues, stale, onLadder)
+  }
+
+  private func openChartPanelControl(_ id: String) {
+    app.buttons[Ids.intervalChart].tap()
+    let control = app.buttons[id]
+    let scroll = app.scrollViews["panel.content"]
+    XCTAssertTrue(scroll.waitForExistence(timeout: Self.short), "图表面板没开出来")
+    for _ in 0..<24 {
+      if control.exists, control.isHittable, scroll.frame.contains(control.frame) { break }
+      let down = control.exists && control.frame.midY < scroll.frame.midY
+      scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.3 : 0.8))
+        .press(forDuration: 0.1, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.8 : 0.3)))
+    }
+    control.tap()
+    let header = app.staticTexts[Ids.panelHeader].firstMatch
+    dismissSheet(until: header)
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists }, "图表面板收不掉")
+  }
+
+  private func openSymbol(_ symbol: String, _ interval: String, wait: Bool = true) {
+    app.open(URL(string: "hkline://symbol/\(symbol)?interval=\(interval)")!)
+    guard wait else { return }
+    XCTAssertTrue(waitUntil(timeout: 45, poll: 0.5) {
+      let info = self.chartInfo()
+      return (info["symbol"] as? String ?? "").hasSuffix("/" + symbol) && info["interval"] as? String == interval
+        && (info["bars"] as? Int ?? 0) >= 20
+    }, "深链开 \(symbol) \(interval) 没出图：\(chartInfo())")
+  }
+
+  func testStressDisplayFourSymbols() {
+    executionTimeAllowance = 3600
+    XCTAssertTrue(waitForLiveChart(), "币安直连没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    openChartPanelControl("chart.depth")
+    XCTAssertTrue(waitUntil(timeout: 30) { (self.chartInfo()["renderedDepthRows"] as? Int ?? 0) > 0 }, "盘口梯没画出来")
+    var issues: [String] = [], stale: [String] = [], onLadder = 0
+    func audit(_ what: String) {
+      let r = layoutIssues(what)
+      issues += r.issues; stale += r.stale; onLadder += r.labelOnLadder
+      print("取证|压测|自检|\(what)|问题=\(r.issues)|残留=\(r.stale)")
+    }
+
+    // 1. 四只 × 两个周期，每格停 25 秒（前 20 秒等大单），合计三分多钟。
+    for symbol in ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT"] {
+      for interval in ["1m", "15m"] {
+        openSymbol(symbol, interval)
+        let start = Date()
+        let ok = waitUntil(timeout: 20, poll: 1) {
+          self.chartInfo()["orderFlowPhase"] as? String == "ready" && !self.bands().isEmpty
+        }
+        _ = waitUntil(timeout: max(1, 25 - Date().timeIntervalSince(start)), poll: 5) { false }
+        audit("\(symbol)-\(interval)")
+        stressShot("观察-\(symbol)-\(interval)\(ok ? "" : "-无大单")")
+      }
+    }
+
+    // 2. BTC 1m 四套皮肤。
+    openSymbol("BTCUSDT", "1m")
+    _ = waitUntil(timeout: 60, poll: 1) { !self.bands().isEmpty }
+    for (skin, mode, title) in [("sage", "浅色", "青苔浅"), ("sage", "深色", "青苔深"),
+                                ("classic", "浅色", "经典浅"), ("classic", "深色", "经典深")] {
+      pickSkin(skin, mode)
+      _ = waitUntil(timeout: 60, poll: 1) { !self.bands().isEmpty }
+      audit("皮肤-\(title)")
+      stressShot("皮肤-\(title)")
+    }
+
+    // 3. 捏合缩放、平移（手势会让 DEBUG 的 FrameProbe 记一份「图表手势」帧报告）。
+    let canvas = app.otherElements["chart.canvas"]
+    canvas.pinch(withScale: 2.5, velocity: 2)
+    _ = waitUntil(timeout: 2) { false }
+    audit("放大"); stressShot("缩放-放大")
+    canvas.pinch(withScale: 0.25, velocity: -2)
+    _ = waitUntil(timeout: 2) { false }
+    canvas.pinch(withScale: 0.4, velocity: -2)
+    _ = waitUntil(timeout: 2) { false }
+    audit("缩小"); stressShot("缩放-缩小")
+    let mid = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+    for k in 0..<6 {
+      mid.press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: k % 2 == 0 ? 0.9 : 0.1, dy: 0.35)),
+                withVelocity: .fast, thenHoldForDuration: 0)
+    }
+    _ = waitUntil(timeout: 2) { false }
+    audit("平移"); stressShot("平移后")
+    print("取证|压测|手势|gestureTrace=\(chartInfo()["gestureTrace"] ?? "")|renderCounts=\(chartInfo()["renderCounts"] ?? "")")
+
+    // 4. 回到最新（重开这一只），十字线按到最宽的主档上 → 读数换成详情卡。
+    openSymbol("BTCUSDT", "1m")
+    _ = waitUntil(timeout: 60, poll: 1) { !self.bands().isEmpty }
+    let origin = canvas.coordinate(withNormalizedOffset: .zero)
+    let card = app.descendants(matching: .any)["chart.orderFlowCard"]
+    var hovered = false
+    for band in bands().filter({ $0["thin"] as? Bool != true }).sorted(by: { ($0["w"] as? Double ?? 0) > ($1["w"] as? Double ?? 0) }).prefix(5) where !hovered {
+      let plotW = chartInfo()["plotW"] as? Double ?? 300
+      let x = min(plotW - 2, max(1, (band["x"] as? Double ?? 0) + (band["w"] as? Double ?? 0) * 0.3))
+      if chartInfo()["crosshair"] as? Bool == true { origin.withOffset(CGVector(dx: 40, dy: 40)).tap() }
+      origin.withOffset(CGVector(dx: x, dy: band["y"] as? Double ?? 0)).press(forDuration: 0.6)
+      hovered = waitUntil(timeout: 3) { self.chartInfo()["orderFlowHovered"] as? Bool == true }
+    }
+    if hovered, card.waitForExistence(timeout: 3) {
+      let cf = card.frame, vf = canvas.frame, plotW = chartInfo()["plotW"] as? Double ?? 0
+      print("取证|压测|十字线卡|\(card.label.replacingOccurrences(of: "\n", with: " / "))|卡=\(cf)|画布=\(vf)")
+      if Double(cf.minX) < Double(vf.minX) - 0.5 || Double(cf.maxX) > Double(vf.minX) + plotW + 0.5 || cf.minY < vf.minY - 0.5 {
+        issues.append("十字线详情卡出了绘图区：\(cf)")
+      }
+      stressShot("十字线-详情卡")
+    } else {
+      print("取证|压测|十字线|没按中大单（hovered=\(hovered)）")
+      stressShot("十字线-未命中")
+    }
+    if chartInfo()["crosshair"] as? Bool == true { origin.withOffset(CGVector(dx: 40, dy: 40)).tap() }
+
+    // 5. 快切品种 20 次（每次 0.4 秒，不等出图），停在 DOGE：图、盘口、大单都得是 DOGE 的。
+    let ring = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT"]
+    let switchStart = Date()
+    for k in 0..<20 {
+      openSymbol(ring[k % ring.count], "1m", wait: false)
+      _ = waitUntil(timeout: 0.4) { false }
+    }
+    openSymbol("DOGEUSDT", "1m")
+    print("取证|压测|快切20次|耗时 \(String(format: "%.1f", Date().timeIntervalSince(switchStart))) 秒")
+    XCTAssertTrue(waitUntil(timeout: 20) { (self.chartInfo()["depthSymbol"] as? String ?? "").contains("DOGE") || (self.chartInfo()["depthSymbol"] as? String ?? "").isEmpty },
+                  "快切后盘口不是 DOGE：\(chartInfo()["depthSymbol"] ?? "")")
+    _ = waitUntil(timeout: 30, poll: 1) { !self.bands().isEmpty }
+    audit("快切20次后-DOGE"); stressShot("快切20次后-DOGE")
+
+    // 6. 来回切周期 10 次，停在 15m。
+    for k in 0..<10 { app.tapIntervalChip(k % 2 == 0 ? "15m" : "1m"); _ = waitUntil(timeout: 0.5) { false } }
+    app.tapIntervalChip("15m")
+    XCTAssertTrue(waitUntil(timeout: 30) { self.chartInfo()["interval"] as? String == "15m" && (self.chartInfo()["bars"] as? Int ?? 0) >= 20 })
+    _ = waitUntil(timeout: 20, poll: 1) { !self.bands().isEmpty }
+    audit("切周期10次后-DOGE-15m"); stressShot("切周期10次后-DOGE-15m")
+
+    // 7. 进后台 8 秒再回来：簿重新就绪，大单与盘口照旧是 DOGE 的。
+    XCUIDevice.shared.press(.home)
+    _ = waitUntil(timeout: 8) { false }
+    app.activate()
+    let backStart = Date()
+    let back = waitUntil(timeout: 60, poll: 0.5) {
+      self.chartInfo()["orderFlowPhase"] as? String == "ready" && !self.bands().isEmpty
+    }
+    print("取证|压测|回前台|\(back ? "恢复" : "没恢复") \(String(format: "%.1f", Date().timeIntervalSince(backStart))) 秒")
+    XCTAssertTrue(back, "回前台 60 秒大单没恢复：\(chartInfo()["orderFlowPhase"] ?? "")")
+    audit("回前台-DOGE-15m"); stressShot("回前台-DOGE-15m")
+
+    print("取证|压测|汇总|问题 \(issues.count)|签压盘口梯 \(onLadder)|残留 \(stale.count)")
+    for line in issues { print("取证|压测|问题|\(line)") }
+    let a = XCTAttachment(string: (issues + stale).joined(separator: "\n")); a.name = "展示层自检"; a.lifetime = .keepAlways; add(a)
+    XCTAssertTrue(stale.isEmpty, "有旧品种残留的带：\(stale)")
+    XCTAssertTrue(issues.isEmpty, "展示层自检有问题：\(issues)")
+  }
+
+  // ------------------------------------------------------------ 8. 参数表：粘贴与乱打（2026-09-28）
+
+  /// 从剪贴板粘进一格：点进框（框会全选），调出编辑菜单点「粘贴」。
+  private func paste(_ text: String, into id: String) {
+    UIPasteboard.general.string = text
+    let field = app.textFields[id]
+    expectExists(field, Self.short, "参数表里没有 \(id)")
+    field.tap()
+    _ = waitUntil(timeout: 1) { false }
+    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 16))
+    for _ in 0..<3 {
+      field.press(forDuration: 0.8)
+      let item = [app.menuItems["粘贴"], app.menuItems["Paste"], app.buttons["粘贴"], app.buttons["Paste"]].first { $0.waitForExistence(timeout: 1.5) }
+      if let item { item.tap(); break }
+    }
+    _ = waitUntil(timeout: 1) { false }
+    print("取证|参数表|粘「\(text)」进 \(id) → 框里「\(field.value as? String ?? "")」")
+  }
+
+  func testEditorPasteAndGarbage() {
+    executionTimeAllowance = 900
+    XCTAssertTrue(waitForLiveChart(), "币安直连没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    XCTAssertTrue(waitUntil(timeout: 90, poll: 1) {
+      self.chartInfo()["orderFlowPhase"] as? String == "ready" && self.thresholds()["usdtPerp"] != nil
+    }, "簿没就绪：\(chartInfo())")
+    openOrderFlowEditor()
+    // 粘「300万」：原来只剩「300」，再被夹到门槛下限 1000。
+    paste("300万", into: "orderflow.threshold.usdtPerp.field")
+    XCTAssertEqual(app.textFields["orderflow.threshold.usdtPerp.field"].value as? String, "3000000", "粘「300万」框里不是 3000000")
+    // 粘全角数字：原来 `isNumber` 放进来、`Double` 解析失败，保存时整格静默丢掉。
+    paste("１２０００００", into: "orderflow.threshold.spot.field")
+    XCTAssertEqual(app.textFields["orderflow.threshold.spot.field"].value as? String, "1200000", "粘全角数字框里不是 1200000")
+    // 粘科学计数法（步长框这时是空的，粘贴是插在光标处、不替换）：原来逐字过滤把 e 丢掉，「2e1」剩「21」。
+    paste("2e1", into: "orderflow.step.field")
+    XCTAssertEqual(app.textFields["orderflow.step.field"].value as? String, "20", "粘「2e1」框里不是 20")
+    // 先把焦点挪到别的框：粘完步长框还聚焦着，再点一下光标落在点处，`retype` 的退格删不到。
+    app.textFields["orderflow.threshold.spot.field"].tap()
+    // 数字键盘上连按两下小数点：原来「1..5」整格作废。
+    retype("orderflow.step.field", "1..5")
+    XCTAssertEqual(app.textFields["orderflow.step.field"].value as? String, "1.5", "打「1..5」框里不是 1.5")
+    stressShot("参数表-粘贴与乱打")
+    app.buttons["orderflow.save"].tap()
+    closePanels()
+    XCTAssertTrue(waitUntil(timeout: 20, poll: 0.5) {
+      self.thresholds()["usdtPerp"] == 3_000_000 && self.thresholds()["spot"] == 1_200_000
+    }, "粘贴的门槛没生效：\(thresholds())")
+    print("取证|参数表|保存后|thresholds=\(thresholds())")
+    // 空框与 0：当没改，保存后门槛不变。
+    openOrderFlowEditor()
+    retype("orderflow.threshold.usdtPerp.field", "")
+    retype("orderflow.threshold.spot.field", "0")
+    app.buttons["orderflow.save"].tap()
+    closePanels()
+    _ = waitUntil(timeout: 3) { false }
+    XCTAssertEqual(thresholds()["usdtPerp"], 3_000_000, "空框保存后门槛变了：\(thresholds())")
+    XCTAssertEqual(thresholds()["spot"], 1_200_000, "填 0 保存后门槛变了：\(thresholds())")
+  }
 }
 
 /// 用例里要对照的「app 自己查表」那个数：成交额不知道时落在第三档，永续门槛 100 万

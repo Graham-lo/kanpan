@@ -457,7 +457,14 @@ struct OrderFlowChartTests {
     #expect(wall.frame.midY >= pane.y, "夹具：芯线在主图里")
     #expect(wall.role == .main && !wall.thin && wall.group.isRange)
     #expect(wall.bracket == nil, "范围一端出了主图，括号整枚不画")
-    #expect(f.labels.contains { $0.key == wall.key }, "金额签照旧")
+    // 金额签照旧——除非芯线在顶上图例那几行里、签夹到图例下沿要挪超过 32 pt（见 `labelsStayBelowLegend`）。
+    let legendBottom = pane.y + r.mainLegendInset(plotW: r.layout(size: Self.size).plotW)
+    let shift = legendBottom + ChartRenderer.orderFlowLabelHeight / 2 - wall.frame.midY
+    if shift <= ChartRenderer.orderFlowLabelMaxShift {
+      #expect(f.labels.contains { $0.key == wall.key }, "金额签照旧")
+    } else {
+      #expect(!f.labels.contains { $0.key == wall.key }, "芯线在图例里、离下沿 \(shift) pt：不放签")
+    }
     r.state.orderFlowSelected = wall.key
     let focus = try #require(r.orderFlowFocus(size: Self.size))
     #expect(focus.group.isRange && focus.group.bucketCount == 4, "详情卡照旧给区间")
@@ -472,6 +479,76 @@ struct OrderFlowChartTests {
     let inside = try #require(g.bands.first { $0.group.bucketCount == 4 })
     let bracket = try #require(inside.bracket, "整段在主图里就立括号")
     #expect(bracket.minY >= pane.y && bracket.maxY <= pane.y + pane.h)
+  }
+
+  @Test("代表价出了主图的墙不占排名：线被裁掉看不见，不能把看得见的墙挤出「主」那 6 位")
+  func offscreenLineDoesNotTakeMainSlot() throws {
+    var (r, _) = Self.renderer()
+    let p = r.state.series.close.last!
+    let step = p * 0.001
+    r.state.orderFlow?.thresholds.step = step
+    let pane = r.layout(size: Self.size).main
+    try #require(abs(y(r, p) - y(r, p + step)) > 3, "一桶在屏上要够高")
+    // 一堵 4 桶的墙跨过主图顶：下面两桶在主图里，名义最大的那桶（代表价）在主图顶外。
+    let top = Int64((price(r, atY: pane.y) / step).rounded(.down))
+    let wall = ((top - 2)...(top + 1)).map { bk in
+      wallOrder(r, step: step, bucket: bk, from: 20, notional: bk == top + 1 ? 40_000_000 : 10_000_000)
+    }
+    // 主图中间六堵小的，各隔开几桶。
+    let small = (0..<6).map { i in
+      let bk = Int64((price(r, atY: pane.y + pane.h * (0.3 + 0.08 * Double(i))) / step).rounded(.down))
+      return wallOrder(r, step: step, bucket: bk, side: .bid, from: 20 + i, notional: 6_000_000)
+    }
+    try #require(Set(small.map(\.bucket)).count == 6)
+    r.state.orderFlow?.orders = wall + small
+    let f = frame(r)
+    #expect(y(r, (Double(top + 1) + 0.5) * step) < pane.y, "夹具：代表价在主图顶外")
+    #expect(!f.bands.contains { $0.group.bucketCount == 4 }, "线看不见的墙不进这一屏：\(f.bands.map(\.key.id))")
+    #expect(f.bands.count == 6)
+    #expect(f.bands.allSatisfy { $0.role == .main }, "看得见的六堵都是主：\(f.bands.map(\.role))")
+    #expect(f.bands.allSatisfy { $0.frame.midY >= pane.y && $0.frame.midY <= pane.y + pane.h })
+  }
+
+  @Test("金额：K / M / B / T 一位小数")
+  func amountUnits() {
+    #expect(ChartRenderer.orderFlowAmount(950) == "950")
+    #expect(ChartRenderer.orderFlowAmount(5_300_000) == "5.3M")
+    #expect(ChartRenderer.orderFlowAmount(1e9) == "1.0B")
+    #expect(ChartRenderer.orderFlowAmount(999e9) == "999.0B")
+    #expect(ChartRenderer.orderFlowAmount(1.2e12) == "1.2T")
+  }
+
+  @Test("开着盘口：挂着的签不压盘口梯，挪到梯子左边、纵向不动；跨桶墙的括号跟着签走；没开盘口照旧贴右缘")
+  func labelsDodgeDepthLadder() throws {
+    var (r, step, b0) = wallRenderer()
+    let L = r.layout(size: Self.size)
+    let px = r.state.series.close.last!
+    // 贴着最新价挂一堵 3 桶的卖墙（名义最大，一定是主、一定写签）、再挂一单远离盘口的。
+    let wall = (b0...(b0 + 2)).map { wallOrder(r, step: step, bucket: $0, from: 20, notional: 30_000_000) }
+    let farY = L.main.y + L.main.h * 0.85
+    let far = wallOrder(r, step: step, bucket: Int64((price(r, atY: farY) / step).rounded(.down)), side: .bid, from: 20)
+    r.state.depth = OrderBook(symbol: r.state.symbol.symbol, time: r.state.series.lastTime,
+                              bids: (1...5).map { .init(price: px - Double($0) * step, quantity: 1) },
+                              asks: (1...5).map { .init(price: px + Double($0) * step, quantity: 1) })
+    r.state.orderFlow?.orders = wall + [far]
+    let ladder = try #require(r.depthEnvelope(pane: L.main, range: r.priceRange(size: Self.size), L: L))
+    #expect(abs(ladder.width - 64) < 1e-9 && abs(ladder.maxX - L.plotW) < 1e-9)
+    let f = frame(r)
+    let w = try #require(f.bands.first { $0.group.bucketCount == 3 })
+    let label = try #require(f.labels.first { $0.key == w.key })
+    #expect(!label.frame.intersects(ladder), "签 \(label.frame) 压在盘口梯 \(ladder) 上")
+    #expect(abs(label.frame.maxX - (ladder.minX - ChartRenderer.orderFlowLabelGap)) < 1e-6, "挪到梯子左边、留 2 pt")
+    if let bracket = w.bracket {
+      #expect(abs(bracket.maxX - (label.frame.minX - ChartRenderer.orderFlowBracketGap)) < 1e-6, "括号跟着签")
+    }
+    let farLabel = try #require(f.labels.first { $0.key == OrderFlowGroupKey(far) })
+    #expect(abs(farLabel.frame.maxX - (L.plotW - ChartRenderer.orderFlowLabelInset)) < 1e-6, "离盘口远的照旧贴右缘")
+    // 关掉盘口：签回到主图右缘。
+    r.state.depth = nil
+    // 深度变了 `recalc` 不换订单流的盒子：梯子那一块进了缓存键，照样重算。
+    let g = frame(r)
+    let back = try #require(g.labels.first { $0.key == w.key })
+    #expect(abs(back.frame.maxX - (L.plotW - ChartRenderer.orderFlowLabelInset)) < 1e-6)
   }
 
   @Test("范围括号：同一 x 上两枚纵向重叠只留名义大的那枚，不错开 x；两堵墙的芯线、金额签都照旧")
@@ -861,6 +938,35 @@ struct OrderFlowChartTests {
     #expect(image.cgImage != nil)
   }
 
+  @Test("金额签不进顶上图例那几行（压测 2026-09-28）：线在图例带里，签夹到图例下沿；夹下来离线超过 32 pt 就不放")
+  func labelsStayBelowLegend() throws {
+    var (r, _) = Self.renderer()
+    let L = r.layout(size: Self.size)
+    let legend = r.mainLegendInset(plotW: L.plotW)
+    #expect(legend > ChartRenderer.orderFlowLabelHeight, "开着主力，图例至少两行")
+    let b = r.state.series
+    let seen = b.time(at: b.count - 30) + 1
+    // 线在图例下沿上方 4 pt：原来签居中在线上、上半截伸进图例；现在贴图例下沿。
+    let near = Self.order(.usdtPerp, .ask, price: price(r, atY: L.main.y + legend - 4), firstSeen: seen, bucket: 1)
+    r.state.orderFlow?.orders = [near]
+    let f = frame(r)
+    #expect(f.bands.count == 1)
+    let l = try #require(f.labels.first, "离下沿不远的仍写金额")
+    #expect(l.frame.minY >= L.main.y + legend - 1e-9, "签不进图例：\(l.frame) 图例下沿 \(legend)")
+    #expect(abs(l.frame.midY - f.bands[0].frame.midY) <= ChartRenderer.orderFlowLabelMaxShift + 1e-9)
+    // 线在图例最上沿：夹到下沿要挪 legend + 6 pt，超过 32 就不放（签认错线比没有签更糟）。
+    let top = Self.order(.usdtPerp, .ask, price: price(r, atY: L.main.y + 2), firstSeen: seen, bucket: 2)
+    r.state.orderFlow?.orders = [top]
+    let g = frame(r)
+    #expect(g.bands.count == 1, "线照画（垫在图例文字底下）")
+    let shift = L.main.y + legend + ChartRenderer.orderFlowLabelHeight / 2 - (L.main.y + 2)
+    if shift > ChartRenderer.orderFlowLabelMaxShift {
+      #expect(g.labels.isEmpty, "离线 \(shift) pt，不放签")
+    } else {
+      #expect(g.labels.allSatisfy { $0.frame.minY >= L.main.y + legend - 1e-9 })
+    }
+  }
+
   @Test("详情卡上限：宽 ≤ 85% 绘图区、高 ≤ 55% 主图且不越过线的命中带（至少 8 pt 高）")
   func cardBudget() throws {
     typealias B = OrderFlowCardBudget
@@ -1244,5 +1350,269 @@ struct OrderFlowChartTests {
     #expect(r.orderFlowHit(at: offCandle, size: Self.size) != nil)
     // 主图外（价格轴上）不算蜡烛。
     #expect(!r.candleHit(at: CGPoint(x: L.plotW + 5, y: onCandle.y), size: Self.size))
+  }
+}
+
+// MARK: - 渲染压测 · 2 万单（2026-09-28）
+//
+// 一只热门币三天里攒出来的量级：2 万单、现价 ±2% 以内、按步长分桶（同一桶上前后挂了又撤很多回），
+// 一成挂着、两成成交、七成撤单，寿命 30 秒到 4 小时。1 分钟与日线两种密度（日线上三天的单全挤在最后三根里），
+// 各看一屏 30 / 300 / 1500 根。量四样：
+//
+// - `bands.cold`：并墙 + 排名 + 落带算一遍（清缓存后 `orderFlowFrame`）；
+// - `frame.static`：缓存热着画一帧三层（十字线动、盘口跳时就是这样）；
+// - `frame.pan`：视野挪一根再画一帧三层（拖图、捏合的每一帧）；
+// - `frame.pan.selected_offscreen`：同上，另有一堵选中的墙已经滚出屏，照 ChartView 那样每帧再问一次 `orderFlowFocus`；
+// 以及基线 `frame.pan.no_orderflow`（同一屏不开订单流）。
+//
+// 只打 `ORDERFLOW-PERF` 行（p50 / p95，毫秒），不做墙钟断言——模拟器上抖得厉害；结构性判据另有单测。
+@MainActor
+@Suite("主力订单流 · 渲染压测", .serialized)
+struct OrderFlowPerfBenchTests {
+  static let size = CGSize(width: 402, height: 620)
+  static let scale: CGFloat = 3
+  static let orderCount = 20_000
+
+  static func p95(_ xs: [Double]) -> Double {
+    let s = xs.sorted()
+    guard !s.isEmpty else { return .nan }
+    return s[min(s.count - 1, max(0, Int((0.95 * Double(s.count)).rounded(.up)) - 1))]
+  }
+
+  static func report(_ name: String, _ samples: [Double], extra: String = "") {
+    print(String(format: "ORDERFLOW-PERF %@ p50_ms=%.3f p95_ms=%.3f rounds=%d %@",
+                 name, benchMedian(samples), p95(samples), samples.count, extra))
+  }
+
+  /// 2 万单，全落在最近三天（服务端历史上限）里，价位贴着当时那根的收盘。
+  static func orders(series: BarSeries, count: Int = orderCount, seed: UInt64 = 20260928) -> (orders: [BigOrder], step: Double) {
+    var r = BenchRNG(seed: seed)
+    let last = series.time(at: series.count - 1)
+    let span: Int64 = 3 * 86_400_000
+    let t0 = max(series.firstTime, last - span)
+    let step = (series.close.last! * 0.001).rounded()
+    let products: [OrderFlowProduct] = [.spot, .usdtPerp, .usdtPerp, .coinPerp, .delivery]
+    var out: [BigOrder] = []
+    out.reserveCapacity(count)
+    for i in 0..<count {
+      let seen = t0 + Int64(r.unit() * Double(last - t0))
+      let idx = series.index(atTime: Double(seen))
+      let side: BookSide = r.unit() < 0.5 ? .bid : .ask
+      let off = series.close[idx] * r.range(0.0005, 0.02)
+      let bucket = Int64(((side == .bid ? series.close[idx] - off : series.close[idx] + off) / step).rounded())
+      let roll = r.unit()
+      let status: BigOrder.Status = roll < 0.1 ? .live : roll < 0.3 ? .filled : .cancelled
+      let life = Int64(exp(r.range(log(30_000), log(4 * 3_600_000))))
+      let end: Int64? = status == .live ? nil : min(last + 30_000, seen + life)
+      let n = exp(r.range(log(1_000_000), log(80_000_000)))
+      let filled = status == .filled ? n : (status == .cancelled && r.unit() < 0.3 ? n * r.range(0.05, 0.9) : 0)
+      out.append(BigOrder(venueID: "binance:\(products[i % products.count].rawValue):\(i)", exchange: "币安",
+                          product: products[i % products.count], side: side, bucket: bucket,
+                          price: Double(bucket) * step, firstSeenMs: seen, endMs: end, status: status,
+                          initialNotional: n, notional: n, filledNotional: filled, threshold: 1_000_000))
+    }
+    out.sort { $0.firstSeenMs < $1.firstSeenMs }
+    return (out, step)
+  }
+
+  static func state(interval: Interval, visible: Int, orderFlow: Bool = true) -> ChartState {
+    let series = benchSeries(count: interval == .d1 ? 1000 : 6000, interval: interval)
+    let subs: [IndicatorID] = [.vol, .macd]
+    let layout = Layout(width: Double(size.width), height: Double(size.height), subs: subs)
+    let view = ViewMath.reset(series: series, plotW: layout.plotW, spacing: layout.plotW / Double(visible))
+    var s = ChartState(series: series, symbol: benchSymbol(), view: view, overlays: [.ma], subs: subs,
+                       params: IndicatorID.factoryParams)
+    if orderFlow {
+      let (orders, step) = Self.orders(series: series)
+      s.orderFlow = OrderFlowSnapshot(symbol: s.symbol.symbol, phase: .ready, orders: orders,
+                                      asOfMs: series.time(at: series.count - 1) + 30_000,
+                                      thresholds: OrderFlowThresholds(spot: 1_000_000, usdtPerp: 1_000_000,
+                                                                      coinPerp: 1_000_000, delivery: 1_000_000,
+                                                                      step: step))
+      let px = series.close.last!
+      s.depth = OrderBook(symbol: s.symbol.symbol, time: series.lastTime,
+                          bids: (1...5).map { .init(price: px - Double($0) * 0.1, quantity: Double(6 - $0) * 3) },
+                          asks: (1...5).map { .init(price: px + Double($0) * 0.1, quantity: Double($0) * 2) })
+    }
+    return s
+  }
+
+  func draw(_ r: ChartRenderer, _ ctx: CGContext) {
+    ctx.saveGState(); r.drawPlot(in: ctx, size: Self.size, scale: Self.scale); ctx.restoreGState()
+    ctx.saveGState(); r.drawLive(in: ctx, size: Self.size, scale: Self.scale); ctx.restoreGState()
+    ctx.saveGState(); r.drawCross(in: ctx, size: Self.size, scale: Self.scale); ctx.restoreGState()
+  }
+
+  func bandsCold(_ r: ChartRenderer) -> ChartRenderer.OrderFlowFrame {
+    let L = r.layout(size: Self.size)
+    return r.orderFlowFrame(pane: L.main, range: r.priceRange(size: Self.size), L: L)
+  }
+
+  static let cases: [(Interval, Int)] = [(.m1, 300), (.m1, 30), (.m1, 1500), (.d1, 300), (.d1, 30), (.d1, 1500)]
+
+  @Test("拖图、捏合不重算并墙：视野一动只重排这一屏，切段 / 并墙 / 建组那一半走缓存")
+  func panDoesNotRegroup() {
+    let base = Self.state(interval: .m1, visible: 300)
+    var r = ChartRenderer(state: base)
+    _ = bandsCold(r)
+    let before = ChartRenderer.OrderFlowWallCache.shared.computed
+    var next = base
+    for i in 1...20 {
+      next.view = ViewWindow(to: base.view.to - Double(base.series.step) * Double(i), span: base.view.span * (1 + 0.01 * Double(i)))
+      r.state = next
+      _ = bandsCold(r)
+    }
+    #expect(ChartRenderer.OrderFlowWallCache.shared.computed == before)
+    // 快照一变（换一份单子）才重算。
+    var other = next
+    other.orderFlow?.orders.removeLast()
+    r.state = other
+    _ = bandsCold(r)
+    #expect(ChartRenderer.OrderFlowWallCache.shared.computed == before + 1)
+  }
+
+  @Test("缓存的墙与直接 groups() 逐堵相同；按侧、类挑出来的与只拿那一类单现算的逐堵相同、先后相同（屏外选中认回来靠它）")
+  func cachedWallsMatchDirectGrouping() throws {
+    let base = Self.state(interval: .m1, visible: 300)
+    let r = ChartRenderer(state: base)
+    let flow = try #require(base.orderFlow)
+    let cached = r.orderFlowWalls(flow).map(\.group)
+    let gap = r.orderFlowMergeGapMs, life = r.orderFlowMinLifeMs, step = flow.thresholds.step
+    #expect(cached == OrderFlowGroup.groups(flow.orders, gapMs: gap, minLifeMs: life, step: step))
+    for side in [BookSide.bid, .ask] {
+      for contract in [false, true] {
+        let probe = try #require(cached.first { $0.side == side && $0.contract == contract })
+        let kind = flow.orders.filter { OrderFlowGroupKey($0).sameKind(probe.key) }
+        #expect(cached.filter { $0.key.sameKind(probe.key) }
+                == OrderFlowGroup.groups(kind, gapMs: gap, minLifeMs: life, step: step))
+      }
+    }
+  }
+
+  @Test("派生量建组时算一次：与逐行 / 逐单现算的结果逐位相同，字段被改后跟着更新")
+  func derivedMatchesNaive() throws {
+    let base = Self.state(interval: .m1, visible: 300)
+    let r = ChartRenderer(state: base)
+    let groups = r.orderFlowWalls(try #require(base.orderFlow)).map(\.group)
+    for g in groups.prefix(400) {
+      #expect(g.notional == g.books.reduce(0) { $0 + $1.notional })
+      #expect(g.drawNotional == g.books.reduce(0) { $0 + Double($1.latest.thicknessQuarters) * $1.latest.threshold / 4 })
+      #expect(g.quarters == g.books.reduce(0) { $0 + $1.latest.thicknessQuarters })
+      #expect(g.firstSeenMs == g.members.map(\.firstSeenMs).min())
+      #expect(g.isLive == g.members.contains(where: \.isLive))
+      #expect(g.endMs == (g.isLive ? nil : g.members.compactMap(\.endMs).max()))
+      #expect(g.hasFill == g.books.contains { $0.hasFill })
+      #expect(g.bucketCount == Set(g.spans.map(\.bucket)).count)
+      let top = g.books.map(\.latest).max { a, b in
+        a.thicknessQuarters != b.thicknessQuarters ? a.thicknessQuarters < b.thicknessQuarters : a.id > b.id
+      }
+      #expect(g.price == top?.price)
+    }
+    var g = try #require(groups.first { $0.books.count > 1 })
+    let dropped = g.books.removeLast()
+    #expect(g.notional == g.books.reduce(0) { $0 + $1.notional })
+    #expect(dropped.notional > 0)
+  }
+
+  @Test("2 万单：并墙 + 排名 + 落带、静止一帧、拖动一帧、选中墙在屏外时拖动一帧")
+  func bench() {
+    let ctx = benchContext(size: Self.size, scale: Self.scale)
+    // 热身一轮（首个档位会吃到进程冷启动的抖动），不记。
+    do {
+      let r = ChartRenderer(state: Self.state(interval: .m1, visible: 300))
+      _ = benchRun(rounds: 5) { _ in draw(r, ctx) }
+    }
+    for (interval, visible) in Self.cases {
+      let tag = "\(interval.rawValue).v\(visible)"
+      let base = Self.state(interval: interval, visible: visible)
+      var r = ChartRenderer(state: base)
+      let first = bandsCold(r)
+      let extra = "bands=\(first.bands.count) labels=\(first.labels.count)"
+
+      // 分段：切段 / 去碎屑 / 并墙 / 建组 + 排序（全量，不按屏筛）。
+      let flow = base.orderFlow!
+      let gap = r.orderFlowMergeGapMs, minLife = r.orderFlowMinLifeMs
+      var segs: [OrderFlowGroup.Segment] = [], kept: [OrderFlowGroup.Segment] = [], walls: [OrderFlowGroup.Wall] = []
+      Self.report("\(tag).phase.segments", benchRun(rounds: 10, warmup: 1) { _ in
+        segs = OrderFlowGroup.segments(flow.orders, gapMs: gap) })
+      Self.report("\(tag).phase.drop_short", benchRun(rounds: 10, warmup: 1) { _ in
+        kept = OrderFlowGroup.dropShortLived(segs, minLifeMs: minLife) })
+      Self.report("\(tag).phase.walls", benchRun(rounds: 10, warmup: 1) { _ in
+        walls = OrderFlowGroup.walls(kept, gapMs: gap) })
+      Self.report("\(tag).phase.group_sort", benchRun(rounds: 10, warmup: 1) { _ in
+        var g = walls.compactMap { $0.group(step: flow.thresholds.step) }
+        g.sort { OrderFlowGroup.drawOrder($0, $1) } },
+        extra: "segments=\(segs.count) kept=\(kept.count) walls=\(walls.count)")
+
+      Self.report("\(tag).bands.cold", benchRun(rounds: 20) { _ in
+        r.orderFlowCache = ChartRenderer.OrderFlowCache(); _ = bandsCold(r) }, extra: extra)
+
+      draw(r, ctx)
+      Self.report("\(tag).frame.static", benchRun(rounds: 30) { _ in draw(r, ctx) })
+      do {
+        let L = r.layout(size: Self.size), range = r.priceRange(size: Self.size)
+        Self.report("\(tag).draw.bands_only", benchRun(rounds: 30) { _ in
+          ctx.saveGState(); _ = r.drawOrderFlow(ctx, pane: L.main, range: range, L: L); ctx.restoreGState() })
+        Self.report("\(tag).draw.labels_only", benchRun(rounds: 30) { _ in
+          ctx.saveGState(); _ = r.drawOrderFlowLabels(ctx, pane: L.main, range: range, L: L); ctx.restoreGState() })
+      }
+      Self.report("\(tag).frame.static.no_orderflow", {
+        let rp = ChartRenderer(state: Self.state(interval: interval, visible: visible, orderFlow: false))
+        return benchRun(rounds: 30) { _ in draw(rp, ctx) }
+      }())
+
+      let step = Double(base.series.step)
+      var next = base
+      Self.report("\(tag).frame.pan", benchRun(rounds: 30) { i in
+        next.view = ViewWindow(to: base.view.to - step * Double(i % 20 + 1), span: base.view.span)
+        r.state = next
+        draw(r, ctx)
+      })
+
+      // 拖动一帧拆成四段：换 state（recalc）、plot、live、cross 各自多少。
+      do {
+        var parts: [[Double]] = [[], [], [], []]
+        for i in 0..<30 {
+          next.view = ViewWindow(to: base.view.to - step * Double(i % 20 + 21), span: base.view.span)
+          var t = ContinuousClock.now
+          r.state = next
+          parts[0].append(benchMs(t.duration(to: .now))); t = .now
+          ctx.saveGState(); r.drawPlot(in: ctx, size: Self.size, scale: Self.scale); ctx.restoreGState()
+          parts[1].append(benchMs(t.duration(to: .now))); t = .now
+          ctx.saveGState(); r.drawLive(in: ctx, size: Self.size, scale: Self.scale); ctx.restoreGState()
+          parts[2].append(benchMs(t.duration(to: .now))); t = .now
+          ctx.saveGState(); r.drawCross(in: ctx, size: Self.size, scale: Self.scale); ctx.restoreGState()
+          parts[3].append(benchMs(t.duration(to: .now)))
+        }
+        for (name, xs) in zip(["recalc", "plot", "live", "cross"], parts) { Self.report("\(tag).frame.pan.\(name)", xs) }
+      }
+
+      // 选中一堵墙，再把视野往左挪到它起点之前（它完全看不见，屏里照旧是满屏的单）。
+      r.state = base
+      if let wall = bandsCold(r).bands.first(where: { $0.role == .main && Double($0.group.firstSeenMs) - base.view.span * 1.5 > Double(flow.orders[0].firstSeenMs) }) {
+        var sel = base
+        sel.orderFlowSelected = wall.key
+        let shift = Double(wall.group.firstSeenMs) - step * 25 - base.view.to
+        sel.view = ViewWindow(to: base.view.to + shift, span: base.view.span)
+        r.state = sel
+        let found = r.orderFlowFocus(size: Self.size) != nil
+        Self.report("\(tag).frame.pan.selected_offscreen", benchRun(rounds: 30) { i in
+          sel.view = ViewWindow(to: base.view.to + shift - step * Double(i % 20 + 1), span: base.view.span)
+          r.state = sel
+          _ = r.orderFlowFocus(size: Self.size)
+          draw(r, ctx)
+        }, extra: "focus_found=\(found)")
+        Self.report("\(tag).focus.offscreen_only", benchRun(rounds: 20) { _ in _ = r.orderFlowFocus(size: Self.size) })
+      }
+
+      var plain = Self.state(interval: interval, visible: visible, orderFlow: false)
+      var rp = ChartRenderer(state: plain)
+      let viewBase = plain.view
+      Self.report("\(tag).frame.pan.no_orderflow", benchRun(rounds: 30) { i in
+        plain.view = ViewWindow(to: viewBase.to - step * Double(i % 20 + 1), span: viewBase.span)
+        rp.state = plain
+        draw(rp, ctx)
+      })
+    }
   }
 }

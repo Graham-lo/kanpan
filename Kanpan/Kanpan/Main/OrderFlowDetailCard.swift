@@ -9,7 +9,7 @@ import SwiftUI
 ///   - 标题：「83,600.0 · 委托卖单 · 合约」；跨几个桶的墙写价位范围「83,900 – 84,400」
 ///     （最低桶的桶价 – 最高桶的桶价 + 步长），单价位的段写那一个价，都带千分位；右上「持续 X」
 ///     （标题优先，放不下时时长短写成「X 小时 Y 分」）；
-///   - 两行键值：总金额 / 总数量，开始 / 状态（在场 / 已撤 / 已成交 X%）。
+///   - 两行键值：总金额 / 总数量，开始 / 状态（在场 / 在场 · 成交 X% / 已撤 / 已成交 X%）。
 /// 不列交易所：哪几家、哪种合约是聚合进来的，用户要的是「这里有多大一堵墙、挂了多久、还在不在」
 /// （2026-09-25 用户：「详情卡不列交易所」），所以原先一本簿一行的表、折叠行都删了。
 /// 尺寸：宽不超过绘图区的 85%，高不超过主图的 55%，而且不越过那条线的命中带——摆在它的上面或下面
@@ -78,12 +78,16 @@ struct OrderFlowDetailCard: View {
             .font(TypeScale.controlOn)
             .monospacedDigit()
             // 标题先拿够宽度：价位范围 + 方向 + 类一个字都不许截（17 Pro Max 上 BTC 五桶墙曾截成「委托买单 ·…」）；
-            // 右上的时长让位，放不下「持续 2 小时 39 分」就写「2 小时 39 分」。
+            // 右上的时长让位，放不下「持续 2 小时 39 分」就写「2 小时 39 分」，再放不下写「2时39分」
+            // （16 Pro 上 BTC 跨桶墙挂到几小时，前两种都放不下，原来截成「2 小…」）。
+            // 1e-6 价位的区间（1000SATS 这类七八位小数）整行比卡宽，标题最多缩到 0.8 倍，不截字。
+            .minimumScaleFactor(0.8)
             .layoutPriority(1)
           Spacer(minLength: 0)
           ViewThatFits(in: .horizontal) {
             Text(lines.duration)
             Text(lines.durationShort)
+            Text(lines.durationCompact)
           }
           .font(TypeScale.caption2).foregroundStyle(theme.ink3)
         }
@@ -104,6 +108,8 @@ struct OrderFlowDetailCard: View {
         }
         .font(TypeScale.caption)
         .monospacedDigit()
+        // 「总数量 12.35M 1000SATS」这类长币名 + 大金额整行比卡宽：数字缩一点，不截成「12.3…」。
+        .minimumScaleFactor(0.8)
       }
       .lineLimit(1)
       .fixedSize(horizontal: false, vertical: true)
@@ -146,6 +152,8 @@ struct OrderFlowCardText {
   var duration: String
   /// 标题行放不下时的短写「15 小时 27 分」。
   var durationShort: String
+  /// 再放不下的紧写「15时27分」（和头部结算倒计时一个写法）。
+  var durationCompact: String
   /// 两行键值：总金额 / 总数量，开始 / 状态。
   var pairs: [(Cell, Cell)]
   /// 状态的颜色档。
@@ -163,6 +171,7 @@ struct OrderFlowCardText {
     kind = group.contract ? "合约" : "现货"
     let end = group.endMs ?? nowMs
     durationShort = Self.duration(ms: end - group.firstSeenMs)
+    durationCompact = durationShort.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "小时", with: "时")
     duration = "持续 " + durationShort
     let qty = { (usd: Double, price: Double) in price > 0 ? usd / price : 0 }
     let totalQty = group.books.reduce(0) { $0 + qty($1.notional, $1.latest.price) }
@@ -180,7 +189,9 @@ struct OrderFlowCardText {
   /// 一口没吃（撤单、失联）是「已撤」。比例和图上深浅同一个判据（`OrderFlowGroup.hasFill` / `fillRatio`）。
   static func status(_ group: OrderFlowGroup) -> (text: String, state: State) {
     let pct = percent(group.fillRatio)
-    if group.isLive { return (group.hasFill ? "在场 · 已成交 " + pct : "在场", .live) }
+    // 挂着的写「在场 · 成交 19%」不写「已成交」：16 Pro 上卡宽约 300 pt，「开始 09-28 20:44 状态 在场 · 已成交 19%」
+    // 一行放不下，截成「在场 · 已成交 1…」（压测 2026-09-28 十字线取证）——比例恰恰是被截掉的那一截。
+    if group.isLive { return (group.hasFill ? "在场 · 成交 " + pct : "在场", .live) }
     if group.hasFill { return ("已成交 " + pct, .filled) }
     return ("已撤", .cancelled)
   }

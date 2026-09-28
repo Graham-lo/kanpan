@@ -22,6 +22,9 @@ import Foundation
 // - 簿断了：没就绪的那本簿这一拍不参与（它的单既不新增也不结束）；断开超过 2 分钟，它还挂着的单
 //   按最后一次看到的时刻结束（`staleMs`），状态记「失联结束」（`.lost`）——那一刻之后发生了什么不知道，
 //   不能判成撤单。
+// - 扫描半径与退出半径：新单只在中间价两侧 10% 以内起（`scanRadiusBps`）；已经挂着的单走出 15%
+//   （`exitRadiusBps`）才按最后一次看到的时刻失联结束，10%–15% 之间直接查那一个桶照常判还在 / 撤单 / 成交，
+//   免得一面不动的墙在价格来回摆时被 10% 那条线切成很多截（与服务端同一规则）。
 // - 读回：日志里挂着的单，如果存盘之后已经过了 `staleMs` 才再打开，第一次评估时一律按存盘时刻失联结束；
 //   那个桶此刻还过门槛的话，按正常确认当成一条新出现的单（不把缺席的那几个小时画成一直挂着）。
 //
@@ -465,10 +468,25 @@ public struct OrderFlowModel: Sendable {
     for id in venueOrder {
       guard var book = books[id], let threshold = thresholds[book.venue.product], threshold > 0 else { continue }
       let map = book.buckets(scheme: scheme, radiusBps: OrderFlowDefaults.scanRadiusBps)
+      let mid = book.mid()
       books[id] = book
-      guard let map else { continue }
+      guard let map, let mid else { continue }
       evaluated.insert(id)
       venueSeen[id] = nowMs
+
+      // 挂着的单走出扫描半径（10%）以后不在 `map` 里：出了退出半径（15%）才失联，两条线之间直接查那一个桶。
+      // 桶的远端出了 10%（整桶在外，或者骑在线上、扫描只合计到一部分）就查整桶，一侧只扫一遍表。
+      func beyond(_ side: BookSide, _ price: Double, _ bps: Double) -> Bool {
+        let f = bps / 10_000
+        return side == .bid ? price < mid * (1 - f) : price > mid * (1 + f)
+      }
+      var outerKeys = Set<BucketKey>()
+      for (ck, i) in liveIndex where ck.venue == id && orders[i].isLive
+        && !beyond(ck.key.side, orders[i].price, OrderFlowDefaults.exitRadiusBps) {
+        let farEdge = scheme.low(of: ck.key.side == .bid ? ck.key.index : ck.key.index + 1)
+        if beyond(ck.key.side, farEdge, OrderFlowDefaults.scanRadiusBps) { outerKeys.insert(ck.key) }
+      }
+      let outer = book.buckets(scheme: scheme, only: outerKeys)
 
       // 1. 这本簿上还挂着的单：还在退出线（门槛 × 0.5）上就更新，跌破就开始确认结束。
       let exitLine = threshold * OrderFlowDefaults.exitRatio
@@ -477,7 +495,14 @@ public struct OrderFlowModel: Sendable {
         let key = ck.key
         liveKeys.insert(key)
         let oid = orders[i].id
-        if let value = map[key], value.notional >= exitLine {
+        // 价格已经走出退出半径的单：不再看它，也就判不了成交还是撤单——按最后一次看到的时刻失联结束。
+        // 原来走出 10% 就落到下面的撤单确认，两拍后判成「已撤销、剩 0」。
+        if beyond(key.side, orders[i].price, OrderFlowDefaults.exitRadiusBps) {
+          endLost(i, atMs: lastSeen[oid] ?? orders[i].firstSeenMs)
+          continue
+        }
+        let here = outerKeys.contains(key) ? outer[key] : map[key]
+        if let value = here, value.notional >= exitLine {
           orders[i].notional = value.notional
           orders[i].price = value.price
           peak[oid] = max(peak[oid] ?? orders[i].initialNotional, value.notional)
@@ -490,7 +515,7 @@ public struct OrderFlowModel: Sendable {
         } else {
           var pending = ending[oid] ?? Pending(firstMs: nowMs, remaining: 0)
           pending.samples += 1
-          pending.remaining = map[key]?.notional ?? 0  // 确认期间还在掉就按最后一拍剩的算
+          pending.remaining = here?.notional ?? 0  // 确认期间还在掉就按最后一拍剩的算
           if Self.confirmed(samples: pending.samples, firstMs: pending.firstMs, nowMs: nowMs) {
             end(i, atMs: pending.firstMs, remaining: pending.remaining)
             ending[oid] = nil
@@ -500,7 +525,7 @@ public struct OrderFlowModel: Sendable {
         }
       }
 
-      // 2. 新过门槛的桶：确认两拍才出现。
+      // 2. 新过门槛的桶：确认两拍才出现。新单只从扫描半径（10%）以内的 `map` 里起，10%–15% 之间只续不起。
       for (key, value) in map where value.notional >= threshold && !liveKeys.contains(key) {
         let ck = CandidateKey(venue: id, key: key)
         touched.insert(ck)

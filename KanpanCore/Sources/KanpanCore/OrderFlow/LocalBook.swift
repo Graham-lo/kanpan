@@ -368,6 +368,21 @@ public struct LocalBook: Sendable {
     return (mid, b, a)
   }
 
+  /// 中间价（买一卖一的均值）；任一侧为空返回 nil。
+  public mutating func mid() -> Double? {
+    guard let bestBid = bids.bestPrice(), let bestAsk = asks.bestPrice() else { return nil }
+    return (bestBid + bestAsk) / 2
+  }
+
+  /// 一侧 `[low, high]` 价位区间里的每一档（价、量）：不管扫描半径、不裁留存带，只读。
+  /// 主力订单流查单个桶用（见 `VenueBook.bucket`）。区间非法时不回调。
+  public func forEachLevel(_ side: BookSide, from low: Double, through high: Double,
+                           _ body: (Double, Double) -> Void) {
+    guard low.isFinite, high.isFinite, low <= high else { return }
+    let levels = side == .bid ? bids.levels : asks.levels
+    for (price, quantity) in levels where price >= low && price <= high { body(price, quantity) }
+  }
+
   /// 中间价两侧 `bps` 以内的每一档，逐档回调、不排序（主力订单流每 500 ms 走一遍，省掉排序）。
   /// 返回中间价；任一侧为空、`bps` 非法时不回调、返回 nil。设了 `retainBps` 时顺手把保留区间以外的价位裁掉
   /// （同一遍扫描里记下、扫完再删），保留区间也跟着这一拍的中间价挪。

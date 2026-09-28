@@ -145,6 +145,44 @@ public struct VenueBook: Sendable {
     return mid == nil ? nil : out
   }
 
+  /// 簿此刻的中间价；没就绪返回 nil。
+  mutating func mid() -> Double? {
+    guard book.quality == .ready, readySinceMs != nil else { return nil }
+    return book.mid()
+  }
+
+  /// 单独一个桶此刻的合计（不受扫描半径限制，只要还在留存带里）；簿没就绪、或桶里一档都没有返回 nil。
+  /// 挂着的单走到扫描半径边上时用它接着看（见 `OrderFlowDefaults.exitRadiusBps`）。
+  func bucket(_ key: BucketKey, scheme: BucketScheme) -> BucketValue? {
+    buckets(scheme: scheme, only: [key])[key]
+  }
+
+  /// 指定的这几个桶此刻的合计，一侧只扫一遍表；空桶不在结果里，簿没就绪返回空。
+  /// 桶号和 `buckets(scheme:radiusBps:)` 同一套（`BucketScheme.index`），名义最大那一档的价同样记下。
+  func buckets(scheme: BucketScheme, only keys: Set<BucketKey>) -> [BucketKey: BucketValue] {
+    guard book.quality == .ready, readySinceMs != nil, !keys.isEmpty else { return [:] }
+    let notional = venue.notional
+    var out: [BucketKey: BucketValue] = [:]
+    for side in [BookSide.bid, .ask] {
+      let wanted = Set(keys.lazy.filter { $0.side == side }.map(\.index))
+      guard let lo = wanted.min(), let hi = wanted.max() else { continue }
+      // 区间两头各放宽一点：桶号的浮点就近取整（`BucketScheme.index`）落在边上的档也收进来，再按桶号过滤。
+      let low = scheme.low(of: lo) * (1 - 1e-9), high = scheme.low(of: hi + 1) * (1 + 1e-9)
+      book.forEachLevel(side, from: low, through: high) { price, quantity in
+        let index = scheme.index(of: price)
+        guard wanted.contains(index) else { return }
+        let usd = notional.usd(price: price, quantity: quantity)
+        guard usd > 0 else { return }
+        let key = BucketKey(side: side, index: index)
+        var value = out[key] ?? BucketValue()
+        value.notional += usd
+        if usd > value.topLevel { value.topLevel = usd; value.price = price }
+        out[key] = value
+      }
+    }
+    return out
+  }
+
   /// 中间价两侧 `bps` 以内、买卖两侧全部价位的美元名义之和；簿没就绪返回 nil。标定非币默认门槛用。
   mutating func depthUSD(withinBps bps: Double) -> Double? {
     guard book.quality == .ready, readySinceMs != nil else { return nil }

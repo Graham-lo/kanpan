@@ -147,10 +147,75 @@ extension ChartRenderer {
   /// 快照、显示开关一起换新，十字线动、选中换只换 `state.overlay`、盒子留着——plot 与 cross
   /// 两层画同一帧时也只算一遍。
   final class OrderFlowCache {
-    var entries: [(pane: Pane, range: PriceRange, plotW: Double, frame: OrderFlowFrame)] = []
+    /// `ladder`：盘口梯那一块（金额签躲它）。深度到了 / 关了不换盒子（`recalc` 不看深度），所以它也进键。
+    var entries: [(pane: Pane, range: PriceRange, plotW: Double, ladder: CGRect?, frame: OrderFlowFrame)] = []
     /// 真算了几次（测试核对缓存有没有生效）。
     var computed = 0
   }
+
+  /// 与视野无关的那一半：过显示开关 → 切段 → 去碎屑 → 并墙 → 建组 → 按 `drawOrder` 排好。只随快照里的单、显示开关、
+  /// 步长、周期（切段容差与最短寿命）变。`OrderFlowCache` 存的是落在这一屏的几何，视野一动 `recalc` 就换新盒子，
+  /// 以前连这一半一起每帧重算：2 万单时拖图一帧 20–68 ms（压测 2026-09-28，`OrderFlowPerfBenchTests`）。
+  /// 所以另放一只进程内的小缓存，按内容认（单子数组先比存储是否同一块，同一份快照是 O(1)），最多留两份
+  /// （主图一份、刚切走的一份）。
+  final class OrderFlowWallCache: @unchecked Sendable {
+    struct Key: Equatable {
+      var orders: [BigOrder]
+      var display: OrderFlowDisplay
+      var step: Double?
+      var gapMs: Int64
+      var minLifeMs: Int64
+    }
+    /// 一堵墙：建好的组，以及它（按段算的）横向起止——结束是 nil 表示有一段还挂着，画到主图右缘。
+    struct Wall {
+      var group: OrderFlowGroup
+      var startMs: Int64
+      var endMs: Int64?
+    }
+    /// 一份：全部墙（按 `drawOrder` 排好），以及过了显示开关、还挂着的单（图例合计只看它们）。
+    struct Entry {
+      var walls: [Wall]
+      var live: [BigOrder]
+    }
+    static let shared = OrderFlowWallCache()
+    static let capacity = 2
+    private let lock = NSLock()
+    private var entries: [(key: Key, entry: Entry)] = []
+    /// 真算了几次（测试核对缓存有没有生效）。
+    private(set) var computed = 0
+
+    func entry(_ key: Key) -> Entry {
+      lock.lock()
+      if let i = entries.firstIndex(where: { $0.key == key }) {
+        let hit = entries[i].entry
+        lock.unlock()
+        return hit
+      }
+      lock.unlock()
+      let shown = key.orders.filter { key.display.shows($0) }
+      let parts = OrderFlowGroup.dropShortLived(OrderFlowGroup.segments(shown, gapMs: key.gapMs), minLifeMs: key.minLifeMs)
+      var walls = OrderFlowGroup.walls(parts, gapMs: key.gapMs).compactMap { wall in
+        wall.group(step: key.step).map { Wall(group: $0, startMs: wall.startMs, endMs: wall.endMs) }
+      }
+      walls.sort { OrderFlowGroup.drawOrder($0.group, $1.group) }
+      let entry = Entry(walls: walls, live: shown.filter(\.isLive))
+      lock.lock()
+      computed += 1
+      entries.removeAll { $0.key == key }
+      if entries.count >= Self.capacity { entries.removeFirst() }
+      entries.append((key, entry))
+      lock.unlock()
+      return entry
+    }
+  }
+
+  /// 这份快照在当前显示开关、周期下的那一份（全部墙按 `drawOrder` 排好、还挂着的单），走 `OrderFlowWallCache`。
+  func orderFlowEntry(_ flow: OrderFlowSnapshot) -> OrderFlowWallCache.Entry {
+    OrderFlowWallCache.shared.entry(.init(orders: flow.orders, display: state.orderFlowDisplay, step: flow.thresholds.step,
+                                          gapMs: orderFlowMergeGapMs, minLifeMs: orderFlowMinLifeMs))
+  }
+
+  func orderFlowWalls(_ flow: OrderFlowSnapshot) -> [OrderFlowWallCache.Wall] { orderFlowEntry(flow).walls }
 
   /// 浅色档（一口没成交）往图区底色混的比例上限（对底不足 3:1 时少混）。
   static let orderFlowLightMix = 0.45
@@ -256,10 +321,23 @@ extension ChartRenderer {
 
   /// 跨桶主墙的范围括号：右缘紧贴金额签的横向落点左侧（留 1 pt）——挂着的就在签左边，已结束的正好落在结束点处
   /// （签在结束点右侧 4 pt）；这一枚签因为让位没放下也照样画在那儿。纵向是整个价位范围 `top … bottom`。
+  /// 开着盘口时，签的横向落点躲开盘口梯（`ladder`，见 `depthEnvelope`），括号跟着签走（`mid` 是芯线的 y）。
   static func orderFlowBracket(live: Bool, lineRight: Double, labelWidth w: Double, plotW: Double,
-                               top: Double, bottom: Double) -> CGRect {
-    let right = orderFlowLabelX(live: live, lineRight: lineRight, width: w, plotW: plotW) - orderFlowBracketGap
+                               top: Double, bottom: Double, mid: Double = 0, ladder: CGRect? = nil) -> CGRect {
+    let x = orderFlowLabelX(live: live, lineRight: lineRight, width: w, plotW: plotW)
+    let nominal = orderFlowDodgeLadder(CGRect(x: x, y: mid - orderFlowLabelHeight / 2, width: w,
+                                              height: orderFlowLabelHeight), ladder: ladder)
+    let right = Double(nominal.minX) - orderFlowBracketGap
     return CGRect(x: right - orderFlowBracketWidth, y: top, width: orderFlowBracketWidth, height: bottom - top)
+  }
+
+  /// 签（含 2 pt 间隙）和盘口梯那一块交叠就挪到梯子左边，纵向不动。原来挂着的签贴主图右缘，
+  /// 正好盖在盘口梯上（签在十字线层、在梯子上面），五档买卖读不出来（压测 2026-09-28，SOL 1m「19.9M」）。
+  static func orderFlowDodgeLadder(_ r: CGRect, ladder: CGRect?) -> CGRect {
+    guard let ladder else { return r }
+    let g = orderFlowLabelGap
+    guard r.minX < ladder.maxX, r.maxX > ladder.minX - g, r.minY < ladder.maxY + g, r.maxY > ladder.minY - g else { return r }
+    return CGRect(x: ladder.minX - g - r.width, y: r.minY, width: r.width, height: r.height)
   }
 
   /// 金额签的宽：字宽 + 左右各 4。
@@ -275,13 +353,16 @@ extension ChartRenderer {
   /// 色带几何，按 pane / range / plotW 走缓存。
   func orderFlowBands(pane: Pane, range: PriceRange, L: Layout) -> OrderFlowFrame {
     let cache = orderFlowCache
-    if let hit = cache.entries.first(where: { $0.pane == pane && $0.range == range && $0.plotW == L.plotW }) {
+    let ladder = state.orderFlow == nil ? nil : depthEnvelope(pane: pane, range: range, L: L)
+    if let hit = cache.entries.first(where: {
+      $0.pane == pane && $0.range == range && $0.plotW == L.plotW && $0.ladder == ladder
+    }) {
       return hit.frame
     }
-    let value = computeOrderFlowBands(pane: pane, range: range, L: L)
+    let value = computeOrderFlowBands(pane: pane, range: range, L: L, ladder: ladder)
     cache.computed += 1
     if cache.entries.count >= 4 { cache.entries.removeFirst() }
-    cache.entries.append((pane, range, L.plotW, value))
+    cache.entries.append((pane, range, L.plotW, ladder, value))
     return value
   }
 
@@ -402,10 +483,9 @@ extension ChartRenderer {
       ?? frame.bands.first(where: { $0.group.looselyCovers(key) }) {
       return (band.group, band, false)
     }
-    let display = state.orderFlowDisplay
-    let kind = flow.orders.filter { display.shows($0) && OrderFlowGroupKey($0).sameKind(key) }
-    let walls = OrderFlowGroup.groups(kind, gapMs: orderFlowMergeGapMs, minLifeMs: orderFlowMinLifeMs,
-                                      step: flow.thresholds.step)
+    // 切段、并墙都只在同侧同类里进行，所以从整份快照的墙里挑同侧同类的，和只拿这一类单现算一遍逐堵相同、先后也相同
+    // （都按 `drawOrder`）；整份的那份拖图时缓存着，不再每帧、每层各切一遍（压测 2026-09-28：7–10 ms × 3 次 / 帧）。
+    let walls = orderFlowWalls(flow).lazy.map(\.group).filter { $0.key.sameKind(key) }
     guard let group = walls.first(where: { $0.key == key }) ?? walls.first(where: { $0.covers(key) })
       ?? walls.first(where: { $0.looselyCovers(key) }) else { return nil }
     return (group, nil, false)
@@ -447,36 +527,31 @@ extension ChartRenderer {
                                mainBottom: L.main.y + L.main.h, mainHeight: L.main.h, asOfMs: flow.asOfMs)
   }
 
-  private func computeOrderFlowBands(pane: Pane, range: PriceRange, L: Layout) -> OrderFlowFrame {
+  private func computeOrderFlowBands(pane: Pane, range: PriceRange, L: Layout, ladder: CGRect?) -> OrderFlowFrame {
     guard let flow = orderFlowSnapshot, flow.phase == .ready, !flow.orders.isEmpty,
           !state.series.isEmpty, L.plotW > 0 else { return OrderFlowFrame() }
     let mode = state.effectivePriceMode
     let y = { (p: Double) in KanpanCore.yOf(p, pane: pane, range: range, mode: mode) }
     let spacing = state.view.barSpacing(step: state.series.step, plotW: L.plotW)
-    let display = state.orderFlowDisplay
 
-    // 1. 逐单：过显示开关；图例合计只算还挂着、落在主图里、横向落在这一屏的单（逐单求和，不因合并变）。
+    // 1. 逐单：图例合计只算过了显示开关、还挂着、落在主图里、横向落在这一屏的单（逐单求和，不因合并变）；
+    //    挂着的那几单随墙一起在缓存里挑好，不再每帧扫整份快照。
     var frame = OrderFlowFrame()
-    var shown: [BigOrder] = []
-    shown.reserveCapacity(flow.orders.count)
-    for order in flow.orders where display.shows(order) {
-      shown.append(order)
-      guard order.isLive else { continue }
+    let entry = orderFlowEntry(flow)
+    for order in entry.live {
       let cy = y(order.price)
       guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h,
             let x0 = orderFlowBarX(order.firstSeenMs, spacing: spacing, plotW: L.plotW)?.left, x0 < L.plotW else { continue }
       if order.side == .bid { frame.bidTotal += order.notional } else { frame.askTotal += order.notional }
     }
-    guard !shown.isEmpty else { return frame }
 
     // 2. 按「桶 × 侧 × 类 × 时间段」切段（切段只看时间与周期，不看这一屏：段的身份跨缩放、平移稳定），
-    //    去掉活不过一根 K 线的已结束段，把相邻桶、时间连着的段并成墙；再按墙的时间跨度筛出横向落在这一屏的，
-    //    只对它们建组。价位：单桶的墙按代表价、跨桶的按价位范围，落在主图里才算。
+    //    去掉活不过一根 K 线的已结束段，把相邻桶、时间连着的段并成墙、建组、按 `drawOrder` 排好——这一半与视野无关，
+    //    走 `OrderFlowWallCache`，拖图、捏合不重算。这里只按墙的时间跨度筛出横向落在这一屏的。
+    //    价位：代表价（画线的那个价）落在主图里才算。
     //    横向范围：墙起点那根的左缘到墙结束那根的右缘，有一单还挂着就到主图右缘。
-    let gap = orderFlowMergeGapMs
-    let parts = OrderFlowGroup.dropShortLived(OrderFlowGroup.segments(shown, gapMs: gap), minLifeMs: orderFlowMinLifeMs)
     var visible: [(group: OrderFlowGroup, left: Double, right: Double)] = []
-    for wall in OrderFlowGroup.walls(parts, gapMs: gap) {
+    for wall in entry.walls {
       guard let x0 = orderFlowBarX(wall.startMs, spacing: spacing, plotW: L.plotW)?.left else { continue }
       let x1: Double
       if let end = wall.endMs {
@@ -486,19 +561,17 @@ extension ChartRenderer {
         x1 = L.plotW
       }
       let left = max(0, x0), right = min(L.plotW, max(x1, x0 + 1))
-      guard right > left, left < L.plotW, let group = wall.group(step: flow.thresholds.step) else { continue }
-      if group.isRange {
-        let a = y(group.priceLow), b = y(group.priceHigh)
-        guard a.isFinite, b.isFinite, max(a, b) >= pane.y, min(a, b) <= pane.y + pane.h else { continue }
-      } else {
-        let cy = y(group.price)
-        guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h else { continue }
-      }
+      let group = wall.group
+      guard right > left, left < L.plotW else { continue }
+      // 画出来的只有代表价那条线（括号要两端都在主图里才立），所以只认代表价落在主图里的墙。
+      // 原来跨桶的墙按「价位范围和主图有交集」算：代表价在主图外、线被裁掉看不见的墙照样占排名，
+      // 把看得见的墙挤出「主」那 6 位（压测 2026-09-28：BTC 1m 一屏 49 条里 5 条画在主图外）。
+      let cy = y(group.price)
+      guard cy.isFinite, cy >= pane.y, cy <= pane.y + pane.h else { continue }
       visible.append((group, left, right))
     }
     guard !visible.isEmpty else { return frame }
-    // 屏内排名：画法名义从大到小，一样的先起的在前，再按键（`drawOrder`，每帧现排、结果确定）。
-    visible.sort { OrderFlowGroup.drawOrder($0.group, $1.group) }
+    // 屏内排名：画法名义从大到小，一样的先起的在前，再按键（`drawOrder`）。墙在缓存里已按它排好，筛出来的子序列顺序不变。
 
     // 3. 按排名定主次与线粗：主 2 pt（还挂着 2.5）、次 1 pt 70%、底噪 1 pt 35%。主、次按排名落线，
     //    和已落下的（整条或细线）横向交叠、纵向重叠（含 1 pt 间隙）就压成 1 pt 细线、不写金额。底噪不占位、不被压。
@@ -506,12 +579,18 @@ extension ChartRenderer {
     //    或和已立的括号在同一 x 上纵向重叠就不立（只留名义大的那枚）。括号不占线的位。
     var noise: [OrderFlowBand] = [], full: [OrderFlowBand] = [], thin: [OrderFlowBand] = []
     var occupied: [CGRect] = [], brackets: [CGRect] = []
+    // 颜色只有 侧 × 类 × 深浅 八种：先算好。原来每条带各算一遍 `orderFlowColor`——浅色档要二分找混色比例、
+    // 每步都格式化一次十六进制串，一屏几百条带光配色就要几毫秒（压测 2026-09-28）。
+    let palette: [Hex] = [false, true].flatMap { contract in
+      [BookSide.bid, .ask].flatMap { side in [false, true].map { orderFlowColor(side: side, contract: contract, hasFill: $0) } }
+    }
+    let colorOf = { (g: OrderFlowGroup) in palette[(g.contract ? 4 : 0) + (g.side == .bid ? 0 : 2) + (g.hasFill ? 1 : 0)] }
     for (rank, (group, left, right)) in visible.enumerated() {
       var role: OrderFlowRole = rank < Self.orderFlowMainCount ? .main
         : rank < Self.orderFlowRankedCount ? .secondary : .noise
       if role == .noise, group.isLive { role = .secondary }
       let cy = y(group.price)
-      let color = orderFlowColor(group)
+      let color = colorOf(group)
       let line = { (h: Double) in CGRect(x: left, y: cy - h / 2, width: right - left, height: h) }
       if role == .noise {
         noise.append(OrderFlowBand(group: group, frame: line(Self.orderFlowNoiseLine), color: color, dark: group.hasFill,
@@ -531,7 +610,7 @@ extension ChartRenderer {
           if bottom - top > whole.height, top >= pane.y, bottom <= pane.y + pane.h {
             bracket = Self.orderFlowBracket(live: group.isLive, lineRight: right,
                                             labelWidth: Self.orderFlowLabelWidth(Self.orderFlowAmount(group.notional)),
-                                            plotW: L.plotW, top: top, bottom: bottom)
+                                            plotW: L.plotW, top: top, bottom: bottom, mid: cy, ladder: ladder)
           }
         }
       } else {
@@ -553,17 +632,22 @@ extension ChartRenderer {
       if clash { thin.append(band) } else { full.append(band) }
     }
     frame.bands = noise + full + thin
-    frame.labels = orderFlowLabels(full.filter { $0.role == .main }, pane: pane, L: L, spacing: spacing)
+    frame.labels = orderFlowLabels(full.filter { $0.role == .main }, pane: pane, L: L, spacing: spacing, ladder: ladder)
     return frame
   }
 
   /// 金额签（只给「主」里没被压细的，按排名）：还挂着的贴主图右缘（价格刻度列左侧、不进刻度列）、
+  /// 不进顶上图例那几行（`mainLegendInset`）、开着盘口时不压盘口梯（挪到梯子左边，`orderFlowDodgeLadder`）、
   /// 已结束的放在结束点右侧（放不下就往左收到主图右缘以内）；纵向居中在线上。
   /// 和已放下的签撞了（留 2 pt）：挪到撞上那枚的上方或下方，取离自己的线近的、不再撞任何一枚、
   /// 没出主图、离线不超过 32 pt 的那个位置；都不行就不放。名义大的先放，所以让位的总是名义小的。一屏最多 6 枚。
-  private func orderFlowLabels(_ mains: [OrderFlowBand], pane: Pane, L: Layout, spacing: Double) -> [OrderFlowLabel] {
+  private func orderFlowLabels(_ mains: [OrderFlowBand], pane: Pane, L: Layout, spacing: Double,
+                               ladder: CGRect?) -> [OrderFlowLabel] {
     let h = Self.orderFlowLabelHeight, gap = Self.orderFlowLabelGap
     let bg = state.colors.bg
+    // 签的上界是图例下沿（`mainLegendInset`，K 线定标也从这里起算）：原来夹在主图顶上，
+    // 价位靠上的挂单签会盖在「均线 … / 主力 买 … 卖 …」那几行读数上。
+    let ceiling = pane.y + min(mainLegendInset(plotW: L.plotW), max(0, pane.h - h))
     var labels: [OrderFlowLabel] = []
     let collides = { (r: CGRect) in
       labels.contains { l in
@@ -577,8 +661,11 @@ extension ChartRenderer {
       let x = Self.orderFlowLabelX(live: band.group.isLive, lineRight: Double(band.frame.maxX), width: w, plotW: L.plotW)
       guard x >= 0 else { continue }
       let mid = Double(band.frame.midY)
-      let clamp = { (top: Double) in min(max(top, pane.y), pane.y + pane.h - h) }
-      var rect = CGRect(x: x, y: clamp(mid - h / 2), width: w, height: h)
+      let clamp = { (top: Double) in min(max(top, ceiling), pane.y + pane.h - h) }
+      var rect = Self.orderFlowDodgeLadder(CGRect(x: x, y: clamp(mid - h / 2), width: w, height: h), ladder: ladder)
+      guard rect.minX >= 0 else { continue }
+      // 线在图例那几行里（价高出了定标区）：签夹到图例下沿后离线太远就不放，免得签认错线。
+      guard abs(Double(rect.midY) - mid) <= Self.orderFlowLabelMaxShift else { continue }
       if collides(rect) {
         let hits = labels.filter { l in
           l.frame.minX < rect.maxX && l.frame.maxX > rect.minX
@@ -586,9 +673,9 @@ extension ChartRenderer {
         }
         let tops = hits.flatMap { [Double($0.frame.minY) - gap - h, Double($0.frame.maxY) + gap] }
         let fits = tops
-          .filter { $0 >= pane.y && $0 + h <= pane.y + pane.h && abs($0 + h / 2 - mid) <= Self.orderFlowLabelMaxShift }
-          .map { CGRect(x: x, y: $0, width: w, height: h) }
-          .filter { !collides($0) }
+          .filter { $0 >= ceiling && $0 + h <= pane.y + pane.h && abs($0 + h / 2 - mid) <= Self.orderFlowLabelMaxShift }
+          .map { Self.orderFlowDodgeLadder(CGRect(x: x, y: $0, width: w, height: h), ladder: ladder) }
+          .filter { $0.minX >= 0 && !collides($0) }
           .min { abs(Double($0.midY) - mid) < abs(Double($1.midY) - mid) }
         guard let fit = fits else { continue }
         rect = fit
@@ -727,9 +814,10 @@ extension ChartRenderer {
     if frame.askTotal > 0 { swatches(.ask); put("卖 " + Self.orderFlowAmount(frame.askTotal), t.text) }
   }
 
-  /// 名义金额：K / M / B 一位小数。
+  /// 名义金额：K / M / B / T 一位小数（原来没有 T 档，图例合计过万亿写成「1000.0B」）。
   static func orderFlowAmount(_ value: Double) -> String {
     let a = abs(value)
+    if a >= 1e12 { return toFixed(value / 1e12, 1) + "T" }
     if a >= 1e9 { return toFixed(value / 1e9, 1) + "B" }
     if a >= 1e6 { return toFixed(value / 1e6, 1) + "M" }
     if a >= 1e3 { return toFixed(value / 1e3, 1) + "K" }
