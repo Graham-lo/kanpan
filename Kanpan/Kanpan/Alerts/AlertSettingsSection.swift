@@ -27,7 +27,7 @@ struct AlertSettingsSection: View {
     VStack(spacing: 0) {
       PanelGroupTitle(text: "通知")
       if permission.needsSystemSettings { AlertPermissionRow { permission.openSystemSettings() } }
-      PanelRow(name: "提醒铃声", onTap: { showSound = true }) {
+      PanelRow(name: "铃声", onTap: { showSound = true }) {
         HStack(spacing: Space.xs) {
           Text(preferences.prefs.alertSound.title).font(PanelFont.name)
           VectorIcon.chevronRight(ControlMetrics.chevron)
@@ -57,7 +57,7 @@ struct AlertSettingsSection: View {
   /// 自选波动提醒：只有一个开关。幅度不让人填（收设置项 E 组，2026-09-28）——按每只自己
   /// 最近一天的 1 分钟波动自动定（`WatchMove.autoThreshold`），BTC 落在 0.5% 附近、山寨自动放宽。
   private var watchMoveRows: some View {
-    PanelRow(name: "自选波动提醒") {
+    PanelRow(name: "波动提醒", term: .watchMove) {
       PanelSwitch(isOn: preferences.prefs.watchMoveAlert) {
         preferences.update { $0.watchMoveAlert.toggle() }
       }
@@ -67,7 +67,7 @@ struct AlertSettingsSection: View {
 
   /// 品种上新与停牌下架：开着时前台与每次同步去服务端拉一遍（`ListingNotices`），新的各出一条本地通知。
   private var listingRow: some View {
-    PanelRow(name: "品种上新与停牌下架", divider: false) {
+    PanelRow(name: "上新下架", divider: false) {
       PanelSwitch(isOn: preferences.prefs.notifyListingChanges) {
         preferences.update { $0.notifyListingChanges.toggle() }
       }

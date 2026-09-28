@@ -90,7 +90,7 @@ struct AlertSoundPage: View {
     }
     .scrollBounceBehavior(.basedOnSize)
     .background(t.raised.ignoresSafeArea())
-    .navigationTitle("提醒铃声")
+    .navigationTitle("铃声")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       guard lifecycle == nil else { return }

@@ -42,7 +42,7 @@ struct TradeBookList: View {
             // 没接交易所：就这一行，点进去是接入页。不讲教程。
             Button { feature.bookOpen = false; trades.onConnect() } label: {
               HStack {
-                Text("接入交易所账户后自动生成").font(ReviewType.body).foregroundStyle(t.ink2)
+                Text("接入交易所后自动生成").font(ReviewType.body).foregroundStyle(t.ink2)
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: ReviewControl.chevron, weight: .semibold)).foregroundStyle(t.ink3)
               }
@@ -264,14 +264,14 @@ public struct TradeRecordView: View {
         .overlay { if !round.isOpen { TradeReplayPlayDisc { replay(item) } } }
         .listRowInsets(EdgeInsets(top: ReviewSpace.s, leading: ReviewSpace.m, bottom: ReviewSpace.s, trailing: ReviewSpace.m))
       }.listRowBackground(t.raised)
-      ReviewSection("成交") {
+      ReviewSection("成交", term: "fills") {
         ForEach(round.fills, id: \.id) { fill in fillRow(fill, round) }
       }.listRowBackground(t.raised)
       ReviewSection("结算") {
         LabeledContent("开仓均价", value: price(round.openAvgPrice, round))
         if let close = round.closeAvgPrice { LabeledContent("平仓均价", value: price(close, round)) }
         LabeledContent("最大仓位", value: TradeLabels.qty(round.maxQty) + " · " + TradeLabels.money(round.peakNotional, signed: false))
-        LabeledContent("已实现", value: TradeLabels.money(round.realizedPnl))
+        termRow("已实现", term: "realized", TradeLabels.money(round.realizedPnl))
         LabeledContent("手续费", value: TradeLabels.money(-round.commission))
         if round.funding != 0 { LabeledContent("资金费", value: TradeLabels.money(round.funding)) }
         LabeledContent("持仓", value: round.isOpen ? "已持 " + TradeLabels.holding(ReviewClock.now - round.openedAt) : TradeLabels.holding(round.holdingMs))
@@ -393,11 +393,11 @@ public struct TradeRecordView: View {
       case .value(let value):
         LabeledContent("最大浮盈", value: TradeLabels.money(value.maxFavorable) + " · " + TradeLabels.percent(value.maxFavorablePct, signed: true))
         LabeledContent("最大浮亏", value: TradeLabels.money(value.maxAdverse) + " · " + TradeLabels.percent(value.maxAdversePct, signed: true))
-        LabeledContent("盈亏比", value: TradeLabels.ratio(value.rewardRisk))
+        termRow("盈亏比", term: "tradeRewardRisk", TradeLabels.ratio(value.rewardRisk))
       case .pending, .unavailable:
         LabeledContent("最大浮盈", value: "—")
         LabeledContent("最大浮亏", value: "—")
-        LabeledContent("盈亏比", value: "—")
+        termRow("盈亏比", term: "tradeRewardRisk", "—")
       }
     }
     .monospacedDigit()
@@ -406,7 +406,7 @@ public struct TradeRecordView: View {
   }
 
   @ViewBuilder private func after(_ item: TradeItem) -> some View {
-    ReviewSection("离开后") {
+    ReviewSection("离开后", term: "afterClose") {
       ForEach([("h1", "1 小时"), ("h4", "4 小时"), ("h24", "24 小时")], id: \.0) { key, title in
         let point = item.record?.result?.afterCell(key).value
         LabeledContent(title) {
@@ -418,14 +418,20 @@ public struct TradeRecordView: View {
           }
         }
       }
+      // 标识只挂在三行上：挂在整个 Section 上会盖住节头那颗问号的 `term.afterClose`。
+      .accessibilityIdentifier("trade.detail.after")
     }
     .monospacedDigit()
     .listRowBackground(t.raised)
-    .accessibilityIdentifier("trade.detail.after")
   }
 
   private func price(_ value: Decimal, _ round: TradeRound) -> String {
     feature.price(NSDecimalNumber(decimal: value).doubleValue, symbol: round.instrument.key)
+  }
+
+  /// `LabeledContent(title, value:)` 加一颗术语问号：左边标签后挂 `ReviewTermMark`，右边照旧。
+  private func termRow(_ title: String, term: String, _ value: String) -> some View {
+    LabeledContent { Text(value) } label: { ReviewTermLabel(title, term: term) }
   }
 
   private func syncNote(_ item: TradeItem) {
@@ -476,7 +482,7 @@ struct TradeStatisticsList: View {
           Text("暂无平仓的交易").font(ReviewType.body).foregroundStyle(t.ink3).listRowBackground(t.app)
         } else {
           Button { feature.bookOpen = false; feature.trades.onConnect() } label: {
-            Text("接入交易所账户后自动生成").font(ReviewType.body).foregroundStyle(t.ink2)
+            Text("接入交易所后自动生成").font(ReviewType.body).foregroundStyle(t.ink2)
               .frame(maxWidth: .infinity, minHeight: ReviewControl.hit, alignment: .leading)
           }
           .buttonStyle(.plain).listRowBackground(t.app)
@@ -486,10 +492,10 @@ struct TradeStatisticsList: View {
         Section {
           metric("笔数", "\(s.count)")
           metric("胜率", TradeLabels.percent(s.winRate))
-          metric("盈亏比", TradeLabels.ratio(s.rewardRisk))
-          metric("每笔期望", s.expectancy.map { TradeLabels.money($0) } ?? "—")
-          metric("总净盈亏", TradeLabels.money(s.netPnl), color: pnlColor(s.netPnl, t))
-          metric("手续费占毛利", TradeLabels.percent(s.feeShareOfGross))
+          metric("盈亏比", TradeLabels.ratio(s.rewardRisk), term: "rewardRisk")
+          metric("每笔期望", s.expectancy.map { TradeLabels.money($0) } ?? "—", term: "expectancy")
+          metric("净盈亏", TradeLabels.money(s.netPnl), color: pnlColor(s.netPnl, t))
+          metric("费用占毛利", TradeLabels.percent(s.feeShareOfGross), term: "feeShare")
           metric("最长连亏", "\(s.longestLosingStreak) 笔")
           metric("平均持仓", TradeLabels.holding(s.averageHoldingMs))
         }
@@ -507,8 +513,9 @@ struct TradeStatisticsList: View {
     .background(t.app)
     .accessibilityIdentifier("review.stats.trades")
   }
-  private func metric(_ title: String, _ value: String, color: Color? = nil) -> some View {
-    LabeledContent(title) { Text(value).font(ReviewType.bodyEmph).foregroundStyle(color ?? t.ink).monospacedDigit() }
+  private func metric(_ title: String, _ value: String, color: Color? = nil, term: String? = nil) -> some View {
+    LabeledContent { Text(value).font(ReviewType.bodyEmph).foregroundStyle(color ?? t.ink).monospacedDigit() }
+      label: { ReviewTermLabel(title, term: term) }
       .font(ReviewType.body).foregroundStyle(t.ink2)
       .frame(minHeight: ReviewControl.hit)
   }

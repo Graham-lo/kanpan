@@ -35,7 +35,7 @@ final class AlertSoundUITests: XCTestCase {
 
   /// 铃声页是设置页里推进去的一层，走系统导航栏：回设置页按导航栏左上那颗系统返回钮。
   private func backFromSounds() {
-    let back = app.navigationBars["提醒铃声"].buttons.element(boundBy: 0)
+    let back = app.navigationBars["铃声"].buttons.element(boundBy: 0)
     XCTAssertTrue(back.waitForExistence(timeout: 5), "铃声页没有系统返回钮")
     back.tap()
   }

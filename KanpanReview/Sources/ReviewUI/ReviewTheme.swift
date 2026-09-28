@@ -38,17 +38,21 @@ public struct ReviewTheme: Sendable, Equatable {
   /// 复盘包看不到它，只能由桥（`ReviewThemeBridge`）顺着配色一起递进来；不递（`#Preview`）
   /// 就退回系统 `.swipeActions`。它不参与 `==`：换皮肤比的是颜色，不是这支闭包。
   public var swipe: ReviewSwipeProvider?
+  /// 术语问号也由 app 画（`ReviewTermMark`）：按词条 id 要一颗 `TermMark`，不递就不挂问号。
+  /// 和 `swipe` 一样不参与 `==`。
+  public var termMark: ReviewTermMarkProvider?
 
   public init(app: Color, raised: Color, raised2: Color, line: Color,
               ink: Color, ink2: Color, ink3: Color,
               accent: Color, accentSoft: Color, onAccent: Color,
               up: Color, down: Color, danger: Color,
-              segOn: Color? = nil, swipe: ReviewSwipeProvider? = nil) {
+              segOn: Color? = nil, swipe: ReviewSwipeProvider? = nil,
+              termMark: ReviewTermMarkProvider? = nil) {
     self.app = app; self.raised = raised; self.raised2 = raised2; self.line = line
     self.ink = ink; self.ink2 = ink2; self.ink3 = ink3
     self.accent = accent; self.accentSoft = accentSoft; self.onAccent = onAccent
     self.up = up; self.down = down; self.danger = danger
-    self.segOn = segOn ?? raised; self.swipe = swipe
+    self.segOn = segOn ?? raised; self.swipe = swipe; self.termMark = termMark
   }
 
   public static func == (a: ReviewTheme, b: ReviewTheme) -> Bool {

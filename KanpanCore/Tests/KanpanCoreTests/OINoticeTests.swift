@@ -36,7 +36,7 @@ struct OINoticeTests {
   func theOnlyRefusalIsAboutTheRoute() {
     let refusing = OINotice.allCases.filter { $0.text.contains("不提供") }
     #expect(refusing == [.routeMissing])
-    #expect(OINotice.routeMissing.text == "当前行情线路不提供持仓量")
+    #expect(OINotice.routeMissing.text == "当前线路不提供持仓量")
   }
 
   @Test("三句都是中文，没有 OI 这类英文缩写")

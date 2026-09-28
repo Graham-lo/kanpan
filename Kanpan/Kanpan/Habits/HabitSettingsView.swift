@@ -1,7 +1,7 @@
 import KanpanCore
 import SwiftUI
 
-/// 设置 › 通用 里的两行：「按我的习惯自动调整」开关，开着时下面一行「已学到的」推进一页。
+/// 设置 › 通用 里的两行：「自动适应」开关，开着时下面一行「已学到的」推进一页。
 /// 没有说明文字（`kanpan-ui-no-lecturing`）。推页要外层 `NavigationStack`（设置整页有）。
 struct HabitSettingsRows: View {
   var store: PrefsStore
@@ -13,7 +13,7 @@ struct HabitSettingsRows: View {
   var body: some View {
     let on = store.prefs.habitLearning
     VStack(spacing: 0) {
-      PanelRow(name: "按我的习惯自动调整") {
+      PanelRow(name: "自动适应", term: .habits) {
         PanelSwitch(isOn: on) {
           if let habits {
             habits.setEnabled(!on)

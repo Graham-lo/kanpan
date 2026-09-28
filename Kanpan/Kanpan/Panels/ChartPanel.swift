@@ -89,7 +89,7 @@ struct ChartPanel: View {
       switchRow("盘口", nil, prefs.depth, divider: false, id: "chart.depth") { $0.depth = $1 }
 
       PanelGroupTitle(text: "价格轴")
-      PanelRow(name: "刻度", divider: false) {
+      PanelRow(name: "刻度", term: .priceScale, divider: false) {
         PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: habits?.effectivePriceMode(prefs) ?? prefs.priceMode,
                      id: "chart.priceMode") { v in
           // 手动换的这一档先记成这一类品种的一笔（按习惯时它立刻生效），再照旧写进设置。

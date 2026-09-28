@@ -15,7 +15,7 @@ import Foundation
 /// 所以这里只剩三种情形，一句也不多说：线路不报、还没到、这一段真的没有。
 public enum OINotice: String, Sendable, Equatable, CaseIterable {
   /// 当前行情线路（OKX 兜底）根本不报持仓量，等多久都不会来。
-  case routeMissing = "当前行情线路不提供持仓量"
+  case routeMissing = "当前线路不提供持仓量"
   /// 请求还在路上。
   case loading = "持仓量加载中"
   /// 问到了，这一段就是没有：品种上市之前、归档站缺的那几天。

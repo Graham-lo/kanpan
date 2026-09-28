@@ -128,10 +128,11 @@ private struct ReviewFieldModifier: ViewModifier {
 /// 分组标题：12 medium、`ink3`。替掉 `Section("…")` 的系统灰大写头。
 struct ReviewSectionTitle: View {
   var title: String
+  var term: String?
   @Environment(\.reviewTheme) private var t
-  init(_ title: String) { self.title = title }
+  init(_ title: String, term: String? = nil) { self.title = title; self.term = term }
   var body: some View {
-    Text(title).font(ReviewType.captionEmph).foregroundStyle(t.ink3).textCase(nil)
+    ReviewTermLabel(title, term: term).font(ReviewType.captionEmph).foregroundStyle(t.ink3).textCase(nil)
   }
 }
 

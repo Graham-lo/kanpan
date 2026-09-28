@@ -124,6 +124,10 @@ struct PanelSheetAction {
 /// 一行：左边名字（可带一行灰字），右边随便塞个控件。底下一条发丝线。
 struct PanelRow<Trailing: View>: View {
   var name: String
+  /// 名字后面挂一颗术语问号（`TermMark`），颜色跟着名字。整行可点（`onTap`）时问号不放进
+  /// 按钮里——按钮会把里面的无障碍元素并成一个、点按也归它——而是量好名字后面那块空位，
+  /// 叠在按钮上面（`TermSlotKey`），点问号只开解释卡，点行里别处照旧走 `onTap`。
+  var term: GlossaryTerm?
   var meta: String?
   /// 名字前面的小色块（指标面板用）。
   var swatch: Color?
@@ -133,22 +137,40 @@ struct PanelRow<Trailing: View>: View {
   var onTap: (() -> Void)?
   /// 长按（§10.6 的「长按加入 / 移出常用行」）。
   var onLongPress: (() -> Void)?
+  /// 整行可点时，无障碍标识与朗读挂在按钮本身上（不能挂在整行外面：外面的标识会盖到
+  /// 行里的问号上，`term.<id>` 就找不到了）。
+  var buttonID: String?
+  var buttonLabel: String?
   @ViewBuilder var trailing: () -> Trailing
 
   @Environment(\.panelTheme) private var t
-  /// 外面 `.disabled(...)` 了这一行（如对比满三只时的「添加对比品种」），名字换成禁用色阶。
+  /// 外面 `.disabled(...)` 了这一行（如对比满三只时的「添加对比」），名字换成禁用色阶。
   @Environment(\.isEnabled) private var enabled
   /// 半屏里 16；拼到整页上时跟页面外边距走（`panelPageInset()`）。
   @Environment(\.panelHPad) private var hPad
+
+  private var nameInk: Color { !enabled ? PanelDisabled.ink(t) : highlighted ? t.amber : t.ink }
 
   var body: some View {
     let row = HStack(spacing: PanelMetrics.rowGap) {
       VStack(alignment: .leading, spacing: Space.xxs) {
         HStack(spacing: Space.xs) {
           if let swatch { PanelSwatch(color: swatch) }
-          Text(name)
-            .font(PanelFont.name)
-            .foregroundStyle(!enabled ? PanelDisabled.ink(t) : highlighted ? t.amber : t.ink)
+          HStack(spacing: 0) {
+            Text(name).font(PanelFont.name)
+            if let term {
+              if onTap == nil {
+                TermMark(term, theme: t)
+              } else {
+                // 按钮里只留一块同样大的空位，问号本身叠在按钮外面（见 `term` 的说明）。
+                Color.clear
+                  .frame(width: TermMark.gap + TermMark.size, height: TermMark.size)
+                  .anchorPreference(key: TermSlotKey.self, value: .bounds) { $0 }
+                  .accessibilityHidden(true)
+              }
+            }
+          }
+          .foregroundStyle(nameInk)
         }
         if let meta {
           Text(meta).font(PanelFont.meta).foregroundStyle(t.ink3)
@@ -169,6 +191,15 @@ struct PanelRow<Trailing: View>: View {
       Button(action: onTap) { row }
         .buttonStyle(PanelPlainButtonStyle())
         .modifier(LongPress(action: onLongPress))
+        .modifier(OptionalA11y(id: buttonID, label: buttonLabel))
+        .overlayPreferenceValue(TermSlotKey.self) { slot in
+          if let slot, let term {
+            GeometryReader { proxy in
+              let r = proxy[slot]
+              TermMark(term, theme: t).foregroundStyle(nameInk).position(x: r.midX, y: r.midY)
+            }
+          }
+        }
     } else {
       row.modifier(LongPress(action: onLongPress))
     }
@@ -176,12 +207,36 @@ struct PanelRow<Trailing: View>: View {
 }
 
 extension PanelRow where Trailing == EmptyView {
-  init(name: String, meta: String? = nil, swatch: Color? = nil,
+  init(name: String, term: GlossaryTerm? = nil, meta: String? = nil, swatch: Color? = nil,
        highlighted: Bool = false, divider: Bool = true,
-       onTap: (() -> Void)? = nil, onLongPress: (() -> Void)? = nil) {
-    self.init(name: name, meta: meta, swatch: swatch, highlighted: highlighted,
+       onTap: (() -> Void)? = nil, onLongPress: (() -> Void)? = nil,
+       buttonID: String? = nil, buttonLabel: String? = nil) {
+    self.init(name: name, term: term, meta: meta, swatch: swatch, highlighted: highlighted,
               divider: divider, onTap: onTap, onLongPress: onLongPress,
+              buttonID: buttonID, buttonLabel: buttonLabel,
               trailing: { EmptyView() })
+  }
+}
+
+/// `PanelRow` 名字后面那块给问号留的空位（整行可点时问号叠在按钮外面）。
+private struct TermSlotKey: PreferenceKey {
+  static let defaultValue: Anchor<CGRect>? = nil
+  static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+    value = value ?? nextValue()
+  }
+}
+
+/// 有才挂的无障碍标识与朗读。
+private struct OptionalA11y: ViewModifier {
+  var id: String?
+  var label: String?
+  func body(content: Content) -> some View {
+    switch (id, label) {
+    case let (id?, label?): content.accessibilityIdentifier(id).accessibilityLabel(label)
+    case let (id?, nil): content.accessibilityIdentifier(id)
+    case let (nil, label?): content.accessibilityLabel(label)
+    case (nil, nil): content
+    }
   }
 }
 
@@ -342,13 +397,17 @@ struct PanelSwitch: View {
 /// 原型 `.groupt`：小号、加字距的灰标题。
 struct PanelGroupTitle: View {
   var text: String
+  /// 节名本身是个要解释的词（如「主力订单流」）时，后面挂一颗问号。
+  var term: GlossaryTerm? = nil
   @Environment(\.panelTheme) private var t
   @Environment(\.panelHPad) private var hPad
 
   var body: some View {
-    Text(text)
+    HStack(spacing: 0) {
+      Text(text).tracking(1)
+      if let term { TermMark(term, theme: t) }
+    }
       .font(PanelFont.group)
-      .tracking(1)
       .foregroundStyle(t.ink3)
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, hPad)
@@ -391,7 +450,7 @@ struct PanelFormSectionTitle: View {
 ///
 /// 规矩照系统列表：按下之后正文滚过（哪怕抬手时已经停了）就不算点；滚着的时候点一下只是停住。
 /// 不按「停稳后多久」判——那样滚停之后马上点的那一下会被吞（第一版用 0.25 秒宽限，
-/// 对比 K 线用例里先把「添加对比品种」滚进来再点就点不开）。只记计数，不触发重画。
+/// 对比 K 线用例里先把「添加对比」滚进来再点就点不开）。只记计数，不触发重画。
 @MainActor final class PanelScrollGate {
   private(set) var active = false
   /// 每起一次滚动加一；按钮按下时记下它，动作时对不上就是按下之后滚过。

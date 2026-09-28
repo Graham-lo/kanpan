@@ -449,15 +449,17 @@ import XCTest
       shot("新建提醒-全部预警按钮-" + tag)
 
       if mode == "浅色" {
-        // Webhook 只有一个地址框，没有开关（填了就发）；有字才露出脚注 +「发一条测试」，没有推送内容、没有备注。
+        // Webhook 只有一个地址框，没有开关（填了就发）；有字才露出「发一条测试」，没有推送内容、没有备注。
+        // 「触发时向这个地址发一条 JSON」2026-09-28 挪进了「Webhook」的问号卡，页面上不再有这行字。
         XCTAssertFalse(app.switches["alerts.new.webhook"].exists, "Webhook 开关该撤了")
         let url = app.textFields["alerts.new.webhook.url"]
         XCTAssertTrue(url.waitForExistence(timeout: 5), "创建页没有 Webhook 地址框")
-        XCTAssertFalse(app.staticTexts["触发时向这个地址发一条 JSON"].exists, "地址还空着就露出了脚注")
+        XCTAssertFalse(app.buttons["alerts.new.webhook.test"].exists, "地址还空着就露出了「发一条测试」")
+        XCTAssertTrue(app.descendants(matching: .any)["term.webhook"].exists, "「Webhook」后面没有问号")
         url.tap()
         url.typeText("https://example.com/hook")
         XCTAssertTrue(app.buttons["alerts.new.webhook.test"].waitForExistence(timeout: 5), "没有「发一条测试」")
-        XCTAssertTrue(app.staticTexts["触发时向这个地址发一条 JSON"].exists, "Webhook 下面没有脚注")
+        XCTAssertFalse(app.staticTexts["触发时向这个地址发一条 JSON"].exists, "那句 JSON 说明该挪进问号卡了")
         XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "alerts.new.webhook.text").firstMatch.exists,
                        "推送内容模板该撤了")
         XCTAssertFalse(app.textFields["alerts.new.note"].exists, "备注该撤了")

@@ -74,7 +74,7 @@ struct SettingsPanel: View {
     DisplaySettingsSection(store: store)
 
     PanelGroupTitle(text: "行情")
-    PanelRow(name: "涨跌配色") {
+    PanelRow(name: "涨跌色") {
       PanelSegment(options: [("绿涨红跌", false), ("红涨绿跌", true)], selection: prefs.redUp) { v in
         store.updateByHand { $0.redUp = v }
       }
@@ -86,7 +86,7 @@ struct SettingsPanel: View {
     // 线路是用户定的，选了哪条就走哪条，没有「自动」：原来那套对冲 + 自动切源
     // 偶尔会把一次探测失败当成「这台机器上不去币安」，整套换到 OKX 还要等好几
     // 分钟才肯回头。选择只记在本机这台设备上（审查 B7）。
-    PanelRow(name: "行情线路", divider: false) {
+    PanelRow(name: "线路", term: .route, divider: false) {
       PanelSegment(options: SettingsPanel.routes, selection: prefs.routePolicy,
                    id: "settings.routePolicy") { v in
         store.updateByHand { $0.routePolicy = v }
@@ -98,7 +98,7 @@ struct SettingsPanel: View {
     AlertSettingsSection(preferences: store)
 
     PanelGroupTitle(text: "通用")
-    // 「按我的习惯自动调整」开关 + 「已学到的」（模块在 `Habits/`）。
+    // 「自动适应」开关 + 「已学到的」（模块在 `Habits/`）。
     HabitSettingsRows(store: store)
     // 「朋友」原来排在这一组最上面，2026-09-27 搬去「我的 › 朋友与收件箱」。
     aboutRow

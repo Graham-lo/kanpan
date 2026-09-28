@@ -63,7 +63,7 @@ extension CGContext {
 /// 跟浏览器把 CJK 落回系统字的行为是一致的。
 enum ChartFont {
   static let axis = UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-  /// 副图空着时那一行提示（「暂无数据」「当前行情线路不提供…」）。
+  /// 副图空着时那一行提示（「暂无数据」「当前线路不提供…」）。
   /// 必须是常驻的同一只实例：`attrs` / `measure` 两张缓存按字体的对象身份做键，
   /// 每帧现建一只 `UIFont` 会让键跟着变——属性表无上限地长，尺寸表还可能撞上
   /// 已释放字体留下的旧地址。

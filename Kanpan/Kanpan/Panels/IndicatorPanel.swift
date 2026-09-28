@@ -31,7 +31,7 @@ struct IndicatorPage: View {
   /// 主力订单流的胶水与当前品种（它那张表要显示这只币此刻生效的门槛）。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
-  /// 「添加对比品种」：关面板、开品种搜索。此刻不能对比（复盘回放、横屏画线台）时调用方传 nil，
+  /// 「添加对比」：关面板、开品种搜索。此刻不能对比（复盘回放、横屏画线台）时调用方传 nil，
   /// 「对比」这一节整节不排。
   var onAddCompare: (() -> Void)? = nil
   /// 对比品种键 → 显示名（主界面按品种表算好递进来，这儿不查表）。
@@ -122,7 +122,7 @@ struct IndicatorPage: View {
     if let onAddCompare {
       PanelGroupTitle(text: "对比")
       // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶。
-      PanelRow(name: "添加对比品种", divider: !prefs.compareSymbols.isEmpty, onTap: { close(); onAddCompare() })
+      PanelRow(name: "添加对比", divider: !prefs.compareSymbols.isEmpty, onTap: { close(); onAddCompare() })
         .disabled(prefs.compareSymbols.count >= 3)
         .accessibilityIdentifier("compare.add")
       ForEach(prefs.compareSymbols, id: \.self) { key in
@@ -149,26 +149,25 @@ struct IndicatorPage: View {
     // 「门槛」那一行只在这只币的品种信息到了之后才出：那张表里只剩门槛与步长两节
     // （显示开关 2026-09-28 收设置项 D 组收掉），没有品种信息时点进去是一张空表。
     let base = prefs.orderFlow ? orderFlow?.currentFacts?.overrideKey : nil
-    PanelRow(name: "在图上显示", swatch: t.swatch(.orderFlow), divider: base != nil) {
+    PanelRow(name: "显示", swatch: t.swatch(.orderFlow), divider: base != nil) {
       PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
         .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
     }
     if let base {
       let meta = "\(base) · " + (prefs.orderFlowOverrides[base] == nil ? "默认门槛" : "已改门槛")
-      PanelRow(name: "门槛", divider: false, onTap: { editing = .orderFlow }) {
+      PanelRow(name: "门槛", term: .orderFlowThreshold, divider: false, onTap: { editing = .orderFlow },
+               buttonID: "indicator.edit.\(IndicatorID.orderFlow.rawValue)", buttonLabel: "门槛，\(meta)") {
         HStack(spacing: Space.s) {
           Text(meta).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
           VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
         }
       }
-      .accessibilityLabel("门槛，\(meta)")
-      .accessibilityIdentifier("indicator.edit.\(IndicatorID.orderFlow.rawValue)")
     }
   }
 
   private func row(_ id: IndicatorID, last: Bool) -> some View {
     let on = prefs.isOn(id)
-    return PanelRow(name: id.name, swatch: t.swatch(id), divider: !last) {
+    return PanelRow(name: id.name, term: .indicator(id), swatch: t.swatch(id), divider: !last) {
       PanelSwitch(isOn: on) { store.byHand { $0.toggleIndicator(id) } }
         .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }

@@ -32,6 +32,10 @@ extension PanelTheme {
                              row.content(ReviewSwipeState(isOpen: proxy.isOpen, close: proxy.close))
                            }
                            .environment(\.panelTheme, theme))
+                       },
+                       // 术语问号（`ReviewTermMark`）：按 id 查 `GlossaryTerms+Review`，认得就画一颗 `TermMark`。
+                       termMark: { id in
+                         AnyView(Group { if let term = GlossaryTerm.review(id) { TermMark(term, theme: theme) } })
                        })
   }
 }

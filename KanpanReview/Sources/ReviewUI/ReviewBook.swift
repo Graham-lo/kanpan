@@ -432,9 +432,13 @@ public struct ReviewRecordView: View {
 }
 
 /// `Section("…")` 的皮肤版：头是 `ReviewSectionTitle`（12 medium ink3），不是系统那行灰字。
+/// `term` 是节名要解释时挂的问号（词条 id，见 `ReviewTermMark`）。
 struct ReviewSection<Content: View>: View {
   var title: String
+  var term: String?
   var content: Content
-  init(_ title: String, @ViewBuilder content: () -> Content) { self.title = title; self.content = content() }
-  var body: some View { Section { content } header: { ReviewSectionTitle(title) } }
+  init(_ title: String, term: String? = nil, @ViewBuilder content: () -> Content) {
+    self.title = title; self.term = term; self.content = content()
+  }
+  var body: some View { Section { content } header: { ReviewSectionTitle(title, term: term) } }
 }

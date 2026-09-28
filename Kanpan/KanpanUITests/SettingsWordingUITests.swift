@@ -24,11 +24,13 @@ final class SettingsWordingUITests: KanpanUICase {
     openSettingsPage()
     shot("设置-上半")
 
-    for text in ["涨跌配色", "外观", "行情线路"] {
+    for text in ["涨跌色", "外观", "线路"] {
       XCTAssertTrue(labeled(text).firstMatch.waitForExistence(timeout: Self.short), "设置页上没有「\(text)」")
     }
     for old in ["开盘时间", "十字线磁吸", "自动护眼配色", "随屏幕明暗切换", "交易所", "启动快照",
-                "重置所有偏好设置"] {
+                "重置所有偏好设置",
+                // 2026-09-28 第二阶段缩短的展示语：长的那版不许回来。
+                "涨跌配色", "行情线路", "提醒铃声", "自选波动提醒", "品种上新与停牌下架", "按我的习惯自动调整"] {
       XCTAssertFalse(labeled(old).firstMatch.exists, "旧字面「\(old)」又回来了")
     }
     // 2026-09-28「收设置项」收掉的几行一个都不许回来：口径按品种自动定、时间一律上海 UTC+8、

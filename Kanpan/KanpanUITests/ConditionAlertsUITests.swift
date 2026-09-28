@@ -41,8 +41,8 @@ import XCTest
     XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     let toggle = app.switches["alerts.listing"].exists ? app.switches["alerts.listing"] : app.buttons["alerts.listing"]
     for _ in 0..<8 where !(toggle.exists && toggle.isHittable) { app.swipeUp(velocity: .slow) }
-    XCTAssertTrue(toggle.exists && toggle.isHittable, "设置 › 通知里没有「品种上新与停牌下架」开关")
-    XCTAssertTrue(app.staticTexts["品种上新与停牌下架"].exists)
+    XCTAssertTrue(toggle.exists && toggle.isHittable, "设置 › 通知里没有「上新下架」开关")
+    XCTAssertTrue(app.staticTexts["上新下架"].exists)
     let before = toggle.value as? String
     toggle.tap()
     XCTAssertTrue(wait(seconds: 5) { (toggle.value as? String) != before }, "开关点了没变：\(before ?? "nil")")

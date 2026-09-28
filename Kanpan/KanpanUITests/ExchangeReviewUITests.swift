@@ -76,7 +76,7 @@ final class ExchangeReviewUITests: KanpanUICase {
     note("我的·交易所行|接入前|\(row.label)")
     XCTAssertTrue(row.label.contains("未接入"), "没接入时「我的」那一行不是「未接入」：\(row.label)")
     let review = app.buttons[Ids.meReview]
-    XCTAssertTrue(review.label.contains("接入交易所账户后自动生成"), "复盘本那一行没有交易那半句：\(review.label)")
+    XCTAssertTrue(review.label.contains("接入交易所后自动生成"), "复盘本那一行没有交易那半句：\(review.label)")
 
     row.tap()
     let page = app.descendants(matching: .any).matching(identifier: "me.exchange.page").firstMatch

@@ -44,7 +44,7 @@ extension ChartRenderer {
                            _ lo: Int, _ hi: Int, _ id: IndicatorID, _ scale: Double) {
     let values = displayed(id)?.lines.first ?? []
     if !state.externalSupported || !(lo...hi).contains(where: { values.indices.contains($0) && values[$0].isFinite }) {
-      let text = !state.externalSupported ? "当前行情线路不提供" + id.name
+      let text = !state.externalSupported ? "当前线路不提供" + id.name
         : state.external[id] == nil ? id.name + "暂无数据" : "该时段暂无" + id.name
       text.drawLeft(at: CGPoint(x: 8, y: box.y + box.h / 2),
                     font: ChartFont.notice, color: state.colors.dim)
@@ -409,7 +409,7 @@ extension ChartRenderer {
       put("空头动向 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
       put("趋势强度 " + indicatorNumber(at(v.lines[2]), decimals: 1), pal[2])
     case .cvd:
-      put("累计成交量差", t.dim)
+      put(key.name, t.dim)
       // 读数按涨跌色：为正是这一段被主动买上去的，为负是被主动卖下去的。
       if let x = (v?.lines.first).map({ at($0) }), x.isFinite {
         put(amountNumber(x), x >= 0 ? t.up : t.down)

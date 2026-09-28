@@ -387,7 +387,7 @@ struct AlertForm: View {
   /// 「条件」：只有价格那两样时是原来的两段分段；有条件提醒时换成一个菜单（六样一段放不下）。
   private var conditionRow: some View {
     HStack(spacing: Space.m) {
-      label("条件")
+      label("条件", term: .alertCondition)
       Spacer(minLength: Space.s)
       if kinds.count <= 2 {
         PanelSegment(options: kinds.map { ($0.title, $0) },
@@ -594,7 +594,7 @@ struct AlertForm: View {
   private var notifyCard: some View {
     AlertGroupCard {
       HStack(spacing: Space.m) {
-        label("Webhook")
+        label("Webhook", term: .webhook)
         TextField("https://", text: $webhookURL)
           .keyboardType(.URL)
           .textInputAutocapitalization(.never)
@@ -620,15 +620,11 @@ struct AlertForm: View {
   /// 地址框里有字就算要发（写得不对主按钮灰着，不会悄悄当成不发）。
   private var hasWebhook: Bool { !trimmedWebhook.isEmpty }
 
-  /// 卡片下面一行脚注：发的是什么，旁边「发一条测试」。结果走全局提示条，不占页面。
+  /// 卡片下面靠右一颗「发一条测试」。结果走全局提示条，不占页面。
+  /// 「触发时向这个地址发一条 JSON」原来写在它左边，2026-09-28 挪进「Webhook」的问号卡。
   private func webhookFootnote(_ quote: PriceAlertQuote?) -> some View {
     let valid = KanpanCore.Alert.isValidWebhook(webhookURL)
     return HStack(spacing: Space.s) {
-      Text("触发时向这个地址发一条 JSON")
-        .font(TypeScale.caption)
-        .foregroundStyle(t.ink3)
-        .lineLimit(1)
-        .minimumScaleFactor(0.85)
       Spacer(minLength: Space.s)
       Button { sendTest(quote) } label: {
         Text(testing ? "发送中…" : "发一条测试")
@@ -763,8 +759,12 @@ struct AlertForm: View {
 
   // ---------------------------------------------------------------- 零件
 
-  private func label(_ text: String) -> some View {
-    Text(text).font(TypeScale.body).foregroundStyle(t.ink).lineLimit(1).fixedSize()
+  private func label(_ text: String, term: GlossaryTerm? = nil) -> some View {
+    HStack(spacing: 0) {
+      Text(text)
+      if let term { TermMark(term, theme: t) }
+    }
+    .font(TypeScale.body).foregroundStyle(t.ink).lineLimit(1).fixedSize()
   }
 }
 

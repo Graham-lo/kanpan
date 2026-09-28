@@ -2,11 +2,11 @@ import SwiftUI
 import KanpanCore
 import ReviewUI
 
-/// 「我的 › 交易所账户」：贴一把只读 Key，之后复盘本自己出交易复盘（自动复盘 3c）。
+/// 「我的 › 交易所」：贴一把只读 Key，之后复盘本自己出交易复盘（自动复盘 3c）。
 ///
 /// 没接：一行「币安 · 合约」、两个框（只读 API Key / Secret）、一颗「接入」。
 /// 接入先过只读校验——Key 开着交易或提现权限就一行红字拒收，Keychain 一个字都不写。
-/// 接着了：尾号四位、上次同步、回溯范围，「立即同步」与「移除」。
+/// 接着了：尾号四位（「密钥」）、上次同步、回溯（挂问号），「立即同步」与「移除」。
 ///
 /// 不写教程、不写解释（`kanpan-ui-no-lecturing`）；Key 只在两个框里停留到按下「接入」，
 /// 接上以后框清空，界面上只剩尾号。
@@ -31,11 +31,11 @@ struct ExchangeAccountPage: View {
     .scrollDismissesKeyboard(.interactively)
     .scrollBounceBehavior(.basedOnSize)
     .background(t.app.ignoresSafeArea())
-    .navigationTitle("交易所账户")
+    .navigationTitle("交易所")
     .navigationBarTitleDisplayMode(.inline)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("me.exchange.page")
-    .confirmationDialog("移除这把 Key？", isPresented: $confirmRemove, titleVisibility: .visible) {
+    .confirmationDialog("移除这把密钥？", isPresented: $confirmRemove, titleVisibility: .visible) {
       Button("移除", role: .destructive) { Task { await bridge.disconnect() } }
         .accessibilityIdentifier("exchange.remove.confirm")
       Button("取消", role: .cancel) {}
@@ -57,13 +57,13 @@ struct ExchangeAccountPage: View {
       .frame(minHeight: Inset.rowMin)
       if let status = bridge.status {
         divider
-        info("Key", "••••" + status.keySuffix, id: "exchange.suffix")
+        info("密钥", "••••" + status.keySuffix, id: "exchange.suffix")
         divider
         TimelineView(.periodic(from: .now, by: 30)) { context in
           info("上次同步", syncText(status, now: context.date), id: "exchange.lastSync")
         }
         divider
-        info("回溯范围", Self.day(status.backfillFrom) + " 起", id: "exchange.backfill")
+        info("回溯", Self.day(status.backfillFrom) + " 起", term: .backfill, id: "exchange.backfill")
       }
     }
     .frame(maxWidth: .infinity)
@@ -80,9 +80,13 @@ struct ExchangeAccountPage: View {
     Rectangle().fill(t.line).frame(height: 1 / 3).padding(.leading, Inset.card)
   }
 
-  private func info(_ title: String, _ value: String, id: String) -> some View {
+  private func info(_ title: String, _ value: String, term: GlossaryTerm? = nil, id: String) -> some View {
     HStack(spacing: Space.s) {
-      Text(title).font(TypeScale.body).foregroundStyle(t.ink2)
+      HStack(spacing: 0) {
+        Text(title)
+        if let term { TermMark(term, theme: t) }
+      }
+      .font(TypeScale.body).foregroundStyle(t.ink2)
       Spacer(minLength: Space.s)
       Text(value).font(TypeScale.body).foregroundStyle(t.ink).monospacedDigit()
         .accessibilityIdentifier(id)

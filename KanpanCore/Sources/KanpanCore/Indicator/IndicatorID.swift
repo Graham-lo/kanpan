@@ -42,14 +42,14 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .atr: "真实波幅"
     case .oi: "持仓量"
     case .lsr: "多空比"
-    case .taker: "主动买卖比"
+    case .taker: "买卖比"
     case .basis: "基差"
-    case .vwap: "当日均价线"
+    case .vwap: "均价线"
     case .supertrend: "超级趋势"
-    case .sar: "抛物线转向"
+    case .sar: "抛物线"
     case .orderFlow: "主力订单流"
     case .dmi: "动向指标"
-    case .cvd: "累计成交量差"
+    case .cvd: "量差"
     }
   }
 
@@ -185,7 +185,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .atr: ["真实波幅"]
     case .oi: ["持仓量"]
     case .lsr: ["多空比"]
-    case .taker: ["主动买卖比"]
+    case .taker: ["买卖比"]
     case .basis: ["基差率"]
     // 超级趋势与抛物线转向都只有一条线，多空靠 `IndicatorResult.dir` 换色，
     // 不拆成「多头 / 空头」两条——拆了图例上永远有一条是「--」。
@@ -195,7 +195,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     // 图例那一行的名字（ChartRenderer+OrderFlow 画「主力 买 … · 卖 …」）。
     case .orderFlow: ["主力"]
     case .dmi: ["多头动向", "空头动向", "趋势强度"]
-    case .cvd: ["累计成交量差"]
+    case .cvd: ["量差"]
     }
   }
 

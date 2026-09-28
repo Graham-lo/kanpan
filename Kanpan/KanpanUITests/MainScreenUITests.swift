@@ -38,18 +38,18 @@ final class MainScreenUITests: KanpanUICase {
       let stats = app.otherElements["top.stats"]
       guard expectExists(price, Self.long), expectExists(stats, Self.long) else { continue }
       XCTAssertTrue(waitUntil(timeout: Self.long) {
-        [price.label, app.staticTexts["top.marketCap"].label,
+        [price.label, change.label, app.staticTexts["top.marketCap"].label,
          app.staticTexts["top.turnover"].label, app.staticTexts["top.funding"].label]
           .allSatisfy { !["", "—", "--"].contains($0) }
       }, "\(symbol) 的价格与六格实值没有到齐")
       XCTAssertTrue(app.symbolLabel.label.contains(symbol), "深链没有打开 \(symbol)")
-      // 第六格：股票是 Fwd PE（预期亏损的是 P/S），币是 OI/MC（2026-09-25）。
+      // 第六格：股票是 FPE（预期亏损的是 P/S），币是 O/M（2026-09-25）。
       let valuation = app.staticTexts["top.valuation"]
       if symbol == "MUUSDT" || symbol == "BTCUSDT" {
         XCTAssertTrue(waitUntil(timeout: Self.long) { !["", "—", "--"].contains(valuation.label) },
                       "\(symbol) 的第六格没有实值")
       }
-      let valuationLabel = symbol.hasPrefix("MU") || symbol.hasPrefix("SNDK") ? ["Fwd PE", "P/S"] : ["OI/MC"]
+      let valuationLabel = symbol.hasPrefix("MU") || symbol.hasPrefix("SNDK") ? ["FPE", "P/S"] : ["O/M"]
       XCTAssertTrue(valuationLabel.contains { app.staticTexts[$0].exists }, "\(symbol) 第六格的名字不对")
       print("VALUATION \(symbol) \(valuationLabel.first { app.staticTexts[$0].exists } ?? "?")=\(valuation.label)")
       let digits = ["SNDKUSDT": 2, "MUUSDT": 2, "1000SATSUSDT": 8, "BTCUSDT": 1][symbol]!
@@ -344,7 +344,7 @@ final class MainScreenUITests: KanpanUICase {
     expectExists(macd, Self.short, "指标页里没有副图那几栏")
     expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标页里没有主图叠加")
     expectExists(app.descendants(matching: .any)["compare.add"].firstMatch, Self.short, "指标页里没有「对比」一节")
-    // 主力订单流（2026-09-24）：2026-09-27 起自成一节，行名「在图上显示」，不在主图叠加里。
+    // 主力订单流（2026-09-24）：2026-09-27 起自成一节，行名「显示」，不在主图叠加里。
     expectExists(app.buttons[Ids.indicatorSwitch("ORDERFLOW")], Self.short, "指标页里没有「主力订单流」一节")
     dismissSheet(until: macd)
   }

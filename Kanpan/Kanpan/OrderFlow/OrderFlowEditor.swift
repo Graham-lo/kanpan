@@ -4,7 +4,7 @@ import KanpanCore
 import KanpanData
 import KanpanNetwork
 
-/// 「指标 › 主力订单流」那张表：当前这只币的过滤门槛（按产品各一格）与价格步长。
+/// 「指标 › 主力订单流」那张表：当前这只币的过滤门槛（按产品各一格）与步长（挂问号）。
 ///
 /// 门槛和步长是**按币**存的（`Prefs.orderFlowOverrides[base]`），随账号同步。原来表底还有「显示」一节
 /// 四个开关（现货 / 合约 / 已成交 / 已撤销），2026-09-28 收掉（收设置项 D 组）：一律全画，
@@ -54,7 +54,7 @@ struct OrderFlowEditor: View {
 
           Section {
             // 表里没有步长、前一日收盘还没到时步长还在推：框留空、写「自动」，不显示一个假的 0。
-            row(.step, label: "价格步长", value: effective.step, suffix: nil,
+            row(.step, label: "步长", term: .orderFlowStep, value: effective.step, suffix: nil,
                 identifier: "orderflow.step.field")
             if store.prefs.orderFlowOverrides[facts.overrideKey] != nil {
               // 同 `IndicatorEditor`：表单纸会在键盘起落时整张跳一下，按钮的按压跟踪扛不住，点击手势能。
@@ -107,12 +107,16 @@ struct OrderFlowEditor: View {
   }
 
   /// 一行「名字 + 数字框 + 读数」。门槛框右边小字给 K / M / B 读法，免得数零。
-  private func row(_ field: OrderFlowField, label: String, value: Double?, suffix: String?,
-                   identifier: String) -> some View {
+  private func row(_ field: OrderFlowField, label: String, term: GlossaryTerm? = nil, value: Double?,
+                   suffix: String?, identifier: String) -> some View {
     let shown = resetting ? defaultValue(field) ?? value : (edited[field] ?? value)
     let text = typing[field] ?? shown.map(Self.plain) ?? ""
     return HStack(spacing: Space.m) {
-      Text(label).font(TypeScale.body).foregroundStyle(t.ink)
+      HStack(spacing: 0) {
+        Text(label)
+        if let term { TermMark(term, theme: t) }
+      }
+      .font(TypeScale.body).foregroundStyle(t.ink)
       Spacer(minLength: Space.s)
       if suffix != nil, let amount = Double(text), amount > 0 {
         Text(Self.compact(amount)).font(PanelFont.meta).monospacedDigit().foregroundStyle(t.ink3)
