@@ -282,3 +282,9 @@
 2026-09-28T04:20:28Z testDrawEntryRoundTripsHangs|画线进出#4 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
 2026-09-28T04:20:30Z testDrawEntryRoundTripsHangs|画线进出#4 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
 2026-09-28T04:25:00Z 结论|首次进横屏画线台卡顿：两次独立跑 testDrawEntryRoundTripsHangs（6 轮）都只在第 0 轮「进横屏」出现一次 321/392 ms，第 1–5 轮进横屏、转回、完成全是 0 ms；走查里的 279/340/318 ms 也是每次冷启动后第一次进横屏。sample 主线程：FBSScene 更新 → UIWindow _rotateToBounds → willAnimateRotation → _UIHostingView.layoutSubviews → SwiftUI 整棵重新布局（约 108 样本）+ CanvasLayer 首帧重画。是 Debug 模拟器包每次启动首转屏的一次性系统/SwiftUI 布局开销，不是 app 逻辑卡住，不改；证据 卡顿/画线首次进横屏-sample摘录.txt
+2026-09-28T04:32:11Z testUpgradeFromBeforeTrimKeepsState|升级：自选 3、画线 ?、提醒在、号 test_063ace0f60 登着
+2026-09-28T04:35:54Z testUpgradeFromBeforeTrimKeepsState|升级：自选 3、画线 ?、提醒在、号 test_b667efa33c 登着
+2026-09-28T04:39:58Z testUpgradeFromBeforeTrimKeepsState|升级：自选 3、画线 ?、提醒在、号 test_931bc3a8e7 登着
+2026-09-28T04:43:14Z testUpgradeFromBeforeTrimKeepsState|升级：自选 3、画线 ?、提醒在、号 test_09b301f227 登着
+2026-09-28T04:44:00Z 结论|升级回归：tag settings-before-trim-2026-09-28 的老包（/tmp/kanpan-oldtag 编，UpgradeSeedOldUITests 不入库）在同一台 16 Pro、同一存档档位留下 3 只自选 + 1 条水平线 + 1 条价格提醒 + 图表设置关倒计时开至今涨幅 + 设置翻吸附与不锁屏 + 注册新号并关「自动同步」，不卸载直接装当前包跑 testUpgradeFromBeforeTrimKeepsState：启动不崩、自选 3 只在、BTC 画线在、提醒总表非空、号登着、账号页没有「自动同步」也没有「已暂停」、设置页三颗收掉的开关都不在 —— 通过（04:43 那一轮是种子与验证都绿的完整一轮；前几行是种子脚本适配老包界面时的半程轮次）。每轮的测试号都已注销。
+2026-09-28T04:52:00Z 结论|两台设备并发改：AccountPreferenceSyncUITests/testConcurrentEditsOnTwoDevicesConvergeToTheNewest 在 16 Pro 上 365 秒通过（两个档案各自离线改皮肤 / 深浅 / 自选再先后上线，收敛到各字段最新的一份，队列都还通），测试号已注销

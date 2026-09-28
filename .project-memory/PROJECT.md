@@ -715,3 +715,20 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   4. 异动提醒灵敏度：按品种，连续两次响了没点开 → 倍数上一格，响后 15 分钟内点开 → 下一格；阶梯 0.5 · 0.63 · 0.8 · 1 · 1.25 · 1.6 · 2，乘在自动波动门槛上（客户端 `WatchMove.Tracker.observe(…, sensitivity:)`；服务端 `watch_move::Tracker::observe_scaled`，倍数从设置里的 `learnedDefaults.watchMove` 按交易所取、`habitLearning` 关着不用）。
 - **开关语义**：关掉立刻回出厂行为、停止记录、清空结论与日志；已经写进去的当前周期、板块窗口保持原样（那是当时的状态，不是覆盖）。「清除已学到的」只清结论与日志，开关不动。
 - **同步**：`habitLearning`（bool）、`learnedDefaults`（JSON，服务端 `sync_validation.rs` 逐项校验结构与取值、≤ 16 KB）两个字段进 `PrefsFieldPlan` 与服务端 `SETTINGS_FIELDS`，契约 `make sync-contract` 两边无差。行为日志不上传。测试环境 `KANPAN_TEST_HABIT_SCALE` 把停留时长放大（仅 DEBUG + 测试档）。
+
+## 27. 压测与回归（2026-09-28，覆盖 `c594bf72` … `b42f1940` 这一批）
+
+范围：周期条行尾「更多 · 分析 · 图表设置」、条件提醒 4b、交易回放 3d、收设置项 A–H 与 `RETIRED_SETTINGS_FIELDS`、按我的习惯自动调整、05:49 的服务端部署。证据全在 `docs/acceptance/压测-2026-09-28/`（`ui-数据.txt` 逐条数字、截图、`内存/` RSS、`卡顿/` sample 摘录、`服务端/结果.md`）。压测用例集中在 `Kanpan/KanpanUITests/StressRegression0928UITests.swift`（不进界面矩阵，点名才跑）。
+
+- **套件**：`make *-test` 全绿；界面整套分四道在 iPhone 16 Pro 上跑，192 过 5 挂 8 跳。5 条红各自查到根因：`IndicatorLayoutGroupsEvidenceUITests`（真 bug：面板按住再拖会点开参数页 → `55353fd9` 滚动闸）、`SearchHotUITests`（真 bug：新装首开「热门」只剩一行 → `84c69a1f`）、`AlertsFlowUITests` / `ReviewModuleE2EUITests` / `TradeReplayWalkthroughUITests`（用例没跟上收设置项 E、按周期到期、1.6 秒提示 → `9e11e8a9` / `16affb3f` / `b07fcac3`）。改完 16 个用面板的套件 89 过 5 跳 0 挂。
+- **走查中发现的 bug**：开着主力订单流时点 K 线十次有八九次点出大单卡、出不来十字线（44pt 命中区 + 底噪线也能点）→ `5420cda2`、`578d89c9`（只认看得清的线、让位给 K 线），取证用例 `f0e17c7f`；`Tools/ui-test.sh` 卸的还是旧包名 → `31ec77e1`。
+- **高频**：30 只 × 3 周期 77 秒 0 卡顿；分析 / 图表设置面板各开关 50 次，最坏 226 / 108 ms；退登 + 登录 10 轮每轮 26.7–27.1 秒，最坏 113 ms。
+- **规模**：200 自选 + 50 提醒（10 条件）+ 100 画线，满载冷启动到 K 线 5.06–5.26 秒，与只有 200 自选的对照（5.19–5.31）持平；BTC 50 线拖 / 捏、自选 200 行、总表 50 条滚动全 0 卡顿。
+- **网络**：图表页断网 30 秒恢复 1 秒；断网冷启动 4 秒内出缓存 K 线（1500 根），网回来 6 秒续上；直连 / 网关来回切 6 次首个新报价 0.3–1.4 秒；回放中断网不崩。
+- **回放乱来**：快拖 40 下、回放中横滑（不换品种）、转屏、切后台，最坏 111 ms。
+- **泡 5 分钟**：两轮 RSS 在 395–490 MB 间来回，线性斜率 −6.3 / −1.0 MB/分，不单调涨；最坏卡顿 196 / 0 ms。xctrace Allocations 附着模拟器进程会挂住、出空 trace，改用 `ps` RSS 每秒采样。
+- **唯一 > 250 ms 的卡顿**：每次冷启动后第一次进横屏画线台 279–392 ms，之后再进出 0 ms（`testDrawEntryRoundTripsHangs` 6 轮 × 2 次）；sample 是 UIKit 旋转 → `_UIHostingView` 整棵重新布局 + 图首帧重画，Debug 模拟器包的一次性开销，不改。
+- **升级**：tag `settings-before-trim-2026-09-28` 的老包（`/tmp/kanpan-oldtag` 编，种子用例与脚本存在 `升级/`，不入工程）在同一台模拟器、同一存档档位留下 3 只自选、1 条水平线、1 条价格提醒、图表设置与设置里四颗老开关、注册新号并关「自动同步」；不卸载直接跑当前包的 `testUpgradeFromBeforeTrimKeepsState`：不崩，自选 / 画线 / 提醒都在，号登着，账号页没有「自动同步」「已暂停」，三颗收掉的开关不在 —— 通过。注意模拟器卸载 app 不清钥匙串，串跑时要 `simctl keychain <udid> reset`，否则老包一开就登着上一轮的号。
+- **两台设备同步**：`AccountPreferenceSyncUITests/testConcurrentEditsOnTwoDevicesConvergeToTheNewest` 365 秒通过。
+- **服务端**（`ed5f2be5`，只读 + 自建测试号，不部署）：10 个号 × 手机 + 平板 20 个令牌，50 并发 300 秒，39,338 次请求全 200、0 个 5xx、同 id 重发 1606 次全幂等；50 并发下 p50 120–195 ms 是连接池 8 条 + 每令牌 3 槽的排队（5 并发时 7–17 ms）；api RSS 压测中 268 MB 不涨、结束 3 分钟回到 174 MB；退役字段线上端到端核过（`favoritesSort` / `replaySpeed` / `timeZone` 被丢弃并在 `droppedFields` 里回报，操作本身 200）；测试号全部注销。注意 05:45 那份部署备份里没有数据库 dump，要回滚数据只能用 02:06 `cond-alerts-4b-20260928-020519/kanpan.dump`。
+- **待部署的服务端提交**：无。

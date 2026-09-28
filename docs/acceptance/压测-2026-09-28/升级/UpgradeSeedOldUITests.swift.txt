@@ -1,0 +1,103 @@
+import XCTest
+
+// 只在 /tmp/kanpan-oldtag（settings-before-trim-2026-09-28）里用：用老包按真实用户的方式留下一份
+// 「收设置项之前」的状态，然后装新包、同一个存档档位启动，看能不能原样读回来。不入库。
+@MainActor
+final class UpgradeSeedOldUITests: KanpanUICase {
+  static let profile = "0928AAAA-BBBB-4CCC-8DDD-000000000928"
+  static let stateFile = "/tmp/kanpan-stress-0928/upgrade-state.txt"
+  override var extraLaunchEnvironment: [String: String] {
+    ["KANPAN_PERSISTENCE_PROFILE": Self.profile, "KANPAN_ACCOUNT_API_URL": TestAccounts.api]
+  }
+  private let password = "Testpass2026"
+  private var canvas: XCUIElement { app.otherElements["chart.canvas"] }
+
+  private func star(_ symbol: String) {
+    XCTAssertTrue(app.openSymbolSearch())
+    let q = app.textFields[Ids.searchQuery]; q.tap(); q.typeText(symbol)
+    let key = testInstrumentKey(symbol)
+    let s = app.buttons["symbols.star." + key]
+    XCTAssertTrue(s.waitForExistence(timeout: Self.long))
+    if s.label != "取消自选" { s.tap() }
+    XCTAssertTrue(waitUntil(timeout: 5) { s.label == "取消自选" })
+    app.descendants(matching: .any).matching(identifier: "symbols.row." + key).firstMatch.tap()
+    XCTAssertTrue(waitUntil(timeout: 45) { self.chartInfo()["symbol"] as? String == key })
+  }
+
+  private func flip(_ id: String) {
+    // 老包的开关行把标识挂在整行（PanelRow）上，里面那颗 PanelSwitch 才是按钮、才带「开 / 关」。
+    let row = app.descendants(matching: .any).matching(identifier: id).firstMatch
+    for _ in 0..<8 where !(row.exists && row.isHittable) { app.swipeUp(velocity: .slow) }
+    XCTAssertTrue(row.exists, "老包上没有 \(id)")
+    // 标识实际落在行名那段字上；开关是同一行上带「开 / 关」的那颗按钮，按纵向位置配对。
+    let y = row.frame.midY
+    let switches = app.buttons.matching(NSPredicate(format: "value == '开' OR value == '关'")).allElementsBoundByIndex
+    guard let t = switches.min(by: { abs($0.frame.midY - y) < abs($1.frame.midY - y) }), abs(t.frame.midY - y) < 30 else {
+      XCTFail("\(id) 那一行找不到开关"); return
+    }
+    let v = t.value as? String; t.tap()
+    XCTAssertTrue(waitUntil(timeout: 3) { (t.value as? String) != v }, "\(id) 没翻过去（\(v ?? "nil")）")
+  }
+
+  func testSeedOldState() throws {
+    executionTimeAllowance = 900
+    XCTAssertTrue(waitForLiveChart())
+    star("LINKUSDT"); star("ADAUSDT"); star("BTCUSDT")
+    // 一条水平线。
+    XCTAssertTrue(app.enterDrawingInPortrait())
+    app.buttons[Ids.drawHLine].tap()
+    canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 150, dy: 80)).tap()
+    XCTAssertTrue(waitUntil(timeout: 5) { (self.chartInfo()["drawingCount"] as? Int ?? 0) >= 1 })
+    app.buttons[Ids.drawFinish].tap()
+    // 一条价格提醒。
+    let info = chartInfo()
+    let mainH = info["mainH"] as? Double ?? 300, plotW = info["plotW"] as? Double ?? 300
+    let scale = canvas.frame.height / max(1, info["height"] as? Double ?? canvas.frame.height)
+    canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: plotW * scale * 0.8, dy: mainH * scale * 0.78)).tap()
+    let chip = app.buttons["chart.crosshair.alert"]
+    XCTAssertTrue(chip.waitForExistence(timeout: 8)); chip.tap()
+    let add = app.buttons["alerts.new.create"]
+    XCTAssertTrue(add.waitForExistence(timeout: 8)); add.tap()
+    // 图表设置里老开关：倒计时关、至今涨幅开。
+    app.buttons[Ids.intervalChart].tap()
+    XCTAssertTrue(app.staticTexts[Ids.panelHeader].waitForExistence(timeout: 5))
+    // 老包把这两颗放在「更多设置」那一层。
+    let more = app.buttons["chart.more"]
+    for _ in 0..<6 where !(more.exists && more.isHittable) { app.swipeUp(velocity: .slow) }
+    XCTAssertTrue(more.exists, "老包图表设置里没有「更多设置」"); more.tap()
+    XCTAssertTrue(app.buttons["chart.allowMainInversion"].waitForExistence(timeout: 8), "「更多设置」没推进去")
+    flip("chart.countdown"); flip("chart.sinceChange")
+    app.closeOpenPanel()
+    // 设置里老开关：十字线吸附、盯盘不锁屏。
+    XCTAssertTrue(app.openSettingsFromMe())
+    flip("settings.magnet"); flip("settings.keepAwake")
+    app.navigationBars.buttons.firstMatch.tap()
+    // 注册一个号，关掉自动同步。
+    let user = "test_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10).lowercased()
+    try? "\(Self.profile)\n\(user)\n".write(toFile: Self.stateFile, atomically: true, encoding: .utf8)
+    XCTAssertTrue(app.openAccountFromMe())
+    app.buttons["注册"].tap()
+    let f = app.textFields["account.email"]; XCTAssertTrue(f.waitForExistence(timeout: 20)); f.tap(); f.typeText(user)
+    let s = app.secureTextFields["account.password"]; s.tap()
+    if app.buttons["GenerateStrongPasswordButton"].waitForExistence(timeout: 2) { app.buttons["xmark"].tap() }
+    for c in password { s.typeText(String(c)) }
+    app.buttons["account.submit"].tap()
+    XCTAssertTrue(waitUntil(timeout: 60) { !self.app.accountView.exists }, "老包注册没成")
+    XCTAssertTrue(app.openAccountFromMe())
+    // 老包的「自动同步」在账号页「同步」那一行推进去的子页里。
+    let syncRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '同步'")).firstMatch
+    for _ in 0..<5 where !(syncRow.exists && syncRow.isHittable) { app.swipeUp(velocity: .slow) }
+    XCTAssertTrue(syncRow.exists, "老包账号页上没有「同步」行"); syncRow.tap()
+    let auto = app.switches["自动同步"]
+    _ = auto.waitForExistence(timeout: 8)
+    for _ in 0..<5 where !(auto.exists && auto.isHittable) { app.swipeUp(velocity: .slow) }
+    XCTAssertTrue(auto.exists, "老包账号页上没有「自动同步」")
+    // 整行的中心落在字上，点不动开关；点行尾那颗拨杆。
+    if (auto.value as? String) == "1" { auto.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap() }
+    XCTAssertTrue(waitUntil(timeout: 3) { (auto.value as? String) == "0" }, "自动同步没关掉")
+    RunLoop.main.run(until: Date().addingTimeInterval(2))
+    let fav = (chartInfo()["drawingCount"] as? Int) ?? -1
+    print("升级种子|user=\(user) drawings=\(fav)")
+    app.terminate()
+  }
+}
