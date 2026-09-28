@@ -211,6 +211,13 @@ impl LocalBook {
   Some(mid)
  }
 
+ /// 一侧 `[low, high]` 价位区间里的每一档（价、量）：按区间直接查，不扫整侧、不清留存带。
+ pub fn for_each_between(&self,side:Side,low:f64,high:f64,mut body:impl FnMut(f64,f64)) {
+  if !(low.is_finite()&&high.is_finite())||high<low {return}
+  let levels=match side {Side::Bid=>&self.bids,Side::Ask=>&self.asks};
+  for (k,q) in levels.map.range(low.max(0.0).to_bits()..=high.to_bits()) {body(f64::from_bits(*k),*q)}
+ }
+
  #[cfg(test)]
  pub fn quantity(&self,side:Side,price:f64)->f64 {
   let levels=match side {Side::Bid=>&self.bids,Side::Ask=>&self.asks};
@@ -406,6 +413,27 @@ impl VenueBook {
    if usd>value.top {value.top=usd;value.price=price;}
   });
   mid.map(|mid|(out,mid))
+ }
+}
+
+impl VenueBook {
+ /// 单独一个桶此刻的合计（不受扫描半径限制，只要还在留存带里），簿没就绪或桶里一档都没有返回 None。
+ /// 挂着的单走到扫描半径边上时用它接着看（见 `model::EXIT_RADIUS_BPS`）。
+ pub fn bucket(&self,side:Side,index:i64,step:f64)->Option<Bucket> {
+  if !self.is_ready()||!(step>0.0) {return None}
+  // 区间两头各放宽一点，桶号的浮点就近取整（`bucket_index`）落在边上的档也收进来，再按桶号过滤。
+  let (low,high)=(index as f64*step*(1.0-1e-9),(index+1) as f64*step*(1.0+1e-9));
+  let notional=self.venue.notional;
+  let mut out:Option<Bucket>=None;
+  self.book.for_each_between(side,low,high,|price,quantity| {
+   if bucket_index(price,step)!=index {return}
+   let usd=notional.usd(price,quantity);
+   if usd<=0.0 {return}
+   let value=out.get_or_insert_with(Bucket::default);
+   value.notional+=usd;
+   if usd>value.top {value.top=usd;value.price=price;}
+  });
+  out
  }
 }
 

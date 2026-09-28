@@ -385,8 +385,12 @@ struct Calibration {
  /// 不该让 OKX 那一本（流内快照、立刻就绪）单独把门槛标了。最多等 `CALIBRATION_CAP_MS`。
  since:i64,
  subscribed:i64,
- /// 标定之前读回来的挂单：标定之后再读回（照手机：标定前不评估、不读回）。
- restored:Option<Vec<Restored>>,
+ /// 标定之前读回来的挂单与读库那一刻：标定之后再读回（照手机：标定前不评估、不读回）。
+ /// 「缺席超过 `STALE_MS` 算失联」按读库那一刻算，不按标定那一刻——标定要等币安的快照排队，
+ /// 重启时排几分钟是常事（2026-09-27 线上一次最长等 237 秒），按标定时刻算，库里最后一次
+ /// 看到本来就可能落后 75 秒（`LIVE_REWRITE_MS` + 写库间隔）的单几乎全被判失联，
+ /// 一两分钟后又在同一档被当成新单挂出来——每次部署非币那一千多条假失联就是这么来的。
+ restored:Option<(Vec<Restored>,i64)>,
 }
 
 impl Calibration {
@@ -563,9 +567,9 @@ impl Tracker {
   next.usdt_perp=Some(value);
   if next!=self.model.thresholds {self.model.set_thresholds(next,now);}
   self.shared.send_replace(next);
-  if first && let Some(rows)=self.calibration.restored.take() {
+  if first && let Some((rows,read_at))=self.calibration.restored.take() {
    let n=rows.len();
-   self.model.restore(rows,now);
+   self.model.restore(rows,read_at);
    if n>0 {tracing::info!("Orderflow history: {} restored {n} live orders after calibration ({} ended as lost)",self.base,self.model.ended.len());}
   }
  }
@@ -724,7 +728,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
   epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority,writes,
   calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
-  Ok(rows) if needed=>t.calibration.restored=Some(rows),
+  Ok(rows) if needed=>t.calibration.restored=Some((rows,now_ms())),
   Ok(rows)=>{let n=rows.len();t.model.restore(rows,now_ms());if n>0 {tracing::info!("Orderflow history: {base} restored {n} live orders ({} ended as lost)",t.model.ended.len());}},
   Err(e)=>tracing::warn!("Orderflow history: {base} restore failed: {e}"),
  }
@@ -1474,6 +1478,36 @@ mod tests {
   assert!(!c.due(1,2*day,2,0,false),"一本都没就绪不重标");
   let mut crypto=Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None};
   assert!(!crypto.due(0,0,0,0,false),"币不标");
+ }
+
+ /// 线上 2026-09-27 四次部署重启，每次非币那一侧一千二到一千四百条挂单在读回时被判失联、一两分钟后又在同一档
+ /// 当新单冒出来（74–89% 在 25 分钟内同档复现）：非币要等标定才读回，标定等币安快照排队（一次最长 237 秒），
+ /// 原来「缺席超过 `STALE_MS`」按标定那一刻算，库里本来就落后 75 秒的最后一次看到再加上停机的几十秒，全部超了。
+ /// 现在按读库那一刻算：读库时还在两分钟以内的接着跟，读库时就已经缺席两分钟的照旧失联。
+ #[test] fn deferred_restore_judges_absence_at_read_time_not_calibration_time() {
+  use model::Status;
+  let (events,_inbox)=mpsc::channel::<Event>(INBOX);
+  let (control,_control_rx)=mpsc::unbounded_channel::<Event>();
+  let (writes,_writes_rx)=mpsc::channel::<Write>(WRITES_QUEUE);
+  let (shared,_)=watch::channel(Thresholds::default());
+  let thresholds=Thresholds{step:Some(1.0),..Default::default()};
+  let order=|bucket:i64|BigOrder{venue_id:"binance:usdtPerp:ZZSTOCKUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Bid,
+   bucket,price:bucket as f64,first_seen_ms:1_000,end_ms:None,status:Status::Live,initial_notional:3e5,notional:3e5,filled_notional:0.0,threshold:2e5,vanished_notional:None};
+  let read_at=10_000_000;
+  let rows=vec![
+   Restored{order:order(100),step:1.0,seen_ms:read_at-75_000},
+   Restored{order:order(90),step:1.0,seen_ms:read_at-130_000},
+  ];
+  let mut t=Tracker{base:"ZZSTOCK".into(),model:Model::new("ZZSTOCK",thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   writes,calibration:Calibration{needed:true,value:None,day:None,partial:false,since:read_at,subscribed:read_at,restored:Some((rows,read_at))},planned:thresholds,shared};
+  t.calibrate(read_at+237_000);
+  assert!(t.calibration.value.is_some(),"标定了");
+  let live:Vec<i64>=t.model.live().into_iter().map(|(o,_)|o.bucket).collect();
+  assert_eq!(live,vec![100],"读库时 75 秒前还看到的接着跟");
+  assert_eq!(t.model.ended.len(),1);
+  let lost=&t.model.ended[0];
+  assert_eq!((lost.bucket,lost.status,lost.end_ms),(90,Status::Lost,Some(read_at-130_000)),"读库时已缺席两分钟以上：按最后一次看到失联");
  }
 
  /// 按分钟模拟闸门：只卸热点那一层时 RSS 是 `base(分钟)`，热点放回来之后它的簿三分钟里填满、再多 `hot` 字节。

@@ -15,6 +15,12 @@ use std::collections::{HashMap,HashSet};
 
 /// 只看每本簿中间价两侧这么远以内的价位（10%）。
 pub const SCAN_RADIUS_BPS:f64=1_000.0;
+/// 已经挂着的单要走出中间价两侧这么远（15%）才因为「出了扫描范围」失联结束；新单仍只在 10% 以内起。
+/// 两条线之间是滞回带：原来进出同一条 10% 线，一面不动的墙在价格来回摆的时候每隔几秒到几分钟就被
+/// 判一次失联、再当新单冒出来（线上 2026-09-28：XRP 现货 1.63 那面 40 万的卖墙离中间价 +9.9%，
+/// 当天被切成几十截；全天失联里七成在一分钟内同档复现，中位寿命 0.2 分钟）。15% 仍在留存带（20%）以内，
+/// 那一档的量本地一直有，直接查那一个桶（`VenueBook::bucket`），照常判「还在 / 撤了 / 成交了 / 看不见」。
+pub const EXIT_RADIUS_BPS:f64=1_500.0;
 /// 一本簿连续这么久没就绪，它还挂着的单按最后一次看到的时刻结束。
 pub const STALE_MS:i64=120_000;
 /// 一条挂着的单连续这么久落在「本地不知道」的价位上（快照没盖到、增量也没推过），就按最后一次
@@ -340,9 +346,7 @@ impl Model {
     }
     continue
    };
-   let reach=SCAN_RADIUS_BPS/10_000.0;
-   // 价格已经走出扫描半径的单：不再看它，也就判不了成交还是撤单。
-   let outside=|side:Side,price:f64|match side {Side::Bid=>price<mid*(1.0-reach),Side::Ask=>price>mid*(1.0+reach)};
+   let beyond=|side:Side,price:f64,bps:f64|{let f=bps/10_000.0;match side {Side::Bid=>price<mid*(1.0-f),Side::Ask=>price>mid*(1.0+f)}};
    let (label,product)=(book.venue.label,book.venue.product);
    track.seen=Some(now);
 
@@ -352,9 +356,13 @@ impl Model {
    let mut finished=Vec::new();
    let mut lost=Vec::new();
    for (key,l) in track.live.iter_mut() {
-    match map.get(key) {
+    // 价格已经走出退出半径的单：不再看它，也就判不了成交还是撤单。
+    if beyond(key.0,l.order.price,EXIT_RADIUS_BPS) {lost.push(*key);continue}
+    // 桶的远端出了扫描半径（整桶在外，或者骑在线上、扫描只合计到一部分）：单独查这一个桶。
+    let far_edge=match key.0 {Side::Bid=>key.1 as f64*step,Side::Ask=>(key.1+1) as f64*step};
+    let here=if beyond(key.0,far_edge,SCAN_RADIUS_BPS) {book.bucket(key.0,key.1,step)} else {map.get(key).copied()};
+    match here {
      Some(v) if v.notional>=exit=>{l.order.notional=v.notional;l.order.price=v.price;l.peak=l.peak.max(v.notional);l.seen=now;l.sighted=now;l.unknown_since=None;l.ending=None;},
-     _ if outside(key.0,l.order.price)=>lost.push(*key),
      // 这一档在快照覆盖范围以外、增量也没推过（币安 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
      // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判；
      // 等满 `UNKNOWN_MS` 还没推到，按最后一次真看到的时刻失联结束。
@@ -511,6 +519,65 @@ mod tests {
   r.m.evaluate(0);r.m.evaluate(300);
   assert_eq!(r.live().len(),1);
   300
+ }
+
+ /// 一面 1.2M 的买单墙挂在 54 050（桶 540）：买一 60 000 时离中间价 −9.9%，买一 60 100 时 −10.07%。
+ fn edge(best:f64,usd:f64)->(Vec<(f64,f64)>,Vec<(f64,f64)>) {
+  let mut bids=vec![(best,1.0)];
+  if usd>0.0 {bids.push((54_050.0,usd/54_050.0));}
+  (bids,vec![(best+10.0,1.0)])
+ }
+ fn edge_wall(r:&mut Rig) {
+  let (b,a)=edge(60_000.0,1.2*T);
+  r.book("a",&b,&a,0);r.m.evaluate(0);r.m.evaluate(300);
+  assert_eq!(r.live().len(),1);
+ }
+
+ /// 线上 2026-09-28：XRP 现货 1.63 那面 40 万的卖墙离中间价 +9.9%，价格来回摆，原来每跨出 10% 一次就判一次失联、
+ /// 跨回来又当新单起——一面没动过的墙在历史里被切成几十截。现在出了 10% 还在 15% 以内就接着跟同一条。
+ #[test] fn a_wall_at_the_scan_edge_stays_one_order_while_price_swings() {
+  let mut r=Rig::new();
+  edge_wall(&mut r);
+  let mut now=300;
+  for k in 0..20 {
+   now+=500;
+   let (b,a)=edge(if k%2==0 {60_100.0} else {60_000.0},1.2*T);
+   r.book("a",&b,&a,now);r.m.evaluate(now);
+  }
+  assert!(r.m.ended.is_empty(),"来回跨 10% 线不该结束：{:?}",r.m.ended.iter().map(|o|(o.status,o.end_ms)).collect::<Vec<_>>());
+  let live=r.live();
+  assert_eq!(live.len(),1);
+  assert_eq!((live[0].bucket,live[0].first_seen_ms),(540,0),"还是最早那一条");
+  let seen=r.m.live()[0].1;
+  assert_eq!(seen,now,"在 10% 外也照样看到、照样往前走");
+ }
+
+ #[test] fn a_wall_beyond_the_exit_radius_ends_lost_at_its_last_sight() {
+  let mut r=Rig::new();
+  edge_wall(&mut r);
+  let (b,a)=edge(60_100.0,1.2*T);
+  r.book("a",&b,&a,1_000);r.m.evaluate(1_000);
+  assert!(r.m.ended.is_empty());
+  // 价格涨到 64 000：墙离中间价 −15.6%，出了退出半径。
+  let (b,a)=edge(64_000.0,1.2*T);
+  r.book("a",&b,&a,2_000);r.m.evaluate(2_000);
+  let o=&r.m.ended[0];
+  assert_eq!((o.status,o.end_ms),(Status::Lost,Some(1_000)));
+  assert!(r.live().is_empty());
+ }
+
+ #[test] fn a_wall_pulled_between_the_scan_and_exit_radius_is_cancelled() {
+  let mut r=Rig::new();
+  edge_wall(&mut r);
+  let (b,a)=edge(60_100.0,0.0);
+  r.book("a",&b,&a,1_000);r.m.evaluate(1_000);r.m.evaluate(1_300);
+  let o=&r.m.ended[0];
+  assert_eq!((o.status,o.end_ms),(Status::Cancelled,Some(1_000)),"10% 外、15% 内照样判得出撤单");
+  assert!((o.vanished_notional.unwrap()-1.2*T).abs()<1.0);
+  // 新单仍只在 10% 以内起：同一面墙在 10% 外重新挂出来，不当新单。
+  let (b,a)=edge(60_100.0,1.2*T);
+  r.book("a",&b,&a,2_000);r.m.evaluate(2_000);r.m.evaluate(2_300);
+  assert!(r.live().is_empty());
  }
 
  #[test] fn hysteresis_keeps_a_shrunk_wall_alive() {
@@ -804,13 +871,14 @@ mod tests {
   assert_eq!(r.m.ended[0].status,Status::Cancelled);
  }
 
-#[test] fn an_order_the_price_ran_away_from_is_lost_not_cancelled() {
-  // 墙在 59 950；价格涨到 67 000，扫描半径（10%）的下沿是 60 300，墙已经在外面了。
+ #[test] fn an_order_the_price_ran_away_from_is_lost_not_cancelled() {
+  // 墙在 59 950；价格涨到 71 000，退出半径（15%）的下沿是 60 350，墙已经在外面了。
   // 原来它和「没了」一样走撤单确认，两拍后判成「已撤销、剩 0」——其实只是不看了。
+  // （10%–15% 之间的见 `a_wall_at_the_scan_edge_stays_one_order_while_price_swings`：那里照常看。）
   let mut r=Rig::new();
   appear(&mut r,1.2*T);
   r.m.evaluate(1_000);
-  r.book("a",&[(66_990.0,1.0),(59_950.0,1.2*T/59_950.0)],&[(67_010.0,1.0)],2_000);
+  r.book("a",&[(70_990.0,1.0),(59_950.0,1.2*T/59_950.0)],&[(71_010.0,1.0)],2_000);
   r.m.evaluate(2_000);
   let o=&r.m.ended[0];
   assert_eq!((o.status,o.end_ms,o.vanished_notional),(Status::Lost,Some(1_000),None));
