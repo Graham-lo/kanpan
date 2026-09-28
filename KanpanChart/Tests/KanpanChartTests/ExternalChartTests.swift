@@ -40,6 +40,27 @@ struct ExternalChartTests {
     #expect(image.cgImage != nil)
   }
 
+  @Test("开着主力订单流时盘口梯出现 / 消失要连 cross 层一起重画（金额签躲它）；每档长短变只画实时层")
+  func ladderAppearanceRedrawsLabels() {
+    var renderer = AxisWidthTests.renderer()
+    renderer.state.orderFlow = .loading(renderer.state.symbol.symbol)
+    let old = renderer.state
+    let price = old.series.close.last!
+    var withBook = old
+    withBook.depth = OrderBook(symbol: old.symbol.symbol, time: old.series.lastTime,
+      bids: [.init(price: price - 0.1, quantity: 10)], asks: [.init(price: price + 0.1, quantity: 20)])
+    #expect(ChartView.changed(from: old, to: withBook) == [.live, .cross])
+    #expect(ChartView.changed(from: withBook, to: old) == [.live, .cross])
+    var moved = withBook
+    moved.depth = OrderBook(symbol: old.symbol.symbol, time: old.series.lastTime,
+      bids: [.init(price: price - 0.1, quantity: 30)], asks: [.init(price: price + 0.1, quantity: 5)])
+    #expect(ChartView.changed(from: withBook, to: moved) == .live)
+    var otherSymbol = withBook
+    otherSymbol.depth = OrderBook(symbol: "OTHERUSDT", time: old.series.lastTime,
+      bids: [.init(price: price - 0.1, quantity: 10)], asks: [.init(price: price + 0.1, quantity: 20)])
+    #expect(ChartView.changed(from: withBook, to: otherSymbol) == [.live, .cross])
+  }
+
   @Test("密集十档开方缩放，极小挂单至少两点宽")
   func fixedDepthLadder() throws {
     var renderer = AxisWidthTests.renderer()

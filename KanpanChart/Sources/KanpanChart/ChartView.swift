@@ -314,6 +314,11 @@ public final class ChartView: UIView {
           "externalReady": s.external.keys.map(\.rawValue).sorted(),
           "externalSupported": s.externalSupported, "oiSupported": s.oiSupported, "depthSymbol": s.depth?.symbol ?? "", "depthLevels": (s.depth?.bids.count ?? 0) + (s.depth?.asks.count ?? 0),
           "renderedDepthRows": renderedDepthRows,
+          // 金额签躲的那一块盘口梯（渲染器自己算的，用例不用再拿收盘价反推）；没有梯子是 NSNull。
+          "orderFlowLadder": renderer
+            .flatMap { r in r.depthEnvelope(pane: layout.main, range: r.priceRange(size: bounds.size), L: layout) }
+            .map { e in ["x": Double(e.minX), "y": Double(e.minY), "w": Double(e.width), "h": Double(e.height)] as Any }
+            ?? NSNull(),
           "oiReady": s.oi != nil, "interval": s.series.interval.rawValue,
           "oiPeriod": s.oi?.bucketInterval?.rawValue ?? "",
           "oiTimes": s.oi?.timestamps ?? [],
@@ -620,7 +625,13 @@ public final class ChartView: UIView {
       p.insert([.plot, .live])
       if o.crosshair == nil || new.crosshair == nil { p.insert(.cross) }
     }
-    if o.depth != new.depth { p.insert(.live) }
+    if o.depth != new.depth {
+      p.insert(.live)
+      // 金额签躲盘口梯（`depthEnvelope`），签在 cross 层：梯子出现 / 消失（深度到了、换了只、清空）时 cross 也得重画，
+      // 不然签还按没有梯子时的位置压在梯子上，要等下一笔成交才挪开（第二轮真跑 DOGE 15m 切周期后截到过）。
+      // 梯子只在「有没有」上变时才要：每档长短变不影响签（按固定 64 × 69 那一块躲）。
+      if new.orderFlow != nil, hasLadder(o) != hasLadder(new) { p.insert(.cross) }
+    }
     // 主力订单流：色块在 plot、图例与十字线点亮的那一块在 cross（审查 32：十字线动不脏底图）。
     // 画出来一样（只是金额在同一粗细档里抖、成交比例在「被吃过」里涨）只脏 cross：图例合计与选中那一条
     // 在那一层，底图不动（审查 31）。
@@ -631,6 +642,12 @@ public final class ChartView: UIView {
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
     if o.nowMs != new.nowMs, new.options.countdown, new.options.lastLine { p.insert(.live) }
     return p
+  }
+
+  /// 这份 state 下画不画盘口梯（与 `ChartRenderer.depthEnvelope` 的前提一致：深度是这只、簿里有量）。
+  private static func hasLadder(_ s: ChartState) -> Bool {
+    guard let book = s.depth, book.symbol == s.symbol.symbol else { return false }
+    return book.bids.contains { $0.quantity > 0 } || book.asks.contains { $0.quantity > 0 }
   }
 
   /// 两份主力快照画在底图上是不是一样（`OrderFlowSnapshot.sameRender`：粗细档 + 深浅 + 位置与状态）。

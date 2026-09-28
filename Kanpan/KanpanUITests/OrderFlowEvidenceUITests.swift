@@ -687,6 +687,10 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
   /// 盘口梯占的那一块（`ChartRenderer.depthRows`：宽 64、高 69、以最新价为中心、夹在主图里）；没画就是 nil。
   private func ladderRect(_ info: [String: Any]) -> CGRect? {
     guard (info["renderedDepthRows"] as? Int ?? 0) > 0, info["percentAxis"] as? Bool != true else { return nil }
+    // 渲染器报的那一块（第二轮起有）：签是按它躲的，拿收盘价反推会差一两个 pt（签贴着梯子上下沿 2 pt 放时就误报）。
+    if let e = info["orderFlowLadder"] as? [String: Double] {
+      return CGRect(x: e["x"] ?? 0, y: e["y"] ?? 0, width: e["w"] ?? 0, height: e["h"] ?? 0)
+    }
     let plotW = info["plotW"] as? Double ?? 0, mainH = info["mainH"] as? Double ?? 0
     let top = info["mainPriceTop"] as? Double ?? 0, bottom = info["mainPriceBottom"] as? Double ?? 0
     let close = info["lastClose"] as? Double ?? 0
@@ -881,6 +885,120 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     let a = XCTAttachment(string: (issues + stale).joined(separator: "\n")); a.name = "展示层自检"; a.lifetime = .keepAlways; add(a)
     XCTAssertTrue(stale.isEmpty, "有旧品种残留的带：\(stale)")
     XCTAssertTrue(issues.isEmpty, "展示层自检有问题：\(issues)")
+  }
+
+  // ------------------------------------------------------------ 7b. 订单簿压测第二轮 · 手工验收（2026-09-29）
+  //
+  // 以交易员身份看 BTC 1m 与 15m：金额签（挂着的坐在线上方、不压线最新那一截）、十字线按在线上时详情卡去
+  // 带的对面那一半贴远端、不盖住十字线那根 K 线（D4）、结束的墙状态写法（D5）、拖动顺不顺（帧报告）、
+  // 进后台再被系统杀掉后重开，攒下的大单还在（7：落盘要后台额度）。
+  // 图落在 `docs/acceptance/订单簿压测-2026-09-28/第二轮-16Pro-*.png`。
+
+  private func round2Shot(_ name: String) {
+    let image = app.screenshot()
+    let a = XCTAttachment(screenshot: image); a.name = name; a.lifetime = .keepAlways; add(a)
+    try? FileManager.default.createDirectory(at: Self.stressDir, withIntermediateDirectories: true)
+    try? image.pngRepresentation.write(to: Self.stressDir.appendingPathComponent("第二轮-\(Self.shortDevice)-\(name).png"))
+    let info = chartInfo()
+    print("取证|第二轮|\(name)|symbol=\(info["symbol"] ?? "")|interval=\(info["interval"] ?? "")|phase=\(info["orderFlowPhase"] ?? "")|orders=\(info["orderFlowOrders"] ?? 0)|bands=\(bands().count)|labels=\((info["orderFlowLabels"] as? [[String: Any]] ?? []).map { $0["text"] as? String ?? "" })")
+  }
+
+  func testRound2HandCheck() {
+    executionTimeAllowance = 2400
+    XCTAssertTrue(waitForLiveChart(), "币安直连没出图：\(chartInfo())")
+    turnOnOrderFlow()
+    openSymbol("BTCUSDT", "1m")
+    waitForBands("第二轮-BTC-1m", timeout: 240)
+    // 攒一会儿单（新档案从零记起），等到十几单或最宽那条横出去几根再看。
+    _ = waitUntil(timeout: 180, poll: 5) { self.orderCount() >= 12 && (self.bands().compactMap { $0["w"] as? Double }.max() ?? 0) >= 40 }
+    var issues: [String] = []
+    let first = layoutIssues("BTC-1m")
+    issues += first.issues + first.stale
+    // 挂着的墙的签坐在线上方或下方 2 pt，不压在线上（D3）。
+    let labels = chartInfo()["orderFlowLabels"] as? [[String: Any]] ?? []
+    let byId = Dictionary(bands().map { ($0["id"] as? String ?? "", $0) }, uniquingKeysWith: { a, _ in a })
+    for l in labels {
+      guard let b = byId[l["id"] as? String ?? ""], b["live"] as? Bool == true else { continue }
+      let y = b["y"] as? Double ?? 0, top = l["y"] as? Double ?? 0, h = l["h"] as? Double ?? 0
+      if top < y && top + h > y { issues.append("签「\(l["text"] ?? "")」压在挂着的线上：线 y=\(y) 签 \(top)…\(top + h)") }
+    }
+    round2Shot("BTC-1m-金额签")
+
+    // 十字线按在最宽的几条主档上：卡在带的对面那一半，不盖住十字线那根 K 线（盖了 cardCoversCandle 会说）。
+    let canvas = app.otherElements["chart.canvas"]
+    let origin = canvas.coordinate(withNormalizedOffset: .zero)
+    let card = app.descendants(matching: .any)["chart.orderFlowCard"]
+    var shotCard = false
+    for band in bands().filter({ $0["thin"] as? Bool != true }).sorted(by: { ($0["w"] as? Double ?? 0) > ($1["w"] as? Double ?? 0) }).prefix(6) {
+      let plotW = chartInfo()["plotW"] as? Double ?? 300
+      let x = min(plotW - 2, max(1, (band["x"] as? Double ?? 0) + (band["w"] as? Double ?? 0) * 0.3))
+      if chartInfo()["crosshair"] as? Bool == true { origin.withOffset(CGVector(dx: 40, dy: 40)).tap() }
+      origin.withOffset(CGVector(dx: x, dy: band["y"] as? Double ?? 0)).press(forDuration: 0.6)
+      let hovered = waitUntil(timeout: 3) { self.chartInfo()["orderFlowHovered"] as? Bool == true }
+      guard hovered, card.waitForExistence(timeout: 3) else { continue }
+      let info = chartInfo()
+      let focus = info["orderFlowFocus"] as? [String: Any] ?? [:]
+      let mainH = info["mainH"] as? Double ?? 0
+      let bandY = focus["bandY"] as? Double ?? 0
+      let cf = card.frame, vf = canvas.frame
+      let cardTop = Double(cf.minY - vf.minY), cardBottom = Double(cf.maxY - vf.minY)
+      let covers = focus["cardCoversCandle"] as? Bool ?? false
+      let cTop = focus["candleTop"] as? Double, cBottom = focus["candleBottom"] as? Double
+      print("取证|第二轮|十字线卡|\(card.label.replacingOccurrences(of: "\n", with: " / "))|卡=\(cardTop)…\(cardBottom) x=\(cf.minX - vf.minX)…\(cf.maxX - vf.minX)|带 y=\(bandY)|主图高=\(mainH)|K线=\(cTop ?? -1)…\(cBottom ?? -1)|coversCandle=\(covers)|focus=\(focus)")
+      // 卡不越过带：在带下面就整张在带下，反之亦然。
+      let half = focus["bandHalf"] as? Double ?? 0
+      if cardTop < bandY + half && cardBottom > bandY - half { issues.append("详情卡盖住了焦点带：卡 \(cardTop)…\(cardBottom) 带 \(bandY)") }
+      if !covers, let cTop, let cBottom, cardTop < cBottom, cardBottom > cTop {
+        // 纵向重叠时必须横向躲开：十字线 x 不在卡的横向范围里。
+        let ax = focus["anchorX"] as? Double ?? 0
+        if ax >= Double(cf.minX - vf.minX) - 4 && ax <= Double(cf.maxX - vf.minX) + 4 {
+          issues.append("详情卡盖住了十字线那根 K 线：卡 \(cf) K 线 \(cTop)…\(cBottom) x=\(ax)")
+        }
+      }
+      if !shotCard { round2Shot("BTC-1m-十字线详情卡"); shotCard = true }
+    }
+    if !shotCard { round2Shot("BTC-1m-十字线未命中") }
+    if chartInfo()["crosshair"] as? Bool == true { origin.withOffset(CGVector(dx: 40, dy: 40)).tap() }
+
+    // 拖动：来回六下，读帧报告（DEBUG 的 FrameProbe）。
+    let mid = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+    for k in 0..<6 {
+      mid.press(forDuration: 0.05, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: k % 2 == 0 ? 0.9 : 0.1, dy: 0.35)),
+                withVelocity: .fast, thenHoldForDuration: 0)
+    }
+    _ = waitUntil(timeout: 2) { false }
+    print("取证|第二轮|拖动|gestureTrace=\(chartInfo()["gestureTrace"] ?? "")|renderCounts=\(chartInfo()["renderCounts"] ?? "")")
+    let pan = layoutIssues("BTC-1m-拖动后"); issues += pan.issues
+
+    // 15m。
+    openSymbol("BTCUSDT", "15m")
+    _ = waitUntil(timeout: 60, poll: 1) { !self.bands().isEmpty }
+    let q = layoutIssues("BTC-15m"); issues += q.issues + q.stale
+    round2Shot("BTC-15m")
+
+    // 进后台 → 系统挂起后被杀 → 重开：攒下的大单从本机日志读回来，不用等簿重新就绪。
+    let before = orderCount()
+    XCUIDevice.shared.press(.home)
+    _ = waitUntil(timeout: 5) { false }
+    app.terminate()
+    app.launch()
+    let relaunch = Date()
+    XCTAssertTrue(waitForLiveChart(), "重开没出图：\(chartInfo())")
+    var early = ""
+    let restored = waitUntil(timeout: 20, poll: 0.25) {
+      let info = self.chartInfo()
+      guard (info["orderFlowOrders"] as? Int ?? 0) > 0 else { return false }
+      early = "phase=\(info["orderFlowPhase"] ?? "") orders=\(info["orderFlowOrders"] ?? 0) symbol=\(info["symbol"] ?? "") \(String(format: "%.1f", Date().timeIntervalSince(relaunch))) 秒"
+      return true
+    }
+    print("取证|第二轮|后台杀进程重开|进后台前 \(before) 单|读回 \(early)")
+    XCTAssertTrue(restored, "后台被杀重开 20 秒没读回大单（进后台前 \(before) 单）：\(chartInfo()["orderFlowPhase"] ?? "")")
+    _ = waitUntil(timeout: 30, poll: 1) { !self.bands().isEmpty }
+    round2Shot("后台被杀重开-BTC")
+
+    print("取证|第二轮|汇总|问题 \(issues.count)")
+    for line in issues { print("取证|第二轮|问题|\(line)") }
+    XCTAssertTrue(issues.isEmpty, "第二轮手工验收有问题：\(issues)")
   }
 
   // ------------------------------------------------------------ 8. 参数表：粘贴与乱打（2026-09-28）
