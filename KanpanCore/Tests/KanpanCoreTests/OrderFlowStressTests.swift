@@ -368,7 +368,7 @@ final class OrderFlowStressModelTests: XCTestCase {
     let journalMs = Stress.ms { _ = model.journal(nowMs: Self.t0 + 30_000) }
     let p = Stress.percentiles(evalMs), s = Stress.percentiles(sameMs)
     Stress.report("满额[\(Stress.build)] 2 万条已结束 + 13 本实时：evaluate p50 \(Stress.fmt(p.p50)) ms / p95 \(Stress.fmt(p.p95)) ms / max \(Stress.fmt(p.max)) ms；"
-      + "出帧去重 sameContent p50 \(Stress.fmt(s.p50)) ms / max \(Stress.fmt(s.max)) ms；从 2 万多条挑落盘那 5000 条 \(Stress.fmt(journalMs)) ms")
+      + "出帧去重 sameContent p50 \(Stress.fmt(s.p50)) ms / max \(Stress.fmt(s.max)) ms；从 2 万多条挑落盘那份（上限 \(OrderFlowDefaults.journalMaxOrders) 条） \(Stress.fmt(journalMs)) ms")
 
     // b) 超额 2000 条：第一拍挤到 1.8 万（先挤活得短的），之后回到稳态。
     let over = Self.endedOrders(OrderFlowDefaults.maxEndedOrders + 2_000, venues: venues, nowMs: Self.t0,
@@ -521,25 +521,32 @@ final class OrderFlowStressHistoryTests: XCTestCase {
 final class OrderFlowStressJournalTests: XCTestCase {
   typealias M = OrderFlowStressModelTests
 
-  func testJournalOfFiveThousandOrdersAndCorruptFiles() throws {
+  /// 落盘封顶 2 万条（第二轮从 5000 提上来）：挑单、编码、原子写、读回的耗时与文件大小；坏文件各种形状。
+  func testJournalOfTwentyThousandOrdersAndCorruptFiles() throws {
     var rng = StressRNG(seed: 0x10A)
     let venues = Stress.btcVenues()
-    var orders = M.endedOrders(4_800, venues: venues, nowMs: M.t0, within: OrderFlowDefaults.journalRetentionMs, rng: &rng)
-    for k in 0..<200 {
+    let cap = OrderFlowDefaults.journalMaxOrders
+    XCTAssertEqual(cap, 20_000)
+    var orders = M.endedOrders(cap - 800, venues: venues, nowMs: M.t0, within: OrderFlowDefaults.journalRetentionMs, rng: &rng)
+    for k in 0..<800 {
       let venue = venues[k % venues.count]
       orders.append(BigOrder(venueID: venue.id, exchange: venue.label, product: venue.product, side: .ask,
                              bucket: Int64(70_000 + k), price: Double(70_000 + k) * M.step + 0.37, firstSeenMs: M.t0 - 900_000,
                              initialNotional: 1_234_567.89, notional: 2_345_678.91, filledNotional: 12_345.6,
                              threshold: M.threshold))
     }
+    let cursor = OrderFlowHistoryCursor(fromMs: M.t0 - OrderFlowDefaults.journalRetentionMs, cursorMs: M.t0 - 2_000,
+                                        trackedSinceMs: M.t0 - 3 * OrderFlowDefaults.journalRetentionMs,
+                                        thresholds: M.thresholds)
     let model = OrderFlowModel(symbol: "BTCUSDT", thresholds: M.thresholds,
                                restored: OrderFlowJournal(symbol: "BTCUSDT", step: M.step, savedAtMs: M.t0 - 1_000, orders: orders))
-    XCTAssertEqual(model.orders.count, 5_000)
+    XCTAssertEqual(model.orders.count, cap)
 
     var journal: OrderFlowJournal?
     let pickMs = Stress.ms { journal = model.journal(nowMs: M.t0) }
-    let j = try XCTUnwrap(journal)
-    XCTAssertEqual(j.orders.count, 5_000)
+    var j = try XCTUnwrap(journal)
+    j.history = cursor
+    XCTAssertEqual(j.orders.count, cap)
     var data = Data()
     let encodeMs = Stress.ms { data = j.encoded() }
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("orderflow-stress-\(UUID().uuidString)")
@@ -549,32 +556,65 @@ final class OrderFlowStressJournalTests: XCTestCase {
     let writeMs = try Stress.ms { try data.write(to: file, options: .atomic) }
     var decoded: OrderFlowJournal?
     let readMs = Stress.ms { decoded = (try? Data(contentsOf: file)).flatMap(OrderFlowJournal.decode) }
-    XCTAssertEqual(decoded, j, "读回来要逐字相同")
-    Stress.report("落盘[\(Stress.build)] 5000 条：挑单 \(Stress.fmt(pickMs)) ms + 编码 \(Stress.fmt(encodeMs)) ms + 原子写 \(Stress.fmt(writeMs)) ms"
-      + "（都在订单流 actor 上同步做）；文件 \(data.count / 1024) KB（每条约 \(data.count / 5_000) 字节）；读 + 解码 \(Stress.fmt(readMs)) ms")
-    XCTAssertLessThan(data.count, 3 * 1_024 * 1_024, "5000 条的日志不该到几 MB")
+    XCTAssertEqual(decoded, j, "读回来要逐字相同（含服务端历史游标）")
+    Stress.report("落盘[\(Stress.build)] \(cap) 条：挑单 \(Stress.fmt(pickMs)) ms + 编码 \(Stress.fmt(encodeMs)) ms + 原子写 \(Stress.fmt(writeMs)) ms"
+      + "（都在订单流 actor 上做，不占主线程）；文件 \(data.count / 1024) KB（每条约 \(data.count / cap) 字节）；读 + 解码 \(Stress.fmt(readMs)) ms")
+    XCTAssertLessThan(data.count, 5 * 1_024 * 1_024, "2 万条的日志不该到 5 MB")
 
-    // 坏文件：一律当没有（nil），不崩、不读出半份。
-    let half = data.prefix(data.count / 2)
-    var wrongVersion = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    wrongVersion["version"] = 2
-    var zeroStep = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    zeroStep["step"] = 0
-    var oneBadRow = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    var rows = try XCTUnwrap(oneBadRow["orders"] as? [[String: Any]])
-    rows[17]["st"] = "exploded"
-    oneBadRow["orders"] = rows
+    // 坏文件。逐行格式：头坏了（空、随机字节、不是对象、版本不认识、步长 0）整份作废；头好好的，坏的那几行跳过、其余照读。
+    let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    XCTAssertEqual(lines.count, cap + 1)
+    func withHeader(_ edit: (inout [String: Any]) -> Void) throws -> Data {
+      var header = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as? [String: Any])
+      edit(&header)
+      let head = try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: header), encoding: .utf8))
+      return Data(([head] + lines.dropFirst()).joined(separator: "\n").utf8)
+    }
     var random = Data(count: 4_096)
     for i in random.indices { random[i] = UInt8(truncatingIfNeeded: rng.next()) }
-    let cases: [(String, Data)] = [
-      ("空文件", Data()), ("截断一半", Data(half)), ("随机字节", random), ("不是对象", Data("[1,2,3]".utf8)),
-      ("版本不对", try JSONSerialization.data(withJSONObject: wrongVersion)),
-      ("步长为 0", try JSONSerialization.data(withJSONObject: zeroStep)),
-      ("一条状态坏了", try JSONSerialization.data(withJSONObject: oneBadRow)),
+    let fatal: [(String, Data)] = [
+      ("空文件", Data()), ("随机字节", random), ("不是对象", Data("[1,2,3]".utf8)),
+      ("版本不认识", try withHeader { $0["version"] = 99 }),
+      ("步长为 0", try withHeader { $0["step"] = 0 }),
+      ("头截断", Data((String(lines[0].prefix(20)) + "\n" + lines.dropFirst().joined(separator: "\n")).utf8)),
     ]
-    for (name, bytes) in cases { XCTAssertNil(OrderFlowJournal.decode(bytes), "坏文件（\(name)）应当读成 nil") }
-    Stress.report("落盘 坏文件 \(cases.count) 种（空 / 截断 / 随机字节 / 非对象 / 版本不对 / 步长 0 / 一条状态坏了）一律读成 nil、不崩；"
-      + "注意「一条坏了」也是整份作废（JSONDecoder 整体失败），见报告设计问题")
+    for (name, bytes) in fatal { XCTAssertNil(OrderFlowJournal.decode(bytes), "头坏了（\(name)）整份作废") }
+
+    var badState = lines
+    badState[18] = badState[18].replacingOccurrences(of: #""st":""#, with: #""st":"exploded"#)
+    var garbled = lines
+    garbled[1_001] = String(garbled[1_001].prefix(40)) + "\u{1}\u{7f}}{"
+    var readTimes: [String] = []
+    let partial: [(String, Data, Int)] = [
+      ("一条状态读不懂", Data(badState.joined(separator: "\n").utf8), cap - 1),
+      ("中间一行乱码", Data(garbled.joined(separator: "\n").utf8), cap - 1),
+      ("截在一半", Data(data.prefix(data.count / 2)), -1),
+    ]
+    for (name, bytes, expected) in partial {
+      var result: (journal: OrderFlowJournal, skipped: Int)?
+      let ms = Stress.ms { result = OrderFlowJournal.read(bytes) }
+      let r = try XCTUnwrap(result, "头好好的（\(name)）不该整份作废")
+      if expected >= 0 {
+        XCTAssertEqual(r.journal.orders.count, expected, name)
+        XCTAssertEqual(r.skipped, 1, name)
+      } else {
+        XCTAssertGreaterThan(r.journal.orders.count, cap / 2 - 200, name)
+        XCTAssertLessThanOrEqual(r.skipped, 1, "截断只坏最后那一行")
+      }
+      XCTAssertEqual(r.journal.history, cursor, "\(name)：游标在头里，照读")
+      readTimes.append("\(name) \(Stress.fmt(ms)) ms 读回 \(r.journal.orders.count) 条")
+    }
+    // 第 1 版（整份一个对象）照读；某一条读不懂只丢那一条。
+    let v1Orders = try JSONSerialization.jsonObject(with: Data(("[" + lines.dropFirst().prefix(50).joined(separator: ",") + "]").utf8))
+    var v1Rows = try XCTUnwrap(v1Orders as? [[String: Any]])
+    v1Rows[7]["st"] = "exploded"
+    let v1: [String: Any] = ["version": 1, "symbol": "BTCUSDT", "step": M.step, "savedAtMs": M.t0, "orders": v1Rows]
+    let v1Read = try XCTUnwrap(OrderFlowJournal.read(try JSONSerialization.data(withJSONObject: v1)))
+    XCTAssertEqual(v1Read.journal.orders.count, 49)
+    XCTAssertNil(v1Read.journal.history)
+    Stress.report("落盘 坏文件：头坏了 \(fatal.count) 种（空 / 随机字节 / 非对象 / 版本不认识 / 步长 0 / 头截断）读成 nil、不崩；"
+      + "头好好的只丢坏行：" + readTimes.joined(separator: "；") + "；第 1 版一条坏了读回 49/50")
   }
 }
 

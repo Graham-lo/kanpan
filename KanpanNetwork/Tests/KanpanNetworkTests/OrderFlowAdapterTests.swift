@@ -70,7 +70,7 @@ struct OrderFlowAdapterTests {
                                                                        bids: [], asks: [BookLevel(price: 100, quantity: 1)], eventTimeMs: 5)))])
   }
 
-  @Test("线路两档都一样：合约推送拨主机中继 /v1/market/ws/binance、快照打主机 kanpan-api 带 market；现货恒直连 binance.vision")
+  @Test("线路两档都一样：合约推送拨主机中继 /v1/market/ws/binance、快照打主机 kanpan-api 带 market（1000 档）；现货恒直连 binance.vision（5000 档）")
   func binanceRouteIgnoresPolicy() async throws {
     let streams = "btcusdt@depth@100ms/btcusdt@aggTrade/btcusdt_260925@depth@100ms/btcusdt_260925@aggTrade"
     for policy in [MarketRoutePolicy.direct, .gateway] {
@@ -87,11 +87,13 @@ struct OrderFlowAdapterTests {
       _ = try await cm.fetchSnapshot(venueID: Self.cmPerp.id)
       let spot = Self.binance(.spot, [Self.spot], policy, server: server)
       #expect(spot.streamURLs.map(\.absoluteString) == ["wss://data-stream.binance.vision/stream?streams=btcusdt@depth@100ms/btcusdt@aggTrade"])
-      _ = try await spot.fetchSnapshot(venueID: Self.spot.id)
+      // 现货快照要 5000 档（权重 250，远墙才在覆盖里）；合约最多 1000 档。
+      let spotSnap = try await spot.fetchSnapshot(venueID: Self.spot.id)
+      #expect(spotSnap.requestedLevels == 5000)
       #expect(await server.urls().map(\.absoluteString) == [
         "https://gw-a.example/v1/market/depth?limit=1000&symbol=BTCUSDT_260925&market=um",
         "https://gw-a.example/v1/market/depth?limit=1000&symbol=BTCUSD_PERP&market=cm",
-        "https://data-api.binance.vision/api/v3/depth?limit=1000&symbol=BTCUSDT",
+        "https://data-api.binance.vision/api/v3/depth?limit=5000&symbol=BTCUSDT",
       ], "\(policy)")
       await #expect(throws: (any Error).self) { try await um.fetchSnapshot(venueID: "binance:usdtPerp:ETHUSDT") }
     }
@@ -184,7 +186,8 @@ struct OrderFlowAdapterTests {
     #expect(Self.okxSwap.venue.sequenceModel == .previousFinalExact && Self.okxSwap.venue.snapshotInBand)
     #expect(a.decode(Self.okxFrame("snapshot", seq: 10, prev: -1)) == [VenueMessage(Self.okxSwap.id,
       .snapshot(BookSnapshot(lastUpdateID: 10, requestedLevels: 400, bids: [BookLevel(price: 78450.1, quantity: 350)],
-                             asks: [BookLevel(price: 78460, quantity: 20)], eventTimeMs: 1700000000999)))])
+                             asks: [BookLevel(price: 78460, quantity: 20)], eventTimeMs: 1700000000999,
+                             slidingWindow: true)))])
     #expect(a.decode(Self.okxFrame("update", seq: 12, prev: 10, instId: "BTC-USD-260925", bids: "[]")) == [VenueMessage(Self.okxFuture.id,
       .delta(BookDelta(firstUpdateID: 12, finalUpdateID: 12, previousFinalUpdateID: 10, bids: [],
                        asks: [BookLevel(price: 78460, quantity: 20)], eventTimeMs: 1700000000999)))])
@@ -357,6 +360,31 @@ struct OrderFlowAdapterTests {
     let other = FakeServer { _ in json(body) }
     #expect(await Self.catalog(.direct, server: other).history(base: "ETH", fromMs: 0, toMs: 1) == nil)
     #expect(await Self.catalog(.direct, server: other).history(base: "BTC", fromMs: 5, toMs: 1) == nil)
+  }
+
+  @Test("服务端历史：往前补的那段带 minLifeMs、首次与增量不带；带了回 400（服务端还没认这个参数）去掉它再问一次，别的错不重问")
+  func historyMinLife() async throws {
+    let body = #"{"base":"BTC","thresholds":{"spot":1000000.0,"usdtPerp":5000000.0,"coinPerp":5000000.0,"delivery":5000000.0,"step":100.0},"trackedSinceMs":1,"orders":[]}"#
+    let base = "https://gw-a.example/v1/market/orderflow/history?base=BTC&from=10&to=20"
+    let server = FakeServer { _ in json(body) }
+    #expect(await Self.catalog(.direct, server: server).history(base: "BTC", fromMs: 10, toMs: 20, minLifeMs: 300_000) != nil)
+    #expect(await Self.catalog(.direct, server: server).history(base: "BTC", fromMs: 10, toMs: 20) != nil)
+    #expect(await server.urls().map(\.absoluteString) == [base + "&minLifeMs=300000", base])
+    #expect(await Self.catalog(.direct, server: server).history(base: "BTC", fromMs: 10, toMs: 20, minLifeMs: -1) == nil)
+    #expect(await server.urls().count == 2)
+
+    // 旧服务端：带了未知参数整条 400 → 去掉再问，拿到页。
+    let old = FakeServer { url in url.query?.contains("minLifeMs") == true ? json(#"{"error":"unknown field"}"#, status: 400) : json(body) }
+    #expect(await Self.catalog(.direct, server: old).history(base: "BTC", fromMs: 10, toMs: 20, minLifeMs: 300_000) != nil)
+    #expect(await old.urls().map(\.absoluteString) == [base + "&minLifeMs=300000", base])
+    // 不带参数时回 400 不重问；503 也不去掉参数重问（换下一台主机照旧带着）。
+    let bad = FakeServer { _ in json("nope", status: 400) }
+    #expect(await Self.catalog(.direct, server: bad).history(base: "BTC", fromMs: 10, toMs: 20) == nil)
+    #expect(await bad.urls().count == 1)
+    let down = FakeServer { _ in json("oops", status: 503) }
+    #expect(await Self.catalog(.gateway, server: down, api: Self.gateways)
+      .history(base: "BTC", fromMs: 10, toMs: 20, minLifeMs: 300_000) == nil)
+    #expect(await down.urls().map { $0.query?.contains("minLifeMs=300000") == true } == [true, true])
   }
 
   @Test("品种表：看 1000PEPEUSDT 时按 PEPE 查，币安带前缀那行不缩放，其他家乘 1000；保底也按这个口径")

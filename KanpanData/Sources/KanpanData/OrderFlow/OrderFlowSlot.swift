@@ -65,6 +65,9 @@ struct OrderFlowSlot {
   /// 有一条在跑（诊断日志用）。
   var running: Bool { feed != nil }
 
+  /// 停过的那几条都停完、日志都落了盘（进后台时等它，app 在后台任务里等这一步做完再让系统挂起）。
+  var settling: Task<Void, Never>? { stopping }
+
   /// 开着、在前台、这只的首帧已画、还没在跑、品种事实已到——该起却没起。`forward` 每一拍问一次。
   func wantsStart(symbol: String, foreground: Bool) -> Bool {
     enabled && foreground && feed == nil && !symbol.isEmpty && chartReady == symbol && facts(symbol) != nil

@@ -121,12 +121,12 @@ private let deepSnapshotDepth: Double = {
 
 /// 服务端历史假件：记下每一次问的区间，按脚本回一页（nil = 服务端不通）。
 private actor HistoryServer {
-  struct Call: Equatable { var base: String; var from: Int64; var to: Int64 }
+  struct Call: Equatable { var base: String; var from: Int64; var to: Int64; var minLife: Int64? = nil }
   private(set) var calls: [Call] = []
   let reply: @Sendable (Call) -> OrderFlowHistoryPage?
   init(reply: @escaping @Sendable (Call) -> OrderFlowHistoryPage?) { self.reply = reply }
-  func load(_ base: String, _ from: Int64, _ to: Int64) -> OrderFlowHistoryPage? {
-    let call = Call(base: base, from: from, to: to)
+  func load(_ base: String, _ from: Int64, _ to: Int64, _ minLife: Int64?) -> OrderFlowHistoryPage? {
+    let call = Call(base: base, from: from, to: to, minLife: minLife)
     calls.append(call)
     return reply(call)
   }
@@ -160,7 +160,7 @@ struct OrderFlowFeedTests {
         return adapters.filter { a in a.books.contains { ids.contains($0.id) } }
       },
       loadClose: { _ in close },
-      loadHistory: history ?? { _, _, _ in nil },
+      loadHistory: history ?? { _, _, _, _ in nil },
       clock: { @Sendable in clock?.now ?? Int64(Date().timeIntervalSince1970 * 1000) },
       evaluateEveryMs: 10,
       sink: { await frames.add($0) })
@@ -434,7 +434,7 @@ struct OrderFlowFeedTests {
     let okx = ScriptAdapter(name: "okx", books: [okxPerp],
                             script: ["snap": [VenueMessage(okxPerp.id, .snapshot(deepSnapshot(last: 100)))]])
     let frames = Frames()
-    let feed = makeFeed([okx], facts: sndk, dir: dir, frames: frames, history: { await server.load($0, $1, $2) })
+    let feed = makeFeed([okx], facts: sndk, dir: dir, frames: frames, history: { await server.load($0, $1, $2, $3) })
     await feed.start()
     #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
     try await Task.sleep(for: .milliseconds(100))
@@ -546,7 +546,7 @@ struct OrderFlowFeedTests {
     // 首次那一页（到 t0）有两单；之后的增量、往前补的各段都是空的。
     let server = HistoryServer { call in historyPage(call, orders: call.to == t0 && call.from == t0 - day ? [ended, live] : []) }
     let frames = Frames()
-    let feed = makeFeed([], dir: nil, frames: frames, clock: clock, history: { await server.load($0, $1, $2) })
+    let feed = makeFeed([], dir: nil, frames: frames, clock: clock, history: { await server.load($0, $1, $2, $3) })
     await feed.start()
     #expect(await waitUntil(5) { await frames.last?.orders.count == 2 })
     #expect(await server.calls.first == HistoryServer.Call(base: "ETH", from: t0 - day, to: t0))
@@ -570,14 +570,117 @@ struct OrderFlowFeedTests {
     await feed.setVisibleWindow(fromMs: t0 - 60 * hour, toMs: t0 - 40 * hour)
     #expect(await waitUntil(5) { await server.count == 4 })
     let calls = await server.calls
-    #expect(calls[2] == HistoryServer.Call(base: "ETH", from: t0 - 2 * day, to: t0 - day))
-    #expect(calls[3] == HistoryServer.Call(base: "ETH", from: now - OrderFlowDefaults.retentionMs, to: t0 - 2 * day))
+    // 往前补的两段带「活够 5 分钟」（服务端只回活过 5 分钟的，一闪而过的不要）；首次与增量不带（上两条的 minLife 是 nil）。
+    let minLife = OrderFlowFeed.backfillMinLifeMs
+    #expect(calls[2] == HistoryServer.Call(base: "ETH", from: t0 - 2 * day, to: t0 - day, minLife: minLife))
+    #expect(calls[3] == HistoryServer.Call(base: "ETH", from: now - OrderFlowDefaults.retentionMs, to: t0 - 2 * day,
+                                           minLife: minLife))
+    #expect(calls[0].minLife == nil && calls[1].minLife == nil)
     // 再往左拖也不取 3 天以前的。
     await feed.setVisibleWindow(fromMs: t0 - 5 * day, toMs: t0 - 4 * day)
     try await Task.sleep(for: .milliseconds(200))
     #expect(await server.count == 4)
     #expect(await feed.historyRangeForTests().from == now - OrderFlowDefaults.retentionMs)
     await feed.stop()
+  }
+
+  @Test("日志带游标：saveNow 把游标写进日志；再开读回来，第一次取的是游标往前 5 分钟起的增量而不是整页 24 小时；门槛调低了就整页重取",
+        .timeLimit(.minutes(1)))
+  func journalCarriesHistoryCursor() async throws {
+    let dir = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let clock = TestClock()
+    let t0 = clock.now
+    let hour: Int64 = 3_600_000, day: Int64 = 86_400_000
+    let ended = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .bid, bucket: 0,
+                         price: 1_500, firstSeenMs: t0 - 3 * hour, endMs: t0 - 2 * hour, status: .cancelled,
+                         initialNotional: 8e6, notional: 8e6, threshold: 5e6)
+    let live = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .ask, bucket: 0,
+                        price: 1_700, firstSeenMs: t0 - hour, initialNotional: 6e6, notional: 6e6, threshold: 5e6)
+    let first = HistoryServer { call in historyPage(call, orders: call.from == call.to - day ? [ended, live] : []) }
+    let frames = Frames()
+    let feed = makeFeed([], dir: dir, frames: frames, clock: clock, history: { await first.load($0, $1, $2, $3) })
+    await feed.start()
+    #expect(await waitUntil(5) { await frames.last?.orders.count == 2 })
+    let cursor = try #require(await feed.historyCursorForTests())
+    #expect(cursor.fromMs == t0 - day)
+    #expect(cursor.cursorMs == t0 - hour)
+    #expect(cursor.trackedSinceMs == t0 - 3 * day)
+    #expect(cursor.thresholds?.usdtPerp == 5e6)
+
+    // 进后台：马上落一次，游标跟着写进日志头。
+    let file = OrderFlowFeed.journalFile(in: dir, symbol: symbolKey)
+    await feed.saveNow()
+    let saved = try #require(OrderFlowJournal.decode(Data(contentsOf: file)))
+    #expect(saved.history == cursor)
+    #expect(saved.orders.count == 2)
+    await feed.stop()
+
+    // 10 分钟后再开：第一次取的就是增量（游标往前退 5 分钟到此刻），不带「活够 5 分钟」。
+    clock.advance(10 * 60_000)
+    let second = HistoryServer { call in historyPage(call, orders: []) }
+    let again = makeFeed([], dir: dir, frames: Frames(), clock: clock, history: { await second.load($0, $1, $2, $3) })
+    await again.start()
+    #expect(await waitUntil(5) { await second.count == 1 })
+    #expect(await second.calls.first == HistoryServer.Call(base: "ETH", from: t0 - hour - OrderFlowFeed.historyOverlapMs,
+                                                          to: clock.now))
+    #expect(await again.historyRangeForTests().from == t0 - day)
+    // 停时也落盘（增量那页空的，游标不动；大单没变就不写——写了也读得回同一个游标）。
+    await again.stop()
+    #expect(OrderFlowJournal.decode(try Data(contentsOf: file))?.history?.cursorMs == t0 - hour)
+
+    // 门槛调低（U 本位 500 万 → 400 万）：低出来的那一截服务端没给过，整页重取 24 小时。
+    let lowered = HistoryServer { call in historyPage(call, orders: []) }
+    let low = makeFeed([], override: OrderFlowOverride(usdtPerp: 4e6), dir: dir, frames: Frames(), clock: clock,
+                       history: { await lowered.load($0, $1, $2, $3) })
+    await low.start()
+    #expect(await waitUntil(5) { await lowered.count == 1 })
+    #expect(await lowered.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - day, to: clock.now))
+    await low.stop()
+  }
+
+  @Test("日志游标作废：步长变了、日志超过 24 小时，都整页重取 24 小时", .timeLimit(.minutes(1)))
+  func staleCursorFallsBackToInitialPage() async throws {
+    let dir = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let clock = TestClock()
+    let t0 = clock.now
+    let day: Int64 = 86_400_000
+    let ended = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .bid, bucket: 0,
+                         price: 1_500, firstSeenMs: t0 - 3_600_000, endMs: t0 - 1_800_000, status: .cancelled,
+                         initialNotional: 8e6, notional: 8e6, threshold: 5e6)
+    let first = HistoryServer { call in historyPage(call, orders: [ended]) }
+    let feed = makeFeed([], dir: dir, frames: Frames(), clock: clock, history: { await first.load($0, $1, $2, $3) })
+    await feed.start()
+    #expect(await waitUntil(5) { await feed.historyCursorForTests() != nil })
+    await feed.stop()
+    let file = OrderFlowFeed.journalFile(in: dir, symbol: symbolKey)
+    #expect(OrderFlowJournal.decode(try Data(contentsOf: file))?.history != nil)
+
+    // 步长改成 2（另一个目录里放同一份日志，免得它停时按步长 2 重写、盖掉下面要用的那份）：桶号对不上，
+    // 日志里的单和游标都不用。
+    let dir2 = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir2) }
+    try FileManager.default.createDirectory(at: dir2, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: file, to: OrderFlowFeed.journalFile(in: dir2, symbol: symbolKey))
+    clock.advance(60_000)
+    let stepped = HistoryServer { call in historyPage(call, orders: [], step: 2) }
+    let custom = makeFeed([], override: OrderFlowOverride(step: 2), dir: dir2, frames: Frames(), clock: clock,
+                          history: { await stepped.load($0, $1, $2, $3) })
+    await custom.start()
+    #expect(await waitUntil(5) { await stepped.count == 1 })
+    #expect(await stepped.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - day, to: clock.now))
+    #expect(await custom.modelForTests().orders.isEmpty)
+    await custom.stop()
+
+    // 25 小时后再开：日志过期不读，整页重取。
+    clock.advance(25 * 3_600_000)
+    let late = HistoryServer { call in historyPage(call, orders: []) }
+    let stale = makeFeed([], dir: dir, frames: Frames(), clock: clock, history: { await late.load($0, $1, $2, $3) })
+    await stale.start()
+    #expect(await waitUntil(5) { await late.count == 1 })
+    #expect(await late.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - day, to: clock.now))
+    await stale.stop()
   }
 
   @Test("服务端不通：纯本地照常出单、不报错；首次那一页隔 10 秒再试。步长和服务端对不上（用户改过步长）：不并、也不再取",
@@ -588,7 +691,7 @@ struct OrderFlowFeedTests {
     let okx = ScriptAdapter(name: "okx", books: [okxSpot],
                             script: ["snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))]])
     let frames = Frames()
-    let feed = makeFeed([okx], dir: nil, frames: frames, clock: clock, history: { await offline.load($0, $1, $2) })
+    let feed = makeFeed([okx], dir: nil, frames: frames, clock: clock, history: { await offline.load($0, $1, $2, $3) })
     await feed.start()
     #expect(await waitUntil(5) { await offline.count == 1 })
     #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
@@ -614,7 +717,7 @@ struct OrderFlowFeedTests {
     let server = HistoryServer { call in historyPage(call, orders: [foreign]) }
     let frames2 = Frames()
     let custom = makeFeed([], override: OrderFlowOverride(step: 2), dir: nil, frames: frames2, clock: clock,
-                          history: { await server.load($0, $1, $2) })
+                          history: { await server.load($0, $1, $2, $3) })
     await custom.start()
     #expect(await waitUntil(5) { await server.count == 1 })
     #expect(await waitUntil(5) { await frames2.last?.thresholds.step == 2 })

@@ -30,7 +30,7 @@ public struct VenueBook: Sendable {
   public var isReady: Bool { book.quality == .ready }
 
   /// 这一档本地知不知道（快照截断时覆盖范围以外、又没推过的档不知道）。簿没就绪一律不知道。
-  func knows(_ side: BookSide, price: Double) -> Bool {
+  mutating func knows(_ side: BookSide, price: Double) -> Bool {
     book.quality == .ready && readySinceMs != nil && book.knows(side, price: price)
   }
 

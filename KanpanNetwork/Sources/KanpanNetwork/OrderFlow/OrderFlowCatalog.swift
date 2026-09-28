@@ -89,25 +89,38 @@ public struct OrderFlowCatalog: Sendable {
   /// （`OrderFlowBase.normalize` 之后的）。两条线路都查 `MarketRoute.apiHosts`，哪台回了就用哪台；
   /// 都不通、回了坏数据就是 nil——调用方当它没有，照常只用本地跟到的，不报错、不提示。
   /// 24 小时一页 BTC 约 1.7 MB（gzip 后），URLSession 自己解压；超时给 15 秒。
-  public func history(base: String, fromMs: Int64, toMs: Int64) async -> OrderFlowHistoryPage? {
-    guard OrderFlowBase.isValid(base), fromMs >= 0, fromMs <= toMs else { return nil }
+  ///
+  /// `minLifeMs` 给了时带上同名参数：服务端不回活不到这么久就结束的单（挂着的照回）。数据层只在往左补
+  /// （24 小时之前）的页上给 5 分钟；nil 不带这个参数。还没认这个参数的旧服务端回 400，这时去掉它再问一次。
+  public func history(base: String, fromMs: Int64, toMs: Int64, minLifeMs: Int64? = nil) async -> OrderFlowHistoryPage? {
+    guard OrderFlowBase.isValid(base), fromMs >= 0, fromMs <= toMs, (minLifeMs ?? 0) >= 0 else { return nil }
     for host in route.apiHosts {
       guard var c = URLComponents(string: "https://\(host)"), c.host != nil, c.user == nil else { continue }
       c.path = Self.historyPath
-      c.queryItems = [URLQueryItem(name: "base", value: base),
-                      URLQueryItem(name: "from", value: String(fromMs)),
-                      URLQueryItem(name: "to", value: String(toMs))]
-      guard let url = c.url else { continue }
-      do {
-        let reply = try await http.get(url, timeout: 15)
-        guard (200..<300).contains(reply.status),
-              let page = OrderFlowHistoryPage.parse(reply.body, fromMs: fromMs, toMs: toMs),
-              page.base == base else { continue }
-        return page
-      } catch is CancellationError {
-        return nil
-      } catch {
-        continue
+      var query = [URLQueryItem(name: "base", value: base),
+                   URLQueryItem(name: "from", value: String(fromMs)),
+                   URLQueryItem(name: "to", value: String(toMs))]
+      var attempts = [query]
+      if let minLifeMs {
+        query.append(URLQueryItem(name: "minLifeMs", value: String(minLifeMs)))
+        attempts = [query, attempts[0]]
+      }
+      for (k, items) in attempts.enumerated() {
+        c.queryItems = items
+        guard let url = c.url else { break }
+        do {
+          let reply = try await http.get(url, timeout: 15)
+          // 带了 minLifeMs 回 400：多半是这台还没认这个参数，去掉它再问一次（别的错不重问）。
+          if reply.status == 400, k == 0, attempts.count > 1 { continue }
+          guard (200..<300).contains(reply.status),
+                let page = OrderFlowHistoryPage.parse(reply.body, fromMs: fromMs, toMs: toMs),
+                page.base == base else { break }
+          return page
+        } catch is CancellationError {
+          return nil
+        } catch {
+          break
+        }
       }
     }
     return nil

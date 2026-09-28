@@ -17,8 +17,9 @@ import Foundation
 // - 历史：结束的大单留在图上，3 天、最多 2 万条（`OrderFlowDefaults.retentionMs / maxEndedOrders`），
 //   超了先挤活得短的；还挂着的永远不删。
 // - 服务端历史：kanpan-api 常驻跟踪、存 3 天，取回来的一页由 `mergeHistory` 并进来（规则见那里）。
-// - 落盘：`OrderFlowJournal`，一只品种一份小文件（KanpanData 管读写），只存最近 24 小时、最多 5000 条
-//   （`journal(nowMs:)`），切回来、进程重启、断网时历史还在；更早的每次向服务端取，不落盘；不同步。
+// - 落盘：`OrderFlowJournal`（格式见 OrderFlowJournal.swift），一只品种一份小文件（KanpanData 管读写），
+//   只存最近 24 小时、最多 2 万条（`journal(nowMs:)`），连同服务端历史取到哪儿的游标；切回来、进程重启、
+//   断网时历史还在，读回后服务端只补游标之后的增量；更早的每次向服务端取；不同步。
 // - 簿断了：没就绪的那本簿这一拍不参与（它的单既不新增也不结束）；断开超过 2 分钟，它还挂着的单
 //   按最后一次看到的时刻结束（`staleMs`），状态记「失联结束」（`.lost`）——那一刻之后发生了什么不知道，
 //   不能判成撤单。
@@ -198,30 +199,6 @@ public enum DepthMessage: Sendable, Equatable {
   case reset
 }
 
-/// 落盘的那一份：一只品种一个文件，只存大单（簿不存）。
-public struct OrderFlowJournal: Sendable, Equatable, Codable {
-  public static let currentVersion = 1
-  public var version: Int
-  public var symbol: String
-  /// 存盘时的步长：步长变了桶号就对不上，整份作废。
-  public var step: Double
-  public var savedAtMs: Int64
-  public var orders: [BigOrder]
-
-  public init(symbol: String, step: Double, savedAtMs: Int64, orders: [BigOrder]) {
-    self.version = Self.currentVersion; self.symbol = symbol; self.step = step
-    self.savedAtMs = savedAtMs; self.orders = orders
-  }
-
-  public func encoded() -> Data { (try? JSONEncoder().encode(self)) ?? Data() }
-
-  public static func decode(_ data: Data) -> OrderFlowJournal? {
-    guard let journal = try? JSONDecoder().decode(OrderFlowJournal.self, from: data),
-          journal.version == currentVersion, journal.step.isFinite, journal.step > 0 else { return nil }
-    return journal
-  }
-}
-
 public struct OrderFlowModel: Sendable {
   public enum Action: Sendable, Equatable {
     case none
@@ -261,6 +238,9 @@ public struct OrderFlowModel: Sendable {
   private var pendingJournal: OrderFlowJournal?
   /// 读回了挂着的单：存盘时刻。第一次评估时据此判断缺席是不是超过了 `staleMs`。
   private var restoredAtMs: Int64?
+  /// 读回的日志被接下了（步长对得上）时，它记着的服务端历史游标；OrderFlowFeed 取走（`takeRestoredHistory`）
+  /// 后接着取增量。门槛比取历史时低了、步长变了、日志没接下，都是 nil（整页重取）。
+  public private(set) var restoredHistory: OrderFlowHistoryCursor?
   /// 服务端最近一次说它还挂着的时刻（按单 id）。本机没这本簿、簿没就绪时，靠服务端续命，
   /// 不按「簿断开太久」失联结束；服务端也不再续（断网、它结束了）就照常处理。
   private var remoteSeen: [String: Int64] = [:]
@@ -369,6 +349,7 @@ public struct OrderFlowModel: Sendable {
     if nextScheme != scheme {
       scheme = nextScheme
       if !orders.isEmpty { journalDirty = true }
+      restoredHistory = nil
       orders.removeAll(); candidates.removeAll(); ending.removeAll(); lastSeen.removeAll(); peak.removeAll()
       remoteSeen.removeAll()
       restoreIfPossible()
@@ -418,6 +399,20 @@ public struct OrderFlowModel: Sendable {
     if orders.contains(where: \.isLive) { restoredAtMs = journal.savedAtMs }
     requalify()
     reindex()
+    // 日志只存了存盘前 24 小时里结束的单：更早的那一截即使当时取到过，也没跟着落盘，游标的起点收到那里。
+    restoredHistory = journal.history.flatMap { cursor -> OrderFlowHistoryCursor? in
+      guard cursor.stillCovers(thresholds) else { return nil }
+      var c = cursor
+      c.fromMs = max(c.fromMs, journal.savedAtMs - OrderFlowDefaults.journalRetentionMs)
+      c.cursorMs = min(c.cursorMs, journal.savedAtMs)
+      return c.fromMs <= c.cursorMs ? c : nil
+    }
+  }
+
+  /// 取走读回的服务端历史游标（只给一次）。
+  public mutating func takeRestoredHistory() -> OrderFlowHistoryCursor? {
+    defer { restoredHistory = nil }
+    return restoredHistory
   }
 
   private mutating func reindex() {
@@ -429,7 +424,7 @@ public struct OrderFlowModel: Sendable {
 
   // MARK: - 落盘
 
-  /// 落盘的那一份：挂着的全留；结束的只留最近 24 小时（`journalRetentionMs`），多于 5000 条
+  /// 落盘的那一份：挂着的全留；结束的只留最近 24 小时（`journalRetentionMs`），多于 2 万条
   /// （`journalMaxOrders`）按留存同一个次序挑（最近 2 小时内结束的先留，其余活得久的先留）。
   /// 更早的历史每次向服务端取，不落盘。
   public func journal(nowMs: Int64) -> OrderFlowJournal? {
@@ -509,9 +504,12 @@ public struct OrderFlowModel: Sendable {
           lastSeen[oid] = nowMs
           ending[oid] = nil
         } else if !book.knows(key.side, price: orders[i].price) {
-          // 这一档在快照覆盖范围以外、增量也没推过（币安 1000 档快照只盖盘口两侧 0.3%，重启 / 重连后
-          // 2%–10% 外读回来的单全在这里）：看不见不等于没了，既不算消失也不开始确认，等增量推到它再判。
-          lastSeen[oid] = nowMs
+          // 这一档在快照覆盖范围以外、增量也没推过（币安合约 1000 档快照只盖盘口两侧不到 1%，重启 / 重连后
+          // 2%–10% 外读回来的单全在这里；OKX 400 档窗口把它挤出去了）：看不见不等于没了——
+          // 不算撤单、不算失联、不记消失名义、不开始确认，等增量推到它再判。
+          // 「最后一次看到」停在真看到的那一拍：原来每拍都记成此刻，价格走出 15% 失联时结束时刻就成了走出那一拍，
+          // 其实那之前一直是看不见的。之前开始的撤单确认作废（看不见的那几拍不能攒成「连续两拍没了」）。
+          ending[oid] = nil
         } else {
           var pending = ending[oid] ?? Pending(firstMs: nowMs, remaining: 0)
           pending.samples += 1

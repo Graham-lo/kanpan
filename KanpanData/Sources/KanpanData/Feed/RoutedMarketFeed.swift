@@ -664,8 +664,17 @@ public actor RoutedMarketFeed {
     await feed?.networkChanged(online: online)
     if online { startMonitoring() } else { monitor?.cancel() }
   }
+  /// 进后台：停行情监视与订单流。返回时订单流的日志已经落了盘（编码、写文件在订单流 actor 上，不占主线程）；
+  /// app 在 `beginBackgroundTask` 里 await 它，系统挂起前那份日志一定写完。
   public func enterBackground() async {
     foreground = false; monitor?.cancel(); stopOrderFlow(forgetChart: false); await feed?.enterBackground()
+    let settling = orderFlow.settling
+    await settling?.value
+  }
+  /// 不停订阅，只把正在跑的那条订单流的日志马上落一次盘（app 失去焦点、收到内存警告时可调）。
+  public func saveOrderFlowNow() async {
+    let running = orderFlow.feed
+    await running?.saveNow()
   }
   public func enterForeground() async { foreground = true; await feed?.enterForeground(); startMonitoring(); startOrderFlow() }
   /// 内存警告：整条路由的 K 线缓存只留当前这一对，所有预热槽一起叫停。

@@ -60,8 +60,10 @@ public actor OrderFlowFeed {
   public typealias AdapterMaker = @Sendable (_ books: [DepthBook]) -> [any DepthFeedAdapter]
   /// 24h 成交额（美元）。
   public typealias TurnoverLoader = @Sendable () async -> Double?
-  /// 取服务端记下的一段历史（`base` 已去掉缩放前缀）。取不到给 nil。
-  public typealias HistoryLoader = @Sendable (_ base: String, _ fromMs: Int64, _ toMs: Int64) async -> OrderFlowHistoryPage?
+  /// 取服务端记下的一段历史（`base` 已去掉缩放前缀）。`minLifeMs` 给了时，服务端不回活不到这么久就结束的单
+  /// （挂着的照回）；nil 不带这个参数。取不到给 nil。
+  public typealias HistoryLoader = @Sendable (_ base: String, _ fromMs: Int64, _ toMs: Int64,
+                                              _ minLifeMs: Int64?) async -> OrderFlowHistoryPage?
 
   /// 每隔多久按簿算一帧（出现、消失的确认要两次评估且相隔 ≥ 300 ms，所以不能比 300 ms 更密）。
   public static let evaluateEveryMs: Double = 500
@@ -80,6 +82,9 @@ public actor OrderFlowFeed {
   /// 首次那一页没取到，隔多久再试；往左补的一段没取到，隔多久再试。
   static let historyRetryMs: Int64 = 10_000
   static let backfillRetryMs: Int64 = 30_000
+  /// 往左补（24 小时之前）的那几页只要活过 5 分钟的单：那么早的碎单（BTC 一半活不过 1 分钟）拉远看是底噪，
+  /// 还占着 2 万条的额度；首次与增量那两种页照旧全要（最近 24 小时的细节要紧）。
+  public static let backfillMinLifeMs: Int64 = 300_000
 
   public let symbol: String
   public let facts: OrderFlowFacts
@@ -143,6 +148,10 @@ public actor OrderFlowFeed {
   private var historyCursorMs: Int64?
   /// 服务端从什么时候开始跟这只（封顶 3 天前）：往左补到这里为止。
   private var historyTrackedSinceMs: Int64?
+  /// 取这些页时各产品用过的最高门槛（随游标落盘；读回时此刻门槛更低就不能接着用游标）。
+  private var historyThresholds: OrderFlowThresholds?
+  /// 上一次落盘时的游标：游标往前走了、大单没变时，进后台 / 停的时候也落一次盘。
+  private var savedHistory: OrderFlowHistoryCursor?
   /// 上一次取首次页 / 增量的时刻（不论成败）。
   private var historyPulledMs: Int64 = .min / 2
   private var historyRetryAtMs: Int64 = .min / 2
@@ -175,7 +184,7 @@ public actor OrderFlowFeed {
   public init(symbol: String, facts: OrderFlowFacts, override: OrderFlowOverride?, directory: URL?,
               loadBooks: @escaping BookLoader, makeAdapters: @escaping AdapterMaker,
               loadClose: @escaping CloseLoader, loadTurnover: @escaping TurnoverLoader = { nil },
-              loadHistory: @escaping HistoryLoader = { _, _, _ in nil },
+              loadHistory: @escaping HistoryLoader = { _, _, _, _ in nil },
               historyEveryMs: Int64 = OrderFlowFeed.historyEveryMs,
               pacer: any Pacer = SystemPacer(),
               clock: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
@@ -218,7 +227,9 @@ public actor OrderFlowFeed {
               makeAdapters: { books in catalog.adapters(books) },
               loadClose: { day in try await Self.previousClose(provider: provider, symbol: symbol, referenceDayMs: day) },
               loadTurnover: { try? await provider.ticker24h(symbol: symbol, timeout: 8).quoteVolume },
-              loadHistory: { base, from, to in await catalog.history(base: base, fromMs: from, toMs: to) },
+              loadHistory: { base, from, to, minLife in
+                await catalog.history(base: base, fromMs: from, toMs: to, minLifeMs: minLife)
+              },
               precise: precise, log: log, sink: sink)
   }
 
@@ -293,7 +304,13 @@ public actor OrderFlowFeed {
     snapshotTasks.values.forEach { $0.cancel() }; snapshotTasks = [:]
     let dying = streams; streams = []; adapters = []; connectionOf = [:]; connectedAtMs = [:]
     for s in dying { await s.stop() }
-    save()
+    save(force: true)
+  }
+
+  /// 马上落一次盘（app 进后台时调；`stop` 也会落）。大单没变、游标也没往前走就不写。
+  /// 编码与写文件都在这个 actor 上做，不占主线程；写的是临时文件再改名，写到一半被杀也不会留下半份。
+  public func saveNow() {
+    save(force: true)
   }
 
   /// 读回这只的日志（24 小时内、品种对得上的）。门槛照此刻生效的那份（`start` 之前可能已经改过）。
@@ -325,7 +342,7 @@ public actor OrderFlowFeed {
                               calibrated: calibrated)
     guard next != model.thresholds else { return }
     // 步长一变模型整个清空重来：服务端历史也从头取（首次那一页），路上那一页作废。
-    if next.step != model.thresholds.step { resetHistory() }
+    if next.step != model.thresholds.step { resetHistory() } else { raiseHistoryThresholds(to: next) }
     model.setThresholds(next)
     lastEmitted = nil  // 门槛一改立刻出一帧，不等心跳
     pumpHistory()
@@ -562,7 +579,7 @@ public actor OrderFlowFeed {
   private func resetHistory() {
     historyFetch?.cancel(); historyFetch = nil
     historyGeneration += 1
-    historyFromMs = nil; historyCursorMs = nil; historyTrackedSinceMs = nil
+    historyFromMs = nil; historyCursorMs = nil; historyTrackedSinceMs = nil; historyThresholds = nil
     historyPulledMs = .min / 2; historyRetryAtMs = .min / 2; backfillRetryAtMs = .min / 2
     historyBlockedStep = nil
   }
@@ -598,12 +615,45 @@ public actor OrderFlowFeed {
   /// 有该取的就取（同一时刻只有一页在路上）。每一拍评估、改门槛、图挪了都来问一次，开销只是几个比较。
   /// 默认门槛还在等标定时不取：按兜底 200 万并进来的页会把 200 万以下的单挡在外面。
   private func pumpHistory() {
-    guard started, !stopped, !calibrating, historyFetch == nil, let job = nextHistoryJob(nowMs: clock()) else { return }
+    guard started, !stopped, !calibrating, historyFetch == nil else { return }
+    adoptRestoredHistory()
+    guard let job = nextHistoryJob(nowMs: clock()) else { return }
     let load = loadHistory, base = facts.overrideKey, generation = historyGeneration
+    let minLife = job.kind == .backfill ? Self.backfillMinLifeMs : nil
     historyFetch = Task { [weak self] in
-      let page = await load(base, job.fromMs, job.toMs)
+      let page = await load(base, job.fromMs, job.toMs, minLife)
       await self?.historyArrived(page, job: job, generation: generation)
     }
+  }
+
+  /// 读回的日志带着游标（模型接下了那份日志、步长与门槛都对得上）：接着用，下一次取的是游标之后的增量，
+  /// 不再整页重取 24 小时。原来每次起订都发首次页：ETH 24 小时一页 1.3 MB gzip、3 万行，首字节 0.9–4.5 秒。
+  /// 游标停在 24 小时以前（日志存得太久）不接着用：增量要取的比首次那页还长，不如整页重取。
+  private func adoptRestoredHistory() {
+    guard historyCursorMs == nil, let cursor = model.takeRestoredHistory(),
+          clock() - cursor.cursorMs <= Self.historySpanMs else { return }
+    historyFromMs = cursor.fromMs
+    historyCursorMs = cursor.cursorMs
+    historyTrackedSinceMs = cursor.trackedSinceMs
+    historyThresholds = cursor.thresholds
+    historyPulledMs = .min / 2  // 马上取一次增量
+    savedHistory = cursor
+  }
+
+  /// 门槛改了（步长没变）：记下各产品用过的最高门槛。之后要是调低，低出来的那一截服务端没给过，
+  /// 下次读回日志时不能接着用游标。
+  private func raiseHistoryThresholds(to next: OrderFlowThresholds) {
+    guard var used = historyThresholds else { return }
+    for product in OrderFlowProduct.allCases {
+      if let value = next[product] { used[product] = max(used[product] ?? value, value) }
+    }
+    historyThresholds = used
+  }
+
+  private var historyCursor: OrderFlowHistoryCursor? {
+    guard let from = historyFromMs, let cursor = historyCursorMs else { return nil }
+    return OrderFlowHistoryCursor(fromMs: from, cursorMs: cursor, trackedSinceMs: historyTrackedSinceMs,
+                                  thresholds: historyThresholds)
   }
 
   private func historyArrived(_ page: OrderFlowHistoryPage?, job: HistoryJob, generation: Int) {
@@ -628,6 +678,7 @@ public actor OrderFlowFeed {
         historyFromMs = page.fromMs
         historyCursorMs = page.latestMs ?? page.toMs
         historyPulledMs = now
+        historyThresholds = model.thresholds
       case .increment:
         historyCursorMs = max(historyCursorMs ?? .min, page.latestMs ?? page.fromMs + Self.historyOverlapMs)
       case .backfill:
@@ -697,7 +748,7 @@ public actor OrderFlowFeed {
     let next = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: derivedStep,
                               calibrated: calibrated)
     if next != model.thresholds {
-      if next.step != model.thresholds.step { resetHistory() }
+      if next.step != model.thresholds.step { resetHistory() } else { raiseHistoryThresholds(to: next) }
       model.setThresholds(next)
     }
     if let journal = deferredJournal {
@@ -715,15 +766,21 @@ public actor OrderFlowFeed {
     return !precise && sinceLastMs < amountRefreshMs
   }
 
-  private func save() {
-    guard let file, model.journalDirty else { return }
+  /// 落盘：大单有变化才写；`force`（停、进后台）时游标往前走了也写。都在这个 actor 上，不占主线程；
+  /// `.atomic` 先写同目录的临时文件再改名，被杀在半路也只会留下旧的那一整份。
+  private func save(force: Bool = false) {
+    guard let file else { return }
+    let cursor = historyCursor
+    guard model.journalDirty || (force && cursor != savedHistory) else { return }
     let now = clock()
     lastSaveMs = now
-    guard let journal = model.journal(nowMs: now) else { return }
+    guard var journal = model.journal(nowMs: now) else { return }
+    journal.history = cursor
     do {
       try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
       try journal.encoded().write(to: file, options: .atomic)
       model.markJournalSaved()
+      savedHistory = cursor
     } catch {
       log("主力订单流 \(symbol) 日志落盘失败：\(error)")
     }
@@ -734,6 +791,7 @@ public actor OrderFlowFeed {
   func modelForTests() -> OrderFlowModel { model }
   func calibratedForTests() -> (pending: Bool, value: Double?) { (calibrating, calibrated) }
   func historyRangeForTests() -> (from: Int64?, cursor: Int64?) { (historyFromMs, historyCursorMs) }
+  func historyCursorForTests() -> OrderFlowHistoryCursor? { historyCursor }
 }
 
 // 测试用：看一眼最后收下的可视范围起点与用户改项（审查 P2-4 的乱序用例）。

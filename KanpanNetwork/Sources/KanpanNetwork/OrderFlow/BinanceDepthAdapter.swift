@@ -32,9 +32,14 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
     }
 
     public var sequenceModel: DepthSequenceModel { self == .spot ? .rangeOverlap : .previousFinalOverlap }
-  }
 
-  public static let snapshotLevels = 1000
+    /// REST 快照每侧要几档。现货接口最多给 5000（权重 250），合约最多 1000（权重 20）。
+    ///
+    /// 快照以外、之后又没变过的价位，增量流不会补推（币安文档原话），本地「不知道」那里有没有墙
+    /// （`LocalBook.knows`）。1000 档时 BTC 现货只盖盘口两侧约 0.3%，重连后离得远的墙全是「看不见」；
+    /// 2026-09-28 现货提到 5000，合约接口封顶 1000 只能如此。
+    public var snapshotLevels: Int { self == .spot ? 5000 : 1000 }
+  }
   /// 一条连接最多几本簿：网关中继一条最多 8 路流（`market_relay.rs` MAX_STREAMS），一本 depth + aggTrade 两路。
   public static let maxBooks = 4
   static let gatewaySnapshotPath = "/v1/market/depth"
@@ -122,7 +127,7 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
       throw FeedError.badResponse("没有这本簿")
     }
     let symbol = book.venue.instrument.uppercased()
-    let query = [URLQueryItem(name: "limit", value: String(Self.snapshotLevels)),
+    let query = [URLQueryItem(name: "limit", value: String(market.snapshotLevels)),
                  URLQueryItem(name: "symbol", value: symbol)]
     switch market {
     case .spot:
@@ -152,7 +157,8 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
     c.path = path
     c.queryItems = query
     guard let url = c.url else { throw FeedError.badResponse("行情服务暂不可用") }
-    return try Self.snapshot(try Self.body(await http.get(url, timeout: 10)), book: book)
+    return try Self.snapshot(try Self.body(await http.get(url, timeout: 10)), book: book,
+                             requestedLevels: market.snapshotLevels)
   }
 
   static func body(_ reply: HTTPReply) throws -> Data {
@@ -163,13 +169,13 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
     return reply.body
   }
 
-  static func snapshot(_ data: Data, book: DepthBook) throws -> BookSnapshot {
+  static func snapshot(_ data: Data, book: DepthBook, requestedLevels: Int) throws -> BookSnapshot {
     guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
           let last = DepthWire.integer(obj["lastUpdateId"]),
           let bids = book.levels(obj["bids"]), let asks = book.levels(obj["asks"]) else {
       throw FeedError.badResponse("深度快照格式不对")
     }
-    return BookSnapshot(lastUpdateID: last, requestedLevels: snapshotLevels, bids: bids, asks: asks,
+    return BookSnapshot(lastUpdateID: last, requestedLevels: requestedLevels, bids: bids, asks: asks,
                         eventTimeMs: DepthWire.integer(obj["E"]))
   }
 }

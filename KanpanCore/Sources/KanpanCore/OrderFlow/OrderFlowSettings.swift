@@ -217,10 +217,14 @@ public enum OrderFlowDefaults {
   public static let recentKeepMs: Int64 = 2 * 3_600_000
   /// 超额时一次删到上限的这个比例，免得每一拍都排一次序。
   public static let trimRatio = 0.9
-  /// 本机日志只存最近 24 小时、最多这么多条：更早的每次向服务端取，不落盘。
-  /// 5000 条短键 JSON 约 1 MB（单测钉着上限）；超了按留存同一个次序挑（挂着的全留）。
+  /// 本机日志只存最近 24 小时、最多这么多条：更早的每次向服务端取，不落盘；超了按留存同一个次序挑（挂着的全留）。
+  ///
+  /// 2026-09-28 从 5000 提到 2 万（= `maxEndedOrders`）：原来 ETH 一天一万二千多条，切回前台读回只剩 5000，
+  /// 服务端那一页（ETH 24 小时 1.3 MB gzip、3 万行）又得整页重取才补得回来。2 万条逐行 JSON 约 4 MB
+  /// （每条约 207 字节），release 实测挑单 0.3 ms + 手写编码 9 ms + 原子写 1.5–2.3 ms，读回 + 解码约 71 ms（只在起订时一次）；
+  /// 都在订单流 actor 上做（不占主线程），先写临时文件再改名。
   public static let journalRetentionMs: Int64 = 86_400_000
-  public static let journalMaxOrders = 5_000
+  public static let journalMaxOrders = 20_000
   /// 只看每本簿中间价两侧这么远以内的价位（10%）。更远的挂单离现价太远，不是「主力」要看的东西，
   /// 也免得几张远处的死单占着留存额度。
   public static let scanRadiusBps = 1_000.0

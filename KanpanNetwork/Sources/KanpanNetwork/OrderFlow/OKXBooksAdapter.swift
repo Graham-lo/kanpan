@@ -19,6 +19,8 @@ import KanpanCore
 ///
 /// 解码对应原项目 `bit-orderbook-okx/src/lib.rs:878 decode_depth_message`。
 public struct OKXBooksAdapter: DepthFeedAdapter {
+  /// `books` 频道每侧只维护盘口最近 400 档的滑动窗口：窗口外不推，被挤出窗口的一档推 0
+  /// （2026-09-28 实测）。快照因此标 `slidingWindow`，本地簿按「窗口最深一档以内才知道」判。
   public static let snapshotLevels = 400
   /// 一条连接最多几本（中继 MAX_OKX_SUBSCRIPTIONS = 24，一本 books + trades 两个）。
   public static let maxBooks = 12
@@ -111,7 +113,8 @@ public struct OKXBooksAdapter: DepthFeedAdapter {
       switch action {
       case "snapshot":
         return [VenueMessage(book.id, .snapshot(BookSnapshot(lastUpdateID: seq, requestedLevels: Self.snapshotLevels,
-                                                             bids: bids, asks: asks, eventTimeMs: time)))]
+                                                             bids: bids, asks: asks, eventTimeMs: time,
+                                                             slidingWindow: true)))]
       case "update":
         guard let previous = DepthWire.integer(item["prevSeqId"]) else { return [] }
         // 序号倒退：OKX 那边重置过，整本重来。

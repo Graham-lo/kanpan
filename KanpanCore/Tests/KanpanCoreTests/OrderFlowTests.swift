@@ -776,7 +776,8 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(later.orders.filter { !$0.isLive }.count, 10, "结束超过 3 天的删掉，最近那 10 条还在")
   }
 
-  /// 落盘只存最近 24 小时、最多 5000 条（挂着的全留，结束的按留存同一个次序挑）；5000 条不到 1.25 MB。
+  /// 落盘只存最近 24 小时、最多 2 万条（挂着的全留，结束的按留存同一个次序挑）。
+  /// 日志上限等于内存里结束单的上限，评估一拍内存就会先挤到九成——所以直接拿读回来、还没评估的那份挑。
   func testJournalKeepsTwentyFourHoursAndCapsTheCount() throws {
     let day: Int64 = 86_400_000
     let now = 40 * day
@@ -786,13 +787,13 @@ final class OrderFlowModelTests: XCTestCase {
       let end = now - 5 * 3_600_000
       list.append(ended(bucket: 2_000 + k, first: end - Int64(k) * 1_000, end: end))
     }
-    var model = inBand(okx, restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: now, orders: list))
-    _ = model.evaluate(nowMs: now)
-    _ = model.evaluate(nowMs: now + 500)
-    XCTAssertEqual(model.orders.count, 100 + n + 1, "内存里 3 天的都在")
+    list.append(BigOrder(venueID: okx.id, exchange: "OKX", product: .usdtPerp, side: .bid, bucket: 1_590, price: 1_590,
+                         firstSeenMs: now - 3 * day, initialNotional: 6_000_000, notional: 6_000_000, threshold: 5_000_000))
+    let model = inBand(okx, restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: now, orders: list))
+    XCTAssertEqual(model.orders.count, 100 + n + 1)
     let journal = try XCTUnwrap(model.journal(nowMs: now + 500))
     XCTAssertEqual(journal.orders.count, OrderFlowDefaults.journalMaxOrders)
-    XCTAssertEqual(journal.orders.filter(\.isLive).count, 1)
+    XCTAssertEqual(journal.orders.filter(\.isLive).count, 1, "挂着的全留（哪怕挂了 3 天）")
     XCTAssertTrue(journal.orders.allSatisfy { $0.isLive || ($0.endMs ?? 0) >= now + 500 - day }, "只存 24 小时内的")
     let shortest = journal.orders.filter { !$0.isLive }.compactMap { o in o.endMs.map { $0 - o.firstSeenMs } }.min()
     XCTAssertEqual(shortest, 51_000, "多出来的 51 条挤掉活得最短的")
@@ -822,7 +823,7 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(model.scheme?.step, 10)
   }
 
-  /// 落盘读回：步长一致才认；步长还不知道时先放着，知道了再认；日志封顶 5000 条也不到 1.25 MB。
+  /// 落盘读回：步长一致才认；步长还不知道时先放着，知道了再认；日志封顶 2 万条也不到 4.5 MB。
   func testJournalRoundTripAndDeferredRestore() throws {
     var model = inBand(okx)
     _ = model.evaluate(nowMs: 0)
@@ -852,8 +853,8 @@ final class OrderFlowModelTests: XCTestCase {
                filledNotional: 4_400_000.12, threshold: 5_000_000, vanishedNotional: 5_312_345.67)
     }
     let size = OrderFlowJournal(symbol: "BTCUSDT", step: 100, savedAtMs: 0, orders: many).encoded().count
-    // 日志封顶 5000 条（更早的每次向服务端取，不落盘），实测约 1.1 MB；15 秒最多写一次。
-    XCTAssertLessThan(size, 1_250 * 1024, "\(size) 字节")
+    // 日志封顶 2 万条（更早的向服务端取，不落盘），实测见压测报告；15 秒最多写一次。
+    XCTAssertLessThan(size, 4_500 * 1024, "\(size) 字节")
   }
 
   /// 进程重启读回来的挂单，簿一就绪就照常续上；那本簿再没出现，两分钟后按存盘时刻结束。

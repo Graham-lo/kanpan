@@ -249,4 +249,93 @@ final class OrderFlowHistoryTests: XCTestCase {
     XCTAssertEqual(model.orders.count, 51)
     XCTAssertEqual(model.orders.filter(\.isLive).count, 1)
   }
+
+  // MARK: - 日志里的服务端历史游标
+
+  private func cursor(from: Int64 = 1_000, to: Int64 = 90_000, thresholds t: OrderFlowThresholds? = nil) -> OrderFlowHistoryCursor {
+    OrderFlowHistoryCursor(fromMs: from, cursorMs: to, trackedSinceMs: -86_400_000, thresholds: t ?? thresholds)
+  }
+
+  /// 逐行日志带着游标原样读回；步长对得上、门槛不比取历史时低，模型接下日志时把游标交给 OrderFlowFeed（只给一次）。
+  func testJournalCursorRoundTripsAndIsHandedOverOnce() throws {
+    let journal = OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 100_000,
+                                   orders: [remote(first: 10_000)], history: cursor())
+    let decoded = try XCTUnwrap(OrderFlowJournal.decode(journal.encoded()))
+    XCTAssertEqual(decoded, journal)
+    XCTAssertEqual(decoded.history?.thresholds, thresholds)
+    var model = ready(restored: decoded)
+    XCTAssertEqual(model.takeRestoredHistory(), cursor())
+    XCTAssertNil(model.takeRestoredHistory(), "只给一次")
+  }
+
+  /// 游标的起点收到存盘前 24 小时（更早的没跟着落盘），终点不晚于存盘时刻。
+  func testRestoredCursorIsClampedToWhatTheJournalHolds() throws {
+    let saved: Int64 = 3 * 86_400_000
+    let journal = OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: saved, orders: [],
+                                   history: cursor(from: 0, to: saved + 5_000))
+    var model = ready(restored: journal)
+    let c = try XCTUnwrap(model.takeRestoredHistory())
+    XCTAssertEqual(c.fromMs, saved - OrderFlowDefaults.journalRetentionMs)
+    XCTAssertEqual(c.cursorMs, saved)
+  }
+
+  /// 门槛比取历史时低了（低出来那一截服务端没给过）、步长变了（日志作废）、取历史时的门槛不知道：都不接着用游标。
+  func testCursorIsDroppedWhenThresholdsLoweredOrStepChanged() {
+    var lower = thresholds
+    lower.usdtPerp = 4_000_000
+    var model = ready(restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 100_000, orders: [],
+                                                 history: cursor()), thresholds: lower)
+    XCTAssertNil(model.takeRestoredHistory(), "门槛调低了")
+
+    var higher = thresholds
+    higher.usdtPerp = 6_000_000
+    model = ready(restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 100_000, orders: [],
+                                             history: cursor()), thresholds: higher)
+    XCTAssertNotNil(model.takeRestoredHistory(), "门槛调高了：服务端给过的是它的超集，接着用")
+
+    var coarse = thresholds
+    coarse.step = 10
+    model = ready(restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 100_000, orders: [],
+                                             history: cursor()), thresholds: coarse)
+    XCTAssertNil(model.takeRestoredHistory(), "步长变了，日志整份作废")
+
+    model = ready(restored: OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 100_000, orders: [],
+                                             history: OrderFlowHistoryCursor(fromMs: 1_000, cursorMs: 90_000,
+                                                                             trackedSinceMs: nil, thresholds: nil)))
+    XCTAssertNil(model.takeRestoredHistory(), "不知道当时的门槛")
+  }
+
+  /// 第 1 版日志（整份一个对象）照读，没有游标；某一条读不懂只丢那一条。
+  func testVersionOneJournalStillReads() throws {
+    let good = #"{"v":"okx","x":"OKX","p":"usdtPerp","s":"bid","b":1590,"px":1590,"f":0,"st":"live","n0":6000000,"n":6000000,"fl":0,"t":5000000}"#
+    let bad = #"{"v":"okx","x":"OKX","p":"usdtPerp","s":"bid","b":1591,"px":1591,"f":0,"st":"exploded","n0":6000000,"n":6000000,"fl":0,"t":5000000}"#
+    let json = #"{"version":1,"symbol":"ETHUSDT","step":1,"savedAtMs":5,"orders":["# + good + "," + bad + "]}"
+    let read = try XCTUnwrap(OrderFlowJournal.read(Data(json.utf8)))
+    XCTAssertEqual(read.journal.orders.count, 1)
+    XCTAssertEqual(read.skipped, 1)
+    XCTAssertNil(read.journal.history)
+  }
+
+  /// 逐行日志：头坏了整份作废；某一行坏了（截断、乱码、字段读不懂）跳过、其余照读。
+  func testLineJournalSkipsBadLinesButNotABadHeader() throws {
+    let orders = (0..<5).map { remote(price: 1_590 - Double($0), first: Int64($0) * 1_000) }
+    let data = OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 9_000, orders: orders, history: cursor()).encoded()
+    var lines = String(decoding: data, as: UTF8.self).split(separator: "\n").map(String.init)
+    XCTAssertEqual(lines.count, 6)
+    lines[2] = String(lines[2].prefix(30))
+    lines[4] = lines[4].replacingOccurrences(of: #""s":"bid""#, with: #""s":"middle""#)
+    let read = try XCTUnwrap(OrderFlowJournal.read(Data(lines.joined(separator: "\n").utf8)))
+    XCTAssertEqual(read.journal.orders.map(\.price), [1_590, 1_588, 1_586])
+    XCTAssertEqual(read.skipped, 2)
+    XCTAssertEqual(read.journal.history, cursor())
+
+    let truncatedTail = Data(data.prefix(data.count - 7))
+    XCTAssertEqual(OrderFlowJournal.decode(truncatedTail)?.orders.count, 4, "最后一行截断：丢那一行")
+
+    var badHeader = lines
+    badHeader[0] = String(badHeader[0].dropLast(3))
+    XCTAssertNil(OrderFlowJournal.decode(Data(badHeader.joined(separator: "\n").utf8)), "头坏了整份作废")
+    XCTAssertNil(OrderFlowJournal.decode(Data()))
+    XCTAssertNil(OrderFlowJournal.decode(Data("{}".utf8)))
+  }
 }

@@ -46,10 +46,15 @@ public struct BookSnapshot: Sendable, Equatable {
   public var eventTimeMs: Int64?
   /// 连接代号，由订单流模型在收下时盖上；旧连接的迟到包据此挡掉。
   public var connection: Int
+  /// 交易所只维护盘口最近 `requestedLevels` 档的一个滑动窗口（OKX `books` 400 档）：窗口以外的价位
+  /// 永远不推；某一档被挤出窗口时推一个 0——和真撤单长得一样。本地簿据此改用「窗口最深一档以内才知道」
+  /// （见 `LocalBook.knows`），也不裁远处（表本来就封顶这么多档）。
+  public var slidingWindow: Bool
   public init(lastUpdateID: Int64, requestedLevels: Int, bids: [BookLevel], asks: [BookLevel],
-              eventTimeMs: Int64? = nil, connection: Int = 0) {
+              eventTimeMs: Int64? = nil, connection: Int = 0, slidingWindow: Bool = false) {
     self.lastUpdateID = lastUpdateID; self.requestedLevels = requestedLevels
     self.bids = bids; self.asks = asks; self.eventTimeMs = eventTimeMs; self.connection = connection
+    self.slidingWindow = slidingWindow
   }
 }
 
@@ -111,7 +116,7 @@ public enum BootstrapOutcome: Sendable, Equatable {
 
 public enum ApplyOutcome: Sendable, Equatable { case applied, duplicateIgnored }
 
-/// 一侧的价位表，顺手缓存最优价：只有删掉的正是最优价那一档时才整表重算，别的增删都是 O(1)。
+/// 一侧的价位表，顺手缓存最优价与最深价：只有删掉的正是那一档时才（下次要用时）整表重算，别的增删都是 O(1)。
 struct BookSideLevels: Sendable {
   let isBid: Bool
   private(set) var levels: [Double: Double] = [:]
@@ -124,15 +129,32 @@ struct BookSideLevels: Sendable {
   private(set) var touched: Set<Double> = []
   private var best: Double?
   private var bestStale = false
+  /// 离盘口最远的一档（买最低、卖最高）：滑动窗口的簿拿它当「知道」的边界。只有滑动窗口的簿记
+  /// （`tracksWorst`）——别的簿用不着，每条增量省一次比较。
+  private var worst: Double?
+  private var worstStale = false
+  var tracksWorst = false {
+    didSet { if tracksWorst != oldValue { worst = nil; worstStale = tracksWorst } }
+  }
 
   init(isBid: Bool) { self.isBid = isBid }
 
   mutating func set(_ price: Double, _ quantity: Double) {
     if quantity == 0 {
-      if levels.removeValue(forKey: price) != nil, price == best { bestStale = true }
+      if levels.removeValue(forKey: price) != nil {
+        if price == best { bestStale = true }
+        if price == worst { worstStale = true }
+      }
       return
     }
     levels[price] = quantity
+    if tracksWorst, !worstStale {
+      if let current = worst {
+        if isBid ? price < current : price > current { worst = price }
+      } else {
+        worst = price
+      }
+    }
     if bestStale { return }
     if let current = best {
       if isBid ? price > current : price < current { best = price }
@@ -154,11 +176,23 @@ struct BookSideLevels: Sendable {
 
   mutating func removeAll() {
     levels.removeAll(keepingCapacity: true); touched.removeAll(); best = nil; bestStale = false
+    worst = nil; worstStale = false  // 空表：最深价就是没有（`tracksWorst` 不变）
   }
 
-  /// 一批不是最优价的价位整批删掉（裁远处用）。最优价不在里面，缓存不用动。
+  /// 一批不是最优价的价位整批删掉（裁远处用）。最优价不在里面，最优价缓存不用动；最深价多半在里面。
   mutating func remove(_ prices: [Double]) {
+    guard !prices.isEmpty else { return }
     for price in prices { levels.removeValue(forKey: price); touched.remove(price) }
+    if tracksWorst { worstStale = true }
+  }
+
+  mutating func worstPrice() -> Double? {
+    guard tracksWorst else { return isBid ? levels.keys.min() : levels.keys.max() }
+    if worstStale {
+      worst = isBid ? levels.keys.min() : levels.keys.max()
+      worstStale = false
+    }
+    return worst
   }
 
   mutating func bestPrice() -> Double? {
@@ -191,6 +225,12 @@ public struct LocalBook: Sendable {
   public var retainBps: Double?
   /// 上一次裁剪时算出来的保留区间（含两侧最优价）。增量里落在区间外的新价位不收，删单照删。
   private var retained: (floor: Double, ceiling: Double)?
+  /// 这条连接上保留区间到过的最高下沿 / 最低上沿：裁掉过、或拒收过的价位都在它外面，
+  /// 那里「表里没有」不等于没有（见 `knows`）。重新同步清掉。
+  private var trimmedBidFloor: Double?
+  private var trimmedAskCeiling: Double?
+  /// 快照是交易所的滑动窗口（见 `BookSnapshot.slidingWindow`）。
+  public private(set) var slidingWindow = false
 
   public init(sequenceModel: DepthSequenceModel, connection: Int = 0) {
     self.sequenceModel = sequenceModel
@@ -216,8 +256,10 @@ public struct LocalBook: Sendable {
       try failSequence(.invalidSnapshotCoverage)
     }
     coverage = Self.coverage(of: snapshot)
+    slidingWindow = snapshot.slidingWindow
     bids.removeAll(); asks.removeAll()
-    retained = nil
+    bids.tracksWorst = slidingWindow; asks.tracksWorst = slidingWindow
+    retained = nil; trimmedBidFloor = nil; trimmedAskCeiling = nil
     Self.write(snapshot.bids, into: &bids)
     Self.write(snapshot.asks, into: &asks)
     sourceEventTimeMs = snapshot.eventTimeMs
@@ -302,6 +344,8 @@ public struct LocalBook: Sendable {
     }
     beginResync(connection: snapshot.connection)
     coverage = Self.coverage(of: snapshot)
+    slidingWindow = snapshot.slidingWindow
+    bids.tracksWorst = slidingWindow; asks.tracksWorst = slidingWindow
     Self.write(snapshot.bids, into: &bids)
     Self.write(snapshot.asks, into: &asks)
     lastUpdateID = snapshot.lastUpdateID
@@ -319,7 +363,7 @@ public struct LocalBook: Sendable {
     quality = .resyncing
     lastUpdateID = nil
     bids.removeAll(); asks.removeAll()
-    retained = nil
+    retained = nil; trimmedBidFloor = nil; trimmedAskCeiling = nil
     coverage = BookCoverage()
     sourceEventTimeMs = nil
   }
@@ -335,7 +379,7 @@ public struct LocalBook: Sendable {
     quality = .gapped
     lastUpdateID = nil
     bids.removeAll(); asks.removeAll()
-    retained = nil
+    retained = nil; trimmedBidFloor = nil; trimmedAskCeiling = nil
     coverage = BookCoverage()
     sourceEventTimeMs = nil
     lastError = error
@@ -404,6 +448,7 @@ public struct LocalBook: Sendable {
     if let keep {
       bids.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
       asks.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
+      noteRetained(keep)
     }
     retained = keep
     return mid
@@ -424,10 +469,10 @@ public struct LocalBook: Sendable {
   private mutating func applyLevels(_ delta: BookDelta) {
     Self.write(delta.bids, into: &bids, within: retained)
     Self.write(delta.asks, into: &asks, within: retained)
-    if bidsLimited, let floor = coverage.bidFloor {
+    if !slidingWindow, let floor = knownBidFloor {
       Self.noteBeyondCoverage(delta.bids, into: &bids, beyond: { $0 < floor }, within: retained)
     }
-    if asksLimited, let ceiling = coverage.askCeiling {
+    if !slidingWindow, let ceiling = knownAskCeiling {
       Self.noteBeyondCoverage(delta.asks, into: &asks, beyond: { $0 > ceiling }, within: retained)
     }
     sourceEventTimeMs = delta.eventTimeMs
@@ -437,19 +482,53 @@ public struct LocalBook: Sendable {
   private var bidsLimited: Bool { coverage.requestedLevels > 0 && coverage.snapshotBidLevels >= coverage.requestedLevels }
   private var asksLimited: Bool { coverage.requestedLevels > 0 && coverage.snapshotAskLevels >= coverage.requestedLevels }
 
-  /// 这一档本地知不知道。快照被截断时（币安 REST 只给 1000 档，BTC 现货合起来才盘口两侧 0.3%），
-  /// 快照最远一档以外的价位本地并不知道有没有——只有增量推来、还在表里的，或推成 0、在保留区间以内的才知道
-  /// （推来的正数在保留区间外被拒收，仍是不知道）；
-  /// 覆盖范围以内「表里没有」就是没有。快照完整（回的档数不到要的数、或流里整本推来）整侧都知道。
+  /// 「表里没有就是没有」的边界：快照被截断时是快照最远一档，裁过远处时是保留区间到过的最高下沿，两者取近的。
+  /// nil 表示整侧都知道。
+  private var knownBidFloor: Double? {
+    let snapshot = bidsLimited ? coverage.bidFloor : nil
+    switch (snapshot, trimmedBidFloor) {
+    case let (a?, b?): return max(a, b)
+    case let (a, b): return a ?? b
+    }
+  }
+  private var knownAskCeiling: Double? {
+    let snapshot = asksLimited ? coverage.askCeiling : nil
+    switch (snapshot, trimmedAskCeiling) {
+    case let (a?, b?): return min(a, b)
+    case let (a, b): return a ?? b
+    }
+  }
+
+  /// 这一档本地知不知道。O(1)（滑动窗口的最深价缓存失效时整侧重算一次，均摊下来也是常数）。
+  ///
+  /// - 快照被截断时（币安合约 REST 只给 1000 档、现货 5000 档），快照最远一档以外的价位本地并不知道有没有——
+  ///   只有增量推来、还在表里的，或推成 0、在保留区间以内的才知道（推来的正数在保留区间外被拒收，仍是不知道）；
+  ///   覆盖范围以内「表里没有」就是没有。快照完整（回的档数不到要的数、或流里整本推来）整侧都知道。
+  /// - 裁过远处的簿：保留区间到过的最高下沿以外同理（裁掉的、拒收的都在那外面）。
+  /// - 滑动窗口（OKX 400 档）：表满了（到窗口档数）时只有窗口最深一档以内知道。价位被挤出窗口推的是 0，
+  ///   表里删掉以后它落在新的最深一档外面，读成「不知道」；真撤掉最深那一档时第 401 档会补进来、落在它更深处，
+  ///   撤掉的那一档仍在窗口内，读成「没了」。表不满说明整本簿都在窗口里，整侧都知道。
+  ///
   /// 主力订单流靠它区分「墙没了」和「墙在快照盖不到的地方」：重启后读回来的、离盘口 2%–10% 的单
   /// 不能因为新快照没盖到就判成撤单。
-  public func knows(_ side: BookSide, price: Double) -> Bool {
+  public mutating func knows(_ side: BookSide, price: Double) -> Bool {
+    if slidingWindow {
+      let window = coverage.requestedLevels
+      switch side {
+      case .bid:
+        guard window > 0, bids.levels.count >= window, let deepest = bids.worstPrice() else { return true }
+        return price >= deepest
+      case .ask:
+        guard window > 0, asks.levels.count >= window, let deepest = asks.worstPrice() else { return true }
+        return price <= deepest
+      }
+    }
     switch side {
     case .bid:
-      guard bidsLimited, let floor = coverage.bidFloor else { return true }
+      guard let floor = knownBidFloor else { return true }
       return price >= floor || bids.levels[price] != nil || bids.touched.contains(price)
     case .ask:
-      guard asksLimited, let ceiling = coverage.askCeiling else { return true }
+      guard let ceiling = knownAskCeiling else { return true }
       return price <= ceiling || asks.levels[price] != nil || asks.touched.contains(price)
     }
   }
@@ -480,7 +559,8 @@ public struct LocalBook: Sendable {
 
   /// 按这一刻的中间价算保留区间；两侧最优价永远在区间里（价差大得离谱时也不裁掉最优价）。
   private func retainedBand(mid: Double, bestBid: Double, bestAsk: Double) -> (floor: Double, ceiling: Double)? {
-    guard let bps = retainBps, bps.isFinite, bps > 0 else { return nil }
+    // 滑动窗口的簿本来就封顶窗口档数，不裁：裁了表就不是窗口，「最深一档」这条边界失效。
+    guard !slidingWindow, let bps = retainBps, bps.isFinite, bps > 0 else { return nil }
     let fraction = bps / 10_000
     return (min(mid * (1 - fraction), bestBid), max(mid * (1 + fraction), bestAsk))
   }
@@ -493,7 +573,14 @@ public struct LocalBook: Sendable {
     asks.remove(asks.levels.keys.filter { $0 > keep.ceiling })
     bids.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
     asks.pruneTouched(keepingFrom: keep.floor, to: keep.ceiling)
+    noteRetained(keep)
     retained = keep
+  }
+
+  /// 保留区间挪到哪儿，「知道」的边界就至少收到哪儿（只收不放，重新同步才清）。
+  private mutating func noteRetained(_ keep: (floor: Double, ceiling: Double)) {
+    trimmedBidFloor = max(trimmedBidFloor ?? keep.floor, keep.floor)
+    trimmedAskCeiling = min(trimmedAskCeiling ?? keep.ceiling, keep.ceiling)
   }
 
   private mutating func validateNotCrossed() throws(BookError) {
