@@ -306,7 +306,7 @@ struct PriceRow: View {
       }
       statColumn {
         statRow("额", turnoverText, id: "top.turnover", term: .turnover)
-        statRow("费率", fundingText, id: "top.funding", tint: frTint, term: .fundingRate)
+        statRow("费率", fundingText, id: "top.funding", tint: frTint)
         if let cell = valuationCell {
           statRow(cell.label, cell.value, id: "top.valuation", term: Self.valuationTerm(cell.label))
         }
@@ -333,7 +333,7 @@ struct PriceRow: View {
   /// 倒计时独立刷新，缺数与其它格一样显示破折号。
   private var settlementRow: some View {
     GridRow {
-      statLabel("结算", term: .settlement)
+      statLabel("结算")
       TimelineView(.periodic(from: .now, by: 30)) { context in
         statValue(countdownText(now: context.date) ?? "—",
                   missing: countdownText(now: context.date) == nil, id: "top.settlement")

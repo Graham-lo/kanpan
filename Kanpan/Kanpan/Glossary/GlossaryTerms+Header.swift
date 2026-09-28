@@ -1,6 +1,7 @@
 import Foundation
 
-// 行情页头部右侧六格的解释（`PriceRow.stats`）。「市值」一看就懂，不挂问号。
+// 行情页头部右侧六格的解释（`PriceRow.stats`）。「市值 / 费率 / 结算」交易员一看就懂，不挂问号
+// （2026-09-28 用户：「费率，结算没必要加问号啊，很明显啊」）。
 extension GlossaryTerm {
   static let openInterest = GlossaryTerm(
     id: "openInterest",
@@ -12,15 +13,7 @@ extension GlossaryTerm {
     title: "额 · 24 小时成交额",
     body: "过去 24 小时里这只一共成交了多少美元。\n数越大，交易越活跃，买卖越容易成交。")
 
-  static let fundingRate = GlossaryTerm(
-    id: "fundingRate",
-    title: "费率 · 资金费率",
-    body: "永续合约里多空双方定期互相支付的一笔费用。\n正数是做多的付给做空的，说明看涨的人更多；负数则反过来。")
 
-  static let settlement = GlossaryTerm(
-    id: "settlement",
-    title: "结算 · 距下次收费",
-    body: "离下一次收取资金费还有多久。\n到点时手里还拿着仓位，就会按当时的费率付钱或收钱。")
 
   static let oiToMarketCap = GlossaryTerm(
     id: "oiToMarketCap",

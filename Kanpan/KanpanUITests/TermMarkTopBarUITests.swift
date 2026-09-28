@@ -4,7 +4,7 @@ import XCTest
 //
 // 这一轮五件事人眼能看见的那一半：
 // 1. 顶栏右侧三颗圆片「记一笔 · 分享 · 搜索」，图表设置里「这张图」整节没了；
-// 2. 六格里「仓 / 额 / 费率 / 结算 / 估值」后面各一颗问号，点开屏幕正中一张解释卡，
+// 2. 六格里「仓 / 额 / 估值」后面各一颗问号（费率、结算、市值一看就懂，不挂），点开屏幕正中一张解释卡，
 //    「知道了」和点遮罩都能关；从半屏面板（系统 sheet）里点开时卡片照样落在最上层；
 //    从问号上起手横滑仍然换品种（不吞扫图）；
 // 3. 断网之后价格与涨跌变灰，网回来恢复（`market.quote` 诊断串里的 `fresh=`）；
@@ -118,11 +118,13 @@ final class TermMarkTopBarUITests: KanpanUICase {
     XCTAssertEqual(note.frame.midY, search.frame.midY, accuracy: 1, "三颗不在一条线上")
     XCTAssertLessThan(app.symbolLabel.frame.maxX, note.frame.minX, "品种名压到了「记一笔」上")
 
-    // 六格：仓 · 额 · 费率 · 结算 · 估值（BTC 是 OI/MC）各一颗问号，市值不挂。
-    for term in ["openInterest", "turnover", "fundingRate", "settlement", "oiToMarketCap"] {
+    // 六格：仓 · 额 · 估值（BTC 是 OI/MC）各一颗问号；市值、费率、结算一看就懂，不挂。
+    for term in ["openInterest", "turnover", "oiToMarketCap"] {
       XCTAssertTrue(any("term." + term).waitForExistence(timeout: Self.long), "六格里没有 term.\(term)")
     }
-    XCTAssertFalse(any("term.marketCap").exists, "「市值」不该挂问号")
+    for term in ["marketCap", "fundingRate", "settlement"] {
+      XCTAssertFalse(any("term." + term).exists, "term.\(term) 不该挂问号")
+    }
     // 不换行：量的是值文字本身（`top.stats` 这个容器的无障碍框会被问号 32pt 的命中框撑出去，
     // 那不是排版）。每格一行（< 20pt），首行「仓」顶到末行「结算」底三行不超过 50pt（原排版约 47）。
     let rows = ["top.openInterest", "top.turnover", "top.marketCap", "top.funding", "top.settlement", "top.valuation"]
@@ -146,7 +148,7 @@ final class TermMarkTopBarUITests: KanpanUICase {
     closeCardWithOK()
 
     // 点遮罩也能关（卡片外的上方空处）。
-    openCard("fundingRate", titleContains: "资金费率")
+    openCard("oiToMarketCap", titleContains: "持仓÷市值")
     app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
     XCTAssertTrue(card.waitForNonExistence(timeout: Self.short), "点遮罩卡片没关")
 
@@ -184,8 +186,8 @@ final class TermMarkTopBarUITests: KanpanUICase {
     // 陶土、经典各看一眼卡片。
     for (skin, label) in [("terra", "陶土浅"), ("classic", "经典浅")] {
       setSkin(skin)
-      openCard("settlement", titleContains: "结算")
-      shot("\(label)-术语卡-结算")
+      openCard("turnover", titleContains: "成交额")
+      shot("\(label)-术语卡-额")
       closeCardWithOK()
     }
   }
