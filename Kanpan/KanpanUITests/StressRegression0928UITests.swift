@@ -362,28 +362,42 @@ final class StressRegression0928UITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["subs"] as? [String])?.contains("RSI") == true },
                   "RSI 没上图：\(chartInfo()["subs"] ?? "?")")
     XCTAssertLessThanOrEqual((chartInfo()["subs"] as? [String])?.count ?? 0, 3, "副图超过三个")
+    phase("开 RSI")
 
-    XCTAssertTrue(app.enterDrawingInPortrait(), "进不了竖屏画线")
+    // 拆成四段记卡顿（2026-09-28 走查两轮这一段各出过一次 >250 ms）。
+    app.tapDrawEntry()
+    XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: 15), "点画线没进横屏工作台")
+    RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+    phase("画线·进横屏")
+    app.rotateDrawingToPortraitByHand()
+    XCTAssertTrue(app.buttons[Ids.drawFinish].waitForExistence(timeout: 15), "转回竖屏没到画线栏")
+    RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+    phase("画线·手动转回竖屏")
     let before = chartInfo()["drawingCount"] as? Int ?? 0
     app.buttons[Ids.drawTrend].tap()
     canvasPoint(100, 60).tap(); canvasPoint(240, 120).tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["drawingCount"] as? Int ?? 0) == before + 1 },
                   "趋势线没画上：\(before) → \(chartInfo()["drawingCount"] ?? "?")")
+    phase("画线·画一条趋势线")
     app.buttons[Ids.drawFinish].tap()
     XCTAssertTrue(app.buttons[Ids.drawFinish].waitForNonExistence(timeout: Self.short), "画完退不出画线态")
+    RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+    phase("画线·完成")
 
     XCTAssertTrue(app.openIndicatorPage(), "分析面板第二次没开出来")
     let flow = app.buttons["indicator.switch.ORDERFLOW"]
     for _ in 0..<6 where !(flow.exists && flow.isHittable && scroll.frame.contains(flow.frame)) { scroll.swipeUp() }
     XCTAssertTrue(flow.exists, "分析面板里没有主力订单流开关")
+    phase("第二次开分析面板")
     flow.tap()
+    phase("点开主力订单流")
     app.closeOpenPanel()
     XCTAssertTrue(waitUntil(timeout: 60) { (self.chartInfo()["orderFlowPhase"] as? String) == "ready" },
                   "主力订单流没到 ready：\(chartInfo()["orderFlowPhase"] ?? "?")")
     note("订单流 ready 大单=\(chartInfo()["orderFlowOrders"] ?? 0)")
     shot("走查-BTC-RSI-趋势线-订单流")
 
-    phase("分析面板·画线·订单流")
+    phase("主力订单流到 ready")
     // 价格提醒（没登录）。
     XCTAssertTrue(openNewAlertFromChart(), "十字线上的「创建提醒」没开出创建页")
     createAlert("BTC 价格提醒")
@@ -576,6 +590,37 @@ final class StressRegression0928UITests: KanpanUICase {
   // ------------------------------------------------------------ 2. 高频
 
   /// 30 只 × 3 个周期：顶栏横滑换品种，每只上点三档周期，最后停下来看图是否自洽。
+  /// 画线进出 6 轮（点画线进横屏 → 立刻手动转回竖屏 → 完成），每一步单记卡顿：
+  /// 走查里「竖屏画趋势线」那一段两轮各出过一次 300 ms 级的卡，拆开后看是不是只在首次。
+  func testDrawEntryRoundTripsHangs() throws {
+    XCTAssertTrue(waitForLiveChart(), "图没活")
+    // 外面若有采样脚本（sample 主线程栈）就等它挂上：留个记号、停 3 秒。
+    let marker = URL(fileURLWithPath: "/tmp/kanpan-stress-0928/draw-start")
+    try? "go".write(to: marker, atomically: true, encoding: .utf8)
+    RunLoop.current.run(until: Date().addingTimeInterval(3))
+    defer { try? FileManager.default.removeItem(at: marker) }
+    var worst: [String: Int] = [:]
+    for round in 0..<6 {
+      var mark = hangs()
+      func step(_ name: String) {
+        let over = reportHangs("画线进出#\(round) \(name)", since: mark)
+        let after = hangs(); let n = max(0, after.count - mark.count)
+        worst[name] = max(worst[name] ?? 0, after.recent.suffix(n).max() ?? 0)
+        _ = over; mark = hangs()
+      }
+      app.tapDrawEntry()
+      XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: 15), "#\(round) 没进横屏")
+      step("进横屏")
+      app.rotateDrawingToPortraitByHand()
+      XCTAssertTrue(app.buttons[Ids.drawFinish].waitForExistence(timeout: 15), "#\(round) 转回竖屏没到画线栏")
+      step("转回竖屏")
+      app.buttons[Ids.drawFinish].tap()
+      XCTAssertTrue(app.buttons[Ids.drawFinish].waitForNonExistence(timeout: Self.short), "#\(round) 退不出画线态")
+      step("完成")
+    }
+    note("画线进出 6 轮 各步最坏：\(worst.sorted { $0.key < $1.key })")
+  }
+
   func testChurnThirtySymbolsTimesThreeIntervals() throws {
     executionTimeAllowance = 1200
     XCTAssertTrue(app.openFavorites())
@@ -605,10 +650,8 @@ final class StressRegression0928UITests: KanpanUICase {
   /// 外面的采样脚本（ps 采内存 + xctrace）看到记号就挂上这只进程，采满 5 分钟。
   func testSoakFiveMinutes() throws {
     executionTimeAllowance = 900
-    XCTAssertTrue(app.openFavorites())
-    let first = app.buttons["favorites.open." + testInstrumentKey(Self.top200[0])]
-    XCTAssertTrue(first.waitForExistence(timeout: Self.long)); first.tap()
-    XCTAssertTrue(waitForLiveChart(), "BTC 没活")
+    // 干净装机（ui-test.sh 先卸载）就从出厂那只起步，不依赖规模用例留下的 200 只自选。
+    XCTAssertTrue(waitForLiveChart(), "出厂那只没活")
     let h0 = hangs()
     let marker = URL(fileURLWithPath: "/tmp/kanpan-stress-0928/soak-start")
     try? "\(Date().timeIntervalSince1970)".write(to: marker, atomically: true, encoding: .utf8)

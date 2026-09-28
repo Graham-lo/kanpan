@@ -1,0 +1,140 @@
+# sample <Kanpan pid> 12s，testDrawEntryRoundTripsHangs 第 2 轮跑时采（主线程调用树前 120 行 + 旋转分支）
+Analysis of sampling Kanpan (pid 7080) every 1 millisecond
+Process:         Kanpan [7080]
+Path:            /Users/USER/Library/Developer/CoreSimulator/Devices/D6C41248-C78E-46B8-B391-311F373D24A8/data/Containers/Bundle/Application/4724E559-82B3-4FB5-B963-C9B70C53A7E2/Kanpan.app/Kanpan
+Load Address:    0x104048000
+Identifier:      com.yj27y32.hkline
+Version:         1.0.0 (1)
+Code Type:       ARM64
+Platform:        iOS Simulator
+Parent Process:  launchd_sim [6609]
+Target Type:     live task
+
+Date/Time:       2026-09-28 12:19:30.312 +0800
+Launch Time:     2026-09-28 12:19:19.496 +0800
+OS Version:      macOS 26.5.1 (25F80)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         113.9M
+Physical footprint (peak):  136.6M
+Idle exit:                  untracked
+----
+
+Call graph:
+    8343 Thread_22480373: Main Thread   DispatchQueue_<multiple>
+    + 8318 start  (in dyld) + 6992  [0x1042cfe00]
+    + ! 8318 start_sim  (in dyld_sim) + 20  [0x1041030e4]
+    + !   8318 __debug_main_executable_dylib_entry_point  (in Kanpan.debug.dylib) + 12  [0x10b689250]  KanpanApp.swift:0
+    + !     8318 static KanpanApp.$main()  (in Kanpan.debug.dylib) + 40  [0x10b6891a4]  /<compiler-generated>:0
+    + !       8318 static App.main()  (in SwiftUI) + 148  [0x1d2c5f094]
+    + !         8318 runApp<A>(_:)  (in SwiftUI) + 180  [0x1d2ecdd18]
+    + !           8318 closure #1 in KitRendererCommon(_:)  (in SwiftUI) + 164  [0x1d2ecdfa4]
+    + !             8318 UIApplicationMain  (in UIKitCore) + 120  [0x186b9f910]
+    + !               8318 -[UIApplication _run]  (in UIKitCore) + 776  [0x1864a54cc]
+    + !                 8318 GSEventRunModal  (in GraphicsServices) + 116  [0x1933599c0]
+    + !                   8318 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 496  [0x18041c904]
+    + !                     5942 __CFRunLoopRun  (in CoreFoundation) + 1128  [0x180421978]
+    + !                     : 5942 __CFRunLoopServiceMachPort  (in CoreFoundation) + 156  [0x1804227c0]
+    + !                     :   5942 mach_msg  (in libsystem_kernel.dylib) + 20  [0x104060ef0]
+    + !                     :     5942 mach_msg_overwrite  (in libsystem_kernel.dylib) + 484  [0x104068c44]
+    + !                     :       5942 mach_msg2_internal  (in libsystem_kernel.dylib) + 72  [0x104071e5c]
+    + !                     :         5942 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x104060b70]
+    + !                     1102 __CFRunLoopRun  (in CoreFoundation) + 2100  [0x180421d44]
+    + !                     : 1102 __CFRunLoopDoSource1  (in CoreFoundation) + 476  [0x180422c78]
+    + !                     :   1102 __CFRUNLOOP_IS_CALLING_OUT_TO_A_SOURCE1_PERFORM_FUNCTION__  (in CoreFoundation) + 56  [0x180423628]
+    + !                     :     1101 __CFMachPortPerform  (in CoreFoundation) + 164  [0x1803e6c50]
+    + !                     :     | 1098 UC::DriverCore::continueProcessing()  (in UpdateCycle) + 80  [0x2343d22c0]
+    + !                     :     | + 1087 schedulerStepScheduledMainSectionContinue  (in UIKitCore) + 56  [0x1863b6064]
+    + !                     :     | + ! 1086 _UIUpdateSequenceRunNext  (in UIKitCore) + 120  [0x18590339c]
+    + !                     :     | + ! : 833 __setupUpdateSequence_block_invoke_2  (in UIKitCore) + 372  [0x1863b5c0c]
+    + !                     :     | + ! : | 780 _UIApplicationFlushCATransaction  (in UIKitCore) + 48  [0x1864a3b50]
+    + !                     :     | + ! : | + 780 CA::Transaction::flush_as_runloop_observer(bool)  (in QuartzCore) + 68  [0x18cefa1a4]
+    + !                     :     | + ! : | +   775 CA::Transaction::commit()  (in QuartzCore) + 632  [0x18cef88f0]
+    + !                     :     | + ! : | +   ! 591 CA::Context::commit_transaction(CA::Transaction*, double, double*)  (in QuartzCore) + 560  [0x18cecacc8]
+    + !                     :     | + ! : | +   ! : 526 CA::Layer::layout_and_display_if_needed(CA::Transaction*)  (in QuartzCore) + 464  [0x18cfb2aac]
+    + !                     :     | + ! : | +   ! : | 519 -[CALayer _display]  (in QuartzCore) + 1648  [0x18cf9e8e4]
+    + !                     :     | + ! : | +   ! : | + 519 invocation function for block in CA::Layer::display_()  (in QuartzCore) + 60  [0x18cfa9280]
+    + !                     :     | + ! : | +   ! : | +   481 CABackingStoreUpdate_  (in QuartzCore) + 672  [0x18cdfee0c]
+    + !                     :     | + ! : | +   ! : | +   ! 344 @objc CanvasLayer.draw(in:)  (in Kanpan.debug.dylib) + 68  [0x10c3070d0]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! : 344 CanvasLayer.draw(in:)  (in Kanpan.debug.dylib) + 568  [0x10c306c30]  ChartView.swift:829
+    + !                     :     | + ! : | +   ! : | +   ! :   344 static MainActor.assumeIsolated<A>(_:file:line:)  (in Kanpan.debug.dylib) + 420  [0x10c306fc8]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :     344 closure #1 in static MainActor.assumeIsolated<A>(_:file:line:)  (in Kanpan.debug.dylib) + 28  [0x10c3093f8]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :       344 partial apply for thunk for @callee_guaranteed () -> (@out A, @error @owned Error)  (in Kanpan.debug.dylib) + 40  [0x10c3093cc]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :         344 thunk for @callee_guaranteed () -> (@out A, @error @owned Error)  (in Kanpan.debug.dylib) + 24  [0x10c309330]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :           344 partial apply for closure #1 in CanvasLayer.draw(in:)  (in Kanpan.debug.dylib) + 44  [0x10c30838c]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :             344 closure #1 in CanvasLayer.draw(in:)  (in Kanpan.debug.dylib) + 300  [0x10c306dec]  ChartView.swift:830
+    + !                     :     | + ! : | +   ! : | +   ! :               252 ChartView.render(_:in:size:scale:)  (in Kanpan.debug.dylib) + 384  [0x10c301350]  ChartView.swift:737
+    + !                     :     | + ! : | +   ! : | +   ! :               | 252 ChartRenderer.drawPlot(in:size:scale:)  (in Kanpan.debug.dylib) + 76  [0x10c2554f0]  ChartRenderer+Layers.swift:21
+    + !                     :     | + ! : | +   ! : | +   ! :               |   135 ChartRenderer.draw(in:size:scale:live:legend:)  (in Kanpan.debug.dylib) + 1808  [0x10c2898b0]  ChartRenderer.swift:403
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + 66 ChartRenderer.drawSub(_:pane:L:scale:legend:)  (in Kanpan.debug.dylib) + 900  [0x10c26efc0]  ChartRenderer+Sub.swift:31
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! 50 ChartRenderer.subVol(_:_:_:_:_:_:)  (in Kanpan.debug.dylib) + 2632  [0x10c26fbf4]  ChartRenderer+Sub.swift:180
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : 21 ChartRenderer.poly(_:_:_:_:_:_:_:_:width:)  (in Kanpan.debug.dylib) + 1056  [0x10c2783fc]  ChartRenderer+Sub.swift:128
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | 21 CGContextDrawPath  (in CoreGraphics) + 328  [0x18d410744]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   18 ripc_DrawPath  (in CoreGraphics) + 484  [0x18d3ff9f0]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + 14 ripc_Render  (in CoreGraphics) + 328  [0x18d3fdbe8]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + ! 14 RIPRenderCoverage  (in CoreGraphics) + 2072  [0x18d4b9e08]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !   11 aa_render  (in CoreGraphics) + 2104,1376,...  [0x18d46404c,0x18d463d74,...]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !   2 aa_render  (in CoreGraphics) + 2596  [0x18d464238]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !   : 1 aa_ael_insert  (in CoreGraphics) + 752  [0x18d465074]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !   : | 1 aa_ael_insert  (in CoreGraphics) + 752  [0x18d465074]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !   : |   1 aa_intersection_event  (in CoreGraphics) + 112  [0x18d465108]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !   : 1 aa_ael_insert  (in CoreGraphics) + 644  [0x18d465008]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !   1 aa_render  (in CoreGraphics) + 2300  [0x18d464110]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + !     1 aa_ael_remove  (in CoreGraphics) + 20  [0x18d4652f8]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   + 4 ripc_Render  (in CoreGraphics) + 544  [0x18d3fdcc0]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   +   4 RIPLayerBltShape  (in CoreGraphics) + 1052  [0x18d4cd958]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   +     4 argb32_mark  (in CoreGraphics) + 264  [0x18d41c034]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   +       4 CGSColorMaskCopyARGB8888  (in CoreGraphics) + 396,388,...  [0x18d383f5c,0x18d383f54,...]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |   3 ripc_DrawPath  (in CoreGraphics) + 460  [0x18d3ff9d8]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     2 RIPRenderPath  (in CoreGraphics) + 144  [0x18d4bae74]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     ! 2 CGPathApply  (in CoreGraphics) + 152  [0x18d4bbed8]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !   2 CG::Path::apply(void (CGPathElementType, CGPoint const*, bool*) block_pointer) const  (in CoreGraphics) + 180  [0x18d3f31bc]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !     2 __CGPathApply_block_invoke  (in CoreGraphics) + 52  [0x18d4bbf20]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !       2 ripr_path_stroke  (in CoreGraphics) + 312  [0x18d4bb018]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !         2 (anonymous namespace)::iterate(void*, CGPathElementType, CGPoint const*, path_iterator*)  (in CoreGraphics) + 304  [0x18d39fcd8]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !           1 CG::stroker::add_line_segment(CG::Point const&, CG::Point const&)  (in CoreGraphics) + 272  [0x18d39da20]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !           : 1 CG::stroker::add_join(CG::Point const&, CG::Vector const&, CG::Vector const&)  (in CoreGraphics) + 1492  [0x18d39e0d4]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !           :   1 aa_lineto  (in CoreGraphics) + 0  [0x18d462b24]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !           1 CG::stroker::add_line_segment(CG::Point const&, CG::Point const&)  (in CoreGraphics) + 396  [0x18d39da9c]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !             1 CG::stroker::push_opposite_element(CGPathElementType, CG::Point const&)  (in CoreGraphics) + 292  [0x18d39e268]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     !               1 _xzm_free  (in libsystem_malloc.dylib) + 984  [0x1801ea7e8]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |     1 RIPRenderPath  (in CoreGraphics) + 164  [0x18d4bae88]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |       1 (anonymous namespace)::end(void*, path_iterator*)  (in CoreGraphics) + 40  [0x18d39fec4]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |         1 CG::stroker::end_contour()  (in CoreGraphics) + 96  [0x18d39d1ac]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |           1 CG::stroker::unroll_path()  (in CoreGraphics) + 112  [0x18d39d88c]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |             1 aa_lineto  (in CoreGraphics) + 388  [0x18d462ca8]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : |               1 aa_add_edges  (in CoreGraphics) + 316  [0x18d462858]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : 18 ChartRenderer.poly(_:_:_:_:_:_:_:_:width:)  (in Kanpan.debug.dylib) + 940  [0x10c278388]  ChartRenderer+Sub.swift:125
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | 12 ChartRenderer.subY(_:_:_:)  (in Kanpan.debug.dylib) + 316  [0x10c277b8c]  ChartRenderer+Sub.swift:109
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + 11 Optional.map<A, B>(_:)  (in Kanpan.debug.dylib) + 336  [0x10c261248]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + ! 11 partial apply for closure #1 in ChartRenderer.subY(_:_:_:)  (in Kanpan.debug.dylib) + 28  [0x10c27bc18]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   5 closure #1 in ChartRenderer.subY(_:_:_:)  (in Kanpan.debug.dylib) + 108  [0x10c277f6c]  ChartRenderer+Sub.swift:109
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   : 5 ChartState.subInverted.getter  (in Kanpan.debug.dylib) + 64  [0x10c29f420]  ChartState.swift:174
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   2 outlined init with copy of ChartState.Input  (in Kanpan.debug.dylib) + 1116,1472  [0x10c2818c8,0x10c281a2c]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   1 outlined init with copy of ChartState.Input  (in Kanpan.debug.dylib) + 660  [0x10c281700]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   | 1 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 4  [0x1981dc77c]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   1 outlined init with copy of ChartState.Input  (in Kanpan.debug.dylib) + 1564  [0x10c281a88]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   | 1 swift_retain  (in libswiftCore.dylib) + 24  [0x19818cafc]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   1 outlined init with copy of ChartState.Input  (in Kanpan.debug.dylib) + 1652  [0x10c281ae0]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :     1 swift_retain  (in libswiftCore.dylib) + 92  [0x19818cb40]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   4 closure #1 in ChartRenderer.subY(_:_:_:)  (in Kanpan.debug.dylib) + 104  [0x10c277f68]  ChartRenderer+Sub.swift:109
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   : 3 outlined init with copy of ChartState  (in Kanpan.debug.dylib) + 932,1844,...  [0x10c24e89c,0x10c24ec2c,...]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   : 1 outlined init with copy of ChartState  (in Kanpan.debug.dylib) + 2112  [0x10c24ed38]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   1 _platform_memmove  (in libsystem_platform.dylib) + 272  [0x10420b1c0]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   1 closure #1 in ChartRenderer.subY(_:_:_:)  (in Kanpan.debug.dylib) + 124  [0x10c277f7c]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   : 1 outlined destroy of ChartState  (in Kanpan.debug.dylib) + 60  [0x10c24ee60]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   :   1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 8  [0x1981dcc5c]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + !   1 closure #1 in ChartRenderer.subY(_:_:_:)  (in Kanpan.debug.dylib) + 144  [0x10c277f90]  ChartRenderer+Sub.swift:109
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | + 1 Optional.map<A, B>(_:)  (in Kanpan.debug.dylib) + 464  [0x10c2612c8]  /<compiler-generated>:0
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | +   1 <deduplicated_symbol>  (in libswiftCore.dylib) + 52  [0x1985287e0]
+    + !                     :     | + ! : | +   ! : | +   ! :               |   + ! : | 2 ChartRenderer.subY(_:_:_:)  (in Kanpan.debug.dylib) + 120  [0x10c277ac8]  <stdin>:0
+...
+15119:    + !                     : |                   !             :                                 107 -[UIWindow _rotateToBounds:withAnimator:transitionContext:]  (in UIKitCore) + 508  [0x1864e6c60]
+15132:    + !                     : |                   !             :                                 |             +           105 __104-[UIViewController(AdaptiveSizing_Internal) _window:viewWillTransitionToSize:withTransitionCoordinator:]_block_invoke_2  
+15133:    + !                     : |                   !             :                                 |             +             105 -[UIViewController window:willAnimateRotationToInterfaceOrientation:duration:newSize:]  (in UIKitCore) + 296  [0x185c62778]
+15136:    + !                     : |                   !             :                                 |             +                   105 __86-[UIViewController window:willAnimateRotationToInterfaceOrientation:duration:newSize:]_block_invoke  (in UIKitCore
+19279:    + !                     : |                   !             :                                 1 -[UIWindow _rotateToBounds:withAnimator:transitionContext:]  (in UIKitCore) + 240  [0x1864e6b54]
+19362:    + !                     : |     +       !                                                     56 -[UIWindow _rotateToBounds:withAnimator:transitionContext:]  (in UIKitCore) + 508  [0x1864e6c60]
+19375:    + !                     : |     +       !                                                                   :           55 __104-[UIViewController(AdaptiveSizing_Internal) _window:viewWillTransitionToSize:withTransitionCoordinator:]_block_invoke_2  (
+19376:    + !                     : |     +       !                                                                   :             55 -[UIViewController window:willAnimateRotationToInterfaceOrientation:duration:newSize:]  (in UIKitCore) + 296  [0x185c62778]

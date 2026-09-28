@@ -1,0 +1,284 @@
+2026-09-27T22:15:01Z testChurnPanelsFiftyTimesEach|分析开关 50 次 298s
+2026-09-27T22:15:01Z testChurnPanelsFiftyTimesEach|分析 ×50 卡顿>100ms=1 最坏=226ms >250ms=[]
+2026-09-27T22:18:54Z testChurnPanelsFiftyTimesEach|图表设置开关 50 次 233s
+2026-09-27T22:18:54Z testChurnPanelsFiftyTimesEach|图表设置 ×50 卡顿>100ms=1 最坏=108ms >250ms=[]
+2026-09-27T22:20:30Z testChurnThirtySymbolsTimesThreeIntervals|30×3 用时 77s 停在 DASHUSDT 4h
+2026-09-27T22:20:30Z testChurnThirtySymbolsTimesThreeIntervals|30 只 × 3 周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-27T22:25:29Z testLoginLogoutTenTimes|退登+登录 10 轮用时 ["26.7", "26.9", "26.9", "26.8", "27.0", "27.0", "27.1", "27.0", "26.8", "26.9"]
+2026-09-27T22:25:29Z testLoginLogoutTenTimes|登录退登 10 轮 卡顿>100ms=1 最坏=113ms >250ms=[]
+2026-09-27T22:26:54Z testNetworkDropDuringReplay|回放中断网 ["open": 1790042400000, "close": 1790125200000, "step": 3600000, "total": 3, "last": 1790136000000, "shown": 3]
+2026-09-27T22:28:18Z testNetworkDropOnChartThenRestore|断网中 顶栏=["time": "1790548083857", "symbol": "binance/usd_m/BTCUSDT", "last": "84526.7"] bars=1500
+2026-09-27T22:28:37Z testNetworkDropOnChartThenRestore|图表页断网 30s → 恢复 用时 1s
+2026-09-27T22:28:37Z testNetworkDropOnChartThenRestore|图表页断网 卡顿>100ms=1 最坏=124ms >250ms=[]
+2026-09-27T22:28:58Z testNetworkOfflineLaunchThenRecover|断网启动 4s 后 bars=1500（有缓存就非 0）顶栏=["time": "1790548120866", "symbol": "binance/usd_m/BTCUSDT", "last": "84526.7"]
+2026-09-27T22:29:19Z testNetworkOfflineLaunchThenRecover|断网启动 → 恢复 用时 6s（网回来之后）
+2026-09-27T22:29:38Z testNetworkRouteToggleBackAndForth|切到网关 → 首个新报价 0.3s
+2026-09-27T22:29:47Z testNetworkRouteToggleBackAndForth|切到直连 → 首个新报价 1.4s
+2026-09-27T22:29:55Z testNetworkRouteToggleBackAndForth|切到网关 → 首个新报价 0.3s
+2026-09-27T22:30:03Z testNetworkRouteToggleBackAndForth|切到直连 → 首个新报价 0.6s
+2026-09-27T22:30:12Z testNetworkRouteToggleBackAndForth|切到网关 → 首个新报价 0.6s
+2026-09-27T22:30:20Z testNetworkRouteToggleBackAndForth|切到直连 → 首个新报价 0.9s
+2026-09-27T22:30:20Z testNetworkRouteToggleBackAndForth|直连 / 网关来回切 6 次 卡顿>100ms=1 最坏=188ms >250ms=[]
+2026-09-27T22:31:03Z testReplayAbuseScrubSwipeRotateBackground|快拖 40 下后 ["close": 1790125200000, "step": 3600000, "shown": 0, "last": 1789981200000, "total": 3, "open": 1790042400000]
+2026-09-27T22:31:05Z testReplayAbuseScrubSwipeRotateBackground|回放中横滑 → 回放不理，仍是 BTC
+2026-09-27T22:31:20Z testReplayAbuseScrubSwipeRotateBackground|回放乱来 卡顿>100ms=1 最坏=111ms >250ms=[]
+2026-09-27T22:31:38Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|对照-只有 200 自选 启动→顶栏 5.14s →K线 5.19s
+2026-09-27T22:31:39Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|已写入 50 提醒（10 条件）+ 100 画线 → 59D9DF31-80DA-4C93-8B24-19695CFFE42B
+2026-09-27T22:31:44Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 1 启动→顶栏 5.10s →K线 5.15s
+2026-09-27T22:31:51Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 2 启动→顶栏 5.02s →K线 5.06s
+2026-09-27T22:31:57Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 3 启动→顶栏 5.06s →K线 5.10s
+2026-09-27T22:31:57Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动→K线 三次 ["5.15", "5.06", "5.10"] 对照 5.19
+2026-09-27T22:32:33Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-27T22:33:07Z testWalkthroughAsATrader|订单流 ready 大单=6130
+2026-09-27T22:43:07Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|对照-只有 200 自选 启动→顶栏 5.20s →K线 5.24s
+2026-09-27T22:43:08Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|已写入 50 提醒（10 条件）+ 100 画线 → EEF6E9F6-D1B3-4FBF-B0B8-A908E99F5B77
+2026-09-27T22:43:13Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 1 启动→顶栏 5.21s →K线 5.26s
+2026-09-27T22:43:20Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 2 启动→顶栏 5.15s →K线 5.20s
+2026-09-27T22:43:26Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 3 启动→顶栏 5.15s →K线 5.19s
+2026-09-27T22:43:26Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动→K线 三次 ["5.26", "5.20", "5.19"] 对照 5.24
+2026-09-27T22:43:39Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|BTC 50 线上拖 / 捏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-27T22:45:07Z testWalkthroughAsATrader|BTC 切周期 ok bars=300
+2026-09-27T22:45:41Z testWalkthroughAsATrader|订单流 ready 大单=6239
+2026-09-27T22:46:24Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 10 段字（前 29）：binance/19 条/5319ms
+2026-09-27T22:46:28Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 7 段字（前 29）：binance/tHist HTTP 200 187ms
+2026-09-27T22:46:33Z testWalkthroughAsATrader|设置行 settings.about 推进去 29 段字（前 29）：binance/a/openInterestHist?endTime=1790549455666&limit=500&period=5m&symbol=BTCUSDT → 200 85001B 187ms
+2026-09-27T22:49:23Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|对照-只有 200 自选 启动→顶栏 5.27s →K线 5.31s
+2026-09-27T22:49:24Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|已写入 50 提醒（10 条件）+ 100 画线 → 56BF9F88-33DC-44D2-B611-65BD7E6C4B9E
+2026-09-27T22:49:29Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 1 启动→顶栏 5.16s →K线 5.21s
+2026-09-27T22:49:36Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 2 启动→顶栏 5.16s →K线 5.22s
+2026-09-27T22:49:42Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动 3 启动→顶栏 5.16s →K线 5.21s
+2026-09-27T22:49:42Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|满载启动→K线 三次 ["5.21", "5.22", "5.21"] 对照 5.31
+2026-09-27T22:49:55Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|BTC 50 线上拖 / 捏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-27T22:51:48Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|自选 200 行来回翻 103s
+2026-09-27T22:51:48Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|自选 200 行滚动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-27T22:52:29Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|我的 › 全部预警 行文案：全部预警、生效中 50
+2026-09-27T22:53:04Z testScaleTwoHundredFavoritesFiftyAlertsHundredDrawings|总表 50 条滚动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-27T22:53:25Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-27T22:53:59Z testWalkthroughAsATrader|订单流 ready 大单=6276
+2026-09-27T22:54:00Z testWalkthroughAsATrader|点 K 线：第 1 处（y=264）点出的是大单详情卡，不是十字线
+2026-09-27T22:54:05Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-27T22:54:06Z testWalkthroughAsATrader|点 K 线：第 3 处才出十字线（前面几处点到了 [264, 247]）
+2026-09-27T22:54:47Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 10 段字（前 29）：binance/564059201&limit=500&period=4h&symbol=BTCUSDT → 200 31782B 188ms
+2026-09-27T22:54:52Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 7 段字（前 29）：binance/ 188ms
+2026-09-27T22:54:54Z testWalkthroughAsATrader|关于行：
+2026-09-27T22:56:56Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-27T22:57:31Z testWalkthroughAsATrader|订单流 ready 大单=6278
+2026-09-27T22:58:13Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 10 段字（前 29）：binance/深度 Coinbase BTC-USD 连上 #1
+2026-09-27T22:58:17Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 7 段字（前 29）：binance/337ms
+2026-09-27T22:58:20Z testWalkthroughAsATrader|关于行：
+2026-09-27T23:01:11Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-27T23:01:45Z testWalkthroughAsATrader|订单流 ready 大单=6296
+2026-09-27T23:01:46Z testWalkthroughAsATrader|点 K 线：第 1 处（y=262）点出的是大单详情卡，不是十字线
+2026-09-27T23:01:51Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-27T23:01:52Z testWalkthroughAsATrader|点 K 线：第 3 处才出十字线（前面几处点到了 [262, 247]）
+2026-09-27T23:02:34Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 10 段字（前 29）：binance/5039ms
+2026-09-27T23:02:38Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 7 段字（前 29）：binance/nance/usd_m/BTCUSDT|15m
+2026-09-27T23:02:40Z testWalkthroughAsATrader|关于行：
+2026-09-27T23:02:50Z testWalkthroughAsATrader|恢复默认 → 撤销：习惯开关 开 → 关 → 恢复 → 撤销回 关
+2026-09-27T23:03:08Z testWalkthroughAsATrader|点 K 线：第 1 处（y=201）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:10Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:11Z testWalkthroughAsATrader|点 K 线：第 3 处（y=158）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:13Z testWalkthroughAsATrader|点 K 线：第 4 处（y=95）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:14Z testWalkthroughAsATrader|点 K 线：第 5 处（y=285）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:16Z testWalkthroughAsATrader|点 K 线：第 6 处（y=47）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:18Z testWalkthroughAsATrader|点 K 线：第 1 处（y=199）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:19Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:20Z testWalkthroughAsATrader|点 K 线：第 3 处（y=158）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:22Z testWalkthroughAsATrader|点 K 线：第 4 处（y=95）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:23Z testWalkthroughAsATrader|点 K 线：第 5 处（y=285）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:25Z testWalkthroughAsATrader|点 K 线：第 6 处（y=47）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:26Z testWalkthroughAsATrader|点 K 线：第 1 处（y=200）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:28Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:29Z testWalkthroughAsATrader|点 K 线：第 3 处（y=158）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:31Z testWalkthroughAsATrader|点 K 线：第 4 处（y=95）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:32Z testWalkthroughAsATrader|点 K 线：第 5 处（y=285）点出的是大单详情卡，不是十字线
+2026-09-27T23:03:34Z testWalkthroughAsATrader|点 K 线：第 6 处（y=47）点出的是大单详情卡，不是十字线
+2026-09-27T23:10:53Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-27T23:11:27Z testWalkthroughAsATrader|订单流 ready 大单=6342
+2026-09-27T23:12:09Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 10 段字（前 29）：binance/事件 收31 丢0/5000ms
+2026-09-27T23:12:13Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 7 段字（前 29）：binance/2055B → binance/usd_m/BTCUSDT|15m
+2026-09-27T23:12:16Z testWalkthroughAsATrader|关于行：
+2026-09-27T23:12:16Z testWalkthroughAsATrader|关于行链接 隐私政策：按 id true、按字 true
+2026-09-27T23:12:16Z testWalkthroughAsATrader|关于行链接 服务条款：按 id true、按字 true
+2026-09-27T23:12:25Z testWalkthroughAsATrader|恢复默认 → 撤销：习惯开关 开 → 关 → 恢复 → 撤销回 关
+2026-09-27T23:12:44Z testWalkthroughAsATrader|点 K 线：第 1 处（y=214）点出的是大单详情卡，不是十字线
+2026-09-27T23:12:45Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-27T23:12:46Z testWalkthroughAsATrader|点 K 线：第 3 处（y=158）点出的是大单详情卡，不是十字线
+2026-09-27T23:12:48Z testWalkthroughAsATrader|点 K 线：第 4 处（y=95）点出的是大单详情卡，不是十字线
+2026-09-27T23:12:49Z testWalkthroughAsATrader|点 K 线：第 5 处才出十字线（前面几处点到了 [214, 247, 158, 95]）
+2026-09-27T23:13:25Z testWalkthroughAsATrader|回放 起 ["step": 900000, "last": 1790024400000, "shown": 0, "close": 1790125200000, "total": 3, "open": 1790042400000]
+2026-09-27T23:13:43Z testWalkthroughAsATrader|走查全程 卡顿>100ms=9 最坏=279ms >250ms=[279]
+2026-09-28T02:07:54Z testPanelDragScrollsNotTaps|分析面板按住再拖 15 次，点开参数页 7 次：["#0 hold=0.1 v=XCUIGestureVelocity(rawValue: 500.0)", "#1 hold=0.1 v=XCUIGestureVelocity(rawValue: 500.0)", "#3 hold=0.1 v=XCUIGestureVelocity(rawValue: 500.0)", "#4 hold=0.1 v=XCUIGestureVelocity(rawValue: 500.0)", "#5 hold=0.3 v=XCUIGestureVelocity(rawValue: 500.0)", "#6 hold=0.3 v=XCUIGestureVelocity(rawValue: 500.0)", "#7 hold=0.3 v=XCUIGestureVelocity(rawValue: 500.0)"]
+2026-09-28T02:10:31Z testPanelDragScrollsNotTaps|面板拖 半屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:10:54Z testPanelDragScrollsNotTaps|面板拖 半屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:11:04Z testPanelDragScrollsNotTaps|面板拖 半屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:11:50Z testPanelDragScrollsNotTaps|面板拖 半屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:12:02Z testPanelDragScrollsNotTaps|面板拖 大屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:12:14Z testPanelDragScrollsNotTaps|面板拖 大屏#1 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:12:25Z testPanelDragScrollsNotTaps|面板拖 大屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:12:37Z testPanelDragScrollsNotTaps|面板拖 大屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:12:49Z testPanelDragScrollsNotTaps|面板拖 大屏#4 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:13:01Z testPanelDragScrollsNotTaps|面板拖 大屏#5 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:13:12Z testPanelDragScrollsNotTaps|面板拖 大屏#6 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:13:24Z testPanelDragScrollsNotTaps|面板拖 大屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:13:26Z testPanelDragScrollsNotTaps|分析面板按住再拖 16 次，点开参数页 4 次：["半屏#1 hold=0.1 面板顶 464", "半屏#4 hold=0.3 面板顶 464", "半屏#5 hold=0.3 面板顶 464", "半屏#6 hold=0.3 面板顶 464"]
+2026-09-28T02:17:05Z testPanelDragScrollsNotTaps|面板拖 半屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:17:15Z testPanelDragScrollsNotTaps|面板拖 半屏#1 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:17:26Z testPanelDragScrollsNotTaps|面板拖 半屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:17:36Z testPanelDragScrollsNotTaps|面板拖 半屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:18:23Z testPanelDragScrollsNotTaps|面板拖 半屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:18:34Z testPanelDragScrollsNotTaps|面板拖 大屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:18:46Z testPanelDragScrollsNotTaps|面板拖 大屏#1 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:18:58Z testPanelDragScrollsNotTaps|面板拖 大屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:19:09Z testPanelDragScrollsNotTaps|面板拖 大屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:19:21Z testPanelDragScrollsNotTaps|面板拖 大屏#4 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:19:33Z testPanelDragScrollsNotTaps|面板拖 大屏#5 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:19:45Z testPanelDragScrollsNotTaps|面板拖 大屏#6 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:19:56Z testPanelDragScrollsNotTaps|面板拖 大屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:19:59Z testPanelDragScrollsNotTaps|分析面板按住再拖 16 次，点开参数页 3 次：["半屏#4 hold=0.3 面板顶 464", "半屏#5 hold=0.3 面板顶 464", "半屏#6 hold=0.3 面板顶 464"]
+2026-09-28T02:25:32Z testPanelDragScrollsNotTaps|面板拖 半屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:25:42Z testPanelDragScrollsNotTaps|面板拖 半屏#1 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:25:53Z testPanelDragScrollsNotTaps|面板拖 半屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:26:03Z testPanelDragScrollsNotTaps|面板拖 半屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:26:13Z testPanelDragScrollsNotTaps|面板拖 半屏#4 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:26:24Z testPanelDragScrollsNotTaps|面板拖 半屏#5 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:26:34Z testPanelDragScrollsNotTaps|面板拖 半屏#6 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:26:44Z testPanelDragScrollsNotTaps|面板拖 半屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:26:56Z testPanelDragScrollsNotTaps|面板拖 大屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:27:07Z testPanelDragScrollsNotTaps|面板拖 大屏#1 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:27:19Z testPanelDragScrollsNotTaps|面板拖 大屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:27:31Z testPanelDragScrollsNotTaps|面板拖 大屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:27:42Z testPanelDragScrollsNotTaps|面板拖 大屏#4 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:27:54Z testPanelDragScrollsNotTaps|面板拖 大屏#5 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:28:06Z testPanelDragScrollsNotTaps|面板拖 大屏#6 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:28:18Z testPanelDragScrollsNotTaps|面板拖 大屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:28:20Z testPanelDragScrollsNotTaps|分析面板按住再拖 16 次，点开参数页 0 次：[]
+2026-09-28T02:35:14Z testPanelDragScrollsNotTaps|面板拖 半屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:35:25Z testPanelDragScrollsNotTaps|面板拖 半屏#1 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:35:35Z testPanelDragScrollsNotTaps|面板拖 半屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:35:46Z testPanelDragScrollsNotTaps|面板拖 半屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:35:57Z testPanelDragScrollsNotTaps|面板拖 半屏#4 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:36:07Z testPanelDragScrollsNotTaps|面板拖 半屏#5 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:36:18Z testPanelDragScrollsNotTaps|面板拖 半屏#6 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:36:28Z testPanelDragScrollsNotTaps|面板拖 半屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:36:40Z testPanelDragScrollsNotTaps|面板拖 大屏#0 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:36:51Z testPanelDragScrollsNotTaps|面板拖 大屏#1 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:37:03Z testPanelDragScrollsNotTaps|面板拖 大屏#2 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:37:15Z testPanelDragScrollsNotTaps|面板拖 大屏#3 hold=0.1 面板顶 464 → 464，没点开
+2026-09-28T02:37:28Z testPanelDragScrollsNotTaps|面板拖 大屏#4 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:37:40Z testPanelDragScrollsNotTaps|面板拖 大屏#5 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:37:52Z testPanelDragScrollsNotTaps|面板拖 大屏#6 hold=0.3 面板顶 464 → 464，没点开
+2026-09-28T02:38:04Z testPanelDragScrollsNotTaps|面板拖 大屏#7 hold=0.05 面板顶 464 → 464，没点开
+2026-09-28T02:38:06Z testPanelDragScrollsNotTaps|分析面板按住再拖 16 次，点开参数页 0 次：[]
+2026-09-28T03:47:37Z testSoakFiveMinutes|泡 5 分钟：90 轮，停在 BTCUSDT 15m bars=1501
+2026-09-28T03:47:37Z testSoakFiveMinutes|泡 5 分钟 卡顿>100ms=3 最坏=196ms >250ms=[]
+2026-09-28T03:54:15Z testSoakFiveMinutes|泡 5 分钟：90 轮，停在 BTCUSDT 15m bars=1500
+2026-09-28T03:54:15Z testSoakFiveMinutes|泡 5 分钟 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T03:54:34Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-28T03:54:34Z testWalkthroughAsATrader|走查·切品种与周期 卡顿>100ms=2 最坏=165ms >250ms=[]
+2026-09-28T03:55:08Z testWalkthroughAsATrader|订单流 ready 大单=5
+2026-09-28T03:55:08Z testWalkthroughAsATrader|走查·分析面板·画线·订单流 卡顿>100ms=1 最坏=340ms >250ms=[340]
+2026-09-28T03:55:15Z testWalkthroughAsATrader|走查·价格提醒 卡顿>100ms=1 最坏=230ms >250ms=[]
+2026-09-28T03:55:36Z testWalkthroughAsATrader|走查·自选加减 卡顿>100ms=1 最坏=103ms >250ms=[]
+2026-09-28T03:55:42Z testWalkthroughAsATrader|走查·板块 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T03:55:51Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 9 段字（前 29）：binance/layout/hangs/orderflow/提醒铃声/默认
+2026-09-28T03:55:55Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 6 段字（前 29）：binance/layout/hangs/orderflow/已学到的/暂无
+2026-09-28T03:55:58Z testWalkthroughAsATrader|关于行：
+2026-09-28T03:55:58Z testWalkthroughAsATrader|关于行链接 隐私政策：按 id true、按字 true
+2026-09-28T03:55:58Z testWalkthroughAsATrader|关于行链接 服务条款：按 id true、按字 true
+2026-09-28T03:56:07Z testWalkthroughAsATrader|恢复默认 → 撤销：习惯开关 开 → 关 → 恢复 → 撤销回 关
+2026-09-28T03:56:08Z testWalkthroughAsATrader|走查·设置逐行 卡顿>100ms=1 最坏=118ms >250ms=[]
+2026-09-28T03:56:51Z testWalkthroughAsATrader|走查·注册与条件提醒 卡顿>100ms=6 最坏=192ms >250ms=[]
+2026-09-28T03:57:00Z testWalkthroughAsATrader|回放 起 ["total": 3, "open": 1790042400000, "step": 900000, "shown": 0, "last": 1790024400000, "close": 1790125200000]
+2026-09-28T03:57:11Z testWalkthroughAsATrader|走查·复盘回放与笔记 卡顿>100ms=3 最坏=197ms >250ms=[]
+2026-09-28T03:57:19Z testWalkthroughAsATrader|走查全程 卡顿>100ms=16 最坏=340ms >250ms=[340]
+2026-09-28T04:07:03Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-28T04:07:03Z testWalkthroughAsATrader|走查·切品种与周期 卡顿>100ms=1 最坏=125ms >250ms=[]
+2026-09-28T04:07:13Z testWalkthroughAsATrader|走查·开 RSI 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:07:26Z testWalkthroughAsATrader|走查·竖屏画趋势线 卡顿>100ms=1 最坏=318ms >250ms=[318]
+2026-09-28T04:07:34Z testWalkthroughAsATrader|走查·第二次开分析面板 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:07:35Z testWalkthroughAsATrader|走查·点开主力订单流 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:07:37Z testWalkthroughAsATrader|订单流 ready 大单=5
+2026-09-28T04:07:37Z testWalkthroughAsATrader|走查·主力订单流到 ready 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:07:44Z testWalkthroughAsATrader|走查·价格提醒 卡顿>100ms=2 最坏=181ms >250ms=[]
+2026-09-28T04:08:05Z testWalkthroughAsATrader|走查·自选加减 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:08:11Z testWalkthroughAsATrader|走查·板块 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:08:20Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 9 段字（前 29）：binance/layout/hangs/orderflow/提醒铃声/默认
+2026-09-28T04:08:24Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 6 段字（前 29）：binance/layout/hangs/orderflow/已学到的/暂无
+2026-09-28T04:08:27Z testWalkthroughAsATrader|关于行：
+2026-09-28T04:08:27Z testWalkthroughAsATrader|关于行链接 隐私政策：按 id true、按字 true
+2026-09-28T04:08:27Z testWalkthroughAsATrader|关于行链接 服务条款：按 id true、按字 true
+2026-09-28T04:08:35Z testWalkthroughAsATrader|恢复默认 → 撤销：习惯开关 开 → 关 → 恢复 → 撤销回 关
+2026-09-28T04:08:37Z testWalkthroughAsATrader|走查·设置逐行 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:09:19Z testWalkthroughAsATrader|走查·注册与条件提醒 卡顿>100ms=2 最坏=164ms >250ms=[]
+2026-09-28T04:09:29Z testWalkthroughAsATrader|回放 起 ["total": 3, "last": 1790024400000, "shown": 0, "open": 1790042400000, "close": 1790125200000, "step": 900000]
+2026-09-28T04:09:39Z testWalkthroughAsATrader|走查·复盘回放与笔记 卡顿>100ms=3 最坏=138ms >250ms=[]
+2026-09-28T04:09:48Z testWalkthroughAsATrader|走查全程 卡顿>100ms=9 最坏=318ms >250ms=[318]
+2026-09-28T04:12:24Z testWalkthroughAsATrader|BTC 切周期 ok bars=1500
+2026-09-28T04:12:24Z testWalkthroughAsATrader|走查·切品种与周期 卡顿>100ms=1 最坏=156ms >250ms=[]
+2026-09-28T04:12:33Z testWalkthroughAsATrader|走查·开 RSI 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:12:41Z testWalkthroughAsATrader|走查·画线·进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:12:46Z testWalkthroughAsATrader|走查·画线·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:12:47Z testWalkthroughAsATrader|走查·画线·画一条趋势线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:12:50Z testWalkthroughAsATrader|走查·画线·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:12:58Z testWalkthroughAsATrader|走查·第二次开分析面板 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:12:59Z testWalkthroughAsATrader|走查·点开主力订单流 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:13:01Z testWalkthroughAsATrader|订单流 ready 大单=9146
+2026-09-28T04:13:01Z testWalkthroughAsATrader|走查·主力订单流到 ready 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:13:02Z testWalkthroughAsATrader|点 K 线：第 1 处（y=283）点出的是大单详情卡，不是十字线
+2026-09-28T04:13:03Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-28T04:13:12Z testWalkthroughAsATrader|点 K 线：第 4 处（y=95）点出的是大单详情卡，不是十字线
+2026-09-28T04:13:14Z testWalkthroughAsATrader|点 K 线：第 5 处（y=285）点出的是大单详情卡，不是十字线
+2026-09-28T04:13:15Z testWalkthroughAsATrader|点 K 线：第 6 处（y=47）点出的是大单详情卡，不是十字线
+2026-09-28T04:13:16Z testWalkthroughAsATrader|点 K 线：第 1 处（y=282）点出的是大单详情卡，不是十字线
+2026-09-28T04:13:17Z testWalkthroughAsATrader|点 K 线：第 2 处（y=247）点出的是大单详情卡，不是十字线
+2026-09-28T04:13:18Z testWalkthroughAsATrader|点 K 线：第 3 处才出十字线（前面几处点到了 [282, 247]）
+2026-09-28T04:13:24Z testWalkthroughAsATrader|走查·价格提醒 卡顿>100ms=1 最坏=207ms >250ms=[]
+2026-09-28T04:13:45Z testWalkthroughAsATrader|走查·自选加减 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:13:51Z testWalkthroughAsATrader|走查·板块 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:14:00Z testWalkthroughAsATrader|设置行 alerts.sound.open 推进去 9 段字（前 29）：binance/layout/hangs/orderflow/提醒铃声/默认
+2026-09-28T04:14:04Z testWalkthroughAsATrader|设置行 settings.habits.learned 推进去 6 段字（前 29）：binance/layout/hangs/orderflow/已学到的/暂无
+2026-09-28T04:14:07Z testWalkthroughAsATrader|关于行：
+2026-09-28T04:14:07Z testWalkthroughAsATrader|关于行链接 隐私政策：按 id true、按字 true
+2026-09-28T04:14:07Z testWalkthroughAsATrader|关于行链接 服务条款：按 id true、按字 true
+2026-09-28T04:14:16Z testWalkthroughAsATrader|恢复默认 → 撤销：习惯开关 开 → 关 → 恢复 → 撤销回 关
+2026-09-28T04:14:17Z testWalkthroughAsATrader|走查·设置逐行 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:14:59Z testWalkthroughAsATrader|走查·注册与条件提醒 卡顿>100ms=3 最坏=161ms >250ms=[]
+2026-09-28T04:15:09Z testWalkthroughAsATrader|回放 起 ["step": 900000, "last": 1790024400000, "shown": 0, "open": 1790042400000, "total": 3, "close": 1790125200000]
+2026-09-28T04:15:19Z testWalkthroughAsATrader|走查·复盘回放与笔记 卡顿>100ms=3 最坏=149ms >250ms=[]
+2026-09-28T04:15:27Z testWalkthroughAsATrader|走查全程 卡顿>100ms=8 最坏=207ms >250ms=[]
+2026-09-28T04:17:08Z testDrawEntryRoundTripsHangs|画线进出#0 进横屏 卡顿>100ms=1 最坏=321ms >250ms=[321]
+2026-09-28T04:17:11Z testDrawEntryRoundTripsHangs|画线进出#0 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:13Z testDrawEntryRoundTripsHangs|画线进出#0 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:19Z testDrawEntryRoundTripsHangs|画线进出#1 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:23Z testDrawEntryRoundTripsHangs|画线进出#1 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:24Z testDrawEntryRoundTripsHangs|画线进出#1 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:31Z testDrawEntryRoundTripsHangs|画线进出#2 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:34Z testDrawEntryRoundTripsHangs|画线进出#2 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:36Z testDrawEntryRoundTripsHangs|画线进出#2 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:42Z testDrawEntryRoundTripsHangs|画线进出#3 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:46Z testDrawEntryRoundTripsHangs|画线进出#3 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:47Z testDrawEntryRoundTripsHangs|画线进出#3 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:53Z testDrawEntryRoundTripsHangs|画线进出#4 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:57Z testDrawEntryRoundTripsHangs|画线进出#4 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:17:58Z testDrawEntryRoundTripsHangs|画线进出#4 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:18:04Z testDrawEntryRoundTripsHangs|画线进出#5 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:18:08Z testDrawEntryRoundTripsHangs|画线进出#5 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:18:09Z testDrawEntryRoundTripsHangs|画线进出#5 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:18:10Z testDrawEntryRoundTripsHangs|画线进出 6 轮 各步最坏：[(key: "完成", value: 0), (key: "转回竖屏", value: 0), (key: "进横屏", value: 321)]
+2026-09-28T04:19:39Z testDrawEntryRoundTripsHangs|画线进出#0 进横屏 卡顿>100ms=4 最坏=392ms >250ms=[392]
+2026-09-28T04:19:43Z testDrawEntryRoundTripsHangs|画线进出#0 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:19:45Z testDrawEntryRoundTripsHangs|画线进出#0 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:19:51Z testDrawEntryRoundTripsHangs|画线进出#1 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:19:54Z testDrawEntryRoundTripsHangs|画线进出#1 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:19:56Z testDrawEntryRoundTripsHangs|画线进出#1 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:02Z testDrawEntryRoundTripsHangs|画线进出#2 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:06Z testDrawEntryRoundTripsHangs|画线进出#2 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:07Z testDrawEntryRoundTripsHangs|画线进出#2 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:13Z testDrawEntryRoundTripsHangs|画线进出#3 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:17Z testDrawEntryRoundTripsHangs|画线进出#3 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:18Z testDrawEntryRoundTripsHangs|画线进出#3 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:25Z testDrawEntryRoundTripsHangs|画线进出#4 进横屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:28Z testDrawEntryRoundTripsHangs|画线进出#4 转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:20:30Z testDrawEntryRoundTripsHangs|画线进出#4 完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-09-28T04:25:00Z 结论|首次进横屏画线台卡顿：两次独立跑 testDrawEntryRoundTripsHangs（6 轮）都只在第 0 轮「进横屏」出现一次 321/392 ms，第 1–5 轮进横屏、转回、完成全是 0 ms；走查里的 279/340/318 ms 也是每次冷启动后第一次进横屏。sample 主线程：FBSScene 更新 → UIWindow _rotateToBounds → willAnimateRotation → _UIHostingView.layoutSubviews → SwiftUI 整棵重新布局（约 108 样本）+ CanvasLayer 首帧重画。是 Debug 模拟器包每次启动首转屏的一次性系统/SwiftUI 布局开销，不是 app 逻辑卡住，不改；证据 卡顿/画线首次进横屏-sample摘录.txt
