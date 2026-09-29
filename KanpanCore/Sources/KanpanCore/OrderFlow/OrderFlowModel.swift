@@ -282,9 +282,12 @@ public struct OrderFlowModel: Sendable {
     var level: Double
 
     init(level: Double, vanished: Double = 0) { self.level = level; self.vanished = vanished }
-    /// 读回来 / 服务端并进来的挂单：掉过的先按「首次名义 − 此刻名义」起算。
+    /// 读回来 / 服务端并进来的挂单：掉过的量取带来的那份（日志与服务端 2026-09-29 起挂着的也记）；
+    /// 没带的（老日志、老服务端）按「首次名义 − 此刻名义」起算——这是净值，被吃一截又补回来的那截抵掉了，
+    /// 但成交是对上掉量才记的，成交了多少至少就掉过多少，所以不低于已记的成交。
     init(restored order: BigOrder) {
-      self.init(level: order.notional, vanished: max(0, order.initialNotional - order.notional))
+      self.init(level: order.notional,
+                vanished: order.vanishedNotional ?? max(0, order.initialNotional - order.notional, order.filledNotional))
     }
 
     mutating func addFill(_ usd: Double, nowMs: Int64) {
@@ -441,14 +444,23 @@ public struct OrderFlowModel: Sendable {
     restoreIfPossible()
   }
 
+  /// 读回 / 并进来的挂单在内存里的样子：消失量只活在 `Matching` 里（挂着的单 `vanishedNotional` 为 nil，落盘时再带上）；
+  /// 成交夹到不超过消失量——对账规则本身保证成交 ≤ 消失（`settle` 只记对上的那部分），
+  /// 老规则按首次名义判成交时留下的行不满足，不夹的话它结束时的判定用的是一个对不上的数。
+  private static func takeIn(_ order: inout BigOrder, _ m: Matching) {
+    order.filledNotional = min(order.filledNotional, m.vanished)
+    order.vanishedNotional = nil
+  }
+
   private mutating func restoreIfPossible() {
     guard let journal = pendingJournal, let scheme else { return }
     pendingJournal = nil
     guard abs(journal.step - scheme.step) <= scheme.step * 1e-9 else { return }
     orders = journal.orders.sorted(by: Self.chronological)
-    for order in orders where order.isLive {
-      lastSeen[order.id] = journal.savedAtMs
-      matching[order.id] = Matching(restored: order)
+    for i in orders.indices where orders[i].isLive {
+      lastSeen[orders[i].id] = journal.savedAtMs
+      matching[orders[i].id] = Matching(restored: orders[i])
+      Self.takeIn(&orders[i], matching[orders[i].id]!)
     }
     if orders.contains(where: \.isLive) { restoredAtMs = journal.savedAtMs }
     requalify()
@@ -485,6 +497,8 @@ public struct OrderFlowModel: Sendable {
     guard let scheme else { return nil }
     let cutoff = nowMs - OrderFlowDefaults.journalRetentionMs
     var picked = orders.filter { $0.isLive || ($0.endMs ?? $0.firstSeenMs) >= cutoff }
+    // 挂着的带上到此为止消失掉的量：重启读回接着这个数算，不用「首次名义 − 此刻名义」那个把补回来的截抵掉的净值。
+    for i in picked.indices where picked[i].isLive { picked[i].vanishedNotional = matching[picked[i].id]?.vanished ?? 0 }
     if picked.count > OrderFlowDefaults.journalMaxOrders {
       let live = picked.count(where: \.isLive)
       let room = max(0, OrderFlowDefaults.journalMaxOrders - live)
@@ -654,6 +668,7 @@ public struct OrderFlowModel: Sendable {
     m.observe(remaining, nowMs: atMs)
     m.settle(into: &orders[i].filledNotional, nowMs: atMs)
     let vanished = m.vanished
+    orders[i].filledNotional = min(orders[i].filledNotional, vanished)
     orders[i].vanishedNotional = vanished
     orders[i].status = vanished > 0 && orders[i].filledNotional >= vanished * OrderFlowDefaults.filledRatio
       ? .filled : .cancelled
@@ -808,9 +823,12 @@ public struct OrderFlowModel: Sendable {
         for k in matches where k != j { removed.insert(k) }
       } else {
         matches.forEach { removed.insert($0) }
-        added.append(remote)
+        var taken = remote
+        let m = Matching(restored: remote)
+        Self.takeIn(&taken, m)
+        added.append(taken)
         lastSeen[remote.id] = nowMs
-        matching[remote.id] = Matching(restored: remote)
+        matching[remote.id] = m
         remoteSeen[remote.id] = nowMs
       }
     }
@@ -861,7 +879,7 @@ public struct OrderFlowModel: Sendable {
       ending[newID] = ending.removeValue(forKey: oldID)
     }
     var m = matching[newID] ?? Matching(restored: orders[i])
-    m.vanished = max(m.vanished, remote.initialNotional - old.notional)
+    m.vanished = max(m.vanished, remote.vanishedNotional ?? (remote.initialNotional - old.notional), orders[i].filledNotional)
     matching[newID] = m
     if lastSeen[newID] == nil { lastSeen[newID] = nowMs }
     remoteSeen[oldID] = nil

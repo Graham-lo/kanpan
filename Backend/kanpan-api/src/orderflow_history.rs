@@ -1,7 +1,7 @@
 //! 主力订单流 · 服务端历史（2026-09-24，2026-09-25 改成分层常驻）。
 //!
 //! 手机上的订单流只在打开一只品种时才开始跟，关掉就断：刚打开时图上是空的，往左拖也没有。
-//! 这里在 serve 进程里常驻跟踪，一单一行写进 `orderflow_orders`；手机打开品种先拉最近 24 小时，
+//! 这里在 serve 进程里常驻跟踪，一单一行写进库（挂着的在 `orderflow_live`、结束的在 `orderflow_orders`）；手机打开品种先拉最近 24 小时，
 //! 之后每分钟增量拉一次，往左拖再一天一天补（最多 3 天）。
 //!
 //! * 跟踪规则和手机那份（`OrderFlowModel.swift`）逐条一致，见 `model.rs`；簿的接续见 `book.rs`；
@@ -1674,7 +1674,7 @@ mod tests {
  #[tokio::test] async fn shutdown_refreshes_seen_once_and_never_outlives_its_limit() {
   use model::Status;
   let Some(pool)=store::tests::isolated_pool().await else {return};
-  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZQ1','ZZQ2')").execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&["ZZQ1","ZZQ2"]).await;
   let now=now_ms();
   let order=|base:&str,bucket:i64|BigOrder{venue_id:format!("binance:usdtPerp:{base}USDT"),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Ask,
    bucket,price:1.0,first_seen_ms:now-600_000,end_ms:None,status:Status::Live,initial_notional:6e6,notional:6e6,filled_notional:0.0,threshold:5e6,vanished_notional:None};
@@ -1688,7 +1688,7 @@ mod tests {
   let closed=close(&pool,rx,2,&active,Duration::from_secs(2),Duration::from_secs(10)).await;
   assert_eq!((closed.bases,closed.live,closed.refreshed,closed.writing),(2,3,Some(3),0));
   assert!(closed.elapsed_ms<1_000,"都到齐了不空等：{} ms",closed.elapsed_ms);
-  let seen:Vec<i64>=sqlx::query_scalar("SELECT seen_ms FROM orderflow_orders WHERE base IN ('ZZQ1','ZZQ2') ORDER BY base,bucket").fetch_all(&pool).await.unwrap();
+  let seen:Vec<i64>=sqlx::query_scalar("SELECT seen_ms FROM orderflow_live WHERE base IN ('ZZQ1','ZZQ2') ORDER BY base,bucket").fetch_all(&pool).await.unwrap();
   assert_eq!(seen,vec![now-1_000,now-2_000,now-3_000]);
   // 少到一份、写库任务一直没完：到交单上限先刷已到的，到整段上限返回。
   let (tx,rx)=mpsc::unbounded_channel();
@@ -1700,7 +1700,7 @@ mod tests {
   assert_eq!((closed.bases,closed.refreshed,closed.writing),(1,Some(1),1));
   assert!((600..1_500).contains(&took),"整段上限 600 ms，用了 {took} ms");
   drop(tx);
-  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZQ1','ZZQ2')").execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&["ZZQ1","ZZQ2"]).await;
  }
 
  /// 订单流表被锁住 3 秒（同样代表慢盘、清理删大批）：订单流这边照常的一阵活——三个写库、两个读历史、六只起跟读回、
@@ -1727,7 +1727,7 @@ mod tests {
    let waited=started.elapsed().as_millis();
    locker.rollback().await.unwrap();
    while load.join_next().await.is_some() {}
-   sqlx::query("DELETE FROM orderflow_orders WHERE base LIKE 'ZZPOOL%'").execute(&isolated).await.unwrap();
+   store::tests::clear(&isolated,&["ZZPOOL","ZZPOOL0","ZZPOOL1","ZZPOOL2","ZZPOOL3","ZZPOOL4","ZZPOOL5"]).await;
    println!("{}：订单流卡在库上时，用户接口拿一条连接等了 {waited} ms",if own {"订单流单开池子"} else {"共用 8 条"});
    report.push(waited);
    orderflow.close().await;api.close().await;
@@ -1957,7 +1957,7 @@ mod tests {
   drop(tx);
   tokio::time::timeout(Duration::from_secs(30),task).await.expect("写库任务收不了尾").unwrap();
   let written:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_orders WHERE base='ZZSLOW' AND end_ms IS NOT NULL").fetch_one(&pool).await.unwrap();
-  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZSLOW'").execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&["ZZSLOW"]).await;
   assert!(slowest<Duration::from_millis(200),"库慢的时候跟踪任务卡在 send 上 {}ms",slowest.as_millis());
   assert_eq!(written,2*WRITES_QUEUE as i64+1,"锁一放，积压的全部写进去");
  }
@@ -1993,7 +1993,7 @@ mod tests {
  #[ignore] #[tokio::test(flavor="multi_thread",worker_threads=4)] async fn history_reply_memory_stays_bounded_at_the_row_cap() {
   let Some(pool)=store::tests::isolated_pool().await else {return};
   let base="ZZMEM";
-  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&[base]).await;
   let rows=store::MAX_ROWS;
   sqlx::query("INSERT INTO orderflow_orders(base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms) \
    SELECT $1,'binance:usdtPerp:ZZMEMUSDT','币安','usdtPerp',CASE WHEN g%2=0 THEN 'bid' ELSE 'ask' END,g,g*1.5,1000000+g,1000000+g+60000,'cancelled',6e6,5.5e6,1.25e5,5e6,5.9e6,100,1000000+g+60000 \
@@ -2019,7 +2019,7 @@ mod tests {
    println!("{parallel} 个请求 × {rows} 行：答复 {} MB，常驻内存峰值涨 {grew} MB（起步 {} MB），{} ms",bytes/1_000_000,base_rss/1024,started.elapsed().as_millis());
    report.push(grew);
   }
-  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&[base]).await;
   assert!(report[0]<150,"一个历史请求让常驻内存涨了 {} MB（答复本身 62 MB）",report[0]);
   assert!(report[1]<300,"四个并发的历史请求让常驻内存涨了 {} MB（serve 的上限一共 1 GB）",report[1]);
  }
@@ -2030,7 +2030,7 @@ mod tests {
  #[ignore] #[tokio::test(flavor="multi_thread",worker_threads=4)] async fn eth_day_first_read_and_cache_hit() {
   let Some(pool)=store::tests::isolated_pool().await else {return};
   let base="ZZETH";
-  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&[base]).await;
   let (t0,day)=(1_790_000_000_000i64,86_400_000i64);
   // 六成是一分钟内就撤的，其余活几分钟到两小时；g%97==0 的挂着到现在。
   sqlx::query("INSERT INTO orderflow_orders(base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms) \
@@ -2042,7 +2042,10 @@ mod tests {
     CASE WHEN g%97=0 THEN 'live' WHEN g%5=0 THEN 'filled' WHEN g%7=0 THEN 'lost' ELSE 'cancelled' END, \
     1e6+(g*7717)%9000000,1e6+(g*4211)%8000000,(g*977)%500000,CASE WHEN g%6 IN (1,4,5) THEN 1e6 ELSE 5e6 END,1e6+(g*3331)%7000000,1,$2+$3 \
    FROM generate_series(1,30887) g").bind(base).bind(t0).bind(day).execute(&pool).await.unwrap();
+  // 挂着的按 0031 之前的写法插在历史表里：读回一次把它们搬进 `orderflow_live`（线上迁移与重启之间老进程写的那些也是这么搬的）。
+  assert_eq!(store::live(&pool,base).await.unwrap().len(),30887/97);
   sqlx::query("ANALYZE orderflow_orders").execute(&pool).await.unwrap();
+  sqlx::query("ANALYZE orderflow_live").execute(&pool).await.unwrap();
   let thresholds=Thresholds{spot:Some(1e6),usdt_perp:Some(5e6),coin_perp:Some(5e6),delivery:None,step:Some(1.0)};
   let (from,to)=(t0+30_000,t0+day+30_000);
   let get=|min_life:i64|{let pool=pool.clone();async move {
@@ -2082,7 +2085,7 @@ mod tests {
   let plan=plan.join("\n");
   assert!(plan.matches("orderflow_orders_end").count()>=2,"两路已结束的都该用 orderflow_orders_end：\n{plan}");
   assert!(!plan.contains("Seq Scan"),"不许顺序扫：\n{plan}");
-  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&[base]).await;
   assert!(sizes.iter().all(|&n|n==filtered_bytes));
   assert!(filtered_bytes<bytes,"滤掉一分钟内的已结束单之后答复应该更小");
   assert!(hits.iter().all(|&h|h<5.0),"命中不碰库，应在毫秒以内：{hits:?}");
@@ -2093,7 +2096,7 @@ mod tests {
   use model::Status;
   let Some(pool)=store::tests::isolated_pool().await else {return};
   let base="ZZREPLY";
-  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&[base]).await;
   let order=|bucket:i64,first:i64,end:Option<i64>|BigOrder{venue_id:"binance:usdtPerp:ZZREPLYUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),
    side:if bucket%2==0 {book::Side::Bid} else {book::Side::Ask},bucket,price:bucket as f64*0.1,first_seen_ms:first,end_ms:end,
    status:if end.is_some() {Status::Filled} else {Status::Live},initial_notional:6e6,notional:5.5e6,filled_notional:1.25e5,threshold:5e6,
@@ -2133,7 +2136,7 @@ mod tests {
    let got:Value=serde_json::from_slice(&text).unwrap();
    assert_eq!(got["orders"],serde_json::json!([]));
   }
-  sqlx::query("DELETE FROM orderflow_orders WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  store::tests::clear(&pool,&[base]).await;
  }
 
  #[test] fn a_restart_does_not_reset_the_idle_clock() {

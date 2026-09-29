@@ -914,7 +914,8 @@ final class OrderFlowModelTests: XCTestCase {
     XCTAssertEqual(deferred.orders, [])
     XCTAssertEqual(deferred.evaluate(nowMs: 700).phase, .loading)
     deferred.setThresholds(thresholds)
-    XCTAssertEqual(deferred.orders, journal.orders)
+    // 落盘的挂单带消失量、内存里的不带（见 takeIn）。
+    XCTAssertEqual(deferred.orders, journal.orders.map { var o = $0; if o.isLive { o.vanishedNotional = nil }; return o })
 
     var other = thresholds
     other.step = 2
@@ -931,6 +932,43 @@ final class OrderFlowModelTests: XCTestCase {
     let size = OrderFlowJournal(symbol: "BTCUSDT", step: 100, savedAtMs: 0, orders: many).encoded().count
     // 日志封顶 2 万条（更早的向服务端取，不落盘），实测见压测报告；15 秒最多写一次。
     XCTAssertLessThan(size, 4_500 * 1024, "\(size) 字节")
+  }
+
+  /// 挂着的单落盘时带上到此为止消失掉的量（被吃一截又补回来，净值是 0、掉过的是 1590 万）；
+  /// 读回来接着这个数算，成交夹到不超过它（老规则留下的「成交 5000 万」读回后是 1590 万），
+  /// 内存里挂着的仍不带 `vanishedNotional`；之后整张撤掉，按掉过的 3498 万判撤销、成交仍是那 1590 万。
+  func testJournalCarriesVanishedForLiveOrdersAndRestoreClampsFill() throws {
+    var model = inBand(okx)
+    _ = model.evaluate(nowMs: 0)
+    _ = model.evaluate(nowMs: 500)
+    _ = model.ingest(okx.id, .trade(OrderFlowTrade(price: 1_590, quantity: 10_000, hitSide: .bid, timeMs: 0)), nowMs: 600)
+    set(&model, okx, seq: 2, bid: level(1_590, 2_000))
+    XCTAssertEqual(model.evaluate(nowMs: 700).orders[0].filledNotional, 1_590 * 10_000, accuracy: 1e-6)
+    set(&model, okx, seq: 3, bid: level(1_590, 12_000))
+    let live = model.evaluate(nowMs: 20_000).orders[0]
+    XCTAssertEqual(live.status, .live)
+    XCTAssertNil(live.vanishedNotional, "内存里挂着的不带消失量")
+    let journal = try XCTUnwrap(model.journal(nowMs: 20_100))
+    XCTAssertEqual(journal.orders.count, 1)
+    XCTAssertEqual(journal.orders[0].vanishedNotional ?? 0, 1_590 * 10_000, accuracy: 1e-6, "落盘的带消失量，是掉过的总量不是净值")
+    let decoded = try XCTUnwrap(OrderFlowJournal.decode(journal.encoded()))
+    XCTAssertEqual(decoded.orders[0].vanishedNotional ?? 0, 1_590 * 10_000, accuracy: 1e-6)
+
+    var tampered = decoded.orders[0]
+    tampered.filledNotional = 50_000_000
+    let old = OrderFlowJournal(symbol: decoded.symbol, step: decoded.step, savedAtMs: decoded.savedAtMs, orders: [tampered])
+    var resumed = inBand(okx, restored: old)
+    _ = resumed.evaluate(nowMs: 20_200)
+    let back = resumed.evaluate(nowMs: 20_700).orders[0]
+    XCTAssertEqual(back.status, .live)
+    XCTAssertEqual(back.filledNotional, 1_590 * 10_000, accuracy: 1e-6, "成交夹到不超过消失量")
+    XCTAssertNil(back.vanishedNotional)
+    set(&resumed, okx, seq: 2, bid: level(1_590, 0))
+    _ = resumed.evaluate(nowMs: 30_000)
+    let ended = resumed.evaluate(nowMs: 30_400).orders[0]
+    XCTAssertEqual(ended.status, .cancelled)
+    XCTAssertEqual(ended.vanishedNotional ?? 0, 1_590 * 22_000, accuracy: 1e-6, "读回的 1590 万 + 这次撤的 1908 万")
+    XCTAssertEqual(ended.filledNotional, 1_590 * 10_000, accuracy: 1e-6)
   }
 
   /// 进程重启读回来的挂单，簿一就绪就照常续上；那本簿再没出现，两分钟后按存盘时刻结束。

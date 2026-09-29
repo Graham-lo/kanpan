@@ -1,7 +1,10 @@
-//! 大单的库：`orderflow_orders`（一单一行）与 `orderflow_bases`（跟踪过哪些 base）。迁移见 0024。
+//! 大单的库：`orderflow_live`（挂着的，一单一行）、`orderflow_orders`（结束的，一单一行）与
+//! `orderflow_bases`（跟踪过哪些 base）。迁移见 0024、0031。
 //!
-//! * 挂着的单每 15 秒整批 upsert 一次，结束的单一结束就写。upsert 只改还没结束的行
-//!   （`WHERE orderflow_orders.end_ms IS NULL`）：晚到的一批「挂着」不会把刚写进去的结束翻回去。
+//! * 挂着的单每 15 秒整批 upsert 进 `orderflow_live`（几千行的小表，重写与停机刷新都落在这里）；
+//!   结束的单一结束就写进 `orderflow_orders`、同一条语句里从 `orderflow_live` 删掉。
+//!   挂着的只在 `orderflow_orders` 里没有这一单时才写（`NOT EXISTS`）：晚到的一批「挂着」不会把刚写进去的结束翻回去。
+//!   0031 之前挂着的和结束的同在一张 200 万行的表里，挂着的散在各处、停机刷新一句 UPDATE 要 1 900 次冷随机读（1.5–2.5 秒）。
 //! * 保留：按结束时刻滚动 3 天（2026-09-25 从 30 天改：没人往回看超过几天）；另有总量闸门，表文件超过 20 GB 时从结束得最早的删起、删到 18 GB 以下。
 //!   删行不会让表文件变小（空间留给后来的行复用），所以「删到多少」按「行数 × 每行占用」估，不按文件大小——
 //!   按文件大小会每小时都判超、一路删光。
@@ -23,29 +26,63 @@ const DELETE_BATCH:i64=10_000;
 pub const MAX_ROWS:i64=200_000;
 
 const COLUMNS:&str="base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms";
+const PK:&str="base,venue_id,side,bucket,first_seen_ms";
+/// 两张表按主键对上的条件（`a`、`b` 是两边的别名）。
+fn same(a:&str,b:&str)->String {format!("{a}.base={b}.base AND {a}.venue_id={b}.venue_id AND {a}.side={b}.side AND {a}.bucket={b}.bucket AND {a}.first_seen_ms={b}.first_seen_ms")}
 
 /// 写一批（挂着的、刚结束的都走这里）。`seen` 为挂着的单最后一次看到的时刻，结束的单填结束时刻。
+/// 先写结束的再写挂着的：同一批里（或前后两批）同一单先结束后又来一份「挂着」，`NOT EXISTS` 挡得住。
 pub async fn upsert(pool:&PgPool,base:&str,step:f64,rows:&[(BigOrder,i64)])->sqlx::Result<()> {
- for chunk in rows.chunks(500) {
-  let mut q=QueryBuilder::<Postgres>::new(format!("INSERT INTO orderflow_orders({COLUMNS}) "));
-  q.push_values(chunk,|mut b,(o,seen)| {
-   b.push_bind(base).push_bind(&o.venue_id).push_bind(&o.exchange).push_bind(&o.product).push_bind(o.side.wire()).push_bind(o.bucket)
-    .push_bind(o.price).push_bind(o.first_seen_ms).push_bind(o.end_ms).push_bind(o.status.wire()).push_bind(o.initial_notional)
-    .push_bind(o.notional).push_bind(o.filled_notional).push_bind(o.threshold).push_bind(o.vanished_notional).push_bind(step).push_bind(*seen);
-  });
-  q.push(" ON CONFLICT(base,venue_id,side,bucket,first_seen_ms) DO UPDATE SET price=EXCLUDED.price,end_ms=EXCLUDED.end_ms,status=EXCLUDED.status,\
-   notional=EXCLUDED.notional,filled_notional=EXCLUDED.filled_notional,threshold=EXCLUDED.threshold,vanished_notional=EXCLUDED.vanished_notional,\
-   seen_ms=CASE WHEN EXCLUDED.end_ms IS NULL THEN GREATEST(orderflow_orders.seen_ms,EXCLUDED.seen_ms) ELSE EXCLUDED.seen_ms END \
-   WHERE orderflow_orders.end_ms IS NULL");
-  q.build().execute(pool).await?;
- }
+ let (live,ended):(Vec<&(BigOrder,i64)>,Vec<&(BigOrder,i64)>)=rows.iter().partition(|(o,_)|o.end_ms.is_none());
+ for chunk in ended.chunks(500) {write_ended(pool,base,step,chunk).await?;}
+ for chunk in live.chunks(500) {write_live(pool,base,step,chunk).await?;}
  Ok(())
+}
+
+fn values<'a>(q:&mut QueryBuilder<'a,Postgres>,base:&'a str,step:f64,chunk:&'a [&'a (BigOrder,i64)]) {
+ q.push_values(chunk,|mut b,(o,seen)| {
+  b.push_bind(base).push_bind(&o.venue_id).push_bind(&o.exchange).push_bind(&o.product).push_bind(o.side.wire()).push_bind(o.bucket)
+   .push_bind(o.price).push_bind(o.first_seen_ms).push_bind(o.end_ms).push_bind(o.status.wire()).push_bind(o.initial_notional)
+   .push_bind(o.notional).push_bind(o.filled_notional).push_bind(o.threshold).push_bind(o.vanished_notional).push_bind(step).push_bind(*seen);
+ });
+}
+
+/// 挂着的：写进 `orderflow_live`，`orderflow_orders` 里已经结束的那一单不写（晚到的「挂着」不翻回去）。
+/// 已经在的更新价位、名义、成交、消失量；`seen_ms` 只往后推（停机刷新与写库任务两边谁后落都不倒退）。
+async fn write_live(pool:&PgPool,base:&str,step:f64,chunk:&[&(BigOrder,i64)])->sqlx::Result<()> {
+ let mut q=QueryBuilder::<Postgres>::new(format!("INSERT INTO orderflow_live({COLUMNS}) SELECT {COLUMNS} FROM ("));
+ values(&mut q,base,step,chunk);
+ q.push(format!(") AS v({COLUMNS}) WHERE NOT EXISTS (SELECT 1 FROM orderflow_orders o WHERE {}) \
+  ON CONFLICT({PK}) DO UPDATE SET price=EXCLUDED.price,notional=EXCLUDED.notional,filled_notional=EXCLUDED.filled_notional,\
+  threshold=EXCLUDED.threshold,vanished_notional=EXCLUDED.vanished_notional,seen_ms=GREATEST(orderflow_live.seen_ms,EXCLUDED.seen_ms)",same("o","v")));
+ q.build().execute(pool).await?;
+ Ok(())
+}
+
+/// 结束的：一条语句里写进 `orderflow_orders`、从 `orderflow_live` 删掉（数据修改 CTE，同一快照、一起提交）。
+/// `orderflow_orders` 里已有的只改还挂着的行（0031 之前的老进程留下的）：结束写过一次就不再改。
+async fn write_ended(pool:&PgPool,base:&str,step:f64,chunk:&[&(BigOrder,i64)])->sqlx::Result<()> {
+ let mut q=QueryBuilder::<Postgres>::new(format!("WITH v({COLUMNS}) AS ("));
+ values(&mut q,base,step,chunk);
+ q.push(format!("), ins AS (INSERT INTO orderflow_orders({COLUMNS}) SELECT {COLUMNS} FROM v ON CONFLICT({PK}) DO UPDATE SET \
+  price=EXCLUDED.price,end_ms=EXCLUDED.end_ms,status=EXCLUDED.status,notional=EXCLUDED.notional,filled_notional=EXCLUDED.filled_notional,\
+  threshold=EXCLUDED.threshold,vanished_notional=EXCLUDED.vanished_notional,seen_ms=EXCLUDED.seen_ms WHERE orderflow_orders.end_ms IS NULL) \
+  DELETE FROM orderflow_live l USING v WHERE {}",same("l","v")));
+ q.build().execute(pool).await?;
+ Ok(())
+}
+
+/// 0031 之前的老进程写进 `orderflow_orders` 的挂着的行搬到 `orderflow_live`（活单表里已有同一单的以活单表为准）。
+/// 读回与每小时清理都先做一次；平时这句碰不到行（走 `orderflow_orders_end` 的 `end_ms IS NULL` 段）。
+async fn sweep(pool:&PgPool,base:&str)->sqlx::Result<u64> {
+ Ok(sqlx::query(&format!("WITH moved AS (DELETE FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL RETURNING {COLUMNS}) \
+  INSERT INTO orderflow_live({COLUMNS}) SELECT {COLUMNS} FROM moved ON CONFLICT({PK}) DO NOTHING")).bind(base).execute(pool).await?.rows_affected())
 }
 
 /// 停机时要刷的一条挂着的单：主键加最后一次看到的时刻。
 pub struct SeenRow<'a> {pub base:&'a str,pub venue_id:&'a str,pub side:Side,pub bucket:i64,pub first_seen_ms:i64,pub seen_ms:i64}
 
-/// 停机收尾：一句 UPDATE 把所有挂着的单的 `seen_ms` 刷到跟踪器手里的最后一次看到。只动还挂着的行；
+/// 停机收尾：一句 UPDATE 把所有挂着的单的 `seen_ms` 刷到跟踪器手里的最后一次看到。只动 `orderflow_live`（已结束的不在那里）；
 /// 只往后推不往前拉（写库任务同时在写的一批里 `seen_ms` 可能更旧，`upsert` 对挂着的行也取大的，两边谁后落都不倒退）。
 /// 库里还没有的（刚出现、还没刷过盘的）不在这里插，交给写库任务。返回改了几行。
 pub async fn refresh_seen(pool:&PgPool,rows:&[SeenRow<'_>])->sqlx::Result<u64> {
@@ -56,10 +93,9 @@ pub async fn refresh_seen(pool:&PgPool,rows:&[SeenRow<'_>])->sqlx::Result<u64> {
  let bucket:Vec<i64>=rows.iter().map(|r|r.bucket).collect();
  let first:Vec<i64>=rows.iter().map(|r|r.first_seen_ms).collect();
  let seen:Vec<i64>=rows.iter().map(|r|r.seen_ms).collect();
- let done=sqlx::query("UPDATE orderflow_orders o SET seen_ms=v.seen_ms \
+ let done=sqlx::query(&format!("UPDATE orderflow_live o SET seen_ms=v.seen_ms \
   FROM unnest($1::text[],$2::text[],$3::text[],$4::bigint[],$5::bigint[],$6::bigint[]) AS v(base,venue_id,side,bucket,first_seen_ms,seen_ms) \
-  WHERE o.base=v.base AND o.venue_id=v.venue_id AND o.side=v.side AND o.bucket=v.bucket AND o.first_seen_ms=v.first_seen_ms \
-  AND o.end_ms IS NULL AND o.seen_ms<v.seen_ms")
+  WHERE {} AND o.seen_ms<v.seen_ms",same("o","v")))
   .bind(base).bind(venue).bind(side).bind(bucket).bind(first).bind(seen).execute(pool).await?;
  Ok(done.rows_affected())
 }
@@ -74,16 +110,17 @@ fn order(row:&sqlx::postgres::PgRow)->Option<BigOrder> {
  })
 }
 
-/// 一只 base 还挂着的单（进程重启读回用）。
+/// 一只 base 还挂着的单（进程重启读回用）。先把历史表里还挂着的老行搬过来。
 pub async fn live(pool:&PgPool,base:&str)->sqlx::Result<Vec<Restored>> {
- let rows=sqlx::query(&format!("SELECT {COLUMNS} FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL")).bind(base).fetch_all(pool).await?;
+ sweep(pool,base).await?;
+ let rows=sqlx::query(&format!("SELECT {COLUMNS} FROM orderflow_live WHERE base=$1")).bind(base).fetch_all(pool).await?;
  Ok(rows.iter().filter_map(|r|Some(Restored{order:order(r)?,step:r.try_get("step").ok()?,seen_ms:r.try_get("seen_ms").ok()?})).collect())
 }
 
 /// `[from, to]` 里出现过的单：出现 ≤ to，且还挂着或结束 ≥ from。按出现时刻升序。
 ///
-/// 拆成三段各走各的索引：还挂着的；在窗口里结束的（结束时刻的区间扫）；跨过窗口右沿才结束的。
-/// 写成一句 `end_ms IS NULL OR end_ms >= from` 的话，拉最近一天也要把整个月结束的行都扫一遍。
+/// 拆成三段各走各的索引：还挂着的（`orderflow_live`，走主键的 base 段）；在窗口里结束的（结束时刻的区间扫）；
+/// 跨过窗口右沿才结束的。写成一句 `end_ms IS NULL OR end_ms >= from` 的话，拉最近一天也要把整个月结束的行都扫一遍。
 /// 线上走 [`range_each`]（边读边交）；攒成一张表的这两个只给测试核对结果用。
 #[cfg(test)]
 pub async fn range(pool:&PgPool,base:&str,from:i64,to:i64)->sqlx::Result<Vec<BigOrder>> {range_capped(pool,base,from,to,0,MAX_ROWS).await}
@@ -117,11 +154,11 @@ pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:
  Ok(n)
 }
 
-/// `range_each` 的查询：$1 base、$2 from、$3 to、$4 行数上限、$5 最短寿命。三路都要走得上 `orderflow_orders_end`（测试里 EXPLAIN 核对）。
+/// `range_each` 的查询：$1 base、$2 from、$3 to、$4 行数上限、$5 最短寿命。结束的两路都要走得上 `orderflow_orders_end`（测试里 EXPLAIN 核对）。
 pub(super) fn range_sql()->String {
  let cols=COLUMNS;
  format!("SELECT * FROM (SELECT * FROM (\
-  SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL AND first_seen_ms<=$3 \
+  SELECT {cols} FROM orderflow_live WHERE base=$1 AND first_seen_ms<=$3 \
   UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>=$2 AND end_ms<=$3 AND end_ms-first_seen_ms>=$5 \
   UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>$3 AND first_seen_ms<=$3 AND end_ms-first_seen_ms>=$5\
   ) t ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4) newest \
@@ -187,19 +224,21 @@ pub const ORPHAN_MS:i64=30*60_000;
 /// 挂着的行按最后一次看到失联结束的截止时刻：没在跟的缺席两分钟就算，正在跟的要等 `ORPHAN_MS`。
 pub fn stale_cutoff(tracked:bool,now:i64)->i64 {now-if tracked {ORPHAN_MS} else {STALE_MS}}
 
-/// 每小时一次：3 天以前结束的删掉；挂着却很久没看到的按最后一次看到时失联结束（截止见 `stale_cutoff`）；
-/// 估算体积超过闸门就从最旧的删起。返回（删了几行，失联结束几行）。
+/// 每小时一次：3 天以前结束的删掉；挂着却很久没看到的按最后一次看到时失联结束（截止见 `stale_cutoff`；
+/// 从 `orderflow_live` 搬进 `orderflow_orders`，状态 lost、不记消失量）；估算体积超过闸门就从最旧的删起。返回（删了几行，失联结束几行）。
 ///
 /// 原来只收没在跟的 base：正在跟的 base 上结束那笔没写进库的行，要等这只 base 停掉或进程重启才会结束，
 /// 主币永远不停，图上那条线就一直画到「现在」。
 pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u64)> {
  let bases=bases(pool).await?;
  let mut deleted=0;
- for base in &bases {deleted+=delete_ended_before(pool,base,now-RETENTION_MS).await?;}
+ for base in &bases {sweep(pool,base).await?;deleted+=delete_ended_before(pool,base,now-RETENTION_MS).await?;}
  let mut closed=0;
  for base in &bases {
-  closed+=sqlx::query("UPDATE orderflow_orders SET status='lost',end_ms=GREATEST(first_seen_ms,seen_ms),vanished_notional=NULL \
-   WHERE base=$1 AND end_ms IS NULL AND seen_ms<$2").bind(base).bind(stale_cutoff(tracked.contains(base),now)).execute(pool).await?.rows_affected();
+  closed+=sqlx::query(&format!("WITH moved AS (DELETE FROM orderflow_live WHERE base=$1 AND seen_ms<$2 RETURNING *) \
+   INSERT INTO orderflow_orders({COLUMNS}) SELECT base,venue_id,exchange,product,side,bucket,price,first_seen_ms,GREATEST(first_seen_ms,seen_ms),'lost',\
+   initial_notional,notional,filled_notional,threshold,NULL,step,seen_ms FROM moved ON CONFLICT({PK}) DO NOTHING"))
+   .bind(base).bind(stale_cutoff(tracked.contains(base),now)).execute(pool).await?.rows_affected();
  }
  // 总量闸门：表文件（pg_total_relation_size）超过 20 GB 才动手；删到「行数 × 每行占用」估出来的
  // 实际占用低于 18 GB。行数用 reltuples（上一次 ANALYZE 的估计，够用），删完按删掉的行数往下扣。
@@ -220,8 +259,10 @@ pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u6
  Ok((deleted,closed))
 }
 
-/// 表此刻的体积（容量实测用）。
-pub async fn size(pool:&PgPool)->sqlx::Result<i64> {sqlx::query_scalar("SELECT pg_total_relation_size('orderflow_orders')").fetch_one(pool).await}
+/// 两张表此刻的体积之和（容量实测用）。
+pub async fn size(pool:&PgPool)->sqlx::Result<i64> {
+ sqlx::query_scalar("SELECT pg_total_relation_size('orderflow_orders')+pg_total_relation_size('orderflow_live')").fetch_one(pool).await
+}
 
 #[cfg(test)]
 pub(super) mod tests {
@@ -240,6 +281,22 @@ pub(super) mod tests {
    sqlx::query(&sql).execute(&admin).await.unwrap();
   }
   Some(PgPool::connect(&url).await.unwrap())
+ }
+
+ /// 两张表里都清掉这些 base 的行。
+ pub(in super::super) async fn clear(pool:&PgPool,bases:&[&str]) {
+  for table in ["orderflow_live","orderflow_orders","orderflow_bases"] {
+   sqlx::query(&format!("DELETE FROM {table} WHERE base=ANY($1)")).bind(bases.iter().map(|b|b.to_string()).collect::<Vec<_>>()).execute(pool).await.unwrap();
+  }
+ }
+ /// 一单在哪张表里、`seen_ms` 是多少：挂着的在 `orderflow_live`，结束的在 `orderflow_orders`；两张都没有给 None。
+ async fn seen_of(pool:&PgPool,base:&str,bucket:i64)->Option<(&'static str,i64)> {
+  for table in ["orderflow_live","orderflow_orders"] {
+   if let Some(seen)=sqlx::query_scalar::<_,i64>(&format!("SELECT seen_ms FROM {table} WHERE base=$1 AND bucket=$2")).bind(base).bind(bucket).fetch_optional(pool).await.unwrap() {
+    return Some((table,seen));
+   }
+  }
+  None
  }
 
  fn order(bucket:i64,first:i64,end:Option<i64>)->BigOrder {
@@ -272,7 +329,7 @@ pub(super) mod tests {
  #[tokio::test]
  async fn min_life_drops_only_short_ended_orders() {
   let Some(pool)=isolated_pool().await else {return};
-  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZM'").execute(&pool).await.unwrap();
+  clear(&pool,&["ZZM"]).await;
   let now=100*DAY_MS;
   let rows=[
    (order(1,now-1_000,None),now),                                 // 挂着、才 1 秒
@@ -288,14 +345,14 @@ pub(super) mod tests {
   assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,300_000,MAX_ROWS).await.unwrap()),vec![4,3,6,1],"短于 5 分钟的结束单不回，正好 5 分钟的回，挂着的回");
   assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,86_400_000,MAX_ROWS).await.unwrap()),vec![4,1],"上限一天：只剩挂着的与活满一天的");
   assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,300_000,2).await.unwrap()),vec![6,1],"先滤再截：上限只留给要回的行");
-  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZM'").execute(&pool).await.unwrap();
+  clear(&pool,&["ZZM"]).await;
  }
 
  /// 停机那一句 UPDATE：只刷还挂着的行，只往后推；库里没有的不插。写库任务同时落一批更旧的 `seen_ms` 也拉不回去。
  #[tokio::test]
  async fn shutdown_refresh_moves_live_seen_forward_only() {
   let Some(pool)=isolated_pool().await else {return};
-  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZS','ZZS2')").execute(&pool).await.unwrap();
+  clear(&pool,&["ZZS","ZZS2"]).await;
   let now=100*DAY_MS;
   let (a,b,c)=(order(1,now-60_000,None),order(2,now-60_000,None),order(3,now-60_000,Some(now-1_000)));
   upsert(&pool,"ZZS",100.0,&[(a.clone(),now-50_000),(b.clone(),now-5_000),(c.clone(),now-1_000)]).await.unwrap();
@@ -305,26 +362,64 @@ pub(super) mod tests {
   let rows=[row("ZZS",&a,now),row("ZZS",&b,now-9_000),row("ZZS",&c,now),row("ZZS",&d,now),row("ZZS2",&a,now-40_000)];
   assert_eq!(refresh_seen(&pool,&rows).await.unwrap(),2,"a 与 ZZS2 的 a；b 更旧不动、c 已结束不动、d 库里没有不插");
   assert_eq!(refresh_seen(&pool,&[]).await.unwrap(),0);
-  let seen=|base:&'static str,bucket:i64|{let pool=pool.clone();async move {
-   sqlx::query_scalar::<_,i64>("SELECT seen_ms FROM orderflow_orders WHERE base=$1 AND bucket=$2").bind(base).bind(bucket).fetch_optional(&pool).await.unwrap()}};
+  let seen=|base:&'static str,bucket:i64|{let pool=pool.clone();async move {seen_of(&pool,base,bucket).await.map(|(_,s)|s)}};
   assert_eq!((seen("ZZS",1).await,seen("ZZS",2).await,seen("ZZS",3).await,seen("ZZS",4).await,seen("ZZS2",1).await),
    (Some(now),Some(now-5_000),Some(now-1_000),None,Some(now-40_000)));
   // 写库任务晚落一批旧的：挂着的行 seen_ms 取大的，量照写。
   let mut moved=a.clone();moved.notional=7e6;
   upsert(&pool,"ZZS",100.0,&[(moved,now-30_000)]).await.unwrap();
   assert_eq!(seen("ZZS",1).await,Some(now));
-  assert_eq!(sqlx::query_scalar::<_,f64>("SELECT notional FROM orderflow_orders WHERE base='ZZS' AND bucket=1").fetch_one(&pool).await.unwrap(),7e6);
+  assert_eq!(sqlx::query_scalar::<_,f64>("SELECT notional FROM orderflow_live WHERE base='ZZS' AND bucket=1").fetch_one(&pool).await.unwrap(),7e6);
   // 结束的照写结束那一刻（可以比挂着时写的 seen_ms 早：失联按最后一次真看到结束）。
   let mut lost=a.clone();lost.end_ms=Some(now-55_000);lost.status=Status::Lost;
   upsert(&pool,"ZZS",100.0,&[(lost,now-55_000)]).await.unwrap();
-  assert_eq!(seen("ZZS",1).await,Some(now-55_000));
-  sqlx::query("DELETE FROM orderflow_orders WHERE base IN ('ZZS','ZZS2')").execute(&pool).await.unwrap();
+  assert_eq!(seen_of(&pool,"ZZS",1).await,Some(("orderflow_orders",now-55_000)),"结束的搬进历史表");
+  clear(&pool,&["ZZS","ZZS2"]).await;
+ }
+
+ /// 挂着的只在活单表、结束的只在历史表；结束是一条语句里搬过去的；结束之后晚到的「挂着」不再进活单表；
+ /// 老进程写进历史表的挂着的行读回时搬过来；失联结束从活单表搬进历史表；体积算两张表。
+ #[tokio::test]
+ async fn live_orders_live_in_their_own_table_until_they_end() {
+  let Some(pool)=isolated_pool().await else {return};
+  clear(&pool,&["ZZL"]).await;
+  let now=100*DAY_MS;
+  let count=|table:&'static str|{let pool=pool.clone();async move {
+   sqlx::query_scalar::<_,i64>(&format!("SELECT count(*) FROM {table} WHERE base='ZZL'")).fetch_one(&pool).await.unwrap()}};
+  let (a,b)=(order(1,now-60_000,None),order(2,now-60_000,None));
+  upsert(&pool,"ZZL",100.0,&[(a.clone(),now-1_000),(b.clone(),now-1_000)]).await.unwrap();
+  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(2,0));
+  // a 结束：一批里既有结束的 a 也有仍挂着的 b。
+  let mut ended=a.clone();ended.end_ms=Some(now);ended.status=Status::Filled;ended.filled_notional=5e6;
+  upsert(&pool,"ZZL",100.0,&[(ended.clone(),now),(b.clone(),now)]).await.unwrap();
+  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(1,1));
+  assert_eq!(seen_of(&pool,"ZZL",1).await,Some(("orderflow_orders",now)));
+  assert_eq!(seen_of(&pool,"ZZL",2).await,Some(("orderflow_live",now)));
+  // 晚到的一批「a 挂着」：不进活单表、历史表里的结束不动。
+  upsert(&pool,"ZZL",100.0,&[(a.clone(),now+500)]).await.unwrap();
+  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(1,1));
+  assert_eq!(range(&pool,"ZZL",now-DAY_MS,now+1).await.unwrap().iter().map(|o|(o.bucket,o.status)).collect::<Vec<_>>(),vec![(1,Status::Filled),(2,Status::Live)]);
+  // 老进程留在历史表里的挂着的行（0031 之前的写法）：读回时搬进活单表；活单表里已有同一单的以活单表为准。
+  sqlx::query(&format!("INSERT INTO orderflow_orders({COLUMNS}) VALUES('ZZL','binance:usdtPerp:BTCUSDT','币安','usdtPerp','bid',3,300,$1,NULL,'live',6e6,6e6,0,5e6,NULL,100,$1)")).bind(now-30_000).execute(&pool).await.unwrap();
+  sqlx::query(&format!("INSERT INTO orderflow_orders({COLUMNS}) VALUES('ZZL','binance:usdtPerp:BTCUSDT','币安','usdtPerp','bid',2,200,$1,NULL,'live',6e6,6e6,0,5e6,NULL,100,$2)")).bind(now-60_000).bind(now-59_000).execute(&pool).await.unwrap();
+  let back=super::live(&pool,"ZZL").await.unwrap();
+  assert_eq!(back.iter().map(|r|(r.order.bucket,r.seen_ms)).collect::<std::collections::BTreeSet<_>>(),[(2,now),(3,now-30_000)].into_iter().collect(),"3 号搬过来，2 号仍是活单表那份");
+  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(2,1));
+  // 失联结束：从活单表搬进历史表，状态 lost、结束时刻 = 最后一次看到、不记消失量。清理只看登记过的 base。
+  start(&pool,"ZZL",now).await.unwrap();
+  let (_,closed)=purge(&pool,now+ORPHAN_MS+10,&["ZZL".to_string()]).await.unwrap();
+  assert_eq!(closed,2);
+  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(0,3));
+  let lost=range(&pool,"ZZL",now-DAY_MS,now+ORPHAN_MS).await.unwrap();
+  assert_eq!(lost.iter().filter(|o|o.status==Status::Lost).map(|o|(o.bucket,o.end_ms,o.vanished_notional)).collect::<Vec<_>>(),vec![(2,Some(now),None),(3,Some(now-30_000),None)]);
+  assert!(size(&pool).await.unwrap()>0);
+  clear(&pool,&["ZZL"]).await;
  }
 
  #[tokio::test]
  async fn writes_reads_and_rolls() {
   let Some(pool)=isolated_pool().await else {return};
-  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZT'").execute(&pool).await.unwrap();
+  clear(&pool,&["ZZT"]).await;
   let now=100*DAY_MS;
   // 挂着的、窗口里结束的、跨过窗口右沿才结束的、4 天前结束的（超过 3 天保留期）。
   let live=order(1,now-3_600_000,None);
@@ -372,7 +467,7 @@ pub(super) mod tests {
   let rest=range(&pool,"ZZT",now-6*DAY_MS,now+STALE_MS).await.unwrap();
   assert!(rest.iter().all(|o|o.bucket!=4));
   assert_eq!(rest.iter().find(|o|o.bucket==5).map(|o|(o.status,o.end_ms)),Some((Status::Lost,Some(now+2))));
-  sqlx::query("DELETE FROM orderflow_orders WHERE base='ZZT'").execute(&pool).await.unwrap();
+  clear(&pool,&["ZZT"]).await;
   sqlx::query("DELETE FROM orderflow_bases WHERE base='ZZT'").execute(&pool).await.unwrap();
  }
 }

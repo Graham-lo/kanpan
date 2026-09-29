@@ -887,7 +887,8 @@ extension ChartRenderer {
       // 想放的位置（横向落点 × 签顶），按先后：
       // 挂着的：贴右缘、线上方；再线下方（上方撞了别的签、会进图例、或躲 K 线让出了主图左缘时）。
       // 已结束的：结束点右侧居中、右侧线上方、右侧线下方；再结束点左侧（签右缘 = 结束点 − 4 pt，整枚在线的横向范围里才算）
-      // 线上方、线下方——这五处哪个不用横向挪就用哪个（签仍贴在结束点上），都压着蜡烛才取右侧居中往右让过去的。
+      // 线上方、线下方——这五处哪个不用横向挪就用哪个（签仍贴在结束点上）。都压着蜡烛就横向让：左侧那两处沿这条线
+      // 往左滑（签左缘不出线的起点；线走过的这一段价格只在一侧，线的另一侧多半是空的），右侧居中往右让，两者取挪得少的。
       let xL = Double(band.frame.maxX) - Self.orderFlowLabelInset - w
       let wants: [(x: Double, top: Double, left: Bool)]
       if live {
@@ -906,7 +907,7 @@ extension ChartRenderer {
       let shift = { (want: CGRect) -> CGRect? in
         let r = Self.orderFlowDodgeLadder(want, ladder: ladder)
         guard let candleDodge else { return r }
-        return candleDodge.dodge(r, !live)
+        return candleDodge.dodge(r, !live, 0)
       }
       let place = { (want: (x: Double, top: Double, left: Bool)) -> CGRect? in
         // 线在图例那几行里（价高出了定标区）：签夹到图例下沿后离线太远就不放，免得签认错线。
@@ -921,13 +922,25 @@ extension ChartRenderer {
         first = wants.lazy.compactMap(place).first
       } else {
         let placed = wants.compactMap { want in place(want).map { (rect: $0, moved: abs(Double($0.minX) - want.x) > 1e-9) } }
-        // 五处里先取不用横向挪、也不压蜡烛的；没有就取右侧居中往右让过去的；连那个也让出了主图，
-        // 就在五处（不挪）里取盖住蜡烛面积最少的——签不能没有，金额是这堵墙最要紧的一个数。
+        // 五处里先取不用横向挪、也不压蜡烛的；没有就横向让：左侧线上方 / 线下方沿线往左滑到不压蜡烛为止
+        // （签左缘不出线的起点，见 `orderFlowCandleDodge` 的 `floor`），右侧居中往右让过去，两者取离原位近的；
+        // 都让不出去（左边滑到线头、右边出了主图），就在五处（不挪）里取盖住蜡烛面积最少的——
+        // 签不能没有，金额是这堵墙最要紧的一个数。第三轮只往右让，长线的结束点撞进一片高蜡烛时右边总是让不开，
+        // 签就落回压着蜡烛的那处；线身上明明空着一整段。
         let nominal = wants.compactMap { want -> CGRect? in
           let r = Self.orderFlowDodgeLadder(CGRect(x: want.x, y: clamp(want.top), width: w, height: h), ladder: ladder)
           return r.minX >= 0 && abs(Double(r.midY) - mid) <= Self.orderFlowLabelMaxShift ? r : nil
         }
-        first = placed.first { !$0.moved }?.rect ?? placed.first?.rect
+        let floor = max(0, Double(band.frame.minX))
+        let slid = wants.filter(\.left).compactMap { want -> (rect: CGRect, moved: Double)? in
+          let r0 = Self.orderFlowDodgeLadder(CGRect(x: want.x, y: clamp(want.top), width: w, height: h), ladder: ladder)
+          guard abs(Double(r0.midY) - mid) <= Self.orderFlowLabelMaxShift,
+                let r = candleDodge?.dodge(r0, false, floor) else { return nil }
+          return (r, abs(Double(r.minX) - want.x))
+        }
+        let pushed = placed.first.map { (rect: $0.rect, moved: abs(Double($0.rect.minX) - x)) }
+        first = placed.first { !$0.moved }?.rect
+          ?? (slid + [pushed].compactMap { $0 }).min { $0.moved < $1.moved }?.rect
           ?? nominal.min { (candleDodge?.overlap($0) ?? 0) < (candleDodge?.overlap($1) ?? 0) }
       }
       guard var rect = first else { continue }
@@ -957,13 +970,14 @@ extension ChartRenderer {
 
   /// 金额签躲 K 线：给一枚签的框，签横向范围里有蜡烛（含影线；平均 K 线按画出来的那根，收盘价画法按那一截折线）
   /// 和它纵向重叠，就把签横向挪开，纵向不动；挪过去又压到下一根就接着让，直到不压任何一根。不压就原样返回。
-  /// `toRight` 为假（挂着的）往左让：签右缘 = 压着的最右一根左缘 − 2 pt，让出主图左缘（x < 0）给 nil；
+  /// `toRight` 为假往左让：签右缘 = 压着的最右一根左缘 − 2 pt，签左缘越过 `floor` 给 nil
+  /// （挂着的签 `floor` 是 0，让出主图左缘就不放；已结束的签沿线往左滑时 `floor` 是线的起点，滑到线头还压着就不放）；
   /// 为真（已结束的）往右让：签左缘 = 压着的最左一根右缘 + 2 pt，出了主图右缘（价格刻度列左侧 4 pt）给 nil。
   /// 蜡烛横向按「中心 ± 格宽 / 3 + 0.5 pt」算（实体宽是格宽的 2/3、按设备像素取整，最多多出一个像素）。
   /// 每帧拖图都会走到：先二分找到签一侧缘的那一根，再朝让的方向逐根看，看到整根落在签另一侧以外就停——只查签底下那几根。
   /// `overlap` 给一枚签的框算它盖住的蜡烛面积（pt²，各根与签相交的矩形之和）：已结束的签几处都压着时取盖得最少的那处。
   struct OrderFlowCandleProbe {
-    let dodge: (CGRect, _ toRight: Bool) -> CGRect?
+    let dodge: (CGRect, _ toRight: Bool, _ floor: Double) -> CGRect?
     let overlap: (CGRect) -> Double
   }
 
@@ -1020,7 +1034,7 @@ extension ChartRenderer {
       }
       return total
     }
-    let dodge = { (rect: CGRect, toRight: Bool) -> CGRect? in
+    let dodge = { (rect: CGRect, toRight: Bool, floor: Double) -> CGRect? in
       guard n > 0 else { return rect }
       var r = rect
       var lo = 0, hi = n
@@ -1055,7 +1069,7 @@ extension ChartRenderer {
         if c + half <= Double(r.minX) { break }
         if left < Double(r.maxX), hits(i, r) {
           r.origin.x = CGFloat(left - gap) - r.width
-          if r.minX < 0 { return nil }
+          if Double(r.minX) < floor { return nil }
         }
         i -= 1
       }

@@ -223,14 +223,19 @@ impl Matching {
 }
 
 #[derive(Clone,Debug)]
-/// `matching`：成交对账与消失总量（读回来的按「首次名义 − 最后名义」起算）。
+/// `matching`：成交对账与消失总量（读回来的取库里存的消失量；0031 之前的老行没存，按「首次名义 − 最后名义」起算）。
 /// `seen`：写库的「最后一次看到」，价位不知道的时候也往前走（重启时别因为两分钟没见就判失联）；
 /// `sighted`：真在簿里看到它的最后时刻，失联结束记这个；`unknown_since`：从哪一拍起看不见它的价位。
 struct Live {order:BigOrder,seen:i64,sighted:i64,unknown_since:Option<i64>,ending:Option<Pending>,matching:Matching}
 impl Live {
  fn new(order:BigOrder,seen:i64,matching:Matching)->Self {Live{order,seen,sighted:seen,unknown_since:None,ending:None,matching}}
- fn restored(order:BigOrder,seen:i64)->Self {
-  let matching=Matching{vanished:(order.initial_notional-order.notional).max(0.0),level:order.notional,..Matching::default()};
+ /// 成交不能多过消失掉的量：对账规则本身保证这一点（`settle` 只记 min(fill,drop)），老规则按首次名义判成交时
+ /// 写下的行可能不满足，读回时夹一下，不然它结束时的判定用的是一个对不上的成交数。
+ /// 没存消失量的老行按净掉量起算，但成交了多少至少就掉过多少，所以不低于已记的成交。
+ fn restored(mut order:BigOrder,seen:i64)->Self {
+  let vanished=order.vanished_notional.take().unwrap_or((order.initial_notional-order.notional).max(0.0).max(order.filled_notional));
+  order.filled_notional=order.filled_notional.min(vanished);
+  let matching=Matching{vanished,level:order.notional,..Matching::default()};
   Self::new(order,seen,matching)
  }
 }
@@ -262,6 +267,7 @@ fn end(mut order:BigOrder,at:i64,remaining:f64,mut matching:Matching)->BigOrder 
  matching.observe(remaining,at);
  matching.settle(&mut order,at);
  let vanished=matching.vanished;
+ order.filled_notional=order.filled_notional.min(vanished);
  order.vanished_notional=Some(vanished);
  order.status=if vanished>0.0&&order.filled_notional>=vanished*FILLED_RATIO {Status::Filled} else {Status::Cancelled};
  order.end_ms=Some(order.first_seen_ms.max(at));
@@ -484,9 +490,10 @@ impl Model {
   }
  }
 
- /// 挂着的单与各自最后一次看到的时刻（定期写库用）。
+ /// 挂着的单与各自最后一次看到的时刻（定期写库用）。挂着的也带上到此为止消失掉的量：
+ /// 重启读回时接着这个数算，不用「首次名义 − 最后名义」这个把补回来的量抵掉的净值。
  pub fn live(&self)->Vec<(BigOrder,i64)> {
-  self.tracks.values().flat_map(|t|t.live.values().map(|l|(l.order.clone(),l.seen))).collect()
+  self.tracks.values().flat_map(|t|t.live.values().map(|l|(BigOrder{vanished_notional:Some(l.matching.vanished),..l.order.clone()},l.seen))).collect()
  }
  pub fn live_count(&self)->usize {self.tracks.values().map(|t|t.live.len()).sum()}
  pub fn take_ended(&mut self)->Vec<BigOrder> {std::mem::take(&mut self.ended)}
@@ -889,6 +896,34 @@ mod tests {
   assert!(r.live().is_empty(),"代号 1 的帧在代号 2 的连接上不作数");
  }
 
+ /// 读回时取库里存的消失量（挂着的从 0031 起也写），成交夹到不超过它；老行没存消失量的按净掉量起算。
+ #[test] fn restored_orders_take_the_saved_vanished_and_never_fill_more_than_it() {
+  let mut r=Rig::new();
+  let order=|bucket:i64,notional:f64,filled:f64,vanished:Option<f64>|BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),
+   side:Side::Bid,bucket,price:bucket as f64*100.0,first_seen_ms:0,end_ms:None,status:Status::Live,initial_notional:1.2*T,notional,
+   filled_notional:filled,threshold:T,vanished_notional:vanished};
+  r.m.restore(vec![
+   // 掉了 0.5T 又补回到 1.2T：库里存的消失量是 0.5T，净掉量是 0；老规则留下的成交 2T 比消失量还大。
+   Restored{order:order(599,1.2*T,2.0*T,Some(0.5*T)),step:100.0,seen_ms:599_900},
+   // 0031 之前的老行：没存消失量，按 1.2T − 1.0T 起算；成交 0.1T 不超、不动。
+   Restored{order:order(598,1.0*T,0.1*T,None),step:100.0,seen_ms:599_900},
+   // 老行、被吃 0.5T 又补回来：净掉量 0，但成交 0.5T 说明至少掉过 0.5T。
+   Restored{order:order(597,1.2*T,0.5*T,None),step:100.0,seen_ms:599_900},
+  ],600_000);
+  let live=r.live();
+  let at=|b:i64|live.iter().find(|o|o.bucket==b).unwrap();
+  assert_eq!((at(599).filled_notional,at(599).vanished_notional),(0.5*T,Some(0.5*T)));
+  assert_eq!((at(598).filled_notional,at(598).vanished_notional),(0.1*T,Some(0.2*T)));
+  assert_eq!((at(597).filled_notional,at(597).vanished_notional),(0.5*T,Some(0.5*T)));
+  // 599 之后整档撤掉：消失 0.5T + 1.2T，成交只有夹过的 0.5T，不到八成——已撤销，而不是拿老规则的 2T 判成已成交。
+  r.book("a",&[(59_800.0,1.0)],&[ASK],600_000);
+  r.m.evaluate(600_000);
+  r.m.evaluate(600_000+CONFIRM_MS+1);
+  let o=r.m.ended.iter().find(|o|o.bucket==599).unwrap();
+  assert_eq!(o.status,Status::Cancelled);
+  assert!((o.vanished_notional.unwrap()-1.7*T).abs()<1.0&&(o.filled_notional-0.5*T).abs()<1.0);
+ }
+
  #[test] fn restore_ends_long_absent_orders_and_continues_the_rest() {
   let mut r=Rig::new();
   let order=|bucket:i64|BigOrder{venue_id:"a".into(),exchange:"Coinbase".into(),product:"spot".into(),side:Side::Bid,bucket,
@@ -966,7 +1001,7 @@ mod tests {
   for t in (600_000+UNKNOWN_MS..=600_000+2*UNKNOWN_MS).step_by(60_000) {r.m.evaluate(t);}
   assert!(r.m.ended.is_empty(),"20 分钟后仍挂着：不判撤单、不判失联");
   assert_eq!(r.m.live(),vec![(r.live()[0].clone(),600_000+2*UNKNOWN_MS)],"seen 照走");
-  assert!((r.live()[0].notional-1.2*T).abs()<1.0&&r.live()[0].vanished_notional.is_none());
+  assert!((r.live()[0].notional-1.2*T).abs()<1.0&&r.live()[0].vanished_notional==Some(0.0));
   // 簿断线、重连在等快照：那段仍按 UNKNOWN_MS 等（整本不知道），拿到快照、它又落在覆盖以外就接着挂。
   r.m.closed("a",1);
   r.m.book_mut("a").unwrap().opened(2);

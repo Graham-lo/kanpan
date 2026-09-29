@@ -72,8 +72,8 @@ struct OrderFlowChartTests {
     }
   }
 
-  /// 已结束的签落在规则允许的几处之一：结束点右侧（居中 / 线上方 / 线下方）、结束点左侧线的范围里（线上方 / 线下方）、
-  /// 或从右侧居中往右让过去（居中在线上、左缘更靠右）。
+  /// 已结束的签落在规则允许的几处之一：结束点右侧（居中 / 线上方 / 线下方）、结束点左侧线的范围里（线上方 / 线下方，
+  /// 含沿线往左滑过去的：签左缘不出线的起点）、或从右侧居中往右让过去（居中在线上、左缘更靠右）。
   static func endedLabelAtAllowedSpot(_ label: ChartRenderer.OrderFlowLabel, band: ChartRenderer.OrderFlowBand, plotW: Double) -> Bool {
     let inset = ChartRenderer.orderFlowLabelInset, lift = ChartRenderer.orderFlowLabelLineGap
     let f = label.frame, l = band.frame
@@ -81,7 +81,7 @@ struct OrderFlowChartTests {
     let centered = abs(f.midY - l.midY) < 1e-9
     let offLine = abs(f.maxY - (l.minY - lift)) < 1e-9 || abs(f.minY - (l.maxY + lift)) < 1e-9
     if abs(f.minX - xR) < 1e-9 { return centered || offLine }
-    if abs(f.minX - xL) < 1e-9, xL >= l.minX { return offLine }
+    if f.minX <= xL + 1e-9, f.minX >= max(0, l.minX) - 1e-9 { return offLine }
     return f.minX > xR && centered
   }
 
@@ -1199,6 +1199,62 @@ struct OrderFlowChartTests {
     #expect(abs(bracket.maxX - (wallLabel.frame.minX - ChartRenderer.orderFlowBracketGap)) < 1e-6,
             "括号 \(bracket) 跟着签 \(wallLabel.frame)")
     r.state.orderFlow?.thresholds.step = nil
+  }
+
+  @Test("已结束的长线结束在一片高蜡烛里、右边让不开：签沿线往左滑到线身上不压蜡烛的地方（线上方 / 下方，左缘不出线头），不落回压着蜡烛的那处")
+  func endedLabelSlidesAlongItsOwnLine() throws {
+    var (r, _) = Self.renderer()
+    r.state.view.span /= 3
+    let b = r.state.series
+    let L = r.layout(size: Self.size)
+    let inset = ChartRenderer.orderFlowLabelInset, h = ChartRenderer.orderFlowLabelHeight
+    let lift = ChartRenderer.orderFlowLabelLineGap
+    let w = ChartRenderer.orderFlowLabelWidth(ChartRenderer.orderFlowAmount(10_000_000))
+    let spacing = r.state.view.barSpacing(step: b.step, plotW: L.plotW)
+    let cx = { (i: Int) in r.state.view.x(Double(b.time(at: i)), plotW: L.plotW) }
+    // 夹具：线从 `tall − 30` 画到 `tall − 1`、价位在 `tall` 顶端往下 7 pt，视野右缘就停在 `tall`（右边让不开）。
+    // 结束点两侧五处都压着蜡烛（左侧那两处被 `tall` 前面几根挡住），但线身上更靠左有一段线上方或下方是空的——
+    // 夹具里挑满足这些的第一根；判「空」照 `candlesUnder`。
+    let cand = (b.count - 40)..<(b.count - 12)
+    var pick: (tall: Int, level: Double, clearX: Double)?
+    for i in cand where i >= 31 && self.y(r, b.low[i]) - self.y(r, b.high[i]) > 10 {
+      var d = r
+      d.state.view.to = Double(b.time(at: i)) + Double(b.step) / 2
+      let dL = d.layout(size: Self.size)
+      let cxd = { (j: Int) in d.state.view.x(Double(b.time(at: j)), plotW: dL.plotW) }
+      let level = self.price(d, atY: self.y(d, b.high[i]) + h / 2 - 1)
+      let lineY = self.y(d, level)
+      let lineMinX = cxd(i - 30) - spacing / 2, lineMaxX = cxd(i) - spacing / 2
+      let xL = lineMaxX - inset - w
+      guard xL >= lineMinX else { continue }
+      let above = { (x: Double) in CGRect(x: x, y: lineY - 1 - lift - h, width: w, height: h) }
+      let below = { (x: Double) in CGRect(x: x, y: lineY + 1 + lift, width: w, height: h) }
+      let centered = CGRect(x: lineMaxX + inset, y: lineY - h / 2, width: w, height: h)
+      let anchored = [centered, above(lineMaxX + inset), below(lineMaxX + inset), above(xL), below(xL)]
+      guard anchored.allSatisfy({ !Self.candlesUnder(d, $0).isEmpty }) else { continue }
+      var x = xL - 1
+      var found: Double?
+      while x >= lineMinX {
+        if Self.candlesUnder(d, above(x)).isEmpty || Self.candlesUnder(d, below(x)).isEmpty { found = x; break }
+        x -= 1
+      }
+      if let found { pick = (i, level, found); break }
+    }
+    let (tall, level, clearX) = try #require(pick, "夹具里要有这么一根")
+    r.state.view.to = Double(b.time(at: tall)) + Double(b.step) / 2
+    let seen = b.time(at: tall - 30) + 1, end = b.time(at: tall - 1) + 1
+    r.state.orderFlow?.orders = [Self.order(.usdtPerp, .ask, price: level, firstSeen: seen, end: end, status: .cancelled, bucket: 3)]
+    let f = frame(r)
+    let line = try #require(f.bands.first), label = try #require(f.labels.first, "滑过去仍写金额")
+    let plotW = r.layout(size: Self.size).plotW
+    #expect(Self.endedLabelAtAllowedSpot(label, band: line, plotW: plotW), "\(label.frame) 线 \(line.frame)")
+    #expect(label.frame.maxX < line.frame.maxX - inset - 1e-9, "签沿线滑到了结束点左侧那两处的更左边：\(label.frame) 线 \(line.frame)")
+    #expect(label.frame.minX >= line.frame.minX - 1e-9, "签左缘不出线头")
+    #expect(label.frame.minX >= clearX - w - spacing, "滑到最近的空档就停，不一路滑到线头：签 \(label.frame.minX)，最近空档 \(clearX)")
+    let offLine = abs(label.frame.maxY - (line.frame.minY - lift)) < 1e-9 || abs(label.frame.minY - (line.frame.maxY + lift)) < 1e-9
+    #expect(offLine, "沿线滑的是线上方 / 下方那两处，纵向不动")
+    #expect(Self.candlesUnder(r, label.frame).isEmpty, "不压任何一根：\(Self.candlesUnder(r, label.frame)) 签 \(label.frame)")
+    _ = cx
   }
 
   /// 把 `body` 画进一张和图一样大的位图（1 倍、y 朝下，行号 = 视图坐标 y），返回 RGBA。
