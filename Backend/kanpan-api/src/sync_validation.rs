@@ -151,12 +151,18 @@ fn lines(v:&Value)->bool {
  }))
 }
 fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field(DRAWINGS,k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
+/// 「对比 K 线」的一只品种：完整身份键 `venue/market/SYMBOL`，和 favorites 的 id 同一形态。
+///
+/// 代号段按交易所分流交给 `identity`（也就是 `binance_symbol` / `coinbase_symbol`），不另写一套：
+/// 以前这里自己抄了一条只收 ASCII 的规则，于是自选、画线、提醒都收得下的 `币安人生USDT`，
+/// 一加进对比就让整条 settings 操作 400、同步队列卡死在那一条上。一只品种能收藏就能对比，
+/// 两处规则必须是同一条。认不得的交易所 / 市场一样拒（favorites 的 id 也是这样判的）。
+/// 128 字节只是切分之前的粗上限：合法键最长 `binance/usd_m/` + 36 个汉字 + `USDT` = 126 字节。
 fn compare_key(v:&Value)->bool {
  let Some(s)=v.as_str() else {return false};
- let p:Vec<_>=s.split('/').collect();
- s.len()<=128 && p.len()==3 && p.iter().all(|v|!v.is_empty())
- && p[..2].iter().all(|v|v.bytes().all(|c|c.is_ascii_lowercase()||c.is_ascii_digit()||c==b'_'))
- && p[2].bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()||c==b'-'||c==b'_')
+ let mut p=s.splitn(3,'/');
+ let (Some(venue),Some(market),Some(symbol))=(p.next(),p.next(),p.next()) else {return false};
+ s.len()<=128 && identity(venue,market,symbol)
 }
 pub fn field(collection:&str,path:&str,v:&Value)->bool {
  let p:Vec<_>=path.split('/').collect();
@@ -861,7 +867,7 @@ mod tests {
  }
  #[test] fn compare_symbols_are_bounded_distinct_full_instrument_keys() {
   assert!(crate::sync::SETTINGS_FIELDS.contains(&"compareSymbols"));
-  for good in [json!([]), json!(["binance/usd_m/ETHUSDT", "coinbase/spot/BTC-USD", "future/spot/ABC"])] {
+  for good in [json!([]), json!(["binance/usd_m/ETHUSDT", "coinbase/spot/BTC-USD", "binance/usd_m/1000BONKUSDC"])] {
    assert!(field("settings","compareSymbols",&good));
   }
   for bad in [
@@ -869,7 +875,38 @@ mod tests {
    json!(["binance/usd_m/ethusdt"]), json!(["binance//ETHUSDT"]),
    json!(["binance/usd_m/ETHUSDT/x"]), json!([" binance/usd_m/ETHUSDT"]),
    json!(["binance/usd_m/ETHUSDT", "binance/usd_m/ETHUSDT"]),
-   json!(["binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", "binance/usd_m/DOGEUSDT", "binance/usd_m/XRPUSDT"])
+   json!(["binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", "binance/usd_m/DOGEUSDT", "binance/usd_m/XRPUSDT"]),
+   // 认不得的交易所 / 市场，或者交易所与市场配错了：favorites 的 id 也不收。
+   json!(["future/spot/ABC"]), json!(["binance/spot/BTCUSDT"]), json!(["coinbase/usd_m/BTC-USD"]),
   ] { assert!(!field("settings","compareSymbols",&bad), "{bad}"); }
+ }
+ /// 对比 K 线的代号段和自选同一条规则：中文底名的币安合约能收藏就能对比。
+ /// 以前 `compare_key` 只收 ASCII，把 `币安人生USDT` 加进对比会让整条 settings 操作 400。
+ #[test] fn compare_symbols_follow_the_favorites_symbol_rule() {
+  let key=|s:&str|json!([s]);
+  for good in ["binance/usd_m/币安人生USDT","binance/usd_m/我踏马来了USDT","binance/usd_m/1000币USDC","binance/usd_m/SPCXUSD1"] {
+   assert!(field("settings","compareSymbols",&key(good)),"{good} should be accepted");
+   let symbol=good.rsplit('/').next().unwrap();
+   assert!(field("favorites","symbol",&json!(symbol)),"compare and favorites must agree on {symbol}");
+  }
+  assert!(field("settings","compareSymbols",&json!(["binance/usd_m/币安人生USDT","binance/usd_m/ETHUSDT","coinbase/spot/BTC-USD"])));
+  // 40 个字符是上限，按字符数：36 个汉字 + USDT 刚好（整键 126 字节，没碰到 128 的粗上限），37 个超了。
+  let longest=format!("binance/usd_m/{}USDT","币".repeat(36));
+  assert!(longest.len()<=128);
+  assert!(field("settings","compareSymbols",&key(&longest)));
+  assert!(!field("settings","compareSymbols",&key(&format!("binance/usd_m/{}USDT","币".repeat(37)))));
+  assert!(!field("settings","compareSymbols",&key(&format!("binance/usd_m/{}USDT","A".repeat(37)))));
+  // 缺底名、缺计价资产、小写、夹空格或横杠、表情：和 favorites 一样拒。
+  for bad in ["binance/usd_m/USDT","binance/usd_m/币安人生","binance/usd_m/币安人生usdt","binance/usd_m/币安 人生USDT",
+              "binance/usd_m/币安-人生USDT","binance/usd_m/😀USDT","coinbase/spot/-USD","coinbase/spot/币安-USD"] {
+   assert!(!field("settings","compareSymbols",&key(bad)),"{bad} should be refused");
+  }
+  // 币本位 / 交割（`BTCUSD_PERP`、`BTCUSDT_251226`）不是 U 本位永续的代号，按既有规则拒——自选也不收。
+  for bad in ["binance/usd_m/BTCUSD_PERP","binance/usd_m/BTCUSDT_251226"] {
+   assert!(!field("settings","compareSymbols",&key(bad)),"{bad} should be refused");
+   assert!(!field("favorites","symbol",&json!(bad.rsplit('/').next().unwrap())));
+  }
+  // 同一只中文底名不能出现两次。
+  assert!(!field("settings","compareSymbols",&json!(["binance/usd_m/币安人生USDT","binance/usd_m/币安人生USDT"])));
  }
 }
