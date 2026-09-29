@@ -16,6 +16,7 @@ import { glyph, type GlyphName } from './ui/icons'
 import { resume } from '../account/client'
 import { setRoute } from '../market'
 import { initMobileSync } from './app/sync'
+import { startLinkGrace } from './app/linkGrace'
 
 type PageModule = Record<string, unknown>
 const modules = import.meta.glob<PageModule>('./pages/*.ts')
@@ -47,6 +48,7 @@ async function mount(id: PageId): Promise<void> {
 installShell(document.getElementById('m-mount') ?? document.body)
 resume()
 setRoute(st.routePolicy)
+startLinkGrace()
 initMobileSync()
 
 // 先挂当前页，其余页空闲时再挂（切过去时已经就绪）
@@ -63,5 +65,14 @@ void mount(first).then(() => {
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   // 版本号 = 本次构建的入口脚本名（带哈希），构建一次变一次，SW 据此换缓存
   const v = new URL(import.meta.url).pathname.split('/').pop() || 'dev'
-  addEventListener('load', () => { navigator.serviceWorker.register(`${import.meta.env.BASE_URL}m/sw.js?v=${encodeURIComponent(v)}`, { scope: import.meta.env.BASE_URL + 'm/' }).catch(() => {}) })
+  addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}m/sw.js?v=${encodeURIComponent(v)}`, { scope: import.meta.env.BASE_URL + 'm/' })
+      .catch(e => console.warn('[m] Service Worker 注册失败', e))
+    // SW 就绪后把这一次实际加载过的构建产物报过去补存（第一次打开时它们是 SW 装好之前取的），下次断网打开也有完整的壳；
+    // 各页是空闲时懒加载的，稍等一会儿再报
+    void navigator.serviceWorker.ready.then(reg => setTimeout(() => {
+      const urls = performance.getEntriesByType('resource').map(e => e.name).filter(u => u.includes('/assets/'))
+      reg.active?.postMessage({ type: 'keep', urls })
+    }, 4000))
+  })
 }

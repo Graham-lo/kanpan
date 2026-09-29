@@ -1,6 +1,7 @@
 /* 手机网页版收尾审查（同步与壳）：两个标签页、本机存储相关的回归用例 */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeDrawing } from '../src/m/chart/draw/drawing'
+import swSource from '../public/m/sw.js?raw'
 
 function memStorage(seed: Record<string, string> = {}) {
   const mem = new Map(Object.entries(seed))
@@ -109,5 +110,63 @@ describe('账号设备身份（account/client.device）', () => {
     mem.clear()
     expect(A.device().id).toBe(a.id)
     expect(JSON.parse(mem.get('hkline-m-device-v1')!).id).toBe(a.id)
+  })
+})
+
+describe('离线壳（public/m/sw.js）', () => {
+  const ORIGIN = 'https://h.example'
+  const HTML = '<script type="module" crossorigin src="/web/assets/m-AAA.js"></script><link rel="modulepreload" href="/web/assets/chunk-BBB.js"><link rel="stylesheet" href="/web/assets/m-CCC.css"><link rel="manifest" href="/web/m/manifest.webmanifest">'
+
+  async function loadSw() {
+    const src = swSource
+    const handlers: Record<string, (e: any) => void> = {}
+    const store = new Map<string, unknown>()
+    const cache = {
+      match: async (k: any) => store.get(typeof k === 'string' ? k : new URL(k.url ?? k, ORIGIN).pathname) ?? undefined,
+      put: async (k: any, v: unknown) => { store.set(typeof k === 'string' ? k : new URL(k.url ?? k, ORIGIN).pathname, v) },
+      addAll: async (ks: string[]) => { for (const k of ks) store.set(k, 'x') },
+    }
+    const fetches: { input: unknown; init?: RequestInit }[] = []
+    const fetchImpl = async (input: any, init?: RequestInit) => {
+      fetches.push({ input, init })
+      const path = new URL(typeof input === 'string' ? input : input.url, ORIGIN).pathname
+      const body = path === '/web/m/' ? HTML : 'asset'
+      return { ok: true, redirected: false, clone() { return this }, text: async () => body, path }
+    }
+    const self = {
+      location: new URL(ORIGIN + '/web/m/sw.js?v=m-AAA.js'),
+      registration: { scope: ORIGIN + '/web/m/' },
+      addEventListener: (t: string, h: (e: any) => void) => { handlers[t] = h },
+      skipWaiting: async () => {}, clients: { claim: async () => {} },
+    }
+    const cachesApi = { open: async () => cache, match: cache.match, keys: async () => [], delete: async () => true }
+    new Function('self', 'caches', 'fetch', 'Response', src)(self, cachesApi, fetchImpl, { error: () => 'error' })
+    const run = async (type: string, e: any) => {
+      let p: Promise<unknown> | undefined
+      handlers[type]({ ...e, waitUntil: (x: Promise<unknown>) => { p = x }, respondWith: (x: Promise<unknown>) => { p = x } })
+      return p
+    }
+    return { run, store, fetches }
+  }
+
+  it('导航取壳不走 HTTP 缓存（服务器给 HTML 的 max-age=300 不能让新版发布后还拿 5 分钟旧壳）', async () => {
+    const { run, fetches } = await loadSw()
+    await run('fetch', { request: { method: 'GET', mode: 'navigate', url: ORIGIN + '/web/m/' } })
+    expect(fetches).toHaveLength(1)
+    expect(fetches[0].init?.cache).toBe('no-cache')
+  })
+
+  it('装的时候就把壳引用的入口脚本、modulepreload、样式存下（第一次打开后断网也能起来）', async () => {
+    const { run, store, fetches } = await loadSw()
+    await run('install', {})
+    expect(fetches[0].init?.cache).toBe('no-cache')
+    for (const k of ['/web/m/', '/web/assets/m-AAA.js', '/web/assets/chunk-BBB.js', '/web/assets/m-CCC.css', '/web/m/manifest.webmanifest']) expect(store.has(k), k).toBe(true)
+  })
+
+  it('页面报来的已加载产物只补存同源 /web/assets/ 下的，外站与接口不收', async () => {
+    const { run, store } = await loadSw()
+    await run('message', { data: { type: 'keep', urls: [ORIGIN + '/web/assets/page-me-DDD.js', 'https://fapi.binance.com/fapi/v1/ticker', ORIGIN + '/v1/auth/me', 42] } })
+    expect(store.has('/web/assets/page-me-DDD.js')).toBe(true)
+    expect([...store.keys()].some(k => k.includes('binance') || k.includes('/v1/'))).toBe(false)
   })
 })
