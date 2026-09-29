@@ -51,6 +51,71 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
     return component(venue, extra: "_") && component(market, extra: "_") && component(symbol, extra: "-_")
   }
 
+  // MARK: - 同步身份规则（对着服务端 `sync_validation::identity`）
+
+  /// 代号段最长多少个字符——按 Unicode 标量数，不按字节（中文一个字三个字节）。
+  /// 对着 Rust `SYMBOL_MAX_CHARS`。
+  public static let syncSymbolMaxChars = 40
+  /// 整串 `venue/market/SYMBOL` 切分之前的粗上限（字节）。对着 Rust `compare_key` 里的 128：
+  /// 合法键最长 `binance/usd_m/` + 36 个汉字 + `USDT` = 126 字节。
+  public static let syncKeyMaxBytes = 128
+
+  /// 服务端认不认这只品种：**客户端只此一份**，逐条对着 Rust
+  /// `Backend/kanpan-api/src/sync_validation.rs` 的 `identity(venue, market, symbol)`——
+  /// 自选、画线、提醒、对比 K 线在服务端都走那一条，客户端要预先挡住的也只能是那一条。
+  ///
+  /// - `binance/usd_m`：最长 40 个字符；每个字符是 ASCII 大写、数字，或**非 ASCII 的
+  ///   Unicode 字母数字**（币安上架过 `币安人生USDT` 这类中文底名合约）；必须以
+  ///   `QuoteAssets.tradable` 里的一个计价资产结尾，前面还得有底名。ASCII 小写不收
+  ///   （币安代号永远是大写，小写只会是拼错了）。
+  /// - `coinbase/spot`：`BASE-USD`，BASE 只有 ASCII 大写与数字。
+  /// - 别的交易所 / 市场、大小写不对的交易所名：一律不收。
+  ///
+  /// 不做任何规范化：传进来什么就判什么（`InstrumentID.init` 会把小写代号抬成大写，
+  /// 那是另一回事，这里要的是「这串原样发上去服务端收不收」）。
+  public static func isSyncIdentity(venue: String, market: String, symbol: String) -> Bool {
+    switch (venue, market) {
+    case ("binance", "usd_m"): return isBinanceSyncSymbol(symbol)
+    case ("coinbase", "spot"): return isCoinbaseSyncSymbol(symbol)
+    default: return false
+    }
+  }
+
+  /// 整串 `venue/market/SYMBOL` 版的 `isSyncIdentity`，和 Rust `compare_key` 同一个切法：
+  /// 只切前两刀，第三段里再有 `/` 就留在代号里（代号规则会拒它）。
+  public static func isSyncKey(_ key: String) -> Bool {
+    guard key.utf8.count <= syncKeyMaxBytes else { return false }
+    let parts = key.split(separator: "/", maxSplits: 2, omittingEmptySubsequences: false)
+    guard parts.count == 3 else { return false }
+    return isSyncIdentity(venue: String(parts[0]), market: String(parts[1]), symbol: String(parts[2]))
+  }
+
+  private static func isBinanceSyncSymbol(_ s: String) -> Bool {
+    let scalars = s.unicodeScalars
+    guard scalars.count <= syncSymbolMaxChars,
+      // 后缀按标量比，不按 `Character`：Rust `strip_suffix` 是逐字节比的，结合符挨着计价资产时
+      // 字素簇会把两边判得不一样。
+      QuoteAssets.tradable.contains(where: { quote in
+        let q = quote.unicodeScalars
+        return scalars.count > q.count && scalars.suffix(q.count).elementsEqual(q)
+      })
+    else { return false }
+    return scalars.allSatisfy { c in
+      if c.isASCII { return (65...90).contains(c.value) || (48...57).contains(c.value) }
+      // Rust `char::is_alphanumeric` = Alphabetic 或 Numeric（Nd / Nl / No）。
+      switch c.properties.generalCategory {
+      case .decimalNumber, .letterNumber, .otherNumber: return true
+      default: return c.properties.isAlphabetic
+      }
+    }
+  }
+
+  private static func isCoinbaseSyncSymbol(_ s: String) -> Bool {
+    guard s.utf8.count <= syncSymbolMaxChars, s.hasSuffix("-USD") else { return false }
+    let base = s.utf8.dropLast(4)
+    return !base.isEmpty && base.allSatisfy { (65...90).contains($0) || (48...57).contains($0) }
+  }
+
   public static func canonical(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : InstrumentID(value).key
   }

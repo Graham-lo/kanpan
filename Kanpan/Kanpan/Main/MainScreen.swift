@@ -302,10 +302,10 @@ struct MainScreen: View {
       SymbolPickerView(model: picker, redUp: prefs.redUp,
         onClose: { showComparePicker = false; picker.query = "" },
         onSelect: { info in
-          let key = InstrumentID.canonical(info.symbol)
-          if key != InstrumentID.canonical(market.symbol), !prefs.compareSymbols.contains(key), prefs.compareSymbols.count < 3 {
-            store.update { $0.compareSymbols.append(key) }
-          }
+          // 和解码同一条规则（`Prefs.addCompareSymbol` → `cleanCompareSymbols`）：
+          // 加得进去的，下一次从档案或云端读回来也还在。
+          let key = InstrumentID.canonical(info.symbol), current = InstrumentID.canonical(market.symbol)
+          store.update { $0.addCompareSymbol(key, current: current) }
           showComparePicker = false; picker.query = ""
         },
         onVisible: { quotes.watch($0) },
