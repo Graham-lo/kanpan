@@ -1,0 +1,143 @@
+/* Hkline Web · 币安 U 本位合约 REST（浏览器直连）
+ *
+ * fapi.binance.com 对 /fapi/* 与 /futures/data/* 都回 Access-Control-Allow-Origin: *，可以直接跨域取。
+ * 一律不发 Referer：币安 CloudFront 对来源页是 sslip.io 的请求回 403 且不带跨域头。
+ * 取不到就是取不到——不造演示数据，界面显示空态。
+ */
+import type { Bar } from '../chart/calc'
+import { S, emit } from './state'
+import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
+
+export const REST = 'https://fapi.binance.com'
+
+export async function j<T = unknown>(url: string, ms = 8000): Promise<T> {
+  const ctl = new AbortController()
+  const t = setTimeout(() => ctl.abort(), ms)
+  try {
+    const r = await fetch(url, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
+    if (!r.ok) throw new Error(`${r.status} ${url}`)
+    return await r.json() as T
+  } finally { clearTimeout(t) }
+}
+
+interface ExSymbol {
+  symbol: string; baseAsset: string; quoteAsset: string; contractType: string; status: string
+  underlyingType?: string; filters: { filterType: string; tickSize?: string }[]; pricePrecision: number
+}
+interface Ticker24 { symbol: string; lastPrice: string; priceChange: string; priceChangePercent: string; quoteVolume: string; openPrice: string; highPrice: string; lowPrice: string; count: number; closeTime: number }
+interface Premium { symbol: string; lastFundingRate: string; nextFundingTime: number; markPrice: string; indexPrice: string }
+
+function blank(e: ExSymbol): Sym {
+  const base = baseOf(e.symbol, e.baseAsset)
+  const kind = kindOfUnderlying(e.underlyingType, base)
+  const tick = e.filters.find(f => f.filterType === 'PRICE_FILTER')?.tickSize
+  return {
+    symbol: e.symbol, base, code: base, kind, cn: cnOf(base, kind),
+    dec: tick ? decOfTick(tick) : Math.min(8, e.pricePrecision),
+    color: badgeColor(base), price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
+  }
+}
+
+/** 全市场：exchangeInfo（品种与分类）+ ticker/24hr（价与量）+ premiumIndex（费率、标记价、指数价） */
+export async function loadUniverse(): Promise<Map<string, Sym>> {
+  try {
+    const [ex, tk, pi] = await Promise.all([
+      j<{ symbols: ExSymbol[] }>(`${REST}/fapi/v1/exchangeInfo`, 12000),
+      j<Ticker24[]>(`${REST}/fapi/v1/ticker/24hr`),
+      j<Premium[]>(`${REST}/fapi/v1/premiumIndex`),
+    ])
+    const next = new Map<string, Sym>()
+    for (const e of ex.symbols) {
+      if (e.quoteAsset !== 'USDT' || e.status !== 'TRADING') continue
+      if (e.contractType !== 'PERPETUAL' && e.contractType !== 'TRADIFI_PERPETUAL') continue
+      next.set(e.symbol, S.symbols.get(e.symbol) || blank(e))
+    }
+    for (const t of tk) {
+      const s = next.get(t.symbol); if (!s) continue
+      Object.assign(s, { price: +t.lastPrice, chg: +t.priceChange, pct: +t.priceChangePercent, vol: +t.quoteVolume, open: +t.openPrice, hi: +t.highPrice, lo: +t.lowPrice, count: +t.count })
+    }
+    for (const p of pi) {
+      const s = next.get(p.symbol); if (!s) continue
+      Object.assign(s, { fr: p.lastFundingRate === '' ? null : +p.lastFundingRate, nextFunding: p.nextFundingTime || null, mark: +p.markPrice, index: +p.indexPrice })
+    }
+    S.symbols = next
+    S.live = true
+    S.error = ''
+  } catch (e) {
+    console.warn('[hkline] 币安合约接口不可达', e)
+    S.live = false
+    S.error = String((e as Error)?.message || e)
+  }
+  emit({ type: 'universe' })
+  return S.symbols
+}
+
+type Row = [number, string, string, string, string, string, number, string, ...unknown[]]
+function parse(rows: Row[]): Bar[] {
+  // 成交量用成交额（USDT），和手机端一致
+  return rows.map(r => ({ t: r[0], o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[7] }))
+}
+
+export interface KlineResult { bars: Bar[]; ok: boolean; error?: string }
+
+/** 一页 K 线（最多 1500 根）；带 endTime 时是向左翻页，取严格早于它的那一页 */
+export async function klines(symbol: string, iv: string, endTime?: number, limit = 1500, withOI = true): Promise<KlineResult> {
+  try {
+    const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${limit}${endTime ? `&endTime=${endTime - 1}` : ''}`
+    const bars = parse(await j<Row[]>(u, 10000))
+    if (withOI) void attachOI(symbol, iv, bars)
+    return { bars, ok: true }
+  } catch (e) {
+    return { bars: [], ok: false, error: String((e as Error)?.message || e) }
+  }
+}
+
+/** 持仓量副图：币安只给最近 30 天、5 分钟以上周期的历史，对不齐的根留空 */
+const OI_PERIOD = new Set(['5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'])
+export async function attachOI(symbol: string, iv: string, bars: Bar[]): Promise<void> {
+  if (!OI_PERIOD.has(iv) || !bars.length) return
+  try {
+    const endTime = bars[bars.length - 1].t + 1
+    const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${iv}&limit=500&endTime=${endTime}`)
+    if (!rows.length) return
+    const m = new Map(rows.map(r => [r.timestamp, +r.sumOpenInterestValue]))
+    let hit = 0
+    for (const b of bars) { const v = m.get(b.t); if (v != null) { b.oi = v; hit++ } }
+    if (hit) emit({ type: 'oi', symbol, iv })
+  } catch { /* 取不到持仓量就留空 */ }
+}
+
+// ------------------------------------------------------------ 详情块里不在推送里的数
+export interface Detail {
+  t: number
+  oiValue?: number      // 持仓量（美元）
+  oiChg?: number        // 持仓量 24h 变化（%）
+  ls?: number           // 多空人数比
+  top?: number          // 大户持仓比
+  taker?: number        // 主动买卖比
+}
+const detailCache = new Map<string, Detail>()
+export function detailOf(symbol: string): Detail | undefined { return detailCache.get(symbol) }
+
+/** 一分钟最多取一次 */
+export async function fetchDetail(symbol: string): Promise<void> {
+  const prev = detailCache.get(symbol)
+  if (prev && Date.now() - prev.t < 60e3) return
+  const d: Detail = { ...(prev || {}), t: Date.now() }
+  detailCache.set(symbol, d)
+  const get = <T,>(path: string, q: string) => j<T>(`${REST}${path}?symbol=${symbol}${q ? '&' + q : ''}`).catch(() => null)
+  const [oi, hist, ls, top, taker] = await Promise.all([
+    get<{ openInterest: string }>('/fapi/v1/openInterest', ''),
+    get<{ sumOpenInterestValue: string }[]>('/futures/data/openInterestHist', 'period=1h&limit=25'),
+    get<{ longShortRatio: string }[]>('/futures/data/globalLongShortAccountRatio', 'period=5m&limit=1'),
+    get<{ longShortRatio: string }[]>('/futures/data/topLongShortPositionRatio', 'period=5m&limit=1'),
+    get<{ buySellRatio: string }[]>('/futures/data/takerlongshortRatio', 'period=5m&limit=1'),
+  ])
+  const px = S.symbols.get(symbol)?.price
+  if (oi && px) d.oiValue = +oi.openInterest * px
+  if (hist && hist.length > 1) d.oiChg = (+hist[hist.length - 1].sumOpenInterestValue / +hist[0].sumOpenInterestValue - 1) * 100
+  if (ls?.[0]) d.ls = +ls[0].longShortRatio
+  if (top?.[0]) d.top = +top[0].longShortRatio
+  if (taker?.[0]) d.taker = +taker[0].buySellRatio
+  emit({ type: 'detail', symbol })
+}

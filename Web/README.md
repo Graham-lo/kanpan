@@ -1,0 +1,95 @@
+# Hkline 网页版
+
+看盘（Hkline）的网页端：Vite + TypeScript（strict），不用 UI 框架。视觉是网页版自己的一套（设计原型在 `prototype/web-2026-09-29/`），先按 27 寸 2K（2560×1440）屏设计。
+
+线上：<https://kanpan.107-174-172-10.sslip.io/web/>（Caddy 把 `/var/www/kanpan/` 当静态目录，`/web/` 就是其中的子目录，不用改 Caddy。路由走 hash，比如 `#chart`、`#sectors`、`#review`、`#me`）
+
+## 怎么跑
+
+```sh
+make web-install      # = cd Web && npm install
+make web-dev          # 本机开发服务器 http://localhost:5178/web/
+make web-test         # vitest（经 machine-guard 排队）
+make web-build        # tsc --noEmit + vite build → Web/dist/
+make web-deploy       # 构建并部署到线上；SKIP_BUILD=1 跳过构建
+make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:5178/web/ 可以对本机跑
+```
+
+- 本机开发时，`/v1/*`（市值元数据）和 `/market/stream`（网关线路的行情 WS）由 vite 代理到线上同一个域名，行为和线上同源一致（见 `vite.config.ts`）。
+- 部署（`scripts/deploy.sh`）分两步：先 `scp` 到 VPS 的 `/tmp/kpweb-dist/`，再 `sudo cp` 进 `/var/www/kanpan/web/` 并 `chown caddy`。最后用 `curl` 核对线上 `index.html` 引用的脚本名和本地这次构建的一样。
+- 验收截图（`scripts/verify.mjs`）：用 playwright-core 驱动本机 Chrome，2560×1440、DPR 1，截图默认放到 `docs/acceptance/网页版-2026-09-29/`。截的内容：三套皮肤 × 浅深、放大缩小、十字线、搜索、切周期（按钮和键盘）、四图、槽位开合、侧栏收起、板块、复盘、我的。同时检查两件事：最新价 10 秒内有没有变，控制台和网络有没有报错。有报错时退出码为 1。
+- 地址栏参数（验收和分享用，都可以不带）：`s=BTCUSDT`、`i=1h`、`theme=light|dark`、`skin=sage|terra|classic`、`layout=1|2|2v|4`、`panel=watch|alerts|flow|notes|trades|none`、`ladder=0|1`、`drawer=0|1`。
+
+## 目录
+
+| 路径 | 内容 |
+|---|---|
+| `src/main.ts` | 入口：读地址栏参数 → 套主题 → 装外壳 → 各页 init → 图表 |
+| `src/app/store.ts` | 状态 `st`（沿用原型的字段）：可以订阅，存在 localStorage `hkline-web-v1` |
+| `src/app/shell.ts` | 顶栏、页面切换、主题、全局快捷键、各页之间的钩子 |
+| `src/chart/` | K 线引擎（canvas）：`chart.ts` 绘制与交互，`calc.ts` 聚合与指标，`timeAxis.ts` 上海时区刻度 |
+| `src/market/` | 行情：`rest.ts` 币安 REST，`stream.ts` WS 订阅与重连，`symbols.ts` 品种表与搜索排序，`meta.ts` 供应量，`state.ts` 实时状态 |
+| `src/account/` | 账号会话（这一阶段只有「未登录」） |
+| `src/pages/` | `chart.ts` 图表页，`sectors.ts` 板块，`review.ts` 复盘，`me.ts` 我的，`proto.ts` 原型控制台 |
+| `src/ui/` | DOM 小工具、图标（描边 2.2）、浮层 / 提示 / 弹窗 |
+| `src/util/format.ts` | 数额 K/M/B/T、价格精度、百分比 |
+| `src/styles/app.css` | 设计令牌与三套皮肤（青苔 / 陶土 / 经典）× 浅深 |
+| `src/data/sectors.json` | 板块成员表（和手机端同一份口径） |
+| `tests/` | vitest：K 线聚合与指标、数额单位、上海时区刻度 |
+
+## 数据从哪来
+
+浏览器直接连币安 U 本位合约，不经过我们的服务端。只有市值用的供应量是从自家服务端取的。**不用 `*.binancefuture.com`（那是测试网）。**
+
+- REST `https://fapi.binance.com`（这个域名本身就带 CORS 头）：
+  - `/fapi/v1/exchangeInfo`、`/fapi/v1/ticker/24hr`、`/fapi/v1/premiumIndex`：品种表、24h 统计、资金费率 / 标记价 / 指数价，启动时各拉一次。
+  - `/fapi/v1/klines`：K 线。往左拖到头会用 `endTime` 继续向前翻页。
+  - `/fapi/v1/openInterest`、`/futures/data/openInterestHist`：持仓量。副图的「持仓量」用 `openInterestHist`，币安只给 30 天内的数据。
+  - `/futures/data/globalLongShortAccountRatio`、`topLongShortPositionRatio`、`takerlongshortRatio`：三个比值，每分钟刷新一次。
+- WS：直连 `wss://fstream.binance.com/market/stream`（默认）。网关线路走本站 `wss://<本站>/market/stream`，和手机的「网关」是同一个服务。线路只在「我的 → 通用」里手动切，不会自动切换。
+  - 订阅用 SUBSCRIBE / UNSUBSCRIBE 增减，不重连。订的流有 `kline_<周期>`、`aggTrade`、`markPrice@1s`、`ticker`。
+  - 断线后按 1 秒、2 秒、4 秒……重连，最长 15 秒。连上 8 秒还收不到第一帧、或者 30 秒没有任何消息，都当作断线。
+  - 页面隐藏时只保留核心流（当前格子的 K 线和 ticker、提醒要盯的品种），重连间隔至少 10 秒；回到前台立刻重连并补订。
+- 市值：`/v1/market/meta`（同源，kanpan-api）返回的 `totalSupply` × 现价。服务端没给供应量的品种（大宗等）不显示市值。
+- 时间统一用上海时间（UTC+8），不能改；日线在北京时间 8:00 换日。数额一律用 K / M / B / T。
+
+### 侧栏详情十二格
+
+| 格子 | 来源 | 什么时候显示「—」 |
+|---|---|---|
+| 持仓量 | `openInterest` × 最新价 | 接口没回（新上市、即将下架） |
+| 持仓 24h | `openInterestHist` 1h × 25 首尾比 | 历史不到 24 小时 |
+| 24h 成交额 | `ticker/24hr` + WS `ticker` | 没有成交 |
+| 资金费率 | `premiumIndex` + WS `markPrice@1s` | 交割合约、没有资金费率的品种 |
+| 下次结算 | `premiumIndex.nextFundingTime`，每秒倒数 | 同上 |
+| 24h 笔数 | `ticker/24hr.count` + WS `ticker` | 没有成交 |
+| 多空人数比 | `globalLongShortAccountRatio` 5m 最新一档 | 币安不给这个品种的统计（部分新品种、非加密品种） |
+| 大户持仓比 | `topLongShortPositionRatio` 5m | 同上 |
+| 主动买卖比 | `takerlongshortRatio` 5m | 同上 |
+| 标记价 | WS `markPrice@1s` | 首帧到之前 |
+| 指数价 | WS `markPrice@1s` | 同上 |
+| 基差 | (标记价 − 指数价) / 指数价 | 标记价或指数价缺一个 |
+
+详情头部的「市值」按上面的口径算，没有供应量时整段不显示。
+
+## 还没接上的（显示空态，不放演示数据）
+
+- **复盘**：需要登录和交易所只读密钥，回合在服务端算。页面显示「复盘需要登录」。
+- **我的 → 账号 / 交易所账号 / 设备**：网页版登录下一阶段接入。在那之前，自选、画线、提醒、指标参数只存在这台电脑的浏览器里。
+- **侧栏「大单」「成交」面板**、**深度梯子列**、**底部抽屉**：订单簿和主力订单流按大屏重做（设计见 `docs/网页版-订单簿与订单流-大屏设计-2026-09-29.md`），下一阶段接入。
+- **提醒推送**：只在这个网页开着、而且浏览器允许通知时才弹通知。提醒响一次就结束。价格、资金费率、持仓量 1 小时变化、画线穿越这几种提醒都在本机判断。
+- K 线接口失败时，格子里显示空态和「重试」按钮，不画假数据。
+
+## 给订单簿 / 订单流留的三个槽位
+
+槽位的开合状态放在 `st.slots` 里（`src/app/store.ts`），以后跟账号一起同步。图表页的网格由 `layoutSlots()`（`src/pages/chart.ts`）按 `st.slots` 和侧栏开合用 JS 生成。
+
+1. **深度梯子列** `#ladderSlot`：在价格轴和右侧栏之间，打开时宽 `--ladder-w`（240px），关上时是 0。和图表共用顶部工具条那一行。
+2. **底部抽屉** `#drawerSlot`：在图表区下方，打开时高 `--drawer-h`（280px），关上时是 0。宽度横跨图表列和梯子列。
+3. **侧栏小部件堆叠**：`st.slots.widgets` 是一个有序列表，现在是 `watch`（自选）、`detail`（详情），类型里已经留了 `book` / `tape` / `walls` / `alerts`。侧栏按这个顺序往下堆。
+
+可以在顶栏中间的「原型」控制台里切换开合，也可以用地址栏参数 `ladder=1&drawer=1` 打开。
+
+## 原型控制台
+
+顶栏中间的「原型」按钮不属于产品界面，是给设计验收用的：切皮肤、深浅、涨跌色，开关两个槽位，切四图或一图，以及「恢复初始」（清掉这个网页在浏览器里存的全部状态）。

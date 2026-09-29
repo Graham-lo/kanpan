@@ -616,3 +616,25 @@ shutdown:
 # DerivedData 与 SwiftPM 缓存。这里不再自己列一份，免得新加一个包就漏删。
 clean:
 	@scripts/machine-guard.sh clean
+
+# ---------------------------------------------------------------- 网页版（Web/，Vite + TypeScript）
+# 线上 https://kanpan.107-174-172-10.sslip.io/web/；说明见 Web/README.md。
+.PHONY: web-install web-dev web-test web-build web-deploy web-verify
+web-install:
+	cd Web && npm install
+
+web-dev:
+	cd Web && npm run dev
+
+web-test:
+	cd Web && $(GUARD) npm test
+
+web-build:
+	cd Web && $(GUARD) npm run build
+
+web-deploy:
+	cd Web && sh scripts/deploy.sh
+
+# 截验收图（本机 Chrome，2560×1440）：make web-verify [WEB_URL=http://localhost:5178/web/]
+web-verify:
+	cd Web && node scripts/verify.mjs $(WEB_URL)

@@ -1,0 +1,17 @@
+import { defineConfig } from 'vitest/config'
+
+// 线上挂在 https://kanpan.107-174-172-10.sslip.io/web/ 下（Caddy file_server），路由走 hash，不需要改 Caddy。
+// 本机开发时 /v1（市值元数据，没有 CORS 头）与 /market（网关行情 WS）转发到线上同一个域名，和线上同源行为一致。
+const ORIGIN = 'https://kanpan.107-174-172-10.sslip.io'
+export default defineConfig({
+  base: '/web/',
+  build: { outDir: 'dist', target: 'es2022', sourcemap: false, chunkSizeWarningLimit: 900 },
+  server: {
+    port: 5178, strictPort: false,
+    proxy: {
+      '/v1': { target: ORIGIN, changeOrigin: true, secure: true },
+      '/market': { target: ORIGIN, changeOrigin: true, secure: true, ws: true },
+    },
+  },
+  test: { environment: 'node', include: ['tests/**/*.test.ts'] },
+})

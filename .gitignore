@@ -57,3 +57,7 @@ docs/acceptance/drawing-v2/*.xcresult/
 refs/aicoin/
 
 .claude/settings.local.json
+
+# 网页版的依赖与构建产物
+Web/node_modules
+Web/dist
