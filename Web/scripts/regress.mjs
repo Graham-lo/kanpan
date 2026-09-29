@@ -1,7 +1,8 @@
 // Hkline Web · 整体回归（以交易员身份把网页版走一遍）：本机 Chrome、2560×1440、DPR 1
 //   node scripts/regress.mjs [地址] [段落…]
 //   段落：chart（图表页）、alerts（提醒）、edge（边界）、themes（皮肤）、route（线路）、sectors（板块）、
-//         account（账号与同步）、review（复盘）、layout（布局与拖动）、levels（指标与叠加）；account / review 要 KP_PASS 环境变量
+//         account（账号与同步）、review（复盘）、layout（布局与拖动）、levels（指标与叠加）、
+//         flow（订单流：梯子成交列 / 变化 / 24 小时两块 / 成交流）；account / review 要 KP_PASS 环境变量
 //   默认地址 http://localhost:5188/web/；截图写到 docs/acceptance/网页版-2026-09-29/回归-*.png
 // 每一段都收集控制台报错与未处理的 Promise 拒绝，目标是 0；每一项的结论打一行「✓ / ✗」。
 import { chromium } from 'playwright-core'
@@ -1291,7 +1292,156 @@ async function partLevels() {
   ok('指标：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
 
-const ALL = { chart: partChart, layout: partLayout, levels: partLevels, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
+// ═════════════════════════════ 订单流（梯子成交列 / 变化 / 24 小时两块 / 成交流） ═════════════════════════════
+const shotO = async (name, opt = {}) => { await page.screenshot({ path: `${OUT}/订单流-${name}.png`, ...opt }); console.log('  截图 订单流-' + name) }
+const ofd = () => page.evaluate(() => window.__of())
+const ladBox = () => page.locator('#ladderSlot canvas').boundingBox()
+const cardText = () => page.evaluate(() => { const c = document.querySelector('.of-card.show'); return c ? c.innerText : '' })
+const OF_WIDGETS_ALL = ['watch', 'detail', 'book', 'tape', 'walls', 'liq', 'vol', 'alerts']
+async function flowFresh(qs) {
+  await fresh(qs)
+  await page.evaluate(w => {
+    localStorage.removeItem('hkline-web-of-v1')
+    const s = JSON.parse(localStorage.getItem('hkline-web-v1'))
+    s.orderFlow = true; s.slots.ladder = true; s.slots.widgets = w
+    localStorage.setItem('hkline-web-v1', JSON.stringify(s))
+  }, OF_WIDGETS_ALL)
+  await page.reload({ waitUntil: 'domcontentloaded' }); await ready()
+}
+async function partFlow() {
+  const e0 = errors.length
+  const heatReqs = []
+  const onReq = r => { if (r.url().includes('/orderflow/heat')) heatReqs.push(r.url()) }
+  const heatResp = []
+  const onResp = r => { if (r.url().includes('/v1/market/orderflow/heat')) heatResp.push(`${r.status()} ${r.url().replace(/^.*\?/, '')}`) }
+  const onFail = r => { if (r.url().includes('/v1/market/orderflow/heat')) heatResp.push(`失败 ${r.failure()?.errorText} ${r.url().replace(/^.*\?/, '')}`) }
+  page.on('request', onReq); page.on('response', onResp); page.on('requestfailed', onFail)
+  try {
+    await flowFresh('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=1&drawer=0')
+    await page.waitForFunction(() => { const d = window.__of(); return d?.ladder && d.ladder.tradeY != null && d.vol.slots > 0 && d.liq.points > 0 && d.tapeRows.length > 3 }, null, { timeout: 60000, polling: 1000 }).catch(() => {})
+    let d = await ofd()
+    const L = d.ladder
+    // ---- 梯子铺满（原来 1 小时 BTC 一行 1 500、只剩三行、只画主图那一段）
+    ok('1 小时 BTC：梯子每行比原来细（< 1 500），行铺满整列高度', !!L && L.rs < 1500 && L.top <= 28 + L.rowH && L.bottom >= L.H - 32 - L.rowH && L.rows >= 30, L ? `每行 ${L.rs}、${L.rows} 行、行高 ${L.rowH}、覆盖 ${Math.round(L.top)}–${Math.round(L.bottom)} / ${L.H}` : '无')
+    ok('中列：打开以来有成交的行、脚注写「成交自 hh:mm 起」', !!L && L.trades > 0 && /成交自 \d\d:\d\d 起/.test(L.info), L ? `${L.trades} 行 · ${L.info}` : '')
+    const lb = await ladBox()
+    if (L?.tradeY != null) {
+      await page.mouse.move(lb.x + lb.width / 2, lb.y + L.tradeY); await wait(400)
+      const t = await cardText()
+      ok('悬停有成交的行：卡片有主动买卖、净差 %、距中间价', /主动买 · 主动卖/.test(t) && /净差[\s\S]*%/.test(t) && /距中间价[\s\S]*%/.test(t) && /双击回到中间价/.test(t), t.replace(/\s+/g, ' ').slice(0, 160))
+      await shotO('梯子-深度-悬停')
+      await shotO('梯子-深度-特写', { clip: { x: lb.x - 60, y: lb.y, width: lb.width + 60 + 420, height: lb.height } })
+    } else ok('悬停有成交的行', false, '等了 60 秒没有成交行')
+    // ---- 双击回到中间价
+    const cb = await canvasBox(0)
+    await page.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height * 0.3); await page.mouse.down()
+    await page.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height * 0.3 + 260, { steps: 12 }); await page.mouse.up(); await wait(500)
+    const off1 = (await ofd()).ladder
+    await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height * 0.5)
+    await page.mouse.dblclick(lb.x + lb.width / 2, lb.y + lb.height * 0.5); await wait(600)
+    const off2 = (await ofd()).ladder
+    const alertOpen = await page.locator('.dialog:visible, [role="dialog"]:visible').count()
+    ok('图拖偏之后双击梯子：中间价回到图的正中，不弹提醒', Math.abs(off1.midY - off1.centerY) > 60 && Math.abs(off2.midY - off2.centerY) <= 3 && alertOpen === 0, `拖偏后中间价离正中 ${off1.midY - off1.centerY} px → 双击后 ${off2.midY - off2.centerY} px，弹窗 ${alertOpen}`)
+    // ---- 图放得很大：梯子改定高行、价格范围放宽
+    for (let i = 0; i < 12; i++) { await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height / 2); await page.mouse.wheel(0, -400); await wait(60) }
+    await wait(500)
+    const Z = (await ofd()).ladder
+    ok('价格轴放很大（细桶 > 32 px）：每行 20 px 定高、铺满', !!Z && !Z.aligned && Math.abs(Z.rowH - 20) < 0.5 && Z.rows >= Math.floor((Z.H - 60) / 20) - 2, Z ? `对齐 ${Z.aligned}、行高 ${Z.rowH}、${Z.rows} 行、每行 ${Z.rs}` : '')
+    await shotO('梯子-放大后定高', { clip: { x: lb.x - 200, y: lb.y, width: lb.width + 200, height: lb.height } })
+
+    // ---- 变化：1 小时
+    await flowFresh('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=1&drawer=0'); await wait(6000)
+    const sent0 = (await ofd()).heatFetchSent
+    await page.locator('[data-lad-mode="delta"]').click()
+    // 先等服务端那一份回来（实时环一开就有一列，光等「有变化的行」会赶在服务端之前）
+    await page.waitForFunction(() => { const d = window.__of(), l = d.ladder; return l && l.mode === 'delta' && l.delta > 0 && l.deltaY != null && d.delta.status !== 'loading' && (d.delta.status !== 'ok' || /bucketMs=60000/.test(d.delta.srvUrl)) }, null, { timeout: 30000, polling: 500 }).catch(() => {})
+    let D = (await ofd()).ladder
+    ok('变化 · 1 小时：有变化的行、脚注写起点', D.mode === 'delta' && D.win === '1h' && D.delta > 0 && /变化自 \d\d:\d\d 起/.test(D.info), `${D.delta} 行 · 起点 ${D.deltaFrom} · ${D.info}`)
+    if (D.deltaY != null) {
+      const lb2 = await ladBox()
+      await page.mouse.click(lb2.x + lb2.width / 2, lb2.y + D.deltaY); await wait(700)
+      const t = await cardText()
+      const spark = await page.locator('.of-card.show svg.of-spark').count()
+      D = (await ofd()).ladder
+      ok('变化模式点一行：卡片里画这一价位的小折线，不弹提醒', D.pinned != null && spark === 1 && /买 ·[\s\S]*卖 ·/.test(t), `钉住 ${D.pinned}，折线 ${spark}，${t.replace(/\s+/g, ' ').slice(0, 120)}`)
+      await shotO('梯子-变化-1小时')
+    } else ok('变化模式点一行', false, '没有可点的变化行')
+    // ---- 变化：1 天
+    await page.mouse.move(5, 700)
+    await page.locator('[data-lad-win="1d"]').click()
+    await page.waitForFunction(() => { const d = window.__of(), l = d.ladder; return l && l.win === '1d' && l.delta > 0 && /bucketMs=1800000/.test(d.delta.srvUrl || '') }, null, { timeout: 30000, polling: 500 }).catch(() => {})
+    D = (await ofd()).ladder
+    ok('变化 · 1 天：有变化的行、起点来自服务端（BTC 服务端跟着）', D.win === '1d' && D.delta > 0 && D.deltaFrom === 'server', `${D.delta} 行 · 起点 ${D.deltaFrom} · ${D.info}`)
+    if (D.deltaFrom !== 'server') console.log('  热力请求：\n    ' + heatResp.join('\n    ') + '\n  ' + JSON.stringify((await ofd()).delta))
+    await shotO('梯子-变化-1天')
+    // 来回切两档：同一 URL 走缓存
+    const sentA = (await ofd()).heatFetchSent
+    for (const w of ['1h', '1d', '1h', '1d']) { await page.locator(`[data-lad-win="${w}"]`).click(); await wait(400) }
+    const sentB = (await ofd()).heatFetchSent
+    ok('两档来回切：热力请求走缓存去重', sentB - sentA <= 1, `切换前共 ${sentA} 次，切 4 次后 ${sentB} 次（进变化前 ${sent0}）`)
+    await page.locator('[data-lad-mode="depth"]').click(); await wait(300)
+
+    // ---- 24 小时流动性 / 成交
+    d = await ofd()
+    ok('24 小时流动性：有点（服务端补的 + 本页取样）', d.liq.points > 0 && (d.liq.status === 'ok' || d.liq.status === 'empty'), JSON.stringify(d.liq))
+    ok('24 小时成交：三家 K 线都到了、有 48 格里的数', d.vol.slots > 0 && d.vol.exchanges.length === 3, JSON.stringify(d.vol))
+    const heads = await page.evaluate(() => [...document.querySelectorAll('.of-stat-head')].map(e => e.textContent.trim()))
+    ok('两块标题行都有数', heads.length === 2 && heads.every(h => /\d/.test(h)), heads.join(' | '))
+    const sb = await page.locator('#sidePanel').boundingBox()
+    const liqBox = await page.locator('#ofLiq').boundingBox()
+    await page.mouse.move(liqBox.x + liqBox.width - 20, liqBox.y + liqBox.height / 2); await wait(400)
+    const lt = await cardText()
+    ok('悬停流动性：给那一格的买卖与相对上一格的变化', /买 · ±2.5%/.test(lt) && /卖 · ±2.5%/.test(lt) && /相对上一个 30 分钟|上一个 30 分钟没有记录/.test(lt), lt.replace(/\s+/g, ' ').slice(0, 140))
+    await shotO('侧栏-流动性悬停', { clip: { x: sb.x - 320, y: sb.y + sb.height - 560, width: sb.width + 320, height: 560 } })
+    const volBox = await page.locator('#ofVol').boundingBox()
+    await page.mouse.move(volBox.x + volBox.width - 30, volBox.y + volBox.height / 2); await wait(400)
+    const vt = await cardText()
+    ok('悬停成交：合计、币安主动买卖、写明 OKX / Coinbase 只计总额', /合计/.test(vt) && /主动买/.test(vt) && /只计总额/.test(vt), vt.replace(/\s+/g, ' ').slice(0, 160))
+    await shotO('侧栏-成交悬停', { clip: { x: sb.x - 320, y: sb.y + sb.height - 560, width: sb.width + 320, height: 560 } })
+    await page.mouse.move(5, 700)
+    // 收起 / 拖动排序
+    await page.locator('.of-w-liq [data-of="collapse"]').click(); await wait(400)
+    const lh = await page.locator('.of-w-liq').boundingBox()
+    ok('流动性块能收起（只剩标题行）', lh.height <= 34, `${Math.round(lh.height)} px`)
+    await page.locator('.of-w-liq [data-of="collapse"]').click(); await wait(300)
+    await page.locator('.of-w-vol .of-w-head').dragTo(page.locator('.of-w-book'), { targetPosition: { x: 40, y: 4 } }); await wait(500)
+    const order = (await state()).slots.widgets
+    ok('拖「24 小时成交」到盘口上方：顺序落本机', order.indexOf('vol') < order.indexOf('book'), order.join(','))
+    // 详情里每秒成交一行、不溢出
+    const det = await page.evaluate(() => { const e = document.querySelector('#detail'); const t = e?.querySelector('.of-tps'); return e ? { t: t?.textContent?.trim() ?? '', over: e.scrollHeight - e.clientHeight, svg: !!t?.querySelector('svg') } : null })
+    ok('详情里有「每秒成交」一行加小折线，不溢出', !!det && /每秒成交/.test(det.t) && det.svg && det.over <= 1, JSON.stringify(det))
+
+    // ---- 成交流
+    d = await ofd()
+    const big = d.bigTrade, base = big * 5
+    const rows = d.tapeRows
+    const hOk = rows.every(r => r.h === (big > 0 && r.usd >= big ? 28 : 20))
+    const aOk = rows.every(r => r.alpha >= 0.04 && r.alpha <= 0.35 && Math.abs(r.alpha - Math.min(0.35, Math.max(0.04, r.usd / base))) < 0.002)
+    const bOk = rows.every(r => r.bps == null || Math.abs(parseFloat(r.bps.replace('−', '-'))) >= 0.5)
+    ok('成交流：行高 20 / 28 按「≥ 门槛 ÷ 5」、底色 = clamp(金额 ÷ 门槛, 0.04, 0.35)、bps 小标 |bps| ≥ 0.5 才有', rows.length > 0 && hOk && aOk && bOk,
+      `${rows.length} 行，门槛 ${base}，28 高 ${rows.filter(r => r.h === 28).length} 行，有 bps 的 ${rows.filter(r => r.bps).length} 行`)
+    const tb = await page.locator('.of-w-tape').boundingBox()
+    await shotO('成交流', { clip: { x: tb.x, y: tb.y, width: tb.width, height: tb.height } })
+
+    // ---- 换品种：成交列与两块统计清零重来
+    const since0 = (await ofd()).trades.since
+    await page.locator('#wTbl tr[data-sym="ETHUSDT"]').first().click()
+    await page.waitForFunction(() => window.__of().symbol === 'ETHUSDT', null, { timeout: 20000, polling: 500 }).catch(() => {})
+    await wait(1500)
+    d = await ofd()
+    ok('换到 ETH：成交列清零重算、两块统计跟着换', d.symbol === 'ETHUSDT' && (d.trades.since == null || d.trades.since > since0), `symbol ${d.symbol} since ${since0} → ${d.trades.since}`)
+    await wait(8000)
+    await shotO('ETH-全页')
+
+    // ---- 热力请求：一律收窄
+    const bad = heatReqs.filter(u => u.includes('/v1/market/orderflow/heat')).filter(u => { const q = new URL(u, 'http://x').searchParams; const narrow = (q.has('lo') && q.has('hi')) || (q.has('around') && q.has('pct')); return !narrow || !q.has('bucketMs') || (+q.get('to') - +q.get('from')) > 25 * 3_600_000 })
+    const apiReqs = heatReqs.filter(u => u.includes('/v1/market/orderflow/heat'))
+    ok('热力请求一律带 lo / hi（或 around / pct）与 bucketMs，不拉 24 小时全量', apiReqs.length > 0 && bad.length === 0, `${apiReqs.length} 次，违规 ${bad.length}${bad.length ? '：' + bad[0] : ''}`)
+  } finally { page.off('request', onReq); page.off('response', onResp); page.off('requestfailed', onFail) }
+  ok('订单流：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
+}
+
+const ALL = { chart: partChart, flow: partFlow, layout: partLayout, levels: partLevels, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
 for (const k of PARTS.length ? PARTS : Object.keys(ALL)) {
   console.log(`\n══ ${k} ══`)
   try { await ALL[k]() } catch (e) { ok(`${k} 段跑完`, false, String(e.stack || e).split('\n').slice(0, 3).join(' ')); await page.screenshot({ path: `${OUT}/回归-失败-${k}.png` }).catch(() => {}) }

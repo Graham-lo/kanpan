@@ -1,9 +1,10 @@
 /* Hkline Web · 侧栏「自选」视图的高度分配（纯逻辑）
  *
  * 2560×1440 下整条侧栏（顶栏以下的全部高度）一屏放下、不出滚动条：
- *   自选 ≥ 8 行（行高 32）、详情约 230、盘口「交易所 × 产品」表 + 8 档、成交 10 行、大单 6 行、提醒余下。
+ *   自选 ≥ 8 行（行高 32）、详情约 230、盘口「交易所 × 产品」表 + 8 档、成交 10 行、大单 6 行、提醒余下；
+ *   24 小时流动性 / 成交两块定高 120。
  * 每块都能收起（收起只剩标题行），收起省下来的高度：先保证展开的各块到最小，再平均分给能长的块。
- * 实在放不下（小屏）就按优先级从低到高往 floor 压（提醒 → 大单 → 成交 → 自选 → 盘口），详情是定高不压。
+ * 实在放不下（小屏）就按优先级从低到高往 floor 压（提醒 → 大单 → 成交 → 自选 → 盘口），详情与两块统计是定高不压。
  */
 import type { WidgetId } from '../app/store'
 
@@ -31,8 +32,10 @@ export const TAPE_ROW = 20
 export const WALL_ROW = 24
 export const BOOK_ROW = 17
 export const ALERT_ROW = 26
-export const DETAIL_H = 232
+export const DETAIL_H = 252
 export const DETAIL_HEAD = 52
+/** 24 小时流动性 / 成交两块的高（含标题行） */
+export const STAT_H = 120
 
 /** 各块的尺寸（和 orderflow.css / app.css 里的行高一一对应） */
 export const PARTS: Record<WidgetId, PartSpec> = {
@@ -42,6 +45,9 @@ export const PARTS: Record<WidgetId, PartSpec> = {
   book: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 44 + 94 + 20 + 8 * BOOK_ROW + 4, floor: SEP + WIDGET_HEAD + 44 + 94 + 20 + 4 * BOOK_ROW + 4, shrink: 4 },
   tape: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 10 * TAPE_ROW + 4, floor: SEP + WIDGET_HEAD + 5 * TAPE_ROW + 4, shrink: 2 },
   walls: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 6 * WALL_ROW + 4, floor: SEP + WIDGET_HEAD + 3 * WALL_ROW + 4, shrink: 1 },
+  // 24 小时流动性 / 成交：定高 120（标题 32 + 图 88），不参与分多出来的高度
+  liq: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H, fixed: true, shrink: 8 },
+  vol: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H, fixed: true, shrink: 8 },
   alerts: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 2 * ALERT_ROW + 4, floor: SEP + WIDGET_HEAD + ALERT_ROW + 4, shrink: 0 },
 }
 

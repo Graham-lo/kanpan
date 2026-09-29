@@ -9,6 +9,12 @@
 }
 .of-lad-foot b { font-weight: 600; }
 .of-lad-foot .faint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.of-lad-top {
+  position: absolute; left: 0; right: 0; top: 0; height: 28px; display: flex; align-items: center; justify-content: flex-end; gap: var(--s2);
+  padding: 0 var(--s1); border-bottom: 1px solid var(--line); background: var(--surface); z-index: 1;
+}
+.of-lad-top [hidden] { display: none; }
+.of-spark { display: block; margin: var(--s1) 0 0; }
 .of-lad-empty { position: absolute; left: 0; right: 0; text-align: center; font-size: var(--t12); pointer-events: none; }
 .of-drag-ghost {
   position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; padding: 2px var(--s2); border-radius: var(--r-xs);
@@ -107,6 +113,18 @@
 .of-tape-host canvas { position: absolute; inset: 0; display: block; }
 .of-min { display: inline-flex; align-items: center; gap: 2px; font-size: var(--t12); color: var(--text-3); cursor: default; }
 .of-min .input { width: 64px; height: 22px; padding: 0 6px; font-size: var(--t12); text-align: right; }
+
+/* 24 小时流动性 / 成交（定高 120：标题 32 + 图 88） */
+.of-stat-host { position: relative; flex: 1; min-height: 0; }
+.of-stat-host canvas { position: absolute; inset: 0; display: block; }
+.of-stat-head { display: inline-flex; gap: var(--s2); font-size: var(--t12); white-space: nowrap; }
+.of-w.collapsed .of-stat-head { display: none; }
+
+/* 详情里的「每秒成交」一行 */
+.of-tps-row:empty { display: none; }
+.of-tps { display: flex; align-items: center; gap: var(--s2); height: 16px; margin-top: var(--s2); font-size: var(--t12); }
+.of-tps b { font-weight: 500; }
+.of-tps-sp { color: var(--text-3); margin-left: auto; }
 
 /* 大单 */
 .of-walls { flex: 1; min-height: 0; padding: 0 var(--s2) 4px; overflow: hidden; }

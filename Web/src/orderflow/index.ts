@@ -17,10 +17,11 @@ import { buildFine, exName, venueName } from './aggregate'
 import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
 import { tapeBase } from './tape'
 import { recordTrade, beat } from '../chart/tradeFlow'
+import { heatFetchSent } from './heatFetch'
 import { createLayer } from './layer'
-import { mountLadder, ladderVisible, drawLadder } from './ladder'
+import { mountLadder, ladderVisible, drawLadder, resetLadder, ladderDebug } from './ladder'
 import { mountDrawer, updateDrawer, revealInDrawer } from './drawer'
-import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, OF_WIDGETS } from './widgets'
+import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, OF_WIDGETS, tapeDebug } from './widgets'
 import { openOrderFlowSettings, settingsLayerOpen } from './settingsDialog'
 import { baseOfSymbol, productsOf, type Display } from './settings'
 import { OF, savePrefs, amt, PRODUCT_FULL, durShort, type Api } from './state'
@@ -56,6 +57,7 @@ export function installOrderFlow(a: Api): void {
     OF.geo = g
     if (ladderVisible()) drawLadder(chart, g)
   }
+  if (!OF.prefs.seededStats && (st.orderFlow || st.slots.widgets.some(w => isOfWidget(w)))) { seedStats(); save() }
   OF.reveal = id => revealInDrawer(id)
   OF.focus = focusOrder
   setInterval(() => { if (document.visibilityState !== 'hidden') sync() }, SYNC_MS)
@@ -127,10 +129,11 @@ function stopFeed(): void {
 function resetSymbolState(): void {
   OF.snap = null; OF.fine = null; OF.heat = null
   OF.tape.clear(); OF.peaks.clear()
+  OF.trades.clear(); OF.delta.reset(); OF.liq.reset(); OF.vol.reset(); OF.tps.clear()
   OF.highlight = null; OF.hoverRow = null; OF.bigTrade = 0
   OF.version++
   heatBack = freshBack()
-  resetTape()
+  resetTape(); resetLadder()
 }
 
 // ------------------------------------------------------------------ 帧
@@ -151,6 +154,15 @@ function onFrame(s: Snapshot): void {
   const tb = tapeBase(s.thresholds)
   OF.bigTrade = tb ? tb / 5 : 0
   OF.tape.prune(now)
+  if (OF.fine) {
+    // 梯子「变化」的实时环（梯子开着才记）；两块 24 小时统计（放在侧栏里才取）
+    if (st.slots.ladder) OF.delta.sample(OF.fine, s.thresholds, now)
+    const ws = st.slots.widgets
+    const wantLiq = ws.includes('liq'), wantVol = ws.includes('vol')
+    if (wantLiq) OF.liq.sample(OF.fine, s.thresholds, now)
+    if (wantVol || wantLiq) OF.vol.ensure(f.books, now)
+    if (wantLiq) OF.liq.ensure(f.base, f.chartScale, OF.fine.step, OF.fine.mid, OF.vol.mids(), OF.vol.status === 'ok' || OF.vol.status === 'down', now)
+  }
   OF.version++
   for (const c of api.charts()) if (c.symbol.toUpperCase() === f.symbol) c.chart.dirty = true
   updateWidgets()
@@ -166,8 +178,12 @@ function onTrade(ev: TradeEvent): void {
   recordTrade(f.symbol, ev, cut ? cut / 50 : null)
   const row = OF.tape.push({
     t: ev.trade.timeMs || Date.now(), exchange: v.exchange, label: exName(v.exchange), product: v.product,
-    side: ev.trade.hitSide === 'ask' ? 'buy' : 'sell', price: ev.trade.price, usd: ev.usd, qty: ev.trade.quantity,
+    side: ev.trade.hitSide === 'ask' ? 'buy' : 'sell', price: ev.trade.price, usd: ev.usd, qty: ev.trade.quantity, instrument: v.instrument,
   })
+  // 梯子中列：按细桶累加主动买 / 主动卖；详情里的每秒成交
+  const step = f.model.scheme?.step
+  if (step) OF.trades.add(ev.trade.price, ev.usd, row.side, step, row.t)
+  OF.tps.add(Date.now())
   if (OF.bigTrade > 0) OF.tape.dotFor(row, OF.bigTrade)
   scheduleTape()
 }
@@ -262,7 +278,9 @@ export function setOrderFlow(on: boolean): void {
       st.slots.ladder = true
       const add: WidgetId[] = OF_WIDGETS.filter(w => !st.slots.widgets.includes(w))
       if (add.length) st.slots.widgets = [...st.slots.widgets, ...add]
+      OF.prefs.seededStats = true; savePrefs()
     }
+    seedStats()
   } else st.slots.drawer = false
   save()
   OF.version++
@@ -270,6 +288,18 @@ export function setOrderFlow(on: boolean): void {
   sync()
   api?.renderPanel()
   api?.renderToolbar()
+}
+
+/** 2026-09-29 新加的两块统计：已经开过订单流的也摆一次（摆在「大单」后面），之后尊重用户的开合 */
+function seedStats(): void {
+  if (OF.prefs.seededStats) return
+  OF.prefs.seededStats = true; savePrefs()
+  const add = (['liq', 'vol'] as WidgetId[]).filter(w => !st.slots.widgets.includes(w))
+  if (!add.length) return
+  const list = st.slots.widgets.slice()
+  const at = list.indexOf('walls')
+  list.splice(at >= 0 ? at + 1 : list.length, 0, ...add)
+  st.slots.widgets = list
 }
 
 export function toggleHeat(): void {
@@ -317,7 +347,7 @@ export function indicatorRowClick(t: HTMLElement): boolean {
 const CHIPS: [keyof Display, string][] = [
   ['spot', '现货'], ['contract', '合约'], ['filledBid', '买单成交'], ['filledAsk', '卖单成交'], ['cancelledBid', '买单撤销'], ['cancelledAsk', '卖单撤销'],
 ]
-const W_TITLE: Record<string, string> = { book: '盘口', tape: '成交', walls: '大单', alerts: '提醒' }
+const W_TITLE: Record<string, string> = { book: '盘口', tape: '成交', walls: '大单', alerts: '提醒', liq: '流动性', vol: '成交额' }
 
 const sw = (id: string, label: string, on: boolean, tip: string): string =>
   `<div class="of-p-row" data-tip="${tip}"><span>${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
@@ -440,6 +470,11 @@ export function orderFlowDebug(): unknown {
     live: OF.snap?.orders.filter(o => o.status === 'live').length ?? 0,
     venues: OF.snap?.venues ?? [], heat: OF.heat ? { live: OF.heat.live.length, back: OF.heat.back.length, backRange: OF.heat.backRange } : null,
     heatBack: { ...heatBack }, tape: OF.tape.visible(0, 5).length, tapeVersion: OF.tape.version, thresholds: OF.snap?.thresholds ?? null,
+    trades: { size: OF.trades.size, since: OF.trades.since, step: OF.trades.step },
+    delta: { status: OF.delta.status, srvStep: OF.delta.srvStep, srvCols: OF.delta.srv?.cols.length ?? 0, srvUrl: OF.delta.srv?.url ?? null, fine: OF.delta.fine.length, coarse: OF.delta.coarse.length },
+    liq: { status: OF.liq.status, srv: OF.liq.srv.size, live: OF.liq.live.size, points: OF.liq.points(Date.now()).length },
+    vol: { status: OF.vol.status, exchanges: OF.vol.exchanges, slots: OF.vol.slots.filter(x => x.total > 0).length },
+    tps: OF.tps.rate(Date.now()), heatFetchSent: heatFetchSent(), ladder: ladderDebug(), tapeRows: tapeDebug(), bigTrade: OF.bigTrade, prefs: { ladderMode: OF.prefs.ladderMode, deltaWin: OF.prefs.deltaWin },
   }
 }
 ;(globalThis as unknown as { __of?: () => unknown }).__of = orderFlowDebug

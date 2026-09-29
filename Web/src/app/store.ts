@@ -51,8 +51,8 @@ export function ensureCells(s: Pick<State, 'cells'>, n: number): void {
 }
 export type PanelId = 'watch' | 'alerts' | 'flow' | 'notes' | 'trades'
 export type PageId = 'chart' | 'sectors' | 'review' | 'me'
-/** 侧栏「自选」视图里按顺序堆叠的小部件（自选、品种详情、盘口、逐笔成交、大单、提醒），用户可调顺序与开合 */
-export type WidgetId = 'watch' | 'detail' | 'book' | 'tape' | 'walls' | 'alerts'
+/** 侧栏「自选」视图里按顺序堆叠的小部件（自选、品种详情、盘口、逐笔成交、大单、提醒、24 小时流动性、24 小时成交），用户可调顺序与开合 */
+export type WidgetId = 'watch' | 'detail' | 'book' | 'tape' | 'walls' | 'alerts' | 'liq' | 'vol'
 
 export interface CellCfg { symbol: string; iv: string }
 /** 提醒：形状和手机端同步的 alerts 对象一致（19 个字段），见 alerts/shape.ts */

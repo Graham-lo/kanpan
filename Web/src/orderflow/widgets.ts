@@ -12,16 +12,17 @@ import { toast } from '../ui/overlay'
 import { hexA } from '../util/format'
 import { pressure, steppedBook, exName, venueName, PRODUCT_SHORT, type FineBook } from './aggregate'
 import { orderId, type BigOrder, type Product } from './types'
-import { tapeBase, type TapeRow } from './tape'
+import { tapeBase, bpsText, tapeRowH, tapeRowAlpha, TAPE_ROW_SMALL, type TapeRow } from './tape'
 import { parseAmount } from './settings'
 import { OF, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
-import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, BOOK_ROW, WALL_ROW, TAPE_ROW } from './sidebar'
+import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
 import { sizes, saveSizes } from '../app/sizes'
+import { StatChart, statHead, tpsLineHTML, type StatKind } from './statsView'
 import { splitter, type Splitter } from '../ui/splitter'
 export { toggleCollapsed }
 
-export const OF_WIDGETS: WidgetId[] = ['book', 'tape', 'walls', 'alerts']
-const TITLE: Record<string, string> = { book: '盘口', tape: '成交', walls: '大单', alerts: '提醒', watch: '自选', detail: '详情' }
+export const OF_WIDGETS: WidgetId[] = ['book', 'tape', 'walls', 'liq', 'vol', 'alerts']
+const TITLE: Record<string, string> = { book: '盘口', tape: '成交', walls: '大单', alerts: '提醒', liq: '24 小时流动性', vol: '24 小时成交', watch: '自选', detail: '详情' }
 export const isOfWidget = (w: WidgetId): boolean => OF_WIDGETS.includes(w)
 
 // ------------------------------------------------------------------ 外壳
@@ -52,7 +53,50 @@ export function widgetHTML(w: WidgetId): string {
        <button class="ibtn xs" data-of="pause" id="ofTapePause" aria-label="暂停" data-tip="暂停">${I('pause', 'icon-16')}</button>`)
     case 'walls': return shell('walls', `<div class="of-walls" id="ofWalls"></div>`, `<span class="faint num" id="ofWallsN"></span>`)
     case 'alerts': return shell('alerts', `<div class="scroll no-bar of-alerts" id="ofAlerts"></div>`, `<button class="ibtn xs" data-of="alert-new" aria-label="新建提醒" data-tip="新建提醒">${I('plus', 'icon-16')}</button>`)
+    case 'liq': return shell('liq', `<div class="of-stat-host"><canvas id="ofLiq" aria-label="24 小时流动性"></canvas></div>`, `<span class="of-stat-head" id="ofLiqHead"></span>`)
+    case 'vol': return shell('vol', `<div class="of-stat-host"><canvas id="ofVol" aria-label="24 小时成交"></canvas></div>`, `<span class="of-stat-head" id="ofVolHead"></span>`)
     default: return ''
+  }
+}
+
+// ------------------------------------------------------------------ 24 小时流动性 / 成交
+
+let stats: StatChart[] = []
+function mountStats(el: HTMLElement): void {
+  stats = (['liq', 'vol'] as StatKind[]).flatMap(k => {
+    const cv = el.querySelector<HTMLCanvasElement>(k === 'liq' ? '#ofLiq' : '#ofVol')
+    return cv ? [new StatChart(k, cv)] : []
+  })
+}
+/**
+ * 详情小部件末尾的「每秒成交」一行。详情是图表页自己画的（renderDetail 整块重写 innerHTML），
+ * 这里用 MutationObserver 在它重写之后立刻补回这一行（微任务里，赶在绘制之前，不闪）。
+ */
+let detailMo: MutationObserver | null = null
+function mountTps(el: HTMLElement): void {
+  detailMo?.disconnect(); detailMo = null
+  const d = el.querySelector<HTMLElement>('#detail')
+  if (!d) return
+  detailMo = new MutationObserver(() => ensureTps(d))
+  detailMo.observe(d, { childList: true })
+  ensureTps(d)
+}
+function ensureTps(d: HTMLElement): void {
+  if (!d.isConnected || !d.firstElementChild) return
+  let t = d.querySelector<HTMLElement>(':scope > .of-tps-row')
+  if (!t) { t = document.createElement('div'); t.className = 'of-tps-row'; d.appendChild(t) }
+  const html = tpsLineHTML()
+  if (t.dataset.html !== html) { t.innerHTML = html; t.dataset.html = html }
+}
+
+function updateStats(force = false): void {
+  for (const s of stats) {
+    const sec = s.cv.closest<HTMLElement>('.of-w')
+    if (!sec || sec.classList.contains('collapsed')) continue
+    s.draw(force)
+    const head = sec.querySelector<HTMLElement>('.of-stat-head')
+    const html = statHead(s.kind)
+    if (head && head.dataset.html !== html) { head.innerHTML = html; head.dataset.html = html }
   }
 }
 
@@ -74,7 +118,7 @@ export function fitStack(el: HTMLElement): void {
   parts.forEach((p, i) => { const v = `${hs[i]}px`; if (p.style.height !== v) p.style.height = v })
   placeSideSplits(el, parts, ids, hs, collapsed)
   // 行数跟着高度走的几块：重排一次
-  updateBook(); updateWalls(); tapeDirty = true; scheduleTape()
+  updateBook(); updateWalls(); updateStats(true); tapeDirty = true; scheduleTape()
 }
 
 /**
@@ -98,7 +142,7 @@ function placeSideSplits(el: HTMLElement, parts: HTMLElement[], ids: WidgetId[],
         if (!sideDrag) return
         const next = dragSidebar(sideDrag.hs, sideDrag.ids, new Set(OF.prefs.collapsed), k, d)
         const side: Record<string, number> = { ...(sizes.side || {}) }
-        sideDrag.ids.forEach((id, i) => { if (!OF.prefs.collapsed.includes(id) && id !== 'detail') side[id] = next[i] })
+        sideDrag.ids.forEach((id, i) => { if (!OF.prefs.collapsed.includes(id) && !PARTS[id]?.fixed) side[id] = next[i] })
         sizes.side = side
         fitStack(el)
       },
@@ -134,6 +178,8 @@ export function mountWidgets(el: HTMLElement): void {
     el.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target as HTMLElement).id === 'ofTapeMin') (e.target as HTMLInputElement).blur() })
     bindSort(el)
   }
+  mountStats(el)
+  mountTps(el)
   tapeCv = el.querySelector<HTMLCanvasElement>('#ofTape')
   ro?.disconnect()
   if (tapeCv) {
@@ -255,7 +301,8 @@ function bindSort(el: HTMLElement): void {
 /** 订单流出了一帧：盘口、大单、提醒打补丁。 */
 export function updateWidgets(): void {
   if (!mounted()) return
-  updateBook(); updateWalls(); updateAlerts(); syncTapeMin()
+  updateBook(); updateWalls(); updateAlerts(); updateStats(); syncTapeMin()
+  const d = root?.querySelector<HTMLElement>('#detail'); if (d) ensureTps(d)
 }
 
 const BANDS = [1, 2, 5]
@@ -385,7 +432,8 @@ let tapeSeen = -1
 let tapePaused: TapeRow[] | null = null
 let tapeHover = -1
 let tapeShown: TapeRow[] = []
-const ROW_H = TAPE_ROW
+/** 每行的顶（多一个 = 最后一行的底） */
+let tapeYs: number[] = []
 
 export function defaultTapeMin(): number {
   const t = OF.snap?.thresholds
@@ -429,33 +477,53 @@ function drawTape(): void {
   const upT = css.getPropertyValue('--up-text').trim() || up
   const downT = css.getPropertyValue('--down-text').trim() || down
   const hover = css.getPropertyValue('--surface-2').trim() || '#F6F7F9'
-  const n = Math.max(1, Math.floor(H / ROW_H))
-  const rows = tapePaused ?? OF.tape.visible(tapeMin(), n)
-  tapeShown = rows
-  if (!OF.feed) { hint(c, W, H, text3, '打开指标「主力订单流」后显示三家合并成交'); return }
-  if (!rows.length) { hint(c, W, H, text3, `还没有 ≥ ${amt(tapeMin())} 的成交`); return }
+  const rows0 = tapePaused ?? OF.tape.visible(tapeMin(), Math.max(1, Math.ceil(H / TAPE_ROW_SMALL)))
+  if (!OF.feed) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, '打开指标「主力订单流」后显示三家合并成交'); return }
+  if (!rows0.length) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, `还没有 ≥ ${amt(tapeMin())} 的成交`); return }
   const big = OF.bigTrade || Infinity
+  const base = OF.bigTrade > 0 ? OF.bigTrade * 5 : 0
+  // 行高不等：大额成交（≥ 门槛 ÷ 5）28、其余 20；放得下几行就画几行
+  const rows: TapeRow[] = [], ys: number[] = []
+  let yy = 0
+  for (const r of rows0) { const h = tapeRowH(r.usd, big); if (yy + h > H) break; rows.push(r); ys.push(yy); yy += h }
+  ys.push(yy)
+  tapeShown = rows; tapeYs = ys
   const dec = OF.feed ? decFor(OF.feed.model.scheme?.step ?? 0, OF.api?.dec(OF.feed.symbol) ?? 2) : 2
   const coin = OF.prefs.bookUnit === 'coin'
-  // 列：时间 16 · 交易所 76 · 方向块 196 · 价格右对齐 300 · 金额右对齐 W−16
+  // 列：时间 12 · 交易所 70 · 方向块 150（宽 ≥ 394 才有）· 价格右对齐 W−132 · bps 小标右对齐 W−80 · 金额右对齐 W−12
+  const showSide = W >= 394
+  const pxR = W - 132, bpsR = W - 80
   c.textBaseline = 'middle'
-  for (let i = 0; i < rows.length && i < n; i++) {
-    const r = rows[i], y = i * ROW_H, cy = y + ROW_H / 2
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], y = ys[i], h = ys[i + 1] - y, cy = y + h / 2
     const isBig = r.usd >= big
     const col = r.side === 'buy' ? up : down
-    if (i === tapeHover) { c.fillStyle = hover; c.fillRect(0, y, W, ROW_H) }
-    if (isBig) { c.fillStyle = hexA(col, 0.1); c.fillRect(0, y, W, ROW_H) }
+    // 底色浓淡 = 金额 ÷ 门槛（0.04–0.35），一眼看出哪几笔是大的
+    c.fillStyle = hexA(col, tapeRowAlpha(r.usd, base)); c.fillRect(0, y, W, h - 1)
+    if (i === tapeHover) { c.fillStyle = hexA(text1, 0.06); c.fillRect(0, y, W, h - 1) }
     c.font = canvasFont(12, 400)
-    c.fillStyle = text3; c.textAlign = 'left'; c.fillText(hms(r.t), 16, cy)
-    c.fillStyle = text1; c.fillText(venueName(exName(r.exchange), r.product), 76, cy)
-    c.fillStyle = col
-    c.beginPath(); c.roundRect?.(186, cy - 8, 28, 16, 4); if (!c.roundRect) c.rect(186, cy - 8, 28, 16); c.fill()
-    c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = canvasFont(11, 600); c.fillText(r.side === 'buy' ? '买' : '卖', 200, cy)
-    c.font = canvasFont(12, isBig ? 650 : 400)
-    c.textAlign = 'right'; c.fillStyle = r.side === 'buy' ? upT : downT; c.fillText(px(r.price, dec), Math.min(W - 96, 312), cy)
-    c.fillStyle = text1
-    c.fillText((coin ? amt(r.qty) : amt(r.usd)) + (r.n > 1 ? ` ×${r.n}` : ''), W - 16, cy)
+    c.fillStyle = text3; c.textAlign = 'left'; c.fillText(hms(r.t), 12, cy)
+    c.fillStyle = text1; c.fillText(venueName(exName(r.exchange), r.product), 70, cy)
+    if (showSide) {
+      c.fillStyle = col
+      c.beginPath(); c.roundRect?.(150, cy - 8, 28, 16, 4); if (!c.roundRect) c.rect(150, cy - 8, 28, 16); c.fill()
+      c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = canvasFont(11, 600); c.fillText(r.side === 'buy' ? '买' : '卖', 164, cy)
+    }
+    c.font = canvasFont(isBig ? 13 : 12, isBig ? 650 : 400)
+    c.textAlign = 'right'; c.fillStyle = r.side === 'buy' ? upT : downT; c.fillText(px(r.price, dec), pxR, cy)
+    const bt = bpsText(r.bps)
+    if (bt) {
+      c.font = canvasFont(11, 500)
+      const tw = c.measureText(bt).width + 8, bc = r.bps! > 0 ? up : down
+      c.fillStyle = hexA(bc, 0.14)
+      c.beginPath(); c.roundRect?.(bpsR - tw, cy - 8, tw, 16, 4); if (!c.roundRect) c.rect(bpsR - tw, cy - 8, tw, 16); c.fill()
+      c.fillStyle = r.bps! > 0 ? upT : downT; c.textAlign = 'center'; c.fillText(bt, bpsR - tw / 2, cy)
+    }
+    c.font = canvasFont(isBig ? 13 : 12, isBig ? 650 : 400)
+    c.textAlign = 'right'; c.fillStyle = text1
+    c.fillText((coin ? amt(r.qty) : amt(r.usd)) + (r.n > 1 ? ` ×${r.n}` : ''), W - 12, cy)
   }
+  void hover
 }
 
 function hint(c: CanvasRenderingContext2D, W: number, H: number, color: string, t: string): void {
@@ -463,23 +531,34 @@ function hint(c: CanvasRenderingContext2D, W: number, H: number, color: string, 
   c.fillText(t, W / 2, Math.min(H / 2, 48))
 }
 
+/** 行高不等：按累计的行顶找第几行 */
+function tapeRowAt(y: number): number {
+  for (let i = 0; i < tapeShown.length; i++) if (y >= tapeYs[i] && y < tapeYs[i + 1]) return i
+  return -1
+}
 function onTapeHover(e: MouseEvent): void {
-  const i = Math.floor(e.offsetY / ROW_H)
-  const r = tapeShown[i]
+  const i = tapeRowAt(e.offsetY)
+  const r = i >= 0 ? tapeShown[i] : undefined
   if (i !== tapeHover) { tapeHover = r ? i : -1; tapeDirty = true; scheduleTape() }
   if (tapeCv) {
     tapeCv.style.cursor = r ? 'pointer' : ''
-    tapeCv.dataset.tip = r ? `${venueName(exName(r.exchange), r.product)} ${r.side === 'buy' ? '主动买' : '主动卖'} ${amt(r.usd)}${r.n > 1 ? `（1 秒内同价 ${r.n} 笔并成一行）` : ''} · 点一下在图上定位` : ''
+    tapeCv.dataset.tip = r ? `${venueName(exName(r.exchange), r.product)} ${r.side === 'buy' ? '主动买' : '主动卖'} ${amt(r.usd)}${r.n > 1 ? `（1 秒内同价 ${r.n} 笔并成一行）` : ''}${bpsText(r.bps) ? ` · 比这家上一笔 ${bpsText(r.bps)} bps` : ''} · 点一下在图上定位` : ''
   }
 }
 function onTapeClick(e: MouseEvent): void {
-  const r = tapeShown[Math.floor(e.offsetY / ROW_H)]
+  const r = tapeShown[tapeRowAt(e.offsetY)]
   if (!r) return
   const a = OF.api?.activeChart()
   a?.chart.centerOn(r.t, r.price)
 }
 
 /** 换品种：成交带清空、暂停取消。 */
+/** 诊断（回归脚本用）：成交流当前画出来的每一行的高、bps 小标、底色浓度 */
+export function tapeDebug(): { h: number; bps: string | null; alpha: number; usd: number }[] {
+  const base = OF.bigTrade > 0 ? OF.bigTrade * 5 : 0
+  return tapeShown.map((r, i) => ({ h: tapeYs[i + 1] - tapeYs[i], bps: bpsText(r.bps), alpha: +tapeRowAlpha(r.usd, base).toFixed(3), usd: Math.round(r.usd) }))
+}
+
 export function resetTape(): void { tapePaused = null; tapeHover = -1; tapeDirty = true; scheduleTape() }
 
 /** 大单对象在侧栏大单列表里高亮（抽屉 / 图上点过来时）。 */

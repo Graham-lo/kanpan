@@ -12,6 +12,9 @@ import type { OrderFlowFeed } from './feed'
 import type { FineBook } from './aggregate'
 import type { HeatStore } from './heat'
 import { Tape } from './tape'
+import { TradeLadder } from './tradeLadder'
+import { DeltaSource, type DeltaWin } from './depthDelta'
+import { LiqSource, VolSource, TpsMeter } from './stats'
 import { DISPLAY_ALL, type Display } from './settings'
 import { mergeFactor, intervalMultiplier } from './bucket'
 import { clamp, sh, pad } from '../util/format'
@@ -47,11 +50,17 @@ export interface Prefs {
   sort: { key: DrawerKey; dir: 1 | -1 }
   /** 第一次打开订单流时把小部件、梯子、抽屉摆出来，之后尊重用户的开合 */
   seeded: boolean
+  /** 梯子：深度 / 变化（本机） */
+  ladderMode: 'depth' | 'delta'
+  /** 变化模式的窗口 */
+  deltaWin: DeltaWin
+  /** 「24 小时流动性」「24 小时成交」两块是 2026-09-29 后加的：已经开过订单流的也摆一次 */
+  seededStats: boolean
 }
 
 const PREFS_KEY = 'hkline-web-of-v1'
 function defaults(): Prefs {
-  return { display: { ...DISPLAY_ALL }, heat: false, tapeMin: {}, collapsed: [], bookUnit: 'usd', band: 1, sort: { key: 'first', dir: -1 }, seeded: false }
+  return { display: { ...DISPLAY_ALL }, heat: false, tapeMin: {}, collapsed: [], bookUnit: 'usd', band: 1, sort: { key: 'first', dir: -1 }, seeded: false, ladderMode: 'depth', deltaWin: '1h', seededStats: false }
 }
 function loadPrefs(): Prefs {
   const d = defaults()
@@ -65,6 +74,9 @@ function loadPrefs(): Prefs {
     if (p.bookUnit !== 'coin') p.bookUnit = 'usd'
     if (![1, 2, 5].includes(p.band)) p.band = 1
     if (!p.sort || typeof p.sort.key !== 'string') p.sort = d.sort
+    if (p.ladderMode !== 'delta') p.ladderMode = 'depth'
+    if (p.deltaWin !== '1d') p.deltaWin = '1h'
+    if (typeof p.seededStats !== 'boolean') p.seededStats = false
     return p
   } catch { return d }
 }
@@ -77,6 +89,14 @@ export const OF = {
   fine: null as FineBook | null,
   heat: null as HeatStore | null,
   tape: new Tape(),
+  /** 梯子中列：从打开这只品种起的主动买 / 主动卖（按细桶） */
+  trades: new TradeLadder(),
+  /** 梯子「变化」模式的数据（实时环 + 服务端快照） */
+  delta: new DeltaSource(),
+  /** 侧栏「24 小时流动性」「24 小时成交」、详情里的每秒成交 */
+  liq: new LiqSource(),
+  vol: new VolSource(),
+  tps: new TpsMeter(),
   peaks: new Map<string, number>(),
   prefs: loadPrefs(),
   /** 当前活动格子最近一次重绘时的坐标映射（梯子对齐用） */
@@ -184,6 +204,8 @@ export function amt(v: number | null | undefined): string {
 }
 /** 上海时间 时:分:秒 */
 export function hms(t: number): string { const d = sh(t); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}` }
+/** 上海时间 时:分 */
+export function hm(t: number): string { const d = sh(t); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` }
 /** 上海时间 月-日 时:分 */
 export function mdhm(t: number): string { const d = sh(t); return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` }
 /** 时长的短写：45秒 / 12分钟 / 3.5小时 / 2天 */
