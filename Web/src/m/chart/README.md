@@ -22,6 +22,7 @@
 | `external.source.ts` | 主界面 OISource（近 30 天 REST：持仓量、多空比、主动买卖比、基差） |
 | `orderflow.source.ts` | 主力订单流数据口（包 `src/orderflow/feed.ts`） |
 | `index.ts` | 主界面 ChartHost（ViewIntent、状态合并、副图拖高 / 换序）+ ChartSession（compose、心跳） |
+| `beat.ts` | 心跳开关 ChartBeat：页面露着且宿主没 pause 才每秒一拍，回来立刻补一拍、离开超 5 秒补缺口 |
 
 ## 对外 API
 
@@ -49,6 +50,7 @@ const chart = createChart(host, {
 | `setCandleStyle(p)` | `ChartOptions` 的任意子集 + `priceMode`（log / linear / percent）+ `mainInverted` |
 | `setCompare(keys)` | 对比品种（偏好里的整串键，顺序决定配色槽位）；传 `[]` 关掉 |
 | `setDepth(on)` | 盘口五档开关 |
+| `pause()` / `resume()` | 宿主页藏起 / 露出：停 / 开心跳（按视野补外部数据、倒计时、覆盖层重算）；resume 立刻补一拍，离开超过 5 秒重拉末页与对比。推送、盘口、订单流仍由宿主各自收 |
 | `setLook(p)` | 其余样式：参数、颜色覆写、隐藏输出、副图倍率、强弱上下轨等 |
 | `setOrderFlow(on, display?)` | 主力订单流开关与显示设置 |
 | `setDrawings(list)` | 本品种画线（只读展示用；装了画线控制器之后线从 `DrawingBook` 投影，用控制器的 `setDrawings` / `bindDrawings`） |

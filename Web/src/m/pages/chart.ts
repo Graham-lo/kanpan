@@ -139,6 +139,9 @@ export function initChart(root: HTMLElement): PageHandle {
     // 页面藏着时订单流停订（几条簿 / 成交 WS 与 500ms 评估），show / hide 里 resume / suspend
     orderFlowSource: push => (port = createPagePort(push, s => st.orderFlowOverrides[baseOfSymbol(s).base] ?? null, !shown)),
   })
+  // 引擎心跳（每秒按视野补外部数据、覆盖层重算）只在页面露着时跑：壳是在后台把各页先建出来的，
+  // 建的时候行情页多半没露着，先停；show / hide 里 resume / pause，跟订单流口一样
+  if (!shown) chart.pause()
   chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight })
   // 取不到行情（下架 / 不认得的品种、断网时换品种或周期）：引擎为了换的时候不闪空图，会一直留着上一张图，
   // 于是新名字底下画的是上一只 / 上一个周期的 K 线。这时用一层底色盖住图区，写一句取不到；取到了就撤掉
@@ -346,6 +349,9 @@ export function initChart(root: HTMLElement): PageHandle {
       shown = true
       void ensureUniverse().then(() => schedule())
       pushStreams()
+      // 藏着时 K 线流是退订的；自选 / 板块页还订着行情，连接一直开着、不会有「重连上了」那一下，
+      // 所以缺口只能靠这里：收起超过 5 秒回来，引擎重拉末页补上（最后一根不再停在离开那一刻）
+      chart.resume()
       port?.resume()
       layout()
       syncChart()
@@ -362,6 +368,7 @@ export function initChart(root: HTMLElement): PageHandle {
       wantDraw = false; guide.hidden = true
       chart.clearCrosshair()
       pushStreams()
+      chart.pause()
       port?.suspend()
       card.set(null, '', 2)
       chart.setDepth(false) // 盘口那条小连接跟着页面收掉；show 里 syncChart 按偏好再开

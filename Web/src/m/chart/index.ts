@@ -30,6 +30,7 @@ import { ExternalFeed, isExternalID } from './external.source'
 import { createOrderFlowPort } from './orderflow.source'
 import { CompareFeed, compareSymbolOf, compareTargets } from './compare.source'
 import { DepthFeed } from './depth.source'
+import { ChartBeat } from './beat'
 
 // ================================================================ ViewIntent
 
@@ -156,6 +157,13 @@ export interface ChartHandle {
   on<K extends keyof ChartEvents>(name: K, fn: (e: ChartEvents[K]) => void): () => void
   /** 立刻把脏层画完（验收截图用）。 */
   redrawNow(): void
+  /**
+   * 宿主把图收起来（行情页切到别的页）：停一秒心跳（倒计时、外部副图的到点刷新）。
+   * 推送、盘口、订单流的起停归宿主（它们各有自己的口子），这里不动。
+   */
+  pause(): void
+  /** 亮出来：立刻补一拍；收起超过 5 秒再补主图与对比的缺口（收着时 K 线推送是退订的）。 */
+  resume(): void
   destroy(): void
 }
 
@@ -732,7 +740,6 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   // ---------------------------------------------------------------- 心跳（ChartSession.heartbeat）
 
-  let beat: ReturnType<typeof setInterval> | null = null
   const tick = () => {
     const st = view.state
     const want = st && look.options.countdown && look.options.lastLine ? Date.now() : null
@@ -742,18 +749,17 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     }
     if (series) feed?.refresh(wantedExternal(), series)
   }
-  const startBeat = () => { if (!beat && !opts.offline) { tick(); beat = setInterval(tick, 1000) } }
-  const stopBeat = () => { if (beat) clearInterval(beat); beat = null; nowMs = null }
-  let hiddenAt = 0
+  // 网页藏到后台、或宿主 pause（行情页切走）时停；回来立刻补一拍，离开超过 5 秒补主图与对比的缺口
+  const beat = new ChartBeat({
+    tick,
+    stopped: () => { nowMs = null },
+    onReturn: () => { void resync(); compareFeed.resync() },
+  }, document.hidden, !opts.offline)
   const onVisibility = () => {
     depthPort?.setVisible(!document.hidden)
-    if (document.hidden) { hiddenAt = Date.now(); stopBeat(); return }
-    startBeat()
-    if (hiddenAt && Date.now() - hiddenAt > 5_000) { void resync(); compareFeed.resync() }
-    hiddenAt = 0
+    beat.setHidden(document.hidden)
   }
   document.addEventListener('visibilitychange', onVisibility)
-  if (!document.hidden) startBeat()
 
   // ---------------------------------------------------------------- 皮肤 / 深浅 / 涨跌色
 
@@ -1023,6 +1029,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       if (!series || series.isEmpty) syncCompare(null)
     },
 
+    pause() { beat.pause() },
+    resume() { beat.resume() },
     setDepth(on) {
       if (on === depthOn) return
       depthOn = on
@@ -1070,7 +1078,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       destroyed = true
       generation++
       offMarket()
-      stopBeat()
+      beat.dispose()
       dropCandidate()
       document.removeEventListener('visibilitychange', onVisibility)
       skinObserver.disconnect()
