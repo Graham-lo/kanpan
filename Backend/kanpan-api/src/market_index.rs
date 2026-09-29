@@ -162,10 +162,12 @@ pub fn make_feature(bars: &[Bar]) -> Option<Feature> {
 }
 
 /// 写进 `market_features`，已有的（同一品种、周期、起止）不动。返回新写了几行。
+/// 每条语句 40 行：表上有 HNSW 向量索引，线上实测 200 行一条要 1.2–1.8 秒、次次触发 sqlx 慢语句告警刷日志；
+/// 40 行一条落在 0.4 秒上下，总开销不变。
 pub async fn insert_windows(pool: &PgPool, source: &str, symbol: &str, interval: &str, windows: &[&[Bar]]) -> sqlx::Result<usize> {
     let features: Vec<Feature> = windows.iter().filter_map(|bars| make_feature(bars)).collect();
     let mut inserted = 0usize;
-    for chunk in features.chunks(200) {
+    for chunk in features.chunks(40) {
         let mut query = QueryBuilder::<Postgres>::new("INSERT INTO market_features(id,market,symbol,timeframe,start_at,end_at,bars_count,model_id,render_version,embedding,input_hash,source,published) ");
         query.push_values(chunk, |mut row, feature| {
             row.push_bind(Uuid::new_v4())
