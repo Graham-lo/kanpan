@@ -15,7 +15,7 @@
 import { st, save, subscribe, onLayoutFork } from '../app/store'
 import { INTERVALS, type IntervalId, type IndicatorId, type PriceMode, type LayoutGroup } from '../app/prefs'
 import { hooks, nav, go, type PageHandle, type SyncChange } from '../app/shell'
-import { drawingBook, onDrawingsChanged } from '../app/drawings'
+import { drawingBook } from '../app/drawings'
 import { S, on as onMarket, streamName } from '../../market'
 import { createChart, type ChartHandle } from '../chart'
 import { attachDrawing, type DrawingController } from '../chart/view.drawing'
@@ -36,7 +36,7 @@ import { createIntervalBar } from './chart/intervalBar'
 import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
 import { openAnalysis, openChartSettings, openOrderFlowEditor, type PanelContext } from './chart/panels'
-import { createBench, reconcileLineAlerts, reconcileLineAlertsIn, type Bench } from './chart/drawingBench'
+import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
 import '../styles/chart.css'
@@ -161,11 +161,7 @@ export function initChart(root: HTMLElement): PageHandle {
   let benchRef: Bench | null = null // createBench 里就会回调 onState，那时 bench 还没赋上
   // 对账用图上真画着的那只（换品种取数的那一拍图上还是上一只，线也是上一只的），不是页面状态里的新代号
   c.onChanged = items => { reconcileLineAlerts(chart.state?.input.series.symbol ?? sym(), items); benchRef?.render() }
-  // 同步 / 别的标签页整批换进来的画线：换了的每一只都对账（不在图上的品种，线被别处删了提醒也要撤）；
-  // 挂上来先把整本对一遍，记下每只「删之前」有哪些线
-  const itemsOf = (k: string) => drawingBook.items(k)
-  onDrawingsChanged(ch => { if (ch.kind === 'replaced') reconcileLineAlertsIn(itemsOf, ch.keys) })
-  reconcileLineAlertsIn(itemsOf, Object.keys(drawingBook.archive.bySymbol))
+  // 同步 / 别的标签页整批换进来的画线由壳层对账（m/app/lineAlerts.ts，启动时就记下基线，不等行情页挂上）
   c.onState = () => benchRef?.render()
   c.onFull = () => toast('这只品种的画线满了（最多 50 条）')
   c.onFeedback = k => {
