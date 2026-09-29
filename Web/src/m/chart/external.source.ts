@@ -112,6 +112,8 @@ export async function fetchMetric(id: ExternalID, symbol: string, iv: Interval, 
  */
 export class ExternalFeed {
   private raw = new Map<ExternalID, MetricPoint[]>()
+  /** 每条已经完整问过的时间段（OISource 的 have）：往左翻只取左边露出来的那截，60 秒续一次只取尾巴。 */
+  private covered = new Map<ExternalID, { from: number; to: number }>()
   private inflight = new Set<ExternalID>()
   private lastRefresh = new Map<ExternalID, number>()
   private alive = true
@@ -122,14 +124,26 @@ export class ExternalFeed {
 
   dispose(): void { this.alive = false }
 
-  /** 这几条要有数：没取过的整段取，取过的只补最近一页。 */
+  /**
+   * 这几条要有数（OISource.missingSegments）：没取过、或和手里那段不沾边的整段取；
+   * 主图往左翻了就补左边露出来的那截；右边只续尾巴（最后一两桶的统计值还在动）。
+   */
   want(ids: readonly ExternalID[], series: BarSeries, now = Date.now()): void {
     if (!this.alive || series.isEmpty) return
+    const step = stepMs(this.interval)
+    const want = { from: series.firstTime - step, to: series.lastTime + step }
     for (const id of ids) {
       if (this.inflight.has(id)) continue
-      const have = this.raw.get(id)
-      const from = have?.length ? Math.max(have[have.length - 1].time - stepMs(this.interval), series.firstTime) : series.firstTime - stepMs(this.interval)
-      void this.load(id, from, series.lastTime + stepMs(this.interval), now)
+      const have = this.covered.get(id)
+      const segments: { from: number; to: number }[] = []
+      if (!have || want.from > have.to || want.to < have.from) segments.push(want)
+      else {
+        if (want.from < have.from) segments.push({ from: want.from, to: have.from })
+        const pts = this.raw.get(id)
+        const lastPoint = pts?.length ? pts[pts.length - 1].time : have.to
+        segments.push({ from: Math.max(want.from, Math.min(have.to, lastPoint) - step), to: want.to })
+      }
+      void this.load(id, segments, now)
     }
   }
 
@@ -139,13 +153,24 @@ export class ExternalFeed {
     if (due.length) this.want(due, series, now)
   }
 
-  private async load(id: ExternalID, from: number, to: number, now: number): Promise<void> {
+  private async load(id: ExternalID, segments: { from: number; to: number }[], now: number): Promise<void> {
     this.inflight.add(id)
     this.lastRefresh.set(id, now)
     try {
-      const r = await this.fetch(id, this.symbol, this.interval, from, to, now)
-      if (!this.alive) return
-      const merged = dedup([...(this.raw.get(id) ?? []), ...r.points])
+      const points: MetricPoint[] = []
+      for (const seg of segments) {
+        const r = await this.fetch(id, this.symbol, this.interval, seg.from, seg.to, now)
+        if (!this.alive) return
+        points.push(...r.points)
+        // 只把问完整的段记进 have：断在半路的下次还要再问
+        if (r.complete) {
+          const have = this.covered.get(id)
+          this.covered.set(id, have && seg.from <= have.to && seg.to >= have.from
+            ? { from: Math.min(have.from, seg.from), to: Math.max(have.to, seg.to) }
+            : have ?? { from: seg.from, to: seg.to })
+        }
+      }
+      const merged = dedup([...(this.raw.get(id) ?? []), ...points])
       const before = this.raw.get(id)
       this.raw.set(id, merged)
       if (!before || before.length !== merged.length || before[before.length - 1]?.value !== merged[merged.length - 1]?.value) {

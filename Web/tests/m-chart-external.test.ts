@@ -5,7 +5,7 @@
 // 下面的用例按 Swift 源码逐条写出，标题带对应的 Swift 名字。
 import { describe, expect, it } from 'vitest'
 import {
-  REST_WINDOW_MS, chartSeries, dedup, downsample, fetchMetric, metricPeriod,
+  ExternalFeed, REST_WINDOW_MS, chartSeries, dedup, downsample, fetchMetric, metricPeriod,
 } from '../src/m/chart/external.source'
 import type { ExternalID, MetricPoint } from '../src/m/chart/external.source'
 import { BarSeries, INTERVALS, bar, bucketStart, stepMs } from '../src/m/chart/series'
@@ -222,3 +222,66 @@ describe('OISource.fetchMetric（近 30 天那一段）', () => {
     }
   })
 })
+
+describe('ExternalFeed · 取哪几段（OISource.missingSegments）', () => {
+  const NOW = Date.UTC(2026, 8, 30, 12)
+  const hourly = (from: number, n: number) => BarSeries.fromBars('BTCUSDT', '5m',
+    Array.from({ length: n }, (_, i) => bar(from + i * 5 * MIN, 1, 1, 1, 1, 1)))
+  const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve() }
+
+  function rig() {
+    const calls: { from: number; to: number }[] = []
+    const got: number[] = []
+    const fake = (async (_id: ExternalID, _sym: string, _iv: Interval, from: number, to: number) => {
+      calls.push({ from, to })
+      const out: MetricPoint[] = []
+      for (let t = Math.ceil(from / (5 * MIN)) * 5 * MIN; t <= to; t += 5 * MIN) if (t >= NOW - REST_WINDOW_MS && t <= NOW) out.push({ time: t, value: t / 1e9 })
+      return { points: out, complete: true }
+    }) as unknown as typeof fetchMetric
+    const feed = new ExternalFeed('BTCUSDT', '5m', (_id, s) => { got.push(s.count) }, fake)
+    return { feed, calls, got }
+  }
+
+  it('主图往左翻了历史：补左边露出来的那截，不是只续尾巴（近 30 天以内）', async () => {
+    const r = rig()
+    const first = hourly(NOW - 1499 * 5 * MIN, 1500)
+    r.feed.want(['OI'], first, NOW)
+    await flush()
+    expect(r.calls).toHaveLength(1)
+    const older = hourly(NOW - 2999 * 5 * MIN, 3000)
+    r.feed.want(['OI'], older, NOW)
+    await flush()
+    expect(r.calls.some(c => c.from <= older.firstTime && c.to >= first.firstTime - 5 * MIN),
+      `往左翻完没去取左边那截：${JSON.stringify(r.calls.map(c => [(c.from - NOW) / MIN, (c.to - NOW) / MIN]))}`).toBe(true)
+    expect(r.got[r.got.length - 1], '新露出来的那截也有数').toBeGreaterThanOrEqual(2999)
+  })
+
+  it('已经取过的那段不重下：同一段再问只续尾巴', async () => {
+    const r = rig()
+    const s = hourly(NOW - 1499 * 5 * MIN, 1500)
+    r.feed.want(['OI'], s, NOW)
+    await flush()
+    r.feed.want(['OI'], s, NOW)
+    await flush()
+    expect(r.calls).toHaveLength(2)
+    expect(r.calls[1].from, '第二次只续尾巴').toBeGreaterThanOrEqual(s.lastTime - 5 * MIN)
+  })
+
+  it('左边那截没取完整（断在半路）：下次再问还会去补', async () => {
+    const calls: number[] = []
+    let fail = true
+    const fake = (async (_id: ExternalID, _sym: string, _iv: Interval, from: number) => {
+      calls.push(from)
+      return { points: [], complete: !fail }
+    }) as unknown as typeof fetchMetric
+    const feed = new ExternalFeed('BTCUSDT', '5m', () => {}, fake)
+    const s = hourly(NOW - 1499 * 5 * MIN, 1500)
+    feed.want(['OI'], s, NOW)
+    await flush()
+    fail = false
+    feed.want(['OI'], s, NOW)
+    await flush()
+    expect(calls[1], '上次没问完，这次照整段再问').toBeLessThanOrEqual(s.firstTime)
+  })
+})
+
