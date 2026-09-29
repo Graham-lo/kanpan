@@ -44,6 +44,18 @@ export function readEdited(): Edited {
   return { settings: {}, favorites: 0, drawings: {}, drawingPrefs: 0 }
 }
 
+/**
+ * 换到服务器钟上：本机「最后一次改」记的是本机 Date.now()，云端字段时间是服务器钟（记账时 op.timestamp =
+ * 本机钟 + offset，服务端再按它记字段时间）。第一次对上比「谁新」之前必须先把本机的加上 offset，
+ * 否则手机钟快几分钟就永远是本机赢（别的设备刚改的设置 / 自选 / 画线被盖回去），钟慢就永远是云端赢。
+ */
+export function onServerClock(ed: Edited, offset: number): Edited {
+  if (!offset || !Number.isFinite(offset)) return ed
+  const shift = (t: number): number => (t > 0 ? t + offset : t)
+  const each = (r: Record<string, number>): Record<string, number> => Object.fromEntries(Object.entries(r).map(([k, t]) => [k, shift(t)]))
+  return { settings: each(ed.settings), favorites: shift(ed.favorites), drawings: each(ed.drawings), drawingPrefs: shift(ed.drawingPrefs) }
+}
+
 // ───────── 指纹 ─────────
 
 interface Snap { subs: Record<string, Record<string, unknown>>; settings: string; favorites: string; alerts: string; seeded: boolean }
@@ -170,7 +182,7 @@ const mobile: SyncAdapter = {
     return (dropped > 0 && captureInto(store) > 0) || again
   },
   mergeFirst(store, override) {
-    const ed = readEdited()
+    const ed = onServerClock(readEdited(), store.a.offset)
     store.a.seen = {}
     const r: SyncChange = { ...blankChange(), settings: C.mergeSettings(st, store.get('settings', C.SETTINGS_ID), store.a.seen, ed.settings, override) }
     const fresh = (): C.FavState => ({ favorites: [], groups: [], groupForSymbol: {} })

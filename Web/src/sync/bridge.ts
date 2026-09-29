@@ -99,6 +99,9 @@ export interface Edited { settings: number; favorites: number }
 export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, edited: Edited, override: boolean): Applied {
   const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false, fired: [] }
   const a = store.a
+  // 本机「最后一次改」是本机钟，云端字段时间是服务器钟（op.timestamp = 本机钟 + offset）：先换到服务器钟上再比
+  const onServer = (t: number): number => (t > 0 && Number.isFinite(a.offset) ? t + a.offset : t)
+  edited = { settings: onServer(edited.settings), favorites: onServer(edited.favorites) }
   // 设置：云端新（或覆盖）就装云端的；本机新就什么都不装、seen 留空，记账时每个字段都会和云端比一遍
   const cloudSettings = store.get('settings', SETTINGS_ID)
   a.seen = {}
