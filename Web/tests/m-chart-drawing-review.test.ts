@@ -146,6 +146,33 @@ describe('画线审查：挂点生命周期', () => {
     expect(c2.drawings.length, '重新装上的控制器落不下线（投影键没接上）').toBe(2)
     expect(book.items('BTCUSDT').length).toBe(2)
   })
+
+  test('视图换了投影函数就忘掉旧键：新控制器不靠 adoptKey 也会收到换键回调', () => {
+    const r = rig()
+    r.c.detach()
+    const seen: (string | null)[] = []
+    r.v.drawingKeyOf = () => 'BTCUSDT'
+    r.v.onDrawingKeyChanged = from => { seen.push(from) }
+    r.v.state = r.v.state
+    expect(seen, '挂上新的投影函数后第一份 state 要当成第一次有了键').toEqual([null])
+  })
+
+  test('图销毁时画线控制器跟着摘下：退订本、停长按计时器，不再挂在全局本的观察者里', () => {
+    vi.useFakeTimers()
+    const r = rig()
+    const book = new DrawingBook()
+    r.c.bindDrawings(book)
+    const observers = () => (book as unknown as { observers: unknown[] }).observers.length
+    expect(observers()).toBe(1)
+    hlineAt(r, 260)
+    down(r.v, finger({ x: 180, y: 260 }), 30_000)
+    expect(vi.getTimerCount(), '按住选中的线会起长按上锁的计时器').toBeGreaterThan(0)
+    r.v.destroy()
+    expect(observers(), '销毁之后控制器还挂在全局本上（强引用，整张图都放不掉）').toBe(0)
+    expect(vi.getTimerCount(), '长按计时器还在').toBe(0)
+    expect(r.v.drawingInput).toBeNull()
+    expect(r.v.drawingProject).toBeNull()
+  })
 })
 
 describe('画线审查：拖线途中被别的按钮改了线', () => {

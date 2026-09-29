@@ -122,9 +122,20 @@ export class ChartView {
   drawingOverlayPaint: ((ctx: CanvasRenderingContext2D, W: number, H: number, scale: number) => void) | null = null
   /** 线不归调用方给：挂了画线控制器时，每份 state 先按品种投影一遍线（projectDrawings）。 */
   drawingProject: ((incoming: ChartState) => ChartState) | null = null
-  /** 换了品种（投影键变了）：收掉上一张图的半截画线交互。 */
-  drawingKeyOf: ((s: ChartState) => string) | null = null
+  /**
+   * 换了品种（投影键变了）：收掉上一张图的半截画线交互。
+   * 换投影函数（装上 / 摘下控制器）时一并忘掉记着的旧键：否则同一张图重装控制器后投影出同一个键，
+   * 视图就不会再喊 onDrawingKeyChanged，新控制器永远接不上键。
+   */
+  get drawingKeyOf(): ((s: ChartState) => string) | null { return this._drawingKeyOf }
+  set drawingKeyOf(fn: ((s: ChartState) => string) | null) {
+    if (fn !== this._drawingKeyOf) this.drawingKey = null
+    this._drawingKeyOf = fn
+  }
   onDrawingKeyChanged: ((from: string | null) => void) | null = null
+  /** 图销毁时通知画线控制器摘下（退订全局本、停长按计时器）。attachDrawing 赋值。 */
+  drawingTeardown: (() => void) | null = null
+  private _drawingKeyOf: ((s: ChartState) => string) | null = null
   private drawingKey: string | null = null
 
   private _guestDrawings: Drawing[] = []
@@ -173,6 +184,10 @@ export class ChartView {
   }
 
   destroy(): void {
+    // 先摘画线控制器：它挂在全局 DrawingBook 的观察者表里（强引用），不摘整张图都放不掉
+    const drawingTeardown = this.drawingTeardown
+    this.drawingTeardown = null
+    drawingTeardown?.()
     this.gestures.teardown()
     this.gestures.detach()
     this.resizeObserver?.disconnect()

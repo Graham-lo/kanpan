@@ -443,6 +443,9 @@ export class DrawingController {
     if (s && s.overlay.drawingPreviewID != null) this.view.state = withOverlay(s, { drawingPreviewID: null })
   }
 
+  /** 图销毁时由视图调（view.drawingTeardown）。 */
+  readonly teardownHook = (): void => this.detach()
+
   /** 从视图上拆下来（挂点全部清空、退订本）。 */
   detach(): void {
     this.teardown()
@@ -455,6 +458,7 @@ export class DrawingController {
     v.drawingProject = null
     v.drawingKeyOf = null
     v.onDrawingKeyChanged = null
+    if (v.drawingTeardown === this.teardownHook) v.drawingTeardown = null
     v.refreshDrawingOverlay()
   }
 
@@ -1085,6 +1089,7 @@ export function attachDrawing(view: ChartView): DrawingController {
   view.drawingKeyOf = s => c.keyOf(s)
   view.onDrawingKeyChanged = from => c.keyDidChange(from)
   view.drawingOverlayPaint = ctx => c.paintOverlay(ctx)
+  view.drawingTeardown = c.teardownHook
   c.interactive = true
   // 已经有 state 的图：重新过一遍投影，拿到投影键
   const s = view.state
