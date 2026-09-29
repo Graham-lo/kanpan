@@ -45,7 +45,7 @@ function alertSub(a: Alert): string {
   const last = sym(a.symbol)?.price, lv = a.kind === 'condition' ? null : alertLevel(a)
   const dist = last && lv != null ? (lv - last) / last * 100 : null
   const parts: string[] = []
-  if (dist != null) parts.push(`还差 <span class="num">${dist >= 0 ? '+' : ''}${dist.toFixed(2)}%</span>`)
+  if (dist != null) parts.push(`距现价 <span class="num">${dist >= 0 ? '+' : ''}${dist.toFixed(2)}%</span>`)
   parts.push(`${shTime(a.created)} 创建`)
   if (a.webhook) parts.push('Webhook')
   return parts.join(' · ')
