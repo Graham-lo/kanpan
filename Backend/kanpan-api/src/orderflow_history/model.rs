@@ -298,6 +298,11 @@ impl Model {
   self.tracks.values_mut().filter_map(|t|t.book.as_mut()).filter_map(|b|b.depth_usd(bps)).sum()
  }
 
+ /// 深度热力快照（`heat.rs`）：每本就绪簿中间价两侧 `radius_bps` 以内按 `step` 分桶的美元名义，带着交易所与产品。
+ pub fn bands(&mut self,step:f64,radius_bps:f64)->Vec<(&'static str,&'static str,super::book::Buckets)> {
+  self.tracks.values_mut().filter_map(|t|t.book.as_mut()).filter_map(|b|{let (exchange,product)=(b.venue.exchange,b.venue.product);b.buckets(step,radius_bps).map(|(buckets,_)|(exchange,product,buckets))}).collect()
+ }
+
  /// 不评估的时候（非币标定之前）也要把就绪簿里留存带以外的档清掉——平时这件事是评估顺手做的，
  /// 跳过评估的几分钟里簿会一直长。
  pub fn trim(&mut self) {let _=self.depth_usd(0.0);}

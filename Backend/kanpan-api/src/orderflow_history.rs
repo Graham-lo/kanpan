@@ -31,9 +31,12 @@
 //!   读完的压缩体缓存 60 秒（最多 64 份、32 MB，按最久没用的踢），区间按整分钟放宽读。
 //!   没在跟的币回空表、`trackedSinceMs` 为此刻，并从这一刻开始跟（按需层）。`trackedSinceMs` 是这一段连着跟的起点：
 //!   跟踪器断过十分钟以上（停掉、没人要）再起跟，从起跟那一刻重新算（0026 的 `alive_ms`）。
+//! * 深度热力（网页版）：每 5 秒把每只的簿在中间价 ±5% 以内按步长分桶写进 `orderflow_heat`，
+//!   接口 `GET /v1/market/orderflow/heat`，见 `heat.rs`。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
 mod feeds;
+mod heat;
 mod hub;
 mod layers;
 mod model;
@@ -676,6 +679,9 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
  let mut evaluate=tokio::time::interval(EVALUATE);
  evaluate.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
  let mut flush=tokio::time::interval_at(tokio::time::Instant::now()+FLUSH,FLUSH);
+ // 深度热力的快照：对齐到墙钟 5 秒格的中间（见 `heat.rs`）。
+ let mut heat_tick=tokio::time::interval_at(tokio::time::Instant::now()+heat::first_tick(now_ms()),Duration::from_millis(heat::BUCKET_MS as u64));
+ heat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
  let (refreshed_tx,mut refreshed)=mpsc::channel::<Refreshed>(1);
  let refresher=tokio::spawn(refresher(refreshed_tx,every,fetch));
  loop {
@@ -701,6 +707,7 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
     t.write_ended().await;
    },
    _=flush.tick()=>t.write_live().await,
+   _=heat_tick.tick()=>if !t.calibrating() {heat::submit(heat::snapshot(&mut t.model,now_ms()))},
    Some(r)=refreshed.recv()=>t.refreshed(r).await,
   }
  }
@@ -1032,6 +1039,8 @@ impl Registry {
  }
 
  fn tracked(&self)->Vec<String> {self.lock().keys().cloned().collect()}
+ /// 这只此刻的步长（没在跟或还没算出来为 None）；不像 `request` 那样记「有人要」。
+ fn step(&self,base:&str)->Option<f64> {self.lock().get(base).and_then(|e|e.thresholds.borrow().step)}
  fn is_tracked(&self,base:&str)->bool {self.lock().contains_key(base)}
 
  /// 不该再跟的停掉、先后重排、热点层（含掉榜还在跟的）超过 30 只就停掉最早掉榜的。
@@ -1239,7 +1248,7 @@ fn resumable<'a>(recent:&'a [(String,i64)],admit:&HashSet<&str>,now:i64)->Vec<(&
 
 /// 起跟踪：主币、最近 24 小时有人要过的（最多 20 只），再按 `KANPAN_ORDERFLOW_LAYERS` 起固定 / 山寨 / 热点；
 /// 之后每十分钟清一遍、每小时滚动清理。
-/// 订单流自己的库连接池最多几条：写库 3（`WRITE_SLOTS`）+ 读历史 2（`HISTORY_READS`）+ 起跟 / 读回 / 记要过 / 清理 1。
+/// 订单流自己的库连接池最多几条：写库 3（`WRITE_SLOTS`，深度热力的写也在里面）+ 读历史 2（`HISTORY_READS`，读热力共用）+ 起跟 / 读回 / 记要过 / 清理 1。
 const OWN_POOL:u32=6;
 static POOL:OnceLock<PgPool>=OnceLock::new();
 
@@ -1252,6 +1261,7 @@ fn own_pool(api:&PgPool)->PgPool {
 
 pub fn spawn(pool:PgPool)->JoinHandle<()> {
  let pool=POOL.get_or_init(||own_pool(&pool)).clone();
+ heat::start(pool.clone());
  tokio::spawn(async move {
   let registry=REGISTRY.get_or_init(||Arc::new(Registry::new(pool.clone()))).clone();
   let enabled=Enabled::from_env();
@@ -1286,6 +1296,10 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
      match store::purge(&pool,now_ms(),&tracked).await {
       Ok((deleted,closed))=>tracing::info!("Orderflow history: purge deleted {deleted}, closed {closed}; table {} bytes",store::size(&pool).await.unwrap_or(-1)),
       Err(e)=>tracing::warn!("Orderflow history: purge failed: {e}"),
+     }
+     match heat::purge(&pool,now_ms()).await {
+      Ok(deleted)=>tracing::info!("Orderflow heat: purge deleted {deleted}; table {} bytes",heat::size(&pool).await.unwrap_or(-1)),
+      Err(e)=>tracing::warn!("Orderflow heat: purge failed: {e}"),
      }
     },
    }
@@ -1511,7 +1525,7 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,thresholds:Th
 }
 
 pub fn routes()->Router<AppState> {
- Router::new().route(PATH,get(history))
+ Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat))
 }
 
 #[cfg(test)]
