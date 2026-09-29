@@ -290,6 +290,10 @@ extension ChartView {
     session.origin = nil
     session.lastSnap = nil
     session.loupe = nil
+    // 拖到一半离窗：拖动快照和预览上面刚收掉了，底层按 `drawingPreviewID` 跳过的那条也得放回来。
+    // 不收的话它还指着那条线——选中时覆盖层替它画着看不出来，一取消选中（或者撤销把它
+    // 删了又重做回来）那条线就从图上消失了，直到下一次拖动或换品种才回来。
+    if var s = state, s.drawingPreviewID != nil { s.drawingPreviewID = nil; state = s }
     // 钉住坐标的那只手是跟着视图一起离开的，抬手那一刻不会再来了，得在这儿解。
     cancelAxisFreeze()
   }
@@ -550,7 +554,12 @@ extension ChartView {
     d.pending = nil
     d.aim = nil
     d.origin = nil
+    // 拖到一半撤销 / 重做：拖动作废，它的预览和底层那条「让位」标记一起收掉。原来只清
+    // `drag`，于是抬手时走不到收 `drawingPreviewID` 的那条分支，那条线在底层一直被跳过，
+    // 覆盖层还拿旧预览画着撤销前的位置；一取消选中，线就从图上没了。
     d.drag = nil
+    d.preview = nil
+    if var s = state, s.drawingPreviewID != nil { s.drawingPreviewID = nil; state = s }
     if let sel = d.selected, !items.contains(where: { $0.id == sel }) { d.selected = nil }
     drawingChanged(items: items)
   }
