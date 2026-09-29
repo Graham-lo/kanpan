@@ -37,8 +37,9 @@ describe('fmt / fmtAxis', () => {
     expect(fmt(null, 2)).toBe('—')
     expect(fmt(NaN, 2)).toBe('—')
   })
-  it('fmtAxis 不带千分位，null 为空串', () => {
-    expect(fmtAxis(1234.5, 2)).toBe('1234.50')
+  it('fmtAxis 带千分位（和梯子、侧栏一致），null 为空串', () => {
+    expect(fmtAxis(1234.5, 2)).toBe('1,234.50')
+    expect(fmtAxis(84070, 1)).toBe('84,070.0')
     expect(fmtAxis(0.1234567, 4)).toBe('0.1235')
     expect(fmtAxis(null, 2)).toBe('')
   })

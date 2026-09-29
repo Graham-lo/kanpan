@@ -12,23 +12,21 @@
 .sec-scroll { flex: 1; min-height: 0; }
 
 /* 板块列表 */
+/* 名称列最多 320 px（窄屏按比例），其余三列不写宽度 → 固定布局下平分剩下的宽度，2K 上铺满不留空洞 */
 .sec-boards { table-layout: fixed; }
-.sec-boards col.c-spark { width: 208px; }
-.sec-boards col.c-beat { width: 128px; }
-.sec-boards col.c-pct { width: 128px; }
+.sec-boards col.c-name { width: min(320px, 34%); }
 .sec-boards td { height: 44px; }
 .sec-boards th:first-child, .sec-boards td:first-child { padding-left: var(--s4); }
 .sec-boards th:last-child, .sec-boards td:last-child { padding-right: var(--s4); }
 .sec-name { font-size: var(--t14); font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; display: block; }
 .sec-pct { font-size: var(--t14); font-weight: 600; }
-.sec-spark { width: 176px; height: 28px; display: block; margin-left: auto; overflow: visible; }
+.sec-spark { width: 100%; min-width: 120px; max-width: 360px; height: 28px; display: block; margin-left: auto; overflow: visible; }
 .sec-zero { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
 
 /* 品种列表：照自选列表 */
+/* 名称列最多 320 px，星标列 48 px，最新价 / 涨跌 / 成交额平分剩下的宽度 */
 .sec-syms { table-layout: fixed; }
-.sec-syms col.c-price { width: 160px; }
-.sec-syms col.c-pct { width: 128px; }
-.sec-syms col.c-vol { width: 128px; }
+.sec-syms col.c-name { width: min(320px, 34%); }
 .sec-syms col.c-star { width: 48px; }
 .sec-syms td { height: 40px; }
 .sec-syms .sym .cn { max-width: 200px; }

@@ -751,7 +751,7 @@ kbd {
 [hidden] { display: none !important; }
 :root { --ladder-w: 240px; --drawer-h: 280px; }
 
-/* 布局槽位：深度梯子列、底部抽屉（下一阶段放订单簿 / 主力订单流大屏版） */
+/* 布局槽位：深度梯子列（聚合订单簿梯子）、底部抽屉（主力订单流大屏版），内容见 orderflow/ladder.ts、drawer.ts */
 .slot-ladder, .slot-drawer { display: flex; flex-direction: column; overflow: hidden; }
 .slot-head { height: 40px; flex: none; display: flex; align-items: center; padding: 0 var(--s4); font-weight: 600; border-bottom: 1px solid var(--line); }
 .slot-empty { flex: 1; display: grid; place-content: center; justify-items: center; gap: var(--s2); padding: var(--s6); font-size: var(--t12); }

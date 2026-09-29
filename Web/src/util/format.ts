@@ -27,7 +27,8 @@ export function fmt(v: number | null | undefined, dec: number): string {
   return v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
 
-export function fmtAxis(v: number | null | undefined, dec: number): string { return v == null ? '' : v.toFixed(dec) }
+/** 价格轴、十字线读数、现价 / 提醒标签：带千分位（84,070.0），和梯子价格列、侧栏价格同一写法；null 为空串 */
+export function fmtAxis(v: number | null | undefined, dec: number): string { return v == null || !isFinite(v) ? '' : fmt(v, dec) }
 
 /** K / M / B / T 金融单位 */
 export function fmtCompact(v: number | null | undefined): string {

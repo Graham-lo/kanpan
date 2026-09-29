@@ -78,10 +78,10 @@ function skeleton(): void {
   if (sp.built) return
   sp.built = '1'
   $('#secList').innerHTML = `<div class="page-head sec-head" id="secHead"></div>
-    <div class="scroll sec-scroll"><table class="tbl sec-boards"><colgroup><col><col class="c-spark"><col class="c-beat"><col class="c-pct"></colgroup>
+    <div class="scroll sec-scroll"><table class="tbl sec-boards"><colgroup><col class="c-name"><col class="c-spark"><col class="c-beat"><col class="c-pct"></colgroup>
       <thead id="secThead"></thead><tbody id="secBody"></tbody></table><div id="secEmpty"></div></div>`
   $('#secMembers').innerHTML = `<div class="page-head sec-head" id="secMHead"></div>
-    <div class="scroll sec-scroll"><table class="tbl sec-syms"><colgroup><col><col class="c-price"><col class="c-pct"><col class="c-vol"><col class="c-star"></colgroup>
+    <div class="scroll sec-scroll"><table class="tbl sec-syms"><colgroup><col class="c-name"><col class="c-price"><col class="c-pct"><col class="c-vol"><col class="c-star"></colgroup>
       <thead id="secMThead"></thead><tbody id="secMBody"></tbody></table><div id="secMEmpty"></div></div>`
   $('#secPreview').innerHTML = ''
 }

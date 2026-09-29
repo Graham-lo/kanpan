@@ -43,8 +43,8 @@ export interface CatalogEntry {
 
 /** 主图叠加指标（按这个顺序算、按 boll → ema → ma 的顺序画） */
 export const MAIN_IDS: MainId[] = ['ma', 'ema', 'boll', 'vwap', 'st', 'ichi', 'vpvr']
-/** 副图最多四个（网页版副图矮、屏幕高） */
-export const MAX_SUBS = 4
+/** 副图最多三个，和手机端 `Prefs.maxSubs` 一致（成交量叠在主图底部，不占副图名额） */
+export const MAX_SUBS = 3
 
 // ------------------------------------------------------------ 指标计算
 export function sma(src: number[], n: number): Series {
@@ -118,7 +118,7 @@ export const Calc: Record<CalcId, CalcFn> = {
   ...EXTRA_CALC,
 }
 
-// 指标目录：名字、默认参数、线色。副图最多四个（网页版副图矮、屏幕高）。
+// 指标目录：名字、默认参数、线色。副图最多三个（MAX_SUBS）。
 export const CATALOG: Record<IndicatorId, CatalogEntry> = {
   ma: { name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#0EA5B7'] },
   ema: { name: 'EMA', cn: '指数均线', place: 'main', params: { periods: [12, 26] }, colors: ['#FF6D00', '#00897B'] },

@@ -128,7 +128,7 @@ describe('CATALOG / paramText', () => {
     expect(CATALOG.rsi.colors).toEqual(['#7E57C2'])
     expect(CATALOG.kdj.params).toEqual({ n: 9, m1: 3, m2: 3 })
     expect(CATALOG.oi.place).toBe('sub')
-    expect(MAX_SUBS).toBe(4)
+    expect(MAX_SUBS).toBe(3) // 和手机端 Prefs.maxSubs 一致
   })
   it('paramText', () => {
     expect(paramText('ma', CATALOG.ma.params)).toBe('10 30 120 256')
