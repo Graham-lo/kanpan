@@ -785,3 +785,13 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **数据：成交不多过消失量（迁移 0031 / 0032，两端同一条规则）**。根因三层叠加：老规则留下的行（4 391 行 `filled > vanished`）；读回时消失量从净值 `首次 − 此刻` 起算、成交却照读回的总额，一读回就 `filled > vanished`；挂着的单从不落消失量所以只能用净值起算。现在服务端 `Model::live()` 与手机日志（键 `vn`）都带挂着的单到此为止的 `vanished`，读回接着算、成交夹到不超过它，结束时再夹一次；没存的老行按 `max(净掉量, 已成交, 0)` 起算；`adopt` 取两边较大的消失量而不是夹成交。0031 把已结束的行一次改齐；0032 给搬进 `orderflow_live` 的老行补上消失量（第一次重启后还剩 63 行 NULL）。改后库里两张表成交 > 消失都是 0 行。cargo model 33 过、`make core-test` XCTest 113 过（各新增一条读回 / 夹住 / 落盘的用例）。
 - **部署**：备份 `/opt/kanpan-backups/orderbook-r4-20260929-093653/` 与 `orderbook-r4b-20260929-095557/`，rsync 逐文件 sha256 一致，`cargo build --release` 3 m 31 s / 3 m 18 s，`install.py` 只重启一次，NRestarts 0，`/health` 200。多做了一次重启（09:45）专门量停机刷新。真机两台都不在线，没装包；本轮客户端改动在 KanpanCore / KanpanChart，下次装包自然带上。
 - **残留**：无。
+
+## 33. 手机网页版（PWA，照 iOS 复刻，2026-09-29/30，`bc3c5f28` 交接 → `c6da0bc4` 行情页落地，已部署 `/web/m/`）
+
+用户 09-29 提出「手机移动版完全按照 iOS 复刻，加到主页和 app 没区别，就不用开会员」，定位为替代版：想用最全的用 app，要大屏用 PC 网页版，装不了 app 时临时用手机网页版。交接文档 `docs/手机网页版-2026-09-29.md`，线上 <https://kanpan.107-174-172-10.sslip.io/web/m/>。
+
+- **结构**：`Web/` 下第二个 vite 入口 `m/index.html` → `src/m/`，共用 market / account / sync / format / sectors / review api，UI 与图表引擎单独写；不往 PC 网页版塞手机断点；同一个 kanpan-api，手机网页在「一类设备一台在线」里算手机（keyPrefix `hkline-m`）。
+- **四条子代理线（均 Opus 5.5）**：A 壳 / 皮肤 tokens（逐值照 Palette.swift）/ PWA / store 与 prefs 白名单（三方对账 iOS 契约与服务端 SETTINGS_FIELDS）/ 同步适配器（31 个字段照 PrefsCodec、自选与分类照 SymbolPrefs、提醒进 st.alerts、画线照 PersonalSyncCodec / SyncOverlay，每品种 50 条用 DrawArchive.capToLimit）；B 图表引擎从 KanpanChart / KanpanCore 逐文件移植（Canvas 2D、Pointer Events、指标引擎、主力订单流聚合与 `createOrderFlowPort`、画线 41 种工具与控制器 `attachDrawing`，Swift 数值测试移植成 vitest 278 + 画线 122 + 订单流 44 条）；C 自选 / 搜索 / 板块 / 我的 / 提醒（含「收盘穿过」照 AlertEngine）；D 行情页宿主（头部六格、扫图、周期条与「更多」弹层、分析 / 图表设置面板、订单流详情卡、横屏画线台、记一笔、分享，`hooks.onSync` 重读）。
+- **验收**：iPhone 16 Pro 模拟器 Safari 真数据截图 `docs/acceptance/手机网页版-2026-09-29/`；账号与画线同步各用自造账号在线上两个浏览器上下文实测、拒收 0、测完注销。整套 vitest 961 条只挂 PC `orderflow-absorb`「2560×1440 全开八块」一条（别的窗口 7fe54460 / d580296c 引入，未动）。
+- **收尾**：用户 09-30 要求「所有移动版项目完成安排一次深度代码审查和压测，有问题直接根因修复」——四路审查（引擎与画线 / 同步与壳 / 页面 / 行情页宿主）+ 一路压测（交易员走查、高频与挂机、断网、多上下文同步、旧键升级、PWA、服务端有界负载）进行中，结果追加在本节。
+- **残留**：线上有一个 C 线留下的测试账号 `mtest_20260930`（密码丢了，删不掉，无害）；引擎的对比叠层、盘口 / 深度叠层、价格轴百分比刻度由引擎审查员本轮补上。

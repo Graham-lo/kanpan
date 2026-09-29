@@ -139,3 +139,12 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 ## 原型控制台
 
 顶栏中间的「原型」按钮不属于产品界面，是给设计验收用的：切皮肤、深浅、涨跌色，开关两个槽位，切四图或一图，以及「恢复初始」（清掉这个网页在浏览器里存的全部状态）。
+
+## 手机网页版（`/web/m/`，2026-09-29 起，详见 `docs/手机网页版-2026-09-29.md`）
+
+装不了 iOS app 时的临时替代版：照 iOS app 逐屏复刻（三套皮肤、四格底栏、头部六格、周期条钉住与「更多」弹层、扫图、自选分类页、板块列表、我的、提醒、横屏画线台、记一笔、分享），不是 PC 网页版的手机断点。线上 <https://kanpan.107-174-172-10.sslip.io/web/m/>，Safari 分享 → 加到主屏幕即为独立 PWA（manifest `public/m/manifest.webmanifest`，`sw.js` 只缓存壳）。灵动岛、推送、震动、强制横屏不复刻；已接受的差别只有不能强制横屏（竖屏时给转屏引导）、没有震动、切后台要重连。
+
+- 入口：`m/index.html` → `src/m/main.ts` → `src/m/boot.ts`；vite 第二个入口，与 PC 同一次 `make web-build` / `make web-deploy`。路由 `#chart #favorites #sectors #me`，深链 `?open=search|settings|alerts|account`，验收参数 `?skin=&theme=`。
+- 共用：`src/market/`、`src/account/`（keyPrefix `hkline-m`，设备类别 phone）、`src/sync/`（同步引擎抽了状态适配器，PC 与手机各一份）、`src/util/format.ts`、`src/data/sectors.json`、`src/review/api.ts`。
+- 自己的：`src/m/app/`（store `hkline-m-v1`、prefs 白名单、壳、同步适配 `sync.ts` / `syncCodec.ts`、画线本 `drawings.ts` / `drawCodec.ts`）、`src/m/styles/`（`tokens.css` 逐值照 iOS Palette.swift）、`src/m/ui/`、`src/m/chart/`（从 KanpanChart / KanpanCore 逐文件移植的 Canvas 2D 引擎，画线 41 种工具，见 `src/m/chart/README.md`）、`src/m/indicator/`、`src/m/model/`、`src/m/pages/`（页面契约见 `src/m/app/README.md`）。
+- 实验台：`m/lab.html` 只挂引擎，验收用。测试：`tests/m-*.test.ts`。验收截图：`docs/acceptance/手机网页版-2026-09-29/`。
