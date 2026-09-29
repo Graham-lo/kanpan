@@ -1021,13 +1021,24 @@ function clipTo(ctx: CanvasRenderingContext2D, q: Rect): void {
   ctx.clip()
 }
 
-/** 范围括号「]」：右侧一道竖笔、上下两个朝左的钩，笔画 1.5，整个框宽 3。不透明度由调用方设。 */
-function drawOrderFlowBracket(ctx: CanvasRenderingContext2D, q: Rect, color: Hex, scale: number): void {
-  const t = S.bracketStroke
+/**
+ * 范围括号「]」：右侧一道竖笔、上下两个朝左的钩，笔画 1.5，整个框宽 3。不透明度由调用方设（0.7）。
+ * 先把整枚括号的四条边对齐到物理像素，三笔在对齐后的格子里切：竖笔与钩、上下两钩彼此只贴边不交叠——
+ * 三笔各自取整时，框左缘落在像素后半格（一半的位置）钩的右端会多出一个像素压进竖笔，70% 叠两遍成了两个深点；
+ * 矮括号（不足两笔高）上下两钩也会叠在一起。Swift 那边 Core Graphics 按原坐标填、三笔正好首尾相接。
+ */
+export function drawOrderFlowBracket(ctx: CanvasRenderingContext2D, q: Rect, color: Hex, scale: number): void {
+  const px = 1 / scale
+  const x0 = snap(q.x, scale), x1 = Math.max(x0 + 2 * px, snap(maxX(q), scale))
+  const y0 = snap(q.y, scale), y1 = Math.max(y0 + px, snap(maxY(q), scale))
+  const t = Math.min(x1 - x0 - px, Math.max(px, snap(S.bracketStroke, scale)))
+  const hook = x1 - t - x0
+  const th = Math.min(Math.max(px, snap(S.bracketStroke, scale)), y1 - y0)
   ctx.fillStyle = css(color)
-  fillSnapped(ctx, rect(maxX(q) - t, q.y, t, q.h), scale)
-  fillSnapped(ctx, rect(q.x, q.y, q.w - t, t), scale)
-  fillSnapped(ctx, rect(q.x, maxY(q) - t, q.w - t, t), scale)
+  ctx.fillRect(x1 - t, y0, t, y1 - y0)
+  ctx.fillRect(x0, y0, hook, th)
+  const lowTop = Math.max(y0 + th, y1 - th)
+  if (y1 - lowTop > EPS) ctx.fillRect(x0, lowTop, hook, y1 - lowTop)
 }
 
 /**

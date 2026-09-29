@@ -28,7 +28,7 @@ import {
 } from '../src/m/chart/orderflowGroup'
 import type { OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSegment, OrderFlowSnapshot } from '../src/m/chart/orderflowGroup'
 import {
-  OrderFlowStyle as S, OrderFlowWallCache, candleHit, drawOrderFlow, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow,
+  OrderFlowStyle as S, OrderFlowWallCache, candleHit, drawOrderFlow, drawOrderFlowBracket, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow,
   mixHex, orderFlowAmount, orderFlowBands, orderFlowBaseColor, orderFlowColor, orderFlowEntry, orderFlowFocus,
   orderFlowFrameUnfiltered, orderFlowHit, orderFlowHitBands, orderFlowHoversBand, orderFlowIsSelected, orderFlowLabelInk,
   orderFlowLabelWidth, orderFlowMergeGapMs, orderFlowMergeNoise, orderFlowMinLifeMs,
@@ -1729,6 +1729,47 @@ describe('主力订单流 · 2 万单压测数据', () => {
         expect(frame.bands.every(x => maxX(x.frame) > 0 && minX(x.frame) < plotW)).toBe(true)
         expect(frame.bands.length, `${interval} ${shift}`).toBe(orderFlowFrameUnfiltered(r, BW, BH))
       }
+    }
+  })
+})
+
+// ------------------------------------------------------------------ 审查补充：括号三笔按物理像素切
+
+describe('范围括号三笔对齐到物理像素后不交叠', () => {
+  type R = { x: number; y: number; w: number; h: number }
+  const record = () => {
+    const rects: R[] = []
+    const ctx = { fillStyle: '', fillRect: (x: number, y: number, w: number, h: number) => { rects.push({ x, y, w, h }) } }
+    return { ctx: ctx as unknown as CanvasRenderingContext2D, rects }
+  }
+  const px = (v: number, s: number) => Math.round(v * s * 1e6) / 1e6
+  const overlapArea = (a: R, b: R) =>
+    Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
+
+  for (const scale of [1, 2, 3]) {
+    it(`@${scale}x：框左缘落在像素任何位置，竖笔与钩只贴边、整枚仍是 3 宽`, () => {
+      for (let k = 0; k < 12; k++) {
+        const x = 40 + k / 12, y = 100 + k / 7
+        const { ctx, rects } = record()
+        drawOrderFlowBracket(ctx, { x, y, w: S.bracketWidth, h: 30 }, '#5A7DFF', scale)
+        expect(rects.length).toBe(3)
+        for (let i = 0; i < rects.length; i++) {
+          for (let j = i + 1; j < rects.length; j++) expect(overlapArea(rects[i], rects[j])).toBeLessThan(1e-9)
+        }
+        for (const q of rects) {
+          for (const v of [q.x, q.y, q.x + q.w, q.y + q.h]) expect(Math.abs(px(v, scale) - Math.round(px(v, scale)))).toBeLessThan(1e-6)
+        }
+        const [stroke, top] = rects
+        expect(top.x + top.w).toBeCloseTo(stroke.x, 9)
+      }
+    })
+  }
+
+  it('矮括号（不足两笔高）上下两钩不叠在一起', () => {
+    const { ctx, rects } = record()
+    drawOrderFlowBracket(ctx, { x: 10, y: 10, w: S.bracketWidth, h: 2.2 }, '#5A7DFF', 3)
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) expect(overlapArea(rects[i], rects[j])).toBeLessThan(1e-9)
     }
   })
 })
