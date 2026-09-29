@@ -97,7 +97,7 @@ export type ViewChangeSource = 'gesture' | 'program'
 export class ChartGestures {
   /** pointerId → 当前位置（点，相对画布左上角） */
   private points = new Map<number, Point>()
-  private bound: { el: HTMLElement; off: () => void } | null = null
+  private bound: { el: HTMLElement; off: () => void; cancel: (id: number, t: number) => void } | null = null
 
   constructor(private readonly v: ChartView) {}
 
@@ -139,13 +139,14 @@ export class ChartGestures {
       else this.finishTouches([e.pointerId], e.timeStamp, false)
       this.points.delete(e.pointerId)
     }
-    const cancel = (e: PointerEvent) => {
-      if (!this.points.has(e.pointerId)) return
+    const cancelID = (id: number, t: number) => {
+      if (!this.points.has(id)) return
       const d = this.v.drawingInput
-      if (d) d.ended([e.pointerId], e.timeStamp, true)
-      else this.finishTouches([e.pointerId], e.timeStamp, true)
-      this.points.delete(e.pointerId)
+      if (d) d.ended([id], t, true)
+      else this.finishTouches([id], t, true)
+      this.points.delete(id)
     }
+    const cancel = (e: PointerEvent) => cancelID(e.pointerId, e.timeStamp)
     const menu = (e: Event) => e.preventDefault()
     el.addEventListener('pointerdown', down)
     el.addEventListener('pointermove', move)
@@ -155,6 +156,7 @@ export class ChartGestures {
     el.addEventListener('contextmenu', menu)
     this.bound = {
       el,
+      cancel: cancelID,
       off: () => {
         el.removeEventListener('pointerdown', down)
         el.removeEventListener('pointermove', move)
@@ -164,6 +166,14 @@ export class ChartGestures {
         el.removeEventListener('contextmenu', menu)
       },
     }
+  }
+
+  /**
+   * 宿主上层的手势（副图分隔线拖高、长按换副图顺序）认领了这根手指：
+   * 照 UIKit 的 cancelsTouchesInView，把图这边已经开始的那一段按「取消」收掉。
+   */
+  cancelPointer(id: number, now: number = performance.now()): void {
+    this.bound?.cancel(id, now)
   }
 
   detach(): void {
