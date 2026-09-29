@@ -91,6 +91,9 @@ export interface State {
   ind: IndState; params: Record<string, IndParams> | null
   drawings: Record<string, Drawing[]>; alerts: Alert[]; notes: Note[]
   magnet: boolean; drawHidden: boolean; drawLocked: boolean; drawColor: string
+  /** 画线：同族工具上次改过的样式（族 → 颜色 / 粗细 / 线型）、最近用过的颜色（新的在前）、
+   *  工具栏每组上次用的那把、侧栏上一次开的是哪块（⌥⇧W 收起再打开） */
+  drawStyles: Record<string, DrawStyle>; recentColors: string[]; toolLast: Record<string, string>; lastPanel: PanelId | null
   alertScope: 'symbol' | 'all'
   meSection: string
   slots: Slots
@@ -115,6 +118,8 @@ export interface State {
   account: { username: string; userId: string; accessToken: string } | null
 }
 
+export interface DrawStyle { color?: string; width?: number; dash?: 'dashed' | 'dotted' }
+
 export const KEY = 'hkline-web-v1'
 const TRANSIENT: (keyof State)[] = ['page', 'stale', 'account']
 
@@ -127,6 +132,7 @@ function defaults(): State {
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }, params: null,
     drawings: {}, alerts: [], notes: [],
     magnet: false, drawHidden: false, drawLocked: false, drawColor: '#2962FF',
+    drawStyles: {}, recentColors: [], toolLast: {}, lastPanel: 'watch',
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
@@ -135,8 +141,42 @@ function defaults(): State {
   }
 }
 
-function load(): Partial<State> {
-  try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {} } catch { return {} }
+/** `corrupt`：盘上有东西但解析不了（被截断、被别的程序写坏）——和「从没存过」分开 */
+function load(): { saved: Partial<State>; corrupt: boolean } {
+  let text: string | null = null
+  try { text = localStorage.getItem(KEY) } catch { return { saved: {}, corrupt: false } }
+  if (!text) return { saved: {}, corrupt: false }
+  try {
+    const v: unknown = JSON.parse(text)
+    return v && typeof v === 'object' && !Array.isArray(v) ? { saved: v as Partial<State>, corrupt: false } : { saved: {}, corrupt: true }
+  } catch { return { saved: {}, corrupt: true } }
+}
+
+// ───────── 画线存档读坏了（同步自检） ─────────
+// 本机画线读出来是「空」有两种：用户真删光了，或者存档坏了被丢掉。后一种绝不能当成删除推上云端，
+// 所以读坏时落一个标记，同步层看到它就只补不删、先把云端那份并回来，并回来之后才清掉标记。
+export const DRAW_SUSPECT_KEY = 'hkline-web-drawings-suspect'
+export function drawingsSuspect(): boolean { try { return localStorage.getItem(DRAW_SUSPECT_KEY) === '1' } catch { return false } }
+export function markDrawingsSuspect(): void { try { localStorage.setItem(DRAW_SUSPECT_KEY, '1') } catch { /* 存不下：本轮内存里照样按坏处理不了，下次读盘还会再判 */ } }
+export function clearDrawingsSuspect(): void { try { localStorage.removeItem(DRAW_SUSPECT_KEY) } catch { /* 无 */ } }
+
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+/** 画线那块整理成「代号 → 画线数组」；形状不对的丢掉并报 damaged */
+export function sanitizeDrawings(raw: unknown): { drawings: Record<string, Drawing[]>; damaged: boolean } {
+  const out: Record<string, Drawing[]> = {}
+  if (raw == null) return { drawings: out, damaged: false }
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { drawings: out, damaged: true }
+  let damaged = false
+  for (const [sym, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(list)) { damaged = true; continue }
+    const ok = list.filter((d): d is Drawing => {
+      const x = d as Partial<Drawing> | null
+      return !!x && typeof x.id === 'string' && typeof x.type === 'string' && Array.isArray(x.pts) && x.pts.length > 0 && x.pts.every(p => p && finite(p.t) && finite(p.p))
+    })
+    if (ok.length !== list.length) damaged = true
+    out[sym] = ok
+  }
+  return { drawings: out, damaged }
 }
 
 /** 读盘并补齐：老版本存下来的缺字段一律回默认，字段形状不对的丢掉 */
@@ -168,7 +208,10 @@ export function hydrate(saved: Partial<State>): State {
   s.alerts = (s.alerts as unknown[]).map(migrateAlert).filter((a): a is Alert => !!a && a.status !== 'fired')
   if (!Array.isArray(s.notes)) s.notes = []
   s.notes = s.notes.filter(n => n && typeof n.id === 'string' && typeof n.symbol === 'string')
-  if (!s.drawings || typeof s.drawings !== 'object') s.drawings = {}
+  s.drawings = sanitizeDrawings(saved.drawings).drawings
+  if (!s.drawStyles || typeof s.drawStyles !== 'object' || Array.isArray(s.drawStyles)) s.drawStyles = {}
+  s.recentColors = Array.isArray(s.recentColors) ? s.recentColors.filter(c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c)).slice(0, 3) : []
+  if (!s.toolLast || typeof s.toolLast !== 'object' || Array.isArray(s.toolLast)) s.toolLast = {}
   s.orderFlow = s.orderFlow === true
   const ofo: Record<string, Override> = {}
   if (s.orderFlowOverrides && typeof s.orderFlowOverrides === 'object') {
@@ -179,7 +222,9 @@ export function hydrate(saved: Partial<State>): State {
   return s
 }
 
-export const st: State = hydrate(load())
+const loaded = load()
+export const st: State = hydrate(loaded.saved)
+if (loaded.corrupt || sanitizeDrawings(loaded.saved.drawings).damaged) markDrawingsSuspect()
 
 const subs = new Set<(s: State) => void>()
 export function subscribe(fn: (s: State) => void): () => void { subs.add(fn); return () => { subs.delete(fn) } }

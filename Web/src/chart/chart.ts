@@ -21,6 +21,7 @@ import type { TimeTick } from './timeAxis'
 import { SUB_FIXED, type ExtraSubId } from './indicators'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
 import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
+import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
 
 const AXIS_H = 28
 const MIN_SPACING = 1.5
@@ -44,7 +45,8 @@ export const LINE = {
 const VOL_ALPHA = 0.3, VOL_H = 0.16 // 成交量：垫在主图底部 16%，三成不透明，不抢蜡烛
 
 // ------------------------------------------------------------ 类型
-export type DrawingType = 'trend' | 'ray' | 'hline' | 'vline' | 'rect' | 'fib' | 'measure'
+/** avwap 锚定 VWAP、fvp 固定区间成交量分布、position 多空持仓（几何与画法在 drawTools.ts） */
+export type DrawingType = 'trend' | 'ray' | 'hline' | 'vline' | 'rect' | 'fib' | 'measure' | 'avwap' | 'fvp' | 'position'
 /** 画线锚点：时间（ms）+ 价格 */
 export interface DrawPoint { t: number; p: number }
 export interface Drawing {
@@ -53,6 +55,8 @@ export interface Drawing {
   pts: DrawPoint[]
   color?: string
   width?: number
+  /** 线型：没有就是实线 */
+  dash?: 'dashed' | 'dotted'
   locked?: boolean
   /** 价格碰到这条线时提醒（fib / rect / measure 不给） */
   alert?: boolean
@@ -130,6 +134,12 @@ export interface ChartOptions {
   onSelectDrawing?: (d: Drawing | null) => void
   onDrawingsChanged?: () => void
   drawColor?: () => string | null | undefined
+  /** 新画一条时的样式（同族工具记住上次改过的颜色、粗细、线型）；给了就不看 drawColor */
+  drawStyle?: (t: DrawingType) => Partial<Pick<Drawing, 'color' | 'width' | 'dash'>>
+  /** 再加这几条还在每只品种的上限以内吗；返回 false 就不加（由页面提示） */
+  canAdd?: (add: Drawing[]) => boolean
+  /** 开始 / 结束拖一条画线（选中快捷条拖动时淡出） */
+  onDrawDrag?: (on: boolean) => void
   onAutoChange?: (on: boolean) => void
   /** 在价格轴上点「+」、拖到位松手：在这个价位建一条提醒 */
   onAlertCreate?: (price: number) => void
@@ -199,10 +209,12 @@ type Region = 'plot' | 'time' | 'price' | 'corner' | `sep:${string}`
 interface XY { x: number; y: number }
 /** `vertical`：右键拖画布 = 只做纵向平移（openmarket Hyperzoom 同款），松手时没动过才弹右键菜单 */
 interface DragPan { kind: 'pan'; region: Region; x0: number; y0: number; right0: number; sp0: number; r0: PriceRange | null; moved: boolean; pane: Pane | undefined; vertical?: boolean }
-interface DragDrawing { kind: 'drawing'; hit: DrawingHit; start: DrawPoint; orig: DrawPoint[] }
+interface DragDrawing { kind: 'drawing'; hit: DrawingHit; start: DrawPoint; orig: DrawPoint[]; moved: boolean }
+/** 两点工具按下拖到位松手也算画完（点两下也行） */
+interface DragPlace { kind: 'place'; x0: number; y0: number }
 interface DragMeasure { kind: 'measure' }
 interface DragAlert { kind: 'alert'; line: AlertLine | null; price: number; moved: boolean }
-type DragState = DragPan | DragDrawing | DragMeasure | DragAlert
+type DragState = DragPan | DragDrawing | DragMeasure | DragAlert | DragPlace
 /** 价格轴左侧「+」建提醒的热区宽度 */
 const ALERT_CHIP_W = 22
 
@@ -245,6 +257,10 @@ export class TVChart {
   draft: Drawing | null = null
   selected: Drawing | null = null
   magnet = false
+  /** 只读：复盘回放里的画线只看不改、也不能新画 */
+  readOnly = false
+  /** ⌘ 按着：磁吸临时反过来（开着的临时关、关着的临时开） */
+  metaHeld = false
   walls: Wall[] | null = null
   alerts: AlertLine[] = []
   markers: Marker[] | null = null
@@ -382,6 +398,30 @@ export class TVChart {
   setDrawings(arr: Drawing[]): void { this.drawings = arr; this.selected = null; this.measure = null; this.dirty = true }
   setTool(t: DrawingType | null): void { this.tool = t; this.draft = null; this.canvas.style.cursor = 'crosshair'; this.dirty = true }
   setMagnet(on: boolean): void { this.magnet = on }
+  /** 能不能新画、拖、改画线（复盘回放里不能） */
+  editable(): boolean { return !this.readOnly }
+  /** 把选中的画线挪 dx / dy 像素（方向键微调）；锁住的、只读时不动 */
+  nudgeSelected(dx: number, dy: number): boolean {
+    const d = this.selected
+    if (!d || d.locked || !this.editable() || !this._panes) return false
+    d.pts = this.shiftPts(d.pts, dx, dy); this.dirty = true; return true
+  }
+  /** 锚点整体挪 dx / dy 像素：横向按连续下标挪（不吸到整根，1 px 就是 1 px），纵向按像素换价 */
+  shiftPts(pts: DrawPoint[], dx: number, dy: number): DrawPoint[] {
+    const p = (this._panes as Pane[])[0], r = this._ranges.main
+    return pts.map(q => ({
+      t: dx ? Math.round(this.timeOfIndex(this.indexAt(q.t) + dx / this.spacing)) : q.t,
+      p: dy ? this.yToPrice(this.priceToY(q.p, p, r) + dy, p, r) : q.p,
+    }))
+  }
+  /** 选中画线在画布上的上沿（选中快捷条躲开它） */
+  selectedTop(): number | null {
+    const d = this.selected
+    if (!d || !this._panes) return null
+    return bbox(this, d, this._panes[0], this._ranges.main)?.y0 ?? null
+  }
+
+
   setWalls(w: Wall[] | null): void { this.walls = w; this.dirty = true }
   setAlerts(a: AlertLine[] | null | undefined): void { this.alerts = a || []; this.dirty = true }
   setVpvrMode(m: VpvrMode): void { this.vpvrMode = m; this.dirty = true; this.renderLegend() }
@@ -959,7 +999,9 @@ export class TVChart {
   drawOne(d: Drawing, p: Pane, r: PriceRange, sel: boolean): void {
     const c = this.ctx, PW = this.plotW(), col = d.color || '#2962FF'
     if (!d.pts.length) return
-    c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = 'round'; c.lineJoin = 'round'
+    if (drawComputed(this, d, p, r, sel)) return
+    c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = d.dash === 'dotted' ? 'round' : d.dash ? 'butt' : 'round'; c.lineJoin = 'round'
+    if (d.type !== 'fib' && d.type !== 'measure') c.setLineDash(dashPattern(d))
     const pts = d.pts.map(q => this.pt(q, p, r))
     const a = pts[0], b = pts[1] || pts[0]
     const q0 = d.pts[0], q1 = d.pts[1] || d.pts[0]
@@ -999,7 +1041,7 @@ export class TVChart {
       c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t1, mx, ly + 13); c.font = this.font; c.fillText(t2, mx, ly + 29)
       c.beginPath()
     }
-    c.stroke()
+    c.stroke(); c.setLineDash([]); c.lineCap = 'round'
     if (sel) {
       for (const q of pts) { c.fillStyle = this.colors.bg; c.strokeStyle = col; c.lineWidth = LINE.handle; c.beginPath(); c.arc(q.x, q.y, 4.5, 0, Math.PI * 2); c.fill(); c.stroke() }
     }
@@ -1011,9 +1053,9 @@ export class TVChart {
     for (let k = this.drawings.length - 1; k >= 0; k--) {
       const d = this.drawings[k]
       if (!d.pts.length) continue
-      const pts = d.pts.map(q => this.pt(q, p, r)), a = pts[0], b = pts[1] || a
+      const pts = COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : d.pts.map(q => this.pt(q, p, r)), a = pts[0], b = pts[1] || a
       for (let j = 0; j < pts.length; j++) if (Math.hypot(pts[j].x - x, pts[j].y - y) < 8) return { d, handle: j }
-      let dist = Infinity
+      let dist = hitComputed(this, d, x, y, p, r) ?? Infinity
       if (d.type === 'trend') dist = segDist(x, y, a, b)
       else if (d.type === 'ray') dist = segDist(x, y, a, extend(a, b, PW * 3))
       else if (d.type === 'hline') dist = Math.abs(y - a.y)
@@ -1030,7 +1072,7 @@ export class TVChart {
   toTP(x: number, y: number): DrawPoint {
     const p = (this._panes as Pane[])[0], r = this._ranges.main
     let i = this.xToIndex(x), price = this.yToPrice(y, p, r)
-    if (this.magnet) {
+    if (this.magnet !== this.metaHeld) { // 按住 ⌘ 临时反过来
       const k = Math.round(i), b = this.bars[k]
       if (b) { i = k; price = [b.o, b.h, b.l, b.c].reduce((a, v) => Math.abs(this.priceToY(v, p, r) - y) < Math.abs(this.priceToY(a, p, r) - y) ? v : a) }
     } else i = Math.round(i)
@@ -1133,9 +1175,10 @@ export class TVChart {
       if (reg === 'plot') {
         const pane = this.paneAt(y)
         this.cross = { x, y, pane: pane?.id }
-        if (this.draft && this._panes) { const tp = this.toTP(x, y); this.draft.pts[this.draft.pts.length - 1] = tp }
+        this.metaHeld = e.metaKey || e.ctrlKey
+        if (this.draft && this._panes) this.updateDraft(x, y, e.shiftKey)
         if (!this.tool) {
-          const hit = this.hitDrawing(x, y)
+          const hit = this.editable() ? this.hitDrawing(x, y) : null
           if (hit) cv.style.cursor = hit.handle != null ? 'grab' : 'pointer'
           let soft = false
           const lh = pane?.id === 'main' && !hit ? this.layers.find(l => { const r = l.hover?.(x, y, e.clientX, e.clientY); soft = r === 'soft'; return !!r }) ?? null : null
@@ -1179,27 +1222,34 @@ export class TVChart {
         const near = this.alertNear(y, 4)
         if (near) { this.drag = { kind: 'alert', line: near, price: near.price, moved: false }; cv.style.cursor = 'grabbing'; this.dirty = true; return }
       }
+      this.metaHeld = e.metaKey || e.ctrlKey
       if (reg === 'plot' && this.tool) {
-        const pane = this.paneAt(y); if (pane?.id !== 'main') return
-        const tp = this.toTP(x, y)
-        const one = this.tool === 'hline' || this.tool === 'vline'
+        const pane = this.paneAt(y); if (pane?.id !== 'main' || !this.editable() || !this._panes) return
+        const tp = this.toTP(x, y), t = this.tool
         if (!this.draft) {
-          if (one) { const d: Drawing = { id: uid(), type: this.tool, pts: [tp], color: this.o.drawColor?.() || '#2962FF', width: LINE.draw }; this.drawings.push(d); this.selected = d; this.finishTool(d); return }
-          this.draft = { id: uid(), type: this.tool, pts: [tp, { ...tp }], color: this.o.drawColor?.() || '#2962FF', width: this.tool === 'measure' ? LINE.measure : LINE.draw }
-        } else {
-          this.draft.pts[1] = tp
-          const d = this.draft; this.draft = null
-          if (d.type === 'measure') { this.measure = d; this.drawings.push(d); this.finishTool(d, true); return }
-          this.drawings.push(d); this.selected = d; this.finishTool(d)
-        }
+          const sty = this.styleFor(t)
+          // 到了每只品种的上限：不新建（页面提示）
+          if (t !== 'measure' && this.o.canAdd?.([{ id: '', type: t, pts: [tp, tp, tp], ...sty }]) === false) return
+          if (placeCount(t) === 1) { const d: Drawing = { id: uid(), type: t, pts: [tp], ...sty }; this.drawings.push(d); this.selected = d; this.finishTool(d); return }
+          this.draft = { id: uid(), type: t, pts: [tp, { ...tp }], ...sty }
+          setDraftEnd(this.draft, { ...tp })
+          this.drag = { kind: 'place', x0: x, y0: y }
+        } else { this.updateDraft(x, y, e.shiftKey); this.completeDraft() }
         this.dirty = true; return
       }
       if (reg === 'plot' && this._panes) {
-        const hit = this.hitDrawing(x, y)
+        let hit = this.editable() ? this.hitDrawing(x, y) : null
+        if (hit && hit.handle == null && (e.metaKey || e.ctrlKey) && hit.d.type !== 'measure') { // ⌘ + 拖 = 复制一份拖走，原来那条不动
+          const copy: Drawing = { ...structuredClone(hit.d), id: uid(), locked: false }
+          delete copy.alert
+          if (this.o.canAdd?.([copy]) === false) return
+          this.drawings.push(copy); hit = { d: copy, handle: null }
+        }
         if (hit) {
           this.selected = hit.d; this.o.onSelectDrawing?.(hit.d)
           const start = this.toTP(x, y), orig = hit.d.pts.map(q => ({ ...q }))
-          this.drag = { kind: 'drawing', hit, start, orig }
+          this.drag = { kind: 'drawing', hit, start, orig, moved: false }
+          this.o.onDrawDrag?.(true)
           this.dirty = true; return
         }
         if (this.selected) { this.selected = null; this.o.onSelectDrawing?.(null) }
@@ -1219,12 +1269,19 @@ export class TVChart {
         if (this._panes) { const np = this.yToPrice(y, this._panes[0], this._ranges.main); if (Math.abs(np - d.price) > 0) { d.moved = true; d.price = np } }
         this.dirty = true; return
       }
+      this.metaHeld = e.metaKey || e.ctrlKey
       if (d.kind === 'measure') { if (this.draft) this.draft.pts[1] = this.toTP(x, y); this.cross = { x, y, pane: 'main' }; this.dirty = true; return }
+      if (d.kind === 'place') { this.updateDraft(x, y, e.shiftKey); this.cross = { x, y, pane: 'main' }; this.dirty = true; return }
       if (d.kind === 'drawing') {
-        const now = this.toTP(x, y), dd = d.hit.d
+        const dd = d.hit.d
         if (dd.locked) return
-        if (d.hit.handle != null) dd.pts[d.hit.handle] = now
-        else {
+        let now = this.toTP(x, y)
+        d.moved = true
+        if (d.hit.handle != null) {
+          // ⇧ 拖端点：吸到 0° / 45° / 90°
+          if (e.shiftKey && (dd.type === 'trend' || dd.type === 'ray') && dd.pts.length === 2) now = this.snapTP(dd.pts[1 - d.hit.handle], x, y)
+          moveHandle(dd, d.hit.handle, now)
+        } else {
           const dt = this.indexAt(now.t) - this.indexAt(d.start.t), dp = now.p - d.start.p
           dd.pts = d.orig.map(q => ({ t: this.timeAt(Math.round(this.indexAt(q.t) + dt)), p: q.p + dp }))
         }
@@ -1288,7 +1345,13 @@ export class TVChart {
         if (this.layers.some(l => l.click?.(x, y))) { this.canvas.style.cursor = 'crosshair'; return }
       }
       if (d.kind === 'measure') { const m = this.draft; this.draft = null; if (m) { this.measure = m; this.drawings.push(m) } this.dirty = true; return }
-      if (d.kind === 'drawing') { this.o.onDrawingsChanged?.(); return }
+      if (d.kind === 'place') {
+        const { x, y } = pos(e)
+        // 按下拖出一段才松手 = 画完；原地点一下就等第二下
+        if (this.draft && Math.hypot(x - d.x0, y - d.y0) > 5) { this.updateDraft(x, y, e.shiftKey); this.completeDraft() }
+        this.dirty = true; return
+      }
+      if (d.kind === 'drawing') { this.o.onDrawDrag?.(false); this.o.onDrawingsChanged?.(); return }
       if (d.kind === 'pan' && d.region.startsWith('sep:')) {
         this.sepHs = null; this.dirty = true
         if (d.moved && this.paneR) this.o.onPaneResize?.({ ...this.paneR })
@@ -1297,6 +1360,10 @@ export class TVChart {
       if (d.kind === 'pan' && d.moved && (d.region === 'plot' || d.region === 'time')) this.emitView()
       this.canvas.style.cursor = 'crosshair'
     }, { signal })
+    // ⌘ 按下 / 松开：磁吸临时反过来，草稿跟着重吸
+    const meta = (e: KeyboardEvent) => { const on = e.metaKey || e.ctrlKey; if (on !== this.metaHeld) { this.metaHeld = on; if (this.draft && this.cross) { this.updateDraft(this.cross.x, this.cross.y, e.shiftKey); this.dirty = true } } }
+    window.addEventListener('keydown', meta, { signal }); window.addEventListener('keyup', meta, { signal })
+    window.addEventListener('blur', () => { this.metaHeld = false }, { signal })
     cv.addEventListener('dblclick', e => {
       const { x, y } = pos(e), reg = this.region(x, y)
       if (reg === 'price') this.setAuto(true)
@@ -1317,7 +1384,7 @@ export class TVChart {
       const { x, y } = pos(e)
       if (this.region(x, y) !== 'plot') return
       const pane = this.paneAt(y)
-      const hit = this.hitDrawing(x, y)
+      const hit = this.editable() ? this.hitDrawing(x, y) : null
       const price = pane?.id === 'main' ? this.yToPrice(y, pane, this._ranges.main) : null
       const info: ContextMenuInfo = { clientX: e.clientX, clientY: e.clientY, price, time: this.timeAt(Math.round(this.xToIndex(x))), drawing: hit?.d }
       // 右键还按着（macOS 按下就发）：等松手，没拖动才弹；刚右键拖过（Windows 松手后才发）：这一次不弹
@@ -1326,7 +1393,34 @@ export class TVChart {
       this.o.onContextMenu?.(info)
     }, { signal })
   }
-  finishTool(d: Drawing, keep?: boolean): void { this.o.onToolDone?.(d, keep); this.o.onDrawingsChanged?.(); this.dirty = true }
+  finishTool(d: Drawing, keep?: boolean): void { this.o.onToolDone?.(d, keep); this.o.onDrawingsChanged?.(); if (!keep && this.selected === d) this.o.onSelectDrawing?.(d); this.dirty = true }
+  /** 新画一条的样式：测量固定蓝细线，其它问页面（同族记忆），没有就用默认 */
+  styleFor(t: DrawingType): Pick<Drawing, 'color' | 'width' | 'dash'> {
+    if (t === 'measure') return { color: '#2962FF', width: LINE.measure }
+    const s = this.o.drawStyle?.(t) ?? {}
+    const out: Pick<Drawing, 'color' | 'width' | 'dash'> = { color: s.color || this.o.drawColor?.() || '#2962FF', width: s.width || LINE.draw }
+    if (s.dash) out.dash = s.dash
+    return out
+  }
+  /** 草稿的最后一点跟到 (x, y)；⇧ 按着时趋势线 / 射线吸 45° */
+  private updateDraft(x: number, y: number, shift: boolean): void {
+    const d = this.draft
+    if (!d || !this._panes) return
+    setDraftEnd(d, shift && (d.type === 'trend' || d.type === 'ray') ? this.snapTP(d.pts[0], x, y) : this.toTP(x, y))
+  }
+  private completeDraft(): void {
+    const d = this.draft; if (!d) return
+    this.draft = null
+    if (d.type === 'measure') { this.measure = d; this.drawings.push(d); this.finishTool(d, true); return }
+    if (d.type === 'position') widenPosition(this, d)
+    this.drawings.push(d); this.selected = d; this.finishTool(d)
+  }
+  /** 从 anchor 到 (x, y) 吸 45° 之后的锚点 */
+  private snapTP(anchor: DrawPoint, x: number, y: number): DrawPoint {
+    const p = (this._panes as Pane[])[0], r = this._ranges.main
+    const s = snap45(this.pt(anchor, p, r), { x, y }, X => this.indexToX(Math.round(this.xToIndex(X))))
+    return { t: this.timeAt(Math.round(this.xToIndex(s.x))), p: this.yToPrice(s.y, p, r) }
+  }
   deleteSelected(): boolean {
     if (!this.selected) return false
     const i = this.drawings.indexOf(this.selected); if (i >= 0) this.drawings.splice(i, 1)

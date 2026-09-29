@@ -1,0 +1,365 @@
+/* Hkline Web · 画线工具：几何、命中、画法（chart.ts 只做接入）
+ *
+ * 三把「算出来的」工具（形状由锚点圈住的 K 线算，不由锚点本身定）：
+ *   · 锚定 VWAP（avwap，一点）：从锚点那根起累计 典型价 × 成交量，画中线与 ±1σ、±2σ 带，带间 0.08 填充；
+ *     算法与主图 VWAP 一致（indicators.vwap：典型价 (高+低+收)/3，按成交量（币）加权）。
+ *   · 固定区间成交量分布（fvp，两点）：两点圈一段时间，复用 overlays.vpvr 与主图 VPVR 的三种看法；
+ *     行数按这段价格区间的像素高自动定（每行 ≥ 4 px），标控制点（实线）与七成价值区上下沿（虚线）。
+ *   · 多空持仓（position，三点：入场、目标、止损）：目标在入场上方就是多、下方就是空（照手机 DrawGeometry）；
+ *     只标止盈 / 止损相对入场的百分比与盈亏比 R，不算仓位。
+ * 复盘回放时 lastIndex() 是放到的那根，这里一律只算到它为止——不会拿「未来」的 K 线画。
+ *
+ * 另有画线交互的几样小工具：45° 吸附、每只品种的数量 / 体积上限、工具分组与同族样式。
+ */
+import { fmt, hexA } from '../util/format'
+import type { Bar } from './calc'
+import { vpvr, type Vpvr } from './overlays'
+import type { DrawPoint, Drawing, DrawingType, Pane, PriceRange, TVChart } from './chart'
+
+export interface XY { x: number; y: number }
+type Ctx = CanvasRenderingContext2D
+
+/** 这三把是算出来的，画法与命中在这里 */
+export const COMPUTED: ReadonlySet<DrawingType> = new Set<DrawingType>(['avwap', 'fvp', 'position'])
+
+/** 放一条线要点几下（两点的也可以按下拖到位松手） */
+export function placeCount(t: DrawingType): 1 | 2 { return t === 'hline' || t === 'vline' || t === 'avwap' ? 1 : 2 }
+
+/** 草稿第二点跟着鼠标走；持仓的第三点（止损）先按 1R 对称放，画完再拖手柄改 */
+export function setDraftEnd(d: Drawing, tp: DrawPoint): void {
+  if (d.type === 'position') { const a = d.pts[0]; d.pts = [a, tp, { t: tp.t, p: a.p - (tp.p - a.p) }]; return }
+  d.pts[d.pts.length - 1] = tp
+}
+
+/** 线型：实线 / 虚线 / 点线（和手机 Drawing.dash 同名） */
+export type Dash = 'solid' | 'dashed' | 'dotted'
+export function dashPattern(d: Pick<Drawing, 'dash' | 'width'>): number[] {
+  const w = d.width || 2
+  return d.dash === 'dashed' ? [w * 3, w * 2.5] : d.dash === 'dotted' ? [w * 0.5, w * 2] : []
+}
+
+// ------------------------------------------------------------ 45° 吸附
+/** 按住 ⇧ 拖端点：从 a 到 b 的方向吸到 0° / 45° / 90°（像素空间）。
+ *  横坐标先落到整根 K 线上（锚点的时间永远是某根的开盘），斜线再按这个 x 反推 y，保证正好 45° */
+export function snap45(a: XY, b: XY, snapX: (x: number) => number): XY {
+  const dx = b.x - a.x, dy = b.y - a.y
+  if (!dx && !dy) return b
+  const k = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) & 7 // 0..7：→ ↘ ↓ ↙ ← ↖ ↑ ↗
+  if (k === 2 || k === 6) return { x: a.x, y: b.y }
+  const x = snapX(b.x)
+  if (k === 0 || k === 4) return { x, y: a.y }
+  const sy = k === 1 || k === 3 ? 1 : -1
+  return { x, y: a.y + sy * Math.abs(x - a.x) }
+}
+
+// ------------------------------------------------------------ 上限
+/** 每只品种最多 500 条、合计 2 MB（超了拒绝新增并提示；线上存档与同步的队列都不该被一只品种撑爆） */
+export const QUOTA = { count: 500, bytes: 2 * 1024 * 1024 } as const
+export function drawingBytes(list: readonly Drawing[]): number {
+  let n = 2
+  for (const d of list) if (d.type !== 'measure') n += JSON.stringify(d).length + 1
+  return n
+}
+/** 再加 add 条还在上限以内吗 */
+export function quotaOK(list: readonly Drawing[], add: readonly Drawing[] = []): boolean {
+  const kept = list.filter(d => d.type !== 'measure')
+  const extra = add.filter(d => d.type !== 'measure')
+  if (kept.length + extra.length > QUOTA.count) return false
+  return drawingBytes(kept) + drawingBytes(extra) <= QUOTA.bytes
+}
+
+// ------------------------------------------------------------ 分组与同族
+export type GroupId = 'lines' | 'shapes' | 'fib' | 'forecast' | 'volume'
+export interface ToolGroup { id: GroupId; name: string; tools: [DrawingType, string, string][] }
+/** 左侧工具栏的分组（照 TradingView：一组一个按钮，右下角小箭头展开同组的工具） */
+export const TOOL_GROUPS: ToolGroup[] = [
+  { id: 'lines', name: '线', tools: [['trend', '趋势线', 'Alt T'], ['ray', '射线', 'Alt J'], ['hline', '水平线', 'Alt H'], ['vline', '垂直线', 'Alt V']] },
+  { id: 'shapes', name: '形状', tools: [['rect', '矩形', 'Alt ⇧ R']] },
+  { id: 'fib', name: '斐波那契', tools: [['fib', '斐波那契回撤', 'Alt F']] },
+  { id: 'forecast', name: '预测与测量', tools: [['position', '多空持仓', ''], ['measure', '测量（也可以按住 ⇧ 拖）', '']] },
+  { id: 'volume', name: '成交量', tools: [['avwap', '锚定 VWAP', ''], ['fvp', '固定区间成交量分布', '']] },
+]
+export function groupOf(t: DrawingType): ToolGroup | undefined { return TOOL_GROUPS.find(g => g.tools.some(x => x[0] === t)) }
+export function toolName(t: DrawingType): string { return groupOf(t)?.tools.find(x => x[0] === t)?.[1] ?? t }
+/** 同族工具共用「上次改过的样式」（颜色、粗细、线型） */
+export function familyOf(t: DrawingType): GroupId { return groupOf(t)?.id ?? 'lines' }
+
+// ------------------------------------------------------------ 锚定 VWAP
+export interface Bands { mid: number[]; u1: number[]; d1: number[]; u2: number[]; d2: number[] }
+/** 从 from 那根起累计到 to（含）；返回的数组下标 k 对应第 from + k 根 */
+export function anchoredVwap(bars: readonly Bar[], from: number, to: number): Bands {
+  const out: Bands = { mid: [], u1: [], d1: [], u2: [], d2: [] }
+  let sw = 0, swp = 0, swp2 = 0
+  for (let i = Math.max(0, from); i <= Math.min(to, bars.length - 1); i++) {
+    const b = bars[i], tp = (b.h + b.l + b.c) / 3
+    const w = b.bv != null && isFinite(b.bv) ? b.bv : b.c > 0 ? b.v / b.c : 0
+    sw += w; swp += w * tp; swp2 += w * tp * tp
+    const m = sw > 0 ? swp / sw : tp, sd = sw > 0 ? Math.sqrt(Math.max(0, swp2 / sw - m * m)) : 0
+    out.mid.push(m); out.u1.push(m + sd); out.d1.push(m - sd); out.u2.push(m + 2 * sd); out.d2.push(m - 2 * sd)
+  }
+  return out
+}
+
+// ------------------------------------------------------------ 固定区间成交量分布
+/** 行数：这段价格区间在屏上的像素高 ÷ 4（每行至少 4 px），1–240 行 */
+export function fvpRows(pxH: number): number { return Math.max(1, Math.min(240, Math.floor(Math.abs(pxH) / 4))) }
+export interface FvpShape { v: Vpvr; i0: number; i1: number; x0: number; x1: number }
+const fvpCache = new WeakMap<Drawing, { key: string; v: Vpvr | null }>()
+export function fvpShape(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): FvpShape | null {
+  if (d.pts.length < 2) return null
+  const last = ch.lastIndex()
+  const a = Math.round(ch.indexAt(d.pts[0].t)), b = Math.round(ch.indexAt(d.pts[1].t))
+  const i0 = Math.max(0, Math.min(a, b)), i1 = Math.min(last, Math.max(a, b))
+  if (i1 < i0) return null
+  let lo = Infinity, hi = -Infinity
+  for (let i = i0; i <= i1; i++) { const k = ch.bars[i]; if (!k) continue; if (k.l < lo) lo = k.l; if (k.h > hi) hi = k.h }
+  if (!isFinite(lo)) return null
+  const rows = fvpRows(ch.priceToY(lo, p, r) - ch.priceToY(hi, p, r))
+  const lb = ch.bars[i1]
+  const key = `${i0}:${i1}:${rows}:${ch.bars.length}:${ch.bars[0]?.t}:${lb?.c}:${lb?.v}`
+  let hit = fvpCache.get(d)
+  if (!hit || hit.key !== key) { hit = { key, v: vpvr(ch.bars as Bar[], i0, i1, rows) }; fvpCache.set(d, hit) }
+  if (!hit.v) return null
+  const half = ch.spacing / 2
+  return { v: hit.v, i0, i1, x0: ch.indexToX(i0) - half, x1: ch.indexToX(i1) + half }
+}
+
+// ------------------------------------------------------------ 多空持仓
+export interface PositionStats { long: boolean; targetPct: number | null; stopPct: number | null; r: number | null }
+export function positionStats(entry: number, target: number, stop: number): PositionStats {
+  const pct = (to: number) => entry !== 0 && isFinite(entry) && isFinite(to) ? (to - entry) / Math.abs(entry) * 100 : null
+  const gain = Math.abs(target - entry), risk = Math.abs(entry - stop)
+  return { long: target >= entry, targetPct: pct(target), stopPct: pct(stop), r: risk > 0 ? gain / risk : null }
+}
+const pctLabel = (v: number | null) => v == null ? '—' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`
+/** 画完时目标和入场落在同一根上：框给十根宽，不然是一条缝 */
+export function widenPosition(ch: TVChart, d: Drawing): void {
+  if (d.type !== 'position' || d.pts.length < 3) return
+  const ia = ch.indexAt(d.pts[0].t), ib = ch.indexAt(d.pts[1].t)
+  if (Math.abs(ib - ia) >= 2) return
+  const t = ch.timeAt(Math.round(ia) + 10)
+  d.pts[1] = { t, p: d.pts[1].p }; d.pts[2] = { t, p: d.pts[2].p }
+}
+
+// ------------------------------------------------------------ 手柄
+/** 每个锚点在屏上的手柄位置（算出来的工具不一定就在锚点的价位上） */
+export function handlePixels(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): XY[] {
+  const px = (q: DrawPoint): XY => ({ x: ch.indexToX(ch.indexAt(q.t)), y: ch.priceToY(q.p, p, r) })
+  if (d.type === 'avwap' && d.pts.length) {
+    const i = Math.round(ch.indexAt(d.pts[0].t)), b = ch.bars[i]
+    const x = ch.indexToX(i)
+    return [{ x, y: b && i <= ch.lastIndex() ? ch.priceToY((b.h + b.l + b.c) / 3, p, r) : px(d.pts[0]).y }]
+  }
+  if (d.type === 'fvp' && d.pts.length >= 2) {
+    const s = fvpShape(ch, d, p, r)
+    if (s) {
+      const y = ch.priceToY((s.v.lo + s.v.hi) / 2, p, r)
+      const a = ch.indexAt(d.pts[0].t) <= ch.indexAt(d.pts[1].t)
+      return a ? [{ x: s.x0, y }, { x: s.x1, y }] : [{ x: s.x1, y }, { x: s.x0, y }]
+    }
+    return d.pts.map(px)
+  }
+  if (d.type === 'position' && d.pts.length >= 3) {
+    const a = px(d.pts[0]), b = px(d.pts[1]), c = px(d.pts[2])
+    const x1 = Math.max(a.x, b.x)
+    return [a, { x: x1, y: b.y }, { x: x1, y: c.y }]
+  }
+  return d.pts.map(px)
+}
+/** 拖第 k 个手柄到 now（持仓：止损手柄只改价位，目标手柄改框宽与目标价） */
+export function moveHandle(d: Drawing, k: number, now: DrawPoint): void {
+  if (d.type === 'position' && k === 2) { d.pts[2] = { t: d.pts[1].t, p: now.p }; return }
+  if (d.type === 'position' && k === 1) { d.pts[1] = now; d.pts[2] = { t: now.t, p: d.pts[2].p }; return }
+  d.pts[k] = now
+}
+
+// ------------------------------------------------------------ 包围框（选中时的快捷条放在它上方）
+export function bbox(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): { x0: number; y0: number; x1: number; y1: number } | null {
+  if (!d.pts.length) return null
+  const PW = ch.plotW()
+  let pts = handlePixels(ch, d, p, r)
+  if (d.type === 'hline') pts = [{ x: 0, y: pts[0].y }, { x: PW, y: pts[0].y }]
+  if (d.type === 'vline') pts = [{ x: pts[0].x, y: p.y }, { x: pts[0].x, y: p.y + p.h }]
+  if (d.type === 'fvp') { const s = fvpShape(ch, d, p, r); if (s) pts = [{ x: s.x0, y: ch.priceToY(s.v.hi, p, r) }, { x: s.x1, y: ch.priceToY(s.v.lo, p, r) }] }
+  if (d.type === 'avwap') { const b = avwapPixels(ch, d, p, r); if (b.length) pts = pts.concat(b.filter((_, i) => i % 8 === 0 || i === b.length - 1)) }
+  if (d.type === 'position') pts = pts.concat(d.pts.map(q => ({ x: ch.indexToX(ch.indexAt(d.pts[0].t)), y: ch.priceToY(q.p, p, r) })))
+  const xs = pts.map(q => q.x), ys = pts.map(q => q.y)
+  return { x0: Math.max(0, Math.min(...xs)), x1: Math.min(PW, Math.max(...xs)), y0: Math.max(p.y, Math.min(...ys)), y1: Math.min(p.y + p.h, Math.max(...ys)) }
+}
+
+/** 锚定 VWAP 中线在可见范围里的像素点 */
+function avwapPixels(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): XY[] {
+  if (!d.pts.length) return []
+  const i0 = Math.max(0, Math.round(ch.indexAt(d.pts[0].t))), last = ch.lastIndex()
+  const { to } = ch.visible()
+  const end = Math.min(last, to + 1)
+  if (end < i0) return []
+  const bands = anchoredVwap(ch.bars, i0, end)
+  const from = Math.max(i0, Math.floor(ch.xToIndex(0)) - 1)
+  const out: XY[] = []
+  for (let i = from; i <= end; i++) { const v = bands.mid[i - i0]; if (v != null) out.push({ x: ch.indexToX(i), y: ch.priceToY(v, p, r) }) }
+  return out
+}
+
+// ------------------------------------------------------------ 画
+/** 画三把算出来的工具之一；别的工具返回 false 交回 chart.ts 画 */
+export function drawComputed(ch: TVChart, d: Drawing, p: Pane, r: PriceRange, sel: boolean): boolean {
+  if (!COMPUTED.has(d.type)) return false
+  const c: Ctx = ch.ctx, col = d.color || '#2962FF'
+  c.save()
+  c.lineCap = 'round'; c.lineJoin = 'round'
+  if (d.type === 'avwap') drawAvwap(ch, c, d, p, r, col)
+  else if (d.type === 'fvp') drawFvp(ch, c, d, p, r, col, sel)
+  else drawPosition(ch, c, d, p, r, col)
+  c.restore()
+  if (sel) {
+    for (const q of handlePixels(ch, d, p, r)) { c.fillStyle = ch.colors.bg; c.strokeStyle = col; c.lineWidth = 2; c.beginPath(); c.arc(q.x, q.y, 4.5, 0, Math.PI * 2); c.fill(); c.stroke() }
+  }
+  return true
+}
+
+function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: string): void {
+  if (!d.pts.length) return
+  const i0 = Math.max(0, Math.round(ch.indexAt(d.pts[0].t))), last = ch.lastIndex()
+  const { to } = ch.visible()
+  const end = Math.min(last, to + 1)
+  const ax = ch.indexToX(i0)
+  // 锚点：图底一枚小三角，标出从哪根起算
+  c.fillStyle = col; c.beginPath(); c.moveTo(ax, p.y + p.h - 2); c.lineTo(ax - 5, p.y + p.h - 10); c.lineTo(ax + 5, p.y + p.h - 10); c.closePath(); c.fill()
+  if (end < i0) return
+  const b = anchoredVwap(ch.bars, i0, end)
+  const from = Math.max(i0, Math.floor(ch.xToIndex(0)) - 1)
+  const X = (i: number) => ch.indexToX(i), Y = (v: number) => ch.priceToY(v, p, r)
+  const band = (top: number[], bot: number[], fill: string) => {
+    if (end - from < 1) return
+    c.fillStyle = fill; c.beginPath()
+    for (let i = from; i <= end; i++) { const x = X(i), y = Y(top[i - i0]); if (i === from) c.moveTo(x, y); else c.lineTo(x, y) }
+    for (let i = end; i >= from; i--) c.lineTo(X(i), Y(bot[i - i0]))
+    c.closePath(); c.fill()
+  }
+  const line = (s: number[], stroke: string, w: number, dash: number[] = []) => {
+    c.strokeStyle = stroke; c.lineWidth = w; c.setLineDash(dash); c.beginPath()
+    for (let i = from; i <= end; i++) { const x = X(i), y = Y(s[i - i0]); if (i === from) c.moveTo(x, y); else c.lineTo(x, y) }
+    c.stroke(); c.setLineDash([])
+  }
+  // 带间 0.08：±1σ 里一层青，1σ 到 2σ 两侧一层橙（颜色与主图 VWAP 一致）
+  band(b.u1, b.d1, hexA('#26A69A', 0.08))
+  band(b.u2, b.u1, hexA('#FF9800', 0.08)); band(b.d1, b.d2, hexA('#FF9800', 0.08))
+  line(b.u2, hexA('#FF9800', 0.8), 1); line(b.d2, hexA('#FF9800', 0.8), 1)
+  line(b.u1, '#26A69A', 1); line(b.d1, '#26A69A', 1)
+  line(b.mid, col, d.width || 1.5, dashPattern(d))
+  if (end - from >= 0) {
+    // 线尾标读数（和主图 VWAP 的图例一样只标中线）
+    const v = b.mid[end - i0], x = X(end), y = Y(v)
+    c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'middle'; c.textAlign = 'left'
+    const t = `VWAP ${fmt(v, ch.meta.dec)}`, w = c.measureText(t).width + 8
+    if (x + 6 + w < ch.plotW()) { c.fillStyle = hexA(col, 0.14); roundRect(c, x + 6, y - 9, w, 18, 4); c.fill(); c.fillStyle = col; c.fillText(t, x + 10, y) }
+  }
+}
+
+function drawFvp(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: string, sel: boolean): void {
+  const s = fvpShape(ch, d, p, r)
+  if (!s || !s.v.total) {
+    // 圈的范围里还没有 K 线：只画两条边界
+    const xs = d.pts.map(q => ch.indexToX(ch.indexAt(q.t)))
+    c.strokeStyle = hexA(col, 0.5); c.lineWidth = 1; c.setLineDash([4, 4]); c.beginPath()
+    for (const x of xs) { c.moveTo(Math.round(x) + .5, p.y); c.lineTo(Math.round(x) + .5, p.y + p.h) }
+    c.stroke(); c.setLineDash([]); return
+  }
+  const v = s.v, C = ch.colors, mode = ch.vpvrMode
+  const up = C.up || '#089981', down = C.down || '#F23645', neutral = '#5B8DEF'
+  const yHi = ch.priceToY(v.hi, p, r), yLo = ch.priceToY(v.lo, p, r)
+  const W = s.x1 - s.x0, maxW = Math.max(16, W * 0.3)
+  // 底：整段淡淡一层，选中时描边
+  c.fillStyle = hexA(col, 0.05); c.fillRect(s.x0, yHi, W, yLo - yHi)
+  if (sel) { c.strokeStyle = hexA(col, 0.6); c.lineWidth = 1; c.strokeRect(Math.round(s.x0) + .5, Math.round(yHi) + .5, Math.round(W), Math.round(yLo - yHi)) }
+  let mx = 0
+  for (const row of v.rows) mx = Math.max(mx, mode === 'delta' ? Math.abs(row.buy - row.sell) : row.buy + row.sell)
+  if (mx) v.rows.forEach((row, k) => {
+    const y0 = ch.priceToY(v.lo + (k + 1) * v.step, p, r), y1 = ch.priceToY(v.lo + k * v.step, p, r)
+    const top = Math.round(Math.min(y0, y1)) + 1, h = Math.max(1, Math.round(Math.abs(y1 - y0)) - 1)
+    if (top > p.y + p.h || top + h < p.y) return
+    const a = k >= v.vaLo && k <= v.vaHi ? 0.42 : 0.18, x = s.x0
+    if (mode === 'total') { const w = (row.buy + row.sell) / mx * maxW; c.fillStyle = hexA(neutral, a); c.fillRect(x, top, w, h) }
+    else if (mode === 'delta') { const dd = row.buy - row.sell, w = Math.abs(dd) / mx * maxW; c.fillStyle = hexA(dd >= 0 ? up : down, a); c.fillRect(x, top, w, h) }
+    else {
+      const wb = row.buy / mx * maxW, ws = row.sell / mx * maxW
+      c.fillStyle = hexA(up, a); c.fillRect(x, top, wb, h)
+      c.fillStyle = hexA(down, a); c.fillRect(x + wb, top, ws, h)
+    }
+  })
+  // 控制点实线、价值区上下沿虚线，横贯整段
+  const hl = (price: number, stroke: string, dash: number[]) => {
+    const y = Math.round(ch.priceToY(price, p, r)) + .5
+    c.strokeStyle = stroke; c.lineWidth = 1; c.setLineDash(dash); c.beginPath(); c.moveTo(s.x0, y); c.lineTo(s.x1, y); c.stroke(); c.setLineDash([])
+    return y
+  }
+  const py = hl(v.lo + (v.poc + 0.5) * v.step, '#FF9800', [])
+  hl(v.lo + (v.vaHi + 1) * v.step, hexA(col, 0.8), [4, 3])
+  hl(v.lo + v.vaLo * v.step, hexA(col, 0.8), [4, 3])
+  c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'bottom'; c.textAlign = 'right'
+  c.fillStyle = '#FF9800'; if (W > 90) c.fillText(`控制点 ${fmt(v.lo + (v.poc + 0.5) * v.step, ch.meta.dec)}`, s.x1 - 4, py - 2)
+}
+
+function drawPosition(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: string): void {
+  if (d.pts.length < 3) return
+  const [ea, ta, sa] = d.pts
+  const ax = ch.indexToX(ch.indexAt(ea.t)), bx = ch.indexToX(ch.indexAt(ta.t))
+  const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), W = Math.max(1, x1 - x0)
+  const ay = ch.priceToY(ea.p, p, r), by = ch.priceToY(ta.p, p, r), cy = ch.priceToY(sa.p, p, r)
+  const up = ch.colors.up || '#089981', down = ch.colors.down || '#F23645'
+  const box = (y0: number, y1: number, tint: string) => {
+    const top = Math.min(y0, y1), h = Math.abs(y1 - y0)
+    c.fillStyle = hexA(tint, 0.14); c.fillRect(x0, top, W, h)
+    c.strokeStyle = hexA(tint, 0.7); c.lineWidth = 1; c.strokeRect(Math.round(x0) + .5, Math.round(top) + .5, Math.round(W), Math.round(h))
+  }
+  box(ay, by, up)   // 入场 → 目标：赚的那一半
+  box(ay, cy, down) // 入场 → 止损：亏的那一半
+  c.strokeStyle = col; c.lineWidth = d.width || 2; c.setLineDash(dashPattern(d))
+  c.beginPath(); c.moveTo(x0, Math.round(ay) + .5); c.lineTo(x1, Math.round(ay) + .5); c.stroke(); c.setLineDash([])
+  const s = positionStats(ea.p, ta.p, sa.p)
+  const fam = ch.font.split('px ')[1] || 'sans-serif'
+  c.font = `600 11px ${fam}`; c.textBaseline = 'middle'
+  const chip = (text: string, x: number, y: number, bg: string, align: 'right' | 'center') => {
+    const w = c.measureText(text).width + 12, h = 18
+    const left = align === 'right' ? x - w : x - w / 2
+    c.fillStyle = bg; roundRect(c, left, y - h / 2, w, h, 4); c.fill()
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(text, left + w / 2, y)
+  }
+  // 三个读数各贴各的线：目标、止损甩到框外那一侧，盈亏比压在入场线中间（照手机，三条线两两不同高不会撞）
+  chip(`目标 ${pctLabel(s.targetPct)}`, x1 - 3, by + (s.long ? -12 : 12), up, 'right')
+  chip(`止损 ${pctLabel(s.stopPct)}`, x1 - 3, cy + (s.long ? 12 : -12), down, 'right')
+  chip(`盈亏比 ${s.r == null ? '—' : s.r.toFixed(2)}`, (x0 + x1) / 2, ay, col, 'center')
+}
+
+// ------------------------------------------------------------ 命中
+/** 点到三把算出来的工具身上的距离（px）；别的工具返回 null 交回 chart.ts 算 */
+export function hitComputed(ch: TVChart, d: Drawing, x: number, y: number, p: Pane, r: PriceRange): number | null {
+  if (!COMPUTED.has(d.type)) return null
+  if (d.type === 'avwap') {
+    const pts = avwapPixels(ch, d, p, r)
+    let best = Infinity
+    for (let i = 1; i < pts.length; i++) best = Math.min(best, segDist(x, y, pts[i - 1], pts[i]))
+    if (pts.length === 1) best = Math.hypot(x - pts[0].x, y - pts[0].y)
+    return best
+  }
+  if (d.type === 'fvp') {
+    const s = fvpShape(ch, d, p, r); if (!s) return Infinity
+    const yHi = ch.priceToY(s.v.hi, p, r), yLo = ch.priceToY(s.v.lo, p, r)
+    return x >= s.x0 - 3 && x <= s.x1 + 3 && y >= yHi - 3 && y <= yLo + 3 ? 0 : Infinity
+  }
+  const [ea, ta, sa] = d.pts
+  if (!sa) return Infinity
+  const ax = ch.indexToX(ch.indexAt(ea.t)), bx = ch.indexToX(ch.indexAt(ta.t))
+  const ys = [ea.p, ta.p, sa.p].map(v => ch.priceToY(v, p, r))
+  const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), y0 = Math.min(...ys), y1 = Math.max(...ys)
+  return x >= x0 - 3 && x <= x1 + 3 && y >= y0 - 3 && y <= y1 + 3 ? 0 : Infinity
+}
+
+// ------------------------------------------------------------ 小工具
+export function segDist(x: number, y: number, a: XY, b: XY): number {
+  const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy
+  const t = L ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / L)) : 0
+  return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy))
+}
+function roundRect(c: Ctx, x: number, y: number, w: number, h: number, r: number): void { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath() }

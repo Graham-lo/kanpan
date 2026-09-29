@@ -312,9 +312,13 @@ export function decodeFavorites(all: SyncObject[], ctx: Ctx): Record<Kind, strin
 
 // ═════════════════════════════ drawings ═════════════════════════════
 
-const KIND_OF: Partial<Record<DrawingType, string>> = { trend: 'trend', ray: 'ray', hline: 'hline', vline: 'vline', rect: 'rectangle', fib: 'fibonacci' }
-const TYPE_OF: Record<string, DrawingType> = { trend: 'trend', ray: 'ray', hline: 'hline', vline: 'vline', rectangle: 'rect', fibonacci: 'fib' }
-const ANCHORS: Record<string, number> = { hline: 1, vline: 1, trend: 2, ray: 2, rectangle: 2, fibonacci: 2 }
+// 网页工具 ↔ 手机 Drawing.Kind 的 rawValue；锚点数必须等于契约 drawing-fields.json 的 anchorCounts（tests/sync-codec 对账）。
+// 多空持仓的三个锚点照手机：入场、目标、止损；固定区间成交量分布两点只用时间；锚定 VWAP 一点只用时间。
+export const KIND_OF: Partial<Record<DrawingType, string>> = { trend: 'trend', ray: 'ray', hline: 'hline', vline: 'vline', rect: 'rectangle', fib: 'fibonacci', avwap: 'anchoredVWAP', fvp: 'fixedVolumeProfile', position: 'position' }
+const TYPE_OF: Record<string, DrawingType> = { trend: 'trend', ray: 'ray', hline: 'hline', vline: 'vline', rectangle: 'rect', fibonacci: 'fib', anchoredVWAP: 'avwap', fixedVolumeProfile: 'fvp', position: 'position' }
+export const ANCHORS: Record<string, number> = { hline: 1, vline: 1, trend: 2, ray: 2, rectangle: 2, fibonacci: 2, anchoredVWAP: 1, fixedVolumeProfile: 2, position: 3 }
+/** 网页写进 body 的键（对账用：必须是契约 syncFields 的子集） */
+export const WEB_BODY_KEYS = ['anchors', 'color', 'dash', 'filled', 'hidden', 'kind', 'levels', 'lineWidth', 'locked', 'market', 'symbol', 'venue'] as const
 /** 手机 `Drawing` 的出厂值（Drawing.swift） */
 export const DRAWING_DEFAULTS = { dash: 'solid', filled: true, hidden: false, levels: [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as number[] }
 export const WEB_LINE_WIDTH = 2
@@ -324,7 +328,7 @@ export const drawingId = (symbol: string, id: string): string => PREFIX + symbol
 
 /** 网页画线的规范形（比对用） */
 function normDrawing(d: Drawing): Json {
-  return { type: d.type, pts: d.pts.map(p => ({ t: p.t, p: p.p })), color: d.color && HEX.test(d.color) ? d.color : null, width: d.width ?? WEB_LINE_WIDTH, locked: !!d.locked }
+  return { type: d.type, pts: d.pts.map(p => ({ t: p.t, p: p.p })), color: d.color && HEX.test(d.color) ? d.color : null, width: d.width ?? WEB_LINE_WIDTH, dash: d.dash ?? 'solid', locked: !!d.locked }
 }
 
 /** 这条云端画线网页管不管得着：币安 U 本位、网页有的种类、没隐藏、锚点数对 */
@@ -354,6 +358,7 @@ export function decodeDrawing(o: SyncObject): { symbol: string; d: Drawing } | n
   if (color && HEX.test(color)) d.color = color
   const w = num(b.lineWidth)
   d.width = w ?? WEB_LINE_WIDTH
+  if (b.dash === 'dashed' || b.dash === 'dotted') d.dash = b.dash
   if (b.locked === true) d.locked = true
   return { symbol: str(b.symbol)!, d }
 }
@@ -374,13 +379,16 @@ function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined)
   body.anchors = d.pts.map(p => ({ t: p.t, p: p.p }))
   body.color = d.color && HEX.test(d.color) ? { value: d.color } : null
   body.lineWidth = Math.min(6, Math.max(0.5, d.width ?? WEB_LINE_WIDTH))
+  body.dash = d.dash ?? 'solid'
   body.locked = !!d.locked
   body.symbol = symbol; body.market = MARKET; body.venue = VENUE
   return { collection: 'drawings', id, body, fields: {}, revision: 0, deleted: false, generation: 0 }
 }
 
-/** 网页画线 → 要记账的对象（含删除）。只动网页管得着的那部分 */
-export function encodeDrawings(drawings: Record<string, Drawing[]>, prevAll: SyncObject[]): SyncObject[] {
+/** 网页画线 → 要记账的对象（含删除）。只动网页管得着的那部分。
+ *  `holdDeletes`：本地画线存档读坏过（解析失败、形状不对被清空）时，本地「没有」不代表用户删了——
+ *  这时只推新增与修改、一条删除都不发，免得拿一份空表把云端整只品种的画线清掉 */
+export function encodeDrawings(drawings: Record<string, Drawing[]>, prevAll: SyncObject[], opts: { holdDeletes?: boolean } = {}): SyncObject[] {
   const byId = new Map(prevAll.map(o => [o.id, o]))
   const out: SyncObject[] = []
   const keep = new Set<string>()
@@ -391,7 +399,7 @@ export function encodeDrawings(drawings: Record<string, Drawing[]>, prevAll: Syn
       keep.add(o.id); out.push(o)
     }
   }
-  for (const o of prevAll) if (!o.deleted && !keep.has(o.id) && drawingManaged(o)) out.push({ ...o, deleted: true })
+  if (!opts.holdDeletes) for (const o of prevAll) if (!o.deleted && !keep.has(o.id) && drawingManaged(o)) out.push({ ...o, deleted: true })
   return out
 }
 

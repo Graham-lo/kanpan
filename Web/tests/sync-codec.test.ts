@@ -82,11 +82,13 @@ describe('drawings', () => {
     expect(back.BTCUSDT).toEqual([{ ...trend }])
   })
 
-  it('没改的原样用云端 body；改了只覆盖网页的键，手机的文字和虚线留着', () => {
+  it('没改的原样用云端 body；改了只覆盖网页的键，手机的文字留着（线型网页也管，装进来就是虚线）', () => {
     const cloud = obj('drawings', drawingId('BTCUSDT', 'd1'), { kind: 'trend', anchors: [{ t: 1, p: 100 }, { t: 2, p: 110 }], color: { value: '#FF0000' }, lineWidth: 2, locked: false, symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance', dash: 'dashed', text: '支撑', filled: true, hidden: false, levels: [] })
-    const [same] = encodeDrawings({ BTCUSDT: [trend] }, [cloud])
+    const dashed: Drawing = { ...trend, dash: 'dashed' }
+    expect(decodeDrawings([cloud], {}).BTCUSDT[0].dash).toBe('dashed')
+    const [same] = encodeDrawings({ BTCUSDT: [dashed] }, [cloud])
     expect(same.body).toEqual(cloud.body)
-    const [moved] = encodeDrawings({ BTCUSDT: [{ ...trend, pts: [{ t: 1, p: 101 }, { t: 2, p: 110 }] }] }, [cloud])
+    const [moved] = encodeDrawings({ BTCUSDT: [{ ...dashed, pts: [{ t: 1, p: 101 }, { t: 2, p: 110 }] }] }, [cloud])
     expect(moved.body.text).toBe('支撑')
     expect(moved.body.dash).toBe('dashed')
     expect(moved.body.anchors).toEqual([{ t: 1, p: 101 }, { t: 2, p: 110 }])

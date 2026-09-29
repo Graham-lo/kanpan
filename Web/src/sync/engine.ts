@@ -67,6 +67,18 @@ export function scopesOf(ops: SyncOperation[]): Scope[] {
   return [...out.values()]
 }
 
+/** 服务端回来的一页形状对不对。不对（代理吐了个错误页、网关截断、字段缺了）就当「没拉到」抛出——
+ *  绝不能把它当成「云端是空的」装进账本：那样本机会以为别处删光了，或者把一份空表记账推上去 */
+export function badPage(p: unknown, changes = false): boolean {
+  const o = p as Partial<ChangesPage> | null
+  if (!o || typeof o !== 'object' || !Array.isArray(o.objects) || !Number.isFinite(o.cursor) || !Number.isFinite(o.serverTime)) return true
+  if (!o.objects.every(x => x && typeof x === 'object' && typeof x.collection === 'string' && typeof x.id === 'string' && x.body != null && typeof x.body === 'object')) return true
+  if (changes) return !Array.isArray(o.invalidations) || typeof o.hasMore !== 'boolean'
+  const n = (p as Page).next
+  return n != null && typeof n !== 'string'
+}
+const BAD_PAGE: Err = { status: 502, code: 'bad_page' }
+
 export class Engine {
   budget = MAX_BODY
   suspects = 0
@@ -135,6 +147,7 @@ export class Engine {
     let first: number | null = null
     do {
       const p: Page = await this.t.bootstrap(scope.collection, scope.prefix, after)
+      if (badPage(p)) throw BAD_PAGE
       if (first == null) first = p.cursor
       this.hooks.capture()
       this.store.receive(p.objects, p.serverTime)
@@ -169,6 +182,7 @@ export class Engine {
     try {
       for (let guard = 0; guard < 50; guard++) {
         const p: ChangesPage = await this.t.changes(a.cursor ?? 0)
+        if (badPage(p, true)) throw BAD_PAGE
         if (p.objects.length) {
           this.hooks.capture()
           this.store.receive(p.objects, p.serverTime)

@@ -9,7 +9,7 @@
  *   可见时每 15 秒推一次、拉一次增量，每 5 分钟做一次全量（兜住漏掉的与被拒的）。
  * - 账本按账号存 localStorage，推不出去的操作关掉页面也不会丢。
  */
-import { st, save, subscribe } from '../app/store'
+import { st, save, subscribe, drawingsSuspect, clearDrawingsSuspect } from '../app/store'
 import { hooks } from '../app/shell'
 import { S } from '../market'
 import { fmt } from '../util/format'
@@ -18,10 +18,10 @@ import { allCells, cfg, drawingsFor, renderPanel, renderToolbar } from '../pages
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
 import { authed, device } from '../account/client'
 import { onSession, session } from '../account/session'
-import { type Applied, type Edited, type Prints, OWNED, applyInto, captureInto, fingerprint, mergeFirst } from './bridge'
+import { type Applied, type Edited, type Prints, OWNED, applyInto, captureInto, fingerprint, mergeFirst, restoreDrawings } from './bridge'
 import { type Ctx, alertId } from './codec'
 import { Engine, type Transport } from './engine'
-import { SyncStore, deserialize, serialize } from './store'
+import { SyncStore, resumeArchive, serialize } from './store'
 import { type ChangesPage, type Page, type PushResponse, emptyArchive } from './types'
 
 const ARCHIVE_KEY = 'hkline-web-sync-v1:'
@@ -90,9 +90,12 @@ function persist(): void {
   })
 }
 
+/** 画线存档读坏过（标记还在）时只补不删 */
+const hold = (): { holdDeletes: boolean } => ({ holdDeletes: drawingsSuspect() })
+
 function capture(): void {
   if (!store || initial || applying) return
-  captureInto(st, store, ctx, fp, spent)
+  captureInto(st, store, ctx, fp, spent, hold())
 }
 
 function apply(): void {
@@ -128,7 +131,7 @@ function settleRemoteFires(r: Applied): void {
   if (!r.fired.length || !store) return
   for (const a of r.fired) { spent.add(alertId(a.symbol, a.id)); announceRemoteFire(a) }
   delete fp.alerts
-  if (captureInto(st, store, ctx, fp, spent)) schedulePush()
+  if (captureInto(st, store, ctx, fp, spent, hold())) schedulePush()
 }
 
 /** 同步任务串行执行；会话换了（gen 变了）的旧任务直接跳过 */
@@ -169,6 +172,7 @@ async function firstSync(e: Engine, override: boolean): Promise<void> {
   refreshUI(r)
   fp = {}
   lsSet(OWNER_KEY, uid!)
+  clearDrawingsSuspect() // 并集合并过了：本机 ⊇ 云端
   capture()
   persist()
   await e.push()
@@ -176,7 +180,7 @@ async function firstSync(e: Engine, override: boolean): Promise<void> {
 
 async function lead(id: string): Promise<void> {
   const owner = lsGet(OWNER_KEY)
-  const saved = owner === id ? deserialize(lsGet(ARCHIVE_KEY + id)) : null
+  const saved = resumeArchive(owner, id, lsGet(ARCHIVE_KEY + id))
   const fresh = !saved || saved.cursor == null
   store = new SyncStore(saved ?? emptyArchive(), device().id)
   store.onChange = persist
@@ -192,6 +196,8 @@ async function lead(id: string): Promise<void> {
     await attempt()
     pollTimer = setInterval(() => { if (g !== gen) return; if (initial) void attempt(); else tick() }, POLL)
   } else {
+    // 本机画线存档读坏过：先把账本里的云端那份并回来，再记账（不然本机的「空」会记成删除）
+    if (drawingsSuspect()) { refreshUI(restoreDrawings(st, store)); clearDrawingsSuspect() }
     // 离线期间（包括没登录时）的改动：先记账推上去，再拉
     capture()
     tick(true)
@@ -239,7 +245,7 @@ export function initSync(): void {
     }
     base = now
     if (!store || initial || applying) return
-    if (captureInto(st, store, ctx, fp, spent)) schedulePush()
+    if (captureInto(st, store, ctx, fp, spent, hold())) schedulePush()
   })
   // 本机判响的：fire() 先记「已触发」、报完再删，删之前记下来
   onAlertFired(({ alert }) => spent.add(alertId(alert.symbol, alert.id)))

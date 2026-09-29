@@ -39,8 +39,9 @@ export function fingerprint(s: WebState): Record<Part, string> {
   }
 }
 
-/** 记账。`ready`：品种表到了没有（没到时分不出自选的类别，不碰自选） */
-export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, fp: Prints, spent?: ReadonlySet<string>): number {
+/** 记账。`ready`：品种表到了没有（没到时分不出自选的类别，不碰自选）。
+ *  `holdDeletes`：本机画线存档读坏过（app/store 的 drawingsSuspect），画线只补不删 */
+export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, fp: Prints, spent?: ReadonlySet<string>, opts: { holdDeletes?: boolean } = {}): number {
   const now = fingerprint(s)
   const vals: SyncObject[] = []
   if (now.settings !== fp.settings) {
@@ -52,7 +53,7 @@ export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: b
     vals.push(...encodeFavorites(s.watch, store.localOf('favorites'), ctx))
     fp.favorites = now.favorites
   }
-  if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'))); fp.drawings = now.drawings }
+  if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'), opts)); fp.drawings = now.drawings }
   if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), unseenDrawings(store.localOf('drawings')), spent)); fp.alerts = now.alerts }
   return store.capture(vals, OWNED)
 }
@@ -136,5 +137,21 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   if (!override) for (const x of s.alerts) if (!syncableAlert(x) || !a.objects[keyOf('alerts', alertId(x.symbol, x.id))]) alerts.push(x)
   if (!same(alerts, s.alerts)) { s.alerts = alerts; r.alerts = true }
   a.unapplied.clear()
+  return r
+}
+
+/** 本机画线存档读坏过之后第一次对上账本：把账本里云端那份（活的）并回本机，本机现有的一条不动。
+ *  并完本机 ⊇ 云端，接下来的记账不会产生删除；返回并进来的品种 */
+export function restoreDrawings(s: WebState, store: SyncStore): Applied {
+  const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false, fired: [] }
+  const cloud = decodeDrawings(store.localOf('drawings'), {})
+  for (const [sym, list] of Object.entries(cloud)) {
+    const mine = s.drawings[sym] ?? []
+    const have = new Set(mine.map(d => d.id))
+    const add = list.filter(d => !have.has(d.id))
+    if (!add.length) continue
+    s.drawings[sym] = [...mine, ...add]
+    r.drawings.add(sym)
+  }
   return r
 }

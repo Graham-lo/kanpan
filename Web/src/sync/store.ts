@@ -342,3 +342,9 @@ export function deserialize(text: string | null): Archive | null {
     return a
   } catch { return null }
 }
+
+/** 这台电脑上存着的账本能不能给 `id` 这个账号接着用：只有上次同步的就是它（owner）才行。
+ *  别的账号留下的账本（连同里面没推出去的操作）一律不重放——那是另一个人的改动 */
+export function resumeArchive(owner: string | null, id: string, text: string | null): Archive | null {
+  return owner === id ? deserialize(text) : null
+}
