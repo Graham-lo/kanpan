@@ -46,6 +46,20 @@ describe('复盘接口走账号模块的令牌', () => {
     expect(calls.map(c => c.url)).toEqual(['/v1/native-review/statistics', '/v1/auth/refresh', '/v1/native-review/statistics'])
   })
 
+  it('收藏相似片段：服务端只回 {item}，存完从列表取回版本号（取消收藏要带它）', async () => {
+    localStorage.setItem(ACCOUNT_KEY, JSON.stringify({ issuer: ISSUER, username: 'u', userId: 'u1', sessionId: 's1', accessToken: 'fresh-access', refreshToken: 'r1', accessDeadline: Date.now() + 600e3 }))
+    const item = { id: 'm1', range: {}, score: 0.8, source: 'history' }
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      calls.push({ url, auth: (init.headers as Record<string, string>)?.Authorization ?? null })
+      if (url === '/v1/native-review/saved-matches' && init.method === 'POST') return json(200, { data: { item } })
+      if (url === '/v1/native-review/saved-matches') return json(200, { data: { items: [{ item: { id: 'm0' }, revision: 1 }, { item, revision: 3 }], next: null } })
+      return json(404, { error: { code: 'not_found' } })
+    })
+    const s = await reviewApi.save('s1', 'm1')
+    expect(s.revision).toBe(3)
+    expect(s.item.id).toBe('m1')
+  })
+
   it('没登录：不发请求，回 not_logged_in（401）', async () => {
     const e = await reviewApi.statistics().catch(x => x)
     expect(e).toBeInstanceOf(ReviewError)

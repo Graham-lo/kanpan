@@ -9,7 +9,7 @@ import { ApiError, authed, readStored } from '../account/client'
 import { IV_MS } from '../util/format'
 import { REST, j } from '../market/rest'
 import type { Bar } from '../chart/calc'
-import type { ChartRange, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from './types'
+import type { ChartRange, Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from './types'
 
 const BASE = '/v1/native-review'
 const DEV_TOKEN_KEY = 'hkline-review-dev-token'
@@ -139,7 +139,15 @@ export const reviewApi = {
     }
     return first
   },
-  save: (searchId: string, matchId: string): Promise<SavedMatch> => call('POST', '/saved-matches', { searchId, matchId }, true),
+  /** 收藏：服务端只回 {item}、不带版本号（iOS 也是存完重拉列表），而取消收藏必须带版本，
+   *  所以存完从列表里把这一条连版本一起取回来 */
+  save: async (searchId: string, matchId: string): Promise<SavedMatch> => {
+    const r = await call<{ item: Match; revision?: number }>('POST', '/saved-matches', { searchId, matchId }, true)
+    if (typeof r.revision === 'number') return { item: r.item, revision: r.revision }
+    const got = (await all<SavedMatch>('/saved-matches', 'items')).find(x => x.item.id === (r.item?.id ?? matchId))
+    if (!got) throw new ReviewError('not_found', 404)
+    return got
+  },
   unsave: (id: string, expectedRevision: number): Promise<unknown> => call('DELETE', `/saved-matches/${id}`, { expectedRevision }, true),
   tradeNote: (id: string, expectedRevision: number, text: string): Promise<TradeRecord> => call('POST', `/trades/${id}/note`, { expectedRevision, text }, true),
 }
