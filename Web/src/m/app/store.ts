@@ -68,7 +68,11 @@ export function defaults(): State {
 function ls(): Storage | null { try { return globalThis.localStorage ?? null } catch { return null } }
 
 export function load(): Record<string, unknown> {
-  try { return JSON.parse(ls()?.getItem(KEY) || '{}') as Record<string, unknown> } catch { return {} }
+  // 读出来得是个对象：存档被写成 null / 数字 / 数组（别的版本、手改、扩展）时当空档，不然 hydrate 读 .symbols 直接白屏
+  try {
+    const v: unknown = JSON.parse(ls()?.getItem(KEY) || '{}')
+    return v != null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
+  } catch { return {} }
 }
 
 const strs = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
