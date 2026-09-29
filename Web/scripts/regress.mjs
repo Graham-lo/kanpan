@@ -581,15 +581,23 @@ async function partAlerts() {
   const live = await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'); const c = s.cells?.[s.active || 0]; return c ? window.__px?.(c.symbol) ?? null : null })
   const dec = (raw.split('.')[1] || '').length, tick = 10 ** -dec, cur = (live != null ? +live.toFixed(dec) : 0) || +raw || last
   const nB = (await state()).alerts.length
-  for (const px of [cur + tick, cur - tick]) {
-    await page.keyboard.press('Alt+KeyA'); await wait(400)
-    await page.fill('#aPrice', px.toFixed(dec)); await page.click('#aOk'); await wait(300)
+  const pxNow = () => page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'); const c = s.cells?.[s.active || 0]; return c ? window.__px?.(c.symbol) ?? null : null })
+  const arm = async px => { await page.keyboard.press('Alt+KeyA'); await wait(400); await page.fill('#aPrice', px.toFixed(dec)); await page.click('#aOk'); await wait(300) }
+  // 两条通过界面放下去要一秒多，BTC 这种一秒能走十几个价位：读价到第二条放好之间价已经跑到两条同一侧时，
+  // 两条都要等价回头才响，30 秒内未必回来（09-30 整轮里见过两次）。所以放完再核一次：价已经跑出去了就在
+  // 它当前那一侧再补一条，直到最新价真的夹在两条之间；之后只要再动一个价位就一定穿过一条
+  let lo = cur - tick, hi = cur + tick, placed = []
+  await arm(hi); await arm(lo); placed.push(hi, lo)
+  for (let tries = 0; tries < 3; tries++) {
+    const p = await pxNow(); if (p == null || (p > lo && p < hi)) break
+    if (p >= hi) { hi = +(p + tick).toFixed(dec); await arm(hi) } else { lo = +(p - tick).toFixed(dec); await arm(lo) }
+    placed.push(p >= hi ? hi : lo)
   }
   const nA = (await state()).alerts.length
   let gone = false
   for (let k = 0; k < 60 && !gone; k++) { await wait(500); gone = (await state()).alerts.length < nA }
   const toastTxt = await page.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.textContent.trim()).join(' | '))
-  ok('价格提醒贴着现价（±1 个价位两条）：逐笔价一穿就响、响完从表里删掉、弹提示', nA === nB + 2 && gone && /已结束/.test(toastTxt), gone ? toastTxt.slice(0, 80) : `30 秒内没响（面板价 ${raw}，逐笔价 ${live} → ${await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'); const c = s.cells?.[s.active || 0]; return c ? window.__px?.(c.symbol) ?? null : null })}，两条 ${(cur + tick).toFixed(dec)} / ${(cur - tick).toFixed(dec)}，提醒 ${nB} → ${nA}）`)
+  ok('价格提醒贴着现价（±1 个价位两条）：逐笔价一穿就响、响完从表里删掉、弹提示', nA === nB + placed.length && gone && /已结束/.test(toastTxt), gone ? toastTxt.slice(0, 80) : `30 秒内没响（面板价 ${raw}，逐笔价 ${live} → ${await pxNow()}，放了 ${placed.map(x => x.toFixed(dec)).join(' / ')}，提醒 ${nB} → ${nA}）`)
   await shot('提醒-触发')
   ok('提醒：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
@@ -801,7 +809,7 @@ async function partAccount() {
   }
   page.off('request', onReq)
   // 故意弄坏令牌、被顶掉时浏览器自己会打一行「401 (Unauthorized)」的资源错误，那是预期的
-  const errs = sectionErrors(e0).filter(x => !/status of 401/.test(x))
+  const errs = sectionErrors(e0).filter(x => !/status of 401|^\[http 401\]/.test(x))
   ok('账号与同步：控制台无报错（故意造的 401 资源错误除外）', errs.length === 0, `401 资源错误 ${sectionErrors(e0).length - errs.length} 条；` + errs.slice(0, 5).join(' | '))
 }
 
@@ -2064,7 +2072,7 @@ async function partDraw() {
     ok('「全部画线」删掉后云端同步成已删' + (kicked ? '（中途被同账号的别的窗口顶掉，重新登录后补推）' : ''), del.every(x => x != null) && (await drawsOf(sym)).every(d => !mine.some(m => m.id === d.id)), del.map(x => x ?? '没到').join(' / '))
   }
   // 回归账号被别的窗口顶掉时浏览器会打「401 (Unauthorized)」的资源错误，那是预期的
-  const errs = sectionErrors(e0).filter(x => !/status of 401/.test(x))
+  const errs = sectionErrors(e0).filter(x => !/status of 401|^\[http 401\]/.test(x))
   ok('画线：控制台无报错（被顶掉的 401 资源错误除外）', errs.length === 0, `401 ${sectionErrors(e0).length - errs.length} 条；` + errs.slice(0, 5).join(' | '))
 }
 
