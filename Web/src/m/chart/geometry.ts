@@ -184,6 +184,18 @@ export function reconcile(view: ViewWindow, old: BarSeries, next: BarSeries, plo
   return new ViewWindow(view.to + (next.lastTime - old.lastTime), view.span)
 }
 
+/**
+ * reconcile 的「原地改」版：BarSeries 在网页里是原地改的，改完就拿不到旧的那一份了，
+ * 所以在 upsert 之前、拿旧 series 与新末根的时间调用（判据与 reconcile 相同）。
+ */
+export function reconcileBeforeUpsert(view: ViewWindow, old: BarSeries, nextLastTime: number, plotW: number, anchor: ViewAnchor = 'right'): ViewWindow {
+  if (old.isEmpty) return view
+  const spacing = view.barSpacing(old.step, plotW)
+  const latest = ViewMath.reset(old, plotW, spacing, anchor)
+  if (!(Math.abs(view.to - latest.to) / view.span * plotW < spacing) || !(nextLastTime > old.lastTime)) return view
+  return new ViewWindow(view.to + (nextLastTime - old.lastTime), view.span)
+}
+
 // ------------------------------------------------------------------ CandleWidths
 
 export interface CandleWidth { body: number; wick: number }
