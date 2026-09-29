@@ -60,7 +60,6 @@ html:not([data-theme="dark"]) .alf-sheet .m-sheet-back, html:not([data-theme="da
 .alf-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: var(--row-min); padding: 0 var(--inset-card) }
 .alf-price-row { padding-top: var(--s-s) }
 .alf-label { font: var(--t-body); color: var(--ink); display: inline-flex; align-items: center; gap: var(--s-xs); white-space: nowrap }
-.alf-value { font: var(--t-body); color: var(--ink3) }
 .alf-well {
   flex: 1; max-width: 230px; display: flex; align-items: center; gap: var(--s-s); height: 40px; padding: 0 var(--s-m);
   border-radius: var(--r-s); background: var(--raised); color: var(--ink3); box-shadow: inset 0 0 0 1px transparent;
@@ -74,11 +73,15 @@ html[data-theme="dark"] .alf-well { background: var(--app) }
 .alf-hint { font: var(--t-caption); color: var(--ink3); min-height: 32px; display: flex; align-items: center; justify-content: flex-start; padding: 0 var(--inset-card) }
 .alf-hook { flex: 1; min-width: 0; border: 0; outline: none; background: none; text-align: right; font: var(--t-body); font-size: 16px; color: var(--ink) }
 .alf-hook::placeholder { color: var(--ink3) }
-.alf-under { display: flex; justify-content: space-between; align-items: center; margin-top: calc(var(--s-xl) * -1 + var(--s-xs)); min-height: 0 }
-.alf-under:has(> [hidden] + [hidden]) { display: none }
-.alf-hook-err { font: var(--t-caption); color: var(--danger) }
-.alf-test { font: var(--t-caption); color: var(--accent); min-height: 32px; margin-left: auto }
-.alf-hook-err[hidden], .alf-test[hidden] { display: none }
+.alf-under { display: flex; justify-content: flex-end; align-items: center; margin-top: calc(var(--s-xl) * -1 + var(--s-xs)) }
+.alf-under[hidden] { display: none }
+.alf-test { font: var(--t-caption); color: var(--accent); min-height: 32px }
+.alf-test:disabled { color: var(--ink3) }
+/* 条件两段分段：槽取页面底色（和价格输入井同一个底），照 iOS PanelSegment(track: AlertPageStyle.background) */
+.alf-sheet .m-seg { display: inline-flex; align-items: center; height: 32px; padding: 2px; border-radius: 8px; background: var(--raised); flex: none }
+html[data-theme="dark"] .alf-sheet .m-seg { background: var(--app) }
+.alf-sheet .m-seg-opt { height: 28px; padding: 0 var(--s-m); border-radius: 6px; font: var(--t-control); color: var(--ink2); white-space: nowrap; transition: background var(--dur-fast) var(--ease-out) }
+.alf-sheet .m-seg-opt.on { background: var(--seg-on); color: var(--ink); font: var(--t-control-on); box-shadow: 0 1px 2px rgba(0,0,0,.09) }
 .alf-submit { height: 48px; border-radius: 24px; font: var(--t-title); background: var(--accent); color: var(--badge-ink) }
 .alf-submit:disabled { background: var(--raised2); color: var(--ink3) }
 html[data-theme="dark"] .alf-submit:disabled { background: var(--raised2) }

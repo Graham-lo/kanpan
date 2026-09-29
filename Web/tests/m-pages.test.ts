@@ -149,6 +149,59 @@ describe('手机网页版 · 提醒', () => {
     expect(al.activeAlerts()).toEqual([])
     expect(a.status).toBe('fired')
   })
+  it('收盘穿过：盘中插针不算，等这一分钟收了、前后两根收盘价分在线两侧才响（照 iOS AlertEvaluator）', () => {
+    al.useStore(mem())
+    const M = al.BUCKET_MS
+    const a = al.addPriceAlert('BTCUSDT', 101000, 100000, 1, null, 10 * M, 'close')!
+    expect(a.condition).toBe('close')
+    expect(al.recordMeta(a)).toBe('收盘穿过')
+    const fired: number[] = []
+    const off = al.onAlertFired(f => fired.push(f.price))
+    al.checkPrice('BTCUSDT', 100500, 10 * M + 1)
+    al.checkPrice('BTCUSDT', 101500, 10 * M + 20_000) // 盘中穿上去
+    al.checkPrice('BTCUSDT', 100800, 10 * M + 50_000) // 又收回来
+    al.checkPrice('BTCUSDT', 101200, 11 * M + 1)      // 第 10 根收在 100800：没有上一根，不判
+    al.checkPrice('BTCUSDT', 100900, 11 * M + 40_000)
+    expect(fired).toEqual([])
+    al.checkPrice('BTCUSDT', 101100, 12 * M + 1)      // 第 11 根收在 100900，和 100800 同侧
+    expect(fired).toEqual([])
+    al.checkPrice('BTCUSDT', 100950, 13 * M + 1)      // 第 12 根收在 101100 ⇒ 穿过
+    off()
+    expect(fired).toEqual([101100])
+    expect(a.status).toBe('fired')
+  })
+  it('收盘穿过：断线超过 5 根不拿旧收盘价比；正好收在线上算穿、从线上走开不算', () => {
+    al.useStore(mem())
+    const M = al.BUCKET_MS
+    al.addPriceAlert('ETHUSDT', 4000, 3900, 2, null, 0, 'close')
+    const fired: number[] = []
+    const off = al.onAlertFired(f => fired.push(f.price))
+    al.checkPrice('ETHUSDT', 3950, 20 * M)
+    al.checkPrice('ETHUSDT', 4050, 30 * M)  // 断了 10 根
+    al.checkPrice('ETHUSDT', 4060, 31 * M)  // 第 30 根收了，但上一根作废
+    expect(fired).toEqual([])
+    off()
+    expect(al.crosses(3990, 4000, 4000)).toBe(true)
+    expect(al.crosses(4000, 4010, 4000)).toBe(false)
+    expect(al.crosses(4010, 3990, 4000)).toBe(true)
+  })
+  it('价格达到的提醒不走收盘那一套；编辑能换条件', () => {
+    al.useStore(mem())
+    const M = al.BUCKET_MS
+    const a = al.addPriceAlert('BTCUSDT', 101000, 100000, 1, null, 0)!
+    expect(al.recordMeta(a)).toBe('价格达到')
+    al.updatePriceAlert(a.id, 102000, 100000, 1, null, 5, 'close')
+    expect(al.activeAlerts()[0].condition).toBe('close')
+    const fired: number[] = []
+    const off = al.onAlertFired(f => fired.push(f.price))
+    al.checkPrice('BTCUSDT', 101000, M)
+    al.checkPrice('BTCUSDT', 102500, M + 10)   // 盘中碰到，但已是收盘穿过
+    expect(fired).toEqual([])
+    al.checkPrice('BTCUSDT', 102500, 2 * M)
+    al.checkPrice('BTCUSDT', 102500, 3 * M)    // 第 1 根收 102500，没有上一根；第 2 根收 102500 同侧
+    off()
+    expect(fired).toEqual([])
+  })
   it('落盘后换个实例读回来；全部预警分价格 / 画线两类、按品种分组', () => {
     const s = mem()
     al.useStore(s)

@@ -4,11 +4,13 @@
  * 表先存在本机 localStorage「hkline-m-alerts-v1」；等 m/app/store 加上 alerts 字段并接同步，
  * 这里的 load / persist 换成读写 st.alerts 即可，其余不动。
  *
- * 规矩：只响一次（响完就删，没有重复提醒）；手机端只建「价格达到」这一种。
+ * 规矩：只响一次（响完就删，没有重复提醒）；条件两种：价格达到（盘中碰到就响）、收盘穿过
+ * （照 iOS AlertEngine：一口一口的价折成 1 分钟桶，桶收了、前后两根收盘价分在线两侧才响）。
  */
-import { alertLevel, makePriceAlert, migrateAlert, priceLabel, touchedBetween, baseOf, type Alert } from '../../alerts/shape'
+import { alertLevel, conditionLabel, makePriceAlert, migrateAlert, priceLabel, touchedBetween, baseOf, type Alert } from '../../alerts/shape'
 import { grouped } from './rowText'
 export type { Alert } from '../../alerts/shape'
+export type Condition = Alert['condition']
 
 export const ALERTS_KEY = 'hkline-m-alerts-v1'
 
@@ -18,7 +20,7 @@ function kv(): KV | null { try { return (globalThis as { localStorage?: KV }).lo
 let table: Alert[] | null = null
 let store: KV | null | undefined
 /** 测试用：换一个存储（并清掉内存里的表） */
-export function useStore(s: KV | null): void { store = s; table = null; lastPx.clear() }
+export function useStore(s: KV | null): void { store = s; table = null; lastPx.clear(); buckets.clear() }
 const backing = (): KV | null => store === undefined ? kv() : store
 
 function all(): Alert[] {
@@ -41,18 +43,20 @@ export const liveCount = (): number => activeAlerts().length
 /** 有提醒挂着的品种（常驻监听要订它们的 ticker） */
 export const watchedSymbols = (): string[] => [...new Set(activeAlerts().filter(a => a.kind === 'price' || a.kind === 'drawing').map(a => a.symbol))]
 
-export function addPriceAlert(symbol: string, target: number, current: number | null, dec?: number, webhook?: string | null, now = Date.now()): Alert | null {
+export function addPriceAlert(symbol: string, target: number, current: number | null, dec?: number, webhook?: string | null, now = Date.now(), condition: Condition = 'touch'): Alert | null {
   if (!symbol || !(target > 0) || !isFinite(target)) return null
   const a = makePriceAlert(symbol, target, current, { now, dec, webhook })
+  a.condition = condition
   all().push(a); changed()
   return a
 }
 /** 编辑一条价格提醒（「当前提醒」里点进去改价 / 改 Webhook）：id、建立时间不变，重新从此刻起算 */
-export function updatePriceAlert(id: string, target: number, current: number | null, dec?: number, webhook?: string | null, now = Date.now()): Alert | null {
+export function updatePriceAlert(id: string, target: number, current: number | null, dec?: number, webhook?: string | null, now = Date.now(), condition?: Condition): Alert | null {
   const a = all().find(x => x.id === id && x.kind === 'price' && x.status === 'active')
   if (!a || !(target > 0) || !isFinite(target)) return null
   const next = makePriceAlert(a.symbol, target, current, { now, dec, webhook })
   a.lines = next.lines; a.title = next.title; a.webhook = next.webhook; a.armedAt = now
+  if (condition) a.condition = condition
   changed()
   return a
 }
@@ -84,17 +88,45 @@ export function fire(a: Alert, price: number, level: number | null, now = Date.n
 }
 
 const lastPx = new Map<string, { p: number; t: number }>()
-/** 一笔新价进来：这只品种上的价格 / 画线提醒碰到了就响（提醒建之前看到的价不算） */
+/** 收盘穿过用的 1 分钟桶（照 iOS AlertEngine.Bucket）：正在长的这一分钟的收盘价 + 上一根已收的收盘价 */
+interface Bucket { open: number; close: number; prevClose: number | null }
+const buckets = new Map<string, Bucket>()
+export const BUCKET_MS = 60_000
+/** 中间空过这么多个桶就不再把手上那口价当「上一根的收盘」（断过线 / 切过后台） */
+const STALE_BUCKETS = 5
+/** 上一根收在线的某一侧，这一根收到另一侧或正好收在线上（上一根就在线上不算，照 AlertEvaluator.crosses） */
+export const crosses = (prev: number, close: number, line: number): boolean =>
+  (prev < line && close >= line) || (prev > line && close <= line)
+
+/** 一笔新价进来：价格达到——碰到就响；收盘穿过——等这一分钟收了再判（提醒建之前开盘的那根不算） */
 export function checkPrice(symbol: string, price: number | null | undefined, now = Date.now()): void {
   if (price == null || !isFinite(price) || price <= 0) return
   const prev = lastPx.get(symbol)
   lastPx.set(symbol, { p: price, t: now })
+  closeBuckets(symbol, price, now)
   if (!prev) return
   for (const a of activeAlerts(symbol)) {
     if (prev.t < a.armedAt) continue
     const lv = touchedBetween(a, prev.p, price, now)
     if (lv != null) fire(a, price, lv, now)
   }
+}
+function closeBuckets(symbol: string, price: number, now: number): void {
+  const open = now - now % BUCKET_MS
+  const b = buckets.get(symbol)
+  if (!b) { buckets.set(symbol, { open, close: price, prevClose: null }); return }
+  if (open === b.open) { b.close = price; return }
+  if (open < b.open) return // 乱序
+  // 桶换了 ⇒ 上一根收了：先拿收了的那根判，再开新桶（顺序反了就是拿这一根和自己比）
+  if (b.prevClose != null) {
+    for (const a of activeAlerts(symbol)) {
+      if (a.condition !== 'close' || (a.kind !== 'price' && a.kind !== 'drawing') || b.open < a.armedAt) continue
+      const lv = alertLevel(a, b.open)
+      if (lv != null && isFinite(lv) && crosses(b.prevClose, b.close, lv)) fire(a, b.close, lv, now)
+    }
+  }
+  const gap = (open - b.open) / BUCKET_MS
+  buckets.set(symbol, { open, close: price, prevClose: gap <= STALE_BUCKETS ? b.close : null })
 }
 
 /** Webhook 那份 JSON（字段和服务端 webhook_body 一一对应，照 PC alerts/model.ts） */
@@ -131,8 +163,10 @@ export function sections(): AlertSection[] {
     { id: 'drawing', title: '画线提醒', groups: groupBySymbol(drawing), count: drawing.length },
   ]
 }
-/** 创建提醒页底下那张表：只列这只品种还没触发的价格提醒 */
-export const records = (symbol: string): Alert[] => activeAlerts(symbol).filter(a => a.kind === 'price')
+/** 创建提醒页底下那张表：只列这只品种还没触发的价格与画线提醒（价格提醒点进去能改，画线提醒去图上拖线） */
+export const records = (symbol: string): Alert[] => activeAlerts(symbol).filter(a => a.kind === 'price' || a.kind === 'drawing')
+/** 行上第二行：这条提醒的条件（价格达到 / 收盘穿过） */
+export const recordMeta = (a: Alert): string => conditionLabel(a.condition)
 
 /** 行上的标题：价格提醒写价位（带千分位），画线提醒写线名 */
 export function recordTitle(a: Alert, withSymbol = false): string {

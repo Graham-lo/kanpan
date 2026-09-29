@@ -19,7 +19,7 @@ import { esc } from '../model/rowText'
 import { badgeHTML } from '../model/badge'
 import { factsOf, splitSymbol } from '../model/rowHTML'
 import {
-  deleteAlert, onAlertFired, onAlertsChange, recordTitle, restoreAlert, sections, watchedSymbols, checkPrice, webhookBody,
+  deleteAlert, onAlertFired, onAlertsChange, recordMeta, recordTitle, restoreAlert, sections, watchedSymbols, checkPrice, webhookBody,
   type Alert,
 } from '../model/alerts'
 import { hooks } from '../app/shell'
@@ -40,7 +40,7 @@ export const pairName = (symbol: string): string => {
 
 /** 一行提醒（圆点 + 价位 + 价格达到 + 删除） */
 export function recordRowHTML(a: Alert, opts: { withSymbol?: boolean; divider?: boolean } = {}): string {
-  const meta = a.kind === 'price' || a.kind === 'drawing' ? '价格达到' : '条件提醒'
+  const meta = a.kind === 'price' || a.kind === 'drawing' ? recordMeta(a) : '条件提醒'
   return `<div class="alr${opts.divider === false ? ' last' : ''}" data-id="${esc(a.id)}">
     <button type="button" class="alr-main" data-open="${esc(a.id)}">
       <i class="alr-dot" aria-hidden="true"></i>

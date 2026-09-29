@@ -4,11 +4,13 @@
  * 分组卡片一种语言到底：
  *   品种卡（不可编辑）：徽章 + BTC/USDT + 币安 · USDT 永续，右侧现价与涨跌幅（涨跌色）。
  *   条件卡：「价格」输入井（铅笔记号、数字右对齐、后缀计价币）+ 提示行（现价 X · 高于 / 低于现价 N%）
- *           + 发丝线 +「条件 ?」价格达到。没有 ±% 快捷。
- *   通知卡：「Webhook ?」只填地址（https://），填了下面右侧出现「发一条测试」。
+ *           + 发丝线 +「条件 ?」两段分段「价格达到 | 收盘穿过」（槽取页面底色，和输入井同一个底）。没有 ±% 快捷。
+ *   通知卡：「Webhook ?」只填地址（https://），没有单独的开关——填了就发、空着就不发（iOS 2026-09-28 收设置项 E 组去掉了开关）；
+ *           框里有字时下面靠右一颗「发一条测试」，地址不合法时灰着点不了（不另写错误字）。
  *   主按钮「创建提醒」（胶囊 48 高；不能交时换中性底 + ink3 字，不整块降透明度）。
- *   「当前提醒 N」：只列这只品种还没触发的价格提醒，点一条进「编辑提醒」（同一页，按钮「保存」），行上删除 icon。
+ *   「当前提醒 N」：列这只品种还没触发的价格与画线提醒，价格提醒点一条进「编辑提醒」（同一页，按钮「保存」），行上删除 icon。
  * 没有备注、没有重复提醒（只响一次）。建完请求一次通知权限。
+ * 条件提醒（资金费率 / 持仓量 / 均线 / 大单墙）iOS 只在登录 + 币安 U 本位时由服务端判，网页版暂不摆。
  */
 import '../styles/alerts.css'
 import { S, on, streamName } from '../../market'
@@ -22,15 +24,17 @@ import { esc, priceText, changePercentText, fmtPrice, priceDecimalsFallback } fr
 import { hintText, parseTarget } from '../model/formText'
 import { badgeHTML } from '../model/badge'
 import { factsOf, splitSymbol } from '../model/rowHTML'
-import { addPriceAlert, onAlertsChange, records, updatePriceAlert, webhookBody, type Alert } from '../model/alerts'
+import { addPriceAlert, onAlertsChange, records, updatePriceAlert, webhookBody, type Alert, type Condition } from '../model/alerts'
 import { openSymbol } from '../app/shell'
 import { askNotifyPermission, buildAlertList, deleteWithUndo, pairName, recordRowHTML, startAlertWatcher, venueLine } from './alerts'
 import { wantStreams } from './_streams'
 
 registerTerms([
-  { id: 'alertCondition', title: '价格达到', body: '价格达到：盘中价格一碰到就响。\n只响一次，响完这条提醒就结束。' },
+  { id: 'alertCondition', title: '条件', body: '价格达到：盘中价格一碰到就响。\n收盘穿过：要等 K 线收盘、收盘价越过这个价才响，盘中来回插针不算。' },
   { id: 'webhook', title: 'Webhook', body: '触发时向这个地址发一条 JSON，里面是一句提醒文字，格式由我们定好。\n可以接到自己的机器人或群里；点「发一条测试」先试一下。' },
 ])
+
+const CONDITIONS: readonly [Condition, string][] = [['touch', '价格达到'], ['close', '收盘穿过']]
 
 const PENCIL = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
 
@@ -67,6 +71,7 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
     const { quote } = splitSymbol(sym)
     const dec = s0?.dec
     const start = existing ? alertLevel(existing) : preset
+    let cond: Condition = existing?.condition ?? 'touch'
     const startText = start != null && start > 0 ? fmtPrice(start, dec ?? priceDecimalsFallback(start)) : ''
     const form = el('div', 'alf-form')
     form.dataset.title = existing ? '编辑提醒' : '创建提醒'
@@ -82,13 +87,13 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
         </label>
         <div class="alf-hint num"></div>
         <div class="al-div"></div>
-        <div class="alf-row"><span class="alf-label">条件${termHTML('alertCondition')}</span><span class="alf-value">价格达到</span></div>
+        <div class="alf-row alf-cond-row"><span class="alf-label">条件${termHTML('alertCondition')}</span><div class="m-seg" role="radiogroup" aria-label="条件">${CONDITIONS.map(([v, t]) => `<button type="button" class="m-seg-opt${v === cond ? ' on' : ''}" role="radio" aria-checked="${v === cond}" data-v="${v}">${t}</button>`).join('')}</div></div>
       </div>
       <div class="al-card alf-notify">
         <label class="alf-row"><span class="alf-label">Webhook${termHTML('webhook')}</span>
           <input class="alf-hook" type="url" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://" aria-label="Webhook 地址" value="${esc(existing?.webhook ?? '')}"></label>
       </div>
-      <div class="alf-under"><span class="alf-hook-err" hidden>地址要以 http:// 或 https:// 开头</span><button type="button" class="alf-test" hidden>发一条测试</button></div>
+      <div class="alf-under" hidden><button type="button" class="alf-test">发一条测试</button></div>
       <button type="button" class="alf-submit">${existing ? '保存' : '创建提醒'}</button>
       <div class="alf-records"></div>`
     host.appendChild(form)
@@ -97,7 +102,8 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
     const hook = form.querySelector<HTMLInputElement>('.alf-hook')!
     const hint = form.querySelector<HTMLElement>('.alf-hint')!
     const test = form.querySelector<HTMLButtonElement>('.alf-test')!
-    const hookErr = form.querySelector<HTMLElement>('.alf-hook-err')!
+    const under = form.querySelector<HTMLElement>('.alf-under')!
+    const seg = form.querySelector<HTMLElement>('.m-seg')!
     const submit = form.querySelector<HTMLButtonElement>('.alf-submit')!
     const recHost = form.querySelector<HTMLElement>('.alf-records')!
     const pxEl = form.querySelector<HTMLElement>('.alf-px')!
@@ -121,8 +127,8 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
       paintQuote()
       const hv = hook.value.trim()
       const hookOk = validWebhook(hook.value)
-      hookErr.hidden = hookOk || !hv
-      test.hidden = !hv || !hookOk
+      under.hidden = !hv
+      test.disabled = !hookOk || testing
       test.textContent = testing ? '发送中…' : '发一条测试'
       submit.disabled = !ready()
     }
@@ -137,6 +143,12 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
     input.addEventListener('input', paint)
     input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur() })
     hook.addEventListener('input', paint)
+    seg.addEventListener('click', e => {
+      const opt = (e.target as HTMLElement).closest<HTMLElement>('.m-seg-opt')
+      if (!opt || opt.dataset.v === cond) return
+      cond = opt.dataset.v as Condition
+      seg.querySelectorAll<HTMLElement>('.m-seg-opt').forEach(b => { const on = b.dataset.v === cond; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)) })
+    })
     hook.addEventListener('keydown', e => { if (e.key === 'Enter') hook.blur() })
     test.onclick = () => {
       const url = cleanWebhook(hook.value)
@@ -159,8 +171,8 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
       input.blur(); hook.blur()
       const q = now()
       const a = existing
-        ? updatePriceAlert(existing.id, target, q.price, dec, hook.value)
-        : addPriceAlert(sym, target, q.price, dec, hook.value)
+        ? updatePriceAlert(existing.id, target, q.price, dec, hook.value, Date.now(), cond)
+        : addPriceAlert(sym, target, q.price, dec, hook.value, Date.now(), cond)
       if (!a) { toast('没建成，再试一次'); return }
       if (!existing) askNotifyPermission()
       if (existing) { sh.back(); return }
@@ -173,7 +185,7 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
       const open = t.closest<HTMLElement>('[data-open]')
       if (!open) return
       const a = records(sym).find(x => x.id === open.dataset.open)
-      if (!a) return
+      if (!a || a.kind !== 'price') return
       sh.push('编辑提醒', b => { b.classList.add('alf-body'); offs.push(buildForm(b, sh, sym, a, null)) })
     })
     const offMarket = on(e => { if (e.type === 'ticker' && e.symbol === sym) paintQuote() })
