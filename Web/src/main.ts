@@ -11,6 +11,8 @@ import { initSectors } from './pages/sectors'
 import { initReview } from './pages/review'
 import { initMe } from './pages/me'
 import { initProto } from './pages/proto'
+import { resume } from './account/client'
+import { initSync } from './sync/glue'
 
 // 地址栏参数（截图、分享链接用）：?s=ETHUSDT&i=4h&theme=dark&skin=terra&layout=4&panel=alerts
 function applyQuery(): void {
@@ -31,6 +33,7 @@ function applyQuery(): void {
 applyQuery()
 applyTheme()
 hydrateIcons()
+resume()
 renderHeader()
 installShell()
 installTooltips()
@@ -38,6 +41,7 @@ setRoute(st.route)
 initSectors()
 initReview()
 initMe()
+initSync()
 initProto()
 go(location.hash.slice(1) || 'chart')
 void initChart()

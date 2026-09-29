@@ -1,18 +1,123 @@
-/* Hkline Web · 我的：外观、通用（行情线路）、通知、关于；账号 / 交易所 / 设备等登录接入后再开 */
+/* Hkline Web · 我的：账号（登录 / 注册 / 改密码 / 退出）、设备、外观、通用（行情线路）、通知、关于 */
 import { st, save } from '../app/store'
-import { hooks, applyTheme } from '../app/shell'
+import { hooks, applyTheme, renderHeader } from '../app/shell'
 import { $, I, esc, tgt } from '../ui/dom'
 import { toast } from '../ui/overlay'
 import { setRoute } from '../market'
-import { session } from '../account/session'
+import { session, onSession } from '../account/session'
+import { login, logout, devices, kick, changePassword, errorText, type DeviceRow } from '../account/client'
+import { sh, pad } from '../util/format'
 import { openShortcuts } from './chart'
+import '../styles/account.css'
 
 const ME: [string, string, string][] = [['account', 'user', '账号'], ['exchange', 'key', '交易所账号'], ['notify', 'bell', '通知'], ['look', 'palette', '外观'], ['general', 'gear', '通用'], ['devices', 'device', '设备'], ['about', 'info', '关于']]
 const VERSION = '0.1.0'
 
 const row = (t: string, d: string, ctl: string): string => `<div class="row"><div class="rl"><div class="t">${t}</div>${d ? `<div class="d">${d}</div>` : ''}</div>${ctl}</div>`
 const seg = (k: string, v: string, opts: [string, string][]): string => `<div class="seg" role="group">${opts.map(([x, l]) => `<button data-seg="${k}" data-v="${x}" aria-pressed="${v === x}">${l}</button>`).join('')}</div>`
-const later = (title: string, lede: string): string => `<h2>${title}</h2><p class="lede">${lede}</p><div class="group"><div class="empty" style="padding:32px 16px">${I('user', 'icon-24')}<div>网页版登录下一阶段接入</div></div></div>`
+const later = (title: string, lede: string): string => `<h2>${title}</h2><p class="lede">${lede}</p><div class="group"><div class="empty" style="padding:32px 16px">${I('key', 'icon-24')}<div>下一阶段接入</div></div></div>`
+
+// ───────── 账号 ─────────
+
+const KIND_CN: Record<string, string> = { desktop: '电脑', phone: '手机', tablet: '平板' }
+let authMode: 'login' | 'register' = 'login'
+let busy = false
+/** 设备列表：null 表示还没拉（进「设备」时拉一次） */
+let devs: { rows: DeviceRow[] | null; err: string } = { rows: null, err: '' }
+
+function when(t: number): string {
+  if (!t) return ''
+  const d = sh(t), today = sh(Date.now())
+  const hm = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+  if (d.getUTCFullYear() === today.getUTCFullYear() && d.getUTCMonth() === today.getUTCMonth() && d.getUTCDate() === today.getUTCDate()) return '今天 ' + hm
+  const md = `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+  return (d.getUTCFullYear() === today.getUTCFullYear() ? md : `${d.getUTCFullYear()}-${md}`) + ' ' + hm
+}
+
+function accountHTML(): string {
+  const u = session.user
+  if (!u) {
+    const reg = authMode === 'register'
+    return `<h2>账号</h2><p class="lede">登录后自选、画线、提醒、指标参数和手机同步。</p>
+      ${session.notice ? `<div class="acct-notice">${I('info', 'icon-16')}<span>${esc(session.notice)}</span></div>` : ''}
+      <form class="group acct-card" id="acctForm" novalidate>
+        <div class="seg fill" role="group">${(['login', 'register'] as const).map(m => `<button type="button" data-auth="${m}" aria-pressed="${authMode === m}">${m === 'login' ? '登录' : '注册'}</button>`).join('')}</div>
+        <div class="field"><label for="acctUser">用户名</label><input class="input lg" id="acctUser" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="32" ${reg ? 'placeholder="小写字母、数字、下划线"' : ''}></div>
+        <div class="field"><label for="acctPass">密码</label><input class="input lg" id="acctPass" name="password" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" ${reg ? 'placeholder="至少 8 位，字母加数字"' : ''}></div>
+        <div class="err" id="acctErr" role="alert"></div>
+        <button class="btn primary lg" type="submit" id="acctGo">${reg ? '注册并登录' : '登录'}</button>
+      </form>`
+  }
+  return `<h2>账号</h2><p class="lede">自选、画线、提醒、指标参数和手机同步。</p>
+    <div class="group">${row('用户名', '', `<span class="acct-name">${esc(u)}</span>`)}${row('退出登录', '这台电脑上的自选、画线、提醒都留着', '<button class="btn secondary sm" id="acctLogout">退出</button>')}</div>
+    <div class="group-title">修改密码</div>
+    <form class="group acct-card" id="pwForm" novalidate>
+      <input type="text" name="username" autocomplete="username" value="${esc(u)}" hidden>
+      <div class="field"><label for="pwCur">当前密码</label><input class="input lg" id="pwCur" type="password" autocomplete="current-password"></div>
+      <div class="field"><label for="pwNew">新密码</label><input class="input lg" id="pwNew" type="password" autocomplete="new-password" placeholder="至少 8 位，字母加数字"></div>
+      <div class="err" id="pwErr" role="alert"></div>
+      <button class="btn secondary lg" type="submit" id="pwGo">修改密码</button>
+    </form>`
+}
+
+function devicesHTML(): string {
+  const head = '<h2>设备</h2><p class="lede">手机、平板、电脑各一台同时在线，同类设备登录会把前一台顶下去。</p>'
+  if (!session.user) return head + `<div class="group"><div class="empty" style="padding:32px 16px">${I('device', 'icon-24')}<div>登录后能看到这个账号在哪些设备上登录</div><button class="btn primary sm" style="margin-top:12px" data-me="account">去登录</button></div></div>`
+  if (!devs.rows) {
+    if (!devs.err) void loadDevices()
+    return head + `<div class="group">${devs.err ? `<div class="empty" style="padding:32px 16px"><div>${esc(devs.err)}</div><button class="btn secondary sm" style="margin-top:12px" id="devRetry">重试</button></div>` : '<div class="empty" style="padding:32px 16px">正在读取…</div>'}</div>`
+  }
+  const rows = [...devs.rows].sort((a, b) => Number(b.current) - Number(a.current) || b.lastSeen - a.lastSeen)
+  return head + `<div class="group">${rows.map(d => row(
+    `${esc(d.name || KIND_CN[d.kind] || '设备')}${d.current ? ' <span class="tag accent">这台</span>' : ''}`,
+    `${KIND_CN[d.kind] ?? '设备'} · ${d.current ? '正在用' : '最近 ' + when(d.lastSeen)}`,
+    d.current ? '' : `<button class="btn secondary sm" data-kick="${esc(d.id)}">下线</button>`,
+  )).join('') || '<div class="empty">没有登录中的设备</div>'}</div>`
+}
+
+async function loadDevices(): Promise<void> {
+  try { devs = { rows: await devices(), err: '' } } catch (e) { devs = { rows: null, err: errorText(e) } }
+  if (st.page === 'me' && st.meSection === 'devices') render()
+}
+
+function setErr(id: string, text: string): void { const el = document.getElementById(id); if (el) el.textContent = text }
+function val(id: string): string { return (document.getElementById(id) as HTMLInputElement | null)?.value ?? '' }
+
+async function submitAuth(): Promise<void> {
+  if (busy) return
+  const u = val('acctUser').trim(), p = val('acctPass')
+  if (!u || !p) { setErr('acctErr', '用户名和密码都要填'); return }
+  busy = true
+  const btn = document.getElementById('acctGo') as HTMLButtonElement | null
+  if (btn) btn.disabled = true
+  try {
+    await login(u, p, authMode === 'register')
+    devs = { rows: null, err: '' }
+    toast(authMode === 'register' ? '注册好了' : '已登录', '自选、画线、提醒开始和手机同步', 'check', 2400)
+  } catch (e) {
+    setErr('acctErr', errorText(e, authMode))
+    if (btn) btn.disabled = false
+  } finally { busy = false }
+}
+
+async function submitPassword(): Promise<void> {
+  if (busy) return
+  const cur = val('pwCur'), next = val('pwNew')
+  if (!cur || !next) { setErr('pwErr', '两个都要填'); return }
+  if (cur === next) { setErr('pwErr', '新密码和当前密码一样'); return }
+  busy = true
+  const btn = document.getElementById('pwGo') as HTMLButtonElement | null
+  if (btn) btn.disabled = true
+  try {
+    await changePassword(cur, next)
+    devs = { rows: null, err: '' }
+    toast('密码已修改', '其它设备已下线', 'check', 3000)
+    render()
+  } catch (e) {
+    setErr('pwErr', errorText(e, 'password'))
+    if (btn) btn.disabled = false
+  } finally { busy = false }
+}
 
 function notifText(): string {
   if (!('Notification' in window)) return '这个浏览器不支持'
@@ -22,12 +127,12 @@ function notifText(): string {
 function render(): void {
   if (!ME.some(m => m[0] === st.meSection)) st.meSection = 'look'
   const u = session.user
-  $('#meNav').innerHTML = `<div class="who"><span class="avatar ${u ? '' : 'out'}">${u ? esc(u[0].toUpperCase()) : I('user', 'icon-16')}</span><div><div style="font-weight:600">${u ? esc(u) : '未登录'}</div><div class="muted" style="font-size:12px;line-height:16px">${u ? '这台电脑 · 在线' : '自选、画线、提醒存在这台电脑上'}</div></div></div>
+  $('#meNav').innerHTML = `<div class="who"><span class="avatar ${u ? '' : 'out'}">${u ? esc(u[0].toUpperCase()) : I('user', 'icon-16')}</span><div><div style="font-weight:600">${u ? esc(u) : '未登录'}</div><div class="muted" style="font-size:12px;line-height:16px">${u ? '已登录' : '自选、画线、提醒存在这台电脑上'}</div></div></div>
     ${ME.map(([k, ic, l]) => `<a href="#me" data-me="${k}" ${st.meSection === k ? 'aria-current="page"' : ''}>${I(ic)}${l}</a>`).join('')}`
   const body: Record<string, () => string> = {
-    account: () => later('账号', '登录后自选、画线、提醒、指标参数跟着账号走，手机和电脑之间同步；服务器断了本机照常能用。'),
+    account: accountHTML,
     exchange: () => later('交易所账号', '只读密钥，只用来拉成交做复盘。不能下单、不能提币。'),
-    devices: () => later('设备', '每一类设备同时只能有一台在线：手机、平板、电脑各一台。'),
+    devices: devicesHTML,
     notify: () => `<h2>通知</h2><p class="lede">提醒响一次就结束。这个网页开着时弹浏览器通知。</p>
       <div class="group">${row('浏览器通知', notifText(), 'Notification' in window && Notification.permission === 'default' ? '<button class="btn secondary sm" id="meNotif">允许</button>' : '')}</div>`,
     look: () => `<h2>外观</h2><p class="lede">跟手机端分开记，这台电脑自己的选择。</p>
@@ -42,7 +147,7 @@ function render(): void {
 export function initMe(): void {
   $('#page-me').addEventListener('click', e => {
     const t = tgt(e)
-    const a = t.closest<HTMLElement>('[data-me]'); if (a) { e.preventDefault(); st.meSection = a.dataset.me || 'look'; save(); render(); return }
+    const a = t.closest<HTMLElement>('[data-me]'); if (a) { e.preventDefault(); st.meSection = a.dataset.me || 'look'; if (st.meSection === 'devices') devs = { rows: null, err: '' }; save(); render(); return }
     const sg = t.closest<HTMLElement>('[data-seg]')
     if (sg) {
       const k = sg.dataset.seg, v = sg.dataset.v || ''
@@ -54,9 +159,32 @@ export function initMe(): void {
       if (k === 'theme' || k === 'updown' || k === 'skin') applyTheme()
       render(); return
     }
+    const au = t.closest<HTMLElement>('[data-auth]')
+    if (au) { authMode = au.dataset.auth === 'register' ? 'register' : 'login'; const keep = val('acctUser'); render(); const el = document.getElementById('acctUser') as HTMLInputElement | null; if (el) { el.value = keep; (keep ? document.getElementById('acctPass') : el)?.focus() } return }
+    if (t.closest('#acctLogout')) { logout(); devs = { rows: null, err: '' }; toast('已退出', '这台电脑上的数据都留着', 'logout', 2000); return }
+    if (t.closest('#devRetry')) { devs = { rows: null, err: '' }; render(); return }
+    const kb = t.closest<HTMLButtonElement>('[data-kick]')
+    if (kb) {
+      kb.disabled = true
+      void kick(kb.dataset.kick || '').then(() => { toast('已让那台设备下线', '', 'check', 2000); devs = { rows: null, err: '' }; render() })
+        .catch(err => { kb.disabled = false; toast('没能下线', errorText(err), 'info', 3000) })
+      return
+    }
     if (t.closest('#meKeys')) { openShortcuts(); return }
     if (t.closest('#meNotif')) void Notification.requestPermission().then(render)
   })
-  hooks.pageShown.me = render
+  $('#page-me').addEventListener('submit', e => {
+    const f = e.target as HTMLElement
+    if (f.id === 'acctForm') { e.preventDefault(); void submitAuth() }
+    else if (f.id === 'pwForm') { e.preventDefault(); void submitPassword() }
+  })
+  // 登录 / 退出 / 被另一台电脑顶掉：头像、我的页跟着变；不在「我的」时弹一句
+  onSession(() => {
+    renderHeader()
+    devs = { rows: null, err: '' }
+    if (st.page === 'me') render()
+    else if (session.notice) toast(session.notice, '到「我的」重新登录', 'user', 6000)
+  })
+  hooks.pageShown.me = () => { if (st.meSection === 'devices') devs = { rows: null, err: '' }; render() }
   hooks.onTheme.push(() => { if (st.page === 'me') render() })
 }
