@@ -4,13 +4,20 @@
  * `subscribe(fn)` 返回取消函数。字段分三块：
  *   - Prefs（与 iOS Prefs.swift 同名同义，见 ./prefs.ts；其中 SYNCED_FIELDS 进账号同步）
  *   - 自选（iOS SymbolPrefs：favorites 顺序、分组、最近打开）
+ *   - 提醒表（形状共用 Web/src/alerts/shape.ts，与手机、服务端同步的 alerts 对象一字不差；
+ *     读写经 m/model/alerts.ts，响一次就删）
  *   - 现场（当前页、品种、各页滚动位置）：随时落盘，冷启动恢复到原地
+ *
+ * Prefs、自选、提醒登录后经 ./sync.ts 与账号同步；本机这份永远完整，云端只是通道。
  *
  * 首帧前的皮肤由 m/index.html 的内联脚本按同一个键套上（theme / skin / redUp 三个字段）。
  */
-import { defaultPrefs, normalizePrefs, type Prefs } from './prefs'
+import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, type LayoutGroup, type Prefs } from './prefs'
+import { migrateAlert, type Alert } from '../../alerts/shape'
 
 export const KEY = 'hkline-m-v1'
+/** 提醒表并进 st 之前单独存的键（m/model/alerts.ts 早先用的）：第一次读档时搬进来，之后不再写 */
+export const LEGACY_ALERTS_KEY = 'hkline-m-alerts-v1'
 
 export type PageId = 'chart' | 'favorites' | 'sectors' | 'me'
 export const PAGES: readonly PageId[] = ['chart', 'favorites', 'sectors', 'me']
@@ -37,6 +44,8 @@ export interface State extends Prefs {
   /** 各页滚动位置（px），冷启动恢复。键是页 id，页里自己的滚动容器用「页.名」（shell.trackScroll） */
   scroll: Record<string, number>
   symbols: SymbolPrefs
+  /** 提醒（价格 / 画线 / 条件）。只存还在等的；响了先标已触发、报完就删 */
+  alerts: Alert[]
   /** 行情停住了没有（不落盘） */
   stale: boolean
 }
@@ -49,6 +58,7 @@ export function defaults(): State {
     ...defaultPrefs(),
     page: 'chart', symbol: 'BTCUSDT', scroll: {},
     symbols: { favorites: [], recents: [], groups: [], groupForSymbol: {}, seeded: false },
+    alerts: [],
     stale: false,
   }
 }
@@ -60,6 +70,12 @@ export function load(): Record<string, unknown> {
 }
 
 const strs = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+const alertList = (v: unknown): Alert[] => (Array.isArray(v) ? v : []).map(migrateAlert).filter((a): a is Alert => !!a)
+
+/** 老档里单独存的提醒表（hkline-m-alerts-v1）；读不到是空表 */
+function legacyAlerts(): unknown {
+  try { return JSON.parse(ls()?.getItem(LEGACY_ALERTS_KEY) || '[]') as unknown } catch { return [] }
+}
 
 export function hydrate(raw: Record<string, unknown>): State {
   const d = defaults()
@@ -77,6 +93,8 @@ export function hydrate(raw: Record<string, unknown>): State {
       groupForSymbol: sym.groupForSymbol && typeof sym.groupForSymbol === 'object' ? { ...sym.groupForSymbol } : {},
       seeded: sym.seeded === true,
     },
+    // 并进 st 之前提醒存在自己的键里：档里还没有 alerts 字段时搬一次
+    alerts: alertList('alerts' in raw ? raw.alerts : legacyAlerts()),
     stale: false,
   }
 }
@@ -87,8 +105,20 @@ const subs = new Set<(s: State) => void>()
 /** 每次 save() 之后回调；返回取消函数 */
 export function subscribe(fn: (s: State) => void): () => void { subs.add(fn); return () => { subs.delete(fn) } }
 
-/** 落盘（手势结束、改设置、切页……立刻调，不节流）并通知订阅者 */
+let layoutBefore = layoutSnapshot(st)
+const forkListeners = new Set<(g: LayoutGroup) => void>()
+/** 某一组周期的指标第一次分出自己的一份（iOS 浮一句 forkNotice）；返回取消函数 */
+export function onLayoutFork(fn: (g: LayoutGroup) => void): () => void { forkListeners.add(fn); return () => { forkListeners.delete(fn) } }
+
+/** 指标布局是整份换进来的（云端装进来、恢复出厂）：以现在这份为「改动之前」，下一次 save 不把它当成用户在当前组改了指标 */
+export function layoutSettled(): void { layoutBefore = layoutSnapshot(st) }
+
+/** 落盘（手势结束、改设置、切页……立刻调，不节流）并通知订阅者。
+ *  落盘前先按周期分组理顺指标布局（iOS PrefsStore 的每一条改法都过 settleIndicatorLayouts） */
 export function save(): void {
+  const forked = settleIndicatorLayouts(st, layoutBefore)
+  layoutBefore = layoutSnapshot(st)
+  if (forked) forkListeners.forEach(fn => { try { fn(forked) } catch (e) { console.error(e) } })
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(st)) if (!TRANSIENT.includes(k as keyof State)) out[k] = v
   try { ls()?.setItem(KEY, JSON.stringify(out)) } catch { /* 存储满了：这一轮不落盘 */ }
@@ -97,6 +127,8 @@ export function save(): void {
 
 /** 只落盘、不通知（滚动位置这种高频又没人关心的） */
 export function persistQuiet(): void {
+  settleIndicatorLayouts(st, layoutBefore)
+  layoutBefore = layoutSnapshot(st)
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(st)) if (!TRANSIENT.includes(k as keyof State)) out[k] = v
   try { ls()?.setItem(KEY, JSON.stringify(out)) } catch { /* 忽略 */ }
@@ -104,7 +136,9 @@ export function persistQuiet(): void {
 
 /** 恢复出厂（我的 → 设置里用） */
 export function resetAll(): void {
-  Object.assign(st, defaults())
+  // 提醒不是设置：恢复出厂不动它
+  Object.assign(st, defaults(), { alerts: st.alerts })
+  layoutSettled()
   save()
 }
 

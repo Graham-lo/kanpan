@@ -38,7 +38,13 @@ export const hooks = {
   onPage: [] as ((page: PageId, prev: PageId) => void)[],
   /** 换品种之后（openSymbol 调用） */
   onSymbol: [] as ((symbol: string) => void)[],
+  /** 同步把云端的值装进了 st 之后（参数：改了哪几块；皮肤已由 applyTheme 处理，页面各自按需重画）。
+   *  同一时刻 window 上也会发一个 `hkline:sync` 事件，detail 同参数 */
+  onSync: [] as ((c: SyncChange) => void)[],
 }
+
+/** 同步装进来的改动：settings = 改了的设置根（prefs 字段名） */
+export interface SyncChange { settings: string[]; favorites: boolean; alerts: boolean }
 
 const pages = new Map<PageId, PageHandle>()
 /** 页还没注册时的挂起调用：注册时补 show */
@@ -112,6 +118,14 @@ export function go(page: string, opts: { fromTab?: boolean; replace?: boolean } 
   if (h) { shown = p; safe(() => h.show()); restoreScroll(pageRoot(p), p) }
   save()
   hooks.onPage.forEach(fn => safe(() => fn(p, prev)))
+}
+
+/** 当前页若在 ids 里，重新 show 一遍（同步把自选、账号这些整块换掉之后用） */
+export function refreshPage(ids: readonly PageId[]): void {
+  const p = st.page
+  if (!ids.includes(p) || shown !== p) return
+  const h = pages.get(p)
+  if (h) safe(() => h.show())
 }
 
 /** 打开一只品种的图（自选 / 板块 / 搜索点一行都走这里）：记最近、记来路、切到图表页 */

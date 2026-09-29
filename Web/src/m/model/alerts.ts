@@ -1,14 +1,15 @@
 /* 手机网页版 · 提醒表（照 iOS AlertStore / AlertWatcher / AlertRecordRow）
  *
  * 形状共用 Web/src/alerts/shape.ts（与手机、服务端同步的 alerts 对象一字不差）。
- * 表先存在本机 localStorage「hkline-m-alerts-v1」；等 m/app/store 加上 alerts 字段并接同步，
- * 这里的 load / persist 换成读写 st.alerts 即可，其余不动。
+ * 表存在 m/app/store 的 st.alerts（跟着账号同步，m/app/sync.ts）；老的本机键「hkline-m-alerts-v1」
+ * 由 store 读档时迁进来。测试用 useStore 换一个独立存储时仍按老键读写。
  *
  * 规矩：只响一次（响完就删，没有重复提醒）；条件两种：价格达到（盘中碰到就响）、收盘穿过
  * （照 iOS AlertEngine：一口一口的价折成 1 分钟桶，桶收了、前后两根收盘价分在线两侧才响）。
  */
 import { alertLevel, conditionLabel, makePriceAlert, migrateAlert, priceLabel, touchedBetween, baseOf, type Alert } from '../../alerts/shape'
 import { grouped } from './rowText'
+import { save, st } from '../app/store'
 export type { Alert } from '../../alerts/shape'
 export type Condition = Alert['condition']
 
@@ -24,17 +25,25 @@ export function useStore(s: KV | null): void { store = s; table = null; lastPx.c
 const backing = (): KV | null => store === undefined ? kv() : store
 
 function all(): Alert[] {
+  if (store === undefined) return st.alerts
   if (table) return table
   let raw: unknown = []
   try { raw = JSON.parse(backing()?.getItem(ALERTS_KEY) || '[]') } catch { raw = [] }
   table = (Array.isArray(raw) ? raw : []).map(migrateAlert).filter((a): a is Alert => !!a)
   return table
 }
-function persist(): void { try { backing()?.setItem(ALERTS_KEY, JSON.stringify(all())) } catch { /* 满了就算了 */ } }
+function setAll(list: Alert[]): void { if (store === undefined) st.alerts = list; else table = list }
+function persist(): void {
+  if (store === undefined) { save(); return }
+  try { backing()?.setItem(ALERTS_KEY, JSON.stringify(all())) } catch { /* 满了就算了 */ }
+}
 
 const listeners = new Set<() => void>()
 export function onAlertsChange(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn) } }
-function changed(): void { persist(); listeners.forEach(f => { try { f() } catch (e) { console.error(e) } }) }
+function notify(): void { listeners.forEach(f => { try { f() } catch (e) { console.error(e) } }) }
+function changed(): void { persist(); notify() }
+/** 表被整个换掉了（同步装进云端那份、恢复出厂）：只叫监听的人重读，不再落盘 */
+export function alertsReplaced(): void { if (store !== undefined) table = null; notify() }
 
 /** 还在等的（触发过的不展示），新建的在前 */
 export const activeAlerts = (symbol?: string): Alert[] =>
@@ -73,7 +82,11 @@ export function restoreAlert(a: Alert): void {
 }
 
 // ------------------------------------------------------------ 触发
-export interface Fired { alert: Alert; price: number; level: number | null }
+export interface Fired {
+  alert: Alert; price: number; level: number | null
+  /** 服务端判响、同步拉回来的（判响的那一方已经发过 Webhook，这边只报给人） */
+  remote?: boolean
+}
 const fireHandlers = new Set<(f: Fired) => void>()
 export function onAlertFired(fn: (f: Fired) => void): () => void { fireHandlers.add(fn); return () => { fireHandlers.delete(fn) } }
 
@@ -81,10 +94,18 @@ export function onAlertFired(fn: (f: Fired) => void): () => void { fireHandlers.
 export function fire(a: Alert, price: number, level: number | null, now = Date.now()): void {
   const list = all()
   if (!list.includes(a) || a.status !== 'active') return
+  // 两步落盘（照 PC alerts/model.ts）：先记「已触发」让同步推一条 fired，再删
   a.status = 'fired'; a.firedAt = now; a.firedPrice = price
-  fireHandlers.forEach(h => { try { h({ alert: a, price, level }) } catch (e) { console.error(e) } })
-  table = list.filter(x => x !== a)
   changed()
+  fireHandlers.forEach(h => { try { h({ alert: a, price, level }) } catch (e) { console.error(e) } })
+  setAll(all().filter(x => x !== a))
+  changed()
+}
+
+/** 服务端（或别的设备）判响、同步拉回来的：只报给人（Webhook 已由判响的那一方发过），表由同步那一侧删 */
+export function announceRemoteFire(a: Alert): void {
+  const f: Fired = { alert: { ...a, webhook: null }, price: a.firedPrice ?? 0, level: alertLevel(a), remote: true }
+  fireHandlers.forEach(h => { try { h(f) } catch (e) { console.error(e) } })
 }
 
 const lastPx = new Map<string, { p: number; t: number }>()

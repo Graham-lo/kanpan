@@ -1,6 +1,7 @@
 /* Hkline 手机网页版 · 入口（/web/m/）
  *
- * 顺序：账号键名（boot）→ 样式 → 壳（四页 + 底栏 + 主题 + 路由）→ 恢复会话 → 行情线路 → 懒加载各页。
+ * 顺序：账号键名（boot）→ 样式 → 壳（四页 + 底栏 + 主题 + 路由）→ 恢复会话 → 行情线路 → 同步
+ * → 懒加载各页 → 常驻盯价（没进过「我的」的人提醒也照样响）。
  * 页面模块在 ./pages/<id>.ts，导出 init<Id>(root) → { show, hide, reselect? }（合同见 app/README.md）；
  * 模块还不存在时挂一行「即将到来」，不挡别的页。
  */
@@ -14,6 +15,7 @@ import { installShell, registerPage, pageRoot, type PageHandle } from './app/she
 import { glyph, type GlyphName } from './ui/icons'
 import { resume } from '../account/client'
 import { setRoute } from '../market'
+import { initMobileSync } from './app/sync'
 
 type PageModule = Record<string, unknown>
 const modules = import.meta.glob<PageModule>('./pages/*.ts')
@@ -45,6 +47,7 @@ async function mount(id: PageId): Promise<void> {
 installShell(document.getElementById('m-mount') ?? document.body)
 resume()
 setRoute(st.routePolicy)
+initMobileSync()
 
 // 先挂当前页，其余页空闲时再挂（切过去时已经就绪）
 const first = st.page
@@ -52,6 +55,8 @@ void mount(first).then(() => {
   const rest = PAGES.filter(p => p !== first)
   const idle = (cb: () => void): void => { if ('requestIdleCallback' in window) requestIdleCallback(cb, { timeout: 1200 }); else setTimeout(cb, 300) }
   idle(() => rest.forEach(p => void mount(p)))
+  // 提醒的常驻监听挂在壳上：不依赖进没进过「我的」/ 提醒页
+  void import('./pages/alerts').then(m => m.startAlertWatcher()).catch(e => console.error('[m] 提醒监听启动失败', e))
 })
 
 // PWA：只缓存壳，行情永远走网络（见 public/m/sw.js）；开发时不注册，免得缓存住热更新
