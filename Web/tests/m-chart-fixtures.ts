@@ -48,7 +48,7 @@ export class Rng {
 }
 
 /** Fixtures.swift 的 `synthSeries(count:interval:t0:seed:)`。 */
-export function synthSeries(count: number, o: { interval?: Interval; t0?: number; seed?: number } = {}): BarSeries {
+export function synthSeries(count: number, o: { interval?: Interval; t0?: number; seed?: number; symbol?: string } = {}): BarSeries {
   const r = new Rng(o.seed ?? 7)
   const op: number[] = [], h: number[] = [], l: number[] = [], c: number[] = [], v: number[] = [], tb: number[] = []
   let px = 100
@@ -63,7 +63,7 @@ export function synthSeries(count: number, o: { interval?: Interval; t0?: number
     tb.push(tb.length % 17 === 5 ? NaN : vol * r.d(0.2, 0.8))
   }
   return new BarSeries({
-    symbol: 'SYN', interval: o.interval ?? '1h', t0: o.t0 ?? 1_700_000_000_000,
+    symbol: o.symbol ?? 'SYN', interval: o.interval ?? '1h', t0: o.t0 ?? 1_700_000_000_000,
     open: op, high: h, low: l, close: c, volume: v, takerBuy: tb,
   })
 }

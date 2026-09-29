@@ -143,8 +143,8 @@ export function initChart(root: HTMLElement): PageHandle {
   // 建的时候行情页多半没露着，先停；show / hide 里 resume / pause，跟订单流口一样
   if (!shown) chart.pause()
   chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight })
-  // 取不到行情（下架 / 不认得的品种、断网时换品种或周期）：引擎为了换的时候不闪空图，会一直留着上一张图，
-  // 于是新名字底下画的是上一只 / 上一个周期的 K 线。这时用一层底色盖住图区，写一句取不到；取到了就撤掉
+  // 取不到行情（下架 / 不认得的品种、断网时换品种或周期）：引擎换的时候只在取数那一拍留着上一张图（不闪空图），
+  // 出错或取到零根就撤图；这层底色盖住空图区写一句取不到，取到了就撤掉（图上仍是别的品种 / 周期时也兜底盖住）
   const empty = el('div', 'cp-nodata')
   empty.hidden = true
   empty.textContent = '暂时取不到这只品种的行情'

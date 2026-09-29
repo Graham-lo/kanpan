@@ -184,6 +184,14 @@ export interface OrderFlowPort {
 // ================================================================ 小工具
 
 /**
+ * 新序列还空着时要不要留着上一张图（ChartHost 的 holdOnEmpty）：只有「还在取」的那一拍留，
+ * 取完了（出错、或取到零根）就撤——否则新品种 / 新周期的名字底下一直画着上一只 / 上一档的 K 线。
+ */
+export function holdsPrevious(loading: boolean, shown: ChartState | null): boolean {
+  return loading && !!shown && shown.input.series.count > 0
+}
+
+/**
  * 推送来的一根换成图表的根。手机端的量是「币」（takerBuyBaseVolume 同口径），共用行情层给的是成交额，
  * 币量在 bv；推送里没有主动买的币量，按这一根的成交均价从主动买成交额折回（收盘后下一次补缺口会拿到原值）。
  */
@@ -310,6 +318,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   const snapshotKey = (sym: string, iv: Interval) => `${sym}|${iv}`
   const remember = (s: BarSeries) => {
+    if (s.isEmpty) return // 空序列不当快照：下回换回来别拿它开张
     const k = snapshotKey(s.symbol, s.interval)
     snapshots.delete(k)
     snapshots.set(k, s)
@@ -415,8 +424,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   const update = () => {
     if (destroyed) return
     if (!series || series.isEmpty) {
-      // 换周期 / 换品种时新序列要一个往返：留着上一张图，不闪空图（holdOnEmpty）
-      if (view.state && view.state.input.series.count > 0) return
+      // 换周期 / 换品种时新序列要一个往返：这一拍留着上一张图，不闪空图（holdOnEmpty）。
+      // 只留到这次取数有结果为止——出错、或者这只根本没有 K 线，就撤掉，不然新品种名底下一直画着上一只
+      if (holdsPrevious(loading, view.state)) return
       view.state = null
       pending = { kind: 'reset' }
       return
@@ -620,12 +630,14 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const bars = await loadBars(sym, iv, null)
     if (destroyed || gen !== generation) return
     loading = false
-    if (!bars) { error = '行情暂时取不到'; status(); return }
+    if (!bars) { error = '行情暂时取不到'; update(); status(); return }
     if (cached && cached.count > 0) {
       mergeLatest(cached, bars)
       status()
       return
     }
+    // 一根都没有（下架、不认得的代号）：当出错报，宿主据此盖「取不到」
+    if (!bars.length) error = '这只品种没有行情'
     takeSeries(BarSeries.fromBars(sym, iv, bars))
   }
 

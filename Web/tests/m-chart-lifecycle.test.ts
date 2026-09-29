@@ -1,6 +1,10 @@
 // 行情页引擎的生命周期：心跳随页面藏 / 露停开（ChartBeat）、换品种时留旧图只留到取数有结果（holdsPrevious）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AWAY_RESYNC_MS, ChartBeat } from '../src/m/chart/beat'
+import { ViewWindow, defaultChartOptions } from '../src/m/chart/geometry'
+import { makeState, type ChartState } from '../src/m/chart/state'
+import { showsOtherChart } from '../src/m/pages/chart/logic'
+import { synthSeries } from './m-chart-fixtures'
 
 describe('ChartBeat · 行情页藏起来时心跳停', () => {
   let now = 1_700_000_000_000
@@ -96,5 +100,44 @@ describe('ChartBeat · 行情页藏起来时心跳停', () => {
     b.resume()
     advance(5000)
     expect(ticks).toBe(0)
+  })
+})
+
+// 引擎为了换品种 / 周期不闪空图会留上一张图（holdOnEmpty）。原来出错也一直留，于是新品种名底下画着上一只；
+// 现在只留到取数有结果：出错或取到零根就撤图，宿主的 cp-nodata 盖层（showsOtherChart）照旧兜底。
+describe('holdsPrevious · 换品种留旧图只留到取数有结果', () => {
+  type Holds = typeof import('../src/m/chart/index').holdsPrevious
+  let holdsPrevious: Holds
+  beforeEach(async () => { holdsPrevious = (await import('../src/m/chart/index')).holdsPrevious })
+
+  const drawn = (symbol: string, n = 200): ChartState => makeState({
+    series: synthSeries(n, { interval: '1h', t0: 1_700_000_000_000, symbol }),
+    view: ViewWindow.fromTo(0, 1), symbol: { symbol, base: symbol.replace(/USDT$/, ''), priceDecimals: 2 },
+    options: defaultChartOptions(),
+  })
+
+  it('还在取：留着上一只，不闪空图', () => {
+    expect(holdsPrevious(true, drawn('BTCUSDT'))).toBe(true)
+  })
+  it('取数出错 / 取到零根（loading 已落）：不留，撤图', () => {
+    expect(holdsPrevious(false, drawn('BTCUSDT'))).toBe(false)
+  })
+  it('图上本来就空：没什么可留', () => {
+    expect(holdsPrevious(true, null)).toBe(false)
+    expect(holdsPrevious(true, drawn('BTCUSDT', 0))).toBe(false)
+  })
+
+  // 引擎一侧撤图后 drawn 为 null；宿主盖层的判定与引擎撤图并存时每个阶段都只出现一种画面
+  const scene = (loading: boolean, error: string | null, prev: ChartState | null, symbol: string) => {
+    const kept = holdsPrevious(loading, prev) ? prev : null
+    const s = kept?.input.series
+    const cover = showsOtherChart({ loading, error }, s ? { symbol: s.symbol, interval: s.interval } : null, symbol, '1h')
+    return { chart: kept ? s!.symbol : null, cover }
+  }
+  it('BTC → 下架代号：取的时候留 BTC 不盖；出错后撤图 + 盖「取不到」，不再是 BTC 的 K 线配新名字', () => {
+    const btc = drawn('BTCUSDT')
+    expect(scene(true, null, btc, 'GONEUSDT')).toEqual({ chart: 'BTCUSDT', cover: false })
+    expect(scene(false, '行情暂时取不到', btc, 'GONEUSDT')).toEqual({ chart: null, cover: true })
+    expect(scene(false, '这只品种没有行情', btc, 'GONEUSDT')).toEqual({ chart: null, cover: true })
   })
 })
