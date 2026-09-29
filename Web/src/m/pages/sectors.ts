@@ -26,6 +26,7 @@ import * as F from '../model/favorites'
 import { sectorIconHTML } from '../model/badge'
 import { changePercentText, esc, MISSING, textIsUp } from '../model/rowText'
 import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowHTML'
+import { coveredCount, drillDecision } from '../model/sectorView'
 import { backdropHTML } from './favorites'
 import { ensureUniverse, wantStreams } from './_streams'
 
@@ -83,7 +84,7 @@ export function initSectors(root: HTMLElement): PageHandle {
     if (d) return d.members
     return feed.buckets[market()].find(b => b.id === id)?.members ?? []
   }
-  const nameOf = (id: string): string => catalog.sector(id)?.name ?? feed.buckets[market()].find(b => b.id === id)?.name ?? ''
+  const nameOf = (id: string): string => catalog.sector(id)?.name ?? feed.buckets[market()].find(b => b.id === id)?.name ?? id
   const symbolFor = (base: string): string => feed.quotes.get(base)?.symbol ?? base + 'USDT'
 
   function compute(): boolean {
@@ -100,8 +101,10 @@ export function initSectors(root: HTMLElement): PageHandle {
     marketEl.innerHTML = segHTML('market', MARKETS, market())
     winEl.innerHTML = hasD5 ? segHTML('window', WINDOWS, window) : ''
     winEl.hidden = !hasD5
-    const covered = boards.reduce((n, b) => n + b.memberCount, 0)
-    scaleEl.textContent = feed.quotes.size && covered > 0 ? `${boards.length} 个板块 · ${new Set(boards.flatMap(b => membersOf(b.id).filter(x => feed.quotes.has(x)))).size} 个品种` : ''
+    // 品种数照 iOS：目录板块与兜底桶去重后、这段窗口上真算得出收益的那些（5 日档缺收盘价的不算）
+    const m = market()
+    const covered = coveredCount(m, feed.quotes, feed.buckets[m], window, window === 'today' ? EMPTY_HISTORY : history.held)
+    scaleEl.textContent = feed.quotes.size && covered > 0 ? `${boards.length} 个板块 · ${covered} 个品种` : ''
     const failed = !boards.length && (feed.ok === false || (S.live === false && !feed.quotes.size))
     emptyBtn.hidden = !failed
     boardList.innerHTML = boards.map((b, i) => {
@@ -225,6 +228,9 @@ export function initSectors(root: HTMLElement): PageHandle {
     if (!active) return
     seedFromUniverse()
     renderBoards()
+    // 钻进去的板块这一帧找不到：只有确认它没了（目录不认、兜底桶也没有、别的板块照常算得出）才退回列表，
+    // 其余只是行情还没到，留在原地等（照 iOS SectorDrillDecision）
+    if (route != null && drillDecision(route, boards, feed.buckets[market()]) === 'pop') route = null
     const drilling = route != null
     boardsLayer.hidden = drilling
     drillLayer.hidden = !drilling
