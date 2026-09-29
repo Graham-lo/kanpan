@@ -1,0 +1,87 @@
+/* 手机网页版 · 提醒（照 iOS AlertForm / AlertListPage / AlertRecordRow / AlertPageStyle）
+ * 页底：深色 --app、浅色 --raised；分组卡 raised2、圆角 12；分组标题 caption2Emph + 字距 1、ink3。 */
+.alf-sheet { background: var(--raised) }
+html[data-theme="dark"] .alf-sheet { background: var(--app) }
+/* 头部照 iOS：左 44 圆片（关 / 返回）、标题居中、右「全部预警」胶囊，不画分隔线 */
+.alf-sheet .m-sheet-head {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s-s);
+  padding: var(--s-s) var(--inset-page) var(--s-xs); border-bottom: 0;
+}
+.alf-sheet .m-sheet-back, .alf-sheet .m-sheet-action {
+  justify-self: start; display: flex; align-items: center; justify-content: center;
+  min-height: 44px; border-radius: 22px; background: var(--raised2); box-shadow: 0 2px 10px #00000014, inset 0 0 0 .5px var(--line);
+}
+html:not([data-theme="dark"]) .alf-sheet .m-sheet-back, html:not([data-theme="dark"]) .alf-sheet .m-sheet-action { background: var(--app) }
+.alf-sheet .m-sheet-back { width: 44px; min-width: 44px; padding: 0; color: var(--accent) }
+.alf-sheet.pushed .m-sheet-back { color: var(--ink) }
+.alf-sheet .m-sheet-titles { grid-column: 2; justify-content: center }
+.alf-sheet .m-sheet-title { font: var(--t-title); font-weight: 600; text-align: center }
+.alf-sheet .m-sheet-action { grid-column: 3; justify-self: end; padding: 0 var(--s-m); font: var(--t-body); font-size: 16px; font-weight: 500 }
+.alf-body { padding-left: calc(var(--inset-page) + var(--safe-left)); padding-right: calc(var(--inset-page) + var(--safe-right)) }
+
+.al-card { background: var(--raised2); border-radius: var(--r-m); overflow: hidden }
+.al-title { font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3); padding-bottom: var(--s-s) }
+.al-sec + .al-sec { margin-top: var(--s-section) }
+.all-alerts { padding-top: var(--s-m); padding-bottom: var(--s-section) }
+.al-div { height: 1px; transform: scaleY(.34); background: var(--hair); margin-left: var(--inset-card) }
+
+/* 品种头：徽章 28 + BTC/USDT（bodyEmph）+ 币安 · USDT 永续（caption ink3）+ 条数 */
+.alh { display: flex; align-items: center; gap: var(--s-s); min-height: var(--row-min); padding: 0 var(--inset-card); position: relative }
+.alh::after { content: ''; position: absolute; left: var(--inset-card); right: 0; bottom: 0; height: 1px; transform: scaleY(.34); background: var(--hair) }
+.alh-pair { font: var(--t-body-emph); color: var(--ink); white-space: nowrap }
+.alh-venue { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0 }
+.alh-count { font: var(--t-caption); color: var(--ink3) }
+
+/* 提醒行：圆点 6（生效中强调色）+ 价位 body + 价格达到 caption；右侧删除 icon ink3 */
+.alr { display: flex; align-items: center; min-height: var(--row-min); padding-left: var(--inset-card); padding-right: var(--s-xs); position: relative }
+.alr::after { content: ''; position: absolute; left: calc(var(--inset-card) + 18px); right: 0; bottom: 0; height: 1px; transform: scaleY(.34); background: var(--hair) }
+.alr.last::after { display: none }
+.alr-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-m); padding: var(--s-s) 0; min-height: var(--row-min); text-align: left }
+.alr-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none }
+.alr-text { display: flex; flex-direction: column; gap: var(--s-xxs); min-width: 0 }
+.alr-title { font: var(--t-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.alr-meta { font: var(--t-caption); color: var(--ink3); display: inline-flex; align-items: center; gap: var(--s-xs) }
+.alr-link { display: grid }
+.alr-del { width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink3); flex: none }
+.alr-del:active { color: var(--accent) }
+
+.al-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-s); color: var(--ink3); font: var(--t-body); min-height: 50vh }
+
+/* 创建提醒 */
+.alf-form { display: flex; flex-direction: column; gap: var(--s-xl); padding-top: var(--s-m) }
+.alf-symbol { display: flex; align-items: center; gap: var(--s-s); min-height: 56px; padding: 0 var(--inset-card) }
+.alf-names { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px }
+.alf-pair { font: var(--t-heading); color: var(--ink) }
+.alf-venue { font: var(--t-caption); color: var(--ink3) }
+.alf-quote { display: flex; flex-direction: column; align-items: flex-end; gap: 2px }
+.alf-px { font: var(--t-body-emph) }
+.alf-pct { font: var(--t-caption) }
+.alf-px:not(.up):not(.down), .alf-pct:not(.up):not(.down) { color: var(--ink3) }
+.alf-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: var(--row-min); padding: 0 var(--inset-card) }
+.alf-price-row { padding-top: var(--s-s) }
+.alf-label { font: var(--t-body); color: var(--ink); display: inline-flex; align-items: center; gap: var(--s-xs); white-space: nowrap }
+.alf-value { font: var(--t-body); color: var(--ink3) }
+.alf-well {
+  flex: 1; max-width: 230px; display: flex; align-items: center; gap: var(--s-s); height: 40px; padding: 0 var(--s-m);
+  border-radius: var(--r-s); background: var(--raised); color: var(--ink3); box-shadow: inset 0 0 0 1px transparent;
+  transition: background var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+html[data-theme="dark"] .alf-well { background: var(--app) }
+.alf-well.focus { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); color: var(--accent) }
+.alf-well input { flex: 1; min-width: 0; border: 0; outline: none; background: none; text-align: right; font: var(--t-body-emph); font-size: 16px; color: var(--ink) }
+.alf-well input::placeholder { color: var(--ink3) }
+.alf-unit { font: var(--t-caption); color: var(--ink3) }
+.alf-hint { font: var(--t-caption); color: var(--ink3); min-height: 32px; display: flex; align-items: center; justify-content: flex-start; padding: 0 var(--inset-card) }
+.alf-hook { flex: 1; min-width: 0; border: 0; outline: none; background: none; text-align: right; font: var(--t-body); font-size: 16px; color: var(--ink) }
+.alf-hook::placeholder { color: var(--ink3) }
+.alf-under { display: flex; justify-content: space-between; align-items: center; margin-top: calc(var(--s-xl) * -1 + var(--s-xs)); min-height: 0 }
+.alf-under:has(> [hidden] + [hidden]) { display: none }
+.alf-hook-err { font: var(--t-caption); color: var(--danger) }
+.alf-test { font: var(--t-caption); color: var(--accent); min-height: 32px; margin-left: auto }
+.alf-hook-err[hidden], .alf-test[hidden] { display: none }
+.alf-submit { height: 48px; border-radius: 24px; font: var(--t-title); background: var(--accent); color: var(--badge-ink) }
+.alf-submit:disabled { background: var(--raised2); color: var(--ink3) }
+html[data-theme="dark"] .alf-submit:disabled { background: var(--raised2) }
+.alf-submit:not(:disabled):active { opacity: .8 }
+.alf-records:empty { display: none }
+.alf-records { padding-bottom: var(--s-section) }

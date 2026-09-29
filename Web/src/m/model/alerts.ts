@@ -47,6 +47,15 @@ export function addPriceAlert(symbol: string, target: number, current: number | 
   all().push(a); changed()
   return a
 }
+/** 编辑一条价格提醒（「当前提醒」里点进去改价 / 改 Webhook）：id、建立时间不变，重新从此刻起算 */
+export function updatePriceAlert(id: string, target: number, current: number | null, dec?: number, webhook?: string | null, now = Date.now()): Alert | null {
+  const a = all().find(x => x.id === id && x.kind === 'price' && x.status === 'active')
+  if (!a || !(target > 0) || !isFinite(target)) return null
+  const next = makePriceAlert(a.symbol, target, current, { now, dec, webhook })
+  a.lines = next.lines; a.title = next.title; a.webhook = next.webhook; a.armedAt = now
+  changed()
+  return a
+}
 export function deleteAlert(id: string): Alert | null {
   const list = all(), i = list.findIndex(a => a.id === id)
   if (i < 0) return null
@@ -130,7 +139,9 @@ export function recordTitle(a: Alert, withSymbol = false): string {
   const head = withSymbol ? baseOf(a.symbol) + ' ' : ''
   if (a.kind === 'price') {
     const p = alertLevel(a)
-    return head + (p == null ? '—' : grouped(priceLabel(p)))
+    if (p == null) return head + '—'
+    const verb = /(涨到|跌到)/.exec(a.title)?.[1] ?? '到'
+    return head + verb + ' ' + grouped(priceLabel(p))
   }
   return withSymbol ? a.title : a.title.replace(new RegExp('^' + baseOf(a.symbol) + '\\s*'), '')
 }

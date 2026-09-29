@@ -1,0 +1,113 @@
+/* 手机网页版 · 「我的」（照 iOS MePage / DisplaySettingsSection / AccountView）
+ * 页底 --app；卡 raised2、圆角 12、卡间 16；行 heading + caption ink3、左右 16 上下 12、最矮 44、
+ * 行间 1/3px 发丝线左缩 16。推进去的层从右滑入，左上 44 圆片返回（raised 底 + 一层柔影）。 */
+#page-me { --page-bg: var(--app); background: var(--app); overflow: hidden }
+.me-page .me-layer {
+  position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--app);
+  transition: translate var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out);
+}
+.me-page .me-layer.me-pushed { translate: 100% 0; box-shadow: -8px 0 24px #0000000f }
+.me-page .me-layer.me-pushed.in { translate: 0 0 }
+.me-page .me-layer.under { translate: -24% 0; opacity: .6 }
+@media (prefers-reduced-motion: reduce) { .me-page .me-layer { transition: none } }
+
+.me-nav {
+  flex: none; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; min-height: 56px;
+  padding: calc(var(--safe-top) + var(--s-xs)) calc(var(--inset-page) + var(--safe-right)) var(--s-xs) calc(var(--inset-page) + var(--safe-left));
+}
+.me-title { margin: 0; text-align: center; font: var(--t-title); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.me-back {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--ink);
+  background: var(--raised); box-shadow: 0 2px 10px #00000014, inset 0 0 0 .5px var(--line);
+}
+.me-back:active { opacity: .6 }
+.me-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: var(--s-m) calc(var(--inset-page) + var(--safe-right)) var(--tabbar-clearance) calc(var(--inset-page) + var(--safe-left));
+  scrollbar-width: none;
+}
+.me-scroll::-webkit-scrollbar { display: none }
+
+/* 卡与行 */
+.me-card { background: var(--raised2); border-radius: var(--r-m); overflow: hidden }
+.me-card + .me-card { margin-top: var(--s-l) }
+.me-row {
+  width: 100%; display: flex; align-items: center; gap: var(--s-s); min-height: var(--row-min); text-align: left;
+  padding: var(--inset-row-v) var(--inset-card); position: relative; color: var(--ink);
+}
+.me-row + .me-row::before, .me-dev + .me-dev::before {
+  content: ''; position: absolute; top: 0; left: var(--inset-card); right: 0; height: 1px; transform: scaleY(.34); transform-origin: top; background: var(--line);
+}
+.me-row:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.me-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.me-row-title { font: var(--t-heading); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.me-row.plain .me-row-title { font: var(--t-body); flex: 1 }
+.me-row.danger .me-row-title { color: var(--danger) }
+.me-row-status { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.me-chev { color: var(--ink3); display: grid; flex: none }
+.me-kv { display: flex; align-items: center; justify-content: space-between; min-height: var(--row-min); padding: 0 var(--inset-card); font: var(--t-body) }
+.me-kv span { color: var(--ink) } .me-kv b { font-weight: 400; color: var(--ink3) }
+
+/* 设置：分组标题 caption2Emph ink3（上 24 下 8）；行不带卡，行间发丝线通栏 */
+.me-settings { margin: 0 calc(var(--inset-page) * -1) }
+.me-group { font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3); padding: var(--s-xl) var(--inset-page) var(--s-s) }
+.me-group:first-child { padding-top: var(--s-xs) }
+.me-swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-m); padding: 0 var(--inset-page) }
+.me-swatch {
+  border-radius: var(--r-m); padding: var(--inset-card-compact); display: flex; flex-direction: column; gap: var(--s-s); text-align: left;
+  box-shadow: inset 0 0 0 1px var(--control-line); min-width: 0;
+}
+.me-swatch.on { box-shadow: inset 0 0 0 2px var(--accent) }
+.me-sw-art { display: flex; align-items: center; justify-content: space-between; height: 32px }
+.me-sw-bars { display: flex; align-items: flex-end; gap: 3px; height: 31px }
+.me-sw-bars i { width: 6px; border-radius: 1px; display: block }
+.me-sw-dot { width: 10px; height: 10px; border-radius: 50%; flex: none }
+.me-sw-name { display: flex; align-items: baseline; gap: var(--s-xs); white-space: nowrap; overflow: hidden }
+.me-sw-name b { font: var(--t-body); }
+.me-sw-name small { font: var(--t-caption) }
+.me-prow {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: var(--row-min);
+  padding: var(--s-s) var(--inset-page); position: relative;
+}
+.me-prow + .me-prow::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; transform: scaleY(.34); transform-origin: top; background: var(--line) }
+.me-pname { font: var(--t-body); color: var(--ink); display: inline-flex; align-items: center; gap: var(--s-xs); white-space: nowrap }
+.me-page .m-seg { display: inline-flex; align-items: center; height: 32px; padding: 2px; border-radius: 8px; background: var(--raised2); flex: none }
+.me-page .m-seg-opt { height: 28px; padding: 0 var(--s-m); border-radius: 6px; font: var(--t-control); color: var(--ink2); white-space: nowrap; transition: background var(--dur-fast) var(--ease-out) }
+.me-page .m-seg-opt.on { background: var(--seg-on); color: var(--ink); font: var(--t-control-on); box-shadow: 0 1px 2px rgba(0,0,0,.09) }
+
+/* 账号表单 */
+.me-form { display: flex; flex-direction: column; gap: var(--s-l) }
+.me-field { display: flex; flex-direction: column; gap: var(--s-xs) }
+.me-flabel { font: var(--t-footnote); color: var(--ink3) }
+.me-field input {
+  height: 44px; border-radius: var(--r-s); background: var(--raised2); color: var(--ink); padding: 0 var(--s-m);
+  font: var(--t-body); font-size: 16px; border: 0; outline: none; box-shadow: inset 0 0 0 1px transparent;
+}
+.me-field input:focus { box-shadow: inset 0 0 0 1.5px var(--accent-line) }
+.me-field input::placeholder { color: var(--ink3) }
+.me-rule { font: var(--t-caption); color: var(--ink3) }
+.me-rule[hidden] { display: none }
+.me-err { font: var(--t-footnote); color: var(--danger) }
+.me-err[hidden] { display: none }
+.me-close-note { font: var(--t-footnote); color: var(--ink3) }
+.me-primary {
+  height: 48px; border-radius: 24px; font: var(--t-title); background: var(--accent); color: var(--badge-ink);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.me-primary.danger { background: var(--danger) }
+.me-primary:disabled { background: var(--raised2); color: var(--ink3) }
+.me-primary:not(:disabled):active { opacity: .8 }
+.me-switch { font: var(--t-body-emph); color: var(--accent); min-height: 44px; margin-top: calc(var(--s-l) * -1 + var(--s-xs)) }
+.me-notice { padding: var(--inset-row-v) var(--inset-card); display: flex; flex-direction: column; gap: var(--s-xxs); font: var(--t-body) }
+.me-notice .me-note-in { font: var(--t-caption); color: var(--ink3) }
+.danger { color: var(--danger) }
+.me-note { font: var(--t-footnote); color: var(--ink3); text-align: center; padding: var(--s-xl) 0 }
+.me-note.danger { color: var(--danger) }
+
+/* 登录设备 */
+.me-dev { display: flex; align-items: center; gap: var(--s-s); min-height: var(--row-min); padding: var(--inset-row-v) var(--inset-card); position: relative }
+.me-dev .me-row-title { font: var(--t-body) }
+.me-kick { font: var(--t-body); color: var(--danger); min-height: 44px; padding: 0 0 0 var(--s-m) }
+.me-kick:disabled { opacity: var(--disabled-opacity) }
+
+.me-alerts { min-height: 100% }
