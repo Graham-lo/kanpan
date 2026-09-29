@@ -10,3 +10,6 @@
 }
 .acct-name { font-weight: 600; font-variant-numeric: tabular-nums; }
 .me-body .group-title { margin-top: var(--s2); }
+/* 修改密码与上面的账号组同宽：两格输入 + 按钮一行，错误提示另起一行 */
+#pwForm { max-width: 880px; grid-template-columns: 1fr 1fr auto; align-items: end; }
+#pwForm .err { grid-column: 1 / -1; order: 1; }
