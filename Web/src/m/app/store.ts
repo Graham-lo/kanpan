@@ -150,6 +150,10 @@ function adopt(): void {
 }
 tabGuard.register(KEY, serialize, adopt)
 
+// 老档的提醒表迁进 st.alerts 之后，写成了就把老键删掉：留着的话，哪天主档读不出来（被清、写坏）
+// hydrate 会把这份早已删过、响过的老提醒又搬回来
+if (ls()?.getItem(LEGACY_ALERTS_KEY) != null && tabGuard.write(KEY) && 'alerts' in load()) ls()?.removeItem(LEGACY_ALERTS_KEY)
+
 /** 恢复出厂（我的 → 设置里用） */
 export function resetAll(): void {
   // 提醒不是设置：恢复出厂不动它

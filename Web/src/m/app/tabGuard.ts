@@ -26,24 +26,27 @@ let touchedAt = 0
 
 function ls(): Storage | null { try { return globalThis.localStorage ?? null } catch { return null } }
 
-function put(key: string, value: string): void {
-  const s = ls(); if (!s) return
+/** 写进本机存储；返回写成了没有（存储满了、被禁用时是 false：这一轮不落盘，内存照常用，下一次写再试） */
+function put(key: string, value: string): boolean {
+  const s = ls(); if (!s) return false
   try {
     s.setItem(WRITER_KEY, JSON.stringify({ at: touchedAt }))
     s.setItem(key, value)
-  } catch { /* 存储满了：这一轮不落盘（内存照常用，下一次写再试） */ }
+    return true
+  } catch (e) {
+    console.warn('[m] 本机存储写不进去', key, e)
+    return false
+  }
 }
 
 export const tabGuard = {
-  /** 登记一份整份写的存档：key 与「现在该写什么」 */
   /** 登记一份整份写的存档：key、「现在该写什么」、以及旧了之后怎么把别的页写的那份收进内存 */
   register(key: string, serialize: () => string, adopt?: () => void): void { writers.set(key, { serialize, adopt }) },
-  /** 写这一份（已经被别的页比下去了就不写，免得把新的盖成旧的）。返回写了没有 */
+  /** 写这一份（已经被别的页比下去了就不写，免得把新的盖成旧的）。返回真的写进去了没有 */
   write(key: string): boolean {
     const w = writers.get(key)
     if (stale || !w) return false
-    put(key, w.serialize())
-    return true
+    return put(key, w.serialize())
   },
   /** 别的标签页写了登记过的键；theirs = 它写时记下的「最近被人动的时刻」 */
   onForeignWrite(theirs: number, key: string | null = null): 'stale' | 'repair' {

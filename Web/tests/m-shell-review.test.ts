@@ -170,3 +170,35 @@ describe('离线壳（public/m/sw.js）', () => {
     expect([...store.keys()].some(k => k.includes('binance') || k.includes('/v1/'))).toBe(false)
   })
 })
+
+describe('老键迁移（hkline-m-alerts-v1 → hkline-m-v1.alerts）', () => {
+  it('迁进主档、写成了就删掉老键；之后主档没了也不会把老提醒搬回来；再开一次是幂等的', async () => {
+    const { makePriceAlert } = await import('../src/alerts/shape')
+    const old = makePriceAlert('BTCUSDT', 70000, 65000, { now: 1_700_000_000_000 })
+    const { mem, api } = memStorage({ 'hkline-m-v1': JSON.stringify({ skin: 'terra' }), 'hkline-m-alerts-v1': JSON.stringify([old]) })
+    vi.stubGlobal('localStorage', api)
+    vi.resetModules()
+    const store = await import('../src/m/app/store')
+    expect(store.st.alerts.map(a => a.id)).toEqual([old.id])
+    expect(mem.has('hkline-m-alerts-v1')).toBe(false)
+    expect(JSON.parse(mem.get('hkline-m-v1')!).alerts.map((a: { id: string }) => a.id)).toEqual([old.id])
+    // 再开一次：照读主档，不重复
+    vi.resetModules()
+    expect((await import('../src/m/app/store')).st.alerts.map(a => a.id)).toEqual([old.id])
+    // 主档被清掉：从空开始，不复活老提醒
+    mem.delete('hkline-m-v1')
+    vi.resetModules()
+    expect((await import('../src/m/app/store')).st.alerts).toEqual([])
+  })
+
+  it('主档写不进去（存储满）时老键留着，下次再迁', async () => {
+    const { makePriceAlert } = await import('../src/alerts/shape')
+    const old = makePriceAlert('ETHUSDT', 4000, 3500, { now: 1_700_000_000_000 })
+    const { mem, api } = memStorage({ 'hkline-m-alerts-v1': JSON.stringify([old]) })
+    vi.stubGlobal('localStorage', { ...api, setItem: () => { throw new DOMException('full', 'QuotaExceededError') } })
+    vi.resetModules()
+    const store = await import('../src/m/app/store')
+    expect(store.st.alerts.map(a => a.id)).toEqual([old.id])
+    expect(mem.has('hkline-m-alerts-v1')).toBe(true)
+  })
+})
