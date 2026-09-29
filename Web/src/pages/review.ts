@@ -258,7 +258,7 @@ function moreTradeKpis(list: TradeRecord['round'][]): string[] {
     kpi(term('盈利因子'), s.profitFactor == null ? '—' : s.profitFactor.toFixed(2),
       s.count ? `总盈利 ${money(s.grossProfit)} · 总亏损 ${money(s.grossLoss)}` : '', '', 'pf'),
     kpi(term('最大回撤'), !s.count ? '—' : money(-dd.amount),
-      s.count ? `占峰值 ${pct(dd.pct, false)}${dd.amount && dd.peakAt != null ? ` · ${day(dd.peakAt)}起` : ''}` : '', dd.amount ? 'down' : '', 'dd'),
+      !s.count ? '' : !dd.amount ? '没有回撤' : `占峰值 ${pct(dd.pct, false)}${dd.peakAt != null ? ` · ${day(dd.peakAt)}起` : ''}`, dd.amount ? 'down' : '', 'dd'),
     kpi(term('最大单笔'), lw?.share == null ? '—' : pct(lw.share, false),
       !lw ? '' : s.dominant ? '<span class="rv-warn">这段时间的盈利主要来自 1 笔</span>' : `${esc(codeOf(lw.symbol))} 赚 ${money(lw.net)}`, '', 'top'),
     sideKpi('long'),
