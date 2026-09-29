@@ -29,7 +29,7 @@ import { closeAllSheets } from '../ui/sheet'
 import { wantStreams, ensureUniverse, takeOpenParam } from './_streams'
 import { openSearch } from './search'
 import { openAlertForm } from './alertForm'
-import { isStale, isLandscape, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
+import { isStale, isLandscape, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
 import { createIntervalBar } from './chart/intervalBar'
@@ -142,6 +142,16 @@ export function initChart(root: HTMLElement): PageHandle {
     orderFlowSource: push => (port = createPagePort(push, s => st.orderFlowOverrides[baseOfSymbol(s).base] ?? null, !shown)),
   })
   chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight })
+  // 取不到行情（下架 / 不认得的品种、断网时换品种或周期）：引擎为了换的时候不闪空图，会一直留着上一张图，
+  // 于是新名字底下画的是上一只 / 上一个周期的 K 线。这时用一层底色盖住图区，写一句取不到；取到了就撤掉
+  const empty = el('div', 'cp-empty')
+  empty.hidden = true
+  empty.textContent = '暂时取不到这只品种的行情'
+  box.append(empty)
+  chart.on('status', e => {
+    const shown = chart.state?.input.series
+    empty.hidden = !showsOtherChart(e, shown ? { symbol: shown.symbol, interval: shown.interval } : null, chart.symbol, chart.interval)
+  })
   const card = createOrderFlowCard((chart.el.firstElementChild as HTMLElement | null) ?? chart.el)
 
   // ---- 画线

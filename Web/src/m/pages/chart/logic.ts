@@ -393,3 +393,15 @@ export function habitCategory(kind: string | undefined, base: string): 'crypto' 
 export function isLandscape(viewportLandscape: boolean, orientationType: string | undefined | null): boolean {
   return viewportLandscape && (!orientationType || orientationType.startsWith('landscape'))
 }
+
+/** 该不该盖住图区：这次取数失败了，而图上还留着别的品种 / 别的周期的那张（引擎换的时候留旧图不闪空）。
+ *  图上就是当前这只这一档（只是补最新失败）不盖；还在取、或取到了不盖 */
+export function showsOtherChart(
+  status: { loading: boolean; error: string | null },
+  drawn: { symbol: string; interval: string } | null,
+  symbol: string, interval: string,
+): boolean {
+  if (status.loading || !status.error) return false
+  return !drawn || drawn.symbol.toUpperCase() !== symbol.toUpperCase() || drawn.interval !== interval
+}
+

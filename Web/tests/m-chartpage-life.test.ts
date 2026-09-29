@@ -121,3 +121,18 @@ describe('手机网页版 · 行情页横竖屏判定', async () => {
     expect(isLandscape(true, undefined)).toBe(true) // 拿不到设备朝向（老浏览器）只看视口
   })
 })
+
+describe('手机网页版 · 行情页取不到行情时盖住旧图', async () => {
+  const { showsOtherChart } = await import('../src/m/pages/chart/logic')
+  const err = { loading: false, error: '行情暂时取不到' }
+  it('换到下架 / 不认得的品种取数失败：图上还是上一只 → 盖住', () => {
+    expect(showsOtherChart(err, { symbol: 'BTCUSDT', interval: '1h' }, 'FOOBARUSDT', '1h')).toBe(true)
+    expect(showsOtherChart(err, { symbol: 'BTCUSDT', interval: '1h' }, 'BTCUSDT', '4h')).toBe(true) // 换周期失败
+    expect(showsOtherChart(err, null, 'FOOBARUSDT', '1h')).toBe(true)
+  })
+  it('图上就是这只这一档（只是补最新失败）、还在取、取到了：不盖', () => {
+    expect(showsOtherChart(err, { symbol: 'BTCUSDT', interval: '1h' }, 'btcusdt', '1h')).toBe(false)
+    expect(showsOtherChart({ loading: true, error: null }, { symbol: 'BTCUSDT', interval: '1h' }, 'ETHUSDT', '1h')).toBe(false)
+    expect(showsOtherChart({ loading: false, error: null }, { symbol: 'ETHUSDT', interval: '1h' }, 'ETHUSDT', '1h')).toBe(false)
+  })
+})
