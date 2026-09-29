@@ -250,6 +250,8 @@ export function paintDrawing(d: Drawing, ctx: CanvasRenderingContext2D, axes: Dr
 interface Drag { id: string; part: DrawPart; from: Drawing; start: DrawPixel }
 type StateUpdate = (s: ChartState) => ChartState
 const same: StateUpdate = s => s
+/** 收掉「正在拖的那条」的预览 id：底层按它跳过那条线，留着它那条线就只剩覆盖层里的旧预览。 */
+const clearPreviewID: StateUpdate = s => (s.overlay.drawingPreviewID == null ? s : withOverlay(s, { drawingPreviewID: null }))
 
 /** 画线控制器：一张图一个（DrawingSession + ChartView+Drawing 的公开 API）。 */
 export class DrawingController {
@@ -269,6 +271,8 @@ export class DrawingController {
   lastSnap: DrawSnap | null = null
   preview: Drawing | null = null
   loupe: CanvasImageSource | null = null
+  /** 放大镜底图那张画布：建一次反复用（见 captureLoupe）。 */
+  private loupeCanvas: HTMLCanvasElement | null = null
   drag: Drag | null = null
   committing = false
   claimed: number | null = null
@@ -347,6 +351,15 @@ export class DrawingController {
     this.changed()
   }
 
+  /**
+   * 刚装上时接住投影键。视图的投影键是它自己记着的：同一张图上一个控制器摘下之后它还记着那只品种，
+   * 新装的控制器投影出来还是同一个键，视图就不会再喊 onDrawingKeyChanged——新控制器的键一直是空的，
+   * 落笔、撤销、提交全都悄悄不生效。所以装上时自己对一次：投影过了、键还没接上，就当第一次有了品种。
+   */
+  adoptKey(): void {
+    if (this.key == null && this.keyCache.key !== '' && this.view.state) this.keyDidChange(null)
+  }
+
   private reproject(update: StateUpdate = same): void {
     const s = this.view.state
     const key = this.key
@@ -396,6 +409,21 @@ export class DrawingController {
     this.navigating = false
   }
 
+  /**
+   * 手指正拖着一条线时，线被按钮改了（撤销 / 重做、删除、清空、全部隐藏、改样式）：这一程拖动作废。
+   *
+   * 拖动途中线只画在预览里，真值里还是按下时那条；按钮一改真值，预览就成了过期的一份——
+   * 留着它，抬手会把过期那份写回去（隐藏了的又显出来、改的样式被冲掉），预览 id 也一直挂着，
+   * 底层按它跳过这条线（撤销回来的线整条看不见）。手指本身还留在 claimed 上：抬手照常走
+   * 那条路解钉坐标轴，只是不再有东西可落。返回给 reproject 用的「收预览 id」。
+   */
+  private dropDrag(): StateUpdate {
+    this.drag = null
+    this.preview = null
+    this.loupe = null
+    return clearPreviewID
+  }
+
   private feedback(kind: DrawingFeedback): void { this.onFeedback?.(kind) }
 
   /** didMoveToWindow(nil)：半截手势、预览、放大镜全部收掉。 */
@@ -415,6 +443,8 @@ export class DrawingController {
   detach(): void {
     this.teardown()
     this._book.stopObserving(this)
+    // 底图的位图立刻放掉（Safari 要等 GC 才收整张画布的内存）
+    if (this.loupeCanvas) { this.loupeCanvas.width = 0; this.loupeCanvas.height = 0; this.loupeCanvas = null }
     const v = this.view
     if (v.drawingInput === this.input) v.drawingInput = null
     v.drawingOverlayPaint = null
@@ -482,7 +512,7 @@ export class DrawingController {
     const i = next.findIndex(d => d.id === item.id)
     if (!drawingIsValid(item) || i < 0 || drawingEquals(next[i], item)) return
     next[i] = item
-    this.commitDrawings(next); this.changed(this.drawings)
+    this.commitDrawings(next, this.dropDrag()); this.changed(this.drawings)
   }
 
   /** 复制选中那条：往右下各挪 20pt，解锁、显示，选中新的那条。 */
@@ -501,7 +531,7 @@ export class DrawingController {
 
   clear(): void {
     if (!this.view.state || this.drawings.length === 0) return
-    this.commitDrawings([])
+    this.commitDrawings([], this.dropDrag())
     this._selected = null; this.pending = null; this.aim = null; this.origin = null
     this.feedback('removed')
     this.changed([])
@@ -510,14 +540,14 @@ export class DrawingController {
   setAllHidden(hidden: boolean): void {
     const cur = this.drawings
     if (!this.view.state || !cur.some(d => d.hidden !== hidden)) return
-    this.commitDrawings(cur.map(d => (d.hidden === hidden ? d : { ...d, hidden })))
+    this.commitDrawings(cur.map(d => (d.hidden === hidden ? d : { ...d, hidden })), this.dropDrag())
     this._selected = null; this.changed(this.drawings)
   }
 
   deleteSelected(): void {
     const sel = this._selected
     if (!this.view.state || sel == null || !this.drawings.some(d => d.id === sel)) return
-    this.commitDrawings(this.drawings.filter(d => d.id !== sel))
+    this.commitDrawings(this.drawings.filter(d => d.id !== sel), this.dropDrag())
     this._selected = null
     this.feedback('removed')
     this.changed(this.drawings)
@@ -581,7 +611,7 @@ export class DrawingController {
     let moved = false
     try { moved = this._book.undo(key) } finally { this.committing = false }
     if (!moved) return
-    this.reproject()
+    this.reproject(this.dropDrag())
     this.afterHistoryJump(this.drawings)
   }
 
@@ -592,7 +622,7 @@ export class DrawingController {
     let moved = false
     try { moved = this._book.redo(key) } finally { this.committing = false }
     if (!moved) return
-    this.reproject()
+    this.reproject(this.dropDrag())
     this.afterHistoryJump(this.drawings)
   }
 
@@ -893,7 +923,10 @@ export class DrawingController {
     const v = this.view
     const r = v.renderer
     if (!r || typeof document === 'undefined' || !(v.width > 0) || !(v.height > 0)) return
-    const c = document.createElement('canvas')
+    // 画布建一次反复用。iOS Safari 的画布内存有总上限，一张 3 倍屏的整屏底图十几 MB，
+    // 每按一下新建一张、等 GC 慢慢收，连着画几十下就顶到上限，之后新画布一律拿不到上下文。
+    // 每次照样重设宽高：尺寸跟着转屏走，而且重设会把上一次的内容和绘图状态一并清掉。
+    const c = this.loupeCanvas ?? (this.loupeCanvas = document.createElement('canvas'))
     c.width = Math.max(1, Math.round(v.width * v.scale)); c.height = Math.max(1, Math.round(v.height * v.scale))
     const ctx = c.getContext('2d')
     if (!ctx) return
@@ -1052,6 +1085,7 @@ export function attachDrawing(view: ChartView): DrawingController {
   // 已经有 state 的图：重新过一遍投影，拿到投影键
   const s = view.state
   if (s) view.state = s
+  c.adoptKey()
   return c
 }
 
