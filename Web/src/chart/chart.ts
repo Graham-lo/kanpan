@@ -193,7 +193,8 @@ export interface ChartLayer {
 
 type Region = 'plot' | 'time' | 'price' | 'corner' | `sep:${string}`
 interface XY { x: number; y: number }
-interface DragPan { kind: 'pan'; region: Region; x0: number; y0: number; right0: number; sp0: number; r0: PriceRange | null; moved: boolean; pane: Pane | undefined }
+/** `vertical`：右键拖画布 = 只做纵向平移（openmarket Hyperzoom 同款），松手时没动过才弹右键菜单 */
+interface DragPan { kind: 'pan'; region: Region; x0: number; y0: number; right0: number; sp0: number; r0: PriceRange | null; moved: boolean; pane: Pane | undefined; vertical?: boolean }
 interface DragDrawing { kind: 'drawing'; hit: DrawingHit; start: DrawPoint; orig: DrawPoint[] }
 interface DragMeasure { kind: 'measure' }
 interface DragAlert { kind: 'alert'; line: AlertLine | null; price: number; moved: boolean }
@@ -237,6 +238,10 @@ export class TVChart {
   replay: number | null = null
   stale = false
   drag: DragState | null = null
+  /** 右键按下时（macOS 在按下那一刻就发 contextmenu）先存着的菜单，松手没拖动才弹 */
+  private pendingMenu: ContextMenuInfo | null = null
+  /** 上一次右键拖动过（Windows 在松手之后才发 contextmenu，那一次不弹） */
+  private rightDragged = false
   /** 鼠标停在主图价格轴上时的 y（画「+」建提醒） */
   axisHoverY: number | null = null
   /** 成交量分布的看法与上一帧的结果 */
@@ -1093,6 +1098,13 @@ export class TVChart {
       this.o.onCrosshairMove?.(null)
     }, { signal })
     cv.addEventListener('mousedown', e => {
+      if (e.button === 2) {
+        const { x, y } = pos(e)
+        this.rightDragged = false; this.pendingMenu = null
+        if (this.region(x, y) === 'plot' && this.paneAt(y)?.id === 'main' && this.mainRange && !this.drag)
+          this.drag = { kind: 'pan', region: 'plot', x0: x, y0: y, right0: this.rightBar, sp0: this.spacing, r0: { ...this.mainRange }, moved: false, pane: this.paneAt(y), vertical: true }
+        return
+      }
       if (e.button !== 0) return
       const { x, y } = pos(e), reg = this.region(x, y)
       if (reg === 'price' && this.o.onAlertCreate && this._panes && this.paneAt(y)?.id === 'main') {
@@ -1159,7 +1171,13 @@ export class TVChart {
       }
       const dx = x - d.x0, dy = y - d.y0
       if (Math.abs(dx) + Math.abs(dy) > 2) d.moved = true
-      if (d.region === 'plot') {
+      if (d.vertical) {
+        if (!d.moved || !d.r0 || !this._panes) return
+        const p = this._panes[0], k = (this.tf(d.r0.max) - this.tf(d.r0.min)) / (p.h - 16) * dy
+        this.manual = { min: this.itf(this.tf(d.r0.min) + k), max: this.itf(this.tf(d.r0.max) + k) }
+        if (this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
+        this.cross = null
+      } else if (d.region === 'plot') {
         this.rightBar = d.right0 - dx / this.spacing
         if (!this.auto && d.pane?.id === 'main' && d.r0 && this._panes) {
           const p = this._panes[0]; const k = (this.tf(d.r0.max) - this.tf(d.r0.min)) / (p.h - 16) * dy
@@ -1195,6 +1213,13 @@ export class TVChart {
         else if (d.moved) { d.line.price = d.price; this.o.onAlertMove?.(d.line, d.price) }
         return
       }
+      if (d.kind === 'pan' && d.vertical) {
+        const menu = this.pendingMenu; this.pendingMenu = null
+        this.rightDragged = d.moved
+        this.canvas.style.cursor = 'crosshair'
+        if (!d.moved && menu) this.o.onContextMenu?.(menu)
+        return
+      }
       if (d.kind === 'pan' && !d.moved && d.region === 'plot' && d.pane?.id === 'main' && this.layers.length) {
         const { x, y } = pos(e)
         if (this.layers.some(l => l.click?.(x, y))) { this.canvas.style.cursor = 'crosshair'; return }
@@ -1211,7 +1236,8 @@ export class TVChart {
     cv.addEventListener('wheel', e => {
       e.preventDefault()
       const { x } = pos(e)
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { this.rightBar += e.deltaX / this.spacing; this.maybeMore() }
+      if (e.altKey) this.zoomPrice(Math.exp(e.deltaY * 0.002), pos(e).y) // Alt + 滚轮 = 纵向缩放
+      else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { this.rightBar += e.deltaX / this.spacing; this.maybeMore() }
       else this.zoom(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0025)), Math.min(x, this.plotW()))
       this.dirty = true; this.renderLegend()
     }, { passive: false, signal })
@@ -1222,7 +1248,11 @@ export class TVChart {
       const pane = this.paneAt(y)
       const hit = this.hitDrawing(x, y)
       const price = pane?.id === 'main' ? this.yToPrice(y, pane, this._ranges.main) : null
-      this.o.onContextMenu?.({ clientX: e.clientX, clientY: e.clientY, price, time: this.timeAt(Math.round(this.xToIndex(x))), drawing: hit?.d })
+      const info: ContextMenuInfo = { clientX: e.clientX, clientY: e.clientY, price, time: this.timeAt(Math.round(this.xToIndex(x))), drawing: hit?.d }
+      // 右键还按着（macOS 按下就发）：等松手，没拖动才弹；刚右键拖过（Windows 松手后才发）：这一次不弹
+      if (this.drag?.kind === 'pan' && this.drag.vertical) { this.pendingMenu = info; return }
+      if (this.rightDragged) { this.rightDragged = false; return }
+      this.o.onContextMenu?.(info)
     }, { signal })
   }
   finishTool(d: Drawing, keep?: boolean): void { this.o.onToolDone?.(d, keep); this.o.onDrawingsChanged?.(); this.dirty = true }
