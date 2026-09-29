@@ -29,7 +29,7 @@ import { closeAllSheets } from '../ui/sheet'
 import { wantStreams, ensureUniverse, takeOpenParam } from './_streams'
 import { openSearch } from './search'
 import { openAlertForm } from './alertForm'
-import { isStale, isLandscape, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
+import { isStale, isLandscape, priceModeFor, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
 import { createIntervalBar } from './chart/intervalBar'
@@ -58,14 +58,10 @@ export function learnedInterval(sym: string, current: IntervalId): IntervalId | 
   const iv = c?.v as IntervalId | undefined
   return iv && (INTERVALS as readonly string[]).includes(iv) && iv !== current ? iv : null
 }
-/** 图上真正用的价格轴：设置是线性 / 对数时换成这一类学到的那档；百分比引擎画不了，按线性 */
-export function effectivePriceMode(sym: string): Exclude<PriceMode, 'percent'> {
-  const pref = st.priceMode
-  if (pref === 'percent') return 'linear'
-  if (!st.habitLearning) return pref
+/** 图上真正用的价格轴：设置是线性 / 对数时换成这一类学到的那档；百分比照原样交给引擎 */
+export function effectivePriceMode(sym: string): PriceMode {
   const s = S.symbols.get(sym)
-  const learned = st.learnedDefaults.priceAxis[habitCategory(s?.kind, splitPair(sym).base)]?.v
-  return learned === 'log' || learned === 'linear' ? learned : pref
+  return priceModeFor(st.priceMode, st.habitLearning, st.learnedDefaults.priceAxis[habitCategory(s?.kind, splitPair(sym).base)]?.v)
 }
 
 /** 十字线读数里的时刻（上海）：日线及以上只写日期 */
@@ -137,6 +133,8 @@ export function initChart(root: HTMLElement): PageHandle {
     priceMode: effectivePriceMode(sym()), mainInverted: st.mainInverted, subInverted: st.subInverted,
     subScale: { ...st.subHeightOverrides },
     barSpacing: st.barSpacing, orderFlow: st.orderFlow,
+    // 对比整串交给引擎（它自己去掉主图那只、去重、最多三只）；盘口只在页面露着时开，见 syncChart 的 extraKey
+    compareSymbols: [...st.compareSymbols], depth: false,
     streams: list => { chartStreams = list; pushStreams() },
     // 页面藏着时订单流停订（几条簿 / 成交 WS 与 500ms 评估），show / hide 里 resume / suspend
     orderFlowSource: push => (port = createPagePort(push, s => st.orderFlowOverrides[baseOfSymbol(s).base] ?? null, !shown)),
@@ -241,7 +239,7 @@ export function initChart(root: HTMLElement): PageHandle {
   })
 
   // ---- st → 图
-  let lookKey = '', indKey = ''
+  let lookKey = '', indKey = '', extraKey = JSON.stringify([st.compareSymbols, false])
   function syncChart(): void {
     if (chart.symbol !== sym()) { card.set(null, '', 2); chart.setSymbol(sym()); pushStreams(); bench.refreshAlerts() }
     if (chart.interval !== iv()) chart.setInterval(iv())
@@ -258,6 +256,13 @@ export function initChart(root: HTMLElement): PageHandle {
       lookKey = lk
       chart.setLook({ indicatorColors: colorTable(st.indicatorColors), subInverted: [...st.subInverted] as IndicatorId[], subScale: { ...st.subHeightOverrides } })
       chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight, priceMode: pm, mainInverted: st.mainInverted })
+    }
+    // 对比、盘口（图表设置里的开关）。盘口是一条单独的 depth5 小连接，页面藏着时关掉，回来再按偏好开
+    const xk = JSON.stringify([st.compareSymbols, st.depth && shown])
+    if (xk !== extraKey) {
+      extraKey = xk
+      chart.setCompare([...st.compareSymbols])
+      chart.setDepth(st.depth && shown)
     }
     port?.setOverride(st.orderFlowOverrides[baseOfSymbol(sym()).base] ?? null)
     render()
@@ -359,6 +364,8 @@ export function initChart(root: HTMLElement): PageHandle {
       pushStreams()
       port?.suspend()
       card.set(null, '', 2)
+      chart.setDepth(false) // 盘口那条小连接跟着页面收掉；show 里 syncChart 按偏好再开
+      extraKey = JSON.stringify([st.compareSymbols, false])
       document.getElementById('m-app')?.classList.remove('landscape-free')
     },
     reselect(): void {

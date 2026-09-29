@@ -136,3 +136,14 @@ describe('手机网页版 · 行情页取不到行情时盖住旧图', async () 
     expect(showsOtherChart({ loading: false, error: null }, { symbol: 'ETHUSDT', interval: '1h' }, 'ETHUSDT', '1h')).toBe(false)
   })
 })
+
+describe('手机网页版 · 行情页价格轴', async () => {
+  const { priceModeFor } = await import('../src/m/pages/chart/logic')
+  it('百分比原样交给图，学到的那档只替换线性 / 对数', () => {
+    expect(priceModeFor('percent', false, undefined)).toBe('percent')
+    expect(priceModeFor('percent', true, 'log')).toBe('percent')
+    expect(priceModeFor('linear', true, 'log')).toBe('log')
+    expect(priceModeFor('log', false, 'linear')).toBe('log')
+    expect(priceModeFor('log', true, 'weird')).toBe('log')
+  })
+})

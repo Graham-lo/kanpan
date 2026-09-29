@@ -405,3 +405,10 @@ export function showsOtherChart(
   return !drawn || drawn.symbol.toUpperCase() !== symbol.toUpperCase() || drawn.interval !== interval
 }
 
+/** 图上真正用的价格轴（照 iOS effectivePriceMode）：设置是线性 / 对数且开着个性化学习时，换成这一类学到的那档；
+ *  百分比原样交给图（引擎 8e6f4b0e 起画得了） */
+export function priceModeFor<M extends string>(pref: M, habitLearning: boolean, learned: unknown): M | 'log' | 'linear' {
+  if (pref === 'percent' || !habitLearning) return pref
+  return learned === 'log' || learned === 'linear' ? learned : pref
+}
+
