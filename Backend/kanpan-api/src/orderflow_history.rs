@@ -26,7 +26,7 @@
 //!   一条 `UPDATE … FROM unnest` 把它们的 `seen_ms` 刷到停机那一刻，交给下次启动读回；整段最多 10 秒（见「停机」一节）。
 //! * 接口 `GET /v1/market/orderflow/history?base=&from=&to=&minLifeMs=&limit=`：`to` 缺省为此刻，`from` 缺省为
 //!   `to` 前 24 小时（带了 `limit` 的缺省 6 小时），区间最长 3 天；`minLifeMs`（0 到 1 天，缺省 0）滤掉存活不到它的已结束单，挂着的照回；
-//!   已结束的单最多回 `limit`（1–5000，缺省 5000，不带 `limit` 的老请求也套这个上限）条，按出现时刻留最新的；
+//!   已结束的单最多回 `limit`（1–5000）条，按出现时刻留最新的；不带 `limit` 的老请求（手机端）照旧只套 20 万行的上限，默认行为不变；
 //!   挂着的（`to` 之前出现的）不受上限、不受 `from` 限制，一律全回。
 //!   回 `{base, thresholds, trackedSinceMs, orders, nextBefore}`，自己压 gzip（请求带 `Accept-Encoding: gzip` 时）；
 //!   `nextBefore` 是截到上限时回的最早那条已结束单的出现时刻（没截到为 null），下一页拿它当 `to` 再要。
@@ -83,7 +83,8 @@ const LINGER_MS:i64=store::DAY_MS;
 const DEFAULT_SPAN_MS:i64=store::DAY_MS;
 const PAGED_SPAN_MS:i64=6*3_600_000;
 const MAX_SPAN_MS:i64=store::RETENTION_MS;
-/// 历史接口一次最多回几条已结束的单（带不带 `limit` 都套上）；挂着的不算在里面，一律全回。
+/// 带 `limit` 的请求一页最多回几条已结束的单；挂着的不算在里面，一律全回。
+/// 不带 `limit` 的老请求（手机端按 24 小时一窗取、不翻页）照旧只套 `store::MAX_ROWS`，默认行为和原来一样。
 const MAX_PAGE:i64=5_000;
 const EVALUATE:Duration=Duration::from_millis(500);
 const FLUSH:Duration=Duration::from_secs(15);
@@ -1320,9 +1321,9 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
 #[serde(deny_unknown_fields)]
 struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>,#[serde(rename="minLifeMs")] min_life_ms:Option<i64>,limit:Option<i64>}
 
-/// 校验 `limit`：缺省 `MAX_PAGE`，1..=`MAX_PAGE`，其余回 `invalid_query`。
+/// 校验 `limit`：1..=`MAX_PAGE`，其余回 `invalid_query`；不给是老请求，上限照旧 `store::MAX_ROWS`。
 fn page_limit(v:Option<i64>)->std::result::Result<i64,&'static str> {
- match v.unwrap_or(MAX_PAGE) {v @ 1..=MAX_PAGE=>Ok(v),_=>Err("invalid_query")}
+ match v {None=>Ok(store::MAX_ROWS),Some(v @ 1..=MAX_PAGE)=>Ok(v),Some(_)=>Err("invalid_query")}
 }
 
 /// `minLifeMs` 最大一天：再长就没什么单剩下了，也免得任意 i64 进 SQL。
@@ -1481,7 +1482,7 @@ impl<K:Clone+Eq+std::hash::Hash> Answers<K> {
  }
 }
 
-/// 同一时刻最多几个历史请求在读库、组答复。2026-09-29 之前一个请求最多 20 万行、答复约 60 MB（现在已结束的最多 5000 条）；
+/// 同一时刻最多几个历史请求在读库、组答复。不带 `limit` 的老请求最多 20 万行、答复约 60 MB（带 `limit` 的已结束最多 5000 条）；
 /// 接口不要登录，不限的话几个同时到就能把 serve（上限 1 GB）撑爆，还占满 8 条库连接里的一大半。深度热力也占这组名额。
 static HISTORY_READS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(2);
 /// 答复按这么大一块一块攒：不攒成一整块连续内存（翻倍扩容时新旧两块同时在）。
@@ -2231,7 +2232,7 @@ mod tests {
  }
 
  #[test] fn page_limit_is_one_to_five_thousand() {
-  assert_eq!(page_limit(None),Ok(MAX_PAGE));
+  assert_eq!(page_limit(None),Ok(store::MAX_ROWS),"老请求（手机端）上限照旧");
   assert_eq!(page_limit(Some(1)),Ok(1));
   assert_eq!(page_limit(Some(5_000)),Ok(5_000));
   assert_eq!(page_limit(Some(5_001)),Err("invalid_query"));

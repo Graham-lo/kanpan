@@ -23,8 +23,7 @@ pub const GATE_TARGET:f64=18e9;
 pub const ROW_BYTES:f64=450.0;
 /// 一条语句最多删几行：serve 的连接挂着 20 秒语句死线，一口气删几十万行会半路断。
 const DELETE_BATCH:i64=10_000;
-/// 测试里「不截」的上限（线上的已结束单上限是接口的 `limit`，最多 5000；挂着的不限）。
-#[cfg(test)]
+/// 不带 `limit` 的老请求（手机端）已结束单的上限，与 2026-09-29 之前一样；带 `limit` 的（网页）最多 5000。挂着的不限。
 pub const MAX_ROWS:i64=200_000;
 
 const COLUMNS:&str="base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms";
