@@ -12,16 +12,20 @@
  *   底部抽屉   —— 图表区下方，开 280 / 关 0
  *   侧栏小部件 —— 「自选」视图里按 st.slots.widgets 的顺序堆叠
  */
-import { st, save, type CellCfg, type Alert, type PanelId, type Layout } from '../app/store'
+import { st, save, type CellCfg, type PanelId, type Layout } from '../app/store'
+import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, drawingAlertOf, drawingCanAlert, toggleDrawingAlert, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel } from '../alerts/model'
+import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, streamIvOf, startSeconds, onSecondsTick, secondBars, secondLastBar, customKlines, customTick, customBase } from '../chart/intervals'
+import { VPVR_MODES } from '../chart/overlays'
+import { renderAlertsPanel, alertsPanelClick, openCreateAlert, installAlerts, alertStreams, askNotify } from '../alerts/panel'
 import { hooks, go } from '../app/shell'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine } from '../chart/chart'
-import { CATALOG, MAX_SUBS, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
+import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
-  S, on, klines, loadUniverse, fetchDetail, detailOf, setStreams, streamName, wantMeta, marketCap, j, REST,
+  S, on, klines, loadUniverse, fetchDetail, detailOf, setStreams, streamName, wantMeta, marketCap,
   IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, type Kind, type Sym,
 } from '../market'
 
@@ -49,13 +53,19 @@ function metaFor(c: CellCfg) {
   return { symbol: c.symbol, iv: IV_MS[c.iv], title: c.symbol, sub: `· ${IV_LABEL[c.iv]} · 币安${kindName(s)}`, dec: s?.dec ?? 2, badge: badge(s) }
 }
 
+/** 图上画的提醒线：这只品种还在等的价格提醒（画线提醒由画线本身表示） */
 function priceAlerts(symbol: string): AlertLine[] {
-  return st.alerts.filter(a => a.symbol === symbol && a.kind === 'price' && a.price != null).map(a => ({ price: a.price as number, id: a.id, symbol: a.symbol, kind: a.kind, dir: a.dir, created: a.created }))
+  return activeAlerts(symbol).filter(a => a.kind === 'price').flatMap(a => { const p = alertLevel(a); return p == null ? [] : [{ price: p, id: a.id, symbol: a.symbol, kind: a.kind, created: a.created }] })
+}
+/** 在价位 p 直接建一条价格提醒（点 / 拖价格轴、右键菜单） */
+function quickAlert(symbol: string, p: number): void {
+  const a = createAlertAt(symbol, p); if (!a) return
+  toast('提醒已创建', a.title, 'bell'); askNotify()
 }
 
 function buildCells(): void {
-  const n = ({ '1': 1, '2': 2, '2v': 2, '4': 4 } as Record<Layout, number>)[st.layout]
-  const fill = ['ETHUSDT', 'SOLUSDT', 'XAUUSDT']
+  const n = ({ '1': 1, '2': 2, '2v': 2, '4': 4, '6': 6, '8': 8 } as Record<Layout, number>)[st.layout]
+  const fill = ['ETHUSDT', 'SOLUSDT', 'XAUUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'NVDAUSDT']
   while (st.cells.length < n) st.cells.push({ symbol: fill[st.cells.length - 1] || 'BTCUSDT', iv: st.cells[0].iv })
   st.active = Math.min(st.active, n - 1)
   const area = $('#chartArea'); area.dataset.layout = st.layout
@@ -71,9 +81,13 @@ function makeCell(i: number): Cell {
   el.innerHTML = `<div class="canvas-host"></div>
     <div class="cell-empty" hidden></div>
     <div class="cell-foot">
+      <button class="foot-ic" data-act="layout" aria-label="图表布局" data-tip="图表布局">${I(LAYOUT_ICON[st.layout], 'icon-16')}</button>
+      <button class="foot-ic" data-act="save" aria-label="保存图表截图" data-tip="保存图表截图" data-kbd="⌥ S">${I('camera', 'icon-16')}</button>
+      <span class="tb-sep"></span>
       ${RANGES.map(([l, iv], k) => `<button data-range="${k}" data-tip="${l}：切到 ${IV_LABEL[iv]}，显示最近${l === '全部' ? '全部历史' : l === '今年' ? '今年以来' : l}">${l}</button>`).join('')}
       <div class="foot-right">
         <span class="clock num" data-tip="时间统一按上海时间显示，日线在北京时间 8:00 换日"></span>
+        <span class="conn-dot" data-conn="${connState()}" data-tip="${CONN_TIP[connState()]}"></span>
         <span class="tb-sep"></span>
         <button data-act="log" data-tip="对数坐标" aria-pressed="false">对数</button>
         <button data-act="auto" data-tip="价格轴自动缩放（双击价格轴也可以恢复）" aria-pressed="true">自动</button>
@@ -85,24 +99,29 @@ function makeCell(i: number): Cell {
   cell.chart = new TVChart(host, {
     onActivate: () => setActive(cell.idx),
     onNeedMore: () => { void loadMore(cell) },
-    onCrosshairMove: t => cells.forEach(o => { if (o !== cell) o.chart.syncCrosshair(t) }),
+    onCrosshairMove: t => { if (st.linkCross) cells.forEach(o => { if (o !== cell) o.chart.syncCrosshair(t) }) },
     onContextMenu: info => chartContextMenu(cell, info),
-    onLegendAction: (id, act) => legendAction(id, act),
+    onLegendAction: (id, act, btn) => legendAction(id, act, btn),
     onToolDone: () => selectTool(null),
     onSelectDrawing: d => showDrawProps(d, cell),
     onDrawingsChanged: () => drawingsChanged(cell),
+    onAlertCreate: p => quickAlert(cfg(cell).symbol, p),
+    onAlertMove: (a, p) => { if (a.id) moveAlert(a.id, p) },
     drawColor: () => st.drawColor,
     onAutoChange: v => { $('[data-act="auto"]', el)?.setAttribute('aria-pressed', String(v)) },
   })
   cell.chart.setIndicators(structuredClone(st.ind))
   if (st.params) for (const [k, p] of Object.entries(st.params)) cell.chart.params[k as IndicatorId] = structuredClone(p)
   cell.chart.setMagnet(st.magnet)
+  cell.chart.setVpvrMode(st.vpvrMode)
   cell.chart.drawingsHidden = st.drawHidden
   el.addEventListener('click', e => {
     const t = tgt(e)
     const r = t.closest<HTMLElement>('[data-range]'); if (r) return applyRange(cell, +(r.dataset.range || 0))
     if (t.closest('[data-retry]')) { void retryLoad(cell); return }
     const a = t.closest<HTMLElement>('[data-act]')?.dataset.act
+    if (a === 'layout') { layoutMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement); return }
+    if (a === 'save') { setActive(cell.idx); screenshot(); return }
     if (a === 'log') { cell.chart.setLog(!cell.chart.log); t.closest('[data-act]')?.setAttribute('aria-pressed', String(cell.chart.log)) }
     if (a === 'auto') cell.chart.setAuto(!cell.chart.auto)
   })
@@ -110,10 +129,16 @@ function makeCell(i: number): Cell {
   return cell
 }
 
-function showCellEmpty(cell: Cell, msg: string | null): void {
+function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
   const e = $('.cell-empty', cell.el); if (!e) return
   e.hidden = !msg
-  if (msg) e.innerHTML = `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>重试</button></div>`
+  if (msg) e.innerHTML = quiet ? `<div class="empty">${I('trades', 'icon-24')}<div>${esc(msg)}</div></div>` : `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>重试</button></div>`
+}
+/** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所 */
+async function barsFor(symbol: string, iv: string, endTime?: number): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
+  if (isSecondIv(iv)) return { bars: endTime ? [] : secondBars(symbol, iv), ok: true }
+  if (isCustomIv(iv)) return customKlines(symbol, iv, endTime)
+  return klines(symbol, iv, endTime)
 }
 
 async function retryLoad(cell: Cell): Promise<void> {
@@ -125,9 +150,10 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const c = cfg(cell), token = ++cell.loadToken
   cell.noMore = false
   cell.chart.setDrawings(drawingsFor(c.symbol))
-  const { bars, ok, error } = await klines(c.symbol, c.iv)
+  const { bars, ok, error } = await barsFor(c.symbol, c.iv)
   if (token !== cell.loadToken) return
-  if (!ok || !bars.length) {
+  if (ok && !bars.length && isSecondIv(c.iv)) showCellEmpty(cell, '等第一笔成交', true)
+  else if (!ok || !bars.length) {
     cell.chart.setData([], metaFor(c))
     showCellEmpty(cell, ok ? `${c.symbol} 在这个周期上还没有 K 线` : `取不到 ${c.symbol} 的 K 线${error ? `（${error.split(' ')[0]}）` : ''}`)
   } else showCellEmpty(cell, null)
@@ -146,7 +172,7 @@ async function loadMore(cell: Cell): Promise<void> {
   if (cell.more || cell.noMore || !cell.chart.bars.length) return
   cell.more = true; cell.chart.loadingMore = true
   const c = cfg(cell), token = cell.loadToken
-  const { bars, ok } = await klines(c.symbol, c.iv, cell.chart.bars[0].t)
+  const { bars, ok } = await barsFor(c.symbol, c.iv, cell.chart.bars[0].t)
   cell.more = false; cell.chart.loadingMore = false
   if (token !== cell.loadToken) return
   if (!ok) return
@@ -177,6 +203,7 @@ export function openSymbol(symbol: string, cell: Cell | undefined = active()): v
   const c = cfg(cell)
   if (c.symbol === symbol) return
   c.symbol = symbol; save()
+  if (st.linkSymbol && cells.length > 1) return linkAll(symbol)
   void loadCell(cell); refreshStreams(); renderToolbar(); renderPanel()
 }
 
@@ -200,12 +227,14 @@ export function drawingsChanged(cell: Cell): void {
   if (now !== prev) { undoStack.push({ s, json: prev }); redoStack.length = 0 }
   lastSnap[s] = now
   cells.forEach(c => { if (cfg(c).symbol === s) c.chart.dirty = true })
+  reconcileDrawingAlerts(s, drawingsFor(s))
   save(); renderToolbar()
 }
 function restoreDrawings(s: string, json: string, toStack: Snap[]): void {
   toStack.push({ s, json: snapOf(s) })
   st.drawings[s] = JSON.parse(json) as Drawing[]; lastSnap[s] = json
   cells.forEach(c => { if (cfg(c).symbol === s) c.chart.setDrawings(st.drawings[s]) })
+  reconcileDrawingAlerts(s, st.drawings[s])
   showDrawProps(null); save(); renderToolbar()
 }
 function undo(): void { const u = undoStack.pop(); if (!u) return; restoreDrawings(u.s, u.json, redoStack); toast('已撤销', '⌘⇧Z 重做', 'undo', 1800) }
@@ -262,12 +291,13 @@ function showDrawProps(d: Drawing | null, cell?: Cell): void {
   const el = $('#drawProps'); if (!el) return
   el.classList.toggle('show', !!propsTarget)
   if (!d) { el.innerHTML = ''; return }
-  const canAlert = d.type === 'hline' || d.type === 'trend' || d.type === 'ray'
+  const canAlert = drawingCanAlert(d.type)
+  const hasAlert = !!drawingAlertOf(cfg(cell).symbol, d.id)
   el.innerHTML = SWATCHES.map(c => `<button class="swatch-btn" data-color="${c}" aria-label="颜色 ${c}" aria-pressed="${d.color === c}"><span class="swatch" style="background:${c}"></span></button>`).join('') +
     `<span class="tb-sep"></span>
     ${[1, 2, 3].map(w => `<button class="ibtn xs" data-w="${w}" aria-pressed="${(d.width || 2) === w}" data-tip="${w} px 粗细" aria-label="${w} px"><svg class="icon-16" viewBox="0 0 16 16"><rect x="2" y="${8 - w / 2}" width="12" height="${w}" rx="${w / 2}" fill="currentColor"/></svg></button>`).join('')}
     <span class="tb-sep"></span>
-    ${canAlert ? `<button class="ibtn xs" data-p="alert" aria-pressed="${!!d.alert}" aria-label="画线提醒" data-tip="价格碰到这条线时提醒我">${I('bellPlus', 'icon-16')}</button>` : ''}
+    ${canAlert ? `<button class="ibtn xs" data-p="alert" aria-pressed="${hasAlert}" aria-label="画线提醒" data-tip="价格碰到这条线时提醒我">${I('bellPlus', 'icon-16')}</button>` : ''}
     <button class="ibtn xs" data-p="lock" aria-pressed="${!!d.locked}" aria-label="锁定" data-tip="锁定">${I('lock', 'icon-16')}</button>
     <button class="ibtn xs" data-p="del" aria-label="删除" data-tip="删除" data-kbd="Delete">${I('trash', 'icon-16')}</button>`
 }
@@ -277,14 +307,31 @@ function drawPropsClick(e: MouseEvent): void {
   if (b.dataset.color) { d.color = b.dataset.color; st.drawColor = b.dataset.color }
   if (b.dataset.w) d.width = +b.dataset.w
   if (b.dataset.p === 'lock') d.locked = !d.locked
-  if (b.dataset.p === 'alert') { d.alert = !d.alert; lineSide.delete(d.id); if (d.alert) toast('画线提醒已开', '价格碰到这条线时通知你，响一次就结束', 'bell') }
+  if (b.dataset.p === 'alert') { if (toggleDrawingAlert(cfg(cell).symbol, d)) { toast('画线提醒已开', '价格碰到这条线时通知你', 'bell'); askNotify() } }
   if (b.dataset.p === 'del') { cell.chart.selected = d; cell.chart.deleteSelected(); return }
   drawingsChanged(cell); showDrawProps(d, cell)
 }
 
 // ------------------------------------------------------------ 工具栏
-const LAYOUT_ICON: Record<Layout, string> = { '1': 'layout1', '2': 'layout2', '2v': 'layout2v', '4': 'layout4' }
-function ivKey(iv: string): string { return ({ '1m': '1', '3m': '3', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '2h': '120', '4h': '240', '6h': '360', '8h': '480', '12h': '720', '1d': '1 D', '1w': '1 W', '1M': '1 M' } as Record<string, string>)[iv] || '' }
+const LAYOUT_ICON: Record<Layout, string> = { '1': 'layout1', '2': 'layout2', '2v': 'layout2v', '4': 'layout4', '6': 'layout6', '8': 'layout8' }
+const LAYOUT_NAME: [Layout, string][] = [['1', '一图'], ['2', '左右两图'], ['2v', '上下两图'], ['4', '四图'], ['6', '六图（三列两行）'], ['8', '八图（四列两行）']]
+function layoutMenu(b: HTMLElement): void {
+  const items: MenuItem[] = [{ header: '布局' }, ...LAYOUT_NAME.map(([k, l]): MenuItem => ({ icon: LAYOUT_ICON[k], label: l, checked: st.layout === k, sc: k === st.layout ? '当前' : '', run: () => setLayout(k) })), '-',
+    { header: '多图联动' },
+    { label: '十字线跨图同步', check: true, checked: st.linkCross, run: () => { st.linkCross = !st.linkCross; if (!st.linkCross) cells.forEach(c => c.chart.syncCrosshair(null)); save() } },
+    { label: '品种跨图同步', check: true, checked: st.linkSymbol, sc: st.linkSymbol ? '' : '换一格全跟着换', run: () => { st.linkSymbol = !st.linkSymbol; save(); if (st.linkSymbol) linkAll(cfg(active()).symbol) } }]
+  menuFrom(b, items)
+}
+/** 品种跨图同步：一格换了品种，其余格一起换（周期各自保留） */
+function linkAll(symbol: string): void {
+  cells.forEach(c => { const cc = cfg(c); if (cc.symbol !== symbol) { cc.symbol = symbol; void loadCell(c) } })
+  save(); refreshStreams(); renderToolbar(); renderPanel()
+}
+// ---- 连接状态点：绿 = 实时，黄 = 在连，红 = 断了或行情停住
+type Conn = 'live' | 'connecting' | 'down'
+const CONN_TIP: Record<Conn, string> = { live: '行情连着', connecting: '正在连行情', down: '行情断了，正在重连' }
+function connState(): Conn { return st.stale || S.wsState === 'closed' || !S.live ? (S.wsState === 'connecting' ? 'connecting' : 'down') : S.wsState === 'open' ? 'live' : 'connecting' }
+function paintConn(): void { const c = connState(); $$('.cell-foot .conn-dot').forEach(e => { e.dataset.conn = c; e.dataset.tip = CONN_TIP[c] }) }
 /** 浏览器标签页标题：当前品种的最新价与涨跌；换品种时立刻换，不等下一笔成交 */
 function syncTitle(): void {
   const s = sym(cfg(active())?.symbol || '')
@@ -300,7 +347,7 @@ export function renderToolbar(): void {
     <button class="tb-btn symbol-btn" id="tbSymbol" data-tip="换品种" data-kbd="⌘ K">${badge(s)}<span>${esc(c.symbol)}</span><span class="kind">${kindName(s)}</span></button>
     <span class="tb-sep"></span>
     <div class="intervals" role="group" aria-label="周期">
-      ${st.pinned.map(iv => `<button data-iv="${iv}" aria-pressed="${iv === c.iv}" data-tip="${IV_LABEL[iv]}" data-kbd="${ivKey(iv)}">${IV_SHORT[iv]}</button>`).join('')}
+      ${st.pinned.map((iv, k) => `<button data-iv="${iv}" aria-pressed="${iv === c.iv}" data-tip="${IV_LABEL[iv]}" data-kbd="${k < 9 ? k + 1 : ''}">${IV_SHORT[iv]}</button>`).join('')}
       ${pinnedHas ? '' : `<button data-iv="${c.iv}" aria-pressed="true">${IV_SHORT[c.iv]}</button>`}
       <button class="tb-btn" id="tbMoreIv" aria-label="更多周期" data-tip="全部周期">更多${I('chevronDown', 'icon-16')}</button>
     </div>
@@ -333,10 +380,7 @@ function onToolbarClick(e: MouseEvent): void {
     case 'tbNote': return openNote()
     case 'tbUndo': return undo()
     case 'tbRedo': return redo()
-    case 'tbLayout': {
-      const items: MenuItem[] = [{ header: '布局' }, ...([['1', 'layout1', '一图'], ['2', 'layout2', '左右两图'], ['2v', 'layout2v', '上下两图'], ['4', 'layout4', '四图']] as [Layout, string, string][]).map(([k, ic, l]) => ({ icon: ic, label: l, checked: st.layout === k, sc: k === st.layout ? '当前' : '', run: () => setLayout(k) })), '-', { label: '十字线跨图同步', icon: 'check', disabled: true, sc: '始终' }]
-      menuFrom(b, items); return
-    }
+    case 'tbLayout': return layoutMenu(b)
     case 'tbShot': return screenshot()
     case 'tbShare':
       menuFrom(b, [
@@ -346,22 +390,39 @@ function onToolbarClick(e: MouseEvent): void {
     case 'tbFull': return fullscreen()
   }
 }
-export function setLayout(k: Layout): void { st.layout = k; buildCells(); renderToolbar() }
+export function setLayout(k: Layout): void { st.layout = k; buildCells(); renderToolbar(); $$('.cell-foot [data-act="layout"]').forEach(e => { e.innerHTML = I(LAYOUT_ICON[k], 'icon-16') }) }
 
 function intervalMenu(btn: HTMLElement): void {
   const c = cfg(active())
-  const groups: [string, string[]][] = [['分钟', ['1m', '3m', '5m', '15m', '30m']], ['小时', ['1h', '2h', '4h', '6h', '8h', '12h']], ['日及以上', ['1d', '1w', '1M']]]
+  const groups: [string, string[]][] = [['秒（打开页面起才有）', [...SECOND_IVS]], ['分钟', ['1m', '3m', '5m', '15m', '30m']], ['小时', ['1h', '2h', '4h', '6h', '8h', '12h']], ['日及以上', ['1d', '1w', '1M']]]
+  if (st.customIvs.length) groups.push(['自定义', st.customIvs.filter(iv => IV_LABEL[iv])])
   const items: MenuItem[] = groups.flatMap(([h, ivs]): MenuItem[] => [{ header: h }, ...ivs.map(iv => ({
-    label: IV_LABEL[iv], checked: iv === c.iv, check: true, sc: st.pinned.includes(iv) ? '已钉在栏上' : '', run: () => setIv(iv),
+    label: IV_LABEL[iv], checked: iv === c.iv, check: true, sc: st.pinned.includes(iv) ? '已钉在栏上' : isCustomIv(iv) ? '右键移除' : '', run: () => setIv(iv),
   }))])
-  items.push('-', { header: '右键周期可钉到栏上 · 直接打数字也能换周期' })
+  items.push('-', { header: '右键周期可钉到栏上' })
   const m = menuFrom(btn, items, { width: 260 })
+  // 自定义分钟：打一个数回车就切过去，并记进「自定义」
+  const box = document.createElement('div'); box.className = 'iv-custom'
+  box.innerHTML = `<input class="input num" type="text" inputmode="numeric" maxlength="4" placeholder="自定义分钟，如 7、45、90" aria-label="自定义分钟"><span class="faint">分</span>`
+  m.appendChild(box)
+  const inp = $<HTMLInputElement>('input', box)
+  inp.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const iv = minutesIv(+inp.value.trim())
+    if (!iv) { inp.classList.add('bad'); return }
+    if (registerCustomIv(iv) && !st.customIvs.includes(iv)) { st.customIvs = [...st.customIvs, iv].slice(-12); save() }
+    closeMenu(); setIv(iv)
+  })
+  inp.addEventListener('input', () => inp.classList.remove('bad'))
   // 右键一行 = 钉 / 取消钉
   m.addEventListener('contextmenu', e => {
     e.preventDefault()
     const b = tgt(e).closest<HTMLElement>('.mi'); if (!b) return
     const lab = b.querySelector('.label')?.textContent?.trim()
     const iv = Object.keys(IV_LABEL).find(k => IV_LABEL[k] === lab); if (!iv) return
+    if (isCustomIv(iv)) { st.customIvs = st.customIvs.filter(x => x !== iv); save(); closeMenu(); intervalMenu($('#tbMoreIv')); return }
+    if (!INTERVALS.includes(iv)) return
     st.pinned = st.pinned.includes(iv) ? st.pinned.filter(x => x !== iv) : INTERVALS.filter(x => st.pinned.includes(x) || x === iv)
     save(); closeMenu(); renderToolbar(); intervalMenu($('#tbMoreIv'))
   })
@@ -384,9 +445,13 @@ function screenshot(copy = false): void {
 function fullscreen(): void { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.() }
 
 // ------------------------------------------------------------ 图例、右键
-function legendAction(id: string, act: string): void {
+function legendAction(id: string, act: string, btn?: HTMLElement): void {
+  if (act === 'vpvrMode' && btn) {
+    menuFrom(btn, [{ header: '成交量分布' }, ...VPVR_MODES.map((m): MenuItem => ({ label: m.label, check: true, checked: st.vpvrMode === m.id, run: () => { st.vpvrMode = m.id; save(); cells.forEach(c => c.chart.setVpvrMode(m.id)) } }))])
+    return
+  }
   if (act === 'remove') {
-    if (id === 'ma' || id === 'ema' || id === 'boll' || id === 'vol') st.ind[id] = false
+    if (isMainToggle(id)) st.ind[id] = false
     else st.ind.subs = st.ind.subs.filter(x => x !== id)
     cells.forEach(c => c.chart.setIndicators(st.ind)); save()
     toast(`已移除 ${CATALOG[id as IndicatorId]?.name || id}`, '在「指标」里可以加回来', 'close', 2200)
@@ -403,7 +468,7 @@ function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
       { icon: 'trash', label: '删除', sc: 'Delete', run: () => { cell.chart.selected = dr; cell.chart.deleteSelected() } }, '-')
   }
   if (p != null) items.push(
-    { icon: 'bellPlus', label: `在 ${pt} 创建提醒`, sc: 'Alt A', run: () => openAlert(p) },
+    { icon: 'bellPlus', label: `在 ${pt} 创建提醒`, run: () => quickAlert(c.symbol, p) },
     { icon: 'hline', label: `在 ${pt} 画水平线`, sc: 'Alt H', run: () => { drawingsFor(c.symbol).push({ id: 'd' + Date.now(), type: 'hline', pts: [{ t: info.time, p }], color: st.drawColor, width: 2 }); cell.chart.dirty = true; drawingsChanged(cell) } },
     { icon: 'note', label: '在这根 K 线记一笔…', run: () => openNote(info.time, p) },
     { icon: 'link', label: `复制价格 ${pt}`, run: () => { void navigator.clipboard?.writeText(p.toFixed(s?.dec ?? 2)); toast('已复制', pt, 'check', 1500) } }, '-')
@@ -447,7 +512,7 @@ function renderSlots(): void {
 // ------------------------------------------------------------ 侧栏
 const RAIL: [PanelId, string, string][] = [['watch', 'star', '自选'], ['alerts', 'bell', '提醒'], ['flow', 'layers', '主力订单流'], ['notes', 'note', '笔记'], ['trades', 'trades', '成交']]
 export function renderRail(): void {
-  $('#rail').innerHTML = RAIL.map(([k, ic, l]) => `<button class="ibtn ${st.panel === k ? 'on' : ''}" data-panel="${k}" aria-label="${l}" aria-pressed="${st.panel === k}" data-tip="${l}" data-tip-side="left">${I(ic)}${k === 'alerts' && st.alerts.length ? `<span class="dot">${st.alerts.length}</span>` : ''}</button>`).join('') +
+  $('#rail').innerHTML = RAIL.map(([k, ic, l]) => `<button class="ibtn ${st.panel === k ? 'on' : ''}" data-panel="${k}" aria-label="${l}" aria-pressed="${st.panel === k}" data-tip="${l}" data-tip-side="left">${I(ic)}${k === 'alerts' && activeAlerts().length ? `<span class="dot">${activeAlerts().length}</span>` : ''}</button>`).join('') +
     `<div class="rail-spacer"></div>
     <button class="ibtn" id="railKeys" aria-label="快捷键" data-tip="快捷键" data-kbd="?" data-tip-side="left">${I('info')}</button>`
 }
@@ -538,9 +603,7 @@ function onPanelClick(e: MouseEvent): void {
   const star = t.closest<HTMLElement>('[data-star]'); if (star) { toggleWatch(star.dataset.star || ''); return }
   const tr = t.closest<HTMLElement>('tr[data-sym]'); if (tr) return openSymbol(tr.dataset.sym || '')
   const sec = t.closest<HTMLElement>('[data-sector]'); if (sec) { hooks.openSector?.(sec.dataset.sector || ''); return }
-  const del = t.closest<HTMLElement>('[data-del-alert]'); if (del) return deleteAlert(del.dataset.delAlert || '')
-  const scope = t.closest<HTMLElement>('[data-scope]'); if (scope) { st.alertScope = scope.dataset.scope === 'all' ? 'all' : 'symbol'; save(); renderPanel(); return }
-  if (t.closest('#aNew')) return openAlert()
+  if (st.panel === 'alerts' && alertsPanelClick(e, cfg(active()).symbol)) return
   if (t.closest('#nNew')) return openNote()
   const delNote = t.closest<HTMLElement>('[data-del-note]'); if (delNote) { e.stopPropagation(); st.notes = st.notes.filter(n => n.id !== delNote.dataset.delNote); save(); renderPanel(); return }
   const note = t.closest<HTMLElement>('[data-note]'); if (note) return jumpNote(note.dataset.note || '')
@@ -608,104 +671,13 @@ function patchDetail(): void {
   const cap = marketCap(s.symbol); if (cap) set('cap', fmtCompact(cap))
 }
 
-// ---- 提醒
-function panelAlerts(el: HTMLElement): void {
-  const k = cfg(active()).symbol
-  const list = st.alertScope === 'symbol' ? st.alerts.filter(a => a.symbol === k) : st.alerts
-  const lines = Object.entries(st.drawings).flatMap(([s, ds]) => ds.filter(d => d.alert).map(d => ({ s, d }))).filter(x => st.alertScope === 'all' || x.s === k)
-  const byKind: [string, string][] = [['price', '价格'], ['other', '指标']]
-  const total = st.alerts.length + Object.values(st.drawings).flat().filter(d => d.alert).length
-  el.innerHTML = `<div class="sp-head"><h3>提醒</h3><button class="btn secondary sm" id="aNew">${I('plus', 'icon-16')}新建</button></div>
-    <div class="sp-sub"><button class="chip" data-scope="symbol" aria-pressed="${st.alertScope === 'symbol'}">${esc(sym(k)?.code || k)}</button><button class="chip" data-scope="all" aria-pressed="${st.alertScope === 'all'}">全部 ${total}</button></div>
-    <div class="scroll" style="flex:1;min-height:0">
-    ${list.length || lines.length ? byKind.map(([kd, l]) => {
-      const rows = list.filter(a => (a.kind === 'price' ? 'price' : 'other') === kd)
-      return rows.length ? `<div class="sec-title">${l}<span>${rows.length}</span></div>` + rows.map(alertRow).join('') : ''
-    }).join('') + (lines.length ? `<div class="sec-title">画线<span>${lines.length}</span></div>` + lines.map(({ s, d }) => { const sy = sym(s); return `<div class="list-row">${badge(sy, 'lg')}<div class="main"><div class="t1">${esc(sy?.code || s)}<span>${({ hline: '水平线', trend: '趋势线', ray: '射线' } as Record<string, string>)[d.type] || '画线'}</span></div><div class="t2">价格碰到这条线时提醒</div></div></div>` }).join('') : '')
-    : `<div class="empty">${I('bell', 'icon-24')}<div>没有还在等的提醒</div><div class="faint" style="font-size:12px;margin-top:4px">在图上右键，或按 Alt A</div></div>`}
-    </div>`
-}
-function alertDesc(a: Alert): string {
-  const s = sym(a.symbol)
-  if (a.kind === 'price') return `价格达到 ${fmt(a.price, s?.dec ?? 2)}`
-  if (a.kind === 'fr') return `资金费率 ${a.op === 'lt' ? '低于' : '高于'} ${a.value}%`
-  if (a.kind === 'oi') return `持仓量 1 小时变化超过 ${a.value}%`
-  return ''
-}
-function alertRow(a: Alert): string {
-  const s = sym(a.symbol), last = s?.price
-  const dist = a.kind === 'price' && last && a.price ? (a.price - last) / last * 100 : null
-  return `<div class="list-row">${badge(s, 'lg')}<div class="main"><div class="t1">${esc(s?.code || a.symbol)}<span class="num">${alertDesc(a)}</span></div>
-    <div class="t2">${dist != null ? `还差 ${dist >= 0 ? '+' : ''}${dist.toFixed(2)}% · ` : ''}${shTime(a.created)} 创建</div></div>
-    <button class="ibtn sm act" data-del-alert="${a.id}" aria-label="删除提醒" data-tip="删除">${I('trash')}</button></div>`
-}
-function deleteAlert(id: string): void { st.alerts = st.alerts.filter(a => a.id !== id); save(); refreshAlerts() }
+// ---- 提醒（模块在 alerts/）
+function panelAlerts(el: HTMLElement): void { renderAlertsPanel(el, cfg(active()).symbol) }
 export function refreshAlerts(): void {
   cells.forEach(c => c.chart.setAlerts(priceAlerts(cfg(c).symbol)))
   renderRail(); if (st.panel === 'alerts') renderPanel()
+  if (propsTarget) showDrawProps(propsTarget.d, propsTarget.cell)
   refreshStreams()
-}
-function fire(title: string, body: string): void {
-  toast(title, body, 'bell', 8000)
-  if ('Notification' in window && Notification.permission === 'granted') { try { new Notification(title, { body }) } catch { /* 有的浏览器只允许在 Service Worker 里弹 */ } }
-}
-function checkAlerts(k: string): void {
-  const s = sym(k); if (!s || s.price == null || st.stale) return
-  const px = s.price
-  for (const a of st.alerts.filter(a => a.symbol === k)) {
-    let hit = false
-    if (a.kind === 'price' && a.price != null) hit = (a.dir ?? 1) > 0 ? px >= a.price : px <= a.price
-    if (a.kind === 'fr' && s.fr != null && a.value != null) hit = a.op === 'lt' ? s.fr * 100 < a.value : s.fr * 100 > a.value
-    if (!hit) continue
-    st.alerts = st.alerts.filter(x => x !== a); save(); refreshAlerts()
-    fire(`${s.code} ${alertDesc(a)}`, `现价 ${priceText(s)} · 这条提醒已结束`)
-  }
-  checkLineAlerts(k, px)
-}
-// 画线提醒：水平线看价位，趋势线 / 射线看这一刻线上的价位；从一侧穿到另一侧才响，响一次就关
-const lineSide = new Map<string, number>()
-function linePriceAt(d: Drawing, t: number): number | null {
-  if (d.type === 'hline') return d.pts[0]?.p ?? null
-  if ((d.type === 'trend' || d.type === 'ray') && d.pts.length >= 2) {
-    const [a, b] = d.pts
-    if (b.t === a.t) return null
-    if (t < Math.min(a.t, b.t)) return null
-    return a.p + (b.p - a.p) * (t - a.t) / (b.t - a.t)
-  }
-  return null
-}
-function checkLineAlerts(k: string, px: number): void {
-  const ds = st.drawings[k]; if (!ds) return
-  const now = Date.now()
-  for (const d of ds) {
-    if (!d.alert) continue
-    const lp = linePriceAt(d, now); if (lp == null) continue
-    const side = Math.sign(px - lp), prev = lineSide.get(d.id)
-    lineSide.set(d.id, side)
-    if (prev == null || prev === side || side === 0 && prev === 0) continue
-    d.alert = false; lineSide.delete(d.id); save()
-    const s = sym(k)
-    fire(`${s?.code || k} 碰到了画线`, `线上价位 ${fmt(lp, s?.dec ?? 2)} · 现价 ${priceText(s)} · 这条提醒已结束`)
-    if (st.panel === 'alerts') renderPanel()
-    if (propsTarget?.d === d) showDrawProps(d, propsTarget.cell)
-  }
-}
-/** 持仓量提醒：一分钟看一次最近一小时（5 分钟一档）的变化 */
-async function checkOIAlerts(): Promise<void> {
-  const syms = [...new Set(st.alerts.filter(a => a.kind === 'oi').map(a => a.symbol))]
-  for (const k of syms) {
-    try {
-      const rows = await j<{ sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${k}&period=5m&limit=13`)
-      if (rows.length < 2) continue
-      const chg = (+rows[rows.length - 1].sumOpenInterestValue / +rows[0].sumOpenInterestValue - 1) * 100
-      for (const a of st.alerts.filter(a => a.kind === 'oi' && a.symbol === k)) {
-        if (a.value != null && Math.abs(chg) >= a.value) {
-          st.alerts = st.alerts.filter(x => x !== a); save(); refreshAlerts()
-          fire(`${sym(k)?.code || k} 持仓量 1 小时${chg >= 0 ? '增加' : '减少'} ${Math.abs(chg).toFixed(2)}%`, '这条提醒已结束')
-        }
-      }
-    } catch { /* 下一分钟再看 */ }
-  }
 }
 
 // ---- 主力订单流、成交：本阶段空态
@@ -798,12 +770,18 @@ export function openSearch(initial = ''): void {
 type IndRow = [IndicatorId, 'main' | 'sub', string, string]
 const IND_ROWS: IndRow[] = [
   ['ma', 'main', 'MA', '均线'], ['ema', 'main', 'EMA', '指数均线'], ['boll', 'main', 'BOLL', '布林带'], ['vol', 'main', '成交量', '叠在主图底部'],
+  ...(['vwap', 'st', 'ichi', 'vpvr'] as IndicatorId[]).map((id): IndRow => [id, 'main', CATALOG[id].name, CATALOG[id].cn]),
   ['macd', 'sub', 'MACD', '平滑异同移动平均'], ['rsi', 'sub', 'RSI', '相对强弱'], ['kdj', 'sub', 'KDJ', '随机指标'], ['oi', 'sub', '持仓量', '币安只给 30 天内的历史'],
+  ...(['cvd', 'atr', 'obv', 'stochrsi', 'cci', 'wr'] as IndicatorId[]).map((id): IndRow => [id, 'sub', CATALOG[id].name, CATALOG[id].cn]),
 ]
+/** 主图上用开关记的那几个（其余是副图） */
+type MainToggle = 'ma' | 'ema' | 'boll' | 'vol' | 'vwap' | 'st' | 'ichi' | 'vpvr'
+const MAIN_TOGGLES: string[] = ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi', 'vpvr']
+const isMainToggle = (id: string): id is MainToggle => MAIN_TOGGLES.includes(id)
 function openIndicators(): void {
   let cat: 'all' | 'main' | 'sub' = 'all'
   const d = dialog(`${head('指标', `<span class="faint" style="font-size:12px">副图最多四个</span>`)}<div class="body"><div class="ind-cats">${([['all', '全部'], ['main', '主图'], ['sub', '副图']] as ['all' | 'main' | 'sub', string][]).map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${k === 'all' ? IND_ROWS.length : IND_ROWS.filter(r => r[1] === k).length}</span></button>`).join('')}</div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
-  const isOn = (id: IndicatorId) => id === 'ma' || id === 'ema' || id === 'boll' || id === 'vol' ? !!st.ind[id] : st.ind.subs.includes(id as SubId)
+  const isOn = (id: IndicatorId) => isMainToggle(id) ? !!st.ind[id] : st.ind.subs.includes(id as SubId)
   function render(): void {
     const full = st.ind.subs.length >= MAX_SUBS
     $('#indList', d.dlg).innerHTML = IND_ROWS.filter(r => cat === 'all' || r[1] === cat).map(([id, pl, n, sub]) => {
@@ -811,13 +789,13 @@ function openIndicators(): void {
       return `<div class="ind-row ${dis ? 'disabled' : ''}" data-id="${id}" tabindex="0" role="checkbox" aria-checked="${on_}" aria-disabled="${dis}" ${dis ? 'data-tip="副图已经有四个了，先关一个"' : ''}>
         <span class="check-box ${on_ ? 'on' : ''}">${on_ ? I('check', 'icon-16') : ''}</span><span class="nm">${n}<small>${sub}</small></span>
         <span class="tag">${pl === 'main' ? '主图' : '副图'}</span>
-        ${id !== 'vol' && id !== 'oi' ? `<button class="ibtn xs" data-set="${id}" aria-label="参数" data-tip="参数">${I('gear', 'icon-16')}</button>` : '<span style="width:24px"></span>'}</div>`
+        ${id !== 'vol' && Object.keys(CATALOG[id]?.params || {}).length ? `<button class="ibtn xs" data-set="${id}" aria-label="参数" data-tip="参数">${I('gear', 'icon-16')}</button>` : '<span style="width:24px"></span>'}</div>`
     }).join('')
   }
   function toggle(id: IndicatorId): void {
-    if (id === 'ma' || id === 'ema' || id === 'boll' || id === 'vol') st.ind[id] = !st.ind[id]
-    else if (st.ind.subs.includes(id)) st.ind.subs = st.ind.subs.filter(x => x !== id)
-    else if (st.ind.subs.length < MAX_SUBS) st.ind.subs = [...st.ind.subs, id]
+    if (isMainToggle(id)) st.ind[id] = !st.ind[id]
+    else if (st.ind.subs.includes(id as SubId)) st.ind.subs = st.ind.subs.filter(x => x !== id)
+    else if (st.ind.subs.length < MAX_SUBS) st.ind.subs = [...st.ind.subs, id as SubId]
     else return
     cells.forEach(c => c.chart.setIndicators(st.ind)); save(); render()
   }
@@ -830,7 +808,7 @@ function openIndicators(): void {
   d.dlg.addEventListener('keydown', e => { const t = tgt(e); if ((e.key === ' ' || e.key === 'Enter') && t.classList.contains('ind-row')) { e.preventDefault(); toggle(t.dataset.id as IndicatorId) } })
   render(); $('.ind-row', d.dlg)?.focus()
 }
-const PARAM_NAME: Record<string, string> = { n: '周期', k: '倍数', fast: '快线', slow: '慢线', signal: '信号线', m1: '平滑 1', m2: '平滑 2' }
+const PARAM_NAME: Record<string, string> = { n: '周期', k: '倍数', fast: '快线', slow: '慢线', signal: '信号线', m1: '平滑 1', m2: '平滑 2', stoch: '取值窗口', tenkan: '转换线', kijun: '基准线', senkou: '先行带 B' }
 function openParams(id: IndicatorId): void {
   const cell = active(); if (!cell) return
   const catg = CATALOG[id], p = cell.chart.params[id] || catg.params || {}
@@ -857,56 +835,12 @@ function openParams(id: IndicatorId): void {
 // ------------------------------------------------------------ 提醒对话框
 function openAlert(price?: number): void {
   const cell = active(); if (!cell) return
-  const c = cfg(cell), s = sym(c.symbol), dec = s?.dec ?? 2
-  const last = s?.price ?? cell.chart.lastBar()?.c
-  if (last == null) { toast('还没有这只品种的价格', '行情连上后再建', 'info'); return }
-  const p0 = price ?? cell.chart.crossPrice() ?? last
-  let kind: Alert['kind'] = 'price'
-  const KINDS: [Alert['kind'], string][] = [['price', '价格达到'], ['fr', '资金费率'], ['oi', '持仓量变化']]
-  const d = dialog(`${head('创建提醒', `<button class="btn ghost sm" id="aAll">全部预警</button>`)}<div class="dialog-body"><div class="form-grid">
-    <div class="sym-card">${badge(s, 'lg')}<div style="flex:1"><b>${esc(c.symbol)}</b><div class="muted" style="font-size:12px;line-height:16px">${esc(s?.cn || '')} ${kindName(s)}</div></div><div style="text-align:right"><div class="num" style="font-weight:600">${fmt(last, dec)}</div><div class="num ${cls(s?.pct)}" style="font-size:12px;line-height:16px">${pctText(s?.pct)}</div></div></div>
-    <div class="field"><label>条件</label><div class="seg fill" id="aKind">${KINDS.map(([k, l]) => `<button data-k="${k}" aria-pressed="${k === kind}">${l}</button>`).join('')}</div></div>
-    <div id="aVal"></div>
-    <div id="aExisting"></div>
-    </div></div><div class="dialog-foot"><span class="faint" style="margin-right:auto;font-size:12px;align-self:center">触发一次就结束 · 这个网页开着时提醒</span><button class="btn ghost" data-close>取消</button><button class="btn primary" id="aOk">创建</button></div>`, 'alert-dlg', { label: '创建提醒' })
-  function renderVal(): void {
-    const v = $('#aVal', d.dlg)
-    if (kind === 'price') {
-      v.innerHTML = `<div class="field"><label for="aPrice">价格</label><div class="input-wrap"><input id="aPrice" class="input lg num" inputmode="decimal" value="${p0.toFixed(dec)}"><span class="suffix">USDT</span></div><div class="hint num" id="aHint"></div></div>`
-      const inp = $<HTMLInputElement>('#aPrice', d.dlg)
-      const hint = () => { const p = +inp.value; $('#aHint', d.dlg).textContent = p > 0 ? `比现价${p >= last! ? '高' : '低'} ${Math.abs((p - last!) / last! * 100).toFixed(2)}%，${p >= last! ? '涨' : '跌'}到这里时通知你` : '填一个价格' }
-      inp.addEventListener('input', hint); hint(); inp.focus(); inp.select()
-    } else if (kind === 'fr') v.innerHTML = `<div class="field"><label>资金费率</label><div style="display:flex;gap:8px"><div class="seg" id="aOp"><button data-op="gt" aria-pressed="true">高于</button><button data-op="lt" aria-pressed="false">低于</button></div><div class="input-wrap" style="flex:1"><input id="aNum" class="input num" value="0.05"><span class="suffix">%</span></div></div><div class="hint">现在 ${s?.fr != null ? (s.fr * 100).toFixed(4) + '%' : '—'}</div></div>`
-    else v.innerHTML = `<div class="field"><label>1 小时内持仓量变化超过</label><div class="input-wrap"><input id="aNum" class="input num" value="5"><span class="suffix">%</span></div><div class="hint">增减都算</div></div>`
-    $('#aNum', d.dlg)?.focus()
-  }
-  function renderExisting(): void {
-    const mine = st.alerts.filter(a => a.symbol === c.symbol)
-    $('#aExisting', d.dlg).innerHTML = mine.length ? `<div class="field"><label>这只品种还在等的提醒</label><div class="group" style="margin:0">${mine.map(a => `<div class="row" style="min-height:40px;padding:4px 8px 4px 12px"><div class="rl num">${alertDesc(a)}</div><button class="ibtn sm" data-x="${a.id}" aria-label="删除" data-tip="删除">${I('trash', 'icon-16')}</button></div>`).join('')}</div></div>` : ''
-  }
-  d.dlg.addEventListener('click', e => {
-    const t = tgt(e)
-    const k = t.closest<HTMLElement>('#aKind [data-k]'); if (k) { kind = k.dataset.k as Alert['kind']; $$('#aKind button', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b === k))); renderVal() }
-    const op = t.closest<HTMLElement>('[data-op]'); if (op) $$('[data-op]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b === op)))
-    const x = t.closest<HTMLElement>('[data-x]'); if (x) { deleteAlert(x.dataset.x || ''); renderExisting() }
-  })
-  $('#aAll', d.dlg).onclick = () => { d.close(); st.panel = 'alerts'; st.alertScope = 'all'; save(); renderRail(); renderPanel() }
-  const ok = () => {
-    const a: Alert = { id: 'a' + Date.now(), symbol: c.symbol, kind, created: Date.now() }
-    if (kind === 'price') { const inp = $<HTMLInputElement>('#aPrice', d.dlg), p = +inp.value; if (!(p > 0)) { inp.focus(); return } a.price = p; a.dir = p >= last! ? 1 : -1 }
-    else { const inp = $<HTMLInputElement>('#aNum', d.dlg), v = +inp.value; if (!isFinite(v) || (kind === 'oi' && !(v > 0))) { inp.focus(); return } a.value = v; a.op = ($('[data-op][aria-pressed="true"]', d.dlg)?.dataset.op as 'gt' | 'lt' | undefined) ?? 'gt' }
-    st.alerts.push(a); save(); refreshAlerts(); d.close()
-    toast('提醒已创建', `${c.symbol} ${alertDesc(a)}`, 'bell')
-    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission()
-  }
-  $('#aOk', d.dlg).onclick = ok
-  d.dlg.addEventListener('keydown', e => { if (e.key === 'Enter' && tgt(e).tagName === 'INPUT') ok() })
-  renderVal(); renderExisting()
+  openCreateAlert(cfg(cell).symbol, price ?? cell.chart.crossPrice())
 }
 
 // ------------------------------------------------------------ 快捷键
 export const SHORTCUTS: [string, [string, string][]][] = [
-  ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['直接打数字', '换周期（如 15、240、1D）'], ['↑ ↓', '自选里上一只 / 下一只'], ['⇧ ↵', '在搜索里加自选']]],
+  ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['1 – 9', '栏上钉的第几个周期'], [', 再打数字', '换任意周期（如 7、240、1D、5S）'], ['↑ ↓', '自选里上一只 / 下一只'], ['⇧ ↵', '在搜索里加自选']]],
   ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt R', '重置视图'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标']]],
   ['画线', [['Alt T', '趋势线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt F', '斐波那契回撤'], ['Alt ⇧ R', '矩形'], ['⇧ 拖', '临时测量'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z / ⌘ ⇧ Z', '撤销 / 重做']]],
   ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['?', '这张表']]],
@@ -923,7 +857,7 @@ function ivRender(): void {
   clearTimeout(ivPop.timer); ivPop.timer = setTimeout(() => ivCommit(), 2200)
   const iv = ivParse(ivPop.buf)
   ivPop.el.classList.toggle('bad', !iv)
-  ivPop.el.innerHTML = `<div class="v num">${esc(ivPop.buf)}</div><div class="h">${iv ? `${IV_LABEL[iv]} · 回车切换` : /^\d+$/.test(ivPop.buf) ? '没有这个周期，接着打或按 Esc' : '只有 1 3 5 15 30 分，1 2 4 6 8 12 小时，日 周 月'}</div>`
+  ivPop.el.innerHTML = `<div class="v num">${esc(ivPop.buf)}</div><div class="h">${iv ? `${IV_LABEL[iv]} · 回车切换` : !ivPop.buf ? '打分钟数，或带单位：H 小时、D 日、W 周、S 秒' : '没有这个周期，接着打或按 Esc'}</div>`
 }
 function ivInput(ch: string): void {
   if (!ivPop) { ivPop = { buf: '', el: document.createElement('div') }; ivPop.el.className = 'interval-pop'; document.body.appendChild(ivPop.el) }
@@ -931,6 +865,7 @@ function ivInput(ch: string): void {
   ivRender()
 }
 export function ivParse(b: string): string | null {
+  const sec = b.match(/^(\d+)[sS]$/); if (sec) { const iv = `${+sec[1]}s`; return isSecondIv(iv) ? iv : null }
   const m = b.match(/^(\d+)([mhdwMHDW]?)$/); if (!m) return null
   const n = +m[1], u = m[2]
   let min = n
@@ -939,13 +874,16 @@ export function ivParse(b: string): string | null {
   else if (/d/i.test(u)) min = n * 1440
   else if (/w/i.test(u)) min = n * 10080
   else if (u === 'M') min = n * 43200
-  return Object.keys(IV_MS).find(k => IV_MS[k] === min * 60e3) || null
+  return Object.keys(IV_MS).find(k => IV_MS[k] === min * 60e3 && !isCustomIv(k)) || (min <= 1440 ? minutesIv(min) : null)
 }
 function ivCommit(apply = true): void {
   if (!ivPop) return
   const iv = ivParse(ivPop.buf)
   ivPop.el.remove(); clearTimeout(ivPop.timer); ivPop = null
-  if (apply && iv) setIv(iv)
+  if (apply && iv) {
+    if (registerCustomIv(iv) && !st.customIvs.includes(iv)) { st.customIvs = [...st.customIvs, iv].slice(-12); save() }
+    setIv(iv)
+  }
 }
 
 // ------------------------------------------------------------ 全局键盘
@@ -959,7 +897,7 @@ function onKey(e: KeyboardEvent): void {
     if (e.key === 'Enter') { e.preventDefault(); ivCommit(); return }
     if (e.key === 'Escape') { ivCommit(false); return }
     if (e.key === 'Backspace') { e.preventDefault(); ivPop.buf = ivPop.buf.slice(0, -1); if (!ivPop.buf) ivCommit(false); else ivRender(); return }
-    if (/^[0-9mhdwMHDW]$/.test(e.key)) { e.preventDefault(); ivInput(e.key) }
+    if (/^[0-9mhdwsMHDWS]$/.test(e.key)) { e.preventDefault(); ivInput(e.key) }
     return
   }
   if (st.page !== 'chart') { if (e.key === '?') openShortcuts(); return }
@@ -996,7 +934,9 @@ function onKey(e: KeyboardEvent): void {
   }
   if (e.key === '+' || e.key === '=') { cell.chart.zoom(1.25); return }
   if (e.key === '-') { cell.chart.zoom(0.8); return }
-  if (/^[0-9]$/.test(e.key)) { e.preventDefault(); ivInput(e.key); return }
+  // 1–9：栏上钉的第 N 个周期；0 或逗号：打周期（如 0 → 7 回车 = 7 分）
+  if (/^[1-9]$/.test(e.key)) { e.preventDefault(); const iv = st.pinned[+e.key - 1]; if (iv) setIv(iv); return }
+  if (e.key === '0' || e.key === ',') { e.preventDefault(); ivInput(''); return }
   if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); openSearch(e.key.toUpperCase()) }
 }
 
@@ -1004,18 +944,35 @@ function onKey(e: KeyboardEvent): void {
 export function refreshStreams(): void {
   const set = new Set<string>(), core = new Set<string>()
   st.cells.slice(0, cells.length).forEach((c, i) => {
-    set.add(streamName.kline(c.symbol, c.iv)); set.add(streamName.ticker(c.symbol))
-    if (i === st.active) { core.add(streamName.kline(c.symbol, c.iv)); core.add(streamName.ticker(c.symbol)) }
+    // 秒级没有 K 线流，订逐笔自己攒；自定义分钟订它底下那个原生周期
+    const siv = streamIvOf(c.iv), bar = siv ? streamName.kline(c.symbol, siv) : streamName.trade(c.symbol)
+    set.add(bar); set.add(streamName.ticker(c.symbol))
+    if (i === st.active) { core.add(bar); core.add(streamName.ticker(c.symbol)) }
   })
   const a = st.cells[st.active]
   if (a) { set.add(streamName.mark(a.symbol)); set.add(streamName.trade(a.symbol)) }
   if (st.panel === 'watch') for (const k of st.watch[st.watchTab]) set.add(streamName.ticker(k))
   // 提醒要在后台也盯着
-  for (const k of new Set([...st.alerts.map(x => x.symbol), ...Object.entries(st.drawings).filter(([, ds]) => ds.some(d => d.alert)).map(([k]) => k)])) { set.add(streamName.ticker(k)); core.add(streamName.ticker(k)) }
-  for (const k of new Set(st.alerts.filter(x => x.kind === 'fr').map(x => x.symbol))) { set.add(streamName.mark(k)); core.add(streamName.mark(k)) }
+  const al = alertStreams()
+  for (const k of al.ticker) { set.add(streamName.ticker(k)); core.add(streamName.ticker(k)) }
+  for (const k of al.mark) { set.add(streamName.mark(k)); core.add(streamName.mark(k)) }
   for (const fn of hooks.extraStreams) for (const x of fn()) set.add(x)
   const known = (name: string) => S.symbols.has(name.split('@')[0].toUpperCase())
   setStreams([...set].filter(known), [...core].filter(known))
+}
+
+// 秒级：一帧并一次
+const pendingSec = new Set<string>()
+let secRAF = 0
+function flushSeconds(): void {
+  secRAF = 0
+  if (st.stale) { pendingSec.clear(); return }
+  cells.forEach(c => {
+    const cc = cfg(c); if (!pendingSec.has(cc.symbol) || !isSecondIv(cc.iv)) return
+    if (!c.chart.bars.length) { c.chart.setData(secondBars(cc.symbol, cc.iv), metaFor(cc)); showCellEmpty(c, null); return }
+    const b = secondLastBar(cc.symbol, cc.iv); if (b) c.chart.updateBar(b)
+  })
+  pendingSec.clear()
 }
 
 const pendingTick = new Map<string, number>()
@@ -1047,7 +1004,7 @@ function updateStale(): void {
 function setStale(v: boolean): void {
   if (st.stale === v) return
   st.stale = v
-  document.body.classList.toggle('stale', v)
+  document.body.classList.toggle('stale', v); paintConn()
   cells.forEach(c => c.chart.setStale(v))
   patchDetail()
 }
@@ -1075,17 +1032,27 @@ export async function initChart(): Promise<void> {
   hooks.onTheme.push(() => cells.forEach(c => c.chart.readTheme()))
   hooks.pageShown.chart = () => cells.forEach(c => c.chart.resize())
   $('#hdrAlerts').onclick = () => { go('chart'); openPanel('alerts') }
+  installAlerts({ openSymbol: k => { go('chart'); openSymbol(k) } })
+  st.customIvs.forEach(registerCustomIv); st.cells.forEach(c => registerCustomIv(c.iv))
+  startSeconds()
+  onSecondsTick(k => { pendingSec.add(k); if (!secRAF) secRAF = requestAnimationFrame(flushSeconds) })
+  migrateDrawingFlags()
+  onAlertsChange(refreshAlerts)
 
   on(e => {
-    if (e.type === 'kline') cells.forEach(c => { const cc = cfg(c); if (cc.symbol === e.symbol && cc.iv === e.iv && !st.stale) c.chart.updateBar({ ...e.bar }) })
+    if (e.type === 'kline') cells.forEach(c => {
+      const cc = cfg(c); if (cc.symbol !== e.symbol || st.stale) return
+      if (cc.iv === e.iv) c.chart.updateBar({ ...e.bar })
+      else if (isCustomIv(cc.iv) && customBase(cc.iv) === e.iv && c.chart.bars.length) c.chart.updateBar(customTick(cc.symbol, cc.iv, e.bar))
+    })
     else if (e.type === 'ticker') {
-      pendingTick.set(e.symbol, e.dir || pendingTick.get(e.symbol) || 0); checkAlerts(e.symbol)
+      pendingTick.set(e.symbol, e.dir || pendingTick.get(e.symbol) || 0)
       if (!tickRAF) tickRAF = requestAnimationFrame(flushTicks)
     }
-    else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) patchDetail(); if (st.alerts.some(a => a.kind === 'fr' && a.symbol === e.symbol)) checkAlerts(e.symbol) }
+    else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) patchDetail() }
     else if (e.type === 'oi') cells.forEach(c => { const cc = cfg(c); if (cc.symbol === e.symbol && cc.iv === e.iv) { c.chart.recalc(); c.chart.dirty = true } })
     else if (e.type === 'detail' || e.type === 'meta') { if (st.panel === 'watch' && (e.type === 'meta' || e.symbol === cfg(active())?.symbol)) renderDetail() }
-    else if (e.type === 'ws') updateStale()
+    else if (e.type === 'ws') { updateStale(); paintConn() }
   })
 
   // 每秒：钟、倒计时；每分钟：详情里的慢数、持仓量提醒
@@ -1100,7 +1067,6 @@ export async function initChart(): Promise<void> {
     if (document.visibilityState === 'hidden') return
     if (st.panel === 'watch') { const k = cfg(active())?.symbol; if (k) void fetchDetail(k) }
   }, 61e3)
-  setInterval(() => { void checkOIAlerts() }, 60e3)
 
   renderDrawbar(); renderRail(); renderSlots(); layoutSlots(); renderPanel()
   await loadUniverse()

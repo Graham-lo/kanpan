@@ -1,0 +1,64 @@
+/* Hkline Web · 图表工作台第二批：提醒、成交量分布看法、秒级 / 自定义周期、底栏、六图 / 八图
+ * 只用 app.css 的令牌（间距、圆角、字号、皮肤色），三套皮肤自动跟随。 */
+
+/* ---- 六图（三列两行）、八图（四列两行） */
+.chart-area[data-layout="6"] { grid-template: 1fr 1fr / 1fr 1fr 1fr; }
+.chart-area[data-layout="8"] { grid-template: 1fr 1fr / 1fr 1fr 1fr 1fr; }
+/* 格子多了图例收一收：只留标题一行和主图指标，副图图例照常 */
+.chart-area[data-layout="6"] .legend .title .sub,
+.chart-area[data-layout="8"] .legend .title .sub { display: none; }
+.chart-area[data-layout="8"] .cell-foot [data-range]:nth-of-type(n+6) { display: none; }
+
+/* ---- 底栏：左边布局与截图，右边上海时间与连接点 */
+.cell-foot .foot-ic { width: var(--h-xs); padding: 0; display: grid; place-items: center; color: var(--text-2); }
+.cell-foot .tb-sep { height: 14px; margin: 0 var(--s1); }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; margin: 0 var(--s2) 0 2px; flex: none; background: var(--text-3); }
+.conn-dot[data-conn="live"] { background: var(--tv-green, #089981); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tv-green, #089981) 18%, transparent); }
+.conn-dot[data-conn="connecting"] { background: #F2A900; box-shadow: 0 0 0 3px color-mix(in srgb, #F2A900 20%, transparent); }
+.conn-dot[data-conn="down"] { background: var(--tv-red, #F23645); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tv-red, #F23645) 18%, transparent); }
+
+/* ---- 图例：成交量分布的看法下拉 */
+.legend .lchip {
+  display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 4px 0 var(--s2); margin-left: var(--s1);
+  border-radius: var(--r-xs); border: 1px solid var(--line); background: color-mix(in srgb, var(--chart-bg, var(--surface)) 85%, transparent);
+  color: var(--text-2); font-size: var(--t12); pointer-events: auto;
+}
+.legend .lchip:hover { color: var(--text-1); border-color: var(--line-strong, var(--line)); }
+.legend .lchip .icon { width: 14px; height: 14px; }
+
+/* ---- 「更多」周期里的自定义分钟 */
+.menu .iv-custom { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s2) var(--s1); border-top: 1px solid var(--line); margin-top: var(--s1); }
+.menu .iv-custom .input { flex: 1; height: var(--h-sm); font-size: var(--t13); }
+.menu .iv-custom .input.bad { border-color: var(--tv-red, #F23645); }
+
+/* ---- 提醒：侧栏 */
+.alert-sym { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t13); }
+.alert-row { gap: var(--s3); min-height: 52px; }
+.alert-row .main { flex: 1; min-width: 0; }
+.alert-row .t1 { display: flex; align-items: baseline; gap: var(--s2); font-size: var(--t14); color: var(--text-1); }
+.alert-row .t2 { margin-top: 2px; font-size: var(--t12); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alert-row .ibtn { color: var(--text-3); opacity: .7; }
+.alert-row:hover .ibtn { opacity: 1; }
+.alert-row .ibtn:hover { color: var(--tv-red, #F23645); }
+.alert-kind { width: 28px; height: 28px; flex: none; border-radius: var(--r-sm); display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); }
+.alert-kind[data-kind="drawing"] { background: color-mix(in srgb, #2962FF 14%, transparent); color: #2962FF; }
+.alert-kind[data-kind="condition"] { background: color-mix(in srgb, #F2A900 16%, transparent); color: #B07A00; }
+[data-theme="dark"] .alert-kind[data-kind="drawing"] { color: #6C8CFF; }
+[data-theme="dark"] .alert-kind[data-kind="condition"] { color: #F2C14E; }
+
+/* ---- 提醒：全部（按品种分组的总表） */
+.alerts-all-dlg { width: 640px; max-height: min(760px, 86vh); display: flex; flex-direction: column; }
+.alerts-all { display: flex; flex-direction: column; gap: var(--s3); min-height: 0; flex: 1; }
+.alerts-all .seg { align-self: flex-start; }
+.alerts-all .seg button .num { margin-left: 6px; }
+.alerts-all .scroll { flex: 1; min-height: 0; overflow: auto; margin: 0 calc(-1 * var(--s4)); }
+.aa-group + .aa-group { margin-top: var(--s2); }
+.aa-head {
+  display: flex; align-items: center; gap: var(--s2); width: 100%; height: 40px; padding: 0 var(--s4);
+  background: var(--surface-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; font-size: var(--t14);
+  position: sticky; top: 0; z-index: 1;
+}
+.aa-head:hover { background: var(--surface-3); }
+.aa-head .muted { font-size: var(--t12); }
+.aa-head .aa-px { margin-left: auto; color: var(--text-1); }
+.aa-head .faint { min-width: 40px; text-align: right; font-size: var(--t12); }

@@ -44,7 +44,7 @@ export function fmtCompact(v: number | null | undefined): string {
 export function crossTimeLabel(t: number, iv: number): string {
   const d = sh(t)
   const date = `${d.getUTCFullYear() % 100}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 周${WEEK[d.getUTCDay()]}`
-  return iv >= 864e5 ? date : `${date}  ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+  return iv >= 864e5 ? date : `${date}  ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}${iv < 60e3 ? `:${pad(d.getUTCSeconds())}` : ''}`
 }
 
 /** 时长：分钟 / 小时 / 天 */

@@ -12,8 +12,8 @@ export interface TimeTick { i: number; label: string; bold: boolean }
 /** 刻度最小间隔（px） */
 export const TIME_TICK_MIN_PX = 96
 
-/** 可选步长（ms）：1 分 … 1 年 */
-export const TIME_STEPS = [60e3, 5 * 60e3, 15 * 60e3, 30 * 60e3, 36e5, 2 * 36e5, 3 * 36e5, 6 * 36e5, 12 * 36e5, 864e5, 2 * 864e5, 7 * 864e5, 14 * 864e5, 30 * 864e5, 91 * 864e5, 182 * 864e5, 365 * 864e5]
+/** 可选步长（ms）：5 秒 … 1 年（秒级只有秒级周期用得到：步长要 ≥ 周期） */
+export const TIME_STEPS = [5e3, 10e3, 15e3, 30e3, 60e3, 5 * 60e3, 15 * 60e3, 30 * 60e3, 36e5, 2 * 36e5, 3 * 36e5, 6 * 36e5, 12 * 36e5, 864e5, 2 * 864e5, 7 * 864e5, 14 * 864e5, 30 * 864e5, 91 * 864e5, 182 * 864e5, 365 * 864e5]
 
 /** 由 bar 时间数组得到「下标 → 时间」，两头按周期外推（与 TVChart.timeAt 相同） */
 export function timeAtFrom(times: number[], iv: number): (i: number) => number {
@@ -69,7 +69,7 @@ export function timeTicks(
     } else {
       const ms = (t + TZ_MS) % 864e5
       if (d.getUTCDate() !== dp.getUTCDate()) { hit = true; label = d.getUTCDate() === 1 ? `${d.getUTCMonth() + 1}月` : String(d.getUTCDate()); bold = true }
-      else if (ms % step === 0) { hit = true; label = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` }
+      else if (ms % step === 0) { hit = true; label = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}${step < 60e3 ? `:${pad(d.getUTCSeconds())}` : ''}` }
     }
     if (!hit) continue
     const x = xOf(i)

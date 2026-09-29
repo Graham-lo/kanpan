@@ -1,6 +1,7 @@
 /* Hkline Web · 入口 */
 import './styles/app.css'
-import { st, save, type Layout, type PanelId } from './app/store'
+import './styles/workbench.css'
+import { st, save, LAYOUTS, type Layout, type PanelId } from './app/store'
 import { installShell, applyTheme, renderHeader, go } from './app/shell'
 import { hydrateIcons } from './ui/dom'
 import { installTooltips } from './ui/overlay'
@@ -19,7 +20,7 @@ function applyQuery(): void {
   if (i && INTERVALS.includes(i)) st.cells[st.active] = { ...st.cells[st.active], iv: i }
   if (th === 'light' || th === 'dark') st.theme = th
   if (sk === 'sage' || sk === 'terra' || sk === 'classic') st.skin = sk
-  if (lo && ['1', '2', '2v', '4'].includes(lo)) st.layout = lo as Layout
+  if (lo && (LAYOUTS as readonly string[]).includes(lo)) st.layout = lo as Layout
   if (pn === 'none') st.panel = null
   else if (pn && ['watch', 'alerts', 'flow', 'notes', 'trades'].includes(pn)) st.panel = pn as PanelId
   if (q.has('ladder')) st.slots.ladder = q.get('ladder') === '1'
