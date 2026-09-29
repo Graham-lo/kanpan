@@ -313,6 +313,18 @@ export function decodeHex(v: unknown): Hex {
   throw new DrawingDecodeError('颜色格式不对')
 }
 
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/
+/**
+ * 外来的颜色（存档、云端、朋友分享）只收 #RRGGBB / #RRGGBBAA，别的一律当「没设颜色」（null，画的时候用默认色）。
+ *
+ * Swift 的 Hex 什么字符串都收，因为手机上它只会进 CoreGraphics；网页上线的颜色会被页面拼进 innerHTML
+ * （样式面板的色块 style="--c:…"、取色器 value="…"），一个带引号的「颜色」就是一段注入。iOS 写出来的永远是
+ * #RRGGBB（DrawingBar 的取色器），所以收紧不会误伤真数据；不整条拒收是为了「读坏数据只补不删」——线还在，只是颜色回到默认。
+ */
+export function sanitizeHex(v: Hex | null): Hex | null {
+  return v != null && HEX_COLOR.test(v) ? v : null
+}
+
 function optNumber(o: Record<string, unknown>, k: string, fallback: number): number {
   if (!present(o, k)) return fallback
   if (typeof o[k] !== 'number') throw new DrawingDecodeError(`${k} 不是数`)
@@ -338,7 +350,7 @@ export function decodeDrawing(json: unknown): Drawing {
     points = [decodePoint(json.a)]
     if (present(json, 'b')) points.push(decodePoint(json.b))
   }
-  const color = present(json, 'color') ? decodeHex(json.color) : null
+  const color = present(json, 'color') ? sanitizeHex(decodeHex(json.color)) : null
   let dash: DrawDash = 'solid'
   if (present(json, 'dash')) {
     if (!DRAW_DASHES.includes(json.dash as DrawDash)) throw new DrawingDecodeError('不认识的线型')

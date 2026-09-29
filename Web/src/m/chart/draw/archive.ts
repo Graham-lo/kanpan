@@ -6,7 +6,7 @@
 import type { Hex } from '../paint'
 import {
   type Drawing, type DrawDash, type DrawingKind, type DrawPoint, DRAW_DASHES, DrawKind,
-  cloneDrawing, decodeHex, drawingWith, drawingsEqual, encodeDrawing, isDrawingKind, tryDecodeDrawing,
+  cloneDrawing, decodeHex, sanitizeHex, drawingWith, drawingsEqual, encodeDrawing, isDrawingKind, tryDecodeDrawing,
 } from './drawing'
 import { canonicalInstrument } from './instrument'
 
@@ -47,7 +47,7 @@ export function decodeStyle(v: unknown): DrawingStyle | null {
   if (!Array.isArray(v.levels) || !v.levels.every(x => typeof x === 'number')) return null
   let color: Hex | null = null
   if (v.color !== undefined && v.color !== null) {
-    try { color = decodeHex(v.color) } catch { return null }
+    try { color = sanitizeHex(decodeHex(v.color)) } catch { return null }
   }
   return { color, lineWidth: v.lineWidth, dash: v.dash as DrawDash, filled: v.filled, levels: (v.levels as number[]).slice() }
 }

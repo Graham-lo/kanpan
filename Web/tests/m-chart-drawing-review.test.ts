@@ -4,6 +4,7 @@
 import { describe, test, expect, beforeAll, afterEach, vi } from 'vitest'
 import {
   type Drawing, type DrawPixel, DrawingController, DrawingBook, DrawAxes, attachDrawing, drawAxesOf, drawingA,
+  decodeDrawing, tryDecodeDrawing, decodeStyle, decodeArchive, decodePreferences,
 } from '../src/m/chart/drawing'
 import { ViewWindow } from '../src/m/chart/geometry'
 import { BarSeries, INTERVAL_STEP } from '../src/m/chart/series'
@@ -219,5 +220,45 @@ describe('画线审查：放大镜底图', () => {
     expect(canvases[0].width).toBeGreaterThan(0)
     r.c.detach()
     expect(canvases[0].width, '摘下之后底图的位图还占着').toBe(0)
+  })
+})
+
+describe('画线审查：颜色只收十六进制', () => {
+  // 线的颜色会被页面拼进 innerHTML（样式面板的色块 style="--c:…"、取色器 value="…"）；
+  // 云端同步与朋友分享来的线都走这条解码，颜色字段是外来的任意字符串就是一个注入口。
+  // iOS 写出来的永远是 #RRGGBB，所以解码只收 #RRGGBB / #RRGGBBAA，其余当「没设颜色」，线本身留着。
+  const bad = ['#D6A64F" autofocus onfocus="alert(1)', 'red', '#12345', 'url(javascript:1)', '#D6A64FZZ', '']
+  const base = { id: 'x1', kind: 'hline', points: [{ t: 1_700_000_000_000, p: 100 }] }
+
+  test('decodeDrawing：合法颜色原样留着', () => {
+    for (const c of ['#D6A64F', '#d6a64f', '#D6A64F80']) expect(decodeDrawing({ ...base, color: c }).color).toBe(c)
+    expect(decodeDrawing({ ...base, color: { value: '#112233' } }).color).toBe('#112233')
+  })
+
+  test('decodeDrawing：不是十六进制的颜色不收，线照样留着', () => {
+    for (const c of bad) {
+      const d = tryDecodeDrawing({ ...base, color: c })
+      expect(d, `颜色 ${JSON.stringify(c)} 让整条线解不开`).not.toBeNull()
+      expect(d!.color, `颜色 ${JSON.stringify(c)} 原样进了线`).toBeNull()
+    }
+  })
+
+  test('decodeStyle / 偏好：记住的样式里的坏颜色同样不收', () => {
+    const style = { lineWidth: 2, filled: false, dash: 'solid', levels: [] }
+    expect(decodeStyle({ ...style, color: '#ABCDEF' })!.color).toBe('#ABCDEF')
+    for (const c of bad) {
+      const st = decodeStyle({ ...style, color: c })
+      expect(st, `颜色 ${JSON.stringify(c)} 让整份样式丢了`).not.toBeNull()
+      expect(st!.color).toBeNull()
+    }
+    const p = decodePreferences({ styles: { hline: { ...style, color: bad[0] } } })
+    expect(p.styles.hline?.color ?? null).toBeNull()
+  })
+
+  test('存档：坏颜色的线读回来还在', () => {
+    const a = decodeArchive({ v: 2, d: { 'binance/usd_m/BTCUSDT': [{ ...base, color: bad[0] }] } })
+    const items = a.get('BTCUSDT')
+    expect(items.length).toBe(1)
+    expect(items[0].color).toBeNull()
   })
 })
