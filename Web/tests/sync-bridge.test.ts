@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Drawing } from '../src/chart/chart'
 import { makeConditionAlert, makeDrawingAlert, makePriceAlert } from '../src/alerts/shape'
 import { OWNED, applyInto, captureInto, mergeFirst, type Prints, type WebState } from '../src/sync/bridge'
+import { alertToBody } from '../src/sync/codec'
 import { Engine } from '../src/sync/engine'
 import { SyncStore } from '../src/sync/store'
 import { emptyArchive } from '../src/sync/types'
@@ -137,5 +138,71 @@ describe('两台来回', () => {
     await a.sync()
     expect(server.pushes.length).toBe(n)
     expect(a.store.a.operations).toEqual([])
+  })
+})
+
+describe('提醒触发（照手机 markFired → 报 → purgeFired，服务端靠 active → fired 发 Webhook）', () => {
+  const hooked = (id: string) => ({ ...makePriceAlert('BTCUSDT', 101000, 100000, { now: 1, webhook: 'https://example.com/h' }), id })
+
+  it('本机响：先推「已触发」（带 firedAt / firedPrice）再推删除，同一条提醒的两笔按先后', async () => {
+    const server = new FakeServer()
+    const a = browser(server, { ...state(), alerts: [hooked('p1')] })
+    await a.first()
+    const spent = new Set<string>()
+    const x = a.s.alerts[0]
+    // model.fire 的三步：标已触发并记账 → 报（记进 spent）→ 删掉并记账
+    x.status = 'fired'; x.firedAt = server.now; x.firedPrice = 101002
+    captureInto(a.s, a.store, ctx, a.fp, spent)
+    spent.add('binance/usd_m/BTCUSDT/p1')
+    a.s.alerts = []
+    captureInto(a.s, a.store, ctx, a.fp, spent)
+    await a.engine.push()
+    const ops = server.pushes.flat().filter(o => o.objectId === 'binance/usd_m/BTCUSDT/p1')
+    const fired = ops.findIndex(o => o.action === 'patch' && o.fields.status === 'fired')
+    const del = ops.findIndex(o => o.action === 'delete')
+    expect(fired).toBeGreaterThanOrEqual(0)
+    expect(ops[fired].fields).toMatchObject({ status: 'fired', firedAt: server.now, firedPrice: 101002 })
+    expect(del).toBeGreaterThan(fired)
+    expect(server.objects.get('alerts:binance/usd_m/BTCUSDT/p1')?.deleted).toBe(true)
+  })
+
+  it('服务端响了、同步下来：applyInto 交出来报给人；记进 spent 之后才删', async () => {
+    const server = new FakeServer()
+    const a = browser(server, { ...state(), alerts: [hooked('p2')] })
+    await a.first()
+    const k = 'alerts:binance/usd_m/BTCUSDT/p2'
+    const o = server.objects.get(k)!
+    server.put({ collection: 'alerts', id: o.id, deleted: false, body: { ...o.body, status: 'fired', firedAt: server.now, firedPrice: 101001 } })
+    await a.engine.pull()
+    // 引擎的 apply 钩子已经装过一次（结果被丢掉了）；本机再放回那条在等的，看 applyInto 交不交出来
+    a.store.a.unapplied.add('alerts')
+    a.s.alerts = [hooked('p2')]
+    const r = applyInto(a.s, a.store, ctx)
+    expect(r.fired.map(f => [f.id, f.status, f.firedPrice])).toEqual([['p2', 'fired', 101001]])
+    expect(a.s.alerts).toEqual([])
+    // 没报过（不在 spent）不删
+    delete a.fp.alerts
+    captureInto(a.s, a.store, ctx, a.fp, new Set())
+    await a.engine.push()
+    expect(server.objects.get(k)?.deleted).toBe(false)
+    // 报过了再删
+    delete a.fp.alerts
+    captureInto(a.s, a.store, ctx, a.fp, new Set([o.id]))
+    await a.engine.push()
+    expect(server.objects.get(k)?.deleted).toBe(true)
+  })
+
+  it('别的设备的已触发、这个网页没报过：本机改别的提醒时也不顺手删', async () => {
+    const server = new FakeServer()
+    const a = browser(server)
+    await a.first()
+    const phone = { ...hooked('ph'), status: 'fired' as const, firedAt: server.now, firedPrice: 1 }
+    server.put({ collection: 'alerts', id: 'binance/usd_m/BTCUSDT/ph', deleted: false, body: alertToBody(phone) })
+    await a.sync()
+    a.s.alerts.push(hooked('mine'))
+    captureInto(a.s, a.store, ctx, a.fp, new Set())
+    await a.engine.push()
+    expect(server.objects.get('alerts:binance/usd_m/BTCUSDT/ph')?.deleted).toBe(false)
+    expect(server.objects.get('alerts:binance/usd_m/BTCUSDT/mine')?.deleted).toBe(false)
   })
 })

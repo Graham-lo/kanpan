@@ -12,7 +12,9 @@ export * from './shape'
 const listeners = new Set<() => void>()
 /** 提醒表变了（新建、删除、触发、拖动）就通知 */
 export function onAlertsChange(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn) } }
-function changed(): void { save(); listeners.forEach(f => { try { f() } catch (e) { console.error(e) } }) }
+/** 只通知、不落盘：云端改了提醒表（同步装进 st 之后）由同步层调，页面与弹层跟着刷新 */
+export function notifyAlerts(): void { listeners.forEach(f => { try { f() } catch (e) { console.error(e) } }) }
+function changed(): void { save(); notifyAlerts() }
 
 /** 还在等的（触发过的、暂停的不展示） */
 export const activeAlerts = (symbol?: string): Alert[] => st.alerts.filter(a => a.status === 'active' && (!symbol || a.symbol === symbol))
@@ -88,16 +90,26 @@ export function migrateDrawingFlags(): void {
 }
 
 // ---- 触发
-export interface Fired { alert: Alert; price: number; level: number | null }
+/** `remote`：服务端判响、同步下来的那一次（只报给人看，Webhook 服务端已经发过） */
+export interface Fired { alert: Alert; price: number; level: number | null; remote?: boolean }
 const fireHandlers = new Set<(f: Fired) => void>()
 export function onAlertFired(fn: (f: Fired) => void): () => void { fireHandlers.add(fn); return () => { fireHandlers.delete(fn) } }
-/** 响一次就结束：先从表里拿掉再通知，保证不会重复响 */
+function announce(f: Fired): void { fireHandlers.forEach(h => { try { h(f) } catch (e) { console.error(e) } }) }
+/** 响一次就结束（照手机 AlertStore.markFired → AlertWatcher.settle → purgeFired）：
+ *  1. 先在表里标成已触发并记账——登录着，同步推上去的是一次 `active → fired`，服务端看到这一下替它发 Webhook；
+ *  2. 报给人（通知、没登录时本机发 Webhook）；
+ *  3. 再从表里删掉并记账——推上去的是删除。两笔按先后进同一个队列，服务端先发信、后删行。 */
 export function fire(a: Alert, price: number, level: number | null): void {
-  if (!st.alerts.includes(a)) return
-  st.alerts = st.alerts.filter(x => x !== a)
+  if (!st.alerts.includes(a) || a.status !== 'active') return
   a.status = 'fired'; a.firedAt = Date.now(); a.firedPrice = price
   changed()
-  fireHandlers.forEach(f => { try { f({ alert: a, price, level }) } catch (e) { console.error(e) } })
+  announce({ alert: a, price, level })
+  st.alerts = st.alerts.filter(x => x !== a)
+  changed()
+}
+/** 服务端判响、同步下来的：报给人（不发 Webhook），删掉由同步层记账 */
+export function announceRemoteFire(a: Alert): void {
+  announce({ alert: a, price: a.firedPrice ?? 0, level: null, remote: true })
 }
 
 /** 每只品种上一笔成交价（只记提醒创建之后看到的） */

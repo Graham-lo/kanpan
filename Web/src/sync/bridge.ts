@@ -9,9 +9,10 @@
  *     · 上一次在这台电脑同步的是另一个账号（override）：云端整体覆盖，不把上一个人的东西带进来。
  */
 import type { State } from '../app/store'
+import type { Alert } from '../alerts/shape'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
-  type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
+  type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
   encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, syncableAlert, syncableDrawing, unseenDrawings, validSymbol,
 } from './codec'
 import type { Owned, SyncStore } from './store'
@@ -39,7 +40,7 @@ export function fingerprint(s: WebState): Record<Part, string> {
 }
 
 /** 记账。`ready`：品种表到了没有（没到时分不出自选的类别，不碰自选） */
-export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, fp: Prints): number {
+export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, fp: Prints, spent?: ReadonlySet<string>): number {
   const now = fingerprint(s)
   const vals: SyncObject[] = []
   if (now.settings !== fp.settings) {
@@ -52,16 +53,17 @@ export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: b
     fp.favorites = now.favorites
   }
   if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'))); fp.drawings = now.drawings }
-  if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), unseenDrawings(store.localOf('drawings')))); fp.alerts = now.alerts }
+  if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), unseenDrawings(store.localOf('drawings')), spent)); fp.alerts = now.alerts }
   return store.capture(vals, OWNED)
 }
 
-export interface Applied { settings: string[]; favorites: boolean; drawings: Set<string>; alerts: boolean }
+/** `fired`：本机还在等、云端已经是已触发的那几条（服务端判响了）——外面报给人，再记删除 */
+export interface Applied { settings: string[]; favorites: boolean; drawings: Set<string>; alerts: boolean; fired: Alert[] }
 
 /** 把账本里的云端值装进页面状态（原地改 s）。`all`：不看 unapplied，全部重装 */
 export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, all = false): Applied {
   const u = store.a.unapplied
-  const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false }
+  const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false, fired: [] }
   if (all || u.has('settings')) r.settings = applySettings(s, store.get('settings', SETTINGS_ID), store.a.seen)
   if ((all || u.has('favorites')) && ctx.ready) {
     const w = decodeFavorites(store.localOf('favorites'), ctx)
@@ -70,6 +72,12 @@ export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boo
     if (!same(w, s.watch)) { s.watch = w; r.favorites = true }
   }
   if (all || u.has('alerts') || u.has('drawings')) {
+    for (const x of s.alerts) {
+      if (!syncableAlert(x)) continue
+      const o = store.get('alerts', alertId(x.symbol, x.id))
+      const f = o && o.body.status === 'fired' ? decodeAlert(o, undefined, true) : null
+      if (f) r.fired.push(f)
+    }
     const alerts = decodeAlerts(store.localOf('alerts'), s.alerts, unseenDrawings(store.localOf('drawings')))
     if (!same(alerts, s.alerts)) { s.alerts = alerts; r.alerts = true }
     const d = decodeDrawings(store.localOf('drawings'), s.drawings)
@@ -88,7 +96,7 @@ export interface Edited { settings: number; favorites: number }
 
 /** 第一次对上（账本是空的、刚全量拉完）：按规则合并进页面状态，之后正常记账会把本机多出来的推上去 */
 export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, edited: Edited, override: boolean): Applied {
-  const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false }
+  const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false, fired: [] }
   const a = store.a
   // 设置：云端新（或覆盖）就装云端的；本机新就什么都不装、seen 留空，记账时每个字段都会和云端比一遍
   const cloudSettings = store.get('settings', SETTINGS_ID)

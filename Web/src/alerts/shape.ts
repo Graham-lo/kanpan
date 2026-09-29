@@ -224,3 +224,9 @@ export function oiHit(rule: AlertRule, changeRatio: number): boolean {
   return rule.type === 'openInterestChange' && Math.abs(changeRatio) >= +(rule as { threshold: string }).threshold
 }
 
+/** 照手机 AlertWatcher.report：条件提醒本机判到的由本机发（服务端只替它自己判到的那一次发）；
+ *  价格 / 画线提醒登录着由服务端发（看到同步上去的 active → fired），没登录才由这里发 */
+export function webhookByPage(a: Alert, remote: boolean, signedIn: boolean): boolean {
+  if (!a.webhook || remote) return false
+  return a.kind === 'condition' || !signedIn
+}

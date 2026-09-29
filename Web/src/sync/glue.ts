@@ -14,11 +14,12 @@ import { hooks } from '../app/shell'
 import { S } from '../market'
 import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
-import { allCells, cfg, drawingsFor, refreshAlerts, renderPanel, renderToolbar } from '../pages/chart'
+import { allCells, cfg, drawingsFor, renderPanel, renderToolbar } from '../pages/chart'
+import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
 import { authed, device } from '../account/client'
 import { onSession, session } from '../account/session'
 import { type Applied, type Edited, type Prints, OWNED, applyInto, captureInto, fingerprint, mergeFirst } from './bridge'
-import type { Ctx } from './codec'
+import { type Ctx, alertId } from './codec'
 import { Engine, type Transport } from './engine'
 import { SyncStore, deserialize, serialize } from './store'
 import { type ChangesPage, type Page, type PushResponse, emptyArchive } from './types'
@@ -77,6 +78,8 @@ let abort: AbortController | null = null
 let release: (() => void) | null = null
 let persistQueued = false
 let lastTick = 0
+/** 这个网页已经报过的已触发（同步 id）：记账时只删这些（codec.encodeAlerts 的 spent） */
+const spent = new Set<string>()
 
 function persist(): void {
   if (persistQueued) return
@@ -89,7 +92,7 @@ function persist(): void {
 
 function capture(): void {
   if (!store || initial || applying) return
-  captureInto(st, store, ctx, fp)
+  captureInto(st, store, ctx, fp, spent)
 }
 
 function apply(): void {
@@ -109,13 +112,23 @@ function refreshUI(r: Applied): void {
       renderToolbar()
     }
     if (r.drawings.size) allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) })
-    if (r.alerts || r.drawings.size) refreshAlerts()
+    // 走提醒模块的通知：图、侧栏，以及开着的「全部提醒」「创建提醒」弹层都跟着刷新
+    if (r.alerts || r.drawings.size) notifyAlerts()
     else if (r.favorites) renderPanel()
     if (r.settings.length || r.favorites || r.alerts || r.drawings.size) save()
   } catch (e) { console.error(e) } finally { applying = false }
   const now = fingerprint(st)
   fp.settings = now.settings; fp.drawings = now.drawings; fp.alerts = now.alerts
   if (ctx.ready) fp.favorites = now.favorites
+  settleRemoteFires(r)
+}
+
+/** 服务端判响、同步下来的（照手机 AlertWatcher.settle）：报给人，再记一笔删除推上去 */
+function settleRemoteFires(r: Applied): void {
+  if (!r.fired.length || !store) return
+  for (const a of r.fired) { spent.add(alertId(a.symbol, a.id)); announceRemoteFire(a) }
+  delete fp.alerts
+  if (captureInto(st, store, ctx, fp, spent)) schedulePush()
 }
 
 /** 同步任务串行执行；会话换了（gen 变了）的旧任务直接跳过 */
@@ -210,6 +223,7 @@ function stop(): void {
   abort?.abort(); abort = null
   release?.(); release = null
   store = null; engine = null; uid = null; initial = false; fp = {}
+  spent.clear()
 }
 
 export function initSync(): void {
@@ -225,8 +239,10 @@ export function initSync(): void {
     }
     base = now
     if (!store || initial || applying) return
-    if (captureInto(st, store, ctx, fp)) schedulePush()
+    if (captureInto(st, store, ctx, fp, spent)) schedulePush()
   })
+  // 本机判响的：fire() 先记「已触发」、报完再删，删之前记下来
+  onAlertFired(({ alert }) => spent.add(alertId(alert.symbol, alert.id)))
   hooks.booted.push(() => { booted = true; start() })
   onSession(() => {
     if (session.userId && session.userId === uid) return

@@ -457,8 +457,11 @@ function ruleOk(r: Alert['rule']): boolean {
 }
 
 /** 这条网页提醒能不能上云（身份合规、形状过得了服务端 sync_validation） */
-export function syncableAlert(a: Alert): boolean {
-  if (a.market !== ALERT_MARKET || !validSymbol(a.symbol) || !a.id || a.id.includes('/') || a.status !== 'active') return false
+export function syncableAlert(a: Alert): boolean { return a.status === 'active' && alertShapeOk(a) }
+/** 记账时还认刚响的那一下（`active → fired`，照手机 markFired 先推一次已触发，服务端据此发 Webhook） */
+export function encodableAlert(a: Alert): boolean { return (a.status === 'active' || a.status === 'fired') && alertShapeOk(a) }
+function alertShapeOk(a: Alert): boolean {
+  if (a.market !== ALERT_MARKET || !validSymbol(a.symbol) || !a.id || a.id.includes('/')) return false
   if (a.kind === 'price' || a.kind === 'drawing') {
     if (!a.lines.length || !a.lines.every(l => l.points.length && l.points.every(p => isFinite(p.t) && isFinite(p.p)))) return false
     if (a.kind === 'drawing' && !a.drawingID) return false
@@ -487,10 +490,10 @@ export function unseenDrawings(all: SyncObject[]): Set<string> {
   return out
 }
 
-/** 云端提醒 → 网页提醒；网页管不着的返回 null */
-export function decodeAlert(o: SyncObject, unseen?: Set<string>): Alert | null {
+/** 云端提醒 → 网页提醒；网页管不着的返回 null。`fired`：已触发的也解（记账比对、同步下来的「服务端响了」） */
+export function decodeAlert(o: SyncObject, unseen?: Set<string>, fired = false): Alert | null {
   const b = o.body
-  if (o.deleted || b.status !== 'active' || b.market !== ALERT_MARKET) return null
+  if (o.deleted || !(b.status === 'active' || (fired && b.status === 'fired')) || b.market !== ALERT_MARKET) return null
   if (b.kind !== 'price' && b.kind !== 'drawing' && b.kind !== 'condition') return null
   const symbol = str(b.symbol)
   if (!symbol || !o.id.startsWith(PREFIX + symbol + '/')) return null
@@ -506,8 +509,10 @@ export function decodeAlert(o: SyncObject, unseen?: Set<string>): Alert | null {
 
 const normAlert = (a: Alert): Json => alertToBody(a)
 
-/** 网页提醒 → 要记账的对象（含删除）。只动网页管得着的那部分 */
-export function encodeAlerts(alerts: Alert[], prevAll: SyncObject[], unseen?: Set<string>): SyncObject[] {
+/** 网页提醒 → 要记账的对象（含删除）。只动网页管得着的那部分。
+ *  `spent`：这个网页已经报过的已触发（本机响的、同步下来服务端响的）——只有这些已触发的会被删；
+ *  没报过的已触发留给报它的那台设备去删（照手机 AlertWatcher：报完才 purgeFired），不抢先删掉 */
+export function encodeAlerts(alerts: Alert[], prevAll: SyncObject[], unseen?: Set<string>, spent?: ReadonlySet<string>): SyncObject[] {
   const out: SyncObject[] = []
   const byId = new Map(prevAll.map(o => [o.id, o]))
   const local = new Set<string>()
@@ -515,16 +520,21 @@ export function encodeAlerts(alerts: Alert[], prevAll: SyncObject[], unseen?: Se
     const id = alertId(a.symbol, a.id)
     if (local.has(id)) continue
     local.add(id)
-    if (!syncableAlert(a)) continue
+    if (!encodableAlert(a)) continue
     const prev = byId.get(id)
     const live = prev && !prev.deleted ? prev : undefined
-    const was = live ? decodeAlert(live) : null
+    // 已触发的不再往回改成 active（服务端先响了、本机这份还没装进来：以云端为准）
+    if (a.status === 'active' && live?.body.status === 'fired') continue
+    const was = live ? decodeAlert(live, undefined, true) : null
     if (live && was && same(normAlert(was), normAlert(a))) { out.push({ ...live, body: { ...live.body } }); continue }
     const body: Body = { ...(live?.body ?? {}), ...alertToBody(a) }
     out.push({ collection: 'alerts', id, body, fields: {}, revision: 0, deleted: false, generation: 0 })
   }
   // 删除：网页管得着、本机已经没有这一条了（响过、删掉、画线没了）。本机还在只是暂时上不了云的不删
-  for (const o of prevAll) if (!o.deleted && !local.has(o.id) && decodeAlert(o, unseen)) out.push({ ...o, deleted: true })
+  for (const o of prevAll) {
+    if (o.deleted || local.has(o.id)) continue
+    if (decodeAlert(o, unseen) || (o.body.status === 'fired' && spent?.has(o.id) && decodeAlert(o, unseen, true))) out.push({ ...o, deleted: true })
+  }
   return out
 }
 

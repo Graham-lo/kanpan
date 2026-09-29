@@ -16,7 +16,7 @@ import { badge, cls, pctText, priceText, shTime, sym } from '../ui/common'
 import { fmt } from '../util/format'
 import {
   activeAlerts, addAlert, alertLevel, checkPrice, cleanWebhook, conditionLabel, deleteAlert, fire, fundingHit, makeConditionAlert,
-  makePriceAlert, oiHit, onAlertFired, onAlertsChange, rulePhrase, setQuoteSource, validWebhook, webhookBody, type Alert, type AlertRule,
+  makePriceAlert, oiHit, onAlertFired, onAlertsChange, rulePhrase, setQuoteSource, validWebhook, webhookBody, webhookByPage, type Alert, type AlertRule,
 } from './model'
 
 export interface AlertUIHooks {
@@ -195,8 +195,8 @@ function notify(a: Alert, price: number): void {
   toast(a.title, body, 'bell', 8000)
   if ('Notification' in window && Notification.permission === 'granted') { try { new Notification(a.title, { body, tag: a.id }) } catch { /* 有的浏览器只允许在 Service Worker 里弹 */ } }
 }
-function postWebhook(a: Alert, price: number, level: number | null): void {
-  if (!a.webhook || loggedIn()) return
+function postWebhook(a: Alert, price: number, level: number | null, remote = false): void {
+  if (!a.webhook || !webhookByPage(a, remote, loggedIn())) return
   const at = Date.now()
   // 跨域只能发「简单请求」：text/plain、不读回应
   void fetch(a.webhook, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(webhookBody(a, price, at, level)) }).catch(() => { /* 对方收不收是对方的事 */ })
@@ -222,7 +222,7 @@ export function installAlerts(hooks: AlertUIHooks): void {
   if (installed) return
   installed = true
   setQuoteSource(k => ({ price: sym(k)?.price ?? null, dec: sym(k)?.dec }))
-  onAlertFired(({ alert, price, level }) => { notify(alert, price); postWebhook(alert, price, level) })
+  onAlertFired(({ alert, price, level, remote }) => { notify(alert, price); postWebhook(alert, price, level, remote) })
   on(e => {
     if (st.stale) return
     if (e.type === 'ticker') { const p = S.symbols.get(e.symbol)?.price; if (p != null) checkPrice(e.symbol, p) }
