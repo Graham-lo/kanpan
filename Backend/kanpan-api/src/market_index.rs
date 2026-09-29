@@ -29,8 +29,9 @@
 //!
 //! **手机的行情转发永远优先**：取数走复盘那个带账本、带闸门的币安适配器（[`crate::review_market::provider`]），
 //! 与找相似、复盘判定共用 `provider_budgets` 的每分钟权重账本和 [`crate::binance_gate`] 的封禁截止时间；
-//! 这里只在「这一分钟整个出口已用的权重」低于上限的 [`SHARE_PERCENT`]% 时才出站，每次一页
-//! （≤ 1000 根，权重 5），页间至少歇一秒。闸门按着、账本满了，这一轮就停，下一分钟再来。
+//! 这里只在「这一分钟整个出口已用的权重」低于上限的 [`SHARE_PERCENT`]% 时才出站，自己每分钟
+//! 最多花 [`MINUTE_WEIGHT`]，每次一页（≤ 1000 根，权重 5），页间至少歇一秒；有人正在等找相似
+//! （[`crate::search::busy`]）就整个让开。闸门按着、账本满了，就等到下一分钟开头再来。
 //! 顺序是先滚动（每只每个周期最新那一段），再回填（1h、4h 优先，从近往远）。
 use crate::AppState;
 use chrono::{DateTime, Datelike, Utc};
@@ -52,14 +53,23 @@ pub const TOP: usize = 40;
 pub const DAYS: i64 = 365;
 /// 一段多少根：928 + 最长窗口 64 − 1 = 991 ≤ 1000，一页取完、权重 5；928 是 16、4、2、1 的倍数。
 pub const CHUNK: i64 = 928;
-/// 这一分钟整个出口已用权重低于账本上限的这个百分比时才出站。
-pub const SHARE_PERCENT: i32 = 30;
+/// 这一分钟整个出口已用权重（`x-mbx-used-weight-1m`，整个 IP 的，含同机别的服务）低于
+/// 账本上限的这个百分比时才出站。2026-09-29 部署后实测这台 VPS 平时每分钟就用到 750 上下
+/// （订单流的深度快照占大头），分钟开头 300 多、到分钟末 750；30% 这条线一分钟里只开几秒。
+pub const SHARE_PERCENT: i32 = 50;
+/// 索引自己每分钟最多花这么多权重（24 页）：整个出口最坏 600 + 120 + 一次找相似 300，
+/// 仍在账本上限 1200 以内。
+pub const MINUTE_WEIGHT: i32 = 120;
+/// 一页 K 线（limit 500–1000）的权重。
+const PAGE_WEIGHT: i32 = 5;
 /// 两次出站之间至少歇多久。
 const PAUSE: Duration = Duration::from_secs(1);
 /// 没活干、或者被闸门 / 账本挡住时睡多久。
 const IDLE: Duration = Duration::from_secs(60);
 /// 品种表多久重排一次。
 const RERANK: Duration = Duration::from_secs(6 * 3600);
+/// 一轮最多做多少段就重新数一遍库。
+const ROUND: usize = 60;
 /// 旧窗口多久删一次。
 const PRUNE_EVERY: Duration = Duration::from_secs(3600);
 
@@ -305,7 +315,7 @@ async fn budget_room(pool: &PgPool) -> sqlx::Result<bool> {
         .fetch_optional(pool)
         .await?;
     let (used, blocked) = row.unwrap_or((0, false));
-    Ok(!blocked && used + 5 <= limit * SHARE_PERCENT / 100)
+    Ok(!blocked && used + PAGE_WEIGHT <= limit * SHARE_PERCENT / 100)
 }
 
 /// 每只品种每个周期、每段库里已有几个窗口（只数计划里的长度、深度以内的）。
@@ -393,6 +403,8 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
     let mut ranked_at: Option<tokio::time::Instant> = None;
     let mut pruned_at: Option<tokio::time::Instant> = None;
     let mut tried: HashMap<(String, usize, i64), usize> = HashMap::new();
+    // (这是第几分钟, 这一分钟索引自己花了多少权重)
+    let mut spent: (i64, i32) = (0, 0);
     loop {
         if ranked_at.is_none_or(|t| t.elapsed() >= RERANK) || symbols.is_empty() {
             match top_symbols(TOP).await {
@@ -434,37 +446,54 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
             tokio::time::sleep(IDLE).await;
             continue;
         }
+        // 一轮最多做 ROUND 段：做完重新数一遍，滚动的活不会被长长的回填队列压在后面。
         let (mut done, mut written) = (0usize, 0usize);
-        for job in &jobs {
-            if crate::binance_gate::blocked() || !budget_room(&s.pool).await.unwrap_or(false) {
-                break;
+        for job in jobs.iter().take(ROUND) {
+            // 让路：有人在等找相似、闸门按着、这一分钟整个出口用得多了、或者自己这一分钟花够了——
+            // 都等到下一分钟开头（账本按分钟清零），再接着做同一张单子。
+            loop {
+                let minute = Utc::now().timestamp().div_euclid(60);
+                if spent.0 != minute {
+                    spent = (minute, 0);
+                }
+                let open = spent.1 + PAGE_WEIGHT <= MINUTE_WEIGHT
+                    && !crate::search::busy()
+                    && !crate::binance_gate::blocked()
+                    && budget_room(&s.pool).await.unwrap_or_else(|e| {
+                        tracing::warn!("Market index: reading the weight ledger failed ({e})");
+                        false
+                    });
+                if open {
+                    break;
+                }
+                tokio::time::sleep(until_next_minute()).await;
             }
+            spent.1 += PAGE_WEIGHT;
             match run_job(&s.pool, &*market, job).await {
                 Ok(n) => {
                     written += n;
                     done += 1;
                     tried.insert((job.symbol.clone(), job.plan, job.chunk), job.want);
                 }
-                Err(true) => break,
+                // 这会儿取不到（适配器自己的账本满了、闸门、网络）：下一分钟再试这一段。
+                Err(true) => tokio::time::sleep(until_next_minute()).await,
                 Err(false) => {
                     tracing::warn!("Market index: {} {} chunk {} refused; skipping it", job.symbol, PLANS[job.plan].interval, job.chunk);
                     tried.insert((job.symbol.clone(), job.plan, job.chunk), job.want);
                 }
             }
             tokio::time::sleep(PAUSE).await;
-            // 一轮最多做一分钟的量：做完重新数一遍，滚动的活不会被长长的回填队列压在后面。
-            if done >= 60 {
-                break;
-            }
         }
         if done > 0 {
             tracing::info!("Market index: {done} of {} chunks fetched, {written} windows written", jobs.len());
         }
-        // 这一轮被挡住（没做满就停了）：等下一分钟的账本。
-        if done < jobs.len().min(60) {
-            tokio::time::sleep(IDLE).await;
-        }
     }
+}
+
+/// 睡到下一分钟开头过两秒（币安与账本都按自然分钟清零）。
+fn until_next_minute() -> Duration {
+    let into = Utc::now().timestamp_millis().rem_euclid(60_000) as u64;
+    Duration::from_millis(60_000 - into + 2_000)
 }
 
 #[cfg(test)]

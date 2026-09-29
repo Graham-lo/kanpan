@@ -145,6 +145,12 @@ pub async fn work(s:&AppState,market:&dyn MarketDataProvider,idle:std::time::Dur
 const CLAIM_OWNERS:usize=8;
 /// 一条检索被认领多少次还没做完就不再认领（租约过期也算一次）。
 pub const MAX_ATTEMPTS:i32=3;
+/// 这个进程里最近一次认领到检索的时刻（unix 秒）。公开历史索引（`market_index`）看它让路：
+/// 检索是有人在等的活，同一分钟的币安权重先给它。检索被推到下一分钟时会再认领一次，
+/// 所以一条没做完的检索会一直让这个时刻保持新鲜。
+static LAST_CLAIM:std::sync::atomic::AtomicI64=std::sync::atomic::AtomicI64::new(0);
+/// 最近 90 秒里认领过检索：有人在等找相似的结果。
+pub fn busy()->bool {Utc::now().timestamp()-LAST_CLAIM.load(std::sync::atomic::Ordering::Relaxed)<90}
 pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let mut claimed=None;
  for _ in 0..CLAIM_OWNERS {
@@ -169,6 +175,7 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   claimed=Some((owner,tx,row));break
  }
  let Some((owner,mut tx,row))=claimed else{return Ok(false)};
+ LAST_CLAIM.store(Utc::now().timestamp(),std::sync::atomic::Ordering::Relaxed);
  let id:Uuid=row.get("id");let lease=Uuid::new_v4();let q:NativeSearch=parse(row.get("query"))?;let attempts:i32=row.get("attempts");
  let old_candidates:Option<Value>=row.get("candidates");let mut position:usize=row.get::<i32,_>("position") as usize;let mut checked=row.get::<i32,_>("checked");let mut items:Vec<Value>=parse(row.get("items"))?;
  sqlx::query("UPDATE review_searches SET status='running',lease_id=$3,lease_until=now()+interval '120 seconds',attempts=attempts+1 WHERE user_id=$1 AND id=$2").bind(owner).bind(id).bind(lease).execute(&mut *tx).await?;tx.commit().await?;
