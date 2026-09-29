@@ -38,6 +38,7 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 let firstFrameTimer: ReturnType<typeof setTimeout> | null = null
 let watchdog: ReturnType<typeof setInterval> | null = null
 
+function offline(): boolean { return typeof navigator !== 'undefined' && navigator.onLine === false }
 function hidden(): boolean { return typeof document !== 'undefined' && document.visibilityState === 'hidden' }
 function effective(): string[] { return (hidden() ? core : all).slice(0, MAX_STREAMS) }
 
@@ -108,7 +109,8 @@ function fail(sock: WebSocket): void {
   const delay = Math.min(15000, 1000 * 2 ** retry++)
   const wait = hidden() ? Math.max(delay, 10000) : delay
   if (retryTimer) clearTimeout(retryTimer)
-  retryTimer = setTimeout(() => { retryTimer = null; if (effective().length) connect() }, wait)
+  // 系统说断着网就不空连（连也是 ERR_INTERNET_DISCONNECTED），等 online 事件再连
+  retryTimer = setTimeout(() => { retryTimer = null; if (effective().length && !offline()) connect() }, wait)
 }
 
 function close(keepState = false): void {
@@ -128,6 +130,16 @@ if (typeof document !== 'undefined') {
     if (!hidden() && !ws && effective().length) { if (retryTimer) { clearTimeout(retryTimer); retryTimer = null } retry = 0; connect(); return }
     if (debounce) clearTimeout(debounce)
     debounce = setTimeout(apply, hidden() ? 1500 : 0)
+  })
+}
+
+/** 系统报断网：不等 30 秒静默看门狗，马上判断线（连接点变红、价格变灰）；报联网就立刻重连，不等退避 */
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('offline', () => { if (ws) fail(ws) })
+  window.addEventListener('online', () => {
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+    retry = 0
+    if (effective().length && !(ws && ws.readyState === WebSocket.OPEN && gotFrame)) connect()
   })
 }
 
