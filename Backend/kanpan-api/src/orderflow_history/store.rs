@@ -10,7 +10,8 @@
 //!   按文件大小会每小时都判超、一路删光。
 use super::book::Side;
 use super::model::{BigOrder,Restored,STALE_MS,Status};
-use sqlx::{PgPool,Postgres,QueryBuilder,Row};
+use sqlx::{PgConnection,PgPool,Postgres,QueryBuilder,Row};
+use std::sync::atomic::{AtomicU64,Ordering};
 
 pub const DAY_MS:i64=86_400_000;
 /// 结束的单留多久。
@@ -30,12 +31,63 @@ const PK:&str="base,venue_id,side,bucket,first_seen_ms";
 /// 两张表按主键对上的条件（`a`、`b` 是两边的别名）。
 fn same(a:&str,b:&str)->String {format!("{a}.base={b}.base AND {a}.venue_id={b}.venue_id AND {a}.side={b}.side AND {a}.bucket={b}.bucket AND {a}.first_seen_ms={b}.first_seen_ms")}
 
+// ------------------------------------------------------------------ 锁顺序
+//
+// `orderflow_live` 上会同时改同一批行的有三路：各 base 的写库任务（`write_live` 的 INSERT … ON CONFLICT、
+// `write_ended` 的 DELETE）、停机收尾那一句刷新（`refresh_seen`，跨所有 base 几千行）、每小时的失联结束（`purge`）。
+// 每一句都是一个事务，但一句要锁几百到几千行，行锁是边扫边拿的：INSERT 按 VALUES 的先后、UPDATE / DELETE 按
+// 连接计划的先后（数组先后或堆里的物理先后），两句的先后一反，就是 A 锁着 1 等 2、B 锁着 2 等 1。
+// 2026-09-29 16:35 线上部署重启时就是停机刷新与 `write_live` 这样互等（`deadlock detected`，3 762 行没刷上）；
+// 本机把两边的先后摆反，20 轮里死锁 11 次（测试 `shutdown_refresh_and_writers_never_deadlock`）。
+//
+// 做法：这三路一律开事务，先用 [`lock_live`] 按主键（同一句 ORDER BY，库里的排序规则）把要碰的行一次锁好，
+// 再做原来那一句。锁的先后全局一致就成不了环：谁先拿到小的那一行，另一边就在同一行上排队，不会反过来等。
+// 万一还是碰上 40P01（比如以后新加了一路没按这个规矩来的），[`once_more_on_deadlock`] 整笔重来一次。
+
+/// 死锁（40P01）重来过几次（日志与测试用）。
+pub static DEADLOCK_RETRIES:AtomicU64=AtomicU64::new(0);
+
+/// 是不是库报的死锁（SQLSTATE 40P01）。
+pub fn is_deadlock(e:&sqlx::Error)->bool {e.as_database_error().and_then(|d|d.code()).as_deref()==Some("40P01")}
+
+/// 跑一笔；库报死锁（整笔已经回滚）就原样再跑一次，第二次还失败照实返回。
+async fn once_more_on_deadlock<T,F,Fut>(what:&str,mut work:F)->sqlx::Result<T>
+where F:FnMut()->Fut,Fut:std::future::Future<Output=sqlx::Result<T>> {
+ match work().await {
+  Err(e) if is_deadlock(&e)=>{
+   DEADLOCK_RETRIES.fetch_add(1,Ordering::Relaxed);
+   tracing::warn!("Orderflow history: {what} hit a deadlock, retrying once: {e}");
+   work().await
+  },
+  done=>done,
+ }
+}
+
+/// 事务里按主键先后锁住 `orderflow_live` 里这些键对得上的行（库里还没有的不管）。四个数组一一对应，base 一样长或只有一个。
+async fn lock_live(conn:&mut PgConnection,base:&[&str],venue:&[&str],side:&[&str],bucket:&[i64],first:&[i64])->sqlx::Result<()> {
+ sqlx::query(&format!("SELECT 1 FROM orderflow_live o \
+  JOIN unnest($1::text[],$2::text[],$3::text[],$4::bigint[],$5::bigint[]) AS v(base,venue_id,side,bucket,first_seen_ms) ON {} \
+  ORDER BY o.{} FOR UPDATE OF o",same("o","v"),PK.replace(',',",o.")))
+  .bind(base).bind(venue).bind(side).bind(bucket).bind(first).execute(conn).await?;
+ Ok(())
+}
+
+/// 一批写库行（同一只 base）按主键先后锁好。
+async fn lock_chunk(conn:&mut PgConnection,base:&str,chunk:&[&(BigOrder,i64)])->sqlx::Result<()> {
+ let venue:Vec<&str>=chunk.iter().map(|(o,_)|o.venue_id.as_str()).collect();
+ let side:Vec<&str>=chunk.iter().map(|(o,_)|o.side.wire()).collect();
+ let bucket:Vec<i64>=chunk.iter().map(|(o,_)|o.bucket).collect();
+ let first:Vec<i64>=chunk.iter().map(|(o,_)|o.first_seen_ms).collect();
+ lock_live(conn,&vec![base;chunk.len()],&venue,&side,&bucket,&first).await
+}
+
 /// 写一批（挂着的、刚结束的都走这里）。`seen` 为挂着的单最后一次看到的时刻，结束的单填结束时刻。
 /// 先写结束的再写挂着的：同一批里（或前后两批）同一单先结束后又来一份「挂着」，`NOT EXISTS` 挡得住。
+/// 每 500 行一个事务：先按主键锁好活单表里对得上的行再写（见「锁顺序」），死锁整笔重来一次。
 pub async fn upsert(pool:&PgPool,base:&str,step:f64,rows:&[(BigOrder,i64)])->sqlx::Result<()> {
  let (live,ended):(Vec<&(BigOrder,i64)>,Vec<&(BigOrder,i64)>)=rows.iter().partition(|(o,_)|o.end_ms.is_none());
- for chunk in ended.chunks(500) {write_ended(pool,base,step,chunk).await?;}
- for chunk in live.chunks(500) {write_live(pool,base,step,chunk).await?;}
+ for chunk in ended.chunks(500) {once_more_on_deadlock("writing ended orders",||write_ended(pool,base,step,chunk)).await?;}
+ for chunk in live.chunks(500) {once_more_on_deadlock("writing live orders",||write_live(pool,base,step,chunk)).await?;}
  Ok(())
 }
 
@@ -50,26 +102,30 @@ fn values<'a>(q:&mut QueryBuilder<'a,Postgres>,base:&'a str,step:f64,chunk:&'a [
 /// 挂着的：写进 `orderflow_live`，`orderflow_orders` 里已经结束的那一单不写（晚到的「挂着」不翻回去）。
 /// 已经在的更新价位、名义、成交、消失量；`seen_ms` 只往后推（停机刷新与写库任务两边谁后落都不倒退）。
 async fn write_live(pool:&PgPool,base:&str,step:f64,chunk:&[&(BigOrder,i64)])->sqlx::Result<()> {
+ let mut tx=pool.begin().await?;
+ lock_chunk(&mut tx,base,chunk).await?;
  let mut q=QueryBuilder::<Postgres>::new(format!("INSERT INTO orderflow_live({COLUMNS}) SELECT {COLUMNS} FROM ("));
  values(&mut q,base,step,chunk);
  q.push(format!(") AS v({COLUMNS}) WHERE NOT EXISTS (SELECT 1 FROM orderflow_orders o WHERE {}) \
   ON CONFLICT({PK}) DO UPDATE SET price=EXCLUDED.price,notional=EXCLUDED.notional,filled_notional=EXCLUDED.filled_notional,\
   threshold=EXCLUDED.threshold,vanished_notional=EXCLUDED.vanished_notional,seen_ms=GREATEST(orderflow_live.seen_ms,EXCLUDED.seen_ms)",same("o","v")));
- q.build().execute(pool).await?;
- Ok(())
+ q.build().execute(&mut *tx).await?;
+ tx.commit().await
 }
 
 /// 结束的：一条语句里写进 `orderflow_orders`、从 `orderflow_live` 删掉（数据修改 CTE，同一快照、一起提交）。
 /// `orderflow_orders` 里已有的只改还挂着的行（0031 之前的老进程留下的）：结束写过一次就不再改。
 async fn write_ended(pool:&PgPool,base:&str,step:f64,chunk:&[&(BigOrder,i64)])->sqlx::Result<()> {
+ let mut tx=pool.begin().await?;
+ lock_chunk(&mut tx,base,chunk).await?;
  let mut q=QueryBuilder::<Postgres>::new(format!("WITH v({COLUMNS}) AS ("));
  values(&mut q,base,step,chunk);
  q.push(format!("), ins AS (INSERT INTO orderflow_orders({COLUMNS}) SELECT {COLUMNS} FROM v ON CONFLICT({PK}) DO UPDATE SET \
   price=EXCLUDED.price,end_ms=EXCLUDED.end_ms,status=EXCLUDED.status,notional=EXCLUDED.notional,filled_notional=EXCLUDED.filled_notional,\
   threshold=EXCLUDED.threshold,vanished_notional=EXCLUDED.vanished_notional,seen_ms=EXCLUDED.seen_ms WHERE orderflow_orders.end_ms IS NULL) \
   DELETE FROM orderflow_live l USING v WHERE {}",same("l","v")));
- q.build().execute(pool).await?;
- Ok(())
+ q.build().execute(&mut *tx).await?;
+ tx.commit().await
 }
 
 /// 0031 之前的老进程写进 `orderflow_orders` 的挂着的行搬到 `orderflow_live`（活单表里已有同一单的，谁看到得晚用谁）。
@@ -87,6 +143,8 @@ pub struct SeenRow<'a> {pub base:&'a str,pub venue_id:&'a str,pub side:Side,pub 
 /// 停机收尾：一句 UPDATE 把所有挂着的单的 `seen_ms` 刷到跟踪器手里的最后一次看到。只动 `orderflow_live`（已结束的不在那里）；
 /// 只往后推不往前拉（写库任务同时在写的一批里 `seen_ms` 可能更旧，`upsert` 对挂着的行也取大的，两边谁后落都不倒退）。
 /// 库里还没有的（刚出现、还没刷过盘的）不在这里插，交给写库任务。返回改了几行。
+///
+/// 停机时各 base 的写库任务还在同时写同一张表：先按主键把这些行锁好再 UPDATE（见「锁顺序」），死锁整笔重来一次。
 pub async fn refresh_seen(pool:&PgPool,rows:&[SeenRow<'_>])->sqlx::Result<u64> {
  if rows.is_empty() {return Ok(0)}
  let base:Vec<&str>=rows.iter().map(|r|r.base).collect();
@@ -95,11 +153,17 @@ pub async fn refresh_seen(pool:&PgPool,rows:&[SeenRow<'_>])->sqlx::Result<u64> {
  let bucket:Vec<i64>=rows.iter().map(|r|r.bucket).collect();
  let first:Vec<i64>=rows.iter().map(|r|r.first_seen_ms).collect();
  let seen:Vec<i64>=rows.iter().map(|r|r.seen_ms).collect();
- let done=sqlx::query(&format!("UPDATE orderflow_live o SET seen_ms=v.seen_ms \
+ let sql=format!("UPDATE orderflow_live o SET seen_ms=v.seen_ms \
   FROM unnest($1::text[],$2::text[],$3::text[],$4::bigint[],$5::bigint[],$6::bigint[]) AS v(base,venue_id,side,bucket,first_seen_ms,seen_ms) \
-  WHERE {} AND o.seen_ms<v.seen_ms",same("o","v")))
-  .bind(base).bind(venue).bind(side).bind(bucket).bind(first).bind(seen).execute(pool).await?;
- Ok(done.rows_affected())
+  WHERE {} AND o.seen_ms<v.seen_ms",same("o","v"));
+ let (sql,base,venue,side,bucket,first,seen)=(&sql,&base,&venue,&side,&bucket,&first,&seen);
+ once_more_on_deadlock("refreshing seen_ms at shutdown",move ||async move {
+  let mut tx=pool.begin().await?;
+  lock_live(&mut tx,base,venue,side,bucket,first).await?;
+  let done=sqlx::query(sql).bind(base).bind(venue).bind(side).bind(bucket).bind(first).bind(seen).execute(&mut *tx).await?;
+  tx.commit().await?;
+  Ok(done.rows_affected())
+ }).await
 }
 
 fn order(row:&sqlx::postgres::PgRow)->Option<BigOrder> {
@@ -237,10 +301,7 @@ pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u6
  for base in &bases {sweep(pool,base).await?;deleted+=delete_ended_before(pool,base,now-RETENTION_MS).await?;}
  let mut closed=0;
  for base in &bases {
-  closed+=sqlx::query(&format!("WITH moved AS (DELETE FROM orderflow_live WHERE base=$1 AND seen_ms<$2 RETURNING *) \
-   INSERT INTO orderflow_orders({COLUMNS}) SELECT base,venue_id,exchange,product,side,bucket,price,first_seen_ms,GREATEST(first_seen_ms,seen_ms),'lost',\
-   initial_notional,notional,filled_notional,threshold,NULL,step,seen_ms FROM moved ON CONFLICT({PK}) DO NOTHING"))
-   .bind(base).bind(stale_cutoff(tracked.contains(base),now)).execute(pool).await?.rows_affected();
+  closed+=once_more_on_deadlock("closing lost orders",||close_lost(pool,base,stale_cutoff(tracked.contains(base),now))).await?;
  }
  // 总量闸门：表文件（pg_total_relation_size）超过 20 GB 才动手；删到「行数 × 每行占用」估出来的
  // 实际占用低于 18 GB。行数用 reltuples（上一次 ANALYZE 的估计，够用），删完按删掉的行数往下扣。
@@ -259,6 +320,20 @@ pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u6
   tracing::warn!("Orderflow history: size gate trimmed to end_ms >= {cutoff}");
  }
  Ok((deleted,closed))
+}
+
+/// 一只 base 上最后一次看到早于 `cutoff` 的挂着的行按失联结束：从活单表搬进历史表。
+/// 和写库任务、停机刷新同一张表，同样先按主键锁好再删（见「锁顺序」）。
+async fn close_lost(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u64> {
+ let mut tx=pool.begin().await?;
+ sqlx::query(&format!("SELECT 1 FROM orderflow_live WHERE base=$1 AND seen_ms<$2 ORDER BY {PK} FOR UPDATE"))
+  .bind(base).bind(cutoff).execute(&mut *tx).await?;
+ let n=sqlx::query(&format!("WITH moved AS (DELETE FROM orderflow_live WHERE base=$1 AND seen_ms<$2 RETURNING *) \
+  INSERT INTO orderflow_orders({COLUMNS}) SELECT base,venue_id,exchange,product,side,bucket,price,first_seen_ms,GREATEST(first_seen_ms,seen_ms),'lost',\
+  initial_notional,notional,filled_notional,threshold,NULL,step,seen_ms FROM moved ON CONFLICT({PK}) DO NOTHING"))
+  .bind(base).bind(cutoff).execute(&mut *tx).await?.rows_affected();
+ tx.commit().await?;
+ Ok(n)
 }
 
 /// 两张表此刻的体积之和（容量实测用）。
@@ -377,6 +452,87 @@ pub(super) mod tests {
   upsert(&pool,"ZZS",100.0,&[(lost,now-55_000)]).await.unwrap();
   assert_eq!(seen_of(&pool,"ZZS",1).await,Some(("orderflow_orders",now-55_000)),"结束的搬进历史表");
   clear(&pool,&["ZZS","ZZS2"]).await;
+ }
+
+ /// 停机那一句刷新与写库任务同时跑不死锁（2026-09-29 16:35 线上部署重启：`deadlock detected`，3 762 行没刷上）。
+ /// 线上那一次是刷新 UPDATE 与 `write_live` 的 INSERT … ON CONFLICT 按相反的顺序锁同一批行。这里把两边的顺序故意摆反：
+ /// 刷新按 base、桶升序给，写库按桶降序给（名义都挪过 1%，每一行都要改），外加一批这一轮结束的（`write_ended` 的删），
+ /// 四只 base 的写库任务与刷新同时起，跑若干轮。
+ #[tokio::test(flavor="multi_thread",worker_threads=6)]
+ async fn shutdown_refresh_and_writers_never_deadlock() {
+  let Some(pool)=isolated_pool().await else {return};
+  const BASES:[&str;4]=["ZZD1","ZZD2","ZZD3","ZZD4"];
+  const N:i64=600;
+  const ENDING:i64=20;
+  const ROUNDS:i64=20;
+  clear(&pool,&BASES).await;
+  let now=100*DAY_MS;
+  for base in BASES {
+   let rows:Vec<(BigOrder,i64)>=(0..N).map(|b|(order(b,now-60_000,None),now-50_000)).collect();
+   upsert(&pool,base,100.0,&rows).await.unwrap();
+  }
+  let deadlock=is_deadlock;
+  // 锁顺序一致就一次都不该撞上：连「撞上了、重来一次成功」也算失败（重来只是兜底，不能拿它把死锁藏起来）。
+  let retried=DEADLOCK_RETRIES.load(Ordering::Relaxed);
+  let (mut deadlocks,mut failed)=(0,Vec::new());
+  for round in 0..ROUNDS {
+   // 这一轮要结束的一小批：先当挂着的写进去（刷新也会带上它们），写库任务这一轮把它们结束掉。
+   let ending:Vec<i64>=(0..ENDING).map(|i|N+round*ENDING+i).collect();
+   for base in BASES {
+    upsert(&pool,base,100.0,&ending.iter().map(|&b|(order(b,now-60_000,None),now-50_000)).collect::<Vec<_>>()).await.unwrap();
+   }
+   let seen=now+round;
+   let refresh:Vec<SeenRow>=BASES.iter().flat_map(|&base|(0..N).chain(ending.iter().copied()).map(move |b|SeenRow{base,venue_id:"binance:usdtPerp:BTCUSDT",
+    side:Side::Bid,bucket:b,first_seen_ms:now-60_000,seen_ms:seen})).collect();
+   let batch:Vec<(BigOrder,i64)>=ending.iter().rev().map(|&b|{let mut o=order(b,now-60_000,Some(seen));o.status=Status::Cancelled;(o,seen)})
+    .chain((0..N).rev().map(|b|{let mut o=order(b,now-60_000,None);o.notional=6e6*(1.0+0.02*(round as f64+1.0));(o,seen-1_000)})).collect();
+   let writers=BASES.map(|base|{let (pool,batch)=(pool.clone(),batch.clone());tokio::spawn(async move {upsert(&pool,base,100.0,&batch).await})});
+   let refreshed=refresh_seen(&pool,&refresh).await;
+   for w in writers {
+    if let Err(e)=w.await.unwrap() {if deadlock(&e) {deadlocks+=1} else {failed.push(e.to_string())}}
+   }
+   match refreshed {
+    Ok(_)=>{},
+    Err(e) if deadlock(&e)=>deadlocks+=1,
+    Err(e)=>failed.push(e.to_string()),
+   }
+  }
+  let retried=DEADLOCK_RETRIES.load(Ordering::Relaxed)-retried;
+  eprintln!("shutdown refresh vs writers: {deadlocks} deadlocks returned, {retried} retried, in {ROUNDS} rounds");
+  deadlocks+=retried;
+  assert!(failed.is_empty(),"{failed:?}");
+  assert_eq!(deadlocks,0,"停机刷新与写库任务互相等锁");
+  // 刷新没丢：挂着的每一行都停在最后一轮刷的时刻（写库那批更旧，GREATEST 拉不回去）；结束的都搬进了历史表。
+  let stale:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_live WHERE base=ANY($1) AND seen_ms<>$2")
+   .bind(BASES.map(String::from).to_vec()).bind(now+ROUNDS-1).fetch_one(&pool).await.unwrap();
+  assert_eq!(stale,0);
+  let ended:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_orders WHERE base=ANY($1)").bind(BASES.map(String::from).to_vec()).fetch_one(&pool).await.unwrap();
+  assert_eq!(ended,BASES.len() as i64*ROUNDS*ENDING);
+  clear(&pool,&BASES).await;
+ }
+
+ /// 死锁兜底：库报 40P01 就整笔再来一次，只来一次；别的错不重来。
+ #[tokio::test]
+ async fn a_deadlock_is_retried_exactly_once() {
+  let Some(pool)=isolated_pool().await else {return};
+  let raise=|code:&str|format!("DO $$ BEGIN RAISE EXCEPTION 'test' USING ERRCODE = '{code}'; END $$");
+  let attempts=std::sync::atomic::AtomicU32::new(0);
+  let run=|fail_times:u32,code:&'static str|{
+   attempts.store(0,Ordering::SeqCst);
+   let (pool,attempts,raise)=(&pool,&attempts,&raise);
+   once_more_on_deadlock("test",move ||async move {
+    let n=attempts.fetch_add(1,Ordering::SeqCst);
+    if n<fail_times {sqlx::query(&raise(code)).execute(pool).await?;}
+    Ok::<_,sqlx::Error>(n)
+   })
+  };
+  assert_eq!(run(1,"40P01").await.unwrap(),1,"撞一次：第二次成了");
+  assert_eq!(attempts.load(Ordering::SeqCst),2);
+  assert!(run(2,"40P01").await.is_err_and(|e|is_deadlock(&e)),"连撞两次：照实报错");
+  assert_eq!(attempts.load(Ordering::SeqCst),2,"只重来一次");
+  assert!(run(1,"57014").await.is_err(),"语句超时之类的不重来（写库任务自己退避）");
+  assert_eq!(attempts.load(Ordering::SeqCst),1);
+  assert_eq!(run(0,"40P01").await.unwrap(),0);
  }
 
  /// 挂着的只在活单表、结束的只在历史表；结束是一条语句里搬过去的；结束之后晚到的「挂着」不再进活单表；

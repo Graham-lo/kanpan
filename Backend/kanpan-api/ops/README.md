@@ -159,6 +159,7 @@ Orderflow history: shutdown kept 3412 live orders on 196 bases (seen_ms refreshe
 
 - `refreshed` 比 `live` 少一点是正常的：刚出现、写库任务还没落盘的行由写库任务自己带着新的 `seen_ms` 写进去；
 - `refreshed on failed rows` 表示那条 UPDATE 在 10 秒内没做完或失败了（数据库慢 / 断了），下次启动那批行按旧 `seen_ms` 判，可能出现一批失联；
+- 锁顺序（2026-09-29 修）：停机刷新和写库任务同时在改 `orderflow_live` 的同一批行。原来两句各按自己的先后边扫边锁（INSERT 按 VALUES 先后、UPDATE 按连接计划），先后一反就互等，16:35 那次部署打出过 `shutdown could not refresh seen_ms of 3762 live orders: … deadlock detected`。现在刷新、写库（挂着的 upsert 与结束的搬表）、每小时的失联结束都是「开事务 → 先 `SELECT … ORDER BY 主键 FOR UPDATE` 锁好 → 再写」，锁的先后全局一致；万一还碰上 40P01 整笔重来一次，日志里是 warn `… hit a deadlock, retrying once`。这条 warn 出现就说明又有一路没按这个规矩锁，要查。
 - 若是 warn 级的 `… N trackers still writing after 10000 ms; their rows are left to restore / purge`：有品种的写库没在 10 秒内排空，没写进去的已结束行会丢（挂着的仍由下次启动读回）。
 - 进程是因为后台任务挂掉而退出的（supervisor 的排空只给 10 秒再 `exit(1)`）时，这段收尾可能来不及，和以前一样靠下次启动 `restore`。
 
