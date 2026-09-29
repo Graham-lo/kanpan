@@ -3,6 +3,10 @@
 //   段落：panels（面板开关不漏 DOM / 监听）、switch（换品种 / 周期不累积订阅与连接）、offline（断网再联网续上）、
 //         sw（Service Worker：第一次打开后就能离线冷启动出壳）
 //   默认地址 http://localhost:5190/web/m/（先 npm run build && npx vite preview --port 5190）
+//   sw 段要用不带 Vary: Origin 的静态服务器（线上 Caddy 是 Vary: Accept-Encoding）：vite preview 给每个产物都加
+//   Vary: Origin，模块脚本请求带 Origin、SW 装时存的不带，caches.match 对不上，断网就取不到——那是本地假象。
+//   例：mkdir -p /tmp/srv && ln -sfn $PWD/dist /tmp/srv/web && (cd /tmp/srv && python3 -m http.server 5299)
+//       node scripts/m-stress.mjs http://localhost:5299/web/m/ sw
 // 每一项打一行「✓ / ✗」，有 ✗ 退出码 1。
 import { chromium } from 'playwright-core'
 
@@ -96,6 +100,69 @@ if (want('offline')) {
   ok('切后台再回来连接只有一条、价格照常走', s3.live === 1 && s3.open === 1 && !s4.stale, `${JSON.stringify(s3)} 订/退 ${JSON.stringify(n3)} 6 秒后 ${s4.price}（之前 ${p0}）`)
   ok('断网段无报错', !(await p.evaluate(() => window.__errs.length)), (await p.evaluate(() => window.__errs.join(' | '))).slice(0, 300))
   await ctx.close()
+}
+
+// ───────── 换品种（顶栏价格区横滑）、换周期各 40 次：连接始终一条、订阅不累积、DOM 不涨
+if (want('switch')) {
+  const { ctx, p } = await page()
+  await p.goto(URL_ + '#chart'); await p.waitForSelector('.cp-head'); await sleep(6000)
+  const box = await p.locator('.cp-head').boundingBox()
+  const ws = () => p.evaluate(() => ({ live: window.__ws.live.size, open: [...window.__ws.live].filter(s => s.readyState === 1).length, subs: window.__ws.subs, unsubs: window.__ws.unsubs }))
+  const m0 = await p.metrics(), w0 = await ws()
+  let dir = -1, done = 0, bounce = 0
+  while (done < 40 && bounce < 80) {
+    const before = await p.evaluate(() => document.querySelector('.cp-base')?.textContent)
+    const y = box.y + box.height / 2, x = box.x + box.width / 2
+    await p.mouse.move(x, y); await p.mouse.down(); await p.mouse.move(x + dir * 120, y, { steps: 2 }); await p.mouse.up()
+    await sleep(80)
+    if (await p.evaluate(() => document.querySelector('.cp-base')?.textContent) === before) { dir = -dir; bounce++ } else done++
+  }
+  const ivs = await p.evaluate(() => [...document.querySelectorAll('.cp-chip[data-iv]')].map(b => b.dataset.iv))
+  for (let i = 0; i < 40; i++) { await p.evaluate(iv => document.querySelector(`.cp-chip[data-iv="${iv}"]`)?.click(), ivs[i % ivs.length]); await sleep(60) }
+  await sleep(4000)
+  const m1 = await p.metrics(), w1 = await ws()
+  // 在场的订阅 = 净订阅；换来换去之后应当和开始时同一个量级（只剩当前这一只的几路）
+  const net0 = w0.subs - w0.unsubs, net1 = w1.subs - w1.unsubs
+  ok(`换品种 ${done} 次、换周期 40 次连接只有一条`, w1.live === 1 && w1.open === 1, JSON.stringify(w1))
+  ok('订阅不累积', net1 <= net0 + 4, `开始净订阅 ${net0}，结束 ${net1}（订 ${w1.subs} / 退 ${w1.unsubs}）`)
+  ok('DOM 不涨', m1.nodes - m0.nodes < 300, `节点 ${m1.nodes - m0.nodes >= 0 ? '+' : ''}${m1.nodes - m0.nodes}、堆 ${m0.heap.toFixed(1)}→${m1.heap.toFixed(1)} MB`)
+  ok('换品种段无报错', !(await p.evaluate(() => window.__errs.length)), (await p.evaluate(() => window.__errs.join(' | '))).slice(0, 300))
+  await ctx.close()
+}
+
+// ───────── Service Worker：第一次打开（四页各走一遍）之后断网，冷启动出壳、四页都进得去
+if (want('sw')) {
+  const { ctx, p } = await page()
+  await p.goto(URL_ + '#chart'); await p.waitForSelector('.cp-head')
+  const ready = await p.evaluate(() => navigator.serviceWorker ? navigator.serviceWorker.ready.then(r => !!r.active) : false)
+  ok('Service Worker 装好', ready)
+  const vary = await p.evaluate(async () => { const s = document.querySelector('script[type=module][src]'); return s ? (await fetch(s.src, { method: 'HEAD' })).headers.get('vary') || '' : '' })
+  if (/origin/i.test(vary)) { console.log(`- 跳过断网冷启动：这台服务器给产物加了 Vary: ${vary}（vite preview），换静态服务器再跑，见文件头`); await ctx.close() } else {
+  for (const h of ['#favorites', '#sectors', '#me', '#chart']) { await p.evaluate(h => { location.hash = h }, h); await sleep(1200) }
+  await sleep(2500) // 让页面把这次实际加载的产物报给 SW 补存
+  await ctx.setOffline(true)
+  await p.close()
+  const q = await ctx.newPage()
+  const failed = []
+  q.on('requestfailed', r => { const u = r.url(); if (u.includes('/web/') && !u.includes('/v1/') && !u.includes('/market')) failed.push(u.replace(/^.*\/web\//, '')) })
+  q.on('pageerror', e => failed.push('err: ' + e.message.slice(0, 120)))
+  await q.goto(URL_ + '#chart').catch(e => failed.push('goto: ' + e.message.slice(0, 80)))
+  const shell = await q.waitForSelector('.cp-head', { timeout: 8000 }).then(() => true, () => false)
+  ok('断网冷启动出壳（行情页）', shell, failed.join(' | ').slice(0, 300))
+  const pages = {}
+  for (const h of ['#favorites', '#sectors', '#me']) {
+    await q.evaluate(h => { location.hash = h }, h); await sleep(1500)
+    pages[h] = await q.evaluate(() => { const pg = [...document.querySelectorAll('.page')].find(e => getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).display !== 'none'); return pg ? pg.innerText.trim().length : 0 })
+  }
+  ok('断网时四页都进得去', Object.values(pages).every(n => n > 0) && !failed.some(f => /\.js|\.css/.test(f)), `${JSON.stringify(pages)} ${failed.join(' | ').slice(0, 200)}`)
+  await ctx.setOffline(false)
+  await sleep(3000) // 让 SW 在断网那段里存下的壳变旧：联网后若还回缓存，Date 会落在断网之前
+  const t0 = Date.now()
+  const res = await q.reload()
+  const age = res ? t0 - Date.parse((await res.headerValue('date')) || '') : NaN
+  ok('联网后导航取壳走服务器（新版本不拿旧壳）', !!res && res.status() === 200 && age < 2500, `status ${res?.status()}，壳的 Date 比刷新时刻早 ${age} ms`)
+  await ctx.close()
+  }
 }
 
 await browser.close()
