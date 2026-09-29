@@ -9,6 +9,18 @@ use serde_json::{Value,json};
 use sqlx::Row;
 use uuid::Uuid;
 
+/// 「像」的门槛，按周期给。
+///
+/// 分数是 DTW 代价换过来的 `exp(-6·cost)`，同一个分数在不同周期上「像」的程度不一样：
+/// 15m 的一年里有三万多根可以挑，1h 八千多根、4h 两千多根、日线三百多根，候选池越小，
+/// 离得最近的那几段天然就远一些。2026-09-29 离线复刻整条检索、把各分数档的候选画出来
+/// 逐张看（`docs/网页版-吸收-复盘与自选-2026-09-29.md`）：4h 的 0.56–0.60 这一档形态、
+/// 拐点位置都还对得上，0.50–0.55 开始只剩大方向一致；1h 在 0.58 以上稳定。门槛只往下放到
+/// 这里，再低就是拿不像的凑数。
+pub fn min_score(interval:&str)->f64 {
+ match interval {"1h"=>0.58,"4h"|"1d"=>0.56,_=>0.60}
+}
+
 pub fn routes()->Router<AppState> {
  Router::new().route("/v1/native-review/searches",post(start))
  .route("/v1/native-review/searches/{id}",get(status).delete(cancel))
@@ -173,6 +185,7 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   // 提醒那几条循环的连接挤掉。批大小的上限仍在：别的人的检索在租约之间照样能插进来。
   // `buffered` 保序：结果按候选顺序落，`position` 与原来逐个推进时一致。
   let mut deferred=false;
+  let threshold=min_score(&q.range.interval);
   {
   let batch:Vec<&Candidate>=candidates.iter().skip(position).take(SEARCH_BATCH).collect();
   // 先把这一批的取数 future 收成 Vec 再交给 `buffered`（future 是惰性的，照样最多并发
@@ -186,7 +199,7 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
     // 这个候选这段行情画不成图（横盘到零振幅、坏 OHLC、根数不够）是它自己的事：跳过。
     Ok(bars)=>if let Some(score)=candidate_score(&candles,&bars) {
      checked+=1;
-     if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}
+     if score>=threshold {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}
     },
     // 取不到行情是「这会儿」的事（本分钟的权重账本满了、币安在冷却、网络抖了），
     // 不是这个候选的事：停在这里、下一分钟从它接着比，不能把它当成「比过、没比上」
@@ -216,7 +229,7 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
 }
 #[cfg(test)]
 mod tests {
- use super::PUBLIC_NEAREST_SQL;
+ use super::{PUBLIC_NEAREST_SQL,min_score};
  /// 门槛：公开历史取候选这一步（`candidates` 的 history 分支）。
  /// 查询向量只能出现在 MATERIALIZED 的 CTE 里——排序键一旦写成 `embedding<=>$1…`
  /// 这种索引认得的形状，规划器就可能改走 HNSW，候选数随执行计划塌到几十个（1d 通用计划
@@ -245,6 +258,16 @@ mod tests {
   let mut broken=bars(40,wave);broken[5].high="1".into();
   assert_eq!(candidate_score(&query,&broken),None,"坏 OHLC");
   assert_eq!(candidate_score(&query,&[]),None);
+ }
+ #[test]
+ fn thresholds_only_relax_where_the_pool_is_small() {
+  assert_eq!(min_score("15m"),0.60);
+  assert_eq!(min_score("5m"),0.60);
+  assert_eq!(min_score("1h"),0.58);
+  assert_eq!(min_score("4h"),0.56);
+  assert_eq!(min_score("1d"),0.56);
+  // 哪个周期都不许放到 0.55 以下：那一档画出来只剩大方向一致。
+  for iv in ["1m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w"] {assert!(min_score(iv)>=0.56,"{iv}");}
  }
  #[test]
  fn public_nearest_is_exact_and_plan_independent() {

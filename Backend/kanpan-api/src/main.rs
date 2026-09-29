@@ -49,6 +49,12 @@ async fn main()->anyhow::Result<()> {
    let (s,market)=(s.clone(),market.clone());
    supervisor.spawn("search",Life::Forever,async move {kanpan_api::search::work(&s,&*market,std::time::Duration::from_secs(1)).await});
   }
+  // 「找相似」的公开历史索引：滚动补齐前 40 只的 15m / 1h / 4h / 1d 窗口，只用行情转发剩下的
+  // 那点币安权重（见 `kanpan_api::market_index`）。
+  {
+   let (s,market)=(s.clone(),market.clone());
+   supervisor.spawn("market-index",Life::Forever,async move {kanpan_api::market_index::run(s,market).await});
+  }
   {
    let s=s.clone();
    supervisor.spawn("cleanup",Life::Forever,async move {loop {
