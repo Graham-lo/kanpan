@@ -27,7 +27,10 @@ const EXCHANGES: Record<string, string> = { binance: '币安', okx: 'OKX', coinb
 
 export const EVALUATE_MS = 500
 const HIDDEN_EVALUATE_MS = 2_000
-const HISTORY_SPAN_MS = 24 * 3_600_000
+/** 首次取挂着的 + 最近 6 小时；往前一页也是 6 小时（2026-09-29 起服务端带 limit 分页） */
+const HISTORY_SPAN_MS = 6 * 3_600_000
+/** 一页最多多少条已结束的（服务端上限 5000；挂着的不算、不封顶） */
+export const HISTORY_PAGE = 5_000
 const HISTORY_EVERY_MS = 60_000
 const HISTORY_OVERLAP_MS = 5 * 60_000
 const HISTORY_RETRY_MS = 30_000
@@ -43,6 +46,14 @@ function gwHost(): string {
 }
 /** REST 走同源 /v1（开发时 vite 代理到线上）。 */
 const api = (path: string): string => path
+
+/** 历史请求：带 limit 走分页（服务端封顶 5000 条已结束的、回 nextBefore；挂着的全给）。 */
+export const historyQuery = (base: string, from: number, to: number): string =>
+  `/v1/market/orderflow/history?base=${encodeURIComponent(base)}&from=${Math.floor(from)}&to=${Math.floor(to)}&limit=${HISTORY_PAGE}`
+
+/** 这一页把历史覆盖到了哪儿：封顶时是 nextBefore（更早的下一页取），否则是请求的 from。 */
+export const coveredFrom = (p: { fromMs: number; nextBefore: number | null }): number =>
+  p.nextBefore != null && p.nextBefore > p.fromMs ? p.nextBefore : p.fromMs
 
 export async function getJSON(url: string, ms: number): Promise<{ status: number; body: unknown }> {
   const ctl = new AbortController()
@@ -227,6 +238,8 @@ export class OrderFlowFeed {
   private historyTrackedSince: number | null = null
   private historyBlockedStep: number | null = null
   private visibleFrom: number | null = null
+  /** 抽屉滚到底了：往前再要一页（不带寿命门槛） */
+  private olderWanted = false
   /** 服务端历史最近一次的状态（诊断） */
   historyState: 'idle' | 'ok' | 'down' | 'incompatible' = 'idle'
 
@@ -462,22 +475,41 @@ export class OrderFlowFeed {
     this.historyFrom = null; this.historyCursor = null; this.historyTrackedSince = null
     this.historyPulled = -Infinity; this.historyRetryAt = -Infinity; this.backfillRetryAt = -Infinity
     this.historyBlockedStep = null
+    this.olderWanted = false
   }
 
-  private nextJob(now: number): { kind: 'initial' | 'increment' | 'backfill'; from: number; to: number } | null {
+  /** 抽屉滚到底时调：服务端还有更早的就往前再取一页（6 小时、最多 5000 条已结束的）。 */
+  loadOlder(): void {
+    if (this.stopped || this.historyFrom == null || this.olderWanted) return
+    const floor = Math.max(this.historyTrackedSince ?? -Infinity, Date.now() - D.retentionMs)
+    if (this.historyFrom <= floor) return
+    this.olderWanted = true
+    this.backfillRetryAt = -Infinity
+    this.pumpHistory()
+  }
+
+  /** 服务端还有没有比已取到的更早的（抽屉底部提示用）。 */
+  get hasOlder(): boolean {
+    if (this.historyFrom == null) return false
+    return this.historyFrom > Math.max(this.historyTrackedSince ?? -Infinity, Date.now() - D.retentionMs)
+  }
+
+  private nextJob(now: number): { kind: 'initial' | 'increment' | 'backfill'; from: number; to: number; minLife: boolean } | null {
     const step = this.model.thresholds.step
     if (step == null || this.historyBlockedStep === step) return null
     const oldest = now - D.retentionMs
     if (this.historyCursor == null || this.historyFrom == null) {
-      return now >= this.historyRetryAt ? { kind: 'initial', from: now - HISTORY_SPAN_MS, to: now } : null
+      return now >= this.historyRetryAt ? { kind: 'initial', from: now - HISTORY_SPAN_MS, to: now, minLife: false } : null
     }
     if (now - this.historyPulled >= HISTORY_EVERY_MS) {
-      return { kind: 'increment', from: Math.max(oldest, Math.min(this.historyCursor, now) - HISTORY_OVERLAP_MS), to: now }
+      return { kind: 'increment', from: Math.max(oldest, Math.min(this.historyCursor, now) - HISTORY_OVERLAP_MS), to: now, minLife: false }
     }
-    if (this.visibleFrom != null && this.visibleFrom < this.historyFrom && now >= this.backfillRetryAt) {
+    // 往前一页：抽屉滚到底（全要），或图往左拖出了已取的范围（只要活过 5 分钟的，图上短命的看不出来）。
+    const scrolled = this.visibleFrom != null && this.visibleFrom < this.historyFrom
+    if ((this.olderWanted || scrolled) && now >= this.backfillRetryAt) {
       const floor = Math.max(this.historyTrackedSince ?? oldest, oldest)
-      if (this.historyFrom <= floor) return null
-      return { kind: 'backfill', from: Math.max(floor, this.historyFrom - HISTORY_SPAN_MS), to: this.historyFrom }
+      if (this.historyFrom <= floor) { this.olderWanted = false; return null }
+      return { kind: 'backfill', from: Math.max(floor, this.historyFrom - HISTORY_SPAN_MS), to: this.historyFrom, minLife: !this.olderWanted }
     }
     return null
   }
@@ -489,11 +521,11 @@ export class OrderFlowFeed {
     this.historyBusy = true
     const gen = this.historyGen
     void (async () => {
-      const q = `/v1/market/orderflow/history?base=${encodeURIComponent(this.base)}&from=${Math.floor(job.from)}&to=${Math.floor(job.to)}`
+      const q = historyQuery(this.base, job.from, job.to)
       let page = null
       try {
-        let r = await getJSON(api(job.kind === 'backfill' ? `${q}&minLifeMs=${BACKFILL_MIN_LIFE_MS}` : q), 15_000)
-        if (r.status === 400 && job.kind === 'backfill') r = await getJSON(api(q), 15_000)
+        let r = await getJSON(api(job.minLife ? `${q}&minLifeMs=${BACKFILL_MIN_LIFE_MS}` : q), 15_000)
+        if (r.status === 400 && job.minLife) r = await getJSON(api(q), 15_000)
         if (r.status === 200) { page = parseHistory(r.body, job.from, job.to); if (page && page.base !== this.base) page = null }
       } catch { page = null }
       if (gen !== this.historyGen || this.stopped) return
@@ -503,7 +535,7 @@ export class OrderFlowFeed {
       if (!page) {
         this.historyState = 'down'
         if (job.kind === 'initial') this.historyRetryAt = now + HISTORY_RETRY_MS
-        if (job.kind === 'backfill') this.backfillRetryAt = now + BACKFILL_RETRY_MS
+        if (job.kind === 'backfill') { this.backfillRetryAt = now + BACKFILL_RETRY_MS; this.olderWanted = false }
         return
       }
       this.historyTrackedSince = page.trackedSinceMs
@@ -511,11 +543,16 @@ export class OrderFlowFeed {
       if (res === 'merged') {
         this.historyState = 'ok'
         const latest = latestMs(page)
-        if (job.kind === 'initial') { this.historyFrom = page.fromMs; this.historyCursor = latest ?? page.toMs; this.historyPulled = now }
+        // 封顶了（nextBefore 不为 null）：已取到的只算到 nextBefore，更早的留给下一页。
+        let reached = coveredFrom(page)
+        // 退化情形（五千多条挤在同一毫秒）：nextBefore 等于这页的 to，挪不动就按整页算，免得原地重取。
+        if (job.kind === 'backfill' && reached >= job.to) reached = page.fromMs
+        if (job.kind === 'initial') { this.historyFrom = reached; this.historyCursor = latest ?? page.toMs; this.historyPulled = now }
         else if (job.kind === 'increment') this.historyCursor = Math.max(this.historyCursor ?? -Infinity, latest ?? page.fromMs + HISTORY_OVERLAP_MS)
-        else this.historyFrom = Math.min(this.historyFrom ?? page.fromMs, page.fromMs)
+        else { this.historyFrom = Math.min(this.historyFrom ?? reached, reached); if (!job.minLife) this.olderWanted = false }
         this.kick()
       } else if (res === 'incompatible') {
+        this.olderWanted = false
         this.historyState = 'incompatible'
         if (page.thresholds.step == null) { this.historyRetryAt = now + HISTORY_RETRY_MS; this.backfillRetryAt = now + BACKFILL_RETRY_MS }
         else this.historyBlockedStep = this.model.thresholds.step ?? null

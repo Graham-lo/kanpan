@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { bucketIndex, intervalMultiplier, mergeFactor } from '../src/orderflow/bucket'
 import { buildFine, emptyFine, ladderRows, steppedBook, outcomeText, rowOf, type FineBook } from '../src/orderflow/aggregate'
 import { OrderFlowModel } from '../src/orderflow/model'
-import { HeatStore, HeatCache, parseHeat, percentile, buildGrid, heatEdges, aggregateColumn } from '../src/orderflow/heat'
+import { HeatStore, HeatCache, parseHeat, percentile, buildGrid, heatEdges, aggregateColumn, heatHint, heatRing, heatUrl } from '../src/orderflow/heat'
+import { parseHistory } from '../src/orderflow/model'
+import { historyQuery, coveredFrom, HISTORY_PAGE } from '../src/orderflow/feed'
 import { Tape, tapeBase } from '../src/orderflow/tape'
 import { parseAmount, normalizeOverride, applyOverride } from '../src/orderflow/settings'
 import type { BigOrder, BookLevel, Venue } from '../src/orderflow/types'
@@ -427,5 +429,52 @@ describe('门槛随账号同步（settings.orderFlowOverrides）', () => {
     const cloud = { collection: 'settings', id: SETTINGS_ID, body: { orderFlowOverrides: { ETH: { spot: 5e5, usdtPerp: 1 } } }, fields: {}, revision: 1, deleted: false, generation: 0 } as unknown as SyncObject
     expect(applySettings(s, cloud, seen)).toContain('orderFlowOverrides')
     expect(s.orderFlowOverrides).toEqual({ ETH: { spot: 5e5 } })
+  })
+})
+
+describe('订单流 · 收窄的服务端请求（2026-09-29）', () => {
+  it('热力的时间格提示取阶梯上不粗过 2 像素的最粗一档', () => {
+    expect(heatHint(100)).toBe(5000)
+    expect(heatHint(2500)).toBe(5000)
+    expect(heatHint(5000)).toBe(10_000)
+    expect(heatHint(20_000)).toBe(30_000)
+    expect(heatHint(40_000)).toBe(60_000)
+    expect(heatHint(1e7)).toBe(3_600_000)
+  })
+  it('价格环以可见中点为心，至少 ±5%、盖住可见高度 1.25 倍、至多 ±50%', () => {
+    const r = heatRing(99_000, 101_000)!
+    expect(r.around).toBe(100_000)
+    expect(r.pct).toBe(5)
+    expect(r.lo).toBeCloseTo(95_000)
+    expect(r.hi).toBeCloseTo(105_000)
+    expect(heatRing(80_000, 120_000)!.pct).toBe(25)
+    expect(heatRing(10, 1000)!.pct).toBe(50)
+    expect(heatRing(0, 0)).toBeNull()
+    expect(heatRing(5, 4)).toBeNull()
+  })
+  it('热力 URL：时间对齐 5 秒、价格换回「每个币」、带提示与环', () => {
+    const url = heatUrl('PEPE', 1_000_001, 1_010_001, 0.001, 1000, 30_000, heatRing(0.0099, 0.0101))
+    const q = new URLSearchParams(url.split('?')[1])
+    expect(url.startsWith('/v1/market/orderflow/heat?')).toBe(true)
+    expect(q.get('base')).toBe('PEPE')
+    expect(q.get('from')).toBe('1000000')
+    expect(q.get('to')).toBe('1015000')
+    expect(q.get('step')).toBe('0.000001')
+    expect(q.get('bucketMs')).toBe('30000')
+    expect(Number(q.get('around'))).toBeCloseTo(0.00001, 12)
+    expect(q.get('pct')).toBe('5')
+    expect(new URLSearchParams(heatUrl('BTC', 0, 5000, 100, 1, 5000, null).split('?')[1]).has('around')).toBe(false)
+  })
+  it('历史请求带 limit，nextBefore 决定这一页覆盖到哪儿', () => {
+    const q = new URLSearchParams(historyQuery('BTC', 1000.7, 2000.2).split('?')[1])
+    expect([q.get('from'), q.get('to'), q.get('limit')]).toEqual(['1000', '2000', String(HISTORY_PAGE)])
+    expect(HISTORY_PAGE).toBe(5000)
+    const page = parseHistory({ base: 'BTC', thresholds: { step: 1 }, orders: [], nextBefore: 1500 }, 1000, 2000)!
+    expect(page.nextBefore).toBe(1500)
+    expect(coveredFrom(page)).toBe(1500)
+    const old = parseHistory({ base: 'BTC', thresholds: {}, orders: [] }, 1000, 2000)!
+    expect(old.nextBefore).toBeNull()
+    expect(coveredFrom(old)).toBe(1000)
+    expect(coveredFrom(parseHistory({ base: 'BTC', orders: [], nextBefore: null }, 1000, 2000)!)).toBe(1000)
   })
 })

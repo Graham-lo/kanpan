@@ -1,7 +1,8 @@
 /* Hkline Web · 主力订单流 · 深度热力
  *
  * 实时：每秒从聚合好的细桶里取中间价 ±5% 的一列（三家分通道），环形存 2 小时。
- * 回填：GET /v1/market/orderflow/heat（三家合起来、价格按「每个币」计）。一行代表多长以服务端返回的
+ * 回填：GET /v1/market/orderflow/heat（三家合起来、价格按「每个币」计）。2026-09-29 起按可见范围收窄：
+ *       时间取看得到的那段、价格取可见中点 ±5%（可见高度更大时放宽，至多 ±50%），bucketMs 给一格约 2 像素的提示。一行代表多长以服务端返回的
  *       bucketMs 为准（默认 5 秒，行数超过 20 万时服务端自动放粗到 10/30/60 秒乃至 5–60 分钟），列宽照它画，
  *       不假定 5 秒；没跟踪的品种返回空行。只用在实时列开始之前的时段；接口不在就只有实时，不造数据。
  * 画：一根 K 线一列（1 分钟图按秒成列，太挤时几秒并一列），行与梯子同一套「k 个细桶一行」，
@@ -158,6 +159,40 @@ export function parseHeat(body: unknown, step: number, chartScale: number): Heat
   }
   out.sort((a, b) => a.t - b.t)
   return out
+}
+
+// ------------------------------------------------------------------ 回填请求（2026-09-29 起按可见范围收窄）
+
+/** 服务端的时间格阶梯（与 Backend heat.rs 的 LADDER 同一套）。 */
+const HEAT_LADDER_MS = [5_000, 10_000, 30_000, 60_000, 300_000, 900_000, 1_800_000, 3_600_000]
+export const HEAT_RING_MIN_PCT = 5
+export const HEAT_RING_MAX_PCT = 50
+
+/** 时间格提示：一格不粗过约 2 个像素，取阶梯上不超过它的最粗一档（同一缩放落到同一档，服务端 5 秒缓存能命中）。 */
+export function heatHint(msPerPx: number): number {
+  const want = msPerPx * 2
+  let h = HEAT_LADDER_MS[0]
+  for (const b of HEAT_LADDER_MS) if (b <= want) h = b
+  return h
+}
+
+/** 价格环（图上的单位）：以可见价格的中点为心，半宽至少 ±5%、至少盖住可见高度的 1.25 倍，至多 ±50%。 */
+export interface HeatRing { around: number; pct: number; lo: number; hi: number }
+export function heatRing(min: number, max: number): HeatRing | null {
+  const mid = (min + max) / 2
+  if (!(mid > 0) || !(max >= min) || !Number.isFinite(max)) return null
+  const around = +mid.toPrecision(5)
+  const need = Math.max(around - min, max - around) / around * 100 * 1.25
+  const pct = Math.min(HEAT_RING_MAX_PCT, Math.max(HEAT_RING_MIN_PCT, Math.ceil(need)))
+  return { around, pct, lo: around * (1 - pct / 100), hi: around * (1 + pct / 100) }
+}
+
+/** 回填 URL：时间对齐到 5 秒，价格换回服务端「每个币」的单位；ring 为 null 时不限价格。 */
+export function heatUrl(base: string, from: number, to: number, step: number, chartScale: number, hint: number, ring: HeatRing | null): string {
+  const q = [`base=${encodeURIComponent(base)}`, `from=${Math.floor(from / 5000) * 5000}`, `to=${Math.ceil(to / 5000) * 5000}`,
+    `step=${+(step / chartScale).toPrecision(10)}`, `bucketMs=${hint}`]
+  if (ring) q.push(`around=${+(ring.around / chartScale).toPrecision(10)}`, `pct=${ring.pct}`)
+  return `/v1/market/orderflow/heat?${q.join('&')}`
 }
 
 /** 第 q 百分位（线性插值；空数组给 0）。样本多时抽样，免得每帧排序十几万个数。 */

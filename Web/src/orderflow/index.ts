@@ -14,7 +14,7 @@ import { I, esc } from '../ui/dom'
 import { term } from '../ui/overlay'
 import { OrderFlowFeed, getJSON, type TradeEvent } from './feed'
 import { buildFine, exName, venueName } from './aggregate'
-import { HeatStore, parseHeat } from './heat'
+import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
 import { tapeBase } from './tape'
 import { createLayer } from './layer'
 import { mountLadder, ladderVisible, drawLadder } from './ladder'
@@ -96,7 +96,7 @@ export function sync(): void {
   const g = act!.chart.geometry()
   if (g) f.setVisible(g.timeOf(g.from), g.timeOf(g.to + 1))
   if (!OF.prefs.heat && OF.heat) { OF.heat = null; heatBack = freshBack() }
-  if (OF.prefs.heat && g) void heatBackfill(g.timeOf(g.from), g.timeOf(g.to + 1))
+  if (OF.prefs.heat && g) void heatBackfill(g.timeOf(g.from), g.timeOf(g.to + 1), g.range.min, g.range.max, g.iv / Math.max(1e-6, g.spacing))
 }
 
 function startFeed(symbol: string): void {
@@ -180,16 +180,18 @@ function focusOrder(o: BigOrder): void {
 // ------------------------------------------------------------------ 深度热力回填
 
 type BackStatus = 'idle' | 'loading' | 'ok' | 'empty' | 'down'
-interface BackState { from: number; to: number; busy: boolean; retryAt: number; status: BackStatus; bucketMs: number; gen: number }
-const freshBack = (): BackState => ({ from: Infinity, to: -Infinity, busy: false, retryAt: 0, status: 'idle', bucketMs: 0, gen: ++backGen })
+interface BackState { from: number; to: number; ring: HeatRing | null; busy: boolean; retryAt: number; status: BackStatus; bucketMs: number; gen: number }
+const freshBack = (): BackState => ({ from: Infinity, to: -Infinity, ring: null, busy: false, retryAt: 0, status: 'idle', bucketMs: 0, gen: ++backGen })
 let backGen = 0
 let heatBack: BackState = freshBack()
 
 /**
  * 图上看得到、实时列又还没覆盖到的那段，向服务端要。已经要过的不重要；往左拖出去了就补左边那一段；
  * 服务端给得很粗（bucketMs 放大了）而现在看的窗口小得多时，按现在的窗口重要一遍（细一些）。
+ * 2026-09-29 起请求按可见范围收窄：价格只要可见中点 ±5% 的环（可见高度大就放宽），bucketMs 给一格约 2 像素的提示；
+ * 上下拖出了已取的价格环，就按现在的窗口与新环重要一遍。往左右补的那一段沿用已取的环，拼起来价格范围一致。
  */
-async function heatBackfill(visFrom: number, visTo: number): Promise<void> {
+async function heatBackfill(visFrom: number, visTo: number, visMin: number, visMax: number, msPerPx: number): Promise<void> {
   const f = OF.feed, store = OF.heat
   if (!f || !store || heatBack.busy) return
   const now = Date.now()
@@ -201,22 +203,33 @@ async function heatBackfill(visFrom: number, visTo: number): Promise<void> {
   const b = heatBack
   let q: [number, number] | null = null
   let replace = false
-  if (b.to < b.from) q = [from, to]
+  const ring = heatRing(visMin, visMax)
+  const covered = b.to >= b.from
+  // 上下拖出了已取的环、且新环比旧环多出一成以上才重取（环已放到 ±50% 封顶时，小挪一下不来回重取）。
+  const was = b.ring
+  const outside = covered && !!was && !!ring && (visMin < was.lo || visMax > was.hi) &&
+    (ring.lo < was.lo - 0.1 * (was.hi - was.lo) || ring.hi > was.hi + 0.1 * (was.hi - was.lo))
+  if (!covered) q = [from, to]
+  else if (outside) { q = [from, to]; replace = true }
   else if (b.bucketMs > 5000 && (b.to - b.from) > 4 * (to - from) && b.bucketMs * 40 > to - from) { q = [from, to]; replace = true }
   else if (from < b.from - Math.max(b.bucketMs, 0.05 * span)) q = [from, b.from]
   else if (to > b.to + Math.max(b.bucketMs, 60_000, 0.05 * span)) q = [b.to, to]
   if (!q) return
   const step = store.step, scale = f.chartScale, gen = b.gen
+  // 新取（头一次、或整段重取）用这一刻的环；往两边补沿用已取的环，拼起来价格范围一致。
+  const fresh = !covered || replace
+  const useRing = fresh ? ring : b.ring
   b.busy = true
   if (b.status === 'idle') b.status = 'loading'
   try {
-    const url = `/v1/market/orderflow/heat?base=${encodeURIComponent(f.base)}&from=${Math.floor(q[0])}&to=${Math.ceil(q[1])}&step=${+(step / scale).toPrecision(10)}`
+    const url = heatUrl(f.base, q[0], q[1], step, scale, heatHint(msPerPx), useRing)
     const r = await getJSON(url, 12_000)
     if (gen !== heatBack.gen || OF.heat !== store) return
     const cols = r.status === 200 ? parseHeat(r.body, step, scale) : null
     if (!cols) { b.status = 'down'; b.retryAt = Date.now() + HEAT_RETRY_MS; return }
     const bm = (r.body as { bucketMs?: unknown })?.bucketMs
     if (replace) { store.clearBack(); b.from = Infinity; b.to = -Infinity }
+    if (fresh) b.ring = useRing
     b.bucketMs = typeof bm === 'number' && bm > 0 ? bm : 5000
     b.from = Math.min(b.from, q[0]); b.to = Math.max(b.to, q[1])
     if (cols.length) { store.addBackfill(cols); b.status = 'ok' } else if (b.status !== 'ok') b.status = 'empty'

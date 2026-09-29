@@ -33,6 +33,8 @@ export interface HistoryPage {
   fromMs: number
   toMs: number
   orders: BigOrder[]
+  /** 已结束的封顶了、更早还有：下一页用 to=nextBefore（2026-09-29 起服务端带 limit 时给；没有更早的或老服务端为 null） */
+  nextBefore: number | null
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -70,7 +72,7 @@ export function parseHistory(root: unknown, fromMs: number, toMs: number): Histo
       filledNotional: nonNeg(row.filledNotional) ?? 0, threshold, vanishedNotional: nonNeg(row.vanishedNotional),
     })
   }
-  return { base: r.base, thresholds, trackedSinceMs: int(r.trackedSinceMs) ?? fromMs, fromMs, toMs, orders }
+  return { base: r.base, thresholds, trackedSinceMs: int(r.trackedSinceMs) ?? fromMs, fromMs, toMs, orders, nextBefore: int(r.nextBefore) }
 }
 
 export const latestMs = (p: HistoryPage): number | null =>

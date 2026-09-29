@@ -40,9 +40,17 @@ export function mountDrawer(el: HTMLElement): void {
   body = el.querySelector('#ofDrBody')
   el.querySelector<HTMLElement>('#ofDrClose')!.onclick = () => { st.slots.drawer = false; save(); OF.api?.layoutSlots() }
   el.addEventListener('click', onClick)
-  body!.addEventListener('scroll', () => paint(), { passive: true })
+  body!.addEventListener('scroll', () => { paint(); nearBottom() }, { passive: true })
+  // 列表不满一屏或已经在底：滚轮往下时 scroll 事件不来，也要能要下一页。
+  body!.addEventListener('wheel', e => { if (e.deltaY > 0) nearBottom() }, { passive: true })
   seenVersion = -1; lastSig = ''
   updateDrawer(true)
+}
+
+/** 滚到离底不到四行：服务端还有更早的就往前取一页（6 小时、最多 5000 条已结束的），并进模型后列表自己长出来。 */
+function nearBottom(): void {
+  if (!body || !OF.feed?.hasOlder) return
+  if (body.scrollTop + body.clientHeight >= body.scrollHeight - ROW * 4) OF.feed.loadOlder()
 }
 
 export function drawerVisible(): boolean { return !!slot && st.slots.drawer && !slot.hidden && slot.isConnected }
