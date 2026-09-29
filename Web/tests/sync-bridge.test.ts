@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Drawing } from '../src/chart/chart'
+import { makeConditionAlert, makeDrawingAlert, makePriceAlert } from '../src/alerts/shape'
 import { OWNED, applyInto, captureInto, mergeFirst, type Prints, type WebState } from '../src/sync/bridge'
 import { Engine } from '../src/sync/engine'
 import { SyncStore } from '../src/sync/store'
@@ -75,7 +76,7 @@ describe('首次对上', () => {
     await a.first()
     a.s.drawings.BTCUSDT = [line('x', 1)]
     await a.sync()
-    const b = browser(server, { ...state(), drawings: { BTCUSDT: [line('gone', 2), line('mine', 3)] }, alerts: [{ id: 'p1', symbol: 'ETHUSDT', kind: 'price', created: 1, price: 5000, dir: 1, webhook: null }] })
+    const b = browser(server, { ...state(), drawings: { BTCUSDT: [line('gone', 2), line('mine', 3)] }, alerts: [{ ...makePriceAlert('ETHUSDT', 5000, 4000, { now: 1 }), id: 'p1' }] })
     await b.first()
     expect(b.s.drawings.BTCUSDT.map(d => d.id).sort()).toEqual(['mine', 'x'])
     expect(b.s.alerts.map(x => x.id)).toEqual(['p1'])
@@ -100,15 +101,17 @@ describe('两台来回', () => {
     const a = browser(server), b = browser(server)
     await a.first(); await b.first()
     a.s.watch.crypto.push('ETHUSDT')
-    a.s.drawings.BTCUSDT = [{ ...line('h1', 95000), alert: true }]
-    a.s.alerts.push({ id: 'fr1', symbol: 'ETHUSDT', kind: 'fr', created: 1, value: 0.03, op: 'lt', webhook: null })
+    a.s.drawings.BTCUSDT = [line('h1', 95000)]
+    const onLine = makeDrawingAlert('BTCUSDT', line('h1', 95000), 1)
+    const fr = { ...makeConditionAlert('ETHUSDT', { type: 'funding', side: 'below', rate: '0.0003' }, { now: 1 }), id: 'fr1' }
+    a.s.alerts.push(onLine, fr)
     a.s.ind.boll = true
     a.s.params = { ma: { periods: [5, 10] } }
     await a.sync()
     await b.sync()
     expect(b.s.watch.crypto).toEqual(['BTCUSDT', 'ETHUSDT'])
-    expect(b.s.drawings.BTCUSDT).toEqual([{ ...line('h1', 95000), alert: true }])
-    expect(b.s.alerts).toEqual([{ id: 'fr1', symbol: 'ETHUSDT', kind: 'fr', created: 1, value: 0.03, op: 'lt', webhook: null }])
+    expect(b.s.drawings.BTCUSDT).toEqual([line('h1', 95000)])
+    expect(b.s.alerts).toEqual([onLine, fr])
     expect(b.s.ind.boll).toBe(true)
     expect(b.s.params?.ma).toEqual({ periods: [5, 10] })
 
@@ -120,7 +123,7 @@ describe('两台来回', () => {
     expect(a.s.drawings.BTCUSDT).toEqual([])
     expect(a.s.alerts).toEqual([])
     expect(a.s.watch.crypto).toEqual(['ETHUSDT'])
-    // 画线删了，画线上的提醒也删了
+    // 画线与提醒都删了，云端不留活的提醒
     const liveAlerts = [...server.objects.values()].filter(o => o.collection === 'alerts' && !o.deleted)
     expect(liveAlerts).toEqual([])
   })

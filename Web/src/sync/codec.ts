@@ -13,6 +13,7 @@
  * 纯函数，不碰 DOM、不碰全局状态，方便 vitest。
  */
 import type { Alert, IndState } from '../app/store'
+import { migrateAlert } from '../alerts/shape'
 import type { Drawing, DrawingType, DrawPoint } from '../chart/chart'
 import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { INTERVALS, type Kind } from '../market/symbols'
@@ -376,13 +377,12 @@ export function encodeDrawings(drawings: Record<string, Drawing[]>, prevAll: Syn
 
 /** 云端画线装进网页：网页管不着的本地画线（量测、代号不合规的）原样留着，其余按云端来；
  *  已有画线保持原来的先后，新来的接在后面 */
-export function decodeDrawings(all: SyncObject[], current: Record<string, Drawing[]>, alertOn: Set<string>): Record<string, Drawing[]> {
+export function decodeDrawings(all: SyncObject[], current: Record<string, Drawing[]>): Record<string, Drawing[]> {
   const cloud = new Map<string, Map<string, Drawing>>()
   for (const o of all) {
     if (o.deleted) continue
     const x = decodeDrawing(o)
     if (!x) continue
-    if (alertOn.has(drawingId(x.symbol, x.d.id)) && ALERTABLE.has(x.d.type)) x.d.alert = true
     let m = cloud.get(x.symbol); if (!m) cloud.set(x.symbol, m = new Map())
     m.set(x.d.id, x.d)
   }
@@ -393,7 +393,7 @@ export function decodeDrawings(all: SyncObject[], current: Record<string, Drawin
     for (const d of current[s] ?? []) {
       if (!syncableDrawing(s, d)) { list.push(d); continue }
       const c = m.get(d.id)
-      if (c) { list.push(same(normDrawing(c), normDrawing(d)) && !!c.alert === !!d.alert ? d : c); m.delete(d.id) }
+      if (c) { list.push(same(normDrawing(c), normDrawing(d)) ? d : c); m.delete(d.id) }
     }
     list.push(...m.values())
     if (list.length || current[s]) out[s] = list
@@ -407,231 +407,118 @@ export function syncableDrawing(symbol: string, d: Drawing): boolean {
 }
 
 // ═════════════════════════════ alerts ═════════════════════════════
+//
+// 网页的提醒本来就是同步形状（alerts/shape.ts，19 个字段），一条提醒 = 一个对象，
+// 身体 = 这 19 个键（照手机 `Alert.encode(to:)`：可空的九个空就写 null，不省略）。
+// 只有两处换算：
+// - 对象 id：`${market}/${symbol}/${id}`（和手机 `PersonalSyncCodec.alerts` 一样）。
+// - 画线提醒的 `drawingID`：线上是画线自己的 id（手机 AlertStore 写的是 `drawing.id`），
+//   网页本机存的是画线对象 id（`binance/usd_m/SYM/<id>`，alerts/shape.ts 的 drawingIdOf），进出时加减前缀。
+// 网页只替「币安 U 本位、还在等（active）的价格 / 画线 / 条件提醒」说话；已触发的、暂停的、
+// 复盘到期的、Coinbase 的不删不改不显示。
 
-/** 网页能开提醒的画线种类（chart.ts 的 linePriceAt 只认这三种） */
-export const ALERTABLE = new Set<DrawingType>(['hline', 'trend', 'ray'])
-const LINE_TITLE: Record<string, string> = { hline: '水平线', trend: '趋势线', ray: '向右延伸', rect: '矩形', fib: '斐波那契回撤', vline: '垂直线' }
+export const ALERT_KEYS = ['kind', 'market', 'symbol', 'lines', 'condition', 'status', 'once', 'armedAt', 'firedAt', 'firedPrice',
+  'title', 'note', 'webhook', 'webhookText', 'drawingID', 'reviewID', 'dueAt', 'rule', 'created'] as const
 export const alertId = (symbol: string, id: string): string => PREFIX + symbol + '/' + id
 
-interface AlertLineJ { points: { t: number; p: number }[]; extendLeft: boolean; extendRight: boolean }
-/** AlertGeometry.lines(for:)：网页四种能画的种类 */
-export function alertLines(d: Drawing): AlertLineJ[] | null {
-  const [a, b] = d.pts
-  if (!a) return null
-  const L = (points: DrawPoint[], extendLeft = false, extendRight = false): AlertLineJ => ({ points: points.map(p => ({ t: p.t, p: p.p })), extendLeft, extendRight })
-  switch (d.type) {
-    case 'hline': return [L([a], true, true)]
-    case 'trend': return b ? [L([a, b])] : null
-    case 'ray': return b ? [L([a, b], false, true)] : null
-    case 'rect': {
-      if (!b) return null
-      const t0 = Math.min(a.t, b.t), t1 = Math.max(a.t, b.t), top = Math.max(a.p, b.p), bottom = Math.min(a.p, b.p)
-      return [L([{ t: t0, p: top }, { t: t1, p: top }]), L([{ t: t0, p: bottom }, { t: t1, p: bottom }])]
-    }
-    case 'fib': {
-      if (!b) return null
-      const t0 = Math.min(a.t, b.t), t1 = Math.max(a.t, b.t)
-      const out = DRAWING_DEFAULTS.levels.map(l => b.p + (a.p - b.p) * l).filter(isFinite).map(v => L([{ t: t0, p: v }, { t: t1, p: v }]))
-      return out.length ? out.slice(0, 32) : null
-    }
-  }
-  return null
+const DECIMAL = /^-?\d+(\.\d+)?$/
+function decIn(v: unknown, lo: number, hi: number): boolean {
+  return typeof v === 'string' && DECIMAL.test(v) && +v >= lo && +v <= hi
+}
+/** 服务端 `conditions::Rule::parse` 收不收（认不得的 type 服务端也收，只要是纯字母） */
+function ruleOk(r: Alert['rule']): boolean {
+  if (!r || typeof r !== 'object' || typeof r.type !== 'string' || !/^[A-Za-z]{1,40}$/.test(r.type)) return false
+  const o = r as Record<string, unknown>
+  if (r.type === 'funding') return (o.side === 'above' || o.side === 'below') && decIn(o.rate, -0.1, 0.1)
+  if (r.type === 'openInterestChange') return decIn(o.threshold, 0.001, 10)
+  if (r.type === 'orderflowWall') return decIn(o.threshold, 1e4, 1e10)
+  if (r.type === 'maCross') return typeof o.interval === 'string' && Number.isInteger(o.length) && (o.side === 'above' || o.side === 'below')
+  return true
 }
 
-/** AlertRule.percent：比值 × 100，四舍五入到 dp 位，去掉尾巴上的 0 */
-export function percent(ratio: number, dp: number): string {
-  const v = Math.round(ratio * 100 * 10 ** dp) / 10 ** dp
-  return trimDec(v.toFixed(dp))
-}
-function trimDec(s: string): string { return s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s }
-/** 网页的百分数 → 服务端的十进制比值串（"0.05" → "0.0005"），不经过浮点除法 */
-export function pctToRatio(v: number): string {
-  const neg = v < 0
-  const [i, f = ''] = Math.abs(v).toFixed(8).split('.')
-  const digits = (i.padStart(3, '0') + f)
-  const cut = digits.length - f.length - 2
-  const s = trimDec(digits.slice(0, cut).replace(/^0+(?=\d)/, '') + '.' + digits.slice(cut))
-  return (neg && s !== '0' ? '-' : '') + s
-}
-export const ratioToPct = (r: string): number => Math.round(parseFloat(r) * 100 * 1e8) / 1e8
-
-const FUNDING_MAX = 0.1, OI_MIN = 0.001, OI_MAX = 10
-
-/** 网页提醒的规范形（比对用） */
-function normAlert(a: Alert): Json {
-  const base = { symbol: a.symbol, kind: a.kind, webhook: a.webhook ?? null }
-  if (a.kind === 'price') return { ...base, price: a.price ?? null, dir: (a.dir ?? 1) >= 0 ? 1 : -1 }
-  if (a.kind === 'fr') return { ...base, value: a.value ?? null, op: a.op === 'lt' ? 'lt' : 'gt' }
-  return { ...base, value: a.value ?? null }
-}
-
-/** 这条网页提醒能不能上云（代号合规、数值在服务端允许的范围里） */
+/** 这条网页提醒能不能上云（身份合规、形状过得了服务端 sync_validation） */
 export function syncableAlert(a: Alert): boolean {
-  if (!validSymbol(a.symbol) || !a.id || a.id.includes('/')) return false
-  if (a.kind === 'price') return a.price != null && isFinite(a.price) && a.price > 0
-  if (a.kind === 'fr') return a.value != null && isFinite(a.value) && Math.abs(parseFloat(pctToRatio(a.value))) <= FUNDING_MAX
-  if (a.kind === 'oi') { if (a.value == null || !isFinite(a.value)) return false; const r = parseFloat(pctToRatio(a.value)); return r >= OI_MIN && r <= OI_MAX }
+  if (a.market !== ALERT_MARKET || !validSymbol(a.symbol) || !a.id || a.id.includes('/') || a.status !== 'active') return false
+  if (a.kind === 'price' || a.kind === 'drawing') {
+    if (!a.lines.length || !a.lines.every(l => l.points.length && l.points.every(p => isFinite(p.t) && isFinite(p.p)))) return false
+    if (a.kind === 'drawing' && !a.drawingID) return false
+    return true
+  }
+  if (a.kind === 'condition') return ruleOk(a.rule)
   return false
 }
 
-const validWebhook = (w: string | null | undefined): string | null => {
-  const t = (w ?? '').trim()
-  return /^https?:\/\/\S+$/i.test(t) ? t : null
+const wireDrawingId = (a: Alert): string | null => {
+  const pre = PREFIX + a.symbol + '/'
+  return a.drawingID && a.drawingID.startsWith(pre) ? a.drawingID.slice(pre.length) : a.drawingID
+}
+/** 网页提醒 → 线上身体（19 个键） */
+export function alertToBody(a: Alert): Body {
+  const b: Body = {}
+  for (const k of ALERT_KEYS) b[k] = (k === 'drawingID' ? wireDrawingId(a) : a[k]) as Json
+  return JSON.parse(JSON.stringify(b)) as Body
+}
+
+/** 云端还活着、但网页不显示的画线（手机上藏起来的、网页没有的种类）的完整 id。
+ *  挂在这些画线上的提醒网页不接手：不显示、不删，免得网页因为「画线不在」把手机的提醒对账删掉 */
+export function unseenDrawings(all: SyncObject[]): Set<string> {
+  const out = new Set<string>()
+  for (const o of all) if (!o.deleted && !decodeDrawing(o)) out.add(o.id)
+  return out
 }
 
 /** 云端提醒 → 网页提醒；网页管不着的返回 null */
-export function decodeAlert(o: SyncObject, ctx: Ctx): Alert | null {
+export function decodeAlert(o: SyncObject, unseen?: Set<string>): Alert | null {
   const b = o.body
   if (o.deleted || b.status !== 'active' || b.market !== ALERT_MARKET) return null
+  if (b.kind !== 'price' && b.kind !== 'drawing' && b.kind !== 'condition') return null
   const symbol = str(b.symbol)
   if (!symbol || !o.id.startsWith(PREFIX + symbol + '/')) return null
-  const created = num(b.created) ?? 0
-  const webhook = str(b.webhook)
-  const base = { id: lastSeg(o.id), symbol, created, webhook: webhook ?? null }
-  const rule = obj(b.rule)
-  if (b.kind === 'price' && !rule) {
-    if (b.condition !== 'touch') return null
-    const line = obj((b.lines as Json[] | undefined)?.[0])
-    const p = num(obj((line?.points as Json[] | undefined)?.[0])?.p)
-    if (p == null || !(p > 0)) return null
-    const title = str(b.title) ?? ''
-    let dir = title.includes('涨到') ? 1 : title.includes('跌到') ? -1 : 0
-    if (!dir) { const cur = ctx.price(symbol); dir = cur != null && cur > 0 ? (p >= cur ? 1 : -1) : 1 }
-    return { ...base, kind: 'price', price: p, dir }
-  }
-  if (b.kind === 'condition' && rule) {
-    if (rule.type === 'funding') {
-      const rate = str(rule.rate), side = rule.side
-      if (rate == null || (side !== 'above' && side !== 'below')) return null
-      return { ...base, kind: 'fr', value: ratioToPct(rate), op: side === 'below' ? 'lt' : 'gt' }
-    }
-    if (rule.type === 'openInterestChange') {
-      const th = str(rule.threshold)
-      if (th == null) return null
-      return { ...base, kind: 'oi', value: ratioToPct(th), op: 'gt' }
-    }
-  }
-  return null
+  const raw: Record<string, unknown> = { id: lastSeg(o.id) }
+  for (const k of ALERT_KEYS) if (k in b) raw[k] = structuredClone(b[k])
+  if (!Array.isArray(raw.lines)) raw.lines = []
+  const did = str(b.drawingID)
+  raw.drawingID = did ? (did.includes('/') ? did : PREFIX + symbol + '/' + did) : null
+  if (raw.kind === 'drawing' && raw.drawingID && unseen?.has(raw.drawingID as string)) return null
+  const a = migrateAlert(raw)
+  return a && a.symbol === symbol ? a : null
 }
 
-/** 云端的画线提醒：活着、指向一条画线。返回画线的对象 id */
-export function drawingAlertTarget(o: SyncObject): string | null {
-  const b = o.body
-  if (o.deleted || b.kind !== 'drawing' || b.status !== 'active' || b.market !== ALERT_MARKET) return null
-  const symbol = str(b.symbol), did = str(b.drawingID)
-  if (!symbol || !did || !o.id.startsWith(PREFIX + symbol + '/')) return null
-  return drawingId(symbol, did)
-}
+const normAlert = (a: Alert): Json => alertToBody(a)
 
-function alertBody(prev: Body | null, over: Body): Body {
-  const body: Body = {
-    kind: 'price', symbol: '', market: ALERT_MARKET, drawingID: null, lines: [], condition: 'touch', armedAt: 0, once: true,
-    status: 'active', firedAt: null, firedPrice: null, dueAt: null, reviewID: null, title: '', created: 0,
-    note: null, webhook: null, webhookText: null, rule: null,
-  }
-  if (prev) for (const k of ['armedAt', 'note', 'webhookText', 'created'] as const) if (k in prev) body[k] = prev[k]
-  return Object.assign(body, over)
-}
-
-export interface AlertInputs {
-  alerts: Alert[]
-  drawings: Record<string, Drawing[]>
-  /** 本机账本里画线那张表（判断「画线提醒指向的线网页管不管得着」） */
-  drawingObjs: SyncObject[]
-}
-
-/** 网页提醒（价格 / 资金费率 / 持仓量 + 画线上的提醒开关）→ 要记账的对象（含删除） */
-export function encodeAlerts(inp: AlertInputs, prevAll: SyncObject[], ctx: Ctx): SyncObject[] {
+/** 网页提醒 → 要记账的对象（含删除）。只动网页管得着的那部分 */
+export function encodeAlerts(alerts: Alert[], prevAll: SyncObject[], unseen?: Set<string>): SyncObject[] {
   const out: SyncObject[] = []
-  const keep = new Set<string>()
   const byId = new Map(prevAll.map(o => [o.id, o]))
-  const now = ctx.now()
-  for (const a of inp.alerts) {
-    if (!syncableAlert(a)) continue
+  const local = new Set<string>()
+  for (const a of alerts) {
     const id = alertId(a.symbol, a.id)
-    if (keep.has(id)) continue
+    if (local.has(id)) continue
+    local.add(id)
+    if (!syncableAlert(a)) continue
     const prev = byId.get(id)
     const live = prev && !prev.deleted ? prev : undefined
-    keep.add(id)
-    const was = live ? decodeAlert(live, ctx) : null
+    const was = live ? decodeAlert(live) : null
     if (live && was && same(normAlert(was), normAlert(a))) { out.push({ ...live, body: { ...live.body } }); continue }
-    const name = baseName(a.symbol)
-    const webhook = validWebhook(a.webhook)
-    let over: Body
-    if (a.kind === 'price') {
-      const dir = (a.dir ?? 1) >= 0 ? 1 : -1
-      const sameMeaning = was?.kind === 'price' && was.price === a.price && (was.dir ?? 1) === dir
-      over = {
-        kind: 'price', symbol: a.symbol, lines: [{ points: [{ t: a.created, p: a.price! }], extendLeft: true, extendRight: true }],
-        title: sameMeaning && live ? live.body.title : `${name} ${dir > 0 ? '涨到' : '跌到'} ${ctx.label(a.symbol, a.price!)}`,
-        created: a.created, webhook, rule: null,
-      }
-    } else if (a.kind === 'fr') {
-      const rate = pctToRatio(a.value!), side = a.op === 'lt' ? 'below' : 'above'
-      over = { kind: 'condition', symbol: a.symbol, lines: [], rule: { type: 'funding', side, rate }, title: `${name} 资金费率${side === 'above' ? '高于' : '低于'} ${percent(parseFloat(rate), 6)}%`, created: a.created, webhook }
-    } else {
-      const th = pctToRatio(a.value!)
-      over = { kind: 'condition', symbol: a.symbol, lines: [], rule: { type: 'openInterestChange', threshold: th }, title: `${name} 1 小时持仓量变化超过 ${percent(parseFloat(th), 4)}%`, created: a.created, webhook }
-    }
-    const body = alertBody(live?.body ?? null, over)
-    if (!live || !('armedAt' in live.body)) body.armedAt = a.created
+    const body: Body = { ...(live?.body ?? {}), ...alertToBody(a) }
     out.push({ collection: 'alerts', id, body, fields: {}, revision: 0, deleted: false, generation: 0 })
   }
-  // 画线提醒：一条画线最多一条活着的提醒；已有的就沿用它的 id（可能是手机建的）
-  const existing = new Map<string, SyncObject>()
-  for (const o of prevAll) { const t = drawingAlertTarget(o); if (t && !existing.has(t)) existing.set(t, o) }
-  for (const [symbol, list] of Object.entries(inp.drawings)) {
-    for (const d of list) {
-      if (!d.alert || !ALERTABLE.has(d.type) || !syncableDrawing(symbol, d)) continue
-      const target = drawingId(symbol, d.id)
-      const prev = existing.get(target)
-      const id = prev?.id ?? alertId(symbol, 'a' + d.id)
-      if (keep.has(id)) continue
-      keep.add(id)
-      const lines = alertLines(d)
-      if (!lines) continue
-      const over: Body = { kind: 'drawing', symbol, drawingID: d.id, lines: lines as unknown as Json, title: `${baseName(symbol)} 触到你画的${LINE_TITLE[d.type] ?? '线'}`, rule: null }
-      if (prev && same(prev.body.lines, over.lines) && prev.body.drawingID === d.id) { out.push({ ...prev, body: { ...prev.body } }); continue }
-      const body = alertBody(prev?.body ?? null, over)
-      if (!prev) { body.created = now; body.armedAt = now }
-      else { body.webhook = prev.body.webhook ?? null; if (typeof prev.body.title === 'string' && prev.body.title) body.title = prev.body.title }
-      out.push({ collection: 'alerts', id, body, fields: {}, revision: 0, deleted: false, generation: 0 })
-    }
-  }
-  // 删除：网页管得着、却已经不在网页上的
-  const drawingKinds = new Map<string, string>()
-  for (const o of inp.drawingObjs) if (drawingManaged(o)) drawingKinds.set(o.id, str(o.body.kind) ?? '')
-  const webDrawing = new Set<string>()
-  for (const [s, list] of Object.entries(inp.drawings)) for (const d of list) if (ALERTABLE.has(d.type) && syncableDrawing(s, d)) webDrawing.add(drawingId(s, d.id))
-  for (const o of prevAll) {
-    if (o.deleted || keep.has(o.id)) continue
-    if (decodeAlert(o, ctx)) { out.push({ ...o, deleted: true }); continue }
-    const t = drawingAlertTarget(o)
-    if (!t) continue
-    const kind = drawingKinds.get(t)
-    const managed = webDrawing.has(t) || (kind != null && ALERTABLE.has(TYPE_OF[kind]))
-    if (managed) out.push({ ...o, deleted: true })
-  }
+  // 删除：网页管得着、本机已经没有这一条了（响过、删掉、画线没了）。本机还在只是暂时上不了云的不删
+  for (const o of prevAll) if (!o.deleted && !local.has(o.id) && decodeAlert(o, unseen)) out.push({ ...o, deleted: true })
   return out
 }
 
 /** 云端提醒装进网页：本机上不了云的那几条原样留着，其余按云端来，保持原来的先后 */
-export function decodeAlerts(all: SyncObject[], current: Alert[], ctx: Ctx): { alerts: Alert[]; drawingAlerts: Set<string> } {
+export function decodeAlerts(all: SyncObject[], current: Alert[], unseen?: Set<string>): Alert[] {
   const cloud = new Map<string, Alert>()
-  const drawingAlerts = new Set<string>()
-  for (const o of all) {
-    const a = decodeAlert(o, ctx)
-    if (a) cloud.set(o.id, a)
-    const t = drawingAlertTarget(o)
-    if (t) drawingAlerts.add(t)
-  }
+  for (const o of all) { const a = decodeAlert(o, unseen); if (a) cloud.set(o.id, a) }
   const list: Alert[] = []
   for (const a of current) {
-    if (!syncableAlert(a)) { list.push(a); continue }
     const id = alertId(a.symbol, a.id)
     const c = cloud.get(id)
-    if (c) { list.push(same(normAlert(c), normAlert(a)) ? a : c); cloud.delete(id) }
+    if (c) { list.push(same(normAlert(c), normAlert(a)) ? a : c); cloud.delete(id); continue }
+    if (!syncableAlert(a)) list.push(a)
   }
   list.push(...cloud.values())
-  return { alerts: list, drawingAlerts }
+  return list
 }

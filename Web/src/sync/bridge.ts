@@ -12,7 +12,7 @@ import type { State } from '../app/store'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
   type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
-  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, syncableAlert, syncableDrawing, validSymbol,
+  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, syncableAlert, syncableDrawing, unseenDrawings, validSymbol,
 } from './codec'
 import type { Owned, SyncStore } from './store'
 import { type SyncObject, keyOf, same } from './types'
@@ -51,14 +51,8 @@ export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: b
     vals.push(...encodeFavorites(s.watch, store.localOf('favorites'), ctx))
     fp.favorites = now.favorites
   }
-  const drawingsMoved = now.drawings !== fp.drawings
-  if (drawingsMoved) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'))); fp.drawings = now.drawings }
-  // 画线上的提醒开关、画线被删都会动到提醒
-  if (now.alerts !== fp.alerts || drawingsMoved) {
-    const drawingObjs = [...store.localOf('drawings').filter(o => !vals.some(v => v.collection === 'drawings' && v.id === o.id)), ...vals.filter(v => v.collection === 'drawings')]
-    vals.push(...encodeAlerts({ alerts: s.alerts, drawings: s.drawings, drawingObjs }, store.localOf('alerts'), ctx))
-    fp.alerts = now.alerts
-  }
+  if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'))); fp.drawings = now.drawings }
+  if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), unseenDrawings(store.localOf('drawings')))); fp.alerts = now.alerts }
   return store.capture(vals, OWNED)
 }
 
@@ -76,9 +70,9 @@ export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boo
     if (!same(w, s.watch)) { s.watch = w; r.favorites = true }
   }
   if (all || u.has('alerts') || u.has('drawings')) {
-    const { alerts, drawingAlerts } = decodeAlerts(store.localOf('alerts'), s.alerts, ctx)
+    const alerts = decodeAlerts(store.localOf('alerts'), s.alerts, unseenDrawings(store.localOf('drawings')))
     if (!same(alerts, s.alerts)) { s.alerts = alerts; r.alerts = true }
-    const d = decodeDrawings(store.localOf('drawings'), s.drawings, drawingAlerts)
+    const d = decodeDrawings(store.localOf('drawings'), s.drawings)
     for (const sym of new Set([...Object.keys(d), ...Object.keys(s.drawings)])) {
       if (same(d[sym] ?? [], s.drawings[sym] ?? [])) continue
       s.drawings[sym] = d[sym] ?? []
@@ -112,8 +106,8 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   }
 
   // 画线、提醒：并集
-  const { alerts: cloudAlerts, drawingAlerts } = decodeAlerts(store.localOf('alerts'), [], ctx)
-  const cloudDraw = decodeDrawings(store.localOf('drawings'), {}, drawingAlerts)
+  const cloudAlerts = decodeAlerts(store.localOf('alerts'), [], unseenDrawings(store.localOf('drawings')))
+  const cloudDraw = decodeDrawings(store.localOf('drawings'), {})
   const draw: Record<string, typeof s.drawings[string]> = {}
   for (const [sym, list] of Object.entries(cloudDraw)) draw[sym] = [...list]
   if (!override) {

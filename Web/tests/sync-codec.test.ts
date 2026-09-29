@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Alert } from '../src/app/store'
+import { drawingIdOf, makeConditionAlert, makeDrawingAlert, makePriceAlert } from '../src/alerts/shape'
 import type { Drawing } from '../src/chart/chart'
 import {
   ALERT_MARKET, SETTINGS_ID, applySettings, decodeAlerts, decodeDrawings, decodeFavorites, drawingId, encodeAlerts,
-  encodeDrawings, encodeFavorites, encodeSettings, favId, pctToRatio, ratioToPct, type SettingsState,
+  encodeDrawings, encodeFavorites, encodeSettings, favId, alertId, unseenDrawings, type SettingsState,
 } from '../src/sync/codec'
 import type { SyncObject } from '../src/sync/types'
 import { ctx } from './sync-fake'
@@ -15,18 +16,6 @@ const settings = (): SettingsState => ({
   pinned: ['15m', '1h', '4h', '1d'],
   ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd'] },
   params: { ma: { periods: [7, 25, 99] }, macd: { fast: 12, slow: 26, signal: 9 } },
-})
-
-describe('百分数 ↔ 比值串', () => {
-  it('不经过浮点除法', () => {
-    expect(pctToRatio(0.05)).toBe('0.0005')
-    expect(pctToRatio(1)).toBe('0.01')
-    expect(pctToRatio(-0.01)).toBe('-0.0001')
-    expect(pctToRatio(250)).toBe('2.5')
-    expect(pctToRatio(0)).toBe('0')
-    expect(pctToRatio(0.0123)).toBe('0.000123')
-    expect(ratioToPct('0.000123')).toBe(0.0123)
-  })
 })
 
 describe('settings', () => {
@@ -89,7 +78,7 @@ describe('drawings', () => {
     const [o] = encodeDrawings({ BTCUSDT: [trend] }, [])
     expect(o.id).toBe(drawingId('BTCUSDT', 'd1'))
     expect(o.body).toMatchObject({ kind: 'trend', anchors: [{ t: 1, p: 100 }, { t: 2, p: 110 }], color: { value: '#FF0000' }, lineWidth: 2, locked: false, symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance', dash: 'solid', hidden: false })
-    const back = decodeDrawings([o], {}, new Set())
+    const back = decodeDrawings([o], {})
     expect(back.BTCUSDT).toEqual([{ ...trend }])
   })
 
@@ -109,44 +98,80 @@ describe('drawings', () => {
     expect(encodeDrawings({ BTCUSDT: [] }, [hidden, text])).toEqual([])
     const measure: Drawing = { id: 'm', type: 'measure', pts: [{ t: 1, p: 1 }, { t: 2, p: 2 }] }
     expect(encodeDrawings({ BTCUSDT: [measure] }, [])).toEqual([])
-    expect(decodeDrawings([hidden, text], { BTCUSDT: [measure] }, new Set()).BTCUSDT).toEqual([measure])
+    expect(decodeDrawings([hidden, text], { BTCUSDT: [measure] }).BTCUSDT).toEqual([measure])
   })
 })
 
 describe('alerts', () => {
-  const price: Alert = { id: 'a1', symbol: 'BTCUSDT', kind: 'price', created: 1000, price: 120000, dir: 1, webhook: null }
-  const fr: Alert = { id: 'a2', symbol: 'ETHUSDT', kind: 'fr', created: 1000, value: 0.05, op: 'gt', webhook: 'https://example.com/h' }
-  const oi: Alert = { id: 'a3', symbol: 'BTCUSDT', kind: 'oi', created: 1000, value: 5, op: 'gt' }
+  const price = makePriceAlert('BTCUSDT', 120000, 110000, { now: 1000 })
+  const fund = makeConditionAlert('ETHUSDT', { type: 'funding', side: 'above', rate: '0.0005' }, { now: 1000, webhook: 'https://example.com/h' })
+  const hl: Drawing = { id: 'd1', type: 'hline', pts: [{ t: 5, p: 99000 }] }
+  const onLine = makeDrawingAlert('BTCUSDT', hl, 1000)
 
-  it('价格 / 资金费率 / 持仓量：形状照手机端，往返一致', () => {
-    const out = encodeAlerts({ alerts: [price, fr, oi], drawings: {}, drawingObjs: [] }, [], ctx)
-    const p = out.find(o => o.id.endsWith('/a1'))!
-    expect(p.body).toMatchObject({ kind: 'price', symbol: 'BTCUSDT', market: ALERT_MARKET, condition: 'touch', once: true, status: 'active', armedAt: 1000, created: 1000, rule: null, title: 'BTC 涨到 120000.0' })
+  it('一条提醒一个对象：19 个键照手机端，可空的写 null；往返一致', () => {
+    const out = encodeAlerts([price, fund], [])
+    const p = out.find(o => o.id === alertId('BTCUSDT', price.id))!
+    expect(Object.keys(p.body).sort()).toHaveLength(19)
+    expect(p.body).toMatchObject({ kind: 'price', symbol: 'BTCUSDT', market: ALERT_MARKET, condition: 'touch', once: true, status: 'active', armedAt: 1000, created: 1000, rule: null, drawingID: null, firedAt: null, dueAt: null })
     expect(p.body.lines).toEqual([{ points: [{ t: 1000, p: 120000 }], extendLeft: true, extendRight: true }])
-    const f = out.find(o => o.id.endsWith('/a2'))!
+    const f = out.find(o => o.id === alertId('ETHUSDT', fund.id))!
     expect(f.body).toMatchObject({ kind: 'condition', rule: { type: 'funding', side: 'above', rate: '0.0005' }, webhook: 'https://example.com/h' })
-    const i = out.find(o => o.id.endsWith('/a3'))!
-    expect(i.body.rule).toEqual({ type: 'openInterestChange', threshold: '0.05' })
-    const { alerts } = decodeAlerts(out, [], ctx)
-    expect(alerts).toEqual([price, fr, { ...oi, webhook: null }])
+    expect(decodeAlerts(out, [])).toEqual([price, fund])
   })
 
-  it('画线上的提醒开关 → 一条 kind=drawing 的提醒；关掉就删；解码回画线的开关', () => {
-    const d: Drawing = { id: 'd1', type: 'hline', pts: [{ t: 5, p: 99000 }], alert: true }
-    const drawingObjs = encodeDrawings({ BTCUSDT: [d] }, [])
-    const on = encodeAlerts({ alerts: [], drawings: { BTCUSDT: [d] }, drawingObjs }, [], ctx)
-    expect(on).toHaveLength(1)
-    expect(on[0].body).toMatchObject({ kind: 'drawing', drawingID: 'd1', symbol: 'BTCUSDT', lines: [{ points: [{ t: 5, p: 99000 }], extendLeft: true, extendRight: true }] })
-    const { drawingAlerts } = decodeAlerts(on, [], ctx)
-    expect(decodeDrawings(drawingObjs, {}, drawingAlerts).BTCUSDT[0].alert).toBe(true)
-    const off = encodeAlerts({ alerts: [], drawings: { BTCUSDT: [{ ...d, alert: false }] }, drawingObjs }, on, ctx)
-    expect(off).toHaveLength(1)
-    expect(off[0].deleted).toBe(true)
+  it('画线提醒的 drawingID：线上是画线自己的 id（手机写 drawing.id），网页本机是完整对象 id', () => {
+    expect(onLine.drawingID).toBe(drawingIdOf('BTCUSDT', 'd1'))
+    const [o] = encodeAlerts([onLine], [])
+    expect(o.body).toMatchObject({ kind: 'drawing', drawingID: 'd1', symbol: 'BTCUSDT' })
+    expect(decodeAlerts([o], [])).toEqual([onLine])
+    // 手机建的画线提醒进来，网页能按完整 id 找回那条画线
+    const phone = obj('alerts', 'binance/usd_m/BTCUSDT/P9', { ...o.body, drawingID: 'X7' })
+    expect(decodeAlerts([phone], [])[0]).toMatchObject({ id: 'P9', drawingID: drawingIdOf('BTCUSDT', 'X7') })
   })
 
-  it('已触发的、复盘到期提醒网页管不着：不删不显示', () => {
+  it('手机的条件提醒（持仓量、均线）进来原样保留，没改就原样推回去', () => {
+    const cloud = obj('alerts', 'binance/usd_m/SOLUSDT/c1', {
+      kind: 'condition', symbol: 'SOLUSDT', market: ALERT_MARKET, drawingID: null, lines: [], condition: 'touch', armedAt: 5, once: true,
+      status: 'active', firedAt: null, firedPrice: null, dueAt: null, reviewID: null, title: 'SOL 均线', created: 5, note: '手机', webhook: null,
+      webhookText: null, rule: { type: 'maCross', interval: '4h', length: 60, side: 'above' },
+    })
+    const [a] = decodeAlerts([cloud], [])
+    expect(a).toMatchObject({ id: 'c1', kind: 'condition', note: '手机', rule: { type: 'maCross', length: 60 } })
+    const [back] = encodeAlerts([a], [cloud])
+    expect(back.body).toEqual(cloud.body)
+    expect(back.revision).toBe(1)
+  })
+
+  it('本机删了、响过了 → 删云端那条；本机还在只是暂时上不了云的 → 不删', () => {
+    const [o] = encodeAlerts([price], [])
+    const live = { ...o, revision: 1 }
+    expect(encodeAlerts([], [live])).toEqual([{ ...live, deleted: true }])
+    const broken: Alert = { ...price, lines: [] }
+    expect(encodeAlerts([broken], [live])).toEqual([])
+    // 解码时这条上不了云的本机副本让位给云端
+    expect(decodeAlerts([live], [broken])).toEqual([price])
+  })
+
+  it('挂在手机藏起来的画线上的提醒：网页不接手，本机没有也不删', () => {
+    const hidden = obj('drawings', drawingId('BTCUSDT', 'H'), { kind: 'hline', anchors: [{ t: 1, p: 1 }], symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance', hidden: true })
+    const al = obj('alerts', 'binance/usd_m/BTCUSDT/q', { ...encodeAlerts([onLine], [])[0].body, drawingID: 'H' })
+    const unseen = unseenDrawings([hidden])
+    expect(decodeAlerts([al], [], unseen)).toEqual([])
+    expect(encodeAlerts([], [al], unseen)).toEqual([])
+    expect(encodeAlerts([], [al])).toHaveLength(1) // 对照：不给 unseen 就会删
+  })
+
+  it('超出服务端范围的条件不上云（本机留着）', () => {
+    const bad = makeConditionAlert('BTCUSDT', { type: 'funding', side: 'above', rate: '0.5' }, { now: 1 })
+    expect(encodeAlerts([bad], [])).toEqual([])
+    expect(decodeAlerts([], [bad])).toEqual([bad])
+  })
+
+  it('已触发的、复盘到期、Coinbase 的网页管不着：不删不显示', () => {
     const fired = obj('alerts', 'binance/usd_m/BTCUSDT/x', { kind: 'price', status: 'fired', market: ALERT_MARKET, symbol: 'BTCUSDT', lines: [{ points: [{ t: 1, p: 1 }] }], condition: 'touch' })
-    expect(encodeAlerts({ alerts: [], drawings: {}, drawingObjs: [] }, [fired], ctx)).toEqual([])
-    expect(decodeAlerts([fired], [], ctx).alerts).toEqual([])
+    const review = obj('alerts', 'binance/usd_m/BTCUSDT/r', { kind: 'reviewDue', status: 'active', market: ALERT_MARKET, symbol: 'BTCUSDT', lines: [], dueAt: 9 })
+    const cb = obj('alerts', 'coinbase/spot/BTC-USD/c', { kind: 'price', status: 'active', market: 'coinbase/spot', symbol: 'BTC-USD', lines: [{ points: [{ t: 1, p: 1 }] }] })
+    expect(encodeAlerts([], [fired, review, cb])).toEqual([])
+    expect(decodeAlerts([fired, review, cb], [])).toEqual([])
   })
 })
