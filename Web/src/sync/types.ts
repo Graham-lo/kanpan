@@ -3,8 +3,9 @@
 export type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
 export type Body = Record<string, Json>
 
-export type Collection = 'settings' | 'favorites' | 'groups' | 'drawings' | 'alerts'
-/** 网页版拉取的全部集合，按这个顺序。`drawingPreferences`（手机的画线工具偏好）网页用不上，不拉 */
+export type Collection = 'settings' | 'favorites' | 'groups' | 'drawings' | 'alerts' | 'drawingPreferences'
+/** 网页版拉取的全部集合，按这个顺序。`drawingPreferences`（手机的画线工具偏好）PC 网页用不上，不拉；
+ *  手机网页版的适配器另给一份带它的清单（SyncAdapter.collections） */
 export const COLLECTIONS: Collection[] = ['settings', 'favorites', 'groups', 'alerts', 'drawings']
 
 export interface SyncObject {

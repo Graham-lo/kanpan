@@ -20,7 +20,7 @@ import { onSession, session } from '../account/session'
 import { Engine, type Transport } from './engine'
 import { type Owned, SyncStore, resumeArchive, serialize } from './store'
 import { syncKeys } from './keys'
-import { type ChangesPage, type Page, type PushResponse, emptyArchive } from './types'
+import { type ChangesPage, type Collection, type Page, type PushResponse, emptyArchive } from './types'
 
 const POLL = 15e3
 const FULL_EVERY = 5 * 60e3
@@ -41,6 +41,8 @@ export const transport: Transport = {
 export interface SyncAdapter {
   /** 每张表本客户端替它说话的那些键（store.stage 用：先前有、这次没有的键，属于这里的才发 null） */
   readonly owned: Owned
+  /** 拉哪几张表；不给就是 COLLECTIONS（PC 那一套） */
+  readonly collections?: readonly Collection[]
   /** 页面状态 → 账本（只记变了的那几块；正在装云端值时什么都不做）。返回记了几条 */
   capture(store: SyncStore): number
   /** 账本里 unapplied 的集合装回页面状态并刷新界面（外面已确认 unapplied 非空）。
@@ -202,7 +204,7 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     const fresh = !saved || saved.cursor == null
     store = new SyncStore(saved ?? emptyArchive(), device().id)
     store.onChange = persist
-    engine = new Engine(store, transport, adapter.owned, { capture, apply })
+    engine = new Engine(store, transport, adapter.owned, { capture, apply }, adapter.collections)
     uid = id
     lastSync = Number(lsGet(lastKey(id))) || 0
     error = ''

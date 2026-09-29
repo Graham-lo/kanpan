@@ -28,7 +28,8 @@
 import { type Body, type Json, type SyncObject, same } from '../../sync/types'
 import type { Owned } from '../../sync/store'
 import { OWNED as PC_OWNED } from '../../sync/bridge'
-import { validSymbol, decodeAlerts, syncableAlert, unseenDrawings, alertId } from '../../sync/codec'
+import { validSymbol, decodeAlerts, syncableAlert, alertId } from '../../sync/codec'
+import { DRAW_OWNED, unseenDrawingsM } from './drawCodec'
 import type { Alert } from '../../alerts/shape'
 import {
   LAYOUT_GROUPS, SYNCED_FIELDS, adoptBook, cleanColors, currentLayout, layoutBook, normalizePrefs, sanitizeLayout,
@@ -64,6 +65,8 @@ export const OWNED_M: Owned = {
   favorites: new Set(['symbol', 'market', 'venue', 'groupId', 'order']),
   groups: new Set(['name', 'order']),
   alerts: PC_OWNED.alerts,
+  drawings: DRAW_OWNED.drawings,
+  drawingPreferences: DRAW_OWNED.drawingPreferences,
 }
 
 /** 一组布局的线上写法（iOS Prefs.encode(layout)） */
@@ -436,7 +439,7 @@ export function remoteFired(alerts: Alert[], cloud: (id: string) => SyncObject |
 
 /** 第一次对上时提醒的合并：并集；云端有这一条（活的已在云端那份里，墓碑说明别处删了）就听云端的 */
 export function mergeAlerts(local: Alert[], all: SyncObject[], drawings: SyncObject[], override: boolean, has: (id: string) => boolean): Alert[] {
-  const out = decodeAlerts(all, [], unseenDrawings(drawings))
+  const out = decodeAlerts(all, [], unseenDrawingsM(drawings))
   if (!override) for (const a of local) if (!syncableAlert(a) || !has(alertId(a.symbol, a.id))) out.push(a)
   return out
 }

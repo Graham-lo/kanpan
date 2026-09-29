@@ -21,8 +21,10 @@ import { setSyncSource } from '../model/syncStatus'
 import { type SyncAdapter, type SyncRuntime, type SyncStatus, createSyncRuntime } from '../../sync/runtime'
 import type { SyncStore } from '../../sync/store'
 import { syncKeys } from '../../sync/keys'
-import { alertId, decodeAlerts, encodeAlerts, unseenDrawings } from '../../sync/codec'
-import { keyOf, same } from '../../sync/types'
+import { alertId, decodeAlerts, encodeAlerts } from '../../sync/codec'
+import { COLLECTIONS, keyOf, same } from '../../sync/types'
+import { DrawTracker, PREFS_COLLECTION, PREFS_ID, capArchive, mergeFirstDrawings, overlay, unseenDrawingsM } from './drawCodec'
+import { clearDrawingsSuspect, drawingBook, drawingsRev, drawingsSuspect, onDrawingsChanged, replaceDrawings } from './drawings'
 import type { Alert } from '../../alerts/shape'
 
 function lsGet(k: string): string | null { try { return localStorage.getItem(k) } catch { return null } }
@@ -30,14 +32,16 @@ function lsSet(k: string, v: string): void { try { localStorage.setItem(k, v) } 
 
 // ───────── 本机「最后一次改」（没登录时也记；第一次对上时比谁新） ─────────
 
-/** settings 按根记（iOS SettingsStamp），自选整张表一个时刻 */
-export interface Edited { settings: Record<string, number>; favorites: number }
+/** settings 按根记（iOS SettingsStamp），自选整张表一个时刻，画线按品种（规范键）记，画线工具偏好一个时刻 */
+export interface Edited { settings: Record<string, number>; favorites: number; drawings: Record<string, number>; drawingPrefs: number }
 export function readEdited(): Edited {
   try {
     const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Partial<Edited> | null
-    if (v && typeof v === 'object') return { settings: v.settings && typeof v.settings === 'object' ? v.settings : {}, favorites: typeof v.favorites === 'number' ? v.favorites : 0 }
+    const rec = (x: unknown): Record<string, number> => (x && typeof x === 'object' && !Array.isArray(x) ? x as Record<string, number> : {})
+    const num = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) ? x : 0)
+    if (v && typeof v === 'object') return { settings: rec(v.settings), favorites: num(v.favorites), drawings: rec(v.drawings), drawingPrefs: num(v.drawingPrefs) }
   } catch { /* 坏了当没改过 */ }
-  return { settings: {}, favorites: 0 }
+  return { settings: {}, favorites: 0, drawings: {}, drawingPrefs: 0 }
 }
 
 // ───────── 指纹 ─────────
@@ -55,6 +59,10 @@ let applying = false
 let fp: Prints = {}
 /** 这个页面已经报过的已触发（同步 id）：记账时只删这些（codec.encodeAlerts 的 spent） */
 const spent = new Set<string>()
+/** 画线按品种分桶的指纹（drawCodec.DrawTracker）；和 fp 分开记，settle 不动它 */
+const draw = new DrawTracker()
+/** 画线本上一次记过账时的版本号（没变就不比指纹） */
+let drawSeen = -1
 
 function captureInto(store: SyncStore): number {
   if (applying) return 0
@@ -70,8 +78,12 @@ function captureInto(store: SyncStore): number {
     fp.favorites = now.favorites
   }
   if (now.alerts !== fp.alerts) {
-    vals.push(...encodeAlerts(st.alerts, store.localOf('alerts'), unseenDrawings(store.localOf('drawings')), spent))
+    vals.push(...encodeAlerts(st.alerts, store.localOf('alerts'), unseenDrawingsM(store.localOf('drawings')), spent))
     fp.alerts = now.alerts
+  }
+  if (drawingsRev() !== drawSeen || draw.prints == null) {
+    vals.push(...draw.capture(drawingBook.archive, store, drawingsSuspect()))
+    drawSeen = drawingsRev()
   }
   return store.capture(vals, C.OWNED_M)
 }
@@ -93,7 +105,7 @@ function settle(store: SyncStore | null, r: SyncChange, fired: Alert[], merged: 
     if (r.settings.length || r.favorites || r.alerts) save()
     if (r.settings.length) applyTheme()
     if (r.alerts) alertsReplaced()
-    if (r.settings.length || r.favorites || r.alerts) {
+    if (r.settings.length || r.favorites || r.alerts || r.drawings.length || r.drawingPreferences) {
       for (const fn of hooks.onSync) { try { fn(r) } catch (e) { console.error(e) } }
       globalThis.dispatchEvent?.(new CustomEvent('hkline:sync', { detail: r }))
       if (r.favorites || r.settings.includes('favoritesGroup')) refreshPage(['favorites'])
@@ -112,13 +124,30 @@ function settle(store: SyncStore | null, r: SyncChange, fired: Alert[], merged: 
   return again && !!store && captureInto(store) > 0
 }
 
+/** 云端的画线装进画线本（applying 期间调）：只有真变了才换；返回变了的品种、工具偏好换没换、裁掉几条 */
+function applyDrawings(store: SyncStore, r: SyncChange): number {
+  const { next, keys, dropped } = draw.apply(drawingBook.archive, store)
+  if (next) {
+    r.drawings = keys
+    r.drawingPreferences = !drawingBook.preferences.equals(next.preferences)
+    replaceDrawings(next)
+  }
+  // 指纹已对齐到「裁之前」：裁掉了的话下一次记账要比指纹（推删除），否则不必
+  drawSeen = dropped > 0 ? -1 : drawingsRev()
+  return dropped
+}
+
+const blankChange = (): SyncChange => ({ settings: [], favorites: false, alerts: false, drawings: [], drawingPreferences: false })
+
 const mobile: SyncAdapter = {
   owned: C.OWNED_M,
+  collections: [...COLLECTIONS, PREFS_COLLECTION as 'drawingPreferences'],
   capture: store => captureInto(store),
   apply(store) {
     const u = store.a.unapplied
-    const r: SyncChange = { settings: [], favorites: false, alerts: false }
+    const r = blankChange()
     let fired: Alert[] = []
+    let dropped = 0
     let merged: Record<string, string> = {}
     if (u.has('settings')) r.settings = C.applySettings(st, store.get('settings', C.SETTINGS_ID), store.a.seen)
     if (u.has('favorites') || u.has('groups')) {
@@ -128,16 +157,22 @@ const mobile: SyncAdapter = {
     }
     if (u.has('alerts') || u.has('drawings')) {
       fired = C.remoteFired(st.alerts, id => store.get('alerts', id))
-      const alerts = decodeAlerts(store.localOf('alerts'), st.alerts, unseenDrawings(store.localOf('drawings')))
+      const alerts = decodeAlerts(store.localOf('alerts'), st.alerts, unseenDrawingsM(store.localOf('drawings')))
       if (!same(alerts, st.alerts)) { st.alerts = alerts; r.alerts = true }
     }
+    if (u.has('drawings') || u.has(PREFS_COLLECTION)) {
+      applying = true
+      try { dropped = applyDrawings(store, r) } finally { applying = false }
+    }
     u.clear()
-    return settle(store, r, fired, merged)
+    const again = settle(store, r, fired, merged)
+    // 进门裁掉了几条（每品种 50 条）：推成删除，云端和别的设备收敛到同一份
+    return (dropped > 0 && captureInto(store) > 0) || again
   },
   mergeFirst(store, override) {
     const ed = readEdited()
     store.a.seen = {}
-    const r: SyncChange = { settings: C.mergeSettings(st, store.get('settings', C.SETTINGS_ID), store.a.seen, ed.settings, override), favorites: false, alerts: false }
+    const r: SyncChange = { ...blankChange(), settings: C.mergeSettings(st, store.get('settings', C.SETTINGS_ID), store.a.seen, ed.settings, override) }
     const fresh = (): C.FavState => ({ favorites: [], groups: [], groupForSymbol: {} })
     const fav = C.mergeFavorites(st.symbols, store.localOf('favorites'), store.localOf('groups'), ed.favorites, override, fresh)
     let merged: Record<string, string> = {}
@@ -151,12 +186,36 @@ const mobile: SyncAdapter = {
     }
     const alerts = C.mergeAlerts(st.alerts, store.localOf('alerts'), store.localOf('drawings'), override, id => !!store.a.objects[keyOf('alerts', id)])
     if (!same(alerts, st.alerts)) { st.alerts = alerts; r.alerts = true }
+    // 画线：并集（云端墓碑的不带回，同一条谁新用谁），换账号云端整体覆盖；再裁到每品种 50 条
+    const before = drawingBook.archive
+    const next = mergeFirstDrawings(before, store.localOf('drawings'), store.get(PREFS_COLLECTION, PREFS_ID),
+      { drawings: ed.drawings, prefs: ed.drawingPrefs }, override)
+    applying = true
+    try {
+      r.drawingPreferences = !before.preferences.equals(next.preferences)
+      r.drawings = [...new Set([...Object.keys(before.bySymbol), ...Object.keys(next.bySymbol)])].filter(k => before.bucketChanged(next, k))
+      replaceDrawings(next, override)
+      clearDrawingsSuspect()
+    } finally { applying = false }
     store.a.unapplied.clear()
     settle(null, r, [], merged)
     fp = {} // runtime 接着记一次全量账：本机多出来的都推上去
+    draw.reset()
   },
-  begin() { fp = {} },
-  end() { fp = {}; spent.clear() },
+  resume(store) {
+    // 本机画线存档读坏过：先把云端那份并回来（本机剩下的留着），之后才按「本机删了」推删除
+    if (!drawingsSuspect()) return
+    const next = drawingBook.archive.clone()
+    const objs = store.localOf('drawings')
+    overlay(next, objs.filter(o => !o.deleted), store.get(PREFS_COLLECTION, PREFS_ID))
+    capArchive(next, objs)
+    applying = true
+    try { replaceDrawings(next) } finally { applying = false }
+    clearDrawingsSuspect()
+    draw.reset()
+  },
+  begin() { fp = {}; draw.reset() },
+  end() { fp = {}; spent.clear(); draw.reset() },
 }
 
 // ───────── 对外 ─────────
@@ -184,6 +243,19 @@ export function initMobileSync(): void {
       }
     }
     base = now
+    r.changed()
+  })
+  // 画线：本机编辑记下这只品种「最后一次改」（第一次对上时比谁新），然后记账
+  onDrawingsChanged(c => {
+    // 同步换进来的都在 applying 里；这之外的 replaced（控制器 setDrawings 整桶换）也是本机改的
+    if (!applying) {
+      const ed = readEdited()
+      const t = Date.now()
+      if (c.kind === 'edited') ed.drawings[c.key] = t
+      else if (c.kind === 'replaced') for (const k of c.keys) ed.drawings[k] = t
+      else ed.drawingPrefs = t
+      lsSet(syncKeys().edited, JSON.stringify(ed))
+    }
     r.changed()
   })
   // 本机判响的：fire() 先记「已触发」、报完再删，删之前记下来（服务端判响的那种由 settle 记）

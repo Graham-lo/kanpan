@@ -21,7 +21,7 @@
  * 之后立刻 apply（云端的新值马上装进页面，中间不留 await）。
  */
 import { SyncStore, encodedSize, pushBody, type Owned } from './store'
-import { COLLECTIONS, type ChangesPage, type Page, type PushResponse, type Scope, type SyncOperation, keyOf } from './types'
+import { COLLECTIONS, type ChangesPage, type Collection, type Page, type PushResponse, type Scope, type SyncOperation, keyOf } from './types'
 
 export interface Transport {
   push(body: string, idempotencyKey: string): Promise<PushResponse>
@@ -82,7 +82,9 @@ const BAD_PAGE: Err = { status: 502, code: 'bad_page' }
 export class Engine {
   budget = MAX_BODY
   suspects = 0
-  constructor(public store: SyncStore, public t: Transport, public owned: Owned, public hooks: Hooks) {}
+  constructor(public store: SyncStore, public t: Transport, public owned: Owned, public hooks: Hooks,
+    /** 拉哪几张表（全量按这个顺序；增量只重拉这几张的失效） */
+    public collections: readonly Collection[] = COLLECTIONS) {}
 
   /** 把队列推空（或推到推不动为止）。网络 / 服务器 / 登录类错误原样抛出，下一轮再来 */
   async push(): Promise<void> {
@@ -164,7 +166,7 @@ export class Engine {
   /** 全量：每张表从头拉一遍，然后补推被拒过的 */
   async full(): Promise<void> {
     let cursor: number | null = null
-    for (const c of COLLECTIONS) {
+    for (const c of this.collections) {
       const cur = await this.fetchScope({ collection: c })
       if (cursor == null || cur < cursor) cursor = cur
     }
@@ -190,7 +192,7 @@ export class Engine {
         }
         const need = new Map<string, Set<string>>()
         for (const inv of p.invalidations) {
-          if (!(COLLECTIONS as string[]).includes(inv.collection)) continue
+          if (!(this.collections as readonly string[]).includes(inv.collection)) continue
           const known = a.objects[keyOf(inv.collection, inv.id)]
           if (known && known.revision >= inv.revision) continue
           let set = need.get(inv.collection); if (!set) need.set(inv.collection, set = new Set())

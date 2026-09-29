@@ -283,3 +283,213 @@ describe('mergeSameNamed / absorb', () => {
     expect(same(out.groups, [{ id: 'g1', name: '甲' }, { id: 'g2', name: '乙' }])).toBe(true)
   })
 })
+
+// ═════════════════════════════ 画线（照 iOS PersonalSyncCodec.drawings / SyncOverlay.drawings） ═════════════════════════════
+
+import { vi } from 'vitest'
+import { DrawingBook } from '../src/m/chart/draw/book'
+import { DrawArchive, decodeArchive, encodeArchive } from '../src/m/chart/draw/archive'
+import { drawingWith, makeDrawing, type Drawing } from '../src/m/chart/draw/drawing'
+import * as D from '../src/m/app/drawCodec'
+import { COLLECTIONS } from '../src/sync/types'
+
+const BTC = 'binance/usd_m/BTCUSDT'
+const line = (t: number, id?: string): Drawing => makeDrawing('trend', { t, p: 100 }, { t: t + 60_000, p: 110 }, null, id)
+
+/** 一台「手机网页」的画线那一半：画线本 + 账本 + 引擎，逻辑与 m/app/sync.ts 同一套 */
+function drawPhone(server: FakeServer, book = new DrawingBook()) {
+  const store = new SyncStore(emptyArchive(), 'dev-' + Math.random(), () => server.now)
+  const tr = new D.DrawTracker()
+  const edited: D.DrawEdited = { drawings: {}, prefs: 0 }
+  let initial = true
+  const capture = (): number => store.capture(tr.capture(book.archive, store), C.OWNED_M)
+  const apply = (): void => {
+    const u = store.a.unapplied
+    if (u.has('drawings') || u.has(D.PREFS_COLLECTION)) { const { next } = tr.apply(book.archive, store); if (next) book.replace(next) }
+    u.clear()
+    capture()
+  }
+  const engine = new Engine(store, server.transport(), C.OWNED_M,
+    { capture: () => { if (!initial) capture() }, apply: () => { if (!initial) apply() } }, [...COLLECTIONS, 'drawingPreferences'])
+  return {
+    book, store, engine, edited,
+    draw(d: Drawing, key = BTC) { expect(book.add([d], key)).toBe(true); edited.drawings[key] = server.now; if (!initial) capture() },
+    async first(override = false) {
+      await engine.full()
+      book.replace(D.mergeFirstDrawings(book.archive, store.localOf('drawings'), store.get(D.PREFS_COLLECTION, D.PREFS_ID), edited, override), override)
+      store.a.unapplied.clear()
+      initial = false; tr.reset()
+      capture()
+      await engine.push()
+    },
+    async sync() { await engine.push(); await engine.pull(); await engine.push() },
+    capture,
+  }
+}
+const ids = (b: DrawingBook, key = BTC): string[] => b.items(key).map(d => d.id).sort()
+
+describe('画线编码（照 iOS PersonalSyncCodec.drawing）', () => {
+  it('id = 规范键/画线 id；body 去掉 id、points 改名 anchors、带 symbol/market/venue；颜色 {value}；来回不变', () => {
+    const d = { ...line(1_700_000_000_000, 'dA'), color: '#112233' } as Drawing
+    const o = D.encodeDrawingObject('BTCUSDT', d)
+    expect(o.id).toBe('binance/usd_m/BTCUSDT/dA')
+    expect(o.body).not.toHaveProperty('id')
+    expect(o.body).not.toHaveProperty('points')
+    expect(o.body.anchors).toEqual([{ t: 1_700_000_000_000, p: 100 }, { t: 1_700_000_060_000, p: 110 }])
+    expect(o.body).toMatchObject({ kind: 'trend', color: { value: '#112233' }, symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance' })
+    expect(o.body).not.toHaveProperty('text')
+    expect(D.decodeDrawingObject(o)).toEqual({ key: BTC, d })
+    const t = D.encodeDrawingObject(BTC, drawingWith('note', [{ t: 1, p: 1 }], 'dT'))
+    expect(t.body.text).toBe('')
+  })
+
+  it('工具偏好拍平一层（styles/<工具>、variants/<一格>），null 的路径丢掉；解不开的对象跳过、不整批抛', () => {
+    const a = new DrawArchive()
+    a.preferences.magnet = true
+    const o = D.encodePrefsObject(a.preferences)
+    expect(o.id).toBe('tools')
+    expect(o.body.magnet).toBe(true)
+    expect(Object.keys(o.body).every(k => !k.includes('/') || k.startsWith('styles/') || k.startsWith('variants/'))).toBe(true)
+    expect(D.decodePrefsObject(o)!.equals(a.preferences)).toBe(true)
+    expect(D.decodePrefsObject({ ...o, body: { ...o.body, magnet: 'x' } })).toBeNull()
+    const bad = { ...D.encodeDrawingObject(BTC, line(1, 'dX')), body: { kind: 'someFutureTool', anchors: [] } }
+    expect(D.decodeDrawingObject(bad)).toBeNull()
+    expect(D.unseenDrawingsM([bad])).toEqual(new Set([bad.id]))
+    const arc = new DrawArchive()
+    D.overlay(arc, [bad, D.encodeDrawingObject(BTC, line(1, 'dY'))])
+    expect(arc.get(BTC).map(d => d.id)).toEqual(['dY'])
+  })
+})
+
+describe('画线两台来回', () => {
+  it('两边各画一条：同步后两台都是两条；只拉 drawingPreferences 的是手机（PC 那份清单不变）', async () => {
+    const server = new FakeServer()
+    const a = drawPhone(server), b = drawPhone(server)
+    await a.first(); await b.first()
+    a.draw(line(1_700_000_000_000, 'dA'))
+    server.now += 1000
+    b.draw(line(1_700_000_100_000, 'dB'))
+    await a.sync(); await b.sync(); await a.sync()
+    expect(ids(a.book)).toEqual(['dA', 'dB'])
+    expect(ids(b.book)).toEqual(['dA', 'dB'])
+    expect(server.objects.get('drawings:' + BTC + '/dA')!.body.anchors).toEqual([{ t: 1_700_000_000_000, p: 100 }, { t: 1_700_000_060_000, p: 110 }])
+    expect(server.bootstraps.some(x => x.collection === 'drawingPreferences')).toBe(true)
+    expect(COLLECTIONS).not.toContain('drawingPreferences')
+    const n = server.pushes.length
+    await a.sync(); await b.sync()
+    expect(server.pushes.length).toBe(n)
+  })
+
+  it('改样式、删一条都跟过去；本机不认得的工具（更新版）不删', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawings', id: BTC + '/dF', body: { kind: 'someFutureTool', anchors: [{ t: 1, p: 1 }], symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance' }, deleted: false })
+    const a = drawPhone(server), b = drawPhone(server)
+    await a.first(); await b.first()
+    a.draw(line(1_700_000_000_000, 'd1')); a.draw(line(1_700_000_200_000, 'd2'))
+    await a.sync(); await b.sync()
+    expect(ids(b.book)).toEqual(['d1', 'd2'])
+    b.book.commit(b.book.items(BTC).map(d => (d.id === 'd1' ? { ...d, color: '#ff0000', dash: 'dashed' as const } : d)), BTC)
+    b.capture(); await b.sync(); await a.sync()
+    expect(a.book.items(BTC).find(d => d.id === 'd1')).toMatchObject({ color: '#ff0000', dash: 'dashed' })
+    a.book.commit(a.book.items(BTC).filter(d => d.id !== 'd2'), BTC)
+    a.capture(); await a.sync(); await b.sync()
+    expect(ids(b.book)).toEqual(['d1'])
+    expect(server.objects.get('drawings:' + BTC + '/d2')!.deleted).toBe(true)
+    expect(server.objects.get('drawings:' + BTC + '/dF')!.deleted).toBe(false)
+  })
+
+  it('工具偏好来回（换了就整份换）', async () => {
+    const server = new FakeServer()
+    const a = drawPhone(server), b = drawPhone(server)
+    await a.first(); await b.first()
+    a.book.preferences.continuous = true
+    a.capture(); await a.sync(); await b.sync()
+    expect(b.book.preferences.continuous).toBe(true)
+  })
+})
+
+describe('画线第一次对上', () => {
+  it('并集：本机访客画的留着并推上去，云端的装进来，云端墓碑的不带回', async () => {
+    const server = new FakeServer()
+    const cloud = D.encodeDrawingObject(BTC, line(1_700_000_000_000, 'dC'))
+    server.put({ collection: 'drawings', id: cloud.id, body: cloud.body, deleted: false })
+    const gone = D.encodeDrawingObject(BTC, line(1_700_000_000_000, 'dG'))
+    server.put({ collection: 'drawings', id: gone.id, body: gone.body, deleted: true })
+    const a = drawPhone(server)
+    a.draw(line(1_700_000_300_000, 'dL')); a.draw(line(1_700_000_300_000, 'dG'))
+    await a.first()
+    expect(ids(a.book)).toEqual(['dC', 'dL'])
+    expect(server.objects.get('drawings:' + BTC + '/dL')!.deleted).toBe(false)
+  })
+
+  it('同一条两边都有：这只品种本机改得比云端新用本机的，否则用云端的', async () => {
+    const server = new FakeServer()
+    const cloud = D.encodeDrawingObject(BTC, { ...line(1_700_000_000_000, 'dS'), lineWidth: 3 })
+    server.put({ collection: 'drawings', id: cloud.id, body: cloud.body, deleted: false })
+    const old = drawPhone(server)
+    old.book.add([{ ...line(1_700_000_000_000, 'dS'), lineWidth: 2 }], BTC)
+    old.edited.drawings[BTC] = server.now - 5000
+    await old.first()
+    expect(old.book.items(BTC)[0].lineWidth).toBe(3)
+    const fresh = drawPhone(server)
+    fresh.book.add([{ ...line(1_700_000_000_000, 'dS'), lineWidth: 5 }], BTC)
+    fresh.edited.drawings[BTC] = server.now + 5000
+    await fresh.first()
+    expect(fresh.book.items(BTC)[0].lineWidth).toBe(5)
+    expect(server.objects.get('drawings:' + BTC + '/dS')!.body.lineWidth).toBe(5)
+  })
+
+  it('换账号：云端整体覆盖（本机的线不带过去、撤销栈清掉）', async () => {
+    const server = new FakeServer()
+    const cloud = D.encodeDrawingObject(BTC, line(1_700_000_000_000, 'dC'))
+    server.put({ collection: 'drawings', id: cloud.id, body: cloud.body, deleted: false })
+    const a = drawPhone(server)
+    a.draw(line(1_700_000_300_000, 'dMine'))
+    expect(a.book.history(BTC).canUndo).toBe(true)
+    await a.first(true)
+    expect(ids(a.book)).toEqual(['dC'])
+    expect(a.book.history(BTC).canUndo).toBe(false)
+    expect(server.objects.has('drawings:' + BTC + '/dMine')).toBe(false)
+  })
+})
+
+describe('画线上限（DrawArchive.capToLimit：每品种 50 条）', () => {
+  it('两边合起来超过 50：各自裁掉最老的同一批，并推成删除', async () => {
+    const server = new FakeServer()
+    const a = drawPhone(server), b = drawPhone(server)
+    await a.first(); await b.first()
+    for (let i = 0; i < 30; i++) { server.now += 10; a.draw(line(1_700_000_000_000 + i, 'a' + String(i).padStart(2, '0'))) }
+    await a.sync()
+    for (let i = 0; i < 30; i++) { server.now += 10; b.draw(line(1_700_000_000_000 + i, 'b' + String(i).padStart(2, '0'))) }
+    await b.sync(); await a.sync(); await b.sync()
+    expect(a.book.items(BTC).length).toBe(50)
+    expect(ids(a.book)).toEqual(ids(b.book))
+    expect(ids(a.book).filter(x => x.startsWith('a')).length).toBe(20)
+    expect(ids(a.book)).not.toContain('a00')
+    const live = [...server.objects.values()].filter(o => o.collection === 'drawings' && !o.deleted)
+    expect(live.length).toBe(50)
+  })
+})
+
+describe('共享画线本（m/app/drawings.ts）', () => {
+  it('从 hkline-m-drawings-v1 读（行情页先前那份原样接上）；画一条就落盘、叫一声；工具偏好改了靠 saveDrawingPreferences', async () => {
+    const mem = new Map<string, string>()
+    const a = new DrawArchive(); a.set(BTC, [line(1_700_000_000_000, 'dOld')])
+    mem.set('hkline-m-drawings-v1', JSON.stringify(encodeArchive(a)))
+    vi.stubGlobal('localStorage', { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v) }, removeItem: (k: string) => { mem.delete(k) } })
+    vi.resetModules()
+    try {
+      const m = await import('../src/m/app/drawings')
+      expect(m.drawingBook.items('BTCUSDT').map(d => d.id)).toEqual(['dOld'])
+      const seen: string[] = []
+      const off = m.onDrawingsChanged(c => seen.push(c.kind))
+      m.drawingBook.add([line(1_700_000_100_000, 'dNew')], 'BTCUSDT')
+      expect(decodeArchive(JSON.parse(mem.get('hkline-m-drawings-v1')!)).get(BTC).map(d => d.id)).toEqual(['dOld', 'dNew'])
+      m.drawingBook.preferences.magnet = true
+      m.saveDrawingPreferences()
+      expect(decodeArchive(JSON.parse(mem.get('hkline-m-drawings-v1')!)).preferences.magnet).toBe(true)
+      expect(seen).toEqual(['edited', 'preferences'])
+      off()
+    } finally { vi.unstubAllGlobals(); vi.resetModules() }
+  })
+})

@@ -43,8 +43,9 @@ export const hooks = {
   onSync: [] as ((c: SyncChange) => void)[],
 }
 
-/** 同步装进来的改动：settings = 改了的设置根（prefs 字段名） */
-export interface SyncChange { settings: string[]; favorites: boolean; alerts: boolean }
+/** 同步装进来的改动：settings = 改了的设置根（prefs 字段名）；drawings = 线变了的品种（规范键，
+ *  图表不必管：绑着 drawingBook 的控制器会收到 replaced 自己重画）；drawingPreferences = 画线工具偏好换了 */
+export interface SyncChange { settings: string[]; favorites: boolean; alerts: boolean; drawings: string[]; drawingPreferences: boolean }
 
 const pages = new Map<PageId, PageHandle>()
 /** 页还没注册时的挂起调用：注册时补 show */
