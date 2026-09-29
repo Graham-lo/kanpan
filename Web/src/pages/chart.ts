@@ -29,6 +29,7 @@ import { hooks, go } from '../app/shell'
 import { openNoteDialog, noteRuleText } from '../notes/dialog'
 import { installNoteSync, noteState, onNotesSynced, dropShot } from '../notes/sync'
 import { renderTradesPanel, tradesPanelClick, installTradesPanel } from '../trades/panel'
+import { installWatch, widgetWatch, mountWatch, watchClick, patchWatchRow, takeWatchUndo } from '../watch/widget'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
@@ -629,74 +630,15 @@ function panelWatch(el: HTMLElement): void {
   const widgets = st.slots.widgets.map(w => w === 'watch' ? widgetWatch() : w === 'detail' ? `<div class="detail ${isCollapsed('detail') ? 'collapsed' : ''}" id="detail"></div>` : widgetHTML(w)).join('')
   el.innerHTML = widgets || '<div class="empty">没有小部件</div>'
   renderDetail()
-  const tbl = $('#wTbl', el)
-  if (tbl) bindDrag(tbl)
+  mountWatch(el)
   mountWidgets(el)
-}
-function widgetWatch(): string {
-  const cur = cfg(active()).symbol
-  const list = st.watch[st.watchTab]
-  const empty = !S.symbols.size
-    ? `<div class="empty">${I('wifiOff', 'icon-24')}<div>${S.live === false ? '连不上币安合约接口' : '正在取行情…'}</div></div>`
-    : `<div class="empty">${I('star', 'icon-24')}<div>这一类还没有自选</div><button class="btn secondary sm" style="margin-top:12px" id="wAdd2">搜索品种</button></div>`
-  const c = isCollapsed('watch')
-  // 标题、分类、添加、更多、收起并在一行（36 px），省下的高度给列表
-  return `<div class="widget widget-watch ${c ? 'collapsed' : ''}"><div class="sp-head wv-head"><h3>自选</h3>
-      <div class="wv-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="chip" role="tab" data-tab="${k}" aria-pressed="${st.watchTab === k}">${l} ${st.watch[k].length}</button>`).join('')}</div>
-      <button class="ibtn xs" id="wAdd" aria-label="添加品种" data-tip="添加品种" data-kbd="⌘ K">${I('plus', 'icon-16')}</button>
-      <button class="ibtn xs" id="wMore" aria-label="更多" data-tip="更多">${I('more', 'icon-16')}</button>
-      ${collapseBtn(c)}</div>
-    <div class="scroll no-bar wv-body">
-      ${list.length && S.symbols.size ? `<table class="tbl" id="wTbl"><thead><tr><th>品种</th><th>最新价</th><th>涨跌幅</th><th>成交额</th></tr></thead>
-      <tbody>${list.map(k => watchRow(k, cur)).join('')}</tbody></table>` : empty}
-    </div></div>`
 }
 function collapseBtn(c: boolean): string {
   return `<button class="ibtn xs" data-of="collapse" aria-label="${c ? '展开' : '收起'}" aria-expanded="${!c}" data-tip="${c ? '展开' : '收起'}">${I('chevronDown', 'icon-16 of-chev')}</button>`
 }
-function watchRow(k: string, cur: string): string {
-  const s = sym(k)
-  return `<tr data-sym="${k}" draggable="true" class="${k === cur ? 'sel' : ''}" aria-selected="${k === cur}">
-    <td><div class="sym">${badge(s)}<b>${esc(s?.code || k)}</b><span class="cn">${esc(s?.cn || '')}</span></div></td>
-    <td class="num price-live" data-f="price">${priceText(s)}</td>
-    <td class="num ${cls(s?.pct)} price-live" data-f="pct">${pctText(s?.pct)}</td>
-    <td class="num muted" data-f="vol">${fmtCompact(s?.vol)}</td></tr>`
-}
-function bindDrag(tbl: HTMLElement): void {
-  let from: HTMLElement | null = null
-  const clear = () => $$('tr', tbl).forEach(r => r.classList.remove('drop-above', 'drop-below'))
-  tbl.addEventListener('dragstart', e => { from = tgt(e).closest('tr'); from?.classList.add('dragging'); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move' })
-  tbl.addEventListener('dragend', () => { from?.classList.remove('dragging'); clear() })
-  tbl.addEventListener('dragover', e => {
-    const tr = tgt(e).closest<HTMLElement>('tbody tr'); if (!tr || !from) return
-    e.preventDefault(); clear()
-    const r = tr.getBoundingClientRect(); tr.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-above' : 'drop-below')
-  })
-  tbl.addEventListener('drop', e => {
-    const tr = tgt(e).closest<HTMLElement>('tbody tr'); if (!tr || !from || tr === from) return
-    e.preventDefault()
-    const list = st.watch[st.watchTab], a = from.dataset.sym || ''
-    list.splice(list.indexOf(a), 1)
-    let i = list.indexOf(tr.dataset.sym || ''); if (tr.classList.contains('drop-below')) i++
-    list.splice(i, 0, a); save(); renderPanel()
-  })
-}
-let lastWatchUndo: (() => void) | null = null
 function onPanelClick(e: MouseEvent): void {
   const t = tgt(e)
-  const tab = t.closest<HTMLElement>('[data-tab]'); if (tab) { st.watchTab = tab.dataset.tab as Kind; save(); renderPanel(); refreshStreams(); return }
-  if (t.closest('#wAdd,#wAdd2')) return openSearch()
-  const more = t.closest<HTMLElement>('#wMore')
-  if (more) {
-    const tabName = TABS.find(x => x[0] === st.watchTab)?.[1] || ''
-    menuFrom(more, [{ icon: 'drag', label: '拖动行可以排序', disabled: true }, {
-      icon: 'trash', label: `清空「${tabName}」自选`, disabled: !st.watch[st.watchTab].length, run: () => {
-        const k = st.watchTab, bak = st.watch[k]; st.watch[k] = []; save(); renderPanel(); refreshStreams()
-        lastWatchUndo = () => { st.watch[k] = bak; save(); renderPanel(); refreshStreams() }
-        toast('已清空', '⌘Z 撤销', 'trash')
-      },
-    }]); return
-  }
+  if (st.panel === 'watch' && watchClick(e)) return
   const star = t.closest<HTMLElement>('[data-star]'); if (star) { toggleWatch(star.dataset.star || ''); return }
   const tr = t.closest<HTMLElement>('tr[data-sym]'); if (tr) return openSymbol(tr.dataset.sym || '')
   const sec = t.closest<HTMLElement>('[data-sector]'); if (sec) { hooks.openSector?.(sec.dataset.sector || ''); return }
@@ -933,7 +875,7 @@ function openAlert(price?: number): void {
 
 // ------------------------------------------------------------ 快捷键
 export const SHORTCUTS: [string, [string, string][]][] = [
-  ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['1 – 9', '栏上钉的第几个周期'], [', 再打数字', '换任意周期（如 7、240、1D、5S）'], ['↑ ↓', '自选里上一只 / 下一只'], ['⇧ ↵', '在搜索里加自选']]],
+  ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['1 – 9', '栏上钉的第几个周期'], [', 再打数字', '换任意周期（如 7、240、1D、5S）'], ['↑ ↓', '自选里上一只 / 下一只'], ['Home End', '自选列表里：第一只 / 最后一只'], ['空格 Delete', '自选列表里：收藏 / 移出（⌘ Z 撤销）'], ['⇧ ↵', '在搜索里加自选']]],
   ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt R', '重置视图'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标']]],
   ['画线', [['Alt T', '趋势线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt F', '斐波那契回撤'], ['Alt ⇧ R', '矩形'], ['⇧ 拖', '临时测量'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z / ⌘ ⇧ Z', '撤销 / 重做']]],
   ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['?', '这张表']]],
@@ -997,7 +939,7 @@ function onKey(e: KeyboardEvent): void {
   const cell = active(); if (!cell) return
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault()
-    if (!e.shiftKey && lastWatchUndo) { const u = lastWatchUndo; lastWatchUndo = null; u(); return }
+    const wu = e.shiftKey ? null : takeWatchUndo(); if (wu) { wu(); return }
     if (e.shiftKey) redo(); else undo()
     return
   }
@@ -1074,14 +1016,8 @@ function flushTicks(): void {
   tickRAF = 0
   const cur = cfg(active())?.symbol
   for (const [k, dir] of pendingTick) {
-    const tr = $(`#wTbl tr[data-sym="${k}"]`), s = sym(k)
-    if (tr && s) {
-      const p = $('[data-f="price"]', tr), pc = $('[data-f="pct"]', tr), v = $('[data-f="vol"]', tr)
-      if (p) { p.textContent = priceText(s); if (dir) { p.classList.remove('flash-up', 'flash-down'); void p.offsetWidth; p.classList.add(dir > 0 ? 'flash-up' : 'flash-down') } }
-      if (pc) { pc.textContent = pctText(s.pct); pc.className = `num ${cls(s.pct)} price-live` }
-      if (v) v.textContent = fmtCompact(s.vol)
-    }
-    if (k === cur && s) { patchDetail(); syncTitle() }
+    patchWatchRow(k, dir)
+    if (k === cur && sym(k)) { patchDetail(); syncTitle() }
   }
   pendingTick.clear()
   hooks.onTicks.forEach(f => f())
@@ -1125,6 +1061,11 @@ export async function initChart(): Promise<void> {
   $('#toolbar').addEventListener('click', onToolbarClick)
   $('#rail').addEventListener('click', onRailClick)
   $('#sidePanel').addEventListener('click', onPanelClick)
+  installWatch({
+    openSymbol: k => openSymbol(k), renderPanel, refreshStreams, openSearch: () => openSearch(),
+    current: () => cfg(active()).symbol, activeIndex: () => st.active, cellCount: () => cells.length,
+    collapsed: () => isCollapsed('watch'), collapseBtn,
+  })
   addEventListener('keydown', onKey)
   hooks.onSearch = openSearch
   hooks.onTheme.push(() => cells.forEach(c => c.chart.readTheme()))

@@ -1,4 +1,4 @@
-/* Hkline Web · 我的：账号（登录 / 注册 / 改密码 / 退出）、设备、外观、通用（行情线路）、通知、关于 */
+/* Hkline Web · 我的：账号（登录 / 注册 / 改密码 / 退出）、设备、外观、通用（行情线路、从 TradingView 导入自选）、通知、关于 */
 import { st, save } from '../app/store'
 import { hooks, applyTheme, renderHeader } from '../app/shell'
 import { $, I, esc, tgt } from '../ui/dom'
@@ -7,7 +7,8 @@ import { setRoute } from '../market'
 import { session, onSession } from '../account/session'
 import { login, logout, devices, kick, changePassword, errorText, type DeviceRow } from '../account/client'
 import { sh, pad } from '../util/format'
-import { openShortcuts } from './chart'
+import { openShortcuts, renderPanel, refreshStreams } from './chart'
+import { tvImportHTML, tvImportClick, tvImportChange, onTvImported } from '../watch/importPanel'
 import { reviewApi, errorText as reviewErrorText } from '../review/api'
 import { NO_KEY_TEXT, venueRows, type VenueRow } from '../trades/panel'
 import '../styles/account.css'
@@ -171,7 +172,8 @@ function render(): void {
     look: () => `<h2>外观</h2><p class="lede">跟手机端分开记，这台电脑自己的选择。</p>
       <div class="group">${row('皮肤', '和手机端同名的三套；K 线的红绿不跟皮肤走', seg('skin', st.skin, [['sage', '青苔 · 冷'], ['terra', '陶土 · 暖'], ['classic', '经典 · 白']]))}${row('深浅色', '', seg('theme', st.theme, [['light', '浅色'], ['dark', '深色']]))}${row('涨跌颜色', '', seg('updown', st.updown, [['red-up', '红涨绿跌'], ['green-up', '绿涨红跌']]))}</div>`,
     general: () => `<h2>通用</h2><p class="lede">时间统一用上海时间，不能改；日线在北京时间 8:00 换日。</p>
-      <div class="group">${row('行情线路', '只记在这台电脑上。网关走我们自己的服务器，直连连不上时手动切过去', seg('route', st.route, [['direct', '直连'], ['gateway', '网关']]))}</div>`,
+      <div class="group">${row('行情线路', '只记在这台电脑上。网关走我们自己的服务器，直连连不上时手动切过去', seg('route', st.route, [['direct', '直连'], ['gateway', '网关']]))}</div>
+      ${tvImportHTML()}`,
     about: () => `<h2>关于</h2><p class="lede">Hkline 网页版 ${VERSION} · 行情来自币安 U 本位合约</p><div class="group">${row('快捷键', '', '<button class="btn secondary sm" id="meKeys">查看</button>')}</div>`,
   }
   $('#meBody').innerHTML = body[st.meSection]()
@@ -205,8 +207,12 @@ export function initMe(): void {
       return
     }
     if (t.closest('#meKeys')) { openShortcuts(); return }
+    if (tvImportClick(e, render)) return
     if (t.closest('#meNotif')) void Notification.requestPermission().then(render)
   })
+  $('#page-me').addEventListener('change', e => { tvImportChange(e, render) })
+  $('#page-me').addEventListener('input', e => { if ((e.target as HTMLElement).id === 'tviText') tvImportChange(e, render) })
+  onTvImported(() => { renderPanel(); refreshStreams() })
   $('#page-me').addEventListener('submit', e => {
     const f = e.target as HTMLElement
     if (f.id === 'acctForm') { e.preventDefault(); void submitAuth() }

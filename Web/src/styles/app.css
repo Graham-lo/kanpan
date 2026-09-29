@@ -777,6 +777,40 @@ kbd {
 .wv-body { flex: 1; min-height: 0; }
 .widget-watch .tbl th { height: 24px; }
 .widget-watch.collapsed .wv-body { display: none; }
+.widget-watch.collapsed .wv-target { display: none; }
+/* 多图：列表打开到哪一格（跟着活动格走），24 高一行 */
+.wv-target { flex: none; height: 24px; display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s4); font-size: var(--t12); color: var(--text-2); border-bottom: 1px solid var(--line); }
+.wv-target .icon-16 { color: var(--accent-text); }
+.wv-target .sc { margin-left: auto; color: var(--text-3); font-family: var(--font-num); }
+/* 键盘光标：行内描边，不外扩（表格行外扩会被滚动容器裁掉） */
+.widget-watch .tbl tbody tr:focus { outline: none; }
+.widget-watch .tbl tbody tr:focus-visible td { box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
+.widget-watch .tbl tbody tr:focus-visible td:first-child { box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent), inset var(--stroke-mark) 0 0 var(--accent); }
+.widget-watch .tbl tbody tr:focus-visible td:last-child { box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent), inset -1px 0 0 var(--accent); }
+/* 空格取消的那一行：淡着留在原位，再按空格收回 */
+.widget-watch tr.wv-ghost td { opacity: .45; }
+.widget-watch tr.wv-ghost td:first-child { opacity: 1; }
+.widget-watch tr.wv-ghost .sym > :not(.wv-off) { opacity: .45; }
+.wv-off { color: var(--text-3); margin-left: auto; }
+/* 宽列（侧栏 ≥ 400）：品种列让出中文名 */
+/* 品种列吃掉剩下的宽度、中文名放不下就省略，数字列按内容宽；侧栏拖窄到 320 也不把成交额挤出去 */
+.widget-watch .tbl td:first-child { max-width: 0; width: 100%; }
+.widget-watch .tbl .sym { min-width: 0; }
+.widget-watch .tbl .sym > * { flex: none; }
+.widget-watch .tbl .sym .cn { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+/* 六列时一行要在 400 宽里放下：数字列 12 号字、格间距收到 4，首尾各留 8，代号后面的中文名收起 */
+.wv-wide .tbl td, .wv-wide .tbl th { padding: 0 var(--s1); }
+.wv-wide .tbl td { font-size: var(--t12); }
+.wv-wide .tbl td:first-child, .wv-wide .tbl th:first-child { padding-left: var(--s2); }
+.wv-wide .tbl td:last-child, .wv-wide .tbl th:last-child { padding-right: var(--s2); }
+.wv-wide .tbl .sym { gap: var(--s1); }
+.wv-wide .tbl .sym b { font-size: var(--t13); }
+.wv-wide .tbl .sym .cn { display: none; }
+/* 价格变动：文字闪一次涨跌色 150 ms */
+.wv-flash-up { animation: wvFlashUp 150ms linear; }
+.wv-flash-down { animation: wvFlashDown 150ms linear; }
+@keyframes wvFlashUp { 0%, 70% { color: var(--up-text); } }
+@keyframes wvFlashDown { 0%, 70% { color: var(--down-text); } }
 .scroll.no-bar { scrollbar-width: none; }
 .scroll.no-bar::-webkit-scrollbar { display: none; }
 
