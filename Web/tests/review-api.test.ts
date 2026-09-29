@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { st } from '../src/app/store'
+import { session } from '../src/account/session'
 import { ACCOUNT_KEY, ISSUER } from '../src/account/client'
 import { ReviewError, reviewApi } from '../src/review/api'
 
@@ -22,7 +22,7 @@ describe('复盘接口走账号模块的令牌', () => {
   let calls: { url: string; auth: string | null }[]
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage())
-    st.account = null
+    session.accessToken = null
     calls = []
     vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
       const auth = (init.headers as Record<string, string>)?.Authorization ?? null

@@ -1,0 +1,249 @@
+/* Hkline 手机网页版 · 设计令牌（照 iOS 逐值搬）
+ *
+ * 来源：
+ *   颜色  KanpanPresentation/Sources/KanpanPresentation/Palette.swift（六套种子 + ChartColors + canvas）
+ *         Kanpan/Kanpan/DesignSystem/PanelTheme.swift（界面强调色、图外文字涨跌色、badgeInk）
+ *         Kanpan/Kanpan/DesignSystem/PanelChrome.swift（controlLine）
+ *         Kanpan/Kanpan/Main/TabBar.swift（三支釉、灯座光）
+ *   尺寸  Kanpan/Kanpan/DesignSystem/DesignTokens.swift（TypeScale / Space / Inset / Radius / Hit）
+ *
+ * 全局开关都挂在 <html> 上（B、C 与各页依赖的合同，名字定了就不改）：
+ *   data-skin   = sage | terra | classic
+ *   data-theme  = light | dark        （store 里的 auto 由入口解析成二者之一再写上来）
+ *   data-updown = red-up | green-up   （红涨绿跌是出厂默认，对应 iOS Prefs.redUp = true）
+ *
+ * 令牌命名：
+ *   种子原值     --ground --app --chart --raised --raised2 --line --grid --hair --ink --ink2 --ink3
+ *                --amber（种子的暖金，图上那支）--accent（界面强调色 = iOS PanelTheme.amber）--danger
+ *                --palette-0..5（主图指标线）--sub-0..5（副图指标线）
+ *   图外文字涨跌 --up --down（PanelTheme.up/down：浅色三套用加深版 #1E8040 / #C9303E，已按 data-updown 对调）
+ *   K 线专用     --k-*（ChartColors：--k-up --k-down 是蜡烛本色，已对调；--k-bg --k-grid --k-axis …）
+ *   订单流       --of-contract-bid --of-contract-ask --of-spot-bid --of-spot-ask（按图区底亮度选，不对调）
+ *   危险色 --danger 不参与涨跌对调。
+ *
+ * 本文件由种子逐值写成（釉色的 lift 值按 TabBar.lift 同一支 HSB 算法预先算好），改色回 Palette.swift 对账。
+ */
+
+:root {
+  /* ---- 字（TypeScale）：用法 font: var(--t-body) ---- */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  --font-num: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --t-price: 500 22px/1.2 var(--font-ui);
+  --t-title: 600 17px/1.3 var(--font-ui);
+  --t-heading: 600 16px/1.3 var(--font-ui);
+  --t-body: 400 15px/1.35 var(--font-ui);
+  --t-body-emph: 500 15px/1.35 var(--font-ui);
+  --t-control: 500 13px/1.3 var(--font-ui);
+  --t-control-on: 600 13px/1.3 var(--font-ui);
+  --t-footnote: 400 13px/1.35 var(--font-ui);
+  --t-footnote-emph: 500 13px/1.35 var(--font-ui);
+  --t-caption: 400 12px/1.3 var(--font-ui);
+  --t-caption-emph: 500 12px/1.3 var(--font-ui);
+  --t-caption2: 400 11px/1.3 var(--font-ui);
+  --t-caption2-emph: 500 11px/1.3 var(--font-ui);
+  --t-number: 500 12px/1.3 var(--font-num);
+
+  /* ---- 间距（Space） ---- */
+  --s-xxs: 2px; --s-xs: 4px; --s-s: 8px; --s-m: 12px; --s-l: 16px; --s-xl: 20px; --s-xxl: 24px; --s-section: 32px;
+
+  /* ---- 内边距（Inset）：页面边距 ≥ 428 宽用 20，否则 16 ---- */
+  --inset-page: 16px; --inset-card: 16px; --inset-card-compact: 12px; --inset-row-v: 12px; --row-min: 44px;
+
+  /* ---- 圆角（Radius） ---- */
+  --r-xs: 4px; --r-s: 8px; --r-m: 12px; --r-l: 16px;
+
+  /* ---- 尺寸（Hit / Size） ---- */
+  --hit: 44px; --pill-h: 28px; --icon-disc: 32px; --badge: 28px; --list-badge: 32px; --chevron: 12px; --empty-glyph: 36px;
+  --disabled-opacity: 0.4;
+
+  /* ---- 安全区与底栏 ---- */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* 底栏高：padding-top 8 + 格高 40 + 上下 5 = 58，另加 home 条 */
+  --tabbar-h: 58px;
+  /* 滚动页底部要让出的高度（TabBar.fadeClearance 50 + 栏高 + home 条） */
+  --tabbar-clearance: calc(var(--tabbar-h) + var(--safe-bottom) + 50px);
+
+  /* ---- 动效（照 iOS spring response 0.34 / damping 0.82 的观感） ---- */
+  --ease-spring: cubic-bezier(0.32, 0.72, 0.24, 1.04);
+  --ease-out: cubic-bezier(0.25, 0.8, 0.3, 1);
+  --dur-fast: 160ms; --dur: 280ms; --dur-page: 340ms;
+
+  color-scheme: light;
+}
+@media (min-width: 428px) { :root { --inset-page: 20px } }
+html[data-theme="dark"] { color-scheme: dark }
+
+/* 青苔 · 浅 */
+html[data-skin="sage"][data-theme="light"] {
+  --ground: #C3D6CA; --app: #F3F7F4; --chart: #F3F7F4; --raised: #FFFFFF; --raised2: #E7EFE9;
+  --line: #D6E3DA; --grid: #E2EBE5; --hair: #14211B0F;
+  --ink: #14211B; --ink2: #4E6158; --ink3: #606F67; --stale: #7D8A83;
+  --amber: #B57C28; --accent: #2E7D6B; --danger: #B93A2E;
+  --accent-soft: #2E7D6B1A; --accent-line: #2E7D6B66;
+  --badge-ink: #FFFFFF; --control-line: #839088; --seg-on: #FFFFFF;
+  --veil: #F3F7F4F0; --scrim: #14211B4D;
+  --palette-0: #FFB400; --palette-1: #E849B9; --palette-2: #6EBF26; --palette-3: #F55B58; --palette-4: #1478C8; --palette-5: #2FD2B2;
+  --sub-0: #2FD2B2; --sub-1: #FFB400; --sub-2: #E849B9; --sub-3: #1478C8; --sub-4: #6EBF26; --sub-5: #F55B58;
+  /* 涨跌原值（未对调）：seed 为蜡烛本色，ink 为图外文字色 */
+  --seed-up: #36B257; --seed-down: #E64552; --ink-pair-up: #1E8040; --ink-pair-down: #C9303E;
+  /* K 线画布（Palette.canvas / ChartColors） */
+  --k-bg: #F3F7F4; --k-grid: #D6E3DA; --k-axis: #E2EBE5; --k-text: #606F67; --k-dim: #606F6799; --k-ink: #14211B; --k-cross: #4E6158;
+  --k-amber: #B57C28; --k-band: #1478C8; --k-oi: #2FD2B2; --k-oi-fill: #2FD2B22E;
+  --k-chip: #F3F7F4; --k-panel: #F3F7F4; --k-cross-bg: #14211B; --k-cross-ink: #F3F7F4; --k-hair: #14211B0F;
+  --k-amber-soft: #B57C2816; --k-amber-line: #B57C2855;
+  --of-contract-bid: #0A78C2; --of-contract-ask: #8A149F; --of-spot-bid: #76850A; --of-spot-ask: #8566E8;
+  /* 底栏釉（TabBar.lift）与灯座光 */
+  --glaze-accent-a: #5FB4A0; --glaze-accent-b: #2E7D6B;
+  --glaze-accent-light-a: #6DC1AE; --glaze-accent-light-b: #3F927F;
+  --glaze-gold-a: #CE9A4E; --glaze-gold-b: #B57C28;
+  --glow: #2E7D6B21; --glyph-shadow: #0000001F;
+  --toast-shadow: #0000001F;
+}
+
+/* 青苔 · 深 */
+html[data-skin="sage"][data-theme="dark"] {
+  --ground: #060A08; --app: #0B120F; --chart: #0B120F; --raised: #131C18; --raised2: #1A241F;
+  --line: #25332C; --grid: #1A241F; --hair: #FFFFFF0A;
+  --ink: #E9F2EC; --ink2: #A5B8AE; --ink3: #7B8D85; --stale: #5C6B64;
+  --amber: #E0A544; --accent: #4FB69C; --danger: #F08A80;
+  --accent-soft: #4FB69C24; --accent-line: #4FB69C66;
+  --badge-ink: #060A08; --control-line: #5E6A64; --seg-on: #131C18;
+  --veil: #0B120FEE; --scrim: #060A08D9;
+  --palette-0: #E0A544; --palette-1: #7D9AE8; --palette-2: #4FB69C; --palette-3: #E894B4; --palette-4: #BDAEDC; --palette-5: #7FD0FF;
+  --sub-0: #E0A544; --sub-1: #7D9AE8; --sub-2: #4FB69C; --sub-3: #E894B4; --sub-4: #BDAEDC; --sub-5: #7FD0FF;
+  /* 涨跌原值（未对调）：seed 为蜡烛本色，ink 为图外文字色 */
+  --seed-up: #4FB69C; --seed-down: #E36159; --ink-pair-up: #4FB69C; --ink-pair-down: #E36159;
+  /* K 线画布（Palette.canvas / ChartColors） */
+  --k-bg: #0B120F; --k-grid: #25332C; --k-axis: #1A241F; --k-text: #7B8D85; --k-dim: #7B8D858C; --k-ink: #E9F2EC; --k-cross: #A5B8AE;
+  --k-amber: #E0A544; --k-band: #BDAEDC; --k-oi: #7FD0FF; --k-oi-fill: #7FD0FF33;
+  --k-chip: #060A08; --k-panel: #0B120F; --k-cross-bg: #25332C; --k-cross-ink: #E9F2EC; --k-hair: #FFFFFF0A;
+  --k-amber-soft: #E0A5441A; --k-amber-line: #E0A54455;
+  --of-contract-bid: #5A7DFF; --of-contract-ask: #E04BF0; --of-spot-bid: #CCE21E; --of-spot-ask: #B89CFF;
+  /* 底栏釉（TabBar.lift）与灯座光 */
+  --glaze-accent-a: #7BD5BE; --glaze-accent-b: #4FB69C;
+  --glaze-accent-light-a: #86DCC6; --glaze-accent-light-b: #5FC2A9;
+  --glaze-gold-a: #EBB969; --glaze-gold-b: #E0A544;
+  --glow: #4FB69C33; --glyph-shadow: #00000042;
+  --toast-shadow: #00000080;
+}
+
+/* 陶土 · 浅 */
+html[data-skin="terra"][data-theme="light"] {
+  --ground: #D9C7B4; --app: #FBF6F0; --chart: #FBF6F0; --raised: #FFFFFF; --raised2: #F2E8DE;
+  --line: #E7DACB; --grid: #F0E6DA; --hair: #241A130F;
+  --ink: #241A13; --ink2: #6E5C4D; --ink3: #756659; --stale: #92867A;
+  --amber: #B37B25; --accent: #B25735; --danger: #AE3F2A;
+  --accent-soft: #B257351A; --accent-line: #B2573566;
+  --badge-ink: #FFFFFF; --control-line: #998D81; --seg-on: #FFFFFF;
+  --veil: #FBF6F0F0; --scrim: #241A134D;
+  --palette-0: #FFB400; --palette-1: #E849B9; --palette-2: #6EBF26; --palette-3: #F55B58; --palette-4: #1478C8; --palette-5: #2FD2B2;
+  --sub-0: #2FD2B2; --sub-1: #FFB400; --sub-2: #E849B9; --sub-3: #1478C8; --sub-4: #6EBF26; --sub-5: #F55B58;
+  /* 涨跌原值（未对调）：seed 为蜡烛本色，ink 为图外文字色 */
+  --seed-up: #36B257; --seed-down: #E64552; --ink-pair-up: #1E8040; --ink-pair-down: #C9303E;
+  /* K 线画布（Palette.canvas / ChartColors） */
+  --k-bg: #FBF6F0; --k-grid: #E7DACB; --k-axis: #F0E6DA; --k-text: #756659; --k-dim: #75665999; --k-ink: #241A13; --k-cross: #6E5C4D;
+  --k-amber: #B37B25; --k-band: #1478C8; --k-oi: #2FD2B2; --k-oi-fill: #2FD2B22E;
+  --k-chip: #FBF6F0; --k-panel: #FBF6F0; --k-cross-bg: #241A13; --k-cross-ink: #FBF6F0; --k-hair: #241A130F;
+  --k-amber-soft: #B37B2516; --k-amber-line: #B37B2555;
+  --of-contract-bid: #0A78C2; --of-contract-ask: #8A149F; --of-spot-bid: #76850A; --of-spot-ask: #8566E8;
+  /* 底栏釉（TabBar.lift）与灯座光 */
+  --glaze-accent-a: #D28264; --glaze-accent-b: #B25735;
+  --glaze-accent-light-a: #DA8D71; --glaze-accent-light-b: #BE6645;
+  --glaze-gold-a: #CD9A4B; --glaze-gold-b: #B37B25;
+  --glow: #B2573521; --glyph-shadow: #0000001F;
+  --toast-shadow: #0000001F;
+}
+
+/* 陶土 · 深 */
+html[data-skin="terra"][data-theme="dark"] {
+  --ground: #0C0805; --app: #16100C; --chart: #16100C; --raised: #211812; --raised2: #2A1F17;
+  --line: #37281D; --grid: #2A1F17; --hair: #FFFFFF0A;
+  --ink: #F7EFE6; --ink2: #C2AC98; --ink3: #958576; --stale: #736559;
+  --amber: #E0A544; --accent: #E2874F; --danger: #F0947C;
+  --accent-soft: #E2874F24; --accent-line: #E2874F66;
+  --badge-ink: #0C0805; --control-line: #716459; --seg-on: #211812;
+  --veil: #16100CEE; --scrim: #0C0805D9;
+  --palette-0: #E0A544; --palette-1: #9B8AE0; --palette-2: #3FA783; --palette-3: #E894B4; --palette-4: #C0AEE0; --palette-5: #85B8D6;
+  --sub-0: #E0A544; --sub-1: #9B8AE0; --sub-2: #3FA783; --sub-3: #E894B4; --sub-4: #C0AEE0; --sub-5: #85B8D6;
+  /* 涨跌原值（未对调）：seed 为蜡烛本色，ink 为图外文字色 */
+  --seed-up: #3FA783; --seed-down: #E0584A; --ink-pair-up: #3FA783; --ink-pair-down: #E0584A;
+  /* K 线画布（Palette.canvas / ChartColors） */
+  --k-bg: #16100C; --k-grid: #37281D; --k-axis: #2A1F17; --k-text: #958576; --k-dim: #9585768C; --k-ink: #F7EFE6; --k-cross: #C2AC98;
+  --k-amber: #E0A544; --k-band: #C0AEE0; --k-oi: #85B8D6; --k-oi-fill: #85B8D633;
+  --k-chip: #0C0805; --k-panel: #16100C; --k-cross-bg: #37281D; --k-cross-ink: #F7EFE6; --k-hair: #FFFFFF0A;
+  --k-amber-soft: #E0A5441A; --k-amber-line: #E0A54455;
+  --of-contract-bid: #5A7DFF; --of-contract-ask: #E04BF0; --of-spot-bid: #CCE21E; --of-spot-ask: #B89CFF;
+  /* 底栏釉（TabBar.lift）与灯座光 */
+  --glaze-accent-a: #EEA67A; --glaze-accent-b: #E2874F;
+  --glaze-accent-light-a: #F1AE85; --glaze-accent-light-b: #E7935F;
+  --glaze-gold-a: #EBB969; --glaze-gold-b: #E0A544;
+  --glow: #E2874F33; --glyph-shadow: #00000042;
+  --toast-shadow: #00000080;
+}
+
+/* 经典 · 浅 */
+html[data-skin="classic"][data-theme="light"] {
+  --ground: #F7F8FA; --app: #FFFFFF; --chart: #FFFFFF; --raised: #FFFFFF; --raised2: #F3F5F7;
+  --line: #EAEAEA; --grid: #EAEAEA; --hair: #14211B0F;
+  --ink: #14211B; --ink2: #4E6158; --ink3: #606F67; --stale: #85908A;
+  --amber: #B57C28; --accent: #2E7D6B; --danger: #C62828;
+  --accent-soft: #2E7D6B1A; --accent-line: #2E7D6B66;
+  --badge-ink: #FFFFFF; --control-line: #909693; --seg-on: #FFFFFF;
+  --veil: #FFFFFFF0; --scrim: #14211B4D;
+  --palette-0: #FFB400; --palette-1: #E849B9; --palette-2: #6EBF26; --palette-3: #F55B58; --palette-4: #1478C8; --palette-5: #2FD2B2;
+  --sub-0: #2FD2B2; --sub-1: #FFB400; --sub-2: #E849B9; --sub-3: #1478C8; --sub-4: #6EBF26; --sub-5: #F55B58;
+  /* 涨跌原值（未对调）：seed 为蜡烛本色，ink 为图外文字色 */
+  --seed-up: #36B257; --seed-down: #E64552; --ink-pair-up: #1E8040; --ink-pair-down: #C9303E;
+  /* K 线画布（Palette.canvas / ChartColors） */
+  --k-bg: #FFFFFF; --k-grid: #C5C5C5; --k-axis: #F2F4F7; --k-text: #7A8899; --k-dim: #B7BFC8; --k-ink: #292D33; --k-cross: #7A8899;
+  --k-amber: #B57C28; --k-band: #1478C8; --k-oi: #2FD2B2; --k-oi-fill: #2FD2B22E;
+  --k-chip: #FFFFFF; --k-panel: #FFFFFF; --k-cross-bg: #14211B; --k-cross-ink: #FFFFFF; --k-hair: #14211B0F;
+  --k-amber-soft: #B57C2816; --k-amber-line: #B57C2855;
+  --of-contract-bid: #0A78C2; --of-contract-ask: #8A149F; --of-spot-bid: #76850A; --of-spot-ask: #8566E8;
+  /* 底栏釉（TabBar.lift）与灯座光 */
+  --glaze-accent-a: #5FB4A0; --glaze-accent-b: #2E7D6B;
+  --glaze-accent-light-a: #6DC1AE; --glaze-accent-light-b: #3F927F;
+  --glaze-gold-a: #CE9A4E; --glaze-gold-b: #B57C28;
+  --glow: #2E7D6B21; --glyph-shadow: #0000001F;
+  --toast-shadow: #0000001F;
+}
+
+/* 经典 · 深 */
+html[data-skin="classic"][data-theme="dark"] {
+  --ground: #090C14; --app: #0D111C; --chart: #0D111C; --raised: #202126; --raised2: #303442;
+  --line: #20232E; --grid: #20232E; --hair: #FFFFFF0A;
+  --ink: #E9F2EC; --ink2: #A5B8AE; --ink3: #7B8D85; --stale: #5C6A68;
+  --amber: #E0A544; --accent: #4FB69C; --danger: #EF7A72;
+  --accent-soft: #4FB69C24; --accent-line: #4FB69C66;
+  --badge-ink: #090C14; --control-line: #686E72; --seg-on: #202126;
+  --veil: #0D111CEE; --scrim: #090C14D9;
+  --palette-0: #FFB400; --palette-1: #E849B9; --palette-2: #B2DF8A; --palette-3: #FB9A99; --palette-4: #1478C8; --palette-5: #2FD2B2;
+  --sub-0: #2FD2B2; --sub-1: #FFB400; --sub-2: #E849B9; --sub-3: #1478C8; --sub-4: #B2DF8A; --sub-5: #FB9A99;
+  /* 涨跌原值（未对调）：seed 为蜡烛本色，ink 为图外文字色 */
+  --seed-up: #2F9347; --seed-down: #CC3333; --ink-pair-up: #2F9347; --ink-pair-down: #E0524F;
+  /* K 线画布（Palette.canvas / ChartColors） */
+  --k-bg: #0D111C; --k-grid: #1C2236; --k-axis: #191C21; --k-text: #7A8899; --k-dim: #515A66; --k-ink: #E6EAF2; --k-cross: #FFFFFF;
+  --k-amber: #E0A544; --k-band: #1478C8; --k-oi: #2FD2B2; --k-oi-fill: #2FD2B233;
+  --k-chip: #090C14; --k-panel: #0D111C; --k-cross-bg: #20232E; --k-cross-ink: #E9F2EC; --k-hair: #FFFFFF0A;
+  --k-amber-soft: #E0A5441A; --k-amber-line: #E0A54455;
+  --of-contract-bid: #5A7DFF; --of-contract-ask: #E04BF0; --of-spot-bid: #CCE21E; --of-spot-ask: #B89CFF;
+  /* 底栏釉（TabBar.lift）与灯座光 */
+  --glaze-accent-a: #7BD5BE; --glaze-accent-b: #4FB69C;
+  --glaze-accent-light-a: #86DCC6; --glaze-accent-light-b: #5FC2A9;
+  --glaze-gold-a: #EBB969; --glaze-gold-b: #E0A544;
+  --glow: #4FB69C33; --glyph-shadow: #00000042;
+  --toast-shadow: #00000080;
+}
+
+/* 涨跌对调：红涨绿跌（出厂）时「涨」取种子里那支红（seed.down），绿涨红跌时照种子原样。危险色不参与。 */
+html, html[data-updown="red-up"] {
+  --up: var(--ink-pair-down); --down: var(--ink-pair-up);
+  --k-up: var(--seed-down); --k-down: var(--seed-up);
+}
+html[data-updown="green-up"] {
+  --up: var(--ink-pair-up); --down: var(--ink-pair-down);
+  --k-up: var(--seed-up); --k-down: var(--seed-down);
+}

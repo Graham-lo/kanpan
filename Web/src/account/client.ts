@@ -1,6 +1,8 @@
 /* Hkline Web · 账号客户端（Backend/kanpan-api/src/auth.rs）
  *
- * - 只有用户名 + 密码；设备类别恒为 desktop（服务端「每类一台」：另一台电脑登录会把这里顶下去）。
+ * - 只有用户名 + 密码；设备类别默认 desktop（服务端「每类一台」：另一台电脑登录会把这里顶下去）。
+ *   手机网页版（/web/m/）在入口最早处调 `configureAccount({ keyPrefix: 'hkline-m', kind: 'phone' })`：
+ *   键名换一套（同源的 /web/ 与 /web/m/ 共用 localStorage，不能互相覆盖），设备类别按手机算。
  * - 令牌存 localStorage，带签发主机（issuer）：换了主机的旧令牌一律丢掉。
  * - 设备 id / secret 第一次生成后固定，退登也不换（服务端拿它绑定 refresh）。
  * - refresh 单飞：同一浏览器的多个标签页用 Web Locks 排队，拿到锁之后先看别人是不是已经换过了；
@@ -12,8 +14,22 @@ import { uuid } from '../sync/types'
 import { endSession, setSession, type Ended } from './session'
 
 export const ISSUER = 'kanpan.107-174-172-10.sslip.io'
+/** PC 版的键名（默认值；测试与回归脚本按这个名字读写）。当前实际用的键见 `accountKey()` */
 export const ACCOUNT_KEY = 'hkline-web-account-v1'
-const DEVICE_KEY = 'hkline-web-device-v1'
+
+export type DeviceKind = 'desktop' | 'phone' | 'tablet'
+export interface AccountConfig { keyPrefix: string; kind: DeviceKind }
+const config: AccountConfig = { keyPrefix: 'hkline-web', kind: 'desktop' }
+
+/** 换一套键名与设备类别。必须在 `resume()` / 任何登录请求之前调用（键名在每次读写时现取，不怕 import 顺序） */
+export function configureAccount(c: Partial<AccountConfig>): void {
+  if (c.keyPrefix) config.keyPrefix = c.keyPrefix
+  if (c.kind) config.kind = c.kind
+}
+export function accountConfig(): Readonly<AccountConfig> { return config }
+/** 当前这一端存会话的 localStorage 键（PC：hkline-web-account-v1，手机：hkline-m-account-v1） */
+export function accountKey(): string { return config.keyPrefix + '-account-v1' }
+function deviceKey(): string { return config.keyPrefix + '-device-v1' }
 const LIFETIME_CAP = 15 * 60e3
 const EARLY = 30e3
 
@@ -30,7 +46,7 @@ export interface Stored {
   pending?: { requestId: string; refreshToken: string }
 }
 
-export interface Device { id: string; name: string; secret: string; kind: 'desktop' }
+export interface Device { id: string; name: string; secret: string; kind: DeviceKind }
 
 export class ApiError extends Error {
   status: number; code: string; deviceKind?: string
@@ -43,31 +59,31 @@ function ls(): Storage | null { try { return globalThis.localStorage ?? null } c
 
 export function readStored(): Stored | null {
   try {
-    const v = JSON.parse(ls()?.getItem(ACCOUNT_KEY) || 'null') as Stored | null
+    const v = JSON.parse(ls()?.getItem(accountKey()) || 'null') as Stored | null
     if (!v || v.issuer !== ISSUER || !v.refreshToken || !v.userId) return null
     return v
   } catch { return null }
 }
 function writeStored(v: Stored | null): void {
-  try { if (v) ls()?.setItem(ACCOUNT_KEY, JSON.stringify(v)); else ls()?.removeItem(ACCOUNT_KEY) } catch { /* 存储满了 */ }
+  try { if (v) ls()?.setItem(accountKey(), JSON.stringify(v)); else ls()?.removeItem(accountKey()) } catch { /* 存储满了 */ }
 }
 
 function browserName(): string {
   const ua = globalThis.navigator?.userAgent || ''
   const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '浏览器'
-  const os = /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
   return ['网页', b, os].filter(Boolean).join(' · ')
 }
 
 export function device(): Device {
   try {
-    const v = JSON.parse(ls()?.getItem(DEVICE_KEY) || 'null') as Partial<Device> | null
-    if (v?.id && v.secret && v.secret.length >= 32) return { id: v.id, secret: v.secret, name: browserName(), kind: 'desktop' }
+    const v = JSON.parse(ls()?.getItem(deviceKey()) || 'null') as Partial<Device> | null
+    if (v?.id && v.secret && v.secret.length >= 32) return { id: v.id, secret: v.secret, name: browserName(), kind: config.kind }
   } catch { /* 坏了就重来 */ }
   const b = new Uint8Array(32)
   globalThis.crypto.getRandomValues(b)
-  const d: Device = { id: uuid(), secret: [...b].map(x => x.toString(16).padStart(2, '0')).join(''), name: browserName(), kind: 'desktop' }
-  try { ls()?.setItem(DEVICE_KEY, JSON.stringify({ id: d.id, secret: d.secret })) } catch { /* 只能这一次用 */ }
+  const d: Device = { id: uuid(), secret: [...b].map(x => x.toString(16).padStart(2, '0')).join(''), name: browserName(), kind: config.kind }
+  try { ls()?.setItem(deviceKey(), JSON.stringify({ id: d.id, secret: d.secret })) } catch { /* 只能这一次用 */ }
   return d
 }
 
@@ -118,7 +134,7 @@ export function logout(): void {
 }
 
 function end(e: ApiError): never {
-  const why: Ended = e.code === 'session_replaced' ? { replaced: e.deviceKind || 'desktop' } : 'expired'
+  const why: Ended = e.code === 'session_replaced' ? { replaced: e.deviceKind || config.kind } : 'expired'
   writeStored(null)
   endSession(why)
   throw e
@@ -130,7 +146,9 @@ let inflight: Promise<Stored> | null = null
 
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   const locks = (globalThis.navigator as Navigator | undefined)?.locks
-  if (locks?.request) return locks.request('hkline-refresh', fn) as Promise<T>
+  // 锁名跟键前缀走：PC 与手机网页版同源，但各换各的令牌，不必互相排队
+  const name = config.keyPrefix === 'hkline-web' ? 'hkline-refresh' : config.keyPrefix + '-refresh'
+  if (locks?.request) return locks.request(name, fn) as Promise<T>
   return fn()
 }
 
@@ -184,7 +202,7 @@ export async function authed<T>(method: string, path: string, body?: unknown, he
   }
 }
 
-// 页面开着时提前换好 access，别的模块（复盘页）同步读 st.account.accessToken 也拿得到能用的
+// 页面开着时提前换好 access，别的模块（复盘页）同步读 session.accessToken 也拿得到能用的
 let timer: ReturnType<typeof setTimeout> | null = null
 export function scheduleRefresh(): void {
   if (timer) clearTimeout(timer)
@@ -220,10 +238,10 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export function resume(): void {
   const v = readStored()
   if (v) { setSession(v); scheduleRefresh() }
-  else { try { if (ls()?.getItem(ACCOUNT_KEY)) writeStored(null) } catch { /* 忽略 */ } }
+  else { try { if (ls()?.getItem(accountKey())) writeStored(null) } catch { /* 忽略 */ } }
   // 别的标签页登录 / 退登 / 换了令牌
   globalThis.addEventListener?.('storage', e => {
-    if (e.key !== ACCOUNT_KEY) return
+    if (e.key !== accountKey()) return
     const n = readStored()
     if (n) setSession(n); else endSession(null)
     scheduleRefresh()

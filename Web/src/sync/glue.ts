@@ -22,11 +22,9 @@ import { type Applied, type Edited, type Prints, OWNED, applyInto, captureInto, 
 import { type Ctx, alertId } from './codec'
 import { Engine, type Transport } from './engine'
 import { SyncStore, resumeArchive, serialize } from './store'
+import { syncKeys } from './keys'
 import { type ChangesPage, type Page, type PushResponse, emptyArchive } from './types'
 
-const ARCHIVE_KEY = 'hkline-web-sync-v1:'
-const OWNER_KEY = 'hkline-web-sync-owner'
-const EDITED_KEY = 'hkline-web-edited-v1'
 const POLL = 15e3
 const FULL_EVERY = 5 * 60e3
 const PUSH_DELAY = 400
@@ -56,7 +54,7 @@ function lsSet(k: string, v: string): void { try { localStorage.setItem(k, v) } 
 // ───────── 本机「最后一次改」的时刻（没登录时也记，首次对上时比谁新） ─────────
 
 function readEdited(): Edited {
-  try { const v = JSON.parse(lsGet(EDITED_KEY) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0 } } catch { /* 坏了当没改过 */ }
+  try { const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0 } } catch { /* 坏了当没改过 */ }
   return { settings: 0, favorites: 0 }
 }
 
@@ -86,7 +84,7 @@ function persist(): void {
   persistQueued = true
   queueMicrotask(() => {
     persistQueued = false
-    if (store && uid) lsSet(ARCHIVE_KEY + uid, serialize(store.a))
+    if (store && uid) lsSet(syncKeys().archive + uid, serialize(store.a))
   })
 }
 
@@ -171,7 +169,7 @@ async function firstSync(e: Engine, override: boolean): Promise<void> {
   fp = {}
   refreshUI(r)
   fp = {}
-  lsSet(OWNER_KEY, uid!)
+  lsSet(syncKeys().owner, uid!)
   clearDrawingsSuspect() // 并集合并过了：本机 ⊇ 云端
   capture()
   persist()
@@ -179,8 +177,8 @@ async function firstSync(e: Engine, override: boolean): Promise<void> {
 }
 
 async function lead(id: string): Promise<void> {
-  const owner = lsGet(OWNER_KEY)
-  const saved = resumeArchive(owner, id, lsGet(ARCHIVE_KEY + id))
+  const owner = lsGet(syncKeys().owner)
+  const saved = resumeArchive(owner, id, lsGet(syncKeys().archive + id))
   const fresh = !saved || saved.cursor == null
   store = new SyncStore(saved ?? emptyArchive(), device().id)
   store.onChange = persist
@@ -213,7 +211,7 @@ function start(): void {
   const signal = abort.signal
   const locks = (globalThis.navigator as Navigator | undefined)?.locks
   if (!locks?.request) { void lead(id); return }
-  locks.request('hkline-sync:' + id, { signal }, async () => {
+  locks.request(syncKeys().lock + id, { signal }, async () => {
     if (signal.aborted) return
     await lead(id)
     await new Promise<void>(r => { release = r })
@@ -225,7 +223,7 @@ function stop(): void {
   if (pushTimer) clearTimeout(pushTimer)
   if (pollTimer) clearInterval(pollTimer)
   pushTimer = pollTimer = null
-  if (store && uid && !initial) lsSet(ARCHIVE_KEY + uid, serialize(store.a))
+  if (store && uid && !initial) lsSet(syncKeys().archive + uid, serialize(store.a))
   abort?.abort(); abort = null
   release?.(); release = null
   store = null; engine = null; uid = null; initial = false; fp = {}
@@ -241,7 +239,7 @@ export function initSync(): void {
       const ed = readEdited()
       if (now.settings !== base.settings) ed.settings = Date.now()
       if (now.favorites !== base.favorites && ctx.ready) ed.favorites = Date.now()
-      lsSet(EDITED_KEY, JSON.stringify(ed))
+      lsSet(syncKeys().edited, JSON.stringify(ed))
     }
     base = now
     if (!store || initial || applying) return

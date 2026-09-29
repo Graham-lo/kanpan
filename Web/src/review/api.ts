@@ -4,7 +4,7 @@
  * 成功回 {"data": …}，失败回 {"error": {"code": "…"}}；改动类请求必须带 Idempotency-Key。
  * 登录着时走账号模块的 authed（续期、被拒重试、被顶掉都由它管）；只有调试令牌才原样带上。
  */
-import { st } from '../app/store'
+import { session } from '../account/session'
 import { ApiError, authed, readStored } from '../account/client'
 import { IV_MS } from '../util/format'
 import { REST, j } from '../market/rest'
@@ -15,9 +15,9 @@ import type { ChartRange, Match, SavedMatch, SearchResults, SearchStatus, Statis
 const BASE = '/v1/native-review'
 const DEV_TOKEN_KEY = 'hkline-review-dev-token'
 
-/** 访问令牌：账号模块登录后放在 st.account.accessToken */
+/** 访问令牌：账号模块登录后放在 session.accessToken */
 export function reviewToken(): string | null {
-  const t = (st as unknown as { account?: { accessToken?: string } }).account?.accessToken
+  const t = session.accessToken
   if (t) return t
   // —— 调试入口（只在 store 里没有令牌时才看）——
   // 网页版登录接好之前，开发与验收截图用：地址栏带 ?reviewToken=…，或在 localStorage 里放
@@ -72,7 +72,7 @@ const TIMEOUT = 15000
 async function call<T>(method: string, path: string, body?: unknown, idem?: string | boolean): Promise<T> {
   const idemHeaders: Record<string, string> = idem ? { 'Idempotency-Key': typeof idem === 'string' ? idem : uuid() } : {}
   // 账号模块登录着：走它的 authed（access 到期先换、被拒换一次再试、被顶掉收尾）。
-  // 不能直接拿 st.account.accessToken：浏览器关了一阵再打开，那把 access 早过期了，
+  // 不能直接拿 session.accessToken：浏览器关了一阵再打开，那把 access 早过期了，
   // 页面第一时间进复盘就会被判「登录已过期」，而 refresh 其实还有效。
   if (readStored()) {
     let timer: ReturnType<typeof setTimeout> | undefined
