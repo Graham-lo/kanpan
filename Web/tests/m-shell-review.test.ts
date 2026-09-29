@@ -86,3 +86,28 @@ describe('两个标签页共用 hkline-m-v1 / hkline-m-drawings-v1（m/app/tabGu
     expect(D.drawingBook.items('BTCUSDT').map(d => d.id)).toEqual(['dB'])
   })
 })
+
+describe('账号设备身份（account/client.device）', () => {
+  it('存储写不进去（满了 / 无痕）：同一页里每次拿到的仍是同一个设备 id 与 secret（换令牌时对得上，不被 401 踢下线）', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError') }, removeItem: () => {} })
+    vi.resetModules()
+    const A = await import('../src/account/client')
+    A.configureAccount({ keyPrefix: 'hkline-m', kind: 'phone' })
+    const a = A.device(), b = A.device()
+    expect(b.id).toBe(a.id)
+    expect(b.secret).toBe(a.secret)
+    expect(a.kind).toBe('phone')
+  })
+
+  it('存档被清掉后又能写了：把内存里那一份写回去，而不是换一个新的', async () => {
+    const { mem, api } = memStorage()
+    vi.stubGlobal('localStorage', api)
+    vi.resetModules()
+    const A = await import('../src/account/client')
+    A.configureAccount({ keyPrefix: 'hkline-m', kind: 'phone' })
+    const a = A.device()
+    mem.clear()
+    expect(A.device().id).toBe(a.id)
+    expect(JSON.parse(mem.get('hkline-m-device-v1')!).id).toBe(a.id)
+  })
+})

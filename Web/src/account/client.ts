@@ -75,16 +75,25 @@ function browserName(): string {
   return ['网页', b, os].filter(Boolean).join(' · ')
 }
 
+/** 这一页里已经定下的设备身份（按键前缀）：存储写不进去（满了、无痕模式）时也保证整页用同一个，
+ *  否则每次调用都换一个新 id / secret——登录时绑的那台和 15 分钟后换令牌报的对不上，服务端 401 把人踢下线，
+ *  同步账本的 deviceId 也每开一次换一个 */
+const minted = new Map<string, { id: string; secret: string }>()
 export function device(): Device {
+  const key = deviceKey()
+  const make = (v: { id: string; secret: string }): Device => ({ id: v.id, secret: v.secret, name: browserName(), kind: config.kind })
   try {
-    const v = JSON.parse(ls()?.getItem(deviceKey()) || 'null') as Partial<Device> | null
-    if (v?.id && v.secret && v.secret.length >= 32) return { id: v.id, secret: v.secret, name: browserName(), kind: config.kind }
+    const v = JSON.parse(ls()?.getItem(key) || 'null') as Partial<Device> | null
+    if (v?.id && v.secret && v.secret.length >= 32) { minted.set(key, { id: v.id, secret: v.secret }); return make({ id: v.id, secret: v.secret }) }
   } catch { /* 坏了就重来 */ }
+  const had = minted.get(key)
+  if (had) { try { ls()?.setItem(key, JSON.stringify(had)) } catch { /* 还是写不进：内存里这一份接着用 */ } return make(had) }
   const b = new Uint8Array(32)
   globalThis.crypto.getRandomValues(b)
-  const d: Device = { id: uuid(), secret: [...b].map(x => x.toString(16).padStart(2, '0')).join(''), name: browserName(), kind: config.kind }
-  try { ls()?.setItem(deviceKey(), JSON.stringify({ id: d.id, secret: d.secret })) } catch { /* 只能这一次用 */ }
-  return d
+  const d = { id: uuid(), secret: [...b].map(x => x.toString(16).padStart(2, '0')).join('') }
+  minted.set(key, d)
+  try { ls()?.setItem(key, JSON.stringify(d)) } catch { /* 写不进：这一页用内存里这一份 */ }
+  return make(d)
 }
 
 // ───────── 请求 ─────────
