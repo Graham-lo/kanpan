@@ -7,7 +7,7 @@
  * 加自选只在搜索结果行的星上（一个动作一个入口）。
  */
 import '../styles/favorites.css'
-import { st, save } from '../app/store'
+import { st, save, subscribe } from '../app/store'
 import { openSymbol, hooks, trackScroll, restoreScroll, type PageHandle } from '../app/shell'
 import { icon } from '../ui/icons'
 import { openMenu, openSheet, type MenuItem } from '../ui/sheet'
@@ -240,6 +240,8 @@ export function initFavorites(root: HTMLElement): PageHandle {
   scroll.addEventListener('scroll', () => closeOpenSwipe(), { passive: true })
   hooks.onTheme.push(() => { if (active) renderList() })
   hooks.onForeground.push(() => { if (active) renderList() })
+  // 推送断满 5 秒（app/linkGrace.ts 置 st.stale）整表价格变灰，接上立刻复原（iOS QuoteBook 同一条规矩）
+  subscribe(() => root.classList.toggle('stale', st.stale))
 
   // 验收截图用：?open=search 进来直接开搜索页
   if (takeOpenParam(['search'])) requestAnimationFrame(() => searchBtn.click())

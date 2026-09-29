@@ -70,5 +70,33 @@ if (want('panels')) {
   await ctx.close()
 }
 
+// ───────── 断网再联网、切后台再回来：连接续上、价格重新走、断着时价格变灰（iOS LinkGrace：断满 5 秒算断）
+if (want('offline')) {
+  const { ctx, p } = await page()
+  await p.goto(URL_ + '#chart'); await p.waitForSelector('.cp-price'); await sleep(6000)
+  const snap = () => p.evaluate(() => ({ price: document.querySelector('.cp-price')?.textContent, stale: document.querySelector('.cp-price')?.classList.contains('stale'), open: [...window.__ws.live].filter(s => s.readyState === 1).length, live: window.__ws.live.size, opened: window.__ws.opened }))
+  const s0 = await snap()
+  ok('联网时价格是实时的', !s0.stale && s0.open === 1, JSON.stringify(s0))
+  await ctx.setOffline(true)
+  await sleep(8000)
+  const s1 = await snap()
+  ok('断网 8 秒价格变灰', s1.stale === true, JSON.stringify(s1))
+  await ctx.setOffline(false)
+  let s2 = s1
+  for (let i = 0; i < 20 && !(s2.open === 1 && !s2.stale); i++) { await sleep(500); s2 = await snap() }
+  ok('联网后 10 秒内连上、不再灰', s2.open === 1 && !s2.stale && s2.live === 1, JSON.stringify(s2))
+  // 切后台：只留核心几路；回前台补回来
+  const subsOf = () => p.evaluate(() => ({ subs: window.__ws.subs, unsubs: window.__ws.unsubs }))
+  await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')) })
+  await sleep(4000)
+  await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')) })
+  await sleep(4000)
+  const s3 = await snap(), n3 = await subsOf()
+  const p0 = s3.price; await sleep(6000); const s4 = await snap()
+  ok('切后台再回来连接只有一条、价格照常走', s3.live === 1 && s3.open === 1 && !s4.stale, `${JSON.stringify(s3)} 订/退 ${JSON.stringify(n3)} 6 秒后 ${s4.price}（之前 ${p0}）`)
+  ok('断网段无报错', !(await p.evaluate(() => window.__errs.length)), (await p.evaluate(() => window.__errs.join(' | '))).slice(0, 300))
+  await ctx.close()
+}
+
 await browser.close()
 process.exit(results.every(Boolean) ? 0 : 1)
