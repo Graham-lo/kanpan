@@ -3,13 +3,16 @@
  * 从原型 chart.js 逐字搬过来：算法、目录（名字、默认参数、线色、分类）都不改。
  */
 
-/** 一根 K 线；v 是成交额（报价币计），oi 是持仓量（没有就 null） */
-export type Bar = { t: number; o: number; h: number; l: number; c: number; v: number; oi?: number | null }
+/** 一根 K 线；v 是成交额（报价币计），oi 是持仓量（没有就 null）；
+ *  tb 是主动买入成交额（报价币计，CVD 与成交量分布的买卖拆分用），bv 是成交量（基础币计，VWAP 加权用）；
+ *  venueDelta 是多交易所聚合时各家的主动买卖差（报价币计），只有币安时不填 */
+export type Bar = { t: number; o: number; h: number; l: number; c: number; v: number; oi?: number | null; tb?: number; bv?: number; venueDelta?: Partial<Record<'binance' | 'okx' | 'coinbase', number>> }
 export type Series = (number | null)[]
+import { EXTRA_CALC, EXTRA_CATALOG, type ExtraMainId, type ExtraSubId } from './indicators'
 
-export type IndicatorId = 'ma' | 'ema' | 'boll' | 'vol' | 'macd' | 'rsi' | 'kdj' | 'oi'
-export type MainId = 'ma' | 'ema' | 'boll'
-export type SubId = 'macd' | 'rsi' | 'kdj' | 'oi'
+export type IndicatorId = 'ma' | 'ema' | 'boll' | 'vol' | 'macd' | 'rsi' | 'kdj' | 'oi' | ExtraMainId | ExtraSubId
+export type MainId = 'ma' | 'ema' | 'boll' | ExtraMainId
+export type SubId = 'macd' | 'rsi' | 'kdj' | 'oi' | ExtraSubId
 export type CalcId = MainId | SubId
 
 /** 指标参数：各指标只用到其中几项（MA/EMA 用 periods，BOLL 用 n/k，MACD 用 fast/slow/signal，RSI 用 n，KDJ 用 n/m1/m2） */
@@ -22,6 +25,12 @@ export interface IndParams {
   signal?: number
   m1?: number
   m2?: number
+  /** 随机 RSI 的取值窗口 */
+  stoch?: number
+  /** 一目均衡表：转换线、基准线、先行 B */
+  tenkan?: number
+  kijun?: number
+  senkou?: number
 }
 
 export interface CatalogEntry {
@@ -33,7 +42,7 @@ export interface CatalogEntry {
 }
 
 /** 主图叠加指标（按这个顺序算、按 boll → ema → ma 的顺序画） */
-export const MAIN_IDS: MainId[] = ['ma', 'ema', 'boll']
+export const MAIN_IDS: MainId[] = ['ma', 'ema', 'boll', 'vwap', 'st', 'ichi', 'vpvr']
 /** 副图最多四个（网页版副图矮、屏幕高） */
 export const MAX_SUBS = 4
 
@@ -106,6 +115,7 @@ export const Calc: Record<CalcId, CalcFn> = {
     return [K, D, J]
   },
   oi(bars) { return [bars.map(b => b.oi ?? null)] },
+  ...EXTRA_CALC,
 }
 
 // 指标目录：名字、默认参数、线色。副图最多四个（网页版副图矮、屏幕高）。
@@ -118,6 +128,7 @@ export const CATALOG: Record<IndicatorId, CatalogEntry> = {
   rsi: { name: 'RSI', cn: '相对强弱', place: 'sub', params: { n: 14 }, colors: ['#7E57C2'] },
   kdj: { name: 'KDJ', cn: '随机指标', place: 'sub', params: { n: 9, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00', '#AB47BC'] },
   oi: { name: '持仓量', cn: '持仓量', place: 'sub', params: {}, colors: ['#2962FF'] },
+  ...EXTRA_CATALOG,
 }
 
 export function paramText(_id: string, p: IndParams | null | undefined): string {

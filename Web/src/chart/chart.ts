@@ -18,6 +18,8 @@ import { CATALOG, Calc, MAIN_IDS, paramText } from './calc'
 import type { Bar, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
 import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
 import type { TimeTick } from './timeAxis'
+import { SUB_FIXED, type ExtraSubId } from './indicators'
+import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
 
 const AXIS_H = 28
 const MIN_PANE_H = 56 // 拖分隔线时任何一格都不能比这矮
@@ -113,7 +115,7 @@ export interface ChartMeta {
 }
 export type ChartMetaInput = Partial<ChartMeta> & { iv: number }
 
-export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[] }
+export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]; vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean }
 
 export interface ContextMenuInfo { clientX: number; clientY: number; price: number | null; time: number; drawing?: Drawing }
 
@@ -129,6 +131,10 @@ export interface ChartOptions {
   onDrawingsChanged?: () => void
   drawColor?: () => string | null | undefined
   onAutoChange?: (on: boolean) => void
+  /** 在价格轴上点「+」、拖到位松手：在这个价位建一条提醒 */
+  onAlertCreate?: (price: number) => void
+  /** 拖动已有的提醒线松手 */
+  onAlertMove?: (a: AlertLine, price: number) => void
 }
 
 export interface ThemeColors {
@@ -148,7 +154,10 @@ interface XY { x: number; y: number }
 interface DragPan { kind: 'pan'; region: Region; x0: number; y0: number; right0: number; sp0: number; r0: PriceRange | null; moved: boolean; pane: Pane | undefined }
 interface DragDrawing { kind: 'drawing'; hit: DrawingHit; start: DrawPoint; orig: DrawPoint[] }
 interface DragMeasure { kind: 'measure' }
-type DragState = DragPan | DragDrawing | DragMeasure
+interface DragAlert { kind: 'alert'; line: AlertLine | null; price: number; moved: boolean }
+type DragState = DragPan | DragDrawing | DragMeasure | DragAlert
+/** 价格轴左侧「+」建提醒的热区宽度 */
+const ALERT_CHIP_W = 22
 
 // ------------------------------------------------------------ 引擎
 export class TVChart {
@@ -186,6 +195,11 @@ export class TVChart {
   replay: number | null = null
   stale = false
   drag: DragState | null = null
+  /** 鼠标停在主图价格轴上时的 y（画「+」建提醒） */
+  axisHoverY: number | null = null
+  /** 成交量分布的看法与上一帧的结果 */
+  vpvrMode: VpvrMode = 'split'
+  vpvrLast: Vpvr | null = null
   dirty = true
   hoverWall: Wall | null = null
   colors: ThemeColors = { bg: '', grid: '', text: '', text2: '', text3: '', cross: '', crossLabel: '', scaleLine: '', up: '', down: '', accent: '', alert: '', line: '' }
@@ -273,6 +287,7 @@ export class TVChart {
   setMagnet(on: boolean): void { this.magnet = on }
   setWalls(w: Wall[] | null): void { this.walls = w; this.dirty = true }
   setAlerts(a: AlertLine[] | null | undefined): void { this.alerts = a || []; this.dirty = true }
+  setVpvrMode(m: VpvrMode): void { this.vpvrMode = m; this.dirty = true; this.renderLegend() }
   setMarkers(m: Marker[] | null): void { this.markers = m; this.dirty = true }
   setReplay(i: number | null): void { this.replay = i; this.dirty = true; this.renderLegend() }
   setLog(on: boolean): void { this.log = on; this.manual = null; this.dirty = true }
@@ -395,6 +410,7 @@ export class TVChart {
   }
   rangeSub(id: SubId, from: number, to: number): PriceRange {
     if (id === 'rsi') return { min: 0, max: 100 }
+    const fixed = SUB_FIXED[id as ExtraSubId]; if (fixed) return fixed
     let lo = Infinity, hi = -Infinity
     for (const s of this.series[id] || []) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
     if (!isFinite(lo)) return { min: 0, max: 1 }
@@ -447,6 +463,7 @@ export class TVChart {
     if (this.markers) this.drawTradeSpan(mainPane, mr)
     this.drawCandles(mainPane, mr, from, to)
     for (const id of ['boll', 'ema', 'ma'] as MainId[]) if (this.series[id] && !this.hidden.has(id)) this.drawLines(id, mainPane, mr, from, to)
+    drawExtraMain(this, mainPane, mr, from, to)
     this.drawLastLine(mainPane, mr)
     this.drawAlertLines(mainPane, mr)
     this.drawDrawings(mainPane, mr)
@@ -605,6 +622,7 @@ export class TVChart {
       c.moveTo(0, Math.round(y70) + .5); c.lineTo(this.plotW(), Math.round(y70) + .5); c.moveTo(0, Math.round(y30) + .5); c.lineTo(this.plotW(), Math.round(y30) + .5); c.stroke(); c.setLineDash([])
       this.polyline(ser[0], p, r, from, to, cols[0])
     } else {
+      drawSubLevels(this, p, r, id)
       ser.forEach((s, k) => this.polyline(s, p, r, from, to, cols[k % cols.length]))
     }
   }
@@ -622,11 +640,26 @@ export class TVChart {
   }
   drawAlertLines(p: Pane, r: PriceRange): void {
     const c = this.ctx
-    for (const a of this.alerts) {
+    for (const a of this.alertsShown()) {
       const y = Math.round(this.priceToY(a.price, p, r)) + .5
       if (y < p.y || y > p.y + p.h) continue
       c.strokeStyle = this.colors.alert; c.setLineDash([6, 4]); c.lineWidth = LINE.hair; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
     }
+  }
+  /** 图上要画的提醒线：拖动中的那条换成手上的价位，新建中的草稿也算一条 */
+  alertsShown(): AlertLine[] {
+    const d = this.drag
+    if (!d || d.kind !== 'alert') return this.alerts
+    if (!d.line) return [...this.alerts, { price: d.price }]
+    return this.alerts.map(a => a === d.line ? { ...a, price: d.price } : a)
+  }
+  /** 主图上 y 附近（±tol px）的提醒线 */
+  alertNear(y: number, tol: number): AlertLine | null {
+    const p = this._panes?.[0], r = this._ranges.main
+    if (!p || !r) return null
+    let best: AlertLine | null = null, bd = tol
+    for (const a of this.alerts) { const dy = Math.abs(this.priceToY(a.price, p, r) - y); if (dy <= bd) { bd = dy; best = a } }
+    return best
   }
   drawPriceLabels(p: Pane, r: PriceRange): void {
     const c = this.ctx, C = this.colors, PW = this.plotW()
@@ -639,9 +672,19 @@ export class TVChart {
       if (sub) { c.font = this.font; c.globalAlpha = .85; c.fillText(sub, PW + 8, top + 25); c.globalAlpha = 1 }
       c.font = this.font
     }
-    for (const a of this.alerts) {
+    for (const a of this.alertsShown()) {
       const y = this.priceToY(a.price, p, r); if (y < p.y || y > p.y + p.h) continue
       label(y, fmtAxis(a.price, this.meta.dec), C.alert, '#fff')
+    }
+    // 价格轴上的「+」：点下去拖到位松手就建一条提醒
+    if (this.axisHoverY != null && !this.drag && this.axisHoverY >= p.y && this.axisHoverY < p.y + p.h) {
+      const y = this.axisHoverY, top = clamp(y - 9, p.y, p.y + p.h - 18)
+      c.fillStyle = C.alert; roundRect(c, PW + 2, top, ALERT_CHIP_W - 4, 18, 4); c.fill()
+      c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath()
+      const cx = PW + 2 + (ALERT_CHIP_W - 4) / 2, cy = top + 9
+      c.moveTo(cx - 4, cy); c.lineTo(cx + 4, cy); c.moveTo(cx, cy - 4); c.lineTo(cx, cy + 4); c.stroke()
+      c.fillStyle = C.text; c.textAlign = 'left'; c.font = this.font
+      c.fillText(fmtAxis(this.yToPrice(y, p, r), this.meta.dec), PW + ALERT_CHIP_W + 2, top + 9)
     }
     const b = this.lastBar(); if (!b) return
     const y = this.priceToY(b.c, p, r)
@@ -867,7 +910,8 @@ export class TVChart {
     for (const id of MAIN_IDS) {
       if (!this.ind[id]) continue
       const cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || []
-      h += `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span><span class="ind-param">${paramText(id, this.params[id])}</span>
+      const extra = id === 'vpvr' ? `<button class="lchip" data-act="vpvrMode" data-id="vpvr" data-tip="看法">${VPVR_MODES.find(m => m.id === this.vpvrMode)?.label ?? ''}${I('chevronDown', 'icon-16')}</button>` : ''
+      h += `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span><span class="ind-param">${paramText(id, this.params[id])}</span>${extra}
           <span class="vals num">${s.map((ser, k) => `<span style="color:${cols[k % cols.length]}">${fmt(ser[i], dec)}</span>`).join('')}</span>${tools(id)}</div>`
     }
     if (this.ind.vol) h += `<div class="lrow ${this.hidden.has('vol') ? 'hidden-ind' : ''}"><span class="ind-name">成交量</span><span class="vals num"><span class="${b.c >= b.o ? 'up' : 'down'}">${fmtCompact(b.v)}</span></span>${tools('vol')}</div>`
@@ -921,6 +965,13 @@ export class TVChart {
       if (this.drag) return
       const reg = this.region(x, y)
       cv.style.cursor = reg === 'price' ? 'ns-resize' : reg === 'time' ? 'ew-resize' : reg.startsWith('sep') ? 'row-resize' : 'crosshair'
+      const onMainAxis = reg === 'price' && this.paneAt(y)?.id === 'main' && !!this.o.onAlertCreate
+      const hy = onMainAxis ? y : null
+      if (hy !== this.axisHoverY) { this.axisHoverY = hy; this.dirty = true }
+      if (onMainAxis) {
+        if (x <= this.plotW() + ALERT_CHIP_W || this.alertNear(y, 10)) cv.style.cursor = this.alertNear(y, 10) ? 'grab' : 'pointer'
+        cv.title = x <= this.plotW() + ALERT_CHIP_W ? '点一下或拖到位松手，在这个价位建提醒' : ''
+      } else if (cv.title) cv.title = ''
       if (reg === 'plot') {
         const pane = this.paneAt(y)
         this.cross = { x, y, pane: pane?.id }
@@ -938,13 +989,24 @@ export class TVChart {
     }, { signal })
     cv.addEventListener('mouseleave', () => {
       if (this.drag) return
-      this.cross = null; this.dirty = true; this.renderLegend()
+      this.cross = null; this.axisHoverY = null; this.dirty = true; this.renderLegend()
       if (this.hoverWall) { this.hoverWall = null; this.o.onWallHover?.(null) }
       this.o.onCrosshairMove?.(null)
     }, { signal })
     cv.addEventListener('mousedown', e => {
       if (e.button !== 0) return
       const { x, y } = pos(e), reg = this.region(x, y)
+      if (reg === 'price' && this.o.onAlertCreate && this._panes && this.paneAt(y)?.id === 'main') {
+        const near = this.alertNear(y, 10)
+        if (near || x <= this.plotW() + ALERT_CHIP_W) {
+          this.drag = { kind: 'alert', line: near, price: near ? near.price : this.yToPrice(y, this._panes[0], this._ranges.main), moved: false }
+          cv.style.cursor = 'grabbing'; this.dirty = true; return
+        }
+      }
+      if (reg === 'plot' && !this.tool && this.o.onAlertMove && this.paneAt(y)?.id === 'main' && !this.hitDrawing(x, y)) {
+        const near = this.alertNear(y, 4)
+        if (near) { this.drag = { kind: 'alert', line: near, price: near.price, moved: false }; cv.style.cursor = 'grabbing'; this.dirty = true; return }
+      }
       if (reg === 'plot' && this.tool) {
         const pane = this.paneAt(y); if (pane?.id !== 'main') return
         const tp = this.toTP(x, y)
@@ -981,6 +1043,10 @@ export class TVChart {
     window.addEventListener('mousemove', e => {
       if (!this.drag || this.dead) return
       const { x, y } = pos(e), d = this.drag
+      if (d.kind === 'alert') {
+        if (this._panes) { const np = this.yToPrice(y, this._panes[0], this._ranges.main); if (Math.abs(np - d.price) > 0) { d.moved = true; d.price = np } }
+        this.dirty = true; return
+      }
       if (d.kind === 'measure') { if (this.draft) this.draft.pts[1] = this.toTP(x, y); this.cross = { x, y, pane: 'main' }; this.dirty = true; return }
       if (d.kind === 'drawing') {
         const now = this.toTP(x, y), dd = d.hit.d
@@ -1023,6 +1089,13 @@ export class TVChart {
     window.addEventListener('mouseup', () => {
       if (!this.drag || this.dead) return
       const d = this.drag; this.drag = null
+      if (d.kind === 'alert') {
+        this.canvas.style.cursor = 'crosshair'; this.dirty = true
+        if (!(d.price > 0)) return
+        if (!d.line) this.o.onAlertCreate?.(d.price)
+        else if (d.moved) { d.line.price = d.price; this.o.onAlertMove?.(d.line, d.price) }
+        return
+      }
       if (d.kind === 'measure') { const m = this.draft; this.draft = null; if (m) { this.measure = m; this.drawings.push(m) } this.dirty = true; return }
       if (d.kind === 'drawing') { this.o.onDrawingsChanged?.(); return }
       this.canvas.style.cursor = 'crosshair'

@@ -14,6 +14,7 @@
  */
 import type { Bar } from '../chart/calc'
 import { S, emit, type Route } from './state'
+import { emitTrade } from './trades'
 
 const DIRECT = 'wss://fstream.binance.com/market/stream'
 const MAX_STREAMS = 200
@@ -149,6 +150,7 @@ function handle(raw: unknown): void {
     case 'aggTrade': {
       const s = S.symbols.get(d.s); if (!s) return
       const p = +d.p, prev = s.price
+      emitTrade(d.s, p, +d.q, +d.T, !!d.m)
       if (prev === p) { s.lastTick = Date.now(); return }
       s.price = p; s.lastTick = Date.now()
       if (s.open) { s.chg = p - s.open; s.pct = (p / s.open - 1) * 100 }
@@ -159,7 +161,7 @@ function handle(raw: unknown): void {
     }
     case 'kline': {
       const k = d.k
-      const bar: Bar = { t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.q }
+      const bar: Bar = { t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.q, tb: +k.Q, bv: +k.v }
       emit({ type: 'kline', symbol: d.s, iv: k.i, bar })
       break
     }

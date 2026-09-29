@@ -119,7 +119,8 @@ describe('Calc', () => {
 
 describe('CATALOG / paramText', () => {
   it('目录与原型一致', () => {
-    expect(Object.keys(CATALOG)).toEqual(['ma', 'ema', 'boll', 'vol', 'macd', 'rsi', 'kdj', 'oi'])
+    expect(Object.keys(CATALOG).slice(0, 8)).toEqual(['ma', 'ema', 'boll', 'vol', 'macd', 'rsi', 'kdj', 'oi'])
+    expect(Object.keys(CATALOG).slice(8)).toEqual(['vwap', 'st', 'ichi', 'vpvr', 'cvd', 'atr', 'obv', 'stochrsi', 'cci', 'wr'])
     expect(CATALOG.ma).toEqual({ name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#0EA5B7'] })
     expect(CATALOG.boll.params).toEqual({ n: 20, k: 2 })
     expect(CATALOG.vol).toEqual({ name: '成交量', cn: '成交量', place: 'overlay' })

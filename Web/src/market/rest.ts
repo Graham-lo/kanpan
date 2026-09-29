@@ -74,8 +74,8 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
 
 type Row = [number, string, string, string, string, string, number, string, ...unknown[]]
 function parse(rows: Row[]): Bar[] {
-  // 成交量用成交额（USDT），和手机端一致
-  return rows.map(r => ({ t: r[0], o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[7] }))
+  // 成交量用成交额（USDT），和手机端一致；r[10] 主动买入成交额、r[5] 成交量（币）给 CVD / VWAP / 成交量分布用
+  return rows.map(r => ({ t: r[0], o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[7], tb: +(r[10] as string), bv: +r[5] }))
 }
 
 export interface KlineResult { bars: Bar[]; ok: boolean; error?: string }
