@@ -10,6 +10,8 @@
 // 纵向：UIKit 的 draw(at:) 把字的行盒顶放在 y - 行高 / 2，SF 的 ascender 0.952、行高 1.193，
 // 于是基线 = y + 0.3555 × 字号（中文 PingFang 同一把尺，肉眼差 < 0.5pt）。
 
+import { swiftRound } from './geometry'
+
 export type Hex = string
 
 /** 图表用色（照 Palette.swift ChartColors）。另带订单流四色（Palette.orderFlow(bg:)）。 */
@@ -204,6 +206,8 @@ const sizeCache = new Map<string, number>()
 const SIZE_LIMIT = 512
 const isDigit = (c: string) => c >= '0' && c <= '9'
 
+let measureFont = ''
+
 function rawWidth(text: string, f: ChartFontSpec): number {
   const c = mctx()
   if (!c) {
@@ -212,8 +216,30 @@ function rawWidth(text: string, f: ChartFontSpec): number {
     for (const ch of text) w += f.mono ? (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.6) : isDigit(ch) ? 0.6 : ch.charCodeAt(0) > 0x2e80 ? 1 : 0.55
     return w * f.size
   }
-  c.font = fontString(f)
+  // canvas 每设一次 font 都要重新解析字体串；同一个字体就别再设
+  const fs = fontString(f)
+  if (fs !== measureFont) { c.font = fs; measureFont = fs }
   return c.measureText(text).width
+}
+
+/** 每个字体十个数字各自的字宽（逐字居中落笔用）。数字字形不随帧变，量一次就够。 */
+const digitCache = new Map<string, number[]>()
+function digitWidth(ch: string, f: ChartFontSpec): number {
+  const key = fontString(f)
+  let row = digitCache.get(key)
+  if (!row) { row = new Array<number>(10).fill(NaN); digitCache.set(key, row) }
+  const i = ch.charCodeAt(0) - 48
+  let w = row[i]
+  if (Number.isNaN(w)) { w = rawWidth(ch, f); row[i] = w }
+  return w
+}
+
+/** 同一字体的「非等宽数字」版本（量非数字那几段用），按对象身份缓存，免得每段现造一个。 */
+const plainSpec = new WeakMap<ChartFontSpec, ChartFontSpec>()
+function plain(f: ChartFontSpec): ChartFontSpec {
+  let p = plainSpec.get(f)
+  if (!p) { p = { ...f, tabular: false }; plainSpec.set(f, p) }
+  return p
 }
 
 /** String.width(font)：带缓存；等宽数字的字体里每个数字按 '0' 的宽度算。 */
@@ -243,11 +269,11 @@ function drawRun(ctx: CanvasRenderingContext2D, text: string, x: number, baselin
   if (!f.tabular || f.mono || !/\d/.test(text)) { ctx.fillText(text, x, baseline); return }
   const zero = textWidth('0', f)
   let run = '', rx = x
-  const flush = () => { if (run) { ctx.fillText(run, rx, baseline); rx += textWidth(run, { ...f, tabular: false }); run = '' } }
+  const flush = () => { if (run) { ctx.fillText(run, rx, baseline); rx += textWidth(run, plain(f)); run = '' } }
   for (const ch of text) {
     if (isDigit(ch)) {
       flush()
-      const dw = rawWidth(ch, f)
+      const dw = digitWidth(ch, f)
       ctx.fillText(ch, rx + (zero - dw) / 2, baseline)
       rx += zero
     } else run += ch
@@ -273,7 +299,7 @@ export function drawCentered(ctx: CanvasRenderingContext2D, text: string, x: num
 
 /** 1 物理像素的横线，落在像素中心（hairline）。 */
 export function hairLine(ctx: CanvasRenderingContext2D, x0: number, x1: number, y: number, scale: number, color: Hex): void {
-  const yy = (Math.round(y * scale) + 0.5) / scale
+  const yy = (swiftRound(y * scale) + 0.5) / scale
   ctx.strokeStyle = css(color)
   ctx.lineWidth = 1 / scale
   ctx.beginPath()
@@ -283,7 +309,7 @@ export function hairLine(ctx: CanvasRenderingContext2D, x0: number, x1: number, 
 }
 
 export function hairLineV(ctx: CanvasRenderingContext2D, x: number, y0: number, y1: number, scale: number, color: Hex): void {
-  const xx = (Math.round(x * scale) + 0.5) / scale
+  const xx = (swiftRound(x * scale) + 0.5) / scale
   ctx.strokeStyle = css(color)
   ctx.lineWidth = 1 / scale
   ctx.beginPath()
