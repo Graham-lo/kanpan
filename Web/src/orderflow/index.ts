@@ -20,7 +20,7 @@ import { createLayer } from './layer'
 import { mountLadder, ladderVisible, drawLadder } from './ladder'
 import { mountDrawer, updateDrawer, revealInDrawer } from './drawer'
 import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, OF_WIDGETS } from './widgets'
-import { openOrderFlowSettings } from './settingsDialog'
+import { openOrderFlowSettings, settingsLayerOpen } from './settingsDialog'
 import { baseOfSymbol, productsOf, type Display } from './settings'
 import { OF, savePrefs, amt, PRODUCT_FULL, durShort, type Api } from './state'
 import { orderId, type BigOrder } from './types'
@@ -28,6 +28,8 @@ import type { Snapshot } from './model'
 import type { TVChart } from '../chart/chart'
 
 export { mountLadder, mountDrawer, widgetHTML, mountWidgets, isOfWidget, openOrderFlowSettings }
+/** 侧栏某块是不是收起（本机偏好） */
+export const isCollapsed = (w: string): boolean => OF.prefs.collapsed.includes(w)
 
 const SYNC_MS = 500
 /** 离开图表页多久后停掉数据层（切回来不用重连） */
@@ -270,7 +272,7 @@ export function heatButtonHTML(): string {
 
 export function indicatorRowHTML(): string {
   const on = st.orderFlow
-  return `<div class="ind-row" data-of-row tabindex="0" role="checkbox" aria-checked="${on}">
+  return `<div class="ind-row ${settingsLayerOpen() ? 'of-set-open' : ''}" data-of-row tabindex="0" role="checkbox" aria-checked="${on}">
     <span class="check-box ${on ? 'on' : ''}">${on ? I('check', 'icon-16') : ''}</span><span class="nm">主力订单流<small>三家大额挂单画在图上</small></span>
     <span class="tag">主图</span>
     <button class="ibtn xs" data-of-set aria-label="门槛与步长" data-tip="门槛与步长">${I('gear', 'icon-16')}</button></div>`
@@ -278,7 +280,13 @@ export function indicatorRowHTML(): string {
 
 /** 指标面板的点击 / 回车：是订单流那一行就处理并返回 true（调用方随后重画列表）。 */
 export function indicatorRowClick(t: HTMLElement): boolean {
-  if (t.closest('[data-of-set]')) { const a = api?.activeChart(); if (a) openOrderFlowSettings(a.symbol); return true }
+  const gear = t.closest<HTMLElement>('[data-of-set]')
+  if (gear) {
+    const a = api?.activeChart()
+    const row = gear.closest('[data-of-row]'), panel = gear.closest('.dialog')
+    if (a) openOrderFlowSettings(a.symbol, row && panel ? { row: row.getBoundingClientRect(), panel: panel.getBoundingClientRect() } : undefined)
+    return true
+  }
   if (t.closest('[data-of-row]')) { setOrderFlow(!st.orderFlow); return true }
   return false
 }

@@ -157,3 +157,25 @@ export function shows(d: Display, o: BigOrder): boolean {
   if (o.status === 'cancelled') return o.side === 'bid' ? d.cancelledBid : d.cancelledAsk
   return true
 }
+
+// ------------------------------------------------------------------ 门槛设置第二层的位置
+
+/** 第二层贴着的位置：指标面板的外框与订单流那一行 */
+export interface SettingsAnchor { panel: Box; row: Box }
+/** 只用到的几项（DOMRect 满足它；测试里给普通对象） */
+export interface Box { top: number; right: number; height: number }
+
+const LAYER_W = 520
+const GAP = 12
+
+/**
+ * 第二层放哪：面板右边放得下就贴在右边、顶端和那一行对齐（上下夹在视口里）；放不下就盖在面板右半边。
+ * 返回左上角与箭头离第二层顶端的距离。
+ */
+export function layerSpot(a: SettingsAnchor, h: number, vw: number, vh: number, w = LAYER_W): { left: number; top: number; arrow: number; inside: boolean } {
+  const inside = a.panel.right + GAP + w > vw - 16
+  const left = inside ? Math.max(16, a.panel.right - w - GAP) : a.panel.right + GAP
+  const rowMid = a.row.top + a.row.height / 2
+  const top = Math.round(Math.min(Math.max(16, rowMid - 28), Math.max(16, vh - h - 16)))
+  return { left: Math.round(left), top, arrow: Math.round(Math.min(Math.max(16, rowMid - top), h - 16)), inside }
+}

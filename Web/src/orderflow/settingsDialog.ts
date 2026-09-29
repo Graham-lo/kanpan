@@ -1,12 +1,14 @@
 /* Hkline Web · 主力订单流 · 门槛与步长（设计稿 2.7）
  *
- * 「指标 › 主力订单流」行上的齿轮打开。每种产品一个门槛、再加一个步长，都是手动输入框（不给加减步进器）；
+ * 「指标 › 主力订单流」行上的齿轮打开：作为指标面板的第二层，从这一行的右侧展开（指标面板不动、不叠第二层遮罩）；
+ * 从别处（侧栏「主力订单流」面板）打开时居中。每种产品一个门槛、再加一个步长，都是手动输入框（不给加减步进器）；
  * 输入框里空着就是用默认值（默认值写在占位字里）。改过的项按 base 存进 st.orderFlowOverrides，随账号同步；
  * 存完立刻让数据层换门槛，梯子、大单带、大单列表下一帧就按新门槛重算。
  */
 import { st, save } from '../app/store'
 import { $ } from '../ui/dom'
 import { dialog, head, toast } from '../ui/overlay'
+import { layerSpot, type SettingsAnchor } from './settings'
 import { defaultThresholds, normalizeOverride, productsOf, baseOfSymbol, parseAmount, THRESHOLD_RANGE, STEP_RANGE, MAX_OVERRIDES, type Override } from './settings'
 import type { Product, Thresholds } from './types'
 import { OF, amt, PRODUCT_FULL } from './state'
@@ -33,7 +35,11 @@ function defaultsFor(symbol: string): { base: string; t: Thresholds } {
 
 const stepText = (v: number): string => String(+v.toPrecision(10))
 
-export function openOrderFlowSettings(symbol: string): void {
+let layerOpen = false
+/** 第二层开着没（指标面板那一行据此保持选中底色） */
+export const settingsLayerOpen = (): boolean => layerOpen
+
+export function openOrderFlowSettings(symbol: string, anchor?: SettingsAnchor): void {
   const { base, t } = defaultsFor(symbol)
   const own: Override = st.orderFlowOverrides[base] || {}
   const products = productsOf(t)
@@ -49,7 +55,22 @@ export function openOrderFlowSettings(symbol: string): void {
       <div class="faint of-set-note">空着就用默认值。金额可以写 500K、2.5M；改完三端同步，梯子、大单带、大单列表马上按新门槛重算。</div>
     </div>
     <div class="dialog-foot"><button class="btn ghost" id="ofSetReset" style="margin-right:auto">恢复默认</button><button class="btn ghost" data-close>取消</button><button class="btn primary" id="ofSetOk">保存</button></div>`,
-  'alert-dlg of-set-dlg', { label: `主力订单流 ${base} 门槛与步长` })
+  anchor ? 'of-set-dlg of-set-layer' : 'of-set-dlg', {
+    label: `主力订单流 ${base} 门槛与步长`, center: !anchor,
+    onClose: () => { layerOpen = false; document.querySelectorAll('[data-of-row].of-set-open').forEach(x => x.classList.remove('of-set-open')) },
+  })
+  if (anchor) {
+    layerOpen = true
+    d.scrim.classList.add('of-set-scrim')
+    const place = (): void => {
+      const r = layerSpot(anchor, d.dlg.offsetHeight, window.innerWidth, window.innerHeight)
+      d.dlg.style.left = `${r.left}px`; d.dlg.style.top = `${r.top}px`
+      d.dlg.style.setProperty('--arrow-y', `${r.arrow}px`)
+      d.dlg.classList.toggle('inside', r.inside)
+    }
+    place()
+    document.querySelectorAll('[data-of-row]').forEach(x => x.classList.add('of-set-open'))
+  }
 
   const apply = (o: Override | null): void => {
     const all = { ...st.orderFlowOverrides }

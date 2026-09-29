@@ -10,7 +10,6 @@ import { initChart } from './pages/chart'
 import { initSectors } from './pages/sectors'
 import { initReview } from './pages/review'
 import { initMe } from './pages/me'
-import { initProto } from './pages/proto'
 import { resume } from './account/client'
 import { initSync } from './sync/glue'
 
@@ -42,6 +41,5 @@ initSectors()
 initReview()
 initMe()
 initSync()
-initProto()
 go(location.hash.slice(1) || 'chart')
 void initChart()

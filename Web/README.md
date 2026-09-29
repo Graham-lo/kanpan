@@ -30,7 +30,7 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 | `src/chart/` | K 线引擎（canvas）：`chart.ts` 绘制与交互，`calc.ts` 聚合与指标，`timeAxis.ts` 上海时区刻度 |
 | `src/market/` | 行情：`rest.ts` 币安 REST，`stream.ts` WS 订阅与重连，`symbols.ts` 品种表与搜索排序，`meta.ts` 供应量，`state.ts` 实时状态 |
 | `src/account/` | 账号会话（这一阶段只有「未登录」） |
-| `src/pages/` | `chart.ts` 图表页，`sectors.ts` 板块，`review.ts` 复盘，`me.ts` 我的，`proto.ts` 原型控制台 |
+| `src/pages/` | `chart.ts` 图表页，`sectors.ts` 板块，`review.ts` 复盘，`me.ts` 我的 |
 | `src/ui/` | DOM 小工具、图标（描边 2.2）、浮层 / 提示 / 弹窗 |
 | `src/util/format.ts` | 数额 K/M/B/T、价格精度、百分比 |
 | `src/styles/app.css` | 设计令牌与三套皮肤（青苔 / 陶土 / 经典）× 浅深 |

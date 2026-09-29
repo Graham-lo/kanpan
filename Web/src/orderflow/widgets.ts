@@ -1,6 +1,7 @@
 /* Hkline Web · 主力订单流 · 侧栏小部件（设计稿 2.5）
  *
- * 「自选」视图里和自选列表、详情堆在一起：盘口（360）、成交（占剩余高度）、大单（240）、提醒（160）。
+ * 「自选」视图里和自选列表、详情堆在一起，整条侧栏一屏放下、不出滚动条（高度分配见 sidebar.ts）：
+ * 盘口（交易所 × 产品表 + 分档，档数按高度）、成交（10 行起）、大单（6 行起）、提醒（余下）。
  * 每块都能收起、能拖着换顺序（顺序存 st.slots.widgets，随账号同步；收起是网页本机偏好）。
  * 盘口与大单跟着订单流的帧（半秒一帧）打补丁；成交是一张画布，逐笔来了在下一帧（rAF）里重画，
  * 每秒几十笔也只画一次。
@@ -14,6 +15,8 @@ import { orderId, type BigOrder, type Product } from './types'
 import { tapeBase, type TapeRow } from './tape'
 import { parseAmount } from './settings'
 import { OF, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
+import { planSidebar, toggleCollapsed, BOOK_ROW, WALL_ROW, TAPE_ROW } from './sidebar'
+export { toggleCollapsed }
 
 export const OF_WIDGETS: WidgetId[] = ['book', 'tape', 'walls', 'alerts']
 const TITLE: Record<string, string> = { book: '盘口', tape: '成交', walls: '大单', alerts: '提醒', watch: '自选', detail: '详情' }
@@ -45,8 +48,8 @@ export function widgetHTML(w: WidgetId): string {
     case 'tape': return shell('tape', `<div class="of-tape-host"><canvas id="ofTape" aria-label="合并成交"></canvas></div>`,
       `<label class="of-min" data-tip="只看不小于这个金额的成交（并过之后）"><span>≥</span><input id="ofTapeMin" class="input num" inputmode="decimal" spellcheck="false"></label>
        <button class="ibtn xs" data-of="pause" id="ofTapePause" aria-label="暂停" data-tip="暂停">${I('pause', 'icon-16')}</button>`)
-    case 'walls': return shell('walls', `<div class="scroll of-walls" id="ofWalls"></div>`, `<span class="faint num" id="ofWallsN"></span>`)
-    case 'alerts': return shell('alerts', `<div class="scroll of-alerts" id="ofAlerts"></div>`, `<button class="ibtn xs" data-of="alert-new" aria-label="新建提醒" data-tip="新建提醒">${I('plus', 'icon-16')}</button>`)
+    case 'walls': return shell('walls', `<div class="of-walls" id="ofWalls"></div>`, `<span class="faint num" id="ofWallsN"></span>`)
+    case 'alerts': return shell('alerts', `<div class="scroll no-bar of-alerts" id="ofAlerts"></div>`, `<button class="ibtn xs" data-of="alert-new" aria-label="新建提醒" data-tip="新建提醒">${I('plus', 'icon-16')}</button>`)
     default: return ''
   }
 }
@@ -54,13 +57,33 @@ export function widgetHTML(w: WidgetId): string {
 let root: HTMLElement | null = null
 let tapeCv: HTMLCanvasElement | null = null
 let ro: ResizeObserver | null = null
+let fitRo: ResizeObserver | null = null
+
+/** 按侧栏高度给每块定高（sidebar.ts 的分配）；侧栏换了视图就不管了 */
+export function fitStack(el: HTMLElement): void {
+  const parts = [...el.children].filter((x): x is HTMLElement => x instanceof HTMLElement && !!x.dataset.w)
+  if (!parts.length) { el.classList.remove('stack'); return }
+  el.classList.add('stack')
+  const avail = el.clientHeight
+  if (!avail) return
+  const ids = parts.map(p => p.dataset.w as WidgetId)
+  const hs = planSidebar(avail, ids, new Set(OF.prefs.collapsed))
+  parts.forEach((p, i) => { const v = `${hs[i]}px`; if (p.style.height !== v) p.style.height = v })
+  // 行数跟着高度走的几块：重排一次
+  updateBook(); updateWalls(); tapeDirty = true; scheduleTape()
+}
 
 /** panelWatch 写完 innerHTML 之后调：绑事件、画第一帧。 */
 export function mountWidgets(el: HTMLElement): void {
   root = el
-  // 自选与详情也参与拖动排序
+  // 自选与详情也参与拖动排序、也能收起
   el.querySelector<HTMLElement>('.widget-watch')?.setAttribute('data-w', 'watch')
   el.querySelector<HTMLElement>('#detail')?.setAttribute('data-w', 'detail')
+  fitStack(el)
+  if (!fitRo) {
+    fitRo = new ResizeObserver(() => { if (root && root.isConnected && st.panel === 'watch') fitStack(root) })
+    fitRo.observe(el)
+  }
   if (!el.dataset.ofBound) {
     el.dataset.ofBound = '1'
     el.addEventListener('click', onClick)
@@ -100,8 +123,7 @@ function onClick(e: MouseEvent): void {
   switch (b.dataset.of) {
     case 'collapse': {
       if (!w) return
-      const c = OF.prefs.collapsed
-      if (c.includes(w)) c.splice(c.indexOf(w), 1); else c.push(w)
+      toggleCollapsed(OF.prefs.collapsed, w)
       savePrefs(); OF.api?.renderPanel(); return
     }
     case 'remove': {
@@ -194,7 +216,12 @@ export function updateWidgets(): void {
 }
 
 const BANDS = [1, 2, 5]
-const BOOK_LEVELS = 8
+/** 分档盘口的档数：按这块的高度能放几行（至少 4、最多 30） */
+function bookLevels(bEl: HTMLElement): number {
+  const h = bEl.clientHeight
+  return h ? Math.max(4, Math.min(30, Math.floor((h - 20 - 4 + 1) / BOOK_ROW))) : 8
+}
+
 
 function unitAmt(usd: number, price: number | null): string {
   if (OF.prefs.bookUnit === 'coin' && price && price > 0) return amt(usd / price)
@@ -251,7 +278,7 @@ function updateBook(): void {
   // 分档盘口：买左卖右，各 8 档
   const step = fine.step
   const k = bookK(fine)
-  const sb = steppedBook(fine, k, BOOK_LEVELS)
+  const sb = steppedBook(fine, k, bookLevels(bEl))
   const d = decFor(step * k, OF.api?.dec(OF.feed!.symbol) ?? 2)
   const maxOne = Math.max(1, ...sb.bids.map(r => r.usd), ...sb.asks.map(r => r.usd))
   const maxCum = Math.max(1, sb.bids[sb.bids.length - 1]?.cum ?? 0, sb.asks[sb.asks.length - 1]?.cum ?? 0)
@@ -283,7 +310,9 @@ function updateWalls(): void {
   const dec = decFor(OF.feed.model.scheme?.step ?? 0, OF.api?.dec(OF.feed.symbol) ?? 2)
   const now = Date.now()
   const max = live[0].notional
-  box.innerHTML = live.slice(0, 60).map(o => {
+  // 只放得下的几行，不出滚动条（全部在抽屉里）
+  const fit = Math.max(1, Math.floor(((box.clientHeight || 6 * WALL_ROW + 4) - 4) / WALL_ROW)) // 扣掉底边 4
+  box.innerHTML = live.slice(0, fit).map(o => {
     const id = orderId(o)
     return `<div class="of-wall ${OF.highlight === id ? 'sel' : ''}" data-wall="${esc(id)}" tabindex="0" role="button" aria-label="${o.side === 'bid' ? '买' : '卖'} ${px(o.price, dec)} ${amt(o.notional)}">
       <i class="bar" style="width:${(o.notional / max * 100).toFixed(1)}%;background:${bandColor(o.product, o.side, 0.16)}"></i>
@@ -313,7 +342,7 @@ let tapeSeen = -1
 let tapePaused: TapeRow[] | null = null
 let tapeHover = -1
 let tapeShown: TapeRow[] = []
-const ROW_H = 22
+const ROW_H = TAPE_ROW
 
 export function defaultTapeMin(): number {
   const t = OF.snap?.thresholds
@@ -357,7 +386,7 @@ function drawTape(): void {
   const upT = css.getPropertyValue('--up-text').trim() || up
   const downT = css.getPropertyValue('--down-text').trim() || down
   const hover = css.getPropertyValue('--surface-2').trim() || '#F6F7F9'
-  const n = Math.ceil(H / ROW_H)
+  const n = Math.max(1, Math.floor(H / ROW_H))
   const rows = tapePaused ?? OF.tape.visible(tapeMin(), n)
   tapeShown = rows
   if (!OF.feed) { hint(c, W, H, text3, '打开指标「主力订单流」后显示三家合并成交'); return }

@@ -13,7 +13,7 @@
  *   侧栏小部件 —— 「自选」视图里按 st.slots.widgets 的顺序堆叠
  */
 import { st, save, type CellCfg, type PanelId, type Layout } from '../app/store'
-import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick } from '../orderflow'
+import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick, isCollapsed } from '../orderflow'
 import { deleteAlert } from '../alerts/model'
 import { alertDesc } from '../alerts/panel'
 import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, drawingAlertOf, drawingCanAlert, toggleDrawingAlert, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel } from '../alerts/model'
@@ -540,7 +540,7 @@ export function renderPanel(): void {
 const isWatched = (k: string): boolean => Object.values(st.watch).some(l => l.includes(k))
 export { isWatched }
 function panelWatch(el: HTMLElement): void {
-  const widgets = st.slots.widgets.map(w => w === 'watch' ? widgetWatch() : w === 'detail' ? '<div class="detail" id="detail"></div>' : widgetHTML(w)).join('')
+  const widgets = st.slots.widgets.map(w => w === 'watch' ? widgetWatch() : w === 'detail' ? `<div class="detail ${isCollapsed('detail') ? 'collapsed' : ''}" id="detail"></div>` : widgetHTML(w)).join('')
   el.innerHTML = widgets || '<div class="empty">没有小部件</div>'
   renderDetail()
   const tbl = $('#wTbl', el)
@@ -553,14 +553,20 @@ function widgetWatch(): string {
   const empty = !S.symbols.size
     ? `<div class="empty">${I('wifiOff', 'icon-24')}<div>${S.live === false ? '连不上币安合约接口' : '正在取行情…'}</div></div>`
     : `<div class="empty">${I('star', 'icon-24')}<div>这一类还没有自选</div><button class="btn secondary sm" style="margin-top:12px" id="wAdd2">搜索品种</button></div>`
-  return `<div class="widget widget-watch"><div class="sp-head"><h3>自选</h3>
-      <button class="ibtn sm" id="wAdd" aria-label="添加品种" data-tip="添加品种" data-kbd="⌘ K">${I('plus')}</button>
-      <button class="ibtn sm" id="wMore" aria-label="更多" data-tip="更多">${I('more')}</button></div>
-    <div class="sp-sub" role="tablist">${TABS.map(([k, l]) => `<button class="chip" role="tab" data-tab="${k}" aria-pressed="${st.watchTab === k}">${l} ${st.watch[k].length}</button>`).join('')}</div>
-    <div class="scroll" style="flex:1;min-height:0">
+  const c = isCollapsed('watch')
+  // 标题、分类、添加、更多、收起并在一行（36 px），省下的高度给列表
+  return `<div class="widget widget-watch ${c ? 'collapsed' : ''}"><div class="sp-head wv-head"><h3>自选</h3>
+      <div class="wv-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="chip" role="tab" data-tab="${k}" aria-pressed="${st.watchTab === k}">${l} ${st.watch[k].length}</button>`).join('')}</div>
+      <button class="ibtn xs" id="wAdd" aria-label="添加品种" data-tip="添加品种" data-kbd="⌘ K">${I('plus', 'icon-16')}</button>
+      <button class="ibtn xs" id="wMore" aria-label="更多" data-tip="更多">${I('more', 'icon-16')}</button>
+      ${collapseBtn(c)}</div>
+    <div class="scroll no-bar wv-body">
       ${list.length && S.symbols.size ? `<table class="tbl" id="wTbl"><thead><tr><th>品种</th><th>最新价</th><th>涨跌幅</th><th>成交额</th></tr></thead>
       <tbody>${list.map(k => watchRow(k, cur)).join('')}</tbody></table>` : empty}
     </div></div>`
+}
+function collapseBtn(c: boolean): string {
+  return `<button class="ibtn xs" data-of="collapse" aria-label="${c ? '展开' : '收起'}" aria-expanded="${!c}" data-tip="${c ? '展开' : '收起'}">${I('chevronDown', 'icon-16 of-chev')}</button>`
 }
 function watchRow(k: string, cur: string): string {
   const s = sym(k)
@@ -635,25 +641,27 @@ function renderDetail(): void {
   const cap = marketCap(k)
   const w = isWatched(k)
   const basis = s.mark && s.index ? (s.mark / s.index - 1) * 100 : null
-  el.innerHTML = `<div class="dh">${badge(s, 'xl')}<div class="names"><div class="code">${esc(s.code)}<span class="muted" style="font-weight:400;font-size:13px;margin-left:8px">${kindName(s)}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}</div></div>
-      <button class="ibtn" data-star="${k}" aria-pressed="${w}" aria-label="${w ? '移出自选' : '加入自选'}" data-tip="${w ? '移出自选' : '加入自选'}">${I(w ? 'star' : 'starOff')}</button></div>
+  // 一屏放得下：板块标签并进名字下面那一行，十二格改成「名 值」四行三列
+  const secHTML = secs.slice(0, 3).map(x => `<button class="sec-link" data-sector="${x.id}">${esc(x.cn)}</button>`).join('')
+  const cell = (k: string, v: string, c = '', f = ''): string => `<div><span class="k">${k}</span><span class="v num ${c}"${f ? ` data-f="${f}"` : ''}>${v}</span></div>`
+  el.innerHTML = `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(s.code)}<span class="kind">${kindName(s)}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}${secHTML ? `<span class="secs">${secHTML}</span>` : ''}</div></div>
+      <button class="ibtn sm" data-star="${k}" aria-pressed="${w}" aria-label="${w ? '移出自选' : '加入自选'}" data-tip="${w ? '移出自选' : '加入自选'}">${I(w ? 'star' : 'starOff')}</button>${collapseBtn(isCollapsed('detail'))}</div>
     <div class="px"><span class="big num price-live ${st.stale ? '' : cls(s.pct)}" data-f="big">${priceText(s)}</span><span class="chg num ${cls(s.pct)}" data-f="chg">${chgText(s)}</span></div>
     ${s.hi && s.lo ? `<div class="range"><span class="num" data-f="lo">${fmt(s.lo, s.dec)}</span><div class="bar"><i data-f="pos" style="left:${clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100}%"></i></div><span class="num" data-f="hi">${fmt(s.hi, s.dec)}</span></div>` : ''}
-    <div class="stats cols3">
-      <div><div class="k">${term('持仓量')}</div><div class="v num">${d.oiValue ? fmtCompact(d.oiValue) : '—'}</div></div>
-      <div><div class="k">持仓 24h</div><div class="v num ${cls(d.oiChg)}">${d.oiChg == null ? '—' : pctText(d.oiChg)}</div></div>
-      <div><div class="k">24h 成交额</div><div class="v num" data-f="vol">${s.vol ? fmtCompact(s.vol) : '—'}</div></div>
-      <div><div class="k">${term('资金费率')}</div><div class="v num ${cls(s.fr)}" data-f="fr">${frText(s)}</div></div>
-      <div><div class="k">${term('下次结算')}</div><div class="v num" data-f="cd">${s.nextFunding ? countdown(s.nextFunding - Date.now()) : '—'}</div></div>
-      <div><div class="k">24h 笔数</div><div class="v num" data-f="count">${s.count ? fmtCompact(s.count) : '—'}</div></div>
-      <div><div class="k">${term('多空人数比')}</div><div class="v num ${ratioCls(d.ls)}">${ratioText(d.ls)}</div></div>
-      <div><div class="k">${term('大户持仓比')}</div><div class="v num ${ratioCls(d.top)}">${ratioText(d.top)}</div></div>
-      <div><div class="k">${term('主动买卖比')}</div><div class="v num ${ratioCls(d.taker)}">${ratioText(d.taker)}</div></div>
-      <div><div class="k">${term('标记价')}</div><div class="v num" data-f="mark">${s.mark ? fmt(s.mark, s.dec) : '—'}</div></div>
-      <div><div class="k">${term('指数价')}</div><div class="v num" data-f="index">${s.index ? fmt(s.index, s.dec) : '—'}</div></div>
-      <div><div class="k">${term('基差')}</div><div class="v num ${cls(basis)}" data-f="basis">${pctText(basis)}</div></div>
-    </div>
-    ${secs.length ? `<div class="sectors">${secs.map(x => `<button class="tag" data-sector="${x.id}">${esc(x.cn)}</button>`).join('')}</div>` : ''}`
+    <div class="stats inline">
+      ${cell(term('持仓量'), d.oiValue ? fmtCompact(d.oiValue) : '—')}
+      ${cell('持仓 24h', d.oiChg == null ? '—' : pctText(d.oiChg), cls(d.oiChg))}
+      ${cell('成交额', s.vol ? fmtCompact(s.vol) : '—', '', 'vol')}
+      ${cell(term('资金费率'), frText(s), cls(s.fr), 'fr')}
+      ${cell(term('下次结算'), s.nextFunding ? countdown(s.nextFunding - Date.now()) : '—', '', 'cd')}
+      ${cell('笔数', s.count ? fmtCompact(s.count) : '—', '', 'count')}
+      ${cell(term('多空人数比'), ratioText(d.ls), ratioCls(d.ls))}
+      ${cell(term('大户持仓比'), ratioText(d.top), ratioCls(d.top))}
+      ${cell(term('主动买卖比'), ratioText(d.taker), ratioCls(d.taker))}
+      ${cell(term('标记价'), s.mark ? fmt(s.mark, s.dec) : '—', '', 'mark')}
+      ${cell(term('指数价'), s.index ? fmt(s.index, s.dec) : '—', '', 'index')}
+      ${cell(term('基差'), pctText(basis), cls(basis), 'basis')}
+    </div>`
 }
 const chgText = (s: Sym): string => s.price == null ? '—' : `${s.chg >= 0 ? '+' : ''}${fmt(s.chg, s.dec)}  ${pctText(s.pct)}`
 const frText = (s: Sym): string => s.fr == null ? '—' : (s.fr * 100).toFixed(4) + '%'
