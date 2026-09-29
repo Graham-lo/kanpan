@@ -92,7 +92,7 @@ self.addEventListener('fetch', event => {
   // 带哈希的构建产物：缓存优先
   if (url.pathname.startsWith(BASE + 'assets/')) {
     event.respondWith(
-      caches.match(req).then(hit => hit || fetch(req).then(res => {
+      caches.match(req, { ignoreVary: true }).then(hit => hit || fetch(req).then(res => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)) }
         return res
       })),

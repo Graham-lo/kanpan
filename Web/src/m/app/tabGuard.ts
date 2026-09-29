@@ -73,7 +73,7 @@ function adoptNow(): void {
 }
 
 function theirs(): number {
-  try { return Number(JSON.parse(ls()?.getItem(WRITER_KEY) || '{}').at) || 0 } catch { return Infinity }
+  try { return Number(JSON.parse(ls()?.getItem(WRITER_KEY) || '{}').at) || 0 } catch { return 0 }
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
