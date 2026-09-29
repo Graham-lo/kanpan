@@ -28,6 +28,13 @@ function applyQuery(): void {
   if (q.has('ladder')) st.slots.ladder = q.get('ladder') === '1'
   if (q.has('drawer')) st.slots.drawer = q.get('drawer') === '1'
   save()
+  // 用过就从地址栏拿掉：不然打开分享链接后自己换了品种，一刷新又被链接里的品种盖回去
+  const used = ['s', 'i', 'theme', 'skin', 'layout', 'panel', 'ladder', 'drawer'].filter(k => q.has(k))
+  if (used.length) {
+    used.forEach(k => q.delete(k))
+    const rest = q.toString()
+    history.replaceState(history.state, '', location.pathname + (rest ? '?' + rest : '') + location.hash)
+  }
 }
 
 applyQuery()

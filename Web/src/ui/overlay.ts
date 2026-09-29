@@ -115,6 +115,20 @@ export function menuFrom(btn: HTMLElement, items: MenuItem[], opts: MenuOpts = {
 // ------------------------------------------------------------ 对话框
 export interface Dialog { scrim: HTMLElement; dlg: HTMLElement; close: () => void }
 export const dialogs: Dialog[] = []
+// 对话框里点了会整块重画的东西（指标勾选、分类）之后，焦点掉回 body，对话框自己的 keydown 收不到 Esc；
+// 这里兜一层：焦点不在任何对话框里时，Esc 关最上面那个
+let escBound = false
+function bindEsc(): void {
+  if (escBound || typeof document === 'undefined') return
+  escBound = true
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !dialogs.length || menuOpen()) return
+    const t = e.target as Node | null
+    if (t && dialogs.some(d => d.dlg.contains(t))) return
+    e.stopPropagation(); e.preventDefault()
+    dialogs[dialogs.length - 1].close()
+  }, { capture: true })
+}
 
 export function dialog(html: string, cls: string, { center = false, onClose, label = '' }: { center?: boolean; onClose?: () => void; label?: string } = {}): Dialog {
   closeMenu()
@@ -133,7 +147,7 @@ export function dialog(html: string, cls: string, { center = false, onClose, lab
       scrim.remove(); dialogs.splice(dialogs.indexOf(api), 1); onClose?.(); prevFocus?.focus?.()
     },
   }
-  dialogs.push(api)
+  dialogs.push(api); bindEsc()
   scrim.addEventListener('mousedown', e => { if (e.target === scrim) api.close() })
   $$('[data-close]', dlg).forEach(b => b.addEventListener('click', api.close))
   dlg.addEventListener('keydown', e => {
