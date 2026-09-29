@@ -3,6 +3,7 @@
  * 关掉之后迟到的 ensureUniverse / 排着的帧把「search」订阅重新订上；登录请求回来时那一层已退，却照样弹栈。 */
 import { describe, expect, it } from 'vitest'
 import { life } from '../src/m/model/life'
+import { navStack } from '../src/m/model/navStack'
 
 const fakeRaf = () => {
   const q = new Map<number, FrameRequestCallback>()
@@ -62,5 +63,29 @@ describe('手机网页版 · 审查（页面）：一层界面的生命期', () 
     expect(offs).toBe(1)
     L.add(() => offs++)                         // 关掉之后才登记的收尾立刻跑
     expect(offs).toBe(2)
+  })
+})
+
+describe('手机网页版 · 审查（页面）：「我的」页内导航栈', () => {
+  it('登录请求在路上时退出登录层、推了「设置」：请求回来不许把「设置」弹掉', () => {
+    const popped: string[] = []
+    const s = navStack<string>((l, next) => popped.push(`${l}→${next}`))
+    s.push('我的'); s.push('登录')
+    const login = s.top!
+    s.back(); s.push('设置')                      // 人在请求路上退回去、又进了设置
+    expect(s.whenTop(login, () => s.popToRoot())).toBe(false)
+    expect(s.top).toBe('设置')
+    expect(popped).toEqual(['登录→我的'])
+  })
+  it('发起那层仍在栈顶：照常退回根；每一层都走收尾；根上再退什么都不做', () => {
+    const popped: string[] = []
+    const s = navStack<string>((l, next) => popped.push(`${l}→${next}`))
+    s.push('我的'); s.push('账号'); s.push('修改密码')
+    expect(s.whenTop('修改密码', () => s.back())).toBe(true)
+    expect(s.top).toBe('账号')
+    s.popToRoot()
+    expect(s.depth).toBe(1)
+    expect(s.back()).toBe(false)
+    expect(popped).toEqual(['修改密码→账号', '账号→我的'])
   })
 })

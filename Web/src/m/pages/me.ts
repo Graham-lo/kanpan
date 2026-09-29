@@ -25,6 +25,7 @@ import { liveCount, onAlertsChange } from '../model/alerts'
 import { onPlaceholderSync, onSyncChange, syncMeta, syncSource } from '../model/syncStatus'
 import { KIND_CN, PASSWORD_RULE, USERNAME_RULE, deviceMeta, validPassword, validUsername } from '../model/formText'
 import { buildAlertList, startAlertWatcher } from './alerts'
+import { navStack } from '../model/navStack'
 import { takeOpenParam } from './_streams'
 
 registerTerms([
@@ -49,7 +50,14 @@ interface Layer { el: HTMLElement; body: HTMLElement; off: (() => void)[] }
 export function initMe(root: HTMLElement): PageHandle {
   root.classList.add('page-fixed', 'me-page')
   root.innerHTML = ''
-  const stack: Layer[] = []
+  const stack = navStack<Layer>((layer, next) => {
+    layer.off.forEach(f => f())
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    layer.el.classList.remove('in')
+    next.el.classList.remove('under')
+    setTimeout(() => layer.el.remove(), 300)
+    renderRoot()
+  })
   // 线路只记在本机：页面一加载就按它连（选 gateway 但没有网关地址时 market 自己退回直连）
   setRoute(st.routePolicy)
   startAlertWatcher()
@@ -73,24 +81,15 @@ export function initMe(root: HTMLElement): PageHandle {
     return layer
   }
   function push(title: string, build: (body: HTMLElement, layer: Layer) => void): Layer {
-    const top = stack[stack.length - 1]
+    const top = stack.top
     const layer = makeLayer(title, false)
     stack.push(layer)
     build(layer.body, layer)
     requestAnimationFrame(() => { layer.el.classList.add('in'); top?.el.classList.add('under') })
     return layer
   }
-  function back(): void {
-    if (stack.length <= 1) return
-    const layer = stack.pop()!
-    layer.off.forEach(f => f())
-    ;(document.activeElement as HTMLElement | null)?.blur?.()
-    layer.el.classList.remove('in')
-    stack[stack.length - 1].el.classList.remove('under')
-    setTimeout(() => layer.el.remove(), 300)
-    renderRoot()
-  }
-  const popToRoot = (): void => { while (stack.length > 1) back() }
+  const back = (): void => { stack.back() }
+  const popToRoot = (): void => stack.popToRoot()
 
   // ───────── 根 ─────────
   const rootLayer = makeLayer('我的', true)
@@ -116,7 +115,7 @@ export function initMe(root: HTMLElement): PageHandle {
     if (b) go(b.dataset.go || '')
   })
   onPlaceholderSync(() => toast('同步还没接上'))
-  onSyncChange(() => { if (stack.length >= 1) renderRoot() })
+  onSyncChange(() => { if (stack.depth >= 1) renderRoot() })
   // 「上次 N 分钟前」会过时：回到前台 / 每分钟重画一次
   setInterval(() => { if (!document.hidden && loggedIn()) renderRoot() }, 60_000)
   function go(id: string): void {
@@ -270,6 +269,9 @@ export function initMe(root: HTMLElement): PageHandle {
     body.querySelector<HTMLElement>('.me-switch')?.addEventListener('click', () => {
       back(); push(page === 'login' ? '注册' : '登录', (b, l) => buildAuth(b, l, page === 'login' ? 'register' : 'login'))
     })
+    // 请求在路上时人可能已经退出这一层、又推了别的层：回来的结果只在这一层还在栈顶时才动导航，
+    // 否则 popToRoot / back 会把人家后来推的那层弹掉（结果照样用提示条告诉他）
+    const onTop = (): boolean => stack.top === L
     btn.onclick = async () => {
       if (!ok() || busy) return
       const v = values()
@@ -277,19 +279,24 @@ export function initMe(root: HTMLElement): PageHandle {
       try {
         if (page === 'login' || page === 'register') {
           await login(v.user, v.pass, page === 'register')
-          popToRoot(); toast(page === 'register' ? '注册成功' : '已登录')
+          stack.whenTop(L, popToRoot)
+          toast(page === 'register' ? '注册成功' : '已登录')
         } else if (page === 'password') {
           await changePassword(v.pass, v.next)
-          back(); toast('密码已修改')
+          stack.whenTop(L, back)
+          toast('密码已修改')
         } else {
           const sure = await confirmDialog({ title: '注销账号', message: '云端的自选、画线、提醒都会删除，本机这份留着', confirm: '注销', destructive: true })
-          if (!sure) { busy = false; paint(); return }
+          if (!sure || !onTop()) { busy = false; paint(); return }
           await deleteAccount(v.pass)
-          popToRoot(); toast('账号已注销')
+          stack.whenTop(L, popToRoot)
+          toast('账号已注销')
         }
       } catch (err) {
         busy = false
-        errEl.textContent = errorText(err, page === 'login' ? 'login' : page === 'register' ? 'register' : 'password')
+        const text = errorText(err, page === 'login' ? 'login' : page === 'register' ? 'register' : 'password')
+        if (!onTop()) { toast(text); return }
+        errEl.textContent = text
         errEl.hidden = false
         paint()
       }
@@ -311,6 +318,6 @@ export function initMe(root: HTMLElement): PageHandle {
   return {
     show() { renderRoot() },
     hide() { (document.activeElement as HTMLElement | null)?.blur?.() },
-    reselect() { if (stack.length > 1) popToRoot(); else rootScroll.scrollTo({ top: 0, behavior: 'smooth' }) },
+    reselect() { if (stack.depth > 1) popToRoot(); else rootScroll.scrollTo({ top: 0, behavior: 'smooth' }) },
   }
 }
