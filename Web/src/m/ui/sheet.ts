@@ -132,6 +132,8 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
     close() {
       if (closed) return
       closed = true; drop(me)
+      // 关掉就摘掉窗口上的 resize：它的闭包攥着整张面板的 DOM，留着就开一次漏一张（压测 200 次开关 +2 万节点）
+      removeEventListener('resize', onResize)
       wrap.classList.remove('in')
       root.style.transform = ''
       setTimeout(() => wrap.remove(), reducedMotion() ? 0 : 300)
@@ -149,7 +151,7 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
   push(me)
   layout()
   requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('in')))
-  const onResize = (): void => { if (closed) removeEventListener('resize', onResize); else layout() }
+  const onResize = (): void => { if (!closed) layout() }
   addEventListener('resize', onResize)
 
   // —— 拖：标题行 / 拖拽条随便拖；正文只在滚到顶时往下拉才接手 ——
