@@ -32,7 +32,8 @@
 //! 这里只在「这一分钟整个出口已用的权重」低于上限的 [`SHARE_PERCENT`]% 时才出站，自己每分钟
 //! 最多花 [`MINUTE_WEIGHT`]，每次一页（≤ 1000 根，权重 5），页间至少歇一秒；有人正在等找相似
 //! （[`crate::search::busy`]）就整个让开。闸门按着、账本满了，就等到下一分钟开头再来。
-//! 顺序是先滚动（每只每个周期最新那一段），再回填（1h、4h 优先，从近往远）。
+//! 顺序是先滚动（最近的整窗口所在的段，刚跨段时连上一段），再回填：按离现在第几段由近到远，
+//! 同一深度里 1h → 4h → 1d → 15m 轮着来。
 use crate::AppState;
 use chrono::{DateTime, Datelike, Utc};
 use scorebook_core::domain::{chart_match, criteria::Bar, interval::Interval};
@@ -80,7 +81,7 @@ pub struct Plan {
     pub lengths: &'static [usize],
     pub stride: i64,
 }
-/// 回填顺序也是这张表的顺序：用户这次报的是 1h / 4h，先补它们。
+/// 同一回填深度里按这张表的顺序：用户这次报的是 1h / 4h，先补它们。
 pub const PLANS: [Plan; 4] = [
     Plan { interval: "1h", lengths: &[32, 48, 64], stride: 4 },
     Plan { interval: "4h", lengths: &[32, 48, 64], stride: 2 },
@@ -228,8 +229,8 @@ pub struct Job {
     pub span: (i64, i64),
 }
 
-/// 从「每段库里已有多少」排出这一轮要做的活：先每只每个周期最新那一段（滚动），
-/// 再按 [`PLANS`] 的顺序、每个周期从近往远回填。`tried` 里记着「取过一回、还是这个该有数」
+/// 从「每段库里已有多少」排出这一轮要做的活：先滚动（最近的整窗口起在哪一段就是哪一段），
+/// 再按离现在第几段由近到远回填、同一深度按 [`PLANS`] 的顺序轮着来。`tried` 里记着「取过一回、还是这个该有数」
 /// 的段，不再重取。
 pub fn schedule(
     have: &HashMap<(String, usize), HashMap<i64, usize>>,
@@ -249,6 +250,9 @@ pub fn schedule(
             }
             let counts = have.get(&(symbol.clone(), index));
             let latest = (closed - 1).div_euclid(CHUNK);
+            // 「滚动」按窗口起点算，不按最新那一段算：刚跨进新一段时（4h 一段约 155 天），最新一段里
+            // 还凑不出一个整窗口，最近的窗口全都起在上一段里——那一段也得算滚动，不能排到回填后面。
+            let recent = (closed - plan.longest() - plan.stride).div_euclid(CHUNK);
             for chunk in (from.div_euclid(CHUNK)..=latest).rev() {
                 let want = expected(plan, chunk, from, closed);
                 let got = counts.and_then(|c| c.get(&chunk)).copied().unwrap_or(0);
@@ -257,13 +261,15 @@ pub fn schedule(
                 }
                 let Some(span) = fetch_span(plan, chunk, from, closed) else { continue };
                 let job = Job { symbol: symbol.clone(), plan: index, chunk, want, span };
-                if chunk == latest { rolling.push(job) } else { backfill.push(job) }
+                if chunk >= recent { rolling.push((0, job)) } else { backfill.push((latest - chunk, job)) }
             }
         }
     }
-    // 回填：同一个周期内先近后远，各品种轮着来（第一只的全年补完之前，别的也都先有最近的）。
-    backfill.sort_by(|a, b| a.plan.cmp(&b.plan).then(b.chunk.cmp(&a.chunk)));
-    rolling.extend(backfill);
+    // 回填：按「离现在第几段」由近到远，各周期、各品种轮着来——1h 一年有十段、4h 只有三段，
+    // 按周期排的话 4h 要等 1h 的全年补完才轮到，4h 的找相似就一直空着。
+    backfill.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.plan.cmp(&b.1.plan)));
+    let mut rolling: Vec<Job> = rolling.into_iter().map(|(_, job)| job).collect();
+    rolling.extend(backfill.into_iter().map(|(_, job)| job));
     rolling
 }
 
@@ -600,19 +606,29 @@ mod tests {
         }
     }
 
-    /// 排活：先滚动（最新一段），再按 1h → 4h → 1d → 15m、从近往远回填；已补齐的、
+    /// 排活：先滚动，再由近到远、各周期轮着回填；已补齐的、
     /// 取过一回还是这个数的不再排。
     #[test]
     fn schedule_rolls_first_then_backfills_near_to_far() {
         let now = 1_790_000_000_000i64;
         let symbols = vec![("BTCUSDT".to_string(), 0i64), ("ETHUSDT".to_string(), 0i64)];
         let jobs = schedule(&HashMap::new(), &symbols, now, &HashMap::new());
-        let rolling = PLANS.len() * symbols.len();
-        let latest = |p: usize| (now.div_euclid(PLANS[p].step_ms()) - 1).div_euclid(CHUNK);
-        assert!(jobs[..rolling].iter().all(|j| j.chunk == latest(j.plan)), "前面全是最新一段");
+        let closed = |p: usize| now.div_euclid(PLANS[p].step_ms());
+        let latest = |p: usize| (closed(p) - 1).div_euclid(CHUNK);
+        // 最近的整窗口起在哪一段，哪一段就是滚动（刚跨段时是上一段）。
+        let recent = |p: usize| (closed(p) - PLANS[p].longest() - PLANS[p].stride).div_euclid(CHUNK);
+        let rolling = jobs.iter().take_while(|j| j.chunk >= recent(j.plan)).count();
+        assert!(rolling >= PLANS.len() * symbols.len(), "每只每个周期至少一段滚动");
+        for p in 0..PLANS.len() {
+            for (s, _) in &symbols {
+                let newest = jobs.iter().filter(|j| j.plan == p && &j.symbol == s).map(|j| j.chunk).max();
+                assert!(jobs[..rolling].iter().any(|j| j.plan == p && &j.symbol == s && Some(j.chunk) == newest), "{} {s} 最近那段在前面", PLANS[p].interval);
+            }
+        }
         let back = &jobs[rolling..];
-        assert!(back.windows(2).all(|p| p[0].plan < p[1].plan || (p[0].plan == p[1].plan && p[0].chunk >= p[1].chunk)));
-        assert_eq!(back.first().map(|j| PLANS[j.plan].interval), Some("1h"));
+        let depth = |j: &Job| latest(j.plan) - j.chunk;
+        assert!(back.windows(2).all(|p| depth(&p[0]) < depth(&p[1]) || (depth(&p[0]) == depth(&p[1]) && p[0].plan <= p[1].plan)), "回填按离现在第几段由近到远、各周期轮着来");
+        assert!(back.iter().take(12).any(|j| PLANS[j.plan].interval == "4h"), "4h 不用等 1h 全年补完");
         // 全补齐了就没活。
         let mut have = HashMap::new();
         for j in &jobs {
@@ -622,6 +638,20 @@ mod tests {
         // 取过一回还差（停牌缺根）：同一个该有数不再排。
         let tried: HashMap<_, _> = jobs.iter().map(|j| ((j.symbol.clone(), j.plan, j.chunk), j.want)).collect();
         assert!(schedule(&HashMap::new(), &symbols, now, &tried).is_empty());
+    }
+
+    /// 线上 2026-09-29 的实况：4h 刚跨进新一段（新段里才 31 根，凑不出 32 根的窗口），
+    /// 最近的窗口全起在上一段——那一段必须排在滚动里，不能压在 1h 的全年回填后面。
+    #[test]
+    fn just_after_a_chunk_boundary_the_previous_chunk_rolls() {
+        let four = &PLANS[1];
+        let step = four.step_ms();
+        let now = (135 * CHUNK + 31) * step + 60_000;
+        let symbols = vec![("BTCUSDT".to_string(), 0i64)];
+        let jobs = schedule(&HashMap::new(), &symbols, now, &HashMap::new());
+        let first_4h = jobs.iter().position(|j| j.plan == 1).unwrap();
+        assert_eq!(jobs[first_4h].chunk, 134, "最近的 4h 窗口起在上一段");
+        assert!(first_4h < PLANS.len() * 3, "排在滚动里，前面只有别的周期的滚动：{first_4h}");
     }
 
     /// 上市不满一年的品种：上市之前的段不排。
