@@ -309,13 +309,29 @@ pub const CHANGE_RETENTION_DAYS:i32=30;
 
 /// 这个人的回执与变更日志各按窗口截一次。maintenance 每小时对每个人调一次。
 ///
-/// 先拿 `lock`（和 push / changes 同一把）：水位和删除必须对 `changes` 原子可见——
+/// 删的时候拿着 `lock` 那一把（和 push / changes 同一把）：水位和删除必须对 `changes` 原子可见——
 /// 否则一次 `changes` 可能读到旧水位、却撞上已经删掉的那几行，悄悄漏一段改动。
 /// 每个人**最新的那一行变更永远不删**：bootstrap 交出去的游标是 max(sequence)，
 /// 那一行没了，游标会退回 0、落到水位以下，刚 bootstrap 完的设备立刻就「过期」。
-/// 返回这一批删掉的（回执数，变更数）。
+/// 返回这一批删掉的（回执数，变更数）；这个人正在同步、这一轮让开了，也是 (0, 0)。
+///
+/// 这把锁是这个人所有 push / changes / bootstrap 的串行闸，API 那边等它只等 5 秒
+/// （serve 的 lock_timeout），等不到就回 503。清理是晚一小时也无妨的活，所以它**不许**
+/// 把这把锁攥久。2026-09-30 压测 C 实测：worker 刚起的那轮清理里，一条一行都没删掉的
+/// 回执 DELETE 跑了 146 秒（原来按人筛回执没有索引可走，每个人都要把整张回执表的堆页
+/// 读一遍，而那会儿 IO 正被检查点与全局清理占满），这段时间这个人的 162 次同步全是 503。
+/// 所以现在是三道关：
+/// 1. 先**不拿锁**看一眼有没有到期的（`past_window`）。回执和变更只会越来越老、不会有新写进来的
+///    老行，「没有」的结论不会被并发的 push 推翻；绝大多数人、绝大多数小时到这里就结束了，
+///    根本不碰那把锁。这一眼走 (user_id, created_at) 索引（迁移 0034 / 0035），只读几个索引页。
+/// 2. 有到期的才去拿锁，而且只**试**一次：这个人正在同步就让他，下一小时再来。
+/// 3. 拿到了，这个事务里每条语句最多 2 秒（worker 连接池本身不设语句死线）：两条删除加起来
+///    也短于 API 那边的 5 秒；超时就整批回滚、记一笔，下一小时再来。
 pub async fn prune(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,limit:i64)->Result<(u64,u64)> {
- lock(tx,owner).await?;
+ if !past_window(tx,owner).await? {return Ok((0,0))}
+ let locked:bool=sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))").bind(format!("sync:{owner}")).fetch_one(&mut **tx).await?;
+ if !locked {tracing::info!(%owner,"Cleanup: this person is syncing right now, pruning waits for the next round");return Ok((0,0))}
+ sqlx::query("SET LOCAL statement_timeout='2s'").execute(&mut **tx).await?;
  // 一次最多删 `limit` 行（`maintenance` 一批一个事务地滚，见 `maintenance::in_batches`）：
  // 攒了几个月的回执一条 DELETE 删完，锁和 WAL 都会一下子冲上去，还把这个人的 push 堵在锁后面。
  let receipts=sqlx::query("DELETE FROM sync_operations WHERE ctid IN (SELECT ctid FROM sync_operations \
@@ -330,6 +346,13 @@ pub async fn prune(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,limit
   SELECT count(*) FROM gone")
   .bind(owner).bind(CHANGE_RETENTION_DAYS).bind(limit).fetch_one(&mut **tx).await?;
  Ok((receipts,u64::try_from(changes).unwrap_or(0)))
+}
+/// 这个人有没有过了保留窗口、该删的回执或变更（最新的那一行变更不算，见 `prune`）。不拿锁。
+async fn past_window(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<bool> {
+ Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sync_operations WHERE user_id=$1 AND created_at<now()-make_interval(days=>$2)) \
+   OR EXISTS(SELECT 1 FROM sync_changes WHERE user_id=$1 AND created_at<now()-make_interval(days=>$3) \
+    AND sequence<(SELECT max(sequence) FROM sync_changes WHERE user_id=$1))")
+  .bind(owner).bind(OPERATION_RETENTION_DAYS).bind(CHANGE_RETENTION_DAYS).fetch_one(&mut **tx).await?)
 }
 /// 这个人的变更日志从哪里往后是完整的：`sequence` 不大于它的变更可能已经删掉了。
 async fn floor(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<i64> {

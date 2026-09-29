@@ -12,16 +12,24 @@ const MAX_BATCHES:usize=200;
 /// 两批之间歇多久，让别的查询插进来。
 const PAUSE:Duration=Duration::from_millis(50);
 
+/// 同步回执与变更日志一批删多少。比 `BATCH` 小：这一批是拿着这个人的同步锁删的，
+/// 而那个事务里每条语句只给 2 秒（见 `sync::prune`）——IO 慢的时候五千行可能删不完，
+/// 删不完就整批回滚、永远也清不下去；一千行在慢盘上也是亚秒级。
+const SYNC_BATCH:i64=1000;
+
 /// 按批滚着做一件事，直到某一批不满（删干净了）或者到了 `MAX_BATCHES`。
 /// `step(limit)` 做一批、返回这一批动了几行。返回合计动了几行。
-async fn in_batches<F,Fut>(mut step:F)->Result<u64>
+async fn in_batches<F,Fut>(step:F)->Result<u64>
+where F:FnMut(i64)->Fut,Fut:std::future::Future<Output=Result<u64>> {in_batches_of(BATCH,step).await}
+/// 同 `in_batches`，一批 `size` 行。
+async fn in_batches_of<F,Fut>(size:i64,mut step:F)->Result<u64>
 where F:FnMut(i64)->Fut,Fut:std::future::Future<Output=Result<u64>> {
  let mut total=0;
  for batch in 0..MAX_BATCHES {
   if batch>0 {tokio::time::sleep(PAUSE).await}
-  let n=step(BATCH).await?;
+  let n=step(size).await?;
   total+=n;
-  if n<BATCH as u64 {return Ok(total)}
+  if n<size as u64 {return Ok(total)}
  }
  tracing::info!("Cleanup: stopped after {MAX_BATCHES} batches ({total} rows); the rest waits for the next round");
  Ok(total)
@@ -91,7 +99,7 @@ async fn personal(s:&AppState,owner:Uuid)->Result<()> {
  // 计数用原子量而不是 `Cell`：这一整轮清理是 worker 里 `tokio::spawn` 的一条任务，future 得是 `Send`。
  use std::sync::atomic::{AtomicU64,Ordering::Relaxed};
  let (receipts,changes)=(AtomicU64::new(0),AtomicU64::new(0));
- in_batches(|limit|{
+ in_batches_of(SYNC_BATCH,|limit|{
   let (receipts,changes)=(&receipts,&changes);
   async move {
    let mut tx=s.personal(owner).await?;

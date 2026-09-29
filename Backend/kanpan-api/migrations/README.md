@@ -151,3 +151,15 @@ SELECT count(*) FROM sync_change_floors;                                        
 ```sql
 SELECT count(*) FILTER (WHERE alive_ms IS NOT NULL), count(*) FROM orderflow_bases;  -- 重启几分钟后前者 ≈ 在跟的只数
 ```
+
+## 0034 / 0035 上线（2026-09-30 压测 C）
+
+两条都是 `-- no-transaction` 的 `CREATE INDEX CONCURRENTLY IF NOT EXISTS`，给同步回执与变更日志各加一条
+`(user_id, created_at)`，跟着 `ops/install.py` 的 `migrate` 走，不挡读写。表只有几十 MB，建索引是秒级。
+新二进制的 `sync::prune` 先不拿锁用它看「有没有到期的」，没有就不碰这个人的同步锁；旧二进制用不上它也无害。
+中途失败留下 INVALID 索引时按上面「CONCURRENTLY 中途失败了怎么办」清掉再跑。只读核对：
+
+```sql
+SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
+ WHERE c.relname IN ('sync_operations_owner_created','sync_changes_owner_created');  -- 两行、都是 t
+```
