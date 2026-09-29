@@ -1,0 +1,454 @@
+/* Hkline 手机网页版 · 行情页（照 iOS Main/TopBar、MainScreenParts、HeaderStats、IntervalBar、IntervalGridPopover、
+ * OrderFlowDetailCard、LandscapeChrome、Drawing/DrawingBar、Panels/*）。颜色只用 tokens.css 的令牌。 */
+
+#page-chart { --page-bg: var(--chart) }
+
+/* ───────────── 整页骨架：竖屏四行；横屏画线台三列 ───────────── */
+.cp {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-areas: "top" "head" "iv" "chart";
+  padding: var(--safe-top) var(--safe-right) calc(var(--tabbar-h) + var(--safe-bottom)) var(--safe-left);
+  background: var(--chart); color: var(--ink);
+}
+.cp-top { grid-area: top }
+.cp-head { grid-area: head }
+.cp-ivrow { grid-area: iv }
+.cp-chart { grid-area: chart; position: relative; min-height: 0; min-width: 0; overflow: hidden }
+.cp-rail { grid-area: rail }
+.cp-lline { grid-area: line }
+.cp-lsel { grid-area: sel }
+.cp-dock { grid-area: dock }
+.cp-trail { grid-area: tools }
+.cp-rail, .cp-lline, .cp-lsel, .cp-dock, .cp-trail { display: none }
+
+.cp.land {
+  grid-template-columns: calc(52px + var(--safe-left)) minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "rail line tools" "rail sel tools" "rail chart tools" "rail dock tools";
+  padding: 0 var(--safe-right) var(--safe-bottom) 0;
+}
+.cp.land .cp-top, .cp.land .cp-head, .cp.land .cp-ivrow { display: none }
+.cp.land .cp-rail { display: flex }
+.cp.land .cp-lline { display: flex }
+.cp.land .cp-lsel:not([hidden]) { display: flex }
+.cp.land .cp-dock:not([hidden]) { display: flex }
+.cp.land .cp-trail:not([hidden]) { display: flex }
+
+/* ───────────── 顶栏 ───────────── */
+.cp-top {
+  display: flex; align-items: center; gap: var(--s-s);
+  height: var(--hit); padding: 0 var(--inset-page);
+}
+.cp-disc {
+  flex: none; width: var(--icon-disc); height: var(--icon-disc); border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--raised2); color: var(--ink2);
+}
+.cp-disc:active { opacity: 0.6 }
+.cp-back { margin-left: calc(-1 * var(--s-xs)) }
+.cp-back[hidden] { display: none }
+.cp-id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden }
+.cp-badge { flex: none; display: inline-flex; width: var(--badge); height: var(--badge) }
+.cp-base { font: var(--t-title); white-space: nowrap }
+.cp-quote { font: var(--t-caption); color: var(--ink3); white-space: nowrap; margin-left: -4px; align-self: flex-end; padding-bottom: 5px }
+.cp-perp {
+  flex: none; font: var(--t-caption2-emph); color: var(--ink3);
+  padding: 1px 5px; border-radius: var(--r-xs); background: var(--raised2);
+}
+.cp-top-acts { flex: none; display: flex; gap: var(--s-s) }
+
+/* ───────────── 头部：价格 + 六格 ───────────── */
+.cp-head {
+  display: flex; align-items: flex-start; gap: var(--s-m);
+  padding: var(--s-xs) var(--inset-page) var(--s-s);
+  touch-action: pan-y;
+}
+.cp-quotebox { position: relative; flex: 1; min-width: 0 }
+.cp-quoteinner { display: flex; flex-direction: column; gap: var(--s-xxs) }
+.cp-price { font: var(--t-price); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.cp-chg { font: var(--t-caption); font-variant-numeric: tabular-nums; white-space: nowrap }
+.cp-readout {
+  position: absolute; left: 0; top: 0; right: 0;
+  font: var(--t-caption2); font-variant-numeric: tabular-nums; line-height: 1.45; color: var(--ink2);
+  white-space: pre; overflow: hidden; pointer-events: none;
+}
+.cp-readout[hidden] { display: none }
+.cp-stats { flex: none; display: flex; gap: var(--s-m) }
+.cp-col { display: grid; gap: 3px; min-width: 92px }
+.cp-cell { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-s); white-space: nowrap }
+.cp-cell[hidden] { display: none }
+.cp-lab { display: inline-flex; align-items: center; gap: 2px; font: var(--t-caption2); color: var(--ink3) }
+.cp-cell b { font: var(--t-caption2-emph); font-variant-numeric: tabular-nums; color: var(--ink) }
+.cp-cell b.up { color: var(--up) }
+.cp-cell b.down { color: var(--down) }
+
+/* ───────────── 周期条 ───────────── */
+.cp-ivrow { position: relative; height: 36px; padding: 0 var(--s-s) 0 var(--s-xs) }
+.cp-ivbar {
+  height: 100%; display: flex; align-items: center; gap: 2px;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.cp-ivrow.yield .cp-ivbar { opacity: 0; pointer-events: none }
+.cp-chips { flex: 1; min-width: 0; display: flex; align-items: center; height: 100% }
+.cp-chip {
+  flex: 1 1 0; min-width: 0; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  font: var(--t-control); color: var(--ink2);
+  -webkit-touch-callout: none;
+}
+.cp-chip span { padding: 3px 7px; border-radius: 999px; white-space: nowrap }
+.cp-chip.on span { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
+.cp-latest {
+  flex: none; height: 24px; padding: 0 var(--s-s); border-radius: 999px;
+  font: var(--t-caption-emph); color: var(--accent); background: var(--accent-soft);
+}
+.cp-latest[hidden] { display: none }
+.cp-ivdiv { flex: none; width: 1px; height: 14px; background: var(--line); margin: 0 var(--s-xs) }
+.cp-tail {
+  flex: none; height: 100%; padding: 0 7px;
+  display: inline-flex; align-items: center; gap: 2px;
+  font: var(--t-control); color: var(--ink2); white-space: nowrap;
+}
+.cp-more.on, .cp-more.open { color: var(--accent) }
+.cp-more.on { font: var(--t-control-on) }
+.cp-more svg { transition: transform var(--dur-fast) var(--ease-out) }
+.cp-more.open svg { transform: rotate(180deg) }
+.cp-gear { padding: 0 var(--s-xs) 0 6px }
+.cp-alertpill {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: none; align-items: center; gap: var(--s-xs);
+  height: var(--pill-h); padding: 0 var(--s-m); border-radius: 999px;
+  font: var(--t-control-on); color: var(--accent); background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+}
+.cp-ivrow.yield .cp-alertpill { display: inline-flex }
+
+/* 「更多」弹层：从周期条下沿展开的周期全表 */
+.cp-grid { padding: var(--s-m) var(--inset-page) var(--s-l); background: var(--raised) }
+.cp-grid-cells { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s-s) }
+.cp-gwrap { position: relative }
+.cp-gcell {
+  width: 100%; height: 38px; border-radius: var(--r-s);
+  font: var(--t-control); color: var(--ink); background: var(--raised2);
+  border: 1px solid transparent;
+}
+.cp-gcell.on { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
+.cp-gcell.target { border: 1px dashed var(--accent-line); color: var(--accent) }
+.cp-gcell.chosen { border-color: var(--accent) }
+.cp-gpin {
+  position: absolute; top: 0; right: 0; width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center; color: var(--ink3); opacity: 0.7;
+}
+.cp-gpin.on { color: var(--accent); opacity: 1 }
+
+/* ───────────── 订单流详情卡 ───────────── */
+.cp-ofbox { position: absolute; z-index: 3; display: flex; pointer-events: none }
+.cp-ofbox[hidden] { display: none }
+.cp-ofcard {
+  flex: none; min-width: 0; padding: var(--s-s) 10px;
+  border-radius: var(--r-m); background: var(--raised); color: var(--ink);
+  border: 1px solid var(--line); box-shadow: 0 4px 14px var(--toast-shadow);
+}
+.cp-of-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: var(--s-m); row-gap: 1px }
+.cp-of-head { min-width: 0; font: var(--t-caption-emph); white-space: nowrap }
+.cp-of-head em { font-style: normal }
+.cp-of-dur { flex: none; margin-left: auto; font: var(--t-caption2); color: var(--ink3); white-space: nowrap }
+.cp-of-grid {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; column-gap: var(--s-s); row-gap: 2px;
+  margin-top: var(--s-xs); font: var(--t-caption2); white-space: nowrap; overflow: hidden;
+}
+.cp-of-grid .k { color: var(--ink3) }
+.cp-of-grid .v { color: var(--ink); overflow: hidden; text-overflow: ellipsis }
+.cp-of-grid .k2 { text-align: right }
+.cp-of-status { grid-column: span 2; display: flex; gap: var(--s-s); justify-content: flex-end }
+.cp-of-status .k[hidden] { display: none }
+.cp-of-status b { font: var(--t-caption2-emph) }
+.cp-of-status b.live { color: var(--accent) }
+.cp-of-status b.done { color: var(--ink) }
+.cp-of-status b.gone { color: var(--ink3) }
+
+/* ───────────── 竖屏点「开始画线」：引导转横屏 ───────────── */
+.cp-guide {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--scrim);
+}
+.cp-guide[hidden] { display: none }
+.cp-guide-card {
+  width: min(280px, calc(100% - 2 * var(--inset-page)));
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-s); text-align: center;
+  padding: var(--s-xxl) var(--s-xl) var(--s-m); border-radius: var(--r-l);
+  background: var(--raised); color: var(--ink); box-shadow: 0 8px 30px var(--toast-shadow);
+}
+.cp-guide-card svg { color: var(--accent); animation: cp-turn 1.6s var(--ease-spring) infinite }
+.cp-guide-card b { font: var(--t-heading); margin-top: var(--s-xs) }
+.cp-guide-card span { font: var(--t-footnote); color: var(--ink2) }
+.cp-guide-x { margin-top: var(--s-s); min-height: var(--hit); padding: 0 var(--s-l); font: var(--t-body-emph); color: var(--accent) }
+@keyframes cp-turn { 0%, 30% { transform: rotate(0) } 60%, 100% { transform: rotate(-90deg) } }
+
+/* ───────────── 横屏画线台 ───────────── */
+.cp-rail {
+  flex-direction: column; align-items: stretch;
+  padding: var(--s-s) 6px var(--s-s) calc(6px + var(--safe-left));
+  border-right: 1px solid var(--hair);
+  min-height: 0;
+}
+.cp-rail-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-xs); scrollbar-width: none }
+.cp-rail-list::-webkit-scrollbar { display: none }
+.cp-rail-iv {
+  flex: none; height: 34px; border-radius: var(--r-s);
+  font: var(--t-control); color: var(--ink2);
+}
+.cp-rail-iv.on { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
+.cp-rail-more { flex: none; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--ink2) }
+
+.cp-lline { align-items: center; gap: var(--s-m); height: 40px; padding: 0 var(--s-m); min-width: 0 }
+.cp-lpill {
+  flex: none; display: inline-flex; align-items: baseline; gap: var(--s-xs);
+  height: 28px; padding: 0 var(--s-m); border-radius: 999px; align-self: center; line-height: 28px;
+  background: var(--raised2); color: var(--ink);
+}
+.cp-lpill:disabled { opacity: 1; cursor: default }
+.cp-lpill b { font: var(--t-control-on); line-height: 28px }
+.cp-lpill small { font: var(--t-caption2); color: var(--ink3); line-height: 28px }
+.cp-lpill b.up, .cp-lpill small.up { color: var(--up) }
+.cp-lpill b.down, .cp-lpill small.down { color: var(--down) }
+.cp-lchev { align-self: center; color: var(--ink3) }
+.cp-lread {
+  flex: 1; min-width: 0; font: var(--t-caption2); font-family: var(--font-num); color: var(--ink2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cp-lread.hint { font-family: var(--font-ui); color: var(--ink3) }
+
+.cp-lsel {
+  align-items: center; gap: var(--s-s); min-height: 40px; padding: 0 var(--s-m);
+  background: var(--raised); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
+}
+.cp-lsel-name { font: var(--t-footnote-emph); color: var(--ink); white-space: nowrap }
+.cp-lchip {
+  display: inline-flex; align-items: center; gap: var(--s-xs);
+  height: 28px; padding: 0 var(--s-m); border-radius: 999px;
+  font: var(--t-caption-emph); color: var(--ink2); background: var(--raised2);
+  white-space: nowrap;
+}
+.cp-lchip.on { color: var(--accent); background: var(--accent-soft) }
+.cp-lchip small { font: var(--t-caption2); opacity: 0.8 }
+.cp-sp { flex: 1 }
+.cp-sact {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 44px; padding: var(--s-xxs) var(--s-xs);
+  font: var(--t-caption2); color: var(--ink2);
+}
+.cp-sact.cp-danger { color: var(--danger) }
+
+.cp-dock {
+  align-items: center; gap: var(--s-xs); height: 46px; padding: 0 var(--s-s);
+  background: var(--raised); border-top: 1px solid var(--hair);
+}
+.cp-dscroll {
+  flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 2px;
+  overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.cp-dscroll::-webkit-scrollbar { display: none }
+.cp-dbtn {
+  flex: none; height: 42px; min-width: 46px; padding: 0 var(--s-xs);
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  font: var(--t-caption2); color: var(--ink2); border-radius: var(--r-s);
+}
+.cp-dbtn span { white-space: nowrap }
+.cp-dbtn.on { color: var(--accent); background: var(--accent-soft) }
+.cp-dicon { min-width: 40px }
+.cp-ddiv { flex: none; width: 1px; height: 24px; background: var(--line) }
+.cp-dfinish { flex: none; height: 32px; padding: 0 var(--s-m); border-radius: 999px; font: var(--t-control-on); color: var(--badge-ink); background: var(--accent) }
+
+.cp-trail {
+  flex-direction: column; justify-content: center; gap: var(--s-m);
+  padding: 0 var(--s-s); border-left: 1px solid var(--hair);
+}
+.cp-tr {
+  width: 52px; min-height: 52px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font: var(--t-caption2); color: var(--ink2); border-radius: var(--r-m);
+}
+.cp-tr:first-child { color: var(--accent); background: var(--accent-soft) }
+.cp-kg { flex: none }
+
+/* ───────────── 面板（分析 / 参数 / 图表设置 / 画线的几张表 / 分享 / 记一笔） ───────────── */
+.cp-sheet .m-sheet-body { padding-bottom: calc(var(--s-xl) + var(--safe-bottom)) }
+.cp-cancel { flex: none; min-height: var(--hit); padding: 0 var(--s-m) 0 var(--inset-page); font: var(--t-body); color: var(--ink2) }
+.cp-panel { padding: 0 var(--inset-page) }
+.cp-gt { padding: var(--s-l) var(--s-xs) 6px; font: var(--t-caption-emph); color: var(--ink3) }
+.cp-panel > .cp-gt:first-child { padding-top: var(--s-s) }
+.cp-group, .cp-inuse { border-radius: var(--r-m); background: var(--raised2); overflow: hidden }
+.cp-gap, .cp-reset { margin-top: var(--s-m) }
+.cp-row {
+  width: 100%; min-height: var(--row-min);
+  display: flex; align-items: center; gap: var(--s-s);
+  padding: 6px var(--s-m); text-align: left; color: var(--ink);
+}
+.cp-group > * + *, .cp-inuse > * + * { border-top: 1px solid var(--hair) }
+.cp-tap:active { background: var(--hair) }
+.cp-rn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font: var(--t-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.cp-rn b { font: var(--t-body-emph) }
+.cp-rn small { font: var(--t-caption); color: var(--ink3) }
+.cp-meta { font: var(--t-footnote); color: var(--ink3); white-space: nowrap }
+p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
+.cp-chev { flex: none; color: var(--ink3); display: inline-flex }
+.cp-accent, .cp-accent .cp-rn { color: var(--accent) }
+.cp-dangerrow .cp-rn { color: var(--danger) }
+.cp-textbtn { flex: none; min-height: 32px; padding: 0 var(--s-s); font: var(--t-control-on); color: var(--accent) }
+.cp-empty { padding: var(--s-xxl) var(--s-l); text-align: center; font: var(--t-footnote); color: var(--ink3) }
+.cp-dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 2px }
+.cp-drawglyph { flex: none; display: inline-flex }
+
+/* 开关（iOS Toggle 51×31） */
+.cp-switch {
+  flex: none; position: relative; width: 51px; height: 31px; border-radius: 999px;
+  background: var(--control-line); opacity: 0.55;
+  transition: background var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+.cp-switch i {
+  position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%;
+  background: var(--seg-on); box-shadow: 0 2px 4px var(--toast-shadow);
+  transition: transform var(--dur) var(--ease-spring);
+}
+.cp-switch.on { background: var(--accent); opacity: 1 }
+.cp-switch.on i { transform: translateX(20px) }
+/* 开关的圆钮照 iOS 永远是亮的：深色下 --seg-on 是深色，改用 --ink（深色皮肤里它是近白） */
+[data-theme="dark"] .cp-switch i { background: var(--ink) }
+
+/* 分段 */
+.cp-seg { flex: none; display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--r-s); background: var(--hair) }
+.cp-seg-opt { min-height: 28px; padding: 0 var(--s-m); border-radius: 6px; font: var(--t-control); color: var(--ink2); white-space: nowrap }
+.cp-seg-opt.on { background: var(--seg-on); color: var(--ink); font: var(--t-control-on); box-shadow: 0 1px 3px var(--toast-shadow) }
+
+/* 在用的指标 */
+.cp-iu { display: flex; align-items: center; min-height: var(--row-min); background: var(--raised2) }
+.cp-iu.m-lifted { box-shadow: 0 6px 20px var(--toast-shadow); position: relative; z-index: 2 }
+.cp-iu-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-s); min-height: var(--row-min); padding: 0 var(--s-s) 0 var(--s-m); text-align: left; color: var(--ink) }
+.cp-reheight { flex: none; font: var(--t-caption-emph); color: var(--accent); padding: 0 var(--s-xs); min-height: 32px }
+.cp-grip { flex: none; width: 40px; min-height: var(--row-min); display: flex; align-items: center; justify-content: center; color: var(--ink3); touch-action: none }
+.cp-grip-pad { visibility: hidden }
+
+/* 参数编辑 */
+.cp-editor { padding-bottom: var(--s-s) }
+.cp-prow { background: var(--raised2) }
+.cp-prow-in { display: flex; align-items: center; gap: var(--s-s); min-height: var(--row-min); padding: 6px var(--s-m); --sw-bg: var(--raised2); background: var(--raised2) }
+.cp-field {
+  flex: none; width: 72px; height: 32px; padding: 0 var(--s-s);
+  border: 1px solid var(--line); border-radius: var(--r-s); background: var(--raised);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.cp-field:focus { border-color: var(--accent) }
+.cp-field-wide { width: 150px }
+.cp-crow { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-s); padding: 10px var(--s-m) }
+.cp-crow .cp-rn { flex: none }
+.cp-chips-c { display: flex; flex-wrap: wrap; gap: 10px; align-items: center }
+.cp-cchip, .cp-cpick {
+  position: relative; flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--c); box-shadow: inset 0 0 0 1px var(--hair);
+}
+.cp-cchip.on, .cp-cpick.on { box-shadow: 0 0 0 2px var(--raised2), 0 0 0 4px var(--accent) }
+.cp-cpick:not(.on) {
+  background: conic-gradient(var(--palette-0), var(--palette-1), var(--palette-4), var(--palette-5), var(--palette-2), var(--palette-0));
+}
+.cp-cpick input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer }
+.cp-widths, .cp-swaps { display: flex; gap: var(--s-s); flex-wrap: wrap }
+.cp-wcell {
+  width: 48px; height: 34px; border-radius: var(--r-s); background: var(--raised);
+  display: flex; align-items: center; justify-content: center; color: var(--ink2);
+  border: 1px solid var(--line);
+}
+.cp-wcell i { width: 24px; background: currentColor; border-radius: 2px }
+.cp-wcell.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft) }
+.cp-textbox { padding: var(--s-s) var(--s-m) }
+.cp-textbox textarea, .cp-levels {
+  width: 100%; border: 0; background: transparent; resize: none; color: var(--ink);
+}
+.cp-foot { font: var(--t-caption2); color: var(--ink3); text-align: right; padding-top: var(--s-xs) }
+.cp-ofrow .cp-meta { min-width: 48px; text-align: right }
+
+/* 对比 / 换品种 */
+.cp-cmp-search {
+  display: flex; align-items: center; gap: var(--s-s);
+  margin: var(--s-s) 0 var(--s-m); padding: 0 var(--s-m); height: 40px;
+  border-radius: var(--r-m); background: var(--raised2); color: var(--ink3);
+}
+.cp-cmp-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink) }
+.cp-cmp-list { border-radius: var(--r-m); background: var(--raised2); overflow: hidden }
+.cp-cmp-list > * + * { border-top: 1px solid var(--hair) }
+.cp-cmp-row.on .cp-rn b { color: var(--accent) }
+
+/* 画线：工具面板 / 周期表 / 列表 */
+.cp-tgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-s); padding: var(--s-s) var(--inset-page) }
+.cp-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: var(--s-m) var(--s-xs); border-radius: var(--r-m);
+  background: var(--raised2); color: var(--ink2); font: var(--t-caption);
+}
+.cp-tile.on { background: var(--accent-soft); color: var(--accent) }
+.cp-pgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s-s); padding: var(--s-s) var(--inset-page) }
+.cp-pcell { height: 40px; border-radius: var(--r-s); background: var(--raised2); font: var(--t-control); color: var(--ink) }
+.cp-pcell.on { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
+.cp-dl-row { --sw-bg: var(--raised2) }
+.cp-dl-row + .cp-dl-row { border-top: 1px solid var(--hair) }
+.cp-dl-row .cp-row { background: var(--raised2) }
+.cp-dl-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 36px; text-align: left; color: var(--ink2) }
+.cp-dl-main .cp-rn { color: var(--ink) }
+
+/* 分享 */
+.cp-share { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-m); padding-top: var(--s-s) }
+.cp-stile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  padding: var(--s-l) var(--s-m); border-radius: var(--r-m); background: var(--raised2); text-align: left;
+}
+.cp-stile:active { background: var(--hair) }
+.cp-stile[aria-disabled="true"] { opacity: 0.55 }
+.cp-stile-ic {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.cp-stile-tx { display: flex; flex-direction: column; gap: 2px }
+.cp-stile-tx b { font: var(--t-body-emph); color: var(--ink) }
+.cp-stile-tx small { font: var(--t-caption); color: var(--ink3) }
+.cp-friends { padding-top: var(--s-s) }
+.cp-plane { flex: none; display: inline-flex; color: var(--accent) }
+.cp-fname {
+  display: flex; align-items: center; gap: var(--s-s);
+  padding: 4px 4px 4px var(--s-m); border-radius: var(--r-m); background: var(--raised2);
+}
+.cp-fname .cp-nin { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent }
+.cp-friends.busy { opacity: 0.7; pointer-events: none }
+
+/* 记一笔 */
+.cp-note { display: flex; flex-direction: column; gap: var(--s-s); padding-top: var(--s-xs) }
+.cp-nrow { display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: 36px }
+.cp-nlab { flex: none; font: var(--t-footnote); color: var(--ink3) }
+.cp-nval { font: var(--t-footnote); color: var(--ink) }
+.cp-nprices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-s) }
+.cp-nfield { display: flex; flex-direction: column; gap: var(--s-xs); font: var(--t-caption); color: var(--ink3) }
+.cp-nin {
+  width: 100%; height: 40px; padding: 0 var(--s-m);
+  border: 1px solid var(--line); border-radius: var(--r-s); background: var(--raised2); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.cp-nin:focus { border-color: var(--accent) }
+.cp-nref { min-height: 28px; font: var(--t-caption); color: var(--ink3) }
+.cp-ntext {
+  width: 100%; min-height: 64px; padding: 10px var(--s-m);
+  border: 1px solid var(--line); border-radius: var(--r-s); background: var(--raised2); color: var(--ink); resize: none;
+}
+.cp-ntext:focus { border-color: var(--accent) }
+.cp-nerr { font: var(--t-caption); color: var(--danger); padding: 0 var(--s-xs) }
+.cp-nerr[hidden] { display: none }
+.cp-nfoot { padding-top: var(--s-s) }
+.cp-primary {
+  width: 100%; height: var(--hit); border-radius: var(--r-m);
+  font: var(--t-body-emph); color: var(--badge-ink); background: var(--accent);
+}
+.cp-primary:active { opacity: 0.8 }
+.cp-note .cp-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none }
