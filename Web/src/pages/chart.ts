@@ -21,6 +21,9 @@ import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, stream
 import { VPVR_MODES } from '../chart/overlays'
 import { renderAlertsPanel, alertsPanelClick, openCreateAlert, installAlerts, alertStreams, askNotify } from '../alerts/panel'
 import { hooks, go } from '../app/shell'
+import { openNoteDialog, noteRuleText } from '../notes/dialog'
+import { installNoteSync, noteState, onNotesSynced, dropShot } from '../notes/sync'
+import { renderTradesPanel, tradesPanelClick, installTradesPanel } from '../trades/panel'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
@@ -616,7 +619,8 @@ function onPanelClick(e: MouseEvent): void {
   const sec = t.closest<HTMLElement>('[data-sector]'); if (sec) { hooks.openSector?.(sec.dataset.sector || ''); return }
   if (st.panel === 'alerts' && alertsPanelClick(e, cfg(active()).symbol)) return
   if (t.closest('#nNew')) return openNote()
-  const delNote = t.closest<HTMLElement>('[data-del-note]'); if (delNote) { e.stopPropagation(); st.notes = st.notes.filter(n => n.id !== delNote.dataset.delNote); save(); renderPanel(); return }
+  const delNote = t.closest<HTMLElement>('[data-del-note]'); if (delNote) { e.stopPropagation(); const id = delNote.dataset.delNote || ''; st.notes = st.notes.filter(n => n.id !== id); dropShot(id); save(); renderPanel(); return }
+  if (st.panel === 'trades' && tradesPanelClick(e, cfg(active()).symbol)) return
   const note = t.closest<HTMLElement>('[data-note]'); if (note) return jumpNote(note.dataset.note || '')
 }
 export function toggleWatch(k: string): boolean {
@@ -693,39 +697,30 @@ export function refreshAlerts(): void {
   refreshStreams()
 }
 
-// ---- 主力订单流、成交：本阶段空态
+// ---- 主力订单流、成交（成交：手机拉来、服务端拼好的回合里摊出来，见 trades/panel.ts）
 function panelFlow(el: HTMLElement): void { flowPanel(el) }
-function panelTrades(el: HTMLElement): void {
-  el.innerHTML = `<div class="sp-head"><h3>成交</h3></div>
-    <div class="empty">${I('trades', 'icon-24')}<div>需要登录并连上交易所只读密钥</div><div class="faint" style="font-size:12px;margin-top:4px">网页版登录下一阶段接入</div></div>`
-}
+function panelTrades(el: HTMLElement): void { renderTradesPanel(el, cfg(active()).symbol) }
 
-// ---- 笔记
+// ---- 笔记（记一笔：先落本机，再传服务端成为观点记录，见 notes/）
 function panelNotes(el: HTMLElement): void {
   el.innerHTML = `<div class="sp-head"><h3>笔记</h3><button class="btn secondary sm" id="nNew">${I('plus', 'icon-16')}记一笔</button></div>
     <div class="scroll" style="flex:1;min-height:0">${st.notes.length ? st.notes.slice().reverse().map(n => {
-      const s = sym(n.symbol)
-      return `<div class="list-row" data-note="${n.id}" style="cursor:pointer;align-items:flex-start">${badge(s, 'lg')}<div class="main"><div class="t1">${esc(s?.code || n.symbol)}<span class="tag">${IV_LABEL[n.iv] || n.iv}</span><span class="faint" style="font-size:12px;font-weight:400;margin-left:auto">${shTime(n.t)}</span></div>
-        <div class="t2" style="color:var(--text-1);font-size:13px;line-height:20px;white-space:pre-wrap">${esc(n.text)}</div></div>
-        <button class="ibtn sm act" data-del-note="${n.id}" aria-label="删除笔记" data-tip="删除">${I('trash')}</button></div>`
+      const s = sym(n.symbol), state = noteState(n), rule = noteRuleText(n)
+      return `<div class="list-row" data-note="${n.id}" style="cursor:pointer;align-items:flex-start">${badge(s, 'lg')}<div class="main"><div class="t1">${esc(s?.code || n.symbol)}<span class="tag">${IV_LABEL[n.iv] || n.iv}</span>${state ? `<span class="note-state ${state.cls}" ${n.err ? `data-tip="${esc(n.err)}"` : ''}>${state.text}</span>` : ''}<span class="faint" style="font-size:12px;font-weight:400;margin-left:auto">${shTime(n.draft?.created ?? n.t)}</span></div>
+        ${rule ? `<div class="note-rule num">${esc(rule)}</div>` : ''}
+        ${n.text ? `<div class="t2" style="color:var(--text-1);font-size:13px;line-height:20px;white-space:pre-wrap">${esc(n.text)}</div>` : ''}</div>
+        <button class="ibtn sm act" data-del-note="${n.id}" aria-label="从这台电脑删掉" data-tip="${n.sync === 'synced' ? '从这台电脑删掉（复盘里的记录还在）' : '删除'}">${I('trash')}</button></div>`
     }).join('') : `<div class="empty">${I('note', 'icon-24')}<div>还没有笔记</div><div class="faint" style="font-size:12px;margin-top:4px">在图上右键「在这根 K 线记一笔」</div></div>`}</div>`
 }
 function openNote(t?: number, p?: number): void {
   const cell = active(); if (!cell) return
   const c = cfg(cell), s = sym(c.symbol), b = cell.chart.lastBar()
-  const tt = t ?? b?.t ?? Date.now(), pp = p ?? b?.c ?? s?.price ?? 0
-  const d = dialog(`${head('记一笔')}<div class="dialog-body"><div class="form-grid">
-    <div class="sym-card">${badge(s, 'lg')}<div style="flex:1"><b>${esc(c.symbol)}</b> <span class="muted">${IV_LABEL[c.iv]} · ${shTime(tt)}</span></div><span class="num">${fmt(pp, s?.dec ?? 2)}</span></div>
-    <div class="field"><label for="nTx">这时候在想什么</label><textarea id="nTx" class="input" style="height:120px;padding:8px 12px;resize:vertical;line-height:20px" placeholder="比如：放量突破前高，回踩不破再看多"></textarea></div>
-    </div></div><div class="dialog-foot"><span class="faint" style="margin-right:auto;font-size:12px;align-self:center"><kbd>⌘</kbd> <kbd>↵</kbd> 保存</span><button class="btn ghost" data-close>取消</button><button class="btn primary" id="nOk">保存</button></div>`, 'alert-dlg', { label: '记一笔' })
-  const tx = $<HTMLTextAreaElement>('#nTx', d.dlg); tx.focus()
-  const ok = () => {
-    if (!tx.value.trim()) { tx.focus(); return }
-    st.notes.push({ id: 'n' + Date.now(), symbol: c.symbol, iv: c.iv, t: tt, p: pp, text: tx.value.trim() }); save(); d.close()
-    toast('已记下', '在右侧「笔记」里能找回来', 'note'); if (st.panel === 'notes') renderPanel()
-  }
-  $('#nOk', d.dlg).onclick = ok
-  tx.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ok() })
+  const { from, to } = cell.chart.visible()
+  openNoteDialog({
+    symbol: c.symbol, iv: c.iv, bars: cell.chart.bars, from, to, canvas: cell.chart.canvas,
+    t: t ?? b?.t ?? Date.now(), p: p ?? b?.c ?? s?.price ?? 0,
+    onSaved: () => { if (st.panel === 'notes') renderPanel() },
+  })
 }
 function jumpNote(id: string): void {
   const n = st.notes.find(x => x.id === id); const cell = active(); if (!n || !cell) return
@@ -790,13 +785,13 @@ const MAIN_TOGGLES: string[] = ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi'
 const isMainToggle = (id: string): id is MainToggle => MAIN_TOGGLES.includes(id)
 function openIndicators(): void {
   let cat: 'all' | 'main' | 'sub' = 'all'
-  const d = dialog(`${head('指标', `<span class="faint" style="font-size:12px">副图最多四个</span>`)}<div class="body"><div class="ind-cats">${([['all', '全部'], ['main', '主图'], ['sub', '副图']] as ['all' | 'main' | 'sub', string][]).map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${k === 'all' ? IND_ROWS.length : IND_ROWS.filter(r => r[1] === k).length}</span></button>`).join('')}</div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
+  const d = dialog(`${head('指标', `<span class="faint" style="font-size:12px">副图最多三个</span>`)}<div class="body"><div class="ind-cats">${([['all', '全部'], ['main', '主图'], ['sub', '副图']] as ['all' | 'main' | 'sub', string][]).map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${k === 'all' ? IND_ROWS.length : IND_ROWS.filter(r => r[1] === k).length}</span></button>`).join('')}</div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
   const isOn = (id: IndicatorId) => isMainToggle(id) ? !!st.ind[id] : st.ind.subs.includes(id as SubId)
   function render(): void {
     const full = st.ind.subs.length >= MAX_SUBS
     $('#indList', d.dlg).innerHTML = (cat !== 'sub' ? indicatorRowHTML() : '') + IND_ROWS.filter(r => cat === 'all' || r[1] === cat).map(([id, pl, n, sub]) => {
       const on_ = isOn(id), dis = pl === 'sub' && !on_ && full
-      return `<div class="ind-row ${dis ? 'disabled' : ''}" data-id="${id}" tabindex="0" role="checkbox" aria-checked="${on_}" aria-disabled="${dis}" ${dis ? 'data-tip="副图已经有四个了，先关一个"' : ''}>
+      return `<div class="ind-row ${dis ? 'disabled' : ''}" data-id="${id}" tabindex="0" role="checkbox" aria-checked="${on_}" aria-disabled="${dis}" ${dis ? 'data-tip="副图已经有三个了，先关一个"' : ''}>
         <span class="check-box ${on_ ? 'on' : ''}">${on_ ? I('check', 'icon-16') : ''}</span><span class="nm">${n}<small>${sub}</small></span>
         <span class="tag">${pl === 'main' ? '主图' : '副图'}</span>
         ${id !== 'vol' && Object.keys(CATALOG[id]?.params || {}).length ? `<button class="ibtn xs" data-set="${id}" aria-label="参数" data-tip="参数">${I('gear', 'icon-16')}</button>` : '<span style="width:24px"></span>'}</div>`
@@ -1048,6 +1043,9 @@ export async function initChart(): Promise<void> {
   hooks.pageShown.chart = () => cells.forEach(c => c.chart.resize())
   $('#hdrAlerts').onclick = () => { go('chart'); openPanel('alerts') }
   installAlerts({ openSymbol: k => { go('chart'); openSymbol(k) } })
+  installNoteSync()
+  onNotesSynced(() => { if (st.panel === 'notes') renderPanel() })
+  installTradesPanel(() => { if (st.panel === 'trades') renderPanel() })
   st.customIvs.forEach(registerCustomIv); st.cells.forEach(c => registerCustomIv(c.iv))
   startSeconds()
   onSecondsTick(k => { pendingSec.add(k); if (!secRAF) secRAF = requestAnimationFrame(flushSeconds) })

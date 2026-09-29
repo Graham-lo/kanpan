@@ -9,6 +9,7 @@ import { ApiError, authed, readStored } from '../account/client'
 import { IV_MS } from '../util/format'
 import { REST, j } from '../market/rest'
 import type { Bar } from '../chart/calc'
+import type { NoteDraft } from '../notes/draft'
 import type { ChartRange, Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from './types'
 
 const BASE = '/v1/native-review'
@@ -42,7 +43,7 @@ export function errorText(e: unknown): string {
     not_logged_in: '还没登录',
     network: '连不上服务器，检查网络后再试',
     timeout: '服务器响应太慢，稍后再试',
-    search_busy: '找相似一小时最多 20 次，稍后再试',
+    search_busy: '上一次找相似还没找完（一次只跑一个），或一小时内已经找了 20 次，稍后再试',
     search_not_ready: '还在找，稍等一下',
     record_revision_changed: '这条记录刚在别的设备上改过，已刷新，再保存一次',
     invalid_chart_range: '这段图表区间不完整，找不了相似',
@@ -150,6 +151,14 @@ export const reviewApi = {
   },
   unsave: (id: string, expectedRevision: number): Promise<unknown> => call('DELETE', `/saved-matches/${id}`, { expectedRevision }, true),
   tradeNote: (id: string, expectedRevision: number, text: string): Promise<TradeRecord> => call('POST', `/trades/${id}/note`, { expectedRevision, text }, true),
+  /** 记一笔：建一条观点记录。幂等键就用记录编号——断网重发、补传都落在同一条上 */
+  createRecord: (draft: NoteDraft): Promise<{ record: ViewRecord }> => call('POST', '/records', draft, draft.id),
+  /** 记一笔那张图（PNG / JPEG 的 base64，解码后 ≤ 2 MiB）；重复上传就是覆盖 */
+  putShot: (id: string, image: string): Promise<unknown> => call('POST', `/records/${id}/shot`, { image }, true),
+  /** 一只品种的交易回合（侧栏「成交」用） */
+  tradesOf: (symbol: string): Promise<TradeRecord[]> => all<TradeRecord>(`/records?kind=trade&symbol=${encodeURIComponent(symbol)}`, 'records'),
+  /** 交易回合的第一页（只看有没有、最近一次上传）：不翻页 */
+  tradesFirstPage: async (): Promise<TradeRecord[]> => ((await call<{ records?: TradeRecord[] }>('GET', '/records?kind=trade')).records ?? []),
 }
 
 // ------------------------------------------------------------ K 线（回放用，直连币安）

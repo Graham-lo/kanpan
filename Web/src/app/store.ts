@@ -4,9 +4,10 @@
  * 布局槽位（深度梯子列、底部抽屉、侧栏小部件顺序）也在这里，后续跟账号同步。
  */
 import type { Drawing } from '../chart/chart'
-import type { IndParams, SubId } from '../chart/calc'
+import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { migrateAlert, type Alert } from '../alerts/shape'
 import type { VpvrMode } from '../chart/overlays'
+import type { NoteDraft } from '../notes/draft'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
 
@@ -24,13 +25,22 @@ export function clampActive(s: Pick<State, 'active' | 'layout'>): void {
 }
 export type PanelId = 'watch' | 'alerts' | 'flow' | 'notes' | 'trades'
 export type PageId = 'chart' | 'sectors' | 'review' | 'me'
-/** 侧栏「自选」视图里按顺序堆叠的小部件；盘口 / 成交 / 大单 是下一阶段的 */
+/** 侧栏「自选」视图里按顺序堆叠的小部件（自选、品种详情、盘口、逐笔成交、大单、提醒），用户可调顺序与开合 */
 export type WidgetId = 'watch' | 'detail' | 'book' | 'tape' | 'walls' | 'alerts'
 
 export interface CellCfg { symbol: string; iv: string }
 /** 提醒：形状和手机端同步的 alerts 对象一致（19 个字段），见 alerts/shape.ts */
 export type { Alert }
-export interface Note { id: string; symbol: string; iv: string; t: number; p: number; text: string }
+export interface Note {
+  id: string; symbol: string; iv: string; t: number; p: number; text: string
+  /** 发给服务端的观点记录（2026-09-29 起）；更早只存本机的笔记没有这一项，也不上传 */
+  draft?: NoteDraft
+  /** pending 等上传（没登录、断网时先留在本机）· synced 已在服务端 · failed 服务端拒收（原因在 err） */
+  sync?: 'pending' | 'synced' | 'failed'
+  err?: string
+  /** 这一笔的截图：pending 还没传（图在 notes/shots 的本机存储里）· done 传上了 · none 没有图 */
+  shot?: 'pending' | 'done' | 'none'
+}
 export interface IndState {
   ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]
   /** 主图第二批叠加：VWAP、超级趋势、一目均衡表、成交量分布 */
@@ -109,7 +119,7 @@ export function hydrate(saved: Partial<State>): State {
   s.watch = { ...d.watch, ...(saved.watch || {}) }
   s.ind = { ...d.ind, ...(saved.ind || {}) }
   if (!Array.isArray(s.ind.subs)) s.ind.subs = d.ind.subs
-  s.ind.subs = s.ind.subs.slice(0, 4)
+  s.ind.subs = s.ind.subs.slice(0, MAX_SUBS)
   if (!Array.isArray(s.cells) || !s.cells.length) s.cells = d.cells
   if (!LAYOUTS.includes(s.layout)) s.layout = '1'
   clampActive(s)
@@ -125,6 +135,7 @@ export function hydrate(saved: Partial<State>): State {
   // 第一阶段的老形状（price / fr / oi）就地补成同步形状；触发过的不留
   s.alerts = (s.alerts as unknown[]).map(migrateAlert).filter((a): a is Alert => !!a && a.status !== 'fired')
   if (!Array.isArray(s.notes)) s.notes = []
+  s.notes = s.notes.filter(n => n && typeof n.id === 'string' && typeof n.symbol === 'string')
   if (!s.drawings || typeof s.drawings !== 'object') s.drawings = {}
   s.orderFlow = s.orderFlow === true
   const ofo: Record<string, Override> = {}

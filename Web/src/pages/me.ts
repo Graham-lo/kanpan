@@ -8,6 +8,8 @@ import { session, onSession } from '../account/session'
 import { login, logout, devices, kick, changePassword, errorText, type DeviceRow } from '../account/client'
 import { sh, pad } from '../util/format'
 import { openShortcuts } from './chart'
+import { reviewApi, errorText as reviewErrorText } from '../review/api'
+import { NO_KEY_TEXT, venueRows, type VenueRow } from '../trades/panel'
 import '../styles/account.css'
 
 const ME: [string, string, string][] = [['account', 'user', '账号'], ['exchange', 'key', '交易所账号'], ['notify', 'bell', '通知'], ['look', 'palette', '外观'], ['general', 'gear', '通用'], ['devices', 'device', '设备'], ['about', 'info', '关于']]
@@ -15,7 +17,6 @@ const VERSION = '0.1.0'
 
 const row = (t: string, d: string, ctl: string): string => `<div class="row"><div class="rl"><div class="t">${t}</div>${d ? `<div class="d">${d}</div>` : ''}</div>${ctl}</div>`
 const seg = (k: string, v: string, opts: [string, string][]): string => `<div class="seg" role="group">${opts.map(([x, l]) => `<button data-seg="${k}" data-v="${x}" aria-pressed="${v === x}">${l}</button>`).join('')}</div>`
-const later = (title: string, lede: string): string => `<h2>${title}</h2><p class="lede">${lede}</p><div class="group"><div class="empty" style="padding:32px 16px">${I('key', 'icon-24')}<div>下一阶段接入</div></div></div>`
 
 // ───────── 账号 ─────────
 
@@ -75,6 +76,38 @@ function devicesHTML(): string {
   )).join('') || '<div class="empty">没有登录中的设备</div>'}</div>`
 }
 
+// ───────── 交易所账号 ─────────
+// 只读密钥只在手机上绑定、只存在手机上；手机拉成交传到服务端拼成回合，网页只读服务端的回合。
+// 服务端没有单独的「绑定状态」接口，这里按它收到的交易回合推：哪家交易所、哪个账户、最近一次上传。
+
+let venues: { rows: VenueRow[] | null; err: string } = { rows: null, err: '' }
+
+let venLoading = false
+async function loadVenues(): Promise<void> {
+  if (venLoading) return
+  venLoading = true
+  try { venues = { rows: venueRows(await reviewApi.trades()), err: '' } } catch (e) { venues = { rows: null, err: reviewErrorText(e) } }
+  venLoading = false
+  if (st.page === 'me' && st.meSection === 'exchange') render()
+}
+
+function exchangeHTML(): string {
+  const head = `<h2>交易所账号</h2><p class="lede">只读密钥，只用来拉成交做复盘，不能下单、不能提币。</p>
+    <div class="group">${row('在手机上绑定', '手机「我的 → 交易所」填只读密钥；密钥只存在手机上，网页不存、也不经手', '')}${row('成交怎么到网页', '手机拉取成交后上传到服务端，拼成交易回合；网页的复盘与图表侧栏「成交」读的都是这一份', '')}</div>
+    <div class="group-title">服务端收到的成交</div>`
+  if (!session.user) return head + `<div class="group"><div class="empty" style="padding:32px 16px">${I('key', 'icon-24')}<div>登录后能看到手机传上来的是哪家交易所、最近什么时候传的</div><button class="btn primary sm" style="margin-top:12px" data-me="account">去登录</button></div></div>`
+  if (!venues.rows) {
+    if (!venues.err) void loadVenues()
+    return head + `<div class="group">${venues.err ? `<div class="empty" style="padding:32px 16px"><div>${esc(venues.err)}</div><button class="btn secondary sm" style="margin-top:12px" id="venRetry">重试</button></div>` : '<div class="empty" style="padding:32px 16px">正在读取…</div>'}</div>`
+  }
+  if (!venues.rows.length) return head + `<div class="group"><div class="empty" style="padding:32px 16px" data-ex-empty>${I('key', 'icon-24')}<div>${esc(NO_KEY_TEXT)}</div></div></div>`
+  return head + `<div class="group" data-ex-venues>${venues.rows.map(v => row(
+    `${esc(v.title)}${v.accountTag ? ` <span class="tag">${esc(v.accountTag)}</span>` : ''}`,
+    `${v.rounds} 个回合 · 最近一次上传 ${when(v.lastUpload)}${v.lastFill ? ` · 最新成交 ${when(v.lastFill)}` : ''}`,
+    '',
+  )).join('')}</div>`
+}
+
 async function loadDevices(): Promise<void> {
   try { devs = { rows: await devices(), err: '' } } catch (e) { devs = { rows: null, err: errorText(e) } }
   if (st.page === 'me' && st.meSection === 'devices') render()
@@ -92,7 +125,7 @@ async function submitAuth(): Promise<void> {
   if (btn) btn.disabled = true
   try {
     await login(u, p, authMode === 'register')
-    devs = { rows: null, err: '' }
+    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
     toast(authMode === 'register' ? '注册好了' : '已登录', '自选、画线、提醒开始和手机同步', 'check', 2400)
   } catch (e) {
     setErr('acctErr', errorText(e, authMode))
@@ -110,7 +143,7 @@ async function submitPassword(): Promise<void> {
   if (btn) btn.disabled = true
   try {
     await changePassword(cur, next)
-    devs = { rows: null, err: '' }
+    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
     toast('密码已修改', '其它设备已下线', 'check', 3000)
     render()
   } catch (e) {
@@ -131,7 +164,7 @@ function render(): void {
     ${ME.map(([k, ic, l]) => `<a href="#me" data-me="${k}" ${st.meSection === k ? 'aria-current="page"' : ''}>${I(ic)}${l}</a>`).join('')}`
   const body: Record<string, () => string> = {
     account: accountHTML,
-    exchange: () => later('交易所账号', '只读密钥，只用来拉成交做复盘。不能下单、不能提币。'),
+    exchange: exchangeHTML,
     devices: devicesHTML,
     notify: () => `<h2>通知</h2><p class="lede">提醒响一次就结束。这个网页开着时弹浏览器通知。</p>
       <div class="group">${row('浏览器通知', notifText(), 'Notification' in window && Notification.permission === 'default' ? '<button class="btn secondary sm" id="meNotif">允许</button>' : '')}</div>`,
@@ -147,7 +180,7 @@ function render(): void {
 export function initMe(): void {
   $('#page-me').addEventListener('click', e => {
     const t = tgt(e)
-    const a = t.closest<HTMLElement>('[data-me]'); if (a) { e.preventDefault(); st.meSection = a.dataset.me || 'look'; if (st.meSection === 'devices') devs = { rows: null, err: '' }; save(); render(); return }
+    const a = t.closest<HTMLElement>('[data-me]'); if (a) { e.preventDefault(); st.meSection = a.dataset.me || 'look'; if (st.meSection === 'devices') devs = { rows: null, err: '' }; if (st.meSection === 'exchange') venues = { rows: null, err: '' }; save(); render(); return }
     const sg = t.closest<HTMLElement>('[data-seg]')
     if (sg) {
       const k = sg.dataset.seg, v = sg.dataset.v || ''
@@ -163,6 +196,7 @@ export function initMe(): void {
     if (au) { authMode = au.dataset.auth === 'register' ? 'register' : 'login'; const keep = val('acctUser'); render(); const el = document.getElementById('acctUser') as HTMLInputElement | null; if (el) { el.value = keep; (keep ? document.getElementById('acctPass') : el)?.focus() } return }
     if (t.closest('#acctLogout')) { logout(); devs = { rows: null, err: '' }; toast('已退出', '这台电脑上的数据都留着', 'logout', 2000); return }
     if (t.closest('#devRetry')) { devs = { rows: null, err: '' }; render(); return }
+    if (t.closest('#venRetry')) { venues = { rows: null, err: '' }; render(); return }
     const kb = t.closest<HTMLButtonElement>('[data-kick]')
     if (kb) {
       kb.disabled = true
@@ -181,10 +215,10 @@ export function initMe(): void {
   // 登录 / 退出 / 被另一台电脑顶掉：头像、我的页跟着变；不在「我的」时弹一句
   onSession(() => {
     renderHeader()
-    devs = { rows: null, err: '' }
+    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
     if (st.page === 'me') render()
     else if (session.notice) toast(session.notice, '到「我的」重新登录', 'user', 6000)
   })
-  hooks.pageShown.me = () => { if (st.meSection === 'devices') devs = { rows: null, err: '' }; render() }
+  hooks.pageShown.me = () => { if (st.meSection === 'devices') devs = { rows: null, err: '' }; if (st.meSection === 'exchange') venues = { rows: null, err: '' }; render() }
   hooks.onTheme.push(() => { if (st.page === 'me') render() })
 }

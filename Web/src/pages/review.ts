@@ -2,7 +2,7 @@
  *
  * 数据全部来自 kanpan-api 的 /v1/native-review（登录后才有）：
  *   交易回合  手机上连的交易所只读密钥拉来的成交，服务端拼成回合、算好持仓中最大浮盈浮亏与平仓后走势；
- *   观点记录  手机上「记一笔」写下的判断，服务端按规则判对错，战绩按相对口径分好组；
+ *   观点记录  手机或网页图表上「记一笔」写下的判断，服务端按规则判对错，战绩按相对口径分好组；
  *   相似走势  「找相似」的结果与收藏的片段。
  * 页面布局照原型：上面一整条（页签 + 六格要点），左边列表与战绩，右边回放。
  * 回放是「还原当时的场景」：未来的 K 线与成交一律不画，放到哪儿才露到哪儿；
@@ -114,6 +114,7 @@ async function load(): Promise<void> {
   if (m.status === 'fulfilled') R.saved = m.value
   R.loadedAt = Date.now()
   if (R.symbol !== 'all' && !R.trades.some(x => x.round.symbol === R.symbol)) R.symbol = 'all'
+  applyWanted()
   await refreshSearches()
   if (!R.shown) return
   render()
@@ -239,7 +240,7 @@ function tradeKpis(): string {
 function viewKpis(): string {
   const s = viewSummary(R.views)
   return [
-    kpi('记录', String(s.total), '手机上「记一笔」写下的判断'),
+    kpi('记录', String(s.total), '「记一笔」写下的判断'),
     kpi('判对', String(s.realized), '先碰到目标', s.realized ? 'up' : ''),
     kpi('判错', String(s.unrealized), '先碰到失效或到期', s.unrealized ? 'down' : ''),
     kpi('等答案', String(s.waiting), '还没碰到目标或失效'),
@@ -268,6 +269,8 @@ function renderLeft(): void {
   const keep = left.querySelector<HTMLElement>('.rv-list')?.scrollTop ?? 0
   left.innerHTML = R.tab === 'trade' ? tradeLeft() : R.tab === 'view' ? viewLeft() : similarLeft()
   const list = left.querySelector<HTMLElement>('.rv-list'); if (list) list.scrollTop = keep
+  // 从别的页跳进来的那一条：滚到看得见
+  if (scrollSel) { scrollSel = false; left.querySelector<HTMLElement>('tr.sel')?.scrollIntoView({ block: 'nearest' }) }
 }
 
 function emptyBlock(title: string, sub: string, icon = 'trades'): string {
@@ -368,7 +371,7 @@ function tradeGroupsHtml(list: TradeRecord[]): string {
 
 function viewLeft(): string {
   const list = visibleViews()
-  if (!list.length) return emptyBlock(R.loading ? '正在加载…' : '还没有观点记录', R.loading ? '' : '在手机行情页点「记一笔」写下判断，服务端会按你定的目标与失效判对错。', 'note')
+  if (!list.length) return emptyBlock(R.loading ? '正在加载…' : '还没有观点记录', R.loading ? '' : '在图表上右键「在这根 K 线记一笔」（手机上是行情页的「记一笔」）写下判断，服务端会按你定的目标与失效判对错。', 'note')
   const groups = groupByDay(list, judgedAt, Date.now())
   const rows = groups.map(g => `<tr class="rv-day"><td colspan="8"><span>${g.label}</span><span class="n">${g.items.length} 条</span></td></tr>` + g.items.map(viewRow).join('')).join('')
   return `<div class="rv-lbody">
@@ -407,6 +410,12 @@ function viewGroupsHtml(): string {
     </div>`).join('')}</div>`
 }
 
+/** 找相似 0 条时说清楚：服务端从公开 K 线里挑最近的一批候选逐段细比，没有一段相似度到 0.60 才会空（1h / 4h 候选少，常见） */
+export function noMatchText(e: Pick<SearchEntry, 'status'>): string {
+  const n = e.status?.checked ?? 0
+  return n ? `比过 ${n} 段，没有一段相似度到 0.60 · 换 15 分钟或拉长区间再试` : '没有找到足够像的片段'
+}
+
 function similarLeft(): string {
   const searches = storedSearches().map(m => R.searches.get(m.id)).filter((x): x is SearchEntry => !!x)
   const savedIds = new Set(R.saved.map(s => s.item.id))
@@ -419,7 +428,7 @@ function similarLeft(): string {
     const state = e.error ? `<span class="warn">${esc(e.error)}</span>`
       : st === 'completed' ? `${e.results?.items.length ?? 0} 段${e.results?.partial ? ' · 部分结果' : ''}`
       : st ? `正在找 ${prog}%` : '—'
-    const items = st === 'completed' ? (e.results?.items.length ? e.results.items.map(m => matchRow(m, `search:${e.meta.id}:${m.id}`, savedIds.has(m.id), e.meta.id)).join('') : `<div class="rv-none">没有找到足够像的片段</div>`) : ''
+    const items = st === 'completed' ? (e.results?.items.length ? e.results.items.map(m => matchRow(m, `search:${e.meta.id}:${m.id}`, savedIds.has(m.id), e.meta.id)).join('') : `<div class="rv-none" data-none-checked="${e.status?.checked ?? 0}">${noMatchText(e)}</div>`) : ''
     return `<div class="rv-search">
       <div class="rv-search-h"><b>${esc(e.meta.label)}</b><span class="faint">${shTime(e.meta.created)}</span><span class="rv-sp"></span><span class="num">${state}</span>
         <button class="ibtn xs" data-forget="${esc(e.meta.id)}" aria-label="不再显示这次搜索" data-tip="不再显示">${I('close', 'icon-16')}</button></div>
@@ -755,8 +764,35 @@ function hidden(): void {
   player?.stop()
 }
 
+/** 从别的页跳进来并选中一条：交易回合按回合 id（记录 id 或 round.id 都认）、观点按记录 id。
+ * 强制重新取一次数——刚在图上记的那一笔、手机刚传上的成交都要看得到。 */
+function openAt(tab: 'trade' | 'view', id: string): void {
+  R.tab = tab; savePref()
+  if (tab === 'trade') R.sel.trade = id
+  else R.sel.view = id
+  R.loadedAt = 0
+  wantSel = { tab, id }
+  go('review')
+}
+/** load() 之后把 round.id 换成记录 id（交易面板手上只有回合里的成交，拿得到的是 round.id） */
+let wantSel: { tab: 'trade' | 'view'; id: string } | null = null
+function applyWanted(): void {
+  if (!wantSel) return
+  const w = wantSel
+  if (w.tab === 'trade') {
+    const t = R.trades.find(x => x.id === w.id || x.round.id === w.id)
+    if (!t) return
+    R.sel.trade = t.id
+    if (R.symbol !== 'all' && R.symbol !== t.round.symbol) R.symbol = 'all'
+  } else if (!R.views.some(v => v.draft.id === w.id)) return
+  wantSel = null
+  scrollSel = true
+}
+let scrollSel = false
+
 export function initReview(): void {
   loadPref()
+  hooks.openReview = openAt
   hooks.pageShown.review = shown
   hooks.pageHidden.review = hidden
   hooks.onTheme.push(() => player?.readTheme())

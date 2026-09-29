@@ -19,6 +19,8 @@ export const hooks = {
   /** 品种表取到之后 */
   booted: [] as (() => void)[],
   openSector: null as null | ((id: string) => void),
+  /** 跳到复盘页并选中一条（图表侧栏「交易」点一行 → 交易回放；记一笔传上后 → 观点记录） */
+  openReview: null as null | ((tab: 'trade' | 'view', id: string) => void),
 }
 
 export function applyTheme(): void {

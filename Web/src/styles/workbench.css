@@ -62,3 +62,42 @@
 .aa-head .muted { font-size: var(--t12); }
 .aa-head .aa-px { margin-left: auto; color: var(--text-1); }
 .aa-head .faint { min-width: 40px; text-align: right; font-size: var(--t12); }
+
+/* ---- 侧栏「大单」：存活时长列 48 → 64 px，「39.8小时」「59分钟」整段放得下，不再截成「39.8小…」。
+ * 大单小部件本身在 orderflow/（另一条线在改那边），这里用更高特异性覆盖列宽，不动那边的文件；
+ * 多出的 16 px 从交易所名那一列（minmax(0,1fr)）让出来。 */
+.of-walls .of-wall { grid-template-columns: 20px minmax(0,1fr) auto 52px 64px; }
+
+/* ---- 记一笔（弹窗）：照手机取景卡，看多 / 看空时多出目标、失效两格与确认方式 */
+.note-dlg .dialog-head h2 + .muted { margin-right: auto; margin-left: var(--s2); }
+.note-form { gap: var(--s4); }
+.note-form .err:empty { display: none; }
+.note-levels { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.note-levels .input { padding-right: 72px; }
+.note-refline { display: flex; align-items: center; justify-content: space-between; font-size: var(--t12); margin-top: calc(-1 * var(--s1)); }
+.note-login {
+  display: flex; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-md);
+  background: var(--accent-soft); color: var(--text-1); font-size: var(--t12); line-height: 18px;
+}
+.note-login > span { flex: 1; display: flex; gap: var(--s2); align-items: flex-start; }
+.note-login .icon { flex: none; margin-top: 1px; color: var(--accent-text); }
+/* 侧栏笔记：看法一行与同步状态 */
+.note-rule { margin-top: 2px; font-size: var(--t12); color: var(--text-2); }
+.note-state { font-size: var(--t12); font-weight: 400; margin-left: var(--s2); }
+.note-state.accent { color: var(--accent-text); }
+.note-state.down { color: var(--tv-red-text); }
+
+/* ---- 侧栏「成交」：这只品种的逐笔成交（手机拉来的，服务端拼好的回合里摊出来） */
+.tr-list { flex: 1; min-height: 0; }
+.tr-head, .tr-row {
+  display: grid; grid-template-columns: 76px 44px minmax(0,1fr) minmax(0,.8fr) 64px; gap: var(--s2);
+  align-items: center; padding: 0 var(--s4); font-size: var(--t12);
+}
+.tr-head { height: 28px; color: var(--text-3); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.tr-head > :nth-child(n+3), .tr-row > :nth-child(n+3) { text-align: right; }
+.tr-row { height: 36px; cursor: pointer; color: var(--text-1); width: 100%; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+.tr-row:hover { background: var(--surface-2); }
+.tr-row .t { color: var(--text-2); white-space: nowrap; }
+.tr-row .sd { font-weight: 600; white-space: nowrap; }
+.tr-day { padding: var(--s2) var(--s4) var(--s1); font-size: var(--t12); color: var(--text-3); }
+.tr-foot { padding: var(--s2) var(--s4); font-size: var(--t12); color: var(--text-3); border-top: 1px solid var(--line); }
