@@ -272,3 +272,31 @@ describe('手机网页版 · 创建提醒与账号表单', () => {
     expect(al.updatePriceAlert('nope', 1, 1)).toBeNull()
   })
 })
+
+describe('手机网页版 · 账号行的同步状态', () => {
+  it('照 iOS MePage.syncMeta：出错说错误、有没推的报几项、推完报多久以前', async () => {
+    const m = await import('../src/m/model/syncStatus')
+    const now = 1_000_000_000
+    expect(m.syncMeta({ error: '', pending: 0, lastSync: null }, now)).toBe('尚未同步')
+    expect(m.syncMeta({ error: '', pending: 3, lastSync: now }, now)).toBe('待同步 3 项')
+    expect(m.syncMeta({ error: '登录过期，请重新登录', pending: 3, lastSync: now }, now)).toBe('登录过期，请重新登录')
+    expect(m.syncMeta({ error: '', pending: 0, lastSync: now - 30_000 }, now)).toBe('已同步')
+    expect(m.syncMeta({ error: '', pending: 0, lastSync: now - 5 * 60_000 }, now)).toBe('上次 5 分钟前')
+    expect(m.syncMeta({ error: '', pending: 0, lastSync: now - 2 * 3_600_000 }, now)).toBe('上次 2 小时前')
+    expect(m.syncMeta({ error: '', pending: 0, lastSync: now - 3 * 86_400_000 }, now)).toBe('上次 3 天前')
+  })
+  it('占位可以换成真的来源；换了会通知重画', async () => {
+    const m = await import('../src/m/model/syncStatus')
+    expect(m.syncIsPlaceholder()).toBe(true)
+    let redraw = 0, pushed = 0
+    const off = m.onSyncChange(() => redraw++)
+    m.setSyncSource({ state: () => ({ error: '', pending: 1, lastSync: null }), syncNow: () => { pushed++ }, onChange: () => () => {} })
+    expect(redraw).toBe(1)
+    expect(m.syncMeta(m.syncSource().state())).toBe('待同步 1 项')
+    m.syncSource().syncNow()
+    expect(pushed).toBe(1)
+    m.setSyncSource(null)
+    expect(m.syncIsPlaceholder()).toBe(true)
+    off()
+  })
+})

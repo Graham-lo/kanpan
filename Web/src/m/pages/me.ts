@@ -1,7 +1,8 @@
 /* 手机网页版 · 「我的」（照 iOS Me/MePage.swift、Settings/DisplaySettingsSection.swift、Account/AccountView.swift）
  *
  * 根：居中标题「我的」+ 三张 raised2 卡（圆角 12、卡间 16）：
- *   账号（没登录「账号 / 登录 / 注册」；登录了是用户名 + 状态）、全部预警（生效中 N）、设置。
+ *   账号（没登录「账号 / 登录 / 注册」；登录了是用户名 + 同步状态，行尾一颗「立即同步」，照 MePage.accountRow）、
+ *   全部预警（生效中 N）、设置。
  *   手机端的复盘本、朋友与收件箱、交易所网页版不做。
  * 推进去的几层在本页里推（底栏还在，左上 44 圆片返回，左沿右滑也能回）：
  *   账号：登录 / 注册表单；登录后用户名、登录设备（踢下线）、修改密码、退出登录、注销账号。
@@ -21,6 +22,7 @@ import { el, esc } from '../ui/dom'
 import { session, loggedIn, onSession } from '../../account/session'
 import { login, logout, devices, kick, changePassword, deleteAccount, errorText, type DeviceRow } from '../../account/client'
 import { liveCount, onAlertsChange } from '../model/alerts'
+import { onPlaceholderSync, onSyncChange, syncMeta, syncSource } from '../model/syncStatus'
 import { KIND_CN, PASSWORD_RULE, USERNAME_RULE, deviceMeta, validPassword, validUsername } from '../model/formText'
 import { buildAlertList, startAlertWatcher } from './alerts'
 import { takeOpenParam } from './_streams'
@@ -95,20 +97,28 @@ export function initMe(root: HTMLElement): PageHandle {
   stack.push(rootLayer)
   const rootScroll = rootLayer.el.querySelector<HTMLElement>('.me-scroll')!
   function renderRoot(): void {
+    // 登录了：用户名 + 同步状态，行尾「立即同步」（点行本身进账号页，没有 ›）。
+    // TODO(A 同步引擎)：状态与「立即同步」现在读 model/syncStatus 的占位；A 的运行时落地后调 setSyncSource 接上，这里不用改。
     const account = loggedIn()
-      ? row('account', session.user || '', session.notice || '已登录')
+      ? `<div class="me-acct">${row('account', session.user || '', session.notice || syncMeta(syncSource().state()), false)}<button type="button" class="me-sync" data-sync>立即同步</button></div>`
       : row('account', '账号', session.notice || '登录 / 注册')
     rootLayer.body.innerHTML = `<div class="me-card">${account}</div>
       <div class="me-card">${row('alerts', '全部预警', `生效中 ${liveCount()}`)}</div>
       <div class="me-card">${row('settings', '设置')}</div>`
   }
-  function row(id: string, title: string, status?: string): string {
-    return `<button type="button" class="me-row" data-go="${id}"><span class="me-row-text"><span class="me-row-title">${esc(title)}</span>${status ? `<span class="me-row-status num">${esc(status)}</span>` : ''}</span><span class="me-chev">${CHEV}</span></button>`
+  function row(id: string, title: string, status?: string, chevron = true): string {
+    return `<button type="button" class="me-row" data-go="${id}"><span class="me-row-text"><span class="me-row-title">${esc(title)}</span>${status ? `<span class="me-row-status num">${esc(status)}</span>` : ''}</span>${chevron ? `<span class="me-chev">${CHEV}</span>` : ''}</button>`
   }
   rootLayer.body.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-go]')
+    const t = e.target as HTMLElement
+    if (t.closest('[data-sync]')) { syncSource().syncNow(); return }
+    const b = t.closest<HTMLElement>('[data-go]')
     if (b) go(b.dataset.go || '')
   })
+  onPlaceholderSync(() => toast('同步还没接上'))
+  onSyncChange(() => { if (stack.length >= 1) renderRoot() })
+  // 「上次 N 分钟前」会过时：回到前台 / 每分钟重画一次
+  setInterval(() => { if (!document.hidden && loggedIn()) renderRoot() }, 60_000)
   function go(id: string): void {
     if (id === 'account') openAccount()
     else if (id === 'alerts') push('全部预警', (body, L) => { body.classList.add('me-alerts'); L.off.push(buildAlertList(body, { onOpen: a => { popToRoot(); openSymbol(a.symbol) } })) })

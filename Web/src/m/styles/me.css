@@ -45,6 +45,11 @@
 .me-row.danger .me-row-title { color: var(--danger) }
 .me-row-status { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .me-chev { color: var(--ink3); display: grid; flex: none }
+/* 登录了的账号行：行本身进账号页，行尾一颗「立即同步」（照 MePage.accountRow：PanelFont.seg、琥珀色、左右 Inset.card、最小行高） */
+.me-acct { display: flex; align-items: stretch }
+.me-acct .me-row { flex: 1; min-width: 0; padding-right: 0 }
+.me-sync { flex: none; display: flex; align-items: center; min-height: var(--row-min); padding: 0 var(--inset-card); font: var(--t-control); color: var(--accent) }
+.me-sync:active { opacity: .6 }
 .me-kv { display: flex; align-items: center; justify-content: space-between; min-height: var(--row-min); padding: 0 var(--inset-card); font: var(--t-body) }
 .me-kv span { color: var(--ink) } .me-kv b { font-weight: 400; color: var(--ink3) }
 
