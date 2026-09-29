@@ -49,9 +49,10 @@ export const PARTS: Record<WidgetId, PartSpec> = {
  * 按顺序给每块定高度。avail = 侧栏内容区高；collapsed = 收起的块。
  * 返回与 ids 同序的整数高度；展开的块能长时总和恰好等于 avail（放不下时可能超出，由外层裁掉）。
  */
-export function planSidebar(avail: number, ids: readonly WidgetId[], collapsed: ReadonlySet<string>, parts: Record<string, PartSpec> = PARTS): number[] {
+export function planSidebar(avail: number, ids: readonly WidgetId[], collapsed: ReadonlySet<string>, parts: Record<string, PartSpec> = PARTS, user?: Readonly<Record<string, number>> | null): number[] {
   const spec = ids.map(id => parts[id])
   const open = ids.map((id, i) => !!spec[i] && !collapsed.has(id))
+  if (user && ids.some((id, i) => open[i] && !spec[i].fixed && typeof user[id] === 'number')) return planUser(avail, ids, spec, open, user)
   const h = ids.map((_, i) => (spec[i] ? (open[i] ? spec[i].min : spec[i].head) : 0))
   let left = avail - h.reduce((a, b) => a + b, 0)
   if (left < 0) {
@@ -70,6 +71,66 @@ export function planSidebar(avail: number, ids: readonly WidgetId[], collapsed: 
   let rest = left - each * grow.length
   for (const i of grow) { h[i] += each; if (rest > 0) { h[i] += 1; rest-- } }
   return h
+}
+
+/**
+ * 用户拖过分隔线之后的分配：展开的非定高块先取用户拖出来的高（没拖过的取 min），
+ * 再把多出 / 缺的高度按各块现有高度的比例摊给它们（缺的时候不低于 floor）——
+ * 所以收起一块、窗口变高变矮，总高都正好铺满，块与块之间的比例保持用户拖的样子。
+ */
+function planUser(avail: number, ids: readonly WidgetId[], spec: PartSpec[], open: boolean[], user: Readonly<Record<string, number>>): number[] {
+  const h = ids.map((id, i) => {
+    if (!spec[i]) return 0
+    if (!open[i]) return spec[i].head
+    if (spec[i].fixed) return spec[i].min
+    const u = user[id]
+    return typeof u === 'number' && isFinite(u) ? Math.max(spec[i].floor, u) : spec[i].min
+  })
+  const grow = ids.map((_, i) => i).filter(i => open[i] && !spec[i].fixed)
+  if (!grow.length) return h.map(Math.round)
+  // 按比例伸缩，碰到 floor 的钉住再把剩下的差额摊给其余几块（最多几轮）
+  let free = grow.slice()
+  for (let round = 0; round < 4 && free.length; round++) {
+    const left = avail - h.reduce((a, b) => a + b, 0)
+    if (Math.abs(left) < 0.5) break
+    const base = free.reduce((a, i) => a + h[i], 0)
+    if (base <= 0) break
+    const k = (base + left) / base
+    const pinned: number[] = []
+    for (const i of free) { const v = h[i] * k; if (v < spec[i].floor) { h[i] = spec[i].floor; pinned.push(i) } else h[i] = v }
+    if (!pinned.length) break
+    free = free.filter(i => !pinned.includes(i))
+  }
+  // 取整：差额补给最后一块能长的
+  const out = h.map(Math.round)
+  const diff = avail - out.reduce((a, b) => a + b, 0)
+  const last = grow[grow.length - 1]
+  if (diff && out[last] + diff >= spec[last].floor) out[last] += diff
+  return out
+}
+
+/**
+ * 拖第 k 块与第 k+1 块之间的线 dy：只在线上下最近的两块「展开、非定高」的块之间挪高度，
+ * 夹在中间的定高块（详情）跟着走、自己高度不变。返回新高度；两边找不到能挪的块就原样返回。
+ */
+export function dragSidebar(hs: readonly number[], ids: readonly WidgetId[], collapsed: ReadonlySet<string>, k: number, dy: number, parts: Record<string, PartSpec> = PARTS): number[] {
+  const out = hs.slice()
+  const ok = (i: number): boolean => !!parts[ids[i]] && !collapsed.has(ids[i]) && !parts[ids[i]].fixed
+  let a = k; while (a >= 0 && !ok(a)) a--
+  let b = k + 1; while (b < ids.length && !ok(b)) b++
+  if (a < 0 || b >= ids.length) return out
+  const fa = parts[ids[a]].floor, fb = parts[ids[b]].floor, sum = hs[a] + hs[b]
+  const na = Math.round(Math.min(Math.max(hs[a] + dy, fa), sum - fb))
+  if (na < fa || sum - na < fb) return out
+  out[a] = na; out[b] = sum - na
+  return out
+}
+/** 第 k 条线能不能拖（上下都有能挪的块） */
+export function sideCanDrag(ids: readonly WidgetId[], collapsed: ReadonlySet<string>, k: number, parts: Record<string, PartSpec> = PARTS): boolean {
+  const ok = (i: number): boolean => !!parts[ids[i]] && !collapsed.has(ids[i]) && !parts[ids[i]].fixed
+  let a = k; while (a >= 0 && !ok(a)) a--
+  let b = k + 1; while (b < ids.length && !ok(b)) b++
+  return a >= 0 && b < ids.length
 }
 
 /** 一块的正文能放几行（扣掉标题行、分隔线和底边） */

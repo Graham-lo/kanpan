@@ -5,14 +5,18 @@
  *   · 右键是「在这里做事」：在这个价位建提醒 / 画水平线 / 记一笔
  *   · 键盘直达：打字就是搜品种，打数字就是换周期，Alt+字母选画线工具，⌘Z 撤销
  *   · 画线不是一个模式：左侧工具栏常驻，选了工具就在当前图上画，画完回到光标
- *   · 大屏同时看：一 / 二 / 四图布局，十字线跨图按时间同步
+ *   · 大屏同时看：1 / 2 / 3 / 4 / 6 / 8 / 9 / 12 / 16 图布局，每格各自的品种与周期；
+ *     品种、周期、十字线、时间轴四样可以跨图联动；格子小了自动降级（只留主图、图例一行、字号小一档）
  *
- * 布局槽位（给订单簿 / 主力订单流大屏版留的位置，本阶段是空容器）：
- *   深度梯子列 —— 价格轴与侧栏之间，开 240 / 关 0
- *   底部抽屉   —— 图表区下方，开 280 / 关 0
- *   侧栏小部件 —— 「自选」视图里按 st.slots.widgets 的顺序堆叠
+ * 布局槽位（宽高都能拖，尺寸只存本机，见 chartLayout.ts / app/sizes.ts）：
+ *   深度梯子列 —— 价格轴与侧栏之间，默认 240（160–480）/ 关 0
+ *   底部抽屉   —— 图表区下方，默认 280（160 到页面高 60%）/ 关 0
+ *   侧栏小部件 —— 「自选」视图里按 st.slots.widgets 的顺序堆叠，块与块之间能拖高度
  */
-import { st, save, type CellCfg, type PanelId, type Layout } from '../app/store'
+import { st, save, LAYOUT_N, ensureCells, FILL_SYMBOLS, type CellCfg, type PanelId, type Layout } from '../app/store'
+import { sizes, saveSizes } from '../app/sizes'
+import { degradeFor } from '../chart/panes'
+import { applyPageSizes, placePageSplits, applyGrid, placeGridSplits } from './chartLayout'
 import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick, isCollapsed } from '../orderflow'
 import { deleteAlert } from '../alerts/model'
 import { alertDesc } from '../alerts/panel'
@@ -31,7 +35,7 @@ import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type Ale
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
-  S, on, klines, loadUniverse, fetchDetail, detailOf, setStreams, streamName, wantMeta, marketCap,
+  S, on, klines, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
   IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, type Kind, type Sym,
 } from '../market'
 
@@ -70,16 +74,60 @@ function quickAlert(symbol: string, p: number): void {
 }
 
 function buildCells(): void {
-  const n = ({ '1': 1, '2': 2, '2v': 2, '4': 4, '6': 6, '8': 8 } as Record<Layout, number>)[st.layout]
-  const fill = ['ETHUSDT', 'SOLUSDT', 'XAUUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'NVDAUSDT']
-  while (st.cells.length < n) st.cells.push({ symbol: fill[st.cells.length - 1] || 'BTCUSDT', iv: st.cells[0].iv })
+  const n = LAYOUT_N[st.layout] || 1
+  ensureCells(st, n)
   st.active = Math.min(st.active, n - 1)
   const area = $('#chartArea'); area.dataset.layout = st.layout
-  while (cells.length > n) { const c = cells.pop(); c?.chart.destroy(); c?.el.remove() }
+  while (cells.length > n) { const c = cells.pop(); if (c) { cellRO?.unobserve(c.el); c.chart.destroy(); c.el.remove() } }
   for (let i = cells.length; i < n; i++) cells.push(makeCell(i))
   cells.forEach((c, i) => c.el.classList.toggle('active', i === st.active))
+  layoutGrid()
   save(); refreshStreams()
 }
+
+/** 多图网格：按布局与本机比例排格子、摆格子间的分隔线 */
+function layoutGrid(): void {
+  const area = $('#chartArea'); if (!area) return
+  applyGrid(area, st.layout, cells.map(c => c.el))
+  placeGridSplits(area, st.layout, layoutGrid)
+}
+
+/**
+ * 格子降级：按格子自己的尺寸算（不按窗口），宽 < 640 或高 < 360 只留主图、图例一行、
+ * 价格轴字号小一档；宽 < 420 再去掉成交量。格子底栏也跟着收（见 app.css .c-narrow / .c-tiny）。
+ */
+let cellRO: ResizeObserver | null = null
+const cellOf = new WeakMap<Element, Cell>()
+function watchCell(cell: Cell): void {
+  cellRO ||= new ResizeObserver(es => {
+    for (const e of es) {
+      const c = cellOf.get(e.target); if (!c) continue
+      const w = e.contentRect.width, h = e.contentRect.height
+      if (!w || !h) continue
+      c.el.classList.toggle('c-narrow', w < 640)
+      c.el.classList.toggle('c-tiny', w < 420)
+      c.el.classList.toggle('c-short', h < 360)
+      c.chart.setDegrade(degradeFor(w, h))
+    }
+  })
+  cellOf.set(cell.el, cell)
+  cellRO.observe(cell.el)
+}
+
+/** 时间轴联动：一格动了时间轴，其余格子套同一段时间（防回声） */
+let syncingView = false
+function linkView(from: Cell, t0: number, t1: number): void {
+  if (!st.linkTime || syncingView || cells.length < 2) return
+  syncingView = true
+  try { cells.forEach(o => { if (o !== from) o.chart.syncView(t0, t1) }) } finally { syncingView = false }
+}
+
+// 回归脚本（scripts/regress.mjs「布局与拖动」）读：各格子的品种、周期、可见时间段、同步来的十字线、降级档；行情连接
+;(globalThis as unknown as { __cells?: () => unknown }).__cells = () => cells.map(c => {
+  const g = c.chart.geometry(), k = cfg(c)
+  return { symbol: k.symbol, iv: k.iv, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: c.chart.bars.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]) }
+})
+;(globalThis as unknown as { __stream?: () => unknown }).__stream = streamDebug
 
 function makeCell(i: number): Cell {
   const el = document.createElement('div')
@@ -115,7 +163,15 @@ function makeCell(i: number): Cell {
     onAlertMove: (a, p) => { if (a.id) moveAlert(a.id, p) },
     drawColor: () => st.drawColor,
     onAutoChange: v => { $('[data-act="auto"]', el)?.setAttribute('aria-pressed', String(v)) },
+    // 副图高：所有格子共用一份比例，松手落本机
+    onPaneResize: r => {
+      if (r) sizes.panes = r; else delete sizes.panes
+      saveSizes()
+      cells.forEach(o => { if (o !== cell) o.chart.setPaneRatios(sizes.panes ?? null) })
+    },
+    onViewChange: (t0, t1) => linkView(cell, t0, t1),
   })
+  cell.chart.setPaneRatios(sizes.panes ?? null)
   cell.chart.setIndicators(structuredClone(st.ind))
   if (st.params) for (const [k, p] of Object.entries(st.params)) cell.chart.params[k as IndicatorId] = structuredClone(p)
   cell.chart.setMagnet(st.magnet)
@@ -131,6 +187,7 @@ function makeCell(i: number): Cell {
     if (a === 'log') { cell.chart.setLog(!cell.chart.log); t.closest('[data-act]')?.setAttribute('aria-pressed', String(cell.chart.log)) }
     if (a === 'auto') cell.chart.setAuto(!cell.chart.auto)
   })
+  watchCell(cell)
   void loadCell(cell)
   return cell
 }
@@ -216,7 +273,10 @@ export function openSymbol(symbol: string, cell: Cell | undefined = active()): v
 function setIv(iv: string, cell: Cell | undefined = active()): void {
   if (!cell) return
   const c = cfg(cell); if (c.iv === iv) return
-  c.iv = iv; save(); void loadCell(cell); refreshStreams(); renderToolbar()
+  c.iv = iv
+  // 周期跨图同步：其余格子一起换
+  if (st.linkIv && cells.length > 1) cells.forEach(o => { const oc = cfg(o); if (o !== cell && oc.iv !== iv) { oc.iv = iv; void loadCell(o) } })
+  save(); void loadCell(cell); refreshStreams(); renderToolbar()
 }
 
 // ------------------------------------------------------------ 画线
@@ -319,13 +379,15 @@ function drawPropsClick(e: MouseEvent): void {
 }
 
 // ------------------------------------------------------------ 工具栏
-const LAYOUT_ICON: Record<Layout, string> = { '1': 'layout1', '2': 'layout2', '2v': 'layout2v', '4': 'layout4', '6': 'layout6', '8': 'layout8' }
-const LAYOUT_NAME: [Layout, string][] = [['1', '一图'], ['2', '左右两图'], ['2v', '上下两图'], ['4', '四图'], ['6', '六图（三列两行）'], ['8', '八图（四列两行）']]
+const LAYOUT_ICON: Record<Layout, string> = { '1': 'layout1', '2': 'layout2', '2v': 'layout2v', '3': 'layout3', '4': 'layout4', '6': 'layout6', '8': 'layout8', '9': 'layout9', '12': 'layout12', '16': 'layout16' }
+const LAYOUT_NAME: [Layout, string][] = [['1', '一图'], ['2', '左右两图'], ['2v', '上下两图'], ['3', '左一右二'], ['4', '四图'], ['6', '六图（三列两行）'], ['8', '八图（四列两行）'], ['9', '九图（三列三行）'], ['12', '十二图（四列三行）'], ['16', '十六图（四列四行）']]
 function layoutMenu(b: HTMLElement): void {
   const items: MenuItem[] = [{ header: '布局' }, ...LAYOUT_NAME.map(([k, l]): MenuItem => ({ icon: LAYOUT_ICON[k], label: l, checked: st.layout === k, sc: k === st.layout ? '当前' : '', run: () => setLayout(k) })), '-',
     { header: '多图联动' },
     { label: '十字线跨图同步', check: true, checked: st.linkCross, run: () => { st.linkCross = !st.linkCross; if (!st.linkCross) cells.forEach(c => c.chart.syncCrosshair(null)); save() } },
-    { label: '品种跨图同步', check: true, checked: st.linkSymbol, sc: st.linkSymbol ? '' : '换一格全跟着换', run: () => { st.linkSymbol = !st.linkSymbol; save(); if (st.linkSymbol) linkAll(cfg(active()).symbol) } }]
+    { label: '品种跨图同步', check: true, checked: st.linkSymbol, sc: st.linkSymbol ? '' : '换一格全跟着换', run: () => { st.linkSymbol = !st.linkSymbol; save(); if (st.linkSymbol) linkAll(cfg(active()).symbol) } },
+    { label: '周期跨图同步', check: true, checked: st.linkIv, run: () => { st.linkIv = !st.linkIv; save(); if (st.linkIv) { const iv = cfg(active()).iv; cells.forEach(c => { const cc = cfg(c); if (cc.iv !== iv) { cc.iv = iv; void loadCell(c) } }); save(); refreshStreams(); renderToolbar() } } },
+    { label: '时间轴跨图同步', check: true, checked: st.linkTime, run: () => { st.linkTime = !st.linkTime; save(); const a = active(); if (st.linkTime && a) { const g = a.chart.geometry(); if (g) linkView(a, g.timeOf(g.from), g.timeOf(g.to)) } } }]
   menuFrom(b, items)
 }
 /** 品种跨图同步：一格换了品种，其余格一起换（周期各自保留） */
@@ -510,6 +572,10 @@ export function layoutSlots(): void {
   put('#toolbar', 'tb', true); put('#drawbar', 'draw', true); put('#chartArea', 'chart', true); put('#rail', 'rail', true)
   put('#sidePanel', 'panel', panel); put('#ladderSlot', 'ladder', ladder); put('#drawerSlot', 'drawer', drawer)
   page.classList.toggle('panel-closed', !panel)
+  if (!page.clientWidth) return   // 图表页没在显示：回来时 pageShown 再排
+  applyPageSizes(page, { ladder, panel, drawer })
+  placePageSplits(page, { ladder, panel, drawer }, layoutSlots)
+  layoutGrid()
   cells.forEach(c => c.chart.resize())
 }
 function renderSlots(): void {
@@ -1023,7 +1089,12 @@ function afterUniverse(): void {
   // 品种表没取到时不能拿空表去筛，否则会把自选清空并存盘
   if (S.symbols.size) {
     for (const tab of Object.keys(st.watch) as Kind[]) st.watch[tab] = st.watch[tab].filter(k => S.symbols.has(k))
-    st.cells.forEach(c => { if (!S.symbols.has(c.symbol)) c.symbol = 'BTCUSDT' })
+    // 表里没有的品种换成一只还没摆出来的常用品种（多图时不要一排全是 BTC）
+    st.cells.forEach((c, i) => {
+      if (S.symbols.has(c.symbol)) return
+      const used = new Set(st.cells.map(x => x.symbol))
+      c.symbol = i === 0 ? 'BTCUSDT' : FILL_SYMBOLS.find(k => !used.has(k) && S.symbols.has(k)) || 'BTCUSDT'
+    })
     save()
   }
   if (!cells.length) buildCells(); else { cells.forEach(c => { void loadCell(c) }); refreshStreams() }
@@ -1040,7 +1111,7 @@ export async function initChart(): Promise<void> {
   addEventListener('keydown', onKey)
   hooks.onSearch = openSearch
   hooks.onTheme.push(() => cells.forEach(c => c.chart.readTheme()))
-  hooks.pageShown.chart = () => cells.forEach(c => c.chart.resize())
+  hooks.pageShown.chart = () => layoutSlots()
   $('#hdrAlerts').onclick = () => { go('chart'); openPanel('alerts') }
   installAlerts({ openSymbol: k => { go('chart'); openSymbol(k) } })
   installNoteSync()
@@ -1082,6 +1153,9 @@ export async function initChart(): Promise<void> {
   }, 61e3)
 
   renderDrawbar(); renderRail(); renderSlots(); layoutSlots(); renderPanel()
+  // 窗口变了：各区域按比例重新夹、分隔线重摆（一帧一次）
+  let relayRAF = 0
+  new ResizeObserver(() => { if (!relayRAF) relayRAF = requestAnimationFrame(() => { relayRAF = 0; layoutSlots() }) }).observe($('#page-chart'))
   installOrderFlow({
     activeChart: () => { const c = active(); return c ? { chart: c.chart, symbol: cfg(c).symbol, iv: cfg(c).iv, host: c.host } : null },
     charts: () => cells.map(c => ({ chart: c.chart, symbol: cfg(c).symbol, iv: cfg(c).iv })),

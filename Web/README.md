@@ -18,7 +18,7 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 - 本机开发时，`/v1/*`（市值元数据）和 `/market/stream`（网关线路的行情 WS）由 vite 代理到线上同一个域名，行为和线上同源一致（见 `vite.config.ts`）。
 - 部署（`scripts/deploy.sh`）分两步：先 `scp` 到 VPS 的 `/tmp/kpweb-dist/`，再 `sudo cp` 进 `/var/www/kanpan/web/` 并 `chown caddy`。最后用 `curl` 核对线上 `index.html` 引用的脚本名和本地这次构建的一样。
 - 验收截图（`scripts/verify.mjs`）：用 playwright-core 驱动本机 Chrome，2560×1440、DPR 1，截图默认放到 `docs/acceptance/网页版-2026-09-29/`。截的内容：三套皮肤 × 浅深、放大缩小、十字线、搜索、切周期（按钮和键盘）、四图、槽位开合、侧栏收起、板块、复盘、我的。同时检查两件事：最新价 10 秒内有没有变，控制台和网络有没有报错。有报错时退出码为 1。
-- 地址栏参数（验收和分享用，都可以不带）：`s=BTCUSDT`、`i=1h`、`theme=light|dark`、`skin=sage|terra|classic`、`layout=1|2|2v|4`、`panel=watch|alerts|flow|notes|trades|none`、`ladder=0|1`、`drawer=0|1`。
+- 地址栏参数（验收和分享用，都可以不带）：`s=BTCUSDT`、`i=1h`、`theme=light|dark`、`skin=sage|terra|classic`、`layout=1|2|2v|3|4|6|8|9|12|16`、`panel=watch|alerts|flow|notes|trades|none`、`ladder=0|1`、`drawer=0|1`。
 
 ## 目录
 
@@ -83,6 +83,8 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 ## 给订单簿 / 订单流留的三个槽位
 
 槽位的开合状态放在 `st.slots` 里（`src/app/store.ts`），以后跟账号一起同步。图表页的网格由 `layoutSlots()`（`src/pages/chart.ts`）按 `st.slots` 和侧栏开合用 JS 生成。
+
+各区域的宽高能拖（梯子列、右侧面板、底部抽屉、主图与副图、侧栏各块、多图网格的列宽行高），双击分隔线回默认；尺寸只存本机 localStorage `hkline-web-sizes-v1`、不进账号同步，窗口变小时按比例收（`src/app/sizes.ts`、`src/pages/chartLayout.ts`、`src/ui/splitter.ts`）。
 
 1. **深度梯子列** `#ladderSlot`：在价格轴和右侧栏之间，打开时宽 `--ladder-w`（240px），关上时是 0。和图表共用顶部工具条那一行。
 2. **底部抽屉** `#drawerSlot`：在图表区下方，打开时高 `--drawer-h`（280px），关上时是 0。宽度横跨图表列和梯子列。

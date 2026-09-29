@@ -20,14 +20,14 @@ import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
 import type { TimeTick } from './timeAxis'
 import { SUB_FIXED, type ExtraSubId } from './indicators'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
+import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
 
 const AXIS_H = 28
-const MIN_PANE_H = 56 // 拖分隔线时任何一格都不能比这矮
 const MIN_SPACING = 1.5
 const MAX_SPACING = 60
 const DEFAULT_SPACING = 8
 const RIGHT_MARGIN_BARS = 6
-const SEP_HIT = 5
+const SEP_HIT = 3 // 窗格分隔线上下各 3 px，热区 6 px
 
 // 线条规格（网页版自己的一套，和手机端无关）。基准屏 1 CSS px = 1 物理像素：
 // 横竖线一律整数宽、落在半像素上才锐利；曲线允许 1.5 px，靠抗锯齿显得顺滑又不压过 K 线。
@@ -135,6 +135,10 @@ export interface ChartOptions {
   onAlertCreate?: (price: number) => void
   /** 拖动已有的提醒线松手 */
   onAlertMove?: (a: AlertLine, price: number) => void
+  /** 拖窗格分隔线松手：各副图占画布高的比例；双击分隔线回默认时给 null */
+  onPaneResize?: (ratios: Record<string, number> | null) => void
+  /** 用户平移 / 缩放了时间轴：当前可见的首尾时间（多图时间轴联动） */
+  onViewChange?: (t0: number, t1: number) => void
 }
 
 export interface ThemeColors {
@@ -220,7 +224,16 @@ export class TVChart {
   ind: IndState = { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }
   params: Record<IndicatorId, IndParams>
   hidden = new Set<string>()
-  paneH: Record<string, number> = {}
+  /** 用户拖过的副图高（占画布高的比例）；null = 默认分配 */
+  paneR: Record<string, number> | null = null
+  /** 多图时格子小了的降级（收副图、图例精简、字号小一档、去成交量） */
+  deg: Degrade = FULL
+  /** 鼠标停在哪条窗格分隔线上（高亮成强调色） */
+  hoverSep: string | null = null
+  /** 画布在不在屏幕上（切到别的页、滚出视口时不画） */
+  onScreen = true
+  /** 图例要在下一帧重写（逐笔更新不再每笔都重写一次 innerHTML） */
+  legendDirty = false
   series: Partial<Record<CalcId, Series[]>> = {}
   log = false
   auto = true
@@ -238,6 +251,8 @@ export class TVChart {
   replay: number | null = null
   stale = false
   drag: DragState | null = null
+  /** 拖窗格分隔线：按下那一刻的各格高度 */
+  private sepHs: number[] | null = null
   /** 右键按下时（macOS 在按下那一刻就发 contextmenu）先存着的菜单，松手没拖动才弹 */
   private pendingMenu: ContextMenuInfo | null = null
   /** 上一次右键拖动过（Windows 在松手之后才发 contextmenu，那一次不弹） */
@@ -268,7 +283,7 @@ export class TVChart {
   mainRange: PriceRange | null = null
   _panes: Pane[] | null = null
   _ranges: Record<string, PriceRange> = {}
-  private raf = 0
+  private io: IntersectionObserver | null = null
   /** 所有事件监听都挂在这个信号上，destroy 时一次摘掉（原型挂在 window 上的 mousemove / mouseup 不摘会泄漏） */
   private ac = new AbortController()
 
@@ -282,10 +297,16 @@ export class TVChart {
     this.params = JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(CATALOG).map(([k, v]) => [k, v.params || {}])))) as Record<IndicatorId, IndParams>
     this.readTheme()
     this.bind()
-    this.ro = new ResizeObserver(() => { if (this.dead) return; this.resize(); this.render() })
+    // 尺寸变了（拖分隔条、换布局）：ResizeObserver 本来就在排版之后、绘制之前、每帧最多一次，
+    // 就在这里同步重设画布并重画，免得清空的画布闪一帧
+    this.ro = new ResizeObserver(() => { if (this.dead) return; this.resize(); if (this.onScreen) { this.dirty = false; this.render() } })
     this.ro.observe(host)
+    if (typeof IntersectionObserver !== 'undefined') {
+      this.io = new IntersectionObserver(es => { const v = es[es.length - 1]?.isIntersecting ?? true; if (v && !this.onScreen) this.dirty = true; this.onScreen = v })
+      this.io.observe(host)
+    }
     this.resize()
-    this.raf = requestAnimationFrame(this.loop)
+    frames.add(this); kick()
   }
 
   // ---------------------------------------------------------- 外部接口
@@ -297,8 +318,34 @@ export class TVChart {
       cross: v('--chart-cross'), crossLabel: v('--chart-cross-label'), scaleLine: v('--chart-scale-line'),
       up: v('--up'), down: v('--down'), accent: v('--accent'), alert: v('--alert-line'), line: v('--line'),
     }
-    this.font = `12px ${getComputedStyle(document.body).getPropertyValue('--font-num').trim() || 'sans-serif'}`
+    this.font = `${this.deg.font}px ${getComputedStyle(document.body).getPropertyValue('--font-num').trim() || 'sans-serif'}`
     this.dirty = true
+  }
+  /** 多图降级：格子尺寸变了由页面算好传进来；没变就什么都不做 */
+  setDegrade(d: Degrade): void {
+    const o = this.deg
+    if (o.subs === d.subs && o.compact === d.compact && o.font === d.font && o.vol === d.vol) return
+    this.deg = d
+    this.font = `${d.font}px ${this.fontFamily()}`
+    if (o.subs !== d.subs) this.recalc()
+    this.paneLegendKeys.fill(null)
+    this.dirty = true; this.renderLegend()
+  }
+  /** 副图高比例（所有格子共用一份，页面落盘） */
+  setPaneRatios(r: Record<string, number> | null): void { this.paneR = r ? { ...r } : null; this.paneLegendKeys.fill(null); this.dirty = true }
+  /** 多图时间轴联动：把别的格子的可见时间段套到自己身上（不改价格轴） */
+  syncView(t0: number, t1: number): void {
+    if (!this.bars.length || !(t1 > t0)) return
+    const i0 = this.indexAt(t0), i1 = this.indexAt(t1)
+    if (!(i1 > i0)) return
+    this.spacing = clamp(this.plotW() / (i1 - i0), MIN_SPACING, MAX_SPACING)
+    this.rightBar = i1; this.dirty = true; this.legendDirty = true
+    this.maybeMore()
+  }
+  /** 用户动了时间轴：告诉页面（联动别的格子） */
+  private emitView(): void {
+    if (!this.o.onViewChange || !this.bars.length) return
+    this.o.onViewChange(this.timeOfIndex(this.xToIndex(0)), this.timeOfIndex(this.rightBar))
   }
   setData(bars: Bar[], meta: ChartMetaInput): void {
     const sameSym = this.meta.symbol === meta.symbol && this.iv === meta.iv
@@ -328,7 +375,7 @@ export class TVChart {
       if (atEdge) this.rightBar += 1
     } else return
     this.recalcTail(); this.dirty = true
-    if (!this.cross) this.renderLegend()
+    if (!this.cross) this.legendDirty = true
   }
   setIndicators(ind: Partial<IndState>): void { this.ind = Object.assign({}, this.ind, ind); this.recalc(); this.dirty = true; this.renderLegend() }
   setParams(id: IndicatorId, p: IndParams): void { this.params[id] = p; this.recalc(); this.dirty = true; this.renderLegend() }
@@ -406,8 +453,9 @@ export class TVChart {
   destroy(): void {
     this.dead = true
     this.ro.disconnect()
+    this.io?.disconnect()
     this.ac.abort()
-    cancelAnimationFrame(this.raf)
+    frames.delete(this)
     this.drag = null
     this.host.innerHTML = ''
   }
@@ -418,15 +466,18 @@ export class TVChart {
     const b = this.bars
     if (!b.length) return
     for (const id of MAIN_IDS) if (this.ind[id]) this.series[id] = Calc[id](b, this.params[id])
-    for (const id of this.ind.subs) if (Calc[id]) this.series[id] = Calc[id](b, this.params[id])
+    // 降级收掉副图时不算副图（十六图里每格省下几个指标的整段重算）
+    if (this.deg.subs) for (const id of this.ind.subs) if (Calc[id]) this.series[id] = Calc[id](b, this.params[id])
   }
   recalcTail(): void { this.recalc() }
 
   // ---------------------------------------------------------- 几何
   resize(): void {
     const r = this.host.getBoundingClientRect()
-    this.w = Math.max(10, r.width); this.h = Math.max(10, r.height)
-    const dpr = window.devicePixelRatio || 1
+    const w = Math.max(10, r.width), h = Math.max(10, r.height), dpr = window.devicePixelRatio || 1
+    // 尺寸没变就不动画布（重设 canvas.width 会清空画面；拖分隔线时每帧都会问一遍）
+    if (w === this.w && h === this.h && this.canvas.width === Math.round(w * dpr) && this.canvas.height === Math.round(h * dpr)) return
+    this.w = w; this.h = h
     this.canvas.width = Math.round(this.w * dpr); this.canvas.height = Math.round(this.h * dpr)
     this.canvas.style.width = this.w + 'px'; this.canvas.style.height = this.h + 'px'
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -440,22 +491,16 @@ export class TVChart {
   }
   plotW(): number { return this.w - this.aw }
   // 副图默认矮：每个副图取画布高的 11%，夹在 96–136 px（2K 屏上约 132 px，TradingView 桌面版的比例），
-  // 主图拿剩下的全部。副图再多也只是多几档，不是把每档拉高；合计不超过画布的 55%。
-  // 用户拖过的分隔线记在 paneH（像素），窗口高度变了副图保持不动、主图跟着伸缩。
-  subDefaultH(): number { return clamp(Math.round((this.h - AXIS_H) * 0.11), 96, 136) }
+  // 主图拿剩下的全部。用户拖过分隔线后按比例记（paneR），窗口高度变了各格等比伸缩；
+  // 主图不少于 40%、每个副图不少于 80 px。分配规则见 panes.ts。多图降级时只留主图。
+  subIds(): SubId[] { return this.deg.subs ? this.ind.subs : [] }
   panes(): Pane[] {
-    const subs = this.ind.subs
-    const H = this.h - AXIS_H, def = this.subDefaultH()
-    let hs = subs.map(id => this.paneH[id] || def)
-    const cap = Math.round(H * 0.55), sum = hs.reduce((a, b) => a + b, 0)
-    if (sum > cap) hs = hs.map(h => Math.max(MIN_PANE_H, Math.round(h * cap / sum)))
-    const mainH = H - hs.reduce((a, b) => a + b, 0)
+    const subs = this.subIds()
+    const H = this.h - AXIS_H
+    const hs = paneHeights(H, subs, this.paneR)
     let y = 0
     const ids: PaneId[] = ['main', ...subs]
-    return ids.map((id, i) => {
-      const h = i === 0 ? mainH : i === subs.length ? H - y : hs[i - 1]
-      const p: Pane = { id, y, h }; y += h; return p
-    })
+    return ids.map((id, i) => { const p: Pane = { id, y, h: hs[i] }; y += hs[i]; return p })
   }
   indexToX(i: number): number { return this.plotW() - (this.rightBar - i) * this.spacing }
   xToIndex(x: number): number { return this.rightBar - (this.plotW() - x) / this.spacing }
@@ -512,10 +557,11 @@ export class TVChart {
   }
 
   // ---------------------------------------------------------- 渲染
-  loop = (): void => {
-    if (this.dead) return
+  /** 共用的那一帧里调：脏了才画，不在屏幕上的不画（回到屏幕上时 IntersectionObserver 再置脏） */
+  frame(): void {
+    if (this.dead || !this.onScreen) return
+    if (this.legendDirty) { this.legendDirty = false; this.renderLegend() }
     if (this.dirty) { this.dirty = false; this.render() }
-    this.raf = requestAnimationFrame(this.loop)
   }
   render(): void {
     const c = this.ctx, C = this.colors
@@ -553,7 +599,7 @@ export class TVChart {
     c.save(); c.beginPath(); c.rect(0, mainPane.y, PW, mainPane.h); c.clip()
     const geo = this.layers.length ? this.geometry() : null
     if (geo) for (const l of this.layers) if (l.back) { c.save(); l.back(c, geo); c.restore() }
-    if (this.ind.vol && !this.hidden.has('vol')) this.drawVolume(mainPane, from, to)
+    if (this.ind.vol && this.deg.vol && !this.hidden.has('vol')) this.drawVolume(mainPane, from, to)
     if (geo) for (const l of this.layers) if (l.under) { c.save(); l.under(c, geo); c.restore() }
     if (this.walls && !this.hidden.has('walls')) this.drawWalls(mainPane, mr, from, to)
     if (this.markers) this.drawTradeSpan(mainPane, mr)
@@ -580,6 +626,10 @@ export class TVChart {
     c.moveTo(PW + .5, 0); c.lineTo(PW + .5, H - AXIS_H)
     c.moveTo(0, H - AXIS_H + .5); c.lineTo(W, H - AXIS_H + .5)
     c.stroke()
+    // 悬停 / 正在拖的那条窗格分隔线：强调色
+    const hot = this.drag?.kind === 'pan' && this.drag.region.startsWith('sep:') ? this.drag.region.slice(4) : this.hoverSep
+    const hp = hot ? panes.find(p => p.id === hot) : null
+    if (hp) { c.strokeStyle = C.accent; c.beginPath(); c.moveTo(0, hp.y + .5); c.lineTo(W, hp.y + .5); c.stroke() }
 
     c.fillStyle = C.text; c.textAlign = 'left'
     for (const p of panes) {
@@ -1001,6 +1051,14 @@ export class TVChart {
     const cls = this.stale ? 'faint' : chg >= 0 ? 'up' : 'down'
     const v = (x: number) => `<span class="num ${cls}">${fmt(x, dec)}</span>`
     const tools = (id: string) => `<span class="tools"><button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${this.hidden.has(id) ? '显示' : '隐藏'}">${I(this.hidden.has(id) ? 'eyeOff' : 'eye', 'icon-16')}</button><button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button><button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span>`
+    // 多图小格：只留品种与周期（周期是 sub 里「· 」后的第一段）
+    if (this.deg.compact) {
+      const iv = this.meta.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || ''
+      const html = `<div class="lrow compact"><span class="title">${this.meta.badge || ''}${this.meta.title}<span class="sub">${iv}</span></span></div>`
+      if (this.legendEl.innerHTML !== html) this.legendEl.innerHTML = html
+      this.renderPaneLegends(this._panes || [])
+      return
+    }
     let h = `<div class="lrow"><span class="title">${this.meta.badge || ''}${this.meta.title}<span class="sub">${this.meta.sub}</span></span>
         <span class="ohlc"><span><i>开</i>${v(b.o)}</span><span><i>高</i>${v(b.h)}</span><span><i>低</i>${v(b.l)}</span><span><i>收</i>${v(b.c)}</span>
         <span class="num ${cls}">${chg >= 0 ? '+' : ''}${fmt(chg, dec)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span></span></div>`
@@ -1063,6 +1121,8 @@ export class TVChart {
       if (this.drag) return
       const reg = this.region(x, y)
       cv.style.cursor = reg === 'price' ? 'ns-resize' : reg === 'time' ? 'ew-resize' : reg.startsWith('sep') ? 'row-resize' : 'crosshair'
+      const sep = reg.startsWith('sep:') ? reg.slice(4) : null
+      if (sep !== this.hoverSep) { this.hoverSep = sep; this.dirty = true }
       const onMainAxis = reg === 'price' && this.paneAt(y)?.id === 'main' && !!this.o.onAlertCreate
       const hy = onMainAxis ? y : null
       if (hy !== this.axisHoverY) { this.axisHoverY = hy; this.dirty = true }
@@ -1092,6 +1152,7 @@ export class TVChart {
     }, { signal })
     cv.addEventListener('mouseleave', () => {
       if (this.drag) return
+      this.hoverSep = null
       this.cross = null; this.axisHoverY = null; this.dirty = true; this.renderLegend()
       if (this.hoverWall) { this.hoverWall = null; this.o.onWallHover?.(null) }
       if (this.layerHover) { this.layerHover.leave?.(); this.layerHover = null }
@@ -1194,13 +1255,15 @@ export class TVChart {
       } else if (d.region.startsWith('sep:') && this._panes) {
         const id = d.region.slice(4), panes = this._panes, k = panes.findIndex(p => p.id === id)
         if (k >= 1) {
-          const above = panes[k - 1], cur = panes[k]
-          const total = above.h + cur.h, ny = clamp(y - above.y, MIN_PANE_H, total - MIN_PANE_H)
-          // 主图永远是「剩下的全部」，所以只记副图的像素高
-          if (above.id !== 'main') this.paneH[above.id] = ny
-          this.paneH[id] = total - ny
+          // 起点的各格高度在按下时记下（sepHs），拖动只在上下两格之间挪
+          const H = this.h - AXIS_H, base = this.sepHs ?? panes.map(p => p.h)
+          this.sepHs = base
+          const hs = dragPane(base, k, y - d.y0, H)
+          this.paneR = paneRatiosOf(this.subIds(), hs, H)
+          this.paneLegendKeys.fill(null)
         }
       }
+      if (!d.vertical && (d.region === 'plot' || d.region === 'time')) this.emitView()
       this.dirty = true; this.renderLegend()
     }, { signal })
     window.addEventListener('mouseup', e => {
@@ -1226,12 +1289,19 @@ export class TVChart {
       }
       if (d.kind === 'measure') { const m = this.draft; this.draft = null; if (m) { this.measure = m; this.drawings.push(m) } this.dirty = true; return }
       if (d.kind === 'drawing') { this.o.onDrawingsChanged?.(); return }
+      if (d.kind === 'pan' && d.region.startsWith('sep:')) {
+        this.sepHs = null; this.dirty = true
+        if (d.moved && this.paneR) this.o.onPaneResize?.({ ...this.paneR })
+        return
+      }
+      if (d.kind === 'pan' && d.moved && (d.region === 'plot' || d.region === 'time')) this.emitView()
       this.canvas.style.cursor = 'crosshair'
     }, { signal })
     cv.addEventListener('dblclick', e => {
       const { x, y } = pos(e), reg = this.region(x, y)
       if (reg === 'price') this.setAuto(true)
-      else if (reg === 'time') this.resetView()
+      else if (reg === 'time') { this.resetView(); this.emitView() }
+      else if (reg.startsWith('sep:')) { this.paneR = null; this.paneLegendKeys.fill(null); this.dirty = true; this.o.onPaneResize?.(null) }
     }, { signal })
     cv.addEventListener('wheel', e => {
       e.preventDefault()
@@ -1240,6 +1310,7 @@ export class TVChart {
       else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { this.rightBar += e.deltaX / this.spacing; this.maybeMore() }
       else this.zoom(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0025)), Math.min(x, this.plotW()))
       this.dirty = true; this.renderLegend()
+      if (!e.altKey) this.emitView()
     }, { passive: false, signal })
     cv.addEventListener('contextmenu', e => {
       e.preventDefault()
@@ -1282,6 +1353,17 @@ export class TVChart {
   }
   private fontFamily(): string { return this.font.split('px ')[1] }
 }
+
+// ------------------------------------------------------------ 共用的一帧
+// 十六格各自挂一个 requestAnimationFrame 循环，每帧就是十六次回调；合成一个循环，挨个问脏没脏。
+const frames = new Set<TVChart>()
+let frameId = 0
+function tick(): void {
+  frameId = 0
+  for (const ch of frames) ch.frame()
+  if (frames.size) frameId = requestAnimationFrame(tick)
+}
+function kick(): void { if (!frameId && typeof requestAnimationFrame !== 'undefined') frameId = requestAnimationFrame(tick) }
 
 // ------------------------------------------------------------ 小工具
 function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath() }

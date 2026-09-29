@@ -15,7 +15,9 @@ import { orderId, type BigOrder, type Product } from './types'
 import { tapeBase, type TapeRow } from './tape'
 import { parseAmount } from './settings'
 import { OF, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
-import { planSidebar, toggleCollapsed, BOOK_ROW, WALL_ROW, TAPE_ROW } from './sidebar'
+import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, BOOK_ROW, WALL_ROW, TAPE_ROW } from './sidebar'
+import { sizes, saveSizes } from '../app/sizes'
+import { splitter, type Splitter } from '../ui/splitter'
 export { toggleCollapsed }
 
 export const OF_WIDGETS: WidgetId[] = ['book', 'tape', 'walls', 'alerts']
@@ -67,10 +69,51 @@ export function fitStack(el: HTMLElement): void {
   const avail = el.clientHeight
   if (!avail) return
   const ids = parts.map(p => p.dataset.w as WidgetId)
-  const hs = planSidebar(avail, ids, new Set(OF.prefs.collapsed))
+  const collapsed = new Set(OF.prefs.collapsed)
+  const hs = planSidebar(avail, ids, collapsed, undefined, sizes.side)
   parts.forEach((p, i) => { const v = `${hs[i]}px`; if (p.style.height !== v) p.style.height = v })
+  placeSideSplits(el, parts, ids, hs, collapsed)
   // 行数跟着高度走的几块：重排一次
   updateBook(); updateWalls(); tapeDirty = true; scheduleTape()
+}
+
+/**
+ * 侧栏块与块之间的分隔条（横线，上下拖）：只在线上下最近的两块能长的块之间挪高度，
+ * 定高的详情跟着走；总高不变。松手把展开各块的高度记进本机尺寸（sizes.side），双击回默认分配。
+ * 分隔条挂在侧栏容器里（panelWatch 每次重写 innerHTML 会把它们一起清掉，这里按需重建）。
+ */
+let sideSplits: Splitter[] = []
+let sideDrag: { hs: number[]; ids: WidgetId[] } | null = null
+function placeSideSplits(el: HTMLElement, parts: HTMLElement[], ids: WidgetId[], hs: number[], collapsed: ReadonlySet<string>): void {
+  sideSplits = sideSplits.filter(s => s.el.parentElement === el)
+  while (sideSplits.length < parts.length - 1) {
+    const k = sideSplits.length
+    sideSplits.push(splitter({
+      dir: 'y', parent: el, name: `side-${k}`, tip: '拖动调整高度，双击恢复默认',
+      onStart: () => {
+        const ps = [...el.children].filter((x): x is HTMLElement => x instanceof HTMLElement && !!x.dataset.w)
+        sideDrag = { hs: ps.map(p => p.getBoundingClientRect().height), ids: ps.map(p => p.dataset.w as WidgetId) }
+      },
+      onMove: d => {
+        if (!sideDrag) return
+        const next = dragSidebar(sideDrag.hs, sideDrag.ids, new Set(OF.prefs.collapsed), k, d)
+        const side: Record<string, number> = { ...(sizes.side || {}) }
+        sideDrag.ids.forEach((id, i) => { if (!OF.prefs.collapsed.includes(id) && id !== 'detail') side[id] = next[i] })
+        sizes.side = side
+        fitStack(el)
+      },
+      onEnd: () => { sideDrag = null; saveSizes() },
+      onReset: () => { delete sizes.side; saveSizes(); fitStack(el) },
+    }))
+  }
+  while (sideSplits.length > parts.length - 1) sideSplits.pop()!.destroy()
+  let y = 0
+  sideSplits.forEach((s, k) => {
+    y += hs[k]
+    const on = sideCanDrag(ids, collapsed, k)
+    s.show(on)
+    if (on) s.place(y, 0, el.clientWidth)
+  })
 }
 
 /** panelWatch 写完 innerHTML 之后调：绑事件、画第一帧。 */

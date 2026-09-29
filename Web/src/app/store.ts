@@ -14,14 +14,40 @@ import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/se
 export type Theme = 'light' | 'dark'
 export type Skin = 'sage' | 'terra' | 'classic'
 export type UpDown = 'red-up' | 'green-up'
-export type Layout = '1' | '2' | '2v' | '4' | '6' | '8'
-export const LAYOUTS: Layout[] = ['1', '2', '2v', '4', '6', '8']
+export type Layout = '1' | '2' | '2v' | '3' | '4' | '6' | '8' | '9' | '12' | '16'
+/** 布局清单（TradingView 那种多窗口，最多 16 格） */
+export const LAYOUTS: Layout[] = ['1', '2', '2v', '3', '4', '6', '8', '9', '12', '16']
 /** 每种布局几格 */
-export const LAYOUT_N: Record<Layout, number> = { '1': 1, '2': 2, '2v': 2, '4': 4, '6': 6, '8': 8 }
+export const LAYOUT_N: Record<Layout, number> = { '1': 1, '2': 2, '2v': 2, '3': 3, '4': 4, '6': 6, '8': 8, '9': 9, '12': 12, '16': 16 }
+/** 最多几格 */
+export const MAX_CELLS = 16
+/**
+ * 每种布局的网格：几列几行；areas 只有「左一右二」要（第 0 格占左边整列，右边两格上下分）。
+ * 列宽 / 行高的比例用户能拖，按布局分别记在本机（app/sizes.ts）。
+ */
+export interface GridSpec { cols: number; rows: number; areas?: string[][] }
+export const GRID: Record<Layout, GridSpec> = {
+  '1': { cols: 1, rows: 1 }, '2': { cols: 2, rows: 1 }, '2v': { cols: 1, rows: 2 },
+  '3': { cols: 2, rows: 2, areas: [['a', 'b'], ['a', 'c']] },
+  '4': { cols: 2, rows: 2 }, '6': { cols: 3, rows: 2 }, '8': { cols: 4, rows: 2 },
+  '9': { cols: 3, rows: 3 }, '12': { cols: 4, rows: 3 }, '16': { cols: 4, rows: 4 },
+}
 /** 当前格子落在布局的格数以内（地址栏把八图改成一图时，参数要落到看得见的那一格上） */
 export function clampActive(s: Pick<State, 'active' | 'layout'>): void {
   const n = LAYOUT_N[s.layout] || 1
   s.active = Number.isInteger(s.active) ? Math.min(Math.max(0, s.active), n - 1) : 0
+}
+/** 多图时补齐格子的品种：先 BTC 与几只主流，再往后是热门山寨与美股、金银（16 格各不相同） */
+export const FILL_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'NVDAUSDT', 'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'SUIUSDT', 'XAGUSDT', 'TSLAUSDT', 'LTCUSDT', 'TRXUSDT']
+/** 格子配置补到 n 格：缺的（含稀疏数组里的洞）按清单补一只还没用过的品种，周期跟第 0 格 */
+export function ensureCells(s: Pick<State, 'cells'>, n: number): void {
+  const iv = s.cells[0]?.iv || '1h'
+  for (let i = 0; i < n; i++) {
+    const c = s.cells[i]
+    if (c && typeof c.symbol === 'string' && typeof c.iv === 'string') continue
+    const used = new Set(s.cells.filter(Boolean).map(x => x.symbol))
+    s.cells[i] = { symbol: FILL_SYMBOLS.find(k => !used.has(k)) || 'BTCUSDT', iv }
+  }
 }
 export type PanelId = 'watch' | 'alerts' | 'flow' | 'notes' | 'trades'
 export type PageId = 'chart' | 'sectors' | 'review' | 'me'
@@ -73,6 +99,9 @@ export interface State {
   /** 多图时十字线跨图同步、换品种时所有图一起换 */
   linkCross: boolean
   linkSymbol: boolean
+  /** 多图时换周期所有图一起换；平移缩放时间轴所有图对齐同一段时间 */
+  linkIv: boolean
+  linkTime: boolean
   /** 自定义分钟周期（如 45m），「更多」里输入后记下来 */
   customIvs: string[]
   /** 指标「主力订单流」开没开（图上大单带、抽屉） */
@@ -100,7 +129,7 @@ function defaults(): State {
     magnet: false, drawHidden: false, drawLocked: false, drawColor: '#2962FF',
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
-    vpvrMode: 'split', linkCross: true, linkSymbol: false, customIvs: [],
+    vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
     orderFlow: false, orderFlowOverrides: {},
     page: 'chart', stale: false, account: null,
   }
@@ -121,10 +150,13 @@ export function hydrate(saved: Partial<State>): State {
   if (!Array.isArray(s.ind.subs)) s.ind.subs = d.ind.subs
   s.ind.subs = s.ind.subs.slice(0, MAX_SUBS)
   if (!Array.isArray(s.cells) || !s.cells.length) s.cells = d.cells
+  s.cells = s.cells.slice(0, MAX_CELLS)
+  if (!s.cells[0] || typeof s.cells[0].symbol !== 'string') s.cells[0] = d.cells[0]
+  ensureCells(s, s.cells.length)
   if (!LAYOUTS.includes(s.layout)) s.layout = '1'
   clampActive(s)
   if (!['split', 'delta', 'total'].includes(s.vpvrMode)) s.vpvrMode = 'split'
-  s.linkCross = s.linkCross !== false; s.linkSymbol = s.linkSymbol === true
+  s.linkCross = s.linkCross !== false; s.linkSymbol = s.linkSymbol === true; s.linkIv = s.linkIv === true; s.linkTime = s.linkTime === true
   if (!Array.isArray(s.customIvs)) s.customIvs = []
   s.customIvs = s.customIvs.filter(x => typeof x === 'string' && /^\d+m$/.test(x)).slice(0, 12)
   if (!['sage', 'terra', 'classic'].includes(s.skin)) s.skin = 'sage'

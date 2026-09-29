@@ -14,8 +14,9 @@ import { bucketIndex } from './bucket'
 import { ladderRows, rowOf, type LadderRow, venueName, exName } from './aggregate'
 import { OF, rowsPerLine, bandColor, showCard, hideCard, amt, durShort, decFor, px, canvasFont } from './state'
 
-const W = 240
-const HALF = W / 2
+/** 宽度跟着槽位走（用户可拖，160–480），每帧按槽位宽重算 */
+let W = 240
+let HALF = W / 2
 const PAD = 6
 
 interface Hit { y0: number; y1: number; row: LadderRow }
@@ -54,6 +55,7 @@ export function drawLadder(chart: TVChart, g: ChartGeometry): void {
   if (!ladderVisible() || !cv || !slot) return
   const sr = slot.getBoundingClientRect(), cr = chart.canvas.getBoundingClientRect()
   const H = Math.max(0, Math.round(sr.height))
+  W = Math.max(120, Math.round(sr.width)); HALF = W / 2
   const dpr = window.devicePixelRatio || 1
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr)

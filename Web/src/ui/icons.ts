@@ -7,6 +7,17 @@
  */
 
 const D = 'opacity=".3"'
+/** 多图布局记号：cols × rows 个圆角格，第一格实填、其余衬底（和四图、八图同一画法） */
+function gridIcon(cols: number, rows: number): string {
+  const g = cols > 3 || rows > 3 ? 0.9 : 1, x0 = 2, y0 = 3, W = 20, H = 18
+  const w = (W - g * (cols - 1)) / cols, h = (H - g * (rows - 1)) / rows, r = Math.min(1.5, w / 3, h / 3)
+  let out = ''
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const x = +(x0 + i * (w + g)).toFixed(2), y = +(y0 + j * (h + g)).toFixed(2)
+    out += `<rect x="${x}" y="${y}" width="${+w.toFixed(2)}" height="${+h.toFixed(2)}" rx="${+r.toFixed(2)}" fill="currentColor"${i || j ? ' ' + D : ''}/>`
+  }
+  return out
+}
 const P: Record<string, string> = {
   logo: `<rect x="2" y="2" width="20" height="20" rx="6" fill="var(--accent)"/><path d="M7 16.5V9.2M12 15V6.5M17 13.5v-5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M7 7.2v1M12 16.9v.8M17 15.6v.8M17 6.4v.8" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".55"/>`,
   search: `<circle cx="10.5" cy="10.5" r="6.5" fill="currentColor" ${D}/><path d="M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25a1.25 1.25 0 0 0 1.77-1.77l-4.25-4.24A7.5 7.5 0 0 0 10.5 3Zm0 2.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z" fill="currentColor"/>`,
@@ -23,6 +34,10 @@ const P: Record<string, string> = {
   layout2v: `<rect x="3" y="3.5" width="18" height="8" rx="2.5" fill="currentColor"/><rect x="3" y="12.5" width="18" height="8" rx="2.5" fill="currentColor" ${D}/>`,
   layout6: `<rect x="2.5" y="3.5" width="5.6" height="8" rx="1.8" fill="currentColor"/><rect x="9.2" y="3.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="15.9" y="3.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="2.5" y="12.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="9.2" y="12.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="15.9" y="12.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/>`,
   layout8: `<rect x="2" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor"/><rect x="7.1" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="12.2" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="17.3" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="2" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="7.1" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="12.2" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="17.3" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/>`,
+  layout3: `<rect x="3" y="4" width="8.5" height="16" rx="2.5" fill="currentColor"/><rect x="12.5" y="4" width="8.5" height="7.5" rx="2.5" fill="currentColor" ${D}/><rect x="12.5" y="12.5" width="8.5" height="7.5" rx="2.5" fill="currentColor" ${D}/>`,
+  layout9: gridIcon(3, 3),
+  layout12: gridIcon(4, 3),
+  layout16: gridIcon(4, 4),
   layout4: `<rect x="3" y="3.5" width="8.5" height="8" rx="2.5" fill="currentColor"/><rect x="12.5" y="3.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="3" y="12.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="12.5" y="12.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/>`,
   note: `<path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="currentColor" ${D}/><path d="M6 3h3v18H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm5.5 5h4.5a1 1 0 1 1 0 2h-4.5a1 1 0 1 1 0-2Zm0 4h3a1 1 0 1 1 0 2h-3a1 1 0 1 1 0-2Z" fill="currentColor"/>`,
   share: `<circle cx="17.5" cy="5.5" r="3" fill="currentColor"/><circle cx="6.5" cy="12" r="3" fill="currentColor"/><circle cx="17.5" cy="18.5" r="3" fill="currentColor"/><path d="M8.2 11l7.6-4.4M8.2 13l7.6 4.4" stroke="currentColor" stroke-width="2.2" ${D}/>`,

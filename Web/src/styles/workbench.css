@@ -1,13 +1,7 @@
 /* Hkline Web · 图表工作台第二批：提醒、成交量分布看法、秒级 / 自定义周期、底栏、六图 / 八图
  * 只用 app.css 的令牌（间距、圆角、字号、皮肤色），三套皮肤自动跟随。 */
 
-/* ---- 六图（三列两行）、八图（四列两行） */
-.chart-area[data-layout="6"] { grid-template: 1fr 1fr / 1fr 1fr 1fr; }
-.chart-area[data-layout="8"] { grid-template: 1fr 1fr / 1fr 1fr 1fr 1fr; }
-/* 格子多了图例收一收：只留标题一行和主图指标，副图图例照常 */
-.chart-area[data-layout="6"] .legend .title .sub,
-.chart-area[data-layout="8"] .legend .title .sub { display: none; }
-.chart-area[data-layout="8"] .cell-foot [data-range]:nth-of-type(n+6) { display: none; }
+/* ---- 多图（1–16 格）的行列、格子小了的降级都按格子尺寸算，见 app.css「多图格子降级」 */
 
 /* ---- 底栏：左边布局与截图，右边上海时间与连接点 */
 .cell-foot .foot-ic { width: var(--h-xs); padding: 0; display: grid; place-items: center; color: var(--text-2); }
