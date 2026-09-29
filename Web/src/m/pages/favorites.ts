@@ -60,7 +60,7 @@ export function initFavorites(root: HTMLElement): PageHandle {
     if (editing && frozen.has(sym)) return frozen.get(sym)!
     const s = S.symbols.get(sym)
     const gone = S.live === true && !s
-    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone ? null : s?.vol ?? null }
+    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone ? null : s?.vol ?? null, gone }
   }
 
   // ---------------------------------------------------------------- 头部

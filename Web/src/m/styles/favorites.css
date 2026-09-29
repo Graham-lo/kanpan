@@ -125,6 +125,9 @@ html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, 
 .m-pill.up { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--up) 30%, transparent) }
 .m-pill.down { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--down) 30%, transparent) }
 .m-pill.none { color: transparent; background: color-mix(in srgb, var(--ink) 6%, transparent) }
+/* 已下架 / 目录里没有：不是「还在路上」，写「—」、不摆骨架 */
+.m-pill.none.gone { color: var(--ink3) }
+.lr-price.gone { color: var(--stale) }
 
 /* ───────── 徽章 ───────── */
 .m-badge { position: relative; display: inline-grid; place-items: center; flex: none; overflow: hidden }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EMPTY_HISTORY, stats, type Quotes, type SectorHistory, type SectorQuote } from '../src/sectors/aggregate'
 import { coveredCount, drillDecision } from '../src/m/model/sectorView'
+import { factsOf, liuliRowHTML, pillHTML } from '../src/m/model/rowHTML'
 
 const q = (base: string, pct: number, price = 100): SectorQuote => ({ base, pct, quoteVolume: 1, price })
 const quotesOf = (list: SectorQuote[]): Quotes => new Map(list.map(x => [x.base, x]))
@@ -29,5 +30,19 @@ describe('手机网页版 · 板块页规模与下钻（照 iOS SectorPage / Sec
     expect(drillDecision('fb:x', [{ id: 'edge' }], [{ id: 'fb:x' }])).toBe('wait')
     expect(drillDecision('fb:gone', [], [])).toBe('wait')
     expect(drillDecision('fb:gone', [{ id: 'edge' }], [])).toBe('pop')
+  })
+})
+
+describe('手机网页版 · 自选行：已下架的不摆骨架', () => {
+  it('目录里没有它（已下架）：价格与涨跌写「—」、退灰；还在路上的才是骨架', () => {
+    const gone = liuliRowHTML(factsOf('LUNAUSDT'), { price: null, pct: null, vol: null, gone: true }, false)
+    expect(gone).not.toContain('skel')
+    expect(gone).toContain('class="lr-price num gone">—<')
+    expect(gone).toContain('m-pill none gone')
+    const pending = liuliRowHTML(factsOf('BTCUSDT'), { price: null, pct: null, vol: null }, false)
+    expect(pending).toContain('lr-price skel')
+    expect(pending).not.toContain('gone')
+    expect(pillHTML(null, undefined, true)).toContain('none gone')
+    expect(gone).toContain('成交额 —')
   })
 })

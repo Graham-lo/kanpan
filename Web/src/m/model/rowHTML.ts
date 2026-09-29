@@ -19,39 +19,50 @@ export function factsOf(symbol: string, s?: Pick<Sym, 'kind' | 'cn'> | null): Ro
   return { symbol, base, quote, asset: assetOf(s?.kind, base), kind: s?.kind, cn: s?.cn }
 }
 
-/** 涨跌药丸：宽 72 高 28，底是涨跌色 14%、描边 30%，字就是涨跌色；缺值画「—」 */
-export function pillHTML(pct: number | null | undefined, text?: string): string {
+/** 涨跌药丸：宽 72 高 28，底是涨跌色 14%、描边 30%，字就是涨跌色。
+ *  缺值两种：还在路上（骨架，只剩一块底不写字）；gone = 目录说它没有实时价（已下架 / 目录里没有），写「—」 */
+export function pillHTML(pct: number | null | undefined, text?: string, gone = false): string {
   const t = text ?? changePercentText(pct)
-  if (t === MISSING) return `<span class="m-pill none num">${MISSING}</span>`
+  if (t === MISSING) return `<span class="m-pill none${gone ? ' gone' : ''} num">${MISSING}</span>`
   return `<span class="m-pill ${textIsUp(t) ? 'up' : 'down'} num">${esc(t)}</span>`
 }
 
-export interface LiuliData { price: number | null; dec?: number | null; pct: number | null; vol: number | null; priceText?: string; extra?: string }
+/** gone：目录说它没有实时价（已下架 / 目录里没有）——不摆骨架（那块灰底会永远亮着，读起来像永远加载不完），
+ *  价格与涨跌写「—」、退成次要文字色（照 iOS FavoritesView 行：skeleton = 价缺 && !stale） */
+export interface LiuliData { price: number | null; dec?: number | null; pct: number | null; vol: number | null; priceText?: string; extra?: string; gone?: boolean }
+/** 成交额那格缺数写「—」，和同一行价格 / 涨跌的缺数一个样（iOS sectorVolumeText） */
+const volText = (v: number | null): string => v != null && Number.isFinite(v) ? fmtVol(v) : MISSING
+const priceCell = (d: LiuliData): { cls: string; text: string } => {
+  const t = d.priceText ?? (d.price == null ? '' : priceText(d.price, d.dec))
+  if (t) return { cls: d.gone ? 'lr-price num gone' : 'lr-price num', text: t }
+  return d.gone ? { cls: 'lr-price num gone', text: MISSING } : { cls: 'lr-price skel', text: '' }
+}
 /** 琉璃行（高 66）：徽章 33 · 名字 + 成交额 · 价格 + 药丸；第一行不画顶上那道发丝线 */
 export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, extraCls = ''): string {
-  const price = d.priceText ?? (d.price == null ? '' : priceText(d.price, d.dec))
+  const price = priceCell(d)
   return `<div class="lr${first ? ' first' : ''}${extraCls ? ' ' + extraCls : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="0">`
     + `<div class="lr-in">${liuliBadgeHTML(f.base, f.asset)}`
     + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : ''}</div>`
-    + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(fmtVol(d.vol))}</span>${d.extra ?? ''}</div></div>`
-    + `<div class="lr-right">${price ? `<span class="lr-price num">${esc(price)}</span>` : '<span class="lr-price skel"></span>'}${pillHTML(d.pct)}</div>`
+    + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(volText(d.vol))}</span>${d.extra ?? ''}</div></div>`
+    + `<div class="lr-right"><span class="${price.cls}">${esc(price.text)}</span>${pillHTML(d.pct, undefined, !!d.gone)}</div>`
     + `</div></div>`
 }
 /** 推送来了：只改价格、药丸与成交额 */
 export function patchLiuli(row: Element, d: LiuliData): void {
   const p = row.querySelector('.lr-price')
   if (p) {
-    const t = d.priceText ?? (d.price == null ? '' : priceText(d.price, d.dec))
-    if (t) { p.classList.remove('skel'); if (p.textContent !== t) p.textContent = t }
+    const c = priceCell(d)
+    // 还在路上时不把已经摆出来的价格擦回骨架
+    if (c.text) { if (p.className !== c.cls) p.className = c.cls; if (p.textContent !== c.text) p.textContent = c.text }
   }
   const pill = row.querySelector('.m-pill')
   if (pill) {
-    const html = pillHTML(d.pct)
     const t = changePercentText(d.pct)
-    if (pill.textContent !== t) pill.outerHTML = html
+    const cls = 'm-pill ' + (t === MISSING ? (d.gone ? 'none gone' : 'none') : textIsUp(t) ? 'up' : 'down') + ' num'
+    if (pill.textContent !== t || pill.className !== cls) pill.outerHTML = pillHTML(d.pct, undefined, !!d.gone)
   }
   const v = row.querySelector('.lr-vol')
-  if (v) { const t = '成交额 ' + fmtVol(d.vol); if (v.textContent !== t) v.textContent = t }
+  if (v) { const t = '成交额 ' + volText(d.vol); if (v.textContent !== t) v.textContent = t }
 }
 
 /** 搜索结果行（SymbolRowView）：徽章 32 · base（命中处着色）/ quote · 右侧价格与涨跌 · 星 */
