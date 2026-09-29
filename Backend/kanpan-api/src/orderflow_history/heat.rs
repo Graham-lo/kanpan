@@ -18,7 +18,7 @@
 //!   同样的请求 5 秒内合成一次读库（缺省的 `to` 取整到 5 秒格），答复带 `Cache-Control: public, max-age=5`。
 use super::book::{Buckets,Side,bucket_index};
 use super::model::{Model,Thresholds};
-use super::{Answer,Answers,HISTORY_READS,POOL,REGISTRY,WRITE_SLOTS,accepts_gzip,now_ms,store};
+use super::{Answer,Answers,HISTORY_READS,POOL,REGISTRY,WRITE_SLOTS,accepts_gzip,json_number as number,now_ms,packed,store};
 use crate::AppState;
 use crate::error::{ApiError,Params,Result};
 use crate::orderflow_instruments as instruments;
@@ -381,12 +381,6 @@ fn decimals(step:f64)->i32 {
 }
 fn tidy(v:f64,decimals:i32)->f64 {let k=10f64.powi(decimals);(v*k).round()/k}
 
-/// 一个数写进 JSON：整数不带 `.0`。
-fn number(out:&mut String,v:f64) {
- use std::fmt::Write as _;
- if v.fract()==0.0&&v.abs()<9e15 {let _=write!(out,"{}",v as i64);} else {let _=write!(out,"{}",serde_json::Number::from_f64(v).map_or_else(||"0".to_string(),|n|n.to_string()));}
-}
-
 fn body(step:f64,bucket_ms:i64,rows:&[(i64,f64,f64,f64)])->String {
  let mut out=String::with_capacity(48+rows.len()*36);
  out.push_str("{\"step\":");number(&mut out,step);
@@ -489,16 +483,8 @@ pub(super) async fn heat(State(s):State<AppState>,headers:axum::http::HeaderMap,
  Ok(answer.response())
 }
 
-/// 组好的 JSON 装成答复（要 gzip 就压好），带 `Cache-Control: public, max-age=5`。
-fn answer(json:String,gzip:bool)->Result<Answer> {
- use std::io::Write as _;
- let bytes:Vec<u8>=if gzip {
-  let mut g=flate2::write::GzEncoder::new(Vec::with_capacity(json.len()/6),flate2::Compression::fast());
-  g.write_all(json.as_bytes()).and_then(|_|g.finish()).map_err(|e|{tracing::warn!("Orderflow heat: reply not compressed: {e}");ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable")})?
- } else {json.into_bytes()};
- let len=bytes.len();
- Ok(Answer{chunks:vec![axum::body::Bytes::from(bytes)].into(),len,gzip,cache:CACHE_CONTROL})
-}
+/// 组好的 JSON 装成答复（要 gzip 就压好），带 `Cache-Control: public, max-age=5`（和分钟成交共用 `packed`）。
+fn answer(json:String,gzip:bool)->Result<Answer> {packed(json,gzip,CACHE_CONTROL)}
 
 #[cfg(test)]
 mod tests {

@@ -36,9 +36,12 @@
 //!   跟踪器断过十分钟以上（停掉、没人要）再起跟，从起跟那一刻重新算（0026 的 `alive_ms`）。
 //! * 深度热力（网页版）：每 5 秒把每只的簿在中间价 ±5% 以内按步长分桶写进 `orderflow_heat`，
 //!   接口 `GET /v1/market/orderflow/heat`，见 `heat.rs`。
+//! * 大单与散户的分钟成交（网页版）：同一个跟踪任务把去重后的每笔成交按分钟记大单（≥ 门槛 / 50）与散户（< 1 万美元）的主动买卖额，
+//!   写进 `orderflow_flow`，接口 `GET /v1/market/orderflow/flow`，见 `flow.rs`。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
 mod feeds;
+mod flow;
 mod heat;
 mod hub;
 mod layers;
@@ -439,6 +442,8 @@ struct Tracker {
  epochs:HashMap<String,Arc<AtomicU64>>,
  /// 每本簿最后一笔成交号（换连接的重叠期里两条连接都推同一笔，按号去重）。
  last_trade:HashMap<String,i64>,
+ /// 这一分钟的大单 / 散户成交（去重之后，见 `flow.rs`）。
+ flow:flow::Acc,
  /// 挂着的单上次写库时的量、成交、门槛与时刻（见 `changed_live`）。
  written:HashMap<LiveKey,(f64,f64,f64,i64)>,
  priority:Arc<AtomicU8>,
@@ -530,6 +535,8 @@ impl Tracker {
      if id<=*last {return}
      *last=id;
     }
+    let usd=self.model.book_mut(&venue).map_or(0.0,|b|b.venue.notional.usd(trade.price,trade.quantity));
+    flow::submit(&self.base,self.flow.add(usd,flow::is_buy(trade.hit),flow::big_cut(&self.model.thresholds),now));
     self.model.trade(&venue,trade,now);
    },
    Event::Snapshot{venue,epoch,snapshot}=>{
@@ -624,6 +631,7 @@ impl Tracker {
  /// （原来停机前最后一次刷 `seen_ms` 可能是 60 秒前，再加停机、起跟、标定就过了 `model::STALE_MS`）。
  async fn hand_over(&mut self)->Final {
   self.write_ended().await;
+  flow::submit(&self.base,self.flow.take());
   let live=self.model.live();
   let rows=changed_live(live.clone(),&mut self.written,now_ms(),i64::MAX);
   if !rows.is_empty() {let _=self.writes.send(Write{step:self.step(),rows}).await;}
@@ -712,6 +720,7 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
      crate::conditions::walls::observe(&t.base,&walls,now);
     }
     t.due_retries(now);
+    flow::submit(&t.base,t.flow.roll(now));
     t.write_ended().await;
    },
    _=flush.tick()=>t.write_live().await,
@@ -759,7 +768,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  let (writes,rx)=mpsc::channel::<Write>(WRITES_QUEUE);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
  let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,control,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
-  epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority,writes,
+  epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority,writes,
   calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
   Ok(rows) if needed=>t.calibration.restored=Some((rows,now_ms())),
@@ -786,6 +795,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  }
  t.model.stop();
  t.write_ended().await;
+ flow::submit(&base,t.flow.take());
  hub::remove(t.model.venue_ids(),&t.events);
  drop(t);
  // 等写库任务写完手里的（它自己最多再试 `WRITE_DRAIN`）：注册表按这个任务结束判断收尾完了。
@@ -1050,6 +1060,8 @@ impl Registry {
  /// 这只此刻的步长（没在跟或还没算出来为 None）；不像 `request` 那样记「有人要」。
  fn step(&self,base:&str)->Option<f64> {self.lock().get(base).and_then(|e|e.thresholds.borrow().step)}
  fn is_tracked(&self,base:&str)->bool {self.lock().contains_key(base)}
+ /// 此刻这只的门槛（没在跟为 None）。
+ fn thresholds(&self,base:&str)->Option<Thresholds> {self.lock().get(base).map(|e|*e.thresholds.borrow())}
 
  /// 不该再跟的停掉、先后重排、热点层（含掉榜还在跟的）超过 30 只就停掉最早掉榜的。
  fn settle(&self,entries:&mut Entries,now:i64) {
@@ -1270,6 +1282,7 @@ fn own_pool(api:&PgPool)->PgPool {
 pub fn spawn(pool:PgPool)->JoinHandle<()> {
  let pool=POOL.get_or_init(||own_pool(&pool)).clone();
  heat::start(pool.clone());
+ flow::start(pool.clone());
  tokio::spawn(async move {
   let registry=REGISTRY.get_or_init(||Arc::new(Registry::new(pool.clone()))).clone();
   let enabled=Enabled::from_env();
@@ -1308,6 +1321,10 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
      match heat::purge(&pool,now_ms()).await {
       Ok(deleted)=>tracing::info!("Orderflow heat: purge deleted {deleted}; table {} bytes",heat::size(&pool).await.unwrap_or(-1)),
       Err(e)=>tracing::warn!("Orderflow heat: purge failed: {e}"),
+     }
+     match flow::purge(&pool,now_ms()).await {
+      Ok(deleted)=>tracing::info!("Orderflow flow: purge deleted {deleted}; table {} bytes",flow::size(&pool).await.unwrap_or(-1)),
+      Err(e)=>tracing::warn!("Orderflow flow: purge failed: {e}"),
      }
     },
    }
@@ -1482,6 +1499,23 @@ impl<K:Clone+Eq+std::hash::Hash> Answers<K> {
  }
 }
 
+/// 组好的 JSON 装成答复（要 gzip 就压好），带给定的 `Cache-Control`。深度热力与分钟成交共用。
+fn packed(json:String,gzip:bool,cache:&'static str)->Result<Answer> {
+ use std::io::Write as _;
+ let bytes:Vec<u8>=if gzip {
+  let mut g=flate2::write::GzEncoder::new(Vec::with_capacity(json.len()/6),flate2::Compression::fast());
+  g.write_all(json.as_bytes()).and_then(|_|g.finish()).map_err(|e|{tracing::warn!("Orderflow: reply not compressed: {e}");ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable")})?
+ } else {json.into_bytes()};
+ let len=bytes.len();
+ Ok(Answer{chunks:vec![axum::body::Bytes::from(bytes)].into(),len,gzip,cache})
+}
+
+/// 一个数写进 JSON：整数不带 `.0`。深度热力与分钟成交共用。
+fn json_number(out:&mut String,v:f64) {
+ use std::fmt::Write as _;
+ if v.fract()==0.0&&v.abs()<9e15 {let _=write!(out,"{}",v as i64);} else {let _=write!(out,"{}",serde_json::Number::from_f64(v).map_or_else(||"0".to_string(),|n|n.to_string()));}
+}
+
 /// 同一时刻最多几个历史请求在读库、组答复。不带 `limit` 的老请求最多 20 万行、答复约 60 MB（带 `limit` 的已结束最多 5000 条）；
 /// 接口不要登录，不限的话几个同时到就能把 serve（上限 1 GB）撑爆，还占满 8 条库连接里的一大半。深度热力也占这组名额。
 static HISTORY_READS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(2);
@@ -1549,7 +1583,7 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,limit:i64,thr
 }
 
 pub fn routes()->Router<AppState> {
- Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat))
+ Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat)).route(flow::PATH,get(flow::flow))
 }
 
 #[cfg(test)]
@@ -1641,7 +1675,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(1.0),..Default::default()};
   let t=Tracker{base:"ZZSLOW".into(),model:Model::new("ZZSLOW",thresholds),events:events.clone(),control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   let (stop_tx,stop)=watch::channel(false);
   let slow=|_due:bool|async {tokio::time::sleep(Duration::from_secs(100)).await;Refreshed{venues:vec![],thresholds:None}};
@@ -1668,7 +1702,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(100.0),usdt_perp:Some(5e6),..Default::default()};
   let t=Tracker{base:base.into(),model:Model::new(base,thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   (t,inbox,control_rx,writes_rx)
  }
@@ -1841,7 +1875,7 @@ mod tests {
    Restored{order:order(90),step:1.0,seen_ms:read_at-130_000},
   ];
   let mut t=Tracker{base:"ZZSTOCK".into(),model:Model::new("ZZSTOCK",thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:true,value:None,day:None,partial:false,since:read_at,subscribed:read_at,restored:Some((rows,read_at))},planned:thresholds,shared};
   t.calibrate(read_at+237_000);
   assert!(t.calibration.value.is_some(),"标定了");

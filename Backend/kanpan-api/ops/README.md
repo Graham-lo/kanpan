@@ -139,6 +139,17 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
   看计划：`python3 ops/test.py --lib -- explain_old_join_against_primary_key_sampling --ignored --nocapture`（开发机，临时库），新旧两种写法并排打 EXPLAIN ANALYZE。
 - 删表回退：这张表只给热力图用，停掉只要回滚二进制；表可以 `TRUNCATE orderflow_heat` 腾空间，不影响大单历史。
 
+### 大单与散户的分钟成交（2026-09-29，`flow.rs`、表 `orderflow_flow`）
+
+同一个跟踪任务把去重后的每笔成交按收到的分钟分桶：一笔 ≥ 大单线（门槛 / 50，门槛取 U 本位 → 现货 → 币本位 / 交割里小的）记大单、< 1 万美元记散户，
+主动买 / 卖分开记美元额，一只一分钟一行写进 `orderflow_flow`（没有成交的分钟没有行）；`GET /v1/market/orderflow/flow?base=&from=&to=` 读，
+回 `{base,bigUsd,smallUsd,tracked,rows:[[分钟,大买,大卖,小买,小卖],…]}`，最长 3 天、两端按分钟取整、不分页。网页版副图「大单与散户累计量差」用。
+
+- 日志（info）：每小时 `Orderflow flow: last 3600s wrote N base-minutes; dropped a (queue full), b (write failed)` 与 `Orderflow flow: purge deleted …; table … bytes`；写失败一分钟最多 warn 一行。
+- 体积：220 只 3 天最多约 95 万行、几十 MB，不设闸门。看写入：`SELECT count(*) FROM orderflow_flow WHERE minute_ms = (SELECT max(minute_ms) FROM orderflow_flow)`（约等于在跟的只数）。
+- 同参数 20 秒内只读一次库，答复 `Cache-Control: public, max-age=20`；和 `/history`、热力共用两个读名额。没在跟的 base 回 `tracked:false`、空 `rows`，不起跟。
+- 删表回退：只给这张副图用，回滚二进制即可；`TRUNCATE orderflow_flow` 不影响别的。
+
 ### 上线
 
 `~/Desktop/kanpan-api-orderflow-rollout.sh`（在开发机上跑）：备份二进制与两张表 → 从 `origin/main` 打包同步源码 → VPS 上 `cargo build --release` → `ops/install.py` → 先 `KANPAN_ORDERFLOW_LAYERS=fixed` 重启、10 分钟后打印 CPU / RSS / 连接数 / 跟踪数 → 切全开再重启、10 分钟后再打印 → 只读核对（SNDK 的 `thresholds.usdtPerp` 等于日志里标定的值，BTC / SOXL / XAU / 一只热点有数据，没有告警刷屏）。可重跑。
