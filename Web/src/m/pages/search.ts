@@ -20,6 +20,7 @@ import { esc } from '../model/rowText'
 import { clearHistory, hot, rank, readHistory, remember, SEARCH_PREVIEW, type Ranked } from '../model/search'
 import { factsOf, listRowHTML, splitSymbol } from '../model/rowHTML'
 import { isFavorite, toggleFavorite } from '../model/favorites'
+import { life } from '../model/life'
 import { ensureUniverse, wantStreams } from './_streams'
 
 const EMPTY_TEXT = '没有这个品种'
@@ -30,6 +31,7 @@ export interface SearchOptions {
   onClose?: () => void
 }
 
+/** 屏上那一个搜索页（同一时刻只有一个） */
 let current: { close(): void } | null = null
 
 /** 打开搜索页。必须在点击回调里同步调用，iOS Safari 才肯把键盘弹上来 */
@@ -52,12 +54,13 @@ export function openSearch(opts: SearchOptions = {}): void {
   const body = root.querySelector<HTMLElement>('.msr-body')!
   layer().appendChild(root)
   input.focus({ preventScroll: true })
+  // 这一次打开的生命期：关掉时监听、排着的帧、迟到的回调一起作废（见 model/life.ts）
+  const L = life()
 
   let q = ''
   let showAll = false
   let hotList: string[] = []
   let shown: string[] = []
-  let raf = 0
 
   const all = (): Sym[] => [...S.symbols.values()]
   const fitViewport = (): void => {
@@ -83,6 +86,7 @@ export function openSearch(opts: SearchOptions = {}): void {
   const head = (title: string, trailing = ''): string => `<div class="msr-head"><span>${esc(title)}</span>${trailing}</div>`
 
   function render(): void {
+    if (L.ended) return
     const term = q.trim()
     clearBtn.hidden = !q
     let html = ''
@@ -112,7 +116,7 @@ export function openSearch(opts: SearchOptions = {}): void {
     body.innerHTML = html
     wantStreams('search', shown.map(s => streamName.ticker(s)))
   }
-  const schedule = (): void => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render() }) }
+  const schedule = L.frame(render)
 
   input.addEventListener('input', () => { q = input.value; showAll = false; scroll.scrollTop = 0; render() })
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { remember(q); input.blur() } })
@@ -152,10 +156,16 @@ export function openSearch(opts: SearchOptions = {}): void {
     }
   })
 
-  const offMarket = on(e => {
-    if (e.type === 'universe') { refreshHot(); schedule() }
-    else if (e.type === 'ticker' && shown.includes(e.symbol)) patch(e.symbol)
+  // 行情推送：图表那只品种每笔成交都会来一次 ticker，一帧里只按最后的价补一次行尾
+  let pending = new Set<string>()
+  const flush = L.frame(() => {
+    const syms = pending; pending = new Set()
+    syms.forEach(patch)
   })
+  L.add(on(e => {
+    if (e.type === 'universe') { refreshHot(); schedule() }
+    else if (e.type === 'ticker' && shown.includes(e.symbol)) { pending.add(e.symbol); flush() }
+  }))
   function patch(sym: string): void {
     const s = S.symbols.get(sym); if (!s) return
     body.querySelectorAll<HTMLElement>(`.sr[data-sym="${CSS.escape(sym)}"]`).forEach(r => {
@@ -167,31 +177,29 @@ export function openSearch(opts: SearchOptions = {}): void {
   }
 
   const vv = window.visualViewport
-  vv?.addEventListener('resize', fitViewport)
-  vv?.addEventListener('scroll', fitViewport)
+  L.listen(vv, 'resize', fitViewport)
+  L.listen(vv, 'scroll', fitViewport)
   fitViewport()
   const onFg = (): void => schedule()
   hooks.onForeground.push(onFg)
+  L.add(() => { const i = hooks.onForeground.indexOf(onFg); if (i >= 0) hooks.onForeground.splice(i, 1) })
+  // 按系统返回（Android / 浏览器返回手势）也只是关掉这一层；关掉时连同这条监听一起摘掉
+  L.listen(window, 'hashchange', () => close())
 
+  const me = { close }
   function close(): void {
-    if (!current) return
-    current = null
+    if (!L.end()) return
+    if (current === me) current = null
     input.blur()
-    offMarket()
-    vv?.removeEventListener('resize', fitViewport)
-    vv?.removeEventListener('scroll', fitViewport)
-    const i = hooks.onForeground.indexOf(onFg); if (i >= 0) hooks.onForeground.splice(i, 1)
     wantStreams('search', [])
     root.classList.remove('in')
     setTimeout(() => root.remove(), 220)
     opts.onClose?.()
   }
-  current = { close }
+  current = me
   render()
   requestAnimationFrame(() => root.classList.add('in'))
-  void ensureUniverse().then(() => { refreshHot(); schedule() }, () => toast('品种表没拉到'))
-  // 按系统返回（Android / 浏览器返回手势）也只是关掉这一层
-  addEventListener('hashchange', close, { once: true })
+  void ensureUniverse().then(L.guard(() => { refreshHot(); schedule() }), L.guard(() => toast('品种表没拉到')))
 }
 
 export function closeSearch(): void { current?.close() }
