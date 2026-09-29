@@ -108,15 +108,21 @@ export const factoryParams: Readonly<Partial<Record<IndicatorID, readonly number
  * 算之前把参数理成这把指标能直接下标取用的长度。
  * 按列表画的（MA、EMA、RSI、VOL）原样；固定个数的缺位用默认值补、多出来的丢掉。
  * 取值本身（0、负数）不改：各条线对脏窗口长度自有处理，画成「这段没有线」。
+ *
+ * Swift 的参数是 `[Int]`，小数和 NaN 进不来；TS 是 number[]，同步解码、深链、旧存档
+ * 都可能送进 2.5 或 NaN。这里补上 Int 的语义：小数向零截断；非有限值当缺位——固定个数的
+ * 用默认值补，按列表画的记成 0（那条线画成「没有线」，条数与配色下标不变）。
+ * 不截的话 2.5 会让窗口循环多跑半根、往结果数组上写出 "1.5" 这种非下标属性，
+ * NaN 会让 tailBars 变 NaN、尾部增量一根都不重算，参数比较也永远不等、缓存次次失效。
  */
 export function normalizedParams(id: IndicatorID, params: readonly number[] | null | undefined): number[] {
   if (params == null) return defaultParams(id)
   switch (id) {
     case 'MA': case 'EMA': case 'RSI': case 'VOL':
-      return params.slice()
+      return params.map(v => (Number.isFinite(v) ? Math.trunc(v) || 0 : 0))
     default: {
       const d = defaultParams(id)
-      return d.map((v, i) => (i < params.length ? params[i] : v))
+      return d.map((v, i) => (i < params.length && Number.isFinite(params[i]) ? Math.trunc(params[i]) || 0 : v))
     }
   }
 }
@@ -237,9 +243,9 @@ export class IndicatorResult {
     this.dir = dir
   }
 
-  /** 第 i 根上每条线的值，图例用；越界给 NaN。 */
+  /** 第 i 根上每条线的值，图例用；越界或不是整数下标给 NaN。 */
   values(i: number): number[] {
-    return this.lines.map(l => (i >= 0 && i < l.length ? l[i] : NaN))
+    return this.lines.map(l => (Number.isInteger(i) && i >= 0 && i < l.length ? l[i] : NaN))
   }
 }
 
