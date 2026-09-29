@@ -437,6 +437,10 @@ export class DrawingController {
     this.lastSnap = null
     this.loupe = null
     this.view.gestures.cancelAxisFreeze()
+    // 拖动作废了，「正在拖的那条」的预览 id 也得收：底层按它跳过这条线，摘下控制器之后覆盖层不再画它，
+    // 留着它这条线就整条看不见（Swift 的 teardownDrawingLink 也漏了这一步）。
+    const s = this.view.state
+    if (s && s.overlay.drawingPreviewID != null) this.view.state = withOverlay(s, { drawingPreviewID: null })
   }
 
   /** 从视图上拆下来（挂点全部清空、退订本）。 */

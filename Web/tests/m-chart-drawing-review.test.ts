@@ -8,7 +8,7 @@ import {
 } from '../src/m/chart/drawing'
 import { ViewWindow } from '../src/m/chart/geometry'
 import { BarSeries, INTERVAL_STEP } from '../src/m/chart/series'
-import { makeState, withOverlay, type ChartState } from '../src/m/chart/state'
+import { makeState, withOverlay, withInput, type ChartState } from '../src/m/chart/state'
 import { ChartView } from '../src/m/chart/view'
 
 type Listener = (e: unknown) => void
@@ -202,6 +202,19 @@ describe('画线审查：拖线途中被别的按钮改了线', () => {
   })
 })
 
+describe('画线审查：拖到一半摘下控制器', () => {
+  test('摘下之后这条线底层照常画，不留「正在拖」的预览 id', () => {
+    const r = rig()
+    const d = hlineAt(r, 260)
+    const f = finger({ x: 180, y: 260 })
+    down(r.v, f, 12_000); move(r.v, f, { x: 180, y: 300 }, 12_020)
+    expect(r.v.state!.overlay.drawingPreviewID).toBe(d.id)
+    r.c.detach()
+    expect(r.v.state!.overlay.drawingPreviewID, '摘下后预览 id 还挂着：底层一直跳过这条线，覆盖层也没了').toBeNull()
+    expect(r.v.state!.overlay.drawings.some(x => x.id === d.id)).toBe(true)
+  })
+})
+
 describe('画线审查：放大镜底图', () => {
   test('每按一下都截一张整屏底图，但画布只建一张、反复用；摘下时把位图放掉', () => {
     const r = rig()
@@ -260,5 +273,68 @@ describe('画线审查：颜色只收十六进制', () => {
     const items = a.get('BTCUSDT')
     expect(items.length).toBe(1)
     expect(items[0].color).toBeNull()
+  })
+})
+
+describe('画线审查：画到一半换品种 / 换周期 / 系统取消', () => {
+  const cancelEv = (v: ChartView, f: Finger, ms: number): void => elOf(v).dispatch('pointercancel', ev(f, ms))
+
+  test('握着工具按下、没抬手就换了品种：抬手不在新品种上落线，坐标轴不钉着', () => {
+    const r = rig()
+    const book = new DrawingBook()
+    r.c.bindDrawings(book)
+    r.c.setTool('hline')
+    const f = finger({ x: 180, y: 260 })
+    down(r.v, f, 10_000); move(r.v, f, { x: 180, y: 280 }, 10_020)
+    r.v.state = drawState('ETHUSDT')
+    move(r.v, f, { x: 180, y: 300 }, 10_040)
+    up(r.v, f, 10_060)
+    expect(book.items('ETHUSDT'), '换品种之后这一下落在了新品种上').toEqual([])
+    expect(book.items('BTCUSDT')).toEqual([])
+    expect(r.c.tool, '换品种应放下工具').toBeNull()
+    expect(r.v.axesFrozen, '换品种之后坐标轴还钉着').toBe(false)
+  })
+
+  test('趋势线落了第一点后换周期：第二点照常落成，两点都按时间存', () => {
+    const r = rig()
+    r.c.setTool('trend')
+    tap(r.v, { x: 120, y: 300 }, 10_000)
+    const first = r.c.anchors[0]
+    expect(first).toBeTruthy()
+    const s = r.v.state!
+    const s4 = drawState('BTCUSDT', 200)
+    r.v.state = withInput(s, { series: new BarSeries({ ...s4.input.series, interval: '4h', step: INTERVAL_STEP['4h'] } as never) })
+    expect(r.c.anchors.length, '换周期把第一点丢了（品种没变，Swift 也留着）').toBe(1)
+    const a = drawAxesOf(r.v)!
+    tap(r.v, { x: 280, y: 200 }, 12_000)
+    const d = r.c.drawings[0]
+    expect(d?.kind).toBe('trend')
+    expect(d.points[0]).toEqual(first)
+    expect(Number.isFinite(d.points[1].t) && Number.isFinite(d.points[1].p)).toBe(true)
+    expect(Math.abs(a.x(d.points[1].t) - 280)).toBeLessThan(0.5)
+  })
+
+  test('握着工具按下、系统取消（pointercancel）：不落点、不留半截', () => {
+    const r = rig()
+    r.c.setTool('trend')
+    const f = finger({ x: 120, y: 300 })
+    down(r.v, f, 10_000); move(r.v, f, { x: 200, y: 260 }, 10_020)
+    cancelEv(r.v, f, 10_040)
+    expect(r.c.drawings).toEqual([])
+    expect(r.c.anchors).toEqual([])
+    expect(r.c.aim).toBeNull()
+    expect(r.c.origin).toBeNull()
+    expect(r.v.axesFrozen).toBe(false)
+  })
+
+  test('没有 K 线的图：握着工具点、画水平线都不落、不抛', () => {
+    const v = new ChartView(fakeEl() as unknown as HTMLElement)
+    v.state = drawState('BTCUSDT', 0)
+    const c = attachDrawing(v)
+    c.setTool('hline')
+    tap(v, { x: 180, y: 260 })
+    expect(c.drawings).toEqual([])
+    expect(c.addHorizontalLine(100)).toBe(false)
+    c.undo(); c.redo(); c.duplicateSelected(); c.clear()
   })
 })
