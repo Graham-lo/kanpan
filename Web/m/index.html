@@ -22,6 +22,15 @@
   // theme = auto 时跟系统；redUp（默认 true）→ data-updown。状态栏字色与地址栏底色一并定下。
   try {
     var s = JSON.parse(localStorage.getItem('hkline-m-v1') || '{}'), r = document.documentElement
+    // 验收 / 截图用：?skin=sage|terra|classic&theme=light|dark|auto 写进本机状态后从地址里去掉
+    var q = new URLSearchParams(location.search), qs = q.get('skin'), qt = q.get('theme')
+    if (qs || qt) {
+      if (qs === 'sage' || qs === 'terra' || qs === 'classic') s.skin = qs
+      if (qt === 'light' || qt === 'dark' || qt === 'auto') s.theme = qt
+      localStorage.setItem('hkline-m-v1', JSON.stringify(s))
+      q.delete('skin'); q.delete('theme')
+      history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash)
+    }
     var t = s.theme === 'light' || s.theme === 'dark' ? s.theme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     var k = s.skin === 'terra' || s.skin === 'classic' ? s.skin : 'sage'
     r.dataset.theme = t; r.dataset.skin = k; r.dataset.updown = s.redUp === false ? 'green-up' : 'red-up'
