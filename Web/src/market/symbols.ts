@@ -104,7 +104,8 @@ export function kindName(s: Pick<Sym, 'kind'> | null | undefined): string {
 export function sectorsOf(s: Sym): { id: string; cn: string }[] {
   if (s.kind === 'us') return SEC.us.filter(x => x[2].includes(s.base)).map(x => ({ id: 'u:' + x[0], cn: x[1] }))
   if (s.kind !== 'crypto') return []
-  return (SEC.members[s.base] || []).map(id => SEC.crypto.find(x => x[0] === id)).filter((x): x is [string, string] => !!x).map(x => ({ id: 'c:' + x[0], cn: x[1] }))
+  // 成员表按合约名的底（保留 1000 前缀，如 1000BONK），s.base 已去掉前缀，两个都查
+  return (SEC.members[s.symbol.replace(/USDT$|USDC$/, '')] || SEC.members[s.base] || []).map(id => SEC.crypto.find(x => x[0] === id)).filter((x): x is [string, string] => !!x).map(x => ({ id: 'c:' + x[0], cn: x[1] }))
 }
 
 /** 搜索打分：代号或全名完全相等 5、代号前缀 4、代号或全名包含 3、中文名包含 2，否则 0 */
