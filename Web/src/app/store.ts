@@ -60,10 +60,12 @@ export interface State {
   /** 以下不落盘 */
   page: PageId
   stale: boolean
+  /** 当前登录的账号（account/session.ts 维护，令牌另存）；未登录为 null。别的页面读 accessToken 调接口 */
+  account: { username: string; userId: string; accessToken: string } | null
 }
 
 export const KEY = 'hkline-web-v1'
-const TRANSIENT: (keyof State)[] = ['page', 'stale']
+const TRANSIENT: (keyof State)[] = ['page', 'stale', 'account']
 
 function defaults(): State {
   return {
@@ -77,7 +79,7 @@ function defaults(): State {
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, customIvs: [],
-    page: 'chart', stale: false,
+    page: 'chart', stale: false, account: null,
   }
 }
 
@@ -110,7 +112,7 @@ export function hydrate(saved: Partial<State>): State {
   s.alerts = (s.alerts as unknown[]).map(migrateAlert).filter((a): a is Alert => !!a && a.status !== 'fired')
   if (!Array.isArray(s.notes)) s.notes = []
   if (!s.drawings || typeof s.drawings !== 'object') s.drawings = {}
-  s.page = 'chart'; s.stale = false
+  s.page = 'chart'; s.stale = false; s.account = null
   return s
 }
 

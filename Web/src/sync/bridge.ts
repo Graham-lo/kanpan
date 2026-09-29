@@ -1,0 +1,138 @@
+/* Hkline Web · 页面状态 ↔ 同步账本（纯函数，不碰 DOM，vitest 直接测）
+ *
+ * - captureInto：页面状态里「指纹变了」的那几块编码成云端对象，交给账本记账。
+ * - applyInto：账本里云端改过的那几张表解码回页面状态，返回改了什么（外面据此刷新界面）。
+ * - mergeFirst：这台电脑第一次和这个账号对上时的合并规则：
+ *     · 设置、自选：比「本机最后一次改」和「云端字段时间戳里最新的」，谁新用谁；
+ *       云端一条自选都没有时保留本机的（新账号不该把自选清空）。
+ *     · 画线、提醒：取并集；云端已经删掉（墓碑）的那几条不从本机带回去。
+ *     · 上一次在这台电脑同步的是另一个账号（override）：云端整体覆盖，不把上一个人的东西带进来。
+ */
+import type { State } from '../app/store'
+import { DEFAULT_WATCH, type Kind } from '../market/symbols'
+import {
+  type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
+  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, syncableAlert, syncableDrawing, validSymbol,
+} from './codec'
+import type { Owned, SyncStore } from './store'
+import { type SyncObject, keyOf, same } from './types'
+
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'>
+export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
+export type Prints = Partial<Record<Part, string>>
+
+/** 每张表网页替它说话的那些键：先前有、这次没有的键，属于这里的才发 null，其余原样带回 */
+export const OWNED: Owned = {
+  settings: new Set(SETTINGS_FIELDS),
+  favorites: new Set(['symbol', 'market', 'venue', 'groupId', 'order']),
+  drawings: new Set(['kind', 'anchors', 'color', 'lineWidth', 'locked', 'symbol', 'market', 'venue', 'dash', 'filled', 'hidden', 'levels']),
+  alerts: new Set(['kind', 'symbol', 'market', 'drawingID', 'lines', 'condition', 'armedAt', 'once', 'status', 'firedAt', 'firedPrice', 'dueAt', 'reviewID', 'title', 'created', 'note', 'webhook', 'webhookText', 'rule']),
+}
+
+export function fingerprint(s: WebState): Record<Part, string> {
+  return {
+    settings: JSON.stringify([s.pinned, s.ind, s.params]),
+    favorites: JSON.stringify(s.watch),
+    drawings: JSON.stringify(s.drawings),
+    alerts: JSON.stringify(s.alerts),
+  }
+}
+
+/** 记账。`ready`：品种表到了没有（没到时分不出自选的类别，不碰自选） */
+export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, fp: Prints): number {
+  const now = fingerprint(s)
+  const vals: SyncObject[] = []
+  if (now.settings !== fp.settings) {
+    const o = encodeSettings(s, store.get('settings', SETTINGS_ID), store.a.seen)
+    if (o) vals.push(o)
+    fp.settings = now.settings
+  }
+  if (now.favorites !== fp.favorites && ctx.ready) {
+    vals.push(...encodeFavorites(s.watch, store.localOf('favorites'), ctx))
+    fp.favorites = now.favorites
+  }
+  const drawingsMoved = now.drawings !== fp.drawings
+  if (drawingsMoved) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'))); fp.drawings = now.drawings }
+  // 画线上的提醒开关、画线被删都会动到提醒
+  if (now.alerts !== fp.alerts || drawingsMoved) {
+    const drawingObjs = [...store.localOf('drawings').filter(o => !vals.some(v => v.collection === 'drawings' && v.id === o.id)), ...vals.filter(v => v.collection === 'drawings')]
+    vals.push(...encodeAlerts({ alerts: s.alerts, drawings: s.drawings, drawingObjs }, store.localOf('alerts'), ctx))
+    fp.alerts = now.alerts
+  }
+  return store.capture(vals, OWNED)
+}
+
+export interface Applied { settings: string[]; favorites: boolean; drawings: Set<string>; alerts: boolean }
+
+/** 把账本里的云端值装进页面状态（原地改 s）。`all`：不看 unapplied，全部重装 */
+export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, all = false): Applied {
+  const u = store.a.unapplied
+  const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false }
+  if (all || u.has('settings')) r.settings = applySettings(s, store.get('settings', SETTINGS_ID), store.a.seen)
+  if ((all || u.has('favorites')) && ctx.ready) {
+    const w = decodeFavorites(store.localOf('favorites'), ctx)
+    // 本机那几条上不了云的（代号不合规）原样留着
+    for (const k of Object.keys(w) as Kind[]) w[k].push(...(s.watch[k] ?? []).filter(x => !validSymbol(x) && !w[k].includes(x)))
+    if (!same(w, s.watch)) { s.watch = w; r.favorites = true }
+  }
+  if (all || u.has('alerts') || u.has('drawings')) {
+    const { alerts, drawingAlerts } = decodeAlerts(store.localOf('alerts'), s.alerts, ctx)
+    if (!same(alerts, s.alerts)) { s.alerts = alerts; r.alerts = true }
+    const d = decodeDrawings(store.localOf('drawings'), s.drawings, drawingAlerts)
+    for (const sym of new Set([...Object.keys(d), ...Object.keys(s.drawings)])) {
+      if (same(d[sym] ?? [], s.drawings[sym] ?? [])) continue
+      s.drawings[sym] = d[sym] ?? []
+      r.drawings.add(sym)
+    }
+  }
+  if (all || ctx.ready) u.clear()
+  else for (const c of [...u]) if (c !== 'favorites') u.delete(c)
+  return r
+}
+
+export interface Edited { settings: number; favorites: number }
+
+/** 第一次对上（账本是空的、刚全量拉完）：按规则合并进页面状态，之后正常记账会把本机多出来的推上去 */
+export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, edited: Edited, override: boolean): Applied {
+  const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false }
+  const a = store.a
+  // 设置：云端新（或覆盖）就装云端的；本机新就什么都不装、seen 留空，记账时每个字段都会和云端比一遍
+  const cloudSettings = store.get('settings', SETTINGS_ID)
+  a.seen = {}
+  if (override || !(edited.settings > lastTouched(cloudSettings, SETTINGS_FIELDS))) r.settings = applySettings(s, cloudSettings, a.seen)
+
+  // 自选
+  if (ctx.ready) {
+    const favs = store.localOf('favorites').filter(o => !o.deleted)
+    const cloudT = Math.max(0, ...favs.map(o => lastTouched(o)))
+    let w: Record<Kind, string[]> | null = null
+    if (!favs.length) { if (override) w = structuredClone(DEFAULT_WATCH) }
+    else if (override || !(edited.favorites > cloudT)) w = decodeFavorites(store.localOf('favorites'), ctx)
+    if (w && !same(w, s.watch)) { s.watch = w; r.favorites = true }
+  }
+
+  // 画线、提醒：并集
+  const { alerts: cloudAlerts, drawingAlerts } = decodeAlerts(store.localOf('alerts'), [], ctx)
+  const cloudDraw = decodeDrawings(store.localOf('drawings'), {}, drawingAlerts)
+  const draw: Record<string, typeof s.drawings[string]> = {}
+  for (const [sym, list] of Object.entries(cloudDraw)) draw[sym] = [...list]
+  if (!override) {
+    for (const [sym, list] of Object.entries(s.drawings)) {
+      for (const d of list) {
+        // 云端有这条（活的已经在 cloudDraw 里，墓碑说明别处删了）就听云端的
+        if (syncableDrawing(sym, d) && a.objects[keyOf('drawings', drawingId(sym, d.id))]) continue
+        ;(draw[sym] ||= []).push(d)
+      }
+    }
+  }
+  for (const sym of new Set([...Object.keys(draw), ...Object.keys(s.drawings)])) {
+    if (same(draw[sym] ?? [], s.drawings[sym] ?? [])) continue
+    s.drawings[sym] = draw[sym] ?? []
+    r.drawings.add(sym)
+  }
+  const alerts = [...cloudAlerts]
+  if (!override) for (const x of s.alerts) if (!syncableAlert(x) || !a.objects[keyOf('alerts', alertId(x.symbol, x.id))]) alerts.push(x)
+  if (!same(alerts, s.alerts)) { s.alerts = alerts; r.alerts = true }
+  a.unapplied.clear()
+  return r
+}
