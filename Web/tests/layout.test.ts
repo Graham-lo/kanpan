@@ -107,8 +107,10 @@ describe('多图布局清单与降级', () => {
     const many = hydrate({ layout: '16', cells: Array.from({ length: 20 }, () => ({ symbol: 'BTCUSDT', iv: '1h' })) })
     expect(many.cells.length).toBeLessThanOrEqual(16)
   })
-  it('降级门槛：宽 < 640 或高 < 360 只留主图、图例一行、字小一档；宽 < 420 不画成交量', () => {
-    expect(degradeFor(640, 360)).toEqual(FULL)
+  it('降级门槛：宽 < 640 或高 < 400 只留主图、图例一行、字小一档；宽 < 420 不画成交量', () => {
+    expect(degradeFor(640, 400)).toEqual(FULL)
+    // 开着抽屉的四图：每格约 1240 × 370，主图加两个副图挤不下，要降级
+    expect(degradeFor(1240, 370)).toMatchObject({ subs: false, compact: true, vol: true })
     expect(degradeFor(639, 800)).toMatchObject({ subs: false, compact: true, vol: true })
     expect(degradeFor(1000, 359)).toMatchObject({ subs: false, compact: true, vol: true })
     expect(degradeFor(419, 300)).toMatchObject({ subs: false, vol: false })

@@ -63,9 +63,10 @@ export interface Degrade {
   vol: boolean
 }
 export const FULL: Degrade = { subs: true, compact: false, font: 12, vol: true }
-/** 格子（含底栏）宽 < 640 或高 < 360：收副图、图例只留品种周期、字号小一档；宽 < 420 再去掉成交量 */
+/** 格子（含底栏）宽 < 640 或高 < 400：收副图、图例只留品种周期、字号小一档；宽 < 420 再去掉成交量
+ *  高的门槛取 400 而不是 360：开着底部抽屉的四图每格约 370 高，主图加两个副图挤在一起、图例压到蜡烛上，验收时看得出来 */
 export function degradeFor(w: number, h: number): Degrade {
-  const small = w < 640 || h < 360
+  const small = w < 640 || h < 400
   if (!small) return FULL
   return { subs: false, compact: true, font: 11, vol: w >= 420 }
 }
