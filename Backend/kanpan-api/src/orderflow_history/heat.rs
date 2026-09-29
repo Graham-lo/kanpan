@@ -351,6 +351,11 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
   let (row_step,lo,offsets)=(r.get::<f64,_>("step"),r.get::<i64,_>("price_lo"),r.get::<Vec<i32>,_>("price_bucket"));
   for o in offsets {prices.insert(bucket_index((lo+o as i64) as f64*row_step,step));}
  }
+ // 挑时间格按这段里真有数据的那一截算（刚部署、刚开始跟的 base 只有最近一小段，别因为问了 3 天就给 5 分钟一格）。
+ let first:Option<i64>=sqlx::query_scalar("SELECT min(bucket_ms) FROM orderflow_heat WHERE base=$1 AND bucket_ms BETWEEN $2 AND $3")
+  .bind(base).bind(from).bind(to).fetch_one(pool).await?;
+ let last:i64=latest[0].get("bucket_ms");
+ let (from,to)=(first.unwrap_or(from).max(from),last.min(to));
  let level=pick_level(to-from,prices.len(),cap);
  // 隔几个快照取一个，但这段区间里至少取 8 个（区间比时间格还短时别一个都取不到）。
  let stride=LADDER[level].1.min(((to-from)/8/BUCKET_MS*BUCKET_MS).max(BUCKET_MS));
@@ -534,6 +539,9 @@ mod tests {
   // 行数上限：放大时间格。
   let (_,bucket_ms,rows)=read(&pool,base,now-60_000,now,None,None,2).await.unwrap();
   assert!(bucket_ms>5_000&&rows.len()<=2&&!rows.is_empty(),"{bucket_ms} {rows:?}");
+  // 问 3 天但只有最近 10 秒有数据：时间格按有数据的那一截挑，不放大。
+  let (_,bucket_ms,rows)=read(&pool,base,now-store::RETENTION_MS+1,now,None,None,1_000).await.unwrap();
+  assert_eq!((bucket_ms,rows.len()),(5_000,4));
   // 这一段没有快照：空行，步长取客户端的与跟踪器此刻的较大者。
   assert_eq!(read(&pool,base,0,1_000,Some(5.0),Some(100.0),MAX_ROWS).await.unwrap(),(100.0,BUCKET_MS,vec![]));
   // 清理：3 天以前的删掉，其余留着。
