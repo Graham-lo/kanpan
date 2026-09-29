@@ -147,3 +147,55 @@ describe('手机网页版 · 行情页价格轴', async () => {
     expect(priceModeFor('log', true, 'weird')).toBe('log')
   })
 })
+
+describe('手机网页版 · 画线列表左滑删除与样式页颜色', async () => {
+  const { deleteDrawingById, safeHexColor } = await import('../src/m/pages/chart/logic')
+
+  /** 记账的假控制器：只有 deleteSelected 这条路能删（真控制器里它进撤销栈、回调 onChanged(items)）。 */
+  function fake(ids: string[], selected: string | null) {
+    const calls: string[] = []
+    let sel = selected
+    let list = ids.map(id => ({ id }))
+    return {
+      calls,
+      get drawings() { return list },
+      get selected() { return sel },
+      set selected(v: string | null) { sel = v; calls.push(`select ${v}`) },
+      deleteSelected() { calls.push(`delete ${sel}`); list = list.filter(d => d.id !== sel); sel = null },
+      setDrawings() { calls.push('setDrawings') },
+    }
+  }
+
+  it('走控制器的 deleteSelected（保留撤销），不走整桶替换', () => {
+    const c = fake(['a', 'b'], null)
+    deleteDrawingById(c, 'a')
+    expect(c.calls).toEqual(['select a', 'delete a'])
+    expect(c.drawings.map(d => d.id)).toEqual(['b'])
+    expect(c.selected).toBeNull()
+  })
+
+  it('删的不是选中那条时，原来的选中还给它；删的就是选中那条时不再选中', () => {
+    const c = fake(['a', 'b'], 'b')
+    deleteDrawingById(c, 'a')
+    expect(c.selected).toBe('b')
+    const d = fake(['a', 'b'], 'a')
+    deleteDrawingById(d, 'a')
+    expect(d.selected).toBeNull()
+  })
+
+  it('id 已经不在（同步刚删掉）时什么都不做', () => {
+    const c = fake(['a'], 'a')
+    deleteDrawingById(c, 'zz')
+    expect(c.calls).toEqual([])
+    expect(c.selected).toBe('a')
+  })
+
+  it('颜色只认 #RRGGBB / #RRGGBBAA，拼进 style / value 前把别的东西挡掉', () => {
+    expect(safeHexColor('#abcdef', '#D6A64F')).toBe('#ABCDEF')
+    expect(safeHexColor('#abcdef80', '#D6A64F')).toBe('#ABCDEF80')
+    expect(safeHexColor('red;background:url(x)', '#D6A64F')).toBe('#D6A64F')
+    expect(safeHexColor('#fff" onfocus="alert(1)', '#D6A64F')).toBe('#D6A64F')
+    expect(safeHexColor(null, '#d6a64f')).toBe('#D6A64F')
+    expect(safeHexColor(123, '#D6A64F')).toBe('#D6A64F')
+  })
+})

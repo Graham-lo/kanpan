@@ -412,3 +412,25 @@ export function priceModeFor<M extends string>(pref: M, habitLearning: boolean, 
   return learned === 'log' || learned === 'linear' ? learned : pref
 }
 
+
+// ───────────────────────────── 画线列表 / 样式
+
+/** 画线列表里左滑删掉一条：走控制器自己的删除（进撤销栈、存盘、对账画线提醒），
+ *  不走 setDrawings（那是整桶替换，会把撤销栈清掉、也不回调 onChanged(items)）。
+ *  删完把原来选中的另一条还给它。 */
+export function deleteDrawingById(c: {
+  selected: string | null
+  readonly drawings: readonly { id: string }[]
+  deleteSelected(): void
+}, id: string): void {
+  if (!c.drawings.some(d => d.id === id)) return
+  const prior = c.selected
+  c.selected = id
+  c.deleteSelected()
+  if (prior != null && prior !== id && c.drawings.some(d => d.id === prior)) c.selected = prior
+}
+
+/** 画线颜色只认 #RRGGBB / #RRGGBBAA（同步进来的档案不可信），其余一律回落；统一大写。 */
+export function safeHexColor(v: unknown, fallback: string): string {
+  return typeof v === 'string' && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v) ? v.toUpperCase() : fallback.toUpperCase()
+}

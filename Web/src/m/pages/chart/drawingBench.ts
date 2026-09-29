@@ -29,7 +29,7 @@ import { swipeRow, deleteAction } from '../../ui/swipeDelete'
 import { toast } from '../../ui/toast'
 import { el, esc } from '../../ui/dom'
 import { icon } from '../../ui/icons'
-import { railIntervals } from './logic'
+import { railIntervals, deleteDrawingById, safeHexColor } from './logic'
 import { splitPair } from './header'
 import { openSymbolPicker } from './panels'
 
@@ -179,6 +179,8 @@ export interface BenchContext {
 }
 
 const LINE_COLORS = ['#E2B34F', '#4A90E2', '#A078D0', '#37A78F', '#E46A76', '#D88040', '#B8C4D8']
+/** 没设颜色的画线在样式页里显示的颜色（引擎默认金色） */
+const DEFAULT_LINE_COLOR = '#D6A64F'
 const WIDTHS = [1, 1.5, 2, 3]
 
 export function createBench(ctx: BenchContext) {
@@ -401,10 +403,7 @@ export function createBench(ctx: BenchContext) {
             <button type="button" class="cp-textbtn" data-act="eye" aria-label="${d.hidden ? '显示画线' : '隐藏画线'}">${d.hidden ? '显示' : '隐藏'}</button></div></div>`).join('')}</div>`
           : '<div class="cp-empty">还没有画线</div>'
         host.querySelectorAll<HTMLElement>('.cp-dl-row').forEach(row => {
-          swipes.push(swipeRow(row, { trailing: [deleteAction(() => {
-            const next = c.drawings.filter(d => d.id !== row.dataset.id)
-            c.setDrawings(next)
-          })], brick: 'flush' }))
+          swipes.push(swipeRow(row, { trailing: [deleteAction(() => deleteDrawingById(c, row.dataset.id!))], brick: 'flush' }))
         })
       }
       draw()
@@ -435,13 +434,13 @@ export function createBench(ctx: BenchContext) {
     }
     let host: HTMLElement
     const draw = (): void => {
-      const cur = (item.color ?? '#D6A64F').toUpperCase()
+      const cur = safeHexColor(item.color, DEFAULT_LINE_COLOR)
       const width = WIDTHS.reduce((m, w) => (Math.abs(w - item.lineWidth) < Math.abs(m - item.lineWidth) ? w : m), WIDTHS[0])
       const swaps = DrawKind.swaps(item.kind)
       host.innerHTML = `<div class="cp-gt">样式</div><div class="cp-group">
           <div class="cp-crow"><span class="cp-rn">颜色</span><div class="cp-chips-c">${LINE_COLORS.map(col =>
             `<button type="button" class="cp-cchip${col === cur ? ' on' : ''}" style="--c:${col}" data-act="color" data-c="${col}" aria-label="颜色 ${col}"></button>`).join('')}
-            <label class="cp-cpick${LINE_COLORS.includes(cur) ? '' : ' on'}" style="--c:${cur}" aria-label="自选颜色"><input type="color" data-pick="1" value="${cur.toLowerCase()}"></label></div></div>
+            <label class="cp-cpick${LINE_COLORS.includes(cur) ? '' : ' on'}" style="--c:${cur}" aria-label="自选颜色"><input type="color" data-pick="1" value="${cur.slice(0, 7).toLowerCase()}"></label></div></div>
           <div class="cp-row"><span class="cp-rn">粗细</span><div class="cp-widths">${WIDTHS.map(w =>
             `<button type="button" class="cp-wcell${w === width ? ' on' : ''}" data-act="width" data-w="${w}" aria-label="粗细 ${w}"><i style="height:${w}px"></i></button>`).join('')}</div></div>
           ${swaps.map(s => `<div class="cp-row"><span class="cp-rn">${esc(s.title)}</span><div class="cp-swaps">${s.options.map(o =>
@@ -464,7 +463,14 @@ export function createBench(ctx: BenchContext) {
       })
       host.addEventListener('input', e => {
         const t = e.target as HTMLInputElement | HTMLTextAreaElement
-        if (t.dataset.pick) { item.color = t.value.toUpperCase(); draw() }
+        if (t.dataset.pick) {
+          // 拖色盘时 input 事件一秒几十次：只改色块与高亮，不整块重写（重写会把正开着的取色器那个 input 拆掉）
+          item.color = safeHexColor(t.value, DEFAULT_LINE_COLOR)
+          const pick = t.closest<HTMLElement>('.cp-cpick')
+          pick?.style.setProperty('--c', item.color)
+          pick?.classList.toggle('on', !LINE_COLORS.includes(item.color))
+          host.querySelectorAll<HTMLElement>('.cp-cchip').forEach(b => b.classList.toggle('on', b.dataset.c === item.color))
+        }
         else if (t.dataset.text) {
           let v = t.value
           while (graphemeCount(v) > DRAWING_TEXT_LIMIT) v = [...v].slice(0, -1).join('')
