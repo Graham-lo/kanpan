@@ -337,14 +337,17 @@ export class ExternalSeries {
     return out
   }
 
-  /** 只重算 [start, count) 那一段。 */
+  /**
+   * 只重算 [start, count) 那一段。**原地改 previous 并把它交回**（调用方独占这几列：指标引擎的 ExternalState）；
+   * 以前每跳一次都把整列复制一遍（几列 × 1500 根），推送一密就是一串白分配。形状对不上时照旧整列新算。
+   */
   alignedFrom(series: BarSeries, start: number, previous: number[][]): number[][] {
     if (previous.length !== this.columns.length || start < 0
       || !previous.every(p => p.length <= series.count && start <= p.length)) return this.aligned(series)
     if (this.step <= 0) return this.aligned(series)
     const n = this.count
     if (!this.columns.every(c => c.length === n)) return this.aligned(series)
-    const out = previous.map(p => p.slice())
+    const out = previous
     for (const col of out) while (col.length < series.count) col.push(NaN)
     if (start >= series.count) return out
     const times = this.timestamps

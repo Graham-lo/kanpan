@@ -408,7 +408,10 @@ describe('ExternalSeriesTests（外部指标：对齐、盘口）', () => {
         // 只重算尾巴那条路（aligned(to:from:previous:)）逐位同整列。
         for (const start of [0, 1, 37, 159, 160]) {
           const prev = [got.slice(0, start)]
-          expect(bits(ext.alignedFrom(series, start, prev)[0]), `start=${start}`).toEqual(bits(got))
+          const out = ext.alignedFrom(series, start, prev)
+          expect(bits(out[0]), `start=${start}`).toEqual(bits(got))
+          expect(out, '尾部对齐原地改传进来的那几列，不再整列复制').toBe(prev)
+          expect(out[0]).toBe(prev[0])
         }
       }
     })
