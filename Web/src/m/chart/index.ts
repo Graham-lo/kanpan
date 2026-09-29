@@ -16,7 +16,7 @@ import {
 } from './geometry'
 import type { Bar, Interval } from './series'
 import { BarSeries, ExternalSeries, isIrregular } from './series'
-import type { ChartState, Crosshair, SymbolInfo } from './state'
+import type { ChartState, Crosshair, OrderBook, SymbolInfo } from './state'
 import { makeState, withInput, withOverlay, withViewport } from './state'
 import type { ChartColors } from './paint'
 import { readChartColors, skinKey } from './paint'
@@ -28,6 +28,8 @@ import { ChartView } from './view'
 import type { ExternalID } from './external.source'
 import { ExternalFeed, isExternalID } from './external.source'
 import { createOrderFlowPort } from './orderflow.source'
+import { CompareFeed, compareSymbolOf, compareTargets } from './compare.source'
+import { DepthFeed } from './depth.source'
 
 // ================================================================ ViewIntent
 
@@ -61,7 +63,8 @@ export interface ChartLook {
   indicatorColors: Partial<Record<IndicatorID, Record<number, string>>>
   hiddenOutputs: Partial<Record<IndicatorID, number[]>>
   options: ChartOptions
-  priceMode: Exclude<PriceMode, 'percent'>
+  /** 价格轴：线性 / 对数 / 百分比（百分比以视野最左那根的收盘为 0%）。对比态时整张图换成对比的百分比轴。 */
+  priceMode: PriceMode
   mainInverted: boolean
   subInverted: IndicatorID[]
   subScale: Partial<Record<IndicatorID, number>>
@@ -91,6 +94,17 @@ export interface CreateChartOptions extends Partial<ChartLook> {
   offline?: boolean
   /** 主力订单流的数据口：图把「要不要、哪只、哪个周期、看到哪段」告诉它，它把快照推回来。 */
   orderFlowSource?: ((push: (snap: OrderFlowSnapshot | null) => void) => OrderFlowPort) | null
+  /**
+   * 对比品种（Prefs.compareSymbols，键如 `binance/usd_m/ETHUSDT`，最多三只）。非空时主图换成百分比轴，
+   * 叠上各只的涨跌幅线；横屏（画线台）暂退、集合不动。只认币安合约的键，别家的键不取不画。
+   */
+  compareSymbols?: string[]
+  /** 盘口（Prefs.depth）：主图右缘的五档条。只在直连线路上有（和 iOS 一样，网关没有盘口）。 */
+  depth?: boolean
+  /** 盘口的数据口；默认 DepthFeed（币安 `@depth5@100ms`）。传 null 表示不要（测试、截图）。 */
+  depthSource?: ((push: (book: OrderBook | null) => void) => DepthPort) | null
+  /** 此刻是不是直连线路（盘口只在直连上有）；默认读 market.S.route。 */
+  isDirectRoute?: () => boolean
 }
 
 export interface CrosshairEvent { crosshair: Crosshair | null; bar: Bar | null }
@@ -125,9 +139,13 @@ export interface ChartHandle {
   setSymbol(symbol: string): void
   setInterval(iv: Interval): void
   setIndicators(main: IndicatorID[], subs: IndicatorID[], params?: Partial<Record<IndicatorID, number[]>>): void
-  setCandleStyle(p: Partial<ChartOptions> & { priceMode?: Exclude<PriceMode, 'percent'>; mainInverted?: boolean }): void
+  setCandleStyle(p: Partial<ChartOptions> & { priceMode?: PriceMode; mainInverted?: boolean }): void
   setLook(p: Partial<ChartLook>): void
   setOrderFlow(on: boolean, display?: OrderFlowDisplay): void
+  /** 对比品种（整组替换；空数组 = 退出对比）。 */
+  setCompare(keys: string[]): void
+  /** 盘口五档开关。 */
+  setDepth(on: boolean): void
   setDrawings(list: Drawing[]): void
   setLandscape(on: boolean): void
   /** 「铺到某段时间」（扫图、复盘跳转）：数据到了就按这段摆视野。 */
@@ -139,6 +157,13 @@ export interface ChartHandle {
   /** 立刻把脏层画完（验收截图用）。 */
   redrawNow(): void
   destroy(): void
+}
+
+/** 盘口数据口（DepthFeed 就是一个）。 */
+export interface DepthPort {
+  setWanted(on: boolean, symbol: string, direct: boolean): void
+  setVisible(visible: boolean): void
+  dispose(): void
 }
 
 /** 订单流、画线两块在各自模块里接进来，这里只要这几个口子。 */
@@ -201,6 +226,8 @@ const skinGrid = (): ChartOptions['grid'] => (document.documentElement.dataset.s
 const sameList = <T>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
 
 const SNAPSHOT_LIMIT = 8
+/** 对比行情揉进图的节流（CompareFeed 的 flush：100 ms） */
+const COMPARE_FLUSH_MS = 100
 const HISTORY_PAGE = 1500
 const MAX_SUBS = 3
 
@@ -244,6 +271,11 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   let orderFlowSnapshot: OrderFlowSnapshot | null = null
   let orderFlowPort = null as OrderFlowPort | null
   let drawings: Drawing[] = opts.drawings ?? []
+  let compareKeys: string[] = [...(opts.compareSymbols ?? [])]
+  let depthOn = !!opts.depth
+  let depthBook: OrderBook | null = null
+  let depthPort = null as DepthPort | null
+  const isDirect = opts.isDirectRoute ?? (() => S.route !== 'gateway')
   let resetSpacing = opts.barSpacing && opts.barSpacing > 0 ? opts.barSpacing : AICoinBehavior.initialSpacing
   let pending: ViewIntent = { kind: 'reset' }
   let lastPlotW: number | null = null
@@ -288,6 +320,53 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     return { symbol: s.symbol, base, priceDecimals: guessDecimals(last) }
   }
 
+  // ---------------------------------------------------------------- 对比（CompareModel）与盘口
+
+  /** 此刻是不是对比态（MainScreen.comparing）：有认得出的对比品种、且不在横屏画线台。 */
+  const comparingFor = (sym: string) => !landscape && compareTargets(compareKeys, sym).length > 0
+  /** 盘口要不要连：开着、竖屏、不在对比态（对比态不画盘口，连着也白连）。 */
+  const depthWanted = () => depthOn && !landscape && !comparingFor(symbol)
+  const syncDepth = () => depthPort?.setWanted(depthWanted(), symbol, isDirect())
+
+  /** 颜色按它在偏好里的位置取调色板（ChartSession.compose：palette[slot % count]）。 */
+  const compareColor = (key: string) => {
+    const pal = colors.palette, slot = Math.max(0, compareKeys.indexOf(key))
+    return pal[slot % pal.length]
+  }
+  const compareName = (key: string) => {
+    const sym = compareSymbolOf(key) ?? key
+    return symbolInfo(sym)?.base ?? (sym.replace(/USDT$|USDC$|USD$/, '') || sym)
+  }
+  let compareStreamKey = ''
+  let compareTimer: ReturnType<typeof setTimeout> | null = null
+  const compareFeed = new CompareFeed(loadBars, () => scheduleCompare())
+  /** 按当前键集合与主序列起停对比取数；在取的品种变了就重订推送。 */
+  const syncCompare = (s: BarSeries | null) => {
+    compareFeed.configure(comparingFor(symbol) ? compareKeys : [], s, symbol, interval)
+    const key = compareFeed.symbols.join(',')
+    if (key !== compareStreamKey) { compareStreamKey = key; subscribe() }
+  }
+  const compareSeries = (s: BarSeries) => {
+    syncCompare(s)
+    return compareFeed.series(s, compareColor, compareName)
+  }
+  const sameCompare = (a: ChartState['input']['compare'], b: ChartState['input']['compare']) =>
+    a.length === b.length && a.every((x, i) => x.key === b[i].key && x.name === b[i].name && x.color === b[i].color && x.open === b[i].open && x.close === b[i].close)
+  const scheduleCompare = () => {
+    if (compareTimer || destroyed) return
+    compareTimer = setTimeout(() => { compareTimer = null; publishCompare() }, COMPARE_FLUSH_MS)
+  }
+  /** 对比行情到了一截：只换 input.compare（对比态进出要重揉整份状态，走 update）。 */
+  const publishCompare = () => {
+    const st = view.state
+    if (destroyed || !st || !series || st.input.series !== series) return
+    const comparing = comparingFor(series.symbol)
+    if (comparing !== st.input.percentAxis) { update(); return }
+    if (!comparing) return
+    const compare = compareSeries(series)
+    if (!sameCompare(compare, st.input.compare)) view.state = withInput(st, { compare })
+  }
+
   const compose = (s: BarSeries): ChartState => {
     const si = info(s)
     const price = { ...priceTransform(look.priceMode), inverted: look.mainInverted }
@@ -295,6 +374,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const subs = landscape ? [] : look.subs
     const options: ChartOptions = { ...look.options, grid: gridAuto ? skinGrid() : look.options.grid }
     if (landscape) options.drawings = true
+    const comparing = comparingFor(s.symbol)
+    // 对比态：百分比轴、不画线（ChartSession.compose）；集合本身不动，退出对比就回来。
+    if (comparing) options.drawings = false
     let st = makeState({
       series: s, symbol: si, view: new ViewWindow(s.lastTime, s.step * 80), colors, price,
       overlays, subs, params: look.params, tzOffset: SHANGHAI_OFFSET_MIN, oi, magnet: true,
@@ -304,10 +386,12 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     st = withInput(st, {
       external, subInverted: look.subInverted, indicatorColors: look.indicatorColors, hiddenOutputs: look.hiddenOutputs,
       rsiUpper: look.rsiUpper, rsiLower: look.rsiLower, oiSupported: true, externalSupported: true,
+      percentAxis: comparing, compare: comparing ? compareSeries(s) : (syncCompare(s), []),
     })
     st = withOverlay(st, {
       orderFlow: landscape || !orderFlowOn ? null : orderFlowSnapshot,
       orderFlowDisplay,
+      depth: depthWanted() ? depthBook : null,
     })
     return st
   }
@@ -502,7 +586,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   const subscribe = () => {
     if (opts.offline) return
-    opts.streams?.(destroyed ? [] : [streamName.kline(symbol, interval)])
+    const list = [streamName.kline(symbol, interval), ...compareFeed.symbols.map(sym => streamName.kline(sym, interval))]
+    opts.streams?.(destroyed ? [] : list)
   }
 
   const takeSeries = (s: BarSeries) => {
@@ -565,6 +650,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     s.replaceSuffix(at, bars)
     if (st && st.input.series === s && v) view.state = withViewport({ ...st }, { view: v })
     else update()
+    scheduleCompare()
   }
 
   const resync = async () => {
@@ -593,6 +679,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       const st = view.state
       if (st && st.input.series === s) view.state = { ...st }
       feed?.want(wantedExternal(), s)
+      // 主图往左翻了：对比跟着往左补，并按新长度重新对齐
+      syncCompare(s)
+      scheduleCompare()
     } finally {
       historyLoading = false
       // 翻完一页若仍贴着左缘，让下一次视野变化再问一页
@@ -618,19 +707,27 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     if (st && st.input.series === s) {
       view.state = v && !v.equals(st.viewport.view) ? withViewport(st, { view: v }) : { ...st }
     }
-    if (appended) feed?.refresh(wantedExternal(), s, Date.now() + 60_000)
+    if (appended) {
+      feed?.refresh(wantedExternal(), s, Date.now() + 60_000)
+      if (st?.input.percentAxis) scheduleCompare()
+    }
   }
 
   const offMarket = opts.offline ? () => {} : onMarket(e => {
     if (destroyed) return
     if (e.type === 'kline' && e.symbol === symbol && e.iv === interval) onKline(e.bar)
+    else if (e.type === 'kline' && e.iv === interval) compareFeed.upsert(e.symbol, interval, toChartBar(e.bar))
     else if (e.type === 'universe') {
       const st = view.state
       if (st) {
         const si = symbolInfo(st.input.symbol.symbol)
         if (si && (si.priceDecimals !== st.input.symbol.priceDecimals || si.base !== st.input.symbol.base)) update()
       }
-    } else if (e.type === 'ws' && S.wsState === 'open') void resync()
+    } else if (e.type === 'ws') {
+      // 线路换了（直连 ↔ 网关）盘口跟着起停；重连上了补主图与对比的缺口
+      syncDepth()
+      if (S.wsState === 'open') { void resync(); compareFeed.resync() }
+    }
   })
 
   // ---------------------------------------------------------------- 心跳（ChartSession.heartbeat）
@@ -649,9 +746,10 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   const stopBeat = () => { if (beat) clearInterval(beat); beat = null; nowMs = null }
   let hiddenAt = 0
   const onVisibility = () => {
+    depthPort?.setVisible(!document.hidden)
     if (document.hidden) { hiddenAt = Date.now(); stopBeat(); return }
     startBeat()
-    if (hiddenAt && Date.now() - hiddenAt > 5_000) void resync()
+    if (hiddenAt && Date.now() - hiddenAt > 5_000) { void resync(); compareFeed.resync() }
     hiddenAt = 0
   }
   document.addEventListener('visibilitychange', onVisibility)
@@ -833,6 +931,19 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     })
     orderFlowPort.setWanted(orderFlowOn && !landscape, symbol, interval)
   }
+  // 盘口：默认币安五档流（depth.source.ts）；传 null 表示不要。
+  const depthFactory = opts.depthSource === undefined ? (opts.offline ? null : (push: (b: OrderBook | null) => void) => new DepthFeed(push)) : opts.depthSource
+  if (depthFactory) {
+    depthPort = depthFactory(b => {
+      if (destroyed) return
+      depthBook = b
+      const st = view.state
+      const shown = depthWanted() ? b : null
+      if (st && st.overlay.depth !== shown) view.state = withOverlay(st, { depth: shown })
+    })
+    if (typeof document !== 'undefined' && document.hidden) depthPort.setVisible(false)
+    syncDepth()
+  }
   void load()
 
   const restyle = () => {
@@ -856,6 +967,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       resetFeed()
       subscribe()
       orderFlowPort?.setWanted(orderFlowOn && !landscape, symbol, interval)
+      syncDepth()
       void load()
     },
 
@@ -902,6 +1014,22 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       update()
     },
 
+    setCompare(keys) {
+      const next = [...keys]
+      if (sameList(next, compareKeys)) return
+      compareKeys = next
+      syncDepth()
+      update()
+      if (!series || series.isEmpty) syncCompare(null)
+    },
+
+    setDepth(on) {
+      if (on === depthOn) return
+      depthOn = on
+      syncDepth()
+      update()
+    },
+
     setDrawings(list) {
       drawings = list
       const st = view.state
@@ -912,6 +1040,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       if (on === landscape) return
       landscape = on
       orderFlowPort?.setWanted(orderFlowOn && !landscape, symbol, interval)
+      syncDepth()
       view.clearCrosshair()
       update()
       layoutContent()
@@ -953,6 +1082,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       scroller.removeEventListener('pointercancel', cancelCapture, true)
       feed?.dispose()
       orderFlowPort?.dispose()
+      depthPort?.dispose()
+      compareFeed.dispose()
+      if (compareTimer) { clearTimeout(compareTimer); compareTimer = null }
       opts.streams?.([])
       view.destroy()
       scroller.remove()

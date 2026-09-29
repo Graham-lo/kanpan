@@ -3,6 +3,7 @@ import '../styles/tokens.css'
 import '../styles/base.css'
 import { loadUniverse, setStreams, setRoute } from '../../market'
 import type { IndicatorID } from '../indicator/ids'
+import type { PriceMode } from './geometry'
 import type { Interval } from './series'
 import { withOverlay } from './state'
 import { createChart, type ChartHandle } from './index'
@@ -22,6 +23,10 @@ const chart: ChartHandle = createChart(host, {
   subs: list('subs', 'VOL,MACD'),
   orderFlow: q.get('of') === '1',
   landscape: q.get('land') === '1',
+  // cmp=ETHUSDT,SOLUSDT（对比，最多三只）；depth=1（盘口五档）；pm=linear|log|percent（价格轴）
+  compareSymbols: (q.get('cmp') ?? '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean).map(s => 'binance/usd_m/' + s),
+  depth: q.get('depth') === '1',
+  priceMode: (['linear', 'log', 'percent'] as const).includes(q.get('pm') as PriceMode) ? q.get('pm') as PriceMode : 'log',
   streams: names => setStreams(names, names),
 })
 
