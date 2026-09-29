@@ -439,6 +439,7 @@ describe('订单流 · 收窄的服务端请求（2026-09-29）', () => {
     expect(heatHint(5000)).toBe(10_000)
     expect(heatHint(20_000)).toBe(30_000)
     expect(heatHint(40_000)).toBe(60_000)
+    expect(heatHint(80_000)).toBe(150_000)
     expect(heatHint(1e7)).toBe(3_600_000)
   })
   it('价格环以可见中点为心，至少 ±5%、盖住可见高度 1.25 倍、至多 ±50%', () => {

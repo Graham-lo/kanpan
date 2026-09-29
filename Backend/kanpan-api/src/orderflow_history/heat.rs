@@ -8,11 +8,12 @@
 //! * 接口 `GET /v1/market/orderflow/heat?base=&from=&to=&step=` → `{"step","bucketMs","rows":[[t_ms,price,bid_usd,ask_usd],…]}`：
 //!   三家合起来；价格按 `max(step, 存储步长)` 向下取整合并（同一时刻各桶相加）；时间按 `bucketMs` 合并（取这一格里各快照的平均，
 //!   某个快照里没有这个桶按 0 算）。`to` 缺省此刻、`from` 缺省 `to` 前 1 小时，超过 3 天把 `from` 夹到 `to` 前 3 天。
-//!   行数估出来超过 20 万就把 `bucketMs` 放大到 10 s / 30 s / 60 s（3 天全量在 60 s 也装不下，再往上 5 / 15 / 30 / 60 分钟），
+//!   行数估出来超过 20 万就把 `bucketMs` 放大到 10 s / 30 s / 60 s（3 天全量在 60 s 也装不下，再往上 2.5 / 5 / 15 / 30 / 60 分钟），
 //!   放大之后隔几个快照取一个（每格至少 4 个），读完还超就再放大一档。没在跟的 base 回空 `rows`。只聚合，不判定。
 //! * 收窄（2026-09-29，网页版按可见窗口取）：再带 `lo`/`hi`（价格上下沿）或 `around`/`pct`（以某价为中心 ±pct%，
 //!   `pct` 缺省 5、最大 50）只回这段价格里的格；带 `bucketMs` 是时间格的下限提示（取梯子上不细于它、又装得下的最细一档）。
-//!   带了其中任何一个就按收窄的额度算：一次最多 1.4 万行（约 500 KB 原文）、最多取 720 个快照；都不带的老请求照旧 20 万行。
+//!   带了其中任何一个就按收窄的额度算：一次最多 1.4 万行（约 500 KB 原文）、最多取 720 个快照，估行数不加漂移余量（超了读的时候原地放大）；
+//!   都不带的老请求照旧 20 万行。
 //!   快照按主键点查（`bucket_ms = ANY(数组)`，不走 `generate_series` 连接——那样计划器只按 base 扫整只）。
 //!   同样的请求 5 秒内合成一次读库（缺省的 `to` 取整到 5 秒格），答复带 `Cache-Control: public, max-age=5`。
 use super::book::{Buckets,Side,bucket_index};
@@ -54,8 +55,9 @@ const CACHE_CONTROL:&str="public, max-age=5";
 /// `from` 缺省 `to` 前多久。
 const DEFAULT_SPAN_MS:i64=60*60_000;
 const MAX_SPAN_MS:i64=store::RETENTION_MS;
-/// 时间格一档一档放大：（格宽，隔多久取一个快照）。格宽都是前一档的整数倍，读的过程中超了可以原地并上去。
-const LADDER:[(i64,i64);8]=[(5_000,5_000),(10_000,5_000),(30_000,5_000),(60_000,15_000),(300_000,60_000),(900_000,225_000),(1_800_000,450_000),(3_600_000,900_000)];
+/// 时间格一档一档放大：（格宽，隔多久取一个快照）。读的过程中超了原地并到后面第一个格宽是它整数倍的档（`next_level`）：
+/// 2.5 分钟不是 60 秒的整数倍，60 秒超了直接并到 5 分钟；2.5 分钟是给「几小时、±5%」这种收窄请求留的，1.4 万行装得下。
+const LADDER:[(i64,i64);9]=[(5_000,5_000),(10_000,5_000),(30_000,5_000),(60_000,15_000),(150_000,30_000),(300_000,60_000),(900_000,225_000),(1_800_000,450_000),(3_600_000,900_000)];
 /// 按最近一个快照的桶数估行数时，给这段时间里价格漂出去的新桶留的余量。
 const DRIFT:f64=1.5;
 /// 跟踪任务到写库任务的通道（一项是一只 base 一拍的带子）：220 只一起交也放得下四轮。
@@ -299,6 +301,11 @@ fn pick_from(min:usize,span:i64,prices:f64,cap:usize)->usize {
  (min.min(LADDER.len()-1)..LADDER.len()).find(|&i|((span/LADDER[i].0+1) as f64)*prices<=cap as f64).unwrap_or(LADDER.len()-1)
 }
 
+/// 原地放大时并到哪一档：后面第一个格宽是这一档整数倍的（最粗那档是所有档的整数倍，总有）。
+fn next_level(level:usize)->usize {
+ (level+1..LADDER.len()).find(|&j|LADDER[j].0%LADDER[level].0==0).unwrap_or(LADDER.len()-1)
+}
+
 /// 时间格提示落到梯子上：不细于它的最细一档（比最粗的还粗就用最粗的）。
 fn min_level(hint:i64)->usize {LADDER.iter().position(|(bucket,_)|*bucket>=hint).unwrap_or(LADDER.len()-1)}
 
@@ -343,9 +350,9 @@ impl Heat {
   while self.cells.len()>self.cap&&self.level+1<LADDER.len() {self.coarsen();}
  }
 
- /// 放大一档时间格：已经攒的原地并上去。
+ /// 放大一档时间格（到下一个整数倍的档）：已经攒的原地并上去。
  fn coarsen(&mut self) {
-  self.level+=1;
+  self.level=next_level(self.level);
   let width=self.bucket_ms();
   let mut cells=BTreeMap::new();
   for ((t,p),(b,a)) in std::mem::take(&mut self.cells) {
@@ -425,11 +432,9 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
  let span=to-from;
  let level=match scope {
   None=>pick_level(span,prices.len(),cap),
-  // 收窄了价格的：这段里最多也就范围里那么多个桶，漂移余量不超过它。
-  Some(s)=>{
-   let estimate=(prices.len().max(1) as f64)*DRIFT;
-   pick_from(min_level(s.hint),span,range.map_or(estimate,|(a,b)|estimate.min((b-a+1) as f64)),cap)
-  },
+  // 收窄的：按最近一个快照在范围里的桶数估、不加漂移余量——额度只有 1.4 万行，加了余量几小时的窗口就被推到 5 分钟格；
+  // 真漂出去超了，读的时候原地放大一档（最多抽 720 个快照，多读的有限）。
+  Some(s)=>pick_from(min_level(s.hint),span,prices.len() as f64,cap),
  };
  // 隔几个快照取一个，但这段区间里至少取 8 个（区间比时间格还短时别一个都取不到）。
  let stride=stride(level,span,scope.is_some());
@@ -584,16 +589,21 @@ mod tests {
   for k in 0..6 {h.add(k*5_000,1.0,0,&[0,1],&[10.0,10.0],&[0.0,0.0]);assert!(h.cells.len()<=4,"并上去之后不超上限");}
   assert_eq!(h.bucket_ms(),30_000,"5 秒格第三拍超 → 10 秒，第五拍又超 → 30 秒");
   assert_eq!(h.rows(),vec![(0,0.0,10.0,0.0),(0,1.0,10.0,0.0)],"六个快照平均回每个 10");
+  // 60 秒格超了跳过 2.5 分钟（不整除）直接并到 5 分钟。
+  let mut h=Heat::new(1.0,3,2);
+  for k in 0..3 {h.add(k*60_000,1.0,0,&[0],&[6.0],&[0.0]);}
+  assert_eq!((h.bucket_ms(),h.rows()),(300_000,vec![(0,0.0,6.0,0.0)]));
  }
 
  #[test] fn the_ladder_is_picked_from_the_estimate() {
   // 估算：（格数 + 1）× 桶数 × 1.5。
   assert_eq!(pick_level(60*60_000,100,MAX_ROWS),0,"一小时 × 100 桶 5 秒格装得下");
   assert_eq!(pick_level(60*60_000,200,MAX_ROWS),1,"一小时 × 200 桶要 10 秒格");
-  assert_eq!(pick_level(store::DAY_MS,200,MAX_ROWS),4,"一天 × 200 桶 60 秒格也装不下，5 分钟");
-  assert_eq!(pick_level(3*store::DAY_MS,200,MAX_ROWS),5,"三天 × 200 桶 15 分钟");
+  assert_eq!(pick_level(store::DAY_MS,200,MAX_ROWS),4,"一天 × 200 桶 60 秒格也装不下，2.5 分钟");
+  assert_eq!(pick_level(3*store::DAY_MS,200,MAX_ROWS),6,"三天 × 200 桶 15 分钟");
   assert_eq!(pick_level(3*store::DAY_MS,100_000,MAX_ROWS),LADDER.len()-1,"怎么都装不下就用最粗的，读的时候再并");
-  for w in LADDER.windows(2) {assert_eq!(w[1].0%w[0].0,0,"每档是前一档的整数倍");}
+  for i in 0..LADDER.len()-1 {let j=next_level(i);assert!(j>i&&LADDER[j].0%LADDER[i].0==0,"每档都有能原地并上去的下一档");}
+  assert_eq!((next_level(3),next_level(4)),(5,5),"60 秒跳过 2.5 分钟直接并到 5 分钟");
   for (bucket,stride) in LADDER {assert_eq!(bucket%stride,0);assert_eq!(stride%BUCKET_MS,0);}
  }
 
@@ -686,14 +696,16 @@ mod tests {
   assert_eq!(min_level(10*3_600_000),LADDER.len()-1);
   // 一小时、每格 100 桶、上限 1.4 万：30 秒格装得下（121 × 100），10 秒格装不下；提示 5 分钟就从 5 分钟起。
   assert_eq!(pick_from(0,3_600_000,100.0,SCOPED_ROWS),2);
-  assert_eq!(pick_from(min_level(300_000),3_600_000,100.0,SCOPED_ROWS),4);
-  // 6 小时 × 110 桶：5 分钟格（73 × 110 ≈ 8 000）。
-  assert_eq!(pick_from(0,6*3_600_000,110.0,SCOPED_ROWS),4);
+  assert_eq!(pick_from(min_level(300_000),3_600_000,100.0,SCOPED_ROWS),5);
+  // 6 小时 × 110 桶：5 分钟格（73 × 110 ≈ 8 000；2.5 分钟 145 × 110 超）；4 小时 × 82 桶：2.5 分钟（97 × 82 ≈ 8 000）。
+  assert_eq!(pick_from(0,6*3_600_000,110.0,SCOPED_ROWS),5);
+  assert_eq!(pick_from(0,4*3_600_000,82.0,SCOPED_ROWS),4);
   // 快照间隔：老请求照梯子；收窄的最多 720 个，取整到能整除格宽。
   assert_eq!(stride(3,3_600_000,false),15_000);
   assert_eq!(stride(3,3_600_000,true),15_000,"一小时 15 秒一个是 240 个，没超");
   assert_eq!(stride(3,6*3_600_000,true),30_000,"6 小时要 30 秒一个（720 个）");
-  assert_eq!(stride(4,3*store::DAY_MS,true),300_000,"3 天 5 分钟格：一格最多取一个");
+  assert_eq!(stride(5,3*store::DAY_MS,true),300_000,"3 天 5 分钟格：一格最多取一个");
+  assert_eq!(stride(4,7*3_600_000,true),50_000,"7 小时 2.5 分钟格：35 秒往上取能整除 150 秒的 50 秒，一格三个");
  }
 
  #[test] fn a_price_range_keeps_only_its_buckets() {

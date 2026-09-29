@@ -164,7 +164,7 @@ export function parseHeat(body: unknown, step: number, chartScale: number): Heat
 // ------------------------------------------------------------------ 回填请求（2026-09-29 起按可见范围收窄）
 
 /** 服务端的时间格阶梯（与 Backend heat.rs 的 LADDER 同一套）。 */
-const HEAT_LADDER_MS = [5_000, 10_000, 30_000, 60_000, 300_000, 900_000, 1_800_000, 3_600_000]
+const HEAT_LADDER_MS = [5_000, 10_000, 30_000, 60_000, 150_000, 300_000, 900_000, 1_800_000, 3_600_000]
 export const HEAT_RING_MIN_PCT = 5
 export const HEAT_RING_MAX_PCT = 50
 
