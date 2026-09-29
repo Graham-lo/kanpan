@@ -48,7 +48,7 @@ struct ReleaseTestRosterTests {
 
   /// 允许跳过用例的文件，以及跳过的那一下是什么门。
   ///
-  /// 两条都必须是**运行环境不成立**的门（窄窗、没给显式开关），不许是
+  /// 每条都必须是**运行环境不成立**的门（窄窗、没给显式开关），不许是
   /// 「数据没来就跳过」那种——那种跳的是产品的毛病，正是 C.9 点名的假绿。
   static let skipGates: [String: String] = [
     "ConditionAlertsUITests.swift":
@@ -57,6 +57,10 @@ struct ReleaseTestRosterTests {
     "UITestSupport.swift":
       "`ManualTool.skipUnlessRequested`：会写进这台设备上用户正式自选存档的手动工具，"
       + "没给 KANPAN_INSTALL_USER_FAVORITES=1 就记成「未执行」。",
+    "StressRegression0928UITests.swift":
+      "`testUpgradeFromBeforeTrimKeepsState` 验「老包存档升级到新包」，前提是同一台模拟器上"
+      + "先跑过收设置项之前那个 tag 的老包、留下 /tmp/kanpan-stress-0928/upgrade-state.txt；"
+      + "只在压测时串着老包跑，没有那份状态文件就记成「未执行」。",
   ]
 
   /// Release 下必须真的跑起来的那几摊行为，各自的看门文件。

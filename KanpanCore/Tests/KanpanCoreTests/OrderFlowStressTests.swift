@@ -62,11 +62,10 @@ enum Stress {
 
   static func report(_ line: String) { print("【订单簿压测】" + line) }
 
-  #if DEBUG
-  static let build = "debug"
-  #else
-  static let build = "release"
-  #endif
+  /// 报告里标明这组数字是哪种构建跑出来的。按运行时的断言配置判，不用 `#if DEBUG`：
+  /// 这只是个标签，套件两种配置都整体在跑；写成条件编译会被 `ReleaseTestRosterTests`
+  /// 当成「整体不进 Release 的套件」点名。
+  static let build = _isDebugAssertConfiguration() ? "debug" : "release"
 
   /// BTC 的 13 本簿（币安 6、OKX 6、Coinbase 1），序列规则与快照来路照各家实际。
   /// 名义一律按线性 1 倍：压测看的是吞吐，不看币本位换算。
