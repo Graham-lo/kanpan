@@ -139,8 +139,8 @@ async function partChart() {
   const h2 = await heap(), w2 = await ws()
   ok('第二轮内存持平', h2 < h1 * 1.15 + 5e6, `${(h1 / 1e6).toFixed(1)} MB → ${(h2 / 1e6).toFixed(1)} MB；WS 活着 ${w2.live.length}、订阅 ${subs(w2)}`)
 
-  // ---- 布局 1/2/2v/4/6/8 与两个联动开关
-  const LAY = [['1', '一图', 1], ['2', '左右两图', 2], ['2v', '上下两图', 2], ['4', '四图', 4], ['6', '六图', 6], ['8', '八图', 8]]
+  // ---- 布局 1–16 与联动开关（拖动、16 格细节见「布局与拖动」段）
+  const LAY = [['1', '一图', 1], ['2', '左右两图', 2], ['2v', '上下两图', 2], ['3', '左一右二', 3], ['4', '四图', 4], ['6', '六图', 6], ['8', '八图', 8], ['9', '九图', 9], ['12', '十二图', 12], ['16', '十六图', 16]]
   for (const [k, label, cnt] of LAY) {
     await page.click('#tbLayout'); await wait(250); await clickMenu(label); await wait(1500)
     const c = await page.locator('.chart-cell').count(); s = await state()
@@ -981,7 +981,242 @@ async function partReview() {
   ok('复盘：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
 
-const ALL = { chart: partChart, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
+// ═════════════════════════════ 布局与拖动 ═════════════════════════════
+// 1–16 格布局、四样跨图联动、每种分隔条（梯子 / 侧栏 / 抽屉 / 副图 / 侧栏块 / 多图网格）拖完刷新还在、
+// 双击回默认、窗口缩小按比例夹；快速切布局 WS 条数不涨；16 格实时刷新时主线程空闲 ≥ 60%。
+const SIZE_KEY = 'hkline-web-sizes-v1'
+const sizesNow = () => page.evaluate(k => JSON.parse(localStorage.getItem(k) || '{}'), SIZE_KEY)
+const cellsNow = () => page.evaluate(() => window.__cells())
+const streamNow = () => page.evaluate(() => window.__stream())
+const shotL = async (name, clip) => { await page.screenshot({ path: `${OUT}/布局-${name}.png`, ...(clip ? { clip } : {}) }); console.log('  截图 布局-' + name) }
+const rectOf = sel => page.evaluate(s => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: Math.round(r.width), h: Math.round(r.height) } }, sel)
+const splitBox = name => page.locator(`.splitter[data-split="${name}"]`).boundingBox()
+/** 按住分隔条拖 (dx, dy)；按在线的 30% 处，避开和别的分隔线交叉的地方 */
+async function dragSplit(name, dx, dy, at = 0.3) {
+  const b = await splitBox(name)
+  if (!b) throw new Error(`没有分隔条 ${name}`)
+  const x = b.width > b.height ? b.x + b.width * at : b.x + b.width / 2
+  const y = b.width > b.height ? b.y + b.height / 2 : b.y + b.height * at
+  await page.mouse.move(x, y); await page.mouse.down()
+  await page.mouse.move(x + dx, y + dy, { steps: 10 }); await page.mouse.up(); await wait(400)
+}
+async function dblSplit(name, at = 0.3) {
+  const b = await splitBox(name)
+  const x = b.width > b.height ? b.x + b.width * at : b.x + b.width / 2
+  const y = b.width > b.height ? b.y + b.height / 2 : b.y + b.height * at
+  await page.mouse.dblclick(x, y); await wait(500)
+}
+const noScroll = () => page.evaluate(() => {
+  const d = document.documentElement
+  const over = [...document.querySelectorAll('.chart-cell, #sidePanel, #ladderSlot, #drawerSlot, #chartArea')].filter(e => { const r = e.getBoundingClientRect(); return r.width && (r.right > innerWidth + 1 || r.bottom > innerHeight + 1) }).map(e => e.id || e.className)
+  return { ok: d.scrollWidth <= innerWidth && d.scrollHeight <= innerHeight && !over.length, info: `${d.scrollWidth}×${d.scrollHeight}${over.length ? ' 溢出：' + over.join(',') : ''}` }
+})
+const pickLayout = async label => { await page.click('#tbLayout'); await wait(200); await clickMenu(label) }
+/** 主图与第一个副图之间的分隔线：沿画布左侧从上往下找鼠标变 row-resize 的位置 */
+async function sepY(i = 0) {
+  const b = await canvasBox(i)
+  const x = b.x + 200
+  const hits = []
+  for (let y = b.y + b.height * 0.3; y < b.y + b.height - 30; y += 2) {
+    await page.mouse.move(x, y)
+    const c = await page.evaluate(k => document.querySelectorAll('.chart-cell canvas')[k].style.cursor, i)
+    if (c === 'row-resize') hits.push(y)
+    else if (hits.length) break
+  }
+  return hits.length ? { x, y: hits.reduce((a, v) => a + v, 0) / hits.length } : null
+}
+
+async function partLayout() {
+  const e0 = errors.length
+  await fresh('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0')
+  const s1 = await streamNow()
+
+  // ---- 十种布局都走一遍：格子数、每格有数据、不溢出不出滚动条
+  const LAYS = [['1', '一图', 1], ['2', '左右两图', 2], ['2v', '上下两图', 2], ['3', '左一右二', 3], ['4', '四图', 4], ['6', '六图', 6], ['8', '八图', 8], ['9', '九图', 9], ['12', '十二图', 12], ['16', '十六图', 16]]
+  for (const [k, label, cnt] of LAYS) {
+    await pickLayout(label); await wait(k === '16' || k === '12' ? 6000 : 2500)
+    const n = await page.locator('.chart-cell').count(), s = await state(), cs = await cellsNow()
+    const empty = cs.filter(c => !c.bars).length, sc = await noScroll()
+    ok(`布局 ${label}：${cnt} 格、各格有数据、不溢出`, n === cnt && s.layout === k && !empty && sc.ok && new Set(cs.map(c => c.symbol)).size === cnt, `格子 ${n}，没数据 ${empty}，品种 ${new Set(cs.map(c => c.symbol)).size} 只，${sc.info}`)
+    if (k === '3') {
+      const r = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => { const b = e.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)] }))
+      ok('左一右二：左格占满两行，右边上下两格', r[0][3] > r[1][3] * 1.8 && r[1][0] === r[2][0] && r[2][1] > r[1][1], JSON.stringify(r))
+    }
+    if (k === '4') await shotL('四图')
+    if (k === '8') await shotL('八图')
+  }
+  // ---- 16 格：降级档、蜡烛读得清、连接与订阅
+  let cs = await cellsNow()
+  const c16 = await rectOf('.chart-cell')
+  const deg = cs[0].deg
+  ok('16 格按格子尺寸降级：只留主图、图例一行、价格轴字号小一档（量还在）', !deg.subs && deg.compact && deg.font === 11 && deg.vol === (c16.w >= 420), `格子 ${c16.w}×${c16.h}，${JSON.stringify(deg)}`)
+  const g0 = cs.map(x => x.bars), spacing = cs.length
+  await shotL('十六图')
+  let w16 = await ws(), st16 = await streamNow()
+  const market16 = w16.live.filter(l => /market\/stream|fstream/.test(l.url))
+  ok('16 格：行情连接按上限分摊、订阅覆盖 16 只', market16.length >= 1 && st16.subscribed.length >= 16 * 2 && ['BTCUSDT', 'TRXUSDT'].every(x => st16.subscribed.some(n => n.startsWith(x.toLowerCase()))), `连接 ${market16.length} 条（${st16.conns.join('/')} 路），订阅 ${st16.subscribed.length} 路，${spacing} 格，最少 ${Math.min(...g0)} 根`)
+
+  // ---- 16 格实时刷新：4 秒主线程占用
+  await page.mouse.move(5, 700) // 鼠标别停在图上
+  await cdp.send('Performance.enable', { timeDomain: 'timeTicks' })
+  const m0 = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(m => [m.name, m.value]))
+  await wait(4000)
+  const m1 = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(m => [m.name, m.value]))
+  const busy = (m1.TaskDuration - m0.TaskDuration) / (m1.Timestamp - m0.Timestamp)
+  ok('16 格实时刷新：4 秒内主线程空闲 ≥ 60%', busy <= 0.4, `占用 ${(busy * 100).toFixed(1)}%（脚本 ${((m1.ScriptDuration - m0.ScriptDuration) * 1000).toFixed(0)} ms、排版 ${((m1.LayoutDuration - m0.LayoutDuration) * 1000).toFixed(0)} ms / ${((m1.Timestamp - m0.Timestamp)).toFixed(2)} s）`)
+  await cdp.send('Performance.disable')
+
+  // ---- 联动：品种 / 周期 / 十字线 / 时间轴（16 格里验）
+  await page.locator('.chart-cell').nth(5).click({ position: { x: 200, y: 150 } }); await wait(300)
+  await pickLayout('周期跨图同步'); await wait(4000)
+  cs = await cellsNow()
+  ok('周期跨图同步：打开后 16 格同一周期', cs.every(c => c.iv === cs[5].iv), [...new Set(cs.map(c => c.iv))].join(','))
+  await page.click('#toolbar [data-iv="4h"]'); await wait(5000)
+  cs = await cellsNow(); let s = await state()
+  ok('周期联动：换一格全换成 4 时、各格重取了数据', s.linkIv && cs.every(c => c.iv === '4h' && c.bars > 0), [...new Set(cs.map(c => `${c.iv}`))].join(',') + ` 没数据 ${cs.filter(c => !c.bars).length}`)
+  await pickLayout('时间轴跨图同步'); await wait(1500)
+  const b5 = await canvasBox(5)
+  await page.mouse.move(b5.x + b5.width * 0.4, b5.y + b5.height * 0.4)
+  // 缩小三下（不缩到最小间距：到了最小间距，画布窄几像素的格子只能少放几根，左沿会差一两根）
+  for (let k = 0; k < 3; k++) { await page.mouse.wheel(0, 150); await wait(80) }
+  await wait(800)
+  cs = await cellsNow()
+  const spans = cs.map(c => Math.round((c.t1 - c.t0) / 36e5))
+  ok('时间轴跨图同步：一格缩放，其余 15 格同一段时间（左右沿差不过两根）', cs[5].spacing > 1.5 && cs.every(c => Math.abs(c.t1 - cs[5].t1) <= 4 * 36e5 && Math.abs(c.t0 - cs[5].t0) <= 8 * 36e5), `可见跨度（小时）${[...new Set(spans)].join(',')}，间距 ${cs[5].spacing.toFixed(2)}`)
+  await page.mouse.move(b5.x + b5.width * 0.3, b5.y + b5.height * 0.5); await wait(400)
+  cs = await cellsNow()
+  ok('十字线跨图同步：悬停一格，其余 15 格拿到同一时间', cs.filter((c, i) => i !== 5).every(c => c.cross != null && c.cross === cs[0].cross), `同步时间 ${[...new Set(cs.filter((c, i) => i !== 5).map(c => c.cross))].join(',')}`)
+  await page.mouse.move(5, 700); await wait(300)
+  await pickLayout('品种跨图同步'); await wait(4000)
+  cs = await cellsNow()
+  ok('品种跨图同步：16 格同一只', cs.every(c => c.symbol === cs[5].symbol), [...new Set(cs.map(c => c.symbol))].join(','))
+  await pickLayout('品种跨图同步'); await wait(300)
+  await pickLayout('周期跨图同步'); await wait(300)
+  await pickLayout('时间轴跨图同步'); await wait(300)
+  s = await state()
+  ok('三个联动开关都能关回去并落盘', !s.linkSymbol && !s.linkIv && !s.linkTime)
+
+  // ---- 快速切布局 20 次：连接不涨、多余的流退订（16 格各是一只，品种联动刚把它们并成了一只，重开一次）
+  await fresh('s=BTCUSDT&i=1h&layout=16&panel=watch&ladder=0&drawer=0'); await wait(5000)
+  const wA = await ws(), sA = await streamNow()
+  const cycle = ['一图', '十六图', '四图', '十二图', '左一右二', '九图', '上下两图', '八图', '六图', '左右两图']
+  for (let k = 0; k < 20; k++) { await page.click('#tbLayout'); await wait(80); await page.locator('.menu .mi', { hasText: cycle[k % cycle.length] }).first().click(); await wait(120) }
+  await pickLayout('十六图'); await wait(6000)
+  const wB = await ws(), sB = await streamNow()
+  const mk = w => w.live.filter(l => /market\/stream|fstream/.test(l.url)).length
+  ok('快速切 20 次布局后 WS 条数不涨', mk(wB) <= mk(wA) && wB.live.length <= wA.live.length, `行情连接 ${mk(wA)}→${mk(wB)}，全部 ${wA.live.length}→${wB.live.length}，开过 ${wA.opened}→${wB.opened}`)
+  ok('切完订阅回到同一组（不多不少）', sB.subscribed.length === sA.subscribed.length, `${sA.subscribed.length} → ${sB.subscribed.length} 路`)
+  await pickLayout('一图'); await wait(4000)
+  const s1b = await streamNow()
+  ok('切回一图：多出来的 15 只全部退订', s1b.subscribed.length <= s1.subscribed.length + 2 && s1b.conns.length === 1, `一图 ${s1.subscribed.length} 路 → 16 格 ${sB.subscribed.length} 路 → 一图 ${s1b.subscribed.length} 路（连接 ${s1b.conns.length} 条）`)
+
+  // ---- 页面三条分隔线：默认值、拖、夹、刷新还在、双击回默认
+  await fresh('s=BTCUSDT&i=1h&layout=4&panel=watch&ladder=1&drawer=1')
+  let lad = await rectOf('#ladderSlot'), pan = await rectOf('#sidePanel'), dra = await rectOf('#drawerSlot')
+  ok('默认宽高：梯子 240、侧栏 400、抽屉 280', lad.w === 240 && pan.w === 400 && dra.h === 280, `${lad.w} / ${pan.w} / ${dra.h}`)
+  await dragSplit('panel', -1000, 0)
+  pan = await rectOf('#sidePanel')
+  ok('侧栏往左拖到头：夹在 640', pan.w === 640, `${pan.w}`)
+  await dragSplit('panel', 80, 0)
+  pan = await rectOf('#sidePanel')
+  ok('侧栏拖回 80：560', pan.w === 560, `${pan.w}`)
+  await shotL('面板加宽')
+  await dragSplit('ladder', 1000, 0)
+  lad = await rectOf('#ladderSlot')
+  ok('梯子往右拖到头：夹在 160', lad.w === 160, `${lad.w}`)
+  await dragSplit('ladder', -160, 0)
+  lad = await rectOf('#ladderSlot')
+  ok('梯子拖宽 160：320', lad.w === 320, `${lad.w}`)
+  await dragSplit('drawer', 0, -2000)
+  dra = await rectOf('#drawerSlot')
+  const pageH = (await rectOf('#page-chart')).h
+  ok('抽屉往上拖到头：不超过页面高 60%、图表区留得住', dra.h <= Math.round(pageH * 0.6) + 1 && (await rectOf('#chartArea')).h >= 240, `${dra.h} / 页面 ${pageH}`)
+  await dragSplit('drawer', 0, 200)
+  dra = await rectOf('#drawerSlot')
+  await shotL('抽屉加高')
+  // 多图网格：列、行
+  await dragSplit('grid-cols-0', 220, 0, 0.25)
+  await dragSplit('grid-rows-0', 0, 90, 0.25)
+  let z = await sizesNow()
+  const g4 = z.grid?.['4']
+  ok('网格列宽 / 行高落本机（按布局记）', g4?.cols?.length === 2 && g4?.rows?.length === 2 && g4.cols[0] > 0.55 && g4.rows[0] > 0.52, JSON.stringify(g4))
+  const cellsBefore = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => Math.round(e.getBoundingClientRect().width)))
+  ok('拖完即时落本机（不等刷新）', z.panel === 560 && z.ladder === 320 && z.drawer === dra.h, JSON.stringify({ panel: z.panel, ladder: z.ladder, drawer: z.drawer }))
+  // 悬停特写：线变强调色
+  const pb = await splitBox('panel')
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + 300); await wait(400)
+  const lineColor = await page.evaluate(() => getComputedStyle(document.querySelector('.splitter[data-split="panel"]'), '::after').backgroundColor)
+  const accent = await page.evaluate(() => { const d = document.createElement('i'); d.style.color = 'var(--accent)'; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c })
+  ok('分隔线悬停变强调色', lineColor === accent, `${lineColor} / 强调色 ${accent}`)
+  await shotL('分隔条悬停', { x: Math.max(0, pb.x - 260), y: pb.y + 160, width: 520, height: 280 })
+  await page.mouse.move(5, 700)
+  // 刷新还在
+  await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(800)
+  lad = await rectOf('#ladderSlot'); pan = await rectOf('#sidePanel'); const dra2 = await rectOf('#drawerSlot')
+  const cellsAfter = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => Math.round(e.getBoundingClientRect().width)))
+  ok('刷新后梯子 / 侧栏 / 抽屉 / 网格都还在', lad.w === 320 && pan.w === 560 && dra2.h === dra.h && cellsAfter.every((w, i) => Math.abs(w - cellsBefore[i]) <= 1), `${lad.w} / ${pan.w} / ${dra2.h}，格宽 ${cellsBefore.join(',')} → ${cellsAfter.join(',')}`)
+  ok('尺寸不进账号同步（只在本机那一份里）', !JSON.stringify(await state()).includes('"panes"') && !(await page.evaluate(() => Object.keys(localStorage).filter(k => k !== 'hkline-web-sizes-v1' && /sizes/.test(k)).length)))
+  // 窗口缩小：按比例夹，不溢出
+  await page.setViewportSize({ width: 1600, height: 900 }); await wait(1200)
+  let sc = await noScroll(), ca = await rectOf('#chartArea')
+  lad = await rectOf('#ladderSlot'); pan = await rectOf('#sidePanel')
+  ok('窗口缩到 1600×900：各区域按比例夹、图表区至少 480、不溢出', sc.ok && ca.w >= 480 && lad.w >= 160 && pan.w >= 320, `图表区 ${ca.w}×${ca.h}，梯子 ${lad.w}，侧栏 ${pan.w}，${sc.info}`)
+  await page.setViewportSize({ width: 2560, height: 1440 }); await wait(1200)
+  pan = await rectOf('#sidePanel'); lad = await rectOf('#ladderSlot')
+  ok('窗口放回来：用户拖的尺寸原样回来', pan.w === 560 && lad.w === 320, `${lad.w} / ${pan.w}`)
+  // 双击回默认
+  for (const n of ['panel', 'ladder', 'drawer']) await dblSplit(n)
+  await dblSplit('grid-cols-0', 0.25); await dblSplit('grid-rows-0', 0.25)
+  lad = await rectOf('#ladderSlot'); pan = await rectOf('#sidePanel'); dra = await rectOf('#drawerSlot'); z = await sizesNow()
+  const cellsReset = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => Math.round(e.getBoundingClientRect().width)))
+  ok('双击分隔线回默认（本机记录一并清掉）', lad.w === 240 && pan.w === 400 && dra.h === 280 && z.panel == null && z.ladder == null && z.drawer == null && !z.grid?.['4']?.cols && !z.grid?.['4']?.rows && Math.abs(cellsReset[0] - cellsReset[1]) <= 1, `${lad.w} / ${pan.w} / ${dra.h}，格宽 ${cellsReset.join(',')}，${JSON.stringify(z)}`)
+
+  // ---- 副图高（一图里：MACD / RSI 两个副图）
+  await fresh('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0')
+  const sp0 = await sepY(0)
+  ok('一图里找得到副图分隔线', !!sp0, JSON.stringify(sp0))
+  if (sp0) {
+    await page.mouse.move(sp0.x, sp0.y); await page.mouse.down(); await page.mouse.move(sp0.x, sp0.y - 150, { steps: 10 }); await page.mouse.up(); await wait(500)
+    z = await sizesNow()
+    ok('拖高第一个副图：比例落本机', z.panes && Object.keys(z.panes).length >= 1, JSON.stringify(z.panes))
+    await page.mouse.move(5, 700); await wait(300)
+    await shotL('副图加高')
+    const sp1 = await sepY(0)
+    await page.mouse.move(sp1.x, sp1.y); await page.mouse.down(); await page.mouse.move(sp1.x, 0, { steps: 12 }); await page.mouse.up(); await wait(500)
+    const cb = await canvasBox(0), sp2 = await sepY(0)
+    ok('副图往上拖到头：主图至少留 40%', sp2 && sp2.y - cb.y >= cb.height * 0.38, `分隔线在画布 ${sp2 ? Math.round(sp2.y - cb.y) : '?'} / ${Math.round(cb.height)}`)
+    await page.mouse.move(sp2.x, sp2.y); await page.mouse.down(); await page.mouse.move(sp2.x, sp0.y - 150, { steps: 10 }); await page.mouse.up(); await wait(400)
+    const zBefore = (await sizesNow()).panes
+    await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(800)
+    const sp3 = await sepY(0)
+    ok('刷新后副图高还在', sp3 && Math.abs(sp3.y - (sp0.y - 150)) <= 6 && JSON.stringify((await sizesNow()).panes) === JSON.stringify(zBefore), `分隔线 ${Math.round(sp0.y)} → 拖到 ${Math.round(sp0.y - 150)} → 刷新后 ${sp3 ? Math.round(sp3.y) : '?'}`)
+    await page.mouse.dblclick(sp3.x, sp3.y); await wait(500)
+    const sp4 = await sepY(0)
+    ok('双击副图分隔线回默认', sp4 && Math.abs(sp4.y - sp0.y) <= 4 && (await sizesNow()).panes == null, `${sp4 ? Math.round(sp4.y) : '?'} / 默认 ${Math.round(sp0.y)}`)
+  }
+
+  // ---- 侧栏块之间（自选 / 盘口 / 详情）
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1')); s.slots.widgets = ['watch', 'book', 'detail']; localStorage.setItem('hkline-web-v1', JSON.stringify(s)) })
+  await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(1500)
+  const hOf = () => page.evaluate(() => [...document.querySelectorAll('#sidePanel [data-w]')].map(e => [e.dataset.w, Math.round(e.getBoundingClientRect().height)]))
+  const h0 = await hOf()
+  const vis = await page.evaluate(() => [...document.querySelectorAll('.splitter[data-split^="side-"]')].map(e => `${e.dataset.split}:${e.hidden ? '藏' : '显'}`))
+  ok('侧栏：能长的两块之间有分隔线，定高的详情前没有', vis.includes('side-0:显') && vis.includes('side-1:藏'), vis.join(' '))
+  await dragSplit('side-0', 0, 180, 0.5)
+  const h1 = await hOf()
+  const tot = a => a.reduce((x, [, h]) => x + h, 0)
+  ok('侧栏往下拖 180：自选变高、盘口变矮、详情不动、总高不变', h1[0][1] - h0[0][1] === 180 && h0[1][1] - h1[1][1] === 180 && h1[2][1] === h0[2][1] && tot(h1) === tot(h0), `${JSON.stringify(h0)} → ${JSON.stringify(h1)}`)
+  await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(1500)
+  const h2 = await hOf()
+  ok('刷新后侧栏块高还在', JSON.stringify(h2) === JSON.stringify(h1), JSON.stringify(h2))
+  await dblSplit('side-0', 0.5)
+  const h3 = await hOf()
+  ok('双击侧栏分隔线回默认分配', JSON.stringify(h3) === JSON.stringify(h0) && (await sizesNow()).side == null, JSON.stringify(h3))
+
+  ok('布局与拖动：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
+}
+
+const ALL = { chart: partChart, layout: partLayout, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
 for (const k of PARTS.length ? PARTS : Object.keys(ALL)) {
   console.log(`\n══ ${k} ══`)
   try { await ALL[k]() } catch (e) { ok(`${k} 段跑完`, false, String(e.stack || e).split('\n').slice(0, 3).join(' ')); await page.screenshot({ path: `${OUT}/回归-失败-${k}.png` }).catch(() => {}) }
