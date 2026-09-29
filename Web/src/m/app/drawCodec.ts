@@ -27,6 +27,7 @@ import type { Body, Json, SyncObject } from '../../sync/types'
 import { type Drawing, encodeDrawing, tryDecodeDrawing, drawingIsValid, cloneDrawing, drawingsEqual } from '../chart/draw/drawing'
 import { type DrawAge, DrawArchive, DrawingPreferences, decodePreferences, encodePreferences } from '../chart/draw/archive'
 import { canonicalInstrument } from '../chart/draw/instrument'
+import { coinbaseSymbol, validSymbol } from '../../sync/codec'
 
 export const PREFS_COLLECTION = 'drawingPreferences'
 export const PREFS_ID = 'tools'
@@ -57,13 +58,11 @@ export function instrumentOf(o: SyncObject): string {
 }
 const localId = (o: SyncObject): string => o.id.slice(o.id.lastIndexOf('/') + 1)
 
-const SEG = /^[a-z0-9_]+$/
-const SYM = /^[A-Z0-9_-]+$/
-/** 服务端收得下的桶键（sync_validation.rs 的 venue / market / symbol） */
+/** 服务端收得下的桶键（sync_validation.rs 的 venue / market / symbol：代号按 binance_symbol 或 coinbase_symbol，不分交易所） */
 export function syncableKey(key: string): boolean {
   const p = key.split('/')
   return p.length === 3 && key.length <= 128 && (p[0] === 'binance' || p[0] === 'coinbase') && (p[1] === 'usd_m' || p[1] === 'spot')
-    && SEG.test(p[0]) && SEG.test(p[1]) && SYM.test(p[2])
+    && (validSymbol(p[2]) || coinbaseSymbol(p[2]))
 }
 
 /** 这条线能不能上云（桶键合规、线本身合法、id 没有斜杠、端点在服务端的范围里） */

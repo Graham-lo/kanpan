@@ -34,11 +34,22 @@ export const MARKET = 'usd_m'
 export const ALERT_MARKET = 'binance/usd_m'
 const PREFIX = `${VENUE}/${MARKET}/`
 
-/** 服务端 `sync_validation.rs` 的币安代号规则 */
+const QUOTE_ASSETS = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'USD1', 'TUSD'] // instruments.rs QUOTE_ASSETS
+/** 一个字符是 ASCII 大写 / 数字，或非 ASCII 的 Unicode 字母数字（Rust char::is_alphanumeric = Alphabetic ∪ Nd/Nl/No） */
+const symbolChar = (c: string): boolean => /^[A-Z0-9]$/.test(c) || (c.codePointAt(0)! > 0x7f && /^[\p{Alphabetic}\p{N}]$/u.test(c))
+/** 服务端 `sync_validation.rs` binance_symbol 的币安代号规则：按字符数（不按 UTF-16 长度）最长 40；
+ *  ASCII 大写、数字，或非 ASCII 的 Unicode 字母数字（币安上架过「币安人生USDT」这种中文底名的合约）；
+ *  以计价资产结尾，且前面还有底名。iOS 这些代号照常同步——只认 ASCII 的话网页管不着它们，
+ *  PC 推自选时还会把它们当成「本机删了」发删除。 */
 export function validSymbol(s: string): boolean {
-  if (!s || s.length > 40) return false
-  if (!/^[A-Z0-9]+$/.test(s)) return false
-  return /(USDT|USDC|FDUSD|BUSD|USD1|TUSD)$/.test(s)
+  if (!s) return false
+  const chars = [...s]
+  if (chars.length > 40 || !chars.every(symbolChar)) return false
+  return QUOTE_ASSETS.some(q => s.length > q.length && s.endsWith(q))
+}
+/** 服务端 coinbase_symbol：`BASE-USD`，BASE 只有 ASCII 大写与数字 */
+export function coinbaseSymbol(s: string): boolean {
+  return s.length <= 40 && /^[A-Z0-9]+-USD$/.test(s)
 }
 /** 标题里用的品种名：去掉计价币（和手机 `Alert.base(of:)` 一致） */
 export function baseName(s: string): string { return s.replace(/(USDT|USDC|FDUSD|BUSD|USD1|TUSD)$/, '') || s }

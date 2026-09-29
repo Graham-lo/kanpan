@@ -67,3 +67,58 @@ describe('第一次对上比「谁新」：本机钟与服务器钟不一致', (
     expect(s.pinned).toEqual(['15m'])
   })
 })
+
+describe('中文底名的币安合约（币安人生USDT 这类）：代号规则与服务端 binance_symbol 一致', () => {
+  const fav = (symbol: string, order: number) => ({ collection: 'favorites', id: 'binance/usd_m/' + symbol, body: { symbol, market: 'usd_m', venue: 'binance', groupId: null, order }, fields: {}, revision: 1, deleted: false, generation: 0 })
+
+  it('代号判定：中文底名收、计价资产前没有底名不收、带下划线的交割 / 币本位不收（服务端也不收）', async () => {
+    const { validSymbol } = await import('../src/sync/codec')
+    expect(validSymbol('币安人生USDT')).toBe(true)
+    expect(validSymbol('我踏马来了USDT')).toBe(true)
+    expect(validSymbol('BTCUSDT')).toBe(true)
+    expect(validSymbol('USDT')).toBe(false)
+    expect(validSymbol('btcusdt')).toBe(false)
+    expect(validSymbol('BTCUSD_PERP')).toBe(false)
+    expect(validSymbol('币安 人生USDT')).toBe(false)
+    expect(validSymbol('币'.repeat(37) + 'USDT')).toBe(false) // 41 个字
+    expect(validSymbol('币'.repeat(36) + 'USDT')).toBe(true) // 40 个字（字节数远超 40）
+  })
+
+  it('PC 网页：云端有 iOS 加的「币安人生USDT」自选，网页推自选时不再把它当成被删掉', async () => {
+    const { encodeFavorites, decodeFavorites } = await import('../src/sync/codec')
+    const kctx = { ...ctx, kindOf: (s: string) => (s === '币安人生USDT' || s === 'BTCUSDT' || s === 'ETHUSDT' ? 'crypto' as const : ctx.kindOf(s)) }
+    const cloud = [fav('BTCUSDT', 0), fav('币安人生USDT', 1)]
+    const watch = decodeFavorites(cloud, kctx)
+    expect(watch.crypto).toEqual(['BTCUSDT', '币安人生USDT'])
+    watch.crypto.push('ETHUSDT')
+    const out = encodeFavorites(watch, cloud, kctx)
+    expect(out.filter(o => o.deleted).map(o => o.id)).toEqual([])
+    expect(out.filter(o => !o.deleted).map(o => o.body.symbol)).toEqual(['BTCUSDT', '币安人生USDT', 'ETHUSDT'])
+  })
+
+  it('手机网页：云端的中文底名自选装得进来，本机加的也推得上去', () => {
+    const local = { favorites: [] as string[], groups: [], groupForSymbol: {} }
+    const got = C.decodeFavorites([fav('币安人生USDT', 0)], [], local)
+    expect(got.favorites).toEqual(['币安人生USDT'])
+    const out = C.encodeFavorites({ favorites: ['龙虾USDT'], groups: [], groupForSymbol: {} }, [], [])
+    expect(out.filter(o => o.collection === 'favorites' && !o.deleted).map(o => o.body.symbol)).toEqual(['龙虾USDT'])
+  })
+
+  it('手机网页画线：中文底名的桶键可以上云，带下划线的币本位代号不上（服务端会整条 400）', async () => {
+    const { syncableKey } = await import('../src/m/app/drawCodec')
+    expect(syncableKey('binance/usd_m/币安人生USDT')).toBe(true)
+    expect(syncableKey('binance/usd_m/BTCUSDT')).toBe(true)
+    expect(syncableKey('coinbase/spot/BTC-USD')).toBe(true)
+    expect(syncableKey('binance/usd_m/BTCUSD_PERP')).toBe(false)
+    expect(syncableKey('binance/usd_m/BTC-USD')).toBe(true) // 服务端 symbol() 不分交易所，照收
+  })
+})
+
+describe('手机网页当前品种', () => {
+  it('停在中文底名合约上刷新，回来还是它，不跳回 BTC', async () => {
+    const { hydrate } = await import('../src/m/app/store')
+    expect(hydrate({ symbol: '币安人生USDT' }).symbol).toBe('币安人生USDT')
+    expect(hydrate({ symbol: 'ETHUSDT' }).symbol).toBe('ETHUSDT')
+    expect(hydrate({ symbol: '<img src=x>' }).symbol).toBe('BTCUSDT')
+  })
+})
