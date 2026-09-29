@@ -305,3 +305,16 @@ export function heatEdges(ivMs: number, from: number, to: number, pxPerMs: numbe
   for (let t = start; t <= to + w && edges.length < 20_000; t += w) edges.push(t)
   return edges
 }
+
+/** 热力最亮（到 p95 及以上）的浓度：再高蜡烛就被压暗了 */
+export const HEAT_MAX_ALPHA = 0.4
+/**
+ * 数据边沿的淡入系数（0–1]：离 first / last 还不到 span 格的线性变淡，免得最早有数据的那一列、
+ * 簿深度的上下沿在图上切出一道硬边。span ≤ 0 不淡入。
+ */
+export function edgeFade(i: number, first: number, last: number, span: number): number {
+  if (span <= 0) return 1
+  return Math.max(0, Math.min(1, (i - first + 1) / (span + 1), (last - i + 1) / (span + 1)))
+}
+/** 一格热力的浓度：回填段与实时段同一个 p95 归一，所以两段接缝处浓淡连续 */
+export const heatAlpha = (v: number, p95: number): number => (p95 > 0 && v > 0 ? Math.pow(Math.min(1, v / p95), 0.8) * HEAT_MAX_ALPHA : 0)

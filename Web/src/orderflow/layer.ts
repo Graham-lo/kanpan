@@ -1,7 +1,8 @@
 /* Hkline Web · 主力订单流 · 画在 K 线图上的三层（设计稿 2.3 / 2.4 / 2.5）
  *
- * 蜡烛下面：深度热力（开了才画）→ 大单带（首见 → 结束，挂着的拉到右边）。
- * 蜡烛上面：大额成交的点、梯子悬停那一行的淡色横带。
+ * 最底下（成交量柱之下）：深度热力（开了才画）。
+ * 蜡烛下面：大单带——只画值得看的几道（取舍见 bands.ts），挂着的铺底、结束的一道细线。
+ * 蜡烛上面：结束记号与右端标签（躲开蜡烛）、大额成交的点、梯子悬停那一行的淡色横带。
  * 行高和梯子是同一套「k 个细桶一行」，所以热力的格子、大单带的厚度和梯子的行一一对齐。
  * 时间 t 在图上的 x：timeToX(t) − 半根 K 线宽（一根 K 线的时间段正好铺满它的宽度）。
  */
@@ -12,14 +13,20 @@ import { orderId } from './types'
 import { shows } from './settings'
 import { bucketIndex } from './bucket'
 import { rowOf, exName, venueName, outcomeText, EXCHANGE_NAMES } from './aggregate'
-import { HeatCache, percentile, type HeatCol } from './heat'
-import { OF, rowsPerLine, bandColor, rgbOf, showCard, hideCard, amt, hms, mdhm, durShort, PRODUCT_FULL, decFor, px, peak, canvasFont } from './state'
+import { HeatCache, percentile, heatAlpha, edgeFade, type HeatCol } from './heat'
+import { pickBands, liveAlpha, placeLabels, placeMark, MAX_MARKS, ENDED_LINE, HIGHLIGHT_ALPHA, type Rect } from './bands'
+import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCard, amt, hms, mdhm, durShort, PRODUCT_FULL, decFor, px, peak, canvasFont } from './state'
 import { esc } from '../ui/dom'
 import { hexA } from '../util/format'
 
 interface BandHit { x0: number; x1: number; y0: number; y1: number; o: BigOrder; id: string }
 interface DotHit { x: number; y: number; r: number; i: number }
 interface HeatDraw { cols: HeatCol[]; xs: number[]; ws: number[]; rowLo: number; rowHi: number; k: number; step: number; top: number; bottom: number }
+
+function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  c.beginPath()
+  if (typeof c.roundRect === 'function') c.roundRect(x, y, w, h, r); else c.rect(x, y, w, h)
+}
 
 const xOf = (g: ChartGeometry, t: number): number => g.timeToX(t) - g.spacing / 2
 
@@ -79,14 +86,20 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     const data = ic.createImageData(W, rows)
     const [cr, cg, cb] = rgbOf(g.colors.accent)
     const d = data.data
+    // 边沿淡入：最早有数据的那一列往右约 24 px、每列簿深度的上下沿约 10 px，免得数据起点切出硬边
+    let first = -1
+    for (let ci = 0; ci < W && first < 0; ci++) if (cols[ci].n) first = ci
+    const colSpan = Math.round(24 / Math.max(0.5, ws[0] || 1))
+    const rowSpan = Math.round(10 / Math.max(0.5, g.pane.h / rows))
     for (let ci = 0; ci < W; ci++) {
       const col = cols[ci]
+      const fx = first < 0 ? 1 : edgeFade(ci, first, Infinity, colSpan)
       for (let i = 0; i < col.n; i++) {
         const r = col.lo + i
         if (r < rowLo || r > rowHi) continue
         const v = col.vals[i]
         if (!(v > 0)) continue
-        const a = Math.pow(Math.min(1, v / p95), 0.8) * 0.78
+        const a = heatAlpha(v, p95) * fx * edgeFade(i, 0, col.n - 1, rowSpan)
         const o = ((rowHi - r) * W + ci) * 4
         d[o] = cr; d[o + 1] = cg; d[o + 2] = cb; d[o + 3] = Math.round(a * 255)
       }
@@ -105,16 +118,35 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     heat = { cols, xs, ws, rowLo, rowHi, k, step, top: g.pane.y, bottom: g.pane.y + g.pane.h }
   }
 
+  interface Vis { o: BigOrder; id: string; live: boolean; x0: number; x1: number; y0: number; h: number; mid: number; pk: number }
+  /** 这一帧要画的带（under 画底、over 画记号和标签共用） */
+  let plan: { live: Vis[]; ended: Vis[]; dark: boolean } | null = null
+
+  /** 一个矩形压没压到蜡烛（影线 + 实体，左右各留 1 px） */
+  function hitsCandles(g: ChartGeometry, r: Rect): boolean {
+    const i0 = Math.floor(g.xToIndex(r.x)) - 1, i1 = Math.ceil(g.xToIndex(r.x + r.w)) + 1
+    const half = Math.max(1.5, g.spacing * 0.42) + 1
+    for (let i = Math.max(i0, g.from - 1); i <= Math.min(i1, g.to + 1); i++) {
+      const b = g.bar(i)
+      if (!b) continue
+      const cx = g.indexToX(i)
+      if (cx + half < r.x || cx - half > r.x + r.w) continue
+      const yT = g.priceToY(b.h), yB = g.priceToY(b.l)
+      if (yB + 1 >= r.y && yT - 1 <= r.y + r.h) return true
+    }
+    return false
+  }
+
+  /** 蜡烛下面：挂着的带铺底（0.14–0.20，最大的最深），结束的只画一道细线；不描边 */
   function drawBands(c: CanvasRenderingContext2D, g: ChartGeometry, k: number, step: number): void {
     bands = []
+    plan = null
     const snap = OF.snap
     if (!snap || !st.orderFlow) return
     const rs = step * k
     const tFrom = g.timeOf(g.from - 1), tTo = g.timeOf(g.to + 2)
     const top = g.pane.y, bottom = g.pane.y + g.pane.h
-    // 先挑出画面里的带，再按峰值定浓淡：最大的几道 0.35，小的淡到 0.06（短命的撤单不画末端记号）——几百道叠在一起时 K 线仍读得出来
-    const vis: { o: BigOrder; id: string; x0: number; w: number; y0: number; h: number; mid: number; pk: number }[] = []
-    let maxPk = 0
+    const cands: Vis[] = []
     for (const o of snap.orders) {
       if (!shows(OF.prefs.display, o)) continue
       const end = o.endMs
@@ -123,58 +155,80 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       const r = rowOf(o.bucket, k)
       const yT = g.priceToY((r + 1) * rs), yB = g.priceToY(r * rs)
       const mid = (yT + yB) / 2
+      if (mid > bottom || mid < top) continue
       const h = Math.max(3, Math.min(24, yB - yT))
-      const y0 = mid - h / 2
-      if (y0 > bottom || y0 + h < top) continue
       const x0 = Math.max(-2, xOf(g, o.firstSeenMs))
       const x1 = end == null ? g.plotW : Math.min(g.plotW, xOf(g, end))
       if (x1 < 0 || x0 > g.plotW) continue
       const id = orderId(o)
-      const pk = peak(o, id)
-      if (pk > maxPk) maxPk = pk
-      vis.push({ o, id, x0, w: Math.max(2, x1 - x0), y0, h, mid, pk })
+      cands.push({ o, id, live: end == null, x0, x1: Math.max(x0 + 2, x1), y0: mid - h / 2, h, mid, pk: peak(o, id) })
     }
-    vis.sort((a, b) => a.pk - b.pk)
-    c.font = canvasFont(11, 500)
-    c.textBaseline = 'middle'
-    const labels: [string, number, number, string, number][] = []
-    for (const { o, id, x0, w, y0, h, mid, pk } of vis) {
-      const hl = OF.highlight === id
-      const rel = Math.sqrt(pk / (maxPk || 1))
-      const a = hl ? 0.6 : 0.06 + 0.29 * rel
-      c.fillStyle = bandColor(o.product, o.side, a)
-      c.fillRect(x0, y0, w, h)
-      // 左端一道实色，读得出「从这里开始」
-      c.fillStyle = bandColor(o.product, o.side, Math.min(0.9, a * 2.4))
-      c.fillRect(x0, y0, Math.min(2, w), h)
-      if (hl) { c.strokeStyle = g.colors.accent; c.lineWidth = 1.5; c.strokeRect(x0 + .5, y0 + .5, w - 1, h - 1) }
-      // 撤掉的单最多，□ 只给够宽又够大的；成交（▲）更有信息量，门槛放低
-      if (o.endMs != null && (hl || (o.status === 'filled' || o.filledNotional > 0 ? w >= 16 || rel >= 0.5 : w >= 40 && rel >= 0.35))) endMark(c, o, x0 + w, mid, Math.min(10, Math.max(6, h)))
-      bands.push({ x0, x1: x0 + w, y0, y1: y0 + h, o, id })
-      // 右端的小标签：峰值名义 + 交易所（带宽 ≥ 80 px 才标，否则靠悬停）
-      if (w >= 80) labels.push([`${amt(pk)} ${venueName(exName(o.exchange), o.product)}`, x0 + w - (o.endMs != null ? 12 : 6), h >= 13 ? mid : y0 - 7, bandColor(o.product, o.side, 1), pk])
+    const dark = isDarkBg(g.colors.bg)
+    const pick = pickBands(cands, OF.highlight)
+    plan = { ...pick, dark }
+    // 结束的：1 px 细线（在蜡烛下面）
+    for (const v of pick.ended) {
+      const hl = OF.highlight === v.id
+      c.fillStyle = bandColor(v.o.product, v.o.side, hl ? 0.9 : ENDED_LINE[dark ? 'dark' : 'light'], dark)
+      c.fillRect(v.x0, Math.round(v.mid) - (hl ? 1 : 0), v.x1 - v.x0, hl ? 2 : 1)
+      bands.push({ x0: v.x0, x1: v.x1, y0: v.mid - 4, y1: v.mid + 4, o: v.o, id: v.id })
     }
-    // 标签最后画，免得被带盖住；大的优先，互相压着的只留先到的，最多 12 个
-    c.textAlign = 'left'
-    labels.sort((a, b) => b[4] - a[4])
-    const placed: [number, number, number, number][] = []
-    for (const [t, xr, y, col] of labels) {
-      if (placed.length >= 12) break
-      if (y < top + 6 || y > bottom - 6) continue
-      const w = c.measureText(t).width
-      const x = Math.max(4, Math.min(xr, g.plotW - 4) - w)
-      if (placed.some(([a, b, cc, d]) => x - 3 < cc && x + w + 3 > a && y - 7 < d && y + 7 > b)) continue
-      placed.push([x - 3, y - 7, x + w + 3, y + 7])
-      c.fillStyle = hexA(g.colors.bg, 0.78)
-      c.fillRect(x - 3, y - 7, w + 6, 14)
-      c.fillStyle = col
-      c.fillText(t, x, y)
+    // 挂着的：小的先画、大的后画
+    const n = pick.live.length
+    for (let rank = n - 1; rank >= 0; rank--) {
+      const v = pick.live[rank]
+      const hl = OF.highlight === v.id
+      c.fillStyle = bandColor(v.o.product, v.o.side, hl ? HIGHLIGHT_ALPHA : liveAlpha(rank, n, dark), dark)
+      c.fillRect(v.x0, v.y0, v.x1 - v.x0, v.h)
+      if (hl) { c.strokeStyle = g.colors.accent; c.lineWidth = 1; c.strokeRect(v.x0 + .5, v.y0 + .5, v.x1 - v.x0 - 1, v.h - 1) }
+      bands.push({ x0: v.x0, x1: v.x1, y0: v.y0, y1: v.y0 + v.h, o: v.o, id: v.id })
     }
   }
 
-  function endMark(c: CanvasRenderingContext2D, o: BigOrder, x: number, y: number, s: number): void {
-    const col = bandColor(o.product, o.side, 1)
-    c.fillStyle = col; c.strokeStyle = col; c.lineWidth = 1.5
+  /** 蜡烛上面：结束记号（峰值前几道，躲开蜡烛）与右端标签（最多 8 个、互不重叠、不压价格轴、不压蜡烛） */
+  function drawBandMarks(c: CanvasRenderingContext2D, g: ChartGeometry): void {
+    const p = plan
+    if (!p) return
+    const top = g.pane.y, bottom = g.pane.y + g.pane.h
+    const blocked = (r: Rect): boolean => hitsCandles(g, r)
+    const marked = new Set<string>()
+    const byPk = [...p.ended].sort((a, b) => b.pk - a.pk)
+    const S = 7
+    for (let i = 0; i < byPk.length; i++) {
+      const v = byPk[i]
+      if (i >= MAX_MARKS && OF.highlight !== v.id) continue
+      if (v.x1 > g.plotW - 2) continue
+      const m = placeMark(v.x1, v.mid, S, v.x0, g.spacing, blocked, bottom)
+      endMark(c, v.o, m.x, m.y, S, p.dark)
+      marked.add(v.id)
+    }
+    c.font = canvasFont(11, 600)
+    c.textBaseline = 'middle'
+    c.textAlign = 'left'
+    const all = [...p.live, ...p.ended]
+    const texts = all.map(v => `${amt(v.pk)} ${venueName(exName(v.o.exchange), v.o.product)}`)
+    const H = 16
+    const reqs = all.map((v, i) => ({
+      right: (v.live ? v.x1 - 6 : v.x1 - (marked.has(v.id) ? 12 : 4)), left: v.x0 + 2,
+      y: v.mid, w: Math.ceil(c.measureText(texts[i]).width) + 10, h: H, prio: v.pk + (OF.highlight === v.id ? 1e18 : 0),
+    }))
+    const spots = placeLabels(reqs, { top: top + 2, bottom: bottom - 2, maxRight: g.plotW - 6 }, blocked)
+    for (let i = 0; i < all.length; i++) {
+      const r = spots[i]
+      if (!r) continue
+      const v = all[i]
+      c.fillStyle = hexA(g.colors.bg, p.dark ? 0.55 : 0.6)
+      rrect(c, r.x, r.y, r.w, r.h, 3); c.fill()
+      c.fillStyle = bandColor(v.o.product, v.o.side, p.dark ? 0.24 : 0.16, p.dark)
+      rrect(c, r.x, r.y, r.w, r.h, 3); c.fill()
+      c.fillStyle = bandInk(v.o.product, v.o.side, p.dark)
+      c.fillText(texts[i], r.x + 5, r.y + r.h / 2 + 0.5)
+    }
+  }
+
+  function endMark(c: CanvasRenderingContext2D, o: BigOrder, x: number, y: number, s: number, dark: boolean): void {
+    const col = bandInk(o.product, o.side, dark)
+    c.fillStyle = col; c.strokeStyle = col; c.lineWidth = 1.25
     if (o.status === 'filled') {
       c.beginPath(); c.moveTo(x, y - s / 2); c.lineTo(x + s / 2, y + s / 2); c.lineTo(x - s / 2, y + s / 2); c.closePath(); c.fill()
     } else if (o.status === 'cancelled') {
@@ -266,18 +320,28 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       <div class="of-card-r"><span>金额</span><b class="num">${amt(t.usd)}</b></div>`
   }
 
+  const stepK = (g: ChartGeometry): [number, number] | null => {
+    if (!mine()) return null
+    const step = OF.feed?.model.scheme?.step
+    return step ? [step, rowsPerLine(g, step, cellOf().iv)] : null
+  }
+
   return {
+    // 热力铺在成交量柱与蜡烛、均线之下；同一帧里所有列（回填 + 实时）用同一个 p95 归一
+    back(c, g) {
+      geo = g
+      const sk = stepK(g)
+      if (sk && OF.prefs.heat) drawHeat(c, g, sk[1], sk[0]); else heat = null
+    },
     under(c, g) {
       geo = g
-      if (!mine()) { bands = []; heat = null; return }
-      const step = OF.feed?.model.scheme?.step
-      if (!step) { bands = []; heat = null; return }
-      const k = rowsPerLine(g, step, cellOf().iv)
-      if (OF.prefs.heat) drawHeat(c, g, k, step); else heat = null
-      drawBands(c, g, k, step)
+      const sk = stepK(g)
+      if (!sk) { bands = []; plan = null; return }
+      drawBands(c, g, sk[1], sk[0])
     },
     over(c, g) {
       if (!mine()) { dots = []; return }
+      drawBandMarks(c, g)
       drawDots(c, g)
       drawHoverRow(c, g)
     },

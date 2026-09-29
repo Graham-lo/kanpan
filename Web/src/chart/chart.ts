@@ -173,9 +173,15 @@ export interface ChartGeometry {
   dec: number
   /** 最后一根 K 线的收盘（没有就 null） */
   last: number | null
+  /** 第 i 根 K 线的开高低收（没有就 null）：订单流的记号要躲开蜡烛 */
+  bar: (i: number) => { o: number; h: number; l: number; c: number } | null
+  /** x → 连续下标（第几根，带小数） */
+  xToIndex: (x: number) => number
 }
 /** 外挂的绘制层：under 画在蜡烛下面，over 画在画线上面；hover / click 返回 true 表示这一下归它 */
 export interface ChartLayer {
+  /** 画在成交量柱与蜡烛之下（深度热力这种铺底的） */
+  back?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
   under?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
   over?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
   after?: (g: ChartGeometry) => void
@@ -378,6 +384,8 @@ export class TVChart {
       timeToX: t => this.indexToX(this.indexAt(t)), xToTime: x => this.timeOfIndex(this.xToIndex(x)),
       timeOf: i => this.timeOfIndex(i), indexToX: i => this.indexToX(i),
       colors: this.colors, dec: this.meta.dec, last: this.lastBar()?.c ?? null,
+      bar: i => { const b = this.bars[i]; return b ? { o: b.o, h: b.h, l: b.l, c: b.c } : null },
+      xToIndex: x => this.xToIndex(x),
     }
   }
   /** 连续下标 → 时间（indexAt 的反函数） */
@@ -538,8 +546,9 @@ export class TVChart {
 
     // 主图
     c.save(); c.beginPath(); c.rect(0, mainPane.y, PW, mainPane.h); c.clip()
-    if (this.ind.vol && !this.hidden.has('vol')) this.drawVolume(mainPane, from, to)
     const geo = this.layers.length ? this.geometry() : null
+    if (geo) for (const l of this.layers) if (l.back) { c.save(); l.back(c, geo); c.restore() }
+    if (this.ind.vol && !this.hidden.has('vol')) this.drawVolume(mainPane, from, to)
     if (geo) for (const l of this.layers) if (l.under) { c.save(); l.under(c, geo); c.restore() }
     if (this.walls && !this.hidden.has('walls')) this.drawWalls(mainPane, mr, from, to)
     if (this.markers) this.drawTradeSpan(mainPane, mr)

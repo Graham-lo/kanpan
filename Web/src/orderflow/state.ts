@@ -122,11 +122,25 @@ function hexToHsl(hex: string): [number, number, number] {
   const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4
   return [h * 60, s, l]
 }
-export function bandColor(p: Product, side: 'bid' | 'ask', a: number): string {
+/** dark = 深色皮肤：同一色相提亮、降一点饱和，免得在深底上发刺（浓淡另由 bands.ts 按皮肤定） */
+export function bandColor(p: Product, side: 'bid' | 'ask', a: number, dark = false): string {
   const k = p + side
   let hsl = cache.get(k)
   if (!hsl) { const [h, s, l] = hexToHsl(PRODUCT_HEX[p]); hsl = [(h + (side === 'bid' ? -12 : 12) + 360) % 360, s, l]; cache.set(k, hsl) }
-  return `hsla(${hsl[0].toFixed(0)},${(hsl[1] * 100).toFixed(0)}%,${(hsl[2] * 100).toFixed(0)}%,${a})`
+  const sat = dark ? hsl[1] * 0.78 : hsl[1], lig = dark ? Math.min(0.74, hsl[2] + 0.14) : hsl[2]
+  return `hsla(${hsl[0].toFixed(0)},${(sat * 100).toFixed(0)}%,${(lig * 100).toFixed(0)}%,${a})`
+}
+/** 标签上的字：浅色皮肤压暗一点过对比度，深色皮肤提亮 */
+export function bandInk(p: Product, side: 'bid' | 'ask', dark = false): string {
+  bandColor(p, side, 1)
+  const hsl = cache.get(p + side)!
+  const lig = dark ? 0.8 : Math.max(0.3, hsl[2] - 0.14)
+  return `hsl(${hsl[0].toFixed(0)},${(hsl[1] * (dark ? 0.7 : 0.9) * 100).toFixed(0)}%,${(lig * 100).toFixed(0)}%)`
+}
+/** 底色是不是深色（相对亮度 < 0.35） */
+export function isDarkBg(bg: string): boolean {
+  const [r, g, b] = rgbOf(bg)
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.35
 }
 /** #RRGGBB → [r,g,b] */
 export function rgbOf(hex: string): [number, number, number] {
