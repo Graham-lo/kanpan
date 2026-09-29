@@ -134,6 +134,9 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 - 看体积：`SELECT pg_size_pretty(pg_total_relation_size('orderflow_heat'))`；看写入：`SELECT count(*)/12.0 FROM orderflow_heat WHERE bucket_ms > (SELECT max(bucket_ms)-60000 FROM orderflow_heat)`（每 5 秒几行）。
 - 2026-09-29 线上稳态（154 只）：每 5 秒约 460 行 / 1.85 万桶，一行约 626 字节（含索引约 713），一天约 5.6 GB，3 天约 17 GB；满额 220 只约 24 GB。
   写库 10 分钟忙约 8 秒。冷启动头几分钟币安快照还在排队，行数从几十爬到稳态。
+- 读（2026-09-29 瘦身）：带 `lo`/`hi`、`around`/`pct` 或 `bucketMs` 的是网页版的收窄请求，上限 1.4 万行、最多抽 720 张快照；抽样按主键点查 `bucket_ms = ANY(…)`。同参数 5 秒内只读一次库，答复 `Cache-Control: public, max-age=5`。热力与 `/history` 共用两个读名额（`HISTORY_READS`）。
+  自测：服务器上 `curl -s -o /dev/null -w '%{time_total} %{size_download}\n' -H 'accept-encoding: gzip' "http://127.0.0.1:8794/v1/market/orderflow/heat?base=BTC&from=<ms>&to=<ms>&bucketMs=10000&around=<现价>&pct=5"`，7 小时约 60 ms、55 KB gzip。慢语句日志里若还有 `h.bucket_ms BETWEEN $2 AND $3` 的整段读（1–2 秒），那是不带新参数的老请求（6 小时以内按 30 s 格不抽样），不是网页版。
+  看计划：`python3 ops/test.py --lib -- explain_old_join_against_primary_key_sampling --ignored --nocapture`（开发机，临时库），新旧两种写法并排打 EXPLAIN ANALYZE。
 - 删表回退：这张表只给热力图用，停掉只要回滚二进制；表可以 `TRUNCATE orderflow_heat` 腾空间，不影响大单历史。
 
 ### 上线
