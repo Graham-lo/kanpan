@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-skin="sage" data-updown="red-up">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="referrer" content="no-referrer">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+<meta name="color-scheme" content="light dark">
+<title>图表实验台 · Hkline</title>
+<!-- 仅开发：/web/m/lab.html 整屏一张真数据图，给图表引擎验收与截图用；不在 rollup input 里，不会进产物。
+     参数：skin=sage|terra|classic theme=light|dark sym=BTCUSDT iv=1h main=MA,BOLL subs=VOL,MACD,RSI
+           of=1（主力订单流） cross=0.62（十字线落在图区宽度的这个比例） land=1（横屏画线台：只留原始 K 线） -->
+<script>
+  var q = new URLSearchParams(location.search), r = document.documentElement
+  var k = q.get('skin'), t = q.get('theme')
+  if (k === 'sage' || k === 'terra' || k === 'classic') r.dataset.skin = k
+  r.dataset.theme = t === 'dark' || t === 'light' ? t : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+</script>
+<style>
+  #lab { position: fixed; left: 0; right: 0; top: env(safe-area-inset-top); bottom: env(safe-area-inset-bottom) }
+  #lab-status { position: fixed; left: 8px; bottom: calc(env(safe-area-inset-bottom) + 4px); font: 11px/1.2 -apple-system, sans-serif; color: var(--ink-3, #888); pointer-events: none }
+</style>
+</head>
+<body>
+<div id="lab"></div>
+<div id="lab-status"></div>
+<script type="module" src="/src/m/chart/lab.ts"></script>
+</body>
+</html>

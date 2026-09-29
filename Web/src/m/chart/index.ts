@@ -5,7 +5,7 @@
 //
 // 对外只有 createChart(host, opts) 一个入口，合同写在同目录 README.md。
 
-import { klines, on as onMarket, S, streamName } from '../../market'
+import { j, on as onMarket, REST, S, streamName } from '../../market'
 import type { Bar as MarketBar } from '../../chart/calc'
 import type { IndicatorID } from '../indicator/ids'
 import { alive, placement } from '../indicator/ids'
@@ -149,9 +149,17 @@ export interface OrderFlowPort {
 
 // ================================================================ 小工具
 
-const toChartBar = (b: MarketBar): Bar => ({
-  openTime: b.t, open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v, takerBuy: b.tb ?? NaN,
-})
+/**
+ * 推送来的一根换成图表的根。手机端的量是「币」（takerBuyBaseVolume 同口径），共用行情层给的是成交额，
+ * 币量在 bv；推送里没有主动买的币量，按这一根的成交均价从主动买成交额折回（收盘后下一次补缺口会拿到原值）。
+ */
+const toChartBar = (b: MarketBar): Bar => {
+  const vol = b.bv ?? NaN
+  const tb = b.tb != null && b.v > 0 && Number.isFinite(vol) ? b.tb * vol / b.v : NaN
+  return { openTime: b.t, open: b.o, high: b.h, low: b.l, close: b.c, volume: Number.isFinite(vol) ? vol : b.v, takerBuy: tb }
+}
+
+type KlineRow = [number, string, string, string, string, string, number, string, number, string, string, ...unknown[]]
 
 function defaultSymbolInfo(symbol: string): SymbolInfo | null {
   const s = S.symbols.get(symbol.toUpperCase())
@@ -164,10 +172,30 @@ function guessDecimals(price: number): number {
   return Math.max(1, Math.min(8, 4 - Math.floor(Math.log10(price))))
 }
 
+/** 一页 K 线（KanpanCore 的 Bar：量取 r[5] 币量、主动买取 r[9] takerBuyBaseVolume）。取不到回 null。 */
 async function defaultLoad(symbol: string, iv: Interval, endTime: number | null): Promise<Bar[] | null> {
-  const r = await klines(symbol, iv, endTime ?? undefined, 1500, false)
-  return r.ok ? r.bars.map(toChartBar) : null
+  try {
+    const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${HISTORY_PAGE}${endTime ? `&endTime=${endTime - 1}` : ''}`
+    const rows = await j<KlineRow[]>(u, 10000)
+    return rows.map(r => ({ openTime: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], volume: +r[5], takerBuy: +r[9] }))
+  } catch {
+    return null
+  }
 }
+
+/**
+ * 手机端 `Prefs.chartOptions` 那一包（主界面只认这一句）：网格「经典」不画、青苔 / 陶土画淡网格，
+ * 本根倒计时常开，十字线读数写在头部、顺带报到最新价的涨跌幅，主 / 副轴双击翻转，图例折行让位。
+ * 网格跟皮肤走，所以这里不定 grid，由 compose 按当时的 data-skin 取。
+ */
+export const appChartOptions = (): ChartOptions => ({
+  ...defaultChartOptions(),
+  kind: 'candle', body: 'solid', lastLine: true, drawings: true, countdown: true, sinceChange: true,
+  anchor: 'right', bias: 'center', dataDisplay: 'top', crossPrice: 'selected',
+  allowMainInversion: true, allowSubInversion: true, adaptiveIndicators: true, portraitHeight: 0.5,
+})
+
+const skinGrid = (): ChartOptions['grid'] => (document.documentElement.dataset.skin === 'classic' ? 'off' : 'on')
 
 const sameList = <T>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
 
@@ -226,10 +254,11 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   const look: ChartLook = {
     overlays: [], subs: [], params: opts.params ?? {}, indicatorColors: opts.indicatorColors ?? {},
-    hiddenOutputs: opts.hiddenOutputs ?? {}, options: { ...defaultChartOptions(), ...(opts.options ?? {}) },
+    hiddenOutputs: opts.hiddenOutputs ?? {}, options: { ...appChartOptions(), ...(opts.options ?? {}) },
     priceMode: opts.priceMode ?? 'log', mainInverted: !!opts.mainInverted, subInverted: opts.subInverted ?? [],
     subScale: opts.subScale ?? {}, rsiUpper: opts.rsiUpper ?? 70, rsiLower: opts.rsiLower ?? 30,
   }
+  let gridAuto = opts.options?.grid === undefined
   const applyIndicators = (main: IndicatorID[], subs: IndicatorID[]) => {
     const m = alive(main).filter(id => placement(id) === 'main')
     if (m.includes('ORDERFLOW')) orderFlowOn = true
@@ -263,10 +292,12 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const price = { ...priceTransform(look.priceMode), inverted: look.mainInverted }
     const overlays = landscape ? [] : look.overlays
     const subs = landscape ? [] : look.subs
+    const options: ChartOptions = { ...look.options, grid: gridAuto ? skinGrid() : look.options.grid }
+    if (landscape) options.drawings = true
     let st = makeState({
       series: s, symbol: si, view: new ViewWindow(s.lastTime, s.step * 80), colors, price,
       overlays, subs, params: look.params, tzOffset: SHANGHAI_OFFSET_MIN, oi, magnet: true,
-      decimals: si.priceDecimals, options: landscape ? { ...look.options, drawings: true } : look.options,
+      decimals: si.priceDecimals, options,
       nowMs, subScale: look.subScale, drawings,
     })
     st = withInput(st, {
@@ -633,8 +664,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     if (key === colorKey && JSON.stringify(next) === JSON.stringify(colors)) return
     colorKey = key
     colors = next
-    const st = view.state
-    if (st) view.state = withInput(st, { colors })
+    update()
   }
   const skinObserver = new MutationObserver(refreshColors)
   skinObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-skin', 'data-theme', 'data-updown', 'class', 'style'] })
@@ -846,6 +876,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
     setCandleStyle(p) {
       const { priceMode, mainInverted, ...rest } = p
+      if (rest.grid !== undefined) gridAuto = false
       look.options = { ...look.options, ...rest }
       if (priceMode) look.priceMode = priceMode
       if (mainInverted != null) look.mainInverted = mainInverted
