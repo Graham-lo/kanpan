@@ -202,3 +202,11 @@ describe('老键迁移（hkline-m-alerts-v1 → hkline-m-v1.alerts）', () => {
     expect(mem.has('hkline-m-alerts-v1')).toBe(true)
   })
 })
+
+describe('本机存档读坏了的形状', () => {
+  it('自选归属里不是字符串的分类 id 丢掉（推上去服务端会整条拒）', async () => {
+    const { hydrate } = await import('../src/m/app/store')
+    const s = hydrate({ symbols: { favorites: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'], groups: [{ id: 'g1', name: 'A' }], groupForSymbol: { BTCUSDT: 'g1', ETHUSDT: 42, SOLUSDT: null } } })
+    expect(s.symbols.groupForSymbol).toEqual({ BTCUSDT: 'g1' })
+  })
+})

@@ -92,7 +92,8 @@ export function hydrate(raw: Record<string, unknown>): State {
       favorites: [...new Set(strs(sym.favorites))],
       recents: [...new Set(strs(sym.recents))].slice(0, 10),
       groups: Array.isArray(sym.groups) ? sym.groups.filter(g => g && typeof g.id === 'string' && g.id).map(g => ({ id: g.id, name: typeof g.name === 'string' && g.name ? g.name : g.id })) : [],
-      groupForSymbol: sym.groupForSymbol && typeof sym.groupForSymbol === 'object' ? { ...sym.groupForSymbol } : {},
+      // 归属只收「代号 → 分类 id 字符串」：别的形状推上去会被服务端整条拒掉（groupId 只收字符串）
+      groupForSymbol: sym.groupForSymbol && typeof sym.groupForSymbol === 'object' ? Object.fromEntries(Object.entries(sym.groupForSymbol).filter((e): e is [string, string] => typeof e[1] === 'string' && !!e[1])) : {},
       seeded: sym.seeded === true,
     },
     // 并进 st 之前提醒存在自己的键里：档里还没有 alerts 字段时搬一次
