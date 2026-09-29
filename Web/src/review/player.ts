@@ -5,6 +5,7 @@
  * 拖动时暂停，松手后按拖之前的状态继续。
  */
 import { TVChart } from '../chart/chart'
+import { st } from '../app/store'
 import type { Bar } from '../chart/calc'
 import { I, esc } from '../ui/dom'
 import { shTime } from '../ui/common'
@@ -42,6 +43,7 @@ export class ReplayPlayer {
     host.className = 'rv-chart-host'
     wrap.appendChild(host)
     this.chart = new TVChart(host, {})
+    this.chart.readOnly = true // 回放里只看：已有画线不能改，也不能新画
     this.chart.setIndicators({ ma: true, ema: false, boll: false, vol: true, subs: [] })
     this.overlay = new ReviewOverlay(wrap, this.chart)
     this.caption = document.createElement('div'); this.caption.className = 'rv-caption'; wrap.appendChild(this.caption)
@@ -72,6 +74,7 @@ export class ReplayPlayer {
     this.bars = bars
     if (!bars.length) { this.chart.setData([], { symbol: plan.symbol, iv: plan.step }); this.overlay.set(null, 0, meta.dec); this.renderBar(); return 'empty' }
     this.chart.setData(bars, { symbol: plan.symbol + '·' + plan.kind, iv: plan.step, title: meta.title, sub: `· ${IV_LABEL[plan.iv] || plan.iv} · 上海时间`, dec: meta.dec, badge: meta.badge })
+    this.chart.setDrawings(structuredClone((st.drawings[plan.symbol] ?? []).filter(d => d.type !== 'measure')))
     this.chart.setVisibleRange(plan.startBar, plan.stopBar)
     this.overlay.set(plan, plan.initialBar, meta.dec)
     this.seek(plan.initialBar)

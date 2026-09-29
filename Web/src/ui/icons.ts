@@ -83,6 +83,12 @@ const P: Record<string, string> = {
   rect: `<rect x="5" y="6" width="14" height="12" rx="1.5" fill="currentColor" ${D}/><rect x="5" y="6" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="5" cy="6" r="2.2" fill="currentColor"/><circle cx="19" cy="18" r="2.2" fill="currentColor"/>`,
   fib: `<path d="M3 5h18M3 9.5h18M3 13.5h18M3 19h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ${D}/><path d="M5 19L19 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="2 3"/><circle cx="5" cy="19" r="2.4" fill="currentColor"/><circle cx="19" cy="5" r="2.4" fill="currentColor"/>`,
   measure: `<rect x="3" y="7" width="18" height="10" rx="2.5" fill="currentColor" ${D}/><path d="M7 7v4M11 7v3M15 7v4M19 7v3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
+  // 锚定 VWAP：锚点一颗实心点，中线 + 上下带（带之间淡填）
+  avwap: `<path d="M5 14.5C9 13 12 9 20 7.5V11.5C12 13 9 17 5 18.5Z" fill="currentColor" ${D}/><path d="M5 16.5C9 15 12 11 20 9.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M5 5v14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ${D}/><circle cx="5" cy="16.5" r="2.6" fill="currentColor"/>`,
+  // 固定区间成交量分布：两条边界竖线夹着横向柱，最长那根是控制点
+  fvp: `<path d="M4 4v16M20 4v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ${D}/><rect x="4" y="5.5" width="6" height="2.6" rx="1.3" fill="currentColor" ${D}/><rect x="4" y="9.3" width="10" height="2.6" rx="1.3" fill="currentColor" ${D}/><rect x="4" y="13.1" width="14" height="2.6" rx="1.3" fill="currentColor"/><rect x="4" y="16.9" width="8" height="2.6" rx="1.3" fill="currentColor" ${D}/>`,
+  // 多空持仓：上面止盈（实）、下面止损（淡），中间开仓线
+  position: `<rect x="4" y="4" width="16" height="8" rx="2" fill="currentColor"/><rect x="4" y="12" width="16" height="7" rx="2" fill="currentColor" ${D}/><path d="M3 12h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
   channel: `<path d="M4 15L15 4M9 20L20 9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 15l5 5 11-11-5-5z" fill="currentColor" ${D}/><circle cx="4" cy="15" r="2.2" fill="currentColor"/><circle cx="15" cy="4" r="2.2" fill="currentColor"/>`,
 }
 

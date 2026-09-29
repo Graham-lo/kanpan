@@ -20,7 +20,7 @@ import { applyPageSizes, placePageSplits, applyGrid, placeGridSplits } from './c
 import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick, isCollapsed } from '../orderflow'
 import { deleteAlert } from '../alerts/model'
 import { alertDesc } from '../alerts/panel'
-import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, drawingAlertOf, drawingCanAlert, toggleDrawingAlert, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel } from '../alerts/model'
+import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel } from '../alerts/model'
 import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, streamIvOf, startSeconds, onSecondsTick, secondBars, secondLastBar, customKlines, customTick, customBase } from '../chart/intervals'
 import { VPVR_MODES } from '../chart/overlays'
 import { keyLevelsShown, keyLevelsOf, levelsForInterval } from '../chart/keyLevels'
@@ -34,6 +34,7 @@ import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine } from '../chart/chart'
+import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd } from './drawing'
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
@@ -80,6 +81,7 @@ function buildCells(): void {
   ensureCells(st, n)
   st.active = Math.min(st.active, n - 1)
   const area = $('#chartArea'); area.dataset.layout = st.layout
+  hideQuick()
   while (cells.length > n) { const c = cells.pop(); if (c) { cellRO?.unobserve(c.el); c.chart.destroy(); c.el.remove() } }
   for (let i = cells.length; i < n; i++) cells.push(makeCell(i))
   cells.forEach((c, i) => c.el.classList.toggle('active', i === st.active))
@@ -174,12 +176,15 @@ function makeCell(i: number): Cell {
     onCrosshairMove: t => { if (st.linkCross) cells.forEach(o => { if (o !== cell) o.chart.syncCrosshair(t) }) },
     onContextMenu: info => chartContextMenu(cell, info),
     onLegendAction: (id, act, btn) => legendAction(id, act, btn),
-    onToolDone: () => selectTool(null),
-    onSelectDrawing: d => showDrawProps(d, cell),
+    onToolDone: d => toolDone(cell, d),
+    onSelectDrawing: d => showQuick(d, cell),
     onDrawingsChanged: () => drawingsChanged(cell),
     onAlertCreate: p => quickAlert(cfg(cell).symbol, p),
     onAlertMove: (a, p) => { if (a.id) moveAlert(a.id, p) },
     drawColor: () => st.drawColor,
+    drawStyle: styleFor,
+    canAdd: add => canAdd(cfg(cell).symbol, add),
+    onDrawDrag: quickFade,
     onAutoChange: v => { $('[data-act="auto"]', el)?.setAttribute('aria-pressed', String(v)) },
     // 副图高：所有格子共用一份比例，松手落本机
     onPaneResize: r => {
@@ -243,6 +248,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const ds = drawingsFor(c.symbol)
   for (let k = ds.length - 1; k >= 0; k--) if (ds[k].type === 'measure') ds.splice(k, 1)
   cell.chart.setDrawings(ds)
+  refreshQuick()
   cell.chart.setAlerts(priceAlerts(c.symbol))
   cell.chart.setStale(st.stale)
   then?.()
@@ -299,7 +305,8 @@ function setIv(iv: string, cell: Cell | undefined = active()): void {
 
 // ------------------------------------------------------------ 画线
 export function drawingsFor(s: string): Drawing[] { return (st.drawings[s] ||= []) }
-interface Snap { s: string; json: string }
+/** 一步撤销：某只品种的画线（json），批量删除指标时再带上删之前的指标（ind） */
+interface Snap { s: string; json: string; ind?: string }
 const undoStack: Snap[] = [], redoStack: Snap[] = []
 const lastSnap: Record<string, string> = {}
 const snapOf = (s: string): string => JSON.stringify(drawingsFor(s).filter(d => d.type !== 'measure'))
@@ -312,88 +319,60 @@ export function drawingsChanged(cell: Cell): void {
   lastSnap[s] = now
   cells.forEach(c => { if (cfg(c).symbol === s) c.chart.dirty = true })
   reconcileDrawingAlerts(s, drawingsFor(s))
-  save(); renderToolbar()
+  save(); renderToolbar(); refreshQuick()
 }
-function restoreDrawings(s: string, json: string, toStack: Snap[]): void {
-  toStack.push({ s, json: snapOf(s) })
-  st.drawings[s] = JSON.parse(json) as Drawing[]; lastSnap[s] = json
+function setDrawingsOf(s: string, list: Drawing[]): void {
+  st.drawings[s] = list; lastSnap[s] = snapOf(s)
   cells.forEach(c => { if (cfg(c).symbol === s) c.chart.setDrawings(st.drawings[s]) })
   reconcileDrawingAlerts(s, st.drawings[s])
-  showDrawProps(null); save(); renderToolbar()
 }
-function undo(): void { const u = undoStack.pop(); if (!u) return; restoreDrawings(u.s, u.json, redoStack); toast('已撤销', '⌘⇧Z 重做', 'undo', 1800) }
-function redo(): void { const u = redoStack.pop(); if (!u) return; restoreDrawings(u.s, u.json, undoStack) }
+function applyInd(): void { cells.forEach(c => c.chart.setIndicators(structuredClone(st.ind))) }
+function restoreSnap(u: Snap, toStack: Snap[]): void {
+  toStack.push({ s: u.s, json: snapOf(u.s), ...(u.ind != null ? { ind: JSON.stringify(st.ind) } : {}) })
+  setDrawingsOf(u.s, JSON.parse(u.json) as Drawing[])
+  if (u.ind != null) { st.ind = JSON.parse(u.ind) as typeof st.ind; applyInd() }
+  hideQuick(); save(); renderToolbar()
+}
+function undo(): void { const u = undoStack.pop(); if (!u) return; restoreSnap(u, redoStack); toast('已撤销', '⌘ Y 或 ⌘ ⇧ Z 重做', 'undo', 1800) }
+function redo(): void { const u = redoStack.pop(); if (!u) return; restoreSnap(u, undoStack) }
 
-type ToolId = DrawingType | 'cursor'
-const TOOLS: ([ToolId, string, string] | null)[] = [
-  ['cursor', '十字光标', 'Esc'], null,
-  ['trend', '趋势线', 'Alt T'], ['ray', '射线', ''], ['hline', '水平线', 'Alt H'], ['vline', '垂直线', 'Alt V'], null,
-  ['rect', '矩形', 'Alt ⇧ R'], ['fib', '斐波那契回撤', 'Alt F'], ['measure', '测量（也可以按住 ⇧ 拖）', ''],
-]
-let tool: DrawingType | null = null
-function selectTool(t: ToolId | null): void {
-  tool = t === 'cursor' ? null : t
-  cells.forEach(c => c.chart.setTool(tool))
-  $$('#drawbar [data-tool]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === (tool || 'cursor'))))
-}
-function renderDrawbar(): void {
-  $('#drawbar').innerHTML = TOOLS.map(t => t ? `<button class="ibtn" data-tool="${t[0]}" aria-label="${t[1]}" data-tip="${t[1]}" data-kbd="${t[2]}" data-tip-side="right" aria-pressed="${t[0] === (tool || 'cursor')}">${I(t[0])}</button>` : '<div class="grp-sep"></div>').join('') +
-    `<div class="grp-sep"></div>
-    <button class="ibtn" data-dact="magnet" aria-label="磁吸" data-tip="磁吸：贴到最近的开高低收" data-tip-side="right" aria-pressed="${st.magnet}">${I('magnet')}</button>
-    <button class="ibtn" data-dact="lock" aria-label="锁定画线" data-tip="锁定全部画线" data-tip-side="right" aria-pressed="${st.drawLocked}">${I('lock')}</button>
-    <button class="ibtn" data-dact="hide" aria-label="隐藏画线" data-tip="隐藏全部画线" data-tip-side="right" aria-pressed="${st.drawHidden}">${I(st.drawHidden ? 'eyeOff' : 'eye')}</button>
-    <div class="spacer"></div>
-    <button class="ibtn" data-dact="clear" aria-label="清除画线" data-tip="清除这只品种的全部画线" data-tip-side="right">${I('trash')}</button>`
-}
 function toggleHideDrawings(): void {
   st.drawHidden = !st.drawHidden
   cells.forEach(c => { c.chart.drawingsHidden = st.drawHidden; c.chart.dirty = true })
+  if (st.drawHidden) hideQuick()
   save(); renderDrawbar()
-}
-function onDrawbarClick(e: MouseEvent): void {
-  const b = tgt(e).closest<HTMLElement>('button'); if (!b) return
-  if (b.dataset.tool) return selectTool(b.dataset.tool as ToolId)
-  const a = b.dataset.dact
-  if (a === 'magnet') { st.magnet = !st.magnet; cells.forEach(c => c.chart.setMagnet(st.magnet)) }
-  if (a === 'lock') { st.drawLocked = !st.drawLocked; Object.values(st.drawings).flat().forEach(d => { d.locked = st.drawLocked }) }
-  if (a === 'hide') return toggleHideDrawings()
-  if (a === 'clear') {
-    const s = cfg(active()).symbol, n = drawingsFor(s).length
-    if (!n) { toast('这只品种还没有画线', '', 'info', 1800); return }
-    undoStack.push({ s, json: snapOf(s) }); redoStack.length = 0; st.drawings[s] = []; lastSnap[s] = '[]'
-    cells.forEach(c => { if (cfg(c).symbol === s) c.chart.setDrawings(st.drawings[s]) })
-    showDrawProps(null)
-    toast(`已清除 ${n} 条画线`, '⌘Z 撤销', 'trash')
-  }
-  save(); renderDrawbar(); selectTool(tool); renderToolbar()
+  toast(st.drawHidden ? '画线已隐藏' : '画线已显示', '⌘ ⌥ H 切换', st.drawHidden ? 'eyeOff' : 'eye', 1500)
 }
 
-const SWATCHES = ['#2962FF', '#F23645', '#089981', '#F59E0B', '#9C27B0', '#131722']
-let propsTarget: { d: Drawing; cell: Cell } | null = null
-function showDrawProps(d: Drawing | null, cell?: Cell): void {
-  propsTarget = d && cell ? { d, cell } : null
-  const el = $('#drawProps'); if (!el) return
-  el.classList.toggle('show', !!propsTarget)
-  if (!d) { el.innerHTML = ''; return }
-  const canAlert = drawingCanAlert(d.type)
-  const hasAlert = !!drawingAlertOf(cfg(cell).symbol, d.id)
-  el.innerHTML = SWATCHES.map(c => `<button class="swatch-btn" data-color="${c}" aria-label="颜色 ${c}" aria-pressed="${d.color === c}"><span class="swatch" style="background:${c}"></span></button>`).join('') +
-    `<span class="tb-sep"></span>
-    ${[1, 2, 3].map(w => `<button class="ibtn xs" data-w="${w}" aria-pressed="${(d.width || 2) === w}" data-tip="${w} px 粗细" aria-label="${w} px"><svg class="icon-16" viewBox="0 0 16 16"><rect x="2" y="${8 - w / 2}" width="12" height="${w}" rx="${w / 2}" fill="currentColor"/></svg></button>`).join('')}
-    <span class="tb-sep"></span>
-    ${canAlert ? `<button class="ibtn xs" data-p="alert" aria-pressed="${hasAlert}" aria-label="画线提醒" data-tip="价格碰到这条线时提醒我">${I('bellPlus', 'icon-16')}</button>` : ''}
-    <button class="ibtn xs" data-p="lock" aria-pressed="${!!d.locked}" aria-label="锁定" data-tip="锁定">${I('lock', 'icon-16')}</button>
-    <button class="ibtn xs" data-p="del" aria-label="删除" data-tip="删除" data-kbd="Delete">${I('trash', 'icon-16')}</button>`
+// ---- 批量删除：这只品种的全部画线 / 全部指标 / 全部，菜单上是实时的数量，⌘Z 能撤回来
+const indCount = (): number => MAIN_TOGGLES.filter(k => st.ind[k as MainToggle]).length + st.ind.subs.length
+const drawCount = (s: string): number => drawingsFor(s).filter(d => d.type !== 'measure').length
+function clearMenu(b: HTMLElement): void {
+  const s = cfg(active()).symbol, nd = drawCount(s), ni = indCount()
+  menuFrom(b, [{ header: '删除' },
+    { icon: 'trend', label: '全部画线', sc: `${nd} 条`, disabled: !nd, run: () => bulkDelete(true, false) },
+    { icon: 'indicators', label: '全部指标', sc: `${ni} 个`, disabled: !ni, run: () => bulkDelete(false, true) },
+    { icon: 'trash', label: '全部', sc: `${nd + ni} 项`, disabled: !(nd + ni), run: () => bulkDelete(true, true) }], { width: 220 })
 }
-function drawPropsClick(e: MouseEvent): void {
-  const b = tgt(e).closest<HTMLElement>('button'); if (!b || !propsTarget) return
-  const { d, cell } = propsTarget
-  if (b.dataset.color) { d.color = b.dataset.color; st.drawColor = b.dataset.color }
-  if (b.dataset.w) d.width = +b.dataset.w
-  if (b.dataset.p === 'lock') d.locked = !d.locked
-  if (b.dataset.p === 'alert') { if (toggleDrawingAlert(cfg(cell).symbol, d)) { toast('画线提醒已开', '价格碰到这条线时通知你', 'bell'); askNotify() } }
-  if (b.dataset.p === 'del') { cell.chart.selected = d; cell.chart.deleteSelected(); return }
-  drawingsChanged(cell); showDrawProps(d, cell)
+function bulkDelete(draw: boolean, ind: boolean): void {
+  const s = cfg(active()).symbol
+  const nd = draw ? drawCount(s) : 0, ni = ind ? indCount() : 0
+  if (!nd && !ni) return
+  const snap: Snap = { s, json: snapOf(s) }
+  if (ni) {
+    snap.ind = JSON.stringify(st.ind)
+    MAIN_TOGGLES.forEach(k => { st.ind[k as MainToggle] = false }); st.ind.subs = []
+    applyInd()
+  }
+  if (nd) setDrawingsOf(s, [])
+  undoStack.push(snap); redoStack.length = 0
+  hideQuick(); save(); renderToolbar()
+  toast(`已删除${[nd ? ` ${nd} 条画线` : '', ni ? ` ${ni} 个指标` : ''].filter(Boolean).join('、')}`, '⌘ Z 撤销', 'trash')
+}
+// 回归脚本（scripts/regress.mjs「画线」）读：撤销栈深度、手里的工具、连续画、当前格子看得见的开高低收（验磁吸）
+;(globalThis as unknown as { __draw?: () => unknown }).__draw = () => {
+  const c = active(), v = c?.chart.visible()
+  return { undo: undoStack.length, redo: redoStack.length, tool: drawTool(), sticky: drawSticky(), ohlc: c && v ? c.chart.bars.slice(v.from, v.to + 1).flatMap(b => [b.o, b.h, b.l, b.c]) : [] }
 }
 
 // ------------------------------------------------------------ 工具栏
@@ -442,18 +421,15 @@ export function renderToolbar(): void {
     <button class="tb-btn" id="tbAlert" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bellPlus')}提醒</button>
     <button class="tb-btn" id="tbNote" data-tip="把这一刻记下来">${I('note')}记一笔</button>
     ${heatButtonHTML()}
-    <div class="draw-props" id="drawProps" role="toolbar" aria-label="画线属性"></div>
     <div class="tb-right">
       <button class="ibtn sm" id="tbUndo" aria-label="撤销" data-tip="撤销" data-kbd="⌘ Z" ${undoStack.length ? '' : 'disabled style="opacity:.4"'}>${I('undo')}</button>
-      <button class="ibtn sm" id="tbRedo" aria-label="重做" data-tip="重做" data-kbd="⌘ ⇧ Z" ${redoStack.length ? '' : 'disabled style="opacity:.4"'}>${I('redo')}</button>
+      <button class="ibtn sm" id="tbRedo" aria-label="重做" data-tip="重做" data-kbd="⌘ Y" ${redoStack.length ? '' : 'disabled style="opacity:.4"'}>${I('redo')}</button>
       <span class="tb-sep"></span>
       <button class="ibtn sm" id="tbLayout" aria-label="布局" data-tip="图表布局">${I(LAYOUT_ICON[st.layout])}</button>
       <button class="ibtn sm" id="tbShot" aria-label="截图" data-tip="保存图表截图" data-kbd="⌥ S">${I('camera')}</button>
       <button class="ibtn sm" id="tbShare" aria-label="分享" data-tip="分享">${I('share')}</button>
       <button class="ibtn sm" id="tbFull" aria-label="全屏" data-tip="全屏" data-kbd="⇧ F">${I('fullscreen')}</button>
     </div>`
-  $('#drawProps').addEventListener('click', drawPropsClick)
-  if (propsTarget) showDrawProps(propsTarget.d, propsTarget.cell)
 }
 function onToolbarClick(e: MouseEvent): void {
   const b = tgt(e).closest<HTMLElement>('button'); if (!b) return
@@ -546,24 +522,33 @@ function legendAction(id: string, act: string, btn?: HTMLElement): void {
   }
   if (act === 'settings' && id in CATALOG) openParams(id as IndicatorId)
 }
+/** 在价位 p 画一条水平线（右键菜单、订单流「在这里画线」）：同族样式、到上限就不画 */
+function addHlineAt(cell: Cell, t: number, p: number): void {
+  const s = cfg(cell).symbol, d = newDrawing('hline', [{ t, p }])
+  if (!cell.chart.editable() || !canAdd(s, [d])) return
+  drawingsFor(s).push(d); cell.chart.dirty = true; drawingsChanged(cell)
+}
 function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
+  // 拿着工具时右键 = 放下（连续画也退出），不弹菜单
+  if (drawTool()) { cell.chart.cancelDraft(); selectTool(null); return }
   const c = cfg(cell), s = sym(c.symbol), p = info.price
   const pt = p != null ? fmt(p, s?.dec ?? 2) : ''
   const items: MenuItem[] = []
   const dr = info.drawing
   if (dr) {
     items.push({ header: '这条画线' }, { icon: 'lock', label: dr.locked ? '解锁' : '锁定', run: () => { dr.locked = !dr.locked; drawingsChanged(cell) } },
+      { icon: 'link', label: '复制', sc: '⌘ C', disabled: dr.type === 'measure', run: () => { cell.chart.selected = dr; cell.chart.dirty = true; copyDrawing(cell) } },
       { icon: 'trash', label: '删除', sc: 'Delete', run: () => { cell.chart.selected = dr; cell.chart.deleteSelected() } }, '-')
   }
   if (p != null) items.push(
     { icon: 'bellPlus', label: `在 ${pt} 创建提醒`, run: () => quickAlert(c.symbol, p) },
-    { icon: 'hline', label: `在 ${pt} 画水平线`, sc: 'Alt H', run: () => { drawingsFor(c.symbol).push({ id: 'd' + Date.now(), type: 'hline', pts: [{ t: info.time, p }], color: st.drawColor, width: 2 }); cell.chart.dirty = true; drawingsChanged(cell) } },
+    { icon: 'hline', label: `在 ${pt} 画水平线`, sc: 'Alt H', run: () => addHlineAt(cell, info.time, p) },
     { icon: 'note', label: '在这根 K 线记一笔…', run: () => openNote(info.time, p) },
     { icon: 'link', label: `复制价格 ${pt}`, run: () => { void navigator.clipboard?.writeText(p.toFixed(s?.dec ?? 2)); toast('已复制', pt, 'check', 1500) } }, '-')
   items.push(
     { label: '重置视图', icon: 'candles', sc: 'Alt R', run: () => cell.chart.resetView() },
     { label: '对数坐标', check: true, checked: cell.chart.log, run: () => { cell.chart.setLog(!cell.chart.log); $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(cell.chart.log)) } },
-    { label: '隐藏画线', check: true, checked: st.drawHidden, run: toggleHideDrawings },
+    { label: '隐藏画线', check: true, checked: st.drawHidden, sc: '⌘ ⌥ H', run: toggleHideDrawings },
   )
   menu(items, info.clientX, info.clientY, { width: 260 })
 }
@@ -612,9 +597,16 @@ function onRailClick(e: MouseEvent): void {
   if (b.id === 'railKeys') return openShortcuts()
   const p = b.dataset.panel as PanelId
   st.panel = st.panel === p ? null : p
+  if (st.panel) st.lastPanel = st.panel
   save(); renderRail(); renderPanel()
 }
-export function openPanel(p: PanelId): void { st.panel = p; save(); renderRail(); renderPanel() }
+/** Alt ⇧ W：开 / 关侧栏（开的时候回到上一次看的那一栏） */
+function togglePanel(): void {
+  st.panel = st.panel ? null : st.lastPanel || 'watch'
+  if (st.panel) st.lastPanel = st.panel
+  save(); renderRail(); renderPanel(); layoutSlots()
+}
+export function openPanel(p: PanelId): void { st.panel = p; st.lastPanel = p; save(); renderRail(); renderPanel() }
 
 export function renderPanel(): void {
   layoutSlots()
@@ -718,7 +710,7 @@ function panelAlerts(el: HTMLElement): void { renderAlertsPanel(el, cfg(active()
 export function refreshAlerts(): void {
   cells.forEach(c => c.chart.setAlerts(priceAlerts(cfg(c).symbol)))
   renderRail(); if (st.panel === 'alerts') renderPanel()
-  if (propsTarget) showDrawProps(propsTarget.d, propsTarget.cell)
+  refreshQuick()
   refreshStreams()
 }
 
@@ -876,13 +868,34 @@ function openAlert(price?: number): void {
 // ------------------------------------------------------------ 快捷键
 export const SHORTCUTS: [string, [string, string][]][] = [
   ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['1 – 9', '栏上钉的第几个周期'], [', 再打数字', '换任意周期（如 7、240、1D、5S）'], ['↑ ↓', '自选里上一只 / 下一只'], ['Home End', '自选列表里：第一只 / 最后一只'], ['空格 Delete', '自选列表里：收藏 / 移出（⌘ Z 撤销）'], ['⇧ ↵', '在搜索里加自选']]],
-  ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt R', '重置视图'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标']]],
-  ['画线', [['Alt T', '趋势线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt F', '斐波那契回撤'], ['Alt ⇧ R', '矩形'], ['⇧ 拖', '临时测量'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z / ⌘ ⇧ Z', '撤销 / 重做']]],
-  ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['?', '这张表']]],
+  ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt R', '重置视图'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标（对所有图格同时生效）'], ['⇧ T', '图表布局'], ['Alt ⇧ W', '开 / 关侧栏']]],
+  ['画线工具', [['Alt T', '趋势线'], ['Alt J', '射线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt ⇧ R', '矩形'], ['Alt F', '斐波那契回撤'], ['双击工具', '连续画（右键或 Esc 退出）'], ['右键', '拿着工具时：放下工具'], ['⇧ 拖', '临时测量']]],
+  ['编辑画线', [['⇧ 拖端点', '吸到 45° / 水平 / 竖直'], ['按住 ⌘', '临时反过来用磁吸'], ['⌘ 拖', '复制一条再拖走'], ['⌘ C / ⌘ V', '复制 / 粘贴画线（同一只品种）'], ['← → ↑ ↓', '微移选中的画线（⇧ 10 像素）'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z', '撤销'], ['⌘ Y / ⌘ ⇧ Z', '重做'], ['⌘ ⌥ H / ⌃ ⌥ H', '隐藏 / 显示全部画线']]],
+  ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['Alt N', '记一笔'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['?', '这张表']]],
 ]
-export function kbdHTML(s: string): string { return s.split(' ').map(k => /^[直拖滚双右]/.test(k) ? `<span class="muted">${k}</span>` : k === '/' && s.includes('⌘') ? ' / ' : `<kbd>${k}</kbd>`).join(' ') }
+export function kbdHTML(s: string): string { return s.split(' ').map(k => /^[直拖滚双右按]/.test(k) ? `<span class="muted">${k}</span>` : k === '/' && /[⌘⌃]/.test(s) ? ' / ' : `<kbd>${k}</kbd>`).join(' ') }
+/** 搜快捷键：按键与说明一起搜；Alt / Option / ⌥、Cmd / ⌘、Shift / ⇧、Ctrl / ⌃ 当成同一个 */
+export function kbdNorm(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, '')
+    .replace(/option|opt|alt|⌥/g, 'alt').replace(/command|cmd|⌘/g, 'cmd').replace(/shift|⇧/g, 'shift').replace(/control|ctrl|⌃/g, 'ctrl')
+}
+export function filterShortcuts(q: string): [string, [string, string][]][] {
+  const k = kbdNorm(q)
+  if (!k) return SHORTCUTS
+  return SHORTCUTS.map(([h, rows]): [string, [string, string][]] => [h, kbdNorm(h).includes(k) ? rows : rows.filter(([a, b]) => kbdNorm(a).includes(k) || kbdNorm(b).includes(k))]).filter(([, rows]) => rows.length)
+}
 export function openShortcuts(): void {
-  dialog(`${head('快捷键')}<div class="dialog-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 48px">${SHORTCUTS.map(([h, rows]) => `<div><div class="group-title" style="margin-top:8px">${h}</div><table class="kbd-table">${rows.map(([k, v]) => `<tr><td>${kbdHTML(k)}</td><td class="muted">${v}</td></tr>`).join('')}</table></div>`).join('')}</div></div>`, '', { label: '快捷键' }).dlg.style.width = '880px'
+  const d = dialog(`${head('快捷键', `<input class="input kbd-search" id="kbdQ" type="search" placeholder="搜按键或功能，如 射线、Alt J" aria-label="搜快捷键" autocomplete="off" spellcheck="false">`)}<div class="dialog-body"><div class="kbd-grid" id="kbdGrid"></div></div>`, 'kbd-dlg', { label: '快捷键' })
+  d.dlg.style.width = '880px'
+  const q = $<HTMLInputElement>('#kbdQ', d.dlg), grid = $('#kbdGrid', d.dlg)
+  const render = (): void => {
+    const groups = filterShortcuts(q.value)
+    grid.innerHTML = groups.length
+      ? groups.map(([h, rows]) => `<div><div class="group-title">${h}</div><table class="kbd-table">${rows.map(([k, v]) => `<tr><td>${kbdHTML(k)}</td><td class="muted">${v}</td></tr>`).join('')}</table></div>`).join('')
+      : `<div class="empty kbd-none">${I('search', 'icon-24')}<div>没有「${esc(q.value.trim())}」相关的快捷键</div></div>`
+  }
+  q.addEventListener('input', render)
+  render(); q.focus()
 }
 
 // ------------------------------------------------------------ 周期快输
@@ -935,29 +948,41 @@ function onKey(e: KeyboardEvent): void {
     if (/^[0-9mhdwsMHDWS]$/.test(e.key)) { e.preventDefault(); ivInput(e.key) }
     return
   }
-  if (st.page !== 'chart') { if (e.key === '?') openShortcuts(); return }
+  if (st.page !== 'chart') { if (e.key === '?') { e.preventDefault(); openShortcuts() } return }
   const cell = active(); if (!cell) return
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'z') {
     e.preventDefault()
     const wu = e.shiftKey ? null : takeWatchUndo(); if (wu) { wu(); return }
     if (e.shiftKey) redo(); else undo()
     return
   }
-  if (e.metaKey || e.ctrlKey) return
+  if (e.metaKey || e.ctrlKey) {
+    if (e.code === 'KeyY' && !e.altKey) { e.preventDefault(); redo(); return }
+    // ⌘⌥H：macOS 自己拿去「隐藏其它应用」时按 ⌃⌥H 也行
+    if (e.code === 'KeyH' && e.altKey) { e.preventDefault(); toggleHideDrawings(); return }
+    if (e.code === 'KeyC' && !e.altKey && !e.shiftKey) { if (!getSelection()?.toString() && copyDrawing(cell)) e.preventDefault(); return }
+    if (e.code === 'KeyV' && !e.altKey && !e.shiftKey) { if (pasteDrawing(cell)) e.preventDefault(); return }
+    return
+  }
   if (e.altKey) {
-    const map: Record<string, DrawingType> = { KeyT: 'trend', KeyH: 'hline', KeyV: 'vline', KeyF: 'fib' }
+    const map: Record<string, DrawingType> = { KeyT: 'trend', KeyJ: 'ray', KeyH: 'hline', KeyV: 'vline', KeyF: 'fib' }
     if (e.code === 'KeyR' && e.shiftKey) { e.preventDefault(); selectTool('rect'); return }
+    if (e.code === 'KeyW' && e.shiftKey) { e.preventDefault(); togglePanel(); return }
     if (map[e.code]) { e.preventDefault(); selectTool(map[e.code]); return }
+    if (e.code === 'KeyN') { e.preventDefault(); openNote(); return }
     if (e.code === 'KeyA') { e.preventDefault(); openAlert(); return }
     if (e.code === 'KeyR') { e.preventDefault(); cell.chart.resetView(); return }
     if (e.code === 'KeyS') { e.preventDefault(); screenshot(); return }
     return
   }
-  if (e.key === 'Escape') { if (cell.chart.cancelDraft()) return; if (tool) { selectTool(null); return } if (cell.chart.selected) { cell.chart.selected = null; cell.chart.dirty = true; showDrawProps(null) } return }
+  if (e.key === 'Escape') { if (cell.chart.cancelDraft()) return; if (drawTool()) { selectTool(null); return } if (cell.chart.selected) { cell.chart.selected = null; cell.chart.dirty = true; hideQuick() } return }
   if (e.key === 'Delete' || e.key === 'Backspace') { if (cell.chart.deleteSelected()) e.preventDefault(); return }
-  if (e.key === '?') { openShortcuts(); return }
+  if (e.key === '?') { e.preventDefault(); openShortcuts(); return } // 焦点落在搜索框：吃掉这次按键，不然「?」会被打进去
   if (e.key === '/') { e.preventDefault(); openIndicators(); return }
   if (e.key === 'F' && e.shiftKey) { fullscreen(); return }
+  if (e.key === 'T' && e.shiftKey) { e.preventDefault(); const b = $('#tbLayout'); if (b) layoutMenu(b); return }
+  // 选中了画线：方向键只管微移它（1 px，⇧ 10 px；锁住的就不动），不再落到平移图 / 换品种上
+  if (e.key.startsWith('Arrow') && cell.chart.selected) { e.preventDefault(); nudge(cell, e.key, e.shiftKey); return }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); cell.chart.scrollBars((e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 10 : 1)); return }
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     e.preventDefault()
@@ -1057,7 +1082,14 @@ function afterUniverse(): void {
 
 // ------------------------------------------------------------ 启动
 export async function initChart(): Promise<void> {
+  installDrawing({
+    cells: () => cells, active, symbolOf: c => cfg(cells.find(x => x.el === c.el)).symbol, drawings: drawingsFor,
+    changed: c => { const x = cells.find(y => y.el === c.el); if (x) drawingsChanged(x) },
+    clearMenu, toggleHide: toggleHideDrawings,
+  })
   $('#drawbar').addEventListener('click', onDrawbarClick)
+  $('#drawbar').addEventListener('contextmenu', onDrawbarContext)
+  addEventListener('keyup', e => { if (e.key.startsWith('Arrow')) nudgeEnd() })
   $('#toolbar').addEventListener('click', onToolbarClick)
   $('#rail').addEventListener('click', onRailClick)
   $('#sidePanel').addEventListener('click', onPanelClick)
@@ -1119,9 +1151,7 @@ export async function initChart(): Promise<void> {
     charts: () => cells.map(c => ({ chart: c.chart, symbol: cfg(c).symbol, iv: cfg(c).iv })),
     openAlert,
     addHline: p => {
-      const c = active(); if (!c) return
-      drawingsFor(cfg(c).symbol).push({ id: 'd' + Date.now(), type: 'hline', pts: [{ t: c.chart.lastBar()?.t ?? Date.now(), p }], color: st.drawColor, width: 2 })
-      c.chart.dirty = true; drawingsChanged(c)
+      const c = active(); if (c) addHlineAt(c, c.chart.lastBar()?.t ?? Date.now(), p)
     },
     alertsFor: s => activeAlerts(s), alertDesc, deleteAlert,
     renderPanel, layoutSlots, renderToolbar,

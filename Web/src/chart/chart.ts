@@ -1277,7 +1277,6 @@ export class TVChart {
           this.selected = hit.d; this.o.onSelectDrawing?.(hit.d)
           const start = this.toTP(x, y), orig = hit.d.pts.map(q => ({ ...q }))
           this.drag = { kind: 'drawing', hit, start, orig, moved: false }
-          this.o.onDrawDrag?.(true)
           this.dirty = true; return
         }
         if (this.selected) { this.selected = null; this.o.onSelectDrawing?.(null) }
@@ -1304,6 +1303,7 @@ export class TVChart {
         const dd = d.hit.d
         if (dd.locked) return
         let now = this.toTP(x, y)
+        if (!d.moved) this.o.onDrawDrag?.(true) // 真拖起来才让快捷条淡出（只是点选不闪）
         d.moved = true
         if (d.hit.handle != null) {
           // ⇧ 拖端点：吸到 0° / 45° / 90°
@@ -1450,7 +1450,7 @@ export class TVChart {
     return { t: this.timeAt(Math.round(this.xToIndex(s.x))), p: this.yToPrice(s.y, p, r) }
   }
   deleteSelected(): boolean {
-    if (!this.selected) return false
+    if (!this.selected || !this.editable()) return false
     const i = this.drawings.indexOf(this.selected); if (i >= 0) this.drawings.splice(i, 1)
     this.selected = null; this.o.onDrawingsChanged?.(); this.o.onSelectDrawing?.(null); this.dirty = true; return true
   }

@@ -1,8 +1,8 @@
 // Hkline Web · 整体回归（以交易员身份把网页版走一遍）：本机 Chrome、2560×1440、DPR 1
 //   node scripts/regress.mjs [地址] [段落…]
-//   段落：chart（图表页）、alerts（提醒）、edge（边界）、themes（皮肤）、route（线路）、sectors（板块）、
+//   段落：chart（图表页）、draw（画线：新工具、编辑交互、快捷键、同步）、alerts（提醒）、edge（边界）、themes（皮肤）、route（线路）、sectors（板块）、
 //         account（账号与同步）、review（复盘）、layout（布局与拖动）、levels（指标与叠加）、watch（自选小部件与 TradingView 导入）、
-//         flow（订单流：梯子成交列 / 变化 / 24 小时两块 / 成交流）；account / review 要 KP_PASS 环境变量，watch 有它时顺带核对导入的云端同步
+//         flow（订单流：梯子成交列 / 变化 / 24 小时两块 / 成交流）；account / review / draw 的同步那步要 KP_PASS 环境变量，watch 有它时顺带核对导入的云端同步
 //   默认地址 http://localhost:5188/web/；截图写到 docs/acceptance/网页版-2026-09-29/回归-*.png
 // 每一段都收集控制台报错与未处理的 Promise 拒绝，目标是 0；每一项的结论打一行「✓ / ✗」。
 import { chromium } from 'playwright-core'
@@ -196,7 +196,7 @@ async function partChart() {
   const TOOLS = ['trend', 'ray', 'hline', 'vline', 'rect', 'fib', 'measure']
   let before = await drawCount(sym)
   for (const [i, t] of TOOLS.entries()) {
-    await page.click(`#drawbar [data-tool="${t}"]`); await wait(150)
+    await pickTool(t)
     const x1 = px(0.15 + i * 0.1), y1 = py(0.2 + (i % 3) * 0.2)
     await page.mouse.move(x1, y1); await page.mouse.down(); await page.mouse.up(); await wait(100)
     if (t !== 'hline' && t !== 'vline') { await page.mouse.move(x1 + 90, y1 + 60, { steps: 4 }); await page.mouse.down(); await page.mouse.up() }
@@ -662,7 +662,7 @@ async function partAccount() {
   const t0 = Date.now()
   await toggleDoge()
   const P = await plotGeom()
-  await page.click('#drawbar [data-tool="hline"]'); await wait(150)
+  await pickTool('hline')
   const dIds0 = new Set(((await state()).drawings.BTCUSDT || []).map(d => d.id))
   const aIds0 = new Set((await state()).alerts.map(a => a.id))
   await page.mouse.click(P.x + (P.axisX - P.x) * 0.5, P.y + P.height * 0.25); await wait(300); await page.keyboard.press('Escape')
@@ -719,7 +719,7 @@ async function partAccount() {
   ok('退出登录：账号令牌清掉，本机的自选、画线、提醒都留着', !(await stored()) && (s.drawings.BTCUSDT || []).some(d => d.id === hl?.id) && s.alerts.some(a => a.id === al?.id))
   await page.goto(`${URL_}?s=BTCUSDT&i=1h&layout=1#chart`, { waitUntil: 'domcontentloaded' }); await ready()
   const Q = await plotGeom()
-  await page.click('#drawbar [data-tool="hline"]'); await wait(150)
+  await pickTool('hline')
   const dIds1 = new Set(((await state()).drawings.BTCUSDT || []).map(d => d.id))
   await page.mouse.click(Q.x + (Q.axisX - Q.x) * 0.4, Q.y + Q.height * 0.4); await wait(300); await page.keyboard.press('Escape')
   s = await state()
@@ -1662,7 +1662,341 @@ async function partWatch() {
 
 
 
-const ALL = { watch: partWatch, chart: partChart, flow: partFlow, layout: partLayout, levels: partLevels, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
+// ═════════════════════════════ 画线（新工具、编辑交互、快捷键、同步） ═════════════════════════════
+/** 选画线工具：组按钮上正好是它就点，不是就展开这一组再挑（已经拿着它就不动，免得再点一下放下） */
+async function pickTool(t) {
+  const b = page.locator(`#drawbar [data-tool="${t}"]`)
+  if (await b.count()) { if ((await b.getAttribute('aria-pressed')) !== 'true') await b.click(); await wait(150); return }
+  const [gid, k] = await page.evaluate(t => {
+    const b = [...document.querySelectorAll('#drawbar [data-tools]')].find(x => x.dataset.tools.split(' ').includes(t))
+    return [b?.closest('.tool-grp')?.dataset.grp, b ? b.dataset.tools.split(' ').indexOf(t) : -1]
+  }, t)
+  await page.click(`#drawbar [data-fly="${gid}"]`); await wait(250)
+  await page.locator('.menu .mi').nth(k).click(); await wait(150)
+}
+const shotD = async (name, clip) => { await page.screenshot({ path: `${OUT}/画线-${name}.png`, ...(clip ? { clip } : {}) }); console.log('  截图 画线-' + name) }
+const dbg = () => page.evaluate(() => window.__draw())
+const drawsOf = async (sym, type) => ((await state()).drawings?.[sym] || []).filter(d => !type || d.type === type)
+const lastOf = async (sym, type) => { const l = await drawsOf(sym, type); return l[l.length - 1] }
+const byId = async (sym, id) => (await drawsOf(sym)).find(d => d.id === id)
+const near = (a, b) => Math.abs(a - b) <= Math.abs(b) * 1e-9 + 1e-9
+const toastText = () => page.evaluate(() => [...document.querySelectorAll('#toasts .toast')].map(e => e.textContent.trim()).join(' | '))
+async function dragOn(x0, y0, x1, y1, { shiftMid = false, meta = false } = {}) {
+  await page.mouse.move(x0, y0)
+  if (meta) await page.keyboard.down('Meta')
+  await page.mouse.down()
+  if (shiftMid) await page.keyboard.down('Shift')
+  await page.mouse.move(x1, y1, { steps: 8 })
+  await page.mouse.up()
+  if (shiftMid) await page.keyboard.up('Shift')
+  if (meta) await page.keyboard.up('Meta')
+  await wait(350)
+}
+async function partDraw() {
+  const e0 = errors.length
+  const sym = 'BTCUSDT'
+  await fresh(`s=${sym}&i=1h&layout=1&panel=watch&ladder=0&drawer=0`)
+  let P = await plotGeom()
+  const px = f => P.x + (P.axisX - P.x) * f, py = f => P.y + 60 + (P.height * 0.55) * f
+  const clipChart = () => ({ x: P.x - 60, y: Math.max(0, P.y - 60), width: P.width + 60, height: P.height + 100 })
+
+  // ---- 分组工具栏
+  const groups = await page.evaluate(() => [...document.querySelectorAll('#drawbar .tool-grp')].map(g => g.dataset.grp))
+  await page.click('#drawbar [data-fly="volume"]'); await wait(300)
+  const volTools = await menuLabels()
+  ok('工具栏按组：线 / 形状 / 斐波那契 / 预测与测量 / 成交量；成交量组里是锚定 VWAP、固定区间成交量分布', groups.join() === 'lines,shapes,fib,forecast,volume' && volTools.some(l => l.includes('锚定 VWAP')) && volTools.some(l => l.includes('固定区间成交量分布')), `${groups.join(' ')}；${volTools.join('、')}`)
+  const barBox = await page.locator('#drawbar').boundingBox()
+  await shotD('工具栏分组', { x: 0, y: barBox.y, width: 420, height: 560 })
+  await page.keyboard.press('Escape'); await wait(200)
+
+  // ---- 锚定 VWAP：点一根 K 线
+  const n0 = (await drawsOf(sym)).length
+  await pickTool('avwap')
+  await page.mouse.click(px(0.3), py(0.5)); await wait(400)
+  const av = await lastOf(sym, 'avwap')
+  ok('锚定 VWAP：点一根 K 线当锚点，画出来并落盘', (await drawsOf(sym)).length === n0 + 1 && av?.pts.length === 1, av ? `锚点 ${new Date(av.pts[0].t).toISOString().slice(0, 16)}` : '没画出来')
+  const vBtn = await page.getAttribute('#drawbar .tool-grp[data-grp="volume"] .ibtn', 'data-tool')
+  ok('组按钮换成这一组上次用的那把', vBtn === 'avwap', vBtn)
+  // ---- 固定区间成交量分布：拖出一段
+  await pickTool('fvp')
+  await dragOn(px(0.55), py(0.25), px(0.8), py(0.6))
+  const fv = await lastOf(sym, 'fvp')
+  ok('固定区间成交量分布：拖出一段时间，画出来并落盘', !!fv && fv.pts.length === 2 && fv.pts[0].t < fv.pts[1].t, fv ? `${new Date(fv.pts[0].t).toISOString().slice(5, 16)} → ${new Date(fv.pts[1].t).toISOString().slice(5, 16)}` : '没画出来')
+  // ---- 多空持仓：入场 → 目标（在上方 = 多）
+  await pickTool('position')
+  await page.mouse.click(px(0.12), py(0.55)); await wait(150)
+  await page.mouse.move(px(0.24), py(0.3), { steps: 4 }); await page.mouse.click(px(0.24), py(0.3)); await wait(400)
+  const po = await lastOf(sym, 'position')
+  const r1 = po ? po.pts[1].p - po.pts[0].p : 0, r2 = po ? po.pts[0].p - po.pts[2].p : 0
+  ok('多空持仓：入场、目标两下点完，止损先按 1R 对称', !!po && po.pts.length === 3 && r1 > 0 && r2 > 0 && Math.abs(r1 - r2) < po.pts[0].p * 1e-9, po ? po.pts.map(q => q.p.toFixed(1)).join(' / ') : '没画出来')
+  const qPos = await page.evaluate(() => [...document.querySelectorAll('.draw-quick button')].map(b => b.dataset.q || (b.dataset.color ? 'color' : '')))
+  ok('持仓选中后的快捷条只给锁、删（颜色固定红绿）', qPos.join() === 'lock,del', qPos.join())
+  await shotD('持仓选中', clipChart())
+  await page.keyboard.press('Escape'); await wait(300)
+  await shotD('三种新工具', clipChart())
+  await page.reload({ waitUntil: 'domcontentloaded' }); await ready()
+  const kinds = (await drawsOf(sym)).map(d => d.type)
+  ok('刷新后三种新工具都还在', ['avwap', 'fvp', 'position'].every(k => kinds.includes(k)), kinds.join(' '))
+
+  // ---- 批量删除：三档带数量、能撤销
+  const ind0 = (await state()).ind
+  const indN = await page.evaluate(() => document.querySelectorAll('.menu').length) // 占位，下面从菜单读
+  void indN
+  await page.click('#drawbar [data-dact="clear"]'); await wait(300)
+  const scs = await page.evaluate(() => [...document.querySelectorAll('.menu .mi')].map(e => `${e.querySelector('.label')?.textContent.trim()}:${e.querySelector('.sc')?.textContent.trim() || ''}`))
+  const nInd = Number((scs.find(x => x.startsWith('全部指标')) || '').replace(/\D/g, ''))
+  ok('垃圾桶菜单：全部画线 / 全部指标 / 全部，带实时数量', scs.join('，') === `全部画线:${kinds.length} 条，全部指标:${nInd} 个，全部:${kinds.length + nInd} 项` && nInd > 0, scs.join('，'))
+  await shotD('批量删除菜单', { x: 0, y: Math.max(0, barBox.y + barBox.height - 320), width: 460, height: 320 })
+  await page.locator('.menu .mi', { has: page.locator('.label', { hasText: /^全部$/ }) }).click(); await wait(300)
+  let s = await state()
+  const gone = (s.drawings[sym] || []).length === 0 && s.ind.subs.length === 0 && !s.ind.ma && !s.ind.vol
+  await page.keyboard.press('Meta+z'); await wait(400)
+  s = await state()
+  const back = (s.drawings[sym] || []).length === kinds.length && JSON.stringify(s.ind) === JSON.stringify(ind0)
+  await page.keyboard.press('Meta+y'); await wait(400)
+  const redoOk = ((await state()).drawings[sym] || []).length === 0
+  await page.keyboard.press('Meta+z'); await wait(400)
+  ok('「全部」一次删掉画线和指标；⌘Z 画线与指标都回来；⌘Y 重做', gone && back && redoOk && ((await state()).drawings[sym] || []).length === kinds.length, `删 ${gone} 回 ${back} 重做 ${redoOk}`)
+  await page.click('#drawbar [data-dact="clear"]'); await wait(300); await clickMenu('全部画线')
+  ok('「全部画线」只删这只品种的画线，指标不动', (await drawsOf(sym)).length === 0 && JSON.stringify((await state()).ind) === JSON.stringify(ind0))
+
+  // ---- ⇧ 吸 45°：拖端点的时候、画的时候
+  await pickTool('trend')
+  await dragOn(px(0.3), py(0.2), px(0.5), py(0.24))
+  let tr = await lastOf(sym, 'trend')
+  const skew = !!tr && !near(tr.pts[0].p, tr.pts[1].p)
+  // 画完这条是选中的：拖第二个端点，拖到一半按下 ⇧
+  await dragOn(px(0.5), py(0.24), px(0.56), py(0.26), { shiftMid: true })
+  tr = await byId(sym, tr?.id)
+  ok('⇧ 拖端点：吸成水平（0° / 45° / 90°）', skew && !!tr && near(tr.pts[0].p, tr.pts[1].p), tr ? tr.pts.map(q => q.p.toFixed(2)).join(' → ') : '')
+  await page.keyboard.press('Escape'); await wait(150)
+  await pickTool('trend')
+  await dragOn(px(0.3), py(0.75), px(0.45), py(0.78), { shiftMid: true })
+  const tr2 = await lastOf(sym, 'trend')
+  ok('⇧ 画趋势线：吸成水平', !!tr2 && tr2.id !== tr?.id && near(tr2.pts[0].p, tr2.pts[1].p), tr2 ? tr2.pts.map(q => q.p.toFixed(2)).join(' → ') : '')
+  await page.keyboard.press('Escape'); await wait(150)
+
+  // ---- 选中：快捷条、方向键微移
+  const selX = px(0.42)
+  let lineY = py(0.2)
+  await page.mouse.click(selX, lineY); await wait(300)
+  const qb = await page.locator('.chart-cell .draw-quick').count()
+  const qBtns = await page.evaluate(() => [...document.querySelectorAll('.draw-quick button')].map(b => b.dataset.q || (b.dataset.color ? 'recent' : '')))
+  ok('选中画线：格子上沿出一条快捷条（颜色、粗细、线型、提醒、锁、删）', qb === 1 && ['palette', 'width', 'dash', 'alert', 'lock', 'del'].every(k => qBtns.includes(k)), qBtns.join(' '))
+  const u0 = (await dbg()).undo
+  const p0 = (await byId(sym, tr.id)).pts[0]
+  for (let k = 0; k < 3; k++) { await page.keyboard.press('ArrowUp'); await wait(60) }
+  await wait(300)
+  let cur = await byId(sym, tr.id)
+  const upOk = cur.pts[0].p > p0.p && cur.pts[0].t === p0.t
+  await page.keyboard.press('Shift+ArrowRight'); await wait(300)
+  cur = await byId(sym, tr.id)
+  const u1 = (await dbg()).undo
+  ok('方向键微移选中的画线：↑ 三下价格上移、⇧→ 时间右移；每次松键记一步撤销', upOk && cur.pts[0].t > p0.t && u1 - u0 === 4, `p ${p0.p.toFixed(2)} → ${cur.pts[0].p.toFixed(2)}，t +${Math.round((cur.pts[0].t - p0.t) / 60e3)} 分，撤销 +${u1 - u0}`)
+  lineY -= 3
+  // 拖的时候快捷条淡出，松手回来；再撤销这次拖动，线回到原处
+  await page.mouse.move(selX + 30, lineY); await page.mouse.down(); await page.mouse.move(selX + 60, lineY + 20, { steps: 4 })
+  const fading = await page.locator('.draw-quick.fading').count()
+  await page.mouse.up(); await wait(300)
+  const fadingAfter = await page.locator('.draw-quick.fading').count()
+  ok('拖动画线时快捷条淡出，松手回来', fading === 1 && fadingAfter === 0, `拖时 ${fading} 松手 ${fadingAfter}`)
+  await page.keyboard.press('Meta+z'); await wait(300)
+  await page.mouse.click(selX, lineY); await wait(300)
+  // 颜色：调色板里挑红；粗细 3；线型虚线
+  await page.click('.draw-quick [data-q="palette"]'); await wait(250)
+  await page.click('.menu .dq-palette [data-color="#F23645"]'); await wait(250)
+  await page.click('.draw-quick [data-q="width"]'); await wait(250); await clickMenu('3 px')
+  await page.click('.draw-quick [data-q="dash"]'); await wait(250); await clickMenu('虚线')
+  s = await state()
+  cur = s.drawings[sym].find(d => d.id === tr.id)
+  ok('快捷条改颜色 / 粗细 / 线型，落到这条画线上', cur.color === '#F23645' && cur.width === 3 && cur.dash === 'dashed', `${cur.color} ${cur.width}px ${cur.dash}`)
+  ok('同族记住上次的样式、最近用过的颜色排第一', s.drawStyles?.lines?.color === '#F23645' && s.drawStyles.lines.width === 3 && s.drawStyles.lines.dash === 'dashed' && s.recentColors?.[0] === '#F23645', JSON.stringify(s.drawStyles) + ' ' + JSON.stringify(s.recentColors))
+  await shotD('快捷条', { x: P.x + P.width / 2 - 400, y: P.y, width: 800, height: 380 })
+  // 最近用过的颜色：换个蓝，再点快捷条上的「最近」那一格回到红
+  await page.click('.draw-quick [data-q="palette"]'); await wait(250)
+  await page.click('.menu .dq-palette [data-color="#2962FF"]'); await wait(250)
+  const recentBtns = await page.evaluate(() => [...document.querySelectorAll('.draw-quick .swatch-btn[data-color]')].map(b => b.dataset.color))
+  if (recentBtns.includes('#F23645')) await page.click('.draw-quick .swatch-btn[data-color="#F23645"]')
+  await wait(250)
+  cur = await byId(sym, tr.id)
+  ok('快捷条上有当前色之外最近用过的两种颜色，点一下就换回去', recentBtns.includes('#F23645') && recentBtns.length <= 2 && cur.color === '#F23645', recentBtns.join(' '))
+  // 同族样式：射线（同在「线」族）新画一条就是红、3 px、虚线
+  await page.keyboard.press('Escape'); await wait(100)
+  await page.keyboard.press('Alt+j'); await wait(150)
+  ok('Alt J = 射线', (await dbg()).tool === 'ray')
+  await dragOn(px(0.3), py(0.9), px(0.4), py(0.85))
+  const ray = await lastOf(sym, 'ray')
+  ok('同族新画的线沿用上次改的样式（射线接住趋势线的红、3 px、虚线）', ray?.color === '#F23645' && ray.width === 3 && ray.dash === 'dashed', ray ? `${ray.color} ${ray.width} ${ray.dash}` : '')
+  await page.keyboard.press('Escape'); await wait(150)
+
+  // ---- 复制粘贴
+  await page.mouse.click(selX, lineY); await wait(250)
+  const nA = (await drawsOf(sym)).length
+  await page.keyboard.press('Meta+c'); await wait(200)
+  await page.keyboard.press('Meta+v'); await wait(300)
+  await page.keyboard.press('Meta+v'); await wait(300)
+  let all = await drawsOf(sym)
+  const pasted = all.slice(-2)
+  ok('⌘C / ⌘V：复制选中的画线，贴两次多两条，各自错开', all.length === nA + 2 && pasted.every(d => d.type === 'trend' && d.id !== tr.id) && pasted[0].pts[0].t !== pasted[1].pts[0].t, `${nA} → ${all.length}`)
+  await shotD('复制粘贴', clipChart())
+  await page.keyboard.press('Escape'); await wait(150)
+  // ⌘ 拖：复制一条拖走，原来那条不动
+  const trBefore = JSON.stringify((await byId(sym, tr.id)).pts)
+  const nB = (await drawsOf(sym)).length
+  await dragOn(selX, lineY, selX + 40, lineY + 140, { meta: true })
+  all = await drawsOf(sym)
+  const trAfter = JSON.stringify(all.find(d => d.id === tr.id).pts)
+  ok('⌘ 拖一条画线 = 复制一条拖走，原来那条不动', all.length === nB + 1 && trAfter === trBefore, `${nB} → ${all.length}；原线${trAfter === trBefore ? '没动' : '动了'}`)
+  await page.keyboard.press('Escape'); await wait(150)
+
+  // ---- 锁住这一条：方向键不再动它
+  await page.mouse.click(selX, lineY); await wait(250)
+  await page.click('.draw-quick [data-q="lock"]'); await wait(250)
+  const lk = await byId(sym, tr.id)
+  await page.keyboard.press('ArrowUp'); await wait(250)
+  const lk2 = await byId(sym, tr.id)
+  ok('快捷条锁住这一条：方向键不再挪它', lk.locked === true && JSON.stringify(lk.pts) === JSON.stringify(lk2.pts))
+  await page.click('.draw-quick [data-q="lock"]'); await wait(200)
+  await page.keyboard.press('Escape'); await wait(150)
+
+  // ---- 按住 ⌘ 临时反过来用磁吸（磁吸默认关）
+  const magOff = !(await state()).magnet
+  await page.keyboard.press('Alt+h'); await wait(150)
+  await page.mouse.move(px(0.62), py(0.43)); await page.keyboard.down('Meta'); await page.mouse.down(); await page.mouse.up(); await page.keyboard.up('Meta'); await wait(350)
+  const hm = await lastOf(sym, 'hline')
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Alt+h'); await wait(150)
+  await page.mouse.click(px(0.62), py(0.47)); await wait(350)
+  const hn = await lastOf(sym, 'hline')
+  const { ohlc } = await dbg()
+  const onBar = p => p != null && ohlc.some(v => Math.abs(v - p) < 1e-9)
+  ok('按住 ⌘ 临时开磁吸：水平线吸到开高低收；松开就不吸', magOff && !!hm && onBar(hm.pts[0].p) && !!hn && hn.id !== hm.id && !onBar(hn.pts[0].p), `⌘ ${hm?.pts[0].p} ${onBar(hm?.pts[0].p) ? '在' : '不在'}K 线上；不按 ${hn?.pts[0].p}`)
+  await page.keyboard.press('Escape'); await wait(150)
+
+  // ---- 连续画：双击组按钮，右键退出
+  const nC = (await drawsOf(sym)).length
+  await page.dblclick('#drawbar .tool-grp[data-grp="lines"] .ibtn'); await wait(250)
+  const lineTool = (await dbg()).tool
+  const dot = await page.locator('#drawbar .sticky-dot').count()
+  const one = lineTool === 'hline' || lineTool === 'vline'
+  for (const f of [0.15, 0.2, 0.25]) { await page.mouse.click(px(f), py(0.95)); await wait(100); if (!one) { await page.mouse.click(px(f + 0.03), py(0.9)); await wait(100) } }
+  await wait(300)
+  const d1 = await dbg()
+  await shotD('连续画', { x: 0, y: barBox.y, width: 420, height: 360 })
+  await page.mouse.click(px(0.6), py(0.6), { button: 'right' }); await wait(300)
+  const d2 = await dbg(), menuN = await page.locator('.menu').count()
+  const nC2 = (await drawsOf(sym)).length
+  ok('双击组按钮 = 连续画（按钮上一个小点，连画三条工具还在）；右键图退出、不弹菜单', dot === 1 && d1.sticky && d1.tool === lineTool && nC2 === nC + 3 && !d2.tool && !d2.sticky && menuN === 0, `${lineTool} 小点 ${dot}，${nC} → ${nC2}；右键后工具 ${d2.tool}、菜单 ${menuN}`)
+  await page.dblclick('#drawbar .tool-grp[data-grp="lines"] .ibtn'); await wait(200)
+  await page.keyboard.press('Escape'); await wait(200)
+  ok('连续画时 Esc 也退出', !(await dbg()).tool)
+
+  // ---- 其它快捷键
+  await page.mouse.move(px(0.5), py(0.5))
+  await page.keyboard.press('Meta+Alt+h'); await wait(250)
+  const hid = (await state()).drawHidden
+  await page.keyboard.press('Meta+Alt+h'); await wait(250)
+  ok('⌘⌥H 隐藏 / 显示全部画线', hid === true && (await state()).drawHidden === false)
+  const panel0 = (await state()).panel
+  await page.keyboard.press('Alt+Shift+w'); await wait(300)
+  const panel1 = (await state()).panel
+  await page.keyboard.press('Alt+Shift+w'); await wait(300)
+  const panel2 = (await state()).panel
+  ok('Alt ⇧ W 开关侧栏（再开回到上一次那一栏）', panel0 === 'watch' && panel1 === null && panel2 === 'watch', `${panel0} → ${panel1} → ${panel2}`)
+  await page.keyboard.press('Shift+T'); await wait(300)
+  const lay = await menuLabels()
+  ok('⇧ T 打开布局', lay.some(l => l.includes('四图')), lay.slice(0, 3).join(' '))
+  await page.keyboard.press('Escape'); await wait(200)
+  await page.keyboard.press('Alt+n'); await wait(400)
+  ok('Alt N 记一笔', (await page.locator('.note-dlg').count()) === 1)
+  await page.keyboard.press('Escape'); await wait(300)
+
+  // ---- 快捷键表能搜
+  await page.keyboard.press('?'); await wait(400)
+  const rows = () => page.evaluate(() => [...document.querySelectorAll('.kbd-dlg .kbd-table tr')].map(r => r.textContent.replace(/\s+/g, ' ').trim()))
+  const all0 = (await rows()).length
+  await page.fill('#kbdQ', '射线'); await wait(200)
+  const q1 = await rows()
+  await page.fill('#kbdQ', 'alt j'); await wait(200)
+  const q2 = await rows()
+  await page.fill('#kbdQ', '⌘ v'); await wait(200)
+  const q3 = await rows()
+  await shotD('快捷键表-搜索', await page.locator('.kbd-dlg').boundingBox())
+  await page.fill('#kbdQ', '没有这个'); await wait(200)
+  const none = await page.locator('.kbd-dlg .kbd-none').count()
+  ok('? 快捷键表能搜：按功能（射线）、按键（alt j = Alt J、⌘ v）；搜不到给空状态', all0 > 30 && q1.length >= 1 && q1.every(r => /射线/.test(r)) && q2.length === 1 && /射线/.test(q2[0]) && q3.some(r => /粘贴/.test(r)) && none === 1, `全表 ${all0} 行；射线 → ${q1.join(' / ')}；alt j → ${q2.join(' / ')}；⌘ v → ${q3.length} 行`)
+  await page.keyboard.press('Escape'); await wait(300)
+
+  // ---- 每只品种的上限：500 条
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('hkline-web-v1'))
+    s.drawings.ETHUSDT = Array.from({ length: 500 }, (_, k) => ({ id: 'q' + k, type: 'hline', pts: [{ t: Date.now() - 36e5, p: 1000 + k }], color: '#2962FF', width: 1 }))
+    localStorage.setItem('hkline-web-v1', JSON.stringify(s))
+  })
+  await open('s=ETHUSDT&i=1h&layout=1')
+  P = await plotGeom()
+  await page.keyboard.press('Alt+h'); await wait(150)
+  await page.mouse.click(px(0.5), py(0.5)); await wait(400)
+  const qn = (await drawsOf('ETHUSDT')).length, qt = await toastText()
+  ok('每只品种最多 500 条：到了不再新建、提示一句', qn === 500 && /上限/.test(qt), `${qn} 条；${qt}`)
+  const tb = await page.locator('#toasts .toast').last().boundingBox()
+  await shotD('上限提示', tb ? { x: Math.max(0, tb.x - 200), y: Math.max(0, tb.y - 120), width: tb.width + 400, height: tb.height + 240 } : undefined)
+  await page.keyboard.press('Escape')
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1')); delete s.drawings.ETHUSDT; localStorage.setItem('hkline-web-v1', JSON.stringify(s)) })
+
+  // ---- 账号同步：三种新工具 + 线型 推上云端、清掉本机重新登录拉回来一模一样
+  if (!KP_PASS) ok('画线同步（要 KP_PASS）', false, '没给 KP_PASS 环境变量')
+  else {
+    await fresh(`s=${sym}&i=1h&layout=1&panel=watch&ladder=0&drawer=0`)
+    const logged = await uiLogin()
+    await page.goto(`${URL_}?s=${sym}&i=1h&layout=1#chart`, { waitUntil: 'domcontentloaded' }); await ready()
+    P = await plotGeom()
+    const ids0 = new Set((await drawsOf(sym)).map(d => d.id))
+    await pickTool('avwap'); await page.mouse.click(px(0.35), py(0.5)); await wait(300); await page.keyboard.press('Escape')
+    await pickTool('fvp'); await dragOn(px(0.55), py(0.25), px(0.75), py(0.6)); await page.keyboard.press('Escape')
+    await pickTool('position'); await page.mouse.click(px(0.15), py(0.6)); await wait(100); await page.mouse.click(px(0.25), py(0.8)); await wait(300); await page.keyboard.press('Escape')
+    await pickTool('trend'); await dragOn(px(0.3), py(0.2), px(0.45), py(0.3)); await wait(200)
+    await page.click('.draw-quick [data-q="dash"]'); await wait(200); await clickMenu('点线'); await page.keyboard.press('Escape')
+    const mine = (await drawsOf(sym)).filter(d => !ids0.has(d.id))
+    const t0 = Date.now()
+    const arrived = []
+    for (const d of mine) arrived.push(await waitCloud('drawings', `binance/usd_m/${sym}/${d.id}`, 'live', t0, 20000))
+    ok('登录后新画的锚定 VWAP / 固定区间成交量分布 / 持仓（空）/ 点线趋势线都推到云端', logged && mine.length === 4 && arrived.every(x => x != null), mine.map((d, k) => `${d.type} ${arrived[k] ?? '没到'} ms`).join('，'))
+    // 清掉本机（当成换了一台电脑），重新登录，从云端拉回来
+    // 先离开页面再清：页面还活着时清，它卸载前会把内存里的会话写回去（等于没换电脑）
+    await page.goto('about:blank')
+    await cdp.send('Storage.clearDataForOrigin', { origin: new globalThis.URL(URL_).origin, storageTypes: 'local_storage' })
+    const relogged = await uiLogin()
+    await page.goto(`${URL_}?s=${sym}&i=1h&layout=1#chart`, { waitUntil: 'domcontentloaded' }); await ready()
+    let got = []
+    for (let k = 0; k < 30; k++) { got = await drawsOf(sym); if (mine.every(d => got.some(g => g.id === d.id))) break; await wait(500) }
+    const same = mine.map(d => { const g = got.find(x => x.id === d.id); return !!g && g.type === d.type && g.pts.length === d.pts.length && g.pts.every((q, k) => q.t === d.pts[k].t && Math.abs(q.p - d.pts[k].p) <= Math.abs(d.pts[k].p) * 1e-9) && (g.dash || 'solid') === (d.dash || 'solid') })
+    ok('清掉本机重新登录：四条原样拉回来（类型、锚点、线型）', relogged && same.every(Boolean), mine.map((d, k) => `${d.type}${d.dash ? '/' + d.dash : ''} ${same[k] ? '✓' : '✗'}`).join('，'))
+    P = await plotGeom()
+    await shotD('同步拉回', clipChart())
+    // 收尾：「全部画线」删掉这一轮画的，云端也同步成已删
+    await page.click('#drawbar [data-dact="clear"]'); await wait(300); await clickMenu('全部画线')
+    const t1 = Date.now()
+    let del = []
+    for (const d of mine) del.push(await waitCloud('drawings', `binance/usd_m/${sym}/${d.id}`, 'deleted', t1, 15000))
+    // 回归账号别的窗口也在用（同类设备只留一台在线）：被顶掉时推不出去的删除留在这个账号的账本里，重新登录后补推
+    let kicked = false
+    if (!del.every(x => x != null) && !(await stored())) {
+      kicked = true
+      await uiLogin()
+      await page.goto(`${URL_}?s=${sym}&i=1h&layout=1#chart`, { waitUntil: 'domcontentloaded' }); await ready()
+      const t2 = Date.now()
+      del = []
+      for (const d of mine) del.push(await waitCloud('drawings', `binance/usd_m/${sym}/${d.id}`, 'deleted', t2, 20000))
+    }
+    ok('「全部画线」删掉后云端同步成已删' + (kicked ? '（中途被同账号的别的窗口顶掉，重新登录后补推）' : ''), del.every(x => x != null) && (await drawsOf(sym)).every(d => !mine.some(m => m.id === d.id)), del.map(x => x ?? '没到').join(' / '))
+  }
+  // 回归账号被别的窗口顶掉时浏览器会打「401 (Unauthorized)」的资源错误，那是预期的
+  const errs = sectionErrors(e0).filter(x => !/status of 401/.test(x))
+  ok('画线：控制台无报错（被顶掉的 401 资源错误除外）', errs.length === 0, `401 ${sectionErrors(e0).length - errs.length} 条；` + errs.slice(0, 5).join(' | '))
+}
+
+const ALL = { watch: partWatch, chart: partChart, flow: partFlow, layout: partLayout, levels: partLevels, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish, draw: partDraw }
 for (const k of PARTS.length ? PARTS : Object.keys(ALL)) {
   console.log(`\n══ ${k} ══`)
   try { await ALL[k]() } catch (e) { ok(`${k} 段跑完`, false, String(e.stack || e).split('\n').slice(0, 3).join(' ')); await page.screenshot({ path: `${OUT}/回归-失败-${k}.png` }).catch(() => {}) }
