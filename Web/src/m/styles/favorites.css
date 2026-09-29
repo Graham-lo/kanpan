@@ -1,0 +1,172 @@
+/* 手机网页版 · 自选页「琉璃」（照 iOS Symbols/FavoritesView.swift：LiuliSkin、AuroraBackdrop、LiuliSymbolRow）
+ * 琉璃底、琉璃行、徽章、涨跌药丸也给板块页用（sectors.ts 同样 import 本文件）。 */
+
+/* ───────── 琉璃色板（照 LiuliSkin） ───────── */
+.liuli {
+  --lg-ground: var(--ground);
+  --lg-pane: var(--raised);
+  --lg-glass-thin: color-mix(in srgb, var(--lg-pane) 46%, transparent);
+  --lg-edge-soft: color-mix(in srgb, var(--lg-pane) 62%, transparent);
+  --lg-rule: color-mix(in srgb, var(--ink) 9%, transparent);
+  --lg-ink4: color-mix(in srgb, var(--ink3) 70%, transparent);
+  --lg-accent-lift: color-mix(in srgb, var(--accent) 58%, #fff);
+  --lg-accent-grad: linear-gradient(to bottom right, var(--lg-accent-lift), var(--accent));
+  --lg-highlight: color-mix(in srgb, var(--lg-pane) 90%, transparent);
+  --lg-lobe-a: #A9DDF3; --lg-lobe-b: #BFEFD6; --lg-lobe-c: #DCEFF6;
+  --lg-lobe-alpha: .63;
+  --lg-grain: .035;
+  --page-bg: var(--lg-ground);
+  --sw-bg: transparent;
+  background: var(--lg-ground);
+}
+html[data-skin="sage"][data-theme="light"] .liuli { --lg-ground: #E9F3F1 }
+html[data-skin="terra"][data-theme="light"] .liuli { --lg-ground: #F4EFEA; --lg-lobe-a: #B5D9F1; --lg-lobe-b: #F5D8C3; --lg-lobe-c: #D3EDE0 }
+html[data-theme="dark"] .liuli {
+  --lg-pane: var(--ink);
+  --lg-glass-thin: color-mix(in srgb, var(--lg-pane) 4.5%, transparent);
+  --lg-edge-soft: color-mix(in srgb, var(--lg-pane) 12%, transparent);
+  --lg-rule: color-mix(in srgb, var(--ink) 11%, transparent);
+  --lg-highlight: color-mix(in srgb, var(--lg-pane) 30%, transparent);
+  --lg-grain: .05;
+}
+#page-favorites { --page-bg: var(--lg-ground) }
+
+/* ───────── 底：三团光 + 冲淡 + 颗粒（深色只留素底加颗粒） ───────── */
+.lg-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0 }
+.lg-blob { position: absolute; border-radius: 50%; opacity: var(--lg-lobe-alpha); animation: lg-drift 22s ease-in-out infinite alternate }
+.lg-blob.b1 { width: 300px; height: 300px; left: -95px; top: -80px; background: radial-gradient(closest-side, var(--lg-lobe-a), color-mix(in srgb, var(--lg-lobe-a) 55%, transparent) 45%, transparent) }
+.lg-blob.b2 { width: 250px; height: 250px; right: -80px; top: 240px; background: radial-gradient(closest-side, var(--lg-lobe-b), color-mix(in srgb, var(--lg-lobe-b) 55%, transparent) 45%, transparent); animation-duration: 27s }
+.lg-blob.b3 { width: 280px; height: 280px; left: -70px; bottom: -50px; background: radial-gradient(closest-side, var(--lg-lobe-c), color-mix(in srgb, var(--lg-lobe-c) 55%, transparent) 45%, transparent); animation-duration: 31s }
+.lg-wash { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 22%, color-mix(in srgb, var(--lg-ground) 70%, transparent)) }
+.lg-grain { position: absolute; inset: 0; opacity: var(--lg-grain); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") }
+html[data-theme="dark"] .lg-blob, html[data-theme="dark"] .lg-wash { display: none }
+@keyframes lg-drift { to { transform: translate(18px, -26px) scale(1.08) } }
+@media (prefers-reduced-motion: reduce) { .lg-blob { animation: none } }
+
+/* ───────── 页骨架 ───────── */
+#page-favorites { display: flex; flex-direction: column }
+#page-favorites > :not(.lg-bg) { position: relative; z-index: 1 }
+.fav-head {
+  display: flex; align-items: center; gap: var(--s-s);
+  padding: calc(var(--safe-top) + var(--s-xs)) calc(var(--inset-page) + var(--safe-right)) var(--s-xs) calc(var(--inset-page) + var(--safe-left));
+  min-height: 44px; flex: none;
+}
+.fav-disc {
+  width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid; place-items: center; color: var(--ink);
+  background: var(--lg-glass-thin); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.fav-disc:active { opacity: .6 }
+.fav-disc[hidden], .fav-done[hidden] { display: none }
+.fav-done {
+  height: 36px; padding: 0 var(--s-l); border-radius: 18px; color: var(--accent); font: var(--t-body-emph);
+  background: var(--lg-glass-thin); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft);
+}
+
+/* 分类轨：36 高的玻璃胶囊，格子 32，选中那格是强调色渐变 */
+.fav-cats {
+  flex: 1; min-width: 0; overflow-x: auto; overflow-y: visible; scrollbar-width: none;
+  padding: 4px 0; margin: -4px 0; -webkit-overflow-scrolling: touch;
+}
+.fav-cats::-webkit-scrollbar { display: none }
+.fav-cats[hidden] { display: block; visibility: hidden }
+.fav-rail {
+  display: inline-flex; align-items: center; height: 36px; padding: 0 2px; border-radius: 18px;
+  background: var(--lg-glass-thin); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft);
+}
+.fav-cat {
+  position: relative; height: 32px; min-width: 44px; padding: 0 var(--s-l); border-radius: 16px; white-space: nowrap;
+  font: var(--t-control); color: var(--ink2);
+}
+.fav-cat.on {
+  font: var(--t-control-on); color: var(--badge-ink); background: var(--lg-accent-grad);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 50%, transparent) }
+.fav-cat.on::before { content: ''; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; border-radius: 1px; background: var(--lg-highlight) }
+
+.fav-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--tabbar-clearance); scrollbar-width: none;
+}
+.fav-scroll::-webkit-scrollbar { display: none }
+.fav-list { padding-top: var(--s-xxs) }
+
+/* ───────── 琉璃行（高 66） ───────── */
+.lr { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+.lr.m-sw-row { --sw-bg: transparent }
+.lr-in {
+  display: flex; align-items: center; gap: var(--s-m); height: 66px;
+  padding: 0 calc(var(--inset-page) + var(--safe-right)) 0 calc(var(--inset-page) + var(--safe-left));
+}
+.lr:not(.first)::before {
+  content: ''; position: absolute; top: 0; left: var(--inset-page); right: var(--inset-page); height: .5px; z-index: 2; pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--lg-rule) 12%, var(--lg-rule) 88%, transparent);
+}
+.lr:active .lr-in { background: color-mix(in srgb, var(--ink) 4%, transparent) }
+.lr-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px }
+.lr-top { display: flex; align-items: baseline; gap: 3px; min-width: 0; white-space: nowrap }
+.lr-base { font: 600 15px/1.2 var(--font-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis }
+.lr-quote { font: 500 11px/1.2 var(--font-ui); color: var(--lg-ink4) }
+.lr-meta { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.lr-lead.up { color: var(--up) }
+.lr-right { display: flex; align-items: center; gap: var(--s-m); flex: none }
+.lr-price { font: var(--t-body-emph); color: var(--ink); font-family: var(--font-num); font-variant-numeric: tabular-nums; text-align: right; min-width: 64px }
+.lr-price.skel { display: inline-block; width: 64px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 8%, transparent) }
+.stale .lr-price { color: var(--stale) }
+.editing .lr .m-pill, .editing .lr-price { opacity: .55 }
+.editing .lr-in { cursor: grab }
+
+/* 涨跌药丸：72×28，圆角 8，涨跌色 14% 底、30% 描边 */
+.m-pill {
+  display: inline-grid; place-items: center; width: 72px; height: 28px; border-radius: 8px; flex: none;
+  font: var(--t-footnote-emph); font-family: var(--font-num); font-variant-numeric: tabular-nums;
+}
+.m-pill.up { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--up) 30%, transparent) }
+.m-pill.down { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--down) 30%, transparent) }
+.m-pill.none { color: transparent; background: color-mix(in srgb, var(--ink) 6%, transparent) }
+
+/* ───────── 徽章 ───────── */
+.m-badge { position: relative; display: inline-grid; place-items: center; flex: none; overflow: hidden }
+.m-badge::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(to bottom, rgba(255,255,255,.22), rgba(255,255,255,0) 55%); pointer-events: none }
+.m-badge-mark { display: block }
+.m-badge-text { color: #fff; font-weight: 700; font-family: var(--font-ui); letter-spacing: -.02em; line-height: 1 }
+/* 琉璃行的徽章：背后一圈品牌色光晕 + 外扩 3.5 的角向渐变细环 */
+.m-liuli { position: relative; display: inline-grid; place-items: center; width: 33px; height: 33px; flex: none }
+.m-liuli::before {
+  content: ''; position: absolute; inset: -8px; border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--brand) 32%, transparent), transparent); pointer-events: none;
+}
+.m-liuli::after {
+  content: ''; position: absolute; inset: -3.5px; border-radius: 13px; padding: .75px; pointer-events: none;
+  background: conic-gradient(from 200deg, color-mix(in srgb, var(--brand) 70%, transparent), color-mix(in srgb, var(--lg-pane, #fff) 80%, transparent), color-mix(in srgb, var(--brand) 25%, transparent), color-mix(in srgb, var(--brand) 70%, transparent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.m-liuli > .m-badge { position: relative }
+.m-sector-icon { display: inline-grid; place-items: center; border-radius: 50%; flex: none }
+.m-sector-icon svg { display: block }
+
+/* ───────── 空自选 ───────── */
+.fav-empty { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: var(--tabbar-clearance) }
+.fav-empty[hidden] { display: none }
+.fav-empty-in { display: flex; flex-direction: column; align-items: center; gap: var(--s-m) }
+.fav-empty-mark {
+  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--accent);
+  background: var(--lg-glass-thin); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.fav-empty-title { font: 500 16px/1.3 ui-serif, "New York", "Songti SC", serif; color: var(--ink) }
+.fav-add {
+  margin-top: var(--s-s); height: 44px; padding: 0 var(--s-xl); border-radius: 12px; position: relative;
+  font: var(--t-control-on); color: var(--badge-ink); background: var(--lg-accent-grad);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.fav-scroll { position: relative }
+
+/* ───────── 移到分类 ───────── */
+.fav-move { padding: 0 var(--inset-page) var(--s-l) }
+.fav-move-row {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0 var(--s-xs);
+  font: var(--t-body); color: var(--ink); border-top: .5px solid var(--line); text-align: left;
+}
+.fav-move-row:first-child { border-top: 0 }
+.fav-move-row.here { color: var(--accent) }

@@ -1,0 +1,84 @@
+/* 手机网页版 · 板块页（照 iOS Sectors/SectorListView.swift、SectorSegment、SectorSkin）
+ * 底与光斑沿用自选页的琉璃底（favorites.css），这里只覆盖取色：sage / terra 浅色用 --app 当底，
+ * 光斑换成强调色与 amber 提亮；深色不画光斑。 */
+#page-sectors.liuli { --lg-ground: var(--ground); display: flex; flex-direction: column }
+html[data-skin="sage"][data-theme="light"] #page-sectors.liuli,
+html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: var(--app) }
+#page-sectors.liuli {
+  --lg-lobe-a: color-mix(in srgb, var(--accent) 38%, #fff);
+  --lg-lobe-b: color-mix(in srgb, var(--amber) 34%, #fff);
+  --lg-lobe-c: color-mix(in srgb, var(--accent) 22%, #fff);
+  --lg-lobe-alpha: .5;
+}
+#page-sectors > :not(.lg-bg) { position: relative; z-index: 1 }
+.sec-layer { flex: 1; min-height: 0; display: flex; flex-direction: column }
+.sec-layer[hidden] { display: none }
+.sec-drill { animation: sec-push var(--dur) var(--ease-out) }
+@keyframes sec-push { from { opacity: 0; translate: 24px 0 } }
+@media (prefers-reduced-motion: reduce) { .sec-drill { animation: none } }
+
+/* 页头：「板块」17 semibold，同基线接规模；右侧市场分段；整行最矮 44 */
+.sec-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: 44px; flex: none;
+  padding: calc(var(--safe-top) + var(--s-xs)) calc(var(--inset-page) + var(--safe-right)) var(--s-xs) calc(var(--inset-page) + var(--safe-left));
+}
+.sec-title { display: flex; align-items: baseline; gap: var(--s-s); min-width: 0 }
+.sec-title h1 { margin: 0; font: var(--t-title); color: var(--ink); white-space: nowrap }
+.sec-scale { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.sec-win { display: flex; padding: 0 calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left)); flex: none }
+.sec-win[hidden] { display: none }
+
+/* 分段：raised2 槽，圆角 8，高 32；档高 28、左右 12；选中 seg-on 底 + 一丝阴影 */
+.m-seg { display: inline-flex; align-items: center; gap: 0; height: 32px; padding: 2px; border-radius: 8px; background: var(--raised2); flex: none }
+.m-seg-opt { height: 28px; padding: 0 var(--s-m); border-radius: 6px; font: var(--t-control); color: var(--ink2); white-space: nowrap; transition: background var(--dur-fast) var(--ease-out) }
+.m-seg-opt.on { background: var(--seg-on); color: var(--ink); font: var(--t-control-on); box-shadow: 0 1px 2px rgba(0,0,0,.09) }
+
+.sec-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--tabbar-clearance); scrollbar-width: none; position: relative;
+}
+.sec-scroll::-webkit-scrollbar { display: none }
+
+/* 板块行：图标 32、间距 12；名字 body ink，副文案 caption ink3；涨跌 footnoteEmph */
+.sec-row {
+  position: relative; display: flex; align-items: center; gap: var(--s-m); min-height: 44px;
+  padding: var(--s-s) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.sec-row:not(.first)::before {
+  content: ''; position: absolute; top: 0; left: calc(var(--inset-page) + var(--safe-left) + 32px + var(--s-m)); right: calc(var(--inset-page) + var(--safe-right));
+  height: .5px; background: var(--lg-rule);
+}
+.sec-row:active { background: color-mix(in srgb, var(--ink) 4%, transparent) }
+.sec-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.sec-n { font: var(--t-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.sec-sub { font: var(--t-caption); color: var(--ink3) }
+.sec-pct { font: var(--t-footnote-emph); font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
+.sec-pct.up, .sec-dpct.up { color: var(--up) }
+.sec-pct.down, .sec-dpct.down { color: var(--down) }
+.stale .sec-pct, .stale .sec-dpct { color: var(--stale) }
+
+.sec-empty {
+  position: absolute; inset: 0 0 var(--tabbar-clearance); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-xs); width: 100%;
+}
+.sec-empty[hidden] { display: none }
+.sec-empty b { font: var(--t-body-emph); color: var(--ink2) }
+.sec-empty span { font: var(--t-caption); color: var(--ink3) }
+
+/* 下钻头：返回圆片 32、板块图标 38、名字 title + 副文案 caption2、右侧涨跌 title 字号 */
+.sec-dhead {
+  display: flex; align-items: center; gap: var(--s-m); flex: none; min-height: 44px;
+  padding: calc(var(--safe-top) + var(--s-xs)) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+}
+.sec-back {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--ink);
+  background: var(--lg-glass-thin); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft); position: relative;
+}
+.sec-back::after { content: ''; position: absolute; inset: -6px }
+.sec-back:active { opacity: .6 }
+.sec-dtitle { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px }
+.sec-dtitle h1 { margin: 0; font: var(--t-title); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.sec-dsub { display: inline-flex; align-items: center; gap: 2px; font: var(--t-caption2); color: var(--lg-ink4) }
+.sec-dpct { font: var(--t-title); font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
+.sec-drill-empty { padding: var(--s-xxl) var(--inset-page); text-align: center; font: var(--t-caption); color: var(--ink3) }
+.sec-drill-empty[hidden] { display: none }
