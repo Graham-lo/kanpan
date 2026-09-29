@@ -18,7 +18,8 @@ import SECTORS from '../data/sectors.json'
 export type SectorMarket = 'crypto' | 'us'
 export type SectorWindow = 'today' | 'd5' | 'd20'
 
-export interface SectorQuote { base: string; pct: number; quoteVolume: number; price: number }
+/** symbol：挑中的那张合约（网页版点进图表用），口径计算不看它 */
+export interface SectorQuote { base: string; pct: number; quoteVolume: number; price: number; symbol?: string }
 export interface SectorCloses { c5?: number; c20?: number }
 export interface SectorHistory { asof: string; closes: Map<string, SectorCloses> }
 export interface SectorDef { id: string; name: string; market: SectorMarket; members: string[] }
@@ -425,7 +426,7 @@ export function ingest(tickers: Ticker[], index?: Map<string, CatalogEntry>): Qu
     const old = picked.get(base)
     if (old && !prefers(rank, t.quoteVolume, old)) continue
     picked.set(base, { rank, volume: t.quoteVolume })
-    next.set(base, { base, pct: t.pct, quoteVolume: t.quoteVolume, price: t.price })
+    next.set(base, { base, pct: t.pct, quoteVolume: t.quoteVolume, price: t.price, symbol: sym })
   }
   return next
 }

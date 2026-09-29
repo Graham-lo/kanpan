@@ -1,0 +1,42 @@
+/* Hkline Web · 板块页（只用 app.css 已有的令牌与三套皮肤变量） */
+
+/* 两栏：板块列表 · 品种列表；旧版的预览图一栏不要了 */
+#page-sectors.page { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+#page-sectors .sec-preview { display: none; }
+
+.sec-head { gap: var(--s4); }
+.sec-head h2 { flex: none; }
+.sec-win { display: inline-flex; gap: var(--s1); }
+.sec-head .sub { display: inline-flex; align-items: baseline; gap: var(--s1); white-space: nowrap; }
+.sec-big { font-size: var(--t20); line-height: 28px; font-weight: 600; }
+.sec-scroll { flex: 1; min-height: 0; }
+
+/* 板块列表 */
+.sec-boards { table-layout: fixed; }
+.sec-boards col.c-spark { width: 208px; }
+.sec-boards col.c-beat { width: 128px; }
+.sec-boards col.c-pct { width: 128px; }
+.sec-boards td { height: 44px; }
+.sec-boards th:first-child, .sec-boards td:first-child { padding-left: var(--s4); }
+.sec-boards th:last-child, .sec-boards td:last-child { padding-right: var(--s4); }
+.sec-name { font-size: var(--t14); font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; display: block; }
+.sec-pct { font-size: var(--t14); font-weight: 600; }
+.sec-spark { width: 176px; height: 28px; display: block; margin-left: auto; overflow: visible; }
+.sec-zero { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
+
+/* 品种列表：照自选列表 */
+.sec-syms { table-layout: fixed; }
+.sec-syms col.c-price { width: 160px; }
+.sec-syms col.c-pct { width: 128px; }
+.sec-syms col.c-vol { width: 128px; }
+.sec-syms col.c-star { width: 48px; }
+.sec-syms td { height: 40px; }
+.sec-syms .sym .cn { max-width: 200px; }
+.sec-lead {
+  flex: none; height: 18px; padding: 0 6px; border-radius: var(--r-xs);
+  font-size: var(--t11); line-height: 18px; font-weight: 500;
+  color: var(--up-text); background: color-mix(in srgb, var(--up) 12%, transparent);
+}
+.sec-star { color: var(--text-3); }
+.sec-star[aria-pressed="true"] { color: #F5A623; background: transparent; }
+.sec-star[aria-pressed="true"]:hover { background: var(--surface-3); }
