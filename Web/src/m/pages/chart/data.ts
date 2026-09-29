@@ -51,18 +51,22 @@ export function fetchValuation(sym: string): Promise<Valuation | null> {
 
 export interface PagePort extends OrderFlowPort {
   setOverride(o: Override | null): void
+  /** 行情页藏起来时停掉订阅（簿与成交的几条 WS、500ms 评估），记住想要的品种；resume 再按它重开 */
+  suspend(): void
+  resume(): void
   /** 最新快照的生效门槛 / 叠改动之前的默认门槛（还没到是 null） */
   readonly thresholds: Thresholds | null
   readonly defaults: Thresholds | null
 }
 
-export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, override: (sym: string) => Override | null): PagePort {
+export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, override: (sym: string) => Override | null, startSuspended = false): PagePort {
   let thresholds: Thresholds | null = null, defaults: Thresholds | null = null
   const src = new OrderFlowSource(snap => {
     if (snap) { thresholds = snap.thresholds; defaults = snap.defaults ?? null }
     push(snap)
   })
-  let wanted: string | null = null, knewSymbol = false
+  let wanted: string | null = null, knewSymbol = false, suspended = startSuspended
+  let seen: [number | null, number | null] | null = null
   const info = (sym: string) => {
     const m = S.symbols.get(sym)
     return { known: !!m, crypto: (m?.kind ?? 'crypto') === 'crypto', turnover24h: m?.vol ?? null }
@@ -74,7 +78,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
     src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: override(sym) })
   }
   const off = onMarket(e => {
-    if (!wanted) return
+    if (!wanted || suspended) return
     if (e.type === 'ws') src.setRoute(S.route)
     else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(); start(wanted) }
   })
@@ -82,15 +86,30 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
     setWanted(onOff, symbol) {
       const sym = symbol.toUpperCase()
       if (!onOff) { wanted = null; src.stop(); return }
+      if (sym !== wanted) seen = null
+      if (suspended) { wanted = sym; return }
       if (wanted === sym && src.current === sym) return
       wanted = sym
       start(sym)
     },
     noteView(view, series) {
-      if (wanted) src.setVisible(view.from, view.to + Math.max(0, series.step))
+      seen = [view.from, view.to + Math.max(0, series.step)]
+      if (wanted && !suspended) src.setVisible(seen[0], seen[1])
     },
     dispose() { off(); wanted = null; src.stop() },
-    setOverride(o) { if (wanted) src.setOverride(o) },
+    suspend() {
+      if (suspended) return
+      suspended = true
+      src.stop()
+    },
+    resume() {
+      if (!suspended) return
+      suspended = false
+      if (!wanted) return
+      start(wanted)
+      if (seen) src.setVisible(seen[0], seen[1])
+    },
+    setOverride(o) { if (wanted && !suspended) src.setOverride(o) },
     get thresholds() { return thresholds },
     get defaults() { return defaults },
   }

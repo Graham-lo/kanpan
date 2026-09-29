@@ -138,7 +138,8 @@ export function initChart(root: HTMLElement): PageHandle {
     subScale: { ...st.subHeightOverrides },
     barSpacing: st.barSpacing, orderFlow: st.orderFlow,
     streams: list => { chartStreams = list; pushStreams() },
-    orderFlowSource: push => (port = createPagePort(push, s => st.orderFlowOverrides[baseOfSymbol(s).base] ?? null)),
+    // 页面藏着时订单流停订（几条簿 / 成交 WS 与 500ms 评估），show / hide 里 resume / suspend
+    orderFlowSource: push => (port = createPagePort(push, s => st.orderFlowOverrides[baseOfSymbol(s).base] ?? null, !shown)),
   })
   chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight })
   const card = createOrderFlowCard((chart.el.firstElementChild as HTMLElement | null) ?? chart.el)
@@ -319,6 +320,7 @@ export function initChart(root: HTMLElement): PageHandle {
       shown = true
       void ensureUniverse().then(() => schedule())
       pushStreams()
+      port?.resume()
       layout()
       syncChart()
       clearInterval(tick)
@@ -334,6 +336,8 @@ export function initChart(root: HTMLElement): PageHandle {
       wantDraw = false; guide.hidden = true
       chart.clearCrosshair()
       pushStreams()
+      port?.suspend()
+      card.set(null, '', 2)
       document.getElementById('m-app')?.classList.remove('landscape-free')
     },
     reselect(): void {
