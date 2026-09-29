@@ -1,6 +1,6 @@
 // 行情页引擎的生命周期：心跳随页面藏 / 露停开（ChartBeat）、换品种时留旧图只留到取数有结果（holdsPrevious）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AWAY_RESYNC_MS, ChartBeat } from '../src/m/chart/beat'
+import { AWAY_RESYNC_MS, ChartBeat, resyncOnOpen } from '../src/m/chart/beat'
 import { ViewWindow, defaultChartOptions } from '../src/m/chart/geometry'
 import { makeState, type ChartState } from '../src/m/chart/state'
 import { showsOtherChart } from '../src/m/pages/chart/logic'
@@ -226,5 +226,28 @@ describe('同步删线 → 线上的提醒被撤', () => {
     wire(book)
     B.reconcileLineAlerts('BTCUSDT', [])
     expect(ids()).toEqual([])
+  })
+})
+
+describe('推送连上时补缺口：只有真正断过再连上才补（冷启动末页不取两遍）', () => {
+  const t0 = 1_000_000
+  it('冷启动：首屏刚取完就第一次连上 → 同一批数据，不补', () => {
+    expect(resyncOnOpen('connecting', 'open', false, t0, t0 + 600)).toBe(false)
+    expect(resyncOnOpen('idle', 'open', false, t0, t0 + 4_999)).toBe(false)
+  })
+  it('冷启动但连得很慢（首屏取完超过 5 秒才连上）→ 期间可能收了根，补', () => {
+    expect(resyncOnOpen('connecting', 'open', false, t0, t0 + 5_001)).toBe(true)
+  })
+  it('首屏还没取到（freshAt 为 0）就连上 → 交给 resync 自己按 loading 跳过', () => {
+    expect(resyncOnOpen('connecting', 'open', false, 0, t0)).toBe(true)
+  })
+  it('真正断过再连上（见过连着 → 断开 → 连上）→ 补，哪怕刚取过末页', () => {
+    expect(resyncOnOpen('connecting', 'open', true, t0, t0 + 100)).toBe(true)
+    expect(resyncOnOpen('closed', 'open', true, t0, t0 + 60_000)).toBe(true)
+  })
+  it('没有变成连上（仍连着、断开、重连中）→ 不补', () => {
+    expect(resyncOnOpen('open', 'open', true, 0, t0)).toBe(false)
+    expect(resyncOnOpen('open', 'connecting', true, 0, t0)).toBe(false)
+    expect(resyncOnOpen('open', 'closed', true, 0, t0)).toBe(false)
   })
 })

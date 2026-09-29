@@ -67,3 +67,15 @@ export class ChartBeat {
     this.hooks.stopped()
   }
 }
+
+/**
+ * 推送连接变成「已连上」时要不要重拉末页补缺口。只有真正断过再连上才补：
+ * - 这张图见过它连着（everOpen），这回是从断开 / 重连中回到连上——中间的推送丢了，补；
+ * - 冷启动第一次连上：首屏那一页刚取完（freshAt 距今不到 5 秒）就是同一批数据，不再补第二次；
+ *   首屏取完很久才连上（弱网慢连）照样补，那段时间里可能收了根。
+ * 首屏还在取（loading）时的连上由 resync 自己跳过，取回来的就是最新的。
+ */
+export function resyncOnOpen(was: string, now: string, everOpen: boolean, freshAt: number, at: number): boolean {
+  if (now !== 'open' || was === 'open') return false
+  return everOpen || at - freshAt > AWAY_RESYNC_MS
+}

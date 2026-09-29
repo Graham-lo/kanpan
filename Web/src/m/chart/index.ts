@@ -30,7 +30,7 @@ import { ExternalFeed, isExternalID } from './external.source'
 import { createOrderFlowPort } from './orderflow.source'
 import { CompareFeed, compareSymbolOf, compareTargets } from './compare.source'
 import { DepthFeed } from './depth.source'
-import { ChartBeat } from './beat'
+import { ChartBeat, resyncOnOpen } from './beat'
 
 // ================================================================ ViewIntent
 
@@ -274,6 +274,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   let error: string | null = null
   let historyLoading = false
   let historyDone = false
+  /** 主图末页最近一次从 REST 取到的时刻（推送连上时据此判断要不要补缺口，见 resyncOnOpen） */
+  let freshAt = 0
   let colors: ChartColors = readChartColors()
   let colorKey = skinKey()
   let oi: ExternalSeries | null = null
@@ -630,6 +632,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const bars = await loadBars(sym, iv, null)
     if (destroyed || gen !== generation) return
     loading = false
+    if (bars) freshAt = Date.now()
     if (!bars) { error = '行情暂时取不到'; update(); status(); return }
     if (cached && cached.count > 0) {
       mergeLatest(cached, bars)
@@ -679,6 +682,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const gen = generation
     const bars = await loadBars(s.symbol, s.interval, null)
     if (destroyed || gen !== generation || series !== s || !bars) return
+    freshAt = Date.now()
     mergeLatest(s, bars)
   }
 
@@ -733,6 +737,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     }
   }
 
+  let wsSeen: string = S.wsState
+  let everOpen = S.wsState === 'open'
   const offMarket = opts.offline ? () => {} : onMarket(e => {
     if (destroyed) return
     if (e.type === 'kline' && e.symbol === symbol && e.iv === interval) onKline(e.bar)
@@ -744,9 +750,13 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
         if (si && (si.priceDecimals !== st.input.symbol.priceDecimals || si.base !== st.input.symbol.base)) update()
       }
     } else if (e.type === 'ws') {
-      // 线路换了（直连 ↔ 网关）盘口跟着起停；重连上了补主图与对比的缺口
+      // 线路换了（直连 ↔ 网关）盘口跟着起停；真正断过再连上才补主图与对比的缺口——
+      // 冷启动首屏刚取完就第一次连上是同一批数据，不再补第二次（原来每次冷启动末页都取两遍）
       syncDepth()
-      if (S.wsState === 'open') { void resync(); compareFeed.resync() }
+      const was = wsSeen, now = S.wsState
+      wsSeen = now
+      if (resyncOnOpen(was, now, everOpen, freshAt, Date.now())) { void resync(); compareFeed.resync() }
+      if (now === 'open') everOpen = true
     }
   })
 
