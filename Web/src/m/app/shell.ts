@@ -93,6 +93,24 @@ export function registerPage(id: PageId, h: PageHandle): void {
   if (st.page === id && shown !== id) { shown = id; safe(() => h.show()); restoreScroll(pageRoot(id), id) }
 }
 
+// ───────── 盖板 ─────────
+
+/** 不在 ui/sheet 那一摞里的盖板（搜索页这类整屏盖层）登记的关闭函数；换页时统一收掉 */
+const overlays = new Set<() => void>()
+
+/** 登记一层盖板：开的时候登记、关的时候调返回的函数注销。壳换页时会调 close（close 里自己注销） */
+export function registerOverlay(close: () => void): () => void {
+  overlays.add(close)
+  return () => { overlays.delete(close) }
+}
+
+/** 收干净所有盖在页面上的层：弹层 / 面板 / 菜单 / 确认框（ui/sheet 那一摞）、左滑开着的行、登记过的盖板 */
+export function closeOverlays(): void {
+  closeAllSheets()
+  closeOpenSwipe()
+  for (const close of [...overlays]) { overlays.delete(close); safe(close) }
+}
+
 /** 切到某一页。从底栏点的（fromTab）会把图表页的来路作废 */
 export function go(page: string, opts: { fromTab?: boolean; replace?: boolean } = {}): void {
   const p = (PAGES as readonly string[]).includes(page) ? page as PageId : 'chart'
@@ -106,8 +124,7 @@ export function go(page: string, opts: { fromTab?: boolean; replace?: boolean } 
     }
     return
   }
-  closeAllSheets()
-  closeOpenSwipe()
+  closeOverlays()
   saveScroll(prev)
   st.page = p
   PAGES.forEach(x => pageRoot(x).classList.toggle('show', x === p))

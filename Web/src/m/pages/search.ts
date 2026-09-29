@@ -10,7 +10,7 @@
  */
 import '../styles/search.css'
 import { st, save } from '../app/store'
-import { openSymbol, hooks } from '../app/shell'
+import { openSymbol, hooks, registerOverlay } from '../app/shell'
 import { el, layer } from '../ui/dom'
 import { icon } from '../ui/icons'
 import { confirmDialog } from '../ui/sheet'
@@ -197,6 +197,8 @@ export function openSearch(opts: SearchOptions = {}): void {
     opts.onClose?.()
   }
   current = me
+  // 壳换页（底栏、openSymbol、同步换页……都走 replaceState，不发 hashchange）时由壳统一关掉
+  L.add(registerOverlay(close))
   render()
   requestAnimationFrame(() => root.classList.add('in'))
   void ensureUniverse().then(L.guard(() => { refreshHot(); schedule() }), L.guard(() => toast('品种表没拉到')))
