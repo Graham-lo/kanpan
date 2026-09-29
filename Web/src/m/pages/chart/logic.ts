@@ -387,3 +387,9 @@ export function habitCategory(kind: string | undefined, base: string): 'crypto' 
   if (kind === 'us') return 'equity'
   return METALS.has(base) ? 'metal' : 'other'
 }
+
+/** 算不算横屏（画线台）：视口够扁（媒体查询）且设备自己也是横着的。
+ *  安卓竖着拿弹出键盘时视口会宽 > 高，但 screen.orientation 仍是 portrait-*；拿不到朝向时只看视口 */
+export function isLandscape(viewportLandscape: boolean, orientationType: string | undefined | null): boolean {
+  return viewportLandscape && (!orientationType || orientationType.startsWith('landscape'))
+}

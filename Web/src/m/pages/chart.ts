@@ -29,7 +29,7 @@ import { closeAllSheets } from '../ui/sheet'
 import { wantStreams, ensureUniverse, takeOpenParam } from './_streams'
 import { openSearch } from './search'
 import { openAlertForm } from './alertForm'
-import { isStale, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
+import { isStale, isLandscape, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
 import { createIntervalBar } from './chart/intervalBar'
@@ -173,8 +173,12 @@ export function initChart(root: HTMLElement): PageHandle {
   guide.querySelector<HTMLButtonElement>('.cp-guide-x')!.onclick = () => { wantDraw = false; guide.hidden = true }
   page.append(guide)
   let wantDraw = false
+  let landShown: boolean | null = null
   const mq = matchMedia(LANDSCAPE)
-  const isLand = (): boolean => mq.matches
+  // 只看视口宽高比不够：安卓上竖着拿、弹出键盘（记一笔、参数输入框）视口会变成「宽 > 高」，媒体查询就误判成横屏，
+  // 整页翻成画线台布局、指标全收。设备自己的朝向（screen.orientation）还是竖的就不算横屏
+  const so: ScreenOrientation | undefined = typeof screen !== 'undefined' ? screen.orientation : undefined
+  const isLand = (): boolean => isLandscape(mq.matches, so?.type)
   function startDrawing(): void {
     closeAllSheets()
     if (isLand()) { bench.setActive(true); return }
@@ -183,6 +187,7 @@ export function initChart(root: HTMLElement): PageHandle {
   }
   function layout(): void {
     const land = isLand()
+    landShown = land
     page.classList.toggle('land', land)
     page.classList.toggle('drawing', bench.active)
     document.getElementById('m-app')?.classList.toggle('landscape-free', land && shown)
@@ -191,7 +196,13 @@ export function initChart(root: HTMLElement): PageHandle {
     if (land && wantDraw) { wantDraw = false; guide.hidden = true; bench.setActive(true) }
     bench.render()
   }
-  mq.addEventListener('change', () => { card.set(null, '', 2); layout() })
+  const onOrientation = (): void => {
+    if (isLand() === landShown) return // 媒体查询与设备朝向各报一次，只按真正翻了的那一次重排
+    card.set(null, '', 2)
+    layout()
+  }
+  mq.addEventListener('change', onOrientation)
+  so?.addEventListener('change', onOrientation)
 
   const panelCtx: PanelContext = { symbol: sym, port: () => port, onDraw: startDrawing }
 

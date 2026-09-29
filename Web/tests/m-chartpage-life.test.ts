@@ -110,3 +110,14 @@ describe('手机网页版 · 记一笔补传：这一轮还在传时新记下的
     vi.unstubAllGlobals()
   })
 })
+
+describe('手机网页版 · 行情页横竖屏判定', async () => {
+  const { isLandscape } = await import('../src/m/pages/chart/logic')
+  it('视口扁且设备横着才算横屏；安卓竖屏弹键盘（视口扁、设备竖）不算', () => {
+    expect(isLandscape(true, 'landscape-primary')).toBe(true)
+    expect(isLandscape(true, 'landscape-secondary')).toBe(true)
+    expect(isLandscape(true, 'portrait-primary')).toBe(false)
+    expect(isLandscape(false, 'landscape-primary')).toBe(false)
+    expect(isLandscape(true, undefined)).toBe(true) // 拿不到设备朝向（老浏览器）只看视口
+  })
+})
