@@ -70,3 +70,43 @@ describe('手机网页版 · 行情页订单流口：页面藏起来就停订', 
     expect(log).toEqual(['start BTCUSDT', 'stop BTCUSDT', 'start BTCUSDT'])
   })
 })
+
+// ───────────────────────────── 记一笔的补传
+
+const calls: string[] = []
+let gate: (() => void) | null = null
+vi.mock('../src/review/api', () => ({
+  reviewApi: {
+    createRecord: async (d: { id: string }) => {
+      calls.push(`record ${d.id}`)
+      if (d.id === 'A') await new Promise<void>(r => { gate = r })
+      return { record: {} }
+    },
+    putShot: async (id: string) => { calls.push(`shot ${id}`) },
+  },
+  reviewToken: () => 'token',
+  ReviewError: class extends Error { status = 0 },
+  errorText: () => '',
+  uuid: () => 'x',
+}))
+
+describe('手机网页版 · 记一笔补传：这一轮还在传时新记下的也跟着传', () => {
+  it('A 在传的时候记下 B：await 同一轮 flushNotes 之后 B 已经传上去、队列清空', async () => {
+    const mem = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v) }, removeItem: (k: string) => { mem.delete(k) } })
+    vi.stubGlobal('navigator', { onLine: true })
+    const { flushNotes, pendingNotes, NOTES_KEY } = await import('../src/m/pages/chart/note')
+    const put = (...ids: string[]) => mem.set(NOTES_KEY, JSON.stringify(ids.map(id => ({ draft: { id }, queued: 0 }))))
+    put('A')
+    const first = flushNotes()
+    await vi.waitFor(() => expect(gate).not.toBeNull())
+    put('A', 'B') // 记一笔页先入队，再 await flushNotes()——拿到的是正在跑的这一轮
+    const second = flushNotes()
+    expect(second).toBe(first)
+    gate!()
+    expect(await second).toBe(2)
+    expect(calls).toEqual(['record A', 'record B'])
+    expect(pendingNotes()).toEqual([])
+    vi.unstubAllGlobals()
+  })
+})

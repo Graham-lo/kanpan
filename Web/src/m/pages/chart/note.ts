@@ -70,7 +70,11 @@ export function flushNotes(): Promise<number> {
   flushing = (async () => {
     let sent = 0
     if (!canUpload() || !navigator.onLine) return 0
-    for (const q of pendingNotes()) {
+    // 每条之前重读队列：这一轮还在传时新记下的那条（记一笔页 await 的正是这一轮）也跟着传，
+    // 不会因为不在开头那份快照里而被报成「稍后自动上传」、一直留到下次登录 / 联网 / 回行情页
+    const tried = new Set<string>()
+    for (let q = pendingNotes()[0]; q; q = pendingNotes().find(x => !tried.has(x.draft.id))) {
+      tried.add(q.draft.id)
       try {
         await reviewApi.createRecord(q.draft)
       } catch (e) {
