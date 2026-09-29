@@ -1,7 +1,7 @@
 /* Hkline Web · 入口 */
 import './styles/app.css'
 import './styles/workbench.css'
-import { st, save, LAYOUTS, type Layout, type PanelId } from './app/store'
+import { st, save, clampActive, LAYOUTS, type Layout, type PanelId } from './app/store'
 import { installShell, applyTheme, renderHeader, go } from './app/shell'
 import { hydrateIcons } from './ui/dom'
 import { installTooltips } from './ui/overlay'
@@ -17,11 +17,12 @@ import { initSync } from './sync/glue'
 function applyQuery(): void {
   const q = new URLSearchParams(location.search)
   const s = q.get('s'), i = q.get('i'), th = q.get('theme'), sk = q.get('skin'), lo = q.get('layout'), pn = q.get('panel')
+  // 先定布局再落品种 / 周期：存着的当前格可能在新布局之外（八图第 3 格 → 一图），不收回来就落到看不见的格子上
+  if (lo && (LAYOUTS as readonly string[]).includes(lo)) { st.layout = lo as Layout; clampActive(st) }
   if (s && /^[A-Z0-9]+$/.test(s)) st.cells[st.active] = { ...st.cells[st.active], symbol: s }
   if (i && INTERVALS.includes(i)) st.cells[st.active] = { ...st.cells[st.active], iv: i }
   if (th === 'light' || th === 'dark') st.theme = th
   if (sk === 'sage' || sk === 'terra' || sk === 'classic') st.skin = sk
-  if (lo && (LAYOUTS as readonly string[]).includes(lo)) st.layout = lo as Layout
   if (pn === 'none') st.panel = null
   else if (pn && ['watch', 'alerts', 'flow', 'notes', 'trades'].includes(pn)) st.panel = pn as PanelId
   if (q.has('ladder')) st.slots.ladder = q.get('ladder') === '1'

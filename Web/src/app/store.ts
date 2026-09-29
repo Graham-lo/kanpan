@@ -15,6 +15,13 @@ export type Skin = 'sage' | 'terra' | 'classic'
 export type UpDown = 'red-up' | 'green-up'
 export type Layout = '1' | '2' | '2v' | '4' | '6' | '8'
 export const LAYOUTS: Layout[] = ['1', '2', '2v', '4', '6', '8']
+/** 每种布局几格 */
+export const LAYOUT_N: Record<Layout, number> = { '1': 1, '2': 2, '2v': 2, '4': 4, '6': 6, '8': 8 }
+/** 当前格子落在布局的格数以内（地址栏把八图改成一图时，参数要落到看得见的那一格上） */
+export function clampActive(s: Pick<State, 'active' | 'layout'>): void {
+  const n = LAYOUT_N[s.layout] || 1
+  s.active = Number.isInteger(s.active) ? Math.min(Math.max(0, s.active), n - 1) : 0
+}
 export type PanelId = 'watch' | 'alerts' | 'flow' | 'notes' | 'trades'
 export type PageId = 'chart' | 'sectors' | 'review' | 'me'
 /** 侧栏「自选」视图里按顺序堆叠的小部件；盘口 / 成交 / 大单 是下一阶段的 */
@@ -105,6 +112,7 @@ export function hydrate(saved: Partial<State>): State {
   s.ind.subs = s.ind.subs.slice(0, 4)
   if (!Array.isArray(s.cells) || !s.cells.length) s.cells = d.cells
   if (!LAYOUTS.includes(s.layout)) s.layout = '1'
+  clampActive(s)
   if (!['split', 'delta', 'total'].includes(s.vpvrMode)) s.vpvrMode = 'split'
   s.linkCross = s.linkCross !== false; s.linkSymbol = s.linkSymbol === true
   if (!Array.isArray(s.customIvs)) s.customIvs = []
