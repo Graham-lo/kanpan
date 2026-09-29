@@ -28,6 +28,16 @@ export function ensureUniverse(): Promise<unknown> {
   })
   return universeP
 }
+let refreshing: Promise<unknown> | null = null
+/** 强制重拉（壳的定时刷新 m/app/universeRefresh 用）：不看缓存，正在拉就共用那一次。
+ *  和 ensureUniverse 共用同一张表与同一个 universe 事件 */
+export function refreshUniverse(): Promise<unknown> {
+  if (refreshing) return refreshing
+  const p = refreshing = loadUniverse().finally(() => { if (refreshing === p) refreshing = null })
+  universeP = p
+  p.finally(() => { if (S.live === false) setTimeout(() => { if (universeP === p) universeP = null }, 30_000) }).catch(() => {})
+  return p
+}
 /** 前台回来、表是空的：重拉 */
 export function retryUniverse(): Promise<unknown> { universeP = null; return ensureUniverse() }
 

@@ -11,7 +11,8 @@ import './styles/base.css'
 import './styles/shell.css'
 import './styles/ui.css'
 import { st, PAGES, type PageId } from './app/store'
-import { installShell, registerPage, pageRoot, type PageHandle } from './app/shell'
+import { installShell, registerPage, pageRoot, hooks, type PageHandle } from './app/shell'
+import { startUniverseRefresh } from './app/universeRefresh'
 import { glyph, type GlyphName } from './ui/icons'
 import { resume } from '../account/client'
 import { setRoute } from '../market'
@@ -50,6 +51,8 @@ resume()
 setRoute(st.routePolicy)
 startLinkGrace()
 initMobileSync()
+// 品种表：回前台超过 30 分钟、在前台每 6 小时重拉（新上线的搜得到、下架的翻成下架）
+startUniverseRefresh({ onForeground: fn => hooks.onForeground.push(fn) })
 
 // 先挂当前页，其余页空闲时再挂（切过去时已经就绪）
 const first = st.page
