@@ -21,7 +21,8 @@ import { startLinkGrace } from './app/linkGrace'
 import { startLineAlerts } from './app/lineAlerts'
 
 type PageModule = Record<string, unknown>
-const modules = import.meta.glob<PageModule>('./pages/*.ts')
+// 下划线开头的是各页共用的模块（_streams.ts），不是页：各页静态引它，扫进来只会让分包失效
+const modules = import.meta.glob<PageModule>(['./pages/*.ts', '!./pages/_*.ts'])
 
 const TITLE: Record<PageId, string> = { chart: '图表', favorites: '自选', sectors: '板块分类', me: '我的' }
 const GLYPH: Record<PageId, GlyphName> = { chart: 'chart', favorites: 'favorites', sectors: 'sectors', me: 'me' }

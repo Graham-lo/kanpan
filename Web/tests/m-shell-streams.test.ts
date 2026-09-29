@@ -89,3 +89,15 @@ describe('离开行情页后 K 线流（_streams.wantStreams → market/stream �
     expect(ws.sent).toEqual([])
   })
 })
+
+// 构建：_streams.ts 是各页共用的模块，不是页。main.ts 的页面 glob 把它扫进去当懒加载，
+// 而各页又静态引它，rolldown 报 INEFFECTIVE_DYNAMIC_IMPORT、分包不生效。
+describe('页面 glob 不扫下划线开头的共用模块', () => {
+  it('main.ts 排除 ./pages/_*.ts', async () => {
+    const src = (await import('../src/m/main.ts?raw')).default
+    const m = src.match(/import\.meta\.glob<PageModule>\((\[[^\]]*\])\)/)
+    expect(m, '页面 glob 应是带排除项的数组').not.toBeNull()
+    expect(m![1]).toContain("'./pages/*.ts'")
+    expect(m![1]).toContain("'!./pages/_*.ts'")
+  })
+})
