@@ -2,9 +2,10 @@
  *
  * 一律同源相对路径（开发时 Vite 把 /v1 代理到线上，部署后网页与接口同域）。
  * 成功回 {"data": …}，失败回 {"error": {"code": "…"}}；改动类请求必须带 Idempotency-Key。
- * 访问令牌只从账号模块放进 store 的 account.accessToken 读，这里不管登录与续期。
+ * 登录着时走账号模块的 authed（续期、被拒重试、被顶掉都由它管）；只有调试令牌才原样带上。
  */
 import { st } from '../app/store'
+import { ApiError, authed, readStored } from '../account/client'
 import { IV_MS } from '../util/format'
 import { REST, j } from '../market/rest'
 import type { Bar } from '../chart/calc'
@@ -65,14 +66,32 @@ export function uuid(): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
+const TIMEOUT = 15000
+
 async function call<T>(method: string, path: string, body?: unknown, idem?: string | boolean): Promise<T> {
+  const idemHeaders: Record<string, string> = idem ? { 'Idempotency-Key': typeof idem === 'string' ? idem : uuid() } : {}
+  // 账号模块登录着：走它的 authed（access 到期先换、被拒换一次再试、被顶掉收尾）。
+  // 不能直接拿 st.account.accessToken：浏览器关了一阵再打开，那把 access 早过期了，
+  // 页面第一时间进复盘就会被判「登录已过期」，而 refresh 其实还有效。
+  if (readStored()) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        authed<T>(method, BASE + path, body, idemHeaders),
+        new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new ReviewError('timeout', 0)), TIMEOUT) }),
+      ])
+    } catch (e) {
+      if (e instanceof ApiError) throw new ReviewError(e.code === 'authentication_failed' ? 'not_logged_in' : e.code, e.status)
+      throw e
+    } finally { clearTimeout(timer) }
+  }
+  // 调试入口（地址栏 / localStorage 放的令牌）：原样带上
   const tok = reviewToken()
   if (!tok) throw new ReviewError('not_logged_in', 401)
-  const headers: Record<string, string> = { authorization: 'Bearer ' + tok }
+  const headers: Record<string, string> = { authorization: 'Bearer ' + tok, ...idemHeaders }
   if (body !== undefined) headers['content-type'] = 'application/json'
-  if (idem) headers['Idempotency-Key'] = typeof idem === 'string' ? idem : uuid()
   const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), 15000)
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT)
   let r: Response
   try {
     r = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: ctl.signal })
