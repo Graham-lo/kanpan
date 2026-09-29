@@ -24,10 +24,13 @@
 //!   缺席超过 2 分钟的按最后一次看到时失联结束。每小时滚动清理一次（3 天 + 20 GB 闸门）。
 //! * 停机（SIGTERM）：和 axum 排空 HTTP 并行，各品种停止评估、写完手里的行，挂着的单**不结束**，
 //!   一条 `UPDATE … FROM unnest` 把它们的 `seen_ms` 刷到停机那一刻，交给下次启动读回；整段最多 10 秒（见「停机」一节）。
-//! * 接口 `GET /v1/market/orderflow/history?base=&from=&to=&minLifeMs=`：`to` 缺省为此刻，`from` 缺省为
-//!   `to` 前 24 小时，区间最长 3 天；`minLifeMs`（0 到 1 天，缺省 0）滤掉存活不到它的已结束单，挂着的照回；
-//!   回 `{base, thresholds, trackedSinceMs, orders}`，自己压 gzip（请求带 `Accept-Encoding: gzip` 时）。
-//!   同一 (品种, from/to 所在分钟, minLifeMs, 是否 gzip) 的请求只读一次库：并发的等同一次读，
+//! * 接口 `GET /v1/market/orderflow/history?base=&from=&to=&minLifeMs=&limit=`：`to` 缺省为此刻，`from` 缺省为
+//!   `to` 前 24 小时（带了 `limit` 的缺省 6 小时），区间最长 3 天；`minLifeMs`（0 到 1 天，缺省 0）滤掉存活不到它的已结束单，挂着的照回；
+//!   已结束的单最多回 `limit`（1–5000，缺省 5000，不带 `limit` 的老请求也套这个上限）条，按出现时刻留最新的；
+//!   挂着的（`to` 之前出现的）不受上限、不受 `from` 限制，一律全回。
+//!   回 `{base, thresholds, trackedSinceMs, orders, nextBefore}`，自己压 gzip（请求带 `Accept-Encoding: gzip` 时）；
+//!   `nextBefore` 是截到上限时回的最早那条已结束单的出现时刻（没截到为 null），下一页拿它当 `to` 再要。
+//!   同一 (品种, from/to 所在分钟, minLifeMs, limit, 是否 gzip) 的请求只读一次库：并发的等同一次读，
 //!   读完的压缩体缓存 60 秒（最多 64 份、32 MB，按最久没用的踢），区间按整分钟放宽读。
 //!   没在跟的币回空表、`trackedSinceMs` 为此刻，并从这一刻开始跟（按需层）。`trackedSinceMs` 是这一段连着跟的起点：
 //!   跟踪器断过十分钟以上（停掉、没人要）再起跟，从起跟那一刻重新算（0026 的 `alive_ms`）。
@@ -76,8 +79,12 @@ const MAX_ON_DEMAND:usize=20;
 /// 按需的多久没人要就停；山寨、热点掉榜之后再跟多久。
 const IDLE_MS:i64=store::DAY_MS;
 const LINGER_MS:i64=store::DAY_MS;
+/// 历史接口不带 `limit` 的老请求，`from` 缺省 `to` 前多久；带了 `limit`（网页 2026-09-29 起）缺省最近 6 小时。
 const DEFAULT_SPAN_MS:i64=store::DAY_MS;
+const PAGED_SPAN_MS:i64=6*3_600_000;
 const MAX_SPAN_MS:i64=store::RETENTION_MS;
+/// 历史接口一次最多回几条已结束的单（带不带 `limit` 都套上）；挂着的不算在里面，一律全回。
+const MAX_PAGE:i64=5_000;
 const EVALUATE:Duration=Duration::from_millis(500);
 const FLUSH:Duration=Duration::from_secs(15);
 const REFRESH:Duration=Duration::from_secs(10*60);
@@ -1311,7 +1318,12 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>,#[serde(rename="minLifeMs")] min_life_ms:Option<i64>}
+struct HistoryQuery {base:String,from:Option<i64>,to:Option<i64>,#[serde(rename="minLifeMs")] min_life_ms:Option<i64>,limit:Option<i64>}
+
+/// 校验 `limit`：缺省 `MAX_PAGE`，1..=`MAX_PAGE`，其余回 `invalid_query`。
+fn page_limit(v:Option<i64>)->std::result::Result<i64,&'static str> {
+ match v.unwrap_or(MAX_PAGE) {v @ 1..=MAX_PAGE=>Ok(v),_=>Err("invalid_query")}
+}
 
 /// `minLifeMs` 最大一天：再长就没什么单剩下了，也免得任意 i64 进 SQL。
 const MAX_MIN_LIFE_MS:i64=store::DAY_MS;
@@ -1335,11 +1347,11 @@ pub(crate) async fn want(base:&str,now:i64)->bool {
 /// 要不要为这只 base 起跟踪、记进库：已经在跟的照旧；合约表判得了而三家都没挂的不起；判不了（表还没拉到）的放行。
 fn admitted(tracked:bool,listed:Option<bool>)->bool {tracked||listed!=Some(false)}
 
-/// 校验并补齐区间：`to` 缺省此刻，`from` 缺省 `to` 前 24 小时，最长 3 天。
-fn window(from:Option<i64>,to:Option<i64>,now:i64)->std::result::Result<(i64,i64),&'static str> {
+/// 校验并补齐区间：`to` 缺省此刻，`from` 缺省 `to` 前 `span`（老请求 24 小时，带 `limit` 的 6 小时），最长 3 天。
+fn window(from:Option<i64>,to:Option<i64>,now:i64,span:i64)->std::result::Result<(i64,i64),&'static str> {
  let to=to.unwrap_or(now);
  // to 是请求带来的任意 i64：i64::MIN 附近直接减会溢出（调试构建里是 panic，发布构建靠回绕碰巧判成 invalid_range）。
- let from=from.unwrap_or(to.saturating_sub(DEFAULT_SPAN_MS));
+ let from=from.unwrap_or(to.saturating_sub(span));
  if from<0||to<0||from>to {return Err("invalid_range")}
  if to-from>MAX_SPAN_MS {return Err("range_too_long")}
  Ok((from,to))
@@ -1348,8 +1360,9 @@ fn window(from:Option<i64>,to:Option<i64>,now:i64)->std::result::Result<(i64,i64
 async fn history(State(s):State<AppState>,headers:axum::http::HeaderMap,Params(q):Params<HistoryQuery>)->Result<Response> {
  if !instruments::valid_base(&q.base) {return Err(ApiError::bad("invalid_base"))}
  let now=now_ms();
- let (from,to)=window(q.from,q.to,now).map_err(ApiError::bad)?;
+ let (from,to)=window(q.from,q.to,now,if q.limit.is_some() {PAGED_SPAN_MS} else {DEFAULT_SPAN_MS}).map_err(ApiError::bad)?;
  let min_life=min_life(q.min_life_ms).map_err(ApiError::bad)?;
+ let limit=page_limit(q.limit).map_err(ApiError::bad)?;
  // 三家都没挂的 base（打错的、早下架的）：不起跟踪、不记进 orderflow_bases。原来照样起一只按需跟踪，
  // 占着按需层的名额（满了还会把真有人在看的踢掉），prepare 每 30 秒空转一次、一跟 24 小时，重启后还会被接着跟。
  let pool=POOL.get().unwrap_or(&s.pool);
@@ -1362,10 +1375,10 @@ async fn history(State(s):State<AppState>,headers:axum::http::HeaderMap,Params(q
  } else {(Thresholds::default(),now)};
  // 同一窗口（按分钟取整）的请求合并成一次读库，答好的压缩体留 60 秒；读的区间放宽到整分钟（左边往前取整、
  // 右边补到这一分钟末），合并进来的每个请求拿到的都是它要的区间的超集——客户端按单号合并，多几条不要紧。
- let key=Key::new(&q.base,from,to,min_life,accepts_gzip(&headers));
+ let key=Key::new(&q.base,from,to,min_life,accepts_gzip(&headers)).limit(limit);
  let (from,to)=key.window();
  let gzip=key.gzip;
- let answer=ANSWERS.get_or_build(key,||reply(pool,&q.base,from,to,min_life,thresholds,tracked_since,gzip)).await?;
+ let answer=ANSWERS.get_or_build(key,||reply(pool,&q.base,from,to,min_life,limit,thresholds,tracked_since,gzip)).await?;
  Ok(answer.response())
 }
 
@@ -1387,20 +1400,21 @@ const ANSWER_TTL:Duration=Duration::from_secs(60);
 const ANSWER_ENTRIES:usize=64;
 const ANSWER_BYTES:usize=32*1024*1024;
 
-/// 合并与缓存的键：base、起止按分钟取整、`minLifeMs`、回不回 gzip。
+/// 合并与缓存的键：base、起止按分钟取整、`minLifeMs`、已结束单的上限、回不回 gzip。
 #[derive(Clone,Debug,PartialEq,Eq,Hash)]
-struct Key {base:String,from_minute:i64,to_minute:i64,min_life:i64,gzip:bool}
+struct Key {base:String,from_minute:i64,to_minute:i64,min_life:i64,limit:i64,gzip:bool}
 impl Key {
  fn new(base:&str,from:i64,to:i64,min_life:i64,gzip:bool)->Self {
-  Self{base:base.to_owned(),from_minute:from.div_euclid(60_000),to_minute:to.div_euclid(60_000),min_life,gzip}
+  Self{base:base.to_owned(),from_minute:from.div_euclid(60_000),to_minute:to.div_euclid(60_000),min_life,limit:MAX_PAGE,gzip}
  }
+ fn limit(self,limit:i64)->Self {Self{limit,..self}}
  /// 这一键实际读的区间：起点那一分钟的开头到终点那一分钟的末尾。
  fn window(&self)->(i64,i64) {(self.from_minute*60_000,self.to_minute*60_000+59_999)}
 }
 
-/// 答好的体：一块一块的（压缩的或原文），合计字节数。块是 `Bytes`，发给几个请求只是加引用计数。
+/// 答好的体：一块一块的（压缩的或原文），合计字节数，回的 `Cache-Control`。块是 `Bytes`，发给几个请求只是加引用计数。
 #[derive(Clone,Debug)]
-struct Answer {chunks:Arc<[axum::body::Bytes]>,len:usize,gzip:bool}
+struct Answer {chunks:Arc<[axum::body::Bytes]>,len:usize,gzip:bool,cache:&'static str}
 impl Answer {
  fn response(&self)->Response {
   let chunks=self.chunks.clone();
@@ -1408,7 +1422,7 @@ impl Answer {
   let headers=response.headers_mut();
   headers.insert(header::CONTENT_TYPE,HeaderValue::from_static("application/json"));
   headers.insert(header::CONTENT_LENGTH,HeaderValue::from(self.len));
-  headers.insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
+  headers.insert(header::CACHE_CONTROL,HeaderValue::from_static(self.cache));
   headers.insert(header::VARY,HeaderValue::from_static("accept-encoding"));
   if self.gzip {headers.insert(header::CONTENT_ENCODING,HeaderValue::from_static("gzip"));}
   response
@@ -1419,16 +1433,18 @@ impl Answer {
 #[derive(Default)]
 struct Slot {answer:tokio::sync::OnceCell<(Answer,tokio::time::Instant)>,used:AtomicU64}
 
-#[derive(Default)]
-struct Answers {slots:Mutex<HashMap<Key,Arc<Slot>>>,tick:AtomicU64}
-static ANSWERS:std::sync::LazyLock<Answers>=std::sync::LazyLock::new(Answers::default);
+/// 历史的答复按分钟取整的窗口留 60 秒；深度热力（`heat`）也用这一套，键是它自己的、留 5 秒。
+struct Answers<K> {slots:Mutex<HashMap<K,Arc<Slot>>>,tick:AtomicU64,ttl:Duration}
+static ANSWERS:std::sync::LazyLock<Answers<Key>>=std::sync::LazyLock::new(||Answers::new(ANSWER_TTL));
 
-impl Answers {
- async fn get_or_build<F,Fut>(&self,key:Key,build:F)->Result<Answer> where F:FnOnce()->Fut,Fut:std::future::Future<Output=Result<Answer>> {
+impl<K:Clone+Eq+std::hash::Hash> Answers<K> {
+ fn new(ttl:Duration)->Self {Self{slots:Mutex::new(HashMap::new()),tick:AtomicU64::new(0),ttl}}
+
+ async fn get_or_build<F,Fut>(&self,key:K,build:F)->Result<Answer> where F:FnOnce()->Fut,Fut:std::future::Future<Output=Result<Answer>> {
   let slot={
    let mut slots=self.slots.lock().unwrap_or_else(|e|e.into_inner());
    let now=tokio::time::Instant::now();
-   if slots.get(&key).is_some_and(|s|s.answer.get().is_some_and(|(_,at)|now.duration_since(*at)>=ANSWER_TTL)) {slots.remove(&key);}
+   if slots.get(&key).is_some_and(|s|s.answer.get().is_some_and(|(_,at)|now.duration_since(*at)>=self.ttl)) {slots.remove(&key);}
    let slot=slots.entry(key).or_default().clone();
    slot.used.store(self.tick.fetch_add(1,Ordering::Relaxed)+1,Ordering::Relaxed);
    slot
@@ -1443,10 +1459,10 @@ impl Answers {
  fn trim(&self) {
   let mut slots=self.slots.lock().unwrap_or_else(|e|e.into_inner());
   let now=tokio::time::Instant::now();
-  slots.retain(|_,s|match s.answer.get() {Some((a,at))=>a.len<=ANSWER_BYTES&&now.duration_since(*at)<ANSWER_TTL,None=>Arc::strong_count(s)>1});
+  slots.retain(|_,s|match s.answer.get() {Some((a,at))=>a.len<=ANSWER_BYTES&&now.duration_since(*at)<self.ttl,None=>Arc::strong_count(s)>1});
   loop {
    let ready=slots.iter().filter_map(|(k,s)|s.answer.get().map(|(a,_)|(k,a.len,s.used.load(Ordering::Relaxed))));
-   let (mut count,mut bytes,mut oldest)=(0usize,0usize,None::<(&Key,u64)>);
+   let (mut count,mut bytes,mut oldest)=(0usize,0usize,None::<(&K,u64)>);
    for (k,len,used) in ready {
     count+=1;bytes+=len;
     if oldest.is_none_or(|(_,u)|used<u) {oldest=Some((k,used));}
@@ -1465,8 +1481,8 @@ impl Answers {
  }
 }
 
-/// 同一时刻最多几个历史请求在读库、组答复。一个请求最多 `store::MAX_ROWS` 行、答复约 60 MB；
-/// 接口不要登录，不限的话几个同时到就能把 serve（上限 1 GB）撑爆，还占满 8 条库连接里的一大半。
+/// 同一时刻最多几个历史请求在读库、组答复。2026-09-29 之前一个请求最多 20 万行、答复约 60 MB（现在已结束的最多 5000 条）；
+/// 接口不要登录，不限的话几个同时到就能把 serve（上限 1 GB）撑爆，还占满 8 条库连接里的一大半。深度热力也占这组名额。
 static HISTORY_READS:tokio::sync::Semaphore=tokio::sync::Semaphore::const_new(2);
 /// 答复按这么大一块一块攒：不攒成一整块连续内存（翻倍扩容时新旧两块同时在）。
 const REPLY_CHUNK:usize=64*1024;
@@ -1497,8 +1513,9 @@ impl std::io::Write for Sink {
 /// 读区间、组答复：一行一行从库里读、一行一行写成 JSON（要 gzip 就边写边压），不攒整张表、不经 `serde_json::Value`。
 /// 形状同原来的 `{"base","thresholds","trackedSinceMs","orders":[…]}`（键的先后不同，客户端按名取）。
 /// `min_life` 大于 0 时不回寿命短于它的已结束单（挂着的照回），见 `store::range_each`。
+/// 已结束的最多 `limit` 条（留最新的）；末尾补 `"nextBefore"`：还有更早的没回时是回的最早那条已结束单的出现时刻，否则为 null。
 #[allow(clippy::too_many_arguments)]
-async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,thresholds:Thresholds,tracked_since:i64,gzip:bool)->Result<Answer> {
+async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,limit:i64,thresholds:Thresholds,tracked_since:i64,gzip:bool)->Result<Answer> {
  use std::io::Write as _;
  let busy=||ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable");
  let _slot=HISTORY_READS.acquire().await.map_err(|_|busy())?;
@@ -1507,21 +1524,27 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,thresholds:Th
  let _=write!(out,"{},\"orders\":[",&head[..head.len()-1]);
  let mut first=true;
  let mut failed=None;
- store::range_each(pool,base,from,to,min_life,store::MAX_ROWS,|o| {
+ // 行按出现时刻升序来：第一条已结束的就是回的里面最早的那条。
+ let mut earliest=None::<i64>;
+ let (_,more)=store::range_each(pool,base,from,to,min_life,limit,|o| {
+  if o.end_ms.is_some() {earliest.get_or_insert(o.first_seen_ms);}
   if failed.is_some() {return}
   if !first {let _=out.write_all(b",");}
   first=false;
   if let Err(e)=serde_json::to_writer(&mut out,&o) {failed=Some(e);}
  }).await?;
  if let Some(e)=failed {tracing::warn!("Orderflow history: {base} reply not serialized: {e}");return Err(busy())}
- let _=out.write_all(b"]}");
+ match earliest.filter(|_|more) {
+  Some(t)=>{let _=write!(out,"],\"nextBefore\":{t}}}");},
+  None=>{let _=out.write_all(b"],\"nextBefore\":null}");},
+ }
  let chunks=match out {
   Sink::Plain(c)=>c,
   Sink::Gzip(g)=>g.into_inner().map_err(|e|e.into_error()).and_then(|g|g.finish()).map_err(|e|{tracing::warn!("Orderflow history: {base} reply not compressed: {e}");busy()})?,
  };
  let Chunks{mut done,current,len}=chunks;
  if !current.is_empty() {done.push(current.into());}
- Ok(Answer{chunks:done.into(),len,gzip})
+ Ok(Answer{chunks:done.into(),len,gzip,cache:"no-cache"})
 }
 
 pub fn routes()->Router<AppState> {
@@ -1732,7 +1755,7 @@ mod tests {
    let row=BigOrder{venue_id:"binance:usdtPerp:ZZPOOLUSDT".into(),exchange:"币安".into(),product:"usdtPerp".into(),side:book::Side::Bid,bucket:1,price:1.0,
     first_seen_ms:1,end_ms:None,status:model::Status::Live,initial_notional:6e6,notional:6e6,filled_notional:0.0,threshold:5e6,vanished_notional:None};
    for i in 0..3 {let (p,row)=(orderflow.clone(),row.clone());load.spawn(async move {let _=store::upsert(&p,&format!("ZZPOOL{i}"),1.0,&[(row,1)]).await;});}
-   for _ in 0..2 {let p=orderflow.clone();load.spawn(async move {let _=reply(&p,"ZZPOOL",0,1,0,Thresholds::default(),0,true).await;});}
+   for _ in 0..2 {let p=orderflow.clone();load.spawn(async move {let _=reply(&p,"ZZPOOL",0,1,0,MAX_PAGE,Thresholds::default(),0,true).await;});}
    for i in 0..6 {let p=orderflow.clone();load.spawn(async move {let _=store::live(&p,&format!("ZZPOOL{i}")).await;});}
    {let p=orderflow.clone();load.spawn(async move {let _=store::purge(&p,0,&[]).await;});}
    tokio::time::sleep(Duration::from_millis(300)).await;
@@ -2014,7 +2037,7 @@ mod tests {
    FROM generate_series(1,$2::bigint) g").bind(base).bind(rows).execute(&pool).await.unwrap();
   let (from,to)=(1_000_000,1_000_000+rows+120_000);
   let run=|pool:PgPool|async move {
-   let response=reply(&pool,base,from,to,0,Thresholds::default(),from,false).await.unwrap().response();
+   let response=reply(&pool,base,from,to,0,store::MAX_ROWS,Thresholds::default(),from,false).await.unwrap().response();
    axum::body::to_bytes(response.into_body(),usize::MAX).await.unwrap().len()
   };
   let sample=|stop:Arc<AtomicBool>,peak:Arc<AtomicU64>|std::thread::spawn(move||while !stop.load(Ordering::SeqCst) {peak.fetch_max(rss_kib(),Ordering::SeqCst);std::thread::sleep(Duration::from_millis(5));});
@@ -2066,13 +2089,13 @@ mod tests {
    let key=Key::new(base,from,to,min_life,true);
    let (from,to)=key.window();
    let started=std::time::Instant::now();
-   let answer=ANSWERS.get_or_build(key,||reply(&pool,base,from,to,min_life,thresholds,t0,true)).await.unwrap();
+   let answer=ANSWERS.get_or_build(key,||reply(&pool,base,from,to,min_life,MAX_PAGE,thresholds,t0,true)).await.unwrap();
    (started.elapsed().as_secs_f64()*1000.0,answer.len)
   }};
   // 先把表页读进 Postgres 的缓存，量的是线上「热态」那一种（线上报告里 ETH 24h 热态 0.55 s）。
   store::range_each(&pool,base,from-60_000,to+60_000,0,store::MAX_ROWS,|_|{}).await.unwrap();
   let started=std::time::Instant::now();
-  let rows=store::range_each(&pool,base,from-60_000,to+60_000,0,store::MAX_ROWS,|_|{}).await.unwrap();
+  let (rows,_)=store::range_each(&pool,base,from-60_000,to+60_000,0,store::MAX_ROWS,|_|{}).await.unwrap();
   let read=started.elapsed().as_secs_f64()*1000.0;
   let (first,bytes)=get(0).await;
   let hits:Vec<f64>={let mut v=Vec::new();for _ in 0..5 {v.push(get(0).await.0);}v};
@@ -2101,7 +2124,9 @@ mod tests {
   assert!(!plan.contains("Seq Scan"),"不许顺序扫：\n{plan}");
   store::tests::clear(&pool,&[base]).await;
   assert!(sizes.iter().all(|&n|n==filtered_bytes));
-  assert!(filtered_bytes<bytes,"滤掉一分钟内的已结束单之后答复应该更小");
+  // 2026-09-29 起一页封顶 `MAX_PAGE` 条已结束的：这份 24 小时两种寿命门槛都超过五千条，两份答复都是整页，
+  // 大小只差在内容上，不再比谁小；只核对都封住了（gzip 后远小于原来整窗的 0.9 MB）。
+  assert!(bytes<400_000&&filtered_bytes<400_000,"封顶后的一页应在 0.4 MB 以内：{bytes} / {filtered_bytes}");
   assert!(hits.iter().all(|&h|h<5.0),"命中不碰库，应在毫秒以内：{hits:?}");
  }
 
@@ -2118,7 +2143,7 @@ mod tests {
   let rows:Vec<(BigOrder,i64)>=(0..1_500).map(|b|(order(b,1_000+b*7,(b%3!=0).then_some(900_000+b)),900_000+b)).collect();
   store::upsert(&pool,base,0.1,&rows).await.unwrap();
   let thresholds=Thresholds{spot:Some(1e6),usdt_perp:Some(5e6),coin_perp:None,delivery:None,step:Some(0.1)};
-  let response=reply(&pool,base,0,1_000_000,0,thresholds,123,false).await.unwrap().response();
+  let response=reply(&pool,base,0,1_000_000,0,MAX_PAGE,thresholds,123,false).await.unwrap().response();
   assert_eq!(response.headers()[header::CONTENT_TYPE],"application/json");
   assert!(response.headers().get(header::CONTENT_ENCODING).is_none());
   let declared:usize=response.headers()[header::CONTENT_LENGTH].to_str().unwrap().parse().unwrap();
@@ -2126,13 +2151,31 @@ mod tests {
   assert_eq!(body.len(),declared);
   let got:Value=serde_json::from_slice(&body).unwrap();
   let orders=store::range(&pool,base,0,1_000_000).await.unwrap();
-  let want=serde_json::json!({"base":base,"thresholds":thresholds,"trackedSinceMs":123,"orders":orders});
+  let want=serde_json::json!({"base":base,"thresholds":thresholds,"trackedSinceMs":123,"orders":orders,"nextBefore":null});
   // 比的是客户端收到的文本解析出来的样子：两边都过一遍「写成文本再解析」，免得 serde_json 解析浮点时的末位舍入差异混进来。
   let want:Value=serde_json::from_slice(&serde_json::to_vec(&want).unwrap()).unwrap();
   assert_eq!(got,want);
   assert_eq!(got["orders"].as_array().unwrap().len(),1_500);
+  // 截到上限：挂着的 500 条全回，已结束的只回最新的 100 条；nextBefore 是其中最早的出现时刻，拿它当 to 翻下一页接得上。
+  let page=|to:i64,limit:i64|{let pool=pool.clone();async move {
+   let r=reply(&pool,base,0,to,0,limit,thresholds,123,false).await.unwrap().response();
+   serde_json::from_slice::<Value>(&axum::body::to_bytes(r.into_body(),usize::MAX).await.unwrap()).unwrap()
+  }};
+  let ended_desc:Vec<i64>=(0..1_500).rev().filter(|b|b%3!=0).map(|b|1_000+b*7).collect();
+  let first=page(1_000_000,100).await;
+  let rows=first["orders"].as_array().unwrap();
+  assert_eq!(rows.iter().filter(|o|o["endMs"].is_null()).count(),500,"挂着的不受上限");
+  assert_eq!(rows.iter().filter(|o|!o["endMs"].is_null()).count(),100);
+  assert_eq!(first["nextBefore"],serde_json::json!(ended_desc[99]));
+  let second=page(ended_desc[99],100).await;
+  let seen:HashSet<i64>=second["orders"].as_array().unwrap().iter().filter(|o|!o["endMs"].is_null()).map(|o|o["firstSeenMs"].as_i64().unwrap()).collect();
+  assert_eq!(seen,ended_desc[99..199].iter().copied().collect(),"第二页从第一页最早那条接着往前（边界那条两页都有，客户端按单号合并）");
+  assert_eq!(second["nextBefore"],serde_json::json!(ended_desc[198]));
+  // 已结束的正好是上限以内：nextBefore 为 null。
+  assert_eq!(page(1_000_000,1_000).await["nextBefore"],Value::Null);
+  assert_eq!(page(1_000_000,999).await["nextBefore"],serde_json::json!(ended_desc[998]));
   // gzip 的那份解开和原文逐字节相同，头上标着 gzip、长度是压缩后的长度。
-  let zipped=reply(&pool,base,0,1_000_000,0,thresholds,123,true).await.unwrap().response();
+  let zipped=reply(&pool,base,0,1_000_000,0,MAX_PAGE,thresholds,123,true).await.unwrap().response();
   assert_eq!(zipped.headers()[header::CONTENT_ENCODING],"gzip");
   let declared:usize=zipped.headers()[header::CONTENT_LENGTH].to_str().unwrap().parse().unwrap();
   let packed=axum::body::to_bytes(zipped.into_body(),usize::MAX).await.unwrap();
@@ -2143,7 +2186,7 @@ mod tests {
   assert_eq!(unpacked,body);
   // 一行都没有也是合法的 JSON。
   for gzip in [false,true] {
-   let empty=reply(&pool,"ZZNONE",0,1_000_000,0,Thresholds::default(),0,gzip).await.unwrap().response();
+   let empty=reply(&pool,"ZZNONE",0,1_000_000,0,MAX_PAGE,Thresholds::default(),0,gzip).await.unwrap().response();
    let raw=axum::body::to_bytes(empty.into_body(),usize::MAX).await.unwrap();
    let mut text=Vec::new();
    if gzip {std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&raw[..]),&mut text).unwrap();} else {text=raw.to_vec();}
@@ -2187,6 +2230,18 @@ mod tests {
   assert!(admitted(true,Some(false)),"已经在跟的（刚下架）照旧");
  }
 
+ #[test] fn page_limit_is_one_to_five_thousand() {
+  assert_eq!(page_limit(None),Ok(MAX_PAGE));
+  assert_eq!(page_limit(Some(1)),Ok(1));
+  assert_eq!(page_limit(Some(5_000)),Ok(5_000));
+  assert_eq!(page_limit(Some(5_001)),Err("invalid_query"));
+  assert_eq!(page_limit(Some(0)),Err("invalid_query"));
+  assert_eq!(page_limit(Some(-3)),Err("invalid_query"));
+  let now=100*store::DAY_MS;
+  assert_eq!(window(None,None,now,PAGED_SPAN_MS),Ok((now-6*3_600_000,now)),"带 limit 的缺省近 6 小时");
+  assert_eq!(window(None,Some(now-60_000),now,PAGED_SPAN_MS),Ok((now-60_000-6*3_600_000,now-60_000)),"翻页：to=nextBefore，往前 6 小时");
+ }
+
  #[test] fn min_life_is_zero_to_one_day() {
   assert_eq!(min_life(None),Ok(0));
   assert_eq!(min_life(Some(0)),Ok(0));
@@ -2228,7 +2283,7 @@ mod tests {
   assert!(!accepts_gzip(&axum::http::HeaderMap::new()));
  }
 
- fn answer(tag:u8,len:usize)->Answer {Answer{chunks:vec![axum::body::Bytes::from(vec![tag;len])].into(),len,gzip:true}}
+ fn answer(tag:u8,len:usize)->Answer {Answer{chunks:vec![axum::body::Bytes::from(vec![tag;len])].into(),len,gzip:true,cache:"no-cache"}}
 
  #[test] fn keys_merge_within_a_minute_and_read_the_whole_minutes() {
   let a=Key::new("ETH",5*60_000,9*60_000+1,0,true);
@@ -2242,7 +2297,7 @@ mod tests {
 
  /// 两个同样的请求同时到：只读一次库，两个拿到同一份；59 秒内再来的直接回缓存，满 60 秒再读一次。
  #[tokio::test(start_paused=true)] async fn identical_requests_read_the_database_once_for_sixty_seconds() {
-  let cache=Answers::default();
+  let cache=Answers::new(ANSWER_TTL);
   let reads=AtomicU64::new(0);
   let build=|tag:u8|{let reads=&reads;move||async move {reads.fetch_add(1,Ordering::SeqCst);tokio::time::sleep(Duration::from_millis(200)).await;Ok(answer(tag,10))}};
   let key=||Key::new("ETH",0,86_400_000,0,true);
@@ -2266,7 +2321,7 @@ mod tests {
 
  /// 读库失败不进缓存：等着的和后来的接着自己读；第一个请求被取消（客户端断开）也一样。
  #[tokio::test(start_paused=true)] async fn failures_and_cancelled_reads_are_not_cached() {
-  let cache=Answers::default();
+  let cache=Answers::new(ANSWER_TTL);
   let key=||Key::new("ETH",0,1,0,true);
   let failed=cache.get_or_build(key(),||async {Err::<Answer,_>(ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable"))}).await;
   assert!(failed.is_err());
@@ -2282,20 +2337,20 @@ mod tests {
 
  /// 条数最多 64、字节最多 32 MB，超了先扔最久没用的；单份超过 32 MB 的不留。
  #[tokio::test(start_paused=true)] async fn the_cache_is_bounded_and_drops_the_least_recently_used() {
-  let cache=Answers::default();
+  let cache=Answers::new(ANSWER_TTL);
   let key=|i:i64|Key::new("ETH",i*60_000,i*60_000,0,true);
   for i in 0..70 {cache.get_or_build(key(i),||async {Ok(answer(1,100))}).await.unwrap();}
   assert_eq!(cache.cached(),(ANSWER_ENTRIES,ANSWER_ENTRIES*100));
   assert!(!cache.slots.lock().unwrap().contains_key(&key(5)),"最早的几份先扔");
   assert!(cache.slots.lock().unwrap().contains_key(&key(69)));
-  let cache=Answers::default();
+  let cache=Answers::new(ANSWER_TTL);
   let mb=1024*1024;
   for i in 0..3 {cache.get_or_build(key(i),||async move {Ok(answer(1,10*mb))}).await.unwrap();}
   assert_eq!(cache.cached(),(3,30*mb));
   // 0 号最早，但刚用过一次（命中，不读）：再进一份超了 32 MB，扔的是 1 号。
   assert_eq!(cache.get_or_build(key(0),||async {Ok(answer(2,1))}).await.unwrap().chunks[0][0],1);
   cache.get_or_build(key(3),||async move {Ok(answer(1,10*mb))}).await.unwrap();
-  let kept=|c:&Answers|->HashSet<i64> {c.slots.lock().unwrap().keys().map(|k|k.from_minute).collect()};
+  let kept=|c:&Answers<Key>|->HashSet<i64> {c.slots.lock().unwrap().keys().map(|k|k.from_minute).collect()};
   assert_eq!(kept(&cache),[0,2,3].into_iter().collect());
   assert_eq!(cache.cached(),(3,30*mb));
   let huge=cache.get_or_build(key(9),||async move {Ok(answer(3,33*mb))}).await.unwrap();
@@ -2305,16 +2360,16 @@ mod tests {
 
  #[test] fn window_defaults_and_limits() {
   let now=100*store::DAY_MS;
-  assert_eq!(window(None,None,now),Ok((now-store::DAY_MS,now)));
-  assert_eq!(window(Some(5),Some(9),now),Ok((5,9)));
-  assert_eq!(window(None,Some(now-store::DAY_MS),now),Ok((now-2*store::DAY_MS,now-store::DAY_MS)));
-  assert_eq!(window(Some(now-3*store::DAY_MS),None,now),Ok((now-3*store::DAY_MS,now)));
-  assert_eq!(window(Some(now-3*store::DAY_MS-1),None,now),Err("range_too_long"));
-  assert_eq!(window(Some(9),Some(5),now),Err("invalid_range"));
-  assert_eq!(window(Some(-1),Some(5),now),Err("invalid_range"));
-  assert_eq!(window(None,Some(i64::MIN),now),Err("invalid_range"),"极端的 to 不溢出");
-  assert_eq!(window(Some(0),Some(i64::MAX),now),Err("range_too_long"));
-  assert_eq!(window(Some(i64::MAX),None,now),Err("invalid_range"));
+  assert_eq!(window(None,None,now,store::DAY_MS),Ok((now-store::DAY_MS,now)));
+  assert_eq!(window(Some(5),Some(9),now,store::DAY_MS),Ok((5,9)));
+  assert_eq!(window(None,Some(now-store::DAY_MS),now,store::DAY_MS),Ok((now-2*store::DAY_MS,now-store::DAY_MS)));
+  assert_eq!(window(Some(now-3*store::DAY_MS),None,now,store::DAY_MS),Ok((now-3*store::DAY_MS,now)));
+  assert_eq!(window(Some(now-3*store::DAY_MS-1),None,now,store::DAY_MS),Err("range_too_long"));
+  assert_eq!(window(Some(9),Some(5),now,store::DAY_MS),Err("invalid_range"));
+  assert_eq!(window(Some(-1),Some(5),now,store::DAY_MS),Err("invalid_range"));
+  assert_eq!(window(None,Some(i64::MIN),now,store::DAY_MS),Err("invalid_range"),"极端的 to 不溢出");
+  assert_eq!(window(Some(0),Some(i64::MAX),now,store::DAY_MS),Err("range_too_long"));
+  assert_eq!(window(Some(i64::MAX),None,now,store::DAY_MS),Err("invalid_range"));
  }
 
  #[test] fn previous_close_prefers_the_utc_day_row() {

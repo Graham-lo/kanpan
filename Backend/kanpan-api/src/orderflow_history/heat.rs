@@ -10,9 +10,14 @@
 //!   某个快照里没有这个桶按 0 算）。`to` 缺省此刻、`from` 缺省 `to` 前 1 小时，超过 3 天把 `from` 夹到 `to` 前 3 天。
 //!   行数估出来超过 20 万就把 `bucketMs` 放大到 10 s / 30 s / 60 s（3 天全量在 60 s 也装不下，再往上 5 / 15 / 30 / 60 分钟），
 //!   放大之后隔几个快照取一个（每格至少 4 个），读完还超就再放大一档。没在跟的 base 回空 `rows`。只聚合，不判定。
+//! * 收窄（2026-09-29，网页版按可见窗口取）：再带 `lo`/`hi`（价格上下沿）或 `around`/`pct`（以某价为中心 ±pct%，
+//!   `pct` 缺省 5、最大 50）只回这段价格里的格；带 `bucketMs` 是时间格的下限提示（取梯子上不细于它、又装得下的最细一档）。
+//!   带了其中任何一个就按收窄的额度算：一次最多 1.4 万行（约 500 KB 原文）、最多取 720 个快照；都不带的老请求照旧 20 万行。
+//!   快照按主键点查（`bucket_ms = ANY(数组)`，不走 `generate_series` 连接——那样计划器只按 base 扫整只）。
+//!   同样的请求 5 秒内合成一次读库（缺省的 `to` 取整到 5 秒格），答复带 `Cache-Control: public, max-age=5`。
 use super::book::{Buckets,Side,bucket_index};
 use super::model::{Model,Thresholds};
-use super::{HISTORY_READS,POOL,REGISTRY,WRITE_SLOTS,accepts_gzip,now_ms,store};
+use super::{Answer,Answers,HISTORY_READS,POOL,REGISTRY,WRITE_SLOTS,accepts_gzip,now_ms,store};
 use crate::AppState;
 use crate::error::{ApiError,Params,Result};
 use crate::orderflow_instruments as instruments;
@@ -36,6 +41,16 @@ const RADIUS_BPS:f64=500.0;
 const CUT_RATIO:f64=0.05;
 /// 一次答复最多几行。
 const MAX_ROWS:usize=200_000;
+/// 收窄的请求（带价格范围或时间格提示）最多几行：一行约 34 字节，1.4 万行原文约 480 KB。
+const SCOPED_ROWS:usize=14_000;
+/// 收窄的请求最多取几个快照（一个快照约 9 行，720 个约 6500 行、库里几十毫秒）。
+const SNAPSHOTS:i64=720;
+/// `around` 两侧缺省多宽、最多多宽（百分比）。
+const DEFAULT_PCT:f64=5.0;
+const MAX_PCT:f64=50.0;
+/// 同样的请求合成一次读库、答复留多久；也是答复头上 `max-age` 的秒数。
+const HEAT_TTL:Duration=Duration::from_secs(5);
+const CACHE_CONTROL:&str="public, max-age=5";
 /// `from` 缺省 `to` 前多久。
 const DEFAULT_SPAN_MS:i64=60*60_000;
 const MAX_SPAN_MS:i64=store::RETENTION_MS;
@@ -234,7 +249,33 @@ pub(super) async fn purge(pool:&PgPool,now:i64)->sqlx::Result<u64> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct HeatQuery {base:String,from:Option<i64>,to:Option<i64>,step:Option<f64>}
+pub(super) struct HeatQuery {
+ base:String,from:Option<i64>,to:Option<i64>,step:Option<f64>,
+ lo:Option<f64>,hi:Option<f64>,around:Option<f64>,pct:Option<f64>,
+ #[serde(rename="bucketMs")] bucket_ms:Option<i64>,
+}
+
+/// 收窄的请求：价格范围（服务端价格，闭区间）与时间格下限提示。
+#[derive(Clone,Copy,Debug,PartialEq)]
+struct Scope {prices:Option<(f64,f64)>,hint:i64}
+
+/// 新参数：`lo`/`hi` 与 `around`/`pct` 二选一（`pct` 离不开 `around`），`bucketMs` 要正的。都没带是老请求（`None`）。
+fn scope(q:&HeatQuery)->std::result::Result<Option<Scope>,&'static str> {
+ if q.lo.is_none()&&q.hi.is_none()&&q.around.is_none()&&q.pct.is_none()&&q.bucket_ms.is_none() {return Ok(None)}
+ let price=|v:f64|v.is_finite()&&v>=0.0;
+ let prices=match (q.lo,q.hi,q.around,q.pct) {
+  (None,None,None,None)=>None,
+  (Some(lo),Some(hi),None,None) if price(lo)&&price(hi)&&hi>lo=>Some((lo,hi)),
+  (None,None,Some(c),pct) if c.is_finite()&&c>0.0=>{
+   let pct=pct.unwrap_or(DEFAULT_PCT);
+   if !(pct>0.0&&pct<=MAX_PCT) {return Err("invalid_price")}
+   Some((c*(1.0-pct/100.0),c*(1.0+pct/100.0)))
+  },
+  _=>return Err("invalid_price"),
+ };
+ let hint=match q.bucket_ms {None=>BUCKET_MS,Some(v) if v>0=>v,Some(_)=>return Err("invalid_bucket")};
+ Ok(Some(Scope{prices,hint}))
+}
 
 /// 校验并补齐区间：`to` 缺省此刻，`from` 缺省 `to` 前 1 小时；超过 3 天把 `from` 夹回来，不报错。
 fn window(from:Option<i64>,to:Option<i64>,now:i64)->std::result::Result<(i64,i64),&'static str> {
@@ -250,9 +291,25 @@ fn requested_step(step:Option<f64>)->std::result::Result<Option<f64>,&'static st
 }
 
 /// 挑时间格：估出来的行数（格数 × 每格价格桶数 × 漂移余量）不超过上限的最细一档；都超就用最粗的。
-fn pick_level(span:i64,prices:usize,cap:usize)->usize {
- let prices=(prices.max(1) as f64)*DRIFT;
- LADDER.iter().position(|(bucket,_)|((span/bucket+1) as f64)*prices<=cap as f64).unwrap_or(LADDER.len()-1)
+fn pick_level(span:i64,prices:usize,cap:usize)->usize {pick_from(0,span,(prices.max(1) as f64)*DRIFT,cap)}
+
+/// 从第 `min` 档起挑：估出来的行数（格数 × 每格价格桶数）不超过上限的最细一档；都超就用最粗的。
+fn pick_from(min:usize,span:i64,prices:f64,cap:usize)->usize {
+ let prices=prices.max(1.0);
+ (min.min(LADDER.len()-1)..LADDER.len()).find(|&i|((span/LADDER[i].0+1) as f64)*prices<=cap as f64).unwrap_or(LADDER.len()-1)
+}
+
+/// 时间格提示落到梯子上：不细于它的最细一档（比最粗的还粗就用最粗的）。
+fn min_level(hint:i64)->usize {LADDER.iter().position(|(bucket,_)|*bucket>=hint).unwrap_or(LADDER.len()-1)}
+
+/// 隔多久取一个快照：这一档自己的间隔；收窄的请求再保证这段最多取 `SNAPSHOTS` 个（取能整除格宽的最小间隔，
+/// 每格取的个数一样）；区间比时间格还短时至少取 8 个。
+fn stride(level:usize,span:i64,budget:bool)->i64 {
+ let (width,own)=LADDER[level];
+ let mut s=own;
+ let want=span/SNAPSHOTS;
+ if budget&&want>s {s=(1..=width/BUCKET_MS).map(|k|k*BUCKET_MS).find(|d|width%d==0&&*d>=want).unwrap_or(width);}
+ s.min((span/8/BUCKET_MS*BUCKET_MS).max(BUCKET_MS))
 }
 
 /// 读出来的快照攒成答复：同一（时间格，价格桶）各快照、各家相加，每格记有几个快照，出的时候除掉（取平均）。
@@ -263,10 +320,12 @@ struct Heat {
  cells:BTreeMap<(i64,i64),(f64,f64)>,
  samples:HashMap<i64,u32>,
  last_snapshot:Option<i64>,
+ /// 只收这段价格桶（按答复的步长，闭区间）；`None` 不限。
+ range:Option<(i64,i64)>,
 }
 
 impl Heat {
- fn new(step:f64,level:usize,cap:usize)->Self {Self{step,level,cap,cells:BTreeMap::new(),samples:HashMap::new(),last_snapshot:None}}
+ fn new(step:f64,level:usize,cap:usize)->Self {Self{step,level,cap,cells:BTreeMap::new(),samples:HashMap::new(),last_snapshot:None,range:None}}
  fn bucket_ms(&self)->i64 {LADDER[self.level].0}
 
  /// 一行（一家一个产品一个快照的带子）。行要按 `bucket_ms` 从早到晚来。
@@ -277,6 +336,7 @@ impl Heat {
   for ((&o,&b),&a) in offsets.iter().zip(bids).zip(asks) {
    let index=lo+o as i64;
    let p=if same {index} else {bucket_index(index as f64*row_step,self.step)};
+   if self.range.is_some_and(|(a,b)|p<a||p>b) {continue}
    let cell=self.cells.entry((t,p)).or_default();
    cell.0+=b as f64;cell.1+=a as f64;
   }
@@ -336,7 +396,9 @@ fn body(step:f64,bucket_ms:i64,rows:&[(i64,f64,f64,f64)])->String {
 const COLUMNS:&str="h.bucket_ms,h.step,h.price_lo,h.price_bucket,h.bid_notional,h.ask_notional";
 
 /// 读区间、攒答复。返回（步长，时间格，行）。库里这段没有快照的回空行，步长用客户端给的或跟踪器此刻的。
-async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,current:Option<f64>,cap:usize)->sqlx::Result<(f64,i64,Vec<(i64,f64,f64,f64)>)> {
+/// `scope` 是收窄的请求（价格范围、时间格提示）；带了它时挑时间格从提示那一档起、快照数有上限。
+#[allow(clippy::too_many_arguments)]
+async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,current:Option<f64>,cap:usize,scope:Option<Scope>)->sqlx::Result<(f64,i64,Vec<(i64,f64,f64,f64)>)> {
  // 最近一个快照：拿存储步长、估每格有几个价格桶。
  let latest=sqlx::query(&format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms=(SELECT max(bucket_ms) FROM orderflow_heat WHERE base=$1 AND bucket_ms BETWEEN $2 AND $3)"))
   .bind(base).bind(from).bind(to).fetch_all(pool).await?;
@@ -346,27 +408,42 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
   return Ok((step,BUCKET_MS,Vec::new()))
  };
  let step=requested.map_or(stored,|r|r.max(stored));
+ let range=scope.and_then(|s|s.prices).map(|(lo,hi)|(bucket_index(lo,step),bucket_index(hi,step)));
  let mut prices=std::collections::HashSet::new();
  for r in &latest {
   let (row_step,lo,offsets)=(r.get::<f64,_>("step"),r.get::<i64,_>("price_lo"),r.get::<Vec<i32>,_>("price_bucket"));
-  for o in offsets {prices.insert(bucket_index((lo+o as i64) as f64*row_step,step));}
+  for o in offsets {
+   let p=bucket_index((lo+o as i64) as f64*row_step,step);
+   if range.is_none_or(|(a,b)|p>=a&&p<=b) {prices.insert(p);}
+  }
  }
  // 挑时间格按这段里真有数据的那一截算（刚部署、刚开始跟的 base 只有最近一小段，别因为问了 3 天就给 5 分钟一格）。
  let first:Option<i64>=sqlx::query_scalar("SELECT min(bucket_ms) FROM orderflow_heat WHERE base=$1 AND bucket_ms BETWEEN $2 AND $3")
   .bind(base).bind(from).bind(to).fetch_one(pool).await?;
  let last:i64=latest[0].get("bucket_ms");
  let (from,to)=(first.unwrap_or(from).max(from),last.min(to));
- let level=pick_level(to-from,prices.len(),cap);
+ let span=to-from;
+ let level=match scope {
+  None=>pick_level(span,prices.len(),cap),
+  // 收窄了价格的：这段里最多也就范围里那么多个桶，漂移余量不超过它。
+  Some(s)=>{
+   let estimate=(prices.len().max(1) as f64)*DRIFT;
+   pick_from(min_level(s.hint),span,range.map_or(estimate,|(a,b)|estimate.min((b-a+1) as f64)),cap)
+  },
+ };
  // 隔几个快照取一个，但这段区间里至少取 8 个（区间比时间格还短时别一个都取不到）。
- let stride=LADDER[level].1.min(((to-from)/8/BUCKET_MS*BUCKET_MS).max(BUCKET_MS));
+ let stride=stride(level,span,scope.is_some());
  let mut heat=Heat::new(step,level,cap);
+ heat.range=range;
  let all=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms BETWEEN $2 AND $3 ORDER BY h.bucket_ms");
- // 隔 `stride` 取一个快照：按主键逐个点查，不把这段整个扫一遍。
- let sampled=format!("SELECT {COLUMNS} FROM generate_series($2::bigint,$3::bigint,$4::bigint) g(t) JOIN orderflow_heat h ON h.base=$1 AND h.bucket_ms=g.t ORDER BY h.bucket_ms");
+ // 隔 `stride` 取一个快照：按主键逐个点查（`bucket_ms = ANY(数组)` 进索引条件），不把这段整个扫一遍。
+ // 原来用 generate_series 连接，计划器只按 base 走位图扫描，BTC 3 天几十万行过一遍，并发时一条要 1.6–2.1 秒。
+ let sampled=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms=ANY($2::bigint[]) ORDER BY h.bucket_ms");
  let mut rows=if stride<=BUCKET_MS {
   sqlx::query(&all).bind(base).bind(from).bind(to).fetch(pool)
  } else {
-  sqlx::query(&sampled).bind(base).bind((from+stride-1).div_euclid(stride)*stride).bind(to).bind(stride).fetch(pool)
+  let at:Vec<i64>=((from+stride-1).div_euclid(stride)*stride..=to).step_by(stride as usize).collect();
+  sqlx::query(&sampled).bind(base).bind(at).fetch(pool)
  };
  while let Some(r)=rows.try_next().await? {
   let (offsets,bids,asks)=(r.get::<Vec<i32>,_>("price_bucket"),r.get::<Vec<f32>,_>("bid_notional"),r.get::<Vec<f32>,_>("ask_notional"));
@@ -375,38 +452,47 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
  Ok((step,heat.bucket_ms(),heat.rows()))
 }
 
+/// 合并与缓存的键：请求的全部参数（浮点按位）、此刻跟踪器的步长（只影响空答复）、回不回 gzip。
+#[derive(Clone,Debug,PartialEq,Eq,Hash)]
+struct Key {base:String,from:i64,to:i64,step:Option<u64>,current:Option<u64>,prices:Option<(u64,u64)>,hint:Option<i64>,gzip:bool}
+
+static ANSWERS:std::sync::LazyLock<Answers<Key>>=std::sync::LazyLock::new(||Answers::new(HEAT_TTL));
+
 pub(super) async fn heat(State(s):State<AppState>,headers:axum::http::HeaderMap,Params(q):Params<HeatQuery>)->Result<Response> {
  if !instruments::valid_base(&q.base) {return Err(ApiError::bad("invalid_base"))}
- let (from,to)=window(q.from,q.to,now_ms()).map_err(ApiError::bad)?;
+ let scope=scope(&q).map_err(ApiError::bad)?;
+ // 缺省的 to（此刻）取整到 5 秒格：快照本来就 5 秒一个，同一格里到的请求合成一个键。
+ let (from,to)=window(q.from,q.to,now_ms().div_euclid(BUCKET_MS)*BUCKET_MS).map_err(ApiError::bad)?;
  let requested=requested_step(q.step).map_err(ApiError::bad)?;
  let gzip=accepts_gzip(&headers);
  let registry=REGISTRY.get();
  // 没在跟的不读库、也不因此起跟（手机 / 网页打开品种时拉 `/history` 会起）。
- if !registry.is_some_and(|r|r.is_tracked(&q.base)) {return respond(body(requested.unwrap_or(0.0),BUCKET_MS,&[]),gzip)}
+ if !registry.is_some_and(|r|r.is_tracked(&q.base)) {return Ok(answer(body(requested.unwrap_or(0.0),BUCKET_MS,&[]),gzip)?.response())}
  let current=registry.and_then(|r|r.step(&q.base));
  let pool=POOL.get().unwrap_or(&s.pool);
- let busy=||ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable");
- // 和读订单历史同一组名额（订单流的池子按它留了两条读连接）。
- let _slot=HISTORY_READS.acquire().await.map_err(|_|busy())?;
- let (step,bucket_ms,rows)=read(pool,&q.base,from,to,requested,current,MAX_ROWS).await?;
- drop(_slot);
- respond(body(step,bucket_ms,&rows),gzip)
+ let key=Key{base:q.base.clone(),from,to,step:requested.map(f64::to_bits),current:current.map(f64::to_bits),
+  prices:scope.and_then(|s|s.prices).map(|(a,b)|(a.to_bits(),b.to_bits())),hint:scope.map(|s|s.hint),gzip};
+ let cap=if scope.is_some() {SCOPED_ROWS} else {MAX_ROWS};
+ let answer=ANSWERS.get_or_build(key,||async {
+  let busy=||ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable");
+  // 和读订单历史同一组名额（订单流的池子按它留了两条读连接）。
+  let _slot=HISTORY_READS.acquire().await.map_err(|_|busy())?;
+  let (step,bucket_ms,rows)=read(pool,&q.base,from,to,requested,current,cap,scope).await?;
+  drop(_slot);
+  answer(body(step,bucket_ms,&rows),gzip)
+ }).await?;
+ Ok(answer.response())
 }
 
-fn respond(json:String,gzip:bool)->Result<Response> {
- use axum::http::{HeaderValue,header};
+/// 组好的 JSON 装成答复（要 gzip 就压好），带 `Cache-Control: public, max-age=5`。
+fn answer(json:String,gzip:bool)->Result<Answer> {
  use std::io::Write as _;
  let bytes:Vec<u8>=if gzip {
   let mut g=flate2::write::GzEncoder::new(Vec::with_capacity(json.len()/6),flate2::Compression::fast());
   g.write_all(json.as_bytes()).and_then(|_|g.finish()).map_err(|e|{tracing::warn!("Orderflow heat: reply not compressed: {e}");ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable")})?
  } else {json.into_bytes()};
- let mut response=Response::new(axum::body::Body::from(bytes));
- let h=response.headers_mut();
- h.insert(header::CONTENT_TYPE,HeaderValue::from_static("application/json"));
- h.insert(header::CACHE_CONTROL,HeaderValue::from_static("no-cache"));
- h.insert(header::VARY,HeaderValue::from_static("accept-encoding"));
- if gzip {h.insert(header::CONTENT_ENCODING,HeaderValue::from_static("gzip"));}
- Ok(response)
+ let len=bytes.len();
+ Ok(Answer{chunks:vec![axum::body::Bytes::from(bytes)].into(),len,gzip,cache:CACHE_CONTROL})
 }
 
 #[cfg(test)]
@@ -528,26 +614,172 @@ mod tests {
   insert(&pool,&[band("binance",now-10_000,100.0),band("okx",now-10_000,50.0),band("binance",now-5_000,300.0),band("binance",old,1.0)]).await.unwrap();
   // 同一格再来一拍：留先到的。
   insert(&pool,&[band("binance",now-5_000,999.0)]).await.unwrap();
-  let (step,bucket_ms,rows)=read(&pool,base,now-60_000,now,None,None,MAX_ROWS).await.unwrap();
+  let (step,bucket_ms,rows)=read(&pool,base,now-60_000,now,None,None,MAX_ROWS,None).await.unwrap();
   assert_eq!((step,bucket_ms),(100.0,5_000));
   assert_eq!(rows,vec![(now-10_000,60_000.0,150.0,0.0),(now-10_000,60_300.0,0.0,14.0),(now-5_000,60_000.0,300.0,0.0),(now-5_000,60_300.0,0.0,7.0)]);
   // 客户端步长比存储的小：按存储步长回；大：合并。
-  assert_eq!(read(&pool,base,now-60_000,now,Some(10.0),None,MAX_ROWS).await.unwrap().0,100.0);
-  let (step,_,rows)=read(&pool,base,now-60_000,now,Some(1_000.0),None,MAX_ROWS).await.unwrap();
+  assert_eq!(read(&pool,base,now-60_000,now,Some(10.0),None,MAX_ROWS,None).await.unwrap().0,100.0);
+  let (step,_,rows)=read(&pool,base,now-60_000,now,Some(1_000.0),None,MAX_ROWS,None).await.unwrap();
   assert_eq!(step,1_000.0);
   assert_eq!(rows,vec![(now-10_000,60_000.0,150.0,14.0),(now-5_000,60_000.0,300.0,7.0)]);
   // 行数上限：放大时间格。
-  let (_,bucket_ms,rows)=read(&pool,base,now-60_000,now,None,None,2).await.unwrap();
+  let (_,bucket_ms,rows)=read(&pool,base,now-60_000,now,None,None,2,None).await.unwrap();
   assert!(bucket_ms>5_000&&rows.len()<=2&&!rows.is_empty(),"{bucket_ms} {rows:?}");
   // 问 3 天但只有最近 10 秒有数据：时间格按有数据的那一截挑，不放大。
-  let (_,bucket_ms,rows)=read(&pool,base,now-store::RETENTION_MS+1,now,None,None,1_000).await.unwrap();
+  let (_,bucket_ms,rows)=read(&pool,base,now-store::RETENTION_MS+1,now,None,None,1_000,None).await.unwrap();
   assert_eq!((bucket_ms,rows.len()),(5_000,4));
   // 这一段没有快照：空行，步长取客户端的与跟踪器此刻的较大者。
-  assert_eq!(read(&pool,base,0,1_000,Some(5.0),Some(100.0),MAX_ROWS).await.unwrap(),(100.0,BUCKET_MS,vec![]));
+  assert_eq!(read(&pool,base,0,1_000,Some(5.0),Some(100.0),MAX_ROWS,None).await.unwrap(),(100.0,BUCKET_MS,vec![]));
   // 清理：3 天以前的删掉，其余留着。
   assert_eq!(purge(&pool,now).await.unwrap(),1);
   let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
   assert_eq!(left,3);
   sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+ }
+
+ fn query(lo:Option<f64>,hi:Option<f64>,around:Option<f64>,pct:Option<f64>,bucket_ms:Option<i64>)->HeatQuery {
+  HeatQuery{base:"BTC".into(),from:None,to:None,step:None,lo,hi,around,pct,bucket_ms}
+ }
+
+ #[test] fn scope_takes_either_a_range_or_a_ring_and_a_positive_hint() {
+  assert_eq!(scope(&query(None,None,None,None,None)),Ok(None),"老请求");
+  assert_eq!(scope(&query(Some(100.0),Some(200.0),None,None,None)),Ok(Some(Scope{prices:Some((100.0,200.0)),hint:BUCKET_MS})));
+  assert_eq!(scope(&query(None,None,Some(100_000.0),None,None)),Ok(Some(Scope{prices:Some((95_000.0,105_000.0)),hint:BUCKET_MS})),"pct 缺省 5");
+  let Ok(Some(Scope{prices:Some((a,b)),hint}))=scope(&query(None,None,Some(200.0),Some(10.0),Some(60_000))) else {panic!()};
+  assert!((a-180.0).abs()<1e-9&&(b-220.0).abs()<1e-9&&hint==60_000);
+  assert_eq!(scope(&query(None,None,None,None,Some(60_000))),Ok(Some(Scope{prices:None,hint:60_000})),"只给时间格提示");
+  for bad in [query(Some(1.0),None,None,None,None),query(None,Some(1.0),None,None,None),query(Some(2.0),Some(1.0),None,None,None),query(Some(1.0),Some(1.0),None,None,None),
+   query(Some(-1.0),Some(1.0),None,None,None),query(Some(f64::NAN),Some(1.0),None,None,None),query(Some(1.0),Some(f64::INFINITY),None,None,None),
+   query(Some(1.0),Some(2.0),Some(1.5),None,None),query(None,None,None,Some(5.0),None),query(None,None,Some(0.0),None,None),
+   query(None,None,Some(1.0),Some(0.0),None),query(None,None,Some(1.0),Some(50.1),None),query(None,None,Some(1.0),Some(f64::NAN),None)] {
+   assert_eq!(scope(&bad),Err("invalid_price"));
+  }
+  assert_eq!(scope(&query(None,None,Some(1.0),Some(50.0),None)).map(|s|s.is_some()),Ok(true));
+  assert_eq!(scope(&query(None,None,None,None,Some(0))),Err("invalid_bucket"));
+  assert_eq!(scope(&query(None,None,None,None,Some(-5_000))),Err("invalid_bucket"));
+ }
+
+ /// 查询串：新参数的名字（`bucketMs` 驼峰）、解析不了的回 400，蛇形名字算多给的参数。
+ #[tokio::test] async fn heat_query_string_is_parsed_and_validated() {
+  use axum::{Router,body::Body,http::{Request,StatusCode},routing::get};
+  use http_body_util::BodyExt;
+  use tower::ServiceExt;
+  let app=||Router::<()>::new().route(PATH,get(|Params(q):Params<HeatQuery>|async move {scope(&q).map_err(ApiError::bad).map(|s|format!("{s:?}"))}));
+  for (q,want) in [("base=BTC",Ok("None")),("base=BTC&around=100000&pct=5&bucketMs=60000",Ok("Some(Scope { prices: Some((95000.0, 105000.0)), hint: 60000 })")),
+   ("base=BTC&lo=1&hi=2",Ok("Some(Scope { prices: Some((1.0, 2.0)), hint: 5000 })")),("base=BTC&lo=2&hi=1",Err("invalid_price")),
+   ("base=BTC&bucketMs=0",Err("invalid_bucket")),("base=BTC&bucket_ms=60000",Err("invalid_query")),("base=BTC&pct=abc&around=1",Err("invalid_query"))] {
+   let reply=app().oneshot(Request::builder().uri(format!("{PATH}?{q}")).body(Body::empty()).unwrap()).await.unwrap();
+   let status=reply.status();
+   let body=reply.into_body().collect().await.unwrap().to_bytes();
+   match want {
+    Ok(v)=>{assert_eq!(status,StatusCode::OK,"{q}");assert_eq!(&body[..],v.as_bytes(),"{q}");},
+    Err(code)=>{assert_eq!(status,StatusCode::BAD_REQUEST,"{q}");assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["error"]["code"],code,"{q}");},
+   }
+  }
+ }
+
+ #[test] fn the_hint_is_a_floor_on_the_ladder_and_snapshots_are_budgeted() {
+  assert_eq!(min_level(1),0);
+  assert_eq!(min_level(5_000),0);
+  assert_eq!(min_level(20_000),2,"20 秒 → 30 秒格");
+  assert_eq!(min_level(60_000),3);
+  assert_eq!(min_level(10*3_600_000),LADDER.len()-1);
+  // 一小时、每格 100 桶、上限 1.4 万：30 秒格装得下（121 × 100），10 秒格装不下；提示 5 分钟就从 5 分钟起。
+  assert_eq!(pick_from(0,3_600_000,100.0,SCOPED_ROWS),2);
+  assert_eq!(pick_from(min_level(300_000),3_600_000,100.0,SCOPED_ROWS),4);
+  // 6 小时 × 110 桶：5 分钟格（73 × 110 ≈ 8 000）。
+  assert_eq!(pick_from(0,6*3_600_000,110.0,SCOPED_ROWS),4);
+  // 快照间隔：老请求照梯子；收窄的最多 720 个，取整到能整除格宽。
+  assert_eq!(stride(3,3_600_000,false),15_000);
+  assert_eq!(stride(3,3_600_000,true),15_000,"一小时 15 秒一个是 240 个，没超");
+  assert_eq!(stride(3,6*3_600_000,true),30_000,"6 小时要 30 秒一个（720 个）");
+  assert_eq!(stride(4,3*store::DAY_MS,true),300_000,"3 天 5 分钟格：一格最多取一个");
+ }
+
+ #[test] fn a_price_range_keeps_only_its_buckets() {
+  let mut h=Heat::new(100.0,0,MAX_ROWS);
+  h.range=Some((601,602));
+  h.add(0,100.0,600,&[0,1,2,3],&[1.0,2.0,3.0,4.0],&[0.0;4]);
+  assert_eq!(h.rows(),vec![(0,60_100.0,2.0,0.0),(0,60_200.0,3.0,0.0)]);
+  // 桶全在范围外的快照也算一个快照（平均时的分母），不然只偶尔进范围的格会被放大。
+  let mut h2=Heat::new(100.0,1,MAX_ROWS);
+  h2.range=Some((601,601));
+  h2.add(0,100.0,600,&[1],&[10.0],&[0.0]);
+  h2.add(5_000,100.0,600,&[0],&[10.0],&[0.0]);
+  assert_eq!(h2.rows(),vec![(0,60_100.0,5.0,0.0)]);
+ }
+
+ #[test] fn answers_are_publicly_cacheable_for_five_seconds() {
+  let a=answer(body(100.0,5_000,&[]),false).unwrap().response();
+  assert_eq!(a.headers()[axum::http::header::CACHE_CONTROL],"public, max-age=5");
+  assert_eq!(a.headers()[axum::http::header::CONTENT_LENGTH],"38");
+  let z=answer(body(100.0,5_000,&[]),true).unwrap().response();
+  assert_eq!(z.headers()[axum::http::header::CONTENT_ENCODING],"gzip");
+  assert_eq!(HEAT_TTL,Duration::from_secs(5));
+ }
+
+ /// 收窄的请求走抽样（`ANY(数组)`）：一小时 5 秒一个快照，提示 60 秒、价格只要 60 250 以上。
+ #[tokio::test] async fn scoped_reads_sample_by_primary_key_and_filter_prices() {
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let base="HEATSCOPE";
+  sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  let now=10*store::DAY_MS;
+  let from=now-3_600_000;
+  let bands:Vec<Band>=(0..720).flat_map(|k|{
+   let t=from+k*BUCKET_MS;
+   ["binance","okx"].map(|exchange|Band{base:base.into(),exchange,product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0,3,10],bids:vec![100.0,0.0,0.0],asks:vec![0.0,40.0,8.0]})
+  }).collect();
+  for chunk in bands.chunks(INSERT_ROWS) {insert(&pool,chunk).await.unwrap();}
+  let last=from+719*BUCKET_MS;
+  // 老请求：一小时 × 3 个桶，5 秒格全读。
+  let (_,bucket_ms,rows)=read(&pool,base,from,last,None,None,MAX_ROWS,None).await.unwrap();
+  assert_eq!((bucket_ms,rows.len()),(5_000,720*3));
+  // 收窄：提示 60 秒、价格 60 250–60 500：只剩 60 300 这一个桶，60 秒一格（15 秒取一个快照），两家相加后取平均。
+  let s=Scope{prices:Some((60_250.0,60_500.0)),hint:60_000};
+  let (step,bucket_ms,rows)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(s)).await.unwrap();
+  assert_eq!((step,bucket_ms),(100.0,60_000));
+  assert_eq!(rows.len(),60);
+  assert!(rows.iter().all(|&(_,p,b,a)|p==60_300.0&&b==0.0&&a==80.0),"{:?}",&rows[..3]);
+  // 行数上限压到 20：原地放大到 5 分钟格。
+  let (_,bucket_ms,rows)=read(&pool,base,from,last,None,None,20,Some(s)).await.unwrap();
+  assert_eq!((bucket_ms,rows.len()),(300_000,12));
+  // 只给提示、不限价格：三个桶都在。
+  let (_,_,rows)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(Scope{prices:None,hint:60_000})).await.unwrap();
+  assert_eq!(rows.len(),60*3);
+  sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+ }
+
+ /// 计划对比（2026-09-29）：照线上 BTC 的形状摆两只 base 各一天（5 秒一个快照 × 9 个交易所产品、一条带子 40 个桶），
+ /// 对 6 小时 60 秒一个快照比原来的 `generate_series` 连接与现在的 `ANY(数组)`，再比 1 小时 10 秒一个。
+ /// `python3 ops/test.py --lib -- heat::tests::explain_old_join_against_primary_key_sampling --ignored --nocapture`。
+ #[ignore] #[tokio::test] async fn explain_old_join_against_primary_key_sampling() {
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let bases=["ZZHEATA","ZZHEATB"];
+  for b in bases {sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(b).execute(&pool).await.unwrap();}
+  let now=20*store::DAY_MS;
+  let from=now-store::DAY_MS;
+  sqlx::query("INSERT INTO orderflow_heat(base,exchange,product,bucket_ms,step,price_lo,price_bucket,bid_notional,ask_notional) \
+   SELECT b,v.ex,v.pr,t,100,600,ARRAY(SELECT generate_series(0,39)),array_fill(1e6::real,ARRAY[40]),array_fill(2e5::real,ARRAY[40]) \
+   FROM unnest($1::text[]) b,generate_series($2::bigint,$3::bigint,5000) t, \
+   (VALUES ('binance','usdtPerp'),('binance','spot'),('binance','coinPerp'),('binance','delivery'),('okx','usdtPerp'),('okx','spot'),('okx','coinPerp'),('okx','delivery'),('coinbase','spot')) v(ex,pr)")
+   .bind(bases.map(String::from).to_vec()).bind(from).bind(now).execute(&pool).await.unwrap();
+  sqlx::query("ANALYZE orderflow_heat").execute(&pool).await.unwrap();
+  let old=format!("SELECT {COLUMNS} FROM generate_series($2::bigint,$3::bigint,$4::bigint) g(t) JOIN orderflow_heat h ON h.base=$1 AND h.bucket_ms=g.t ORDER BY h.bucket_ms");
+  let new=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms=ANY($2::bigint[]) ORDER BY h.bucket_ms");
+  let plan=|sql:String,old:bool,a:i64,b:i64,stride:i64|{let pool=pool.clone();async move {
+   let q=format!("EXPLAIN (ANALYZE,BUFFERS) {sql}");
+   let q=sqlx::query_scalar::<_,String>(&q).bind(bases[0]);
+   let q=if old {q.bind(a).bind(b).bind(stride)} else {q.bind((0..).map(|k|a+k*stride).take_while(|&t|t<=b).collect::<Vec<i64>>())};
+   q.fetch_all(&pool).await.unwrap().join("\n")
+  }};
+  for (span,stride) in [(6*3_600_000,60_000),(3_600_000,10_000)] {
+   let a=now-span;
+   for _ in 0..2 {let _=plan(old.clone(),true,a,now,stride).await;let _=plan(new.clone(),false,a,now,stride).await;}
+   let before=plan(old.clone(),true,a,now,stride).await;
+   let after=plan(new.clone(),false,a,now,stride).await;
+   println!("—— {} 小时、{} 秒一个快照 ——\n原来（generate_series 连接）：\n{before}\n现在（ANY 数组）：\n{after}\n",span/3_600_000,stride/1000);
+   assert!(after.contains("Index Cond")&&after.contains("bucket_ms = ANY"),"现在应按主键点查：\n{after}");
+  }
+  for b in bases {sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(b).execute(&pool).await.unwrap();}
  }
 }

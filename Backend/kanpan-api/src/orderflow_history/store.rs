@@ -23,7 +23,8 @@ pub const GATE_TARGET:f64=18e9;
 pub const ROW_BYTES:f64=450.0;
 /// 一条语句最多删几行：serve 的连接挂着 20 秒语句死线，一口气删几十万行会半路断。
 const DELETE_BATCH:i64=10_000;
-/// 一次最多回几条（3 天 BTC 的量级远低于它；这只是防御上限）。
+/// 测试里「不截」的上限（线上的已结束单上限是接口的 `limit`，最多 5000；挂着的不限）。
+#[cfg(test)]
 pub const MAX_ROWS:i64=200_000;
 
 const COLUMNS:&str="base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms";
@@ -209,26 +210,33 @@ async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:i6
 /// `min_life`（毫秒，0 = 不滤）：已结束的单寿命（`end_ms − first_seen_ms`）短于它的不回，还挂着的一律回。
 /// 写在结束的那两路各自的 WHERE 里（挂着的那一路没有结束时刻，不滤），`LIMIT` 之前就滤掉，
 /// 20 万行的上限留给真要的行；仍走 `(base, end_ms)` 那条索引，只是多一个行过滤条件。
-pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:i64,mut each:impl FnMut(BigOrder))->sqlx::Result<usize> {
+///
+/// 返回（交出去的条数，已结束的是否还有更早的没回——截到了 `cap`）。库里多取一条已结束的来判断有没有下一页：
+/// 按升序它是第一条已结束的，到了就跳过、记下「还有」。
+pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:i64,mut each:impl FnMut(BigOrder))->sqlx::Result<(usize,bool)> {
  use futures_util::TryStreamExt;
  let sql=range_sql();
  let mut rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).bind(min_life).fetch(pool);
- let mut n=0;
+ let (mut n,mut more)=(0,false);
  while let Some(row)=rows.try_next().await? {
+  if !more&&row.try_get::<Option<i64>,_>("ended").ok().flatten().is_some_and(|k|k>cap) {more=true;continue}
   if let Some(o)=order(&row) {each(o);n+=1;}
  }
- Ok(n)
+ Ok((n,more))
 }
 
-/// `range_each` 的查询：$1 base、$2 from、$3 to、$4 行数上限、$5 最短寿命。结束的两路都要走得上 `orderflow_orders_end`（测试里 EXPLAIN 核对）。
+/// `range_each` 的查询：$1 base、$2 from、$3 to、$4 已结束单的条数上限、$5 最短寿命。结束的两路都要走得上 `orderflow_orders_end`（测试里 EXPLAIN 核对）。
+/// 2026-09-29 起上限只管已结束的单：挂着的（`to` 之前出现的）一律全回，不占名额——翻页只翻已结束的。
+/// 已结束的多取一条（`LIMIT $4 + 1`），每行带着这次取到几条（`ended`，挂着的为 NULL），超了上限就是还有下一页。
 pub(super) fn range_sql()->String {
  let cols=COLUMNS;
- format!("SELECT * FROM (SELECT * FROM (\
-  SELECT {cols} FROM orderflow_live WHERE base=$1 AND first_seen_ms<=$3 \
-  UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>=$2 AND end_ms<=$3 AND end_ms-first_seen_ms>=$5 \
+ format!("SELECT * FROM (\
+  SELECT {cols},NULL::bigint AS ended FROM orderflow_live WHERE base=$1 AND first_seen_ms<=$3 \
+  UNION ALL SELECT *,count(*) OVER () AS ended FROM (SELECT * FROM (\
+  SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>=$2 AND end_ms<=$3 AND end_ms-first_seen_ms>=$5 \
   UNION ALL SELECT {cols} FROM orderflow_orders WHERE base=$1 AND end_ms>$3 AND first_seen_ms<=$3 AND end_ms-first_seen_ms>=$5\
-  ) t ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4) newest \
-  ORDER BY first_seen_ms,venue_id,side,bucket")
+  ) e ORDER BY first_seen_ms DESC,venue_id DESC,side DESC,bucket DESC LIMIT $4::bigint+1) capped\
+  ) t ORDER BY first_seen_ms,venue_id,side,bucket")
 }
 
 /// 跟踪器最后一次活着距今超过这么久，就算上一段断了：历史从下一次起跟的那一刻重新算起。
@@ -421,7 +429,7 @@ pub(super) mod tests {
   assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,0,MAX_ROWS).await.unwrap()),vec![4,2,3,6,5,1],"0 = 不滤");
   assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,300_000,MAX_ROWS).await.unwrap()),vec![4,3,6,1],"短于 5 分钟的结束单不回，正好 5 分钟的回，挂着的回");
   assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,86_400_000,MAX_ROWS).await.unwrap()),vec![4,1],"上限一天：只剩挂着的与活满一天的");
-  assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,300_000,2).await.unwrap()),vec![6,1],"先滤再截：上限只留给要回的行");
+  assert_eq!(buckets(range_capped(&pool,"ZZM",now-DAY_MS,now,300_000,2).await.unwrap()),vec![3,6,1],"先滤再截：上限只留给要回的已结束单，挂着的不占名额");
   clear(&pool,&["ZZM"]).await;
  }
 
@@ -593,7 +601,12 @@ pub(super) mod tests {
   let got=range(&pool,"ZZT",now-DAY_MS,now).await.unwrap();
   assert_eq!(got.iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3,1],"按出现时刻升序，4 天前结束的不在最近一天里");
   assert_eq!(range(&pool,"ZZT",now-DAY_MS,now-5_000_000).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![2,3],"右沿之后才出现的（挂着的 1 号）不回，跨过右沿的 3 号要回");
-  assert_eq!(range_capped(&pool,"ZZT",now-DAY_MS,now,0,2).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![3,1],"超了上限留最新的，仍按升序");
+  assert_eq!(range_capped(&pool,"ZZT",now-DAY_MS,now,0,1).await.unwrap().iter().map(|o|o.bucket).collect::<Vec<_>>(),vec![3,1],"已结束的超了上限留最新的，挂着的照回，仍按升序");
+  // 有没有下一页：已结束的 2 条，上限 1 → 还有；上限 2 → 正好回完，没有了。
+  let more=|cap:i64|{let pool=pool.clone();async move {range_each(&pool,"ZZT",now-DAY_MS,now,0,cap,|_|{}).await.unwrap()}};
+  assert_eq!(more(1).await,(2,true));
+  assert_eq!(more(2).await,(3,false));
+  assert_eq!(more(3).await,(3,false));
   // 结束写进去之后，晚到的一批「挂着」翻不回去。
   let mut ended=live.clone();ended.end_ms=Some(now);ended.status=Status::Filled;
   upsert(&pool,"ZZT",100.0,&[(ended.clone(),now)]).await.unwrap();
