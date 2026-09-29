@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import FIXTURE from '../../KanpanCore/Tests/KanpanCoreTests/Fixtures/sectors.json'
 import {
   EMPTY_HISTORY, TRADABLE_QUOTES, accepts, boardOrder, catalog, covered, decodeHistory, fallbackBuckets,
-  hasEligible, historyRetryDelay, ingest, isFresh, jackknife, logReturn, median, memberSet, outperformCount,
+  hasEligible, historyRetryDelay, ingest, isFresh, isThin, jackknife, logReturn, median, memberSet, outperformCount,
   parseDay, prefers, quantile, quoteRank, rankable, resolveWindow, stats, subtitle, supersedes, symbolRows,
   windowMedian, windowReturn,
 } from '../src/sectors/aggregate'
@@ -405,6 +405,31 @@ describe('展示规则（手机 app 层）', () => {
   })
   it('不到三家的整档沉底', () => {
     expect(boardOrder([st('desci', 38, 1), st('pair', 12, 2), st('ai', 4), st('meme', -2), st('nan', NaN)]).map(s => s.id)).toEqual(['ai', 'meme', 'nan', 'desci', 'pair'])
+  })
+  it('DeSci 只有 BIO 一只：涨得再多也排在所有够三家的板块之后，不算跑赢大盘（网页截图那一行）', () => {
+    const { quotes, buckets } = snapshot('crypto')
+    quotes.set('BIO', q('BIO', 38, 5_000_000, 0.1))
+    const list = boardOrder(stats('crypto', quotes, buckets))
+    const i = list.findIndex(s => s.id === 'desci')
+    expect(i).toBeGreaterThan(-1)
+    const desci = list[i]
+    // 成员数只数有行情的（目录里 DeSci 本来就只有 BIO）
+    expect(catalog.sectors('crypto').find(d => d.id === 'desci')?.members).toEqual(['BIO'])
+    expect(desci.memberCount).toBe(1)
+    expect(desci.pct).toBeCloseTo(38)
+    expect(isThin(desci)).toBe(true)
+    expect(subtitle(desci)).toBe('')
+    // 前面全是够三家的，后面全是不够的
+    expect(list.slice(0, i).every(s => !isThin(s))).toBe(true)
+    expect(list.slice(i).every(s => isThin(s))).toBe(true)
+    // 够三家的那一段仍按涨跌幅降序
+    const fat = list.filter(s => !isThin(s)).map(s => s.pct)
+    expect(fat).toEqual(fat.slice().sort((a, b) => b - a))
+    expect(list.filter(s => s.pct > desci.pct && !isThin(s))).toEqual([])
+  })
+  it('有行情的不到三家就算薄（目录里成员多但只有两只在交易也算）', () => {
+    const st2 = stats('crypto', quotesOf([q('BTC', 1), q('ETH', 2)]), [])
+    expect(st2.every(s => s.memberCount <= 2 && isThin(s))).toBe(true)
   })
   it('副标题「x/N 跑赢大盘」；不到三家不画', () => {
     expect(subtitle(st('x', 1, 5, 0.6))).toBe('3/5 跑赢大盘')

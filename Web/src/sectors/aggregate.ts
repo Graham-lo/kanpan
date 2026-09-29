@@ -41,6 +41,8 @@ export interface SectorStat {
 export type Quotes = Map<string, SectorQuote>
 
 export const MIN_ELIGIBLE_MEMBERS = 3
+/** 有行情的成员不到三家：不算广度（跑赢大盘）、整档沉底（手机 SectorBoardOrder / SectorSubtitle 同一条） */
+export const isThin = (s: Pick<SectorStat, 'memberCount'>): boolean => s.memberCount < MIN_ELIGIBLE_MEMBERS
 export const MIN_WINDOW_COVERAGE = 0.8
 export const EMPTY_HISTORY: SectorHistory = Object.freeze({ asof: '', closes: new Map() }) as SectorHistory
 
@@ -259,7 +261,7 @@ export function windowMedian(members: string[], quotes: Quotes, history: SectorH
 /** 板块列表：成员不到三家的整档沉底；其余按涨跌幅降序，非数当 −∞，并列按 id */
 export function boardOrder(list: SectorStat[]): SectorStat[] {
   return list.slice().sort((a, b) => {
-    const thinA = a.memberCount < MIN_ELIGIBLE_MEMBERS, thinB = b.memberCount < MIN_ELIGIBLE_MEMBERS
+    const thinA = isThin(a), thinB = isThin(b)
     if (thinA !== thinB) return thinA ? 1 : -1
     const x = Number.isFinite(a.pct) ? a.pct : -Infinity
     const y = Number.isFinite(b.pct) ? b.pct : -Infinity
@@ -269,7 +271,7 @@ export function boardOrder(list: SectorStat[]): SectorStat[] {
 
 /** 「x/N 跑赢大盘」；成员不到三家给空串（调用处整行不画） */
 export function subtitle(s: Pick<SectorStat, 'memberCount' | 'breadth'>): string {
-  if (s.memberCount < MIN_ELIGIBLE_MEMBERS) return ''
+  if (isThin(s)) return ''
   return `${outperformCount(s)}/${s.memberCount} 跑赢大盘`
 }
 

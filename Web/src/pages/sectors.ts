@@ -15,7 +15,7 @@ import { fmtCompact } from '../util/format'
 import { S, badgeColor, streamName } from '../market'
 import { openSymbol, toggleWatch, isWatched, refreshStreams } from './chart'
 import {
-  EMPTY_HISTORY, boardOrder, catalog, hasEligible, outperformCount, rankable, resolveWindow, stats, symbolRows, windowReturn,
+  EMPTY_HISTORY, MIN_ELIGIBLE_MEMBERS, boardOrder, catalog, hasEligible, isThin, outperformCount, rankable, resolveWindow, stats, symbolRows, windowReturn,
 } from '../sectors/aggregate'
 import type { SectorMarket, SectorStat, SectorWindow, SymbolRow } from '../sectors/aggregate'
 import { applyLive, feed, seedFromUniverse, startFeed, stopFeed } from '../sectors/feed'
@@ -96,9 +96,12 @@ function renderHead(hasD5: boolean): void {
 }
 
 function boardRow(s: SectorStat): string {
-  const n = s.memberCount, thin = n < 3
-  const beat = thin ? '' : `${outperformCount(s)}<span class="faint"> / ${n}</span>`
-  return `<tr data-sec="${esc(s.id)}" class="${s.id === sp.sel ? 'sel' : ''}" aria-selected="${s.id === sp.sel}" tabindex="0">
+  const n = s.memberCount, thin = isThin(s)
+  // 不到三家有行情：不算跑赢大盘、整档沉底（和手机一致）。格子写「—」不留空（空着像数据没到），悬停说明为什么
+  const beat = thin
+    ? `<span class="faint sec-thin" data-tip="只有 ${n} 只有行情，不到 ${MIN_ELIGIBLE_MEMBERS} 只不算跑赢大盘，排在最后">—</span>`
+    : `${outperformCount(s)}<span class="faint"> / ${n}</span>`
+  return `<tr data-sec="${esc(s.id)}"${thin ? ' data-thin="1"' : ''} class="${s.id === sp.sel ? 'sel' : ''}" aria-selected="${s.id === sp.sel}" tabindex="0">
     <td><span class="sec-name">${esc(s.name)}</span></td>
     <td><svg class="sec-spark" data-spark="${esc(s.id)}" viewBox="0 0 160 32" preserveAspectRatio="none" aria-hidden="true">${sparkOf(s)}</svg></td>
     <td class="num">${beat}</td>
@@ -147,7 +150,7 @@ function renderMembers(title: string): void {
   if (!id) { head.innerHTML = ''; body.innerHTML = ''; empty.innerHTML = feed.quotes.size ? '' : emptyHTML(); setVisible([]); return }
   const rows = symbolRows(membersOf(id), feed.quotes, stat?.frontier ?? [], sp.window, history.held)
   const n = stat?.memberCount ?? 0
-  const sub = stat && n >= 3 ? `${title} · <span class="num">${outperformCount(stat)}/${n}</span> ${term('跑赢大盘')}` : title
+  const sub = stat && !isThin(stat) ? `${title} · <span class="num">${outperformCount(stat)}/${n}</span> ${term('跑赢大盘')}` : title
   const lead = stat?.frontier.length ? ` · ${term('领涨')} <span class="num">${stat.frontier.length}</span>` : ''
   head.innerHTML = `<h2>${esc(nameOf(id))}</h2>${stat ? `<span class="num sec-big ${cls(stat.pct)}">${pctText(stat.pct)}</span>` : ''}<span class="sub">${sub}${lead}</span>`
   body.innerHTML = rows.map(symbolRowHTML).join('')
