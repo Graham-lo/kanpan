@@ -27,6 +27,7 @@ import type { ChartOrderFlowFocus } from './view'
 import { ChartView } from './view'
 import type { ExternalID } from './external.source'
 import { ExternalFeed, isExternalID } from './external.source'
+import { createOrderFlowPort } from './orderflow.source'
 
 // ================================================================ ViewIntent
 
@@ -89,7 +90,7 @@ export interface CreateChartOptions extends Partial<ChartLook> {
   /** 关掉推送 / 心跳 / 外部副图（复盘、截图用静态图）。 */
   offline?: boolean
   /** 主力订单流的数据口：图把「要不要、哪只、哪个周期、看到哪段」告诉它，它把快照推回来。 */
-  orderFlowSource?: (push: (snap: OrderFlowSnapshot | null) => void) => OrderFlowPort
+  orderFlowSource?: ((push: (snap: OrderFlowSnapshot | null) => void) => OrderFlowPort) | null
 }
 
 export interface CrosshairEvent { crosshair: Crosshair | null; bar: Bar | null }
@@ -821,8 +822,10 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   resetFeed()
   subscribe()
-  if (opts.orderFlowSource) {
-    orderFlowPort = opts.orderFlowSource(snap => {
+  // 没传就用默认的三家聚合源（orderflow.source.ts）；传 null 表示这张图不要订单流数据（测试、截图）。
+  const orderFlowFactory = opts.orderFlowSource === undefined ? (opts.offline ? null : createOrderFlowPort) : opts.orderFlowSource
+  if (orderFlowFactory) {
+    orderFlowPort = orderFlowFactory(snap => {
       if (destroyed) return
       orderFlowSnapshot = snap
       const st = view.state

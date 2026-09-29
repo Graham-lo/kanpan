@@ -10,6 +10,9 @@
 // 线路（直连 / 网关）与用户改过的门槛由调用方按需传 options，或随后 setRoute / setOverride；默认直连、不叠用户门槛。
 
 import { OrderFlowFeed, type Route } from '../../orderflow/feed'
+import { S, on as onMarket } from '../../market'
+import type { BarSeries, Interval } from './series'
+import type { ViewWindow } from './geometry'
 import type { Snapshot } from '../../orderflow/model'
 import type { Override } from '../../orderflow/settings'
 import type { OrderFlowSnapshot } from './orderflowGroup'
@@ -100,5 +103,56 @@ export function toChartSnapshot(symbol: string, s: Snapshot, defaults?: OrderFlo
     thresholds: { ...s.thresholds },
     defaults: defaults ? { ...defaults } : undefined,
     venues: s.venues.map(v => ({ ...v })),
+  }
+}
+
+/** createChart 的 OrderFlowPort 那一面（index.ts 里的接口，这里按结构写一份，免得反向 import）。 */
+export interface OrderFlowSourcePort {
+  setWanted(on: boolean, symbol: string, interval: Interval): void
+  noteView(view: ViewWindow, series: BarSeries): void
+  dispose(): void
+}
+
+/**
+ * 默认的订单流口子：createChart 没传 orderFlowSource 时用它。
+ * - 品种类型与 24h 成交额从全市场表（market S.symbols）取，表还没到时先按加密、到了之后重订一次让默认门槛对上；
+ * - 线路跟着 market 的 S.route 走（设置里切线路会发 ws 事件）；
+ * - 视野变化交 setVisible（往左拖出去 feed 往前补历史），右沿多给一根，与 PC 版 g.timeOf(g.to + 1) 同口径；
+ * - override 由调用方给（全端同步的门槛设置）；没给就用默认门槛。
+ */
+export function createOrderFlowPort(
+  push: (snap: OrderFlowSnapshot | null) => void,
+  opts: { override?: (symbol: string) => Override | null } = {},
+): OrderFlowSourcePort {
+  const src = new OrderFlowSource(push)
+  let wanted: string | null = null
+  let knewSymbol = false
+  const info = (sym: string) => {
+    const m = S.symbols.get(sym)
+    return { known: !!m, crypto: (m?.kind ?? 'crypto') === 'crypto', turnover24h: m?.vol ?? null }
+  }
+  const start = (sym: string) => {
+    const i = info(sym)
+    knewSymbol = i.known
+    src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: opts.override?.(sym) ?? null })
+  }
+  const off = onMarket(e => {
+    if (!wanted) return
+    if (e.type === 'ws') src.setRoute(S.route)
+    else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(); start(wanted) }
+  })
+  return {
+    setWanted(on, symbol) {
+      const sym = symbol.toUpperCase()
+      if (!on) { wanted = null; src.stop(); return }
+      if (wanted === sym && src.current === sym) return
+      wanted = sym
+      start(sym)
+    },
+    noteView(view, series) {
+      if (!wanted) return
+      src.setVisible(view.from, view.to + Math.max(0, series.step))
+    },
+    dispose() { off(); wanted = null; src.stop() },
   }
 }

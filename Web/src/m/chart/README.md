@@ -31,7 +31,7 @@ const chart = createChart(host, {
   overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],     // 副图最多 3 个，多的丢掉
   barSpacing: prefs.barSpacing,                        // 上次捏到的根宽，缺省 4
   streams: names => setStreams([...pageStreams, ...names]), // 图要订的推送流，由页面合并后交给 market
-  orderFlowSource: push => myPort,                     // 可选：主力订单流数据口
+  orderFlowSource: push => myPort,                     // 可选：主力订单流数据口；不传用默认 createOrderFlowPort（三家聚合，品种类型 / 24h 额取全市场表，线路跟 S.route），传 null 不订
 })
 ```
 

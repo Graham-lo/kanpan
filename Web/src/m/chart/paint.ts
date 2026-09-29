@@ -166,7 +166,8 @@ export function orderFlowUnfilled(color: Hex, bg: Hex, maxMix = 0.45): Hex {
 
 // ---------------------------------------------------------------- 字体（ChartFont）
 
-export interface ChartFontSpec { size: number; weight: number; tabular: boolean }
+/** mono：整串等宽（iOS monospacedSystemFont，即 SF Mono），不只是数字等宽。 */
+export interface ChartFontSpec { size: number; weight: number; tabular: boolean; mono?: boolean }
 
 export const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif'
 
@@ -179,7 +180,9 @@ export const ChartFont = {
   tiny: { size: 9, weight: 400, tabular: true } as ChartFontSpec,
 }
 
-export const fontString = (f: ChartFontSpec): string => `${f.weight} ${f.size}px ${FONT_FAMILY}`
+export const MONO_FAMILY = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace'
+
+export const fontString = (f: ChartFontSpec): string => `${f.weight} ${f.size}px ${f.mono ? MONO_FAMILY : FONT_FAMILY}`
 
 /** SF 的行高（UIFont.lineHeight / pointSize）。NSString.size 的高度就是它。 */
 export const LINE_HEIGHT = 1.193
@@ -206,7 +209,7 @@ function rawWidth(text: string, f: ChartFontSpec): number {
   if (!c) {
     // 测试环境（无 canvas）：按 SF 的平均字宽近似；数字 0.6em，中文 1em，其余 0.55em
     let w = 0
-    for (const ch of text) w += isDigit(ch) ? 0.6 : ch.charCodeAt(0) > 0x2e80 ? 1 : 0.55
+    for (const ch of text) w += f.mono ? (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.6) : isDigit(ch) ? 0.6 : ch.charCodeAt(0) > 0x2e80 ? 1 : 0.55
     return w * f.size
   }
   c.font = fontString(f)
@@ -215,11 +218,11 @@ function rawWidth(text: string, f: ChartFontSpec): number {
 
 /** String.width(font)：带缓存；等宽数字的字体里每个数字按 '0' 的宽度算。 */
 export function textWidth(text: string, f: ChartFontSpec): number {
-  const key = `${f.size}|${f.weight}|${f.tabular ? 1 : 0}|${text}`
+  const key = `${f.size}|${f.weight}|${f.tabular ? 1 : 0}${f.mono ? 'm' : ''}|${text}`
   const hit = sizeCache.get(key)
   if (hit !== undefined) return hit
   let w: number
-  if (f.tabular && /\d/.test(text)) {
+  if (f.tabular && !f.mono && /\d/.test(text)) {
     const zero = rawWidth('0', f)
     w = 0
     let run = ''
@@ -237,7 +240,7 @@ export function textWidth(text: string, f: ChartFontSpec): number {
 export const textHeight = (f: ChartFontSpec): number => f.size * LINE_HEIGHT
 
 function drawRun(ctx: CanvasRenderingContext2D, text: string, x: number, baseline: number, f: ChartFontSpec): void {
-  if (!f.tabular || !/\d/.test(text)) { ctx.fillText(text, x, baseline); return }
+  if (!f.tabular || f.mono || !/\d/.test(text)) { ctx.fillText(text, x, baseline); return }
   const zero = textWidth('0', f)
   let run = '', rx = x
   const flush = () => { if (run) { ctx.fillText(run, rx, baseline); rx += textWidth(run, { ...f, tabular: false }); run = '' } }

@@ -81,8 +81,8 @@ export const OrderFlowStyle = {
   candleHitSlop: 6,
 } as const
 
-/** 金额签字体：11 / medium / 数字等宽（Swift monospacedSystemFont(ofSize: 11, weight: .medium)）。 */
-export const ORDER_FLOW_LABEL_FONT: ChartFontSpec = { size: 11, weight: 500, tabular: true }
+/** 金额签字体：11 / medium / 整串等宽 SF Mono（Swift monospacedSystemFont(ofSize: 11, weight: .medium)）。 */
+export const ORDER_FLOW_LABEL_FONT: ChartFontSpec = { size: 11, weight: 500, tabular: true, mono: true }
 
 const S = OrderFlowStyle
 
