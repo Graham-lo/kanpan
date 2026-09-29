@@ -1,0 +1,139 @@
+/* Hkline Web · 复盘页（只用 app.css 的令牌与三套皮肤变量，不另起颜色）
+ *
+ * 版面照原型：上面一整条（页签 + 六格要点）横跨两列；左边列表 + 战绩；右边 880 宽的回放。
+ * 播放条照手机端 ReviewReplayControls：2 px 细线，已放过的一段用强调色、其余 20% 墨色，
+ * 关键点是 1×6 的小刻度；拖动时才出现圆钮。
+ */
+
+#page-review.rv-signed-out { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.rv-login { display: grid; place-items: center; }
+.rv-login .empty { max-width: 440px; }
+.rv-login-t { font-size: var(--t16); line-height: 24px; color: var(--text-1); font-weight: 600; margin-top: var(--s2); }
+.rv-login-d { margin-top: var(--s1); line-height: 20px; }
+.rv-login .btn { margin-top: var(--s4); }
+
+/* ------------------------------------------------------------ 上方一整条 */
+.rv-top { grid-column: 1 / 3; }
+.rv-top .rv-head { grid-column: auto; gap: var(--s3); }
+.rv-top .rv-head h2 { margin-right: var(--s2); }
+.rv-count { margin-left: 6px; color: var(--text-3); font-size: var(--t12); }
+.seg button[aria-pressed="true"] .rv-count { color: var(--text-2); }
+.rv-syms { max-width: 720px; overflow-x: auto; scrollbar-width: none; }
+.rv-sp { flex: 1; }
+.rv-asof { color: var(--text-3); font-size: var(--t12); }
+.rv-err { color: var(--warn); font-size: var(--t12); }
+.rv-top .kpi .k .term { color: inherit; }
+
+/* ------------------------------------------------------------ 左边 */
+.rv-lbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 480px; }
+.rv-lbody.one { grid-template-columns: 1fr; }
+.rv-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.rv-list { flex: 1; min-height: 0; }
+.rv-side { border-left: 1px solid var(--line); min-height: 0; padding-bottom: var(--s4); }
+.rv-empty { margin: auto; max-width: 480px; line-height: 20px; }
+.rv-empty .t { color: var(--text-1); font-weight: 600; font-size: var(--t14); margin-bottom: var(--s1); }
+.rv-none { padding: var(--s3) var(--s4); color: var(--text-3); }
+
+.rv-tbl thead th { position: sticky; top: 0; z-index: 1; }
+.rv-tbl td { height: 40px; }
+.rv-tbl tr.rv-day td { height: 32px; background: var(--surface-2); cursor: default; font-size: var(--t12); color: var(--text-2); text-align: left; }
+.rv-tbl tr.rv-day:hover td { background: var(--surface-2); }
+.rv-tbl tr.rv-day td span { margin-right: var(--s3); }
+.rv-tbl tr.rv-day td span:first-child { color: var(--text-1); font-weight: 600; }
+.rv-tbl .rv-net { font-weight: 600; }
+.rv-tbl .rv-mark { width: 28px; color: var(--text-3); }
+.rv-tbl .rv-text { max-width: 360px; overflow: hidden; text-overflow: ellipsis; text-align: left; color: var(--text-2); }
+.rv-tbl tbody tr:focus-visible td { box-shadow: inset 0 0 0 var(--stroke-mark) var(--accent); }
+.dir.obs { color: var(--text-2); background: var(--surface-3); }
+.tag.rv-ok { color: var(--up-text); background: color-mix(in srgb, var(--up) 12%, transparent); }
+.tag.rv-bad { color: var(--down-text); background: color-mix(in srgb, var(--down) 12%, transparent); }
+.warn { color: var(--warn); }
+
+/* 累计净盈亏 */
+.rv-equity { display: flex; flex-direction: column; padding: var(--s3) 64px var(--s2) var(--s4); }
+.rv-eq-cap { display: flex; align-items: baseline; gap: var(--s3); font-size: var(--t12); color: var(--text-2); line-height: 20px; }
+.rv-eq-cap b { font-size: var(--t16); }
+.rv-eq-plot { position: relative; flex: 1; min-height: 0; margin: var(--s2) 0; }
+.rv-eq-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.rv-eq-plot .zero { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 4 4; }
+.rv-eq-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--c); cursor: pointer; }
+.rv-eq-dot:hover, .rv-eq-dot.sel { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: var(--c); }
+.rv-eq-y { position: absolute; left: 100%; margin-left: var(--s2); transform: translateY(-50%); font-size: var(--t11); color: var(--text-3); white-space: nowrap; }
+.rv-eq-x { display: flex; justify-content: space-between; font-size: var(--t11); color: var(--text-3); }
+.rv-eq-empty { flex: 1; display: grid; place-items: center; color: var(--text-3); }
+
+/* 战绩 */
+.rv-grp { padding: 0 0 var(--s3); }
+.rv-grp-t { padding: var(--s2) var(--s4) var(--s1); font-size: var(--t13); font-weight: 600; color: var(--text-1); }
+.rv-gtbl tbody tr { cursor: default; }
+.rv-gtbl td { height: 32px; }
+.rv-vgroups { display: flex; flex-direction: column; }
+.rv-vg { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
+.rv-vg .main { flex: 1; min-width: 0; }
+.rv-vg .chips { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.rv-vg .chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--r-xs); background: var(--surface-3); color: var(--text-1); font-size: var(--t12); white-space: nowrap; }
+.rv-vg .chip:first-child { font-weight: 600; }
+.rv-vg .sub { margin-top: var(--s1); font-size: var(--t12); color: var(--text-2); }
+.rv-vg .rate { font-size: var(--t20); font-weight: 600; white-space: nowrap; }
+.rv-vg .rate.faint { font-size: var(--t13); font-weight: 400; }
+
+/* 相似 */
+.rv-mrow { cursor: pointer; }
+.rv-mrow.sel { background: var(--accent-soft); }
+.rv-mrow:focus-visible { outline: var(--stroke-mark) solid var(--accent); outline-offset: -2px; }
+.rv-star.on { color: var(--accent-text); }
+.rv-search { border-bottom: 1px solid var(--line); }
+.rv-search-h { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--surface-2); font-size: var(--t12); color: var(--text-2); }
+.rv-search-h b { color: var(--text-1); }
+
+/* ------------------------------------------------------------ 右边：回放 */
+.rv-right .rv-trade-head { gap: var(--s2); min-height: 56px; padding: var(--s2) var(--s4); }
+.rv-right .rv-trade-head .ttl { margin-right: var(--s1); }
+.rv-right .rv-trade-head .btn .icon-16 { margin-right: var(--s1); }
+.rv-chart-wrap { position: relative; flex: 1; min-height: 360px; overflow: hidden; }
+.rv-chart-host { position: absolute; inset: 0; }
+.rv-chart-host > canvas { position: absolute; inset: 0; display: block; }
+.rv-chart-wrap .rv-overlay { position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; }
+.rv-chart-wrap .legend .tools, .rv-chart-wrap .pane-legend .tools, .rv-chart-wrap .legend .lrow:hover .tools { display: none; }
+.rv-chart-wrap.blank::after { content: ''; position: absolute; inset: 0; background: var(--surface); }
+
+.rv-float { position: absolute; top: var(--s2); z-index: 3; display: inline-flex; align-items: center; gap: var(--s2); height: var(--h-sm); padding: 0 var(--s3); border-radius: var(--r-sm); background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: 0 0 0 1px var(--line); font-size: var(--t13); font-weight: 600; pointer-events: none; }
+.rv-float .k { color: var(--text-2); font-weight: 500; }
+.rv-caption { position: absolute; left: var(--s3); bottom: 40px; z-index: 3; max-width: min(520px, 70%); padding: var(--s2) var(--s3); border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgba(0,0,0,.08); font-size: var(--t13); line-height: 20px; color: var(--text-1); pointer-events: none; white-space: pre-wrap; }
+.rv-caption b { display: block; font-size: var(--t12); color: var(--accent-text); font-weight: 600; }
+
+/* 播放条 */
+.rv-bar { gap: var(--s2); }
+.rv-bar .rv-play { flex: none; }
+.rv-track { position: relative; flex: 1; min-width: 160px; height: 28px; cursor: pointer; touch-action: none; outline: none; }
+.rv-track .rail, .rv-track .played { position: absolute; left: 0; top: 13px; height: 2px; border-radius: 1px; }
+.rv-track .rail { right: 0; background: color-mix(in srgb, var(--text-3) 20%, transparent); }
+.rv-track .played { background: var(--accent); }
+.rv-track .tick { position: absolute; top: 11px; width: 1px; height: 6px; }
+.rv-track .knob { position: absolute; top: 7px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,.2); opacity: 0; transition: opacity var(--d-fast) var(--ease); }
+.rv-track.dragging .knob, .rv-track:hover .knob, .rv-track:focus-visible .knob { opacity: 1; }
+.rv-track:focus-visible .rail { box-shadow: 0 0 0 2px var(--accent-soft); }
+.rv-time { flex: none; min-width: 96px; font-size: var(--t12); color: var(--text-2); text-align: right; }
+.rv-speed { flex: none; }
+.rv-bar .btn { flex: none; }
+
+/* 回放下面的数字与笔记 */
+.rv-foot { flex: none; max-height: 320px; border-top: 1px solid var(--line); }
+.rv-foot .rv-stats { border-top: 0; row-gap: var(--s3); }
+.rv-stat { min-width: 0; }
+.rv-stat.wide { grid-column: span 2; }
+.rv-stat .k { font-size: var(--t12); color: var(--text-2); line-height: 16px; }
+.rv-stat .k .term { color: inherit; }
+.rv-stat .v { font-size: var(--t16); line-height: 24px; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-stat .d { font-size: var(--t12); color: var(--text-3); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-after { display: flex; gap: var(--s4); }
+.rv-after i { font-style: normal; font-weight: 400; color: var(--text-2); font-size: var(--t12); margin-right: var(--s1); }
+.rv-reason { margin-left: var(--s2); font-size: var(--t13); font-weight: 400; color: var(--text-2); }
+.rv-stat .v .tag { vertical-align: 2px; }
+.rv-note { padding: 0 var(--s4) var(--s3); }
+.rv-note label { display: block; font-size: var(--t12); color: var(--text-2); margin-bottom: var(--s1); }
+.rv-note textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 56px; padding: var(--s2) var(--s3); border-radius: var(--r-sm); border: 1px solid var(--control-line); background: var(--surface); color: var(--text-1); font: inherit; line-height: 20px; }
+.rv-note textarea:focus { outline: var(--stroke-mark) solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.rv-note-bar { display: flex; align-items: center; justify-content: space-between; margin-top: var(--s2); font-size: var(--t12); }
+.rv-quote { margin: 0 var(--s4) var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--surface-2); line-height: 20px; white-space: pre-wrap; }
+.rv-quote b { display: block; font-size: var(--t12); color: var(--text-2); font-weight: 600; }

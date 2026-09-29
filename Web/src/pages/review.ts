@@ -1,22 +1,764 @@
 /* Hkline Web · 复盘页
  *
- * 复盘的成交来自用户连上的交易所只读密钥，回合拼接与统计在 kanpan-api 里算，所以必须先登录。
- * 网页版登录下一阶段接入；这一阶段只放空态，不放演示成交。
+ * 数据全部来自 kanpan-api 的 /v1/native-review（登录后才有）：
+ *   交易回合  手机上连的交易所只读密钥拉来的成交，服务端拼成回合、算好持仓中最大浮盈浮亏与平仓后走势；
+ *   观点记录  手机上「记一笔」写下的判断，服务端按规则判对错，战绩按相对口径分好组；
+ *   相似走势  「找相似」的结果与收藏的片段。
+ * 页面布局照原型：上面一整条（页签 + 六格要点），左边列表与战绩，右边回放。
+ * 回放是「还原当时的场景」：未来的 K 线与成交一律不画，放到哪儿才露到哪儿；
+ * 播放条只有拖进度线与关键点跳转，没有逐根步进。时间一律上海时间。
  */
+import '../styles/review.css'
 import { hooks, go } from '../app/shell'
-import { $, I } from '../ui/dom'
+import { $, I, esc } from '../ui/dom'
+import { GLOSSARY, term, toast } from '../ui/overlay'
+import { badge, shTime, sym } from '../ui/common'
+import { IV_LABEL, badgeColor, baseOf } from '../market/symbols'
+import { durText, fmt } from '../util/format'
+import { openSymbol } from './chart'
+import { ReviewError, errorText, forgetSearch, rememberSearch, reviewApi, reviewToken, storedSearches, type StoredSearch } from '../review/api'
+import {
+  GROUPINGS, OUTCOME_LABEL, ORIGIN_LABEL, CONFIRM_LABEL, TRADE_DIR_LABEL, VIEW_DIR_LABEL,
+  closedRounds, distPct, equityCurve, groupByDay, groupRateText, groupRounds, judgedAt, lastWeekRounds,
+  money, num, outcomeOf, ratioPct, resolvedGroups, roundDecimals, roundStats, scoreText, sortTrades, sortViews,
+  symbolsOf, titleParts, viewSummary,
+} from '../review/model'
+import { planMatch, planNote, planTrade, type Plan } from '../review/replay'
+import { ReplayPlayer } from '../review/player'
+import type { Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from '../review/types'
 
-function render(): void {
-  const el = $('#page-review')
-  el.style.gridTemplateColumns = '1fr'
-  el.style.gridTemplateRows = '1fr'
-  el.innerHTML = `<div class="card" style="display:grid;place-items:center">
-    <div class="empty" style="max-width:420px">${I('trades', 'icon-24')}
-      <div style="font-size:16px;color:var(--text-1);font-weight:600;margin-top:8px">复盘需要登录</div>
-      <div style="margin-top:4px">成交从你连上的交易所只读密钥里拉，回合拼接和统计在服务端算。网页版登录下一阶段接入，现在可以在手机上看。</div>
-      <button class="btn secondary" style="margin-top:16px" id="rvChart">回到图表</button>
-    </div></div>`
-  $('#rvChart').onclick = () => go('chart')
+GLOSSARY['净盈亏'] = '已平仓回合的已实现盈亏，减去手续费，加上收到的资金费（付出的资金费是负数）。'
+GLOSSARY['盈亏比'] = '赚钱回合的平均盈利 ÷ 亏钱回合的平均亏损。'
+GLOSSARY['每笔期望'] = '净盈亏合计 ÷ 回合数：平均每做一笔赚或亏多少。'
+GLOSSARY['最大浮盈'] = '持仓期间价格朝有利方向走得最远时，按开仓均价算的浮动盈利。'
+GLOSSARY['最大浮亏'] = '持仓期间价格朝不利方向走得最远时，按开仓均价算的浮动亏损。'
+GLOSSARY['战绩'] = '同一类判断（同品种、同方向、同确认方式，目标与失效幅度相近、时长相近）攒在一起算判对的比例；样本不够时只写「样本不足」，不拿一两笔的 0% 或 100% 冒充战绩。'
+
+type Tab = 'trade' | 'view' | 'similar'
+const TAB_LABEL: Record<Tab, string> = { trade: '交易回合', view: '观点记录', similar: '相似走势' }
+const SOURCE_LABEL: Record<string, string> = { history: '全市场历史', private: '我的记录' }
+const PREF_KEY = 'hkline-web-review-v1'
+
+interface SearchEntry { meta: StoredSearch; status: SearchStatus | null; results: SearchResults | null; error: string | null }
+
+const R = {
+  tab: 'trade' as Tab,
+  symbol: 'all',
+  trades: [] as TradeRecord[],
+  views: [] as ViewRecord[],
+  stats: null as Statistics | null,
+  saved: [] as SavedMatch[],
+  searches: new Map<string, SearchEntry>(),
+  loadedAt: 0,
+  loading: false,
+  /** 整页级的错误（401 走登录态，其它显示在页里） */
+  error: null as unknown,
+  sel: { trade: null as string | null, view: null as string | null, similar: null as string | null },
+  /** 右边正在放的那条（选中项变了才重新拉 K 线） */
+  playing: '',
+  shown: false,
+  built: false,
+}
+let player: ReplayPlayer | null = null
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+
+function loadPref(): void {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREF_KEY) || '{}')
+    if (v.tab === 'trade' || v.tab === 'view' || v.tab === 'similar') R.tab = v.tab
+  } catch { /* 读不到就用默认 */ }
+}
+function savePref(): void { try { localStorage.setItem(PREF_KEY, JSON.stringify({ tab: R.tab })) } catch { /* 存不下无所谓 */ } }
+
+// ------------------------------------------------------------ 小件
+const page = (): HTMLElement => $('#page-review')
+const upDown = (v: number): string => v > 0 ? 'up' : v < 0 ? 'down' : ''
+const pct = (v: number | null, signed = true): string => v == null || !isFinite(v) ? '—' : `${signed && v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
+function badgeFor(symbol: string): string {
+  const s = sym(symbol)
+  if (s) return badge(s)
+  const b = baseOf(symbol)
+  return badge({ base: b, color: badgeColor(b) })
+}
+const codeOf = (symbol: string): string => sym(symbol)?.code ?? baseOf(symbol)
+const decOf = (symbol: string, fallback = 2): number => sym(symbol)?.dec ?? fallback
+const ivText = (iv: string): string => IV_LABEL[iv] ?? iv
+const kpi = (k: string, v: string, d = '', vc = ''): string => `<div class="kpi"><div class="k">${k}</div><div class="v num ${vc}">${v}</div><div class="d">${d || '&nbsp;'}</div></div>`
+const outcomeTag = (o: string): string => {
+  const c = o === 'realized' ? 'rv-ok' : o === 'unrealized' ? 'rv-bad' : o === 'waiting' ? 'accent' : ''
+  return `<span class="tag ${c}">${OUTCOME_LABEL[o] ?? o}</span>`
+}
+const dirTag = (d: string, label: string): string => `<span class="dir ${d === 'long' ? 'long' : d === 'short' ? 'short' : 'obs'}">${label}</span>`
+const stat = (k: string, v: string, vc = '', sub = ''): string => `<div class="rv-stat"><div class="k">${k}</div><div class="v num ${vc}">${v}</div>${sub ? `<div class="d num">${sub}</div>` : ''}</div>`
+
+function filteredTrades(): TradeRecord[] {
+  const all = sortTrades(R.trades)
+  return R.symbol === 'all' ? all : all.filter(t => t.round.symbol === R.symbol)
+}
+function visibleViews(): ViewRecord[] { return sortViews(R.views.filter(v => !v.voided)) }
+
+// ------------------------------------------------------------ 取数
+async function load(): Promise<void> {
+  if (R.loading) return
+  if (!reviewToken()) { renderLogin(false); return }
+  R.loading = true
+  renderTop()
+  const [t, v, s, m] = await Promise.allSettled([reviewApi.trades(), reviewApi.views(), reviewApi.statistics(), reviewApi.saved()])
+  R.loading = false
+  const rej = [t, v, s, m].find(x => x.status === 'rejected') as PromiseRejectedResult | undefined
+  if (rej && rej.reason instanceof ReviewError && rej.reason.status === 401) { renderLogin(true); return }
+  R.error = rej ? rej.reason : null
+  if (t.status === 'fulfilled') R.trades = t.value
+  if (v.status === 'fulfilled') R.views = v.value
+  if (s.status === 'fulfilled') R.stats = s.value
+  if (m.status === 'fulfilled') R.saved = m.value
+  R.loadedAt = Date.now()
+  if (R.symbol !== 'all' && !R.trades.some(x => x.round.symbol === R.symbol)) R.symbol = 'all'
+  await refreshSearches()
+  if (!R.shown) return
+  render()
 }
 
-export function initReview(): void { hooks.pageShown.review = render }
+/** 本机记着的搜索：没结束的问一下进度，结束了的拉结果 */
+async function refreshSearches(): Promise<void> {
+  const list = storedSearches()
+  for (const id of [...R.searches.keys()]) if (!list.some(x => x.id === id)) R.searches.delete(id)
+  await Promise.all(list.map(async meta => {
+    const e: SearchEntry = R.searches.get(meta.id) ?? { meta, status: null, results: null, error: null }
+    e.meta = meta
+    R.searches.set(meta.id, e)
+    if (e.results && e.status?.status === 'completed') return
+    try {
+      e.status = await reviewApi.search(meta.id)
+      e.error = null
+      if (e.status.status === 'completed') e.results = await reviewApi.results(meta.id)
+      else if (e.status.status === 'failed') e.error = e.status.error ? `没找成（${e.status.error}）` : '没找成'
+    } catch (err) {
+      if (err instanceof ReviewError && err.status === 404) { forgetSearch(meta.id); R.searches.delete(meta.id); return }
+      e.error = errorText(err)
+    }
+  }))
+}
+
+function pending(): boolean { return [...R.searches.values()].some(e => e.status && (e.status.status === 'queued' || e.status.status === 'running')) }
+
+/** 有没找完的搜索时，每 2 秒问一次；只在这一页、这个页签开着时问 */
+function schedulePoll(): void {
+  clearTimeout(pollTimer)
+  if (!R.shown || R.tab !== 'similar' || !pending()) return
+  pollTimer = setTimeout(async () => {
+    await refreshSearches()
+    if (!R.shown) return
+    renderTop(); renderLeft()
+    schedulePoll()
+  }, 2000)
+}
+
+// ------------------------------------------------------------ 未登录 / 过期
+function renderLogin(expired: boolean): void {
+  teardown()
+  const el = page()
+  el.classList.add('rv-signed-out')
+  el.innerHTML = `<div class="card rv-login">
+    <div class="empty">${I('trades', 'icon-24')}
+      <div class="rv-login-t">${expired ? '登录已过期' : '复盘需要登录'}</div>
+      <div class="rv-login-d">交易回合、观点记录和战绩都存在你的账号里，登录后在这里看、在图上重放。</div>
+      <button class="btn primary" id="rvLogin">${expired ? '重新登录' : '去登录'}</button>
+    </div></div>`
+  $('#rvLogin').onclick = () => go('me')
+}
+
+function teardown(): void {
+  clearTimeout(pollTimer)
+  player?.destroy(); player = null
+  R.built = false; R.playing = ''
+}
+
+// ------------------------------------------------------------ 骨架
+function build(): void {
+  const el = page()
+  el.classList.remove('rv-signed-out')
+  el.innerHTML = `
+    <div class="card rv-top" id="rvTop"></div>
+    <div class="card rv-left" id="rvLeft"></div>
+    <div class="card rv-right">
+      <div class="rv-trade-head" id="rvDetHead"></div>
+      <div class="rv-chart-wrap" id="rvWrap"></div>
+      <div class="replay-bar rv-bar" id="rvBar"></div>
+      <div class="rv-foot scroll" id="rvFoot"></div>
+    </div>`
+  player = new ReplayPlayer($('#rvWrap'), $('#rvBar'))
+  R.built = true
+  R.playing = ''
+  bindPage()
+}
+
+function render(): void {
+  if (!reviewToken()) { renderLogin(false); return }
+  if (!R.built) build()
+  renderTop(); renderLeft(); ensureSelection(); renderDetail()
+  schedulePoll()
+}
+
+// ------------------------------------------------------------ 上方一整条
+function renderTop(): void {
+  const top = document.getElementById('rvTop'); if (!top) return
+  const syms = symbolsOf(R.trades.filter(t => !t.voided))
+  const counts: Record<Tab, number> = { trade: sortTrades(R.trades).length, view: visibleViews().length, similar: R.saved.length }
+  const filter = R.tab === 'trade' && syms.length > 1
+    ? `<div class="seg rv-syms" role="group" aria-label="品种">${['all', ...syms].map(s => `<button data-sym="${esc(s)}" aria-pressed="${R.symbol === s}">${s === 'all' ? '全部' : esc(codeOf(s))}</button>`).join('')}</div>` : ''
+  const asOf = R.loading ? '正在更新…' : R.loadedAt ? `更新于 ${shTime(R.loadedAt, false)}` : ''
+  top.innerHTML = `
+    <div class="rv-head">
+      <h2>复盘</h2>
+      <div class="seg" role="tablist" aria-label="复盘内容">${(Object.keys(TAB_LABEL) as Tab[]).map(t => `<button role="tab" data-tab="${t}" aria-pressed="${R.tab === t}" aria-selected="${R.tab === t}">${TAB_LABEL[t]}<span class="rv-count num">${counts[t]}</span></button>`).join('')}</div>
+      ${filter}
+      <span class="rv-sp"></span>
+      ${R.error ? `<span class="rv-err">${esc(errorText(R.error))}</span>` : ''}
+      <span class="rv-asof">${asOf}</span>
+      <button class="ibtn sm" id="rvRefresh" aria-label="刷新" data-tip="刷新" ${R.loading ? 'disabled' : ''}>${I('undo', 'icon-16')}</button>
+    </div>
+    <div class="kpis">${R.tab === 'trade' ? tradeKpis() : R.tab === 'view' ? viewKpis() : similarKpis()}</div>`
+}
+
+function tradeKpis(): string {
+  const list = filteredTrades().map(t => t.round)
+  const s = roundStats(list)
+  const lw = roundStats(lastWeekRounds(list, Date.now()))
+  const open = list.filter(r => r.status === 'open').length
+  return [
+    kpi(term('净盈亏'), s.count ? money(s.net) : '—', s.count ? `已实现 ${money(s.realized)} · 费用 ${money(-s.fees)}` : '', upDown(s.net)),
+    kpi('胜率', pct(s.winRate, false), s.count ? `赚 ${s.wins} 笔 · 亏 ${s.losses} 笔` : ''),
+    kpi(term('盈亏比'), s.rewardRisk == null ? '—' : s.rewardRisk.toFixed(2), s.avgWin != null || s.avgLoss != null ? `平均赚 ${s.avgWin == null ? '—' : money(s.avgWin)} · 平均亏 ${s.avgLoss == null ? '—' : money(s.avgLoss)}` : ''),
+    kpi(term('每笔期望'), s.expectancy == null ? '—' : money(s.expectancy), s.count ? `最长连亏 ${s.maxLosingStreak} 笔` : '', upDown(s.expectancy ?? 0)),
+    kpi('上周', lw.count ? money(lw.net) : '—', lw.count ? `${lw.count} 个回合 · 胜率 ${pct(lw.winRate, false)}` : '上周没有平仓', upDown(lw.net)),
+    kpi('回合', String(s.count), `${open ? `持仓中 ${open} 个 · ` : ''}平均持仓 ${s.avgHoldingMs == null ? '—' : durText(s.avgHoldingMs)}`),
+  ].join('')
+}
+
+function viewKpis(): string {
+  const s = viewSummary(R.views)
+  return [
+    kpi('记录', String(s.total), '手机上「记一笔」写下的判断'),
+    kpi('判对', String(s.realized), '先碰到目标', s.realized ? 'up' : ''),
+    kpi('判错', String(s.unrealized), '先碰到失效或到期', s.unrealized ? 'down' : ''),
+    kpi('等答案', String(s.waiting), '还没碰到目标或失效'),
+    kpi('只记录', String(s.observation), '不判对错'),
+    kpi('待核实', String(s.other), '数据不全，服务端还在核'),
+  ].join('')
+}
+
+function similarKpis(): string {
+  const list = storedSearches()
+  const last = list[0]
+  const e = last ? R.searches.get(last.id) : undefined
+  const st = e?.status?.status
+  const lastText = !last ? '—' : st === 'completed' ? `${e?.results?.items.length ?? 0} 段` : st === 'failed' ? '没找成' : st ? '正在找' : '—'
+  return [
+    kpi('收藏的片段', String(R.saved.length), '在找相似结果里点星收藏'),
+    kpi('找过', String(list.length), '在观点记录里点「找相似」'),
+    kpi('最近一次', lastText, last ? `${esc(last.label)} · ${shTime(last.created)}` : ''),
+    kpi('', '', ''), kpi('', '', ''), kpi('', '', ''),
+  ].join('')
+}
+
+// ------------------------------------------------------------ 左边
+function renderLeft(): void {
+  const left = document.getElementById('rvLeft'); if (!left) return
+  const keep = left.querySelector<HTMLElement>('.rv-list')?.scrollTop ?? 0
+  left.innerHTML = R.tab === 'trade' ? tradeLeft() : R.tab === 'view' ? viewLeft() : similarLeft()
+  const list = left.querySelector<HTMLElement>('.rv-list'); if (list) list.scrollTop = keep
+}
+
+function emptyBlock(title: string, sub: string, icon = 'trades'): string {
+  return `<div class="empty rv-empty">${I(icon, 'icon-24')}<div class="t">${title}</div><div>${sub}</div></div>`
+}
+
+function tradeLeft(): string {
+  const list = filteredTrades()
+  if (!list.length) {
+    return emptyBlock(R.loading ? '正在加载…' : '还没有交易回合', R.loading ? '' : '在手机「我的 → 交易所」连上只读密钥后，平掉的仓位会自动拼成回合出现在这里。')
+  }
+  const now = Date.now()
+  const groups = groupByDay(list, t => t.round.closedAt ?? t.round.openedAt, now)
+  const rows = groups.map(g => {
+    const net = g.items.filter(t => t.round.status === 'closed').reduce((a, t) => a + num(t.round.netPnl), 0)
+    const head = `<tr class="rv-day"><td colspan="10"><span>${g.label}</span><span class="n">${g.items.length} 个回合</span><span class="num ${upDown(net)}">${net ? money(net) : ''}</span></td></tr>`
+    return head + g.items.map(tradeRow).join('')
+  }).join('')
+  return `<div class="rv-lbody">
+    <div class="rv-main">
+      ${equityHtml(list.map(t => t.round))}
+      <div class="scroll rv-list">
+        <table class="tbl rv-tbl"><thead><tr>
+          <th>品种</th><th>方向</th><th>开仓</th><th>持仓</th><th>开仓均价</th><th>平仓均价</th><th>${term('最大浮盈')}</th><th>${term('最大浮亏')}</th><th>${term('净盈亏')}</th><th></th>
+        </tr></thead><tbody>${rows}</tbody></table>
+      </div>
+    </div>
+    <div class="rv-side scroll">${tradeGroupsHtml(list)}</div>
+  </div>`
+}
+
+function tradeRow(t: TradeRecord): string {
+  const r = t.round, dec = roundDecimals(r), open = r.status === 'open'
+  const ex = t.result?.excursion
+  const net = num(r.netPnl)
+  const hold = open ? Date.now() - r.openedAt : (r.holdingMs ?? 0)
+  return `<tr data-trade="${esc(t.id)}" class="${R.sel.trade === t.id ? 'sel' : ''}" tabindex="0">
+    <td><span class="sym">${badgeFor(r.symbol)}<b>${esc(codeOf(r.symbol))}</b>${r.leverage ? `<span class="cn">${r.leverage} 倍</span>` : ''}</span></td>
+    <td>${dirTag(r.direction, TRADE_DIR_LABEL[r.direction])}</td>
+    <td class="num">${shTime(r.openedAt)}</td>
+    <td>${open ? '<span class="tag accent">持仓中</span> ' : ''}${durText(Math.max(0, hold))}</td>
+    <td class="num">${fmt(num(r.openAvgPrice), dec)}</td>
+    <td class="num">${r.closeAvgPrice ? fmt(num(r.closeAvgPrice), dec) : '—'}</td>
+    <td class="num up">${ex ? ratioPct(ex.maxFavorablePct) : '—'}</td>
+    <td class="num down">${ex ? ratioPct(ex.maxAdversePct) : '—'}</td>
+    <td class="num rv-net ${open ? '' : upDown(net)}">${open ? '—' : money(net)}</td>
+    <td class="rv-mark">${t.note?.text ? `<span data-tip="有笔记">${I('note', 'icon-16')}</span>` : ''}</td>
+  </tr>`
+}
+
+/** 累计净盈亏：按平仓先后每个回合一步，线用 SVG 拉伸，文字与点用 HTML 定位（不跟着变形） */
+function equityHtml(list: TradeRecord['round'][]): string {
+  const pts = equityCurve(list)
+  if (pts.length < 2) return `<div class="equity rv-equity"><div class="rv-eq-cap"><span>累计净盈亏</span></div><div class="rv-eq-empty">平掉第一个回合之后画曲线</div></div>`
+  const vs = pts.map(p => p.v)
+  let lo = Math.min(0, ...vs), hi = Math.max(0, ...vs)
+  if (hi === lo) { hi += 1; lo -= 1 }
+  const pad = (hi - lo) * 0.12; hi += pad; lo -= pad
+  const n = pts.length - 1
+  const X = (i: number) => i / n * 1000
+  const Y = (v: number) => (hi - v) / (hi - lo) * 1000
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(' ')
+  const area = `${line} L1000 ${Y(0).toFixed(1)} L0 ${Y(0).toFixed(1)} Z`
+  const last = pts[pts.length - 1].v
+  const col = last >= 0 ? 'var(--up)' : 'var(--down)'
+  const selId = R.sel.trade ? R.trades.find(t => t.id === R.sel.trade)?.round.id : null
+  const dots = pts.map((p, i) => i === 0 ? '' : `<i class="rv-eq-dot${p.id === selId ? ' sel' : ''}" data-round="${esc(p.id)}" style="left:${(X(i) / 10).toFixed(2)}%;top:${(Y(p.v) / 10).toFixed(2)}%;--c:${p.v - pts[i - 1].v >= 0 ? 'var(--up)' : 'var(--down)'}"></i>`).join('')
+  return `<div class="equity rv-equity">
+    <div class="rv-eq-cap"><span>累计净盈亏</span><b class="num ${upDown(last)}">${money(last)}</b></div>
+    <div class="rv-eq-plot">
+      <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="rvEqFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".18"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+        <line x1="0" x2="1000" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}" class="zero" vector-effect="non-scaling-stroke"/>
+        <path d="${area}" fill="url(#rvEqFill)"/>
+        <path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      ${dots}
+      <span class="rv-eq-y num" style="top:0">${money(hi - pad)}</span>
+      <span class="rv-eq-y num" style="top:${(Y(0) / 10).toFixed(2)}%">0</span>
+      ${lo + pad < 0 ? `<span class="rv-eq-y num" style="top:100%">${money(lo + pad)}</span>` : ''}
+    </div>
+    <div class="rv-eq-x num"><span>${shTime(pts[1].t)}</span><span>${shTime(pts[pts.length - 1].t)}</span></div>
+  </div>`
+}
+
+/** 交易战绩：五种分法全摆出来（不给用户挑口径） */
+function tradeGroupsHtml(list: TradeRecord[]): string {
+  const rounds = list.map(t => t.round)
+  if (!closedRounds(rounds).length) return `<div class="sec-title">${term('战绩')}</div>${emptyBlock('还没有平仓的回合', '', 'layers')}`
+  return `<div class="sec-title"><span>战绩</span><span class="faint">只算已平仓</span></div>` + GROUPINGS.filter(g => !(g.id === 'symbol' && R.symbol !== 'all')).map(g => {
+    const rows = groupRounds(rounds, g.id)
+    return `<div class="rv-grp"><div class="rv-grp-t">${g.title}</div>
+      <table class="tbl rv-gtbl"><thead><tr><th></th><th>回合</th><th>胜率</th><th>净盈亏</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td>${esc(g.id === 'symbol' ? codeOf(r.key) : r.label)}</td><td class="num">${r.stats.count}</td><td class="num">${pct(r.stats.winRate, false)}</td><td class="num ${upDown(r.stats.net)}">${money(r.stats.net)}</td></tr>`).join('')}
+      </tbody></table></div>`
+  }).join('')
+}
+
+function viewLeft(): string {
+  const list = visibleViews()
+  if (!list.length) return emptyBlock(R.loading ? '正在加载…' : '还没有观点记录', R.loading ? '' : '在手机行情页点「记一笔」写下判断，服务端会按你定的目标与失效判对错。', 'note')
+  const groups = groupByDay(list, judgedAt, Date.now())
+  const rows = groups.map(g => `<tr class="rv-day"><td colspan="8"><span>${g.label}</span><span class="n">${g.items.length} 条</span></td></tr>` + g.items.map(viewRow).join('')).join('')
+  return `<div class="rv-lbody">
+    <div class="rv-main"><div class="scroll rv-list">
+      <table class="tbl rv-tbl"><thead><tr><th>品种</th><th>看法</th><th>判断时间</th><th>参考价</th><th>目标</th><th>失效</th><th>想法</th><th>结果</th></tr></thead><tbody>${rows}</tbody></table>
+    </div></div>
+    <div class="rv-side scroll">${viewGroupsHtml()}</div>
+  </div>`
+}
+
+function viewRow(v: ViewRecord): string {
+  const d = v.draft, r = d.rule, dec = decOf(d.range.symbol)
+  const obs = r.direction === 'observe'
+  const dp = (p: number) => { const x = distPct(r.reference, p); return x == null ? '' : `<span class="faint"> ${x > 0 ? '+' : ''}${x.toFixed(2)}%</span>` }
+  return `<tr data-view="${esc(d.id)}" class="${R.sel.view === d.id ? 'sel' : ''}" tabindex="0">
+    <td><span class="sym">${badgeFor(d.range.symbol)}<b>${esc(codeOf(d.range.symbol))}</b><span class="cn">${ivText(d.range.interval)}</span></span></td>
+    <td>${dirTag(r.direction, VIEW_DIR_LABEL[r.direction] ?? r.direction)}</td>
+    <td class="num">${shTime(judgedAt(v))}</td>
+    <td class="num">${fmt(r.reference, dec)}</td>
+    <td class="num">${obs ? '—' : fmt(r.target, dec) + dp(r.target)}</td>
+    <td class="num">${obs ? '—' : fmt(r.invalidation, dec) + dp(r.invalidation)}</td>
+    <td class="rv-text">${esc(d.text || '—')}</td>
+    <td>${outcomeTag(outcomeOf(v))}</td>
+  </tr>`
+}
+
+/** 观点战绩：服务端的相对口径分组，只摆这一份 */
+function viewGroupsHtml(): string {
+  const gs = resolvedGroups(R.stats)
+  const head = `<div class="sec-title"><span>${term('战绩')}</span>${R.stats ? `<span class="faint">截至 ${shTime(R.stats.asOf)}</span>` : ''}</div>`
+  if (!gs.length) return head + emptyBlock('暂无已判定样本', '', 'layers')
+  return head + `<div class="rv-vgroups">${gs.map(g => `<div class="rv-vg">
+      <div class="main"><div class="chips">${titleParts(g.title).map((p, i) => `<span class="chip">${esc(i === 0 && /^[A-Z0-9]+USDT?$/.test(p) ? codeOf(p) : p)}</span>`).join('')}</div>
+      <div class="sub">${g.total} 条有效记录${g.total ? ` · 判对 ${g.correct}` : ''}${g.recheck ? ' · <span class="warn">最近十笔明显变差</span>' : ''}</div></div>
+      <div class="rate num ${g.verdictStatus === 'insufficient' ? 'faint' : ''}">${groupRateText(g)}</div>
+    </div>`).join('')}</div>`
+}
+
+function similarLeft(): string {
+  const searches = storedSearches().map(m => R.searches.get(m.id)).filter((x): x is SearchEntry => !!x)
+  const savedIds = new Set(R.saved.map(s => s.item.id))
+  const savedHtml = R.saved.length
+    ? R.saved.map(s => matchRow(s.item, `saved:${s.item.id}`, true)).join('')
+    : `<div class="rv-none">还没有收藏的片段</div>`
+  const searchHtml = searches.length ? searches.map(e => {
+    const st = e.status?.status
+    const prog = e.status && e.status.total ? Math.round(e.status.processed / e.status.total * 100) : 0
+    const state = e.error ? `<span class="warn">${esc(e.error)}</span>`
+      : st === 'completed' ? `${e.results?.items.length ?? 0} 段${e.results?.partial ? ' · 部分结果' : ''}`
+      : st ? `正在找 ${prog}%` : '—'
+    const items = st === 'completed' ? (e.results?.items.length ? e.results.items.map(m => matchRow(m, `search:${e.meta.id}:${m.id}`, savedIds.has(m.id), e.meta.id)).join('') : `<div class="rv-none">没有找到足够像的片段</div>`) : ''
+    return `<div class="rv-search">
+      <div class="rv-search-h"><b>${esc(e.meta.label)}</b><span class="faint">${shTime(e.meta.created)}</span><span class="rv-sp"></span><span class="num">${state}</span>
+        <button class="ibtn xs" data-forget="${esc(e.meta.id)}" aria-label="不再显示这次搜索" data-tip="不再显示">${I('close', 'icon-16')}</button></div>
+      ${items}</div>`
+  }).join('') : `<div class="rv-none">在「观点记录」里选一条，点右上「找相似」</div>`
+  return `<div class="rv-lbody one"><div class="rv-main"><div class="scroll rv-list">
+    <div class="sec-title"><span>收藏的片段</span><span class="faint">${R.saved.length} 段</span></div>${savedHtml}
+    <div class="sec-title"><span>找过的相似</span><span class="faint">记在这台电脑上</span></div>${searchHtml}
+  </div></div></div>`
+}
+
+function matchRow(m: Match, key: string, saved: boolean, searchId?: string): string {
+  const r = m.range
+  const star = saved
+    ? `<button class="ibtn sm rv-star on" data-unsave="${esc(m.id)}" aria-label="取消收藏" data-tip="取消收藏">${I('star', 'icon-16')}</button>`
+    : searchId ? `<button class="ibtn sm rv-star" data-save="${esc(m.id)}" data-search="${esc(searchId)}" aria-label="收藏" data-tip="收藏">${I('starOff', 'icon-16')}</button>` : ''
+  return `<div class="list-row rv-mrow${R.sel.similar === key ? ' sel' : ''}" data-match="${esc(key)}" tabindex="0">
+    ${badgeFor(r.symbol)}
+    <div class="main"><div class="t1"><b>${esc(codeOf(r.symbol))}</b><span class="faint">${ivText(r.interval)} · ${r.bars} 根</span><span class="tag accent">${scoreText(m.score)}</span></div>
+    <div class="t2 num">${shTime(r.start)} – ${shTime(r.end - (r.end - r.start) / Math.max(1, r.bars))} · ${SOURCE_LABEL[m.source] ?? m.source}</div></div>
+    ${star}
+  </div>`
+}
+
+// ------------------------------------------------------------ 选中与右边
+function findMatch(key: string | null): Match | null {
+  if (!key) return null
+  const [kind, a, b] = key.split(':')
+  if (kind === 'saved') return R.saved.find(s => s.item.id === a)?.item ?? null
+  return R.searches.get(a)?.results?.items.find(m => m.id === b) ?? null
+}
+
+function ensureSelection(): void {
+  if (R.tab === 'trade') {
+    const list = filteredTrades()
+    if (!list.some(t => t.id === R.sel.trade)) R.sel.trade = list[0]?.id ?? null
+  } else if (R.tab === 'view') {
+    const list = visibleViews()
+    if (!list.some(v => v.draft.id === R.sel.view)) R.sel.view = list[0]?.draft.id ?? null
+  } else if (!findMatch(R.sel.similar)) {
+    R.sel.similar = R.saved[0] ? `saved:${R.saved[0].item.id}` : null
+    if (!R.sel.similar) for (const e of R.searches.values()) { const m = e.results?.items[0]; if (m) { R.sel.similar = `search:${e.meta.id}:${m.id}`; break } }
+  }
+}
+
+function selKey(): string { return R.tab === 'trade' ? `t:${R.sel.trade}` : R.tab === 'view' ? `v:${R.sel.view}` : `m:${R.sel.similar}` }
+
+function renderDetail(): void {
+  const head = document.getElementById('rvDetHead'), foot = document.getElementById('rvFoot')
+  if (!head || !foot || !player) return
+  const key = selKey()
+  let plan: Plan | null = null
+  let meta = { title: '', dec: 2, badge: '' }
+  const now = Date.now()
+  if (R.tab === 'trade') {
+    const t = R.trades.find(x => x.id === R.sel.trade)
+    if (t) {
+      head.innerHTML = tradeHead(t); foot.innerHTML = tradeFoot(t)
+      plan = planTrade(t.round, t.result, now, t.note?.text ?? null)
+      meta = { title: esc(codeOf(t.round.symbol)), dec: Math.max(roundDecimals(t.round), decOf(t.round.symbol, 0)), badge: badgeFor(t.round.symbol) }
+    }
+  } else if (R.tab === 'view') {
+    const v = R.views.find(x => x.draft.id === R.sel.view)
+    if (v) {
+      head.innerHTML = viewHead(v); foot.innerHTML = viewFoot(v)
+      plan = planNote(v, now)
+      meta = { title: esc(codeOf(v.draft.range.symbol)), dec: decOf(v.draft.range.symbol), badge: badgeFor(v.draft.range.symbol) }
+    }
+  } else {
+    const m = findMatch(R.sel.similar)
+    if (m) {
+      head.innerHTML = matchHead(m); foot.innerHTML = matchFoot(m, null)
+      plan = planMatch(m, now)
+      meta = { title: esc(codeOf(m.range.symbol)), dec: decOf(m.range.symbol), badge: badgeFor(m.range.symbol) }
+    }
+  }
+  const wrap = document.getElementById('rvWrap')!
+  wrap.classList.toggle('blank', !plan)
+  if (!plan) {
+    head.innerHTML = `<span class="ttl">回放</span>`
+    foot.innerHTML = `<div class="rv-none">${R.tab === 'similar' ? '选一段相似片段，看它后来怎么走' : '选左边一条，在这里按当时的节奏重放'}</div>`
+    if (R.playing) { player.destroy(); player = new ReplayPlayer(wrap, $('#rvBar')); R.playing = '' }
+    return
+  }
+  if (R.playing === key) return
+  R.playing = key
+  const p = plan
+  void player.load(p, meta).then(res => {
+    if (res === 'empty') toast('这段 K 线没取到', '币安暂时没返回这段行情，稍后刷新再试', 'info')
+    if (res === 'ok' && p.kind === 'match') { const f = document.getElementById('rvFoot'); if (f && selKey() === key) f.innerHTML = matchFoot(findMatch(R.sel.similar)!, afterMove(p)) }
+  })
+}
+
+/** 相似段结束之后，后来走了多少（按拉到的 K 线收盘价算，只是展示） */
+function afterMove(p: Extract<Plan, { kind: 'match' }>): { pct: number; bars: number } | null {
+  const bars = player?.bars || []
+  const a = bars.find(b => b.t === p.initialBar), z = bars.filter(b => b.t <= p.stopBar).pop()
+  if (!a || !z || z.t <= a.t) return null
+  return { pct: (z.c - a.c) / a.c, bars: Math.round((z.t - a.t) / p.step) }
+}
+
+const openBtn = (symbol: string): string => `<button class="btn ghost sm" data-open="${esc(symbol)}">${I('candles', 'icon-16')}在图表中打开</button>`
+
+function tradeHead(t: TradeRecord): string {
+  const r = t.round, open = r.status === 'open'
+  return `${badgeFor(r.symbol)}<span class="ttl">${esc(codeOf(r.symbol))}</span>${dirTag(r.direction, TRADE_DIR_LABEL[r.direction])}
+    ${open ? '<span class="tag accent">持仓中</span>' : `<span class="faint num">${shTime(r.openedAt)} – ${shTime(r.closedAt!)}</span>`}
+    ${r.leverage ? `<span class="faint">${r.leverage} 倍</span>` : ''}<span class="rv-sp"></span>${openBtn(r.symbol)}`
+}
+
+function tradeFoot(t: TradeRecord): string {
+  const r = t.round, res = t.result, ex = res?.excursion, open = r.status === 'open'
+  const net = num(r.netPnl), fund = num(r.funding)
+  const after = (a: { changePct: string } | null | undefined) => a ? `<span class="${upDown(num(a.changePct))}">${ratioPct(a.changePct)}</span>` : '<span class="faint">—</span>'
+  const stats = [
+    stat(term('净盈亏'), open ? '—' : money(net), open ? '' : upDown(net), open ? '还没平完' : `已实现 ${money(num(r.realizedPnl))}`),
+    stat('费用', money(-num(r.commission)), '', `资金费 ${fund ? money(fund) : '0'}`),
+    stat(term('最大浮盈'), ex ? ratioPct(ex.maxFavorablePct) : '—', ex ? 'up' : '', ex ? `${money(num(ex.maxFavorable))} · ${shTime(ex.maxFavorableAt)}` : ''),
+    stat(term('最大浮亏'), ex ? ratioPct(ex.maxAdversePct) : '—', ex ? 'down' : '', ex ? `${money(num(ex.maxAdverse))} · ${shTime(ex.maxAdverseAt)}` : ''),
+    stat('持仓', durText(Math.max(0, open ? Date.now() - r.openedAt : r.holdingMs ?? 0)), '', `最多 ${fmt(num(r.maxQty), 4).replace(/\.?0+$/, '')} · 成交 ${r.fills.length} 笔`),
+    stat('开仓均价', fmt(num(r.openAvgPrice), roundDecimals(r)), '', r.closeAvgPrice ? `平仓均价 ${fmt(num(r.closeAvgPrice), roundDecimals(r))}` : ''),
+    `<div class="rv-stat wide"><div class="k">平仓后走势</div><div class="v num rv-after">${open || !res ? '<span class="faint">平仓后才有</span>' : `<span><i>1 小时</i>${after(res.after.h1)}</span><span><i>4 小时</i>${after(res.after.h4)}</span><span><i>24 小时</i>${after(res.after.h24)}</span>`}</div></div>`,
+  ].join('')
+  return `<div class="rv-trade-stats rv-stats">${stats}</div>
+    <div class="rv-note">
+      <label for="rvNote">当时怎么想</label>
+      <textarea id="rvNote" rows="2" maxlength="2000" placeholder="写下开这一单时的想法，回放停在开仓处时会显示在图上">${esc(t.note?.text ?? '')}</textarea>
+      <div class="rv-note-bar"><span class="faint">${t.note ? `改于 ${shTime(t.note.updatedAt)}` : ''}</span><button class="btn secondary sm" id="rvNoteSave" data-id="${esc(t.id)}" disabled>保存</button></div>
+    </div>`
+}
+
+function viewHead(v: ViewRecord): string {
+  const d = v.draft, r = d.rule
+  const canSearch = d.range.bars >= 16
+  return `${badgeFor(d.range.symbol)}<span class="ttl">${esc(codeOf(d.range.symbol))}</span><span class="faint">${ivText(d.range.interval)}</span>
+    ${dirTag(r.direction, VIEW_DIR_LABEL[r.direction] ?? r.direction)}${outcomeTag(outcomeOf(v))}<span class="rv-sp"></span>
+    <button class="btn secondary sm" data-find="${esc(d.id)}" ${canSearch ? '' : 'disabled data-tip="图表区间不到 16 根，找不了相似"'}>${I('search', 'icon-16')}找相似</button>${openBtn(d.range.symbol)}`
+}
+
+function viewFoot(v: ViewRecord): string {
+  const d = v.draft, r = d.rule, dec = decOf(d.range.symbol), obs = r.direction === 'observe'
+  const dp = (p: number) => { const x = distPct(r.reference, p); return x == null ? '' : `${x > 0 ? '+' : ''}${x.toFixed(2)}%` }
+  const a = v.assessment
+  const stats = [
+    stat(obs ? '当时价' : '参考价', fmt(r.reference, dec), '', shTime(judgedAt(v))),
+    stat('目标', obs ? '—' : fmt(r.target, dec), '', obs ? '' : dp(r.target)),
+    stat('失效', obs ? '—' : fmt(r.invalidation, dec), '', obs ? '' : dp(r.invalidation)),
+    stat('到期', obs ? '—' : shTime(r.expires), '', obs ? '' : (CONFIRM_LABEL[r.confirmation] ?? r.confirmation)),
+    stat('来路', ORIGIN_LABEL[d.origin] ?? '—', '', d.confidence != null ? `把握 ${Math.round(d.confidence * (d.confidence <= 1 ? 100 : 1))}%` : ''),
+    `<div class="rv-stat wide"><div class="k">结果</div><div class="v">${outcomeTag(outcomeOf(v))}<span class="rv-reason">${esc(a?.reason || '')}</span></div>${a?.eventAt ? `<div class="d num">${shTime(a.eventAt)}</div>` : ''}</div>`,
+  ].join('')
+  const refl = v.reflection && (v.reflection.note || v.reflection.nextTime)
+    ? `<div class="rv-quote"><b>事后回看</b>${esc(v.reflection.note)}${v.reflection.nextTime ? `<br><span class="faint">下次：</span>${esc(v.reflection.nextTime)}` : ''}</div>` : ''
+  return `<div class="rv-trade-stats rv-stats">${stats}</div>
+    ${d.text ? `<div class="rv-quote"><b>当时的判断</b>${esc(d.text)}</div>` : ''}${refl}`
+}
+
+function matchHead(m: Match): string {
+  const saved = R.saved.some(s => s.item.id === m.id)
+  const searchId = R.sel.similar?.startsWith('search:') ? R.sel.similar.split(':')[1] : ''
+  const star = saved ? `<button class="btn secondary sm" data-unsave="${esc(m.id)}">${I('star', 'icon-16')}取消收藏</button>`
+    : searchId ? `<button class="btn secondary sm" data-save="${esc(m.id)}" data-search="${esc(searchId)}">${I('starOff', 'icon-16')}收藏</button>` : ''
+  return `${badgeFor(m.range.symbol)}<span class="ttl">${esc(codeOf(m.range.symbol))}</span><span class="faint">${ivText(m.range.interval)}</span>
+    <span class="tag accent">${scoreText(m.score)}</span><span class="faint">${SOURCE_LABEL[m.source] ?? m.source}</span><span class="rv-sp"></span>${star}${openBtn(m.range.symbol)}`
+}
+
+function matchFoot(m: Match, after: { pct: number; bars: number } | null): string {
+  const r = m.range
+  return `<div class="rv-trade-stats rv-stats">
+    ${stat('片段', `${r.bars} 根`, '', `${shTime(r.start)} 起`)}
+    ${stat('相似度', m.score.toFixed(2), '', '0 到 1，越大越像')}
+    ${stat('后来', after ? `${after.pct > 0 ? '+' : ''}${(after.pct * 100).toFixed(2)}%` : '—', after ? upDown(after.pct) : '', after ? `相似段之后 ${after.bars} 根` : '载入后计算')}
+    ${stat('周期', ivText(r.interval), '', SOURCE_LABEL[m.source] ?? m.source)}
+  </div>`
+}
+
+// ------------------------------------------------------------ 交互
+function bindPage(): void {
+  const el = page()
+  el.onclick = async e => {
+    const x = e.target as HTMLElement
+    const tab = x.closest<HTMLElement>('[data-tab]')
+    if (tab) {
+      R.tab = tab.dataset.tab as Tab; savePref(); player?.stop(); render()
+      // 别的浏览器页签里新找的相似，本页还没问过：切过来时补问一次
+      if (R.tab === 'similar' && storedSearches().some(m => !R.searches.has(m.id))) { await refreshSearches(); render() }
+      return
+    }
+    const s = x.closest<HTMLElement>('[data-sym]')
+    if (s) { R.symbol = s.dataset.sym || 'all'; render(); return }
+    if (x.closest('#rvRefresh')) { await refreshAll(); return }
+    const open = x.closest<HTMLElement>('[data-open]')
+    if (open) { const k = open.dataset.open!; go('chart'); openSymbol(k); return }
+    const find = x.closest<HTMLElement>('[data-find]')
+    if (find) { await startFind(find.dataset.find!, find as HTMLButtonElement); return }
+    const save = x.closest<HTMLElement>('[data-save]')
+    if (save) { e.stopPropagation(); await doSave(save.dataset.search!, save.dataset.save!, save as HTMLButtonElement); return }
+    const unsave = x.closest<HTMLElement>('[data-unsave]')
+    if (unsave) { e.stopPropagation(); await doUnsave(unsave.dataset.unsave!, unsave as HTMLButtonElement); return }
+    const forget = x.closest<HTMLElement>('[data-forget]')
+    if (forget) { forgetSearch(forget.dataset.forget!); R.searches.delete(forget.dataset.forget!); render(); return }
+    if (x.closest('#rvNoteSave')) { await saveNote(x.closest<HTMLButtonElement>('#rvNoteSave')!); return }
+    const dot = x.closest<HTMLElement>('[data-round]')
+    if (dot) { const t = R.trades.find(t => t.round.id === dot.dataset.round); if (t) select('trade', t.id); return }
+    const row = x.closest<HTMLElement>('[data-trade],[data-view],[data-match]')
+    if (row) {
+      if (row.dataset.trade) select('trade', row.dataset.trade)
+      else if (row.dataset.view) select('view', row.dataset.view)
+      else if (row.dataset.match) select('similar', row.dataset.match)
+    }
+  }
+  el.onkeydown = e => {
+    const x = e.target as HTMLElement
+    if ((e.key === 'Enter') && x.matches('[data-trade],[data-view],[data-match]')) { e.preventDefault(); x.click() }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && x.matches('[data-trade],[data-view],[data-match]')) {
+      e.preventDefault()
+      const all = [...el.querySelectorAll<HTMLElement>(`[data-${x.dataset.trade ? 'trade' : x.dataset.view ? 'view' : 'match'}]`)]
+      const n = all[all.indexOf(x) + (e.key === 'ArrowDown' ? 1 : -1)]
+      if (n) { n.focus(); n.click() }
+    }
+  }
+  el.oninput = e => {
+    const ta = e.target as HTMLElement
+    if (ta.id === 'rvNote') {
+      const t = R.trades.find(x => x.id === R.sel.trade)
+      const btn = document.getElementById('rvNoteSave') as HTMLButtonElement | null
+      if (btn) btn.disabled = (ta as HTMLTextAreaElement).value.trim() === (t?.note?.text ?? '').trim()
+    }
+  }
+}
+
+function select(kind: Tab, id: string): void {
+  if (kind === 'trade') R.sel.trade = id
+  else if (kind === 'view') R.sel.view = id
+  else R.sel.similar = id
+  page().querySelectorAll('.sel[data-trade],.sel[data-view],.sel[data-match]').forEach(n => n.classList.remove('sel'))
+  page().querySelector(`[data-${kind === 'similar' ? 'match' : kind}="${CSS.escape(id)}"]`)?.classList.add('sel')
+  if (kind === 'trade') {
+    const rid = R.trades.find(t => t.id === id)?.round.id
+    page().querySelectorAll<HTMLElement>('.rv-eq-dot').forEach(d => d.classList.toggle('sel', d.dataset.round === rid))
+  }
+  renderDetail()
+}
+
+async function refreshAll(): Promise<void> {
+  R.playing = ''
+  await load()
+}
+
+async function saveNote(btn: HTMLButtonElement): Promise<void> {
+  const t = R.trades.find(x => x.id === btn.dataset.id); if (!t) return
+  const ta = document.getElementById('rvNote') as HTMLTextAreaElement | null; if (!ta) return
+  const text = ta.value.trim()
+  btn.disabled = true
+  try {
+    const next = await reviewApi.tradeNote(t.id, t.revision, text)
+    Object.assign(t, next)
+    if (player?.plan?.kind === 'trade') player.plan.note = text || null
+    toast('已保存', '回放停在开仓处时会显示', 'check')
+    const foot = document.getElementById('rvFoot'); if (foot) foot.innerHTML = tradeFoot(t)
+    renderLeft()
+  } catch (err) {
+    if (err instanceof ReviewError && err.code === 'record_revision_changed') {
+      try { R.trades = await reviewApi.trades() } catch { /* 下次刷新再说 */ }
+    }
+    toast('没保存上', errorText(err), 'info')
+    btn.disabled = false
+  }
+}
+
+async function startFind(viewId: string, btn: HTMLButtonElement): Promise<void> {
+  const v = R.views.find(x => x.draft.id === viewId); if (!v) return
+  btn.disabled = true
+  try {
+    const cutoff = Math.min(Date.now() - 1000, v.draft.created)
+    const job = await reviewApi.startSearch(v.draft.range, cutoff)
+    const r = v.draft.range
+    rememberSearch({ id: job.id, symbol: r.symbol, iv: r.interval, bars: r.bars, label: `${codeOf(r.symbol)} ${ivText(r.interval)} · ${r.bars} 根`, created: Date.now() })
+    R.searches.set(job.id, { meta: storedSearches()[0], status: { id: job.id, status: job.status as SearchStatus['status'], checked: 0, processed: 0, total: 0, error: null }, results: null, error: null })
+    toast('开始找相似', '在全市场历史里找和这段走势像的片段，找完会列在「相似走势」', 'search')
+    R.tab = 'similar'; savePref()
+    await refreshSearches()
+    render()
+  } catch (err) {
+    toast('找相似没发起', errorText(err), 'info')
+    btn.disabled = false
+  }
+}
+
+async function doSave(searchId: string, matchId: string, btn: HTMLButtonElement): Promise<void> {
+  btn.disabled = true
+  try {
+    const s = await reviewApi.save(searchId, matchId)
+    R.saved = [s, ...R.saved.filter(x => x.item.id !== s.item.id)]
+    render()
+  } catch (err) { toast('没收藏上', errorText(err), 'info'); btn.disabled = false }
+}
+
+async function doUnsave(matchId: string, btn: HTMLButtonElement): Promise<void> {
+  const s = R.saved.find(x => x.item.id === matchId); if (!s) return
+  btn.disabled = true
+  try {
+    await reviewApi.unsave(matchId, s.revision)
+    R.saved = R.saved.filter(x => x.item.id !== matchId)
+    if (R.sel.similar === `saved:${matchId}`) R.sel.similar = null
+    render()
+  } catch (err) {
+    if (err instanceof ReviewError && err.status === 409) { try { R.saved = await reviewApi.saved() } catch { /* 下次刷新 */ } }
+    toast('没取消收藏', errorText(err), 'info'); btn.disabled = false
+  }
+}
+
+function onKey(e: KeyboardEvent): void {
+  if (!R.shown || !player || e.key !== ' ') return
+  const t = e.target as HTMLElement
+  if (t.closest('input,textarea,select,button,[contenteditable="true"]')) return
+  e.preventDefault()
+  player.toggle()
+}
+
+// ------------------------------------------------------------ 入口
+function shown(): void {
+  R.shown = true
+  if (!reviewToken()) { renderLogin(false); return }
+  if (!R.built) build()
+  if (!R.loadedAt || Date.now() - R.loadedAt > 60_000) { render(); void load() }
+  else render()
+}
+
+function hidden(): void {
+  R.shown = false
+  clearTimeout(pollTimer)
+  player?.stop()
+}
+
+export function initReview(): void {
+  loadPref()
+  hooks.pageShown.review = shown
+  hooks.pageHidden.review = hidden
+  hooks.onTheme.push(() => player?.readTheme())
+  addEventListener('keydown', onKey)
+}
