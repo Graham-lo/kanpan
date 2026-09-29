@@ -72,11 +72,13 @@ async fn write_ended(pool:&PgPool,base:&str,step:f64,chunk:&[&(BigOrder,i64)])->
  Ok(())
 }
 
-/// 0031 之前的老进程写进 `orderflow_orders` 的挂着的行搬到 `orderflow_live`（活单表里已有同一单的以活单表为准）。
+/// 0031 之前的老进程写进 `orderflow_orders` 的挂着的行搬到 `orderflow_live`（活单表里已有同一单的，谁看到得晚用谁）。
 /// 读回与每小时清理都先做一次；平时这句碰不到行（走 `orderflow_orders_end` 的 `end_ms IS NULL` 段）。
 async fn sweep(pool:&PgPool,base:&str)->sqlx::Result<u64> {
  Ok(sqlx::query(&format!("WITH moved AS (DELETE FROM orderflow_orders WHERE base=$1 AND end_ms IS NULL RETURNING {COLUMNS}) \
-  INSERT INTO orderflow_live({COLUMNS}) SELECT {COLUMNS} FROM moved ON CONFLICT({PK}) DO NOTHING")).bind(base).execute(pool).await?.rows_affected())
+  INSERT INTO orderflow_live({COLUMNS}) SELECT {COLUMNS} FROM moved ON CONFLICT({PK}) DO UPDATE SET price=EXCLUDED.price,notional=EXCLUDED.notional,\
+  filled_notional=EXCLUDED.filled_notional,threshold=EXCLUDED.threshold,vanished_notional=EXCLUDED.vanished_notional,seen_ms=EXCLUDED.seen_ms \
+  WHERE orderflow_live.seen_ms<EXCLUDED.seen_ms")).bind(base).execute(pool).await?.rows_affected())
 }
 
 /// 停机时要刷的一条挂着的单：主键加最后一次看到的时刻。
@@ -402,16 +404,21 @@ pub(super) mod tests {
   // 老进程留在历史表里的挂着的行（0031 之前的写法）：读回时搬进活单表；活单表里已有同一单的以活单表为准。
   sqlx::query(&format!("INSERT INTO orderflow_orders({COLUMNS}) VALUES('ZZL','binance:usdtPerp:BTCUSDT','币安','usdtPerp','bid',3,300,$1,NULL,'live',6e6,6e6,0,5e6,NULL,100,$1)")).bind(now-30_000).execute(&pool).await.unwrap();
   sqlx::query(&format!("INSERT INTO orderflow_orders({COLUMNS}) VALUES('ZZL','binance:usdtPerp:BTCUSDT','币安','usdtPerp','bid',2,200,$1,NULL,'live',6e6,6e6,0,5e6,NULL,100,$2)")).bind(now-60_000).bind(now-59_000).execute(&pool).await.unwrap();
+  sqlx::query(&format!("INSERT INTO orderflow_orders({COLUMNS}) VALUES('ZZL','binance:usdtPerp:BTCUSDT','币安','usdtPerp','bid',4,400,$1,NULL,'live',6e6,6e6,0,5e6,NULL,100,$2)")).bind(now-60_000).bind(now-40_000).execute(&pool).await.unwrap();
+  upsert(&pool,"ZZL",100.0,&[(order(4,now-60_000,None),now-50_000)]).await.unwrap();
   let back=super::live(&pool,"ZZL").await.unwrap();
-  assert_eq!(back.iter().map(|r|(r.order.bucket,r.seen_ms)).collect::<std::collections::BTreeSet<_>>(),[(2,now),(3,now-30_000)].into_iter().collect(),"3 号搬过来，2 号仍是活单表那份");
-  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(2,1));
+  assert_eq!(back.iter().map(|r|(r.order.bucket,r.seen_ms)).collect::<std::collections::BTreeSet<_>>(),[(2,now),(3,now-30_000),(4,now-40_000)].into_iter().collect(),
+   "3 号搬过来；2 号活单表那份更新、留下；4 号历史表那份看到得更晚、盖过去");
+  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(3,1));
   // 失联结束：从活单表搬进历史表，状态 lost、结束时刻 = 最后一次看到、不记消失量。清理只看登记过的 base。
   start(&pool,"ZZL",now).await.unwrap();
   let (_,closed)=purge(&pool,now+ORPHAN_MS+10,&["ZZL".to_string()]).await.unwrap();
-  assert_eq!(closed,2);
-  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(0,3));
+  assert_eq!(closed,3);
+  assert_eq!((count("orderflow_live").await,count("orderflow_orders").await),(0,4));
   let lost=range(&pool,"ZZL",now-DAY_MS,now+ORPHAN_MS).await.unwrap();
-  assert_eq!(lost.iter().filter(|o|o.status==Status::Lost).map(|o|(o.bucket,o.end_ms,o.vanished_notional)).collect::<Vec<_>>(),vec![(2,Some(now),None),(3,Some(now-30_000),None)]);
+  let mut lost:Vec<_>=lost.iter().filter(|o|o.status==Status::Lost).map(|o|(o.bucket,o.end_ms,o.vanished_notional)).collect();
+  lost.sort_by_key(|l|l.0);
+  assert_eq!(lost,vec![(2,Some(now),None),(3,Some(now-30_000),None),(4,Some(now-40_000),None)]);
   assert!(size(&pool).await.unwrap()>0);
   clear(&pool,&["ZZL"]).await;
  }
