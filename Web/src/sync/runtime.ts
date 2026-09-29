@@ -56,6 +56,21 @@ export interface SyncAdapter {
   end(): void
 }
 
+/** 同步状态（「我的」账号行用）：上一次成功对上云端的时刻、是否正在同步、最近一次失败的原因 */
+export interface SyncStatus {
+  /** 登录着且这个页面在同步（别的标签页领头时为 false） */
+  active: boolean
+  syncing: boolean
+  /** 上一次成功对上的时刻（ms），从没对上过为 0；按账号落盘 */
+  lastSync: number
+  /** 最近一次失败的原因（给人看的一句话），成功后清空 */
+  error: string
+  /** 还没推上去的操作数 */
+  pending: number
+  /** 服务端拒掉的操作数 */
+  rejected: number
+}
+
 export interface SyncRuntime {
   /** 页面状态变了（每次 save 之后调）：记账，有操作就 400 ms 后推 */
   changed(): void
@@ -65,6 +80,20 @@ export interface SyncRuntime {
   pushSoon(): void
   /** 账本活着、合并完了（记账 / 应用都在进行） */
   live(): boolean
+  /** 当前同步状态 */
+  status(): SyncStatus
+  /** 状态变了（开始 / 结束一轮、队列变了、会话变了）就叫一声。返回取消订阅 */
+  onStatus(fn: () => void): () => void
+  /** 立即同步一轮（「立即同步」按钮）：还没对上就再试第一次合并，否则推、拉、再推 */
+  syncNow(): Promise<void>
+}
+
+/** 失败原因 → 一句话（照 iOS AccountSyncStatus 的说法） */
+export function syncErrorText(e: unknown): string {
+  const status = (e as { status?: number } | null)?.status
+  if (status === 0) return '网络不可用，请检查网络后重试'
+  if (status === 408 || status === 504) return '连接超时，请稍后重试'
+  return '暂时连不上账号服务，请稍后重试'
 }
 
 function lsGet(k: string): string | null { try { return globalThis.localStorage?.getItem(k) ?? null } catch { return null } }
@@ -86,6 +115,19 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
   let release: (() => void) | null = null
   let persistQueued = false
   let lastTick = 0
+  let syncing = 0
+  /** 第一次合并还没成时的 override（「立即同步」重试用同一个） */
+  let firstOverride = false
+  let lastSync = 0
+  let error = ''
+  const listeners = new Set<() => void>()
+  let emitQueued = false
+  function emit(): void {
+    if (emitQueued) return
+    emitQueued = true
+    queueMicrotask(() => { emitQueued = false; for (const fn of [...listeners]) { try { fn() } catch (e) { console.error(e) } } })
+  }
+  const lastKey = (id: string): string => syncKeys().archive.replace(/:$/, '') + '-last:' + id
 
   function persist(): void {
     if (persistQueued) return
@@ -94,6 +136,7 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
       persistQueued = false
       if (store && uid) lsSet(syncKeys().archive + uid, serialize(store.a))
     })
+    emit()
   }
 
   function capture(): void {
@@ -111,7 +154,14 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     const g = gen
     chain = chain.then(async () => {
       if (g !== gen || !engine) return
-      try { await fn(engine) } catch (e) { if ((e as { status?: number }).status !== 0) console.debug('[sync]', e) }
+      syncing++; emit()
+      try {
+        await fn(engine)
+        if (g === gen && !initial) { error = ''; lastSync = Date.now(); if (uid) lsSet(lastKey(uid), String(lastSync)) }
+      } catch (e) {
+        if (g === gen) error = syncErrorText(e)
+        if ((e as { status?: number }).status !== 0) console.debug('[sync]', e)
+      } finally { syncing--; emit() }
     })
     return chain
   }
@@ -154,11 +204,14 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     store.onChange = persist
     engine = new Engine(store, transport, adapter.owned, { capture, apply })
     uid = id
+    lastSync = Number(lsGet(lastKey(id))) || 0
+    error = ''
+    emit()
     adapter.begin()
     initial = fresh
     const g = gen
     if (fresh) {
-      const override = !!owner && owner !== id
+      const override = firstOverride = !!owner && owner !== id
       // 全量拉不下来（断网、服务器挂了）就等下一轮再试，本机照常用
       const attempt = (): Promise<void> => run(async e => { if (initial) await firstSync(e, override) })
       await attempt()
@@ -196,7 +249,9 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     abort?.abort(); abort = null
     release?.(); release = null
     store = null; engine = null; uid = null; initial = false
+    syncing = 0; error = ''; lastSync = 0
     adapter.end()
+    emit()
   }
 
   onSession(() => {
@@ -216,5 +271,20 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     boot() { booted = true; start() },
     pushSoon() { if (store && !initial) schedulePush() },
     live() { return !!store && !initial },
+    status() {
+      return {
+        active: !!store, syncing: syncing > 0, lastSync, error,
+        pending: store?.a.operations.length ?? 0, rejected: store?.a.rejected.length ?? 0,
+      }
+    },
+    onStatus(fn) { listeners.add(fn); return () => { listeners.delete(fn) } },
+    syncNow() {
+      if (!engine) return Promise.resolve()
+      if (initial) {
+        return run(async e => { if (initial) await firstSync(e, firstOverride) })
+      }
+      lastTick = Date.now()
+      return run(async e => { await e.push(); await e.pull(); await e.push() })
+    },
   }
 }
