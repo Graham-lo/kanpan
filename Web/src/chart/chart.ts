@@ -149,6 +149,42 @@ export interface Pane { id: PaneId; y: number; h: number; ticks?: number[] }
 export interface Crosshair { x: number; y: number; pane?: PaneId }
 export interface DrawingHit { d: Drawing; handle: number | null }
 
+/** 主图的坐标映射（订单流的梯子、大单带、热力都靠它和 K 线对齐）。 */
+export interface ChartGeometry {
+  pane: Pane
+  range: PriceRange
+  plotW: number
+  /** 可见的 K 线下标 */
+  from: number
+  to: number
+  /** 一根 K 线的像素宽 */
+  spacing: number
+  iv: number
+  log: boolean
+  priceToY: (p: number) => number
+  yToPrice: (y: number) => number
+  /** 时间 → K 线中心的 x（落在一根 K 线内部时按比例插值） */
+  timeToX: (t: number) => number
+  xToTime: (x: number) => number
+  /** 第 i 根 K 线的开盘时间（可以越过两头往外推） */
+  timeOf: (i: number) => number
+  indexToX: (i: number) => number
+  colors: ThemeColors
+  dec: number
+  /** 最后一根 K 线的收盘（没有就 null） */
+  last: number | null
+}
+/** 外挂的绘制层：under 画在蜡烛下面，over 画在画线上面；hover / click 返回 true 表示这一下归它 */
+export interface ChartLayer {
+  under?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
+  over?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
+  after?: (g: ChartGeometry) => void
+  /** true = 认领悬停并换成手形；'soft' = 认领（出浮层）但光标保持十字 */
+  hover?: (x: number, y: number, clientX: number, clientY: number) => boolean | 'soft'
+  leave?: () => void
+  click?: (x: number, y: number) => boolean
+}
+
 type Region = 'plot' | 'time' | 'price' | 'corner' | `sep:${string}`
 interface XY { x: number; y: number }
 interface DragPan { kind: 'pan'; region: Region; x0: number; y0: number; right0: number; sp0: number; r0: PriceRange | null; moved: boolean; pane: Pane | undefined }
@@ -202,6 +238,9 @@ export class TVChart {
   vpvrLast: Vpvr | null = null
   dirty = true
   hoverWall: Wall | null = null
+  /** 外挂绘制层（订单流） */
+  layers: ChartLayer[] = []
+  private layerHover: ChartLayer | null = null
   colors: ThemeColors = { bg: '', grid: '', text: '', text2: '', text3: '', cross: '', crossLabel: '', scaleLine: '', up: '', down: '', accent: '', alert: '', line: '' }
   font = '12px sans-serif'
   /** 画完的测量框（下一次点击就清掉） */
@@ -308,6 +347,47 @@ export class TVChart {
     this.spacing = clamp(this.spacing * f, MIN_SPACING, MAX_SPACING)
     this.rightBar = idx + (this.plotW() - ax) / this.spacing
     this.dirty = true; this.maybeMore()
+  }
+  /** 纵向缩放主图价格轴（以 anchorY 为不动点；f > 1 放大价格区间） */
+  zoomPrice(f: number, anchorY?: number): void {
+    const p = this._panes?.[0], r = this.mainRange
+    if (!p || !r) return
+    const y = anchorY ?? p.y + p.h / 2
+    const a = this.tf(this.yToPrice(y, p, r)), lo = this.tf(r.min), hi = this.tf(r.max)
+    this.manual = { min: this.itf(a - (a - lo) * f), max: this.itf(a + (hi - a) * f) }
+    if (this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
+    this.dirty = true
+  }
+  /** 把某个时间 / 价位挪到图中间（不改缩放） */
+  centerOn(t: number | null, p: number | null): void {
+    if (t != null && this.bars.length) this.rightBar = this.indexAt(t) + this.plotW() / 2 / this.spacing
+    if (p != null && this.mainRange) {
+      const half = (this.tf(this.mainRange.max) - this.tf(this.mainRange.min)) / 2, m = this.tf(p)
+      this.manual = { min: this.itf(m - half), max: this.itf(m + half) }
+      if (this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
+    }
+    this.dirty = true; this.maybeMore()
+  }
+  geometry(): ChartGeometry | null {
+    const p = this._panes?.[0], r = this.mainRange
+    if (!p || !r || !this.bars.length) return null
+    const { from, to } = this.visible()
+    return {
+      pane: p, range: r, plotW: this.plotW(), from, to, spacing: this.spacing, iv: this.iv, log: this.log,
+      priceToY: v => this.priceToY(v, p, r), yToPrice: y => this.yToPrice(y, p, r),
+      timeToX: t => this.indexToX(this.indexAt(t)), xToTime: x => this.timeOfIndex(this.xToIndex(x)),
+      timeOf: i => this.timeOfIndex(i), indexToX: i => this.indexToX(i),
+      colors: this.colors, dec: this.meta.dec, last: this.lastBar()?.c ?? null,
+    }
+  }
+  /** 连续下标 → 时间（indexAt 的反函数） */
+  timeOfIndex(i: number): number {
+    const b = this.bars, n = b.length
+    if (!n) return 0
+    if (i <= 0) return b[0].t + i * this.iv
+    if (i >= n - 1) return b[n - 1].t + (i - n + 1) * this.iv
+    const k = Math.floor(i)
+    return b[k].t + (i - k) * (b[k + 1].t - b[k].t)
   }
   lastIndex(): number { return this.replay != null ? this.replay : this.bars.length - 1 }
   destroy(): void {
@@ -459,6 +539,8 @@ export class TVChart {
     // 主图
     c.save(); c.beginPath(); c.rect(0, mainPane.y, PW, mainPane.h); c.clip()
     if (this.ind.vol && !this.hidden.has('vol')) this.drawVolume(mainPane, from, to)
+    const geo = this.layers.length ? this.geometry() : null
+    if (geo) for (const l of this.layers) if (l.under) { c.save(); l.under(c, geo); c.restore() }
     if (this.walls && !this.hidden.has('walls')) this.drawWalls(mainPane, mr, from, to)
     if (this.markers) this.drawTradeSpan(mainPane, mr)
     this.drawCandles(mainPane, mr, from, to)
@@ -468,6 +550,7 @@ export class TVChart {
     this.drawAlertLines(mainPane, mr)
     this.drawDrawings(mainPane, mr)
     if (this.markers) this.drawMarkers(mainPane, mr)
+    if (geo) for (const l of this.layers) if (l.over) { c.save(); l.over(c, geo); c.restore() }
     c.restore()
 
     // 副图
@@ -505,6 +588,7 @@ export class TVChart {
     this.drawPriceLabels(mainPane, mr)
     this.drawCrosshair(panes)
     this.renderPaneLegends(panes)
+    if (geo) for (const l of this.layers) l.after?.(geo)
   }
 
   priceTicks(p: Pane, r: PriceRange): number[] {
@@ -979,18 +1063,24 @@ export class TVChart {
         if (!this.tool) {
           const hit = this.hitDrawing(x, y)
           if (hit) cv.style.cursor = hit.handle != null ? 'grab' : 'pointer'
-          const w = pane?.id === 'main' && !hit ? this.wallAt(x, y) : null
+          let soft = false
+          const lh = pane?.id === 'main' && !hit ? this.layers.find(l => { const r = l.hover?.(x, y, e.clientX, e.clientY); soft = r === 'soft'; return !!r }) ?? null : null
+          if (this.layerHover && this.layerHover !== lh) this.layerHover.leave?.()
+          this.layerHover = lh
+          if (lh && !soft) cv.style.cursor = 'pointer'
+          const w = pane?.id === 'main' && !hit && !lh ? this.wallAt(x, y) : null
           if (w !== this.hoverWall) { this.hoverWall = w; this.o.onWallHover?.(w, e.clientX, e.clientY) }
           else if (w) this.o.onWallHover?.(w, e.clientX, e.clientY)
         }
         this.o.onCrosshairMove?.(this.timeAt(Math.round(this.xToIndex(x))))
-      } else { this.cross = null; this.o.onCrosshairMove?.(null) }
+      } else { this.cross = null; this.o.onCrosshairMove?.(null); if (this.layerHover) { this.layerHover.leave?.(); this.layerHover = null } }
       this.dirty = true; this.renderLegend()
     }, { signal })
     cv.addEventListener('mouseleave', () => {
       if (this.drag) return
       this.cross = null; this.axisHoverY = null; this.dirty = true; this.renderLegend()
       if (this.hoverWall) { this.hoverWall = null; this.o.onWallHover?.(null) }
+      if (this.layerHover) { this.layerHover.leave?.(); this.layerHover = null }
       this.o.onCrosshairMove?.(null)
     }, { signal })
     cv.addEventListener('mousedown', e => {
@@ -1086,7 +1176,7 @@ export class TVChart {
       }
       this.dirty = true; this.renderLegend()
     }, { signal })
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', e => {
       if (!this.drag || this.dead) return
       const d = this.drag; this.drag = null
       if (d.kind === 'alert') {
@@ -1095,6 +1185,10 @@ export class TVChart {
         if (!d.line) this.o.onAlertCreate?.(d.price)
         else if (d.moved) { d.line.price = d.price; this.o.onAlertMove?.(d.line, d.price) }
         return
+      }
+      if (d.kind === 'pan' && !d.moved && d.region === 'plot' && d.pane?.id === 'main' && this.layers.length) {
+        const { x, y } = pos(e)
+        if (this.layers.some(l => l.click?.(x, y))) { this.canvas.style.cursor = 'crosshair'; return }
       }
       if (d.kind === 'measure') { const m = this.draft; this.draft = null; if (m) { this.measure = m; this.drawings.push(m) } this.dirty = true; return }
       if (d.kind === 'drawing') { this.o.onDrawingsChanged?.(); return }

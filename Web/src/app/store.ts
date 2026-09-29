@@ -8,6 +8,7 @@ import type { IndParams, SubId } from '../chart/calc'
 import { migrateAlert, type Alert } from '../alerts/shape'
 import type { VpvrMode } from '../chart/overlays'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
+import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
 
 export type Theme = 'light' | 'dark'
 export type Skin = 'sage' | 'terra' | 'classic'
@@ -57,6 +58,10 @@ export interface State {
   linkSymbol: boolean
   /** 自定义分钟周期（如 45m），「更多」里输入后记下来 */
   customIvs: string[]
+  /** 指标「主力订单流」开没开（图上大单带、抽屉） */
+  orderFlow: boolean
+  /** 主力订单流门槛 / 步长里用户改过的项，按 base（BTC、PEPE…）存；随账号同步 */
+  orderFlowOverrides: Record<string, Override>
   /** 以下不落盘 */
   page: PageId
   stale: boolean
@@ -79,6 +84,7 @@ function defaults(): State {
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, customIvs: [],
+    orderFlow: false, orderFlowOverrides: {},
     page: 'chart', stale: false, account: null,
   }
 }
@@ -112,6 +118,12 @@ export function hydrate(saved: Partial<State>): State {
   s.alerts = (s.alerts as unknown[]).map(migrateAlert).filter((a): a is Alert => !!a && a.status !== 'fired')
   if (!Array.isArray(s.notes)) s.notes = []
   if (!s.drawings || typeof s.drawings !== 'object') s.drawings = {}
+  s.orderFlow = s.orderFlow === true
+  const ofo: Record<string, Override> = {}
+  if (s.orderFlowOverrides && typeof s.orderFlowOverrides === 'object') {
+    for (const [k, v] of Object.entries(s.orderFlowOverrides).slice(0, MAX_OVERRIDES)) { const n = normalizeOverride(v); if (n && /^[A-Z0-9]{1,20}$/.test(k)) ofo[k] = n }
+  }
+  s.orderFlowOverrides = ofo
   s.page = 'chart'; s.stale = false; s.account = null
   return s
 }

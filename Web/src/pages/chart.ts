@@ -13,6 +13,9 @@
  *   侧栏小部件 —— 「自选」视图里按 st.slots.widgets 的顺序堆叠
  */
 import { st, save, type CellCfg, type PanelId, type Layout } from '../app/store'
+import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick } from '../orderflow'
+import { deleteAlert } from '../alerts/model'
+import { alertDesc } from '../alerts/panel'
 import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, drawingAlertOf, drawingCanAlert, toggleDrawingAlert, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel } from '../alerts/model'
 import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, streamIvOf, startSeconds, onSecondsTick, secondBars, secondLastBar, customKlines, customTick, customBase } from '../chart/intervals'
 import { VPVR_MODES } from '../chart/overlays'
@@ -355,6 +358,7 @@ export function renderToolbar(): void {
     <button class="tb-btn" id="tbInd" data-tip="指标" data-kbd="/">${I('indicators')}指标</button>
     <button class="tb-btn" id="tbAlert" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bellPlus')}提醒</button>
     <button class="tb-btn" id="tbNote" data-tip="把这一刻记下来">${I('note')}记一笔</button>
+    ${heatButtonHTML()}
     <div class="draw-props" id="drawProps" role="toolbar" aria-label="画线属性"></div>
     <div class="tb-right">
       <button class="ibtn sm" id="tbUndo" aria-label="撤销" data-tip="撤销" data-kbd="⌘ Z" ${undoStack.length ? '' : 'disabled style="opacity:.4"'}>${I('undo')}</button>
@@ -378,6 +382,7 @@ function onToolbarClick(e: MouseEvent): void {
     case 'tbInd': return openIndicators()
     case 'tbAlert': return openAlert()
     case 'tbNote': return openNote()
+    case 'tbHeat': return toggleHeat()
     case 'tbUndo': return undo()
     case 'tbRedo': return redo()
     case 'tbLayout': return layoutMenu(b)
@@ -505,8 +510,7 @@ export function layoutSlots(): void {
   cells.forEach(c => c.chart.resize())
 }
 function renderSlots(): void {
-  $('#ladderSlot').innerHTML = `<div class="slot-head">深度梯子</div><div class="empty slot-empty">${I('layers', 'icon-24')}<div>订单簿大屏版下一阶段接入</div></div>`
-  $('#drawerSlot').innerHTML = `<div class="slot-head">大单</div><div class="empty slot-empty">${I('list', 'icon-24')}<div>主力订单流大屏版下一阶段接入</div></div>`
+  mountLadder($('#ladderSlot')); mountDrawer($('#drawerSlot'))
 }
 
 // ------------------------------------------------------------ 侧栏
@@ -536,11 +540,12 @@ export function renderPanel(): void {
 const isWatched = (k: string): boolean => Object.values(st.watch).some(l => l.includes(k))
 export { isWatched }
 function panelWatch(el: HTMLElement): void {
-  const widgets = st.slots.widgets.map(w => w === 'watch' ? widgetWatch() : w === 'detail' ? '<div class="detail" id="detail"></div>' : '').join('')
+  const widgets = st.slots.widgets.map(w => w === 'watch' ? widgetWatch() : w === 'detail' ? '<div class="detail" id="detail"></div>' : widgetHTML(w)).join('')
   el.innerHTML = widgets || '<div class="empty">没有小部件</div>'
   renderDetail()
   const tbl = $('#wTbl', el)
   if (tbl) bindDrag(tbl)
+  mountWidgets(el)
 }
 function widgetWatch(): string {
   const cur = cfg(active()).symbol
@@ -681,10 +686,7 @@ export function refreshAlerts(): void {
 }
 
 // ---- 主力订单流、成交：本阶段空态
-function panelFlow(el: HTMLElement): void {
-  el.innerHTML = `<div class="sp-head"><h3>${term('主力订单流')}</h3></div>
-    <div class="empty">${I('layers', 'icon-24')}<div>网页版的大屏订单流下一阶段接入</div><div class="faint" style="font-size:12px;margin-top:4px">手机端已经可以看</div></div>`
-}
+function panelFlow(el: HTMLElement): void { flowPanel(el) }
 function panelTrades(el: HTMLElement): void {
   el.innerHTML = `<div class="sp-head"><h3>成交</h3></div>
     <div class="empty">${I('trades', 'icon-24')}<div>需要登录并连上交易所只读密钥</div><div class="faint" style="font-size:12px;margin-top:4px">网页版登录下一阶段接入</div></div>`
@@ -784,7 +786,7 @@ function openIndicators(): void {
   const isOn = (id: IndicatorId) => isMainToggle(id) ? !!st.ind[id] : st.ind.subs.includes(id as SubId)
   function render(): void {
     const full = st.ind.subs.length >= MAX_SUBS
-    $('#indList', d.dlg).innerHTML = IND_ROWS.filter(r => cat === 'all' || r[1] === cat).map(([id, pl, n, sub]) => {
+    $('#indList', d.dlg).innerHTML = (cat !== 'sub' ? indicatorRowHTML() : '') + IND_ROWS.filter(r => cat === 'all' || r[1] === cat).map(([id, pl, n, sub]) => {
       const on_ = isOn(id), dis = pl === 'sub' && !on_ && full
       return `<div class="ind-row ${dis ? 'disabled' : ''}" data-id="${id}" tabindex="0" role="checkbox" aria-checked="${on_}" aria-disabled="${dis}" ${dis ? 'data-tip="副图已经有四个了，先关一个"' : ''}>
         <span class="check-box ${on_ ? 'on' : ''}">${on_ ? I('check', 'icon-16') : ''}</span><span class="nm">${n}<small>${sub}</small></span>
@@ -802,10 +804,15 @@ function openIndicators(): void {
   d.dlg.addEventListener('click', e => {
     const t = tgt(e)
     const c = t.closest<HTMLElement>('[data-c]'); if (c) { cat = c.dataset.c as typeof cat; $$('[data-c]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === cat))); render(); return }
+    if (indicatorRowClick(t)) { render(); return }
     const s = t.closest<HTMLElement>('[data-set]'); if (s) { e.stopPropagation(); openParams(s.dataset.set as IndicatorId); return }
     const r = t.closest<HTMLElement>('.ind-row'); if (r && r.getAttribute('aria-disabled') !== 'true') toggle(r.dataset.id as IndicatorId)
   })
-  d.dlg.addEventListener('keydown', e => { const t = tgt(e); if ((e.key === ' ' || e.key === 'Enter') && t.classList.contains('ind-row')) { e.preventDefault(); toggle(t.dataset.id as IndicatorId) } })
+  d.dlg.addEventListener('keydown', e => {
+    const t = tgt(e); if ((e.key !== ' ' && e.key !== 'Enter') || !t.classList.contains('ind-row')) return
+    e.preventDefault()
+    if (t.hasAttribute('data-of-row')) { indicatorRowClick(t); render(); $<HTMLElement>('[data-of-row]', d.dlg)?.focus() } else toggle(t.dataset.id as IndicatorId)
+  })
   render(); $('.ind-row', d.dlg)?.focus()
 }
 const PARAM_NAME: Record<string, string> = { n: '周期', k: '倍数', fast: '快线', slow: '慢线', signal: '信号线', m1: '平滑 1', m2: '平滑 2', stoch: '取值窗口', tenkan: '转换线', kijun: '基准线', senkou: '先行带 B' }
@@ -1069,6 +1076,19 @@ export async function initChart(): Promise<void> {
   }, 61e3)
 
   renderDrawbar(); renderRail(); renderSlots(); layoutSlots(); renderPanel()
+  installOrderFlow({
+    activeChart: () => { const c = active(); return c ? { chart: c.chart, symbol: cfg(c).symbol, iv: cfg(c).iv, host: c.host } : null },
+    charts: () => cells.map(c => ({ chart: c.chart, symbol: cfg(c).symbol, iv: cfg(c).iv })),
+    openAlert,
+    addHline: p => {
+      const c = active(); if (!c) return
+      drawingsFor(cfg(c).symbol).push({ id: 'd' + Date.now(), type: 'hline', pts: [{ t: c.chart.lastBar()?.t ?? Date.now(), p }], color: st.drawColor, width: 2 })
+      c.chart.dirty = true; drawingsChanged(c)
+    },
+    alertsFor: s => activeAlerts(s), alertDesc, deleteAlert,
+    renderPanel, layoutSlots, renderToolbar,
+    dec: s => sym(s)?.dec ?? 2, crypto: s => (sym(s)?.kind ?? 'crypto') === 'crypto', turnover: s => sym(s)?.vol ?? null,
+  })
   await loadUniverse()
   if (!S.live) toast('连不上币安合约接口', S.error || '检查网络后点图上的「重试」', 'wifiOff', 8000)
   afterUniverse()
