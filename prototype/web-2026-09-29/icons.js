@@ -1,6 +1,7 @@
 /* Hkline Web · 图标
  *
- * 画法：24 格，实心圆润双调——主体用 currentColor 实填，衬底同色 30% 透明。
+ * 画法：24 格，实心圆润双调——主体用 currentColor 实填，衬底同色 30% 透明；
+ * 凡是描边一律 2.2（24 格里的分量，缩到 16 格约 1.5 px），只有品牌记号 2.4。
  * 不用单色细线线框（那是后台风）。只有画线工具例外：那些工具画出来的东西本来就是线，
  * 所以记号里的「线」保留线形，但端点、锚点用实心圆点，和其余图标同一个分量。
  */
@@ -22,7 +23,7 @@
     layout2v: `<rect x="3" y="3.5" width="18" height="8" rx="2.5" fill="currentColor"/><rect x="3" y="12.5" width="18" height="8" rx="2.5" fill="currentColor" ${D}/>`,
     layout4: `<rect x="3" y="3.5" width="8.5" height="8" rx="2.5" fill="currentColor"/><rect x="12.5" y="3.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="3" y="12.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="12.5" y="12.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/>`,
     note: `<path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="currentColor" ${D}/><path d="M6 3h3v18H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm5.5 5h4.5a1 1 0 1 1 0 2h-4.5a1 1 0 1 1 0-2Zm0 4h3a1 1 0 1 1 0 2h-3a1 1 0 1 1 0-2Z" fill="currentColor"/>`,
-    share: `<circle cx="17.5" cy="5.5" r="3" fill="currentColor"/><circle cx="6.5" cy="12" r="3" fill="currentColor"/><circle cx="17.5" cy="18.5" r="3" fill="currentColor"/><path d="M8.2 11l7.6-4.4M8.2 13l7.6 4.4" stroke="currentColor" stroke-width="2" ${D}/>`,
+    share: `<circle cx="17.5" cy="5.5" r="3" fill="currentColor"/><circle cx="6.5" cy="12" r="3" fill="currentColor"/><circle cx="17.5" cy="18.5" r="3" fill="currentColor"/><path d="M8.2 11l7.6-4.4M8.2 13l7.6 4.4" stroke="currentColor" stroke-width="2.2" ${D}/>`,
     camera: `<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h1.2l1.1-1.5A1.5 1.5 0 0 1 10 3h4a1.5 1.5 0 0 1 1.2.5L16.3 5h1.2A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z" fill="currentColor" ${D}/><circle cx="12" cy="12" r="3.8" fill="currentColor"/>`,
     undo: `<path d="M9.7 4.3a1 1 0 0 1 0 1.4L7.4 8H14a6 6 0 0 1 0 12h-3a1 1 0 1 1 0-2h3a4 4 0 0 0 0-8H7.4l2.3 2.3a1 1 0 1 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0Z" fill="currentColor"/>`,
     redo: `<path d="M14.3 4.3a1 1 0 0 0 0 1.4L16.6 8H10a6 6 0 0 0 0 12h3a1 1 0 1 0 0-2h-3a4 4 0 0 1 0-8h6.6l-2.3 2.3a1 1 0 1 0 1.4 1.4l4-4a1 1 0 0 0 0-1.4l-4-4a1 1 0 0 0-1.4 0Z" fill="currentColor"/>`,
@@ -32,7 +33,7 @@
     starOff: `<path d="M12 2.8l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 16.8l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 2.8Z" fill="currentColor" opacity=".22"/>`,
     list: `<rect x="3" y="4" width="18" height="16" rx="4" fill="currentColor" ${D}/><path d="M7.2 8.2l.9 1.8 2 .3-1.4 1.4.3 2-1.8-1-1.8 1 .3-2L4.3 10.3l2-.3.9-1.8Z" fill="currentColor"/><rect x="12" y="8.5" width="6" height="2" rx="1" fill="currentColor"/><rect x="12" y="13.5" width="4" height="2" rx="1" fill="currentColor"/>`,
     layers: `<path d="M12 3.2l8.4 4.3a.8.8 0 0 1 0 1.4L12 13.2 3.6 8.9a.8.8 0 0 1 0-1.4L12 3.2Z" fill="currentColor"/><path d="M4.6 12.3L12 16.1l7.4-3.8 1 .5a.8.8 0 0 1 0 1.4L12 18.5l-8.4-4.3a.8.8 0 0 1 0-1.4l1-.5Z" fill="currentColor" ${D}/>`,
-    trades: `<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" ${D}/><path d="M8 7v10M8 7l-2.2 2.2M8 7l2.2 2.2M16 17V7m0 10l-2.2-2.2M16 17l2.2-2.2" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`,
+    trades: `<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" ${D}/><path d="M8 7v10M8 7l-2.2 2.2M8 7l2.2 2.2M16 17V7m0 10l-2.2-2.2M16 17l2.2-2.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`,
     info: `<circle cx="12" cy="12" r="9" fill="currentColor" ${D}/><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor"/><circle cx="12" cy="7.5" r="1.5" fill="currentColor"/>`,
     plus: `<path d="M12 4.5a1.2 1.2 0 0 1 1.2 1.2v5.1h5.1a1.2 1.2 0 1 1 0 2.4h-5.1v5.1a1.2 1.2 0 1 1-2.4 0v-5.1H5.7a1.2 1.2 0 1 1 0-2.4h5.1V5.7A1.2 1.2 0 0 1 12 4.5Z" fill="currentColor"/>`,
     close: `<path d="M6.3 6.3a1.1 1.1 0 0 1 1.6 0L12 10.4l4.1-4.1a1.1 1.1 0 1 1 1.6 1.6L13.6 12l4.1 4.1a1.1 1.1 0 1 1-1.6 1.6L12 13.6l-4.1 4.1a1.1 1.1 0 1 1-1.6-1.6l4.1-4.1-4.1-4.1a1.1 1.1 0 0 1 0-1.6Z" fill="currentColor"/>`,
@@ -56,15 +57,15 @@
     wifiOff: `<path d="M12 18.5a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z" fill="currentColor"/><path d="M3 9.5a13 13 0 0 1 18 0M6.5 13a8 8 0 0 1 11 0" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" ${D}/><path d="M4 4l16 16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
 
     // ---- 画线工具（线保留线形，端点实心）
-    cursor: `<path d="M12 3v6M12 15v6M3 12h6M15 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/>`,
-    trend: `<path d="M5.5 18.5l13-13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="2.6" fill="currentColor"/>`,
-    ray: `<path d="M5.5 18.5L21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="12" cy="12" r="2.2" fill="currentColor" ${D}/>`,
-    hline: `<path d="M3 12h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>`,
-    vline: `<path d="M12 3v18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>`,
-    rect: `<rect x="5" y="6" width="14" height="12" rx="1.5" fill="currentColor" ${D}/><rect x="5" y="6" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="5" cy="6" r="2.2" fill="currentColor"/><circle cx="19" cy="18" r="2.2" fill="currentColor"/>`,
-    fib: `<path d="M3 5h18M3 9.5h18M3 13.5h18M3 19h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" ${D}/><path d="M5 19L19 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 3"/><circle cx="5" cy="19" r="2.4" fill="currentColor"/><circle cx="19" cy="5" r="2.4" fill="currentColor"/>`,
-    measure: `<rect x="3" y="7" width="18" height="10" rx="2.5" fill="currentColor" ${D}/><path d="M7 7v4M11 7v3M15 7v4M19 7v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
-    channel: `<path d="M4 15L15 4M9 20L20 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 15l5 5 11-11-5-5z" fill="currentColor" ${D}/><circle cx="4" cy="15" r="2.2" fill="currentColor"/><circle cx="15" cy="4" r="2.2" fill="currentColor"/>`,
+    cursor: `<path d="M12 3v6M12 15v6M3 12h6M15 12h6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/>`,
+    trend: `<path d="M5.5 18.5l13-13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="2.6" fill="currentColor"/>`,
+    ray: `<path d="M5.5 18.5L21 3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="12" cy="12" r="2.2" fill="currentColor" ${D}/>`,
+    hline: `<path d="M3 12h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>`,
+    vline: `<path d="M12 3v18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>`,
+    rect: `<rect x="5" y="6" width="14" height="12" rx="1.5" fill="currentColor" ${D}/><rect x="5" y="6" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="5" cy="6" r="2.2" fill="currentColor"/><circle cx="19" cy="18" r="2.2" fill="currentColor"/>`,
+    fib: `<path d="M3 5h18M3 9.5h18M3 13.5h18M3 19h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ${D}/><path d="M5 19L19 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="2 3"/><circle cx="5" cy="19" r="2.4" fill="currentColor"/><circle cx="19" cy="5" r="2.4" fill="currentColor"/>`,
+    measure: `<rect x="3" y="7" width="18" height="10" rx="2.5" fill="currentColor" ${D}/><path d="M7 7v4M11 7v3M15 7v4M19 7v3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
+    channel: `<path d="M4 15L15 4M9 20L20 9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 15l5 5 11-11-5-5z" fill="currentColor" ${D}/><circle cx="4" cy="15" r="2.2" fill="currentColor"/><circle cx="15" cy="4" r="2.2" fill="currentColor"/>`,
   }
   function icon(name, cls = 'icon') {
     return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ''}</svg>`

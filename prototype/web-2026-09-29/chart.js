@@ -1,7 +1,7 @@
 /* Hkline Web · K 线引擎（TradingView 桌面版的那一套）
  *
  * 和手机那套（AICoin 复刻）完全分开。对齐的是 TradingView 桌面版：
- *   · 多窗格：主图 + 最多三个副图，窗格之间 1 px 分隔、可拖动改高度
+ *   · 多窗格：主图 + 最多四个副图，窗格之间 1 px 分隔、可拖动改高度
  *   · 右侧价格轴：最新价标签（实心、涨跌色）下面一行是本根收线倒计时；十字线在轴上出深色标签
  *   · 十字线：鼠标悬停就出（不用按住），虚线，横竖都在轴上标值
  *   · 左上角图例：品种 · 周期 · 交易所 + 开高低收 + 涨跌；每个指标一行，悬停出现 显示/设置/移除
@@ -18,9 +18,23 @@
   const MIN_PANE_H = 56 // 拖分隔线时任何一格都不能比这矮
   const MIN_SPACING = 1.5
   const MAX_SPACING = 60
-  const DEFAULT_SPACING = 7
+  const DEFAULT_SPACING = 8
   const RIGHT_MARGIN_BARS = 6
   const SEP_HIT = 5
+
+  // 线条规格（网页版自己的一套，和手机端无关）。基准屏 1 CSS px = 1 物理像素：
+  // 横竖线一律整数宽、落在半像素上才锐利；曲线允许 1.5 px，靠抗锯齿显得顺滑又不压过 K 线。
+  // K 线是主体：影线 1 px（间距 ≥ 20 时 2 px），实体奇偶跟影线走，让影线永远正好居中。
+  const LINE = {
+    hair: 1,      // 网格、窗格分隔、轴线、RSI 参考线、最新价点线、提醒线、十字线
+    plot: 1.5,    // 主图叠加线（MA / EMA / BOLL 中轨）、副图曲线（MACD / RSI / KDJ / 持仓量）
+    band: 1,      // BOLL 上下轨、斐波那契各档、复盘的进出场连线
+    draw: 2,      // 画线工具默认粗细（用户可改 1 / 2 / 3）
+    measure: 1,   // 测量十字
+    wallMin: 1, wallMax: 3, // 主力大单：按金额从 1 到 3 px，悬停 3 px
+    handle: 2,    // 选中锚点的描边
+  }
+  const VOL_ALPHA = 0.3, VOL_H = 0.16 // 成交量：垫在主图底部 16%，三成不透明，不抢蜡烛
   const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 
   // ------------------------------------------------------------ 指标计算
@@ -88,9 +102,9 @@
     oi(bars) { return [bars.map(b => b.oi ?? null)] },
   }
 
-  // 指标目录：名字、默认参数、线色。副图最多三个（手机端同一条规矩）。
+  // 指标目录：名字、默认参数、线色。副图最多四个（网页版副图矮、屏幕高）。
   const CATALOG = {
-    ma: { name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#26C6DA'] },
+    ma: { name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#0EA5B7'] },
     ema: { name: 'EMA', cn: '指数均线', place: 'main', params: { periods: [12, 26] }, colors: ['#FF6D00', '#00897B'] },
     boll: { name: 'BOLL', cn: '布林带', place: 'main', params: { n: 20, k: 2 }, colors: ['#FF6D00', '#2962FF', '#2962FF'] },
     vol: { name: '成交量', cn: '成交量', place: 'overlay' },
@@ -378,7 +392,7 @@
         const r = this._ranges[p.id]
         const ticks = this.priceTicks(p, r)
         p.ticks = ticks
-        c.strokeStyle = C.grid; c.lineWidth = 1; c.beginPath()
+        c.strokeStyle = C.grid; c.lineWidth = LINE.hair; c.beginPath()
         for (const t of ticks) { const y = Math.round(this.priceToY(t, p, r)) + .5; c.moveTo(0, y); c.lineTo(PW, y) }
         c.stroke()
       }
@@ -408,7 +422,7 @@
       }
 
       // 分隔线与轴
-      c.strokeStyle = C.scaleLine; c.lineWidth = 1; c.beginPath()
+      c.strokeStyle = C.scaleLine; c.lineWidth = LINE.hair; c.beginPath()
       for (const p of panes.slice(1)) { c.moveTo(0, p.y + .5); c.lineTo(W, p.y + .5) }
       c.moveTo(PW + .5, 0); c.lineTo(PW + .5, H - AXIS_H)
       c.moveTo(0, H - AXIS_H + .5); c.lineTo(W, H - AXIS_H + .5)
@@ -487,10 +501,17 @@
       return out
     }
 
-    candleW() { return Math.max(1, Math.round(this.spacing * 0.78) - (this.spacing > 4 ? 1 : 0)) }
+    wickW() { return this.spacing >= 20 ? 2 : 1 }
+    candleW() { // 实体取间距的 3/4，再按影线的奇偶收一格，让影线正好居中；间距 < 2.5 时只剩影线
+      const s = this.spacing, wick = this.wickW()
+      if (s < 2.5) return 1
+      let w = Math.max(3, Math.floor(s * 0.75))
+      if (w % 2 !== wick % 2) w -= 1
+      return Math.max(wick, w)
+    }
     drawCandles(p, r, from, to) {
-      const c = this.ctx, C = this.colors, bw = this.candleW()
-      const half = Math.floor(bw / 2)
+      const c = this.ctx, C = this.colors, bw = this.candleW(), wick = this.wickW()
+      const half = Math.floor(bw / 2), wh = wick >> 1
       for (const pass of [0, 1]) {
         c.fillStyle = pass ? C.up : C.down
         c.beginPath()
@@ -501,8 +522,8 @@
           const x = Math.round(this.indexToX(i))
           const yh = this.priceToY(b.h, p, r), yl = this.priceToY(b.l, p, r)
           const yo = this.priceToY(b.o, p, r), yc = this.priceToY(b.c, p, r)
-          c.rect(x, Math.round(yh), 1, Math.max(1, Math.round(yl) - Math.round(yh)))
-          if (bw > 1) {
+          c.rect(x - wh, Math.round(yh), wick, Math.max(1, Math.round(yl) - Math.round(yh)))
+          if (bw > wick) {
             const top = Math.round(Math.min(yo, yc)), bot = Math.round(Math.max(yo, yc))
             c.rect(x - half, top, bw, Math.max(1, bot - top))
           }
@@ -515,10 +536,10 @@
       let mx = 0
       for (let i = from; i <= to; i++) mx = Math.max(mx, this.bars[i]?.v || 0)
       if (!mx) return
-      const h = p.h * 0.2, base = p.y + p.h
+      const h = p.h * VOL_H, base = p.y + p.h
       const half = Math.floor(bw / 2)
       for (const pass of [0, 1]) {
-        c.fillStyle = hexA(pass ? C.up : C.down, 0.42)
+        c.fillStyle = hexA(pass ? C.up : C.down, VOL_ALPHA)
         c.beginPath()
         for (let i = from; i <= to; i++) {
           const b = this.bars[i]; if (!b) continue
@@ -538,8 +559,9 @@
         for (let i = to; i >= from; i--) { const v = ser[2][i]; if (v == null) continue; c.lineTo(this.indexToX(i), this.priceToY(v, p, r)) }
         c.fill()
       }
-      c.lineWidth = 1.5; c.lineJoin = 'round'
+      c.lineJoin = 'round'; c.lineCap = 'round'
       ser.forEach((s, k) => {
+        c.lineWidth = id === 'boll' && k > 0 ? LINE.band : LINE.plot
         c.strokeStyle = cat.colors[k % cat.colors.length]; c.beginPath()
         let started = false
         for (let i = Math.max(0, from - 1); i <= to; i++) {
@@ -568,7 +590,7 @@
       } else if (id === 'rsi') {
         const y70 = y(70), y30 = y(30)
         c.fillStyle = hexA('#7E57C2', 0.08); c.fillRect(0, y70, this.plotW(), y30 - y70)
-        c.setLineDash([4, 4]); c.strokeStyle = hexA(C.text3 || '#888', 0.7); c.lineWidth = 1; c.beginPath()
+        c.setLineDash([4, 4]); c.strokeStyle = hexA(C.text3 || '#888', 0.7); c.lineWidth = LINE.hair; c.beginPath()
         c.moveTo(0, Math.round(y70) + .5); c.lineTo(this.plotW(), Math.round(y70) + .5); c.moveTo(0, Math.round(y30) + .5); c.lineTo(this.plotW(), Math.round(y30) + .5); c.stroke(); c.setLineDash([])
         this.polyline(ser[0], p, r, from, to, cat.colors[0])
       } else {
@@ -576,7 +598,7 @@
       }
     }
     polyline(s, p, r, from, to, col) {
-      const c = this.ctx; c.strokeStyle = col; c.lineWidth = 1.5; c.beginPath(); let st = false
+      const c = this.ctx; c.strokeStyle = col; c.lineWidth = LINE.plot; c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath(); let st = false
       for (let i = Math.max(0, from - 1); i <= to; i++) { const v = s[i]; if (v == null) { st = false; continue } const x = this.indexToX(i), y = this.priceToY(v, p, r); st ? c.lineTo(x, y) : (c.moveTo(x, y), st = true) }
       c.stroke()
     }
@@ -585,14 +607,14 @@
       const b = this.lastBar(); if (!b) return
       const c = this.ctx, y = Math.round(this.priceToY(b.c, p, r)) + .5
       c.strokeStyle = this.stale ? this.colors.text3 : (b.c >= b.o ? this.colors.up : this.colors.down)
-      c.setLineDash([1, 2]); c.lineWidth = 1; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
+      c.setLineDash([1, 2]); c.lineWidth = LINE.hair; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
     }
     drawAlertLines(p, r) {
       const c = this.ctx
       for (const a of this.alerts) {
         const y = Math.round(this.priceToY(a.price, p, r)) + .5
         if (y < p.y || y > p.y + p.h) continue
-        c.strokeStyle = this.colors.alert; c.setLineDash([6, 4]); c.lineWidth = 1; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
+        c.strokeStyle = this.colors.alert; c.setLineDash([6, 4]); c.lineWidth = LINE.hair; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
       }
     }
     drawPriceLabels(p, r) {
@@ -628,7 +650,7 @@
       if (this.cross) { idx = Math.round(this.xToIndex(this.cross.x)); x = this.indexToX(idx) }
       else if (this.extCross != null) { idx = Math.round(this.indexAt(this.extCross)); x = this.indexToX(idx) }
       if (x == null || x < 0 || x > PW) return
-      c.strokeStyle = C.cross; c.lineWidth = 1; c.setLineDash([5, 4])
+      c.strokeStyle = C.cross; c.lineWidth = LINE.hair; c.setLineDash([4, 4])
       c.beginPath(); c.moveTo(Math.round(x) + .5, 0); c.lineTo(Math.round(x) + .5, H - AXIS_H)
       let y = null, pane = null
       if (this.cross) {
@@ -657,15 +679,17 @@
       const c = this.ctx, PW = this.plotW()
       c.font = `500 11px ${this.font.split('px ')[1]}`
       for (const w of this.walls) {
-        const y = Math.round(this.priceToY(w.price, p, r)) + .5
-        if (y < p.y || y > p.y + p.h) continue
+        const y0 = this.priceToY(w.price, p, r)
+        if (y0 < p.y || y0 > p.y + p.h) continue
         const x0 = Math.max(0, this.indexToX(this.indexAt(w.from)))
         const x1 = w.to ? Math.min(PW, this.indexToX(this.indexAt(w.to))) : PW
         if (x1 < 0 || x0 > PW) continue
         const col = w.product === 'spot' ? '#06B6D4' : '#8B5CF6'
         const hot = this.hoverWall === w
+        const lw = hot ? LINE.wallMax : Math.round(clamp(1 + w.size / 1.5e7, LINE.wallMin, LINE.wallMax))
+        const y = lw % 2 ? Math.round(y0) + .5 : Math.round(y0) // 整数宽的横线落在像素格上才锐利
         c.strokeStyle = hexA(col, hot ? 1 : Math.min(0.9, 0.35 + w.size / 4e7))
-        c.lineWidth = hot ? 3 : 1 + Math.min(2, w.size / 1.5e7)
+        c.lineWidth = lw
         c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke()
         if (!w.to) {
           const t = fmtCompact(w.size), tw = c.measureText(t).width + 10
@@ -704,7 +728,7 @@
         const x0 = this.indexToX(i0), x1 = this.indexToX(i1)
         const y0 = this.priceToY(m.entry, p, r), y1 = this.priceToY(m.exit, p, r)
         const shown = this.replay == null || this.replay >= Math.round(i1)
-        c.strokeStyle = hexA(C.text2, .8); c.setLineDash([4, 3]); c.lineWidth = 1.2
+        c.strokeStyle = hexA(C.text2, .8); c.setLineDash([4, 3]); c.lineWidth = LINE.band
         c.beginPath(); c.moveTo(x0, y0); c.lineTo(shown ? x1 : this.indexToX(this.lastIndex()), shown ? y1 : this.priceToY(this.lastBar().c, p, r)); c.stroke(); c.setLineDash([])
         const tag = (x, y, text, col, below) => {
           c.font = `600 11px ${this.font.split('px ')[1]}`
@@ -729,7 +753,7 @@
     pt(q, p, r) { return { x: this.indexToX(this.indexAt(q.t)), y: this.priceToY(q.p, p, r) } }
     drawOne(d, p, r, sel) {
       const c = this.ctx, PW = this.plotW(), col = d.color || '#2962FF'
-      c.strokeStyle = col; c.lineWidth = d.width || 2; c.fillStyle = col
+      c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = 'round'; c.lineJoin = 'round'
       const pts = d.pts.map(q => this.pt(q, p, r))
       const a = pts[0], b = pts[1] || pts[0]
       c.beginPath()
@@ -741,7 +765,7 @@
       else if (d.type === 'fib') {
         const lv = [0, .236, .382, .5, .618, .786, 1], cols = ['#787B86', '#F23645', '#FF9800', '#4CAF50', '#089981', '#00BCD4', '#787B86']
         const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x) + 0
-        c.stroke(); c.lineWidth = 1
+        c.stroke(); c.lineWidth = LINE.band
         lv.forEach((L, k) => {
           const pr = d.pts[1].p + (d.pts[0].p - d.pts[1].p) * L, y = Math.round(this.priceToY(pr, p, r)) + .5
           c.strokeStyle = cols[k]; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke()
@@ -755,8 +779,8 @@
       else if (d.type === 'measure') {
         const up = d.pts[1].p >= d.pts[0].p, mc = up ? '#2962FF' : '#F23645'
         c.fillStyle = hexA(mc, .12); c.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
-        c.strokeStyle = mc; c.lineWidth = 1.5; c.beginPath()
-        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+        c.strokeStyle = mc; c.lineWidth = LINE.measure; c.beginPath()
+        const mx = Math.round((a.x + b.x) / 2) + .5, my = Math.round((a.y + b.y) / 2) + .5
         c.moveTo(mx, a.y); c.lineTo(mx, b.y); c.moveTo(a.x, my); c.lineTo(b.x, my); c.stroke()
         const dp = d.pts[1].p - d.pts[0].p, pct = dp / d.pts[0].p * 100
         const nb = Math.round(this.indexAt(d.pts[1].t) - this.indexAt(d.pts[0].t))
@@ -770,7 +794,7 @@
       }
       c.stroke()
       if (sel) {
-        for (const q of pts) { c.fillStyle = this.colors.bg; c.strokeStyle = col; c.lineWidth = 2; c.beginPath(); c.arc(q.x, q.y, 5, 0, Math.PI * 2); c.fill(); c.stroke() }
+        for (const q of pts) { c.fillStyle = this.colors.bg; c.strokeStyle = col; c.lineWidth = LINE.handle; c.beginPath(); c.arc(q.x, q.y, 4.5, 0, Math.PI * 2); c.fill(); c.stroke() }
       }
       if (d.alert && d.type !== 'fib') { c.fillStyle = this.colors.alert; c.beginPath(); c.arc(pts[pts.length - 1].x + 10, pts[pts.length - 1].y - 10, 4, 0, Math.PI * 2); c.fill() }
     }
@@ -908,8 +932,8 @@
           const tp = this.toTP(x, y)
           const one = this.tool === 'hline' || this.tool === 'vline'
           if (!this.draft) {
-            if (one) { const d = { id: uid(), type: this.tool, pts: [tp], color: this.o.drawColor?.() || '#2962FF', width: 2 }; this.drawings.push(d); this.selected = d; this.finishTool(d); return }
-            this.draft = { id: uid(), type: this.tool, pts: [tp, { ...tp }], color: this.o.drawColor?.() || '#2962FF', width: this.tool === 'measure' ? 1 : 2 }
+            if (one) { const d = { id: uid(), type: this.tool, pts: [tp], color: this.o.drawColor?.() || '#2962FF', width: LINE.draw }; this.drawings.push(d); this.selected = d; this.finishTool(d); return }
+            this.draft = { id: uid(), type: this.tool, pts: [tp, { ...tp }], color: this.o.drawColor?.() || '#2962FF', width: this.tool === 'measure' ? LINE.measure : LINE.draw }
           } else {
             this.draft.pts[1] = tp
             const d = this.draft; this.draft = null
@@ -929,7 +953,7 @@
           if (this.selected) { this.selected = null; this.o.onSelectDrawing?.(null) }
           if (this.measure) { this.drawings.splice(this.drawings.indexOf(this.measure), 1); this.measure = null }
           if (e.shiftKey) { // Shift + 拖 = 临时测量（TradingView 同款）
-            const tp = this.toTP(x, y); this.draft = { id: uid(), type: 'measure', pts: [tp, { ...tp }], color: '#2962FF', width: 1 }; this.drag = { kind: 'measure' }; return
+            const tp = this.toTP(x, y); this.draft = { id: uid(), type: 'measure', pts: [tp, { ...tp }], color: '#2962FF', width: LINE.measure }; this.drag = { kind: 'measure' }; return
           }
         }
         const r0 = this.mainRange ? { ...this.mainRange } : null
@@ -1045,5 +1069,6 @@
 
   g.TVChart = TVChart
   g.TVCatalog = CATALOG
+  g.TVLine = LINE
   g.KPFmt = { fmt, fmtCompact, fmtAxis, crossTimeLabel, durText, sh, pad, hexA, paramText }
 })(window)
