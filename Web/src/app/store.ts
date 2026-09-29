@@ -5,24 +5,29 @@
  */
 import type { Drawing } from '../chart/chart'
 import type { IndParams, SubId } from '../chart/calc'
+import { migrateAlert, type Alert } from '../alerts/shape'
+import type { VpvrMode } from '../chart/overlays'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 
 export type Theme = 'light' | 'dark'
 export type Skin = 'sage' | 'terra' | 'classic'
 export type UpDown = 'red-up' | 'green-up'
-export type Layout = '1' | '2' | '2v' | '4'
+export type Layout = '1' | '2' | '2v' | '4' | '6' | '8'
+export const LAYOUTS: Layout[] = ['1', '2', '2v', '4', '6', '8']
 export type PanelId = 'watch' | 'alerts' | 'flow' | 'notes' | 'trades'
 export type PageId = 'chart' | 'sectors' | 'review' | 'me'
 /** 侧栏「自选」视图里按顺序堆叠的小部件；盘口 / 成交 / 大单 是下一阶段的 */
 export type WidgetId = 'watch' | 'detail' | 'book' | 'tape' | 'walls' | 'alerts'
 
 export interface CellCfg { symbol: string; iv: string }
-export interface Alert {
-  id: string; symbol: string; kind: 'price' | 'fr' | 'oi'; created: number
-  price?: number; dir?: number; value?: number; op?: 'gt' | 'lt'; webhook?: string | null
-}
+/** 提醒：形状和手机端同步的 alerts 对象一致（19 个字段），见 alerts/shape.ts */
+export type { Alert }
 export interface Note { id: string; symbol: string; iv: string; t: number; p: number; text: string }
-export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[] }
+export interface IndState {
+  ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]
+  /** 主图第二批叠加：VWAP、超级趋势、一目均衡表、成交量分布 */
+  vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean
+}
 
 export interface Slots {
   /** 价格轴与侧栏之间的深度梯子列：开 240 / 关 0 */
@@ -45,6 +50,13 @@ export interface State {
   alertScope: 'symbol' | 'all'
   meSection: string
   slots: Slots
+  /** 成交量分布的看法：买卖分开 / 净差 / 合计 */
+  vpvrMode: VpvrMode
+  /** 多图时十字线跨图同步、换品种时所有图一起换 */
+  linkCross: boolean
+  linkSymbol: boolean
+  /** 自定义分钟周期（如 45m），「更多」里输入后记下来 */
+  customIvs: string[]
   /** 以下不落盘 */
   page: PageId
   stale: boolean
@@ -64,6 +76,7 @@ function defaults(): State {
     magnet: false, drawHidden: false, drawLocked: false, drawColor: '#2962FF',
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
+    vpvrMode: 'split', linkCross: true, linkSymbol: false, customIvs: [],
     page: 'chart', stale: false,
   }
 }
@@ -83,13 +96,18 @@ export function hydrate(saved: Partial<State>): State {
   if (!Array.isArray(s.ind.subs)) s.ind.subs = d.ind.subs
   s.ind.subs = s.ind.subs.slice(0, 4)
   if (!Array.isArray(s.cells) || !s.cells.length) s.cells = d.cells
-  if (!['1', '2', '2v', '4'].includes(s.layout)) s.layout = '1'
+  if (!LAYOUTS.includes(s.layout)) s.layout = '1'
+  if (!['split', 'delta', 'total'].includes(s.vpvrMode)) s.vpvrMode = 'split'
+  s.linkCross = s.linkCross !== false; s.linkSymbol = s.linkSymbol === true
+  if (!Array.isArray(s.customIvs)) s.customIvs = []
+  s.customIvs = s.customIvs.filter(x => typeof x === 'string' && /^\d+m$/.test(x)).slice(0, 12)
   if (!['sage', 'terra', 'classic'].includes(s.skin)) s.skin = 'sage'
   if (s.theme !== 'dark') s.theme = 'light'
   if (s.updown !== 'green-up') s.updown = 'red-up'
   if (s.route !== 'gateway') s.route = 'direct'
   if (!Array.isArray(s.alerts)) s.alerts = []
-  s.alerts = s.alerts.filter(a => a.kind === 'price' || a.kind === 'fr' || a.kind === 'oi')
+  // 第一阶段的老形状（price / fr / oi）就地补成同步形状；触发过的不留
+  s.alerts = (s.alerts as unknown[]).map(migrateAlert).filter((a): a is Alert => !!a && a.status !== 'fired')
   if (!Array.isArray(s.notes)) s.notes = []
   if (!s.drawings || typeof s.drawings !== 'object') s.drawings = {}
   s.page = 'chart'; s.stale = false
