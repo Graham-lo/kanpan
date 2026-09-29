@@ -18,12 +18,12 @@
 .cp-ivrow { grid-area: iv }
 .cp-chart { grid-area: chart; position: relative; min-height: 0; min-width: 0; overflow: hidden }
 /* 取不到行情时盖住留下来的上一张图（见 chart.ts 的 status） */
-.cp-empty {
+.cp-nodata {
   position: absolute; inset: 0; z-index: 5;
   display: flex; align-items: center; justify-content: center;
   background: var(--k-bg, var(--chart)); color: var(--k-text, var(--ink3)); font: var(--t-footnote);
 }
-.cp-empty[hidden] { display: none }
+.cp-nodata[hidden] { display: none }
 .cp-rail { grid-area: rail }
 .cp-lline { grid-area: line }
 .cp-lsel { grid-area: sel }

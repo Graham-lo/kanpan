@@ -142,7 +142,7 @@ export function initChart(root: HTMLElement): PageHandle {
   chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight })
   // 取不到行情（下架 / 不认得的品种、断网时换品种或周期）：引擎为了换的时候不闪空图，会一直留着上一张图，
   // 于是新名字底下画的是上一只 / 上一个周期的 K 线。这时用一层底色盖住图区，写一句取不到；取到了就撤掉
-  const empty = el('div', 'cp-empty')
+  const empty = el('div', 'cp-nodata')
   empty.hidden = true
   empty.textContent = '暂时取不到这只品种的行情'
   box.append(empty)
