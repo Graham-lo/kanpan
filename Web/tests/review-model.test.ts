@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dayKey, dayLabel, decimalsOf, equityCurve, groupByDay, groupRateText, groupRounds, lastWeekRounds, lastWeekWindow,
-  money, num, outcomeOf, ratioPct, resolvedGroups, roundDecimals, roundStats, sortTrades, symbolsOf, titleParts, viewSummary,
+  money, num, outcomeOf, ratioPct, resolvedGroups, roundDecimals, roundStats, sideStats, sortTrades, symbolsOf, titleParts, viewSummary, DOMINANT_SHARE,
 } from '../src/review/model'
 import type { Fill, Round, Statistics, TradeRecord, ViewRecord } from '../src/review/types'
 
@@ -118,6 +118,85 @@ describe('交易回合统计', () => {
     const b = round({ net: '1', closedAt: SH(2026, 9, 28, 0, 1) })
     const c = round({ net: '1', closedAt: SH(2026, 9, 20, 23) })
     expect(lastWeekRounds([a, b, c], NOW).map(r => r.id)).toEqual([a.id])
+  })
+})
+
+describe('补充要点：盈利因子、最大回撤、最大单笔、多空拆分', () => {
+  const at = (d: number): number => SH(2026, 9, d, 10)
+  it('盈利因子 = 总盈利 ÷ |总亏损|；0 算亏但不改变亏损额', () => {
+    const s = roundStats([round({ net: '300', closedAt: at(1) }), round({ net: '-100', closedAt: at(2) }), round({ net: '-50', closedAt: at(3) }), round({ net: '0', closedAt: at(4) })])
+    expect(s.grossProfit).toBe(300)
+    expect(s.grossLoss).toBe(-150)
+    expect(s.profitFactor).toBe(2)
+  })
+  it('盈利因子：没有亏损时为 null（界面写「—」，不写无穷大）；没有回合也是 null', () => {
+    expect(roundStats([round({ net: '10' }), round({ net: '20' })]).profitFactor).toBeNull()
+    expect(roundStats([]).profitFactor).toBeNull()
+    // 只有 0 的回合：亏损额是 0，同样不算
+    expect(roundStats([round({ net: '10' }), round({ net: '0' })]).profitFactor).toBeNull()
+  })
+  it('最大回撤：按平仓先后累加，峰到谷；百分比分母是那一段的峰值', () => {
+    // 累计：+100 → +300 → +150 → +50 → +400 → +250
+    const rs = [100, 200, -150, -100, 350, -150].map((n, i) => round({ net: String(n), closedAt: at(i + 1) }))
+    // 输入乱序也按平仓时间算
+    const dd = roundStats(rs.slice().reverse()).maxDrawdown
+    expect(dd.amount).toBe(250)
+    expect(dd.peak).toBe(300)
+    expect(dd.pct).toBeCloseTo(250 / 300)
+    expect(dd.peakAt).toBe(at(2))
+    expect(dd.troughAt).toBe(at(4))
+  })
+  it('最大回撤：一开始就亏（峰值 ≤ 0）时只有金额、没有百分比；一路赚就是 0', () => {
+    const dd = roundStats([round({ net: '-40', closedAt: at(1) }), round({ net: '-60', closedAt: at(2) }), round({ net: '30', closedAt: at(3) })]).maxDrawdown
+    expect(dd.amount).toBe(100)
+    expect(dd.pct).toBeNull()
+    expect(dd.peakAt).toBeNull()
+    const up = roundStats([round({ net: '10', closedAt: at(1) }), round({ net: '20', closedAt: at(2) })]).maxDrawdown
+    expect(up.amount).toBe(0)
+    expect(up.pct).toBeNull()
+  })
+  it('最大回撤：吐回全部盈利还倒亏时百分比可以超过 100%', () => {
+    const dd = roundStats([round({ net: '100', closedAt: at(1) }), round({ net: '-150', closedAt: at(2) })]).maxDrawdown
+    expect(dd.amount).toBe(150)
+    expect(dd.pct).toBeCloseTo(1.5)
+  })
+  it('最大单笔：最大一笔盈利 ÷ 净盈亏；过半且至少两个回合才算「主要来自 1 笔」', () => {
+    const s = roundStats([round({ net: '600', symbol: 'ETHUSDT', closedAt: at(1) }), round({ net: '300', closedAt: at(2) }), round({ net: '-100', closedAt: at(3) })])
+    expect(s.largestWin?.net).toBe(600)
+    expect(s.largestWin?.symbol).toBe('ETHUSDT')
+    expect(s.largestWin?.share).toBeCloseTo(0.75)
+    expect(s.dominant).toBe(true)
+    const even = roundStats([round({ net: '100' }), round({ net: '100' }), round({ net: '100' })])
+    expect(even.largestWin?.share).toBeCloseTo(1 / 3)
+    expect(even.dominant).toBe(false)
+    // 正好一半也算
+    expect(roundStats([round({ net: '50' }), round({ net: '50' })]).largestWin?.share).toBe(DOMINANT_SHARE)
+    expect(roundStats([round({ net: '50' }), round({ net: '50' })]).dominant).toBe(true)
+  })
+  it('最大单笔：只有一个回合不提示；净盈亏 ≤ 0 时没有占比；没有赚钱的回合时为 null', () => {
+    expect(roundStats([round({ net: '100' })]).dominant).toBe(false)
+    const neg = roundStats([round({ net: '100' }), round({ net: '-300' })])
+    expect(neg.largestWin?.net).toBe(100)
+    expect(neg.largestWin?.share).toBeNull()
+    expect(neg.dominant).toBe(false)
+    expect(roundStats([round({ net: '-1' })]).largestWin).toBeNull()
+  })
+  it('多空拆分：各自的净盈亏、回合数、胜率；没有的那一边 count 为 0', () => {
+    const rs = [
+      round({ net: '100', direction: 'long' }), round({ net: '-40', direction: 'long' }), round({ net: '60', direction: 'long' }),
+      round({ net: '-30', direction: 'short' }),
+      round({ net: '999', direction: 'short', status: 'open' }),
+    ]
+    const s = sideStats(rs)
+    expect(s.long.count).toBe(3)
+    expect(s.long.net).toBe(120)
+    expect(s.long.winRate).toBeCloseTo(2 / 3)
+    expect(s.short.count).toBe(1)
+    expect(s.short.net).toBe(-30)
+    expect(s.short.winRate).toBe(0)
+    const none = sideStats([round({ net: '5', direction: 'long' })]).short
+    expect(none.count).toBe(0)
+    expect(none.winRate).toBeNull()
   })
 })
 

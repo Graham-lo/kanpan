@@ -132,23 +132,53 @@ export interface RoundStats {
   /** 最长连亏（按平仓时间先后） */
   maxLosingStreak: number
   avgHoldingMs: number | null
+  /** 总盈利：赚钱回合的净盈亏合计（≥ 0） */
+  grossProfit: number
+  /** 总亏损：亏钱回合的净盈亏合计（≤ 0） */
+  grossLoss: number
+  /** 盈利因子 = 总盈利 ÷ |总亏损|；没有亏损（或没有回合）时为 null，界面写「—」，不写无穷大 */
+  profitFactor: number | null
+  maxDrawdown: Drawdown
+  /** 最大一笔盈利；没有赚钱的回合时为 null */
+  largestWin: LargestWin | null
+  /** 这段时间的盈利主要来自这一笔：占净盈亏 ≥ DOMINANT_SHARE、净盈亏为正、至少两个已平回合 */
+  dominant: boolean
 }
+
+/**
+ * 最大回撤：按平仓先后把净盈亏累加成已实现资金曲线（从 0 起），取峰到谷最大的一段。
+ * `pct` 的分母是那一段的峰值（当时的累计净盈亏）；峰值 ≤ 0（从一开始就在亏）时没有可比的本钱，为 null。
+ * 可能超过 100%：把之前赚的全吐回去还倒亏。
+ */
+export interface Drawdown { amount: number; pct: number | null; peak: number; peakAt: number | null; troughAt: number | null }
+export interface LargestWin { net: number; id: string; symbol: string; /** 占净盈亏的比例；净盈亏 ≤ 0 时为 null */ share: number | null }
+
+/** 最大单笔占净盈亏到这个比例就提示「盈利主要来自 1 笔」 */
+export const DOMINANT_SHARE = 0.5
 
 export function closedRounds(list: Round[]): Round[] { return list.filter(r => r.status === 'closed' && r.closedAt != null) }
 
 export function roundStats(list: Round[]): RoundStats {
   const rs = closedRounds(list).slice().sort((a, b) => (a.closedAt ?? 0) - (b.closedAt ?? 0))
   let net = 0, realized = 0, commission = 0, funding = 0, sumW = 0, sumL = 0, wins = 0, losses = 0, streak = 0, maxStreak = 0, hold = 0, holdN = 0
+  // 资金曲线：peak 从 0 起（还没交易时的本钱线）
+  let peak = 0, peakAt: number | null = null
+  const dd: Drawdown = { amount: 0, pct: null, peak: 0, peakAt: null, troughAt: null }
+  let best: Round | null = null, bestN = 0
   for (const r of rs) {
     const n = num(r.netPnl)
     net += n; realized += num(r.realizedPnl); commission += num(r.commission); funding += num(r.funding)
     if (n > 0) { wins++; sumW += n; streak = 0 } else { losses++; sumL += n; streak++; maxStreak = Math.max(maxStreak, streak) }
+    if (n > 0 && n > bestN) { best = r; bestN = n }
+    if (net > peak) { peak = net; peakAt = r.closedAt! }
+    else if (peak - net > dd.amount) Object.assign(dd, { amount: peak - net, peak, peakAt, troughAt: r.closedAt!, pct: peak > 0 ? (peak - net) / peak : null })
     const h = r.holdingMs ?? ((r.closedAt ?? r.openedAt) - r.openedAt)
     if (h >= 0) { hold += h; holdN++ }
   }
   const count = rs.length
   const avgWin = wins ? sumW / wins : null
   const avgLoss = losses ? sumL / losses : null
+  const share = best && net > 0 ? bestN / net : null
   return {
     count, wins, losses, net, realized, commission, funding, fees: commission - funding,
     winRate: count ? wins / count : null,
@@ -157,7 +187,18 @@ export function roundStats(list: Round[]): RoundStats {
     expectancy: count ? net / count : null,
     maxLosingStreak: maxStreak,
     avgHoldingMs: holdN ? hold / holdN : null,
+    grossProfit: sumW, grossLoss: sumL,
+    profitFactor: count && sumL < 0 ? sumW / -sumL : null,
+    maxDrawdown: dd,
+    largestWin: best ? { net: bestN, id: best.id, symbol: best.symbol, share } : null,
+    dominant: share != null && share >= DOMINANT_SHARE && count >= 2,
   }
+}
+
+/** 多空拆分：做多、做空各自的统计（没有回合的那一边 count 为 0） */
+export function sideStats(list: Round[]): Record<'long' | 'short', RoundStats> {
+  const rs = closedRounds(list)
+  return { long: roundStats(rs.filter(r => r.direction === 'long')), short: roundStats(rs.filter(r => r.direction === 'short')) }
 }
 
 export type GroupingId = 'direction' | 'symbol' | 'holding' | 'session' | 'weekday'

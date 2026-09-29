@@ -23,6 +23,11 @@
 .rv-asof { color: var(--text-3); font-size: var(--t12); }
 .rv-err { color: var(--warn); font-size: var(--t12); }
 .rv-top .kpi .k .term { color: inherit; }
+/* 交易回合一行十一格：原六格 + 盈利因子、最大回撤、最大单笔、做多、做空（2560 宽下每格约 225） */
+.rv-top .kpis-trade { grid-template-columns: repeat(11, minmax(0, 1fr)); }
+.rv-top .kpis-trade .kpi { padding: var(--s4) var(--s3); min-width: 0; }
+.rv-top .kpis-trade .kpi .d { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-warn { color: var(--warn); }
 
 /* ------------------------------------------------------------ 左边 */
 .rv-lbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 480px; }

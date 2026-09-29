@@ -4,7 +4,7 @@
  *   交易回合  手机上连的交易所只读密钥拉来的成交，服务端拼成回合、算好持仓中最大浮盈浮亏与平仓后走势；
  *   观点记录  手机或网页图表上「记一笔」写下的判断，服务端按规则判对错，战绩按相对口径分好组；
  *   相似走势  「找相似」的结果与收藏的片段。
- * 页面布局照原型：上面一整条（页签 + 六格要点），左边列表与战绩，右边回放。
+ * 页面布局照原型：上面一整条（页签 + 要点：交易回合十一格，另两个页签六格），左边列表与战绩，右边回放。
  * 回放是「还原当时的场景」：未来的 K 线与成交一律不画，放到哪儿才露到哪儿；
  * 播放条只有拖进度线与关键点跳转，没有逐根步进。时间一律上海时间。
  */
@@ -20,7 +20,7 @@ import { ReviewError, errorText, forgetSearch, rememberSearch, reviewApi, review
 import {
   GROUPINGS, OUTCOME_LABEL, ORIGIN_LABEL, CONFIRM_LABEL, TRADE_DIR_LABEL, VIEW_DIR_LABEL,
   closedRounds, distPct, equityCurve, groupByDay, groupRateText, groupRounds, judgedAt, lastWeekRounds,
-  money, num, outcomeOf, ratioPct, resolvedGroups, roundDecimals, roundStats, scoreText, sortTrades, sortViews,
+  money, num, outcomeOf, ratioPct, resolvedGroups, roundDecimals, roundStats, scoreText, sideStats, sortTrades, sortViews,
   symbolsOf, titleParts, viewSummary,
 } from '../review/model'
 import { planMatch, planNote, planTrade, type Plan } from '../review/replay'
@@ -30,6 +30,9 @@ import type { Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeR
 GLOSSARY['净盈亏'] = '已平仓回合的已实现盈亏，减去手续费，加上收到的资金费（付出的资金费是负数）。'
 GLOSSARY['盈亏比'] = '赚钱回合的平均盈利 ÷ 亏钱回合的平均亏损。'
 GLOSSARY['每笔期望'] = '净盈亏合计 ÷ 回合数：平均每做一笔赚或亏多少。'
+GLOSSARY['盈利因子'] = '赚钱回合的盈利合计 ÷ 亏钱回合的亏损合计。大于 1 说明总体在赚；没有亏过时不算。'
+GLOSSARY['最大回撤'] = '按平仓先后把净盈亏一笔笔累加，从最高点回落到之后最低点的那一段。百分比是回落额占当时最高累计盈利的比例；从一开始就在亏、没有盈利可回吐时不写百分比。'
+GLOSSARY['最大单笔'] = '赚得最多的那一笔占净盈亏的比例。过半说明这段时间的盈利主要靠这一笔。'
 GLOSSARY['最大浮盈'] = '持仓期间价格朝有利方向走得最远时，按开仓均价算的浮动盈利。'
 GLOSSARY['最大浮亏'] = '持仓期间价格朝不利方向走得最远时，按开仓均价算的浮动亏损。'
 GLOSSARY['战绩'] = '同一类判断（同品种、同方向、同确认方式，目标与失效幅度相近、时长相近）攒在一起算判对的比例；样本不够时只写「样本不足」，不拿一两笔的 0% 或 100% 冒充战绩。'
@@ -83,7 +86,7 @@ function badgeFor(symbol: string): string {
 const codeOf = (symbol: string): string => sym(symbol)?.code ?? baseOf(symbol)
 const decOf = (symbol: string, fallback = 2): number => sym(symbol)?.dec ?? fallback
 const ivText = (iv: string): string => IV_LABEL[iv] ?? iv
-const kpi = (k: string, v: string, d = '', vc = ''): string => `<div class="kpi"><div class="k">${k}</div><div class="v num ${vc}">${v}</div><div class="d">${d || '&nbsp;'}</div></div>`
+const kpi = (k: string, v: string, d = '', vc = '', id = ''): string => `<div class="kpi"${id ? ` data-kpi="${id}"` : ''}><div class="k">${k}</div><div class="v num ${vc}">${v}</div><div class="d">${d || '&nbsp;'}</div></div>`
 const outcomeTag = (o: string): string => {
   const c = o === 'realized' ? 'rv-ok' : o === 'unrealized' ? 'rv-bad' : o === 'waiting' ? 'accent' : ''
   return `<span class="tag ${c}">${OUTCOME_LABEL[o] ?? o}</span>`
@@ -221,7 +224,7 @@ function renderTop(): void {
       <span class="rv-asof">${asOf}</span>
       <button class="ibtn sm" id="rvRefresh" aria-label="刷新" data-tip="刷新" ${R.loading ? 'disabled' : ''}>${I('undo', 'icon-16')}</button>
     </div>
-    <div class="kpis">${R.tab === 'trade' ? tradeKpis() : R.tab === 'view' ? viewKpis() : similarKpis()}</div>`
+    <div class="kpis${R.tab === 'trade' ? ' kpis-trade' : ''}">${R.tab === 'trade' ? tradeKpis() : R.tab === 'view' ? viewKpis() : similarKpis()}</div>`
 }
 
 function tradeKpis(): string {
@@ -236,7 +239,31 @@ function tradeKpis(): string {
     kpi(term('每笔期望'), s.expectancy == null ? '—' : money(s.expectancy), s.count ? `最长连亏 ${s.maxLosingStreak} 笔` : '', upDown(s.expectancy ?? 0)),
     kpi('上周', lw.count ? money(lw.net) : '—', lw.count ? `${lw.count} 个回合 · 胜率 ${pct(lw.winRate, false)}` : '上周没有平仓', upDown(lw.net)),
     kpi('回合', String(s.count), `${open ? `持仓中 ${open} 个 · ` : ''}平均持仓 ${s.avgHoldingMs == null ? '—' : durText(s.avgHoldingMs)}`),
+    ...moreTradeKpis(list),
   ].join('')
+}
+
+/** 盈利因子、最大回撤、最大单笔、做多、做空（数都在 model 的 roundStats / sideStats 里算好） */
+function moreTradeKpis(list: TradeRecord['round'][]): string[] {
+  const s = roundStats(list)
+  const side = sideStats(list)
+  const dd = s.maxDrawdown
+  const lw = s.largestWin
+  const day = (t: number): string => shTime(t).split(' ')[0]
+  const sideKpi = (k: 'long' | 'short'): string => {
+    const x = side[k]
+    return kpi(TRADE_DIR_LABEL[k], x.count ? money(x.net) : '—', x.count ? `${x.count} 个回合 · 胜率 ${pct(x.winRate, false)}` : '没有平仓的回合', upDown(x.net), k)
+  }
+  return [
+    kpi(term('盈利因子'), s.profitFactor == null ? '—' : s.profitFactor.toFixed(2),
+      s.count ? `总盈利 ${money(s.grossProfit)} · 总亏损 ${money(s.grossLoss)}` : '', '', 'pf'),
+    kpi(term('最大回撤'), !s.count ? '—' : money(-dd.amount),
+      s.count ? `占峰值 ${pct(dd.pct, false)}${dd.amount && dd.peakAt != null ? ` · ${day(dd.peakAt)}起` : ''}` : '', dd.amount ? 'down' : '', 'dd'),
+    kpi(term('最大单笔'), lw?.share == null ? '—' : pct(lw.share, false),
+      !lw ? '' : s.dominant ? '<span class="rv-warn">这段时间的盈利主要来自 1 笔</span>' : `${esc(codeOf(lw.symbol))} 赚 ${money(lw.net)}`, '', 'top'),
+    sideKpi('long'),
+    sideKpi('short'),
+  ]
 }
 
 function viewKpis(): string {
