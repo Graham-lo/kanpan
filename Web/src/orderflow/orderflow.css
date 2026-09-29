@@ -42,7 +42,8 @@
 
 /* ---------------------------------------------------------------- 侧栏小部件 */
 /* 高度由 sidebar.ts 的分配写在每块的 style.height 上；侧栏本身不滚动，块与块之间一道 1 px 线，不套卡片 */
-.side-panel.stack { overflow: hidden; }
+/* 一屏放得下时不出滚动条（sidebar.ts 正好铺满）；小屏连各块 floor 都放不下时整条滚，不把底下几块裁掉 */
+.side-panel.stack { overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
 .side-panel.stack > [data-w] { flex: none; min-height: 0; overflow: hidden; border-top: 1px solid var(--line); }
 .side-panel.stack > [data-w]:first-child { border-top-color: transparent; }
 .of-w { flex: none; border-top: 1px solid var(--line); }

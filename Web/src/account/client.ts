@@ -234,6 +234,16 @@ export async function changePassword(currentPassword: string, newPassword: strin
   await authed('POST', '/v1/auth/password/change', { currentPassword, newPassword })
 }
 
+/**
+ * 注销账号：服务端把这个人的云端数据（自选、画线、提醒、复盘……）连同全部会话一起删掉（DELETE /v1/auth/account，要当前密码）。
+ * 本机这份和退出登录一样留着，只是不再同步。手机上有同一个入口（「账号 → 注销账号」），网页以前没有。
+ */
+export async function deleteAccount(password: string): Promise<void> {
+  await authed('DELETE', '/v1/auth/account', { password })
+  writeStored(null)
+  endSession(null)
+}
+
 /** 启动时：存储里有会话就接上（不发请求；access 过期了等第一次用的时候再换） */
 export function resume(): void {
   const v = readStored()

@@ -758,6 +758,26 @@ async function partAccount() {
   await p2.click('[data-me="account"]').catch(() => {}); await p2.waitForTimeout(300)
   await p2.click('#acctLogout').catch(() => {}); await p2.waitForTimeout(800)
   await ctx2.close()
+
+  // ---- 注销账号：一次性账号 <KP_USER>_<n>，注册 → 注销（点两下）→ 服务端登录被拒；密码随机生成，不进仓库
+  {
+    const { randomBytes } = await import('node:crypto')
+    const du = `${KP_USER}_${Date.now() % 100000}`, dp = 'Tmp' + randomBytes(6).toString('hex')
+    const c3 = await browser.newContext({ viewport: { width: 1600, height: 1000 } })
+    const p3 = await c3.newPage()
+    await p3.goto(`${URL_}#me`, { waitUntil: 'load' }); await p3.waitForTimeout(1000)
+    await p3.click('[data-me="account"]'); await p3.waitForTimeout(300)
+    await p3.click('[data-auth="register"]'); await p3.waitForTimeout(200)
+    await p3.fill('#acctUser', du); await p3.fill('#acctPass', dp); await p3.click('#acctGo'); await p3.waitForTimeout(2500)
+    const reg = await p3.evaluate(k => !!localStorage.getItem(k), ACCOUNT_KEY)
+    await p3.fill('#closePass', dp); await p3.click('#closeGo'); await p3.waitForTimeout(300)
+    const armed = await p3.locator('#closeGo').innerText().catch(() => '')
+    await p3.click('#closeGo'); await p3.waitForTimeout(2500)
+    const out = await p3.evaluate(k => !localStorage.getItem(k), ACCOUNT_KEY)
+    const r = await fetch(`${URL_.replace(/\/web\/.*$/, '')}/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: du, password: dp, device: { id: crypto.randomUUID(), secret: randomBytes(32).toString('hex'), name: 'regress', kind: 'desktop' } }) }).catch(() => null)
+    ok('注销账号：注册一次性账号 → 第一下只变「再点一次」、第二下才删 → 回到未登录、服务端再登录被拒', reg && /再点一次/.test(armed) && out && !!r && r.status === 401, `${du}；${armed}；登录 HTTP ${r?.status}`)
+    await c3.close()
+  }
   page.off('request', onReq)
   // 故意弄坏令牌、被顶掉时浏览器自己会打一行「401 (Unauthorized)」的资源错误，那是预期的
   const errs = sectionErrors(e0).filter(x => !/status of 401/.test(x))
@@ -886,7 +906,10 @@ async function partReview() {
   await page.goto(`${URL_}#review`, { waitUntil: 'domcontentloaded' }); await page.reload({ waitUntil: 'domcontentloaded' }); await wait(3500)
   const counts0 = await page.$$eval('[data-tab] .rv-count', ns => ns.map(n => n.textContent.trim()))
   if (!(before.data?.records || []).length) {
-    ok('空账号：三个页签计数都是 0、没有报错', counts0.join(',') === '0,0,0' && !(await page.locator('.rv-err').count()), counts0.join(' / '))
+    // 页签顺序是 交易回合 / 观点记录 / 相似走势；上面刚补传了一条观点记录，所以观点那一格等于服务端没作废的观点条数（至少 1），不是 0
+    const views0 = ((await api('GET', '/v1/native-review/records')).data?.records || []).filter(r => !r.voided).length
+    const saved0 = ((await api('GET', '/v1/native-review/saved-matches')).data?.items || []).length
+    ok('没有交易回合的账号：回合 0、观点等于服务端条数（含刚补传的那条）、相似等于收藏数，没有报错', counts0.join(',') === `0,${views0},${saved0}` && views0 >= 1 && !(await page.locator('.rv-err').count()), `${counts0.join(' / ')}（服务端观点 ${views0}、收藏 ${saved0}）`)
     await shot('复盘-空态')
   } else ok('复盘页载入（账号里已有前几轮种的数据）', counts0.length === 3, counts0.join(' / '))
 
@@ -1392,10 +1415,16 @@ async function partFlow() {
       await shotO('梯子-深度-特写', { clip: { x: lb.x - 60, y: lb.y, width: lb.width + 60 + 420, height: lb.height } })
     } else ok('悬停有成交的行', false, '等了 60 秒没有成交行')
     // ---- 双击回到中间价
+    // 自动缩放下左键拖只横移，纵向拖偏要用右键（DragPan.vertical）；以前这里用左键拖，偏移只有几十 px、断言永远红
     const cb = await canvasBox(0)
-    await page.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height * 0.3); await page.mouse.down()
-    await page.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height * 0.3 + 260, { steps: 12 }); await page.mouse.up(); await wait(500)
+    await page.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height * 0.3); await page.mouse.down({ button: 'right' })
+    await page.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height * 0.3 + 260, { steps: 12 }); await page.mouse.up({ button: 'right' }); await wait(500)
+    await page.keyboard.press('Escape')
     const off1 = (await ofd()).ladder
+    // 拖偏之后实时成交一直在跳，不能把图拽回中间价（交易员拖开是想看别处）
+    await wait(5000)
+    const off1b = (await ofd()).ladder
+    ok('右键拖偏之后 5 秒：行情在跳也不把图拽回中间价', Math.abs(off1b.midY - off1b.centerY) > 60 && Math.abs((off1b.midY - off1b.centerY) - (off1.midY - off1.centerY)) <= 30, `拖偏 ${off1.midY - off1.centerY} px → 5 秒后 ${off1b.midY - off1b.centerY} px`)
     await page.mouse.move(lb.x + lb.width / 2, lb.y + lb.height * 0.5)
     await page.mouse.dblclick(lb.x + lb.width / 2, lb.y + lb.height * 0.5); await wait(600)
     const off2 = (await ofd()).ladder
@@ -1491,6 +1520,24 @@ async function partFlow() {
     ok('换到 ETH：成交列清零重算、两块统计跟着换', d.symbol === 'ETHUSDT' && (d.trades.since == null || d.trades.since > since0), `symbol ${d.symbol} since ${since0} → ${d.trades.since}`)
     await wait(8000)
     await shotO('ETH-全页')
+
+    // ---- 八块全开：侧栏一屏放下，成交流不被挤成几行（2026-09-29 压测：以前成交比盘口先压，只剩 5 行）
+    const sideOf = () => page.evaluate(() => { const e = document.querySelector('#sidePanel'); return { w: e.clientWidth, ch: e.clientHeight, sh: e.scrollHeight, two: !!document.querySelector('#detail.two'), hs: Object.fromEntries([...e.querySelectorAll(':scope > [data-w]')].map(x => [x.dataset.w, Math.round(x.getBoundingClientRect().height)])) } })
+    const cutCells = () => page.evaluate(() => [...document.querySelectorAll('#detail .stats.inline > div')].filter(d => { const v = d.querySelector('.v'); return v.scrollWidth > v.clientWidth + 0.5 }).map(d => d.innerText.replace(/\s+/g, ' ')))
+    const sideRows = h => ({ watch: Math.floor((h.watch - 1 - 36 - 24) / 32), tape: Math.floor((h.tape - 1 - 32 - 4) / 20), walls: Math.floor((h.walls - 1 - 32 - 4) / 24) })
+    let sd = await sideOf()
+    ok('八块全开：侧栏一屏放下不出滚动条，成交流 ≥ 8 行、自选 ≥ 6 行、大单 ≥ 3 行', sd.sh <= sd.ch + 1 && sideRows(sd.hs).tape >= 8 && sideRows(sd.hs).watch >= 6 && sideRows(sd.hs).walls >= 3, `${sd.sh}/${sd.ch} ${JSON.stringify(sideRows(sd.hs))} ${JSON.stringify(sd.hs)}`)
+    const cut400 = await cutCells()
+    ok('侧栏 400 宽：详情十二格三列，没有被截成省略号的数', !sd.two && cut400.length === 0, cut400.join(' | ') || `宽 ${sd.w}`)
+    // ---- 窄侧栏：详情改两列、数字不截断，八块仍然一屏放下
+    await page.evaluate(() => localStorage.setItem('hkline-web-sizes-v1', JSON.stringify({ panel: 320 })))
+    await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(2500)
+    sd = await sideOf()
+    const cut320 = await cutCells()
+    ok('侧栏最窄 320：详情改两列、没有被截成省略号的数；八块全开仍不出滚动条、成交流 ≥ 8 行', sd.two && cut320.length === 0 && sd.sh <= sd.ch + 1 && sideRows(sd.hs).tape >= 8, `宽 ${sd.w} 两列 ${sd.two} 截断 ${cut320.join(' | ') || '无'} ${sd.sh}/${sd.ch} ${JSON.stringify(sideRows(sd.hs))}`)
+    const dbx = await page.locator('#detail').boundingBox()
+    await shotO('详情-窄侧栏两列', { clip: dbx })
+    await page.evaluate(() => localStorage.removeItem('hkline-web-sizes-v1'))
 
     // ---- 热力请求：一律收窄
     const bad = heatReqs.filter(u => u.includes('/v1/market/orderflow/heat')).filter(u => { const q = new URL(u, 'http://x').searchParams; const narrow = (q.has('lo') && q.has('hi')) || (q.has('around') && q.has('pct')); return !narrow || !q.has('bucketMs') || (+q.get('to') - +q.get('from')) > 25 * 3_600_000 })

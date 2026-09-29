@@ -15,7 +15,7 @@ import { orderId, type BigOrder, type Product } from './types'
 import { tapeBase, bpsText, tapeRowH, tapeRowAlpha, TAPE_ROW_SMALL, type TapeRow } from './tape'
 import { parseAmount } from './settings'
 import { OF, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
-import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
+import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, partsFor, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
 import { sizes, saveSizes } from '../app/sizes'
 import { StatChart, statHead, tpsLineHTML, type StatKind } from './statsView'
 import { splitter, type Splitter } from '../ui/splitter'
@@ -107,16 +107,19 @@ let fitRo: ResizeObserver | null = null
 
 /** 按侧栏高度给每块定高（sidebar.ts 的分配）；侧栏换了视图就不管了 */
 export function fitStack(el: HTMLElement): void {
-  const parts = [...el.children].filter((x): x is HTMLElement => x instanceof HTMLElement && !!x.dataset.w)
-  if (!parts.length) { el.classList.remove('stack'); return }
+  const blocks = [...el.children].filter((x): x is HTMLElement => x instanceof HTMLElement && !!x.dataset.w)
+  if (!blocks.length) { el.classList.remove('stack'); return }
   el.classList.add('stack')
   const avail = el.clientHeight
   if (!avail) return
-  const ids = parts.map(p => p.dataset.w as WidgetId)
+  const ids = blocks.map(p => p.dataset.w as WidgetId)
   const collapsed = new Set(OF.prefs.collapsed)
-  const hs = planSidebar(avail, ids, collapsed, undefined, sizes.side)
-  parts.forEach((p, i) => { const v = `${hs[i]}px`; if (p.style.height !== v) p.style.height = v })
-  placeSideSplits(el, parts, ids, hs, collapsed)
+  // 窄侧栏：详情十二格改两列（app.css .detail.two），高度跟着换
+  const parts = partsFor(el.clientWidth)
+  el.querySelector('#detail')?.classList.toggle('two', parts !== PARTS)
+  const hs = planSidebar(avail, ids, collapsed, parts, sizes.side)
+  blocks.forEach((p, i) => { const v = `${hs[i]}px`; if (p.style.height !== v) p.style.height = v })
+  placeSideSplits(el, blocks, ids, hs, collapsed)
   // 行数跟着高度走的几块：重排一次
   updateBook(); updateWalls(); updateStats(true); tapeDirty = true; scheduleTape()
 }

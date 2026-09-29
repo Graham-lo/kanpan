@@ -20,6 +20,8 @@ export const S = {
   /** 全市场表是否已从交易所拉到 */
   live: null as boolean | null,
   error: '' as string,
+  /** 全市场表没取到是因为币安限流（冷却完会自动重试），不是网络不通 */
+  limited: false,
   wsState: 'idle' as WsState,
   route: 'direct' as Route,
   lastMsg: 0,

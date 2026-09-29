@@ -529,8 +529,10 @@ function renderDetail(): void {
   } else {
     const m = findMatch(R.sel.similar)
     if (m) {
-      head.innerHTML = matchHead(m); foot.innerHTML = matchFoot(m, null)
       plan = planMatch(m, now)
+      // 同一段已经在放（列表刷新、再点一次同一行）时不会重新载入，「后来」要按已拉到的 K 线当场补上，
+      // 否则这里一重画就把载入后算好的那格冲回「载入后计算」，而且再也不会回来
+      head.innerHTML = matchHead(m); foot.innerHTML = matchFoot(m, R.playing === key ? afterMove(plan) : null)
       meta = { title: esc(codeOf(m.range.symbol)), dec: decOf(m.range.symbol), badge: badgeFor(m.range.symbol) }
     }
   }

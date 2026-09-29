@@ -38,7 +38,7 @@ import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawb
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
-  S, on, klines, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
+  S, on, REST, coolingFor, isRateLimit, klines, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
   IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, type Kind, type Sym,
 } from '../market'
 
@@ -241,7 +241,12 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   if (ok && !bars.length && isSecondIv(c.iv)) showCellEmpty(cell, '等第一笔成交', true)
   else if (!ok || !bars.length) {
     cell.chart.setData([], metaFor(c))
-    showCellEmpty(cell, ok ? `${c.symbol} 在这个周期上还没有 K 线` : `取不到 ${c.symbol} 的 K 线${error ? `（${error.split(' ')[0]}）` : ''}`)
+    const limited = !ok && isRateLimit(error)
+    showCellEmpty(cell, ok ? `${c.symbol} 在这个周期上还没有 K 线`
+      : limited ? `币安限流了，${c.symbol} 的 K 线冷却后自动重取`
+      : `取不到 ${c.symbol} 的 K 线${error ? `（${error.split(' ')[0]}）` : ''}`)
+    // 限流：冷却一过这一格自己再取（期间换了品种 / 周期就作废），不让用户对着空图去点
+    if (limited) setTimeout(() => { if (token === cell.loadToken) void loadCell(cell) }, Math.max(coolingFor(REST), 5000) + 500)
   } else showCellEmpty(cell, null)
   cell.chart.setData(bars, metaFor(c))
   // 测量框是临时的，不进存档
@@ -1158,8 +1163,19 @@ export async function initChart(): Promise<void> {
     dec: s => sym(s)?.dec ?? 2, crypto: s => (sym(s)?.kind ?? 'crypto') === 'crypto', turnover: s => sym(s)?.vol ?? null,
   })
   await loadUniverse()
-  if (!S.live) toast('连不上币安合约接口', S.error || '检查网络后点图上的「重试」', 'wifiOff', 8000)
+  if (!S.live) toast(S.limited ? '币安限流了' : '连不上币安合约接口', S.error || '检查网络后点图上的「重试」', 'wifiOff', 8000)
   afterUniverse()
+  retryUniverseAfterCooldown()
+}
+
+/** 品种表是被限流挡掉的：冷却一过自己再取一次，不要等用户点「重试」 */
+function retryUniverseAfterCooldown(): void {
+  if (S.live || !S.limited) return
+  setTimeout(async () => {
+    if (S.live) return
+    await loadUniverse()
+    if (S.live) { afterUniverse(); cells.forEach(c => void loadCell(c)) } else retryUniverseAfterCooldown()
+  }, Math.max(coolingFor(REST), 5000) + 500)
 }
 
 export { cfg, buildCells }

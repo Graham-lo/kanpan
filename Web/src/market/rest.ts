@@ -6,16 +6,20 @@
  */
 import type { Bar } from '../chart/calc'
 import { S, emit } from './state'
+import { RateLimited, coolingFor, isRateLimit, noteStatus } from './limit'
 import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
 
 export const REST = 'https://fapi.binance.com'
 
 export async function j<T = unknown>(url: string, ms = 8000): Promise<T> {
+  // 主机在限流冷却里就不发：429 之后接着打会被升级成 418 封 IP（见 limit.ts）
+  const wait = coolingFor(url)
+  if (wait > 0) throw new RateLimited(url, wait)
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
     const r = await fetch(url, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
-    if (!r.ok) throw new Error(`${r.status} ${url}`)
+    if (!r.ok) { noteStatus(url, r.status, r.headers.get('Retry-After')); throw new Error(`${r.status} ${url}`) }
     return await r.json() as T
   } finally { clearTimeout(t) }
 }
@@ -62,11 +66,13 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
     }
     S.symbols = next
     S.live = true
+    S.limited = false
     S.error = ''
   } catch (e) {
     console.warn('[hkline] 币安合约接口不可达', e)
     S.live = false
-    S.error = String((e as Error)?.message || e)
+    S.limited = isRateLimit(e)
+    S.error = S.limited ? `请求太密，${Math.ceil(Math.max(coolingFor(REST), 1000) / 1000)} 秒后自动重试` : String((e as Error)?.message || e)
   }
   emit({ type: 'universe' })
   return S.symbols

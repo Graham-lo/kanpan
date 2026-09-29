@@ -368,7 +368,9 @@ export class TVChart {
     this.o.onViewChange(this.timeOfIndex(this.xToIndex(0)), this.timeOfIndex(this.rightBar))
   }
   setData(bars: Bar[], meta: ChartMetaInput): void {
-    const sameSym = this.meta.symbol === meta.symbol && this.iv === meta.iv
+    // 上一份是空的（取 K 线失败、限流后重取）也要当新品种摆：否则视口还停在空数据的下标上，
+    // 重取回来的 1500 根只露出最老的那几根，价格轴也按几十天前的价位摆
+    const sameSym = this.meta.symbol === meta.symbol && this.iv === meta.iv && this.bars.length > 0
     this.bars = bars
     this.iv = meta.iv
     this.meta = Object.assign({}, this.meta, meta)

@@ -13,3 +13,7 @@
 /* 修改密码与上面的账号组同宽：两格输入 + 按钮一行，错误提示另起一行 */
 #pwForm { max-width: 880px; grid-template-columns: 1fr 1fr auto; align-items: end; }
 #pwForm .err { grid-column: 1 / -1; order: 1; }
+/* 注销账号：和修改密码同一种一行排版，说明一行在上，按钮是危险色 */
+#closeForm { max-width: 880px; grid-template-columns: 1fr auto; align-items: end; }
+#closeForm .acct-warn { grid-column: 1 / -1; color: var(--text-2); font-size: var(--t13); }
+#closeForm .err { grid-column: 1 / -1; order: 1; }

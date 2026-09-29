@@ -5,7 +5,7 @@ import { $, I, esc, tgt } from '../ui/dom'
 import { toast } from '../ui/overlay'
 import { setRoute } from '../market'
 import { session, onSession } from '../account/session'
-import { login, logout, devices, kick, changePassword, errorText, type DeviceRow } from '../account/client'
+import { login, logout, devices, kick, changePassword, deleteAccount, errorText, type DeviceRow } from '../account/client'
 import { sh, pad } from '../util/format'
 import { openShortcuts, renderPanel, refreshStreams } from './chart'
 import { tvImportHTML, tvImportClick, tvImportChange, onTvImported } from '../watch/importPanel'
@@ -59,6 +59,14 @@ function accountHTML(): string {
       <div class="field"><label for="pwNew">新密码</label><input class="input lg" id="pwNew" type="password" autocomplete="new-password" placeholder="至少 8 位，字母加数字"></div>
       <div class="err" id="pwErr" role="alert"></div>
       <button class="btn secondary lg" type="submit" id="pwGo">修改密码</button>
+    </form>
+    <div class="group-title">注销账号</div>
+    <form class="group acct-card" id="closeForm" novalidate>
+      <input type="text" name="username" autocomplete="username" value="${esc(u)}" hidden>
+      <div class="acct-warn">云端的自选、画线、提醒、复盘记录会全部删除，不能恢复；这台电脑上的数据留着</div>
+      <div class="field"><label for="closePass">密码</label><input class="input lg" id="closePass" type="password" autocomplete="current-password"></div>
+      <div class="err" id="closeErr" role="alert"></div>
+      <button class="btn danger lg" type="submit" id="closeGo">${closeArmed ? '再点一次，确认注销' : '注销账号'}</button>
     </form>`
 }
 
@@ -153,6 +161,36 @@ async function submitPassword(): Promise<void> {
   } finally { busy = false }
 }
 
+/** 注销要点两次：第一次只把按钮变成「再点一次，确认注销」，5 秒内再点才真的删 */
+let closeArmed = false
+let closeTimer: ReturnType<typeof setTimeout> | null = null
+async function submitClose(): Promise<void> {
+  if (busy) return
+  const pw = val('closePass')
+  if (!pw) { setErr('closeErr', '要填当前密码'); return }
+  const btn = document.getElementById('closeGo') as HTMLButtonElement | null
+  if (!closeArmed) {
+    closeArmed = true
+    if (btn) btn.textContent = '再点一次，确认注销'
+    setErr('closeErr', '')
+    if (closeTimer) clearTimeout(closeTimer)
+    closeTimer = setTimeout(() => { closeArmed = false; const b = document.getElementById('closeGo'); if (b) b.textContent = '注销账号' }, 5000)
+    return
+  }
+  closeArmed = false
+  if (closeTimer) { clearTimeout(closeTimer); closeTimer = null }
+  busy = true
+  if (btn) btn.disabled = true
+  try {
+    await deleteAccount(pw)
+    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
+    toast('账号已注销', '云端数据已删除，这台电脑上的数据留着', 'check', 4000)
+  } catch (e) {
+    setErr('closeErr', errorText(e, 'password'))
+    if (btn) { btn.disabled = false; btn.textContent = '注销账号' }
+  } finally { busy = false }
+}
+
 function notifText(): string {
   if (!('Notification' in window)) return '这个浏览器不支持'
   return ({ granted: '已允许', denied: '被浏览器拦了，要在地址栏左边的站点设置里打开', default: '还没问过' } as Record<NotificationPermission, string>)[Notification.permission]
@@ -217,6 +255,7 @@ export function initMe(): void {
     const f = e.target as HTMLElement
     if (f.id === 'acctForm') { e.preventDefault(); void submitAuth() }
     else if (f.id === 'pwForm') { e.preventDefault(); void submitPassword() }
+    else if (f.id === 'closeForm') { e.preventDefault(); void submitClose() }
   })
   // 登录 / 退出 / 被另一台电脑顶掉：头像、我的页跟着变；不在「我的」时弹一句
   onSession(() => {

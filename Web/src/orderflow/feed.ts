@@ -15,6 +15,7 @@ import type { Action, Thresholds, Trade, Venue, Product, Notional } from './type
 import { usdOf, venueId } from './types'
 import { OrderFlowModel, parseHistory, latestMs, type Snapshot } from './model'
 import { BucketScheme } from './bucket'
+import { coolingFor, noteStatus } from '../market/limit'
 import { D, applyOverride, baseOfSymbol, calibratedThreshold, defaultThresholds, isValidBase, needsCalibration, type Override } from './settings'
 import {
   type DepthBook, type BinanceMarket, binanceMarket, binanceSnapshot, binanceStreams, BINANCE_SNAPSHOT_LEVELS,
@@ -56,10 +57,13 @@ export const coveredFrom = (p: { fromMs: number; nextBefore: number | null }): n
   p.nextBefore != null && p.nextBefore > p.fromMs ? p.nextBefore : p.fromMs
 
 export async function getJSON(url: string, ms: number): Promise<{ status: number; body: unknown }> {
+  // 主机在限流冷却里就不发，当作 429 回去（见 market/limit.ts）
+  if (coolingFor(url) > 0) return { status: 429, body: null }
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
     const r = await fetch(url, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
+    noteStatus(url, r.status, r.headers.get('Retry-After'))
     const body = r.ok ? await r.json() : null
     return { status: r.status, body }
   } finally { clearTimeout(t) }
@@ -417,7 +421,8 @@ export class OrderFlowFeed {
       this.handle(b.id, this.model.applySnapshot(b.id, msg.snapshot, Date.now()))
     } catch {
       if (this.stopped) return
-      setTimeout(() => { if (!this.stopped && !this.model.isReady(b.id)) void this.fetchSnapshot(b) }, 3000)
+      // 限流冷却中就等冷却完再拉，不按 3 秒一次去撞
+      setTimeout(() => { if (!this.stopped && !this.model.isReady(b.id)) void this.fetchSnapshot(b) }, Math.max(3000, coolingFor(url)))
     }
   }
 

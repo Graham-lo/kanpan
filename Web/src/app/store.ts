@@ -231,10 +231,57 @@ if (loaded.corrupt || sanitizeDrawings(loaded.saved.drawings).damaged) markDrawi
 const subs = new Set<(s: State) => void>()
 export function subscribe(fn: (s: State) => void): () => void { subs.add(fn); return () => { subs.delete(fn) } }
 
-export function save(): void {
+/* 同一浏览器开了两个标签页：每页内存里各有一份 st，谁 save 谁把整份写进同一个键。
+ * 以前后台那页一存（同步拉到东西、提醒响了、切了个周期）就把另一页刚改的主题、画线、自选整份盖回旧的。
+ * 规矩：人最近一次动过的那页（按键 / 按下指针）内存为准。每次写盘顺带记下「写的这页最近一次被人动的时刻」；
+ *   · 别的页写了，而它比我更近被人动过：我这份旧了，此后不再写盘；人一回到这页（获得焦点、变可见、
+ *     或者直接在这页上点 / 按键）就整页重载，读新的；
+ *   · 别的页写了，但我才是更近被人动过的（它是后台自动存的旧内存）：立刻用我这份写回去。
+ * 不靠 document.hasFocus()：并排两个窗口、无头浏览器里它都不可靠。 */
+const WRITER_KEY = KEY + '-writer'
+let stale = false
+let touchedAt = 0
+export const tabGuard = {
+  /** 别的标签页写了 KEY；theirs = 它写时记下的「最近被人动的时刻」 */
+  onForeignWrite(theirs: number): 'stale' | 'repair' {
+    if (stale || theirs >= touchedAt) { stale = true; return 'stale' }
+    write(); return 'repair'
+  },
+  touch(now = Date.now()): void { touchedAt = now },
+  get stale(): boolean { return stale },
+  reset(): void { stale = false; touchedAt = 0 },
+}
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  window.addEventListener('storage', e => {
+    if (e.key !== KEY && e.key !== null) return
+    let theirs = Infinity
+    try { theirs = Number(JSON.parse(localStorage.getItem(WRITER_KEY) || '{}').at) || 0 } catch { /* 读不到按对方更新算 */ }
+    tabGuard.onForeignWrite(theirs)
+  })
+  const back = (): void => { if (stale) location.reload() }
+  // 人在这页上动手：旧了就先重载（这一下不生效，免得改在旧内存上又被丢掉），没旧就记下时刻
+  const hand = (e: Event): void => {
+    if (stale) { e.preventDefault(); e.stopImmediatePropagation(); location.reload(); return }
+    tabGuard.touch()
+  }
+  window.addEventListener('pointerdown', hand, true)
+  window.addEventListener('keydown', hand, true)
+  window.addEventListener('focus', back)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') back() })
+}
+
+function write(): void {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(st)) if (!TRANSIENT.includes(k as keyof State)) out[k] = v
-  try { localStorage.setItem(KEY, JSON.stringify(out)) } catch { /* 存储满了就不存 */ }
+  try {
+    localStorage.setItem(WRITER_KEY, JSON.stringify({ at: touchedAt }))
+    localStorage.setItem(KEY, JSON.stringify(out))
+  } catch { /* 存储满了就不存 */ }
+}
+
+export function save(): void {
+  // 这份已经被别的标签页比下去了：不写盘（写了就把新的盖成旧的），切回来会重载
+  if (!stale) write()
   subs.forEach(fn => fn(st))
 }
 

@@ -613,6 +613,8 @@ kbd {
 .stats.inline > div { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; height: 22px; line-height: 22px; min-width: 0; }
 .stats.inline .k { flex: none; }
 .stats.inline .v { margin: 0; font-size: var(--t13); line-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 侧栏窄于 400（sidebar.ts DETAIL_2COL_BELOW）时两列：三列每格只剩 85–100 px，数字会被截成省略号；高度由 fitStack 同步加 48 */
+.detail.two .stats.inline { grid-template-columns: 1fr 1fr; }
 .detail .range .bar { flex: 1; height: var(--stroke-bar); border-radius: 2px; background: linear-gradient(90deg, var(--down), var(--up)); position: relative; opacity: .9; }
 .detail .range .bar i { position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--text-1); }
 .stats .k { font-size: var(--t12); color: var(--text-2); line-height: 16px; }

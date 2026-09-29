@@ -81,7 +81,7 @@ export function widgetWatch(): string {
   const cur = D.current()
   const list = rows()
   const empty = !S.symbols.size
-    ? `<div class="empty">${I('wifiOff', 'icon-24')}<div>${S.live === false ? '连不上币安合约接口' : '正在取行情…'}</div></div>`
+    ? `<div class="empty">${I('wifiOff', 'icon-24')}<div>${S.live === false ? (S.limited ? '币安限流了，冷却后自动重试' : '连不上币安合约接口') : '正在取行情…'}</div></div>`
     : `<div class="empty">${I('star', 'icon-24')}<div>这一类还没有自选</div><button class="btn secondary sm" style="margin-top:12px" id="wAdd2">搜索品种</button></div>`
   const c = D.collapsed()
   if (!list.includes(kb.cursor)) kb.cursor = list.includes(cur) ? cur : list[0] || ''

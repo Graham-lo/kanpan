@@ -4,7 +4,11 @@
  *   自选 ≥ 8 行（行高 32）、详情约 230、盘口「交易所 × 产品」表 + 8 档、成交 10 行、大单 6 行、提醒余下；
  *   24 小时流动性 / 成交两块定高 120。
  * 每块都能收起（收起只剩标题行），收起省下来的高度：先保证展开的各块到最小，再平均分给能长的块。
- * 实在放不下（小屏）就按优先级从低到高往 floor 压（提醒 → 大单 → 成交 → 自选 → 盘口），详情与两块统计是定高不压。
+ * 实在放不下就按优先级从低到高往 floor 压（提醒 → 大单 → 盘口档数 → 两块统计的图 → 成交 → 自选），详情不压。
+ * 八块全开（2560×1440 侧栏 1384）时放得下：自选 7 行、盘口 4 档、成交 8 行、大单 3 行、提醒 1 行，统计图 72 高；
+ * 侧栏窄（< DETAIL_2COL_BELOW）时详情十二格改两列、高 +48，自选再让到 5 行，仍然一屏放下。
+ * 以前成交排在盘口前面先压、floor 只有 5 行，八块全开时成交流被挤成 5 行而盘口还留着整 8 档（2026-09-29 压测）。
+ * 再小的屏连 floor 都放不下时侧栏整条可以滚（orderflow.css），不再把下面几块直接裁掉看不见。
  */
 import type { WidgetId } from '../app/store'
 
@@ -34,21 +38,32 @@ export const BOOK_ROW = 17
 export const ALERT_ROW = 26
 export const DETAIL_H = 252
 export const DETAIL_HEAD = 52
+/** 侧栏比这窄时详情十二格改成两列（三列每格只剩 85–100 px，「下次结算 07:59:59」「标记价 83,103.6」都会被截成省略号） */
+export const DETAIL_2COL_BELOW = 400
+/** 两列时详情的高：多两行 × (22 + 2) */
+export const DETAIL_H_2COL = DETAIL_H + 48
 /** 24 小时流动性 / 成交两块的高（含标题行） */
 export const STAT_H = 120
 
 /** 各块的尺寸（和 orderflow.css / app.css 里的行高一一对应） */
 export const PARTS: Record<WidgetId, PartSpec> = {
-  watch: { head: WATCH_HEAD + SEP, min: SEP + WATCH_HEAD + WATCH_THEAD + 8 * WATCH_ROW, floor: SEP + WATCH_HEAD + WATCH_THEAD + 4 * WATCH_ROW, shrink: 3 },
+  watch: { head: WATCH_HEAD + SEP, min: SEP + WATCH_HEAD + WATCH_THEAD + 8 * WATCH_ROW, floor: SEP + WATCH_HEAD + WATCH_THEAD + 5 * WATCH_ROW, shrink: 5 },
   detail: { head: DETAIL_HEAD + SEP, min: DETAIL_H + SEP, floor: DETAIL_H + SEP, fixed: true, shrink: 9 },
   // 盘口：标题 32 + 压力 44 + 交易所表 94 + 分档表头 20 + 8 档 × 17 + 底 4
-  book: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 44 + 94 + 20 + 8 * BOOK_ROW + 4, floor: SEP + WIDGET_HEAD + 44 + 94 + 20 + 4 * BOOK_ROW + 4, shrink: 4 },
-  tape: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 10 * TAPE_ROW + 4, floor: SEP + WIDGET_HEAD + 5 * TAPE_ROW + 4, shrink: 2 },
+  book: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 44 + 94 + 20 + 8 * BOOK_ROW + 4, floor: SEP + WIDGET_HEAD + 44 + 94 + 20 + 4 * BOOK_ROW + 4, shrink: 2 },
+  tape: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 10 * TAPE_ROW + 4, floor: SEP + WIDGET_HEAD + 8 * TAPE_ROW + 4, shrink: 4 },
   walls: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 6 * WALL_ROW + 4, floor: SEP + WIDGET_HEAD + 3 * WALL_ROW + 4, shrink: 1 },
   // 24 小时流动性 / 成交：定高 120（标题 32 + 图 88），不参与分多出来的高度
-  liq: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H, fixed: true, shrink: 8 },
-  vol: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H, fixed: true, shrink: 8 },
+  // 挤不下时图可以从 88 压到 72（画布跟着宿主高重画）
+  liq: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H - 16, fixed: true, shrink: 3 },
+  vol: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H - 16, fixed: true, shrink: 3 },
   alerts: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 2 * ALERT_ROW + 4, floor: SEP + WIDGET_HEAD + ALERT_ROW + 4, shrink: 0 },
+}
+
+/** 按侧栏宽取尺寸表：窄侧栏的详情是两列、更高 */
+export function partsFor(width: number): Record<WidgetId, PartSpec> {
+  if (!(width > 0) || width >= DETAIL_2COL_BELOW) return PARTS
+  return { ...PARTS, detail: { ...PARTS.detail, min: DETAIL_H_2COL + SEP, floor: DETAIL_H_2COL + SEP } }
 }
 
 /**

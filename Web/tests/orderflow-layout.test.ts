@@ -4,7 +4,7 @@ import {
   pickBands, liveAlpha, placeLabels, placeMark, overlaps,
   MAX_LIVE_BANDS, MAX_ENDED_BANDS, MAX_LABELS, LIVE_ALPHA, ENDED_LINE, type BandCand, type Rect, type LabelReq,
 } from '../src/orderflow/bands'
-import { planSidebar, rowsThatFit, toggleCollapsed, PARTS, WATCH_ROW, WATCH_HEAD, WATCH_THEAD, SEP, TAPE_ROW, WALL_ROW, BOOK_ROW, WIDGET_HEAD } from '../src/orderflow/sidebar'
+import { planSidebar, partsFor, rowsThatFit, toggleCollapsed, PARTS, DETAIL_H_2COL, WATCH_ROW, WATCH_HEAD, WATCH_THEAD, SEP, TAPE_ROW, WALL_ROW, BOOK_ROW, WIDGET_HEAD } from '../src/orderflow/sidebar'
 import { HEAT_MAX_ALPHA, heatAlpha, edgeFade } from '../src/orderflow/heat'
 import { layerSpot } from '../src/orderflow/settings'
 import type { WidgetId } from '../src/app/store'
@@ -214,6 +214,35 @@ describe('planSidebar：2560×1440 下一屏放下、不滚动', () => {
     expect(h[1]).toBe(PARTS.detail.min)
     const tiny = planSidebar(300, ALL, none)
     ALL.forEach((id, i) => expect(tiny[i]).toBeGreaterThanOrEqual(PARTS[id].floor))
+  })
+
+  it('八块全开（含两块统计）：一屏放下，成交 ≥ 8 行、自选 ≥ 6 行、盘口 ≥ 4 档、大单 ≥ 3 行', () => {
+    // 2026-09-29 压测：以前成交比盘口先压、floor 只有 5 行，八块全开时成交流只剩 5 行、盘口还留着整 8 档
+    const EIGHT: WidgetId[] = ['watch', 'detail', 'book', 'tape', 'walls', 'liq', 'vol', 'alerts']
+    expect(sum(EIGHT.map(id => PARTS[id].floor))).toBeLessThanOrEqual(AVAIL)
+    const h = planSidebar(AVAIL, EIGHT, none)
+    expect(sum(h)).toBe(AVAIL)
+    const [watch, detail, book, tape, walls, liq, vol, alerts] = h
+    expect(rowsThatFit(tape, WIDGET_HEAD, TAPE_ROW)).toBeGreaterThanOrEqual(8)
+    expect(Math.floor((watch - SEP - WATCH_HEAD - WATCH_THEAD) / WATCH_ROW)).toBeGreaterThanOrEqual(6)
+    expect(Math.floor((book - SEP - WIDGET_HEAD - 44 - 94 - 20 - 4) / BOOK_ROW)).toBeGreaterThanOrEqual(4)
+    expect(rowsThatFit(walls, WIDGET_HEAD, WALL_ROW)).toBeGreaterThanOrEqual(3)
+    expect(alerts).toBeGreaterThanOrEqual(PARTS.alerts.floor)
+    expect(detail).toBe(PARTS.detail.min)
+    expect(Math.min(liq, vol)).toBeGreaterThanOrEqual(PARTS.liq.floor)
+  })
+
+  it('窄侧栏：详情改两列、高 +48，八块全开仍然一屏放下、成交 ≥ 8 行', () => {
+    const EIGHT: WidgetId[] = ['watch', 'detail', 'book', 'tape', 'walls', 'liq', 'vol', 'alerts']
+    expect(partsFor(400)).toBe(PARTS)
+    expect(partsFor(0)).toBe(PARTS)
+    const narrow = partsFor(320)
+    expect(narrow.detail.min).toBe(DETAIL_H_2COL + SEP)
+    const h = planSidebar(AVAIL, EIGHT, none, narrow)
+    expect(sum(h)).toBe(AVAIL)
+    expect(h[1]).toBe(DETAIL_H_2COL + SEP)
+    expect(rowsThatFit(h[3], WIDGET_HEAD, TAPE_ROW)).toBeGreaterThanOrEqual(8)
+    EIGHT.forEach((id, i) => expect(h[i]).toBeGreaterThanOrEqual(narrow[id].floor))
   })
 
   it('不认识的块高度记 0', () => {
