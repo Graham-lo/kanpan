@@ -145,25 +145,48 @@ function toggleLineAlert(sym: string, d: Drawing): boolean {
   return true
 }
 
-/** 线挪了 / 删了：挂在它上面的提醒跟着改 / 摘（AlertStore.reconcile） */
 /** 这只品种上挂着没响的提醒的那几条线（画线自己的 id） */
 export function alertedLineIds(sym: string): Set<string> {
   const pre = drawingIdOf(sym, '')
   return new Set(activeAlerts(sym).filter(a => a.kind === 'drawing' && a.drawingID?.startsWith(pre)).map(a => a.drawingID!.slice(pre.length)))
 }
 
+/**
+ * 上一次对账见过的线（品种 → 画线提醒 id 形状的线 id），当「删之前」。照 iOS AlertStore.seenDrawings /
+ * AlertArchive.reconcile：只有上一份里有、这一份里没有的线才算删了，挂在上面的提醒跟着撤；
+ * 说不清来历的缺线（同步逐页拉，提醒先到、线还在下一页；本机存档读坏）不动，线到了照常对上。
+ */
+const seenLines = new Map<string, Set<string>>()
+
+/** 线挪了 / 删了：挂在它上面的提醒跟着改 / 摘（AlertStore.reconcile） */
 export function reconcileLineAlerts(sym: string, drawings: readonly Drawing[]): void {
+  const prior = seenLines.get(sym)
   const byId = new Map(drawings.map(d => [drawingIdOf(sym, d.id), d]))
+  seenLines.set(sym, new Set(byId.keys()))
   let dirty = false
   for (const a of activeAlerts(sym)) {
     if (a.kind !== 'drawing' || !a.drawingID) continue
     const d = byId.get(a.drawingID)
-    const lines = d ? alertLinesOf(d) : null
-    if (!d || !lines) { deleteAlert(a.id); continue }
+    if (!d) { if (prior?.has(a.drawingID)) deleteAlert(a.id); continue }
+    const lines = alertLinesOf(d)
+    if (!lines) { deleteAlert(a.id); continue }
     if (JSON.stringify(lines) !== JSON.stringify(a.lines)) { a.lines = lines; a.armedAt = Date.now(); dirty = true }
   }
   if (dirty) { save(); alertsReplaced() }
 }
+
+/**
+ * 整批换进来的画线（云端同步、别的标签页、换账号）逐只对账提醒：线被删了撤提醒、线挪了跟着改。
+ * 不止行情页上正显示的这一只——别的品种的线被别的设备删了，它上面的提醒一样要撤，不然成了孤儿照样响。
+ * keys 是换了的桶（规范键 binance/usd_m/代号）；行情页挂上来时拿整本的键调一次，记下「删之前」。
+ */
+export function reconcileLineAlertsIn(itemsOf: (key: string) => readonly Drawing[], keys: Iterable<string>): void {
+  const pre = MARKET + '/'
+  for (const k of keys) if (k.startsWith(pre)) reconcileLineAlerts(k.slice(pre.length), itemsOf(k))
+}
+
+/** 测试用：忘掉见过的线 */
+export function resetSeenLines(): void { seenLines.clear() }
 
 // ───────────────────────────── 工作台
 

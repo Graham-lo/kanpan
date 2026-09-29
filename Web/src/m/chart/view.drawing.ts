@@ -383,16 +383,18 @@ export class DrawingController {
   private bookChanged(change: DrawingBookChange): void {
     const key = this.key
     if (key == null) return
+    // 别处改了这只（另一张图、同步整批换进来、setDrawings 整桶换）也把最终的线交给 onChanged：
+    // 宿主靠它对账画线提醒，线被同步删了提醒要跟着撤，不能只重画
     if (change.kind === 'edited') {
       if (change.key !== key || this.committing) return
       this.reproject()
       if (this._selected != null && !this.drawings.some(d => d.id === this._selected)) this._selected = null
-      this.changed()
+      this.changed(this.drawings)
     } else {
       if (!change.keys.has(key)) return
       this.resetInteraction()
       this.reproject(s => (s.overlay.drawingPreviewID == null ? s : withOverlay(s, { drawingPreviewID: null })))
-      this.changed()
+      this.changed(this.drawings)
     }
   }
 

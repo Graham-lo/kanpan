@@ -108,7 +108,7 @@ const c = attachDrawing(chart.view)    // 接好投影、投影键、换键回�
 c.bindDrawings(book)                   // 共享的一本线（DrawingBook，按品种分桶、各自撤销史）；之后线只从本里来
 c.editable = drawingMode               // 不在画线态时收手：点中旧线也不选中
 c.setTool('trendLine')                 // DrawTool = DrawingKind；null 退出工具
-c.onChanged = items => save(items)     // 线变了（落成、拖动、删除、撤销）就存盘 / 同步
+c.onChanged = items => save(items)     // 线变了（落成、拖动、删除、撤销，以及同步 / setDrawings 整桶换进来）就交出最终的线
 c.onFull = () => toast('本品种画线已满')
 c.onFeedback = k => toast(k)           // 'snapped' | 'rejected' | 'removed' | 'locked' | 'unlocked'
 ```

@@ -365,3 +365,50 @@ describe('画线审查：画到一半换品种 / 换周期 / 系统取消', () =
     c.undo(); c.redo(); c.duplicateSelected(); c.clear()
   })
 })
+
+describe('画线审查：别处整桶换线也把最终的线交给 onChanged', () => {
+  // 宿主靠 onChanged 对账画线提醒（reconcileLineAlerts）。原来同步整本换（book.replace）、setDrawings 整桶换、
+  // 另一张图改了同一只都只重画不回调，被云端删掉的线上的提醒就成了孤儿。
+  const line = (id: string, p: number): Drawing => decodeDrawing({ id, kind: 'hline', points: [{ t: 1_700_000_000_000, p }] })
+
+  test('同步整本换进来：这只的最终线交给 onChanged；别的品种变了不回调', () => {
+    const r = rig()
+    const book = new DrawingBook()
+    r.c.bindDrawings(book)
+    book.replaceBucket([line('a', 62_000), line('b', 63_000)], 'BTCUSDT')
+    const got: string[][] = []
+    r.c.onChanged = items => got.push(items.map(d => d.id))
+    const next = book.archive.clone()
+    next.set('binance/usd_m/BTCUSDT', [line('b', 63_000)])
+    book.replace(next)
+    expect(got, '同步删掉 a 之后没交出最终的线').toEqual([['b']])
+    const other = book.archive.clone()
+    other.set('binance/usd_m/ETHUSDT', [line('x', 3_000)])
+    book.replace(other)
+    expect(got.length, '别的品种的桶换了，不该回调这张图').toBe(1)
+  })
+
+  test('setDrawings 整桶换：onChanged 拿到换进来的线', () => {
+    const r = rig()
+    const book = new DrawingBook()
+    r.c.bindDrawings(book)
+    const got: string[][] = []
+    r.c.onChanged = items => got.push(items.map(d => d.id))
+    r.c.setDrawings([line('p', 61_000), line('q', 62_500)])
+    expect(got).toEqual([['p', 'q']])
+  })
+
+  test('另一张图删了同一只的线：这张图也交出最终的线', () => {
+    const r = rig()
+    const book = new DrawingBook()
+    r.c.bindDrawings(book)
+    const r2 = rig()
+    r2.c.bindDrawings(book)
+    const d = hlineAt(r2, 260)
+    const got: string[][] = []
+    r.c.onChanged = items => got.push(items.map(x => x.id))
+    r2.c.deleteSelected()
+    expect(book.items('BTCUSDT').some(x => x.id === d.id)).toBe(false)
+    expect(got.at(-1), '另一张图删线，这张图没回调').toEqual([])
+  })
+})
