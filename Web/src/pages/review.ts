@@ -115,6 +115,8 @@ async function load(): Promise<void> {
   R.loadedAt = Date.now()
   if (R.symbol !== 'all' && !R.trades.some(x => x.round.symbol === R.symbol)) R.symbol = 'all'
   applyWanted()
+  // 回合 / 观点先画出来（从侧栏成交跳进来要马上看到选中的那一回合），本机记着的相似搜索要逐个问，问完再补画
+  if (R.shown) render()
   await refreshSearches()
   if (!R.shown) return
   render()
@@ -709,9 +711,10 @@ async function startFind(viewId: string, btn: HTMLButtonElement): Promise<void> 
     rememberSearch({ id: job.id, symbol: r.symbol, iv: r.interval, bars: r.bars, label: `${codeOf(r.symbol)} ${ivText(r.interval)} · ${r.bars} 根`, created: Date.now() })
     R.searches.set(job.id, { meta: storedSearches()[0], status: { id: job.id, status: job.status as SearchStatus['status'], checked: 0, processed: 0, total: 0, error: null }, results: null, error: null })
     toast('开始找相似', '在全市场历史里找和这段走势像的片段，找完会列在「相似走势」', 'search')
-    R.tab = 'similar'; savePref()
+    // 先切过去（「排队中」这一条立刻就在），进度再慢慢补
+    R.tab = 'similar'; savePref(); player?.stop(); render()
     await refreshSearches()
-    render()
+    if (R.shown) render()
   } catch (err) {
     toast('找相似没发起', errorText(err), 'info')
     btn.disabled = false

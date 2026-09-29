@@ -54,6 +54,9 @@ const cdp = await ctx.newCDPSession(page)
 
 const wait = ms => page.waitForTimeout(ms)
 const shot = async name => { await page.screenshot({ path: `${OUT}/回归-${name}.png` }); console.log('  截图 回归-' + name) }
+/** 收尾（阶段 3c）的验收截图 */
+const shotF = async (name, opt = {}) => { await page.screenshot({ path: `${OUT}/收尾-${name}.png`, ...opt }); console.log('  截图 收尾-' + name) }
+const NO_KEY_TEXT = '在手机上绑定交易所只读密钥后，成交会自动同步到这里'
 const state = () => page.evaluate(() => JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'))
 const ready = async () => {
   await page.waitForFunction(() => (document.querySelector('#toolbar #tbSymbol') && document.title.includes('·')) || !!document.querySelector('.cell-empty:not([hidden])'), null, { timeout: 25000, polling: 250 })
@@ -409,8 +412,9 @@ async function partSectors() {
   const mRows = await page.locator('#secMBody tr[data-msym]').count()
   ok('点开一个板块：右边换成它的品种', !!head?.includes(pick.name) && mRows > 0, `${head}；${mRows} 只`)
   ok('板块里的品种点开时按涨跌降序', mp.every((v, i) => i === 0 || !(v > mp[i - 1])), mp.slice(0, 6).join(', '))
-  const cols = await page.evaluate(() => [...document.querySelectorAll('#secThead th, #secMThead th')].map(t => `${t.textContent.trim() || '☆'}:${Math.round(t.getBoundingClientRect().width)}`))
-  ok('2K 下两张表的列宽', true, cols.join(' '))
+  const [bw, mw] = await tableCols()
+  ok('板块表：名称列 ≤ 320 px，其余三列平分、铺满整张表', bw.ws[0] <= 320 && even(bw.ws.slice(1)) && Math.abs(sum(bw.ws) - bw.tw) <= 2, colsText(bw))
+  ok('品种表：名称列 ≤ 320 px，最新价 / 涨跌 / 成交额平分，星标 48 px，铺满', mw.ws[0] <= 320 && even(mw.ws.slice(1, 4)) && Math.abs(mw.ws[4] - 48) <= 1 && Math.abs(sum(mw.ws) - mw.tw) <= 2, colsText(mw))
   await shot('板块-列表')
   await page.click('[data-mk="us"]'); await wait(4000)
   rows = await rowsOf()
@@ -422,6 +426,76 @@ async function partSectors() {
   await page.click('[data-mk="crypto"]'); await wait(800)
   if (await page.locator('[data-win="today"]').count()) await page.click('[data-win="today"]')
   ok('板块：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
+}
+
+/** 板块页两张表的表宽与每列宽（按表头量） */
+const tableCols = () => page.evaluate(() => ['#secThead', '#secMThead'].map(s => {
+  const ths = [...document.querySelectorAll(`${s} th`)], tbl = document.querySelector(s)?.closest('table')
+  return { tw: Math.round(tbl?.getBoundingClientRect().width || 0), ws: ths.map(t => Math.round(t.getBoundingClientRect().width)), names: ths.map(t => t.textContent.trim() || '☆') }
+}))
+const sum = a => a.reduce((x, y) => x + y, 0)
+const even = (a, tol = 2) => a.length > 0 && Math.max(...a) - Math.min(...a) <= tol
+const colsText = t => `表宽 ${t.tw}：` + t.names.map((n, i) => `${n} ${t.ws[i]}`).join(' / ')
+
+// ═════════════════════════════ 收尾（阶段 3c）：不用登录的几项 ═════════════════════════════
+async function partFinish() {
+  const e0 = errors.length
+  // 画布上画过的字都记下来（价格轴、十字线标签、现价标签），最多留最近 600 条
+  await page.addInitScript(() => {
+    const f = CanvasRenderingContext2D.prototype.fillText
+    window.__txt = []
+    CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { const v = window.__txt; if (v.length > 600) v.splice(0, 300); v.push(String(t)); return f.call(this, t, ...a) }
+  })
+  // ---- 副图上限：本机旧状态存了 4 个副图，读进来只留前 3 个
+  // 在页面脚本跑之前写进去（先开页面再写会被旧页面卸载时的落盘盖掉）；每个标签页只种一次
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('kp-seed-subs')) return
+    sessionStorage.setItem('kp-seed-subs', '1')
+    localStorage.clear()
+    localStorage.setItem('hkline-web-v1', JSON.stringify({ ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi', 'kdj', 'oi'] } }))
+  })
+  await open('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0')
+  await page.click('#toolbar [data-iv="4h"]').catch(() => {}); await wait(800) // 随便一个动作让状态落盘
+  const subs = (await state()).ind?.subs || []
+  ok('副图最多三个：本机旧状态存了 4 个，读进来只留前 3 个', subs.join(',') === 'macd,rsi,kdj', subs.join(','))
+  await page.keyboard.press('/'); await wait(500)
+  const hint = await page.locator('.ind-dlg').innerText().catch(() => '')
+  ok('指标面板写的是「副图最多三个」', /副图最多三个/.test(hint))
+  await page.keyboard.press('Escape'); await wait(300)
+
+  // ---- 价格轴千分位：轴刻度、十字线标签、现价标签都是 84,070.0 这种写法；成交量仍是 K / M / B / T
+  await page.click('#toolbar [data-iv="1h"]').catch(() => {}); await wait(2500)
+  const g = await plotGeom()
+  await page.mouse.move(g.x + g.width * 0.5, g.y + g.height * 0.3); await wait(600)
+  const txt = await page.evaluate(() => window.__txt.slice())
+  const sep = [...new Set(txt.filter(t => /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)))]
+  const raw = [...new Set(txt.filter(t => /^\d{4,}(\.\d+)?$/.test(t)))]
+  ok('价格轴 / 十字线 / 现价标签带千分位，没有不带千分位的四位以上价格', sep.length >= 4 && raw.length === 0, `带千分位 ${sep.slice(0, 6).join(' ')}；不带的 ${raw.slice(0, 6).join(' ') || '无'}`)
+  const wRow = await page.locator('#wTbl tr[data-sym="BTCUSDT"]').first().innerText().catch(() => '')
+  ok('侧栏自选：价格同一写法（带千分位），成交额仍是 K / M / B / T', /\d{1,3},\d{3}/.test(wRow) && /\d(\.\d+)?[KMBT]\b/.test(wRow), wRow.replace(/\s+/g, ' ').slice(0, 60))
+  await shotF('价格轴特写', { clip: { x: Math.round(g.axisX - 420), y: Math.round(g.y), width: Math.round(g.x + g.width - g.axisX + 420), height: Math.round(Math.min(g.height, 760)) } })
+
+  // ---- 大单「存活」列：「39.8小时」整段放得下（按侧栏真实宽度量）
+  const wall = await page.evaluate(() => {
+    const side = document.querySelector('.side-panel')
+    const host = document.createElement('div'); host.className = 'of-walls'
+    host.style.cssText = `position:fixed;left:0;top:0;width:${Math.round(side?.getBoundingClientRect().width || 320)}px;visibility:hidden`
+    host.innerHTML = '<div class="of-wall"><i class="bar"></i><span class="sd up">买</span><span class="vn">币安 U 本位永续</span><span class="p num">84,070.0</span><span class="v num">12.50M</span><span class="t num faint">39.8小时</span></div>'
+    document.body.appendChild(host)
+    const t = host.querySelector('.t'), r = { sw: t.scrollWidth, cw: t.clientWidth, side: host.getBoundingClientRect().width }
+    host.remove(); return r
+  })
+  ok('侧栏大单「存活」列放得下「39.8小时」、不截断', wall.cw > 0 && wall.sw <= wall.cw, `内容 ${wall.sw} px，列宽 ${wall.cw} px（侧栏 ${wall.side} px）`)
+
+  // ---- 板块表列宽（和 板块-*.png 对比）
+  await page.evaluate(() => { location.hash = 'sectors' }); await wait(12000)
+  const first = await page.locator('#secBody tr[data-sec]').nth(2)
+  if (await first.count()) { await first.click(); await wait(1500) }
+  const [bw, mw] = await tableCols()
+  ok('板块表：名称列 ≤ 320 px，其余三列平分、铺满整张表', bw.ws[0] <= 320 && even(bw.ws.slice(1)) && Math.abs(sum(bw.ws) - bw.tw) <= 2, colsText(bw))
+  ok('品种表：名称列 ≤ 320 px，最新价 / 涨跌 / 成交额平分，星标 48 px，铺满', mw.ws[0] <= 320 && even(mw.ws.slice(1, 4)) && Math.abs(mw.ws[4] - 48) <= 1 && Math.abs(sum(mw.ws) - mw.tw) <= 2, colsText(mw))
+  await shotF('板块表')
+  ok('收尾（不登录的几项）：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
 
 // ═════════════════════════════ 提醒 ═════════════════════════════
@@ -493,7 +567,7 @@ const stored = (pg = page) => pg.evaluate(k => JSON.parse(localStorage.getItem(k
 const api = (method, path, body, pg = page, extra = {}) => pg.evaluate(async ([m, p, b, x, k]) => {
   const v = JSON.parse(localStorage.getItem(k) || 'null')
   const h = { ...(v ? { Authorization: 'Bearer ' + v.accessToken } : {}), ...(b != null ? { 'Content-Type': 'application/json' } : {}), ...x }
-  const r = await fetch(p, { method: m, headers: h, body: b == null ? undefined : JSON.stringify(b), cache: 'no-store' })
+  const r = await fetch(p, { method: m, headers: h, body: b == null ? undefined : JSON.stringify(b), cache: 'no-store', signal: AbortSignal.timeout(30000) })
   let j = null; try { j = await r.json() } catch { /* 不是 JSON */ }
   return { status: r.status, data: j?.data ?? null, error: j?.error?.code ?? null }
 }, [method, path, body ?? null, extra, ACCOUNT_KEY])
@@ -681,7 +755,7 @@ const RV_T0 = Date.UTC(2026, 8, 26, 2, 0, 0) // 上海 09-26 10:00 开仓
 const RV_T1 = RV_T0 + 6 * 3600e3 + 10 * 60e3 // 6 小时 10 分后平仓
 const RV_VIEW_ID = '7e57c0de-0929-4a00-8b00-00000000a002'
 async function kl(symbol, iv, start, limit) {
-  const r = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${iv}&startTime=${start}&limit=${limit}`)
+  const r = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${iv}&startTime=${start}&limit=${limit}`, { signal: AbortSignal.timeout(15000) })
   return (await r.json()).map(x => ({ t: x[0], o: x[1], c: x[4] }))
 }
 async function roundId(parts) {
@@ -727,8 +801,28 @@ async function partReview() {
   await page.goto(`${URL_}#review`, { waitUntil: 'domcontentloaded' }); await wait(1200)
   const gate = await page.locator('.rv-login').innerText().catch(() => '')
   ok('没登录进复盘：给登录引导（复盘需要登录）', /复盘需要登录/.test(gate))
+  // ---- 记一笔（没登录）：先存本机、弹窗里提示登录；登录后自动传到服务端成为观点记录
+  await open('s=BTCUSDT&i=1h&layout=1&panel=notes&ladder=0&drawer=0')
+  await page.click('#tbNote'); await wait(700)
+  await page.click('.note-dlg #nDir [data-v="long"]'); await wait(200)
+  const noteTxt = '收尾回归：放量站上前高，回踩不破看多'
+  await page.fill('#nTx', noteTxt)
+  const loginHint = await page.locator('.note-dlg .note-login').innerText().catch(() => '')
+  const lv = await page.evaluate(() => ({ t: +document.querySelector('#nTarget')?.value, i: +document.querySelector('#nInv')?.value, r: document.querySelector('#nRange')?.textContent?.trim() }))
+  ok('记一笔弹窗：取景区间、看多给目标 / 失效，没登录提示「登录后自动传到复盘」', /登录后自动传/.test(loginHint) && lv.t > lv.i && lv.i > 0 && !!lv.r, `${lv.r}；目标 ${lv.t} 失效 ${lv.i}`)
+  await shotF('记一笔弹窗')
+  await page.click('#nOk'); await wait(800)
+  const pend = ((await state()).notes || []).at(-1)
+  const noteId = pend?.id
+  ok('没登录记下：留在本机草稿里（等上传），带服务端要的记录草稿', pend?.sync === 'pending' && pend?.draft?.id === noteId && pend?.text === noteTxt && pend?.draft?.rule?.direction === 'long', `${pend?.sync} · ${pend?.draft?.range?.interval} ${pend?.draft?.range?.bars} 根`)
+  const sideTxt = await page.locator('.side-panel').innerText().catch(() => '')
+  ok('侧栏笔记这一条标「登录后上传」', /登录后上传/.test(sideTxt))
   const logged = await uiLogin()
   ok('登录', logged)
+  let upNote = null
+  for (let k = 0; k < 30; k++) { await wait(500); upNote = ((await state()).notes || []).find(n => n.id === noteId); if (upNote?.sync === 'synced' && upNote?.shot !== 'pending') break }
+  const det = noteId ? await api('GET', `/v1/native-review/records/${noteId}`) : { status: 0 }
+  ok('登录后自动补传：服务端有这条观点记录、原文对得上、截图也传上了', upNote?.sync === 'synced' && det.status === 200 && det.data?.record?.draft?.text === noteTxt && det.data?.hasShot === true, `本机 ${upNote?.sync}/${upNote?.shot}，服务端 ${det.status} hasShot=${det.data?.hasShot}`)
   const before = await api('GET', '/v1/native-review/records?kind=trade')
   await page.goto(`${URL_}#review`, { waitUntil: 'domcontentloaded' }); await page.reload({ waitUntil: 'domcontentloaded' }); await wait(3500)
   const counts0 = await page.$$eval('[data-tab] .rv-count', ns => ns.map(n => n.textContent.trim()))
@@ -785,24 +879,31 @@ async function partReview() {
   await page.click('[data-tab="view"]'); await wait(500)
   const vrow = page.locator(`[data-view="${RV_VIEW_ID}"]`)
   ok('观点记录列表里有这一条', await vrow.count() === 1)
+  ok('网页「记一笔」传上去的那条也在「观点记录」里', !!noteId && await page.locator(`[data-view="${noteId}"]`).count() === 1)
   await vrow.click(); await wait(3500)
   const vfoot = await page.locator('#rvFoot').innerText()
   ok('选中观点：给出判断原文、方向与结果', /回踩前低不破/.test(vfoot) && /结果/.test(vfoot), vfoot.replace(/\s+/g, ' ').slice(0, 100))
   await shot('复盘-观点记录')
   // 找相似：发起、等它找完、收藏一条、再取消
   const nSearch0 = (await page.evaluate(() => JSON.parse(localStorage.getItem('hkline-review-searches') || '[]'))).length
-  await page.click(`[data-find="${RV_VIEW_ID}"]`); await wait(1500)
-  const tabNow = await page.locator('[data-tab="similar"][aria-selected="true"]').count()
-  const nSearch1 = (await page.evaluate(() => JSON.parse(localStorage.getItem('hkline-review-searches') || '[]'))).length
+  await page.click(`[data-find="${RV_VIEW_ID}"]`)
+  // 发起请求回来就该切过去（不等进度），最多给 10 秒
+  let tabNow = 0, nSearch1 = nSearch0
+  for (let k = 0; k < 20; k++) {
+    await wait(500)
+    nSearch1 = (await page.evaluate(() => JSON.parse(localStorage.getItem('hkline-review-searches') || '[]'))).length
+    tabNow = await page.locator('[data-tab="similar"][aria-selected="true"]').count()
+    if (tabNow && nSearch1 !== nSearch0) break
+  }
   ok('找相似：发起后切到「相似走势」、这次搜索记在本机', tabNow === 1 && nSearch1 === Math.min(8, nSearch0 + 1), `${nSearch0} → ${nSearch1}`)
   let items = 0, stTxt = ''
   for (let k = 0; k < 60; k++) {
     await wait(2000)
     items = await page.locator('[data-match^="search:"]').count()
     stTxt = await page.locator('.rv-search').first().innerText().catch(() => '')
-    if (items || /没有找到/.test(stTxt)) break
+    if (items || /没有找到|没有一段相似/.test(stTxt)) break
   }
-  ok('找相似：两分钟内找完、列出相似片段', items > 0 || /没有找到/.test(stTxt), items ? `${items} 段` : stTxt.replace(/\s+/g, ' ').slice(0, 80))
+  ok('找相似：两分钟内找完、列出相似片段（没有时说清比过几段、门槛 0.60）', items > 0 || /比过 \d+ 段，没有一段相似度到 0\.60|没有找到/.test(stTxt), items ? `${items} 段` : stTxt.replace(/\s+/g, ' ').slice(0, 80))
   if (!items) {
     // 这一段历史里没有够像的：换最近 32 根 15m 在接口上发起一次（等于另一个页签里找的），
     // 记进本机的搜索列表，切回「相似走势」时页面自己补问——顺带验「别的页签新找的相似」那条路
@@ -810,11 +911,13 @@ async function partReview() {
     const range = { venue: 'binance', market: 'usd_m', symbol: 'BTCUSDT', interval: '15m', start: end - 32 * Q, end, bars: 32 }
     const job = await api('POST', '/v1/native-review/searches', { range, cutoff: Date.now() - 1000, scope: 'history' }, page, { 'Idempotency-Key': crypto.randomUUID() })
     const jid = job.data?.id
-    for (let k = 0; jid && k < 60; k++) { await wait(2000); const st = await api('GET', `/v1/native-review/searches/${jid}`); if (!/queued|running/.test(st.data?.status)) break }
+    let jst = null
+    for (let k = 0; jid && k < 60; k++) { await wait(2000); jst = (await api('GET', `/v1/native-review/searches/${jid}`)).data; if (!/queued|running/.test(jst?.status)) break }
     if (jid) await page.evaluate(m => { const k = 'hkline-review-searches'; localStorage.setItem(k, JSON.stringify([m, ...JSON.parse(localStorage.getItem(k) || '[]')])) }, { id: jid, symbol: 'BTCUSDT', iv: '15m', bars: 32, label: 'BTC 15分 · 32 根', created: Date.now() })
-    await page.click('[data-tab="trade"]'); await wait(300); await page.click('[data-tab="similar"]'); await wait(3000)
-    items = await page.locator('[data-match^="search:"]').count()
-    ok('别的页签新找的相似：切到「相似走势」时补问、列出来', items > 0, `${items} 段`)
+    await page.click('[data-tab="trade"]'); await wait(300); await page.click('[data-tab="similar"]')
+    for (let k = 0; k < 20 && !items; k++) { await wait(500); items = await page.locator('[data-match^="search:"]').count() }
+    // 服务端一小时最多 20 次、一次只跑一个（search_busy）：发不起来时把原因写进结果，不装作通过
+    ok('别的页签新找的相似：切到「相似走势」时补问、列出来', items > 0, jid ? `${items} 段（任务 ${jst?.status}，比过 ${jst?.checked ?? '—'} 段）` : `没发起：${job.status} ${job.error}`)
   }
   if (items) {
     await page.locator('[data-match^="search:"]').first().click()
@@ -834,10 +937,51 @@ async function partReview() {
   await page.click('[data-tab="trade"]'); await wait(400); await page.locator(`[data-trade="${seed.id}"]`).click(); await wait(800)
   await page.locator('#rvDetHead [data-open]').click(); await wait(2000)
   ok('「在图表中打开」跳到图表页、品种是 BTC', /#chart/.test(page.url()) && /BTC/.test(await page.title()), page.url().split('#')[1])
+
+  // ---- 侧栏「成交」：有数据（种的那一回合的两笔）
+  await open('s=BTCUSDT&i=1h&layout=1&panel=trades&ladder=0&drawer=0')
+  for (let k = 0; k < 20 && !(await page.locator('.tr-row[data-tr-rec]').count()); k++) await wait(500)
+  const trs = await page.$$eval('.tr-row[data-tr-rec]', ns => ns.map(n => ({ rec: n.dataset.trRec, cells: [...n.children].map(c => c.textContent.trim()) })))
+  const mine = trs.filter(r => r.rec === seed.id)
+  const hdr = await page.locator('.tr-head').innerText().catch(() => '')
+  ok('侧栏成交：列出这只品种的逐笔成交，最新在上，时间 / 方向 / 价格 / 数量 / 名义', mine.length === 2 && /卖平/.test(mine[0].cells[1]) && /买开/.test(mine[1].cells[1]) && /\d,\d{3}/.test(mine[0].cells[2]) && /[KMBT]$|^\d/.test(mine[0].cells[4]) && ['时间', '方向', '价格', '数量', '名义'].every(h => hdr.includes(h)), `${trs.length} 笔；种的两笔 ${mine.map(r => r.cells.join(' ')).join(' | ')}`)
+  await shotF('成交-有数据')
+  await page.locator(`.tr-row[data-tr-rec="${seed.id}"]`).first().click()
+  let jumped = 0
+  for (let k = 0; k < 20 && !jumped; k++) { await wait(500); jumped = await page.locator(`[data-trade="${seed.id}"].sel`).count() }
+  const selTab = await page.locator('[data-tab][aria-selected="true"]').getAttribute('data-tab').catch(() => '')
+  ok('点一行跳复盘、切到「交易回合」并选中那一回合', /#review/.test(page.url()) && jumped === 1 && selTab === 'trade', `${page.url().split('#')[1]} · 页签 ${selTab}`)
+
+  // ---- 没绑密钥：服务端一条交易回合都没有（拦下接口返回空，别的账号数据不动）
+  const noTrades = u => u.pathname.endsWith('/v1/native-review/records') && u.searchParams.get('kind') === 'trade'
+  await page.route(noTrades, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { records: [], next: null } }) }))
+  await open('s=ETHUSDT&i=1h&layout=1&panel=trades&ladder=0&drawer=0')
+  for (let k = 0; k < 20 && !(await page.locator('[data-tr-empty]').count()); k++) await wait(500)
+  const nk = await page.locator('[data-tr-empty="nokey"]').innerText().catch(() => '')
+  ok('侧栏成交·没绑密钥：「在手机上绑定交易所只读密钥后，成交会自动同步到这里」', nk.includes(NO_KEY_TEXT), nk.replace(/\s+/g, ' '))
+  await shotF('成交-没绑密钥')
+  await page.goto(`${URL_}#me`, { waitUntil: 'domcontentloaded' }); await wait(1500)
+  await page.click('[data-me="exchange"]'); await wait(2000)
+  const exEmpty = await page.locator('[data-ex-empty]').innerText().catch(() => '')
+  ok('我的 → 交易所账号·没绑密钥：同一句提示', exEmpty.includes(NO_KEY_TEXT), exEmpty)
+  await page.unroute(noTrades)
+  // ---- 交易所账号：说明页 + 服务端知道的绑定情况
+  await page.reload({ waitUntil: 'domcontentloaded' }); await wait(1500)
+  await page.click('[data-me="exchange"]'); await wait(2500)
+  const ex = await page.locator('#page-me').innerText().catch(() => '')
+  const venue = await page.locator('[data-ex-venues]').innerText().catch(() => '')
+  ok('我的 → 交易所账号：说明在手机上绑、网页不存密钥，列出哪家交易所、最近一次上传', /在手机上绑定/.test(ex) && /网页不存/.test(ex) && /币安/.test(venue) && /最近一次上传/.test(venue) && !/下一阶段/.test(ex), venue.replace(/\s+/g, ' ').slice(0, 100))
+  await shotF('交易所账号')
+  // 收尾：把这次「记一笔」的测试记录作废，免得测试账号越攒越多
+  if (noteId) {
+    const d2 = await api('GET', `/v1/native-review/records/${noteId}`)
+    const v = await api('POST', `/v1/native-review/records/${noteId}/void`, { expectedRevision: d2.data?.record?.revision }, page, { 'Idempotency-Key': crypto.randomUUID() })
+    ok('测试记录作废（清理）', v.status === 200, `${v.status}${v.error ? ' ' + v.error : ''}`)
+  }
   ok('复盘：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
 
-const ALL = { chart: partChart, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview }
+const ALL = { chart: partChart, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
 for (const k of PARTS.length ? PARTS : Object.keys(ALL)) {
   console.log(`\n══ ${k} ══`)
   try { await ALL[k]() } catch (e) { ok(`${k} 段跑完`, false, String(e.stack || e).split('\n').slice(0, 3).join(' ')); await page.screenshot({ path: `${OUT}/回归-失败-${k}.png` }).catch(() => {}) }
