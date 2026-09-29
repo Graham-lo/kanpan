@@ -161,6 +161,15 @@ html[data-skin="terra"][data-theme="dark"] {
 :root, [data-theme="light"] { --accent-2: #5B7CFA; --card-edge: transparent; }
 [data-theme="dark"] { --accent-2: #7FA2FF; --card-edge: var(--line); }
 
+/* 主图「关键价位」两级：日（昨高低、今开、昨控与价值区）与周（上周高低）。
+ * 避开涨跌红绿、提醒橙与成交量分布的控制点橙；轴上小片是白字，浅色过 4.5:1。 */
+:root, [data-theme="light"] { --kl-day: #6D5BD0; --kl-week: #0E7C86; }
+[data-theme="dark"] { --kl-day: #8B7BF0; --kl-week: #2AA3AE; }
+html[data-skin="sage"][data-theme="light"] { --kl-day: #7057B8; --kl-week: #2F6F8F; }
+html[data-skin="sage"][data-theme="dark"] { --kl-day: #9A88F0; --kl-week: #4AA3C4; }
+html[data-skin="terra"][data-theme="light"] { --kl-day: #8A4F7D; --kl-week: #3E6E80; }
+html[data-skin="terra"][data-theme="dark"] { --kl-day: #C47BB3; --kl-week: #5F9FB3; }
+
 /* 涨跌：图形用 TradingView 原色；文字用加深 / 提亮后的版本，保证 4.5:1 */
 :root, [data-theme="light"] {
   --tv-red: #F23645; --tv-green: #089981;
@@ -491,6 +500,9 @@ kbd {
 .pane-legend .ind-name { color: var(--text-1); }
 .pane-legend .ind-param { color: var(--text-2); }
 .pane-legend .vals { display: flex; gap: var(--s2); }
+/* 副图多条线各带一个短名（「现货」「合约」「大单」「散户」）；图例上的口径小字悬停看说明 */
+.pane-legend .vals i { font-style: normal; color: var(--text-3); margin-right: 3px; }
+.legend .ind-note, .pane-legend .ind-note { color: var(--text-3); cursor: help; }
 .pane-legend .tools { display: none; }
 .pane-legend .tools .ibtn { width: var(--h-xs); height: var(--h-xs); }
 .pane-legend .lrow:hover { background: color-mix(in srgb, var(--chart-bg) 80%, transparent); }

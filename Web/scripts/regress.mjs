@@ -1,7 +1,7 @@
 // Hkline Web · 整体回归（以交易员身份把网页版走一遍）：本机 Chrome、2560×1440、DPR 1
 //   node scripts/regress.mjs [地址] [段落…]
 //   段落：chart（图表页）、alerts（提醒）、edge（边界）、themes（皮肤）、route（线路）、sectors（板块）、
-//         account（账号与同步）、review（复盘）；后两段要 KP_PASS 环境变量
+//         account（账号与同步）、review（复盘）、layout（布局与拖动）、levels（指标与叠加）；account / review 要 KP_PASS 环境变量
 //   默认地址 http://localhost:5188/web/；截图写到 docs/acceptance/网页版-2026-09-29/回归-*.png
 // 每一段都收集控制台报错与未处理的 Promise 拒绝，目标是 0；每一项的结论打一行「✓ / ✗」。
 import { chromium } from 'playwright-core'
@@ -1216,7 +1216,82 @@ async function partLayout() {
   ok('布局与拖动：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
 
-const ALL = { chart: partChart, layout: partLayout, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
+// ═════════════════════════════ 指标与叠加（关键价位、VWAP 第一段、累计量差、大单与散户、粗周期成交量分布） ═════════════════════════════
+const shotI = async name => { await page.screenshot({ path: `${OUT}/指标-${name}.png` }); console.log('  截图 指标-' + name) }
+const indNow = (i = 0) => page.evaluate(k => window.__ind(k), i)
+/** 等到条件成立（有上限，不空等：到了就走） */
+async function until(fn, limit, step = 1000) {
+  const t0 = Date.now()
+  for (;;) { const v = await fn(); if (v || Date.now() - t0 > limit) return v; await wait(step) }
+}
+const setInd = ind => page.evaluate(x => { const s = JSON.parse(localStorage.getItem('hkline-web-v1')); s.ind = { ...s.ind, ...x }; localStorage.setItem('hkline-web-v1', JSON.stringify(s)) }, ind)
+async function partLevels() {
+  const e0 = errors.length
+  const DAY = 864e5
+  await fresh()
+  // 指标库里有这两项、分在对的类里
+  await setInd({ ma: false, vol: true, keys: true, vwap: true, subs: ['cvd', 'whale'] })
+  await open('s=BTCUSDT&i=15m&layout=1&panel=watch&ladder=0&drawer=0')
+  let d = await until(async () => { const x = await indNow(); return x && x.keysAll.length >= 8 && x.keys.length ? x : null }, 20000)
+  d = d || await indNow()
+  const want = ['昨高', '昨低', '今开', '上周高', '上周低', '昨控', '昨值上', '昨值下']
+  ok('关键价位：15 分钟线八条都有（日 + 周 + 昨控与价值区）', want.every(w => d.keysAll.includes(w)), d.keysAll.join(' '))
+  ok('关键价位：图上画出来的都带名字', d.keys.length > 0 && d.keys.every(k => want.includes(k.label)), d.keys.map(k => `${k.label}${k.touched ? '(已碰)' : ''}@${k.price}`).join(' '))
+  ok('VWAP：第一段不完整就不画，第一个值落在 UTC 0 点（上海 8 点）那根', d.vwap && d.vwap.first >= 0 && (d.t0 % DAY === 0 || d.vwap.firstT % DAY === 0), d.vwap ? `第一根 ${new Date(d.t0).toISOString()}，VWAP 从 ${new Date(d.vwap.firstT).toISOString()} 起` : '无')
+  await page.mouse.move(5, 700); await wait(300)
+  await shotI('关键价位-15分钟')
+  // 日线：只剩上周高低；周线：什么都没有
+  await open('s=BTCUSDT&i=1d&layout=1&panel=watch&ladder=0&drawer=0')
+  d = await until(async () => { const x = await indNow(); return x && x.iv === DAY && x.keysAll.length ? x : null }, 15000) || await indNow()
+  ok('关键价位：日线只画上周高低', d.keysAll.length === 2 && d.keysAll.includes('上周高') && d.keysAll.includes('上周低'), d.keysAll.join(' '))
+  await page.mouse.move(5, 700); await wait(300)
+  await shotI('关键价位-日线')
+  await open('s=BTCUSDT&i=1w&layout=1&panel=watch&ladder=0&drawer=0'); await wait(1500)
+  d = await indNow()
+  ok('关键价位：周线不画', d.keysAll.length === 0 && d.keys.length === 0, d.keysAll.join(' ') || '空')
+
+  // 粗周期成交量分布：4 小时向币安要 15 分钟 K 线，只要一次（不每帧重拉）
+  await setInd({ keys: false, vwap: false, vpvr: true, subs: [] })
+  const fineReq = []
+  const onReq = r => { const u = r.url(); if (/\/fapi\/v1\/klines\?/.test(u) && /interval=15m/.test(u)) fineReq.push(u) }
+  page.on('request', onReq)
+  await open('s=BTCUSDT&i=4h&layout=1&panel=watch&ladder=0&drawer=0')
+  await until(async () => fineReq.length > 0, 10000, 500)
+  await wait(2500)
+  const n1 = fineReq.length
+  await page.mouse.move(900, 600); await page.mouse.move(1300, 700, { steps: 20 }); await wait(3000)
+  const n2 = fineReq.length
+  page.off('request', onReq)
+  ok('成交量分布 4 小时：要了 15 分钟 K 线（≤ 4 页 = 5000 根）', n1 >= 1 && n1 <= 4, `${n1} 次`)
+  ok('成交量分布：不每帧重拉（晃鼠标 3 秒没有新请求）', n2 === n1, `${n1} → ${n2}`)
+  await page.mouse.move(5, 700); await wait(300)
+  await shotI('成交量分布-4小时细K线')
+
+  // 累计量差（历史 / 实时分界、现货与合约两条）+ 大单与散户：1 分钟线上等一根整个落在实时段里
+  await setInd({ vpvr: false, subs: ['cvd', 'whale'] })
+  await open('s=BTCUSDT&i=1m&layout=1&panel=watch&ladder=0&drawer=0')
+  d = await until(async () => { const x = await indNow(); return x && x.cvd && x.cvd.seam >= 0 && x.cvd.spot >= 2 && x.whale && x.whale.big > 0 ? x : null }, 150000, 3000) || await indNow()
+  ok('累计量差：有历史 / 实时分界，实时段拆成现货、合约两条', !!d.cvd && d.cvd.seam > 0 && d.cvd.spot >= 2 && d.cvd.con === d.cvd.spot && d.cvd.tot === d.bars, JSON.stringify(d.cvd))
+  ok('累计量差：图例口径写「币安 · 三家」', d.notes?.cvd?.text === '币安 · 三家', JSON.stringify(d.notes?.cvd))
+  ok('大单与散户：两条都有数', !!d.whale && d.whale.big > 0 && d.whale.small > 0, JSON.stringify(d.whale))
+  ok('大单与散户：图例写大单线与散户线（K / M 金额）', /^大单 ≥ [\d.]+[KMB] · 散户 < 10K/.test(d.notes?.whale?.text || ''), d.notes?.whale?.text || '无')
+  // BTC 是服务端常驻跟踪的品种：近 3 天分钟历史回填后，1 分钟线加载的一整段（约 25 小时）都该有数
+  const hist = d.whale && d.whale.big >= d.bars * 0.9
+  ok('大单与散户：常驻跟踪品种有服务端分钟历史（不是从打开起）', hist && !/从打开起/.test(d.notes?.whale?.text || ''), `${d.whale?.big} / ${d.bars} 根有数；${d.notes?.whale?.text}`)
+  const legend = await page.evaluate(() => [...document.querySelectorAll('.pane-legend .lrow')].map(e => e.textContent.replace(/\s+/g, ' ').trim()))
+  ok('副图图例：现货 / 合约、大单 / 散户各有短名', legend.some(t => t.includes('现货') && t.includes('合约')) && legend.some(t => t.includes('大单') && t.includes('散户')), legend.join(' | '))
+  await page.mouse.move(5, 700); await wait(300)
+  await shotI('累计量差与大单散户-1分钟')
+  // 深色皮肤看一眼颜色
+  await setInd({ keys: true, vwap: true })
+  await open('s=ETHUSDT&i=5m&theme=dark&skin=sage&layout=1&panel=watch&ladder=0&drawer=0')
+  await until(async () => { const x = await indNow(); return x && x.keys.length ? x : null }, 20000)
+  await page.mouse.move(5, 700); await wait(1000)
+  await shotI('关键价位-青苔深色-5分钟')
+  ok('指标：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
+}
+
+const ALL = { chart: partChart, layout: partLayout, levels: partLevels, alerts: partAlerts, edge: partEdge, themes: partThemes, route: partRoute, sectors: partSectors, account: partAccount, review: partReview, finish: partFinish }
 for (const k of PARTS.length ? PARTS : Object.keys(ALL)) {
   console.log(`\n══ ${k} ══`)
   try { await ALL[k]() } catch (e) { ok(`${k} 段跑完`, false, String(e.stack || e).split('\n').slice(0, 3).join(' ')); await page.screenshot({ path: `${OUT}/回归-失败-${k}.png` }).catch(() => {}) }

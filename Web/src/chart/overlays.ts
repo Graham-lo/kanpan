@@ -10,6 +10,7 @@ import { hexA } from '../util/format'
 import type { Bar, Series } from './calc'
 import { SUB_LEVELS, barInterval, vwapAnchor, type ExtraSubId } from './indicators'
 import type { Pane, PriceRange, TVChart } from './chart'
+import { fineSplit } from './fineVolume'
 
 export type VpvrMode = 'split' | 'delta' | 'total'
 export const VPVR_MODES: { id: VpvrMode; label: string }[] = [
@@ -34,7 +35,7 @@ export interface Vpvr {
 
 /** 成交量分布：把 [from, to] 每根 K 线的成交额按它的高低区间摊到覆盖的各行（按重叠长度分），
  *  主动买入 = tb，主动卖出 = 总额 − tb（没有 tb 时对半）；再从控制点往两边扩，每次并进较大的一侧，直到 ≥ 七成 */
-export function vpvr(bars: Bar[], from: number, to: number, rowCount: number, vaShare = 0.7): Vpvr | null {
+export function vpvr(bars: Bar[], from: number, to: number, rowCount: number, vaShare = 0.7, split?: ((i: number) => Bar[] | null) | null): Vpvr | null {
   from = Math.max(0, from); to = Math.min(bars.length - 1, to)
   if (to < from || rowCount < 1) return null
   let lo = Infinity, hi = -Infinity
@@ -45,17 +46,23 @@ export function vpvr(bars: Bar[], from: number, to: number, rowCount: number, va
   const step = (hi - lo) / n
   const rows: VpvrRow[] = Array.from({ length: n }, () => ({ buy: 0, sell: 0 }))
   const rowOf = (p: number) => Math.min(n - 1, Math.max(0, Math.floor((p - lo) / step)))
-  for (let i = from; i <= to; i++) {
-    const b = bars[i], v = b.v
-    if (!(v > 0)) continue
+  const spread = (b: Bar) => {
+    const v = b.v
+    if (!(v > 0)) return
     const buy = b.tb != null && isFinite(b.tb) ? Math.min(v, Math.max(0, b.tb)) : v / 2, sell = v - buy
     const r0 = rowOf(b.l), r1 = rowOf(b.h), span = b.h - b.l
-    if (r0 === r1 || span <= 0) { rows[r0].buy += buy; rows[r0].sell += sell; continue }
+    if (r0 === r1 || span <= 0) { rows[r0].buy += buy; rows[r0].sell += sell; return }
     for (let r = r0; r <= r1; r++) {
       const a = Math.max(b.l, lo + r * step), z = Math.min(b.h, lo + (r + 1) * step)
       const f = Math.max(0, z - a) / span
       rows[r].buy += buy * f; rows[r].sell += sell * f
     }
+  }
+  // 粗 K 线被细 K 线盖住时用细 K 线各自的高低去摊（4 小时及以上，见 fineVolume.ts）
+  for (let i = from; i <= to; i++) {
+    const sub = split?.(i)
+    if (sub) for (const x of sub) spread(x)
+    else spread(bars[i])
   }
   let total = 0, poc = 0, best = -1
   rows.forEach((r, k) => { const t = r.buy + r.sell; total += t; if (t > best) { best = t; poc = k } })
@@ -136,7 +143,8 @@ export function drawExtraMain(ch: TVChart, p: Pane, r: PriceRange, from: number,
 
 function drawVpvr(ch: TVChart, p: Pane, r: PriceRange, from: number, to: number): void {
   const rows = Math.max(4, Math.min(200, Math.round(ch.params.vpvr?.n || 48)))
-  const v = vpvr(ch.bars, from, to, rows)
+  const split = fineSplit(ch.meta.symbol, ch.iv, ch.bars, from, to, () => { if (!ch.dead) ch.dirty = true })
+  const v = vpvr(ch.bars, from, to, rows, 0.7, split)
   if (!v || !v.total) return
   ch.vpvrLast = v
   const c: Ctx = ch.ctx, C = ch.colors, PW = ch.plotW(), maxW = PW * 0.25, mode = ch.vpvrMode
@@ -167,10 +175,35 @@ function drawVpvr(ch: TVChart, p: Pane, r: PriceRange, from: number, to: number)
 
 /** 副图参考线（随机 RSI 80/20、CCI ±100、威廉 −20/−80） */
 export function drawSubLevels(ch: TVChart, p: Pane, r: PriceRange, id: string): void {
+  if (id === 'cvd') drawCvdSeams(ch, p)
   const lv = SUB_LEVELS[id as ExtraSubId]
   if (!lv) return
   const c: Ctx = ch.ctx, PW = ch.plotW()
   c.setLineDash([4, 4]); c.strokeStyle = hexA(ch.colors.text3 || '#888', 0.7); c.lineWidth = 1; c.beginPath()
   for (const v of lv) { const y = Math.round(ch.priceToY(v, p, r)) + .5; c.moveTo(0, y); c.lineTo(PW, y) }
   c.stroke(); c.setLineDash([])
+}
+
+/** 累计量差的历史段（只有币安）/ 实时段（三家）分界：竖虚线，线两边底部各一个小字 */
+function drawCvdSeams(ch: TVChart, p: Pane): void {
+  const s = ch.series.cvd?.[1]
+  if (!s) return
+  const c: Ctx = ch.ctx, PW = ch.plotW(), col = hexA(ch.colors.text3 || '#888', 0.85)
+  const from = Math.max(1, Math.floor(ch.xToIndex(0)) - 1), to = Math.min(s.length - 1, Math.ceil(ch.xToIndex(PW)) + 1)
+  const seam = (at: number, left: string, right: string) => {
+    const x = Math.round(ch.indexToX(at)) + .5
+    if (x < 0 || x > PW) return
+    c.setLineDash([3, 3]); c.strokeStyle = col; c.lineWidth = 1; c.beginPath(); c.moveTo(x, p.y); c.lineTo(x, p.y + p.h); c.stroke(); c.setLineDash([])
+    c.fillStyle = col; c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'alphabetic'
+    const y = p.y + p.h - 6
+    c.textAlign = 'right'; c.fillText(left, x - 5, y)
+    c.textAlign = 'left'; c.fillText(right, x + 5, y)
+    c.textBaseline = 'middle'; c.font = ch.font
+  }
+  for (let i = from; i <= to; i++) {
+    const on = s[i] != null, prev = s[i - 1] != null
+    // 实时段的第一个点是分叉点（进入实时段前一根的合计），分界画在它和下一根之间
+    if (on && !prev) seam(i + 0.5, '币安', '三家')
+    else if (!on && prev) seam(i - 0.5, '三家', '币安')
+  }
 }

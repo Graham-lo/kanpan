@@ -16,6 +16,7 @@ import { OrderFlowFeed, getJSON, type TradeEvent } from './feed'
 import { buildFine, exName, venueName } from './aggregate'
 import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
 import { tapeBase } from './tape'
+import { recordTrade, beat } from '../chart/tradeFlow'
 import { createLayer } from './layer'
 import { mountLadder, ladderVisible, drawLadder } from './ladder'
 import { mountDrawer, updateDrawer, revealInDrawer } from './drawer'
@@ -65,6 +66,8 @@ export function installOrderFlow(a: Api): void {
 /** 有没有哪个展示在用订单流的数据。 */
 function needed(): boolean {
   if (st.orderFlow || st.slots.ladder || st.slots.drawer || OF.prefs.heat) return true
+  // 副图「累计量差」的三家实时段、「大单与散户累计量差」都靠这里的逐笔成交
+  if (st.ind.subs.includes('cvd') || st.ind.subs.includes('whale')) return true
   if (st.panel === 'flow') return true
   return st.panel === 'watch' && st.slots.widgets.some(w => isOfWidget(w))
 }
@@ -137,6 +140,9 @@ function onFrame(s: Snapshot): void {
   if (!f || !api) return
   const now = Date.now()
   OF.snap = s
+  // 三家逐笔的覆盖心跳：连接都开着这半秒才算盖住（副图累计量差 / 大单与散户）
+  const conns = f.debug().conns
+  beat(f.symbol, now, conns.length > 0 && conns.every(c => c.open))
   OF.fine = buildFine(f.model, 500, now)
   if (OF.prefs.heat && OF.fine) {
     if (!OF.heat || OF.heat.step !== OF.fine.step) { OF.heat = new HeatStore(OF.fine.step); heatBack = freshBack() }
@@ -156,6 +162,8 @@ function onTrade(ev: TradeEvent): void {
   const f = OF.feed
   if (!f) return
   const v = ev.book.venue
+  const cut = OF.snap ? tapeBase(OF.snap.thresholds) : null
+  recordTrade(f.symbol, ev, cut ? cut / 50 : null)
   const row = OF.tape.push({
     t: ev.trade.timeMs || Date.now(), exchange: v.exchange, label: exName(v.exchange), product: v.product,
     side: ev.trade.hitSide === 'ask' ? 'buy' : 'sell', price: ev.trade.price, usd: ev.usd, qty: ev.trade.quantity,

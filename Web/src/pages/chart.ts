@@ -23,6 +23,7 @@ import { alertDesc } from '../alerts/panel'
 import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, drawingAlertOf, drawingCanAlert, toggleDrawingAlert, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel } from '../alerts/model'
 import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, streamIvOf, startSeconds, onSecondsTick, secondBars, secondLastBar, customKlines, customTick, customBase } from '../chart/intervals'
 import { VPVR_MODES } from '../chart/overlays'
+import { keyLevelsShown, keyLevelsOf, levelsForInterval } from '../chart/keyLevels'
 import { renderAlertsPanel, alertsPanelClick, openCreateAlert, installAlerts, alertStreams, askNotify } from '../alerts/panel'
 import { hooks, go } from '../app/shell'
 import { openNoteDialog, noteRuleText } from '../notes/dialog'
@@ -128,6 +129,22 @@ function linkView(from: Cell, t0: number, t1: number): void {
   return { symbol: k.symbol, iv: k.iv, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: c.chart.bars.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]) }
 })
 ;(globalThis as unknown as { __stream?: () => unknown }).__stream = streamDebug
+// 回归脚本「指标」段读：关键价位画了哪些、VWAP 第一段从哪根起、累计量差的分界与两条、大单与散户有没有数、图例口径小字
+;(globalThis as unknown as { __ind?: (i?: number) => unknown }).__ind = (i = 0) => {
+  const ch = cells[i]?.chart
+  if (!ch) return null
+  const nn = (s?: (number | null)[]) => s ? s.filter(v => v != null).length : 0
+  const first = (s?: (number | null)[]) => s ? s.findIndex(v => v != null) : -1
+  const vw = ch.series.vwap?.[0], cvd = ch.series.cvd, wh = ch.series.whale
+  return {
+    bars: ch.bars.length, iv: ch.iv, t0: ch.bars[0]?.t ?? null,
+    keys: keyLevelsShown(ch), keysAll: levelsForInterval(keyLevelsOf(ch), ch.iv).map(l => l.label),
+    vwap: vw ? { first: first(vw), firstT: ch.bars[first(vw)]?.t ?? null, n: nn(vw) } : null,
+    cvd: cvd ? { tot: nn(cvd[0]), spot: nn(cvd[1]), con: nn(cvd[2]), seam: first(cvd[1]) } : null,
+    whale: wh ? { big: nn(wh[0]), small: nn(wh[1]), first: first(wh[0]), last: [wh[0][wh[0].length - 1], wh[1][wh[1].length - 1]] } : null,
+    notes: ch.notes,
+  }
+}
 
 function makeCell(i: number): Cell {
   const el = document.createElement('div')
@@ -841,13 +858,13 @@ export function openSearch(initial = ''): void {
 type IndRow = [IndicatorId, 'main' | 'sub', string, string]
 const IND_ROWS: IndRow[] = [
   ['ma', 'main', 'MA', '均线'], ['ema', 'main', 'EMA', '指数均线'], ['boll', 'main', 'BOLL', '布林带'], ['vol', 'main', '成交量', '叠在主图底部'],
-  ...(['vwap', 'st', 'ichi', 'vpvr'] as IndicatorId[]).map((id): IndRow => [id, 'main', CATALOG[id].name, CATALOG[id].cn]),
+  ...(['vwap', 'st', 'ichi', 'vpvr', 'keys'] as IndicatorId[]).map((id): IndRow => [id, 'main', CATALOG[id].name, CATALOG[id].cn]),
   ['macd', 'sub', 'MACD', '平滑异同移动平均'], ['rsi', 'sub', 'RSI', '相对强弱'], ['kdj', 'sub', 'KDJ', '随机指标'], ['oi', 'sub', '持仓量', '币安只给 30 天内的历史'],
-  ...(['cvd', 'atr', 'obv', 'stochrsi', 'cci', 'wr'] as IndicatorId[]).map((id): IndRow => [id, 'sub', CATALOG[id].name, CATALOG[id].cn]),
+  ...(['cvd', 'whale', 'atr', 'obv', 'stochrsi', 'cci', 'wr'] as IndicatorId[]).map((id): IndRow => [id, 'sub', CATALOG[id].name, CATALOG[id].cn]),
 ]
 /** 主图上用开关记的那几个（其余是副图） */
-type MainToggle = 'ma' | 'ema' | 'boll' | 'vol' | 'vwap' | 'st' | 'ichi' | 'vpvr'
-const MAIN_TOGGLES: string[] = ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi', 'vpvr']
+type MainToggle = 'ma' | 'ema' | 'boll' | 'vol' | 'vwap' | 'st' | 'ichi' | 'vpvr' | 'keys'
+const MAIN_TOGGLES: string[] = ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi', 'vpvr', 'keys']
 const isMainToggle = (id: string): id is MainToggle => MAIN_TOGGLES.includes(id)
 function openIndicators(): void {
   let cat: 'all' | 'main' | 'sub' = 'all'

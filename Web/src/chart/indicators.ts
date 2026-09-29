@@ -1,16 +1,19 @@
 /* Hkline Web · 第二批指标（网页版大屏专有）
  *
- * 主图：VWAP（±1σ / ±2σ）、超级趋势、一目均衡表、成交量分布（VPVR，按可见区间现算，见 overlays.ts）
- * 副图：CVD（主动买卖累计差）、ATR、OBV、随机 RSI、CCI、威廉指标
+ * 主图：VWAP（±1σ / ±2σ）、超级趋势、一目均衡表、成交量分布（VPVR，按可见区间现算，见 overlays.ts）、
+ *       关键价位（昨高低、上周高低、今开、昨日控制点与价值区，见 keyLevels.ts）
+ * 副图：CVD（主动买卖累计差；实时段三家、拆现货合约，见 tradeFlow.ts）、ATR、OBV、随机 RSI、CCI、威廉指标、
+ *       大单与散户累计量差（见 tradeFlow.ts）
  *
  * 只从 calc.ts 拿类型，运行时不反向依赖它（calc.ts 把这里的表并进 Calc / CATALOG），
  * 所以 sma / ema / rma 在这里各留一份小实现。
  */
-import type { Bar, Series, IndParams, CatalogEntry } from './calc'
+import type { Bar, Series, IndParams, CatalogEntry, CalcEnv } from './calc'
+import { calcCvd, calcWhale } from './tradeFlow'
 
-export type ExtraMainId = 'vwap' | 'st' | 'ichi' | 'vpvr'
-export type ExtraSubId = 'cvd' | 'atr' | 'obv' | 'stochrsi' | 'cci' | 'wr'
-type Fn = (bars: Bar[], p: IndParams) => Series[]
+export type ExtraMainId = 'vwap' | 'st' | 'ichi' | 'vpvr' | 'keys'
+export type ExtraSubId = 'cvd' | 'atr' | 'obv' | 'stochrsi' | 'cci' | 'wr' | 'whale'
+type Fn = (bars: Bar[], p: IndParams, env?: CalcEnv) => Series[]
 
 // ------------------------------------------------------------ 小工具
 function smaN(src: number[], n: number): Series {
@@ -72,14 +75,19 @@ export function vwapAnchor(t: number, iv: number): number {
   return Date.UTC(d.getUTCFullYear(), 0, 1)
 }
 
-/** VWAP 与 ±1σ、±2σ：典型价 (高+低+收)/3，按成交量（币）加权；锚点一到就从头累计 */
+/** VWAP 与 ±1σ、±2σ：典型价 (高+低+收)/3，按成交量（币）加权；锚点一到就从头累计。
+ *  第一段不完整就不画：加载进来的第一根如果不是它那一段的开头（前一根还属于同一段），这一段的累计缺了开头，
+ *  输出 null，直到下一个锚点——这样往左加载更多历史时，已经画出来的值一个都不变。 */
 export function vwap(bars: Bar[], iv = barInterval(bars)): Series[] {
   const n = bars.length
   const mid: Series = new Array(n).fill(null), u1: Series = new Array(n).fill(null), d1: Series = new Array(n).fill(null), u2: Series = new Array(n).fill(null), d2: Series = new Array(n).fill(null)
   let anchor = NaN, sw = 0, swp = 0, swp2 = 0
+  // 第一根正好是一段的开头（它的前一根落在上一段里）时，第一段也是完整的
+  let whole = n > 0 && vwapAnchor(bars[0].t - iv, iv) !== vwapAnchor(bars[0].t, iv)
   for (let i = 0; i < n; i++) {
     const b = bars[i], a = vwapAnchor(b.t, iv)
-    if (a !== anchor) { anchor = a; sw = 0; swp = 0; swp2 = 0 }
+    if (a !== anchor) { if (i > 0) whole = true; anchor = a; sw = 0; swp = 0; swp2 = 0 }
+    if (!whole) continue
     const tp = (b.h + b.l + b.c) / 3
     const w = b.bv != null && isFinite(b.bv) ? b.bv : b.c > 0 ? b.v / b.c : 0
     sw += w; swp += w * tp; swp2 += w * tp * tp
@@ -132,7 +140,7 @@ export function ichimoku(bars: Bar[], tenkan: number, kijun: number, senkou: num
 }
 
 // ------------------------------------------------------------ 副图
-/** CVD：从第一根加载进来的 K 线起，逐根累加主动买卖差 */
+/** CVD（只看 K 线自带的主动买入）：从第一根加载进来的 K 线起，逐根累加主动买卖差。图上用的是 tradeFlow.calcCvd（实时段加三家） */
 export function cvd(bars: Bar[]): Series[] {
   let s = 0
   return [bars.map(b => (s += barDelta(b)))]
@@ -181,16 +189,18 @@ export function williams(bars: Bar[], n: number): Series[] {
 
 // ------------------------------------------------------------ 并进 Calc / CATALOG 的表
 export const EXTRA_CALC: Record<ExtraMainId | ExtraSubId, Fn> = {
-  vwap: bars => vwap(bars),
+  vwap: (bars, _p, env) => vwap(bars, env?.iv || barInterval(bars)),
   st: (bars, p) => supertrend(bars, int(p.n, 10), p.k && p.k > 0 ? p.k : 3),
   ichi: (bars, p) => ichimoku(bars, int(p.tenkan, 9), int(p.kijun, 26), int(p.senkou, 52)),
   vpvr: () => [],
-  cvd: bars => cvd(bars),
+  keys: () => [],
+  cvd: (bars, _p, env) => calcCvd(bars, env),
   atr: (bars, p) => atr(bars, int(p.n, 14)),
   obv: bars => obv(bars),
   stochrsi: (bars, p) => stochRsi(bars, int(p.n, 14), int(p.stoch, 14), int(p.m1, 3), int(p.m2, 3)),
   cci: (bars, p) => cci(bars, int(p.n, 20)),
   wr: (bars, p) => williams(bars, int(p.n, 14)),
+  whale: (bars, _p, env) => calcWhale(bars, env),
 }
 
 export const EXTRA_CATALOG: Record<ExtraMainId | ExtraSubId, CatalogEntry> = {
@@ -198,12 +208,14 @@ export const EXTRA_CATALOG: Record<ExtraMainId | ExtraSubId, CatalogEntry> = {
   st: { name: '超级趋势', cn: '按真实波幅翻转的趋势线', place: 'main', params: { n: 10, k: 3 }, colors: ['#089981', '#F23645'] },
   ichi: { name: '一目均衡表', cn: '转换线、基准线、云带、迟行线', place: 'main', params: { tenkan: 9, kijun: 26, senkou: 52 }, colors: ['#2962FF', '#B71C1C', '#43A047', '#F44336', '#9C27B0'] },
   vpvr: { name: '成交量分布', cn: '看得见的这段里各价位成交多少，含控制点与七成价值区', place: 'main', params: { n: 48 }, colors: [] },
-  cvd: { name: '累计量差', cn: '主动买入减主动卖出，逐根累加', place: 'sub', params: {}, colors: ['#26A69A'] },
+  keys: { name: '关键价位', cn: '昨高低、上周高低、今开，昨日控制点与七成价值区（未回踩的才延伸）', place: 'main', params: {}, colors: [] },
+  cvd: { name: '累计量差', cn: '主动买入减主动卖出逐根累加；实时段加上 OKX、Coinbase，拆现货、合约', place: 'sub', params: {}, colors: ['#2962FF', '#06B6D4', '#8B5CF6'], labels: ['', '现货', '合约'] },
   atr: { name: '真实波幅', cn: '平均真实波幅', place: 'sub', params: { n: 14 }, colors: ['#B71C1C'] },
   obv: { name: '能量潮', cn: '涨加跌减的累计成交额', place: 'sub', params: {}, colors: ['#2962FF'] },
   stochrsi: { name: '随机强弱', cn: '相对强弱再取随机值', place: 'sub', params: { n: 14, stoch: 14, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00'] },
   cci: { name: '顺势指标', cn: '偏离均价的程度', place: 'sub', params: { n: 20 }, colors: ['#2962FF'] },
   wr: { name: '威廉指标', cn: '收盘在区间里的位置', place: 'sub', params: { n: 14 }, colors: ['#7E57C2'] },
+  whale: { name: '大单与散户累计量差', cn: '三家成交里大单、散户各自的主动买减主动卖，逐根累加', place: 'sub', params: {}, colors: ['#F7A600', '#26A69A'], labels: ['大单', '散户'] },
 }
 
 /** 固定刻度的副图（不随可见数据伸缩） */

@@ -71,6 +71,8 @@ export interface IndState {
   ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]
   /** 主图第二批叠加：VWAP、超级趋势、一目均衡表、成交量分布 */
   vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean
+  /** 关键价位（昨高低、上周高低、今开、昨控与价值区） */
+  keys?: boolean
 }
 
 export interface Slots {

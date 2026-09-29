@@ -39,10 +39,21 @@ export interface CatalogEntry {
   place: 'main' | 'overlay' | 'sub'
   params?: IndParams
   colors?: string[]
+  /** 各条线在副图图例里的前缀（空串 = 不加）；带前缀的线在这一根没值时图例不列它 */
+  labels?: string[]
+}
+
+/** 算指标时给的上下文：哪只品种、什么周期；异步数据（服务端历史、浏览器实时成交）到了叫 invalidate 重算；
+ *  note 往图例这一行的参数位置写一句口径说明（悬停出 tip） */
+export interface CalcEnv {
+  symbol: string
+  iv: number
+  invalidate(): void
+  note(id: string, text: string, tip?: string): void
 }
 
 /** 主图叠加指标（按这个顺序算、按 boll → ema → ma 的顺序画） */
-export const MAIN_IDS: MainId[] = ['ma', 'ema', 'boll', 'vwap', 'st', 'ichi', 'vpvr']
+export const MAIN_IDS: MainId[] = ['ma', 'ema', 'boll', 'vwap', 'st', 'ichi', 'vpvr', 'keys']
 /** 副图最多三个，和手机端 `Prefs.maxSubs` 一致（成交量叠在主图底部，不占副图名额） */
 export const MAX_SUBS = 3
 
@@ -71,7 +82,7 @@ export function rma(src: number[], n: number): Series {
   return out
 }
 
-type CalcFn = (bars: Bar[], p: IndParams) => Series[]
+export type CalcFn = (bars: Bar[], p: IndParams, env?: CalcEnv) => Series[]
 
 export const Calc: Record<CalcId, CalcFn> = {
   ma(bars, p) { const c = bars.map(b => b.c); return (p.periods ?? []).map(n => sma(c, n)) },

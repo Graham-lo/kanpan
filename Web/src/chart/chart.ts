@@ -15,13 +15,14 @@
 import { icon } from '../ui/icons'
 import { clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, hexA, niceStep, pad } from '../util/format'
 import { CATALOG, Calc, MAIN_IDS, paramText } from './calc'
-import type { Bar, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
+import type { Bar, CalcEnv, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
 import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
 import type { TimeTick } from './timeAxis'
 import { SUB_FIXED, type ExtraSubId } from './indicators'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
 import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
 import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
+import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 
 const AXIS_H = 28
 const MIN_SPACING = 1.5
@@ -119,7 +120,7 @@ export interface ChartMeta {
 }
 export type ChartMetaInput = Partial<ChartMeta> & { iv: number }
 
-export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]; vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean }
+export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]; vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean; keys?: boolean }
 
 export interface ContextMenuInfo { clientX: number; clientY: number; price: number | null; time: number; drawing?: Drawing }
 
@@ -247,6 +248,9 @@ export class TVChart {
   /** 图例要在下一帧重写（逐笔更新不再每笔都重写一次 innerHTML） */
   legendDirty = false
   series: Partial<Record<CalcId, Series[]>> = {}
+  /** 指标算的时候留下的口径说明（图例参数位置显示，悬停出 tip） */
+  notes: Partial<Record<string, { text: string; tip?: string }>> = {}
+  private env: CalcEnv | null = null
   log = false
   auto = true
   manual: PriceRange | null = null // 主图手动价格区间 {min,max}
@@ -503,11 +507,31 @@ export class TVChart {
   // ---------------------------------------------------------- 指标
   recalc(): void {
     this.series = {}
+    this.notes = {}
     const b = this.bars
     if (!b.length) return
-    for (const id of MAIN_IDS) if (this.ind[id]) this.series[id] = Calc[id](b, this.params[id])
+    const env = this.calcEnv()
+    for (const id of MAIN_IDS) if (this.ind[id]) this.series[id] = Calc[id](b, this.params[id], env)
     // 降级收掉副图时不算副图（十六图里每格省下几个指标的整段重算）
-    if (this.deg.subs) for (const id of this.ind.subs) if (Calc[id]) this.series[id] = Calc[id](b, this.params[id])
+    if (this.deg.subs) for (const id of this.ind.subs) if (Calc[id]) this.series[id] = Calc[id](b, this.params[id], env)
+  }
+  /** 给指标的上下文（一个图一份，invalidate 是同一个函数，异步数据源拿它登记回调不会越攒越多） */
+  calcEnv(): CalcEnv {
+    if (this.env) return this.env
+    const ch = this
+    this.env = {
+      get symbol() { return ch.meta.symbol },
+      get iv() { return ch.iv },
+      invalidate: () => { if (ch.dead) return; ch.recalc(); ch.dirty = true; ch.legendDirty = true },
+      note: (id, text, tip) => { ch.notes[id] = { text, tip } },
+    }
+    return this.env
+  }
+  /** 图例参数位置：指标自己留了口径说明就用它，否则是参数 */
+  paramCell(id: string): string {
+    const n = this.notes[id]
+    if (n) return `<span class="ind-param ind-note"${n.tip ? ` data-tip="${n.tip.replace(/"/g, '&quot;')}"` : ''}>${n.text}</span>`
+    return `<span class="ind-param">${paramText(id, this.params[id as IndicatorId])}</span>`
   }
   recalcTail(): void { this.recalc() }
 
@@ -643,6 +667,7 @@ export class TVChart {
     if (geo) for (const l of this.layers) if (l.under) { c.save(); l.under(c, geo); c.restore() }
     if (this.walls && !this.hidden.has('walls')) this.drawWalls(mainPane, mr, from, to)
     if (this.markers) this.drawTradeSpan(mainPane, mr)
+    if (this.ind.keys && !this.hidden.has('keys')) drawKeyLevels(this, mainPane, mr, from, to)
     this.drawCandles(mainPane, mr, from, to)
     for (const id of ['boll', 'ema', 'ma'] as MainId[]) if (this.series[id] && !this.hidden.has(id)) this.drawLines(id, mainPane, mr, from, to)
     drawExtraMain(this, mainPane, mr, from, to)
@@ -860,6 +885,7 @@ export class TVChart {
       if (sub) { c.font = this.font; c.globalAlpha = .85; c.fillText(sub, PW + 8, top + 25); c.globalAlpha = 1 }
       c.font = this.font
     }
+    if (this.ind.keys && !this.hidden.has('keys')) drawKeyAxis(this, p, r)
     for (const a of this.alertsShown()) {
       const y = this.priceToY(a.price, p, r); if (y < p.y || y > p.y + p.h) continue
       label(y, fmtAxis(a.price, this.meta.dec), C.alert, '#fff')
@@ -1109,7 +1135,7 @@ export class TVChart {
       if (!this.ind[id]) continue
       const cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || []
       const extra = id === 'vpvr' ? `<button class="lchip" data-act="vpvrMode" data-id="vpvr" data-tip="看法">${VPVR_MODES.find(m => m.id === this.vpvrMode)?.label ?? ''}${I('chevronDown', 'icon-16')}</button>` : ''
-      h += `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span><span class="ind-param">${paramText(id, this.params[id])}</span>${extra}
+      h += `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}${extra}
           <span class="vals num">${s.map((ser, k) => `<span style="color:${cols[k % cols.length]}">${fmt(ser[i], dec)}</span>`).join('')}</span>${tools(id)}</div>`
     }
     if (this.ind.vol) h += `<div class="lrow ${this.hidden.has('vol') ? 'hidden-ind' : ''}"><span class="ind-name">成交量</span><span class="vals num"><span class="${b.c >= b.o ? 'up' : 'down'}">${fmtCompact(b.v)}</span></span>${tools('vol')}</div>`
@@ -1123,17 +1149,19 @@ export class TVChart {
     this.paneLegendEls.forEach((e, k) => { e.style.display = k < subs.length ? '' : 'none' })
     const i = this.legendIndex(), I = icon
     subs.forEach((p, k) => {
-      const e = this.paneLegendEls[k], id = p.id as SubId, cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || []
+      const e = this.paneLegendEls[k], id = p.id as SubId, cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || [], labels = cat.labels
       e.style.top = (p.y + 6) + 'px'
       const vals = s.map((ser, j) => {
-        const val = ser[i]
+        const val = ser[i], lab = labels?.[j]
+        // 带前缀的线（现货 / 合约、大单 / 散户）这一根没值就不列
+        if (lab && val == null) return ''
         const col = id === 'macd' && j === 2 ? ((val ?? 0) >= 0 ? 'var(--up-text)' : 'var(--down-text)') : cols[j % cols.length]
-        return `<span style="color:${col}">${val == null ? '—' : this.subFmt(id, val)}</span>`
+        return `<span style="color:${col}">${lab ? `<i>${lab}</i>` : ''}${val == null ? '—' : this.subFmt(id, val)}</span>`
       }).join('')
-      const key = id + ':' + i + ':' + vals
+      const key = id + ':' + i + ':' + vals + ':' + (this.notes[id]?.text ?? '')
       if (this.paneLegendKeys[k] === key) return
       this.paneLegendKeys[k] = key
-      e.innerHTML = `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span><span class="ind-param">${paramText(id, this.params[id])}</span><span class="vals num">${vals}</span>
+      e.innerHTML = `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}<span class="vals num">${vals}</span>
           <span class="tools"><button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${this.hidden.has(id) ? '显示' : '隐藏'}">${I(this.hidden.has(id) ? 'eyeOff' : 'eye', 'icon-16')}</button><button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button><button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span></div>`
     })
   }
