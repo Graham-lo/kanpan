@@ -8,6 +8,8 @@
  * 服务端对含未知字段的操作整条拒绝，多发一个键就会把整条队列堵死，所以宁可少不可多。
  */
 
+import { compareKey } from '../../sync/codec'
+
 export type IntervalId = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '12h' | '1d' | '1w' | '1M' | '1y'
 export const INTERVALS: readonly IntervalId[] = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w', '1M', '1y']
 /** 周期条出厂钉住的六档（Interval.quick），最多 6 个 */
@@ -185,9 +187,9 @@ export function cleanCompare(v: unknown): string[] {
   const out: string[] = []
   for (const x of strs(v)) {
     const k = x.includes('/') ? x : 'binance/usd_m/' + x.toUpperCase()
-    const p = k.split('/')
-    const ok = k.length <= 128 && p.length === 3 && p.every(Boolean) && /^[a-z0-9_]+$/.test(p[0]) && /^[a-z0-9_]+$/.test(p[1]) && /^[A-Z0-9_-]+$/.test(p[2])
-    if (ok && !out.includes(k)) out.push(k)
+    // 与服务端 compare_key 同一条规则（按交易所分流：币安代号允许「币安人生USDT」这种中文底名，Coinbase 是 BASE-USD）；
+    // 服务端对不合规的键整条 settings 拒收，所以这里认不下的就丢，不带上去
+    if (compareKey(k) && !out.includes(k)) out.push(k)
     if (out.length >= MAX_COMPARE) break
   }
   return out

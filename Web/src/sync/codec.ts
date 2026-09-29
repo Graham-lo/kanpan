@@ -51,6 +51,18 @@ export function validSymbol(s: string): boolean {
 export function coinbaseSymbol(s: string): boolean {
   return s.length <= 40 && /^[A-Z0-9]+-USD$/.test(s)
 }
+/** 服务端 identity(venue, market, symbol)：只认币安 U 本位与 Coinbase 现货两种，代号按各自的规则
+ *  （自选、对比品种键 `venue/market/SYMBOL` 都走它——能收藏就能对比） */
+export function instrumentIdentity(venue: string, market: string, symbol: string): boolean {
+  if (venue === VENUE && market === MARKET) return validSymbol(symbol)
+  if (venue === 'coinbase' && market === 'spot') return coinbaseSymbol(symbol)
+  return false
+}
+/** 服务端 compare_key：`venue/market/SYMBOL`，整串 UTF-8 不超过 128 字节，三段过 identity */
+export function compareKey(k: string): boolean {
+  const p = k.split('/')
+  return p.length === 3 && new TextEncoder().encode(k).length <= 128 && instrumentIdentity(p[0], p[1], p[2])
+}
 /** 标题里用的品种名：去掉计价币（和手机 `Alert.base(of:)` 一致） */
 export function baseName(s: string): string { return s.replace(/(USDT|USDC|FDUSD|BUSD|USD1|TUSD)$/, '') || s }
 

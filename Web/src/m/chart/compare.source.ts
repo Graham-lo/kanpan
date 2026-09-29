@@ -15,6 +15,7 @@ import type { Bar, Interval } from './series'
 import { BarSeries } from './series'
 import type { CompareSeries } from './state'
 import type { Hex } from './paint'
+import { validSymbol } from '../../sync/codec'
 
 /** 对比品种最多三只（Prefs.compareSymbols）。 */
 export const MAX_COMPARE = 3
@@ -28,10 +29,12 @@ export type CompareLoad = (symbol: string, iv: Interval, endTime: number | null)
 /** `binance/usd_m/ETHUSDT` → `ETHUSDT`；别家、别的市场、写坏的键回 null。裸代号按币安合约认（InstrumentID.canonical）。 */
 export function compareSymbolOf(key: string): string | null {
   const parts = key.trim().split('/')
-  if (parts.length === 1) return /^[A-Za-z0-9_-]+$/.test(parts[0]) ? parts[0].toUpperCase() : null
+  // 代号按币安那条规则（sync/codec.validSymbol，与服务端 binance_symbol 同一条）：「币安人生USDT」这种中文底名也认
+  const sym = (s: string): string | null => { const u = s.toUpperCase(); return validSymbol(u) ? u : null }
+  if (parts.length === 1) return sym(parts[0])
   if (parts.length !== 3) return null
   if (parts[0].toLowerCase() !== 'binance' || parts[1].toLowerCase() !== 'usd_m') return null
-  return /^[A-Za-z0-9_-]+$/.test(parts[2]) ? parts[2].toUpperCase() : null
+  return sym(parts[2])
 }
 
 /** 此刻真要取的几只：认得出、去重、去掉主图那只、最多三只（顺序按偏好）。 */
