@@ -124,6 +124,18 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 - XAI 这类最小变动价很小的币，`/history` 里 `step` 显示成 `9.999999999999999e-06`，是既有的浮点写法，手机端按「≈ 本机步长」比对，不影响合并。
 - `migrations/0024_orderflow_orders.sql` 的注释还写着「最多 30 天」：迁移文件改一个字校验和就变，`migrate` 会拒绝，所以不改；实际保留期以 `store.rs` 的 3 天为准。
 
+### 深度热力快照（2026-09-29，`heat.rs`、表 `orderflow_heat`）
+
+同一个跟踪任务每 5 秒把每只 base 三家各产品簿在中间价 ±5% 内按步长分桶，一家一个产品一行（桶在数组里）写进 `orderflow_heat`，
+`GET /v1/market/orderflow/heat` 读。设计与接口见 `docs/主力订单流-方案-2026-09-24.md`「深度热力快照」。
+
+- 日志（info）：每 10 分钟 `Orderflow heat: last 600s wrote N bands / M buckets (… bands/s, ~… MB/day of rows) in K statements, …s busy; dropped a (queue full), b (write failed)`；
+  每小时 `Orderflow heat: purge deleted …; table … bytes`。`dropped` 不为 0 说明库跟不上；表超过 36 GB 会 warn `size gate trimmed to …`。
+- 看体积：`SELECT pg_size_pretty(pg_total_relation_size('orderflow_heat'))`；看写入：`SELECT count(*)/12.0 FROM orderflow_heat WHERE bucket_ms > (SELECT max(bucket_ms)-60000 FROM orderflow_heat)`（每 5 秒几行）。
+- 2026-09-29 线上稳态（154 只）：每 5 秒约 460 行 / 1.85 万桶，一行约 626 字节（含索引约 713），一天约 5.6 GB，3 天约 17 GB；满额 220 只约 24 GB。
+  写库 10 分钟忙约 8 秒。冷启动头几分钟币安快照还在排队，行数从几十爬到稳态。
+- 删表回退：这张表只给热力图用，停掉只要回滚二进制；表可以 `TRUNCATE orderflow_heat` 腾空间，不影响大单历史。
+
 ### 上线
 
 `~/Desktop/kanpan-api-orderflow-rollout.sh`（在开发机上跑）：备份二进制与两张表 → 从 `origin/main` 打包同步源码 → VPS 上 `cargo build --release` → `ops/install.py` → 先 `KANPAN_ORDERFLOW_LAYERS=fixed` 重启、10 分钟后打印 CPU / RSS / 连接数 / 跟踪数 → 切全开再重启、10 分钟后再打印 → 只读核对（SNDK 的 `thresholds.usdtPerp` 等于日志里标定的值，BTC / SOXL / XAU / 一只热点有数据，没有告警刷屏）。可重跑。
