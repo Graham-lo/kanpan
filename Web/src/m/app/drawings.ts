@@ -15,6 +15,7 @@
  */
 import { DrawingBook, type DrawingBookChange } from '../chart/draw/book'
 import { DrawArchive, decodeArchive, encodeArchive } from '../chart/draw/archive'
+import { tabGuard } from './tabGuard'
 
 export const DRAWINGS_KEY = 'hkline-m-drawings-v1'
 
@@ -36,9 +37,19 @@ export type DrawingsChange = DrawingBookChange | { kind: 'preferences' }
 const listeners = new Set<(c: DrawingsChange) => void>()
 let rev = 0
 
-function persist(): void {
-  try { localStorage.setItem(DRAWINGS_KEY, JSON.stringify(encodeArchive(drawingBook.archive))) } catch { /* 满了：这一轮不落盘 */ }
+/** 旧了：把别的标签页写的那一本换进内存（发 replaced，同步据此记账推上去），不写盘；解不开就不换 */
+function adopt(): void {
+  let next: DrawArchive
+  try {
+    const raw = localStorage.getItem(DRAWINGS_KEY)
+    if (!raw) return
+    next = decodeArchive(JSON.parse(raw))
+  } catch { return }
+  replaceDrawings(next)
 }
+tabGuard.register(DRAWINGS_KEY, () => JSON.stringify(encodeArchive(drawingBook.archive)), adopt)
+/** 落盘；被别的标签页比下去了（tabGuard）就不写，切回来会重载 */
+function persist(): void { tabGuard.write(DRAWINGS_KEY) }
 
 function emit(c: DrawingsChange): void {
   rev++

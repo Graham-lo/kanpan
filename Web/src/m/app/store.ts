@@ -14,6 +14,7 @@
  */
 import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, type LayoutGroup, type Prefs } from './prefs'
 import { migrateAlert, type Alert } from '../../alerts/shape'
+import { tabGuard } from './tabGuard'
 
 export const KEY = 'hkline-m-v1'
 /** 提醒表并进 st 之前单独存的键（m/model/alerts.ts 早先用的）：第一次读档时搬进来，之后不再写 */
@@ -119,20 +120,35 @@ export function save(): void {
   const forked = settleIndicatorLayouts(st, layoutBefore)
   layoutBefore = layoutSnapshot(st)
   if (forked) forkListeners.forEach(fn => { try { fn(forked) } catch (e) { console.error(e) } })
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(st)) if (!TRANSIENT.includes(k as keyof State)) out[k] = v
-  try { ls()?.setItem(KEY, JSON.stringify(out)) } catch { /* 存储满了：这一轮不落盘 */ }
+  // 被别的标签页比下去了（tabGuard）就不写盘，切回来会重载
+  tabGuard.write(KEY)
   subs.forEach(fn => { try { fn(st) } catch (e) { console.error(e) } })
 }
 
 /** 只落盘、不通知（滚动位置这种高频又没人关心的） */
 export function persistQuiet(): void {
-  settleIndicatorLayouts(st, layoutBefore)
+  const forked = settleIndicatorLayouts(st, layoutBefore)
   layoutBefore = layoutSnapshot(st)
+  if (forked) forkListeners.forEach(fn => { try { fn(forked) } catch (e) { console.error(e) } })
+  tabGuard.write(KEY)
+}
+
+function serialize(): string {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(st)) if (!TRANSIENT.includes(k as keyof State)) out[k] = v
-  try { ls()?.setItem(KEY, JSON.stringify(out)) } catch { /* 忽略 */ }
+  return JSON.stringify(out)
 }
+/** 旧了（别的标签页更近被人动过、写了新的）：把它写的那份收进内存并照常通知（同步据此记账推上去），不写盘。
+ *  现场（当前页、品种、滚动）留本页的，免得后台页的界面跟着跳；读不出东西就不收。 */
+function adopt(): void {
+  const raw = load()
+  if (!Object.keys(raw).length) return
+  const keep = { page: st.page, symbol: st.symbol, scroll: st.scroll, stale: st.stale }
+  Object.assign(st, hydrate(raw), keep)
+  layoutSettled()
+  save()
+}
+tabGuard.register(KEY, serialize, adopt)
 
 /** 恢复出厂（我的 → 设置里用） */
 export function resetAll(): void {
