@@ -235,7 +235,11 @@ async fn refuse_guess(tx:&mut Transaction<'_,Postgres>,key:&str,valid:bool)->Res
 /// 这个用户名现在的（id，密码哈希）；停用的账号当不存在。`for_update` 只在上了账号锁的
 /// 那个事务里用：事务外那次读是给 Argon2 取料的，不该锁任何东西。
 async fn credential<'e,E:sqlx::PgExecutor<'e>>(e:E,email:&str,for_update:bool)->Result<Option<(Uuid,String)>> {
- let sql=if for_update {"SELECT id,password_hash FROM account_users WHERE email=$1 AND disabled_at IS NULL FOR UPDATE"}
+ // 上了账号顾问锁的那一次读用 FOR SHARE、不用 FOR UPDATE：登录本身不改用户行，要的只是「提交之前没人能改掉这把哈希、
+ // 停用或删掉这个账号」，FOR SHARE 就挡住了（改密码、删号、运维重置都是 UPDATE / DELETE / FOR UPDATE）。
+ // FOR UPDATE 和同一个人的每一个 `personal` 事务（一开头就 FOR SHARE 用户行）都冲突：那边同步推送连着来的时候，
+ // 行上一直有共享锁的持有者，这里的排他锁就一直排不上，等满 lock_timeout（5 秒）回 503。见 [`refresh`] 的同一条注释。
+ let sql=if for_update {"SELECT id,password_hash FROM account_users WHERE email=$1 AND disabled_at IS NULL FOR SHARE"}
   else {"SELECT id,password_hash FROM account_users WHERE email=$1 AND disabled_at IS NULL"};
  Ok(sqlx::query_as(sql).bind(email).fetch_optional(e).await?)
 }
@@ -252,7 +256,11 @@ async fn refresh(State(s):State<AppState>,Json(v):Json<RefreshInput>)->AuthResul
  if let Some(sid)=paced
   && !hit_limit(&s,&format!("refresh-sid:{sid}"),30,60).await? {return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"try_later").into())}
  let mut tx=s.pool.begin().await?;
- let row=sqlx::query("SELECT t.*,s.user_id,s.device_id,s.device_kind,s.binding_hash,s.revoked_at,s.revoked_reason,s.expires_at AS session_expires,u.disabled_at FROM account_tokens t JOIN account_sessions s ON s.id=t.session_id JOIN account_users u ON u.id=s.user_id WHERE t.token_hash=$1 AND t.kind='refresh' FOR UPDATE OF t,s,u")
+ // 令牌行与会话行要排他锁（这里改它们）；用户行只要 FOR SHARE：刷新不改用户行，只要提交之前不被停用、删掉、改密码。
+ // 以前是 `FOR UPDATE OF t,s,u`，和同一个人的每一个 `personal` 事务（同步、复盘……一开头就 FOR SHARE 用户行）冲突。
+ // 2026-09-29 压测 C 路：同一账号 20 路同步推送连着来，行上始终有共享锁的持有者，刷新的排他锁排不上，
+ // 等满 lock_timeout（5 秒）回 503，p99 到 6–10 秒（约 4% 的刷新失败）。FOR SHARE 与那边相容，改密码 / 删号仍会等它。
+ let row=sqlx::query("SELECT t.*,s.user_id,s.device_id,s.device_kind,s.binding_hash,s.revoked_at,s.revoked_reason,s.expires_at AS session_expires,u.disabled_at FROM account_tokens t JOIN account_sessions s ON s.id=t.session_id JOIN account_users u ON u.id=s.user_id WHERE t.token_hash=$1 AND t.kind='refresh' FOR UPDATE OF t,s FOR SHARE OF u")
   .bind(digest(&v.refresh_token)).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
  let sid:Uuid=row.get("session_id");let user:Uuid=row.get("user_id");
  // 设备绑定先过。`session_replaced` 等于告诉对方「这个账号刚在另一台手机上登录了」，

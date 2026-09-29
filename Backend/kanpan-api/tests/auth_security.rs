@@ -336,3 +336,25 @@ async fn password_checks_keep_their_rules_outside_the_lock() {
  let gone:i64=sqlx::query_scalar("SELECT count(*) FROM account_users WHERE email=$1").bind(&username).fetch_one(&admin).await.unwrap();assert_eq!(gone,0);
  s.pool.close().await;admin.close().await;
 }
+
+/// 2026-09-29 压测 C 路：同一个人的同步推送连着来时，刷新与登录不能被饿死。
+/// `personal`（同步、复盘……）一开头就 FOR SHARE 用户行；刷新以前对用户行要 FOR UPDATE、
+/// 登录读哈希也是 FOR UPDATE，行上始终有共享锁的持有者时就一直排不上，线上等满 lock_timeout 回 503。
+/// 这里攥着一条没提交的 `personal` 事务，刷新和登录都得在几秒内照常回 200。
+#[tokio::test]
+async fn refresh_and_login_are_not_starved_by_a_personal_transaction() {
+ let (s,app,admin)=boot().await;
+ let user=name("shared_row");
+ let desk=device_of("网页","desktop");
+ let a=signup(&app,&user,&desk).await;
+ let id:Uuid=serde_json::from_value(a["user"]["id"].clone()).unwrap();
+ let held=s.personal(id).await.unwrap_or_else(|_|panic!("personal 事务没开起来"));
+ let quick=std::time::Duration::from_secs(3);
+ let (status,v)=tokio::time::timeout(quick,refresh(&app,&a["refreshToken"],&desk)).await.expect("刷新被同步事务的共享锁卡住了");
+ assert_eq!(status,200,"{v}");
+ let tablet=device_of("平板","tablet");
+ let (status,v)=tokio::time::timeout(quick,request(&app,"/v1/auth/login","POST","127.0.0.1:19000",&[],None,json!({"username":user,"password":"Passcode123","device":tablet}))).await.expect("登录被同步事务的共享锁卡住了");
+ assert_eq!(status,200,"{v}");
+ held.rollback().await.unwrap();
+ s.pool.close().await;admin.close().await;
+}
