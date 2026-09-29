@@ -17,7 +17,7 @@ import { DeltaSource, type DeltaWin } from './depthDelta'
 import { LiqSource, VolSource, TpsMeter } from './stats'
 import { DISPLAY_ALL, type Display } from './settings'
 import { mergeFactor, intervalMultiplier } from './bucket'
-import { clamp, sh, pad } from '../util/format'
+import { clamp, sh, pad, fmt } from '../util/format'
 
 /** 图表页交给订单流模块的几个口子（避免反过来 import 图表页）。 */
 export interface Api {
@@ -224,8 +224,9 @@ export function decFor(step: number, dec: number): number {
   const i = s.indexOf('.')
   return Math.max(dec, i < 0 ? 0 : s.length - i - 1)
 }
+/** 同 fmt（缓存的格式器，梯子每 100 毫秒重画几十行，别每格新建一个 Intl.NumberFormat）；非有限数照旧原样转 */
 export function px(v: number, dec: number): string {
-  return v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+  return isFinite(v) ? fmt(v, dec) : v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
 
 let family = ''

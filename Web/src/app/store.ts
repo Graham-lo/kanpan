@@ -4,11 +4,12 @@
  * 布局槽位（深度梯子列、底部抽屉、侧栏小部件顺序）也在这里，后续跟账号同步。
  */
 import type { Drawing } from '../chart/chart'
-import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
+import { MAX_SUBS, CATALOG, type IndParams, type IndicatorId, type SubId } from '../chart/calc'
 import { migrateAlert, type Alert } from '../alerts/shape'
 import type { VpvrMode } from '../chart/overlays'
 import type { NoteDraft } from '../notes/draft'
-import { DEFAULT_WATCH, type Kind } from '../market/symbols'
+import { DEFAULT_WATCH, INTERVALS, type Kind } from '../market/symbols'
+import { IV_MS } from '../util/format'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
 
 export type Theme = 'light' | 'dark'
@@ -181,26 +182,96 @@ export function sanitizeDrawings(raw: unknown): { drawings: Record<string, Drawi
   return { drawings: out, damaged }
 }
 
+// ───────── 读盘时逐项验形状 ─────────
+// 2026-09-29 压测：存档里格子的周期是「7x」「」时原样拿去要 K 线，币安回 400、那一格永远空着；
+// pinned 是字符串时周期条按字符拆；watch 某类不是数组、ind.subs 里有不认识的副图、params 里 fast 是字符串时
+// 各自在渲染里出错或算出 NaN。本机存档会被老版本、别的标签页的老代码、手改写坏，所以每一项都要验。
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+const rec = (v: unknown): Record<string, unknown> => (isObj(v) ? v : {})
+const PANELS: PanelId[] = ['watch', 'alerts', 'flow', 'notes', 'trades']
+const WIDGETS: WidgetId[] = ['watch', 'detail', 'book', 'tape', 'walls', 'alerts', 'liq', 'vol']
+const KINDS: Kind[] = ['crypto', 'us', 'com']
+const HEX = /^#[0-9A-Fa-f]{6}$/
+/** 周期键认不认：原生、秒级（1s / 5s / 15s）、自定义分钟（2–1440 分且不和原生重复） */
+export function validIv(iv: unknown): iv is string {
+  if (typeof iv !== 'string') return false
+  if (INTERVALS.includes(iv) || iv === '1s' || iv === '5s' || iv === '15s') return true
+  const m = /^(\d+)m$/.exec(iv)
+  if (!m) return false
+  const n = +m[1]
+  return n >= 2 && n <= 1440 && !INTERVALS.some(k => IV_MS[k] === n * 60e3)
+}
+/** 本机存档里的品种代号：字母数字（1000PEPEUSDT、XAUUSDT），也有中文名的（币安人生USDT、龙虾USDT——
+ *  2026-09-30 regress 60 只自选少了一只，就是一开始只认 ASCII 把它丢了），留一点余量给点号与横线。
+ *  这只管「形状像不像代号」；能不能上云是 sync/codec.ts 的另一条规则（服务端只收 ASCII，中文名的只留本机） */
+export const validSymbol = (v: unknown): v is string => typeof v === 'string' && /^[\p{L}\p{N}._-]{2,40}$/u.test(v)
+const SUB_IDS = new Set(Object.entries(CATALOG).filter(([, c]) => c.place === 'sub').map(([k]) => k))
+/** 指标参数：只留认识的指标、认识的数值键；缺的项照目录默认补上（各指标算法按整份参数取值） */
+function cleanParams(raw: unknown): Record<string, IndParams> | null {
+  if (!isObj(raw)) return null
+  const out: Record<string, IndParams> = {}
+  for (const [id, p] of Object.entries(raw)) {
+    const cat = CATALOG[id as IndicatorId]
+    if (!cat || !isObj(p)) continue
+    const one: Record<string, unknown> = { ...(cat.params || {}) }
+    for (const [k, v] of Object.entries(p)) {
+      if (k === 'periods') { if (Array.isArray(v) && v.length && v.length <= 8 && v.every(x => Number.isInteger(x) && x >= 1 && x <= 2000)) one.periods = v.slice() }
+      else if (typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 2000 && k in (cat.params || {})) one[k] = v
+    }
+    out[id] = one as IndParams
+  }
+  return Object.keys(out).length ? out : null
+}
+const strMap = (v: unknown): Record<string, string> => {
+  const out: Record<string, string> = {}
+  if (isObj(v)) for (const [k, x] of Object.entries(v)) if (typeof x === 'string') out[k] = x
+  return out
+}
+
 /** 读盘并补齐：老版本存下来的缺字段一律回默认，字段形状不对的丢掉 */
 export function hydrate(saved: Partial<State>): State {
   const d = defaults()
+  if (!isObj(saved)) saved = {}
   const s = { ...d, ...saved } as State
-  s.slots = { ...d.slots, ...(saved.slots || {}) }
-  if (!Array.isArray(s.slots.widgets) || !s.slots.widgets.length) s.slots.widgets = d.slots.widgets
-  s.watch = { ...d.watch, ...(saved.watch || {}) }
-  s.ind = { ...d.ind, ...(saved.ind || {}) }
-  if (!Array.isArray(s.ind.subs)) s.ind.subs = d.ind.subs
+  const slots = rec(saved.slots)
+  s.slots = {
+    ladder: slots.ladder === true, drawer: slots.drawer === true,
+    widgets: Array.isArray(slots.widgets) ? [...new Set((slots.widgets as unknown[]).filter((w): w is WidgetId => WIDGETS.includes(w as WidgetId)))] : [],
+  }
+  if (!s.slots.widgets.length) s.slots.widgets = d.slots.widgets
+  const watch = rec(saved.watch)
+  s.watch = Object.fromEntries(KINDS.map(k => {
+    const list = watch[k]
+    return [k, Array.isArray(list) ? [...new Set((list as unknown[]).filter(validSymbol))] : d.watch[k]]
+  })) as Record<Kind, string[]>
+  const ind = rec(saved.ind)
+  s.ind = { ...d.ind }
+  for (const k of ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi', 'vpvr', 'keys'] as const) if (typeof ind[k] === 'boolean') s.ind[k] = ind[k] as boolean
+  if (Array.isArray(ind.subs)) s.ind.subs = [...new Set((ind.subs as unknown[]).filter((x): x is SubId => typeof x === 'string' && SUB_IDS.has(x)))]
   s.ind.subs = s.ind.subs.slice(0, MAX_SUBS)
-  if (!Array.isArray(s.cells) || !s.cells.length) s.cells = d.cells
-  s.cells = s.cells.slice(0, MAX_CELLS)
-  if (!s.cells[0] || typeof s.cells[0].symbol !== 'string') s.cells[0] = d.cells[0]
+  s.params = cleanParams(saved.params)
+  s.pinned = Array.isArray(saved.pinned) ? [...new Set(saved.pinned.filter(x => typeof x === 'string' && INTERVALS.includes(x)))] : d.pinned
+  if (!s.pinned.length) s.pinned = d.pinned
+  s.panel = s.panel === null ? null : PANELS.includes(s.panel as PanelId) ? s.panel : d.panel
+  s.lastPanel = PANELS.includes(s.lastPanel as PanelId) ? s.lastPanel : d.lastPanel
+  if (!KINDS.includes(s.watchTab)) s.watchTab = d.watchTab
+  s.customIvs = Array.isArray(s.customIvs) ? [...new Set(s.customIvs.filter(x => typeof x === 'string' && /^\d+m$/.test(x) && validIv(x)))].slice(0, 12) : []
+  // 格子：坏项与洞交给 ensureCells 补；认不出的周期回第 0 格的（第 0 格自己坏了回 1 小时）；自定义分钟启动时照格子注册
+  const ivOk = (iv: unknown): iv is string => validIv(iv)
+  const rawCells: unknown[] = Array.isArray(saved.cells) ? saved.cells.slice(0, MAX_CELLS) : []
+  const iv0 = isObj(rawCells[0]) && ivOk(rawCells[0].iv) ? rawCells[0].iv : d.cells[0].iv
+  s.cells = rawCells.map(c => (isObj(c) && validSymbol(c.symbol) ? { symbol: c.symbol, iv: ivOk(c.iv) ? c.iv : iv0 } : undefined)) as CellCfg[]
+  if (!s.cells.length || !s.cells[0]) s.cells[0] = { symbol: d.cells[0].symbol, iv: iv0 }
   ensureCells(s, s.cells.length)
+  if (typeof s.layout === 'number') s.layout = String(s.layout) as Layout
   if (!LAYOUTS.includes(s.layout)) s.layout = '1'
   clampActive(s)
+  for (const k of ['magnet', 'drawHidden', 'drawLocked'] as const) s[k] = s[k] === true
+  if (typeof s.drawColor !== 'string' || !HEX.test(s.drawColor)) s.drawColor = d.drawColor
+  if (s.alertScope !== 'all') s.alertScope = 'symbol'
+  if (typeof s.meSection !== 'string') s.meSection = d.meSection
   if (!['split', 'delta', 'total'].includes(s.vpvrMode)) s.vpvrMode = 'split'
   s.linkCross = s.linkCross !== false; s.linkSymbol = s.linkSymbol === true; s.linkIv = s.linkIv === true; s.linkTime = s.linkTime === true
-  if (!Array.isArray(s.customIvs)) s.customIvs = []
-  s.customIvs = s.customIvs.filter(x => typeof x === 'string' && /^\d+m$/.test(x)).slice(0, 12)
   if (!['sage', 'terra', 'classic'].includes(s.skin)) s.skin = 'sage'
   if (s.theme !== 'dark') s.theme = 'light'
   if (s.updown !== 'green-up') s.updown = 'red-up'
@@ -211,9 +282,18 @@ export function hydrate(saved: Partial<State>): State {
   if (!Array.isArray(s.notes)) s.notes = []
   s.notes = s.notes.filter(n => n && typeof n.id === 'string' && typeof n.symbol === 'string')
   s.drawings = sanitizeDrawings(saved.drawings).drawings
-  if (!s.drawStyles || typeof s.drawStyles !== 'object' || Array.isArray(s.drawStyles)) s.drawStyles = {}
+  const ds: Record<string, DrawStyle> = {}
+  if (isObj(s.drawStyles)) for (const [k, v] of Object.entries(s.drawStyles as unknown as Record<string, unknown>)) {
+    if (!isObj(v)) continue
+    const one: DrawStyle = {}
+    if (typeof v.color === 'string' && HEX.test(v.color)) one.color = v.color
+    if (typeof v.width === 'number' && v.width >= 1 && v.width <= 8) one.width = v.width
+    if (v.dash === 'dashed' || v.dash === 'dotted') one.dash = v.dash
+    ds[k] = one
+  }
+  s.drawStyles = ds
   s.recentColors = Array.isArray(s.recentColors) ? s.recentColors.filter(c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c)).slice(0, 3) : []
-  if (!s.toolLast || typeof s.toolLast !== 'object' || Array.isArray(s.toolLast)) s.toolLast = {}
+  s.toolLast = strMap(s.toolLast)
   s.orderFlow = s.orderFlow === true
   const ofo: Record<string, Override> = {}
   if (s.orderFlowOverrides && typeof s.orderFlowOverrides === 'object') {

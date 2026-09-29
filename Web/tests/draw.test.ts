@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Bar } from '../src/chart/calc'
 import type { Drawing } from '../src/chart/chart'
-import { QUOTA, anchoredVwap, familyOf, fvpRows, groupOf, placeCount, positionStats, quotaOK, snap45 } from '../src/chart/drawTools'
+import { QUOTA, anchoredVwap, vwapOf, familyOf, fvpRows, groupOf, placeCount, positionStats, quotaOK, snap45 } from '../src/chart/drawTools'
 import { vwap } from '../src/chart/indicators'
 import { sanitizeDrawings } from '../src/app/store'
 import { ANCHORS, KIND_OF, WEB_BODY_KEYS, decodeDrawings, drawingId, encodeDrawings } from '../src/sync/codec'
@@ -43,6 +43,21 @@ describe('锚定 VWAP', () => {
   })
   it('只算到 to（复盘回放时不看未来）', () => {
     expect(anchoredVwap(bars(30), 5, 12).mid).toHaveLength(8)
+  })
+  it('按画线缓存：同一根数与末根不重算（悬停命中与每帧重画共用一份），末根跳动、补历史、换锚点都重算且结果与直接算一致', () => {
+    const b = bars(60), ch = { bars: b } as never
+    const d = { id: 'a', type: 'avwap', pts: [{ t: 10 * 60e3, p: 100 }] } as Drawing
+    const first = vwapOf(ch, d, 10, 59)
+    expect(vwapOf(ch, d, 10, 59)).toBe(first)
+    b[59] = { ...b[59], c: b[59].c + 3, h: b[59].h + 3 }
+    const moved = vwapOf(ch, d, 10, 59)
+    expect(moved).not.toBe(first)
+    expect(moved.mid).toEqual(anchoredVwap(b, 10, 59).mid)
+    const older = [...bars(20).map(k => ({ ...k, t: k.t - 20 * 60e3 })), ...b]
+    expect(vwapOf({ bars: older } as never, d, 30, 79).mid).toEqual(anchoredVwap(older, 30, 79).mid)
+    expect(vwapOf(ch, d, 12, 59).mid).toEqual(anchoredVwap(b, 12, 59).mid)
+    const other = { ...d, id: 'b' } as Drawing
+    expect(vwapOf(ch, other, 12, 59)).not.toBe(vwapOf(ch, d, 10, 59))
   })
 })
 

@@ -129,8 +129,14 @@ function linkView(from: Cell, t0: number, t1: number): void {
 // 回归脚本（scripts/regress.mjs「布局与拖动」）读：各格子的品种、周期、可见时间段、同步来的十字线、降级档；行情连接
 ;(globalThis as unknown as { __cells?: () => unknown }).__cells = () => cells.map(c => {
   const g = c.chart.geometry(), k = cfg(c)
-  return { symbol: k.symbol, iv: k.iv, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: c.chart.bars.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]) }
+  const b = c.chart.bars
+  // 压测脚本（scripts/stress.mjs）还读：图上真的装的是哪只、哪个周期、最后一根收盘价（验多图不串数据），以及 K 线里有没有断档（验断网后补齐）
+  let holes = 0
+  for (let j = 1; j < b.length; j++) if (b[j].t - b[j - 1].t > c.chart.iv && c.chart.iv < 864e5) holes++
+  return { symbol: k.symbol, iv: k.iv, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: b.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]),
+    metaSym: c.chart.meta.symbol, metaIv: c.chart.iv, last: b[b.length - 1]?.c ?? null, lastT: b[b.length - 1]?.t ?? null, holes, empty: !$('.cell-empty', c.el).hidden }
 })
+;(globalThis as unknown as { __px?: (s: string) => number | null }).__px = s => sym(s)?.price ?? null
 ;(globalThis as unknown as { __stream?: () => unknown }).__stream = streamDebug
 // 回归脚本「指标」段读：关键价位画了哪些、VWAP 第一段从哪根起、累计量差的分界与两条、大单与散户有没有数、图例口径小字
 ;(globalThis as unknown as { __ind?: (i?: number) => unknown }).__ind = (i = 0) => {
@@ -220,11 +226,12 @@ function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
   e.hidden = !msg
   if (msg) e.innerHTML = quiet ? `<div class="empty">${I('trades', 'icon-24')}<div>${esc(msg)}</div></div>` : `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>重试</button></div>`
 }
-/** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所 */
-async function barsFor(symbol: string, iv: string, endTime?: number): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
+/** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所。
+ *  alive：这一格还要不要这份（换了品种 / 周期就不要了）——在限流闸里排队的作废请求不发、不占预算 */
+async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
   if (isSecondIv(iv)) return { bars: endTime ? [] : secondBars(symbol, iv), ok: true }
-  if (isCustomIv(iv)) return customKlines(symbol, iv, endTime)
-  return klines(symbol, iv, endTime)
+  if (isCustomIv(iv)) return customKlines(symbol, iv, endTime, alive)
+  return klines(symbol, iv, endTime, 1500, true, false, alive)
 }
 
 async function retryLoad(cell: Cell): Promise<void> {
@@ -236,7 +243,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const c = cfg(cell), token = ++cell.loadToken
   cell.noMore = false
   cell.chart.setDrawings(drawingsFor(c.symbol))
-  const { bars, ok, error } = await barsFor(c.symbol, c.iv)
+  const { bars, ok, error } = await barsFor(c.symbol, c.iv, undefined, () => token === cell.loadToken && !cell.chart.dead)
   if (token !== cell.loadToken) return
   if (ok && !bars.length && isSecondIv(c.iv)) showCellEmpty(cell, '等第一笔成交', true)
   else if (!ok || !bars.length) {
@@ -264,7 +271,7 @@ async function loadMore(cell: Cell): Promise<void> {
   if (cell.more || cell.noMore || !cell.chart.bars.length) return
   cell.more = true; cell.chart.loadingMore = true
   const c = cfg(cell), token = cell.loadToken
-  const { bars, ok } = await barsFor(c.symbol, c.iv, cell.chart.bars[0].t)
+  const { bars, ok } = await barsFor(c.symbol, c.iv, cell.chart.bars[0].t, () => token === cell.loadToken && !cell.chart.dead)
   cell.more = false; cell.chart.loadingMore = false
   if (token !== cell.loadToken) return
   if (!ok) return

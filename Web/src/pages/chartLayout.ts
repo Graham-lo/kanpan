@@ -8,7 +8,7 @@
  * 左侧工具列与顶部工具栏不动。尺寸只存本机（app/sizes.ts），窗口变小时按比例收、变回来复原。
  */
 import { GRID, type Layout } from '../app/store'
-import { sizes, saveSizes, fitWidths, fitDrawer, clampSize, trackFracs, dragTracks, REGIONS, CHART_MIN_W, TRACK_MIN_W, TRACK_MIN_H } from '../app/sizes'
+import { sizes, saveSizes, fitWidths, fitDrawer, clampSize, trackFracs, fitTracks, dragTracks, REGIONS, CHART_MIN_W, TRACK_MIN_W, TRACK_MIN_H } from '../app/sizes'
 import { splitter, type Splitter } from '../ui/splitter'
 
 const px = (el: Element, name: string, def: number): number => {
@@ -91,9 +91,15 @@ function makePageSplits(page: HTMLElement, relayout: () => void): { ladder: Spli
 
 // ------------------------------------------------------------ 多图网格
 /** 按布局与本机比例排多图网格；cells = 各格子的元素（按格子顺序） */
+/** 这种布局现在生效的列宽 / 行高比例：存的比例按当前像素夹到每条不小于下限 */
+function liveFracs(area: HTMLElement, layout: Layout, axis: 'cols' | 'rows'): number[] {
+  const n = GRID[layout][axis], gut = px(area, '--gutter', 4)
+  const total = (axis === 'cols' ? area.clientWidth : area.clientHeight) - (n - 1) * gut
+  return fitTracks(trackFracs(sizes.grid?.[layout]?.[axis], n), total, axis === 'cols' ? TRACK_MIN_W : TRACK_MIN_H)
+}
 export function applyGrid(area: HTMLElement, layout: Layout, cells: readonly HTMLElement[]): void {
-  const g = GRID[layout], saved = sizes.grid?.[layout]
-  const cols = trackFracs(saved?.cols, g.cols), rows = trackFracs(saved?.rows, g.rows)
+  const g = GRID[layout]
+  const cols = liveFracs(area, layout, 'cols'), rows = liveFracs(area, layout, 'rows')
   const fr = (f: number[]): string => f.map(x => `minmax(0, ${(x * 1000).toFixed(3)}fr)`).join(' ')
   area.style.gridTemplateColumns = fr(cols)
   area.style.gridTemplateRows = fr(rows)
@@ -117,8 +123,7 @@ export function placeGridSplits(area: HTMLElement, layout: Layout, relayout: () 
   }
   const gut = px(area, '--gutter', 4)
   const W = area.clientWidth, H = area.clientHeight
-  const saved = sizes.grid?.[layout]
-  const cols = trackFracs(saved?.cols, g.cols), rows = trackFracs(saved?.rows, g.rows)
+  const cols = liveFracs(area, layout, 'cols'), rows = liveFracs(area, layout, 'rows')
   const tw = W - (g.cols - 1) * gut, th = H - (g.rows - 1) * gut
   let k = 0, x = 0, y = 0
   for (let i = 0; i < g.cols - 1; i++) { x += cols[i] * tw; gridSplits[k++].place(x + i * gut + gut / 2, 0, H) }
@@ -134,7 +139,7 @@ function gridSplitter(area: HTMLElement, layout: Layout, axis: 'cols' | 'rows', 
     onStart: () => {
       const n = axis === 'cols' ? g.cols : g.rows, gut = px(area, '--gutter', 4)
       const total = (axis === 'cols' ? area.clientWidth : area.clientHeight) - (n - 1) * gut
-      gridDrag = { fr: trackFracs(sizes.grid?.[layout]?.[axis], n), total }
+      gridDrag = { fr: liveFracs(area, layout, axis), total }
     },
     onMove: d => {
       if (!gridDrag) return

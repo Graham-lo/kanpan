@@ -13,7 +13,7 @@
  * 从原型 prototype/web-2026-09-29/chart.js 逐字移植；画法、数值不改。
  */
 import { icon } from '../ui/icons'
-import { clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, hexA, niceStep, pad } from '../util/format'
+import { clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, fmtSub, hexA, niceStep, pad } from '../util/format'
 import { CATALOG, Calc, MAIN_IDS, paramText } from './calc'
 import type { Bar, CalcEnv, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
 import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
@@ -734,7 +734,7 @@ export class TVChart {
     for (let v = Math.ceil(r.min / step) * step; v <= r.max; v += step) out.push(+v.toFixed(10))
     return out
   }
-  subFmt(id: string, v: number): string { if (id === 'rsi' || id === 'kdj') return v.toFixed(0); if (id === 'oi') return fmtCompact(v); return fmtCompact(v) === '—' ? '' : (Math.abs(v) >= 1000 ? fmtCompact(v) : v.toFixed(Math.abs(v) < 10 ? 2 : 1)) }
+  subFmt(id: string, v: number): string { return fmtSub(id, v, this.meta.dec) }
 
   /** 时间轴刻度：规则在 timeAxis.ts 的纯函数里（from / to 参数沿用原型签名，不使用） */
   timeTicks(_from?: number, _to?: number): TimeTick[] {

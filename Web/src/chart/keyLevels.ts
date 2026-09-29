@@ -26,7 +26,9 @@ const DAY = 864e5
 const WEEK = 7 * DAY
 const RETRY_MS = 60_000
 const VP_ROWS = 100
-const KEEP = 12
+// 缓存要装得下一屏全部格子（最多十六图）再加换品种的余量：原来是 12，十六图每格一只时每帧都在把别格的挤掉、
+// 挤掉的下一帧又当新品种重要一遍，一分钟对币安打出 800 多次日线 / 5 分钟线（2026-09-29 A 路压测）
+const KEEP = 40
 
 export type KeyTier = 'day' | 'week'
 export interface KeyLevel {

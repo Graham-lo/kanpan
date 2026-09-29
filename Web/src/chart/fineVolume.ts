@@ -5,7 +5,7 @@
  * 一根收完的粗 K 线整个被细 K 线盖住时，改用这些细 K 线各自的高低与主动买入去摊；没盖住的（更早的、正在走的那根）照旧均匀摊。
  * 控制点与七成价值区的算法不变。
  *
- * 缓存：按（品种，细周期）留一段连续的细 K 线，最多 4 份；可见范围没被盖住才去要，防抖、同一时刻只有一个请求，
+ * 缓存：按（品种，细周期）留一段连续的细 K 线，最多 16 份（一屏最多十六格）；可见范围没被盖住才去要，防抖、同一时刻只有一个请求，
  * 要回来置脏重画——画的那一帧从不等它。要失败了 30 秒内不再试（这段时间照旧均匀摊）。
  */
 import type { Bar } from './calc'
@@ -15,7 +15,9 @@ export const FINE_CAP = 5000
 const PAGE = 1500
 const DEBOUNCE_MS = 250
 const RETRY_MS = 30_000
-const KEEP = 4
+// 要装得下一屏全部格子（最多十六图，每份最多 5000 根细 K 线、约 0.5 MB）：原来是 4，五格以上各开一只 4 小时成交量分布时
+// 每重画一格就挤掉别格的，挤掉的那格重画又整段重要，停不下来（2026-09-29 A 路压测）
+const KEEP = 16
 
 interface Fine { bars: Bar[]; from: number; to: number; busy: boolean; failedAt: number; timer: ReturnType<typeof setTimeout> | null; want: [number, number] | null }
 const cache = new Map<string, Fine>()

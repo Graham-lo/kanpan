@@ -120,10 +120,10 @@ export function secondLastBar(symbol: string, iv: string): Bar | null {
 // ------------------------------------------------------------ 自定义分钟：取数与实时
 /** 当前那一格里的原生线（按「品种|周期」记） */
 const tails = new Map<string, Map<number, Bar>>()
-export async function customKlines(symbol: string, iv: string, endTime?: number): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
+export async function customKlines(symbol: string, iv: string, endTime?: number, alive?: () => boolean): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
   const base = customBase(iv), ms = IV_MS[iv], per = ms / IV_MS[base]
   const limit = Math.min(1500, Math.max(200, Math.ceil(per * 500)))
-  const r = await klines(symbol, base, endTime, limit, false)
+  const r = await klines(symbol, base, endTime, limit, false, false, alive)
   if (!r.ok || !r.bars.length) return r
   let out = aggregate(r.bars, ms)
   // 第一格若是从半截开始的就丢掉（往前翻页时下一页会补全）

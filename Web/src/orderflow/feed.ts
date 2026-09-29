@@ -15,7 +15,7 @@ import type { Action, Thresholds, Trade, Venue, Product, Notional } from './type
 import { usdOf, venueId } from './types'
 import { OrderFlowModel, parseHistory, latestMs, type Snapshot } from './model'
 import { BucketScheme } from './bucket'
-import { coolingFor, noteStatus } from '../market/limit'
+import { admit, coolingFor, noteStatus } from '../market/limit'
 import { D, applyOverride, baseOfSymbol, calibratedThreshold, defaultThresholds, isValidBase, needsCalibration, type Override } from './settings'
 import {
   type DepthBook, type BinanceMarket, binanceMarket, binanceSnapshot, binanceStreams, BINANCE_SNAPSHOT_LEVELS,
@@ -57,8 +57,9 @@ export const coveredFrom = (p: { fromMs: number; nextBefore: number | null }): n
   p.nextBefore != null && p.nextBefore > p.fromMs ? p.nextBefore : p.fromMs
 
 export async function getJSON(url: string, ms: number): Promise<{ status: number; body: unknown }> {
-  // 主机在限流冷却里就不发，当作 429 回去（见 market/limit.ts）
+  // 主机在限流冷却里就不发，当作 429 回去；一分钟权重快满了先排队（见 market/limit.ts）
   if (coolingFor(url) > 0) return { status: 429, body: null }
+  try { await admit(url) } catch { return { status: 429, body: null } }
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {

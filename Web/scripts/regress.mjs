@@ -3,7 +3,7 @@
 //   段落：chart（图表页）、draw（画线：新工具、编辑交互、快捷键、同步）、alerts（提醒）、edge（边界）、themes（皮肤）、route（线路）、sectors（板块）、
 //         account（账号与同步）、review（复盘）、layout（布局与拖动）、levels（指标与叠加）、watch（自选小部件与 TradingView 导入）、
 //         flow（订单流：梯子成交列 / 变化 / 24 小时两块 / 成交流）；account / review / draw 的同步那步要 KP_PASS 环境变量，watch 有它时顺带核对导入的云端同步
-//   默认地址 http://localhost:5188/web/；截图写到 docs/acceptance/网页版-2026-09-29/回归-*.png
+//   默认地址 http://localhost:5188/web/；截图写到 docs/acceptance/网页版-2026-09-29/回归-*.png（REGRESS_OUT 环境变量可改到别处，压测反复跑时不去动已提交的验收图）
 // 每一段都收集控制台报错与未处理的 Promise 拒绝，目标是 0；每一项的结论打一行「✓ / ✗」。
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const URL_ = process.argv[2] || 'http://localhost:5188/web/'
 const PARTS = process.argv.slice(3)
-const OUT = resolve(here, '../../docs/acceptance/网页版-2026-09-29')
+const OUT = process.env.REGRESS_OUT || resolve(here, '../../docs/acceptance/网页版-2026-09-29')
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 mkdirSync(OUT, { recursive: true })
 
@@ -51,6 +51,8 @@ const page = await ctx.newPage()
 const errors = []
 page.on('console', m => { if (m.type() === 'error') errors.push(`[console] ${m.text()}`) })
 page.on('pageerror', e => errors.push(`[pageerror] ${e.message}`))
+// 控制台的「Failed to load resource」不带地址：另记一笔 4xx / 5xx 的地址，报错时看得出是谁（币安限频、网关、同步接口）
+page.on('response', r => { if (r.status() >= 400) errors.push(`[http ${r.status()}] ${r.url().replace(/([?&](signature|token)=)[^&]+/g, '$1…').slice(0, 160)}`) })
 const cdp = await ctx.newCDPSession(page)
 
 const wait = ms => page.waitForTimeout(ms)
@@ -62,13 +64,30 @@ const shotN = async (name, opt = {}) => { await page.screenshot({ path: `${OUT}/
 const NO_KEY_TEXT ='在手机上绑定交易所只读密钥后，成交会自动同步到这里'
 const state = () => page.evaluate(() => JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'))
 const ready = async () => {
-  await page.waitForFunction(() => (document.querySelector('#toolbar #tbSymbol') && document.title.includes('·')) || !!document.querySelector('.cell-empty:not([hidden])'), null, { timeout: 25000, polling: 250 })
+  try {
+    await page.waitForFunction(() => (document.querySelector('#toolbar #tbSymbol') && document.title.includes('·')) || !!document.querySelector('.cell-empty:not([hidden])'), null, { timeout: 25000, polling: 250 })
+  } catch (e) {
+    // 起不来时带上限流闸的账（这一分钟各族权重、冷却）与页面状态，分清是在排队、在冷却还是真卡住
+    const why = await page.evaluate(() => ({ limit: window.__limit?.(), title: document.title, hash: location.hash, empty: document.querySelector('.cell-empty')?.textContent?.slice(0, 60) })).catch(() => null)
+    throw new Error(`${e.message.split('\n')[0]} ${JSON.stringify(why)}`)
+  }
   await wait(1500)
 }
-const open = async (qs = '', hash = 'chart') => { await page.goto(`${URL_}?${qs}#${hash}`, { waitUntil: 'domcontentloaded' }); await ready() }
+// 连开整页前先看页面限流闸记的账（同源 localStorage 共用一份）：这一分钟合约权重超过 limit 或在冷却就等。
+// 皮肤段要冷开 36 次页面，板块页一次冷开约 440 权重（145 条小走势），不等就会把币安每分钟 2400 的 IP 上限顶穿
+async function pace(limit = 500) {
+  for (let k = 0; k < 120; k++) {
+    const g = await page.evaluate(() => { try { const s = JSON.parse(localStorage.getItem('hkline-web-rate-limit') || 'null'); const now = Date.now(); if (!s) return { used: 0, pause: 0 }; return { used: (s.used?.fapi || []).filter(x => now - x[0] < 60000).reduce((a, x) => a + x[1], 0), pause: Math.max(0, (s.cool?.['fapi.binance.com']?.until || 0) - now) } } catch { return { used: 0, pause: 0 } } }).catch(() => ({ used: 0, pause: 0 }))
+    if (g.used <= limit && !g.pause) return
+    if (k === 0) console.log(`  等币安预算：这一分钟合约权重 ${g.used}${g.pause ? '，冷却还剩 ' + Math.round(g.pause / 1000) + ' 秒' : ''}`)
+    await wait(2000)
+  }
+}
+const open = async (qs = '', hash = 'chart') => { await pace(); await page.goto(`${URL_}?${qs}#${hash}`, { waitUntil: 'domcontentloaded' }); await ready() }
 const fresh = async (qs = 'layout=1&panel=watch&ladder=0&drawer=0') => {
   await page.goto(URL_, { waitUntil: 'load' }); await wait(500)
-  await page.evaluate(() => localStorage.clear())
+  // 清状态但留下限流闸的账：清掉它等于让下一页以为这一分钟一笔没发过
+  await page.evaluate(() => { const g = localStorage.getItem('hkline-web-rate-limit'); localStorage.clear(); if (g) localStorage.setItem('hkline-web-rate-limit', g) })
   await open(qs)
 }
 const heap = async () => { await cdp.send('HeapProfiler.collectGarbage'); await wait(300); await cdp.send('HeapProfiler.collectGarbage'); return (await cdp.send('Runtime.getHeapUsage')).usedSize }
@@ -375,7 +394,7 @@ async function partRoute() {
     const market = w.live.filter(l => /market\/stream|fstream/.test(l.url))
     const t1 = await page.evaluate(() => document.title); await wait(6000); const t2 = await page.evaluate(() => document.title)
     const empty = await page.locator('.cell-empty:not([hidden])').count()
-    const want = route === 'gateway' ? /kanpan\.|localhost:5188\/market/ : /fstream\.binance\.com/
+    const want = route === 'gateway' ? /kanpan\.|localhost:\d+\/market/ : /fstream\.binance\.com/   // 本机开发服务器端口不固定（vite 转发 /market 到线上网关）
     ok(`线路 ${route}：连的是对的主机`, market.length === 1 && want.test(market[0].url) && !/binancefuture/.test(market[0].url), market.map(l => `${l.url}(${l.subs.length})`).join(' | '))
     ok(`线路 ${route}：5 秒 K 线靠逐笔成交自聚出来、价在动`, !empty && t1.includes('·'), `空态 ${empty}；标题 ${t1} → ${t2}`)
     await shot(`线路-${route}`)
@@ -558,7 +577,9 @@ async function partAlerts() {
   // 响一次就结束：贴着现价上下各放一条（差一个最小价位）。线正好压在上一笔价上不算碰（那一下已经算过，
   // 和手机 AlertWatcher 同一条规矩），所以只要下一笔成交价和现价不同，就一定穿过其中一条
   const raw = await (async () => { await page.keyboard.press('Alt+KeyA'); await wait(400); const v = await page.inputValue('#aPrice'); await page.keyboard.press('Escape'); await wait(200); return v })()
-  const dec = (raw.split('.')[1] || '').length, tick = 10 ** -dec, cur = +raw || last
+  // 面板里的默认价可能比最新成交落后几个价位（整轮跑下来时见过两次），两条线就都落在现价同一侧、永远不穿：用最新价
+  const live = await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'); const c = s.cells?.[s.active || 0]; return c ? window.__px?.(c.symbol) ?? null : null })
+  const dec = (raw.split('.')[1] || '').length, tick = 10 ** -dec, cur = (live != null ? +live.toFixed(dec) : 0) || +raw || last
   const nB = (await state()).alerts.length
   for (const px of [cur + tick, cur - tick]) {
     await page.keyboard.press('Alt+KeyA'); await wait(400)
@@ -568,7 +589,7 @@ async function partAlerts() {
   let gone = false
   for (let k = 0; k < 60 && !gone; k++) { await wait(500); gone = (await state()).alerts.length < nA }
   const toastTxt = await page.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.textContent.trim()).join(' | '))
-  ok('价格提醒贴着现价（±1 个价位两条）：逐笔价一穿就响、响完从表里删掉、弹提示', nA === nB + 2 && gone && /已结束/.test(toastTxt), gone ? toastTxt.slice(0, 80) : `30 秒内没响（现价 ${raw}）`)
+  ok('价格提醒贴着现价（±1 个价位两条）：逐笔价一穿就响、响完从表里删掉、弹提示', nA === nB + 2 && gone && /已结束/.test(toastTxt), gone ? toastTxt.slice(0, 80) : `30 秒内没响（面板价 ${raw}，逐笔价 ${live} → ${await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'); const c = s.cells?.[s.active || 0]; return c ? window.__px?.(c.symbol) ?? null : null })}，两条 ${(cur + tick).toFixed(dec)} / ${(cur - tick).toFixed(dec)}，提醒 ${nB} → ${nA}）`)
   await shot('提醒-触发')
   ok('提醒：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
@@ -1897,12 +1918,16 @@ async function partDraw() {
   await page.keyboard.press('Escape'); await wait(150)
 
   // ---- 锁住这一条：方向键不再动它
+  // 这里前面贴过两条错开的副本：几乎水平的趋势线平移几根后仍穿过同一点，点下去选中的是最上面那条（和 TradingView 一样），
+  // 不一定是 tr。所以不假定选中的是哪条，只认「点锁之后被锁住的那一条」
   await page.mouse.click(selX, lineY); await wait(250)
+  const lockedBefore = new Set((await drawsOf(sym)).filter(d => d.locked).map(d => d.id))
   await page.click('.draw-quick [data-q="lock"]'); await wait(250)
-  const lk = await byId(sym, tr.id)
+  const newly = (await drawsOf(sym)).filter(d => d.locked && !lockedBefore.has(d.id))
+  const lk = newly[0]
   await page.keyboard.press('ArrowUp'); await wait(250)
-  const lk2 = await byId(sym, tr.id)
-  ok('快捷条锁住这一条：方向键不再挪它', lk.locked === true && JSON.stringify(lk.pts) === JSON.stringify(lk2.pts))
+  const lk2 = lk && await byId(sym, lk.id)
+  ok('快捷条锁住这一条：方向键不再挪它', newly.length === 1 && !!lk2 && JSON.stringify(lk.pts) === JSON.stringify(lk2.pts), `新锁住 ${newly.length} 条${lk?.id === tr.id ? '（原线）' : '（最上面那条副本）'}；价 ${lk?.pts[0].p} → ${lk2?.pts[0].p}`)
   await page.click('.draw-quick [data-q="lock"]'); await wait(200)
   await page.keyboard.press('Escape'); await wait(150)
 

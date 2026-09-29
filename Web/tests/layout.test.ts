@@ -1,7 +1,7 @@
 /* 行情页布局与拖动：尺寸夹取、多图布局清单、降级门槛、侧栏拖动分配、行情连接池分配 */
 import { describe, it, expect } from 'vitest'
 import { LAYOUTS, LAYOUT_N, GRID, MAX_CELLS, clampActive, ensureCells, hydrate, FILL_SYMBOLS, type Layout, type CellCfg } from '../src/app/store'
-import { REGIONS, clampSize, fitWidths, fitDrawer, trackFracs, dragTracks, CHART_MIN_W, CHART_MIN_H, DRAWER_MAX_FRAC } from '../src/app/sizes'
+import { REGIONS, clampSize, fitWidths, fitDrawer, trackFracs, fitTracks, normalizeSizes, dragTracks, CHART_MIN_W, CHART_MIN_H, DRAWER_MAX_FRAC } from '../src/app/sizes'
 import { paneHeights, dragPane, paneRatiosOf, degradeFor, subDefaultH, MAIN_MIN_FRAC, SUB_MIN_H, FULL } from '../src/chart/panes'
 import { planSidebar, dragSidebar, sideCanDrag, PARTS } from '../src/orderflow/sidebar'
 import { assignStreams, PER_CONN, TOTAL } from '../src/market/stream'
@@ -204,5 +204,28 @@ describe('行情连接池：按每条上限分，流变少了收掉最空的那�
       max = Math.max(max, cur.length)
     }
     expect(max).toBe(5)
+  })
+})
+
+describe('尺寸存档读坏了能自愈（2026-09-29 压测）', () => {
+  it('形状不对的项丢掉：grid 是数字 / 字符串、side 是数组、panes 里有负数与非数', () => {
+    expect(normalizeSizes([1, 2, 3])).toEqual({})
+    expect(normalizeSizes(null)).toEqual({})
+    expect(normalizeSizes({ ladder: 'wide', panel: null, drawer: true, panes: 'x', side: [1, 2], grid: { '4': 'abc' } })).toEqual({})
+    expect(normalizeSizes({ ladder: {}, grid: 7, side: 'side' })).toEqual({})
+    expect(normalizeSizes({ ladder: -500, panes: { macd: -0.5, rsi: 0.2, kdj: 5 }, side: { watch: 300, book: -4 }, grid: { '4': { cols: [0.7], rows: [1, 2] } } }))
+      .toEqual({ ladder: -500, panes: { rsi: 0.2 }, side: { watch: 300 }, grid: { '4': { rows: [1, 2] } } })
+  })
+  it('比例生效前按像素夹：[1e9, 1] 这种存档不会把一格挤成一条缝', () => {
+    const f = fitTracks(trackFracs([1e9, 1], 2), 1000, 240)
+    expect(f[1] * 1000).toBeCloseTo(240, 5)
+    expect(f[0] + f[1]).toBeCloseTo(1, 9)
+    const g = fitTracks([0.97, 0.01, 0.01, 0.01], 1000, 240)
+    expect(g.every(x => x * 1000 >= 240 - 1e-6)).toBe(true)
+    expect(g.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9)
+    // 总宽不够每条 240：平均分
+    expect(fitTracks([0.9, 0.1], 300, 240).map(x => +x.toFixed(6))).toEqual([0.5, 0.5])
+    // 正常比例不动
+    expect(fitTracks([0.6, 0.4], 1000, 240)).toEqual([0.6, 0.4])
   })
 })

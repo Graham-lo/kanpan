@@ -23,8 +23,9 @@ const GAP_MS = 10_000
 const POLL_MS = 60_000
 const RETRY_MS = 30_000
 const FETCH_TIMEOUT_MS = 12_000
-/** 最多记几只品种（切来切去时旧的按最近活动淘汰） */
-const MAX_SYMBOLS = 6
+/** 最多记几只品种（切来切去时旧的按最近活动淘汰）。要装得下一屏全部格子（最多十六图）：原来是 6，
+ *  九图各开一只累计量差时每算一格就挤掉别格的，挤掉的又从空的重来、重新去服务端要历史（2026-09-29 A 路压测） */
+const MAX_SYMBOLS = 16
 
 /** 一个桶：美元额 */
 export interface Cell {

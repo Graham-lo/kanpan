@@ -85,6 +85,26 @@ export function trackFracs(saved: number[] | undefined, n: number): number[] {
   return Array.from({ length: n }, () => 1 / n)
 }
 /**
+ * 生效前把比例按像素再夹一遍：每条轨道不小于 minPx（总宽不够时平均分），多出来的从其余轨道按比例扣。
+ * 拖动本身已经守着下限，这一步防的是存档被写坏（[1e9, 1] 这种）或窗口缩小后把某一格挤成一条缝。
+ */
+export function fitTracks(fr: readonly number[], total: number, minPx: number): number[] {
+  const n = fr.length
+  if (n < 2 || !(total > 0)) return fr.slice()
+  const m = Math.min(minPx, total / n) / total
+  let out = fr.slice()
+  const pinned = new Array<boolean>(n).fill(false)
+  for (;;) {
+    const low = out.map((x, i) => !pinned[i] && x < m - 1e-9)
+    if (!low.some(Boolean)) break
+    low.forEach((b, i) => { if (b) pinned[i] = true })
+    const k = pinned.filter(Boolean).length, rest = 1 - k * m
+    const sum = out.reduce((a, x, i) => (pinned[i] ? a : a + x), 0)
+    out = out.map((x, i) => (pinned[i] ? m : sum > 0 ? x * rest / sum : rest / (n - k)))
+  }
+  return out
+}
+/**
  * 把第 i 条与第 i+1 条轨道之间的线拖 dx 像素：只在这两条之间挪，每条不小于 minPx。
  * total = 轨道区总像素（不含间隙）。
  */
@@ -99,8 +119,43 @@ export function dragTracks(fr: readonly number[], i: number, dx: number, total: 
 }
 
 // ------------------------------------------------------------ 读写
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+/** 正数表（副图比例、侧栏块高）：非数、非正的项丢掉 */
+function posMap(v: unknown, max: number): Record<string, number> | undefined {
+  if (!isObj(v)) return undefined
+  const out: Record<string, number> = {}
+  for (const [k, x] of Object.entries(v)) if (num(x) && x > 0 && x <= max) out[k] = x
+  return Object.keys(out).length ? out : undefined
+}
+/**
+ * 读盘整理：形状不对的项丢掉（回默认），数值范围交给用的地方去夹。
+ * 2026-09-29 压测：存档里 grid 是数字、grid['4'] 是字符串时，拖多图分隔线在 `grid[layout] ||= {}` 上抛错，
+ * 分隔线从此拖不动；side 是数组时侧栏块按下标记高。本机存档可能被别的版本、扩展或手改写坏，读进来先洗一遍。
+ */
+export function normalizeSizes(raw: unknown): Sizes {
+  if (!isObj(raw)) return {}
+  const out: Sizes = {}
+  for (const k of ['ladder', 'panel', 'drawer'] as const) if (num(raw[k])) out[k] = raw[k] as number
+  const panes = posMap(raw.panes, 1); if (panes) out.panes = panes
+  const side = posMap(raw.side, 100_000); if (side) out.side = side
+  if (isObj(raw.grid)) {
+    const grid: Partial<Record<Layout, GridSizes>> = {}
+    for (const [lay, g] of Object.entries(raw.grid)) {
+      if (!isObj(g)) continue
+      const one: GridSizes = {}
+      for (const ax of ['cols', 'rows'] as const) {
+        const a = g[ax]
+        if (Array.isArray(a) && a.length > 1 && a.every(x => num(x) && x > 0)) one[ax] = a as number[]
+      }
+      if (one.cols || one.rows) grid[lay as Layout] = one
+    }
+    if (Object.keys(grid).length) out.grid = grid
+  }
+  return out
+}
 function read(): Sizes {
-  try { const v = JSON.parse(localStorage.getItem(SIZE_KEY) || '{}'); return v && typeof v === 'object' ? v : {} } catch { return {} }
+  try { return normalizeSizes(JSON.parse(localStorage.getItem(SIZE_KEY) || '{}')) } catch { return {} }
 }
 export const sizes: Sizes = read()
 /** 松手立刻落盘（本机） */

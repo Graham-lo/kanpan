@@ -216,13 +216,13 @@ describe('成交流：bps、行高、底色', () => {
 })
 
 describe('侧栏：加上 24 小时流动性 / 成交两块', () => {
-  it('2560×1440 全开八块：总和不超过侧栏，两块统计定高 121，其余不低于 floor', async () => {
+  it('2560×1440 全开八块：总和不超过侧栏，两块统计压到 floor（图 72 高，B 路 d580296c 的收缩次序），其余不低于 floor', async () => {
     const { planSidebar, PARTS, STAT_H, SEP } = await import('../src/orderflow/sidebar')
     const ids = ['watch', 'detail', 'book', 'tape', 'walls', 'liq', 'vol', 'alerts'] as const
     const h = planSidebar(1384, ids, new Set())
     expect(h.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(1384)
-    expect(h[5]).toBe(SEP + STAT_H)
-    expect(h[6]).toBe(SEP + STAT_H)
+    expect(h[5]).toBe(SEP + STAT_H - 16)
+    expect(h[6]).toBe(SEP + STAT_H - 16)
     ids.forEach((id, i) => expect(h[i]).toBeGreaterThanOrEqual(PARTS[id].floor))
     // 收起一块统计：只剩标题行
     const c = planSidebar(1384, ids, new Set(['liq']))

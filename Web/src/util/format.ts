@@ -22,9 +22,14 @@ export const pad = (n: number): string => String(n).padStart(2, '0')
 
 export function clamp(v: number, a: number, b: number): number { return Math.max(a, Math.min(b, v)) }
 
+// 每种小数位一个格式器：toLocaleString 带选项每调一次都新建一个 Intl.NumberFormat，是图表重画里自耗时最多的一项
+// （2026-09-29 A 路压测剖面：悬停扫图 8 秒里 fmt 自耗 750 ms，排第一）；输出一字不差
+const NF = new Map<number, Intl.NumberFormat>()
 export function fmt(v: number | null | undefined, dec: number): string {
   if (v == null || !isFinite(v)) return '—'
-  return v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+  let f = NF.get(dec)
+  if (!f) { f = new Intl.NumberFormat('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }); NF.set(dec, f) }
+  return f.format(v)
 }
 
 /** 价格轴、十字线读数、现价 / 提醒标签：带千分位（84,070.0），和梯子价格列、侧栏价格同一写法；null 为空串 */
@@ -39,6 +44,19 @@ export function fmtCompact(v: number | null | undefined): string {
   if (a >= 1e6) return (v / 1e6).toFixed(2) + 'M'
   if (a >= 1e3) return (v / 1e3).toFixed(2) + 'K'
   return v.toFixed(a < 10 ? 2 : 0)
+}
+
+/** 副图读数（图例、刻度、十字线）。MACD、ATR 是价格单位，低价品种（DOGE 0.1、PEPE 0.00001）的值常在 0.001 以下，
+ *  原来一律 < 10 取两位，DOGE 日线的 MACD 图例与刻度全是「0.00」；这两个按品种价格精度 dec 取位（至少两位、至多 10 位）。
+ *  RSI、KDJ 取整；持仓量用 K/M/B/T；其余（成交量类、CCI、威廉）照旧。 */
+export function fmtSub(id: string, v: number, dec: number): string {
+  if (!isFinite(v)) return ''
+  if (id === 'rsi' || id === 'kdj') return v.toFixed(0)
+  if (id === 'oi') return fmtCompact(v)
+  const a = Math.abs(v)
+  if (a >= 1000) return fmtCompact(v)
+  if (id === 'macd' || id === 'atr') return v.toFixed(Math.min(10, Math.max(a < 10 ? 2 : 1, dec)))
+  return v.toFixed(a < 10 ? 2 : 1)
 }
 
 /** 十字线时间标签：「26-09-29 周二  00:30」；日线及以上不带时分 */

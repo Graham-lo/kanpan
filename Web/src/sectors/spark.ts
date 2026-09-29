@@ -5,7 +5,7 @@
  * 今日：最近 24 小时；5 日：从 5 日基准那根日线收盘（asof − 4 的 UTC 零点）画到现在。
  *
  * 请求量有上限：每板块 6 只、跨板块去重、一轮最多 SPARK_CAP 只、同时最多 6 个请求在路上、
- * 每只 10 分钟内不重取；只取当前市场正在看的那张表。
+ * 每只 10 分钟内不重取；只取当前市场正在看的那张表；走限流预算的后台那一截（market/limit.ts），不和图表抢。
  */
 import { klines } from '../market'
 import { parseDay } from './aggregate'
@@ -29,7 +29,7 @@ function pump(): void {
   while (running < CONCURRENCY && queue.length) {
     const k = queue.shift() as string
     running++
-    klines(k, '1h', undefined, LIMIT, false).then(({ bars, ok }) => {
+    klines(k, '1h', undefined, LIMIT, false, true).then(({ bars, ok }) => {
       if (ok && bars.length) cache.set(k, { at: Date.now(), bars: new Map(bars.map(b => [b.t, b.c])) })
       else cache.set(k, { at: Date.now() - TTL_MS + 60_000, bars: cache.get(k)?.bars ?? new Map() }) // 失败的一分钟后才再试
     }).catch(() => { /* 网络错当没有 */ }).finally(() => {

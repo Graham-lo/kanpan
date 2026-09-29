@@ -100,6 +100,18 @@ export function anchoredVwap(bars: readonly Bar[], from: number, to: number): Ba
   return out
 }
 
+/** 按画线缓存锚定 VWAP：悬停时每条线都要做一次命中、每帧又要画一次，每次都从锚点重新累计的话，
+ *  图上堆满锚定 VWAP 时主线程一半时间耗在这里（2026-09-29 A 路压测：499 条锚定 VWAP 悬停扫图，主线程占用 52%）。
+ *  键带上根数、首根时间与末根收盘 / 成交量，末根实时跳动或翻页补历史都会重算，和固定区间成交量分布一个做法。 */
+const vwapCache = new WeakMap<Drawing, { key: string; b: Bands }>()
+export function vwapOf(ch: TVChart, d: Drawing, i0: number, end: number): Bands {
+  const lb = ch.bars[end]
+  const key = `${i0}:${end}:${ch.bars.length}:${ch.bars[0]?.t}:${lb?.c}:${lb?.v}`
+  let hit = vwapCache.get(d)
+  if (!hit || hit.key !== key) { hit = { key, b: anchoredVwap(ch.bars, i0, end) }; vwapCache.set(d, hit) }
+  return hit.b
+}
+
 // ------------------------------------------------------------ 固定区间成交量分布
 /** 行数：这段价格区间在屏上的像素高 ÷ 4（每行至少 4 px），1–240 行 */
 export function fvpRows(pxH: number): number { return Math.max(1, Math.min(240, Math.floor(Math.abs(pxH) / 4))) }
@@ -194,7 +206,7 @@ function avwapPixels(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): XY[] {
   const { to } = ch.visible()
   const end = Math.min(last, to + 1)
   if (end < i0) return []
-  const bands = anchoredVwap(ch.bars, i0, end)
+  const bands = vwapOf(ch, d, i0, end)
   const from = Math.max(i0, Math.floor(ch.xToIndex(0)) - 1)
   const out: XY[] = []
   for (let i = from; i <= end; i++) { const v = bands.mid[i - i0]; if (v != null) out.push({ x: ch.indexToX(i), y: ch.priceToY(v, p, r) }) }
@@ -227,7 +239,7 @@ function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col:
   // 锚点：图底一枚小三角，标出从哪根起算
   c.fillStyle = col; c.beginPath(); c.moveTo(ax, p.y + p.h - 2); c.lineTo(ax - 5, p.y + p.h - 10); c.lineTo(ax + 5, p.y + p.h - 10); c.closePath(); c.fill()
   if (end < i0) return
-  const b = anchoredVwap(ch.bars, i0, end)
+  const b = vwapOf(ch, d, i0, end)
   const from = Math.max(i0, Math.floor(ch.xToIndex(0)) - 1)
   const X = (i: number) => ch.indexToX(i), Y = (v: number) => ch.priceToY(v, p, r)
   const band = (top: number[], bot: number[], fill: string) => {

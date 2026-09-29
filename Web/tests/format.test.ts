@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IV_MS, TZ_MS, clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, hexA, niceStep, pad, sh } from '../src/util/format'
+import { IV_MS, TZ_MS, clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, fmtSub, hexA, niceStep, pad, sh } from '../src/util/format'
 
 describe('fmtCompact：K / M / B / T', () => {
   it('边界', () => {
@@ -37,11 +37,40 @@ describe('fmt / fmtAxis', () => {
     expect(fmt(null, 2)).toBe('—')
     expect(fmt(NaN, 2)).toBe('—')
   })
+  it('fmt 换成缓存的格式器后与 toLocaleString 一字不差（各小数位、正负、零、大数、半位进位）', () => {
+    const vals = [0, -0, 0.5, 1.005, 2.675, -1234.5678, 84070.05, 1e12 + 0.125, 0.000123456, 99999.9999, -0.00004]
+    for (let dec = 0; dec <= 8; dec++) for (const v of vals) {
+      expect(fmt(v, dec)).toBe(v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }))
+    }
+  })
   it('fmtAxis 带千分位（和梯子、侧栏一致），null 为空串', () => {
     expect(fmtAxis(1234.5, 2)).toBe('1,234.50')
     expect(fmtAxis(84070, 1)).toBe('84,070.0')
     expect(fmtAxis(0.1234567, 4)).toBe('0.1235')
     expect(fmtAxis(null, 2)).toBe('')
+  })
+})
+
+describe('fmtSub：副图读数', () => {
+  it('低价品种的 MACD / ATR 按价格精度取位，不再全是 0.00', () => {
+    expect(fmtSub('macd', 0.000432, 5)).toBe('0.00043')
+    expect(fmtSub('atr', 0.00912, 5)).toBe('0.00912')
+    expect(fmtSub('macd', -0.0000071, 7)).toBe('-0.0000071')
+    expect(fmtSub('macd', 0.0004, 5)).not.toBe('0.00')
+  })
+  it('高价品种照旧：BTC MACD 250.3 一位、< 10 两位、≥ 1000 用 K', () => {
+    expect(fmtSub('macd', 250.34, 1)).toBe('250.3')
+    expect(fmtSub('macd', 3.456, 1)).toBe('3.46')
+    expect(fmtSub('atr', 1520, 1)).toBe('1.52K')
+  })
+  it('RSI / KDJ 取整，持仓量 K/M/B，其余两位，非有限值为空', () => {
+    expect(fmtSub('rsi', 55.6, 5)).toBe('56')
+    expect(fmtSub('kdj', 80.2, 5)).toBe('80')
+    expect(fmtSub('oi', 2.5e9, 5)).toBe('2.50B')
+    expect(fmtSub('cci', -120.44, 5)).toBe('-120.4')
+    expect(fmtSub('wr', -3.2, 5)).toBe('-3.20')
+    expect(fmtSub('macd', NaN, 5)).toBe('')
+    expect(fmtSub('macd', 12, 12)).toBe('12.0000000000')
   })
 })
 
