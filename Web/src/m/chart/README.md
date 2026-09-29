@@ -44,7 +44,7 @@ const chart = createChart(host, {
 | `setCandleStyle(p)` | `ChartOptions` 的任意子集 + `priceMode`（log / linear）+ `mainInverted` |
 | `setLook(p)` | 其余样式：参数、颜色覆写、隐藏输出、副图倍率、强弱上下轨等 |
 | `setOrderFlow(on, display?)` | 主力订单流开关与显示设置 |
-| `setDrawings(list)` | 本品种画线 |
+| `setDrawings(list)` | 本品种画线（只读展示用；装了画线控制器之后线从 `DrawingBook` 投影，用控制器的 `setDrawings` / `bindDrawings`） |
 | `setLandscape(on)` | 横屏画线台：只留原始 K 线（不画主图副图指标、不画订单流），退出时恢复 |
 | `showWindow(from, to)` | 把视野铺到这段时间（扫图 / 复盘跳转） |
 | `scrollToLatest()` / `clearCrosshair()` / `resetPriceScale()` | |
@@ -60,12 +60,42 @@ const chart = createChart(host, {
 | `crosshair` | `{ crosshair, bar }` | 头部开高低收读数（`dataDisplay: 'top'`） |
 | `scale` | `{ barSpacing }` | 用户捏合 / 平移后落盘根宽 |
 | `visibleRange` | `{ from, to, atLatest }` | 「回到最新」按钮显隐 |
-| `select` | `{ kind: 'orderFlow', focus }` / `{ kind: 'drawing', id }` | 点中订单流墙 / 画线 |
+| `select` | `{ kind: 'orderFlow', focus }` | 点中订单流墙（focus 带详情卡摆放：below / leading / top / maxHeight / maxWidth / compact；卡片由页面画）。画线的选中不走这里，看下节控制器的 `selected` / `onState` |
 | `inversion` | `{ main, subs }` | 双击翻转后落盘 |
 | `subScale` | `{ id, scale }` | 拖副图分隔线后落盘 |
 | `subOrder` | `IndicatorID[]` | 长按副图换序后落盘 |
 | `status` | `{ loading, error, bars }` | 首屏加载 / 取不到数据 |
 | `tap` / `notice` / `interaction` | | 单击图、图上轻提示、手指按下 / 抬起 |
+
+## 画线控制器（`view.drawing.ts` + `draw/`）
+
+画线是宿主层接的：引擎的 renderer / view / gesture 已留好挂点，不用改。
+
+```ts
+import { attachDrawing } from './chart/view.drawing'
+import { DrawingBook } from './chart/draw/book'
+
+const c = attachDrawing(chart.view)    // 接好投影、投影键、换键回调、盖层绘制五个挂点，盖层接触摸
+c.bindDrawings(book)                   // 共享的一本线（DrawingBook，按品种分桶、各自撤销史）；之后线只从本里来
+c.editable = drawingMode               // 不在画线态时收手：点中旧线也不选中
+c.setTool('trendLine')                 // DrawTool = DrawingKind；null 退出工具
+c.onChanged = items => save(items)     // 线变了（落成、拖动、删除、撤销）就存盘 / 同步
+c.onFull = () => toast('本品种画线已满')
+c.onFeedback = k => toast(k)           // 'snapped' | 'rejected' | 'removed' | 'locked' | 'unlocked'
+```
+
+| 成员 | 说明 |
+|---|---|
+| `attachDrawing(view)` / `c.detach()` | 装上 / 摘下（`teardown()` 只清手势与临时态） |
+| `bindDrawings(book)` / `book` | 接共享的 `DrawingBook`；不接时用控制器自己的一本 |
+| `editable` / `interactive` | 画线态开关 / 盖层是否接触摸 |
+| `setTool(tool)` / `tool` / `continuous` / `magnet` | 当前工具、连续画、磁吸（默认开） |
+| `selected` | 选中的线 id（可读写）；变化经 `onState` 通知 |
+| `setDrawings(items)` / `updateDrawing(d)` / `duplicateSelected()` / `deleteSelected()` / `clear()` / `setAllHidden(h)` | 改线 |
+| `addHorizontalLine(price, t?)` | 从十字线「画水平线」 |
+| `undo()` / `redo()` / `endDrawing()` | 撤销、重做、结束当前这笔 |
+| `alerted` | 带提醒的线 id 集合（画提醒记号） |
+| `onChanged` / `onState` / `onCommitted` / `onDragged` / `onFull` / `onFeedback` | 回调：线集合变了 / 工具与选中等状态变了 / 落成一条 / 拖完一条 / 满额 / 吸附与拒绝等轻反馈 |
 
 ## 行为要点
 
