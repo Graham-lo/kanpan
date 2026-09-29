@@ -28,6 +28,7 @@ import { addPriceAlert, onAlertsChange, records, updatePriceAlert, webhookBody, 
 import { openSymbol } from '../app/shell'
 import { askNotifyPermission, buildAlertList, deleteWithUndo, pairName, recordRowHTML, startAlertWatcher, venueLine } from './alerts'
 import { wantStreams } from './_streams'
+import { life, layers, type Life } from '../model/life'
 
 registerTerms([
   { id: 'alertCondition', title: '条件', body: '价格达到：盘中价格一碰到就响。\n收盘穿过：要等 K 线收盘、收盘价越过这个价才响，盘中来回插针不算。' },
@@ -41,14 +42,16 @@ const PENCIL = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="tru
 /** 打开「创建提醒」。price：十字线那一口（预填） */
 export function openAlertForm(symbol: string, price?: number | null): Sheet {
   startAlertWatcher()
-  let offs: (() => void)[] = []
+  // 底层（创建提醒）活到整张面板关掉；推进去的「编辑提醒」「全部预警」退回底层就收尾
+  const base = life()
+  const above = layers()
   const sheet = openSheet((body, sh) => {
     body.classList.add('alf-body')
-    offs.push(buildForm(body, sh, symbol, null, price ?? null))
+    buildForm(body, sh, symbol, null, price ?? null, base)
   }, {
     title: '创建提醒', detent: 'large', expandable: false, className: 'alf-sheet', id: 'alerts.new',
     action: { title: '全部预警', run: () => pushAll() },
-    onClose: () => { offs.forEach(f => f()); offs = []; wantStreams('alertForm', []) },
+    onClose: () => { above.endAll(); base.end(); wantStreams('alertForm', []) },
   })
   // 左上是关闭（×），不是返回
   const back = sheet.root.querySelector<HTMLElement>('.m-sheet-back')
@@ -57,15 +60,21 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
   function pushAll(): void {
     sheet.push('全部预警', b => {
       b.classList.add('alf-body')
-      offs.push(buildAlertList(b, { onOpen: a => { sheet.close(); openSymbol(a.symbol) } }))
+      above.push().add(buildAlertList(b, { onOpen: a => { sheet.close(); openSymbol(a.symbol) } }))
     })
   }
   // 只在最底层（创建提醒）摆「全部预警」；推进下一层就收起，回来再摆
-  if (action) new MutationObserver(() => { action.hidden = sheet.root.classList.contains('pushed') }).observe(sheet.root, { attributes: true, attributeFilter: ['class'] })
+  const mo = new MutationObserver(() => {
+    const pushed = sheet.root.classList.contains('pushed')
+    if (action) action.hidden = pushed
+    above.settle(!pushed)
+  })
+  mo.observe(sheet.root, { attributes: true, attributeFilter: ['class'] })
+  base.add(() => mo.disconnect())
   wantStreams('alertForm', [streamName.ticker(symbol)])
   return sheet
 
-  function buildForm(host: HTMLElement, sh: Sheet, sym: string, existing: Alert | null, preset: number | null): () => void {
+  function buildForm(host: HTMLElement, sh: Sheet, sym: string, existing: Alert | null, preset: number | null, L: Life): void {
     const s0 = S.symbols.get(sym)
     const f = factsOf(sym, s0)
     const { quote } = splitSymbol(sym)
@@ -163,7 +172,7 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
       const timer = setTimeout(() => ctl.abort(), 8000)
       fetch(url, { method: 'POST', mode: 'no-cors', signal: ctl.signal, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) })
         .then(() => toast('已发出'), (e: unknown) => toast((e as Error)?.name === 'AbortError' ? '发送失败 · 超时' : '发送失败 · 连不上'))
-        .finally(() => { clearTimeout(timer); testing = false; paint() })
+        .finally(() => { clearTimeout(timer); testing = false; if (!L.ended) paint() })
     }
     submit.onclick = () => {
       const target = parseTarget(input.value)
@@ -186,12 +195,13 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
       if (!open) return
       const a = records(sym).find(x => x.id === open.dataset.open)
       if (!a || a.kind !== 'price') return
-      sh.push('编辑提醒', b => { b.classList.add('alf-body'); offs.push(buildForm(b, sh, sym, a, null)) })
+      sh.push('编辑提醒', b => { b.classList.add('alf-body'); buildForm(b, sh, sym, a, null, above.push()) })
     })
-    const offMarket = on(e => { if (e.type === 'ticker' && e.symbol === sym) paintQuote() })
-    const offAlerts = onAlertsChange(paintRecords)
+    // 这只品种在行情页上时逐笔成交也发 ticker（一秒几十下）：并到下一帧画一次
+    const paintQuoteSoon = L.frame(paintQuote)
+    L.add(on(e => { if (e.type === 'ticker' && e.symbol === sym) paintQuoteSoon() }))
+    L.add(onAlertsChange(paintRecords))
     paint(); paintRecords()
-    if (!startText) requestAnimationFrame(() => input.focus({ preventScroll: true }))
-    return () => { offMarket(); offAlerts() }
+    if (!startText) L.frame(() => input.focus({ preventScroll: true }))()
   }
 }

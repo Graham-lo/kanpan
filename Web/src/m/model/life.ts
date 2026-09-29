@@ -56,3 +56,23 @@ export function life(
   }
   return L
 }
+
+/** 叠在一层底上、推进去又会退回来的那几层（面板 sheet.push 推的「编辑提醒」「全部预警」）。
+ *  推一层就开一段生命期；退回底层（settle(true)）时这些层一起收尾——否则退回去的那张表
+ *  还挂着行情与提醒监听，每来一笔都去画一张已经不在屏上的表，推几次就叠几份，直到整张面板关掉。 */
+export interface Layers {
+  readonly count: number
+  push(): Life
+  settle(atBase: boolean): void
+  endAll(): void
+}
+export function layers(make: () => Life = () => life()): Layers {
+  const open: Life[] = []
+  const endAll = (): void => { open.splice(0).reverse().forEach(l => l.end()) }
+  return {
+    get count() { return open.length },
+    push() { const l = make(); open.push(l); return l },
+    settle(atBase) { if (atBase) endAll() },
+    endAll,
+  }
+}

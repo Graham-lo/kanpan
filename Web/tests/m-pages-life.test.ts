@@ -2,7 +2,7 @@
  * 回归的是三处真 bug 的机制：搜索页关掉后没摘的 hashchange 把下一次打开的搜索页关掉一半；
  * 关掉之后迟到的 ensureUniverse / 排着的帧把「search」订阅重新订上；登录请求回来时那一层已退，却照样弹栈。 */
 import { describe, expect, it } from 'vitest'
-import { life } from '../src/m/model/life'
+import { layers, life } from '../src/m/model/life'
 import { navStack } from '../src/m/model/navStack'
 
 const fakeRaf = () => {
@@ -87,5 +87,41 @@ describe('手机网页版 · 审查（页面）：「我的」页内导航栈', 
     expect(s.depth).toBe(1)
     expect(s.back()).toBe(false)
     expect(popped).toEqual(['修改密码→账号', '账号→我的'])
+  })
+})
+
+describe('手机网页版 · 审查（页面）：创建提醒面板里推进去的层', () => {
+  it('推「编辑提醒」再退回：那层挂的行情 / 提醒监听当场摘掉，推几次都不叠；底层照常活着', () => {
+    const f = fakeRaf()
+    const base = life(f.raf, f.caf)
+    const above = layers(() => life(f.raf, f.caf))
+    const market = new EventTarget()
+    let basePaints = 0, editPaints = 0
+    base.listen(market, 'ticker', () => { basePaints++ })
+    for (let i = 0; i < 5; i++) {
+      const l = above.push()
+      l.listen(market, 'ticker', () => { editPaints++ })
+      above.settle(false) // 推进去之后：还在上面
+      market.dispatchEvent(new Event('ticker'))
+      above.settle(true) // 退回底层
+    }
+    expect(editPaints).toBe(5)
+    expect(above.count).toBe(0)
+    market.dispatchEvent(new Event('ticker'))
+    expect(editPaints).toBe(5)
+    expect(basePaints).toBe(6)
+  })
+
+  it('逐笔成交一帧里来几十下：现价只画一次；关掉面板时排着的那一帧取消', () => {
+    const f = fakeRaf()
+    const L = life(f.raf, f.caf)
+    let paints = 0
+    const soon = L.frame(() => { paints++ })
+    for (let i = 0; i < 40; i++) soon()
+    f.tick()
+    expect(paints).toBe(1)
+    soon(); L.end(); f.tick()
+    expect(paints).toBe(1)
+    expect(f.size).toBe(0)
   })
 })
