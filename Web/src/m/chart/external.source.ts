@@ -101,7 +101,9 @@ export async function fetchMetric(id: ExternalID, symbol: string, iv: Interval, 
     if (!first || page.length < PAGE || first.time <= lower) { complete = true; break }
     end = first.time - 1
   }
-  return { points: dedup(out), complete }
+  // 和 Swift 一样交回按本周期降采样过的点（OISource.fetchMetric 末尾的 downsample(dedup(points))）：
+  // 周线 / 月线 / 年线问的是 1d 档，不降采样就把每天一条的原始点整批存进 ExternalFeed（画图前 chartSeries 还会再降一次，结果不变）。
+  return { points: downsample(dedup(out), iv), complete }
 }
 
 /**
