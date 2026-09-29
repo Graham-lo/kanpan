@@ -71,7 +71,8 @@ struct IndicatorPage: View {
       }
 
       // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
-      PanelGroupTitle(text: "副图 · 最多三个")
+      // 成交量不占名额（`Prefs.maxSubs`，与网页版同一口径），标题上一并说清。
+      PanelGroupTitle(text: "副图 · 最多三个 · 成交量不占")
       ForEach(IndicatorID.subPalette, id: \.self) { id in
         row(id, last: id == IndicatorID.subPalette.last)
       }

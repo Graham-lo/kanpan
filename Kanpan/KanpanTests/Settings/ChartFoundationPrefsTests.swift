@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import KanpanCore
 @testable import Kanpan
@@ -22,10 +23,10 @@ struct ChartFoundationPrefsTests {
     var prefs = Prefs()
     prefs.portraitHeight = 0.9
     prefs.subHeightOverrides = [.vol: 0.73, .rsi: 1.42]
-    // 副图上限收到三个之后（`Prefs.maxSubs`），读档时多出来的会被裁掉，
-    // 所以这儿摆满三个来验往返——摆五个验的就不是「落盘读回一致」，
+    // 副图上限是成交量 + 三个（`Prefs.maxSubs`，成交量不占名额），读档时多出来的会被裁掉，
+    // 所以这儿摆满成交量 + 三个来验往返——摆多了验的就不是「落盘读回一致」，
     // 而是「裁剪」，那件事下面单独验一次。
-    prefs.subs = [.vol, .oi, .macd]
+    prefs.subs = [.vol, .oi, .macd, .rsi]
     #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)) == prefs)
     let restored = PrefsCodec.decode(PrefsCodec.encode(prefs))
     // 数据展示、十字线价格、翻转许可、指标自适应 2026-09-28 起收成定值（收设置项 B 组）
@@ -36,13 +37,27 @@ struct ChartFoundationPrefsTests {
     #expect(restored.chartOptions.portraitHeight == 0.9)
   }
 
-  /// 老存档里攒了五个副图的用户，升级后读回来只留最早的三个，不是整份档案作废。
-  @Test("旧存档里超额的副图读回时被裁到三个")
+  /// 老存档里攒了五个副图的用户，升级后读回来留成交量 + 最早的三个，不是整份档案作废。
+  @Test("旧存档里超额的副图读回时被裁到成交量 + 三个")
   func clampsLegacySubs() {
     var prefs = Prefs()
     prefs.subs = [.vol, .oi, .macd, .kdj, .rsi]
     let restored = PrefsCodec.decode(PrefsCodec.encode(prefs))
-    #expect(restored.subs == [.vol, .oi, .macd])
+    #expect(restored.subs == [.vol, .oi, .macd, .kdj])
+  }
+
+  /// 网页版推上来的是「成交量 + 最多三个」，四项；原来 `prefix(3)` 会把最后一个丢掉。
+  @Test("网页推来的成交量 + 三个读回四项一个不丢")
+  func keepsWebVolPlusThree() {
+    let json = Data(#"{"subs":["VOL","MACD","RSI","KDJ"]}"#.utf8)
+    #expect(PrefsCodec.decode(json).subs == [.vol, .macd, .rsi, .kdj])
+  }
+
+  /// 没有成交量的旧档四个副图：照旧截到三个。
+  @Test("旧档四个非成交量副图截到三个")
+  func clampsFourNonVol() {
+    let json = Data(#"{"subs":["OI","MACD","RSI","KDJ"]}"#.utf8)
+    #expect(PrefsCodec.decode(json).subs == [.oi, .macd, .rsi])
   }
 }
 

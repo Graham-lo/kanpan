@@ -1319,11 +1319,11 @@ final class ChartFoundationUITests: XCTestCase {
 
   /// 副图开满，主图和副图仍然一起落在一屏可视区里，不用翻页。
   ///
-  /// 「开满」是三个，不是四个：`Prefs.maxSubs` 从 `181a5bc`「交互定板落地」起卡死在 3
-  /// （用户：「最多同时开三个副图……第四个进来就把最早开的那个换下去」），出厂默认
-  /// 也正好是三个（`AICoinBehavior.subpanels` = 量 / 仓 / MACD）。这条用例写在那之前，
-  /// 一直在等 `subs.count == 4`，那个数从此再也不可能出现。现在它验的是同一件事：
-  /// 再开一个 RSI，最早那个被换下去、总数仍是三个，图整体高度还等于可视区高度
+  /// 「开满」是成交量 + 三个：`Prefs.maxSubs` 从 `181a5bc`「交互定板落地」起卡死在 3
+  /// （用户：「最多同时开三个副图……第四个进来就把最早开的那个换下去」），2026-09-29
+  /// 与网页版对齐后成交量不占名额。出厂是量 / 仓 / MACD（`AICoinBehavior.subpanels`），
+  /// 只占两个名额，所以再开一个 RSI 不换下谁，窗格一共四个——这正是手机上能出现的
+  /// 最满的那一屏。验的是：四个都在、RSI 上了图、图整体高度还等于可视区高度
   /// （`height == viewportH` 就是「没有整页滚动」），新开的那格把手也点得到。
   func testThreeSubpanelsFitWithoutPageScroll() throws {
     XCTAssertTrue(app.openIndicatorPage())
@@ -1334,13 +1334,15 @@ final class ChartFoundationUITests: XCTestCase {
       scroll.swipeUp()
     }
     XCTAssertTrue(toggle.waitForExistence(timeout: 5)); toggle.tap(); closePanel()
-    XCTAssertTrue(wait { (self.info()["subs"] as? [String])?.count == 3 },
-                  "副图数不是三个：\(info()["subs"] ?? "?")")
+    XCTAssertTrue(wait { (self.info()["subs"] as? [String])?.count == 4 },
+                  "副图数不是成交量 + 三个：\(info()["subs"] ?? "?")")
+    XCTAssertTrue(wait { (self.info()["subs"] as? [String])?.contains("VOL") == true },
+                  "开 RSI 把成交量换下去了：\(info()["subs"] ?? "?")")
     XCTAssertTrue(wait { (self.info()["subs"] as? [String])?.contains("RSI") == true },
                   "刚开的 RSI 没上图：\(info()["subs"] ?? "?")")
     XCTAssertEqual(try XCTUnwrap(info()["height"] as? Double), try XCTUnwrap(info()["viewportH"] as? Double), accuracy: 1)
     XCTAssertTrue(app.otherElements["chart.resize.RSI"].isHittable)
-    shot("一屏三副图-无需滚动")
+    shot("一屏成交量加三副图-无需滚动")
   }
 
   /// 长按出来的十字线：开高低收写在头部（「数据展示」2026-09-28 收成「顶部」定值，收设置项 B 组，

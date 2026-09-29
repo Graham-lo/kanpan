@@ -218,7 +218,8 @@ extension Prefs: Codable {
     if let raw = str(.priceMode), let v = PriceMode(rawValue: raw) { layout.priceMode = v }
     if let raw = str(.candleKind), let v = CandleKind(rawValue: raw) { layout.candleKind = v }
     if let raw = strs(.overlays) { layout.overlays = Prefs.ids(raw, placement: .main) }
-    if let raw = strs(.subs) { layout.subs = Array(Prefs.ids(raw, placement: .sub).prefix(Prefs.maxSubs)) }
+    // 成交量不占名额：网页推上来的是「成交量 + 最多三个」，四项都要留住（`Prefs.cappedSubs`）。
+    if let raw = strs(.subs) { layout.subs = Prefs.cappedSubs(Prefs.ids(raw, placement: .sub)) }
     if let raw = (try? c.decodeIfPresent([String: [Int]].self, forKey: .params)) ?? nil {
       var out: [IndicatorID: [Int]] = [:]
       for (k, v) in raw {

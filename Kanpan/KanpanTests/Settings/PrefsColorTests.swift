@@ -71,19 +71,52 @@ struct IndicatorToggleTests {
     #expect(!p.isOn(.ma))
   }
 
-  @Test("副图最多三个，第四个挤掉最早打开的那个")
+  @Test("副图最多三个，第四个挤掉最早打开的那个（成交量以外）")
   func 副图上限() {
     var p = Prefs.defaults
     p.subs = []
-    let ids: [IndicatorID] = [.vol, .oi, .macd]
+    let ids: [IndicatorID] = [.oi, .macd, .rsi]
     for id in ids { #expect(p.toggle(id) == nil) }
     #expect(p.subs == ids)
-    // 第四个不再被拒绝：队首（最早打开的 VOL）让位，并把「换下了谁」说回来。
-    #expect(p.toggle(.kdj) == "副图最多三个 · 已换下 成交量")
-    #expect(p.subs == [.oi, .macd, .kdj])
+    // 第四个不再被拒绝：队首（最早打开的 OI）让位，并把「换下了谁」说回来。
+    #expect(p.toggle(.kdj) == "副图最多三个 · 已换下 持仓量")
+    #expect(p.subs == [.macd, .rsi, .kdj])
     // 关掉一个照旧只是关掉，不带提示，其余顺序不动。
-    #expect(p.toggle(.macd) == nil)
-    #expect(p.subs == [.oi, .kdj])
+    #expect(p.toggle(.rsi) == nil)
+    #expect(p.subs == [.macd, .kdj])
+  }
+
+  /// 2026-09-29 与网页版对齐：成交量叠在主图底部、不占名额，口径是「成交量 + 最多三个」。
+  @Test("成交量不占副图名额：满三个时再开成交量不挤人")
+  func 成交量不占名额() {
+    var p = Prefs.defaults
+    p.subs = [.oi, .macd, .rsi]
+    #expect(p.toggle(.vol) == nil)
+    #expect(p.subs == [.oi, .macd, .rsi, .vol])
+    #expect(p.isOn(.vol))
+  }
+
+  @Test("出厂量 / 仓 / MACD 再开一个不换人，第五个才换下最早的非成交量")
+  func 成交量不被换下() {
+    var p = Prefs.defaults
+    #expect(p.subs == [.vol, .oi, .macd])
+    #expect(p.toggle(.rsi) == nil)                       // 成交量不算，此时才三个
+    #expect(p.subs == [.vol, .oi, .macd, .rsi])
+    // 再开一个：换下的是最早的非成交量 OI，排在队首的成交量不动。
+    #expect(p.toggle(.kdj) == "副图最多三个 · 已换下 持仓量")
+    #expect(p.subs == [.vol, .macd, .rsi, .kdj])
+    // 关掉成交量再开回来，也不挤任何人。
+    #expect(p.toggle(.vol) == nil)
+    #expect(p.toggle(.vol) == nil)
+    #expect(p.subs == [.macd, .rsi, .kdj, .vol])
+  }
+
+  @Test("裁副图的尺子：成交量原位保留，别的按顺序留前三个")
+  func 裁副图() {
+    #expect(Prefs.cappedSubs([.macd, .vol, .rsi, .kdj, .oi]) == [.macd, .vol, .rsi, .kdj])
+    #expect(Prefs.cappedSubs([.vol, .oi, .macd]) == [.vol, .oi, .macd])
+    #expect(Prefs.cappedSubs([.oi, .macd, .rsi, .kdj]) == [.oi, .macd, .rsi])
+    #expect(Prefs.cappedSubs([]) == [])
   }
 
   @Test("拖动排序")

@@ -73,10 +73,10 @@ struct IndicatorLayoutGroupsTests {
 
   @Test("在一组里改一项，那一组分叉并说一次；别的组仍共用；回来还在")
   func editingForksOnlyThatGroup() {
-    let (store, _) = makeStore()
+    let (store, _) = makeStore(Self.fullSubs)
     store.update { $0.interval = .h1 }
     let shared = store.prefs.indicatorLayout
-    store.toggleIndicator(.kdj)   // 副图满三个：换下 VOL，同时小时组分叉
+    store.toggleIndicator(.kdj)   // 成交量以外已满三个：换下 OI，同时小时组分叉
     #expect(store.prefs.subs.contains(.kdj))
     #expect(store.prefs.isLayoutForked(.hour))
     #expect(!store.prefs.isLayoutForked(.minute) && !store.prefs.isLayoutForked(.day))
@@ -283,13 +283,21 @@ struct IndicatorLayoutGroupsTests {
 
   @Test("撤销分叉那一下：分组回到没分叉的样子")
   func undoTheForkingToggle() throws {
-    let (store, _) = makeStore()
+    let (store, _) = makeStore(Self.fullSubs)
     store.update { $0.interval = .h1 }
     store.toggleIndicator(.kdj)
     let undo = try #require(store.noticeUndo)
     undo()
     #expect(store.prefs.layoutBook.forks.isEmpty)
-    #expect(store.prefs.subs == AICoinBehavior.subpanels)
+    #expect(store.prefs.subs == Self.fullSubs.subs)
+  }
+
+  /// 副图开满的一份共用布局：成交量 + 三个（成交量不占名额，2026-09-29 与网页版对齐）。
+  /// 出厂量 / 仓 / MACD 只占两个名额，再开一个不会换人，要验「换下」得从开满起步。
+  private static var fullSubs: Prefs {
+    var p = Prefs.defaults
+    p.subs = [.vol, .oi, .macd, .rsi]
+    return p
   }
 
   @Test("SettingsWire：indicatorLayouts/<组> 映回 indicatorLayouts 这个字段")

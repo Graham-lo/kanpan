@@ -352,7 +352,7 @@ final class StressRegression0928UITests: KanpanUICase {
     note("BTC 切周期 ok bars=\(chartInfo()["bars"] ?? 0)")
 
     phase("切品种与周期")
-    // 分析：开 RSI（副图最多三个，开了它换下最早那个）、画趋势线、开主力订单流。
+    // 分析：开 RSI（成交量以外最多三个，满了换下最早那个）、画趋势线、开主力订单流。
     XCTAssertTrue(app.openIndicatorPage(), "分析面板没开出来")
     let scroll = app.scrollViews["panel.content"]
     let rsi = app.buttons["indicator.switch.RSI"]
@@ -361,7 +361,8 @@ final class StressRegression0928UITests: KanpanUICase {
     app.closeOpenPanel()
     XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["subs"] as? [String])?.contains("RSI") == true },
                   "RSI 没上图：\(chartInfo()["subs"] ?? "?")")
-    XCTAssertLessThanOrEqual((chartInfo()["subs"] as? [String])?.count ?? 0, 3, "副图超过三个")
+    // 成交量不占名额（2026-09-29 与网页版对齐）：数的是成交量以外的副图。
+    XCTAssertLessThanOrEqual((chartInfo()["subs"] as? [String])?.filter { $0 != "VOL" }.count ?? 0, 3, "成交量以外的副图超过三个")
     phase("开 RSI")
 
     // 拆成四段记卡顿（2026-09-28 走查两轮这一段各出过一次 >250 ms）。

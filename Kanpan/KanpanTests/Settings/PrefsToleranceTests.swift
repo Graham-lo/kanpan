@@ -71,12 +71,15 @@ struct PrefsToleranceTests {
     #expect(p.subs == [.rsi, .kdj])
   }
 
-  @Test("旧存档里多出来的副图按顺序截到三个")
+  @Test("旧存档里多出来的副图按顺序截到三个，成交量不占名额")
   func 副图截断() {
     // 副图上限从七收到三之后，老存档里存着的五个要按原顺序留前三个，不是整包丢掉。
+    // ATR 已退役先被滤掉；成交量不占名额（2026-09-29 与网页版对齐），原位留着。
     let p = decode(#"{"subs":["MACD","RSI","KDJ","ATR","VOL"]}"#)
-    #expect(p.subs == [.macd, .rsi, .kdj])
-    #expect(p.subs.count <= Prefs.maxSubs)
+    #expect(p.subs == [.macd, .rsi, .kdj, .vol])
+    #expect(p.subs.filter { $0 != .vol }.count <= Prefs.maxSubs)
+    let q = decode(#"{"subs":["MACD","RSI","KDJ","OI","CVD"]}"#)
+    #expect(q.subs == [.macd, .rsi, .kdj])
   }
 
   @Test("参数越界 / 个数不对 → 夹回区间并补齐")

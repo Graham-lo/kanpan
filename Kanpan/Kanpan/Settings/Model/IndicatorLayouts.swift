@@ -72,6 +72,8 @@ struct IndicatorLayout: Sendable, Equatable {
   /// 落盘前夹一道，和 `PrefsCodec.sanitized` 对顶层那份做的一样。
   var sanitized: IndicatorLayout {
     var l = self
+    // 副图名额和读档同一把尺子：成交量不占，别的最多三个（`Prefs.cappedSubs`）。
+    l.subs = Prefs.cappedSubs(l.subs)
     l.subHeightOverrides = l.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     return l
   }

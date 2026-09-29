@@ -74,7 +74,7 @@ struct SettingsBugfixTests {
   @MainActor
   func 撤销只动自己的字段() throws {
     let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
-    store.update { $0.subs = [.vol, .macd, .kdj] }
+    store.update { $0.subs = [.vol, .macd, .kdj, .oi] }   // 成交量不占名额，这是开满
     let subsBefore = store.prefs.subs
     var arrivals: [ChartLayoutArrival] = []
     store.onAdopt = { _, why in arrivals.append(why) }
