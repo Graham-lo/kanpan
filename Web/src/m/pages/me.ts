@@ -23,6 +23,7 @@ import { login, logout, devices, kick, changePassword, deleteAccount, errorText,
 import { liveCount, onAlertsChange } from '../model/alerts'
 import { KIND_CN, PASSWORD_RULE, USERNAME_RULE, deviceMeta, validPassword, validUsername } from '../model/formText'
 import { buildAlertList, startAlertWatcher } from './alerts'
+import { takeOpenParam } from './_streams'
 
 registerTerms([
   { id: 'route', title: '线路', body: '直连：手机自己直接连交易所，出厂就是它。\n网关：经我们的服务器转一道，手机连不上交易所时用。\n选了哪条就一直走哪条，不会自己切换。' },
@@ -106,11 +107,13 @@ export function initMe(root: HTMLElement): PageHandle {
   }
   rootLayer.body.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-go]')
-    if (!b) return
-    if (b.dataset.go === 'account') openAccount()
-    else if (b.dataset.go === 'alerts') push('全部预警', (body, L) => { body.classList.add('me-alerts'); L.off.push(buildAlertList(body, { onOpen: a => { popToRoot(); openSymbol(a.symbol) } })) })
-    else if (b.dataset.go === 'settings') push('设置', buildSettings)
+    if (b) go(b.dataset.go || '')
   })
+  function go(id: string): void {
+    if (id === 'account') openAccount()
+    else if (id === 'alerts') push('全部预警', (body, L) => { body.classList.add('me-alerts'); L.off.push(buildAlertList(body, { onOpen: a => { popToRoot(); openSymbol(a.symbol) } })) })
+    else if (id === 'settings') push('设置', buildSettings)
+  }
 
   // ───────── 设置 ─────────
   function buildSettings(body: HTMLElement, L: Layer): void {
@@ -292,6 +295,9 @@ export function initMe(root: HTMLElement): PageHandle {
   onAlertsChange(renderRoot)
   trackScroll(rootScroll, 'me.root')
   restoreScroll(rootScroll, 'me.root')
+  // 验收截图用：?open=account|alerts|settings 直接推到那一层（读完从地址里去掉）
+  const deep = takeOpenParam(['account', 'alerts', 'settings'])
+  if (deep) go(deep)
   return {
     show() { renderRoot() },
     hide() { (document.activeElement as HTMLElement | null)?.blur?.() },

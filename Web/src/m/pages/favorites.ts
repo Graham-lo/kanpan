@@ -19,7 +19,7 @@ import * as F from '../model/favorites'
 import { esc } from '../model/rowText'
 import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowHTML'
 import { openSearch } from './search'
-import { ensureUniverse, wantStreams } from './_streams'
+import { ensureUniverse, takeOpenParam, wantStreams } from './_streams'
 
 /** 琉璃底（光斑 + 冲淡 + 颗粒）：自选页和板块页共用 */
 export function backdropHTML(): string {
@@ -240,6 +240,9 @@ export function initFavorites(root: HTMLElement): PageHandle {
   scroll.addEventListener('scroll', () => closeOpenSwipe(), { passive: true })
   hooks.onTheme.push(() => { if (active) renderList() })
   hooks.onForeground.push(() => { if (active) renderList() })
+
+  // 验收截图用：?open=search 进来直接开搜索页
+  if (takeOpenParam(['search'])) requestAnimationFrame(() => searchBtn.click())
 
   return {
     show() {

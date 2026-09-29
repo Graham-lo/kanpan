@@ -7,6 +7,8 @@
   opacity: 0; translate: 0 12px; transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur) var(--ease-out);
 }
 .msr.in { opacity: 1; translate: 0 0 }
+/* 高度跟着 visualViewport 缩到键盘上沿；键盘上面那条系统工具栏的缝里不能露出底下的自选页 */
+.msr::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--app); pointer-events: none }
 @media (prefers-reduced-motion: reduce) { .msr { translate: none; transition: opacity var(--dur-fast) linear } }
 
 /* 搜索条：44 高胶囊 raised2 底，聚焦时描边换成 2 的强调色；右边「取消」 */
@@ -75,8 +77,8 @@ html[data-theme="dark"] .msr-chip { background: color-mix(in srgb, var(--ink) 7%
 .sr-top em { font-style: normal; color: var(--accent) }
 .sr-meta { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sr-right { display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-xxs); flex: none; font-variant-numeric: tabular-nums }
-.sr-price { font: var(--t-body-emph); font-family: var(--font-num); color: var(--ink) }
-.sr-chg { font: var(--t-footnote-emph); font-family: var(--font-num); color: var(--ink3) }
+.sr-price { font: var(--t-body-emph); font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink) }
+.sr-chg { font: var(--t-footnote-emph); font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink3) }
 .sr-chg.up { color: var(--up) }
 .sr-chg.down { color: var(--down) }
 .stale .sr-price { color: var(--stale) }

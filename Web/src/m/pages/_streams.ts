@@ -30,3 +30,16 @@ export function ensureUniverse(): Promise<unknown> {
 }
 /** 前台回来、表是空的：重拉 */
 export function retryUniverse(): Promise<unknown> { universeP = null; return ensureUniverse() }
+
+/** 验收截图用的深链：?open=xxx 命中本页认得的值才读，读完从地址里去掉（模拟器 Safari 里没法点，只能靠地址进到子层） */
+export function takeOpenParam(accept: readonly string[]): string | null {
+  try {
+    const q = new URLSearchParams(location.search)
+    const v = q.get('open')
+    if (!v || !accept.includes(v)) return null
+    q.delete('open')
+    const qs = q.toString()
+    history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash)
+    return v
+  } catch { return null }
+}

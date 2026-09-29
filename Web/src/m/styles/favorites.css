@@ -111,7 +111,7 @@ html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, 
 .lr-meta { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .lr-lead.up { color: var(--up) }
 .lr-right { display: flex; align-items: center; gap: var(--s-m); flex: none }
-.lr-price { font: var(--t-body-emph); color: var(--ink); font-family: var(--font-num); font-variant-numeric: tabular-nums; text-align: right; min-width: 64px }
+.lr-price { font: var(--t-body-emph); color: var(--ink); font-family: var(--font-ui); font-variant-numeric: tabular-nums; text-align: right; min-width: 64px }
 .lr-price.skel { display: inline-block; width: 64px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 8%, transparent) }
 .stale .lr-price { color: var(--stale) }
 .editing .lr .m-pill, .editing .lr-price { opacity: .55 }
@@ -120,7 +120,7 @@ html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, 
 /* 涨跌药丸：72×28，圆角 8，涨跌色 14% 底、30% 描边 */
 .m-pill {
   display: inline-grid; place-items: center; width: 72px; height: 28px; border-radius: 8px; flex: none;
-  font: var(--t-footnote-emph); font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font: var(--t-footnote-emph); font-family: var(--font-ui); font-variant-numeric: tabular-nums;
 }
 .m-pill.up { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--up) 30%, transparent) }
 .m-pill.down { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--down) 30%, transparent) }

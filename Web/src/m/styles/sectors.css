@@ -53,7 +53,7 @@ html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: v
 .sec-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
 .sec-n { font: var(--t-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sec-sub { font: var(--t-caption); color: var(--ink3) }
-.sec-pct { font: var(--t-footnote-emph); font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
+.sec-pct { font: var(--t-footnote-emph); font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
 .sec-pct.up, .sec-dpct.up { color: var(--up) }
 .sec-pct.down, .sec-dpct.down { color: var(--down) }
 .stale .sec-pct, .stale .sec-dpct { color: var(--stale) }
@@ -79,6 +79,6 @@ html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: v
 .sec-dtitle { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px }
 .sec-dtitle h1 { margin: 0; font: var(--t-title); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sec-dsub { display: inline-flex; align-items: center; gap: 2px; font: var(--t-caption2); color: var(--lg-ink4) }
-.sec-dpct { font: var(--t-title); font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
+.sec-dpct { font: var(--t-title); font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
 .sec-drill-empty { padding: var(--s-xxl) var(--inset-page); text-align: center; font: var(--t-caption); color: var(--ink3) }
 .sec-drill-empty[hidden] { display: none }
