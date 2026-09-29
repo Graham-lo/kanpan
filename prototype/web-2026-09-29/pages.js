@@ -293,7 +293,7 @@
         <div class="group">${row('浏览器通知', g.Notification ? ({ granted: '已允许', denied: '被浏览器拦了，要在地址栏左边的站点设置里打开', default: '还没问过' }[Notification.permission]) : '这个浏览器不支持', g.Notification?.permission === 'default' ? '<button class="btn secondary sm" id="meNotif">允许</button>' : '')}
         ${row('异动提醒', '自选里的品种 5 分钟内涨跌超过 3%', sw('moveAlert', st.moveAlert, '异动提醒'))}${row('新币上线', '币安上新永续合约时', sw('listing', st.listing, '新币上线'))}</div>`,
       look: () => `<h2>外观</h2><p class="lede">跟手机端分开记，这台电脑自己的选择。</p>
-        <div class="group">${row('深浅色', '', seg('theme', st.theme, [['light', '浅色'], ['dark', '深色']]))}${row('涨跌颜色', '', seg('updown', st.updown, [['red-up', '红涨绿跌'], ['green-up', '绿涨红跌']]))}</div>`,
+        <div class="group">${row('皮肤', '和手机端同名的三套；K 线的红绿不跟皮肤走', seg('skin', st.skin, [['sage', '青苔 · 冷'], ['terra', '陶土 · 暖'], ['classic', '经典 · 白']]))}${row('深浅色', '', seg('theme', st.theme, [['light', '浅色'], ['dark', '深色']]))}${row('涨跌颜色', '', seg('updown', st.updown, [['red-up', '红涨绿跌'], ['green-up', '绿涨红跌']]))}</div>`,
       general: () => `<h2>通用</h2><p class="lede">时间统一用上海时间，不能改；日线在北京时间 8:00 换日。</p>
         <div class="group">${row('行情线路', '只记在这台电脑上。网关走我们自己的服务器，直连连不上时手动切过去', seg('route', st.route, [['direct', '直连'], ['gateway', '网关']]))}
         ${row('按使用习惯自动调整', '比如常看的周期自动钉到栏上、常用的指标默认打开。关掉就一直按你手动设的来', sw('learn', st.learn, '按使用习惯自动调整'))}</div>`,
@@ -309,7 +309,7 @@
     const s = t.closest('[data-sw]'); if (s) { st[s.dataset.sw] = !st[s.dataset.sw]; save(); s.setAttribute('aria-checked', st[s.dataset.sw]); return }
     const sg = t.closest('[data-seg]'); if (sg) {
       st[sg.dataset.seg] = sg.dataset.v; save()
-      if (sg.dataset.seg === 'theme' || sg.dataset.seg === 'updown') A.applyTheme()
+      if (['theme', 'updown', 'skin'].includes(sg.dataset.seg)) A.applyTheme()
       if (sg.dataset.seg === 'route') toast(sg.dataset.v === 'gateway' ? '已切到网关' : '已切到直连', '只影响这台电脑', 'link', 1800)
       return renderMe()
     }
@@ -328,7 +328,8 @@
   }
   function contrast(a, b) { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05) }
   function resolve(varName, theme, updown = 'red-up') {
-    const p = document.createElement('div'); p.dataset.theme = theme; p.dataset.updown = updown
+    // 皮肤令牌挂在 html[data-skin][data-theme] 上，取色要放一个同样带两个属性的 html 元素进去
+    const p = document.createElement('html'); p.dataset.theme = theme; p.dataset.skin = st.skin || 'sage'; p.dataset.updown = updown
     p.style.cssText = `position:absolute;visibility:hidden;color:var(${varName})`
     document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c
   }
@@ -423,6 +424,7 @@
   function renderProto() {
     const b = (k, v, l, on) => `<button data-pk="${k}" data-pv="${v}" class="${on ? 'on' : ''}">${l}</button>`
     panel.innerHTML = `<h4>原型控制台（不属于产品界面）</h4>
+      <div class="pr"><span>皮肤</span><div class="pbtns">${b('skin', 'sage', '青苔', st.skin === 'sage')}${b('skin', 'terra', '陶土', st.skin === 'terra')}${b('skin', 'classic', '经典', st.skin === 'classic')}</div></div>
       <div class="pr"><span>深浅色</span><div class="pbtns">${b('theme', 'light', '浅色', st.theme === 'light')}${b('theme', 'dark', '深色', st.theme === 'dark')}</div></div>
       <div class="pr"><span>涨跌色</span><div class="pbtns">${b('updown', 'red-up', '红涨', st.updown === 'red-up')}${b('updown', 'green-up', '绿涨', st.updown === 'green-up')}</div></div>
       <div class="pr"><span>登录</span><div class="pbtns">${b('login', '1', '已登录', st.loggedIn)}${b('login', '0', '未登录', !st.loggedIn)}</div></div>
@@ -435,7 +437,7 @@
   panel.addEventListener('click', e => {
     const x = e.target.closest('[data-pk]'); if (!x) return
     const k = x.dataset.pk, v = x.dataset.pv
-    if (k === 'theme' || k === 'updown') { st[k] = v; save(); A.applyTheme() }
+    if (k === 'theme' || k === 'updown' || k === 'skin') { st[k] = v; save(); A.applyTheme(); renderProto() }
     if (k === 'login') { st.loggedIn = v === '1'; save(); A.renderHeader(); A.renderPanel(); A.pageShown[st.page]?.() }
     if (k === 'off') D.forceOffline(v === '1')
     if (k === 'scene') {

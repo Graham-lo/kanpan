@@ -19,7 +19,7 @@
   const KEY = 'hkline-web-v1'
   const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {} } catch { return {} } })()
   const st = Object.assign({
-    theme: 'light', updown: 'red-up', loggedIn: true, user: 'mdd',
+    theme: 'light', skin: 'sage', updown: 'red-up', loggedIn: true, user: 'mdd',
     layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0,
     pinned: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
     panel: 'watch', watchTab: 'crypto', watch: JSON.parse(JSON.stringify(D.DEFAULT_WATCH)),
@@ -34,6 +34,7 @@
   }
   function applyTheme() {
     document.documentElement.dataset.theme = st.theme
+    document.documentElement.dataset.skin = st.skin || 'sage'
     document.documentElement.dataset.updown = st.updown
     $('#hdrTheme').innerHTML = I(st.theme === 'dark' ? 'sun' : 'moon')
     cells.forEach(c => c.chart.readTheme())
@@ -45,6 +46,7 @@
   const pctText = p => p == null ? '—' : `${p >= 0 ? '+' : ''}${p.toFixed(2)}%`
   const cls = p => p == null ? '' : p >= 0 ? 'up' : 'down'
   function priceText(s, v = s?.price) { return v == null ? '—' : F.fmt(v, s?.dec ?? 2) }
+  const clamp01 = v => Math.max(0, Math.min(1, isFinite(v) ? v : 0))
   function badge(s, size = '') {
     const b = s?.base || '?'
     const t = b.length > 3 ? b.slice(0, 3) : b
@@ -67,6 +69,12 @@
   const GLOSSARY = {
     资金费率: '多空双方每 8 小时互付一次的费用。为正时多头付给空头，说明合约价高于现货、做多的人多。',
     持仓量: '所有还没平掉的合约加起来值多少美元。价格涨、持仓量也涨，多半是新资金进场。',
+    多空人数比: '币安上做多的账户数 ÷ 做空的账户数（5 分钟一档）。大于 1 是多头人多。',
+    大户持仓比: '持仓最大的前 20% 账户里，多头仓位 ÷ 空头仓位。大于 1 是大户偏多。',
+    主动买卖比: '最近 5 分钟主动买入量 ÷ 主动卖出量。大于 1 是买盘更急。',
+    标记价: '用来算强平与盈亏的价格，取指数价加上资金费率的均值，比最新价平滑。',
+    指数价: '几家现货交易所的成交价加权平均，是合约价格的锚。',
+    基差: '标记价相对指数价高出多少。为正说明合约比现货贵、市场偏多。',
     下次结算: '距离下一次收付资金费还有多久。',
     标记价格: '交易所用来算盈亏和强平的价格，比最新成交价更平滑，不容易被插针。',
     跑赢大盘: '板块里今天涨幅超过比特币的品种有几只。',
@@ -621,26 +629,53 @@
   }
   const isWatched = k => Object.values(st.watch).some(l => l.includes(k))
   let oiCache = {}
+  // 详情块里那几项不在推送里的数：持仓量、持仓量 24h 变化、多空人数比、大户持仓比、主动买卖比。
+  // 币安 fapi 直接给（同一主机，跨域头一样有），一分钟刷一次，够用。
   async function fetchOI(k) {
     if (oiCache[k] && Date.now() - oiCache[k].t < 60e3) return
-    oiCache[k] = { t: Date.now(), v: oiCache[k]?.v }
-    try { const r = await fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${k}`, { referrerPolicy: 'no-referrer' }).then(r => r.json()); oiCache[k].v = +r.openInterest * (sym(k)?.price || 0); renderDetail() } catch {}
+    const c = oiCache[k] = { t: Date.now(), ...(oiCache[k] || {}) }
+    const get = (path, q) => fetch(`https://fapi.binance.com${path}?symbol=${k}&${q}`, { referrerPolicy: 'no-referrer' }).then(r => r.json())
+    try {
+      const [oi, hist, ls, top, taker] = await Promise.all([
+        get('/fapi/v1/openInterest', ''), get('/futures/data/openInterestHist', 'period=1h&limit=25'),
+        get('/futures/data/globalLongShortAccountRatio', 'period=5m&limit=1'), get('/futures/data/topLongShortPositionRatio', 'period=5m&limit=1'),
+        get('/futures/data/takerlongshortRatio', 'period=5m&limit=1'),
+      ])
+      c.v = +oi.openInterest * (sym(k)?.price || 0)
+      if (hist?.length > 1) c.oiChg = (+hist[hist.length - 1].sumOpenInterestValue / +hist[0].sumOpenInterestValue - 1) * 100
+      if (ls?.[0]) c.ls = +ls[0].longShortRatio
+      if (top?.[0]) c.top = +top[0].longShortRatio
+      if (taker?.[0]) c.taker = +taker[0].buySellRatio
+      renderDetail()
+    } catch {}
   }
+  function ratioText(r) { return r == null ? '—' : r.toFixed(2) }
+  function ratioCls(r) { return r == null ? '' : r > 1 ? 'up' : r < 1 ? 'down' : '' }
   function renderDetail() {
     const el = $('#detail'); if (!el) return
     const k = cfg(active()).symbol, s = sym(k)
     if (!s) { el.innerHTML = ''; return }
     fetchOI(k)
+    const oi = oiCache[k] || {}
     const secs = (g.KP_SECTORS.members[s.base] || []).map(id => g.KP_SECTORS.crypto.find(x => x[0] === id)).filter(Boolean)
     const usSecs = s.kind === 'us' ? g.KP_SECTORS.us.filter(x => x[2].includes(s.base)) : []
     el.innerHTML = `<div class="dh">${badge(s, 'xl')}<div class="names"><div class="code">${s.code}<span class="muted" style="font-weight:400;font-size:13px;margin-left:8px">${kindName(s)}</span></div><div class="cn">${esc(s.cn || '')}</div></div>
         <button class="ibtn" data-star="${k}" aria-pressed="${isWatched(k)}" aria-label="${isWatched(k) ? '移出自选' : '加入自选'}" data-tip="${isWatched(k) ? '移出自选' : '加入自选'}">${I(isWatched(k) ? 'star' : 'starOff')}</button></div>
       <div class="px"><span class="big num price-live ${st.stale ? '' : cls(s.pct)}" data-f="big">${priceText(s)}</span><span class="chg num ${cls(s.pct)}" data-f="chg">${s.chg >= 0 ? '+' : ''}${F.fmt(s.chg, s.dec)}  ${pctText(s.pct)}</span></div>
-      <div class="stats">
-        <div><div class="k">${term('持仓量')}</div><div class="v num">${oiCache[k]?.v ? F.fmtCompact(oiCache[k].v) : '—'}</div></div>
+      ${s.hi && s.lo ? `<div class="range"><span class="num">${F.fmt(s.lo, s.dec)}</span><div class="bar"><i style="left:${clamp01((s.price - s.lo) / (s.hi - s.lo)) * 100}%"></i></div><span class="num">${F.fmt(s.hi, s.dec)}</span></div>` : ''}
+      <div class="stats cols3">
+        <div><div class="k">${term('持仓量')}</div><div class="v num">${oi.v ? F.fmtCompact(oi.v) : '—'}</div></div>
+        <div><div class="k">持仓 24h</div><div class="v num ${cls(oi.oiChg)}">${oi.oiChg == null ? '—' : pctText(oi.oiChg)}</div></div>
         <div><div class="k">24h 成交额</div><div class="v num">${F.fmtCompact(s.vol)}</div></div>
         <div><div class="k">${term('资金费率')}</div><div class="v num ${s.fr > 0 ? 'up' : s.fr < 0 ? 'down' : ''}" data-f="fr">${s.fr == null ? '—' : (s.fr * 100).toFixed(4) + '%'}</div></div>
         <div><div class="k">${term('下次结算')}</div><div class="v num" data-f="cd">${s.nextFunding ? countdown(s.nextFunding - Date.now()) : '—'}</div></div>
+        <div><div class="k">24h 笔数</div><div class="v num">${s.count ? F.fmtCompact(s.count) : '—'}</div></div>
+        <div><div class="k">${term('多空人数比')}</div><div class="v num ${ratioCls(oi.ls)}">${ratioText(oi.ls)}</div></div>
+        <div><div class="k">${term('大户持仓比')}</div><div class="v num ${ratioCls(oi.top)}">${ratioText(oi.top)}</div></div>
+        <div><div class="k">${term('主动买卖比')}</div><div class="v num ${ratioCls(oi.taker)}">${ratioText(oi.taker)}</div></div>
+        <div><div class="k">${term('标记价')}</div><div class="v num">${s.mark ? F.fmt(s.mark, s.dec) : '—'}</div></div>
+        <div><div class="k">${term('指数价')}</div><div class="v num">${s.index ? F.fmt(s.index, s.dec) : '—'}</div></div>
+        <div><div class="k">${term('基差')}</div><div class="v num ${s.mark && s.index ? cls(s.mark - s.index) : ''}">${s.mark && s.index ? pctText((s.mark / s.index - 1) * 100) : '—'}</div></div>
       </div>
       ${secs.length || usSecs.length ? `<div class="sectors">${secs.map(x => `<button class="tag" data-sector="c:${x[0]}">${esc(x[1])}</button>`).join('')}${usSecs.map(x => `<button class="tag" data-sector="u:${x[0]}">${esc(x[1])}</button>`).join('')}</div>` : ''}`
   }
@@ -818,10 +853,10 @@
       ['macd', 'sub', 'MACD', '平滑异同移动平均'], ['rsi', 'sub', 'RSI', '相对强弱'], ['kdj', 'sub', 'KDJ', '随机指标'], ['oi', 'sub', '持仓量', '币安 30 天内历史'],
       ['walls', 'flow', '主力订单流', '三家交易所聚合的大单'],
     ]
-    const d = dialog(`${head('指标', `<span class="faint" style="font-size:12px">副图最多三个</span>`)}<div class="body"><div class="ind-cats">${[['all', '全部'], ['main', '主图'], ['sub', '副图'], ['flow', '订单流']].map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${k === 'all' ? rows.length : rows.filter(r => r[1] === k).length}</span></button>`).join('')}</div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
+    const d = dialog(`${head('指标', `<span class="faint" style="font-size:12px">副图最多四个</span>`)}<div class="body"><div class="ind-cats">${[['all', '全部'], ['main', '主图'], ['sub', '副图'], ['flow', '订单流']].map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${k === 'all' ? rows.length : rows.filter(r => r[1] === k).length}</span></button>`).join('')}</div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
     const isOn = id => id === 'walls' ? st.flowOn : ['ma', 'ema', 'boll', 'vol'].includes(id) ? !!st.ind[id] : st.ind.subs.includes(id)
     function render() {
-      const full = st.ind.subs.length >= 3
+      const full = st.ind.subs.length >= 4
       $('#indList', d.dlg).innerHTML = rows.filter(r => cat === 'all' || r[1] === cat).map(([id, pl, n, sub]) => {
         const on = isOn(id), dis = pl === 'sub' && !on && full
         return `<div class="ind-row ${dis ? 'disabled' : ''}" data-id="${id}" tabindex="0" role="checkbox" aria-checked="${on}" aria-disabled="${dis}" ${dis ? 'data-tip="副图已经有三个了，先关一个"' : ''}>
@@ -834,7 +869,7 @@
       if (id === 'walls') setFlow(!st.flowOn)
       else if (['ma', 'ema', 'boll', 'vol'].includes(id)) st.ind[id] = !st.ind[id]
       else if (st.ind.subs.includes(id)) st.ind.subs = st.ind.subs.filter(x => x !== id)
-      else if (st.ind.subs.length < 3) st.ind.subs = [...st.ind.subs, id]
+      else if (st.ind.subs.length < 4) st.ind.subs = [...st.ind.subs, id]
       else return
       cells.forEach(c => c.chart.setIndicators(st.ind)); save(); render()
     }
@@ -1108,6 +1143,7 @@
     hydrateIcons()
     const qs = new URLSearchParams(location.search)
     if (qs.get('theme')) st.theme = qs.get('theme')
+    if (['sage', 'terra', 'classic'].includes(qs.get('skin'))) st.skin = qs.get('skin')
     if (qs.get('s')) st.cells[0].symbol = qs.get('s').toUpperCase()
     if (qs.get('i') && D.IV_MS[qs.get('i')]) st.cells[0].iv = qs.get('i')
     if (qs.get('layout')) st.layout = qs.get('layout')

@@ -112,6 +112,51 @@
   --shadow-dialog: 0 0 0 1px rgba(255,255,255,.07), 0 24px 72px rgba(0,0,0,.6);
 }
 
+/* ---------------------------------------------------------------- 皮肤
+ * 上面两块（浅 / 深）是「经典 · 白」：中性灰白 + 蓝，TradingView 的味道。
+ * 下面四块把手机端的两套皮肤搬到大屏上：青苔（冷 · 墨绿，出厂）与陶土（暖 · 赤陶），
+ * 种子取自 KanpanPresentation/Palette.swift，按网页的层级重新分配：
+ *   --app 是面板之间 4 px 的缝，用皮肤的「地色」，整屏读成一块带色的材料；
+ *   --surface 是面板与画布，用皮肤的「页底」，K 线不落在纯白补丁上；
+ *   文字、强调色照搬手机端，对比度都过 4.5:1（规范页里实时算）。
+ * K 线本身的红绿不跟皮肤走（TradingView 那一套），皮肤融的是图外。 */
+html[data-skin="sage"][data-theme="light"] {
+  --app: #CFDFD6; --surface: #F4F8F5; --surface-2: #E9F1EC; --surface-3: #DEE9E2; --overlay: #FFFFFF;
+  --scrim: rgba(20, 33, 27, .34);
+  --text-1: #14211B; --text-2: #4E6158; --text-3: #606F67;
+  --line: #D6E3DA; --line-strong: #B9CCC0; --control-line: #74897F;
+  --accent: #2E7D6B; --accent-hover: #266B5B; --accent-soft: #DCEEE8; --accent-text: #256859; --accent-2: #4FA58F;
+  --chart-bg: #F4F8F5; --chart-grid: #E4EDE7; --chart-axis-text: #14211B; --chart-cross: #7B8D85; --chart-cross-label: #14211B; --chart-scale-line: #D6E3DA;
+  --shadow-menu: 0 0 0 1px rgba(20,33,27,.08), 0 4px 12px rgba(20,33,27,.10), 0 12px 32px rgba(20,33,27,.12);
+  --shadow-dialog: 0 0 0 1px rgba(20,33,27,.08), 0 12px 32px rgba(20,33,27,.14), 0 32px 80px rgba(20,33,27,.20);
+}
+html[data-skin="sage"][data-theme="dark"] {
+  --app: #050807; --surface: #0E1512; --surface-2: #151E1A; --surface-3: #1C2823; --overlay: #172019;
+  --text-1: #E9F2EC; --text-2: #A5B8AE; --text-3: #7F918A;
+  --line: #1F2B26; --line-strong: #33413A; --control-line: #5E6F67;
+  --accent: #4FB69C; --accent-hover: #6BC8B0; --accent-soft: #16302A; --accent-text: #7CD2BC; --accent-2: #2E7D6B;
+  --chart-bg: #0E1512; --chart-grid: #17201C; --chart-axis-text: #B5C4BB; --chart-cross: #6C7D75; --chart-cross-label: #2A3730; --chart-scale-line: #253129;
+}
+html[data-skin="terra"][data-theme="light"] {
+  --app: #DFD0C0; --surface: #FBF6F0; --surface-2: #F2E8DE; --surface-3: #EADFD2; --overlay: #FFFFFF;
+  --scrim: rgba(36, 26, 19, .34);
+  --text-1: #241A13; --text-2: #6E5C4D; --text-3: #756659;
+  --line: #E7DACB; --line-strong: #CDB9A5; --control-line: #8C7A6A;
+  --accent: #B25735; --accent-hover: #9E4A2B; --accent-soft: #F6E1D6; --accent-text: #9E4A2B; --accent-2: #D98A62;
+  --chart-bg: #FBF6F0; --chart-grid: #EFE5D9; --chart-axis-text: #241A13; --chart-cross: #8C7A6A; --chart-cross-label: #241A13; --chart-scale-line: #E7DACB;
+  --shadow-menu: 0 0 0 1px rgba(36,26,19,.08), 0 4px 12px rgba(36,26,19,.10), 0 12px 32px rgba(36,26,19,.12);
+  --shadow-dialog: 0 0 0 1px rgba(36,26,19,.08), 0 12px 32px rgba(36,26,19,.14), 0 32px 80px rgba(36,26,19,.20);
+}
+html[data-skin="terra"][data-theme="dark"] {
+  --app: #0A0704; --surface: #161009; --surface-2: #211812; --surface-3: #2A1F17; --overlay: #231A13;
+  --text-1: #F7EFE6; --text-2: #C2AC98; --text-3: #998878;
+  --line: #2E2219; --line-strong: #46362A; --control-line: #6E5B4B;
+  --accent: #E2874F; --accent-hover: #ECA070; --accent-soft: #3A2517; --accent-text: #F0A574; --accent-2: #B25735;
+  --chart-bg: #161009; --chart-grid: #221A13; --chart-axis-text: #C9B8A6; --chart-cross: #7E6C5C; --chart-cross-label: #3A2B20; --chart-scale-line: #2E2219;
+}
+:root, [data-theme="light"] { --accent-2: #5B7CFA; --card-edge: transparent; }
+[data-theme="dark"] { --accent-2: #7FA2FF; --card-edge: var(--line); }
+
 /* 涨跌：图形用 TradingView 原色；文字用加深 / 提亮后的版本，保证 4.5:1 */
 :root, [data-theme="light"] {
   --tv-red: #F23645; --tv-green: #089981;
@@ -161,7 +206,7 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
 .app-header {
   display: flex; align-items: center; gap: var(--s6);
   padding: 0 var(--s4) 0 var(--s4);
-  background: var(--surface);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--surface)), var(--surface));
   border-bottom: 1px solid var(--line);
   position: relative; z-index: 5;
 }
@@ -198,7 +243,7 @@ kbd {
 .header-actions { display: flex; align-items: center; gap: var(--s1); }
 .avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  background: linear-gradient(135deg, #5B7CFA, #2B63F0); color: #fff;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #fff;
   display: grid; place-items: center; font-weight: 600; font-size: var(--t13);
   margin-left: var(--s2);
 }
@@ -364,7 +409,7 @@ kbd {
 #page-chart.panel-closed { grid-template-columns: var(--drawbar-w) 1fr 0 var(--rail-w); }
 #page-chart.panel-closed .side-panel { display: none; }
 
-.card { background: var(--surface); border-radius: var(--r-md); min-width: 0; min-height: 0; }
+.card { background: var(--surface); border-radius: var(--r-md); min-width: 0; min-height: 0; box-shadow: 0 0 0 1px var(--card-edge); }
 
 .chart-toolbar {
   grid-column: 1 / 3; grid-row: 1;
@@ -469,7 +514,7 @@ kbd {
   transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
 .chip:hover { background: var(--surface-3); color: var(--text-1); }
-.chip[aria-pressed="true"] { background: var(--text-1); color: var(--surface); }
+.chip[aria-pressed="true"] { background: var(--accent); color: #fff; }
 
 /* 表格 */
 .tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -510,6 +555,10 @@ kbd {
 .detail .px .big { font-size: var(--t32); line-height: 40px; font-weight: 600; letter-spacing: -.02em; }
 .detail .px .chg { font-size: var(--t14); font-weight: 500; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3) var(--s4); margin-top: var(--s4); }
+.stats.cols3 { grid-template-columns: 1fr 1fr 1fr; gap: var(--s3) var(--s3); }
+.detail .range { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); font-size: var(--t12); color: var(--text-2); }
+.detail .range .bar { flex: 1; height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--down), var(--up)); position: relative; opacity: .9; }
+.detail .range .bar i { position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--text-1); }
 .stats .k { font-size: var(--t12); color: var(--text-2); line-height: 16px; }
 .stats .v { font-size: var(--t14); line-height: 20px; font-weight: 500; margin-top: 2px; }
 .detail .sectors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s4); }
@@ -628,7 +677,7 @@ kbd {
 .dir.short { color: var(--down-text); background: color-mix(in srgb, var(--down) 12%, transparent); }
 
 /* ---------------------------------------------------------------- 我的 */
-#page-me { grid-template-columns: 280px minmax(0, 880px) 1fr; gap: var(--gutter); padding: var(--gutter); }
+#page-me { grid-template-columns: 280px 1fr; gap: var(--gutter); padding: var(--gutter); }
 .me-nav { padding: var(--s3); display: flex; flex-direction: column; gap: 2px; }
 .me-nav .who { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s3) var(--s4); border-bottom: 1px solid var(--line); margin-bottom: var(--s2); }
 .me-nav .who .avatar { width: 40px; height: 40px; margin: 0; font-size: var(--t16); }
@@ -638,6 +687,7 @@ kbd {
 .me-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent-text); }
 .me-nav a[aria-current="page"] .icon { color: var(--accent-text); }
 .me-body { padding: var(--s8) var(--s10); overflow: auto; }
+.me-body > * { max-width: 880px; }
 .me-body h2 { margin: 0 0 var(--s1); font-size: var(--t24); line-height: 32px; font-weight: 600; }
 .me-body .lede { color: var(--text-2); margin: 0 0 var(--s6); }
 .group { border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: var(--s6); overflow: hidden; }

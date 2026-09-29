@@ -15,6 +15,7 @@
 
   const TZ = 8 * 3600e3
   const AXIS_H = 28
+  const MIN_PANE_H = 56 // 拖分隔线时任何一格都不能比这矮
   const MIN_SPACING = 1.5
   const MAX_SPACING = 60
   const DEFAULT_SPACING = 7
@@ -151,7 +152,7 @@
       this.ind = { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }
       this.params = JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(CATALOG).map(([k, v]) => [k, v.params || {}]))))
       this.hidden = new Set()
-      this.paneW = { main: 3 }
+      this.paneH = {}
       this.series = {}
       this.log = false
       this.auto = true
@@ -281,14 +282,20 @@
       return Math.max(56, Math.ceil(this.ctx.measureText(s).width) + 20)
     }
     plotW() { return this.w - this.aw }
+    // 副图默认矮：每个副图取画布高的 11%，夹在 96–136 px（2K 屏上约 132 px，TradingView 桌面版的比例），
+    // 主图拿剩下的全部。副图再多也只是多几档，不是把每档拉高；合计不超过画布的 55%。
+    // 用户拖过的分隔线记在 paneH（像素），窗口高度变了副图保持不动、主图跟着伸缩。
+    subDefaultH() { return clamp(Math.round((this.h - AXIS_H) * 0.11), 96, 136) }
     panes() {
       const subs = this.ind.subs
-      const weights = [this.paneW.main || 3, ...subs.map(id => this.paneW[id] || 1)]
-      const total = weights.reduce((a, b) => a + b, 0)
-      const H = this.h - AXIS_H
+      const H = this.h - AXIS_H, def = this.subDefaultH()
+      let hs = subs.map(id => this.paneH[id] || def)
+      const cap = Math.round(H * 0.55), sum = hs.reduce((a, b) => a + b, 0)
+      if (sum > cap) hs = hs.map(h => Math.max(MIN_PANE_H, Math.round(h * cap / sum)))
+      const mainH = H - hs.reduce((a, b) => a + b, 0)
       let y = 0
       return ['main', ...subs].map((id, i) => {
-        const h = i === subs.length ? H - y : Math.round(H * weights[i] / total)
+        const h = i === 0 ? mainH : i === subs.length ? H - y : hs[i - 1]
         const p = { id, y, h }; y += h; return p
       })
     }
@@ -962,10 +969,10 @@
         } else if (d.kind.startsWith('sep:')) {
           const id = d.kind.slice(4), panes = this._panes, k = panes.findIndex(p => p.id === id)
           const above = panes[k - 1], cur = panes[k]
-          const total = above.h + cur.h, ny = clamp(y - above.y, 40, total - 40)
-          const wA = this.paneW[above.id] || (above.id === 'main' ? 3 : 1), wC = this.paneW[id] || 1
-          const sum = wA + wC
-          this.paneW[above.id] = sum * ny / total; this.paneW[id] = sum * (total - ny) / total
+          const total = above.h + cur.h, ny = clamp(y - above.y, MIN_PANE_H, total - MIN_PANE_H)
+          // 主图永远是「剩下的全部」，所以只记副图的像素高
+          if (above.id !== 'main') this.paneH[above.id] = ny
+          this.paneH[id] = total - ny
         }
         this.dirty = true; this.renderLegend()
       })

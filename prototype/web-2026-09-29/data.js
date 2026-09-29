@@ -76,9 +76,9 @@
       const [tk, pi] = await Promise.all([j(`${REST}/fapi/v1/ticker/24hr`), j(`${REST}/fapi/v1/premiumIndex`)])
       for (const t of tk) {
         if (!/USDT$/.test(t.symbol) || +t.quoteVolume === 0) continue
-        put(t.symbol, { price: +t.lastPrice, chg: +t.priceChange, pct: +t.priceChangePercent, vol: +t.quoteVolume, dec: Math.max(decOf(t.lastPrice), 1), open: +t.openPrice, closeTime: t.closeTime })
+        put(t.symbol, { price: +t.lastPrice, chg: +t.priceChange, pct: +t.priceChangePercent, vol: +t.quoteVolume, dec: Math.max(decOf(t.lastPrice), 1), open: +t.openPrice, closeTime: t.closeTime, hi: +t.highPrice, lo: +t.lowPrice, count: +t.count })
       }
-      for (const p of pi) { const s = S.symbols.get(p.symbol); if (s) Object.assign(s, { fr: +p.lastFundingRate, nextFunding: p.nextFundingTime, mark: +p.markPrice }) }
+      for (const p of pi) { const s = S.symbols.get(p.symbol); if (s) Object.assign(s, { fr: +p.lastFundingRate, nextFunding: p.nextFundingTime, mark: +p.markPrice, index: +p.indexPrice }) }
       // 收盘 24h 以上的是下架残留，过滤掉
       const now = Date.now()
       for (const [k, s] of S.symbols) if (s.closeTime && now - s.closeTime > 864e5) S.symbols.delete(k)
@@ -97,12 +97,12 @@
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
     for (const [sym, p] of Object.entries(demo)) {
       const pct = (rnd() - .45) * 8
-      put(sym, { price: p, pct, chg: p * pct / 100, vol: 1e7 * (2 + rnd() * 300) * (sym === 'BTCUSDT' ? 40 : sym === 'ETHUSDT' ? 25 : 1), dec: p > 1000 ? 1 : p > 10 ? 2 : p > 1 ? 3 : 4, fr: (rnd() - .3) * 2e-4, nextFunding: Math.ceil(Date.now() / 288e5) * 288e5 })
+      put(sym, { price: p, pct, chg: p * pct / 100, vol: 1e7 * (2 + rnd() * 300) * (sym === 'BTCUSDT' ? 40 : sym === 'ETHUSDT' ? 25 : 1), dec: p > 1000 ? 1 : p > 10 ? 2 : p > 1 ? 3 : 4, fr: (rnd() - .3) * 2e-4, nextFunding: Math.ceil(Date.now() / 288e5) * 288e5, hi: p * (1 + Math.abs(pct) / 100 + rnd() * .01), lo: p * (1 - Math.abs(pct) / 100 - rnd() * .01), count: Math.round(2e5 + rnd() * 3e6), mark: p * (1 + (rnd() - .5) * 2e-4), index: p * (1 + (rnd() - .5) * 4e-4) })
     }
     for (const base of Object.keys(g.KP_SECTORS.members).slice(0, 220)) {
       const sym = base + 'USDT'; if (S.symbols.has(sym)) continue
       const p = Math.exp(rnd() * 8 - 4), pct = (rnd() - .48) * 14
-      put(sym, { price: p, pct, chg: p * pct / 100, vol: 1e6 * Math.exp(rnd() * 6), dec: p > 10 ? 2 : p > 1 ? 3 : 4, fr: (rnd() - .3) * 3e-4 })
+      put(sym, { price: p, pct, chg: p * pct / 100, vol: 1e6 * Math.exp(rnd() * 6), dec: p > 10 ? 2 : p > 1 ? 3 : 4, fr: (rnd() - .3) * 3e-4, hi: p * (1 + Math.abs(pct) / 100 + rnd() * .01), lo: p * (1 - Math.abs(pct) / 100 - rnd() * .01), count: Math.round(1e4 + rnd() * 4e5) })
     }
     S.live = false
   }
@@ -171,13 +171,13 @@
       if (d.e === '24hrTicker') {
         const s = S.symbols.get(d.s); if (!s) return
         const prev = s.price
-        Object.assign(s, { price: +d.c, chg: +d.p, pct: +d.P, vol: +d.q, lastTick: Date.now() })
+        Object.assign(s, { price: +d.c, chg: +d.p, pct: +d.P, vol: +d.q, hi: +d.h, lo: +d.l, count: +d.n, lastTick: Date.now() })
         emit({ type: 'ticker', symbol: d.s, dir: prev == null ? 0 : Math.sign(+d.c - prev) })
       } else if (d.e === 'kline') {
         const k = d.k
         emit({ type: 'kline', symbol: d.s, iv: k.i, bar: { t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.q } })
       } else if (d.e === 'markPriceUpdate') {
-        const s = S.symbols.get(d.s); if (s) Object.assign(s, { fr: +d.r, nextFunding: d.T, mark: +d.p })
+        const s = S.symbols.get(d.s); if (s) Object.assign(s, { fr: +d.r, nextFunding: d.T, mark: +d.p, index: +d.i })
       }
     }
     ws.onclose = () => {
