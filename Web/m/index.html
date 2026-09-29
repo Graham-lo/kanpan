@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-skin="sage" data-updown="red-up">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<!-- 币安 CloudFront 对带 sslip.io 来源页的请求直接回 403（且不带跨域头），所以一律不发 Referer -->
+<meta name="referrer" content="no-referrer">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+<title>Hkline</title>
+<meta name="application-name" content="Hkline">
+<meta name="apple-mobile-web-app-title" content="Hkline">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F3F7F4">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="/m/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/m/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/m/icon-192.png">
+<script>
+  // 首帧前就把皮肤、深浅、涨跌色套上（键与 src/m/app/store.ts 同为 hkline-m-v1），避免闪一下默认色。
+  // theme = auto 时跟系统；redUp（默认 true）→ data-updown。状态栏字色与地址栏底色一并定下。
+  try {
+    var s = JSON.parse(localStorage.getItem('hkline-m-v1') || '{}'), r = document.documentElement
+    var t = s.theme === 'light' || s.theme === 'dark' ? s.theme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    var k = s.skin === 'terra' || s.skin === 'classic' ? s.skin : 'sage'
+    r.dataset.theme = t; r.dataset.skin = k; r.dataset.updown = s.redUp === false ? 'green-up' : 'red-up'
+    var app = { sage: ['#F3F7F4', '#0B120F'], terra: ['#FBF6F0', '#16100C'], classic: ['#FFFFFF', '#0D111C'] }[k][t === 'dark' ? 1 : 0]
+    document.querySelector('meta[name="theme-color"]').content = app
+    document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = t === 'dark' ? 'black-translucent' : 'default'
+    r.style.background = app
+  } catch (e) {}
+</script>
+</head>
+<body>
+<noscript>Hkline 需要打开 JavaScript。</noscript>
+<div id="m-mount"></div>
+<script type="module" src="/src/m/main.ts"></script>
+</body>
+</html>

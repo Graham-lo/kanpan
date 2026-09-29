@@ -21,3 +21,10 @@ ssh orderflow-vps 'sudo install -d -o caddy -g caddy /var/www/kanpan/web && sudo
 want=$(grep -o 'assets/index-[^"]*\.js' dist/index.html | head -1)
 got=$(curl -fsS https://kanpan.107-174-172-10.sslip.io/web/ | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
 if [ "$want" = "$got" ]; then echo "已上线：$want"; else echo "线上脚本是 $got，本地是 $want，可能有缓存，稍后再看" >&2; exit 1; fi
+
+# 手机网页版（/web/m/）：同样核对入口脚本名（assets/m-*.js）
+if [ -f dist/m/index.html ]; then
+  want=$(grep -o 'assets/m-[^"]*\.js' dist/m/index.html | head -1)
+  got=$(curl -fsS https://kanpan.107-174-172-10.sslip.io/web/m/ | grep -o 'assets/m-[^"]*\.js' | head -1 || true)
+  if [ "$want" = "$got" ]; then echo "手机网页版已上线：$want"; else echo "手机网页版线上脚本是 $got，本地是 $want，可能有缓存，稍后再看" >&2; exit 1; fi
+fi

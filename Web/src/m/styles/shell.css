@@ -1,0 +1,93 @@
+/* Hkline 手机网页版 · 壳：四个整页 + 底栏（照 iOS Main/TabBar.swift） */
+
+#m-app { position: fixed; inset: 0; overflow: hidden; background: var(--app) }
+
+/* ---- 页：每页一个整屏的 section，默认自己就是滚动容器 ----
+ * 顶上让出状态栏（安全区），底下让出底栏 + 渐变（--tabbar-clearance）。
+ * 页面想自己管滚动（固定头 + 内部列表）就加 .page-fixed：section 不滚，内边距也交给页面自己。 */
+.page {
+  position: absolute; inset: 0;
+  overflow-x: hidden; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: var(--safe-top) var(--safe-right) var(--tabbar-clearance) var(--safe-left);
+  background: var(--page-bg, var(--app));
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-fast);
+}
+.page.page-fixed { overflow: hidden; padding: 0 }
+.page.show {
+  visibility: visible; opacity: 1; pointer-events: auto;
+  transition: opacity var(--dur-fast) var(--ease-out), visibility 0s;
+}
+/* 冷启动第一帧不做淡入 */
+#m-app.booting .page { transition: none }
+
+/* 还没做的页 */
+.page-soon {
+  min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-m);
+  color: var(--ink3); font: var(--t-footnote); padding: var(--inset-page);
+}
+.page-soon .glyph { opacity: 0.5 }
+
+/* ---- 底栏 ----
+ * 没有自己的底：身后一团从屏幕下沿化开的强调色光（灯座），再往后一道「透明 → 页面底色」的渐变；
+ * 行情页不铺渐变（图不在栏身后滚）。四格等宽，每格 52×40 的热区、上下各 5；栏顶留 8；记号 27。 */
+.m-tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  --tabbar-fade: var(--page-bg, var(--app));
+  --tb-h: calc(var(--tabbar-h) + var(--safe-bottom));
+  display: flex;
+  padding: 8px var(--safe-right) var(--safe-bottom) var(--safe-left);
+  pointer-events: none;
+}
+/* 渐变：从栏下沿往上 96，0 透明 → 45% 处 86% → 70% 处实色，一直铺到屏幕下沿 */
+.m-tabbar::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0;
+  height: calc(96px + var(--safe-bottom));
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--tabbar-fade) 0%, transparent) 0,
+    color-mix(in srgb, var(--tabbar-fade) 86%, transparent) calc((96px * 0.45)),
+    var(--tabbar-fade) calc(96px * 0.70),
+    var(--tabbar-fade) 100%);
+  pointer-events: none;
+}
+.m-tabbar[data-page="chart"]::before { display: none }
+/* 灯座：椭圆 横半径 = 2.4 × 栏高（含 home 条），纵半径 = 栏高，圆心在屏幕下沿正中 */
+.m-tabbar::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: var(--tb-h);
+  background: radial-gradient(calc(var(--tb-h) * 2.4) var(--tb-h) at 50% 100%, var(--glow), transparent);
+  pointer-events: none;
+}
+.m-tab {
+  position: relative; z-index: 1; flex: 1 1 0;
+  display: flex; align-items: center; justify-content: center;
+  height: 50px; /* 40 + 上下 5 */
+  pointer-events: auto;
+}
+.m-tab .m-tab-mark {
+  position: relative; width: 52px; height: 40px; display: flex; align-items: center; justify-content: center;
+}
+.m-tab .glyph {
+  opacity: 0.64; transform: scale(1);
+  filter: drop-shadow(0 1px 1.25px var(--glyph-shadow));
+  transition: opacity var(--dur) var(--ease-spring), transform var(--dur) var(--ease-spring);
+}
+.m-tab[aria-current="page"] .glyph { opacity: 1; transform: scale(1.06) }
+.m-tab:active .glyph { transform: scale(0.94) }
+.m-tab[aria-current="page"]:active .glyph { transform: scale(1) }
+/* 「我的」右上角的待判定角标：主题色小胶囊，偏移 (7, −4) */
+.m-tab-badge {
+  /* 记号 27 居中在 52×40 里，右上角在 (39.5, 6.5)；角标右上角对齐它再挪 (7, −4) */
+  position: absolute; top: 2.5px; right: 5.5px;
+  min-width: 16px; padding: 2px 4px; border-radius: 999px;
+  background: var(--accent); color: var(--badge-ink);
+  font: var(--t-caption2-emph); font-variant-numeric: tabular-nums; text-align: center; line-height: 12px;
+  pointer-events: none;
+}
+.m-tab-badge[hidden] { display: none }
+
+/* 横屏：底栏让位（横屏只给画线台用），页面铺满 */
+@media (orientation: landscape) and (max-height: 500px) {
+  #m-app.landscape-free .m-tabbar { display: none }
+}

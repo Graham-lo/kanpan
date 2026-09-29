@@ -34,8 +34,8 @@ export interface State extends Prefs {
   page: PageId
   /** 当前品种（币安代号，如 BTCUSDT） */
   symbol: string
-  /** 各页滚动位置（px），冷启动恢复 */
-  scroll: Partial<Record<PageId, number>>
+  /** 各页滚动位置（px），冷启动恢复。键是页 id，页里自己的滚动容器用「页.名」（shell.trackScroll） */
+  scroll: Record<string, number>
   symbols: SymbolPrefs
   /** 行情停住了没有（不落盘） */
   stale: boolean
@@ -69,7 +69,7 @@ export function hydrate(raw: Record<string, unknown>): State {
     ...normalizePrefs(raw),
     page: (PAGES as readonly unknown[]).includes(raw.page) ? raw.page as PageId : d.page,
     symbol: typeof raw.symbol === 'string' && /^[A-Z0-9]{2,30}$/.test(raw.symbol) ? raw.symbol : d.symbol,
-    scroll: Object.fromEntries(Object.entries(scroll).filter(([k, v]) => (PAGES as readonly string[]).includes(k) && typeof v === 'number' && v >= 0)),
+    scroll: Object.fromEntries(Object.entries(scroll).filter((e): e is [string, number] => /^[\w.-]{1,48}$/.test(e[0]) && typeof e[1] === 'number' && e[1] >= 0)),
     symbols: {
       favorites: [...new Set(strs(sym.favorites))],
       recents: [...new Set(strs(sym.recents))].slice(0, 10),

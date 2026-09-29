@@ -1,0 +1,165 @@
+/* Hkline 手机网页版 · 小控件：弹层、菜单、确认框、解释卡、toast、左划、拖排序 */
+
+#m-layer { position: fixed; inset: 0; z-index: 100; pointer-events: none }
+#m-layer > * { pointer-events: auto }
+
+/* ───────── 底部面板（PanelSheet） ───────── */
+.m-sheet-wrap { position: fixed; inset: 0; pointer-events: none }
+.m-sheet-scrim {
+  position: absolute; inset: 0; background: var(--scrim); opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.m-sheet-wrap.modal .m-sheet-scrim { pointer-events: auto }
+.m-sheet-wrap:not(.modal) .m-sheet-scrim { display: none }
+.m-sheet-wrap.in .m-sheet-scrim { opacity: 1 }
+.m-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  background: var(--raised); color: var(--ink);
+  border-radius: var(--r-l) var(--r-l) 0 0;
+  box-shadow: 0 -2px 20px var(--toast-shadow);
+  transform: translateY(100%);
+  transition: transform var(--dur) var(--ease-spring), height var(--dur) var(--ease-spring);
+  pointer-events: auto;
+  padding-left: var(--safe-left); padding-right: var(--safe-right);
+  max-width: 100%;
+}
+.m-sheet-wrap.in .m-sheet { transform: translateY(0) }
+.m-sheet.dragging { transition: none }
+.m-sheet-grab { flex: none; height: 12px; display: flex; justify-content: center; align-items: flex-end; touch-action: none; cursor: grab }
+.m-sheet-grab i { width: 36px; height: 5px; border-radius: 3px; background: var(--control-line); opacity: 0.55 }
+.m-sheet-head {
+  flex: none; display: flex; align-items: center; min-height: calc(var(--hit) + var(--s-xs) * 2);
+  padding: var(--s-xs) var(--inset-page) var(--s-xs) 0;
+  border-bottom: 1px solid var(--line);
+  touch-action: none;
+}
+.m-sheet-back {
+  display: flex; align-items: center; min-width: calc(var(--hit) + var(--s-xs)); min-height: var(--hit);
+  padding-left: calc(var(--inset-page) - 4px); color: var(--accent);
+}
+.m-sheet-lead { width: var(--inset-page); flex: none }
+.m-sheet-titles { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--s-s) }
+.m-sheet-title { font: var(--t-title); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.m-sheet-sub { font: var(--t-caption); color: var(--ink3); white-space: nowrap }
+.m-sheet-action { font: var(--t-title); font-weight: 500; color: var(--accent); min-height: var(--hit); padding-left: var(--s-m) }
+.m-sheet-body {
+  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  padding: var(--s-xs) 0 calc(var(--s-l) + var(--safe-bottom));
+}
+
+/* ───────── 盖在内容上的弹层（周期条「更多」） ───────── */
+.m-pop-wrap { position: fixed; inset: 0; pointer-events: none }
+.m-pop-scrim {
+  position: absolute; left: 0; right: 0; top: var(--pop-top); bottom: 0;
+  background: var(--scrim); opacity: 0; transition: opacity 200ms var(--ease-out); pointer-events: auto;
+}
+.m-pop {
+  position: absolute; left: 0; right: 0; top: var(--pop-anchor);
+  background: var(--app); color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 8px 20px var(--toast-shadow);
+  transform-origin: top; transform: translateY(-8px); opacity: 0;
+  transition: transform 200ms var(--ease-out), opacity 200ms var(--ease-out);
+  pointer-events: auto;
+  padding-left: var(--safe-left); padding-right: var(--safe-right);
+}
+.m-pop-wrap.in .m-pop-scrim { opacity: 1 }
+.m-pop-wrap.in .m-pop { transform: none; opacity: 1 }
+
+/* ───────── 下拉菜单（iOS Menu） ───────── */
+.m-menu-wrap { position: fixed; inset: 0 }
+.m-menu-scrim { position: absolute; inset: 0 }
+.m-menu {
+  position: absolute; min-width: 220px; max-width: calc(100vw - 24px);
+  background: var(--raised); border-radius: var(--r-m); overflow: hidden;
+  box-shadow: 0 10px 36px var(--toast-shadow), 0 0 0 1px var(--line);
+  transform: scale(0.86); opacity: 0;
+  transition: transform 180ms var(--ease-spring), opacity 140ms var(--ease-out);
+}
+.m-menu-wrap.in .m-menu { transform: none; opacity: 1 }
+.m-menu-item {
+  width: 100%; display: flex; align-items: center; gap: var(--s-s);
+  min-height: var(--hit); padding: 0 var(--s-l) 0 var(--s-m);
+  font: var(--t-body); color: var(--ink); text-align: left;
+}
+.m-menu-item + .m-menu-item { box-shadow: inset 0 1px 0 var(--hair) }
+.m-menu-item:active { background: var(--raised2) }
+.m-menu-item.danger { color: var(--danger) }
+.m-menu-check { width: 16px; flex: none; color: var(--accent) }
+.m-menu-title { flex: 1 }
+.m-menu-item .ic { color: currentColor; opacity: 0.85 }
+.m-menu-sep { height: 8px; background: var(--raised2) }
+
+/* ───────── 居中确认框 ───────── */
+.m-alert-scrim, .m-term-scrim {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: #0000; opacity: 0; transition: opacity 200ms var(--ease-out);
+}
+html[data-theme="light"] .m-alert-scrim, html[data-theme="light"] .m-term-scrim { background: #00000052 }
+html[data-theme="dark"] .m-alert-scrim, html[data-theme="dark"] .m-term-scrim { background: #00000080 }
+.m-alert-scrim.in, .m-term-scrim.in { opacity: 1 }
+.m-alert, .m-term-card {
+  width: 280px; max-width: calc(100vw - 48px);
+  background: var(--raised); border-radius: 18px; overflow: hidden;
+  box-shadow: 0 8px 24px #00000024;
+}
+html[data-theme="dark"] .m-alert, html[data-theme="dark"] .m-term-card { box-shadow: 0 8px 24px #00000066 }
+.m-alert-main { padding: var(--s-xl) var(--s-xl) var(--s-l); text-align: center }
+.m-alert-title { font: var(--t-heading); color: var(--ink) }
+.m-alert-msg { margin-top: var(--s-s); font: 400 14px/1.45 var(--font-ui); color: var(--ink2) }
+.m-alert-btns { display: flex; border-top: 1px solid var(--line) }
+.m-alert-btns button { flex: 1; min-height: var(--hit); font: var(--t-body); color: var(--accent) }
+.m-alert-btns button + button { border-left: 1px solid var(--line); font: var(--t-body-emph) }
+.m-alert-btns .danger { color: var(--danger) }
+
+/* ───────── 术语问号与解释卡（TermMark / GlossaryCard） ───────── */
+.m-term {
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+  width: 12px; height: 12px; margin-left: 3px; opacity: 0.55; color: inherit;
+  position: relative;
+}
+/* 点击框撑到 32×32，不撑大排版 */
+.m-term::after { content: ''; position: absolute; inset: -10px }
+.m-term-main { padding: var(--s-xl) var(--s-xl) var(--s-l) }
+.m-term-title { font: var(--t-heading); color: var(--ink) }
+.m-term-body { margin-top: var(--s-s); font: 400 14px/1.5 var(--font-ui); color: var(--ink2); white-space: pre-line }
+.m-term-ok { width: 100%; min-height: var(--hit); border-top: 1px solid var(--line); font: var(--t-body-emph); color: var(--accent) }
+
+/* ───────── toast ───────── */
+.m-toast {
+  position: fixed; left: 50%; bottom: calc(92px + var(--safe-bottom));
+  transform: translate(-50%, 0); max-width: calc(100vw - 32px);
+  display: flex; align-items: center; gap: var(--s-s);
+  padding: 10px var(--s-l); border-radius: 999px;
+  background: var(--raised); border: 1px solid var(--line);
+  box-shadow: 0 4px 12px var(--toast-shadow);
+  font: var(--t-footnote); color: var(--ink);
+  opacity: 0; transition: opacity 180ms var(--ease-out);
+  pointer-events: auto;
+}
+.m-toast.in { opacity: 1 }
+.m-toast-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.m-toast-dot { color: var(--ink3) }
+.m-toast-act { color: var(--accent); font: inherit; position: relative; white-space: nowrap }
+.m-toast-act::after { content: ''; position: absolute; inset: -14px }
+
+/* ───────── 左划（SwipeToDelete） ───────── */
+.m-sw-row { position: relative; overflow: hidden; touch-action: pan-y }
+.m-sw-content { position: relative; z-index: 1; background: var(--sw-bg, var(--app)); will-change: transform }
+.m-sw-bricks { position: absolute; top: 0; bottom: 0; display: flex; width: 0; overflow: hidden; z-index: 0 }
+.m-sw-bricks.trailing { right: 0 }
+.m-sw-bricks.leading { left: 0 }
+.m-sw-brick { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: hidden }
+.m-sw-fill { position: absolute; inset: 0 }
+.m-sw-row.pill .m-sw-fill { inset: 8px; border-radius: 14px }
+.m-sw-text { position: relative; font: var(--t-control); color: var(--badge-ink); white-space: nowrap; pointer-events: none }
+
+/* ───────── 拖动排序 ───────── */
+.m-reordering { touch-action: none }
+.m-lifted {
+  position: relative; z-index: 5; transition: none !important;
+  box-shadow: 0 8px 24px var(--toast-shadow);
+  background: var(--raised);
+  border-radius: var(--r-s);
+}
