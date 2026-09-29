@@ -18,6 +18,7 @@ import type { Drawing, DrawingType, DrawPoint } from '../chart/chart'
 import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { INTERVALS, type Kind } from '../market/symbols'
 import { type Body, type Json, type SyncObject, same } from './types'
+import { MAX_OVERRIDES, isValidBase, normalizeOverride, type Override } from '../orderflow/settings'
 
 export interface Ctx {
   now(): number
@@ -49,7 +50,7 @@ const obj = (v: Json | undefined): Record<string, Json> | null => v && typeof v 
 
 // ═════════════════════════════ settings（id "chart"） ═════════════════════════════
 //
-// 网页只同步和手机同一回事的那几项：钉在周期条上的周期、主图 / 副图开了哪些指标、指标参数。
+// 网页只同步和手机同一回事的那几项：钉在周期条上的周期、主图 / 副图开了哪些指标、指标参数、主力订单流的门槛与步长。
 // 皮肤 / 深浅 / 涨跌色是网页自己的一套视觉（和手机不是一回事），线路是每台设备自己的，
 // 当前周期是「每个图格一个」而手机是「整个 app 一个」，这几项不同步。
 //
@@ -58,11 +59,26 @@ const obj = (v: Json | undefined): Record<string, Json> | null => v && typeof v 
 // 云端解码值 ≠ seen → 云端改了，装。云端的值网页表达不了（比如 3 日线）时 seen 记成网页现值，
 // 不推也不装，免得网页一碰就把手机的值冲掉。
 
-export interface SettingsState { pinned: string[]; ind: IndState; params: Record<string, IndParams> | null }
+export interface SettingsState {
+  pinned: string[]; ind: IndState; params: Record<string, IndParams> | null
+  /** 主力订单流门槛 / 步长里用户改过的项（按 base），线上形状和手机一样：{ BTC: { spot, usdtPerp, coinPerp, delivery, step } } */
+  orderFlowOverrides?: Record<string, Override>
+}
 
 export const SETTINGS_ID = 'chart'
 const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ']]
-export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p)]
+export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides']
+
+/** 订单流覆盖项的规范形：base 合规、每项过 normalizeOverride、最多 MAX_OVERRIDES 只、键排序（比较不受顺序影响） */
+function cleanOverrides(v: unknown): Record<string, Override> | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+  const out: Record<string, Override> = {}
+  for (const k of Object.keys(v).sort().slice(0, MAX_OVERRIDES)) {
+    const n = normalizeOverride((v as Record<string, Override>)[k])
+    if (n && isValidBase(k)) out[k] = n
+  }
+  return out
+}
 const OVERLAY_MAP: [keyof IndState & ('ma' | 'ema' | 'boll'), string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL']]
 const SUB_MAP: [string, string][] = [['vol', 'VOL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ'], ['oi', 'OI']]
 
@@ -71,6 +87,7 @@ export function webSetting(s: SettingsState, field: string): Json {
   if (field === 'quickIntervals') return INTERVALS.filter(iv => s.pinned.includes(iv))
   if (field === 'overlays') return OVERLAY_MAP.filter(([w]) => s.ind[w]).map(([, c]) => c)
   if (field === 'subs') return [...(s.ind.vol ? ['VOL'] : []), ...s.ind.subs.map(x => SUB_MAP.find(([w]) => w === x)?.[1]).filter((x): x is string => !!x)]
+  if (field === 'orderFlowOverrides') return (cleanOverrides(s.orderFlowOverrides) ?? {}) as unknown as Json
   if (field.startsWith('params/')) {
     const id = PARAM_IDS.find(([, c]) => 'params/' + c === field)?.[0]
     const p = id ? s.params?.[id] : undefined
@@ -111,6 +128,7 @@ export function encodeSetting(field: string, web: Json, prev: Json | undefined):
   }
   if (field === 'overlays') return mergeList(prevList, new Set(OVERLAY_MAP.map(([, c]) => c)), web as string[])
   if (field === 'subs') return mergeList(prevList, new Set(SUB_MAP.map(([, c]) => c)), web as string[])
+  if (field === 'orderFlowOverrides') return (cleanOverrides(web) ?? undefined) as unknown as Json | undefined
   if (field.startsWith('params/')) {
     const p = web as IndParams | null
     if (!p) return undefined
@@ -145,6 +163,7 @@ export function decodeSetting(field: string, cloud: Json | undefined, cur: Setti
     const others = list.filter(c => c !== 'VOL' && SUB_MAP.some(([, x]) => x === c)).slice(0, MAX_SUBS)
     return [...(vol ? ['VOL'] : []), ...others]
   }
+  if (field === 'orderFlowOverrides') return (cleanOverrides(cloud) ?? undefined) as unknown as Json | undefined
   if (field.startsWith('params/')) {
     const v = Array.isArray(cloud) ? cloud.filter((x): x is number => typeof x === 'number') : null
     if (!v || !v.length || !v.every(okInt)) return undefined
@@ -164,6 +183,7 @@ export function decodeSetting(field: string, cloud: Json | undefined, cur: Setti
 export function putSetting(s: SettingsState, field: string, v: Json): void {
   const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
   if (field === 'quickIntervals') s.pinned = list
+  else if (field === 'orderFlowOverrides') s.orderFlowOverrides = cleanOverrides(v) ?? {}
   else if (field === 'overlays') for (const [w, c] of OVERLAY_MAP) s.ind[w] = list.includes(c)
   else if (field === 'subs') {
     s.ind.vol = list.includes('VOL')
