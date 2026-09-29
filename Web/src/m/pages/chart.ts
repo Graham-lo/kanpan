@@ -222,7 +222,7 @@ export function initChart(root: HTMLElement): PageHandle {
   // ---- st → 图
   let lookKey = '', indKey = ''
   function syncChart(): void {
-    if (chart.symbol !== sym()) { card.set(null, '', 2); chart.setSymbol(sym()); pushStreams() }
+    if (chart.symbol !== sym()) { card.set(null, '', 2); chart.setSymbol(sym()); pushStreams(); bench.refreshAlerts() }
     if (chart.interval !== iv()) chart.setInterval(iv())
     const ik = JSON.stringify([st.overlays, st.subs, st.params, st.orderFlow])
     if (ik !== indKey) {
@@ -290,9 +290,9 @@ export function initChart(root: HTMLElement): PageHandle {
     if (learned) { st.interval = learned; save() }
     syncChart()
   })
+  // 云端装进来的设置已经 save() 过（subscribe → syncChart 按键比对只换变了的那几样），这里不再清键整套重设；
+  // 画线本由 bindDrawings 自己重读，这里只补工具偏好与画线上的铃
   hooks.onSync.push((ch: SyncChange) => {
-    lookKey = ''; indKey = ''
-    syncChart()
     if (ch.drawingPreferences) bench.pullPreferences()
     if (ch.alerts) bench.refreshAlerts()
   })
