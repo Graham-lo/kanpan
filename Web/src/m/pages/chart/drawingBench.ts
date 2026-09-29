@@ -234,15 +234,18 @@ export function createBench(ctx: BenchContext) {
       accept: sym => /USDT$|USDC$/.test(sym), onPick: sym => ctx.onPickSymbol(sym),
     })
   })
+  let pillHTML = ''
   const renderQuote = (): void => {
     const sym = ctx.symbol()
     const s = S.symbols.get(sym)
     const { base, quote } = splitPair(sym)
     const up = (s?.pct ?? 0) >= 0
     const cls = s?.price != null ? (up ? 'up' : 'down') : ''
-    pill.innerHTML = `<b>${esc(base)}</b><small>/${esc(quote)}</small>${active ? `<span class="cp-lchev">${icon('chevron', 12)}</span>` : ''}`
+    // 每跳行情都会进来：拼出来一样就不重写
+    const html = `<b>${esc(base)}</b><small>/${esc(quote)}</small>${active ? `<span class="cp-lchev">${icon('chevron', 12)}</span>` : ''}`
       + (s?.price != null ? `<b class="num ${cls}">${esc(grouped(fmtPrice(s.price, s.dec ?? 2)))}</b>` : '')
       + (s?.pct != null && Number.isFinite(s.pct) ? `<small class="num ${cls}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</small>` : '')
+    if (html !== pillHTML) { pillHTML = html; pill.innerHTML = html }
     pill.disabled = !active
     pill.setAttribute('aria-label', active ? `换品种，当前 ${base}/${quote}` : `${base}/${quote}`)
     const hint = active && c.tool && readout == null ? drawHint(c.tool, c.placedAnchors) : null

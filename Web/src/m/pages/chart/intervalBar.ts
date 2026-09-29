@@ -52,6 +52,7 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   let grid: Popover | null = null
   let gridRender: (() => void) | null = null
   let chipsKey = ''
+  let moreShown: string | null = null
 
   latest.onclick = () => h.onLatest()
   analysis.onclick = () => { grid?.close(); h.onAnalysis() }
@@ -89,8 +90,14 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
       root.classList.add('cp-grid')
       const cells = el('div', 'cp-grid-cells')
       root.append(cells)
+      // 只在钉住的档 / 当前档 / 「换掉」态变了时重建：行情每跳都会调 render，整格重写会把按下去的那颗
+      // 按钮换掉，手指抬起时 click 落到外层，这一下点击就丢了
+      let cellsKey = ''
       gridRender = () => {
         const quick = state.quick
+        const k = quick.join(',') + '|' + state.current + '|' + (replacing ?? '')
+        if (k === cellsKey) return
+        cellsKey = k
         cells.innerHTML = INTERVALS.map(iv => {
           const on = iv === state.current, pinned = quick.includes(iv)
           const target = replacing != null && pinned, chosen = replacing === iv
@@ -149,9 +156,13 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
     }
     latest.hidden = state.atLatest
     const off = !list.includes(state.current)
-    more.innerHTML = `<span>${off ? INTERVAL_SHORT[state.current] : '更多'}</span>${icon('chevron', 9)}`
-    more.classList.toggle('on', off)
-    more.setAttribute('aria-label', off ? `更多周期，当前 ${INTERVAL_DISPLAY[state.current]}` : '更多周期')
+    const moreKey = off ? state.current : ''
+    if (moreKey !== moreShown) {
+      moreShown = moreKey
+      more.innerHTML = `<span>${off ? INTERVAL_SHORT[state.current] : '更多'}</span>${icon('chevron', 9)}`
+      more.classList.toggle('on', off)
+      more.setAttribute('aria-label', off ? `更多周期，当前 ${INTERVAL_DISPLAY[state.current]}` : '更多周期')
+    }
     row.classList.toggle('yield', state.crosshairOnMain)
     if (state.crosshairOnMain) grid?.close()
     gridRender?.()
