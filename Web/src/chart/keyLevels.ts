@@ -20,6 +20,7 @@ import type { Bar } from './calc'
 import type { Pane, PriceRange, TVChart } from './chart'
 import { vpvr } from './overlays'
 import { klines } from '../market/rest'
+import { settle } from '../market/settle'
 import { fmtAxis, hexA } from '../util/format'
 
 const DAY = 864e5
@@ -119,6 +120,11 @@ export function keyLevelsOf(ch: TVChart, now = Date.now()): KeyLevel[] {
     while (cache.size > KEEP) { const k = cache.keys().next().value; if (k == null) break; cache.delete(k) }
   }
   const entry = e
+  // 不在首屏：连切品种时中间划过去的不取，停稳约半秒再取（到了之前图上不画，停稳后自己补上）
+  if (!settle.settled()) {
+    if (!entry.daily || (!entry.prof && ch.iv < DAY)) { waiting.add(ch); settle.whenSettled('keylevels', wake) }
+    return [...(entry.daily || []), ...(entry.prof || [])]
+  }
   if (!entry.daily && !entry.busyD && now - entry.failD > RETRY_MS) {
     entry.busyD = true
     void klines(sym, '1d', undefined, 16, false).then(r => {

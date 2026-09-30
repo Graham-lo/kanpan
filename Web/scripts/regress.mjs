@@ -1013,9 +1013,14 @@ async function partReview() {
     await wait(2000)
     items = await page.locator('[data-match^="search:"]').count()
     stTxt = await page.locator('.rv-search').first().innerText().catch(() => '')
-    if (items || /没有找到|没有一段相似/.test(stTxt)) break
+    if (items || /没有足够相似的走势/.test(stTxt)) break
   }
-  ok('找相似：两分钟内找完、列出相似片段（没有时说清比过几段、门槛 0.60）', items > 0 || /比过 \d+ 段，没有一段相似度到 0\.60|没有找到/.test(stTxt), items ? `${items} 段` : stTxt.replace(/\s+/g, ' ').slice(0, 80))
+  // 一段也没有时：明确说「没有足够相似的走势」、比过几段、按周期的门槛（1h 0.58、4h/1d 0.56、其余 0.60）、下一步
+  // 右侧空白处也要说这次没找到（没收藏时同一句；有收藏时引到左边收藏的片段）
+  const blank = items ? '' : await page.locator('#rvFoot .rv-none').innerText().catch(() => '')
+  ok('找相似：两分钟内找完、列出相似片段（没有时明确说没有足够相似的、比过几段、门槛多少、下一步怎么找，右侧也说）',
+    items > 0 || (/没有足够相似的走势(：比过 \d+ 段，没有一段相似度到 0\.(60|58|56))?，.+再找/.test(stTxt) && /没(有|找到)足够相似的走势/.test(blank)),
+    items ? `${items} 段` : `${stTxt.replace(/\s+/g, ' ').slice(0, 80)} ｜ 右侧：${blank.slice(0, 40)}`)
   if (!items) {
     // 这一段历史里没有够像的：换最近 32 根 15m 在接口上发起一次（等于另一个页签里找的），
     // 记进本机的搜索列表，切回「相似走势」时页面自己补问——顺带验「别的页签新找的相似」那条路

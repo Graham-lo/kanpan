@@ -28,6 +28,7 @@ import { OF, savePrefs, amt, PRODUCT_FULL, durShort, type Api } from './state'
 import { orderId, type BigOrder } from './types'
 import type { Snapshot } from './model'
 import type { TVChart } from '../chart/chart'
+import { settle } from '../market/settle'
 
 export { mountLadder, mountDrawer, widgetHTML, mountWidgets, isOfWidget, openOrderFlowSettings }
 /** 侧栏某块是不是收起（本机偏好） */
@@ -88,10 +89,15 @@ export function sync(): void {
   if (onPage) idleSince = null
   else if (idleSince == null) idleSince = Date.now()
   const want = !!act && needed() && (onPage || Date.now() - (idleSince ?? 0) < IDLE_STOP_MS)
-  if (!want) { if (OF.feed) stopFeed(); return }
+  if (!want) { if (OF.feed) stopFeed(); setPending(false); return }
   const symbol = act!.symbol.toUpperCase()
   if (OF.feed && OF.feed.symbol !== symbol) stopFeed()
-  if (!OF.feed) startFeed(act!.symbol)
+  if (!OF.feed) {
+    // 深度快照（合约 20、现货 250 权重）、合约清单、步长这些不在首屏：连切时中间划过的品种不接，停稳约半秒再接
+    if (!settle.settled()) { setPending(true); settle.whenSettled('orderflow', sync); return }
+    setPending(false)
+    startFeed(act!.symbol)
+  }
   const f = OF.feed!
   OF.iv = act!.iv
   f.setRoute(st.route)
@@ -116,6 +122,13 @@ function startFeed(symbol: string): void {
   resetSymbolState()
   void f.start()
   renderFlowPanel()
+}
+
+/** 等品种停稳的那半秒：各处空态写「正在接盘口…」，不写「打开指标后显示」 */
+function setPending(v: boolean): void {
+  if (OF.pending === v) return
+  OF.pending = v
+  updateWidgets(); updateDrawer(true); renderFlowPanel()
 }
 
 function stopFeed(): void {
@@ -428,7 +441,7 @@ function updateFlowPanel(force = false): void {
   const thr = el.querySelector<HTMLElement>('#ofpThr'), stat = el.querySelector<HTMLElement>('#ofpStatus')
   if (!thr || !stat) return
   let thrHTML: string
-  if (!f) thrHTML = `<div class="of-wait faint">打开上面任意一项后开始接三家盘口</div>`
+  if (!f) thrHTML = `<div class="of-wait faint">${OF.pending ? '正在接三家盘口…' : '打开上面任意一项后开始接三家盘口'}</div>`
   else {
     const t = s?.thresholds ?? f.model.thresholds
     const own = st.orderFlowOverrides[f.base] || {}

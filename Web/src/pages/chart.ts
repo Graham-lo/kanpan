@@ -38,9 +38,11 @@ import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawb
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
-  S, on, REST, coolingFor, isRateLimit, klines, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
-  IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, type Kind, type Sym,
+  S, on, REST, coolingFor, isRateLimit, klines, attachOI, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
+  IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, type Kind, type Sym, type KlineResult,
 } from '../market'
+import { settle } from '../market/settle'
+import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 
 // ------------------------------------------------------------ 图表格子
 interface Cell {
@@ -51,8 +53,14 @@ interface Cell {
   loadToken: number
   more: boolean
   noMore: boolean
+  /** K 线在路上：这一格在等的推送缓冲（品种 | 推送周期），到了就补上再切回实时 */
+  hold: string | null
 }
 const cells: Cell[] = []
+/** K 线在路上时攒着的推送（行情推送与 K 线并行建连，见 chart/pushBuffer.ts） */
+const pushes = new PushBuffer()
+/** 冷启动时和品种表并行先发出去的 K 线（品种 | 周期 → 结果），第一次装这一格时直接用 */
+const early = new Map<string, { hold: string; res: Promise<KlineResult> }>()
 export const allCells = (): readonly Cell[] => cells
 
 type RangeDays = number | 'ytd' | 'all'
@@ -175,7 +183,7 @@ function makeCell(i: number): Cell {
     </div>`
   $('#chartArea').appendChild(el)
   const host = $('.canvas-host', el)
-  const cell = { el, host, idx: i, loadToken: 0, more: false, noMore: false } as unknown as Cell
+  const cell = { el, host, idx: i, loadToken: 0, more: false, noMore: false, hold: null } as unknown as Cell
   cell.chart = new TVChart(host, {
     onActivate: () => setActive(cell.idx),
     onNeedMore: () => { void loadMore(cell) },
@@ -228,10 +236,10 @@ function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
 }
 /** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所。
  *  alive：这一格还要不要这份（换了品种 / 周期就不要了）——在限流闸里排队的作废请求不发、不占预算 */
-async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
+async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean, withOI = true): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
   if (isSecondIv(iv)) return { bars: endTime ? [] : secondBars(symbol, iv), ok: true }
   if (isCustomIv(iv)) return customKlines(symbol, iv, endTime, alive)
-  return klines(symbol, iv, endTime, 1500, true, false, alive)
+  return klines(symbol, iv, endTime, 1500, withOI, false, alive)
 }
 
 async function retryLoad(cell: Cell): Promise<void> {
@@ -243,8 +251,21 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const c = cfg(cell), token = ++cell.loadToken
   cell.noMore = false
   cell.chart.setDrawings(drawingsFor(c.symbol))
-  const { bars, ok, error } = await barsFor(c.symbol, c.iv, undefined, () => token === cell.loadToken && !cell.chart.dead)
+  // 推送不等 K 线：取数期间这一格的推送先攒进缓冲（上一次取数的缓冲在这里撒手，换品种 / 周期即作废）
+  if (cell.hold) { pushes.release(cell.hold); cell.hold = null }
+  const siv = streamIvOf(c.iv)
+  const pre = early.get(`${c.symbol}|${c.iv}`)
+  if (pre) early.delete(`${c.symbol}|${c.iv}`)
+  if (pre) cell.hold = pre.hold                    // 冷启动先发的那次：缓冲它开着，接过来
+  else if (siv) { cell.hold = pushKey(c.symbol, siv); pushes.open(cell.hold) }
+  const { bars, ok, error } = await (pre ? pre.res : barsFor(c.symbol, c.iv, undefined, () => token === cell.loadToken && !cell.chart.dead, false))
+  // 被后一次取数顶掉：缓冲已经由后一次撒手，这里什么都不动
   if (token !== cell.loadToken) return
+  const hold = cell.hold
+  cell.hold = null
+  const late = hold && bars.length ? pushes.take(hold, bars[bars.length - 1].t) : []
+  if (hold) pushes.release(hold)
+  if (late.length && !isCustomIv(c.iv)) alignPushes(bars, late)
   if (ok && !bars.length && isSecondIv(c.iv)) showCellEmpty(cell, '等第一笔成交', true)
   else if (!ok || !bars.length) {
     cell.chart.setData([], metaFor(c))
@@ -256,6 +277,12 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
     if (limited) setTimeout(() => { if (token === cell.loadToken) void loadCell(cell) }, Math.max(coolingFor(REST), 5000) + 500)
   } else showCellEmpty(cell, null)
   cell.chart.setData(bars, metaFor(c))
+  // 自定义分钟：攒下的原生周期推送逐根并进当前格（和实时时同一条路）
+  if (late.length && isCustomIv(c.iv)) for (const p of late) cell.chart.updateBar(customTick(c.symbol, c.iv, p))
+  // 持仓量副图不在首屏：品种停稳再取（连切时中间划过的品种不取）
+  if (ok && bars.length && !isSecondIv(c.iv) && !isCustomIv(c.iv)) {
+    settle.whenSettled(`oi:${cell.idx}`, () => { if (token === cell.loadToken && !cell.chart.dead) void attachOI(c.symbol, c.iv, cell.chart.bars) })
+  }
   // 测量框是临时的，不进存档
   const ds = drawingsFor(c.symbol)
   for (let k = ds.length - 1; k >= 0; k--) if (ds[k].type === 'measure') ds.splice(k, 1)
@@ -301,6 +328,7 @@ export function openSymbol(symbol: string, cell: Cell | undefined = active()): v
   if (!cell) return
   const c = cfg(cell)
   if (c.symbol === symbol) return
+  settle.noteSwitch()
   c.symbol = symbol; save()
   if (st.linkSymbol && cells.length > 1) return linkAll(symbol)
   void loadCell(cell); refreshStreams(); renderToolbar(); renderPanel()
@@ -309,6 +337,7 @@ export function openSymbol(symbol: string, cell: Cell | undefined = active()): v
 function setIv(iv: string, cell: Cell | undefined = active()): void {
   if (!cell) return
   const c = cfg(cell); if (c.iv === iv) return
+  settle.noteSwitch()
   c.iv = iv
   // 周期跨图同步：其余格子一起换
   if (st.linkIv && cells.length > 1) cells.forEach(o => { const oc = cfg(o); if (o !== cell && oc.iv !== iv) { oc.iv = iv; void loadCell(o) } })
@@ -401,6 +430,7 @@ function layoutMenu(b: HTMLElement): void {
 }
 /** 品种跨图同步：一格换了品种，其余格一起换（周期各自保留） */
 function linkAll(symbol: string): void {
+  settle.noteSwitch()
   cells.forEach(c => { const cc = cfg(c); if (cc.symbol !== symbol) { cc.symbol = symbol; void loadCell(c) } })
   save(); refreshStreams(); renderToolbar(); renderPanel()
 }
@@ -663,11 +693,14 @@ export function toggleWatch(k: string): boolean {
 }
 
 // ---- 详情十二格
+/** 取当前品种的五个慢数（一分钟最多一次，见 fetchDetail）；经「停稳」闸调 */
+function detailNow(): void { const k = cfg(active())?.symbol; if (k) void fetchDetail(k) }
 function renderDetail(): void {
   const el = $('#detail'); if (!el) return
   const k = cfg(active()).symbol, s = sym(k)
   if (!s) { el.innerHTML = ''; return }
-  void fetchDetail(k)
+  // 五个慢数不在首屏：品种停稳再取；没到之前格子里是「—」，到了自己补上
+  settle.whenSettled('detail', detailNow)
   wantMeta([k])
   const d = detailOf(k) || { t: 0 }
   const secs = sectorsOf(s)
@@ -1013,9 +1046,11 @@ function onKey(e: KeyboardEvent): void {
 }
 
 // ------------------------------------------------------------ 实时
-export function refreshStreams(): void {
+export function refreshStreams(early = false): void {
   const set = new Set<string>(), core = new Set<string>()
-  st.cells.slice(0, cells.length).forEach((c, i) => {
+  // early：格子还没摆出来（品种表在路上），按存档里这套布局的格子先订
+  const n = early ? LAYOUT_N[st.layout] || 1 : cells.length
+  st.cells.slice(0, n).forEach((c, i) => {
     // 秒级没有 K 线流，订逐笔自己攒；自定义分钟订它底下那个原生周期
     const siv = streamIvOf(c.iv), bar = siv ? streamName.kline(c.symbol, siv) : streamName.trade(c.symbol)
     set.add(bar); set.add(streamName.ticker(c.symbol))
@@ -1029,8 +1064,34 @@ export function refreshStreams(): void {
   for (const k of al.ticker) { set.add(streamName.ticker(k)); core.add(streamName.ticker(k)) }
   for (const k of al.mark) { set.add(streamName.mark(k)); core.add(streamName.mark(k)) }
   for (const fn of hooks.extraStreams) for (const x of fn()) set.add(x)
-  const known = (name: string) => S.symbols.has(name.split('@')[0].toUpperCase())
-  setStreams([...set].filter(known), [...core].filter(known))
+  // 品种表没到时没法筛（冷启动先订的那次）；到了之后下一次对账会把表里没有的撤掉
+  const known = (name: string) => !S.symbols.size || S.symbols.has(name.split('@')[0].toUpperCase())
+  setStreams([...set].filter(known), [...core].filter(known), { now: early })
+}
+
+/**
+ * 冷启动：行情推送、K 线和品种表三路并行。
+ *   · 按存档里的格子立刻建 WS、订阅（不等品种表、不等 150 ms 合并窗口）
+ *   · 每格的 K 线同时发出去，推送先攒进缓冲，第一次装格子时接过来
+ * 以前是品种表到了（约 0.5 秒）才发 K 线、再过 150 ms 才建 WS，第一次跳价要等到 1.6–1.9 秒。
+ */
+function bootInParallel(): void {
+  if (cells.length) return   // 品种表已经先回来（例如限流立刻失败），格子已按正常路径装好，不用再预取
+  const n = LAYOUT_N[st.layout] || 1
+  ensureCells(st, n)
+  refreshStreams(true)
+  for (const c of st.cells.slice(0, n)) {
+    const k = `${c.symbol}|${c.iv}`, siv = streamIvOf(c.iv)
+    if (early.has(k) || !siv || isSecondIv(c.iv) || isCustomIv(c.iv)) continue
+    const hold = pushKey(c.symbol, siv)
+    pushes.open(hold)
+    early.set(k, { hold, res: klines(c.symbol, c.iv, undefined, 1500, false, false, undefined, 'low') })
+  }
+}
+/** 品种表把存档里的品种换掉了：先发的那几次没人接，缓冲撒手 */
+function dropEarly(): void {
+  for (const e of early.values()) pushes.release(e.hold)
+  early.clear()
 }
 
 // 秒级：一帧并一次
@@ -1126,7 +1187,12 @@ export async function initChart(): Promise<void> {
   onAlertsChange(refreshAlerts)
 
   on(e => {
+    if (e.type === 'kline') {
+      // K 线在路上的格子：先攒着，到了再补（这时格子里还是上一只品种的线，不能往上并）
+      pushes.offer(pushKey(e.symbol, e.iv), e.bar)
+    }
     if (e.type === 'kline') cells.forEach(c => {
+      if (c.hold) return
       const cc = cfg(c); if (cc.symbol !== e.symbol || st.stale) return
       if (cc.iv === e.iv) c.chart.updateBar({ ...e.bar })
       else if (isCustomIv(cc.iv) && customBase(cc.iv) === e.iv && c.chart.bars.length) c.chart.updateBar(customTick(cc.symbol, cc.iv, e.bar))
@@ -1151,7 +1217,7 @@ export async function initChart(): Promise<void> {
   }, 1000)
   setInterval(() => {
     if (document.visibilityState === 'hidden') return
-    if (st.panel === 'watch') { const k = cfg(active())?.symbol; if (k) void fetchDetail(k) }
+    if (st.panel === 'watch') settle.whenSettled('detail', detailNow)
   }, 61e3)
 
   renderDrawbar(); renderRail(); renderSlots(); layoutSlots(); renderPanel()
@@ -1169,9 +1235,14 @@ export async function initChart(): Promise<void> {
     renderPanel, layoutSlots, renderToolbar,
     dec: s => sym(s)?.dec ?? 2, crypto: s => (sym(s)?.kind ?? 'crypto') === 'crypto', turnover: s => sym(s)?.vol ?? null,
   })
-  await loadUniverse()
+  // 品种表先发（标题价、自选都等它），K 线与推送下一拍再并行起：建 WS、算订阅要同步占 5 ms 左右，
+  // 放在同一拍里会把品种表的三个请求和 DOMContentLoaded 一起往后推；K 线用低优先级，不在同一条 HTTP/2 连接上抢品种表的带宽
+  const universe = loadUniverse()
+  setTimeout(bootInParallel, 0)
+  await universe
   if (!S.live) toast(S.limited ? '币安限流了' : '连不上币安合约接口', S.error || '检查网络后点图上的「重试」', 'wifiOff', 8000)
   afterUniverse()
+  dropEarly()
   retryUniverseAfterCooldown()
 }
 

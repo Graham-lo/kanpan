@@ -5,7 +5,7 @@
  *   · 成交：灰柱是三家合计，上面叠币安的主动买、主动卖两条波形（OKX / Coinbase 的 K 线没有主动买，只计总额）。
  * 数据在 stats.ts；这里只画。
  */
-import { OF, amt, hm, canvasFont, showCard, hideCard } from './state'
+import { OF, feedIdleText, amt, hm, canvasFont, showCard, hideCard } from './state'
 import { hexA } from '../util/format'
 import { SLOT_MS, SLOTS, slotOf, type LiqPoint, type VolSlot } from './stats'
 import { signedPct } from './tradeLadder'
@@ -52,7 +52,7 @@ export class StatChart {
     if (!W || !H) return
     const now = Date.now()
     const ver = this.kind === 'liq' ? OF.liq.version : OF.vol.version
-    const sig = `${ver}|${W}|${H}|${this.hover}|${slotOf(now)}|${OF.feed?.symbol ?? ''}|${this.kind === 'liq' ? OF.liq.status : OF.vol.status}`
+    const sig = `${ver}|${W}|${H}|${this.hover}|${slotOf(now)}|${OF.feed?.symbol ?? ''}|${OF.pending}|${this.kind === 'liq' ? OF.liq.status : OF.vol.status}`
     if (!force && sig === this.sig) return
     this.sig = sig
     const dpr = window.devicePixelRatio || 1
@@ -97,7 +97,7 @@ export class StatChart {
   // ---------------------------------------------------------------- 流动性
 
   private drawLiq(c: CanvasRenderingContext2D, W: number, H: number, now: number, p: Pal): void {
-    if (!OF.feed) { this.hint(c, W, H, p, '打开指标「主力订单流」后显示'); return }
+    if (!OF.feed) { this.hint(c, W, H, p, feedIdleText()); return }
     const pts = OF.liq.points(now)
     if (!pts.length) { this.hint(c, W, H, p, OF.liq.status === 'loading' || OF.liq.status === 'idle' ? '正在取 24 小时深度…' : '正在记第一个点…'); return }
     const max = Math.max(1, ...pts.map(x => Math.max(x.bid, x.ask))) * 1.08
@@ -137,7 +137,7 @@ export class StatChart {
   // ---------------------------------------------------------------- 成交
 
   private drawVol(c: CanvasRenderingContext2D, W: number, H: number, now: number, p: Pal): void {
-    if (!OF.feed) { this.hint(c, W, H, p, '打开指标「主力订单流」后显示'); return }
+    if (!OF.feed) { this.hint(c, W, H, p, feedIdleText()); return }
     const slots = OF.vol.slots
     if (!slots.some(s => s.total > 0)) { this.hint(c, W, H, p, OF.vol.status === 'down' ? '三家 K 线暂时取不到' : '正在取三家 30 分钟 K 线…'); return }
     const partial = OF.vol.exchanges.some(e => e !== 'binance')

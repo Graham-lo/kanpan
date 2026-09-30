@@ -99,11 +99,13 @@ function effective(): string[] {
 }
 
 /** all：前台要订的全部；core：页面隐藏时仍保留的 */
-export function setStreams(list: string[], coreList: string[] = list): void {
+export function setStreams(list: string[], coreList: string[] = list, opts: { now?: boolean } = {}): void {
   // 流名大小写敏感（月线是 kline_1M），品种部分由 streamName 负责转小写
   all = [...new Set(list)]
   core = [...new Set(coreList)]
   if (debounce) clearTimeout(debounce)
+  // now：冷启动时和品种表、K 线并行先把连接建起来，不等 150 ms 的合并窗口
+  if (opts.now) { debounce = null; apply(); return }
   debounce = setTimeout(apply, 150)
 }
 

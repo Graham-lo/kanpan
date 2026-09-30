@@ -14,7 +14,7 @@ import { pressure, steppedBook, exName, venueName, PRODUCT_SHORT, type FineBook 
 import { orderId, type BigOrder, type Product } from './types'
 import { tapeBase, bpsText, tapeRowH, tapeRowAlpha, TAPE_ROW_SMALL, type TapeRow } from './tape'
 import { parseAmount } from './settings'
-import { OF, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
+import { OF, feedIdleText, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
 import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, partsFor, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
 import { sizes, saveSizes } from '../app/sizes'
 import { StatChart, statHead, tpsLineHTML, type StatKind } from './statsView'
@@ -398,7 +398,7 @@ function updateWalls(): void {
   const box = el.querySelector<HTMLElement>('#ofWalls')!, n = el.querySelector<HTMLElement>('#ofWallsN')!
   const live = (OF.snap?.orders ?? []).filter(o => o.status === 'live').sort((a, b) => b.notional - a.notional)
   n.textContent = live.length ? `${live.length} 单` : ''
-  if (!OF.feed) { box.innerHTML = `<div class="of-wait faint">打开指标「主力订单流」后显示</div>`; return }
+  if (!OF.feed) { box.innerHTML = `<div class="of-wait faint">${feedIdleText()}</div>`; return }
   if (!live.length) { box.innerHTML = `<div class="of-wait faint">${OF.snap?.phase === 'ready' || OF.snap?.phase == null ? '现在没有达到门槛的挂单' : '正在接盘口…'}</div>`; return }
   const dec = decFor(OF.feed.model.scheme?.step ?? 0, OF.api?.dec(OF.feed.symbol) ?? 2)
   const now = Date.now()
@@ -481,7 +481,7 @@ function drawTape(): void {
   const downT = css.getPropertyValue('--down-text').trim() || down
   const hover = css.getPropertyValue('--surface-2').trim() || '#F6F7F9'
   const rows0 = tapePaused ?? OF.tape.visible(tapeMin(), Math.max(1, Math.ceil(H / TAPE_ROW_SMALL)))
-  if (!OF.feed) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, '打开指标「主力订单流」后显示三家合并成交'); return }
+  if (!OF.feed) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, feedIdleText('打开指标「主力订单流」后显示三家合并成交')); return }
   if (!rows0.length) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, `还没有 ≥ ${amt(tapeMin())} 的成交`); return }
   const big = OF.bigTrade || Infinity
   const base = OF.bigTrade > 0 ? OF.bigTrade * 5 : 0

@@ -10,7 +10,7 @@ import { I, esc } from '../ui/dom'
 import { shows, type Display } from './settings'
 import { exName, outcomeText, PRODUCT_SHORT } from './aggregate'
 import { orderId, type BigOrder } from './types'
-import { OF, savePrefs, amt, mdhm, hms, durShort, decFor, px, peak, bandColor, type DrawerKey } from './state'
+import { OF, feedIdleText, savePrefs, amt, mdhm, hms, durShort, decFor, px, peak, bandColor, type DrawerKey } from './state'
 
 const ROW = 28
 const COLS: [DrawerKey, string, string][] = [
@@ -105,7 +105,7 @@ export function updateDrawer(force = false): void {
   if (!OF.feed || !snap) {
     list = []
     n.textContent = ''
-    note.textContent = OF.feed ? '正在接盘口…' : '打开指标「主力订单流」后显示'
+    note.textContent = OF.feed ? '正在接盘口…' : feedIdleText()
     paint(); return
   }
   if (!force && seenVersion === OF.version) return

@@ -11,14 +11,15 @@ import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from 
 
 export const REST = 'https://fapi.binance.com'
 
-export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean): Promise<T> {
+/** priority：给浏览器的取数优先级（同一条 HTTP/2 连接上谁先拿带宽）；冷启动并行预取的 K 线用 'low'，让品种表先到 */
+export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<T> {
   // 主机在限流冷却里就不发（抛 RateLimited）：429 之后接着打会被升级成 418 封 IP；
   // 一分钟权重快满了就先排队（见 limit.ts）；排队期间 alive() 说不要了就不发（抛 Superseded）
   await admit(url, background, alive)
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
-    const r = await fetch(url, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
+    const r = await fetch(url, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store', ...(priority ? { priority } : {}) })
     noteStatus(url, r.status, r.headers.get('Retry-After'))
     if (!r.ok) throw new Error(`${r.status} ${url}`)
     return await r.json() as T
@@ -89,10 +90,10 @@ export interface KlineResult { bars: Bar[]; ok: boolean; error?: string }
 
 /** 一页 K 线（最多 1500 根）；带 endTime 时是向左翻页，取严格早于它的那一页 */
 /** background：后台一大批取的（板块迷你走势），只用限流预算的一截，见 limit.ts */
-export async function klines(symbol: string, iv: string, endTime?: number, limit = 1500, withOI = true, background = false, alive?: () => boolean): Promise<KlineResult> {
+export async function klines(symbol: string, iv: string, endTime?: number, limit = 1500, withOI = true, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<KlineResult> {
   try {
     const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${limit}${endTime ? `&endTime=${endTime - 1}` : ''}`
-    const bars = parse(await j<Row[]>(u, 10000, background, alive))
+    const bars = parse(await j<Row[]>(u, 10000, background, alive, priority))
     if (withOI) void attachOI(symbol, iv, bars)
     return { bars, ok: true }
   } catch (e) {

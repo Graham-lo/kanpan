@@ -151,7 +151,7 @@ export function drawLadder(chart: TVChart, g: ChartGeometry): void {
   if (!feed || !fine || !step || fine.step !== step || !fine.ready) {
     empty.hidden = false
     empty.style.top = `${(yTop + yBot) / 2 - 12}px`
-    empty.textContent = !feed ? '' : feed.isCalibrating ? '正在按盘口深度定门槛…' : !step ? '正在取步长…' : '正在连三家交易所的盘口…'
+    empty.textContent = !feed ? (OF.pending ? '正在连三家交易所的盘口…' : '') : feed.isCalibrating ? '正在按盘口深度定门槛…' : !step ? '正在取步长…' : '正在连三家交易所的盘口…'
     info.textContent = ''
     return
   }

@@ -85,6 +85,8 @@ export function savePrefs(): void { try { localStorage.setItem(PREFS_KEY, JSON.s
 export const OF = {
   api: null as Api | null,
   feed: null as OrderFlowFeed | null,
+  /** 想接盘口、在等品种停稳（约半秒）：空态写「正在接盘口…」 */
+  pending: false,
   snap: null as Snapshot | null,
   fine: null as FineBook | null,
   heat: null as HeatStore | null,
@@ -117,6 +119,9 @@ export const OF = {
   /** 大额成交的金额线（门槛 ÷ 5），图上打点的大小以它为 1 */
   bigTrade: 0,
 }
+
+/** 数据层还没起来时各处空态的那句话：在等品种停稳就是「正在接」，否则是没打开 */
+export const feedIdleText = (off = '打开指标「主力订单流」后显示'): string => OF.pending ? '正在接盘口…' : off
 
 // ------------------------------------------------------------------ 行高
 

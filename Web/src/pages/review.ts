@@ -156,6 +156,8 @@ function schedulePoll(): void {
     await refreshSearches()
     if (!R.shown) return
     renderTop(); renderLeft()
+    // 右侧还空着（没选中片段）时跟着换说法：搜索找完了、一段也没有，那里也要说，不能停在「选一段…」
+    if (R.tab === 'similar' && !findMatch(R.sel.similar)) renderDetail()
     schedulePoll()
   }, 2000)
 }
@@ -439,10 +441,26 @@ function viewGroupsHtml(): string {
     </div>`).join('')}</div>`
 }
 
-/** 找相似 0 条时说清楚：服务端从公开 K 线里挑最近的一批候选逐段细比，没有一段相似度到 0.60 才会空（1h / 4h 候选少，常见） */
-export function noMatchText(e: Pick<SearchEntry, 'status'>): string {
-  const n = e.status?.checked ?? 0
-  return n ? `比过 ${n} 段，没有一段相似度到 0.60 · 换 15 分钟或拉长区间再试` : '没有找到足够像的片段'
+/** 服务端留下一段的相似度门槛，按周期不同（照 Backend/kanpan-api/src/search.rs 的 min_score） */
+export function minScoreOf(iv: string | undefined): number {
+  return iv === '1h' ? 0.58 : iv === '4h' || iv === '1d' ? 0.56 : 0.60
+}
+
+/**
+ * 找相似「找完了、一段也没有」时说清楚：服务端从公开 K 线里挑一批候选逐段细比，没有一段过门槛才会空
+ * （1h / 4h 候选少，常见；线上压测 9 次里 2 次是这样）。不是出错，给一句能照着做的下一步。
+ */
+export function noMatchText(e: { status: Pick<SearchStatus, 'checked'> | null; meta?: Pick<StoredSearch, 'iv'> }): string {
+  const n = e.status?.checked ?? 0, iv = e.meta?.iv
+  const next = iv === '15m' ? '拉长或缩短区间再找' : '换个周期（15 分钟候选最多）或长度再找'
+  return n ? `没有足够相似的走势：比过 ${n} 段，没有一段相似度到 ${minScoreOf(iv).toFixed(2)}，${next}` : `没有足够相似的走势，${next}`
+}
+
+/** 相似走势页签右侧什么都没选时那句话：最近一次找完是空的就直接说为什么空（有收藏时引到左边收藏的片段） */
+export function similarBlankText(saved: number, latest: Pick<SearchEntry, 'status' | 'results' | 'meta'> | undefined): string {
+  if (latest?.status?.status === 'completed' && latest.results && !latest.results.items.length)
+    return saved ? '这次没找到足够相似的走势，可以选左边收藏的片段，看它后来怎么走' : noMatchText(latest)
+  return '选一段相似片段，看它后来怎么走'
 }
 
 function similarLeft(): string {
@@ -457,7 +475,7 @@ function similarLeft(): string {
     const state = e.error ? `<span class="warn">${esc(e.error)}</span>`
       : st === 'completed' ? `${e.results?.items.length ?? 0} 段${e.results?.partial ? ' · 部分结果' : ''}`
       : st ? `正在找 ${prog}%` : '—'
-    const items = st === 'completed' ? (e.results?.items.length ? e.results.items.map(m => matchRow(m, `search:${e.meta.id}:${m.id}`, savedIds.has(m.id), e.meta.id)).join('') : `<div class="rv-none" data-none-checked="${e.status?.checked ?? 0}">${noMatchText(e)}</div>`) : ''
+    const items = st === 'completed' ? (e.results?.items.length ? e.results.items.map(m => matchRow(m, `search:${e.meta.id}:${m.id}`, savedIds.has(m.id), e.meta.id)).join('') : `<div class="rv-none" data-none-checked="${e.status?.checked ?? 0}">${esc(noMatchText(e))}</div>`) : ''
     return `<div class="rv-search">
       <div class="rv-search-h"><b>${esc(e.meta.label)}</b><span class="faint">${shTime(e.meta.created)}</span><span class="rv-sp"></span><span class="num">${state}</span>
         <button class="ibtn xs" data-forget="${esc(e.meta.id)}" aria-label="不再显示这次搜索" data-tip="不再显示">${I('close', 'icon-16')}</button></div>
@@ -540,7 +558,8 @@ function renderDetail(): void {
   wrap.classList.toggle('blank', !plan)
   if (!plan) {
     head.innerHTML = `<span class="ttl">回放</span>`
-    foot.innerHTML = `<div class="rv-none">${R.tab === 'similar' ? '选一段相似片段，看它后来怎么走' : '选左边一条，在这里按当时的节奏重放'}</div>`
+    const latest = storedSearches()[0]
+    foot.innerHTML = `<div class="rv-none">${R.tab === 'similar' ? esc(similarBlankText(R.saved.length, latest ? R.searches.get(latest.id) : undefined)) : '选左边一条，在这里按当时的节奏重放'}</div>`
     if (R.playing) { player.destroy(); player = new ReplayPlayer(wrap, $('#rvBar')); R.playing = '' }
     return
   }

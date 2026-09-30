@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   barsBetween, buildDraft, captureRange, checkDraft, horizonMs, recordInterval, sideLevels, type BarLike, type Capture,
 } from '../src/notes/draft'
-import { noMatchText } from '../src/pages/review'
+import { minScoreOf, noMatchText, similarBlankText } from '../src/pages/review'
 
 const H = 3600e3
 /** 从 t0 起每小时一根，高低收随下标走 */
@@ -104,8 +104,19 @@ describe('记一笔 · 草稿', () => {
 })
 
 describe('找相似 · 没找到时的说明', () => {
-  it('说清楚比过几段、门槛是 0.60', () => {
-    expect(noMatchText({ status: { checked: 300 } as never })).toBe('比过 300 段，没有一段相似度到 0.60 · 换 15 分钟或拉长区间再试')
-    expect(noMatchText({ status: null })).toBe('没有找到足够像的片段')
+  it('服务端 completed 且一段也没有：明确说「没有足够相似的走势」，比过几段、按周期的门槛、下一步', () => {
+    expect(noMatchText({ status: { checked: 300 }, meta: { iv: '15m' } })).toBe('没有足够相似的走势：比过 300 段，没有一段相似度到 0.60，拉长或缩短区间再找')
+    expect(noMatchText({ status: { checked: 300 }, meta: { iv: '1h' } })).toBe('没有足够相似的走势：比过 300 段，没有一段相似度到 0.58，换个周期（15 分钟候选最多）或长度再找')
+    expect(noMatchText({ status: null })).toBe('没有足够相似的走势，换个周期（15 分钟候选最多）或长度再找')
+  })
+  it('门槛照服务端 search::min_score：1h 0.58、4h / 1d 0.56、其余 0.60', () => {
+    expect([minScoreOf('15m'), minScoreOf('1h'), minScoreOf('4h'), minScoreOf('1d'), minScoreOf(undefined)]).toEqual([0.6, 0.58, 0.56, 0.56, 0.6])
+  })
+  it('右侧空白处：最近一次找完是空的、也没收藏 → 直接说为什么空；否则提示去选一段', () => {
+    const empty = { meta: { iv: '1h' } as never, status: { status: 'completed', checked: 300 } as never, results: { items: [], next: null, cutoff: 0, model: '', partial: false } }
+    expect(similarBlankText(0, empty)).toMatch(/^没有足够相似的走势：比过 300 段/)
+    expect(similarBlankText(2, empty)).toBe('这次没找到足够相似的走势，可以选左边收藏的片段，看它后来怎么走')
+    expect(similarBlankText(0, { ...empty, status: { status: 'running', checked: 0 } as never })).toBe('选一段相似片段，看它后来怎么走')
+    expect(similarBlankText(0, undefined)).toBe('选一段相似片段，看它后来怎么走')
   })
 })
