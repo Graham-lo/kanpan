@@ -17,8 +17,9 @@ OpenMarket 吸收的四路（多图布局、指标与叠加、订单流、画线
 三路全部上线后，用 `Web/scripts/regress.mjs` 对线上跑了全部 13 段（chart layout levels draw alerts edge themes route sectors watch flow account review）：
 286 项，280 过；6 项红里没有一项是产品 bug：
 
-- 3 项是 `GET /v1/market/orderflow/flow` 在线上还是 404（大单与散户分钟历史、指标段与画线段的控制台 404）——服务端那三个提交
-  （接口、文档、迁移改号 0034 → 0036）还在本地分支 `worktree-agent-ad34e577157c31d5f` 上，等桌面脚本 `kanpan-push-flow-and-deploy.sh` 推上 main 并部署。
+- 3 项是 `GET /v1/market/orderflow/flow` 当时在线上还是 404（大单与散户分钟历史、指标段与画线段的控制台 404）。09-30 08:22 已把那三个提交
+  （f6bb4aa1 接口、c3e47ab2 文档、74fa06b5 迁移改号 0034 → 0036）推上 main 并部署（备份 `/opt/kanpan-backups/flow-20260930-081734`，install.py 只重启一次），
+  `/flow` 200、每分钟一行在攒；levels 段复跑 14 项只剩「常驻品种有服务端分钟历史」一项，因为刚上线只攒了 4 分钟，攒够就过。
 - 1 项是 themes 段的币安 429：同一出口 IP 上另一个窗口在跑手机网页版压测；客户端的限流账本（`Web/src/market/limit.ts`）按预期退避，没有空态。
 - 2 项是回归脚本自己的问题，已改：
   - 「价格提醒贴着现价」两条通过界面放下去要一秒多，BTC 一秒能走十几个价位，读价到第二条放好之间价已经跑到两条同一侧，两条都要等价回头才响
