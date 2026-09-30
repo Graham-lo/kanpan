@@ -16,6 +16,11 @@
 //!   都不带的老请求照旧 20 万行。
 //!   快照按主键点查（`bucket_ms = ANY(数组)`，不走 `generate_series` 连接——那样计划器只按 base 扫整只）。
 //!   同样的请求 5 秒内合成一次读库（缺省的 `to` 取整到 5 秒格），答复带 `Cache-Control: public, max-age=5`。
+//! * 预聚合（2026-09-30，C 路压测「热力冷读慢」的根因修复，0038）：原来读几小时到三天要在十几 GB 的原始表里点查几百个快照，
+//!   冷页随机读，2 并发 p95 约 3 秒。现在后台每 30 秒把收完的时间段并成段（30 秒 ← 原始快照、150 秒 ← 30 秒、900 秒 ← 150 秒），
+//!   一段一只 base 一个步长一行，存各桶名义的总和与快照数。读的时候时间格是哪一段的整数倍就读那一段（900 秒一格读三天只要约 300 行），
+//!   段没盖到的头尾（区间起点没对齐、最近还没并的几十秒）用细一级的段、最后用原始快照补。格里仍是「各快照取平均、没有这个桶按 0 算」：
+//!   段里记的是所有快照的总和与个数，比原来隔几个取一个更准；接口的参数、形状、梯子、缓存头一律不变。
 use super::book::{Buckets,Side,bucket_index};
 use super::model::{Model,Thresholds};
 use super::{Answer,Answers,HISTORY_READS,POOL,REGISTRY,WRITE_SLOTS,accepts_gzip,json_number as number,now_ms,packed,store};
@@ -73,6 +78,19 @@ const GATE_BYTES:f64=36.0*1024.0*1024.0*1024.0;
 const GATE_TARGET:f64=32.0*1024.0*1024.0*1024.0;
 /// 写库统计多久打一行日志。
 const REPORT:Duration=Duration::from_secs(10*60);
+/// 预聚合的段宽（细到粗）：150 秒不是 60 秒的整数倍，所以 30 秒这一档既给 30 / 60 秒格用，也是 150 秒段的来源；
+/// 梯子上 30 秒以上的每一档都是其中某一档的整数倍。
+pub(super) const ROLLUPS:[i64;3]=[30_000,150_000,900_000];
+/// 一段收完之后再等多久才并（写库任务慢一点、跟踪任务晚一拍的快照还能赶上）。
+const ROLL_GRACE:i64=30_000;
+/// 后台并段多久看一次；落后时（刚部署、重启后）一段一段追，中间只歇一小会。
+const ROLL_EVERY:Duration=Duration::from_secs(30);
+const ROLL_CATCHUP_PAUSE:Duration=Duration::from_millis(500);
+/// 追的时候一条语句最多并多长：原始快照 10 分钟（约 6 万行），段 6 小时。
+const RAW_SLICE:i64=10*60_000;
+const ROLLUP_SLICE:i64=6*3_600_000;
+/// 同一段连着失败几次就跳过（坏数据不能把后面的段永远堵住）。
+const ROLL_GIVE_UP:u32=5;
 
 /// 一只 base 在一家一个产品上一个快照的带子（库里一行）。
 #[derive(Clone,Debug,PartialEq)]
@@ -136,11 +154,12 @@ static TX:OnceLock<mpsc::Sender<Vec<Band>>>=OnceLock::new();
 /// 通道满了丢掉的带子数（写库统计日志里报）。
 static DROPPED:AtomicU64=AtomicU64::new(0);
 
-/// 起写库任务（serve 进程起订单流时一次）。
+/// 起写库任务与后台并段任务（serve 进程起订单流时一次）。
 pub(super) fn start(pool:PgPool) {
  TX.get_or_init(||{
   let (tx,rx)=mpsc::channel(QUEUE);
-  tokio::spawn(writer(pool,rx));
+  tokio::spawn(writer(pool.clone(),rx));
+  crate::supervise::spawn_restarting("orderflow-heat-rollup",move ||roller(pool.clone()));
   tx
  });
 }
@@ -202,6 +221,169 @@ async fn insert(pool:&PgPool,rows:&[Band])->sqlx::Result<()> {
  q.build().execute(pool).await.map(|_|())
 }
 
+// ------------------------------------------------------------------ 预聚合
+
+/// 一档段所在的分区表（0038）。
+fn rollup_table(width:i64)->&'static str {
+ match width {30_000=>"orderflow_heat_rollup_30s",150_000=>"orderflow_heat_rollup_150s",_=>"orderflow_heat_rollup_900s"}
+}
+
+/// 并段的后半截：来源 `src(base,t,step,price_lo,price_bucket,bid_notional,ask_notional)` 与每段快照数 `n(base,t,step,samples)`
+/// 已经定义好，这里把各行的桶展开、同一（base，段，步长，桶）相加，再按桶号排好收成一行写进 `table`。
+fn fold_sql(width:i64,table:&str)->String {
+ format!("c AS (SELECT s.base,s.t,s.step,s.price_lo+u.o AS p,sum(u.b::float8) AS b,sum(u.a::float8) AS a \
+   FROM src s CROSS JOIN LATERAL unnest(s.price_bucket,s.bid_notional,s.ask_notional) AS u(o,b,a) GROUP BY 1,2,3,4), \
+  m AS (SELECT c.*,min(c.p) OVER (PARTITION BY c.base,c.t,c.step) AS lo FROM c), \
+  g AS (SELECT base,t,step,lo,array_agg((p-lo)::int ORDER BY p) AS o,array_agg(b::real ORDER BY p) AS bb,array_agg(a::real ORDER BY p) AS aa FROM m GROUP BY 1,2,3,4) \
+  INSERT INTO {table}(base,width_ms,bucket_ms,step,samples,price_lo,price_bucket,bid_notional,ask_notional) \
+  SELECT g.base,{width},g.t,g.step,n.samples,g.lo,g.o,g.bb,g.aa FROM g JOIN n USING(base,t,step) ON CONFLICT DO NOTHING")
+}
+
+/// 原始快照 → 30 秒段：逐只 base 按主键取这段时间（主键头是 base，不带 base 的时间范围走不了索引）。
+fn raw_roll_sql()->String {
+ let w=ROLLUPS[0];
+ format!("WITH src AS (SELECT h.base,h.bucket_ms-h.bucket_ms%{w} AS t,h.bucket_ms AS snap,h.step,h.price_lo,h.price_bucket,h.bid_notional,h.ask_notional \
+   FROM unnest($1::text[]) b(base) CROSS JOIN LATERAL (SELECT * FROM orderflow_heat h WHERE h.base=b.base AND h.bucket_ms>=$2 AND h.bucket_ms<$3) h), \
+  n AS (SELECT base,t,step,count(DISTINCT snap)::int AS samples FROM src GROUP BY 1,2,3), {}",fold_sql(w,rollup_table(w)))
+}
+
+/// 细一级的段 → 这一级：快照数相加。
+fn rollup_roll_sql(width:i64,lower:i64)->String {
+ format!("WITH src AS (SELECT base,bucket_ms-bucket_ms%{width} AS t,samples,step,price_lo,price_bucket,bid_notional,ask_notional \
+   FROM {} WHERE width_ms={lower} AND bucket_ms>=$1 AND bucket_ms<$2), \
+  n AS (SELECT base,t,step,sum(samples)::int AS samples FROM src GROUP BY 1,2,3), {}",rollup_table(lower),fold_sql(width,rollup_table(width)))
+}
+
+/// 把 [a,b) 这段并成第 `k` 档（`ROLLUPS[k]`）的段；`bases` 只给第 0 档（从原始快照并）用。
+/// 聚合在一个事务里、`work_mem` 放到 64 MB（缺省 4 MB 时十分钟的追赶会把分组溢出到磁盘），语句死线放到 2 分钟（冷盘追赶）。
+async fn roll_range(pool:&PgPool,k:usize,bases:&[String],a:i64,b:i64)->sqlx::Result<u64> {
+ let Ok(_slot)=WRITE_SLOTS.acquire().await else {return Ok(0)};
+ let mut tx=pool.begin().await?;
+ sqlx::query("SET LOCAL work_mem='64MB'").execute(&mut *tx).await?;
+ sqlx::query("SET LOCAL statement_timeout='120s'").execute(&mut *tx).await?;
+ let n=if k==0 {
+  sqlx::query(&raw_roll_sql()).bind(bases).bind(a).bind(b).execute(&mut *tx).await?.rows_affected()
+ } else {
+  sqlx::query(&rollup_roll_sql(ROLLUPS[k],ROLLUPS[k-1])).bind(a).bind(b).execute(&mut *tx).await?.rows_affected()
+ };
+ tx.commit().await?;
+ Ok(n)
+}
+
+/// 起来时从哪接着并：每档已有的最后一段之后；一段都没有就从原始快照最早的那格起（刚部署时把已有的都追上），
+/// 表是空的就从此刻起。3 天以前的（已经清掉的）不追。
+async fn resume(pool:&PgPool,bases:&[String],now:i64)->sqlx::Result<[i64;3]> {
+ let first:Option<i64>=sqlx::query_scalar("SELECT min(m) FROM unnest($1::text[]) b(base) CROSS JOIN LATERAL (SELECT min(bucket_ms) AS m FROM orderflow_heat WHERE base=b.base) x")
+  .bind(bases).fetch_one(pool).await?;
+ let mut done=[0;3];
+ for (k,&w) in ROLLUPS.iter().enumerate() {
+  let last:Option<i64>=sqlx::query_scalar(&format!("SELECT max(bucket_ms) FROM {} WHERE width_ms={w}",rollup_table(w))).fetch_one(pool).await?;
+  let start=last.map(|t|t+w).or(first).unwrap_or(now-ROLL_GRACE).max(now-store::RETENTION_MS);
+  done[k]=start.div_euclid(w)*w;
+ }
+ Ok(done)
+}
+
+/// 并段的进度与连着失败的次数。
+struct Roller {done:[i64;3],failures:[u32;3]}
+
+impl Roller {
+ /// 每档此刻能并到哪（不含）：30 秒段要这一段收完再过 `ROLL_GRACE`；粗的要细一级已经并到。
+ fn ready(&self,k:usize,now:i64)->i64 {
+  let w=ROLLUPS[k];
+  if k==0 {(now-ROLL_GRACE).div_euclid(w)*w} else {self.done[k-1].div_euclid(w)*w}
+ }
+
+ /// 一轮：每档往前并一截。返回还落不落后（落后就马上接着来）。
+ async fn step(&mut self,pool:&PgPool,now:i64)->sqlx::Result<bool> {
+  let bases=bases(pool).await?;
+  let mut behind=false;
+  for (k,&w) in ROLLUPS.iter().enumerate() {
+   let floor=(now-store::RETENTION_MS).div_euclid(w)*w;
+   self.done[k]=self.done[k].max(floor);
+   let ready=self.ready(k,now);
+   if self.done[k]>=ready {continue}
+   let end=ready.min(self.done[k]+if k==0 {RAW_SLICE} else {ROLLUP_SLICE});
+   match roll_range(pool,k,&bases,self.done[k],end).await {
+    Ok(_)=>{self.done[k]=end;self.failures[k]=0;},
+    Err(e)=>{
+     self.failures[k]+=1;
+     if self.failures[k]<ROLL_GIVE_UP {return Err(e)}
+     tracing::warn!("Orderflow heat: rollup {w} ms of [{}, {end}) failed {ROLL_GIVE_UP} times, skipped: {e}",self.done[k]);
+     self.done[k]=end;self.failures[k]=0;
+    },
+   }
+   behind|=end<ready;
+  }
+  Ok(behind)
+ }
+}
+
+/// 后台并段任务：起来先定进度，之后每 30 秒并一轮；落后时一截接一截追。
+async fn roller(pool:PgPool) {
+ let mut warned:Option<tokio::time::Instant>=None;
+ let mut warn=|what:&str,e:sqlx::Error|if warned.is_none_or(|at|at.elapsed()>=Duration::from_secs(600)) {
+  warned=Some(tokio::time::Instant::now());tracing::warn!("Orderflow heat: rollup {what} failed: {e}");
+ };
+ let mut roller=loop {
+  let now=now_ms();
+  match async {let bases=bases(&pool).await?;resume(&pool,&bases,now).await}.await {
+   Ok(done)=>break Roller{done,failures:[0;3]},
+   Err(e)=>{warn("resume",e);tokio::time::sleep(ROLL_EVERY).await;},
+  }
+ };
+ tracing::info!("Orderflow heat: rollup resumes at {:?}",roller.done);
+ loop {
+  let pause=match roller.step(&pool,now_ms()).await {
+   Ok(true)=>ROLL_CATCHUP_PAUSE,
+   Ok(false)=>ROLL_EVERY,
+   Err(e)=>{warn("step",e);ROLL_EVERY},
+  };
+  tokio::time::sleep(pause).await;
+ }
+}
+
+/// 这只 base 每档段盖到哪（不含）：最后一段之后。后台是一截时间里所有 base 一起并的，所以最后一段之前没有段的格就是真没有快照。
+async fn coverage(pool:&PgPool,base:&str)->sqlx::Result<[Option<i64>;3]> {
+ let sql=format!("SELECT {}",ROLLUPS.map(|w|format!("(SELECT max(bucket_ms) FROM {} WHERE base=$1 AND width_ms={w})",rollup_table(w))).join(","));
+ let row=sqlx::query(&sql).bind(base).fetch_one(pool).await?;
+ let mut out=[None;3];
+ for (k,&w) in ROLLUPS.iter().enumerate() {out[k]=row.get::<Option<i64>,_>(k).map(|t|t+w);}
+ Ok(out)
+}
+
+/// 一段 [lo,hi) 怎么读：时间格 `width` 是哪几档段的整数倍，就从粗到细用这几档（`covered` 是各档盖到哪），
+/// 每档只取完整落在区间里、又已经并好的段，两头剩下的交给细一级，最后剩下的读原始快照。返回（段：（段宽，起，止）；原始：（起，止））。
+fn pieces(lo:i64,hi:i64,width:i64,covered:&[Option<i64>;3])->(Vec<(i64,i64,i64)>,Vec<(i64,i64)>) {
+ let plan:Vec<(i64,i64)>=ROLLUPS.iter().zip(covered).rev().filter_map(|(&r,end)|(width%r==0).then_some(*end).flatten().map(|e|(r,e))).collect();
+ let (mut rolled,mut raw)=(Vec::new(),Vec::new());
+ let mut todo=vec![(0usize,lo,hi)];
+ while let Some((i,lo,hi))=todo.pop() {
+  if lo>=hi {continue}
+  let Some(&(r,end))=plan.get(i) else {raw.push((lo,hi));continue};
+  let a=lo.div_euclid(r)*r+if lo.rem_euclid(r)==0 {0} else {r};
+  let b=(hi.div_euclid(r)*r).min(end.div_euclid(r)*r);
+  if a<b {rolled.push((r,a,b));todo.push((i+1,lo,a));todo.push((i+1,b,hi));} else {todo.push((i+1,lo,hi));}
+ }
+ rolled.sort();raw.sort();
+ (rolled,raw)
+}
+
+/// 段的清理：和原始快照同一个截止时刻，按分区逐张删。
+async fn delete_rollups_before(pool:&PgPool,cutoff:i64)->sqlx::Result<u64> {
+ let mut deleted=0;
+ for w in ROLLUPS {
+  let table=rollup_table(w);
+  loop {
+   let n=sqlx::query(&format!("DELETE FROM {table} WHERE ctid=ANY(ARRAY(SELECT ctid FROM {table} WHERE width_ms={w} AND bucket_ms<$1 LIMIT $2))"))
+    .bind(cutoff).bind(DELETE_BATCH).execute(pool).await?.rows_affected();
+   deleted+=n;
+   if n<DELETE_BATCH as u64 {break}
+  }
+ }
+ Ok(deleted)
+}
+
 // ------------------------------------------------------------------ 清理
 
 /// 表里有哪些 base：沿主键跳着取（每只一次索引查找），不扫整表。
@@ -225,7 +407,7 @@ pub(super) async fn size(pool:&PgPool)->sqlx::Result<i64> {
  sqlx::query_scalar("SELECT pg_total_relation_size('orderflow_heat')").fetch_one(pool).await
 }
 
-/// 每小时一次：删 3 天以前的；表超过 `GATE_BYTES` 时按「行数 × 最近一行的平均大小」估实际占用，
+/// 每小时一次：删 3 天以前的（预聚合的段同一个截止时刻一起删，返回两边合计删了几行）；表超过 `GATE_BYTES` 时按「行数 × 最近一行的平均大小」估实际占用，
 /// 超过 `GATE_TARGET` 就把截止时刻往后挪（每次 6 小时）接着删。删掉的空间留给以后的插入用，文件不缩，所以不能直接拿文件大小判断。
 pub(super) async fn purge(pool:&PgPool,now:i64)->sqlx::Result<u64> {
  let bases=bases(pool).await?;
@@ -243,7 +425,10 @@ pub(super) async fn purge(pool:&PgPool,now:i64)->sqlx::Result<u64> {
    for base in &bases {let n=delete_before(pool,base,cutoff).await?;deleted+=n;rows-=n as f64;}
   }
   tracing::warn!("Orderflow heat: size gate trimmed to bucket_ms >= {cutoff}");
+  deleted+=delete_rollups_before(pool,cutoff).await?;
+  return Ok(deleted)
  }
+ deleted+=delete_rollups_before(pool,now-store::RETENTION_MS).await?;
  Ok(deleted)
 }
 
@@ -339,6 +524,19 @@ impl Heat {
  fn add(&mut self,bucket_ms:i64,row_step:f64,lo:i64,offsets:&[i32],bids:&[f32],asks:&[f32]) {
   let t=bucket_ms.div_euclid(self.bucket_ms())*self.bucket_ms();
   if self.last_snapshot!=Some(bucket_ms) {self.last_snapshot=Some(bucket_ms);*self.samples.entry(t).or_default()+=1;}
+  self.put(t,row_step,lo,offsets,bids,asks);
+ }
+
+ /// 一行预聚合的段（起点 `period`，里面 `samples` 个快照的总和）。段宽总能整除时间格，段整个落在一格里；行不用按时间来。
+ #[allow(clippy::too_many_arguments)]
+ fn add_rolled(&mut self,period:i64,samples:u32,row_step:f64,lo:i64,offsets:&[i32],bids:&[f32],asks:&[f32]) {
+  let t=period.div_euclid(self.bucket_ms())*self.bucket_ms();
+  *self.samples.entry(t).or_default()+=samples;
+  self.put(t,row_step,lo,offsets,bids,asks);
+ }
+
+ /// 把一行的桶加进时间格 `t`（按答复的步长换桶、按价格范围过滤），超了上限原地放大时间格。
+ fn put(&mut self,t:i64,row_step:f64,lo:i64,offsets:&[i32],bids:&[f32],asks:&[f32]) {
   let same=(row_step-self.step).abs()<=self.step*1e-12;
   for ((&o,&b),&a) in offsets.iter().zip(bids).zip(asks) {
    let index=lo+o as i64;
@@ -430,23 +628,38 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
   // 真漂出去超了，读的时候原地放大一档（最多抽 720 个快照，多读的有限）。
   Some(s)=>pick_from(min_level(s.hint),span,prices.len() as f64,cap),
  };
- // 隔几个快照取一个，但这段区间里至少取 8 个（区间比时间格还短时别一个都取不到）。
- let stride=stride(level,span,scope.is_some());
  let mut heat=Heat::new(step,level,cap);
  heat.range=range;
+ // 先读预聚合的段（格宽是哪几档段的整数倍就用哪几档），段没盖到的头尾再读原始快照。
+ let covered=coverage(pool,base).await?;
+ let (rolled,raw)=pieces(from,to+1,LADDER[level].0,&covered);
+ for (width,a,b) in rolled {
+  // 不排序：段整个落在一格里，先后无所谓；按（base，段宽，起点）主键范围取，900 秒一档三天约 300 行。
+  let sql=format!("SELECT bucket_ms,step,samples,price_lo,price_bucket,bid_notional,ask_notional FROM {} WHERE base=$1 AND width_ms={width} AND bucket_ms>=$2 AND bucket_ms<$3",rollup_table(width));
+  let mut rows=sqlx::query(&sql).bind(base).bind(a).bind(b).fetch(pool);
+  while let Some(r)=rows.try_next().await? {
+   let (offsets,bids,asks)=(r.get::<Vec<i32>,_>("price_bucket"),r.get::<Vec<f32>,_>("bid_notional"),r.get::<Vec<f32>,_>("ask_notional"));
+   heat.add_rolled(r.get("bucket_ms"),r.get::<i32,_>("samples").max(0) as u32,r.get("step"),r.get("price_lo"),&offsets,&bids,&asks);
+  }
+ }
  let all=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms BETWEEN $2 AND $3 ORDER BY h.bucket_ms");
  // 隔 `stride` 取一个快照：按主键逐个点查（`bucket_ms = ANY(数组)` 进索引条件），不把这段整个扫一遍。
  // 原来用 generate_series 连接，计划器只按 base 走位图扫描，BTC 3 天几十万行过一遍，并发时一条要 1.6–2.1 秒。
  let sampled=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms=ANY($2::bigint[]) ORDER BY h.bucket_ms");
- let mut rows=if stride<=BUCKET_MS {
-  sqlx::query(&all).bind(base).bind(from).bind(to).fetch(pool)
- } else {
-  let at:Vec<i64>=((from+stride-1).div_euclid(stride)*stride..=to).step_by(stride as usize).collect();
-  sqlx::query(&sampled).bind(base).bind(at).fetch(pool)
- };
- while let Some(r)=rows.try_next().await? {
-  let (offsets,bids,asks)=(r.get::<Vec<i32>,_>("price_bucket"),r.get::<Vec<f32>,_>("bid_notional"),r.get::<Vec<f32>,_>("ask_notional"));
-  heat.add(r.get("bucket_ms"),r.get("step"),r.get("price_lo"),&offsets,&bids,&asks);
+ for (a,b) in raw {
+  let (a,b)=(a,b-1);
+  // 隔几个快照取一个，但这一截里至少取 8 个（比时间格还短时别一个都取不到）；段都没有时这一截就是整个区间，和原来一样。
+  let stride=stride(level,b-a,scope.is_some());
+  let mut rows=if stride<=BUCKET_MS {
+   sqlx::query(&all).bind(base).bind(a).bind(b).fetch(pool)
+  } else {
+   let at:Vec<i64>=((a+stride-1).div_euclid(stride)*stride..=b).step_by(stride as usize).collect();
+   sqlx::query(&sampled).bind(base).bind(at).fetch(pool)
+  };
+  while let Some(r)=rows.try_next().await? {
+   let (offsets,bids,asks)=(r.get::<Vec<i32>,_>("price_bucket"),r.get::<Vec<f32>,_>("bid_notional"),r.get::<Vec<f32>,_>("ask_notional"));
+   heat.add(r.get("bucket_ms"),r.get("step"),r.get("price_lo"),&offsets,&bids,&asks);
+  }
  }
  Ok((step,heat.bucket_ms(),heat.rows()))
 }
@@ -779,5 +992,99 @@ mod tests {
    assert!(after.contains("Index Cond")&&after.contains("bucket_ms = ANY"),"现在应按主键点查：\n{after}");
   }
   for b in bases {sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(b).execute(&pool).await.unwrap();}
+ }
+
+ #[test] fn pieces_use_the_coarsest_rollup_that_divides_the_cell_and_raw_for_the_rest() {
+  // 30 秒段并到 3 990 000（段的端点都对齐自己的宽度）、150 秒到 3 750 000、900 秒到 3 600 000；900 秒格从没对齐的 35 000 读到 4 100 000。
+  let covered=[Some(3_990_000),Some(3_750_000),Some(3_600_000)];
+  let (rolled,raw)=pieces(35_000,4_100_000,900_000,&covered);
+  assert_eq!(rolled,vec![(30_000,60_000,150_000),(30_000,3_750_000,3_990_000),(150_000,150_000,900_000),(150_000,3_600_000,3_750_000),(900_000,900_000,3_600_000)]);
+  assert_eq!(raw,vec![(35_000,60_000),(3_990_000,4_100_000)],"头上没对齐的 25 秒、尾上还没并的 110 秒读原始快照");
+  // 60 秒格只能用 30 秒段；10 秒格一档都用不上；一档段都还没有（None）就跳过这一档。
+  assert_eq!(pieces(0,120_000,60_000,&covered),(vec![(30_000,0,120_000)],vec![]));
+  assert_eq!(pieces(0,120_000,10_000,&covered),(vec![],vec![(0,120_000)]));
+  assert_eq!(pieces(0,1_800_000,900_000,&[None,Some(900_000),None]),(vec![(150_000,0,900_000)],vec![(900_000,1_800_000)]));
+  // 每一截不重不漏：拼起来正好是 [lo,hi)。
+  let (rolled,raw)=pieces(12_345,9_876_543,3_600_000,&[Some(9_000_000),Some(8_850_000),Some(7_200_000)]);
+  let mut spans:Vec<(i64,i64)>=rolled.iter().map(|&(_,a,b)|(a,b)).chain(raw).collect();
+  spans.sort();
+  assert_eq!(spans.first().unwrap().0,12_345);assert_eq!(spans.last().unwrap().1,9_876_543);
+  for w in spans.windows(2) {assert_eq!(w[0].1,w[1].0,"{spans:?}");}
+  for (r,a,b) in rolled {assert!(a%r==0&&b%r==0&&a<b&&3_600_000%r==0);}
+ }
+
+ #[test] fn rolled_rows_carry_their_snapshot_count_into_the_average() {
+  let mut h=Heat::new(100.0,3,MAX_ROWS);
+  // 60 秒格里两段 30 秒、各 6 个快照：600 这个桶两段各 600（每快照 100），601 只在第一段里有一次 120。
+  h.add_rolled(60_000,6,100.0,600,&[0,1],&[600.0,0.0],&[0.0,120.0]);
+  h.add_rolled(90_000,6,100.0,600,&[0],&[600.0],&[0.0]);
+  assert_eq!(h.rows(),vec![(60_000,60_000.0,100.0,0.0),(60_000,60_100.0,0.0,10.0)]);
+  // 段与原始快照可以落在同一格：分母是两边快照数之和。
+  h.add(115_000,100.0,600,&[0],&[100.0],&[0.0]);
+  assert_eq!(h.rows()[0],(60_000,60_000.0,100.0,0.0));
+  assert_eq!(h.samples[&60_000],13);
+ }
+
+ /// 后台并段（原始 → 30 秒 → 150 秒 → 900 秒）与读法：并好的那截是每个快照的精确平均，没并的头尾照旧读原始快照。
+ #[tokio::test] async fn rollups_average_every_snapshot_and_reads_stitch_them_with_raw() {
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let base="HEATROLL";
+  let wipe=||{let pool=pool.clone();async move {
+   sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+   sqlx::query("DELETE FROM orderflow_heat_rollup WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  }};
+  wipe().await;
+  let now=20*store::DAY_MS;
+  let from=now-3_600_000;
+  // 一小时 720 个快照：币安 600 买 100 每拍都有、601 卖 60 只在每 30 秒的头两拍；OKX 603 买 10 每拍都有。
+  let bands:Vec<Band>=(0..720).flat_map(|k:i64|{
+   let t=from+k*BUCKET_MS;
+   let binance=if k%6<2 {Band{base:base.into(),exchange:"binance",product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0,1],bids:vec![100.0,0.0],asks:vec![0.0,60.0]}}
+    else {Band{base:base.into(),exchange:"binance",product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0],bids:vec![100.0],asks:vec![0.0]}};
+   [binance,Band{base:base.into(),exchange:"okx",product:"spot",bucket_ms:t,step:100.0,lo:603,offsets:vec![0],bids:vec![10.0],asks:vec![0.0]}]
+  }).collect();
+  for chunk in bands.chunks(INSERT_ROWS) {insert(&pool,chunk).await.unwrap();}
+  let last=from+719*BUCKET_MS;
+  let at=|rows:&[(i64,f64,f64,f64)],price:f64|rows.iter().filter(|r|r.1==price).map(|r|(r.0,r.2+r.3)).collect::<Vec<_>>();
+  let s60=Scope{prices:None,hint:60_000};
+  // 没有段：60 秒格隔 15 秒取一个快照（每格 4 个，601 只抽到 k%6==0 那一拍）→ 601 是 30。
+  let (_,bucket_ms,before)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(s60)).await.unwrap();
+  assert_eq!((bucket_ms,before.len()),(60_000,180));
+  assert!(at(&before,60_100.0).iter().all(|&(_,v)|v==30.0));
+  // 后台追到 45 分钟（此刻 = 45 分钟 + 宽限）。
+  let then=from+45*60_000+ROLL_GRACE;
+  let mut roller=Roller{done:resume(&pool,&[base.to_string()],then).await.unwrap(),failures:[0;3]};
+  assert_eq!(roller.done,[from,from,from],"一段都没有时从最早的原始快照起");
+  while roller.step(&pool,then).await.unwrap() {}
+  assert_eq!(roller.done,[from+2_700_000;3]);
+  let rolled:Vec<(i64,i64,i32)>=sqlx::query_as("SELECT width_ms,count(*),min(samples) FROM orderflow_heat_rollup WHERE base=$1 GROUP BY 1 ORDER BY 1").bind(base).fetch_all(&pool).await.unwrap();
+  assert_eq!(rolled,vec![(30_000,90,6),(150_000,18,30),(900_000,3,180)]);
+  let (lo,offsets,bids,asks,samples):(i64,Vec<i32>,Vec<f32>,Vec<f32>,i32)=sqlx::query_as("SELECT price_lo,price_bucket,bid_notional,ask_notional,samples FROM orderflow_heat_rollup WHERE base=$1 AND width_ms=900000 AND bucket_ms=$2")
+   .bind(base).bind(from).fetch_one(&pool).await.unwrap();
+  assert_eq!((lo,offsets,bids,asks,samples),(600,vec![0,1,3],vec![18_000.0,0.0,1_800.0],vec![0.0,3_600.0,0.0],180),"三家各产品相加、各快照相加");
+  // 重跑同一截不重复写；进度从表里接得上。
+  assert_eq!(roll_range(&pool,0,&[base.to_string()],from,from+60_000).await.unwrap(),0);
+  assert_eq!(resume(&pool,&[base.to_string()],then).await.unwrap(),[from+2_700_000;3]);
+  // 有段之后：前 45 分钟的格是每个快照的精确平均（601 = 60 × 2/6 = 20），最后 15 分钟照旧抽样（30）；行数、别的桶不变。
+  let (_,bucket_ms,after)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(s60)).await.unwrap();
+  assert_eq!((bucket_ms,after.len()),(60_000,180));
+  for (t,v) in at(&after,60_100.0) {assert_eq!(v,if t<from+2_700_000 {20.0} else {30.0},"{t}");}
+  assert!(at(&after,60_000.0).iter().all(|&(_,v)|v==100.0)&&at(&after,60_300.0).iter().all(|&(_,v)|v==10.0));
+  // 900 秒格：前三格整段读 900 秒段。
+  let (_,bucket_ms,wide)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(Scope{prices:None,hint:900_000})).await.unwrap();
+  assert_eq!(bucket_ms,900_000);
+  assert_eq!(&at(&wide,60_100.0)[..3],&[(from,20.0),(from+900_000,20.0),(from+1_800_000,20.0)]);
+  // 起点没对齐（从第 7 拍起）：头上 25 秒原始、再 30 秒段、再 150 秒段拼成第一格：601 出现 1 + 6 + 50 次 / 173 个快照 × 60 ≈ 20。
+  let (_,_,shifted)=read(&pool,base,from+35_000,last,None,None,SCOPED_ROWS,Some(Scope{prices:None,hint:900_000})).await.unwrap();
+  assert_eq!(at(&shifted,60_100.0)[0],(from,20.0));
+  assert_eq!(at(&shifted,60_000.0)[0],(from,100.0));
+  // 价格范围照样只留范围里的桶。
+  let (_,_,narrow)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(Scope{prices:Some((60_100.0,60_150.0)),hint:900_000})).await.unwrap();
+  assert!(!narrow.is_empty()&&narrow.iter().all(|r|r.1==60_100.0));
+  // 清理：段和原始快照同一个截止时刻删。
+  purge(&pool,now+store::RETENTION_MS+1).await.unwrap();
+  let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat_rollup WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
+  assert_eq!(left,0);
+  wipe().await;
  }
 }

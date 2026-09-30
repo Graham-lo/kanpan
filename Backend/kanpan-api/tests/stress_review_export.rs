@@ -45,9 +45,15 @@ fn sample_rss()->(Arc<AtomicBool>,Arc<AtomicU64>,std::thread::JoinHandle<()>) {
 /// 同一进程里前一条用例释放的内存，分配器会缓存着给后一条用：后一条的基线和峰值
 /// 都被前一条的残留搅浑（实测同一条上传用例单跑涨 47 MiB、排在别的用例后面跑「涨」270）。
 /// 所以每条用例先把自己在子进程里原样再跑一遍，父进程只看子进程成败。
+///
+/// 子进程带上线上单元的 glibc 设置（`ops/install.py`：`MALLOC_ARENA_MAX=2`、`MALLOC_MMAP_THRESHOLD_=1048576`）。
+/// 不带的话 Linux 上量到的是分配器攥着不还的内存：每个 worker 线程一个 arena、动态 mmap 阈值把十几 MB 的
+/// 缓冲留在堆里，RSS 是 arena 个数 × 一份工作集（2026-09-30 VPS 实测不设时导出 +181 MiB、下载 +205 MiB，
+/// 两个都设 +43 / +54）。macOS 没有 glibc，这两个变量不起作用。
 fn in_own_process(name:&str)->bool {
  if std::env::var_os("KANPAN_STRESS_CHILD").is_some() {return true}
- let status=std::process::Command::new(std::env::current_exe().unwrap()).args([name,"--exact","--nocapture","--test-threads=1"]).env("KANPAN_STRESS_CHILD","1").status().unwrap();
+ let status=std::process::Command::new(std::env::current_exe().unwrap()).args([name,"--exact","--nocapture","--test-threads=1"]).env("KANPAN_STRESS_CHILD","1")
+  .env("MALLOC_ARENA_MAX","2").env("MALLOC_MMAP_THRESHOLD_","1048576").status().unwrap();
  assert!(status.success(),"{name} 在独立进程里没过");
  false
 }

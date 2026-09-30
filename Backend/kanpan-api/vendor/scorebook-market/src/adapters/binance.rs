@@ -139,6 +139,12 @@ impl Binance {
         self.client = client;
         self
     }
+    /// 这个实例只拿权重账本份额的 `percent`%（见 [`super::provider_budget::ProviderBudget::with_share`]）。
+    /// 没带账本的夹具实例原样返回。
+    pub fn with_budget_share(mut self, percent: i32) -> Self {
+        self.budget = self.budget.map(|b| b.with_share(percent));
+        self
+    }
     /// 接上进程级出站闸门。
     pub fn with_gate(mut self, gate: std::sync::Arc<dyn EgressGate>) -> Self {
         self.gate = Some(gate);

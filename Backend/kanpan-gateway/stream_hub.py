@@ -38,9 +38,19 @@ def sequenced(channel):
     return channel.endswith(TRADES)
 
 
+class OverLimit(ValueError):
+    """Well-formed streams, just more than a connection, an IP or the node may hold.
+
+    Closed with its own reason (1008 `subscription limit exceeded`) so a client
+    can tell "back off / drop some" from "your frame is malformed" -- both used
+    to read `invalid subscription` (stress run C, 2026-09-30)."""
+
+
 def streams(values):
-    if not isinstance(values, list) or not 0 <= len(values) <= 64 or any(not isinstance(v, str) or not STREAM.fullmatch(v) for v in values):
+    if not isinstance(values, list) or any(not isinstance(v, str) or not STREAM.fullmatch(v) for v in values):
         raise ValueError('invalid streams')
+    if len(values) > 64:
+        raise OverLimit('too many streams')
     return set(values)
 
 
@@ -258,12 +268,15 @@ class Hub:
                     if method not in ['SUBSCRIBE', 'UNSUBSCRIBE']:
                         raise ValueError()
                     desired = peer.channels | values if method == 'SUBSCRIBE' else peer.channels - values
-                    if not self.replace(peer, desired):
-                        raise ValueError()
                     identity = command.get('id')
                     if not isinstance(identity, int) or not 0 <= identity <= 2**53:
                         raise ValueError()
+                    if not self.replace(peer, desired):
+                        raise OverLimit()
                     await asyncio.wait_for(ws.send_json({'result': None, 'id': identity}), 1)
+                except OverLimit:
+                    await ws.close(code=1008, message=b'subscription limit exceeded')
+                    break
                 except (ValueError, TypeError, asyncio.TimeoutError):
                     await ws.close(code=1008, message=b'invalid subscription')
                     break

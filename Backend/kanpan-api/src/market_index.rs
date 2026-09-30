@@ -25,9 +25,12 @@
 //! 库里实际有多少一条 `GROUP BY` 就知道。少了就把这一段（加上最长窗口 − 1 根的尾巴）取回来
 //! 切一遍，`ON CONFLICT DO NOTHING` 写进去——窗口起点对齐到绝对编号，重跑幂等；原来 64/16 的
 //! 窗口是新计划的子集，不会重复。取回来还是补不齐的（上市前、停牌缺根、横盘到零振幅）记在
-//! 进程里，同一个「该有数」不再重取。
+//! 进程里，同一个「该有数」不再重取。那条 `GROUP BY` 走 0039 的覆盖索引（只读索引、不回表），
+//! 而且不再每轮都数：进程里记一份，每写完一段把新写的行数记到那一段头上，每小时（或删过旧窗口、
+//! 换过品种表之后）才重数一次（2026-09-30 压测 C 路：原来没活时每分钟整表扫一遍，一次 5–7 秒）。
 //!
-//! **手机的行情转发永远优先**：取数走复盘那个带账本、带闸门的币安适配器（[`crate::review_market::provider`]），
+//! **手机的行情转发永远优先**：取数走复盘那个带账本、带闸门的币安适配器（[`crate::review_market::background_provider`]，
+//! 和复盘判定一样只拿账本份额的 75%，最上面那四分之一留给找相似），
 //! 与找相似、复盘判定共用 `provider_budgets` 的每分钟权重账本和 [`crate::binance_gate`] 的封禁截止时间；
 //! 这里只在「这一分钟整个出口已用的权重」低于上限的 [`SHARE_PERCENT`]% 时才出站，自己每分钟
 //! 最多花 [`MINUTE_WEIGHT`]，每次一页（≤ 1000 根，权重 5），页间至少歇一秒；有人正在等找相似
@@ -73,6 +76,9 @@ const RERANK: Duration = Duration::from_secs(6 * 3600);
 const ROUND: usize = 60;
 /// 旧窗口多久删一次。
 const PRUNE_EVERY: Duration = Duration::from_secs(3600);
+/// 进程里记的「每段已有几个窗口」多久对一次库：写进去的每段自己加上，删旧窗口、重排品种之后也重数。
+/// 原来每轮（没活时每分钟）都数一遍，一次 5–7 秒整表扫（2026-09-30 压测 C 路）。
+const RECOUNT: Duration = Duration::from_secs(3600);
 
 /// 一个周期的索引形状。
 #[derive(Clone, Copy, Debug)]
@@ -410,6 +416,9 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
     let mut symbols: Vec<(String, i64)> = Vec::new();
     let mut ranked_at: Option<tokio::time::Instant> = None;
     let mut pruned_at: Option<tokio::time::Instant> = None;
+    // 每段已有几个窗口：进程里记一份，写进去的自己加，`RECOUNT` 一次或删过旧窗口、换过品种表就重数。
+    let mut have: HashMap<(String, usize), HashMap<i64, usize>> = HashMap::new();
+    let mut counted_at: Option<tokio::time::Instant> = None;
     let mut tried: HashMap<(String, usize, i64), usize> = HashMap::new();
     // (这是第几分钟, 这一分钟索引自己花了多少权重)
     let mut spent: (i64, i32) = (0, 0);
@@ -420,6 +429,7 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
                     tracing::info!("Market index: tracking {} symbols ({}…)", list.len(), list.iter().take(5).map(|s| s.0.as_str()).collect::<Vec<_>>().join(","));
                     symbols = list;
                     ranked_at = Some(tokio::time::Instant::now());
+                    counted_at = None;
                 }
                 _ => {
                     if symbols.is_empty() {
@@ -435,20 +445,26 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
                 Ok(n) => {
                     if n > 0 {
                         tracing::info!("Market index: pruned {n} windows older than {DAYS} days");
+                        counted_at = None;
                     }
                     pruned_at = Some(tokio::time::Instant::now());
                 }
                 Err(e) => tracing::warn!("Market index: prune failed ({e})"),
             }
         }
-        let have = match census(&s.pool, &symbols, now_ms).await {
-            Ok(have) => have,
-            Err(e) => {
-                tracing::warn!("Market index: census failed ({e})");
-                tokio::time::sleep(IDLE).await;
-                continue;
+        if counted_at.is_none_or(|t| t.elapsed() >= RECOUNT) {
+            match census(&s.pool, &symbols, now_ms).await {
+                Ok(counts) => {
+                    have = counts;
+                    counted_at = Some(tokio::time::Instant::now());
+                }
+                Err(e) => {
+                    tracing::warn!("Market index: census failed ({e})");
+                    tokio::time::sleep(IDLE).await;
+                    continue;
+                }
             }
-        };
+        }
         let jobs = schedule(&have, &symbols, now_ms, &tried);
         if jobs.is_empty() {
             tokio::time::sleep(IDLE).await;
@@ -481,6 +497,7 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
                 Ok(n) => {
                     written += n;
                     done += 1;
+                    credit(&mut have, job, n);
                     tried.insert((job.symbol.clone(), job.plan, job.chunk), job.want);
                 }
                 // 这会儿取不到（适配器自己的账本满了、闸门、网络）：下一分钟再试这一段。
@@ -496,6 +513,11 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
             tracing::info!("Market index: {done} of {} chunks fetched, {written} windows written", jobs.len());
         }
     }
+}
+
+/// 一段写完：新写进去的窗口记到这一段头上（写进去的都起在这一段里、长度都在计划里，和 `census` 数的是同一批行）。
+fn credit(have: &mut HashMap<(String, usize), HashMap<i64, usize>>, job: &Job, written: usize) {
+    *have.entry((job.symbol.clone(), job.plan)).or_default().entry(job.chunk).or_default() += written;
 }
 
 /// 睡到下一分钟开头过两秒（币安与账本都按自然分钟清零）。
@@ -638,6 +660,26 @@ mod tests {
         // 取过一回还差（停牌缺根）：同一个该有数不再排。
         let tried: HashMap<_, _> = jobs.iter().map(|j| ((j.symbol.clone(), j.plan, j.chunk), j.want)).collect();
         assert!(schedule(&HashMap::new(), &symbols, now, &tried).is_empty());
+    }
+
+    /// 不每轮数库之后：写完一段在进程里记上，这一段就不再排；一段分两次写（先写一半）也累得上。
+    #[test]
+    fn credited_chunks_leave_the_schedule_without_a_recount() {
+        let now = 1_790_000_000_000i64;
+        let symbols = vec![("BTCUSDT".to_string(), 0i64)];
+        let jobs = schedule(&HashMap::new(), &symbols, now, &HashMap::new());
+        let mut have = HashMap::new();
+        let first = &jobs[0];
+        credit(&mut have, first, first.want / 2);
+        assert!(schedule(&have, &symbols, now, &HashMap::new()).contains(first), "只写了一半还要排");
+        credit(&mut have, first, first.want - first.want / 2);
+        let after = schedule(&have, &symbols, now, &HashMap::new());
+        assert!(!after.contains(first));
+        assert_eq!(after.len(), jobs.len() - 1);
+        for j in &jobs[1..] {
+            credit(&mut have, j, j.want);
+        }
+        assert!(schedule(&have, &symbols, now, &HashMap::new()).is_empty());
     }
 
     /// 线上 2026-09-29 的实况：4h 刚跨进新一段（新段里才 31 根，凑不出 32 根的窗口），

@@ -18,6 +18,7 @@ pub mod orderflow_history;
 pub mod market_relay;
 pub mod venues;
 pub mod sector_history;
+pub mod hourly_close;
 pub mod oi_archive;
 pub mod maintenance;
 pub mod alerts;
@@ -111,7 +112,7 @@ pub fn metrics_router() -> Router {
 }
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(auth::routes()).merge(export::routes()).merge(legal::routes()).merge(sync::routes()).merge(alerts::routes()).merge(listing_watch::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(review_trade::routes()).merge(search::routes()).merge(market_meta::routes()).merge(market_depth::routes()).merge(orderflow_instruments::routes()).merge(orderflow_history::routes()).merge(market_relay::routes()).merge(sector_history::routes()).merge(oi_archive::routes()).merge(venues::routes())
+  .merge(auth::routes()).merge(export::routes()).merge(legal::routes()).merge(sync::routes()).merge(alerts::routes()).merge(listing_watch::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(review_trade::routes()).merge(search::routes()).merge(market_meta::routes()).merge(market_depth::routes()).merge(orderflow_instruments::routes()).merge(orderflow_history::routes()).merge(market_relay::routes()).merge(sector_history::routes()).merge(hourly_close::routes()).merge(oi_archive::routes()).merge(venues::routes())
   .layer(DefaultBodyLimit::max(512*1024))
   // 在超时那层里面：排队等名额的时间也算进三十秒。
   .layer(axum::middleware::from_fn(session_slots))
@@ -369,6 +370,17 @@ mod install_script {
   let restart=INSTALL.find("'try-restart','kanpan-api','kanpan-worker'").expect("try-restart step");
   let reload=INSTALL.find("'daemon-reload'").expect("daemon-reload step");
   assert!(migrate<reload && reload<restart,"顺序要是 migrate → daemon-reload → try-restart");
+ }
+
+ /// serve 与 worker 的 glibc：arena 封在 2 个、mmap 阈值固定 1 MiB（关掉动态上调），释放的大块才真的还给系统，
+ /// 不然 cgroup 把早已释放的内存记在 MemoryMax 上。tests/stress_review_export.rs 的子进程按同一组值跑，量的就是线上的分配器。
+ #[test] fn both_services_pin_the_glibc_allocator() {
+  let unit=&INSTALL[INSTALL.find("unit='''").expect("service unit")..];
+  let unit=&unit[..unit.find("'''\n").expect("unit end")];
+  assert!(unit.lines().any(|l|l=="Environment=MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576"),
+   "kanpan-api / kanpan-worker 单元要带 MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576");
+  let test=include_str!("../tests/stress_review_export.rs");
+  assert!(test.contains(".env(\"MALLOC_ARENA_MAX\",\"2\").env(\"MALLOC_MMAP_THRESHOLD_\",\"1048576\")"),"内存用例的子进程要和单元同一组值");
  }
 
  /// 备份是 docker exec 进容器 pg_dump；开机补跑时 docker 必须已经起来。

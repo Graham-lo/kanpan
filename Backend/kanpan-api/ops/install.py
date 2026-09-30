@@ -121,6 +121,15 @@ if stale:
 env=dict(os.environ);env['KANPAN_DATABASE_URL']='postgres://kanpan_admin:'+admin+'@127.0.0.1:55434/kanpan'
 subprocess.run(['/opt/kanpan-api/target/release/kanpan-api','migrate'],env=env,check=True)
 sql('GRANT USAGE ON SCHEMA public TO kanpan_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO kanpan_app; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO kanpan_app;')
+# TimeoutStopSec：serve 收到 SIGTERM 先关监听口，再等订单流收尾（最多 10 秒）与在途请求答完，
+# 这段时间 8794 是空的，Caddy 靠 lb_try_duration 20s 把请求挂着重试（Caddy.routes）。实测收尾 2 秒左右；
+# 15 秒给在途请求卡住的最坏情况封顶，保证重启空窗永远落在 Caddy 那 20 秒的重试窗口里（systemd 默认 90 秒）。
+# glibc 两个默认让 cgroup 记着早已释放的内存（MemoryMax=1G，订单流跟踪同在一个进程）：
+# · 每个线程一个 arena（最多 8×核数），各自攥着释放的内存——MALLOC_ARENA_MAX=2；CPUQuota=200% 本来只给两个核，不多出锁争用。
+# · mmap 阈值是动态的：释放一块大的 mmap 之后阈值抬到最高 32 MB，此后十几 MB 的导出 / 补图缓冲都从堆里拿、
+#   还回去也不交给系统——MALLOC_MMAP_THRESHOLD_ 显式定成 1 MiB 就关掉了这个动态调整（订单流几十、几百 KB 的分配不受影响）。
+# 2026-09-30 这台 VPS 实测 tests/stress_review_export.rs：8 次 12 MB 导出做完仍占 默认 +181 → 只设 arena +76～+86 → 两个都设 +23 MiB，
+# 40 次补图下载峰值 +205 → +54 MiB，导出耗时不变（约 3.3–4 s）。详见 ops/README.md「glibc 分配器」。
 unit='''[Unit]
 Description=Kanpan accounts and personal sync
 After=network-online.target docker.service
@@ -128,9 +137,11 @@ After=network-online.target docker.service
 DynamicUser=yes
 WorkingDirectory=/opt/kanpan-api
 EnvironmentFile=/etc/kanpan-api/service.env
+Environment=MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576
 ExecStart=/opt/kanpan-api/target/release/kanpan-api serve
 Restart=on-failure
 RestartSec=3
+TimeoutStopSec=15
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict

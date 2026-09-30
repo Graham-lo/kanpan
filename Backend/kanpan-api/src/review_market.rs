@@ -87,6 +87,15 @@ pub fn provider(pool:sqlx::PgPool)->anyhow::Result<scorebook_market::adapters::b
  Ok(market)
 }
 
+/// 复盘判定与找相似索引拿的份额：权重账本每分钟的 75%。最上面那四分之一只有找相似
+/// （[`provider`]，人在屏幕前等的那一件）能用——重启后判定补跑、索引回填再多，也挤不掉一次找相似
+/// （一次约 300 权重）。2026-09-30 压测 C 路：原来三者共用一个 1 200，重启后找相似排了 44 秒。
+pub const BACKGROUND_SHARE:i32=75;
+/// 复盘判定与索引用的那一份：同一个账本、同一道闸，只是份额打折（见 [`BACKGROUND_SHARE`]）。
+pub fn background_provider(pool:sqlx::PgPool)->anyhow::Result<scorebook_market::adapters::binance::Binance> {
+ Ok(provider(pool)?.with_budget_share(BACKGROUND_SHARE))
+}
+
 /// 币安适配器的一次失败折成对外的错误码。可重试的（限流、闸门按着、5xx、传输）是
 /// `market_unavailable`，worker 一分钟后再来；不可重试的（451 以及别的 4xx）折成
 /// BLOCKED，worker 按天退避，不再每 60 秒问一次同一个拒绝。主机已是 www.binance.com，

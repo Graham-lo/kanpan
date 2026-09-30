@@ -1,8 +1,18 @@
 # Inside a dedicated HTTPS site; no arbitrary upstream URLs or private APIs.
+#
+# 每个上游都带 lb_try_duration / lb_try_interval（2026-09-30 压测 C 路）：只有一个上游时，
+# 它重启的那几秒（kanpan-api 收到 SIGTERM 后停止接新连接、在途请求与订单流收尾最多 10 秒、
+# 新进程起来再绑端口）里 Caddy 原来一连不上就当场回 502——`/v1/market/meta` 偶发的 502 全落在
+# 部署重启窗口里。现在连不上就每 250 ms 再试，最多 20 秒；连不上时请求还没发出去，POST 重试也安全。
+#
+# API 的 JSON 一律 `?Cache-Control: no-store`：`?` 只在上游自己没写时才补，深度热力（max-age=5）、
+# 分钟成交（20）、板块日线、小时收盘（300）这些自己定了缓存的不动。nosniff 等安全头在站点那一层统一加。
 @market path /market/stream /market/okx/stream /chart-gateway/stream-health
 handle @market {
     reverse_proxy 127.0.0.1:8793 {
         header_up X-Kanpan-Client-IP {remote_host}
+        lb_try_duration 20s
+        lb_try_interval 250ms
     }
 }
 # Open interest history moved to kanpan-api: the Python gateway backfilled the
@@ -11,15 +21,22 @@ handle @market {
 @openinterest path /oi/v1/metrics/*
 handle @openinterest {
     encode zstd gzip
-    reverse_proxy 127.0.0.1:8794
+    header ?Cache-Control "no-store"
+    reverse_proxy 127.0.0.1:8794 {
+        lb_try_duration 20s
+        lb_try_interval 250ms
+    }
 }
 @archive path /market/v1/* /chart-gateway/health
 handle @archive {
     # Kline pages and OI ranges are highly compressible JSON; the phone pays for
     # every byte over mobile data. Never applied to the 8793 WebSocket site.
     encode zstd gzip
+    header ?Cache-Control "no-store"
     reverse_proxy 127.0.0.1:8792 {
         header_up X-Kanpan-Client-IP {remote_host}
+        lb_try_duration 20s
+        lb_try_interval 250ms
     }
 }
 # /v1/devices/* 是提醒要用的推送 token 登记（POST /v1/devices/push-token）。没有它，
@@ -28,8 +45,14 @@ handle @archive {
 # 不转发的话会落到下面那个原型静态站，回的是 404。
 # /v1/alerts/* 是条件提醒那一轮的「品种上新与停牌下架」（GET /v1/alerts/listing-notices，
 # 2026-09-28 补上：4a 上线时只在本机 8794 验过，边缘一直 404，手机那一侧拉不到）。
-@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/market/* /v1/devices/* /v1/alerts/* /privacy /terms
+# /v1/shares、/v1/friends 是画线分享与朋友（原来单独写在 /etc/caddy/Caddyfile 的站点块里，
+# 2026-09-30 并进来：同一个上游，一起拿到重启重试与缓存头，Caddyfile 里不再有看盘的路由）。
+@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/market/* /v1/devices/* /v1/alerts/* /v1/shares /v1/shares/* /v1/friends /v1/friends/* /privacy /terms
 handle @account {
     encode zstd gzip
-    reverse_proxy 127.0.0.1:8794
+    header ?Cache-Control "no-store"
+    reverse_proxy 127.0.0.1:8794 {
+        lb_try_duration 20s
+        lb_try_interval 250ms
+    }
 }

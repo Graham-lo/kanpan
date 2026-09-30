@@ -34,13 +34,16 @@ async fn main()->anyhow::Result<()> {
   }
  }
  if command=="worker" {
+  // 同一个权重账本、两份份额：找相似拿满额，复盘判定与索引拿 75%（`review_market::BACKGROUND_SHARE`），
+  // 最上面那四分之一只留给人在等的那一件。
   let market=Arc::new(kanpan_api::review_market::provider(s.pool.clone())?);
+  let background=Arc::new(kanpan_api::review_market::background_provider(s.pool.clone())?);
   // 每个循环各自一条任务、各自被看着：任何一条 panic 或者退出了，进程以非零码退出，
   // 交给 systemd 拉起。原来它们 `join!` 在一起，一条 panic 掉整个 worker 还活着、
   // 那一摊活却再也没人干（见 `kanpan_api::supervise`）。
   let supervisor=Supervisor::new();supervisor.adopt_essentials();
   {
-   let (s,market)=(s.clone(),market.clone());
+   let (s,market)=(s.clone(),background.clone());
    supervisor.spawn("review",Life::Forever,async move {kanpan_api::review_worker::work(&s,&*market,std::time::Duration::from_secs(2)).await});
   }
   // Chart search is the one job a person actively waits on, and this host is
@@ -52,7 +55,7 @@ async fn main()->anyhow::Result<()> {
   // 「找相似」的公开历史索引：滚动补齐前 40 只的 15m / 1h / 4h / 1d 窗口，只用行情转发剩下的
   // 那点币安权重（见 `kanpan_api::market_index`）。
   {
-   let (s,market)=(s.clone(),market.clone());
+   let (s,market)=(s.clone(),background.clone());
    supervisor.spawn("market-index",Life::Forever,async move {kanpan_api::market_index::run(s,market).await});
   }
   {
@@ -88,6 +91,8 @@ async fn main()->anyhow::Result<()> {
  // Daily closes are history, not a cache: the sweep and the route share this
  // process so the answer served is the one the sweep just refreshed.
  supervisor.watch("daily-close",Life::Forever,kanpan_api::sector_history::spawn_daily(s.pool.clone()));
+ // 全部 U 本位合约的小时收盘（网页版「指标与叠加」）：整点后扫一遍，只问缺的；启动那一轮就是回填。
+ supervisor.watch("hourly-close",Life::Forever,kanpan_api::hourly_close::spawn(s.pool.clone()));
  // 主力订单流的历史：常驻跟踪各家挂单簿、判出来的大单写进库，同一进程回 `/v1/market/orderflow/history`。
  supervisor.watch("orderflow-history",Life::Forever,kanpan_api::orderflow_history::spawn(s.pool.clone()));
  // 大单条件提醒：跟踪器每评估一次簿当场判（`conditions::walls`），触发与刷新在这条任务里。

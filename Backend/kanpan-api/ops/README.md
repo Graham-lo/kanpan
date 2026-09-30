@@ -137,6 +137,14 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 - 读（2026-09-29 瘦身）：带 `lo`/`hi`、`around`/`pct` 或 `bucketMs` 的是网页版的收窄请求，上限 1.4 万行、最多抽 720 张快照；抽样按主键点查 `bucket_ms = ANY(…)`。同参数 5 秒内只读一次库，答复 `Cache-Control: public, max-age=5`。热力与 `/history` 共用两个读名额（`HISTORY_READS`）。
   自测：服务器上 `curl -s -o /dev/null -w '%{time_total} %{size_download}\n' -H 'accept-encoding: gzip' "http://127.0.0.1:8794/v1/market/orderflow/heat?base=BTC&from=<ms>&to=<ms>&bucketMs=10000&around=<现价>&pct=5"`，7 小时约 60 ms、55 KB gzip。慢语句日志里若还有 `h.bucket_ms BETWEEN $2 AND $3` 的整段读（1–2 秒），那是不带新参数的老请求（6 小时以内按 30 s 格不抽样），不是网页版。
   看计划：`python3 ops/test.py --lib -- explain_old_join_against_primary_key_sampling --ignored --nocapture`（开发机，临时库），新旧两种写法并排打 EXPLAIN ANALYZE。
+- 预聚合（2026-09-30，压测 C 路「热力冷读慢」，迁移 0038 表 `orderflow_heat_rollup`，按段宽分 `_30s` / `_150s` / `_900s` 三个分区）：
+  后台任务 `orderflow-heat-rollup` 每 30 秒把收完 30 秒以上的原始快照并成 30 秒段（三家各产品相加、同桶各快照相加，记快照数），
+  再把 30 秒段并成 150 秒、150 秒并成 900 秒。读的时候格宽是哪几档段的整数倍就从粗到细用这几档，段没盖到的头尾照旧读原始快照；
+  段里存的是「总和 + 快照数」，出答复时相除，和原来「格里各快照取平均」同一个口径（并好的那截是每个快照都算进去的精确平均，不再抽样）。
+  部署后第一次起来会从原始表最早的快照一截十分钟往前追（每截之间歇 0.5 秒），追完之前没盖到的部分照旧读原始快照，接口不受影响。
+  清理跟原始快照同一个截止时刻（`purge`）。每条并段语句拿一个写名额（`WRITE_SLOTS`）、`work_mem` 64 MB、死线 2 分钟；连着失败 5 次跳过那一截并 warn。
+  看进度：`SELECT width_ms, count(*), to_timestamp(max(bucket_ms)/1000) FROM orderflow_heat_rollup GROUP BY 1`（三档的最后一段应在此刻前 1 分钟 / 3 分钟 / 15 分钟左右）；
+  看体积：`SELECT pg_size_pretty(pg_total_relation_size('orderflow_heat_rollup_30s'))` 等。段表可以随时 `TRUNCATE`（读会退回原始快照，后台从原始表重新追）。
 - 删表回退：这张表只给热力图用，停掉只要回滚二进制；表可以 `TRUNCATE orderflow_heat` 腾空间，不影响大单历史。
 
 ### 大单与散户的分钟成交（2026-09-29，`flow.rs`、表 `orderflow_flow`）
@@ -197,4 +205,66 @@ docker exec kanpan-postgres psql -U kanpan_admin -d kanpan -Atc "SHOW shared_buf
 ```
 
 第 3 步数据库停几秒（`docker restart` 先发 SIGTERM，Postgres 快速关机加启动、这个库的规模一般 3–10 秒）。这几秒里 `kanpan-api serve` / `kanpan-worker` 的请求会报数据库错误，连接池自己重连，**不用重启 kanpan-api**；订单流的写库批次写失败会在下一轮重试。挑用户少的时候做，最好不要和部署挨着做（部署那次重启已经让订单流停过一次了）。先做第 1 步再做第 3 步：上限没放大之前把 shared_buffers 调大，容器可能被 OOM 杀掉。
+
+## 币安权重账本（2026-09-30，压测 C 路第 3 项，迁移 0040）
+
+worker 取币安 K 线（复盘判定、找相似索引、找相似搜索）前在 `provider_budgets` 表里按分钟预留权重
+（`vendor/scorebook-market/src/adapters/provider_budget.rs`）。原来只有一列 `used`：预留时加上去，回头再和币安回的
+`x-mbx-used-weight-1m` 取大，而这个头是**整个出口 IP** 的已用权重，里面有 serve 进程订单流快照通道每分钟 600。
+于是 worker 拿「全 IP 已用」去比自己的 1200，serve 的流量被扣两遍，重启后快照通道排着的那几分钟 worker 整分钟被拒
+（09-30 02:56 起连着几分钟 `provider_budget_exhausted`），账本上就是 600–1190 的尖峰。
+
+现在分两列、两道闸，一次预留两道都要过：
+
+- `reserved`：worker 自己这一分钟预留了多少，和份额比。份额 = `KANPAN_BINANCE_WEIGHT_LIMIT`（默认 1200）；
+  复盘判定与找相似索引这两条后台任务只拿其中 75%（`review_market::background_provider`），剩下 25% 留给用户在等的找相似搜索。
+- `used`：整个 IP 这一分钟的估计（自己的预留 + 回头的 header 取大），和 `KANPAN_BINANCE_IP_WEIGHT_CEILING`（默认 1800，
+  币安上限 2400 的四分之三，允许 20–2400）比——serve 的快照通道真把 IP 用到 1800 时 worker 才让。
+
+两类共用同一行账（同一个出口），每分钟的明确上限：后台任务只能把 `reserved` 推到 900，搜索能用到 1200；整个 IP ≤ 1800（serve 的 600 在里面）。只读核对：
+
+```sql
+SELECT egress_id, market, window_start, used, reserved FROM provider_budgets;   -- reserved ≤ 1200（没人搜索时 ≤ 900）；used 到 1800 之后这一分钟 worker 不再出站
+```
+
+## 小时收盘（2026-09-30，`hourly_close.rs`、表 `hourly_close`，迁移 0037）
+
+serve 里的常驻任务 `hourly-close`：全部 U 本位永续（`sector_history::perpetuals`，约七百只），每个整点过 1 分钟扫一遍，
+每只只问库里最新一小时之后缺的那几根（稳态 `limit=2`、权重 1；空表或新上市一次 171 根、权重 2），一秒一只、一次一只，
+出站前看 `binance_gate`，429 / 418 当轮到此为止、5 分钟后只补缺的。启动那一轮就是回填（空表约 12 分钟，之后重启只补空档）。
+保留 8 天，每轮结束滚动删。路由 `GET /v1/market/hourly-closes?symbols=…`，契约见 `docs/网页版-小时收盘接口-2026-09-30.md`。
+
+- 看数据：`SELECT count(DISTINCT symbol), count(*), to_timestamp(max(hour_ms)/1000) FROM hourly_close`，只数应≈合约数、最新一小时应是上一个整点。
+  每轮一条 info 日志 `Hourly closes: N contracts, … asked, … rows written …`（线上 `RUST_LOG=warn` 看不到，失败的 warn 看得到）。
+- 体积：七百只 × 192 小时 ≈ 13 万行、十几 MB。
+- 回退：回滚二进制即可；表可以随时 `TRUNCATE hourly_close`，下一次启动重新回填。
+
+## 重启空窗与边缘重试（2026-09-30，压测 C 路第 4 项）
+
+`kanpan-api serve` 收到 SIGTERM 先关监听口，再等订单流收尾（最多 10 秒）与在途请求，实测 Stopping → Started 约 2.1 秒；
+这段时间 8794 没人监听，Caddy 原来当场回 502。现在 `Caddy.routes` 里每个上游都有 `lb_try_duration 20s` / `lb_try_interval 250ms`：
+连不上就挂着每 250 ms 重试（请求还没发出去，POST 也安全）。unit 的 `TimeoutStopSec=15`（`ops/install.py`）给收尾卡住的最坏情况封顶，
+保证空窗落在 20 秒以内。Caddy.routes 只在 orderflow-vps 上重载；trade-vps-old 没有 8794 上游，那台的 Caddy 沿用原来的 routes
+（加重试只会让那几条本来就连不上的路径白挂 20 秒）。
+
+## glibc 分配器（2026-09-30）
+
+两个单元都带 `Environment=MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576`（`ops/install.py`）。glibc 有两个默认
+会让 cgroup 一直记着早已释放的内存（`MemoryMax=1G`，订单流跟踪同在一个进程）：
+
+- 每个线程一个 arena（最多 8 × 核数），一阵导出或补图收发过去，每个 arena 都把自己那份释放掉的内存攥着。
+- mmap 阈值是动态的：释放一块大的 mmap 之后阈值抬到最高 32 MB，此后十几 MB 的导出 / 补图缓冲都从堆里拿，还回去也不交给系统。
+  显式给定 `MALLOC_MMAP_THRESHOLD_` 就关掉了这个动态调整；1 MiB 以下（订单流几十、几百 KB 的快照）照旧走堆。
+
+这台 VPS 上实测 `tests/stress_review_export.rs`（MiB，单次；「两个都设」是连跑两次）：
+
+| 场景 | 默认 | 只设 arena=4 | 只设 arena=2 | 两个都设 |
+|---|---|---|---|---|
+| 8 次 12 MB 导出同时到：峰值 / 做完之后仍占 | +181 / +181 | +113 / +113 | +76～+120 / +76～+86 | +42～+43 / +23 |
+| 40 次 5 MB 补图下载同时到（峰值） | +166～+205 | +99 | +59～+75 | +54～+55 |
+| 39 张 5 MB 补图同时传（峰值） | +120～+160 | +57 | +28～+33 | +45～+46 |
+| 导出耗时 | 约 4.0 s | 4.0 s | 4.5–7.4 s | 3.3–3.9 s |
+
+`CPUQuota=200%` 本来就只给两个核，两个 arena 不会多出锁争用。那几条内存用例的子进程按同一组值跑，量的就是线上的分配器；
+不设时它们在 Linux 上一直是红的（macOS 上量 footprint，不受影响）。只读核对：`systemctl show kanpan-api -p Environment`。
 

@@ -22,6 +22,18 @@ from types import SimpleNamespace
 from resource_limits import Bucket, Capacity, HTTPGuard
 
 
+class QuietHost:
+    """Stands in for HostSampler in the hub fixtures. The real one reads /proc
+    every five seconds, so on a busy Linux box (the VPS mid-`cargo build`, load
+    ~10) it shrank Capacity(128) to 25 clients and the hundred-client case got
+    503 at the handshake -- green on macOS only because /proc is missing there.
+    What these cases check is client bookkeeping, not host pressure; the
+    pressure path is covered by BudgetTests below."""
+
+    def sample(self):
+        return {}
+
+
 class BudgetTests(unittest.TestCase):
     def test_bucket_and_dynamic_capacity(self):
         bucket = Bucket(2, 4, 0)
@@ -118,6 +130,7 @@ class SharedHubTests(unittest.IsolatedAsyncioTestCase):
         # clients ask for, one release at a time.
         self.hub = Hub(f'http://127.0.0.1:{port}/market/stream', capacity=Capacity(128, 4_000_000),
                        idle_seconds=.05, resident=(), linger_seconds=0)
+        self.hub.sampler = QuietHost()
         self.runner = web.AppRunner(app_for(self.hub)); await self.runner.setup()
         site = web.TCPSite(self.runner, '127.0.0.1', 0); await site.start()
         self.url = f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}/market/stream'
@@ -186,6 +199,40 @@ class SharedHubTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(a.close_code, 1008)
         self.assertIn('stream', await self.frame(b))
         await b.close()
+
+    async def closed_with(self, ws):
+        for _ in range(100):
+            message = await asyncio.wait_for(ws.receive(), 3)
+            if message.type == WSMsgType.CLOSE:
+                return message.data, message.extra
+            if message.type == WSMsgType.CLOSED:
+                return ws.close_code, None
+        self.fail('socket never closed')
+
+    async def test_over_the_cap_and_malformed_close_with_different_reasons(self):
+        # A malformed frame keeps its old reason.
+        bad = await self.connect()
+        await self.frame(bad)
+        await bad.send_json({'method': 'SUBSCRIBE', 'params': ['BTC USDT'], 'id': 1})
+        self.assertEqual(await self.closed_with(bad), (1008, 'invalid subscription'))
+        # Well-formed, but past the 64-per-connection cap: says so.
+        full = await self.connect()
+        await self.frame(full)
+        await full.send_json({'method': 'SUBSCRIBE', 'params': [f'x{i}usdt@ticker' for i in range(64)], 'id': 2})
+        self.assertEqual(await self.closed_with(full), (1008, 'subscription limit exceeded'))
+        # So does a single command naming more than 64 streams.
+        many = await self.connect()
+        await self.frame(many)
+        await many.send_json({'method': 'SUBSCRIBE', 'params': [f'y{i}usdt@ticker' for i in range(65)], 'id': 3})
+        self.assertEqual(await self.closed_with(many), (1008, 'subscription limit exceeded'))
+        # A missing id is still a malformed frame, even when the streams would not fit.
+        noid = await self.connect()
+        await self.frame(noid)
+        await noid.send_json({'method': 'SUBSCRIBE', 'params': [f'z{i}usdt@ticker' for i in range(64)]})
+        self.assertEqual(await self.closed_with(noid), (1008, 'invalid subscription'))
+        # Nothing the refused commands asked for was kept.
+        await asyncio.sleep(.1)
+        self.assertFalse([c for c in self.hub.channels if c[0] in 'xyz'])
 
     async def test_source_subscription_cap(self):
         peers = [Peer(None, 'a') for _ in range(3)]
@@ -417,6 +464,7 @@ class TradeLaneTests(unittest.IsolatedAsyncioTestCase):
         base = f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}'
         self.hub = Hub(base + '/market/stream', capacity=Capacity(128, 4_000_000),
                        idle_seconds=.05, resident=(), linger_seconds=0)
+        self.hub.sampler = QuietHost()
         self.runner = web.AppRunner(app_for(self.hub))
         await self.runner.setup()
         site = web.TCPSite(self.runner, '127.0.0.1', 0)

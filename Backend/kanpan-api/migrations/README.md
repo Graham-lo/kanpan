@@ -163,3 +163,27 @@ SELECT count(*) FILTER (WHERE alive_ms IS NOT NULL), count(*) FROM orderflow_bas
 SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
  WHERE c.relname IN ('sync_operations_owner_created','sync_changes_owner_created');  -- 两行、都是 t
 ```
+
+## 0037–0040 上线（2026-09-30 压测 C 路根因修复）
+
+四条都跟着 `ops/install.py` 的 `migrate` 走，不需要手工 SQL；新表由 install.py 的 `GRANT … ON ALL TABLES` 授给 `kanpan_app`。
+
+- **0037**：新建 `hourly_close(symbol, hour_ms, close)`，主键 `(symbol, hour_ms)`。只建表，不碰已有的表。
+  serve 里的 `hourly-close` 任务启动就回填（约七百只 × 170 小时，一秒一只，约 12 分钟）。旧二进制不认识它，无害。
+- **0038**：新建按段宽分区的 `orderflow_heat_rollup`（`_30s` / `_150s` / `_900s`）和它的时间索引。都是新表，建索引不锁别人。
+  新二进制起来后从原始快照最早的一截往前追段，追完之前读接口照旧读原始快照。
+- **0039**：`-- no-transaction` 的 `CREATE INDEX CONCURRENTLY IF NOT EXISTS market_features_census`，
+  找相似 census 的覆盖索引（`market_features` 68 万行、660 MB，建索引约十几秒，不挡读写）。
+  中途失败留下 INVALID 索引时按上面「CONCURRENTLY 中途失败了怎么办」清掉再跑。
+- **0040**：`provider_budgets` 加 `reserved integer NOT NULL DEFAULT 0`。常量默认值只改目录不重写表，`lock_timeout` 10 秒；
+  旧二进制不写这一列（一直是 0），migrate 与 restart 之间无影响。
+
+只读核对：
+
+```sql
+SELECT count(DISTINCT symbol), count(*), to_timestamp(max(hour_ms)/1000) FROM hourly_close;       -- 回填完：只数≈U 本位合约数，最新一小时是上一个整点
+SELECT width_ms, count(*), to_timestamp(max(bucket_ms)/1000) FROM orderflow_heat_rollup GROUP BY 1; -- 三档都有，最后一段接近此刻
+SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
+ WHERE c.relname='market_features_census';                                                         -- 一行、t
+SELECT egress_id, market, used, reserved FROM provider_budgets;                                                -- 有 reserved 列
+```
