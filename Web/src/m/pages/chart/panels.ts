@@ -9,8 +9,8 @@
  */
 import { st, save, subscribe, onLayoutFork } from '../../app/store'
 import {
-  FACTORY_PARAMS_IDS, MAX_COMPARE, cleanCompare, currentLayout, factoryLayout, sameValue,
-  type CandleKind, type IndicatorId, type PriceMode, type OrderFlowOverride,
+  FACTORY_PARAMS_IDS, MAX_COMPARE, cleanCompare, currentLayout, factoryLayout, followOrder, sameValue,
+  type CandleKind, type IndicatorId, type IndicatorLayout, type PriceMode, type OrderFlowOverride,
 } from '../../app/prefs'
 import { indicatorName, mainPalette, subPalette, paletteOffset, paramLabels, normalizedParams, defaultParams, lineNames } from '../../indicator/ids'
 import { openSheet, type Sheet } from '../../ui/sheet'
@@ -181,15 +181,21 @@ function analysisHTML(ctx: PanelContext): string {
   }
   out.push(`<div class="cp-group">${of.join('')}</div>`)
 
-  const factory = sameValue(currentLayout(st), factoryLayout())
+  const factory = sameValue(currentLayout(st), groupFactory())
   out.push(`<div class="cp-group cp-reset"><button type="button" class="cp-row cp-tap" data-act="reset"${factory ? ' disabled' : ''}><span class="cp-rn">恢复这一组的默认</span></button></div>`)
   return out.join('')
+}
+
+/** 这一组的「出厂」：副图高度与顺序跟人走、不归哪一组，恢复默认时留着用户自己调的 */
+function groupFactory(): IndicatorLayout {
+  const f = factoryLayout()
+  return { ...f, subs: followOrder(f.subs, st.subs), subHeightOverrides: { ...st.subHeightOverrides } }
 }
 
 /** 「恢复这一组的默认」（PrefsStore.resetIndicatorLayoutForCurrentGroup）：当前周期所在那一组回到出厂，别的组不动 */
 function resetGroup(): void {
   const before = currentLayout(st)
-  const f = factoryLayout()
+  const f = groupFactory()
   let forked = false
   const off = onLayoutFork(() => { forked = true })
   Object.assign(st, { overlays: f.overlays, subs: f.subs, params: f.params, subHeightOverrides: f.subHeightOverrides, candleKind: f.candleKind, priceMode: f.priceMode })
