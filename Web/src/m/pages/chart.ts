@@ -10,7 +10,8 @@
  * 行情推送：图自己要的 K 线流 + 当前品种的 ticker / mark，经 _streams.wantStreams('chart') 与别的页合并。
  *
  * 个性化学习只读结论（照 iOS Habits.opening / effectivePriceMode）：换品种那一下用学到的周期、
- * 价格轴用这一类学到的那档（不写回 st）；记录习惯这一半手机网页版不做。
+ * 价格轴用这一类学到的那档（不写回 st）；记录停留这一半手机网页版不做，只照 notePriceAxisPicked
+ * 把图表设置里亲手切的线性 / 对数记成这一类的结论（不然学到的那档会把亲手选的盖回去）。
  */
 import { st, save, subscribe, onLayoutFork } from '../app/store'
 import { INTERVALS, type IntervalId, type IndicatorId, type PriceMode, type LayoutGroup } from '../app/prefs'
@@ -35,7 +36,7 @@ import { createTopBar, createHeader, splitPair } from './chart/header'
 import { createIntervalBar } from './chart/intervalBar'
 import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
-import { openAnalysis, openChartSettings, openOrderFlowEditor, type PanelContext } from './chart/panels'
+import { openAnalysis, openChartSettings, openOrderFlowEditor, type PanelContext, type AxisContext } from './chart/panels'
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
@@ -58,10 +59,11 @@ export function learnedInterval(sym: string, current: IntervalId): IntervalId | 
   const iv = c?.v as IntervalId | undefined
   return iv && (INTERVALS as readonly string[]).includes(iv) && iv !== current ? iv : null
 }
+/** 品种的习惯类别（价格轴按类别学） */
+const axisCategory = (sym: string): string => habitCategory(S.symbols.get(sym)?.kind, splitPair(sym).base)
 /** 图上真正用的价格轴：设置是线性 / 对数时换成这一类学到的那档；百分比照原样交给引擎 */
 export function effectivePriceMode(sym: string): PriceMode {
-  const s = S.symbols.get(sym)
-  return priceModeFor(st.priceMode, st.habitLearning, st.learnedDefaults.priceAxis[habitCategory(s?.kind, splitPair(sym).base)]?.v)
+  return priceModeFor(st.priceMode, st.habitLearning, st.learnedDefaults.priceAxis[axisCategory(sym)]?.v)
 }
 
 /** 十字线读数里的时刻（上海）：日线及以上只写日期 */
@@ -113,7 +115,7 @@ export function initChart(root: HTMLElement): PageHandle {
     },
     onReplace: (old, add) => { st.quickIntervals = replaceQuick(st.quickIntervals, old, add, INTERVALS); save() },
     onAnalysis: () => { openAnalysis(panelCtx) },
-    onSettings: () => { openChartSettings() },
+    onSettings: () => { openChartSettings(axisCtx) },
     onAlert: () => { const p = crossPrice; chart.clearCrosshair(); openAlertForm(sym(), p) },
   })
 
@@ -217,6 +219,7 @@ export function initChart(root: HTMLElement): PageHandle {
   so?.addEventListener('change', onOrientation)
 
   const panelCtx: PanelContext = { symbol: sym, port: () => port, onDraw: startDrawing }
+  const axisCtx: AxisContext = { mode: () => effectivePriceMode(sym()), category: () => axisCategory(sym()) }
 
   // ---- 图上的事件 → st（手指一松就落盘）
   chart.on('scale', e => { if (Math.abs(st.barSpacing - e.barSpacing) > 1e-6) { st.barSpacing = e.barSpacing; save() } })
@@ -226,12 +229,14 @@ export function initChart(root: HTMLElement): PageHandle {
   chart.on('notice', t => toast(t))
   chart.on('crosshair', e => {
     const x = e.crosshair, b = e.bar
-    const onMain = !!x && x.pane == null && !!b
+    // 照 iOS：十字线落在任何一格（主图或副图）上都出开高低收读数、周期条让位；「创建提醒」只在主图上出
+    const alive = !!x && !!b
+    const onMain = alive && x!.pane == null
     const s = S.symbols.get(sym())
-    const text = onMain && b ? crosshairOHLC({ t: b.openTime, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume }, s?.dec ?? chart.state?.input.symbol.priceDecimals ?? 2, crossTime(iv())) : null
+    const text = alive ? crosshairOHLC({ t: b!.openTime, o: b!.open, h: b!.high, l: b!.low, c: b!.close, v: b!.volume }, s?.dec ?? chart.state?.input.symbol.priceDecimals ?? 2, crossTime(iv())) : null
     crossPrice = onMain ? (x!.price ?? b!.close) : null
     header.setReadout(text)
-    ivBar.render({ crosshairOnMain: onMain })
+    ivBar.render({ crosshair: alive, crosshairOnMain: onMain })
     bench.setReadout(text ? text.replace(/\n/g, '  ') : null)
   })
   chart.on('select', e => {
@@ -335,7 +340,7 @@ export function initChart(root: HTMLElement): PageHandle {
     setTimeout(() => {
       if (v === 'more') ivBar.openGrid()
       else if (v === 'analysis') openAnalysis(panelCtx)
-      else if (v === 'settings') openChartSettings()
+      else if (v === 'settings') openChartSettings(axisCtx)
       else if (v === 'orderflow') openOrderFlowEditor(panelCtx)
       else if (v === 'land') startDrawing()
     }, 600)

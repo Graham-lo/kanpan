@@ -363,12 +363,12 @@ export function cardText(g: CardGroup, base: string, dec: number, nowMs: number)
 // ───────────────────────────── 十字线读数
 
 export interface OHLC { t: number; o: number; h: number; l: number; c: number; v: number }
-/** 「2026-09-30 14:00  量 V\n开 X  高 X\n低 X  收 X」（时间上海） */
+/** 「2026-09-30 14:00\n开 X  高 X\n低 X  收 X  量 V」（时间上海；照 crosshairOHLCText 的次序）。
+ *  读数在时整行价格连同右侧六格一起让位，读数铺满头部宽度，所以「量」照 iOS 跟在「收」后面。 */
 export function crosshairOHLC(b: OHLC, dec: number, fmtTime: (ms: number) => string): string {
-  // 量跟在时间后面：三行里最短的是时间那行，放在「低 收」后面会顶进右侧六格
-  return fmtTime(b.t) + '  量 ' + fmtVol(b.v)
+  return fmtTime(b.t)
     + '\n开 ' + fmtPrice(b.o, dec) + '  高 ' + fmtPrice(b.h, dec)
-    + '\n低 ' + fmtPrice(b.l, dec) + '  收 ' + fmtPrice(b.c, dec)
+    + '\n低 ' + fmtPrice(b.l, dec) + '  收 ' + fmtPrice(b.c, dec) + '  量 ' + fmtVol(b.v)
 }
 
 // ───────────────────────────── 画线台
@@ -410,6 +410,17 @@ export function showsOtherChart(
 export function priceModeFor<M extends string>(pref: M, habitLearning: boolean, learned: unknown): M | 'log' | 'linear' {
   if (pref === 'percent' || !habitLearning) return pref
   return learned === 'log' || learned === 'linear' ? learned : pref
+}
+
+/** 在图表设置里亲手切了线性 / 对数（照 iOS Habits.notePriceAxisPicked）：亲手选的立刻压过之前学到的，
+ *  这一类的结论当场换成这一档、依据 +1、时刻记成现在（两台设备谁新用谁）。百分比不参与；学习关着不记。
+ *  返回新的那张价格轴表，没变化时返回 null。 */
+export function learnedAfterAxisPick<C extends { v: string; n: number; at: number }>(
+  table: Readonly<Record<string, C>>, habitLearning: boolean, category: string, mode: string, nowSec: number,
+): Record<string, { v: string; n: number; at: number }> | null {
+  if (!habitLearning || (mode !== 'linear' && mode !== 'log')) return null
+  const prev = table[category]
+  return { ...table, [category]: { v: mode, n: (prev?.v === mode ? prev.n : 0) + 1, at: nowSec } }
 }
 
 

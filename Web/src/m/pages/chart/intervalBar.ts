@@ -3,7 +3,7 @@
  * 钉住的档位按 INTERVALS 顺序等宽铺满；当前档一颗贴字的 accent-soft 药丸（「最新」药丸 2026-10-02 按用户要求删了：
  * 回到最新靠双击图、或在行情页再点一下底栏「图表」）；
  * 一根 1×14 分隔线；行尾三件：「更多 ▾」（当前档没钉住时写成那一档并高亮）· 「分析」· 图表设置记号。
- * 长按一档 = 取消钉。十字线在主图上时整行透明让位，同一位置换成「创建提醒」药丸。
+ * 长按一档 = 取消钉。十字线活着（主图或副图）时整行透明让位；落在主图上时同一行靠左换成「创建提醒」药丸。
  */
 import { INTERVALS, MAX_QUICK, type IntervalId } from '../../app/prefs'
 import { INTERVAL_SHORT, INTERVAL_DISPLAY } from '../../chart/series'
@@ -27,7 +27,13 @@ export interface IntervalBarHandlers {
   onAlert(): void
 }
 
-export interface IntervalBarState { quick: readonly IntervalId[]; current: IntervalId; crosshairOnMain: boolean }
+export interface IntervalBarState {
+  quick: readonly IntervalId[]; current: IntervalId
+  /** 十字线活着（任何一格）：整行让位 */
+  crosshair: boolean
+  /** 十字线落在主图：让出来的位置摆「创建提醒」 */
+  crosshairOnMain: boolean
+}
 
 export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   const row = el('div', 'cp-ivrow')
@@ -46,7 +52,7 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   row.append(bar, alert)
   host.append(row)
 
-  let state: IntervalBarState = { quick: [], current: '1h', crosshairOnMain: false }
+  let state: IntervalBarState = { quick: [], current: '1h', crosshair: false, crosshairOnMain: false }
   let grid: Popover | null = null
   let gridRender: (() => void) | null = null
   let chipsKey = ''
@@ -159,8 +165,9 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
       more.classList.toggle('on', off)
       more.setAttribute('aria-label', off ? `更多周期，当前 ${INTERVAL_DISPLAY[state.current]}` : '更多周期')
     }
-    row.classList.toggle('yield', state.crosshairOnMain)
-    if (state.crosshairOnMain) grid?.close()
+    row.classList.toggle('yield', state.crosshair)
+    row.classList.toggle('alerting', state.crosshairOnMain)
+    if (state.crosshair) grid?.close()
     gridRender?.()
   }
 

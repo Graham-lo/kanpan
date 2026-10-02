@@ -32,7 +32,7 @@ import { el, esc } from '../../ui/dom'
 import { icon } from '../../ui/icons'
 import { railIntervals, deleteDrawingById, safeHexColor } from './logic'
 import { splitPair } from './header'
-import { openSymbolPicker } from './panels'
+import { openSymbolPicker, colorControlHTML, syncColorControl } from './panels'
 
 // ───────────────────────────── 工具记号（照 DrawingGlyph.swift，24 格取景）
 
@@ -163,7 +163,6 @@ export interface BenchContext {
   onActive(on: boolean): void
 }
 
-const LINE_COLORS = ['#E2B34F', '#4A90E2', '#A078D0', '#37A78F', '#E46A76', '#D88040', '#B8C4D8']
 /** 没设颜色的画线在样式页里显示的颜色（引擎默认金色） */
 const DEFAULT_LINE_COLOR = '#D6A64F'
 const WIDTHS = [1, 1.5, 2, 3]
@@ -372,7 +371,7 @@ export function createBench(ctx: BenchContext) {
           }
         }
       })
-    }, { title: '更多', detent: 'auto', className: 'cp-sheet', id: 'draw-more' })
+    }, { title: '更多', detent: 'auto', className: 'cp-sheet cp-list', id: 'draw-more' })
   }
   function openList(): void {
     const swipes: { destroy(): void }[] = []
@@ -404,7 +403,8 @@ export function createBench(ctx: BenchContext) {
         if (b.dataset.act === 'eye') c.updateDrawing({ ...d, hidden: !d.hidden })
         else { c.setTool(null); c.selected = d.id; sheet?.close() }
       })
-    }, { title: '画线列表', detent: 'large', className: 'cp-sheet', id: 'draw-list', onClose: () => { off?.(); swipes.forEach(s => s.destroy()) } })
+    // 照 iOS 画线列表：页面底色上一张白卡（系统 List），半屏起、可拉满，半屏时图还能看
+    }, { title: '画线列表', detent: 'medium', expandable: true, dim: 'large', className: 'cp-sheet cp-form', id: 'draw-list', onClose: () => { off?.(); swipes.forEach(s => s.destroy()) } })
   }
   function openStyle(orig: Drawing): void {
     sheet?.close()
@@ -422,14 +422,13 @@ export function createBench(ctx: BenchContext) {
       const cur = safeHexColor(item.color, DEFAULT_LINE_COLOR)
       const width = WIDTHS.reduce((m, w) => (Math.abs(w - item.lineWidth) < Math.abs(m - item.lineWidth) ? w : m), WIDTHS[0])
       const swaps = DrawKind.swaps(item.kind)
+      // 照 iOS DrawingStyleEditor：颜色（取色圈 + 一排色卡）、粗细（四档样张）、换画法（同族几个字按钮，选中的墨色描边）
       host.innerHTML = `<div class="cp-gt">样式</div><div class="cp-group">
-          <div class="cp-crow"><span class="cp-rn">颜色</span><div class="cp-chips-c">${LINE_COLORS.map(col =>
-            `<button type="button" class="cp-cchip${col === cur ? ' on' : ''}" style="--c:${col}" data-act="color" data-c="${col}" aria-label="颜色 ${col}"></button>`).join('')}
-            <label class="cp-cpick${LINE_COLORS.includes(cur) ? '' : ' on'}" style="--c:${cur}" aria-label="自选颜色"><input type="color" data-pick="1" value="${cur.slice(0, 7).toLowerCase()}"></label></div></div>
+          ${colorControlHTML('颜色', cur, 'color', '1')}
           <div class="cp-row"><span class="cp-rn">粗细</span><div class="cp-widths">${WIDTHS.map(w =>
             `<button type="button" class="cp-wcell${w === width ? ' on' : ''}" data-act="width" data-w="${w}" aria-label="粗细 ${w}"><i style="height:${w}px"></i></button>`).join('')}</div></div>
-          ${swaps.map(s => `<div class="cp-row"><span class="cp-rn">${esc(s.title)}</span><div class="cp-swaps">${s.options.map(o =>
-            `<button type="button" class="cp-wcell cp-swap${o.kind === item.kind ? ' on' : ''}" data-act="swap" data-k="${o.kind}" aria-label="${esc(o.label)}">${kindGlyph(o.kind, 20)}</button>`).join('')}</div></div>`).join('')}
+          ${swaps.map(s => `<div class="cp-row cp-swaprow"><span class="cp-rn">${esc(s.title)}</span><div class="cp-swaps">${s.options.map(o =>
+            `<button type="button" class="cp-wcell cp-swap${o.kind === item.kind ? ' on' : ''}" data-act="swap" data-k="${o.kind}">${esc(o.label)}</button>`).join('')}</div></div>`).join('')}
         </div>
         ${DrawKind.usesText(item.kind) ? `<div class="cp-gt">文字</div><div class="cp-group cp-textbox"><textarea rows="2" data-text="1" placeholder="写点什么">${esc(item.text)}</textarea><div class="cp-foot">最多 ${DRAWING_TEXT_LIMIT} 个字</div></div>` : ''}
         ${DrawKind.usesLevels(item.kind) ? `<div class="cp-gt">${item.kind === 'fibExtension' ? '扩展比例' : '回撤比例'}</div><div class="cp-group cp-textbox"><input class="cp-levels num" type="text" inputmode="decimal" data-levels="1" placeholder="0, 0.382, 0.5, 0.618, 1" value="${esc(levelText)}"></div>` : ''}`
@@ -451,10 +450,7 @@ export function createBench(ctx: BenchContext) {
         if (t.dataset.pick) {
           // 拖色盘时 input 事件一秒几十次：只改色块与高亮，不整块重写（重写会把正开着的取色器那个 input 拆掉）
           item.color = safeHexColor(t.value, DEFAULT_LINE_COLOR)
-          const pick = t.closest<HTMLElement>('.cp-cpick')
-          pick?.style.setProperty('--c', item.color)
-          pick?.classList.toggle('on', !LINE_COLORS.includes(item.color))
-          host.querySelectorAll<HTMLElement>('.cp-cchip').forEach(b => b.classList.toggle('on', b.dataset.c === item.color))
+          syncColorControl(t as HTMLInputElement, item.color.slice(0, 7).toUpperCase())
         }
         else if (t.dataset.text) {
           let v = t.value
@@ -471,7 +467,7 @@ export function createBench(ctx: BenchContext) {
         lead.replaceWith(cancel)
       }
     }, {
-      title: DrawKind.title(orig.kind), noBack: true, detent: 'large', className: 'cp-sheet', id: 'draw-style',
+      title: DrawKind.title(orig.kind), noBack: true, detent: 'large', className: 'cp-sheet cp-form', id: 'draw-style',
       action: {
         title: '保存', run: () => {
           if (DrawKind.usesLevels(item.kind)) {

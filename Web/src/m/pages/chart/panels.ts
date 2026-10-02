@@ -26,7 +26,7 @@ import { baseOfSymbol, defaultThresholds, applyOverride, isValidBase } from '../
 import type { Thresholds } from '../../../orderflow/types'
 import {
   toggleOverlay, toggleSub, moveSub, sanitizeParam, clampParam, VARIABLE_PARAMS, MAX_VARIABLE_PARAMS,
-  sanitizeAmount, clampAmount, mergeOverride, compactAmount, plainNumber, type OrderFlowField,
+  sanitizeAmount, clampAmount, mergeOverride, compactAmount, plainNumber, learnedAfterAxisPick, type OrderFlowField,
 } from './logic'
 import { TERMS, splitPair } from './header'
 import type { PagePort } from './data'
@@ -48,13 +48,13 @@ function ensureTerms(): void { if (!termsReady) { registerTerms(GLOSSARY); terms
 
 // ───────────────────────────── 小件
 
-/** 指标的色点（PanelSwatch：8×8、圆角 2；颜色照 PanelTheme.swatch） */
+/** 指标的色点（PanelSwatch：8×8、圆角 2；颜色照 PanelTheme.swatch：持仓量、布林带各自一色，
+ *  超级趋势 / 抛物线 / 订单流取涨色，其余一律取调色板上自己的起始那一支，主图副图同一张调色板） */
 export function swatchVar(id: IndicatorId): string {
   if (id === 'OI') return 'var(--k-oi)'
   if (id === 'BOLL') return 'var(--k-band)'
   if (id === 'ST' || id === 'SAR' || id === 'ORDERFLOW') return 'var(--k-up)'
-  const n = paletteOffset(id) % 6
-  return (subPalette as readonly string[]).includes(id) ? `var(--sub-${n})` : `var(--palette-${n})`
+  return `var(--palette-${paletteOffset(id) % 6})`
 }
 const dot = (color: string): string => `<i class="cp-dot" style="background:${color}"></i>`
 const sw = (on: boolean, act: string, label: string): string =>
@@ -113,9 +113,10 @@ export function openAnalysis(ctx: PanelContext): Sheet {
           if (r.dropped) toast(`副图最多三个 · 已换下 ${indicatorName(r.dropped)}`)
           break
         }
-        case 'cmp-add': openComparePicker(ctx); break
-        case 'cmp-rm': st.compareSymbols = st.compareSymbols.filter(k => k !== arg); save(); break
-        case 'cmp-clear': st.compareSymbols = []; save(); break
+        // 照 iOS compareSection：加、移除、清除都先收起面板（对比画在图上，要让人马上看到）
+        case 'cmp-add': sheet.close(); openComparePicker(ctx); break
+        case 'cmp-rm': st.compareSymbols = st.compareSymbols.filter(k => k !== arg); save(); sheet.close(); break
+        case 'cmp-clear': st.compareSymbols = []; save(); sheet.close(); break
         case 'of': st.orderFlow = !st.orderFlow; save(); break
         case 'of-edit': openOrderFlowEditor(ctx); break
         case 'reset': resetGroup(); break
@@ -125,7 +126,7 @@ export function openAnalysis(ctx: PanelContext): Sheet {
       item: '.cp-iu[data-sub]', handle: '.cp-grip',
       onMove(from, to) { if (from !== to) { st.subs = moveSub(st.subs, from, to); save() } },
     })
-  }, { title: '分析', detent: 'medium', id: 'analysis', className: 'cp-sheet', noBack: true, onClose: () => { off?.(); reorder?.destroy() } })
+  }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list', onClose: () => { off?.(); reorder?.destroy() } })
   return sheet
 }
 
@@ -206,7 +207,24 @@ function resetGroup(): void {
 
 // ───────────────────────────── 参数编辑
 
-const LINE_COLORS = ['#E2B34F', '#4A90E2', '#A078D0', '#37A78F', '#E46A76', '#D88040', '#B8C4D8']
+export const LINE_COLORS = ['#E2B34F', '#4A90E2', '#A078D0', '#37A78F', '#E46A76', '#D88040', '#B8C4D8']
+
+/** 颜色那一行（照 iOS DrawingColorControl，指标参数与画线样式共用）：名字 + 右端系统取色圈（显示当前色），
+ *  下面一排 22 的色卡、点击区 44；正好是色卡里那一色时它外面一圈墨色。
+ *  act / pick：色卡的 data-act 与取色器的 data-pick */
+export function colorControlHTML(name: string, cur: string, act: string, pick: string): string {
+  const c = cur.slice(0, 7).toUpperCase()
+  return `<div class="cp-crow"><div class="cp-crow-top"><span class="cp-rn">${esc(name)}</span>
+      <label class="cp-cpick" style="--c:${c}" aria-label="${esc(name)} · 自选颜色"><input type="color" data-pick="${esc(pick)}" value="${c.toLowerCase()}"></label></div>
+    <div class="cp-chips-c">${LINE_COLORS.map(col =>
+      `<button type="button" class="cp-cchip${col === c ? ' on' : ''}" style="--c:${col}" data-act="${esc(act)}" data-c="${col}" aria-label="颜色 ${col}"></button>`).join('')}</div></div>`
+}
+/** 拖取色盘时只改这一行的取色圈与选中圈，不整块重写（重写会把正开着的取色器那个 input 拆掉） */
+export function syncColorControl(input: HTMLInputElement, color: string): void {
+  const row = input.closest<HTMLElement>('.cp-crow')
+  input.closest<HTMLElement>('.cp-cpick')?.style.setProperty('--c', color)
+  row?.querySelectorAll<HTMLElement>('.cp-cchip').forEach(b => b.classList.toggle('on', b.dataset.c === color))
+}
 
 /** 任意 CSS 颜色 → #RRGGBB（读令牌的默认色用） */
 function toHex(css: string): string {
@@ -253,12 +271,8 @@ export function openIndicatorEditor(id: IndicatorId): Sheet {
     let colors = ''
     if (hasColors) {
       const names = lineNames(id, draft.params)
-      colors = gt('线条颜色') + `<div class="cp-group">${names.map((name, i) => {
-        const cur = (draft.colors[i] ?? defaultLineColor(id, i)).toUpperCase()
-        return `<div class="cp-crow"><span class="cp-rn">${esc(name)}</span><div class="cp-chips-c">${LINE_COLORS.map(c =>
-          `<button type="button" class="cp-cchip${c === cur ? ' on' : ''}" style="--c:${c}" data-act="color:${i}" data-c="${c}" aria-label="颜色 ${c}"></button>`).join('')}
-          <label class="cp-cpick${LINE_COLORS.includes(cur) ? '' : ' on'}" style="--c:${cur}" aria-label="自选颜色"><input type="color" data-pick="${i}" value="${cur.toLowerCase()}"></label></div></div>`
-      }).join('')}<button type="button" class="cp-row cp-tap cp-accent" data-act="colors-reset">恢复默认颜色</button></div>`
+      colors = gt('线条颜色') + `<div class="cp-group">${names.map((name, i) =>
+        colorControlHTML(name, draft.colors[i] ?? defaultLineColor(id, i), `color:${i}`, String(i))).join('')}<button type="button" class="cp-row cp-tap cp-accent" data-act="colors-reset">恢复默认颜色</button></div>`
     }
     host.innerHTML = (draft.params.length ? gt('参数') + `<div class="cp-group cp-params">${rows}${add}</div>` : '') + colors
     if (variable && draft.params.length > 1) {
@@ -274,7 +288,7 @@ export function openIndicatorEditor(id: IndicatorId): Sheet {
     host.addEventListener('input', e => {
       const t = e.target as HTMLInputElement
       if (t.dataset.param != null) { const c = sanitizeParam(t.value); if (c !== t.value) t.value = c }
-      else if (t.dataset.pick != null) { draft.colors[t.dataset.pick] = t.value.toUpperCase(); render() }
+      else if (t.dataset.pick != null) { draft.colors[t.dataset.pick] = t.value.toUpperCase(); syncColorControl(t, t.value.toUpperCase()) }
     })
     host.addEventListener('focusin', e => { const t = e.target as HTMLInputElement; if (t.dataset.param != null) setTimeout(() => t.select(), 0) })
     host.addEventListener('focusout', e => {
@@ -306,7 +320,8 @@ export function openIndicatorEditor(id: IndicatorId): Sheet {
       lead.replaceWith(cancel)
     }
   }, {
-    title: indicatorName(id), noBack: true, detent: 'auto', expandable: true, className: 'cp-sheet', id: 'indicator-editor',
+    // 照 iOS IndicatorEditor：整页表单（页面底色上一张张白卡），顶上「取消 · 标题居中 · 保存」
+    title: indicatorName(id), noBack: true, detent: 'large', className: 'cp-sheet cp-form', id: 'indicator-editor',
     action: {
       title: '保存', run: () => {
         commitFields()
@@ -339,7 +354,13 @@ export function openIndicatorEditor(id: IndicatorId): Sheet {
 const KINDS: readonly [string, CandleKind][] = [['蜡烛', 'candle'], ['平均K线', 'heikin'], ['收盘价', 'line']]
 const SCALES: readonly [string, PriceMode][] = [['线性', 'linear'], ['对数', 'log'], ['百分比', 'percent']]
 
-export function openChartSettings(): Sheet {
+/** 图表设置要从行情页拿的：图上真正用的价格轴（学到的那档可能盖过设置）与这只的习惯类别 */
+export interface AxisContext {
+  mode(): PriceMode
+  category(): string
+}
+
+export function openChartSettings(axis: AxisContext): Sheet {
   ensureTerms()
   let off: (() => void) | null = null
   const sheet = openSheet(body => {
@@ -348,7 +369,7 @@ export function openChartSettings(): Sheet {
     const render = (): void => {
       host.innerHTML = gt('K 线') + `<div class="cp-group"><div class="cp-row"><span class="cp-rn">画法</span>${seg(KINDS, st.candleKind, 'kind')}</div></div>`
         + gt('显示') + `<div class="cp-group"><div class="cp-row"><span class="cp-rn">盘口</span>${sw(st.depth, 'depth', '盘口')}</div></div>`
-        + gt('价格轴') + `<div class="cp-group"><div class="cp-row"><span class="cp-rn">刻度${termHTML('scale')}</span>${seg(SCALES, st.priceMode, 'scale')}</div></div>`
+        + gt('价格轴') + `<div class="cp-group"><div class="cp-row"><span class="cp-rn">刻度${termHTML('scale')}</span>${seg(SCALES, axis.mode(), 'scale')}</div></div>`
     }
     render()
     off = subscribe(() => { if (!sheet.closed) render() })
@@ -357,12 +378,18 @@ export function openChartSettings(): Sheet {
       if (!b) return
       const act = b.dataset.act
       if (act === 'kind') st.candleKind = b.dataset.v as CandleKind
-      else if (act === 'scale') st.priceMode = b.dataset.v as PriceMode
+      else if (act === 'scale') {
+        // 照 iOS：分段显示图上真正用的那档；亲手切线性 / 对数时这一类学到的结论当场换成它，不然学到的那档会把选择盖回去
+        const mode = b.dataset.v as PriceMode
+        const learned = learnedAfterAxisPick(st.learnedDefaults.priceAxis, st.habitLearning, axis.category(), mode, Date.now() / 1000)
+        if (learned) st.learnedDefaults = { ...st.learnedDefaults, priceAxis: learned }
+        st.priceMode = mode
+      }
       else if (act === 'depth') st.depth = !st.depth
       else return
       save()
     })
-  }, { title: '图表设置', detent: 'auto', id: 'chart-settings', className: 'cp-sheet', noBack: true, onClose: () => off?.() })
+  }, { title: '图表设置', detent: 'medium', dim: 'large', id: 'chart-settings', className: 'cp-sheet cp-list', onClose: () => off?.() })
   return sheet
 }
 
@@ -482,7 +509,7 @@ export function openOrderFlowEditor(ctx: PanelContext): Sheet {
       lead.replaceWith(cancel)
     }
   }, {
-    title: indicatorName('ORDERFLOW'), noBack: true, detent: 'auto', className: 'cp-sheet', id: 'orderflow-editor',
+    title: indicatorName('ORDERFLOW'), noBack: true, detent: 'large', className: 'cp-sheet cp-form', id: 'orderflow-editor',
     action: {
       title: '保存', run: () => {
         host.querySelectorAll<HTMLInputElement>('input[data-f]').forEach(commit)

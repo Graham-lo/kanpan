@@ -67,11 +67,11 @@ export function openShare(ctx: ShareContext): Sheet {
     const host = el('div', 'cp-panel cp-share')
     host.innerHTML = `
       <button type="button" class="cp-stile" data-act="image">
-        <span class="cp-stile-ic">${icon('share', 20)}</span>
+        <span class="cp-stile-ic">${icon('share', 22)}</span>
         <span class="cp-stile-tx"><b>图片</b><small>发到微信等任何地方</small></span>
       </button>
       <button type="button" class="cp-stile" data-act="lines"${blocked ? ' aria-disabled="true"' : ''}>
-        <span class="cp-stile-ic">${icon('draw', 20)}</span>
+        <span class="cp-stile-ic">${icon('draw', 22)}</span>
         <span class="cp-stile-tx"><b>画线</b><small>${esc(blocked ?? '朋友在自己的图上看到你的线')}</small></span>
       </button>`
     body.append(host)
@@ -84,7 +84,7 @@ export function openShare(ctx: ShareContext): Sheet {
       sheet.close()
       openFriendPicker(ctx)
     })
-  }, { title: '分享', detent: 'auto', id: 'share', className: 'cp-sheet', noBack: true })
+  }, { title: '分享', detent: 'medium', dim: 'large', id: 'share', className: 'cp-sheet' })
   return sheet
 }
 
@@ -180,7 +180,7 @@ export function openFriendPicker(ctx: ShareContext): Sheet | null {
       host.innerHTML = `
         ${showList ? `<div class="cp-group">${list.map(f =>
           `<button type="button" class="cp-row cp-tap" data-send="${esc(f)}"><span class="cp-rn">${esc(f)}</span><span class="cp-plane">${PLANE}</span></button>`).join('')}
-          <button type="button" class="cp-row cp-tap" data-act="new"><span class="cp-rn">新朋友</span><span class="cp-chev">${icon('chevronRight', 12)}</span></button></div>`
+          <button type="button" class="cp-row cp-tap" data-act="new"><span class="cp-rn">新朋友</span></button></div>`
         : friends == null && !adding ? '<div class="cp-empty">正在取朋友名单…</div>' : `
           <div class="cp-fname">
             <input class="cp-nin" type="text" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off"
@@ -236,7 +236,7 @@ export function openFriendPicker(ctx: ShareContext): Sheet | null {
       if (b.dataset.act === 'new') { adding = true; error = null; render(); host.querySelector<HTMLInputElement>('.cp-nin')?.focus(); return }
       if (b.dataset.act === 'send-new') { const n = friendName(name); if (n) void send(n) }
     })
-  }, { title: '发给朋友', detent: 'auto', id: 'share-friends', className: 'cp-sheet', noBack: true })
+  }, { title: '发给朋友', detent: 'medium', id: 'share-friends', className: 'cp-sheet cp-list' })
   return sheet
 }
 

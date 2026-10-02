@@ -4,7 +4,7 @@
  *       右边三颗 32 圆片：记一笔、分享、放大镜。
  * 头部：左边最新价（--t-price，按涨跌上色，停住变灰）+ 紧贴其下一行涨跌额 涨跌幅；
  *       右边两列六格：仓 / 市值 / 结算 · 额 / 费率 / 估值。
- *       十字线在主图上时左边整块透明让位（行高不变），同一位置换成开高低收读数。
+ *       十字线活着（主图或副图）时整行价格连同六格透明让位（行高不变），同一位置换成铺满整宽的开高低收读数。
  *       价格区横滑扫图（左滑下一只、右滑上一只）。
  */
 import { S, detailOf, fetchDetail } from '../../../market'
@@ -80,8 +80,8 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
   head.innerHTML = `
     <div class="cp-quotebox">
       <div class="cp-quoteinner"><div class="cp-price num"></div><div class="cp-chg num"></div></div>
-      <pre class="cp-readout num" hidden></pre>
     </div>
+    <pre class="cp-readout" hidden></pre>
     <div class="cp-stats">
       <div class="cp-col">
         <div class="cp-cell" data-k="oi"><span class="cp-lab">仓</span><b class="num"></b></div>
@@ -99,7 +99,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
   cell('oi').querySelector('.cp-lab')!.append(termMark(TERMS.oi))
   cell('vol').querySelector('.cp-lab')!.append(termMark(TERMS.turnover))
   const priceEl = head.querySelector<HTMLElement>('.cp-price')!, chgEl = head.querySelector<HTMLElement>('.cp-chg')!
-  const inner = head.querySelector<HTMLElement>('.cp-quoteinner')!, readout = head.querySelector<HTMLElement>('.cp-readout')!
+  const readout = head.querySelector<HTMLElement>('.cp-readout')!
   const valCell = cell('val')
   let valKey = ''
 
@@ -130,16 +130,22 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
         x.classList.toggle('down', !stale && s?.price != null && !up)
       }
       const fresh = !stale
+      // 六格的数：缺数或行情停住都退成 ink3（照 TopBar.statValue）
+      const put = (k: string, text: string): HTMLElement => {
+        const b = cell(k).querySelector('b')!
+        b.textContent = text
+        b.classList.toggle('miss', stale || text === MISSING)
+        return b
+      }
       if (s?.price != null) void fetchDetail(sym) // 自己一分钟最多取一次；价还没到时取了算不出美元持仓、又要空等一分钟
       const oi = detailOf(sym)?.oiValue
-      cell('oi').querySelector('b')!.textContent = openInterestText(oi)
-      cell('vol').querySelector('b')!.textContent = turnoverText(s?.vol, fresh)
-      cell('cap').querySelector('b')!.textContent = marketCapText(s?.supply, s?.price, fresh)
+      put('oi', openInterestText(oi))
+      put('vol', turnoverText(s?.vol, fresh))
+      put('cap', marketCapText(s?.supply, s?.price, fresh))
       const f = fundingText(s?.fr, fresh)
-      const frB = cell('fr').querySelector('b')!
-      frB.textContent = f.text
+      const frB = put('fr', f.text)
       frB.classList.toggle('up', f.dir > 0); frB.classList.toggle('down', f.dir < 0)
-      cell('settle').querySelector('b')!.textContent = fundingCountdownText(s?.nextFunding, now) ?? MISSING
+      put('settle', fundingCountdownText(s?.nextFunding, now) ?? MISSING)
       // 估值：加密 O/M、美股 FPE（亏损给 P/S），大宗不摆
       const kind = (s?.kind ?? 'crypto') as AssetKind
       if (kind === 'us') void fetchValuation(sym)
@@ -154,13 +160,13 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
           lab.textContent = vc.label
           lab.append(termMark(vc.label === 'O/M' ? TERMS.om : vc.label === 'P/S' ? TERMS.ps : TERMS.fpe))
         }
-        valCell.querySelector('b')!.textContent = vc.value ?? MISSING
+        put('val', vc.value ?? MISSING)
       }
     },
     /** 十字线读数：null = 收起，恢复价格 */
     setReadout(text: string | null): void {
       readout.hidden = text == null
-      inner.style.visibility = text == null ? '' : 'hidden'
+      head.classList.toggle('reading', text != null)
       if (text != null) readout.textContent = text
     },
   }

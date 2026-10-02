@@ -47,13 +47,16 @@
 /* ───────────── 顶栏 ───────────── */
 .cp-top {
   display: flex; align-items: center; gap: var(--s-s);
-  height: var(--hit); padding: 0 var(--inset-page);
+  /* 照 MainHeaderView：上 8、圆片 32 排版高；圆片的 44 命中区靠 ::after 往外长，不撑行高 */
+  height: calc(var(--icon-disc) + var(--s-s)); padding: var(--s-s) var(--inset-page) 0;
 }
 .cp-disc {
+  position: relative;
   flex: none; width: var(--icon-disc); height: var(--icon-disc); border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--raised2); color: var(--ink2);
+  background: var(--raised); color: var(--ink2);
 }
+.cp-disc::after { content: ''; position: absolute; inset: calc((var(--icon-disc) - var(--hit)) / 2) }
 .cp-disc:active { opacity: 0.6 }
 .cp-back { margin-left: calc(-1 * var(--s-xs)) }
 .cp-back[hidden] { display: none }
@@ -65,37 +68,42 @@
   flex: none; font: var(--t-caption2-emph); color: var(--ink3);
   padding: 1px 5px; border-radius: var(--r-xs); background: var(--raised2);
 }
-.cp-top-acts { flex: none; display: flex; gap: var(--s-s) }
+.cp-top-acts { flex: none; display: flex; gap: var(--s-m) }
 
 /* ───────────── 头部：价格 + 六格 ───────────── */
 .cp-head {
-  display: flex; align-items: flex-start; gap: var(--s-m);
-  padding: var(--s-xs) var(--inset-page) var(--s-s);
+  position: relative;
+  display: flex; align-items: center; gap: var(--s-l);
+  padding: var(--s-s) var(--inset-page);
+  border-bottom: 1px solid var(--line);
   touch-action: pan-y;
 }
-.cp-quotebox { position: relative; flex: 1; min-width: 0 }
+.cp-quotebox { flex: 1; min-width: 0 }
 .cp-quoteinner { display: flex; flex-direction: column; gap: var(--s-xxs) }
 .cp-price { font: var(--t-price); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.cp-chg { font: var(--t-caption); font-variant-numeric: tabular-nums; white-space: nowrap }
+.cp-chg { font: var(--t-footnote-emph); font-variant-numeric: tabular-nums; white-space: nowrap }
+/* 十字线读数：照 CrosshairOHLCLabel（等宽 11、ink、铺满头部整宽）；读数在时价格行连同六格一起让位 */
 .cp-readout {
-  position: absolute; left: 0; top: 0; right: 0;
-  font: var(--t-caption2); font-variant-numeric: tabular-nums; line-height: 1.45; color: var(--ink2);
+  position: absolute; left: var(--inset-page); right: var(--inset-page); top: 50%; transform: translateY(-50%);
+  font: 400 11px/1.3 var(--font-num); color: var(--ink);
   white-space: pre; overflow: hidden; pointer-events: none;
 }
 .cp-readout[hidden] { display: none }
-.cp-stats { flex: none; display: flex; gap: var(--s-m) }
-.cp-col { display: grid; gap: 3px; min-width: 92px }
+.cp-head.reading .cp-quoteinner, .cp-head.reading .cp-stats { visibility: hidden }
+.cp-stats { flex: none; display: flex; gap: var(--s-l) }
+.cp-col { display: grid; gap: var(--s-xxs); min-width: 92px }
 .cp-cell { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-s); white-space: nowrap }
 .cp-cell[hidden] { display: none }
 .cp-lab { display: inline-flex; align-items: center; gap: 2px; font: var(--t-caption2); color: var(--ink3) }
-.cp-cell b { font: var(--t-caption2-emph); font-variant-numeric: tabular-nums; color: var(--ink) }
+.cp-cell b { font: var(--t-caption-emph); font-variant-numeric: tabular-nums; color: var(--ink) }
 .cp-cell b.up { color: var(--up) }
 .cp-cell b.down { color: var(--down) }
+.cp-cell b.miss { color: var(--ink3) }
 
 /* ───────────── 周期条 ───────────── */
-.cp-ivrow { position: relative; height: 36px; padding: 0 var(--s-s) 0 var(--s-xs) }
+.cp-ivrow { position: relative; height: var(--hit); padding: 0 var(--inset-page); border-bottom: 1px solid var(--line) }
 .cp-ivbar {
-  height: 100%; display: flex; align-items: center; gap: 2px;
+  height: 100%; display: flex; align-items: center;
   transition: opacity var(--dur-fast) var(--ease-out);
 }
 .cp-ivrow.yield .cp-ivbar { opacity: 0; pointer-events: none }
@@ -106,45 +114,65 @@
   font: var(--t-control); color: var(--ink2);
   -webkit-touch-callout: none;
 }
-.cp-chip span { padding: 3px 7px; border-radius: 999px; white-space: nowrap }
+.cp-chip span {
+  display: inline-flex; align-items: center; height: var(--pill-h); max-width: calc(100% - 4px);
+  padding: 0 var(--s-s); border-radius: 999px; white-space: nowrap;
+}
 .cp-chip.on span { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
-.cp-ivdiv { flex: none; width: 1px; height: 14px; background: var(--line); margin: 0 var(--s-xs) }
+.cp-ivdiv { flex: none; width: 1px; height: 14px; background: var(--line); margin: 0 var(--s-s) }
+/* 窄屏（nova 16 366 宽）六档满钉时一格只剩 ~31：药丸左右收到 2、分隔竖线两边收到 4，「30分」才不顶出药丸 */
+.cp-ivrow { container: ivrow / inline-size }
+@container ivrow (max-width: 360px) {
+  .cp-chip span { padding: 0 var(--s-xxs); max-width: 100% }
+  .cp-ivdiv { margin: 0 var(--s-xs) }
+}
+/* 行尾三件：semibold 13、左右 8、药丸高 28，命中区撑满 44 行高 */
 .cp-tail {
-  flex: none; height: 100%; padding: 0 7px;
-  display: inline-flex; align-items: center; gap: 2px;
-  font: var(--t-control); color: var(--ink2); white-space: nowrap;
+  flex: none; height: 100%; min-width: var(--hit); padding: 0 var(--s-s);
+  display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+  font: var(--t-control-on); color: var(--ink2); white-space: nowrap;
+  position: relative; z-index: 0;
+}
+/* 「更多」开着或当前档不在行上：琥珀字 + 淡琥珀药丸底 */
+.cp-more::before {
+  content: ''; position: absolute; z-index: -1; left: 0; right: 0; top: 50%; height: var(--pill-h);
+  transform: translateY(-50%); border-radius: 999px; background: var(--accent-soft); opacity: 0;
 }
 .cp-more.on, .cp-more.open { color: var(--accent) }
-.cp-more.on { font: var(--t-control-on) }
+.cp-more.on::before, .cp-more.open::before { opacity: 1 }
 .cp-more svg { transition: transform var(--dur-fast) var(--ease-out) }
 .cp-more.open svg { transform: rotate(180deg) }
-.cp-gear { padding: 0 var(--s-xs) 0 6px }
+.cp-gear { margin-right: calc(-1 * var(--s-s)) }
+/* 「创建提醒」：照 CrosshairActionBar，靠页边左起，28 高、淡琥珀底 + 0.5 描边 */
 .cp-alertpill {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  position: absolute; left: var(--inset-page); top: 50%; transform: translateY(-50%);
   display: none; align-items: center; gap: var(--s-xs);
   height: var(--pill-h); padding: 0 var(--s-m); border-radius: 999px;
   font: var(--t-control-on); color: var(--accent); background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
+  box-shadow: inset 0 0 0 0.5px var(--accent-line);
 }
-.cp-ivrow.yield .cp-alertpill { display: inline-flex }
+.cp-ivrow.alerting .cp-alertpill { display: inline-flex }
 
 /* 「更多」弹层：从周期条下沿展开的周期全表 */
-.cp-grid { padding: var(--s-m) var(--inset-page) var(--s-l); background: var(--raised) }
-.cp-grid-cells { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s-s) }
+.cp-grid { padding: var(--s-m) var(--inset-page); background: var(--raised) }
+.cp-grid-cells { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s-s); max-width: 520px }
+/* 遮罩只盖图区，不压底栏（iOS 的遮罩是图上的 overlay） */
+.m-pop-wrap:has(> .cp-grid-pop) > .m-pop-scrim { bottom: calc(var(--tabbar-h) + var(--safe-bottom)) }
 .cp-gwrap { position: relative }
 .cp-gcell {
-  width: 100%; height: 38px; border-radius: var(--r-s);
-  font: var(--t-control); color: var(--ink); background: var(--raised2);
-  border: 1px solid transparent;
+  width: 100%; height: var(--hit); border-radius: var(--r-m);
+  font: var(--t-control); color: var(--ink2); background: var(--raised2);
+  border: 1.2px solid transparent;
 }
 .cp-gcell.on { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
-.cp-gcell.target { border: 1px dashed var(--accent-line); color: var(--accent) }
-.cp-gcell.chosen { border-color: var(--accent) }
+.cp-gcell.target { border: 1.2px dashed var(--accent); color: var(--accent) }
+.cp-gcell.chosen { border: 1.2px solid var(--accent); color: var(--accent) }
+/* 图钉：记号 24×20 贴格子右上，命中区往格子外的缝里长（上、右各 8，往里 4），合计 36×32 */
 .cp-gpin {
-  position: absolute; top: 0; right: 0; width: 22px; height: 22px;
-  display: flex; align-items: center; justify-content: center; color: var(--ink3); opacity: 0.7;
+  position: absolute; top: -8px; right: -8px; width: 36px; height: 32px; padding: 8px 8px 4px 4px;
+  display: flex; align-items: center; justify-content: center; color: var(--ink3);
 }
-.cp-gpin.on { color: var(--accent); opacity: 1 }
+.cp-gpin.on { color: var(--accent) }
 
 /* ───────────── 订单流详情卡 ───────────── */
 .cp-ofbox { position: absolute; z-index: 3; display: flex; pointer-events: none }
@@ -306,26 +334,26 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
 .cp-dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 2px }
 .cp-drawglyph { flex: none; display: inline-flex }
 
-/* 开关（iOS Toggle 51×31） */
+/* 开关（照 iOS PanelSwitch：44×26 的槽、3 的内边、20 的白钮；关着是 controlLine 实色，开着是强调色） */
 .cp-switch {
-  flex: none; position: relative; width: 51px; height: 31px; border-radius: 999px;
-  background: var(--control-line); opacity: 0.55;
-  transition: background var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  flex: none; position: relative; width: 44px; height: 26px; border-radius: 999px;
+  background: var(--control-line);
+  transition: background var(--dur-fast) var(--ease-out);
 }
+/* 命中区撑到 44 高（行不因此变高） */
+.cp-switch::after { content: ''; position: absolute; inset: -9px 0 }
 .cp-switch i {
-  position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%;
-  background: var(--seg-on); box-shadow: 0 2px 4px var(--toast-shadow);
+  position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px var(--toast-shadow);
   transition: transform var(--dur) var(--ease-spring);
 }
-.cp-switch.on { background: var(--accent); opacity: 1 }
-.cp-switch.on i { transform: translateX(20px) }
-/* 开关的圆钮照 iOS 永远是亮的：深色下 --seg-on 是深色，改用 --ink（深色皮肤里它是近白） */
-[data-theme="dark"] .cp-switch i { background: var(--ink) }
+.cp-switch.on { background: var(--accent) }
+.cp-switch.on i { transform: translateX(18px) }
 
-/* 分段 */
-.cp-seg { flex: none; display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--r-s); background: var(--hair) }
+/* 分段（照 iOS PanelSegment：槽内边 2；每档左右 12、至少 28 高，字 13 中粗；选中的那档浮一块 segOn 加细影） */
+.cp-seg { flex: none; display: inline-flex; padding: 2px; border-radius: var(--r-s); background: var(--hair) }
 .cp-seg-opt { min-height: 28px; padding: 0 var(--s-m); border-radius: 6px; font: var(--t-control); color: var(--ink2); white-space: nowrap }
-.cp-seg-opt.on { background: var(--seg-on); color: var(--ink); font: var(--t-control-on); box-shadow: 0 1px 3px var(--toast-shadow) }
+.cp-seg-opt.on { background: var(--seg-on); color: var(--ink); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.09) }
 
 /* 在用的指标 */
 .cp-iu { display: flex; align-items: center; min-height: var(--row-min); background: var(--raised2) }
@@ -334,6 +362,30 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
 .cp-reheight { flex: none; font: var(--t-caption-emph); color: var(--accent); padding: 0 var(--s-xs); min-height: 32px }
 .cp-grip { flex: none; width: 40px; min-height: var(--row-min); display: flex; align-items: center; justify-content: center; color: var(--ink3); touch-action: none }
 .cp-grip-pad { visibility: hidden }
+
+/* 半屏面板的「行」式排法（照 iOS PanelSheet + PanelRow：分析、图表设置、画线台「更多」、发给朋友）：
+ * 不分卡片，行铺满面板宽、左右留页面边距；行底一条发丝线，每节最后一行不画；节名小号加字距。 */
+.cp-list .cp-panel { padding: 0 }
+.cp-list .cp-gt { padding: var(--s-xl) var(--inset-page) var(--s-s); font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3) }
+.cp-list .cp-panel > .cp-gt:first-child { padding-top: var(--s-xl) }
+.cp-list .cp-group { border-radius: 0; background: none; overflow: visible }
+.cp-list .cp-row { gap: var(--s-m); padding: var(--s-m) var(--inset-page) }
+.cp-list .cp-rn { gap: var(--s-xs) }
+.cp-list .cp-meta { font: var(--t-caption); font-variant-numeric: tabular-nums }
+.cp-list .cp-textbtn { font: var(--t-control); color: var(--ink2); min-height: var(--hit); margin: calc(-1 * var(--s-m)) 0; padding: 0 var(--s-xs) }
+.cp-list .cp-gap { margin-top: 0 }
+/* 「恢复默认」那一行上面多空一截（iOS padding top 20） */
+.cp-list .cp-reset { margin-top: var(--s-xl) }
+.cp-list .cp-tap:disabled .cp-rn { color: var(--ink3) }
+/* 在用的指标（InUseList）：行与行之间不画线，整块底下一条发丝线；把手 44 宽，图形落在正文右缘上 */
+.cp-list .cp-inuse { border-radius: 0; background: none; overflow: visible; border-bottom: 1px solid var(--hair) }
+.cp-list .cp-inuse > * + * { border-top: 0 }
+.cp-list .cp-iu { background: var(--raised) }
+.cp-list .cp-iu.m-lifted { background: var(--raised2) }
+.cp-list .cp-iu-main { gap: var(--s-m); padding: 0 var(--inset-page) }
+.cp-list .cp-inuse:has(.cp-grip) .cp-iu-main { padding-right: var(--s-xs) }
+.cp-list .cp-reheight { font: var(--t-control); min-height: var(--hit); padding: 0; margin-left: var(--s-s) }
+.cp-list .cp-grip { width: var(--hit); margin-right: calc(var(--inset-page) - var(--s-m)) }
 
 /* 参数编辑 */
 .cp-editor { padding-bottom: var(--s-s) }
@@ -373,6 +425,78 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
 .cp-foot { font: var(--t-caption2); color: var(--ink3); text-align: right; padding-top: var(--s-xs) }
 .cp-ofrow .cp-meta { min-width: 48px; text-align: right }
 
+/* 编辑表（cp-form）：照 iOS IndicatorEditor / DrawingStyleEditor / 画线列表——系统 Form 的样子：
+ * 页面底 --app 上一张张白卡（圆角 26、左右 20 内缩的分隔线），标题居中，左「取消」右「保存」两颗胶囊。 */
+.m-sheet.cp-form { background: var(--app) }
+.cp-form .m-sheet-head {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s-s);
+  padding: var(--s-xs) var(--inset-page); border-bottom: 0;
+}
+.cp-form .m-sheet-titles { grid-column: 2; justify-content: center }
+.cp-form .m-sheet-title { font: var(--t-title); text-align: center }
+.cp-form .m-sheet-back, .cp-form .cp-cancel, .cp-form .m-sheet-action {
+  display: flex; align-items: center; justify-content: center;
+  min-height: var(--hit); border-radius: calc(var(--hit) / 2); background: var(--raised);
+  box-shadow: 0 2px 10px #00000014, inset 0 0 0 .5px var(--line);
+}
+.cp-form .m-sheet-back { justify-self: start; width: var(--hit); min-width: var(--hit); padding: 0; color: var(--ink) }
+.cp-form .cp-cancel { grid-column: 1; justify-self: start; padding: 0 var(--s-l); font: var(--t-title); font-weight: 400; color: var(--ink2) }
+.cp-form .m-sheet-action { grid-column: 3; justify-self: end; padding: 0 var(--s-l); font: var(--t-title); color: var(--accent) }
+.cp-form .cp-panel { padding: 0 var(--inset-page) }
+.cp-form .cp-gt { padding: var(--s-l) var(--s-xl) var(--s-s); font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3) }
+.cp-form .cp-panel > .cp-gt:first-child { padding-top: var(--s-s) }
+.cp-form .cp-group { border-radius: 26px; background: var(--raised); overflow: hidden }
+.cp-form .cp-group > * + * { border-top: 0; position: relative }
+.cp-form .cp-group > * + *::before {
+  content: ''; position: absolute; left: var(--s-xl); right: var(--s-xl); top: 0; height: 1px;
+  background: var(--hair); z-index: 2; pointer-events: none;
+}
+.cp-form .cp-row { min-height: 52px; gap: var(--s-m); padding: var(--s-s) var(--s-xl) }
+.cp-form .cp-prow, .cp-form .cp-prow-in { background: var(--raised); --sw-bg: var(--raised) }
+.cp-form .cp-prow-in { min-height: 66px; gap: var(--s-m); padding: 0 var(--s-xl) }
+.cp-form .cp-field {
+  width: 72px; height: 36px; border: 0; border-radius: var(--r-s); background: var(--raised2);
+  font: var(--t-body); font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.cp-form .cp-field-wide { width: 150px }
+.cp-form .cp-field:focus { box-shadow: inset 0 0 0 1.5px var(--accent) }
+/* 颜色：上一行名字 + 右端取色圈（系统 ColorPicker 的彩虹井），下一行 22 的色点、点击区 44、选中墨色描边 */
+.cp-form .cp-crow { gap: 0; padding: var(--s-xs) var(--s-xl) var(--s-s) }
+.cp-crow-top { display: flex; align-items: center; gap: var(--s-m); min-height: var(--hit) }
+.cp-crow-top .cp-rn { flex: 1 }
+.cp-form .cp-cpick {
+  width: 28px; height: 28px; margin-right: 0; box-shadow: none;
+  background: conic-gradient(#ff3b30, #ff9500, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30);
+}
+.cp-form .cp-cpick::before { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--raised) }
+.cp-form .cp-cpick::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--c) }
+.cp-form .cp-cpick input { z-index: 1; inset: -8px; width: auto; height: auto }
+.cp-form .cp-chips-c { gap: var(--s-xs); flex-wrap: nowrap; margin-left: -11px; min-width: 0 }
+/* 窄屏（nova 16 卡内只剩 ~300）七个点放不下 44 一格时，点击区往 32 收，色点仍是 22 居中 */
+.cp-form .cp-cchip { flex: 0 1 var(--hit); min-width: 32px; height: var(--hit); border-radius: 0; background: none; box-shadow: none }
+.cp-form .cp-cchip::before {
+  content: ''; position: absolute; left: calc(50% - 11px); top: 11px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--c); box-shadow: inset 0 0 0 .5px var(--hair);
+}
+.cp-form .cp-cchip.on::before { box-shadow: 0 0 0 2px var(--raised), 0 0 0 4px var(--ink) }
+/* 粗细四档样张 44×32、紧挨着；换画法是一排字按钮，选中的墨色淡底 + 描边 */
+.cp-form .cp-widths { gap: 0; flex-wrap: nowrap }
+.cp-form .cp-swaps { gap: var(--s-xs); justify-content: flex-end }
+.cp-form .cp-wcell { width: var(--hit); height: 32px; border: 0; background: none; color: var(--ink) }
+.cp-form .cp-wcell i { width: 26px }
+.cp-form .cp-wcell.on {
+  color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ink) 55%, transparent);
+}
+.cp-form .cp-swap { width: auto; min-width: var(--hit); padding: 0 var(--s-m); font: var(--t-body); color: var(--ink2) }
+.cp-form .cp-swap.on { color: var(--ink) }
+.cp-form .cp-swaprow { flex-wrap: wrap; row-gap: var(--s-xs) }
+.cp-form .cp-swaprow .cp-swaps { margin-left: auto }
+.cp-form .cp-textbox { padding: var(--s-m) var(--s-xl) }
+.cp-form .cp-textbox textarea, .cp-form .cp-levels { font: var(--t-body) }
+.cp-form .cp-dl-row, .cp-form .cp-dl-row .cp-row { background: var(--raised); --sw-bg: var(--raised) }
+.cp-form .cp-dl-row + .cp-dl-row { border-top: 0 }
+
 /* 对比 / 换品种 */
 .cp-cmp-search {
   display: flex; align-items: center; gap: var(--s-s);
@@ -401,29 +525,33 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
 .cp-dl-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 36px; text-align: left; color: var(--ink2) }
 .cp-dl-main .cp-rn { color: var(--ink) }
 
-/* 分享 */
-.cp-share { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-m); padding-top: var(--s-s) }
+/* 分享：照 iOS ShareChooser——两块并排的砖（raised2、圆角 12、内边距 16），记号 22 强调色不垫底，
+ * 下面标题 bodyEmph、说明 caption 两行；不能分享画线时那块记号转 ink3 并整体发灰 */
+.cp-share { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-m); padding-top: var(--s-m) }
 .cp-stile {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
-  padding: var(--s-l) var(--s-m); border-radius: var(--r-m); background: var(--raised2); text-align: left;
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-s);
+  padding: var(--s-l); border-radius: var(--r-m); background: var(--raised2); text-align: left;
 }
 .cp-stile:active { background: var(--hair) }
 .cp-stile[aria-disabled="true"] { opacity: 0.55 }
-.cp-stile-ic {
-  width: 36px; height: 36px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--accent-soft); color: var(--accent);
-}
-.cp-stile-tx { display: flex; flex-direction: column; gap: 2px }
+.cp-stile-ic { display: flex; color: var(--accent) }
+.cp-stile[aria-disabled="true"] .cp-stile-ic { color: var(--ink3) }
+.cp-stile-tx { display: flex; flex-direction: column; gap: var(--s-s) }
 .cp-stile-tx b { font: var(--t-body-emph); color: var(--ink) }
-.cp-stile-tx small { font: var(--t-caption); color: var(--ink3) }
-.cp-friends { padding-top: var(--s-s) }
-.cp-plane { flex: none; display: inline-flex; color: var(--accent) }
-.cp-fname {
-  display: flex; align-items: center; gap: var(--s-s);
-  padding: 4px 4px 4px var(--s-m); border-radius: var(--r-m); background: var(--raised2);
+.cp-stile-tx small {
+  font: var(--t-caption); color: var(--ink3);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.cp-fname .cp-nin { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent }
+/* 发给朋友：照 iOS FriendPickerSheet 的普通行；输入名字那一行照 FriendNameField（raised2 圆角 8 的框 + 右边「发送」） */
+.cp-list .cp-friends { padding-top: var(--s-xs) }
+.cp-plane { flex: none; display: inline-flex; color: var(--accent) }
+.cp-fname { display: flex; align-items: center; gap: var(--s-m); padding: var(--s-xs) var(--inset-page) }
+.cp-fname .cp-nin { flex: 1; min-width: 0; height: auto; min-height: var(--hit); padding: 0 var(--s-m); border: 0; border-radius: var(--r-s); background: var(--raised2); font: var(--t-body) }
+.cp-fname .cp-nin:focus { box-shadow: inset 0 0 0 1.5px var(--accent) }
+.cp-fname .cp-textbtn { min-height: var(--hit); padding: 0 var(--s-xs); font: var(--t-body-emph); color: var(--accent) }
+.cp-fname .cp-textbtn:disabled { color: var(--ink3) }
+.cp-friends p.cp-meta { padding: var(--s-xs) var(--inset-page) 0; font: var(--t-caption) }
+.cp-friends .cp-nerr { padding: var(--s-s) var(--inset-page) 0 }
 .cp-friends.busy { opacity: 0.7; pointer-events: none }
 
 /* 记一笔 */
