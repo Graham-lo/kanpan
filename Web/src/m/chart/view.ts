@@ -95,7 +95,8 @@ export class ChartView {
   frozenAxes: FrozenAxes | null = null
   renderer: ChartRenderer | null = null
 
-  /** 点尺寸与渲染倍率（min(3, devicePixelRatio)）。 */
+  /** 点尺寸与渲染倍率（min(4, devicePixelRatio)）。上限原来是 3（iPhone 正好 3），华为 nova 16 这类鸿蒙机是 3.5 倍屏，
+   *  封在 3 会让画布按 3 倍画再被拉伸 1.17 倍，字和细线发虚——所以放到 4，按设备真实倍率画。 */
   width = 0
   height = 0
   scale = 2
@@ -291,7 +292,7 @@ export class ChartView {
   measure(): void {
     const r = this.el.getBoundingClientRect()
     const W = r.width, H = r.height
-    const scale = Math.min(3, window.devicePixelRatio || 2)
+    const scale = Math.min(4, window.devicePixelRatio || 2)
     if (W === this.width && H === this.height && scale === this.scale) return
     this.width = W
     this.height = H

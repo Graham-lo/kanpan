@@ -153,7 +153,7 @@ describe('根宽与像素对齐（GeometryTests）', () => {
     expect(w.body === 8 && w.wick === 2).toBe(true)
   })
 
-  it.each([1, 2, 3])('snapping：snap 落在设备像素边界（scale %d）', scale => {
+  it.each([1, 2, 3, 3.5])('snapping：snap 落在设备像素边界（scale %d）', scale => {
     const r = new Rng(scale * 100)
     for (let k = 0; k < 2000; k++) {
       const x = r.d(-500, 1500)
@@ -187,7 +187,7 @@ describe('根宽与像素对齐（GeometryTests）', () => {
 })
 
 describe('蜡烛整像素光栅化（CandlePixelTests）', () => {
-  it.each([1, 2, 3])('wickIsWholePixels：影线整像素（scale %d）', scale => {
+  it.each([1, 2, 3, 3.5])('wickIsWholePixels：影线整像素（scale %d）', scale => {
     const px = wickPixels(scale)
     expect(px, 'aicoin 影线归零').toBeGreaterThanOrEqual(1)
     const w = wickLineWidth(scale)
@@ -196,7 +196,7 @@ describe('蜡烛整像素光栅化（CandlePixelTests）', () => {
     expect(px === 1 || Math.abs(w - want) <= 0.5 / scale + 1e-9, `aicoin@${scale} 物理宽度跑了：${w} vs ${want}`).toBe(true)
   })
 
-  it.each([1, 2, 3])('parity：实体与影线奇偶相同（scale %d）', scale => {
+  it.each([1, 2, 3, 3.5])('parity：实体与影线奇偶相同（scale %d）', scale => {
     for (const sp of spacingSweep()) {
       const w = candlePixels(sp, scale)
       expect(w.body % 2, `aicoin@${scale} spacing=${sp} 奇偶不同`).toBe(w.wick % 2)
@@ -204,7 +204,7 @@ describe('蜡烛整像素光栅化（CandlePixelTests）', () => {
     }
   })
 
-  it.each([1, 2, 3])('gapAtLeastOnePixel：实体之间至少 1 像素缝（scale %d）', scale => {
+  it.each([1, 2, 3, 3.5])('gapAtLeastOnePixel：实体之间至少 1 像素缝（scale %d）', scale => {
     for (const sp of spacingSweep()) {
       const w = candlePixels(sp, scale)
       const cell = Math.floor(sp * scale)
@@ -213,7 +213,7 @@ describe('蜡烛整像素光栅化（CandlePixelTests）', () => {
     }
   })
 
-  it.each([1, 2, 3])('monotonic：实体宽单调（scale %d）', scale => {
+  it.each([1, 2, 3, 3.5])('monotonic：实体宽单调（scale %d）', scale => {
     let prev = -1
     for (const sp of spacingSweep()) {
       const b = candlePixels(sp, scale).body
@@ -222,12 +222,12 @@ describe('蜡烛整像素光栅化（CandlePixelTests）', () => {
     }
   })
 
-  it.each([2, 3])('thinIsPhysical：thin 是物理判据（scale %d）', scale => {
+  it.each([2, 3, 3.5])('thinIsPhysical：thin 是物理判据（scale %d）', scale => {
     expect(candleMetrics(3 / scale, scale).thin, `aicoin@${scale} 一格 3 像素还画实体`).toBe(true)
     expect(candleMetrics(AICoinBehavior.initialSpacing, scale).thin, `aicoin@${scale} 默认根间距就退化了`).toBe(false)
   })
 
-  it.each([2, 3])('defaultSpacingIsFat：默认根间距下实体够胖（scale %d）', scale => {
+  it.each([2, 3, 3.5])('defaultSpacingIsFat：默认根间距下实体够胖（scale %d）', scale => {
     const w = candlePixels(AICoinBehavior.initialSpacing, scale)
     const cell = Math.floor(AICoinBehavior.initialSpacing * scale)
     expect(w.body).toBeGreaterThan(w.wick)
