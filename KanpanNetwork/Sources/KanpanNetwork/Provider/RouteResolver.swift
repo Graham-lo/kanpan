@@ -50,7 +50,7 @@ public struct RouteResolver: Sendable {
   }
 
   /// 看盘自己的后端（`kanpan-api` 的 `/v1/*` 只读接口）。不随线路档位变——直连线路下问板块历史、
-  /// 供应量也是问它；而且只在主机上（`MarketRoute.apiHosts`），备机上这些路径是 404。
+  /// 供应量也是问它；而且只在主机上（`MarketRoute.apiHosts`；2026-10-02 起线上只有新加坡一台）。
   public var backend: BackendClient { BackendClient(hosts: route.apiHosts, log: log) }
 
   /// 默认交易所。

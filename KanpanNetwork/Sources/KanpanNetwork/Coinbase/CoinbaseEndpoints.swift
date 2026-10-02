@@ -59,7 +59,7 @@ public struct CoinbaseEndpoints: Sendable, Equatable {
     return [URL(string: "wss://\(Self.streamHost)")!]
   }
 
-  /// `host` 可能带端口（备用网关是 `…:8443`），不能直接塞进 `URLComponents.host`。
+  /// `host` 可能带端口（网关表允许 `host:port` 写法，2026-10-02 前的备机就是 `…:8443`），不能直接塞进 `URLComponents.host`。
   static func origin(_ scheme: String, _ host: String) -> URLComponents? {
     URLComponents(string: "\(scheme)://\(host)")
   }

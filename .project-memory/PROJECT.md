@@ -25,7 +25,7 @@
 
 ## 3. 行情、账号、复盘（技术结论，沿用 09-15/16 的验证）
 
-- 线路：设置里「行情线路」两档，**出厂默认直连，没有自动切换**（2026-09-17 定）。直连 = 只走币安自己的域名（REST + WS），探不通照实说「点此重试」，绝不切 OKX；网关 = 只走两台 VPS 网关（主 `kanpan.43-160-232-253.sslip.io`，备 `kanpan.96-44-162-222.sslip.io:8443`）供 OKX 行情，两台之间竞速、失败的歇 10 秒（听 `Retry-After`）。选择存在 `Prefs.routePolicy`，字段归类 `deviceOnly`（2026-09-19 按第二轮 B7 改：不再随账号同步，新客户端不上传、云端旧值不覆盖本机、迁移保住当前选择；服务端为兼容老客户端仍认这个键，`wireOnlyKeys` 里有说明）；`PrefsStore` 把它镜像到 `MarketRoutePolicyStore`（`UserDefaults` 键 `market.routePolicy`，测试档案下用 `kanpan.tests.*` 套件），`RoutedMarketFeed` 听通知立刻换线（REST 与已连的 WS 一起）。旧的 `market-source.json`、`MarketRecoverySchedule`、直连冷却/对冲都已删除。**线路两档只管币安主行情**（K 线、报价、币安 WS）；主机上的 kanpan-api 是另一个具名出口 `MarketRoute.apiHosts`（= `ServerHosts.api`，只有主机，2026-09-24 第四批第 35 项）：订单流的 OKX 中继 `/v1/market/ws/okx`、币安中继 `/v1/market/ws/binance`、品种表 `/v1/market/orderflow/instruments`、深度快照 `/v1/market/depth`，以及 `BackendClient`（账号、同步、板块历史）、`/v1/market/meta`、`/v1/market/open-interest`，**任何线路下**都只打它——OKX 国内直连不通、订单流必须三家聚合，而备机跑 metrics 模式，这些路径在 `:8443` 上回 404，不能当候选。`MarketRoute.gateways`（主备两台）只给两台都有的：`/market/v1/*`、`/market/okx/stream`、`/oi/v1/metrics`、`/v1/market/{raw,stream,funding,ticker,open-interest/history}`。
+- 线路：设置里「行情线路」两档，**出厂默认直连，没有自动切换**（2026-09-17 定）。直连 = 只走币安自己的域名（REST + WS），探不通照实说「点此重试」，绝不切 OKX；网关 = 只走自家网关供 OKX 行情；2026-10-02 起网关表里只有新加坡一台 `kanpan.43-160-232-253.sslip.io`（用户定「不再用兜底方式」，美国备机的网关已停），失败的歇 10 秒（听 `Retry-After`），表仍是数组、线路层按表遍历。选择存在 `Prefs.routePolicy`，字段归类 `deviceOnly`（2026-09-19 按第二轮 B7 改：不再随账号同步，新客户端不上传、云端旧值不覆盖本机、迁移保住当前选择；服务端为兼容老客户端仍认这个键，`wireOnlyKeys` 里有说明）；`PrefsStore` 把它镜像到 `MarketRoutePolicyStore`（`UserDefaults` 键 `market.routePolicy`，测试档案下用 `kanpan.tests.*` 套件），`RoutedMarketFeed` 听通知立刻换线（REST 与已连的 WS 一起）。旧的 `market-source.json`、`MarketRecoverySchedule`、直连冷却/对冲都已删除。**线路两档只管币安主行情**（K 线、报价、币安 WS）；主机上的 kanpan-api 是另一个具名出口 `MarketRoute.apiHosts`（= `ServerHosts.api`，只有主机，2026-09-24 第四批第 35 项）：订单流的 OKX 中继 `/v1/market/ws/okx`、币安中继 `/v1/market/ws/binance`、品种表 `/v1/market/orderflow/instruments`、深度快照 `/v1/market/depth`，以及 `BackendClient`（账号、同步、板块历史）、`/v1/market/meta`、`/v1/market/open-interest`，**任何线路下**都只打它——OKX 国内直连不通、订单流必须三家聚合，`MarketRoute.gateways` 给网关才有的：`/market/v1/*`、`/market/okx/stream`、`/oi/v1/metrics`、`/v1/market/{raw,stream,funding,ticker,open-interest/history}`。
 - 网络层单独成包 `KanpanNetwork`（2026-09-17）：HTTP / WS 接口、币安 REST / WS 客户端、限流、线路策略与网关竞速都在这里，`KanpanData` 依赖它但 2026-09-24 起不再 `@_exported` 转出（审查 18a）：用到网络层名字的文件自己 `import KanpanNetwork`，app 的 pbxproj 显式链 KanpanNetwork；线路决策只在 `RouteResolver` / `MarketRoute`，取数件不再自己判 `.gateway`。改线路逻辑只碰这一包；`make network-test`。`BinanceREST.upstream` 不传 policy 就读用户当前线路，OI / 目录 / 报价簿客户端都跟设置走。网络性能按相同模拟器、相同路径比较，不将模拟器数值当成真机结果。
 - 冷启动 / 切换靠多品种快照、后台加深、自选预热做到不等网络；登录用户的自选表要等账号恢复后再判首屏（09-16 修过「冷启动进行情页」「自选一行行慢慢加载」）。
 - 账号：用户名 + 密码，Keychain 会话，设备管理、改密、注销；服务端 `Backend/kanpan-api`（Rust，主 VPS `/opt/kanpan-api`，API 8794，PostgreSQL loopback 55434，RLS 隔离，同机每日备份 30 天）。邮箱注册停掉了。**离机备份（2026-09-19，审查 A-08）**：主 VPS `kanpan-offsite-push.timer` 每天 00:20 CST 把最新 dump + `/etc/kanpan-api/{service,database}.env` rsync 到备用 VPS `trade-vps-old:/var/backups/kanpan-offsite/<UTC 时间戳>/`（sshd 在 **33333** 端口，密钥 `/root/.ssh/kanpan-offsite`，authorized_keys 限 `from=107.174.172.10` 且无 pty/转发，留 30 份）；Mac 上 launchd `com.mdd.kanpan.offsite-pull` 每天 01:00 拉到 `~/kanpan-backups/<时间戳>/`（日志 `pull.log`，留 30 份）。安装步骤与恢复演练步骤见 `Backend/kanpan-api/ops/OFFSITE.md`；演练在 2026-09-23 之前从未实跑过，P4.7 在线上机的临时库里实跑，用时与验证 SQL 写回 OFFSITE.md。
@@ -806,7 +806,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 - 起因：美国主机被币安 451、到国内链路慢。用户买了腾讯云新加坡 CVM（`43.160.232.253`，2 vCPU / 7.7 GB / 79 GB，无限流量），
   原话「我只想利用它的网络」→「其实这配置是不是完全可以部署啊」。定稿：**新加坡 = 唯一公开主机**（Caddy、kanpan-api、worker、
-  Postgres、网关 + stream-hub、网页版），美国主 = 编译机 + 温备 + 旧主机名过渡代理，美国备 = 网关备用 + 第二份离机备份。
+  Postgres、网关 + stream-hub、网页版），美国主 = 编译机 + 温备 + 离机备份目标，美国备 = 第二份离机备份。**当晚用户又定：客户端只连新加坡、不再有任何兜底**（见下一条）。
   不在 SG 上编译（美国编好 `kanpan-api` 二进制再运过去），`service.env` 里的 pepper / encryption key 原样从美国拷，绝不重生成。
 - 客户端：`KanpanCore/Model/ServerHosts.swift` `primary` 换成新加坡；全仓 41 个文件里的旧主机名一并换掉（测试、Web 的
   ORIGIN / API_ORIGIN / ISSUER、脚本、文档）；`docs/acceptance/**` 与 09-29 压测 C 路报告是历史测量，故意不改。
@@ -818,7 +818,15 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **22:49 正式切换完成**（用户放行安全组 443 后跑 `ops/cutover-sg.sh`）：新加坡 users=128 / sync_ops=17627 / alerts=35 / notes=38；
   美国 Caddy 把旧主机名 `kanpan.107-174-172-10.sslip.io` 改成过渡代理（接口反代新加坡、`/web/*` `/ui/*` 308），美国 api / worker /
   网关 / stream-hub / 备份与推送 timer 已禁用，Postgres 留作温备。新旧两个主机名公网冒烟全过。过程与两个踩坑见 `docs/新加坡主机迁移-2026-10-02.md`。
+- **去掉所有兜底**（同晚，用户：「直接切换 App web 移动的，也不再用兜底方式」「只迁移看盘相关的服务」）：`ServerHosts` 删掉 `backup` /
+  `backupPort`，`gateways` / `api` / `names` 只剩新加坡、端口只有 443，四处测试跟改（network 223 全绿）；美国主的 Caddy 删掉
+  `kanpan.107-174-172-10.sslip.io` 站点（旧主机名 TLS 直接失败，Trader Foresight / scorebook / bit-orderflow 一概没碰）；美国备
+  `kanpan-gateway` / `kanpan-stream-hub` 已 disable；`offsite-pull.sh` / `Web/scripts/deploy.sh` / `cutover-sg.sh` 删掉经美国跳的 `kanpan-sg-jump` 兜底。
+  旧 iOS 包从此连不上服务器，手机在身边时 `make install-release`。
+- **新加坡公网出站只有约 1 Mbps**（SG→Mac 拉 8 MB 59 KB/s、第二次 45 KB/s；Mac→SG 1.1 MB/s、US→SG 1 MB/s、SG→US 145 KB/s；元数据
+  `bandwidth-limit-egress`=1572864）。这是手机 / 网页速度最大的瓶颈，只能用户在腾讯控制台调带宽上限。「美国容量大可以多缓存」：美国拿不到币安数据
+  且 SG→US 只有 145 KB/s，只能做冷归档；多缓存的数据放新加坡（65 GB 空），候选方案（K 线库、features 留 1–2 年、OI / 费率长期攒、30 s 聚合留 30 天）写在迁移文档末尾，等用户定。
 - Mac 经 Surge 代理直连 SG 22 时常被掐（sshd 无日志、fail2ban 0 ban）：已在 `Graham-lo/surge` 加 `Kanpan.list`（新加坡 DIRECT）挂进
-  Universal / iOS 两份 profile 与 Mac 正在用的 `Graham_HomeGateway`，直连后 SSH 稳；`offsite-pull.sh` 与 `Web/scripts/deploy.sh` 仍保留改走 `kanpan-sg-jump` 的兜底。
+  Universal / iOS 两份 profile 与 Mac 正在用的 `Graham_HomeGateway`，直连后 SSH 稳；`offsite-pull.sh` 与 `Web/scripts/deploy.sh` 的 `kanpan-sg-jump` 兜底同晚按「不要兜底」删掉了。
 - SG 的 `ubuntu` 口令在聊天里暴露过，密码登录已禁（只认密钥），仍要在腾讯控制台改掉。
 

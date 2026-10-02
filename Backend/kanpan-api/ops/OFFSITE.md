@@ -39,9 +39,9 @@ root 不能直接登）。下面各节里写的「主服务器 = `orderflow-vps`
 | 机器 | 角色 | 备份 |
 | --- | --- | --- |
 | 新加坡 `kanpan-sg` | 唯一公开主机：Caddy、kanpan-api、kanpan-worker、Postgres、网关 + stream-hub、网页版 | `kanpan-backup.timer` 00:08 落 `/var/backups/kanpan/`（瘦转储，见下） |
-| 美国主 `orderflow-vps`（107.174.172.10） | 编译机 + 温备 + 旧主机名 `kanpan.107-174-172-10.sslip.io` 的过渡代理 | 收 SG 的 `kanpan-offsite-push-us.timer`（00:50）→ `/var/backups/kanpan-offsite/` |
-| 美国备 `96.44.162.222:33333` | 行情网关备用 | 收 SG 的 `kanpan-offsite-push.timer`（00:20）→ `/var/backups/kanpan-offsite/` |
-| Mac | 真正的异地那一份 | `offsite-pull.sh` 01:00 从 `kanpan-sg` 拉（直连被掐就自动改走 `kanpan-sg-jump`） |
+| 美国主 `orderflow-vps`（107.174.172.10） | 编译机 + 温备；2026-10-02 起不再对客户端提供服务（旧主机名的 Caddy 站点已删） | 收 SG 的 `kanpan-offsite-push-us.timer`（00:50）→ `/var/backups/kanpan-offsite/` |
+| 美国备 `96.44.162.222:33333` | 只收离机备份（看盘网关 / stream-hub 已 disable） | 收 SG 的 `kanpan-offsite-push.timer`（00:20）→ `/var/backups/kanpan-offsite/` |
+| Mac | 真正的异地那一份 | `offsite-pull.sh` 01:00 从 `kanpan-sg` 直连拉（Surge 已给新加坡 DIRECT；10-02 起不再有经美国跳的兜底） |
 
 - **瘦转储**：SG → 美国方向的链路只有几 KB/s，`backup.sh` 2026-10-02 起 `--exclude-table-data`
   掉 `orderflow_heat*`、`market_features`、`orderflow_orders`、`orderflow_live`、`orderflow_flow`

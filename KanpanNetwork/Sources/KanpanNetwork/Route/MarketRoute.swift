@@ -27,7 +27,7 @@ public struct MarketRoute: Sendable, Equatable {
   ///
   /// 线路两档只管币安主行情；订单流的 OKX 中继、币安中继、品种表、深度快照任何线路下都经
   /// kanpan-api，因为 OKX 国内直连不通且订单流必须三家聚合。账号、板块历史、元数据、持仓量这些
-  /// `/v1/*` 也一样。这些只有主机上有（备机是 metrics 模式，一律 404），所以这里没有备机。
+  /// `/v1/*` 也一样。这些只有主机上有；2026-10-02 起线上也只有新加坡一台，没有备机。
   public var apiHosts: [String] { endpoints.api }
 
   /// 某一家行情 REST 的候选主机：直连是它自己的域名，网关线路上是网关候选。

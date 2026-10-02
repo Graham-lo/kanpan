@@ -54,14 +54,6 @@ mkdir -p "$ROOT"; chmod 700 "$ROOT"
 rm -rf "$stage"; mkdir "$stage"                      # umask 077 → 700
 trap 'rm -rf "$stage"' EXIT
 
-# Mac 经 Surge 直连新加坡的 22 时常被代理节点掐断（sshd 日志里什么都没有）。直连不通就改走
-# 经美国主机跳的别名，数据量只有几 MB，绕一圈也就几十秒。
-if ! ssh "${SSH_OPTS[@]}" "$HOST" true 2>/dev/null; then
-  FALLBACK=${SOURCE_HOST_FALLBACK:-kanpan-sg-jump}
-  printf 'offsite-pull: %s 连不上，改走 %s\n' "$HOST" "$FALLBACK" >&2
-  HOST=$FALLBACK
-fi
-
 # 服务器上的文件名是 kanpan-YYYYMMDD-HHMMSS.dump，字典序就是时间序。
 # 通配符要在 sudo 里面展开：目录是 root 700，ubuntu 自己展开不了，会把 kanpan-*.dump 原样递给 ls。
 latest=$(ssh "${SSH_OPTS[@]}" "$HOST" "$REMOTE_SUDO sh -c 'ls -1 $REMOTE_DUMPS/kanpan-*.dump 2>/dev/null' | sort | tail -1") \

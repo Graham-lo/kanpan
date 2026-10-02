@@ -17,7 +17,7 @@ enum GatewayFunding {
   static let timeout: TimeInterval = 8
 
   static func url(host: String, source: String) -> URL? {
-    // `host` 可能带端口（备用网关是 `…:8443`），不能直接塞进 `URLComponents.host`。
+    // `host` 可能带端口（网关表允许 `host:port` 写法，2026-10-02 前的备机就是 `…:8443`），不能直接塞进 `URLComponents.host`。
     guard var c = URLComponents(string: "https://\(host)"), c.host != nil,
           c.user == nil, c.password == nil else { return nil }
     c.path = path

@@ -132,11 +132,15 @@ struct ClientHardeningTests {
     #expect(throws: AccountError.invalidURL) {
       _ = try AccountClient(baseURL: URL(string: "https://kanpan.43-160-232-253.sslip.io.evil.example")!, vault: StubVault(nil))
     }
-    for allowed in ["https://kanpan.43-160-232-253.sslip.io",
-                    "https://kanpan.96-44-162-222.sslip.io:8443",
-                    "https://kanpan.43-160-232-253.sslip.io:8443"] {
-      #expect(throws: Never.self, "\(allowed) 是自家网关") {
-        _ = try AccountClient(baseURL: URL(string: allowed)!, vault: StubVault(nil))
+    #expect(throws: Never.self, "新加坡主机是自家网关") {
+      _ = try AccountClient(baseURL: URL(string: "https://kanpan.43-160-232-253.sslip.io")!, vault: StubVault(nil))
+    }
+    // 2026-10-02 起没有备机：以前的美国备机地址与非 443 端口都不再放行，省得令牌往一台已经不是自家的机器上送。
+    for gone in ["https://kanpan.96-44-162-222.sslip.io:8443",
+                 "https://kanpan.43-160-232-253.sslip.io:8443",
+                 "https://kanpan.107-174-172-10.sslip.io"] {
+      #expect(throws: AccountError.invalidURL, "\(gone) 已经不是自家主机") {
+        _ = try AccountClient(baseURL: URL(string: gone)!, vault: StubVault(nil))
       }
     }
   }
@@ -160,8 +164,8 @@ struct ClientHardeningTests {
   @Test("来源不符的存档当作没有会话")
   func 来源不符() async throws {
     reset()
-    // 另一台网关签的：同样在白名单里，但不是这个客户端连的那台。
-    let vault = StubVault(try archive(origin: "kanpan.96-44-162-222.sslip.io"))
+    // 以前的美国主机签的：换了服务器之后旧存档不能跟着出门。
+    let vault = StubVault(try archive(origin: "kanpan.107-174-172-10.sslip.io"))
     let client = try makeClient(vault)
     #expect(await client.savedUser() == nil, "不是这台服务器签的，就不算有会话")
     await #expect(throws: (any Error).self) { let _: Probe = try await client.request("v1/auth/me") }

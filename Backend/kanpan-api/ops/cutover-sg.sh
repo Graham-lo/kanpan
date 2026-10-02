@@ -6,14 +6,14 @@
 #   1. 美国停 kanpan-api / kanpan-worker（停写），落一份最终瘦转储（和 ops/backup.sh 同一组排除表）；
 #   2. 转储经 Mac 中转到新加坡（美国 → 新加坡那段链路只有几 KB/s，经 Mac 走是几十秒）；
 #   3. 新加坡停 api / worker，整个 public schema 重建后 pg_restore，ops/install.py 兜一遍，起服务，查健康与账号数；
-#   4. 美国的 Caddy 把旧主机名 kanpan.107-174-172-10.sslip.io 改成过渡代理：接口反代到新加坡、/web /ui 308 跳过去；
+#   4. 美国的 Caddy 把旧主机名 kanpan.107-174-172-10.sslip.io 改成过渡代理（切完当晚用户定「不要兜底」，这个站点块已经整个删掉，
+#      旧主机名现在 TLS 直接失败；这一步留着只是记录当时做了什么）；
 #   5. 美国停掉并禁用 api / worker / 网关 / stream-hub / 备份与推送 timer（Postgres 容器留着当温备）；
 #   6. 从美国与本机各探一遍旧新两个主机名。
 # 出错即停（set -e），停在哪一步看日志；第 3 步之前美国的服务只是 stop 没 disable，`ssh orderflow-vps systemctl start kanpan-api kanpan-worker` 就回滚。
 set -euo pipefail
 US=orderflow-vps
 SG=${SG_SSH:-kanpan-sg}
-SGJ=${SG_SSH_FALLBACK:-kanpan-sg-jump}
 NEW=kanpan.43-160-232-253.sslip.io
 OLD=kanpan.107-174-172-10.sslip.io
 STAMP=$(date -u +%Y%m%d-%H%M%S)
@@ -23,7 +23,7 @@ log() { printf '%s cutover: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 # 0. 443 从美国探；Mac 经 Surge 的结果不作数。
 code=$(ssh "$US" "curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://$NEW/chart-gateway/health" || true)
 [ "$code" = 200 ] || { log "美国到 $NEW:443 不通（$code）：腾讯安全组还没放行 TCP 443，不切"; exit 2; }
-ssh -o ConnectTimeout=15 -o BatchMode=yes "$SG" true 2>/dev/null || { log "$SG 直连不通，改走 $SGJ"; SG=$SGJ; }
+ssh -o ConnectTimeout=15 -o BatchMode=yes "$SG" true 2>/dev/null || { log "$SG 连不上，不切"; exit 2; }
 
 # 1. 美国停写、落最终转储。
 log "美国停 kanpan-api / kanpan-worker"

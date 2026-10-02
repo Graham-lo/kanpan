@@ -90,14 +90,14 @@ struct ProviderCapabilitiesTests {
     #expect(e.gateways == ["a", "b"])
   }
 
-  @Test("RouteResolver 的出口：直连给币安本家与出厂域名，网关给替身与两台线上网关")
+  @Test("RouteResolver 的出口：直连给币安本家与出厂域名，网关给替身与新加坡那一台网关（2026-10-02 起没有备机）")
   func resolverOutputs() {
     let direct = RouteResolver(policy: .direct)
     #expect(direct.route.restHosts(direct: "fapi.binance.com") == ["fapi.binance.com"])
     #expect(direct.defaultProvider.capabilities.upstream == "binance")
     let gateway = RouteResolver(policy: .gateway)
     #expect(gateway.route.gateways == MarketEndpoints.production.gateways)
-    #expect(gateway.route.gateways.count == 2)
+    #expect(gateway.route.gateways == [ServerHosts.primary])
     #expect(gateway.route.restHosts(direct: "fapi.binance.com") == MarketEndpoints.production.gateways)
     #expect(gateway.defaultProvider.capabilities.upstream == "okx")
     // 线上网关表里绝不能混进合约测试网。
@@ -107,7 +107,7 @@ struct ProviderCapabilitiesTests {
     #expect(MarketEndpoints.production.gateways.first == ServerHosts.accountAPI.host)
   }
 
-  @Test("冷启动热身跟线路走：直连热币安两台，网关热两台网关")
+  @Test("冷启动热身跟线路走：直连热币安两台，网关热线上网关表里的每一台")
   func prewarmFollowsRoute() {
     let direct = RouteResolver(policy: .direct).defaultProvider.prewarmTargets
     #expect(direct.map { $0.url.host ?? "" } == ["fapi.binance.com", "dstream.binance.me"])

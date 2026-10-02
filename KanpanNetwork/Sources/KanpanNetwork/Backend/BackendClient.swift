@@ -2,7 +2,7 @@ import Foundation
 
 /// 看盘自己的后端（`kanpan-api`，`/v1/*`）上那些免鉴权只读接口的取数口。
 ///
-/// 后端只在主机上（`MarketRoute.apiHosts`；备机是 metrics 模式，这些路径 404），跟行情线路选直连
+/// 后端只在主机上（`MarketRoute.apiHosts`；2026-10-02 起线上只有新加坡一台，没有备机），跟行情线路选直连
 /// 还是网关无关——直连线路下板块历史、供应量这些也只能问后端。主机表从 `RouteResolver.backend` 拿，
 /// 不在各页面自己拼名单、自己建 `URLSession`。
 ///
@@ -56,7 +56,7 @@ public struct BackendClient: Sendable, Equatable {
     throw failure
   }
 
-  /// `host` 可能带端口（备用网关是 `…:8443`），不能直接塞进 `URLComponents.host`。
+  /// `host` 可能带端口（网关表允许 `host:port` 写法，2026-10-02 前的备机就是 `…:8443`），不能直接塞进 `URLComponents.host`。
   static func url(host: String, path: String, query: [URLQueryItem]) -> URL? {
     guard var c = URLComponents(string: "https://\(host)"), c.host != nil,
           c.user == nil, c.password == nil, c.path.isEmpty, c.query == nil else { return nil }

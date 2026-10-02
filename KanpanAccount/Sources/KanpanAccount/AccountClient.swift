@@ -121,7 +121,7 @@ public actor AccountClient {
     return origin == AccountClient.origin(of: baseURL)
   }
   static func origin(of url: URL) -> String { url.host?.lowercased() ?? "" }
-  /// 只认自家那两台网关（含 :8443 那个端口变体）。
+  /// 只认自家的新加坡主机（2026-10-02 起只有这一台，443）。
   static func isAllowed(_ url: URL, options: Options) -> Bool {
     guard let host = url.host?.lowercased() else { return false }
     #if DEBUG

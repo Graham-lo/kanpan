@@ -61,14 +61,16 @@ struct MarketRoutePolicyTests {
     #expect(BinanceProvider.upstream(for: MarketRoute(policy: .gateway, endpoints: .production)) == .okx)
   }
 
-  @Test("线路两档只管币安主行情：apiHosts 两档都只有主机，gateways 仍是主备两台")
+  @Test("线路两档只管币安主行情：apiHosts 与 gateways 两档都只有新加坡主机一台（2026-10-02 起没有备机兜底）")
   func apiHostsIgnorePolicy() {
     for policy in MarketRoutePolicy.allCases {
       let route = MarketRoute(policy: policy, endpoints: .production)
       #expect(route.apiHosts == [ServerHosts.primary], "\(policy)")
       #expect(route.gateways == ServerHosts.gateways, "\(policy)")
     }
-    #expect(ServerHosts.gateways.count == 2)
+    #expect(ServerHosts.gateways == [ServerHosts.primary])
+    #expect(ServerHosts.names == [ServerHosts.primary])
+    #expect(ServerHosts.ports == [443])
     #expect(ServerHosts.api == [ServerHosts.primary])
     // 只给 gateways 时 apiHosts 取第一台；重复的去掉；没有网关就没有 kanpan-api。
     #expect(MarketEndpoints(gateways: ["a", "b"]).api == ["a"])

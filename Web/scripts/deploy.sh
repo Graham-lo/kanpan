@@ -4,7 +4,7 @@
 # 用法：从仓库根 make web-deploy，或在 Web/ 下 sh scripts/deploy.sh；SKIP_BUILD=1 跳过构建。
 set -eu
 cd "$(dirname "$0")/.."
-# 新加坡主机的 ssh 别名。Mac 经 Surge 直连它的 22 时常被代理节点掐断，那就 SG_SSH=kanpan-sg-jump（经美国主机跳）。
+# 新加坡主机的 ssh 别名（Surge 已给它加 DIRECT，直连稳；2026-10-02 用户定不再留经美国跳的兜底）。
 SG_SSH=${SG_SSH:-kanpan-sg}
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
