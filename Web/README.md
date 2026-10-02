@@ -49,7 +49,10 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
   - `/fapi/v1/klines`：K 线。往左拖到头会用 `endTime` 继续向前翻页。
   - `/fapi/v1/openInterest`、`/futures/data/openInterestHist`：持仓量。副图的「持仓量」用 `openInterestHist`，币安只给 30 天内的数据。
   - `/futures/data/globalLongShortAccountRatio`、`topLongShortPositionRatio`、`takerlongshortRatio`：三个比值，每分钟刷新一次。
-- WS：直连 `wss://fstream.binance.com/market/stream`（默认）。网关线路走本站 `wss://<本站>/market/stream`，和手机的「网关」是同一个服务。线路只在「我的 → 通用」里手动切，不会自动切换。
+- 线路两档，出厂是**网关**（2026-10-03 起；国内不开代理 `fapi.binance.com` 连不上，网页版没有 iOS 那样的本地缓存可以撑着）。线路只在「我的 → 通用」里手动切，不会自动切换。
+  - 网关：上面这些 REST 由 `market/rest.ts` 的 `viaRoute()` 改写成同源 `/v1/market/raw/<path>?…&source=binance`，经新加坡的 kanpan-api 透传（白名单只放公开行情路径）；WS 走本站 `wss://<本站>/market/stream`，和手机的「网关」是同一个服务。
+  - 直连：REST 直打 `fapi.binance.com`；WS 拨 `wss://dstream.binance.me/stream`，和 iOS 出厂同一台（国内能直连，旧的 `fstream.binance.com` 国内解析被污染）。
+  - `/web/diag.html` 是线路体检页：挨个拨上面这些主机，手机上打开就能看出哪一跳不通。
   - 订阅用 SUBSCRIBE / UNSUBSCRIBE 增减，不重连。订的流有 `kline_<周期>`、`aggTrade`、`markPrice@1s`、`ticker`。
   - 断线后按 1 秒、2 秒、4 秒……重连，最长 15 秒。连上 8 秒还收不到第一帧、或者 30 秒没有任何消息，都当作断线。
   - 页面隐藏时只保留核心流（当前格子的 K 线和 ticker、提醒要盯的品种），重连间隔至少 10 秒；回到前台立刻重连并补订。

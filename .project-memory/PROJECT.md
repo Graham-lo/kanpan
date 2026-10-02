@@ -831,5 +831,14 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   且 SG→US 只有 145 KB/s，只能做冷归档；多缓存的数据放新加坡（65 GB 空），候选方案（K 线库、features 留 1–2 年、OI / 费率长期攒、30 s 聚合留 30 天）写在迁移文档末尾，等用户定。
 - Mac 经 Surge 代理直连 SG 22 时常被掐（sshd 无日志、fail2ban 0 ban）：已在 `Graham-lo/surge` 加 `Kanpan.list`（新加坡 DIRECT）挂进
   Universal / iOS 两份 profile 与 Mac 正在用的 `Graham_HomeGateway`，直连后 SSH 稳；`offsite-pull.sh` 与 `Web/scripts/deploy.sh` 的 `kanpan-sg-jump` 兜底同晚按「不要兜底」删掉了。
+- **网页版的 REST 在网关线路下经新加坡透传，出厂线路改网关（23:39 用户 4G 上 LINK/USDT 空图）**：网页版「直连」= 浏览器直打
+  `fapi.binance.com`，国内不开代理连不上；而改前「网关」只管 WS、REST 照样直打。kanpan-api 新增 `venues/binance.rs`
+  （`/v1/market/raw/<path>?source=binance`，13 条公开路径白名单、权重预算 1000/min、短 TTL 缓存 + 合流、429/418 冷却），
+  网页 `market/rest.ts` 的 `viaRoute()` 在网关线路下改写 fapi / dapi 地址（挂在 `j()` 与订单流 `getJSON()` 上）；桌面 `store.route`、
+  手机 `routePolicy` 出厂改 `gateway`，没亲手选过的老档跟着改（`routePicked`），这是有意偏离 iOS「出厂直连」；换线路后图表自动重取。
+  直连的推送域名也换成 iOS 出厂那台 `dstream.binance.me`（`market/stream.ts` / `m/chart/depth.source.ts` / `orderflow/feed.ts`，
+  旧 `fstream.binance.com` 国内解析被污染）；但国内不开代理的直连仍拿不到合约 REST（币安没有国内能到的合约 REST 入口，iOS 同样，
+  只是 iOS 有缓存撑着），所以网页版出厂必须是网关。新加了纯静态线路体检页 `/web/diag.html`（`Web/public/diag.html`），
+  手机上打开十秒出一张各主机通不通的表。详见迁移文档「手机 4G 上『暂时取不到』」一节。Mac 到新加坡「绕美国」是腾讯出口的路由，不是 Surge 也不是代码。
 - SG 的 `ubuntu` 口令在聊天里暴露过，密码登录已禁（只认密钥），仍要在腾讯控制台改掉。
 

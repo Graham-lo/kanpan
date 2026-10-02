@@ -1,7 +1,10 @@
-/* Hkline Web · 币安 U 本位合约 REST（浏览器直连）
+/* Hkline Web · 币安 U 本位合约 REST
  *
- * fapi.binance.com 对 /fapi/* 与 /futures/data/* 都回 Access-Control-Allow-Origin: *，可以直接跨域取。
+ * 直连线路：浏览器直接取 fapi.binance.com（它对 /fapi/* 与 /futures/data/* 都回 Access-Control-Allow-Origin: *）。
  * 一律不发 Referer：币安 CloudFront 对来源页是 sslip.io 的请求回 403 且不带跨域头。
+ * 网关线路：同样的地址改走新加坡那台的 /v1/market/raw/<path>?source=binance（viaRoute）——国内不开代理
+ * 根本连不上 fapi.binance.com，2026-10-02 之前「网关」只管 WebSocket，手机 4G 上 K 线、品种表全是空的。
+ * 限流闸（limit.ts）仍按币安的原地址记账：两条线路最后打的都是同一家，预算与冷却是一回事。
  * 取不到就是取不到——不造演示数据，界面显示空态。
  */
 import type { Bar } from '../chart/calc'
@@ -11,6 +14,19 @@ import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from 
 
 export const REST = 'https://fapi.binance.com'
 
+/** 自家服务器的根：线上与页面同源；本机开发（localhost）直接打线上那台。 */
+export function apiOrigin(): string {
+  if (typeof location !== 'undefined' && /^https:$/.test(location.protocol) && !/^localhost$|^127\./.test(location.hostname)) return location.origin
+  return 'https://kanpan.43-160-232-253.sslip.io'
+}
+/** 网关线路下，币安合约的 REST 地址改成经新加坡透传的地址；别的地址与直连线路原样返回。 */
+export function viaRoute(url: string): string {
+  if (S.route !== 'gateway') return url
+  const m = /^https:\/\/(?:fapi|dapi)\.binance\.com\/([^?#]+)(\?[^#]*)?$/.exec(url)
+  if (!m) return url
+  return `${apiOrigin()}/v1/market/raw/${m[1]}${m[2] ? `${m[2]}&` : '?'}source=binance`
+}
+
 /** priority：给浏览器的取数优先级（同一条 HTTP/2 连接上谁先拿带宽）；冷启动并行预取的 K 线用 'low'，让品种表先到 */
 export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<T> {
   // 主机在限流冷却里就不发（抛 RateLimited）：429 之后接着打会被升级成 418 封 IP；
@@ -19,7 +35,7 @@ export async function j<T = unknown>(url: string, ms = 8000, background = false,
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
-    const r = await fetch(url, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store', ...(priority ? { priority } : {}) })
+    const r = await fetch(viaRoute(url), { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store', ...(priority ? { priority } : {}) })
     noteStatus(url, r.status, r.headers.get('Retry-After'))
     if (!r.ok) throw new Error(`${r.status} ${url}`)
     return await r.json() as T

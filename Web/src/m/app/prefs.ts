@@ -123,7 +123,7 @@ export function defaultPrefs(): Prefs {
     candleKind: 'candle', barSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
     indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
-    params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'direct',
+    params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
     favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', reviewSearchScope: 'history',
   }
 }

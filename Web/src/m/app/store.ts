@@ -50,6 +50,8 @@ export interface State extends Prefs {
   alerts: Alert[]
   /** 行情停住了没有（不落盘） */
   stale: boolean
+  /** 用户亲手选过线路没有：没选过的，出厂值改了就跟着改（2026-10-02 出厂从直连改成网关） */
+  routePicked: boolean
 }
 
 /** 不落盘的字段 */
@@ -60,6 +62,7 @@ export function defaults(): State {
     ...defaultPrefs(),
     page: 'chart', symbol: 'BTCUSDT', scroll: {},
     symbols: { favorites: [], recents: [], groups: [], groupForSymbol: {}, seeded: false },
+    routePicked: false,
     alerts: [],
     stale: false,
   }
@@ -103,6 +106,8 @@ export function hydrate(raw: Record<string, unknown>): State {
     // 并进 st 之前提醒存在自己的键里：档里还没有 alerts 字段时搬一次
     alerts: alertList('alerts' in raw ? raw.alerts : legacyAlerts()),
     stale: false,
+    routePicked: raw.routePicked === true,
+    ...(raw.routePicked === true ? {} : { routePolicy: d.routePolicy }),
   }
 }
 

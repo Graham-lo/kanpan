@@ -1,13 +1,13 @@
 /* Hkline Web · 实时推送
  *
- * 币安 U 本位合约的 WebSocket 2026-04 起按数据类型拆了路由：
- *   /market/stream —— kline、ticker、markPrice、aggTrade（这里全用它）
- *   /public/stream —— 深度（本阶段不接）
- * 旧的 wss://fstream.binance.com/stream 已经什么都不推了。
+ * 币安 U 本位合约在 `fstream.binance.com` 上的 WebSocket 2026-04 起按数据类型拆了路由
+ * （/market/stream 行情、/public/stream 深度，/stream 什么都不推了）；`dstream.binance.me` 没拆，
+ * `/stream` 上行情与深度都在，而且是国内能直连的那一台（见下面 DIRECT 的注释）。
  *
  * 线路两档，用户在「我的 · 通用」里选，选了哪条就走哪条，不自动切换（和手机端同一条规矩）：
- *   直连 —— wss://fstream.binance.com/market/stream（默认）
- *   网关 —— wss://<本站>/market/stream，和手机「网关」那一档是同一个服务
+ *   直连 —— wss://dstream.binance.me/stream（和 iOS 出厂同一台）
+ *   网关 —— wss://<本站>/market/stream，和手机「网关」那一档是同一个服务（网页版出厂是它：
+ *           REST 也要经新加坡透传，国内不开代理 fapi.binance.com 连不上，见 rest.ts 的 viaRoute）
  *
  * 连接池（多图布局最多 16 格，每格 K 线 + 行情两路，再加自选、提醒）：
  *   每条连接订的流有上限——直连按币安合约文档一条 200 路，网关按 stream_hub 的规矩一条 64 路、
@@ -22,7 +22,13 @@ import type { Bar } from '../chart/calc'
 import { S, emit, type Route } from './state'
 import { emitTrade } from './trades'
 
-const DIRECT = 'wss://fstream.binance.com/market/stream'
+/**
+ * 直连的推送域名照 iOS 出厂的 `dstream.binance.me`（`KanpanNetwork/Binance/BinanceProvider.swift`
+ * `defaultStreamHost`）：生产盘、国内不开代理能直连，`/stream` 上 kline / ticker / markPrice / aggTrade
+ * 四族都在发（2026-10-03 实测 12 秒 21 帧，其中 kline 15 帧）。旧的 `fstream.binance.com` 在国内解析被污染、
+ * 握手就被重置（Surge 的 BinanceDirect.list 也只放 dstream.binance.me / fstream.binance.me / *.binance.vision 直连）。
+ */
+const DIRECT = 'wss://dstream.binance.me/stream'
 /** 每条连接最多订几路 */
 export const PER_CONN: Record<Route, number> = { direct: 200, gateway: 64 }
 /** 一共最多订几路（网关同一来源 160 路；直连给一个宽松的保险） */

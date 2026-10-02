@@ -1,9 +1,10 @@
 // 手机网页版 · 盘口（主图右缘五档）的数据源。照 iOS 的 MarketFeed（`.depth` 那一支）与
 // KanpanNetwork/Binance/DTO.swift 的 DepthSnapshot 写。
 //
-// - 流：币安合约 `<symbol>@depth5@100ms`，走 `/public/stream`（2026-04 起深度类单独一条路由，
-//   `/market/stream` 不推深度）。每一帧就是完整的前五档，不是增量——不拉 REST 快照、不合并本地簿，
-//   照增量流去叠只会把同一份快照叠成越来越厚的假盘口。
+// - 流：币安合约 `<symbol>@depth5@100ms`，拨 iOS 出厂同一台 `dstream.binance.me` 的 `/stream`
+//   （国内不开代理能直连；2026-10-03 实测 12 秒 88 帧。`fstream.binance.com` 在国内解析被污染、握手就重置，
+//   而且它 2026-04 起把深度拆到了 `/public/stream`，dstream 没拆）。每一帧就是完整的前五档，不是增量——
+//   不拉 REST 快照、不合并本地簿，照增量流去叠只会把同一份快照叠成越来越厚的假盘口。
 // - 线路：只在「直连」上有。iOS 的网关线路（OKX 替身，hasMicrostructure = false）没有盘口，
 //   网页版的网关 `/public/stream` 也不转深度（实测 1006），所以网关上照 iOS 不画、不连。
 // - 帧按撮合时间 `T`（没有退 `E`）只收不比手上旧的；断线、换品种、关掉、切后台立刻交 null，
@@ -15,7 +16,7 @@
 import type { BookLevel, OrderBook } from './state'
 import { makeOrderBook } from './state'
 
-export const DEPTH_HOST = 'wss://fstream.binance.com/public/stream'
+export const DEPTH_HOST = 'wss://dstream.binance.me/stream'
 export const depthStream = (symbol: string): string => `${symbol.toLowerCase()}@depth5@100ms`
 export const depthURL = (symbol: string): string => `${DEPTH_HOST}?streams=${depthStream(symbol)}`
 

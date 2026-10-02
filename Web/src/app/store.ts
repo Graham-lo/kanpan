@@ -88,6 +88,8 @@ export interface Slots {
 export interface State {
   theme: Theme; skin: Skin; updown: UpDown
   route: 'direct' | 'gateway'
+  /** 用户亲手选过线路没有：没选过的，出厂值改了就跟着改（2026-10-02 出厂从直连改成网关） */
+  routePicked: boolean
   layout: Layout; cells: CellCfg[]; active: number
   pinned: string[]
   panel: PanelId | null; watchTab: Kind; watch: Record<Kind, string[]>
@@ -128,7 +130,7 @@ const TRANSIENT: (keyof State)[] = ['page', 'stale', 'account']
 
 function defaults(): State {
   return {
-    theme: 'light', skin: 'sage', updown: 'red-up', route: 'direct',
+    theme: 'light', skin: 'sage', updown: 'red-up', route: 'gateway', routePicked: false,
     layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0,
     pinned: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
     panel: 'watch', watchTab: 'crypto', watch: structuredClone(DEFAULT_WATCH),
@@ -275,7 +277,9 @@ export function hydrate(saved: Partial<State>): State {
   if (!['sage', 'terra', 'classic'].includes(s.skin)) s.skin = 'sage'
   if (s.theme !== 'dark') s.theme = 'light'
   if (s.updown !== 'green-up') s.updown = 'red-up'
-  if (s.route !== 'gateway') s.route = 'direct'
+  s.routePicked = saved.routePicked === true
+  if (!s.routePicked) s.route = d.route
+  else if (s.route !== 'gateway') s.route = 'direct'
   if (!Array.isArray(s.alerts)) s.alerts = []
   // 第一阶段的老形状（price / fr / oi）就地补成同步形状；触发过的不留
   s.alerts = (s.alerts as unknown[]).map(migrateAlert).filter((a): a is Alert => !!a && a.status !== 'fired')

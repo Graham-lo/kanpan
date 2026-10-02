@@ -1204,7 +1204,11 @@ export async function initChart(): Promise<void> {
     else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) patchDetail() }
     else if (e.type === 'oi') cells.forEach(c => { const cc = cfg(c); if (cc.symbol === e.symbol && cc.iv === e.iv) { c.chart.recalc(); c.chart.dirty = true } })
     else if (e.type === 'detail' || e.type === 'meta') { if (st.panel === 'watch' && (e.type === 'meta' || e.symbol === cfg(active())?.symbol)) renderDetail() }
-    else if (e.type === 'ws') { updateStale(); paintConn() }
+    else if (e.type === 'ws') {
+      updateStale(); paintConn()
+      // 换了线路刚连上：品种表没拉到的先拉，空着报错的格子重取（直连在国内连不上币安，切到网关后不用再点「重试」）
+      if (S.wsState === 'open') cells.filter(c => $('.cell-empty', c.el)?.hidden === false).forEach(c => void retryLoad(c))
+    }
   })
 
   // 每秒：钟、倒计时；每分钟：详情里的慢数、持仓量提醒

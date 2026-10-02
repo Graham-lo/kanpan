@@ -26,10 +26,10 @@ import { onPlaceholderSync, onSyncChange, syncMeta, syncSource } from '../model/
 import { KIND_CN, PASSWORD_RULE, USERNAME_RULE, deviceMeta, validPassword, validUsername } from '../model/formText'
 import { buildAlertList, startAlertWatcher } from './alerts'
 import { navStack } from '../model/navStack'
-import { takeOpenParam } from './_streams'
+import { retryUniverse, takeOpenParam } from './_streams'
 
 registerTerms([
-  { id: 'route', title: '线路', body: '直连：手机自己直接连交易所，出厂就是它。\n网关：经我们的服务器转一道，手机连不上交易所时用。\n选了哪条就一直走哪条，不会自己切换。' },
+  { id: 'route', title: '线路', body: '网关：经我们的新加坡服务器转一道，出厂就是它——国内不开代理连不上币安，手机只能走这条。\n直连：手机自己直接连交易所，在海外或开着代理时少转一道。\n选了哪条就一直走哪条，不会自己切换。' },
   { id: 'priceScale', title: '价格轴 · 线性 / 对数', body: '线性：每格代表同样多的钱。\n对数：每格代表同样的涨跌幅，看大涨大跌的长周期更公平。' },
 ])
 
@@ -157,7 +157,7 @@ export function initMe(root: HTMLElement): PageHandle {
       switch (opt.parentElement!.dataset.seg) {
         case 'theme': st.theme = v as typeof st.theme; save(); applyTheme(); break
         case 'updown': st.redUp = v === 'red'; save(); applyTheme(); break
-        case 'route': st.routePolicy = v as typeof st.routePolicy; save(); setRoute(st.routePolicy); break
+        case 'route': st.routePolicy = v as typeof st.routePolicy; st.routePicked = true; save(); setRoute(st.routePolicy); void retryUniverse(); break
         case 'scale': st.priceMode = v as typeof st.priceMode; save(); break
       }
       paint()

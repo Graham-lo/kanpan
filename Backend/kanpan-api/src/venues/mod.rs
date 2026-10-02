@@ -7,6 +7,8 @@
 //!   （`/v1/market/ticker?source=okx`）与持仓量历史（`/v1/market/open-interest/history?source=okx`）。
 //! - `coinbase`：REST 原样透传（`/v1/market/raw/…?source=coinbase`）、推送 hub
 //!   （`/v1/market/stream?source=coinbase`）、复盘 worker 用的 K 线与逐笔。
+//! - `binance`：合约公开 REST 原样透传（`/v1/market/raw/fapi/v1/klines?source=binance&…`），
+//!   给网页版的网关线路用——浏览器在国内不开代理连不上 `fapi.binance.com`（2026-10-02）。
 //!
 //! 接第三家：新建 `venues/<id>.rs`，在下面两个分发里各加一行，别处不动
 //! （见 `docs/多交易所-接入指南.md`）。挂在 `/v1/market/` 下而不是 `/market/`：
@@ -15,6 +17,7 @@ use axum::{Router,extract::{Path,Query,ws::WebSocketUpgrade},response::{IntoResp
 use axum::http::StatusCode;
 use serde_json::json;
 
+pub mod binance;
 pub mod coinbase;
 pub mod okx;
 
@@ -38,6 +41,7 @@ fn unsupported()->Response {
 async fn raw(Path(path):Path<String>,Query(query):Query<Vec<(String,String)>>)->Response {
  match source(&query) {
   Some(coinbase::SOURCE)=>coinbase::raw(&path,&query).await,
+  Some(binance::SOURCE)=>binance::raw(&path,&query).await,
   _=>unsupported(),
  }
 }

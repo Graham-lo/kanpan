@@ -87,7 +87,7 @@ const chart = createChart(host, {
   数据：先拉最新一页，再往左补到主序列起点（主图往左翻，对比跟着补）；推送与主图共用 kline 流（引擎自己把对比代号并进 `streams` 回调）；
   取不到 2 s·2ⁿ 退避、最长 30 s；推送跳根 / 断线重连 / 从后台回来超过 5 s 都重拉末页补缺口；发布按 100 ms 合批。
   **宿主须知**：iOS 在「预览朋友分享的画线」（`draw.previewing`）与复盘画面上不开对比——那时请 `setCompare([])`，结束后再交回偏好。
-- **盘口** `depth` / `setDepth(on)`：币安合约 `<代号>@depth5@100ms`，直连 `wss://fstream.binance.com/public/stream` 单独一条小连接
+- **盘口** `depth` / `setDepth(on)`：币安合约 `<代号>@depth5@100ms`，直连 `wss://dstream.binance.me/stream`（iOS 出厂同一台，国内能直连）单独一条小连接
   （每帧就是完整五档，不是增量）。只在直连线路上连：线路判断默认 `S.route !== 'gateway'`，可用 `isDirectRoute` 覆写，
   网关线路（iOS 的 hasMicrostructure = false；网页网关的 `/public/stream` 也不转深度）不画不连。换线路时 market 发的 `ws` 事件引擎自己接住。
   对比中、横屏画线台、页面切后台都断开并清掉；乱序帧不收；首帧 8 s / 静默 10 s 当断线，1 s·2ⁿ（最长 15 s）重连。

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Hkline · 线路体检</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px; font: 15px/1.5 -apple-system, "PingFang SC", system-ui, sans-serif; background: #0f1115; color: #e6e6e6; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { font-size: 12px; color: #9aa0a6; margin: 0 0 14px; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 4px; border-top: 1px solid #262a31; vertical-align: top; }
+  td:first-child { width: 46%; }
+  .host { font-size: 12px; color: #9aa0a6; word-break: break-all; }
+  .ok { color: #3ccf7a; } .bad { color: #ff5c5c; } .wait { color: #9aa0a6; }
+  .r { font-variant-numeric: tabular-nums; }
+  button { margin-top: 16px; padding: 10px 14px; font-size: 15px; border: 0; border-radius: 10px; background: #2b6cff; color: #fff; }
+  pre { font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #9aa0a6; }
+</style>
+</head>
+<body>
+<h1>线路体检</h1>
+<p class="sub" id="env"></p>
+<table id="t"></table>
+<button id="copy">复制结果</button>
+<pre id="out"></pre>
+<script>
+(() => {
+  const SG = location.protocol === 'https:' ? location.origin : 'https://kanpan.43-160-232-253.sslip.io'
+  const checks = [
+    { kind: 'http', name: '合约 K 线 · 直连（fapi.binance.com）', url: 'https://fapi.binance.com/fapi/v1/klines?symbol=LINKUSDT&interval=30m&limit=2' },
+    { kind: 'http', name: '合约 K 线 · 经新加坡透传', url: SG + '/v1/market/raw/fapi/v1/klines?symbol=LINKUSDT&interval=30m&limit=2&source=binance' },
+    { kind: 'http', name: '现货 · 直连（data-api.binance.vision）', url: 'https://data-api.binance.vision/api/v3/time' },
+    { kind: 'http', name: '新加坡主机本身', url: SG + '/v1/market/raw/fapi/v1/premiumIndex?symbol=LINKUSDT&source=binance' },
+    { kind: 'ws', name: '合约推送 · 直连（dstream.binance.me，iOS 出厂）', url: 'wss://dstream.binance.me/stream?streams=linkusdt@kline_30m' },
+    { kind: 'ws', name: '合约推送 · 直连（fstream.binance.com，网页旧默认）', url: 'wss://fstream.binance.com/market/stream?streams=linkusdt@kline_30m' },
+    { kind: 'ws', name: '盘口推送 · 直连（fstream.binance.me）', url: 'wss://fstream.binance.me/public/stream?streams=linkusdt@depth5@100ms' },
+    { kind: 'ws', name: '盘口推送 · 直连（dstream.binance.me）', url: 'wss://dstream.binance.me/stream?streams=linkusdt@depth5@100ms' },
+    { kind: 'ws', name: '合约推送 · 经新加坡', url: (SG.replace(/^http/, 'ws')) + '/market/stream', sub: ['linkusdt@kline_30m'] },
+  ]
+  const c = navigator.connection || {}
+  document.getElementById('env').textContent = [new Date().toLocaleString('zh-CN', { hour12: false }), location.host, c.effectiveType || c.type || '', navigator.userAgent].filter(Boolean).join(' · ')
+  const t = document.getElementById('t')
+  const rows = checks.map(k => {
+    const tr = document.createElement('tr')
+    const a = document.createElement('td'); a.innerHTML = k.name + '<div class="host">' + k.url.replace(/^wss?:\/\/|^https?:\/\//, '').replace(/\?.*$/, '') + '</div>'
+    const b = document.createElement('td'); b.className = 'r wait'; b.textContent = '检查中…'
+    tr.append(a, b); t.append(tr)
+    return b
+  })
+  const results = []
+  const show = (i, ok, text) => { rows[i].className = 'r ' + (ok ? 'ok' : 'bad'); rows[i].textContent = text; results[i] = (ok ? '✓ ' : '✗ ') + checks[i].name + '：' + text }
+  const http = (k, i) => {
+    const t0 = performance.now(); const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 10000)
+    return fetch(k.url, { signal: ctl.signal, cache: 'no-store', referrerPolicy: 'no-referrer' })
+      .then(r => r.text().then(body => { const ms = Math.round(performance.now() - t0); show(i, r.ok, (r.ok ? '通' : '回 ' + r.status) + ' · ' + ms + ' ms · ' + body.length + ' 字节') }))
+      .catch(e => show(i, false, (e.name === 'AbortError' ? '10 秒没回' : '连不上') + (e.message && e.name !== 'AbortError' ? ' · ' + e.message : '')))
+      .finally(() => clearTimeout(tm))
+  }
+  const ws = (k, i) => new Promise(res => {
+    const t0 = performance.now(); let open = 0, frames = 0, done = false
+    let s; try { s = new WebSocket(k.url) } catch (e) { show(i, false, '地址无效'); return res() }
+    const finish = (ok, text) => { if (done) return; done = true; try { s.close() } catch {} show(i, ok, text); res() }
+    s.onopen = () => { open = Math.round(performance.now() - t0); if (k.sub) s.send(JSON.stringify({ method: 'SUBSCRIBE', params: k.sub, id: 1 })) }
+    s.onmessage = m => { if (String(m.data).indexOf('"e"') < 0 && String(m.data).indexOf('kline') < 0 && String(m.data).indexOf('"b"') < 0) return; frames++; if (frames >= 1) finish(true, '通 · 握手 ' + open + ' ms · 首帧 ' + Math.round(performance.now() - t0) + ' ms') }
+    s.onerror = () => finish(false, open ? '握手通但出错' : '连不上')
+    s.onclose = e => finish(false, open ? '握手通，' + (frames ? '' : '没数据就') + '断了 ' + e.code : '连不上 ' + e.code)
+    setTimeout(() => finish(false, open ? '握手通 ' + open + ' ms，10 秒没数据' : '10 秒握手不上'), 10000)
+  })
+  Promise.all(checks.map((k, i) => k.kind === 'http' ? http(k, i) : ws(k, i))).then(() => {
+    document.getElementById('out').textContent = results.join('\n')
+  })
+  document.getElementById('copy').onclick = () => {
+    const text = document.getElementById('env').textContent + '\n' + results.join('\n')
+    navigator.clipboard?.writeText(text).then(() => { document.getElementById('copy').textContent = '已复制' }, () => { document.getElementById('out').textContent = text })
+  }
+})()
+</script>
+</body>
+</html>

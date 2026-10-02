@@ -770,7 +770,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       syncDepth()
       const was = wsSeen, now = S.wsState
       wsSeen = now
-      if (resyncOnOpen(was, now, everOpen, freshAt, Date.now())) { void resync(); compareFeed.resync() }
+      // 刚才取不到（直连在国内连不上币安）、现在换了线路连上了：整条重取，不等用户换品种
+      if (now === 'open' && was !== 'open' && !series && error && !loading) void load()
+      else if (resyncOnOpen(was, now, everOpen, freshAt, Date.now())) { void resync(); compareFeed.resync() }
       if (now === 'open') everOpen = true
     }
   })

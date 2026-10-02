@@ -16,6 +16,7 @@ import { usdOf, venueId } from './types'
 import { OrderFlowModel, parseHistory, latestMs, type Snapshot } from './model'
 import { BucketScheme } from './bucket'
 import { admit, coolingFor, noteStatus } from '../market/limit'
+import { viaRoute } from '../market/rest'
 import { D, applyOverride, baseOfSymbol, calibratedThreshold, defaultThresholds, isValidBase, needsCalibration, type Override } from './settings'
 import {
   type DepthBook, type BinanceMarket, binanceMarket, binanceSnapshot, binanceStreams, BINANCE_SNAPSHOT_LEVELS,
@@ -63,7 +64,7 @@ export async function getJSON(url: string, ms: number): Promise<{ status: number
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
-    const r = await fetch(url, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
+    const r = await fetch(viaRoute(url), { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
     noteStatus(url, r.status, r.headers.get('Retry-After'))
     const body = r.ok ? await r.json() : null
     return { status: r.status, body }
@@ -351,12 +352,14 @@ export class OrderFlowFeed {
       } else if (route === 'gateway') {
         chunk(list, 4).forEach((c, i) => specs.push(binanceSpec(`binance-${m}-gw${i}`, c, s => `${gw}/v1/market/ws/binance?streams=${s}`, binanceStreams)))
       } else if (m === 'um') {
-        // 直连 U 本位：深度在 /public、成交在 /market，两条连接；成交那条不负责簿（books 为空时不触发 connectionOpened）
+        // 直连 U 本位：拨 iOS 出厂同一台 `dstream.binance.me`（国内不开代理能直连，深度与成交都在 /stream 上；
+        // 旧的 fstream.binance.com 国内解析被污染、握手就重置）。深度、成交仍分两条连接；成交那条不负责簿
+        // （books 为空时不触发 connectionOpened）
         const map = new Map(list.map(b => [b.venue.instrument.toUpperCase(), b]))
-        specs.push({ key: 'binance-um-depth', books: list, urls: [`wss://fstream.binance.com/public/stream?streams=${list.map(b => binanceStreams(b)[0]).join('/')}`], subscribe: () => [], decode: t => decodeBinance(t, map) })
-        specs.push({ key: 'binance-um-trade', books: [], urls: [`wss://fstream.binance.com/market/stream?streams=${list.map(b => binanceStreams(b)[1]).join('/')}`], subscribe: () => [], decode: t => decodeBinance(t, map) })
+        specs.push({ key: 'binance-um-depth', books: list, urls: [`wss://dstream.binance.me/stream?streams=${list.map(b => binanceStreams(b)[0]).join('/')}`], subscribe: () => [], decode: t => decodeBinance(t, map) })
+        specs.push({ key: 'binance-um-trade', books: [], urls: [`wss://dstream.binance.me/stream?streams=${list.map(b => binanceStreams(b)[1]).join('/')}`], subscribe: () => [], decode: t => decodeBinance(t, map) })
       } else {
-        specs.push(binanceSpec('binance-cm', list, s => `wss://dstream.binance.com/stream?streams=${s}`, binanceStreams))
+        specs.push(binanceSpec('binance-cm', list, s => `wss://dstream.binance.me/stream?streams=${s}`, binanceStreams))
       }
     }
     chunk(okx, OKX_MAX_BOOKS).forEach((c, i) => {

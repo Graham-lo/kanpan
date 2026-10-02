@@ -280,7 +280,7 @@ describe('盘口 · depth5 数据源', () => {
     expect(parseDepthFrame('ETHUSDT', frame(1000))).toBeNull()
     expect(parseDepthFrame('BTCUSDT', { e: 'kline', b: [] })).toBeNull()
     expect(parseDepthFrame('BTCUSDT', 'x')).toBeNull()
-    expect(depthURL('BTCUSDT')).toBe('wss://fstream.binance.com/public/stream?streams=btcusdt@depth5@100ms')
+    expect(depthURL('BTCUSDT')).toBe('wss://dstream.binance.me/stream?streams=btcusdt@depth5@100ms')
   })
 
   it('只在直连上连；网关、关着、切后台都不连且交 null', () => {

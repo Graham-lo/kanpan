@@ -45,7 +45,7 @@ describe('手机网页版 · 偏好出厂值与容错', () => {
     expect(d.theme).toBe('auto'); expect(d.skin).toBe('sage'); expect(d.redUp).toBe(true)
     expect(d.overlays).toEqual(['MA']); expect(d.subs).toEqual(['VOL', 'OI', 'MACD'])
     expect(Object.keys(d.params).sort()).toEqual(['EMA', 'MA', 'MACD', 'VOL'])
-    expect(d.routePolicy).toBe('direct')
+    expect(d.routePolicy).toBe('gateway')
   })
   it('指标 id 与契约词表一致', () => {
     const d = normalizePrefs({ overlays: contract.overlayIndicatorIDs, subs: contract.subIndicatorIDs })

@@ -210,7 +210,7 @@ function render(): void {
     look: () => `<h2>外观</h2><p class="lede">跟手机端分开记，这台电脑自己的选择。</p>
       <div class="group">${row('皮肤', '和手机端同名的三套；K 线的红绿不跟皮肤走', seg('skin', st.skin, [['sage', '青苔 · 冷'], ['terra', '陶土 · 暖'], ['classic', '经典 · 白']]))}${row('深浅色', '', seg('theme', st.theme, [['light', '浅色'], ['dark', '深色']]))}${row('涨跌颜色', '', seg('updown', st.updown, [['red-up', '红涨绿跌'], ['green-up', '绿涨红跌']]))}</div>`,
     general: () => `<h2>通用</h2><p class="lede">时间统一用上海时间，不能改；日线在北京时间 8:00 换日。</p>
-      <div class="group">${row('行情线路', '只记在这台电脑上。网关走我们自己的服务器，直连连不上时手动切过去', seg('route', st.route, [['direct', '直连'], ['gateway', '网关']]))}</div>
+      <div class="group">${row('行情线路', '只记在这台电脑上。网关经我们的新加坡服务器转一道，出厂就是它（国内不开代理连不上币安）；直连是浏览器自己连币安，海外或开着代理时少转一道', seg('route', st.route, [['direct', '直连'], ['gateway', '网关']]))}</div>
       ${tvImportHTML()}`,
     about: () => `<h2>关于</h2><p class="lede">Hkline 网页版 ${VERSION} · 行情来自币安 U 本位合约</p><div class="group">${row('快捷键', '', '<button class="btn secondary sm" id="meKeys">查看</button>')}</div>`,
   }
@@ -227,7 +227,7 @@ export function initMe(): void {
       if (k === 'skin') st.skin = v as typeof st.skin
       if (k === 'theme') st.theme = v as typeof st.theme
       if (k === 'updown') st.updown = v as typeof st.updown
-      if (k === 'route') { st.route = v as typeof st.route; setRoute(st.route); toast(v === 'gateway' ? '已切到网关' : '已切到直连', '只影响这台电脑', 'link', 1800) }
+      if (k === 'route') { st.route = v as typeof st.route; st.routePicked = true; setRoute(st.route); toast(v === 'gateway' ? '已切到网关' : '已切到直连', '只影响这台电脑', 'link', 1800) }
       save()
       if (k === 'theme' || k === 'updown' || k === 'skin') applyTheme()
       render(); return
