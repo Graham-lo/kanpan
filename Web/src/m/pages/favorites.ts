@@ -189,7 +189,8 @@ export function initFavorites(root: HTMLElement): PageHandle {
   function open(sym: string, row: HTMLElement | null): void {
     const r = row?.getBoundingClientRect(), v = scroll.getBoundingClientRect()
     opened = { sym, visible: !!r && r.top >= v.top - 1 && r.bottom <= v.bottom + 1 }
-    openSymbol(sym)
+    // 先冻结扫图名单：这一刻当前分类的顺序就是人眼里那张表
+    openSymbol(sym, shown)
   }
 
   /** 长按：预览卡 + 菜单（iOS contextMenu：菜单项不带图标；「移到分类」是一层子菜单，列已有分类 + 还没开的预设） */

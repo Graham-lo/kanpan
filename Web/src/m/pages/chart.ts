@@ -304,9 +304,10 @@ export function initChart(root: HTMLElement): PageHandle {
     if (learned) st.interval = learned
     save()
   }
+  /** 扫图按来源页冻结的名单走（iOS ScanList）；没有名单（搜索进来、底栏回来的）就什么都不做 */
   function scan(dx: number, dy: number): void {
-    const fav = st.symbols.favorites
-    const list = fav.includes(sym()) ? fav : st.symbols.recents
+    const list = nav.scan
+    if (!list || list.length < 2) return
     const next = swipeTarget(list, sym(), dx, dy)
     if (next) switchSymbol(next, false)
   }

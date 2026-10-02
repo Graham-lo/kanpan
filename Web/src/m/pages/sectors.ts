@@ -207,7 +207,7 @@ export function initSectors(root: HTMLElement): PageHandle {
       quote: () => { const d = drillData(sym); return { price: d.price, pct: d.pct, vol: d.vol, hiLo: window === 'today' } },
       gone: () => S.live === true && !S.symbols.has(sym),
     }, [
-      { title: '打开', run: () => openSymbol(sym) },
+      { title: '打开', run: () => openSymbol(sym, drillSymbols()) },
       fav
         ? { title: '取消自选', destructive: true, run: () => {
           const snap = F.snapshot(st.symbols, sym)
@@ -226,8 +226,12 @@ export function initSectors(root: HTMLElement): PageHandle {
     const row = (e.target as HTMLElement).closest<HTMLElement>('.lr'); if (!row) return
     const sym = row.dataset.sym!
     if (S.symbols.size && !S.symbols.has(sym)) return
-    openSymbol(sym)
+    openSymbol(sym, drillSymbols())
   })
+  /** 下钻这一层此刻的行序（扫图名单）：照人眼里那张表，不按代号重排 */
+  function drillSymbols(): string[] {
+    return [...drillList.querySelectorAll<HTMLElement>('.lr')].map(r => r.dataset.sym!).filter(Boolean)
+  }
 
   // 左沿右滑返回（iOS 导航栈的边缘手势）
   let edge: { x: number; y: number; id: number } | null = null

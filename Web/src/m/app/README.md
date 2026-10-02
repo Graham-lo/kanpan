@@ -31,7 +31,7 @@ export function initFavorites(root: HTMLElement): PageHandle   // 名字 = 'init
 | 名字 | 用途 |
 |---|---|
 | `go(page, { fromTab? })` | 切页（关掉所有弹层、收回左划） |
-| `openSymbol(sym)` | 点一行打开图：记最近打开、记来路 `nav.origin`、切到 `chart`、广播 `hooks.onSymbol` |
+| `openSymbol(sym, scanFrom?)` | 点一行打开图：记最近打开、记来路 `nav.origin`、给了 `scanFrom` 就冻结扫图名单 `nav.scan`（底栏换页作废）、切到 `chart`、广播 `hooks.onSymbol` |
 | `nav.origin` | 图表页的来路（从自选 / 板块点进来时是那一页；点底栏作废），图表页顶栏据此画「‹」 |
 | `setMeBadge(n)` | 「我的」记号右上角的待判定条数（0 不画，封顶 99） |
 | `hooks.onTheme` | 皮肤 / 深浅 / 涨跌色变了（画布在这里重取颜色） |

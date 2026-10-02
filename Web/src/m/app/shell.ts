@@ -62,8 +62,13 @@ let shown: PageId | null = null
  *  有来路时系统返回也回那一页（与图表页顶栏「‹」一样：作废来路、切过去） */
 let origin: PageId | null = null
 let unbackOrigin: (() => void) | null = null
+/** 连续扫图的名单（iOS Main/ScanList.swift）：从自选某个分类、板块下钻点进图时，把那一刻列表的顺序冻结下来，
+ *  之后在价格区横滑就接着这张表往下看；列表自己再重排不影响这一趟。搜索、提醒、深链这些路不冻结名单——
+ *  走过去之后手里这只若不在名单里，横滑自然什么都不做。底栏换页 = 人离开了那张表，名单作废 */
+let scanList: string[] | null = null
 export const nav = {
   get origin(): PageId | null { return origin },
+  get scan(): readonly string[] | null { return scanList },
   set origin(v: PageId | null) {
     origin = v
     unbackOrigin?.(); unbackOrigin = null
@@ -132,7 +137,7 @@ export function closeOverlays(): void {
 export function go(page: string, opts: { fromTab?: boolean; replace?: boolean } = {}): void {
   const p = (PAGES as readonly string[]).includes(page) ? page as PageId : 'chart'
   const prev = st.page
-  if (opts.fromTab) nav.origin = null
+  if (opts.fromTab) { nav.origin = null; scanList = null }
   if (p === prev && shown === p) {
     if (opts.fromTab) {
       const h = pages.get(p)
@@ -165,9 +170,11 @@ export function refreshPage(ids: readonly PageId[]): void {
   if (h) safe(() => h.show())
 }
 
-/** 打开一只品种的图（自选 / 板块 / 搜索点一行都走这里）：记最近、记来路、切到图表页 */
-export function openSymbol(symbol: string): void {
+/** 打开一只品种的图（自选 / 板块 / 搜索点一行都走这里）：记最近、记来路、切到图表页。
+ *  scanFrom：来源页那张列表此刻的顺序（自选当前分类、板块下钻那几行），给就冻结成扫图名单 */
+export function openSymbol(symbol: string, scanFrom?: readonly string[]): void {
   const s = symbol.toUpperCase()
+  if (scanFrom) scanList = [...new Set(scanFrom.map(x => x.toUpperCase()).filter(Boolean))]
   const from = st.page
   st.symbol = s
   st.symbols.recents = [s, ...st.symbols.recents.filter(x => x !== s)].slice(0, 10)
