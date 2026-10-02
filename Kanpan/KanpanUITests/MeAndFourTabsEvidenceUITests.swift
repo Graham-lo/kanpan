@@ -5,13 +5,14 @@ import XCTest
 //
 // 2026-09-27 方案「我的 · 自动复盘 · 周期分组指标」§1 的验收（`docs/方案-我的-自动复盘-周期分组指标-2026-09-27.md`）：
 //
-// 1. **周期条宽度**：出厂六档（5分 30分 1时 4时 1日 1周）满钉、「最新」在场时，行尾三件
+// 1. **周期条宽度**：出厂六档（5分 30分 1时 4时 1日 1周）满钉时，行尾三件
 //    （更多 ▾ · 分析 · 图表设置）排得下，不缩字、不截字。读的是周期排
 //    `interval.quick` 在 DEBUG 包里挂的读数（实际分到的宽度 − 六档字宽与内距，见 `IntervalBar.layoutReport`），
 //    外加几何：三件都在页边距以内、互不重叠、各自的命中区够 44。
 //    2026-09-27 这里是四件（画线夹在指标与图表设置之间，16 Pro 只剩 1.2pt、两颗记号命中区叠 10pt）；
 //    09-28 用户定画线和指标并列归到一个大类：行尾那格「指标」改名「分析」，行尾回到三件，
 //    分析面板四节 画线 · 指标 · 对比 · 主力订单流（画线那一行 `indicator.draw`）。
+//    10-02 行尾那颗「最新」药丸按用户要求删了，最挤的一屏就是出厂态本身。
 // 2. **截图**：浅色下青苔 / 陶土 / 经典三套皮肤，各拍「我的」、行情页、分析面板三张（文件名仍叫「指标」），
 //    落到 `docs/acceptance/我的与四格底栏-2026-09-27/<机型>-<页>-<皮肤>.png`。
 //    机型从窗口宽认（402 = iPhone 16 Pro、440 = iPhone 17 Pro Max），同一份用例两台各跑一遍。
@@ -58,14 +59,8 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
 
   // ------------------------------------------------------------ 1. 周期条宽度
 
-  func testIntervalBarFitsSixPlusLatest() throws {
+  func testIntervalBarFitsSix() throws {
     XCTAssertTrue(waitForLiveChart(), "图没活")
-    // 往回推一段，「最新」出场——这是最挤的那一刻。
-    let latest = app.buttons["chart.latest"]
-    for _ in 0..<3 where !latest.exists { dragChartRight() }
-    XCTAssertTrue(latest.waitForExistence(timeout: Self.short), "推开之后没出现「最新」")
-    // 「最新」的淡入 + 周期区重新铺满的动画走完再量。
-    RunLoop.main.run(until: Date().addingTimeInterval(0.6))
 
     let quick = app.otherElements["interval.quick"]
     XCTAssertTrue(quick.waitForExistence(timeout: Self.short), "周期排不在")
@@ -73,7 +68,7 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
     note("周期条|\(deviceTag)|\(report)")
     let slack = report.split(separator: " ").dropFirst().first.flatMap { Double($0) }
     XCTAssertNotNil(slack, "读不到周期排的余量：\(report)")
-    XCTAssertGreaterThanOrEqual(slack ?? -1, 0, "六档 + 最新 + 行尾三件排不下：\(report)")
+    XCTAssertGreaterThanOrEqual(slack ?? -1, 0, "六档 + 行尾三件排不下：\(report)")
     // 出厂六档在两台上都用不着收格子内距（2pt 原样）：收内距是留给用户钉出特别宽的组合时的退路。
     XCTAssertTrue(report.contains("内距 2.00"), "出厂六档就开始收格子内距了：\(report)")
 
@@ -88,9 +83,8 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
     let chart = app.buttons["interval.chart"]
     let indicators = app.buttons["interval.indicators"], more = app.buttons["interval.more"]
     XCTAssertFalse(app.buttons["interval.draw"].exists, "周期条行尾不该再有画线")
-    note("行尾|最新 \(latest.frame)|更多 \(more.frame)|分析 \(indicators.frame)|图表设置 \(chart.frame)|窗口 \(window.width)")
-    // 顺序：最新 | 更多 · 分析 · 图表设置，命中区两两不叠。
-    XCTAssertLessThanOrEqual(latest.frame.maxX, more.frame.minX + 0.5, "「最新」和「更多」叠了")
+    note("行尾|更多 \(more.frame)|分析 \(indicators.frame)|图表设置 \(chart.frame)|窗口 \(window.width)")
+    // 顺序：更多 · 分析 · 图表设置，命中区两两不叠。
     XCTAssertEqual(indicators.label, "分析", "行尾那格不叫「分析」")
     XCTAssertLessThanOrEqual(more.frame.maxX, indicators.frame.minX + 0.5, "「更多」和「分析」叠了")
     XCTAssertLessThanOrEqual(indicators.frame.maxX, chart.frame.minX + 0.5, "「分析」和图表设置叠了")

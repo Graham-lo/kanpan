@@ -707,6 +707,9 @@ struct MainScreen: View {
     // 再点一下已经站着的那一格 = 回到这一页的根。板块页下钻了两层时尤其需要：
     // 底栏那一格是它唯一的出口。
     if next == tab, next == .sectors { sectorRoute = [] }
+    // 行情页上再点一下「图表」= 回到最新（和双击图同一件事）。周期条行尾那颗「最新」药丸
+    // 2026-10-02 按用户要求删了，从历史回来就靠这两条，加上往左拖到头。
+    if next == tab, next == .chart { proxy.scrollToLatest() }
     guard next != tab else { return }
     if next != .chart { draw.finish() }
     tab = next
@@ -721,7 +724,7 @@ struct MainScreen: View {
     //
     // 留下的只有一种情形：走的时候本来就停在最新那根上。那时候续上离开期间新到的
     // 那几根才是「他离开时的样子」，不是「回到默认」。真想从历史里回到最新，
-    // 周期条行尾那颗「最新」就是干这个的。
+    // 双击图或者再点一下「图表」。
     if next == .chart, atLatest { proxy.scrollToLatest(animated: false) }
   }
 
@@ -733,10 +736,9 @@ struct MainScreen: View {
       // 十字线活着时这一行换成「创建提醒」那一颗（`IntervalRow` / `CrosshairActionBar`）。
       if !reviewChart.active { IntervalRow(
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
-        atLatest: atLatest, gridOpen: $intervalGrid,
+        gridOpen: $intervalGrid,
         onPick: pick(interval:),
         onPin: { iv in store.attempt { $0.toggleQuick(iv) } },
-        onLatest: { proxy.scrollToLatest() },
         // 分析面板（`Panel.indicators`：画线 · 指标 · 对比 · 主力订单流）：和图表设置一样不连着关。
         onIndicators: { panel = .indicators },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。

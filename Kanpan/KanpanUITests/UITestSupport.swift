@@ -82,8 +82,6 @@ enum Ids {
   static let landscapeExit = "land.exit"
   /// 横屏顶上那行小字里的品种名：拿它当「已经横过来了」的准星。
   static let landscapeSymbol = "land.symbol"
-  // 图区
-  static let latestButton = "chart.latest"
   // 品种页
   static let symbolsBack = "symbols.back"
   static let symbolsQuery = "symbols.query"
@@ -208,8 +206,8 @@ class KanpanUICase: XCTestCase {
   /// `Failed to get matching snapshot: No matches found`。`exists` 挡不住任何一种：
   /// 它答「在」之后、下一句问出去之前，那一帧里按钮可能已经走了。
   ///
-  /// 「最新」这颗正是随视野进出的（`IntervalBar` 里 `if !atLatest` 整个插拔，带
-  /// `.opacity` 过场），轮询时撞上那一帧的概率不低：`waitForLiveChart` 在 iPhone 上红过，
+  /// 当年行尾那颗「最新」正是随视野进出的（`if !atLatest` 整个插拔，带 `.opacity` 过场；
+  /// 2026-10-02 删了），轮询时撞上那一帧的概率不低：`waitForLiveChart` 在 iPhone 上红过，
   /// iPad mini / iPad (A16) / iPad Air 11" 三台更容易红——图宽、视野归位滑得久，窗口更大。
   ///
   /// 所以**一个属性都不许再问**：`snapshot()` 是这组接口里唯一会把「没这个元素」
@@ -300,24 +298,41 @@ class KanpanUICase: XCTestCase {
   /// 是这件事唯一的直接答案（要 `KANPAN_CHART_DIAGNOSTICS=1`），别拿手势去猜。
   ///
   /// **再等手势。** 数据到了不等于手势活了，这一步只能真拖一下看图认不认：拖完视野
-  /// 离开最新一根，「回到最新」就会亮，拿它当信号。完事按一下回到最新，把视野恢复原样，
-  /// 不给后面的用例留状态。数据来得晚的时候第二步至少还留 `short` 那么久，
+  /// 离开最新一根（`chartAtLatest()` 变 false），拿它当信号。完事回到最新（`returnToLatest()`），
+  /// 把视野恢复原样，不给后面的用例留状态。数据来得晚的时候第二步至少还留 `short` 那么久，
   /// 免得预算刚好在交界处用完、白白判一次假阴。
+  ///
+  /// 以前的信号是周期条行尾那颗「最新」药丸亮没亮；药丸 2026-10-02 按用户要求删了。
   @discardableResult
   func waitForLiveChart(timeout: TimeInterval = long) -> Bool {
     let deadline = Date().addingTimeInterval(timeout)
     guard waitUntil(timeout: timeout, poll: 0.5, { (self.chartInfo()["bars"] as? Int ?? 0) > 0 })
     else { return false }
-    let latest = app.buttons[Ids.latestButton]
     let live = waitUntil(timeout: max(Self.short, deadline.timeIntervalSinceNow), poll: 0.5) {
-      if onScreen(latest) { return true }
+      if !chartAtLatest() { return true }
       dragChartRight()
-      return onScreen(latest)
+      return !chartAtLatest()
     }
-    if live, onScreen(latest) {
-      _ = tapButton(latest, Self.short) { !onScreen(latest) }
-    }
+    if live { _ = returnToLatest() }
     return live
+  }
+
+  /// 末根还在图区里吗（和 `ChartView.isAtLatest` 同一条判据：右缘越过末根）。
+  /// 诊断里的 `latestRightGap` 是末根右半格到图区右缘的距离，不小于负半格就是末根还在。
+  /// 读不到诊断时答 false，免得把「没数据」当成「在最新」。
+  func chartAtLatest() -> Bool {
+    let info = chartInfo()
+    guard let gap = info["latestRightGap"] as? Double, let spacing = info["spacing"] as? Double
+    else { return false }
+    return gap >= -spacing / 2 - 0.5
+  }
+
+  /// 回到最新：行情页上再点一下底栏「图表」（和双击图同一件事，但不顺手复位价格轴、收十字线）。
+  /// 视野是一帧帧滑回去的，等它真到了再返回。
+  @discardableResult
+  func returnToLatest(timeout: TimeInterval = short) -> Bool {
+    app.buttons[Ids.bottomChart].tap()
+    return waitUntil(timeout: timeout, poll: 0.25) { chartAtLatest() }
   }
 
   /// 图的实时诊断（`chart.canvas` 的无障碍 `value`，要 `KANPAN_CHART_DIAGNOSTICS=1`）。

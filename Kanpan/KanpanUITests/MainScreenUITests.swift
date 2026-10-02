@@ -491,29 +491,25 @@ final class MainScreenUITests: KanpanUICase {
 
   // ---------------------------------------------------------------- 回到最新
 
-  /// 「回到最新」：视野在最新一根上时它不在，往回拖一段就出现，点一下又消失。
-  func testLatestButtonAppearsAfterLeavingLatest() {
+  /// 行情页上再点一下底栏「图表」= 回到最新。周期条行尾那颗「最新」药丸 2026-10-02 按用户要求
+  /// 删了，从历史回来就靠这一下（或者双击图）。
+  func testReselectChartTabReturnsToLatest() {
     // 审查 C.9：同上，跳过改硬断言。
     XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
-    let latest = app.buttons[Ids.latestButton]
-    // `waitForLiveChart()` 末尾按过一次「回到最新」，但视野归位是一帧一帧滑过去的
-    // （iPad 上图宽、滑得久），所以这里轮询等它收回去，不瞬时断言。
-    XCTAssertTrue(waitUntil(timeout: Self.long) { !onScreen(latest) },
-                  "视野就在最新一根上，「回到最新」不该露面")
+    XCTAssertTrue(waitUntil(timeout: Self.long) { self.chartAtLatest() }, "视野没停在最新一根上")
     // 往回拖最多试三次。历史是边拖边补的，补齐之前只有一屏数据，`clampView` 会把窗口
-    // 按回右缘——视野自己弹回最新一根，「最新」跟着收回去。那是图与行情层的既有行为，
-    // 不是这颗 chip 的事，所以这里等它**站稳**再点（连着两拍都在），中途被弹回去就重拖一次，
-    // 而不是把断言放宽：真出不来照样红。
-    var appeared = false
+    // 按回右缘——视野自己弹回最新一根。那是图与行情层的既有行为，所以这里等它**站稳**
+    // （连着两拍都不在最新）再点，中途被弹回去就重拖一次，而不是把断言放宽。
+    var away = false
     for _ in 0..<3 {
       dragChartRight()
-      guard waitUntil(timeout: Self.short, { onScreen(latest) }) else { continue }
-      if waitUntil(timeout: 1, poll: 0.5, { !onScreen(latest) }) { continue }
-      appeared = true
+      guard waitUntil(timeout: Self.short, { !self.chartAtLatest() }) else { continue }
+      if waitUntil(timeout: 1, poll: 0.5, { self.chartAtLatest() }) { continue }
+      away = true
       break
     }
-    XCTAssertTrue(appeared, "视野离开最新一根了，「回到最新」没出现")
-    XCTAssertTrue(tapButton(latest) { !onScreen(latest) },
-                  "点了「回到最新」，按钮没收回去")
+    XCTAssertTrue(away, "往回拖了视野还在最新一根上")
+    XCTAssertTrue(returnToLatest(), "行情页上再点「图表」没回到最新")
+    XCTAssertTrue(app.buttons[Ids.intervalMore].exists, "再点「图表」离开了行情页")
   }
 }

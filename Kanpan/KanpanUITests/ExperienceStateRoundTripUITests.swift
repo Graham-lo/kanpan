@@ -250,15 +250,14 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
       abs((self.chartInfo()["zoomY"] as? Double ?? 1) - 1) > 0.03
     }, "在价格轴上拖了一把，Y 还是自动的：\(chartInfo()["zoomY"] ?? "?")")
 
-    // 视野：往回推到历史里去，「回到最新」跟着亮起来。
+    // 视野：往回推到历史里去。
     var pushes = 0
     while (chartInfo()["latestRightGap"] as? Double ?? 0) > -20, pushes < 8 {
       dragChartRight(); pushes += 1
     }
     XCTAssertLessThan(try XCTUnwrap(chartInfo()["latestRightGap"] as? Double), -20,
                       "推了 \(pushes) 下图还贴在最新那根上")
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.onScreen(self.app.buttons[Ids.latestButton]) },
-                  "视野离开最新了，「回到最新」却没出来")
+    XCTAssertFalse(chartAtLatest(), "推开之后末根还在图区里")
 
     // 十字线：最后摆，免得上面那几下手势把它扫掉。
     canvasPoint(200, min(140, try XCTUnwrap(chartInfo()["mainH"] as? Double) / 2)).tap()

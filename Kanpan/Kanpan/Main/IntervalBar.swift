@@ -3,7 +3,11 @@ import KanpanCore
 import SwiftUI
 import UIKit
 
-/// 周期条：钉住的那几档横排 + 行尾「最新 | 更多 ▾ · 分析 · 图表设置」（§9.1）。
+/// 周期条：钉住的那几档横排 + 行尾「更多 ▾ · 分析 · 图表设置」（§9.1）。
+///
+/// **行尾那颗「最新」药丸 2026-10-02 删了**（用户：「直接删掉这个，都没什么用啊」）。回到最新
+/// 靠双击图、在行情页再点一下底栏「图表」、或者往左拖到头；下面讲排版预算的那几段里提到
+/// 「最新」的地方是当时的算账，现在行尾只会更宽裕。
 ///
 /// 档位一律写中文短写（`Interval.shortLabel`：5分 / 1时 / 1周 / 1月，审查 U12）——
 /// 以前条上 `1m` 和「更多」网格里的 `1M` 只差一个大小写，一分钟和一个月靠眼力分。
@@ -33,9 +37,8 @@ import UIKit
 ///   没选中的档是**平文字、没有任何底色**，六档连读是一行字。
 /// - 只有**当前那一档**有底：一颗贴着文字的淡底药丸（`mark`），宽度按文字算而不是撑满
 ///   格子，所以它是「文字底下的一层底」，不是又一个色块。
-/// - 「最新」**不预留槽位**：不在场时零宽度，在场时淡入，周期区跟着
-///   平滑地重新铺满（0.18s）。原来那颗画不出来的影子药丸把行尾恒定地占掉八十来点，
-///   出厂第一屏就是「五颗药丸 + 一段空白 + 更多 图表」，用户一眼看出来的就是那段空白。
+/// - 行尾不预留会进出的槽位（原来那颗画不出来的影子药丸把行尾恒定地占掉八十来点，
+///   出厂第一屏就是「五颗药丸 + 一段空白 + 更多 图表」，用户一眼看出来的就是那段空白）。
 ///
 /// 格子有个 76pt 的封顶（`maxChipWidth`），手机上够不着，iPad 那种两三倍宽的行才会
 /// 用上——否则同样几档会被摊成一排横向拉长的色块。
@@ -72,18 +75,11 @@ struct IntervalBar: View {
   var theme: PanelTheme
   var quick: [Interval]
   var current: Interval
-  /// 图还停在最新那根上没有。翻走了行尾才多出一颗「最新」。
-  ///
-  /// 这颗以前是浮在画布右下角的一个 44×44 圆钮。用户定过规矩：画布上不许浮任何控件，
-  /// 所以它搬到了条上——位置固定、不遮 K 线，也不会跟副图的分隔线打架。
-  var atLatest: Bool
   /// 「更多」那张网格开着没有。状态放在外面：点图、开面板都要顺手把它收起来。
   @Binding var gridOpen: Bool
   var onPick: (Interval) -> Void
   /// 钉 / 取消钉一档（`Prefs.toggleQuick`）。越界的那两句话由外面弹 toast。
   var onPin: (Interval) -> Void
-  /// 「最新」：把视野拽回末根。
-  var onLatest: () -> Void
   /// 行尾「分析」：直接开分析面板（`Panel.indicators`：画线 · 指标 · 对比 · 主力订单流）。
   var onIndicators: () -> Void
   /// 行尾图表设置那颗记号：开图表设置那一页（`Panel.chart`）。记一笔也在那一页上。
@@ -125,7 +121,6 @@ struct IntervalBar: View {
         .accessibilityHidden(true)
       HStack(spacing: 0) {
         chips
-        actionSlot
         divider
         // 当前档没钉在条上时，「更多」就写成那一档（「2h ▾」）并高亮：人一眼知道
         // 自己正看着哪一档，钉住的那几档也一个都没被挤走。网格拉开时照旧高亮。
@@ -157,9 +152,6 @@ struct IntervalBar: View {
     .pageHorizontalInset()
     .frame(height: 44)
     .dynamicTypeSize(...MarketChrome.typeCap)
-    // 「最新」进出时周期区跟着重新铺满。这一句兜住 `MainScreen` 那头
-    // 没有包 `withAnimation` 的情况：没有它，六档会「啪」地跳一下位置。
-    .animation(.easeOut(duration: 0.18), value: atLatest)
     // 「更多」那张网格不在这儿了：它是图上的一层弹层（`IntervalPopoverLayer`），
     // 这根条永远 44pt，展开收起图的高度一个 pt 都不动。
   }
@@ -178,60 +170,6 @@ struct IntervalBar: View {
       .frame(width: 1, height: 14)
       .padding(.horizontal, Space.s)
       .accessibilityHidden(true)
-  }
-
-  // ---------------------------------------------------------------- 行尾「最新」
-
-  /// 「最新」：**要的时候才在，不在就一点宽度都不占**。
-  ///
-  /// 这儿原来是一个钉死宽度的固定槽位，底下垫一颗画不出来的影子药丸，为的是
-  /// 「药丸进出时周期不跳位」。代价是：绝大多数时候这一行里恒定地空着八十来点——
-  /// 2026-09-21 用户看出厂第一屏的截图，第一句话就是这段空白
-  /// （「周期条空间足够放，那可以搞点间距隔开啊」）。空槽换成了两件事：
-  ///
-  /// - 六档**出厂就把行放满**（`Interval.quick`），那点宽度本来就该是周期的；
-  /// - 它进出时**周期区平滑地重新铺满**（`body` 上那句 `animation`），
-  ///   不是瞬移一下。跳位之所以讨厌，是因为它在手指落下去之前无声地发生；
-  ///   0.18s 的铺开是看得见的，手跟得上。
-  ///
-  /// 「看细节」从前也挤在这儿，后来搬进十字线动作行，2026-09-25 整套删了；十字线在时
-  /// 整行顶替这根条的是那颗「创建提醒」（`CrosshairActionBar`）。
-  /// 同一处原来还会在点完「最新」后换成「返回刚才」，2026-09-24 按用户要求删了。
-  @ViewBuilder private var actionSlot: some View {
-    if !atLatest {
-      actionPill("最新", action: onLatest)
-        .accessibilityIdentifier("chart.latest")
-        .accessibilityLabel("回到最新")
-        .transition(.opacity)
-    }
-  }
-
-  /// 「最新」那颗药丸。
-  ///
-  /// 这是整条上**唯一还带底色的动作**（`raised2`）：它是随状态冒出来的一件事，
-  /// 得让人一眼看见它来了；「更多」「分析」和图表设置是常驻的入口，平文字就够。
-  private func actionPill(_ title: String, action: @escaping () -> Void) -> some View {
-    // 命中区横着最窄 44pt；药丸本身（字 + 两边 8）不到 44 时，多出来的那一点
-    // 往两边伸进前缝和分隔线的留白里，**不占版面**——这一行排版是按药丸本身算的。
-    let bleed = max(0, Hit.min - Self.pillWidth(title, size: textSize)) / 2
-    return Button(action: action) {
-      Text(title)
-        .font(.system(size: textSize, weight: .semibold))
-        .foregroundStyle(theme.ink2)
-        .padding(.horizontal, Space.s)
-        .frame(height: ControlMetrics.pillHeight)
-        .background(theme.raised2, in: Capsule())
-        // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt。药丸自己还是 28pt 高。
-        .frame(minWidth: Hit.min, minHeight: Hit.min)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    // 版面高度收回 28pt：多出来的那两圈只是手指的范围，不许把条顶高。
-    .padding(.vertical, -8)
-    .fixedSize(horizontal: true, vertical: false)
-    .padding(.horizontal, -bleed)
-    // 它和末档之间的缝。不在场时整个视图都不存在，这 8pt 也跟着没有。
-    .padding(.leading, Space.s)
   }
 
   // ---------------------------------------------------------------- 排版预算
@@ -264,16 +202,10 @@ struct IntervalBar: View {
   /// 只为四件排得下；09-28 画线与指标并列进「分析」面板、行尾回到三件，最宽的六档组合加「最新」
   /// 也只需收格子内距（`chipPad`），那套挤法撤了。
   private var tailWidth: CGFloat {
-    let latest = atLatest ? 0 : Space.s + Self.pillWidth("最新", size: textSize)
     let divider = 1 + Space.s * 2
     let more = max(Hit.min, Self.rawTextWidth(moreTitle, size: textSize) + 3 + 9 + Space.s * 2)
     let analysis = max(Hit.min, Self.rawTextWidth("分析", size: textSize) + Space.s * 2)
-    return latest + divider + more + analysis + Self.chartSlot
-  }
-
-  /// 「最新」药丸本身多宽（字 + 两边 8）。
-  @MainActor private static func pillWidth(_ title: String, size: CGFloat) -> CGFloat {
-    rawTextWidth(title, size: size) + Space.s * 2
+    return divider + more + analysis + Self.chartSlot
   }
 
   // ---------------------------------------------------------------- 常用那一排
@@ -535,11 +467,9 @@ struct IntervalRow: View {
   var theme: PanelTheme
   var quick: [Interval]
   var current: Interval
-  var atLatest: Bool
   @Binding var gridOpen: Bool
   var onPick: (Interval) -> Void
   var onPin: (Interval) -> Void
-  var onLatest: () -> Void
   var onIndicators: () -> Void
   var onChart: () -> Void
   let readout: CrosshairReadout
@@ -550,9 +480,9 @@ struct IntervalRow: View {
   var body: some View {
     ZStack {
       IntervalBar(
-        theme: theme, quick: quick, current: current, atLatest: atLatest,
+        theme: theme, quick: quick, current: current,
         gridOpen: $gridOpen, onPick: onPick, onPin: onPin,
-        onLatest: onLatest, onIndicators: onIndicators, onChart: onChart)
+        onIndicators: onIndicators, onChart: onChart)
         .modifier(YieldsToCrosshair(readout: readout, context: context, gridOpen: $gridOpen))
       CrosshairActionBar(readout: readout, context: context, theme: theme, onAlert: onAlert)
     }

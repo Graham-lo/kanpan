@@ -135,7 +135,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   ///
   /// 这儿原来还摆着一颗 44×44 的「回到最新」圆钮，浮在主图右下角。用户定过规矩：
   /// 画布上不允许浮任何控件——它会压着 K 线，改副图高度时还得跟着主图的下沿挪。
-  /// 那颗按钮已经搬到周期条行尾（见 `IntervalBar` 的「最新」），id 仍叫 `chart.latest`。
+  /// 那颗按钮后来搬到周期条行尾，2026-10-02 按用户要求整个删了；回到最新靠双击图、再点一下底栏「图表」。
   func updateControls() {
     onOverlayUpdate()
     guard let state = chart.state, let layout = chart.chartLayout else { return }
