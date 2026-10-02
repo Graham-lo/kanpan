@@ -146,8 +146,8 @@ pub fn strip_retired(object:&mut Object) {
 pub const SETTINGS_FIELDS:&[&str]=&[
  "compareSymbols",
  "overlays","subs","subHeightOverrides","params","indicatorColors",
- // 指标按周期分组记忆（2026-09-27）：上面那几项是三组共用的一份，分了叉的组各自的整份
- // 布局走 `indicatorLayouts/<minute|hour|day>`。
+ // 指标按周期分组记忆（2026-09-27~10-02）留下的键：2026-10-03 起客户端指标布局一人一份（就是上面那几项），
+ // 只读老客户端写的 `indicatorLayouts/<minute|hour|day>` 并对它们发 null 清掉——所以白名单留着。
  "indicatorLayouts",
  "portraitHeight","quickIntervals","theme","skin","styleID","redUp","priceMode",
  "depth","orderFlow","candleKind",

@@ -7,10 +7,10 @@
  * - 添加对比：小搜索表（rankSearch），只存 st.compareSymbols。
  * - 主力订单流门槛：按保存生效，写 st.orderFlowOverrides[base] 并立刻推给数据口。
  */
-import { st, save, subscribe, onLayoutFork } from '../../app/store'
+import { st, save, subscribe } from '../../app/store'
 import {
-  FACTORY_PARAMS_IDS, MAX_COMPARE, cleanCompare, currentLayout, factoryLayout, followOrder, sameValue,
-  type CandleKind, type IndicatorId, type IndicatorLayout, type PriceMode, type OrderFlowOverride,
+  FACTORY_PARAMS_IDS, MAX_COMPARE, cleanCompare, currentLayout, factoryLayout, sameValue,
+  type CandleKind, type IndicatorId, type PriceMode, type OrderFlowOverride,
 } from '../../app/prefs'
 import { indicatorName, mainPalette, subPalette, paletteOffset, paramLabels, normalizedParams, defaultParams, lineNames } from '../../indicator/ids'
 import { openSheet, type Sheet } from '../../ui/sheet'
@@ -119,7 +119,7 @@ export function openAnalysis(ctx: PanelContext): Sheet {
         case 'cmp-clear': st.compareSymbols = []; save(); sheet.close(); break
         case 'of': st.orderFlow = !st.orderFlow; save(); break
         case 'of-edit': openOrderFlowEditor(ctx); break
-        case 'reset': resetGroup(); break
+        case 'reset': resetLayout(); break
       }
     })
     reorder = reorderable(host, {
@@ -182,27 +182,17 @@ function analysisHTML(ctx: PanelContext): string {
   }
   out.push(`<div class="cp-group">${of.join('')}</div>`)
 
-  const factory = sameValue(currentLayout(st), groupFactory())
-  out.push(`<div class="cp-group cp-reset"><button type="button" class="cp-row cp-tap" data-act="reset"${factory ? ' disabled' : ''}><span class="cp-rn">恢复这一组的默认</span></button></div>`)
+  const factory = sameValue(currentLayout(st), factoryLayout())
+  out.push(`<div class="cp-group cp-reset"><button type="button" class="cp-row cp-tap" data-act="reset"${factory ? ' disabled' : ''}><span class="cp-rn">恢复默认指标</span></button></div>`)
   return out.join('')
 }
 
-/** 这一组的「出厂」：副图高度与顺序跟人走、不归哪一组，恢复默认时留着用户自己调的 */
-function groupFactory(): IndicatorLayout {
-  const f = factoryLayout()
-  return { ...f, subs: followOrder(f.subs, st.subs), subHeightOverrides: { ...st.subHeightOverrides } }
-}
-
-/** 「恢复这一组的默认」（PrefsStore.resetIndicatorLayoutForCurrentGroup）：当前周期所在那一组回到出厂，别的组不动 */
-function resetGroup(): void {
+/** 「恢复默认指标」（PrefsStore.resetIndicatorLayout）：指标布局整份回到出厂（所有周期共用这一份），可撤销 */
+function resetLayout(): void {
   const before = currentLayout(st)
-  const f = groupFactory()
-  let forked = false
-  const off = onLayoutFork(() => { forked = true })
-  Object.assign(st, { overlays: f.overlays, subs: f.subs, params: f.params, subHeightOverrides: f.subHeightOverrides, candleKind: f.candleKind, priceMode: f.priceMode })
+  Object.assign(st, factoryLayout())
   save()
-  off()
-  if (!forked) toast('已恢复这一组的默认', { title: '撤销', run: () => { Object.assign(st, before); save() } })
+  toast('已恢复默认指标', { title: '撤销', run: () => { Object.assign(st, before); save() } })
 }
 
 // ───────────────────────────── 参数编辑

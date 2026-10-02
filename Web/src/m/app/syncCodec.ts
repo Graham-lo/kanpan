@@ -7,13 +7,14 @@
  * 手机网页版的 Prefs 与 iOS 同名同义，进同步的就是 prefs.ts 的 SYNCED_FIELDS 那 31 个「根」。
  * body 是拍平的：`params` / `indicatorColors` / `subHeightOverrides` / `indicatorLayouts` 这四个嵌套根
  * 拍成 `根/子`（颜色再深一层 `indicatorColors/<指标>/<序号>` = `{value:"#rrggbb"}`），其余一根一键。
- * 指标布局照 iOS：顶层 overlays / subs / params / subHeightOverrides / candleKind / priceMode 写「三组共用」的那份，
- * `indicatorLayouts/<minute|hour|day>` 只写分了叉的组（整份六键），`null` = 那一组回到共用。
+ * 指标布局只有一份、跟人走（2026-10-03 起不再按周期分组）：顶层 overlays / subs / params / subHeightOverrides /
+ * candleKind / priceMode 就是全部。`indicatorLayouts/<minute|hour|day>` 只为读老客户端写的分叉：装进来时取当前周期
+ * 所在组那份、收拢成一份，下一次记账给这些分叉发 null，把云端也清干净。
  *
  * 按根记一份 `seen`（存在账本 a.seen 里）：「这个根上一次和云端对上时，本机归一化之后的线上样子」。
  *   - 记账：本机这个根 ≠ seen → 本机改了，从上一份 body 出发只换这个根的那几条路径；
  *     本机删掉的路径（清掉一个指标颜色）经 owned 的前缀集合发 null。
- *   - 应用：云端这个根 ≠ seen → 云端改了，装进来。指标布局那七个根是一个整体：先按云端重建三组全貌再 adoptBook。
+ *   - 应用：云端这个根 ≠ seen → 云端改了，装进来。指标布局那七个根是一个整体：按云端（含老分叉）取当前那份，再收拢。
  *   - 云端没有的标量根不记 seen：下一次记账会把本机的值推上去（老客户端、网页 PC 写的对象只带几个键）。
  *   - 云端的值本机表达不了（未知枚举）：seen 记成本机现值，不推也不装，免得一碰就把 iOS 的值冲掉。
  *
@@ -32,7 +33,7 @@ import { validSymbol, decodeAlerts, syncableAlert, alertId } from '../../sync/co
 import { DRAW_OWNED, unseenDrawingsM } from './drawCodec'
 import type { Alert } from '../../alerts/shape'
 import {
-  LAYOUT_GROUPS, SYNCED_FIELDS, adoptBook, cleanColors, currentLayout, layoutBook, normalizePrefs, sanitizeLayout,
+  LAYOUT_GROUPS, SYNCED_FIELDS, adoptBook, cleanColors, collapseLayouts, currentLayout, layoutBook, normalizePrefs, sanitizeLayout,
   type IndicatorLayout, type LayoutBook, type Prefs,
 } from './prefs'
 import type { FavoriteGroup, SymbolPrefs } from './store'
@@ -226,10 +227,13 @@ export function applySettings(p: Prefs, cloud: SyncObject | undefined, seen: Rec
   if (LAYOUT_ROOTS.some(want)) {
     const cand = clone(p)
     adoptBook(cand, layoutFromCloud(book0, cloud.body))
+    // seen 记云端原样（含老客户端的分叉），本机收拢成一份：下一次记账顶层推那一份、分叉发 null 删掉
     const subs = settingsSubs(cand, LAYOUT_ROOTS)
+    collapseLayouts(cand)
     if (!LAYOUT_ROOTS.every(r => r in seen && same(subs[r], seen[r]))) {
       for (const r of LAYOUT_ROOTS) seen[r] = subs[r]
-      const diff = LAYOUT_ROOTS.filter(r => !same(subs[r], mine[r]))
+      const after = settingsSubs(cand, LAYOUT_ROOTS)
+      const diff = LAYOUT_ROOTS.filter(r => !same(after[r], mine[r]))
       if (diff.length || !same(currentLayout(cand), currentLayout(p))) {
         for (const k of LAYOUT_KEYS) (p as unknown as Record<string, unknown>)[k] = cand[k]
         p.indicatorLayouts = cand.indicatorLayouts
@@ -238,8 +242,8 @@ export function applySettings(p: Prefs, cloud: SyncObject | undefined, seen: Rec
       }
     }
   }
-  // 只换了周期：按新周期把三组重新投影（顶层换成新组那份）
-  if (!layoutDone && changed.includes('interval')) adoptBook(p, book0)
+  // 只换了周期：本机若还留着老档的分叉，按新周期取那一份再收拢
+  if (!layoutDone && changed.includes('interval')) { adoptBook(p, book0); collapseLayouts(p) }
   return changed
 }
 

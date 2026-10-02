@@ -53,7 +53,7 @@ export interface LearnedDefaults {
   sectorWindow: Record<string, LearnedChoice>
   watchMove: Record<string, LearnedFactor>
 }
-/** IndicatorLayout：按周期组记住的一整套指标布局 */
+/** IndicatorLayout：一整套指标布局（所有周期共用这一份） */
 export interface IndicatorLayout {
   overlays: IndicatorId[]; subs: IndicatorId[]; params: Partial<Record<IndicatorId, number[]>>
   subHeightOverrides: Partial<Record<IndicatorId, number>>; candleKind: CandleKind; priceMode: PriceMode
@@ -248,17 +248,16 @@ export function cappedSubs(subs: readonly IndicatorId[]): IndicatorId[] {
 }
 const idList = (v: unknown, pool: readonly IndicatorId[]): IndicatorId[] => [...new Set(strs(v).filter(x => (pool as readonly string[]).includes(x)))] as IndicatorId[]
 
-// ───────── 指标按周期分组记忆（照 iOS Settings/Model/IndicatorLayouts.swift） ─────────
+// ───────── 指标布局：只有一份，跟人走（照 iOS Settings/Model/IndicatorLayouts.swift） ─────────
 //
-// 周期分三组：分钟（1m…30m）、小时（1h…12h）、日（1d 起）。规则是「继承直到分叉」：三组起初共用一份，
-// 在某一组里改了指标（开关主图 / 副图、参数、K 线画法、价格轴）那一组才分出自己的一份。
-// 副图高度与副图顺序跟人走、三组一起改，不让一组分叉（2026-10-03 用户：「在一小时周期调整了指标区域大小和顺序，
-// 切换周期发现又被改回去了」）——见 carryPersonWide / unifyPersonWide。
+// 2026-09-27 曾按周期分三组（分钟 / 小时 / 日）各记一份、「继承直到分叉」。2026-10-03 用户在 1 小时调了副图
+// 大小和顺序、切到 30 分「又被改回去了」，随后说死：「应该是通用的啊，不管什么周期……换了一个指标，切换四小时
+// 发现不是自己要的指标这样就很怪」。所以现在指标布局（开了哪些指标、参数、副图顺序与高度、K 线画法、价格轴）
+// 只有顶层这一份，任何周期都一样，并经云端在 iOS、手机网页、电脑网页之间互通。
 //
-// 内存里：Prefs 顶层那六项永远是**当前周期所在组**的那份（读指标的地方只读顶层）；
-// `indicatorLayouts.shared` 只在当前组分了叉时存共用的那份，`others` 是当前组以外分了叉的组。
-// 改法：直接改顶层那几项（或 interval）再 save()，store 在落盘前调 settleIndicatorLayouts 理顺分组。
-// 线上：顶层老键写共用的那份，`indicatorLayouts/<组>` 只写分了叉的组（sync 的 codec 管）。
+// `indicatorLayouts` 这个根留着只为认老档、老客户端：读进来带着分叉时，以**当前周期所在组**那份为准
+// （那是用户眼下看着的那份）并成一份，然后清空；清空经同步发 `indicatorLayouts/<组>: null`，把云端的分叉一起删掉。
+// 改法：直接改顶层那几项再 save()，store 在落盘前调 settleIndicatorLayouts 收拢。
 
 export type LayoutGroup = 'minute' | 'hour' | 'day'
 export const LAYOUT_GROUPS: readonly LayoutGroup[] = ['minute', 'hour', 'day']
@@ -324,62 +323,17 @@ export function layoutSnapshot(p: Prefs): LayoutSnapshot {
   return clone({ interval: p.interval, indicatorLayouts: p.indicatorLayouts, overlays: p.overlays, subs: p.subs, params: p.params, subHeightOverrides: p.subHeightOverrides, candleKind: p.candleKind, priceMode: p.priceMode })
 }
 
-/** Prefs.settleIndicatorLayouts(after:)：一次改动（before → 现在）之后理顺分组记忆。
- *  - 调用方连 indicatorLayouts 一起换了（云端装进来、恢复出厂）：那份就是答案，只按现在的周期重新投影；
- *  - 顶层那几项被改了：改的是改完之后周期所在的那一组，那组还共用就此分叉；
- *  - 只换了周期、跨了组：顶层换成新组那份。
- *  返回这一下新分叉出来的组，没有就是 null */
-export function settleIndicatorLayouts(p: Prefs, before: LayoutSnapshot): LayoutGroup | null {
-  if (!sameValue(p.indicatorLayouts, before.indicatorLayouts)) { adoptBook(p, layoutBook(p)); unifyPersonWide(p); return null }
-  const prev = { ...defaultPrefs(), ...clone(before) } as Prefs
-  const book = layoutBook(prev)
-  const g = layoutGroup(p.interval)
-  const now = currentLayout(p)
-  carryPersonWide(book, currentLayout(prev), now)
-  let forked: LayoutGroup | null = null
-  if (!sameValue(now, currentLayout(prev)) && !sameValue(now, book.forks[g] ?? book.shared)) {
-    if (!book.forks[g]) forked = g
-    book.forks[g] = now
-  }
-  adoptBook(p, book)
-  return forked
+/** Prefs.settleIndicatorLayouts(after:)：一次改动之后把指标布局收拢成一份。
+ *  调用方连 indicatorLayouts 一起换了（云端装进来、老客户端写了分叉）：先按现在的周期投影（当前组的分叉就是那一份），
+ *  然后不管怎样都清掉分叉记忆——顶层那份就是全部周期的布局。 */
+export function settleIndicatorLayouts(p: Prefs, before: LayoutSnapshot): void {
+  if (!sameValue(p.indicatorLayouts, before.indicatorLayouts)) adoptBook(p, layoutBook(p))
+  collapseLayouts(p)
 }
 
-/** 按 ref 的先后重排 list 里与 ref 共有的那几个，别的留在原位（副图顺序跟人走用） */
-export function followOrder<T>(list: readonly T[], ref: readonly T[]): T[] {
-  const common = ref.filter(x => list.includes(x))
-  let i = 0
-  return list.map(x => (ref.includes(x) ? common[i++] : x))
-}
-
-/** 副图高度与顺序跟人走：这一下（prev → now）改了哪几个副图的高度，三组一起改；副图只是换了顺序（开着的没变），
- *  三组里共有的那几个也按新顺序排。改完之后当前组那份和 now 在这两项上一致，只改了它们就不会分叉。 */
-function carryPersonWide(book: LayoutBook, prev: IndicatorLayout, now: IndicatorLayout): void {
-  const all = [book.shared, ...Object.values(book.forks)] as IndicatorLayout[]
-  const ph = prev.subHeightOverrides as Record<string, number | undefined>, nh = now.subHeightOverrides as Record<string, number | undefined>
-  for (const id of new Set([...Object.keys(ph), ...Object.keys(nh)])) {
-    if (ph[id] === nh[id]) continue
-    for (const l of all) {
-      const h = l.subHeightOverrides as Record<string, number | undefined>
-      if (nh[id] == null) delete h[id]; else h[id] = nh[id]
-    }
-  }
-  const reordered = now.subs.length === prev.subs.length && now.subs.every(x => prev.subs.includes(x)) && !sameValue(now.subs, prev.subs)
-  if (reordered) for (const l of all) l.subs = followOrder(l.subs, now.subs)
-}
-
-/** 老档（10-03 之前）里各组的副图高度、顺序可能已经各记各的：并成一份。以分了叉的组为准（分叉是用户自己改出来的，
- *  共用那份可能还是出厂），当前组分了叉就以当前组为准；高度按指标取并集。三组一致时什么都不动。 */
-function unifyPersonWide(p: Prefs): void {
-  const book = layoutBook(p)
-  const g = layoutGroup(p.interval)
-  const src = book.forks[g] ?? LAYOUT_GROUPS.map(x => book.forks[x]).find(Boolean)
-  if (!src) return
-  const all = [book.shared, ...Object.values(book.forks)] as IndicatorLayout[]
-  const heights = Object.assign({}, ...all.map(l => l.subHeightOverrides), src.subHeightOverrides) as IndicatorLayout['subHeightOverrides']
-  if (all.every(l => sameValue(l.subHeightOverrides, heights) && sameValue(l.subs, followOrder(l.subs, src.subs)))) return
-  for (const l of all) { l.subHeightOverrides = clone(heights); l.subs = followOrder(l.subs, src.subs) }
-  adoptBook(p, book)
+/** 清掉分叉记忆（顶层已是要留的那份） */
+export function collapseLayouts(p: Prefs): void {
+  if (p.indicatorLayouts.shared || Object.keys(p.indicatorLayouts.others).length) p.indicatorLayouts = { others: {} }
 }
 
 /** 把任意来源（本机旧档、云端）的值理成合法的 Prefs；缺的、坏的用出厂值 */
@@ -429,9 +383,8 @@ export function normalizePrefs(raw: unknown): Prefs {
     lastDrawTool: typeof r.lastDrawTool === 'string' ? r.lastDrawTool : d.lastDrawTool,
     reviewSearchScope: oneOf(r.reviewSearchScope, ['history', 'private'] as const, d.reviewSearchScope),
   }
-  // 记忆里不该有当前组自己（当前组那份就是顶层）
-  delete out.indicatorLayouts.others[layoutGroup(out.interval)]
-  unifyPersonWide(out)
+  // 老档的分叉记忆：顶层本来就是当前周期所在组那份，以它为准收成一份
+  collapseLayouts(out)
   return out
 }
 

@@ -10,7 +10,8 @@ enum PersonalSyncCodec {
   /// 计字段，而脏标识做在 `PrefsStore` 那一层（包里，M1 抽 `PersonalStore` 时整块搬走），
   /// 包看不见 app 靶子里的这个文件。**一份清单，两处用**——别在这儿再抄一份。
   static var fields: Set<String> { Prefs.syncedFieldNames }
-  /// `indicatorLayouts/<组>`（2026-09-27）的值是一整组布局对象，只拍一层；`null` = 那一组回到共用。
+  /// `indicatorLayouts/<组>`（2026-09-27~10-02 的周期分组，老客户端还会写）的值是一整组布局对象，只拍一层；
+  /// 这一版读进来就收拢成一份，推送时对它们发 `null`。
   // `hiddenOutputs` 2026-09-28 收掉（收设置项 C 组），不再发也不再收。
   static let nested: Set<String> = ["params", "indicatorColors", "subHeightOverrides", "indicatorLayouts", "styles", "variants"]
   static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
@@ -285,8 +286,8 @@ enum PersonalSyncCodec {
       prefs.indicatorColors[id] = colors
       prefs.subHeightOverrides[id] = 1
     }
-    // 三组都分了叉：`indicatorLayouts/minute|hour|day` 三条路径都是这一版自己的词汇，
-    // 某一组被「恢复出厂」并回共用时那条 null 才发得出去。
+    // 三组都分了叉：`indicatorLayouts/minute|hour|day` 三条路径仍是这一版的词汇——
+    // 老客户端留在云端的分叉，这一版收拢之后要对它们发 null 才清得掉。
     var book = prefs.layoutBook
     for group in IntervalGroup.allCases { book.forks[group] = prefs.indicatorLayout }
     prefs.adopt(book)

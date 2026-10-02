@@ -87,8 +87,8 @@ enum PrefsFieldPlan {
     "indicatorColors": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
     "subHeightOverrides": .synced,
-    // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份，线上拍平成 `indicatorLayouts/<组>`。
-    // 上面那六个老键仍写三组共用的那份（老客户端照旧同步，也是迁移源）。
+    // 2026-09-27~10-02 的「周期分组记忆」留下的键：现在永远写空表，只为读老档、并把云端残留的
+    // `indicatorLayouts/<组>` 发 null 清掉（指标布局一人一份，就是上面那六个键）。
     "indicatorLayouts": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
     "favoritesGroup": .synced,

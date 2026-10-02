@@ -80,16 +80,15 @@ describe('settings 编码（照 iOS PrefsCodec / PersonalSyncCodec.flatten）', 
     expect(Object.keys(b).some(k => k.startsWith('indicatorLayouts'))).toBe(false)
   })
 
-  it('分叉的组写 indicatorLayouts/<组>（整份六键），顶层写共用那份', () => {
+  it('指标布局只有一份：在哪个周期改都写顶层，不写 indicatorLayouts/<组>', () => {
     const p = defaultPrefs()
     p.interval = '5m'
     const before = layoutSnapshot(p)
     p.overlays = ['EMA']
     settleIndicatorLayouts(p, before)
     const b = C.settingsBody(p)
-    expect(b.overlays).toEqual(defaultPrefs().overlays)
-    expect((b['indicatorLayouts/minute'] as { overlays: string[] }).overlays).toEqual(['EMA'])
-    expect(Object.keys(b['indicatorLayouts/minute'] as object).sort()).toEqual(['candleKind', 'overlays', 'params', 'priceMode', 'subHeightOverrides', 'subs'])
+    expect(b.overlays).toEqual(['EMA'])
+    expect(Object.keys(b).some(k => k.startsWith('indicatorLayouts'))).toBe(false)
   })
 })
 
@@ -125,21 +124,31 @@ describe('两台来回', () => {
     expect(b.s.p.indicatorColors).toEqual({ MA: { 1: '#222222' } })
   })
 
-  it('分叉 / 回到共用跟着走：A 的分钟组分叉，B 在日线上看不到变化，切到 5 分才看到', async () => {
+  it('指标跟人走、跨周期跨设备：A 在 5 分换了指标，B 在日线上也是那一份；老客户端写在云端的分叉被收拢并删掉', async () => {
     const server = new FakeServer()
+    // 老客户端（10-03 之前的 iOS）留在云端的小时组分叉
+    server.put({ collection: 'settings', id: 'chart', body: { interval: '1h', overlays: ['MA'], 'indicatorLayouts/hour': { overlays: ['EMA'], subs: ['KDJ'], params: {}, subHeightOverrides: { KDJ: 1.4 }, candleKind: 'candle', priceMode: 'log' } }, deleted: false })
     const a = phone(server), b = phone(server)
     await a.first(); await b.first()
+    // 当前在 1 小时：以小时组那份为准并成一份
+    expect(a.s.p.overlays).toEqual(['EMA'])
+    expect(a.s.p.subs).toEqual(['KDJ'])
+    expect(a.s.p.indicatorLayouts).toEqual({ others: {} })
+    a.capture(); await a.sync()
+    expect(settingsOnServer(server).body['indicatorLayouts/hour']).toBeNull()
+    expect(settingsOnServer(server).body.overlays).toEqual(['EMA'])
+    await b.sync()
+    expect(b.s.p.overlays).toEqual(['EMA'])
     a.edit(p => { p.interval = '5m' })
-    a.edit(p => { p.overlays = ['BOLL'] })
+    a.edit(p => { p.overlays = ['BOLL']; p.subHeightOverrides = { KDJ: 0.8 } })
     a.capture(); await a.sync(); await b.sync()
-    expect(b.s.p.interval).toBe('5m') // interval 也跟人走
-    expect(b.s.p.overlays).toEqual(['BOLL'])
     b.edit(p => { p.interval = '1d' })
-    expect(b.s.p.overlays).toEqual(defaultPrefs().overlays)
+    expect(b.s.p.overlays).toEqual(['BOLL'])
+    expect(b.s.p.subHeightOverrides).toEqual({ KDJ: 0.8 })
     b.capture(); await b.sync(); await a.sync()
     expect(a.s.p.interval).toBe('1d')
-    expect(a.s.p.overlays).toEqual(defaultPrefs().overlays)
-    expect(a.s.p.indicatorLayouts.others.minute?.overlays).toEqual(['BOLL'])
+    expect(a.s.p.overlays).toEqual(['BOLL'])
+    expect(a.s.p.indicatorLayouts).toEqual({ others: {} })
   })
 
   it('iOS 写了本机认不得的子路径（更新版的新指标）：记账时原样留着，不发 null', async () => {
@@ -151,8 +160,8 @@ describe('两台来回', () => {
     a.edit(p => { p.params = { ...p.params, MA: [9] } })
     a.capture(); await a.sync()
     expect(settingsOnServer(server).body['params/NEWIND']).toEqual([3])
-    // 改指标参数 = 当前组（小时）分叉，照 iOS settleIndicatorLayouts
-    expect((settingsOnServer(server).body['indicatorLayouts/hour'] as { params: Record<string, number[]> }).params.MA).toEqual([9])
+    // 指标参数跟人走：写顶层
+    expect(settingsOnServer(server).body['params/MA']).toEqual([9])
   })
 
   it('云端的值本机表达不了（未知皮肤）：不装、也不把本机的推回去盖掉', async () => {

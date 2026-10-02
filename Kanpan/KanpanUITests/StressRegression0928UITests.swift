@@ -677,7 +677,7 @@ final class StressRegression0928UITests: KanpanUICase {
   }
 
   /// 分析面板里按住一行再往上拖（手指先停一下再划，人找指标时常这样）：应当是滚动，不该点开那一行的参数页。
-  /// 2026-09-28 lane 2 里 `IndicatorLayoutGroupsEvidenceUITests` 一次「按 0.1 s 再拖」滚了 50pt 后点开了平滑异同。
+  /// 2026-09-28 lane 2 里 `IndicatorLayoutGroupsEvidenceUITests`（10-03 起为 `IndicatorLayoutPersonWideUITests`） 一次「按 0.1 s 再拖」滚了 50pt 后点开了平滑异同。
   func testPanelDragScrollsNotTaps() throws {
     executionTimeAllowance = 900
     XCTAssertTrue(waitForLiveChart())

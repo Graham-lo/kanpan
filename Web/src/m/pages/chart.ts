@@ -13,8 +13,8 @@
  * 价格轴用这一类学到的那档（不写回 st）；记录停留这一半手机网页版不做，只照 notePriceAxisPicked
  * 把图表设置里亲手切的线性 / 对数记成这一类的结论（不然学到的那档会把亲手选的盖回去）。
  */
-import { st, save, subscribe, onLayoutFork } from '../app/store'
-import { INTERVALS, type IntervalId, type IndicatorId, type PriceMode, type LayoutGroup } from '../app/prefs'
+import { st, save, subscribe } from '../app/store'
+import { INTERVALS, type IntervalId, type IndicatorId, type PriceMode } from '../app/prefs'
 import { hooks, nav, go, type PageHandle, type SyncChange } from '../app/shell'
 import { drawingBook } from '../app/drawings'
 import { S, on as onMarket, streamName } from '../../market'
@@ -43,11 +43,6 @@ import { openShare } from './chart/share'
 import '../styles/chart.css'
 
 const LANDSCAPE = '(orientation: landscape) and (max-height: 500px)'
-const FORK_TEXT: Record<LayoutGroup, string> = {
-  minute: '分钟周期的指标现在单独记',
-  hour: '小时周期的指标现在单独记',
-  day: '日线及以上的指标现在单独记',
-}
 const DAY_UP: readonly IntervalId[] = ['1d', '1w', '1M', '1y']
 
 // ───────────────────────────── 个性化学习（只读结论）
@@ -318,7 +313,6 @@ export function initChart(root: HTMLElement): PageHandle {
 
   // ---- 订阅
   subscribe(() => syncChart())
-  onLayoutFork(g => { if (shown) toast(FORK_TEXT[g]) })
   hooks.onSymbol.push(s => {
     const learned = learnedInterval(s, st.interval)
     if (learned) { st.interval = learned; save() }

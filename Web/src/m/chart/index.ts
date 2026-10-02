@@ -10,6 +10,7 @@ import type { Bar as MarketBar } from '../../chart/calc'
 import type { IndicatorID } from '../indicator/ids'
 import { alive, placement } from '../indicator/ids'
 import type { ChartOptions, PriceMode, ViewWindow as VW } from './geometry'
+import { DEFAULT_SUB_SCALE } from './geometry'
 import {
   AICoinBehavior, ChartContentLayout, ChartGestureRoute, SubPaneResize, ViewMath, ViewWindow,
   clampView, defaultChartOptions, priceTransform, reconcile, reconcileBeforeUpsert, SHANGHAI_OFFSET_MIN,
@@ -245,6 +246,7 @@ const SNAPSHOT_LIMIT = 8
 /** 对比行情揉进图的节流（CompareFeed 的 flush：100 ms） */
 const COMPARE_FLUSH_MS = 100
 const HISTORY_PAGE = 1500
+/** 副图名额（与 iOS Prefs.maxSubs、手机网页 cappedSubs 同一口径）：成交量不占，别的最多三个，所以最多四块 */
 const MAX_SUBS = 3
 
 // ================================================================ createChart
@@ -322,7 +324,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const m = alive(main).filter(id => placement(id) === 'main')
     if (m.includes('ORDERFLOW')) orderFlowOn = true
     look.overlays = m.filter(id => id !== 'ORDERFLOW')
-    look.subs = alive(subs).filter(id => placement(id) === 'sub').filter((id, i, a) => a.indexOf(id) === i).slice(0, MAX_SUBS)
+    const uniq = alive(subs).filter(id => placement(id) === 'sub').filter((id, i, a) => a.indexOf(id) === i)
+    const counted = uniq.filter(id => id !== 'VOL')
+    look.subs = uniq.filter(id => id === 'VOL' || counted.indexOf(id) < MAX_SUBS)
   }
   applyIndicators(opts.overlays ?? ['MA'], opts.subs ?? ['VOL', 'MACD'])
 
@@ -862,7 +866,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     if (!s || !L || !pane) return
     view.gestures.cancelPointer(pointer)
     view.clearCrosshair()
-    const scale = s.viewport.subScale[id] ?? 1
+    const scale = s.viewport.subScale[id] ?? DEFAULT_SUB_SCALE
     const c = L.H - AICoinBehavior.timeHeight
     resizing = { id, height: pane.h, scale, content: c, other: scale * (c - pane.h) / pane.h, originY, pointer }
   }

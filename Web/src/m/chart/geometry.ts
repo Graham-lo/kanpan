@@ -363,7 +363,7 @@ export class Layout {
     this.plotW = Math.max(40, W - axisWidth)
     const content = Math.max(1, H - AICoinBehavior.timeHeight)
     const weights = subs.map(id => {
-      const raw = subScale[id] ?? 1
+      const raw = subScale[id] ?? DEFAULT_SUB_SCALE
       return Number.isFinite(raw) ? Math.min(2, Math.max(0.5, raw)) : 0.5
     })
     const sum = weights.reduce((a, b) => a + b, 0)
@@ -408,6 +408,11 @@ export const ChartContentLayout = {
     return Math.min(preferred, Math.max(0.5, content / minimumSub - count))
   },
 }
+
+/** 没拖过的副图的高度权重（主图权重 3）。手机网页版在浏览器里还要让出地址栏与工具栏，可视高度比 app 矮，
+ *  照 iOS 的 1 会让三个副图吃掉一半图区；用户 2026-10-03 要「指标区域尽量小一点，k 线区域多一点」。
+ *  拖过的副图存的是绝对权重，跨 iOS / 网页一致 */
+export const DEFAULT_SUB_SCALE = 0.7
 
 export const CandleDataBox = {
   rect(plotWidth: number, mainHeight: number, selectedX: number, desiredWidth: number, desiredHeight: number,

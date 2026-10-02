@@ -495,13 +495,17 @@ describe('AICoin 共用布局（LayoutTests）', () => {
   })
 
   it('proportionalPanes：主副比例与自定义副图高度不随风格改变', () => {
-    const layout = new Layout(402, 617, ['VOL', 'OI', 'MACD'])
+    const layout = new Layout(402, 617, ['VOL', 'OI', 'MACD'], { VOL: 1, OI: 1, MACD: 1 })
     expect(layout.mainH).toBe(300)
     expect(layout.panes[1].h).toBe(100)
     expect(layout.panes[1].y).toBe(317)
     const custom = new Layout(402, 617, ['MACD', 'RSI'], { MACD: 2, RSI: 0.5 })
     expect(custom.panes[1].h).toBe(custom.panes[2].h * 4)
     expect(new Layout(402, 617, ['MACD', 'RSI'], { MACD: 2, RSI: 0.5 })).toEqual(custom)
+    // 没拖过的副图按 DEFAULT_SUB_SCALE（0.7）：三个副图时 K 线占图区约六成，不再是一半
+    const plain = new Layout(402, 617, ['VOL', 'OI', 'MACD'])
+    expect(plain.mainH / 600).toBeCloseTo(3 / 5.1, 5)
+    expect(plain.panes[1].h).toBeCloseTo(600 * 0.7 / 5.1, 5)
   })
 })
 

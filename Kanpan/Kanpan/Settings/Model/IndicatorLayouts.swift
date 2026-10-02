@@ -1,40 +1,21 @@
 import Foundation
 import KanpanCore
 
-// MARK: - 指标按周期分组记忆（2026-09-27，方案 §4）
+// MARK: - 指标布局：一人一份，不分周期（2026-10-03）
 //
-// 周期分三组：分钟组（1m…30m）、小时组（1h…12h）、日组（1d 起）。一组的「布局」是
-// 主图指标与参数、副图指标与参数、隐藏输出、副图高度、K 线画法、价格轴类型——
-// 皮肤、网格、价格线这些显示项跟人不跟周期，不在里面。
+// 一份「布局」是主图指标与参数、副图指标与参数、副图高度、K 线画法、价格轴类型。
+// **它跟人走，任何周期都是同一份**：在 1 小时换了指标、调了副图顺序和高度，切到 4 小时、日线
+// 看到的就是刚调的那份；同一账号的手机网页版、电脑网页版、iPad 改了也经云端互相生效。
 //
-// 规则是**继承直到分叉**：三组起初共用一份（新装、老档案都是：老档案里那一份就是共同源）；
-// 用户在某一组里改了任一项，那一组才分出自己的一份，别的组照旧共用。没改过的人看不到任何变化。
+// 2026-09-27 到 10-02 这里做过「周期分组记忆」（分钟 / 小时 / 日线三组各记一份，继承直到分叉）。
+// 10-03 用户在网页版上「在一小时周期调整了指标区域大小和顺序，切换周期发现又被改回去了」，
+// 随后把规矩说死：「应该是通用的啊，不管什么周期」——分组整套拆掉，删除前的代码在
+// tag `before-remove-interval-indicator-groups-2026-10-03`。
 //
-// 例外：**副图高度与副图顺序跟人走**，三组一起改、不让一组分叉（2026-10-03 用户在网页版上
-// 「在一小时周期调整了指标区域大小和顺序，切换周期发现又被改回去了」，app 也是同一套规则）。
-// 它们还存在每组的布局里（存档与线上的形状不变），只是改的时候三组一起写——见
-// `carryPersonWide` / `unifyPersonWide`。
-//
-// ## 内存里长什么样
-//
-// 读指标的地方很多（图、面板、复盘、分享……），它们一律读 `Prefs` 顶层那几项
-// （`overlays` / `subs` / `params` / …）。所以顶层那几项永远是**当前周期所在组**的那一份，
-// 其余两组放在 `Prefs.indicatorLayouts` 里：
-//
-// - 当前组没分叉：顶层那几项就是共用的那份，`shared` 为 nil（不另存一遍）。
-// - 当前组分叉了：顶层那几项是这一组自己的，`shared` 存着共用的那份。
-// - `others`：当前组以外、已经分叉的组各自那一份。
-//
-// 这样一份 JSON 只对应一种内存形状（换周期由 `settleIndicatorLayouts(after:)` 重新投影），
-// 直接改顶层字段的老代码和老测试照旧成立。
-//
-// ## 落盘 / 线上长什么样
-//
-// - 老键（`overlays` / `subs` / `params` / `subHeightOverrides` /
-//   `candleKind` / `priceMode`）写**共用的那份**：老客户端只认这一份，照旧同步；它就是迁移源。
-// - 新键 `indicatorLayouts` = `{minute?, hour?, day?}`，只写分了叉的组，每组一个对象，
-//   对象里是同名的那六个键（2026-09-28 前还有 `hiddenOutputs`，老档里读时忽略）、值的写法和顶层一样。线上拍平成 `indicatorLayouts/<组>`，
-//   `null` 就是「这一组回到共用」。
+// 留下来的只有「读老档」：老档（与老客户端写在云端的）`indicatorLayouts = {minute?, hour?, day?}`
+// 里可能还有分叉。读进来时取**当前周期所在组**那一份当作唯一那份（那是用户此刻正看着的），
+// 其余一律丢掉；`Prefs.indicatorLayouts` 从此永远是空的，存档与线上写 `{}`，
+// 云端残留的 `indicatorLayouts/<组>` 在下一次推送时发 `null` 清掉（`PersonalSyncCodec.ownedKeys`）。
 
 /// 周期分组。`rawValue` 是存档与线上的键名，和服务端 `sync_validation.rs` 逐字相同。
 enum IntervalGroup: String, CaseIterable, Sendable, CodingKey {
@@ -45,15 +26,6 @@ enum IntervalGroup: String, CaseIterable, Sendable, CodingKey {
     case .m1, .m3, .m5, .m15, .m30: self = .minute
     case .h1, .h2, .h4, .h6, .h12: self = .hour
     case .d1, .w1, .mo1, .y1: self = .day
-    }
-  }
-
-  /// 这一组第一次分叉时浮的那句话（每组只说一次：分叉是单向的，只有「恢复出厂」会并回去）。
-  var forkNotice: String {
-    switch self {
-    case .minute: "分钟周期的指标现在单独记"
-    case .hour: "小时周期的指标现在单独记"
-    case .day: "日线及以上的指标现在单独记"
     }
   }
 }
@@ -71,16 +43,8 @@ struct IndicatorLayout: Sendable, Equatable {
   var candleKind: CandleKind
   var priceMode: PriceMode
 
-  /// 出厂那一份（「恢复这一组的默认」回到的就是它）。
+  /// 出厂那一份（「恢复默认指标」回到的就是它）。
   static var factory: IndicatorLayout { Prefs.defaults.indicatorLayout }
-
-  /// 「恢复这一组的默认」回到的那一份：出厂的指标，但副图高度与顺序留着用户自己调的（它们跟人走、不归哪一组）。
-  var groupFactory: IndicatorLayout {
-    var f = Self.factory
-    f.subs = f.subs.followingOrder(of: subs)
-    f.subHeightOverrides = subHeightOverrides
-    return f
-  }
 
   /// 落盘前夹一道，和 `PrefsCodec.sanitized` 对顶层那份做的一样。
   var sanitized: IndicatorLayout {
@@ -92,7 +56,7 @@ struct IndicatorLayout: Sendable, Equatable {
   }
 }
 
-/// 三组的全貌：共用的一份 + 分了叉的组各自那份。
+/// 老档里三组的全貌：共用的一份 + 分了叉的组各自那份（只为读老档）。
 struct IndicatorLayoutBook: Sendable, Equatable {
   var shared: IndicatorLayout
   var forks: [IntervalGroup: IndicatorLayout] = [:]
@@ -101,53 +65,8 @@ struct IndicatorLayoutBook: Sendable, Equatable {
   func isForked(_ group: IntervalGroup) -> Bool { forks[group] != nil }
 }
 
-extension IndicatorLayoutBook {
-  /// 三组的布局，共用那份在前。
-  private var allLayouts: [IndicatorLayout] { [shared] + IntervalGroup.allCases.compactMap { forks[$0] } }
-
-  private mutating func updateAll(_ body: (inout IndicatorLayout) -> Void) {
-    body(&shared)
-    for group in IntervalGroup.allCases where forks[group] != nil { body(&forks[group]!) }
-  }
-
-  /// 副图高度与顺序跟人走：这一下（`prev` → `now`）改了哪几个副图的高度，三组一起改；
-  /// 副图只是换了顺序（开着的没变），三组里共有的那几个也按新顺序排。
-  /// 改完之后当前组那份和 `now` 在这两项上一致，只改了它们就不会分叉。
-  mutating func carryPersonWide(from prev: IndicatorLayout, to now: IndicatorLayout) {
-    for id in Set(prev.subHeightOverrides.keys).union(now.subHeightOverrides.keys)
-    where prev.subHeightOverrides[id] != now.subHeightOverrides[id] {
-      let value = now.subHeightOverrides[id]
-      updateAll { $0.subHeightOverrides[id] = value }
-    }
-    if now.subs != prev.subs, now.subs.count == prev.subs.count, Set(now.subs) == Set(prev.subs) {
-      updateAll { $0.subs = $0.subs.followingOrder(of: now.subs) }
-    }
-  }
-
-  /// 老档（10-03 之前）里各组的副图高度、顺序可能已经各记各的：并成一份。以分了叉的组为准
-  /// （分叉是用户自己改出来的，共用那份可能还是出厂），`active` 那组分了叉就以它为准；高度按指标取并集。
-  mutating func unifyPersonWide(active: IntervalGroup) {
-    let forks = self.forks
-    guard let source = forks[active] ?? IntervalGroup.allCases.compactMap({ forks[$0] }).first else { return }
-    var heights: [IndicatorID: Double] = [:]
-    for l in allLayouts { heights.merge(l.subHeightOverrides) { _, new in new } }
-    heights.merge(source.subHeightOverrides) { _, new in new }
-    updateAll {
-      $0.subHeightOverrides = heights
-      $0.subs = $0.subs.followingOrder(of: source.subs)
-    }
-  }
-}
-
-extension Array where Element: Equatable {
-  /// 按 `ref` 的先后重排自己与 `ref` 共有的那几个，别的留在原位。
-  func followingOrder(of ref: [Element]) -> [Element] {
-    var common = ref.filter { contains($0) }.makeIterator()
-    return map { ref.contains($0) ? common.next()! : $0 }
-  }
-}
-
-/// `Prefs` 上存的那一格：当前组以外的记忆。形状见文件头。
+/// `Prefs` 上存的那一格：老档里当前组以外的分叉。读档与 `settleIndicatorLayouts` 之后永远是空的，
+/// 只在「读老档、装云端老客户端写的那份」那一瞬间非空。
 struct IndicatorLayoutMemory: Sendable, Equatable {
   /// 当前组分了叉时，共用的那一份；当前组没分叉时为 nil（共用的就是顶层那份）。
   var shared: IndicatorLayout?
@@ -156,7 +75,7 @@ struct IndicatorLayoutMemory: Sendable, Equatable {
 }
 
 extension Prefs {
-  /// 当前周期所在组的布局（就是顶层那六项）。
+  /// 这个人的指标布局（就是顶层那六项）。
   var indicatorLayout: IndicatorLayout {
     get {
       IndicatorLayout(overlays: overlays, subs: subs, params: params,
@@ -193,36 +112,18 @@ extension Prefs {
     indicatorLayouts = IndicatorLayoutMemory(shared: book.isForked(group) ? book.shared : nil, others: others)
   }
 
-  /// 这一组分叉了没有。
-  func isLayoutForked(_ group: IntervalGroup) -> Bool { layoutBook.isForked(group) }
+  /// 一次改动（`before` → 现在这份）之后把指标布局收拢成一份。`PrefsStore` 的每一条改法都过这里。
+  ///
+  /// - 调用方连 `indicatorLayouts` 一起写了（整份换成另一份 `Prefs`、撤销还原、老档）：
+  ///   取当前周期所在组那一份当作唯一那份。
+  /// - 其余情况（改指标、换周期）：顶层那份就是答案，换周期不换指标。
+  mutating func settleIndicatorLayouts(after before: Prefs) {
+    if indicatorLayouts != before.indicatorLayouts { adopt(layoutBook) }
+    collapseIndicatorLayouts()
+  }
 
-  /// 一次改动（`before` → 现在这份）之后把分组记忆理顺。`PrefsStore` 的每一条改法都过这里。
-  ///
-  /// - 顶层那几项被改了：改的是**改完之后周期所在的那一组**（只改指标时就是当前组；
-  ///   同一下里既换了组又写了指标，写下的那份就是新组的——调用方要看到的正是它）。
-  ///   那一组原来还是共用的，就此分叉；共用的那份保持原样，别的组不受牵连。
-  /// - 只换了周期、跨了组：顶层换成新组那份——和换周期是同一次赋值，图在同一帧拿到新布局。
-  /// - 调用方连 `indicatorLayouts` 一起写了（整份换成另一份 `Prefs`、撤销还原）：
-  ///   那份就是答案，只按现在的周期重新投影，不另算分叉。
-  ///
-  /// - Returns: 这一下新分叉出来的组（调用方拿它说一句 `forkNotice`），没有就是 nil。
-  @discardableResult
-  mutating func settleIndicatorLayouts(after before: Prefs) -> IntervalGroup? {
-    guard indicatorLayouts == before.indicatorLayouts else {
-      var book = layoutBook
-      book.unifyPersonWide(active: layoutGroup)
-      adopt(book)
-      return nil
-    }
-    var book = before.layoutBook
-    book.carryPersonWide(from: before.indicatorLayout, to: indicatorLayout)
-    let group = layoutGroup
-    var forked: IntervalGroup?
-    if indicatorLayout != before.indicatorLayout, indicatorLayout != book.layout(for: group) {
-      if !book.isForked(group) { forked = group }
-      book.forks[group] = indicatorLayout
-    }
-    adopt(book)
-    return forked
+  /// 只留顶层那一份，老档的分叉丢掉。
+  mutating func collapseIndicatorLayouts() {
+    if indicatorLayouts != IndicatorLayoutMemory() { indicatorLayouts = IndicatorLayoutMemory() }
   }
 }

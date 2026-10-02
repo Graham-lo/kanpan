@@ -13,7 +13,7 @@
  * 首帧前的皮肤由 m/index.html 的内联脚本按同一个键套上（theme / skin / redUp 三个字段，
  * redUp 只在 greenUpMigrated 之后才当真）。
  */
-import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, type LayoutGroup, type Prefs } from './prefs'
+import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, type Prefs } from './prefs'
 import { migrateAlert, type Alert } from '../../alerts/shape'
 import { tabGuard } from './tabGuard'
 import { validSymbol } from '../../sync/codec'
@@ -125,19 +125,15 @@ const subs = new Set<(s: State) => void>()
 export function subscribe(fn: (s: State) => void): () => void { subs.add(fn); return () => { subs.delete(fn) } }
 
 let layoutBefore = layoutSnapshot(st)
-const forkListeners = new Set<(g: LayoutGroup) => void>()
-/** 某一组周期的指标第一次分出自己的一份（iOS 浮一句 forkNotice）；返回取消函数 */
-export function onLayoutFork(fn: (g: LayoutGroup) => void): () => void { forkListeners.add(fn); return () => { forkListeners.delete(fn) } }
 
 /** 指标布局是整份换进来的（云端装进来、恢复出厂）：以现在这份为「改动之前」，下一次 save 不把它当成用户在当前组改了指标 */
 export function layoutSettled(): void { layoutBefore = layoutSnapshot(st) }
 
 /** 落盘（手势结束、改设置、切页……立刻调，不节流）并通知订阅者。
- *  落盘前先按周期分组理顺指标布局（iOS PrefsStore 的每一条改法都过 settleIndicatorLayouts） */
+ *  落盘前先把指标布局收拢成一份（iOS PrefsStore 的每一条改法都过 settleIndicatorLayouts） */
 export function save(): void {
-  const forked = settleIndicatorLayouts(st, layoutBefore)
+  settleIndicatorLayouts(st, layoutBefore)
   layoutBefore = layoutSnapshot(st)
-  if (forked) forkListeners.forEach(fn => { try { fn(forked) } catch (e) { console.error(e) } })
   // 被别的标签页比下去了（tabGuard）就不写盘，切回来会重载
   tabGuard.write(KEY)
   subs.forEach(fn => { try { fn(st) } catch (e) { console.error(e) } })
@@ -145,9 +141,8 @@ export function save(): void {
 
 /** 只落盘、不通知（滚动位置这种高频又没人关心的） */
 export function persistQuiet(): void {
-  const forked = settleIndicatorLayouts(st, layoutBefore)
+  settleIndicatorLayouts(st, layoutBefore)
   layoutBefore = layoutSnapshot(st)
-  if (forked) forkListeners.forEach(fn => { try { fn(forked) } catch (e) { console.error(e) } })
   tabGuard.write(KEY)
 }
 

@@ -61,9 +61,8 @@ struct SettingsStampTests {
     store.update { $0.subHeightOverrides[.vol] = 120 }
     store.update { $0.subs = [.vol, .macd] }
     store.update { $0.indicatorColors[.macd] = [0: "#FF0000"] }
-    // 副图高度跟人走（2026-10-03）：三组一起改、不分叉，记脏的是老键 `subHeightOverrides`；
-    // 换了开着的副图（关掉了「仓」）才让小时组分叉，记脏 `indicatorLayouts`。
-    #expect(Set(store.dirtyFields) == ["subHeightOverrides", "indicatorLayouts", "indicatorColors"])
+    // 指标布局一人一份（2026-10-03）：记脏的就是老键本身。
+    #expect(Set(store.dirtyFields) == ["subHeightOverrides", "subs", "indicatorColors"])
   }
 
   // ---------------------------------------------------------------- 清
@@ -139,12 +138,12 @@ struct SettingsStampTests {
             "服务端都认下了还留着脏标识的话，云端那份永远打不赢本地——另一台设备改的东西再也收不到")
   }
 
-  @Test("改指标参数：记脏的是 indicatorLayouts，indicatorLayouts/hour 被认下就清")
-  func clearsGroupLayoutWirePath() {
+  @Test("改指标参数：记脏的是 params，params/<指标> 被认下就清")
+  func clearsParamsWirePath() {
     let (store, _, _) = makeStore()
     store.update { $0.params[.ma] = [7, 30, 60]; $0.params[.ema] = [9, 21] }
-    #expect(store.dirtyFields == ["indicatorLayouts"], "出厂周期 1h：改参数让小时组分叉，老键 params（共用那份）不动")
-    store.syncPushed(store.dirtyMarks, acked: ["indicatorLayouts/hour"])
+    #expect(store.dirtyFields == ["params"], "指标布局一人一份（2026-10-03），不再按周期分叉")
+    store.syncPushed(store.dirtyMarks, acked: ["params/MA", "params/EMA"])
     #expect(store.dirtyFields.isEmpty)
   }
 
@@ -152,7 +151,7 @@ struct SettingsStampTests {
   func clearsNestedSubHeightOverride() {
     let (store, _, _) = makeStore()
     store.update { $0.subHeightOverrides[.macd] = 140 }
-    #expect(store.dirtyFields == ["subHeightOverrides"], "副图高度跟人走（2026-10-03），不让小时组分叉")
+    #expect(store.dirtyFields == ["subHeightOverrides"], "指标布局一人一份（2026-10-03）")
     store.syncPushed(store.dirtyMarks, acked: ["subHeightOverrides/MACD"])
     #expect(store.dirtyFields.isEmpty, "拖一次副图分隔线就让这个字段从此永远脏着，每轮同步都白推一份 settings")
   }

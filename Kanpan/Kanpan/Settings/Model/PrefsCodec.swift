@@ -180,7 +180,7 @@ extension Prefs: Codable {
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
     try c.encode(portraitHeight, forKey: .portraitHeight)
     try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
-    // 指标布局：老键写三组共用的那份，分了叉的组写进 `indicatorLayouts`（空表也写，键永远在）。
+    // 指标布局：老键写这个人的那一份；`indicatorLayouts` 永远是空表（键留着，老客户端读得懂、云端残留的分叉被清掉）。
     let book = layoutBook
     try Prefs.encode(book.shared, into: &c)
     var groups = c.nestedContainer(keyedBy: IntervalGroup.self, forKey: .indicatorLayouts)
@@ -202,7 +202,7 @@ extension Prefs: Codable {
     try c.encode(learnedDefaults, forKey: .learnedDefaults)
   }
 
-  /// 一组指标布局的六个键。顶层（共用的那份）和 `indicatorLayouts/<组>` 里写法一样。
+  /// 指标布局的六个键。顶层和老档 `indicatorLayouts/<组>` 里写法一样。
   private static func encode(_ layout: IndicatorLayout, into c: inout KeyedEncodingContainer<CodingKeys>) throws {
     let l = layout.sanitized
     try c.encode(l.priceMode.rawValue, forKey: .priceMode)
@@ -314,8 +314,8 @@ extension Prefs: Codable {
         indicatorColors[id] = values.filter { (0..<21).contains($0.key) && $0.value.value.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil }
       }
     }
-    // 指标布局。老键是三组共用的那份（老档案、老客户端只有这一份——它就是迁移源：
-    // 没有 `indicatorLayouts` 的档读出来三组共用它，谁也没分叉）；分了叉的组从共用那份起步再盖。
+    // 指标布局一人一份、不分周期（2026-10-03）。老键就是那一份；老档（与老客户端写在云端的）
+    // `indicatorLayouts` 里还有按周期分的叉时，取当前周期所在组那一份当作唯一那份，其余丢掉。
     var shared = indicatorLayout
     Prefs.decode(c, into: &shared)
     var book = IndicatorLayoutBook(shared: shared)
@@ -327,8 +327,8 @@ extension Prefs: Codable {
         book.forks[group] = fork
       }
     }
-    book.unifyPersonWide(active: layoutGroup)
     adopt(book)
+    collapseIndicatorLayouts()
 
     // 认不出的值（比如旧版本的「自动」）退回直连。
     if let raw = str(.routePolicy), let v = MarketRoutePolicy(rawValue: raw) { routePolicy = v }

@@ -232,13 +232,9 @@ struct PrefsPersistenceTests {
     a.update { $0 = Self.mutated() }
     let b = PrefsStore(storage: box, cache: UnavailableMarketCache())
     #expect(b.prefs == a.prefs)
-    // 整份换进来的指标布局落在它自己周期（15m）那一组：那一组分叉，共用那份还是出厂。
+    // 指标布局一人一份（2026-10-03）：整份换进来的那份就是它。
     #expect(b.prefs.indicatorLayout == Self.mutated().indicatorLayout)
-    #expect(b.prefs.isLayoutForked(.minute))
-    // 副图高度跟人走（2026-10-03）：共用那份也带着这一份高度，其余还是出厂。
-    var shared = Prefs.defaults.indicatorLayout
-    shared.subHeightOverrides = Self.mutated().subHeightOverrides
-    #expect(b.prefs.layoutBook.shared == shared)
+    #expect(b.prefs.indicatorLayouts == IndicatorLayoutMemory())
     var rest = b.prefs
     rest.indicatorLayouts = Self.mutated().indicatorLayouts
     #expect(rest == Self.mutated(), "指标布局以外的字段原样读回")
