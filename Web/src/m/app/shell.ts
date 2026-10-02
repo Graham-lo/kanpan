@@ -6,12 +6,17 @@
  * - 现场：当前页、品种、滚动位置随时落盘，冷启动回到原地。
  * - 前台：切后台回来发 onForeground（行情 WS 由 market/stream.ts 自己在 visibilitychange 里重连，
  *   页面在这里补拉 REST、刷新列表）。
+ * - 系统返回（鸿蒙 / 安卓侧边返回、Safari 左沿右划）：退最上面那层弹层 / 盖板 / 页内推进去的层，
+ *   都没有时图表页有来路就回来路（与顶栏「‹」同一件事），见 ../ui/backStack。
+ * - 换页是瞬切（iOS TabView 不做过场），按下态 / 防捏放大 / 长按菜单 / 看图不锁屏见 ../ui/native。
  */
 import { st, save, persistQuiet, resolvedTheme, PAGES, type PageId } from './store'
 import { glyph, type GlyphName } from '../ui/icons'
 import { closeAllSheets } from '../ui/sheet'
 import { closeOpenSwipe } from '../ui/swipeDelete'
 import { el } from '../ui/dom'
+import { installBack, onBack, syncBack } from '../ui/backStack'
+import { installNativeFeel } from '../ui/native'
 
 /** 一页对壳的承诺 */
 export interface PageHandle {
@@ -53,8 +58,18 @@ let appRoot: HTMLElement | null = null
 let tabbar: HTMLElement | null = null
 let shown: PageId | null = null
 
-/** 图表页的「来路」：从自选 / 板块点进来时记着，图表页顶栏据此画返回；自己点底栏就作废 */
-export const nav = { origin: null as PageId | null }
+/** 图表页的「来路」：从自选 / 板块点进来时记着，图表页顶栏据此画返回；自己点底栏就作废。
+ *  有来路时系统返回也回那一页（与图表页顶栏「‹」一样：作废来路、切过去） */
+let origin: PageId | null = null
+let unbackOrigin: (() => void) | null = null
+export const nav = {
+  get origin(): PageId | null { return origin },
+  set origin(v: PageId | null) {
+    origin = v
+    unbackOrigin?.(); unbackOrigin = null
+    if (v && v !== 'chart') unbackOrigin = onBack(() => { const o = origin; nav.origin = null; if (o) go(o) }, 'chart')
+  },
+}
 
 export const pageRoot = (id: PageId): HTMLElement => document.getElementById('page-' + id)!
 export const currentPage = (): PageId => st.page
@@ -95,20 +110,22 @@ export function registerPage(id: PageId, h: PageHandle): void {
 
 // ───────── 盖板 ─────────
 
-/** 不在 ui/sheet 那一摞里的盖板（搜索页这类整屏盖层）登记的关闭函数；换页时统一收掉 */
-const overlays = new Set<() => void>()
+/** 不在 ui/sheet 那一摞里的盖板（搜索页这类整屏盖层）登记的关闭函数 → 它的系统返回注销函数；换页时统一收掉 */
+const overlays = new Map<() => void, () => void>()
 
-/** 登记一层盖板：开的时候登记、关的时候调返回的函数注销。壳换页时会调 close（close 里自己注销） */
+/** 登记一层盖板：开的时候登记、关的时候调返回的函数注销。壳换页时会调 close（close 里自己注销）；
+ *  系统返回也关它（盖在它上面的弹层先退） */
 export function registerOverlay(close: () => void): () => void {
-  overlays.add(close)
-  return () => { overlays.delete(close) }
+  overlays.get(close)?.()
+  overlays.set(close, onBack(close))
+  return () => { overlays.get(close)?.(); overlays.delete(close) }
 }
 
 /** 收干净所有盖在页面上的层：弹层 / 面板 / 菜单 / 确认框（ui/sheet 那一摞）、左滑开着的行、登记过的盖板 */
 export function closeOverlays(): void {
   closeAllSheets()
   closeOpenSwipe()
-  for (const close of [...overlays]) { overlays.delete(close); safe(close) }
+  for (const [close, unback] of [...overlays]) { overlays.delete(close); unback(); safe(close) }
 }
 
 /** 切到某一页。从底栏点的（fromTab）会把图表页的来路作废 */
@@ -135,6 +152,8 @@ export function go(page: string, opts: { fromTab?: boolean; replace?: boolean } 
   const h = pages.get(p)
   if (h) { shown = p; safe(() => h.show()); restoreScroll(pageRoot(p), p) }
   save()
+  syncBack()
+  native.refresh()
   hooks.onPage.forEach(fn => safe(() => fn(p, prev)))
 }
 
@@ -214,6 +233,8 @@ export function restoreScroll(target: HTMLElement, key: string): void {
 
 // ───────── 装壳 ─────────
 
+let native: { refresh(): void } = { refresh() {} }
+
 function safe(fn: () => void): void { try { fn() } catch (e) { console.error(e) } }
 
 /** 建出四页与底栏，接好路由、主题、前后台；返回 #m-app */
@@ -246,6 +267,9 @@ export function installShell(mount: HTMLElement = document.body): HTMLElement {
   paintTabbar()
   if (location.hash !== '#' + st.page) history.replaceState(null, '', '#' + st.page)
   addEventListener('hashchange', () => go(location.hash.slice(1)))
+  // 系统返回弹掉哨兵后地址回到上一格：把 hash 摆回当前页，随后那个 hashchange 就是空转
+  installBack(() => st.page, () => { if (location.hash !== '#' + st.page) history.replaceState(history.state, '', '#' + st.page) })
+  native = installNativeFeel(() => st.page === 'chart')
 
   applyTheme()
   watchSystemTheme()

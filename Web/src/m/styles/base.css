@@ -17,8 +17,9 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   /* 顶到头不回弹出底色、不把整页下拉 */
   overscroll-behavior: none;
-  /* 禁双击缩放，保留滚动与双指（双指在 viewport 里已经关掉） */
-  touch-action: manipulation;
+  /* 只许滚：不双击放大、不捏放大（iOS 无视视口的 user-scalable=no，靠这条 + ui/native 拦 gesturestart）；
+   * 图表画布自己 touch-action: none、双指缩放走 JS，不受影响 */
+  touch-action: pan-x pan-y;
 }
 body { overflow: hidden; position: fixed; inset: 0 }
 

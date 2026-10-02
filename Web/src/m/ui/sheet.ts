@@ -3,28 +3,46 @@
  * 四种，都挂在最上层 #m-layer，带遮罩：
  *   openSheet    底部半屏面板：顶上一根拖拽条；标题行左「‹」（amber，关或回上一层）+ 标题 + 灰副标题 + 右端一个字按钮；
  *                正文可滚。档位 medium（半屏）/ large（留出状态栏）/ auto（按内容高，封顶 large），
- *                拖标题行或在正文顶上往下拉可以换档或关掉。底色 raised，圆角 16。
+ *                拖标题行或在正文顶上往下拉可以换档或关掉。底色 raised。
+ *                形状照 iOS 26 的系统 sheet：没撑满时四边各留 8、四角大圆角浮在屏幕上（与屏幕圆角同心），
+ *                撑到 large 才贴住左右下三边、只留上圆角。键盘起来时整张面板坐到键盘上沿（visualViewport）。
  *   openPopover  盖在内容上的弹层：从 anchor 下沿展开（周期条「更多」这类），下方整片遮罩，点遮罩关。
- *   openMenu     锚在按钮上的下拉菜单（「…」），iOS Menu 的样子。
+ *   openMenu     锚在按钮上的下拉菜单（「…」），iOS 26 Menu 的样子：大圆角卡片、图标在字前。
  *   confirmDialog 居中确认框（删除 / 退出登录这类不可逆动作），返回 Promise<boolean>。
  *
- * 切页时壳会 closeAllSheets()；Esc 关最上面一层（桌面调试用）。
+ * 切页时壳会 closeAllSheets()；Esc 与系统返回（鸿蒙 / 安卓侧边返回、Safari 左沿右划，见 ./backStack）退最上面一层。
  */
 import { el, esc, layer, reducedMotion, safeArea } from './dom'
 import { icon, type IconName } from './icons'
+import { onBack } from './backStack'
 
 // ───────── 共用：一层一层叠 ─────────
 
-interface Layer { close(): void }
+/** 一层：close 关掉；back 是系统返回 / Esc 时做的事（面板推进去几层时先回上一层），没有就是 close */
+interface Layer { close(): void; back?(): void; unback?: () => void }
 const stack: Layer[] = []
-function push(l: Layer): void { stack.push(l); wireKeys() }
-function drop(l: Layer): void { const i = stack.indexOf(l); if (i >= 0) stack.splice(i, 1) }
+function push(l: Layer): void {
+  stack.push(l); wireKeys()
+  l.unback = onBack(() => (l.back ?? l.close)())
+}
+function drop(l: Layer): void {
+  const i = stack.indexOf(l)
+  if (i >= 0) stack.splice(i, 1)
+  l.unback?.(); l.unback = undefined
+}
+
+/** 不归这里画、但要排进这一摞的层（解释卡这类）：切页时一起收、Esc / 系统返回关最上面的。返回「已关掉」时调的注销函数 */
+export function pushLayer(close: () => void): () => void {
+  const l: Layer = { close }
+  push(l)
+  return () => drop(l)
+}
 
 let keysWired = false
 function wireKeys(): void {
   if (keysWired) return
   keysWired = true
-  addEventListener('keydown', e => { if (e.key === 'Escape' && stack.length) { e.preventDefault(); stack[stack.length - 1].close() } })
+  addEventListener('keydown', e => { if (e.key === 'Escape' && stack.length) { e.preventDefault(); const t = stack[stack.length - 1]; (t.back ?? t.close)() } })
 }
 
 /** 关掉所有弹层（切页、切后台回来时用） */
@@ -47,6 +65,9 @@ export interface SheetOptions {
   expandable?: boolean
   /** 模态（默认 true）：遮罩盖住背后、点遮罩关。false = 背后还能点（iOS backgroundInteraction），也不画遮罩 */
   modal?: boolean
+  /** 什么时候压暗背后：always（默认，系统 sheet）/ large（照 PanelHost 的 backgroundInteraction upThrough medium：
+   *  半屏时背后不暗、图照常看得见，点背后只收面板；撑满才压暗） */
+  dim?: 'always' | 'large'
   /** 不画左上的「‹」（整页式的面板） */
   noBack?: boolean
   /** 关掉之后 */
@@ -72,17 +93,36 @@ export interface Sheet {
 }
 
 const vh = (): number => window.visualViewport?.height ?? innerHeight
-function detentPx(d: Detent, content: number): number {
-  const large = vh() - Math.max(safeArea().top, 20) - 10
-  if (d === 'large') return large
-  if (d === 'medium') return Math.round(vh() * 0.52)
-  return Math.min(large, content)
+/** 没撑满时四边留的空（iOS 26 浮起来的 sheet） */
+export const SHEET_FLOAT = 8
+
+/** 键盘（或别的系统条）从底下盖住了多少：布局视口底边到可视视口底边的距离；小于 40 当作没有（地址栏伸缩这类） */
+export function keyboardInset(innerH: number, vvTop: number, vvH: number): number {
+  const kb = Math.round(innerH - vvTop - vvH)
+  return kb >= 40 ? kb : 0
+}
+
+/** 面板该多高。view = 可视视口高；kb > 0（键盘起来）时 medium 也按 large 给，免得正在填的框被压成一条缝 */
+export function sheetHeight(d: Detent, o: { view: number; safeTop: number; content: number; kb?: number }): number {
+  const large = Math.round(o.view - Math.max(o.safeTop, 20) - 10)
+  if (d === 'auto') return Math.min(large - SHEET_FLOAT, Math.round(o.content))
+  if (d === 'large' || (o.kb ?? 0) > 0) return large
+  return Math.round(o.view * 0.52)
+}
+
+function detentPx(d: Detent, content: number, kb = 0): number {
+  return sheetHeight(d, { view: vh(), safeTop: safeArea().top, content, kb })
+}
+
+function kbNow(): number {
+  const v = window.visualViewport
+  return v ? keyboardInset(innerHeight, v.offsetTop, v.height) : 0
 }
 
 /** 底部半屏面板 */
 export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts: SheetOptions = {}): Sheet {
   const modal = opts.modal !== false
-  const wrap = el('div', 'm-sheet-wrap' + (modal ? ' modal' : ''))
+  const wrap = el('div', 'm-sheet-wrap' + (modal ? ' modal' : '') + (opts.dim === 'large' ? ' dim-large' : ''))
   const scrim = el('div', 'm-sheet-scrim')
   const root = el('div', 'm-sheet' + (opts.className ? ' ' + opts.className : ''))
   root.setAttribute('role', 'dialog')
@@ -109,9 +149,13 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
     root.setAttribute('aria-label', t)
   }
   const layout = (): void => {
+    const kb = kbNow()
     const content = root.querySelector<HTMLElement>('.m-sheet-grab')!.offsetHeight + head.offsetHeight + body.scrollHeight + 2
-    root.style.height = detentPx(detent, content) + 'px'
-    wrap.classList.toggle('large', detent === 'large')
+    root.style.height = detentPx(detent, content, kb) + 'px'
+    // 键盘起来：整张面板坐到键盘上沿，贴边（与 large 同形）
+    wrap.style.setProperty('--kb', kb + 'px')
+    wrap.classList.toggle('kb', kb > 0)
+    wrap.classList.toggle('large', detent === 'large' || kb > 0)
   }
   const sheet: Sheet = {
     root, body,
@@ -134,13 +178,15 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
       closed = true; drop(me)
       // 关掉就摘掉窗口上的 resize：它的闭包攥着整张面板的 DOM，留着就开一次漏一张（压测 200 次开关 +2 万节点）
       removeEventListener('resize', onResize)
+      visualViewport?.removeEventListener('resize', onResize)
+      visualViewport?.removeEventListener('scroll', onResize)
       wrap.classList.remove('in')
       root.style.transform = ''
       setTimeout(() => wrap.remove(), reducedMotion() ? 0 : 300)
       opts.onClose?.()
     },
   }
-  const me: Layer = { close: () => sheet.close() }
+  const me: Layer = { close: () => sheet.close(), back: () => sheet.back() }
 
   setTitle(opts.title ?? '', opts.subtitle)
   root.querySelector<HTMLElement>('.m-sheet-back')?.addEventListener('click', () => sheet.back())
@@ -151,8 +197,11 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
   push(me)
   layout()
   requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('in')))
-  const onResize = (): void => { if (!closed) layout() }
+  const onResize = (): void => { if (!closed && !dragging) layout() }
   addEventListener('resize', onResize)
+  // 软键盘只改可视视口（iOS Safari、Chromium 默认的 resizes-visual），window 不发 resize
+  visualViewport?.addEventListener('resize', onResize)
+  visualViewport?.addEventListener('scroll', onResize)
 
   // —— 拖：标题行 / 拖拽条随便拖；正文只在滚到顶时往下拉才接手 ——
   const expandable = opts.expandable !== false && detent !== 'auto'
@@ -166,7 +215,7 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
     vel = (y - lastY) / Math.max(1, now - lastT); lastY = y; lastT = now
     dy = y - startY
     if (dy >= 0) root.style.transform = `translateY(${dy}px)`
-    else if (expandable) { root.style.transform = ''; root.style.height = Math.min(detentPx('large', 0), startH - dy) + 'px' }
+    else if (expandable) { root.style.transform = ''; root.style.height = Math.min(detentPx('large', 0, kbNow()), startH - dy) + 'px' }
     else root.style.transform = `translateY(${dy / 6}px)` // 往上拉不动，给一点阻尼
   }
   const end = (): void => {
@@ -267,10 +316,13 @@ export function openMenu(anchor: HTMLElement, items: (MenuItem | null)[], onClos
   root.style.right = right + 'px'
   root.style.top = Math.round(r.bottom + 6) + 'px'
   root.style.transformOrigin = `calc(100% - ${Math.round(r.width / 2)}px) top`
+  const leadCol = items.some(it => it && (it.icon || it.checked !== undefined))
   items.forEach(it => {
     if (!it) { root.appendChild(el('div', 'm-menu-sep')); return }
-    const b = el('button', 'm-menu-item' + (it.destructive ? ' danger' : ''),
-      `<span class="m-menu-check">${it.checked ? icon('check', 14) : ''}</span><span class="m-menu-title">${esc(it.title)}</span>${it.icon ? icon(it.icon, 17) : ''}`)
+    // iOS 26：图标在字前；勾选项的勾占图标那一格（菜单里有任何一项带图标或勾，各行都留这一格对齐）
+    const lead = it.checked ? icon('check', 15) : it.icon ? icon(it.icon, 18) : ''
+    const b = el('button', 'm-menu-item' + (it.destructive ? ' danger' : '') + (it.checked ? ' checked' : ''),
+      `${leadCol ? `<span class="m-menu-lead">${lead}</span>` : ''}<span class="m-menu-title">${esc(it.title)}</span>`)
     b.type = 'button'; b.setAttribute('role', 'menuitem'); b.disabled = !!it.disabled
     b.onclick = () => { pop.close(); it.run() }
     root.appendChild(b)

@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="light" data-skin="sage" data-updown="green-up">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
 <!-- 币安 CloudFront 对带 sslip.io 来源页的请求直接回 403（且不带跨域头），所以一律不发 Referer -->
 <meta name="referrer" content="no-referrer">
 <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
@@ -17,6 +17,13 @@
 <link rel="manifest" href="/m/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/m/icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/m/icon-192.png">
+<!-- 从主屏幕冷启动时 iOS 先铺这张图再起网页：没有它就是一屏白（深色下刺眼）。纯底色，按机型逐张、深浅各一（默认皮肤青苔的底色） -->
+<link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (prefers-color-scheme: light)" href="/m/launch-1206x2622-light.png">
+<link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (prefers-color-scheme: dark)" href="/m/launch-1206x2622-dark.png">
+<link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (prefers-color-scheme: light)" href="/m/launch-1290x2796-light.png">
+<link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (prefers-color-scheme: dark)" href="/m/launch-1290x2796-dark.png">
+<link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (prefers-color-scheme: light)" href="/m/launch-1320x2868-light.png">
+<link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (prefers-color-scheme: dark)" href="/m/launch-1320x2868-dark.png">
 <script>
   // 首帧前就把皮肤、深浅、涨跌色套上（键与 src/m/app/store.ts 同为 hkline-m-v1），避免闪一下默认色。
   // theme = auto 时跟系统；redUp → data-updown：出厂绿涨红跌，「一律绿涨」迁移（greenUpMigrated）之前存的红涨不算数。

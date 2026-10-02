@@ -9,6 +9,7 @@
  *   2. 拼 HTML：先 registerTerms([...])，再在模板里写 termHTML('oi')；点击由全局委托接住。
  */
 import { el, esc, layer } from './dom'
+import { pushLayer } from './sheet'
 
 export interface Term {
   /** 英文小写短词（拼 data-term / 测试标识用） */
@@ -70,10 +71,15 @@ export function showTerm(term: Term): void {
   scrim.innerHTML = `<div class="m-term-card" role="dialog" aria-modal="true" aria-label="${esc(term.title)}">
     <div class="m-term-main"><div class="m-term-title">${esc(term.title)}</div><div class="m-term-body">${esc(term.body)}</div></div>
     <button type="button" class="m-term-ok">知道了</button></div>`
+  let done = false
   const close = (): void => {
+    if (done) return
+    done = true; unlayer()
     scrim.classList.remove('in')
     setTimeout(() => { scrim.remove(); if (open === scrim) open = null }, 200)
   }
+  // 排进弹层那一摞：切页时一起收，系统返回 / Esc 先关它
+  const unlayer = pushLayer(close)
   scrim.addEventListener('click', e => { if (e.target === scrim) close() })
   scrim.querySelector<HTMLElement>('.m-term-ok')!.onclick = close
   layer().appendChild(scrim)

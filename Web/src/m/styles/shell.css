@@ -12,16 +12,11 @@
   overscroll-behavior-y: contain;
   padding: var(--safe-top) var(--safe-right) var(--tabbar-clearance) var(--safe-left);
   background: var(--page-bg, var(--app));
-  visibility: hidden; opacity: 0; pointer-events: none;
-  transition: opacity var(--dur-fast) var(--ease-out), visibility 0s linear var(--dur-fast);
+  /* 换页瞬切：iOS 的 TabView 切 tab 不做过场（MainScreen.switchTo 关掉了动画），淡入淡出反倒像网页 */
+  visibility: hidden; pointer-events: none;
 }
 .page.page-fixed { overflow: hidden; padding: 0 }
-.page.show {
-  visibility: visible; opacity: 1; pointer-events: auto;
-  transition: opacity var(--dur-fast) var(--ease-out), visibility 0s;
-}
-/* 冷启动第一帧不做淡入 */
-#m-app.booting .page { transition: none }
+.page.show { visibility: visible; pointer-events: auto }
 
 /* 还没做的页 */
 .page-soon {

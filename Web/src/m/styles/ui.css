@@ -3,8 +3,11 @@
 #m-layer { position: fixed; inset: 0; z-index: 100; pointer-events: none }
 #m-layer > * { pointer-events: auto }
 
-/* ───────── 底部面板（PanelSheet） ───────── */
-.m-sheet-wrap { position: fixed; inset: 0; pointer-events: none }
+/* ───────── 底部面板（PanelSheet） ─────────
+ * 形状照 iOS 26 系统 sheet：没撑满时四边留 8、四角 --sheet-r 浮着（与屏幕圆角同心）；
+ * 撑到 large（或键盘起来）贴住左右下三边、只留上圆角。键盘高度由 sheet.ts 写进 --kb。
+ * dim-large：半屏时背后不压暗（遮罩透明但照样接住点按，点背后只收面板），撑满才暗——照 PanelHost。 */
+.m-sheet-wrap { position: fixed; inset: 0; pointer-events: none; --kb: 0px; --sheet-r: 38px; --sheet-float: 8px }
 .m-sheet-scrim {
   position: absolute; inset: 0; background: var(--scrim); opacity: 0;
   transition: opacity var(--dur) var(--ease-out);
@@ -12,21 +15,33 @@
 .m-sheet-wrap.modal .m-sheet-scrim { pointer-events: auto }
 .m-sheet-wrap:not(.modal) .m-sheet-scrim { display: none }
 .m-sheet-wrap.in .m-sheet-scrim { opacity: 1 }
+.m-sheet-wrap.dim-large:not(.large) .m-sheet-scrim { background: transparent }
 .m-sheet {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  display: flex; flex-direction: column;
+  position: absolute;
+  left: calc(var(--sheet-float) + var(--safe-left)); right: calc(var(--sheet-float) + var(--safe-right));
+  bottom: calc(var(--sheet-float) + var(--kb));
+  display: flex; flex-direction: column; overflow: hidden;
   background: var(--raised); color: var(--ink);
-  border-radius: var(--r-l) var(--r-l) 0 0;
-  box-shadow: 0 -2px 20px var(--toast-shadow);
-  transform: translateY(100%);
-  transition: transform var(--dur) var(--ease-spring), height var(--dur) var(--ease-spring);
+  border-radius: var(--sheet-r);
+  box-shadow: 0 10px 40px var(--toast-shadow), 0 0 0 0.5px var(--hair);
+  transform: translateY(calc(100% + var(--sheet-float)));
+  transition: transform var(--dur) var(--ease-spring), height var(--dur) var(--ease-spring),
+    left var(--dur) var(--ease-spring), right var(--dur) var(--ease-spring), bottom var(--dur) var(--ease-spring),
+    border-radius var(--dur) var(--ease-spring);
   pointer-events: auto;
+}
+.m-sheet-wrap.large .m-sheet {
+  left: 0; right: 0; bottom: var(--kb);
+  border-radius: var(--sheet-r) var(--sheet-r) 0 0;
   padding-left: var(--safe-left); padding-right: var(--safe-right);
-  max-width: 100%;
+  box-shadow: 0 -2px 20px var(--toast-shadow);
 }
 .m-sheet-wrap.in .m-sheet { transform: translateY(0) }
+/* 拖动时只跟手，不补间（位置与圆角同上） */
 .m-sheet.dragging { transition: none }
-.m-sheet-grab { flex: none; height: 12px; display: flex; justify-content: center; align-items: flex-end; touch-action: none; cursor: grab }
+/* 键盘起落时跟着可视视口走，不要再叠一段补间 */
+.m-sheet-wrap.kb .m-sheet { transition: transform var(--dur) var(--ease-spring) }
+.m-sheet-grab { flex: none; height: 14px; display: flex; justify-content: center; align-items: flex-end; touch-action: none; cursor: grab }
 .m-sheet-grab i { width: 36px; height: 5px; border-radius: 3px; background: var(--control-line); opacity: 0.55 }
 .m-sheet-head {
   flex: none; display: flex; align-items: center; min-height: calc(var(--hit) + var(--s-xs) * 2);
@@ -45,8 +60,11 @@
 .m-sheet-action { font: var(--t-title); font-weight: 500; color: var(--accent); min-height: var(--hit); padding-left: var(--s-m) }
 .m-sheet-body {
   flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-  padding: var(--s-xs) 0 calc(var(--s-l) + var(--safe-bottom));
+  /* 浮着时面板下沿已离屏幕下沿 8，home 条只再让出剩下那一截；键盘起来时没有 home 条 */
+  padding: var(--s-xs) 0 calc(var(--s-l) + max(0px, var(--safe-bottom) - var(--sheet-float)));
 }
+.m-sheet-wrap.large .m-sheet-body { padding-bottom: calc(var(--s-l) + var(--safe-bottom)) }
+.m-sheet-wrap.kb .m-sheet-body { padding-bottom: var(--s-l) }
 
 /* ───────── 盖在内容上的弹层（周期条「更多」） ───────── */
 .m-pop-wrap { position: fixed; inset: 0; pointer-events: none }
@@ -67,29 +85,34 @@
 .m-pop-wrap.in .m-pop-scrim { opacity: 1 }
 .m-pop-wrap.in .m-pop { transform: none; opacity: 1 }
 
-/* ───────── 下拉菜单（iOS Menu） ───────── */
+/* ───────── 下拉菜单（iOS 26 Menu） ─────────
+ * 大圆角卡片、行间不画线；每行「图标 + 字」，勾选项的勾占图标位；分组之间一道细线。 */
 .m-menu-wrap { position: fixed; inset: 0 }
 .m-menu-scrim { position: absolute; inset: 0 }
 .m-menu {
-  position: absolute; min-width: 220px; max-width: calc(100vw - 24px);
-  background: var(--raised); border-radius: var(--r-m); overflow: hidden;
-  box-shadow: 0 10px 36px var(--toast-shadow), 0 0 0 1px var(--line);
+  position: absolute; min-width: 250px; max-width: calc(100vw - 24px);
+  padding: 6px 0;
+  /* iOS 26 的菜单是一块透光的材料：底下的列表隐约透上来 */
+  background: color-mix(in srgb, var(--raised) 84%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
+  border-radius: 22px; overflow: hidden;
+  box-shadow: 0 12px 40px var(--toast-shadow), 0 0 0 0.5px var(--hair);
   transform: scale(0.86); opacity: 0;
-  transition: transform 180ms var(--ease-spring), opacity 140ms var(--ease-out);
+  transition: transform 220ms var(--ease-spring), opacity 140ms var(--ease-out);
 }
 .m-menu-wrap.in .m-menu { transform: none; opacity: 1 }
 .m-menu-item {
-  width: 100%; display: flex; align-items: center; gap: var(--s-s);
-  min-height: var(--hit); padding: 0 var(--s-l) 0 var(--s-m);
+  width: 100%; display: flex; align-items: center; gap: var(--s-m);
+  min-height: var(--hit); padding: 0 var(--s-xl) 0 var(--s-l);
   font: var(--t-body); color: var(--ink); text-align: left;
 }
-.m-menu-item + .m-menu-item { box-shadow: inset 0 1px 0 var(--hair) }
 .m-menu-item:active { background: var(--raised2) }
 .m-menu-item.danger { color: var(--danger) }
-.m-menu-check { width: 16px; flex: none; color: var(--accent) }
-.m-menu-title { flex: 1 }
-.m-menu-item .ic { color: currentColor; opacity: 0.85 }
-.m-menu-sep { height: 8px; background: var(--raised2) }
+.m-menu-lead { width: 20px; flex: none; display: flex; align-items: center; justify-content: center }
+.m-menu-lead .ic { color: currentColor; opacity: 0.9 }
+.m-menu-item.checked .m-menu-lead { color: var(--accent) }
+.m-menu-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.m-menu-sep { height: 1px; margin: 6px var(--s-l); background: var(--line) }
 
 /* ───────── 居中确认框 ───────── */
 .m-alert-scrim, .m-term-scrim {
