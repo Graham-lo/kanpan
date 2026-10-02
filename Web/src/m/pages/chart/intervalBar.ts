@@ -1,6 +1,7 @@
 /* 手机网页版 · 行情页周期条（照 iOS Main/IntervalBar.swift、IntervalGridPopover.swift、CrosshairReadout.swift）
  *
- * 钉住的档位按 INTERVALS 顺序等宽铺满；当前档一颗贴字的 accent-soft 药丸；图不在最新时多一颗「最新」；
+ * 钉住的档位按 INTERVALS 顺序等宽铺满；当前档一颗贴字的 accent-soft 药丸（「最新」药丸 2026-10-02 按用户要求删了：
+ * 回到最新靠双击图、或在行情页再点一下底栏「图表」）；
  * 一根 1×14 分隔线；行尾三件：「更多 ▾」（当前档没钉住时写成那一档并高亮）· 「分析」· 图表设置记号。
  * 长按一档 = 取消钉。十字线在主图上时整行透明让位，同一位置换成「创建提醒」药丸。
  */
@@ -21,20 +22,17 @@ export interface IntervalBarHandlers {
   /** 钉 / 取消钉（没钉满时） */
   onPin(iv: IntervalId): void
   onReplace(old: IntervalId, add: IntervalId): void
-  onLatest(): void
   onAnalysis(): void
   onSettings(): void
   onAlert(): void
 }
 
-export interface IntervalBarState { quick: readonly IntervalId[]; current: IntervalId; atLatest: boolean; crosshairOnMain: boolean }
+export interface IntervalBarState { quick: readonly IntervalId[]; current: IntervalId; crosshairOnMain: boolean }
 
 export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   const row = el('div', 'cp-ivrow')
   const bar = el('div', 'cp-ivbar')
   const chips = el('div', 'cp-chips')
-  const latest = el('button', 'cp-latest', '最新')
-  latest.type = 'button'; latest.setAttribute('aria-label', '回到最新')
   const divider = el('span', 'cp-ivdiv')
   const more = el('button', 'cp-tail cp-more')
   more.type = 'button'
@@ -42,19 +40,18 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   analysis.type = 'button'
   const settings = el('button', 'cp-tail cp-gear', icon('adjust', 18))
   settings.type = 'button'; settings.setAttribute('aria-label', '图表设置')
-  bar.append(chips, latest, divider, more, analysis, settings)
+  bar.append(chips, divider, more, analysis, settings)
   const alert = el('button', 'cp-alertpill', `${icon('bell', 12)}<span>创建提醒</span>`)
   alert.type = 'button'
   row.append(bar, alert)
   host.append(row)
 
-  let state: IntervalBarState = { quick: [], current: '1h', atLatest: true, crosshairOnMain: false }
+  let state: IntervalBarState = { quick: [], current: '1h', crosshairOnMain: false }
   let grid: Popover | null = null
   let gridRender: (() => void) | null = null
   let chipsKey = ''
   let moreShown: string | null = null
 
-  latest.onclick = () => h.onLatest()
   analysis.onclick = () => { grid?.close(); h.onAnalysis() }
   settings.onclick = () => { grid?.close(); h.onSettings() }
   alert.onclick = () => h.onAlert()
@@ -154,7 +151,6 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
       chipsKey = key
       chips.innerHTML = list.map(iv => `<button type="button" class="cp-chip${iv === state.current ? ' on' : ''}" data-iv="${iv}" aria-label="${INTERVAL_DISPLAY[iv]}"${iv === state.current ? ' aria-selected="true"' : ''}><span>${INTERVAL_SHORT[iv]}</span></button>`).join('')
     }
-    latest.hidden = state.atLatest
     const off = !list.includes(state.current)
     const moreKey = off ? state.current : ''
     if (moreKey !== moreShown) {

@@ -68,7 +68,7 @@ const chart = createChart(host, {
 |---|---|---|
 | `crosshair` | `{ crosshair, bar }` | 头部开高低收读数（`dataDisplay: 'top'`） |
 | `scale` | `{ barSpacing }` | 用户捏合 / 平移后落盘根宽 |
-| `visibleRange` | `{ from, to, atLatest }` | 「回到最新」按钮显隐 |
+| `visibleRange` | `{ from, to, atLatest }` | 可视范围（「最新」药丸 2026-10-02 删了，行情页不再订它） |
 | `select` | `{ kind: 'orderFlow', focus }` | 点中订单流墙（focus 带详情卡摆放：below / leading / top / maxHeight / maxWidth / compact；卡片由页面画）。画线的选中不走这里，看下节控制器的 `selected` / `onState` |
 | `inversion` | `{ main, subs }` | 双击翻转后落盘 |
 | `subScale` | `{ id, scale }` | 拖副图分隔线后落盘 |

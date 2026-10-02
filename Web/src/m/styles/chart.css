@@ -108,11 +108,6 @@
 }
 .cp-chip span { padding: 3px 7px; border-radius: 999px; white-space: nowrap }
 .cp-chip.on span { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
-.cp-latest {
-  flex: none; height: 24px; padding: 0 var(--s-s); border-radius: 999px;
-  font: var(--t-caption-emph); color: var(--accent); background: var(--accent-soft);
-}
-.cp-latest[hidden] { display: none }
 .cp-ivdiv { flex: none; width: 1px; height: 14px; background: var(--line); margin: 0 var(--s-xs) }
 .cp-tail {
   flex: none; height: 100%; padding: 0 7px;

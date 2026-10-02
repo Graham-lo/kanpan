@@ -112,7 +112,6 @@ export function initChart(root: HTMLElement): PageHandle {
       st.quickIntervals = r.list; save()
     },
     onReplace: (old, add) => { st.quickIntervals = replaceQuick(st.quickIntervals, old, add, INTERVALS); save() },
-    onLatest: () => chart.scrollToLatest(true),
     onAnalysis: () => { openAnalysis(panelCtx) },
     onSettings: () => { openChartSettings() },
     onAlert: () => { const p = crossPrice; chart.clearCrosshair(); openAlertForm(sym(), p) },
@@ -224,7 +223,6 @@ export function initChart(root: HTMLElement): PageHandle {
   chart.on('inversion', e => { st.mainInverted = e.main; st.subInverted = [...e.subs] as IndicatorId[]; save() })
   chart.on('subScale', e => { st.subHeightOverrides = { ...st.subHeightOverrides, [e.id]: e.scale }; save() })
   chart.on('subOrder', list => { st.subs = [...list] as IndicatorId[]; save() })
-  chart.on('visibleRange', e => ivBar.render({ atLatest: e.atLatest }))
   chart.on('notice', t => toast(t))
   chart.on('crosshair', e => {
     const x = e.crosshair, b = e.bar
@@ -284,7 +282,7 @@ export function initChart(root: HTMLElement): PageHandle {
     const stale = isStale({ flag: st.stale, live: S.live, lastTick: s?.lastTick ?? null, now })
     topBar.render(sym(), nav.origin != null && nav.origin !== 'chart')
     header.render(sym(), stale, now)
-    ivBar.render({ quick: st.quickIntervals, current: iv(), atLatest: chart.isAtLatest })
+    ivBar.render({ quick: st.quickIntervals, current: iv() })
     bench.renderQuote()
   }
   const schedule = (): void => { if (!raf && shown) raf = requestAnimationFrame(() => { raf = 0; render() }) }
