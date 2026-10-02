@@ -2,7 +2,8 @@
  *
  * 和手机那套（AICoin 复刻）完全分开。对齐的是 TradingView 桌面版：
  *   · 多窗格：主图 + 最多三个副图，窗格之间 1 px 分隔、可拖动改高度
- *   · 右侧价格轴：最新价标签（实心、涨跌色）下面一行是本根收线倒计时；十字线在轴上出深色标签
+ *   · 右侧价格轴：最新价标签（实心、涨跌色）；十字线在轴上出深色标签。本根收线倒计时 2026-10-03 起不画
+ *     （用户用不到，三端一起去掉；恢复见 tag before-remove-candle-countdown-2026-10-03）
  *   · 十字线：鼠标悬停就出（不用按住），虚线，横竖都在轴上标值
  *   · 左上角图例：品种 · 周期 · 交易所 + 开高低收 + 涨跌；每个指标一行，悬停出现 显示/设置/移除
  *   · 成交量叠在主图底部 16%，半透明
@@ -13,7 +14,7 @@
  * 从原型 prototype/web-2026-09-29/chart.js 逐字移植；画法、数值不改。
  */
 import { icon } from '../ui/icons'
-import { clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, fmtSub, hexA, niceStep, pad } from '../util/format'
+import { clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, fmtSub, hexA, niceStep } from '../util/format'
 import { CATALOG, Calc, MAIN_IDS, paramText } from './calc'
 import type { Bar, CalcEnv, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
 import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
@@ -878,13 +879,12 @@ export class TVChart {
   }
   drawPriceLabels(p: Pane, r: PriceRange): void {
     const c = this.ctx, C = this.colors, PW = this.plotW()
-    const label = (y: number, text: string, bg: string, fg: string, sub?: string | null) => {
-      const h = sub ? 34 : 20
+    const label = (y: number, text: string, bg: string, fg: string) => {
+      const h = 20
       const top = clamp(y - 10, p.y, p.y + p.h - h)
       c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, h, 3); c.fill()
       c.fillStyle = fg; c.textAlign = 'left'; c.font = `600 ${this.font}`
       c.fillText(text, PW + 8, top + 10)
-      if (sub) { c.font = this.font; c.globalAlpha = .85; c.fillText(sub, PW + 8, top + 25); c.globalAlpha = 1 }
       c.font = this.font
     }
     if (this.ind.keys && !this.hidden.has('keys')) drawKeyAxis(this, p, r)
@@ -905,13 +905,7 @@ export class TVChart {
     const b = this.lastBar(); if (!b) return
     const y = this.priceToY(b.c, p, r)
     const col = this.stale ? C.text3 : (b.c >= b.o ? C.up : C.down)
-    let sub: string | null = null
-    if (this.replay == null && this.iv < 30 * 864e5) {
-      const left = Math.max(0, b.t + this.iv - Date.now())
-      const s = Math.floor(left / 1000), hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60
-      sub = hh >= 24 ? `${Math.floor(hh / 24)}天 ${pad(hh % 24)}时` : hh ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`
-    }
-    label(y, fmtAxis(b.c, this.meta.dec), col, '#fff', sub)
+    label(y, fmtAxis(b.c, this.meta.dec), col, '#fff')
     // 十字线标签画在最上层（drawCrosshair）
   }
   drawCrosshair(panes: Pane[]): void {

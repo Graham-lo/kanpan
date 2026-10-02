@@ -856,3 +856,14 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   上线结果（10-03 00:27）：新包 sha256 `5985cda7…` 装到新加坡（旧包留作 `kanpan-api.bak-20261003`，迁移前的 redUp 行导出在本机 `/tmp/redup-backup-20261003.tsv`），
   `_sqlx_migrations` 记到 41，71 份设置的 `redUp` 全是 `false`，`sync_changes` 那一分钟正好 68 条；四个 kanpan 服务 active，`/health` 200。
   网页 `make web-deploy` 已上线，线上 `/web/`、`/web/m/` 的 html 都是 `data-updown="green-up"`。iOS 设置套件 188 条全过；手机不在手边，真机包未装。
+
+## 35. 行情页不再展示 K 线收盘倒计时（2026-10-03，三端）
+
+用户：「行情页不再展示 k 线收盘倒计时，用户用不到」。删除前的最后一个提交打了 tag
+`before-remove-candle-countdown-2026-10-03`（= `53404b70`），要恢复从那里找。
+
+- iOS：`Prefs.chartOptions` 的 `countdown` 改为 `false`；`ChartSession` 的 `nowMs` 字段与心跳的 `countdown` 参数
+  一起删掉（心跳只剩持仓量补取与报价簿的钟，不再每秒叫醒图）。KanpanChart 引擎的倒计时能力留着不动（还原 AICoin 的底座）。
+- 手机网页：`appChartOptions()` 的 `countdown: false`；引擎心跳本来就按这项决定喂不喂 `nowMs`，关了就不再每秒重画。
+- 电脑网页：`TVChart.drawPriceLabels` 里最新价标签下那行倒计时删掉；`pages/chart.ts` 每秒给所有格子置脏重画那一句只为它服务，一并删掉（16 图布局下每秒少重画 16 张）。
+- **保留**：头部「结算」格的资金费率结算倒计时（iOS `HeaderStats.fundingCountdownText`、网页 `fundingCountdownText`、电脑版「下次结算」）是另一回事。

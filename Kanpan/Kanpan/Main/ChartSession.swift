@@ -26,8 +26,8 @@ import SwiftUI
 
 /// 行情页那张图的会话：行情订阅、逐笔落图、四件事的入口。
 ///
-/// 自己只有一个会被观察的字段：`nowMs`（倒计时那一秒）。别的都是引用，
-/// 读谁就在读的那块视图上记依赖——这正是要的效果。
+/// 自己没有会被观察的字段（以前那个 `nowMs` 是收线倒计时的那一秒，2026-10-03 倒计时
+/// 不再展示，连字段一起删了）。别的都是引用，读谁就在读的那块视图上记依赖——这正是要的效果。
 @MainActor @Observable
 final class ChartSession {
   @ObservationIgnored let market: MarketModel
@@ -35,12 +35,6 @@ final class ChartSession {
   @ObservationIgnored let comparison: CompareModel
   /// 十字线读数。只有读数那一小块观察它（见 `CrosshairReadout.swift`）。
   @ObservationIgnored let readout: CrosshairReadout
-
-  /// 倒计时的当前时刻（毫秒）。`nil` = 不画。
-  ///
-  /// 渲染器**不读系统时钟**（`ChartState` 得是纯值，A3.11 的基线靠这条），时间只能
-  /// 从外面喂进去，喂的人是 `heartbeat`。只有 `MainChartView` 读它——一秒一跳只叫醒图。
-  private(set) var nowMs: Double?
 
   init(symbol: String) {
     market = MarketModel(symbol: symbol)
@@ -91,24 +85,19 @@ final class ChartSession {
 
   // ---------------------------------------------------------------- 逐笔
 
-  /// 一秒一跳：倒计时、持仓量补取、报价簿的钟，再加宿主自己的那一拍（`onBeat`）。
+  /// 一秒一跳：持仓量补取、报价簿的钟，再加宿主自己的那一拍（`onBeat`）。
   ///
-  /// `active` 为假（不在前台）就不跳，并把倒计时收掉：回到前台时 `.task(id:)` 重来，
-  /// 第一跳立刻把停在后台那一刻的旧时间冲掉，不会先闪一秒错的倒计时。
-  func heartbeat(active: Bool, countdown: @escaping @MainActor () -> Bool,
-                 onBeat: @escaping @MainActor () -> Void) async {
-    guard active else { setNow(nil); return }
+  /// 图上不再画收线倒计时（2026-10-03，用户用不到；恢复见 tag
+  /// `before-remove-candle-countdown-2026-10-03`），这一跳不再给图喂时间、也不再每秒叫醒图。
+  /// `active` 为假（不在前台）就不跳。
+  func heartbeat(active: Bool, onBeat: @escaping @MainActor () -> Void) async {
+    guard active else { return }
     while !Task.isCancelled {
-      setNow(countdown() ? Date().timeIntervalSince1970 * 1000 : nil)
       market.refreshOIIfNeeded()
       quotes.tick()
       onBeat()
       do { try await Task.sleep(for: .seconds(1)) } catch { return }
     }
-  }
-
-  private func setNow(_ value: Double?) {
-    if value != nowMs { nowMs = value }
   }
 
   /// 图上那只的逐笔成交交给报价簿（替身线路上不交：它推的不是这家的成交）。
@@ -215,7 +204,6 @@ final class ChartSession {
       magnet: true,  // 十字线吸附 2026-09-28 起常开（收设置项 B 组）
       decimals: market.info.priceDecimals,
       options: prefs.chartOptions,
-      nowMs: nowMs,
       subScale: input.subScale)
     // 走 OKX 兜底线路时持仓量根本取不到（`OISource` 只连币安）——让副图说实话，
     // 别一直挂「加载中」。

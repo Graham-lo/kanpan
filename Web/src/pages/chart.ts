@@ -1211,11 +1211,10 @@ export async function initChart(): Promise<void> {
     }
   })
 
-  // 每秒：钟、倒计时；每分钟：详情里的慢数、持仓量提醒
+  // 每秒：钟、资金费率结算倒计时（图上的收线倒计时 2026-10-03 起不画，不再每秒重画各图）；每分钟：详情里的慢数、持仓量提醒
   setInterval(() => {
     const d = sh(Date.now()), t = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC+8`
     $$('.cell-foot .clock').forEach(e => { e.textContent = t })
-    cells.forEach(c => { c.chart.dirty = true })
     const s = sym(cfg(active())?.symbol || ''), cd = $('#detail [data-f="cd"]')
     if (cd && s?.nextFunding) cd.textContent = countdown(s.nextFunding - Date.now())
   }, 1000)

@@ -53,7 +53,7 @@ struct PrefsToleranceTests {
     #expect(p.candleKind == Prefs.defaults.candleKind)
     #expect(p == .defaults)                 // 收掉的键老存档里写什么都不影响读出来的样子
     let o = p.chartOptions
-    #expect(o.body == .solid && o.lastLine && o.countdown && o.sinceChange)
+    #expect(o.body == .solid && o.lastLine && !o.countdown && o.sinceChange)
     #expect(o.anchor == .right && o.bias == .center && o.dataDisplay == .top && o.crossPrice == .selected)
     #expect(o.allowMainInversion && o.allowSubInversion && o.adaptiveIndicators)
 

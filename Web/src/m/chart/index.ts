@@ -228,12 +228,13 @@ async function defaultLoad(symbol: string, iv: Interval, endTime: number | null)
 
 /**
  * 手机端 `Prefs.chartOptions` 那一包（主界面只认这一句）：网格「经典」不画、青苔 / 陶土画淡网格，
- * 本根倒计时常开，十字线读数写在头部、顺带报到最新价的涨跌幅，主 / 副轴双击翻转，图例折行让位。
+ * 本根收线倒计时不画（2026-10-03 用户用不到，同 iOS；恢复见 tag before-remove-candle-countdown-2026-10-03），
+ * 十字线读数写在头部、顺带报到最新价的涨跌幅，主 / 副轴双击翻转，图例折行让位。
  * 网格跟皮肤走，所以这里不定 grid，由 compose 按当时的 data-skin 取。
  */
 export const appChartOptions = (): ChartOptions => ({
   ...defaultChartOptions(),
-  kind: 'candle', body: 'solid', lastLine: true, drawings: true, countdown: true, sinceChange: true,
+  kind: 'candle', body: 'solid', lastLine: true, drawings: true, countdown: false, sinceChange: true,
   anchor: 'right', bias: 'center', dataDisplay: 'top', crossPrice: 'selected',
   allowMainInversion: true, allowSubInversion: true, adaptiveIndicators: true, portraitHeight: 0.5,
 })

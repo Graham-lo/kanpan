@@ -1498,21 +1498,18 @@ struct MainScreen: View {
 
   /// 心跳该不该跳：没真进后台就跳。
   ///
-  /// 后台不跳有两层意思：省电，以及回到前台时 `.task(id:)` 会重来一遍，第一跳立刻把
-  /// 停在后台那一刻的旧时间冲掉，不会先闪一秒错的倒计时。
+  /// 后台不跳是为了省电；回到前台时 `.task(id:)` 会重来一遍。
   ///
   /// `.inactive` 不算后台（和 `AppLifecycle` 那道「真进过后台才续资源」的闸同一口径）：
   /// 下拉通知中心、拉出控制中心、来电横幅，图还半露在底下。从前这里写的是
-  /// `phase == .active`，于是每拉一下控制中心倒计时就被收掉、心跳整条重起，
+  /// `phase == .active`，于是每拉一下控制中心心跳就整条重起，
   /// 回来第一跳还要补一遍持仓量和报价簿的钟（整机压测 2026-09-26）。
   private var beating: Bool { phase != .background }
 
-  /// 一秒一跳。倒计时读到秒就够，再快只是白耗。
-  ///
-  /// 倒计时那一秒记在 `ChartSession.nowMs` 上，只有图读它（审查 21：以前它是这儿的
-  /// `@State`，每一秒整页重求值一次）。
+  /// 一秒一跳（持仓量补取、报价簿的钟）。图上的收线倒计时 2026-10-03 起不再展示，
+  /// 这一跳也不再叫醒图。
   private func heartbeat() async {
-    await session.heartbeat(active: beating, countdown: { true }, onBeat: {})
+    await session.heartbeat(active: beating, onBeat: {})
   }
 
   // ---------------------------------------------------------------- 动作

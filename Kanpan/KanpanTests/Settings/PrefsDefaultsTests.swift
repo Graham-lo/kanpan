@@ -41,7 +41,7 @@ struct PrefsDefaultsTests {
     #expect(o.body == .solid)            // 阳线一律实心
     #expect(o.lastLine)                  // 实时价格线常在
     #expect(o.drawings)                  // 全局「显示画线」已撤，恒为 true
-    #expect(o.countdown)                 // 本根倒计时常开（周期最短 1 分钟，每档都画）
+    #expect(!o.countdown)                // 收线倒计时 2026-10-03 起不画（用户用不到）
     #expect(o.sinceChange)               // 十字线顺带报到最新价的涨跌幅
     #expect(o.anchor == .right)
     #expect(o.bias == .center)

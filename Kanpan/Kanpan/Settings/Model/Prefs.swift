@@ -273,8 +273,9 @@ struct Prefs: Sendable, Equatable {
     // `showDrawings`，和那颗按品种的开关打架——关了全局那颗，画线栏上怎么点都看不见线；
     // 2026-09-23 撤了入口，2026-09-24 连字段带同步白名单两端一起删了。
     o.drawings = true
-    // 本根倒计时常开：周期最短就是 1 分钟（`Interval.m1`），每一档都画。
-    o.countdown = true
+    // 本根收线倒计时不画（2026-10-03：用户用不到）。图表引擎的这项能力还在，
+    // 要恢复只改这一行并让心跳喂 `nowMs`，原样见 tag `before-remove-candle-countdown-2026-10-03`。
+    o.countdown = false
     o.sinceChange = true             // 十字线打开时顺带报「选中那根到最新价」的涨跌幅
     o.anchor = .right                // 回到最新时最新一根靠右
     o.bias = .center                 // 蜡烛在主图区里上下居中
