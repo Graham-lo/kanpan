@@ -61,9 +61,13 @@ final class GestureState {
   var askedHistory = false
   /// 上一次缩放有没有顶到边界，用来只在「刚撞上」那一下震。
   var wasAtZoomLimit = false
+  /// 拎着十字线走时，交叉点相对手指的那段距离：按下时量一次，之后一路保持——十字线跟着
+  /// 手指的位移走，不往手指底下跳，也不被指头挡住。长按新出的十字线就在手指底下，距离是 0。
+  var grab: CGVector = .zero
 
   func reset() {
     mode = nil
+    grab = .zero
     longPressActivated = false
     moved = 0
     pinchActive = false
@@ -152,8 +156,7 @@ extension ChartView {
       return
     }
     gesture.mode = hitsCrosshairCenter(q) ? .crosshair : .pan
-    // 拎着已经在图上的十字线走，和长按新出一条十字线是同一件事，一样要钉住坐标。
-    if gesture.mode == .crosshair { beginAxisFreeze() }
+    if gesture.mode == .crosshair { grabCrosshair(at: q) }
     if state?.crosshair == nil { scheduleLongPress(at: q) }
   }
 
@@ -180,13 +183,20 @@ extension ChartView {
     case .axisPrice: dragPriceAxis(dy: dy, L: L)
     case .verticalPan: panPrice(dy: dy, L: L)
     case .parentScroll: break
-    case .crosshair: moveCrosshair(to: q, L: L)
+    case .crosshair: moveCrosshair(to: grabbed(q), L: L)
     case .pan:
       do {
         guard gesture.moved >= ChartGesture.panSlopPt else { break }
         if !gesture.directionChosen {
           gesture.directionChosen = true
           if abs(dy) > 1.5 * abs(dx) {
+            // 按在十字线的横线（价格线）上竖着拖：就是要把价格线挪上挪下
+            if hitsCrosshairLine(gesture.startPoint) {
+              gesture.mode = .crosshair
+              grabCrosshair(at: gesture.startPoint)
+              moveCrosshair(to: grabbed(q), L: L)
+              break
+            }
             gesture.mode = gesture.startTransform.isManual && gesture.startPoint.y < L.mainH
               ? .verticalPan : .parentScroll
             if gesture.mode == .verticalPan { panPrice(dy: dy, L: L) }
@@ -294,7 +304,9 @@ extension ChartView {
     if wasLongPress { finishCrosshairSelection(); return }
     // 捏合降下来的那一轮不判轻点：`reset()` 刚把 `moved` 清零，原地抬手看上去和轻点
     // 一模一样，但用户的意思是「结束这次缩放」，不是「点一下图」（A-03）。
-    if (mode == .pan || mode == .crosshair), moved < ChartGesture.panSlopPt * 2, !cameFromPinch {
+    // 拎着十字线微调几个点也是在挪它，门槛比拖图那边的轻点低一半，不然往上挪 5 点一松手十字线就被收掉了
+    if mode == .pan && moved < ChartGesture.panSlopPt * 2 || mode == .crosshair && moved < ChartGesture.panSlopPt,
+       !cameFromPinch {
       handleTap(at: now, previous: plotTapCandidate)
       return
     }
@@ -459,6 +471,26 @@ extension ChartView {
   public func hitsCrosshairCenter(_ point: CGPoint) -> Bool {
     guard let center = renderer?.crosshairCenter(size: bounds.size) else { return false }
     return abs(point.x - center.x) <= 22 && abs(point.y - center.y) <= 22
+  }
+
+  /// 横线（价格线）上下 22 点、图区宽度以内都算按在线上：竖着拖就挪价格线，横着拖照旧拖图。
+  /// `ChartPageScrollView` 也问它——按在线上竖拖不能被页面滚动抢走。
+  public func hitsCrosshairLine(_ point: CGPoint) -> Bool {
+    guard let center = renderer?.crosshairCenter(size: bounds.size), let L = chartLayout else { return false }
+    return point.x >= 0 && Double(point.x) <= L.plotW && abs(point.y - center.y) <= 22
+  }
+
+  /// 从 p 拎起已经在图上的十字线：记下交叉点相对手指的距离，钉住坐标。
+  private func grabCrosshair(at p: CGPoint) {
+    if let c = renderer?.crosshairCenter(size: bounds.size) {
+      gesture.grab = CGVector(dx: c.x - p.x, dy: c.y - p.y)
+    }
+    // 拎着已经在图上的十字线走，和长按新出一条十字线是同一件事，一样要钉住坐标。
+    beginAxisFreeze()
+  }
+
+  private func grabbed(_ q: CGPoint) -> CGPoint {
+    CGPoint(x: q.x + gesture.grab.dx, y: q.y + gesture.grab.dy)
   }
 
   private func scheduleLongPress(at q: CGPoint) {

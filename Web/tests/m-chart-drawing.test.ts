@@ -1892,3 +1892,49 @@ describe('画线：长按线锁定', () => {
     expect(c.drawings[0].locked).toBe(false)
   })
 })
+
+describe('十字线跟手（2026-10-03）', () => {
+  const plain = (): ChartView => {
+    const v = new ChartView(fakeEl() as unknown as HTMLElement)
+    v.state = drawState()
+    return v
+  }
+  const center = (v: ChartView) => v.renderer!.crosshairCenter(v.width, v.height)!
+
+  test('轻点出来的横线落在手指那个高度，不吸到收盘价', () => {
+    const v = plain()
+    tap(v, { x: 180, y: 120 })
+    expect(Math.abs(center(v).y - 120)).toBeLessThan(0.5)
+  })
+
+  test('从交叉点旁边拎起来：十字线按手指的位移走，不往手指底下跳', () => {
+    const v = plain()
+    tap(v, { x: 180, y: 120 })
+    const c0 = center(v)
+    const f = drag(v, { x: c0.x + 12, y: c0.y + 12 }, { x: c0.x + 12, y: c0.y + 72 }, 12_000, false)
+    expect(Math.abs(center(v).y - (c0.y + 60)), '横线没跟着手指走同样的距离').toBeLessThan(0.5)
+    up(v, f, 12_200)
+    expect(v.state!.overlay.crosshair).not.toBeNull()
+  })
+
+  test('拎着交叉点微调 5 点，松手十字线留在新位置', () => {
+    const v = plain()
+    tap(v, { x: 180, y: 120 })
+    const c0 = center(v)
+    drag(v, c0, { x: c0.x, y: c0.y - 5 }, 12_000)
+    expect(v.state!.overlay.crosshair, '微调被当成轻点收掉了').not.toBeNull()
+    expect(Math.abs(center(v).y - (c0.y - 5))).toBeLessThan(0.5)
+  })
+
+  test('按在横线远端竖拖挪价格线；横拖照旧拖图并收起十字线', () => {
+    const v = plain()
+    tap(v, { x: 180, y: 120 })
+    const c0 = center(v)
+    drag(v, { x: 30, y: c0.y + 6 }, { x: 30, y: c0.y - 54 }, 12_000)
+    expect(Math.abs(center(v).y - (c0.y - 60))).toBeLessThan(0.5)
+    const before = v.state!.viewport.view
+    drag(v, { x: 30, y: c0.y - 60 }, { x: 120, y: c0.y - 60 }, 14_000)
+    expect(v.state!.overlay.crosshair).toBeNull()
+    expect(v.state!.viewport.view.equals(before)).toBe(false)
+  })
+})

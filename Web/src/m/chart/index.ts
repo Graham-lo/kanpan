@@ -409,9 +409,11 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const comparing = comparingFor(s.symbol)
     // 对比态：百分比轴、不画线（ChartSession.compose）；集合本身不动，退出对比就回来。
     if (comparing) options.drawings = false
+    // 十字线不吸附（2026-10-03）：吸附时横线只认手指底下那根 K 线的收盘价，手指上下拖它纹丝不动、
+    // 横着走一根跳一个收盘价，想把价格线放到某个价位根本放不过去。横线跟着手指的高度走。
     let st = makeState({
       series: s, symbol: si, view: new ViewWindow(s.lastTime, s.step * 80), colors, price,
-      overlays, subs, params: look.params, tzOffset: SHANGHAI_OFFSET_MIN, oi, magnet: true,
+      overlays, subs, params: look.params, tzOffset: SHANGHAI_OFFSET_MIN, oi, magnet: false,
       decimals: si.priceDecimals, options,
       nowMs, subScale: look.subScale, drawings,
     })

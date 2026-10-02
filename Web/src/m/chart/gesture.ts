@@ -55,9 +55,13 @@ export class GestureState {
   longPress: ReturnType<typeof setTimeout> | null = null
   askedHistory = false
   wasAtZoomLimit = false
+  /** 拎着十字线走时，交叉点相对手指的那段距离：按下时量一次，之后一路保持——十字线跟着手指的位移走，
+   *  不往手指底下跳，也不被指头挡住。长按新出的十字线就在手指底下，距离是 0。 */
+  grab: Point = { x: 0, y: 0 }
 
   reset(): void {
     this.mode = null
+    this.grab = { x: 0, y: 0 }
     this.longPressActivated = false
     this.moved = 0
     this.pinchActive = false
@@ -242,7 +246,7 @@ export class ChartGestures {
     if (q.x > L.plotW) { g.mode = 'subAxis'; return }
     if (q.y >= L.mainH && q.y < L.mainH + AICoinBehavior.timeHeight) { g.mode = 'parentScroll'; return }
     g.mode = this.hitsCrosshairCenter(q) ? 'crosshair' : 'pan'
-    if (g.mode === 'crosshair') this.beginAxisFreeze()
+    if (g.mode === 'crosshair') this.grabCrosshair(q)
     if (this.state?.overlay.crosshair == null) this.scheduleLongPress(q)
   }
 
@@ -269,12 +273,19 @@ export class ChartGestures {
       case 'axisPrice': this.dragPriceAxis(dy, L); break
       case 'verticalPan': this.panPrice(dy, L); break
       case 'parentScroll': this.parentScroll(q.y); break
-      case 'crosshair': this.moveCrosshair(q, L); break
+      case 'crosshair': this.moveCrosshair({ x: q.x + g.grab.x, y: q.y + g.grab.y }, L); break
       case 'pan': {
         if (g.moved < ChartGesture.panSlopPt) break
         if (!g.directionChosen) {
           g.directionChosen = true
           if (Math.abs(dy) > 1.5 * Math.abs(dx)) {
+            // 按在十字线的横线（价格线）上竖着拖：就是要把价格线挪上挪下
+            if (this.hitsCrosshairLine(g.startPoint)) {
+              g.mode = 'crosshair'
+              this.grabCrosshair(g.startPoint)
+              this.moveCrosshair({ x: q.x + g.grab.x, y: q.y + g.grab.y }, L)
+              break
+            }
             g.mode = isManualTransform(g.startTransform) && g.startPoint.y < L.mainH ? 'verticalPan' : 'parentScroll'
             if (g.mode === 'verticalPan') this.panPrice(dy, L)
             else { this.lastParentY = g.startPoint.y; this.parentScroll(q.y) }
@@ -358,7 +369,8 @@ export class ChartGestures {
       const v = g.velocity.velocity
       g.reset()
       if (wasLongPress) { this.finishCrosshairSelection(); return }
-      if ((mode === 'pan' || mode === 'crosshair') && moved < ChartGesture.panSlopPt * 2 && !cameFromPinch) {
+      // 拎着十字线微调几个点也是在挪它，门槛比拖图那边的轻点低一半，不然往上挪 5 点一松手十字线就被收掉了
+      if ((mode === 'pan' && moved < ChartGesture.panSlopPt * 2 || mode === 'crosshair' && moved < ChartGesture.panSlopPt) && !cameFromPinch) {
         this.handleTap(now, plotTapCandidate)
         return
       }
@@ -521,6 +533,21 @@ export class ChartGestures {
     const c = this.v.renderer?.crosshairCenter(this.v.width, this.v.height)
     if (!c) return false
     return Math.abs(p.x - c.x) <= 22 && Math.abs(p.y - c.y) <= 22
+  }
+
+  /** 横线（价格线）上下 22 点、图区宽度以内都算按在线上；竖着拖就挪价格线，横着拖照旧拖图。 */
+  hitsCrosshairLine(p: Point): boolean {
+    const c = this.v.renderer?.crosshairCenter(this.v.width, this.v.height)
+    const L = this.v.chartLayout
+    if (!c || !L) return false
+    return p.x >= 0 && p.x <= L.plotW && Math.abs(p.y - c.y) <= 22
+  }
+
+  /** 从 p 拎起已经在图上的十字线：记下交叉点相对手指的距离，钉住坐标。 */
+  private grabCrosshair(p: Point): void {
+    const c = this.v.renderer?.crosshairCenter(this.v.width, this.v.height)
+    this.gesture.grab = c ? { x: c.x - p.x, y: c.y - p.y } : { x: 0, y: 0 }
+    this.beginAxisFreeze()
   }
 
   private scheduleLongPress(q: Point): void {

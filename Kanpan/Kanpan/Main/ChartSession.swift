@@ -201,7 +201,9 @@ final class ChartSession {
       params: prefs.params,
       timezone: prefs.timeZone,
       oi: market.oi,
-      magnet: true,  // 十字线吸附 2026-09-28 起常开（收设置项 B 组）
+      // 十字线不吸附（2026-10-03）：吸附时横线只认手指底下那根 K 线的收盘价，手指上下拖它纹丝不动、
+      // 横着走一根跳一个收盘价，想把价格线放到某个价位根本放不过去。横线跟着手指的高度走。
+      magnet: false,
       decimals: market.info.priceDecimals,
       options: prefs.chartOptions,
       subScale: input.subScale)

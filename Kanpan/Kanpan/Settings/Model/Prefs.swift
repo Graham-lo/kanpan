@@ -37,8 +37,8 @@ struct Prefs: Sendable, Equatable {
   var compareSymbols: [String] = []
   /// 价格轴 常规 / 对数 / 百分比（A6.8）。
   var priceMode: PriceMode = .log
-  // 「十字线吸附到 K 线」（`magnet`）2026-09-28 收掉了：看盘时长按出来的十字线一律吸到最近那根
-  // K 线的价位上（`ChartSession` 里写死 `magnet: true`）。画线栏上的「吸附」是另一件事
+  // 「十字线吸附到 K 线」（`magnet`）2026-09-28 收掉了设置项；2026-10-03 起十字线一律不吸附、
+  // 横线跟着手指的高度走（`ChartSession` 里写死 `magnet: false`）。画线栏上的「吸附」是另一件事
   // （`DrawingPreferences.magnet`），不受影响。恢复见 tag settings-before-trim-2026-09-28。
   /// 盘口。默认关。
   var depth: Bool = false

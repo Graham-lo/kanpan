@@ -730,7 +730,7 @@ private final class ChartPageScrollView: UIScrollView {
     let velocity = panGestureRecognizer.velocity(in: chart)
     return ChartGestureRoute.pageScroll(x: point.x, y: point.y, dx: velocity.x, dy: velocity.y,
       touches: panGestureRecognizer.numberOfTouches, plotWidth: layout.plotW, mainHeight: layout.mainH,
-      manualY: state.price.isManual, selecting: chart.hitsCrosshairCenter(point))
+      manualY: state.price.isManual, selecting: chart.hitsCrosshairCenter(point) || chart.hitsCrosshairLine(point))
   }
 }
 

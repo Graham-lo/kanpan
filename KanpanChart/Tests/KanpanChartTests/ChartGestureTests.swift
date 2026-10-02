@@ -191,6 +191,28 @@ private func stroke(
     }
   }
 
+  @Test("十字线按手指位移走：旁边拎起不跳、微调不收、横线远端竖拖挪价格线（2026-10-03）")
+  func crosshairFollowsFinger() throws {
+    let (v, _) = try makeView(magnet: false)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [])
+    let c0 = try #require(v.renderer?.crosshairCenter(size: v.bounds.size))
+    #expect(abs(c0.y - 120) < 0.5, "轻点出来的横线该落在手指那个高度")
+    // 从交叉点右下 12 点拎起、往下拖 60 点：横线一起走 60 点，不往手指底下跳
+    stroke(v, from: CGPoint(x: c0.x + 12, y: c0.y + 12),
+           through: (1...4).map { CGPoint(x: c0.x + 12, y: c0.y + 12 + Double($0) * 15) })
+    let c1 = try #require(v.renderer?.crosshairCenter(size: v.bounds.size))
+    #expect(abs(c1.y - (c0.y + 60)) < 0.5)
+    // 拎着交叉点微调 5 点：松手十字线留在新位置
+    stroke(v, from: c1, through: [CGPoint(x: c1.x, y: c1.y - 5)], startMs: 12_000)
+    let c2 = try #require(v.renderer?.crosshairCenter(size: v.bounds.size), "微调被当成轻点收掉了")
+    #expect(abs(c2.y - (c1.y - 5)) < 0.5)
+    // 按在横线远端竖着往上拖 60 点：价格线跟着走
+    stroke(v, from: CGPoint(x: 30, y: c2.y + 6),
+           through: (1...4).map { CGPoint(x: 30, y: c2.y + 6 - Double($0) * 15) }, startMs: 14_000)
+    let c3 = try #require(v.renderer?.crosshairCenter(size: v.bounds.size))
+    #expect(abs(c3.y - (c2.y - 60)) < 0.5)
+  }
+
   @Test("自动Y下纵向拖动不偷偷修改Y或X")
   func verticalAuto() throws {
     let (v, _) = try makeView()
