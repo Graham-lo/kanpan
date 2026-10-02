@@ -823,8 +823,9 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   `kanpan.107-174-172-10.sslip.io` 站点（旧主机名 TLS 直接失败，Trader Foresight / scorebook / bit-orderflow 一概没碰）；美国备
   `kanpan-gateway` / `kanpan-stream-hub` 已 disable；`offsite-pull.sh` / `Web/scripts/deploy.sh` / `cutover-sg.sh` 删掉经美国跳的 `kanpan-sg-jump` 兜底。
   旧 iOS 包从此连不上服务器，手机在身边时 `make install-release`。
-- **新加坡公网出站只有约 1 Mbps**（SG→Mac 拉 8 MB 59 KB/s、第二次 45 KB/s；Mac→SG 1.1 MB/s、US→SG 1 MB/s、SG→US 145 KB/s；元数据
-  `bandwidth-limit-egress`=1572864）。这是手机 / 网页速度最大的瓶颈，只能用户在腾讯控制台调带宽上限。「美国容量大可以多缓存」：美国拿不到币安数据
+- **新加坡出站慢不是带宽上限，是跨境线路压单流，BBR 治好了**：改前 SG→Mac 拉 8 MB 59 KB/s、单流 101 KB/s 但 4 路并行 410 KB/s；
+  换 BBR + fq（`Backend/kanpan-api/ops/sysctl-90-kanpan-bbr.conf`，已装到 `/etc/sysctl.d/90-kanpan-bbr.conf` + modules-load，重启仍在）后
+  HTTPS 经 Caddy 拉 8 MB 2.5–2.7 MB/s、首字节 0.65 s，快 46 倍。轻量应用服务器的带宽随套餐不可调，安全组 443 早已放行、不用动。「美国容量大可以多缓存」：美国拿不到币安数据
   且 SG→US 只有 145 KB/s，只能做冷归档；多缓存的数据放新加坡（65 GB 空），候选方案（K 线库、features 留 1–2 年、OI / 费率长期攒、30 s 聚合留 30 天）写在迁移文档末尾，等用户定。
 - Mac 经 Surge 代理直连 SG 22 时常被掐（sshd 无日志、fail2ban 0 ban）：已在 `Graham-lo/surge` 加 `Kanpan.list`（新加坡 DIRECT）挂进
   Universal / iOS 两份 profile 与 Mac 正在用的 `Graham_HomeGateway`，直连后 SSH 稳；`offsite-pull.sh` 与 `Web/scripts/deploy.sh` 的 `kanpan-sg-jump` 兜底同晚按「不要兜底」删掉了。
