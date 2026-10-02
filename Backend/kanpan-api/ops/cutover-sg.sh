@@ -43,10 +43,12 @@ ssh "$SG" "[ \$(wc -c < /home/ubuntu/incoming/final.dump) -eq $size ]" || { log 
 
 # 3. 新加坡重建并恢复。
 log "新加坡恢复"
-ssh "$SG" bash -s <<'EOF'
+# 远端脚本先落成文件再执行，不能 `bash -s` 从 stdin 喂：中间任何一条会读 stdin 的命令（docker exec -i）
+# 会把后半段脚本吞掉，bash 读到 EOF 当作正常结束——2026-10-02 第一次切换就是这样把库建空了。
+ssh "$SG" 'cat > /tmp/kanpan-cutover-restore.sh' <<'EOF'
 set -e
 sudo systemctl stop kanpan-api kanpan-worker
-sudo docker exec -i kanpan-postgres psql -q -U kanpan_admin -d kanpan -v ON_ERROR_STOP=1 \
+sudo docker exec kanpan-postgres psql -q -U kanpan_admin -d kanpan -v ON_ERROR_STOP=1 \
   -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT USAGE ON SCHEMA public TO kanpan_app;'
 sudo docker cp /home/ubuntu/incoming/final.dump kanpan-postgres:/tmp/final.dump
 sudo docker exec kanpan-postgres pg_restore -U kanpan_admin -d kanpan --exit-on-error /tmp/final.dump
@@ -59,6 +61,7 @@ printf 'health: '; curl -s --max-time 5 http://127.0.0.1:8794/health; echo
 sudo docker exec kanpan-postgres psql -U kanpan_admin -d kanpan -Atc \
   "select 'users='||(select count(*) from account_users)||' sync_ops='||(select count(*) from sync_operations)||' alerts='||(select count(*) from alert_watches)||' notes='||(select count(*) from review_records)"
 EOF
+ssh "$SG" 'bash /tmp/kanpan-cutover-restore.sh && rm -f /tmp/kanpan-cutover-restore.sh'
 
 # 4. 美国 Caddy：旧主机名改成过渡代理。只换 kanpan.107-174-172-10.sslip.io 那个站点块，前面的静态站不动。
 log "美国 Caddy 改过渡代理"
@@ -79,7 +82,8 @@ https://$OLD {
 s=s[:i]+block
 open(p,'w').write(s)
 PY
-caddy validate --config /etc/caddy/Caddyfile >/dev/null && systemctl reload caddy && echo CADDY_RELOADED"
+caddy validate --config /etc/caddy/Caddyfile >/dev/null && systemctl restart caddy && sleep 3 && systemctl is-active caddy"
+# 美国的 Caddyfile 是 admin off，reload 要走 2019 端口的管理接口所以一定失败，只能 restart（断几秒）。
 
 # 5. 美国停掉线上角色，Postgres 留着当温备。
 log "美国禁用 api / worker / 网关 / timer"

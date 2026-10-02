@@ -815,11 +815,10 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   注销→删号全部对，`/v1/market/*`、`/web/`、`/web/m/`、`/privacy`、`/market/stream` 与 `/v1/market/ws/binance` 101 并真在推币安数据。
   Swift 三套（core 455 / account 143 / data 264）全绿、模拟器 build 过；真机 Release 包没打成只因 Mac 上没登开发者账号 / 两台 iPhone 都不在。
 - 备份拓扑见 `Backend/kanpan-api/ops/OFFSITE.md` 开头那节（瘦转储、SG→美国两台、Mac 从 SG 拉）。
-- **卡在用户手上的一件事：腾讯安全组没放行 TCP 443**（tcpdump 证明美国发的 SYN 到不了 SG 网卡；22 / 80 通，ufw 已放 443，
-  Caddy 在听，证书经 http-01 签到了）。控制台 → 云服务器 → `ins-kf1imlt2` → 安全组 → 入站 → TCP 443 `0.0.0.0/0`。
-  放行前手机 / 网页都到不了 SG，所以**正式切换没做**（美国的 api / worker / 网关仍是线上），切换步骤与脚本在
-  `docs/新加坡主机迁移-2026-10-02.md`。
-- Mac 经 Surge 直连 SG 22 时常被掐（sshd 无日志、fail2ban 0 ban，Mac 出口是代理节点 `23.249.26.145`）：
-  `offsite-pull.sh` 与 `Web/scripts/deploy.sh` 都能改走 `kanpan-sg-jump`（经美国跳）。建议 Surge 给 `43.160.232.253` 加 DIRECT。
+- **22:49 正式切换完成**（用户放行安全组 443 后跑 `ops/cutover-sg.sh`）：新加坡 users=128 / sync_ops=17627 / alerts=35 / notes=38；
+  美国 Caddy 把旧主机名 `kanpan.107-174-172-10.sslip.io` 改成过渡代理（接口反代新加坡、`/web/*` `/ui/*` 308），美国 api / worker /
+  网关 / stream-hub / 备份与推送 timer 已禁用，Postgres 留作温备。新旧两个主机名公网冒烟全过。过程与两个踩坑见 `docs/新加坡主机迁移-2026-10-02.md`。
+- Mac 经 Surge 代理直连 SG 22 时常被掐（sshd 无日志、fail2ban 0 ban）：已在 `Graham-lo/surge` 加 `Kanpan.list`（新加坡 DIRECT）挂进
+  Universal / iOS 两份 profile 与 Mac 正在用的 `Graham_HomeGateway`，直连后 SSH 稳；`offsite-pull.sh` 与 `Web/scripts/deploy.sh` 仍保留改走 `kanpan-sg-jump` 的兜底。
 - SG 的 `ubuntu` 口令在聊天里暴露过，密码登录已禁（只认密钥），仍要在腾讯控制台改掉。
 
