@@ -15,10 +15,12 @@ CHART      := KanpanChart
 RUNTIME    := iOS
 SHOTS      := docs/acceptance/shots
 
-# 重点维护的两台 16 Pro / 17 Pro Max（2026-09-23 用户定的：不再维护 13 台矩阵，机器顶不住；兼容也只认这两台 + iOS 26.6 以上与 27）；与 Tools/ui-test.sh 保持一致。
+# 重点维护 16 Pro / 17 Pro Max（2026-09-23 用户定的：不再维护 13 台矩阵，机器顶不住；兼容只认这几台 + iOS 26.6 以上与 27），
+# 2026-10-03 用户点名加 15 Pro Max；与 Tools/ui-test.sh、Tools/ensure-devices.sh 保持一致。
 DEVICES := \
 	"iPhone 16 Pro" \
-	"iPhone 17 Pro Max"
+	"iPhone 17 Pro Max" \
+	"iPhone 15 Pro Max"
 
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
@@ -593,7 +595,7 @@ screenshots: build devices
 	@for d in $(DEVICES); do \
 		bash Tools/snap.sh "$$d" "$(SHOTS)" || exit 1; \
 	done
-	@echo "\n两台完成，图在 $(SHOTS)/"
+	@echo "\n全部机型完成，图在 $(SHOTS)/"
 	@ls -1 $(SHOTS)
 
 # ---------------------------------------------------------------- A0.2 机型

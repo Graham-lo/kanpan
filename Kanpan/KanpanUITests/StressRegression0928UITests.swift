@@ -68,6 +68,7 @@ final class StressRegression0928UITests: KanpanUICase {
     switch Int(app.windows.firstMatch.frame.width.rounded()) {
     case 402: "iPhone16Pro"
     case 440: "iPhone17ProMax"
+    case 430: "iPhone15ProMax"
     case let w: "宽\(w)"
     }
   }

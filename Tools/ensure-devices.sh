@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 重点维护的两台机型（2026-09-23 起）在最新 iOS 运行时上备齐；其余机型不再维护。
+# 重点维护的机型在最新 iOS 运行时上备齐：16 Pro / 17 Pro Max（2026-09-23 起），
+# 2026-10-03 用户点名加 15 Pro Max（「15pm 还要适配 ios app」）；其余机型不再维护。
 # 已经有的就不动，缺的用 simctl create 补。用法：Tools/ensure-devices.sh
 set -euo pipefail
 
@@ -7,6 +8,7 @@ set -euo pipefail
 PAIRS=(
   "iPhone 16 Pro|com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"
   "iPhone 17 Pro Max|com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max"
+  "iPhone 15 Pro Max|com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro-Max"
 )
 
 # 取版本号最大的那个 iOS 运行时

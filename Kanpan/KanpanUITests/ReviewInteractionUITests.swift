@@ -155,6 +155,7 @@ final class ReviewInteractionUITests: KanpanUICase {
     let tag: String = switch Int(app.windows.firstMatch.frame.width.rounded()) {
     case 402: "iPhone16Pro"
     case 440: "iPhone17ProMax"
+    case 430: "iPhone15ProMax"
     case let w: "宽\(w)"
     }
     for (skin, name) in [("sage", "青苔"), ("terra", "陶土"), ("classic", "经典")] {

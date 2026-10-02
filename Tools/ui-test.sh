@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 兼容验收：两台重点机型（16 Pro / 17 Pro Max，2026-09-23 用户定），逐台记结果。
+# 兼容验收：重点机型（16 Pro / 17 Pro Max 2026-09-23 用户定，15 Pro Max 2026-10-03 加），逐台记结果。
 #
 # 为什么一台一条命令、不用 xcodebuild 的多 -destination：
 #   多 destination 并行跑的时候，失败只会汇总成一句「Testing failed」，
@@ -53,6 +53,7 @@ SCHEME=Kanpan
 DEVICES=(
   "iPhone 16 Pro"
   "iPhone 17 Pro Max"
+  "iPhone 15 Pro Max"
 )
 
 mkdir -p "$OUT" "$LOGS" "$RES"
