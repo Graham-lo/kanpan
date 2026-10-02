@@ -1,0 +1,534 @@
+{
+  "LG 电子" : [
+    "DIANZI",
+    "DZ"
+  ],
+  "SK 海力士" : [
+    "HAILISHI",
+    "HLS"
+  ],
+  "SK 海力士 ADR" : [
+    "HAILISHI",
+    "HLS"
+  ],
+  "三星电子" : [
+    "SANXINGDIANZI",
+    "SXDZ"
+  ],
+  "三星电机" : [
+    "SANXINGDIANJI",
+    "SXDJ"
+  ],
+  "世界币" : [
+    "SHIJIEBI",
+    "SJB"
+  ],
+  "中际旭创" : [
+    "ZHONGJIXUCHUANG",
+    "ZJXC"
+  ],
+  "二饼" : [
+    "ERBING",
+    "EB"
+  ],
+  "互联网计算机" : [
+    "HULIANWANGJISUANJI",
+    "HLWJSJ"
+  ],
+  "亚马逊" : [
+    "YAMAXUN",
+    "YMX"
+  ],
+  "仓鼠" : [
+    "CANGSHU",
+    "CS"
+  ],
+  "以太" : [
+    "YITAI",
+    "YT"
+  ],
+  "以太坊" : [
+    "YITAIFANG",
+    "YTF"
+  ],
+  "以太经典" : [
+    "YITAIJINGDIAN",
+    "YTJD"
+  ],
+  "企鹅" : [
+    "QIE",
+    "QE"
+  ],
+  "伟创力" : [
+    "WEICHUANGLI",
+    "WCL"
+  ],
+  "佩佩" : [
+    "PEIPEI",
+    "PP"
+  ],
+  "佩佩蛙" : [
+    "PEIPEIWA",
+    "PPW"
+  ],
+  "兆易创新" : [
+    "ZHAOYICHUANGXIN",
+    "ZYCX"
+  ],
+  "博通" : [
+    "BOTONG",
+    "BT"
+  ],
+  "卡尔达诺" : [
+    "KAERDANUO",
+    "KEDN"
+  ],
+  "卡斯帕" : [
+    "KASIPA",
+    "KSP"
+  ],
+  "台积电" : [
+    "TAIJIDIAN",
+    "TJD"
+  ],
+  "唯链" : [
+    "WEILIAN",
+    "WL"
+  ],
+  "埃欧塔" : [
+    "AIOUTA",
+    "AOT"
+  ],
+  "大零币" : [
+    "DALINGBI",
+    "DLB"
+  ],
+  "大饼" : [
+    "DABING",
+    "DB"
+  ],
+  "天体" : [
+    "TIANTI",
+    "TT"
+  ],
+  "宇宙" : [
+    "YUZHOU",
+    "YZ"
+  ],
+  "宇树科技" : [
+    "YUSHUKEJI",
+    "YSKJ"
+  ],
+  "小米" : [
+    "XIAOMI",
+    "XM"
+  ],
+  "小蚁" : [
+    "XIAOYI",
+    "XY"
+  ],
+  "小蚁币" : [
+    "XIAOYIBI",
+    "XYB"
+  ],
+  "屎币" : [
+    "SHIBI",
+    "SB"
+  ],
+  "川普币" : [
+    "CHUANPUBI",
+    "CPB"
+  ],
+  "币安" : [
+    "BIAN",
+    "BA"
+  ],
+  "币安币" : [
+    "BIANBI",
+    "BAB"
+  ],
+  "希塔" : [
+    "XITA",
+    "XT"
+  ],
+  "希捷" : [
+    "XIJIE",
+    "XJ"
+  ],
+  "帽子狗" : [
+    "MAOZIGOU",
+    "MZG"
+  ],
+  "应用材料" : [
+    "YINGYONGCAILIAO",
+    "YYCL"
+  ],
+  "康宁" : [
+    "KANGNING",
+    "KN"
+  ],
+  "弗洛基" : [
+    "FULUOJI",
+    "FLJ"
+  ],
+  "微软" : [
+    "WEIRUAN",
+    "WR"
+  ],
+  "德州仪器" : [
+    "DEZHOUYIQI",
+    "DZYQ"
+  ],
+  "快手" : [
+    "KUAISHOU",
+    "KS"
+  ],
+  "思科" : [
+    "SIKE",
+    "SK"
+  ],
+  "恒星" : [
+    "HENGXING",
+    "HX"
+  ],
+  "恒星币" : [
+    "HENGXINGBI",
+    "HXB"
+  ],
+  "慧与" : [
+    "HUIYU",
+    "HY"
+  ],
+  "戴尔" : [
+    "DAIER",
+    "DE"
+  ],
+  "文件币" : [
+    "WENJIANBI",
+    "WJB"
+  ],
+  "无聊猿" : [
+    "WULIAOYUAN",
+    "WLY"
+  ],
+  "智谱" : [
+    "ZHIPU",
+    "ZP"
+  ],
+  "曲线" : [
+    "QUXIAN",
+    "QX"
+  ],
+  "木星" : [
+    "MUXING",
+    "MX"
+  ],
+  "本体" : [
+    "BENTI",
+    "BT"
+  ],
+  "柚子" : [
+    "YOUZI",
+    "YZ"
+  ],
+  "柚子币" : [
+    "YOUZIBI",
+    "YZB"
+  ],
+  "柴犬币" : [
+    "CHAIQUANBI",
+    "CQB"
+  ],
+  "树图" : [
+    "SHUTU",
+    "ST"
+  ],
+  "比特币" : [
+    "BITEBI",
+    "BTB"
+  ],
+  "比特现金" : [
+    "BITEXIANJIN",
+    "BTXJ"
+  ],
+  "沙盒" : [
+    "SHAHE",
+    "SH"
+  ],
+  "泛林" : [
+    "FANLIN",
+    "FL"
+  ],
+  "波卡" : [
+    "BOKA",
+    "BK"
+  ],
+  "波卡币" : [
+    "BOKABI",
+    "BKB"
+  ],
+  "波场" : [
+    "BOCHANG",
+    "BC"
+  ],
+  "波场币" : [
+    "BOCHANGBI",
+    "BCB"
+  ],
+  "泰瑞达" : [
+    "TAIRUIDA",
+    "TRD"
+  ],
+  "海博" : [
+    "HAIBO",
+    "HB"
+  ],
+  "渲染币" : [
+    "XUANRANBI",
+    "XRB"
+  ],
+  "特斯拉" : [
+    "TESILA",
+    "TSL"
+  ],
+  "特朗普币" : [
+    "TELANGPUBI",
+    "TLPB"
+  ],
+  "狗币" : [
+    "GOUBI",
+    "GB"
+  ],
+  "狗帽" : [
+    "GOUMAO",
+    "GM"
+  ],
+  "狗狗币" : [
+    "GOUGOUBI",
+    "GGB"
+  ],
+  "独角兽" : [
+    "DUJIAOSHOU",
+    "DJS"
+  ],
+  "猿币" : [
+    "YUANBI",
+    "YB"
+  ],
+  "现代汽车" : [
+    "XIANDAIQICHE",
+    "XDQC"
+  ],
+  "瑞波" : [
+    "RUIBO",
+    "RB"
+  ],
+  "瑞波币" : [
+    "RUIBOBI",
+    "RBB"
+  ],
+  "甲骨文" : [
+    "JIAGUWEN",
+    "JGW"
+  ],
+  "电报币" : [
+    "DIANBAOBI",
+    "DBB"
+  ],
+  "白银" : [
+    "BAIYIN",
+    "BY"
+  ],
+  "科天" : [
+    "KETIAN",
+    "KT"
+  ],
+  "索尼" : [
+    "SUONI",
+    "SN"
+  ],
+  "索尼克" : [
+    "SUONIKE",
+    "SNK"
+  ],
+  "索拉纳" : [
+    "SUOLANA",
+    "SLN"
+  ],
+  "美光" : [
+    "MEIGUANG",
+    "MG"
+  ],
+  "联想" : [
+    "LIANXIANG",
+    "LX"
+  ],
+  "腾讯" : [
+    "TENGXUN",
+    "TX"
+  ],
+  "艾达币" : [
+    "AIDABI",
+    "ADB"
+  ],
+  "苏伊" : [
+    "SUYI",
+    "SY"
+  ],
+  "英伟达" : [
+    "YINGWEIDA",
+    "YWD"
+  ],
+  "英特尔" : [
+    "YINGTEER",
+    "YTE"
+  ],
+  "苹果" : [
+    "PINGGUO",
+    "PG"
+  ],
+  "范特姆" : [
+    "FANTEMU",
+    "FTM"
+  ],
+  "莱特" : [
+    "LAITE",
+    "LT"
+  ],
+  "莱特币" : [
+    "LAITEBI",
+    "LTB"
+  ],
+  "菲尔币" : [
+    "FEIERBI",
+    "FEB"
+  ],
+  "薄饼" : [
+    "BAOBING",
+    "BB"
+  ],
+  "西部数据" : [
+    "XIBUSHUJU",
+    "XBSJ"
+  ],
+  "诺基亚" : [
+    "NUOJIYA",
+    "NJY"
+  ],
+  "谷歌" : [
+    "GUGE",
+    "GG"
+  ],
+  "超微" : [
+    "CHAOWEI",
+    "CW"
+  ],
+  "达世币" : [
+    "DASHIBI",
+    "DSB"
+  ],
+  "邦克" : [
+    "BANGKE",
+    "BK"
+  ],
+  "量子链" : [
+    "LIANGZILIAN",
+    "LZL"
+  ],
+  "钯金" : [
+    "BAJIN",
+    "BJ"
+  ],
+  "铂金" : [
+    "BOJIN",
+    "BJ"
+  ],
+  "铭文" : [
+    "MINGWEN",
+    "MW"
+  ],
+  "长鑫存储" : [
+    "ZHANGXINCUNCHU",
+    "ZXCC"
+  ],
+  "门罗" : [
+    "MENLUO",
+    "ML"
+  ],
+  "门罗币" : [
+    "MENLUOBI",
+    "MLB"
+  ],
+  "闪迪" : [
+    "SHANDI",
+    "SD"
+  ],
+  "阿威" : [
+    "AWEI",
+    "AW"
+  ],
+  "阿尔戈" : [
+    "AERGE",
+    "AEG"
+  ],
+  "阿普托斯" : [
+    "APUTUOSI",
+    "APTS"
+  ],
+  "阿童木" : [
+    "ATONGMU",
+    "ATM"
+  ],
+  "阿蟹" : [
+    "AXIE",
+    "AX"
+  ],
+  "阿里巴巴" : [
+    "ALIBABA",
+    "ALBB"
+  ],
+  "雪崩" : [
+    "XUEBENG",
+    "XB"
+  ],
+  "雪崩币" : [
+    "XUEBENGBI",
+    "XBB"
+  ],
+  "零币" : [
+    "LINGBI",
+    "LB"
+  ],
+  "雷神" : [
+    "LEISHEN",
+    "LS"
+  ],
+  "青蛙" : [
+    "QINGWA",
+    "QW"
+  ],
+  "韩美半导体" : [
+    "HANMEIBANDAOTI",
+    "HMBDT"
+  ],
+  "预言机" : [
+    "YUYANJI",
+    "YYJ"
+  ],
+  "马蹄" : [
+    "MATI",
+    "MT"
+  ],
+  "马蹄链" : [
+    "MATILIAN",
+    "MTL"
+  ],
+  "高通" : [
+    "GAOTONG",
+    "GT"
+  ],
+  "黄金" : [
+    "HUANGJIN",
+    "HJ"
+  ]
+}

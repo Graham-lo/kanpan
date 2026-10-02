@@ -1,10 +1,12 @@
 /* 手机网页版 · 搜品种（照 iOS SymbolQuery.swift / SymbolSections.build 搜索态 / SearchHistory.swift / SymbolAliases.swift）
  *
- * 名次：最匹配（打全了）→ 中文名前缀 → 中文名包含 → 代号前缀 → 合约名前缀 → 代号包含 → 合约名包含；
+ * 名次：最匹配（打全了）→ 中文名前缀 / 全拼前缀 → 中文名包含 / 首字母前缀 → 代号前缀 → 合约名前缀 → 代号包含 → 合约名包含；
  * 同档之间停牌的沉底，再按 24h 成交额降序，再按交易所原序。
- * 拼音那两档要汉字转拼音的字典，浏览器里没有，网页版只认粘进来的中文名。
+ * 拼音（bitebi / btb / tsl）浏览器里没有字典，用 scripts/gen-pinyin.swift 在 Mac 上照 iOS 同一套
+ * CFStringTransform 把别名表算成 pinyin.json 提交进来；别名表改了要重跑它。
  */
 import { SEC } from '../../market/symbols'
+import PINYIN from './pinyin.json'
 
 export const HISTORY_KEY = 'hkline-m-search-history-v1'
 export const HISTORY_LIMIT = 10
@@ -36,7 +38,7 @@ export function aliasKey(base: string): string {
 }
 
 /** 中文名与常用叫法（iOS SymbolAliases.cryptoNames 原样；美股的从 sectors.json 的 usNames 读） */
-const CRYPTO_NAMES: Record<string, string[]> = {
+export const CRYPTO_NAMES: Record<string, string[]> = {
   BTC: ['比特币', '大饼'], ETH: ['以太坊', '以太', '二饼'], BNB: ['币安币', '币安'], SOL: ['索拉纳'], XRP: ['瑞波币', '瑞波'],
   DOGE: ['狗狗币', '狗币'], ADA: ['艾达币', '卡尔达诺'], TRX: ['波场币', '波场'], AVAX: ['雪崩币', '雪崩'], LINK: ['预言机'],
   DOT: ['波卡币', '波卡'], POL: ['马蹄链', '马蹄'], MATIC: ['马蹄链', '马蹄'], LTC: ['莱特币', '莱特'], BCH: ['比特现金'],
@@ -62,15 +64,32 @@ export function aliasNames(base: string): string[] {
 }
 const HAN = /[㐀-䶿一-鿿]/
 
+/** 中文名 → [全拼, 首字母]，都是大写（SymbolAliases.pinyin） */
+export const pinyinOf = (name: string): readonly [string, string] | undefined => (PINYIN as unknown as Record<string, [string, string]>)[name]
+
 function aliasTier(base: string, q: string): Tier | null {
-  if (!q || !HAN.test(q)) return null
-  let best: Tier | null = null
-  for (const name of aliasNames(base)) {
-    const n = name.toUpperCase()
-    const t = n === q ? Tier.exact : n.startsWith(q) ? Tier.cnPrefix : n.includes(q) ? Tier.cnContains : null
-    if (t != null && (best == null || t < best)) best = t
+  if (!q) return null
+  const names = aliasNames(base)
+  if (HAN.test(q)) {
+    let best: Tier | null = null
+    for (const name of names) {
+      const n = name.toUpperCase()
+      const t = n === q ? Tier.exact : n.startsWith(q) ? Tier.cnPrefix : n.includes(q) ? Tier.cnContains : null
+      if (t != null && (best == null || t < best)) best = t
+    }
+    return best
   }
-  return best
+  // 一个字母的拼音没有意义（「b」会把中文名以 b 开头的币全顶上来），两个字母起才认；
+  // 一个字的名字首字母只有一位，同理不进首字母那一档
+  if (q.length < 2) return null
+  let initials = false
+  for (const name of names) {
+    const p = pinyinOf(name)
+    if (!p) continue
+    if (p[0].startsWith(q)) return Tier.cnPrefix
+    if (p[1].length >= 2 && p[1].startsWith(q)) initials = true
+  }
+  return initials ? Tier.cnContains : null
 }
 
 export interface Hit { tier: Tier; /** 高亮落在合约名（BTCUSDT）上的 [起, 止)，别名命中时为 null */ hl: [number, number] | null }
