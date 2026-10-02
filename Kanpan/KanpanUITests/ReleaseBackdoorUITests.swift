@@ -30,7 +30,7 @@ final class ReleaseBackdoorUITests: XCTestCase {
      "KANPAN_CHART_DIAGNOSTICS": "1",
      "KANPAN_WS_SWEEP": "1",
      "KANPAN_LOG": "1",
-     "KANPAN_ACCOUNT_API_URL": "https://kanpan.107-174-172-10.sslip.io"]
+     "KANPAN_ACCOUNT_API_URL": "https://kanpan.43-160-232-253.sslip.io"]
   }
 
   /// 灌进去的自选。挑的是两支**美股合约**，屏上出现它俩只可能是种子干的。

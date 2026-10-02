@@ -3,7 +3,7 @@ import XCTest
 /// P3.6：设置里「关于」一行（版本号、隐私政策、服务条款），账号页「导出我的数据」
 /// 走真后端拿到一份 JSON 并弹出系统分享面板。账号是这次现造的 qa_ 账号。
 @MainActor final class AccountExportUITests: XCTestCase {
-  private let api = "https://kanpan.107-174-172-10.sslip.io"
+  private let api = "https://kanpan.43-160-232-253.sslip.io"
   private var app: XCUIApplication!
   private var account: (name: String, password: String)?
 

@@ -6,7 +6,7 @@ import Foundation
 /// 手机类会话。删不掉要打出来，不能静默留号——2026-09-23 D.7 审读发现分享、对比、注册
 /// 几条用例成功也好失败也好都在线上留账号，就是因为没有人收尾、收尾的错误又被吞了。
 enum TestAccounts {
-  static let api = "https://kanpan.107-174-172-10.sslip.io"
+  static let api = "https://kanpan.43-160-232-253.sslip.io"
 
   static func delete(_ name: String, password: String, api: String = api) async {
     var login = URLRequest(url: URL(string: api + "/v1/auth/login")!)

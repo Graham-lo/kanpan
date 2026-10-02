@@ -60,7 +60,7 @@ struct ClientHardeningTests {
   /// 「两个客户端只刷一次」「来源不符不认存档」「URL 编码跳不出父目录」这些行为
   /// 一条都不存在（审查 C-05：不是改成 Release 可运行的同等测试，是让它们消失）。
   /// 换成白名单内的主机之后，这些用例在 Debug / Release 两边都真的跑。
-  static let host = "kanpan.107-174-172-10.sslip.io"
+  static let host = "kanpan.43-160-232-253.sslip.io"
 
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     let configuration = URLSessionConfiguration.ephemeral
@@ -130,11 +130,11 @@ struct ClientHardeningTests {
       _ = try AccountClient(baseURL: URL(string: "https://accounts.evil.example")!, vault: StubVault(nil))
     }
     #expect(throws: AccountError.invalidURL) {
-      _ = try AccountClient(baseURL: URL(string: "https://kanpan.107-174-172-10.sslip.io.evil.example")!, vault: StubVault(nil))
+      _ = try AccountClient(baseURL: URL(string: "https://kanpan.43-160-232-253.sslip.io.evil.example")!, vault: StubVault(nil))
     }
-    for allowed in ["https://kanpan.107-174-172-10.sslip.io",
+    for allowed in ["https://kanpan.43-160-232-253.sslip.io",
                     "https://kanpan.96-44-162-222.sslip.io:8443",
-                    "https://kanpan.107-174-172-10.sslip.io:8443"] {
+                    "https://kanpan.43-160-232-253.sslip.io:8443"] {
       #expect(throws: Never.self, "\(allowed) 是自家网关") {
         _ = try AccountClient(baseURL: URL(string: allowed)!, vault: StubVault(nil))
       }

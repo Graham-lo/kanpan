@@ -30,7 +30,7 @@ final class LockableVault: CredentialVault, @unchecked Sendable {
 /// 「没登录」——不抛、不清、不把人推去重新登录，读得到了就接上。
 @Suite("钥匙串读不动", .serialized)
 struct CredentialsUnavailableTests {
-  private static let host = "kanpan.107-174-172-10.sslip.io"
+  private static let host = "kanpan.43-160-232-253.sslip.io"
   private func makeClient(_ vault: LockableVault) throws -> AccountClient {
     StubProtocol.server.reset()
     let configuration = URLSessionConfiguration.ephemeral

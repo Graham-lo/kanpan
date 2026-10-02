@@ -25,7 +25,7 @@ import CoreGraphics
 @MainActor final class AccountPreferenceSyncUITests: XCTestCase {
   /// 现造的测试口令。不碰用户的真账号、真口令。
   private let password = "Testpass2026"
-  private let api = "https://kanpan.107-174-172-10.sslip.io"
+  private let api = "https://kanpan.43-160-232-253.sslip.io"
   private var app: XCUIApplication!
   /// 这一轮在后端建过、还没确认删掉的账号。断言中途失败时兜底用。
   private var created: [String] = []

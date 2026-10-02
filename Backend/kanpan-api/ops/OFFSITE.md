@@ -30,6 +30,31 @@
 > 公钥也用 `from=` 锁死来源地址。这是明知道的取舍：与其让钥匙只存在于一台机器上，
 > 不如让它多待在一台同样只有 root 能进的机器上。
 
+## 2026-10-02 起的拓扑：主服务器是新加坡那台
+
+主机换成了新加坡（腾讯云 `43.160.232.253`，ssh 别名 `kanpan-sg`，登录用户 `ubuntu` 免口令 sudo，
+root 不能直接登）。下面各节里写的「主服务器 = `orderflow-vps`」是 09-19 的拓扑，装法照旧，
+只是角色换了：
+
+| 机器 | 角色 | 备份 |
+| --- | --- | --- |
+| 新加坡 `kanpan-sg` | 唯一公开主机：Caddy、kanpan-api、kanpan-worker、Postgres、网关 + stream-hub、网页版 | `kanpan-backup.timer` 00:08 落 `/var/backups/kanpan/`（瘦转储，见下） |
+| 美国主 `orderflow-vps`（107.174.172.10） | 编译机 + 温备 + 旧主机名 `kanpan.107-174-172-10.sslip.io` 的过渡代理 | 收 SG 的 `kanpan-offsite-push-us.timer`（00:50）→ `/var/backups/kanpan-offsite/` |
+| 美国备 `96.44.162.222:33333` | 行情网关备用 | 收 SG 的 `kanpan-offsite-push.timer`（00:20）→ `/var/backups/kanpan-offsite/` |
+| Mac | 真正的异地那一份 | `offsite-pull.sh` 01:00 从 `kanpan-sg` 拉（直连被掐就自动改走 `kanpan-sg-jump`） |
+
+- **瘦转储**：SG → 美国方向的链路只有几 KB/s，`backup.sh` 2026-10-02 起 `--exclude-table-data`
+  掉 `orderflow_heat*`、`market_features`、`orderflow_orders`、`orderflow_live`、`orderflow_flow`
+  这些 worker 几小时就能重算的行情表，转储从几百 MB 落到 8 MiB，一夜能推完。恢复后这些表是空的，
+  worker 起来会自己填，不是丢数据。
+- SG 上的推送密钥是 `/root/.ssh/kanpan-offsite`，公钥在两台美国机器 root 的 `authorized_keys` 里
+  用 `from="43.160.232.253"` 锁死；两条推送 timer 都有 `10-slow-link.conf` 把 `TimeoutStartSec` 放到 3h。
+- Mac 拉的时候远端是 `ubuntu`，`/var/backups/kanpan` 与 `/etc/kanpan-api` 都是 root 700，
+  所以脚本一律 `ssh … sudo cat` 读，不用 scp；远端是 root 的老拓扑把 `REMOTE_SUDO=` 设成空串即可。
+- 首次验证（2026-10-02）：SG 转储 `kanpan-20261002-142106.dump` 8,466,453 B；推到美国主
+  `/var/backups/kanpan-offsite/20261002-142533`、推到美国备 22:28 Finished；Mac 拉到
+  `~/kanpan-backups/20261002-143044`。
+
 ---
 
 ## 一、主服务器 → 备用服务器（按顺序粘）

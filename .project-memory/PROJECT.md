@@ -25,7 +25,7 @@
 
 ## 3. 行情、账号、复盘（技术结论，沿用 09-15/16 的验证）
 
-- 线路：设置里「行情线路」两档，**出厂默认直连，没有自动切换**（2026-09-17 定）。直连 = 只走币安自己的域名（REST + WS），探不通照实说「点此重试」，绝不切 OKX；网关 = 只走两台 VPS 网关（主 `kanpan.107-174-172-10.sslip.io`，备 `kanpan.96-44-162-222.sslip.io:8443`）供 OKX 行情，两台之间竞速、失败的歇 10 秒（听 `Retry-After`）。选择存在 `Prefs.routePolicy`，字段归类 `deviceOnly`（2026-09-19 按第二轮 B7 改：不再随账号同步，新客户端不上传、云端旧值不覆盖本机、迁移保住当前选择；服务端为兼容老客户端仍认这个键，`wireOnlyKeys` 里有说明）；`PrefsStore` 把它镜像到 `MarketRoutePolicyStore`（`UserDefaults` 键 `market.routePolicy`，测试档案下用 `kanpan.tests.*` 套件），`RoutedMarketFeed` 听通知立刻换线（REST 与已连的 WS 一起）。旧的 `market-source.json`、`MarketRecoverySchedule`、直连冷却/对冲都已删除。**线路两档只管币安主行情**（K 线、报价、币安 WS）；主机上的 kanpan-api 是另一个具名出口 `MarketRoute.apiHosts`（= `ServerHosts.api`，只有主机，2026-09-24 第四批第 35 项）：订单流的 OKX 中继 `/v1/market/ws/okx`、币安中继 `/v1/market/ws/binance`、品种表 `/v1/market/orderflow/instruments`、深度快照 `/v1/market/depth`，以及 `BackendClient`（账号、同步、板块历史）、`/v1/market/meta`、`/v1/market/open-interest`，**任何线路下**都只打它——OKX 国内直连不通、订单流必须三家聚合，而备机跑 metrics 模式，这些路径在 `:8443` 上回 404，不能当候选。`MarketRoute.gateways`（主备两台）只给两台都有的：`/market/v1/*`、`/market/okx/stream`、`/oi/v1/metrics`、`/v1/market/{raw,stream,funding,ticker,open-interest/history}`。
+- 线路：设置里「行情线路」两档，**出厂默认直连，没有自动切换**（2026-09-17 定）。直连 = 只走币安自己的域名（REST + WS），探不通照实说「点此重试」，绝不切 OKX；网关 = 只走两台 VPS 网关（主 `kanpan.43-160-232-253.sslip.io`，备 `kanpan.96-44-162-222.sslip.io:8443`）供 OKX 行情，两台之间竞速、失败的歇 10 秒（听 `Retry-After`）。选择存在 `Prefs.routePolicy`，字段归类 `deviceOnly`（2026-09-19 按第二轮 B7 改：不再随账号同步，新客户端不上传、云端旧值不覆盖本机、迁移保住当前选择；服务端为兼容老客户端仍认这个键，`wireOnlyKeys` 里有说明）；`PrefsStore` 把它镜像到 `MarketRoutePolicyStore`（`UserDefaults` 键 `market.routePolicy`，测试档案下用 `kanpan.tests.*` 套件），`RoutedMarketFeed` 听通知立刻换线（REST 与已连的 WS 一起）。旧的 `market-source.json`、`MarketRecoverySchedule`、直连冷却/对冲都已删除。**线路两档只管币安主行情**（K 线、报价、币安 WS）；主机上的 kanpan-api 是另一个具名出口 `MarketRoute.apiHosts`（= `ServerHosts.api`，只有主机，2026-09-24 第四批第 35 项）：订单流的 OKX 中继 `/v1/market/ws/okx`、币安中继 `/v1/market/ws/binance`、品种表 `/v1/market/orderflow/instruments`、深度快照 `/v1/market/depth`，以及 `BackendClient`（账号、同步、板块历史）、`/v1/market/meta`、`/v1/market/open-interest`，**任何线路下**都只打它——OKX 国内直连不通、订单流必须三家聚合，而备机跑 metrics 模式，这些路径在 `:8443` 上回 404，不能当候选。`MarketRoute.gateways`（主备两台）只给两台都有的：`/market/v1/*`、`/market/okx/stream`、`/oi/v1/metrics`、`/v1/market/{raw,stream,funding,ticker,open-interest/history}`。
 - 网络层单独成包 `KanpanNetwork`（2026-09-17）：HTTP / WS 接口、币安 REST / WS 客户端、限流、线路策略与网关竞速都在这里，`KanpanData` 依赖它但 2026-09-24 起不再 `@_exported` 转出（审查 18a）：用到网络层名字的文件自己 `import KanpanNetwork`，app 的 pbxproj 显式链 KanpanNetwork；线路决策只在 `RouteResolver` / `MarketRoute`，取数件不再自己判 `.gateway`。改线路逻辑只碰这一包；`make network-test`。`BinanceREST.upstream` 不传 policy 就读用户当前线路，OI / 目录 / 报价簿客户端都跟设置走。网络性能按相同模拟器、相同路径比较，不将模拟器数值当成真机结果。
 - 冷启动 / 切换靠多品种快照、后台加深、自选预热做到不等网络；登录用户的自选表要等账号恢复后再判首屏（09-16 修过「冷启动进行情页」「自选一行行慢慢加载」）。
 - 账号：用户名 + 密码，Keychain 会话，设备管理、改密、注销；服务端 `Backend/kanpan-api`（Rust，主 VPS `/opt/kanpan-api`，API 8794，PostgreSQL loopback 55434，RLS 隔离，同机每日备份 30 天）。邮箱注册停掉了。**离机备份（2026-09-19，审查 A-08）**：主 VPS `kanpan-offsite-push.timer` 每天 00:20 CST 把最新 dump + `/etc/kanpan-api/{service,database}.env` rsync 到备用 VPS `trade-vps-old:/var/backups/kanpan-offsite/<UTC 时间戳>/`（sshd 在 **33333** 端口，密钥 `/root/.ssh/kanpan-offsite`，authorized_keys 限 `from=107.174.172.10` 且无 pty/转发，留 30 份）；Mac 上 launchd `com.mdd.kanpan.offsite-pull` 每天 01:00 拉到 `~/kanpan-backups/<时间戳>/`（日志 `pull.log`，留 30 份）。安装步骤与恢复演练步骤见 `Backend/kanpan-api/ops/OFFSITE.md`；演练在 2026-09-23 之前从未实跑过，P4.7 在线上机的临时库里实跑，用时与验证 SQL 写回 OFFSITE.md。
@@ -37,7 +37,7 @@
 - 部署后端的两条教训（2026-09-19）：`ops/install.py` 只跑迁移、**不会重启已在跑的服务**，装完必须 `systemctl restart kanpan-api kanpan-worker` 再看 `ExecMainStartTimestamp`；sqlx 的 `after_connect` 里一条 `sqlx::query` 只能放一条语句（多条 SET 会报 `cannot insert multiple commands into a prepared statement` 把整个服务打死），凡是改连接池的都要在本机真的 `serve` 起来 curl 过 `/health` 再部署。部署前的二进制备份在 `/opt/kanpan-api/backup-<日期>-<时分秒>/kanpan-api.bin`，回滚就是拷回去重启。
 - 复盘：`KanpanReview` 接现有图表，记一笔 / 列表 / 待办 / 统计 / 详情 / 逐根重温 / 私有 OHLC 找相似；记录固定行情源；公开相似索引只是首批种子。
 - 网关：`Backend/kanpan-gateway`，`/opt/kanpan-gateway`，REST 8792、共享 WS 8793，服务 `kanpan-gateway`、`kanpan-stream-hub`。线上服务，只读探测，不改 Caddyfile。 2026-09-17 性能轮已按「备份 → 先备节点 → 只读验证 → 主节点」部署过一次（备份在 `/opt/kanpan-gateway/backup-20260917-*`，API 在 `/opt/kanpan-api/backup-20260917`）；Caddy `admin off`，改完要 `systemctl restart caddy`。Release 基准用各包 `PerfBenchmarkTests.swift`（`swift test -c release --filter PerfBenchmark`），验收报告见桌面 `看盘-性能优化-验收-2026-09-17.md`。
-- 原型静态托管：主 VPS `/var/www/kanpan/ui/`（`ssh orderflow-vps`，`install -o caddy -g caddy -m 644`），浏览器地址 `https://kanpan.107-174-172-10.sslip.io/ui/`。
+- 原型静态托管：主 VPS `/var/www/kanpan/ui/`（`ssh orderflow-vps`，`install -o caddy -g caddy -m 644`），浏览器地址 `https://kanpan.43-160-232-253.sslip.io/ui/`。
 
 ## 4. 用户稳定偏好
 
@@ -95,7 +95,7 @@
 - **深链只有一处解析**：`Kanpan/Kanpan/Main/DeepLink.swift`，scheme `hkline://`（登记在
   `Kanpan/Config/Info.plist` 的 `CFBundleURLTypes`），形态 `symbol/<SYM>?interval=`、
   `drawing/<SYM>/<id>`、`alerts`、`review/<id>`、`search`、`share/<id>`，以及等价的
-  `https://kanpan.107-174-172-10.sslip.io/s/<id>`。桌面快捷入口、通知点击、共享链接全从这一个口进来，
+  `https://kanpan.43-160-232-253.sslip.io/s/<id>`。桌面快捷入口、通知点击、共享链接全从这一个口进来，
   由 `MainScreen` 一处消费。测试壳 `Kanpan/DeepLink/`（`make deeplink-test`）。
   **UI 用例进不去系统通知中心**，所以测试档案下多认一条启动环境 `KANPAN_TEST_DEEPLINK`
   （配合 `KANPAN_TEST_PROFILE=1`，`#if DEBUG`）把一条链接直接喂给路由。同一套路还有一条
@@ -313,7 +313,7 @@ INFO 照旧（`alerts still fire, still record firedAt/firedPrice and still sync
 的教训）→ `cargo build --release`（2m16s）→ `ops/install.py`（应用 0017）→
 `systemctl restart`，两个服务均 `2026-09-22 05:54:11 CST` active。只读验证：
 `information_schema` 里 `alert_id`/`started_at` 两列都在且可空；内网 `/health` 200；
-公网 `https://kanpan.107-174-172-10.sslip.io/v1/market/meta` 与当时还在的 `/v1/capabilities` 均 200（后者 P4.11 已删）；
+公网 `https://kanpan.43-160-232-253.sslip.io/v1/market/meta` 与当时还在的 `/v1/capabilities` 均 200（后者 P4.11 已删）；
 `/v1/devices/live-activity/end` 公网 GET 405 / 无鉴权 POST 401（**不是 404，说明 Caddy
 确实转发 `/v1/devices/*`**——README 的路由清单漏了这一条，已在 `d23b04d` 补上）；
 worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变了，
@@ -491,7 +491,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 ## 主力订单流 · 服务端这一半（2026-09-24，`57fad66` + `a4763fd`，两处都已部署）
 
-- **深度快照**：`GET https://kanpan.107-174-172-10.sslip.io/v1/market/depth?symbol=BTCUSDT&limit=1000`（只在主节点的 kanpan-api 上，备用节点没有）。免登录；`limit` 只收 500/1000（缺省 1000），`symbol` 只收 `[A-Z0-9]{2,30}`；经 `binance_gate` 取 `www.binance.com/fapi/v1/depth`，正文原样透传；每个（品种, 档数）1 秒合并缓存。错误码：400 `invalid_symbol` / `invalid_limit` / `invalid_query` / `unknown_symbol`；503 `market_upstream_unavailable` + `Retry-After: 2`（451/429/418/超时）；502 `market_upstream_failed`。代码全在 `src/market_depth.rs`。
+- **深度快照**：`GET https://kanpan.43-160-232-253.sslip.io/v1/market/depth?symbol=BTCUSDT&limit=1000`（只在主节点的 kanpan-api 上，备用节点没有）。免登录；`limit` 只收 500/1000（缺省 1000），`symbol` 只收 `[A-Z0-9]{2,30}`；经 `binance_gate` 取 `www.binance.com/fapi/v1/depth`，正文原样透传；每个（品种, 档数）1 秒合并缓存。错误码：400 `invalid_symbol` / `invalid_limit` / `invalid_query` / `unknown_symbol`；503 `market_upstream_unavailable` + `Retry-After: 2`（451/429/418/超时）；502 `market_upstream_failed`。代码全在 `src/market_depth.rs`。
 - **深度增量流（已删除）**：旧版订单流曾让 Python 网关两条线路放行 `<symbol>@depth@100ms`（`depth_relay.py`、币安 `fstream.binance.com/public` 专用上游、OKX `books` 映射，`a4763fd`）；已被 kanpan-api 中继（`/v1/market/ws/*`）取代，2026-09-24 删除（第四批第 38 项），网关现在把深度流当非法频道、握手回 400。
 - **成交流**：币安那条 `/market/stream` 仍放行 `<symbol>@aggTrade`（`50c431d`；逐帧排队不合并，和行情同一条上游，`/public` 实测不推成交）。OKX 线路的 `trades` 映射没有调用方（OKX 替身 `hasMicrostructure: false`，订单流的 OKX 成交走 `/v1/market/ws/okx`），同日一并删除。
 - 逐帧排队的判定 `sequenced()` 已挪进 `stream_hub.py`，只剩 aggTrade 一种。
@@ -788,7 +788,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 ## 33. 手机网页版（PWA，照 iOS 复刻，2026-09-29/30，`bc3c5f28` 交接 → `c6da0bc4` 行情页落地，已部署 `/web/m/`）
 
-用户 09-29 提出「手机移动版完全按照 iOS 复刻，加到主页和 app 没区别，就不用开会员」，定位为替代版：想用最全的用 app，要大屏用 PC 网页版，装不了 app 时临时用手机网页版。交接文档 `docs/手机网页版-2026-09-29.md`，线上 <https://kanpan.107-174-172-10.sslip.io/web/m/>。
+用户 09-29 提出「手机移动版完全按照 iOS 复刻，加到主页和 app 没区别，就不用开会员」，定位为替代版：想用最全的用 app，要大屏用 PC 网页版，装不了 app 时临时用手机网页版。交接文档 `docs/手机网页版-2026-09-29.md`，线上 <https://kanpan.43-160-232-253.sslip.io/web/m/>。
 
 - **结构**：`Web/` 下第二个 vite 入口 `m/index.html` → `src/m/`，共用 market / account / sync / format / sectors / review api，UI 与图表引擎单独写；不往 PC 网页版塞手机断点；同一个 kanpan-api，手机网页在「一类设备一台在线」里算手机（keyPrefix `hkline-m`）。
 - **四条子代理线（均 Opus 5.5）**：A 壳 / 皮肤 tokens（逐值照 Palette.swift）/ PWA / store 与 prefs 白名单（三方对账 iOS 契约与服务端 SETTINGS_FIELDS）/ 同步适配器（31 个字段照 PrefsCodec、自选与分类照 SymbolPrefs、提醒进 st.alerts、画线照 PersonalSyncCodec / SyncOverlay，每品种 50 条用 DrawArchive.capToLimit）；B 图表引擎从 KanpanChart / KanpanCore 逐文件移植（Canvas 2D、Pointer Events、指标引擎、主力订单流聚合与 `createOrderFlowPort`、画线 41 种工具与控制器 `attachDrawing`，Swift 数值测试移植成 vitest 278 + 画线 122 + 订单流 44 条）；C 自选 / 搜索 / 板块 / 我的 / 提醒（含「收盘穿过」照 AlertEngine）；D 行情页宿主（头部六格、扫图、周期条与「更多」弹层、分析 / 图表设置面板、订单流详情卡、横屏画线台、记一笔、分享，`hooks.onSync` 重读）。
@@ -801,3 +801,25 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   - 后端：`sync_validation.rs` 的 `compare_key` 改为复用 `identity`（eef3267c，备份 `/opt/kanpan-backups/compare-key-20260930-042511/`，线上改前 400 / 改后 200 实测）。iOS：`InstrumentID.isSyncKey` 在 KanpanCore 只写一份、`cleanCompareSymbols` 与添加路径都走它（da6cdd0b）；`drawingPreviewID` 在撤销 / 重做 / 离窗时清掉（4e2b3a42）。
   - 压测（`Web/scripts/m-stress.mjs`，截图 `docs/acceptance/手机网页版-2026-09-29/压测-*.png`）：交易员走查 41 项全过；200 次切品种 / 周期 / 面板连接不累积；20 分钟挂机；断网恢复、前后台、两上下文同改 + 第三台踢下线、离线队列、老键迁移、11 个存储键 × 7 种坏值不白屏（主档为 null 白屏已修 b9742e97）、SW 断网冷启动四页出壳；服务端 30 客户端 5 分钟 21,848 次操作 0 错误，p50 291 ms / p95 777 ms，API 峰值内存 412 MB。线上 Caddy 给 `manifest.webmanifest` 补了 `Content-Type`（`admin off` 所以 reload 不生效，要 restart）。
 - **已知差异与残留**：网页版没有复盘本、朋友与收件箱、交易所绑定三行（`me.ts` 注为「网页版不做」，但交接文档把复盘列在范围内——现在能记一笔却没有复盘本看，待定）；`order_flow_overrides` 底名三端仍只收 ASCII；取色器是系统原生；无强制横屏、震动、后台重连恢复现场。线上残留测试账号 `mtest_20260930`（密码丢了）和可能一个 `pgrev_loc#####`（密码 Pgrev2026x），需有库权限的窗口按前缀查、用 `DELETE /v1/auth/account` 删。`scripts/machine-guard.sh clean` 会删所有 `/tmp/kanpan-*`，包括别的窗口的临时目录，压测子代理中途被删过一次。
+
+## 34. 服务端迁到新加坡（2026-10-02，主机名 `kanpan.43-160-232-253.sslip.io`）
+
+- 起因：美国主机被币安 451、到国内链路慢。用户买了腾讯云新加坡 CVM（`43.160.232.253`，2 vCPU / 7.7 GB / 79 GB，无限流量），
+  原话「我只想利用它的网络」→「其实这配置是不是完全可以部署啊」。定稿：**新加坡 = 唯一公开主机**（Caddy、kanpan-api、worker、
+  Postgres、网关 + stream-hub、网页版），美国主 = 编译机 + 温备 + 旧主机名过渡代理，美国备 = 网关备用 + 第二份离机备份。
+  不在 SG 上编译（美国编好 `kanpan-api` 二进制再运过去），`service.env` 里的 pepper / encryption key 原样从美国拷，绝不重生成。
+- 客户端：`KanpanCore/Model/ServerHosts.swift` `primary` 换成新加坡；全仓 41 个文件里的旧主机名一并换掉（测试、Web 的
+  ORIGIN / API_ORIGIN / ISSUER、脚本、文档）；`docs/acceptance/**` 与 09-29 压测 C 路报告是历史测量，故意不改。
+  网页版 token 的 issuer 变了，老 token 会被丢掉、要重新登录一次。
+- 已验证（2026-10-02）：SG 整套起来、恢复了美国库（users=128）；经 SSH 隧道按真主机名 + 真证书冒烟：注册→登录→同步→刷新→
+  注销→删号全部对，`/v1/market/*`、`/web/`、`/web/m/`、`/privacy`、`/market/stream` 与 `/v1/market/ws/binance` 101 并真在推币安数据。
+  Swift 三套（core 455 / account 143 / data 264）全绿、模拟器 build 过；真机 Release 包没打成只因 Mac 上没登开发者账号 / 两台 iPhone 都不在。
+- 备份拓扑见 `Backend/kanpan-api/ops/OFFSITE.md` 开头那节（瘦转储、SG→美国两台、Mac 从 SG 拉）。
+- **卡在用户手上的一件事：腾讯安全组没放行 TCP 443**（tcpdump 证明美国发的 SYN 到不了 SG 网卡；22 / 80 通，ufw 已放 443，
+  Caddy 在听，证书经 http-01 签到了）。控制台 → 云服务器 → `ins-kf1imlt2` → 安全组 → 入站 → TCP 443 `0.0.0.0/0`。
+  放行前手机 / 网页都到不了 SG，所以**正式切换没做**（美国的 api / worker / 网关仍是线上），切换步骤与脚本在
+  `docs/新加坡主机迁移-2026-10-02.md`。
+- Mac 经 Surge 直连 SG 22 时常被掐（sshd 无日志、fail2ban 0 ban，Mac 出口是代理节点 `23.249.26.145`）：
+  `offsite-pull.sh` 与 `Web/scripts/deploy.sh` 都能改走 `kanpan-sg-jump`（经美国跳）。建议 Surge 给 `43.160.232.253` 加 DIRECT。
+- SG 的 `ubuntu` 口令在聊天里暴露过，密码登录已禁（只认密钥），仍要在腾讯控制台改掉。
+

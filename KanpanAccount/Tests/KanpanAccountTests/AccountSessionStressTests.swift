@@ -148,7 +148,7 @@ final class FakeAuthProtocol: URLProtocol {
 /// - 并发撞墙只刷一次，服务端账本上一次令牌重用都不许有；钥匙串里留下的永远是服务端认的那把。
 @Suite("账号状态机压测", .serialized)
 struct AccountSessionStressTests {
-  private static let host = "kanpan.107-174-172-10.sslip.io"
+  private static let host = "kanpan.43-160-232-253.sslip.io"
   private struct Probe: Decodable, Sendable { var ok: Bool? }
   private struct Marker: Encodable { var owner: UUID }
   private let alice = AccountUser(id: UUID(), email: "alice")

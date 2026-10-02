@@ -2,7 +2,7 @@ import XCTest
 
 /// 两条受影响的 UI 用例。账号、分享、画线和提醒全走真后端；仅诊断读数用 DEBUG 口。
 @MainActor final class ShareFlowUITests: XCTestCase {
-  private let api = "https://kanpan.107-174-172-10.sslip.io"
+  private let api = "https://kanpan.43-160-232-253.sslip.io"
   private var app: XCUIApplication!
   private var people: [[String: String]] = []
   private var tokens: [String] = []

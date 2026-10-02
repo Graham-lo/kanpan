@@ -76,7 +76,7 @@ struct AccountLateReplyTests {
   private func signedIn() async throws -> (AccountFeature, AccountClient) {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [LateReplyProtocol.self]
-    let client = try AccountClient(baseURL: URL(string: "https://kanpan.107-174-172-10.sslip.io")!,
+    let client = try AccountClient(baseURL: URL(string: "https://kanpan.43-160-232-253.sslip.io")!,
                                    vault: MemoryVault(), session: URLSession(configuration: configuration))
     let feature = AccountFeature(client: client)
     feature.onPrepareAccount = { _ in {} }

@@ -2,7 +2,7 @@
 
 看盘（Hkline）的网页端：Vite + TypeScript（strict），不用 UI 框架。视觉是网页版自己的一套（设计原型在 `prototype/web-2026-09-29/`），先按 27 寸 2K（2560×1440）屏设计。
 
-线上：<https://kanpan.107-174-172-10.sslip.io/web/>（Caddy 把 `/var/www/kanpan/` 当静态目录，`/web/` 就是其中的子目录，不用改 Caddy。路由走 hash，比如 `#chart`、`#sectors`、`#review`、`#me`）
+线上：<https://kanpan.43-160-232-253.sslip.io/web/>（Caddy 把 `/var/www/kanpan/` 当静态目录，`/web/` 就是其中的子目录，不用改 Caddy。路由走 hash，比如 `#chart`、`#sectors`、`#review`、`#me`）
 
 ## 怎么跑
 
@@ -144,7 +144,7 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 
 ## 手机网页版（`/web/m/`，2026-09-29 起，详见 `docs/手机网页版-2026-09-29.md`）
 
-装不了 iOS app 时的临时替代版：照 iOS app 逐屏复刻（三套皮肤、四格底栏、头部六格、周期条钉住与「更多」弹层、扫图、自选分类页、板块列表、我的、提醒、横屏画线台、记一笔、分享），不是 PC 网页版的手机断点。线上 <https://kanpan.107-174-172-10.sslip.io/web/m/>，Safari 分享 → 加到主屏幕即为独立 PWA（manifest `public/m/manifest.webmanifest`，`sw.js` 只缓存壳）。灵动岛、推送、震动、强制横屏不复刻；已接受的差别只有不能强制横屏（竖屏时给转屏引导）、没有震动、切后台要重连。
+装不了 iOS app 时的临时替代版：照 iOS app 逐屏复刻（三套皮肤、四格底栏、头部六格、周期条钉住与「更多」弹层、扫图、自选分类页、板块列表、我的、提醒、横屏画线台、记一笔、分享），不是 PC 网页版的手机断点。线上 <https://kanpan.43-160-232-253.sslip.io/web/m/>，Safari 分享 → 加到主屏幕即为独立 PWA（manifest `public/m/manifest.webmanifest`，`sw.js` 只缓存壳）。灵动岛、推送、震动、强制横屏不复刻；已接受的差别只有不能强制横屏（竖屏时给转屏引导）、没有震动、切后台要重连。
 
 - 入口：`m/index.html` → `src/m/main.ts` → `src/m/boot.ts`；vite 第二个入口，与 PC 同一次 `make web-build` / `make web-deploy`。路由 `#chart #favorites #sectors #me`，深链 `?open=search|settings|alerts|account`，验收参数 `?skin=&theme=`。
 - 共用：`src/market/`、`src/account/`（keyPrefix `hkline-m`，设备类别 phone）、`src/sync/`（同步引擎抽了状态适配器，PC 与手机各一份）、`src/util/format.ts`、`src/data/sectors.json`、`src/review/api.ts`。

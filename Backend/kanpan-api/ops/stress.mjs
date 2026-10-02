@@ -12,7 +12,7 @@
 import { webcrypto } from 'node:crypto'
 globalThis.crypto ??= webcrypto // VPS 上是 Node 18，全局 crypto 不一定有
 
-const BASE = process.env.KANPAN_STRESS_BASE || 'https://kanpan.107-174-172-10.sslip.io'
+const BASE = process.env.KANPAN_STRESS_BASE || 'https://kanpan.43-160-232-253.sslip.io'
 const args = process.argv.slice(2)
 const scenario = args[0]
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt }

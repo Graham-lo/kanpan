@@ -1,6 +1,6 @@
 // Hkline Web · 验收截图：本机 Chrome、2560×1440、DPR 1
 //   node scripts/verify.mjs [地址] [截图目录]
-//   默认地址是线上 https://kanpan.107-174-172-10.sslip.io/web/，默认目录是 docs/acceptance/网页版-2026-09-29/
+//   默认地址是线上 https://kanpan.43-160-232-253.sslip.io/web/，默认目录是 docs/acceptance/网页版-2026-09-29/
 // 截：三套皮肤 × 浅深、放大缩小、搜索、切周期、四图、槽位开合、各页；检查控制台无报错、最新价在几秒内有变化。
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
@@ -8,7 +8,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const URL_ = process.argv[2] || 'https://kanpan.107-174-172-10.sslip.io/web/'
+const URL_ = process.argv[2] || 'https://kanpan.43-160-232-253.sslip.io/web/'
 const OUT = resolve(process.argv[3] || resolve(here, '../../docs/acceptance/网页版-2026-09-29'))
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 mkdirSync(OUT, { recursive: true })

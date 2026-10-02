@@ -23,7 +23,7 @@ import {
 } from './adapters'
 
 export type Route = 'direct' | 'gateway'
-export const API_ORIGIN = 'https://kanpan.107-174-172-10.sslip.io'
+export const API_ORIGIN = 'https://kanpan.43-160-232-253.sslip.io'
 const EXCHANGES: Record<string, string> = { binance: '币安', okx: 'OKX', coinbase: 'Coinbase' }
 
 export const EVALUATE_MS = 500

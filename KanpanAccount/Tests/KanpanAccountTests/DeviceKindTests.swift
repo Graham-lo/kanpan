@@ -37,7 +37,7 @@ struct DeviceKindTests {
   /// 从前这儿是 `accounts.invalid` + `allowAnyHostForTests: true`，而那个开关只存在于
   /// DEBUG（A-07），于是「设备报类别」「被顶下去」「设备列表带类别」这一整摊在
   /// Release 配置下整块消失（审查 C-05）。换成白名单内的主机，两个配置都真的跑。
-  private static let host = "kanpan.107-174-172-10.sslip.io"
+  private static let host = "kanpan.43-160-232-253.sslip.io"
 
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     let configuration = URLSessionConfiguration.ephemeral

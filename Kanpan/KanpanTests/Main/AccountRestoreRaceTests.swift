@@ -54,7 +54,7 @@ final class HeldVault: CredentialVault, @unchecked Sendable {
 @MainActor
 @Suite("BT-22 restore 挂着时换人：迟到的 restore 不许挂回旧 owner", .serialized, .timeLimit(.minutes(1)))
 struct AccountRestoreRaceTests {
-  private static let host = "kanpan.107-174-172-10.sslip.io"
+  private static let host = "kanpan.43-160-232-253.sslip.io"
   private let alice = AccountUser(id: UUID(uuidString: "A11CE000-1111-4C0A-9E2D-0A1B2C3D4E5F")!, email: "alice")
   private let bob = AccountUser(id: UUID(uuidString: "B0B00000-2222-4C0A-9E2D-0A1B2C3D4E5F")!, email: "bob")
 

@@ -12,7 +12,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") || name.contains("Record") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
-    if name.contains("Record") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
+    if name.contains("Record") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.43-160-232-253.sslip.io" }
     if name.contains("testExternalIndicatorsAndDepthRoundTrip") || name.contains("testDepthLadderVisibleAtBothIntervals") {
       app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
       app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"

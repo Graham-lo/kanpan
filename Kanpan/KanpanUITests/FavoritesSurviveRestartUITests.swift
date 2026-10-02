@@ -17,7 +17,7 @@ final class FavoritesSurviveRestartUITests: KanpanUICase {
 
   private let profile = UUID().uuidString
   override var extraLaunchEnvironment: [String: String] {
-    ["KANPAN_PERSISTENCE_PROFILE": profile, "KANPAN_ACCOUNT_API_URL": "https://kanpan.107-174-172-10.sslip.io"]
+    ["KANPAN_PERSISTENCE_PROFILE": profile, "KANPAN_ACCOUNT_API_URL": "https://kanpan.43-160-232-253.sslip.io"]
   }
 
   private func row(_ symbol: String) -> XCUIElement { app.buttons["favorites.open." + testInstrumentKey(symbol)] }

@@ -45,7 +45,7 @@ import XCTest
     // 从网关拿 OKX 的历史与实时。REST_DOWN 只是把币安直连彻底封死，证明没有偷偷走它。
     app.launchEnvironment["KANPAN_TEST_ROUTE_POLICY"] = "gateway"
     app.launchEnvironment["KANPAN_TEST_BINANCE_REST_DOWN"] = "1"
-    app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io"
+    app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.43-160-232-253.sslip.io"
     app.launch()
     defer {
       let a = XCTAttachment(screenshot: app.screenshot()); a.lifetime = .keepAlways; add(a)

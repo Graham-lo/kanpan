@@ -1,6 +1,9 @@
 import Foundation
 
-/// 自家服务器（美国那两台 VPS）的地址，全客户端只有这一份。
+/// 自家服务器的地址，全客户端只有这一份。
+///
+/// 2026-10-02 起主机换成新加坡那台（腾讯云，币安 / Bybit / OKX 都不封它；美国那台被币安 451、
+/// 到国内的链路又慢）。美国主机退成编译机 + 温备 + 旧主机名的过渡代理，美国备机只剩行情网关备用。
 ///
 /// 以前同一对主机名抄了三处：行情网关表（`MarketEndpoints.production`）、账号客户端的
 /// 放行名单（`AccountClient.allowedHosts`）、app 的 Info.plist（`KanpanAccountAPIURL`）。
@@ -14,8 +17,8 @@ import Foundation
 /// （2026-09-24 实测）。所以这些**没有**故障转移，主机挂了登录 / 同步 / 订单流就暂停，
 /// 本地缓存照常能用（`kanpan-cloud-outage-must-not-break-the-app`）。
 public enum ServerHosts {
-  /// 主机（纽约）：行情网关 + 账号 API，走 443。
-  public static let primary = "kanpan.107-174-172-10.sslip.io"
+  /// 主机（新加坡）：行情网关 + 账号 API，走 443。
+  public static let primary = "kanpan.43-160-232-253.sslip.io"
   /// 备机：只做行情网关，走 8443。
   public static let backup = "kanpan.96-44-162-222.sslip.io"
   static let backupPort = 8443

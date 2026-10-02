@@ -31,7 +31,7 @@ import XCTest
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = profile
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     // 没有这个变量就没有账号桥，走的是纯本地那条路。
-    if signedIn { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
+    if signedIn { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.43-160-232-253.sslip.io" }
     return app
   }
 

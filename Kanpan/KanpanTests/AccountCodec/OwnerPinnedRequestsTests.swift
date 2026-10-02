@@ -46,7 +46,7 @@ struct OwnerPinnedRequestsTests {
   private func signedInAsAlice() async throws -> AccountClient {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [OwnerPinProtocol.self]
-    let client = try AccountClient(baseURL: URL(string: "https://kanpan.107-174-172-10.sslip.io")!,
+    let client = try AccountClient(baseURL: URL(string: "https://kanpan.43-160-232-253.sslip.io")!,
                                    vault: PinVault(), session: URLSession(configuration: configuration))
     let feature = AccountFeature(client: client)
     feature.onPrepareAccount = { _ in {} }

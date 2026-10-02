@@ -32,7 +32,7 @@ final class LockedVault: CredentialVault, @unchecked Sendable {
 @MainActor
 @Suite("钥匙串读不动时照常装上次那个人的档案", .serialized, .timeLimit(.minutes(1)))
 struct AccountCredentialFallbackTests {
-  private static let host = "kanpan.107-174-172-10.sslip.io"
+  private static let host = "kanpan.43-160-232-253.sslip.io"
   private let alice = AccountUser(id: UUID(uuidString: "A11CE000-3333-4C0A-9E2D-0A1B2C3D4E5F")!, email: "alice")
 
   private func saved(_ user: AccountUser) throws -> SavedAccount {

@@ -13,7 +13,7 @@
 import { uuid } from '../sync/types'
 import { endSession, setSession, type Ended } from './session'
 
-export const ISSUER = 'kanpan.107-174-172-10.sslip.io'
+export const ISSUER = 'kanpan.43-160-232-253.sslip.io'
 /** PC 版的键名（默认值；测试与回归脚本按这个名字读写）。当前实际用的键见 `accountKey()` */
 export const ACCOUNT_KEY = 'hkline-web-account-v1'
 

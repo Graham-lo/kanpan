@@ -17,7 +17,7 @@ import XCTest
 final class ExchangeReviewUITests: KanpanUICase {
   private let profile = UUID().uuidString
   private var autoKey: String?
-  private static let api = "https://kanpan.107-174-172-10.sslip.io"
+  private static let api = "https://kanpan.43-160-232-253.sslip.io"
   private static let password = "Testpass2026"
   private var created: [String] = []
 

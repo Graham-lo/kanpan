@@ -618,7 +618,7 @@ clean:
 	@scripts/machine-guard.sh clean
 
 # ---------------------------------------------------------------- 网页版（Web/，Vite + TypeScript）
-# 线上 https://kanpan.107-174-172-10.sslip.io/web/；说明见 Web/README.md。
+# 线上 https://kanpan.43-160-232-253.sslip.io/web/；说明见 Web/README.md。
 .PHONY: web-install web-dev web-test web-build web-deploy web-verify
 web-install:
 	cd Web && npm install

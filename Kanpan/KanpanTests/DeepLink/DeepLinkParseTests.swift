@@ -66,7 +66,7 @@ struct DeepLinkParseTests {
   @Test("不认识的 scheme 一律 nil")
   func foreignSchemes() {
     #expect(parse("hntcoin://alerts") == nil)
-    #expect(parse("http://kanpan.107-174-172-10.sslip.io/s/abc123") == nil)
+    #expect(parse("http://kanpan.43-160-232-253.sslip.io/s/abc123") == nil)
     #expect(parse("file:///tmp/x") == nil)
   }
 
@@ -93,9 +93,9 @@ struct DeepLinkParseTests {
 
   @Test("https 通用链接一律不认（分享走收件箱，不发链接）")
   func webLinksAreIgnored() {
-    #expect(parse("https://kanpan.107-174-172-10.sslip.io/s/abc123") == nil)
+    #expect(parse("https://kanpan.43-160-232-253.sslip.io/s/abc123") == nil)
     #expect(parse("https://example.com/s/abc123") == nil)
-    #expect(parse("https://kanpan.107-174-172-10.sslip.io/ui/") == nil)
+    #expect(parse("https://kanpan.43-160-232-253.sslip.io/ui/") == nil)
   }
 
   // ---------------------------------------------------------------- 路由

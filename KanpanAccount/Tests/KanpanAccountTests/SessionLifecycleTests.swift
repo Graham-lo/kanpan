@@ -90,7 +90,7 @@ final class StubVault: CredentialVault, @unchecked Sendable {
 /// 一个字节都不出门，地址只是个名字——于是 Debug / Release 两边跑的是同一套。
 @Suite("会话生命周期", .serialized)
 struct SessionLifecycleTests {
-  private static let host = "kanpan.107-174-172-10.sslip.io"
+  private static let host = "kanpan.43-160-232-253.sslip.io"
 
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     StubProtocol.server.reset()

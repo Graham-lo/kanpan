@@ -25,7 +25,7 @@ import XCTest
 // `tearDown` 按 HTTP 再补一刀，不给线上留垃圾账号。
 @MainActor final class FavoritesGroupSyncUITests: XCTestCase {
   private let password = "Testpass2026"
-  private let api = "https://kanpan.107-174-172-10.sslip.io"
+  private let api = "https://kanpan.43-160-232-253.sslip.io"
   /// A 设备与 B 设备各自的档案。两棵子树互不相通，只有账号把它们连起来。
   private let profileA = UUID().uuidString
   private let profileB = UUID().uuidString

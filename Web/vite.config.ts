@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitest/config'
 
-// 线上挂在 https://kanpan.107-174-172-10.sslip.io/web/ 下（Caddy file_server），路由走 hash，不需要改 Caddy。
+// 线上挂在 https://kanpan.43-160-232-253.sslip.io/web/ 下（Caddy file_server），路由走 hash，不需要改 Caddy。
 // 手机网页版是第二个入口 m/index.html → /web/m/（本机 http://localhost:5178/web/m/）。
 // 本机开发时 /v1（市值元数据，没有 CORS 头）与 /market（网关行情 WS）转发到线上同一个域名，和线上同源行为一致。
-const ORIGIN = 'https://kanpan.107-174-172-10.sslip.io'
+const ORIGIN = 'https://kanpan.43-160-232-253.sslip.io'
 export default defineConfig({
   base: '/web/',
   build: {

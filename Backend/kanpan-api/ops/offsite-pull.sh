@@ -23,17 +23,22 @@
 # 卸掉：        launchctl bootout gui/$(id -u)/com.mdd.kanpan.offsite-pull
 # 手动跑：      bash /Users/mdd/zhk/kanpan/Backend/kanpan-api/ops/offsite-pull.sh
 #
-# BatchMode=yes 意味着没人能替它输口令：到 orderflow-vps 的那把私钥要么不带口令，
+# BatchMode=yes 意味着没人能替它输口令：到 kanpan-sg（新加坡主机，2026-10-02 起）的那把私钥要么不带口令，
 # 要么口令已经存进钥匙串并且 ~/.ssh/config 里写了 UseKeychain yes / AddKeysToAgent yes。
-# 先手动 `ssh -o BatchMode=yes orderflow-vps true` 跑通，再装定时。
+# 先手动 `ssh -o BatchMode=yes kanpan-sg true` 跑通，再装定时。
 #
-# 可调（环境变量）：SOURCE_HOST OFFSITE_ROOT OFFSITE_KEEP REMOTE_DUMPS REMOTE_ENV
+# 新加坡主机上登录用户是 ubuntu，不是 root；转储目录和 /etc/kanpan-api 都是 root 700。
+# 所以远端一律经 sudo 读（ubuntu 免口令 sudo），用 `ssh … sudo cat` 拉文件而不是 scp。
+# 远端就是 root 的话把 REMOTE_SUDO 设成空串。
+#
+# 可调（环境变量）：SOURCE_HOST OFFSITE_ROOT OFFSITE_KEEP REMOTE_DUMPS REMOTE_ENV REMOTE_SUDO
 set -euo pipefail
 umask 077
 
-HOST=${SOURCE_HOST:-orderflow-vps}
+HOST=${SOURCE_HOST:-kanpan-sg}
 REMOTE_DUMPS=${REMOTE_DUMPS:-/var/backups/kanpan}
 REMOTE_ENV=${REMOTE_ENV:-/etc/kanpan-api}
+REMOTE_SUDO=${REMOTE_SUDO-sudo}
 ROOT=${OFFSITE_ROOT:-$HOME/kanpan-backups}
 KEEP=${OFFSITE_KEEP:-30}
 MIN_DUMP=1048576                                     # 1 MiB
@@ -49,15 +54,25 @@ mkdir -p "$ROOT"; chmod 700 "$ROOT"
 rm -rf "$stage"; mkdir "$stage"                      # umask 077 → 700
 trap 'rm -rf "$stage"' EXIT
 
+# Mac 经 Surge 直连新加坡的 22 时常被代理节点掐断（sshd 日志里什么都没有）。直连不通就改走
+# 经美国主机跳的别名，数据量只有几 MB，绕一圈也就几十秒。
+if ! ssh "${SSH_OPTS[@]}" "$HOST" true 2>/dev/null; then
+  FALLBACK=${SOURCE_HOST_FALLBACK:-kanpan-sg-jump}
+  printf 'offsite-pull: %s 连不上，改走 %s\n' "$HOST" "$FALLBACK" >&2
+  HOST=$FALLBACK
+fi
+
 # 服务器上的文件名是 kanpan-YYYYMMDD-HHMMSS.dump，字典序就是时间序。
-latest=$(ssh "${SSH_OPTS[@]}" "$HOST" "ls -1 $REMOTE_DUMPS/kanpan-*.dump 2>/dev/null | sort | tail -1") \
+# 通配符要在 sudo 里面展开：目录是 root 700，ubuntu 自己展开不了，会把 kanpan-*.dump 原样递给 ls。
+latest=$(ssh "${SSH_OPTS[@]}" "$HOST" "$REMOTE_SUDO sh -c 'ls -1 $REMOTE_DUMPS/kanpan-*.dump 2>/dev/null' | sort | tail -1") \
   || die "连不上 $HOST（BatchMode 下不会提示输口令；先手动跑 ssh -o BatchMode=yes $HOST true）"
 [ -n "$latest" ] || die "$HOST:$REMOTE_DUMPS 下一个 kanpan-*.dump 都没有 —— 先在服务器上 systemctl start kanpan-backup.service"
 
 name=$(basename "$latest")
-scp "${SSH_OPTS[@]}" -p "$HOST:$latest" "$stage/$name"              || die "拉转储失败：$HOST:$latest"
-scp "${SSH_OPTS[@]}" -p "$HOST:$REMOTE_ENV/service.env"  "$stage/"  || die "拉 $REMOTE_ENV/service.env 失败"
-scp "${SSH_OPTS[@]}" -p "$HOST:$REMOTE_ENV/database.env" "$stage/"  || die "拉 $REMOTE_ENV/database.env 失败"
+fetch() { ssh "${SSH_OPTS[@]}" "$HOST" "$REMOTE_SUDO cat '$1'" > "$2" && [ -s "$2" ]; }
+fetch "$latest"                  "$stage/$name"          || die "拉转储失败：$HOST:$latest"
+fetch "$REMOTE_ENV/service.env"  "$stage/service.env"    || die "拉 $REMOTE_ENV/service.env 失败"
+fetch "$REMOTE_ENV/database.env" "$stage/database.env"   || die "拉 $REMOTE_ENV/database.env 失败"
 
 # 校验：三件都在、转储不是个空壳、两把钥匙不是空值。
 size=$(wc -c < "$stage/$name" | tr -d ' ')

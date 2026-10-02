@@ -52,7 +52,14 @@ file="$folder/kanpan-$(date -u +%Y%m%d-%H%M%S).dump"
 # 这一趟只要没走到 mv，那个 .part 就是一份写坏的转储，出门时带走它。放在 file= 之后设，
 # 否则 $file 还是空的，rm 会去删当前目录下一个叫 .part 的东西。
 trap 'rm -f "$file.part"' EXIT HUP INT TERM
-docker exec kanpan-postgres pg_dump -U kanpan_admin -d kanpan -Fc > "$file.part"
+# 只带不可再生的数据。orderflow_heat* / market_features / orderflow_{orders,live,flow} 是 worker
+# 从交易所流里一直重算的缓存，几十 GB，机器换了重跑几天就回来；带上它们一份转储十几 GB，
+# 离机链路（新加坡 → 美国只有几 KB/s）根本推不动。表结构照样导（--exclude-table-data 只跳数据），
+# 恢复出来的库 install.py 的 migrate 直接认。zstd:9 比默认 gzip 小一半。
+docker exec kanpan-postgres pg_dump -U kanpan_admin -d kanpan -Fc --compress=zstd:9 \
+  --exclude-table-data='orderflow_heat*' --exclude-table-data=market_features \
+  --exclude-table-data=orderflow_orders --exclude-table-data=orderflow_live --exclude-table-data=orderflow_flow \
+  > "$file.part"
 test -s "$file.part"
 mv "$file.part" "$file"
 # 保留期清理已经在开头做过了（见上面那段），这里不再做第二遍。

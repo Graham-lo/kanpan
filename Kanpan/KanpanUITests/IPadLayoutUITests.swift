@@ -115,7 +115,7 @@ final class IPadLayoutUITests: KanpanUICase {
 // 不给后端留垃圾数据，也绝不碰用户的真账号。
 @MainActor
 final class IPadReviewBookSignedInUITests: KanpanUICase {
-  private static let api = "https://kanpan.107-174-172-10.sslip.io"
+  private static let api = "https://kanpan.43-160-232-253.sslip.io"
   private static let password = "Testpass2026"
   /// 这一轮建过、还没确认删掉的账号。断言中途失败时兜底用。
   private var created: [String] = []

@@ -51,7 +51,7 @@ import UIKit
 @MainActor final class AccountSessionReplacedUITests: XCTestCase {
   /// 现造的测试口令。不碰用户的真账号、真口令。
   private let password = "Testpass2026"
-  private let api = "https://kanpan.107-174-172-10.sslip.io"
+  private let api = "https://kanpan.43-160-232-253.sslip.io"
   /// 本机在服务端眼里算哪一类设备。和 app 壳层 `DeviceKind.current` 同一套判断
   /// （`AccountFeature.swift` 末尾）：模拟器上 `isiOSAppOnMac` 永远是 false，
   /// 所以只看 idiom。测试进程和被测 app 跑在同一台模拟器上，判出来是同一类。

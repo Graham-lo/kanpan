@@ -13,7 +13,7 @@ const MODES = process.argv.slice(3)
 const OUT = process.env.STRESS_OUT || '/tmp/kpA-stress'
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const KP_USER = process.env.KP_USER || '', KP_PASS = process.env.KP_PASS || ''
-const API = new globalThis.URL(URL_).origin.includes('localhost') ? 'https://kanpan.107-174-172-10.sslip.io' : new globalThis.URL(URL_).origin
+const API = new globalThis.URL(URL_).origin.includes('localhost') ? 'https://kanpan.43-160-232-253.sslip.io' : new globalThis.URL(URL_).origin
 mkdirSync(OUT, { recursive: true })
 
 const results = []

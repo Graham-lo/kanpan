@@ -168,7 +168,7 @@ import UIKit
   func testSyncRestoresCollectionIntoFreshInstallationProfile() {
     let name = "compare_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12).lowercased()
     let password = "Cmp_" + UUID().uuidString.prefix(8) + "9x"
-    app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io"
+    app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.43-160-232-253.sslip.io"
     app.launch(); ready(0)
     addCompare("ETHUSDT"); addCompare("SOLUSDT"); addCompare("DOGEUSDT"); ready(3)
     /// 2026-09-27 底栏四格：账号从「我的」顶上那张账号卡推进去。
