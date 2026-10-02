@@ -176,6 +176,15 @@ export class ChartGestures {
     this.bound?.cancel(id, now)
   }
 
+  /**
+   * 手指还按着页面就进了后台（锁屏、上滑回桌面、切到别的页）：浏览器不一定补 pointercancel，
+   * 按着时冻住的视野（十字线 / 画线拖动）就一直不跟最新。这里把还按着的全部按「取消」收掉。
+   */
+  cancelAllPointers(now: number = performance.now()): void {
+    for (const id of [...this.points.keys()]) this.bound?.cancel(id, now)
+    if (!this.points.size) this.cancelAxisFreeze()
+  }
+
   detach(): void {
     this.bound?.off()
     this.bound = null

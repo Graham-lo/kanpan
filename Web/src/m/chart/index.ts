@@ -297,6 +297,14 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   let resetSpacing = opts.barSpacing && opts.barSpacing > 0 ? opts.barSpacing : AICoinBehavior.initialSpacing
   let pending: ViewIntent = { kind: 'reset' }
   let lastPlotW: number | null = null
+  /** 用户眼里是不是「跟着最新」（「回到最新」按钮没出来）。见 catchUp。 */
+  let following = true
+  /**
+   * 推视野用的图区宽度：行情页切走（藏起来宽度为 0）时 chartLayout 是 null，推送照样在收，
+   * 这时用最后一次量到的宽度判「是不是跟着最新」并照样往前推——不然切回来新开的那根落在右缘外，
+   * 只剩现价线、看不到蜡烛。
+   */
+  const followPlotW = (): number | null => view.chartLayout?.plotW ?? lastPlotW
   let lastInversion: string | null = null
   let lastLookInversion: string | null = null
   const snapshots = new Map<string, BarSeries>()
@@ -474,9 +482,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       } else {
         // 同一张图：序列在推送路径里已经按 reconcileBeforeUpsert 推过视野；
         // 这里是整条换（补缺口、翻页）后的兜底，手指按着时不动（axesFrozen）
-        const L = view.chartLayout
-        if (!view.axesFrozen && L && oldSeries !== input.series) {
-          vp.view = reconcile(old.viewport.view, oldSeries, input.series, L.plotW, input.options.anchor)
+        const plotW = followPlotW()
+        if (!view.axesFrozen && plotW && oldSeries !== input.series) {
+          vp.view = reconcile(old.viewport.view, oldSeries, input.series, plotW, input.options.anchor)
         }
         vp.price = old.viewport.price.mode === vp.price.mode ? old.viewport.price : { ...vp.price, inverted: old.viewport.price.inverted }
         if (adoptInversion) vp.price = { ...vp.price, inverted: look.mainInverted }
@@ -547,6 +555,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   }
   view.onViewChanged = v => {
     const s = view.state
+    // 只在视野被手势 / 程序动过时记「是不是跟着最新」；推送推视野不经过这里，所以末根漏跟一次也改不掉这个记号
+    following = !s || s.input.series.count === 0 || v.to >= s.input.series.lastTime
     if (s && series && orderFlowPort) orderFlowPort.noteView(v, series)
     emit('visibleRange', { from: v.from, to: v.to, atLatest: !!s && s.input.series.count > 0 && v.to >= s.input.series.lastTime })
   }
@@ -656,21 +666,25 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       update()
       return
     }
-    const L = view.chartLayout
+    // REST 末页可能比推送旧一根（缓存、边界那一刻）：推送已经接上的更新那几根留着，不被截掉
+    const restLast = bars[bars.length - 1].openTime
+    const merged = bars.slice()
+    for (let i = s.firstIndexAtOrAfter(restLast + 1); i < s.count; i++) merged.push(s.bar(i))
+    const plotW = followPlotW()
     const st = view.state
     const at = first <= s.firstTime ? 0 : s.firstIndexAtOrAfter(first)
     let v = st?.viewport.view ?? null
-    if (st && L && !view.axesFrozen && st.input.series === s) {
-      v = reconcileBeforeUpsert(st.viewport.view, s, bars[bars.length - 1].openTime, L.plotW, st.input.options.anchor)
+    if (st && plotW && !view.axesFrozen && st.input.series === s) {
+      v = reconcileBeforeUpsert(st.viewport.view, s, merged[merged.length - 1].openTime, plotW, st.input.options.anchor)
     }
     if (at === 0 && first <= s.firstTime) {
-      const keep = BarSeries.fromBars(s.symbol, s.interval, bars)
+      const keep = BarSeries.fromBars(s.symbol, s.interval, merged)
       series = keep
       remember(keep)
       update()
       return
     }
-    s.replaceSuffix(at, bars)
+    s.replaceSuffix(at, merged)
     if (st && st.input.series === s && v) view.state = withViewport({ ...st }, { view: v })
     else update()
     scheduleCompare()
@@ -721,10 +735,10 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     if (bar.openTime < s.lastTime) return
     if (!isIrregular(s.interval) && bar.openTime > s.lastTime + s.step) { void resync(); return }
     const st = view.state
-    const L = view.chartLayout
+    const plotW = followPlotW()
     let v = st?.viewport.view ?? null
-    if (st && L && v && !view.axesFrozen && st.input.series === s) {
-      v = reconcileBeforeUpsert(v, s, bar.openTime, L.plotW, st.input.options.anchor)
+    if (st && plotW && v && !view.axesFrozen && st.input.series === s) {
+      v = reconcileBeforeUpsert(v, s, bar.openTime, plotW, st.input.options.anchor)
     }
     const appended = bar.openTime > s.lastTime
     if (!s.upsert(bar)) return
@@ -732,6 +746,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       view.state = v && !v.equals(st.viewport.view) ? withViewport(st, { view: v }) : { ...st }
     }
     if (appended) {
+      catchUp()
       feed?.refresh(wantedExternal(), s, Date.now() + 60_000)
       if (st?.input.percentAxis) scheduleCompare()
     }
@@ -762,7 +777,23 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   // ---------------------------------------------------------------- 心跳（ChartSession.heartbeat）
 
+  /**
+   * 兜底：跟着最新的图，末根却不在视野里（哪条取数路径漏推了视野、页面藏着时来的新根、
+   * 补缺口整条换……）就贴回最新。每拍心跳查一次、新根追加后立刻查一次，手指按着 / 惯性 / 冻轴时不动。
+   */
+  const catchUp = () => {
+    const st = view.state, s = series, plotW = followPlotW()
+    if (!following || !st || !s || s.isEmpty || st.input.series !== s || !plotW) return
+    if (view.axesFrozen || view.animation || view.gesture.touches.length) return
+    const v = st.viewport.view
+    if (v.to >= s.lastTime) return
+    const latest = ViewMath.reset(s, plotW, v.barSpacing(s.step, plotW), st.input.options.anchor)
+    view.state = withViewport(st, { view: latest })
+    view.onViewChanged?.(latest)
+  }
+
   const tick = () => {
+    catchUp()
     const st = view.state
     const want = st && look.options.countdown && look.options.lastLine ? Date.now() : null
     if (want !== nowMs) {
@@ -780,6 +811,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   const onVisibility = () => {
     depthPort?.setVisible(!document.hidden)
     beat.setHidden(document.hidden)
+    if (document.hidden) view.gestures.cancelAllPointers()
   }
   document.addEventListener('visibilitychange', onVisibility)
 

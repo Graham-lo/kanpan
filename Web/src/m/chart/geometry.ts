@@ -175,13 +175,27 @@ export const ViewMath = {
   },
 }
 
+/**
+ * 新末根到货时视野跟不跟（AICoinBehavior.reconcile 的判据，网页放宽了一档）：
+ * - 贴着最新（右缘离「最新」不到一根）——照 iOS 跟；
+ * - 或者末根还在视野里（`to ≥ 旧末根`，和「回到最新」按钮不出现是同一个口径）——也跟。
+ *   用户眼里「按钮没出来」就是在看最新；原来只认前一条，右缘因为补缺口、换宽度漂开过一根就再也不跟，
+ *   静止看盘到新的一根开出来，新蜡烛落在右缘外、只剩现价线。
+ * 跟的时候右缘不超过「最新」：漂到最新右边的（补缺口时 REST 末页比推送旧一根）顺手收回去。
+ */
+function followed(view: ViewWindow, old: BarSeries, nextLastTime: number, plotW: number, anchor: ViewAnchor): ViewWindow {
+  if (old.isEmpty || !(nextLastTime > old.lastTime) || !(plotW > 0)) return view
+  const spacing = view.barSpacing(old.step, plotW)
+  const latest = ViewMath.reset(old, plotW, spacing, anchor)
+  const near = Math.abs(view.to - latest.to) / view.span * plotW < spacing
+  if (!near && !(view.to >= old.lastTime)) return view
+  return new ViewWindow(Math.min(view.to, latest.to) + (nextLastTime - old.lastTime), view.span)
+}
+
 /** AICoinBehavior.reconcile：只有视图停在最新一根时，新来的尾巴才把视图往前推。 */
 export function reconcile(view: ViewWindow, old: BarSeries, next: BarSeries, plotW: number, anchor: ViewAnchor = 'right'): ViewWindow {
   if (old.isEmpty || next.isEmpty || old.symbol !== next.symbol || old.interval !== next.interval) return view
-  const spacing = view.barSpacing(old.step, plotW)
-  const latest = ViewMath.reset(old, plotW, spacing, anchor)
-  if (!(Math.abs(view.to - latest.to) / view.span * plotW < spacing) || !(next.lastTime > old.lastTime)) return view
-  return new ViewWindow(view.to + (next.lastTime - old.lastTime), view.span)
+  return followed(view, old, next.lastTime, plotW, anchor)
 }
 
 /**
@@ -189,11 +203,7 @@ export function reconcile(view: ViewWindow, old: BarSeries, next: BarSeries, plo
  * 所以在 upsert 之前、拿旧 series 与新末根的时间调用（判据与 reconcile 相同）。
  */
 export function reconcileBeforeUpsert(view: ViewWindow, old: BarSeries, nextLastTime: number, plotW: number, anchor: ViewAnchor = 'right'): ViewWindow {
-  if (old.isEmpty) return view
-  const spacing = view.barSpacing(old.step, plotW)
-  const latest = ViewMath.reset(old, plotW, spacing, anchor)
-  if (!(Math.abs(view.to - latest.to) / view.span * plotW < spacing) || !(nextLastTime > old.lastTime)) return view
-  return new ViewWindow(view.to + (nextLastTime - old.lastTime), view.span)
+  return followed(view, old, nextLastTime, plotW, anchor)
 }
 
 // ------------------------------------------------------------------ CandleWidths

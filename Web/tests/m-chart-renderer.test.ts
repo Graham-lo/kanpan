@@ -335,4 +335,15 @@ describe('拖动期间轴冻结 · 纯函数那一半（ChartAxisFreezeTests）'
     expect(after.span).toBe(history.span)
     expect(reconcileBeforeUpsert(history, old, old.lastTime + old.step, plotW).to).toBe(history.to)
   })
+
+  // 2026-10-02 手机网页版：右缘漂到最新右边几根（补缺口时 REST 末页比推送旧），原来新 K 线到货只原样不动，右边一直空着
+  it('右缘漂到最新右边：新 K 线到货收回到最新再往前推', () => {
+    const old = freezeSeries()
+    const spacing = new ViewWindow(old.lastTime, old.step * 120).barSpacing(old.step, plotW)
+    const latest = ViewMath.reset(old, plotW, spacing)
+    const drifted = new ViewWindow(latest.to + 3 * old.step, latest.span)
+    const after = reconcileBeforeUpsert(drifted, old, old.lastTime + old.step, plotW)
+    expect(after.to).toBeCloseTo(latest.to + old.step, 6)
+    expect(after.span).toBe(drifted.span)
+  })
 })
