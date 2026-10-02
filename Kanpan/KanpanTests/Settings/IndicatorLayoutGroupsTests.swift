@@ -304,4 +304,66 @@ struct IndicatorLayoutGroupsTests {
   func wirePathMapsBack() {
     #expect(SettingsWire.fields(for: "indicatorLayouts/hour") == ["indicatorLayouts"])
   }
+
+  // MARK: - 副图高度与顺序跟人走（2026-10-03）
+
+  @Test("1 小时里调了副图高度、换了顺序，切到 30 分还是那样，也不算分叉")
+  func heightsAndOrderFollowThePerson() {
+    let (store, _) = makeStore()
+    store.update { $0.interval = .h1 }
+    store.update { $0.subs = [.vol, .macd, .kdj] }          // 开关指标：小时组分叉
+    let order: [IndicatorID] = [.kdj, .macd, .vol]
+    store.update { $0.subHeightOverrides[.macd] = 1.6; $0.subs = order }
+    #expect(store.prefs.layoutBook.forks[.minute] == nil, "只调高度与顺序不让别的组分叉")
+    store.update { $0.interval = .m30 }
+    #expect(store.prefs.subHeightOverrides[.macd] == 1.6)
+    #expect(store.prefs.subs == AICoinBehavior.subpanels.followingOrder(of: order))
+    #expect(store.prefs.subs.firstIndex(of: .macd)! < store.prefs.subs.firstIndex(of: .vol)!)
+    store.update { $0.interval = .d1 }
+    #expect(store.prefs.subHeightOverrides[.macd] == 1.6)
+  }
+
+  @Test("只拖副图高度不弹「单独记」，复原也是三组一起")
+  func heightOnlyEditNeverForks() {
+    let (store, _) = makeStore()
+    store.update { $0.subHeightOverrides[.vol] = 0.7 }
+    #expect(store.prefs.layoutBook.forks.isEmpty)
+    #expect(store.notice == nil)
+    store.update { $0.interval = .h4 }
+    #expect(store.prefs.subHeightOverrides[.vol] == 0.7)
+    store.updateByHand { $0.subHeightOverrides[.vol] = nil }
+    store.update { $0.interval = .m5 }
+    #expect(store.prefs.subHeightOverrides[.vol] == nil)
+  }
+
+  @Test("老档里各组各记一份高度与顺序：读档时并成一份，以分了叉的组为准")
+  func oldDivergentArchiveUnifies() throws {
+    var p = Prefs.defaults
+    p.interval = .h1
+    p.subs = [.macd, .vol]; p.subHeightOverrides = [.macd: 1.8, .vol: 0.6]
+    var book = p.layoutBook
+    book.forks[.hour] = p.indicatorLayout
+    var shared = Prefs.defaults.indicatorLayout
+    shared.subs = [.vol, .macd]
+    book.shared = shared
+    p.adopt(book)
+    p.interval = .m30
+    // 直接拼出分歧的档：停在 30 分、分钟组用的是出厂顺序、没调过高度
+    var raw = try json(p)
+    raw["subs"] = ["VOL", "MACD"]; raw["subHeightOverrides"] = [String: Double]()
+    let data = try JSONSerialization.data(withJSONObject: raw)
+    let read = PrefsCodec.decode(data)
+    #expect(read.subs == [.macd, .vol])
+    #expect(read.subHeightOverrides == [.macd: 1.8, .vol: 0.6])
+  }
+
+  @Test("恢复这一组的默认不清掉副图高度与顺序")
+  func resetGroupKeepsHeightsAndOrder() {
+    let (store, _) = makeStore()
+    store.update { $0.subHeightOverrides[.macd] = 1.4 }
+    store.update { $0.overlays = [.ema] }                    // 分钟组分叉
+    store.resetIndicatorLayoutForCurrentGroup()
+    #expect(store.prefs.overlays == Prefs.defaults.overlays)
+    #expect(store.prefs.subHeightOverrides[.macd] == 1.4)
+  }
 }

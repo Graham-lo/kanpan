@@ -327,6 +327,7 @@ extension Prefs: Codable {
         book.forks[group] = fork
       }
     }
+    book.unifyPersonWide(active: layoutGroup)
     adopt(book)
 
     // 认不出的值（比如旧版本的「自动」）退回直连。

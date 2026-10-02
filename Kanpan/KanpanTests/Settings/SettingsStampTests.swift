@@ -61,9 +61,9 @@ struct SettingsStampTests {
     store.update { $0.subHeightOverrides[.vol] = 120 }
     store.update { $0.subs = [.vol, .macd] }
     store.update { $0.indicatorColors[.macd] = [0: "#FF0000"] }
-    // 2026-09-27 起副图高度、副图顺序属于「这一组的指标布局」：出厂周期是 1h，第一改就让
-    // 小时组分叉，记脏的是 `indicatorLayouts`；共用那份（老键 subs / subHeightOverrides）没动。
-    #expect(store.dirtyFields == ["indicatorLayouts", "indicatorColors"])
+    // 副图高度跟人走（2026-10-03）：三组一起改、不分叉，记脏的是老键 `subHeightOverrides`；
+    // 换了开着的副图（关掉了「仓」）才让小时组分叉，记脏 `indicatorLayouts`。
+    #expect(Set(store.dirtyFields) == ["subHeightOverrides", "indicatorLayouts", "indicatorColors"])
   }
 
   // ---------------------------------------------------------------- 清
@@ -148,11 +148,12 @@ struct SettingsStampTests {
     #expect(store.dirtyFields.isEmpty)
   }
 
-  @Test("拖副图分隔线：indicatorLayouts/hour 被认下就清")
+  @Test("拖副图分隔线：subHeightOverrides/MACD 被认下就清")
   func clearsNestedSubHeightOverride() {
     let (store, _, _) = makeStore()
     store.update { $0.subHeightOverrides[.macd] = 140 }
-    store.syncPushed(store.dirtyMarks, acked: ["indicatorLayouts/hour"])
+    #expect(store.dirtyFields == ["subHeightOverrides"], "副图高度跟人走（2026-10-03），不让小时组分叉")
+    store.syncPushed(store.dirtyMarks, acked: ["subHeightOverrides/MACD"])
     #expect(store.dirtyFields.isEmpty, "拖一次副图分隔线就让这个字段从此永远脏着，每轮同步都白推一份 settings")
   }
 

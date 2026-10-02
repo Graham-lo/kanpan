@@ -87,7 +87,7 @@ struct IndicatorPage: View {
         Haptics.warning()
       })
       .padding(.top, Space.xl)
-      .disabled(prefs.indicatorLayout == .factory)
+      .disabled(prefs.indicatorLayout == prefs.indicatorLayout.groupFactory)
       .accessibilityIdentifier("indicator.resetGroup")
     }
     .sheet(item: $editing) { id in

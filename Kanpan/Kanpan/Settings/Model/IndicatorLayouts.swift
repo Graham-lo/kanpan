@@ -10,6 +10,11 @@ import KanpanCore
 // 规则是**继承直到分叉**：三组起初共用一份（新装、老档案都是：老档案里那一份就是共同源）；
 // 用户在某一组里改了任一项，那一组才分出自己的一份，别的组照旧共用。没改过的人看不到任何变化。
 //
+// 例外：**副图高度与副图顺序跟人走**，三组一起改、不让一组分叉（2026-10-03 用户在网页版上
+// 「在一小时周期调整了指标区域大小和顺序，切换周期发现又被改回去了」，app 也是同一套规则）。
+// 它们还存在每组的布局里（存档与线上的形状不变），只是改的时候三组一起写——见
+// `carryPersonWide` / `unifyPersonWide`。
+//
 // ## 内存里长什么样
 //
 // 读指标的地方很多（图、面板、复盘、分享……），它们一律读 `Prefs` 顶层那几项
@@ -69,6 +74,14 @@ struct IndicatorLayout: Sendable, Equatable {
   /// 出厂那一份（「恢复这一组的默认」回到的就是它）。
   static var factory: IndicatorLayout { Prefs.defaults.indicatorLayout }
 
+  /// 「恢复这一组的默认」回到的那一份：出厂的指标，但副图高度与顺序留着用户自己调的（它们跟人走、不归哪一组）。
+  var groupFactory: IndicatorLayout {
+    var f = Self.factory
+    f.subs = f.subs.followingOrder(of: subs)
+    f.subHeightOverrides = subHeightOverrides
+    return f
+  }
+
   /// 落盘前夹一道，和 `PrefsCodec.sanitized` 对顶层那份做的一样。
   var sanitized: IndicatorLayout {
     var l = self
@@ -86,6 +99,52 @@ struct IndicatorLayoutBook: Sendable, Equatable {
 
   func layout(for group: IntervalGroup) -> IndicatorLayout { forks[group] ?? shared }
   func isForked(_ group: IntervalGroup) -> Bool { forks[group] != nil }
+}
+
+extension IndicatorLayoutBook {
+  /// 三组的布局，共用那份在前。
+  private var allLayouts: [IndicatorLayout] { [shared] + IntervalGroup.allCases.compactMap { forks[$0] } }
+
+  private mutating func updateAll(_ body: (inout IndicatorLayout) -> Void) {
+    body(&shared)
+    for group in IntervalGroup.allCases where forks[group] != nil { body(&forks[group]!) }
+  }
+
+  /// 副图高度与顺序跟人走：这一下（`prev` → `now`）改了哪几个副图的高度，三组一起改；
+  /// 副图只是换了顺序（开着的没变），三组里共有的那几个也按新顺序排。
+  /// 改完之后当前组那份和 `now` 在这两项上一致，只改了它们就不会分叉。
+  mutating func carryPersonWide(from prev: IndicatorLayout, to now: IndicatorLayout) {
+    for id in Set(prev.subHeightOverrides.keys).union(now.subHeightOverrides.keys)
+    where prev.subHeightOverrides[id] != now.subHeightOverrides[id] {
+      let value = now.subHeightOverrides[id]
+      updateAll { $0.subHeightOverrides[id] = value }
+    }
+    if now.subs != prev.subs, now.subs.count == prev.subs.count, Set(now.subs) == Set(prev.subs) {
+      updateAll { $0.subs = $0.subs.followingOrder(of: now.subs) }
+    }
+  }
+
+  /// 老档（10-03 之前）里各组的副图高度、顺序可能已经各记各的：并成一份。以分了叉的组为准
+  /// （分叉是用户自己改出来的，共用那份可能还是出厂），`active` 那组分了叉就以它为准；高度按指标取并集。
+  mutating func unifyPersonWide(active: IntervalGroup) {
+    let forks = self.forks
+    guard let source = forks[active] ?? IntervalGroup.allCases.compactMap({ forks[$0] }).first else { return }
+    var heights: [IndicatorID: Double] = [:]
+    for l in allLayouts { heights.merge(l.subHeightOverrides) { _, new in new } }
+    heights.merge(source.subHeightOverrides) { _, new in new }
+    updateAll {
+      $0.subHeightOverrides = heights
+      $0.subs = $0.subs.followingOrder(of: source.subs)
+    }
+  }
+}
+
+extension Array where Element: Equatable {
+  /// 按 `ref` 的先后重排自己与 `ref` 共有的那几个，别的留在原位。
+  func followingOrder(of ref: [Element]) -> [Element] {
+    var common = ref.filter { contains($0) }.makeIterator()
+    return map { ref.contains($0) ? common.next()! : $0 }
+  }
 }
 
 /// `Prefs` 上存的那一格：当前组以外的记忆。形状见文件头。
@@ -150,10 +209,13 @@ extension Prefs {
   @discardableResult
   mutating func settleIndicatorLayouts(after before: Prefs) -> IntervalGroup? {
     guard indicatorLayouts == before.indicatorLayouts else {
-      adopt(layoutBook)
+      var book = layoutBook
+      book.unifyPersonWide(active: layoutGroup)
+      adopt(book)
       return nil
     }
     var book = before.layoutBook
+    book.carryPersonWide(from: before.indicatorLayout, to: indicatorLayout)
     let group = layoutGroup
     var forked: IntervalGroup?
     if indicatorLayout != before.indicatorLayout, indicatorLayout != book.layout(for: group) {

@@ -296,7 +296,7 @@ final class PrefsStore {
   func resetIndicatorLayoutForCurrentGroup() {
     let before = prefs
     var next = prefs
-    next.indicatorLayout = .factory
+    next.indicatorLayout = prefs.indicatorLayout.groupFactory
     let forked = next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)

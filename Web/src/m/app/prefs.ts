@@ -330,7 +330,7 @@ export function layoutSnapshot(p: Prefs): LayoutSnapshot {
  *  - 只换了周期、跨了组：顶层换成新组那份。
  *  返回这一下新分叉出来的组，没有就是 null */
 export function settleIndicatorLayouts(p: Prefs, before: LayoutSnapshot): LayoutGroup | null {
-  if (!sameValue(p.indicatorLayouts, before.indicatorLayouts)) { adoptBook(p, layoutBook(p)); return null }
+  if (!sameValue(p.indicatorLayouts, before.indicatorLayouts)) { adoptBook(p, layoutBook(p)); unifyPersonWide(p); return null }
   const prev = { ...defaultPrefs(), ...clone(before) } as Prefs
   const book = layoutBook(prev)
   const g = layoutGroup(p.interval)
