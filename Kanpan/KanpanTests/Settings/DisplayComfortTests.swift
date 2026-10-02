@@ -19,12 +19,13 @@ struct DisplayComfortTests {
     // 老存档里那两档「护眼 / 夜读」已经没了：认不出来就退回出厂的青苔 + 跟随系统，
     // 别的键照旧读出来（不用为了删两个枚举值把整档作废）。
     let retired = PrefsCodec.decode(Data(#"{"v":2,"theme":"paper","skin":"sepia","redUp":true}"#.utf8))
-    #expect(retired.theme == .system && retired.skin == .sage && retired.redUp)
+    // redUp 是第 4 版之前的档，按「一律绿涨红跌」迁成了 false（PrefsCodec.migrate）。
+    #expect(retired.theme == .system && retired.skin == .sage && !retired.redUp)
   }
   /// 「按屏幕亮度切换深浅」2026-09-28 收掉：老存档里那一键认不出来就忽略，别的键照旧。
   @Test func retiredAmbientKeyIsIgnored() {
     let old = PrefsCodec.decode(Data(#"{"v":2,"theme":"light","ambientTheme":true,"redUp":true}"#.utf8))
-    #expect(old.theme == .light && old.redUp)
+    #expect(old.theme == .light && !old.redUp)   // 第 4 版之前的档一律迁成绿涨
   }
   /// 配色和深浅是两根独立的轴：手动选了浅 / 深，系统怎么样都不改；
   /// 选了哪一套配色，深浅两边都得还是那一套。

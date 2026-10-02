@@ -10,7 +10,8 @@
  *
  * Prefs、自选、提醒登录后经 ./sync.ts 与账号同步；本机这份永远完整，云端只是通道。
  *
- * 首帧前的皮肤由 m/index.html 的内联脚本按同一个键套上（theme / skin / redUp 三个字段）。
+ * 首帧前的皮肤由 m/index.html 的内联脚本按同一个键套上（theme / skin / redUp 三个字段，
+ * redUp 只在 greenUpMigrated 之后才当真）。
  */
 import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, type LayoutGroup, type Prefs } from './prefs'
 import { migrateAlert, type Alert } from '../../alerts/shape'
@@ -52,6 +53,9 @@ export interface State extends Prefs {
   stale: boolean
   /** 用户亲手选过线路没有：没选过的，出厂值改了就跟着改（2026-10-02 出厂从直连改成网关） */
   routePicked: boolean
+  /** 「一律绿涨红跌」（2026-10-03）那一次迁移做过没有：没做过的老档不论存的是什么都先迁成绿涨，
+   *  做过之后的红涨就是用户自己切回去的，不再动。云端那份由服务端迁移 0041 同时翻，同步不会盖回去 */
+  greenUpMigrated: boolean
 }
 
 /** 不落盘的字段 */
@@ -63,6 +67,7 @@ export function defaults(): State {
     page: 'chart', symbol: 'BTCUSDT', scroll: {},
     symbols: { favorites: [], recents: [], groups: [], groupForSymbol: {}, seeded: false },
     routePicked: false,
+    greenUpMigrated: true,
     alerts: [],
     stale: false,
   }
@@ -108,6 +113,8 @@ export function hydrate(raw: Record<string, unknown>): State {
     stale: false,
     routePicked: raw.routePicked === true,
     ...(raw.routePicked === true ? {} : { routePolicy: d.routePolicy }),
+    greenUpMigrated: true,
+    ...(raw.greenUpMigrated === true ? {} : { redUp: false }),
   }
 }
 

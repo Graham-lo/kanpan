@@ -26,7 +26,10 @@ enum PrefsCodec {
   /// `migrate`。原来那段每次解码都跑——而同步合并、撤销、账号切换一路都是先编码再解码，
   /// 于是用户**亲手**钉成 5m/30m/1h/4h/1d 的常用行，下一次随便哪条路一过就被改回出厂。
   /// 只有写着 2 的老档才该被这样认；3 起写下的档，那串就是用户自己的选择。
-  static let version = 3
+  ///
+  /// 4（2026-10-03）：用户「现在一律默认绿涨红跌」。出厂从红涨改成绿涨，而且是「一律」——
+  /// 老档不论存的是什么都迁成绿涨一次；4 起写下的档里若是红涨，那就是用户自己切回去的，不再动。
+  static let version = 4
   /// 认得的最老存档。比它还老的是原型期那份键名完全不同的档（`styleID` / `recordButtonX`
   /// 那一代），读进来只会是一堆认不出的字段，不如直接退出厂值。
   static let oldestSupported = 2
@@ -94,6 +97,8 @@ enum PrefsCodec {
     guard from < version else { return }
     // 3：存档里原样躺着某一版出厂的常用行，就说明用户从没动过——换成新默认。
     if from < 3, let quicks = archivedQuicks, Prefs.factoryQuicks.contains(quicks) { prefs.quickIntervals = Interval.quick }
+    // 4：一律绿涨红跌（云端那份由服务端迁移 0041 同时翻，免得同步再盖回红涨）。
+    if from < 4 { prefs.redUp = false }
     // 样板（真要用时照这个写）：版本 3 把出厂皮肤从青苔改成陶土，没手动挑过皮肤的
     // 老用户该跟着换，挑过的一个字不动——
     // if from < 3, prefs.skin == .moss { prefs.skin = .clay }

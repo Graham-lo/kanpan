@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light" data-skin="sage" data-updown="red-up">
+<html lang="zh-CN" data-theme="light" data-skin="sage" data-updown="green-up">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,9 +8,9 @@
 <title>Hkline</title>
 <link rel="icon" href="data:,">
 <script>
-  // 首帧前就把皮肤与深浅色套上，避免闪一下默认色
+  // 首帧前就把皮肤、深浅与涨跌色套上，避免闪一下默认色。涨跌出厂绿涨红跌；「一律绿涨」迁移（greenUpMigrated）之前存的红涨不算数
   try { var s = JSON.parse(localStorage.getItem('hkline-web-v1') || '{}'), r = document.documentElement
-    if (s.theme) r.dataset.theme = s.theme; if (s.skin) r.dataset.skin = s.skin; if (s.updown) r.dataset.updown = s.updown } catch (e) {}
+    if (s.theme) r.dataset.theme = s.theme; if (s.skin) r.dataset.skin = s.skin; r.dataset.updown = s.updown === 'red-up' && s.greenUpMigrated === true ? 'red-up' : 'green-up' } catch (e) {}
 </script>
 </head>
 <body>

@@ -60,7 +60,7 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     public init(id: String, name: String, symbols: [String]) { self.id = id; self.name = name; self.symbols = symbols }
   }
 
-  /// 一套皮肤落到小组件上要用的几支颜色（`#RRGGBB`）。涨跌色已经按「红涨绿跌」对调好。
+  /// 一套皮肤落到小组件上要用的几支颜色（`#RRGGBB`）。涨跌色已经按用户选的涨跌配色（出厂绿涨红跌）对调好。
   public struct Colors: Codable, Sendable, Equatable {
     public var ground, ink, ink2, ink3, line, accent, up, down: String
     public init(ground: String, ink: String, ink2: String, ink3: String, line: String, accent: String,

@@ -98,13 +98,13 @@ describe('两台来回', () => {
     const server = new FakeServer()
     const a = phone(server), b = phone(server)
     await a.first(); await b.first()
-    a.s.p.skin = 'terra'; a.s.p.redUp = false; a.s.p.quickIntervals = ['1m', '4h']
+    a.s.p.skin = 'terra'; a.s.p.redUp = true; a.s.p.quickIntervals = ['1m', '4h']
     a.edit(p => { p.params = { ...p.params, MA: [7, 25, 99] } })
     a.s.p.indicatorColors = { MA: { 1: '#abcdef' } } as Prefs['indicatorColors']
     a.capture(); await a.sync()
     await b.sync()
     expect(b.s.p.skin).toBe('terra')
-    expect(b.s.p.redUp).toBe(false)
+    expect(b.s.p.redUp).toBe(true)
     expect(b.s.p.quickIntervals).toEqual(['1m', '4h'])
     expect(b.s.p.params.MA).toEqual([7, 25, 99])
     expect(b.s.p.indicatorColors).toEqual({ MA: { 1: '#abcdef' } })
@@ -157,11 +157,11 @@ describe('两台来回', () => {
 
   it('云端的值本机表达不了（未知皮肤）：不装、也不把本机的推回去盖掉', async () => {
     const server = new FakeServer()
-    server.put({ collection: 'settings', id: 'chart', body: { skin: 'future', redUp: false }, deleted: false })
+    server.put({ collection: 'settings', id: 'chart', body: { skin: 'future', redUp: true }, deleted: false })
     const a = phone(server)
     await a.first()
     expect(a.s.p.skin).toBe('sage')
-    expect(a.s.p.redUp).toBe(false)
+    expect(a.s.p.redUp).toBe(true)
     a.s.p.theme = 'dark'; a.capture(); await a.sync()
     expect(settingsOnServer(server).body.skin).toBe('future')
     expect(settingsOnServer(server).body.theme).toBe('dark')
@@ -171,12 +171,12 @@ describe('两台来回', () => {
 describe('第一次对上（照 iOS SettingsStamp：按根比谁新）', () => {
   it('本机没改过：云端的设置装进来；本机改得比云端新的根留本机的并推上去', async () => {
     const server = new FakeServer()
-    server.put({ collection: 'settings', id: 'chart', body: { skin: 'terra', redUp: false }, deleted: false })
+    server.put({ collection: 'settings', id: 'chart', body: { skin: 'terra', redUp: true }, deleted: false })
     const a = phone(server)
-    a.s.p.redUp = true; a.s.p.skin = 'classic'
+    a.s.p.redUp = false; a.s.p.skin = 'classic'
     await a.first({ settings: { skin: server.now + 10 }, favorites: 0 })
     expect(a.s.p.skin).toBe('classic')
-    expect(a.s.p.redUp).toBe(false)
+    expect(a.s.p.redUp).toBe(true)
     expect(settingsOnServer(server).body.skin).toBe('classic')
   })
 

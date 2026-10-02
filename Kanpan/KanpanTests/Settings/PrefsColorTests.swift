@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import KanpanCore
 @testable import Kanpan
@@ -10,31 +11,31 @@ import KanpanCore
 @Suite("涨跌对调")
 struct PrefsColorTests {
 
-  @Test("默认红涨绿跌")
+  @Test("默认绿涨红跌")
   func 默认方向() {
-    // 出厂跟国内看盘习惯：红涨绿跌。`redUp` 为真时 up/down 两色是对调过来取的。
+    // 2026-10-03 用户：「现在一律默认绿涨红跌」。`redUp` 为假时 up/down 两色按种子原样取。
     let p = Prefs.defaults
-    #expect(p.redUp == true)
-    #expect(p.chartColors(dark: false).up == Palette.lightSeed.down)   // 红
-    #expect(p.chartColors(dark: false).down == Palette.lightSeed.up)   // 绿
-    #expect(p.chartColors(dark: true).up == Palette.darkSeed.down)
-    #expect(p.chartColors(dark: true).down == Palette.darkSeed.up)
-  }
-
-  @Test("关掉之后绿涨红跌，浅深都对调")
-  func 对调() {
-    var p = Prefs.defaults
-    p.redUp = false
-    #expect(p.chartColors(dark: false).up == Palette.lightSeed.up)
-    #expect(p.chartColors(dark: false).down == Palette.lightSeed.down)
+    #expect(p.redUp == false)
+    #expect(p.chartColors(dark: false).up == Palette.lightSeed.up)     // 绿
+    #expect(p.chartColors(dark: false).down == Palette.lightSeed.down) // 红
     #expect(p.chartColors(dark: true).up == Palette.darkSeed.up)
     #expect(p.chartColors(dark: true).down == Palette.darkSeed.down)
+  }
+
+  @Test("打开之后红涨绿跌，浅深都对调")
+  func 对调() {
+    var p = Prefs.defaults
+    p.redUp = true
+    #expect(p.chartColors(dark: false).up == Palette.lightSeed.down)
+    #expect(p.chartColors(dark: false).down == Palette.lightSeed.up)
+    #expect(p.chartColors(dark: true).up == Palette.darkSeed.down)
+    #expect(p.chartColors(dark: true).down == Palette.darkSeed.up)
   }
 
   @Test("只动涨跌两色，其余令牌一个不变")
   func 只动两色() {
     for dark in [false, true] {
-      var off = Prefs.defaults; off.redUp = false
+      var off = Prefs.defaults; off.redUp = true
       let a = Prefs.defaults.chartColors(dark: dark)
       let b = off.chartColors(dark: dark)
       #expect(a.up == b.down && a.down == b.up)
@@ -47,10 +48,25 @@ struct PrefsColorTests {
 
   @Test("开关能存下来")
   func 持久化() {
-    // 出厂已经是红涨，所以这儿存的是「关掉」那一边，才验得到真的落了盘。
+    // 出厂已经是绿涨，所以这儿存的是「红涨」那一边，才验得到真的落了盘——
+    // 而且第 4 版起写下的红涨是用户自己选的，再读回来不能被迁移改回绿涨。
     var p = Prefs.defaults
-    p.redUp = false
-    #expect(!PrefsCodec.decode(PrefsCodec.encode(p)).redUp)
+    p.redUp = true
+    #expect(PrefsCodec.decode(PrefsCodec.encode(p)).redUp)
+  }
+
+  @Test("第 4 版之前的老档一律迁成绿涨，只迁一次")
+  func 老档迁成绿涨() {
+    for v in [2, 3] {
+      let old = PrefsCodec.decode(Data(#"{"v":\#(v),"redUp":true,"skin":"terra"}"#.utf8))
+      #expect(old.redUp == false)
+      #expect(old.skin == .terra)   // 别的字段一个不动
+    }
+    // 迁完再存一遍、再读：还是绿涨，而且之后用户切回红涨能留住。
+    var migrated = PrefsCodec.decode(Data(#"{"v":3,"redUp":true}"#.utf8))
+    #expect(PrefsCodec.decode(PrefsCodec.encode(migrated)).redUp == false)
+    migrated.redUp = true
+    #expect(PrefsCodec.decode(PrefsCodec.encode(migrated)).redUp == true)
   }
 }
 

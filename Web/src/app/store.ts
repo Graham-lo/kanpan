@@ -90,6 +90,9 @@ export interface State {
   route: 'direct' | 'gateway'
   /** 用户亲手选过线路没有：没选过的，出厂值改了就跟着改（2026-10-02 出厂从直连改成网关） */
   routePicked: boolean
+  /** 「一律绿涨红跌」（2026-10-03）那一次迁移做过没有：没做过的老档不论存的是什么都先迁成绿涨，
+   *  做过之后的红涨就是用户自己切回去的，不再动 */
+  greenUpMigrated: boolean
   layout: Layout; cells: CellCfg[]; active: number
   pinned: string[]
   panel: PanelId | null; watchTab: Kind; watch: Record<Kind, string[]>
@@ -130,7 +133,7 @@ const TRANSIENT: (keyof State)[] = ['page', 'stale', 'account']
 
 function defaults(): State {
   return {
-    theme: 'light', skin: 'sage', updown: 'red-up', route: 'gateway', routePicked: false,
+    theme: 'light', skin: 'sage', updown: 'green-up', route: 'gateway', routePicked: false, greenUpMigrated: true,
     layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0,
     pinned: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
     panel: 'watch', watchTab: 'crypto', watch: structuredClone(DEFAULT_WATCH),
@@ -276,7 +279,9 @@ export function hydrate(saved: Partial<State>): State {
   s.linkCross = s.linkCross !== false; s.linkSymbol = s.linkSymbol === true; s.linkIv = s.linkIv === true; s.linkTime = s.linkTime === true
   if (!['sage', 'terra', 'classic'].includes(s.skin)) s.skin = 'sage'
   if (s.theme !== 'dark') s.theme = 'light'
-  if (s.updown !== 'green-up') s.updown = 'red-up'
+  if (s.updown !== 'red-up') s.updown = 'green-up'
+  if (saved.greenUpMigrated !== true) s.updown = 'green-up'
+  s.greenUpMigrated = true
   s.routePicked = saved.routePicked === true
   if (!s.routePicked) s.route = d.route
   else if (s.route !== 'gateway') s.route = 'direct'

@@ -400,7 +400,7 @@ struct SymbolPickerHost: View {
 }
 
 #Preview("品种页 · 红涨绿跌") {
-  SymbolPickerHost(redUp: true)
+  SymbolPickerHost(redUp: false)
 }
 
 #Preview("品种页 · 空自选") {

@@ -220,7 +220,7 @@ struct PrefsPersistenceTests {
     #expect(PrefsCodec.key == "kanpan.prefs.v2")
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    store.update { $0.redUp = false }
+    store.update { $0.redUp = true }
     #expect(box.keys == Self.oneSave)
   }
 
@@ -273,7 +273,7 @@ struct PrefsPersistenceTests {
     p.subHeightOverrides = [.macd: 1.25]
     let obj = try #require(
       try JSONSerialization.jsonObject(with: PrefsCodec.encode(p)) as? [String: Any])
-    #expect(obj["v"] as? Int == 3)
+    #expect(obj["v"] as? Int == PrefsCodec.version)
     #expect(obj["interval"] as? String == "1h")
     #expect(obj["subs"] as? [String] == ["VOL", "OI", "MACD"])
     #expect((obj["params"] as? [String: [Int]])?["MA"] == [7, 25, 99])

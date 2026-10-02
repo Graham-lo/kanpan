@@ -44,6 +44,7 @@
 - 极致好看优先，不要工程风 / 后台风；元素尺寸克制，大字号与粗字重会被判「廉价」；装饰元素正放不倾斜；整屏是一块连续材料，不要硬拼接。
 - 配色不自创色板：青苔 / 陶土两套是定版，第三套「经典」只是青苔换 AICoin 白底，是用户自己点名要的；K 线 / 涨跌 / 指标线色浅色下全皮肤统一用 AICoin 那套，不再另起；图表底座不是设计对象。
 - 合并入口不能丢功能；发现残留问题直接修不请示；面板选完即收起。
+- **涨跌色一律默认绿涨红跌**（2026-10-03 用户：「现在一律默认绿涨红跌」）：iOS / 小组件 / 实时活动 / PC 网页 / 手机网页出厂都是绿涨，老用户一次性迁过去，开关保留。早先「国内习惯红涨，出厂红涨」作废。
 - 界面不出现「行情实时」之类状态字段，不堆解释文案，能自动做的不弹窗。
 - 本轮只跑受影响的模拟器UI用例并开超时，视觉改动截图；P4才执行完整矩阵。
 - 手机可能经 Mac 的 Surge 网关上网，不改 Mac 网络配置。
@@ -841,4 +842,16 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   只是 iOS 有缓存撑着），所以网页版出厂必须是网关。新加了纯静态线路体检页 `/web/diag.html`（`Web/public/diag.html`），
   手机上打开十秒出一张各主机通不通的表。详见迁移文档「手机 4G 上『暂时取不到』」一节。Mac 到新加坡「绕美国」是腾讯出口的路由，不是 Surge 也不是代码。
 - SG 的 `ubuntu` 口令在聊天里暴露过，密码登录已禁（只认密钥），仍要在腾讯控制台改掉。
-
+- **一律默认绿涨红跌（2026-10-03 00:2x，用户：「现在一律默认绿涨红跌」）**：出厂从红涨改成绿涨，老用户迁一次，之后自己切回红涨就留住。
+  iOS `Prefs.redUp` 出厂 `false`，`PrefsCodec` 升到第 4 版、`migrate` 里 `from < 4` 一律置绿涨（同步体不带版本号，不受影响）；
+  首帧镜像键改成 `kanpan.launch.redUp.v2`（旧键里迁移前的红涨不再读，免得升级后第一帧红→绿一闪）；小组件占位色改绿涨。
+  手机网页 `redUp` 出厂 `false` + 一次性标记 `greenUpMigrated`（`m/index.html` 首帧脚本只在标记之后才认红涨），`tokens.css` 无属性时的默认、
+  `paint.ts` 兜底色一起换；PC 网页 `updown` 出厂 `green-up` + 同名标记，`index.html` 首帧同理。
+  **云端那份是关键**：`redUp` 随账号同步，云端存着的 `true` 会被设备当成别处改的照样拉回来，而且还没升级的 iOS 包只认云端——
+  所以服务端加迁移 `0041_default_green_up.sql`，照 `sync::apply_server_op` 的形状把 `settings:chart` 的 `redUp` 翻成 `false`
+  （值、字段戳〔deviceId 全零、时间戳取迁移那一刻〕、对象 revision、`sync_changes` 四样一起），旧包下次同步就变绿涨。
+  线上 71 份设置里 65 份存着 `true`、3 份没有这一键，迁移前在事务里试跑再回滚核过。顺手加了 `Backend/kanpan-api/build.rs`
+  （`rerun-if-changed=migrations`）：只加一条 .sql 时 cargo 原来会复用旧二进制，迁移根本不进包。
+  上线结果（10-03 00:27）：新包 sha256 `5985cda7…` 装到新加坡（旧包留作 `kanpan-api.bak-20261003`，迁移前的 redUp 行导出在本机 `/tmp/redup-backup-20261003.tsv`），
+  `_sqlx_migrations` 记到 41，71 份设置的 `redUp` 全是 `false`，`sync_changes` 那一分钟正好 68 条；四个 kanpan 服务 active，`/health` 200。
+  网页 `make web-deploy` 已上线，线上 `/web/`、`/web/m/` 的 html 都是 `data-updown="green-up"`。iOS 设置套件 188 条全过；手机不在手边，真机包未装。

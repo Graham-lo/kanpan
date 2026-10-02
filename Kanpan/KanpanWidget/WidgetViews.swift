@@ -30,9 +30,9 @@ struct WidgetPalette {
     return Color(widgetHex: change > 0 ? colors.up : colors.down)
   }
 
-  /// 快照还没有时的底色：青苔的浅 / 深两档，和 app 出厂皮肤一致。
+  /// 快照还没有时的底色：青苔的浅 / 深两档、绿涨红跌，和 app 出厂设置一致。
   static func fallback(dark: Bool) -> WidgetSnapshot.Colors {
-    WidgetSnapshot.Colors(seed: dark ? Palette.sageNightSeed : Palette.sageSeed, redUp: true)
+    WidgetSnapshot.Colors(seed: dark ? Palette.sageNightSeed : Palette.sageSeed, redUp: false)
   }
 
   init(snapshot: WidgetSnapshot?, dark: Bool) {

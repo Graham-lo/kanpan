@@ -33,7 +33,7 @@ export interface OrderFlowColors { contractBid: Hex; contractAsk: Hex; spotBid: 
 export const orderFlowOnDark: OrderFlowColors = { contractBid: '#5A7DFF', contractAsk: '#E04BF0', spotBid: '#CCE21E', spotAsk: '#B89CFF' }
 export const orderFlowOnLight: OrderFlowColors = { contractBid: '#0A78C2', contractAsk: '#8A149F', spotBid: '#76850A', spotAsk: '#8566E8' }
 
-/** 读不到令牌时的兜底：青苔 · 浅，红涨绿跌（iOS Prefs.redUp 出厂 true）。值照 tokens.css / Palette.sageSeed。 */
+/** 读不到令牌时的兜底：青苔 · 浅，绿涨红跌（iOS Prefs.redUp 出厂 false）。值照 tokens.css / Palette.sageSeed。 */
 export const FALLBACK_COLORS: ChartColors = {
   bg: '#F3F7F4', grid: '#D6E3DA', axis: '#E2EBE5', text: '#606F67', dim: '#606F6799', ink: '#14211B', amber: '#B57C28', cross: '#4E6158',
   band: '#1478C8', oi: '#2FD2B2', oiFill: '#2FD2B22E',
@@ -41,7 +41,7 @@ export const FALLBACK_COLORS: ChartColors = {
   crossBg: '#14211B', crossInk: '#F3F7F4',
   hair: '#14211B0F',
   amberSoft: '#B57C2816', amberLine: '#B57C2855',
-  up: '#E64552', down: '#36B257',
+  up: '#36B257', down: '#E64552',
   palette: ['#FFB400', '#E849B9', '#6EBF26', '#F55B58', '#1478C8', '#2FD2B2'],
   sub: ['#2FD2B2', '#FFB400', '#E849B9', '#1478C8', '#6EBF26', '#F55B58'],
   orderFlow: orderFlowOnLight,

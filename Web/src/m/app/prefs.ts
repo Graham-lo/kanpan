@@ -66,7 +66,7 @@ export interface Prefs {
   quickIntervals: IntervalId[]
   theme: ThemeChoice
   skin: Skin
-  /** 红涨绿跌（出厂 true）；html 上对应 data-updown="red-up" */
+  /** 红涨绿跌（出厂 false = 绿涨红跌，2026-10-03 起一律如此）；html 上对应 data-updown="red-up" / "green-up" */
   redUp: boolean
   compareSymbols: string[]
   priceMode: PriceMode
@@ -118,7 +118,7 @@ export function defaultPrefs(): Prefs {
   const params: Partial<Record<IndicatorId, number[]>> = {}
   for (const id of FACTORY_PARAMS_IDS) params[id] = [...(DEFAULT_PARAMS[id] ?? [])]
   return {
-    interval: '1h', quickIntervals: [...QUICK_INTERVALS], theme: 'auto', skin: 'sage', redUp: true,
+    interval: '1h', quickIntervals: [...QUICK_INTERVALS], theme: 'auto', skin: 'sage', redUp: false,
     compareSymbols: [], priceMode: 'log', depth: false, orderFlow: false, orderFlowOverrides: {},
     candleKind: 'candle', barSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
     indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, notifyListingChanges: false,

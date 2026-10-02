@@ -10,7 +10,7 @@
  * 全局开关都挂在 <html> 上（B、C 与各页依赖的合同，名字定了就不改）：
  *   data-skin   = sage | terra | classic
  *   data-theme  = light | dark        （store 里的 auto 由入口解析成二者之一再写上来）
- *   data-updown = red-up | green-up   （红涨绿跌是出厂默认，对应 iOS Prefs.redUp = true）
+ *   data-updown = red-up | green-up   （绿涨红跌是出厂默认，对应 iOS Prefs.redUp = false）
  *
  * 令牌命名：
  *   种子原值     --ground --app --chart --raised --raised2 --line --grid --hair --ink --ink2 --ink3
@@ -238,12 +238,12 @@ html[data-skin="classic"][data-theme="dark"] {
   --toast-shadow: #00000080;
 }
 
-/* 涨跌对调：红涨绿跌（出厂）时「涨」取种子里那支红（seed.down），绿涨红跌时照种子原样。危险色不参与。 */
-html, html[data-updown="red-up"] {
-  --up: var(--ink-pair-down); --down: var(--ink-pair-up);
-  --k-up: var(--seed-down); --k-down: var(--seed-up);
-}
-html[data-updown="green-up"] {
+/* 涨跌对调：绿涨红跌（出厂，2026-10-03 起一律如此）时照种子原样；红涨绿跌时「涨」取种子里那支红（seed.down）。危险色不参与。 */
+html, html[data-updown="green-up"] {
   --up: var(--ink-pair-up); --down: var(--ink-pair-down);
   --k-up: var(--seed-up); --k-down: var(--seed-down);
+}
+html[data-updown="red-up"] {
+  --up: var(--ink-pair-down); --down: var(--ink-pair-up);
+  --k-up: var(--seed-down); --k-down: var(--seed-up);
 }

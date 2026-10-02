@@ -78,7 +78,11 @@ enum LaunchThemeMirror {
   static let themeKey = "kanpan.launch.theme"
   /// 涨跌配色（红涨绿跌 / 绿涨红跌）。和底色同一个理由：第一帧的 K 线、涨跌字就已经按它上色了，
   /// 档案晚到再换一次就是整屏红绿对调的一闪。
-  static let redUpKey = "kanpan.launch.redUp"
+  ///
+  /// 键名带 `.v2`：2026-10-03 出厂改成绿涨红跌、老档一次性迁成绿涨（`PrefsCodec` 第 4 版）。
+  /// 旧键里记着的红涨是迁移之前的，照读的话升级后第一帧会先红涨再翻绿；换个键就当没记过、
+  /// 退回出厂的绿涨，用户之后自己切回红涨会写进新键。
+  static let redUpKey = "kanpan.launch.redUp.v2"
 
   /// 镜像里记着的皮肤与深浅。没记过、或记的东西形状不对，都退回出厂值。
   static var choice: (skin: ThemeSkin, theme: ThemeChoice) {

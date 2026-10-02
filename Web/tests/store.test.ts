@@ -15,6 +15,15 @@ describe('页面状态', () => {
     expect(u.active).toBe(0)
   })
 
+  it('一律绿涨红跌（2026-10-03）：出厂绿涨；迁移之前存的红涨迁一次，迁过之后用户自己选的红涨留住', () => {
+    expect(hydrate({}).updown).toBe('green-up')
+    expect(hydrate({ updown: 'red-up' }).updown).toBe('green-up')
+    const once = hydrate({ updown: 'red-up' })
+    expect(once.greenUpMigrated).toBe(true)
+    expect(hydrate({ ...once, updown: 'red-up' }).updown).toBe('red-up')
+    expect(hydrate({ updown: 'nope' as State['updown'], greenUpMigrated: true }).updown).toBe('green-up')
+  })
+
   it('读盘时也收：存着 active 越界的老状态起来是第 0 格', () => {
     expect(hydrate({ layout: '2', active: 7 }).active).toBe(1)
     expect(hydrate({ layout: '1', active: 2 }).active).toBe(0)

@@ -42,7 +42,7 @@ describe('手机网页版 · 偏好出厂值与容错', () => {
     const d = defaultPrefs()
     expect(d.interval).toBe('1h')
     expect(d.quickIntervals).toEqual(['5m', '30m', '1h', '4h', '1d', '1w'])
-    expect(d.theme).toBe('auto'); expect(d.skin).toBe('sage'); expect(d.redUp).toBe(true)
+    expect(d.theme).toBe('auto'); expect(d.skin).toBe('sage'); expect(d.redUp).toBe(false)
     expect(d.overlays).toEqual(['MA']); expect(d.subs).toEqual(['VOL', 'OI', 'MACD'])
     expect(Object.keys(d.params).sort()).toEqual(['EMA', 'MA', 'MACD', 'VOL'])
     expect(d.routePolicy).toBe('gateway')
@@ -58,5 +58,13 @@ describe('手机网页版 · 偏好出厂值与容错', () => {
     expect(s.skin).toBe('sage'); expect(s.theme).toBe('dark'); expect(s.interval).toBe('1h')
     expect(s.quickIntervals.length).toBe(6); expect(s.page).toBe('chart'); expect(s.symbol).toBe('BTCUSDT')
     expect(s.symbols.favorites).toEqual(['BTCUSDT'])
+  })
+
+  it('一律绿涨红跌（2026-10-03）：出厂绿涨；迁移之前存的红涨迁一次，迁过之后用户自己选的红涨留住', () => {
+    expect(hydrate({}).redUp).toBe(false)
+    const once = hydrate({ redUp: true })
+    expect(once.redUp).toBe(false)
+    expect(once.greenUpMigrated).toBe(true)
+    expect(hydrate({ ...once, redUp: true } as unknown as Record<string, unknown>).redUp).toBe(true)
   })
 })

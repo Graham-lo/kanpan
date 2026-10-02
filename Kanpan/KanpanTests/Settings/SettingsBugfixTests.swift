@@ -30,16 +30,18 @@ struct SettingsBugfixTests {
   @Test("没写版本的（同步体、手写档）按当前版本读，不迁移")
   func 无版本不迁移() {
     #expect(decode(#"{"quickIntervals":["5m","30m","1h","4h","1d"]}"#).quickIntervals == [.m5, .m30, .h1, .h4, .d1])
+    // 同步体里的红涨是某台设备上用户自己选的：不带版本号，不能被「一律绿涨」的第 4 版迁移改掉。
+    #expect(decode(#"{"redUp":true}"#).redUp == true)
   }
 
-  @Test("编出去写 v3；字段级往返（keeping）不再把用户的选择改回默认")
+  @Test("编出去写当前版本（4）；字段级往返（keeping）不再把用户的选择改回默认")
   func 往返不迁移() throws {
     var mine = Prefs.defaults
     mine.quickIntervals = [.m5, .m30, .h1, .h4, .d1]
     let data = try #require(PrefsCodec.encoded(mine))
     let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     #expect(obj["v"] as? Int == PrefsCodec.version)
-    #expect(PrefsCodec.version == 3)
+    #expect(PrefsCodec.version == 4)
     #expect(PrefsCodec.decode(data).quickIntervals == mine.quickIntervals)
     let merged = Prefs.keeping(["quickIntervals"], of: mine, over: .defaults)
     #expect(merged.quickIntervals == mine.quickIntervals)
@@ -53,7 +55,7 @@ struct SettingsBugfixTests {
   @MainActor
   func 恢复默认留线路() {
     let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
-    store.update { $0.routePolicy = .gateway; $0.redUp = false; $0.depth = true }
+    store.update { $0.routePolicy = .gateway; $0.redUp = true; $0.depth = true }
     var arrivals: [ChartLayoutArrival] = []
     store.onAdopt = { _, why in arrivals.append(why) }
     let changed = store.resetToDefaults()
