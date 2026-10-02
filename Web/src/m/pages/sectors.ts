@@ -12,6 +12,7 @@ import '../styles/sectors.css'
 import { st, save } from '../app/store'
 import { openSymbol, hooks, trackScroll, restoreScroll, type PageHandle } from '../app/shell'
 import { icon } from '../ui/icons'
+import { onBack } from '../ui/backStack'
 import { longPress } from '../ui/reorder'
 import { toast } from '../ui/toast'
 import { registerTerms, termHTML } from '../ui/hint'
@@ -242,6 +243,7 @@ export function initSectors(root: HTMLElement): PageHandle {
   })
 
   // ---------------------------------------------------------------- 总装
+  let unback: (() => void) | null = null
   function render(): void {
     if (!active) return
     seedFromUniverse()
@@ -250,6 +252,9 @@ export function initSectors(root: HTMLElement): PageHandle {
     // 其余只是行情还没到，留在原地等（照 iOS SectorDrillDecision）
     if (route != null && drillDecision(route, boards, feed.buckets[market()]) === 'pop') route = null
     const drilling = route != null
+    // 钻进去的这一层登记给系统返回（鸿蒙 / 安卓侧边返回、Safari 左沿右划）：退回板块列表，而不是退出 app
+    if (drilling && !unback) unback = onBack(pop, 'sectors')
+    else if (!drilling && unback) { unback(); unback = null }
     boardsLayer.hidden = drilling
     drillLayer.hidden = !drilling
     if (drilling) renderDrill()

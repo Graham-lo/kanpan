@@ -120,9 +120,12 @@
 }
 .cp-chip.on span { background: var(--accent-soft); color: var(--accent); font: var(--t-control-on) }
 .cp-ivdiv { flex: none; width: 1px; height: 14px; background: var(--line); margin: 0 var(--s-s) }
-/* 窄屏（nova 16 366 宽）六档满钉时一格只剩 ~31：药丸左右收到 2、分隔竖线两边收到 4，「30分」才不顶出药丸 */
+/* 窄屏（nova 16 366 / 360 宽）六档满钉时一格只剩 ~31：药丸左右收到 2、分隔竖线两边收到 4，「30分」才不顶出药丸。
+ * 等宽格在这儿会让宽字（「30分」）把邻档当前那层底挤得几乎贴字，所以窄屏改成「每格按自己的字宽、富余均分」，
+ * 字与字之间的空隙处处一样；宽屏仍照 iOS 等宽平分 */
 .cp-ivrow { container: ivrow / inline-size }
 @container ivrow (max-width: 360px) {
+  .cp-chip { flex: 1 1 auto }
   .cp-chip span { padding: 0 var(--s-xxs); max-width: 100% }
   .cp-ivdiv { margin: 0 var(--s-xs) }
 }

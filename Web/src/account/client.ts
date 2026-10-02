@@ -68,10 +68,13 @@ function writeStored(v: Stored | null): void {
   try { if (v) ls()?.setItem(accountKey(), JSON.stringify(v)); else ls()?.removeItem(accountKey()) } catch { /* 存储满了 */ }
 }
 
-function browserName(): string {
-  const ua = globalThis.navigator?.userAgent || ''
-  const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '浏览器'
-  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
+/** 设备列表里给人看的名字。鸿蒙 7 不是安卓：UA 形如「(Phone; OpenHarmony …) … ArkWeb … HuaweiBrowser」，
+ *  要先于 Chrome / Android 认出来，否则 nova 16 会被叫成「Chrome · Linux」 */
+export function browserName(ua: string = globalThis.navigator?.userAgent || ''): string {
+  const b = /HuaweiBrowser\//.test(ua) ? '华为浏览器' : /ArkWeb\//.test(ua) ? '鸿蒙浏览器' : /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '浏览器'
+  const os = /OpenHarmony|HarmonyOS/.test(ua) ? '鸿蒙' : /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android'
+    : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : ''
   return ['网页', b, os].filter(Boolean).join(' · ')
 }
 

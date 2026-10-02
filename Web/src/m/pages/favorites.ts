@@ -112,7 +112,7 @@ export function initFavorites(root: HTMLElement): PageHandle {
   moreBtn.onclick = () => {
     const deletable = st.symbols.groups.length > 1 ? st.symbols.groups.find(g => g.id === current()) : undefined
     const items: (MenuItem | null)[] = [
-      { title: editing ? '完成调整' : '调整顺序', icon: 'adjust', run: () => setEditing(!editing) },
+      { title: editing ? '完成调整' : '调整顺序', icon: 'reorder', run: () => setEditing(!editing) },
       deletable ? { title: '删除当前分类', icon: 'trash', destructive: true, run: () => {
         F.deleteGroup(st.symbols, deletable.id, current())
         delete st.scroll[scrollKey(deletable.id)]
