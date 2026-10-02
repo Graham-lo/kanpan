@@ -4,14 +4,14 @@
  *         有 5 日数据时下面一排「今日 / 5 日」分段；然后是普通板块列表（图标 32 · 名字 · x/n 跑赢大盘 · 涨跌）。
  * 第二层：点一个板块压上来它的品种列表——视觉照抄自选页的琉璃行；头部是返回圆片、板块图标 38、
  *         名字 + 「x/n 跑赢大盘」、右侧板块涨跌。口径全部在 src/sectors/aggregate.ts（和 iOS 一致），不给选。
- * 两层铺同一张琉璃底，换层只是一层淡入淡出。
+ * 两层铺同一张琉璃底，换层只是一层淡入淡出；退回第一层时回到原来那一行（隐藏的层会丢滚动位置，按记下的接回来）。
+ * 第二层的行长按：预览卡 + 菜单（打开 · 加入自选 / 取消自选），卡上价与涨跌照这一行写的（看 5 日时就是 5 日）。
  */
 import '../styles/favorites.css'
 import '../styles/sectors.css'
 import { st, save } from '../app/store'
 import { openSymbol, hooks, trackScroll, restoreScroll, type PageHandle } from '../app/shell'
 import { icon } from '../ui/icons'
-import { openMenu } from '../ui/sheet'
 import { longPress } from '../ui/reorder'
 import { toast } from '../ui/toast'
 import { registerTerms, termHTML } from '../ui/hint'
@@ -29,6 +29,7 @@ import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowH
 import { coveredCount, drillDecision } from '../model/sectorView'
 import { backdropHTML } from './favorites'
 import { ensureUniverse, wantStreams } from './_streams'
+import { openPreviewMenu } from './symbolPreview'
 
 registerTerms([
   { id: 'outperform', title: '跑赢大盘', body: '这段时间里，板块成员跑赢全市场等权平均的有几只。\n分母是有行情的成员数；不到 3 只有行情的板块不算，排在最后。' },
@@ -140,14 +141,21 @@ export function initSectors(root: HTMLElement): PageHandle {
   // ---------------------------------------------------------------- 第二层
   function push(id: string): void {
     route = id
-    drillScroll.scrollTop = 0
+    boardsLayer.classList.remove('popped')
     render()
+    // 新钻进的板块从头看起（render 之后再归零：隐藏时归零不算数）
+    drillScroll.scrollTop = 0
+    st.scroll['sectors.drill'] = 0
   }
   function pop(): void {
     if (!route) return
     route = null
+    boardsLayer.classList.add('popped')
     render()
+    // 第一层藏起来时浏览器把它的滚动位置丢了：按记下的接回来
+    restoreScroll(boardScroll, 'sectors.boards')
   }
+  boardsLayer.addEventListener('animationend', () => boardsLayer.classList.remove('popped'))
 
   function drillData(sym: string): LiuliData {
     const base = baseOf.get(sym)
@@ -190,17 +198,23 @@ export function initSectors(root: HTMLElement): PageHandle {
     })
   }
 
+  /** 长按：和自选页同一张预览卡，菜单是它的子集——「打开」加一颗收藏开关（iOS contextMenu 菜单项不带图标）。
+   *  卡上价与涨跌照这一行写的（看 5 日时这一行写的就是 5 日），成交额是 24 小时那份；高低价不是这一口径，不摆 */
   function rowMenu(row: HTMLElement, sym: string): void {
     const fav = F.isFavorite(st.symbols, sym)
-    openMenu(row, [
-      { title: '打开', icon: 'chart', run: () => openSymbol(sym) },
+    openPreviewMenu(row, {
+      symbol: sym,
+      quote: () => { const d = drillData(sym); return { price: d.price, pct: d.pct, vol: d.vol, hiLo: window === 'today' } },
+      gone: () => S.live === true && !S.symbols.has(sym),
+    }, [
+      { title: '打开', run: () => openSymbol(sym) },
       fav
-        ? { title: '取消自选', icon: 'star', destructive: true, run: () => {
+        ? { title: '取消自选', destructive: true, run: () => {
           const snap = F.snapshot(st.symbols, sym)
           F.removeFavorite(st.symbols, sym); save()
           toast('已移除', { title: '撤销', run: () => { if (snap) { F.restore(st.symbols, [snap], st.favoritesGroup || null); save() } } })
         } }
-        : { title: '加入自选', icon: 'star', run: () => {
+        : { title: '加入自选', run: () => {
           const s = S.symbols.get(sym)
           F.addFavorite(st.symbols, sym, st.favoritesGroup || null, { kind: s?.kind, base: baseOf.get(sym) })
           save(); toast('已加入自选')
@@ -266,6 +280,7 @@ export function initSectors(root: HTMLElement): PageHandle {
       active = true
       render()
       restoreScroll(boardScroll, 'sectors.boards')
+      if (route) restoreScroll(drillScroll, 'sectors.drill')
       startFeed(render)
       startHistory(render)
       void ensureUniverse().then(() => { if (active) render() })

@@ -7,16 +7,25 @@ import { changePercentText, esc, fmtVol, MISSING, priceText, textIsUp } from './
 import { splitHighlight } from './search'
 import type { Sym } from '../../market/symbols'
 
-export interface RowFacts { symbol: string; base: string; quote: string; asset: BadgeAsset; kind?: Sym['kind']; cn?: string }
+export interface RowFacts { symbol: string; base: string; quote: string; asset: BadgeAsset; kind?: Sym['kind']; cn?: string; isNew?: boolean }
+/** 上线 30 天内挂「新」字（iOS SymbolInfo.isNewListing：onboardDate 缺 / 非正 / 在未来都不挂） */
+export const NEW_LISTING_MS = 30 * 86_400_000
+export function isNewListing(onboard: number | null | undefined, now = Date.now()): boolean {
+  if (!onboard || onboard <= 0) return false
+  const age = now - onboard
+  return age >= 0 && age <= NEW_LISTING_MS
+}
+/** 「新」字记号（NewListingMark：12 medium、强调色） */
+const NEW_MARK = '<span class="row-new" aria-label="新上线">新</span>'
 const QUOTES = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'USD1', 'TUSD', 'USD']
 /** 代号拆成 (base, quote)：BTCUSDT → BTC / USDT；1000PEPEUSDT → 1000PEPE / USDT */
 export function splitSymbol(symbol: string): { base: string; quote: string } {
   for (const q of QUOTES) if (symbol.length > q.length && symbol.endsWith(q)) return { base: symbol.slice(0, -q.length), quote: q }
   return { base: symbol, quote: '' }
 }
-export function factsOf(symbol: string, s?: Pick<Sym, 'kind' | 'cn'> | null): RowFacts {
+export function factsOf(symbol: string, s?: Pick<Sym, 'kind' | 'cn' | 'onboard'> | null, now = Date.now()): RowFacts {
   const { base, quote } = splitSymbol(symbol)
-  return { symbol, base, quote, asset: assetOf(s?.kind, base), kind: s?.kind, cn: s?.cn }
+  return { symbol, base, quote, asset: assetOf(s?.kind, base), kind: s?.kind, cn: s?.cn, isNew: isNewListing(s?.onboard, now) }
 }
 
 /** 涨跌药丸：宽 72 高 28，底是涨跌色 14%、描边 30%，字就是涨跌色。
@@ -42,7 +51,7 @@ export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, extraCls
   const price = priceCell(d)
   return `<div class="lr${first ? ' first' : ''}${extraCls ? ' ' + extraCls : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="0">`
     + `<div class="lr-in">${liuliBadgeHTML(f.base, f.asset)}`
-    + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : ''}</div>`
+    + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(volText(d.vol))}</span>${d.extra ?? ''}</div></div>`
     + `<div class="lr-right"><span class="${price.cls}">${esc(price.text)}</span>${pillHTML(d.pct, undefined, !!d.gone)}</div>`
     + `</div></div>`
@@ -72,7 +81,7 @@ export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number
   const chg = changePercentText(d.pct)
   const dir = chg === MISSING ? '' : textIsUp(chg) ? 'up' : 'down'
   return `<div class="sr" data-sym="${esc(f.symbol)}" role="button" tabindex="0">${badgeHTML(f.base, 32, f.asset)}`
-    + `<div class="sr-name"><div class="sr-top"><span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : ''}</div>`
+    + `<div class="sr-name"><div class="sr-top"><span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="sr-meta">${esc(d.meta)}</div></div>`
     + `<div class="sr-right num"><span class="sr-price">${esc(priceText(d.price, d.dec))}</span><span class="sr-chg ${dir}">${esc(chg)}</span></div>`
     + `<button type="button" class="sr-star${d.fav ? ' on' : ''}" data-star="${esc(f.symbol)}" aria-label="${d.fav ? '取消自选' : '加入自选'}" aria-pressed="${d.fav}">${STAR}</button>`

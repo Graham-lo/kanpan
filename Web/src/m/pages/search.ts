@@ -2,10 +2,11 @@
  *
  * 自选页头部的放大镜开的那一页：满屏盖在上面，顶上一条 44 高的胶囊输入框 +「取消」。
  * 没打字：历史搜索（小块）→ 最近看过 → 都没有时给「热门」（24h 成交额前 10）。
- * 打了字：「品种 N」，先按最匹配、同档按 24h 成交额降序，先摆 6 行，多了给「查看全部 N 个品种」。
+ * 打了字：「品种 N」，先按最匹配、同档按 24h 成交额降序，先摆 6 行，多了给「查看全部 N 个品种」——
+ * 点它进品种整页（symbolPicker.ts，盖在这一页上面），查询词跟着过去；整页那颗返回原路退回这里，查询词也带回来。
  * 行上的星是加自选的唯一入口；点行换图。
  *
- * 键盘：输入框锁英文（autocapitalize/autocorrect/spellcheck 关、lang=en、inputmode=latin）；
+ * 键盘：输入框锁英文（自动大写、autocorrect/spellcheck 关、lang=en、inputmode=latin）；
  * visualViewport 跟着键盘缩，整页高度等于可视区，内容始终留在键盘上沿以内。
  */
 import '../styles/search.css'
@@ -22,6 +23,7 @@ import { factsOf, listRowHTML, splitSymbol } from '../model/rowHTML'
 import { isFavorite, toggleFavorite } from '../model/favorites'
 import { life } from '../model/life'
 import { ensureUniverse, wantStreams } from './_streams'
+import { openPicker } from './symbolPicker'
 
 const EMPTY_TEXT = '没有这个品种'
 
@@ -42,7 +44,7 @@ export function openSearch(opts: SearchOptions = {}): void {
   root.setAttribute('aria-label', '搜索品种')
   root.innerHTML = `<div class="msr-bar">
       <label class="msr-field">${icon('search', 16)}
-        <input type="search" enterkeyhint="search" placeholder="搜 BTC、ETH、SOL…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" lang="en" inputmode="latin" aria-label="搜索品种">
+        <input type="search" enterkeyhint="search" placeholder="搜 BTC、ETH、SOL…" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" lang="en" inputmode="latin" aria-label="搜索品种">
         <button type="button" class="msr-clear" aria-label="清空" hidden>${CLEAR}</button>
       </label>
       <button type="button" class="msr-cancel">取消</button>
@@ -58,7 +60,6 @@ export function openSearch(opts: SearchOptions = {}): void {
   const L = life()
 
   let q = ''
-  let showAll = false
   let hotList: string[] = []
   let shown: string[] = []
 
@@ -95,10 +96,10 @@ export function openSearch(opts: SearchOptions = {}): void {
       const hits = rank(all().map(s => s), term, s => splitSymbol(s.symbol).base)
       if (!hits.length) html = `<div class="msr-empty">${S.symbols.size ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
       else {
-        const list = showAll ? hits.slice(0, 200) : hits.slice(0, SEARCH_PREVIEW)
+        const list = hits.slice(0, SEARCH_PREVIEW)
         shown = list.map(h => h.item.symbol)
         html = head('品种', `<span class="msr-count num">${hits.length}</span>`) + rows(list)
-        if (!showAll && hits.length > SEARCH_PREVIEW) html += `<button type="button" class="msr-all">查看全部 ${hits.length} 个品种${icon('chevronRight', 12)}</button>`
+        if (hits.length > SEARCH_PREVIEW) html += `<button type="button" class="msr-all">查看全部 ${hits.length} 个品种${icon('chevronRight', 12)}</button>`
       }
     } else {
       const terms = readHistory()
@@ -118,9 +119,9 @@ export function openSearch(opts: SearchOptions = {}): void {
   }
   const schedule = L.frame(render)
 
-  input.addEventListener('input', () => { q = input.value; showAll = false; scroll.scrollTop = 0; render() })
+  input.addEventListener('input', () => { q = input.value; scroll.scrollTop = 0; render() })
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { remember(q); input.blur() } })
-  clearBtn.onclick = () => { input.value = ''; q = ''; showAll = false; render(); input.focus() }
+  clearBtn.onclick = () => { input.value = ''; q = ''; render(); input.focus() }
   root.querySelector<HTMLElement>('.msr-cancel')!.onclick = () => close()
   // 滚动收键盘（iOS scrollDismissesKeyboard）
   scroll.addEventListener('touchmove', () => { if (document.activeElement === input) input.blur() }, { passive: true })
@@ -146,7 +147,18 @@ export function openSearch(opts: SearchOptions = {}): void {
       void confirmDialog({ title: '清除搜索记录', confirm: '清除', destructive: true }).then(ok => { if (ok) { clearHistory(); render() } })
       return
     }
-    if (t.closest('.msr-all')) { remember(q); showAll = true; render(); return }
+    if (t.closest('.msr-all')) {
+      remember(q)
+      input.blur()
+      openPicker({
+        query: q,
+        // 原路退回：整页里改过的查询词带回这一页
+        onBack: nq => { if (L.ended) return; if (nq !== q) { input.value = q = nq; scroll.scrollTop = 0; render() } },
+        onPick: sym => { close(); openSymbol(sym) },
+        onStarred: opts.onStarred,
+      })
+      return
+    }
     const r = t.closest<HTMLElement>('.sr')
     if (r) {
       const sym = r.dataset.sym!

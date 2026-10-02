@@ -15,7 +15,10 @@ html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: v
 .sec-layer[hidden] { display: none }
 .sec-drill { animation: sec-push var(--dur) var(--ease-out) }
 @keyframes sec-push { from { opacity: 0; translate: 24px 0 } }
-@media (prefers-reduced-motion: reduce) { .sec-drill { animation: none } }
+/* 退回第一层：从左边轻轻淡回来（iOS 导航栈 pop 的方向） */
+.sec-boards.popped { animation: sec-pop var(--dur) var(--ease-out) }
+@keyframes sec-pop { from { opacity: 0; translate: -24px 0 } }
+@media (prefers-reduced-motion: reduce) { .sec-drill, .sec-boards.popped { animation: none } }
 
 /* 页头：「板块」17 semibold，同基线接规模；右侧市场分段；整行最矮 44 */
 .sec-head {
@@ -71,8 +74,9 @@ html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: v
   padding: calc(var(--safe-top) + var(--s-xs)) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
 }
 .sec-back {
-  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--ink);
-  background: var(--lg-glass-thin); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft); position: relative;
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--ink2);
+  /* 照 iOS SectorBackButton：凹槽底（墨色 6%，深色 5.5%）+ 0.5 发丝描边（墨色 9% / 11%），不是玻璃 */
+  background: color-mix(in srgb, var(--ink) 6%, transparent); box-shadow: inset 0 0 0 .5px var(--lg-rule, color-mix(in srgb, var(--ink) 9%, transparent)); position: relative;
 }
 .sec-back::after { content: ''; position: absolute; inset: -6px }
 .sec-back:active { opacity: .6 }
@@ -82,3 +86,4 @@ html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: v
 .sec-dpct { font: var(--t-title); font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
 .sec-drill-empty { padding: var(--s-xxl) var(--inset-page); text-align: center; font: var(--t-caption); color: var(--ink3) }
 .sec-drill-empty[hidden] { display: none }
+html[data-theme="dark"] .sec-back { background: color-mix(in srgb, var(--ink) 5.5%, transparent) }

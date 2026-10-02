@@ -2,7 +2,9 @@
  *
  * 头部只有一行：分类胶囊条（能横滚）+ 放大镜圆片 +「…」圆片；「…」里是「调整顺序」和「删除当前分类」。
  * 列表永远按自选顺序、不排序；行直接长在琉璃底上（徽章 33 · 名字 / 成交额 · 价格 + 涨跌药丸）。
- * 左滑两颗砖：移到分类、取消自选；长按弹菜单：打开 / 调整顺序 / 移到分类 / 取消自选。
+ * 左滑两颗砖：移到分类、取消自选；长按弹预览卡 + 菜单：打开 / 调整顺序 / 移到分类 › / 取消自选（./symbolPreview）。
+ * 滚动位置按分类各记一份：页内切分类回顶；切走再回来回到这一类原来那一行；
+ * 从这一页点进图的那一只、点的时候并不露着（滚远了），回来直接把它摆到屏幕中间（iOS restoreScrollAnchor）。
  * 「调整顺序」时价格冻住、点行不开图、长按拖动排序。删自选没有二次确认，给五秒撤销。
  * 加自选只在搜索结果行的星上（一个动作一个入口）。
  */
@@ -19,6 +21,7 @@ import * as F from '../model/favorites'
 import { esc } from '../model/rowText'
 import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowHTML'
 import { openSearch } from './search'
+import { openPreviewMenu } from './symbolPreview'
 import { ensureUniverse, takeOpenParam, wantStreams } from './_streams'
 
 /** 琉璃底（光斑 + 冲淡 + 颗粒）：自选页和板块页共用 */
@@ -56,6 +59,15 @@ export function initFavorites(root: HTMLElement): PageHandle {
   if (F.seedDefaults(st.symbols, null)) save()
 
   const current = (): string | null => F.group(st.symbols, st.favoritesGroup || null)
+  /** 这一类的滚动位置记在哪个键上（按分类各一份：A 类的位置套到 B 类上就是乱滚） */
+  const scrollKey = (id: string | null = current()): string => 'fav.' + (id ?? '-')
+  // 旧版只记一份整页的位置：交给当前这一类，别让升级后第一次回来停在表头
+  if (st.scroll['favorites.list'] != null) {
+    if (st.scroll[scrollKey()] == null) st.scroll[scrollKey()] = st.scroll['favorites.list']
+    delete st.scroll['favorites.list']
+  }
+  /** 刚从这一页点进图的那一只，以及点的时候它露没露着 */
+  let opened: { sym: string; visible: boolean } | null = null
   const dataOf = (sym: string): LiuliData => {
     if (editing && frozen.has(sym)) return frozen.get(sym)!
     const s = S.symbols.get(sym)
@@ -86,6 +98,9 @@ export function initFavorites(root: HTMLElement): PageHandle {
     save()
     rail.querySelectorAll('.fav-cat').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-selected', String(on)) })
     centerSelected(true)
+    // 页内换一类从头看起：旧那一类的位置已经记在它自己的键上，接着记新这一类的
+    retrack()
+    opened = null
     renderList()
     scroll.scrollTop = 0
   })
@@ -98,7 +113,12 @@ export function initFavorites(root: HTMLElement): PageHandle {
     const deletable = st.symbols.groups.length > 1 ? st.symbols.groups.find(g => g.id === current()) : undefined
     const items: (MenuItem | null)[] = [
       { title: editing ? '完成调整' : '调整顺序', icon: 'adjust', run: () => setEditing(!editing) },
-      deletable ? { title: '删除当前分类', icon: 'trash', destructive: true, run: () => { F.deleteGroup(st.symbols, deletable.id, current()); st.favoritesGroup = F.group(st.symbols, null) ?? ''; save(); render() } } : null,
+      deletable ? { title: '删除当前分类', icon: 'trash', destructive: true, run: () => {
+        F.deleteGroup(st.symbols, deletable.id, current())
+        delete st.scroll[scrollKey(deletable.id)]
+        st.favoritesGroup = F.group(st.symbols, null) ?? ''
+        save(); retrack(); render(); scroll.scrollTop = 0
+      } } : null,
     ]
     openMenu(moreBtn, items.filter(Boolean))
   }
@@ -162,15 +182,29 @@ export function initFavorites(root: HTMLElement): PageHandle {
     if ((e.target as HTMLElement).closest('.m-sw-bricks')) return
     if (openSwipe()) { closeOpenSwipe(); return }
     if (editing) return
-    openSymbol(row.dataset.sym!)
+    open(row.dataset.sym!, row)
   })
 
+  /** 进图：先记下这一只、以及它这一刻是不是整行露在列表可视区里 */
+  function open(sym: string, row: HTMLElement | null): void {
+    const r = row?.getBoundingClientRect(), v = scroll.getBoundingClientRect()
+    opened = { sym, visible: !!r && r.top >= v.top - 1 && r.bottom <= v.bottom + 1 }
+    openSymbol(sym)
+  }
+
+  /** 长按：预览卡 + 菜单（iOS contextMenu：菜单项不带图标；「移到分类」是一层子菜单，列已有分类 + 还没开的预设） */
   function rowMenu(row: HTMLElement, sym: string): void {
-    openMenu(row, [
-      { title: '打开', icon: 'chart', run: () => openSymbol(sym) },
-      { title: '调整顺序', icon: 'adjust', run: () => setEditing(true) },
-      { title: '移到分类', icon: 'chevronRight', run: () => chooseCategory([sym]) },
-      { title: '取消自选', icon: 'trash', destructive: true, run: () => remove([sym]) },
+    openPreviewMenu(row, { symbol: sym, recent: true, gone: () => !!dataOf(sym).gone }, [
+      { title: '打开', run: () => open(sym, row) },
+      { title: '调整顺序', run: () => setEditing(true) },
+      {
+        title: '移到分类', run: () => chooseCategory([sym]),
+        submenu: () => F.moveTargets(st.symbols).map(n => {
+          const g = st.symbols.groups.find(x => x.name === n)
+          return { title: n, checked: !!g && st.symbols.groupForSymbol[F.key(sym)] === g.id, run: () => assign([sym], n) }
+        }),
+      },
+      { title: '取消自选', destructive: true, run: () => remove([sym]) },
     ])
   }
 
@@ -236,7 +270,8 @@ export function initFavorites(root: HTMLElement): PageHandle {
     if (!raf) raf = requestAnimationFrame(flush)
   })
 
-  trackScroll(scroll, 'favorites.list')
+  let untrack = trackScroll(scroll, scrollKey())
+  function retrack(): void { untrack(); untrack = trackScroll(scroll, scrollKey()) }
   scroll.addEventListener('scroll', () => closeOpenSwipe(), { passive: true })
   hooks.onTheme.push(() => { if (active) renderList() })
   hooks.onForeground.push(() => { if (active) renderList() })
@@ -246,12 +281,28 @@ export function initFavorites(root: HTMLElement): PageHandle {
   // 验收截图用：?open=search 进来直接开搜索页
   if (takeOpenParam(['search'])) requestAnimationFrame(() => searchBtn.click())
 
+  /** 回到这一页停在哪：刚点进图的那一只走的时候不露着、而且还在表里 → 摆到屏幕中间；否则回到这一类原来那一行 */
+  function landing(): void {
+    const o = opened
+    opened = null
+    if (o && !o.visible && shown.includes(o.sym)) {
+      const row = list.querySelector<HTMLElement>(`.lr[data-sym="${CSS.escape(o.sym)}"]`)
+      if (row) {
+        const r = row.getBoundingClientRect(), v = scroll.getBoundingClientRect()
+        scroll.scrollTop = Math.max(0, scroll.scrollTop + r.top - v.top - (scroll.clientHeight - r.height) / 2)
+        return
+      }
+    }
+    restoreScroll(scroll, scrollKey())
+  }
+
   return {
     show() {
       active = true
       root.classList.toggle('stale', st.stale)
+      retrack()
       render()
-      restoreScroll(scroll, 'favorites.list')
+      landing()
       void ensureUniverse().then(() => { if (active) renderList() })
     },
     hide() {

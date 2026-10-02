@@ -104,29 +104,39 @@ html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, 
   background: linear-gradient(to right, transparent, var(--lg-rule) 12%, var(--lg-rule) 88%, transparent);
 }
 .lr:active .lr-in { background: color-mix(in srgb, var(--ink) 4%, transparent) }
-.lr-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px }
-.lr-top { display: flex; align-items: baseline; gap: 3px; min-width: 0; white-space: nowrap }
-.lr-base { font: 600 15px/1.2 var(--font-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis }
-.lr-quote { font: 500 11px/1.2 var(--font-ui); color: var(--lg-ink4) }
+.lr-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xs) }
+.lr-top { display: flex; align-items: baseline; gap: var(--s-xs); min-width: 0; white-space: nowrap }
+/* 名字 13 semibold、计价币 11 regular 弱墨（SymbolRowFont.liuliName / small） */
+.lr-base { font: 600 13px/1.2 var(--font-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis }
+.lr-quote { font: 400 11px/1.2 var(--font-ui); color: var(--lg-ink4) }
+/* 上线 30 天内的「新」字（NewListingMark：12 medium、强调色）；搜索行也用 */
+.row-new { font: 500 12px/1.2 var(--font-ui); color: var(--accent); flex: none }
 .lr-meta { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .lr-lead.up { color: var(--up) }
 .lr-right { display: flex; align-items: center; gap: var(--s-m); flex: none }
 .lr-price { font: var(--t-body-emph); color: var(--ink); font-family: var(--font-ui); font-variant-numeric: tabular-nums; text-align: right; min-width: 64px }
-.lr-price.skel { display: inline-block; width: 64px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 8%, transparent) }
+.lr-price.skel { display: inline-block; width: 70px; min-width: 70px; height: 13px; border-radius: 4px; background: var(--lg-rule, color-mix(in srgb, var(--ink) 9%, transparent)) }
 .stale .lr-price { color: var(--stale) }
 .editing .lr .m-pill, .editing .lr-price { opacity: .55 }
 .editing .lr-in { cursor: grab }
 
-/* 涨跌药丸：72×28，圆角 8，涨跌色 14% 底、30% 描边 */
+/* 涨跌药丸（ChangePill）：72×28，圆角 8，字 13 semibold；涨跌色 14% 底、30% 的 0.5 描边 */
 .m-pill {
   display: inline-grid; place-items: center; width: 72px; height: 28px; border-radius: 8px; flex: none;
-  font: var(--t-footnote-emph); font-family: var(--font-ui); font-variant-numeric: tabular-nums;
+  font: var(--t-control-on); font-family: var(--font-ui); font-variant-numeric: tabular-nums;
 }
-.m-pill.up { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--up) 30%, transparent) }
-.m-pill.down { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--down) 30%, transparent) }
-.m-pill.none { color: transparent; background: color-mix(in srgb, var(--ink) 6%, transparent) }
+.m-pill.up { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--up) 30%, transparent) }
+.m-pill.down { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--down) 30%, transparent) }
+/* 缺值：底换成发丝线那支弱墨（SymbolRowInk.rule） */
+.m-pill.none { color: transparent; background: var(--lg-rule, color-mix(in srgb, var(--ink) 9%, transparent)) }
+html[data-theme="dark"] .m-pill.none { background: var(--lg-rule, color-mix(in srgb, var(--ink) 11%, transparent)) }
 /* 已下架 / 目录里没有：不是「还在路上」，写「—」、不摆骨架 */
-.m-pill.none.gone { color: var(--ink3) }
+.m-pill.none.gone { color: var(--lg-ink4, color-mix(in srgb, var(--ink3) 70%, transparent)) }
+/* 推送断了满宽限（linkDown）：药丸退成弱墨，涨跌方向不再着色（ChangePill muted） */
+.stale .m-pill.up, .stale .m-pill.down {
+  color: var(--lg-ink4); background: color-mix(in srgb, var(--lg-ink4) 14%, transparent);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--lg-ink4) 30%, transparent);
+}
 .lr-price.gone { color: var(--stale) }
 
 /* ───────── 徽章 ───────── */

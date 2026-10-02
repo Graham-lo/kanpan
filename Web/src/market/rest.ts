@@ -44,7 +44,8 @@ export async function j<T = unknown>(url: string, ms = 8000, background = false,
 
 interface ExSymbol {
   symbol: string; baseAsset: string; quoteAsset: string; contractType: string; status: string
-  underlyingType?: string; filters: { filterType: string; tickSize?: string }[]; pricePrecision: number
+  underlyingType?: string; underlyingSubType?: string[]; onboardDate?: number
+  filters: { filterType: string; tickSize?: string }[]; pricePrecision: number
 }
 interface Ticker24 { symbol: string; lastPrice: string; priceChange: string; priceChangePercent: string; quoteVolume: string; openPrice: string; highPrice: string; lowPrice: string; count: number; closeTime: number }
 interface Premium { symbol: string; lastFundingRate: string; nextFundingTime: number; markPrice: string; indexPrice: string }
@@ -57,6 +58,8 @@ function blank(e: ExSymbol): Sym {
     symbol: e.symbol, base, code: base, kind, cn: cnOf(base, kind),
     dec: tick ? decOfTick(tick) : Math.min(8, e.pricePrecision),
     color: badgeColor(base), price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
+    ut: e.underlyingType, onboard: e.onboardDate || undefined,
+    tags: e.underlyingSubType?.length ? [...new Set(e.underlyingSubType.map(t => t.toLowerCase()))].sort() : undefined,
   }
 }
 

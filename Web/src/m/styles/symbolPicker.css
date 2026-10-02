@@ -1,0 +1,99 @@
+/* 手机网页版 · 品种整页（照 iOS Symbols/SymbolPickerView.swift）
+ * 盖在搜索页上面的整屏层；行沿用搜索页的 .sr（search.css），这里只管页头、搜索条、筛选小块与分组。 */
+.mpk {
+  position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+  display: flex; flex-direction: column; background: var(--app); color: var(--ink);
+  padding-top: var(--safe-top);
+  opacity: 0; translate: 16px 0; transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur) var(--ease-out);
+}
+.mpk.in { opacity: 1; translate: 0 0 }
+.mpk::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 100vh; background: var(--app); pointer-events: none }
+@media (prefers-reduced-motion: reduce) { .mpk { translate: none; transition: opacity var(--dur-fast) linear } }
+
+/* 页头：‹（18 的框、点击区 44，左半截伸进页边距）· 「品种」标题 + 计数小字（同一基线）；底下一道 line 色分隔 */
+.mpk-head {
+  flex: none; display: flex; align-items: center; gap: var(--s-xs);
+  padding: var(--s-xs) calc(var(--inset-page) + var(--safe-right)) 0 calc(var(--inset-page) + var(--safe-left));
+  box-shadow: inset 0 -.5px 0 var(--line);
+}
+.mpk-back { width: 44px; height: 44px; margin-left: -13px; display: grid; place-items: center; flex: none; color: var(--ink2) }
+.mpk-back:active { opacity: .5 }
+.mpk-title { display: flex; align-items: baseline; gap: var(--s-s); min-width: 0 }
+.mpk-name { font: var(--t-title); color: var(--ink); white-space: nowrap }
+.mpk-count { font: var(--t-caption2); color: var(--ink3); white-space: nowrap }
+
+/* 搜索条：和搜索页同一个 44 高的胶囊框；右边「清空」（17 semibold 强调色，点击区 44） */
+.mpk-bar {
+  flex: none; display: flex; align-items: center; gap: var(--s-xs);
+  padding: var(--s-s) calc(var(--inset-page) + var(--safe-right) - var(--s-s)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+}
+.mpk-clear { height: 44px; padding: 0 var(--s-s); font: var(--t-body-emph); color: var(--accent); flex: none }
+.mpk-clear:active { opacity: .5 }
+
+/* 筛选：两颗小块（看得见 28、点击区 44），和历史词同一种底；筛过的那颗按选中画（实底 + 发丝描边、字加粗） */
+.mpk-filters {
+  flex: none; display: flex; align-items: center; gap: var(--s-s);
+  padding: 0 calc(var(--inset-page) + var(--safe-right)) 0 calc(var(--inset-page) + var(--safe-left));
+  box-shadow: inset 0 -.5px 0 var(--line);
+}
+.mpk-chip {
+  position: relative; height: 44px; display: inline-flex; align-items: center; gap: var(--s-xs);
+  padding: 0 var(--s-m); font: var(--t-control); color: var(--ink2); white-space: nowrap;
+}
+.mpk-chip::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 8px; bottom: 8px; border-radius: 14px; z-index: -1;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+html[data-theme="dark"] .mpk-chip::before { background: color-mix(in srgb, var(--ink) 7%, transparent) }
+.mpk-chip > * { position: relative }
+.mpk-chip .ic { stroke-width: 2 }
+.mpk-chip.on { font: var(--t-control-on); color: var(--ink) }
+.mpk-chip.on::before { background: color-mix(in srgb, var(--raised) 85%, transparent); box-shadow: inset 0 0 0 .5px var(--line) }
+html[data-theme="dark"] .mpk-chip.on::before { background: color-mix(in srgb, var(--ink) 12%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--ink) 20%, transparent) }
+.mpk-chip:disabled { opacity: var(--disabled-opacity) }
+.mpk-chip:not(:disabled):active { opacity: .6 }
+.mpk-filters { isolation: isolate }
+
+.mpk-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none }
+.mpk-scroll::-webkit-scrollbar { display: none }
+.mpk-body { padding-bottom: calc(var(--s-xxl) + var(--safe-bottom)) }
+
+/* 分组标题：11 medium + 1 字距 + ink3，吸顶时垫一层页面底色铺满整宽（不让滚上去的行从底下透出来） */
+.mpk-sh {
+  position: sticky; top: 0; z-index: 3; background: var(--app);
+  padding: var(--s-l) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+  font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3);
+}
+.mpk-more {
+  padding: var(--s-s) calc(var(--inset-page) + var(--safe-right)) var(--s-xxs) calc(var(--inset-page) + var(--safe-left));
+  font: var(--t-caption); line-height: 1.6; color: var(--ink3);
+}
+.mpk-empty {
+  padding: var(--s-xl) calc(var(--inset-page) + var(--safe-right)) var(--s-xl) calc(var(--inset-page) + var(--safe-left));
+  font: var(--t-caption); color: var(--ink3); text-align: left;
+}
+
+/* 行间发丝线：左从文字起点、右到页边距；第一行不画。画在行自己身上（拖动排序时跟着行走） */
+.mpk-rows .sr { position: relative }
+.mpk-rows .sr + .sr::before {
+  content: ''; position: absolute; top: 0; z-index: 2; height: .5px; background: var(--hair); pointer-events: none;
+  left: calc(var(--inset-page) + var(--safe-left) + var(--list-badge) + var(--s-m)); right: calc(var(--inset-page) + var(--safe-right));
+}
+/* 自选组的行可左划：行的内缩挪进跟手走的那一层，砖才够得着屏幕右沿 */
+.mpk-rows .sr.m-sw-row { display: block; padding: 0 }
+.mpk-rows .sr.m-sw-row > .m-sw-content {
+  display: flex; align-items: center; gap: var(--s-m); min-height: 44px;
+  padding: 12px calc(var(--inset-page) + var(--safe-right) - 14.5px) 12px calc(var(--inset-page) + var(--safe-left));
+}
+.mpk-rows .sr.m-lifted { z-index: 4; background: var(--raised) }
+.mpk-rows .sr.m-lifted::before { display: none }
+
+/* 筛选选项（半屏）：一行一项，选中的那项强调色 + 勾 */
+.mpk-pick { padding: 0 var(--inset-page) var(--s-l) }
+.mpk-pick-row {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0 var(--s-xs);
+  font: var(--t-body); color: var(--ink); border-top: .5px solid var(--line); text-align: left;
+}
+.mpk-pick-row:first-child { border-top: 0 }
+.mpk-pick-row.here { color: var(--accent) }
+.mpk-pick-row:active { opacity: .6 }

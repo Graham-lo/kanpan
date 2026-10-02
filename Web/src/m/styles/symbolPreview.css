@@ -1,0 +1,57 @@
+/* 手机网页版 · 长按预览卡（照 iOS SymbolPreviewCard：宽 272、内距 16、底 app 色、上下间距 12）
+ * 挂在菜单那一层（.m-menu-wrap.pv）里：背后压暗加模糊，卡和菜单一起弹出来。 */
+
+.m-menu-wrap.pv .m-menu-scrim {
+  background: #0000;
+  -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0);
+  transition: background 220ms var(--ease-out), backdrop-filter 220ms var(--ease-out), -webkit-backdrop-filter 220ms var(--ease-out);
+}
+html[data-theme="light"] .m-menu-wrap.pv.in .m-menu-scrim { background: #0000002E; -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2) }
+html[data-theme="dark"] .m-menu-wrap.pv.in .m-menu-scrim { background: #00000066; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px) }
+
+.pv-card {
+  position: absolute; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--s-m);
+  padding: var(--s-l);
+  background: var(--app); color: var(--ink);
+  border-radius: var(--r-l);
+  box-shadow: 0 12px 40px var(--toast-shadow), 0 0 0 .5px var(--hair);
+  transform: scale(.94); opacity: 0; transform-origin: center top;
+  transition: transform 260ms var(--ease-spring), opacity 160ms var(--ease-out);
+}
+.m-menu-wrap.pv.in .pv-card { transform: none; opacity: 1 }
+.m-menu-wrap.pv .m-menu { transform-origin: left top }
+
+.pv-head { display: flex; align-items: center; gap: var(--s-s); min-width: 0 }
+.pv-head > :first-child { flex: none }
+.pv-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.pv-top { display: flex; align-items: baseline; gap: var(--s-xs); white-space: nowrap; overflow: hidden }
+.pv-base { font: 600 15px/1.2 var(--font-ui); color: var(--ink) }
+.pv-quote, .pv-span { font: var(--t-caption2); color: var(--ink3) }
+.pv-right { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-xs) }
+.pv-price { font: var(--t-body-emph); color: var(--ink); white-space: nowrap }
+.pv-price.up { color: var(--up) }
+.pv-price.down { color: var(--down) }
+.pv-price.gone { color: var(--ink3) }
+.pv-pill { display: flex }
+
+.pv-candles {
+  height: 86px; box-sizing: border-box; padding: var(--s-s);
+  border-radius: var(--r-s); background: var(--k-bg);
+}
+.pv-candles canvas { display: block; width: 100%; height: 100% }
+
+.pv-stats { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--s-l); row-gap: var(--s-s) }
+.pv-cell { display: flex; align-items: baseline; gap: var(--s-s); min-width: 0 }
+.pv-label { flex: none; font: var(--t-caption2); color: var(--ink3); white-space: nowrap }
+.pv-val { flex: 1; min-width: 0; text-align: right; font: var(--t-caption2-emph); color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.pv-val.none { color: var(--ink3) }
+
+/* 菜单里带子菜单的那一项：行尾一颗「›」；子菜单顶上一行「‹ 标题」回上一层 */
+.pv-sub-mark { flex: none; display: flex; color: var(--ink3) }
+.pv-sub-head .m-menu-title { font-weight: 600 }
+.pv-sub-head .m-menu-lead { color: var(--accent) }
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-card, .m-menu-wrap.pv .m-menu-scrim { transition: none }
+}

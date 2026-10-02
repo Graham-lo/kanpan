@@ -31,6 +31,9 @@ export interface Sym {
   index?: number
   lastTick?: number
   supply?: number       // 总供应量（/v1/market/meta）
+  ut?: string           // 交易所给的 underlyingType 原文（COIN / EQUITY / HK_EQUITY / COMMODITY …），市场筛选用
+  tags?: string[]       // underlyingSubType 小写去重（layer-1 / meme / ai …），板块筛选用
+  onboard?: number      // 上线时间（毫秒），「新」字记号用
 }
 
 export interface SectorData {
