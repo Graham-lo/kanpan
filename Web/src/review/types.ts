@@ -192,3 +192,41 @@ export interface SearchStatus {
 }
 
 export interface SearchResults { items: Match[]; next: string | null; cutoff: number; model: string; partial: boolean }
+
+// ------------------------------------------------------------ 手机网页版复盘本（按页拉、详情、修订）
+/** 一份复盘：现在怎么看 / 下次怎么做；publishedAt 有值就是「完成复盘」，null 是草稿 */
+export interface ReviewReflection { note: string; nextTime: string; publishedAt: number | null; revision: number }
+
+/** 服务端观点记录的全貌：比 ViewRecord 多复盘历史（内联只留最近五版）、补记标记 */
+export interface ViewRecordFull extends ViewRecord {
+  draft: ViewRecord['draft'] & { originalClaimed?: number | null }
+  reflectionHistory?: ReviewReflection[]
+  syncError?: string | null
+}
+
+/** GET /records 的一页：50 条，next 是下一页游标 */
+export interface RecordPage { records: ViewRecordFull[]; next: string | null }
+
+/** 列表筛选：todo 待判定、decided 已判定（口径和手机端 needsAction / isDecided 一致，服务端算） */
+export interface RecordQuery { symbol?: string; state?: string; q?: string; todo?: boolean; decided?: boolean }
+
+/** GET /records/{id}：外层带两个裁定版本，对不上就是「结果有更新」 */
+export interface RecordDetail {
+  record: ViewRecordFull
+  groupPending: boolean
+  assessmentRevision: number
+  reflectionAssessmentRevision: number | null
+  hasShot: boolean
+}
+
+/** 修订记录的一版：created 规则 · assessment 判定 · reflection 复盘 · void 作废 · group 归并 */
+export interface RecordRevision { kind: string; at: number; body: Record<string, unknown> }
+
+/** 交易回合按页拉（持仓中在前，其余按平仓时间新到旧） */
+export interface TradePage { records: TradeRecord[]; next: string | null }
+
+/** 已存案例的一页（50 条）；next 是下一页游标（最后一条的编号） */
+export interface SavedPage { items: SavedMatch[]; next: string | null }
+
+/** 复盘记录的补图：一条最多三张，图本体另取（GET /attachments/{id}） */
+export interface ReviewAttachment { id: string; recordId: string; mime: string; size: number; createdAt: number }

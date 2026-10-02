@@ -26,10 +26,11 @@ import { baseOfSymbol, defaultThresholds, applyOverride, isValidBase } from '../
 import type { Thresholds } from '../../../orderflow/types'
 import {
   toggleOverlay, toggleSub, moveSub, sanitizeParam, clampParam, VARIABLE_PARAMS, MAX_VARIABLE_PARAMS,
-  sanitizeAmount, clampAmount, mergeOverride, compactAmount, plainNumber, learnedAfterAxisPick, type OrderFlowField,
+  sanitizeAmount, clampAmount, mergeOverride, compactAmount, plainNumber, type OrderFlowField,
 } from './logic'
 import { TERMS, splitPair } from './header'
 import type { PagePort } from './data'
+import { notePriceAxisPicked } from '../habitsRuntime'
 
 // ───────────────────────────── 术语（照 iOS Glossary：只给读不出意思的短名挂问号）
 
@@ -369,10 +370,10 @@ export function openChartSettings(axis: AxisContext): Sheet {
       const act = b.dataset.act
       if (act === 'kind') st.candleKind = b.dataset.v as CandleKind
       else if (act === 'scale') {
-        // 照 iOS：分段显示图上真正用的那档；亲手切线性 / 对数时这一类学到的结论当场换成它，不然学到的那档会把选择盖回去
+        // 照 iOS ChartPanel：分段显示图上真正用的那档；手动换的这一档先记成这一类品种的一笔（按习惯时它立刻生效，
+        // 不然学到的那档会把选择盖回去），再照旧写进设置
         const mode = b.dataset.v as PriceMode
-        const learned = learnedAfterAxisPick(st.learnedDefaults.priceAxis, st.habitLearning, axis.category(), mode, Date.now() / 1000)
-        if (learned) st.learnedDefaults = { ...st.learnedDefaults, priceAxis: learned }
+        notePriceAxisPicked(mode, axis.category())
         st.priceMode = mode
       }
       else if (act === 'depth') st.depth = !st.depth

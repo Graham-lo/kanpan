@@ -1,9 +1,8 @@
 /* 手机网页版 · 「我的」账号行的同步状态位（照 iOS MePage.accountRow / MePage.syncMeta）
  *
  * 登录了：第一行用户名，第二行同步状态（报的是「新不新」，不是「成功」），行尾一颗「立即同步」。
- * 同步引擎由 A 接（Web/src/sync/runtime.ts + m/app 那一侧的适配器）；它落地后在建运行时的地方调一次
- *   setSyncSource({ state, syncNow, onChange })
- * 把这里的占位换掉，「我的」页不用再改。
+ * 来源由 m/app/sync.ts 建同步运行时的时候 setSyncSource 接上；建好之前（启动最初那一下）用下面的空来源：
+ * 报「尚未同步」、「立即同步」什么也不做，不假装同步过。
  */
 
 export interface SyncState {
@@ -23,16 +22,11 @@ export interface SyncSource {
   onChange(fn: () => void): () => void
 }
 
-// TODO(A 同步引擎)：同步运行时落地后由 m/app 侧调 setSyncSource 换掉这个占位——
-// 占位只报「尚未同步」，「立即同步」只说一句还没接上，不假装同步过。
 const placeholder: SyncSource = {
   state: () => ({ error: '', pending: 0, lastSync: null }),
-  syncNow: () => { placeholderTap?.() },
+  syncNow: () => {},
   onChange: () => () => {},
 }
-let placeholderTap: (() => void) | null = null
-/** 占位时点「立即同步」的反应（me.ts 给一句提示） */
-export function onPlaceholderSync(fn: () => void): void { placeholderTap = fn }
 
 let source: SyncSource = placeholder
 const swapListeners = new Set<() => void>()

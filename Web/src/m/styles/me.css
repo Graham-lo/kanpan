@@ -99,7 +99,8 @@
   height: 48px; border-radius: 24px; font: var(--t-title); background: var(--accent); color: var(--badge-ink);
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.me-primary.danger { background: var(--danger) }
+/* 注销那颗：照 AccountView 危险色底 + badgeInk 字（全局 .danger 只给字上色，这里要盖回来，否则红底红字） */
+.me-primary.danger { background: var(--danger); color: var(--badge-ink) }
 .me-primary:disabled { background: var(--raised2); color: var(--ink3) }
 .me-primary:not(:disabled):active { opacity: .8 }
 .me-switch { font: var(--t-body-emph); color: var(--accent); min-height: 44px; margin-top: calc(var(--s-l) * -1 + var(--s-xs)) }
@@ -116,3 +117,129 @@
 .me-kick:disabled { opacity: var(--disabled-opacity) }
 
 .me-alerts { min-height: 100% }
+
+/* 导航栏右格（各层自己往里放按钮）；卡内两行之间的发丝线（左缩 16，照 MePage 的 Divider） */
+.me-nav-side { display: flex; align-items: center; justify-content: flex-end; min-width: 0 }
+.me-divider { height: 1px; margin-left: var(--inset-card); transform: scaleY(.34); transform-origin: top; background: var(--line) }
+.me-row:disabled { opacity: var(--disabled-opacity) }
+.me-row.accent .me-row-title { color: var(--accent) }
+.me-row-status.danger { color: var(--danger) }
+.me-foot { margin: var(--s-s) var(--inset-card) 0; font: var(--t-footnote); color: var(--ink3) }
+.me-ex { display: flex; align-items: center; min-height: var(--row-min); padding: var(--inset-row-v) var(--inset-card) }
+/* 推进去的层用 raised 底（铃声那页照 iOS 的 sheet 画法） */
+.me-page .me-layer.me-raised { background: var(--raised) }
+
+/* 账号页 */
+.me-kv.danger { color: var(--danger); font: var(--t-footnote); padding: var(--inset-row-v) var(--inset-card) }
+.me-kv-note { font: var(--t-footnote); color: var(--danger); min-height: 0; padding: 0 var(--inset-card) var(--inset-row-v) }
+.me-relogin { align-self: flex-start; min-height: 44px; font: var(--t-body-emph); color: var(--accent) }
+.me-relogin:active, .me-kick:active { opacity: .6 }
+.me-loading { justify-content: center; color: var(--ink3) }
+.me-primary { display: grid; place-items: center }
+.me-primary.busy { background: var(--accent); color: var(--badge-ink); opacity: .85 }
+.me-primary.danger.busy { background: var(--danger); color: var(--badge-ink) }
+.me-spin {
+  width: 18px; height: 18px; border-radius: 50%; flex: none; display: inline-block;
+  border: 2px solid currentColor; border-right-color: transparent; opacity: .7; animation: me-spin .8s linear infinite;
+}
+@keyframes me-spin { to { rotate: 1turn } }
+@media (prefers-reduced-motion: reduce) { .me-spin { animation-duration: 2.4s } }
+
+/* 设置行：名字（+ 问号）下面一行小字、行尾控件 */
+.me-prow.tap { width: 100%; text-align: left; color: var(--ink) }
+.me-prow.tap:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.me-pname-wrap { display: flex; flex-direction: column; gap: var(--s-xxs); min-width: 0 }
+.me-pmeta { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.me-ptrail { display: flex; align-items: center; gap: var(--s-s); flex: none }
+.me-pval { font: var(--t-body); color: var(--ink3); white-space: nowrap }
+.me-pval.ink2 { color: var(--ink2) }
+.me-act { font: var(--t-body); color: var(--accent) }
+.me-link { font: var(--t-footnote); color: var(--accent); text-decoration: none; min-height: 44px; display: flex; align-items: center }
+.me-link:active { opacity: .6 }
+/* 开关（照 iOS Toggle：44×26、圆钮 20、开着强调色） */
+.me-switch-t {
+  position: relative; width: 44px; height: 26px; border-radius: 13px; flex: none; background: var(--control-line);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.me-switch-t i {
+  position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px #00000033; transition: translate var(--dur-fast) var(--ease-out);
+}
+.me-switch-t.on { background: var(--accent) }
+.me-switch-t.on i { translate: 18px 0 }
+/* 通知没开：通知组顶上一条提示 */
+.me-perm {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-s); width: calc(100% - var(--inset-page) * 2);
+  min-height: 44px; margin: 0 var(--inset-page) var(--s-s); padding: 0 var(--s-m); border-radius: var(--r-m); text-align: left;
+  background: var(--accent-soft); box-shadow: inset 0 0 0 .5px var(--accent-line); font: var(--t-footnote); color: var(--ink);
+}
+.me-perm b { display: inline-flex; align-items: center; gap: 2px; font: var(--t-footnote-emph); color: var(--accent); white-space: nowrap }
+.me-perm:active { opacity: .7 }
+/* 铃声：选中那行琥珀字 + 勾 */
+.me-sound { margin: 0 calc(var(--inset-page) * -1) }
+.me-check { color: var(--accent); display: grid; opacity: 0 }
+.me-prow.on .me-check { opacity: 1 }
+.me-prow.on .me-pname { color: var(--accent) }
+/* 已学到的 */
+.me-learned { margin: 0 calc(var(--inset-page) * -1) }
+.me-learned-empty { display: grid; place-items: center; min-height: 88px; font: var(--t-body); color: var(--ink3) }
+.me-clear { display: block; width: 100%; min-height: 44px; margin-top: var(--s-xl); font: var(--t-body-emph); color: var(--danger) }
+.me-clear:disabled { color: var(--ink3); opacity: var(--disabled-opacity) }
+
+/* 朋友与收件箱（照 FriendsPage：行不带卡、通栏发丝线；空态 36 实心图标 + 15 一句） */
+.fr-page { margin: 0 calc(var(--inset-page) * -1) }
+.fr-row {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: var(--row-min);
+  padding: var(--s-s) var(--inset-page); position: relative; text-align: left; background: var(--app); color: var(--ink);
+}
+.fr-row + .fr-row::before, .fr-friends + .fr-row::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; transform: scaleY(.34); transform-origin: top; background: var(--line);
+}
+.fr-friends:empty { display: none }
+.fr-name { font: var(--t-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.fr-add:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.fr-plus { color: var(--accent); display: grid }
+.fr-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-s); padding: var(--s-xl) 0; color: var(--ink3); font: var(--t-body) }
+.fr-empty svg { width: 36px; height: 36px }
+.fr-signed-out { display: flex; flex-direction: column; align-items: center; gap: var(--s-l); padding: var(--s-section) 0 }
+.fr-signed-out .fr-empty { padding: 0 }
+.fr-login {
+  min-height: 44px; padding: 0 var(--s-section); border-radius: 22px; background: var(--accent); color: var(--badge-ink); font: var(--t-body-emph);
+}
+.fr-login:active { opacity: .8 }
+.fr-field { padding: var(--s-s) var(--inset-page); display: flex; flex-direction: column; gap: var(--s-xs) }
+.fr-field-row { display: flex; align-items: center; gap: var(--s-s) }
+.fr-field input {
+  flex: 1; min-width: 0; height: 44px; border-radius: var(--r-s); background: var(--raised2); color: var(--ink); padding: 0 var(--s-m);
+  font: var(--t-body); font-size: 16px; border: 0; outline: none; box-shadow: inset 0 0 0 1px transparent;
+}
+.fr-field input:focus { box-shadow: inset 0 0 0 1.5px var(--accent-line) }
+.fr-field input::placeholder { color: var(--ink3) }
+.fr-add-go { min-width: 44px; min-height: 44px; font: var(--t-body-emph); color: var(--accent) }
+.fr-add-go:disabled { color: var(--ink3); opacity: var(--disabled-opacity) }
+.fr-rule { font: var(--t-caption); color: var(--ink3) }
+.fr-err { font: var(--t-caption); color: var(--danger) }
+.fr-group { padding-left: var(--inset-page); padding-right: var(--inset-page) }
+.fr-item {
+  width: 100%; display: flex; align-items: center; gap: var(--s-m); min-height: var(--row-min); text-align: left;
+  padding: var(--s-s) var(--inset-page); color: var(--ink);
+}
+.fr-item:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.fr-thumb {
+  width: 44px; height: 36px; border-radius: var(--r-xs); flex: none; overflow: hidden; display: grid; place-items: center;
+  background: var(--raised2); color: var(--ink3);
+}
+.fr-thumb img, .fr-shot img { width: 100%; height: 100%; object-fit: cover; display: block }
+.fr-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.fr-item-title { font: var(--t-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.fr-item-meta { font: var(--t-caption); color: var(--ink3); display: flex; gap: var(--s-s) }
+.fr-notice { width: 100%; min-height: 44px; font: var(--t-caption); color: var(--ink3) }
+/* 一封信：大图 + 说明 + 主按钮 */
+.fr-letter { display: flex; flex-direction: column; gap: var(--s-l) }
+.fr-shot {
+  width: 100%; aspect-ratio: 16 / 10; border-radius: var(--r-m); overflow: hidden; display: grid; place-items: center;
+  background: var(--raised2); color: var(--ink3);
+}
+.fr-shot svg { width: 36px; height: 36px }
+.fr-letter-text { display: flex; flex-direction: column; gap: var(--s-xxs) }
+.fr-letter-text .fr-item-title { white-space: normal; font: var(--t-heading) }

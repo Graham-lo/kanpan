@@ -1,0 +1,280 @@
+/* 手机网页版 · 复盘本（照 iOS ReviewBook / ReviewRecordView / TradeRecordView / ReviewTokens）
+ * 列表页：顶上一块（分段、摘要卡、筛选）吸顶，搜索框跟着列表滑走，下面是平铺列表——行贴着页底色、行间发丝线（iOS plain List）。
+ * 详情页：分组卡（iOS insetGrouped）——组头 caption-emph ink3，卡 raised、圆角 12，行左标签 ink、右值 ink2。
+ * 数字一律等宽（.num）；文字涨跌用 --up / --down（图外文字色，浅色皮肤是加深版）。 */
+
+.rv-up { color: var(--up) } .rv-down { color: var(--down) } .rv-danger { color: var(--danger) }
+.rv-ink2 { color: var(--ink2) } .rv-ink3 { color: var(--ink3) } .rv-accent { color: var(--accent) }
+.rv-sp { flex: 1; min-width: 0 }
+
+/* ───────── 顶上一块：吸顶，底色同页底，盖住滚上去的行 ───────── */
+.rv-top {
+  position: sticky; top: calc(var(--s-m) * -1); z-index: 2;
+  margin: calc(var(--s-m) * -1) calc((var(--inset-page) + var(--safe-right)) * -1) 0 calc((var(--inset-page) + var(--safe-left)) * -1);
+  padding: var(--s-m) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+  background: var(--app); display: flex; flex-direction: column; gap: var(--s-m);
+}
+.rv-top-views, .rv-top-trades { display: flex; flex-direction: column; gap: var(--s-m) }
+.rv-top-views[hidden], .rv-top-trades[hidden], .rv-list[hidden] { display: none }
+.rv-top-trades:empty { display: none }
+/* 分段：整宽、两档等分（iOS ReviewSegment） */
+.me-page .rv-seg { display: flex; width: 100% }
+.me-page .rv-seg .m-seg-opt { flex: 1; min-width: 0 }
+
+/* 摘要卡 / 周报卡 */
+.rv-card {
+  width: 100%; display: flex; flex-direction: column; gap: var(--s-s); text-align: left;
+  padding: var(--inset-card-compact); border-radius: var(--r-m); background: var(--raised); color: var(--ink);
+}
+.rv-card:active { background: color-mix(in srgb, var(--ink) 5%, var(--raised)) }
+.rv-card-h { display: flex; align-items: center; gap: var(--s-s) }
+.rv-card-title { font: var(--t-title); color: var(--ink) }
+.rv-card-span { font: var(--t-caption); color: var(--ink3) }
+.rv-stats { display: flex; gap: var(--s-xxl) }
+.rv-stat { display: flex; flex-direction: column; gap: var(--s-xxs); min-width: 0 }
+.rv-stat b { font: var(--t-title); color: var(--ink); white-space: nowrap }
+.rv-stat b.rv-up { color: var(--up) } .rv-stat b.rv-down { color: var(--down) } .rv-stat b.rv-ink2 { color: var(--ink2) }
+.rv-stat small { font: var(--t-caption); color: var(--ink3) }
+.rv-week-extra { display: flex; flex-wrap: wrap; column-gap: var(--s-m); row-gap: var(--s-xxs); font: var(--t-caption); color: var(--ink3) }
+
+/* 筛选：32 高的胶囊，点击区 44 */
+.rv-chips { display: flex; gap: var(--s-s); margin: calc(var(--s-s) * -1) 0 }
+.rv-chip { height: var(--hit); display: flex; align-items: center; flex: none; padding: 0 }
+.rv-chip > span {
+  height: 32px; display: flex; align-items: center; padding: 0 var(--s-m); border-radius: 16px;
+  background: var(--raised); color: var(--ink2); font: var(--t-control); white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.rv-chip.on > span { background: var(--accent); color: var(--badge-ink); font: var(--t-control-on) }
+.rv-chip:active > span { opacity: .7 }
+
+/* 搜索框（同搜索页那只：44 高、22 圆角、16px 字防 iOS 放大） */
+.rv-search {
+  height: 44px; display: flex; align-items: center; gap: var(--s-s);
+  padding: 0 var(--s-l); border-radius: 22px; background: var(--raised2); color: var(--ink3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.rv-search:focus-within { box-shadow: inset 0 0 0 2px var(--accent-line) }
+.rv-search svg { flex: none }
+.rv-search input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; padding: 0;
+  font: var(--t-body); font-size: 16px; color: var(--ink); -webkit-appearance: none; appearance: none;
+}
+.rv-search input::placeholder { color: var(--ink3) }
+.rv-search input::-webkit-search-cancel-button, .rv-search input::-webkit-search-decoration { -webkit-appearance: none; display: none }
+.rv-search-clear { width: 44px; height: 44px; margin-right: -14px; display: grid; place-items: center; color: var(--ink3); flex: none }
+.rv-search-clear[hidden], .rv-search[hidden] { display: none }
+.rv-search-clear:active { opacity: .5 }
+
+/* ───────── 平铺列表 ───────── */
+.rv-list { padding-top: var(--s-xs) }
+.rv-lsec + .rv-lsec { margin-top: var(--s-l) }
+.rv-sec-h {
+  display: flex; align-items: center; gap: var(--s-xs); min-height: 28px;
+  padding: var(--s-xs) 0; font: var(--t-caption-emph); color: var(--ink3);
+}
+.rv-sec-h .m-term { color: var(--ink3) }
+.rv-rows > * { position: relative }
+.rv-rows > * + *::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  transform: scaleY(.34); transform-origin: top; background: var(--line);
+}
+
+/* 观点记录一行：三行字，行内 4 间距 */
+.rv-rec { width: 100%; display: flex; flex-direction: column; gap: var(--s-xs); padding: var(--s-s) 0; text-align: left; color: var(--ink) }
+button.rv-rec:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.rv-rec-l1 { display: flex; align-items: baseline; gap: var(--s-s); min-width: 0 }
+.rv-rec-l1 b { font: var(--t-body-emph); color: var(--ink) }
+.rv-rec-l1 small { font: var(--t-caption); color: var(--ink3) }
+.rv-rec-l1 i { margin-left: auto; font: var(--t-caption-emph); font-style: normal; white-space: nowrap }
+.rv-rec-text { font: var(--t-body); color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word }
+.rv-rec-l3 { display: flex; align-items: baseline; gap: var(--s-s); font: var(--t-caption); color: var(--ink3); white-space: nowrap }
+.rv-rec-foot { font: var(--t-caption); color: var(--ink3) }
+
+/* 交易一行 */
+.rv-trade { width: 100%; display: flex; align-items: center; gap: var(--s-m); padding: var(--s-s) 0; min-height: var(--row-min); text-align: left; color: var(--ink) }
+.rv-trade:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.rv-trade-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.rv-trade-l1, .rv-th-l1 { display: flex; align-items: baseline; gap: var(--s-s); min-width: 0 }
+.rv-trade-l1 b { font: var(--t-body-emph); color: var(--ink) }
+.rv-trade-l1 em, .rv-th-l1 em { font: var(--t-caption-emph); font-style: normal }
+.rv-trade-l1 small, .rv-th-l1 small { font: var(--t-caption); color: var(--ink3) }
+.rv-trade-l2 { display: flex; gap: var(--s-s); font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden }
+.rv-trade-time { overflow: hidden; text-overflow: ellipsis }
+.rv-trade-net { flex: none; font: var(--t-body-emph) }
+.rv-pill {
+  flex: none; height: 22px; display: inline-flex; align-items: center; padding: 0 var(--s-s); border-radius: 11px;
+  font: var(--t-caption-emph); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* 战绩页的行 */
+.rv-srow { display: flex; align-items: center; gap: var(--s-m); min-height: var(--row-min); padding: var(--s-s) 0 }
+.rv-srow-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.rv-srow-title { font: var(--t-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rv-srow-text small { font: var(--t-caption); color: var(--ink3) }
+.rv-rate { flex: none; font: 600 20px/1.2 var(--font-ui); color: var(--ink) }
+.rv-rate-short { flex: none; font: var(--t-body); color: var(--ink3) }
+.rv-srow-net { flex: none; font: var(--t-body-emph) }
+.rv-metric { display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: var(--row-min); padding: var(--s-s) 0 }
+.rv-metric > span { display: inline-flex; align-items: center; gap: var(--s-xs); font: var(--t-body); color: var(--ink2) }
+.rv-metric > span .m-term { color: var(--ink3) }
+.rv-metric b { font: var(--t-body-emph); color: var(--ink) }
+.rv-metric b.rv-up { color: var(--up) } .rv-metric b.rv-down { color: var(--down) } .rv-metric b.rv-ink2 { color: var(--ink2) }
+.rv-strades > .rv-rows + .rv-lsec { margin-top: var(--s-xl) }
+
+/* 空、错、转圈、登录 */
+.rv-line { font: var(--t-body); padding: var(--s-m) 0 }
+.rv-empty { padding: var(--s-xxl) 0; text-align: center; font: var(--t-body); color: var(--ink3) }
+.rv-link { min-height: var(--hit); display: inline-flex; align-items: center; font: var(--t-body-emph); color: var(--accent) }
+.rv-link:active { opacity: .6 }
+.rv-gate { display: flex; flex-direction: column; align-items: center; padding-top: var(--s-xxl) }
+.rv-loading { display: grid; place-items: center; height: 56px }
+.rv-spin {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--ink3);
+  animation: rv-spin .8s linear infinite;
+}
+@keyframes rv-spin { to { rotate: 360deg } }
+@media (prefers-reduced-motion: reduce) { .rv-spin { animation-duration: 2.4s } }
+.rv-more { height: 1px }
+
+/* ───────── 详情：分组卡 ───────── */
+.rv-detail { display: flex; flex-direction: column; gap: var(--s-xl) }
+.rv-d-top, .rv-d-bottom { display: contents }
+.rv-sec > .rv-sec-h { padding: 0 var(--inset-card) var(--s-s) }
+.rv-group { background: var(--raised); border-radius: var(--r-m); overflow: hidden }
+.rv-cell { position: relative; width: 100%; min-height: var(--row-min); padding: var(--inset-row-v) var(--inset-card); text-align: left; color: var(--ink) }
+.rv-group > .rv-cell + .rv-cell::before, .rv-group > .rv-line + .rv-cell::before, .rv-group > .rv-line + .rv-line::before, .rv-group > .rv-cell + .rv-line::before {
+  content: ''; position: absolute; top: 0; left: var(--inset-card); right: 0; height: 1px;
+  transform: scaleY(.34); transform-origin: top; background: var(--line);
+}
+.rv-group > .rv-line { position: relative; padding: var(--inset-row-v) var(--inset-card); white-space: pre-wrap; word-break: break-word }
+.rv-kv { display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); font: var(--t-body) }
+.rv-kv-k { display: inline-flex; align-items: center; gap: var(--s-xs); color: var(--ink); flex: none }
+.rv-kv-k .m-term { color: var(--ink3) }
+.rv-kv-v { color: var(--ink2); text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.rv-btn { display: flex; align-items: center; font: var(--t-body); color: var(--accent) }
+.rv-btn:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.rv-btn:disabled { opacity: var(--disabled-opacity) }
+.rv-btn.rv-strong { font-weight: 600 }
+.rv-btn.rv-ink2 { color: var(--ink2) } .rv-btn.rv-danger { color: var(--danger) }
+.rv-nav { color: var(--ink); justify-content: space-between }
+.rv-rec-static { padding-top: var(--s-s); padding-bottom: var(--s-s) }
+.rv-answer { display: flex; flex-direction: column; gap: var(--s-xxs) }
+.rv-answer b { font: var(--t-body-emph); color: var(--ink) }
+.rv-answer small { font: var(--t-caption); color: var(--ink3) }
+.rv-shotcell { padding: 0 }
+.rv-shot { display: block; width: 100%; height: auto }
+.rv-ta { padding-top: var(--s-s); padding-bottom: var(--s-s) }
+.rv-ta textarea {
+  display: block; width: 100%; border: 0; outline: 0; background: none; resize: none; padding: 0;
+  font: var(--t-body); font-size: 16px; line-height: 1.35; color: var(--ink); overflow-y: auto;
+}
+.rv-ta textarea::placeholder { color: var(--ink3) }
+
+/* 修订记录 */
+.rv-rev { display: flex; flex-direction: column; gap: var(--s-xxs) }
+.rv-rev-h { display: flex; align-items: baseline; gap: var(--s-s) }
+.rv-rev-h b { font: var(--t-body-emph); color: var(--ink) }
+.rv-rev-h small { margin-left: auto; font: var(--t-caption); color: var(--ink3) }
+.rv-rev-l { font: var(--t-caption); color: var(--ink2); word-break: break-word }
+
+/* 交易详情头一格、成交行 */
+.rv-th { display: flex; flex-direction: column; gap: var(--s-xs) }
+.rv-th-l1 b { font: var(--t-title); color: var(--ink) }
+.rv-th-l1 i { font: var(--t-body-emph); font-style: normal }
+.rv-th-l1 strong { font: var(--t-title); white-space: nowrap }
+.rv-th-l2 { display: flex; flex-wrap: wrap; gap: var(--s-xs); font: var(--t-caption); color: var(--ink3) }
+.rv-fill { display: flex; flex-direction: column; gap: var(--s-xxs) }
+.rv-fill-l1 { display: flex; align-items: baseline; gap: var(--s-s); font: var(--t-body); color: var(--ink); white-space: nowrap }
+.rv-fill-l1 b { font: var(--t-body-emph) }
+.rv-fill-l2 { display: flex; flex-wrap: wrap; column-gap: var(--s-s); font: var(--t-caption); color: var(--ink3) }
+
+/* ───────── 导航栏右上「+」「…」：两颗 44 圆片（同返回键那只），右格放宽到两颗的宽度 ───────── */
+.me-nav:has(.rv-trail) { grid-template-columns: 96px 1fr 96px }
+.rv-trail { display: flex; gap: var(--s-s); justify-content: flex-end }
+.rv-disc {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--ink);
+  background: var(--raised); box-shadow: 0 2px 10px #00000014, inset 0 0 0 .5px var(--line);
+}
+.rv-disc:active { opacity: .6 }
+
+/* ───────── 详情里按块重画的几段 ───────── */
+.rv-d-attach, .rv-d-answer { display: contents }
+.rv-conflict .rv-btn + .rv-btn { font-weight: 600 }
+.rv-links .rv-linkrow { padding-top: 0; padding-bottom: 0 }
+.rv-links .rv-linkrow > .rv-rec, .rv-links .rv-linkrow > .rv-trade { background: none }
+
+/* ───────── 交易行：徽章 · 字 · 盈亏 · 小图 ───────── */
+.rv-badge { flex: none; display: inline-grid; place-items: center; overflow: hidden; border-radius: 50% }
+.rv-badge > * { max-width: 100%; max-height: 100% }
+.rv-th-l1 { align-items: center }
+.rv-th-l1 b, .rv-th-l1 em, .rv-th-l1 small { align-self: baseline }
+.rv-thumb {
+  flex: none; width: 72px; height: 44px; border-radius: var(--r-xs); overflow: hidden; background: var(--raised);
+}
+.rv-group .rv-thumb { background: var(--raised2) }
+.rv-thumb img { display: block; width: 100%; height: 100% }
+.rv-hold { flex: none }
+
+/* 交易详情那段行情：220 高，正中一颗回放圆片 */
+.rv-tchart-cell { padding: 0 }
+.rv-tchart { position: relative; height: 220px; overflow: hidden }
+.rv-tchart canvas { display: block; width: 100%; height: 220px }
+.rv-tchart-tap { cursor: pointer }
+.rv-tchart-empty canvas { visibility: hidden }
+.rv-play {
+  position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--accent);
+  background: color-mix(in srgb, var(--raised) 78%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px #0000001f, inset 0 0 0 .5px var(--line);
+}
+.rv-play svg { translate: 1px 0 }
+.rv-play:active { opacity: .7 }
+
+/* ───────── 补图：横翻（一屏一张）、小圆点、右上删除圆片、下面「补一张图」 ───────── */
+.rv-att-cell { padding: 0 }
+.rv-att-pager {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.rv-att-pager::-webkit-scrollbar { display: none }
+.rv-att-page { position: relative; flex: 0 0 100%; height: 240px; scroll-snap-align: center; scroll-snap-stop: always }
+.rv-att-img { width: 100%; height: 100%; display: grid; place-items: center; background: var(--raised2) }
+.rv-att-img img { display: block; width: 100%; height: 100%; object-fit: contain }
+.rv-att-del { position: absolute; top: 0; right: 0; width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink) }
+.rv-att-del > span {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--raised) 78%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 .5px var(--line);
+}
+.rv-att-del:active > span { opacity: .6 }
+.rv-att-dots { display: flex; justify-content: center; gap: 6px; padding: var(--s-s) 0 }
+.rv-att-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); opacity: .35 }
+.rv-att-dots i.on { opacity: 1; background: var(--ink2) }
+.rv-att-add .rv-spin { width: 16px; height: 16px }
+.rv-att-add > span:last-child { font: var(--t-body) }
+
+/* ───────── 找相似（底部大抽屉） ───────── */
+.m-sheet.rv-search-sheet { background: var(--app) }
+.rv-search-body { display: flex; flex-direction: column; gap: var(--s-m) }
+.rv-search-sheet .rv-seg { display: flex; width: 100% }
+.rv-search-sheet .rv-seg .m-seg-opt { flex: 1; min-width: 0 }
+.rv-sstate { display: flex; flex-direction: column; align-items: center; gap: var(--s-s); padding: var(--s-xxl) 0; text-align: center; font: var(--t-body) }
+.rv-scaption { font: var(--t-caption); color: var(--ink3); padding: 0 var(--inset-card) }
+.rv-smore { align-self: center }
+.rv-smore:disabled { opacity: var(--disabled-opacity) }
+
+/* 相似片段一行（找相似与已存案例同一份）：左两行字、右分数与箭头；可左划 */
+.rv-matches .m-sw-row { --sw-bg: var(--raised) }
+.rv-mrow-wrap { position: relative }
+.rv-mrow-wrap + .rv-mrow-wrap::after {
+  content: ''; position: absolute; z-index: 2; top: 0; left: var(--inset-card); right: 0; height: 1px;
+  transform: scaleY(.34); transform-origin: top; background: var(--line); pointer-events: none;
+}
+.rv-mrow { display: flex; align-items: center; gap: var(--s-m) }
+.rv-mrow:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.rv-mrow-l { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.rv-mrow-l b { font: var(--t-body-emph); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rv-mrow-l small { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.rv-mrow-score { flex: none; font: var(--t-body-emph); color: var(--ink) }

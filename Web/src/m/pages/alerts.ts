@@ -6,13 +6,14 @@
  *   触发过的不展示（只响一次，响完就从表里删掉）。空表：铃铛 +「暂无预警」。
  * - recordRowHTML：创建提醒页底下「当前提醒」也用同一种行。
  * - startAlertWatcher()：常驻监听（幂等）。订有提醒挂着的品种的 ticker（切后台也保住），
- *   每笔新价交给 checkPrice；响了：全局提示条 + 系统通知（允许了才弹）+ 没登录时本机发 Webhook
- *   （登录后由服务端发，免得发两遍，照 PC webhookByPage）。
+ *   每笔新价交给 checkPrice；响了（照 iOS AlertNotifier）：提示条「标题 · 查看」+ 铃声；页面在后台时
+ *   弹系统通知（标题 = 提醒标题、正文「现价 X」，点开去那只）+ 没登录时本机发 Webhook（登录后由服务端发，免得发两遍，照 PC webhookByPage）。
+ *   顺带起「我的」底下那几样常驻的：自选波动提醒、上新下架通知、个性化学习（meMonitors.ts）。
  */
 import '../styles/alerts.css'
 import { S, on, streamName } from '../../market'
 import { loggedIn } from '../../account/session'
-import { baseOf, priceLabel, webhookByPage } from '../../alerts/shape'
+import { priceLabel, webhookByPage } from '../../alerts/shape'
 import { toast } from '../ui/toast'
 import { icon } from '../ui/icons'
 import { esc } from '../model/rowText'
@@ -22,8 +23,10 @@ import {
   deleteAlert, onAlertFired, onAlertsChange, recordMeta, recordTitle, restoreAlert, sections, watchedSymbols, checkPrice, webhookBody,
   type Alert,
 } from '../model/alerts'
-import { hooks } from '../app/shell'
+import { hooks, openSymbol } from '../app/shell'
 import { wantStreams } from './_streams'
+import { askNotifyPermission as ask, notify, wireNotify } from './notify'
+import { startMeMonitors } from './meMonitors'
 
 const LINK = '<svg width="11" height="11" viewBox="0 0 24 24" aria-label="Webhook" role="img"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4L12 18.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
 const BELL = '<svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a1.5 1.5 0 0 1 1.5 1.5v.6A6.5 6.5 0 0 1 18.5 11v3.6l1.6 2.3a1 1 0 0 1-.8 1.6H4.7a1 1 0 0 1-.8-1.6l1.6-2.3V11a6.5 6.5 0 0 1 5-6.4V4A1.5 1.5 0 0 1 12 2.5zM9.5 19.5h5a2.5 2.5 0 0 1-5 0z"/></svg>'
@@ -111,30 +114,18 @@ export function startAlertWatcher(): void {
     else if (e.type === 'universe') resubscribe()
   })
   onAlertFired(({ alert, price, level }) => {
-    const text = `${alert.title}，现价 ${priceLabel(price, S.symbols.get(alert.symbol)?.dec)}`
-    toast(text)
-    notify(baseOf(alert.symbol) + ' 提醒', text, alert.id)
+    const sym = alert.symbol
+    toast(alert.title, { title: '查看', run: () => openSymbol(sym) })
+    notify({ title: alert.title, body: '现价 ' + priceLabel(price, S.symbols.get(sym)?.dec), tag: 'alert.' + alert.id, symbol: sym, foreground: 'sound' })
     if (alert.webhook && webhookByPage(alert, false, loggedIn())) {
       void fetch(alert.webhook, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(webhookBody(alert, price, Date.now(), level)) }).catch(() => { /* 对方收不收是对方的事 */ })
     }
   })
   hooks.onForeground.push(resubscribe)
   resubscribe()
-}
-
-function notify(title: string, body: string, tag: string): void {
-  try {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    const opts = { body, tag, icon: import.meta.env.BASE_URL + 'm/icon-192.png' }
-    // 加到主屏幕的 PWA 里 new Notification 不可用，要经 service worker
-    if (navigator.serviceWorker?.controller) void navigator.serviceWorker.ready.then(r => r.showNotification(title, opts)).catch(() => {})
-    else new Notification(title, opts)
-  } catch { /* 浏览器不给就算了，提示条已经说过 */ }
+  wireNotify()
+  startMeMonitors()
 }
 
 /** 建完第一条提醒时要一次通知权限（照 iOS 创建后 requestAuthorization） */
-export function askNotifyPermission(): void {
-  try {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
-  } catch { /* 忽略 */ }
-}
+export function askNotifyPermission(): void { void ask() }

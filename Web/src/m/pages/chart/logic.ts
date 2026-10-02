@@ -412,17 +412,6 @@ export function priceModeFor<M extends string>(pref: M, habitLearning: boolean, 
   return learned === 'log' || learned === 'linear' ? learned : pref
 }
 
-/** 在图表设置里亲手切了线性 / 对数（照 iOS Habits.notePriceAxisPicked）：亲手选的立刻压过之前学到的，
- *  这一类的结论当场换成这一档、依据 +1、时刻记成现在（两台设备谁新用谁）。百分比不参与；学习关着不记。
- *  返回新的那张价格轴表，没变化时返回 null。 */
-export function learnedAfterAxisPick<C extends { v: string; n: number; at: number }>(
-  table: Readonly<Record<string, C>>, habitLearning: boolean, category: string, mode: string, nowSec: number,
-): Record<string, { v: string; n: number; at: number }> | null {
-  if (!habitLearning || (mode !== 'linear' && mode !== 'log')) return null
-  const prev = table[category]
-  return { ...table, [category]: { v: mode, n: (prev?.v === mode ? prev.n : 0) + 1, at: nowSec } }
-}
-
 
 // ───────────────────────────── 画线列表 / 样式
 

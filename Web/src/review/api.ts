@@ -11,6 +11,7 @@ import { REST, j } from '../market/rest'
 import type { Bar } from '../chart/calc'
 import type { NoteDraft } from '../notes/draft'
 import type { ChartRange, Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from './types'
+import type { RecordDetail, RecordPage, RecordQuery, RecordRevision, ReviewAttachment, ReviewReflection, SavedPage, TradePage, ViewRecordFull } from './types'
 
 const BASE = '/v1/native-review'
 const DEV_TOKEN_KEY = 'hkline-review-dev-token'
@@ -150,7 +151,11 @@ export const reviewApi = {
     return got
   },
   unsave: (id: string, expectedRevision: number): Promise<unknown> => call('DELETE', `/saved-matches/${id}`, { expectedRevision }, true),
-  tradeNote: (id: string, expectedRevision: number, text: string): Promise<TradeRecord> => call('POST', `/trades/${id}/note`, { expectedRevision, text }, true),
+  /** 「当时怎么想」：服务端回 {record}（review_trade.rs note），这里拆开再给调用方——
+   *  之前直接把外壳当回合返回，PC 端 Object.assign(t, next) 会把 revision 等字段留成旧值、
+   *  再挂一个 record 属性上去，第二次保存必 409 */
+  tradeNote: (id: string, expectedRevision: number, text: string): Promise<TradeRecord> =>
+    call<{ record: TradeRecord }>('POST', `/trades/${id}/note`, { expectedRevision, text }, true).then(r => r.record),
   /** 记一笔：建一条观点记录。幂等键就用记录编号——断网重发、补传都落在同一条上 */
   createRecord: (draft: NoteDraft): Promise<{ record: ViewRecord }> => call('POST', '/records', draft, draft.id),
   /** 记一笔那张图（PNG / JPEG 的 base64，解码后 ≤ 2 MiB）；重复上传就是覆盖 */
@@ -197,3 +202,73 @@ export function forgetSearch(id: string): void {
   try { localStorage.setItem(SEARCH_KEY, JSON.stringify(storedSearches().filter(x => x.id !== id))) } catch { /* 同上 */ }
 }
 
+
+// ------------------------------------------------------------ 手机网页版复盘本：按页拉、详情、复盘、作废、归并、图、修订
+// 改动类一律带幂等键（call 的第四个参数 true）；冲突码原样抛出（record_revision_changed /
+// record_voided / group_already_resolved），由页面决定重拉还是提示。
+function query(params: Record<string, string | boolean | null | undefined>): string {
+  const out: string[] = []
+  for (const [k, v] of Object.entries(params)) {
+    if (v == null || v === '' || v === false) continue
+    out.push(`${k}=${encodeURIComponent(String(v))}`)
+  }
+  return out.length ? '?' + out.join('&') : ''
+}
+
+export const reviewBookApi = {
+  /** 观点记录的一页（50 条）；after 是上一页给的游标 */
+  recordsPage: (q: RecordQuery, after?: string | null): Promise<RecordPage> =>
+    call<RecordPage>('GET', '/records' + query({ after, symbol: q.symbol, state: q.state, q: q.q?.trim(), todo: q.todo, decided: q.decided }))
+      .then(p => ({ records: p?.records ?? [], next: p?.next ?? null })),
+  recordDetail: (id: string): Promise<RecordDetail> => call('GET', `/records/${id}`),
+  /** 保存草稿 / 完成复盘：服务端把上一份已完成的复盘挪进历史 */
+  saveReflection: (id: string, expectedRevision: number, reflection: ReviewReflection, publish: boolean): Promise<{ record: ViewRecordFull }> =>
+    call('POST', `/records/${id}/reflection`, { expectedRevision, reflection, publish }, true),
+  voidRecord: (id: string, expectedRevision: number): Promise<{ record: ViewRecordFull }> =>
+    call('POST', `/records/${id}/void`, { expectedRevision }, true),
+  /** 「与最近一笔是同一次判断吗？」 */
+  resolveGroup: (id: string, expectedRevision: number, sameEpisode: boolean): Promise<{ record: ViewRecordFull }> =>
+    call('POST', `/records/${id}/group`, { expectedRevision, sameEpisode }, true),
+  /** 记一笔那一刻的图（base64） */
+  recordShot: (id: string): Promise<{ image: string; mime: string }> => call('GET', `/records/${id}/shot`),
+  revisions: (id: string): Promise<RecordRevision[]> =>
+    call<{ revisions?: RecordRevision[] }>('GET', `/records/${id}/revisions`).then(r => r?.revisions ?? []),
+  /** 交易回合的一页（50 条） */
+  tradesPage: (after?: string | null): Promise<TradePage> =>
+    call<TradePage>('GET', '/records' + query({ kind: 'trade', after }))
+      .then(p => ({ records: p?.records ?? [], next: p?.next ?? null })),
+  /** 一笔交易的最新一版（409 之后重拉用） */
+  tradeDetail: (id: string): Promise<TradeRecord> => call<{ record: TradeRecord }>('GET', `/records/${id}`).then(r => r.record),
+  /** 「当时怎么想」：与 reviewApi.tradeNote 同一个接口、同一份拆壳 */
+  saveTradeNote: (id: string, expectedRevision: number, text: string): Promise<TradeRecord> => reviewApi.tradeNote(id, expectedRevision, text),
+
+  // —— 找相似（照 iOS ReviewSearchModel：编号由调用方生成，同时当幂等键；离开 / 重找时 DELETE 掉）
+  startSearch: (id: string, range: ChartRange, cutoff: number, scope: 'history' | 'private'): Promise<SearchStatus> =>
+    call('POST', '/searches', { range, cutoff, scope }, id),
+  searchStatus: (id: string): Promise<SearchStatus> => call('GET', `/searches/${id}`),
+  /** 取消：服务端把 queued / running 标成 cancelled；还没开始的编号也会占位成 cancelled，免得之后再起 */
+  cancelSearch: (id: string): Promise<unknown> => call('DELETE', `/searches/${id}`, undefined, true),
+  /** 结果的一页（20 条）；after 是上一页给的偏移 */
+  searchResultsPage: (id: string, after?: string | null): Promise<SearchResults> =>
+    call<SearchResults>('GET', `/searches/${id}/results` + query({ after })),
+  /** 存一条相似案例：服务端回 {item} */
+  saveMatch: (searchId: string, matchId: string): Promise<{ item: Match }> =>
+    call('POST', '/saved-matches', { searchId, matchId }, true),
+  savedPage: (after?: string | null): Promise<SavedPage> =>
+    call<SavedPage>('GET', '/saved-matches' + query({ after })).then(p => ({ items: p?.items ?? [], next: p?.next ?? null })),
+  unsaveMatch: (id: string, expectedRevision: number): Promise<unknown> =>
+    call('DELETE', `/saved-matches/${id}`, { expectedRevision }, true),
+
+  // —— 补图（一条记录最多三张，单张 ≤ 5 MB；编号由调用方生成，同时当幂等键）
+  attachments: (recordId: string): Promise<ReviewAttachment[]> =>
+    call<{ items?: ReviewAttachment[] }>('GET', `/records/${recordId}/attachments`).then(r => r?.items ?? []),
+  attachment: (id: string): Promise<{ image: string; mime: string }> => call('GET', `/attachments/${id}`),
+  putAttachment: (id: string, recordId: string, image: string): Promise<unknown> =>
+    call('POST', '/attachments', { id, recordId, image }, id),
+  deleteAttachment: (id: string): Promise<unknown> => call('DELETE', `/attachments/${id}`, undefined, true),
+
+  // —— 待传队列（手机网页版复盘本）：复盘 / 作废 / 归并共用一个出口，幂等键由队列给（这一次改动的编号），
+  //    断网重发、隔离后重试都落在同一次改动上
+  pushOperation: (recordId: string, kind: 'reflection' | 'void' | 'group', body: unknown, key: string): Promise<{ record: ViewRecordFull }> =>
+    call('POST', `/records/${recordId}/${kind}`, body, key),
+}

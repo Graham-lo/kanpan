@@ -222,20 +222,3 @@ describe('手机网页版 · 个性化学习的类别', () => {
     expect(habitCategory('com', 'CL')).toBe('other')
   })
 })
-
-describe('手机网页版 · 图表设置里亲手切价格轴', () => {
-  const at = 1_700_000_000
-  it('习惯学习关着、或切的是百分比：不记', () => {
-    expect(L.learnedAfterAxisPick({}, false, 'crypto', 'log', at)).toBeNull()
-    expect(L.learnedAfterAxisPick({}, true, 'crypto', 'percent', at)).toBeNull()
-  })
-  it('切到和学到的同一档：次数加一，时间刷新；别的类不动', () => {
-    const t = { crypto: { v: 'log', n: 3, at: 1 }, us: { v: 'linear', n: 2, at: 1 } }
-    expect(L.learnedAfterAxisPick(t, true, 'crypto', 'log', at)).toEqual({ crypto: { v: 'log', n: 4, at }, us: { v: 'linear', n: 2, at: 1 } })
-  })
-  it('切到另一档：亲手选的立刻盖掉学到的，从 1 记起', () => {
-    const t = { crypto: { v: 'log', n: 9, at: 1 } }
-    expect(L.learnedAfterAxisPick(t, true, 'crypto', 'linear', at)).toEqual({ crypto: { v: 'linear', n: 1, at } })
-    expect(L.learnedAfterAxisPick({}, true, 'metal', 'log', at)).toEqual({ metal: { v: 'log', n: 1, at } })
-  })
-})

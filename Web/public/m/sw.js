@@ -5,7 +5,8 @@
  *
  * - 页面导航（/web/m/ 本身）：网络优先，断网时回缓存里的壳（冷启动不白屏）。
  * - /web/assets/*（带哈希的脚本、样式，内容不变）：缓存优先。
- * - /web/m/ 下的图标与 manifest：先回缓存、后台刷新。
+ * - /web/m/ 下的图标、manifest 与提醒铃声：先回缓存、后台刷新。
+ * - 点系统通知（提醒、波动、上新下架）：有开着的页面就把它叫到前面、告诉它开哪只；没有就新开一页带上 ?notify=。
  * - 其余一切（币安 REST / WS、/v1 账号与元数据、/market 网关）：不拦，原样走网络。
  *
  * 装的时候就把壳和它引用的入口脚本、样式（从壳的 HTML 里读出来）一起存下；页面起来之后再把这一次
@@ -65,6 +66,22 @@ self.addEventListener('message', event => {
   event.waitUntil(caches.open(CACHE).then(c => keep(c, d.urls.filter(u => typeof u === 'string'))).catch(e => console.warn('[sw] 补存失败', e)))
 })
 
+// 点通知：data.symbol 是要开的品种（没有就只把页面叫到前面）
+self.addEventListener('notificationclick', event => {
+  event.notification.close()
+  const symbol = event.notification.data && typeof event.notification.data.symbol === 'string' ? event.notification.data.symbol : ''
+  event.waitUntil((async () => {
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const page = list.find(c => new URL(c.url).pathname.startsWith(SCOPE))
+    if (page) {
+      if (symbol) page.postMessage({ type: 'notify-open', symbol })
+      try { await page.focus() } catch { /* 有的浏览器不让聚焦 */ }
+      return
+    }
+    await self.clients.openWindow(SCOPE + (symbol ? '?notify=' + encodeURIComponent(symbol) : '') + '#chart')
+  })())
+})
+
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
@@ -100,7 +117,7 @@ self.addEventListener('fetch', event => {
     return
   }
   // 图标、manifest：先回缓存，后台刷新
-  if (url.pathname.startsWith(SCOPE) && /\.(png|webmanifest|svg)$/.test(url.pathname)) {
+  if (url.pathname.startsWith(SCOPE) && /\.(png|webmanifest|svg|m4a)$/.test(url.pathname)) {
     event.respondWith(
       caches.open(CACHE).then(c => c.match(req).then(hit => {
         const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res }).catch(() => hit)
