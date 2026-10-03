@@ -20,8 +20,9 @@
  *
  * 和 iOS 不一样的地方（都不是没做，是浏览器里换了做法或做不到）：
  * - 「在图上重温」「打开相似片段」「回放这笔交易」：复盘本把回放计划（review/replay.ts 的 planNote / planMatch /
- *   planTrade）写进 sessionStorage[M.INTENT_KEY] 并在 window 上发 M.INTENT_EVENT，自己把行情页切到那只品种、
- *   那个周期；行情页认领这份意图后按计划回放（接口见交付说明）。「我的」这一摞不退，回来还在原处。
+ *   planTrade）连同市场写进 sessionStorage[M.INTENT_KEY] 并在 window 上发 M.INTENT_EVENT，只把页面切到行情页；
+ *   行情页认领这份意图，在实时图上盖一层回放（pages/chart/replay.ts），实时图的品种、周期、指标都不动。
+ *   「我的」这一摞不退，点「退出」回来还在原处。
  * - 继续未完成的记录：那份草稿住在行情页的记一笔里（note.ts），复盘本这边「+」直接打开记一笔。
  * - 接入交易所：交易所密钥只存在手机本机（iOS 钥匙串），网页不收密钥；交易面空着时写「接入交易所后自动生成」。
  * - 触感：用 navigator.vibrate（安卓 / 鸿蒙浏览器有；iOS Safari 没有这个接口，就安静地不震）。
@@ -34,9 +35,8 @@ import { deleteAction, swipeRow, type SwipeHandle } from '../ui/swipeDelete'
 import { toast } from '../ui/toast'
 import { registerTerms, termHTML } from '../ui/hint'
 import { loggedIn, onSession, session } from '../../account/session'
-import { go, hooks, openSymbol as openChartSymbol, setMeBadge } from '../app/shell'
+import { go, hooks, setMeBadge } from '../app/shell'
 import { st, save as saveState } from '../app/store'
-import { INTERVALS, type IntervalId } from '../app/prefs'
 import { S, REST, j } from '../../market'
 import { fmtPrice, priceDecimalsFallback } from '../chart/format'
 import { makeState } from '../chart/state'
@@ -314,19 +314,12 @@ function patchTrade(t: TradeRecord): void {
 }
 
 // ───────── 去图上看（复盘本 → 行情页） ─────────
-/** 切到行情页看这只品种、这个周期；「我的」这一摞不退（从行情页回来还在原处，像 iOS 回放盖在复盘本上） */
-function goChart(symbol: string, interval: string): void {
-  openChartSymbol(symbol)
-  if ((INTERVALS as readonly string[]).includes(interval) && st.interval !== interval) {
-    st.interval = interval as IntervalId
-    saveState()
-  }
-}
-
-function sendIntent<P extends { symbol: string; iv: string }>(kind: M.IntentKind, plan: P): void {
-  const detail: M.ReviewIntent<P> = { kind, at: Date.now(), plan }
+/** 交给行情页回放：计划写进 sessionStorage 并发事件，只把页面切过去——实时图的品种、周期不动
+ *  （回放是盖在行情页上的一层，退出回到「我的」这一摞原处，像 iOS 回放盖在复盘本上） */
+function sendIntent<P extends { symbol: string; iv: string }>(kind: M.IntentKind, plan: P, where: { venue: string; market: string } | null): void {
+  const detail: M.ReviewIntent<P> = { kind, at: Date.now(), plan, market: where ? `${where.venue}/${where.market}` : null }
   try { sessionStorage.setItem(M.INTENT_KEY, JSON.stringify(detail)) } catch { /* 存不下就只靠事件 */ }
-  goChart(plan.symbol, plan.iv)
+  go('chart')
   window.dispatchEvent(new CustomEvent(M.INTENT_EVENT, { detail }))
 }
 
@@ -1026,7 +1019,7 @@ function openRecord(host: MeHost, initial: ViewRecordFull): void {
       switch (b.dataset.act) {
         case 'draft': save(false); break
         case 'publish': save(true); break
-        case 'chart': sendIntent('revisit', planNote(view(), Date.now())); break
+        case 'chart': sendIntent('revisit', planNote(view(), Date.now()), view().draft.range); break
         case 'search': openSearch(host, view()); break
         case 'same': case 'apart':
           haptic()
@@ -1370,7 +1363,7 @@ function openSearch(host: MeHost, rec: ViewRecordFull): void {
         const m = items.find(x => x.id === row.dataset.match)
         if (!m) return
         sheet.close()
-        sendIntent('match', planMatch(m, cutoff))
+        sendIntent('match', planMatch(m, cutoff), m.range)
       }
     })
     paint()
@@ -1461,7 +1454,7 @@ function openSaved(host: MeHost): void {
       const row = t.closest<HTMLElement>('[data-saved]')
       if (row) {
         const s = items.find(x => x.item.id === row.dataset.saved)
-        if (s) sendIntent('match', planMatch(s.item, Date.now()))
+        if (s) sendIntent('match', planMatch(s.item, Date.now()), s.item.range)
       }
     })
     const offSession = onSession(() => { if (alive) void load(true) })
@@ -1574,7 +1567,7 @@ function openTrade(host: MeHost, initial: TradeRecord): void {
       if (item.round.status === 'open') return
       ta.blur()
       focusTradeNote = item.id
-      sendIntent('trade', planTrade(item.round, item.result, Date.now(), item.note?.text || null, st.interval))
+      sendIntent('trade', planTrade(item.round, item.result, Date.now(), item.note?.text || null, st.interval), item.round)
     }
 
     function apply(t: TradeRecord): void {

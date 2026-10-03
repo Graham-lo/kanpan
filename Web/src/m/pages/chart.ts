@@ -9,6 +9,10 @@
  * 拖副图高度、长按换序）一松手就写回 st 并 save()。云端同步装进来的改动走同一条路。
  * 行情推送：图自己要的 K 线流 + 当前品种的 ticker / mark，经 _streams.wantStreams('chart') 与别的页合并。
  *
+ * 复盘本的回放（在图上重温 / 交易回放 / 相似片段）：复盘本把计划写进 sessionStorage 再发事件、把页面切过来；
+ * 这里认领（读后即删），在页面上盖一层回放（chart/replay.ts，一张自己的图，不碰实时图与偏好），
+ * 盖着的时候实时图暂停、K 线流退订；退出就拆掉那层，回到「我的」原处（像 iOS 回放盖在复盘本上）。
+ *
  * 个性化学习只读结论（照 iOS Habits.opening / effectivePriceMode）：换品种那一下用学到的周期、
  * 价格轴用这一类学到的那档（不写回 st）；记录停留这一半手机网页版不做，只照 notePriceAxisPicked
  * 把图表设置里亲手切的线性 / 对数记成这一类的结论（不然学到的那档会把亲手选的盖回去）。
@@ -40,6 +44,10 @@ import { openAnalysis, openChartSettings, openOrderFlowEditor, type PanelContext
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
+import { startReplay, type ReplaySession } from './chart/replay'
+import { parseIntent } from '../model/replayLogic'
+import { INTENT_KEY, INTENT_EVENT } from '../model/reviewBook'
+import { onBack } from '../ui/backStack'
 import '../styles/chart.css'
 
 const LANDSCAPE = '(orientation: landscape) and (max-height: 500px)'
@@ -88,6 +96,7 @@ export function initChart(root: HTMLElement): PageHandle {
   wireNoteUploads()
 
   let shown = false
+  let replay: ReplaySession | null = null
   let port: PagePort | null = null
   const sym = (): string => st.symbol
   const iv = (): IntervalId => st.interval
@@ -119,7 +128,7 @@ export function initChart(root: HTMLElement): PageHandle {
   page.append(box)
   let chartStreams: string[] = []
   const pushStreams = (): void => {
-    if (!shown) { wantStreams('chart', []); return }
+    if (!shown || replay) { wantStreams('chart', []); return }
     wantStreams('chart', [...chartStreams, streamName.ticker(sym()), streamName.mark(sym())])
   }
   const chart: ChartHandle = createChart(box, {
@@ -341,6 +350,48 @@ export function initChart(root: HTMLElement): PageHandle {
     }, 600)
   }
 
+  // ---- 复盘本来的回放（replay 声明在前头：K 线流回调里要看它）
+  let offReplayBack: (() => void) | null = null
+  let lastIntentAt = 0
+  const takeIntent = (detail?: unknown): void => {
+    let raw: unknown = detail
+    try {
+      const v = sessionStorage.getItem(INTENT_KEY)
+      if (v != null) { sessionStorage.removeItem(INTENT_KEY); raw = JSON.parse(v) }
+    } catch { /* 读不到就只靠事件 */ }
+    const intent = parseIntent(raw, Date.now())
+    if (!intent || intent.at === lastIntentAt) return
+    lastIntentAt = intent.at
+    beginReplay(intent)
+  }
+  function endReplay(): void {
+    if (!replay) return
+    replay.destroy(); replay = null
+    offReplayBack?.(); offReplayBack = null
+    document.getElementById('m-app')?.classList.remove('replay-free')
+    if (shown) { chart.resume(); port?.resume(); pushStreams(); render() }
+  }
+  function leaveReplay(): void { endReplay(); go('me') }
+  function beginReplay(intent: NonNullable<ReturnType<typeof parseIntent>>): void {
+    endReplay()
+    closeAllSheets()
+    if (bench.active) bench.setActive(false)
+    wantDraw = false; guide.hidden = true
+    chart.clearCrosshair()
+    chart.pause(); port?.suspend(); wantStreams('chart', [])
+    document.getElementById('m-app')?.classList.add('replay-free')
+    replay = startReplay(intent, {
+      page,
+      priceMode: effectivePriceMode,
+      indicatorColors: () => colorTable(st.indicatorColors),
+      onExit: leaveReplay,
+      onFail: msg => { toast(msg); leaveReplay() },
+    })
+    offReplayBack = onBack(() => { offReplayBack = null; leaveReplay() }, 'chart')
+  }
+  window.addEventListener(INTENT_EVENT, e => { if (shown) takeIntent((e as CustomEvent).detail) })
+  hooks.onTheme.push(() => { (replay as (ReplaySession & { restyle?: () => void }) | null)?.restyle?.() })
+
   layout()
   syncChart()
 
@@ -359,9 +410,11 @@ export function initChart(root: HTMLElement): PageHandle {
       tick = window.setInterval(render, 1000)
       void flushNotes()
       deepLink()
+      takeIntent()
     },
     hide(): void {
       shown = false
+      endReplay()
       clearInterval(tick)
       if (bench.active) bench.setActive(false)
       bench.closeSheets()

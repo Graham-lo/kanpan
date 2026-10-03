@@ -725,4 +725,4 @@ export const INTENT_KEY = 'hkline-m-review-intent'
 export const INTENT_EVENT = 'hkline:review-intent'
 
 export type IntentKind = 'revisit' | 'match' | 'trade'
-export interface ReviewIntent<P = unknown> { kind: IntentKind; at: number; plan: P }
+export interface ReviewIntent<P = unknown> { kind: IntentKind; at: number; plan: P; market?: string | null }

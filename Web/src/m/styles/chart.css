@@ -585,3 +585,71 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
 }
 .cp-primary:active { opacity: 0.8 }
 .cp-note .cp-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none }
+
+/* ───────────── 复盘本来的回放（照 iOS ReplayHeaderView / ReviewReplayControls） ─────────────
+ * 盖在整张行情页上：页头 · 图 · 播放条；播放条顶替底栏（#m-app.replay-free 把底栏收掉） */
+#m-app.replay-free .m-tabbar { display: none }
+.cp-replay {
+  position: absolute; inset: 0; z-index: 30;
+  display: flex; flex-direction: column;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  background: var(--chart); color: var(--ink);
+}
+.cp-rhead { flex: none; display: flex; flex-direction: column; gap: 2px; padding: var(--s-s) var(--inset-page) }
+.cp-rtitle { font: var(--t-title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.cp-rrow { display: flex; align-items: center; justify-content: space-between; gap: var(--s-s); min-height: 20px }
+.cp-rtime { font: 400 12px/1.3 var(--font-num); font-variant-numeric: tabular-nums; color: var(--ink3) }
+.cp-rcap {
+  flex: none; height: 20px; padding: 0 8px; border-radius: 999px;
+  display: inline-flex; align-items: center;
+  font: var(--t-number); font-variant-numeric: tabular-nums;
+  color: var(--ink2); background: color-mix(in srgb, var(--ink2) 15%, transparent);
+}
+.cp-rcap.up { color: var(--up); background: color-mix(in srgb, var(--up) 15%, transparent) }
+.cp-rcap.down { color: var(--down); background: color-mix(in srgb, var(--down) 15%, transparent) }
+.cp-rcap[hidden] { display: none }
+.cp-rohlc {
+  display: flex; flex-wrap: wrap; column-gap: 10px;
+  font: 400 12px/1.4 var(--font-num); font-variant-numeric: tabular-nums; color: var(--ink2); white-space: pre;
+}
+.cp-rcaption { font: var(--t-footnote); color: var(--ink2); min-height: 18px }
+.cp-rcaption[hidden] { display: none }
+.cp-rchart { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden }
+.cp-rscroll { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none }
+.cp-rscroll::-webkit-scrollbar { display: none }
+.cp-rcontent { position: relative; width: 100%; height: 100% }
+.cp-rwait {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--chart); color: var(--ink3); font: var(--t-footnote);
+}
+.cp-rwait[hidden] { display: none }
+
+.cp-rbar {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  height: 52px; padding: 0 calc(var(--inset-page) - 6px);
+}
+.cp-rbtn {
+  flex: none; min-width: var(--hit); height: var(--hit); padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: var(--t-control); color: var(--ink2); background: none; border: 0;
+}
+.cp-rbtn:active:not(:disabled) { opacity: 0.6 }
+.cp-rbtn:disabled { opacity: var(--disabled-opacity) }
+.cp-rplay { width: var(--hit); padding: 0; color: var(--ink) }
+.cp-rspeed { font: var(--t-number); font-variant-numeric: tabular-nums; min-width: 36px }
+.cp-rkey { color: var(--accent) }
+.cp-rscrub { position: relative; flex: 1 1 auto; min-width: 60px; height: var(--hit); touch-action: none; cursor: pointer; outline: none }
+.cp-rscrub.off { pointer-events: none; opacity: var(--disabled-opacity) }
+.cp-rtrack {
+  position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; border-radius: 1px; overflow: hidden;
+  background: color-mix(in srgb, var(--ink3) 20%, transparent);
+}
+.cp-rfill { height: 100%; width: 0; background: var(--accent) }
+.cp-rticks { position: absolute; left: 0; right: 0; top: 50%; height: 0 }
+.cp-rticks i { position: absolute; top: -3px; width: 1px; height: 6px; margin-left: -0.5px; background: var(--ink2) }
+.cp-rticks i.on { background: var(--accent) }
+.cp-rknob {
+  position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
+  background: var(--accent); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out);
+}
+.cp-rscrub.dragging .cp-rknob { opacity: 1 }
