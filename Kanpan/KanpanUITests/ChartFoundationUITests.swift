@@ -1389,12 +1389,16 @@ final class ChartFoundationUITests: XCTestCase {
       scroll.swipeUp()
     }
     XCTAssertTrue(toggle.waitForExistence(timeout: 5)); toggle.tap()
+    // 编辑入口在面板最上面「指标」那一节。只在它确实在可视区上方时往回拉：已经到顶还往下拉，
+    // 拉的就是面板本身，面板被拉走（压测 2026-10-03 在 17 Pro Max 上每次都这样：按钮左缘 7.999…、
+    // 滚动区左缘 8.0，`frame.contains` 被浮点差卡住永远不成立，于是一直往下拉）。只看纵向中点。
     let rsi = app.buttons["indicator.edit.RSI"]
-    for _ in 0..<5 {
-      if rsi.exists, rsi.isHittable, scroll.frame.contains(rsi.frame) { break }
-      scroll.swipeDown()
-    }
     XCTAssertTrue(rsi.waitForExistence(timeout: 5))
+    for _ in 0..<5 {
+      let f = rsi.frame, s = scroll.frame
+      if rsi.isHittable, f.midY >= s.minY, f.midY <= s.maxY { break }
+      if f.midY < s.minY { scroll.swipeDown() } else { Thread.sleep(forTimeInterval: 0.3) }
+    }
     rsi.tap()
     XCTAssertTrue(app.textFields["indicator.param.0.field"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.textFields["indicator.rsi.upper.field"].exists, "RSI 上限已收掉")

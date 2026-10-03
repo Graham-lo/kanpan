@@ -698,6 +698,11 @@ struct MainScreen: View {
     dismissPanel()
     didLeaveLaunch = true
     landingHeld = false
+    // 行情页上再点一下「图表」= 回到最新（和双击图同一件事）。周期条行尾那颗「最新」药丸
+    // 2026-10-02 按用户要求删了，从历史回来就靠这两条，加上往左拖到头。
+    // 人没离开这张图：来路（顶栏返回）和扫图名单都留着——原来走下面那两句一起作废，
+    // 扫自选扫到一半点一下回到最新，横滑就再也换不了品种、返回也没了（压测 2026-10-03）。
+    if next == tab, next == .chart { proxy.scrollToLatest(); return }
     // 底栏是常驻标签栏，自己点一格就是「回家」——上一次的来路作废，
     // 顶栏那颗返回跟着收起来。
     chartOrigin = nil
@@ -707,9 +712,6 @@ struct MainScreen: View {
     // 再点一下已经站着的那一格 = 回到这一页的根。板块页下钻了两层时尤其需要：
     // 底栏那一格是它唯一的出口。
     if next == tab, next == .sectors { sectorRoute = [] }
-    // 行情页上再点一下「图表」= 回到最新（和双击图同一件事）。周期条行尾那颗「最新」药丸
-    // 2026-10-02 按用户要求删了，从历史回来就靠这两条，加上往左拖到头。
-    if next == tab, next == .chart { proxy.scrollToLatest() }
     guard next != tab else { return }
     if next != .chart { draw.finish() }
     tab = next
