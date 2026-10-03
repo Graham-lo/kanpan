@@ -1536,7 +1536,8 @@ async function partFlow() {
     const det = await page.evaluate(() => { const e = document.querySelector('#detail'); const t = e?.querySelector('.of-tps'); return e ? { t: t?.textContent?.trim() ?? '', over: e.scrollHeight - e.clientHeight, svg: !!t?.querySelector('svg') } : null })
     ok('详情里有「每秒成交」一行加小折线，不溢出', !!det && /每秒成交/.test(det.t) && det.svg && det.over <= 1, JSON.stringify(det))
 
-    // ---- 成交流
+    // ---- 成交流（上面换梯子模式时整页重载过一次，成交流随之清空；清淡时段 ≥ 门槛 ÷ 50 的成交一分钟才一两笔，先等到有行再断言）
+    await page.waitForFunction(() => window.__of()?.tapeRows.length > 0, null, { timeout: 90000, polling: 1000 }).catch(() => {})
     d = await ofd()
     const big = d.bigTrade, base = big * 5
     const rows = d.tapeRows
