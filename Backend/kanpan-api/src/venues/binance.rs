@@ -12,7 +12,7 @@
 //! 一台主机的出口 IP 由所有网页用户共享，币安按 IP 记权重（合约 2400 / 分钟），超了回 429、
 //! 再打就 418 封 IP——封了连同机的 Python 网关一起遭殃。所以：
 //! 1. 短 TTL 缓存 + 同键并发合流：三台手机同时启动，`exchangeInfo` 只打一次；
-//! 2. 按官方权重表记一分钟滚动预算（这里取 1000，余下留给 Python 网关与推送 hub），
+//! 2. 按官方权重表记一分钟滚动预算（这里取 1600，余下留给 Python 网关、推送 hub 与本进程的归档任务），
 //!    超了先排队等最早的几笔滚出窗口，排不上回 429；
 //! 3. 回了 429 / 418 整进程按 `Retry-After` 冷却，`X-MBX-USED-WEIGHT-1M` 逼近上限时也先停到下一分钟。
 use axum::body::Bytes;
@@ -78,8 +78,11 @@ fn ttl_of(path:&str,query:&[(String,String)])->Duration {
 
 // ------------------------------------------------------------------ 权重预算（纯逻辑，单测覆盖）
 
-/// 一分钟滚动窗口里的本地预算。官方 2400，这里只用一小半：同一出口还有 Python 网关与推送 hub。
-const BUDGET:u32=1000;
+/// 一分钟滚动窗口里的本地预算。官方 2400，同一出口还有 Python 网关、推送 hub 与板块 / OI 归档
+/// （2026-10-03 实测这些合计一分钟 15–500）；真正防封的是下面 `UPSTREAM_STOP` 那道按币安自报权重的闸。
+/// 网页每个浏览器走网关时只用 800（Web/src/market/limit.ts GATEWAY_SHARE），这里要装得下两台同时开十六图——
+/// 原来的 1000 连一台的 1200 都装不下，一台高频切换就把排队挤爆，回 429 让整片格子空着。
+const BUDGET:u32=1600;
 const WINDOW:Duration=Duration::from_secs(60);
 /// 排队超过这么久就不排了，直接回 429：客户端有自己的退避。
 const LONGEST_QUEUE:Duration=Duration::from_secs(8);
@@ -259,7 +262,7 @@ mod tests {
  #[test] fn the_ledger_queues_at_the_budget_and_cools_on_demand() {
   let mut l=Ledger::default();
   let t0=Instant::now();
-  for _ in 0..25 {assert_eq!(l.admit(t0,40),Ok(()));}            // 1000 用满
+  for _ in 0..40 {assert_eq!(l.admit(t0,40),Ok(()));}            // 1600 用满
   let wait=l.admit(t0+Duration::from_secs(10),1).unwrap_err();
   assert_eq!(wait,Duration::from_secs(50),"等最早那笔滚出窗口");
   assert_eq!(l.admit(t0+WINDOW,1),Ok(()),"一分钟后整窗清空");
