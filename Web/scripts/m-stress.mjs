@@ -103,9 +103,13 @@ if (want('offline')) {
 }
 
 // ───────── 换品种（顶栏价格区横滑）、换周期各 40 次：连接始终一条、订阅不累积、DOM 不涨
+// 横滑扫图只在「从自选 / 板块列表点进来」时有名单（照 iOS ScanList：直接开图、搜索进来都不冻结名单），
+// 所以从自选页点第一行进图，不能直接开 #chart。
 if (want('switch')) {
   const { ctx, p } = await page()
-  await p.goto(URL_ + '#chart'); await p.waitForSelector('.cp-head'); await sleep(6000)
+  await p.goto(URL_ + '#favorites'); await p.waitForSelector('.lr[data-sym]'); await sleep(1500)
+  const rows = await p.evaluate(() => document.querySelectorAll('.lr[data-sym]').length)
+  await p.click('.lr[data-sym]'); await p.waitForSelector('.cp-head'); await sleep(6000)
   const box = await p.locator('.cp-head').boundingBox()
   const ws = () => p.evaluate(() => ({ live: window.__ws.live.size, open: [...window.__ws.live].filter(s => s.readyState === 1).length, subs: window.__ws.subs, unsubs: window.__ws.unsubs }))
   const m0 = await p.metrics(), w0 = await ws()
@@ -123,7 +127,8 @@ if (want('switch')) {
   const m1 = await p.metrics(), w1 = await ws()
   // 在场的订阅 = 净订阅；换来换去之后应当和开始时同一个量级（只剩当前这一只的几路）
   const net0 = w0.subs - w0.unsubs, net1 = w1.subs - w1.unsubs
-  ok(`换品种 ${done} 次、换周期 40 次连接只有一条`, w1.live === 1 && w1.open === 1, JSON.stringify(w1))
+  ok(`换品种 ${done} 次（自选 ${rows} 只来回扫）`, done >= 20, `撞到头 ${bounce} 次`)
+  ok('换周期 40 次后连接只有一条', w1.live === 1 && w1.open === 1, JSON.stringify(w1))
   ok('订阅不累积', net1 <= net0 + 4, `开始净订阅 ${net0}，结束 ${net1}（订 ${w1.subs} / 退 ${w1.unsubs}）`)
   ok('DOM 不涨', m1.nodes - m0.nodes < 300, `节点 ${m1.nodes - m0.nodes >= 0 ? '+' : ''}${m1.nodes - m0.nodes}、堆 ${m0.heap.toFixed(1)}→${m1.heap.toFixed(1)} MB`)
   ok('换品种段无报错', !(await p.evaluate(() => window.__errs.length)), (await p.evaluate(() => window.__errs.join(' | '))).slice(0, 300))
