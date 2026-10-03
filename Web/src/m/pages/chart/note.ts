@@ -5,6 +5,11 @@
  * 先落本地队列（hkline-m-notes-v1，截图另存 hkline-m-notes-shots-v1），再上传；
  * 没登录、断网时留在队列里，登录、联网、打开行情页时各补传一次。幂等键就是记录编号，重发不会记成两条。
  * 服务端明确拒收（400 / 409 / 422）的那条不再重试，直接丢掉。
+ *
+ * 没记完的那一笔（照 iOS ReviewStore.saveDraft）：卡上每动一下就把写的话、方向、手改过的价存进
+ * hkline-m-note-draft-v1，收起卡不丢；同品种同周期再打开记一笔就接着写（unfinishedNote）。
+ * 复盘本右上「+」与「继续未完成的记录」走 requestNote → resumeNote：有草稿先切回它的品种和周期，
+ * 等那张图的 K 线到了再开卡；没有就在眼下这张图上新记。规则见 model/noteDraft.ts。
  */
 import type { ChartHandle } from '../../chart'
 import { INTERVAL_SHORT } from '../../chart/series'
@@ -24,6 +29,7 @@ import {
 } from '../../../notes/draft'
 import { chartCanvas, jpegBase64 } from './snapshot'
 import { monthDayTime } from './logic'
+import { NOTE_DRAFT_KEY, parseUnfinished, reusableFor, nextStored, type UnfinishedNote } from '../../model/noteDraft'
 
 export const NOTES_KEY = 'hkline-m-notes-v1'
 export const NOTE_SHOTS_KEY = 'hkline-m-notes-shots-v1'
@@ -100,6 +106,78 @@ export function wireNoteUploads(): void {
   addEventListener('online', () => { void flushNotes() })
 }
 
+// ───────────────────────────── 没记完的那一笔
+
+/** 本机存着的那份没记完的（没有 / 坏了就是 null） */
+export function unfinishedNote(): UnfinishedNote | null {
+  return parseUnfinished(readJSON<unknown>(NOTE_DRAFT_KEY, null))
+}
+function storeUnfinished(v: UnfinishedNote): void {
+  const saved = unfinishedNote()
+  switch (nextStored(saved, v)) {
+    case 'save': writeJSON(NOTE_DRAFT_KEY, v); break
+    case 'clear': try { localStorage.removeItem(NOTE_DRAFT_KEY) } catch { /* 无 */ } break
+    case 'keep': break
+  }
+}
+function clearUnfinished(symbol: string, interval: string): void {
+  if (reusableFor(unfinishedNote(), symbol, interval)) try { localStorage.removeItem(NOTE_DRAFT_KEY) } catch { /* 无 */ }
+}
+
+export interface ResumeContext extends NoteContext {
+  /** 把行情页切到这只品种、这个周期（草稿不是眼下这张图上的时候） */
+  switchTo(symbol: string, interval: IntervalId): void
+}
+
+/** 图上已经是这只、这个周期，且 K 线到了 */
+const loadedFor = (chart: ChartHandle, symbol: string, interval: string): boolean => {
+  const s = chart.state?.input.series
+  return chart.symbol === symbol && chart.interval === interval && !!s && !s.isEmpty && s.symbol === symbol && s.interval === interval
+}
+
+let waiting: (() => void) | null = null
+/** K 线到了再做（切品种、切周期之后要等一页数据）；最多等 12 秒 */
+function whenLoaded(chart: ChartHandle, symbol: string, interval: string, run: () => void): void {
+  waiting?.()
+  if (loadedFor(chart, symbol, interval)) { waiting = null; run(); return }
+  let done = false
+  const finish = (ok: boolean): void => {
+    if (done) return
+    done = true; off(); clearTimeout(timer); waiting = null
+    if (ok) run(); else toast('这段行情还没取到，稍后再记')
+  }
+  const off = chart.on('status', e => {
+    if (e.loading) return
+    // status 先于状态落到 chart.state：下一帧再量
+    requestAnimationFrame(() => { if (loadedFor(chart, symbol, interval)) finish(true) })
+  })
+  const timer = window.setTimeout(() => finish(loadedFor(chart, symbol, interval)), 12_000)
+  waiting = () => { done = true; off(); clearTimeout(timer) }
+}
+
+/** 接着写没记完的那一笔；没有就在眼下这张图上新记（复盘本右上「+」） */
+export function resumeNote(ctx: ResumeContext): void {
+  const d = unfinishedNote()
+  let sym = ctx.symbol(), iv: string = ctx.interval()
+  if (d && !reusableFor(d, sym, iv)) {
+    ctx.switchTo(d.symbol, d.interval as IntervalId)
+    sym = d.symbol; iv = d.interval
+  }
+  whenLoaded(ctx.chart, sym, iv, () => { openNote(ctx) })
+}
+
+let noteHandler: (() => void) | null = null
+let noteWanted = false
+/** 行情页挂上「要记一笔」的处理（resumeNote）；挂上之前就有人要了，立刻补做 */
+export function wireNoteRequests(fn: () => void): void {
+  noteHandler = fn
+  if (noteWanted) { noteWanted = false; fn() }
+}
+/** 别的页要记一笔（复盘本「+」）：先 go('chart') 再调这个 */
+export function requestNote(): void {
+  if (noteHandler) noteHandler(); else noteWanted = true
+}
+
 // ───────────────────────────── 取景
 
 export interface NoteContext {
@@ -149,17 +227,32 @@ export function openNote(ctx: NoteContext): Sheet | null {
   const px = (v: number): string => grouped(fmtPrice(v, dec))
   const plain = (v: number): string => fmtPrice(v, dec)
 
-  let direction: Direction = 'observe'
-  let confirmation: Confirmation = 'bar_close'
-  let origin: Origin = 'chart_first'
-  let text = ''
-  let target = '', invalidation = ''
-  let targetEdited = false, invalidationEdited = false
+  // 同品种同周期有没记完的：写的话、方向、手改过的价都接着用，区间换成眼下这一屏（iOS beginCapture）
+  const saved = unfinishedNote()
+  const resume = reusableFor(saved, sym, iv) ? saved! : null
+  let direction: Direction = resume?.direction ?? 'observe'
+  let confirmation: Confirmation = resume?.confirmation ?? 'bar_close'
+  let origin: Origin = resume?.origin ?? 'chart_first'
+  let text = resume?.text ?? ''
+  let targetEdited = !!resume?.targetEdited && !!resume.target
+  let invalidationEdited = !!resume?.invalidationEdited && !!resume.invalidation
+  let target = targetEdited ? resume!.target : ''
+  let invalidation = invalidationEdited ? resume!.invalidation : ''
   let busy = false
+  let saved_ = false
   const place = (): void => {
     const lv = sideLevels(direction, cap.reference, cap.high, cap.low)
     if (!targetEdited) target = plain(lv.target)
     if (!invalidationEdited) invalidation = plain(lv.invalidation)
+  }
+  /** 卡上每动一下存一次（收起卡不丢）；记下之后清掉 */
+  const persist = (): void => {
+    if (saved_) return
+    storeUnfinished({
+      symbol: sym.toUpperCase(), interval: iv, direction, confirmation, origin, text,
+      target: targetEdited ? target : '', invalidation: invalidationEdited ? invalidation : '',
+      targetEdited, invalidationEdited, updated: Date.now(),
+    })
   }
 
   const sheet = openSheet((body, sh) => {
@@ -192,12 +285,13 @@ export function openNote(ctx: NoteContext): Sheet | null {
     host.addEventListener('input', e => {
       const t = e.target as HTMLInputElement | HTMLTextAreaElement
       const f = t.dataset.f
-      if (f === 'text') { text = t.value; return }
+      if (f === 'text') { text = t.value; persist(); return }
       if (f === 'target' || f === 'invalidation') {
         const v = cleanPrice(t.value)
         if (v !== t.value) t.value = v
         if (f === 'target') { target = v; targetEdited = true } else { invalidation = v; invalidationEdited = true }
         error(null)
+        persist()
       }
     })
     host.addEventListener('click', e => {
@@ -208,8 +302,10 @@ export function openNote(ctx: NoteContext): Sheet | null {
         case 'conf': confirmation = b.dataset.v as Confirmation; render(); break
         case 'origin': origin = b.dataset.v as Origin; render(); break
         case 'reset': targetEdited = invalidationEdited = false; place(); render(); break
-        case 'save': void submit(); break
+        case 'save': void submit(); return
+        default: return
       }
+      persist()
     })
     const submit = async (): Promise<void> => {
       if (busy) return
@@ -222,6 +318,8 @@ export function openNote(ctx: NoteContext): Sheet | null {
       if (bad) { error(bad); return }
       busy = true
       enqueue(draft, shot)
+      saved_ = true
+      clearUnfinished(sym, iv)
       sh.close()
       if (!canUpload()) { toast('已记下 · 登录后自动上传'); return }
       if (!navigator.onLine) { toast('已记下 · 联网后自动上传'); return }

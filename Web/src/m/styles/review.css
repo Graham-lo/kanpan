@@ -124,6 +124,12 @@ button.rv-rec:active { background: color-mix(in srgb, var(--ink) 5%, transparent
 
 /* 空、错、转圈、登录 */
 .rv-line { font: var(--t-body); padding: var(--s-m) 0 }
+/* 「继续未完成的记录」：观点列表顶上一行，强调色字，和 iOS 那行 Label 同一个位置 */
+.rv-resume { width: 100%; display: flex; align-items: center; gap: var(--s-s); min-height: var(--row-min); padding: var(--s-s) 0; text-align: left; margin-bottom: var(--s-s) }
+.rv-resume b { font: var(--t-body-emph); color: var(--accent) }
+.rv-resume small { font: var(--t-caption); color: var(--ink3); white-space: nowrap }
+.rv-resume .me-chev { margin-left: auto; color: var(--ink3) }
+.rv-resume:active { background: color-mix(in srgb, var(--ink) 5%, transparent) }
 .rv-empty { padding: var(--s-xxl) 0; text-align: center; font: var(--t-body); color: var(--ink3) }
 .rv-link { min-height: var(--hit); display: inline-flex; align-items: center; font: var(--t-body-emph); color: var(--accent) }
 .rv-link:active { opacity: .6 }

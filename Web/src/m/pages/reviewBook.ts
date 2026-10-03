@@ -23,7 +23,8 @@
  *   planTrade）连同市场写进 sessionStorage[M.INTENT_KEY] 并在 window 上发 M.INTENT_EVENT，只把页面切到行情页；
  *   行情页认领这份意图，在实时图上盖一层回放（pages/chart/replay.ts），实时图的品种、周期、指标都不动。
  *   「我的」这一摞不退，点「退出」回来还在原处。
- * - 继续未完成的记录：那份草稿住在行情页的记一笔里（note.ts），复盘本这边「+」直接打开记一笔。
+ * - 继续未完成的记录：那份草稿住在行情页的记一笔里（note.ts 的 unfinishedNote）。有草稿时观点列表顶上多一行
+ *   「继续未完成的记录」，它和右上「+」一样走 requestNote：回行情页、切回草稿那只和那个周期、接着写；没有就新记。
  * - 接入交易所：交易所密钥只存在手机本机（iOS 钥匙串），网页不收密钥；交易面空着时写「接入交易所后自动生成」。
  * - 触感：用 navigator.vibrate（安卓 / 鸿蒙浏览器有；iOS Safari 没有这个接口，就安静地不震）。
  */
@@ -47,7 +48,8 @@ import { ChartRenderer } from '../chart/renderer'
 import { appChartOptions } from '../chart/index'
 import { makeDrawing } from '../chart/draw/drawing'
 import { assetOf, badgeHTML } from '../model/badge'
-import { flushNotes, pendingNotes } from './chart/note'
+import { flushNotes, pendingNotes, requestNote, unfinishedNote } from './chart/note'
+import { INTERVAL_SHORT } from '../chart/series'
 import { errorText, reviewApi, reviewBookApi, ReviewError, uuid } from '../../review/api'
 import { planMatch, planNote, planTrade } from '../../review/replay'
 import { groupRateText, resolvedGroups, roundDecimals } from '../../review/model'
@@ -532,23 +534,24 @@ function hydrateThumbs(root: HTMLElement, find: (id: string) => TradeRecord | un
   return () => io.disconnect()
 }
 
+/** 回行情页记一笔：有没记完的先切回它那只、那个周期接着写（iOS 复盘本「+」与「继续未完成的记录」同一条路） */
+function startNote(host: MeHost): void {
+  host.popToRoot()
+  go('chart')
+  requestNote()
+}
+
 // ───────── 复盘本 ─────────
 export function buildReviewBook(body: HTMLElement, layer: MeLayer, host: MeHost): void {
   wireSession()
   body.classList.add('rv-book')
 
-  // 导航栏右上：「+」记一笔（回行情页打开记一笔）·「…」已存案例
+  // 导航栏右上：「+」记一笔（有没记完的就接着写，没有就在行情页新记）·「…」已存案例
   const trail = document.createElement('div')
   trail.className = 'rv-trail'
   trail.innerHTML = `<button type="button" class="rv-disc" data-new aria-label="记一笔">${icon('plus', 16)}</button><button type="button" class="rv-disc" data-more aria-label="更多">${icon('more', 18)}</button>`
   layer.trailing.appendChild(trail)
-  trail.querySelector('[data-new]')!.addEventListener('click', () => {
-    host.popToRoot()
-    go('chart')
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      document.querySelector<HTMLElement>('#page-chart [data-act="note"]')?.click()
-    }))
-  })
+  trail.querySelector('[data-new]')!.addEventListener('click', () => startNote(host))
   const more = trail.querySelector<HTMLElement>('[data-more]')!
   more.addEventListener('click', () => {
     openMenu(more, [{ title: '已存案例', run: () => openSaved(host) }])
@@ -689,7 +692,9 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
     const s = M.sections(shownRecords())
     const group = (title: string | null, list: ViewRecordFull[]): string =>
       list.length ? `<section class="rv-lsec">${title ? secHead(title) : ''}<div class="rv-rows">${list.map(recordRow).join('')}</div></section>` : ''
-    let html = bookTab === 'todo' ? group('待处理', s.pending) + group('等答案', s.waiting)
+    const d = unfinishedNote()
+    let html = d ? `<button type="button" class="rv-resume" data-resume><b>继续未完成的记录</b><small class="num">${esc(d.symbol)} · ${esc(INTERVAL_SHORT[d.interval as keyof typeof INTERVAL_SHORT] ?? d.interval)}</small><span class="me-chev">${CHEV}</span></button>` : ''
+    html += bookTab === 'todo' ? group('待处理', s.pending) + group('等答案', s.waiting)
       : bookTab === 'decided' ? group(null, s.decided) : group(null, s.all)
     if (loading) html += spinner()
     if (error) html += `<div class="rv-line rv-danger">${esc(error)}</div><button type="button" class="rv-link" data-retry>重试</button>`
@@ -739,6 +744,7 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
       return
     }
     if (t.closest('[data-stats]')) { openStats(host); return }
+    if (t.closest('[data-resume]')) { startNote(host); return }
     if (t.closest('[data-retry]')) { void (next && records.length ? load(false) : load(true)); return }
     if (t.closest('[data-retry-trades]')) { refreshReviewStatus(true); paintTrades(); return }
     const rec = t.closest<HTMLElement>('[data-rec]')

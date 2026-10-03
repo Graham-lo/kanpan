@@ -19,7 +19,7 @@
  */
 import { st, save, subscribe } from '../app/store'
 import { INTERVALS, type IntervalId, type IndicatorId, type PriceMode } from '../app/prefs'
-import { hooks, nav, go, type PageHandle, type SyncChange } from '../app/shell'
+import { hooks, nav, go, openSymbol, type PageHandle, type SyncChange } from '../app/shell'
 import { drawingBook } from '../app/drawings'
 import { S, on as onMarket, streamName } from '../../market'
 import { createChart, type ChartHandle } from '../chart'
@@ -42,7 +42,7 @@ import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
 import { openAnalysis, openChartSettings, openOrderFlowEditor, type PanelContext, type AxisContext } from './chart/panels'
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
-import { openNote, flushNotes, wireNoteUploads } from './chart/note'
+import { openNote, resumeNote, wireNoteRequests, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
 import { startReplay, type ReplaySession } from './chart/replay'
 import { parseIntent } from '../model/replayLogic'
@@ -391,6 +391,20 @@ export function initChart(root: HTMLElement): PageHandle {
   }
   window.addEventListener(INTENT_EVENT, e => { if (shown) takeIntent((e as CustomEvent).detail) })
   hooks.onTheme.push(() => { (replay as (ReplaySession & { restyle?: () => void }) | null)?.restyle?.() })
+
+  // 复盘本右上「+」/「继续未完成的记录」：有没记完的先切回它那只、那个周期，K 线到了再开卡
+  wireNoteRequests(() => {
+    if (replay) endReplay()
+    bench.closeSheets()
+    resumeNote({
+      chart, symbol: sym, interval: iv,
+      switchTo: (s, i) => {
+        if (st.symbol !== s) openSymbol(s)
+        if (st.interval !== i) { st.interval = i; save() }
+        syncChart()
+      },
+    })
+  })
 
   layout()
   syncChart()
