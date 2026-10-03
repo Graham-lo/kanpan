@@ -257,7 +257,7 @@ button.rv-rec:active { background: color-mix(in srgb, var(--ink) 5%, transparent
 
 /* ───────── 找相似（底部大抽屉） ───────── */
 .m-sheet.rv-search-sheet { background: var(--app) }
-.rv-search-body { display: flex; flex-direction: column; gap: var(--s-m) }
+.rv-search-body { display: flex; flex-direction: column; gap: var(--s-m); padding: 0 var(--inset-page) }
 .rv-search-sheet .rv-seg { display: flex; width: 100% }
 .rv-search-sheet .rv-seg .m-seg-opt { flex: 1; min-width: 0 }
 .rv-sstate { display: flex; flex-direction: column; align-items: center; gap: var(--s-s); padding: var(--s-xxl) 0; text-align: center; font: var(--t-body) }
