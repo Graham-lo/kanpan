@@ -112,7 +112,7 @@ impl Depth {
 
  async fn fetch(&self,market:Market,symbol:&str,limit:u16)->Outcome {
   let base=match market {Market::Um=>&self.um,Market::Cm=>&self.cm};
-  let url=format!("{base}?symbol={symbol}&limit={limit}");
+  let url=format!("{base}?symbol={}&limit={limit}",crate::instruments::url_component(symbol));
   let gated=binance_gate::covers(&url);
   // 出口正被币安封着就连门都不敲：封禁期里继续敲，换来的只是封得更久。
   if gated&&binance_gate::blocked() {return Err(Failure::Busy)}
@@ -148,7 +148,7 @@ fn is_book(body:&[u8])->bool {
 }
 
 fn valid_symbol(symbol:&str)->bool {
- (2..=30).contains(&symbol.len())&&symbol.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit()||b==b'_')
+ (2..=30).contains(&symbol.chars().count())&&symbol.chars().all(crate::instruments::binance_symbol_char)
 }
 
 #[derive(Deserialize)]
@@ -258,7 +258,8 @@ mod tests {
    ("symbol=BTCUSD%2DPERP","invalid_symbol"),
    ("symbol=BTC%2FUSDT","invalid_symbol"),
    ("symbol=BTC%20USDT","invalid_symbol"),
-   ("symbol=%E4%B8%AD%E6%96%87","invalid_symbol"),
+   ("symbol=%E9%BE%99%E8%99%BE%2FUSDT","invalid_symbol"),   // 中文底名本身放行（龙虾USDT），夹斜杠照样拒
+   ("symbol=%E9%BE%99%E8%99%BE%20USDT","invalid_symbol"),
    ("symbol=BTCUSDT&limit=100","invalid_limit"),
    ("symbol=BTCUSDT&limit=5000","invalid_limit"),
    ("symbol=BTCUSDT&limit=0","invalid_limit"),
@@ -306,6 +307,14 @@ mod tests {
   assert_eq!(fake.hits.load(Ordering::SeqCst),2,"缓存键带 market：cm 的簿不能拿去答 um");
   assert_eq!(call(&depth,"symbol=BTCUSD_PERP&market=cm").await.0,StatusCode::OK);
   assert_eq!(fake.hits.load(Ordering::SeqCst),2,"同一 market 一秒内复用");
+ }
+
+ #[tokio::test]
+ async fn chinese_named_contracts_reach_upstream_percent_encoded() {
+  // 币安挂着「龙虾USDT」这类中文底名的永续；以前这里只认 ASCII，深度直接 400。
+  let (fake,depth)=upstream("/fapi/v1/depth",TIMEOUT).await;
+  assert_eq!(call(&depth,"symbol=%E9%BE%99%E8%99%BEUSDT&limit=1000").await.0,StatusCode::OK);
+  assert_eq!(*fake.query.lock().unwrap(),"symbol=%E9%BE%99%E8%99%BEUSDT&limit=1000","中文编成 %XX 再拼进上游 URL");
  }
 
  #[tokio::test]

@@ -204,7 +204,7 @@ impl<S:Send+Sync> FromRequestParts<S> for Source {
 }
 // ------------------------------------------------------------------ 白名单
 
-fn lower_symbol(s:&str)->bool {(2..=40).contains(&s.len())&&s.bytes().all(|b|b.is_ascii_lowercase()||b.is_ascii_digit()||b==b'_')}
+fn lower_symbol(s:&str)->bool {(2..=40).contains(&s.chars().count())&&s.chars().all(crate::instruments::binance_stream_symbol_char)}
 
 /// 一路币安流名合不合规：`^[a-z0-9_]{2,40}@(depth@100ms|aggTrade)$`。
 pub fn valid_binance_stream(stream:&str)->bool {
@@ -446,7 +446,7 @@ struct StreamsQuery {streams:String}
 
 async fn binance(relay:Arc<Relay>,source:Source,query:StreamsQuery,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>)->Response {
  let Some(streams)=binance_streams(&query.streams) else {return ApiError::bad("invalid_streams").into_response()};
- let urls=binance_lanes(&streams).into_iter().map(|(lane,group)|format!("{}?streams={}",relay.binance.url(lane),group.join("/"))).collect();
+ let urls=binance_lanes(&streams).into_iter().map(|(lane,group)|format!("{}?streams={}",relay.binance.url(lane),group.iter().map(|s|crate::instruments::url_component(s)).collect::<Vec<_>>().join("/"))).collect();
  open(&relay,Kind::Binance,source,urls,ws).await
 }
 
@@ -488,11 +488,11 @@ mod tests {
 
  #[test]
  fn binance_stream_names() {
-  for good in ["btcusdt@depth@100ms","btcusdt@aggTrade","btcusd_perp@depth@100ms","btcusd_260925@aggTrade","btcusdt_261225@depth@100ms","1000pepeusdt@aggTrade"] {
+  for good in ["btcusdt@depth@100ms","btcusdt@aggTrade","btcusd_perp@depth@100ms","btcusd_260925@aggTrade","btcusdt_261225@depth@100ms","1000pepeusdt@aggTrade","龙虾usdt@aggTrade","币安人生usdt@depth@100ms"] {
    assert!(valid_binance_stream(good),"{good}");
   }
   for bad in ["","btcusdt","BTCUSDT@aggTrade","btcusdt@depth","btcusdt@depth@500ms","btcusdt@depth20@100ms","btcusdt@kline_1m","btcusdt@aggtrade",
-   "b@aggTrade","@aggTrade",&format!("{}@aggTrade","a".repeat(41)),"btc-usdt@aggTrade","btcusdt@aggTrade ","btcusdt@aggTrade@x","!miniTicker@arr","btcusdt@forceOrder"] {
+   "b@aggTrade","@aggTrade",&format!("{}@aggTrade","a".repeat(41)),"btc-usdt@aggTrade","btcusdt@aggTrade ","btcusdt@aggTrade@x","!miniTicker@arr","btcusdt@forceOrder","龙虾USDT@aggTrade","龙虾 usdt@aggTrade"] {
    assert!(!valid_binance_stream(bad),"{bad}");
   }
   assert_eq!(binance_streams("btcusdt@aggTrade/btcusd_perp@depth@100ms"),Some(vec!["btcusdt@aggTrade".to_owned(),"btcusd_perp@depth@100ms".to_owned()]));

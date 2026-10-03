@@ -35,6 +35,38 @@ pub const QUOTE_ASSETS:[&str;6]=["USDT","USDC","FDUSD","BUSD","USD1","TUSD"];
 /// 会被剥成 `ETHFD`。`suffixes_are_ordered_longest_first` 钉着这一条。
 pub const QUOTE_SUFFIXES:[&str;8]=["FDUSD","BUSD","TUSD","USDT","USDC","USDD","USD1","USD"];
 
+/// 币安合约代号（大写形式）里允许的一个字符：ASCII 大写、数字、下划线，或者**非 ASCII 的 Unicode 字母数字**——
+/// 币安挂着「币安人生USDT」「龙虾USDT」这类中文底名的永续（2026-10-03 有五只），行情推送、REST、深度都照常给。
+/// 同步层的 `sync_validation::binance_symbol` 早就这么认；行情这几条路（REST 透传、深度快照、订单流中继、
+/// stream-hub）以前只认 ASCII，一只中文合约混进订阅就让**整条** WS 握手 400、整页行情断掉。
+pub fn binance_symbol_char(c:char)->bool {c.is_ascii_uppercase()||c.is_ascii_digit()||c=='_'||(!c.is_ascii()&&c.is_alphanumeric())}
+/// 小写形式（币安流名 `龙虾usdt@aggTrade`）：中文没有大小写，规则同上、只把 ASCII 大写换成小写。
+pub fn binance_stream_symbol_char(c:char)->bool {c.is_ascii_lowercase()||c.is_ascii_digit()||c=='_'||(!c.is_ascii()&&c.is_alphanumeric())}
+
+/// 拼进上游 URL 之前的百分号编码：非 ASCII（中文底名）和保留字符都编成 `%XX`。
+/// `format!` 直接把「龙虾USDT」塞进 URL，`http::Uri` 解析不了，连接根本发不出去。
+/// `@` 留着（币安流名 `sym@aggTrade` 本来就带它，查询串里合法）。
+pub fn url_component(s:&str)->String {
+ let mut out=String::with_capacity(s.len());
+ for b in s.bytes() {
+  if b.is_ascii_alphanumeric()||matches!(b,b'_'|b'-'|b'.'|b'~'|b'@') {out.push(b as char)} else {out.push_str(&format!("%{b:02X}"))}
+ }
+ out
+}
+
+/// `url_component` 的反方向：查询串里一个值的 `%XX` 还原成 UTF-8；编码坏了或不是 UTF-8 就是 `None`。
+/// 自己读原始查询串的接口（`hourly-closes` 的 `symbols=`）要靠它认出浏览器编过的中文底名。
+pub fn url_decode(s:&str)->Option<String> {
+ let b=s.as_bytes();let mut out=Vec::with_capacity(b.len());let mut i=0;
+ while i<b.len() {
+  if b[i]==b'%' {
+   let hex=std::str::from_utf8(b.get(i+1..i+3)?).ok()?;
+   out.push(u8::from_str_radix(hex,16).ok()?);i+=3;
+  } else {out.push(b[i]);i+=1}
+ }
+ String::from_utf8(out).ok()
+}
+
 /// 一个代号的 base：`BTCUSDT` → `BTC`、`SPCXUSD1` → `SPCX`、`BTC-USD`（Coinbase 现货）→ `BTC`。
 ///
 /// 认不出计价资产、或者剥完什么都不剩（`USDT` 本身）就原样返回——宁可显示整串代号，
@@ -88,6 +120,20 @@ pub fn is_live_perpetual(row:&Value)->bool {
 mod tests {
  use super::*;
  use serde_json::json;
+
+ #[test]
+ fn chinese_base_names_are_symbols_and_get_encoded() {
+  assert!("龙虾USDT".chars().all(binance_symbol_char)&&"BTCUSD_PERP".chars().all(binance_symbol_char));
+  assert!(!"btcusdt".chars().all(binance_symbol_char)&&!"龙虾/USDT".chars().all(binance_symbol_char)&&!"龙虾 USDT".chars().all(binance_symbol_char));
+  assert!("龙虾usdt".chars().all(binance_stream_symbol_char)&&!"龙虾USDT".chars().all(binance_stream_symbol_char));
+  assert_eq!(url_component("龙虾usdt@aggTrade"),"%E9%BE%99%E8%99%BEusdt@aggTrade");
+  assert_eq!(url_component("BTCUSDT"),"BTCUSDT");
+  assert_eq!(url_component("a/b&c=d"),"a%2Fb%26c%3Dd");
+  assert_eq!(url_decode("%E9%BE%99%E8%99%BEUSDT").as_deref(),Some("龙虾USDT"));
+  assert_eq!(url_decode(&url_component("币安人生USDT")).as_deref(),Some("币安人生USDT"));
+  assert_eq!(url_decode("%E9%BE"),None,"半个字");
+  assert_eq!(url_decode("%G1"),None);
+ }
 
  /// 剥后缀按顺序试，所以一个后缀若以另一个结尾，它必须排在前面。
  #[test] fn suffixes_are_ordered_longest_first() {

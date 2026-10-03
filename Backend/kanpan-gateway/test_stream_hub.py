@@ -59,6 +59,11 @@ class BudgetTests(unittest.TestCase):
 
     def test_stream_validation(self):
         self.assertEqual(streams(['btcusdt@ticker', 'btcusdt@ticker']), {'btcusdt@ticker'})
+        # Chinese-named perpetuals are real streams; a space, slash or uppercase is not.
+        self.assertEqual(streams(['龙虾usdt@ticker', '币安人生usdt@kline_1m', 'btcusdt@aggTrade']),
+                         {'龙虾usdt@ticker', '币安人生usdt@kline_1m', 'btcusdt@aggTrade'})
+        for value in [['龙虾 usdt@ticker'], ['龙虾/usdt@ticker'], ['龙虾USDT@ticker'], ['龙虾usdt@trade']]:
+            with self.assertRaises(ValueError): streams(value)
         for value in [['https://example.com'], ['../secret'], ['btcusdt@trade'], ['btcusdt@kline_1y'], ['x'] * 65]:
             with self.assertRaises(ValueError): streams(value)
 

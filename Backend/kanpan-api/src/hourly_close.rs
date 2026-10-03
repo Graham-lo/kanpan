@@ -116,8 +116,10 @@ pub fn parse_symbols(query:Option<&str>)->Option<Vec<String>> {
  let raw=raw.replace("%2C",",").replace("%2c",",");
  let mut out:Vec<String>=Vec::new();
  for symbol in raw.split(',') {
-  if symbol.is_empty()||symbol.len()>32||!symbol.chars().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()||c=='_') {return None}
-  out.push(symbol.to_owned());
+  // 中文底名合约（龙虾USDT）浏览器会编成 %XX 送来；以前这里见 % 就整批 400，一个板块的走势线全空。
+  let symbol=crate::instruments::url_decode(symbol)?;
+  if symbol.is_empty()||symbol.chars().count()>32||!symbol.chars().all(crate::instruments::binance_symbol_char) {return None}
+  out.push(symbol);
  }
  out.sort_unstable();out.dedup();
  (!out.is_empty()&&out.len()<=MAX_SYMBOLS).then_some(out)
@@ -148,7 +150,7 @@ async fn throttle() {
 enum Fetch {Body(Value),Skip,Retry,Banned}
 
 async fn klines(symbol:&str,limit:usize)->Fetch {
- let url=format!("{KLINES}?symbol={symbol}&interval=1h&limit={limit}");
+ let url=format!("{KLINES}?symbol={}&interval=1h&limit={limit}",crate::instruments::url_component(symbol));
  for attempt in 0..TRANSPORT_TRIES {
   if let Some(left)=binance_gate::wait() {
    tracing::warn!("Hourly closes: this egress is held for another {}s; stopping the round",left.as_secs());
@@ -317,6 +319,9 @@ mod tests {
  fn the_symbols_parameter_is_one_to_two_hundred_contract_names() {
   assert_eq!(parse_symbols(Some("symbols=ETHUSDT,BTCUSDT,ETHUSDT")),Some(vec!["BTCUSDT".to_owned(),"ETHUSDT".to_owned()]));
   assert_eq!(parse_symbols(Some("x=1&symbols=BTCUSDT%2C1000PEPEUSDT")),Some(vec!["1000PEPEUSDT".to_owned(),"BTCUSDT".to_owned()]));
+  // 浏览器把中文底名编成 %XX 送来（板块里混着「龙虾USDT」时整批不能 400）。
+  assert_eq!(parse_symbols(Some("symbols=BTCUSDT,%E9%BE%99%E8%99%BEUSDT")),Some(vec!["BTCUSDT".to_owned(),"龙虾USDT".to_owned()]));
+  assert_eq!(parse_symbols(Some("symbols=%E9%BE%99%E8%99%BE%2FUSDT")),None);
   for bad in [None,Some(""),Some("symbols="),Some("symbols=btcusdt"),Some("symbols=BTCUSDT,,ETHUSDT"),Some("symbols=BTC%20USDT"),Some("symbol=BTCUSDT")] {
    assert_eq!(parse_symbols(bad),None,"{bad:?}");
   }

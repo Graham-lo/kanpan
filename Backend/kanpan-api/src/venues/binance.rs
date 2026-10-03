@@ -43,7 +43,7 @@ fn upstream_of(path:&str)->Option<&'static str> {
 fn query_ok(key:&str,value:&str)->bool {
  matches!(key,"symbol"|"pair"|"interval"|"limit"|"startTime"|"endTime"|"period")
   &&!value.is_empty()&&value.len()<=64
-  &&value.bytes().all(|c|c.is_ascii_alphanumeric()||c==b'_'||c==b'-')
+  &&value.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'||c=='-'||(!c.is_ascii()&&c.is_alphanumeric()))  // 中文底名合约（龙虾USDT），见 instruments::binance_symbol_char
 }
 fn param<'a>(query:&'a [(String,String)],key:&str)->Option<&'a str> {
  query.iter().find(|(k,_)|k==key).map(|(_,v)|v.as_str())
@@ -231,6 +231,7 @@ mod tests {
   }
   assert!(query_ok("symbol","LINKUSDT")&&query_ok("endTime","1700000000000")&&query_ok("period","5m"));
   assert!(!query_ok("source","binance")&&!query_ok("apiKey","x")&&!query_ok("symbol","")&&!query_ok("symbol","a b")&&!query_ok("symbol","x/..")&&!query_ok("symbol",&"A".repeat(65)));
+  assert!(query_ok("symbol","龙虾USDT")&&query_ok("symbol","币安人生USDT")&&!query_ok("symbol","龙虾 USDT")&&!query_ok("symbol","龙虾／USDT"));
  }
 
  #[test] fn weights_follow_the_official_table() {

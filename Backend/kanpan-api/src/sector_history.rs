@@ -111,7 +111,8 @@ pub fn perpetuals(body:&Value)->Vec<String> {
  let mut out:Vec<String>=rows.iter().filter(|row|crate::instruments::is_live_perpetual(row)).filter_map(|row|row["symbol"].as_str()).filter(|symbol|{
   // The name goes into a query string; anything that is not a contract name
   // is a row we cannot read rather than a request to make.
-  !symbol.is_empty()&&symbol.len()<=32&&symbol.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')
+  // 币安有「龙虾USDT」这类中文底名的永续，它们也是合约名（拼 URL 时编码）。
+  !symbol.is_empty()&&symbol.chars().count()<=32&&symbol.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'||(!c.is_ascii()&&c.is_alphanumeric()))
  }).map(str::to_ascii_uppercase).collect();
  out.sort_unstable();out.dedup();out
 }
@@ -229,7 +230,7 @@ struct Binance;
 impl Klines for Binance {
  fn get<'a>(&'a self,symbol:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
   Box::pin(async move {
-   let url=format!("{KLINES}?symbol={symbol}&interval=1d&limit={HISTORY_LIMIT}");
+   let url=format!("{KLINES}?symbol={}&interval=1d&limit={HISTORY_LIMIT}",crate::instruments::url_component(symbol));
    let reply=match crate::http::shared().get(&url).send().await {Ok(reply)=>reply,Err(_)=>return Reply::Transport};
    let status=reply.status();
    if !status.is_success() {
@@ -455,6 +456,8 @@ mod tests {
   let body=json!({"symbols":[
    {"symbol":"BTCUSDT","contractType":"PERPETUAL","status":"TRADING"},
    {"symbol":"ETHUSDT","contractType":"PERPETUAL","status":"TRADING"},
+   // Binance lists a handful of perpetuals under Chinese base names.
+   {"symbol":"龙虾USDT","contractType":"PERPETUAL","status":"TRADING"},
    // The equities, ETFs and metals: a second perpetual flavour, and the whole
    // of the phone's "US" market. Collected like any other perpetual.
    {"symbol":"NVDAUSDT","contractType":"TRADIFI_PERPETUAL","status":"TRADING"},
@@ -472,7 +475,7 @@ mod tests {
    {"symbol":"SOLUSDT","status":"TRADING"},
   ]});
   assert_eq!(perpetuals(&body),
-   vec!["BTCUSDT".to_owned(),"ETHUSDT".to_owned(),"NVDAUSDT".to_owned()]);
+   vec!["BTCUSDT".to_owned(),"ETHUSDT".to_owned(),"NVDAUSDT".to_owned(),"龙虾USDT".to_owned()]);
   assert!(perpetuals(&json!({})).is_empty());
  }
 
