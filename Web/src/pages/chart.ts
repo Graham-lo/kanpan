@@ -718,7 +718,7 @@ function renderDetail(): void {
       ${cell(term('持仓量'), d.oiValue ? fmtCompact(d.oiValue) : '—')}
       ${cell('持仓 24h', d.oiChg == null ? '—' : pctText(d.oiChg), cls(d.oiChg))}
       ${cell('成交额', s.vol ? fmtCompact(s.vol) : '—', '', 'vol')}
-      ${cell(term('资金费率'), frText(s), cls(s.fr), 'fr')}
+      ${cell(term('资金费率', '费率'), frText(s), cls(s.fr), 'fr')}
       ${cell(term('下次结算'), s.nextFunding ? countdown(s.nextFunding - Date.now()) : '—', '', 'cd')}
       ${cell('笔数', s.count ? fmtCompact(s.count) : '—', '', 'count')}
       ${cell(term('多空人数比'), ratioText(d.ls), ratioCls(d.ls))}

@@ -391,10 +391,11 @@ async function partRoute() {
     await page.click(`[data-seg="route"][data-v="${route}"]`); await wait(300)
     await page.evaluate(() => { location.hash = 'chart' }); await wait(9000)
     const w = await ws()
-    const market = w.live.filter(l => /market\/stream|fstream/.test(l.url))
+    const market = w.live.filter(l => /market\/stream|fstream|dstream\.binance\.me/.test(l.url))
     const t1 = await page.evaluate(() => document.title); await wait(6000); const t2 = await page.evaluate(() => document.title)
     const empty = await page.locator('.cell-empty:not([hidden])').count()
-    const want = route === 'gateway' ? /kanpan\.|localhost:\d+\/market/ : /fstream\.binance\.com/   // 本机开发服务器端口不固定（vite 转发 /market 到线上网关）
+    // 直连 2026-10-03 起照 iOS 出厂连 dstream.binance.me（fstream.binance.com 在国内握手被重置，见 market/stream.ts）
+    const want = route === 'gateway' ? /kanpan\.|localhost:\d+\/market/ : /dstream\.binance\.me\/stream/   // 本机开发服务器端口不固定（vite 转发 /market 到线上网关）
     ok(`线路 ${route}：连的是对的主机`, market.length === 1 && want.test(market[0].url) && !/binancefuture/.test(market[0].url), market.map(l => `${l.url}(${l.subs.length})`).join(' | '))
     ok(`线路 ${route}：5 秒 K 线靠逐笔成交自聚出来、价在动`, !empty && t1.includes('·'), `空态 ${empty}；标题 ${t1} → ${t2}`)
     await shot(`线路-${route}`)
@@ -484,6 +485,8 @@ async function partFinish() {
   // ---- 副图上限：本机旧状态存了 4 个副图，读进来只留前 3 个
   // 在页面脚本跑之前写进去（先开页面再写会被旧页面卸载时的落盘盖掉）；每个标签页只种一次
   await page.addInitScript(() => {
+    // 初始化脚本每次导航都跑，包括画线段换电脑前的 about:blank：不透明源上一碰 sessionStorage 就抛 SecurityError
+    if (location.origin === 'null') return
     if (sessionStorage.getItem('kp-seed-subs')) return
     sessionStorage.setItem('kp-seed-subs', '1')
     localStorage.clear()
@@ -1591,10 +1594,12 @@ const wKey = async k => { await page.keyboard.press(k); await wait(350) }
 const TV_TEXT = '###加密,BINANCE:BTCUSDT.P,BINANCE:PEPEUSDT,BINANCE:WIFUSDT.P\n###美股\nNASDAQ:AAPL,NASDAQ:NVDA\n###我的观察\nOANDA:XAGUSD,TVC:GOLD,COMEX:GC1!,NASDAQ:ZZZZQ'
 const TV_MATCH = { BTCUSDT: 'crypto', '1000PEPEUSDT': 'crypto', WIFUSDT: 'crypto', AAPLUSDT: 'us', NVDAUSDT: 'us', XAGUSDT: 'com', XAUUSDT: 'com' }
 
+const isPremium = u => u.pathname.endsWith('/fapi/v1/premiumIndex')
 async function partWatch() {
   const e0 = errors.length
   // 资金费缺数的样子：把 XAUUSDT 的费率拦成空串（币安现在没有空费率的品种，用它看「—」与悬停说明）
-  await page.route('**/fapi/v1/premiumIndex', async r => {
+  // 按路径认：网关线路下是 /v1/market/raw/fapi/v1/premiumIndex?source=binance，带查询串，glob「**/premiumIndex」拦不住
+  await page.route(isPremium, async r => {
     const res = await r.fetch(); const a = await res.json()
     for (const x of a) if (x.symbol === 'XAUUSDT') x.lastFundingRate = ''
     await r.fulfill({ response: res, json: a })
@@ -1694,7 +1699,7 @@ async function partWatch() {
   ok('右键「在第 2 格打开」：第 2 格换成这只', (await curSym(1)) === other && (await curSym(0)) === before0, `第 2 格 ${await curSym(1)}`)
 
   // ---- 从 TradingView 导入（登录时顺带看自选同步：导入的品种推到云端，再用 Delete 移出、云端跟着删）
-  await page.unroute('**/fapi/v1/premiumIndex')
+  await page.unroute(isPremium)
   const logged = KP_PASS ? await uiLogin() : false
   await open('layout=1&panel=watch&ladder=0&drawer=0', 'me')
   await page.click('[data-me="general"]'); await wait(400)

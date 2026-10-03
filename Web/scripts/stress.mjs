@@ -61,7 +61,7 @@ function watchPage(pg, tag = '') {
   pg.on('pageerror', e => errors.push(`${tag}[pageerror] ${e.message}`))
   pg.on('response', r => { if (r.status() >= 400 && !/orderflow\/flow/.test(r.url())) errors.push(`${tag}[http ${r.status()}] ${r.url().slice(0, 140)}`) })
   pg.on('requestfailed', r => { const u = r.url(); if (!/sslip\.io\/v1\/market\/orderflow\/flow/.test(u)) netFail.push(`${tag}${r.failure()?.errorText} ${u.slice(0, 140)}`) })
-  pg.on('request', r => { const u = r.url(); if (/fapi\.binance\.com|\/futures\/data/.test(u)) reqs.push({ t: Date.now(), u }) })
+  pg.on('request', r => { const u = r.url(); if (/fapi\.binance\.com|\/v1\/market\/raw\/|\/futures\/data/.test(u)) reqs.push({ t: Date.now(), u }) })
 }
 watchPage(page)
 let cdp = await ctx.newCDPSession(page)

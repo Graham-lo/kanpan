@@ -204,6 +204,16 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 /** 后台请求能用的那一截预算 */
 export const BACKGROUND_SHARE = 0.6
 
+/** 网关线路下合约 REST 由新加坡那台转发（见 rest.ts viaRoute），出口 IP 是全站网页用户共用的一个，
+ *  服务端给网页透传一分钟 1600 权重（venues/binance.rs BUDGET）。每个浏览器只用其中的 800：
+ *  两台电脑同时开十六图也排得下，不会有一台把共用额度吃光、另一台整片 429。
+ *  原来照直连的 1200 放行，服务端只有 1000：一台开十六图加高频切换就能把服务端排队挤爆，
+ *  回来的 429 把整个 fapi 主机冷却掉，几格当场空着（2026-10-03 压测）。 */
+export const GATEWAY_SHARE = 2 / 3
+let viaGateway: (url: string) => boolean = () => false
+/** rest.ts 告诉这里「这个地址现在是不是走网关」（limit 不直接读线路状态，免得循环引用） */
+export function setGatewayProbe(f: (url: string) => boolean): void { viaGateway = f }
+
 /** 排队期间要的人已经不要了（换了品种 / 周期）：不发、不记账 */
 export class Superseded extends Error {
   constructor(readonly url: string) { super(`已作废 ${url}`) }
@@ -219,7 +229,7 @@ export async function admit(url: string, background = false, alive?: () => boole
     if (alive && !alive()) throw new Superseded(url)
     const cool = limiter.coolingFor(url, Date.now())
     if (cool > 0) throw new RateLimited(url, cool)
-    const w = limiter.take(url, Date.now(), background ? BACKGROUND_SHARE : 1)
+    const w = limiter.take(url, Date.now(), (background ? BACKGROUND_SHARE : 1) * (viaGateway(url) ? GATEWAY_SHARE : 1))
     if (!w) return
     await sleep(Math.min(w, alive ? 1000 : 5000))
   }

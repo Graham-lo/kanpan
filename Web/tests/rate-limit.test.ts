@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { COOL_418_MS, COOL_429_MS, Limiter, RateLimited, Superseded, admit, coolingFor, familyOf, isRateLimit, noteStatus, resetLimits, weightOf, type LimitSnap } from '../src/market/limit'
 import { j } from '../src/market/rest'
+import { S } from '../src/market/state'
 
 const FAPI = 'https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT'
 
@@ -133,5 +134,24 @@ describe('限流闸 · 排队中作废的不发（2026-09-29 A 路压测：高�
       const lim = (globalThis as unknown as { __limit: () => { fapi: number } }).__limit
       expect(lim().fapi).toBe(10)
     } finally { vi.useRealTimers() }
+  })
+
+  it('网关线路：合约 REST 每个浏览器只用服务端共用额度里的 800（直连仍是 1200）', async () => {
+    vi.useFakeTimers()
+    const was = S.route
+    try {
+      vi.setSystemTime(2_000_000)
+      resetLimits()
+      S.route = 'gateway'
+      for (let i = 0; i < 80; i++) await admit(`${K1500}&g=${i}`) // 80 × 10 = 800
+      let sent = false
+      const next = admit(`${K1500}&g=over`).then(() => { sent = true })
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(sent).toBe(false) // 网关这一截满了，排队而不是打出去吃服务端的 429
+      S.route = 'direct'
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(sent).toBe(true) // 直连照旧有 1200
+      await next
+    } finally { S.route = was; resetLimits(); vi.useRealTimers() }
   })
 })

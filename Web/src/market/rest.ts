@@ -9,7 +9,7 @@
  */
 import type { Bar } from '../chart/calc'
 import { S, emit } from './state'
-import { admit, coolingFor, isRateLimit, noteStatus } from './limit'
+import { admit, coolingFor, isRateLimit, noteStatus, setGatewayProbe } from './limit'
 import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
 
 export const REST = 'https://fapi.binance.com'
@@ -26,6 +26,9 @@ export function viaRoute(url: string): string {
   if (!m) return url
   return `${apiOrigin()}/v1/market/raw/${m[1]}${m[2] ? `${m[2]}&` : '?'}source=binance`
 }
+
+// 走网关的合约 REST 只用网关那份共用额度里属于这个浏览器的一截（见 limit.ts GATEWAY_SHARE）
+setGatewayProbe(url => viaRoute(url) !== url)
 
 /** priority：给浏览器的取数优先级（同一条 HTTP/2 连接上谁先拿带宽）；冷启动并行预取的 K 线用 'low'，让品种表先到 */
 export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<T> {
