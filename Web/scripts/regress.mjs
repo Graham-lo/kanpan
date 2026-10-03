@@ -1032,19 +1032,27 @@ async function partReview() {
     items > 0 || (/没有足够相似的走势(：比过 \d+ 段，没有一段相似度到 0\.(60|58|56))?，.+再找/.test(stTxt) && /没(有|找到)足够相似的走势/.test(blank)),
     items ? `${items} 段` : `${stTxt.replace(/\s+/g, ' ').slice(0, 80)} ｜ 右侧：${blank.slice(0, 40)}`)
   if (!items) {
-    // 这一段历史里没有够像的：换最近 32 根 15m 在接口上发起一次（等于另一个页签里找的），
-    // 记进本机的搜索列表，切回「相似走势」时页面自己补问——顺带验「别的页签新找的相似」那条路
-    const Q = 900e3, end = Math.floor((Date.now() - 2 * 3600e3) / Q) * Q
-    const range = { venue: 'binance', market: 'usd_m', symbol: 'BTCUSDT', interval: '15m', start: end - 32 * Q, end, bars: 32 }
-    const job = await api('POST', '/v1/native-review/searches', { range, cutoff: Date.now() - 1000, scope: 'history' }, page, { 'Idempotency-Key': crypto.randomUUID() })
-    const jid = job.data?.id
-    let jst = null
-    for (let k = 0; jid && k < 60; k++) { await wait(2000); jst = (await api('GET', `/v1/native-review/searches/${jid}`)).data; if (!/queued|running/.test(jst?.status)) break }
+    // 这一段历史里没有够像的：换 32 根 15m 在接口上发起一次（等于另一个页签里找的），
+    // 记进本机的搜索列表，切回「相似走势」时页面自己补问——顺带验「别的页签新找的相似」那条路。
+    // 哪一段在历史里有够像的看行情：2 小时前那段可能一段都没有（压测 2026-10-03 实测 items: []），
+    // 依次往前挪一天，接口上真有结果的那次才拿去验页面（最多 4 次，服务端一小时 20 次）
+    const Q = 900e3
+    let job = null, jid = null, jst = null, found = 0
+    for (const back of [2, 26, 50, 74]) {
+      const end = Math.floor((Date.now() - back * 3600e3) / Q) * Q
+      const range = { venue: 'binance', market: 'usd_m', symbol: 'BTCUSDT', interval: '15m', start: end - 32 * Q, end, bars: 32 }
+      job = await api('POST', '/v1/native-review/searches', { range, cutoff: Date.now() - 1000, scope: 'history' }, page, { 'Idempotency-Key': crypto.randomUUID() })
+      jid = job.data?.id
+      if (!jid) break
+      for (let k = 0; k < 60; k++) { await wait(2000); jst = (await api('GET', `/v1/native-review/searches/${jid}`)).data; if (!/queued|running/.test(jst?.status)) break }
+      found = (await api('GET', `/v1/native-review/searches/${jid}/results`)).data?.items?.length ?? 0
+      if (found) break
+    }
     if (jid) await page.evaluate(m => { const k = 'hkline-review-searches'; localStorage.setItem(k, JSON.stringify([m, ...JSON.parse(localStorage.getItem(k) || '[]')])) }, { id: jid, symbol: 'BTCUSDT', iv: '15m', bars: 32, label: 'BTC 15分 · 32 根', created: Date.now() })
     await page.click('[data-tab="trade"]'); await wait(300); await page.click('[data-tab="similar"]')
     for (let k = 0; k < 20 && !items; k++) { await wait(500); items = await page.locator('[data-match^="search:"]').count() }
     // 服务端一小时最多 20 次、一次只跑一个（search_busy）：发不起来时把原因写进结果，不装作通过
-    ok('别的页签新找的相似：切到「相似走势」时补问、列出来', items > 0, jid ? `${items} 段（任务 ${jst?.status}，比过 ${jst?.checked ?? '—'} 段）` : `没发起：${job.status} ${job.error}`)
+    ok('别的页签新找的相似：切到「相似走势」时补问、列出来', items > 0, jid ? `页面 ${items} 段、接口 ${found} 段（任务 ${jst?.status}，比过 ${jst?.checked ?? '—'} 段）` : `没发起：${job?.status} ${job?.error}`)
   }
   if (items) {
     await page.locator('[data-match^="search:"]').first().click()

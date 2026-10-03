@@ -587,6 +587,34 @@ struct OrderFlowChartTests {
     #expect(abs(back.frame.maxX - (L.plotW - ChartRenderer.orderFlowLabelInset)) < 1e-6)
   }
 
+  @Test("开着盘口：已结束的签躲 K 线往右让时不许让回盘口梯上（压测 2026-10-03，BTC 1m「9.4M」）")
+  func endedLabelCandleDodgeKeepsOffDepthLadder() throws {
+    var (r, step, _) = wallRenderer()
+    let L = r.layout(size: Self.size)
+    // 真机那一屏右边留着空白：最新那根在盘口梯左边十几 pt（梯子贴主图右缘、64 宽），
+    // 签往右让过最新几根之后没出主图、正好落进梯子。
+    let lastX = r.state.view.x(Double(r.state.series.lastTime), plotW: L.plotW)
+    r.state.view.to += (lastX - (L.plotW - 64 - 16)) / L.plotW * r.state.view.span
+    let px = r.state.series.close.last!
+    r.state.depth = OrderBook(symbol: r.state.symbol.symbol, time: r.state.series.lastTime,
+                              bids: (1...5).map { .init(price: px - Double($0) * step, quantity: 1) },
+                              asks: (1...5).map { .init(price: px + Double($0) * step, quantity: 1) })
+    let ladder = try #require(r.depthEnvelope(pane: L.main, range: r.priceRange(size: Self.size), L: L))
+    // 梯子纵向范围里每隔几 pt 一个价位、结束点离最新那根 1…12 根：结束点右侧压着最新几根蜡烛的签都得往右让，
+    // 让过去正好是盘口梯。原来先躲梯子再躲 K 线，往右让完不再看梯子。
+    var hits: [String] = []
+    for dy in stride(from: ladder.minY - 8, through: ladder.maxY + 8, by: 4) {
+      let bucket = Int64((price(r, atY: Double(dy)) / step).rounded(.down))
+      for to in 1...12 {
+        let order = wallOrder(r, step: step, bucket: bucket, from: to + 4, to: to, notional: 9_400_000)
+        r.state.orderFlow?.orders = [order]
+        for l in frame(r).labels where l.frame.intersects(ladder) { hits.append("dy=\(dy) to=\(to) \(l.frame)") }
+      }
+    }
+    let n = hits.count
+    #expect(n == 0, "签压在盘口梯 \(ladder) 上：\(hits.prefix(5))（共 \(n)）")
+  }
+
   @Test("范围括号：同一 x 上两枚纵向重叠只留名义大的那枚，不错开 x；两堵墙的芯线、金额签都照旧")
   func overlappingBracketsKeepLarger() throws {
     var (r, _) = Self.renderer()

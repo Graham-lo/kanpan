@@ -904,10 +904,13 @@ extension ChartRenderer {
       }
       let preferred = wants[0].top + h / 2
       // 横向：先躲盘口梯，再躲 K 线（挂着的往左、让出主图左缘给 nil；已结束的往右、出了主图右缘给 nil）。
+      // 往右让过 K 线可能正好让进盘口梯：梯子贴主图右缘，右边没地方了，这一处算放不下（压测 2026-10-03，
+      // 图右边留着空白、最新那根在梯子左边十几 pt 时，BTC 1m「9.4M」落进梯子）。
       let shift = { (want: CGRect) -> CGRect? in
         let r = Self.orderFlowDodgeLadder(want, ladder: ladder)
         guard let candleDodge else { return r }
-        return candleDodge.dodge(r, !live, 0)
+        guard let d = candleDodge.dodge(r, !live, 0), Self.orderFlowDodgeLadder(d, ladder: ladder) == d else { return nil }
+        return d
       }
       let place = { (want: (x: Double, top: Double, left: Bool)) -> CGRect? in
         // 线在图例那几行里（价高出了定标区）：签夹到图例下沿后离线太远就不放，免得签认错线。
