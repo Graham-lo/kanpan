@@ -255,6 +255,17 @@ describe('手机网页版 · 创建提醒与账号表单', () => {
     expect(f.validPassword('abcdefg1')).toBe(true)
     expect(f.validPassword('abcdefgh')).toBe(false)
     expect(f.validPassword('1234567a')).toBe(true)
+    // 照 iOS AccountCredentialRules：大写也收、交出去小写，首尾空白不算；全角 / 中文不收
+    expect(f.validUsername('  Alice_01 ')).toBe(true)
+    expect(f.normalUsername('  Alice_01 ')).toBe('alice_01')
+    expect(f.normalUsername('ａｂｃ')).toBeNull()
+    expect(f.normalUsername('a'.repeat(33))).toBeNull()
+    // 密码下限按码点（一个表情算一个），上限 128 字节
+    expect(f.validPassword('a1😀😀😀😀😀😀')).toBe(true)
+    expect(f.validPassword('a1😀😀😀😀😀')).toBe(false)
+    expect(f.validPassword('a1' + 'x'.repeat(126))).toBe(true)
+    expect(f.validPassword('a1' + 'x'.repeat(127))).toBe(false)
+    expect(f.USERNAME_RULE).toBe('用户名需 3–32 位字母、数字或下划线')
     expect(f.deviceMeta({ kind: 'phone', current: true, lastSeen: 0 })).toBe('手机 · 本机')
     expect(f.deviceMeta({ kind: 'desktop', current: false, lastSeen: Date.UTC(2026, 8, 28, 6, 5) })).toBe('电脑 · 9月28日 14:05')
   })

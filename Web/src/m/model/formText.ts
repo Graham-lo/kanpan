@@ -19,10 +19,7 @@ export function hintText(target: number | null, price: number | null | undefined
   return `现价 ${priceText(price, dec)} · ${pct > 0 ? '高于现价' : '低于现价'} ${Math.abs(pct).toFixed(2)}%`
 }
 
-export const USERNAME_RULE = '用户名 3–32 位，只能用小写字母、数字、下划线'
-export const PASSWORD_RULE = '密码至少 8 位，要同时有字母和数字'
-export const validUsername = (u: string): boolean => /^[a-z0-9_]{3,32}$/.test(u)
-export const validPassword = (p: string): boolean => p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p)
+export { USERNAME_RULE, PASSWORD_RULE, normalUsername, validUsername, validPassword } from '../../account/rules'
 export const KIND_CN: Record<string, string> = { desktop: '电脑', phone: '手机', tablet: '平板' }
 /** 登录设备那一行的第二行：「手机 · 本机」「电脑 · 9月28日 14:05」（上海时间） */
 export function deviceMeta(d: { kind: string; current: boolean; lastSeen: number }): string {

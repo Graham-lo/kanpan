@@ -3,7 +3,6 @@
 // 「开仓处 / 判断处 / 相似段」能跳、「退出」回到「我的」且实时图原样。
 //   npx vite --port 5197 后 node scripts/m-replay-e2e.mjs [地址] [机型…]
 //   交易回放用真 K 线现编的一笔交易（测试账号没有交易所成交）；重温 / 相似的计划同样现编，经复盘本同一条路（sessionStorage + 事件）交过去。
-//   若环境变量 KP_E2E_USER / KP_E2E_PASS 都有，再用这个账号走一遍复盘本界面：记一笔 → 复盘本 → 在图上重温 → 退出，最后注销账号。
 //   截图落在 /tmp/m-replay/<机型>/；有 ✗ 退出码 1
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'

@@ -15,6 +15,7 @@ import { ApiError, authed, fresh, readStored } from '../../../account/client'
 import { openSheet, type Sheet } from '../../ui/sheet'
 import { toast } from '../../ui/toast'
 import { el, esc } from '../../ui/dom'
+import { USERNAME_RULE, normalUsername } from '../../model/formText'
 import { icon } from '../../ui/icons'
 import { shotCanvas, chartCanvas } from './snapshot'
 import { alertedLineIds } from './drawingBench'
@@ -28,12 +29,8 @@ export interface ShareContext {
   previewing?(): boolean
 }
 
-/** 用户名规则（照 AccountCredentialRules.username）：3–32 位字母、数字或下划线；交出去的是小写 */
-export const USERNAME_RULE = '用户名需 3–32 位字母、数字或下划线'
-export function friendName(raw: string): string | null {
-  const v = raw.trim()
-  return /^[A-Za-z0-9_]{3,32}$/.test(v) ? v.toLowerCase() : null
-}
+/** 朋友的用户名：和登录 / 加朋友同一份规则（model/formText），交出去的是小写 */
+export const friendName = normalUsername
 
 /** 发信出错 → 给人看的一句（照 ShareClient.message） */
 export function shareErrorText(e: unknown): string {

@@ -12,6 +12,7 @@
  */
 import { uuid } from '../sync/types'
 import { endSession, setSession, type Ended } from './session'
+import { PASSWORD_RULE, USERNAME_RULE } from './rules'
 
 export const ISSUER = 'kanpan.43-160-232-253.sslip.io'
 /** PC 版的键名（默认值；测试与回归脚本按这个名字读写）。当前实际用的键见 `accountKey()` */
@@ -276,8 +277,8 @@ export function errorText(e: unknown, ctx: 'login' | 'register' | 'password' | '
   if (!(err instanceof ApiError)) return '出了点问题，再试一次'
   if (err.status === 0) return '连不上服务器'
   switch (err.code) {
-    case 'invalid_username': return '用户名 3–32 位，只能用小写字母、数字、下划线'
-    case 'invalid_password': return '密码至少 8 位，要同时有字母和数字'
+    case 'invalid_username': return USERNAME_RULE
+    case 'invalid_password': return PASSWORD_RULE
     case 'username_taken': return '这个用户名已经有人用了'
     case 'try_later': return '试得太频繁，稍后再试'
     case 'wrong_password': return '当前密码不对'

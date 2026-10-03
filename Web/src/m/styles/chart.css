@@ -126,8 +126,7 @@
 }
 .cp-card-btn::after { content: ''; position: absolute; left: -4px; right: -4px; top: calc((var(--hit) - 1.3em) / -2); bottom: calc((var(--hit) - 1.3em) / -2) }
 .cp-card-btn.quiet { color: var(--ink3) }
-/* 预览时三个字按钮挤在一行：「回给 某某」名字长了截断，给「正在看 某某 的线」留位置 */
-.cp-card[data-mode=preview] .cp-card-btn[data-act=reply] { max-width: 6.5em }
+/* 预览时三个字按钮挤在一行：名字只在标题里出现一次（按钮写「回信」），窄屏上截的是标题尾巴 */
 .cp-card[data-mode=preview] .cp-card-text { min-width: 4.5em }
 .cp-card-btn:disabled { color: var(--ink3); opacity: 0.6 }
 .cp-card-btn:active, .cp-card-pill:active { opacity: 0.6 }

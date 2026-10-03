@@ -35,7 +35,9 @@ struct ShareCard: View {
           .disabled(kept).foregroundStyle(kept ? PanelDisabled.ink(theme) : theme.amber)
           .cardHit()
           .accessibilityIdentifier("share.keep")
-        Button("回给 \(item.from)", action: onReply).foregroundStyle(theme.amber).lineLimit(1)
+        // 名字标题里已经有了（「正在看 某某 的线」），按钮不再重复：窄屏上两处都带名字，
+        // 两处一起被截成「正在看 z…」「回给 zq…」，谁发的反倒看不出来（2026-10-03 nova 16 实测）。
+        Button("回信", action: onReply).foregroundStyle(theme.amber).lineLimit(1)
           .cardHit()
           .accessibilityIdentifier("share.reply")
         Button("退出", action: onExit).foregroundStyle(theme.ink3)

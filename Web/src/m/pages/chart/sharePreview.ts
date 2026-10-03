@@ -246,7 +246,7 @@ export function createSharePreview(ctx: PreviewContext): SharePreview {
         <span class="cp-card-text"><b>${esc(cardTitle(fresh.from, prev, !!fresh.replyTo))}</b>${prev ? '' : `<small class="num">${esc(cardSubtitle(shortSymbol(fresh), fresh.drawings.length, extra))}</small>`}</span>
         ${prev
           ? `<button type="button" class="cp-card-btn" data-act="keep"${kept ? ' disabled' : ''}>${kept ? '已保存' : '保存到图上'}</button>
-             <button type="button" class="cp-card-btn" data-act="reply">${esc('回给 ' + fresh.from)}</button>
+             <button type="button" class="cp-card-btn" data-act="reply">回信</button>
              <button type="button" class="cp-card-btn quiet" data-act="exit">退出</button>`
           : '<button type="button" class="cp-card-btn" data-act="open">查看</button>'}`
       const id = fresh.id
