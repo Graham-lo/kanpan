@@ -203,9 +203,16 @@ export function createBench(ctx: BenchContext) {
   let sheet: Sheet | null = null
 
   // ---- 左：周期栏
+  // 行情页每次刷新（换周期、行情推送）都叫它：周期和这一列没变就不重建——按钮在手指按下和抬起之间被换掉，
+  // 那一下点击就没了。以前只有工作台整体重画（选中线、进出画线、转屏）才重画这一列，点了周期图换了、
+  // 高亮还停在旧的那格，看着就是「点周期没反应」（2026-10-03 用户真机横屏画线）
+  let railKey = ''
   const renderRail = (): void => {
     const cur = ctx.interval()
     const list = railIntervals(st.quickIntervals as IntervalId[], cur, INTERVALS as readonly IntervalId[])
+    const key = `${cur}|${list.join(',')}`
+    if (key === railKey) return
+    railKey = key
     rail.innerHTML = `<div class="cp-rail-list">${list.map(iv =>
       `<button type="button" class="cp-rail-iv${iv === cur ? ' on' : ''}" data-iv="${iv}" aria-pressed="${iv === cur}">${esc(INTERVAL_SHORT[iv])}</button>`).join('')}</div>
       <button type="button" class="cp-rail-more" data-act="more" aria-label="更多周期">${icon('more', 18)}</button>`
@@ -561,6 +568,7 @@ export function createBench(ctx: BenchContext) {
     get active() { return active },
     setActive,
     render,
+    renderRail,
     renderQuote,
     pullPreferences,
     refreshAlerts(): void { c.alerted = alertedIds() },

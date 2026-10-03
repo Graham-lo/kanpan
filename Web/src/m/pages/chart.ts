@@ -265,6 +265,7 @@ export function initChart(root: HTMLElement): PageHandle {
     preview?.symbolChanged()
     if (chart.symbol !== sym()) { card.set(null, '', 2); chart.setSymbol(sym()); pushStreams(); bench.refreshAlerts() }
     if (chart.interval !== iv()) chart.setInterval(iv())
+    bench.renderRail()
     const ik = JSON.stringify([st.overlays, st.subs, st.params, st.orderFlow])
     if (ik !== indKey) {
       indKey = ik
@@ -302,6 +303,7 @@ export function initChart(root: HTMLElement): PageHandle {
     topBar.render(sym(), nav.origin != null && nav.origin !== 'chart')
     header.render(sym(), stale, now)
     ivBar.render({ quick: st.quickIntervals, current: iv() })
+    bench.renderRail()
     bench.renderQuote()
   }
   const schedule = (): void => { if (!raf && shown) raf = requestAnimationFrame(() => { raf = 0; render() }) }
