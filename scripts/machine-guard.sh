@@ -292,6 +292,15 @@ cmd_sim_gc() {
 cmd_clean() {
   local sims=0; [ "${1:-}" = "--sims" ] && sims=1
   local before; before=$(disk_free_gb)
+  # 有构建 / 测试在跑（或有人占着构建槽）就不删构建产物：别的窗口正在用的 DerivedData 被删掉，
+  # 它那轮 UI 测试会当场报「Cannot launch simulated executable: no file found at …Kanpan.app」
+  # （2026-10-03 12:10 就这样废掉了一轮跑到第 44 条的 UI 矩阵）。等它们跑完再清。
+  local busy; busy=$( { build_pids; pgrep -x xctest; pgrep -x xcodebuild; } 2>/dev/null | sort -u | wc -l | tr -d ' ')
+  if [ "${busy:-0}" -gt 0 ] || [ "$(slots_in_use)" -gt 0 ]; then
+    say "[guard] 还有 ${busy} 个构建 / 测试进程、$(slots_in_use) 个构建槽在用，构建产物先不删，跑完再 clean"
+    log "clean 跳过：busy=$busy slots=$(slots_in_use)"
+    return 0
+  fi
   # 守门自己的状态目录（构建槽锁）和 kanpan-guard-aside（rebase 时挪开的文件）不能删。
   # /tmp/kanpan-<线> 也常常是某条线的 git worktree（带 .git 文件）——那是源码和没提交的改动，
   # 不是构建产物，整目录删掉等于毁掉别人的工作；只清它里面的构建目录。
