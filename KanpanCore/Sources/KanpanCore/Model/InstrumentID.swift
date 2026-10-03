@@ -75,8 +75,8 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
   /// 那是另一回事，这里要的是「这串原样发上去服务端收不收」）。
   public static func isSyncIdentity(venue: String, market: String, symbol: String) -> Bool {
     switch (venue, market) {
-    case ("binance", "usd_m"): return isBinanceSyncSymbol(symbol)
-    case ("coinbase", "spot"): return isCoinbaseSyncSymbol(symbol)
+    case ("binance", "usd_m"): return isQuoteSuffixedSymbol(symbol)
+    case ("coinbase", "spot"): return isDashUSDSymbol(symbol)
     default: return false
     }
   }
@@ -90,7 +90,8 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
     return isSyncIdentity(venue: String(parts[0]), market: String(parts[1]), symbol: String(parts[2]))
   }
 
-  private static func isBinanceSyncSymbol(_ s: String) -> Bool {
+  /// 文法一：底名 + `QuoteAssets.tradable` 里的计价资产（大写 ASCII / 数字 / 非 ASCII 字母数字）。
+  private static func isQuoteSuffixedSymbol(_ s: String) -> Bool {
     let scalars = s.unicodeScalars
     guard scalars.count <= syncSymbolMaxChars,
       // 后缀按标量比，不按 `Character`：Rust `strip_suffix` 是逐字节比的，结合符挨着计价资产时
@@ -110,7 +111,8 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
     }
   }
 
-  private static func isCoinbaseSyncSymbol(_ s: String) -> Bool {
+  /// 文法二：`BASE-USD`，BASE 只有 ASCII 大写与数字。
+  private static func isDashUSDSymbol(_ s: String) -> Bool {
     guard s.utf8.count <= syncSymbolMaxChars, s.hasSuffix("-USD") else { return false }
     let base = s.utf8.dropLast(4)
     return !base.isEmpty && base.allSatisfy { (65...90).contains($0) || (48...57).contains($0) }
