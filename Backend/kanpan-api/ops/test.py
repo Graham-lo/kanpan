@@ -32,6 +32,9 @@ try:
  env['KANPAN_TEST_ADMIN_URL']=urlunsplit(url._replace(path='/'+name))
  env['KANPAN_TEST_DATABASE_URL']=urlunsplit(url._replace(netloc=f'{role}:{password}@{url.hostname}:{url.port}',path='/'+name))
  env['KANPAN_TEST_ROLE']=role
+ # 本机的 rustup 是 Homebrew 的 keg-only 版，cargo 不在默认 PATH 上（Makefile 的 rust-test 也是这样补的）；
+ # 守门脚本经 launchd 起进程时 PATH 更短，直接跑会 FileNotFoundError。
+ env['PATH']=env.get('PATH','')+':/opt/homebrew/opt/rustup/bin'
  # --workspace 而不是 --package kanpan-api：领域逻辑住在 vendor/scorebook-core，
  # 复盘的判定规则就在那里，只跑 kanpan-api 等于把它那几十条单测一直晾着。
  # 带参数时只跑点名的那部分：`ops/test.py --test stress_sync -- --ignored`。`--` 前面的
