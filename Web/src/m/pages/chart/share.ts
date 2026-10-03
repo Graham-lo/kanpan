@@ -24,6 +24,8 @@ export interface ShareContext {
   chart: ChartHandle
   symbol(): string
   interval(): IntervalId
+  /** 正在看朋友的线：没有「发线」那一格，顶栏「分享」直接走图片（照 MainScreen.headerShareAction） */
+  previewing?(): boolean
 }
 
 /** 用户名规则（照 AccountCredentialRules.username）：3–32 位字母、数字或下划线；交出去的是小写 */
@@ -61,7 +63,8 @@ function linesBlocked(ctx: ShareContext): string | null {
 
 // ───────────────────────────── 二选一
 
-export function openShare(ctx: ShareContext): Sheet {
+export function openShare(ctx: ShareContext): Sheet | null {
+  if (ctx.previewing?.()) { shareImage(ctx); return null }
   const blocked = linesBlocked(ctx)
   const sheet = openSheet(body => {
     const host = el('div', 'cp-panel cp-share')
@@ -121,13 +124,13 @@ export function shareImage(ctx: ShareContext): void {
 
 // ───────────────────────────── 画线：发给朋友
 
-interface Outbound {
+export interface Outbound {
   symbol: string; interval: string; view: { from: number; to: number }
   drawings: ReturnType<typeof encodeDrawing>[]; alerted: string[]
 }
 
 /** 缩略图：600 宽 JPEG，≤ 300 KB（服务端上限） */
-function thumbnail(chart: ChartHandle): Blob | null {
+export function thumbnail(chart: ChartHandle): Blob | null {
   const c = chartCanvas(chart, 1)
   if (!c) return null
   const out = document.createElement('canvas')
@@ -140,7 +143,8 @@ function thumbnail(chart: ChartHandle): Blob | null {
   return null
 }
 
-async function uploadShot(id: string, shot: Blob): Promise<void> {
+/** 发出去之后补传缩略图（传不上不挡） */
+export async function uploadShot(id: string, shot: Blob): Promise<void> {
   const v = await fresh()
   await fetch(`/v1/shares/${encodeURIComponent(id)}/shot`, {
     method: 'PUT', body: shot, cache: 'no-store',
@@ -148,6 +152,7 @@ async function uploadShot(id: string, shot: Blob): Promise<void> {
   })
 }
 
+/** 发信那一份（回信时外面再补 replyTo） */
 export function buildOutbound(ctx: ShareContext): Outbound | null {
   const sym = ctx.symbol()
   const lines = shareableLines(ctx.chart, sym).slice(0, 200)

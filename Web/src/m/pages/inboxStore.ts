@@ -10,7 +10,8 @@ import { session, onSession } from '../../account/session'
 import { ApiError, authed, fresh } from '../../account/client'
 import { onSyncStatus, syncStatus } from '../app/sync'
 import { drawingBook } from '../app/drawings'
-import { newDrawingID, tryDecodeDrawing } from '../chart/draw/drawing'
+import { newDrawingID, tryDecodeDrawing, type Drawing } from '../chart/draw/drawing'
+import { preferredCopies } from '../model/sharePreview'
 import { shareErrorText } from './chart/share'
 import {
   emptyCache, itemKey, markLocal, mergePage, plannedCopies, readCache, readItem, receiptIsDead, unseen, withFriend,
@@ -125,27 +126,31 @@ export const markOpened = (item: ShareItem): void => mark(item.id, false)
 
 /**
  * 「保存到图上」：先给每条线分好新 id 并落盘（重试、刷新都不会复制两遍），再把线追加进那只品种的画线；
- * 返回给人看的结果。已经留下过的信：线已在图上，直接算成功。
+ * 返回给人看的结果。已经留下过的信：线已在图上，直接算成功（lines 为空，不再问提醒）。
+ * 成功时带回留下的那几条新线与其中发信人设了提醒的（新 id），给「顺便建提醒」那一句用。
  */
-export function keepItem(item: ShareItem): { ok: true } | { ok: false; reason: string } {
+export type KeepResult = { ok: true; lines: Drawing[]; preferred: Set<string> } | { ok: false; reason: string }
+export function keepItem(item: ShareItem): KeepResult {
   load()
   const cur = cache.items.find(i => i.id === item.id) ?? item
-  if (cur.keptAt) return { ok: true }
+  if (cur.keptAt) return { ok: true, lines: [], preferred: new Set() }
   const planned = plannedCopies(cache, cur, newDrawingID)
   cache = planned.cache
   if (!persist()) return { ok: false, reason: '暂时无法保存，请重试' }
-  const lines = cur.drawings.map((raw, i) => {
-    const d = tryDecodeDrawing(raw)
-    return d ? { ...d, id: planned.ids[i] } : null
-  }).filter((d): d is NonNullable<typeof d> => !!d)
+  const originals = cur.drawings.map(raw => tryDecodeDrawing(raw))
+  const copies = originals.map((d, i) => (d ? { ...d, id: planned.ids[i] } : null))
+  const lines = copies.filter((d): d is Drawing => !!d)
   if (!lines.length) return { ok: false, reason: '这封信里的线打不开' }
   const key = itemKey(cur)
   if (!drawingBook.add(lines, key)) {
     return { ok: false, reason: drawingBook.hasRoom(key, lines.length) ? '这封信里的线打不开' : '这只品种上的线满了，删掉几条再保存' }
   }
   mark(cur.id, true)
-  return { ok: true }
+  return { ok: true, lines, preferred: preferredCopies(originals, copies, cur.alerted) }
 }
+
+/** 本机这一份里的那封（已读 / 留下的戳是最新的） */
+export const inboxItem = (id: string): ShareItem | undefined => cache.items.find(i => i.id === id)
 
 // ───────── 朋友 ─────────
 

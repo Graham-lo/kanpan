@@ -44,6 +44,7 @@ import { openAnalysis, openChartSettings, openOrderFlowEditor, type PanelContext
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, resumeNote, wireNoteRequests, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
+import { createSharePreview, wireSharePreview, type SharePreview } from './chart/sharePreview'
 import { startReplay, type ReplaySession } from './chart/replay'
 import { parseIntent } from '../model/replayLogic'
 import { INTENT_KEY, INTENT_EVENT } from '../model/reviewBook'
@@ -98,20 +99,28 @@ export function initChart(root: HTMLElement): PageHandle {
   let shown = false
   let replay: ReplaySession | null = null
   let port: PagePort | null = null
+  /** 看朋友的线（头部那一格、临时周期）；建在画线之后，前面的回调只读它 */
+  let preview: SharePreview | null = null
   const sym = (): string => st.symbol
-  const iv = (): IntervalId => st.interval
+  /** 图上的周期：预览朋友的线时是信上的那个（临时的，不写偏好），否则是偏好里的 */
+  const iv = (): IntervalId => preview?.interval() ?? st.interval
+  /** 人自己挑的周期：预览的临时周期作废；和偏好里一样时 st 不变，要手动对一次图 */
+  const pickInterval = (next: IntervalId): void => {
+    preview?.userPickedInterval()
+    if (next !== st.interval) { st.interval = next; save() } else syncChart()
+  }
 
   // ---- 顶栏 / 头部 / 周期条
   const topBar = createTopBar(page, {
     onBack: () => { const o = nav.origin; nav.origin = null; if (o && o !== 'chart') go(o); else render() },
     onNote: () => { openNote({ chart, symbol: sym, interval: iv }) },
-    onShare: () => { openShare({ chart, symbol: sym, interval: iv }) },
+    onShare: () => { openShare({ chart, symbol: sym, interval: iv, previewing: () => !!preview?.previewing() }) },
     onSearch: () => openSearch(),
   })
-  const header = createHeader(page, { onSwipe: (dx, dy) => scan(dx, dy) })
+  const header = createHeader(page, { onSwipe: (dx, dy) => { if (!preview?.cardVisible()) scan(dx, dy) } })
   let crossPrice: number | null = null
   const ivBar = createIntervalBar(page, {
-    onPick: next => { if (next !== st.interval) { st.interval = next; save() } },
+    onPick: next => pickInterval(next),
     onPin: x => {
       const r = toggleQuick(st.quickIntervals, x, INTERVALS)
       if ('refused' in r) { toast(r.refused); return }
@@ -176,7 +185,7 @@ export function initChart(root: HTMLElement): PageHandle {
   }
   const bench: Bench = createBench({
     chart, c, symbol: sym, interval: iv,
-    onPickInterval: x => { if (x !== st.interval) { st.interval = x; save() } },
+    onPickInterval: x => pickInterval(x),
     onPickSymbol: s => switchSymbol(s, false),
     onActive: () => { layout() },
   })
@@ -253,6 +262,7 @@ export function initChart(root: HTMLElement): PageHandle {
   // ---- st → 图
   let lookKey = '', indKey = '', extraKey = JSON.stringify([st.compareSymbols, false])
   function syncChart(): void {
+    preview?.symbolChanged()
     if (chart.symbol !== sym()) { card.set(null, '', 2); chart.setSymbol(sym()); pushStreams(); bench.refreshAlerts() }
     if (chart.interval !== iv()) chart.setInterval(iv())
     const ik = JSON.stringify([st.overlays, st.subs, st.params, st.orderFlow])
@@ -405,6 +415,23 @@ export function initChart(root: HTMLElement): PageHandle {
       },
     })
   })
+
+  // 朋友发来的线：头部那一格（未读信 / 正在看 / 回给他 / 顺便建提醒），「我的 › 朋友」点信也走这里
+  preview = createSharePreview({
+    chart, head: header.el, symbol: sym, interval: iv,
+    // 同一只只切到行情页（不再套学到的周期、不动偏好）；换品种走壳的 openSymbol（记最近、来路）
+    openSymbol: s => (s === st.symbol ? go('chart') : openSymbol(s)),
+    sync: syncChart,
+    clearStage: () => {
+      if (replay) endReplay()
+      closeAllSheets()
+      bench.closeSheets()
+      if (bench.active) bench.setActive(false)
+      wantDraw = false; guide.hidden = true
+      chart.clearCrosshair()
+    },
+  })
+  wireSharePreview(preview)
 
   layout()
   syncChart()

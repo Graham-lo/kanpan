@@ -14,6 +14,7 @@ import { st, save } from '../../app/store'
 import { INTERVALS, type IntervalId } from '../../app/prefs'
 import { drawingBook, saveDrawingPreferences } from '../../app/drawings'
 import { alertLinesOf } from '../../app/lineAlerts'
+import { batchRoom } from '../../model/sharePreview'
 import type { ChartHandle } from '../../chart'
 import type { DrawingController } from '../../chart/view.drawing'
 import { DrawKind, DRAWING_TEXT_LIMIT, isDrawingKind, type Drawing, type DrawingKind } from '../../chart/draw/drawing'
@@ -139,6 +140,28 @@ function toggleLineAlert(sym: string, d: Drawing): boolean {
   save()
   alertsReplaced()
   return true
+}
+
+/**
+ * 一组线一次挂上提醒（收下朋友的线时「加入提醒」，照 MainScreen.wireAlerts 的 onAcceptBatch）：
+ * 已经挂着的不重复，挂不了提醒的几何跳过，提醒总数到上限就停。返回挂上了几条、是不是撞了上限。
+ */
+export function addLineAlerts(sym: string, list: readonly Drawing[]): { added: number; full: boolean } {
+  const have = alertedLineIds(sym)
+  const now = Date.now()
+  const want = list.filter(d => !have.has(d.id) && alertLinesOf(d) != null)
+  const room = batchRoom(st.alerts.filter(a => a.status === 'active').length, want.length)
+  const made: Alert[] = want.slice(0, room).map(d => ({
+    id: newAlertId(), kind: 'drawing', market: MARKET, symbol: sym, lines: alertLinesOf(d)!, condition: 'touch', status: 'active', once: true,
+    armedAt: now, firedAt: null, firedPrice: null, title: `${baseOf(sym)} 触到你画的${DrawKind.title(d.kind)}`, note: null,
+    webhook: null, webhookText: null, drawingID: drawingIdOf(sym, d.id), reviewID: null, dueAt: null, rule: null, created: now,
+  }))
+  if (made.length) {
+    st.alerts = [...st.alerts, ...made]
+    save()
+    alertsReplaced()
+  }
+  return { added: made.length, full: room < want.length }
 }
 
 /** 这只品种上挂着没响的提醒的那几条线（画线自己的 id） */

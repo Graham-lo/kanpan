@@ -7,9 +7,10 @@
  *     「加朋友」行（行尾强调色 +）→ 展开成输入框 +「加」（规则同注册用户名，不合格时「加」置灰、框下一行规则字）；
  *     分组「收到的线」：缩略图 +「谁 · 哪只 · 几条线」+ 时间 / 已保存；空时「还没有收到画线」；
  *     拉不下来时底下一行「{原因} · 重试」。
- * 点一封信：iOS 是切到行情页把线临时画在图上预览；网页版的图表页还没有预览层，这里推一层「信」：
- *   大图（发信人截的那张）+ 谁 · 哪只 · 几条线 + 周期与时间 +「保存到图上」（留下后去那只的图上看）。
- *   点开即算已读（照 iOS openShare → inbox.opened）。
+ * 点一封信：照 iOS openShare，退回「我的」根、切到行情页把朋友的线临时画在自己的图上预览
+ *   （chart/sharePreview：头部那一格「保存到图上 / 回给他 / 退出」）。
+ *   网页版还打不开的品种（别家交易所等）才推一层「信」：大图（发信人截的那张）+ 谁 · 哪只 · 几条线
+ *   + 周期与时间 +「保存到图上」（留下后在 App 里看）。点开即算已读（照 iOS openShare → inbox.opened）。
  */
 import { esc } from '../ui/dom'
 import { icon } from '../ui/icons'
@@ -23,6 +24,7 @@ import {
   addFriend, friendErrorText, inboxFriends, inboxItems, inboxNotice, keepItem, markOpened, onInboxChange, pullInbox, removeFriend, thumbOf,
 } from './inboxStore'
 import type { MeHost, MeLayer } from './meHost'
+import { previewShare } from './chart/sharePreview'
 
 const PEOPLE = '<svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 11.5a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5zm7.5 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM9 13c-3.3 0-6.5 1.7-6.5 4.4V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-1.6C15.5 14.7 12.3 13 9 13zm7.5.2c-.6 0-1.2.1-1.7.2 1.3 1 2.2 2.4 2.2 4V19c0 .4-.1.7-.2 1h3.7a1 1 0 0 0 1-1v-1.4c0-2.5-2.4-4.4-5-4.4z"/></svg>'
 const TRAY = '<svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.3 4h11.4a2 2 0 0 1 1.8 1.1l2.3 4.7c.1.3.2.6.2.9V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7.3c0-.3.1-.6.2-.9l2.3-4.7A2 2 0 0 1 6.3 4zm-.1 2-2 4.2H8a1 1 0 0 1 1 .9 3 3 0 0 0 6 0 1 1 0 0 1 1-.9h3.8l-2-4.2H6.2z"/></svg>'
@@ -177,6 +179,14 @@ export function buildFriends(body: HTMLElement, layer: MeLayer, host: MeHost): v
 
 /** 推「信」那一层：大图 + 说明 +「保存到图上」 */
 function openLetter(item: ShareItem, host: MeHost): void {
+  if (openableSymbol(item)) {
+    host.popToRoot()
+    if (previewShare(item)) return
+    // 行情页还没建起来（极少：冷启动直接进「我的」且没去过行情页）：退一步，直接去那只的图上
+    markOpened(item)
+    host.openSymbol(openableSymbol(item)!, item.interval)
+    return
+  }
   markOpened(item)
   host.push(shortSymbol(item), (body, layer) => {
     body.classList.add('fr-letter')

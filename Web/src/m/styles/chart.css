@@ -90,6 +90,58 @@
 }
 .cp-readout[hidden] { display: none }
 .cp-head.reading .cp-quoteinner, .cp-head.reading .cp-stats { visibility: hidden }
+/* 朋友的线 / 顺便建提醒那一格（照 ShareCard、ShareReplyBar、AlertPromptBar）：36 高、盖在价格行上，行高不变 */
+.cp-head.carding .cp-quoteinner, .cp-head.carding .cp-stats, .cp-head.carding .cp-readout { visibility: hidden }
+.cp-card {
+  position: absolute; left: var(--inset-page); right: var(--inset-page); top: 50%; transform: translateY(-50%);
+  height: calc(var(--hit) - var(--s-s)); z-index: 2;
+  display: flex; align-items: center; gap: var(--s-s);
+  padding: 0 var(--s-s) 0 var(--s-xs);
+  border-radius: var(--r-m); background: var(--accent-soft); box-shadow: inset 0 0 0 0.5px var(--accent-line);
+  font: var(--t-control); color: var(--ink);
+  animation: cp-card-in var(--dur-fast) var(--ease-out);
+}
+.cp-card[hidden] { display: none }
+.cp-card[data-mode=prompt], .cp-card[data-mode=reply] { padding: 0 var(--s-s) 0 var(--s-m) }
+@keyframes cp-card-in { from { opacity: 0 } to { opacity: 1 } }
+.cp-card-thumb {
+  flex: none; width: var(--hit); height: calc(var(--hit) - var(--s-s) - 2 * var(--s-xs));
+  border-radius: calc(var(--r-m) - var(--s-xs)); overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; background: var(--raised2); color: var(--ink3);
+}
+.cp-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block }
+.cp-card-ic { flex: none; display: inline-flex; color: var(--accent) }
+.cp-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.cp-card-text b { font: var(--t-caption); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.cp-card-text small { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.cp-card-say {
+  flex: 1; min-width: 0; font: var(--t-footnote); color: var(--ink);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.cp-head.carding .cp-card-say { font-size: 12px; line-height: 1.25 }
+/* 字按钮：画面是字，点按区撑到 44 高（往上下长，不撑卡高） */
+.cp-card-btn {
+  position: relative; flex: none; white-space: nowrap; max-width: 34%; overflow: hidden; text-overflow: ellipsis;
+  font: var(--t-control); color: var(--accent); padding: 0 2px;
+}
+.cp-card-btn::after { content: ''; position: absolute; left: -4px; right: -4px; top: calc((var(--hit) - 1.3em) / -2); bottom: calc((var(--hit) - 1.3em) / -2) }
+.cp-card-btn.quiet { color: var(--ink3) }
+/* 预览时三个字按钮挤在一行：「回给 某某」名字长了截断，给「正在看 某某 的线」留位置 */
+.cp-card[data-mode=preview] .cp-card-btn[data-act=reply] { max-width: 6.5em }
+.cp-card[data-mode=preview] .cp-card-text { min-width: 4.5em }
+.cp-card-btn:disabled { color: var(--ink3); opacity: 0.6 }
+.cp-card-btn:active, .cp-card-pill:active { opacity: 0.6 }
+.cp-card-pill {
+  position: relative; flex: none; white-space: nowrap;
+  height: var(--pill-h); padding: 0 var(--s-m); border-radius: calc(var(--pill-h) / 2);
+  font: var(--t-control-on); color: var(--badge-ink); background: var(--accent);
+}
+.cp-card-pill::after { content: ''; position: absolute; inset: calc((var(--pill-h) - var(--hit)) / 2) 0 }
+.cp-card-spin {
+  flex: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--accent-line); border-top-color: var(--accent); animation: cp-card-spin 0.8s linear infinite;
+}
+@keyframes cp-card-spin { to { transform: rotate(360deg) } }
 .cp-stats { flex: none; display: flex; gap: var(--s-l) }
 .cp-col { display: grid; gap: var(--s-xxs); min-width: 92px }
 .cp-cell { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-s); white-space: nowrap }
