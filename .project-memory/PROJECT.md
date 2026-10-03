@@ -867,3 +867,18 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 手机网页：`appChartOptions()` 的 `countdown: false`；引擎心跳本来就按这项决定喂不喂 `nowMs`，关了就不再每秒重画。
 - 电脑网页：`TVChart.drawPriceLabels` 里最新价标签下那行倒计时删掉；`pages/chart.ts` 每秒给所有格子置脏重画那一句只为它服务，一并删掉（16 图布局下每秒少重画 16 张）。
 - **保留**：头部「结算」格的资金费率结算倒计时（iOS `HeaderStats.fundingCountdownText`、网页 `fundingCountdownText`、电脑版「下次结算」）是另一回事。
+
+## 36. 收尾压测 / 并发（2026-10-03，接 §35）
+
+用户：「全部任务完成做压测，做并发，有 bug 全部根因修复」。结果与修掉的根因：
+
+- **服务端负载**：kanpan-api 各接口有界并发全部 200，单请求服务端 CPU 约 4 ms；WS 每 IP 连接上限是设计，不是故障。
+- **网页**：电脑版压测 74/74、手机版 14/14、多标签页 11/11、账号双标签页并发 11/11，回归脚本 chart / layout / route 段 0 失败。
+  - `aaa47fb6` 中文底名合约（龙虾USDT 等五只）：stream-hub 流名、REST 透传、深度快照、订单流中继、板块走势 / 日线历史都认非 ASCII，拼上游 URL 前百分号编码（原来网关整条拒）。
+  - `307029fb` / `26dc3534` 走网关时每个浏览器合约 REST 预算 800（服务端共用桶的一截），网关币安透传一分钟本地预算 1000 → 1600：十六图高频切换不再排队挤爆回 429、整片格子空着。详情格「资金费率」缩成「费率」。
+  - `8fb3d055` / `b0d2d4db` 回归脚本自身的两处假失败（成交流清淡时段先等到有行；`fresh()` 改在同源非 app 页清状态，免得旧页 save() 把上一段状态写回）。
+- **iOS（17 Pro Max 全过；15 Pro Max 整套 225/3，三条都已根因修掉）**：
+  - `373e4436` 订单流已结束的签往右让 K 线后再查盘口梯，让进梯子就算放不下（BTC 1m「9.4M」落进梯子）。
+  - `9414f44b` 行情页上再点「图表」只回到最新、不清扫图列表与来处（30 只连扫停手后图被拽回 BTC）；均线参数 UI 用例不再用浮点 `frame.contains`。
+  - `b8b3d768` 自选挂在不存在的分类上整只看不见：`SyncOverlay.symbols(_:patching:)` 逐条补完摘掉指向空气的归属，`classifyUnassigned()` 把这种也当未分类重新归类；UI 测试自选种子只灌测试子树里的**访客**档案（`PersonalFileStorage(guest:)` / `takesTestSeed`），账号自选照真实用户那样登录时认领。链条：种子顶掉账号盘上带「加密」分类的那份 → 只改 groupId 的补丁被服务端 `invalid_favorite_identity` 拒（全量同步 `retryRejected` 带整份 body 重发，自愈）→ 第三次冷启动前向对账把挂着「加密」的自选补进没有分类的种子 → 自选页「还没有自选」。15 Pro Max 上 `ChartLayoutPersistenceUITests` 三条 + `CompareUITests.testSyncRestoresCollectionIntoFreshInstallationProfile` 复跑全过。
+- 手机不在手边，真机包未装。
