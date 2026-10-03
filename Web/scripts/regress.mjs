@@ -49,10 +49,13 @@ await ctx.addInitScript(() => {
 })
 const page = await ctx.newPage()
 const errors = []
-page.on('console', m => { if (m.type() === 'error') errors.push(`[console] ${m.text()}`) })
+// 「Failed to load resource」本身不带地址，附上 location：response 事件收不到浏览器自己发的请求（非 HTML 页上自动要的 /favicon.ico）
+page.on('console', m => { if (m.type() === 'error') errors.push(`[console] ${m.text()}${/Failed to load resource/.test(m.text()) && m.location()?.url ? ` @ ${m.location().url.slice(0, 160)}` : ''}`) })
 page.on('pageerror', e => errors.push(`[pageerror] ${e.message}`))
 // 控制台的「Failed to load resource」不带地址：另记一笔 4xx / 5xx 的地址，报错时看得出是谁（币安限频、网关、同步接口）
 page.on('response', r => { if (r.status() >= 400) errors.push(`[http ${r.status()}] ${r.url().replace(/([?&](signature|token)=)[^&]+/g, '$1…').slice(0, 160)}`) })
+// fresh() 落脚的 manifest 页不是 HTML，Chrome 会自己去要根上的 /favicon.ico（站上没有、404）；app 页声明了自己的 icon 不会要，这一笔不是 app 的报错
+await page.route(/\/favicon\.ico$/, r => r.fulfill({ status: 204 }))
 const cdp = await ctx.newCDPSession(page)
 
 const wait = ms => page.waitForTimeout(ms)
@@ -85,7 +88,10 @@ async function pace(limit = 500) {
 }
 const open = async (qs = '', hash = 'chart') => { await pace(); await page.goto(`${URL_}?${qs}#${hash}`, { waitUntil: 'domcontentloaded' }); await ready() }
 const fresh = async (qs = 'layout=1&panel=watch&ladder=0&drawer=0') => {
-  await page.goto(URL_, { waitUntil: 'load' }); await wait(500)
+  // 在同源的非 app 页上清：在 app 页里清，open() 里 pace() 等币安预算的那几秒旧页还活着，任何一次 save() 都把上一段的整份状态
+  // （格子品种、联动开关……）写回去，下一段就带着上一段的格子跑（2026-10-03 回归：layout 段接在 chart 段后，多图品种重复）
+  // 同源、200、又不是 app 页（manifest 是 JSON，不跑脚本）：落在 404 上会被下面的报错收集记成「控制台有报错」
+  await page.goto(new URL('/web/m/manifest.webmanifest', URL_).href, { waitUntil: 'load' })
   // 清状态但留下限流闸的账：清掉它等于让下一页以为这一分钟一笔没发过
   await page.evaluate(() => { const g = localStorage.getItem('hkline-web-rate-limit'); localStorage.clear(); if (g) localStorage.setItem('hkline-web-rate-limit', g) })
   await open(qs)
@@ -391,7 +397,8 @@ async function partRoute() {
     await page.click(`[data-seg="route"][data-v="${route}"]`); await wait(300)
     await page.evaluate(() => { location.hash = 'chart' }); await wait(9000)
     const w = await ws()
-    const market = w.live.filter(l => /market\/stream|fstream|dstream\.binance\.me/.test(l.url))
+    // 订单流直连时也拨 dstream.binance.me（U 本位深度 / 成交、币本位各一条），按主机认会把它们算进来；行情连接认订阅里的 K 线 / ticker / 标记价
+    const market = w.live.filter(l => /market\/stream|fstream|dstream\.binance\.me/.test(l.url) && l.subs.some(x => /@kline_|@ticker|@markPrice/.test(x)))
     const t1 = await page.evaluate(() => document.title); await wait(6000); const t2 = await page.evaluate(() => document.title)
     const empty = await page.locator('.cell-empty:not([hidden])').count()
     // 直连 2026-10-03 起照 iOS 出厂连 dstream.binance.me（fstream.binance.com 在国内握手被重置，见 market/stream.ts）
