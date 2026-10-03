@@ -246,7 +246,7 @@ import ReviewUI
     // 会落在这一段之后，把刚写回去的结果盖成旧的。
     sync?.flushNow()
     let directory = try files.directory(user: user?.id)
-    let nextStorage = try PersonalFileStorage(directory: directory)
+    let nextStorage = try PersonalFileStorage(directory: directory, guest: user == nil)
     let nextInbox = try ShareInbox.read(directory: directory)
     var nextPrefs = PrefsStore.load(from: nextStorage)
     // 自选要和画线同一个姿态：**读不动就把整段 `prepare` 中断**，绝不拿一份凭空造出来的
@@ -282,7 +282,7 @@ import ReviewUI
     nextPrefs = recovery.prefs
     let claim = try user.flatMap { try files.claimGuest(user: $0.id) }
     if let claim {
-      let guestStorage = try PersonalFileStorage(directory: claim.directory)
+      let guestStorage = try PersonalFileStorage(directory: claim.directory, guest: true)
       let guestPrefs = PrefsStore.load(from: guestStorage)
       // 访客那份同理：解不动就中断这次登录，而不是把访客的自选当成「本来就没有」
       // 悄悄丢掉（下一行的画线一直是这个姿态）。

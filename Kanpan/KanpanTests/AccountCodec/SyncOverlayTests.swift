@@ -138,6 +138,24 @@ import KanpanCore
     #expect(disk.favorites == [btc, "binance/usd_m/ETHUSDT"])
   }
 
+  /// 逐条补进来的自选挂在一个手上没有的分类上（那一类不在这批里、盘上也没有）：归属摘成未分类，
+  /// 不能留一个指向空气的 id——那样它在分类页上哪一类都不属于，整个看不见
+  /// （压测 2026-10-03，15 Pro Max 第三次冷启动自选页「还没有自选」）。
+  @Test func symbolsPatchDropsMembershipInMissingGroup() {
+    var disk = SymbolPrefs(favorites: [btc])
+    let cloud = SymbolPrefs(favorites: [btc], groups: [FavoriteGroup(id: "g", name: "加密")], groupForSymbol: [btc: "g"])
+    let favorite = PersonalSyncCodec.symbols(cloud).first { $0.collection == "favorites" }!
+    SyncOverlay.symbols([favorite], patching: &disk)
+    #expect(disk.favorites == [btc])
+    #expect(disk.groupForSymbol[btc] == nil)
+    #expect(disk.favorites(in: disk.group(nil)) == [btc])
+    // 分类也在这批里时照常挂上。
+    var both = SymbolPrefs(favorites: [btc])
+    SyncOverlay.symbols(PersonalSyncCodec.symbols(cloud), patching: &both)
+    #expect(both.groupForSymbol[btc] == "g")
+    #expect(both.favorites(in: both.group(nil)) == [btc])
+  }
+
   /// 设置：没有对象、或者对象是墓碑，返回 nil（不动本地）；有就按字段合并，本地脏的留本地。
   @Test func settingsMergeKeepsDirtyFields() throws {
     #expect(try SyncOverlay.settings(nil, onto: .defaults, keeping: []) == nil)

@@ -162,5 +162,12 @@ enum SyncOverlay {
     }
     // 补回来的分组可能和手上的同名（另一台设备推上来的「加密」）：同样并成一格。
     prefs.mergeSameNamedGroups()
+    // 补进来的自选可能挂在一个手上没有的分类上：那一类云端早收下了（不归本机说了算、不在这批里），
+    // 盘上这份又没有它。归属表里留着一个指向空气的 id，这只自选在分类页上哪一类都不属于、
+    // 整个看不见（`favorites(in:)` 按 id 精确比）——压测 2026-10-03 第三次冷启动自选页成了
+    // 「还没有自选」就是这样。摘成未分类，宿主的 `classifyUnassigned()` 会把它归进一类。
+    // `SymbolPrefs.init` 读档时也是这条规矩，这里是逐条改字段、绕过了它，所以补一刀。
+    let live = Set(prefs.groups.map(\.id))
+    prefs.groupForSymbol = prefs.groupForSymbol.filter { live.contains($0.value) }
   }
 }

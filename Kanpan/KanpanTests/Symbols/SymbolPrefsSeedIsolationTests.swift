@@ -41,7 +41,7 @@ struct SymbolPrefsSeedIsolationTests {
 
   /// 端到端那一半：真账号档案上 `read()` 读回来的必须是**盘上那份**。
   ///
-  /// 柜子用的是一个 `isIsolatedForTests == false` 的仓（`PersonalFileStorage` 挂在
+  /// 柜子用的是一个 `takesTestSeed == false` 的仓（`PersonalFileStorage` 挂在
   /// 真账号目录上时就是这个答案），环境变量则真的设进本进程——这正是报告里那条
   /// 组合路径的形状。
   @Test("真账号档案上读回来的是他自己的自选，不是种子")
@@ -54,12 +54,41 @@ struct SymbolPrefsSeedIsolationTests {
     store.save(SymbolPrefs(favorites: ["binance/usd_m/SOLUSDT"]))
     #expect(try store.read().favorites == ["binance/usd_m/SOLUSDT"])
   }
+
+  /// 测试子树里只有**访客**档案收种子；账号档案读盘上那份（登录时从访客档案认领来的、带着分类的那一份）。
+  /// 种子灌进账号目录时，每次读都把认领好的分类顶掉，前向对账再补进一条挂着那个分类的自选，
+  /// 归属就指向空气（压测 2026-10-03，15 Pro Max 第三次冷启动自选页「还没有自选」）。
+  @Test("测试子树里只有访客档案收种子")
+  func onlyGuestProfilesTakeTheSeed() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("seed-\(UUID().uuidString)/kanpan/accounts/tests/\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) }
+    let guest = root.appendingPathComponent("local/\(UUID().uuidString)")
+    let account = root.appendingPathComponent("u-\(UUID().uuidString)")
+    for url in [guest, account] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+    #expect(try PersonalFileStorage(directory: guest, guest: true).takesTestSeed)
+    #expect(try !PersonalFileStorage(directory: account, guest: false).takesTestSeed)
+    // 不在测试子树里，访客档案也不收。
+    let real = FileManager.default.temporaryDirectory.appendingPathComponent("seed-real-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: real) }
+    #expect(try !PersonalFileStorage(directory: real, guest: true).takesTestSeed)
+
+    setenv("KANPAN_TEST_PROFILE", "1", 1)
+    setenv("KANPAN_TEST_FAVORITES", "BTCUSDT", 1)
+    defer { unsetenv("KANPAN_TEST_PROFILE"); unsetenv("KANPAN_TEST_FAVORITES") }
+    let claimed = SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"], groups: [FavoriteGroup(id: "g", name: "加密")],
+                              groupForSymbol: ["binance/usd_m/BTCUSDT": "g"])
+    let store = SymbolPrefsStore(storage: try PersonalFileStorage(directory: account, guest: false))
+    store.save(claimed)
+    #expect(try store.read() == claimed)
+  }
 }
 
 /// 「不是隔离仓」的那种柜子：真账号目录上的 `PersonalFileStorage` 就是这个答案。
 private final class RealProfileStorage: SymbolPrefsStorage {
   private var box: [String: Data] = [:]
-  var isIsolatedForTests: Bool { false }
+  var takesTestSeed: Bool { false }
   func symbolPrefsData(forKey key: String) -> Data? { box[key] }
   func setSymbolPrefsData(_ data: Data?, forKey key: String) { box[key] = data }
 }

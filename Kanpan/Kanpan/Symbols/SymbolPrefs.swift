@@ -483,14 +483,15 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
 protocol SymbolPrefsStorage: AnyObject {
   func symbolPrefsData(forKey key: String) -> Data?
   func setSymbolPrefsData(_ data: Data?, forKey key: String)
-  /// 这个柜子是不是**测试专用的隔离仓**。
+  /// 这个柜子收不收 UI 测试的自选种子：**测试专用的隔离仓**，而且装的是「这台机器登录前的那份」
+  /// （内存仓、测试子树里的访客档案）。
   ///
   /// 只有一处要它：UI 测试用环境变量灌自选的那条路（`SymbolPrefsStore.testSeed`）。
-  /// 默认 `false`——「不写就不是隔离仓」是安全的那一侧，新写的柜子忘了表态
+  /// 默认 `false`——「不写就不收」是安全的那一侧，新写的柜子忘了表态
   /// 只会让种子不生效，而不是让种子去顶真实档案。
-  var isIsolatedForTests: Bool { get }
+  var takesTestSeed: Bool { get }
 }
-extension SymbolPrefsStorage { var isIsolatedForTests: Bool { false } }
+extension SymbolPrefsStorage { var takesTestSeed: Bool { false } }
 
 extension UserDefaults: SymbolPrefsStorage {
   func symbolPrefsData(forKey key: String) -> Data? { data(forKey: key) }
@@ -558,7 +559,7 @@ final class SymbolPrefsStore {
   /// 整份读不动的档案；局部坏只丢局部，不会连累别的字段。
   func read() throws -> SymbolPrefs {
     #if DEBUG
-    if let seeded = Self.testSeed(isolated: storage.isIsolatedForTests) { return seeded }
+    if let seeded = Self.testSeed(isolated: storage.takesTestSeed) { return seeded }
     #endif
     guard let data = storage.symbolPrefsData(forKey: key) ?? (key == Self.defaultsKey ? storage.symbolPrefsData(forKey: Self.legacyDefaultsKey) : nil) else { return SymbolPrefs() }
     // 零字节不是「没有档案」：文件在，只是写到一半断电了。当解不动处理，
@@ -587,8 +588,13 @@ final class SymbolPrefsStore {
   /// 三道闸，缺一不给种子：
   /// 1. `#if DEBUG`——种子是测试脚手架，Release 包里连这段代码都不该存在。
   /// 2. 进程确实处在测试模式（`KANPAN_TEST_PROFILE=1`）。
-  /// 3. **这一份档案落在隔离仓上**（`storage.isIsolatedForTests`）：内存仓，或者
-  ///    `accounts/tests/<uuid>` 那棵测试子树里的档案仓。
+  /// 3. **这一份档案落在隔离仓上**（`storage.takesTestSeed`）：内存仓，或者
+  ///    `accounts/tests/<uuid>` 那棵测试子树里的**访客**档案仓。账号档案不收种子：
+  ///    真用户的账号自选是登录那一下从访客档案认领过去的（`AppAccountBridge.prepare` 的
+  ///    `claimGuest`），之后一直是盘上那份。种子要是也灌进账号目录，每次读都把盘上那份
+  ///    （连同认领时建好的分类）顶成一份没有分类的种子，测试走的就不是用户那条路了——
+  ///    压测 2026-10-03 在 15 Pro Max 上，前向对账把一条挂着「加密」的自选补进这份没有
+  ///    分类的种子，归属指向一个不存在的分类，第三次冷启动自选页成了「还没有自选」。
   ///
   /// 第 3 条是这轮补的（A-07）。原来只看两个环境变量，于是「测试种子生效」和
   /// 「账号目录隔离生效」由两组互不相干的开关各自决定：桥挂在**真账号目录**上时
@@ -617,7 +623,7 @@ final class SymbolPrefsStore {
 /// 内存版存档，预览与单测用（不落真 UserDefaults）。
 final class MemoryPrefsStorage: SymbolPrefsStorage {
   /// 内存仓天然隔离：它只活在这个进程里，谁也够不着别人的档案。
-  var isIsolatedForTests: Bool { true }
+  var takesTestSeed: Bool { true }
   private var box: [String: Data] = [:]
   init(_ seed: [String: Data] = [:]) { box = seed }
   func symbolPrefsData(forKey key: String) -> Data? { box[key] }

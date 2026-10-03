@@ -389,7 +389,9 @@ final class SymbolPickerModel {
   @discardableResult
   private func classifyUnassigned() -> Bool {
     var changed = false
-    for symbol in prefs.favorites where prefs.groupForSymbol[symbol] == nil {
+    // 挂在一个已经不存在的分类上的，和没分类一样看不见（`favorites(in:)` 按 id 精确比），一并补。
+    let live = Set(prefs.groups.map(\.id))
+    for symbol in prefs.favorites where prefs.groupForSymbol[symbol].map({ !live.contains($0) }) ?? true {
       if assignVenueCategory(symbol) { changed = true; continue }
       let facts = self.info(for: symbol)
       // 不知道它是什么就不编分类（审查 B-04）。已经有分类在时把它归到他此刻看的
@@ -397,6 +399,8 @@ final class SymbolPickerModel {
       // 一个分类都没有就原样留着，那一格本身就是页面此刻显示的东西。
       guard FavoriteCategory.knows(symbol: symbol, info: facts) else {
         if let group = currentGroup { prefs.assign(symbol, to: group); changed = true }
+        // 一个分类都没有：指向空气的那个 id 摘掉，它就落在页面此刻显示的「没有分类」那一格上。
+        else if prefs.groupForSymbol[symbol] != nil { prefs.assign(symbol, to: nil); changed = true }
         continue
       }
       let group = prefs.createGroup(FavoriteCategory.name(symbol: symbol, info: facts))
