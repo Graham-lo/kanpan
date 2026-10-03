@@ -346,6 +346,14 @@ cmd_zombie_gc() {
     printf '%s\n' "$booted" | grep -qF "$udid" && continue
     kill "$pid" 2>/dev/null && { say "[guard] 杀已关机模拟器残留的 launchd_sim $pid"; log "zombie-gc 杀 launchd_sim $pid"; killed=$((killed+1)); }
   done < <(ps -Aeo pid,args | grep launchd_sim | grep -v grep | sed -n 's/^ *\([0-9]*\) .*Devices\/\([A-F0-9-]*\)\/.*/\1 \2/p')
+  # Docker Desktop 退出后常留下父进程为 launchd 的 docker-agent（每个 ~100 MB，2026-10-03 一次攒了三个）
+  # 和 Electron 外壳；后端 com.docker.backend 已经不在时它们没人用，清掉。启动途中后端先起，不会误杀。
+  if ! pgrep -q -x com.docker.backend; then
+    while read -r pid et; do
+      [ -n "$pid" ] || continue
+      kill "$pid" 2>/dev/null && { say "[guard] 杀 Docker 退出后残留的 docker-agent $pid（跑了 $et）"; log "zombie-gc 杀 docker-agent $pid"; killed=$((killed+1)); }
+    done < <(ps -Aeo pid,ppid,etime,args | awk '$2==1 && /cli-plugins\/docker-agent /{print $1, $3}')
+  fi
   # 真·僵尸态（Z）只能靠父进程收尸，父进程若是活着的会话就不动，父进程没了它也就没了
   [ "$killed" -eq 0 ] || sleep 2
   return 0
