@@ -63,6 +63,14 @@ import ReviewUI
   /// 本机那份回合记在哪个看盘档案下（`AccountFiles.currentProfile` 的值）；老文件没有，是 nil。
   @ObservationIgnored private var owner: String?
   @ObservationIgnored private var watchingProfile = false
+  /// 后台刷新把 app 拉起、没有界面时（审查 E·待核实五），复盘本与账号桥都还没建
+  /// （它们是 `MainScreen` 的状态，场景没连上就没有 `MainScreen`），`AccountFiles.currentProfile`
+  /// 也还是空串。这一轮「此刻是谁、新回合往哪儿传」由桥自己去问。
+  @ObservationIgnored private let headlessUplink: @MainActor () async -> ExchangeReviewUplink?
+  /// 没界面那一轮问到的档案 id。只在 `AccountFiles.currentProfile` 还是空串时顶上。
+  @ObservationIgnored private var headlessProfile: String?
+  /// 账号桥装着的档案 id（`AccountFiles.currentProfile`）。单测换成固定值，不跟同进程别的用例抢那个全局。
+  @ObservationIgnored private let currentProfile: @MainActor () -> String
 
   private static let log = Logger(subsystem: "com.kanpan.app", category: "exchange")
   @ObservationIgnored private var foregroundLoop: Task<Void, Never>?
@@ -70,7 +78,7 @@ import ReviewUI
   @ObservationIgnored private var barCache: [String: BarSeries] = [:]
   @ObservationIgnored private var barOrder: [String] = []
 
-  init() {
+  convenience init() {
     let venue = ExchangeAccountRegistry.binanceFutures
     var store = ExchangeCredentialStore(venue: venue.venue, market: venue.market)
     var stateURL = ExchangeAccountSync.defaultStateURL(venue: venue.venue, market: venue.market)
@@ -90,7 +98,20 @@ import ReviewUI
       autoKey = demo.autoKey
     }
     #endif
+    self.init(store: store, stateURL: stateURL, roundsURL: roundsURL, makeProvider: makeProvider,
+              autoKey: autoKey, headlessUplink: { await ExchangeReviewUplink.resolve() })
+  }
+
+  /// 装配口：Keychain、两份本机档、取数的 provider、没界面时的上传通道都从外面给。
+  /// 正式走上面那个无参的；单测给内存 Keychain、临时目录、假 provider、假上传通道。
+  init(store: ExchangeCredentialStore, stateURL: URL, roundsURL: URL,
+       makeProvider: @escaping ExchangeAccountSync.ProviderFactory, autoKey: String? = nil,
+       currentProfile: @escaping @MainActor () -> String = { AccountFiles.currentProfile },
+       headlessUplink: @escaping @MainActor () async -> ExchangeReviewUplink?) {
+    let venue = ExchangeAccountRegistry.binanceFutures
     self.roundsURL = roundsURL
+    self.currentProfile = currentProfile
+    self.headlessUplink = headlessUplink
     let file = Self.loadRounds(roundsURL)
     rounds = file?.rounds ?? []
     owner = file?.owner
@@ -126,13 +147,21 @@ import ReviewUI
   /// 按此刻登录的是谁，把该给他看的回合灌给复盘本（属主不对就灌空的）；访客时接入的回合，
   /// 第一次登录就记到这个账号名下。
   private func showRounds() {
-    let view = ExchangeRoundsOwnership.view(rounds, owner: owner, profile: AccountFiles.currentProfile)
+    let view = ExchangeRoundsOwnership.view(rounds, owner: owner, profile: profile)
     if let claim = view.claim, claim != owner {
       owner = claim
       saveRounds()
     }
     ownerMismatch = view.hidden
     review?.trades.setLocalRounds(view.rounds)
+  }
+
+  /// 此刻装着谁的档案。账号桥装过档案就认它；还没装（后台刷新拉起、没有界面）就认这一轮
+  /// 桥自己问到的那个人。两边都没有是空串——属于某个账号的回合对空串一律不可见，
+  /// 从前后台那一轮就是因此判成「属主不对」，连拉都不拉。
+  private var profile: String {
+    let current = currentProfile()
+    return current.isEmpty ? (headlessProfile ?? current) : current
   }
 
   /// 换账号（登录、退登、换号）时复盘本会换一个上传通道：在它换的**那一刻**（`client` 赋值前）
@@ -275,10 +304,28 @@ import ReviewUI
     try? BGTaskScheduler.shared.submit(request)
   }
 
-  private func backgroundPull() async {
+  /// 系统给的那一轮后台刷新：拉一次交易所，新拼好的回合**这一轮就传上去**。
+  ///
+  /// 有界面（复盘本挂在桥上）时交给复盘本那一套传、再拉。没有界面时复盘本根本不存在——
+  /// 原来这里是 `review?.trades.synchronize()`，`review` 是 nil，新回合就只落在本机，
+  /// 等人哪天回前台才补传（审查 E·待核实五）。现在桥自己问到「此刻是谁」与上传通道，
+  /// 按那个人能看见的那一份直接走 `TradeSync.upload`；没登录、钥匙串读不动就只拉不传。
+  func backgroundPull() async {
     if status == nil { await refreshStatus() }
+    guard status != nil else { return }
+    if let review {
+      await pullNow(force: false)
+      await review.trades.synchronize()
+      return
+    }
+    let uplink = await headlessUplink()
+    headlessProfile = uplink?.profile
     await pullNow(force: false)
-    await review?.trades.synchronize()
+    // 拉的这一会儿界面起来了（人点开了 app）：复盘本接上桥时已经拿到这批回合、会自己去传。
+    guard review == nil, let upload = uplink?.upload, !ownerMismatch else { return }
+    let visible = ExchangeRoundsOwnership.view(rounds, owner: owner, profile: profile)
+    guard !visible.hidden, !visible.rounds.isEmpty else { return }
+    await upload(visible.rounds)
   }
 
   // MARK: - 复盘图

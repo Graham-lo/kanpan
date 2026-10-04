@@ -18,6 +18,7 @@ final class MemoryKeychain: @unchecked Sendable {
 
   func failWrites(_ account: String) { lock.withLock { _ = failingWrites.insert(account) } }
   func failDeletes(_ account: String) { lock.withLock { _ = failingDeletes.insert(account) } }
+  func allowDeletes(_ account: String) { lock.withLock { _ = failingDeletes.remove(account) } }
 
   var io: ExchangeKeychainIO {
     ExchangeKeychainIO(
@@ -523,15 +524,29 @@ struct ExchangeAuditCredentialTests {
     #expect(try store.loadStatus() == nil)
   }
 
-  @Test("R14 断开时 Key 删不掉：另一项照删，并照实抛错（界面说没断开）")
-  func removeAllTriesBothAndReportsFailure() throws {
+  @Test("R13 断开时 Key 删不掉：元数据也留着（界面与下次启动都照实是已接入），并抛错")
+  func removeAllKeepsStatusWhenKeyDeleteFails() throws {
     let keychain = MemoryKeychain()
     let store = ExchangeCredentialStore(service: "audit", io: keychain.io)
     try store.save(credentials: Self.credentials, status: Self.status)
     keychain.failDeletes("credentials")
     #expect(throws: ExchangeAccountError.keychain) { try store.removeAll() }
-    #expect(try store.loadStatus() == nil)
+    #expect(try store.loadStatus() == Self.status)
     #expect(try store.loadCredentials() == Self.credentials)
+  }
+
+  @Test("R13 Key 删掉了、元数据删不掉：照实抛错；再移除一次就收干净")
+  func removeAllRetriesAfterStatusDeleteFails() throws {
+    let keychain = MemoryKeychain()
+    let store = ExchangeCredentialStore(service: "audit", io: keychain.io)
+    try store.save(credentials: Self.credentials, status: Self.status)
+    keychain.failDeletes("status")
+    #expect(throws: ExchangeAccountError.keychain) { try store.removeAll() }
+    #expect(try store.loadCredentials() == nil)
+    #expect(try store.loadStatus() == Self.status)
+    keychain.allowDeletes("status")
+    try store.removeAll()
+    #expect(try store.loadStatus() == nil)
   }
 }
 

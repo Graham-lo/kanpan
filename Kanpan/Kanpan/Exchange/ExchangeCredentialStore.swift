@@ -74,13 +74,16 @@ struct ExchangeCredentialStore: Sendable {
     try io.write(Self.encode(status), service, Self.statusAccount)
   }
 
-  /// 断开：Key 与元数据全删。先删 Key（最要紧的那一项），删元数据失败也不影响 Key 已经删掉；
-  /// 两项都试一遍，任何一项没删成都抛错，让界面照实说「没断开」。
+  /// 断开：Key 与元数据全删，**先删 Key**，Key 删不掉就停在这儿、元数据原样留着再抛错。
+  ///
+  /// 元数据就是界面上「已接入」的依据（`loadStatus`）。原来两项各删各的：Key 删不掉、
+  /// 元数据照删，界面（以及下次启动）就判成「未接入」，Key 却还躺在 Keychain 里——
+  /// 用户以为移除了、其实存着（审查 E·R13，桥层用例补上时暴露）。现在两项保持
+  /// 「元数据在 ⇔ Key 可能在」：Key 删掉了、元数据没删掉，界面照实留在已接入并给一行红字，
+  /// 再点一次移除就能收干净（Key 不在算删成）。
   func removeAll() throws {
-    var failure: (any Error)?
-    do { try io.delete(service, Self.credentialsAccount) } catch { failure = error }
-    do { try io.delete(service, Self.statusAccount) } catch { failure = failure ?? error }
-    if let failure { throw failure }
+    try io.delete(service, Self.credentialsAccount)
+    try io.delete(service, Self.statusAccount)
   }
 
   private static func encode<T: Encodable>(_ value: T) throws -> Data {
