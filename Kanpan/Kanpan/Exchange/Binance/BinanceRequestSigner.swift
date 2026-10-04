@@ -23,10 +23,16 @@ struct BinanceRequestSigner: Sendable {
     return query + "&signature=" + signature(for: query)
   }
 
-  /// 查询串里的值只会是代号、数字、类型名；照 RFC 3986 的非保留字符之外一律转义，签的和发的是同一串。
+  /// 只放行 RFC 3986 的非保留字符（ASCII 字母、数字、`-._~`），其余一律按 UTF-8 百分号转义。
+  ///
+  /// 不能用 `CharacterSet.alphanumerics`：它把汉字等 Unicode 字母也算「字母数字」，
+  /// 于是「币安人生USDT」这类代号原样进了查询串、按原文签名；而 `URL` 发出去时会把汉字转义成
+  /// `%E5%B8%81…`，币安按收到的转义串验签，对不上就回 -1022（被当成 Key 失效）。
+  /// 币安文档明说非 ASCII 参数要先百分号转义、再对转义后的串签名。
+  static let unreserved = CharacterSet(
+    charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
   static func escape(_ value: String) -> String {
-    var allowed = CharacterSet.alphanumerics
-    allowed.insert(charactersIn: "-._~")
-    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
   }
 }

@@ -10,7 +10,8 @@ import Foundation
 // 规则摘要：
 // - 按「品种 + 持仓方向」各记一本账，有符号变化量买 + 卖 −（双向持仓的空头仓就是负数）；
 // - 从 0 离开 = 回合开始，回到 0 = 结束，一笔成交越过 0 = 反手：这笔拆两半，
-//   平旧仓那一半带走这笔全部已实现盈亏、手续费按数量比例分，剩下那一半开新回合；
+//   平旧仓那一半带走这笔全部已实现盈亏、手续费按数量比例分（开新仓那一半拿总额减去平仓那一半，
+//   两半加起来分毫不差），剩下那一半开新回合；
 // - 同一笔成交拉到两次只算一次；
 // - 回溯窗口之前就开着的旧仓先用窗口开头的成交消化到 0，这段残缺回合不产出（开仓价不在窗口里）。
 
@@ -154,7 +155,7 @@ public struct RoundBuilder: Codable, Sendable {
     var fi = 0, ei = 0
     while fi < newFills.count || ei < newFunding.count {
       if ei < newFunding.count, fi >= newFills.count || newFunding[ei].time <= newFills[fi].time {
-        apply(newFunding[ei], touched: &touched)
+        apply(newFunding[ei], context: context, touched: &touched)
         ei += 1
       } else {
         apply(newFills[fi], context: context, touched: &touched)
@@ -205,12 +206,13 @@ public struct RoundBuilder: Codable, Sendable {
     let k = fill.key.description
     let delta = fill.side.sign * fill.qty
     guard var book = books[k], book.qty != 0 else {
-      openBook(k, fill: fill, qty: fill.qty, share: 1, split: false, context: context, touched: &touched)
+      openBook(k, fill: fill, qty: fill.qty, commission: fill.commission, split: false,
+               context: context, touched: &touched)
       return
     }
     let sameWay = (book.qty > 0) == (delta > 0)
     if sameWay {
-      record(&book, fill: fill, qty: fill.qty, commissionShare: 1, pnl: fill.realizedPnl,
+      record(&book, fill: fill, qty: fill.qty, commission: fill.commission, pnl: fill.realizedPnl,
              role: .add, split: false, context: context)
       let q = book.qty.magnitudeValue
       book.avg = (q * book.avg + fill.qty * fill.price) / (q + fill.qty)
@@ -228,8 +230,10 @@ public struct RoundBuilder: Codable, Sendable {
     let held = book.qty.magnitudeValue
     let closing = min(held, fill.qty)
     let crosses = fill.qty > held
-    let share = crosses ? closing / fill.qty : 1
-    record(&book, fill: fill, qty: closing, commissionShare: share, pnl: fill.realizedPnl,
+    // 穿 0 时手续费按数量拆：平仓那一半按比例算、四舍五入到 8 位，开仓那一半拿剩下的——
+    // 两边各自舍入会凭空多出或丢掉一个最小单位。
+    let closingFee = crosses ? (fill.commission * closing / fill.qty).amountRounded : fill.commission
+    record(&book, fill: fill, qty: closing, commission: closingFee, pnl: fill.realizedPnl,
            role: closing == held ? .close : .reduce, split: crosses, context: context)
     book.lastNotional = book.notional
     book.qty += fill.side.sign * closing
@@ -244,12 +248,12 @@ public struct RoundBuilder: Codable, Sendable {
       books[k] = book
     }
     if crosses {
-      openBook(k, fill: fill, qty: fill.qty - closing, share: 1 - share, split: true,
+      openBook(k, fill: fill, qty: fill.qty - closing, commission: fill.commission - closingFee, split: true,
                context: context, touched: &touched)
     }
   }
 
-  private mutating func openBook(_ k: String, fill: Fill, qty: Decimal, share: Decimal, split: Bool,
+  private mutating func openBook(_ k: String, fill: Fill, qty: Decimal, commission: Decimal, split: Bool,
                                  context: Context, touched: inout Set<String>) {
     let signed = fill.side.sign * qty
     var book = Book(
@@ -257,7 +261,7 @@ public struct RoundBuilder: Codable, Sendable {
       qty: signed, avg: fill.price, firstFillID: fill.id, direction: signed > 0 ? .long : .short,
       openedAt: fill.time, updatedAt: fill.time)
     // 反手拆出来的开仓那一半：已实现盈亏全归平仓那一半，这里是 0。
-    record(&book, fill: fill, qty: qty, commissionShare: share, pnl: split ? 0 : fill.realizedPnl,
+    record(&book, fill: fill, qty: qty, commission: commission, pnl: split ? 0 : fill.realizedPnl,
            role: .open, split: split, context: context)
     book.openedQty = qty
     book.openNotional = qty * fill.price
@@ -268,10 +272,9 @@ public struct RoundBuilder: Codable, Sendable {
     touched.insert(roundID(book))
   }
 
-  /// 把一笔（或拆开后的一部分）成交记进账：手续费、盈亏、明细行。
-  private func record(_ book: inout Book, fill: Fill, qty: Decimal, commissionShare: Decimal, pnl: Decimal,
+  /// 把一笔（或拆开后的一部分）成交记进账：手续费（这一部分分到的那份）、盈亏、明细行。
+  private func record(_ book: inout Book, fill: Fill, qty: Decimal, commission: Decimal, pnl: Decimal,
                       role: FillRole, split: Bool, context: Context) {
-    let commission = commissionShare == 1 ? fill.commission : (fill.commission * commissionShare).amountRounded
     if book.quoteAsset.isEmpty { book.quoteAsset = fill.marginAsset }
     book.commissionByAsset[fill.commissionAsset, default: 0] += commission
     if fill.commissionAsset == book.quoteAsset {
@@ -293,24 +296,41 @@ public struct RoundBuilder: Codable, Sendable {
   // MARK: - 一条资金费
 
   /// 分给结算时刻开着的同品种回合；多个同时开着（双向持仓两边都有仓）按名义额比例分。
-  private mutating func apply(_ entry: FundingEntry, touched: inout Set<String>) {
+  ///
+  /// 孤儿旧仓（回溯窗口之前开的、均价不知道）也占一份：它的名义额用同品种开着的回合的均价折算，
+  /// 没有就用这一轮的标记价；它那份不记进任何回合（孤儿不产出），但不能让对面那个真实回合把整条资金费吃下。
+  /// 以前孤儿均价记 0、权重 0，双向持仓里孤儿多仓 + 新开空仓时，整条资金费全算到空仓头上。
+  private mutating func apply(_ entry: FundingEntry, context: Context, touched: inout Set<String>) {
     enum Slot { case open(String), closed(Int) }
-    var slots: [(Slot, Decimal, Bool)] = []  // (位置, 权重, 是不是孤儿)
+    var payees: [(Slot, Decimal)] = []  // (位置, 权重)
+    var orphanQty: Decimal = 0
+    var referencePrice: Decimal?
     for (k, b) in books.sorted(by: { $0.key < $1.key })
     where b.symbol == entry.symbol && b.qty != 0 && b.openedAt <= entry.time {
-      slots.append((.open(k), b.notional, b.orphan))
+      if b.orphan {
+        orphanQty += b.qty.magnitudeValue
+      } else {
+        payees.append((.open(k), b.notional))
+        if referencePrice == nil, b.avg > 0 { referencePrice = b.avg }
+      }
     }
     for (i, b) in closed.enumerated()
     where b.symbol == entry.symbol && b.openedAt <= entry.time && (b.closedAt ?? .max) >= entry.time {
-      slots.append((.closed(i), b.lastNotional, false))
+      payees.append((.closed(i), b.lastNotional))
     }
-    let total = slots.reduce(Decimal(0)) { $0 + $1.1 }
-    guard total > 0 else { return }  // 只有孤儿旧仓（或什么都没开）：这条归不到任何产出的回合
-    var remaining = entry.amount
-    for (n, (slot, weight, orphan)) in slots.enumerated() {
-      let part = n == slots.count - 1 ? remaining : (entry.amount * weight / total).amountRounded
+    payees.removeAll { $0.1 <= 0 }
+    let payeeWeight = payees.reduce(Decimal(0)) { $0 + $1.1 }
+    guard payeeWeight > 0 else { return }  // 只有孤儿旧仓（或什么都没开）：这条归不到任何产出的回合
+    let orphanPrice = referencePrice ?? context.markPrices[entry.symbol] ?? 0
+    let orphanWeight = orphanQty * orphanPrice
+    // 真实回合合起来分到的那一份；孤儿那份留在外面。
+    let payout = orphanWeight > 0
+      ? (entry.amount * payeeWeight / (payeeWeight + orphanWeight)).amountRounded
+      : entry.amount
+    var remaining = payout
+    for (n, (slot, weight)) in payees.enumerated() {
+      let part = n == payees.count - 1 ? remaining : (payout * weight / payeeWeight).amountRounded
       remaining -= part
-      guard !orphan else { continue }
       switch slot {
       case .open(let k):
         guard var b = books[k] else { continue }

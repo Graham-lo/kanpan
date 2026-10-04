@@ -143,12 +143,18 @@ struct ExchangeAccountPage: View {
   // MARK: - 接着
 
   @ViewBuilder private var connectedActions: some View {
+    if bridge.ownerMismatch {
+      Text("这把密钥接在另一个看盘账号下，移除后可重新接入")
+        .font(TypeScale.footnote).foregroundStyle(t.ink3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("exchange.otherOwner")
+    }
     if let failure = bridge.lastFailure {
       Text(failure).font(TypeScale.footnote).foregroundStyle(t.danger)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("exchange.error")
     }
-    primary("立即同步", busy: bridge.pulling, enabled: true, id: "exchange.sync") {
+    primary("立即同步", busy: bridge.pulling, enabled: !bridge.ownerMismatch, id: "exchange.sync") {
       bridge.pull(force: true)
     }
     Button { confirmRemove = true } label: {
@@ -177,10 +183,16 @@ struct ExchangeAccountPage: View {
     .accessibilityIdentifier(id)
   }
 
-  private static func day(_ ms: Int64) -> String {
+  /// 日期一律按上海时间（全 app 只用上海时间），不跟手机时区走。
+  private static let dayFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "zh_CN")
+    formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
     formatter.dateFormat = "yyyy-MM-dd"
-    return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(ms) / 1000))
+    return formatter
+  }()
+
+  static func day(_ ms: Int64) -> String {
+    dayFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(ms) / 1000))
   }
 }

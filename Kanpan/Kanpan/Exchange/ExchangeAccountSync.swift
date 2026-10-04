@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import os
 
 /// 把一个交易所账户的成交拉回来、拼成回合、把有变化的回合交出去。自动复盘的发动机。
 ///
@@ -9,10 +10,13 @@ import KanpanCore
 ///
 /// 节奏：
 /// - 第一次接入往前回溯 90 天；之后从上次的水位往前留 1 小时重叠增量拉（重叠部分靠去重吃掉）。
+///   水位是交易所给的截止时刻（`ExchangeAccountBatch.asOf`），和拼回合的中间状态存在同一个文件里：
+///   中间状态丢了（卸载重装、格式升级解不开、回合档没了），水位跟着一起作废，重新回溯。
 /// - 前台 5 分钟最多拉一次（按「尝试」计，失败也算），切前后台、来回点页面不会反复打交易所。
 /// - 断网就安静地放弃这一轮，不提示、不重试，等下一次 `pullIfDue()`。
 /// - 交出去是「至少一次」：先回调、再落盘水位。回调之后 app 被杀，下次会把同一批回合再交一遍，
 ///   回合 id 稳定（协议 §2.2），下游按 id 覆盖即可。
+/// - 拉的过程中被断开或换了一把 Key：这一轮的结果整个作废，不交回合、不落中间状态与水位。
 ///
 /// 这一阶段**不接** `AppLifecycle`、不接任何界面；接线在后续阶段。
 actor ExchangeAccountSync {
@@ -47,28 +51,44 @@ actor ExchangeAccountSync {
   private let onRounds: RoundsSink
   private var inFlight = false
 
+  private static let log = Logger(subsystem: "com.kanpan.app", category: "exchange")
+
+  /// - Parameter discardState: 下游的回合档没了（或解不开）时传 true：把本机的中间状态一并作废，
+  ///   下一轮从回溯起点重拼，把丢掉的回合补回来。
   init(venue: String, market: String,
        store: ExchangeCredentialStore,
        stateURL: URL,
        clock: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
+       discardState: Bool = false,
        makeProvider: @escaping ProviderFactory,
        onRounds: @escaping RoundsSink) {
     self.venue = venue; self.market = market
     self.store = store; self.stateURL = stateURL; self.clock = clock
     self.makeProvider = makeProvider; self.onRounds = onRounds
+    if discardState { try? FileManager.default.removeItem(at: stateURL) }
   }
 
   /// 正式装配：按登记表造 provider，状态放 Application Support。
-  init(venue: ExchangeAccountRegistry.Venue, onRounds: @escaping RoundsSink) {
+  init(venue: ExchangeAccountRegistry.Venue, discardState: Bool = false, onRounds: @escaping RoundsSink) {
     self.init(venue: venue.venue, market: venue.market,
               store: ExchangeCredentialStore(venue: venue.venue, market: venue.market),
               stateURL: Self.defaultStateURL(venue: venue.venue, market: venue.market),
+              discardState: discardState,
               makeProvider: { ExchangeAccountRegistry.provider(for: venue, credentials: $0) },
               onRounds: onRounds)
   }
 
-  /// 拼回合的中间状态（开着的账、最近结束的回合、见过的成交）。只在本机，不同步、不导出；
-  /// 丢了也不要紧，下次从回溯起点重拼，回合 id 不变。
+  /// 落盘的中间状态：拼回合的账本（开着的账、最近结束的回合、见过的成交）连同它拉到的水位，
+  /// 一个文件一起存、一起丢。只在本机，不同步、不导出、不进备份。
+  ///
+  /// 为什么水位要跟账本放一起：以前水位记在 Keychain（卸载也不删），账本在 Application Support（卸载就没），
+  /// 重装之后水位还在、账本没了，只从「水位 − 1 小时」拉，拿一个空账本去接——持仓中的回合永远停在持仓中、
+  /// 本地历史也补不回来。现在账本丢了、解不开，水位跟着作废，从回溯起点重拼（回合 id 不变，下游按 id 覆盖）。
+  struct State: Codable {
+    var builder: RoundBuilder
+    var watermark: Int64
+  }
+
   static func defaultStateURL(venue: String, market: String) -> URL {
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? URL(fileURLWithPath: NSTemporaryDirectory())
@@ -133,21 +153,31 @@ actor ExchangeAccountSync {
     try? store.saveStatus(status)
 
     guard let provider = makeProvider(credentials) else { return .notConnected }
-    let from = status.watermark.map { max(status.backfillFrom, $0 - Self.overlapMs) } ?? status.backfillFrom
+    var builder: RoundBuilder
+    let from: Int64
+    if let resume = loadState(fallbackWatermark: status.watermark) {
+      builder = resume.builder
+      from = max(status.backfillFrom, resume.watermark - Self.overlapMs)
+    } else {
+      // 没有可接的账本：从回溯起点重拼。交易所的成交只留近 90 天，起点不早于「此刻 − 90 天」。
+      builder = RoundBuilder(venue: venue, market: market, accountTag: Self.accountTag)
+      from = max(status.backfillFrom, now - Self.backfillMs)
+    }
     do {
       let batch = try await provider.fetch(from: from, to: now)
-      var builder = loadBuilder() ?? RoundBuilder(venue: venue, market: market, accountTag: Self.accountTag)
+      // 拉的这几分钟里被断开、或换了一把 Key：这一批属于旧连接，整个作废。
+      guard try Self.sameConnection(store.loadStatus(), status) else { return .notConnected }
       let context = RoundBuilder.Context(leverage: batch.leverage, markPrices: batch.markPrices,
                                          currentPositions: builder.initialized ? nil : batch.positions)
       let rounds = builder.ingest(fills: batch.fills, funding: batch.funding, context: context)
       if !rounds.isEmpty { await onRounds(rounds) }
-      try saveBuilder(builder)
-      // 回调期间可能被断开了：Keychain 里已经没有 Key 就不要把状态写回去。
-      guard var latest = try store.loadStatus(), latest.connectedAt == status.connectedAt else {
-        removeState()
+      // 回调期间可能被断开或重接了：那就不把这一轮的账本和水位写回去（断开 / 重接时已经清过中间状态）。
+      guard var latest = try store.loadStatus(), Self.sameConnection(latest, status) else {
         return .notConnected
       }
-      latest.watermark = now
+      let mark = batch.asOf ?? now
+      try saveState(State(builder: builder, watermark: mark))
+      latest.watermark = mark
       try store.saveStatus(latest)
       return .pulled(rounds: rounds.count)
     } catch is CancellationError {
@@ -161,18 +191,48 @@ actor ExchangeAccountSync {
 
   // MARK: - 中间状态
 
-  private func loadBuilder() -> RoundBuilder? {
-    guard let data = try? Data(contentsOf: stateURL) else { return nil }
-    guard let builder = try? JSONDecoder().decode(RoundBuilder.self, from: data),
-          builder.venue == venue, builder.market == market else { return nil }
-    return builder
+  static func sameConnection(_ a: ExchangeCredentialStore.Status?, _ b: ExchangeCredentialStore.Status) -> Bool {
+    guard let a else { return false }
+    return a.connectedAt == b.connectedAt && a.keySuffix == b.keySuffix
   }
 
-  private func saveBuilder(_ builder: RoundBuilder) throws {
-    try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(),
-                                            withIntermediateDirectories: true)
-    let data = try JSONEncoder().encode(builder)
-    try data.write(to: stateURL, options: [.atomic])
+  /// 读回能接着拼的账本与水位；没有、解不开、不是这一家的，都返回 nil（调用方从回溯起点重拼）。
+  /// 旧版只存账本、水位在 Keychain：账本还在就接着用 Keychain 那个水位；Keychain 也没有水位就重拼。
+  private func loadState(fallbackWatermark: Int64?) -> State? {
+    let data: Data
+    do {
+      data = try Data(contentsOf: stateURL)
+    } catch {
+      let missing = (error as NSError).domain == NSCocoaErrorDomain
+        && (error as NSError).code == NSFileReadNoSuchFileError
+      if !missing { Self.log.error("交易所中间状态读不出，从回溯起点重拼：\(error.localizedDescription, privacy: .public)") }
+      return nil
+    }
+    let decoder = JSONDecoder()
+    let state: State
+    if let current = try? decoder.decode(State.self, from: data) {
+      state = current
+    } else if let legacy = try? decoder.decode(RoundBuilder.self, from: data) {
+      guard let mark = fallbackWatermark else { return nil }
+      state = State(builder: legacy, watermark: mark)
+    } else {
+      Self.log.error("交易所中间状态解不开（\(data.count, privacy: .public) 字节），从回溯起点重拼")
+      return nil
+    }
+    guard state.builder.venue == venue, state.builder.market == market else { return nil }
+    return state
+  }
+
+  private func saveState(_ state: State) throws {
+    do {
+      try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(),
+                                              withIntermediateDirectories: true)
+      let data = try JSONEncoder().encode(state)
+      try data.write(to: stateURL, options: [.atomic])
+    } catch {
+      Self.log.error("交易所中间状态写不进去：\(error.localizedDescription, privacy: .public)")
+      throw error
+    }
     // 只排除这一个文件（同一个目录里还有提醒档案，要跟备份走）；丢了能从交易所重拼。
     var values = URLResourceValues()
     values.isExcludedFromBackup = true

@@ -101,7 +101,7 @@ struct BinanceFuturesAccountTests {
     #expect(http.requests(to: "/sapi/v1/account/apiRestrictions").count == 2)
   }
 
-  @Test("分页拼接：资金流水按 7 天切窗、满页接着翻；成交只拉有动静的窗口，满页改用 fromId，一条不漏不重")
+  @Test("分页拼接：资金流水按 7 天切窗、满页按时间二分；成交只拉有动静的窗口，整页挤在同一毫秒才改用 fromId，一条不漏不重")
   func pagesAreStitched() async throws {
     let http = MockExchangeHTTP()
     let from = F.t0
@@ -130,6 +130,8 @@ struct BinanceFuturesAccountTests {
     http.on("/fapi/v1/income", F.serveIncome(income))
     http.on("/fapi/v1/userTrades", F.serveTrades(trades))
     http.onJSON("/fapi/v2/positionRisk", F.flatPositions)
+    // 交易所此刻 = `to`；空仓的 updateTime 是 0，截止点就是它。
+    http.onJSON("/fapi/v1/time", #"{"serverTime":\#(to)}"#)
 
     let batch = try await F.account(http, clock: ExchangeTestClock(to), pageLimit: 2).fetch(from: from, to: to)
 
@@ -139,16 +141,24 @@ struct BinanceFuturesAccountTests {
     #expect(batch.leverage["BTCUSDT"] == 10)
     #expect(batch.markPrices["BNBUSDT"] == Decimal(600))
     #expect(batch.positions.isEmpty)
+    #expect(batch.asOf == to)
 
-    // 三个 7 天窗口都查了资金流水；第 0 个窗口满页（limit 2）要翻页。
+    // 三个 7 天窗口都查了资金流水；第 0 个窗口满页（limit 2）要往下二分。
     let incomeCalls = http.requests(to: "/fapi/v1/income").map(MockExchangeHTTP.query)
-    #expect(Set(incomeCalls.compactMap { $0["endTime"] }).count == 3)
+    let incomeWindows = Set(incomeCalls.compactMap { $0["startTime"].flatMap(Int64.init) }
+      .map { ($0 - from) / BinanceFuturesAccount.windowMs })
+    #expect(incomeWindows == [0, 1, 2])
     #expect(incomeCalls.count >= 4)
-    // 成交只拉了第 0 与第 2 个窗口；满页之后改用 fromId、不带时间段。
+    #expect(incomeCalls.compactMap { $0["endTime"].flatMap(Int64.init) }.allSatisfy { $0 <= to })
+    // 成交只拉了第 0 与第 2 个窗口，二分出来的小段也都落在这两个窗口里。
     let tradeCalls = http.requests(to: "/fapi/v1/userTrades").map(MockExchangeHTTP.query)
-    let windows = Set(tradeCalls.compactMap { $0["startTime"].flatMap(Int64.init) })
-    #expect(windows == [from, from + 14 * F.day])
-    #expect(tradeCalls.contains { $0["fromId"] == "103" && $0["startTime"] == nil })
+    let tradeWindows = Set(tradeCalls.compactMap { $0["startTime"].flatMap(Int64.init) }
+      .map { ($0 - from) / BinanceFuturesAccount.windowMs })
+    #expect(tradeWindows == [0, 2])
+    #expect(tradeCalls.contains { $0["startTime"] == String(from) })
+    #expect(tradeCalls.contains { $0["startTime"] == String(from + 14 * F.day) })
+    // 101、102 同一毫秒挤满一页：时间分不开了，改用 fromId（不带时间段）从这一页最小的 id 往后翻。
+    #expect(tradeCalls.contains { $0["fromId"] == "101" && $0["startTime"] == nil && $0["endTime"] == nil })
     #expect(tradeCalls.allSatisfy { $0["symbol"] == "BTCUSDT" })
     // 每一次都是 GET。
     #expect(http.requests.allSatisfy { $0.httpMethod == "GET" })

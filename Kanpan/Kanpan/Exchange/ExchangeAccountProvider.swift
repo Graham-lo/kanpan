@@ -43,6 +43,9 @@ struct ExchangeAccountBatch: Sendable {
   var markPrices: [String: Decimal] = [:]
   /// 当前持仓（有符号），第一次回溯时推窗口起点有没有旧仓用。
   var positions: [PositionKey: Decimal] = [:]
+  /// 这一批的截止时刻（交易所时间，毫秒）：持仓快照对应的时点，成交与资金费都只拉到这里。
+  /// 同步层把它记成水位；交易所给不出时为 nil，退回手机时间。
+  var asOf: Int64? = nil
 }
 
 /// 一家交易所的只读账户接口。
@@ -57,7 +60,10 @@ protocol ExchangeAccountProvider: Sendable {
   /// 接入前的只读校验：Key 有任何交易、提现权限就抛 `ExchangeAccountError.notReadOnly`。
   func verifyReadOnly() async throws
 
-  /// 拉 `[from, to]`（毫秒，含两端）里的成交与资金费，外加当前持仓、杠杆、标记价。
+  /// 拉 `from` 之后的成交与资金费，外加当前持仓、杠杆、标记价（毫秒，含两端）。
+  ///
+  /// `to` 是手机时间，只当提示：实现方应当先拿持仓快照，成交与资金费只拉到快照时刻、并把它填进
+  /// `asOf`——否则拉成交期间又成交的一笔会只出现在持仓里，凭空多出一份「旧仓」。
   func fetch(from: Int64, to: Int64) async throws -> ExchangeAccountBatch
 }
 
