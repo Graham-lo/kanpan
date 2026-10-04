@@ -51,7 +51,7 @@
 
   --text-1: #131722;       /* 16.8:1 */
   --text-2: #545B6A;       /* 6.9:1 */
-  --text-3: #767C8A;       /* 4.5:1 —— 占位、辅助说明的下限 */
+  --text-3: #666B77;       /* 面板 5.4:1、悬停行 5.0:1、选中行 4.6:1 —— 占位、辅助说明的下限 */
   --text-inv: #FFFFFF;
 
   --line: #E1E4EA;         /* 分隔线 */
@@ -90,7 +90,7 @@
 
   --text-1: #E3E6EC;       /* 14.9:1 */
   --text-2: #A1A7B3;       /* 7.6:1 */
-  --text-3: #7D8390;       /* 4.6:1 */
+  --text-3: #8A909B;       /* 面板 5.7:1、悬停行 5.3:1、选中行 4.6:1 */
   --text-inv: #FFFFFF;
 
   --line: #232834;
@@ -127,7 +127,8 @@
 html[data-skin="sage"][data-theme="light"] {
   --app: #CFDFD6; --surface: #F4F8F5; --surface-2: #E9F1EC; --surface-3: #DEE9E2; --overlay: #FFFFFF;
   --scrim: rgba(20, 33, 27, .34);
-  --text-1: #14211B; --text-2: #4E6158; --text-3: #606F67;
+  --text-1: #14211B; --text-2: #4E6158; --text-3: #5D6C64;
+  --tv-red-text: #C82738; --tv-green-text: #067665;
   --line: #D6E3DA; --line-strong: #B9CCC0; --control-line: #74897F;
   --accent: #2E7D6B; --accent-hover: #266B5B; --accent-soft: #DCEEE8; --accent-text: #256859; --accent-2: #4FA58F;
   --chart-bg: #F4F8F5; --chart-grid: #E4EDE7; --chart-axis-text: #14211B; --chart-cross: #7B8D85; --chart-cross-label: #14211B; --chart-scale-line: #D6E3DA;
@@ -136,7 +137,7 @@ html[data-skin="sage"][data-theme="light"] {
 }
 html[data-skin="sage"][data-theme="dark"] {
   --app: #050807; --surface: #0E1512; --surface-2: #151E1A; --surface-3: #1C2823; --overlay: #172019;
-  --text-1: #E9F2EC; --text-2: #A5B8AE; --text-3: #7F918A;
+  --text-1: #E9F2EC; --text-2: #A5B8AE; --text-3: #869790;
   --line: #1F2B26; --line-strong: #33413A; --control-line: #5E6F67;
   --accent: #4FB69C; --accent-hover: #6BC8B0; --accent-soft: #16302A; --accent-text: #7CD2BC; --accent-2: #2E7D6B;
   --chart-bg: #0E1512; --chart-grid: #17201C; --chart-axis-text: #B5C4BB; --chart-cross: #6C7D75; --chart-cross-label: #2A3730; --chart-scale-line: #253129;
@@ -144,7 +145,8 @@ html[data-skin="sage"][data-theme="dark"] {
 html[data-skin="terra"][data-theme="light"] {
   --app: #DFD0C0; --surface: #FBF6F0; --surface-2: #F2E8DE; --surface-3: #EADFD2; --overlay: #FFFFFF;
   --scrim: rgba(36, 26, 19, .34);
-  --text-1: #241A13; --text-2: #6E5C4D; --text-3: #756659;
+  --text-1: #241A13; --text-2: #6E5C4D; --text-3: #726356;
+  --tv-red-text: #C32636; --tv-green-text: #067261;
   --line: #E7DACB; --line-strong: #CDB9A5; --control-line: #8C7A6A;
   --accent: #B25735; --accent-hover: #9E4A2B; --accent-soft: #F6E1D6; --accent-text: #9E4A2B; --accent-2: #D98A62;
   --chart-bg: #FBF6F0; --chart-grid: #EFE5D9; --chart-axis-text: #241A13; --chart-cross: #8C7A6A; --chart-cross-label: #241A13; --chart-scale-line: #E7DACB;
@@ -153,7 +155,7 @@ html[data-skin="terra"][data-theme="light"] {
 }
 html[data-skin="terra"][data-theme="dark"] {
   --app: #0A0704; --surface: #161009; --surface-2: #211812; --surface-3: #2A1F17; --overlay: #231A13;
-  --text-1: #F7EFE6; --text-2: #C2AC98; --text-3: #998878;
+  --text-1: #F7EFE6; --text-2: #C2AC98; --text-3: #9E8E7F;
   --line: #2E2219; --line-strong: #46362A; --control-line: #6E5B4B;
   --accent: #E2874F; --accent-hover: #ECA070; --accent-soft: #3A2517; --accent-text: #F0A574; --accent-2: #B25735;
   --chart-bg: #161009; --chart-grid: #221A13; --chart-axis-text: #C9B8A6; --chart-cross: #7E6C5C; --chart-cross-label: #3A2B20; --chart-scale-line: #2E2219;
@@ -170,10 +172,11 @@ html[data-skin="sage"][data-theme="dark"] { --kl-day: #9A88F0; --kl-week: #4AA3C
 html[data-skin="terra"][data-theme="light"] { --kl-day: #8A4F7D; --kl-week: #3E6E80; }
 html[data-skin="terra"][data-theme="dark"] { --kl-day: #C47BB3; --kl-week: #5F9FB3; }
 
-/* 涨跌：图形用 TradingView 原色；文字用加深 / 提亮后的版本，保证 4.5:1 */
+/* 涨跌：图形用 TradingView 原色；文字用加深 / 提亮后的版本，在面板、悬停行、选中行上都 ≥ 4.5:1
+ * （青苔、陶土浅色的底偏绿 / 偏暖，各自在皮肤块里再压深一点；tests/b-contrast.test.ts 守着） */
 :root, [data-theme="light"] {
   --tv-red: #F23645; --tv-green: #089981;
-  --tv-red-text: #D1293A; --tv-green-text: #067A68;
+  --tv-red-text: #CC2839; --tv-green-text: #067866;
 }
 [data-theme="dark"] {
   --tv-red: #F23645; --tv-green: #089981;
