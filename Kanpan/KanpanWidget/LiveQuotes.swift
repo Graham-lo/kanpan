@@ -5,7 +5,7 @@ import KanpanCore
 ///
 /// app 在前台时每刷到行情就写快照、并叫系统重载小组件，那时快照是新的，这儿什么都不取；
 /// app 不在前台，系统按 15 分钟来刷，这时快照是旧的，就照快照里写的取数方式
-/// （`WidgetSnapshot.Refresh`，app 按用户选的线路定：直连打币安、网关打网关）取一口：
+/// （`WidgetSnapshot.Refresh`，app 按用户选的线路、按每只所在的交易所定：直连打交易所、网关打网关）取一口：
 /// 小号四只各一口 24 小时行情，中号那一只再带一段 1 小时收盘价。
 /// 每一口都有超时，取不到就沿用快照——宁可旧，不画空。
 enum LiveQuotes {
@@ -16,10 +16,14 @@ enum LiveQuotes {
   static func refresh(_ snapshot: WidgetSnapshot, symbols: [String], sparkline: String? = nil,
                       now: Date = Date()) async -> WidgetSnapshot {
     let age = now.timeIntervalSince1970 - Double(snapshot.updatedAt) / 1000
-    guard age > freshSeconds, let plan = snapshot.refresh, !plan.hosts.isEmpty else { return snapshot }
+    guard age > freshSeconds else { return snapshot }
+    // 每只照自己市场的那份取：默认那家之外（Coinbase 现货等）从前一律只用快照；
+    // 快照里还没报价的（新加的自选）从前也跳过，要等 app 回前台（深度审查 E-10）。
+    let plans = symbols.compactMap { symbol in snapshot.refreshPlan(for: symbol).map { (symbol, $0) } }
+    guard !plans.isEmpty else { return snapshot }
     var next = snapshot
     await withTaskGroup(of: (String, Ticker24h?, [Double]?).self) { group in
-      for symbol in symbols where snapshot.quotes[symbol] != nil && InstrumentID(symbol).marketKey == plan.market {
+      for (symbol, plan) in plans {
         group.addTask {
           async let ticker = fetchTicker(plan, symbol: symbol)
           async let closes: [Double]? = symbol == sparkline ? fetchCloses(plan, symbol: symbol) : nil

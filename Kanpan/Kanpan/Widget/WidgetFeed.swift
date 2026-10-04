@@ -148,7 +148,8 @@ final class WidgetFeed {
   /// 而且扩展补回来的真价时刻比它旧，会被 `apply` 当旧价拒掉。
   static func snapshot(symbols: SymbolPrefs, quotes: [String: Ticker], decimals: (String) -> Int?,
                        closes: [String: [Double]], skin: ThemeSkin, appearance: ThemeChoice, redUp: Bool,
-                       refresh: WidgetSnapshot.Refresh?, basis: (String) -> ChangeBasis,
+                       refresh: WidgetSnapshot.Refresh?, venueRefresh: [WidgetSnapshot.Refresh] = [],
+                       basis: (String) -> ChangeBasis,
                        receivedAt: (String) -> Date? = { _ in nil },
                        now: Date = Date()) -> WidgetSnapshot {
     let order = symbols.favorites
@@ -157,8 +158,13 @@ final class WidgetFeed {
                            symbols: order.filter { symbols.groupForSymbol[$0] == group.id })
     }
     var table: [String: WidgetSnapshot.Quote] = [:]
+    // 还没报价的那几只也记下口径：小组件自己补到价时按它开那一格（深度审查 E-10）。
+    var unquoted: [String: Bool] = [:]
     for symbol in order {
-      guard let ticker = quotes[symbol], ticker.last.isFinite, ticker.last > 0 else { continue }
+      guard let ticker = quotes[symbol], ticker.last.isFinite, ticker.last > 0 else {
+        unquoted[symbol] = basis(symbol) == .rolling24h
+        continue
+      }
       let change = ticker.changePercent
       let open = change.isFinite && change > -100 ? ticker.last / (1 + change / 100) : nil
       table[symbol] = WidgetSnapshot.Quote(symbol: symbol, price: ticker.last, change: change, decimals: decimals(symbol),
@@ -171,7 +177,8 @@ final class WidgetFeed {
                           light: WidgetSnapshot.Colors(seed: skin.seed(dark: false), redUp: redUp),
                           dark: WidgetSnapshot.Colors(seed: skin.seed(dark: true), redUp: redUp),
                           appearance: WidgetSnapshot.Appearance(rawValue: appearance.rawValue) ?? .auto,
-                          refresh: refresh, rolling: true)
+                          refresh: refresh, venueRefresh: venueRefresh.isEmpty ? nil : venueRefresh,
+                          unquotedRolling: unquoted.isEmpty ? nil : unquoted, rolling: true)
   }
 }
 

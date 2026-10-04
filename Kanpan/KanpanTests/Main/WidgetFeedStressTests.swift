@@ -119,4 +119,23 @@ struct WidgetFeedStressTests {
     #expect(snap.quotes[a]?.timeMs == 1_800_000_000_000)
     #expect(snap.quotes[b]?.timeMs == 0, "时刻不明的种子价被盖成「现在」，30 分钟淡化对它失效")
   }
+
+  @Test("还没报价的自选也把口径与别家的补价方式写进快照，小组件补到价才知道怎么开格（E-10）")
+  func unquotedFavoritesCarryBasisAndVenuePlans() {
+    let prefs = SymbolPrefs(favorites: ["AAAUSDT", "NVDAUSDT", "CCCUSDT"])
+    // 自选里存的是带交易所前缀的规范键，快照里各表的键跟着它走。
+    let a = prefs.favorites[0], nvda = prefs.favorites[1], ccc = prefs.favorites[2]
+    let quoted = Ticker(symbol: a, last: 100, changePercent: 1, high: 100, low: 100, quoteVolume: 1, open24h: 99, timeMs: 1)
+    let coinbase = WidgetSnapshot.Refresh(market: "coinbase/spot", hosts: ["api.coinbase.com"],
+                                          ticker: "/p/{symbol}", closes: "/c", format: .coinbase)
+    let snap = WidgetFeed.snapshot(symbols: prefs, quotes: [a: quoted],
+                                   decimals: { _ in nil }, closes: [:], skin: Prefs.defaults.skin, appearance: .system,
+                                   redUp: false, refresh: nil, venueRefresh: [coinbase],
+                                   basis: { $0 == nvda ? .utcMidnight : .rolling24h })
+    #expect(nvda == InstrumentID.canonical("NVDAUSDT"))
+    #expect(snap.unquotedRolling == [nvda: false, ccc: true])
+    #expect(snap.venueRefresh == [coinbase])
+    #expect(snap.isRolling(nvda) == false && snap.isRolling(a) == true)
+    #expect(snap.refreshPlan(for: nvda) == nil, "默认那家没给补价方式（refresh: nil）")
+  }
 }

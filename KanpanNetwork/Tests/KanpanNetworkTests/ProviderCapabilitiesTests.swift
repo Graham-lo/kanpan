@@ -133,4 +133,29 @@ struct ProviderCapabilitiesTests {
     #expect(url.query?.contains("source=okx") == true)
     #expect(gateway.tickerField == "ticker" && gateway.closesField == "bars")
   }
+
+  @Test("Coinbase 现货也有小组件补价，跟线路走、地址与取数件用的同一条（E-10）")
+  func coinbaseWidgetRefreshFollowsRoute() throws {
+    let now = Date(timeIntervalSince1970: 1_700_003_700)
+    for policy in [MarketRoutePolicy.direct, .gateway] {
+      let resolver = RouteResolver(policy: policy)
+      let plans = resolver.venueWidgetRefreshes
+      #expect(plans.allSatisfy { $0.market != VenueRegistry.default.marketKey })
+      let plan = try #require(plans.first { $0.market == VenueRegistry.coinbase.marketKey })
+      #expect(plan.format == .coinbase)
+      let endpoints = CoinbaseEndpoints(route: resolver.route)
+      #expect(plan.hosts == endpoints.restHosts)
+      let host = plan.hosts[0]
+      // 和 `ticker24h` / `fetchBars` 拼出来的地址一模一样，网关透传也就一样。
+      #expect(plan.tickerURL(host: host, symbol: "BTC-USD", now: now)
+              == endpoints.rest("products/BTC-USD", host: host))
+      let closes = try #require(plan.closesURL(host: host, symbol: "BTC-USD", now: now))
+      let expected = try #require(endpoints.rest("products/BTC-USD/candles", query: [
+        URLQueryItem(name: "granularity", value: "ONE_HOUR"),
+        URLQueryItem(name: "start", value: "1699920000"),
+        URLQueryItem(name: "end", value: "1700002800"),
+      ], host: host))
+      #expect(closes == expected)
+    }
+  }
 }

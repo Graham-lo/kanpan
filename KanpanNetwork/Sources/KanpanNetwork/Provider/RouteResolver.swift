@@ -55,4 +55,11 @@ public struct RouteResolver: Sendable {
 
   /// 默认交易所。
   public var defaultProvider: any MarketProvider { VenueRegistry.default.make(route, log) }
+
+  /// 小组件补价：默认那家之外各家的那份（Coinbase 现货等），按同一条线路（深度审查 E-10）。
+  /// 默认那家的在 `defaultProvider.widgetRefresh`；没有补价方式的那家不列。
+  public var venueWidgetRefreshes: [WidgetSnapshot.Refresh] {
+    VenueRegistry.all.filter { $0.marketKey != VenueRegistry.default.marketKey }
+      .compactMap { $0.make(route, log).widgetRefresh }
+  }
 }

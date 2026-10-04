@@ -1748,6 +1748,8 @@ struct MainScreen: View {
           },
           closes: closes, skin: prefs.skin, appearance: prefs.theme, redUp: prefs.redUp,
           refresh: RouteResolver(policy: prefs.routePolicy).defaultProvider.widgetRefresh,
+          // 默认那家之外（Coinbase 现货等）的补价方式也交给小组件（深度审查 E-10）。
+          venueRefresh: RouteResolver(policy: prefs.routePolicy).venueWidgetRefreshes,
           basis: { quotes.basis(for: $0) }, receivedAt: { quotes.receivedTime($0) })
       },
       shape: {

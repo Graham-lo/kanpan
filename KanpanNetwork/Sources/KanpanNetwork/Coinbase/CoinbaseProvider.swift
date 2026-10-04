@@ -254,6 +254,27 @@ public struct CoinbaseProvider: MarketProvider {
 
   public func resetRouteCooldowns() async {}
 
+  /// 小组件补价（深度审查 E-10）：自选里的 Coinbase 现货从前没有补价方式，app 不回前台就永远停在
+  /// 快照那口价上。直连打 Coinbase 公开行情；网关打 `/v1/market/raw/*?source=coinbase` 原样透传，
+  /// 两条线路载荷同形，所以不包信封。收盘价按起止时刻取最近 24 根 1 小时（`{start}` / `{end}`）。
+  public var widgetRefresh: WidgetSnapshot.Refresh? {
+    let hosts = endpoints.restHosts
+    guard !hosts.isEmpty else { return nil }
+    let candles = "products/{symbol}/candles"
+    let hourly = "granularity=ONE_HOUR&start={start}&end={end}"
+    let ticker: String, closes: String
+    if endpoints.viaGateway {
+      let prefix = CoinbaseEndpoints.gatewayRestPrefix, source = "source=\(CoinbaseEndpoints.gatewaySource)"
+      ticker = prefix + "products/{symbol}?" + source
+      closes = prefix + candles + "?" + source + "&" + hourly
+    } else {
+      ticker = CoinbaseEndpoints.restPrefix + "products/{symbol}"
+      closes = CoinbaseEndpoints.restPrefix + candles + "?" + hourly
+    }
+    return WidgetSnapshot.Refresh(market: "\(capabilities.venue)/\(capabilities.market)", hosts: hosts,
+                                  ticker: ticker, closes: closes, format: .coinbase)
+  }
+
   // ------------------------------------------------------------------ 推送
 
   public func makeStream(silenceMs: Double?, log: FeedLog) -> any MarketStream {
