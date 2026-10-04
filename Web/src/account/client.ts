@@ -11,7 +11,7 @@
  * - 被另一台电脑顶掉（401 session_replaced）：清掉本机会话、回到未登录，不再重试。
  */
 import { uuid } from '../sync/types'
-import { endSession, setSession, type Ended } from './session'
+import { endSession, session, setSession, type Ended } from './session'
 import { PASSWORD_RULE, USERNAME_RULE } from './rules'
 
 export const ISSUER = 'kanpan.43-160-232-253.sslip.io'
@@ -155,7 +155,8 @@ function end(e: ApiError): never {
 
 // ───────── refresh 单飞 ─────────
 
-let inflight: Promise<Stored> | null = null
+/** 正在换的那一次，带着它换的是哪把 refresh：这一页退登再登别的账号后，不能把旧会话那次的结果交给新账号的调用方 */
+let inflight: { p: Promise<Stored>; token: string | undefined } | null = null
 
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   const locks = (globalThis.navigator as Navigator | undefined)?.locks
@@ -165,12 +166,23 @@ async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   return fn()
 }
 
+/** 发出换令牌请求之后存储被别人动过没有：false = 没动、照常写；Stored = 同一个会话已经被别的标签页换好了，用它；
+ *  null = 退登了或换成了别的账号 / 会话，这次结果作废 */
+function superseded(cur: Stored): Stored | null | false {
+  const n = readStored()
+  if (n && n.userId === cur.userId && n.sessionId === cur.sessionId && n.refreshToken === cur.refreshToken) return false
+  if (n && n.userId === cur.userId && n.sessionId === cur.sessionId) return n
+  return null
+}
+
 /** 换一对新令牌。`stale` 是调用方手上那把 refresh：拿到锁时存储里已经不是它了，说明别的标签页换过，直接用 */
 export function refresh(stale?: string): Promise<Stored> {
-  if (inflight) return inflight
-  inflight = withLock(async () => {
+  const token = readStored()?.refreshToken
+  if (inflight && inflight.token === token) return inflight.p
+  const p: Promise<Stored> = withLock(async () => {
     const cur = readStored()
-    if (!cur) { endSession('expired'); throw new ApiError(401, 'authentication_failed') }
+    // 存储里没有会话：是有人退登了（这一页或别的标签页），不是「过期」——不能给刚主动退登的人报「登录已失效」
+    if (!cur) { if (session.user) endSession(null); throw new ApiError(401, 'authentication_failed') }
     if (stale && cur.refreshToken !== stale && cur.accessDeadline > Date.now()) { setSession(cur); return cur }
     const requestId = cur.pending?.refreshToken === cur.refreshToken ? cur.pending.requestId : uuid()
     writeStored({ ...cur, pending: { requestId, refreshToken: cur.refreshToken } })
@@ -179,16 +191,23 @@ export function refresh(stale?: string): Promise<Stored> {
       t = await request<Tokens>('POST', '/v1/auth/refresh', { refreshToken: cur.refreshToken, requestId, device: device() })
     } catch (e) {
       const err = e as ApiError
+      // 请求在路上时这一页或别的标签页退登 / 换了账号：这个结果是旧会话的，不能把新账号的会话清掉
+      const now = superseded(cur)
+      if (now !== false) { if (now) { setSession(now); return now } throw err }
       // 401：过期、被顶掉、被踢；400 invalid_device：设备凭据对不上。都只能重新登录
       if (err.status === 401 || (err.status === 400 && err.code === 'invalid_device')) end(err)
       throw err
     }
+    // 同上：旧会话换回来的令牌不能盖掉新登录的那个账号（也不能把退登了的人又登回去）
+    const now = superseded(cur)
+    if (now !== false) { if (now) { setSession(now); return now } throw new ApiError(401, 'authentication_failed') }
     const v = fromTokens(t, cur.username, cur.userId)
     writeStored(v)
     setSession(v)
     return v
-  }).finally(() => { inflight = null; scheduleRefresh() })
-  return inflight
+  }).finally(() => { if (inflight?.p === p) inflight = null; scheduleRefresh() })
+  inflight = { p, token }
+  return p
 }
 
 /** 手上可用的 access；快到期就先换 */
