@@ -33,7 +33,10 @@ final class StressRegression0928UITests: KanpanUICase {
   private let password = "Testpass2026"
   private var created: [String] = []
 
-  static let outDir = URL(fileURLWithPath: "/Users/mdd/zhk/kanpan/docs/acceptance/压测-2026-09-28", isDirectory: true)
+  /// 取证目录。默认是入库的 `压测-2026-09-28/`；复跑时用 `TEST_RUNNER_KANPAN_STRESS_OUT=…` 指到别处，
+  /// 免得一轮复测把入库的数据文件与截图整批改掉（深度审查 F 线复跑就是指到 /tmp 的）。
+  static let outDir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["KANPAN_STRESS_OUT"]
+    ?? "/Users/mdd/zhk/kanpan/docs/acceptance/压测-2026-09-28", isDirectory: true)
   static let top200 = "BTCUSDT,ETHUSDT,SOLUSDT,ZECUSDT,QNTUSDT,XRPUSDT,NEARUSDT,SUIUSDT,WLDUSDT,DOGEUSDT,QUSDT,HYPEUSDT,ENAUSDT,UNIUSDT,TAOUSDT,PUMPUSDT,SOONUSDT,BNBUSDT,AVAXUSDT,1000PEPEUSDT,XAUUSDT,BCHUSDT,ARBUSDT,ONDOUSDT,LINKUSDT,SOXLUSDT,CLUSDT,FILUSDT,ADAUSDT,DASHUSDT,LTCUSDT,AAVEUSDT,RAREUSDT,XPLUSDT,PENGUUSDT,USUSDT,BTWUSDT,TRUMPUSDT,SNDKUSDT,SAGAUSDT,WUSDT,BZUSDT,XAGUSDT,GRAMUSDT,PHAUSDT,MARSCOINUSDT,XLMUSDT,ONEUSDT,MSTRUSDT,DOTUSDT,CRCLUSDT,GRASSUSDT,RUNEUSDT,RAYSOLUSDT,NILUSDT,PYTHUSDT,PONSUSDT,MUUSDT,INJUSDT,BRUSDT,USELESSUSDT,JTOUSDT,SEIUSDT,ARXUSDT,FETUSDT,LSKUSDT,APTUSDT,SPCXUSDT,MUBARAKUSDT,AKEUSDT,ASTERUSDT,VIRTUALUSDT,ZROUSDT,TRXUSDT,INTCUSDT,SKHYNIXUSDT,LITUSDT,HBARUSDT,ETCUSDT,GRTUSDT,JUPUSDT,TIAUSDT,VVVUSDT,1000SHIBUSDT,ARKUSDT,2ZUSDT,OPUSDT,ICPUSDT,XMRUSDT,QQQUSDT,ETHFIUSDT,JASMYUSDT,1000BONKUSDT,ATOMUSDT,AEROUSDT,RENDERUSDT,ZAMAUSDT,MAGICUSDT,LDOUSDT,PENDLEUSDT,MONUSDT,INXUSDT,SOXSUSDT,ARUSDT,ZENUSDT,DRAMUSDT,XVGUSDT,FARTCOINUSDT,POLUSDT,ORCAUSDT,KMNOUSDT,CAKEUSDT,WIFUSDT,COWUSDT,TAIKOUSDT,CRVUSDT,BULLAUSDT,COTIUSDT,KORUUSDT,EIGENUSDT,WLFIUSDT,SPYUSDT,INUSDT,SUPERUSDT,GALAUSDT,APEUSDT,SKYUSDT,NVDAUSDT,TRIAUSDT,SNXXUSDT,ACEUSDT,AZTECUSDT,ALGOUSDT,TSLAUSDT,SKHYUSDT,STXUSDT,METUSDT,MMTUSDT,KITEUSDT,KASUSDT,NOMUSDT,ESPUSDT,ORDIUSDT,BIGTIMEUSDT,CHIPUSDT,MORPHOUSDT,CCUSDT,STRKUSDT,BEATUSDT,SAMSUNGUSDT,PHAROSUSDT,VTHOUSDT,OPNUSDT,AMDUSDT,PAXGUSDT,GOOGLUSDT,TRUSTUSDT,XAIUSDT,TUSDT,PROMUSDT,METAUSDT,LYNUSDT,NATGASUSDT,XAUTUSDT,SANDUSDT,IOSTUSDT,HUMAUSDT,HEIUSDT,UAIUSDT,MOVRUSDT,DYDXUSDT,VETUSDT,KAITOUSDT,TAKEUSDT,COMPUSDT,AXSUSDT,SPKUSDT,COINUSDT,CFGUSDT,FLOCKUSDT,REUSDT,SPXUSDT,EDGEUSDT,BILLUSDT,TNSRUSDT,LABUSDT,PLUMEUSDT,GIGGLEUSDT,ALLOUSDT,DOGSUSDT,RIVERUSDT,SPELLUSDT,PIEVERSEUSDT,EWYUSDT,BASEDUSDT,FOGOUSDT,TUTUSDT,TRBUSDT,DEEPUSDT,INTWUSDT".split(separator: ",").map(String.init)
 
   private var testName: String { name.components(separatedBy: " ").last?.trimmingCharacters(in: CharacterSet(charactersIn: "]")) ?? name }
@@ -168,14 +171,30 @@ final class StressRegression0928UITests: KanpanUICase {
     guard let mainH = info["mainH"] as? Double, let plotW = info["plotW"] as? Double else { return false }
     let scale = canvas.frame.height / max(1, info["height"] as? Double ?? canvas.frame.height)
     let origin = canvas.coordinate(withNormalizedOffset: .zero)
-    var ys: [Double] = []
-    if let last = Double(quote()["last"] ?? ""), let top = info["mainPriceTop"] as? Double,
+    // 第一处点最新那根 K 线本身（横向在它的格子中心、纵向在最新价上）：点在蜡烛上永远出十字线
+    // （`candleHit` 优先于订单流），不受此刻盘口长什么样影响。10-04 F 线复跑时只点 0.8 宽处的空白，
+    // 那一列恰好被两条订单流竖括号（44pt 触控宽）和几条带子的触控余量占满，六处全点出详情卡、
+    // 整个用例红——是用例点的位置靠运气，产品照设计走（空白处点到带子就是出卡）。
+    // `latestRightGap` 是末根**右沿**到图区右缘的距离，末根中心 = plotW − gap − spacing/2；
+    // 纵向用图上画的那个收盘价（`lastClose`，和蜡烛同一份序列），不用顶栏报价。
+    var spots: [(x: Double, y: Double)] = []
+    let gap = (info["latestRightGap"] as? NSNumber)?.doubleValue
+    let spacing = (info["spacing"] as? NSNumber)?.doubleValue ?? 6
+    if let last = (info["lastClose"] as? NSNumber)?.doubleValue, let top = info["mainPriceTop"] as? Double,
        let bottom = info["mainPriceBottom"] as? Double, top > bottom, last < top, last > bottom {
-      ys.append(mainH * (top - last) / (top - bottom))
+      let y = mainH * (top - last) / (top - bottom)
+      if let gap {
+        let cx = plotW - gap - spacing / 2
+        if cx > 1, cx < plotW - 1 { spots.append((cx, y)) }
+      }
+      spots.append((plotW * 0.8, y))
     }
-    ys += [0.78, 0.5, 0.3, 0.9, 0.15].map { mainH * $0 }
-    for (k, y) in ys.enumerated() {
-      let at = origin.withOffset(CGVector(dx: plotW * scale * 0.8, dy: y * scale))
+    note("点 K 线：末根右沿离右缘 \(gap.map { String(format: "%.1f", $0) } ?? "?")pt、间距 \(String(format: "%.1f", spacing))、plotW \(Int(plotW))、候选 \(spots.count) 处")
+    spots += [0.78, 0.5, 0.3, 0.9, 0.15].map { (plotW * 0.8, mainH * $0) }
+    let ys = spots.map(\.y)
+    for (k, spot) in spots.enumerated() {
+      let y = spot.y
+      let at = origin.withOffset(CGVector(dx: spot.x * scale, dy: y * scale))
       at.tap()
       _ = waitUntil(timeout: 4) { self.chartInfo()["crosshair"] as? Bool == true
         || !(self.chartInfo()["orderFlowSelected"] as? String ?? "").isEmpty }
