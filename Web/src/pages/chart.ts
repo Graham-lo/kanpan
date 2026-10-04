@@ -43,6 +43,7 @@ import {
 } from '../market'
 import { settle } from '../market/settle'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
+import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 
 // ------------------------------------------------------------ 图表格子
 interface Cell {
@@ -295,6 +296,34 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
 }
 
 async function loadMore(cell: Cell): Promise<void> {
+/** 断线重连 / 页面藏久了回来：把这段时间收线的几根补回图上（币安只推当前那一根，错过的不会再推），
+ *  断线前那一根的开高低收也按交易所的定稿盖掉。只取尾巴、逐根并进去，视口与往前翻过的历史都不动；
+ *  断得太久（超过 TAIL_MAX 根）整段重取。取数期间这一格的推送照 loadCell 先攒着，取到再按顺序补上 */
+const tailing = new Set<Cell>()
+async function resyncTail(cell: Cell, tries = 0): Promise<void> {
+  const c = cfg(cell), bars = cell.chart.bars
+  if (tailing.has(cell) || cell.hold || cell.chart.dead || isSecondIv(c.iv) || !bars.length) return
+  const n = tailNeed(bars[bars.length - 1].t, IV_MS[c.iv], Date.now())
+  if (n > TAIL_MAX) { void loadCell(cell); return }
+  const token = cell.loadToken, alive = () => token === cell.loadToken && !cell.chart.dead
+  const siv = streamIvOf(c.iv), hold = siv ? pushKey(c.symbol, siv) : null
+  if (hold) { pushes.open(hold); cell.hold = hold }
+  tailing.add(cell)
+  try {
+    const r = isCustomIv(c.iv) ? await customKlines(c.symbol, c.iv, undefined, alive) : await klines(c.symbol, c.iv, undefined, n, false, false, alive)
+    // 期间换了品种 / 周期：loadCell 已经接手并撒掉了这份缓冲
+    if (!alive()) return
+    cell.hold = null
+    const late = hold ? pushes.take(hold, 0) : []
+    if (hold) pushes.release(hold)
+    if (r.ok) for (const b of tailFrom(cell.chart.bars, r.bars)) cell.chart.updateBar(b)
+    for (const p of late) cell.chart.updateBar(isCustomIv(c.iv) ? customTick(c.symbol, c.iv, p) : p)
+    // 没取到（刚连上时网络还在抖、限流）：冷却过了再补，最多再试三次；之后的重连 / 回前台还会再补
+    if (!r.ok && tries < 3) setTimeout(() => { if (alive()) void resyncTail(cell, tries + 1) }, Math.max(coolingFor(REST), 5000) + 500)
+  } finally { tailing.delete(cell) }
+}
+const tailGate = new TailResync()
+
   if (cell.more || cell.noMore || !cell.chart.bars.length) return
   cell.more = true; cell.chart.loadingMore = true
   const c = cfg(cell), token = cell.loadToken
@@ -1200,6 +1229,10 @@ export async function initChart(): Promise<void> {
     else if (e.type === 'ticker') {
       pendingTick.set(e.symbol, e.dir || pendingTick.get(e.symbol) || 0)
       if (!tickRAF) tickRAF = requestAnimationFrame(flushTicks)
+  // 藏着时非当前格的 K 线推送是退订的（stream.ts 只留核心），藏久了回来各格都补一次尾巴
+  document.addEventListener('visibilitychange', () => {
+    if (tailGate.visibility(document.visibilityState === 'visible', Date.now())) cells.forEach(c => void resyncTail(c))
+  })
     }
     else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) patchDetail() }
     else if (e.type === 'oi') cells.forEach(c => { const cc = cfg(c); if (cc.symbol === e.symbol && cc.iv === e.iv) { c.chart.recalc(); c.chart.dirty = true } })
@@ -1220,6 +1253,7 @@ export async function initChart(): Promise<void> {
   }, 1000)
   setInterval(() => {
     if (document.visibilityState === 'hidden') return
+      if (tailGate.ws(S.wsState)) cells.forEach(c => void resyncTail(c))
     if (st.panel === 'watch') settle.whenSettled('detail', detailNow)
   }, 61e3)
 
