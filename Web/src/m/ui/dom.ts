@@ -46,3 +46,36 @@ export function safeArea(): { top: number; bottom: number; left: number; right: 
   const s = getComputedStyle(probe)
   return { top: parseFloat(s.paddingTop) || 0, bottom: parseFloat(s.paddingBottom) || 0, left: parseFloat(s.paddingLeft) || 0, right: parseFloat(s.paddingRight) || 0 }
 }
+
+const lastHTML = new WeakMap<Element, string>()
+/** 只有内容真变了才重写 innerHTML（轮询回来数没变时不重建一整张表）；返回是否重写了。
+ *  别处就地改过这块里面的字（行情推送 patch）之后要 forgetHTML，免得下次拿旧串比成「没变」 */
+export function setHTML(node: Element, html: string): boolean {
+  if (lastHTML.get(node) === html) return false
+  node.innerHTML = html
+  lastHTML.set(node, html)
+  return true
+}
+export function forgetHTML(node: Element): void { lastHTML.delete(node) }
+
+/** 手指按在 root 里时把整块重画往后放：轮询回来就地 innerHTML 会把按着的那一行换成新节点，
+ *  松手时点击落不到行上、长按计时随旧节点一起作废。返回的 gate(fn)：没按着立刻跑；按着就记下最后一次，
+ *  松手（这一下的 click 派发完）后跑。按住超过 STUCK_MS 当作丢了松手事件，不再挡。 */
+export function pressGate(root: HTMLElement): (fn: () => void) => void {
+  const STUCK_MS = 5000
+  const down = new Set<number>()
+  let since = 0
+  let queued: (() => void) | null = null
+  const busy = (): boolean => down.size > 0 && Date.now() - since < STUCK_MS
+  const flush = (): void => {
+    if (busy() || !queued) return
+    const fn = queued; queued = null
+    setTimeout(() => { if (busy()) { queued ??= fn; return } fn() }, 0)
+  }
+  root.addEventListener('pointerdown', e => { if (!down.size) since = Date.now(); down.add(e.pointerId) })
+  const up = (e: PointerEvent): void => { down.delete(e.pointerId); flush() }
+  document.addEventListener('pointerup', up, true)
+  document.addEventListener('pointercancel', up, true)
+  document.addEventListener('visibilitychange', () => { down.clear(); flush() })
+  return fn => { if (busy()) queued = fn; else { queued = null; fn() } }
+}

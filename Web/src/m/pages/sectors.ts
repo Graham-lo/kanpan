@@ -14,6 +14,7 @@ import { openSymbol, hooks, trackScroll, restoreScroll, type PageHandle } from '
 import { icon } from '../ui/icons'
 import { onBack } from '../ui/backStack'
 import { longPress } from '../ui/reorder'
+import { forgetHTML, pressGate, setHTML } from '../ui/dom'
 import { toast } from '../ui/toast'
 import { registerTerms, termHTML } from '../ui/hint'
 import { S, on, streamName } from '../../market'
@@ -100,21 +101,22 @@ export function initSectors(root: HTMLElement): PageHandle {
   // ---------------------------------------------------------------- 第一层
   function renderBoards(): void {
     const hasD5 = compute()
-    marketEl.innerHTML = segHTML('market', MARKETS, market())
-    winEl.innerHTML = hasD5 ? segHTML('window', WINDOWS, window) : ''
+    setHTML(marketEl, segHTML('market', MARKETS, market()))
+    setHTML(winEl, hasD5 ? segHTML('window', WINDOWS, window) : '')
     winEl.hidden = !hasD5
     // 品种数照 iOS：目录板块与兜底桶去重后、这段窗口上真算得出收益的那些（5 日档缺收盘价的不算）
     const m = market()
     const covered = coveredCount(m, feed.quotes, feed.buckets[m], window, window === 'today' ? EMPTY_HISTORY : history.held)
-    scaleEl.textContent = feed.quotes.size && covered > 0 ? `${boards.length} 个板块 · ${covered} 个品种` : ''
+    const scale = feed.quotes.size && covered > 0 ? `${boards.length} 个板块 · ${covered} 个品种` : ''
+    if (scaleEl.textContent !== scale) scaleEl.textContent = scale
     const failed = !boards.length && (feed.ok === false || (S.live === false && !feed.quotes.size))
     emptyBtn.hidden = !failed
-    boardList.innerHTML = boards.map((b, i) => {
+    setHTML(boardList, boards.map((b, i) => {
       const sub = subtitle(b)
       return `<div class="sec-row${i === 0 ? ' first' : ''}" role="button" tabindex="0" data-sec="${esc(b.id)}" data-id="sector.row.${esc(b.id)}">`
         + `${sectorIconHTML(b.id, 32)}<div class="sec-name"><span class="sec-n">${esc(b.name)}</span>${sub ? `<span class="sec-sub num">${esc(sub)}</span>` : ''}</div>`
         + `<span class="sec-pct num ${dirOf(b.pct)}">${esc(changePercentText(b.pct))}</span></div>`
-    }).join('')
+    }).join(''))
   }
 
   marketEl.addEventListener('click', e => {
@@ -171,14 +173,14 @@ export function initSectors(root: HTMLElement): PageHandle {
   }
 
   function renderDrill(): void {
-    unpress.splice(0).forEach(f => f())
     const id = route!
     const stat = boards.find(b => b.id === id)
     const sub = stat ? subtitle(stat) : ''
-    dhead.innerHTML = `<button type="button" class="sec-back" aria-label="返回" data-id="sector.back">${icon('chevronLeft', 18)}</button>`
+    if (setHTML(dhead, `<button type="button" class="sec-back" aria-label="返回" data-id="sector.back">${icon('chevronLeft', 18)}</button>`
       + `${sectorIconHTML(id, 38)}<div class="sec-dtitle"><h1>${esc(nameOf(id))}</h1>${sub ? `<span class="sec-dsub num">${esc(sub)}${termHTML('outperform')}</span>` : ''}</div>`
-      + (stat ? `<span class="sec-dpct num ${dirOf(stat.pct)}">${esc(changePercentText(stat.pct))}</span>` : '')
-    dhead.querySelector<HTMLElement>('.sec-back')!.onclick = pop
+      + (stat ? `<span class="sec-dpct num ${dirOf(stat.pct)}">${esc(changePercentText(stat.pct))}</span>` : ''))) {
+      dhead.querySelector<HTMLElement>('.sec-back')!.onclick = pop
+    }
     const rows = symbolRows(membersOf(id), feed.quotes, stat?.frontier ?? [], window, history.held)
     baseOf.clear()
     shownSyms = []
@@ -191,8 +193,9 @@ export function initSectors(root: HTMLElement): PageHandle {
       d.extra = r.isFrontier ? `<span class="lr-lead up"> · 领涨</span>` : ''
       html.push(liuliRowHTML(factsOf(sym, S.symbols.get(sym)), d, i === 0))
     })
-    drillList.innerHTML = html.join('')
     drillEmpty.hidden = rows.length > 0 || !feed.quotes.size
+    if (!setHTML(drillList, html.join(''))) return
+    unpress.splice(0).forEach(f => f())
     drillList.querySelectorAll<HTMLElement>('.lr').forEach(row => {
       const sym = row.dataset.sym!
       unpress.push(longPress(row, () => rowMenu(row, sym)))
@@ -244,7 +247,10 @@ export function initSectors(root: HTMLElement): PageHandle {
 
   // ---------------------------------------------------------------- 总装
   let unback: (() => void) | null = null
-  function render(): void {
+  // 轮询（10 秒一次）、历史收盘价、目录到了都会整块重画：手指按着时往后放到松手，免得按着的那行被换掉
+  const gate = pressGate(root)
+  function render(): void { gate(renderNow) }
+  function renderNow(): void {
     if (!active) return
     seedFromUniverse()
     renderBoards()
@@ -258,7 +264,7 @@ export function initSectors(root: HTMLElement): PageHandle {
     boardsLayer.hidden = drilling
     drillLayer.hidden = !drilling
     if (drilling) renderDrill()
-    else { unpress.splice(0).forEach(f => f()); shownSyms = [] }
+    else { unpress.splice(0).forEach(f => f()); shownSyms = []; setHTML(drillList, '') }
     wantStreams('sectors', shownSyms.filter(s => S.symbols.has(s)).map(s => streamName.ticker(s)))
   }
 
@@ -275,6 +281,7 @@ export function initSectors(root: HTMLElement): PageHandle {
         const row = drillList.querySelector(`.lr[data-sym="${CSS.escape(sym)}"]`)
         if (row) patchLiuli(row, drillData(sym))
       }
+      forgetHTML(drillList)
       pending = new Set()
     })
   })
