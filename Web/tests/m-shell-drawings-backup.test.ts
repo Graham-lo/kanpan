@@ -72,3 +72,27 @@ describe('画线存档读不全（m/app/drawings load）', () => {
     expect(backups(mem)).toHaveLength(3)
   })
 })
+
+describe('本机状态存档读不出（m/app/store load）', () => {
+  for (const [name, bad] of [['JSON 坏了', '{"symbols":{"favorites":["BTCUSDT"'], ['被写成 null', 'null'], ['被写成数组', '["BTCUSDT"]']] as const) {
+    it(`${name}：当空档用，原文另存，第一次 save 盖掉主键后原文还在`, async () => {
+      const s = memStorage({ 'hkline-m-v1': bad })
+      vi.stubGlobal('localStorage', s.api)
+      vi.resetModules()
+      const store = await import('../src/m/app/store')
+      expect(store.st.symbols.favorites).toEqual([])
+      store.st.skin = 'terra'; store.save()
+      expect(JSON.parse(s.mem.get('hkline-m-v1')!).skin).toBe('terra')
+      expect([...s.mem.keys()].filter(k => k.startsWith('hkline-m-v1.unreadable-')).map(k => s.mem.get(k))).toEqual([bad])
+    })
+  }
+  it('完好的存档、没有存档：不另存', async () => {
+    for (const seed of [{ 'hkline-m-v1': JSON.stringify({ skin: 'classic' }) }, {}] as Record<string, string>[]) {
+      const s = memStorage(seed)
+      vi.stubGlobal('localStorage', s.api)
+      vi.resetModules()
+      await import('../src/m/app/store')
+      expect([...s.mem.keys()].some(k => k.includes('.unreadable-'))).toBe(false)
+    }
+  })
+})

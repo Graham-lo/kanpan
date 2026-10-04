@@ -16,6 +16,7 @@
 import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, type Prefs } from './prefs'
 import { migrateAlert, type Alert } from '../../alerts/shape'
 import { tabGuard } from './tabGuard'
+import { backupUnreadable } from './unreadable'
 import { validSymbol } from '../../sync/codec'
 
 export const KEY = 'hkline-m-v1'
@@ -77,10 +78,15 @@ function ls(): Storage | null { try { return globalThis.localStorage ?? null } c
 
 export function load(): Record<string, unknown> {
   // 读出来得是个对象：存档被写成 null / 数字 / 数组（别的版本、手改、扩展）时当空档，不然 hydrate 读 .symbols 直接白屏
-  try {
-    const v: unknown = JSON.parse(ls()?.getItem(KEY) || '{}')
-    return v != null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
-  } catch { return {} }
+  // 解不开时原文另存（m/app/unreadable）：下一次 save 会把主键整份盖掉，自选、分类、提醒只存在这一处
+  let raw: string | null = null
+  try { raw = ls()?.getItem(KEY) ?? null } catch { return {} }
+  if (!raw) return {}
+  let v: unknown
+  try { v = JSON.parse(raw) } catch { v = undefined }
+  if (v != null && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>
+  backupUnreadable(KEY, raw)
+  return {}
 }
 
 const strs = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []

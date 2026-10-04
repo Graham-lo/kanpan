@@ -18,27 +18,12 @@
 import { DrawingBook, type DrawingBookChange } from '../chart/draw/book'
 import { DrawArchive, decodeArchive, encodeArchive } from '../chart/draw/archive'
 import { tabGuard } from './tabGuard'
+import { backupUnreadable } from './unreadable'
 
 export const DRAWINGS_KEY = 'hkline-m-drawings-v1'
 
 /** 本机存档读坏过（有东西但解不开）：同步那边先别按「本机删光了」推删除 */
 let suspect = false
-
-/** 读不全的原文另存的键前缀（后面跟时间戳）；只留最近 BACKUP_KEEP 份 */
-export const DRAWINGS_BACKUP_PREFIX = DRAWINGS_KEY + '.unreadable-'
-const BACKUP_KEEP = 3
-
-/** 原文存一份到旁边：之后第一次落盘就会把主键整份盖掉，没登录的人线只存在这一处 */
-function backupRaw(raw: string): void {
-  try {
-    const old: string[] = []
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k?.startsWith(DRAWINGS_BACKUP_PREFIX)) old.push(k) }
-    old.sort()
-    if (old.some(k => localStorage.getItem(k) === raw)) return
-    localStorage.setItem(DRAWINGS_BACKUP_PREFIX + Date.now(), raw)
-    for (const k of old.slice(0, Math.max(0, old.length + 1 - BACKUP_KEEP))) localStorage.removeItem(k)
-  } catch (e) { console.warn('[m] 画线存档原文另存失败', e) }
-}
 
 /** 存档原文里有、解出来却没有的线（这一版解不开、会被丢掉的）有几条 */
 function lostCount(json: unknown, a: DrawArchive): number {
@@ -57,9 +42,9 @@ function load(): DrawArchive {
   if (!raw) return new DrawArchive()
   let a: DrawArchive
   let json: unknown
-  try { json = JSON.parse(raw); a = decodeArchive(json) } catch { suspect = true; backupRaw(raw); return new DrawArchive() }
+  try { json = JSON.parse(raw); a = decodeArchive(json) } catch { suspect = true; backupUnreadable(DRAWINGS_KEY, raw); return new DrawArchive() }
   // 新版本写的、或有线解不开（会被这一版丢掉）：照样用解得开的那些，但原文另存，并按可疑处理（同步只补不删）
-  if (a.version > DrawArchive.currentVersion || lostCount(json, a)) { suspect = true; backupRaw(raw) }
+  if (a.version > DrawArchive.currentVersion || lostCount(json, a)) { suspect = true; backupUnreadable(DRAWINGS_KEY, raw) }
   return a
 }
 
