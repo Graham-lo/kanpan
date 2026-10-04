@@ -213,15 +213,44 @@ export function touchedBetween(a: Alert, prev: number, cur: number, t: number): 
   }
   return null
 }
-/** 资金费率：结算前 15 分钟那个窗口里判一次（和服务端同一条规矩） */
-export function fundingHit(rule: AlertRule, fr: number | null | undefined, nextFunding: number | null | undefined, now: number): boolean {
-  if (rule.type !== 'funding' || fr == null || !nextFunding) return false
-  if (nextFunding - now > 15 * 60e3 || nextFunding < now) return false
+/** 资金费率结算前判的那个窗口 */
+export const FUNDING_WINDOW_MS = 15 * 60e3
+/** 资金费率：结算前 15 分钟那个窗口里、武装之后，够没够线（恰好等于阈值算够，和服务端 judge_funding、
+ *  iOS ConditionJudge 同一条规矩）。「每次结算只判一次」由 judgeFunding 记 */
+export function fundingHit(rule: AlertRule, fr: number | null | undefined, nextFunding: number | null | undefined, now: number, armedAt = 0): boolean {
+  if (rule.type !== 'funding' || fr == null || !isFinite(fr) || !nextFunding) return false
+  if (now < nextFunding - FUNDING_WINDOW_MS || now >= nextFunding || now < armedAt) return false
   const rate = +(rule as { rate: string }).rate
-  return (rule as { side: string }).side === 'above' ? fr > rate : fr < rate
+  return (rule as { side: string }).side === 'above' ? fr >= rate : fr <= rate
+}
+/** 照服务端：一条提醒在一次结算的窗口里只判第一眼——第一眼没够线，这一次结算就不再判（后面费率涨上去也不算）。
+ *  judged 记「这条提醒判过的是哪一次结算」，跨调用保留 */
+export function judgeFunding(a: Pick<Alert, 'id' | 'rule' | 'armedAt'>, fr: number | null | undefined, nextFunding: number | null | undefined, now: number, judged: Map<string, number>): boolean {
+  if (!a.rule || a.rule.type !== 'funding' || fr == null || !isFinite(fr) || !nextFunding) return false
+  if (now < nextFunding - FUNDING_WINDOW_MS || now >= nextFunding || now < a.armedAt) return false
+  if (judged.get(a.id) === nextFunding) return false
+  judged.set(a.id, nextFunding)
+  return fundingHit(a.rule, fr, nextFunding, now, a.armedAt)
 }
 export function oiHit(rule: AlertRule, changeRatio: number): boolean {
   return rule.type === 'openInterestChange' && Math.abs(changeRatio) >= +(rule as { threshold: string }).threshold
+}
+/** 持仓量比较的跨度：最新一个点和恰好 1 小时前的点比（服务端 OI_SPAN_MS） */
+export const OI_SPAN_MS = 3600e3
+/** openInterestHist 一串点 → 最新一个点与恰好 1 小时前那个点的变化比；只认最新点在武装之后的（照服务端
+ *  judge_open_interest：缺 1 小时前那个点不判，任一端是 0 不判）。返回 null = 这一轮不判 */
+export function oiChange(rows: readonly { timestamp: number; sumOpenInterest: string | number }[], armedAt: number): number | null {
+  const pts = rows.map(r => ({ at: +r.timestamp, v: +r.sumOpenInterest })).filter(p => isFinite(p.at) && isFinite(p.v)).sort((a, b) => a.at - b.at)
+  const last = pts[pts.length - 1]
+  if (!last || last.at < armedAt) return null
+  const before = pts.find(p => p.at === last.at - OI_SPAN_MS)
+  if (!before || before.v === 0 || last.v === 0) return null
+  return last.v / before.v - 1
+}
+/** 创建条件提醒时填的百分数在不在服务端收的范围里：持仓量 0.1%–1000%（threshold 0.001–10），资金费率 ±10%（rate ±0.1） */
+export function conditionPercentOK(kind: 'funding' | 'oi', v: number): boolean {
+  if (!isFinite(v)) return false
+  return kind === 'oi' ? v >= 0.1 && v <= 1000 : Math.abs(v) <= 10
 }
 
 /** 照手机 AlertWatcher.report：条件提醒本机判到的由本机发（服务端只替它自己判到的那一次发）；

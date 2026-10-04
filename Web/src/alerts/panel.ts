@@ -15,8 +15,8 @@ import { dialog, head, toast, type Dialog } from '../ui/overlay'
 import { badge, cls, pctText, priceText, shTime, sym } from '../ui/common'
 import { fmt } from '../util/format'
 import {
-  activeAlerts, addAlert, alertLevel, checkPrice, cleanWebhook, conditionLabel, deleteAlert, fire, fundingHit, makeConditionAlert,
-  makePriceAlert, oiHit, onAlertFired, onAlertsChange, rulePhrase, setQuoteSource, validWebhook, webhookBody, webhookByPage, type Alert, type AlertRule,
+  activeAlerts, addAlert, alertLevel, checkPrice, cleanWebhook, conditionLabel, conditionPercentOK, deleteAlert, fire, judgeFunding, makeConditionAlert,
+  makePriceAlert, oiChange, oiHit, onAlertFired, onAlertsChange, rulePhrase, setQuoteSource, validWebhook, webhookBody, webhookByPage, type Alert, type AlertRule,
 } from './model'
 
 export interface AlertUIHooks {
@@ -169,7 +169,7 @@ export function openCreateAlert(symbol: string, price?: number | null): void {
       a = makePriceAlert(symbol, p, last, { dec, webhook })
     } else {
       const inp = $<HTMLInputElement>('#aNum', d.dlg), v = +inp.value
-      if (!isFinite(v) || (kind === 'oi' && !(v >= 0.1)) || Math.abs(v) > 10) { inp.focus(); toast(kind === 'oi' ? '填 0.1 到 1000 之间的百分数' : '填 −10 到 10 之间的百分数', '', 'info', 2000); return }
+      if (!conditionPercentOK(kind, v)) { inp.focus(); toast(kind === 'oi' ? '填 0.1 到 1000 之间的百分数' : '填 −10 到 10 之间的百分数', '', 'info', 2000); return }
       const ratio = String(+(v / 100).toPrecision(8))
       const rule: AlertRule = kind === 'funding'
         ? { type: 'funding', side: ($('[data-op][aria-pressed="true"]', d.dlg)?.dataset.op as 'above' | 'below' | undefined) ?? 'above', rate: ratio }
@@ -181,7 +181,7 @@ export function openCreateAlert(symbol: string, price?: number | null): void {
     askNotify()
   }
   $('#aOk', d.dlg).onclick = ok
-  d.dlg.addEventListener('keydown', e => { if (e.key === 'Enter' && tgt(e).tagName === 'INPUT') ok() })
+  d.dlg.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && tgt(e).tagName === 'INPUT') ok() })
   renderVal(); renderExisting()
 }
 
@@ -203,18 +203,21 @@ function postWebhook(a: Alert, price: number, level: number | null, remote = fal
 }
 
 async function checkOI(): Promise<void> {
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  // 登录着时服务端也在判，页面在后台就不必每分钟去问；没登录只有这一页在判，后台也照问
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && loggedIn()) return
   const list = activeAlerts().filter(a => a.kind === 'condition' && a.rule?.type === 'openInterestChange')
   for (const k of new Set(list.map(a => a.symbol))) {
     try {
-      const rows = await j<{ sumOpenInterest: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${k}&period=5m&limit=13`)
-      if (rows.length < 2) continue
-      const chg = +rows[rows.length - 1].sumOpenInterest / +rows[0].sumOpenInterest - 1
-      if (!isFinite(chg)) continue
-      for (const a of list.filter(x => x.symbol === k)) if (a.rule && oiHit(a.rule, chg)) fire(a, sym(k)?.price ?? 0, null)
+      const rows = await j<{ timestamp: number; sumOpenInterest: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${k}&period=5m&limit=13`)
+      for (const a of list.filter(x => x.symbol === k)) {
+        const chg = oiChange(rows, a.armedAt)
+        if (chg != null && a.rule && oiHit(a.rule, chg)) fire(a, sym(k)?.price ?? 0, null)
+      }
     } catch { /* 下一分钟再看 */ }
   }
 }
+/** 资金费率提醒：每条判过的是哪一次结算（一次结算只判窗口里的第一眼） */
+const fundingJudged = new Map<string, number>()
 
 let installed = false
 export function installAlerts(hooks: AlertUIHooks): void {
@@ -228,7 +231,7 @@ export function installAlerts(hooks: AlertUIHooks): void {
     if (e.type === 'ticker') { const p = S.symbols.get(e.symbol)?.price; if (p != null) checkPrice(e.symbol, p) }
     else if (e.type === 'mark') {
       const s = S.symbols.get(e.symbol); if (!s) return
-      for (const a of activeAlerts(e.symbol)) if (a.kind === 'condition' && a.rule && fundingHit(a.rule, s.fr, s.nextFunding, Date.now())) fire(a, s.price ?? 0, null)
+      for (const a of activeAlerts(e.symbol)) if (a.kind === 'condition' && judgeFunding(a, s.fr, s.nextFunding, Date.now(), fundingJudged)) fire(a, s.price ?? 0, null)
     }
   })
   setInterval(() => { void checkOI() }, 60e3)

@@ -3,7 +3,7 @@
  * st.alerts 的增删改、画线提醒对账、逐笔判定与「响一次就结束」。形状与纯函数在 shape.ts。
  * 这一层不碰 DOM：页面（pages/chart.ts）订阅 onAlertsChange 去刷新图与侧栏，订阅 onAlertFired 去弹通知。
  */
-import { save, st } from '../app/store'
+import { save, st, tabGuard } from '../app/store'
 import type { Drawing } from '../chart/chart'
 import { baseOf, cleanWebhook, drawingCanAlert, drawingIdOf, drawingLines, makeDrawingAlert, makePriceAlert, priceLabel, priceTitle, touchedBetween, type Alert } from './shape'
 export * from './shape'
@@ -100,6 +100,9 @@ function announce(f: Fired): void { fireHandlers.forEach(h => { try { h(f) } cat
  *  2. 报给人（通知、没登录时本机发 Webhook）；
  *  3. 再从表里删掉并记账——推上去的是删除。两笔按先后进同一个队列，服务端先发信、后删行。 */
 export function fire(a: Alert, price: number, level: number | null): void {
+  // 同一浏览器开着两页：被别的页比下去的这页内存是旧的（那边删掉的提醒这里还在），只由人正在用的那页判、
+  // 弹通知、发 Webhook，不然一次触发两页各报一遍、删掉的也照响
+  if (tabGuard.stale) return
   if (!st.alerts.includes(a) || a.status !== 'active') return
   a.status = 'fired'; a.firedAt = Date.now(); a.firedPrice = price
   changed()
