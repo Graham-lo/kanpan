@@ -45,9 +45,14 @@ final class Habits {
   @ObservationIgnored private let dwellScale: Double
 
   @ObservationIgnored private var focus: HabitFocus?
-  @ObservationIgnored private var segment: (focus: HabitFocus, mode: PriceMode, start: Double)?
+  /// 正在计时的那一段停留，连同它是**谁的**（`store.stamp.owner`）。换了档案，上一个人
+  /// 那段停留不能记进下一个人的日志、推成他的结论（审查 D-02）。
+  @ObservationIgnored private var segment: (focus: HabitFocus, mode: PriceMode, start: Double, owner: String)?
   /// 这次启动里已经按学到的值摆过「今日 / 5 日」的市场：一次启动只摆一次，之后人怎么点就怎么是。
   @ObservationIgnored private var sectorApplied: Set<SectorMarket> = []
+  /// `sectorApplied` 是谁的。换了人就作废重来——不靠 `track()` 看见（两个号设置一模一样时
+  /// `prefs` 没变，观察不一定通知），每次用之前直接对一下属主。
+  @ObservationIgnored private var sectorOwner: String?
   /// 上一次看到的开关与结论（判断「是不是别处关掉 / 清掉了」）。
   @ObservationIgnored private var lastSeen: (owner: String, enabled: Bool, empty: Bool)?
 
@@ -84,8 +89,9 @@ final class Habits {
   }
 
   /// 图上真正用的价格轴：设置里是线性 / 对数时，换成这一类学到的那档；百分比、没学到、
-  /// 开关关着都照设置。**不写回 `Prefs`**——`priceMode` 是按周期组记的指标布局的一部分，
-  /// 写回去会让那一组分叉。
+  /// 开关关着都照设置。**不写回 `Prefs`**——`priceMode` 是指标布局的一部分，一人一份、
+  /// 所有周期与所有设备共用（2026-10-03 起）；学到的是「这一类品种」的那档，写回去就把
+  /// 他亲手设的那档在所有品种、所有设备上一起改掉了。
   func effectivePriceMode(_ prefs: Prefs) -> PriceMode {
     guard prefs.habitLearning, prefs.priceMode != .percent, let category,
           let mode = prefs.learnedDefaults.priceMode(for: category) else { return prefs.priceMode }
@@ -103,7 +109,9 @@ final class Habits {
 
   /// 板块页出现时问一次：这个市场这次启动还没摆过、学到了、和现在的不一样，才返回。
   func sectorWindowToApply(market: SectorMarket, current: SectorWindow) -> SectorWindow? {
-    guard enabled, !sectorApplied.contains(market) else { return nil }
+    guard enabled else { return nil }
+    resetSectorAppliedIfOwnerChanged()
+    guard !sectorApplied.contains(market) else { return nil }
     sectorApplied.insert(market)
     guard let window = learned.window(for: market), window != current else { return nil }
     return window
@@ -123,9 +131,13 @@ final class Habits {
     guard next != focus else { return }
     closeSegment()
     focus = next
-    if next.visible, enabled {
-      segment = (next, effectivePriceMode(for: next), now())
-    }
+    startSegment()
+  }
+
+  /// 屏上看得见、开关开着，就从此刻起给眼前这一屏计时。`mode` 不给就按此刻图上用的那档。
+  private func startSegment(mode: PriceMode? = nil) {
+    guard let focus, focus.visible, enabled else { return }
+    segment = (focus, mode ?? effectivePriceMode(for: focus), now(), store?.stamp.owner ?? "")
   }
 
   /// 在图表设置里亲手切了价格轴。
@@ -134,12 +146,13 @@ final class Habits {
     // 切之前那段按旧的那档记完。
     closeSegment()
     record(.init(t: now(), kind: .axisPick, key: category.rawValue, value: mode.rawValue))
-    if let focus, focus.visible { segment = (focus, mode, now()) }
+    startSegment(mode: mode)
   }
 
   /// 板块页选了一档。
   func noteSectorWindow(market: SectorMarket, window: SectorWindow) {
     guard enabled, LearnedDefaults.sectorValues.contains(window.rawValue) else { return }
+    resetSectorAppliedIfOwnerChanged()
     sectorApplied.insert(market)
     record(.init(t: now(), kind: .sectorWindow, key: market.rawValue, value: window.rawValue))
   }
@@ -170,10 +183,17 @@ final class Habits {
     segment = nil
     withLog { $0.removeAll() }
     store?.update { $0.learnedDefaults = .empty }
-    if let focus, focus.visible, enabled { segment = (focus, effectivePriceMode(for: focus), now()) }
+    startSegment()
   }
 
   // ---------------------------------------------------------------- 内部
+
+  private func resetSectorAppliedIfOwnerChanged() {
+    let owner = store?.stamp.owner ?? ""
+    guard sectorOwner != owner else { return }
+    sectorOwner = owner
+    sectorApplied = []
+  }
 
   private func setCategory(_ value: HabitCategory) {
     if category != value { category = value }
@@ -199,7 +219,8 @@ final class Habits {
   private func closeSegment() {
     guard let segment else { return }
     self.segment = nil
-    guard enabled else { return }
+    // 计时的时候是另一个人的档案（换号 / 退登之后 `track()` 还没轮到）：这段不算谁的。
+    guard enabled, segment.owner == (store?.stamp.owner ?? "") else { return }
     let seconds = min(HabitInference.maxDwell, (now() - segment.start) * dwellScale)
     guard seconds >= HabitInference.minDwell else { return }
     let focus = segment.focus
@@ -252,7 +273,15 @@ final class Habits {
       Task { @MainActor [weak self] in self?.track() }
     }
     defer { lastSeen = (seen.0, seen.1, seen.2) }
-    guard let last = lastSeen, last.owner == seen.0 else { return }
+    guard let last = lastSeen else { return }
+    guard last.owner == seen.0 else {
+      // 换了人：上一个人那段停留作废（`closeSegment` 也按属主挡着），「这次启动摆过的板块窗口」
+      // 也是上一个人的——新档案里学到的值照样要摆一次。眼前这一屏从现在起算新人的。
+      segment = nil
+      resetSectorAppliedIfOwnerChanged()
+      startSegment()
+      return
+    }
     let turnedOff = last.enabled && !seen.1
     let cleared = !last.empty && seen.2
     if turnedOff || cleared {

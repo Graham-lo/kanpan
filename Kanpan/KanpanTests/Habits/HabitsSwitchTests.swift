@@ -131,4 +131,39 @@ struct HabitsSwitchTests {
     #expect(habits.watchMoveFactor(for: key) == 1)
     #expect(store.prefs.learnedDefaults.watchMove.isEmpty)
   }
+
+  // MARK: - 审查 D-02：计时中换了人
+
+  @Test("计时中换了人、track 还没轮到：上一个人那段停留谁的日志都不进")
+  func dwellDoesNotCrossAnOwnerSwitch() async {
+    let (habits, store, clock, logBox) = make()
+    store.useStorage(InMemoryPrefsStorage(), prefs: .defaults, arrival: .ownerSwitched, owner: "acct:A")
+    for _ in 0..<5 { await Task.yield() }
+    habits.setFocus(focus("BTCUSDT", .h4))
+    clock.t += 600
+    // 换号：档案先换（`prepare` 的提交段），`track()` 要等下一跳；这中间切走那一下不能把 A 的
+    // 十分钟记成 B 的。
+    store.useStorage(InMemoryPrefsStorage(), prefs: .defaults, arrival: .ownerSwitched, owner: "acct:B")
+    habits.setFocus(focus("BTCUSDT", .h4, visible: false))
+    #expect(store.prefs.learnedDefaults.isEmpty)
+    #expect(HabitLogStore(storage: logBox).load(owner: "acct:B").events.isEmpty)
+    #expect(HabitLogStore(storage: logBox).load(owner: "acct:A").events.isEmpty)
+  }
+
+  @Test("换了人（两个号设置一模一样也算）：新人的停留照常记，板块窗口按新人学到的再摆一次")
+  func newOwnerStartsClean() async {
+    let (habits, store, clock, logBox) = make()
+    store.useStorage(InMemoryPrefsStorage(), prefs: .defaults, arrival: .ownerSwitched, owner: "acct:A")
+    for _ in 0..<5 { await Task.yield() }
+    habits.noteSectorWindow(market: .crypto, window: .d5)  // A 这次启动在板块页亲手选过
+    store.useStorage(InMemoryPrefsStorage(), prefs: .defaults, arrival: .ownerSwitched, owner: "acct:B")
+    for _ in 0..<5 { await Task.yield() }
+    dwell(habits, clock, "BTCUSDT", .h4, 300)
+    #expect(store.prefs.learnedDefaults.interval(for: "binance/usd_m/BTCUSDT") == .h4)
+    #expect(!HabitLogStore(storage: logBox).load(owner: "acct:B").events.isEmpty)
+    #expect(!HabitLogStore(storage: logBox).load(owner: "acct:B").events.contains { $0.kind == .sectorWindow })
+    // B 学到「5 日」：这次启动对 B 还没摆过，要摆。
+    store.update { $0.learnedDefaults.sectorWindow[SectorMarket.crypto.rawValue] = .init(v: "d5", n: 3, at: clock.t) }
+    #expect(habits.sectorWindowToApply(market: .crypto, current: .today) == .d5)
+  }
 }
