@@ -5,6 +5,7 @@ import { $, I, esc, tgt } from '../ui/dom'
 import { toast } from '../ui/overlay'
 import { setRoute } from '../market'
 import { session, onSession } from '../account/session'
+import { createLoadGate } from '../review/loadGate'
 import { login, logout, devices, kick, changePassword, deleteAccount, errorText, type DeviceRow } from '../account/client'
 import { sh, pad } from '../util/format'
 import { openShortcuts, renderPanel, refreshStreams } from './chart'
@@ -91,12 +92,21 @@ function devicesHTML(): string {
 
 let venues: { rows: VenueRow[] | null; err: string } = { rows: null, err: '' }
 
-let venLoading = false
+/** 交易所、设备两块各一道闸：同一时刻只取一份（页面在取的途中重画不再多发请求）；
+ *  换账号时 reset，上个账号在途的那份回来作废，不会把 A 的设备 / 交易所写到 B 的页面上 */
+const venGate = createLoadGate(), devGate = createLoadGate()
+/** 要求重取的次数：在途那份开始之后又被要求过（重试、刚让一台下线、换账号），回来就作废再取 */
+let venWant = 0, devWant = 0
+function resetVenues(): void { venues = { rows: null, err: '' }; venWant++ }
+function resetDevs(): void { devs = { rows: null, err: '' }; devWant++ }
 async function loadVenues(): Promise<void> {
-  if (venLoading) return
-  venLoading = true
-  try { venues = { rows: venueRows(await reviewApi.trades()), err: '' } } catch (e) { venues = { rows: null, err: reviewErrorText(e) } }
-  venLoading = false
+  if (venGate.busy) return
+  const ep = venGate.begin()!, want = venWant
+  let next: typeof venues
+  try { next = { rows: venueRows(await reviewApi.trades()), err: '' } } catch (e) { next = { rows: null, err: reviewErrorText(e) } }
+  if (venGate.end(ep) === 'stale') return
+  if (want !== venWant) return loadVenues() // 途中被要求重取（重试、刚切进来）：这份可能已过时，再取一份
+  venues = next
   if (st.page === 'me' && st.meSection === 'exchange') render()
 }
 
@@ -118,7 +128,13 @@ function exchangeHTML(): string {
 }
 
 async function loadDevices(): Promise<void> {
-  try { devs = { rows: await devices(), err: '' } } catch (e) { devs = { rows: null, err: errorText(e) } }
+  if (devGate.busy) return
+  const ep = devGate.begin()!, want = devWant
+  let next: typeof devs
+  try { next = { rows: await devices(), err: '' } } catch (e) { next = { rows: null, err: errorText(e) } }
+  if (devGate.end(ep) === 'stale') return
+  if (want !== devWant) return loadDevices() // 途中被要求重取（刚让一台下线）：这份里还有它，再取一份
+  devs = next
   if (st.page === 'me' && st.meSection === 'devices') render()
 }
 
@@ -134,7 +150,7 @@ async function submitAuth(): Promise<void> {
   if (btn) btn.disabled = true
   try {
     await login(u, p, authMode === 'register')
-    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
+    resetDevs(); resetVenues()
     toast(authMode === 'register' ? '注册好了' : '已登录', '自选、画线、提醒开始和手机同步', 'check', 2400)
   } catch (e) {
     setErr('acctErr', errorText(e, authMode))
@@ -152,7 +168,7 @@ async function submitPassword(): Promise<void> {
   if (btn) btn.disabled = true
   try {
     await changePassword(cur, next)
-    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
+    resetDevs(); resetVenues()
     toast('密码已修改', '其它设备已下线', 'check', 3000)
     render()
   } catch (e) {
@@ -183,7 +199,7 @@ async function submitClose(): Promise<void> {
   if (btn) btn.disabled = true
   try {
     await deleteAccount(pw)
-    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
+    resetDevs(); resetVenues()
     toast('账号已注销', '云端数据已删除，这台电脑上的数据留着', 'check', 4000)
   } catch (e) {
     setErr('closeErr', errorText(e, 'password'))
@@ -220,7 +236,7 @@ function render(): void {
 export function initMe(): void {
   $('#page-me').addEventListener('click', e => {
     const t = tgt(e)
-    const a = t.closest<HTMLElement>('[data-me]'); if (a) { e.preventDefault(); st.meSection = a.dataset.me || 'look'; if (st.meSection === 'devices') devs = { rows: null, err: '' }; if (st.meSection === 'exchange') venues = { rows: null, err: '' }; save(); render(); return }
+    const a = t.closest<HTMLElement>('[data-me]'); if (a) { e.preventDefault(); st.meSection = a.dataset.me || 'look'; if (st.meSection === 'devices') resetDevs(); if (st.meSection === 'exchange') resetVenues(); save(); render(); return }
     const sg = t.closest<HTMLElement>('[data-seg]')
     if (sg) {
       const k = sg.dataset.seg, v = sg.dataset.v || ''
@@ -234,13 +250,13 @@ export function initMe(): void {
     }
     const au = t.closest<HTMLElement>('[data-auth]')
     if (au) { authMode = au.dataset.auth === 'register' ? 'register' : 'login'; const keep = val('acctUser'); render(); const el = document.getElementById('acctUser') as HTMLInputElement | null; if (el) { el.value = keep; (keep ? document.getElementById('acctPass') : el)?.focus() } return }
-    if (t.closest('#acctLogout')) { logout(); devs = { rows: null, err: '' }; toast('已退出', '这台电脑上的数据都留着', 'logout', 2000); return }
-    if (t.closest('#devRetry')) { devs = { rows: null, err: '' }; render(); return }
-    if (t.closest('#venRetry')) { venues = { rows: null, err: '' }; render(); return }
+    if (t.closest('#acctLogout')) { logout(); resetDevs(); toast('已退出', '这台电脑上的数据都留着', 'logout', 2000); return }
+    if (t.closest('#devRetry')) { resetDevs(); render(); return }
+    if (t.closest('#venRetry')) { resetVenues(); render(); return }
     const kb = t.closest<HTMLButtonElement>('[data-kick]')
     if (kb) {
       kb.disabled = true
-      void kick(kb.dataset.kick || '').then(() => { toast('已让那台设备下线', '', 'check', 2000); devs = { rows: null, err: '' }; render() })
+      void kick(kb.dataset.kick || '').then(() => { toast('已让那台设备下线', '', 'check', 2000); resetDevs(); render() })
         .catch(err => { kb.disabled = false; toast('没能下线', errorText(err), 'info', 3000) })
       return
     }
@@ -260,10 +276,11 @@ export function initMe(): void {
   // 登录 / 退出 / 被另一台电脑顶掉：头像、我的页跟着变；不在「我的」时弹一句
   onSession(() => {
     renderHeader()
-    devs = { rows: null, err: '' }; venues = { rows: null, err: '' }
+    venGate.reset(); devGate.reset()
+    resetDevs(); resetVenues()
     if (st.page === 'me') render()
     else if (session.notice) toast(session.notice, '到「我的」重新登录', 'user', 6000)
   })
-  hooks.pageShown.me = () => { if (st.meSection === 'devices') devs = { rows: null, err: '' }; if (st.meSection === 'exchange') venues = { rows: null, err: '' }; render() }
+  hooks.pageShown.me = () => { if (st.meSection === 'devices') resetDevs(); if (st.meSection === 'exchange') resetVenues(); render() }
   hooks.onTheme.push(() => { if (st.page === 'me') render() })
 }
