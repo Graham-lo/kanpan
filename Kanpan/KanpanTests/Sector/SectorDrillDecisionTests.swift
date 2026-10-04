@@ -54,5 +54,11 @@ struct SectorDrillDecisionTests {
     #expect(shell.memberCount == 0, "没数据就是没数据，不许编一个中位数出来")
     // 成员数 0：没有广度可言，副文案是空串（整行不画），不写「0/0 跑赢大盘」。
     #expect(SectorSubtitle.row(shell) == "")
+    // 涨跌幅同样是「没有」：头部写「—」、中性色，不写上涨色的「+0.00%」。
+    #expect(shell.pct.isNaN)
+    #expect(sectorPctText(shell.pct) == "—")
+    #expect(SectorPctTone.of(shell.pct) == .neutral)
+    #expect(SectorPctTone.of(0) == .up)
+    #expect(SectorPctTone.of(-0.01) == .down)
   }
 }

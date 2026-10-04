@@ -45,3 +45,20 @@ enum SectorWindowChoice {
     return Resolved(window: window, showsBar: hasD5, title: title(window))
   }
 }
+
+extension SectorWindowChoice {
+  /// 药丸上点了一档。
+  ///
+  /// 点的就是屏上正显示的那一档时**什么都不做**（审查 D-05）：原来照样记一次习惯、
+  /// 照样写一次偏好——反复点当前那档会把习惯推断里这一档的次数抬高（`HabitInference`
+  /// 按次数定常看哪档），每点一下还多落一次盘、多产出一条同步。
+  /// 比的是屏上显示的那一档（`shown`），不是偏好里存的那一档：停在 5 日的人在
+  /// 没有日线的市场里显示的是今日，那时药丸行本来就不出现。
+  @MainActor
+  static func pick(_ value: SectorWindow, shown: SectorWindow, market: SectorMarket,
+                   habits: Habits?, store: PrefsStore) {
+    guard value != shown else { return }
+    habits?.noteSectorWindow(market: market, window: value)
+    store.update { $0.sectorWindow = value }
+  }
+}

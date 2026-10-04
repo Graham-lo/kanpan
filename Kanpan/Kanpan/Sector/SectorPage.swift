@@ -52,7 +52,8 @@ struct SectorPage: View {
   /// 人就被扔回板块列表了。挪到宿主手里，来回一趟才回得到原来那一层。
   @Binding var route: [SectorRoute]
   /// 「5 日」要的日线收盘。取不到就是空，页面回到只有今日的样子，不提示。
-  @State private var historyFeed = SectorHistoryFeed()
+  /// 由 `feed` 带着（宿主持有，审查 D-04），页面只读；线路、可见、前后台都由 `feed` 转过去。
+  private var historyFeed: SectorHistoryFeed { feed.daily }
   /// 这一屏的算料按输入缓存（压测 M2）。以前 body 每跑一次就把聚合、兜底桶、覆盖数
   /// 整套重算一遍——下钻、返回、改排序、偏好里任何一项变动都会让它重跑，
   /// 而这些事一样口径输入都没动。现在只在行情、品种表、日线收盘、市场、选的那一档
@@ -162,19 +163,8 @@ struct SectorPage: View {
     .onAppear {
       applyLearnedWindow()
       feed.setVisible(true)
-      historyFeed.configure(backend: feed.backend)
-      historyFeed.setForeground(feed.foreground)
-      historyFeed.setVisible(true)
     }
-    .onDisappear {
-      feed.setVisible(false)
-      historyFeed.setVisible(false)
-    }
-    // 网关名单是宿主在启动时配进 `feed` 的，可能比这一页出现得晚一步；
-    // 换线路时也会变。变一次就重新接一次线，免得「5 日」那一档等到下次进页才活。
-    .onChange(of: feed.backend) { _, next in historyFeed.configure(backend: next) }
-    // 前后台跟着宿主给 `feed` 设的那一位走（`historyFeed` 是这一页自己的，宿主够不着）。
-    .onChange(of: feed.foreground) { _, on in historyFeed.setForeground(on) }
+    .onDisappear { feed.setVisible(false) }
   }
 
   /// 最上面那一层如果是品种列表，是哪个板块。
@@ -295,8 +285,8 @@ struct SectorPage: View {
                     },
                     selection: snap.window,
                     pick: { value in
-                      habits?.noteSectorWindow(market: market, window: value)
-                      store.update { $0.sectorWindow = value }
+                      SectorWindowChoice.pick(value, shown: snap.window, market: market,
+                                              habits: habits, store: store)
                     })
       Spacer(minLength: 0)
     }

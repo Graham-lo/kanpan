@@ -67,7 +67,7 @@ struct SectorBoardList: View {
       }.frame(maxWidth: .infinity, alignment: .leading)
       Text(sectorPctText(stat.pct))
         .font(TypeScale.footnoteEmph).monospacedDigit()
-        .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
+        .foregroundStyle(theme.sectorPct(stat.pct))
     }
     .pageHorizontalInset()
     .padding(.vertical, Space.s)
@@ -81,5 +81,16 @@ struct SectorBoardList: View {
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("sector.row." + stat.id)
     .accessibilityAction { onPick(stat) }
+  }
+}
+
+extension PanelTheme {
+  /// 板块页涨跌幅的颜色。口径在 `SectorPctTone`：算不出来的是中性色，不是下跌色。
+  func sectorPct(_ value: Double) -> Color {
+    switch SectorPctTone.of(value) {
+    case .up: up
+    case .down: down
+    case .neutral: ink3
+    }
   }
 }

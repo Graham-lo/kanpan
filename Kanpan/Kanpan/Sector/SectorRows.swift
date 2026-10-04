@@ -89,12 +89,17 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
 /// 它的「中位数」就是那一两只币自己的涨跌，拿来和几十只成员的板块比强弱，
 /// 一只币拉一根就能顶到第一。这一档自己之间仍按涨跌幅排，板块照样列着、点得进去。
 ///
+/// 5 日那一档覆盖不够的板块（`SectorAggregator.covered`）也在后面那一档：它的 `pct` 是 NaN，
+/// 成员再多也不算强弱（深度审查 D 线 2026-10-04）。
+///
 /// 算不出数的（NaN / ±∞）压到最后，并列按 id 排——NaN 参与 `>` 时比较恒假，排序谓词
 /// 就不再是严格弱序，同一份数据两次刷新能排出两个顺序，行会自己换位（和品种列表那条
 /// 规矩一样，审查 B.5）。
 enum SectorBoardOrder {
   static func sorted(_ stats: [SectorStat]) -> [SectorStat] {
     stats.sorted { a, b in
+      // 分档只看成员数：覆盖不够、算不出数的板块（`pct` 是 NaN）仍在真板块这一档、沉到档底，
+      // 一两只币的板块整档排在它后面（`SectorRowTests.thinBoardsSinkBelowRealSectors`）。
       let thinA = a.memberCount < SectorAggregator.minEligibleMembers
       let thinB = b.memberCount < SectorAggregator.minEligibleMembers
       if thinA != thinB { return thinB }
@@ -116,8 +121,14 @@ enum SectorBoardOrder {
 /// ——一只币的涨跌不是板块强弱。这种给空串，调用处整行不画，不解释为什么。
 enum SectorSubtitle {
   static func text(_ stat: SectorStat) -> String {
-    guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return "" }
+    guard counts(stat) else { return "" }
     return "\(stat.outperformCount)/\(stat.memberCount) 跑赢大盘"
+  }
+
+  /// 这个板块的强弱算不算数：有行情成员够 `minEligibleMembers` 个，而且这段窗口上
+  /// 真算出了中位数（覆盖不够的那种 `pct` 是 NaN，广度也没有，写「0/12 跑赢大盘」就是瞎说）。
+  static func counts(_ stat: SectorStat) -> Bool {
+    stat.memberCount >= SectorAggregator.minEligibleMembers && stat.pct.isFinite
   }
 
   /// 板块列表里的一行。和下钻页头部同一句。
@@ -158,3 +169,13 @@ func sectorVolumeText(_ value: Double) -> String {
 
 /// `+1.23%` / `−0.45%`，两位小数带符号——全 app 唯一那把 `changePercentText`（审查 U9）。
 func sectorPctText(_ value: Double) -> String { changePercentText(value) }
+
+/// 涨跌幅该上哪种颜色。算不出来（`NaN`：下钻时行情还没到的那张空壳）就是**中性**，
+/// 不能因为「不 ≥ 0」落进下跌色——原来空壳写着 `+0.00%` 涂着上涨色，像是真算出来了一个平盘。
+enum SectorPctTone: Equatable {
+  case up, down, neutral
+  static func of(_ value: Double) -> SectorPctTone {
+    guard value.isFinite else { return .neutral }
+    return value >= 0 ? .up : .down
+  }
+}

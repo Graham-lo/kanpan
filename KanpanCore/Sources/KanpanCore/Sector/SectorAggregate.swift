@@ -21,8 +21,9 @@ public struct SectorQuote: Sendable, Equatable {
 /// 看哪一段时间。
 ///
 /// 页面上只给用户两颗：「今日」和「5 日」（`kanpan-sector-page-no-basis-picker`：
-/// 一页上的模式最多两个）。`d20` 不是一个模式，它只在品种列表头部补一句
-/// 「20 日 +12.1%」——同一个算法，换一段窗口，不另开一颗药丸。
+/// 一页上的模式最多两个）。`d20` 不是一个模式：它原来只在品种列表头部补一句
+/// 「20 日 +12.1%」，2026-09-28 副文案收成一句「跑赢大盘」后界面上已不出现；
+/// 服务端照样给 `c20`，这一档的算法留着和网页版的 `windowMedian` 对账。
 ///
 /// 三个窗口共用一套口径：给每个成员**一个收益值**，然后照样算中位数、广度、
 /// 领涨、删一。差别只在这个收益值怎么来。
@@ -354,8 +355,8 @@ public enum SectorAggregator {
 
   /// 某个板块在某段窗口上的中位数。覆盖不够（或一个都算不出来）时返回 nil。
   ///
-  /// 品种列表头部那句「20 日 +12.1%」要的就是它：20 日不是一个模式，用不着为它
-  /// 把整个市场再聚合一遍。
+  /// 原来品种列表头部那句「20 日 +12.1%」用它（2026-09-28 起界面上不再写）；
+  /// 现在留着和网页版同名函数对账：只问一个板块，用不着把整个市场再聚合一遍。
   public static func windowMedian(members: [String], quotes: [String: SectorQuote],
                                   history: SectorHistory, window: SectorWindow) -> Double? {
     let set = memberSet(members: members, quotes: quotes, window: window, history: history)
@@ -468,6 +469,18 @@ public enum SectorAggregator {
     let set = memberSet(members: members, quotes: quotes, window: window, history: history)
     let rets = set.returns
     guard !rets.isEmpty else { return nil }
+    // 覆盖不够（`minWindowCoverage`）：这几只的中位数不是这个板块这一段的强弱。
+    // 原来照样算出中位数、照样和覆盖足的板块一起排——20 个成员只剩 4 个有 5 根日线的板块，
+    // 一只新币拉一根就能排到第一。现在板块照样列着、点得进去，强弱一律「没有」
+    // （`pct` 与 `breadth` 是 NaN）：写「—」、中性色、不写副文案，排在最后那一档。
+    // 成员数照实记（这段窗口上算得出收益的那几只），和网页版 `stats` 同一口径——
+    // 网页版干脆不让这种板块进 5 日榜（`rankable`），手机上那一行留着。
+    guard covered(set, window: window) else {
+      return SectorStat(id: id, name: name, market: market,
+                        pct: .nan, memberCount: rets.count, staticCount: set.staticCount,
+                        quoteVolume: set.volumeSum ?? .nan, isFallback: isFallback,
+                        breadth: .nan)
+    }
 
     var outperform = 0
     var up = 0

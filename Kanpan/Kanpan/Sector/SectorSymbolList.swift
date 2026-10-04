@@ -148,7 +148,7 @@ struct SectorSymbolList: View {
       Spacer(minLength: Space.s)
       Text(sectorPctText(stat.pct))
         .font(Self.headlinePct).monospacedDigit()
-        .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
+        .foregroundStyle(theme.sectorPct(stat.pct))
     }
     .pageHorizontalInset()
     .padding(.top, Space.s)

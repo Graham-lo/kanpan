@@ -37,4 +37,43 @@ struct SectorHistoryRetryTests {
     feed.setVisible(false)
     #expect(!feed.isRunning)
   }
+
+  /// 审查 D-04：原来这份是板块页自己的 `@State`，底栏每切回来一次就新建一份、立刻重拉。
+  /// 现在由 `SectorFeed`（宿主持有）带着，进出页面只是开关循环，一小时内不再重取。
+  @Test("进出板块页三趟，一小时里只向后端取一次")
+  func revisitsDoNotRefetch() async throws {
+    let feed = SectorFeed(route: RouteResolver(policy: .direct))
+    feed.fetchTickers = { _ in throw CancellationError() }   // 全市场行情那一路不出网
+    let calls = FetchCounter()
+    let asof = Self.todayUTC()
+    feed.daily.fetch = { _ in
+      await calls.bump()
+      return Data(#"{"data":{"asof":"\#(asof)","symbols":{"BTCUSDT":{"c5":100,"c20":90}}}}"#.utf8)
+    }
+    feed.daily.configure(backend: BackendClient(hosts: ["127.0.0.1:9"]))
+    feed.setVisible(true)
+    for _ in 0..<200 where feed.daily.history.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(feed.daily.history.asof == asof)
+    for _ in 0..<3 {
+      feed.setVisible(false)
+      feed.setVisible(true)
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    feed.setVisible(false)
+    #expect(await calls.count == 1, "进出页面又去后端重拉了")
+  }
+
+  private static func todayUTC() -> String {
+    let f = DateFormatter()
+    f.calendar = Calendar(identifier: .gregorian)
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "yyyy-MM-dd"
+    return f.string(from: Date())
+  }
+}
+
+private actor FetchCounter {
+  private(set) var count = 0
+  func bump() { count += 1 }
 }

@@ -49,3 +49,36 @@ struct SectorWindowChoiceTests {
     #expect(SectorWindowChoice.title(.d20) == SectorWindowChoice.todayTitle)
   }
 }
+
+/// 审查 D-05：药丸上再点一下正显示着的那一档，不记习惯、不写偏好。
+@MainActor
+@Suite("板块窗口药丸 · 点当前档不算数")
+struct SectorWindowPickTests {
+  @Test("点正显示的那一档：习惯日志不多一条，偏好不落盘；换一档才记、才写")
+  func pickingTheShownWindowIsANoOp() {
+    let logBox = InMemoryPrefsStorage()
+    let habits = Habits(storage: logBox, now: { 1_790_000_000 }, dwellScale: 1)
+    let prefsBox = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: prefsBox, cache: UnavailableMarketCache())
+    habits.bind(store)
+    func windowEvents() -> Int {
+      HabitLogStore(storage: logBox).load(owner: store.stamp.owner).events.filter { $0.kind == .sectorWindow }.count
+    }
+
+    SectorWindowChoice.pick(.d5, shown: .today, market: .crypto, habits: habits, store: store)
+    #expect(store.prefs.sectorWindow == .d5)
+    #expect(windowEvents() == 1)
+
+    // 盘上那份先拿掉：再点一下当前档要是又写了一次，它会重新出现。
+    prefsBox.setPrefsData(nil, forKey: PrefsCodec.key)
+    for _ in 0..<3 {
+      SectorWindowChoice.pick(.d5, shown: .d5, market: .crypto, habits: habits, store: store)
+    }
+    #expect(windowEvents() == 1, "重复点当前档被当成又选了一次")
+    #expect(prefsBox.prefsData(forKey: PrefsCodec.key) == nil, "重复点当前档又落了一次盘")
+
+    SectorWindowChoice.pick(.today, shown: .d5, market: .crypto, habits: habits, store: store)
+    #expect(store.prefs.sectorWindow == .today)
+    #expect(windowEvents() == 2)
+  }
+}

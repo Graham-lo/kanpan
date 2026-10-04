@@ -51,8 +51,12 @@ import KanpanNetwork
 
   private var visible = false
   /// app 在不在前台（宿主经 `AppLifecycle` 那道「真进过后台才收资源」的闸来设）。
-  /// 板块页读它转给 `SectorHistoryFeed`：那一份是页面自己的，宿主够不着。
   private(set) var foreground = true
+
+  /// 「5 日」那一档的日线收盘。跟着这一份（也就是跟着宿主）活，不跟着板块页活
+  /// （审查 D-04）：页面每切走一次就整个重建，挂在页面上的那一份每次都重新出生、
+  /// 重新去后端拉。线路、可见、前后台三样都由这里一并转给它，页面只读 `history`。
+  let daily = SectorHistoryFeed()
   private var job: Task<Void, Never>?
 
   /// 两趟之间隔多久。板块是聚合值，10 秒足够；权重 40 的请求一分钟六趟，
@@ -85,7 +89,11 @@ import KanpanNetwork
       // 新线路还一趟都没问过：这会儿是在加载，不是「暂无行情」。
       attempted = false
       failures = 0
+      // 落盘节流按线路算（审查 V-2）：上一条线路刚写过，不能让新线路的第一份
+      // 在一分钟里都不落盘——那一分钟内冷启动，读回来的还是空的。
+      lastSave = .distantPast
     }
+    daily.configure(backend: resolver.backend)
     // 盘上那份按上游分区存（替身上游单独一份），读回来的一定是这条线路自己那家的数。
     restoreCache()
     if changed { restart() }
@@ -233,8 +241,7 @@ import KanpanNetwork
 
   /// 后端取数口（`RouteResolver.backend`）。
   ///
-  /// 「5 日」那一档的日线收盘（`SectorHistoryFeed`）从这儿问。板块页手里
-  /// 已经有这个 feed，不必为一条只读接口再从 `MainScreen` 另牵一根线下来。
+  /// 「5 日」那一档的日线收盘（`daily`）从这儿问。
   var backend: BackendClient { resolver.backend }
 
   /// 品种表。用来把 `BTCUSDT` 还原成 `BTC`，以及给没被任何板块收录的币凑兜底桶。
@@ -260,6 +267,7 @@ import KanpanNetwork
 
   /// 板块页在不在屏幕上。
   func setVisible(_ on: Bool) {
+    daily.setVisible(on)
     guard on != visible else { return }
     visible = on
     restart()
@@ -267,6 +275,7 @@ import KanpanNetwork
 
   /// app 在不在前台。
   func setForeground(_ on: Bool) {
+    daily.setForeground(on)
     guard on != foreground else { return }
     foreground = on
     restart()

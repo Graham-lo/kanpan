@@ -24,6 +24,12 @@ import KanpanNetwork
 /// 取回来的原样存进 Caches，下次进页先拿它顶上，
 /// 不让「5 日」那颗药丸在每次冷启动时先消失一秒再出现。
 ///
+/// **它跟着宿主活，不跟着页面活**（审查 D-04）：由 `SectorFeed`（`MainScreen` 持有）带着，
+/// 板块页只读。原来它是板块页自己的 `@State`，而底栏切走一次页面就整个重建——每切回来
+/// 一次就新建一份、`lastPull` 清零、立刻重拉一趟（小时级的节奏形同虚设），首帧
+/// `history` 又是空的，「5 日」那颗药丸先缺后出把列表顶下去。现在磁盘那份在接线时
+/// （`configure`）就开始读，进页之前多半已经摆好。读盘、解包、写盘都不在主线程上。
+///
 /// 缺字段就是**没有**，不是 0：`last / 0` 是 +∞，一个 +∞ 能把整段中位数带走。
 @MainActor @Observable final class SectorHistoryFeed {
   /// 当前这份日线收盘。取不到就是 `.empty`。
@@ -34,7 +40,8 @@ import KanpanNetwork
   @ObservationIgnored private var foreground = true
   @ObservationIgnored private var job: Task<Void, Never>?
   @ObservationIgnored private var lastPull: Date?
-  @ObservationIgnored private var loadedCache = false
+  /// 读磁盘那一份的任务。一个进程只读一次；接线时就开始读，取数循环先等它读完。
+  @ObservationIgnored private var cacheLoad: Task<Void, Never>?
 
   /// 两趟之间隔多久。日线一天换一次，一小时问一趟已经比需要的勤快。
   private static let refreshSeconds: TimeInterval = 3600
@@ -60,6 +67,8 @@ import KanpanNetwork
     self.backend = backend
     // 换了线路就当手上这份过期，下一拍立刻重取。
     lastPull = nil
+    // 磁盘那份现在就开始读，不等页面出现：进页第一帧就能判出「5 日」那行在不在。
+    _ = primeCache()
     restart()
   }
 
@@ -92,7 +101,7 @@ import KanpanNetwork
   }
 
   private func run() async {
-    loadCache()
+    await primeCache().value
     var failures = 0
     while !Task.isCancelled {
       if stale { failures = await pull() ? 0 : failures + 1 }
@@ -107,14 +116,22 @@ import KanpanNetwork
 
   /// 取一趟。取到并解得开返回 true（哪怕是过期那份被 `apply` 拦下，也算「问过了」，一小时后再问）。
   private func pull() async -> Bool {
-    guard let backend, let body = try? await backend.get(Self.path, timeout: 8) else { return false }
+    guard let backend, let body = try? await fetch(backend) else { return false }
     guard !Task.isCancelled else { return false }
-    guard let parsed = Self.decode(body) else { return false }
+    // 五百来个品种的 JSON，解包和写盘都挪到后台：主线程只接最后那一份结果。
+    guard let parsed = await Task.detached(priority: .userInitiated, operation: { Self.decode(body) }).value
+    else { return false }
+    guard !Task.isCancelled else { return false }
     lastPull = Date()
     apply(parsed)
-    Self.writeCache(body)
+    Task.detached(priority: .utility) { Self.writeCache(body) }
     return true
   }
+
+  /// 从后端取那一份怎么取。默认走共享的后端取数口；用例换成离线的假数据，
+  /// 好数「进出页面几趟一共取了几次」（和 `SectorFeed.fetchTickers` 同一种接法）。
+  @ObservationIgnored var fetch: @Sendable (BackendClient) async throws -> Data
+    = { try await $0.get(SectorHistoryFeed.path, timeout: 8) }
 
   /// 网络和磁盘两条路都从这儿进，一道闸：过期的不要（服务端算不出今天那份时会拿
   /// 上一份垫着，老基线配现价算出来的不是「5 日」），同一天的原样那份也不要
@@ -125,7 +142,7 @@ import KanpanNetwork
     history = next
   }
 
-  static let path = "/v1/market/sector-history"
+  nonisolated static let path = "/v1/market/sector-history"
 
   // MARK: 解包
 
@@ -135,7 +152,7 @@ import KanpanNetwork
   /// 合约（`1000BONKUSDT` 和 `1000BONKUSDC` 都在表里），按 `SectorQuotePreference`
   /// 的计价币档次留一张——和 `SectorFeed` 挑行情用的是同一把尺子，不然「5 日」用的
   /// 收盘和「现价」来自两张不同的合约。
-  static func decode(_ body: Data) -> SectorHistory? {
+  nonisolated static func decode(_ body: Data) -> SectorHistory? {
     guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
           let data = root["data"] as? [String: Any],
           let asof = data["asof"] as? String, SectorHistory.day(asof) != nil,
@@ -159,13 +176,13 @@ import KanpanNetwork
   }
 
   /// `BTCUSDT` → （`BTC`，计价币档次）。认不出计价币就整条当 base，档次垫底。
-  private static func split(_ symbol: String) -> (base: String, rank: Int) {
+  private nonisolated static func split(_ symbol: String) -> (base: String, rank: Int) {
     QuoteAssets.tradableSplit(symbol)
   }
 
   /// 数可能是数也可能是字符串。`null`、非数、非正数一律当**缺失**
   /// ——缺一档只是这个币的这段窗口没有，不是 0。
-  private static func num(_ any: Any?) -> Double? {
+  private nonisolated static func num(_ any: Any?) -> Double? {
     let value: Double? = if let n = any as? NSNumber { n.doubleValue }
       else if let s = any as? String { Double(s) } else { nil }
     guard let value, value.isFinite, value > 0 else { return nil }
@@ -184,18 +201,28 @@ import KanpanNetwork
 
   /// 老位置（`Library/Caches/sector-history.json`）上那一份，谁也管不着它。
   /// 搬家不必留情：丢的只是一次板块历史，进页重新取一趟就回来了。
-  private nonisolated static func dropLegacyCache() {
+  /// 一个进程只删一次（`static let` 的初始化只跑一遍、线程安全）。
+  private nonisolated static let dropLegacyCache: Void = {
     guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
     try? FileManager.default.removeItem(at: base.appendingPathComponent("sector-history.json"))
+  }()
+
+  /// 磁盘那份：后台读、后台解，主线程只摆结果。已经在读（或读过）就交回那一个任务。
+  private func primeCache() -> Task<Void, Never> {
+    if let cacheLoad { return cacheLoad }
+    let task = Task { [weak self] in
+      let parsed = await Task.detached(priority: .userInitiated, operation: { Self.readCache() }).value
+      guard let parsed else { return }
+      self?.apply(parsed)
+    }
+    cacheLoad = task
+    return task
   }
 
-  private func loadCache() {
-    guard !loadedCache, history.isEmpty else { return }
-    loadedCache = true
-    Self.dropLegacyCache()
-    guard let body = try? Data(contentsOf: Self.cacheURL),
-          let parsed = Self.decode(body) else { return }
-    apply(parsed)
+  private nonisolated static func readCache() -> SectorHistory? {
+    _ = dropLegacyCache
+    guard let body = try? Data(contentsOf: cacheURL) else { return nil }
+    return decode(body)
   }
 
   private nonisolated static func writeCache(_ body: Data) {

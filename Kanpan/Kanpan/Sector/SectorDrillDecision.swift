@@ -41,7 +41,7 @@ enum SectorDrillDecision: Equatable {
            snapshotHasStats: !stats.isEmpty)
   }
 
-  /// 等的时候摆在屏上的那张空壳统计：只有名字和成员数，数值一律零。
+  /// 等的时候摆在屏上的那张空壳统计：只有名字和成员数，数值一律「没有」。
   ///
   /// 为什么不是 `Color.clear`：等待期间人得有路可走。空壳走的是同一张品种列表，
   /// 头部的板块名和返回键都在，数据一到就被真的那份换掉，中间没有第二种排版。
@@ -51,7 +51,8 @@ enum SectorDrillDecision: Equatable {
     let bucket = buckets.first { $0.id == id }
     let members = def?.members ?? bucket?.members ?? []
     return SectorStat(id: id, name: def?.name ?? bucket?.name ?? id, market: market,
-                      pct: 0, memberCount: 0, staticCount: members.count,
+                      // 涨跌幅也是「没有」：写 0 头部就印一个上涨色的「+0.00%」，像真算出了平盘。
+                      pct: .nan, memberCount: 0, staticCount: members.count,
                       // 成交额是「没有」，不是 0：写 0 头部就会印出一句「成交额 0.00」。
                       quoteVolume: .nan, isFallback: def == nil)
   }
