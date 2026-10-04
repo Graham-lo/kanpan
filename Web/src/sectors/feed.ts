@@ -69,24 +69,27 @@ async function pollOnce(): Promise<void> {
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined
-let running = false
+let gen = 0
 let failures = 0
-/** 开始轮询；每拉到一次就回调一次。页面离开时 stopFeed() */
+/** 开始轮询；每拉到一次就回调一次。页面离开时 stopFeed()。
+ *  每次开始记一代：离开又回来时上一轮还没回来的那次拉取作废，不会再排出第二条轮询链 */
 export function startFeed(onChange: () => void): void {
-  if (running) return
-  running = true
+  if (gen > 0) return
+  const my = gen = -gen + 1
+  const live = (): boolean => gen === my
   const tick = (): void => {
-    if (!running) return
+    if (!live()) return
     if (document.hidden) { timer = setTimeout(tick, POLL_MS); return }
     pollOnce().then(() => { failures = 0 }, () => { failures++ }).finally(() => {
-      if (!running) return
+      if (!live()) return
       onChange()
       timer = setTimeout(tick, failures ? Math.min(POLL_MS * 2 ** Math.min(failures, 2), 30_000) : POLL_MS)
     })
   }
   tick()
 }
-export function stopFeed(): void { running = false; clearTimeout(timer) }
+/** 停下：代号取负（下次开始换新的一代），排着的那次取消 */
+export function stopFeed(): void { if (gen > 0) gen = -gen; clearTimeout(timer) }
 
 /** 推送来的 ticker：只认这个 base 挑中的那张合约，其余不动 */
 export function applyLive(symbols: Iterable<string>): void {
