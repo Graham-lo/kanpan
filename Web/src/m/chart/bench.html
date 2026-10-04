@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-skin="sage" data-updown="green-up">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>图表压测台 · Hkline</title>
+<!-- 仅开发：/web/src/m/chart/bench.html（vite 开发服务器直接给源码目录里的页）。离线合成数据：
+     6000 根 1m + VOL/MACD/RSI + 30 条画线 + 约 2400 单主力订单流，给 scripts/m-chart-perf.mjs 量手势的主线程开销。
+     不在 rollup input 里，不会进产物。 -->
+<style>
+  html, body { margin: 0; height: 100% }
+  #bench { position: fixed; left: 0; right: 0; top: 0; bottom: 0 }
+</style>
+</head>
+<body>
+<div id="bench"></div>
+<script type="module" src="./bench.ts"></script>
+</body>
+</html>
