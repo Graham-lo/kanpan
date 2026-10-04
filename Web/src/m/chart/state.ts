@@ -55,6 +55,18 @@ export function comparePercentAt(s: CompareSeries, index: number, baseIndex: num
   return Number.isFinite(v) ? v : null
 }
 
+/** 这条线自己的 0% 基准：从主品种的基准根 `start` 起往后（到 `end` 为止）第一根有开盘价的。
+ *  从前每条线都死认主品种那一根：那一根上比价品种恰好缺根（还没上市、停牌、数据没到）时
+ *  整条线一个点都画不出来（CompareSeries.swift baseIndex(from:through:)，审查 B·P1-2）。 */
+export function compareBaseIndexFrom(s: CompareSeries, start: number, end: number): number | null {
+  const last = Math.min(end, s.open.length - 1)
+  for (let i = Math.max(0, start); i <= last; i++) {
+    const v = s.open[i]
+    if (v != null && Number.isFinite(v) && v > 0) return i
+  }
+  return null
+}
+
 export interface BookLevel { price: number; quantity: number }
 export interface OrderBook { symbol: string; time: number; bids: BookLevel[]; asks: BookLevel[] }
 

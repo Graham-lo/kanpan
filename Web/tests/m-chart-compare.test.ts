@@ -10,9 +10,9 @@ import { BarSeries, INTERVAL_STEP, bar } from '../src/m/chart/series'
 import type { Bar, Interval } from '../src/m/chart/series'
 import type { OrderBook } from '../src/m/chart/state'
 import { comparePercentLabel, effectivePriceMode, makeState, withInput } from '../src/m/chart/state'
-import { Layout, ViewMath, AICoinBehavior, defaultChartOptions, priceTransform } from '../src/m/chart/geometry'
+import { Layout, ViewMath, ViewWindow, AICoinBehavior, defaultChartOptions, priceTransform } from '../src/m/chart/geometry'
 import { ChartRenderer } from '../src/m/chart/renderer'
-import { compareLegend } from '../src/m/chart/renderer.compare'
+import { compareAnchor, compareLegend, compareLines, compareSegments } from '../src/m/chart/renderer.compare'
 
 const H = INTERVAL_STEP['1h']
 const T0 = 1_700_000_000_000
@@ -439,5 +439,58 @@ describe('百分比轴 · 对比叠层', () => {
     expect(legend[1].color).toBe('#4f7cff')
     expect(legend[1].value).not.toBeNull()
     expect(comparePercentLabel(legend[1].value)).toMatch(/%$/)
+  })
+})
+
+// 审查 B·P1-2（iOS 40ca8981 CompareChartTests）：每条比价线自己找基准根。
+describe('对比 · 每条线自己的 0% 基准', () => {
+  const M = 60_000
+  const bars = [100, 110, 120, 130, 140].map((o, k) => bar(k * M, o, o + 12, o - 2, o + 10, k + 1))
+  const W = 402, Hh = 680
+  const fixture = (open: (number | null)[] = [10, 11, 12, 13, 14], close: (number | null)[] = [11, 12, null, 14, 15], crossAt: number | null = null) => {
+    const b = series('BTCUSDT', bars, '1m')
+    const s = makeState({
+      series: b, symbol: { symbol: 'BTCUSDT', base: 'BTC', priceDecimals: 2 },
+      view: ViewWindow.fromTo(60_000, 240_000), price: priceTransform('linear'), subs: ['VOL'], tzOffset: 0, decimals: 2,
+      options: defaultChartOptions(), nowMs: b.lastTime,
+      crosshair: crossAt == null ? null : { index: crossAt, pane: null, t: null, price: null },
+    })
+    return withInput(s, { percentAxis: true, compare: [{ key: 'binance/usd_m/ETHUSDT', name: 'ETH', color: '#FFB400', open, close }] })
+  }
+
+  it('主品种基准根上比价品种缺开盘价：顺延到下一根有开盘价的，不再整条作废', () => {
+    const open = [10, null, 12, 13, 14]
+    expect(compareLegend(new ChartRenderer(fixture(open, undefined, 4)))[1].value).toBe(25)
+    expect(compareLegend(new ChartRenderer(fixture(open, undefined, 1)))[1].value, '基准之前没有涨跌可言').toBeNull()
+    expect(compareLegend(new ChartRenderer(fixture(undefined, undefined, 2)))[1].value, '缺的收盘照旧是缺口').toBeNull()
+  })
+
+  it('左段整段没数据：从第一根有数据的那根起画、那根就是 0%；区间、画线、图例同一个基准', () => {
+    const r = new ChartRenderer(fixture([null, null, null, 13, 14], [null, null, null, 14, 15]))
+    const anchor = compareAnchor(r, r.state.input.compare[0])
+    expect(anchor).toEqual({ baseIndex: 3, from: 3 })
+    const L = r.layout(W, Hh), range = r.priceRange(W, Hh)
+    const segments = compareSegments(r, L.main, range, L)
+    expect(segments.length).toBe(1)
+    expect(segments[0].length).toBe(1)
+    expect(segments[0][0].length, '应从第 3 根画到第 4 根').toBe(2)
+    const points = compareLines(r)[0].percents.filter(p => p != null)
+    expect(points.map(p => p!.index)).toEqual([3, 4])
+    expect(Math.abs(points[0]!.percent - (14 / 13 - 1) * 100)).toBeLessThan(1e-9)
+    // 区间要被这条线撑到：+15.38% 落在 range 里
+    expect(range.hi).toBeGreaterThanOrEqual((15 / 13) * range.base - 1e-9)
+    const crossed = new ChartRenderer(fixture([null, null, null, 13, 14], [null, null, null, 14, 15], 4))
+    expect(Math.abs(compareLegend(crossed)[1].value! - (15 / 13 - 1) * 100)).toBeLessThan(1e-9)
+    expect(compareLegend(new ChartRenderer(fixture([null, null, null, 13, 14], [null, null, null, 14, 15], 2)))[1].value).toBeNull()
+  })
+
+  it('基准就是主品种那根时照旧从可见段最左起画；整段没开盘价就不画、不撑区间、图例「—」', () => {
+    const plain = new ChartRenderer(fixture())
+    expect(compareAnchor(plain, plain.state.input.compare[0])?.baseIndex).toBe(1)
+    const blank = new ChartRenderer(fixture([null, null, null, null, null]))
+    expect(compareAnchor(blank, blank.state.input.compare[0])).toBeNull()
+    expect(compareLegend(blank)[1].value).toBeNull()
+    const L = blank.layout(W, Hh)
+    expect(compareSegments(blank, L.main, blank.priceRange(W, Hh), L)[0]).toEqual([])
   })
 })
