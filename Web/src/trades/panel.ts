@@ -26,6 +26,8 @@ interface Entry { at: number; rows: TradeRecord[] | null; err: string | null; lo
 const cache = new Map<string, Entry>()
 /** 账号下有没有任何交易回合：没有就说明手机上还没绑密钥（null = 还没问） */
 let anyTrades: boolean | null = null
+/** 换账号就换一代：上一个账号在途的请求回来时作废，不写缓存、不改 anyTrades */
+let epoch = 0
 let rerender: () => void = () => { /* 由宿主挂上 */ }
 
 export interface FillRow { rec: string; fill: Fill; direction: 'long' | 'short' }
@@ -86,15 +88,18 @@ async function load(symbol: string, force = false): Promise<void> {
   if (e && (e.loading || (!force && Date.now() - e.at < TTL))) return
   const cur: Entry = { at: e?.at ?? 0, rows: e?.rows ?? null, err: null, loading: true }
   cache.set(symbol, cur)
+  const ep = epoch
   try {
     const [rows, first] = await Promise.all([
       reviewApi.tradesOf(symbol),
       anyTrades && !force ? Promise.resolve(null) : reviewApi.tradesFirstPage(),
     ])
+    if (ep !== epoch) return
     cur.rows = rows
     if (first) anyTrades = first.length > 0
     else if (rows.length) anyTrades = true
   } catch (err) {
+    if (ep !== epoch) return
     cur.err = err instanceof ReviewError && err.status === 401 ? '登录已过期，重新登录后再看' : errorText(err)
   }
   cur.loading = false; cur.at = Date.now()
@@ -156,5 +161,5 @@ export function tradesPanelClick(e: MouseEvent, symbol: string): boolean {
 /** 宿主挂一次：成交到了 / 登录状态变了时重画侧栏 */
 export function installTradesPanel(render: () => void): void {
   rerender = render
-  onSession(() => { cache.clear(); anyTrades = null; render() })
+  onSession(() => { epoch++; cache.clear(); anyTrades = null; render() })
 }

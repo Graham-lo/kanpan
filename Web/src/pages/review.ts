@@ -25,6 +25,8 @@ import {
 } from '../review/model'
 import { planMatch, planNote, planTrade, type Plan } from '../review/replay'
 import { ReplayPlayer } from '../review/player'
+import { createLoadGate } from '../review/loadGate'
+import { onSession } from '../account/session'
 import type { Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from '../review/types'
 
 GLOSSARY['净盈亏'] = '已平仓回合的已实现盈亏，减去手续费，加上收到的资金费（付出的资金费是负数）。'
@@ -101,13 +103,18 @@ function filteredTrades(): TradeRecord[] {
 function visibleViews(): ViewRecord[] { return sortViews(R.views.filter(v => !v.voided)) }
 
 // ------------------------------------------------------------ 取数
+const gate = createLoadGate()
 async function load(): Promise<void> {
-  if (R.loading) return
   if (!reviewToken()) { renderLogin(false); return }
+  const ep = gate.begin()
+  if (ep == null) return
   R.loading = true
   renderTop()
   const [t, v, s, m] = await Promise.allSettled([reviewApi.trades(), reviewApi.views(), reviewApi.statistics(), reviewApi.saved()])
+  const end = gate.end(ep)
+  if (end === 'stale') return
   R.loading = false
+  if (end === 'again') return load()
   const rej = [t, v, s, m].find(x => x.status === 'rejected') as PromiseRejectedResult | undefined
   if (rej && rej.reason instanceof ReviewError && rej.reason.status === 401) { renderLogin(true); return }
   R.error = rej ? rej.reason : null
@@ -121,12 +128,13 @@ async function load(): Promise<void> {
   // 回合 / 观点先画出来（从侧栏成交跳进来要马上看到选中的那一回合），本机记着的相似搜索要逐个问，问完再补画
   if (R.shown) render()
   await refreshSearches()
-  if (!R.shown) return
+  if (!R.shown || !gate.live(ep)) return
   render()
 }
 
 /** 本机记着的搜索：没结束的问一下进度，结束了的拉结果 */
 async function refreshSearches(): Promise<void> {
+  const ep = gate.epoch
   const list = storedSearches()
   for (const id of [...R.searches.keys()]) if (!list.some(x => x.id === id)) R.searches.delete(id)
   await Promise.all(list.map(async meta => {
@@ -135,11 +143,15 @@ async function refreshSearches(): Promise<void> {
     R.searches.set(meta.id, e)
     if (e.results && e.status?.status === 'completed') return
     try {
-      e.status = await reviewApi.search(meta.id)
+      const st = await reviewApi.search(meta.id)
+      if (!gate.live(ep)) return
+      e.status = st
       e.error = null
-      if (e.status.status === 'completed') e.results = await reviewApi.results(meta.id)
-      else if (e.status.status === 'failed') e.error = e.status.error ? `没找成（${e.status.error}）` : '没找成'
+      if (st.status === 'completed') { const res = await reviewApi.results(meta.id); if (gate.live(ep)) e.results = res }
+      else if (st.status === 'failed') e.error = st.error ? `没找成（${st.error}）` : '没找成'
     } catch (err) {
+      // 换过账号：这是上个账号的搜索，别按「404」把它从本机删掉
+      if (!gate.live(ep)) return
       if (err instanceof ReviewError && err.status === 404) { forgetSearch(meta.id); R.searches.delete(meta.id); return }
       e.error = errorText(err)
     }
@@ -841,8 +853,21 @@ function applyWanted(): void {
 }
 let scrollSel = false
 
+/** 换账号（登录、退出、被踢）：上个账号的回合、观点、战绩、收藏、搜索一律清掉，在途的作废；开着这一页就按新账号重来 */
+function resetAccount(): void {
+  gate.reset()
+  clearTimeout(pollTimer)
+  player?.stop()
+  R.trades = []; R.views = []; R.stats = null; R.saved = []; R.searches.clear()
+  R.loadedAt = 0; R.loading = false; R.error = null; R.symbol = 'all'; R.playing = ''
+  R.sel = { trade: null, view: null, similar: null }
+  wantSel = null
+  if (R.shown) shown()
+}
+
 export function initReview(): void {
   loadPref()
+  onSession(resetAccount)
   hooks.openReview = openAt
   hooks.pageShown.review = shown
   hooks.pageHidden.review = hidden

@@ -186,20 +186,29 @@ export async function fetchWindow(symbol: string, iv: string, from: number, to: 
 
 // ------------------------------------------------------------ 找过的相似（服务端没有「列出我的搜索」接口，编号记在本机）
 export interface StoredSearch { id: string; symbol: string; iv: string; bars: number; label: string; created: number }
-const SEARCH_KEY = 'hkline-review-searches'
+/** 按账号分开记（换个账号登录不会去问上个账号的搜索、也不会因为 404 把它们删掉）；
+ *  没有账号号（调试令牌）时用老键。老版本不分账号记的那份，第一个登录上来的账号认领。 */
+const LEGACY_SEARCH_KEY = 'hkline-review-searches'
+export function searchKey(): string { return session.userId ? `${LEGACY_SEARCH_KEY}:${session.userId}` : LEGACY_SEARCH_KEY }
 
 export function storedSearches(): StoredSearch[] {
   try {
-    const v = JSON.parse(localStorage.getItem(SEARCH_KEY) || '[]')
+    const key = searchKey()
+    let raw = localStorage.getItem(key)
+    if (raw == null && key !== LEGACY_SEARCH_KEY) {
+      const legacy = localStorage.getItem(LEGACY_SEARCH_KEY)
+      if (legacy != null) { localStorage.setItem(key, legacy); localStorage.removeItem(LEGACY_SEARCH_KEY); raw = legacy }
+    }
+    const v = JSON.parse(raw || '[]')
     return Array.isArray(v) ? v.filter(x => x && typeof x.id === 'string') : []
   } catch { return [] }
 }
 export function rememberSearch(s: StoredSearch): void {
   const list = [s, ...storedSearches().filter(x => x.id !== s.id)].slice(0, 8)
-  try { localStorage.setItem(SEARCH_KEY, JSON.stringify(list)) } catch { /* 存不下就只在这次打开里有 */ }
+  try { localStorage.setItem(searchKey(), JSON.stringify(list)) } catch { /* 存不下就只在这次打开里有 */ }
 }
 export function forgetSearch(id: string): void {
-  try { localStorage.setItem(SEARCH_KEY, JSON.stringify(storedSearches().filter(x => x.id !== id))) } catch { /* 同上 */ }
+  try { localStorage.setItem(searchKey(), JSON.stringify(storedSearches().filter(x => x.id !== id))) } catch { /* 同上 */ }
 }
 
 
