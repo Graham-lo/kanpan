@@ -591,15 +591,34 @@ public struct ChartRenderer {
   private func drawTimeAxis(_ ctx: CGContext, L: Layout, scale s: Double) {
     let t = state.colors
     ctx.hairLine(from: 0, to: L.W, y: L.timeY, scale: CGFloat(s), color: Paint.cg(t.axis))
+    for label in timeAxisLabels(L) {
+      label.text.drawCentered(at: CGPoint(x: label.frame.midX, y: label.frame.midY),
+                              font: ChartFont.axis, color: t.dim)
+    }
+  }
+
+  /// 时间轴上真正要写出来的标签与它们占的框。
+  ///
+  /// 贴边的不写（压到价格轴或被裁掉一半）；跟左边那个挨得不到 4 点的也不写——
+  /// 刻度间距是按「标称步长」挑的，日历月有长有短、标签有宽有窄，最密那一档仍可能
+  /// 两个标签压在一起（审查 B·P3-3）。
+  func timeAxisLabels(_ L: Layout) -> [(text: String, frame: CGRect)] {
     let off = state.timezone.offsetMinutes
+    let h = AICoinBehavior.timeHeight
+    var out: [(text: String, frame: CGRect)] = []
+    var rightEdge = -Double.infinity
     for k in ticks(L) {
       let xx = state.view.x(k.t, plotW: L.plotW)
       if xx < 18 || xx > L.plotW - 18 { continue }
-      fmtTick(ms: k.t, step: Double(k.step), offsetMinutes: off)
-        .drawCentered(
-          at: CGPoint(x: xx, y: L.timeY + AICoinBehavior.timeHeight / 2),
-          font: ChartFont.axis, color: t.dim)
+      let text = fmtTick(ms: k.t, step: Double(k.step), offsetMinutes: off)
+      let w = Double(text.width(ChartFont.axis))
+      let frame = CGRect(x: xx - w / 2, y: L.timeY, width: w, height: h)
+      if Double(frame.minX) < 0 || Double(frame.maxX) > L.plotW { continue }
+      if Double(frame.minX) < rightEdge + 4 { continue }
+      out.append((text, frame))
+      rightEdge = Double(frame.maxX)
     }
+    return out
   }
 
   private func drawExtrema(_ ctx: CGContext, r: PriceRange, L: Layout, scale: Double) {

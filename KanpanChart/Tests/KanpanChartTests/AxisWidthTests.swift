@@ -124,3 +124,98 @@ struct AxisWidthTests {
     #expect(off == Self.renderer(factor: 420.0 / 80_000).layout(size: Self.size).axisW)
   }
 }
+
+/// 时间轴标签按日历对齐、互不相压（审查 B·P3-3）。
+@MainActor
+@Suite("时间轴标签")
+struct TimeAxisLabelTests {
+  /// 每月 1 号 00:00 UTC 开盘的月线（币安口径），从 2017-08 到 2026-10。
+  static func monthly() -> BarSeries {
+    var bars: [Bar] = []
+    var p = 4_000.0
+    for k in 0..<111 {
+      let year = 2017 + (7 + k) / 12, month = (7 + k) % 12 + 1
+      let t = Int64(daysFromCivil(year: year, month: month, day: 1)) * 86_400_000
+      bars.append(Bar(openTime: t, open: p, high: p * 1.2, low: p * 0.8, close: p * 1.05, volume: 1_000))
+      p *= 1.03
+    }
+    return BarSeries(symbol: "BTCUSDT", interval: .mo1, bars: bars)
+  }
+
+  static func weekly() -> BarSeries {
+    // 2019-01-07 是周一
+    let t0 = Int64(daysFromCivil(year: 2019, month: 1, day: 7)) * 86_400_000
+    let n = 400
+    let c = (0..<n).map { 4_000 + Double($0) * 10 }
+    return BarSeries(symbol: "BTCUSDT", interval: .w1, t0: t0, open: c, high: c.map { $0 + 50 },
+                     low: c.map { $0 - 50 }, close: c, volume: Array(repeating: 1, count: n))
+  }
+
+  static func renderer(_ series: BarSeries, view: ViewWindow, width: Double) -> (ChartRenderer, Layout) {
+    let info = SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.01)
+    let st = ChartState(series: series, symbol: info, view: view, subs: [.vol], timezone: .exchange)
+    let r = ChartRenderer(state: st)
+    return (r, r.layout(size: CGSize(width: width, height: 600)))
+  }
+
+  static func expectNoOverlap(_ labels: [(text: String, frame: CGRect)], plotW: Double,
+                              _ note: String) {
+    for l in labels {
+      #expect(l.frame.minX >= 0 && Double(l.frame.maxX) <= plotW, "\(note)「\(l.text)」出了图区")
+    }
+    for (a, b) in zip(labels, labels.dropFirst()) {
+      #expect(b.frame.minX >= a.frame.maxX + 4, "\(note)「\(a.text)」与「\(b.text)」压在一起")
+    }
+  }
+
+  @Test("月线整段历史缩进窄图：只写年、落在 1 月、互不相压", arguments: [300.0, 390, 440])
+  func monthlyWholeHistory(_ width: Double) {
+    let s = Self.monthly()
+    let from = Double(s.time(at: 0)), to = Double(s.lastTime) + 30 * 86_400_000
+    let (r, L) = Self.renderer(s, view: ViewWindow(from: from, to: to), width: width)
+    let labels = r.timeAxisLabels(L)
+    #expect(labels.count >= 2, "九年历史一个年份都没写出来")
+    Self.expectNoOverlap(labels, plotW: L.plotW, "宽 \(width)")
+    for l in labels { #expect(l.text.count == 4 && l.text.hasPrefix("20"), "年档该只写年，得到「\(l.text)」") }
+  }
+
+  @Test("周线 / 月线 / 小时线各档缩放：标签互不相压")
+  func everyZoomNoOverlap() {
+    let cases: [(BarSeries, [Double])] = [
+      (Self.weekly(), [8, 20, 52, 120, 300, 400]),
+      (Self.monthly(), [6, 12, 24, 60, 111]),
+    ]
+    for (s, counts) in cases {
+      for bars in counts {
+        for width in [300.0, 402, 440] {
+          let to = Double(s.lastTime) + Double(s.interval.stepMs)
+          let from = Double(s.time(at: max(0, s.count - Int(bars))))
+          let (r, L) = Self.renderer(s, view: ViewWindow(from: from, to: to), width: width)
+          Self.expectNoOverlap(r.timeAxisLabels(L), plotW: L.plotW, "\(s.interval) \(Int(bars)) 根 宽 \(width)")
+        }
+      }
+    }
+  }
+
+  @Test("周线刻度落在周一（上海时间），标签写的是周一那天")
+  func weeklyLabelsAreMondays() {
+    let s = Self.weekly()
+    let to = Double(s.lastTime) + Double(s.interval.stepMs)
+    // 402 宽的图区放 4 个标签左右：3 周落 7 天档、6 周落 14 天档；再宽就进了月档（刻度在 1 号）。
+    for weeks in [3.0, 6.0] {
+      let from = to - weeks * 7 * 86_400_000
+      let (r, L) = Self.renderer(s, view: ViewWindow(from: from, to: to), width: 402)
+      let step = timeTicks(view: r.state.view, plotW: L.plotW, offsetMinutes: 480).first?.step
+      #expect(step == 7 * 86_400_000 || step == 14 * 86_400_000, "\(weeks) 周的视野没落在周档")
+      let labels = r.timeAxisLabels(L)
+      #expect(!labels.isEmpty)
+      for l in labels {
+        let x = Double(l.frame.midX)
+        let t = r.state.view.t(atX: x, plotW: L.plotW)
+        let local = t + 480 * 60_000
+        let days = Int((local / 86_400_000).rounded())
+        #expect(((days - 4) % 7 + 7) % 7 == 0, "「\(l.text)」不在周一")
+      }
+    }
+  }
+}

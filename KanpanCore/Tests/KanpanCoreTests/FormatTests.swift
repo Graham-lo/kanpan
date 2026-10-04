@@ -178,11 +178,12 @@ struct FormatTests {
     #expect(fmtTick(ms: daily, step: day, offsetMinutes: TZChoice.exchange.offsetMinutes) == "09-19")
     #expect(fmtTick(ms: daily, step: day, offsetMinutes: ny) == "09-18")
     #expect(fmtFull(ms: daily, offsetMinutes: ny) == "2026-09-18 20:00")
-    // 周线 2026-09-21（周一）在纽约落到 09-20；月线 2026-10-01 落到 09-30。
+    // 周线 2026-09-21（周一）在纽约落到 09-20；月线 2026-10-01 落到 9 月。
+    // 月档标签只写年-月（刻度都在 1 号，写日子没有信息量，审查 B·P3-3）。
     let weekly = 1_789_948_800_000.0
     #expect(fmtTick(ms: weekly, step: 7 * day, offsetMinutes: ny) == "09-20")
     let monthly = 1_790_812_800_000.0
-    #expect(fmtTick(ms: monthly, step: 30 * day, offsetMinutes: ny) == "09-30")
+    #expect(fmtTick(ms: monthly, step: 30 * day, offsetMinutes: ny) == "2026-09")
   }
 
   /// B-T18：复盘浮层上的时间和图上的时间必须是**同一只钟**。
@@ -298,25 +299,29 @@ struct FormatTests {
   }
 
   /// 三个时区 × 日内 / 跨日 / 跨年，标签与原型全等。
+  /// 唯一的有意分歧：年档原型写「年-月」，现在只写年（年档刻度都在 1 月 1 号，审查 B·P3-3）。
   @Test("时间标签与原型全等")
   func labelsMatch() {
     #expect(Fx.labels.count == 18, "fixture 只有 \(Fx.labels.count) 组")
     for row in Fx.labels {
       let tick = fmtTick(ms: row.ms, step: row.step, offsetMinutes: row.off)
-      #expect(tick == row.tick, "\(row.tz) step=\(row.step) 得到 \(tick)，原型 \(row.tick)")
+      let expected = row.step >= 365 * 86_400_000 ? String(row.tick.prefix(4)) : row.tick
+      #expect(tick == expected, "\(row.tz) step=\(row.step) 得到 \(tick)，期望 \(expected)")
       let full = fmtFull(ms: row.ms, offsetMinutes: row.off)
       #expect(full == row.full, "\(row.tz) 完整时间得到 \(full)，原型 \(row.full)")
     }
   }
 
-  /// 标签形态：日内 `HH:mm`、跨日 `MM-dd`、跨年 `yyyy-MM`。
+  /// 标签形态：日内 `HH:mm`、跨日 `MM-dd`、按月 `yyyy-MM`、按年 `yyyy`。
   @Test("标签形态")
   func labelShapes() {
     let t = 1_789_318_920_000.0   // 2026-09-14 某个非整点
     #expect(fmtTick(ms: t, step: 60_000, offsetMinutes: 0).count == 5, "日内应是 HH:mm")
     #expect(fmtTick(ms: t, step: 86_400_000, offsetMinutes: 0).count == 5, "跨日应是 MM-dd")
+    let monthly = fmtTick(ms: t, step: 90 * 86_400_000, offsetMinutes: 0)
+    #expect(monthly == "2026-09", "按月应是 yyyy-MM，得到 \(monthly)")
     let yearly = fmtTick(ms: t, step: 365 * 86_400_000, offsetMinutes: 0)
-    #expect(yearly.count == 7 && yearly.hasPrefix("20"), "跨年应是 yyyy-MM，得到 \(yearly)")
+    #expect(yearly == "2026", "按年应是 yyyy，得到 \(yearly)")
     // 日内刻度正好落在零点时改画日期，不然一整天分不清。
     let midnight = 1_789_257_600_000.0
     #expect(fmtTick(ms: midnight, step: 3_600_000, offsetMinutes: 0).contains("-"), "零点该给日期")

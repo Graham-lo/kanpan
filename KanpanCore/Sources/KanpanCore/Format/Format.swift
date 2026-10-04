@@ -108,11 +108,15 @@ extension DateParts {
   }
 }
 
-/// 时间轴刻度文案：≥180 天给年-月，≥1 天给月-日，跨零点给月-日，其余给时:分。
+/// 时间轴刻度文案：≥1 年给年，≥1 月给年-月，≥1 天给月-日，跨零点给月-日，其余给时:分。
+///
+/// 一月及以上的刻度都落在某月 1 号（见 `timeTicks`），写「03-01」没有信息量；
+/// 年档的刻度都在 1 月 1 号，写「2026-01」只是白占宽度（审查 B·P3-3）。
 public func fmtTick(ms: Double, step: Double, offsetMinutes: Int) -> String {
   let p = DateParts(ms: ms, offsetMinutes: offsetMinutes)
   let day = 86_400_000.0
-  if step >= 180 * day { return "\(p.year)-\(pad2(p.month))" }
+  if step >= 365 * day { return "\(p.year)" }
+  if step >= 30 * day { return "\(p.year)-\(pad2(p.month))" }
   if step >= day { return "\(pad2(p.month))-\(pad2(p.day))" }
   if p.hour == 0 && p.minute == 0 { return "\(pad2(p.month))-\(pad2(p.day))" }
   return "\(pad2(p.hour)):\(pad2(p.minute))"
