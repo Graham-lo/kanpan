@@ -310,6 +310,22 @@ final class MainScreenUITests: KanpanUICase {
     XCTAssertEqual(canvas.frame, before, "收起之后图的框变了")
   }
 
+  /// 「更多」网格开着时点行尾「图表设置」：网格跟着收起，关掉面板后不会再露出来。
+  ///
+  /// 原来只有「分析」那颗会先收网格；「图表设置」直接开面板，网格压在面板底下，
+  /// 面板一关它又挂在图上（审查 2026-10-04 · A-主屏壳层）。
+  func testOpeningChartPanelClosesMoreGrid() {
+    let canvas = app.otherElements["chart.canvas"]
+    XCTAssertTrue(canvas.waitForExistence(timeout: Self.long), "没有图")
+    app.buttons[Ids.intervalMore].tap()
+    let grid = app.otherElements["interval.grid"]
+    expectExists(grid, Self.short, "点「更多」没摊开周期网格")
+    app.buttons[Ids.intervalChart].tap()
+    expectExists(app.buttons[Ids.chartPanelMarker], Self.short, "网格开着时点「图表设置」没开出面板")
+    XCTAssertTrue(app.closeChartPanel(), "图表设置面板关不掉")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !grid.exists }, "关掉图表设置面板后「更多」网格还挂在图上")
+  }
+
   // ---------------------------------------------------------------- 底栏三个面板
 
   /// 「图表」面板：开得出来、改得动、收得回去。

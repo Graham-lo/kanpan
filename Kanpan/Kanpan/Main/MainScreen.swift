@@ -492,7 +492,13 @@ struct MainScreen: View {
       // A7.7：一个品种最多 50 条，满了只提示、不悄悄丢。
       onDrawFull: { say("这个品种的线画满了（50 条）"); draw.full = false },
       onDrawNotice: { note in if let note { say(note); draw.notice = nil } },
-      onPanel: { value in if value == nil { try? accountBridge?.applyPending() } },
+      onPanel: { value in
+        if value == nil { try? accountBridge?.applyPending() }
+        // 开了任何一张面板，「更多」那张网格都收起来。原来只有「分析」那颗自己先收，
+        // 行尾「图表设置」、顶栏「分享」直接给 `panel` 赋值：网格压在面板底下，
+        // 面板一关它又露出来。挂在这一处，以后加的入口不用各自记得收。
+        if value != nil, intervalGrid { withAnimation(.easeOut(duration: 0.18)) { intervalGrid = false } }
+      },
       onDrawActive: { active in
         if !active { try? accountBridge?.applyPending() }
         // 画线直接横过来，画完自己转回去（§10.7 的入口就此收在「画线」上）。
