@@ -83,6 +83,26 @@ struct HabitInferenceTests {
     #expect(HabitInference.priceAxis(events, now: now)["crypto"]?.v == "log")
   }
 
+  @Test("价格轴：来回亲手切几千次，权重也不会溢出，最后切的那一档赢")
+  func axisPickNeverOverflows() {
+    var events = [HabitEvent(t: now - 5_000, kind: .axisDwell, key: "crypto", value: "log", w: 5_000)]
+    for i in 0..<4_000 {
+      events.append(HabitEvent(t: now - 4_000 + Double(i) * 0.5, kind: .axisPick, key: "crypto",
+                               value: i.isMultiple(of: 2) ? "linear" : "log"))
+    }
+    // 第 4000 次（下标 3999）切到的是对数。
+    #expect(HabitInference.priceAxis(events, now: now)["crypto"]?.v == "log")
+    var tally = HabitInference.Tally()
+    for i in 0..<4_000 { tally.outbid(i.isMultiple(of: 2) ? "linear" : "log", margin: 120, at: Double(i)) }
+    let finite = tally.weights.values.allSatisfy { $0.isFinite }
+    #expect(finite)
+    #expect(tally.total < 4_000 * 120 * 2)
+    // 同一档再切一次照样往上加，不白切。
+    let before = tally.weights["log"] ?? 0
+    tally.outbid("log", margin: 120, at: 4_000)
+    #expect(tally.weights["log"] == before + 120)
+  }
+
   @Test("类别：大宗、盘前并进其它")
   func categories() {
     #expect(HabitCategory(.crypto) == .crypto)

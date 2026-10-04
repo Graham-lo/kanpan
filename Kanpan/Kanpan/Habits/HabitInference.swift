@@ -8,7 +8,7 @@ import KanpanCore
 /// 1. **品种的打开周期**：这只品种上各周期的停留秒数按新近加权（半衰期 7 天）累计，
 ///    取最多的那个；最多的那个加权后不到 `intervalMinSeconds` 就算还没学到。
 /// 2. **类别的价格轴**：同一类品种上线性 / 对数的停留秒数同样加权累计；在图表设置里亲手
-///    切一次，给切到的那一档记一笔「此前这一类全部依据之和 + `axisPickFloor`」——
+///    切一次，切到的那一档就抬到「此刻领先的另一档 + `axisPickFloor`」——
 ///    亲手选的立刻压过之前的一切，之后再按停留慢慢变。百分比不参与。
 /// 3. **板块页今日 / 5 日**：每个市场最近 10 次选择里多的那个；不到 3 次、或者打平，不算学到。
 /// 4. **自选波动提醒的灵敏度**：每只品种一个倍数，从 1 起，在 `factorLadder` 上走。
@@ -63,8 +63,10 @@ enum HabitInference {
       case .axisDwell:
         tallies[e.key, default: Tally()].add(e.value, weight: e.w * decay(age: now - e.t), at: e.t)
       case .axisPick:
-        let before = tallies[e.key]?.total ?? 0
-        tallies[e.key, default: Tally()].add(e.value, weight: before + axisPickFloor * decay(age: now - e.t), at: e.t)
+        // 从前记的是「此前这一类全部依据之和 + 底分」：每切一次总量翻一倍，来回切上
+        // 一千来次就溢出成 inf，两档都是 inf 时谁赢全凭字面序（深度审查 D 线 2026-10-04）。
+        // 压过之前的一切只需要压过此刻领先的那一档：抬到它之上一个底分，来回切只线性涨。
+        tallies[e.key, default: Tally()].outbid(e.value, margin: axisPickFloor * decay(age: now - e.t), at: e.t)
         tallies[e.key]?.picked = true
       default: continue
       }
@@ -154,6 +156,14 @@ enum HabitInference {
       weights[value, default: 0] += weight
       counts[value, default: 0] += 1
       latest = max(latest, t)
+    }
+
+    /// 亲手选：把 `value` 抬到「其余各档里最多的那个 + `margin`」，已经更高就加一个 `margin`
+    /// （再切一次同一档也算一次依据，不白切）。
+    mutating func outbid(_ value: String, margin: Double, at t: Double) {
+      let own = weights[value] ?? 0
+      let rival = weights.lazy.filter { $0.key != value }.map(\.value).max() ?? 0
+      add(value, weight: max(rival + margin - own, margin), at: t)
     }
 
     /// 最多的那个；打平时按值的字面序定，保证结果稳定。
