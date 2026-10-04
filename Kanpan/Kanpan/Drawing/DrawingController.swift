@@ -215,6 +215,20 @@ final class DrawingController {
   }
   func select(_ id: String) { assign(\.active, true); chart?.selectedDrawingID = id; sync() }
   func deleteSelected() { chart?.deleteSelectedDrawing(); sync() }
+  /// 画线列表上左划删掉某一条。
+  ///
+  /// 原来这一下是 `select(id)` 再 `deleteSelected()`：选中那一步跑 `sync()`，
+  /// 删的要是一条还没写字的文字标注，「落点即开样式表」那条规矩就当场把 `panel`
+  /// 从 `.objects` 改成 `.style`——表单换了身份，系统把画线列表收起来再弹一张，
+  /// 人只是想删一条线，眼前整张表闪了一下。删除不是「选中它」，所以先把它记成
+  /// 「已经提示过」，那条规矩就不会为一条马上要没的线开样式表。
+  func delete(_ id: String) {
+    guard let chart else { return }
+    promptedNote = id
+    chart.selectedDrawingID = id
+    chart.deleteSelectedDrawing()
+    sync()
+  }
   func finish() { chart?.endDrawing(); assign(\.active, false); assign(\.panel, nil); assign(\.picker, false); sync() }
   func undo() { chart?.undoDrawing(); sync() }
   func redo() { chart?.redoDrawing(); sync() }

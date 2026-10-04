@@ -545,7 +545,7 @@ struct DrawingSheet: View {
               ForEach(Array(controller.items.reversed())) { item in
                 SwipeToDelete(id: item.id, open: $openSwipe, brick: .pill,
                               trailing: [.delete(theme) {
-                                controller.select(item.id); controller.deleteSelected()
+                                controller.delete(item.id)
                               }]) { swipe in
                   HStack {
                     Button {

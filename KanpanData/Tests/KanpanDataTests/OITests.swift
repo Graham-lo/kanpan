@@ -113,6 +113,33 @@ struct OIArchiveTests {
     await store.save(symbol: "BTCUSDT", dayStart: day, points: pts)
     #expect(await store.usage() == 0)
   }
+
+  @Test("逐天存几十天：不再每存一天就整树扫一遍，淘汰后仍守上限、最新的那天还在")
+  func storeEvictsWithoutRescanningEverySave() async throws {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    // 一天 288 点 ≈ 12.7 KB，上限放 200 KB ≈ 15 天；一次淘汰到四分之三，约每 5 天扫一次。
+    let limit = 200_000
+    let store = OIStore(paths: Paths(root: dir), limitBytes: limit)
+    let first = Aggregator.utcMs(year: 2025, month: 1, day: 1)
+    let days = (0..<60).map { first + Int64($0) * 86_400_000 }
+    for d in days {
+      let pts = (0..<288).map { OIPoint(time: d + Int64($0) * 300_000, value: Double(1000 + $0)) }
+      await store.save(symbol: "BTCUSDT", dayStart: d, points: pts)
+    }
+    // 原来 60 次 save 就是 60 次整树扫描；记账之后只有账超了才扫。
+    #expect(await store.scans < 20)
+    #expect(await store.usage() <= limit)
+    #expect(await store.load(symbol: "BTCUSDT", dayStart: days.last!)?.count == 288)
+    #expect(await store.load(symbol: "BTCUSDT", dayStart: days.first!) == nil)
+
+    // 目录被别处整个清掉（设置里清缓存）：账只会偏大，下一次扫描校正回来，照常能存能读。
+    try FileManager.default.removeItem(at: Paths(root: dir).oi)
+    let again = (0..<288).map { OIPoint(time: days[0] + Int64($0) * 300_000, value: 7) }
+    await store.save(symbol: "BTCUSDT", dayStart: days[0], points: again)
+    #expect(await store.load(symbol: "BTCUSDT", dayStart: days[0])?.count == 288)
+    #expect(await store.usage() <= limit)
+  }
 }
 
 @Suite("OI 对齐：两源合一条")
