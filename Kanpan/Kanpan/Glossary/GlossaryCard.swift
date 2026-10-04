@@ -43,7 +43,9 @@ struct GlossaryCard: View {
           .foregroundStyle(theme.ink)
           .accessibilityIdentifier("glossary.title")
         Text(term.body)
-          .font(ScaledFont(14, .regular, relativeTo: .subheadline))
+          // 正文走字阶上的 `body`（15）：原来手写的 14 不在字阶上，和标题 16 只差 2pt，
+          // 层级读不出来，也躲开了全 app 一处改字号的那根总闸（HIG 审查 2026-09-24）。
+          .font(TypeScale.body)
           .foregroundStyle(theme.ink2)
           .lineSpacing(3)
           .fixedSize(horizontal: false, vertical: true)
