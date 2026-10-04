@@ -65,7 +65,8 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
     if (r.drawings.size) allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) })
     // 走提醒模块的通知：图、侧栏，以及开着的「全部提醒」「创建提醒」弹层都跟着刷新
     if (r.alerts || r.drawings.size) notifyAlerts()
-    else if (r.favorites) renderPanel()
+    // 自选与提醒同一轮变了也要重画自选侧栏（notifyAlerts 只在开着提醒侧栏时重画）
+    if (r.favorites) renderPanel()
     if (r.settings.length || r.favorites || r.alerts || r.drawings.size) save()
   } catch (e) { console.error(e) } finally { applying = false }
   const now = fingerprint(st)
