@@ -1,8 +1,9 @@
 /* PC 网页三套皮肤 × 浅 / 深：辅助字（--text-3）与涨跌字（--up-text / --down-text）在面板、悬停行、选中行上都要 ≥ 4.5:1 */
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+// @ts-expect-error Web 的 tsconfig 不带 @types/node，这里只在 vitest（node 环境）里用；vitest 把 .css?raw 处理成空串，只能直接读文件
+import { readFileSync } from 'node:fs'
 
-const css = readFileSync(new URL('../src/styles/app.css', import.meta.url), 'utf8')
+const css = readFileSync(new URL('../src/styles/app.css', import.meta.url), 'utf8') as string
 
 /** 收集某个选择器下（完全相同的选择器文本）声明的所有 #RRGGBB 变量；同一选择器出现多次按出现顺序叠 */
 function vars(selector: string): Record<string, string> {
