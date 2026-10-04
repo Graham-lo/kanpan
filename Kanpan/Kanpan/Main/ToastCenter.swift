@@ -67,9 +67,15 @@ final class ToastCenter {
   }
 
   /// 点了右边那颗按钮：先做动作，再收起。
+  ///
+  /// 只收「被点的那一句」：动作里要是又说了一句（撤销完回一句「已恢复」、「查看」时
+  /// 发现记录没了说一声），那一句已经顶上来，这时再 `dismiss()` 会把它连同它自己的
+  /// 「撤销」按钮一起抹掉——用户连看都没看见。
   func runAction() {
+    let mine = serial
     let act = action
     act?()
+    guard serial == mine else { return }
     dismiss()
   }
 
