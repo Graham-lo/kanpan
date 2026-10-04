@@ -5,6 +5,8 @@
  * 先落本地队列（hkline-m-notes-v1，截图另存 hkline-m-notes-shots-v1），再上传；
  * 没登录、断网时留在队列里，登录、联网、打开行情页时各补传一次。幂等键就是记录编号，重发不会记成两条。
  * 服务端明确拒收（400 / 409 / 422）的那条不再重试，直接丢掉。
+ * 每一笔记着记下时登录的账号（owner），只传给那个账号、只列在那个账号的复盘本里；没登录时记的
+ * 由第一个登录上的账号认领。传的途中换了账号就停下，换上来的账号接着再跑一趟（只传它自己的）。
  *
  * 没记完的那一笔（照 iOS ReviewStore.saveDraft）：卡上每动一下就把写的话、方向、手改过的价存进
  * hkline-m-note-draft-v1，收起卡不丢；同品种同周期再打开记一笔就接着写（unfinishedNote）。
@@ -20,7 +22,7 @@ import { el, esc } from '../../ui/dom'
 import { S } from '../../../market'
 import { fmtPrice, grouped } from '../../model/rowText'
 import { readStored } from '../../../account/client'
-import { onSession } from '../../../account/session'
+import { onSession, session } from '../../../account/session'
 import { reviewApi, reviewToken, ReviewError, errorText, uuid } from '../../../review/api'
 import {
   captureRange, buildDraft, checkDraft, sideLevels,
@@ -36,7 +38,11 @@ export const NOTE_SHOTS_KEY = 'hkline-m-notes-shots-v1'
 
 // ───────────────────────────── 本地队列
 
-interface Queued { draft: NoteDraft; queued: number }
+interface Queued {
+  draft: NoteDraft; queued: number
+  /** 记下时登录的账号编号；没登录时记的没有这一项，谁先登录就传给谁 */
+  owner?: string
+}
 
 function readJSON<T>(key: string, fallback: T): T {
   try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) as T : fallback } catch { return fallback }
@@ -44,11 +50,17 @@ function readJSON<T>(key: string, fallback: T): T {
 function writeJSON(key: string, v: unknown): void {
   try { localStorage.setItem(key, JSON.stringify(v)) } catch { /* 存满了：截图先丢，记录本身还在队列里 */ }
 }
-export const pendingNotes = (): Queued[] => readJSON<Queued[]>(NOTES_KEY, [])
+const queue = (): Queued[] => readJSON<Queued[]>(NOTES_KEY, [])
+/** 现在登录的账号编号（调试令牌没有账号编号时为 null） */
+const currentUid = (): string | null => readStored()?.userId ?? session.userId ?? null
+const mine = (q: Queued, uid: string | null): boolean => q.owner == null || q.owner === uid
+/** 队列里归现在这个账号的那几条（别的账号记的、还没传上的不算在这里，复盘本也不列） */
+export const pendingNotes = (): Queued[] => { const uid = currentUid(); return queue().filter(q => mine(q, uid)) }
 const shots = (): Record<string, string> => readJSON<Record<string, string>>(NOTE_SHOTS_KEY, {})
 
 function enqueue(draft: NoteDraft, shot: string | null): void {
-  writeJSON(NOTES_KEY, [...pendingNotes().filter(q => q.draft.id !== draft.id), { draft, queued: Date.now() }])
+  const owner = currentUid() ?? undefined
+  writeJSON(NOTES_KEY, [...queue().filter(q => q.draft.id !== draft.id), { draft, queued: Date.now(), owner }])
   if (shot) {
     const all = shots(); all[draft.id] = shot
     writeJSON(NOTE_SHOTS_KEY, all)
@@ -57,7 +69,7 @@ function enqueue(draft: NoteDraft, shot: string | null): void {
   }
 }
 function dequeue(id: string): void {
-  writeJSON(NOTES_KEY, pendingNotes().filter(q => q.draft.id !== id))
+  writeJSON(NOTES_KEY, queue().filter(q => q.draft.id !== id))
   const all = shots()
   if (id in all) { delete all[id]; writeJSON(NOTE_SHOTS_KEY, all) }
 }
@@ -70,31 +82,43 @@ const rejected = (e: unknown): boolean => e instanceof ReviewError && [400, 409,
 const refused = new Map<string, string>()
 
 let flushing: Promise<number> | null = null
-/** 把队列里的记录逐条补传；返回这一轮传上去几条。并发调用共用一轮 */
+/** 跑着的这一轮期间又被叫了（换了账号）：跑完再来一轮 */
+let again = false
+/** 把队列里的记录逐条补传；返回传上去几条。并发调用共用一轮 */
 export function flushNotes(): Promise<number> {
-  if (flushing) return flushing
+  if (flushing) { again = true; return flushing }
   flushing = (async () => {
     let sent = 0
-    if (!canUpload() || !navigator.onLine) return 0
-    // 每条之前重读队列：这一轮还在传时新记下的那条（记一笔页 await 的正是这一轮）也跟着传，
-    // 不会因为不在开头那份快照里而被报成「稍后自动上传」、一直留到下次登录 / 联网 / 回行情页
-    const tried = new Set<string>()
-    for (let q: Queued | undefined = pendingNotes()[0]; q; q = pendingNotes().find(x => !tried.has(x.draft.id))) {
-      tried.add(q.draft.id)
-      try {
-        await reviewApi.createRecord(q.draft)
-      } catch (e) {
-        if (rejected(e)) { refused.set(q.draft.id, errorText(e)); dequeue(q.draft.id); continue }
-        break // 没登录 / 断网 / 服务器忙：整轮停下，下次再来
-      }
-      const shot = shots()[q.draft.id]
-      if (shot) { try { await reviewApi.putShot(q.draft.id, shot) } catch { /* 图传不上不挡记录 */ } }
-      dequeue(q.draft.id)
-      sent++
-    }
+    do { again = false; sent += await flushRound() } while (again)
     return sent
   })().finally(() => { flushing = null })
   return flushing
+}
+
+async function flushRound(): Promise<number> {
+  let sent = 0
+  if (!canUpload() || !navigator.onLine) return 0
+  const uid = currentUid()
+  // 每条之前重读队列：这一轮还在传时新记下的那条（记一笔页 await 的正是这一轮）也跟着传，
+  // 不会因为不在开头那份快照里而被报成「稍后自动上传」、一直留到下次登录 / 联网 / 回行情页
+  const tried = new Set<string>()
+  const next = (): Queued | undefined => queue().find(x => !tried.has(x.draft.id) && mine(x, uid))
+  for (let q = next(); q; q = next()) {
+    // 途中换了账号：后面的请求会带上新账号的令牌，停下交给下一轮
+    if (currentUid() !== uid) break
+    tried.add(q.draft.id)
+    try {
+      await reviewApi.createRecord(q.draft)
+    } catch (e) {
+      if (rejected(e)) { refused.set(q.draft.id, errorText(e)); dequeue(q.draft.id); continue }
+      break // 没登录 / 断网 / 服务器忙：整轮停下，下次再来
+    }
+    const shot = shots()[q.draft.id]
+    if (shot && currentUid() === uid) { try { await reviewApi.putShot(q.draft.id, shot) } catch { /* 图传不上不挡记录 */ } }
+    dequeue(q.draft.id)
+    sent++
+  }
+  return sent
 }
 
 let wired = false
