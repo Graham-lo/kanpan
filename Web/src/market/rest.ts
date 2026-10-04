@@ -52,7 +52,7 @@ interface ExSymbol {
   filters: { filterType: string; tickSize?: string }[]; pricePrecision: number
 }
 interface Ticker24 { symbol: string; lastPrice: string; priceChange: string; priceChangePercent: string; quoteVolume: string; openPrice: string; highPrice: string; lowPrice: string; count: number; closeTime: number }
-interface Premium { symbol: string; lastFundingRate: string; nextFundingTime: number; markPrice: string; indexPrice: string }
+interface Premium { symbol: string; lastFundingRate: string; nextFundingTime: number; markPrice: string; indexPrice: string; time?: number }
 
 function blank(e: ExSymbol): Sym {
   const base = baseOf(e.symbol, e.baseAsset)
@@ -81,13 +81,19 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
       if (e.contractType !== 'PERPETUAL' && e.contractType !== 'TRADIFI_PERPETUAL') continue
       next.set(e.symbol, S.symbols.get(e.symbol) || blank(e))
     }
+    // 三个请求要几百毫秒到几秒才回来，这期间推送已经把手里的价格、标记价刷新过了：
+    // 交易所时间比手里旧的那一组不覆盖（否则价格回跳一下、涨跌幅闪回旧值，直到下一帧推送再改回来）
     for (const t of tk) {
       const s = next.get(t.symbol); if (!s) continue
-      Object.assign(s, { price: +t.lastPrice, chg: +t.priceChange, pct: +t.priceChangePercent, vol: +t.quoteVolume, open: +t.openPrice, hi: +t.highPrice, lo: +t.lowPrice, count: +t.count })
+      const at = +t.closeTime || 0
+      if (!(at < (s.pxAt ?? 0))) Object.assign(s, { price: +t.lastPrice, chg: +t.priceChange, pct: +t.priceChangePercent, open: +t.openPrice, hi: +t.highPrice, lo: +t.lowPrice, pxAt: at })
+      if (!(at < (s.statAt ?? 0))) Object.assign(s, { vol: +t.quoteVolume, count: +t.count, statAt: at })
     }
     for (const p of pi) {
       const s = next.get(p.symbol); if (!s) continue
-      Object.assign(s, { fr: p.lastFundingRate === '' ? null : +p.lastFundingRate, nextFunding: p.nextFundingTime || null, mark: +p.markPrice, index: +p.indexPrice })
+      const at = +(p.time ?? 0) || 0
+      if (at < (s.markAt ?? 0)) continue
+      Object.assign(s, { fr: p.lastFundingRate === '' ? null : +p.lastFundingRate, nextFunding: p.nextFundingTime || null, mark: +p.markPrice, index: +p.indexPrice, markAt: at })
     }
     S.symbols = next
     S.live = true

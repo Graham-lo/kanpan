@@ -30,6 +30,13 @@ export interface Sym {
   mark?: number
   index?: number
   lastTick?: number
+  /** 价格这一组（price / chg / pct / open / hi / lo）对应的交易所时间：WS 24h 行情的 C、逐笔的 T、REST 24h 的 closeTime。
+   *  晚到的 REST 全市场表比它旧就不覆盖（rest.ts loadUniverse），和 iOS QuoteState 按时间/成交号拒旧帧同一条规矩 */
+  pxAt?: number
+  /** 24h 成交额 / 笔数对应的交易所时间（WS 24h 行情的 C、REST 24h 的 closeTime） */
+  statAt?: number
+  /** 标记价 / 指数价 / 资金费率对应的交易所时间（WS markPriceUpdate 的 E、REST premiumIndex 的 time） */
+  markAt?: number
   supply?: number       // 总供应量（/v1/market/meta）
   ut?: string           // 交易所给的 underlyingType 原文（COIN / EQUITY / HK_EQUITY / COMMODITY …），市场筛选用
   tags?: string[]       // underlyingSubType 小写去重（layer-1 / meme / ai …），板块筛选用

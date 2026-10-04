@@ -329,15 +329,21 @@ function handle(m: Frame): void {
   switch (d.e) {
     case '24hrTicker': {
       const s = S.symbols.get(d.s); if (!s) return
-      const prev = s.price
-      Object.assign(s, { price: +d.c, chg: +d.p, pct: +d.P, vol: +d.q, open: +d.o, hi: +d.h, lo: +d.l, count: +d.n, lastTick: Date.now() })
-      emit({ type: 'ticker', symbol: d.s, dir: prev == null ? 0 : Math.sign(+d.c - prev) })
+      const prev = s.price, at = +d.C || +d.E || 0
+      // 价格那半只收不比手里旧的（逐笔可能已经推到更后面）；成交额 / 笔数这半照收
+      if (!(at < (s.pxAt ?? 0))) Object.assign(s, { price: +d.c, chg: +d.p, pct: +d.P, open: +d.o, hi: +d.h, lo: +d.l, pxAt: at })
+      if (!(at < (s.statAt ?? 0))) Object.assign(s, { vol: +d.q, count: +d.n, statAt: at })
+      s.lastTick = Date.now()
+      emit({ type: 'ticker', symbol: d.s, dir: prev == null || s.price == null ? 0 : Math.sign(s.price - prev) })
       break
     }
     case 'aggTrade': {
       const s = S.symbols.get(d.s); if (!s) return
       const p = +d.p, prev = s.price
       emitTrade(d.s, p, +d.q, +d.T, !!d.m)
+      const at = +d.T || 0
+      if (at < (s.pxAt ?? 0)) { s.lastTick = Date.now(); return }
+      s.pxAt = at
       if (prev === p) { s.lastTick = Date.now(); return }
       s.price = p; s.lastTick = Date.now()
       if (s.open) { s.chg = p - s.open; s.pct = (p / s.open - 1) * 100 }
@@ -354,7 +360,9 @@ function handle(m: Frame): void {
     }
     case 'markPriceUpdate': {
       const s = S.symbols.get(d.s); if (!s) return
-      Object.assign(s, { fr: d.r === '' ? s.fr : +d.r, nextFunding: d.T || s.nextFunding, mark: +d.p, index: +d.i })
+      const at = +d.E || 0
+      if (at < (s.markAt ?? 0)) return
+      Object.assign(s, { fr: d.r === '' ? s.fr : +d.r, nextFunding: d.T || s.nextFunding, mark: +d.p, index: +d.i, markAt: at })
       emit({ type: 'mark', symbol: d.s })
       break
     }
