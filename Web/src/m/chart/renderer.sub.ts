@@ -171,9 +171,13 @@ function subVol(r: ChartRenderer, ctx: CanvasRenderingContext2D, box: Pane, L: L
     const zero = subY(r, box, ext, 0)
     const up = css(t.up), down = css(t.down)
     for (let i = lo; i <= hi; i++) {
+      // 坏量（NaN / ±inf）不画：算出来的矩形不是有限数，量轴区间（extent）也早就把它剔掉了，
+      // 这里跟它同一口径（ChartRenderer+Sub.swift，审查 B·P3-4）。
+      const volume = b.volume[i]
+      if (!Number.isFinite(volume)) continue
       const xc = r.x(b.time(i), L.plotW)
       if (xc < -4 || xc > L.plotW + 4) continue
-      const y = subY(r, box, ext, b.volume[i])
+      const y = subY(r, box, ext, volume)
       // 量柱与蜡烛同色、不透明（原型的 40% 透明在白底上发灰，Swift 已改掉）。
       ctx.fillStyle = b.close[i] >= b.open[i] ? up : down
       ctx.fillRect(snap(xc - bodyW / 2, s), Math.min(y, zero), bodyW, Math.abs(zero - y))

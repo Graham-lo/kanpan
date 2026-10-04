@@ -20,7 +20,7 @@ import type { ChartState } from '../src/m/chart/state'
 import { changedLayers, makeOrderBook, makeState, withInput, withOverlay } from '../src/m/chart/state'
 import { ChartFont, textWidth } from '../src/m/chart/paint'
 import { ChartRenderer } from '../src/m/chart/renderer'
-import { subAxisLabels, subValueText } from '../src/m/chart/renderer.sub'
+import { drawSub, subAxisLabels, subValueText } from '../src/m/chart/renderer.sub'
 import { candleXs, probe, verticalHairlineXs } from '../src/m/chart/renderer.probe'
 
 // ------------------------------------------------------------------ 夹具（EvidenceSupport.swift 的 Fixture）
@@ -423,5 +423,37 @@ describe('时间轴标签按日历对齐、互不相压（TimeAxisLabelTests）'
         expect((((days - 4) % 7) + 7) % 7, `「${l.text}」不在周一`).toBe(0)
       }
     }
+  })
+})
+
+// ------------------------------------------------------------------ VolumeBarTests（iOS 953c8766）
+
+describe('成交量副图遇到坏量（VolumeBarTests）', () => {
+  it('NaN / ±inf 那根直接跳过：不往画布塞非有限矩形，其余量柱照画', () => {
+    const base = scaledSeries(1, fx.symbol)
+    const bars = Array.from({ length: base.count }, (_, i) => bar(base.time(i), base.open[i], base.high[i], base.low[i], base.close[i], base.volume[i]))
+    const n = bars.length
+    const bad = [n - 2, n - 5, n - 9]
+    bars[bad[0]] = { ...bars[bad[0]], volume: NaN }
+    bars[bad[1]] = { ...bars[bad[1]], volume: Infinity }
+    bars[bad[2]] = { ...bars[bad[2]], volume: -Infinity }
+    const series = BarSeries.fromBars(fx.symbol, base.interval, bars)
+    const L0 = new Layout(SIZE.W, SIZE.H, ['VOL'])
+    const r = new ChartRenderer(makeState({
+      series, symbol: { symbol: fx.symbol, base: fx.meta.base, priceDecimals: 2 },
+      view: ViewMath.reset(series, L0.plotW, AICoinBehavior.initialSpacing), overlays: [], subs: ['VOL'], tzOffset: 0, decimals: 2,
+      options: defaultChartOptions(), nowMs: series.lastTime,
+    }))
+    const rects: number[][] = []
+    const ctx = new Proxy({} as Record<string, unknown>, {
+      get: (target, key) => key === 'fillRect' ? (...a: number[]) => { rects.push(a) }
+        : key === 'measureText' ? () => ({ width: 10 })
+        : key in target ? target[key as string] : () => {},
+      set: (target, key, value) => { target[key as string] = value; return true },
+    }) as unknown as CanvasRenderingContext2D
+    const L = r.layout(SIZE.W, SIZE.H)
+    drawSub(r, ctx, L.panes[1], L, 3)
+    expect(rects.length).toBeGreaterThan(20)
+    for (const a of rects) expect(a.every(Number.isFinite), `非有限矩形 ${a}`).toBe(true)
   })
 })
