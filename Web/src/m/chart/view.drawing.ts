@@ -206,7 +206,8 @@ export function paintDrawing(d: Drawing, ctx: CanvasRenderingContext2D, axes: Dr
     ctx.strokeStyle = css(color); ctx.lineWidth = d.lineWidth
     ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'
     ctx.setLineDash(dashOf(d))
-    if (shape && (d.filled || DrawKind.isComputed(d.kind))) {
+    // 「背景填充」开关在几何那一层已经收过了（drawingGeometry），这里照几何给的原样画。
+    if (shape) {
       for (const fill of g.fills) {
         const first = fill.points[0]
         if (!first) continue

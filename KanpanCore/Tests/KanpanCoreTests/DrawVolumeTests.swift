@@ -174,6 +174,69 @@ struct DrawVolumeTests {
     #expect(abs(g.segments[1].b.y - Self.y(12700.0 / 600)) < 1e-9)
   }
 
+  @Test("计算结果按序列戳缓存：同一条序列只算一次，序列一改就重算，nil 也记住")
+  func computedResultsAreMemoizedByRevision() {
+    let memo = ComputedMemo()
+    var runs = 0
+    let key = ComputedMemo.Key(revision: 7, kind: 0, from: 1, to: nil)
+    _ = memo.trail(key) { runs += 1; return nil }
+    _ = memo.trail(key) { runs += 1; return nil }
+    #expect(runs == 1, "画不出（nil）也是答案，下一帧不该再扫一遍")
+    _ = memo.trail(ComputedMemo.Key(revision: 8, kind: 0, from: 1, to: nil)) { runs += 1; return nil }
+    #expect(runs == 2, "换了戳就是另一条序列")
+    _ = memo.profile(ComputedMemo.Key(revision: 7, kind: 1, from: 1, to: 2)) { runs += 1; return nil }
+    _ = memo.profile(ComputedMemo.Key(revision: 7, kind: 1, from: 1, to: 3)) { runs += 1; return nil }
+    #expect(runs == 4, "锚点不同不能串")
+
+    // 走公开入口：缓存给的和现算的一样；序列被改过（戳变了）之后不会拿到旧答案。
+    var s = Self.three
+    #expect(Drawing.vwapTrail(anchorT: Self.time(0), series: s)
+            == Drawing.computeVWAPTrail(anchorT: Self.time(0), series: s))
+    #expect(Drawing.volumeProfile(fromT: Self.time(0), toT: nil, series: s)
+            == Drawing.computeVolumeProfile(fromT: Self.time(0), toT: nil, series: s))
+    let before = Drawing.vwapTrail(anchorT: Self.time(0), series: s)
+    s.close[2] += 9
+    s.volume[2] *= 3
+    let after = Drawing.vwapTrail(anchorT: Self.time(0), series: s)
+    #expect(after != before)
+    #expect(after == Drawing.computeVWAPTrail(anchorT: Self.time(0), series: s))
+    #expect(Drawing.volumeProfile(fromT: Self.time(0), toT: nil, series: s)
+            == Drawing.computeVolumeProfile(fromT: Self.time(0), toT: nil, series: s))
+  }
+
+  @Test("VWAP 只换算屏内那一段：和逐根全扫出来的线段、读数一模一样")
+  func vwapWindowMatchesTheFullScan() throws {
+    // 3000 根、中间夹一段零成交（NaN 断开）；每根 2 px，图区只露出其中一截。
+    var bars: [(Double, Double, Double, Double, Double)] = []
+    for i in 0 ..< 3000 {
+      let c = 20 + sin(Double(i) / 37) * 5
+      bars.append((c - 0.3, c + 1, c - 1, c, (1200 ..< 1210).contains(i) ? 0 : 50 + Double(i % 7)))
+    }
+    let s = Self.series(bars)
+    let d = Drawing(kind: .anchoredVWAP, a: DrawPoint(t: Self.time(5), p: 20))
+    let bounds = Self.bounds
+    for shift in [0.0, -900, -2380, -5800, 400, -7000] {
+      let xOf = { (t: Double) in (t - Double(Self.t0)) / Double(Self.step) * 2 + shift }
+      let g = drawingGeometry(d, bounds: bounds, xOf: xOf, yOf: Self.y, decimals: 2, series: s)
+
+      // 参照：逐根全扫，屏外两端都在外的段不收。
+      let trail = try #require(Drawing.computeVWAPTrail(anchorT: d.a.t, series: s))
+      var want: [DrawSegment] = []
+      var prev: DrawPixel?
+      for (k, v) in trail.values.enumerated() {
+        guard v.isFinite else { prev = nil; continue }
+        let p = DrawPixel(xOf(Double(s.time(at: trail.start + k))), Self.y(v))
+        if let q = prev, max(q.x, p.x) >= bounds.left - 2, min(q.x, p.x) <= bounds.right + 2 {
+          want.append(DrawSegment(a: q, b: p))
+        }
+        prev = p
+      }
+      #expect(g.segments.map { [$0.a, $0.b] } == want.map { [$0.a, $0.b] }, "shift \(shift)")
+      let last = try #require(trail.values.last)
+      #expect(g.labels.count == 1 && g.labels[0].text == String(format: "%.2f", last))
+    }
+  }
+
   @Test("分布的几何：柱子是填充，三条横线 + 边界竖线，一枚 POC 读数")
   func profileGeometryIsBarsLinesAndOneReadout() {
     let s = Self.peaks([(12, 100), (13, 40), (14, 5), (11, 10), (10, 10)])
@@ -195,6 +258,39 @@ struct DrawVolumeTests {
                              decimals: 2, series: s)
     #expect(ag.segments.count == 4)
     #expect(ag.handles.count == 1)
+  }
+
+  @Test("整段区间滚出图区就不画：不在边上凭空钉一摞柱子和一枚 POC 胶囊")
+  func profileOffScreenDrawsNothing() {
+    let s = Self.peaks([(12, 100), (13, 40), (14, 5), (11, 10), (10, 10)])
+    let fixed = Drawing(kind: .fixedVolumeProfile, points: [
+      DrawPoint(t: Self.time(0), p: 20), DrawPoint(t: Self.time(6), p: 4),
+    ])
+    let anchored = Drawing(kind: .anchoredVolumeProfile, a: DrawPoint(t: Self.time(0), p: 20))
+    for d in [fixed, anchored] {
+      for shift in [-5000.0, 5000.0] {
+        let g = drawingGeometry(d, bounds: Self.bounds, xOf: { Self.x($0) + shift }, yOf: Self.y,
+                                decimals: 2, series: s)
+        #expect(g.fills.isEmpty && g.segments.isEmpty && g.labels.isEmpty, "\(d.kind) 平移 \(shift)")
+        #expect(g.handles.count == d.points.count, "手柄照旧给（屏外，点不到）")
+      }
+      // 只滚出去一半：柱子钉在图区左沿照画——根看不见也得能比长短。
+      let half = drawingGeometry(d, bounds: Self.bounds, xOf: { Self.x($0) - 300 }, yOf: Self.y,
+                                 decimals: 2, series: s)
+      #expect(!half.fills.isEmpty && half.fills.allSatisfy { $0.points.allSatisfy { $0.x >= 0 } },
+              "\(d.kind)")
+    }
+  }
+
+  @Test("水平射线起点滚出右沿：线没了，价签也不留")
+  func hrayPastRightEdgeHasNoLabel() {
+    let off = Drawing(kind: .hray, a: DrawPoint(t: Self.time(10), p: 20))
+    let g = drawingGeometry(off, bounds: Self.bounds, xOf: Self.x, yOf: Self.y, decimals: 2)
+    #expect(Self.x(Self.time(10)) > Self.bounds.right, "起点确实在右沿外，这条用例才有分量")
+    #expect(g.segments.isEmpty && g.labels.isEmpty)
+    let on = Drawing(kind: .hray, a: DrawPoint(t: Self.time(2), p: 20))
+    let og = drawingGeometry(on, bounds: Self.bounds, xOf: Self.x, yOf: Self.y, decimals: 2)
+    #expect(og.segments.count == 1 && og.labels.count == 1)
   }
 
   @Test("点在柱子上就是点中了这条线")

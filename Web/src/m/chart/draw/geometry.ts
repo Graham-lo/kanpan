@@ -7,7 +7,7 @@ import { Chart } from '../geometry'
 import { fmtNum } from '../format'
 import type { BarSeries } from '../series'
 import { cFixed, cG, cSignedFixed } from './fmt'
-import { type Drawing, type DrawPart, drawingA, drawingIsValid, distSeg, partAnchor } from './drawing'
+import { type Drawing, type DrawPart, DrawKind, drawingA, drawingIsValid, distSeg, partAnchor } from './drawing'
 import { volumeProfile, vwapTrail } from './volume'
 
 export interface DrawBounds { left: number; top: number; right: number; bottom: number }
@@ -35,8 +35,11 @@ export interface DrawFill {
   tint: DrawTint
   /** 这一块自己的透明度；null 走老的 0.12。 */
   opacity: number | null
+  /** 实心记号（箭头尖）：线的一部分，不透明地画，也不受「背景填充」开关管。 */
+  solid: boolean
 }
-const fill = (points: DrawPixel[], tint: DrawTint = 'line', opacity: number | null = null): DrawFill => ({ points, tint, opacity })
+const fill = (points: DrawPixel[], tint: DrawTint = 'line', opacity: number | null = null, solid = false): DrawFill =>
+  ({ points, tint, opacity, solid })
 
 /** 字底下垫什么：none 什么都不垫；wash 垫一层图表底色；chip 实心胶囊 + 反白字。 */
 export type DrawPlate = 'none' | 'wash' | 'chip'
@@ -212,7 +215,7 @@ export function drawingGeometry(d: Drawing, r: DrawBounds, xOf: (t: number) => n
       tip,
       px(tip.x - ux * size - uy * w, tip.y - uy * size + ux * w),
       px(tip.x - ux * size + uy * w, tip.y - uy * size - ux * w),
-    ], tint))
+    ], tint, 1, true))
   }
   const shape = (ps: DrawPixel[], tint: DrawTint = 'line'): void => {
     if (ps.length < 3) return
@@ -237,7 +240,8 @@ export function drawingGeometry(d: Drawing, r: DrawBounds, xOf: (t: number) => n
       break
     case 'hray':
       line(a, px(a.x + 1, a.y), 0, Infinity)
-      g.labels = [drawLabel(px(r.right - 4, a.y - 4), price(A.p), { plate: 'chip' })]
+      // 起点滚出图区右沿时射线一个像素都不剩：价签不能还钉在右沿（看着像有线，点它还会选中）。
+      if (g.segments.length > 0) g.labels = [drawLabel(px(r.right - 4, a.y - 4), price(A.p), { plate: 'chip' })]
       break
     case 'trend': line(a, b); break
     case 'ray': line(a, b, 0, Infinity); break
@@ -538,8 +542,11 @@ export function drawingGeometry(d: Drawing, r: DrawBounds, xOf: (t: number) => n
       const vp = volumeProfile(fromT, fixed ? Math.max(A.t, second) : null, series)
       if (!vp || !(vp.maxRow > 0)) break
       const clampX = (x: number): number => Math.min(Math.max(x, r.left), r.right)
-      const xL = clampX(xOf(series.time(vp.first)))
-      const xR = clampX(xOf(series.time(vp.last)))
+      const rawL = xOf(series.time(vp.first)), rawR = xOf(series.time(vp.last))
+      // 整段区间都滚出了图区：不画（从前两头被夹到同一条边上，凭空钉一摞柱子和一枚 POC 胶囊）。
+      if (!(rawR >= r.left && rawL <= r.right)) break
+      const xL = clampX(rawL)
+      const xR = clampX(rawR)
       const root = xL
       const width = Math.min(Math.max(0.30 * (xR - xL), 24), 0.5 * (r.right - r.left))
       const bar = (x0: number, x1: number, top: number, bottom: number, tint: DrawTint, opacity: number): void => {
@@ -572,5 +579,8 @@ export function drawingGeometry(d: Drawing, r: DrawBounds, xOf: (t: number) => n
       break
     }
   }
+  // 关了填充的形状不出填充多边形：渲染层不画，命中也不该拿它判「点在框里」。只有 usesFill 的几种
+  // 听这个开关（测量框的底色就是结论、计算型工具的柱子就是形状本身），箭头尖是实心记号，一直留着。
+  if (!d.filled && DrawKind.usesFill(d.kind)) g.fills = g.fills.filter((f) => f.solid)
   return g
 }

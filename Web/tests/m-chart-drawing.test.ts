@@ -526,6 +526,24 @@ describe('Drawing v2 持久化与几何', () => {
     expect(drawingGeometry(hidden, bounds, idAxis, idAxis).hit(125, 100)).toBeNull()
   })
 
+  test('关了填充：面不出填充、点框里不命中；箭头尖是实心记号一直在；测量框底色不听开关', () => {
+    const bounds: DrawBounds = { left: 0, top: 0, right: 300, bottom: 300 }
+    const rect = { ...makeDrawing('rectangle', { t: 50, p: 50 }, { t: 250, p: 250 }), filled: false }
+    const rg = drawingGeometry(rect, bounds, idAxis, idAxis)
+    expect(rg.fills).toEqual([])
+    expect(rg.segments.length).toBeGreaterThan(0)
+    const arrow = makeDrawing('arrowLine', { t: 50, p: 50 }, { t: 250, p: 200 })
+    const heads = drawingGeometry(arrow, bounds, idAxis, idAxis).fills
+    expect(heads.length).toBe(1)
+    expect(heads[0].solid && heads[0].opacity === 1).toBe(true)
+    expect(drawingGeometry({ ...arrow, filled: false }, bounds, idAxis, idAxis).fills.length).toBe(1)
+    const callout = { ...makeDrawing('callout', { t: 50, p: 50 }, { t: 200, p: 150 }), text: '看这里', filled: false }
+    const cf = drawingGeometry(callout, bounds, idAxis, idAxis).fills
+    expect(cf.length > 0 && cf.every(f => f.solid)).toBe(true)
+    const measure = { ...makeDrawing('measure', { t: 50, p: 250 }, { t: 250, p: 50 }), filled: false }
+    expect(drawingGeometry(measure, bounds, idAxis, idAxis).fills.some(f => !f.solid)).toBe(true)
+  })
+
   test('通道在对数坐标里平行', () => {
     const d = drawingWith('channel', [{ t: 20, p: 100 }, { t: 100, p: 300 }, { t: 50, p: 400 }])
     const g = drawingGeometry(d, { left: 0, top: 0, right: 300, bottom: 300 }, idAxis, p => Math.log(p) * 30)
@@ -990,6 +1008,26 @@ describe('锚定 VWAP 与成交量分布', () => {
     expect(g.labels.length === 1 && g.labels[0].plate === 'chip').toBe(true)
     expect(g.labels[0].text).toBe('21.17')
     expect(Math.abs(g.segments[1].b.y - y(12700 / 600))).toBeLessThan(1e-9)
+  })
+
+  test('整段区间滚出图区就不画；水平射线起点滚出右沿时价签也不留', () => {
+    const s = fivePeaks()
+    const fixed = drawingWith('fixedVolumeProfile', [{ t: time(0), p: 20 }, { t: time(6), p: 4 }])
+    const anchored = makeDrawing('anchoredVolumeProfile', { t: time(0), p: 20 })
+    for (const d of [fixed, anchored]) {
+      for (const shift of [-5000, 5000]) {
+        const g = drawingGeometry(d, bounds, t => x(t) + shift, y, 2, s)
+        expect(g.fills.length + g.segments.length + g.labels.length).toBe(0)
+        expect(g.handles.length).toBe(d.points.length)
+      }
+      const half = drawingGeometry(d, bounds, t => x(t) - 300, y, 2, s)
+      expect(half.fills.length > 0 && half.fills.every(f => f.points.every(p => p.x >= 0))).toBe(true)
+    }
+    const off = makeDrawing('hray', { t: time(10), p: 20 })
+    const og = drawingGeometry(off, bounds, x, y, 2)
+    expect(og.segments.length + og.labels.length).toBe(0)
+    const on = drawingGeometry(makeDrawing('hray', { t: time(2), p: 20 }), bounds, x, y, 2)
+    expect(on.segments.length === 1 && on.labels.length === 1).toBe(true)
   })
 
   test('分布的几何：柱子是填充，三条横线 + 边界竖线，一枚 POC 读数', () => {

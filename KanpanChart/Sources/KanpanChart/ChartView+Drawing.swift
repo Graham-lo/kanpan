@@ -1525,9 +1525,9 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
   ctx.setLineDash(phase: 0, lengths: d.dash == .solid ? [] : (d.dash == .dashed ? [6, 4] : [1, 3]))
   // 填充不看选中态：从前「选中就不画底」，于是一拖动矩形／量尺／持仓框，
   // 整块颜色就没了，手一松又回来——闪一下的是这条线自己的身份。
-  // 计算型工具不看 `filled`：那些柱子**就是**这把工具画的东西，不是衬在形状底下的一层色，
-  // 而它们的样式表里根本没有「填充」这个开关（`usesFill == false`），关不掉也不该被关掉。
-  if shape, d.filled || d.kind.isComputed {
+  // 「背景填充」开关在几何那一层已经收过了（`drawingGeometry`：只有 `usesFill` 的几种听它，
+  // 箭头尖是实心记号不受管），这里照几何给的原样画——画和点击判定是同一份。
+  if shape {
     for fill in g.fills {
       guard let first = fill.points.first else { continue }
       ctx.saveGState(); ctx.setAlpha(fill.opacity ?? 0.12); ctx.setFillColor(Paint.cg(paint(fill.tint)))

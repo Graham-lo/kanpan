@@ -97,6 +97,48 @@ struct ReviewA5Tests {
     #expect(ink < Chart.hitLinePt)
   }
 
+  @Test("关了填充的形状不出填充：看着是空框，点框里不选中它；计算型工具的柱子不受影响")
+  func unfilledShapeHasNoFillTarget() {
+    var rect = Drawing(kind: .rectangle, a: Self.point(x: 60, y: 120), b: Self.point(x: 330, y: 400))
+    rect.filled = false
+    let g = drawingGeometry(rect, bounds: Self.bounds, xOf: Self.x, yOf: Self.y, decimals: 2)
+    #expect(g.fills.isEmpty, "渲染层不画的填充，几何里也不该有")
+    #expect(!g.hitsFill(x: 200, y: 300), "空框的里面不是这条线")
+    #expect(!g.segments.isEmpty, "边框照旧")
+    for kind in [Drawing.Kind.channel, .priceRange, .ellipse, .triangle] {
+      var d = Drawing(kind: kind, points: (0..<kind.pointCount).map {
+        Self.point(x: 80 + Double($0) * 70, y: 160 + Double($0 % 2) * 120)
+      })
+      #expect(!drawingGeometry(d, bounds: Self.bounds, xOf: Self.x, yOf: Self.y).fills.isEmpty,
+              "\(kind) 开着填充时有填充，下面那条断言才有分量")
+      d.filled = false
+      #expect(drawingGeometry(d, bounds: Self.bounds, xOf: Self.x, yOf: Self.y).fills.isEmpty, "\(kind)")
+    }
+  }
+
+  @Test("箭头尖是实心记号：不透明，关了填充也还在；测量框的底色不听填充开关")
+  func arrowHeadsAreSolid() {
+    var arrow = Drawing(kind: .arrowLine, a: Self.point(x: 60, y: 120), b: Self.point(x: 330, y: 400))
+    let heads = drawingGeometry(arrow, bounds: Self.bounds, xOf: Self.x, yOf: Self.y).fills
+    #expect(heads.count == 1, "箭头线只有一个尖")
+    #expect(heads.allSatisfy { $0.solid && $0.opacity == 1 }, "尖要不透明，不能和衬底一样走 0.12")
+    arrow.filled = false
+    #expect(drawingGeometry(arrow, bounds: Self.bounds, xOf: Self.x, yOf: Self.y).fills.count == 1)
+
+    var callout = Drawing(kind: .callout, points: (0..<Drawing.Kind.callout.pointCount).map {
+      Self.point(x: 80 + Double($0) * 90, y: 160 + Double($0) * 60)
+    })
+    callout.text = "看这里"
+    callout.filled = false
+    let fills = drawingGeometry(callout, bounds: Self.bounds, xOf: Self.x, yOf: Self.y).fills
+    #expect(!fills.isEmpty && fills.allSatisfy(\.solid), "关了填充的标注框，指引线的箭头还在")
+
+    var measure = Drawing(kind: .measure, a: Self.point(x: 60, y: 400), b: Self.point(x: 330, y: 120))
+    measure.filled = false
+    #expect(drawingGeometry(measure, bounds: Self.bounds, xOf: Self.x, yOf: Self.y).fills
+      .contains { !$0.solid }, "测量框的底色就是结论，没有开关、也不该被关掉")
+  }
+
   @Test("用例 2：真点在矩形手柄上仍然优先手柄")
   func case2_handleStillWins() throws {
     let rect = Drawing(kind: .rectangle, a: Self.point(x: 60, y: 120), b: Self.point(x: 330, y: 400))

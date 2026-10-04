@@ -110,9 +110,17 @@ extension Drawing {
   /// 价源是 `hlc3 = (H+L+C)/3`（TV 的默认），不给 hl2 / close 的选项。
   /// 锚点落在末根之后 → nil（那一段里一根 K 线都没有，画不出东西）。
   ///
-  /// 末根每个 tick 都在变，所以这是一路重算的 O(n)——n 就是锚点到现在的根数。
-  /// 不做增量缓存：真慢了再加，别为一个还没量到的问题先背一个失效规则（§9）。
+  /// 一次是 O(n)（n 就是锚点到现在的根数）。几何每帧都要它，所以结果按
+  /// `series.revision` + 锚点记在 `ComputedMemo` 里：平移、缩放、十字线这类帧序列没变，
+  /// 直接取上一帧算好的；来一笔 tick 序列换了戳，自然重算。6000 根上实测每把计算型
+  /// 画线每帧白扫一遍约 1.3 ms（`stress.plot.computed_6` 13 ms），这就是「真慢了再加」。
   static func vwapTrail(anchorT: Double, series: BarSeries) -> VWAPTrail? {
+    ComputedMemo.shared.trail(ComputedMemo.Key(revision: series.revision, kind: 0, from: anchorT, to: nil)) {
+      computeVWAPTrail(anchorT: anchorT, series: series)
+    }
+  }
+
+  static func computeVWAPTrail(anchorT: Double, series: BarSeries) -> VWAPTrail? {
     guard let start = firstBar(atOrAfter: anchorT, in: series) else { return nil }
     var pv = 0.0, vv = 0.0
     var values: [Double] = []
@@ -141,6 +149,12 @@ extension Drawing {
   /// 不是整根丢进收盘价那一行。一根长影线的量本来就分布在它走过的整段价格上，
   /// 整根丢进一行会凭空堆出一个假的高峰。
   static func volumeProfile(fromT: Double, toT: Double?, series: BarSeries) -> VolumeProfile? {
+    ComputedMemo.shared.profile(ComputedMemo.Key(revision: series.revision, kind: 1, from: fromT, to: toT)) {
+      computeVolumeProfile(fromT: fromT, toT: toT, series: series)
+    }
+  }
+
+  static func computeVolumeProfile(fromT: Double, toT: Double?, series: BarSeries) -> VolumeProfile? {
     guard series.count > 0, let first = firstBar(atOrAfter: fromT, in: series) else { return nil }
     let last: Int
     if let toT {
@@ -233,5 +247,58 @@ extension Drawing {
 
     return VolumeProfile(lo: lo, hi: hi, rowHeight: height, up: up, down: down,
                          poc: poc, vaLow: vaLow, vaHigh: vaHigh, first: first, last: last)
+  }
+}
+
+
+// ------------------------------------------------------------ 计算型画线的结果缓存
+
+/// 锚定 VWAP / 成交量分布的结果缓存。
+///
+/// 键是「哪条序列（`revision`）× 哪种算法 × 锚点」。`revision` 全局唯一、序列任何一次
+/// 改动都换新值（`BarSeries.stampAll`），所以不需要任何失效规则：序列变了，老键再也
+/// 不会被问到，只会被下面的容量上限清掉。存 nil 也算命中——锚点落在末根之后那把
+/// 画线每帧都在问，答案一直是「画不出」。
+///
+/// 加锁是因为 KanpanCore 是纯值库，不假设调用方都在主线程（单测就是并行跑的）。
+final class ComputedMemo: @unchecked Sendable {
+  static let shared = ComputedMemo()
+
+  struct Key: Hashable {
+    var revision: UInt64
+    var kind: UInt8
+    var from: Double
+    var to: Double?
+  }
+
+  /// 一屏同时挂几十把计算型画线也够用；超了整表清掉重来，下一帧就重新填满。
+  static let capacity = 64
+
+  private let lock = NSLock()
+  private var trails: [Key: VWAPTrail?] = [:]
+  private var profiles: [Key: VolumeProfile?] = [:]
+
+  func trail(_ key: Key, compute: () -> VWAPTrail?) -> VWAPTrail? {
+    lock.lock()
+    if let hit = trails[key] { lock.unlock(); return hit }
+    lock.unlock()
+    let value = compute()
+    lock.lock()
+    if trails.count >= Self.capacity { trails.removeAll(keepingCapacity: true) }
+    trails[key] = .some(value)
+    lock.unlock()
+    return value
+  }
+
+  func profile(_ key: Key, compute: () -> VolumeProfile?) -> VolumeProfile? {
+    lock.lock()
+    if let hit = profiles[key] { lock.unlock(); return hit }
+    lock.unlock()
+    let value = compute()
+    lock.lock()
+    if profiles.count >= Self.capacity { profiles.removeAll(keepingCapacity: true) }
+    profiles[key] = .some(value)
+    lock.unlock()
+    return value
   }
 }

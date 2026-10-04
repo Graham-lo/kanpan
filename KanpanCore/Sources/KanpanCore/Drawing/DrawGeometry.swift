@@ -43,8 +43,12 @@ public struct DrawFill: Sendable {
   /// 它**就是**这把工具画的东西，还要靠深浅一眼分出价值区内外（区内 0.45、区外 0.22），
   /// 一律 0.12 就成了一团看不清的灰。
   public var opacity: Double?
-  public init(points: [DrawPixel], tint: DrawTint = .line, opacity: Double? = nil) {
-    self.points = points; self.tint = tint; self.opacity = opacity
+  /// 实心记号（箭头尖）：它是线的一部分、不是衬在形状底下的一层色——不透明地画，
+  /// 也不受「背景填充」开关管。从前箭头尖和衬底一样走 0.12，箭头线的尖几乎看不见；
+  /// 关了填充的标注框连箭头也一起没了。
+  public var solid: Bool
+  public init(points: [DrawPixel], tint: DrawTint = .line, opacity: Double? = nil, solid: Bool = false) {
+    self.points = points; self.tint = tint; self.opacity = opacity; self.solid = solid
   }
 }
 
@@ -231,9 +235,24 @@ public struct DrawGeometry: Sendable {
 /// `series` 只有计算型工具（`Kind.isComputed`：VWAP 与两把成交量分布）会看——它们的形状
 /// 得把锚点圈住的那一段 K 线扫一遍才算得出来。别的工具一个像素都不受它影响，所以它有默认值，
 /// 老调用点不用改；计算型工具拿不到序列时只出手柄，不画一个假的形状。
+///
+/// 关了填充（`filled == false`，旧存档、同步下来的线）的形状**不出填充多边形**：渲染层
+/// 本来就不画它，命中却照样拿它判「点在框里」——看着是个空框，点框里也会选中它、图拖不动。
+/// 在几何这一层收掉，画和点就是同一份；渲染层照几何给的填充原样画，不再自己看开关。
+/// 只有 `usesFill` 的那几种听这个开关，箭头尖（`DrawFill.solid`）任何时候都留着。
 public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
                             xOf: (Double) -> Double, yOf: (Double) -> Double,
                             decimals: Int? = nil, series: BarSeries? = nil) -> DrawGeometry {
+  var g = shapeGeometry(d, bounds: r, xOf: xOf, yOf: yOf, decimals: decimals, series: series)
+  // 只有样式表里露出「背景填充」开关的那几种（`usesFill`）才听这个开关：测量框的底色就是结论、
+  // 计算型工具的柱子就是形状本身，都关不掉；箭头尖是实心记号，任何时候都留着。
+  if !d.filled, d.kind.usesFill { g.fills.removeAll { !$0.solid } }
+  return g
+}
+
+private func shapeGeometry(_ d: Drawing, bounds r: DrawBounds,
+                           xOf: (Double) -> Double, yOf: (Double) -> Double,
+                           decimals: Int?, series: BarSeries?) -> DrawGeometry {
   var g = DrawGeometry()
   /// 价格照坐标轴写。没给小数位就按老样子来。
   func price(_ v: Double) -> String {
@@ -296,7 +315,7 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
       tip,
       DrawPixel(tip.x - ux * size - uy * w, tip.y - uy * size + ux * w),
       DrawPixel(tip.x - ux * size + uy * w, tip.y - uy * size - ux * w),
-    ], tint: tint))
+    ], tint: tint, opacity: 1, solid: true))
   }
   /// 一个闭合多边形：填充 + 描边。椭圆、三角形、旗标、箭头标记都用它。
   func shape(_ ps: [DrawPixel], tint: DrawTint = .line) {
@@ -319,7 +338,10 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     line(DrawPixel(a.x, r.top), DrawPixel(a.x, r.bottom)); g.handles = []
   case .hray:
     line(a, DrawPixel(a.x + 1, a.y), to: .infinity)
-    g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p), plate: .chip)]
+    // 起点滚出图区右沿时射线一个像素都不剩：价签不能还钉在右沿——看着像有一条线，点它还会选中。
+    if !g.segments.isEmpty {
+      g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p), plate: .chip)]
+    }
   case .trend: line(a, b)
   case .ray: line(a, b, to: .infinity)
   case .extended: line(a, b, from: -.infinity, to: .infinity)
@@ -654,23 +676,35 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
 
   case .anchoredVWAP:
     guard let series, let trail = Drawing.vwapTrail(anchorT: d.a.t, series: series) else { break }
+    func xAt(_ k: Int) -> Double { xOf(Double(series.time(at: trail.start + k))) }
+    let n = trail.values.count
+    // 只换算屏内那一段：x 随下标单调递增，二分出第一根进了左沿的，从它前一根起
+    // （那一段跨着左沿）。锚在半年前的 VWAP 屏外有几千根，逐根换算成像素再丢掉，
+    // 每帧白干（6000 根上一把就是约 1 ms）。
+    var lo = 0, hi = n
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if xAt(mid) < r.left - 2 { lo = mid + 1 } else { hi = mid }
+    }
     var prev: DrawPixel?
-    var tip: (point: DrawPixel, value: Double)?
-    for (k, v) in trail.values.enumerated() {
+    for k in max(0, lo - 1) ..< n {
+      let v = trail.values[k]
       // 累计量还是 0 的那一段是 NaN：断开，别把线从锚点一路拉到第一根有成交的柱子上。
       guard v.isFinite else { prev = nil; continue }
-      let p = DrawPixel(xOf(Double(series.time(at: trail.start + k))), yOf(v))
-      // 整段都在屏外的不收：屏幕外的线既看不见也不该参与命中，
-      // 一条锚在半年前的 VWAP 否则要背几千段没人看的线。
+      let p = DrawPixel(xAt(k), yOf(v))
+      // 整段都在屏外的不收：屏幕外的线既看不见也不该参与命中。
       if let q = prev, max(q.x, p.x) >= r.left - 2, min(q.x, p.x) <= r.right + 2 {
         g.segments.append(DrawSegment(a: q, b: p))
       }
       prev = p
-      tip = (p, v)
+      // 这一点已经出了右沿：往后每一段的左端都在右沿之外，一段也收不进来了。
+      if p.x > r.right + 2 { break }
     }
     // 右端读数：这把工具唯一的数字结论，画法和价格轴上的现价标签一致。
-    if let tip {
-      g.labels = [DrawLabel(point: DrawPixel(tip.point.x, tip.point.y - 4), text: price(tip.value), plate: .chip)]
+    // 读数钉在末根那一点上（滚回历史时它可能在屏外，和从前一样）。
+    if let k = trail.values.lastIndex(where: { $0.isFinite }) {
+      let v = trail.values[k]
+      g.labels = [DrawLabel(point: DrawPixel(xAt(k), yOf(v) - 4), text: price(v), plate: .chip)]
     }
 
   case .fixedVolumeProfile, .anchoredVolumeProfile:
@@ -685,8 +719,12 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     // 也可能早于已加载的历史（那时从第一根算起）。竖线画在算出来的边上，图上那两条
     // 虚线就永远和柱子说的是同一件事。
     func clampX(_ x: Double) -> Double { min(max(x, r.left), r.right) }
-    let xL = clampX(xOf(Double(series.time(at: vp.first))))
-    let xR = clampX(xOf(Double(series.time(at: vp.last))))
+    let rawL = xOf(Double(series.time(at: vp.first))), rawR = xOf(Double(series.time(at: vp.last)))
+    // 整段区间都滚出了图区（全在左边或全在右边）：不画。从前两头都被夹到同一条边上，
+    // 左边就凭空钉着一摞柱子、两条重合的虚线和一枚 POC 胶囊，像是在说眼前那几根 K 线。
+    guard rawR >= r.left, rawL <= r.right else { break }
+    let xL = clampX(rawL)
+    let xR = clampX(rawR)
     // 柱子一律从区间左沿往右长。左沿滚出屏外时钉在图区左沿——柱子是用来比长短的，
     // 根都看不见就比不了了。
     let root = xL
