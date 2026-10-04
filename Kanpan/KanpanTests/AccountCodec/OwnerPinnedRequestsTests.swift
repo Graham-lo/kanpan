@@ -80,4 +80,25 @@ struct OwnerPinnedRequestsTests {
     await #expect(throws: CancellationError.self) { _ = try await transport.bootstrap(collection: "drawings", prefix: nil, after: nil) }
     #expect(OwnerPinProtocol.paths.allSatisfy { !$0.contains("/v1/sync") })
   }
+
+  @Test("实时活动的令牌替 bob 登记、客户端现在是 alice：登记与收起都不出门（审查 D-06）")
+  func liveActivityPinnedToAnotherOwnerStaysHome() async throws {
+    OwnerPinProtocol.reset()
+    let client = try await signedInAsAlice()
+    let stale = LiveActivityTokens(api: client, owner: bob)
+    await #expect(throws: CancellationError.self) {
+      try await stale.submit(token: "t", activityID: "act", alertID: "al", environment: "sandbox")
+    }
+    await #expect(throws: CancellationError.self) { try await stale.end(activityID: "act") }
+    #expect(OwnerPinProtocol.paths.allSatisfy { !$0.contains("/v1/devices") })
+    // 替自己登记照常出门。
+    try await LiveActivityTokens(api: client, owner: alice.id).submit(token: "t", activityID: "act", alertID: "al", environment: "sandbox")
+    #expect(OwnerPinProtocol.paths.contains { $0.hasSuffix("/v1/devices/push-token") })
+  }
+
+  @Test("没上云的条数：同步操作加复盘待传，成败两条路同一个口径（审查 D-10）")
+  func pendingCountIncludesReviewUploads() {
+    #expect(AppAccountBridge.pendingCount(operations: 3, reviewUploads: 2) == 5)
+    #expect(AppAccountBridge.pendingCount(operations: 0, reviewUploads: 4) == 4)
+  }
 }

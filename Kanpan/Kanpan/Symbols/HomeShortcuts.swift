@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 // ============================================================ 桌面快捷入口
 //
@@ -10,7 +11,9 @@ import KanpanCore
 //
 // 几条定好的：
 //
-// · **标题就是品种名**（BTC），没有副标题。副标题那一格只能塞状态
+// · **标题就是品种名**（BTC），没有副标题。几格撞了同一个币名时（BTCUSDT、BTCUSDC、
+//   Coinbase 的 BTC-USD）才把计价和别家交易所的名字补进标题——「BTC/USDC」
+//   「BTC/USD Coinbase」——不然三格都写 BTC，点哪个全凭运气（深度审查 D 线 2026-10-04）。副标题那一格只能塞状态
 //   （「+2.3%」「行情实时」之类），那是工程字段，界面上不许有
 //   （记忆 kanpan-no-engineering-status-fields）；何况桌面那一格是系统渲染的，
 //   我们更新不了，摆上去就是一个永远停在上次的假数字。
@@ -47,19 +50,32 @@ enum HomeShortcuts {
   /// 算出该摆哪几格。`recents` 是最近看过（新的在前，见 `SymbolPrefs.recents`）。
   static func build(recents: [String]) -> [HomeShortcut] {
     var seen = Set<String>()
-    var out: [HomeShortcut] = []
+    var picked: [String] = []
     for raw in recents {
       let symbol = SymbolPrefs.key(raw)
       guard !symbol.isEmpty, seen.insert(symbol).inserted else { continue }
-      out.append(HomeShortcut(type: symbolType,
-                              title: SymbolInfo.placeholder(symbol: symbol).base,
-                              icon: "chart.line.uptrend.xyaxis",
-                              symbol: symbol))
-      if out.count == limit { break }
+      picked.append(symbol)
+      if picked.count == limit { break }
+    }
+    // 先挑齐再起名：撞不撞名要看同一屏上的另外几格。
+    let infos = picked.map { SymbolInfo.placeholder(symbol: $0) }
+    var bases: [String: Int] = [:]
+    for info in infos { bases[info.base, default: 0] += 1 }
+    var out = zip(picked, infos).map { symbol, info in
+      HomeShortcut(type: symbolType, title: title(info, collides: bases[info.base, default: 0] > 1),
+                   icon: "chart.line.uptrend.xyaxis", symbol: symbol)
     }
     // 搜索永远在最后一格：它是「我要找别的」，排在最近看过后面才顺手。
     out.append(HomeShortcut(type: searchType, title: "搜索", icon: "magnifyingglass", symbol: nil))
     return out
+  }
+
+  /// 一格上写的字：平时就是币名；同一屏上撞了币名，补上计价，别家交易所再补它的名字。
+  private static func title(_ info: SymbolInfo, collides: Bool) -> String {
+    guard collides else { return info.base }
+    let pair = info.base + "/" + info.quote
+    guard let tag = VenueRegistry.descriptor(forSymbol: info.symbol).searchTag else { return pair }
+    return pair + " " + tag
   }
 
   // ---------------------------------------------------------------- 装到系统上

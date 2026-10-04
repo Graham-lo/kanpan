@@ -271,13 +271,15 @@ import ReviewUI
     // 设置写回 `prefs.json`，之后再体检永远是 `.intact`。坏了 / 没了时照 `SettingsRecovery`
     // 办：先找同步存档里本机上一次记下的那份，绝不拿出厂值当「本机刚改的」推上云端。
     let profileOwner = user?.id.uuidString ?? ("guest:" + files.guestBatch.uuidString)
-    let verdict = prefs.diagnose(nextStorage, owner: profileOwner)
     // 「本机上一次记下的那份」是本机装进去的那一版（`appliedLocal`，底稿还在时就是底稿），
     // 不是云端推过来、还没装的 `local`；本机那一版里压根没有设置对象时才退回 `local`。
     let archivedSettings = try nextSync.flatMap { sync in
       let key = try PersonalSyncCodec.settings(nextPrefs).key
       return (sync.archive.appliedLocal[key] ?? sync.archive.local[key]).flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
     }
+    // 存档里有这份就交给体检：`prefs.json` 没了而存档还在，是「被清了」不是「第一次」，
+    // 不能只凭哨兵（哨兵在另一层，可能一起丢了、也可能记着上一个人）。
+    let verdict = prefs.diagnose(nextStorage, owner: profileOwner, synced: archivedSettings != nil)
     let recovery = SettingsRecovery.plan(verdict, onDisk: nextPrefs, baseline: archivedSettings)
     nextPrefs = recovery.prefs
     let claim = try user.flatMap { try files.claimGuest(user: $0.id) }
@@ -445,6 +447,9 @@ import ReviewUI
       search.useStorage(nextStorage)
       review.activate(store: nextReview, client: client)
       gate.leave(); updateStatus()
+      // 换进来的档案里可能有还没分类的自选（访客那几只并进来的、上一次同步装进来没归类的）。
+      // 目录早就到了的话 `setCatalog` 不会再跑一趟，这里补上并回写（审查 D-01）。
+      symbols.classifyArrivals()
       // 档案已经全部就位，宿主现在可以按它重新兑现首屏那几件事。
       onProfileReady()
       // 第一次装这个 app 的人手上是空的：没账号、没自选。给他几条默认自选，
@@ -615,18 +620,17 @@ import ReviewUI
     }
   }
   /// 「盯一个」那条实时活动的推送令牌：服务端拿它按行情推锁屏更新（有 APNs 密钥时）。
+  /// 钉在档案主人身上（`LiveActivityTokens`，审查 D-06）：换了人就不出门。
   func submitActivityToken(_ token: String, activityID: String, alertID: String) {
-    guard let api = account.client, owner != nil else { return }
-    let body: [String: String] = ["token": token, "kind": "liveActivity", "environment": PushRegistration.environment,
-                                  "activityId": activityID, "alertId": alertID]
-    guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
-    Task { _ = try? await api.data("v1/devices/push-token", method: "POST", body: data) }
+    guard let api = account.client, let owner else { return }
+    let tokens = LiveActivityTokens(api: api, owner: owner), environment = PushRegistration.environment
+    Task { try? await tokens.submit(token: token, activityID: activityID, alertID: alertID, environment: environment) }
   }
   /// 活动收起：服务端停止给它推更新、丢掉令牌。
   func endActivity(_ activityID: String) {
-    guard let api = account.client, owner != nil else { return }
-    guard let data = try? JSONSerialization.data(withJSONObject: ["activityId": activityID]) else { return }
-    Task { _ = try? await api.data("v1/devices/live-activity/end", method: "POST", body: data) }
+    guard let api = account.client, let owner else { return }
+    let tokens = LiveActivityTokens(api: api, owner: owner)
+    Task { try? await tokens.end(activityID: activityID) }
   }
   /// 自动同步开没开。登录了就一直同步：原来同步页上有一颗「自动同步」开关（存在
   /// `SyncArchive.autoSync` 里，关掉时状态写「已暂停」），2026-09-28 收掉（收设置项 H）——
@@ -641,9 +645,14 @@ import ReviewUI
     #endif
     return true
   }
+  /// 账号页「还有 N 条没上云」的那个数：同步队列里的操作 + 复盘待传的那几笔。
+  ///
+  /// 只算这一处（审查 D-10）：以前同步失败的那条路自己写了一份只数同步操作的，一失败
+  /// 复盘那几笔就从角标上没了，下一次 `updateStatus()` 又冒回来，数字来回跳。
+  static func pendingCount(operations: Int, reviewUploads: Int) -> Int { operations + reviewUploads }
   private func updateStatus() {
     review.autoSync = Self.automaticSync
-    account.pending = (sync?.archive.operations.count ?? 0) + review.pendingUploads
+    account.pending = Self.pendingCount(operations: sync?.archive.operations.count ?? 0, reviewUploads: review.pendingUploads)
     account.lastSync = sync?.archive.lastSync.map { Date(timeIntervalSince1970: Double($0) / 1000) }
     // 被隔离的那几条要说出来：它们不在 `pending` 里（不会永远挂着归不了零），
     // 但用户的改动确实还没上云——这句就是那件事的唯一交代。
@@ -775,7 +784,7 @@ import ReviewUI
       catch {
         // 被服务端按版本顶回来了：本机这份不再可信，下一轮必须整份重拉。
         if SyncEngine.demandsBootstrap(error) { needsBootstrap = true }
-        if requestEpoch == epoch && taskID == runID { account.pending = sync.archive.operations.count; account.report(sync: error) }
+        if requestEpoch == epoch && taskID == runID { account.pending = Self.pendingCount(operations: sync.archive.operations.count, reviewUploads: review.pendingUploads); account.report(sync: error) }
       }
     }
   }
@@ -904,6 +913,12 @@ import ReviewUI
         if let kept = mergedGroups[prefs.prefs.favoritesGroup] { prefs.update { $0.favoritesGroup = kept } }
         captureSymbols()
       }
+    }
+    // 云端那份自选不带「这只该归哪一类」：别的设备（网页版、老版本）加进来的、或者分类
+    // 刚被删掉的，装进来时挂在「没有分类」或者一个不存在的分类上，分类页上看不见。
+    // 离开保护区再补分类——补完照常回写，云端那份也跟着归好类（审查 D-01）。
+    if symbolsChanged {
+      gate.afterApplying { [weak self] in self?.symbols.classifyArrivals() }
     }
     // 云端那份设置也是「档案换进来了」的一种：周期、落地页这些要跟着重新兑现一次。
     // 它读的只有设置与自选；这两样都没动时不去惊动宿主。

@@ -109,18 +109,6 @@ struct SymbolPickerModelTests {
     #expect(m.sections.map(\.kind) == [.all])
   }
 
-  @Test("左滑删除按分区内下标删对人")
-  func removeFavoritesByOffsets() {
-    let (m, _) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/A1USDT", "binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"]))
-    m.removeFavorites(at: IndexSet(integer: 1))
-    #expect(m.prefs.favorites == ["binance/usd_m/A1USDT", "binance/usd_m/ETHUSDT"])
-    m.removeFavorites(at: IndexSet([0, 1]))
-    #expect(m.prefs.favorites.isEmpty)
-    // 越界不崩
-    m.removeFavorites(at: IndexSet(integer: 9))
-    #expect(m.prefs.favorites.isEmpty)
-  }
-
   @Test("拖排序后落盘，顺序就是自选分区的顺序")
   func reorderPersists() {
     let (m, storage) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT"]))
@@ -129,9 +117,6 @@ struct SymbolPickerModelTests {
     #expect(m.sections.first?.rows.map(\.id) == ["binance/usd_m/SOLUSDT", "binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
     #expect(SymbolPrefsStore(storage: storage, key: "t").load().favorites
       == ["binance/usd_m/SOLUSDT", "binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
-
-    m.moveFavorites(from: IndexSet(integer: 0), to: 3)
-    #expect(m.prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT"])
   }
 
   @Test("点一行：记进最近、落盘、回调宿主（A5.9）")
@@ -313,5 +298,75 @@ struct SymbolPickerModelTests {
     m.removeFavorite("binance/usd_m/BTCUSDT")
     m.undoable { m.restoreFavorites([snapshot]) }()
     #expect(m.prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
+  }
+
+  // MARK: - 审查 D-01：同步 / 换档案进来的自选要补分类并回写
+
+  @Test("云端装进来一只没分类的自选：补进分类、分类页看得见、回写一次")
+  func syncedUnassignedFavoriteGetsClassified() throws {
+    let (m, storage) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"]))
+    let group = try #require(m.prefs.groupForSymbol["binance/usd_m/BTCUSDT"])
+    var pushed: [SymbolPrefs] = []
+    m.onPrefsChange = { pushed.append($0) }
+    // 网页版加的那只：云端那份只有自选、没有归属。
+    m.applySynced(SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"],
+                              groups: m.prefs.groups,
+                              groupForSymbol: ["binance/usd_m/BTCUSDT": group]))
+    #expect(m.prefs.groupForSymbol["binance/usd_m/ETHUSDT"] == nil)
+    #expect(pushed.isEmpty)   // 装进来那一下只存不推
+
+    #expect(m.classifyArrivals())
+    let assigned = try #require(m.prefs.groupForSymbol["binance/usd_m/ETHUSDT"])
+    #expect(m.prefs.favorites(in: assigned).contains("binance/usd_m/ETHUSDT"))
+    #expect(pushed.count == 1)
+    #expect(pushed.last?.groupForSymbol["binance/usd_m/ETHUSDT"] == assigned)
+    #expect(SymbolPrefsStore(storage: storage, key: "t").load().groupForSymbol["binance/usd_m/ETHUSDT"] == assigned)
+
+    // 齐整了再调一次：不改、不推。
+    #expect(!m.classifyArrivals())
+    #expect(pushed.count == 1)
+  }
+
+  @Test("挂在一个已经不存在的分类上的，同样补进一类")
+  func favoriteOnAVanishedGroupGetsClassified() throws {
+    let (m, _) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"]))
+    var pushed = 0
+    m.onPrefsChange = { _ in pushed += 1 }
+    var synced = m.prefs
+    synced.favorites.append("binance/usd_m/SOLUSDT")
+    synced.groupForSymbol["binance/usd_m/SOLUSDT"] = "gone-group"   // 逐字段改，绕过 init 那道清理
+    m.applySynced(synced)
+    #expect(m.classifyArrivals())
+    let assigned = try #require(m.prefs.groupForSymbol["binance/usd_m/SOLUSDT"])
+    #expect(m.prefs.groups.contains { $0.id == assigned })
+    #expect(pushed == 1)
+  }
+
+  @Test("目录还没到：认不出是什么就不动，留给 setCatalog")
+  func classifyArrivalsWaitsForCatalog() {
+    let store = SymbolPrefsStore(storage: MemoryPrefsStorage(), key: "t")
+    store.save(SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"]))
+    let m = SymbolPickerModel(store: store)
+    var pushed = 0
+    m.onPrefsChange = { _ in pushed += 1 }
+    #expect(!m.classifyArrivals())
+    #expect(m.prefs.groupForSymbol["binance/usd_m/BTCUSDT"] == nil)
+    #expect(pushed == 0)
+  }
+
+  // MARK: - 审查 V-1：行情去重按规范化代号查
+
+  @Test("同一份行情换个写法再来一遍，不算变了、不碰 sections")
+  func aliasedQuoteIsNotAChangeTwice() throws {
+    final class Flag: @unchecked Sendable { var hit = false }
+    let (m, _) = make(prefs: SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"]))
+    var btc = try #require(m.ticker(for: "binance/usd_m/BTCUSDT"))
+    btc.symbol = "BTCUSDT"; btc.last += 1
+    m.updateQuotes([btc])
+    #expect(m.ticker(for: "binance/usd_m/BTCUSDT")?.last == btc.last)
+    let touched = Flag()
+    withObservationTracking { _ = m.sections } onChange: { touched.hit = true }
+    m.updateQuotes([btc])
+    #expect(!touched.hit)
   }
 }

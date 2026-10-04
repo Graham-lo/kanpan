@@ -32,6 +32,17 @@ struct HomeShortcutsTests {
     #expect(items.map(\.title) == ["BTC", "ETH", "SOL", "搜索"])
   }
 
+  @Test("撞了币名的几格补上计价与交易所，没撞的照旧只写币名")
+  func collidingBasesAreTold() {
+    let items = HomeShortcuts.build(recents: ["binance/usd_m/BTCUSDT", "binance/usd_m/BTCUSDC", "coinbase/spot/BTC-USD"])
+    #expect(items.map(\.title) == ["BTC/USDT", "BTC/USDC", "BTC/USD Coinbase", "搜索"])
+    let mixed = HomeShortcuts.build(recents: ["binance/usd_m/ETHUSDT", "coinbase/spot/BTC-USD", "binance/usd_m/BTCUSDT"])
+    #expect(mixed.map(\.title) == ["ETH", "BTC/USD Coinbase", "BTC/USDT", "搜索"])
+    // 撞名只看同一屏：第四个起没摆上去的不算。
+    let crowded = HomeShortcuts.build(recents: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", "coinbase/spot/BTC-USD"])
+    #expect(crowded.map(\.title) == ["BTC", "ETH", "SOL", "搜索"])
+  }
+
   @Test("每一格都有 SF Symbol，没有副标题那一档")
   func iconsOnly() {
     let items = HomeShortcuts.build(recents: ["binance/usd_m/BTCUSDT"])
@@ -64,5 +75,21 @@ struct HomeShortcutsTests {
                                   store: SymbolPrefsStore(storage: MemoryPrefsStorage(), key: "t"))
     model.visit("binance/usd_m/ETHUSDT")
     #expect(rounds.last?.map(\.symbol) == ["binance/usd_m/ETHUSDT", nil])
+  }
+
+  @Test("别的设备看过的品种同步进来，桌面那几格跟着换")
+  func syncedRecentsRefreshShortcuts() {
+    HomeShortcuts.reset()
+    var rounds: [[HomeShortcut]] = []
+    HomeShortcuts.apply = { rounds.append($0) }
+    defer { HomeShortcuts.apply = nil; HomeShortcuts.reset() }
+
+    let model = SymbolPickerModel(catalog: SymbolFixtures.catalog,
+                                  store: SymbolPrefsStore(storage: MemoryPrefsStorage(), key: "t"))
+    model.visit("binance/usd_m/ETHUSDT")
+    var synced = model.prefs
+    synced.recents = ["binance/usd_m/SOLUSDT"] + synced.recents
+    model.applySynced(synced)
+    #expect(rounds.last?.map(\.symbol) == ["binance/usd_m/SOLUSDT", "binance/usd_m/ETHUSDT", nil])
   }
 }

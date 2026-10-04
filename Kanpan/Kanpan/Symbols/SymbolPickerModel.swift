@@ -291,7 +291,9 @@ final class SymbolPickerModel {
   }
 
   func updateQuotes(_ batch: [Ticker]) {
-    let changed = batch.filter { tickers[$0.symbol] != $0 }
+    // 表里的键是规范化过的代号（`apply`），按原样的代号去查，大小写 / 前缀不同的那一份
+    // 永远查不到、每批都被当成「变了」整份重走一遍（审查 V-1）。
+    let changed = batch.filter { tickers[InstrumentID.canonical($0.symbol)] != $0 }
     guard !changed.isEmpty else { return }
     apply(changed)
     guard sectionsActive else { return }
@@ -451,18 +453,6 @@ final class SymbolPickerModel {
   func restoreFavorites(_ items: [FavoriteSnapshot]) {
     guard !items.isEmpty else { return }
     prefs.restore(items, fallback: currentGroup)
-    commit()
-  }
-
-  /// 自选分区左滑删除（`onDelete` 给的是分区内下标）。
-  func removeFavorites(at offsets: IndexSet) {
-    let doomed = offsets.compactMap { $0 < prefs.favorites.count ? prefs.favorites[$0] : nil }
-    for s in doomed { prefs.removeFavorite(s) }
-    commit()
-  }
-
-  func moveFavorites(from source: IndexSet, to destination: Int) {
-    prefs.moveFavorites(from: source, to: destination)
     commit()
   }
 
@@ -680,7 +670,27 @@ final class SymbolPickerModel {
   }
   func applySynced(_ value: SymbolPrefs) {
     guard value != prefs else { return }
-    prefs = value; store.save(value); rebuild()
+    prefs = value; store.save(value)
+    // 别的设备看过的品种同步进来，「最近看过」就变了：桌面那几格跟着换，
+    // 不用等这台再看一只才刷新（深度审查 D 线 2026-10-04）。
+    HomeShortcuts.refresh(recents: prefs.recents)
+    rebuild()
+  }
+  /// 档案换进来（登录 / 冷启动装档案时并进访客自选）、云端那份装进来之后，给还没分类
+  /// 的自选补分类，并且**照常回写**（落盘 + 推同步）。
+  ///
+  /// 以前只有 `setCatalog` 那一处会补：目录早就到了的时候，同步进来的、从访客档案并进来的
+  /// 自选一直挂在「没有分类」或者一个已经不存在的分类上——分类页按分类过滤
+  /// （`favorites(in:)`），它们就在自选页上看不见了，云端那份也一直是没分类的（审查 D-01）。
+  ///
+  /// 目录还没到（认不出是什么东西）就什么都不做，留给 `setCatalog`。
+  /// 不能在 `applySynced` 里直接做：那一段在 `ApplyGate` 保护区里，记账一条都产生不了，
+  /// 账号桥把它排在离开保护区之后（`gate.afterApplying`）。
+  @discardableResult
+  func classifyArrivals() -> Bool {
+    guard !catalog.isEmpty, classifyUnassigned() else { return false }
+    commit()
+    return true
   }
 
   private func rebuildFilter() {
