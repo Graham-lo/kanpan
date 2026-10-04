@@ -1399,7 +1399,8 @@ final class DrawingOverlayView: UIView {
   /// 「右端」按线自己的走法定：两端无限延的（水平线、直线、通道）就贴图区右边，
   /// 有头有尾的（趋势线、矩形、回撤）就停在最后一个点上。位置由 `AlertGeometry`
   /// 摊出来的那份几何算——**和会响的那条线是同一份**，不会出现「铃铛画在 A 线上、
-  /// 真正会响的是 B 线」。
+  /// 真正会响的是 B 线」。矩形与回撤的提醒线按水平价位往右延（深度审查 E-1），但图上
+  /// 那块箱子 / 那组刻度只画到右锚点，铃铛仍挂在画出来的右端，不飘到图区右边的空白里。
   ///
   /// 尺寸克制：整枚 7pt 高，只有轮廓，用皮肤的 `ink`。它是一个记号，不是一个按钮。
   private func bells(_ ctx: CGContext, drawings: [Drawing], alerted: Set<String>,
@@ -1409,7 +1410,8 @@ final class DrawingOverlayView: UIView {
     for item in drawings where alerted.contains(item.id) && !item.hidden {
       guard let lines = AlertGeometry.lines(for: item), let line = lines.first else { continue }
       let last = line.points.map(\.t).max() ?? 0
-      let x = line.extendRight ? right - 10 : min(axes.x(last), right - 10)
+      let pinned = line.extendRight && item.kind != .rectangle && item.kind != .fibonacci
+      let x = pinned ? right - 10 : min(axes.x(last), right - 10)
       guard x.isFinite, x > 2, let p = line.price(at: axes.t(atX: x)), p.isFinite else { continue }
       let y = axes.y(p)
       guard y.isFinite, y > axes.pane.y, y < axes.pane.y + axes.pane.h else { continue }
