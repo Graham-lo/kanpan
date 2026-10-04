@@ -168,6 +168,7 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   public func sameContent(as other: OrderFlowSnapshot) -> Bool {
     guard symbol == other.symbol, phase == other.phase, thresholds == other.thresholds, defaults == other.defaults,
           venues == other.venues, orders.count == other.orders.count else { return false }
+    if orders.sharesStorage(with: other.orders) { return true }
     return zip(orders, other.orders).allSatisfy { BigOrder.samePixels($0, $1) }
   }
 

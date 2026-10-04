@@ -59,13 +59,35 @@ extension BigOrder {
     RenderKey(id: id, status: status, endMs: endMs, bucket: bucket, price: price, threshold: threshold,
               quarters: thicknessQuarters, hasFill: hasFill)
   }
+
+  /// 逐项比 `renderKey` 那几项，但不拼 `id` 字符串（`id` 是现拼的「venue|side|bucket|firstSeen」，
+  /// 一单两次字符串插值；图表每帧都要拿它比一遍整份快照，BTC 两千多单时拼字符串是大头，见 `sameRender(as:)`）。
+  /// `id` 的四个组成项逐个相等就一定拼出同一个 `id`，所以这比 `renderKey ==` 只会更严、不会放过真变化。
+  public static func sameRender(_ a: BigOrder, _ b: BigOrder) -> Bool {
+    a.firstSeenMs == b.firstSeenMs && a.bucket == b.bucket && a.side == b.side && a.status == b.status
+      && a.endMs == b.endMs && a.price == b.price && a.threshold == b.threshold
+      && a.thicknessQuarters == b.thicknessQuarters && a.hasFill == b.hasFill && a.venueID == b.venueID
+  }
+}
+
+extension Array where Element == BigOrder {
+  /// 两份单子是不是同一块存储（值语义拷贝出来、谁都没改过）——是就不用逐单比。O(1)。
+  /// 和标准库 `Array.==` 开头那一步同一个道理，只是 `==` 比的是精确值、这里要给「画出来一样」这类粗比较用。
+  func sharesStorage(with other: [BigOrder]) -> Bool {
+    guard count == other.count, !isEmpty else { return count == other.count }
+    return withUnsafeBufferPointer { a in other.withUnsafeBufferPointer { b in a.baseAddress == b.baseAddress } }
+  }
 }
 
 extension OrderFlowSnapshot {
-  /// 图上画出来一样：每一单只比 `BigOrder.renderKey`（比 `sameContent` 粗，图表决定要不要重画底图用）。
+  /// 图上画出来一样：每一单只比 `BigOrder.renderKey` 那几项（比 `sameContent` 粗，图表决定要不要重画底图用）。
+  /// 图表 `ChartView.changed(from:to:)` 每次 state 一变就调一次——甩动时每帧一次——所以这里不许拼字符串、
+  /// 快照没换时不许逐单走（2026-10-04 深度审查 F 线：BTC 1m 两千四百单时它占甩动帧主线程约 8%）。
   public func sameRender(as other: OrderFlowSnapshot) -> Bool {
     guard symbol == other.symbol, phase == other.phase, thresholds == other.thresholds, defaults == other.defaults,
           venues == other.venues, orders.count == other.orders.count else { return false }
-    return zip(orders, other.orders).allSatisfy { $0.renderKey == $1.renderKey }
+    // 图表每一帧（拖、捏、甩）都要问一次；快照没换时两边是同一块存储，直接算一样。
+    if orders.sharesStorage(with: other.orders) { return true }
+    return zip(orders, other.orders).allSatisfy { BigOrder.sameRender($0, $1) }
   }
 }
