@@ -376,6 +376,7 @@ final class MarketModel {
     pump?.cancel()
     pump = nil
     linkSweep?.cancel(); linkSweep = nil
+    cancelPrefetches()
     // 关图：订单流停下时会落一次盘（`OrderFlowFeed.stop`），这一步可能正赶上场景断开、进程随后被挂起，
     // 所以先把它这条落完再还额度。
     withSaveGrace { [feed] in await feed.stop() }
@@ -386,6 +387,7 @@ final class MarketModel {
     trackLink()
     updateMicrostructure()
     statsTask?.cancel(); statsTask = nil     // 后台不轮询持仓量
+    cancelPrefetches()
     // 进后台：停订单流并等它把日志落完盘（`RoutedMarketFeed.enterBackground` 会 await 到落盘结束）。
     // 原来这里只起一个 Task 就走：共用的 27 秒额度（`BackgroundGrace`，主屏那一份）一回前台就还，
     // 两份额度谁先到谁说了算；这段自己要一份，落完就还（订单簿压测第二轮 7）。
@@ -416,6 +418,23 @@ final class MarketModel {
     Task { [feed] in await feed.enterForeground() }
   }
   func memoryWarning() { Task { [feed] in await feed.memoryWarning() } }
+
+  /// 扫图邻居、列表露面行、换品种后补热其余周期这三摊「慢半拍再发」的预取。
+  ///
+  /// 它们各自先睡 300 ms ~ 2.5 s 再发请求，睡醒只看 `Task.isCancelled`：原来进后台、
+  /// 关图（`stop`）都不收它们，于是刚扫一只就按 Home、或者场景刚断开，睡醒的那一摊
+  /// 照样去拉 K 线快照（`feed.prewarm` 自己不认前后台）；列表那份待办也留着，
+  /// 回前台后被下一行露面捎带着，把后台之前滚过去的行一起问一遍。
+  private func cancelPrefetches() {
+    neighborTask?.cancel(); neighborTask = nil
+    listStatsTask?.cancel(); listStatsTask = nil
+    listStatsPending.removeAll()
+    oiWarmLater?.cancel(); oiWarmLater = nil
+    fundingRollover?.cancel(); fundingRollover = nil
+  }
+
+  /// 用例看「慢半拍的预取还挂着没有」。
+  var prefetchInFlight: Bool { neighborTask != nil || listStatsTask != nil || oiWarmLater != nil }
 
   // ---------------------------------------------------------------- 事件
 
@@ -693,6 +712,38 @@ final class MarketModel {
     let next = row.nextFundingTimeMs.flatMap { $0 > nowMs ? $0 : nil }
     funding = MarkPriceTick(timeMs: rowMs, fundingRate: row.rate, nextFundingTimeMs: next)
     sweepDisplayLifetimes()
+    if !caps.hasMarkPrice, let next { scheduleFundingRollover(sym, at: next) }
+  }
+
+  /// 没有标记价流的线路（网关上的 OKX 替身）：结算时刻一到就重拉一次整表。
+  ///
+  /// 那条线路上「结算」那格只靠簿。原来要等持仓轮询那一圈（45 秒一圈、簿一分钟才算旧）
+  /// 才续上，结算过后最多一分半里那格按 `HeaderStats.fundingPeriod` 的八小时往后滚——
+  /// 四小时、一小时一结的品种就倒数出一个错的时刻。到点就问，间隙只剩交易所翻表那两秒。
+  @ObservationIgnored private var fundingRollover: Task<Void, Never>?
+
+  private func scheduleFundingRollover(_ sym: String, at nextMs: Int64) {
+    fundingRollover?.cancel()
+    guard let wait = Self.fundingRolloverDelay(nextMs: nextMs) else { fundingRollover = nil; return }
+    fundingRollover = Task { [weak self] in
+      try? await Task.sleep(for: wait)
+      guard !Task.isCancelled, let self, self.foreground, self.symbol == sym,
+            self.funding?.nextFundingTimeMs == nextMs else { return }
+      self.fundingRollover = nil
+      FundingBook.shared.refreshIfStale(provider: self.resolver.provider(forSymbol: sym), maxAge: 0) { [weak self] in
+        self?.seedFunding(for: sym)
+      }
+    }
+  }
+
+  /// 结算后再等这么久才问：交易所翻表要一两秒，问早了拿回来的还是刚过去的那个时刻。
+  static let fundingRolloverLag: TimeInterval = 3
+
+  /// 离「结算时刻 + 翻表余量」还有多久；太远（超过一期的四倍，帧本身已经不可信）不排。
+  static func fundingRolloverDelay(nextMs: Int64, now: Date = Date()) -> Duration? {
+    let wait = Double(nextMs) / 1000 - now.timeIntervalSince1970 + fundingRolloverLag
+    guard wait.isFinite, wait > 0, wait < HeaderStats.fundingPeriod * 4 else { return nil }
+    return .milliseconds(Int64(wait * 1000))
   }
 
   /// 这一只所在那家的费率簿比 `FundingBook.refreshEvery` 旧就拉整表，表可用之后再垫一次。
@@ -722,7 +773,7 @@ final class MarketModel {
     let iv = interval, warmSnapshots = snapshot
     neighborTask = Task { [weak self, feed] in
       try? await Task.sleep(for: .milliseconds(400))
-      guard !Task.isCancelled, let self else { return }
+      guard !Task.isCancelled, let self, self.foreground else { return }
       self.warmOI(syms.map { (symbol: $0, interval: iv) })
       if warmSnapshots { await feed.prewarm(symbols: syms, interval: iv, slot: "neighbors") }
       await self.prefetchHeaderStats(syms)
@@ -737,14 +788,12 @@ final class MarketModel {
   /// `listStatsLimit` 只（一屏的量）。持仓量一分钟、供应量半天、费率整表一分钟内
   /// 取过的都不再问（各自的缓存判），所以来回滚动不会一直发请求。
   func prefetchListStats(_ symbols: [String]) {
-    for sym in symbols.map({ InstrumentID.canonical($0) }) where !sym.isEmpty && !listStatsPending.contains(sym) {
-      listStatsPending.append(sym)
-    }
+    listStatsPending = Self.enqueueListStats(listStatsPending, symbols.map { InstrumentID.canonical($0) })
     guard listStatsTask == nil, !listStatsPending.isEmpty, foreground else { return }
     listStatsTask = Task { [weak self] in
       try? await Task.sleep(for: .milliseconds(300))
       guard let self, !Task.isCancelled else { return }
-      let batch = Array(self.listStatsPending.prefix(Self.listStatsLimit))
+      let batch = Self.listStatsBatch(self.listStatsPending)
       self.listStatsPending.removeAll()
       self.listStatsTask = nil
       // 持仓量副图那条线也先取（副图开着时）：不然点进去顶栏齐了，副图还要「加载中」一秒。
@@ -754,7 +803,25 @@ final class MarketModel {
   }
 
   /// 一屏列表的量。再多就是滚过去没停下来看的行，不值得替它们发请求。
-  private static let listStatsLimit = 16
+  static let listStatsLimit = 16
+
+  /// 露面的行按「最近一次露面」排进待办：已经在里头的挪到队尾。
+  static func enqueueListStats(_ pending: [String], _ symbols: [String]) -> [String] {
+    var next = pending
+    for sym in symbols where !sym.isEmpty {
+      next.removeAll { $0 == sym }
+      next.append(sym)
+    }
+    return next
+  }
+
+  /// 这一批问哪几只：最后露面的那一屏。
+  ///
+  /// 原来取的是待办的**前** 16 只——300 ms 里一路滑过几十行时，前头那些正是「滚过去
+  /// 没停下来看的行」，停下来那一屏反倒被截掉，点进去顶栏照样先画「—」。
+  static func listStatsBatch(_ pending: [String]) -> [String] {
+    Array(pending.suffix(listStatsLimit))
+  }
 
   /// 顶栏那几格的数：费率整表（按这批品种各自那一家，各问一次）、供应量一批一次、
   /// 持仓量按各家口径并发。都是只读、带缓存的——已经够新的不会再问。
@@ -1356,6 +1423,21 @@ final class MarketModel {
     sweepDisplayLifetimes()
   }
 
+  /// 目录查回来的那一行盖到手里这份 `info` 上时，「交易所答不出这个代号」那一条不许被盖掉。
+  ///
+  /// `noteSymbolRejected` 是同步把 `info` 翻成下架、再起一个 Task 去目录里记一笔。
+  /// 这之前已经在路上的 `refreshInfo`（目录查不到时要整表重拉，一等好几秒）回来时
+  /// 带的还是「交易中」那一行，原来照单全收：顶栏刚灰下去又亮回来，已下架的合约
+  /// 又摆出一副实时价的样子，直到下一次换品种。换品种时 `info` 会整份换成新品种的，
+  /// 所以这条只管「同一只、这一趟」。
+  static func keepingRejection(_ found: SymbolInfo, over current: SymbolInfo) -> SymbolInfo {
+    guard current.status == .delisted, found.status != .delisted,
+          InstrumentID.canonical(current.symbol) == InstrumentID.canonical(found.symbol) else { return found }
+    var value = found
+    value.status = .delisted
+    return value
+  }
+
   private func refreshInfo() async {
     let want = symbol
     // 进一张图就是「用户点名了这个品种」：表里没有它（刚上市的新合约）时允许为他
@@ -1366,15 +1448,16 @@ final class MarketModel {
     }
     guard want == symbol else { return }
     infoOwed = false
+    let row = Self.keepingRejection(found, over: info)
     // 小数位只认第一次：见 `lockedPrecision`。
     if let locked = lockedPrecision[want] {
-      var value = found
+      var value = row
       value.pricePrecision = locked.precision
       value.tickSize = locked.tick
       info = value
     } else {
-      lockedPrecision[want] = (found.pricePrecision, found.tickSize)
-      info = found
+      lockedPrecision[want] = (row.pricePrecision, row.tickSize)
+      info = row
     }
     // 主力订单流只认品种表里的这一份（切品种时顶上的占位信息资产类型、步长都是猜的，
     // 拿它起的簿不会因为真信息到了再重起一遍）。开着指标时顺手再催一次行情流：
