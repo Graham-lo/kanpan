@@ -10,8 +10,9 @@
  */
 import { EMPTY_HISTORY, accepts, decodeHistory, historyRetryDelay } from './aggregate'
 import type { SectorHistory } from './aggregate'
+import { SECTOR_HISTORY_KEY } from '../util/storage'
 
-const KEY = 'hkline-web-sector-history-v1'
+const KEY = SECTOR_HISTORY_KEY
 const URL = `${import.meta.env.BASE_URL.replace(/\/web\/$/, '/')}v1/market/sector-history`
 const HOUR_MS = 3_600_000
 

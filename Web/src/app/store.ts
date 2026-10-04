@@ -10,6 +10,7 @@ import type { VpvrMode } from '../chart/overlays'
 import type { NoteDraft } from '../notes/draft'
 import { DEFAULT_WATCH, INTERVALS, type Kind } from '../market/symbols'
 import { IV_MS } from '../util/format'
+import { setItemMakingRoom } from '../util/storage'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
 
 export type Theme = 'light' | 'dark'
@@ -361,13 +362,16 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') back() })
 }
 
+const fullSubs = new Set<() => void>()
+/** 本机存储清掉可让位的缓存后仍写不下主存档：每次写失败都叫（调用方自己决定提示几次） */
+export function onStorageFull(fn: () => void): () => void { fullSubs.add(fn); return () => { fullSubs.delete(fn) } }
+
 function write(): void {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(st)) if (!TRANSIENT.includes(k as keyof State)) out[k] = v
-  try {
-    localStorage.setItem(WRITER_KEY, JSON.stringify({ at: touchedAt }))
-    localStorage.setItem(KEY, JSON.stringify(out))
-  } catch { /* 存储满了就不存 */ }
+  // 先记写的人再写主存档：别的页收到主存档的 storage 事件时要读得到这次的时刻（WRITER_KEY 自己的事件不看）
+  setItemMakingRoom(WRITER_KEY, JSON.stringify({ at: touchedAt }))
+  if (!setItemMakingRoom(KEY, JSON.stringify(out))) fullSubs.forEach(fn => fn())
 }
 
 export function save(): void {

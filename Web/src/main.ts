@@ -1,11 +1,11 @@
 /* Hkline Web · 入口 */
 import './styles/app.css'
 import './styles/workbench.css'
-import { st, save } from './app/store'
+import { st, save, onStorageFull } from './app/store'
 import { applyQueryTo, strippedUrl } from './app/query'
 import { installShell, applyTheme, renderHeader, go } from './app/shell'
 import { hydrateIcons } from './ui/dom'
-import { installTooltips } from './ui/overlay'
+import { installTooltips, toast } from './ui/overlay'
 import { setRoute } from './market'
 import { initChart } from './pages/chart'
 import { initSectors } from './pages/sectors'
@@ -29,6 +29,9 @@ resume()
 renderHeader()
 installShell()
 installTooltips()
+// 本机存储满到清掉缓存也写不下：改动只在这一页内存里，关掉就没了，得让人知道（一页只提示一次）
+let fullWarned = false
+onStorageFull(() => { if (!fullWarned) { fullWarned = true; toast('本机存储已满', '这次的改动没能存进这台电脑', 'info', 8000) } })
 setRoute(st.route)
 initSectors()
 initReview()

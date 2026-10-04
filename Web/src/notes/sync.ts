@@ -17,8 +17,9 @@ import { st, save, type Note } from '../app/store'
 import { readStored } from '../account/client'
 import { onSession, session } from '../account/session'
 import { reviewApi, reviewToken, ReviewError, errorText } from '../review/api'
+import { NOTE_SHOTS_KEY } from '../util/storage'
 
-const SHOT_KEY = 'hkline-note-shots'
+const SHOT_KEY = NOTE_SHOTS_KEY
 /** 本机最多压几张没传上去的图（每张一两百 KB，localStorage 一共约 5 MB） */
 const MAX_SHOTS = 6
 
