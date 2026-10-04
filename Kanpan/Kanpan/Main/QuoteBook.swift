@@ -656,6 +656,13 @@ final class QuoteBook {
     if !favoritesKnown { wanted.formUnion(raw.keys) }
     if raw.keys.contains(where: { !wanted.contains($0) }) { raw = raw.filter { wanted.contains($0.key) } }
     latestReceived = latestReceived.filter { wanted.contains($0.key) }
+    // 值裁掉了，「什么时候收到的」「什么时候去问过」也得跟着裁。原来只裁值：搜索列表里露过一眼的
+    // 品种（列表那会儿刚去问过一次 REST），一收搜索页就被裁掉，紧接着点进图里重新挂上——
+    // `requestQuote` 看见「20 秒内问过」不发、`wantsQuote` 看见「刚收到过」也不发，
+    // 头一笔逐笔成交拼出来的是一格没有 24h 统计的价，顶栏涨跌和「额」一排「—」要等二十来秒
+    // （深度审查 G 线走查，1000PEPE / 1000SHIB 从搜索点进）。
+    receivedAt = receivedAt.filter { wanted.contains($0.key) }
+    quoteAttempt = quoteAttempt.filter { wanted.contains($0.key) }
     onScopeChange?(wanted)
     for symbol in Array(jobs.keys) where !wanted.contains(symbol) { jobs.removeValue(forKey: symbol)?.cancel() }
     queue.formIntersection(wanted)

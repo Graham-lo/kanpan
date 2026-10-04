@@ -121,13 +121,24 @@ final class ChartSession {
       }
       return own
     }
-    if let quote = chartQuote { return quote }
     // MarketModel already receives the venue ticker frames as part of the
     // chart feed. Use that value immediately instead of waiting for the
     // separate list QuoteBook to open another socket.
     // 两路都还没到（从板块列表 / 搜索点进一只没看过的品种）：退到全市场 24h 那一份
     // 种子——几秒前的价，也比顶栏一排「—」强，真行情一到就被盖掉。
-    return market.ticker ?? quotes.seeded(market.symbol)
+    return Self.headerTicker(book: chartQuote, feed: market.ticker, seed: quotes.seeded(market.symbol))
+  }
+
+  /// 顶栏用哪一份：报价簿那格优先（它和自选表同一口价）；但那格要是还只是逐笔成交拼出来的价
+  /// （还没收到 24h 统计，涨跌额是空的、成交额是 NaN），不能拿它盖掉图那条流自己收到的
+  /// 24h 统计帧——那样顶栏涨跌和「额」是一排「—」，统计明明就在手边（深度审查 G 线走查：
+  /// 从搜索点进 1000PEPE，`market.ticker` 早有统计，报价簿那格的 REST 补统计被挡了二十来秒）。
+  /// 这时用图那份统计，价取两边更新的那口（和 `QuoteBook.overlay` 同一个平移算法）。
+  static func headerTicker(book: Ticker?, feed: Ticker?, seed: Ticker?) -> Ticker? {
+    guard let book else { return feed ?? seed }
+    guard book.priceChange == nil, let feed, feed.priceChange != nil,
+          InstrumentID.canonical(feed.symbol) == InstrumentID.canonical(book.symbol) else { return book }
+    return LatestQuote.accepts(book, after: feed) ? QuoteBook.overlay(book, on: feed) : feed
   }
 
   /// 报价簿里图上这只的那一格。先读被观察的镜像（`QuoteBook.chartQuote`）；
