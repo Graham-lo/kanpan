@@ -17,6 +17,15 @@
  * 每条连接各自判活：断了按 1 s、2 s、4 s … 最长 15 s 退避（退避期间不开新连接，已连着的照常订）；
  * 连上 8 秒一帧都没有、或中途静默 30 秒，也当断线处理。
  * 页面隐藏时只留「核心」几路（当前图表的 K 线与行情、提醒），回到前台再补回来。
+ *
+ * 对上游的三条硬规矩（违反一条，整条连接被对面掐掉、里面的每一路一起断）：
+ *   - 流名先过闸：网关 stream_hub 的 STREAM 正则只认小写 ASCII / 非 ASCII 字母数字的品种段（龙虾usdt 可以，
+ *     Coinbase 的 btc-usd 不行），握手 URL 里混一个不认的就是 400、订阅消息里混一个就是 1008 断开；
+ *     手机网页自选 / 提醒里可以有 Coinbase 现货，这些名字从不发出去（validStream）。
+ *   - 控制消息限速：网关每条连接 4 条/秒（突发 16），币安每条连接每秒 10 条，超了直接断。
+ *     每条连接一个令牌桶，桶空时这次对账往后挪、到点按那一刻的名单合并成一次发（reconcile）。
+ *   - 订阅回执按 id 对账：发出去的 SUBSCRIBE / UNSUBSCRIBE 记在 pending 里，回执是 error 的那批订阅
+ *     记成「被拒」，不再占位、不再重发，也不再让首帧看门狗为它们等帧（被拒的订阅永远不会来帧）。
  */
 import type { Bar } from '../chart/calc'
 import { S, emit, type Route } from './state'
@@ -35,6 +44,19 @@ export const PER_CONN: Record<Route, number> = { direct: 200, gateway: 64 }
 export const TOTAL: Record<Route, number> = { direct: 1000, gateway: 160 }
 const FIRST_FRAME_MS = 8000
 const SILENCE_MS = 30000
+/** 每条连接的控制消息令牌桶：网关 3/s 突发 12（stream_hub 每条 4/s 突发 16、同一 IP 16/s 突发 64，三条连接也不越线）；
+ *  直连 4/s 突发 4（币安每条连接每秒 10 条，桶满时任何 1 秒窗口里最多 8 条） */
+export const CONTROL: Record<Route, { rate: number; burst: number }> = { direct: { rate: 4, burst: 4 }, gateway: { rate: 3, burst: 12 } }
+
+/** 网关 stream_hub.py 的 STREAM 正则（`[a-z0-9_]` 或非 ASCII 的 \w，1–30 个，再接认得的流类型）。
+ *  Python 的 str \w = 字母（L*）、数字（N*）与下划线，这里用 \p{L}\p{N} 对上 */
+const HUB_STREAM = /^(?:(?:[a-z0-9_]|(?![\x00-\x7f])[\p{L}\p{N}_]){1,30}@(?:ticker|markPrice@1s|aggTrade|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)$/u
+/** 直连：币安合约的流名形状（品种段同上，流类型放宽到币安自己的全部写法，不在这里卡类型） */
+const BINANCE_STREAM = /^(?:(?:[a-z0-9_]|(?![\x00-\x7f])[\p{L}\p{N}_]){1,40}@[A-Za-z0-9_@]+|![A-Za-z0-9_@]+)$/u
+/** 这条线路上的上游认不认这个流名；不认的从不发出去（发出去对面会把整条连接掐掉） */
+export function validStream(name: string, route: Route): boolean {
+  return (route === 'gateway' ? HUB_STREAM : BINANCE_STREAM).test(name)
+}
 
 function gatewayURL(): string | null {
   if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol)) return null
@@ -78,6 +100,12 @@ interface Conn {
   want: string[]
   /** 这条连接上真正订着的 */
   subscribed: Set<string>
+  /** 发出去还没回执的控制消息：id → 那一条的方法与流名 */
+  pending: Map<number, { method: 'SUBSCRIBE' | 'UNSUBSCRIBE'; params: string[] }>
+  /** 令牌桶 */
+  tokens: number
+  tokAt: number
+  ctlTimer: ReturnType<typeof setTimeout> | null
   gotFrame: boolean
   last: number
   firstTimer: ReturnType<typeof setTimeout> | null
@@ -86,6 +114,8 @@ interface Conn {
 let conns: Conn[] = []
 let all: string[] = []
 let core: string[] = []
+/** 上游用 error 回执明确拒掉的流（本线路内不再订；换线路清空） */
+const rejected = new Set<string>()
 let msgId = 1
 let retry = 0
 /** 断线退避：这之前不开新连接 */
@@ -99,9 +129,11 @@ function offline(): boolean { return typeof navigator !== 'undefined' && navigat
 function hidden(): boolean { return typeof document !== 'undefined' && document.visibilityState === 'hidden' }
 /** 这一刻该订的：隐藏时只留核心；超出总上限时核心优先 */
 function effective(): string[] {
-  if (hidden()) return core.slice(0, TOTAL[S.route])
-  const c = new Set(core)
-  return [...core.filter(x => all.includes(x)), ...all.filter(x => !c.has(x))].slice(0, TOTAL[S.route])
+  const route = S.route
+  const ok = (x: string) => !rejected.has(x) && validStream(x, route)
+  if (hidden()) return core.filter(ok).slice(0, TOTAL[route])
+  const c = new Set(core), a = new Set(all)
+  return [...core.filter(x => a.has(x)), ...all.filter(x => !c.has(x))].filter(ok).slice(0, TOTAL[route])
 }
 
 /** all：前台要订的全部；core：页面隐藏时仍保留的 */
@@ -150,33 +182,79 @@ function apply(): void {
 
 function reconcile(c: Conn): void {
   if (c.sock.readyState !== WebSocket.OPEN) return   // 连上后 onopen 会对账
+  if (c.ctlTimer) return                             // 桶空着、已经约好了下一次：到点按那一刻的名单一起发
   const want = new Set(c.want)
-  const add = c.want.filter(x => !c.subscribed.has(x))
+  const add = c.want.filter(x => !c.subscribed.has(x) && !rejected.has(x))
   const del = [...c.subscribed].filter(x => !want.has(x))
-  if (del.length) { c.sock.send(JSON.stringify({ method: 'UNSUBSCRIBE', params: del, id: msgId++ })); del.forEach(x => c.subscribed.delete(x)) }
-  if (add.length) { c.sock.send(JSON.stringify({ method: 'SUBSCRIBE', params: add, id: msgId++ })); add.forEach(x => c.subscribed.add(x)) }
+  const need = (del.length ? 1 : 0) + (add.length ? 1 : 0)
+  if (!need) return
+  const { rate, burst } = CONTROL[S.route]
+  const now = Date.now()
+  c.tokens = Math.min(burst, c.tokens + (now - c.tokAt) * rate / 1000); c.tokAt = now
+  if (c.tokens < need) {
+    const wait = Math.ceil((need - c.tokens) * 1000 / rate)
+    c.ctlTimer = setTimeout(() => { c.ctlTimer = null; if (conns.includes(c)) reconcile(c) }, wait)
+    return
+  }
+  c.tokens -= need
+  if (del.length) control(c, 'UNSUBSCRIBE', del)
+  if (add.length) control(c, 'SUBSCRIBE', add)
+}
+
+function control(c: Conn, method: 'SUBSCRIBE' | 'UNSUBSCRIBE', params: string[]): void {
+  const id = msgId++
+  c.pending.set(id, { method, params })
+  c.sock.send(JSON.stringify({ method, params, id }))
+  // 乐观记账：回执是 error 时再按 pending 回滚
+  if (method === 'SUBSCRIBE') params.forEach(x => c.subscribed.add(x))
+  else params.forEach(x => c.subscribed.delete(x))
+}
+
+/** 控制消息的回执：成功就销账；SUBSCRIBE 被拒的那批记成被拒、从订阅里拿掉，首帧看门狗不再为它们等 */
+function onReply(c: Conn, id: number, error: unknown): void {
+  const p = c.pending.get(id)
+  if (!p) return
+  c.pending.delete(id)
+  if (!error || p.method !== 'SUBSCRIBE') return
+  for (const x of p.params) { rejected.add(x); c.subscribed.delete(x) }
+  c.want = c.want.filter(x => !rejected.has(x))
+  if (!c.gotFrame && !c.subscribed.size) settleQuiet(c)
+}
+
+/** 这条连接上已经没有在等帧的订阅（全被拒 / 全撤了）：首帧看门狗收掉，不再把它当「连上了却不来帧」 */
+function settleQuiet(c: Conn): void {
+  if (c.firstTimer) { clearTimeout(c.firstTimer); c.firstTimer = null }
+  c.gotFrame = true   // 没有可等的帧了：不再算「还没来首帧」，也不让它把连接点一直钉在红色
+  if (failed && conns.every(x => x.gotFrame)) { failed = false; paint() }
 }
 
 function open(url: string, want: string[]): void {
+  const { burst } = CONTROL[S.route]
   const sock = new WebSocket(`${url}?streams=${want.join('/')}`)
-  const c: Conn = { sock, url, want, subscribed: new Set(want), gotFrame: false, last: Date.now(), firstTimer: null }
+  const c: Conn = { sock, url, want, subscribed: new Set(want), pending: new Map(), tokens: burst, tokAt: Date.now(), ctlTimer: null, gotFrame: false, last: Date.now(), firstTimer: null }
   conns.push(c)
   sock.onopen = () => {
     if (!conns.includes(c)) return
     reconcile(c)
-    c.firstTimer = setTimeout(() => { if (conns.includes(c) && !c.gotFrame) fail(c) }, FIRST_FRAME_MS)
+    // 首帧窗口只等还订着的（被拒的永远不会来帧）；到点时一路都没订着就不算失败
+    c.firstTimer = setTimeout(() => { c.firstTimer = null; if (conns.includes(c) && !c.gotFrame && c.subscribed.size) fail(c) }, FIRST_FRAME_MS)
     paint()
   }
   sock.onmessage = ev => {
     if (!conns.includes(c)) return
+    c.last = S.lastMsg = Date.now()
+    let m: Frame
+    try { m = JSON.parse(String(ev.data)) } catch { return }
+    if (!m || typeof m !== 'object') return
+    // 控制消息回执（{result:null,id} / {error:{…},id}）只用来对账，不算「上游在来帧」
+    if (!m.stream && ('result' in m || 'error' in m)) { if (typeof m.id === 'number') onReply(c, m.id, m.error); return }
     if (!c.gotFrame) {
       c.gotFrame = true
       if (c.firstTimer) { clearTimeout(c.firstTimer); c.firstTimer = null }
       retry = 0; blockedUntil = 0
       if (failed && conns.every(x => x.gotFrame)) { failed = false; paint() }
     }
-    c.last = S.lastMsg = Date.now()
-    handle(ev.data)
+    handle(m)
   }
   sock.onclose = () => { if (conns.includes(c)) fail(c) }
   sock.onerror = () => { /* onclose 会跟着来 */ }
@@ -189,6 +267,7 @@ function open(url: string, want: string[]): void {
 /** 收掉一条连接（不算断线） */
 function drop(c: Conn): void {
   if (c.firstTimer) { clearTimeout(c.firstTimer); c.firstTimer = null }
+  if (c.ctlTimer) { clearTimeout(c.ctlTimer); c.ctlTimer = null }
   conns = conns.filter(x => x !== c)
   const s = c.sock
   s.onclose = null; s.onmessage = null; s.onopen = null
@@ -242,11 +321,9 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 }
 
 // ------------------------------------------------------------ 消息
-interface Frame { stream?: string; data?: Record<string, unknown>; result?: unknown; id?: number }
+interface Frame { stream?: string; data?: Record<string, unknown>; result?: unknown; error?: unknown; id?: number }
 
-function handle(raw: unknown): void {
-  let m: Frame
-  try { m = JSON.parse(String(raw)) } catch { return }
+function handle(m: Frame): void {
   const d = (m.data || m) as Record<string, any>
   if (!d || typeof d !== 'object' || !d.e) return
   switch (d.e) {
@@ -297,6 +374,7 @@ export function setRoute(route: Route): void {
   if (S.route === route) return
   S.route = route
   for (const c of conns.slice()) drop(c)
+  rejected.clear()
   failed = false
   reconnectNow()
 }
