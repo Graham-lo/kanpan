@@ -39,7 +39,7 @@ export function vpvr(bars: Bar[], from: number, to: number, rowCount: number, va
   from = Math.max(0, from); to = Math.min(bars.length - 1, to)
   if (to < from || rowCount < 1) return null
   let lo = Infinity, hi = -Infinity
-  for (let i = from; i <= to; i++) { const b = bars[i]; if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h }
+  for (let i = from; i <= to; i++) { const b = bars[i]; if (Number.isFinite(b.l) && b.l < lo) lo = b.l; if (Number.isFinite(b.h) && b.h > hi) hi = b.h }
   if (!isFinite(lo) || !isFinite(hi)) return null
   const n = Math.max(1, Math.round(rowCount))
   if (hi <= lo) hi = lo + Math.max(Math.abs(lo) * 1e-6, 1e-12)
@@ -48,7 +48,8 @@ export function vpvr(bars: Bar[], from: number, to: number, rowCount: number, va
   const rowOf = (p: number) => Math.min(n - 1, Math.max(0, Math.floor((p - lo) / step)))
   const spread = (b: Bar) => {
     const v = b.v
-    if (!(v > 0)) return
+    // 坏量、坏价不摊：一根 Infinity 会让每一行和总量都变 Infinity，整张分布图画不出来
+    if (!(v > 0) || !Number.isFinite(v) || !Number.isFinite(b.l) || !Number.isFinite(b.h)) return
     const buy = b.tb != null && isFinite(b.tb) ? Math.min(v, Math.max(0, b.tb)) : v / 2, sell = v - buy
     const r0 = rowOf(b.l), r1 = rowOf(b.h), span = b.h - b.l
     if (r0 === r1 || span <= 0) { rows[r0].buy += buy; rows[r0].sell += sell; return }

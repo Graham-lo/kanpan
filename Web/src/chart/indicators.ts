@@ -66,33 +66,53 @@ export function barDelta(b: Bar): number {
 }
 
 // ------------------------------------------------------------ VWAP
-/** VWAP 的锚：一小时以下按天（上海 8:00 = UTC 0 点换日，和日线一致）、一天以下按周、日线按月、再往上按年 */
+const DAY = 864e5
+/** UTC 月序号（年 × 12 + 月），整数算术不走 Date（同手机网页 utcMonthIndex 的口径；结果只用来比相等） */
+function monthIndex(t: number): number {
+  const z = Math.floor(t / DAY) + 719468, era = Math.floor(z / 146097), doe = z - era * 146097
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365)
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100)), mp = Math.floor((5 * doy + 2) / 153)
+  const m = mp < 10 ? mp + 3 : mp - 9
+  return (yoe + era * 400 + (m <= 2 ? 1 : 0)) * 12 + m
+}
+/** VWAP 的锚（累计从哪儿归零），三端同一张表（iOS startsAnchorPeriod、手机网页 m/indicator/engine.ts）：
+ *  一天以下的周期按 UTC 日（上海 8:00 换日，和日线一致）、一周以下（日线、三日线）按自然月、
+ *  一年以下（周线、月线）按自然年、再往上不归零。同一套指标参数跟人走、各端同步，同一根 K 线上的数就得一样。
+ *  返回值只拿来比相等：同一段的根返回同一个数。纯算术——每次重算每根都要调一次 */
 export function vwapAnchor(t: number, iv: number): number {
-  const d = new Date(t)
-  if (iv < 36e5) return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-  if (iv < 864e5) { const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); return day - ((d.getUTCDay() + 6) % 7) * 864e5 }
-  if (iv < 2 * 864e5) return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)
-  return Date.UTC(d.getUTCFullYear(), 0, 1)
+  if (iv < DAY) return Math.floor(t / DAY) * DAY
+  if (iv < 7 * DAY) return monthIndex(t)
+  if (iv < 365 * DAY) return Math.floor((monthIndex(t) - 1) / 12)
+  return 0
+}
+
+/** 一根 K 线在成交均价里的权重（币数）：有基础币成交量用它，没有（或解析坏了）就拿成交额 / 收盘价折。
+ *  坏量（NaN、Infinity、负数）、坏价返回 NaN：这一根留白、累计原样往下传——进了累计的话这一段往后整段都是 NaN
+ *  （手机网页 / iOS 同口径，见 m/indicator/engine.ts VWAPState） */
+export function vwapWeight(b: Bar): number {
+  const w = b.bv != null && Number.isFinite(b.bv) ? b.bv : b.c > 0 ? b.v / b.c : NaN
+  return Number.isFinite(w) && w >= 0 && Number.isFinite(b.h + b.l + b.c) ? w : NaN
 }
 
 /** VWAP 与 ±1σ、±2σ：典型价 (高+低+收)/3，按成交量（币）加权；锚点一到就从头累计。
- *  第一段不完整就不画：加载进来的第一根如果不是它那一段的开头（前一根还属于同一段），这一段的累计缺了开头，
- *  输出 null，直到下一个锚点——这样往左加载更多历史时，已经画出来的值一个都不变。 */
+ *  这一段到目前为止全是零成交时退回典型价（不出空、不除零），和 iOS 一致。
+ *  第一段不完整就不画（PC 自己的显示规则）：加载进来的第一根如果不是它那一段的开头（前一根还属于同一段），
+ *  这一段的累计缺了开头，输出 null，直到下一个锚点——这样往左加载更多历史时，已经画出来的值一个都不变。
+ *  不归零的周期（一年以上）一次载齐全部历史，第一段就是完整的。 */
 export function vwap(bars: Bar[], iv = barInterval(bars)): Series[] {
   const n = bars.length
   const mid: Series = new Array(n).fill(null), u1: Series = new Array(n).fill(null), d1: Series = new Array(n).fill(null), u2: Series = new Array(n).fill(null), d2: Series = new Array(n).fill(null)
   let anchor = NaN, sw = 0, swp = 0, swp2 = 0
   // 第一根正好是一段的开头（它的前一根落在上一段里）时，第一段也是完整的
-  let whole = n > 0 && vwapAnchor(bars[0].t - iv, iv) !== vwapAnchor(bars[0].t, iv)
+  let whole = n > 0 && (iv >= 365 * DAY || vwapAnchor(bars[0].t - iv, iv) !== vwapAnchor(bars[0].t, iv))
   for (let i = 0; i < n; i++) {
     const b = bars[i], a = vwapAnchor(b.t, iv)
     if (a !== anchor) { if (i > 0) whole = true; anchor = a; sw = 0; swp = 0; swp2 = 0 }
     if (!whole) continue
-    const tp = (b.h + b.l + b.c) / 3
-    const w = b.bv != null && isFinite(b.bv) ? b.bv : b.c > 0 ? b.v / b.c : 0
+    const tp = (b.h + b.l + b.c) / 3, w = vwapWeight(b)
+    if (Number.isNaN(w)) continue
     sw += w; swp += w * tp; swp2 += w * tp * tp
-    if (sw <= 0) continue
-    const m = swp / sw, sd = Math.sqrt(Math.max(0, swp2 / sw - m * m))
+    const m = sw > 0 ? swp / sw : tp, sd = sw > 0 ? Math.sqrt(Math.max(0, swp2 / sw - m * m)) : 0
     mid[i] = m; u1[i] = m + sd; d1[i] = m - sd; u2[i] = m + 2 * sd; d2[i] = m - 2 * sd
   }
   return [mid, u1, d1, u2, d2]
@@ -204,7 +224,7 @@ export const EXTRA_CALC: Record<ExtraMainId | ExtraSubId, Fn> = {
 }
 
 export const EXTRA_CATALOG: Record<ExtraMainId | ExtraSubId, CatalogEntry> = {
-  vwap: { name: '成交均价', cn: '按成交量加权、每天零点重算，带一倍与两倍标准差', place: 'main', params: {}, colors: ['#2962FF', '#26A69A', '#26A69A', '#FF9800', '#FF9800'] },
+  vwap: { name: '成交均价', cn: '按成交量加权，日内周期每天零点重算、日线按月、周线按年，带一倍与两倍标准差', place: 'main', params: {}, colors: ['#2962FF', '#26A69A', '#26A69A', '#FF9800', '#FF9800'] },
   st: { name: '超级趋势', cn: '按真实波幅翻转的趋势线', place: 'main', params: { n: 10, k: 3 }, colors: ['#089981', '#F23645'] },
   ichi: { name: '一目均衡表', cn: '转换线、基准线、云带、迟行线', place: 'main', params: { tenkan: 9, kijun: 26, senkou: 52 }, colors: ['#2962FF', '#B71C1C', '#43A047', '#F44336', '#9C27B0'] },
   vpvr: { name: '成交量分布', cn: '看得见的这段里各价位成交多少，含控制点与七成价值区', place: 'main', params: { n: 48 }, colors: [] },

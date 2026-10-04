@@ -14,6 +14,7 @@
 import { fmt, hexA } from '../util/format'
 import type { Bar } from './calc'
 import { vpvr, type Vpvr } from './overlays'
+import { vwapWeight } from './indicators'
 import type { DrawPoint, Drawing, DrawingType, Pane, PriceRange, TVChart } from './chart'
 
 export interface XY { x: number; y: number }
@@ -91,13 +92,21 @@ export function anchoredVwap(bars: readonly Bar[], from: number, to: number): Ba
   const out: Bands = { mid: [], u1: [], d1: [], u2: [], d2: [] }
   let sw = 0, swp = 0, swp2 = 0
   for (let i = Math.max(0, from); i <= Math.min(to, bars.length - 1); i++) {
-    const b = bars[i], tp = (b.h + b.l + b.c) / 3
-    const w = b.bv != null && isFinite(b.bv) ? b.bv : b.c > 0 ? b.v / b.c : 0
-    sw += w; swp += w * tp; swp2 += w * tp * tp
+    const b = bars[i], tp = (b.h + b.l + b.c) / 3, w = vwapWeight(b)
+    if (w > 0) { sw += w; swp += w * tp; swp2 += w * tp * tp }
     const m = sw > 0 ? swp / sw : tp, sd = sw > 0 ? Math.sqrt(Math.max(0, swp2 / sw - m * m)) : 0
     out.mid.push(m); out.u1.push(m + sd); out.d1.push(m - sd); out.u2.push(m + 2 * sd); out.d2.push(m - 2 * sd)
   }
   return out
+}
+
+/** 锚定 VWAP 从哪根起算：含锚点时刻的那一根。向下取整——换到更粗的周期，10:37 的锚落在 10:00 那根里，
+ *  四舍五入会跳到 11:00、把锚点所在那根整根漏掉。锚点早于已加载的第一根：这一段的累计缺了开头，
+ *  返回 null 不画（往左翻到那里再画），不拿第一根冒充锚点画一条数值不对的线 */
+export function avwapStart(ch: TVChart, d: Drawing): number | null {
+  if (!d.pts.length || !ch.bars.length) return null
+  const f = ch.indexAt(d.pts[0].t)
+  return f < -1e-9 ? null : Math.floor(f + 1e-9)
 }
 
 /** 按画线缓存锚定 VWAP：悬停时每条线都要做一次命中、每帧又要画一次，每次都从锚点重新累计的话，
@@ -158,9 +167,9 @@ export function widenPosition(ch: TVChart, d: Drawing): void {
 export function handlePixels(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): XY[] {
   const px = (q: DrawPoint): XY => ({ x: ch.indexToX(ch.indexAt(q.t)), y: ch.priceToY(q.p, p, r) })
   if (d.type === 'avwap' && d.pts.length) {
-    const i = Math.round(ch.indexAt(d.pts[0].t)), b = ch.bars[i]
-    const x = ch.indexToX(i)
-    return [{ x, y: b && i <= ch.lastIndex() ? ch.priceToY((b.h + b.l + b.c) / 3, p, r) : px(d.pts[0]).y }]
+    const s = avwapStart(ch, d), b = s != null ? ch.bars[s] : undefined
+    const x = s != null ? ch.indexToX(s) : px(d.pts[0]).x
+    return [{ x, y: b ? ch.priceToY((b.h + b.l + b.c) / 3, p, r) : px(d.pts[0]).y }]
   }
   if (d.type === 'fvp' && d.pts.length >= 2) {
     const s = fvpShape(ch, d, p, r)
@@ -201,8 +210,8 @@ export function bbox(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): { x0: num
 
 /** 锚定 VWAP 中线在可见范围里的像素点 */
 function avwapPixels(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): XY[] {
-  if (!d.pts.length) return []
-  const i0 = Math.max(0, Math.round(ch.indexAt(d.pts[0].t))), last = ch.lastIndex()
+  const i0 = avwapStart(ch, d), last = ch.lastIndex()
+  if (i0 == null) return []
   const { to } = ch.visible()
   const end = Math.min(last, to + 1)
   if (end < i0) return []
@@ -232,13 +241,13 @@ export function drawComputed(ch: TVChart, d: Drawing, p: Pane, r: PriceRange, se
 
 function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: string): void {
   if (!d.pts.length) return
-  const i0 = Math.max(0, Math.round(ch.indexAt(d.pts[0].t))), last = ch.lastIndex()
+  const i0 = avwapStart(ch, d), last = ch.lastIndex()
   const { to } = ch.visible()
   const end = Math.min(last, to + 1)
-  const ax = ch.indexToX(i0)
+  const ax = ch.indexToX(i0 ?? ch.indexAt(d.pts[0].t))
   // 锚点：图底一枚小三角，标出从哪根起算
   c.fillStyle = col; c.beginPath(); c.moveTo(ax, p.y + p.h - 2); c.lineTo(ax - 5, p.y + p.h - 10); c.lineTo(ax + 5, p.y + p.h - 10); c.closePath(); c.fill()
-  if (end < i0) return
+  if (i0 == null || end < i0) return
   const b = vwapOf(ch, d, i0, end)
   const from = Math.max(i0, Math.floor(ch.xToIndex(0)) - 1)
   const X = (i: number) => ch.indexToX(i), Y = (v: number) => ch.priceToY(v, p, r)
