@@ -167,12 +167,20 @@ extension ChartRenderer {
     // 主图蜡烛在 37b8825 已经修掉这条，副图量柱漏了。AICoin 安卓包里量柱同样恒留缝
     // （实体 = 节距 × 2/3，两边各 节距/6），见 71bd340:docs/AICoin-安卓包-UI规格提取.md §3。
     let bodyW = Double(candlePixels(spacing: spacing, scale: s).body) / s
-    for i in lo...hi where outputVisible(.vol, (displayed(.vol)?.lines.count ?? 0)) {
+    // 量柱藏没藏、零线在哪、两种柱色，整帧都是同一个答案：从前写在逐根循环的 `where` 里，
+    // 一屏几百根就把同一个字典查几百遍（审查 B·P3-4）。
+    let barsVisible = outputVisible(.vol, displayed(.vol)?.lines.count ?? 0)
+    let zero = subY(box, ext, 0)
+    let cgUp = Paint.cg(t.volUp), cgDn = Paint.cg(t.volDn)
+    for i in lo...hi where barsVisible {
+      // 坏量（NaN / inf）不画：算出来的矩形是 NaN，CoreGraphics 要么吞掉要么报错，
+      // 量轴区间（`extent`）也早就把它剔掉了，这里跟它保持同一个口径。
+      let volume = b.volume[i]
+      guard volume.isFinite else { continue }
       let xc = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
       if xc < -4 || xc > L.plotW + 4 { continue }
-      let y = subY(box, ext, b.volume[i])
-      ctx.setFillColor(Paint.cg(b.close[i] >= b.open[i] ? t.volUp : t.volDn))
-      let zero = subY(box, ext, 0)
+      let y = subY(box, ext, volume)
+      ctx.setFillColor(b.close[i] >= b.open[i] ? cgUp : cgDn)
       ctx.fill(CGRect(x: snap(xc - bodyW / 2, scale: s), y: min(y, zero), width: bodyW, height: abs(zero - y)))
     }
     if let v = displayed(.vol) {
