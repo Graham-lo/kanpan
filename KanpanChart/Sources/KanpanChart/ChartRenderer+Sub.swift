@@ -115,17 +115,14 @@ extension ChartRenderer {
     _ arr: [Double], _ lo: Int, _ hi: Int, _ color: Hex, width: Double = 1
   ) {
     let b = state.series
-    ctx.setStrokeColor(Paint.cg(color))
     ctx.setLineWidth(width)
-    ctx.beginPath()
-    var on = false
+    var pen = PolylinePen(ctx, color: Paint.cg(color), capacity: hi - lo + 1)
     for i in lo...hi where i < arr.count {
-      if !arr[i].isFinite { on = false; continue }
+      if !arr[i].isFinite { pen.lift(); continue }
       let px = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
-      let py = subY(box, ext, arr[i])
-      if on { ctx.addLine(to: CGPoint(x: px, y: py)) } else { ctx.move(to: CGPoint(x: px, y: py)); on = true }
+      pen.add(CGPoint(x: px, y: subY(box, ext, arr[i])))
     }
-    ctx.strokePath()
+    pen.finish()
   }
 
   /// RSI / StochRSI / KDJ / ATR / 动向指标：几条线加参考线。
@@ -256,18 +253,14 @@ extension ChartRenderer {
     }
     let b = state.series
     let ext = subExtent(.oi, lo: lo, hi: hi)
-    let path = CGMutablePath()
-    var started = false
-    for i in lo...hi where i < a.count {
-      if !a[i].isFinite { started = false; continue }
-      let px = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
-      let py = subY(box, ext, a[i])
-      if started { path.addLine(to: CGPoint(x: px, y: py)) } else { path.move(to: CGPoint(x: px, y: py)); started = true }
-    }
-    ctx.addPath(path)
-    ctx.setStrokeColor(Paint.cg(t.oi))
     ctx.setLineWidth(2 / s)
-    ctx.strokePath()
+    var pen = PolylinePen(ctx, color: Paint.cg(t.oi), capacity: hi - lo + 1)
+    for i in lo...hi where i < a.count {
+      if !a[i].isFinite { pen.lift(); continue }
+      let px = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
+      pen.add(CGPoint(x: px, y: subY(box, ext, a[i])))
+    }
+    pen.finish()
 
   }
 

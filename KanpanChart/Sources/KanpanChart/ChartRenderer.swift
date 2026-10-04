@@ -794,21 +794,17 @@ public struct ChartRenderer {
     lo: Int, hi: Int, width: Double = 1
   ) {
     let b = state.series
-    ctx.setStrokeColor(Paint.cg(color))
     ctx.setLineWidth(width)
     ctx.setLineJoin(.round)
-    ctx.beginPath()
     // 区间固定，`a`/`z` 只算一次；逐点还是原来那套算式（见 `PriceMapping`）。
     let map = PriceMapping(range: r, mode: state.effectivePriceMode)
-    var on = false
+    var pen = PolylinePen(ctx, color: Paint.cg(color), capacity: hi - lo + 1)
     for i in lo...hi where i < arr.count {
       let v = arr[i]
-      if !v.isFinite { on = false; continue }
-      let px = x(b.time(at: i), plotW: plotW)
-      let py = map.y(v, pane: pane)
-      if on { ctx.addLine(to: CGPoint(x: px, y: py)) } else { ctx.move(to: CGPoint(x: px, y: py)); on = true }
+      if !v.isFinite { pen.lift(); continue }
+      pen.add(CGPoint(x: x(b.time(at: i), plotW: plotW), y: map.y(v, pane: pane)))
     }
-    ctx.strokePath()
+    pen.finish()
   }
 
   /// 按多空分段上色的一条线（超级趋势）。
@@ -831,24 +827,15 @@ public struct ChartRenderer {
         continue
       }
       let rising = dir[i] > 0
-      ctx.setStrokeColor(Paint.cg(rising ? t.up : t.down))
-      ctx.beginPath()
-      var on = false
+      var pen = PolylinePen(ctx, color: Paint.cg(rising ? t.up : t.down))
       while i <= hi, i < arr.count {
         let v = arr[i]
         let d = i < dir.count ? dir[i] : .nan
         if !v.isFinite || !d.isFinite || d == 0 || (d > 0) != rising { break }
-        let px = x(b.time(at: i), plotW: plotW)
-        let py = map.y(v, pane: pane)
-        if on {
-          ctx.addLine(to: CGPoint(x: px, y: py))
-        } else {
-          ctx.move(to: CGPoint(x: px, y: py))
-          on = true
-        }
+        pen.add(CGPoint(x: x(b.time(at: i), plotW: plotW), y: map.y(v, pane: pane)))
         i += 1
       }
-      ctx.strokePath()
+      pen.finish()
     }
   }
 

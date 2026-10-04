@@ -103,13 +103,12 @@ extension ChartRenderer {
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     ctx.setLineWidth(1); ctx.setLineJoin(.round)
     for (series, segments) in zip(state.compare, compareSegments(pane: pane, r: r, L: L)) {
-      ctx.setStrokeColor(Paint.cg(series.color)); ctx.beginPath()
+      var pen = PolylinePen(ctx, color: Paint.cg(series.color))
       for segment in segments {
-        guard let first = segment.first else { continue }
-        ctx.move(to: first)
-        for point in segment.dropFirst() { ctx.addLine(to: point) }
+        for point in segment { pen.add(point) }
+        pen.lift()
       }
-      ctx.strokePath()
+      pen.finish()
     }
   }
 
