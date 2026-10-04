@@ -8,12 +8,17 @@ import { st, save } from '../app/store'
 import { S, TABS, type Kind } from '../market'
 import { $, I, esc, tgt } from '../ui/dom'
 import { toast } from '../ui/overlay'
+import { onSession } from '../account/session'
 import { importTv, applyTv, type TvResult, type TvUniverse } from './tvImport'
 import '../styles/watch.css'
 
 interface Last { r: TvResult; n: number }
 let text = ''
 let last: Last | null = null
+/** 换账号（登录 / 退出 / 被顶掉）就换一代：上一个人粘的代号、导入结果不留给下一个人看，
+ *  上一代还在读的 .txt 读完也不再往下一个人的自选里加 */
+let gen = 0
+onSession(() => { gen++; text = ''; last = null })
 
 const KIND_CN = Object.fromEntries(TABS) as Record<Kind, string>
 const universe: TvUniverse = { has: s => S.symbols.has(s), kindOf: s => S.symbols.get(s)?.kind }
@@ -78,7 +83,7 @@ export function tvImportChange(e: Event, rerender: () => void): boolean {
   const inp = e.target as HTMLInputElement
   if (inp.id === 'tviText') { text = (inp as unknown as HTMLTextAreaElement).value; return true }
   if (inp.id !== 'tviFile' || !inp.files?.[0]) return false
-  const f = inp.files[0]
-  void f.text().then(src => run(src, rerender))
+  const f = inp.files[0], g = gen
+  void f.text().then(src => { if (g === gen) run(src, rerender) })
   return true
 }
