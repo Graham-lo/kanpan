@@ -58,10 +58,14 @@ export class GestureState {
   /** 拎着十字线走时，交叉点相对手指的那段距离：按下时量一次，之后一路保持——十字线跟着手指的位移走，
    *  不往手指底下跳，也不被指头挡住。长按新出的十字线就在手指底下，距离是 0。 */
   grab: Point = { x: 0, y: 0 }
+  /** 十字线归哪根手指（pointerId）：进 crosshair 那一刻按着的那根。十字线只跟它走；它抬起来这一轮
+   *  十字线就算放下——不能让后落下的另一根手指接班，否则十字线会瞬间跳到那根手指底下（审查 B·P3-2）。 */
+  owner: number | null = null
 
   reset(): void {
     this.mode = null
     this.grab = { x: 0, y: 0 }
+    this.owner = null
     this.longPressActivated = false
     this.moved = 0
     this.pinchActive = false
@@ -246,7 +250,7 @@ export class ChartGestures {
     if (q.x > L.plotW) { g.mode = 'subAxis'; return }
     if (q.y >= L.mainH && q.y < L.mainH + AICoinBehavior.timeHeight) { g.mode = 'parentScroll'; return }
     g.mode = this.hitsCrosshairCenter(q) ? 'crosshair' : 'pan'
-    if (g.mode === 'crosshair') this.grabCrosshair(q)
+    if (g.mode === 'crosshair') { g.owner = g.touches[0]; this.grabCrosshair(q) }
     if (this.state?.overlay.crosshair == null) this.scheduleLongPress(q)
   }
 
@@ -263,7 +267,8 @@ export class ChartGestures {
       this.updatePinch(L)
       return
     }
-    const q = this.location(g.touches[0])
+    // 十字线只认它的主人那根手指；其余模式这时只会有一根手指（两根就进捏合了）。
+    const q = this.location(mode === 'crosshair' ? (g.owner ?? g.touches[0]) : g.touches[0])
     const dx = q.x - g.startPoint.x
     const dy = q.y - g.startPoint.y
     g.moved = Math.max(g.moved, Math.sqrt(dx * dx + dy * dy))
@@ -282,6 +287,7 @@ export class ChartGestures {
             // 按在十字线的横线（价格线）上竖着拖：就是要把价格线挪上挪下
             if (this.hitsCrosshairLine(g.startPoint)) {
               g.mode = 'crosshair'
+              g.owner = g.touches[0]
               this.grabCrosshair(g.startPoint)
               this.moveCrosshair({ x: q.x + g.grab.x, y: q.y + g.grab.y }, L)
               break
@@ -337,6 +343,8 @@ export class ChartGestures {
         return
       }
       const liftedAll = g.touches.every(t => ids.includes(t))
+      // 拎十字线那根手指抬起来了、别的手指还按着：这一轮十字线照样就此放下，剩下的手指不接班。
+      const ownerLifted = g.mode === 'crosshair' && g.owner != null && ids.includes(g.owner)
       g.touches = g.touches.filter(t => !ids.includes(t))
       g.cancelLongPress()
       if (wasPinch) {
@@ -359,7 +367,7 @@ export class ChartGestures {
         this.settleView()
         return
       }
-      if (!(liftedAll || g.touches.length === 0)) return
+      if (!(liftedAll || g.touches.length === 0 || ownerLifted)) return
       const mode = g.mode
       this.clearAxisScaleAnchor()
       const wasLongPress = g.longPressActivated
@@ -559,6 +567,7 @@ export class ChartGestures {
       if (!L || g.moved > ChartGesture.longPressSlopPt || g.touches.length !== 1) return
       g.longPressActivated = true
       g.mode = 'crosshair'
+      g.owner = g.touches[0]
       this.beginAxisFreeze()
       this.moveCrosshair(q, L)
     }, ChartGesture.longPressMs)
