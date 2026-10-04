@@ -8,7 +8,7 @@ describe('fmtCompact：K / M / B / T', () => {
     expect(fmtCompact(1.5e6)).toBe('1.50M')
     expect(fmtCompact(2.35e9)).toBe('2.35B')
     expect(fmtCompact(1.2e12)).toBe('1.20T')
-    expect(fmtCompact(999999)).toBe('1000.00K') // 原型行为：按量级判断，不进位到 M
+    expect(fmtCompact(999999)).toBe('1.00M') // 按印出来的样子进位，和 iOS KanpanCore volUnit 一致
   })
   it('小数：< 10 两位，10–999 取整', () => {
     expect(fmtCompact(5)).toBe('5.00')

@@ -35,15 +35,17 @@ export function fmt(v: number | null | undefined, dec: number): string {
 /** 价格轴、十字线读数、现价 / 提醒标签：带千分位（84,070.0），和梯子价格列、侧栏价格同一写法；null 为空串 */
 export function fmtAxis(v: number | null | undefined, dec: number): string { return v == null || !isFinite(v) ? '' : fmt(v, dec) }
 
-/** K / M / B / T 金融单位 */
+/** K / M / B / T 金融单位。单位按四舍五入之后的值挑：999,999 是「1.00M」不是「1000.00K」；
+ *  舍成 0 的负数不带负号（-0.001 是「0.00」不是「-0.00」） */
+const UNITS: readonly [number, string][] = [[1, ''], [1e3, 'K'], [1e6, 'M'], [1e9, 'B'], [1e12, 'T']]
 export function fmtCompact(v: number | null | undefined): string {
   if (v == null || !isFinite(v)) return '—'
-  const a = Math.abs(v)
-  if (a >= 1e12) return (v / 1e12).toFixed(2) + 'T'
-  if (a >= 1e9) return (v / 1e9).toFixed(2) + 'B'
-  if (a >= 1e6) return (v / 1e6).toFixed(2) + 'M'
-  if (a >= 1e3) return (v / 1e3).toFixed(2) + 'K'
-  return v.toFixed(a < 10 ? 2 : 0)
+  for (let i = 0; i < UNITS.length; i++) {
+    const [u, s] = UNITS[i], x = v / u
+    const t = x.toFixed(i === 0 && Math.abs(v) >= 10 ? 0 : 2)
+    if (Math.abs(+t) < 1000 || i === UNITS.length - 1) return (+t === 0 ? t.replace('-', '') : t) + s
+  }
+  return '—'
 }
 
 /** 副图读数（图例、刻度、十字线）。MACD、ATR 是价格单位，低价品种（DOGE 0.1、PEPE 0.00001）的值常在 0.001 以下，
