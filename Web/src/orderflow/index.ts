@@ -29,14 +29,13 @@ import { orderId, type BigOrder } from './types'
 import type { Snapshot } from './model'
 import type { TVChart } from '../chart/chart'
 import { settle } from '../market/settle'
+import { IdleGate } from './idle'
 
 export { mountLadder, mountDrawer, widgetHTML, mountWidgets, isOfWidget, openOrderFlowSettings }
 /** 侧栏某块是不是收起（本机偏好） */
 export const isCollapsed = (w: string): boolean => OF.prefs.collapsed.includes(w)
 
 const SYNC_MS = 500
-/** 离开图表页多久后停掉数据层（切回来不用重连） */
-const IDLE_STOP_MS = 60_000
 /** 回填最多往前要多久（服务端历史只留几天） */
 const HEAT_BACK_MAX_MS = 3 * 86_400_000
 const HEAT_RETRY_MS = 20_000
@@ -44,7 +43,8 @@ const HEAT_RETRY_MS = 20_000
 let api: Api | null = null
 const attached = new WeakSet<TVChart>()
 let overrideSig = ''
-let idleSince: number | null = null
+/** 离开图表页、或标签页藏到后台一分钟就停掉数据层（一分钟内切回来不用重连），见 idle.ts */
+const idle = new IdleGate()
 let panelEl: HTMLElement | null = null
 
 // ------------------------------------------------------------------ 安装
@@ -61,7 +61,11 @@ export function installOrderFlow(a: Api): void {
   if (!OF.prefs.seededStats && (st.orderFlow || st.slots.widgets.some(w => isOfWidget(w)))) { seedStats(); save() }
   OF.reveal = id => revealInDrawer(id)
   OF.focus = focusOrder
-  setInterval(() => { if (document.visibilityState !== 'hidden') sync() }, SYNC_MS)
+  // 藏着时不做整套评估，只看要不要收掉数据层（原来藏着时一拍都不跑，后台标签页的几条簿 / 成交连接永远不关）
+  setInterval(() => {
+    if (document.visibilityState !== 'hidden') sync()
+    else if (OF.feed && !idle.want(true, Date.now())) stopFeed()
+  }, SYNC_MS)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync() })
   sync()
 }
@@ -85,10 +89,8 @@ export function sync(): void {
     chart.layers.push(createLayer(chart, () => api!.charts().find(x => x.chart === chart) ?? { symbol: '', iv: '1h' }))
   }
   const act = api.activeChart()
-  const onPage = st.page === 'chart'
-  if (onPage) idleSince = null
-  else if (idleSince == null) idleSince = Date.now()
-  const want = !!act && needed() && (onPage || Date.now() - (idleSince ?? 0) < IDLE_STOP_MS)
+  const away = st.page !== 'chart' || document.visibilityState === 'hidden'
+  const want = idle.want(away, Date.now()) && !!act && needed()
   if (!want) { if (OF.feed) stopFeed(); setPending(false); return }
   const symbol = act!.symbol.toUpperCase()
   if (OF.feed && OF.feed.symbol !== symbol) stopFeed()

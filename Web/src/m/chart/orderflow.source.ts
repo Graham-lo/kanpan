@@ -11,6 +11,7 @@
 
 import { OrderFlowFeed, type Route } from '../../orderflow/feed'
 import { S, on as onMarket } from '../../market'
+import { stopWhenHiddenLong } from '../../orderflow/idle'
 import type { BarSeries, Interval } from './series'
 import type { ViewWindow } from './geometry'
 import type { Snapshot } from '../../orderflow/model'
@@ -137,22 +138,32 @@ export function createOrderFlowPort(
     src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: opts.override?.(sym) ?? null })
   }
   const off = onMarket(e => {
-    if (!wanted) return
+    if (!wanted || bg) return
     if (e.type === 'ws') src.setRoute(S.route)
     else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(); start(wanted) }
   })
+  // 整页藏到后台一分钟就停掉订阅，回到前台重开（与行情页的 createPagePort 同一条规矩，见 orderflow/idle.ts）
+  let bg = false
+  let seen: [number, number] | null = null
+  const offHidden = stopWhenHiddenLong(
+    () => { bg = true; src.stop() },
+    () => { bg = false; if (!wanted) return; start(wanted); if (seen) src.setVisible(seen[0], seen[1]) },
+  )
   return {
     setWanted(on, symbol) {
       const sym = symbol.toUpperCase()
       if (!on) { wanted = null; src.stop(); return }
+      if (sym !== wanted) seen = null
+      if (bg) { wanted = sym; return }
       if (wanted === sym && src.current === sym) return
       wanted = sym
       start(sym)
     },
     noteView(view, series) {
       if (!wanted) return
-      src.setVisible(view.from, view.to + Math.max(0, series.step))
+      seen = [view.from, view.to + Math.max(0, series.step)]
+      if (!bg) src.setVisible(seen[0], seen[1])
     },
-    dispose() { off(); wanted = null; src.stop() },
+    dispose() { off(); offHidden(); wanted = null; src.stop() },
   }
 }

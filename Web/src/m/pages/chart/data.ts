@@ -8,6 +8,7 @@
  */
 import { S, on as onMarket, wantMeta } from '../../../market'
 import { OrderFlowSource } from '../../chart/orderflow.source'
+import { stopWhenHiddenLong } from '../../../orderflow/idle'
 import type { OrderFlowPort } from '../../chart'
 import type { OrderFlowSnapshot } from '../../chart/orderflowGroup'
 import type { Override } from '../../../orderflow/settings'
@@ -78,25 +79,31 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
     src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: override(sym) })
   }
   const off = onMarket(e => {
-    if (!wanted || suspended) return
+    if (!wanted || suspended || bg) return
     if (e.type === 'ws') src.setRoute(S.route)
     else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(); start(wanted) }
   })
+  // 整页藏到后台（锁屏、切到别的 app / 标签）一分钟：停掉订阅；回到前台按想要的品种重开（页内切走另由 suspend 管）
+  let bg = false
+  const offHidden = stopWhenHiddenLong(
+    () => { bg = true; src.stop() },
+    () => { bg = false; if (!wanted || suspended) return; start(wanted); if (seen) src.setVisible(seen[0], seen[1]) },
+  )
   return {
     setWanted(onOff, symbol) {
       const sym = symbol.toUpperCase()
       if (!onOff) { wanted = null; src.stop(); return }
       if (sym !== wanted) seen = null
-      if (suspended) { wanted = sym; return }
+      if (suspended || bg) { wanted = sym; return }
       if (wanted === sym && src.current === sym) return
       wanted = sym
       start(sym)
     },
     noteView(view, series) {
       seen = [view.from, view.to + Math.max(0, series.step)]
-      if (wanted && !suspended) src.setVisible(seen[0], seen[1])
+      if (wanted && !suspended && !bg) src.setVisible(seen[0], seen[1])
     },
-    dispose() { off(); wanted = null; src.stop() },
+    dispose() { off(); offHidden(); wanted = null; src.stop() },
     suspend() {
       if (suspended) return
       suspended = true
@@ -105,11 +112,11 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
     resume() {
       if (!suspended) return
       suspended = false
-      if (!wanted) return
+      if (!wanted || bg) return
       start(wanted)
       if (seen) src.setVisible(seen[0], seen[1])
     },
-    setOverride(o) { if (wanted && !suspended) src.setOverride(o) },
+    setOverride(o) { if (wanted && !suspended && !bg) src.setOverride(o) },
     get thresholds() { return thresholds },
     get defaults() { return defaults },
   }
