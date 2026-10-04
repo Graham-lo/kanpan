@@ -58,6 +58,8 @@ help:
 	@echo "build        在模拟器上编 app（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "ui-test      A8.4：两台重点机型跑同一套 XCUITest 用例，逐台记结果"
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
+	@echo "ui-test-release 同一张矩阵，Release 测试包（RELEASE=1 Tools/ui-test.sh）"
+	@echo "hotpath-test 行情页满载甩动的帧占比门（HotPathFrameUITests，一律 Release 包；ONLY_DEVICE=\"iPhone 17 Pro Max\" 只跑一台）"
 	@echo "device-release  编真机 Release 包（generic/platform=iOS，签名走 -allowProvisioningUpdates）"
 	@echo "install-release 把 Release 包装到第一台 connected 真机"
 	@echo "archive      归档 Release 真机包到 DerivedData-archive/Kanpan-<构建号>.xcarchive（TestFlight 第一步）"
@@ -405,6 +407,16 @@ UI_DEVICES := $(DEVICES)
 
 ui-test:
 	@bash Tools/ui-test.sh
+
+# Release 测试包跑整张矩阵 / 只跑热路径帧用例。帧率、卡顿类的用例只有在优化开着的包里量出来的数才作数
+# （Debug 包同一场景的重帧占比是 Release 的四到九倍，见 Tools/ui-test.sh 的 RELEASE 注释），
+# 所以 HotPathFrameUITests 的 12% 门只在这一档判，Debug 矩阵里它只记数。
+ui-test-release:
+	@RELEASE=1 OUT=$(or $(OUT),docs/acceptance/M8/ui-test-release) bash Tools/ui-test.sh
+
+hotpath-test:
+	@RELEASE=1 OUT=$(or $(OUT),docs/acceptance/M8/hotpath) ONLY_TESTING=KanpanUITests/HotPathFrameUITests \
+		$(if $(ONLY_DEVICE),ONLY_DEVICE="$(ONLY_DEVICE)",) bash Tools/ui-test.sh
 
 ui-test-one:
 	$(XCODEBUILD) test \

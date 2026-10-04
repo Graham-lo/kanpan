@@ -13,7 +13,8 @@ import XCTest
 /// 同时挂成附件。
 ///
 /// 判「场景真的搭起来了」（线数、对比条数、根数、副图）、「全程没有一次 ≥ 1 秒的卡死」，
-/// 以及手势段超 8 ms 的帧不超过 12%（见收尾那条断言的注释）；毫秒分位不做断言（机器负载一变就飘），拿报告前后对比。
+/// 以及手势段超 8 ms 的帧不超过 12%（只在 Release 测试包里判，见收尾那条断言的注释；Debug 包只记数）；
+/// 毫秒分位不做断言（机器负载一变就飘），拿报告前后对比。
 /// **量的时候别读诊断**：`chart.canvas` 的无障碍值是一大块 JSON（锚点、订单流带……），
 /// XCUITest 一读就在 app 主线程上现算一遍，所以每段手势之后先等探针停了再读。
 @MainActor final class HotPathFrameUITests: KanpanUICase {
@@ -212,8 +213,19 @@ import XCTest
     // 重帧占比的上限（10-04 F 线）：同一台空闲的 16 Pro 模拟器上，主力快照比较还在拼字符串时 594–644 / 3401–3414 帧
     // 超 8 ms（17–19%），改掉之后 152–165 / 3458–3461（4.4–4.8%）。卡在 12%：回到旧代价就红，机器正常抖动不红。
     // 别的重活（并行编译、另一台模拟器跑用例）挤着时这条会飘，判红先看机器负载。
+    //
+    // 这个数只对 **Release 测试包** 成立（`RELEASE=1 Tools/ui-test.sh`，即 `make hotpath-test`）。Debug 包关了优化，
+    // 同一场景 2026-10-04 收尾实测 16 Pro 689 / 3294（20.9%）、17 Pro Max 1442 / 3308（43.6%），多出来的是 Swift
+    // 没内联、没去掉的运行时检查，不是产品的渲染代价；拿 Debug 的数去卡 Release 标定的线，红的只会是构建配置。
+    // 所以 Debug 包里这条只记数不判（场景、帧数、≥ 1 秒卡死三条照判），占比的门留给 Release。按运行时的断言配置分，
+    // 不用 `#if DEBUG`：条件编译的测试要进 ReleaseTestRosterTests 的名册。
     XCTAssertGreaterThan(frames, 1500, "帧报告太少，手势段没量到")
-    XCTAssertLessThanOrEqual(Double(heavy), Double(frames) * 0.12, "超 8 ms 的帧 \(heavy) / \(frames)，超过 12%")
+    let share = frames > 0 ? Double(heavy) / Double(frames) : 0
+    if _isDebugAssertConfiguration() {
+      note("Debug 测试包：超 8 ms 的帧 \(heavy) / \(frames)（\(String(format: "%.1f", share * 100))%）只记不判，占比的门走 make hotpath-test")
+    } else {
+      XCTAssertLessThanOrEqual(Double(heavy), Double(frames) * 0.12, "超 8 ms 的帧 \(heavy) / \(frames)，超过 12%")
+    }
   }
 
   /// 此刻屏上的订单流带：按主次分几条、多少条还挂着、几条细线、填色总面积（pt²）占主图多少倍。

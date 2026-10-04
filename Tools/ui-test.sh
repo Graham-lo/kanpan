@@ -23,7 +23,22 @@ LOGS="${LOGS:-$OUT/logs}"
 #   两条流水线同时往一个 derived data 里写，模块缓存、.app、.xctestrun 会互相覆盖，
 #   轻则整轮重编，重则 test-without-building 跑的是对方刚换掉的包。所以要错开的时候
 #   给它一个自己的路径；默认仍是 DerivedData，单窗口的日常用法不受影响。
-DD="${DD:-DerivedData}"
+# RELEASE=1：编 Release 测试包（优化开）。Debug 包关了优化、开了运行时检查，拿它量帧率不作数——
+# 2026-10-04 深度审查收尾实测：HotPathFrameUITests 同一场景 Release 包重帧 4–5%，Debug 包 16 Pro 21%、
+# 17 Pro Max 44%，差的全是 Swift 没优化的那部分，不是产品的渲染代价。所以帧率 / 卡顿类的 UI 用例
+# （`make hotpath-test`）一律走这一档。编译条件照 F 线的标定：`DEBUG`（FrameProbe、chart.canvas 诊断值、
+# 测试档案 / 深链 / 路线钩子都在它底下）+ `KANPAN_TEST_SUPPORT`，`@testable` 要 ENABLE_TESTABILITY。
+# 正式 Release 包（make device-release）不带这两个条件。Release 的 derived data 单独一份，不和 Debug 混。
+RELEASE="${RELEASE:-0}"
+# 展开写成 ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"}：macOS 自带的 bash 3.2 在 set -u 下把空数组当未定义变量。
+CONFIG_ARGS=()
+if [ "$RELEASE" = "1" ]; then
+  CONFIG_ARGS=(-configuration Release ENABLE_TESTABILITY=YES
+               'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) DEBUG KANPAN_TEST_SUPPORT')
+  DD="${DD:-DerivedData-ui-release}"
+else
+  DD="${DD:-DerivedData}"
+fi
 RES="${RES:-$DD/ui-test}"                  # .xcresult 结果包（体积大，随 DerivedData 一起被 gitignore）
 # 为什么模拟器名字要能加后缀：
 #   错开 derived data 之后还剩最后一处共用——**设备本身**。两个窗口各跑一轮矩阵时，
@@ -100,13 +115,13 @@ print('MISSING' if x is None else (x.get('connectionProperties',{}).get('transpo
   xcodebuild build-for-testing \
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
     -destination 'generic/platform=iOS' \
-    -derivedDataPath "$DD" > "$LOGS/build-device.log" 2>&1 || {
+    -derivedDataPath "$DD" ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} > "$LOGS/build-device.log" 2>&1 || {
       echo "真机构建失败，见 $LOGS/build-device.log"; tail -30 "$LOGS/build-device.log"; exit 1; }
   rm -rf "$RES/$slug.xcresult"
   xcodebuild test-without-building \
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
     -destination "platform=iOS,id=$DEVICE_UDID" \
-    -derivedDataPath "$DD" \
+    -derivedDataPath "$DD" ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} \
     "${TEST_ARGS[@]}" \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 480 \
@@ -121,7 +136,7 @@ echo "== build-for-testing =="
 $GUARD xcodebuild build-for-testing \
   -workspace "$WORKSPACE" -scheme "$SCHEME" \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath "$DD" > "$LOGS/build.log" 2>&1 || {
+  -derivedDataPath "$DD" ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} > "$LOGS/build.log" 2>&1 || {
     echo "构建失败，见 $LOGS/build.log"; tail -30 "$LOGS/build.log"; exit 1; }
 
 fail=0
@@ -159,7 +174,7 @@ for name in "${DEVICES[@]}"; do
   $GUARD xcodebuild test-without-building \
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
     -destination "platform=iOS Simulator,id=$udid" \
-    -derivedDataPath "$DD" \
+    -derivedDataPath "$DD" ${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"} \
     "${TEST_ARGS[@]}" \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 480 \

@@ -1,6 +1,6 @@
 # Hkline（看盘 / Kanpan）跨窗口项目记忆
 
-更新：2026-09-22（第 8 节含 P0 价格精度返工；第 9 节为文档统一口径）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
+更新：2026-10-04（§37 深度审查；旧注：第 8 节含 P0 价格精度返工；第 9 节为文档统一口径）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
 
 ## 1. 身份与分工
 
@@ -881,4 +881,87 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   - `373e4436` 订单流已结束的签往右让 K 线后再查盘口梯，让进梯子就算放不下（BTC 1m「9.4M」落进梯子）。
   - `9414f44b` 行情页上再点「图表」只回到最新、不清扫图列表与来处（30 只连扫停手后图被拽回 BTC）；均线参数 UI 用例不再用浮点 `frame.contains`。
   - `b8b3d768` 自选挂在不存在的分类上整只看不见：`SyncOverlay.symbols(_:patching:)` 逐条补完摘掉指向空气的归属，`classifyUnassigned()` 把这种也当未分类重新归类；UI 测试自选种子只灌测试子树里的**访客**档案（`PersonalFileStorage(guest:)` / `takesTestSeed`），账号自选照真实用户那样登录时认领。链条：种子顶掉账号盘上带「加密」分类的那份 → 只改 groupId 的补丁被服务端 `invalid_favorite_identity` 拒（全量同步 `retryRejected` 带整份 body 重发，自愈）→ 第三次冷启动前向对账把挂着「加密」的自选补进没有分类的种子 → 自选页「还没有自选」。15 Pro Max 上 `ChartLayoutPersistenceUITests` 三条 + `CompareUITests.testSyncRestoresCollectionIntoFreshInstallationProfile` 复跑全过。
+- 手机不在手边，真机包未装。
+
+## 37. 深度审查：bug / 性能 / 压测，各模块各操作细节（2026-10-04）
+
+用户：「对移动端，iOS 做一次全面的深度 bug 审查，性能审查，压测评审，各个模块各个操作细节都要，有问题直接改掉」。
+按模块分五条审查线（A 主屏壳层与交互、B 图表引擎、C 行情数据与网络、D 账号同步 · 偏好 · 自选 · 板块 · 习惯 · 分享、
+E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先只读审查出清单，再逐条复核、从根因修掉、配回归用例；之后 G 线把 app 跑起来
+以交易员身份走查每个操作，F 线做性能与压测。每条线的清单、结论（含判为非 bug 的理由）、精确测试数都在
+`docs/acceptance/深度审查-2026-10-04/<线>/报告.md`，这里只记结果与跨线的事。
+
+- **A 主屏壳层**（16 项，`6911298c` → `ac729fae`）：复盘角标每次心跳重算；换号 / 退登后扫图仍是上一个人的名单（`ChartTrail`）；
+  「更多」网格压在面板下；画线表单三处（左划删文字标注闪成样式表、样式表快照盖回拖动 / 锁定、`draws.json` 坏了永远读不出）；
+  板块页点行绕过统一换图入口；复盘中换品种图不跟；转屏后工具面板消失（新 `Main/PortraitOnlySheet.swift`）；涨跌幅两个口径统一读
+  `ChartSession.changePercent`；进后台预取 / 补数 / OI 预热 / 费率续表仍在跑（`cancelPrefetches()`）；列表补数补错行；下架横幅被迟到品种信息抹掉；
+  网关线路结算后费率不更新；订单流「成交 0.0%」；提示条新话被收掉；名词解释字号不在字阶（加全仓扫描用例）。main-ios-test 142/142。
+- **B 图表引擎**（11 项 + 自查 5 处，`3588be36` → `89983d5e`）：一字板价格轴撑到 ±1、小币出负价；SAR 反转根漏算、锚定 VWAP / CVD 周月线逐根归零、
+  VWAP 坏量后整段 NaN（iOS 与手机网页同改，新增 `IndicatorCrossCheckTests` 两端逐位对齐，交叉验证夹具重生成）；画线几何四处 + 计算型画线缓存
+  （6000 根 30 把 44 ms → 7.7 ms）；拖到一半被删的线读数胶囊残留；成交量 NaN / +inf 画整列；十字线只认拎起它的那根手指；周线刻度落周一、
+  月线落 1 号、补 2 / 5 / 10 年阶梯、标签不互压；K/M/B/T 按印出来的样子进位（不再「1000.00K」）；叠加对比每条线从自己第一根有数据处起算；
+  订单流金额签躲画线文字；十字线停在末根时读数跟着刷新。chart 229 / core 490 / web 1343 全绿。
+- **C 行情数据与网络**（6 项，`df23e209` `8f5570f9` `0d78806c` `bf9736e7`）：WS 换轮后旧连接醒来掐掉新连接看门狗（币安 / Coinbase 同病）；
+  Coinbase 订阅全被拒仍每 60 s 永远重连；迟到 REST 24h 行情成交额被整帧丢；OI 归档逐天整树 stat（随天数平方涨，改记账 + 超限才扫）；
+  Coinbase 新连接只发过心跳时的 error 被记到上一轮订阅头上、好订阅错标被拒（`lastControl` 带轮次与连接号）。network 229 全绿。
+- **D 账号同步 · 偏好 · 自选 · 板块 · 习惯 · 分享**（17 个提交，`54c698c0` → `1a703e95`）：钥匙串凭据坏了账号页永远「读不到登录状态」；
+  网页加自选不带分类手机看不见；收件箱只取第一页（服务端 `share.rs` 回包加 `more`，iOS / 网页跟页，90 天裁副本）；存档写失败拦正式写、读不懂的存档 / registry /
+  shares.json 挪开重建；推送二分整批被拒时无辜操作留 sent；导出文件保护并当场删、退登不看 busy 并吊销过时会话；切号串习惯段；板块页每次进都重建历史 feed、
+  读写盘挪后台、覆盖不足板块一只新币就排第一（pct / 广度 NaN、沉底，与网页 stats 同口径）；自选拖动途中被同步删行挪错（iOS 与手机网页同款）；
+  自选页滚动恢复任务可取消按代际作废；价格轴习惯权重每次翻倍溢出成 inf。Makefile 加 `share-test`。settings 186 / symbols 195 / sector 60 / habits 24 /
+  share 20 / account-codec 74 / account 156 / core 490 / backend 541 / web 1343。
+- **E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断**（32 条清单 + 自查，`5e34aa3e` → `7047f9c0`，续项 `a5505117`）：画在已走完行情上的回撤 / 矩形提醒线按水平价位
+  往右延（客户端 `AlertGeometry` + 服务端 `alerts.rs` + 契约 `alert-cases.json` 三处同改；走完的线段不再出胶囊，旧提醒总表显示「线段已走完」）；
+  一跳跨分钟边界的穿线漏判；通知 / Webhook 目标价改为触发那一刻线上的价（两端同一算法共用夹具）；提醒在列表滚动时不响；诊断按配额删、帧探针旧倒计时掐新一轮；
+  小组件没报价的自选与 Coinbase 现货也能后台补价、按日涨跌跨 UTC 0 点用错开盘价；交易所签名只放行 ASCII 字母数字与 `-_.~` 并守卫「发出去的串 = 签名的串」；
+  先对时再拿持仓快照、账本与水位同文件同存同丢、回合档带属主换号不显示不上传、自成交只留一边；复盘 409 冲突记录与截图三处裁剪都保留、截图临时网络错误不再
+  标永久缺失等 F1–F6；移除交易所 Key 时 Key 删不掉也删了元数据（改先删 Key、删不掉就停）；**后台刷新拉起 app 没有界面时新回合不上传、空档案还挡拉取**
+  （新 `ReviewIntegration/ExchangeReviewUplink.swift` 从账号根目录 + 钥匙串会话问出「此刻是谁」与上传通道，账号根目录收进 `Account/AccountsRoot.swift` 与账号桥共用）。
+  alerts 118 / exchange 51 / diag 52 / review 全过 / main-ios-test 142。
+- **跨线教训**：共享工作树里有一次裸 `git commit` 把另一线暂存的三个画线文件带进了 `0d78806c`（内容以 `625998ad` 为准，不改写历史）；此后规矩是
+  提交一律 `git commit -- <路径…>`。两台模拟器（16 Pro / 17 Pro Max）各归一条线、编译门按 machine-guard 预算放行，带 app 的 hosted 测试不共用一台模拟器。
+- **已推送**：`1a703e95` 已 ff 推到 `origin/main`（57 个提交）。
+- **服务端已部署**（2026-10-04 15:31 CST，新加坡 `/opt/kanpan-api`，源码 = origin/main `1a703e95` 的 `Backend/kanpan-api`，只差 `alerts.rs` / `share.rs` / 契约 /
+  两份集成测试）：部署前核对新加坡与美国编译机的源码逐文件散列 = 上一次部署基线 `3bef1413`；备份 `/opt/kanpan-backups/deep-audit-20261004-153102/`
+  （旧二进制、`src/`、`contract/`）→ rsync 源码到美国编译机 `cargo build --release`（3m02s，sha256 `4d4af19f…`）→ 二进制经 Mac 管道运到新加坡 → 源码同步到
+  新加坡 → `ops/install.py`（自带 try-restart，不再多重启）；`kanpan-api` / `kanpan-worker` active，`ExecMainStartTimestamp` = 15:31:32 / 15:31:30 CST；
+  只读验证 127.0.0.1:8794 `/health` 200、公网 `/v1/sync/changes` 无令牌 401、`/v1/market/raw/.../klines` 200；日志只有启动期惯有的供应量抓取告警。
+  回滚：`sudo cp /opt/kanpan-backups/deep-audit-20261004-153102/kanpan-api /opt/kanpan-api/target/release/ && sudo systemctl restart kanpan-api kanpan-worker`。
+- **G 走查**（以交易员身份在 17 Pro Max 上逐模块走：行情页、面板、画线、提醒、自选、板块、账号、我的、系统路径；脚本 `KanpanUITests/WalkthroughUITests.swift`，
+  报告 `0e5158bf`）：修 7 项各带回归用例——`c723c53f` 板块页滚动时最底一行露在底栏的 home 条里（TabBar 的 `ignoresSafeArea` 写在 `frame` 外、home 条一直透明）；
+  `38c5293c` 最新价胶囊压住右轴刻度字（`priceTickLabels` 与胶囊交叠的那条不写）；`964ab6bb`「我的 › 全部预警」浅色下整页白（`AlertListPage.onAppGround`）；
+  `6c6eb5f4` 交易回放页头写成 BTCUSDT 原始代号（`ReplayHeaderView.pairTitle` → BTC/USDT）；`3cb23e49` 自选冷启动停在只有黄金的「贵金属」、后面的币也被塞进去
+  （目录没到之前不给没分过类的品种分类）；`a815e6d7` 停在「美股」从搜索加星落进「加密」（`selectedGroupSource` 接线挪到 `MainScreen.wireAccount()` 开头，账号桥
+  建不起来时也接上）；`68eddc50` 从搜索点进 1000PEPE / 1000SHIB 顶栏涨跌与「额」几秒后变回「—」要等二十来秒（`QuoteBook` 裁品种时连 receivedAt / quoteAttempt
+  一起裁，`ChartSession.headerTicker` 在报价簿只有逐笔价时用行情流的 24h 统计垫底；UI 用例修前红修后绿）。判为非 bug 的九项（对数轴刻度非整数位同 AICoin、
+  无 WR/OBV、USDCUSDT 故意排除、网关线路数字由 OKX 顶、退登回行情页、整页搜索自动弹键盘、板块总页头部品种数、周线持仓只近 30 天）理由在报告里。
+  收尾全量走查 + 新用例 17/17；chart 230、symbols 197、main-ios 149。
+- **F 性能与压测**（16 Pro 模拟器 Release 包 / Mac Release，报告 `95364ea7`，证据 `热路径A-B.txt`、`泡机与冷启.txt`）：
+  `186c121b` 折线一笔描完抗锯齿代价随段数超线性涨——新 `PolylinePen` 不透明线按 32 段一笔拆描，图层全开 9.40 → 7.60 ms、仅 K 线 5.84 → 约 4.0 ms（`PolylinePenTests`）；
+  `25148589` 甩动时每帧白比一遍 2,430 单订单流快照、逐单拼约 4,800 个字符串——同一块存储直接判等，709.6 µs → 7 ns（`OrderFlowSameRenderCostTests` 修前红）；
+  `19cd7436` DEBUG 的 `dirtyReasons` 拼字符串建字典拖重测试包帧时——改用组成项当键；与上条合计满载甩动超 8 ms 帧 17–19% → 4.4–4.8%（新 `HotPathFrameUITests`）；
+  `55608dcf` Coinbase WS 风暴用例 Release 下偶发红是用例拨针循环的问题、产品不动；`778a187c` 09-28 走查用例十字线点在订单流触控区上，改点最新蜡烛，
+  取证目录可用 `TEST_RUNNER_KANPAN_STRESS_OUT` 指到别处不再覆盖入库数据；`d457e8d3` 连切 400 下用例约 9.5 分钟撞 8 分钟默认时限、期间 0 卡顿，时限放到 900 s；
+  `fd91df7e` 补 `EdgeLoadUITests`（空自选、提醒顶满 200 条 + 500 条线、满载断网重连 9.3 s 全部就绪）与 `FScaleBenchTests`（默认跳过，`KANPAN_FSCALE_BENCH=1`）；
+  `02781e54` 服务端提醒评估器有界负载单测（2000 条表 × 72,000 帧 249.7 ms，单帧 3.5 µs，不建索引）。复测今天五处修复全部生效：OIStore 存一次 6.3 → 0.47 ms、
+  计算型画线每帧 0.6 → 0.1 ms（B 提交说明里的 13/44 ms 是 Debug 包的数）、角标 20 口重算 0 次。冷启 10 次中位 685 ms（09-24 为 683）；泡机 12.5 分钟 82–114 MB、
+  0 leaks；回前台一次 21–22 个请求、不随后台时长涨。整套压测忙时多出的卡顿（30×3 最坏 1,056 ms）是与 G 线和编译争机器，空机单跑全部回到基线（30×3 0 次、
+  面板 ×50 0 次、泡机 1 次 113 ms、登录退登 10 轮 0 次）。整机压测 17 条 16 过 1 跳过（需老包状态文件）；包级 Release 全绿（Core 113+493、Data 3+265、
+  Presentation 17、Account 156、Network 229、OI 54、Chart 229/7 跳过、服务端 542/3 忽略）。未验证：没上真机（满载图层 7.60 ms 贴着 120 Hz 的 8.3 ms 线）、
+  泄漏只用 `leaks` 命令行、首次安装的第一次冷启没量。
+- **收尾全量回归（17 Pro Max 模拟器，Debug，`make test` 逐目标）**：core 493（Debug 与 Release 各一遍）、presentation 17、network 229、data 265、
+  app-logic 756 + 冒烟 5、exchange 51、main-ios 149、account 156、review 21/4/9、chart 234（7 跳过）。UI：矩阵 27 条过（MainScreen 20、ReviewFlow 3、
+  TabBarHomeStrip、MeAlertsGround、FavoritesStarFromSearch、HeaderChangeAfterSearch）+ G 线走查十个类 13/13（937 s）。
+  `make test` 红了三处都是今天测试与守卫自己的问题，`7d4a1f6a` 修：F 的 `OrderFlowSameRenderCostTests` 「快一倍以上」是 Release 的数、Debug 下 0.70，
+  按运行时断言配置分档（不用 `#if DEBUG`，名册不许）；D/E 注释里提到 Coinbase 让 `check-venue-isolation.sh` 误报，守卫改成忽略行注释（探针：代码里的
+  主机名照样抓）；`FScaleBenchTests` 的 `XCTSkipUnless` 改成名册认可的 `throw XCTSkip` 并登记进 `skipGates`。
+- **收尾唯一剩的红：`HotPathFrameUITests` 重帧占比**。Debug 测试包 16 Pro 689 / 3294（20.9%）、17 Pro Max 1442 / 3308（43.6%），F 线标定的 12% 是
+  **Release 测试包**（`-configuration Release` + `DEBUG KANPAN_TEST_SUPPORT`）量的 4.4–4.8%，而 `Tools/ui-test.sh` 一直只编 Debug——差的是 Swift 没优化那部分，
+  不是产品的渲染代价（`snap.sh` 早写着「Debug 包拿它量帧率不作数」，UI 矩阵却没有 Release 档）。改法：`ui-test.sh` 加 `RELEASE=1`（Release derived data 单独一份
+  `DerivedData-ui-release`），Makefile 加 `ui-test-release` / `hotpath-test`（`ONLY_DEVICE=` 只跑一台）；用例按 `_isDebugAssertConfiguration()` 分档——Debug 包只记占比不判，
+  场景 / 帧数 / ≥ 1 秒卡死三条照判，12% 的门只在 Release 判。Release 测试包实测（`make hotpath-test ONLY_DEVICE=…`，一台一跑、机器空闲）：
+  17 Pro Max 206 / 3462（5.9%）、16 Pro 140 / 3488（4.0%），场景 1500 根 + 30 线 + 对比 2 + 订单流 2664 单，手势段 0 次卡顿、无 ≥ 1 秒卡死——产品渲染在
+  两台重点机型上都在门内，17 Pro Max 画布更大（主图 318 pt 对 277 pt）多出两个点，是正常的。
+- **推送**：G/F 的 13 个提交 ff 推到 `origin/main`（`1a703e95..0e5158bf`）；F 之后 4 个 + `7d4a1f6a` 推到 `0e5158bf..7d4a1f6a`；本条与热路径改法见其后一条。
+  F 的服务端改动只有测试代码，线上不需重部署。
 - 手机不在手边，真机包未装。
