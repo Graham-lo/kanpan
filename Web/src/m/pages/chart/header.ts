@@ -12,7 +12,7 @@ import { esc, grouped, fmtPrice, MISSING } from '../../model/rowText'
 import { badgeHTML, assetOf } from '../../model/badge'
 import { glyph, icon } from '../../ui/icons'
 import { termMark, type Term } from '../../ui/hint'
-import { el } from '../../ui/dom'
+import { el, setText } from '../../ui/dom'
 import {
   priceChangeText, openInterestText, turnoverText, marketCapText, valuationCell, fundingText, fundingCountdownText,
   type AssetKind,
@@ -59,7 +59,7 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
   return {
     el: bar,
     render(sym: string, hasOrigin: boolean): void {
-      back.hidden = !hasOrigin
+      if (back.hidden === hasOrigin) back.hidden = !hasOrigin
       const s = S.symbols.get(sym)
       const { base, quote } = splitPair(sym)
       const key = sym + '|' + (s?.kind ?? '') + '|' + document.documentElement.dataset.skin
@@ -122,8 +122,9 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
       const s = S.symbols.get(sym)
       const dec = s?.dec ?? 2
       const up = (s?.pct ?? s?.chg ?? 0) >= 0
-      priceEl.textContent = s?.price != null ? grouped(fmtPrice(s.price, dec)) : MISSING
-      chgEl.textContent = priceChangeText(s?.chg, s?.pct, dec)
+      // 一秒一次（结算倒计时）加上每跳行情都进来：同值不写
+      setText(priceEl, s?.price != null ? grouped(fmtPrice(s.price, dec)) : MISSING)
+      setText(chgEl, priceChangeText(s?.chg, s?.pct, dec))
       for (const x of [priceEl, chgEl]) {
         x.classList.toggle('stale', stale)
         x.classList.toggle('up', !stale && s?.price != null && up)
@@ -133,7 +134,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
       // 六格的数：缺数或行情停住都退成 ink3（照 TopBar.statValue）
       const put = (k: string, text: string): HTMLElement => {
         const b = cell(k).querySelector('b')!
-        b.textContent = text
+        setText(b, text)
         b.classList.toggle('miss', stale || text === MISSING)
         return b
       }
@@ -165,9 +166,9 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
     },
     /** 十字线读数：null = 收起，恢复价格 */
     setReadout(text: string | null): void {
-      readout.hidden = text == null
+      if (readout.hidden !== (text == null)) readout.hidden = text == null
       head.classList.toggle('reading', text != null)
-      if (text != null) readout.textContent = text
+      if (text != null) setText(readout, text)
     },
   }
 }

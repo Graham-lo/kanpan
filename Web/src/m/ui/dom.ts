@@ -58,6 +58,11 @@ export function setHTML(node: Element, html: string): boolean {
 }
 export function forgetHTML(node: Element): void { lastHTML.delete(node) }
 
+/** 每秒 / 每跳都会来写的字和属性：同值不写。浏览器不比较新旧——同一串 textContent 也会换掉文字节点、
+ *  同值 setAttribute 也记一次变动，都让样式与排版作废一遍 */
+export function setText(node: Node, s: string): void { if (node.textContent !== s) node.textContent = s }
+export function setAttr(node: Element, name: string, v: string): void { if (node.getAttribute(name) !== v) node.setAttribute(name, v) }
+
 /** 手指按在 root 里时把整块重画往后放：轮询回来就地 innerHTML 会把按着的那一行换成新节点，
  *  松手时点击落不到行上、长按计时随旧节点一起作废。返回的 gate(fn)：没按着立刻跑；按着就记下最后一次，
  *  松手（这一下的 click 派发完）后跑。按住超过 STUCK_MS 当作丢了松手事件，不再挡。

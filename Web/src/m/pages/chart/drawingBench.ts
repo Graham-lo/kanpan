@@ -29,7 +29,7 @@ import { grouped, fmtPrice } from '../../model/rowText'
 import { openSheet, confirmDialog, type Sheet } from '../../ui/sheet'
 import { swipeRow, deleteAction } from '../../ui/swipeDelete'
 import { toast } from '../../ui/toast'
-import { el, esc } from '../../ui/dom'
+import { el, esc, setAttr, setText } from '../../ui/dom'
 import { icon } from '../../ui/icons'
 import { railIntervals, deleteDrawingById, safeHexColor, mergeStyleEdits } from './logic'
 import { splitPair } from './header'
@@ -262,10 +262,10 @@ export function createBench(ctx: BenchContext) {
       + (s?.price != null ? `<b class="num ${cls}">${esc(grouped(fmtPrice(s.price, s.dec ?? 2)))}</b>` : '')
       + (s?.pct != null && Number.isFinite(s.pct) ? `<small class="num ${cls}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</small>` : '')
     if (html !== pillHTML) { pillHTML = html; pill.innerHTML = html }
-    pill.disabled = !active
-    pill.setAttribute('aria-label', active ? `换品种，当前 ${base}/${quote}` : `${base}/${quote}`)
+    if (pill.disabled === active) pill.disabled = !active
+    setAttr(pill, 'aria-label', active ? `换品种，当前 ${base}/${quote}` : `${base}/${quote}`)
     const hint = active && c.tool && readout == null ? drawHint(c.tool, c.placedAnchors) : null
-    lread.textContent = readout ?? hint ?? ''
+    setText(lread, readout ?? hint ?? '')
     lread.classList.toggle('hint', readout == null && hint != null)
   }
 
