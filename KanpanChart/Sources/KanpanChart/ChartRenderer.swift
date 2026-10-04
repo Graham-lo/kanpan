@@ -537,33 +537,78 @@ public struct ChartRenderer {
 
   private func drawPriceGrid(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
     let t = state.colors
+    ctx.setLineWidth(1 / s)
+    if state.effectiveGrid != .none {
+      for y in priceTickYs(pane: pane, r: r) {
+        ctx.hairLine(from: 0, to: L.plotW, y: y, scale: CGFloat(s), color: Paint.cg(t.grid))
+      }
+    }
+    for tick in priceTickLabels(pane: pane, r: r, L: L) {
+      tick.text.drawCentered(at: CGPoint(x: L.plotW + L.axisW / 2, y: tick.y), font: ChartFont.axis, color: t.dim)
+    }
+    ctx.hairLineV(x: L.plotW, from: 0, to: L.H, scale: CGFloat(s), color: Paint.cg(t.axis))
+    drawAutoFitButton(ctx, L: L, scale: s)
+  }
+
+  /// 主图这一屏每条刻度的 y（网格线照这个画，不管字让不让位）。
+  func priceTickYs(pane: Pane, r: PriceRange) -> [Double] {
     let mode = state.effectivePriceMode
     let a = mode.forward(r.lo, base: r.base), z = mode.forward(r.hi, base: r.base)
-    ctx.setLineWidth(1 / s)
-    let gm = state.effectiveGrid
-    // 手动拖过价格轴之后那颗「A」画在价格轴里；和它同一高度的刻度字让位，不然两样叠在一起
-    // 哪个都读不出来。网格线照画，只让字。
+    return mainPriceTicks(range: r, paneHeight: pane.h).compactMap { f in
+      let fraction = (f - a) / (z - a)
+      let y = pane.y + (r.inverted ? fraction : 1 - fraction) * pane.h
+      return y < pane.y + 6 || y > pane.y + pane.h - 2 ? nil : y
+    }
+  }
+
+  /// 右轴上真正写出来的刻度字（y 与文案）。
+  ///
+  /// 两样东西坐在价格轴里时，同一高度的刻度字让位、网格线照画：
+  ///
+  /// - 手动拖过价格轴之后那颗「A」——两样叠在一起哪个都读不出来；
+  /// - **最新价胶囊**（2026-10-04 G 线走查）：胶囊是实底的，以前刻度照写，离它不到一行字的那条
+  ///   被盖掉上半截、下半截从胶囊底下露出来（BTC 1h 上 84120.0 只剩半行数字），读起来像一个
+  ///   被裁坏的数。现在凡是和胶囊有一点交叠的刻度字整条不写。最新价一动末根就变、底图跟着重画
+  ///   （`ChartView.changed` 的 `sameLastBar` 那一支），所以在底图里判是跟得上的。
+  ///   十字线的读数胶囊不在这里让：它只在手指拖动时出现、跟手每帧都在动，为它重画底图
+  ///   就破了「十字线动不脏底图」（审查 32）。
+  func priceTickLabels(pane: Pane, r: PriceRange, L: Layout) -> [(y: Double, text: String)] {
+    let mode = state.effectivePriceMode
+    let a = mode.forward(r.lo, base: r.base), z = mode.forward(r.hi, base: r.base)
     let fitBadge: (lo: Double, hi: Double)? = state.price.isManual && pane.isMain
       ? { let b = L.autoFitButton; return (b.y - 6, b.y + b.h + 6) }() : nil
+    let half = Double(ChartFont.axis.lineHeight) / 2
+    let chip: (lo: Double, hi: Double)? = pane.isMain ? lastPriceChipBand(pane: pane, r: r).map {
+      ($0.lo - half, $0.hi + half)
+    } : nil
+    var out: [(y: Double, text: String)] = []
     for f in mainPriceTicks(range: r, paneHeight: pane.h) {
       let fraction = (f - a) / (z - a)
       let y = pane.y + (r.inverted ? fraction : 1 - fraction) * pane.h
       if y < pane.y + 6 || y > pane.y + pane.h - 2 { continue }
-      if gm != .none {
-        ctx.hairLine(from: 0, to: L.plotW, y: y, scale: CGFloat(s), color: Paint.cg(t.grid))
-      }
       if let fitBadge, y > fitBadge.lo, y < fitBadge.hi { continue }
+      if let chip, y > chip.lo, y < chip.hi { continue }
       let label: String
       switch mode {
       case .percent: label = state.percentAxis ? ChartState.comparePercentLabel(f) : (f >= 0 ? "+" : "") + toFixed(f, 1) + "%"
       case .log: label = fmtNum(exp(f), state.decimals)
       case .linear: label = fmtNum(f, state.decimals)
       }
-      label.drawCentered(at: CGPoint(x: L.plotW + L.axisW / 2, y: y), font: ChartFont.axis, color: t.dim)
+      out.append((y, label))
     }
-    ctx.hairLineV(x: L.plotW, from: 0, to: L.H, scale: CGFloat(s), color: Paint.cg(t.axis))
-    drawAutoFitButton(ctx, L: L, scale: s)
+    return out
   }
+
+  /// 最新价胶囊在右轴上占的那一段（上沿、下沿）；关了实时价格线或没有数据时为 nil。
+  /// 与 `drawLastPrice` 同一套算法——胶囊画在哪儿，刻度就从哪儿让开。
+  func lastPriceChipBand(pane: Pane, r: PriceRange) -> (lo: Double, hi: Double)? {
+    guard state.options.lastLine, let p = state.series.close.last, p.isFinite else { return nil }
+    let y = max(pane.y + 8, min(pane.y + pane.h - 8, yOf(p, pane, r)))
+    return (y - Self.lastPriceChipHeight / 2, y + Self.lastPriceChipHeight / 2)
+  }
+
+  /// 最新价胶囊的高。
+  static let lastPriceChipHeight = 15.0
 
   /// The A badge resets only Y auto scaling; the iPhone's separate round control opens a side panel.
   private func drawAutoFitButton(_ ctx: CGContext, L: Layout, scale s: Double) {
@@ -894,7 +939,7 @@ public struct ChartRenderer {
 
     let label = axisLabel(p, range: r)
     let chip = axisChip(L, text: label)
-    let h = 15.0
+    let h = Self.lastPriceChipHeight
     let box = CGRect(x: chip.x, y: y - h / 2, width: chip.w, height: h)
     // 闪的那 150ms（P2.8）：底色换成这一口的方向色，再提亮一层，涨一口亮一下红/绿，
     // 哪怕这根 K 线整体是反方向的。平时照旧按这根 K 线的涨跌上色。
