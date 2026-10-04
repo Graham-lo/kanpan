@@ -50,6 +50,8 @@ export function buildFriends(body: HTMLElement, layer: MeLayer, host: MeHost): v
   let name = ''
   let saving = false
   let error: string | null = null
+  /** 左划删朋友没删成那一句（「没删掉 X：…」），和加朋友的错、收件箱那行「· 重试」各说各的 */
+  let removeError: string | null = null
   const swipes: SwipeHandle[] = []
 
   const paint = (): void => {
@@ -64,6 +66,7 @@ export function buildFriends(body: HTMLElement, layer: MeLayer, host: MeHost): v
     const notice = inboxNotice()
     body.innerHTML = `
       <div class="fr-friends">${friends.map(f => `<div class="fr-row" data-friend="${esc(f)}"><span class="fr-name">${esc(f)}</span></div>`).join('')}</div>
+      ${removeError ? `<div class="fr-err fr-remove-err" data-id="removeError">${esc(removeError)}</div>` : ''}
       ${!friends.length && !adding ? empty(PEOPLE, '还没有朋友') : ''}
       ${adding ? addFieldHTML() : `<button type="button" class="fr-row fr-add" data-act="add"><span class="fr-name">加朋友</span><span class="fr-plus">${icon('plus', 17)}</span></button>`}
       <div class="me-group fr-group">收到的线</div>
@@ -76,10 +79,19 @@ export function buildFriends(body: HTMLElement, layer: MeLayer, host: MeHost): v
       ${notice ? `<button type="button" class="fr-notice" data-act="retry">${esc(notice)} · 重试</button>` : ''}`
     body.querySelectorAll<HTMLElement>('[data-friend]').forEach(row => {
       const who = row.dataset.friend!
-      swipes.push(swipeRow(row, { trailing: [deleteAction(() => { void removeFriend(who) })], brick: 'flush' }))
+      swipes.push(swipeRow(row, { trailing: [deleteAction(() => { remove(who) })], brick: 'flush' }))
     })
     fillThumbs(body)
     if (adding) wireField()
+  }
+
+  const remove = (who: string): void => {
+    removeError = null
+    removeFriend(who).catch(e => {
+      if (e instanceof Error && e.message === 'cancelled') return
+      removeError = `没删掉 ${who}：${friendErrorText(e)}`
+      paint()
+    })
   }
 
   const addFieldHTML = (): string => {

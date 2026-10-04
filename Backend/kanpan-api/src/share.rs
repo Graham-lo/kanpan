@@ -166,7 +166,10 @@ pub fn inbox_cursor(page:&[(DateTime<Utc>,String)],more:bool,now:DateTime<Utc>)-
 struct Letter {id:String,from:String,symbol:String,market:String,interval:String,view:Span,drawings:Box<serde_json::value::RawValue>,alerted:Box<serde_json::value::RawValue>,
  created_at:DateTime<Utc>,opened_at:Option<DateTime<Utc>>,kept_at:Option<DateTime<Utc>>,reply_to:Option<String>}
 #[derive(serde::Serialize)] struct Span {from:i64,to:i64}
-#[derive(serde::Serialize)] struct Inbox {items:Vec<Letter>,cursor:String}
+/// `more`：这一页被截断了（封数或字节到顶），后面还有，客户端当场接着拉。
+/// 从前只有游标、没有这一位，客户端每次只拉一页就停：积了一页多的信（或几封大的把 4 MB
+/// 吃满）时，按改动时刻正序排在后面的——恰恰是最新的那几封——要等下次打开朋友页才进来。
+#[derive(serde::Serialize)] struct Inbox {items:Vec<Letter>,cursor:String,more:bool}
 #[derive(serde::Serialize)] struct InboxEnvelope {data:Inbox}
 async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->Result<Json<InboxEnvelope>> {
  let (after,after_id)=match v.after.as_deref().map(InboxCursor::parse) {
@@ -192,14 +195,15 @@ async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->
  tx.commit().await?;
  let fetched=rows.first().map_or(0,|r|r.get::<i64,_>("fetched") as usize);
  let keys:Vec<_>=rows.iter().map(|r|(r.get::<DateTime<Utc>,_>("changed"),r.get::<String,_>("id"))).collect();
- let cursor=inbox_cursor(&keys,fetched>rows.len(),now).encode();
+ let more=fetched>rows.len();
+ let cursor=inbox_cursor(&keys,more,now).encode();
  let raw=|text:String|serde_json::value::RawValue::from_string(text);
  let mut items=Vec::with_capacity(rows.len());
  for r in rows {
   items.push(Letter{id:r.get("id"),from:r.get("sender"),symbol:r.get("symbol"),market:r.get("market"),interval:r.get("interval"),view:Span{from:r.get("view_from"),to:r.get("view_to")},
    drawings:raw(r.get("drawings"))?,alerted:raw(r.get("alerted"))?,created_at:r.get("created_at"),opened_at:r.get("opened_at"),kept_at:r.get("kept_at"),reply_to:r.get("reply_to")});
  }
- Ok(Json(InboxEnvelope{data:Inbox{items,cursor}}))
+ Ok(Json(InboxEnvelope{data:Inbox{items,cursor,more}}))
 }
 async fn put_shot(State(s):State<AppState>,who:Identity,Route(id):Route<String>,headers:HeaderMap,body:Bytes)->Result<Json<Value>> {
  if body.len()>300*1024 {return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE,"shot_too_large"))}
@@ -281,6 +285,15 @@ async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Re
   assert_eq!(inbox_cursor(&full,true,now),InboxCursor::After(t(INBOX_PAGE as i64-1),format!("id{:04}",INBOX_PAGE-1)),"多出来的那一封下次还拿得到");
   // 按字节截的页只有几封：同样停在这一页最后一封。
   assert_eq!(inbox_cursor(&full[..3],true,now),InboxCursor::After(t(2),"id0002".into()));
+ }
+ /// 收件箱一页的回包带 `more`：客户端（iOS `ShareClient.Page.more`、网页 `pageHasMore`）认这个名字
+ /// 决定当场接着拉。截断了是 true、没截断是 false，字段名、类型一样都不能变。
+ #[test] fn an_inbox_page_tells_the_client_whether_more_follow() {
+  for more in [true,false] {
+   let v=serde_json::to_value(InboxEnvelope{data:Inbox{items:vec![],cursor:"c".into(),more}}).unwrap();
+   assert_eq!(v["data"]["more"],json!(more));
+   assert_eq!(v["data"]["cursor"],json!("c"));
+  }
  }
  /// 同一时刻的信超过一页：游标带上 id，下一页从这一刻里排在它后面的那封接着拉，不会原地打转。
  #[test] fn a_page_of_letters_sharing_one_instant_still_moves_the_cursor() {

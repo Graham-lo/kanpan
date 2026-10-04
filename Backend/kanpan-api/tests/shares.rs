@@ -113,8 +113,12 @@ async fn an_inbox_of_letters_sharing_one_instant_pages_through_to_the_end() {
   for item in items {assert!(seen.insert(item["id"].as_str().unwrap().to_owned()),"同一封不该在后一页再出现：{}",item["id"]);}
   pages+=1;assert!(pages<=4,"游标没有往前走");
   after=Some(v["data"]["cursor"].as_str().unwrap().to_owned());
-  if items.is_empty() {break}
+  // 客户端靠 `more` 判断要不要当场接着拉：截断了才是 true，最后一页（哪怕不空）是 false。
+  let more=v["data"]["more"].as_bool().expect("收件箱这一页要带 more");
+  assert_eq!(more,items.len()==kanpan_api::share::INBOX_PAGE,"第 {pages} 页 more 和截断对不上");
+  if !more {break}
  }
+ assert_eq!(pages,2,"两百五十封正好两页，最后一页带 more=false 就不必再空拉一趟");
  assert_eq!(seen.len(),total,"每一封都拿到了");
  assert_eq!(request(&w.app,"/v1/shares/inbox?after=not-a-cursor","GET",Some(&b.token),None,json!({})).await.0,400);
  w.close().await;

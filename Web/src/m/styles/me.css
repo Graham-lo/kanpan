@@ -219,6 +219,7 @@
 .fr-add-go:disabled { color: var(--ink3); opacity: var(--disabled-opacity) }
 .fr-rule { font: var(--t-caption); color: var(--ink3) }
 .fr-err { font: var(--t-caption); color: var(--danger) }
+.fr-remove-err { padding: var(--s-s) var(--inset-page) }
 .fr-group { padding-left: var(--inset-page); padding-right: var(--inset-page) }
 .fr-item {
   width: 100%; display: flex; align-items: center; gap: var(--s-m); min-height: var(--row-min); text-align: left;

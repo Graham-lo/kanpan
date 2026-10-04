@@ -95,6 +95,27 @@ export function mergePage(cache: InboxCache, page: readonly ShareItem[], now: nu
     .sort((a, b) => a.createdAt === b.createdAt ? (a.id < b.id ? 1 : a.id > b.id ? -1 : 0) : (a.createdAt < b.createdAt ? 1 : -1))
 }
 
+/**
+ * 一次拉取最多接着翻几页。服务端一页 200 封或 4 MB 到顶就截断、回 `more: true`；
+ * 从前只拉一页就停，按改动时刻正序排在后面的——恰恰是最新的那几封——要等下次打开才进来。
+ * 设个上限只是兜住「服务端一直说还有」这种异常，不是常态。
+ */
+export const INBOX_PAGES_PER_PULL = 20
+/** 这一页之后服务端还有没有（老服务端没这一位：当没有，照旧一页） */
+export const pageHasMore = (page: unknown): boolean =>
+  !!page && typeof page === 'object' && (page as Record<string, unknown>).more === true
+
+/**
+ * 「留下」分过的新 id 只给还在收件箱里的信留着。信过了留存期从列表里滤掉之后，它那一份
+ * 再没人会用（信都没了，不会再留下一次），从前一直攒在缓存里、跟着每次落盘整份重写。
+ */
+export function prunedCopies(copies: Readonly<Record<string, string[]>>, items: readonly ShareItem[]): Record<string, string[]> {
+  const ids = new Set(items.map(i => i.id))
+  const next: Record<string, string[]> = {}
+  for (const [id, value] of Object.entries(copies)) if (ids.has(id)) next[id] = value
+  return next
+}
+
 /** 这条回执服务端永远不会收：4xx 里除了 401 / 403 / 408 / 429 */
 export const receiptIsDead = (status: number): boolean => status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status)
 

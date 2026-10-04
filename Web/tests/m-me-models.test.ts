@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptyCache, itemKey, letterTime, markLocal, mergePage, openableSymbol, plannedCopies, readCache, readItem, receiptIsDead, unseen, withFriend,
-  RETENTION_MS, PER_SYMBOL_LIMIT, type ShareItem,
+  pageHasMore, prunedCopies, RETENTION_MS, PER_SYMBOL_LIMIT, type ShareItem,
 } from '../src/m/model/inbox'
 import { LN, cursorKey, noticeSymbol, planNotices, readNotices, type ListingNotice } from '../src/m/model/listingNotices'
 import { resetPrefs, restorePrefs } from '../src/m/model/prefsReset'
@@ -58,6 +58,18 @@ describe('收件箱', () => {
     expect(p1.ids).toEqual(['id0', 'id1'])
     const p2 = plannedCopies(p1.cache, it0, () => 'id' + n++)
     expect(p2.ids).toEqual(['id0', 'id1'])
+  })
+  it('翻页：服务端说截断了（more）才接着拉；老服务端没这一位就停在这一页', () => {
+    expect(pageHasMore({ items: [], cursor: 'x', more: true })).toBe(true)
+    expect(pageHasMore({ items: [], cursor: 'x', more: false })).toBe(false)
+    expect(pageHasMore({ items: [], cursor: 'x' })).toBe(false)
+    expect(pageHasMore({ more: 'yes' })).toBe(false)
+    expect(pageHasMore(null)).toBe(false)
+  })
+  it('留下分过的新 id：信过了留存期从列表里滤掉，它那一份也跟着清', () => {
+    const kept = item('a', '2026-10-02T00:00:00Z')
+    expect(prunedCopies({ a: ['n1'], gone: ['n2'] }, [kept])).toEqual({ a: ['n1'] })
+    expect(prunedCopies({}, [kept])).toEqual({})
   })
   it('规范键、能不能开、朋友名单、时间', () => {
     expect(itemKey({ symbol: 'btcusdt', market: 'binance/usd_m' })).toBe('binance/usd_m/BTCUSDT')

@@ -14,8 +14,8 @@ import { newDrawingID, tryDecodeDrawing, type Drawing } from '../chart/draw/draw
 import { preferredCopies } from '../model/sharePreview'
 import { shareErrorText } from './chart/share'
 import {
-  emptyCache, itemKey, markLocal, mergePage, plannedCopies, readCache, readItem, receiptIsDead, unseen, withFriend,
-  type InboxCache, type ShareItem,
+  emptyCache, itemKey, markLocal, mergePage, pageHasMore, plannedCopies, prunedCopies, readCache, readItem, receiptIsDead, unseen, withFriend,
+  INBOX_PAGES_PER_PULL, type InboxCache, type ShareItem,
 } from '../model/inbox'
 
 const KEY = (owner: string): string => 'hkline-m-inbox-v1.' + owner.toLowerCase()
@@ -83,13 +83,18 @@ export function pullInbox(): void {
   void (async () => {
     try {
       await flush(gen)
-      const q = cache.cursor ? '?after=' + encodeURIComponent(cache.cursor) : ''
-      const page = await authed<{ items?: unknown[]; cursor?: string }>('GET', '/v1/shares/inbox' + q)
-      if (gen !== epoch) return
-      const items = (page?.items ?? []).map(readItem).filter((x): x is ShareItem => !!x)
-      cache = { ...cache, items: mergePage(cache, items, Date.now()), cursor: typeof page?.cursor === 'string' ? page.cursor : cache.cursor }
-      persist()
-      emit()
+      // 截断了（`more`）就当场接着翻，一页一落盘：中途断了，已经拿到的几页也不白拉。
+      for (let n = 0; n < INBOX_PAGES_PER_PULL; n++) {
+        const q = cache.cursor ? '?after=' + encodeURIComponent(cache.cursor) : ''
+        const page = await authed<{ items?: unknown[]; cursor?: string; more?: boolean }>('GET', '/v1/shares/inbox' + q)
+        if (gen !== epoch) return
+        const items = (page?.items ?? []).map(readItem).filter((x): x is ShareItem => !!x)
+        const merged = mergePage(cache, items, Date.now())
+        cache = { ...cache, items: merged, copies: prunedCopies(cache.copies, merged), cursor: typeof page?.cursor === 'string' ? page.cursor : cache.cursor }
+        persist()
+        emit()
+        if (!pageHasMore(page)) break
+      }
       const friends = await authed<{ username?: unknown }[]>('GET', '/v1/friends')
       if (gen !== epoch) return
       cache = { ...cache, friends: (friends ?? []).map(f => f?.username).filter((n): n is string => typeof n === 'string').sort() }
@@ -171,18 +176,18 @@ export function friendErrorText(e: unknown): string {
   return shareErrorText(e)
 }
 
+/**
+ * 左划删朋友；失败抛给朋友页，由它在名单底下单独说一句（照 iOS ShareInbox.removeFriend）。
+ * 以前失败写进收件箱的 notice：那行带「· 重试」，点了是重拉收件箱、不是再删一次，
+ * 人点完以为删掉了、朋友却还在（审查 D 线）。
+ */
 export async function removeFriend(name: string): Promise<void> {
   load()
   const gen = epoch
-  try {
-    await authed('DELETE', '/v1/friends/' + encodeURIComponent(name))
-    if (gen !== epoch) return
-    cache = { ...cache, friends: cache.friends.filter(f => f !== name) }
-    persist()
-  } catch (e) {
-    if (gen !== epoch) return
-    notice = shareErrorText(e)
-  }
+  await authed('DELETE', '/v1/friends/' + encodeURIComponent(name))
+  if (gen !== epoch) throw new Error('cancelled')
+  cache = { ...cache, friends: cache.friends.filter(f => f !== name) }
+  persist()
   emit()
 }
 

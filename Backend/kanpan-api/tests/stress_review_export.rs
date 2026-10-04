@@ -200,6 +200,7 @@ async fn a_full_inbox_page_keeps_memory_bounded() {
   pages+=1;
   for item in v["data"]["items"].as_array().unwrap() {assert!(seen.insert(item["id"].as_str().unwrap().to_string()),"duplicate {}",item["id"]);}
   let cursor=v["data"]["cursor"].as_str().unwrap().to_string();
+  assert_eq!(v["data"]["more"].as_bool(),Some(cursor.contains('~')),"more 要和游标是否截断一致");
   if !cursor.contains('~') {break}
   after=Some(cursor);assert!(pages<=SHARES,"paging never ends");
  }
