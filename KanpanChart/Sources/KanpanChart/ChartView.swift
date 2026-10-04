@@ -840,18 +840,25 @@ public final class ChartView: UIView {
     if a.phase != b.phase || a.symbol != b.symbol { out.insert("phase") }
     if a.thresholds != b.thresholds || a.defaults != b.defaults { out.insert("thresholds") }
     if a.venues != b.venues { out.insert("venues") }
-    let ka = Dictionary(a.orders.map { ($0.id, $0.renderKey) }, uniquingKeysWith: { x, _ in x })
-    let kb = Dictionary(b.orders.map { ($0.id, $0.renderKey) }, uniquingKeysWith: { x, _ in x })
+    // 键用 id 的四个组成项而不是现拼的 `id` 字符串：这段取证每次底图变脏都跑，BTC 两千多单时拼字符串要好几毫秒，
+    // 测试包（带 DEBUG）里量出来的帧就被它自己拖重了（2026-10-04 深度审查 F 线：甩动采样里占 2093 个样本）。
+    let ka = Dictionary(a.orders.map { (DirtyKey($0), $0) }, uniquingKeysWith: { x, _ in x })
+    let kb = Dictionary(b.orders.map { (DirtyKey($0), $0) }, uniquingKeysWith: { x, _ in x })
     if Set(ka.keys) != Set(kb.keys) { out.insert(Set(kb.keys).subtracting(ka.keys).isEmpty ? "removed" : "added") }
     var heights = 0
     for (id, x) in ka { guard let y = kb[id] else { continue }
-      if x.tier != y.tier { heights += 1 }
+      if x.thicknessTier != y.thicknessTier { heights += 1 }
       if x.hasFill != y.hasFill { out.insert("fill") }
       if x.status != y.status || x.endMs != y.endMs { out.insert("status") }
     }
     if heights > 0 { out.insert("height"); out.insert(heights >= 5 ? "height≥5" : "height×\(heights)") }
-    if out.isEmpty && a.orders.map(\.id) != b.orders.map(\.id) { out.insert("order") }
+    if out.isEmpty && a.orders.map(DirtyKey.init) != b.orders.map(DirtyKey.init) { out.insert("order") }
     return out
+  }
+  /// `BigOrder.id` 的组成项，不拼字符串。
+  struct DirtyKey: Hashable {
+    let venueID: String, side: BookSide, bucket: Int64, firstSeenMs: Int64
+    init(_ o: BigOrder) { venueID = o.venueID; side = o.side; bucket = o.bucket; firstSeenMs = o.firstSeenMs }
   }
   #endif
 }
