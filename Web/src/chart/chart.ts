@@ -24,6 +24,7 @@ import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } fr
 import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
 import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
+import { detachFlows } from './tradeFlow'
 
 const AXIS_H = 28
 const MIN_SPACING = 1.5
@@ -211,7 +212,8 @@ type Region = 'plot' | 'time' | 'price' | 'corner' | `sep:${string}`
 interface XY { x: number; y: number }
 /** `vertical`：右键拖画布 = 只做纵向平移（openmarket Hyperzoom 同款），松手时没动过才弹右键菜单 */
 interface DragPan { kind: 'pan'; region: Region; x0: number; y0: number; right0: number; sp0: number; r0: PriceRange | null; moved: boolean; pane: Pane | undefined; vertical?: boolean }
-interface DragDrawing { kind: 'drawing'; hit: DrawingHit; start: DrawPoint; orig: DrawPoint[]; moved: boolean }
+/** copied：⌘ 拖出来的那份副本（按下时已放进 drawings），收手势时连它一起拿走 */
+interface DragDrawing { kind: 'drawing'; hit: DrawingHit; start: DrawPoint; orig: DrawPoint[]; moved: boolean; copied?: Drawing[] }
 /** 两点工具按下拖到位松手也算画完（点两下也行） */
 interface DragPlace { kind: 'place'; x0: number; y0: number }
 interface DragMeasure { kind: 'measure' }
@@ -248,9 +250,14 @@ export class TVChart {
   onScreen = true
   /** 图例要在下一帧重写（逐笔更新不再每笔都重写一次 innerHTML） */
   legendDirty = false
-  series: Partial<Record<CalcId, Series[]>> = {}
+  private _series: Partial<Record<CalcId, Series[]>> = {}
   /** 指标算的时候留下的口径说明（图例参数位置显示，悬停出 tip） */
-  notes: Partial<Record<string, { text: string; tip?: string }>> = {}
+  private _notes: Partial<Record<string, { text: string; tip?: string }>> = {}
+  /** 指标要重算但还没算：真正读到（这一帧要画、图例要读数、调试钩子）时才算一遍。
+   *  一帧里来几条推送只算一次；不在屏幕上的格子（十六图滚出去的、切到别的标签页）不算 */
+  private calcStale = false
+  get series(): Partial<Record<CalcId, Series[]>> { if (this.calcStale) this.computeSeries(); return this._series }
+  get notes(): Partial<Record<string, { text: string; tip?: string }>> { if (this.calcStale) this.computeSeries(); return this._notes }
   private env: CalcEnv | null = null
   log = false
   auto = true
@@ -322,6 +329,7 @@ export class TVChart {
     // 就在这里同步重设画布并重画，免得清空的画布闪一帧
     this.ro = new ResizeObserver(() => { if (this.dead) return; this.resize(); if (this.onScreen) { this.dirty = false; this.render() } })
     this.ro.observe(host)
+    this.watchDpr()
     if (typeof IntersectionObserver !== 'undefined') {
       this.io = new IntersectionObserver(es => { const v = es[es.length - 1]?.isIntersecting ?? true; if (v && !this.onScreen) this.dirty = true; this.onScreen = v })
       this.io.observe(host)
@@ -375,7 +383,11 @@ export class TVChart {
     this.bars = bars
     this.iv = meta.iv
     this.meta = Object.assign({}, this.meta, meta)
-    if (!sameSym) { this.rightBar = bars.length - 1 + RIGHT_MARGIN_BARS; this.manual = null; this.auto = true; this.o.onAutoChange?.(true) }
+    if (!sameSym) {
+      // 换品种 / 周期时手里还按着：拖平移记的起点下标、分隔线起拖的高度、两下画线的第一下都是上一份数据上的，作废
+      this.dropGesture(true)
+      this.rightBar = bars.length - 1 + RIGHT_MARGIN_BARS; this.manual = null; this.auto = true; this.o.onAutoChange?.(true)
+    }
     this.recalc(); this.dirty = true; this.renderLegend()
   }
   prependData(more: Bar[]): void {
@@ -384,6 +396,8 @@ export class TVChart {
     more = more.filter(b => b.t < first)
     this.bars = more.concat(this.bars)
     this.rightBar += more.length
+    // 拖着平移时翻到的页：起拖那一刻记的右缘下标也要跟着挪，否则下一次 mousemove 按旧下标算，视口一下跳回去 more.length 根
+    if (this.drag?.kind === 'pan') this.drag.right0 += more.length
     if (this.replay != null) this.replay += more.length
     this.recalc(); this.dirty = true
   }
@@ -402,7 +416,27 @@ export class TVChart {
   }
   setIndicators(ind: Partial<IndState>): void { this.ind = Object.assign({}, this.ind, ind); this.recalc(); this.dirty = true; this.renderLegend() }
   setParams(id: IndicatorId, p: IndParams): void { this.params[id] = p; this.recalc(); this.dirty = true; this.renderLegend() }
-  setDrawings(arr: Drawing[]): void { this.drawings = arr; this.selected = null; this.measure = null; this.dirty = true }
+  setDrawings(arr: Drawing[]): void {
+    // 换了一份（换品种、撤销 / 重做、同步落地）：手里正拖的那条、画了一半的草稿属于上一份，不能带进这一份
+    if (arr !== this.drawings) this.dropGesture(false)
+    this.drawings = arr; this.selected = null; this.measure = null; this.dirty = true
+  }
+  /** 收掉手里正在做的事。拖画线：放回起拖时的位置（没松手就不算改过）；草稿与测量丢掉；
+   *  拖提醒线也收（松手会按当前格子的品种建 / 挪提醒，品种已经换了）；
+   *  all = 连平移 / 分隔线 / 右键平移也收（换了数据，起拖记的下标与高度都不对了） */
+  private dropGesture(all: boolean): void {
+    const d = this.drag
+    this.draft = null
+    if (!d) return
+    if (d.kind === 'drawing') {
+      d.hit.d.pts = d.orig.map(q => ({ ...q }))
+      if (d.copied) { const k = d.copied.indexOf(d.hit.d); if (k >= 0) d.copied.splice(k, 1) }
+      if (d.moved) this.o.onDrawDrag?.(false)
+    } else if (d.kind === 'pan') { if (!all) return; this.sepHs = null; this.pendingMenu = null }
+    this.drag = null
+    if (this.canvas) this.canvas.style.cursor = 'crosshair'
+    this.dirty = true
+  }
   setTool(t: DrawingType | null): void { this.tool = t; this.draft = null; this.canvas.style.cursor = 'crosshair'; this.dirty = true }
   setMagnet(on: boolean): void { this.magnet = on }
   /** 能不能新画、拖、改画线（复盘回放里不能） */
@@ -421,6 +455,13 @@ export class TVChart {
       p: dy ? this.yToPrice(this.priceToY(q.p, p, r) + dy, p, r) : q.p,
     }))
   }
+  /** 拖整条画线：起拖时的各点按「鼠标从 start 挪到 now」平移。横向按整根挪；纵向在价格轴的空间里挪
+   *  （对数轴按比例）——对数轴上加同一个价差，上下两个点在屏幕上挪的距离不一样，整条线跟着鼠标变形，
+   *  往下拖还会把低的那个点拖到 0 以下、整条线消失 */
+  dragBody(orig: DrawPoint[], start: DrawPoint, now: DrawPoint): DrawPoint[] {
+    const dt = this.indexAt(now.t) - this.indexAt(start.t), dp = this.tf(now.p) - this.tf(start.p)
+    return orig.map(q => ({ t: this.timeAt(Math.round(this.indexAt(q.t) + dt)), p: this.itf(this.tf(q.p) + dp) }))
+  }
   /** 选中画线在画布上的上沿（选中快捷条躲开它） */
   selectedTop(): number | null {
     const d = this.selected
@@ -437,7 +478,8 @@ export class TVChart {
   setLog(on: boolean): void { this.log = on; this.manual = null; this.dirty = true }
   setAuto(on: boolean): void { this.auto = on; if (on) this.manual = null; this.dirty = true; this.o.onAutoChange?.(on) }
   setStale(on: boolean): void { this.stale = on; this.dirty = true; this.renderLegend() }
-  syncCrosshair(t: number | null): void { this.extCross = t; this.dirty = true }
+  // 图例读数也跟着同步来的时间走（legendIndex 认 extCross），不然别的格子十字线挪了、图例还停在最新一根上
+  syncCrosshair(t: number | null): void { if (t === this.extCross) return; this.extCross = t; this.dirty = true; this.legendDirty = true }
   resetView(): void { this.spacing = DEFAULT_SPACING; this.rightBar = this.lastIndex() + RIGHT_MARGIN_BARS; this.setAuto(true) }
   setVisibleRange(t0: number, t1: number): void {
     const i0 = this.indexAt(t0), i1 = this.indexAt(t1)
@@ -459,9 +501,21 @@ export class TVChart {
     if (!p || !r) return
     const y = anchorY ?? p.y + p.h / 2
     const a = this.tf(this.yToPrice(y, p, r)), lo = this.tf(r.min), hi = this.tf(r.max)
-    this.manual = { min: this.itf(a - (a - lo) * f), max: this.itf(a + (hi - a) * f) }
+    if (!this.scaleManual(lo, hi, a, f)) return
     if (this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
     this.dirty = true
+  }
+  /** 手动价格区间：以 a 为不动点把 [lo, hi]（都在 tf 空间）缩放 f 倍。
+   *  跨度夹在 [相对 1e-6, 1e6 倍] 之间（对数轴是 1e-6 到 ln 1e12）：一路往里缩会缩到浮点分辨率以下，
+   *  刻度步长比价格的最小可表示间隔还小，刻度循环停不下来、整页卡死；一路往外放会溢出成 Infinity */
+  scaleManual(lo: number, hi: number, a: number, f: number): boolean {
+    const span = hi - lo, mid = (lo + hi) / 2
+    if (!(span > 0) || !isFinite(span) || !isFinite(mid) || !isFinite(a) || !(f > 0)) return false
+    const minSpan = this.log ? 1e-6 : Math.max(Math.abs(mid) * 1e-6, 1e-12)
+    const maxSpan = this.log ? Math.log(1e12) : Math.max(Math.abs(mid), 1) * 1e6
+    const k = clamp(f, minSpan / span, maxSpan / span)
+    this.manual = { min: this.itf(a - (a - lo) * k), max: this.itf(a + (hi - a) * k) }
+    return true
   }
   /** 把某个时间 / 价位挪到图中间（不改缩放） */
   centerOn(t: number | null, p: number | null): void {
@@ -502,21 +556,27 @@ export class TVChart {
     this.ro.disconnect()
     this.io?.disconnect()
     this.ac.abort()
+    if (this.env) detachFlows(this.env.invalidate)
     frames.delete(this)
     this.drag = null
     this.host.innerHTML = ''
   }
 
   // ---------------------------------------------------------- 指标
-  recalc(): void {
-    this.series = {}
-    this.notes = {}
+  /** 标记指标要重算（K 线、指标开关、参数、异步数据变了）；真正的计算在第一次读 series / notes 时做 */
+  recalc(): void { this.calcStale = true; this.dirty = true }
+  private computeSeries(): void {
+    this.calcStale = false
+    const series: Partial<Record<CalcId, Series[]>> = {}
+    this._series = series
+    this._notes = {}
+    const env = this.calcEnv()
+    detachFlows(env.invalidate)  // 这一轮用到哪只再由量差 / 大单重新登记
     const b = this.bars
     if (!b.length) return
-    const env = this.calcEnv()
-    for (const id of MAIN_IDS) if (this.ind[id]) this.series[id] = Calc[id](b, this.params[id], env)
+    for (const id of MAIN_IDS) if (this.ind[id]) series[id] = Calc[id](b, this.params[id], env)
     // 降级收掉副图时不算副图（十六图里每格省下几个指标的整段重算）
-    if (this.deg.subs) for (const id of this.ind.subs) if (Calc[id]) this.series[id] = Calc[id](b, this.params[id], env)
+    if (this.deg.subs) for (const id of this.ind.subs) if (Calc[id]) series[id] = Calc[id](b, this.params[id], env)
   }
   /** 给指标的上下文（一个图一份，invalidate 是同一个函数，异步数据源拿它登记回调不会越攒越多） */
   calcEnv(): CalcEnv {
@@ -525,8 +585,8 @@ export class TVChart {
     this.env = {
       get symbol() { return ch.meta.symbol },
       get iv() { return ch.iv },
-      invalidate: () => { if (ch.dead) return; ch.recalc(); ch.dirty = true; ch.legendDirty = true },
-      note: (id, text, tip) => { ch.notes[id] = { text, tip } },
+      invalidate: () => { if (ch.dead) return; ch.recalc(); ch.legendDirty = true },
+      note: (id, text, tip) => { ch._notes[id] = { text, tip } },
     }
     return this.env
   }
@@ -549,6 +609,13 @@ export class TVChart {
     this.canvas.style.width = this.w + 'px'; this.canvas.style.height = this.h + 'px'
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     this.dirty = true
+  }
+  /** 设备像素比变了（窗口从 2K 外接屏拖到 Retina 笔记本屏上）：格子的 CSS 尺寸没变，ResizeObserver 不响，
+   *  画布还按旧的像素比铺，整张图发虚到下一次改尺寸。盯住「当前像素比」这条媒体查询，一变就按新的重铺、再盯新的 */
+  private watchDpr(): void {
+    if (typeof matchMedia !== 'function' || typeof window === 'undefined') return
+    const mq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+    mq.addEventListener('change', () => { if (this.dead) return; this.resize(); this.watchDpr() }, { once: true, signal: this.ac.signal })
   }
   axisW(): number {
     this.ctx.font = this.font
@@ -601,26 +668,31 @@ export class TVChart {
 
   rangeMain(from: number, to: number): PriceRange {
     if (this.manual) return this.manual
+    // 只认有限值；对数轴只认正数——布林下轨、VWAP −2σ 在暴跌的小币上会穿到 0 以下，
+    // 拿它取对数整条价格轴变 NaN、主图全空
+    const log = this.log, ok = (v: number) => Number.isFinite(v) && (!log || v > 0)
     let lo = Infinity, hi = -Infinity
-    for (let i = from; i <= to; i++) { const b = this.bars[i]; if (!b) continue; lo = Math.min(lo, b.l); hi = Math.max(hi, b.h) }
+    for (let i = from; i <= to; i++) { const b = this.bars[i]; if (!b) continue; if (ok(b.l)) lo = Math.min(lo, b.l); if (ok(b.h)) hi = Math.max(hi, b.h) }
     for (const id of MAIN_IDS) {
       const ser = this.series[id]
       if (!ser || this.hidden.has(id)) continue
-      for (const s of ser) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
+      for (const s of ser) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null && ok(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
     }
-    if (!isFinite(lo)) { lo = 0; hi = 1 }
-    if (this.log) { const a = Math.log(lo), b = Math.log(hi), pad = (b - a) * 0.08 || 0.01; return { min: Math.exp(a - pad), max: Math.exp(b + pad) } }
-    const pad = (hi - lo) * 0.08 || hi * 0.01 || 1
+    if (!(hi >= lo)) { lo = log ? 1 : 0; hi = log ? 10 : 1 }
+    if (log) { const a = Math.log(lo), b = Math.log(hi), pad = (b - a) * 0.08 || 0.01; return { min: Math.exp(a - pad), max: Math.exp(b + pad) } }
+    // 一字线（停牌、涨跌停、刚上线只有一个价）：上下各留价格的 1%；负价（价差类）按绝对值留，否则上下沿颠倒
+    const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.01 || 1
     return { min: lo - pad, max: hi + pad }
   }
   rangeSub(id: SubId, from: number, to: number): PriceRange {
     if (id === 'rsi') return { min: 0, max: 100 }
     const fixed = SUB_FIXED[id as ExtraSubId]; if (fixed) return fixed
     let lo = Infinity, hi = -Infinity
-    for (const s of this.series[id] || []) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
+    for (const s of this.series[id] || []) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null && Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
     if (!isFinite(lo)) return { min: 0, max: 1 }
     if (id === 'macd') { const m = Math.max(Math.abs(lo), Math.abs(hi)) || 1; return { min: -m * 1.1, max: m * 1.1 } }
-    const pad = (hi - lo) * 0.1 || 1; return { min: lo - pad, max: hi + pad }
+    // 一条平线（持仓量 5B 一动不动）：按量级留边，留 ±1 的话刻度步长 0.5、整列都是同一个「5.00B」
+    const pad = (hi - lo) * 0.1 || Math.abs(hi) * 0.1 || 1; return { min: lo - pad, max: hi + pad }
   }
 
   // ---------------------------------------------------------- 渲染
@@ -725,14 +797,24 @@ export class TVChart {
 
   priceTicks(p: Pane, r: PriceRange): number[] {
     const n = Math.max(2, Math.floor(p.h / 56))
+    if (!(r.max > r.min) || !isFinite(r.min) || !isFinite(r.max)) return []
+    // 主图刻度不细过品种的价格精度：细过了一列刻度会印出好几个一样的价（BTC 一位小数，步长 0.05 → 两个「60000.0」）
+    const floor = p.id === 'main' && this.meta.dec >= 0 ? Math.pow(10, -this.meta.dec) : 0
+    const round = (v: number, st: number) => +(Math.round(v / st) * st).toFixed(Math.max(0, Math.min(20, 1 - Math.floor(Math.log10(st)))))
     if (this.log && p.id === 'main') {
+      if (!(r.min > 0)) return []
       const out: number[] = [], a = Math.log(r.min), b = Math.log(r.max)
-      for (let i = 1; i <= n; i++) { const v = Math.exp(a + (b - a) * i / (n + 1)); const st = niceStep(v / 20); out.push(Math.round(v / st) * st) }
+      for (let i = 1; i <= n; i++) {
+        const v = Math.exp(a + (b - a) * i / (n + 1)), t = round(v, Math.max(niceStep(v / 20), floor))
+        if (t > r.min && t < r.max && out[out.length - 1] !== t) out.push(t)
+      }
       return out
     }
-    const step = niceStep((r.max - r.min) / n)
-    const out: number[] = []
-    for (let v = Math.ceil(r.min / step) * step; v <= r.max; v += step) out.push(+v.toFixed(10))
+    const step = Math.max(niceStep((r.max - r.min) / n), floor)
+    if (!(step > 0) || !isFinite(step)) return []
+    // 按整数倍数走：v += step 在步长小于价格的浮点间隔时永远加不上去，循环停不下来
+    const out: number[] = [], k0 = Math.ceil(r.min / step), k1 = Math.floor(r.max / step)
+    for (let k = k0; k <= k1 && out.length < 64; k++) out.push(round(k * step, step))
     return out
   }
   subFmt(id: string, v: number): string { return fmtSub(id, v, this.meta.dec) }
@@ -777,7 +859,9 @@ export class TVChart {
   drawVolume(p: Pane, from: number, to: number): void {
     const c = this.ctx, C = this.colors, bw = this.candleW()
     let mx = 0
-    for (let i = from; i <= to; i++) mx = Math.max(mx, this.bars[i]?.v || 0)
+    // 坏量（NaN / Infinity / 负数）不画也不参与取顶：一根 Infinity 会把整屏的量柱压成 0 高
+    const vOk = (v: number | undefined): v is number => v != null && Number.isFinite(v) && v > 0
+    for (let i = from; i <= to; i++) { const v = this.bars[i]?.v; if (vOk(v)) mx = Math.max(mx, v) }
     if (!mx) return
     const h = p.h * VOL_H, base = p.y + p.h
     const half = Math.floor(bw / 2)
@@ -785,7 +869,7 @@ export class TVChart {
       c.fillStyle = hexA(pass ? C.up : C.down, VOL_ALPHA)
       c.beginPath()
       for (let i = from; i <= to; i++) {
-        const b = this.bars[i]; if (!b) continue
+        const b = this.bars[i]; if (!b || !vOk(b.v)) continue
         if ((b.c >= b.o) !== (pass === 1)) continue
         const x = Math.round(this.indexToX(i)), vh = Math.max(1, b.v / mx * h)
         c.rect(x - half, Math.round(base - vh), Math.max(1, bw), Math.round(vh))
@@ -919,8 +1003,8 @@ export class TVChart {
     let y = 0, pane: Pane | undefined
     if (this.cross) {
       const cy = this.cross.y
+      // 横线一律跟着鼠标走，不吸开高低收（磁吸只管画线落点，见 toTP）；读数与「在这个价建提醒」用的是同一个 y
       y = cy
-      if (this.magnet && this.cross.pane === 'main') { const b = this.bars[idx]; if (b) { const r = this._ranges.main, p = panes[0]; const cands = [b.o, b.h, b.l, b.c].map(v => this.priceToY(v, p, r)); y = cands.reduce((a, v) => Math.abs(v - cy) < Math.abs(a - cy) ? v : a) } }
       pane = panes.find(p => y >= p.y && y < p.y + p.h)
       if (pane) { c.moveTo(0, Math.round(y) + .5); c.lineTo(PW, Math.round(y) + .5) }
     }
@@ -1215,12 +1299,12 @@ export class TVChart {
         }
         this.o.onCrosshairMove?.(this.timeAt(Math.round(this.xToIndex(x))))
       } else { this.cross = null; this.o.onCrosshairMove?.(null); if (this.layerHover) { this.layerHover.leave?.(); this.layerHover = null } }
-      this.dirty = true; this.renderLegend()
+      this.dirty = true; this.legendDirty = true  // 图例读数并到下一帧：高回报率鼠标一帧里来好几次 mousemove，只拼一次 DOM
     }, { signal })
     cv.addEventListener('mouseleave', () => {
       if (this.drag) return
       this.hoverSep = null
-      this.cross = null; this.axisHoverY = null; this.dirty = true; this.renderLegend()
+      this.cross = null; this.axisHoverY = null; this.dirty = true; this.legendDirty = true
       if (this.hoverWall) { this.hoverWall = null; this.o.onWallHover?.(null) }
       if (this.layerHover) { this.layerHover.leave?.(); this.layerHover = null }
       this.o.onCrosshairMove?.(null)
@@ -1263,16 +1347,17 @@ export class TVChart {
       }
       if (reg === 'plot' && this._panes) {
         let hit = this.editable() ? this.hitDrawing(x, y) : null
+        let copied: Drawing[] | undefined
         if (hit && hit.handle == null && (e.metaKey || e.ctrlKey) && hit.d.type !== 'measure') { // ⌘ + 拖 = 复制一份拖走，原来那条不动
           const copy: Drawing = { ...structuredClone(hit.d), id: uid(), locked: false }
           delete copy.alert
           if (this.o.canAdd?.([copy]) === false) return
-          this.drawings.push(copy); hit = { d: copy, handle: null }
+          this.drawings.push(copy); hit = { d: copy, handle: null }; copied = this.drawings
         }
         if (hit) {
           this.selected = hit.d; this.o.onSelectDrawing?.(hit.d)
           const start = this.toTP(x, y), orig = hit.d.pts.map(q => ({ ...q }))
-          this.drag = { kind: 'drawing', hit, start, orig, moved: false }
+          this.drag = { kind: 'drawing', hit, start, orig, moved: false, copied }
           this.dirty = true; return
         }
         if (this.selected) { this.selected = null; this.o.onSelectDrawing?.(null) }
@@ -1306,8 +1391,7 @@ export class TVChart {
           if (e.shiftKey && (dd.type === 'trend' || dd.type === 'ray') && dd.pts.length === 2) now = this.snapTP(dd.pts[1 - d.hit.handle], x, y)
           moveHandle(dd, d.hit.handle, now)
         } else {
-          const dt = this.indexAt(now.t) - this.indexAt(d.start.t), dp = now.p - d.start.p
-          dd.pts = d.orig.map(q => ({ t: this.timeAt(Math.round(this.indexAt(q.t) + dt)), p: q.p + dp }))
+          dd.pts = this.dragBody(d.orig, d.start, now)
         }
         this.dirty = true; return
       }
@@ -1330,9 +1414,8 @@ export class TVChart {
         const f = Math.exp(dx / 200); this.spacing = clamp(d.sp0 * f, MIN_SPACING, MAX_SPACING)
         this.rightBar = d.right0; this.maybeMore()
       } else if (d.region === 'price' && d.pane?.id === 'main' && d.r0) {
-        const f = Math.exp(dy / 200), mid = (this.tf(d.r0.max) + this.tf(d.r0.min)) / 2, half = (this.tf(d.r0.max) - this.tf(d.r0.min)) / 2 * f
-        this.manual = { min: this.itf(mid - half), max: this.itf(mid + half) }
-        if (this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
+        const lo = this.tf(d.r0.min), hi = this.tf(d.r0.max)
+        if (this.scaleManual(lo, hi, (lo + hi) / 2, Math.exp(dy / 200)) && this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
       } else if (d.region.startsWith('sep:') && this._panes) {
         const id = d.region.slice(4), panes = this._panes, k = panes.findIndex(p => p.id === id)
         if (k >= 1) {
@@ -1345,7 +1428,7 @@ export class TVChart {
         }
       }
       if (!d.vertical && (d.region === 'plot' || d.region === 'time')) this.emitView()
-      this.dirty = true; this.renderLegend()
+      this.dirty = true; this.legendDirty = true
     }, { signal })
     window.addEventListener('mouseup', e => {
       if (!this.drag || this.dead) return
@@ -1397,10 +1480,12 @@ export class TVChart {
     cv.addEventListener('wheel', e => {
       e.preventDefault()
       const { x } = pos(e)
-      if (e.altKey) this.zoomPrice(Math.exp(e.deltaY * 0.002), pos(e).y) // Alt + 滚轮 = 纵向缩放
-      else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { this.rightBar += e.deltaX / this.spacing; this.maybeMore() }
-      else this.zoom(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0025)), Math.min(x, this.plotW()))
-      this.dirty = true; this.renderLegend()
+      // 按行 / 按页给的滚动量（Windows 上的 Firefox、部分鼠标驱动）折成像素：不折的话一格滚轮只缩放 0.75%，像没反应
+      const k = wheelPx(e.deltaMode, this.h), dX = e.deltaX * k, dY = e.deltaY * k
+      if (e.altKey) this.zoomPrice(Math.exp(dY * 0.002), pos(e).y) // Alt + 滚轮 = 纵向缩放
+      else if (Math.abs(dX) > Math.abs(dY)) { this.rightBar += dX / this.spacing; this.maybeMore() }
+      else this.zoom(Math.exp(-dY * (e.ctrlKey ? 0.01 : 0.0025)), Math.min(x, this.plotW()))
+      this.dirty = true; this.legendDirty = true
       if (!e.altKey) this.emitView()
     }, { passive: false, signal })
     cv.addEventListener('contextmenu', e => {
@@ -1471,6 +1556,9 @@ export class TVChart {
   }
   private fontFamily(): string { return this.font.split('px ')[1] }
 }
+
+/** 滚轮事件的一个单位折多少像素：0 像素、1 行（按 16 px）、2 页（按图高） */
+export function wheelPx(mode: number, pageH: number): number { return mode === 1 ? 16 : mode === 2 ? Math.max(1, pageH) : 1 }
 
 // ------------------------------------------------------------ 共用的一帧
 // 十六格各自挂一个 requestAnimationFrame 循环，每帧就是十六次回调；合成一个循环，挨个问脏没脏。

@@ -107,6 +107,8 @@ function wake(): void {
   for (const ch of waiting) if (!ch.dead) ch.dirty = true
   waiting.clear()
 }
+/** 测试用：还攥着几张图 */
+export function keyLevelsWaiting(): number { return waiting.size }
 
 /** 这只品种今天的全部关键价位（没到齐的先不出，后台去要） */
 export function keyLevelsOf(ch: TVChart, now = Date.now()): KeyLevel[] {
@@ -129,7 +131,9 @@ export function keyLevelsOf(ch: TVChart, now = Date.now()): KeyLevel[] {
     entry.busyD = true
     void klines(sym, '1d', undefined, 16, false).then(r => {
       entry.busyD = false
-      if (r.ok && r.bars.length) { entry.daily = dailyLevels(r.bars, now); wake() } else entry.failD = Date.now()
+      // 没取到也叫一遍：等着的格子重画一次重新登记，不然断网期间关掉的格子（十六图换布局）一直被这里攥着
+      if (r.ok && r.bars.length) entry.daily = dailyLevels(r.bars, now); else entry.failD = Date.now()
+      wake()
     })
   }
   if (!entry.prof && ch.iv < DAY) {
@@ -140,11 +144,13 @@ export function keyLevelsOf(ch: TVChart, now = Date.now()): KeyLevel[] {
       void klines(sym, '5m', today, 288, false).then(r => {
         entry.busyP = false
         const p = r.ok ? profileLevels(r.bars, now) : []
-        if (p.length) { entry.prof = p; wake() } else entry.failP = Date.now()
+        if (p.length) entry.prof = p; else entry.failP = Date.now()
+        wake()
       })
     }
   }
-  if (!entry.daily || (!entry.prof && ch.iv < DAY)) waiting.add(ch)
+  // 只在真有一笔在路上时登记（到了 wake 叫它重画、并清空）；刚失败在冷却里的不登记——没人会来叫醒，只会把关掉的格子一直攥着
+  if (entry.busyD || entry.busyP) waiting.add(ch)
   return [...(entry.daily || []), ...(entry.prof || [])]
 }
 

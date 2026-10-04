@@ -79,7 +79,8 @@ export class SymbolFlow {
     return false
   }
   get cut(): number | null { return this.srv.bigUsd ?? this.localCut }
-  notify(): void { for (const f of this.listeners) f() }
+  /** 拷一份再叫：回调里重算会先退订再登记（Set 边迭代边删加会把同一个回调再访问一遍，转成死循环） */
+  notify(): void { for (const f of [...this.listeners]) f() }
 }
 
 const flows = new Map<string, SymbolFlow>()
@@ -95,6 +96,9 @@ export function flowOf(symbol: string): SymbolFlow {
   }
   return f
 }
+/** 一张图不再看这些数据时退订：换了品种、关了量差 / 大单指标、图销毁。登记跟着「这一次重算用到了哪只」走，
+ *  否则旧品种那份数据一到（另一格还开着它）就叫这张图白算一遍，销毁的图也被闭包一直拽着不放 */
+export function detachFlows(fn: () => void): void { for (const f of flows.values()) f.listeners.delete(fn) }
 /** 测试用：清空 */
 export function resetFlows(): void { flows.clear() }
 

@@ -6,7 +6,8 @@ const bars = (n: number): Bar[] => Array.from({ length: n }, (_, i) => ({ t: i *
 
 /** 不起画布，只借 setData 的视口逻辑：给它一个最小的 this */
 function fake(): TVChart {
-  const me = { meta: { symbol: '' }, iv: '', bars: [] as Bar[], rightBar: 0, manual: null, auto: true, dirty: false, o: {}, recalc() {}, renderLegend() {} }
+  const me = { meta: { symbol: '' }, iv: '', bars: [] as Bar[], rightBar: 0, manual: null, auto: true, dirty: false, o: {}, drag: null, draft: null, recalc() {}, renderLegend() {},
+    dropGesture: (TVChart.prototype as unknown as { dropGesture: unknown }).dropGesture }
   return me as unknown as TVChart
 }
 
