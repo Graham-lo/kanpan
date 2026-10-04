@@ -68,9 +68,9 @@ struct Prefs: Sendable, Equatable {
   /// 所以把它挪到设置里，跟皮肤、副图高度同一等级——所有品种、所有周期共用一份，
   /// 跨 app 重启也在。没存过就是出厂的 `initialSpacing`。
   ///
-  /// ⚠️ **这一份是「盘上那一份」，写入是节流的**（`PrefsStore.noteBarSpacing`），
-  /// 它只管下次冷启动。本程内要「用户此刻捏到多宽」请读 `PrefsStore.liveBarSpacing`，
-  /// 那一份手一动就变——用户捏完立刻换周期换品种，靠的是它。
+  /// ⚠️ **这一份是「档案那一份」，手指抬起那一刻才写**（`ChartViewport.interactionEnded`
+  /// → `PrefsStore.storeBarSpacing`），捏的过程中它不动。本程内要「用户此刻捏到多宽」
+  /// 请读 `ChartViewport.barSpacing`，那一份手一动就变——用户捏完立刻换周期换品种，靠的是它。
   var barSpacing: Double = AICoinBehavior.initialSpacing
   /// 主图上下翻转（双击价格轴）。和根间距同理：是「我习惯怎么看」，不是这个品种的属性。
   /// 原来要先在设置里打开「主轴允许翻转」才认，2026-09-28 起开关收掉、手势直接生效，
@@ -139,9 +139,9 @@ struct Prefs: Sendable, Equatable {
   /// 点数——`Layout` 拿它和主图权重一起分配当前视口，所以同一个值在两种朝向下给出
   /// 的是同一个比例。拆成横竖两份等于「设置跟着页面走」，恰恰是要避免的那一类。
   var subHeightOverrides: [IndicatorID: Double] = [:]
-  /// 指标按周期分组记忆（2026-09-27）：上面那几项（连同 `candleKind` / `priceMode`）永远是
-  /// **当前周期所在组**的那一份，另外两组记在这里。规则与形状见 `IndicatorLayouts.swift`。
-  /// 没分过叉的人这里永远是空的，三组共用顶层那一份。
+  /// 只为读老档留着的一格（2026-10-03 起指标布局一人一份、不分周期）：老档 / 老客户端写在云端的
+  /// 按周期分叉读进来那一瞬间非空，`settleIndicatorLayouts` 取当前周期那份当唯一那份之后
+  /// 永远是空的，存档与线上写 `{}`。规则见 `IndicatorLayouts.swift` 文件头。
   var indicatorLayouts = IndicatorLayoutMemory()
 
   // ---------------------------------------------------------------- 网络

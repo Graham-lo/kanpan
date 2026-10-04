@@ -130,4 +130,50 @@ struct ChartViewportA5Tests {
     viewport.willLeaveForeground()
     #expect((sync.records, sync.pushes) == (2, 2))
   }
+
+  /// 原来那个「400ms 节流」是每帧重置的防抖：手指在屏上停住 400ms 它就整套落盘、记操作、
+  /// 推服务端，手还按着半截的根宽就推给了所有设备。
+  @Test("手指按着停住不动：不写盘、不记操作、不推，抬手才一轮")
+  @MainActor
+  func holdingStillDoesNotSettle() async throws {
+    let (viewport, store, box, sync) = make()
+    viewport.userIsZooming(to: 7.5)
+    try await Task.sleep(for: .milliseconds(700))
+    #expect(box.keys.isEmpty)
+    #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
+    #expect((sync.records, sync.pushes) == (0, 0))
+    viewport.interactionEnded()
+    #expect(store.prefs.barSpacing == 7.5)
+    #expect((sync.records, sync.pushes) == (1, 1))
+  }
+
+  /// 云端落地的是别的字段（另一台设备换了皮肤）：从前 `applySynced` 照样通知图，
+  /// 正捏着的那一下当场被 `adopt` 落盘、记操作、推出去，图还白白重量一次。
+  @Test("捏着图时云端落地一项不相干的设置：不落盘、不提交、图不重起点")
+  @MainActor
+  func unrelatedSyncDoesNotSettleMidPinch() {
+    let (viewport, store, _, sync) = make()
+    store.onAdopt = { prefs, why in viewport.adopt(barSpacing: prefs.barSpacing, reason: why) }
+    let token0 = viewport.adoptToken
+    viewport.userIsZooming(to: 8.5)
+    var remote = store.prefs
+    remote.skin = remote.skin == .terra ? .classic : .terra
+    store.applySynced(remote)
+    #expect(store.prefs.skin == remote.skin)
+    #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing, "手还按着，根宽一个字节都不写")
+    #expect((sync.records, sync.pushes) == (0, 0))
+    #expect(viewport.adoptToken == token0)
+    viewport.interactionEnded()
+    #expect(store.prefs.barSpacing == 8.5)
+    #expect((sync.records, sync.pushes) == (1, 1))
+    // 刚松手那一下已经推上去、服务端认了（脏标记清掉）；之后根宽真从云端来了
+    // （手没按着）：照旧让图按档案重量一次。脏标记还在时云端值会被本地压住，那是另一条用例。
+    store.syncPushed(store.dirtyMarks, acked: ["barSpacing"])
+    #expect(store.dirtyMarks["barSpacing"] == nil)
+    var wider = store.prefs
+    wider.barSpacing = Prefs.clampSpacing(12)
+    store.applySynced(wider)
+    #expect(viewport.adoptToken == token0 + 1)
+    #expect(viewport.barSpacing == Prefs.clampSpacing(12))
+  }
 }

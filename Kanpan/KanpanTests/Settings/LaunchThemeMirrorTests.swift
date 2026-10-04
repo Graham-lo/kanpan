@@ -198,9 +198,13 @@ struct LaunchThemeMirrorTests {
       d.set("fstream.binance.com", forKey: "kanpan.launch.streamHost")
       d.set("fapi.binance.com", forKey: "kanpan.launch.apiHost")
       d.set("terra", forKey: LaunchThemeMirror.skinKey)
+      d.set(true, forKey: "kanpan.launch.redUp")
+      d.set(true, forKey: LaunchThemeMirror.redUpKey)
       LaunchMirror.sweepRetired()
       #expect(d.object(forKey: "kanpan.launch.apiHost") == nil)
       #expect(d.object(forKey: "kanpan.launch.streamHost") == nil)
+      #expect(d.object(forKey: "kanpan.launch.redUp") == nil, "迁移前的涨跌色旧键没人读了")
+      #expect(d.object(forKey: LaunchThemeMirror.redUpKey) as? Bool == true, "现行的 .v2 键不能跟着没了")
       #expect(d.string(forKey: LaunchThemeMirror.skinKey) == "terra", "只清退下来的键，皮肤镜像不能跟着没了")
       LaunchMirror.sweepRetired()      // 再叫一次：什么都不发生
       #expect(d.object(forKey: "kanpan.launch.apiHost") == nil)

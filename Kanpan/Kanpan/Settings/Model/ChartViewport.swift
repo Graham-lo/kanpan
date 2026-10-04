@@ -20,7 +20,7 @@ enum ChartLayoutArrival: Equatable {
 /// 回来并不是我缩小后的样子。」查下来根宽这一个值有**三个真身**：
 ///
 /// - `Prefs.barSpacing`：盘上（以及云端）那一份，冷启动读它；
-/// - `PrefsStore.liveBarSpacing`：内存那一份，换品种/换周期时拿它开新图；
+/// - 内存那一份（当时叫 `PrefsStore.liveBarSpacing`，现在是 `ChartViewport.barSpacing`），换品种/换周期时拿它开新图；
 /// - `ChartState.view`：图自己正画着的那一份。
 ///
 /// 三份之间没有谁说了算，于是有两条独立的杀法：
@@ -42,8 +42,10 @@ enum ChartLayoutArrival: Equatable {
 ///    实现上靠 `ChartView.onUserViewChanged`——它只在手势那条路上响。这一条就是杀法甲的全部。
 /// 2. **用户手离开画布的那一刻，就地落盘 + 就地同步。** 不是「过 400ms」，不是
 ///    「等切后台」，不是「等下一轮同步」。用户的原话是「用户手离开的瞬间就应该做同步
-///    做持久保存啊」。手势**进行中**的 400ms 节流降格成纯降采样，只决定「手还按着的时候
-///    盘上是第几帧」，不参与任何一次读取，也不再是保存时机；切后台那一刀降格成兜底。
+///    做持久保存啊」。手势**进行中**一个字节都不写、同步一声不吭；切后台那一刀降格成兜底。
+///    （原来还留着一个「400ms 节流」，名为降采样，实际是每帧重置的防抖：手指在屏上停住
+///    400ms 它就整套 `settle()`——写盘、记操作、**推服务端**——手还按着就把半截的根宽
+///    推给了所有设备。审查 D 线 2026-10-04 整个拿掉。）
 /// 3. **档案晚到要能让图重新起点。** 到货之后不是只改内存，还要让图按新宽度重量一次
 ///    （`ViewIntent.adopt`），否则图身上那份错的宽度早晚会按规矩 1 之外的路子漏回去。
 ///
@@ -98,12 +100,8 @@ final class ChartViewport {
   /// `Prefs.barSpacing` 是落到盘上的那一份，管的是下次冷启动。
   private(set) var barSpacing: Double
 
-  /// 手势进行中还没落盘的那个根宽。手一抬（或节流到点）就清空。
+  /// 手势进行中还没落盘的那个根宽。手一抬就清空。
   private var pending: Double?
-  /// 手势进行中的落盘降采样。见类型注释规矩 2：它**不是**保存时机。
-  private var throttle: Task<Void, Never>?
-  /// 手势中降采样的窗口。
-  private static let throttleMilliseconds = 400
 
   /// 档案到货、要让图按新宽度重量一次时 +1。`ChartHost` 只认这个数变没变。
   ///
@@ -121,18 +119,12 @@ final class ChartViewport {
 
   /// **用户**正在缩放（`ChartHost` 只把手势来源的视野变化喂进来，一帧一次）。
   ///
-  /// 内存立刻认；盘上等手抬起来（`settled()`），手一直按着超过 400ms 就先垫一次盘。
+  /// 内存立刻认；盘上与云端等手抬起来（`interactionEnded()`），按着不动多久都不提前写。
   func userIsZooming(to value: Double) {
     let want = Prefs.clampSpacing(value)
     guard abs(want - barSpacing) > 0.001 else { return }
     barSpacing = want
     pending = want
-    throttle?.cancel()
-    throttle = Task { [weak self] in
-      try? await Task.sleep(for: .milliseconds(Self.throttleMilliseconds))
-      guard !Task.isCancelled else { return }
-      self?.settle()
-    }
   }
 
   /// **手指全部离开画布了。** 落盘与同步就钉在这一刻（规矩 2）。
@@ -162,7 +154,7 @@ final class ChartViewport {
       settle()                                  // 用户刚做的那一下赢，顺手落盘
       return
     }
-    throttle?.cancel(); throttle = nil; pending = nil
+    pending = nil
     let want = Prefs.clampSpacing(value)
     barSpacing = want
     adoptToken &+= 1
@@ -183,7 +175,6 @@ final class ChartViewport {
   /// 第 3、4 步在没登录时不存在（`sync == nil`），其余一模一样。这就是「登录和本地
   /// 是同一个功能」在代码上的样子：分支只有这一处，而且在这层里面。
   private func settle() {
-    throttle?.cancel(); throttle = nil
     guard let want = pending else { return }
     pending = nil
     owner?.storeBarSpacing(want)

@@ -438,7 +438,7 @@ struct ChartHost: UIViewRepresentable {
   /// 每帧 60/120 次穿过 SwiftUI 的 diff 太贵，所以图自己改自己，改完通知外面记一笔。
   var onView: (ViewWindow) -> Void = { _ in }
   /// `.reset`（换品种 / 第一次拿到数据）时回到多宽的根间距。见 `ViewIntent`。
-  /// 传下来的是 `PrefsStore.liveBarSpacing`——内存里那一份，不是节流之后才落盘的那一份：
+  /// 传下来的是 `ChartViewport.barSpacing`——内存里那一份，不是抬手才落盘的档案那一份：
   /// 用户捏完下一秒就换品种，新图得按刚刚那个宽度开。
   var resetSpacing = AICoinBehavior.initialSpacing
   /// **用户**在图上捏出来的根间距。一次捏合就是一串，接的人内存里立刻认、

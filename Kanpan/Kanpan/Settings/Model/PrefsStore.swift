@@ -132,10 +132,15 @@ final class PrefsStore {
     self.cache = cache
     let sentinelStorage = sentinel ?? selectedStorage
     self.sentinelStorage = sentinelStorage
-    self.sentinel = PrefsStore.storedSentinel(in: sentinelStorage)
-      ?? SettingsSentinel(install: UUID().uuidString)
+    let storedSentinel = PrefsStore.storedSentinel(in: sentinelStorage)
+    self.sentinel = storedSentinel ?? SettingsSentinel(install: UUID().uuidString)
     self.stamp = PrefsStore.storedStamp(in: selectedStorage) ?? SettingsStamp()
     self.prefs = PrefsStore.load(from: selectedStorage, fallback: fallback)
+    // 新起的哨兵当场落下。从前只有「用户改过一项设置」才第一次写它：装上之后一项都没改过的人，
+    // 档案被清掉时柜子里根本没有哨兵，体检只能判成「第一次装」——`localIsUnreliable` 为假，
+    // 盘上那份出厂值就被当成「本机刚改的」推上云端，把这个人别的设备上的设置一起抹平。
+    // 只在哨兵单开一层时才写：和真身同层的哨兵本来就分辨不了什么（见上面参数说明）。
+    if storedSentinel == nil, sentinel != nil { writeSentinel() }
     // UI 测试沙盒里的常用行自己铺一套，不跟着出厂默认走。
     //
     // 出厂默认是 `5m 30m 1h 4h 1d 1w`（2026-09-21 放满六格），里头没有 1m / 15m，
@@ -210,7 +215,7 @@ final class PrefsStore {
   //
   // 这一层有一条通用规矩，改任何偏好之前先读一遍：
   //
-  //   **内存即时，落盘节流。**
+  //   **内存即时，抬手即落盘。**
   //
   // 「体验类设置」——皮肤、根宽、副图高度、指标选择、翻转、周期……凡是属于
   // 「我习惯怎么用」的那一类，都跟着人走：所有品种、所有周期、所有页面共用一份，
@@ -222,14 +227,15 @@ final class PrefsStore {
   // 1. **内存里那一份当场就改**，读取方一律读内存（`prefs`）。
   //    **任何读取路径都不许回头去读 `UserDefaults`** —— 盘上那份可能还没跟上，
   //    而且那是冷启动才需要的东西。
-  // 2. **写盘可以在手势进行中降采样**，但只在「这个值会每帧变一次」时才需要
-  //    （双指缩放的根宽是唯一一例，那件事已经整个搬去 `ChartViewport` 了）。
+  // 2. **手势进行中可以先不写盘**，但只在「这个值会每帧变一次」时才需要
+  //    （双指缩放的根宽是唯一一例，那件事已经整个搬去 `ChartViewport` 了：手指按着时
+  //    只改内存，手指离开那一刻写一次，见下一条）。
   //    离散动作（点一下、双击一下、手势松手那一下）直接走 `update`，它自己会挡住
   //    没真改动的那些回调。
   //
   // 2026-09-19 补一条，这条比上面两条都硬：
   //
-  //   **「落盘节流」的下限是「用户的手离开屏幕」。**
+  //   **落盘最晚不晚于「用户的手离开屏幕」，也不早于它。**
   //
   // 根宽以前是 400ms 定时器写的，于是「捏完立刻杀 app」必丢——用户报的就是这个。
   // 现在保存时机钉在手指抬起那一刻（`ChartViewport.interactionEnded`），
@@ -364,14 +370,9 @@ final class PrefsStore {
   /// 推失败、断网、app 被杀，脏标识都留着，下次启动本地照样赢——用户要的
   /// 「避免云端没同步，下次进来对不上又覆盖回去」就靠这个顺序。
   private func persist(marking changed: Set<String> = []) {
-    if !changed.isEmpty {
-      let now = SettingsClock.now()
-      stamp.mark(changed, at: now)
-      sentinel.owner = stamp.owner
-      sentinel.wroteAt = now
-    }
+    if !changed.isEmpty { stamp.mark(changed, at: SettingsClock.now()) }
     write(prefs, to: storage)
-    if !changed.isEmpty { writeStamp(); writeSentinel() }
+    if !changed.isEmpty { writeStamp() }
     mirrorToDevice()
     onChange?(prefs)
   }
@@ -398,8 +399,7 @@ final class PrefsStore {
     let now = SettingsClock.now()
     stamp.clear(acked: acked, dropped: dropped, from: pushed, at: now)
     guard stamp != before else { return }
-    sentinel.pushedAt = now
-    writeStamp(); writeSentinel()
+    writeStamp()
   }
 
   /// 存档里那份和手上这份**已经一致**、队列里也没有它的操作的脏字段——清掉。
@@ -432,7 +432,21 @@ final class PrefsStore {
     storage.setPrefsData(data, forKey: PrefsCodec.key)
   }
 
-  private func writeStamp() { storage.setPrefsData(try? JSONEncoder().encode(stamp), forKey: SettingsStamp.storageKey) }
+  /// 脏标识落盘，**哨兵跟着照抄一份**（属主、最后写盘、最后推成功）。
+  ///
+  /// 哨兵回答的是「现在装着的这份档案是谁的、有没有没推上去的改动」，所以它必须和
+  /// 脏标识同进同出。从前只有 `persist` / `syncPushed` 两处顺手写它：`useStorage` 换了人
+  /// 它还记着上一个人（这个人的档案被清掉时，体检看到「哨兵是别人的」判成「第一次」）；
+  /// `syncAgreed` 清了脏标识它也不知道（`wiped(unpushed:)` 永远报「有没推上去的」）。
+  /// 收成一个出口，哪条路改了脏标识都不会再漏掉它。
+  private func writeStamp() {
+    storage.setPrefsData(try? JSONEncoder().encode(stamp), forKey: SettingsStamp.storageKey)
+    let mirrored = SettingsSentinel(install: sentinel.install, owner: stamp.owner,
+                                    wroteAt: stamp.updatedAt, pushedAt: stamp.pushedAt)
+    guard mirrored != sentinel else { return }
+    sentinel = mirrored
+    writeSentinel()
+  }
   private func writeSentinel() { sentinelStorage.setPrefsData(try? JSONEncoder().encode(sentinel), forKey: SettingsSentinel.storageKey) }
 
   static func storedStamp(in storage: any PrefsStorage) -> SettingsStamp? {
@@ -443,10 +457,13 @@ final class PrefsStore {
   }
 
   /// 给某个柜子体检：里面那份 `prefs.json` 对 `owner` 来说是什么状况。
-  func diagnose(_ storage: any PrefsStorage, owner: String) -> SettingsCacheVerdict {
+  ///
+  /// - Parameter synced: 同步存档里有没有本机上一次记下的这份设置（见 `SettingsCacheDoctor`）。
+  func diagnose(_ storage: any PrefsStorage, owner: String, synced: Bool = false) -> SettingsCacheVerdict {
     let archived = storage.prefsData(forKey: PrefsCodec.key)
     return SettingsCacheDoctor.diagnose(archive: archived, readable: PrefsStore.isReadable(archived),
-                                        stamp: PrefsStore.storedStamp(in: storage), sentinel: sentinel, owner: owner)
+                                        stamp: PrefsStore.storedStamp(in: storage), sentinel: sentinel,
+                                        owner: owner, synced: synced)
   }
 
   /// 这份字节解得开、字段齐不齐。解不开或者连版本号都没有就算「损坏 / 不完整」。
@@ -500,11 +517,15 @@ final class PrefsStore {
   func applySynced(_ value: Prefs) {
     let merged = Prefs.keeping(stamp.dirtyFields, of: prefs, over: value)
     guard merged != prefs else { return }
+    let spacingChanged = merged.barSpacing != prefs.barSpacing
     prefs = merged
     write(merged, to: storage)
     mirrorToDevice()
-    // 云端落地是同一个人的档案到货，不是换人。
-    onAdopt?(prefs, .sameProfile)
+    // 云端落地是同一个人的档案到货，不是换人。下游里只有图的视野关心它，而且只关心根宽
+    // （和 `restore` 同一个口径）：从前不管落地的是哪一项都通知，另一台设备改个皮肤，
+    // 这台正捏着图的那一下就被 `ChartViewport.adopt` 当场 `settle`——手指还没抬就落盘、
+    // 记操作，图也白白重量一次。
+    if spacingChanged { onAdopt?(prefs, .sameProfile) }
   }
 
   // ---------------------------------------------------------------- 缓存

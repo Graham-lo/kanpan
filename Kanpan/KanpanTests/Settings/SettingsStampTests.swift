@@ -317,4 +317,62 @@ struct SettingsStampTests {
     #expect(merged.barSpacing == 2)
     #expect(merged.skin == .terra)
   }
+
+  // ---------------------------------------------------------------- 哨兵跟着档案走（深度审查 D 线 · 第 2、3 项）
+
+  @Test("装上之后一项设置都没改过：哨兵也已经落下，档案被清认得出来")
+  func sentinelLandsOnCreation() {
+    let (_, _, sentinel) = makeStore()
+    #expect(PrefsStore.storedSentinel(in: sentinel) != nil, "哨兵要在建起来那一刻就落盘，不等第一次改设置")
+    let wiped = InMemoryPrefsStorage()
+    let next = PrefsStore(storage: wiped, cache: UnavailableMarketCache(), sentinel: sentinel)
+    next.useStorage(wiped, prefs: .defaults, arrival: .sameProfile, owner: "")
+    #expect(next.verdict == .wiped(unpushed: false))
+  }
+
+  @Test("换了档案、新的人还没改过设置：哨兵已经认他；他的档案被清，不会被当成第一次")
+  func sentinelFollowsTheLoadedProfile() {
+    withClock { tick in
+      let (store, _, sentinel) = makeStore()
+      let a = InMemoryPrefsStorage(), b = InMemoryPrefsStorage()
+      store.useStorage(a, prefs: .defaults, arrival: .ownerSwitched, owner: "A")
+      tick(2_000); store.update { $0.barSpacing = 2 }
+      #expect(store.sentinel.owner == "A" && store.sentinel.hadUnpushedWork)
+      store.useStorage(b, prefs: .defaults, arrival: .ownerSwitched, owner: "B")
+      #expect(store.sentinel.owner == "B", "装上 B 那一刻哨兵就该认 B，不等 B 改设置")
+      #expect(!store.sentinel.hadUnpushedWork, "A 没推上去的改动不算到 B 头上")
+      #expect(PrefsStore.storedSentinel(in: sentinel) == store.sentinel, "改的是盘上那份，不只是内存")
+
+      // B 的档案被清掉（真身那层换成空柜子），哨兵那层还在。
+      let wiped = InMemoryPrefsStorage()
+      let next = PrefsStore(storage: wiped, cache: UnavailableMarketCache(), sentinel: sentinel)
+      next.useStorage(wiped, prefs: .defaults, arrival: .sameProfile, owner: "B")
+      #expect(next.verdict == .wiped(unpushed: false))
+    }
+  }
+
+  @Test("脏字段和云端对上了（syncAgreed）：哨兵也知道这份已经没有没推上去的改动")
+  func agreedFieldsReachTheSentinel() {
+    withClock { tick in
+      let (store, _, sentinel) = makeStore()
+      tick(2_000); store.update { $0.barSpacing = 2 }
+      #expect(store.sentinel.hadUnpushedWork)
+      tick(3_000); store.syncAgreed(["barSpacing"])
+      #expect(!store.sentinel.hadUnpushedWork)
+      #expect(PrefsStore.storedSentinel(in: sentinel)?.hadUnpushedWork == false)
+    }
+  }
+
+  @Test("档案没了、同步存档里还有这份：是「被清了」，哨兵丢了或记着别人也一样")
+  func archivedCopyMeansWiped() {
+    func verdict(_ sentinel: SettingsSentinel?) -> SettingsCacheVerdict {
+      SettingsCacheDoctor.diagnose(archive: nil, readable: false, stamp: nil, sentinel: sentinel, owner: "A", synced: true)
+    }
+    #expect(verdict(nil) == .wiped(unpushed: true))
+    #expect(verdict(SettingsSentinel(install: "i1", owner: "B", wroteAt: 0, pushedAt: 0)) == .wiped(unpushed: true))
+    #expect(verdict(SettingsSentinel(install: "i1", owner: "A", wroteAt: 1_000, pushedAt: 2_000)) == .wiped(unpushed: false))
+    // 存档里没有：照旧只凭哨兵，记着别人就是这个人第一次来。
+    #expect(SettingsCacheDoctor.diagnose(archive: nil, readable: false, stamp: nil,
+                                         sentinel: SettingsSentinel(install: "i1", owner: "B"), owner: "A") == .firstRun)
+  }
 }

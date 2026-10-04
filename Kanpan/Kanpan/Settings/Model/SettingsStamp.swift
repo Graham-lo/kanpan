@@ -145,12 +145,14 @@ struct SettingsSentinel: Codable, Equatable, Sendable {
   static let storageKey = "kanpan.settings.sentinel.v1"
 
   /// 装机 id：这台机器上这次安装的批次。整份哨兵没了才会换一个。
+  /// `PrefsStore` 一建起来就落下（不等第一次改设置），否则「装上之后什么都没改过」的人
+  /// 档案被清时会被认成第一次装。
   var install: String = ""
-  /// 最后一次成功写盘的属主。
+  /// 现在装着的那份档案的属主（换档案时 `useStorage` 就改过来，不等这个人改设置）。
   var owner: String = ""
-  /// 最后一次成功写盘的时刻。
+  /// 这份档案最后一次本地改动的时刻（照抄 `SettingsStamp.updatedAt`）。
   var wroteAt: Double = 0
-  /// 最后一次成功推上云端的时刻。
+  /// 这份档案最后一次推成功 / 和云端对上的时刻（照抄 `SettingsStamp.pushedAt`）。
   var pushedAt: Double = 0
 
   /// 本地曾经有过没推上去的改动。`wiped` 那一路靠它区分「丢的是白纸还是用户的改动」。
@@ -174,8 +176,6 @@ enum SettingsCacheVerdict: Equatable, Sendable {
   /// 同样先找同步存档里那份（`SettingsRecovery`）。
   case wiped(unpushed: Bool)
 
-  /// 这一路还能不能把本地那份当权威。
-  var trustsLocal: Bool { self == .intact }
   /// 盘上那份**不可信**：它要么解不开，要么已经没了，读出来的只是出厂值（或残片）。
   /// 这时它绝不能被当成「用户刚改的」记成待发操作推上云端——那等于拿出厂值把
   /// 这个人在所有设备上的设置抹平。
@@ -231,9 +231,19 @@ enum SettingsCacheDoctor {
   ///   - stamp: 档案旁边那份状态（属主 / 脏字段 / 时间）。nil = 没有。
   ///   - sentinel: 另一层里的哨兵。nil = 没有。
   ///   - owner: 现在该是谁的。
+  ///   - synced: 这个账号的同步存档里有没有本机上一次记下的那份设置。有，就说明这台机器上
+  ///     这份档案**确实存在过**（存档是装档案之后才开始记的），它不见了只能是被清掉——
+  ///     哪怕哨兵也丢了、或者记的是别人。这一条比哨兵硬：哨兵在 `UserDefaults` 里，
+  ///     和账号目录不是一层，两边各丢各的。
   static func diagnose(archive: Data?, readable: Bool, stamp: SettingsStamp?,
-                       sentinel: SettingsSentinel?, owner: String) -> SettingsCacheVerdict {
+                       sentinel: SettingsSentinel?, owner: String, synced: Bool = false) -> SettingsCacheVerdict {
     guard let archive, !archive.isEmpty else {
+      // 同步存档里还躺着本机上一次那份：这不是第一次。哨兵对得上就照它报有没有没推上去的；
+      // 对不上（丢了 / 记着别人）就往坏处报——队列里可能还有这份档案没推完的操作。
+      if synced {
+        let known = sentinel.flatMap { !$0.install.isEmpty && $0.owner == owner ? $0 : nil }
+        return .wiped(unpushed: known?.hadUnpushedWork ?? true)
+      }
       // 档案没了。哨兵在不在决定了这是「第一次」还是「被清了」。
       guard let sentinel, !sentinel.install.isEmpty else { return .firstRun }
       // 哨兵记的是上一个人、这次换了个人登进来：对这个人来说这确实是第一次。

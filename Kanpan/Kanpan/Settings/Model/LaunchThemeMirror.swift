@@ -40,7 +40,8 @@ enum LaunchMirror {
   /// 已经没人读的老镜像键。`LaunchHostMirror`（冷启动按自定义域名热身）随 `apiHost` /
   /// `streamHost` 两个字段一起删了（b339f7bf），那次说「几个字节、新代码不再读，不专门清」。
   /// 可不清就永远躺在用户的 defaults 里，下一个人翻到还得去考证它还有没有用——清掉。
-  static let retiredKeys = ["kanpan.launch.apiHost", "kanpan.launch.streamHost"]
+  /// `kanpan.launch.redUp` 是 10-03 出厂改绿涨之前的涨跌色镜像，换成 `.v2` 键之后没人读了（同理）。
+  static let retiredKeys = ["kanpan.launch.apiHost", "kanpan.launch.streamHost", "kanpan.launch.redUp"]
 
   /// 冷启动时叫一次（`KanpanApp.init`）。键不在就什么都不写，所以清过之后每次只是两次查表。
   static func sweepRetired() {

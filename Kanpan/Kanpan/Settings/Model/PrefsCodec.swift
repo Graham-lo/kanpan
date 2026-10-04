@@ -142,7 +142,8 @@ extension Prefs: Codable {
     // `indicatorLayouts/<组>` 里嵌着的 `hiddenOutputs` 同样忽略。
     case portraitHeight
     case overlays, subs, params, subHeightOverrides
-    // 指标按周期分组记忆（2026-09-27）：分了叉的组各自那一份。上面那六个老键写三组共用的那份。
+    // 指标按周期分组记忆（2026-09-27 到 10-02）留下的键：10-03 起布局一人一份，上面那六个键就是
+    // 那一份；这个键只读老档（取当前周期那组），写出去永远是空表，见 `IndicatorLayouts.swift`。
     case indicatorLayouts
     // `apiHost` / `streamHost`（自定义行情域名）2026-09-24 删了：设置里早就没有入口，
     // 线路只剩直连 / 网关两档，主机一律由 `RouteResolver` 定。旧存档里的这两个键解码时忽略。
