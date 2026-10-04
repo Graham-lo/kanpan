@@ -203,6 +203,12 @@ extension ChartView {
     let items = drawingBook.items(key)
     var patched = s
     update(&patched)
+    // 正拖着的那条在真值里没了（别处删了它、另一根手指点了删除 / 清空）：拖动当场作废，
+    // 预览、放大镜、底层让位标记一起收。手指还按着，剩下的移动和抬手都落空。
+    if let d = drawingSessionIfLoaded, let drag = d.drag, !items.contains(where: { $0.id == drag.id }) {
+      d.drag = nil; d.preview = nil; d.loupe = nil
+      patched.drawingPreviewID = nil
+    }
     guard s.drawings != items || patched != s else { return }
     s = patched
     s.drawings = items
@@ -945,9 +951,19 @@ extension ChartView {
     d.loupe = nil
     let axes = drawAxes
 
-    if let drag = d.drag, let i = drawings.firstIndex(where: { $0.id == drag.id }) {
+    if let drag = d.drag {
       let preview = d.preview
       d.drag = nil; d.preview = nil
+      // 拖到一半这条线没了（另一台设备删了它、另一根手指点了「删除」/「清空」）：
+      // 拖动整个作废。原来这儿把「线还在」和「在拖」写在同一个条件里，线一没就掉进
+      // 下面落笔那条路，`drag` / `preview` / `drawingPreviewID` 全留着——读数胶囊一直
+      // 挂在图上，下一次拿工具落笔的那根手指还会被 `drawingTouchesMoved` 当成拖这条
+      // 已经不存在的线。
+      guard let i = drawings.firstIndex(where: { $0.id == drag.id }) else {
+        reprojectDrawings { $0.drawingPreviewID = nil }
+        drawingChanged()
+        return
+      }
       var next = drawings
       if !cancelled, let preview { next[i] = preview }
       // 拖动途中线只在预览里，真值里还是按下时那条；抬手这一下才写进去（一步撤销）。

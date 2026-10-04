@@ -136,4 +136,37 @@ struct ChartDrawingPreviewResidueTests {
     v.selectedDrawingID = nil
     #expect(v.state?.drawingPreviewID == nil)
   }
+
+  @Test("拖到一半那条线被删掉：拖动当场作废，下一笔落笔不被当成拖那条已经没了的线")
+  func deleteMidDragDropsTheDrag() throws {
+    let (_, v, line) = try stageWithSelectedLine()
+    let t = FakeTouch(CGPoint(x: 260, y: 380))
+    v.drawingTouchesBegan([t], with: FakeEvent(ms: 10_000))
+    t.point = CGPoint(x: 280, y: 340)
+    v.drawingTouchesMoved([t], with: FakeEvent(ms: 10_020))
+    #expect(v.state?.drawingPreviewID == line.id)
+
+    v.deleteSelectedDrawing()                     // 另一根手指点了选中条上的「删除」
+    #expect(v.drawings.isEmpty)
+    #expect(v.drawingSessionIfLoaded?.drag == nil, "线没了，拖动当场作废")
+    #expect(v.drawingSessionIfLoaded?.preview == nil, "覆盖层不许再画那条线的预览和读数")
+    #expect(v.state?.drawingPreviewID == nil)
+
+    t.point = CGPoint(x: 300, y: 320)
+    v.drawingTouchesMoved([t], with: FakeEvent(ms: 10_040))
+    v.drawingTouchesEnded([t], with: FakeEvent(ms: 10_060), cancelled: false)
+    #expect(v.drawings.isEmpty, "抬手不许把删掉的线写回来")
+    #expect(v.drawingSessionIfLoaded?.drag == nil)
+
+    // 拿起趋势线工具拖一笔：得画出一条新线，而不是被残留的拖动收走。
+    v.drawTool = .trend
+    let pen = FakeTouch(CGPoint(x: 100, y: 250))
+    v.drawingTouchesBegan([pen], with: FakeEvent(ms: 20_000))
+    pen.point = CGPoint(x: 220, y: 200)
+    v.drawingTouchesMoved([pen], with: FakeEvent(ms: 20_100))
+    v.drawingTouchesEnded([pen], with: FakeEvent(ms: 20_200), cancelled: false)
+    #expect(v.drawings.count == 1)
+    #expect(v.drawings.first?.kind == .trend)
+    #expect(v.drawings.first?.id != line.id)
+  }
 }
