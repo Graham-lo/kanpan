@@ -201,7 +201,15 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
         // 语义错误：重试只会把整条队列堵死。先揪出是哪一条，再单独隔离——
         // **本地值和脏标记一个都不动**，下次启动本地照样赢（B3）。
         try checkpoint()
-        guard batch.count == 1 else { suspects = batch.count; continue }
+        guard batch.count == 1 else {
+          // 整批被顶回：服务端那一批是一个事务、`tx.commit()` 之前任何一条出错整批回滚，
+          // 一条都没落库 → 先清 `sent` 再切。从前直接切，被连坐的无辜操作一直挂着「已发」：
+          // `realign` 与回执对齐都跳过已发的，它们的版本元信息就不跟着云端走了，
+          // 后面再撞 409 白白多烧一次重整（深度审查 D 线 2026-10-04）。
+          // `idempotency_mismatch` 例外：那条早就落过库，按 `rollback` 的约定不能清。
+          if case .http(_, let reason) = error, reason == "idempotency_mismatch" {} else { try store.rollback(ids) }
+          suspects = batch.count; continue
+        }
         let reason: String = { if case .http(_, let code) = error { return code }; return "request_failed" }()
         try store.quarantine(batch[0].id, reason: reason)
         track(batch[0], into: &outcome.dropped)

@@ -346,6 +346,40 @@ extension JSONEncoder {
     #expect(store.archive.local[line.key]?.body["text"] == nil)
   }
 
+  /// 整批被顶回来时服务端那个事务一条都没落库：对半切之前要先清 `sent`，
+  /// 不能让被连坐的无辜操作一直挂着「已发」（`realign` 与回执对齐都跳过已发的）。
+  @Test func innocentsInARefusedBatchAreNotLeftMarkedSent() async throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root), server = FakeSyncServer(), device = UUID()
+    let lines = (0..<4).map { i in
+      stamped(server, collection: "drawings", id: "binance/usd_m/BTCUSDT/n\(i)",
+              ["symbol": .string("BTCUSDT"), "text": .string("旧\(i)")], revision: 4)
+    }
+    lines.forEach(server.seed)
+    try store.receive(server.page(["drawings"]))
+    // 第一条清空文字（这台服务器不认），其余三条只是改字。
+    var bad = lines[0]; bad.body["text"] = nil
+    try store.capture(bad, device: device)
+    for line in lines.dropFirst() { var edited = line; edited.body["text"] = .string("新"); try store.capture(edited, device: device) }
+    let badID = try #require(store.archive.operations.first?.id)
+    var seen: [Set<UUID>] = []
+    server.refuse = { op in
+      guard op.fields["text"] == .null else { return nil }
+      seen.append(store.archive.sent)
+      return "invalid_operation"
+    }
+
+    let loop = try await engine(over: server, store, device: device).run(.push)
+    // 4 条一起被顶 → 前两条又被顶 → 坏的那条单独被顶、隔离 → 剩下三条整批过。
+    #expect(loop.batches == [4, 2, 1, 3])
+    // 坏的那条单独发出去时，「已发」里只有它自己，前两轮连坐的三条都已清掉。
+    #expect(seen.last == [badID])
+    #expect(store.archive.operations.isEmpty)
+    #expect(store.archive.sent.isEmpty)
+    #expect(store.archive.rejected.map(\.id) == [badID])
+    for line in lines.dropFirst() { #expect(server.objects[line.key]?.body["text"] == .string("新")) }
+  }
+
   /// `dependsOn` 是本机字段。服务端的 `Operation` 是 `deny_unknown_fields`，
   /// 多一个键**整批 100 条**一起 400。
   @Test func theLocalDependencyLinkNeverReachesTheServer() throws {
