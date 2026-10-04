@@ -120,6 +120,10 @@ final class WholeAppStressUITests: KanpanUICase {
   // ------------------------------------------------------------ 用例
 
   func testRapidSwitchStormSettlesOnLastChoice() throws {
+    // 400 下连切 + 30 轮面板开关全是 XCUITest 合成事件（每下约 0.3 s 合成 + 等 idle，面板出现要轮询一秒），
+    // 10-04 F 线在 16 Pro 上实测连切 313 s、面板 30 轮约 220 s，加上停手对账整条约 9.5 分钟，
+    // 撞上默认 8 分钟的执行时限被判超时（期间主线程卡顿 >100ms 为 0）。给足 15 分钟。
+    executionTimeAllowance = 900
     openFromFavorites("BTCUSDT")
     XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 BTC 的 K 线")
     // 画线存档不跟着测试档案清（上一轮留下的线还在），所以按「画之前那几条 + 这一条」对账。
