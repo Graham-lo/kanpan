@@ -1,0 +1,68 @@
+# 泡机、冷启、前后台补数原始汇总（iPhone 16 Pro 模拟器，Release 测试包，2026-10-04）
+
+## 泡机：BTC 1m + 对比 ETH/SOL，直连，60 s 预热后每 30 s 一点（footprint / RSS），末行为 app 容器磁盘
+pid 28489
+1791110909 t=0s rss_kb=323840 Kanpan [28489]: 64-bit    Footprint: 114 MB (16384 bytes per page)
+1791110940 t=30s rss_kb=324448 Kanpan [28489]: 64-bit    Footprint: 108 MB (16384 bytes per page)
+1791110970 t=60s rss_kb=324800 Kanpan [28489]: 64-bit    Footprint: 108 MB (16384 bytes per page)
+1791111000 t=90s rss_kb=333024 Kanpan [28489]: 64-bit    Footprint: 92 MB (16384 bytes per page)
+1791111030 t=120s rss_kb=349488 Kanpan [28489]: 64-bit    Footprint: 107 MB (16384 bytes per page)
+1791111060 t=150s rss_kb=341488 Kanpan [28489]: 64-bit    Footprint: 107 MB (16384 bytes per page)
+1791111090 t=180s rss_kb=325488 Kanpan [28489]: 64-bit    Footprint: 83 MB (16384 bytes per page)
+1791111120 t=210s rss_kb=350176 Kanpan [28489]: 64-bit    Footprint: 107 MB (16384 bytes per page)
+1791111151 t=240s rss_kb=350256 Kanpan [28489]: 64-bit    Footprint: 107 MB (16384 bytes per page)
+1791111181 t=270s rss_kb=350768 Kanpan [28489]: 64-bit    Footprint: 107 MB (16384 bytes per page)
+1791111211 t=300s rss_kb=326784 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111241 t=330s rss_kb=326832 Kanpan [28489]: 64-bit    Footprint: 82 MB (16384 bytes per page)
+1791111272 t=360s rss_kb=326832 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111302 t=390s rss_kb=335232 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111332 t=420s rss_kb=335264 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111362 t=450s rss_kb=351632 Kanpan [28489]: 64-bit    Footprint: 82 MB (16384 bytes per page)
+1791111392 t=480s rss_kb=327152 Kanpan [28489]: 64-bit    Footprint: 82 MB (16384 bytes per page)
+1791111423 t=510s rss_kb=326928 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111453 t=540s rss_kb=335520 Kanpan [28489]: 64-bit    Footprint: 82 MB (16384 bytes per page)
+1791111483 t=570s rss_kb=351872 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111513 t=600s rss_kb=335552 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111543 t=630s rss_kb=351680 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111574 t=660s rss_kb=351696 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111604 t=690s rss_kb=351712 Kanpan [28489]: 64-bit    Footprint: 106 MB (16384 bytes per page)
+1791111634 t=720s rss_kb=327344 Kanpan [28489]: 64-bit    Footprint: 90 MB (16384 bytes per page)
+ 69M	/Users/mdd/Library/Developer/CoreSimulator/Devices/D6C41248-C78E-46B8-B391-311F373D24A8/data/Containers/Data/Application/B23AC6C6-4889-467E-8FF1-AD6F294B1727
+
+## leaks（首 / 尾）
+--- soak/leaks-start.txt
+Physical footprint:         99.8M
+Physical footprint (peak):  126.2M
+Process 28489: 89303 nodes malloced for 20395 KB
+Process 28489: 0 leaks for 0 total leaked bytes.
+--- soak/leaks-end.txt
+Physical footprint:         106.0M
+Physical footprint (peak):  133.5M
+Process 28489: 92223 nodes malloced for 20516 KB
+Process 28489: 0 leaks for 0 total leaked bytes.
+
+## 冷启逐帧（已暖一次；00 号不计）
+00 录像内出图 1.4983 画面首变 1.0483 自launch起 687ms 自画面首变 450ms 末帧彩像素 8434
+01 录像内出图 1.4883 画面首变 1.0633 自launch起 680ms 自画面首变 425ms 末帧彩像素 8429
+02 录像内出图 1.3983 画面首变 0.97 自launch起 685ms 自画面首变 428ms 末帧彩像素 8443
+03 录像内出图 1.48 画面首变 1.0317 自launch起 706ms 自画面首变 448ms 末帧彩像素 8457
+04 录像内出图 1.3783 画面首变 0.985 自launch起 699ms 自画面首变 393ms 末帧彩像素 8444
+05 录像内出图 1.515 画面首变 1.0717 自launch起 699ms 自画面首变 443ms 末帧彩像素 8442
+06 录像内出图 1.4517 画面首变 1.0267 自launch起 682ms 自画面首变 425ms 末帧彩像素 8443
+07 录像内出图 1.4667 画面首变 1.045 自launch起 677ms 自画面首变 422ms 末帧彩像素 8453
+08 录像内出图 1.5917 画面首变 1.2267 自launch起 676ms 自画面首变 365ms 末帧彩像素 8454
+09 录像内出图 1.4917 画面首变 1.1033 自launch起 687ms 自画面首变 388ms 末帧彩像素 8467
+10 录像内出图 1.5033 画面首变 1.0783 自launch起 684ms 自画面首变 425ms 末帧彩像素 8454
+自 launch 起（去掉 00 共 10 次）中位数 685ms 最小 676 最大 706
+自画面首变起（去掉 00 共 10 次）中位数 425ms 最小 365 最大 448
+
+## 后台 → 前台请求计数（CFNetwork 诊断日志，按主机）
+launch    40.2s 共  22 {'fapi.binance.com': 19, 'kanpan.43-160-232-253.sslip.io': 2, 'api.coinbase.com': 1}
+bg1       60.4s 共   1 {'fapi.binance.com': 1}
+fg1       30.3s 共  22 {'fapi.binance.com': 20, 'kanpan.43-160-232-253.sslip.io': 1, 'api.coinbase.com': 1}
+bg2      180.2s 共   0 {}
+fg2       30.3s 共  21 {'fapi.binance.com': 19, 'kanpan.43-160-232-253.sslip.io': 1, 'api.coinbase.com': 1}
+fg1 头 3s {'kanpan.43-160-232-253.sslip.io': 1, 'fapi.binance.com': 16}
+  时间点 [0.64, 0.64, 0.67, 0.69, 0.72, 0.88, 0.91, 1.07, 1.1, 1.22, 1.26, 1.28, 1.45, 1.47, 1.65, 1.8, 1.9, 3.2, 3.22, 3.66, 3.66, 21.9]
+fg2 头 3s {'fapi.binance.com': 18, 'kanpan.43-160-232-253.sslip.io': 1}
+  时间点 [0.63, 0.63, 0.66, 0.68, 0.71, 1.07, 1.09, 1.12, 1.25, 1.28, 1.31, 1.47, 1.5, 1.66, 1.69, 1.85, 1.88, 2.04, 2.07, 3.64, 22.0]

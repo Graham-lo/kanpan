@@ -1,0 +1,133 @@
+# 热路径满载甩动 A/B（HotPathFrameUITests.testFullHouseGestures，iPhone 16 Pro 模拟器，Release 测试包，同一台空闲机）
+# 修前 = 25148589/19cd7436 之前（hotpath8、hotpath9）；修后 = 两处修复之后（hotpath6、hotpath7、hotpath10）
+
+======== 修前 hotpath8
+场景 bars=1500 drawings=30 compareReady=2 orderFlow=ready orders=2516 height=572 mainH=277.5
+缩小后（最新处）订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4
+往回甩 44 下 → bars=6001；此处订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4
+卡顿（main.hangs）手势段 +0 全程 +1 最近 [176]
+帧报告 19 份
+frame-001791109323219-图表手势.json frames=170 hz=60.00000022351742 work p50=1.79 p90=7.01 p99=15.68 max=16.40 heavy=15 hitch=0.017441860562391387 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=13", "render.cross>3ms=4"]
+frame-001791109326737-图表手势.json frames=164 hz=60.00000022351742 work p50=5.60 p90=6.36 p99=11.83 max=12.72 heavy=4 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=2"]
+frame-001791109330126-图表手势.json frames=162 hz=60.00000022351742 work p50=5.94 p90=7.09 p99=10.00 max=14.93 heavy=7 hitch=0.018292682858268194 worstHitch=22.1877081785351 slowParts=["render.plot>3ms=13"]
+frame-001791109333599-图表手势.json frames=165 hz=60.00000022351742 work p50=5.65 p90=7.16 p99=13.42 max=16.47 heavy=8 hitch=0.007215560667894103 worstHitch=19.84279183670878 slowParts=["render.plot>3ms=6", "render.cross>3ms=1"]
+frame-001791109337009-图表手势.json frames=166 hz=60.00000022351742 work p50=6.20 p90=7.31 p99=13.41 max=13.49 heavy=5 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=1"]
+frame-001791109340485-图表手势.json frames=164 hz=60.00000022351742 work p50=6.70 p90=7.86 p99=11.77 max=20.36 heavy=13 hitch=0.009527666748247364 worstHitch=26.20108355768025 slowParts=["render.plot>3ms=8"]
+frame-001791109343905-图表手势.json frames=162 hz=60.00000022351742 work p50=6.48 p90=7.54 p99=13.66 max=14.99 heavy=11 hitch=0.02264328808947043 worstHitch=28.9357085712254 slowParts=["render.plot>3ms=4"]
+frame-001791109347329-图表手势.json frames=163 hz=60.00000022351742 work p50=6.85 p90=7.77 p99=14.76 max=16.33 heavy=8 hitch=0.012195121990694072 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=4"]
+frame-001791109350824-图表手势.json frames=156 hz=60.00000022351742 work p50=8.62 p90=10.23 p99=16.58 max=26.52 heavy=100 hitch=0.07322688659834768 worstHitch=31.55637509189546 slowParts=["render.plot>3ms=20"]
+frame-001791109354374-图表手势.json frames=155 hz=60.00000022351742 work p50=7.69 p90=8.83 p99=13.52 max=17.22 heavy=59 hitch=0.06460198455236175 worstHitch=25.7062497548759 slowParts=["render.plot>3ms=3", "render.cross>3ms=1"]
+frame-001791109357857-图表手势.json frames=162 hz=60.00000022351742 work p50=7.73 p90=8.88 p99=9.84 max=18.52 heavy=62 hitch=0.02578840912743048 worstHitch=18.98383325897157 slowParts=["render.plot>3ms=5"]
+frame-001791109361335-图表手势.json frames=158 hz=60.00000022351742 work p50=7.76 p90=8.92 p99=14.42 max=16.41 heavy=57 hitch=0.055585918602390885 worstHitch=32.53099997527897 slowParts=["render.plot>3ms=7"]
+frame-001791109369440-图表手势.json frames=410 hz=60.00000022351742 work p50=7.82 p90=9.20 p99=14.70 max=29.98 heavy=179 hitch=0.05664952185110829 worstHitch=35.47924966551363 slowParts=["render.plot>3ms=11"]
+frame-001791109373216-图表手势.json frames=163 hz=60.00000022351742 work p50=0.32 p90=7.25 p99=22.20 max=29.63 heavy=12 hitch=0.07915972994528413 worstHitch=37.1268333401531 slowParts=["render.plot>3ms=13"]
+frame-001791109379383-图表手势.json frames=293 hz=60.00000022351742 work p50=0.83 p90=9.34 p99=14.91 max=23.15 heavy=46 hitch=0.04517801475889702 worstHitch=28.71933300048113 slowParts=["render.plot>3ms=14"]
+frame-001791109385586-图表手势.json frames=315 hz=60.00000022351742 work p50=6.39 p90=8.26 p99=13.57 max=16.26 heavy=38 hitch=0.035636207916423565 worstHitch=38.27175009064376 slowParts=["render.plot>3ms=1"]
+frame-001791109388502-图表手势.json frames=93 hz=60.00000022351742 work p50=2.96 p90=8.23 p99=14.39 max=23.60 heavy=13 hitch=0.04166666694557838 worstHitch=41.33658343926072 slowParts=["render.plot>3ms=3"]
+frame-001791109397476-图表手势.json frames=95 hz=60.00000022351742 work p50=0.75 p90=5.53 p99=9.38 max=14.57 heavy=2 hitch=0.020833333257542108 worstHitch=20.94300021417439 slowParts=["render.plot>3ms=2"]
+frame-001791109405607-图表手势.json frames=98 hz=60.00000022351742 work p50=1.47 p90=7.40 p99=9.51 max=9.95 heavy=5 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=4"]
+合计 frames=3414 heavy(>8ms)=644 重帧里出现最多：["ChartView.render=629", "render.cross=624", "render.live=617", "adopt.dirty=567", "render.plot=532", "render.plot>3ms=97", "MainChartView=69", "ChartHost.update=59", "adopt.clean=48", "MainDiagnosticsOverlay=24", "LiveTickRelay=16", "MainHeaderView=12"]
+======== 修前 hotpath9
+场景 bars=1501 drawings=30 compareReady=2 orderFlow=ready orders=2528 height=572 mainH=277.5
+缩小后（最新处）订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4
+往回甩 44 下 → bars=6001；此处订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4.045070422535211
+卡顿（main.hangs）手势段 +0 全程 +1 最近 [132]
+帧报告 19 份
+frame-001791109456897-图表手势.json frames=167 hz=60.00000022351742 work p50=0.62 p90=7.30 p99=19.05 max=23.10 heavy=15 hitch=0.0409576879291107 worstHitch=24.31037463247776 slowParts=["render.plot>3ms=12", "render.cross>3ms=3"]
+frame-001791109460369-图表手势.json frames=160 hz=60.00000022351742 work p50=5.38 p90=6.51 p99=12.73 max=15.34 heavy=4 hitch=0.012422360202098448 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=10", "render.cross>3ms=2"]
+frame-001791109463800-图表手势.json frames=163 hz=60.00000022351742 work p50=5.94 p90=7.66 p99=13.93 max=16.51 heavy=14 hitch=0.013314557869093753 worstHitch=19.72645847126842 slowParts=["render.plot>3ms=25", "render.cross>3ms=1"]
+frame-001791109467319-图表手势.json frames=166 hz=60.00000022351742 work p50=5.84 p90=7.66 p99=14.39 max=14.88 heavy=11 hitch=0.018358526619574222 worstHitch=18.07054132223129 slowParts=["render.plot>3ms=18", "render.cross>3ms=2"]
+frame-001791109470750-图表手势.json frames=164 hz=60.00000022351742 work p50=5.75 p90=7.40 p99=12.25 max=19.88 heavy=6 hitch=0.01470803012224761 worstHitch=20.35554149188101 slowParts=["render.plot>3ms=3", "render.cross>3ms=1"]
+frame-001791109474203-图表手势.json frames=162 hz=60.00000022351742 work p50=6.49 p90=7.55 p99=12.87 max=15.14 heavy=10 hitch=0.0187053660328668 worstHitch=17.79466681182384 slowParts=["render.plot>3ms=4", "render.cross>3ms=1"]
+frame-001791109477624-图表手势.json frames=162 hz=60.00000022351742 work p50=6.73 p90=7.82 p99=11.91 max=15.86 heavy=11 hitch=0.018808811152971536 worstHitch=18.07741681113839 slowParts=["render.plot>3ms=6"]
+frame-001791109481052-图表手势.json frames=163 hz=60.00000022351742 work p50=6.76 p90=7.71 p99=9.84 max=10.31 heavy=9 hitch=0.006134969216839672 worstHitch=16.66666637174785 slowParts=["render.plot>3ms=9"]
+frame-001791109484545-图表手势.json frames=162 hz=60.00000022351742 work p50=7.40 p90=8.70 p99=11.12 max=15.63 heavy=30 hitch=0.030277605219694272 worstHitch=30.0626247189939 slowParts=["render.plot>3ms=4", "render.cross>3ms=1"]
+frame-001791109488035-图表手势.json frames=156 hz=60.00000022351742 work p50=7.56 p90=8.93 p99=19.94 max=25.87 heavy=58 hitch=0.05926278783855113 worstHitch=32.81987505033612 slowParts=["render.plot>3ms=5"]
+frame-001791109491481-图表手势.json frames=157 hz=60.00000022351742 work p50=7.87 p90=8.85 p99=14.30 max=16.97 heavy=68 hitch=0.05113948159602706 worstHitch=21.7189583927393 slowParts=["render.plot>3ms=7", "render.cross>3ms=1"]
+frame-001791109494987-图表手势.json frames=163 hz=60.00000022351742 work p50=7.75 p90=8.64 p99=11.43 max=13.09 heavy=56 hitch=0.036417887063224366 worstHitch=25.38066683337092 slowParts=["render.plot>3ms=3"]
+frame-001791109502869-图表手势.json frames=400 hz=60.00000022351742 work p50=7.81 p90=9.40 p99=15.01 max=28.08 heavy=183 hitch=0.05621650938246939 worstHitch=43.22095843963325 slowParts=["render.plot>3ms=13"]
+frame-001791109506586-图表手势.json frames=165 hz=60.00000022351742 work p50=0.21 p90=8.21 p99=27.07 max=35.72 heavy=18 hitch=0.08027853959879362 worstHitch=36.94645850919187 slowParts=["render.plot>3ms=13"]
+frame-001791109512716-图表手势.json frames=287 hz=60.00000022351742 work p50=0.71 p90=9.55 p99=28.02 max=35.15 heavy=48 hitch=0.06162345078180839 worstHitch=33.33333344198763 slowParts=["render.plot>3ms=13", "render.cross>3ms=3"]
+frame-001791109518948-图表手势.json frames=317 hz=60.00000022351742 work p50=6.32 p90=8.41 p99=12.62 max=16.46 heavy=38 hitch=0.029543910983956916 worstHitch=31.89004142768681 slowParts=["render.plot>3ms=1"]
+frame-001791109521850-图表手势.json frames=97 hz=60.00000022351742 work p50=0.54 p90=7.70 p99=11.47 max=13.84 heavy=8 hitch=0.05141591593243794 worstHitch=36.55012510716915 slowParts=["render.plot>3ms=1"]
+frame-001791109530379-图表手势.json frames=92 hz=60.00000022351742 work p50=1.11 p90=5.52 p99=8.04 max=8.06 heavy=2 hitch=0.03804828623104156 worstHitch=34.27524981088936 slowParts=["render.plot>3ms=1"]
+frame-001791109538870-图表手势.json frames=98 hz=60.00000022351742 work p50=1.96 p90=7.23 p99=10.27 max=10.63 heavy=5 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=6"]
+合计 frames=3401 heavy(>8ms)=594 重帧里出现最多：["ChartView.render=576", "render.cross=563", "render.live=562", "adopt.dirty=515", "render.plot=469", "render.plot>3ms=105", "MainChartView=71", "ChartHost.update=57", "adopt.clean=44", "MainDiagnosticsOverlay=27", "render.cross>3ms=15", "LiveTickRelay=11"]
+======== 修后 hotpath6
+场景 bars=1500 drawings=30 compareReady=2 orderFlow=ready orders=2470 height=572 mainH=277.5
+缩小后（最新处）订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4
+往回甩 44 下 → bars=6001；此处订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4.045070422535211
+卡顿（main.hangs）手势段 +0 全程 +1 最近 [150, 166]
+帧报告 19 份
+frame-001791108828786-图表手势.json frames=168 hz=60.00000022351742 work p50=0.19 p90=4.28 p99=15.96 max=16.27 heavy=12 hitch=0.023424108266849264 worstHitch=16.75870851613581 slowParts=["render.plot>3ms=12", "render.cross>3ms=6"]
+frame-001791108832227-图表手势.json frames=160 hz=60.00000022351742 work p50=5.17 p90=6.48 p99=13.98 max=26.43 heavy=8 hitch=0.01627782394240779 worstHitch=26.80758317001164 slowParts=["render.plot>3ms=15", "render.cross>3ms=2", "render.plot>8ms=1"]
+frame-001791108835684-图表手势.json frames=161 hz=60.00000022351742 work p50=5.54 p90=7.06 p99=11.75 max=13.83 heavy=8 hitch=0.007265947256478621 worstHitch=19.49695846997201 slowParts=["render.plot>3ms=26"]
+frame-001791108839139-图表手势.json frames=163 hz=60.00000022351742 work p50=5.60 p90=6.85 p99=11.77 max=12.08 heavy=6 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=30", "render.cross>3ms=1"]
+frame-001791108842543-图表手势.json frames=163 hz=60.00000022351742 work p50=5.41 p90=6.74 p99=8.75 max=13.83 heavy=4 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=16"]
+frame-001791108846015-图表手势.json frames=163 hz=60.00000022351742 work p50=5.39 p90=7.33 p99=9.19 max=21.19 heavy=4 hitch=0.012195121905512129 worstHitch=21.65841683745384 slowParts=["render.plot>3ms=30", "render.cross>3ms=1"]
+frame-001791108849476-图表手势.json frames=163 hz=60.00000022351742 work p50=5.29 p90=6.96 p99=14.01 max=20.07 heavy=5 hitch=0.013642057821571598 worstHitch=20.56837477721274 slowParts=["render.plot>3ms=27", "render.cross>3ms=1"]
+frame-001791108852883-图表手势.json frames=164 hz=60.00000022351742 work p50=5.44 p90=7.22 p99=9.89 max=13.22 heavy=4 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=30"]
+frame-001791108856331-图表手势.json frames=161 hz=60.00000022351742 work p50=5.36 p90=7.01 p99=15.62 max=19.20 heavy=6 hitch=0.01951098179161224 worstHitch=19.67150019481778 slowParts=["render.plot>3ms=23", "render.cross>3ms=1"]
+frame-001791108859754-图表手势.json frames=162 hz=60.00000022351742 work p50=5.44 p90=7.28 p99=12.38 max=15.63 heavy=12 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=27"]
+frame-001791108863225-图表手势.json frames=166 hz=60.00000022351742 work p50=5.46 p90=6.94 p99=9.15 max=12.42 heavy=4 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=22"]
+frame-001791108866682-图表手势.json frames=163 hz=60.00000022351742 work p50=5.48 p90=6.74 p99=9.34 max=14.18 heavy=4 hitch=0.012195121906550933 worstHitch=24.1399584338069 slowParts=["render.plot>3ms=30"]
+frame-001791108874448-图表手势.json frames=414 hz=60.00000022351742 work p50=5.85 p90=7.45 p99=13.40 max=17.41 heavy=26 hitch=0.011057266697946039 worstHitch=27.03229174949229 slowParts=["render.plot>3ms=77"]
+frame-001791108878256-图表手势.json frames=173 hz=60.00000022351742 work p50=0.23 p90=8.95 p99=21.78 max=26.28 heavy=21 hitch=0.037161550436998016 worstHitch=26.49800013750792 slowParts=["render.plot>3ms=18", "render.cross>3ms=4"]
+frame-001791108884413-图表手势.json frames=298 hz=60.00000022351742 work p50=0.53 p90=7.74 p99=14.64 max=17.54 heavy=26 hitch=0.04058059683612099 worstHitch=38.00658346153796 slowParts=["render.plot>3ms=29", "render.cross>3ms=4"]
+frame-001791108890617-图表手势.json frames=324 hz=60.00000022351742 work p50=4.35 p90=6.17 p99=9.00 max=15.62 heavy=6 hitch=0.008376549080881625 worstHitch=28.84591650217772 slowParts=["render.plot>3ms=4", "render.cross>3ms=3"]
+frame-001791108893475-图表手势.json frames=98 hz=60.00000022351742 work p50=2.32 p90=6.77 p99=10.69 max=19.41 heavy=3 hitch=0.022141085797759454 worstHitch=19.86612472683191 slowParts=["render.plot>3ms=1"]
+frame-001791108902063-图表手势.json frames=97 hz=60.00000022351742 work p50=2.64 p90=5.84 p99=7.49 max=9.83 heavy=1 hitch=0.017436658058594186 worstHitch=28.47987483255565 slowParts=["render.plot>3ms=1"]
+frame-001791108910529-图表手势.json frames=97 hz=60.00000022351742 work p50=0.63 p90=6.70 p99=9.53 max=9.55 heavy=5 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=7"]
+合计 frames=3458 heavy(>8ms)=165 重帧里出现最多：["ChartView.render=153", "render.live=136", "render.cross=131", "render.plot>3ms=113", "adopt.dirty=86", "render.plot=38", "MainChartView=29", "ChartHost.update=23", "render.cross>3ms=22", "MainDiagnosticsOverlay=19", "adopt.clean=14", "LiveTickRelay=6"]
+======== 修后 hotpath7
+场景 bars=1500 drawings=30 compareReady=2 orderFlow=ready orders=2476 height=572 mainH=277.5
+缩小后（最新处）订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4
+往回甩 44 下 → bars=6001；此处订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4
+卡顿（main.hangs）手势段 +0 全程 +1 最近 [115, 127]
+帧报告 19 份
+frame-001791108962375-图表手势.json frames=169 hz=60.00000022351742 work p50=0.12 p90=6.09 p99=14.79 max=15.41 heavy=11 hitch=0.017543859501498577 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=17", "render.cross>3ms=3"]
+frame-001791108965842-图表手势.json frames=161 hz=60.00000022351742 work p50=5.11 p90=6.40 p99=8.90 max=15.35 heavy=2 hitch=0.006211180101049224 worstHitch=16.6666666045785 slowParts=["render.plot>3ms=20", "render.cross>3ms=1"]
+frame-001791108969270-图表手势.json frames=162 hz=60.00000022351742 work p50=5.29 p90=6.87 p99=13.74 max=16.33 heavy=5 hitch=0.006224737519451814 worstHitch=16.80679130367935 slowParts=["render.plot>3ms=35"]
+frame-001791108972691-图表手势.json frames=163 hz=60.00000022351742 work p50=5.18 p90=6.90 p99=9.73 max=12.75 heavy=3 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=22"]
+frame-001791108976116-图表手势.json frames=161 hz=60.00000022351742 work p50=5.15 p90=7.05 p99=12.61 max=20.34 heavy=8 hitch=0.0077623291148916215 worstHitch=20.828916458413 slowParts=["render.plot>3ms=24", "render.cross>3ms=2"]
+frame-001791108979585-图表手势.json frames=162 hz=60.00000022351742 work p50=5.37 p90=6.99 p99=12.40 max=15.09 heavy=6 hitch=0.006172839483283682 worstHitch=16.6666666045785 slowParts=["render.plot>3ms=25", "render.cross>3ms=1"]
+frame-001791108983050-图表手势.json frames=162 hz=60.00000022351742 work p50=5.25 p90=6.89 p99=11.54 max=13.84 heavy=5 hitch=0.012269938690792938 worstHitch=22.22533337771893 slowParts=["render.plot>3ms=25", "render.cross>3ms=1"]
+frame-001791108986448-图表手势.json frames=162 hz=60.00000022351742 work p50=5.51 p90=6.93 p99=13.00 max=15.21 heavy=5 hitch=0.01226993877544588 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=30"]
+frame-001791108989943-图表手势.json frames=166 hz=60.00000022351742 work p50=5.14 p90=6.32 p99=10.19 max=13.53 heavy=3 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=13"]
+frame-001791108993314-图表手势.json frames=162 hz=60.00000022351742 work p50=5.43 p90=7.11 p99=12.94 max=13.88 heavy=5 hitch=0.00741984565794607 worstHitch=20.03358327783644 slowParts=["render.plot>3ms=30"]
+frame-001791108996752-图表手势.json frames=162 hz=60.00000022351742 work p50=5.43 p90=6.53 p99=14.10 max=17.60 heavy=5 hitch=0.012787730158207802 worstHitch=18.07333342730999 slowParts=["render.plot>3ms=25"]
+frame-001791109000215-图表手势.json frames=164 hz=60.00000022351742 work p50=5.60 p90=6.68 p99=14.48 max=14.89 heavy=6 hitch=0.012121212076057087 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=27", "render.cross>3ms=1"]
+frame-001791109007992-图表手势.json frames=418 hz=60.00000022351742 work p50=5.51 p90=6.99 p99=10.40 max=18.07 heavy=19 hitch=0.0026605741798615343 worstHitch=18.53533345274627 slowParts=["render.plot>3ms=49", "render.cross>3ms=1", "render.plot>8ms=1"]
+frame-001791109011706-图表手势.json frames=176 hz=60.00000022351742 work p50=0.39 p90=7.45 p99=13.36 max=22.93 heavy=15 hitch=0.02376431583601161 worstHitch=20.40208340622485 slowParts=["render.plot>3ms=16"]
+frame-001791109017869-图表手势.json frames=299 hz=60.00000022351742 work p50=0.97 p90=8.04 p99=14.63 max=35.95 heavy=31 hitch=0.031070267954158307 worstHitch=42.42066689766943 slowParts=["render.plot>3ms=33", "render.cross>3ms=6"]
+frame-001791109024104-图表手势.json frames=325 hz=60.00000022351742 work p50=4.42 p90=6.70 p99=10.42 max=19.50 heavy=8 hitch=0.006134969387985838 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=5", "render.cross>3ms=2"]
+frame-001791109027018-图表手势.json frames=93 hz=60.00000022351742 work p50=2.71 p90=6.28 p99=9.68 max=9.93 heavy=4 hitch=0.04166666650902092 worstHitch=24.07308341935277 slowParts=["render.plot>3ms=4"]
+frame-001791109035642-图表手势.json frames=97 hz=60.00000022351742 work p50=1.70 p90=5.46 p99=7.66 max=11.28 heavy=1 hitch=0.01181646922254116 worstHitch=19.10329191014171 slowParts=["render.plot>3ms=2", "render.cross>3ms=1"]
+frame-001791109044160-图表手势.json frames=97 hz=60.00000022351742 work p50=1.00 p90=7.67 p99=12.49 max=12.59 heavy=10 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=9", "render.cross>3ms=2"]
+合计 frames=3461 heavy(>8ms)=152 重帧里出现最多：["ChartView.render=143", "render.live=126", "render.cross=124", "render.plot>3ms=104", "adopt.dirty=71", "render.plot=38", "MainChartView=26", "ChartHost.update=23", "render.cross>3ms=21", "MainDiagnosticsOverlay=15", "adopt.clean=10", "MainHeaderView=7"]
+======== 修后 hotpath10
+场景 bars=1500 drawings=30 compareReady=2 orderFlow=ready orders=2554 height=572 mainH=277.5
+缩小后（最新处）订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4
+往回甩 44 下 → bars=6001；此处订单流 bands=0  live=0 thin=0 area=0pt² (主图 0.00 倍) spacing=4.045070422535211
+卡顿（main.hangs）手势段 +0 全程 +1 最近 [183]
+帧报告 19 份
+frame-001791110072151-图表手势.json frames=168 hz=60.00000022351742 work p50=0.11 p90=4.79 p99=15.85 max=16.22 heavy=12 hitch=0.02908962221241234 worstHitch=16.72358345240355 slowParts=["render.plot>3ms=14", "render.cross>3ms=6"]
+frame-001791110075644-图表手势.json frames=164 hz=60.00000022351742 work p50=5.35 p90=6.83 p99=14.38 max=22.89 heavy=6 hitch=0.012121212245388464 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=16", "render.cross>3ms=2"]
+frame-001791110079029-图表手势.json frames=162 hz=60.00000022351742 work p50=5.41 p90=6.79 p99=12.97 max=20.48 heavy=7 hitch=0.012269938689741348 worstHitch=20.96116682514548 slowParts=["render.plot>3ms=19", "render.cross>3ms=1"]
+frame-001791110082492-图表手势.json frames=163 hz=60.00000022351742 work p50=5.53 p90=7.16 p99=12.96 max=17.58 heavy=6 hitch=0.006638251422410018 worstHitch=18.03391636349261 slowParts=["render.plot>3ms=25", "render.cross>3ms=1"]
+frame-001791110085929-图表手势.json frames=164 hz=60.00000022351742 work p50=5.67 p90=7.17 p99=14.87 max=18.26 heavy=7 hitch=0.012879954650998116 worstHitch=18.75320845283568 slowParts=["render.plot>3ms=23", "render.cross>3ms=1"]
+frame-001791110089348-图表手势.json frames=163 hz=60.00000022351742 work p50=5.44 p90=6.88 p99=8.71 max=13.37 heavy=3 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=24"]
+frame-001791110092822-图表手势.json frames=162 hz=60.00000022351742 work p50=5.74 p90=7.32 p99=14.96 max=16.58 heavy=8 hitch=0.012269938519383876 worstHitch=16.6666666045785 slowParts=["render.plot>3ms=26", "render.cross>3ms=1"]
+frame-001791110096316-图表手势.json frames=168 hz=60.00000022351742 work p50=5.59 p90=7.41 p99=12.39 max=15.30 heavy=13 hitch=0.005952381013756377 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=31", "render.cross>3ms=1"]
+frame-001791110099714-图表手势.json frames=164 hz=60.00000022351742 work p50=5.82 p90=6.90 p99=9.42 max=12.53 heavy=2 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=22"]
+frame-001791110103171-图表手势.json frames=160 hz=60.00000022351742 work p50=5.33 p90=7.22 p99=14.28 max=17.83 heavy=9 hitch=0.018518518536084615 worstHitch=16.66666683740914 slowParts=["render.plot>3ms=27"]
+frame-001791110106611-图表手势.json frames=163 hz=60.00000022351742 work p50=5.64 p90=7.25 p99=10.95 max=14.50 heavy=8 hitch=0.007377653468718167 worstHitch=20.04262525588274 slowParts=["render.plot>3ms=27"]
+frame-001791110110105-图表手势.json frames=163 hz=60.00000022351742 work p50=5.57 p90=6.91 p99=7.66 max=14.17 heavy=1 hitch=0.007276809831142937 worstHitch=19.76866670884192 slowParts=["render.plot>3ms=25"]
+frame-001791110117919-图表手势.json frames=414 hz=60.00000022351742 work p50=5.57 p90=6.98 p99=12.74 max=16.49 heavy=14 hitch=0.007255734738483519 worstHitch=16.97533344849944 slowParts=["render.plot>3ms=43"]
+frame-001791110121650-图表手势.json frames=171 hz=60.00000022351742 work p50=1.08 p90=7.89 p99=17.10 max=17.74 heavy=17 hitch=0.04745386203217482 worstHitch=30.69699998013675 slowParts=["render.plot>3ms=17", "render.cross>3ms=2"]
+frame-001791110127887-图表手势.json frames=305 hz=60.00000022351742 work p50=0.76 p90=7.35 p99=13.82 max=23.38 heavy=23 hitch=0.025258477544638207 worstHitch=30.18829179927707 slowParts=["render.plot>3ms=20", "render.cross>3ms=5"]
+frame-001791110134044-图表手势.json frames=325 hz=60.00000022351742 work p50=4.65 p90=6.15 p99=9.69 max=12.07 heavy=5 hitch=0.005060314355072239 worstHitch=27.49437466263771 slowParts=["render.plot>3ms=3"]
+frame-001791110136885-图表手势.json frames=95 hz=60.00000022351742 work p50=1.03 p90=6.09 p99=14.72 max=17.00 heavy=6 hitch=0.021336614156142162 worstHitch=17.47191627509892 slowParts=["render.plot>3ms=6", "render.cross>3ms=2"]
+frame-001791110145455-图表手势.json frames=96 hz=60.00000022351742 work p50=2.83 p90=5.48 p99=9.05 max=11.04 heavy=2 hitch=0.01218554694893993 worstHitch=19.49687511660159 slowParts=["render.plot>3ms=1"]
+frame-001791110154017-图表手势.json frames=97 hz=60.00000022351742 work p50=1.74 p90=7.02 p99=12.63 max=12.97 heavy=9 hitch=0 worstHitch=0 slowParts=["render.plot>3ms=10", "render.cross>3ms=3"]
+合计 frames=3467 heavy(>8ms)=158 重帧里出现最多：["ChartView.render=146", "render.live=134", "render.cross=122", "render.plot>3ms=106", "adopt.dirty=77", "render.plot=40", "MainChartView=29", "ChartHost.update=26", "render.cross>3ms=25", "MainDiagnosticsOverlay=16", "adopt.clean=13", "MainHeaderView=7"]
