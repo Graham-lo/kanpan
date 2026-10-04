@@ -14,6 +14,7 @@
 import { MINUS, MISSING, fmtPrice, fmtVol, grouped, toFixed, changePercentText } from '../../model/rowText'
 import { MAX_QUICK, MAX_SUBS, type IntervalId, type IndicatorId, type OrderFlowOverride } from '../../app/prefs'
 import { THRESHOLD_RANGE, STEP_RANGE } from '../../../orderflow/settings'
+import type { Drawing } from '../../chart/draw/drawing'
 
 export { MAX_QUICK, MAX_SUBS, THRESHOLD_RANGE, STEP_RANGE }
 
@@ -443,4 +444,18 @@ export function deleteDrawingById(c: {
 /** 画线颜色只认 #RRGGBB / #RRGGBBAA（同步进来的档案不可信），其余一律回落；统一大写。 */
 export function safeHexColor(v: unknown, fallback: string): string {
   return typeof v === 'string' && /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v) ? v.toUpperCase() : fallback.toUpperCase()
+}
+
+/** 画线样式面板「保存」：面板开着的这段时间线可能被同步改过（另一台挪了点、上了锁、改了色）或删了。
+ *  按 id 取现在那条（live），只把这次在面板里真改过的样式字段（相对打开时的 opened）盖上去，其余一律用 live 的；
+ *  线已经没了返回 null（不复活、不回滚别处的改动——iOS A-4②） */
+export function mergeStyleEdits(live: Drawing | undefined, opened: Drawing, edited: Drawing): Drawing | null {
+  if (!live) return null
+  const out: Drawing = { ...live }
+  if (edited.color !== opened.color) out.color = edited.color
+  if (edited.lineWidth !== opened.lineWidth) out.lineWidth = edited.lineWidth
+  if (edited.kind !== opened.kind) out.kind = edited.kind
+  if (edited.text !== opened.text) out.text = edited.text
+  if (edited.levels.length !== opened.levels.length || edited.levels.some((v, i) => v !== opened.levels[i])) out.levels = edited.levels.slice()
+  return out
 }

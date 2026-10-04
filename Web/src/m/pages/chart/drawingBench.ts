@@ -31,7 +31,7 @@ import { swipeRow, deleteAction } from '../../ui/swipeDelete'
 import { toast } from '../../ui/toast'
 import { el, esc } from '../../ui/dom'
 import { icon } from '../../ui/icons'
-import { railIntervals, deleteDrawingById, safeHexColor } from './logic'
+import { railIntervals, deleteDrawingById, safeHexColor, mergeStyleEdits } from './logic'
 import { splitPair } from './header'
 import { openSymbolPicker, colorControlHTML, syncColorControl } from './panels'
 
@@ -505,9 +505,13 @@ export function createBench(ctx: BenchContext) {
             if (!lv) { toast('比例要用逗号隔开的数字'); return }
             item.levels = lv
           }
-          c.updateDrawing(item)
+          // 按 id 取现在那条，只盖这次改过的样式字段：面板开着时同步挪了点 / 上了锁不被打开时的快照回滚，线删了就不写
+          const next = mergeStyleEdits(c.drawings.find(d => d.id === orig.id), orig, item)
+          if (!next) { sheet?.close(); return }
+          c.updateDrawing(next)
           const p = drawingBook.preferences
           let prefs = false
+          // 记成这一类的默认样式按「这次在面板里调成的样子」算，不夹带同步过来的别处改动
           if (!styleEquals(styleOf(item), original)) { p.styles[item.kind] = styleOf(item); c.styles = { ...p.styles }; prefs = true }
           if (p.rememberSwap(orig.kind, item.kind)) { c.variants = { ...p.variants }; prefs = true }
           if (prefs) saveDrawingPreferences()
