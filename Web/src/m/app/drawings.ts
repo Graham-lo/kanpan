@@ -4,6 +4,8 @@
  * 行情页用 `attachDrawing(view)` 拿到控制器后 `c.bindDrawings(drawingBook)` 绑上这一本；
  * 这里负责：
  * - 启动时从本机存档读（localStorage `hkline-m-drawings-v1`，encodeArchive / decodeArchive 的形状）；
+ *   读不全（解不开、有线这一版解不了、新版本写的）时原文另存到 `hkline-m-drawings-v1.unreadable-<时间>`，
+ *   免得第一次落盘把没登录的人仅有的那份线盖掉；
  * - book 一有变动（画、改、删、撤销、同步替换）立刻落盘；
  * - 叫一声订阅者（m/app/sync.ts 据此记账推云端，并记下这只品种「本机最后一次改」）。
  *
@@ -22,11 +24,43 @@ export const DRAWINGS_KEY = 'hkline-m-drawings-v1'
 /** 本机存档读坏过（有东西但解不开）：同步那边先别按「本机删光了」推删除 */
 let suspect = false
 
+/** 读不全的原文另存的键前缀（后面跟时间戳）；只留最近 BACKUP_KEEP 份 */
+export const DRAWINGS_BACKUP_PREFIX = DRAWINGS_KEY + '.unreadable-'
+const BACKUP_KEEP = 3
+
+/** 原文存一份到旁边：之后第一次落盘就会把主键整份盖掉，没登录的人线只存在这一处 */
+function backupRaw(raw: string): void {
+  try {
+    const old: string[] = []
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k?.startsWith(DRAWINGS_BACKUP_PREFIX)) old.push(k) }
+    old.sort()
+    if (old.some(k => localStorage.getItem(k) === raw)) return
+    localStorage.setItem(DRAWINGS_BACKUP_PREFIX + Date.now(), raw)
+    for (const k of old.slice(0, Math.max(0, old.length + 1 - BACKUP_KEEP))) localStorage.removeItem(k)
+  } catch (e) { console.warn('[m] 画线存档原文另存失败', e) }
+}
+
+/** 存档原文里有、解出来却没有的线（这一版解不开、会被丢掉的）有几条 */
+function lostCount(json: unknown, a: DrawArchive): number {
+  const d = (json as { d?: unknown } | null)?.d
+  if (!d || typeof d !== 'object') return 0
+  const kept = new Set(Object.values(a.bySymbol).flatMap(b => b.map(x => x.id)))
+  return Object.values(d).flatMap(b => Array.isArray(b) ? b : []).filter(x => {
+    const id = (x as { id?: unknown } | null)?.id
+    return typeof id !== 'string' || !kept.has(id)
+  }).length
+}
+
 function load(): DrawArchive {
   let raw: string | null = null
   try { raw = localStorage.getItem(DRAWINGS_KEY) } catch { /* 读不到当空 */ }
   if (!raw) return new DrawArchive()
-  try { return decodeArchive(JSON.parse(raw)) } catch { suspect = true; return new DrawArchive() }
+  let a: DrawArchive
+  let json: unknown
+  try { json = JSON.parse(raw); a = decodeArchive(json) } catch { suspect = true; backupRaw(raw); return new DrawArchive() }
+  // 新版本写的、或有线解不开（会被这一版丢掉）：照样用解得开的那些，但原文另存，并按可疑处理（同步只补不删）
+  if (a.version > DrawArchive.currentVersion || lostCount(json, a)) { suspect = true; backupRaw(raw) }
+  return a
 }
 
 /** 全 app 共享的那一本 */
