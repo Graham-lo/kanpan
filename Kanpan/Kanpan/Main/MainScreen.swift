@@ -1066,7 +1066,8 @@ struct MainScreen: View {
                           onLogin: openAccountInMe, onOpen: openShare, pushed: true))
     // 总表那一张：不要现价（`live: false`），系统返回（`presentedAsSheet: false`）。
     case .alerts:
-      AnyView(AlertListPage(store: alerts, context: alertListContext(live: false), presentedAsSheet: false))
+      AnyView(AlertListPage(store: alerts, context: alertListContext(live: false), presentedAsSheet: false,
+                            onAppGround: true))
     case .exchange:
       AnyView(ExchangeAccountPage())
     case .settings:

@@ -44,6 +44,14 @@ struct AlertListPage: View {
   var context = AlertListContext()
   /// 自己是一张表（带 NavigationStack 与左上关闭），还是被推进来的一层（用外面的导航栈）。
   var presentedAsSheet = true
+  /// 推在「我的」那一页的导航栈里（而不是创建提醒那张表里）。
+  ///
+  /// 2026-10-04 G 线走查：「我的 › 全部预警」浅色下是一整页白（`raised`），而同一栈里的
+  /// 交易所、朋友、设置、「我的」本页都是皮肤的页面底色（`app`）；底栏身后那道「透明 → 页面底色」
+  /// 的渐变铺在白页上，成了一条带色的横带。白底是给表用的——创建提醒那张表是 `raised`，
+  /// 从它右上推进来的总表跟着白；推在「我的」里就跟「我的」走页面底色。卡片仍是 `raised2`，
+  /// 和「我的」那几张卡同一层。
+  var onAppGround = false
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -101,7 +109,7 @@ struct AlertListPage: View {
       .padding(.bottom, Space.section)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .background(AlertPageStyle.background(t).ignoresSafeArea())
+    .background((onAppGround ? t.app : AlertPageStyle.background(t)).ignoresSafeArea())
     // 「这张表在不在」的记号。**`children: .contain` 那一句不能省**：光写
     // `accessibilityIdentifier` 会把这个名字往下盖到每个子元素上（`DisplaySettingsSection`
     // 那一排配色卡踩过同一个坑），`.contain` 让它只当一个容器，子元素各留各的名字。
