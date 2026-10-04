@@ -179,6 +179,7 @@ struct StressWSStormTests {
     let ticker = #"{"channel":"ticker","timestamp":"2026-09-22T23:19:47Z","events":[{"type":"snapshot","tickers":[{"product_id":"BTC-USD","price":"63000","volume_24_h":"1","low_24_h":"1","high_24_h":"2","price_percent_chg_24_h":"0"}]}]}"#
 
     let rounds = 120
+    var maxSpins = 0
     var attempts: [Int] = []
     var connectTimes: [Double] = [t0]
     for n in 1...rounds {
@@ -188,17 +189,25 @@ struct StressWSStormTests {
       await s.push(.text(ticker))
       #expect(await waitUntil(10) { tally.count("payload") >= n })
       await s.push(.closed("服务器踢线 #\(n)"))
+      // 拨针直到新连接起来。封顶按墙上时钟（10 秒）而不是按自旋次数：原来是 200 次
+      // `Task.yield()`，Release 下 yield 很快、机器又忙时，CoinbaseWS 那个 actor 还没轮到处理
+      // 这帧 close、退避那一觉还没挂上钟，200 次就转完了；这一轮于是没拨针就退出，下一轮的
+      // `waitUntil(10)` 只干等不拨针，新连接永远起不来，一轮一轮地超时，整条用例撞 2 分钟上限
+      // （深度审查 F 线：Release 下单跑这一组两次红一次，71–192 条 issue）。
       var spins = 0
-      while await bench.connects < n + 1, spins < 200 {
+      let deadline = Date().addingTimeInterval(10)
+      while await bench.connects < n + 1, Date() < deadline {
         if let wake = await pacer.nextWakeIn, wake < 60_000 { await pacer.advance(max(1, wake)) }
         else { await Task.yield() }
         spins += 1
       }
+      maxSpins = max(maxSpins, spins)
+      #expect(await bench.connects >= n + 1, "第 \(n) 轮拨了 \(spins) 次针，新连接还没起来")
       attempts.append(await ws.backoffAttempt)
       connectTimes.append(await pacer.nowMs())
     }
     let firstFiveMinutes = connectTimes.filter { $0 - t0 <= 300_000 }.count
-    print("压测数据 Coinbase风暴 rounds=\(rounds) 前5分钟连接=\(firstFiveMinutes) 尾段档位=\(Array(attempts.suffix(5)))")
+    print("压测数据 Coinbase风暴 rounds=\(rounds) 前5分钟连接=\(firstFiveMinutes) 尾段档位=\(Array(attempts.suffix(5))) 单轮最多拨针=\(maxSpins)")
     let tailAttempts = attempts.suffix(20)
     #expect(tailAttempts.allSatisfy { $0 >= 5 }, "尾段退避档位：\(Array(tailAttempts))")
     #expect(firstFiveMinutes <= 20, "虚拟前 5 分钟的连接数：\(firstFiveMinutes)")
