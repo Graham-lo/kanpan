@@ -30,7 +30,7 @@ import {
   drawingsEqual, drawingEquals, DrawKind, drawingWith, drawingIsValid, snapDrawPointSimple, movedDrawing, snapDrawPoint,
   DrawHistory, newDrawingID, DrawArchive, decodeArchive, encodeArchive, drawingGeometry, DrawGeometry,
   DrawingBook, canonicalInstrument, DrawingPreferences, styleOf, decodePreferences, encodePreferences, DrawAge,
-  vwapTrail, volumeProfile, VolumeProfile, DRAW_PART_ANCHORS,
+  vwapTrail, volumeProfile, VolumeProfile, DRAW_PART_ANCHORS, ComputedMemo, computeVWAPTrail, computeVolumeProfile,
   DrawingController, DrawAxes, DrawingPreview, attachDrawing, drawAxesOf, DRAW_DRAG_SLOP_PT,
 } from '../src/m/chart/drawing'
 import { ViewWindow, priceRange, priceTransform, pOf, yOf, type Pane, type PriceRange } from '../src/m/chart/geometry'
@@ -1028,6 +1028,60 @@ describe('锚定 VWAP 与成交量分布', () => {
     expect(og.segments.length + og.labels.length).toBe(0)
     const on = drawingGeometry(makeDrawing('hray', { t: time(2), p: 20 }), bounds, x, y, 2)
     expect(on.segments.length === 1 && on.labels.length === 1).toBe(true)
+  })
+
+  test('计算结果按序列戳缓存：同一条序列只算一次，序列一改就重算，null 也记住（DrawVolumeTests · 待核实 3）', () => {
+    let runs = 0
+    const rev = 9_000_000_001
+    ComputedMemo.trail(rev, 1, () => { runs++; return null })
+    ComputedMemo.trail(rev, 1, () => { runs++; return null })
+    expect(runs, '画不出（null）也是答案，下一帧不该再扫一遍').toBe(1)
+    ComputedMemo.trail(rev + 1, 1, () => { runs++; return null })
+    expect(runs, '换了戳就是另一条序列').toBe(2)
+    ComputedMemo.profile(rev, 1, 2, () => { runs++; return null })
+    ComputedMemo.profile(rev, 1, 3, () => { runs++; return null })
+    ComputedMemo.profile(rev, 1, null, () => { runs++; return null })
+    expect(runs, '锚点不同不能串').toBe(5)
+    // 走公开入口：缓存给的和现算的一样；同一戳第二次拿到的是同一份；序列被改过之后不会拿到旧答案。
+    const s = series([[10, 12, 8, 10, 100], [15, 22, 14, 18, 200], [25, 30, 24, 27, 300]])
+    const before = vwapTrail(time(0), s)!
+    expect(before).toEqual(computeVWAPTrail(time(0), s))
+    expect(vwapTrail(time(0), s)).toBe(before)
+    const vp = volumeProfile(time(0), null, s)
+    expect(vp).toEqual(computeVolumeProfile(time(0), null, s))
+    expect(volumeProfile(time(0), null, s)).toBe(vp)
+    s.replaceLast(bar(time(2), 25, 40, 24, 36, 900))
+    const after = vwapTrail(time(0), s)!
+    expect(after.values).not.toEqual(before.values)
+    expect(after).toEqual(computeVWAPTrail(time(0), s))
+    expect(volumeProfile(time(0), null, s)).toEqual(computeVolumeProfile(time(0), null, s))
+  })
+
+  test('VWAP 只换算屏内那一段：和逐根全扫出来的线段、读数一模一样', () => {
+    const bars: B5[] = []
+    for (let i = 0; i < 3000; i++) {
+      const c = 20 + Math.sin(i / 37) * 5
+      bars.push([c - 0.3, c + 1, c - 1, c, i >= 1200 && i < 1210 ? 0 : 50 + (i % 7)])
+    }
+    const s = series(bars)
+    const d = makeDrawing('anchoredVWAP', { t: time(5), p: 20 })
+    for (const shift of [0, -900, -2380, -5800, 400, -7000]) {
+      const xOf = (t: number): number => (t - t0) / step * 2 + shift
+      const g = drawingGeometry(d, bounds, xOf, y, 2, s)
+      const trail = computeVWAPTrail(time(5), s)!
+      const want: [DrawPixel, DrawPixel][] = []
+      let prev: DrawPixel | null = null
+      trail.values.forEach((v, k) => {
+        if (!Number.isFinite(v)) { prev = null; return }
+        const p = { x: xOf(s.time(trail.start + k)), y: y(v) }
+        const q = prev as DrawPixel | null
+        if (q && Math.max(q.x, p.x) >= bounds.left - 2 && Math.min(q.x, p.x) <= bounds.right + 2) want.push([q, p])
+        prev = p
+      })
+      expect(g.segments.map(sg => [sg.a, sg.b]), `shift ${shift}`).toEqual(want)
+      expect(g.labels.length).toBe(1)
+      expect(g.labels[0].text).toBe(trail.values[trail.values.length - 1].toFixed(2))
+    }
   })
 
   test('分布的几何：柱子是填充，三条横线 + 边界竖线，一枚 POC 读数', () => {

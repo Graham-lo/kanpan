@@ -71,8 +71,18 @@ export function lastBarAtOrBefore(t: number, series: BarSeries): number | null {
   return lo
 }
 
-/** 从第一根 `openTime >= anchorT` 起，把 Σ(hlc3·v)/Σv 一路累到末根。锚点落在末根之后 → null。 */
+/**
+ * 从第一根 `openTime >= anchorT` 起，把 Σ(hlc3·v)/Σv 一路累到末根。锚点落在末根之后 → null。
+ *
+ * 一次是 O(n)（n 是锚点到现在的根数）。几何每帧都要它，所以结果按 `series.revision` + 锚点记在
+ * ComputedMemo 里：平移、缩放、十字线这类帧序列没变，直接取上一帧算好的；来一笔 tick 序列换了戳，
+ * 自然重算（DrawVolume.swift，审查 B·待核实 3）。
+ */
 export function vwapTrail(anchorT: number, series: BarSeries): VWAPTrail | null {
+  return ComputedMemo.trail(series.revision, anchorT, () => computeVWAPTrail(anchorT, series))
+}
+
+export function computeVWAPTrail(anchorT: number, series: BarSeries): VWAPTrail | null {
   const start = firstBarAtOrAfter(anchorT, series)
   if (start == null) return null
   let pv = 0, vv = 0
@@ -89,8 +99,12 @@ export function vwapTrail(anchorT: number, series: BarSeries): VWAPTrail | null 
   return new VWAPTrail(start, values)
 }
 
-/** `[fromT, toT]` 圈住的那段 K 线（含两端）按价格分层的成交量；`toT == null` 表示一直到末根。 */
+/** `[fromT, toT]` 圈住的那段 K 线（含两端）按价格分层的成交量；`toT == null` 表示一直到末根。缓存同 vwapTrail。 */
 export function volumeProfile(fromT: number, toT: number | null, series: BarSeries): VolumeProfile | null {
+  return ComputedMemo.profile(series.revision, fromT, toT, () => computeVolumeProfile(fromT, toT, series))
+}
+
+export function computeVolumeProfile(fromT: number, toT: number | null, series: BarSeries): VolumeProfile | null {
   if (!(series.count > 0)) return null
   const first = firstBarAtOrAfter(fromT, series)
   if (first == null) return null
@@ -171,4 +185,35 @@ export function volumeProfile(fromT: number, toT: number | null, series: BarSeri
   }
 
   return new VolumeProfile(lo, hi, height, up, down, poc, vaLow, vaHigh, first, last)
+}
+
+// ------------------------------------------------------------ 计算型画线的结果缓存
+
+/**
+ * 锚定 VWAP / 成交量分布的结果缓存（DrawVolume.swift `ComputedMemo`）。
+ *
+ * 键是「哪条序列（revision）× 哪种算法 × 锚点」。revision 全局唯一、序列任何一次改动都换新值
+ * （BarSeries 的 nextStamp），所以不需要失效规则：序列变了，老键再也不会被问到，只会被容量上限清掉。
+ * 存 null 也算命中——锚点落在末根之后那把画线每帧都在问，答案一直是「画不出」。
+ */
+export const ComputedMemo = {
+  /** 一屏同时挂几十把计算型画线也够用；超了整表清掉重来，下一帧就重新填满。 */
+  capacity: 64,
+  trails: new Map<string, VWAPTrail | null>(),
+  profiles: new Map<string, VolumeProfile | null>(),
+  trail(revision: number, from: number, compute: () => VWAPTrail | null): VWAPTrail | null {
+    return memo(this.trails, `${revision}|${from}`, this.capacity, compute)
+  },
+  profile(revision: number, from: number, to: number | null, compute: () => VolumeProfile | null): VolumeProfile | null {
+    return memo(this.profiles, `${revision}|${from}|${to ?? ''}`, this.capacity, compute)
+  },
+}
+
+function memo<T>(table: Map<string, T | null>, key: string, capacity: number, compute: () => T | null): T | null {
+  const hit = table.get(key)
+  if (hit !== undefined) return hit
+  const value = compute()
+  if (table.size >= capacity) table.clear()
+  table.set(key, value)
+  return value
 }

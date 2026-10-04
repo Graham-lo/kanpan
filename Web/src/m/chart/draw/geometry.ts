@@ -519,18 +519,35 @@ export function drawingGeometry(d: Drawing, r: DrawBounds, xOf: (t: number) => n
       if (!series) break
       const trail = vwapTrail(A.t, series)
       if (!trail) break
+      const xAt = (k: number): number => xOf(series.time(trail.start + k))
+      const n = trail.values.length
+      // 只换算屏内那一段：x 随下标单调递增，二分出第一根进了左沿的，从它前一根起（那一段跨着左沿）。
+      // 锚在半年前的 VWAP 屏外有几千根，逐根换算成像素再丢掉，每帧白干（DrawGeometry.swift，审查 B·待核实 3）。
+      let lo = 0, hi = n
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (xAt(mid) < r.left - 2) lo = mid + 1
+        else hi = mid
+      }
       let prev: DrawPixel | null = null
-      let tip: { point: DrawPixel; value: number } | null = null
-      trail.values.forEach((v, k) => {
-        if (!Number.isFinite(v)) { prev = null; return }
-        const p = px(xOf(series.time(trail.start + k)), yOf(v))
+      for (let k = Math.max(0, lo - 1); k < n; k++) {
+        const v = trail.values[k]
+        if (!Number.isFinite(v)) { prev = null; continue }
+        const p = px(xAt(k), yOf(v))
         const q: DrawPixel | null = prev
+        // 整段都在屏外的不收：屏幕外的线既看不见也不该参与命中。
         if (q && Math.max(q.x, p.x) >= r.left - 2 && Math.min(q.x, p.x) <= r.right + 2) seg(q, p)
         prev = p
-        tip = { point: p, value: v }
-      })
-      const t = tip as { point: DrawPixel; value: number } | null
-      if (t) g.labels = [drawLabel(px(t.point.x, t.point.y - 4), price(t.value), { plate: 'chip' })]
+        // 这一点已经出了右沿：往后每一段的左端都在右沿之外，一段也收不进来了。
+        if (p.x > r.right + 2) break
+      }
+      // 读数钉在末根那一点上（滚回历史时它可能在屏外，和从前一样）。
+      let tipK = n - 1
+      while (tipK >= 0 && !Number.isFinite(trail.values[tipK])) tipK--
+      if (tipK >= 0) {
+        const v = trail.values[tipK]
+        g.labels = [drawLabel(px(xAt(tipK), yOf(v) - 4), price(v), { plate: 'chip' })]
+      }
       break
     }
     case 'fixedVolumeProfile':
