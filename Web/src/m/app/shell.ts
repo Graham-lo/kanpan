@@ -189,6 +189,9 @@ export function openSymbol(symbol: string, scanFrom?: readonly string[]): void {
   st.symbol = s
   st.symbols.recents = [s, ...st.symbols.recents.filter(x => x !== s)].slice(0, 10)
   nav.origin = from === 'chart' ? nav.origin : from
+  // 已经站在行情页上（提醒 / 通知的「查看」、复盘本「继续记录」）go 不换页、也就不收盖板：
+  // 这里补上，和换页进来同一个收尾——不然开着的记一笔、分享、图表设置还对着上一只（iOS open(linkedSymbol:)）
+  if (from === 'chart' && shown === 'chart') closeOverlays()
   go('chart')
   save()
   hooks.onSymbol.forEach(fn => safe(() => fn(s)))

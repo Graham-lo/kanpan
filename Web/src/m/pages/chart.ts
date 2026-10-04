@@ -336,6 +336,9 @@ export function initChart(root: HTMLElement): PageHandle {
   // ---- 订阅
   subscribe(() => syncChart())
   hooks.onSymbol.push(s => {
+    // 回放盖着时从提醒「查看」、通知、复盘本换到别的品种：回放那层还画着旧品种，退出又被送回「我的」——
+    // 换品种就是人要看新那只，先收回放、留在行情页（iOS A-6：换品种两个入口都先 endReview）
+    if (replay) endReplay()
     const learned = learnedInterval(s, st.interval)
     if (learned) { st.interval = learned; save() }
     syncChart()

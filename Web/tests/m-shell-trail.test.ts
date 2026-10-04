@@ -1,6 +1,8 @@
 /* 手机网页版深度审查 E 线（壳）：
- *   C1 换号 / 退登 / 被顶下线后，来路与扫图名单还是上一个人的（iOS A-2：ChartTrail 跟着档案主人走） */
+ *   C1 换号 / 退登 / 被顶下线后，来路与扫图名单还是上一个人的（iOS A-2：ChartTrail 跟着档案主人走）
+ *   C7 已经站在行情页上从提醒「查看」/ 通知 / 复盘本换品种：go 不换页就不收盖板，开着的记一笔 / 分享还对着上一只 */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import chartSource from '../src/m/pages/chart.ts?raw'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
 
@@ -60,5 +62,25 @@ describe('C1 来路与扫图名单跟着档案主人走', () => {
     shell.openSymbol('SOLUSDT', ['SOLUSDT', 'ADAUSDT'])
     account.setSession(user('A', 's10'))
     expect(shell.nav.scan).toBeNull()
+  })
+})
+
+describe('C7 站在行情页上换品种', () => {
+  it('复现：提醒「查看」在行情页上换品种——登记过的盖板被收掉（以前 go 同页早退、盖板还对着上一只）', async () => {
+    const { shell, st } = await loadShell()
+    st.page = 'chart'
+    shell.registerPage('chart', { show: () => {}, hide: () => {} })
+    const close = vi.fn()
+    shell.registerOverlay(close)
+    shell.openSymbol('ETHUSDT')
+    expect(st.symbol).toBe('ETHUSDT')
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('换品种先收回放（iOS A-6）：行情页的 onSymbol 第一件事是 endReplay', () => {
+    const m = chartSource.match(/hooks\.onSymbol\.push\(s => \{([\s\S]*?)\n {2}\}\)/)
+    expect(m).toBeTruthy()
+    const body = m![1].replace(/^\s*\/\/.*$/gm, '').trim()
+    expect(body.startsWith('if (replay) endReplay()')).toBe(true)
   })
 })
