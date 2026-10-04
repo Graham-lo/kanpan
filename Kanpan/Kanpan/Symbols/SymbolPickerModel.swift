@@ -395,6 +395,10 @@ final class SymbolPickerModel {
     let live = Set(prefs.groups.map(\.id))
     for symbol in prefs.favorites where prefs.groupForSymbol[symbol].map({ !live.contains($0) }) ?? true {
       if assignVenueCategory(symbol) { changed = true; continue }
+      // 目录还没到（冷启动 init 那一次）：从没分过类的先一只不动，全留给 setCatalog 按自选顺序编。
+      // 否则只有 ISO 代号认得出的黄金先开出「贵金属」排第一、分类页落在只有黄金的那一格，
+      // 排在它后面的币又走下面「归到此刻看的那一类」被塞进「贵金属」。挂在死分类上的照旧往下补，免得看不见。
+      guard !catalog.isEmpty || prefs.groupForSymbol[symbol] != nil else { continue }
       let facts = self.info(for: symbol)
       // 不知道它是什么就不编分类（审查 B-04）。已经有分类在时把它归到他此刻看的
       // 那一类——未归类的自选在分类页上根本看不见，宁可放错一格也不能让它消失；
