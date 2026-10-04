@@ -26,16 +26,20 @@ const POLL = 15e3
 const FULL_EVERY = 5 * 60e3
 const PUSH_DELAY = 400
 
-export const transport: Transport = {
-  push: (body, key) => authed<PushResponse>('POST', '/v1/sync/operations', body, { 'Idempotency-Key': key }),
-  bootstrap: (collection, prefix, after) => {
-    const q = new URLSearchParams({ collection })
-    if (prefix) q.set('prefix', prefix)
-    if (after) q.set('after', after)
-    return authed<Page>('GET', '/v1/sync/bootstrap?' + q.toString())
-  },
-  changes: cursor => authed<ChangesPage>('GET', '/v1/sync/changes?cursor=' + cursor),
+/** 同步请求。`userId` 给了就只替这个账号发：会话换成别人之后，旧账本那一轮剩下的请求一律不发（见 authed 的 asUser） */
+export function transportFor(userId?: string): Transport {
+  return {
+    push: (body, key) => authed<PushResponse>('POST', '/v1/sync/operations', body, { 'Idempotency-Key': key }, userId),
+    bootstrap: (collection, prefix, after) => {
+      const q = new URLSearchParams({ collection })
+      if (prefix) q.set('prefix', prefix)
+      if (after) q.set('after', after)
+      return authed<Page>('GET', '/v1/sync/bootstrap?' + q.toString(), undefined, {}, userId)
+    },
+    changes: cursor => authed<ChangesPage>('GET', '/v1/sync/changes?cursor=' + cursor, undefined, {}, userId),
+  }
 }
+export const transport: Transport = transportFor()
 
 /** 状态适配器：页面状态这一侧的读 / 写 / 订阅 / 戳。runtime 只在「账本活着、合并完了」时调用它 */
 export interface SyncAdapter {
@@ -189,7 +193,10 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
 
   /** 这台设备第一次和这个账号对上（或上一次同步的是另一个账号） */
   async function firstSync(e: Engine, override: boolean): Promise<void> {
+    const g = gen
     await e.full()
+    // 全量拉的途中退登 / 换了账号：这份是上一个人的，不能合并进页面（页面现在是下一个人的）
+    if (g !== gen) return
     initial = false
     adapter.mergeFirst(e.store, override)
     lsSet(syncKeys().owner, uid!)
@@ -204,7 +211,7 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     const fresh = !saved || saved.cursor == null
     store = new SyncStore(saved ?? emptyArchive(), device().id)
     store.onChange = persist
-    engine = new Engine(store, transport, adapter.owned, { capture, apply }, adapter.collections)
+    engine = new Engine(store, transportFor(id), adapter.owned, { capture, apply }, adapter.collections)
     uid = id
     lastSync = Number(lsGet(lastKey(id))) || 0
     error = ''
@@ -217,6 +224,8 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
       // 全量拉不下来（断网、服务器挂了）就等下一轮再试，本机照常用
       const attempt = (): Promise<void> => run(async e => { if (initial) await firstSync(e, override) })
       await attempt()
+      // 第一次合并的途中退登了：stop() 已经收拾过，这里再挂一个定时器就再也没人清（还会盖掉下一个账号的那个）
+      if (g !== gen) return
       pollTimer = setInterval(() => { if (g !== gen) return; if (initial) void attempt(); else tick() }, POLL)
     } else {
       adapter.resume?.(store)
@@ -238,6 +247,9 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     locks.request(syncKeys().lock + id, { signal }, async () => {
       if (signal.aborted) return
       await lead(id)
+      // 第一次合并的途中退登了：stop() 那时还没有 release 可调，这里再挂起就永远不放锁——
+      // 同一个账号在这个标签页里再登录，锁永远轮不到，再也不同步
+      if (signal.aborted) return
       await new Promise<void>(r => { release = r })
     }).catch(() => { /* 退登时还没轮到就被取消 */ })
   }

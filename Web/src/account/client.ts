@@ -218,10 +218,13 @@ export async function fresh(): Promise<Stored> {
   return refresh(v.refreshToken)
 }
 
-/** 带登录的请求：access 被拒（过期）就换一次再试；被顶掉 / 换不动就结束会话 */
-export async function authed<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
+/** 带登录的请求：access 被拒（过期）就换一次再试；被顶掉 / 换不动就结束会话。
+ *  `asUser`：这个请求是替哪个账号发的（同步账本）。手上的会话已经换成别的账号就不发——
+ *  否则旧账号还在路上的那一轮会拿新账号的令牌，把旧账号的操作推进新账号、或把新账号的数据拉进旧账本 */
+export async function authed<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, asUser?: string): Promise<T> {
   let v = await fresh()
   for (let attempt = 0; ; attempt++) {
+    if (asUser !== undefined && v.userId !== asUser) throw new ApiError(401, 'session_changed')
     try {
       return await request<T>(method, path, body, { ...headers, Authorization: 'Bearer ' + v.accessToken })
     } catch (e) {
