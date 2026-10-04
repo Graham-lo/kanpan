@@ -213,7 +213,9 @@ enum TradeWire {
       }
       return value
     }
-    return Decimal(try c.decode(Double.self, forKey: key))
+    // 数字形态直接按 `Decimal` 解：JSONDecoder 对 `Decimal` 是照数字原文逐位解析的，
+    // 先过一道 `Double` 再转会把 `0.1` 读成 `0.1000000000000000512`（审查 R18）。
+    return try c.decode(Decimal.self, forKey: key)
   }
 }
 
@@ -223,11 +225,20 @@ enum TradeWire {
 public enum TradeUploadPlan {
   public static let batchSize = 100
 
-  /// 要传的：服务端那份不是这一版（`updatedAt` 不同）、也没被服务端拒过这一版的。
+  /// 要传的：本地这一版比服务端手上那一版**新**（`updatedAt` 更大）、也没被服务端拒过这一版
+  /// （或更新的一版）的。
+  ///
+  /// 只认「更新」不认「不同」（审查 R11）：`uploaded` 会被拉列表 / 并档抬到服务端那份的
+  /// `updatedAt`，另一台设备传上去的版本比本机的新时，按「不同」判本机这份旧回合就永远是
+  /// 待传，每次进复盘都重传一遍、服务端又给回那份新的、再判不同……回合的 `updatedAt`
+  /// 是它所有成交 / 资金费事件时间的最大值，本地更小就是本地更旧，传上去没有意义。
   /// 按开仓时间排，老的先传——列表按平仓时间倒序，先传老的不会让界面上跳来跳去。
   public static func pending(_ rounds: [TradeRound], uploaded: [String: Int64],
                              rejected: [String: Int64] = [:]) -> [TradeRound] {
-    rounds.filter { uploaded[$0.id] != $0.updatedAt && rejected[$0.id] != $0.updatedAt }
+    rounds.filter { round in
+      (uploaded[round.id].map { round.updatedAt > $0 } ?? true)
+        && (rejected[round.id].map { round.updatedAt > $0 } ?? true)
+    }
       .sorted { ($0.openedAt, $0.id) < ($1.openedAt, $1.id) }
   }
 

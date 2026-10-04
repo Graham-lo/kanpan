@@ -224,12 +224,15 @@ extension ReviewFeature {
 
 /// 交易复盘里的数怎么写。金额一律 K / M / B / T，不带币种（全是 U 本位）。
 public enum TradeLabels {
+  /// 正负号看**摆出来的那个数**：取整后是 0（-0.004 U 写成「0.00」）就不带号。
+  /// 原来看的是取整前的原值，于是出现「-0.00」「+0.0%」这种自相矛盾的写法（审查 E 线自查）。
   public static func money(_ value: Decimal, signed: Bool = true) -> String {
     let number = NSDecimalNumber(decimal: value).doubleValue
     let body = fmtVol(abs(number))
-    guard signed else { return number < 0 ? "-" + body : body }
-    if number > 0 { return "+" + body }
-    if number < 0 { return "-" + body }
+    let sign = shownSign(number, body)
+    guard signed else { return sign < 0 ? "-" + body : body }
+    if sign > 0 { return "+" + body }
+    if sign < 0 { return "-" + body }
     return body
   }
   /// 比值 → 百分比，一位小数。
@@ -237,8 +240,25 @@ public enum TradeLabels {
     guard let ratio else { return "—" }
     let value = NSDecimalNumber(decimal: ratio).doubleValue * 100
     let text = toFixed(abs(value), 1) + "%"
-    if !signed { return value < 0 ? "-" + text : text }
-    return (value > 0 ? "+" : value < 0 ? "-" : "") + text
+    let sign = shownSign(value, text)
+    if !signed { return sign < 0 ? "-" + text : text }
+    return (sign > 0 ? "+" : sign < 0 ? "-" : "") + text
+  }
+  /// 一笔金额该上涨色（1）、跌色（-1）还是中性（0）：和 `money` 摆出来的正负号同一个说法。
+  public static func moneyTone(_ value: Decimal) -> Int {
+    let number = NSDecimalNumber(decimal: value).doubleValue
+    return shownSign(number, fmtVol(abs(number)))
+  }
+  /// 一个比值（`percent` 摆成一位小数的百分比）该上哪种色，和 `percent` 的正负号同一个说法。
+  /// 不能拿 `moneyTone` 代：0.004 按金额写是「0.00」（中性），按百分比写却是「+0.4%」。
+  public static func percentTone(_ ratio: Decimal) -> Int {
+    let value = NSDecimalNumber(decimal: ratio).doubleValue * 100
+    return shownSign(value, toFixed(abs(value), 1))
+  }
+  /// `text` 里一个非零数字都没有就是 0，否则跟原值的正负。
+  private static func shownSign(_ value: Double, _ text: String) -> Int {
+    guard text.contains(where: { ("1"..."9").contains($0) }) else { return 0 }
+    return value > 0 ? 1 : value < 0 ? -1 : 0
   }
   public static func ratio(_ value: Decimal?) -> String {
     guard let value else { return "—" }
@@ -253,6 +273,14 @@ public enum TradeLabels {
     let hours = minutes / 60
     if hours < 24 { return minutes % 60 == 0 ? "\(hours) 小时" : "\(hours) 小时 \(minutes % 60) 分" }
     return hours % 24 == 0 ? "\(hours / 24) 天" : "\(hours / 24) 天 \(hours % 24) 小时"
+  }
+  /// 一笔的短名：USDT 计价的只写币（`BTC`），别的计价带上计价币（`BTC/USDC`、Coinbase 的 `BTC/USD`）。
+  /// 以前一律只取币名，BTCUSDT 与 BTCUSDC 在列表、周报卡、战绩「按品种」里写成同一个「BTC」，
+  /// 战绩那一组还拿它当行 id，两行撞 id（审查 R8）。认整串代号或 `venue/market/symbol` 键都行。
+  public static func shortSymbol(_ symbol: String) -> String {
+    let (base, quote) = QuoteAssets.split(symbol)
+    guard let quote, quote != "USDT" else { return base }
+    return base + "/" + quote
   }
   public static func direction(_ value: TradeDirection) -> String { value == .long ? "多" : "空" }
   public static func role(_ value: FillRole) -> String {

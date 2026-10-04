@@ -21,9 +21,19 @@ public struct TradeReplayCapsule: View {
     return (percent < 0 ? "-" : "+") + body
   }
 
+  /// 涨跌色跟着**摆出来的那个数**走：+1 涨色、-1 跌色、0 中性。
+  ///
+  /// 原来颜色看的是没取整的原值：浮盈 -0.004% 摆成「+0.00%」却涂跌色，+0.004%
+  /// 摆成「+0.00%」又涂涨色——同一个「+0.00%」两种颜色，正负号和颜色对不上。
+  public static func tone(_ value: Double) -> Int {
+    let percent = (value * 100 * 100).rounded() / 100
+    return percent > 0 ? 1 : percent < 0 ? -1 : 0
+  }
+
   public var body: some View {
     let text = Self.text(value)
-    let color = value > 0 ? t.up : value < 0 ? t.down : t.ink2
+    let tone = Self.tone(value)
+    let color = tone > 0 ? t.up : tone < 0 ? t.down : t.ink2
     Text(text)
       .font(ReviewType.caption)
       .monospacedDigit()
@@ -34,7 +44,7 @@ public struct TradeReplayCapsule: View {
       .frame(minHeight: ReviewSpace.xl)
       .background(color.opacity(0.15), in: Capsule())
       .contentTransition(.identity)
-      .animation(.easeOut(duration: 0.2), value: value > 0 ? 1 : value < 0 ? -1 : 0)
+      .animation(.easeOut(duration: 0.2), value: tone)
       .accessibilityElement(children: .ignore)
       .accessibilityLabel("持仓浮盈 " + text)
       .accessibilityIdentifier("review.replay.pnl")

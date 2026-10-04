@@ -203,6 +203,20 @@ import ReviewUI
     let start: Int64
     let end: Int64
     let drawingSnapshot: Data?
+    /// 卷尾那根还没收线的要不要留（`tapeKeeps`）。笔记重温只认收完的；交易回放要留。
+    var includeForming = false
+  }
+
+  /// 取回来的这一根留不留在卷里。
+  ///
+  /// 笔记重温（`includeForming == false`）只留收盘时刻不晚于 `end` 的——判断之后的走势
+  /// 要一根根「揭晓」，没收完的那根价格还在变，不能当成历史。
+  /// 交易回放（`true`）的上限是「现在」，只要这根在 `end` 之前开了盘就留：刚平仓的一笔，
+  /// 平仓那根多半还没收线，原来照「收完才算」把它滤掉，卷里就找不到平仓那根、
+  /// 甚至连开仓那根都没有，于是弹「这段历史暂时无法获取」（审查 R12）。开了盘的这根
+  /// 是真实成交出来的价，拿来讲这一笔够用；它只会在这一趟里停在取数那一刻的样子。
+  static func tapeKeeps(openTime: Int64, interval: Interval, end: Int64, includeForming: Bool) -> Bool {
+    includeForming ? openTime < end : closeTime(openTime, interval: interval) <= end
   }
 
   /// 两种回放（笔记重温、交易回放）共用的取数：分页取本家 K 线、验连续、落卷、定精度，
@@ -224,7 +238,9 @@ import ReviewUI
     }
     try Task.checkCancellation(); guard loadID == id else { return nil }
     let series = MarketSeries.series(symbol: request.key, interval: interval, bars: fetched, capabilities: caps)
-    let ordered = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
+    let ordered = (0..<series.count).filter {
+      Self.tapeKeeps(openTime: series.time(at: $0), interval: interval, end: end, includeForming: request.includeForming)
+    }.map {
       Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
     }
     guard ordered.count >= 3 else { throw ReviewBridgeError.noHistory }
@@ -327,7 +343,8 @@ import ReviewUI
     let window = plan.fetchWindow(spec: spec)
     let tapeRequest = TapeRequest(key: key, shortSymbol: SymbolInfo.placeholder(symbol: key).base,
                                   interval: plan.interval, start: window.start,
-                                  end: min(window.end, ReviewClock.now), drawingSnapshot: nil)
+                                  end: min(window.end, ReviewClock.now), drawingSnapshot: nil,
+                                  includeForming: true)
     loadTask = Task {
       do {
         guard let base = try await fetchTape(tapeRequest, base: base, provider: provider, feature: feature, id: request)

@@ -294,11 +294,24 @@ public struct TradeReplayPlan: Sendable, Equatable {
   /// 最新一根是 `bar` 时，图上能画的成交：只画已经发生的，不漏未来。
   public func visibleMarks(through bar: Int64) -> [Mark] { marks.filter { $0.bar <= bar } }
 
-  /// 到这一根为止的开仓均价（进场成交按数量加权）。还没开仓是 `nil`。
+  /// 到这一根为止的开仓均价。还没开仓是 `nil`。
+  ///
+  /// 按成交先后滚着算，和拼回合的 `RoundBuilder` 同一口径（审查 R19）：加仓按「手上剩的量 ×
+  /// 原均价 + 这一笔」重新加权，减仓只减量、均价不动。以前把所有进场成交一锅加权，
+  /// 先减仓再加仓时，减掉的那部分仍按原价算进去，虚线和浮动盈亏就和交易所 / 回合里的均价对不上。
   public func entryAverage(through bar: Int64) -> Double? {
-    var cost = 0.0, qty = 0.0
-    for mark in marks where mark.entry && mark.bar <= bar { cost += mark.price * mark.qty; qty += mark.qty }
-    return qty > 0 ? cost / qty : nil
+    var average: Double?, held = 0.0
+    for mark in marks where mark.bar <= bar {
+      if mark.entry {
+        guard mark.qty > 0 else { continue }
+        let base = average ?? mark.price
+        average = held > 0 ? (held * base + mark.qty * mark.price) / (held + mark.qty) : mark.price
+        held += mark.qty
+      } else {
+        held = max(0, held - mark.qty)
+      }
+    }
+    return average
   }
 
   /// 开仓均价那条虚线：从开仓那根画到「此刻」与平仓那根里早的一个，加仓处换一段。

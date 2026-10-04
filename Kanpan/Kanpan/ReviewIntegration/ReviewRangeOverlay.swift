@@ -273,10 +273,9 @@ final class RangeOverlayView: UIView {
         // 可点的只有落图标签那一小块（44pt 见方起），其余图面照旧归图表的手势。
         let a = state.view.x(Double(record.draft.range.start), plotW: layout.plotW)
         let b = state.view.x(Double(record.draft.range.end), plotW: layout.plotW)
-        let x = max(0, a), w = max(44, min(96, b - x))
-        let spot = CGRect(x: x - 6, y: layout.mainH - 44, width: w + 12, height: 44)
-          .intersection(CGRect(x: 0, y: 0, width: layout.plotW, height: layout.mainH))
-        if !spot.isNull, spot.width > 8 { hotspots.append((spot, record.id)) }
+        if let spot = Self.hotspot(start: a, end: b, plotW: layout.plotW, mainH: layout.mainH) {
+          hotspots.append((spot, record.id))
+        }
       }
       report(marks: mine.count, state: state)
     } else if let trade = bridge?.trade, bridge?.mode == .replay {
@@ -318,18 +317,49 @@ final class RangeOverlayView: UIView {
           ReviewLabels.price(title, value: value, decimals: state.decimals).draw(at: CGPoint(x: max(8, layout.plotW - 125), y: max(2, min(layout.mainH - 52, y - 17))), withAttributes: styles.label)
         }
       }
-      let expiry = min(layout.plotW - 18, max(18, state.view.x(Double(draft.rule.expires), plotW: layout.plotW)))
       // 有效期那条竖虚线走皮肤的 `ink3`（见 `subdued`），不是系统的 secondaryLabel。
-      ctx.setLineDash(phase: 0, lengths: [3, 4]); ctx.setStrokeColor(subdued.cgColor)
-      ctx.move(to: CGPoint(x: expiry, y: 0)); ctx.addLine(to: CGPoint(x: expiry, y: layout.mainH)); ctx.strokePath(); ctx.setLineDash(phase: 0, lengths: [])
-      if editing { handle(CGPoint(x: expiry, y: 34), ctx: ctx) }
+      if let expiry = Self.expiryX(state.view.x(Double(draft.rule.expires), plotW: layout.plotW),
+                                   plotW: layout.plotW, editing: editing) {
+        ctx.setLineDash(phase: 0, lengths: [3, 4]); ctx.setStrokeColor(subdued.cgColor)
+        ctx.move(to: CGPoint(x: expiry, y: 0)); ctx.addLine(to: CGPoint(x: expiry, y: layout.mainH)); ctx.strokePath(); ctx.setLineDash(phase: 0, lengths: [])
+        if editing { handle(CGPoint(x: expiry, y: 34), ctx: ctx) }
+      }
     }
     if !editing {
       let judgment = state.view.x(Double(draft.created), plotW: layout.plotW)
       ctx.setStrokeColor(color.withAlphaComponent(0.5).cgColor); ctx.move(to: CGPoint(x: judgment, y: 0)); ctx.addLine(to: CGPoint(x: judgment, y: layout.mainH)); ctx.strokePath()
-      if let outcome { outcome.title.draw(at: CGPoint(x: max(3, a), y: layout.mainH - 20), withAttributes: styles.outcome) }
+      // 区间整段滑出视野时不写结论：原来 `max(3, a)` 把它钉在左缘，几条看不见的旧记录叠成一团。
+      if let outcome, Self.rangeVisible(start: a, end: b, plotW: layout.plotW) {
+        outcome.title.draw(at: CGPoint(x: max(3, a), y: layout.mainH - 20), withAttributes: styles.outcome)
+      }
     }
   }
+  /// 区间 `[a, b]`（屏幕横坐标）和图区有没有交集。
+  nonisolated static func rangeVisible(start a: CGFloat, end b: CGFloat, plotW: CGFloat) -> Bool {
+    b >= 0 && a <= plotW
+  }
+
+  /// 一条落图记录可点的那一块（落图标签那一小块，44pt 见方起）；区间整段在视野外就没有。
+  ///
+  /// 原来不看区间在不在视野里：整段滑到左边去的旧记录 `max(0, a)` 取 0、宽度兜底 44，
+  /// 于是图左下角凭空多出一块 50pt 的热区——看不见任何记号，点一下却开了一条几天前的记录，
+  /// 几条旧记录叠在一起时开的是最后那条。
+  nonisolated static func hotspot(start a: CGFloat, end b: CGFloat, plotW: CGFloat, mainH: CGFloat) -> CGRect? {
+    guard rangeVisible(start: a, end: b, plotW: plotW) else { return nil }
+    let x = max(0, a), w = max(44, min(96, b - x))
+    let spot = CGRect(x: x - 6, y: mainH - 44, width: w + 12, height: 44)
+      .intersection(CGRect(x: 0, y: 0, width: plotW, height: mainH))
+    return !spot.isNull && spot.width > 8 ? spot : nil
+  }
+
+  /// 有效期那条竖虚线画在哪。取景时（`editing`）钉在图里 18pt 以内，手柄才够得着；
+  /// 已落图的记录照实画，滑出视野就不画——原来也钉在两边，看不见的旧记录全在
+  /// x = 18 处叠出一条「到期线」，指着一根和到期毫不相干的 K 线。
+  nonisolated static func expiryX(_ x: CGFloat, plotW: CGFloat, editing: Bool) -> CGFloat? {
+    if editing { return min(plotW - 18, max(18, x)) }
+    return x >= 0 && x <= plotW ? x : nil
+  }
+
   private func handle(_ point: CGPoint, ctx: CGContext) {
     ctx.setFillColor(accent.cgColor); ctx.fillEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
     ctx.setStrokeColor(canvas.cgColor); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))

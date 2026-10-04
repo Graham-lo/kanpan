@@ -196,7 +196,9 @@ public enum ReviewStorageError: LocalizedError {
     var total = entries.reduce(0) { $0 + $1.size }
     guard total > budget else { return 0 }
     var kept = Set(archive.queue.map(\.recordId)).union(archive.draft.map { [$0.id] } ?? [])
-    kept.formUnion(archive.records.lazy.filter { $0.serverId == nil }.map(\.id))
+    // 挂着未裁决冲突的记录也要留图：被隔离下来的那条上传里可能正带着这张图，
+    // 裁决「用我这份」时还要再发一次（审查 R4）。
+    kept.formUnion(archive.records.lazy.filter { $0.serverId == nil || $0.conflict != nil }.map(\.id))
     var removed = 0
     for entry in entries.sorted(by: { $0.used < $1.used }) where total > budget {
       guard !kept.contains(entry.id) else { continue }
@@ -319,7 +321,9 @@ public enum ReviewStorageError: LocalizedError {
       var bytes = 0, count = 0
       var measured: [UUID: (record: ReviewRecord, size: Int)] = [:]
       next.records = try next.records.filter { record in
-        if record.serverId == nil || protected.contains(record.id) { return true }
+        // 挂着未裁决冲突的（409 被隔离下来、已经不在队列里）也不许裁：冲突与人写的那份复盘
+        // 只活在本机，裁掉就连同裁决入口一起没了（审查 R4）。
+        if record.serverId == nil || record.conflict != nil || protected.contains(record.id) { return true }
         // 这一条和上次量过的那份一模一样就沿用上次的字节数。
         let size: Int
         if let hit = sizes[record.id], hit.record == record { size = hit.size }

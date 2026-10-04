@@ -392,16 +392,28 @@ import ReviewData
     shotVersion &+= 1
   }
   /// 本机没有这张图（换了台设备、或者本地缓存被裁掉了），去服务端要一次。
-  /// 没有就记下来，这一程不再问第二遍。
+  /// 服务端说了没有（404 这类）就记下来，这一程不再问第二遍。
+  ///
+  /// 断网、超时、5xx 不算「没有」：原来 `catch` 一律记成没有，地铁里点开一条详情
+  /// 赶上一次超时，这条记录的图这一程就再也不去要了，回到有网的地方也补不回来，
+  /// 只能杀掉 app 重开。换了账号档案（`epoch` 变了）之后才回来的结果也不记。
   public func loadShot(_ id: UUID) async {
     guard shot(id) == nil, !shotMissing.contains(id), let client, record(id)?.serverId != nil else { return }
     let requestEpoch = epoch
     do {
-      guard let data = try await client.shot(id), !data.isEmpty else { shotMissing.insert(id); return }
+      let fetched = try await client.shot(id)
       guard epoch == requestEpoch else { return }
+      guard let data = fetched, !data.isEmpty else { shotMissing.insert(id); return }
       try? store?.saveShot(data, for: id)
       remember(data, for: id)
-    } catch { shotMissing.insert(id) }
+    } catch {
+      guard epoch == requestEpoch, Self.shotIsGone(after: error) else { return }
+      shotMissing.insert(id)
+    }
+  }
+  /// 要图失败之后能不能断定「服务端没有这张图」：只有服务端明确拒了才算，暂时性的失败下次再要。
+  nonisolated static func shotIsGone(after error: any Error) -> Bool {
+    ReviewFailure.verdict(for: error) != .transient
   }
 
   public func saveReflection(_ id: UUID, note: String, nextTime: String, publish: Bool) {

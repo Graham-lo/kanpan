@@ -8,11 +8,19 @@ import ReviewDomain
 
 /// 一笔的短名、徽章、金额颜色这些小事，列表和详情共用。
 extension TradeRound {
-  var shortSymbol: String { SymbolInfo.placeholder(symbol: instrument.key).base }
+  var shortSymbol: String { TradeLabels.shortSymbol(instrument.key) }
 }
 
 private func pnlColor(_ value: Decimal, _ t: ReviewTheme) -> Color {
-  value > 0 ? t.up : value < 0 ? t.down : t.ink2
+  // 颜色跟着摆出来的数走（`TradeLabels.moneyTone`）：写成「0.00」的不涂涨跌色。
+  let tone = TradeLabels.moneyTone(value)
+  return tone > 0 ? t.up : tone < 0 ? t.down : t.ink2
+}
+
+/// 百分比那一路（「离开后」的涨跌）：跟 `TradeLabels.percent` 摆出来的一位小数走，不借金额的两位小数。
+private func percentColor(_ ratio: Decimal, _ t: ReviewTheme) -> Color {
+  let tone = TradeLabels.percentTone(ratio)
+  return tone > 0 ? t.up : tone < 0 ? t.down : t.ink2
 }
 
 // MARK: - 列表
@@ -58,8 +66,8 @@ struct TradeBookList: View {
         if !open.isEmpty {
           Section { ForEach(open) { row($0) } } header: { ReviewSectionTitle("持仓中") }
         }
-        ForEach(Self.days(items.filter { !$0.round.isOpen }, calendar: calendar), id: \.0) { day, rows in
-          Section { ForEach(rows) { row($0) } } header: { ReviewSectionTitle(day) }
+        ForEach(Self.days(items.filter { !$0.round.isOpen }, calendar: calendar, now: ReviewClock.now)) { day in
+          Section { ForEach(day.items) { row($0) } } header: { ReviewSectionTitle(day.title) }
         }
       }
       .listStyle(.plain)
@@ -76,21 +84,43 @@ struct TradeBookList: View {
       .accessibilityIdentifier("review.trades.row.\(item.round.shortSymbol)")
   }
 
-  /// 按平仓那天分组（图表那一档时区），新的在上。
-  static func days(_ items: [TradeItem], calendar: Calendar) -> [(String, [TradeItem])] {
-    var order: [String] = []
-    var groups: [String: [TradeItem]] = [:]
-    let formatter = DateFormatter()
-    formatter.calendar = calendar; formatter.timeZone = calendar.timeZone
-    formatter.locale = Locale(identifier: "zh_CN")
-    formatter.dateFormat = "M 月 d 日 EEE"
+  /// 按平仓那天分组的一组。`id` 是年月日（不是标题）：标题不带年份，跨年的同月同日
+  /// 以前会被并成一组（审查 R17）。
+  struct Day: Identifiable, Equatable {
+    var id: String
+    var title: String
+    var items: [TradeItem]
+  }
+  /// 周几的写法（和以前 `zh_CN` 的 `EEE` 一致），按 `Calendar.weekday` 的 1…7（周日起）取。
+  private static let weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+
+  /// 按平仓那天分组（复盘本那一档日历，统一上海时间），新的在上。
+  /// 不是今年的带上年份。不造 `DateFormatter`：这是每次 body 都要跑的，日期几段直接拿日历拆。
+  static func days(_ items: [TradeItem], calendar: Calendar, now: Int64) -> [Day] {
+    let today = Date(timeIntervalSince1970: Double(now) / 1000)
+    let thisYear = calendar.component(.year, from: today)
+    let todayStart = calendar.startOfDay(for: today)
+    let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)
+    var order: [Day] = []
+    var index: [String: Int] = [:]
     for item in items {
       let date = Date(timeIntervalSince1970: Double(item.round.closedAt ?? item.round.openedAt) / 1000)
-      let title = calendar.isDateInToday(date) ? "今天" : calendar.isDateInYesterday(date) ? "昨天" : formatter.string(from: date)
-      if groups[title] == nil { order.append(title) }
-      groups[title, default: []].append(item)
+      let parts = calendar.dateComponents([.year, .month, .day, .weekday], from: date)
+      let year = parts.year ?? 0, month = parts.month ?? 0, day = parts.day ?? 0
+      let key = "\(year)-\(month)-\(day)"
+      if let at = index[key] { order[at].items.append(item); continue }
+      let start = calendar.startOfDay(for: date)
+      let title: String
+      if start == todayStart { title = "今天" }
+      else if start == yesterdayStart { title = "昨天" }
+      else {
+        let weekday = parts.weekday.map { Self.weekdays[($0 - 1 + 7) % 7] } ?? ""
+        title = (year == thisYear ? "" : "\(year) 年 ") + "\(month) 月 \(day) 日 " + weekday
+      }
+      index[key] = order.count
+      order.append(Day(id: key, title: title, items: [item]))
     }
-    return order.map { ($0, groups[$0] ?? []) }
+    return order
   }
 }
 
@@ -208,13 +238,13 @@ struct TradeWeekCard: View {
       Text(title).font(ReviewType.caption).foregroundStyle(t.ink3)
     }
   }
+  /// 「9/21–9/27」。日期直接拿日历拆，不在每次 body 里造 `DateFormatter`。
   static func span(_ week: WeeklyReport, calendar: Calendar) -> String {
-    let formatter = DateFormatter()
-    formatter.calendar = calendar; formatter.timeZone = calendar.timeZone
-    formatter.dateFormat = "M/d"
-    let start = Date(timeIntervalSince1970: Double(week.start) / 1000)
-    let end = Date(timeIntervalSince1970: Double(week.end - 1) / 1000)
-    return formatter.string(from: start) + "–" + formatter.string(from: end)
+    func monthDay(_ ms: Int64) -> String {
+      let parts = calendar.dateComponents([.month, .day], from: Date(timeIntervalSince1970: Double(ms) / 1000))
+      return "\(parts.month ?? 0)/\(parts.day ?? 0)"
+    }
+    return monthDay(week.start) + "–" + monthDay(week.end - 1)
   }
 }
 
@@ -412,7 +442,7 @@ public struct TradeRecordView: View {
         LabeledContent(title) {
           if let point {
             Text(TradeLabels.percent(point.changePct, signed: true))
-              .foregroundStyle(pnlColor(point.changePct, t))
+              .foregroundStyle(percentColor(point.changePct, t))
           } else {
             Text("—").foregroundStyle(t.ink3)
           }
@@ -501,11 +531,11 @@ struct TradeStatisticsList: View {
         }
         .listRowBackground(t.app)
         .accessibilityIdentifier("review.stats.trades.summary")
-        group("按品种", RoundStats.bySymbol(rounds).map { (SymbolInfo.placeholder(symbol: $0.key).base, $0.summary) })
-        group("按方向", RoundStats.byDirection(rounds).map { ($0.key == .long ? "做多" : "做空", $0.summary) })
-        group("按持仓时长", RoundStats.byHolding(rounds).map { ($0.key.title, $0.summary) })
-        group("按开仓时段", RoundStats.bySession(rounds, calendar: calendar).map { ($0.key.title, $0.summary) })
-        group("按周几", RoundStats.byWeekday(rounds, calendar: calendar).map { ($0.key.title, $0.summary) })
+        group("按品种", Self.symbolRows(rounds))
+        group("按方向", RoundStats.byDirection(rounds).map { Row(id: $0.key.rawValue, name: $0.key == .long ? "做多" : "做空", summary: $0.summary) })
+        group("按持仓时长", RoundStats.byHolding(rounds).map { Row(id: $0.key.title, name: $0.key.title, summary: $0.summary) })
+        group("按开仓时段", RoundStats.bySession(rounds, calendar: calendar).map { Row(id: $0.key.title, name: $0.key.title, summary: $0.summary) })
+        group("按周几", RoundStats.byWeekday(rounds, calendar: calendar).map { Row(id: $0.key.title, name: $0.key.title, summary: $0.summary) })
       }
     }
     .listStyle(.plain)
@@ -519,10 +549,21 @@ struct TradeStatisticsList: View {
       .font(ReviewType.body).foregroundStyle(t.ink2)
       .frame(minHeight: ReviewControl.hit)
   }
-  @ViewBuilder private func group(_ title: String, _ rows: [(String, RoundSummary)]) -> some View {
+  /// 一组里的一行。`id` 与给人看的 `name` 分开：「按品种」的 id 是整串代号，
+  /// 名字是短名——BTCUSDT 与 BTCUSDC 以前都叫「BTC」又拿它当 id，两行撞 id（审查 R8）。
+  struct Row: Equatable {
+    var id: String
+    var name: String
+    var summary: RoundSummary
+  }
+  static func symbolRows(_ rounds: [TradeRound]) -> [Row] {
+    RoundStats.bySymbol(rounds).map { Row(id: $0.key, name: TradeLabels.shortSymbol($0.key), summary: $0.summary) }
+  }
+  @ViewBuilder private func group(_ title: String, _ rows: [Row]) -> some View {
     if !rows.isEmpty {
       Section {
-        ForEach(rows, id: \.0) { name, s in
+        ForEach(rows, id: \.id) { row in
+          let name = row.name, s = row.summary
           HStack {
             VStack(alignment: .leading, spacing: ReviewSpace.xxs) {
               Text(name).font(ReviewType.body).foregroundStyle(t.ink)

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import ReviewDomain
 import KanpanCore
 
@@ -59,7 +60,7 @@ public struct TradeArchive: Codable, Sendable, Equatable {
   public var version = 1
   /// 服务端给回来的记录（带结果、备注），以服务端为准。
   public var records: [TradeRecord] = []
-  /// 回合 id → 服务端手上那一版的 `updatedAt`。本地回合的 `updatedAt` 和它不同才要再传。
+  /// 回合 id → 服务端手上那一版的 `updatedAt`。本地回合的 `updatedAt` 比它新才要再传（审查 R11）。
   public var uploaded: [String: Int64] = [:]
   /// 回合 id → 被服务端拒掉的那一版。同一版不再传；回合一变（新成交）就会再试。
   public var rejected: [String: Int64] = [:]
@@ -90,23 +91,40 @@ public struct TradeArchive: Codable, Sendable, Equatable {
       uploaded[record.id] = max(uploaded[record.id] ?? .min, record.round.updatedAt)
     }
   }
+
+  /// 这一版传上去了。只往大里记：服务端回来的那份（`merge` 刚记下的）可能比这一版还新
+  /// （另一台设备传过更新的），记回这一版就又会被判成待传（审查 R11）。
+  public mutating func markUploaded(_ round: TradeRound) {
+    uploaded[round.id] = max(uploaded[round.id] ?? .min, round.updatedAt)
+    rejected[round.id] = nil
+  }
 }
 
 @MainActor public final class TradeReviewStore {
   public static let fileName = "trades-v1.json"
   public private(set) var archive: TradeArchive
   public let url: URL
+  /// 读写这份侧文件出的岔子只记日志、不打断复盘（审查 R22）：原来全是 `try?`，
+  /// 写盘失败一点痕迹都没有，记账丢了（重传、幂等键没落盘）时无从查起。
+  nonisolated private static let log = Logger(subsystem: "com.kanpan.app", category: "trade-review")
 
   /// 解不动就留一份 `.backup` 从空档开始：这里面全是服务端那份的缓存与记账，
   /// 丢了最多是重传一遍、重拉一遍（幂等），不值得让整个复盘打不开。
   public init(directory: URL) {
     url = directory.appendingPathComponent(Self.fileName)
     if let data = try? Data(contentsOf: url) {
-      if let value = try? JSONDecoder().decode(TradeArchive.self, from: data), value.version == 1 {
+      do {
+        let value = try JSONDecoder().decode(TradeArchive.self, from: data)
+        guard value.version == 1 else { throw CocoaError(.coderInvalidValue) }
         archive = value
-      } else {
+      } catch {
+        Self.log.error("交易复盘档解不开，另存 .backup 后从空档开始：\(String(describing: error), privacy: .public)")
         let backup = url.appendingPathExtension("backup")
-        if !FileManager.default.fileExists(atPath: backup.path) { try? FileManager.default.copyItem(at: url, to: backup) }
+        if !FileManager.default.fileExists(atPath: backup.path) {
+          do { try FileManager.default.copyItem(at: url, to: backup) } catch {
+            Self.log.error("交易复盘档另存 .backup 失败：\(String(describing: error), privacy: .public)")
+          }
+        }
         archive = TradeArchive()
       }
     } else { archive = TradeArchive() }
@@ -118,8 +136,14 @@ public struct TradeArchive: Codable, Sendable, Equatable {
     edit(&next)
     guard next != archive else { return }
     archive = next
-    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    if let data = try? JSONEncoder().encode(next) { try? data.write(to: url, options: .atomic) }
+    // 内存这份照样换成新的：这一趟里的判断（传没传过、幂等键）以它为准；落盘没成，
+    // 下一次改动会把整份重写一遍。只是失败要留下痕迹。
+    do {
+      try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try JSONEncoder().encode(next).write(to: url, options: .atomic)
+    } catch {
+      Self.log.error("交易复盘档写盘失败：\(String(describing: error), privacy: .public)")
+    }
   }
 }
 
@@ -176,7 +200,7 @@ public enum TradeSync {
       let records = try await client.uploadTrades(batch, key: key)
       store.update { archive in
         archive.merge(records)
-        for round in batch { archive.uploaded[round.id] = round.updatedAt; archive.rejected[round.id] = nil }
+        for round in batch { archive.markUploaded(round) }
         archive.pending = nil
       }
       return .sent
@@ -193,7 +217,7 @@ public enum TradeSync {
           let records = try await client.uploadTrades(batch, key: fresh)
           store.update { archive in
             archive.merge(records)
-            for round in batch { archive.uploaded[round.id] = round.updatedAt; archive.rejected[round.id] = nil }
+            for round in batch { archive.markUploaded(round) }
             archive.pending = nil
           }
           return .sent

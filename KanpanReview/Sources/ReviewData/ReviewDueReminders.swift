@@ -89,13 +89,17 @@ import ReviewDomain
   }
 
   /// 记录变了：整批重排（到期会改、记录会作废会被判，增量对账比重排复杂而收益为零）。
-  /// 上一次还没排完的先取消。
+  /// 上一次还没排完的先取消，**并等它真的收手**再对账：取消拦不住已经发出去的那一笔
+  /// `scheduler.add`，它可能在这一轮拍下「系统里排着哪些」之后才落地——不等的话，
+  /// 换号 / 退登时上一个人的提醒就留在系统里照响（审查 R21）。
   public func reschedule(_ records: [ReviewRecord]) {
     self.records = records
-    task?.cancel()
+    let previous = task
+    previous?.cancel()
     let due = channel == .local ? Self.plan(records, now: now) : []
     let shift = shift
     task = Task { [weak self, scheduler] in
+      await previous?.value
       let wanted = Set(due.map(\.identifier))
       let stale = await scheduler.pendingIdentifiers().filter { $0.hasPrefix(Self.prefix) && !wanted.contains($0) }
       if !stale.isEmpty { scheduler.remove(stale) }
@@ -123,11 +127,14 @@ import ReviewDomain
   }
 
   /// 全部收掉：取消排程与等待，撤掉排在系统里的那几条。
+  /// 先等上一轮还在路上的 `add` 落地再拍快照，否则它落在快照之后就撤不掉（同 `reschedule`）。
   public func stop() {
-    task?.cancel(); task = nil; waiter?.cancel(); waiter = nil
+    let previous = task
+    previous?.cancel(); task = nil; waiter?.cancel(); waiter = nil
     records = []
     let scheduler = scheduler
     task = Task {
+      await previous?.value
       let ours = await scheduler.pendingIdentifiers().filter { $0.hasPrefix(Self.prefix) }
       if !ours.isEmpty { scheduler.remove(ours) }
     }

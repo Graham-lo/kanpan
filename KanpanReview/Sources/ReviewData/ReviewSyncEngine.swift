@@ -203,7 +203,10 @@ import ReviewDomain
     archive.records.sort { $0.draft.created > $1.draft.created }
     let protected = Set(archive.queue.map(\.recordId))
     let recent = Set(archive.records.prefix(cloudCacheLimit).map(\.id))
-    archive.records.removeAll { $0.serverId != nil && !protected.contains($0.id) && !recent.contains($0.id) }
+    // 挂着未裁决冲突的不裁：冲突只活在本机，裁掉它裁决入口就没了（审查 R4，和 `ReviewStore.commit` 同一口径）。
+    archive.records.removeAll {
+      $0.serverId != nil && $0.conflict == nil && !protected.contains($0.id) && !recent.contains($0.id)
+    }
   }
 
   /// 云端那份 + 只活在本机的那几样。

@@ -1,6 +1,7 @@
 import SwiftUI
 import KanpanCore
 import PhotosUI
+import ImageIO
 import UIKit
 import ReviewDomain
 import ReviewData
@@ -253,7 +254,10 @@ struct ReviewAttachmentsSection: View {
   private func upload(_ item: PhotosPickerItem) async {
     busy = true; error = nil
     defer { busy = false }
-    guard let raw = try? await item.loadTransferable(type: Data.self), let data = Self.jpeg(raw) else {
+    // 压图不在主线程上做（`jpeg` 的注释）：挑一张原图大的，转圈的那几百毫秒界面不能跟着卡。
+    let limit = ReviewFeature.attachmentMaxBytes
+    guard let raw = try? await item.loadTransferable(type: Data.self),
+          let data = await Task.detached(priority: .userInitiated, operation: { Self.jpeg(raw, limit: limit) }).value else {
       error = "这张图读不出来"; return
     }
     do {
@@ -266,18 +270,25 @@ struct ReviewAttachmentsSection: View {
     do { try await feature.deleteAttachment(item.id); images.removeValue(forKey: item.id); await reload() }
     catch { self.error = error.localizedDescription }
   }
-  /// 压成 JPEG：长边先收到 2048，还超 5 MB 就一轮轮缩边、降质量。
-  static func jpeg(_ raw: Data) -> Data? {
-    guard let image = UIImage(data: raw) else { return nil }
-    var side: CGFloat = 2048; var quality: CGFloat = 0.82
+  /// 压成 JPEG：长边先收到 2048，还超 `limit`（`ReviewFeature.attachmentMaxBytes`）就一轮轮缩边、降质量。
+  ///
+  /// 原图直接按目标边长解码（ImageIO 缩略图，顺手把 EXIF 方向转正），不先把整张原图
+  /// 解成位图再画小：一张 4800 万像素的照片整解是近 200 MB 位图，原来还在主线程上
+  /// 连画最多六遍，挑图后整个记录页卡住、内存冲高（审查 E 线自查）。
+  /// `nonisolated`：调用方放到后台去跑。
+  nonisolated static func jpeg(_ raw: Data, limit: Int) -> Data? {
+    guard let source = CGImageSourceCreateWithData(raw as CFData, nil), CGImageSourceGetCount(source) > 0 else { return nil }
+    var side = 2048; var quality: CGFloat = 0.82
     for _ in 0..<6 {
-      let size = image.size
-      let scale = min(1, side / max(size.width, size.height, 1))
-      let target = CGSize(width: max(1, (size.width * scale).rounded()), height: max(1, (size.height * scale).rounded()))
-      let format = UIGraphicsImageRendererFormat.default(); format.scale = 1; format.opaque = true
-      let scaled = UIGraphicsImageRenderer(size: target, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
-      if let out = scaled.jpegData(compressionQuality: quality), out.count <= ReviewFeature.attachmentMaxBytes { return out }
-      side *= 0.75; quality = max(0.5, quality - 0.1)
+      let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceThumbnailMaxPixelSize: side,
+      ]
+      guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+      if let out = UIImage(cgImage: image).jpegData(compressionQuality: quality), out.count <= limit { return out }
+      side = side * 3 / 4; quality = max(0.5, quality - 0.1)
     }
     return nil
   }

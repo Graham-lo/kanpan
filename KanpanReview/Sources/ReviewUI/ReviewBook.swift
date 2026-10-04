@@ -288,8 +288,8 @@ struct ReviewRecordRow: View {
 public struct ReviewRecordView: View {
   @Bindable var feature: ReviewFeature
   let id: UUID
-  @State private var note = ""
-  @State private var nextTime = ""
+  /// 两个输入框，连同它们是从哪一版复盘开始写的（`ReviewReflectionEditor`）。
+  @State private var editor = ReviewReflectionEditor()
   @State private var confirmVoid = false
   /// 两个输入框谁在打字。按下「保存草稿 / 完成复盘」就收键盘：这一段写完了，
   /// 键盘还挂着会盖住下面的「补图」「修订记录」，而且接着去相册挑图回来，
@@ -368,16 +368,16 @@ public struct ReviewRecordView: View {
           if feature.isConnected { ReviewAttachmentsSection(feature: feature, record: record) }
           ReviewSection("市场的答案") { Text(record.outcome.title).font(ReviewType.bodyEmph).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(ReviewType.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)
-          ReviewSection("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8).focused($typing).accessibilityIdentifier("review.note") }
+          ReviewSection("现在怎么看") { TextField("当时的判断，哪些成立", text: $editor.note, axis: .vertical).lineLimit(3...8).focused($typing).accessibilityIdentifier("review.note") }
             .listRowBackground(t.raised)
-          ReviewSection("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6).focused($typing).accessibilityIdentifier("review.nextTime") }
+          ReviewSection("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $editor.nextTime, axis: .vertical).lineLimit(2...6).focused($typing).accessibilityIdentifier("review.nextTime") }
             .listRowBackground(t.raised)
           Section {
             // 主次分开（UI 整改 P3）：「完成复盘」是这一页的正事，强调色加粗；
             // 「保存草稿」是退路，次一级的墨色。原来两颗一样的蓝字，看不出该点哪颗。
-            Button("保存草稿") { typing = false; feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) }
+            Button("保存草稿") { typing = false; feature.saveReflection(id, note: editor.note, nextTime: editor.nextTime, publish: false) }
               .foregroundStyle(t.ink2)
-            Button("完成复盘") { typing = false; feature.saveReflection(id, note: note, nextTime: nextTime, publish: true) }
+            Button("完成复盘") { typing = false; feature.saveReflection(id, note: editor.note, nextTime: editor.nextTime, publish: true) }
               .font(ReviewType.body.weight(.semibold)).foregroundStyle(t.accent)
           }.listRowBackground(t.raised)
           if !record.reflectionHistory.isEmpty {
@@ -400,7 +400,10 @@ public struct ReviewRecordView: View {
         .font(ReviewType.body)
         .scrollContentBackground(.hidden)
         .background(t.app)
-        .onAppear { note = record.reflection.note; nextTime = record.reflection.nextTime }
+        .onAppear { editor = ReviewReflectionEditor(record.reflection) }
+        // 页开着的时候这条的复盘被换过（详情补拉、同步拉回别的设备写的那版、自己刚按了保存）：
+        // 人没动过输入框就跟着换成新的那版；动过就留着他写的，只把「起点」挪到新版。
+        .onChange(of: record.reflection) { _, value in editor.adopt(value) }
         // 两个裁定版本只住在详情响应的外层，列表里没有；打开这一页顺手补一次。
         .task(id: id) { await feature.refreshDetail(id) }
         // 本机有就直接显示；换了台设备才去服务端拉那一张。
@@ -410,7 +413,10 @@ public struct ReviewRecordView: View {
           await feature.loadShot(id)
           shot = feature.shot(id).flatMap(UIImage.init(data:))
         }
-          .onDisappear { if note != record.reflection.note || nextTime != record.reflection.nextTime { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) } }
+          // 只有人真的改过才替他存一份草稿（`edited`）。原来比的是「框里的字 ≠ 记录此刻的复盘」：
+          // 页开着时同步拉回了别的设备刚写的那版，框里还是打开时的旧字（多半是空的），
+          // 一退出就拿旧字当草稿发上去，把那版复盘覆盖掉（审查 E 线自查）。
+          .onDisappear { if editor.edited { feature.saveReflection(id, note: editor.note, nextTime: editor.nextTime, publish: false) } }
           .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: record.draft.range, cutoff: record.draft.created) }
       } else { ContentUnavailableView("记录暂不可用", systemImage: "book.closed") }
     }
@@ -428,6 +434,29 @@ public struct ReviewRecordView: View {
   /// 原来是「最多 8 位、能省就省」：同一张记录里目标写 `76800`、失效写 `76812.5`。
   private func price(_ value: Double, _ record: ReviewRecord) -> String {
     feature.price(value, symbol: record.draft.range.key)
+  }
+}
+
+/// 记录详情里「现在怎么看」「下次怎么做」两个输入框，以及它们是**从哪一版复盘开始写的**。
+///
+/// 记下起点，才分得清「人改过」和「记录在他眼皮底下被换了」：前者退出时要替他存草稿，
+/// 后者框里的字该跟着换成新版、退出时什么都不发。
+struct ReviewReflectionEditor: Equatable {
+  var note = ""
+  var nextTime = ""
+  private(set) var baseNote = ""
+  private(set) var baseNextTime = ""
+  init() {}
+  init(_ reflection: ReviewReflection) {
+    note = reflection.note; nextTime = reflection.nextTime
+    baseNote = reflection.note; baseNextTime = reflection.nextTime
+  }
+  /// 人动过输入框（和起点那一版不一样了）。
+  var edited: Bool { note != baseNote || nextTime != baseNextTime }
+  /// 记录上的复盘换成了 `reflection`。没动过就整份跟过去；动过就留着人写的字。
+  mutating func adopt(_ reflection: ReviewReflection) {
+    if !edited { note = reflection.note; nextTime = reflection.nextTime }
+    baseNote = reflection.note; baseNextTime = reflection.nextTime
   }
 }
 
