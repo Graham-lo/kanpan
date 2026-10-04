@@ -105,18 +105,16 @@ struct MainScreen: View {
   /// 自选页用的是同一个）。换品种只有这一条路了：左上角的品种名以前开一个
   /// 半屏的「最近看过」弹层，搜索页做出来之后它就是重复入口，已经撤掉。
   @State private var symbolSearch = SymbolSearchFlow()
-  /// 把人送进这张图的是哪一格。nil = 没有来路（底栏直接点的「图表」），顶栏不画返回。
-  ///
-  /// 底栏是常驻标签栏，每一格都是家；但板块下钻和自选行是「走进来」的，
-  /// 走进来就得走得回去（用户：点进去之后没有返回按钮）。
-  @State private var chartOrigin: Tab?
+  /// 走进这张图的那条路（`ChartTrail`）：
+  /// - `origin`：把人送进这张图的是哪一格。nil = 没有来路（底栏直接点的「图表」），顶栏不画返回。
+  ///   底栏是常驻标签栏，每一格都是家；但板块下钻和自选行是「走进来」的，
+  ///   走进来就得走得回去（用户：点进去之后没有返回按钮）。
+  /// - `scan`：连续扫图（§10.1）走进这张图的那一刻，那张列表的顺序。nil = 这一趟没有名单
+  ///   （底栏直接点「图表」、顶栏搜索、深链进来的）——那时候横滑什么都不做。
+  /// 两样同进同出：离开标签页、换了档案主人时一起作废，不跨越一次「出去再进来」。
+  @State private var trail = ChartTrail()
   /// 板块页压着的那几层。页归页，路由归宿主——见 `SectorPage.route`。
   @State private var sectorRoute: [SectorRoute] = []
-  /// 连续扫图（§10.1）：走进这张图的那一刻，那张列表的顺序。
-  ///
-  /// nil = 这一趟没有名单（底栏直接点「图表」、顶栏搜索、深链进来的）——那时候横滑
-  /// 什么都不做。名单在离开标签页时作废（见 `switchTo(tab:)`），不跨越一次「出去再进来」。
-  @State private var scanList: ScanList?
   /// 这次复盘是从哪儿开的。退出复盘时按它把人放回原处。
   @State private var replayOrigin: ReplayOrigin?
   /// 历史搜索词。放在宿主身上，来回进出搜索页不丢。
@@ -355,7 +353,7 @@ struct MainScreen: View {
                onPickSymbol: { symbol in
                  if let info = picker.info(for: symbol) { picker.pick(info) }
                  else {
-                   if tab != .chart { chartOrigin = tab }
+                   trail.entered(from: tab)
                    tab = .chart; didLeaveLaunch = true
                    // 目录还没载回来时点一行，以前只换图不记「最近」——同一个动作在
                    // 目录加载前后结果不一样，而且这张图下次冷启动也回不来。
@@ -469,7 +467,7 @@ struct MainScreen: View {
         if let reply = replying, reply.key != symbol { replying = nil }
         quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
         // 扫图名单里的前后邻居先预取：滑过去时顶栏六格和持仓量副图就有数（B1 / B2）。
-        if let list = scanList { market.prefetchNeighbors(list.neighbors(of: symbol)) }
+        if let list = trail.scan { market.prefetchNeighbors(list.neighbors(of: symbol)) }
       },
       onUndoStamp: {
         guard let undo = favoritesEdit.undoAction else { return }
@@ -688,7 +686,7 @@ struct MainScreen: View {
     endSharePreview()
     if reviewChart.active { endReview() }
     // 周期条只长在行情页上，这两句多半是空转；留着是为了深链 / 快捷方式以后直接叫它时来路不丢。
-    if tab != .chart { chartOrigin = tab }
+    trail.entered(from: tab)
     tab = .chart
     draw.toggle()
   }
@@ -703,12 +701,9 @@ struct MainScreen: View {
     // 人没离开这张图：来路（顶栏返回）和扫图名单都留着——原来走下面那两句一起作废，
     // 扫自选扫到一半点一下回到最新，横滑就再也换不了品种、返回也没了（压测 2026-10-03）。
     if next == tab, next == .chart { proxy.scrollToLatest(); return }
-    // 底栏是常驻标签栏，自己点一格就是「回家」——上一次的来路作废，
-    // 顶栏那颗返回跟着收起来。
-    chartOrigin = nil
-    // 来路作废，那张冻结的名单也跟着作废：横滑是「接着刚才那张表往下看」，
-    // 人已经离开那张表了，再横滑就该什么都不发生（§10.1）。
-    scanList = nil
+    // 底栏是常驻标签栏，自己点一格就是「回家」——上一次的来路作废，顶栏那颗返回
+    // 跟着收起来；那张冻结的名单也跟着作废（§10.1）。见 `ChartTrail.tapped`。
+    trail.tapped(next, on: tab)
     // 再点一下已经站着的那一格 = 回到这一页的根。板块页下钻了两层时尤其需要：
     // 底栏那一格是它唯一的出口。
     if next == tab, next == .sectors { sectorRoute = [] }
@@ -992,7 +987,7 @@ struct MainScreen: View {
       session: session, context: crosshairContext,
       cardVisible: headerCardVisible,
       // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
-      onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
+      onBack: trail.origin.map { origin in { switchTo(tab: origin) } },
       onNote: chartRecordAction.map { record in { dismissPanel(); record() } },
       onShare: headerShareAction,
       onSearch: { dismissPanel(); symbolSearch.openSearch() },
@@ -1918,7 +1913,7 @@ struct MainScreen: View {
       symbolSearch.reset()
       // 挑完品种落到行情页：自选、搜索、品种整页三条路都是「去看哪张图」。
       // 从别的一格走进来的，记下来路，顶栏那颗返回才回得去。
-      if tab != .chart { chartOrigin = tab }
+      trail.entered(from: tab)
       tab = .chart; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
       show(symbol: info.symbol, info: info)
@@ -1982,6 +1977,9 @@ struct MainScreen: View {
         // 落脚点也一起丢（审查 C-08）：换了号，「他停在 APTUSDT 那一行」说的是
         // 上一个人的表，留着只会把新账号的表滚到一个莫名其妙的位置。
         if !awaitingAccount { favoritesEdit.end(); favoritesEdit.forgetScrollAnchor() }
+        // 扫图名单和顶栏返回的来路同理：那是上一个人那张表冻结下来的，留着的话换了号
+        // 在顶栏一横滑，翻的还是上一个人的自选。
+        trail.ownerSwitched(settled: !awaitingAccount)
         // 换了号，锁屏上盯着的是上一个人的提醒，收掉。
         if !awaitingAccount { activities.stop() }
         dismissPanel(); crosshairReadout.clear()
@@ -2107,7 +2105,7 @@ struct MainScreen: View {
     dismissPanel()
     if let info = picker.info(for: symbol) { picker.pick(info); return }
     symbolSearch.reset()
-    if tab != .chart { chartOrigin = tab }
+    trail.entered(from: tab)
     tab = .chart; didLeaveLaunch = true
     picker.visit(symbol)
     proxy.cancelWindow()
@@ -2167,7 +2165,7 @@ struct MainScreen: View {
   /// 点了别的那只，`onSymbol` 随后会拿新品种的邻居把这一笔替掉（B1 / B2）。
   private func adoptScanList(_ symbols: [String]) {
     let list = ScanList(symbols)
-    scanList = list
+    trail.scan = list
     market.prefetchNeighbors(list.neighbors(of: market.symbol))
   }
 
@@ -2178,7 +2176,7 @@ struct MainScreen: View {
   private func scan(_ direction: ScanDirection) {
     // 复盘和画线各有各的横向手势与语义，这时候不扫图。
     guard !reviewChart.active, !draw.active, panel == nil else { return }
-    guard let list = scanList else { return }
+    guard let list = trail.scan else { return }
     switch list.step(from: market.symbol, direction) {
     case .unavailable:
       // 没名单可扫。一声不吭——给了触感人会以为自己滑错了方向。

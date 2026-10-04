@@ -62,3 +62,38 @@ enum ScanStep: Equatable, Sendable {
   /// 换到这一只。
   case move(String)
 }
+
+/// 行情页「走进来的那条路」：来路（顶栏那颗返回回哪一格）和冻结下来的扫图名单。
+///
+/// 两样都是「刚才那张表」上的东西——从哪一格的哪张表走进来、接着那张表往下扫——
+/// 所以同进同出，作废的时机也只有下面这几处，集中在这儿判，宿主不再各处手写两句赋值。
+struct ChartTrail: Equatable, Sendable {
+  var origin: Tab?
+  var scan: ScanList?
+
+  /// 从别的一格走进图（自选行、板块行、搜索、深链……）：记下来路。本来就在图上不算来路。
+  mutating func entered(from tab: Tab) {
+    if tab != .chart { origin = tab }
+  }
+
+  /// 底栏点一格。
+  ///
+  /// 行情页上再点「图表」= 回到最新（和双击图同一件事），人没离开这张图，来路和名单
+  /// 都留着（压测 2026-10-03，提交 9414f44b）。其余一律是「回家」：上一次的来路作废、
+  /// 名单跟着作废——人已经离开那张表了，再横滑就该什么都不发生（§10.1）。
+  mutating func tapped(_ next: Tab, on current: Tab) {
+    if next == current, next == .chart { return }
+    self = ChartTrail()
+  }
+
+  /// 档案换了主人（自己换号、退登、被另一台同类设备顶下线）。
+  ///
+  /// 名单是上一个人那张自选 / 板块表冻结下来的，来路指着的也是上一个人的那一页：
+  /// 留着的话，换了号之后在顶栏一横滑，翻的还是上一个人的自选。冷启动那一段
+  /// （访客档案顶着、`account.restore()` 回来换成同一个人自己的档案）不是换人，
+  /// `settled == false` 时原样留着。
+  mutating func ownerSwitched(settled: Bool) {
+    guard settled else { return }
+    self = ChartTrail()
+  }
+}
