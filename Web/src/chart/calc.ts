@@ -103,7 +103,8 @@ export const Calc: Record<CalcId, CalcFn> = {
     const firstIdx = dif.findIndex(v => v != null)
     const dea: Series = new Array(c.length).fill(null)
     if (firstIdx >= 0) { const d2 = ema(dif.slice(firstIdx), p.signal as number); for (let i = 0; i < d2.length; i++) dea[firstIdx + i] = d2[i] }
-    const hist: Series = dif.map((v, i) => { const d = dea[i]; return v != null && d != null ? v - d : null })
+    // 柱 = (DIF − DEA) × 2，与手机 / iOS（KanpanCore Indicators.swift macd）同一口径：同一只品种两端柱高一样
+    const hist: Series = dif.map((v, i) => { const d = dea[i]; return v != null && d != null ? (v - d) * 2 : null })
     return [dif, dea, hist]
   },
   rsi(bars, p) {
@@ -115,12 +116,14 @@ export const Calc: Record<CalcId, CalcFn> = {
   kdj(bars, p) {
     const n = p.n as number, m1 = p.m1 as number, m2 = p.m2 as number
     const K: Series = [], D: Series = [], J: Series = []; let k = 50, d = 50
+    // 与手机 / iOS（KanpanCore Indicators.swift kdj）同一口径：K、D 从第一根就开始递推（窗口不满 n 根按已有的算高低），
+    // 只是前 n-1 根不出值。原来从第 n 根才起步，开头几十根的 K、D、J 与手机那边对不上
     for (let i = 0; i < bars.length; i++) {
-      if (i < n - 1) { K.push(null); D.push(null); J.push(null); continue }
       let hi = -Infinity, lo = Infinity
-      for (let j = i - n + 1; j <= i; j++) { hi = Math.max(hi, bars[j].h); lo = Math.min(lo, bars[j].l) }
+      for (let j = Math.max(0, i - n + 1); j <= i; j++) { if (bars[j].h > hi) hi = bars[j].h; if (bars[j].l < lo) lo = bars[j].l }
       const rsv = hi === lo ? 50 : (bars[i].c - lo) / (hi - lo) * 100
-      k = (k * (m1 - 1) + rsv) / m1; d = (d * (m2 - 1) + k) / m2
+      k = ((m1 - 1) * k + rsv) / m1; d = ((m2 - 1) * d + k) / m2
+      if (i < n - 1) { K.push(null); D.push(null); J.push(null); continue }
       K.push(k); D.push(d); J.push(3 * k - 2 * d)
     }
     return [K, D, J]

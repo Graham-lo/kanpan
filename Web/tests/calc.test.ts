@@ -53,7 +53,7 @@ describe('Calc', () => {
     near(up[4], 4 + 2 * sd); near(dn[4], 4 - 2 * sd)
   })
 
-  it('macd：DIF = EMA快 − EMA慢；DEA 从 DIF 第一个有效值起算 EMA；柱 = DIF − DEA', () => {
+  it('macd：DIF = EMA快 − EMA慢；DEA 从 DIF 第一个有效值起算 EMA；柱 = (DIF − DEA) × 2（与手机 / iOS 同口径）', () => {
     const bars = closeBars([1, 2, 4, 8, 16, 32])
     const [dif, dea, hist] = Calc.macd(bars, { fast: 2, slow: 3, signal: 2 })
     expect(dif.slice(0, 2)).toEqual([null, null])
@@ -64,7 +64,7 @@ describe('Calc', () => {
     near(dea[3], 37 / 36)
     near(dea[4], (dif[4] as number) * 2 / 3 + (37 / 36) / 3)
     expect(hist.slice(0, 3)).toEqual([null, null, null])
-    for (let i = 3; i < 6; i++) near(hist[i], (dif[i] as number) - (dea[i] as number))
+    for (let i = 3; i < 6; i++) near(hist[i], ((dif[i] as number) - (dea[i] as number)) * 2)
   })
 
   it('macd 默认参数：前 slow-1 根 DIF 为 null，DEA 再晚 signal-1 根', () => {
@@ -93,7 +93,7 @@ describe('Calc', () => {
     near(r[4], 100 - 100 / (1 + 0.5625 / 0.625))
   })
 
-  it('kdj：K、D 从 50 起步，前 n-1 根为 null', () => {
+  it('kdj：K、D 从 50 起步、从第一根就递推（窗口不满按已有的算），前 n-1 根为 null（与手机 / iOS 同口径）', () => {
     const bars: Bar[] = [
       { t: 0, o: 9, h: 10, l: 8, c: 9, v: 1 },
       { t: 1, o: 10, h: 11, l: 9, c: 10, v: 1 },
@@ -101,8 +101,10 @@ describe('Calc', () => {
     ]
     const [K, D, J] = Calc.kdj(bars, { n: 3, m1: 3, m2: 3 })
     expect(K.slice(0, 2)).toEqual([null, null]); expect(D.slice(0, 2)).toEqual([null, null]); expect(J.slice(0, 2)).toEqual([null, null])
-    // RSV = (12-8)/(12-8)·100 = 100
-    const k = (50 * 2 + 100) / 3, d = (50 * 2 + k) / 3
+    // 第 0 根 RSV = (9-8)/(10-8)·100 = 50；第 1 根 (10-8)/(11-8)·100；第 2 根 (12-8)/(12-8)·100 = 100
+    let k = (50 * 2 + 50) / 3, d = (50 * 2 + k) / 3
+    k = (k * 2 + 200 / 3) / 3; d = (d * 2 + k) / 3
+    k = (k * 2 + 100) / 3; d = (d * 2 + k) / 3
     near(K[2], k); near(D[2], d); near(J[2], 3 * k - 2 * d)
   })
 
