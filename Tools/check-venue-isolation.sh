@@ -20,7 +20,15 @@ files=$(git ls-files --cached --others --exclude-standard -- '*.swift' \
   | grep -Ev "$VENUE_DIRS" \
   | grep -Ev "$REGISTRY" || true)
 
-hits=$(printf '%s\n' "$files" | sed '/^$/d' | tr '\n' '\0' | xargs -0 grep -n "$PATTERN" 2>/dev/null || true)
+# 只看代码，不看注释：行注释（`//` 前是行首或空白；`https://` 这种 `:` 后的 `//` 不算）里解释
+# 「Coinbase 现货等由谁补价」不算点名。2026-10-04 深度审查 D / E 线补的十来处说明注释曾把守卫整条判红。
+hits=$(printf '%s\n' "$files" | sed '/^$/d' | tr '\n' '\0' | xargs -0 grep -n "$PATTERN" 2>/dev/null \
+  | awk -v pat="$PATTERN" '{
+      line = $0; sub(/^[^:]+:[0-9]+:/, "", line)
+      sub(/(^|[[:space:]])\/\/.*$/, "", line)
+      re = pat; gsub(/\\\|/, "|", re)
+      if (line ~ re) print $0
+    }' || true)
 if [ -n "$hits" ]; then
   echo "交易所隔离被破坏：下面这些地方直接点了某家交易所的名字或域名。"
   echo "请改用 MarketProvider / ProviderCapabilities / VenueRegistry。"

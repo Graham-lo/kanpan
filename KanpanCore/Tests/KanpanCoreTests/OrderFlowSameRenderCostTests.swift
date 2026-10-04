@@ -127,6 +127,10 @@ struct OrderFlowSameRenderCostTests {
     }
     let r = new.min()! / old.min()!
     print("【F 线】sameRender 2430 单逐单：新 \(Int(new.min()! / 1000)) µs / 旧 \(Int(old.min()! / 1000)) µs（比 \(r)）")
-    #expect(r < 0.5)
+    // 一倍以上是 Release 的数（729 → 48 µs，比 0.07）。Debug 没有优化，逐单比的大头成了未内联的
+    // 结构体逐字段相等，拼不拼字符串只差三成（2026-10-04 `make test` 实测 2489 / 3575 µs，比 0.70），
+    // 所以 Debug 下只守「不比旧判据慢」，快多少留给 Release 的 `core-test-release` 卡。
+    // 不用 `#if DEBUG`：条件编译的测试要进 ReleaseTestRosterTests 的名册，这里按运行时的断言配置分。
+    #expect(r < (_isDebugAssertConfiguration() ? 1.0 : 0.5))
   }
 }

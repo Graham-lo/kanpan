@@ -16,8 +16,10 @@ final class FScaleBenchTests: XCTestCase {
   static let size = CGSize(width: 393, height: 620)
 
   override func setUpWithError() throws {
-    try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_FSCALE_BENCH"] == "1",
-                      "F 线拆账基准，设 KANPAN_FSCALE_BENCH=1 才跑")
+    // 环境门（`ReleaseTestRosterTests.skipGates` 名册上有它）：不许写成 `XCTSkipUnless`。
+    guard ProcessInfo.processInfo.environment["KANPAN_FSCALE_BENCH"] == "1" else {
+      throw XCTSkip("F 线拆账基准只出数不断言，设 KANPAN_FSCALE_BENCH=1 才跑（未执行，不等于通过）")
+    }
   }
 
   func state(bars: Int, orders: Int, compare: Bool) -> ChartState {

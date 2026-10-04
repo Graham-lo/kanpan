@@ -61,6 +61,9 @@ struct ReleaseTestRosterTests {
       "`testUpgradeFromBeforeTrimKeepsState` 验「老包存档升级到新包」，前提是同一台模拟器上"
       + "先跑过收设置项之前那个 tag 的老包、留下 /tmp/kanpan-stress-0928/upgrade-state.txt；"
       + "只在压测时串着老包跑，没有那份状态文件就记成「未执行」。",
+    "FScaleBenchTests.swift":
+      "深度审查 F 线的图层拆账基准（1500 → 6000 根、订单流、对比、画线逐层计时）只出数不断言，"
+      + "一跑好几分钟，没给 KANPAN_FSCALE_BENCH=1 就记成「未执行」。",
   ]
 
   /// Release 下必须真的跑起来的那几摊行为，各自的看门文件。
