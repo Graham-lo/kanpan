@@ -38,7 +38,8 @@ export function go(page: string, push = true): void {
   st.page = p
   PAGES.forEach(x => $('#page-' + x)?.classList.toggle('show', x === p))
   $$('.nav a').forEach(a => { if (a.dataset.page === p) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current') })
-  if (push && location.hash !== '#' + p) history.replaceState(null, '', '#' + p)
+  // 不认的 #页名（手打、旧书签）也换成实际显示的那页，不让地址栏和页面对不上
+  if ((push || p !== page) && location.hash !== '#' + p) history.replaceState(null, '', '#' + p)
   if (prev !== p) hooks.pageHidden[prev]?.()
   hooks.pageShown[p]?.()
   hideTip()
