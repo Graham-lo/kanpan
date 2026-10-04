@@ -199,13 +199,20 @@ export function peak(o: BigOrder, id: string): number {
 
 // ------------------------------------------------------------------ 文字
 
-/** 金额：K / M / B / T，一位小数（≥ 100 取整）。 */
+/** 金额：K / M / B / T，一位小数（≥ 100 取整）。单位按舍入之后的样子挑：999,999 是「1.0M」不是「1000K」，
+ *  999.6 是「1.0K」不是「1000」（与 util/format.ts fmtCompact、手机网页 volUnit 同一口径） */
+const AMT_UNITS: readonly [number, string][] = [[1, ''], [1e3, 'K'], [1e6, 'M'], [1e9, 'B'], [1e12, 'T']]
 export function amt(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '—'
   const a = Math.abs(v)
-  const [d, u] = a >= 1e12 ? [1e12, 'T'] : a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : a >= 1e3 ? [1e3, 'K'] : [1, '']
-  const x = v / d
-  return (Math.abs(x) >= 100 || !u ? x.toFixed(0) : x.toFixed(1)) + u
+  let i = AMT_UNITS.length - 1
+  while (i > 0 && a < AMT_UNITS[i][0]) i--
+  for (; i < AMT_UNITS.length; i++) {
+    const [d, u] = AMT_UNITS[i], x = v / d
+    const t = Math.abs(x) >= 100 || !u ? x.toFixed(0) : x.toFixed(1)
+    if (Math.abs(+t) < 1000 || i === AMT_UNITS.length - 1) return (+t === 0 ? t.replace('-', '') : t) + u
+  }
+  return '—'
 }
 /** 上海时间 时:分:秒 */
 export function hms(t: number): string { const d = sh(t); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}` }
