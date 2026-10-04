@@ -60,12 +60,13 @@ export const coveredFrom = (p: { fromMs: number; nextBefore: number | null }): n
 export async function getJSON(url: string, ms: number): Promise<{ status: number; body: unknown }> {
   // 主机在限流冷却里就不发，当作 429 回去；一分钟权重快满了先排队（见 market/limit.ts）
   if (coolingFor(url) > 0) return { status: 429, body: null }
-  try { await admit(url) } catch { return { status: 429, body: null } }
+  let gw = false
+  try { gw = await admit(url) } catch { return { status: 429, body: null } }
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
     const r = await fetch(viaRoute(url), { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
-    noteStatus(url, r.status, r.headers.get('Retry-After'))
+    noteStatus(url, r.status, r.headers.get('Retry-After'), Date.now(), gw)
     const body = r.ok ? await r.json() : null
     return { status: r.status, body }
   } finally { clearTimeout(t) }

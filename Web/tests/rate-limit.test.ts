@@ -155,3 +155,72 @@ describe('限流闸 · 排队中作废的不发（2026-09-29 A 路压测：高�
     } finally { S.route = was; resetLimits(); vi.useRealTimers() }
   })
 })
+
+describe('限流闸 · 直连与网关各记一道（Web 深度审查 C 线 2026-10-05）', () => {
+  it('直连被封（418）不连累网关：切到网关立刻能取；网关回 429 也不把直连冷却掉', async () => {
+    const was = S.route
+    try {
+      const f = vi.fn(async () => new Response('[]', { status: 200 }))
+      vi.stubGlobal('fetch', f)
+      S.route = 'direct'
+      noteStatus(FAPI, 418, null)
+      await expect(j(FAPI)).rejects.toBeInstanceOf(RateLimited)
+      expect(f).toHaveBeenCalledTimes(0)
+      S.route = 'gateway'
+      await expect(j(FAPI)).resolves.toEqual([])
+      expect(f).toHaveBeenCalledTimes(1)
+      expect(String((f.mock.calls[0] as unknown[])[0])).toContain('/v1/market/raw/fapi/v1/klines')
+      resetLimits()
+      f.mockImplementation(async () => new Response('', { status: 429, headers: { 'Retry-After': '5' } }))
+      await expect(j(FAPI)).rejects.toThrow(/^429/)
+      expect(coolingFor(FAPI)).toBeGreaterThan(4000) // 网关这一道按 Retry-After 冷却
+      S.route = 'direct'
+      expect(coolingFor(FAPI)).toBe(0)                // 直连那一道不受影响
+    } finally { S.route = was }
+  })
+
+  it('预算两道分开：直连 1200 记满了，网关那一道照样有 800；Limiter 层直接按 gw 记', () => {
+    const g = new Limiter()
+    for (let i = 0; i < 120; i++) expect(g.take(`${K1500}&i=${i}`, 1000)).toBe(0)
+    expect(g.take(K1500, 1000)).toBeGreaterThan(0)
+    for (let i = 0; i < 80; i++) expect(g.take(`${K1500}&g=${i}`, 1000, 1, true)).toBe(0)
+    expect(g.take(K1500, 1000, 1, true)).toBeGreaterThan(0)
+    expect(g.usedOf('fapi', 1000)).toBe(1200)
+    expect(g.usedOf('fapi', 1000, true)).toBe(800)
+  })
+
+  it('老格式的落盘（只有 fapi / 主机名）照读成直连那一道；网关那一道单独落盘', () => {
+    let disk: string | null = JSON.stringify({ cool: { 'fapi.binance.com': { until: 90_000, strikes: 1 } }, used: { fapi: [[1000, 50]] } })
+    const store = { load: () => (disk ? JSON.parse(disk) : null), save: (x: LimitSnap) => { disk = JSON.stringify(x) }, raw: () => disk }
+    const g = new Limiter(undefined, store)
+    expect(g.coolingFor(K1500, 30_000)).toBe(60_000)
+    expect(g.coolingFor(K1500, 30_000, true)).toBe(0)
+    expect(g.usedOf('fapi', 30_000)).toBe(50)
+    expect(g.take(K1500, 30_000, 1, true)).toBe(0)
+    expect(JSON.parse(disk!).used['fapi@gw']).toEqual([[30_000, 10]])
+    expect(new Limiter(undefined, store).usedOf('fapi', 30_000, true)).toBe(10)
+  })
+
+  it('盘上原文没变就不再解析：一次 admit 原来解析两遍整本账，现在别的页没动过就一遍都不解析', () => {
+    let disk: string | null = null
+    let parses = 0
+    const store = {
+      load: () => { parses++; return disk ? JSON.parse(disk) : null },
+      save: (x: LimitSnap) => { disk = JSON.stringify(x) },
+      raw: () => disk,
+    }
+    const g = new Limiter(undefined, store)
+    const spy = vi.spyOn(JSON, 'parse')
+    try {
+      g.take(K1500, 1000)
+      spy.mockClear()
+      for (let i = 0; i < 50; i++) { g.coolingFor(K1500, 2000 + i); g.take(`${K1500}&i=${i}`, 2000 + i) }
+      expect(spy).toHaveBeenCalledTimes(0)
+      expect(parses).toBe(0)
+      // 别的标签页写了一笔：原文变了，下一次读回来
+      const other = new Limiter(undefined, store)
+      other.noteStatus(K1500, 429, null, 3000)
+      expect(g.coolingFor(K1500, 3000)).toBe(COOL_429_MS)
+    } finally { spy.mockRestore() }
+  })
+})

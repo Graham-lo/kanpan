@@ -4,7 +4,8 @@
  * 一律不发 Referer：币安 CloudFront 对来源页是 sslip.io 的请求回 403 且不带跨域头。
  * 网关线路：同样的地址改走新加坡那台的 /v1/market/raw/<path>?source=binance（viaRoute）——国内不开代理
  * 根本连不上 fapi.binance.com，2026-10-02 之前「网关」只管 WebSocket，手机 4G 上 K 线、品种表全是空的。
- * 限流闸（limit.ts）仍按币安的原地址记账：两条线路最后打的都是同一家，预算与冷却是一回事。
+ * 限流闸（limit.ts）按币安的原地址认族与权重，但两条线路各记一道：直连花的是这台电脑出口 IP 的额度，
+ * 网关花的是服务端那份共用额度，一边被限流不连累另一边（切到网关正是直连被封时的出路）。
  * 取不到就是取不到——不造演示数据，界面显示空态。
  */
 import type { Bar } from '../chart/calc'
@@ -34,12 +35,12 @@ setGatewayProbe(url => viaRoute(url) !== url)
 export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<T> {
   // 主机在限流冷却里就不发（抛 RateLimited）：429 之后接着打会被升级成 418 封 IP；
   // 一分钟权重快满了就先排队（见 limit.ts）；排队期间 alive() 说不要了就不发（抛 Superseded）
-  await admit(url, background, alive)
+  const gw = await admit(url, background, alive)
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
     const r = await fetch(viaRoute(url), { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store', ...(priority ? { priority } : {}) })
-    noteStatus(url, r.status, r.headers.get('Retry-After'))
+    noteStatus(url, r.status, r.headers.get('Retry-After'), Date.now(), gw)
     if (!r.ok) throw new Error(`${r.status} ${url}`)
     return await r.json() as T
   } finally { clearTimeout(t) }
