@@ -521,9 +521,11 @@ export function priceRange(view: ViewWindow, series: BarSeries, o: PriceRangeOpt
         if (c < minV) minV = c
       }
     } else {
+      // 坏数（NaN / ±Infinity）一根都不许进区间：一个 Infinity 会把整屏顶成兜底的 0...1。
       for (let i = lo; i <= hi; i++) {
-        if (series.high[i] > maxV) maxV = series.high[i]
-        if (series.low[i] < minV) minV = series.low[i]
+        const h = series.high[i], l = series.low[i]
+        if (Number.isFinite(h) && h > maxV) maxV = h
+        if (Number.isFinite(l) && l < minV) minV = l
       }
     }
     for (const arr of overlayValues) {
@@ -537,10 +539,17 @@ export function priceRange(view: ViewWindow, series: BarSeries, o: PriceRangeOpt
       }
     }
   }
-  for (const p of drawingPrices) { if (p > maxV) maxV = p; if (p < minV) minV = p }
+  for (const p of drawingPrices) { if (!Number.isFinite(p)) continue; if (p > maxV) maxV = p; if (p < minV) minV = p }
   for (const p of extraPrices) { if (!Number.isFinite(p)) continue; if (p > maxV) maxV = p; if (p < minV) minV = p }
   if (!Number.isFinite(minV) || !Number.isFinite(maxV)) { minV = 0; maxV = 1 }
-  if (maxV === minV) { maxV = minV * 1.001 + 1; minV = minV * 0.999 - 1 }
+  if (maxV === minV) {
+    // 十字星 / 停牌：上下各留价格的千分之一。从前的 ±(0.1% + 1) 里那个「+1」是绝对值，
+    // 对 0.00001234 的小币会把区间撑到 -1...+1、蜡烛压成正中一条线、下沿掉进负价；
+    // 留白必须跟价格同量级，只有价格本身是 0 时才退回 ±1（同 iOS PriceScale）。
+    const pad = minV !== 0 ? Math.abs(minV) * 0.001 : 1
+    maxV = minV + pad
+    minV = minV - pad
+  }
   const mode = transform.mode
   if (mode === 'log') { minV = Math.max(minV, 1e-12); maxV = Math.max(maxV, minV * 1.001) }
   const low = forward(mode, minV, base), high = forward(mode, maxV, base)

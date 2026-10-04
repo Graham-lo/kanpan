@@ -309,6 +309,34 @@ describe('价格轴（PriceScaleTests）', () => {
     expect(Math.abs((ys[0] - ys[1]) - (ys[1] - ys[2]))).toBeLessThan(1e-9)
   })
 
+  // 审查 Web D 线（对齐 iOS 3588be36 · B·P1-1）：一字板留白跟价格同量级；坏数不进区间。
+  const flat = (price: number, n: number) =>
+    BarSeries.fromBars('FLAT', '1h', Array.from({ length: n }, (_, k) => bar(1_700_000_000_000 + k * 3_600_000, price, price, price, price, 0)))
+  it.each([0.00001234, 0.5, 60_000])('flatSeriesPadIsRelative：一字板留白按价格比例（%s）', price => {
+    const s = flat(price, 50)
+    const v = ViewMath.reset(s, 390, 9.2)
+    for (const mode of ['linear', 'log'] as PriceMode[]) {
+      const r = priceRange(v, s, { transform: priceTransform(mode) })
+      expect(r.lo, `${mode} ${price} 下沿进了负价`).toBeGreaterThan(0)
+      expect(r.lo < price && price < r.hi, `${mode} 价格不在区间里 ${r.lo}…${r.hi}`).toBe(true)
+      expect((r.hi - r.lo) / price, `${mode} ${price} 被撑开`).toBeLessThan(0.01)
+      expect((r.hi - r.lo) / price, `${mode} ${price} 塌得太薄`).toBeGreaterThan(0.001)
+    }
+  })
+  it('flatZeroSeries：一字板价格为 0 仍有厚度', () => {
+    const s = flat(0, 10)
+    const r = priceRange(ViewMath.reset(s, 390, 9.2), s)
+    expect(r.hi > r.lo && Number.isFinite(r.lo) && Number.isFinite(r.hi)).toBe(true)
+  })
+  it('nonFiniteBarsIgnored：高低价与画线价格里的坏数不进区间', () => {
+    const n = 50
+    const bars = Array.from({ length: n }, (_, k) => bar(1_700_000_000_000 + k * 3_600_000, 100, 101, 99, 100, 1))
+    bars[n - 3].high = Infinity; bars[n - 4].low = -Infinity; bars[n - 5].high = NaN
+    const s = BarSeries.fromBars('BAD', '1h', bars)
+    const r = priceRange(ViewMath.reset(s, 390, 9.2), s, { drawingPrices: [NaN, Infinity] })
+    expect(r.lo > 90 && r.hi < 110, `坏数顶飞了区间 ${r.lo}…${r.hi}`).toBe(true)
+  })
+
   it('rangeIncludesOverlaysAndDrawings：极值并入叠加指标与画线', () => {
     const s = synthSeries(400, { seed: 55 })
     const plotW = 390
