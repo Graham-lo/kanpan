@@ -1,7 +1,9 @@
 /* Hkline 手机网页版 · 小控件：弹层、菜单、确认框、解释卡、toast、左划、拖排序 */
 
 #m-layer { position: fixed; inset: 0; z-index: 100; pointer-events: none }
-#m-layer > * { pointer-events: auto }
+/* 弹层默认接点按，但特异性压到 0：.m-pop-wrap / .m-sheet-wrap 自己写的 pointer-events: none 才作数——
+ * 以前 #m-layer > * 的 id 特异性把它们盖成 auto，「更多」网格的整屏外壳把锚点上方（顶栏、头部）变成点了没反应的死区 */
+:where(#m-layer) > * { pointer-events: auto }
 
 /* ───────── 底部面板（PanelSheet） ─────────
  * 形状照 iOS 26 系统 sheet：没撑满时四边留 8、四角 --sheet-r 浮着（与屏幕圆角同心）；

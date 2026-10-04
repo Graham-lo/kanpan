@@ -111,11 +111,14 @@ export function initChart(root: HTMLElement): PageHandle {
   }
 
   // ---- 顶栏 / 头部 / 周期条
+  /** 开任何面板（记一笔、分享、搜索、分析、图表设置、创建提醒）都先收「更多」网格：网格的遮罩只从周期条下沿起，
+   *  顶栏还点得到，不收的话网格压在面板底下、面板一关又露出来（iOS A-3：收网格挪到 onPanel 一处） */
+  const panel = (open: () => void) => (): void => { ivBar.closeGrid(); open() }
   const topBar = createTopBar(page, {
     onBack: () => { const o = nav.origin; nav.origin = null; if (o && o !== 'chart') go(o); else render() },
-    onNote: () => { openNote({ chart, symbol: sym, interval: iv }) },
-    onShare: () => { openShare({ chart, symbol: sym, interval: iv, previewing: () => !!preview?.previewing() }) },
-    onSearch: () => openSearch(),
+    onNote: panel(() => { openNote({ chart, symbol: sym, interval: iv }) }),
+    onShare: panel(() => { openShare({ chart, symbol: sym, interval: iv, previewing: () => !!preview?.previewing() }) }),
+    onSearch: panel(() => openSearch()),
   })
   const header = createHeader(page, { onSwipe: (dx, dy) => { if (!preview?.cardVisible()) scan(dx, dy) } })
   let crossPrice: number | null = null
@@ -127,9 +130,9 @@ export function initChart(root: HTMLElement): PageHandle {
       st.quickIntervals = r.list; save()
     },
     onReplace: (old, add) => { st.quickIntervals = replaceQuick(st.quickIntervals, old, add, INTERVALS); save() },
-    onAnalysis: () => { openAnalysis(panelCtx) },
-    onSettings: () => { openChartSettings(axisCtx) },
-    onAlert: () => { const p = crossPrice; chart.clearCrosshair(); openAlertForm(sym(), p) },
+    onAnalysis: panel(() => { openAnalysis(panelCtx) }),
+    onSettings: panel(() => { openChartSettings(axisCtx) }),
+    onAlert: panel(() => { const p = crossPrice; chart.clearCrosshair(); openAlertForm(sym(), p) }),
   })
 
   // ---- 图

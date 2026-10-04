@@ -58,8 +58,9 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   let chipsKey = ''
   let moreShown: string | null = null
 
-  analysis.onclick = () => { grid?.close(); h.onAnalysis() }
-  settings.onclick = () => { grid?.close(); h.onSettings() }
+  // 收「更多」网格由行情页开面板那一处统一做（chart.ts panel），这里只转发
+  analysis.onclick = () => h.onAnalysis()
+  settings.onclick = () => h.onSettings()
   alert.onclick = () => h.onAlert()
   more.onclick = () => { if (grid) grid.close(); else openGrid() }
 
