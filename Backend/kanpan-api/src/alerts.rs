@@ -2301,4 +2301,37 @@ mod tests {
   last.retain(BINANCE,&Default::default());
   assert!(last.live.is_empty()&&last.movers.is_empty());
  }
+
+ /// **有界负载（深度审查 F 线）**：十个人、每人摆满 200 条（客户端 `AlertArchive.limit`）、
+ /// 散在 300 只品种上；币安 1m K 线流一只品种一秒约 4 帧，喂满一分钟（72,000 帧）。
+ /// 每一帧都要把整张表过一遍找自己那只品种的提醒，这是评估器唯一随规模涨的那一段。
+ /// 判的结果要一条不多一条不少（只有摆在帧里的那 300 条会响），耗时只设一道宽松的上限：
+ /// 一分钟的流量要在 6 秒内判完（即便慢 10 倍也占不满一个核的 10%），实测数写进报告。
+ #[test] fn a_full_house_of_alerts_keeps_up_with_a_minute_of_frames() {
+  const OWNERS:usize=10;const PER:usize=200;const SYMBOLS:usize=300;const FRAMES_PER_SYMBOL:usize=240;
+  let (effects,mut rx)=Effects::channel(4096);
+  let mut watches=vec![];
+  for o in 0..OWNERS {for k in 0..PER {
+   let n=o*PER+k;let sym=n%SYMBOLS;
+   // 每只品种上头一条（n < SYMBOLS）挂在 100，帧会碰到它；其余的挂在 10_000，永远碰不到。
+   let p=if n<SYMBOLS {100.0} else {10_000.0};
+   let mut w=watch(&format!("a{n}"),Condition::Touch,vec![line(&[(0.0,p)],true,true)]);
+   w.owner=Uuid::from_u128(o as u128+1);w.symbol=format!("S{sym:03}USDT");
+   watches.push(w);
+  }}
+  assert_eq!(watches.len(),2000);
+  let mut closes=Closes::new();let quotes=BTreeMap::new();
+  let started=std::time::Instant::now();
+  for f in 0..FRAMES_PER_SYMBOL {for sym in 0..SYMBOLS {
+   let c=Candle{symbol:format!("S{sym:03}USDT"),open_time:60_000,low:99.0,high:101.0,close:100.0+f as f64*1e-6,closed:false};
+   evaluate(&effects,&mut watches,&mut closes,&quotes,&c);
+  }}
+  let elapsed=started.elapsed();
+  let fired=fired(&mut rx);
+  println!("BENCH alerts.evaluate watches=2000 symbols=300 frames=72000 elapsed_ms={:.1} per_frame_us={:.2}",
+   elapsed.as_secs_f64()*1e3,elapsed.as_secs_f64()*1e6/(SYMBOLS*FRAMES_PER_SYMBOL) as f64);
+  assert_eq!(fired.len(),SYMBOLS,"每只品种恰好响它那一条，不多不少");
+  assert_eq!(watches.len(),2000-SYMBOLS,"响过的摘掉，没碰到的都还在");
+  assert!(elapsed<Duration::from_secs(6),"一分钟的流量判了 {elapsed:?}");
+ }
 }
