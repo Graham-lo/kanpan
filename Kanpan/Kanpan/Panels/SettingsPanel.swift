@@ -79,7 +79,8 @@ struct SettingsPanel: View {
         store.updateByHand { $0.redUp = v }
       }
     }
-    // 「十字线吸附到 K 线」2026-09-28 收掉（收设置项 B 组）：长按出来的十字线一律吸到 K 线上。
+    // 「十字线吸附到 K 线」2026-09-28 收掉（收设置项 B 组）；2026-10-03 起十字线一律不吸附
+    // 收盘价，横线跟着手指高度走（`kanpan-crosshair-follows-finger-no-magnet`）。
     // 「启动快照」不再摆出来（2026-09-24 审查 U13）：它是工程开关，用户没有理由关它。
     // 字段也一起删了，启动快照一律开着（`MainScreen.boot`）。
 
