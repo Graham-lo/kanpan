@@ -24,7 +24,7 @@ import type { BigOrder, BookSide } from '../../orderflow/types'
 import type { ChartRenderer, Rect } from './renderer'
 import type { Layout, Pane, PriceRange } from './geometry'
 import { PriceMapping, snap, swiftRound, yOf as coreYOf } from './geometry'
-import { toFixed } from './format'
+import { toFixed, volUnit } from './format'
 import type { ChartFontSpec, Hex } from './paint'
 import { ChartFont, bytes, contrast, css, drawCentered, drawLeft, orderFlowUnfilled, rgba, roundRectPath, textHeight, textWidth } from './paint'
 import { effectivePriceMode } from './state'
@@ -185,14 +185,15 @@ export function mixHex(a: Hex, b: Hex, k: number): Hex {
   return '#' + m(pa.r, pb.r) + m(pa.g, pb.g) + m(pa.b, pb.b)
 }
 
-/** 名义金额：K / M / B / T 一位小数。 */
+/** 名义金额：K / M / B / T 一位小数。单位按印出来的样子选：999,960 是「1.0M」，不是「1000.0K」（同 iOS）。 */
 export function orderFlowAmount(value: number): string {
-  const a = Math.abs(value)
-  if (a >= 1e12) return toFixed(value / 1e12, 1) + 'T'
-  if (a >= 1e9) return toFixed(value / 1e9, 1) + 'B'
-  if (a >= 1e6) return toFixed(value / 1e6, 1) + 'M'
-  if (a >= 1e3) return toFixed(value / 1e3, 1) + 'K'
-  return toFixed(value, 0)
+  switch (volUnit(value, 1, 0)) {
+    case 't': return toFixed(value / 1e12, 1) + 'T'
+    case 'b': return toFixed(value / 1e9, 1) + 'B'
+    case 'm': return toFixed(value / 1e6, 1) + 'M'
+    case 'k': return toFixed(value / 1e3, 1) + 'K'
+    case 'plain': return toFixed(value, 0)
+  }
 }
 
 /** 图区底色是不是浅色（按亮度）。 */

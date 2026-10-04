@@ -76,6 +76,21 @@ describe('FormatTests（格式化）', () => {
     for (const [x, want] of cases) expect(fmtVol(x), `fmtVol(${x})`).toBe(want)
   })
 
+  // 同 iOS cccf6fff（审查 B·单位进位）：低一档进位成「1000」的升一档，没进位的不升。
+  it('volUnitFollowsRounding · 进位到一千就升一档', () => {
+    expect(fmtVol(999_999)).toBe('1.00M')
+    expect(fmtVol(-999_999)).toBe('-1.00M')
+    expect(fmtVol(999_994)).toBe('999.99K')
+    expect(fmtVol(999.6)).toBe('1.00K')
+    expect(fmtVol(999.4)).toBe('999')
+    expect(fmtVol(999_999_000_000)).toBe('1.00T')
+    expect(fmtVol(999_990_000)).toBe('999.99M')
+    expect(volUnit(999_999)).toBe('m')
+    expect(volUnit(999_960, 1, 0)).toBe('m')
+    expect(volUnit(999_940, 1, 0)).toBe('k')
+    expect(volUnit(Infinity)).toBe('plain')
+  })
+
   it('volPinnedUnit · 单位由外面传进来', () => {
     expect(fmtVol(8.32e9, 'm')).toBe('8320.00M')
     expect(fmtVol(9.9e8, 'b')).toBe('0.99B')

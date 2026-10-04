@@ -612,6 +612,11 @@ describe('主力订单流 · 图表', () => {
     expect(orderFlowAmount(1e9)).toBe('1.0B')
     expect(orderFlowAmount(999e9)).toBe('999.0B')
     expect(orderFlowAmount(1.2e12)).toBe('1.2T')
+    // 进位到一千就升一档（同 iOS cccf6fff）：原来 999,960 印成「1000.0K」。
+    expect(orderFlowAmount(999_960)).toBe('1.0M')
+    expect(orderFlowAmount(999_940)).toBe('999.9K')
+    expect(orderFlowAmount(999.6)).toBe('1.0K')
+    expect(orderFlowAmount(999_960_000_000)).toBe('1.0T')
   })
 
   it('开着盘口：挂着的签挪到梯子左边、纵向不动；括号跟着签走；没开盘口照旧贴右缘', () => {

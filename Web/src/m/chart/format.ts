@@ -105,12 +105,27 @@ export function priceDecimalsFallback(price: number): number {
 }
 
 export type VolUnit = 'plain' | 'k' | 'm' | 'b' | 't'
-export function volUnit(x: number): VolUnit {
+const VOL_UNITS: { unit: VolUnit; scale: number }[] = [
+  { unit: 't', scale: 1e12 }, { unit: 'b', scale: 1e9 }, { unit: 'm', scale: 1e6 }, { unit: 'k', scale: 1e3 },
+]
+
+/**
+ * 选 K / M / B / T 哪一档，按印出来的样子选：低一档按 decimals 位小数（不满一千按 plainDecimals 位）
+ * 进位成「1000」时就升一档。从前只比原始数值，999,999 两位小数印成「1000.00K」、订单流签 999,960
+ * 印成「1000.0K」（同 iOS cccf6fff · 审查 B·单位进位）。坏数回落到不带单位。
+ */
+export function volUnit(x: number, decimals = 2, plainDecimals = 0): VolUnit {
   const a = Math.abs(x)
-  if (a >= 1e12) return 't'
-  if (a >= 1e9) return 'b'
-  if (a >= 1e6) return 'm'
-  if (a >= 1e3) return 'k'
+  if (!Number.isFinite(a)) return 'plain'
+  for (let i = 0; i < VOL_UNITS.length; i++) {
+    const u = VOL_UNITS[i]
+    if (a >= u.scale) return u.unit
+    // 离这一档还差 1% 以上的不可能进位上来，不必格式化。
+    if (a < u.scale * 0.99) continue
+    const lower = i + 1 < VOL_UNITS.length ? VOL_UNITS[i + 1].scale : 1
+    const places = i + 1 < VOL_UNITS.length ? decimals : plainDecimals
+    if (Number(toFixed(a / lower, places)) >= u.scale / lower) return u.unit
+  }
   return 'plain'
 }
 
