@@ -18,7 +18,7 @@ import {
   DIRECTION_LABEL, CONFIRMATION_LABEL, ORIGIN_LABEL,
   type BarLike, type Confirmation, type Direction, type Origin,
 } from './draft'
-import { canUpload, flushNotes, keepShot } from './sync'
+import { canUpload, currentUid, flushNotes, keepShot } from './sync'
 
 export interface NoteContext {
   symbol: string
@@ -164,7 +164,7 @@ export function openNoteDialog(x: NoteContext): void {
     const bad = checkDraft(draft); if (bad) { err(bad); return }
     const shot = snapshot(x.canvas)
     const hasShot = !!shot && keepShot(id, shot)
-    const n: Note = { id, symbol: x.symbol, iv: x.iv, t: x.t, p: x.p, text, draft, sync: 'pending', shot: hasShot ? 'pending' : 'none' }
+    const n: Note = { id, symbol: x.symbol, iv: x.iv, t: x.t, p: x.p, text, draft, sync: 'pending', shot: hasShot ? 'pending' : 'none', owner: currentUid() ?? undefined }
     st.notes.push(n); save(); d.close()
     x.onSaved(n)
     if (!canUpload()) { toast('已记下', '登录后自动传到复盘「观点记录」', 'note'); return }

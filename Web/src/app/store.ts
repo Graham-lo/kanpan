@@ -67,6 +67,8 @@ export interface Note {
   err?: string
   /** 这一笔的截图：pending 还没传（图在 notes/shots 的本机存储里）· done 传上了 · none 没有图 */
   shot?: 'pending' | 'done' | 'none'
+  /** 记下时登录的账号编号；没登录时记的没有这一项，谁先登录就传给谁（传的那一刻写上） */
+  owner?: string
 }
 export interface IndState {
   ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]
