@@ -237,9 +237,11 @@ public actor CoinbaseWS: MarketStream {
         if stopped || Task.isCancelled { break }
         log("Coinbase WS 断了：\(cutReason ?? "\(error)")")
       }
+      // 先认自己还是不是当前这一轮，再动看门狗和掐线原因（整条 actor 共用）：旧一轮的收帧在换轮之后
+      // 带着一帧醒来时 `pump` 是正常返回的，原来这两行在 guard 之前，掐掉的是新一轮的看门狗。
+      guard generation == runGeneration else { return }
       watchdogTask?.cancel(); watchdogTask = nil
       cutReason = nil
-      guard generation == runGeneration else { return }
       let dying = socket
       socket = nil; sent = []; pending = [:]
       syncTask?.cancel(); syncTask = nil; syncToken += 1
@@ -309,8 +311,14 @@ public actor CoinbaseWS: MarketStream {
   private func watchState(generation: Int, connection: Int)
     -> (lastFrameMs: Double, connectedAtMs: Double, firstFrameDue: Bool, pending: [Sub: (sentMs: Double, attempts: Int)])? {
     guard !stopped, generation == runGeneration, connection == connectionID, socket != nil else { return nil }
-    return (lastFrameMs, connectedAtMs, !gotMarket && !wanted.isEmpty, pending)
+    return (lastFrameMs, connectedAtMs, !gotMarket && wanted.contains { !rejected($0) }, pending)
   }
+
+  /// 这个订阅被上游明确拒过（`topicErrors` 里有它）。
+  ///
+  /// 整条连接的首帧窗口只等还有指望的订阅：想要的全被拒了（品种在 Coinbase 下架、代号不认），
+  /// 原来照样「60 秒没有行情 → 重连」，重连上再订、再被拒，每分钟一轮永不停，还每轮把网关主备换一次。
+  private func rejected(_ sub: Sub) -> Bool { topicErrors["\(sub.channel) \(sub.product)"] != nil }
 
   /// 单个订阅第一次等超时：只重发这一个的 subscribe，发不出去就重连。
   private func resubscribe(_ sub: Sub, connection: Int) async {

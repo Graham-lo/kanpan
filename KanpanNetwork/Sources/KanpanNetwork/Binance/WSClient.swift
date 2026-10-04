@@ -270,9 +270,13 @@ public actor BinanceWS {
         if stopped || Task.isCancelled { break }
         log("WS 断了：\(error)")
       }
+      // 先认自己还是不是当前这一轮，再去动看门狗和掐线原因：这两个字段是整条 actor 共用的。
+      // 旧一轮的收帧在 `start` 换轮之后还可能带着一帧醒过来（旧 socket 的 `cancel()` 是另派任务
+      // 去做的，要等一次往返），`pump` 认出自己过期后**正常返回**、不抛错，于是一路走到这里——
+      // 原来这两行在 guard 之前，掐掉的是**新一轮**刚起的看门狗：新连接从此静默多久都不会重连。
+      guard generation == runGeneration else { return }
       watchdogTask?.cancel(); watchdogTask = nil
       cutReason = nil
-      guard generation == runGeneration else { return }
       // 先把共享字段交出去再去 await。`cancel()` 要等一次真的往返，这中间完全可能
       // 又起了新的一轮（回前台重启 WS 就是这个时序）；放在 await 之后清的话，
       // 清掉的是**新一轮**的 socket 和订阅账——新连接从此发不出任何控制帧，
