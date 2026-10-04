@@ -52,6 +52,22 @@ struct FavoriteGroupTests {
     #expect(prefs.favorites == ["B", "BTC", "A", "ETH", "C"].map(SymbolPrefs.key))
   }
 
+  /// V-4：下标对着的是画出来的那一份。拖动途中同步删掉了上面一行、列表还没重画，
+  /// 挪的仍得是手指拖着的那一只，不能因为少了一行就错位挪到下一只。
+  @Test("拖动途中同步删掉一行：挪的仍是手指拖着的那一只")
+  func moveSurvivesRowRemovedMidDrag() {
+    let rendered = ["A", "B", "C", "D"].map(SymbolPrefs.key)
+    var prefs = SymbolPrefs(favorites: rendered)
+    prefs.toggleFavorite(rendered[1])   // 同步：B 被别的设备取消自选
+    prefs.moveVisible(rendered, from: IndexSet(integer: 2), to: 0)   // 手指拖的是 C
+    #expect(prefs.favorites == ["C", "A", "D"].map(SymbolPrefs.key))
+    // 被拖的那只本身被同步删了：什么都不挪，也不把它加回来。
+    var gone = SymbolPrefs(favorites: rendered)
+    gone.toggleFavorite(rendered[2])
+    gone.moveVisible(rendered, from: IndexSet(integer: 2), to: 0)
+    #expect(gone.favorites == ["A", "B", "D"].map(SymbolPrefs.key))
+  }
+
   @Test("实际分类选择与成员移动持久化，不重复收藏")
   @MainActor func realFoldersPersist() throws {
     let memory = MemoryPrefsStorage(), store = SymbolPrefsStore(storage: memory)

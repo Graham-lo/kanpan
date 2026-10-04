@@ -319,9 +319,14 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   }
 
   /// 可见行可能按行情排序或属于某一分类，不能直接把显示索引写入全量收藏。
+  ///
+  /// 下标是对着**画出来的那一份** `visible` 说的，所以先在它身上原样挪完，再丢掉这会儿
+  /// 已经不在自选里的、按代号写回（V-4）。从前是先丢再挪：拖动途中同步把上面某一行删了，
+  /// 列表还没重画、`onMove` 带的还是旧下标，丢掉一行之后下标整体错一位，挪走的是别人。
   mutating func moveVisible(_ visible: [String], from source: IndexSet, to destination: Int) {
-    var ordered = SymbolPrefs(favorites: visible.map(Self.key).filter { favorites.contains($0) })
+    var ordered = SymbolPrefs(favorites: visible.map(Self.key))
     ordered.moveFavorites(from: source, to: destination)
+    ordered.favorites = ordered.favorites.filter { favorites.contains($0) }
     let members = Set(ordered.favorites)
     var iterator = ordered.favorites.makeIterator()
     favorites = favorites.map { members.contains($0) ? iterator.next()! : $0 }
