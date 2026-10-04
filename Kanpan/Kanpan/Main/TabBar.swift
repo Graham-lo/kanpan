@@ -145,7 +145,14 @@ struct TabBar: View {
     ], startPoint: .top, endPoint: .bottom)
     .frame(height: Self.fadeHeight)
     // home 条那一截：同一个底色贴着栏的下沿一直铺到屏幕最下面。
-    .background(alignment: .bottom) { ground.frame(height: 1).ignoresSafeArea(edges: .bottom) }
+    //
+    // 顺序不能反：`ignoresSafeArea` 必须在 `frame` **里面**。以前写成
+    // `ground.frame(height: 1).ignoresSafeArea(...)`，安全区放大的是那只 1pt 框外面的
+    // 摆放区域，1pt 的框自己不长，只是被居中挪到 home 条半腰——于是 home 条那 34pt
+    // 一直是透明的，滚动页的行在记号下面清清楚楚地露出来（2026-10-04 G 线走查：
+    // 板块列表、板块下钻页最下面那一行完整地躺在底栏图标下方）。现在 1pt 的框贴着栏的
+    // 下沿，里面那块底色忽略安全区、自己往下长满 home 条。
+    .background(alignment: .bottom) { ground.ignoresSafeArea(edges: .bottom).frame(height: 1) }
     .allowsHitTesting(false)
     .accessibilityHidden(true)
   }
