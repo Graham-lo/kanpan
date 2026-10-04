@@ -551,6 +551,11 @@ struct OrderFlowChartTests {
     #expect(ChartRenderer.orderFlowAmount(1e9) == "1.0B")
     #expect(ChartRenderer.orderFlowAmount(999e9) == "999.0B")
     #expect(ChartRenderer.orderFlowAmount(1.2e12) == "1.2T")
+    // 进位到一千就升一档（审查 B）：原来 999,960 印成「1000.0K」。
+    #expect(ChartRenderer.orderFlowAmount(999_960) == "1.0M")
+    #expect(ChartRenderer.orderFlowAmount(999_940) == "999.9K")
+    #expect(ChartRenderer.orderFlowAmount(999.6) == "1.0K")
+    #expect(ChartRenderer.orderFlowAmount(999_960_000_000) == "1.0T")
   }
 
   @Test("开着盘口：挂着的签不压盘口梯，挪到梯子左边、纵向不动；跨桶墙的括号跟着签走；没开盘口照旧贴右缘")

@@ -221,12 +221,23 @@ public func fmtVol(_ x: Double) -> String {
 /// 不再每帧按当前数字现算。
 public enum VolUnit: Int, Sendable, Equatable { case plain, k, m, b, t }
 
-public func volUnit(_ x: Double) -> VolUnit {
+public func volUnit(_ x: Double) -> VolUnit { volUnit(x, decimals: 2, plainDecimals: 0) }
+
+/// 选 K / M / B / T 哪一档，按**印出来的样子**选：低一档按 `decimals` 位小数（不满一千按 `plainDecimals` 位）
+/// 进位成「1000」时就升一档。原来只比原始数值，999,999 两位小数印成「1000.00K」、订单流签 999,960 印成
+/// 「1000.0K」（审查 B）。`decimals` 是 K 及以上几档印几位，各调用方按自己的写法传。
+public func volUnit(_ x: Double, decimals: Int, plainDecimals: Int) -> VolUnit {
   let a = abs(x)
-  if a >= 1e12 { return .t }
-  if a >= 1e9 { return .b }
-  if a >= 1e6 { return .m }
-  if a >= 1e3 { return .k }
+  guard a.isFinite else { return .plain }
+  let units: [(unit: VolUnit, scale: Double)] = [(.t, 1e12), (.b, 1e9), (.m, 1e6), (.k, 1e3)]
+  for (i, u) in units.enumerated() {
+    if a >= u.scale { return u.unit }
+    // 离这一档还差 1% 以上的不可能进位上来，不必格式化。
+    guard a >= u.scale * 0.99 else { continue }
+    let lower = i + 1 < units.count ? units[i + 1].scale : 1
+    let places = i + 1 < units.count ? decimals : plainDecimals
+    if (Double(toFixed(a / lower, places)) ?? 0) >= u.scale / lower { return u.unit }
+  }
   return .plain
 }
 

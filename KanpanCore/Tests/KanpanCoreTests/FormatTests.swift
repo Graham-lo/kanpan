@@ -53,6 +53,22 @@ struct FormatTests {
     #expect(volUnit(-1.2e12) == .t)
   }
 
+  /// 单位按印出来的样子选（审查 B）：低一档进位成「1000」的升一档，没进位的不升。
+  @Test("进位到一千就升一档")
+  func volUnitFollowsRounding() {
+    #expect(fmtVol(999_999) == "1.00M")
+    #expect(fmtVol(-999_999) == "-1.00M")
+    #expect(fmtVol(999_994) == "999.99K")
+    #expect(fmtVol(999.6) == "1.00K")
+    #expect(fmtVol(999.4) == "999")
+    #expect(fmtVol(999_999_000_000) == "1.00T")
+    #expect(fmtVol(999_990_000) == "999.99M")
+    #expect(volUnit(999_999) == .m)
+    #expect(volUnit(999_960, decimals: 1, plainDecimals: 0) == .m)
+    #expect(volUnit(999_940, decimals: 1, plainDecimals: 0) == .k)
+    #expect(volUnit(.infinity) == .plain)
+  }
+
   /// 全 app 一种涨跌幅写法（审查 U9）：带符号用数学减号（UI 整改 P1c 起不再有三角 + 绝对值那一路），
   /// 取整成 0 的不带负号，缺数写「—」。
   @Test("涨跌幅只有一种写法")

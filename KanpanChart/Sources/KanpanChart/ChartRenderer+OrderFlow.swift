@@ -1354,12 +1354,14 @@ extension ChartRenderer {
   }
 
   /// 名义金额：K / M / B / T 一位小数（原来没有 T 档，图例合计过万亿写成「1000.0B」）。
+  /// 单位按印出来的样子选（`volUnit(_:decimals:plainDecimals:)`）：999,960 是「1.0M」，不是「1000.0K」。
   static func orderFlowAmount(_ value: Double) -> String {
-    let a = abs(value)
-    if a >= 1e12 { return toFixed(value / 1e12, 1) + "T" }
-    if a >= 1e9 { return toFixed(value / 1e9, 1) + "B" }
-    if a >= 1e6 { return toFixed(value / 1e6, 1) + "M" }
-    if a >= 1e3 { return toFixed(value / 1e3, 1) + "K" }
-    return toFixed(value, 0)
+    switch volUnit(value, decimals: 1, plainDecimals: 0) {
+    case .t: toFixed(value / 1e12, 1) + "T"
+    case .b: toFixed(value / 1e9, 1) + "B"
+    case .m: toFixed(value / 1e6, 1) + "M"
+    case .k: toFixed(value / 1e3, 1) + "K"
+    case .plain: toFixed(value, 0)
+    }
   }
 }
