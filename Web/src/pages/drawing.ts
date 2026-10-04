@@ -27,6 +27,8 @@ export interface DrawHost {
   /** 工具栏垃圾桶：批量删除菜单（碰撤销栈与指标，在图表页做） */
   clearMenu(btn: HTMLElement): void
   toggleHide(): void
+  /** 工具栏「锁定全部画线」：每只品种的画线一起锁 / 解锁，并把锁后的样子记成撤销的基准 */
+  lockAll(on: boolean): void
 }
 let host: DrawHost
 export function installDrawing(h: DrawHost): void { host = h }
@@ -105,7 +107,7 @@ export function onDrawbarClick(e: MouseEvent): void {
   }
   const a = b.dataset.dact
   if (a === 'magnet') { st.magnet = !st.magnet; host.cells().forEach(c => c.chart.setMagnet(st.magnet)) }
-  if (a === 'lock') { st.drawLocked = !st.drawLocked; Object.values(st.drawings).flat().forEach(d => { d.locked = st.drawLocked }); refreshQuick() }
+  if (a === 'lock') { st.drawLocked = !st.drawLocked; host.lockAll(st.drawLocked); refreshQuick() }
   if (a === 'hide') return host.toggleHide()
   if (a === 'clear') return host.clearMenu(b)
   save(); renderDrawbar()

@@ -252,6 +252,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const c = cfg(cell), token = ++cell.loadToken
   cell.noMore = false
   cell.chart.setDrawings(drawingsFor(c.symbol))
+  if (lastSnap[c.symbol] == null) rebaseDrawings(c.symbol)
   // 推送不等 K 线：取数期间这一格的推送先攒进缓冲（上一次取数的缓冲在这里撒手，换品种 / 周期即作废）
   if (cell.hold) { pushes.release(cell.hold); cell.hold = null }
   const siv = streamIvOf(c.iv)
@@ -295,7 +296,6 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   if (cell.idx === st.active) { renderToolbar(); renderPanel() }
 }
 
-async function loadMore(cell: Cell): Promise<void> {
 /** 断线重连 / 页面藏久了回来：把这段时间收线的几根补回图上（币安只推当前那一根，错过的不会再推），
  *  断线前那一根的开高低收也按交易所的定稿盖掉。只取尾巴、逐根并进去，视口与往前翻过的历史都不动；
  *  断得太久（超过 TAIL_MAX 根）整段重取。取数期间这一格的推送照 loadCell 先攒着，取到再按顺序补上 */
@@ -324,6 +324,7 @@ async function resyncTail(cell: Cell, tries = 0): Promise<void> {
 }
 const tailGate = new TailResync()
 
+async function loadMore(cell: Cell): Promise<void> {
   if (cell.more || cell.noMore || !cell.chart.bars.length) return
   cell.more = true; cell.chart.loadingMore = true
   const c = cfg(cell), token = cell.loadToken
@@ -390,6 +391,19 @@ export function drawingsChanged(cell: Cell): void {
   cells.forEach(c => { if (cfg(c).symbol === s) c.chart.dirty = true })
   reconcileDrawingAlerts(s, drawingsFor(s))
   save(); renderToolbar(); refreshQuick()
+}
+/** 这只品种的画线是整份装进来的（打开时从本机存档、云端同步装回来）：把眼下的样子记成撤销的基准。
+ *  基准空着的时候第一次改动拿「[]」当改之前的样子——刷新页面后挪一下线再 ⌘Z，这只品种的画线整份没了；
+ *  同步装回来不更新基准的话，下一次本机改动的撤销会把同步来的那份一起退掉 */
+export function rebaseDrawings(s: string): void { lastSnap[s] = snapOf(s) }
+/** 锁定全部是工具栏上的一个开关（同 TradingView），不进撤销栈；但要把锁后的样子记成每只品种的基准——
+ *  不记的话下一次随手挪一条线，撤销会把「解锁」连同那一下一起退回去。测量尺是临时的，不锁 */
+export function lockAllDrawings(on: boolean): void {
+  for (const s of Object.keys(st.drawings)) {
+    for (const d of st.drawings[s]) if (d.type !== 'measure') d.locked = on
+    if (lastSnap[s] != null) lastSnap[s] = snapOf(s)
+  }
+  cells.forEach(c => { c.chart.dirty = true })
 }
 function setDrawingsOf(s: string, list: Drawing[]): void {
   st.drawings[s] = list; lastSnap[s] = snapOf(s)
@@ -1187,7 +1201,7 @@ export async function initChart(): Promise<void> {
   installDrawing({
     cells: () => cells, active, symbolOf: c => cfg(cells.find(x => x.el === c.el)).symbol, drawings: drawingsFor,
     changed: c => { const x = cells.find(y => y.el === c.el); if (x) drawingsChanged(x) },
-    clearMenu, toggleHide: toggleHideDrawings,
+    clearMenu, toggleHide: toggleHideDrawings, lockAll: lockAllDrawings,
   })
   $('#drawbar').addEventListener('click', onDrawbarClick)
   $('#drawbar').addEventListener('contextmenu', onDrawbarContext)
@@ -1215,6 +1229,10 @@ export async function initChart(): Promise<void> {
   migrateDrawingFlags()
   onAlertsChange(refreshAlerts)
 
+  // 藏着时非当前格的 K 线推送是退订的（stream.ts 只留核心），藏久了回来各格都补一次尾巴
+  document.addEventListener('visibilitychange', () => {
+    if (tailGate.visibility(document.visibilityState === 'visible', Date.now())) cells.forEach(c => void resyncTail(c))
+  })
   on(e => {
     if (e.type === 'kline') {
       // K 线在路上的格子：先攒着，到了再补（这时格子里还是上一只品种的线，不能往上并）
@@ -1229,16 +1247,13 @@ export async function initChart(): Promise<void> {
     else if (e.type === 'ticker') {
       pendingTick.set(e.symbol, e.dir || pendingTick.get(e.symbol) || 0)
       if (!tickRAF) tickRAF = requestAnimationFrame(flushTicks)
-  // 藏着时非当前格的 K 线推送是退订的（stream.ts 只留核心），藏久了回来各格都补一次尾巴
-  document.addEventListener('visibilitychange', () => {
-    if (tailGate.visibility(document.visibilityState === 'visible', Date.now())) cells.forEach(c => void resyncTail(c))
-  })
     }
     else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) patchDetail() }
     else if (e.type === 'oi') cells.forEach(c => { const cc = cfg(c); if (cc.symbol === e.symbol && cc.iv === e.iv) { c.chart.recalc(); c.chart.dirty = true } })
     else if (e.type === 'detail' || e.type === 'meta') { if (st.panel === 'watch' && (e.type === 'meta' || e.symbol === cfg(active())?.symbol)) renderDetail() }
     else if (e.type === 'ws') {
       updateStale(); paintConn()
+      if (tailGate.ws(S.wsState)) cells.forEach(c => void resyncTail(c))
       // 换了线路刚连上：品种表没拉到的先拉，空着报错的格子重取（直连在国内连不上币安，切到网关后不用再点「重试」）
       if (S.wsState === 'open') cells.filter(c => $('.cell-empty', c.el)?.hidden === false).forEach(c => void retryLoad(c))
     }
@@ -1253,7 +1268,6 @@ export async function initChart(): Promise<void> {
   }, 1000)
   setInterval(() => {
     if (document.visibilityState === 'hidden') return
-      if (tailGate.ws(S.wsState)) cells.forEach(c => void resyncTail(c))
     if (st.panel === 'watch') settle.whenSettled('detail', detailNow)
   }, 61e3)
 

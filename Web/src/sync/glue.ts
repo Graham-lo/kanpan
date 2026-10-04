@@ -12,7 +12,7 @@ import { hooks } from '../app/shell'
 import { S } from '../market'
 import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
-import { allCells, cfg, drawingsFor, renderPanel, renderToolbar } from '../pages/chart'
+import { allCells, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
 import { type Applied, type Edited, type Prints, OWNED, applyInto, captureInto, fingerprint, mergeFirst, restoreDrawings } from './bridge'
 import { type Ctx, alertId } from './codec'
@@ -62,7 +62,7 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       })
       renderToolbar()
     }
-    if (r.drawings.size) allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) })
+    if (r.drawings.size) { r.drawings.forEach(rebaseDrawings); allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) }) }
     // 走提醒模块的通知：图、侧栏，以及开着的「全部提醒」「创建提醒」弹层都跟着刷新
     if (r.alerts || r.drawings.size) notifyAlerts()
     // 自选与提醒同一轮变了也要重画自选侧栏（notifyAlerts 只在开着提醒侧栏时重画）
