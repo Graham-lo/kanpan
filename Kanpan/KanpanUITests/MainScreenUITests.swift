@@ -418,6 +418,29 @@ final class MainScreenUITests: KanpanUICase {
     expectGone(trend, Self.short, "第二次点「完成」没退出画线态")
   }
 
+  /// 审查 A 线：竖屏画线开着「全部画线工具」那张表，把手机横过来，工具面板要换成横屏那块卡片接着开着。
+  ///
+  /// 竖屏那张是 `.sheet`，原来 `isPresented` 绑在 `draw.picker && !landscape` 上：一横过去系统把表收起，
+  /// 经绑定回写一次 false，把 `draw.picker` 清了，横屏那块卡片（同一个 `draw.picker` 驱动）也就不出来——
+  /// 转一下屏工具面板就没了。现在表单由 `PortraitOnlySheet` 自己的状态驱动，转屏收表不清开关。
+  func testDrawToolPickerSurvivesRotationToLandscape() {
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没进竖屏画线态")
+    var opened = false
+    for _ in 0..<2 {
+      app.buttons["draw.tools"].tap()
+      if app.buttons["draw.sheet.done"].waitForExistence(timeout: 5) { opened = true; break }
+    }
+    XCTAssertTrue(opened, "竖屏点了两下「工具」，画线工具面板都没上来")
+
+    XCUIDevice.shared.orientation = .landscapeLeft
+    defer { XCUIDevice.shared.orientation = .portrait }
+    expectExists(app.landscapeMarker, Self.long, "把手机横过来没进横屏画线台")
+    // 竖屏那张表收起有一段动画，等它走完再看，免得把正在退场的那张表认成横屏卡片。
+    Thread.sleep(forTimeInterval: 1.5)
+    expectExists(app.buttons["draw.tool.fibonacci"], Self.short, "转到横屏后画线工具面板没了")
+    XCTAssertTrue(app.buttons["draw.sheet.done"].exists, "横屏工具卡片上没有关闭按钮")
+  }
+
   /// 画线横屏是一张**原始 K 线**：副图和主图均线全不画。
   ///
   /// 副图（成交量、MACD）不画是因为它们把主图挤扁；主图均线也要收掉，是因为价格轴的

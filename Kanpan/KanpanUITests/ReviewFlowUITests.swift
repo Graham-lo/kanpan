@@ -90,6 +90,39 @@ final class ReviewFlowUITests: KanpanUICase {
     if records.waitForExistence(timeout: Self.short) { records.tap() }
   }
 
+  // ------------------------------------------------------------ 复盘开着时换品种
+
+  /// 「记一笔」的取景卡开着，从顶栏放大镜搜一只别的点进去：取景卡收起、图换成那一只。
+  ///
+  /// 记一笔 / 回放时图表宿主挂的是复盘那张图，原来换品种只换了行情那边——顶栏已经是
+  /// ETH，图和取景卡还停在 BTC 上，点「记下」记的是 BTC。换品种的每条路（搜索、自选、
+  /// 板块、深链、Toast「查看」）都汇到 `picker.onPick` / `open(linkedSymbol:)`，
+  /// 修在这两处，这里走用户最顺手的那一条。
+  func testPickingAnotherSymbolMidCaptureEndsTheCapture() throws {
+    XCTAssertTrue(waitForLiveChart(), "没等到行情：\(chartInfo())")
+    let record = app.buttons[Ids.topNote]
+    XCTAssertTrue(record.waitForExistence(timeout: Self.short), "顶栏没有「记一笔」那颗")
+    record.tap()
+    let save = app.buttons["记下"]
+    XCTAssertTrue(save.waitForExistence(timeout: Self.short), "点「记一笔」没开出取景卡")
+
+    XCTAssertTrue(app.openSymbolSearch(), "取景卡开着时顶栏放大镜没开出搜索页")
+    let query = app.textFields[Ids.searchQuery]
+    query.tap()
+    query.typeText("ETHUSDT")
+    let hit = app.descendants(matching: .any)
+      .matching(identifier: "symbols.row." + testInstrumentKey("ETHUSDT")).firstMatch
+    XCTAssertTrue(hit.waitForExistence(timeout: Self.long), "搜 ETHUSDT 没出那一行")
+    hit.tap()
+
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !save.exists },
+                  "换了品种，记一笔的取景卡还开着（「记下」会记到上一只上）")
+    XCTAssertTrue(waitUntil(timeout: 45) { self.chartInfo()["symbol"] as? String == testInstrumentKey("ETHUSDT") },
+                  "换了品种，图还停在复盘那张上：\(chartInfo())")
+    XCTAssertTrue(app.buttons[Ids.bottomChart].waitForExistence(timeout: Self.short),
+                  "退出记一笔之后底栏没回来")
+  }
+
   // ------------------------------------------------------------ B.5：记一笔落在哪张图上
 
   /// 记一笔 →「记下」，那个记号只画在本品种本周期，并且复盘本里看得见。

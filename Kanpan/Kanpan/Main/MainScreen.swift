@@ -350,18 +350,10 @@ struct MainScreen: View {
   private var sectorPage: some View {
     SectorPage(feed: sectorFeed,
                symbolForBase: { sectorFeed.symbol(forBase: $0) }, store: store,
-               onPickSymbol: { symbol in
-                 if let info = picker.info(for: symbol) { picker.pick(info) }
-                 else {
-                   trail.entered(from: tab)
-                   tab = .chart; didLeaveLaunch = true
-                   // 目录还没载回来时点一行，以前只换图不记「最近」——同一个动作在
-                   // 目录加载前后结果不一样，而且这张图下次冷启动也回不来。
-                   picker.visit(symbol)
-                   proxy.cancelWindow()
-                   session.show(symbol: symbol)
-                 }
-               },
+               // 目录还没载回来时点一行，原来这儿自己抄了一份换图：不收分享预览、不清搜索、
+               // 不按习惯换周期，同一个动作在目录加载前后结果不一样。和深链、Toast「查看」
+               // 一样走 `open(linkedSymbol:)`——目录里有就是 `picker.pick`，没有也是同一套收尾。
+               onPickSymbol: { open(linkedSymbol: $0) },
                onScanList: { adoptScanList($0) },
                // 板块品种列表一出现就把最上面几行的 K 线先拉好（独立槽位，不顶掉自选那轮）。
                onListShown: { market.prefetchList($0) },
@@ -540,16 +532,17 @@ struct MainScreen: View {
       DrawingSheet(controller: draw, panel: panel, decimals: market.info.priceDecimals)
         .environment(\.panelTheme, theme)
     }
-    // 竖屏的「绘图」面板是一张半屏表单；横屏走 `drawToolsLayer` 那块贴边卡片，
-    // 所以这儿要把横屏挡掉，不然两份会同时在场。
-    .sheet(isPresented: Binding(get: { draw.picker && !landscape }, set: { draw.picker = $0 })) {
+    // 竖屏的「绘图」面板、发给朋友的选人表是半屏表单；横屏走 `drawToolsLayer` 那块贴边卡片，
+    // 所以这儿要把横屏挡掉，不然两份会同时在场。转屏时系统收表回写的那个 false 不是人关的，
+    // 不许清开关（否则转一下屏面板就没了），见 `PortraitOnlySheet`。
+    .modifier(PortraitOnlySheet(wanted: draw.picker, landscape: landscape, onUserDismiss: { draw.picker = false }) {
       DrawingToolPicker(controller: draw, store: store, onClose: { draw.picker = false })
         .presentationDetents([.large])
         .environment(\.panelTheme, theme)
-    }
-    .sheet(isPresented: Binding(get: { showFriendPicker && !landscape }, set: { showFriendPicker = $0 })) {
+    })
+    .modifier(PortraitOnlySheet(wanted: showFriendPicker, landscape: landscape, onUserDismiss: { showFriendPicker = false }) {
       friendPicker.presentationDetents([.medium, .large])
-    }
+    })
     .sheet(isPresented: $showFriends) {
       FriendsPage(inbox: inbox, loggedIn: account.user != nil, onLogin: loginFromFriends, onOpen: openShare)
         .environment(\.panelTheme, theme)
@@ -1226,11 +1219,10 @@ struct MainScreen: View {
   /// 成片顶上那一条：徽章 品种 · 周期 · 最新价 涨跌药丸。取的和头部同两个数，
   /// 免得图上写的价和屏幕上那口对不上。
   private var chartShotHead: ChartShotHead {
-    let pct = session.displayedTicker?.changePercent
-    return ChartShotHead(
+    ChartShotHead(
       symbol: market.symbol, interval: market.interval,
       price: session.readoutPrice, decimals: market.info.priceDecimals,
-      changePercent: (pct?.isFinite == true) ? pct : nil)
+      changePercent: session.changePercent)
   }
 
   /// K 线画布。同样为了断开类型嵌套整块搬进了 `MainChartView`（`MainScreenParts.swift`）。
@@ -1795,8 +1787,8 @@ struct MainScreen: View {
       price = nil; change = nil
     } else if symbol == main {
       price = market.tradeQuote?.price ?? market.ticker?.last ?? quotes.observedQuote(symbol)?.last
-      // 涨跌幅和行情页头部同一个数（`displayedTicker`），品种卡上那口价的颜色才和头部对得上。
-      change = session.displayedTicker?.changePercent ?? quotes.observedQuote(symbol)?.changePercent
+      // 涨跌幅和行情页头部同一个数（`ChartSession.changePercent`），品种卡上那口价的颜色才和头部对得上。
+      change = session.changePercent ?? quotes.observedQuote(symbol)?.changePercent
     } else {
       // 这个闭包在新建提醒那一页的 body 里求值：点名那只走参与观察的镜像，价到了那一页就重算。
       let ticker = quotes.observedQuote(symbol)
@@ -1912,6 +1904,10 @@ struct MainScreen: View {
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
       endSharePreview()
+      // 记一笔 / 回放开着时图表宿主挂的是复盘那张图（`MainChartView`），换品种只换了
+      // 行情那边：顶栏已经是新品种、图还是旧的，「记下」也记在旧品种上。换品种就是
+      // 「去干别的了」，和点「画线」、打开分享一样先退出复盘。
+      if reviewChart.active { endReview() }
       // 换品种的每一条路都从这儿过（自选、搜索、品种页、板块、深链、扫图、画线台）：
       // 扫图横滑提的那笔「铺到某段时间」只属于那一下横滑，换了别的路就作废。扫图自己
       // 在 `open(linkedSymbol:)` 之后才提新的那笔，不受这句影响。
@@ -2109,6 +2105,7 @@ struct MainScreen: View {
   private func open(linkedSymbol symbol: String) {
     endSharePreview()
     dismissPanel()
+    if reviewChart.active { endReview() }
     if let info = picker.info(for: symbol) { picker.pick(info); return }
     symbolSearch.reset()
     trail.entered(from: tab)

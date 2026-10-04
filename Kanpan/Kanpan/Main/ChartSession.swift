@@ -138,13 +138,22 @@ final class ChartSession {
     return quotes.raw[market.symbol]
   }
 
-  var displayedTicker: Ticker? {
-    rollingTicker.map { quotes.presented($0) }
+  /// 图上这只的涨跌幅：顶栏、横屏那行小字、分享成片、「创建提醒」页的品种卡都读这一个，
+  /// 和顶栏的涨跌额成对，是交易所 24 小时口径（PROJECT.md「头部涨跌额与涨跌幅均为交易所
+  /// 24 小时口径，自选表不变」）。
+  ///
+  /// 原来这儿还有一个 `displayedTicker`（按自选表的口径 `QuoteBook.presented` 改过百分比），
+  /// 顶栏 2026-09-24 换成 24 小时口径时只换了顶栏自己，横屏小字、成片、提醒页还读它：
+  /// 美股、贵金属这些按 UTC 0 点算的品种，竖屏写「+4.00%」、一转横屏就变成另一个数，
+  /// 当天开盘价没取到时干脆是空的，发出去的图也对不上屏幕上那口。
+  var changePercent: Double? {
+    guard let value = rollingTicker?.changePercent, value.isFinite else { return nil }
+    return value
   }
 
   /// Latest trade quote only; changing candle interval must never change its source.
   var readoutPrice: Double? {
-    market.capabilities.isSubstitute ? (market.series?.close.last ?? displayedTicker?.last) : displayedTicker?.last
+    market.capabilities.isSubstitute ? (market.series?.close.last ?? rollingTicker?.last) : rollingTicker?.last
   }
 
   /// 给 UI 用例读的那串诊断值。**只在 DEBUG 构建里存在**（审查 C-02）：
@@ -152,7 +161,7 @@ final class ChartSession {
   var quoteDiagnostics: String {
     #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" else { return "" }
-    return "symbol=\(market.symbol);last=\(displayedTicker?.last ?? .nan);time=\(displayedTicker?.timeMs ?? 0);fresh=\(market.priceFresh ? 1 : 0)"
+    return "symbol=\(market.symbol);last=\(rollingTicker?.last ?? .nan);time=\(rollingTicker?.timeMs ?? 0);fresh=\(market.priceFresh ? 1 : 0)"
     #else
     return ""
     #endif
@@ -282,7 +291,7 @@ struct LiveLandscapeHeadline: View {
     let market = session.market
     LandscapeHeadline(
       theme: theme, symbol: market.symbol, price: session.readoutPrice,
-      changePercent: session.displayedTicker?.changePercent,
+      changePercent: session.changePercent,
       decimals: market.info.priceDecimals,
       onTapSymbol: onTapSymbol)
   }
