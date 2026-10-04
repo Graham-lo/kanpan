@@ -77,6 +77,18 @@ describe('手机网页版 · 自选', () => {
     expect(p.favorites).toEqual(['C', 'X', 'A', 'B'])
     expect(fav.moveList(['a', 'b', 'c'], 0, 2)).toEqual(['b', 'c', 'a'])
   })
+  it('拖动途中同步删掉上面一行、列表还没重画：挪的仍是手里那一只（深度审查 D 线 V-4 网页同款）', () => {
+    const groups = [{ id: 'g', name: '加密' }]
+    const all = { A: 'g', B: 'g', C: 'g', D: 'g' }
+    // 画出来的是 A B C D，同步已把 A 删掉；把 C（第 2 行）拖到第 1 行。
+    const p = prefs({ favorites: ['B', 'C', 'D'], groups, groupForSymbol: all })
+    fav.moveVisible(p, ['A', 'B', 'C', 'D'], 2, 1)
+    expect(p.favorites).toEqual(['C', 'B', 'D'])
+    // 拖最后一行 D 到最上：旧写法下标越界，什么也不动。
+    const q = prefs({ favorites: ['B', 'C', 'D'], groups, groupForSymbol: all })
+    fav.moveVisible(q, ['A', 'B', 'C', 'D'], 3, 0)
+    expect(q.favorites).toEqual(['D', 'B', 'C'])
+  })
   it('取消后撤销按原位置、原分类插回', () => {
     const p = prefs({ favorites: ['A', 'B', 'C'], groups: [{ id: 'g', name: '加密' }], groupForSymbol: { A: 'g', B: 'g', C: 'g' } })
     const snap = fav.snapshot(p, 'B')!

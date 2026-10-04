@@ -120,8 +120,11 @@ export function moveList(list: string[], from: number, to: number): string[] {
 
 /** 只在可见的那几行之间挪，其它分类的位置不动（SymbolPrefs.moveVisible） */
 export function moveVisible(p: SymbolPrefs, shown: string[], from: number, to: number): void {
-  const vis = shown.map(key).filter(s => p.favorites.includes(s))
-  const ordered = moveList(vis, from, to)
+  // from / to 是画出来的那几行（shown）的下标。拖动途中同步删掉了上面某一行、列表还没重画时，
+  // 先按自选过滤再按下标挪会整体错一位、挪走的是别人（与 iOS 深度审查 D 线 V-4 同一个坑）：
+  // 先在 shown 上原样挪，再丢掉已不在自选里的。
+  const favs = new Set(p.favorites)
+  const ordered = moveList(shown.map(key), from, to).filter(s => favs.has(s))
   const members = new Set(ordered)
   let i = 0
   p.favorites = p.favorites.map(s => members.has(s) ? ordered[i++] : s)
