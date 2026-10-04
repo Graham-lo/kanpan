@@ -21,6 +21,21 @@ public struct CompareSeries: Sendable, Equatable {
     let value = (price / base - 1) * 100
     return value.isFinite ? value : nil
   }
+
+  /// 这条线自己的 0% 基准：从主品种的基准根 `start` 起往后（到 `end` 为止）第一根有开盘价的。
+  ///
+  /// 从前每条线都死认主品种那一根当基准：那一根上这只比价品种恰好缺根（还没上市、
+  /// 停牌、数据没到）时整条线一个点都画不出来，图例也一路「—」，视野右边明明全有数据。
+  /// 「相对于视野里第一根有数据的那根」才是对比 K 线的本意——主品种的 0% 也是这么取的。
+  public func baseIndex(from start: Int, through end: Int) -> Int? {
+    var i = max(0, start)
+    let last = min(end, open.count - 1)
+    while i <= last {
+      if let value = open[i], value.isFinite, value > 0 { return i }
+      i += 1
+    }
+    return nil
+  }
 }
 
 extension ChartState {

@@ -218,7 +218,9 @@ public final class ChartView: UIView {
           "percentAxis": s.percentAxis,
           "compareKeys": s.compare.map(\.key),
           "compareColors": s.compare.map { $0.color.value },
-          "compareReady": s.compare.filter { $0.percent(at: s.series.count - 1, baseIndex: s.compareBaseIndex()) != nil }.count,
+          "compareReady": s.compare.filter { series in
+            renderer?.compareAnchor(series).flatMap { series.percent(at: s.series.count - 1, baseIndex: $0.baseIndex) } != nil
+          }.count,
           "compareBaseIndex": s.compareBaseIndex(), "compareBaseOpen": s.compareBase(),
           "compareBaseTime": s.series.time(at: s.compareBaseIndex()),
           "compareLegend": renderer?.compareLegend.map { ["name": $0.name, "label": ChartState.comparePercentLabel($0.value)] } ?? [],
