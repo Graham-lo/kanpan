@@ -34,14 +34,16 @@ const DAPI:&str="https://dapi.binance.com";
 fn upstream_of(path:&str)->Option<&'static str> {
  match path {
   "fapi/v1/exchangeInfo"|"fapi/v1/ticker/24hr"|"fapi/v1/premiumIndex"|"fapi/v1/klines"|"fapi/v1/openInterest"|"fapi/v1/depth"
-  |"futures/data/openInterestHist"|"futures/data/globalLongShortAccountRatio"|"futures/data/topLongShortPositionRatio"|"futures/data/takerlongshortRatio"=>Some(FAPI),
+  |"futures/data/openInterestHist"|"futures/data/globalLongShortAccountRatio"|"futures/data/topLongShortPositionRatio"|"futures/data/takerlongshortRatio"
+  |"futures/data/basis"=>Some(FAPI),
   "dapi/v1/klines"|"dapi/v1/depth"|"dapi/v1/premiumIndex"=>Some(DAPI),
   _=>None,
  }
 }
 /// 查询参数只放已知的几个，`source` 是给我们自己分发用的，不往上游带。
+/// `contractType` 是基差（`futures/data/basis?pair=…&contractType=PERPETUAL`）必带的；少了它手机网页走网关时基差副图整条是空的。
 fn query_ok(key:&str,value:&str)->bool {
- matches!(key,"symbol"|"pair"|"interval"|"limit"|"startTime"|"endTime"|"period")
+ matches!(key,"symbol"|"pair"|"interval"|"limit"|"startTime"|"endTime"|"period"|"contractType")
   &&!value.is_empty()&&value.len()<=64
   &&value.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'||c=='-'||(!c.is_ascii()&&c.is_alphanumeric()))  // 中文底名合约（龙虾USDT），见 instruments::binance_symbol_char
 }
@@ -235,6 +237,15 @@ mod tests {
   assert!(query_ok("symbol","LINKUSDT")&&query_ok("endTime","1700000000000")&&query_ok("period","5m"));
   assert!(!query_ok("source","binance")&&!query_ok("apiKey","x")&&!query_ok("symbol","")&&!query_ok("symbol","a b")&&!query_ok("symbol","x/..")&&!query_ok("symbol",&"A".repeat(65)));
   assert!(query_ok("symbol","龙虾USDT")&&query_ok("symbol","币安人生USDT")&&!query_ok("symbol","龙虾 USDT")&&!query_ok("symbol","龙虾／USDT"));
+ }
+
+ #[test] fn basis_passes_through_with_its_contract_type() {
+  // 手机网页的基差副图（Web/src/m/chart/external.source.ts 的 BASIS）：pair + contractType，不是 symbol
+  assert_eq!(upstream_of("futures/data/basis"),Some(FAPI));
+  assert!(query_ok("pair","BTCUSDT")&&query_ok("contractType","PERPETUAL")&&query_ok("contractType","CURRENT_QUARTER"));
+  assert!(!query_ok("contractType","")&&!query_ok("contractType","a b")&&!query_ok("contractType",&"A".repeat(65)));
+  assert_eq!(ttl_of("futures/data/basis",&q(&[("pair","BTCUSDT")])),Duration::from_secs(30));
+  assert_eq!(weight_of("futures/data/basis",&q(&[("pair","BTCUSDT")])),1);
  }
 
  #[test] fn weights_follow_the_official_table() {
