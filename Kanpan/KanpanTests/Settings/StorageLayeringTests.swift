@@ -59,6 +59,8 @@ struct StorageLayeringTests {
     // M4：板块历史搬进 `Paths` 那棵树之后，顺手把老位置（直接挂在 Caches 根上的
     // 那一份）删掉。丢的只是一次日线收盘，进板块页重新取一趟就回来了。
     "SectorHistoryFeed.swift": "老位置上那份板块历史，进页重新取一趟就有",
+    // 审查 D-08：导出的个人数据只活到分享面板收起；真身在服务端，随时可以再导一份。
+    "AccountExport.swift": "临时目录里的「导出我的数据」文件，再导一次就有",
     // 这一条不是「清理路径」：它是存储适配器把某个键置空时顺手删掉那个键的文件，
     // 一个键一个文件，调用方是 `PersonalFileStorage.setPrefsData(nil, forKey:)`。
     // 它删不到整个账号目录，也没有任何 UI 入口通向它。

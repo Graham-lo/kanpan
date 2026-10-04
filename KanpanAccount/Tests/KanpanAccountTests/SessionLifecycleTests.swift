@@ -9,7 +9,36 @@ final class StubServer: @unchecked Sendable {
   private var recorded: [Call] = []
   private var routes: [(suffix: String, status: Int, body: Data)] = []
   private var outage: Error?
-  func reset() { lock.lock(); defer { lock.unlock() }; recorded = []; routes = []; outage = nil }
+  /// 扣住不答的路径（`hold`）：请求到了先记下、报到一声，等 `releaseHeld` 才答。
+  private var holding: Set<String> = []
+  private var parked: [@Sendable () -> Void] = []
+  private var arrivals: AsyncStream<Void>.Continuation?
+  func reset() {
+    lock.lock(); defer { lock.unlock() }
+    recorded = []; routes = []; outage = nil; holding = []; parked = []; arrivals = nil
+  }
+  /// 让 `suffix` 这条路的请求先扣着。返回的流在每趟被扣住的请求到达时响一声。
+  func hold(_ suffix: String) -> AsyncStream<Void> {
+    lock.lock(); defer { lock.unlock() }
+    holding.insert(suffix)
+    let (stream, continuation) = AsyncStream<Void>.makeStream()
+    arrivals = continuation
+    return stream
+  }
+  /// 扣着的都答掉，此后不再扣。
+  func releaseHeld() {
+    lock.lock(); holding = []; let waiting = parked; parked = []; lock.unlock()
+    for answer in waiting { DispatchQueue.global().async(execute: answer) }
+  }
+  /// 这趟要不要扣：要扣就把「答」收起来，返回 true。
+  func park(_ path: String, _ answer: @escaping @Sendable () -> Void) -> Bool {
+    lock.lock()
+    guard holding.contains(where: { path.hasSuffix($0) }) else { lock.unlock(); return false }
+    parked.append(answer); let signal = arrivals
+    lock.unlock()
+    signal?.yield()
+    return true
+  }
   func route(_ suffix: String, _ status: Int, _ json: String) {
     lock.lock(); defer { lock.unlock() }; routes.append((suffix, status, Data(json.utf8)))
   }
@@ -31,6 +60,11 @@ final class StubProtocol: URLProtocol {
   override func startLoading() {
     let path = request.url?.path ?? ""
     StubProtocol.server.record(.init(path: path, body: request.uploaded))
+    nonisolated(unsafe) let me = self
+    if StubProtocol.server.park(path, { me.respond(path) }) { return }
+    respond(path)
+  }
+  private func respond(_ path: String) {
     switch StubProtocol.server.answer(path) {
     case .success(let (status, data)):
       let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
@@ -120,6 +154,33 @@ struct SessionLifecycleTests {
     #expect(body["refreshToken"] as? String == "refresh-token-value")
     #expect((body["device"] as? [String: Any])?["secret"] != nil, "吊销要带设备绑定，不能只凭一把令牌")
     #expect(vault.stored == nil, "本地凭据当场就该没了")
+  }
+
+  /// 审查 D-09：登录还在路上时点了退出。`signOut` 换了代际，迟到的回包被作废成
+  /// `CancellationError`，调用方拿不到令牌——从前那条新会话就没人吊销，白占着
+  /// 「同类设备一台在线」的名额活满三十天。现在客户端在作废之前自己吊销它。
+  @Test("登录回包到手前退了登：回包作废、不落钥匙串，服务端那条新会话吊销掉")
+  func 迟到的登录回包要吊销() async throws {
+    let vault = StubVault(nil)
+    let client = try makeClient(vault)
+    StubProtocol.server.route("/v1/auth/login", 200, #"{"data":{"user":{"id":"A11CE000-3333-4C0A-9E2D-0A1B2C3D4E5F","email":"alice"},"sessionId":"5E550000-0000-4000-8000-000000000001","accessToken":"a-late","refreshToken":"r-late","expiresAt":900000,"serverTime":0}}"#)
+    StubProtocol.server.route("/v1/auth/session/revoke", 200, #"{"data":{"ok":true}}"#)
+    let arrived = StubProtocol.server.hold("/v1/auth/login")
+    let device = AccountDevice(name: "phone")
+    struct Input: Encodable { var username: String; var password: String; var device: AccountDevice }
+    let body = try JSONEncoder().encode(Input(username: "alice", password: "abc12345", device: device))
+    let login = Task { try await client.request("v1/auth/login", method: "POST", body: body, authenticated: false, as: AccountTokens.self) }
+    for await _ in arrived { break }
+    try await client.signOut()
+    StubProtocol.server.releaseHeld()
+    await #expect(throws: CancellationError.self) { _ = try await login.value }
+    await client.settleRevocation()
+    let hit = try #require(StubProtocol.server.calls("/v1/auth/session/revoke").first, "迟到签出的那条会话没吊销")
+    let sent = try #require(hit.body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+    #expect(sent["refreshToken"] as? String == "r-late")
+    #expect((sent["device"] as? [String: Any])?["secret"] as? String == device.secret, "吊销要带登录时那台设备的绑定")
+    #expect(vault.stored == nil, "迟到的令牌不许落进钥匙串")
+    #expect(await client.savedUser() == nil)
   }
 
   /// 退登在界面上必须是「已经退了」。钥匙串写失败要报出来，但不能把人留在登录态里，

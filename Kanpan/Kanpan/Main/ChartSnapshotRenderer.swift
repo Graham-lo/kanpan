@@ -98,12 +98,17 @@ enum ChartSnapshotRenderer {
   /// 面板是一层 sheet，点完这行它正在往下收。系统不许在它收的过程中再叠一层，
   /// 所以这儿等它收干净再上——等不到就算了，不弹任何东西。
   /// 账号页「导出我的数据」也走这一处（P3.6），全 app 只有这一个系统分享面板的入口。
-  static func present(_ url: URL) {
+  /// - Parameter finished: 分享面板收起（分享完或取消）时调一次；面板一直没摆出来也调。
+  ///   导出的个人数据靠它在面板收起后当场删掉（`AccountExport`）。
+  static func present(_ url: URL, finished: (@MainActor () -> Void)? = nil) {
     Task { @MainActor in
       for _ in 0..<20 {
         if let host = topViewController(), host.presentedViewController == nil,
            host.view.window != nil, !host.isBeingDismissed {
           let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+          if let finished {
+            sheet.completionWithItemsHandler = { _, _, _, _ in MainActor.assumeIsolated { finished() } }
+          }
           if let pop = sheet.popoverPresentationController {
             pop.sourceView = host.view
             pop.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.maxY - 40,
@@ -115,6 +120,7 @@ enum ChartSnapshotRenderer {
         }
         try? await Task.sleep(for: .milliseconds(120))
       }
+      finished?()
     }
   }
 

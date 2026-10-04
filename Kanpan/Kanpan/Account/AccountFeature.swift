@@ -70,6 +70,8 @@ import KanpanCore
   /// 测试用：直接给一个客户端（假服务器、假钥匙串）。产品走下面那个无参的。
   init(client: AccountClient?) { self.client = client }
   init() {
+    // 上一次运行留下的导出文件（面板没收起 app 就被杀了之类）冷启动时清掉。
+    Self.purgeExports()
     // 线上地址只在 `ServerHosts` 一处（以前另抄在 Info.plist 的 KanpanAccountAPIURL 里）；
     // DEBUG 构建的 UI 用例可以用环境变量指别处。
     let configured = ServerHosts.accountAPI.absoluteString
@@ -232,10 +234,13 @@ import KanpanCore
           struct Input: Encodable { var username: String; var password: String; var device: AccountDevice }
           let data = try JSONEncoder().encode(Input(username: email, password: password, device: device))
           let value: AccountTokens = try await client.request(current == .login ? "v1/auth/login" : "v1/auth/register", method: "POST", body: data, authenticated: false)
+          // 回包路上人已经点了退出（`logout` 换了 `attempt`）：不登回来，服务端那条新会话也吊销掉。
+          guard attempt == id else { await client.discard(value, device: device); return }
           try await accept(value)
         case .changePassword:
           struct Input: Encodable { var currentPassword: String; var newPassword: String }
           let _: AccountOK = try await client.request("v1/auth/password/change", method: "POST", body: JSONEncoder().encode(Input(currentPassword: password, newPassword: newPassword)))
+          guard attempt == id else { return }
           password = ""; newPassword = ""; page = .account
         case .close:
           struct Input: Encodable { var password: String }
@@ -243,6 +248,8 @@ import KanpanCore
           await logout()
         default: break
         }
+      } catch _ where attempt != id {
+        // 人已经退了：这一趟的失败（多半是退登作废掉的请求）不念到账号页上。
       } catch AccountError.http(401, _) where current == .login { error = "用户名或密码不对" }
       // 改密码 / 注销那两页**不再**把 401 一律念成「密码不对」。服务端现在分得清：
       // 密码错是 `wrong_password`（`auth.rs`），会话过期 / 令牌失效才是
@@ -256,6 +263,7 @@ import KanpanCore
   func accept(_ value: AccountTokens) async throws {
     guard let client else { throw AccountError.unavailable }
     generation &+= 1
+    Self.purgeExports()
     let apply = try onPrepareAccount?(value.user)
     try await client.accept(value, device: device)
     apply?()
@@ -271,9 +279,15 @@ import KanpanCore
   /// 于是用户点了退出却还登着——钥匙串里那份凭据还在、服务端那条会话也还在，
   /// 而他以为自己已经走了。退登是个**只能前进**的动作：本机这一半（内存里的用户、
   /// 钥匙串、服务端会话）一定要走掉，装档案失败最多在账号页上留一句提示。
+  ///
+  /// 退登也不看 `busy`：原来登录 / 改密码还在路上时点退出直接 `return`，界面一点反应都没有
+  /// （审查 D-09）。现在退登优先——换掉 `attempt`，在路上那一趟回来时认出自己已经过时：
+  /// 登录的回包不装、服务端那条新会话吊销（`AccountClient.discard`），失败也不念。
   func logout() async {
-    guard !busy || page == .close else { return }
+    attempt = UUID(); busy = false
     generation &+= 1
+    // 导出的个人数据不留给下一个用这台机器的人（审查 D-08，见 `AccountExport`）。
+    Self.purgeExports()
     var failure: (any Error)?
     // 钥匙串写失败也不把人留在登录态：`signOut` 里内存那一半已经先清了（A-02）。
     do { try await client?.signOut() } catch { failure = error }

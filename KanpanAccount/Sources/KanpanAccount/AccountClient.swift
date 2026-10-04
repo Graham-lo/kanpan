@@ -185,6 +185,7 @@ public actor AccountClient {
       do {
         try admit(epoch, owner: owner)
         let result = try await send(path, method: method, body: body, key: key, token: token, contentType: contentType)
+        if !isCurrent(epoch, owner: owner) { revokeOrphan(path: path, body: body, response: result) }
         try admit(epoch, owner: owner); return result
       } catch AccountError.http(401, _) where authenticated {
         try admit(epoch, owner: owner)
@@ -393,6 +394,33 @@ public actor AccountClient {
     do { try vault.write(nil) } catch { failure = error }
     revocation = Task { await self.revoke(credential, access: token) }
     if let failure { throw failure }
+  }
+  /// 登录 / 注册的回包到手时，人已经点了退出（审查 D-09）：这对令牌不装、不落盘，
+  /// 但服务端那条刚签出来的会话要吊销掉——不然它白占着「同类设备一台在线」的名额，
+  /// 活满三十天。和 `signOut` 的后台吊销排成一串，不互相顶掉。
+  public func discard(_ tokens: AccountTokens, device: AccountDevice) {
+    let credential = SavedAccount(user: tokens.user, sessionId: tokens.sessionId, device: device,
+                                  refreshToken: tokens.refreshToken, origin: AccountClient.origin(of: baseURL))
+    let previous = revocation
+    revocation = Task {
+      await previous?.value
+      await self.revoke(credential, access: tokens.accessToken)
+    }
+  }
+  /// 签出新会话的那两条路。
+  private static let sessionIssuingPaths: Set<String> = ["v1/auth/login", "v1/auth/register"]
+  /// 登录 / 注册的回包到了，代际却已经换了（人在路上点了退出、换了号）。
+  ///
+  /// 这一趟会被 `admit` 变成 `CancellationError`，调用方拿不到令牌，自然也没法替它吊销
+  /// ——`AccountFeature` 那边「回包到手时认出自己过时就 `discard`」的那一支因此永远走不到，
+  /// 服务端那条新会话就白占着「同类设备一台在线」的名额活满三十天（审查 D-09 回归用例抓到的）。
+  /// 所以在作废之前，就在这儿按请求体里的设备绑定把它吊销掉。
+  private func revokeOrphan(path: String, body: Data?, response: Data) {
+    struct Carrier: Decodable { var device: AccountDevice }
+    guard Self.sessionIssuingPaths.contains(path), let body,
+      let device = try? JSONDecoder().decode(Carrier.self, from: body).device,
+      let tokens = try? JSONDecoder().decode(Envelope<AccountTokens>.self, from: response).data else { return }
+    discard(tokens, device: device)
   }
   /// 测试用：等后台那一脚吊销落地。产品代码不等它。
   public func settleRevocation() async { await revocation?.value }
