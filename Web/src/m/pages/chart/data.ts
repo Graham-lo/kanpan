@@ -1,12 +1,12 @@
 /* 手机网页版 · 行情页的取数小件
  *
- * - 估值两项（预期净利润、营收）：market/meta.ts 只存总供应量，这里按品种单取一次 /v1/market/meta，
- *   只留 forwardEarnings / revenue（总供应量仍由 meta.ts 写进 Sym.supply）。
+ * - 估值两项（预期净利润、营收）：从 market/meta.ts 那份 /v1/market/meta 的行里取（和总供应量同一次请求，
+ *   不再自己另发一次），只留 forwardEarnings / revenue（总供应量由 meta.ts 写进 Sym.supply）。
  * - 主力订单流数据口：照 chart/orderflow.source.ts 的 createOrderFlowPort 包 OrderFlowSource，
  *   多两件事——① setOverride：「主力订单流」门槛改完立刻生效（createOrderFlowPort 对同一品种
  *   setWanted 直接 return，换不了门槛）；② 记下最新快照的生效门槛与默认值，给门槛编辑器用。
  */
-import { S, on as onMarket, wantMeta } from '../../../market'
+import { S, on as onMarket, metaRow } from '../../../market'
 import { OrderFlowSource } from '../../chart/orderflow.source'
 import { stopWhenHiddenLong } from '../../../orderflow/idle'
 import type { OrderFlowPort } from '../../chart'
@@ -27,23 +27,14 @@ export function fetchValuation(sym: string): Promise<Valuation | null> {
   if (have) return Promise.resolve(have)
   const p0 = pending.get(sym)
   if (p0) return p0
-  wantMeta([sym])
-  const url = `${import.meta.env.BASE_URL.replace(/\/web\/(m\/)?$/, '/')}v1/market/meta?symbols=${encodeURIComponent(sym)}`
   const num = (v: unknown): number | null => { const n = v == null ? NaN : +(v as number); return Number.isFinite(n) && n > 0 ? n : null }
-  const p = fetch(url, { cache: 'no-store' })
-    .then(r => (r.ok ? r.json() : null))
-    .then((body: { data?: Record<string, { totalSupply?: unknown; forwardEarnings?: unknown; revenue?: unknown }> } | null) => {
-      const row = body?.data?.[sym]
-      if (!body) throw new Error('meta')
-      const v: Valuation = { forwardEarnings: num(row?.forwardEarnings), revenue: num(row?.revenue) }
-      const sup = num(row?.totalSupply)
-      const s = S.symbols.get(sym)
-      if (s && sup != null && !s.supply) s.supply = sup
-      valuations.set(sym, v)
-      pending.delete(sym)
-      return v
-    })
-    .catch(() => { setTimeout(() => pending.delete(sym), 120_000); return null })
+  const p = metaRow(sym).then(row => {
+    if (row === undefined) { setTimeout(() => pending.delete(sym), 120_000); return null }
+    const v: Valuation = { forwardEarnings: num(row?.forwardEarnings), revenue: num(row?.revenue) }
+    valuations.set(sym, v)
+    pending.delete(sym)
+    return v
+  })
   pending.set(sym, p)
   return p
 }

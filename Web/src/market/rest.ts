@@ -12,6 +12,7 @@ import type { Bar } from '../chart/calc'
 import { S, emit } from './state'
 import { admit, coolingFor, isRateLimit, noteStatus, setGatewayProbe } from './limit'
 import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
+import { supplyOf } from './meta'
 
 export const REST = 'https://fapi.binance.com'
 
@@ -79,7 +80,9 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
     for (const e of ex.symbols) {
       if (e.quoteAsset !== 'USDT' || e.status !== 'TRADING') continue
       if (e.contractType !== 'PERPETUAL' && e.contractType !== 'TRADIFI_PERPETUAL') continue
-      next.set(e.symbol, S.symbols.get(e.symbol) || blank(e))
+      let s = S.symbols.get(e.symbol)
+      if (!s) { s = blank(e); const sup = supplyOf(e.symbol); if (sup != null) s.supply = sup }   // 元数据先于全市场表到了
+      next.set(e.symbol, s)
     }
     // 三个请求要几百毫秒到几秒才回来，这期间推送已经把手里的价格、标记价刷新过了：
     // 交易所时间比手里旧的那一组不覆盖（否则价格回跳一下、涨跌幅闪回旧值，直到下一帧推送再改回来）
