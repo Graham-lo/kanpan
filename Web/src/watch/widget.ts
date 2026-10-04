@@ -18,6 +18,8 @@ import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge } from '../ui/common'
 import { fmtCompact } from '../util/format'
+import { reorderWatch, undoClear, oiShown, oiFromResponse, type OiEntry } from './logic'
+import { onSession } from '../account/session'
 
 export interface WatchDeps {
   openSymbol(k: string): void
@@ -62,6 +64,8 @@ function rows(): string[] {
 
 export function installWatch(d: WatchDeps): void {
   D = d
+  // 换了账号：上一个账号的 ⌘Z 撤销和淡行都不再作数（不然 ⌘Z 会把上个账号移出的品种塞进这个账号）
+  onSession(() => { undo = null; ghost = null })
   // 侧栏拖宽 / 拖窄跨过 400 时重画，加减那两列
   const el = panelEl()
   if (el) new ResizeObserver(() => {
@@ -106,8 +110,8 @@ function frCell(k: string): string {
   return s?.fr == null ? `<td class="num faint" data-f="fr" data-tip="${NO_PERP}">—</td>` : `<td class="num ${cls(s.fr)}" data-f="fr">${frText(s.fr)}</td>`
 }
 function oiCell(k: string): string {
-  const v = oiCache.get(k)?.v
-  return v == null ? `<td class="num faint" data-f="oi"${oiCache.has(k) ? ` data-tip="${NO_PERP}"` : ''}>—</td>` : `<td class="num muted" data-f="oi">${fmtCompact(v)}</td>`
+  const o = oiShown(oiCache.get(k), S.symbols.get(k)?.price)
+  return o.value == null ? `<td class="num faint" data-f="oi"${o.noPerp ? ` data-tip="${NO_PERP}"` : ''}>—</td>` : `<td class="num muted" data-f="oi">${fmtCompact(o.value)}</td>`
 }
 const frText = (fr: number): string => (fr * 100).toFixed(4) + '%'
 
@@ -229,7 +233,7 @@ export function watchClick(e: MouseEvent): boolean {
       {
         icon: 'trash', label: `清空「${tabName(st.watchTab)}」自选`, disabled: !st.watch[st.watchTab].length, run: () => {
           const k = st.watchTab, bak = st.watch[k]; st.watch[k] = []; ghost = null; save(); D.renderPanel(); D.refreshStreams()
-          undo = () => { st.watch[k] = bak; save(); D.renderPanel(); D.refreshStreams() }
+          undo = () => { st.watch[k] = undoClear(bak, st.watch[k]); save(); D.renderPanel(); D.refreshStreams() }
           toast('已清空', '⌘Z 撤销', 'trash')
         },
       },
@@ -242,24 +246,30 @@ export function watchClick(e: MouseEvent): boolean {
 }
 
 // ------------------------------------------------------------ 拖动排序
+/** 被拖的品种放在拖动数据里，不记 DOM 节点：拖动途中同步改了自选、列表重画，松手照样落得对 */
+const DRAG_TYPE = 'application/x-hkline-watch'
 function bindDrag(tbl: HTMLElement): void {
-  let from: HTMLElement | null = null
   const clear = () => $$('tr', tbl).forEach(r => r.classList.remove('drop-above', 'drop-below'))
-  tbl.addEventListener('dragstart', e => { from = tgt(e).closest('tr'); from?.classList.add('dragging'); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move' })
-  tbl.addEventListener('dragend', () => { from?.classList.remove('dragging'); clear() })
+  const ours = (e: DragEvent): boolean => !!e.dataTransfer?.types.includes(DRAG_TYPE)
+  tbl.addEventListener('dragstart', e => {
+    const tr = tgt(e).closest<HTMLElement>('tr[data-sym]'); if (!tr || !e.dataTransfer) return
+    tr.classList.add('dragging'); e.dataTransfer.setData(DRAG_TYPE, tr.dataset.sym || ''); e.dataTransfer.effectAllowed = 'move'
+  })
+  tbl.addEventListener('dragend', e => { tgt(e).closest('tr')?.classList.remove('dragging'); clear() })
   tbl.addEventListener('dragover', e => {
-    const tr = tgt(e).closest<HTMLElement>('tbody tr'); if (!tr || !from) return
+    const tr = tgt(e).closest<HTMLElement>('tbody tr[data-sym]'); if (!tr || !ours(e)) return
     e.preventDefault(); clear()
     const r = tr.getBoundingClientRect(); tr.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-above' : 'drop-below')
   })
   tbl.addEventListener('drop', e => {
-    const tr = tgt(e).closest<HTMLElement>('tbody tr'); if (!tr || !from || tr === from) return
+    const tr = tgt(e).closest<HTMLElement>('tbody tr[data-sym]'); if (!tr || !ours(e)) return
     e.preventDefault()
-    const list = st.watch[st.watchTab], a = from.dataset.sym || ''
-    if (!list.includes(a)) return
-    list.splice(list.indexOf(a), 1)
-    let i = list.indexOf(tr.dataset.sym || ''); if (i < 0) i = list.length; else if (tr.classList.contains('drop-below')) i++
-    list.splice(i, 0, a); save(); D.renderPanel()
+    const below = tr.classList.contains('drop-below'); clear()
+    const rendered = $$<HTMLElement>('tbody tr[data-sym]', tbl).map(r => r.dataset.sym || '')
+    const list = st.watch[st.watchTab]
+    const next = reorderWatch(list, rendered, e.dataTransfer?.getData(DRAG_TYPE) || '', tr.dataset.sym || '', below)
+    if (!next) return
+    list.splice(0, list.length, ...next); save(); D.renderPanel()
   })
 }
 
@@ -300,7 +310,7 @@ async function refreshFunding(): Promise<void> {
   } catch { fundingAt = 0 }
 }
 
-const oiCache = new Map<string, { v: number | null; t: number }>()
+const oiCache = new Map<string, OiEntry>()
 const oiInflight = new Set<string>()
 /** 持仓额 = 未平仓合约数 × 最新价（和详情一致）；币安没有批量接口，逐只取，并发 4，一分钟过期 */
 async function refreshOI(list: string[]): Promise<void> {
@@ -314,9 +324,11 @@ async function refreshOI(list: string[]): Promise<void> {
       const k = todo[next++]
       try {
         const r = await j<{ openInterest: string }>(`${REST}/fapi/v1/openInterest?symbol=${k}`)
-        const px = S.symbols.get(k)?.price
-        oiCache.set(k, { v: px && +r.openInterest > 0 ? +r.openInterest * px : null, t: Date.now() })
-      } catch { oiCache.set(k, { v: null, t: Date.now() - OI_TTL + 10e3 }) }
+        oiCache.set(k, { oi: oiFromResponse(r.openInterest), t: Date.now() })
+      } catch {
+        // 取失败（限流、断网）：留着上一次的数，10 秒后再试；不当成「没有永续」
+        oiCache.set(k, { oi: oiCache.get(k)?.oi, t: Date.now() - OI_TTL + 10e3 })
+      }
       finally { oiInflight.delete(k) }
     }
   }
