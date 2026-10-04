@@ -229,7 +229,8 @@ const status = {
   at: 0,
   user: null as string | null,
 }
-let inflight: Promise<void> | null = null
+/** 在途那一拉是替谁拉的；again = 拉的途中又有人要求强制重拉（刚改过记录），回来后再拉一遍 */
+let inflight: { user: string | null; again: boolean } | null = null
 const statusSubs = new Set<() => void>()
 let sessionWired = false
 
@@ -286,16 +287,24 @@ export function refreshReviewStatus(force = false): void {
     return
   }
   void flushPending()
-  if (inflight) return
+  // 只有替同一个人拉的那一拉才挡：换了人时上一个人的那拉回来会被丢掉，新人这拉必须照发
+  if (inflight && inflight.user === session.user) { if (force) inflight.again = true; return }
   if (!force && status.at && Date.now() - status.at < THROTTLE) return
   status.at = Date.now()
   const who = session.user
-  inflight = Promise.allSettled([reviewApi.views(), reviewApi.trades()]).then(([v, t]) => {
+  const run = { user: who, again: false }
+  inflight = run
+  void Promise.allSettled([reviewApi.views(), reviewApi.trades()]).then(([v, t]) => {
     if (session.user !== who) return
     if (v.status === 'fulfilled') { status.views = v.value as ViewRecordFull[]; status.viewsError = null } else status.viewsError = errorText(v.reason)
     if (t.status === 'fulfilled') { status.trades = t.value; status.tradesError = null } else status.tradesError = errorText(t.reason)
     setMeBadge(pendingNow())
-  }).finally(() => { inflight = null; emitStatus() })
+  }).finally(() => {
+    if (inflight !== run) return
+    inflight = null
+    emitStatus()
+    if (run.again && session.user === who) refreshReviewStatus(true)
+  })
 }
 
 /** 改过一条：先把共用那份就地换掉（角标、摘要立刻对），再去服务端对一次 */
