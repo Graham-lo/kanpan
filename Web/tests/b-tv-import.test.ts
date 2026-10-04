@@ -54,3 +54,13 @@ describe('我的 →「从 TradingView 导入」换账号', () => {
     expect(h.st.watch.crypto).toEqual(['ETHUSDT'])
   })
 })
+
+describe('TradingView 分区名带空格', () => {
+  it('###US Stocks 整段是分区名，不把 Stocks 当成一只对不上的代号', async () => {
+    const { parseTv } = await vi.importActual<typeof import('../src/watch/tvImport')>('../src/watch/tvImport')
+    expect(parseTv('###US Stocks,NASDAQ:NVDA,NASDAQ:TSLA\n###My Coins,BINANCE:BTCUSDT.P BINANCE:ETHUSDT.P')).toEqual([
+      { raw: 'NASDAQ:NVDA', section: 'US Stocks' }, { raw: 'NASDAQ:TSLA', section: 'US Stocks' },
+      { raw: 'BINANCE:BTCUSDT.P', section: 'My Coins' }, { raw: 'BINANCE:ETHUSDT.P', section: 'My Coins' },
+    ])
+  })
+})

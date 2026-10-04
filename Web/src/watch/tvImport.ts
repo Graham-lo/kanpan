@@ -53,11 +53,13 @@ export function sectionKind(name: string): Kind | null {
 export function parseTv(text: string): TvToken[] {
   const out: TvToken[] = []
   let section = ''
-  for (const part of text.split(/[,\n\r;，；\t ]+/)) {
+  // 分区名可以带空格（TradingView 导出是「###US Stocks,NASDAQ:NVDA,…」），所以先按逗号 / 换行切，
+  // 分区头整段当名字，其余再按空白切成代号
+  for (const part of text.split(/[,\n\r;，；]+/)) {
     const p = part.trim()
     if (!p) continue
     if (p.startsWith('###')) { section = p.slice(3).trim(); continue }
-    out.push({ raw: p, section })
+    for (const raw of p.split(/\s+/)) if (raw) out.push({ raw, section })
   }
   return out
 }
