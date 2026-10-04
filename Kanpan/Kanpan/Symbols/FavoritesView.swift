@@ -77,6 +77,9 @@ struct FavoritesView: View {
   /// 落脚点已经还原过了吗。还原之前不记新的——列表刚铺开时最上面那几行会先
   /// `onAppear`，那时候记下来的是「第一行」，正好把要还原的那个盖掉。
   @State private var anchorRestored = false
+  /// 正在跑的那一段「滚回原来那一行」。手指落下、开始拖、换分类、整页消失都会把它停掉，
+  /// 理由见 `FavoritesScrollRestore`。
+  @State private var restore = FavoritesScrollRestore()
   // 这张表「他摆成了什么样」：停在哪一类（`selected`，住在 `Prefs.favoritesGroup`）。
   //
   // 这类状态住在 `Prefs` 里（见 `Prefs` 末尾那一节），随账号同步，未登录记在访客档案。
@@ -111,6 +114,8 @@ struct FavoritesView: View {
       session.forgetScrollAnchor()
       rows.minY.removeAll()
       rows.anchor = nil
+      // 上一类的还原要是还在跑，别让它拿上一类的顺序把新这一类的表拽走。
+      restore.stop()
       anchorRestored = true
     }
     group = id
@@ -191,6 +196,7 @@ struct FavoritesView: View {
         session.topOffset[groupID ?? ""] = rows.anchorOffset
       }
       moreTask?.cancel()
+      restore.stop()
       for symbol in historyOn { onHistoryVisibility(symbol, false) }
       historyOn.removeAll()
     }
@@ -623,6 +629,8 @@ struct FavoritesView: View {
     // 长按等预览」那一段——那几种情况一个滚动阶段都不会发生。
     .onScrollPhaseChange { _, phase in
       session.scrolling = phase != .idle
+      // 人自己开始拖了：还原那一段让给他。
+      if phase == .interacting { stopRestoring() }
       // 那一下要是被 `List` 自己的滚动抢走了，抬手事件就到不了 `TouchWatcher`。
       // 滚动停下来的时候顺手把冻结解开，免得一整页锁死。
       if phase == .idle {
@@ -633,7 +641,7 @@ struct FavoritesView: View {
       }
     }
     .gesture(TouchWatcher { down in
-      if down { session.hold(favoriteOrder) } else { session.release() }
+      if down { stopRestoring(); session.hold(favoriteOrder) } else { session.release() }
     })
     // 关掉系统滚动条。iOS 13 起那根灰条自己是能抓住拖的，也就是说它会吃触摸——
     // 它占的那条竖带（右边 30pt）正好压在每行最右边的涨跌格上，列表一滚或一重建
@@ -672,6 +680,12 @@ struct FavoritesView: View {
     // 一次就够。
   }
 
+  /// 人的手先到了：还原停在原地，从这一刻起正常记落脚点（手指滚停时 `noteScrollAnchor` 会记）。
+  private func stopRestoring() {
+    restore.stop()
+    if !anchorRestored { anchorRestored = true }
+  }
+
   /// 切回这一页时滚回原来那一行（审查 C-08）。
   ///
   /// 自选页每切走一次就整个重建（`MainScreen.portraitBody` 的 `switch tab`），
@@ -700,8 +714,9 @@ struct FavoritesView: View {
     session.openedSymbol = nil
     if let opened, !session.visibleWhenOpened.contains(opened), list.contains(opened) {
       anchorRestored = true
-      Task { @MainActor in
+      restore.start { live in
         try? await Task.sleep(for: .milliseconds(60))
+        guard live() else { return }
         var transaction = Transaction(); transaction.disablesAnimations = true
         withTransaction(transaction) { reader.scrollTo(opened, anchor: .center) }
       }
@@ -713,7 +728,7 @@ struct FavoritesView: View {
       return
     }
     session.restoreAnchorUsed = anchor
-    Task { @MainActor in
+    restore.start { live in
       // 滚到位，量一眼，差几行补几行。
       //
       // 为什么补这一道：`scrollTo(_:anchor:.top)` 对齐的是**滚动容器**的上沿，
@@ -730,11 +745,14 @@ struct FavoritesView: View {
       var target = wanted
       for round in 0..<4 {
         try? await Task.sleep(for: .milliseconds(round == 0 ? 80 : 40))
+        // 每一轮睡醒先问一句：这期间人按住了表、换了分类或者切走了，就停在原地。
+        guard live() else { return }
         var transaction = Transaction(); transaction.disablesAnimations = true
         withTransaction(transaction) { reader.scrollTo(list[target], anchor: .top) }
         // 等这一下真的落地：`scrollTo` 之后 `List` 要重新铺行、重新量位置，
         // 太早读到的是上一帧的位置。
         try? await Task.sleep(for: .milliseconds(220))
+        guard live() else { return }
         guard let now = rows.topVisible(list), let at = list.firstIndex(of: now) else { break }
         let off = at - wanted
         if off == 0 { break }
@@ -744,10 +762,12 @@ struct FavoritesView: View {
       // `scrollTo` 只认整行，这一截只能直接去推 UIKit 那张表的 `contentOffset`。
       if session.topRow[groupID ?? ""] == anchor, let offset = session.topOffset[groupID ?? ""] {
         for _ in 0..<2 {
-          guard alignAnchorPixels(anchor, offset: offset) else { break }
+          guard live(), alignAnchorPixels(anchor, offset: offset) else { break }
           try? await Task.sleep(for: .milliseconds(120))
         }
       }
+      // 被停掉的那一段不记落脚点：位置是人自己滚出来的，等他滚停时再记。
+      guard live() else { return }
       anchorRestored = true
       // 还原期间攒下的位置是过程量，落地之后重记一次才是人真正停在的那一行。
       noteScrollAnchor()
@@ -1330,6 +1350,33 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   }
   /// 换分类、换账号时把落脚点一起丢掉。
   func forgetScrollAnchor() { scrollAnchor = nil }
+}
+
+/// 回到自选页那一段「滚回原来那一行」（审查 C-08 的还原，深度审查 D 线 2026-10-04 补上停止）。
+///
+/// 还原最多四轮 `scrollTo`、两轮像素补齐，前后一秒多。从前两段都是不留句柄的 `Task`：
+/// 这期间人一按住表、一甩、换了分类或者干脆切走，它照样把表拽回旧的那一行，
+/// 落地之后再拿过期的位置记一次落脚点。现在句柄留在这儿，`start` 开新的一段之前
+/// 先停掉旧的；`stop` 之后，正在跑的那段下一次问 `live()` 就得到 false、停在原地。
+@MainActor final class FavoritesScrollRestore {
+  private var task: Task<Void, Never>?
+  /// 每开一段、每停一次都加一：`live()` 认的是「还是不是我这一段」，不只是「被没被取消」。
+  private var generation = 0
+
+  /// 开一段新的还原。`body` 每次 `await` 醒来都要先问 `live()`，false 就立刻返回。
+  func start(_ body: @escaping @MainActor (_ live: @escaping @MainActor () -> Bool) async -> Void) {
+    stop()
+    let mine = generation
+    task = Task { @MainActor [weak self] in
+      await body { [weak self] in !Task.isCancelled && self?.generation == mine }
+    }
+  }
+  /// 停在原地：不再滚、不再补零头、不再记落脚点。没有在跑的也可以放心调。
+  func stop() {
+    task?.cancel()
+    task = nil
+    generation &+= 1
+  }
 }
 
 /// 列表现在铺着哪几行，以及由它算出来的落脚点（审查 C-08）。
