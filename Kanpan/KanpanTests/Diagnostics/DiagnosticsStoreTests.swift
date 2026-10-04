@@ -147,6 +147,50 @@ struct DiagnosticsStoreTests {
     #expect(kept.first?.digest?.appBuildVersion == "3")
   }
 
+  @Test("每天一份的大指标挤不掉崩溃报告：先删指标（深度审查 E-9）")
+  func metricsDoNotEvictCrashReports() throws {
+    let dir = makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let clock = TestClock()
+    let store = DiagnosticsStore(directory: dir, clock: clock.now)
+    #expect(store.ingest(PayloadFixtures.crashPayload(), kind: .diagnostic) != nil)
+    clock.advance(86_400)
+    // 二十天、每天一份约 40 KB 的指标：合计 800 KB，远超 512 KB。
+    let filler = String(repeating: "x", count: 40 * 1024)
+    for i in 0..<20 {
+      let body = #"{"appVersion":"1.0.0","build":"\#(i)","pad":"\#(filler)"}"#
+      store.ingest(Data(body.utf8), kind: .metric)
+      clock.advance(86_400)
+    }
+    let kept = store.records()
+    #expect(kept.filter { $0.kind == .diagnostic }.count == 1, "崩溃那份还在")
+    #expect(store.exportBundle().crashCount == 1)
+    #expect(store.diskUsageBytes() <= 512 * 1024)
+    #expect(kept.last?.kind == .metric, "最新的指标留着")
+  }
+
+  @Test("诊断自己超了配额才删诊断，最新那条永远留着")
+  func diagnosticsOverQuotaEvictOldestDiagnostic() {
+    let dir = makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let clock = TestClock()
+    // 4 条上限：诊断配额 3 条。
+    let store = DiagnosticsStore(
+      directory: dir, limits: .init(maxRecords: 4, maxBytes: 10 * 1024 * 1024), clock: clock.now)
+    store.ingest(PayloadFixtures.metricPayload(build: "m"), kind: .metric)
+    clock.advance(60)
+    for i in 0..<5 {
+      store.ingest(PayloadFixtures.crashPayload(version: "1.0.\(i)"), kind: .diagnostic)
+      clock.advance(60)
+    }
+    let kept = store.records()
+    #expect(kept.count == 4)
+    // 诊断占满自己的三条配额之后，再来的诊断挤掉的是最旧的诊断，指标那四分之一留着。
+    #expect(kept.filter { $0.kind == .metric }.count == 1)
+    #expect(kept.filter { $0.kind == .diagnostic }.compactMap { $0.digest?.incidents.first?.version } == ["1.0.2 (1)", "1.0.3 (1)", "1.0.4 (1)"])
+    #expect(kept.last?.kind == .diagnostic)
+  }
+
   @Test("同一份 payload 收两次（冷启动补收 pastPayloads），盘上只有一份")
   func ingestIsIdempotent() throws {
     let dir = makeTempDir()

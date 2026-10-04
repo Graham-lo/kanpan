@@ -53,6 +53,21 @@ struct FrameProbeSmokeTests {
       """)
   }
 
+  @Test("record 倒计时里手动停掉又开新一轮：到点不掐新的那轮")
+  @MainActor
+  func staleCountdownLeavesNewSessionAlone() async throws {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("kanpan-probe-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let probe = FrameProbe(store: FrameReportStore(directory: dir))
+    probe.record(label: "旧", seconds: 0.3)
+    probe.stop()
+    probe.start(label: "新")
+    try await Task.sleep(for: .seconds(0.6))
+    #expect(probe.isRunning && probe.label == "新", "旧的到点不该把新的这轮停掉")
+    probe.stop()
+  }
+
   @Test("record(label:seconds:) 到点自动停")
   @MainActor
   func autoStops() async throws {

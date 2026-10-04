@@ -68,6 +68,8 @@
 
     private(set) var label: String = ""
     private(set) var isRunning = false
+    /// 第几轮采集。`record` 的到点只停自己开的那一轮。
+    private(set) var session = 0
     /// 这一段里登记过的视图各重算了几次 `body`。见 `countBody`。
     private var bodyCounts: [String: Int] = [:]
     /// 这一轮 runloop 里求值过的视图。结帐时看这一帧重不重，把重帧记到它们名下。
@@ -97,6 +99,7 @@
     func start(label: String) {
       guard !isRunning else { return }
       isRunning = true
+      session += 1
       self.label = label
       stats.reset()
       bodyCounts = [:]
@@ -143,8 +146,11 @@
       label: String, seconds: Double, completion: (@MainActor @Sendable (FrameReport?) -> Void)? = nil
     ) {
       start(label: label)
+      let mine = session
       Task { @MainActor [weak self] in
         try? await Task.sleep(for: .seconds(seconds))
+        // 倒计时里被手动停掉、又开了新的一轮：到点不能把新的那轮提前掐掉存盘。
+        guard self?.session == mine else { completion?(nil); return }
         // 必须先把 `stop()` 单独算出来再传。写成 `completion?(self?.stop())` 的话，
         // `completion` 为 nil 时**整个实参都不求值**（可选链短路），采集就永远停不下来——
         // 而「不带回调、到点自动存盘」正是这个方法最常见的用法。

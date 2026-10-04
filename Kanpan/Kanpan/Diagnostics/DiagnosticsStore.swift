@@ -18,6 +18,7 @@ import Foundation
 //
 // 容量：诊断文件不能变成 P9.4「沙盒 < 1MB」的累赘，所以**自带上限**
 // （条数 + 总字节，超了删最旧的）。上限是 `Limits`，单测里调小了直接验淘汰。
+// 淘汰先删每日指标、崩溃 / 卡死诊断只在超出自己那四分之三的配额时才删（见 `pruneLocked`）。
 
 /// 存盘的一条记录。`payload` 是 MetricKit 原样的 JSON，不做任何裁剪——
 /// 摘要看走眼时要能回去翻原文。
@@ -59,11 +60,15 @@ struct DiagnosticsBundle: Codable, Sendable {
 final class DiagnosticsStore: @unchecked Sendable {
 
   struct Limits: Sendable {
-    /// 最多留几份。MetricKit 一天一份，64 份 ≈ 两个月。
+    /// 最多留几份。
     var maxRecords: Int = 64
-    /// 总字节上限。一份 payload 通常 20–60 KB，512 KB 大约放得下十几份大的；
+    /// 总字节上限。一份指标 payload 通常 20–60 KB，512 KB 只放得下十来天的指标——
+    /// 所以按种类分：崩溃 / 卡死诊断配额是 3/4（条数与字节都是），指标先删（`pruneLocked`）。
     /// 条数和字节谁先到按谁淘汰。
     var maxBytes: Int = 512 * 1024
+    /// 诊断（崩溃 / 卡死）自己的配额：超了才轮到删诊断。
+    var diagnosticRecords: Int { max(1, maxRecords * 3 / 4) }
+    var diagnosticBytes: Int { maxBytes / 4 * 3 }
     init(maxRecords: Int = 64, maxBytes: Int = 512 * 1024) {
       self.maxRecords = maxRecords
       self.maxBytes = maxBytes
@@ -252,6 +257,8 @@ final class DiagnosticsStore: @unchecked Sendable {
     var url: URL
     var name: String
     var size: Int
+    /// 文件名打头就是种类（`fileName(kind:at:id:)`）。认不出的按指标算——宁可先删它。
+    var isDiagnostic: Bool { name.hasPrefix(PayloadKind.diagnostic.rawValue + "-") }
   }
 
   /// nil = 还没扫过。
@@ -328,22 +335,36 @@ final class DiagnosticsStore: @unchecked Sendable {
   }
 #endif
 
-  /// 超限就从最旧的开始删。**先删到条数达标，再删到字节达标**，
-  /// 顺序无所谓（都是删最旧），分两步只是读起来清楚。
+  /// 超限就删最旧的——**先删每日指标**（深度审查 E-9）。
+  ///
+  /// 以前指标和崩溃 / 卡死诊断排同一条队、吃同一份字节预算：每天一份 20–60 KB 的指标，
+  /// 十来天就把 512 KB 填满，把最值钱的那份崩溃报告当「最旧」先删掉。现在：
+  /// - 总数或总字节超了，诊断还在自己的配额（`Limits.diagnosticRecords / diagnosticBytes`，
+  ///   四分之三）以内，就删最旧的**指标**；
+  /// - 诊断自己超了配额（或者已经没有指标可删），才删最旧的**诊断**。
+  /// 留一条底线：最新那一条永远不删，哪怕单份就超了上限——否则刚收到的崩溃报告会被
+  /// 自己的清理逻辑删掉。
   private func pruneLocked() {
     var entries = indexLocked()
-
-    while entries.count > limits.maxRecords, let oldest = entries.first {
-      try? FileManager.default.removeItem(at: oldest.url)
-      entries.removeFirst()
+    func usage() -> (count: Int, bytes: Int, diagCount: Int, diagBytes: Int) {
+      var out = (count: entries.count, bytes: 0, diagCount: 0, diagBytes: 0)
+      for e in entries {
+        out.bytes += e.size
+        if e.isDiagnostic { out.diagCount += 1; out.diagBytes += e.size }
+      }
+      return out
     }
-    var total = entries.reduce(0) { $0 + $1.size }
-    // 留一条底线：哪怕单份 payload 就超了 maxBytes，也得留住最新那一条，
-    // 否则刚收到的崩溃报告会被自己的清理逻辑删掉。
-    while total > limits.maxBytes, entries.count > 1, let oldest = entries.first {
-      try? FileManager.default.removeItem(at: oldest.url)
-      total -= oldest.size
-      entries.removeFirst()
+    var u = usage()
+    while (u.count > limits.maxRecords || u.bytes > limits.maxBytes), entries.count > 1 {
+      // 最新那一条（末尾）不在候选里。
+      let candidates = entries.indices.dropLast()
+      let diagnosticOver = u.diagCount > limits.diagnosticRecords || u.diagBytes > limits.diagnosticBytes
+      let oldestMetric = candidates.first { !entries[$0].isDiagnostic }
+      let oldestDiagnostic = candidates.first { entries[$0].isDiagnostic }
+      guard let victim = diagnosticOver ? (oldestDiagnostic ?? oldestMetric) : (oldestMetric ?? oldestDiagnostic) else { break }
+      try? FileManager.default.removeItem(at: entries[victim].url)
+      entries.remove(at: victim)
+      u = usage()
     }
     slots = entries
   }
