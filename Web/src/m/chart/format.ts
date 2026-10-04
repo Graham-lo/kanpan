@@ -31,10 +31,14 @@ export function dateParts(ms: number, offsetMinutes: number): DateParts {
 
 export const pad2 = (n: number): string => (n < 10 ? `0${n}` : `${n}`)
 
+/** 时间轴刻度文案：≥1 年给年，≥1 月给年-月，≥1 天给月-日，跨零点给月-日，其余给时:分。 */
 export function fmtTick(ms: number, step: number, offsetMinutes: number): string {
   const p = dateParts(ms, offsetMinutes)
   const day = 86_400_000
-  if (step >= 180 * day) return `${p.year}-${pad2(p.month)}`
+  // 一月及以上的刻度都落在某月 1 号（见 timeTicks），写「03-01」没有信息量；年档都在 1 月 1 号，
+  // 写「2026-01」只是白占宽度（同 iOS · 审查 B·P3-3）。
+  if (step >= 365 * day) return `${p.year}`
+  if (step >= 30 * day) return `${p.year}-${pad2(p.month)}`
   if (step >= day) return `${pad2(p.month)}-${pad2(p.day)}`
   if (p.hour === 0 && p.minute === 0) return `${pad2(p.month)}-${pad2(p.day)}`
   return `${pad2(p.hour)}:${pad2(p.minute)}`

@@ -3,6 +3,7 @@
 //
 // 纯函数，不碰 DOM。坐标一律是 CSS 像素（对应 iOS 的 pt），scale = devicePixelRatio。
 
+import { dateParts } from './format'
 import { BarSeries, jsRound } from './series'
 
 /** Swift 的 `.rounded()`（四舍五入、.5 远离零），和 JS 的 Math.round 在负数 .5 上不一样。 */
@@ -625,10 +626,44 @@ export function niceStep(span: number, want: number): number {
 }
 
 const TMIN = 60_000, THOUR = 3_600_000, TDAY = 86_400_000
+/**
+ * 时间轴允许的步长阶梯（末尾补了 2 / 5 / 10 年，同 iOS Ticks.swift · 审查 B·P3-3）。
+ * 原型封顶一年：月线缩到最密时九年历史塞进三百来点宽，一年一格只有三十几点，标签挤成一团。
+ * 一周及以上的步长只是「标称长度」，用来挑档；真正的刻度按日历摆（见 timeTicks）。
+ */
 export const timeSteps: number[] = [
   TMIN, 5 * TMIN, 15 * TMIN, 30 * TMIN, THOUR, 2 * THOUR, 4 * THOUR, 6 * THOUR, 12 * THOUR,
   TDAY, 2 * TDAY, 7 * TDAY, 14 * TDAY, 30 * TDAY, 90 * TDAY, 180 * TDAY, 365 * TDAY,
+  730 * TDAY, 1825 * TDAY, 3650 * TDAY,
 ]
+
+/** 按日历月推进的档：一档跨几个月。月 / 季 / 半年 / 年 / 2 年 / 5 年 / 10 年。 */
+export function calendarMonths(step: number): number | null {
+  switch (step) {
+    case 30 * TDAY: return 1
+    case 90 * TDAY: return 3
+    case 180 * TDAY: return 6
+    case 365 * TDAY: return 12
+    case 730 * TDAY: return 24
+    case 1825 * TDAY: return 60
+    case 3650 * TDAY: return 120
+    default: return null
+  }
+}
+
+/** 公历某年某月某日（本地零点）距 1970-01-01 的天数（Howard Hinnant 的 days_from_civil，同 iOS）。 */
+export function daysFromCivil(year: number, month: number, day: number): number {
+  const y = month <= 2 ? year - 1 : year
+  const era = Math.trunc((y >= 0 ? y : y - 399) / 400)
+  const yoe = y - era * 400
+  const mp = (month + 9) % 12
+  const doy = Math.trunc((153 * mp + 2) / 5) + day - 1
+  const doe = yoe * 365 + Math.trunc(yoe / 4) - Math.trunc(yoe / 100) + doy
+  return era * 146_097 + doe - 719_468
+}
+
+/** 1970-01-05 是周一，比 epoch（周四）晚 4 天：周 / 两周的刻度以它为锚。 */
+const MONDAY_ANCHOR = 4 * TDAY
 
 export function timeStep(spanMs: number, plotW: number, perLabelPx: number = Chart.timeLabelPx): number {
   const want = Math.max(2, Math.floor(plotW / perLabelPx))
@@ -640,11 +675,37 @@ export function timeStep(spanMs: number, plotW: number, perLabelPx: number = Cha
 /** 上海时区：+480 分钟，没有夏令时（kanpan-timezone-shanghai）。 */
 export const SHANGHAI_OFFSET_MIN = 480
 
+/**
+ * 时间轴上要画的刻度：按时区对齐（同 iOS Ticks.swift · 审查 B·P3-3）。
+ * - 一天以内：对齐到整点 / 整日（步长整倍数）。
+ * - 周 / 两周：对齐到周一零点。从前按 epoch 整倍数对齐，1970-01-01 是周四，周线刻度全落在周四。
+ * - 月及以上：对齐到某月 1 号零点、按日历月推进（季 1/4/7/10、年 1 月 1 号）。从前拿 30 / 90 / 365 天
+ *   的毫秒数整除，标出「03-17」这种逐年漂移的日子。
+ */
 export function timeTicks(view: ViewWindow, plotW: number, offsetMinutes: number = SHANGHAI_OFFSET_MIN, perLabelPx: number = Chart.timeLabelPx): { t: number; step: number }[] {
+  if (!Number.isFinite(view.from) || !Number.isFinite(view.to) || !(view.to > view.from)) return []
   const step = timeStep(view.span, plotW, perLabelPx)
   const shift = offsetMinutes * 60_000
   const out: { t: number; step: number }[] = []
-  let t = Math.ceil((view.from + shift) / step) * step - shift
+  const months = calendarMonths(step)
+  if (months != null) {
+    const start = dateParts(view.from, offsetMinutes)
+    let index = start.year * 12 + (start.month - 1)
+    const r = ((index % months) + months) % months
+    if (r !== 0) index += months - r
+    // 视野再宽也就几十格；上限只防坏输入把循环拖死。
+    for (let k = 0; k < 4096; k++) {
+      const year = Math.floor(index / 12)
+      const month = index - year * 12 + 1
+      const t = daysFromCivil(year, month, 1) * TDAY - shift
+      if (t > view.to) break
+      if (t >= view.from) out.push({ t, step })
+      index += months
+    }
+    return out
+  }
+  const anchor = step % (7 * TDAY) === 0 ? MONDAY_ANCHOR : 0
+  let t = Math.ceil((view.from + shift - anchor) / step) * step + anchor - shift
   while (t <= view.to) { out.push({ t, step }); t += step }
   return out
 }

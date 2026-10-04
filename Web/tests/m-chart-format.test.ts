@@ -176,7 +176,8 @@ describe('FormatTests（格式化）', () => {
     expect(fmtTick(daily, day, NY_SUMMER)).toBe('09-18')
     expect(fmtFull(daily, NY_SUMMER)).toBe('2026-09-18 20:00')
     expect(fmtTick(1_789_948_800_000, 7 * day, NY_SUMMER)).toBe('09-20')
-    expect(fmtTick(1_790_812_800_000, 30 * day, NY_SUMMER)).toBe('09-30')
+    // 月档标签只写年-月（刻度都在 1 号，写日子没有信息量，同 iOS 63994ab2 · 审查 B·P3-3）。
+    expect(fmtTick(1_790_812_800_000, 30 * day, NY_SUMMER)).toBe('2026-09')
   })
 
   it('overlayLabelsFollowTheChartsTimezone · 复盘浮层与坐标轴同一只钟（fmtDayTime / fmtTick / fmtFull 部分）', () => {
@@ -195,7 +196,9 @@ describe('FormatTests（格式化）', () => {
     const labels = coreFixture<{ labels: { tz: string; off: number; ms: number; step: number; tick: string; full: string }[] }>('ticks').labels
     expect(labels.length).toBe(18)
     for (const row of labels) {
-      expect(fmtTick(row.ms, row.step, row.off), `${row.tz} step=${row.step}`).toBe(row.tick)
+      // 唯一的有意分歧：年档原型写「年-月」，现在只写年（年档刻度都在 1 月 1 号，同 iOS · 审查 B·P3-3）。
+      const expected = row.step >= 365 * 86_400_000 ? row.tick.slice(0, 4) : row.tick
+      expect(fmtTick(row.ms, row.step, row.off), `${row.tz} step=${row.step}`).toBe(expected)
       expect(fmtFull(row.ms, row.off), `${row.tz} 完整时间`).toBe(row.full)
     }
   })
@@ -204,9 +207,8 @@ describe('FormatTests（格式化）', () => {
     const t = 1_789_318_920_000
     expect(fmtTick(t, 60_000, 0).length).toBe(5)
     expect(fmtTick(t, 86_400_000, 0).length).toBe(5)
-    const yearly = fmtTick(t, 365 * 86_400_000, 0)
-    expect(yearly.length).toBe(7)
-    expect(yearly.startsWith('20')).toBe(true)
+    expect(fmtTick(t, 90 * 86_400_000, 0), '按月应是 yyyy-MM').toBe('2026-09')
+    expect(fmtTick(t, 365 * 86_400_000, 0), '按年应是 yyyy').toBe('2026')
     expect(fmtTick(1_789_257_600_000, 3_600_000, 0)).toContain('-')
   })
 

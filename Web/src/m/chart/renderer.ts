@@ -569,12 +569,31 @@ export class ChartRenderer {
   private drawTimeAxis(ctx: CanvasRenderingContext2D, L: Layout, s: number): void {
     const t = this.colors
     hairLine(ctx, 0, L.W, L.timeY, s, t.axis)
+    const y = L.timeY + AICoinBehavior.timeHeight / 2
+    for (const l of this.timeAxisLabels(L)) drawCentered(ctx, l.text, l.x + l.w / 2, y, ChartFont.axis, t.dim)
+  }
+
+  /**
+   * 时间轴上真正要写出来的标签与它们占的横向区间（同 iOS timeAxisLabels · 审查 B·P3-3）。
+   * 贴边的不写（压到价格轴或被裁掉一半）；跟左边那个挨得不到 4 点的也不写——刻度间距按「标称步长」挑，
+   * 日历月有长有短、标签有宽有窄，最密那一档仍可能两个标签压在一起。
+   */
+  timeAxisLabels(L: Layout): { text: string; x: number; w: number }[] {
     const off = this._state.input.tzOffset
+    const out: { text: string; x: number; w: number }[] = []
+    let rightEdge = -Infinity
     for (const k of this.ticks(L)) {
       const xx = this.x(k.t, L.plotW)
       if (xx < 18 || xx > L.plotW - 18) continue
-      drawCentered(ctx, fmtTick(k.t, k.step, off), xx, L.timeY + AICoinBehavior.timeHeight / 2, ChartFont.axis, t.dim)
+      const text = fmtTick(k.t, k.step, off)
+      const w = textWidth(text, ChartFont.axis)
+      const minX = xx - w / 2
+      if (minX < 0 || minX + w > L.plotW) continue
+      if (minX < rightEdge + 4) continue
+      out.push({ text, x: minX, w })
+      rightEdge = minX + w
     }
+    return out
   }
 
   // ---------------------------------------------------------------- 最高 / 最低标注

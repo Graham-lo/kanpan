@@ -5,13 +5,14 @@
 // 每条 it 的标题带 Swift 的测试函数名；数值与容差照抄 Swift。
 import { describe, expect, it } from 'vitest'
 import {
-  AICoinBehavior, Chart, FlingCurve, Layout, ViewMath, ViewWindow, VelocityTracker, candleMetrics, candlePixels,
+  AICoinBehavior, Chart, FlingCurve, calendarMonths, daysFromCivil, Layout, ViewMath, ViewWindow, VelocityTracker, candleMetrics, candlePixels,
   clampView, defaultChartOptions, forward, hairline, inverse, niceStep, pOf, priceRange, priceTicks, priceTransform,
   reconcile, snap, swiftRound, timeStep, timeSteps, timeTicks, visibleRange, wickLineWidth, wickPixels, yOf, yOfValue,
 } from '../src/m/chart/geometry'
 import type { Pane, PriceBias, PriceMode, PriceRange } from '../src/m/chart/geometry'
 import { BarSeries, INTERVALS, INTERVAL_STEP, bar, jsRound } from '../src/m/chart/series'
 import type { Interval } from '../src/m/chart/series'
+import { dateParts, fmtTick } from '../src/m/chart/format'
 import { Rng, coreFixture, nums, rows, synthSeries } from './m-chart-fixtures'
 
 const MODES: PriceMode[] = ['linear', 'log', 'percent']
@@ -432,8 +433,10 @@ describe('刻度（TickTests）', () => {
     expect(time.length).toBeGreaterThanOrEqual(200)
   })
 
-  it('stepsTable：阶梯表与原型一致', () => {
-    expect(timeSteps).toEqual(nums(ticks.timeSteps))
+  it('stepsTable：阶梯表原型那一段原样，末尾补 2 / 5 / 10 年', () => {
+    const js = nums(ticks.timeSteps), day = 86_400_000
+    expect(timeSteps.slice(0, js.length)).toEqual(js)
+    expect(timeSteps.slice(js.length)).toEqual([730 * day, 1825 * day, 3650 * day])
   })
 
   it('niceStepMantissa：niceStep 尾数只有五种', () => {
@@ -461,6 +464,19 @@ describe('刻度（TickTests）', () => {
     }
   })
 
+  /** 一天以内对齐到步长整倍数；周 / 两周落在周一零点；一月及以上落在某月 1 号零点且月份是档位整倍数。 */
+  const aligned = (t: number, step: number, off: number): boolean => {
+    const day = 86_400_000
+    const months = calendarMonths(step)
+    if (months != null) {
+      const p = dateParts(t, off / 60_000)
+      return p.day === 1 && p.hour === 0 && p.minute === 0 && (p.year * 12 + p.month - 1) % months === 0
+    }
+    const anchor = step % (7 * day) === 0 ? 4 * day : 0
+    const m = (t + off - anchor) % step
+    return Math.abs(m) < 1e-6 || Math.abs(Math.abs(m) - step) < 1e-6
+  }
+
   // Swift 是 TZChoice.allCases（local / utc / exchange）；网页只有固定偏移（上海 +480，没有夏令时），
   // 所以换成三个固定偏移：UTC、上海、纽约冬令时。
   it.each([0, 480, -300])('timeTicksAligned：时间刻度按时区对齐（偏移 %i 分）', offsetMinutes => {
@@ -474,12 +490,71 @@ describe('刻度（TickTests）', () => {
       const ts = timeTicks(v, plotW, offsetMinutes)
       for (const { t, step } of ts) {
         expect(t >= v.from - 1 && t <= v.to + 1, `刻度跑到视野外 ${t}`).toBe(true)
-        const m = (t + off) % step
-        expect(Math.abs(m) < 1e-6 || Math.abs(Math.abs(m) - step) < 1e-6, `${offsetMinutes} 没对齐：${t} % ${step} = ${m}`).toBe(true)
+        expect(aligned(t, step, off), `${offsetMinutes} 没对齐：${t} step=${step}`).toBe(true)
       }
       const expected = Math.floor(v.span / (ts[0]?.step ?? 1))
       expect(ts.length, '刻度多了').toBeLessThanOrEqual(expected + 2)
     }
+  })
+
+  // 以下照 iOS 63994ab2（审查 B·P3-3）：周档锚周一、月及以上按日历月推进。
+  it('weeklyTicksLandOnMonday：周线刻度落在周一零点', () => {
+    const shanghai = 480, off = shanghai * 60_000, day = 86_400_000
+    let hits = 0
+    ;[6, 12, 6.5, 11].forEach((perTick, k) => {
+      for (const plotW of [180, 260, 350, 420]) {
+        const want = Math.max(2, Math.floor(plotW / Chart.timeLabelPx))
+        const from = 1_767_225_600_000 + (k * 3 + (plotW % 7)) * 0.9 * day
+        const v = ViewWindow.fromTo(from, from + want * perTick * day)
+        const ts = timeTicks(v, plotW, shanghai)
+        const step = ts[0]?.step
+        if (step !== 7 * day && step !== 14 * day) continue
+        hits++
+        for (const { t } of ts) {
+          const localDays = Math.floor((t + off) / day)
+          expect((localDays - 4) % 7, `刻度不在周一：本地第 ${localDays} 天`).toBe(0)
+          expect((t + off) % day, '刻度不在零点').toBe(0)
+          expect(fmtTick(t, step, shanghai).length).toBe(5)
+        }
+      }
+    })
+    expect(hits, '没有一个视野落在周档，用例白跑了').toBeGreaterThan(5)
+  })
+
+  it.each([350, 250, 600])('monthlyTicksLandOnFirst：月线 / 长视野刻度落在 1 号且不挤（%i）', plotW => {
+    const shanghai = 480
+    const from = daysFromCivil(2017, 8, 1) * 86_400_000 - 8 * 3_600_000
+    const to = daysFromCivil(2026, 10, 1) * 86_400_000
+    const v = ViewWindow.fromTo(from, to)
+    const ts = timeTicks(v, plotW, shanghai)
+    expect(ts.length).toBeGreaterThanOrEqual(2)
+    for (const { t, step } of ts) {
+      const p = dateParts(t, shanghai)
+      expect(p.day === 1 && p.hour === 0 && p.minute === 0, `${JSON.stringify(p)} 不是 1 号零点`).toBe(true)
+      if (step >= 365 * 86_400_000) expect(p.month, '年档刻度不在 1 月').toBe(1)
+    }
+    for (let i = 1; i < ts.length; i++) {
+      const gap = v.x(ts[i].t, plotW) - v.x(ts[i - 1].t, plotW)
+      const label = fmtTick(ts[i].t, ts[i].step, shanghai)
+      expect(gap, `相邻刻度只隔 ${gap} 点，放不下「${label}」`).toBeGreaterThan(label.length * 6 + 4)
+    }
+  })
+
+  it('calendarStepsAdvanceByMonths：月 / 季 / 年档按日历推进，跨闰年与年末不漂', () => {
+    const day = 86_400_000
+    for (const [y, m, d] of [[1970, 1, 1], [2000, 2, 29], [2024, 12, 31], [2026, 3, 1], [1969, 12, 31]]) {
+      const p = dateParts(daysFromCivil(y, m, d) * day, 0)
+      expect([p.year, p.month, p.day]).toEqual([y, m, d])
+    }
+    expect(daysFromCivil(1970, 1, 5), '1970-01-05 是周一锚点').toBe(4)
+    const v = ViewWindow.fromTo(daysFromCivil(2019, 5, 17) * day, daysFromCivil(2024, 2, 3) * day)
+    for (let plotW = 120; plotW <= 900; plotW += 30) {
+      for (const { t, step } of timeTicks(v, plotW, 0)) {
+        expect(aligned(t, step, 0), `plotW=${plotW} step=${step} 刻度 ${JSON.stringify(dateParts(t, 0))}`).toBe(true)
+      }
+    }
+    expect(timeTicks(ViewWindow.fromTo(NaN, 1), 300, 0), '坏视野不死循环').toEqual([])
+    expect(timeTicks(ViewWindow.fromTo(5, 5), 300, 0)).toEqual([])
   })
 
   it.each(MODES)('priceTicksEven：价格刻度等距（%s）', mode => {

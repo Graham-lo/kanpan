@@ -11,10 +11,10 @@ import { readFileSync } from 'node:fs'
 import type { IndicatorID } from '../src/m/indicator/ids'
 import type { ChartOptions, PriceRange } from '../src/m/chart/geometry'
 import {
-  AICoinBehavior, Layout, ViewMath, ViewWindow, defaultChartOptions, priceTransform, reconcile, reconcileBeforeUpsert,
+  AICoinBehavior, Layout, ViewMath, ViewWindow, daysFromCivil, defaultChartOptions, priceTransform, reconcile, reconcileBeforeUpsert,
 } from '../src/m/chart/geometry'
 import { fmtNum } from '../src/m/chart/format'
-import { BarSeries, ExternalSeries } from '../src/m/chart/series'
+import { BarSeries, ExternalSeries, bar } from '../src/m/chart/series'
 import type { Interval } from '../src/m/chart/series'
 import type { ChartState } from '../src/m/chart/state'
 import { changedLayers, makeOrderBook, makeState, withInput, withOverlay } from '../src/m/chart/state'
@@ -345,5 +345,83 @@ describe('拖动期间轴冻结 · 纯函数那一半（ChartAxisFreezeTests）'
     const after = reconcileBeforeUpsert(drifted, old, old.lastTime + old.step, plotW)
     expect(after.to).toBeCloseTo(latest.to + old.step, 6)
     expect(after.span).toBe(drifted.span)
+  })
+})
+
+// ------------------------------------------------------------------ TimeAxisLabelTests（iOS 63994ab2 · 审查 B·P3-3）
+
+describe('时间轴标签按日历对齐、互不相压（TimeAxisLabelTests）', () => {
+  const DAYMS = 86_400_000
+  /** 每月 1 号 00:00 UTC 开盘的月线（币安口径），从 2017-08 到 2026-10。 */
+  const monthly = (): BarSeries => {
+    const bars = []
+    let p = 4_000
+    for (let k = 0; k < 111; k++) {
+      const year = 2017 + Math.floor((7 + k) / 12), month = ((7 + k) % 12) + 1
+      bars.push(bar(daysFromCivil(year, month, 1) * DAYMS, p, p * 1.2, p * 0.8, p * 1.05, 1_000))
+      p *= 1.03
+    }
+    return BarSeries.fromBars('BTCUSDT', '1M', bars)
+  }
+  /** 2019-01-07（周一）起 400 根周线。 */
+  const weekly = (): BarSeries => {
+    const t0 = daysFromCivil(2019, 1, 7) * DAYMS
+    return BarSeries.fromBars('BTCUSDT', '1w', Array.from({ length: 400 }, (_, k) => {
+      const c = 4_000 + k * 10
+      return bar(t0 + k * 7 * DAYMS, c, c + 50, c - 50, c, 1)
+    }))
+  }
+  const renderer = (series: BarSeries, view: ViewWindow, width: number) => {
+    const r = new ChartRenderer(makeState({
+      series, symbol: { symbol: 'BTCUSDT', base: 'BTC', priceDecimals: 2 }, view, price: priceTransform('linear'),
+      subs: ['VOL'], tzOffset: 480, decimals: 2, options: defaultChartOptions(), nowMs: series.lastTime,
+    }))
+    return { r, L: r.layout(width, 600) }
+  }
+  const expectNoOverlap = (labels: { text: string; x: number; w: number }[], plotW: number, note: string) => {
+    for (const l of labels) expect(l.x >= 0 && l.x + l.w <= plotW, `${note}「${l.text}」出了图区`).toBe(true)
+    for (let i = 1; i < labels.length; i++) {
+      const a = labels[i - 1], b = labels[i]
+      expect(b.x, `${note}「${a.text}」与「${b.text}」压在一起`).toBeGreaterThanOrEqual(a.x + a.w + 4)
+    }
+  }
+
+  it.each([300, 390, 440])('monthlyWholeHistory：月线整段历史缩进窄图只写年、互不相压（宽 %i）', width => {
+    const s = monthly()
+    const { r, L } = renderer(s, ViewWindow.fromTo(s.time(0), s.lastTime + 30 * DAYMS), width)
+    const labels = r.timeAxisLabels(L)
+    expect(labels.length, '九年历史一个年份都没写出来').toBeGreaterThanOrEqual(2)
+    expectNoOverlap(labels, L.plotW, `宽 ${width}`)
+    for (const l of labels) expect(/^20\d\d$/.test(l.text), `年档该只写年，得到「${l.text}」`).toBe(true)
+  })
+
+  it('everyZoomNoOverlap：周线 / 月线各档缩放标签互不相压', () => {
+    const cases: [BarSeries, number[]][] = [[weekly(), [8, 20, 52, 120, 300, 400]], [monthly(), [6, 12, 24, 60, 111]]]
+    for (const [s, counts] of cases) {
+      for (const n of counts) {
+        for (const width of [300, 402, 440]) {
+          const to = s.lastTime + s.step
+          const from = s.time(Math.max(0, s.count - n))
+          const { r, L } = renderer(s, ViewWindow.fromTo(from, to), width)
+          expectNoOverlap(r.timeAxisLabels(L), L.plotW, `${s.interval} ${n} 根 宽 ${width}`)
+        }
+      }
+    }
+  })
+
+  it('weeklyLabelsAreMondays：周线刻度落在周一（上海时间）', () => {
+    const s = weekly()
+    const to = s.lastTime + s.step
+    for (const weeks of [3, 6]) {
+      const { r, L } = renderer(s, ViewWindow.fromTo(to - weeks * 7 * DAYMS, to), 402)
+      const labels = r.timeAxisLabels(L)
+      expect(labels.length).toBeGreaterThan(0)
+      const view = r.state.viewport.view
+      for (const l of labels) {
+        const t = view.from + ((l.x + l.w / 2) / L.plotW) * view.span
+        const days = Math.round((t + 480 * 60_000) / DAYMS)
+        expect((((days - 4) % 7) + 7) % 7, `「${l.text}」不在周一`).toBe(0)
+      }
+    }
   })
 })
