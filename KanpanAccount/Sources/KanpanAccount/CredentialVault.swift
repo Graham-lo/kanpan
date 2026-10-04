@@ -28,8 +28,15 @@ public struct KeychainCredentialVault: CredentialVault {
     // 这不是「没登录」——调用方要按上次的身份照常装档案、稍后再读（见 `AccountClient`）。
     if status == errSecInteractionNotAllowed { throw AccountError.credentialsUnavailable }
     guard status == errSecSuccess, let data = result as? Data else { throw AccountError.keychain }
-    return try JSONDecoder().decode(SavedAccount.self, from: data)
+    // 读到了、但内容解不开（老版本写坏的、格式改过的）：这不是「这一刻读不动」——
+    // 再读多少次也还是这串字节。以前直接把解码错误抛出去，客户端当成「凭据欠着」，
+    // 人就永远卡在「暂时读不到登录状态」、既不算登录也退不了（审查 D-11）。
+    // 当成没有凭据并把坏条目删掉，人看到的是「没登录」，重新登录一次就好。
+    guard let saved = Self.decode(data) else { _ = SecItemDelete(query as CFDictionary); return nil }
+    return saved
   }
+  /// 钥匙串里那串字节解成凭据；解不开就是 `nil`（见 `read()`）。
+  static func decode(_ data: Data) -> SavedAccount? { try? JSONDecoder().decode(SavedAccount.self, from: data) }
   public func write(_ value: SavedAccount?) throws {
     guard let value else {
       let status = SecItemDelete(query as CFDictionary)

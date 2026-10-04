@@ -128,3 +128,30 @@ struct LastOwnerTests {
     #expect(!text.contains("token") && !text.contains("refresh"))
   }
 }
+
+/// 审查 D-11：钥匙串里那串字节解不开不是「这一刻读不动」，不能让人永远卡在「凭据欠着」。
+@Suite("钥匙串内容解不开")
+struct CorruptCredentialTests {
+  @Test("解不开的字节当成没有凭据，不抛")
+  func 坏字节是没有() throws {
+    #expect(KeychainCredentialVault.decode(Data("not json".utf8)) == nil)
+    #expect(KeychainCredentialVault.decode(Data(#"{"user":1}"#.utf8)) == nil)
+  }
+  @Test("好字节照常解出来")
+  func 好字节照常() throws {
+    let saved = SavedAccount(user: AccountUser(id: UUID(), email: "someone"), sessionId: UUID(),
+                             device: AccountDevice(name: "phone"), refreshToken: "r", refreshRequestId: nil)
+    let data = try JSONEncoder().encode(saved)
+    #expect(KeychainCredentialVault.decode(data)?.user.id == saved.user.id)
+  }
+  @Test("库答「没有」时客户端是没登录，不是凭据欠着")
+  func 没登录不是欠着() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [StubProtocol.self]
+    let client = try AccountClient(baseURL: URL(string: "https://kanpan.43-160-232-253.sslip.io")!,
+                                   vault: LockableVault(nil, locked: false),
+                                   session: URLSession(configuration: configuration))
+    #expect(await !client.credentialsUnavailable)
+    #expect(await client.savedUser() == nil)
+  }
+}
