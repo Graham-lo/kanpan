@@ -120,5 +120,9 @@ describe('ChartGestureConstantsTests（手势门槛）', () => {
     expect(ChartGesture.minPinchSpanPt).toBe(10)
     expect(ChartGesture.selectedHandlePt).toBe(22)
     expect(ChartGesture.selectedHandlePt).toBeGreaterThan(Chart.hitHandlePt)
+    // 先引 gesture.ts、再取画线模块里顶层算好的门槛：gesture → renderer.orderflow → drawing → view.drawing 成环时，
+    // view.drawing 顶层读到的 ChartGesture 是 undefined，整份 gesture.ts 一引就抛（门槛常量已拆到 gesture.constants.ts）
+    const { DRAW_DRAG_SLOP_PT } = await import('../src/m/chart/view.drawing')
+    expect(DRAW_DRAG_SLOP_PT).toBe(ChartGesture.panSlopPt * 2)
   })
 })

@@ -22,7 +22,7 @@ import type { BarSeries } from './series'
 import type { ChartColors, Hex } from './paint'
 import { ChartFont, css, textWidth, textHeight, drawCentered, roundRectPath } from './paint'
 import { fmtFull, fmtNum } from './format'
-import { ChartGesture } from './gesture'
+import { ChartGesture } from './gesture.constants'
 import {
   type Drawing, type DrawingKind, type DrawPart, type DrawPoint, type DrawHit, type DrawTool,
   DrawKind, cloneDrawing, drawingIsValid, drawingEquals, drawingsEqual, drawingWith, drawingA, newDrawingID, partIndex, partAnchor,

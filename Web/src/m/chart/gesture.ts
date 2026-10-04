@@ -21,13 +21,8 @@ import { sameOrderFlowKey } from './orderflowGroup'
 import type { ChartView } from './view'
 import { Parts } from './view.parts'
 
-export const ChartGesture = {
-  longPressMs: 400,
-  longPressSlopPt: 6,
-  panSlopPt: 4,
-  minPinchSpanPt: 10,
-  selectedHandlePt: 22,
-} as const
+import { ChartGesture } from './gesture.constants'
+export { ChartGesture }
 
 export type GestureMode = 'pan' | 'crosshair' | 'pinch' | 'axisPrice' | 'subAxis' | 'verticalPan' | 'parentScroll' | 'autoFit'
 export interface Point { x: number; y: number }
