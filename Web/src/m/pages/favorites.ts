@@ -14,7 +14,7 @@ import { openSymbol, hooks, trackScroll, restoreScroll, type PageHandle } from '
 import { icon } from '../ui/icons'
 import { openMenu, openSheet, type MenuItem } from '../ui/sheet'
 import { swipeRow, closeOpenSwipe, type SwipeHandle } from '../ui/swipeDelete'
-import { reorderable, longPress } from '../ui/reorder'
+import { reorderable, longPress, type ReorderHandle } from '../ui/reorder'
 import { toast } from '../ui/toast'
 import { S, on, streamName } from '../../market'
 import * as F from '../model/favorites'
@@ -135,7 +135,11 @@ export function initFavorites(root: HTMLElement): PageHandle {
   }
 
   // ---------------------------------------------------------------- 列表
+  let sorter: ReorderHandle | null = null
+  /** 拖的途中来了要重画的事（同步落地、品种表、回前台、换皮肤）：先记下，松手再画 */
+  let redrawAfterDrag = false
   function renderList(): void {
+    if (sorter?.dragging) { redrawAfterDrag = true; return }
     swipes.splice(0).forEach(s => s.destroy())
     unpress.splice(0).forEach(f => f())
     shown = F.visible(st.symbols, current())
@@ -167,14 +171,16 @@ export function initFavorites(root: HTMLElement): PageHandle {
   }
   function render(): void { renderHead(); renderList() }
 
-  reorderable(list, {
+  sorter = reorderable(list, {
     item: '.lr',
     enabled: () => editing,
-    onMove(from, to) {
-      F.moveVisible(st.symbols, shown, from, to)
+    // 按起拖那一刻的行挪：拖的途中另一台设备的改动落地、shown 已经换了，下标不能套到新表上
+    onMove(from, to, rows) {
+      F.moveVisible(st.symbols, rows.map(r => r.dataset.sym!), from, to)
       save()
-      renderList()
+      redrawAfterDrag = true
     },
+    onEnd() { if (redrawAfterDrag) { redrawAfterDrag = false; renderList() } },
   })
 
   list.addEventListener('click', e => {

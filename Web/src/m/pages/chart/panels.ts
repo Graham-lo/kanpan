@@ -15,7 +15,7 @@ import {
 import { indicatorName, mainPalette, subPalette, paletteOffset, paramLabels, normalizedParams, defaultParams, lineNames } from '../../indicator/ids'
 import { openSheet, type Sheet } from '../../ui/sheet'
 import { registerTerms, termHTML, type Term } from '../../ui/hint'
-import { reorderable } from '../../ui/reorder'
+import { reorderable, type ReorderHandle } from '../../ui/reorder'
 import { swipeRow, deleteAction } from '../../ui/swipeDelete'
 import { toast } from '../../ui/toast'
 import { el, esc } from '../../ui/dom'
@@ -25,7 +25,7 @@ import { badgeHTML, assetOf } from '../../model/badge'
 import { baseOfSymbol, defaultThresholds, applyOverride, isValidBase } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
 import {
-  toggleOverlay, toggleSub, moveSub, sanitizeParam, clampParam, VARIABLE_PARAMS, MAX_VARIABLE_PARAMS,
+  toggleOverlay, toggleSub, moveSubAmong, sanitizeParam, clampParam, VARIABLE_PARAMS, MAX_VARIABLE_PARAMS,
   sanitizeAmount, clampAmount, mergeOverride, compactAmount, plainNumber, type OrderFlowField,
 } from './logic'
 import { TERMS, splitPair } from './header'
@@ -90,11 +90,16 @@ const compareName = (key: string): string => {
 export function openAnalysis(ctx: PanelContext): Sheet {
   ensureTerms()
   let off: (() => void) | null = null
-  let reorder: { destroy(): void } | null = null
+  let reorder: ReorderHandle | null = null
+  /** 拖副图把手的途中别的设置落盘（同步、学到的周期……）会经 subscribe 重画面板：先记下，松手再画 */
+  let redrawAfterDrag = false
   const sheet = openSheet(body => {
     const host = el('div', 'cp-panel')
     body.append(host)
-    const render = (): void => { host.innerHTML = analysisHTML(ctx) }
+    const render = (): void => {
+      if (reorder?.dragging) { redrawAfterDrag = true; return }
+      host.innerHTML = analysisHTML(ctx)
+    }
     render()
     off = subscribe(() => { if (!sheet.closed) render() })
     host.addEventListener('click', e => {
@@ -125,7 +130,9 @@ export function openAnalysis(ctx: PanelContext): Sheet {
     })
     reorder = reorderable(host, {
       item: '.cp-iu[data-sub]', handle: '.cp-grip',
-      onMove(from, to) { if (from !== to) { st.subs = moveSub(st.subs, from, to); save() } },
+      // 按起拖那一刻的行挪（键是 data-sub），途中副图组成变了也不会挪走别的
+      onMove(from, to, rows) { st.subs = moveSubAmong(st.subs, rows.map(r => r.dataset.sub as IndicatorId), from, to); save() },
+      onEnd() { if (redrawAfterDrag) { redrawAfterDrag = false; render() } },
     })
   }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list', onClose: () => { off?.(); reorder?.destroy() } })
   return sheet

@@ -6,8 +6,10 @@
  *
  * - 长按（默认 350ms，手指没挪过 8 点）起拖；给了 handle 选择器时按在把手上立刻起拖。
  * - 起拖时那一行抬起（放大一点、带阴影），其余行让位滑动；靠近滚动容器上下沿自动滚。
- * - 松手回调 onMove(from, to)：from 是原下标，to 是移完之后它的新下标（和 moveIndex 的口径一致）。
- *   下标按 list 里当前匹配 item 选择器的元素算。
+ * - 松手回调 onMove(from, to, rows)：from 是原下标，to 是移完之后它的新下标（和 moveIndex 的口径一致）。
+ *   下标按「起拖那一刻」list 里匹配 item 选择器的那组元素算，rows 就是那组快照——拖的途中表被同步 / 行情重画过，
+ *   调用方必须按 rows 上的键（data-sym 等）去挪，不能拿下标套到重画后的新表上（会挪走别人）。
+ * - 拖的途中别重画这张表（handle.dragging 为真时记一笔，onEnd 里补画）：重画会把抬起的那行换掉，手里拖的行凭空消失。
  * - 拖的时候吞掉纵向滚动（非被动的 touchmove preventDefault），松手后那一下点击不算。
  */
 import { scrollParent } from './dom'
@@ -21,7 +23,15 @@ export interface ReorderOptions {
   longPress?: number
   /** 现在能不能拖（编辑模式才开的表用），默认总是能 */
   enabled?: () => boolean
-  onMove(from: number, to: number): void
+  onMove(from: number, to: number, rows: readonly HTMLElement[]): void
+  /** 一次拖动结束（松手或取消，onMove 之后）：拖的途中推迟的重画在这里补 */
+  onEnd?(): void
+}
+
+export interface ReorderHandle {
+  destroy(): void
+  /** 正在拖：这时重画表会把手里那行换掉，调用方先记下、等 onEnd 再画 */
+  readonly dragging: boolean
 }
 
 /** 把 arr[from] 挪到 to（to 为移完后的下标），原地改并返回 arr */
@@ -32,7 +42,7 @@ export function moveIndex<T>(arr: T[], from: number, to: number): T[] {
   return arr
 }
 
-export function reorderable(list: HTMLElement, o: ReorderOptions): { destroy(): void } {
+export function reorderable(list: HTMLElement, o: ReorderOptions): ReorderHandle {
   const hold = o.longPress ?? 350
   let timer = 0, pid = -1, x0 = 0, y0 = 0
   let drag: null | {
@@ -101,7 +111,8 @@ export function reorderable(list: HTMLElement, o: ReorderOptions): { destroy(): 
     d.rows.forEach(r => { r.style.transition = ''; r.style.transform = '' })
     swallowClick = true
     setTimeout(() => { swallowClick = false }, 0)
-    if (commit && d.to !== d.from) o.onMove(d.from, d.to)
+    if (commit && d.to !== d.from) o.onMove(d.from, d.to, d.rows)
+    o.onEnd?.()
   }
 
   const onDown = (e: PointerEvent): void => {
@@ -144,6 +155,7 @@ export function reorderable(list: HTMLElement, o: ReorderOptions): { destroy(): 
   list.addEventListener('click', onClick, true)
   list.addEventListener('contextmenu', onCtx)
   return {
+    get dragging() { return drag !== null },
     destroy() {
       finish(false)
       list.removeEventListener('pointerdown', onDown)

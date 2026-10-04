@@ -16,7 +16,7 @@ import { el, layer } from '../ui/dom'
 import { icon } from '../ui/icons'
 import { openSheet } from '../ui/sheet'
 import { swipeRow, closeOpenSwipe, type SwipeHandle } from '../ui/swipeDelete'
-import { reorderable } from '../ui/reorder'
+import { reorderable, type ReorderHandle } from '../ui/reorder'
 import { S, on, streamName, type Sym } from '../../market'
 import { esc } from '../model/rowText'
 import { factsOf, listRowHTML, splitSymbol } from '../model/rowHTML'
@@ -75,9 +75,10 @@ export function openPicker(opts: PickerOptions): void {
   input.value = q
   let markets: string[] = []
   let sectors: string[] = []
-  let favRows: string[] = []
   let swipes: SwipeHandle[] = []
-  let sorter: { destroy(): void } | null = null
+  let sorter: ReorderHandle | null = null
+  /** 拖自选的途中品种表 / 回前台要重画：先记下，松手再画（重画会把手里那行换掉、拖动凭空取消） */
+  let redrawAfterDrag = false
   let filterTimer = 0
 
   const all = (): Sym[] => [...S.symbols.values()]
@@ -115,6 +116,7 @@ export function openPicker(opts: PickerOptions): void {
 
   function render(): void {
     if (L.ended) return
+    if (sorter?.dragging) { redrawAfterDrag = true; return }
     const catalog = all()
     const f = applyFilter(catalog, marketFilter, sectorFilter)
     // 筛到一半品种表换了，选中的板块已经不在了：退回全部
@@ -127,14 +129,11 @@ export function openPicker(opts: PickerOptions): void {
     sorter?.destroy(); sorter = null
     visible.clear(); io?.disconnect()
     if (!sections.some(s => s.rows.length)) {
-      favRows = []
       body.innerHTML = `<div class="mpk-empty">${q.trim() || S.symbols.size ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
       pushStreams()
       return
     }
     body.innerHTML = sections.map(sectionHTML).join('')
-    const fav = sections.find(s => s.kind === 'favorites')
-    favRows = fav ? fav.rows.map(r => r.symbol) : []
     const favList = body.querySelector<HTMLElement>('.mpk-sec[data-kind="favorites"] .mpk-rows')
     if (favList) {
       favList.querySelectorAll<HTMLElement>('.sr').forEach(r => {
@@ -143,7 +142,8 @@ export function openPicker(opts: PickerOptions): void {
       })
       sorter = reorderable(favList, {
         item: '.sr',
-        onMove(from, to) { F.moveVisible(st.symbols, favRows, from, to); save(); keepScroll(render) },
+        onMove(from, to, rows) { F.moveVisible(st.symbols, rows.map(r => r.dataset.sym!), from, to); save(); redrawAfterDrag = true },
+        onEnd() { if (redrawAfterDrag) { redrawAfterDrag = false; keepScroll(render) } },
       })
     }
     body.querySelectorAll<HTMLElement>('.sr').forEach(r => io?.observe(r))

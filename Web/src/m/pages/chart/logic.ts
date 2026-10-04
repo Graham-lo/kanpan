@@ -161,6 +161,16 @@ export function moveSub(list: readonly IndicatorId[], from: number, to: number):
   return out
 }
 
+/** 按起拖那一刻画出来的那几行（rows）挪：先在 rows 上挪，再按挪完的次序填回 list 里仍在的那几项的位置；
+ *  拖的途中 list 被同步改过（加了、删了副图），不在 rows 里的原位不动、已不在 list 里的丢掉——不会把下标套到新表上挪走别人 */
+export function moveSubAmong(list: readonly IndicatorId[], rows: readonly IndicatorId[], from: number, to: number): IndicatorId[] {
+  const live = new Set(list)
+  const ordered = moveSub(rows, from, to).filter(id => live.has(id))
+  const members = new Set(ordered)
+  let i = 0
+  return list.map(id => members.has(id) ? ordered[i++] : id)
+}
+
 /** 参数框：只收数字、最多 3 位 */
 export function sanitizeParam(raw: string): string {
   return toHalfWidth(raw).replace(/[^0-9]/g, '').slice(0, 3)
