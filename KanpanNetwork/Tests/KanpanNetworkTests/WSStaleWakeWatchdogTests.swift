@@ -122,4 +122,49 @@ struct WSStaleWakeWatchdogTests {
     await ws.stop()
     await unplug(bench)
   }
+
+  @Test("C-6 Coinbase：新一轮已起、新连接上只发过心跳订阅，这时来的报错不许记到上一轮那批订阅头上")
+  func coinbaseErrorAfterNewRunNotPinnedOnOldRunSubs() async throws {
+    let bench = GateSocketBench()
+    let ws = CoinbaseWS(urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+                        silenceMs: 1e12, transportSilenceMs: 1e12)
+    _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
+    try #require(await waitUntil(5) { await bench.socket(1) != nil })
+    let first = try #require(await bench.socket(1))
+    #expect(await waitUntil(5) { await first.sent.contains { $0.contains("BTC-USD") } })
+    // 新一轮：这一轮在 Coinbase 上没有可订的频道，新连接上唯一一发控制帧是心跳订阅。
+    _ = await ws.start(topics: [.markPrice(symbol: "coinbase/spot/BTC-USD")])
+    try #require(await waitUntil(5) { await bench.socket(2) != nil })
+    let second = try #require(await bench.socket(2))
+    #expect(await waitUntil(5) { await second.sent.contains { $0.contains("heartbeats") } })
+    await second.push(.text(#"{"type":"error","message":"Failed to subscribe"}"#))
+    // 原来：最近一发控制帧还是上一轮的 subscribe ticker BTC-USD，报错整条记到它头上。
+    #expect(await staysFalse(for: 0.4) { await ws.topicErrors["ticker BTC-USD"] != nil })
+    #expect(await ws.topicErrors.isEmpty)
+    await ws.stop()
+    await unplug(bench)
+  }
+
+  @Test("C-6 Coinbase：同一轮里断线重连，新连接上只发过心跳订阅，这时来的报错不许记到旧连接最后那批订阅头上")
+  func coinbaseErrorAfterReconnectNotPinnedOnOldConnectionSubs() async throws {
+    let bench = GateSocketBench()
+    let ws = CoinbaseWS(urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+                        silenceMs: 1e12, transportSilenceMs: 1e12)
+    _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
+    try #require(await waitUntil(5) { await bench.socket(1) != nil })
+    let first = try #require(await bench.socket(1))
+    #expect(await waitUntil(5) { await first.sent.contains { $0.contains("\"subscribe\"") && $0.contains("BTC-USD") } })
+    // 退订之后旧连接上最近一发控制帧是 unsubscribe ticker BTC-USD；然后这条连接断了。
+    await ws.replace(topics: [])
+    #expect(await waitUntil(5) { await first.sent.contains { $0.contains("unsubscribe") } })
+    await first.push(.closed("going away"))
+    try #require(await waitUntil(5) { await bench.socket(2) != nil })
+    let second = try #require(await bench.socket(2))
+    #expect(await waitUntil(5) { await second.sent.contains { $0.contains("heartbeats") } })
+    await second.push(.text(#"{"type":"error","message":"Failed to subscribe"}"#))
+    #expect(await staysFalse(for: 0.4) { await ws.topicErrors["ticker BTC-USD"] != nil })
+    #expect(await ws.topicErrors.isEmpty)
+    await ws.stop()
+    await unplug(bench)
+  }
 }

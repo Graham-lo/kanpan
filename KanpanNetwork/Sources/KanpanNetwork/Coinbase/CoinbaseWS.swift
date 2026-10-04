@@ -58,8 +58,14 @@ public actor CoinbaseWS: MarketStream {
   private var confirmed: Set<Sub> = []
   /// 连接在推之后新发出去、还没确认的订阅：发出时刻与已经发了几次。
   private var pending: [Sub: (sentMs: Double, attempts: Int)] = [:]
-  /// 最近一发控制帧说的是哪几个订阅（`error` 帧按它归属）。
-  private var lastControl: (type: String, subs: [Sub]) = ("", [])
+  /// 最近一发控制帧说的是哪几个订阅（`error` 帧按它归属），以及它是在哪一轮、哪条连接上发的。
+  ///
+  /// 原来不带轮次与连接号、换连接也不清：新连接上第一发控制帧是 `heartbeats`（不记），
+  /// 在 `sync` 发出任何订阅之前到来的 `error` 就被算到上一条连接、甚至上一轮的那批订阅头上，
+  /// 把它们错记成「被上游拒了」——于是不再等它们的首帧、不再重发（C-3 之后连首帧看门狗也跟着关）。
+  /// 现在只认当前这一轮、当前这条连接上发的那一帧，别的一律当成归不了属的报错。
+  private var lastControl = Control(type: "", subs: [], generation: 0, connection: 0)
+  private struct Control { var type: String; var subs: [Sub]; var generation: Int; var connection: Int }
   /// 被上游明确拒掉的订阅 → 原因。键是「频道 品种」。测试与诊断用。
   public private(set) var topicErrors: [String: String] = [:]
   private var connectedAtMs = 0.0
@@ -177,7 +183,7 @@ public actor CoinbaseWS: MarketStream {
       let (type, batch) = drop.isEmpty ? ("subscribe", add) : ("unsubscribe", drop)
       guard let channel = batch.min()?.channel else { return }
       let group = batch.filter { $0.channel == channel }.sorted()
-      lastControl = (type, group)
+      lastControl = Control(type: type, subs: group, generation: runGeneration, connection: connection)
       do {
         try await send(socket, type: type, channel: channel, products: group.map(\.product))
       } catch {
@@ -228,6 +234,8 @@ public actor CoinbaseWS: MarketStream {
         connectionID += 1
         let connection = connectionID
         log("Coinbase WS 连上 #\(connection) \(url.absoluteString)")
+        // 这条连接的第一发控制帧：心跳频道不是一个 `Sub`，它招来的报错归不到任何品种头上。
+        lastControl = Control(type: "subscribe", subs: [], generation: generation, connection: connection)
         try await send(s, type: "subscribe", channel: "heartbeats", products: [])
         sink.yield(.connected(id: connection))
         sink.yield(.status(.live))
@@ -277,7 +285,7 @@ public actor CoinbaseWS: MarketStream {
         guard let data = text.data(using: .utf8),
               let decoded = try? Self.decoder.decode(CoinbaseDTO.Frame.self, from: data) else { continue }
         if decoded.type == "error" {
-          noteError(decoded.message ?? String(text.prefix(200)))
+          noteError(decoded.message ?? String(text.prefix(200)), generation: generation, connection: connection)
           continue
         }
         // 这一帧证明了哪些订阅已经生效（数据帧、订阅应答都算；成交快照虽然不折进 K 线，也算）。
@@ -294,9 +302,9 @@ public actor CoinbaseWS: MarketStream {
 
   /// `{"type":"error","message":…}`：Coinbase 不说是哪个品种，只能归到最近一发控制帧上。
   /// 被拒的订阅记进 `topicErrors`，并从待确认里拿掉（明确拒了，重发、重连都换不来结果）。
-  private func noteError(_ message: String) {
+  private func noteError(_ message: String, generation: Int, connection: Int) {
     let subs = lastControl.subs
-    guard !subs.isEmpty else {
+    guard !subs.isEmpty, lastControl.generation == generation, lastControl.connection == connection else {
       log("Coinbase WS 报错：\(message)")
       return
     }
@@ -325,7 +333,7 @@ public actor CoinbaseWS: MarketStream {
     guard connection == connectionID, let s = socket, sent.contains(sub), wanted.contains(sub),
           let entry = pending[sub] else { return }
     pending[sub] = (await pacer.nowMs(), entry.attempts + 1)
-    lastControl = ("subscribe", [sub])
+    lastControl = Control(type: "subscribe", subs: [sub], generation: runGeneration, connection: connection)
     log("Coinbase WS \(sub.channel) \(sub.product) 订阅后一直没有推送，重发一次 subscribe")
     do { try await send(s, type: "subscribe", channel: sub.channel, products: [sub.product]) }
     catch { await reconnect(connection: connection, reason: "控制帧发送失败（\(error)），重连") }
