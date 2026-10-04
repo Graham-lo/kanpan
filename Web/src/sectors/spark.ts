@@ -140,10 +140,12 @@ function pump(): void {
   while (running < CONCURRENCY && queue.length) {
     const k = queue.shift() as string
     running++
+    // 失败（含网络错）的一分钟后才再试；记下这一次，走势格才知道「取过了、没有」而不是一直当在取
+    const failed = (): void => { cache.set(k, { at: Date.now() - TTL_MS + 60_000, bars: cache.get(k)?.bars ?? new Map() }) }
     klines(k, '1h', undefined, LIMIT, false, true).then(({ bars, ok }) => {
       if (ok && bars.length) { cache.set(k, { at: Date.now(), bars: new Map(bars.map(b => [b.t, b.c])), direct: true }); saveSession() }
-      else cache.set(k, { at: Date.now() - TTL_MS + 60_000, bars: cache.get(k)?.bars ?? new Map() }) // 失败的一分钟后才再试
-    }).catch(() => { /* 网络错当没有 */ }).finally(() => {
+      else failed()
+    }).catch(failed).finally(() => {
       running--
       inflight.delete(k)
       ping()
@@ -173,6 +175,10 @@ export function wantSparks(symbols: string[], onReady: () => void): void {
   const server = want.filter(k => SERVER_SYMBOL.test(k)), rest = want.filter(k => !SERVER_SYMBOL.test(k))
   if (rest.length) direct(rest)
   if (server.length) { serverQueue.push(...server); void drainServer() }
+}
+/** 这几只都取过一趟了（成没成都算）、没有还在路上的：这时还画不出走势就是真没有，不是还没到 */
+export function sparkSettled(symbols: string[]): boolean {
+  return symbols.every(k => cache.has(k) && !inflight.has(k))
 }
 export function stopSparks(): void {
   for (const k of queue) inflight.delete(k)

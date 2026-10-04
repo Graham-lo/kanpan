@@ -20,7 +20,7 @@ import {
 import type { SectorMarket, SectorStat, SectorWindow, SymbolRow } from '../sectors/aggregate'
 import { applyLive, feed, seedFromUniverse, startFeed, stopFeed } from '../sectors/feed'
 import { history, startHistory, stopHistory } from '../sectors/history'
-import { PER_BOARD, boardPath, sparkSVG, stopSparks, wantSparks } from '../sectors/spark'
+import { PER_BOARD, boardPath, sparkSVG, sparkSettled, stopSparks, wantSparks } from '../sectors/spark'
 import { pickWindow, shownWindow } from '../sectors/window'
 
 GLOSSARY['跑赢大盘'] = '这段时间里，板块成员跑赢全市场等权平均的有几只（分母是有行情的成员数）。'
@@ -106,7 +106,7 @@ function boardRow(s: SectorStat): string {
     : `${outperformCount(s)}<span class="faint"> / ${n}</span>`
   return `<tr data-sec="${esc(s.id)}"${thin ? ' data-thin="1"' : ''} class="${s.id === sp.sel ? 'sel' : ''}" aria-selected="${s.id === sp.sel}" tabindex="0">
     <td><span class="sec-name">${esc(s.name)}</span></td>
-    <td><svg class="sec-spark" data-spark="${esc(s.id)}" viewBox="0 0 160 32" preserveAspectRatio="none" aria-hidden="true">${sparkOf(s)}</svg></td>
+    ${sparkCell(s)}
     <td class="num">${beat}</td>
     <td class="num sec-pct ${cls(s.pct)}">${pctText(s.pct)}</td></tr>`
 }
@@ -186,13 +186,25 @@ function sparkMembers(s: SectorStat): string[] {
   return membersOf(s.id).map(b => feed.quotes.get(b)).filter(q => q?.symbol && S.symbols.has(q.symbol) && Number.isFinite(q.quoteVolume))
     .sort((a, b) => b!.quoteVolume - a!.quoteVolume).slice(0, PER_BOARD).map(q => q!.symbol as string)
 }
-function sparkOf(s: SectorStat): string {
-  return sparkSVG(boardPath(sparkMembers(s), sp.window, history.held.asof), cls(s.pct) as 'up' | 'down' | '')
+/** 走势线的内容；none = 成员都取过了还画不出（或者根本没有能取的成员），格子写「—」而不是一直空着像在取 */
+function sparkOf(s: SectorStat): { svg: string; none: boolean } {
+  const members = sparkMembers(s)
+  const svg = sparkSVG(boardPath(members, sp.window, history.held.asof), cls(s.pct) as 'up' | 'down' | '')
+  return { svg, none: !svg && (!members.length || sparkSettled(members)) }
+}
+function sparkCell(s: SectorStat): string {
+  const { svg, none } = sparkOf(s)
+  return `<td class="sec-spark-cell${none ? ' nospark' : ''}"><svg class="sec-spark" data-spark="${esc(s.id)}" viewBox="0 0 160 32" preserveAspectRatio="none" aria-hidden="true">${svg}</svg><span class="faint sec-spark-none" data-tip="成员的小时收盘取不到，画不出走势">—</span></td>`
 }
 function requestSparks(): void {
   wantSparks(sp.boards.flatMap(sparkMembers), () => {
     if (st.page !== 'sectors') return
-    for (const s of sp.boards) { const el = document.querySelector(`[data-spark="${CSS.escape(s.id)}"]`); if (el) el.innerHTML = sparkOf(s) }
+    for (const s of sp.boards) {
+      const el = document.querySelector(`[data-spark="${CSS.escape(s.id)}"]`); if (!el) continue
+      const { svg, none } = sparkOf(s)
+      el.innerHTML = svg
+      el.parentElement?.classList.toggle('nospark', none)
+    }
   })
 }
 
