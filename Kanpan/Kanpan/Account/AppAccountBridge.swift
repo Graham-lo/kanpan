@@ -71,10 +71,8 @@ import ReviewUI
     account.lastOwner = { [weak self] in self?.files.lastOwner }
     prefs.onChange = { [weak self] _ in self?.captureSettings() }
     symbols.onPrefsChange = { [weak self] _ in self?.captureSymbols() }
-    // 自选页停在哪一类，真身在 `Prefs.favoritesGroup`（跟着账号走）。`KanpanSymbols`
-    // 看不见设置包，所以在这儿——两边都认识的地方——把读法接过去。加自选 / 新建分类 /
-    // 删分类时「落单的成员进哪一类」要问它。
-    symbols.selectedGroupSource = { [weak prefs] in prefs?.prefs.favoritesGroup }
+    // 自选页停在哪一类（`SymbolPickerModel.selectedGroupSource`）不在这儿接：桥建不起来时
+    // 也得有，接线在 `MainScreen.wireAccount()` 开头。
     drawings.onArchiveChange = { [weak self] _ in self?.captureDrawings() }
     alerts.onChange = { [weak self] _ in self?.captureAlerts() }
     // 「存档先落、正式文件后落」这个不变量（B2）的兑现处。

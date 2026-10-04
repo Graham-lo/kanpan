@@ -1943,6 +1943,13 @@ struct MainScreen: View {
   }
 
   private func wireAccount() {
+    // 自选页停在哪一类，真身在 `Prefs.favoritesGroup`（跟着账号走）；`KanpanSymbols` 看不见
+    // 设置包，加自选 / 新建分类 / 删分类时「落单的成员进哪一类」由这儿把读法接过去。
+    // 必须接在任何岔路之前：从前接在账号桥的 init 里，桥没建起来（下面测试档案那条岔路、
+    // 存储目录不可写落进 catch）就一直是 nil，停在「美股」从搜索加星的品种落进第一类，
+    // 自选页还跟着跳过去（深度审查 G 线走查）。
+    let store = self.store
+    picker.selectedGroupSource = { [weak store] in store?.prefs.favoritesGroup }
     // 画线那几套 fixture 自己带隔离档案，账号用例会明确指一个 endpoint，所以这条
     // 岔路让它们跳过真账号桥。**只在 DEBUG 构建里存在**（审查 C-02）：正式包必须
     // 走真正的产品初始化，否则「Release 回归」跑的是一条没有账号桥的启动路径。
