@@ -64,10 +64,14 @@ final class GestureState {
   /// 拎着十字线走时，交叉点相对手指的那段距离：按下时量一次，之后一路保持——十字线跟着
   /// 手指的位移走，不往手指底下跳，也不被指头挡住。长按新出的十字线就在手指底下，距离是 0。
   var grab: CGVector = .zero
+  /// 十字线归哪根手指：进 `.crosshair` 那一刻按着的那根。十字线只跟它走；它抬起来这一轮
+  /// 十字线就算放下了——不能让后落下的另一根手指接班，否则十字线会瞬间跳到那根手指底下（审查 B·P3-2）。
+  var owner: UITouch?
 
   func reset() {
     mode = nil
     grab = .zero
+    owner = nil
     longPressActivated = false
     moved = 0
     pinchActive = false
@@ -156,7 +160,7 @@ extension ChartView {
       return
     }
     gesture.mode = hitsCrosshairCenter(q) ? .crosshair : .pan
-    if gesture.mode == .crosshair { grabCrosshair(at: q) }
+    if gesture.mode == .crosshair { gesture.owner = gesture.touches[0]; grabCrosshair(at: q) }
     if state?.crosshair == nil { scheduleLongPress(at: q) }
   }
 
@@ -172,7 +176,9 @@ extension ChartView {
       return
     }
 
-    let q = gesture.touches.first?.location(in: self) ?? gesture.startPoint
+    // 十字线只认它的主人那根手指；其余模式这时只会有一根手指（两根就进捏合了）。
+    let finger = mode == .crosshair ? (gesture.owner ?? gesture.touches.first) : gesture.touches.first
+    let q = finger?.location(in: self) ?? gesture.startPoint
     let dx = Double(q.x - gesture.startPoint.x)
     let dy = Double(q.y - gesture.startPoint.y)
     gesture.moved = max(gesture.moved, (dx * dx + dy * dy).squareRoot())
@@ -193,6 +199,7 @@ extension ChartView {
             // 按在十字线的横线（价格线）上竖着拖：就是要把价格线挪上挪下
             if hitsCrosshairLine(gesture.startPoint) {
               gesture.mode = .crosshair
+              gesture.owner = gesture.touches.first
               grabCrosshair(at: gesture.startPoint)
               moveCrosshair(to: grabbed(q), L: L)
               break
@@ -256,6 +263,9 @@ extension ChartView {
       return
     }
     let liftedAll = gesture.touches.allSatisfy { touches.contains($0) }
+    // 拎十字线那根手指抬起来了、别的手指还按着：这一轮十字线照样就此放下，
+    // 剩下的手指不接班（接班就会把十字线拽到它底下去）。
+    let ownerLifted = gesture.mode == .crosshair && gesture.owner.map { touches.contains($0) } == true
     gesture.touches.removeAll { touches.contains($0) }
     gesture.cancelLongPress()
 
@@ -285,7 +295,7 @@ extension ChartView {
       return
     }
 
-    guard liftedAll || gesture.touches.isEmpty else { return }
+    guard liftedAll || gesture.touches.isEmpty || ownerLifted else { return }
     let mode = gesture.mode
     state?.axisScaleAnchor = nil
     let wasLongPress = gesture.longPressActivated
@@ -500,6 +510,7 @@ extension ChartView {
       guard self.gesture.moved <= ChartGesture.longPressSlopPt else { return }
       self.gesture.longPressActivated = true
       self.gesture.mode = .crosshair
+      self.gesture.owner = self.gesture.touches.first
       // 十字线一出来就把坐标钉住：接下来这段跟手的移动里，新 K 线到货也好、
       // 新高新低也好，都不许把手指底下那根 K 线挪走（见 `beginAxisFreeze`）。
       self.beginAxisFreeze()

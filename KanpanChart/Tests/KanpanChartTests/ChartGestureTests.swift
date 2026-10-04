@@ -213,6 +213,37 @@ private func stroke(
     #expect(abs(c3.y - (c2.y - 60)) < 0.5)
   }
 
+  @Test("十字线只归拎起它的那根手指：它抬起后剩下的手指不接班、十字线不跳（审查 B·P3-2）")
+  func crosshairBelongsToOneFinger() throws {
+    let (v, _) = try makeView(magnet: false)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [])
+    let c0 = try #require(v.renderer?.crosshairCenter(size: v.bounds.size))
+    // A 拎起交叉点往下挪 30 点
+    let a = FakeTouch(c0)
+    v.touchesBegan([a], with: FakeEvent(ms: 20_000))
+    #expect(v.gesture.mode == .crosshair)
+    a.point.y += 30
+    v.touchesMoved([a], with: FakeEvent(ms: 20_016))
+    let held = try #require(v.state?.crosshair)
+    // B 落在远处（不进捏合：十字线拎着时第二根手指不抢）
+    let b = FakeTouch(CGPoint(x: 330, y: 400))
+    v.touchesBegan([b], with: FakeEvent(ms: 20_032))
+    #expect(v.gesture.mode == .crosshair)
+    // B 动不影响十字线
+    b.point.x -= 40
+    v.touchesMoved([a, b], with: FakeEvent(ms: 20_048))
+    #expect(v.state?.crosshair == held, "另一根手指动，十字线跟着动了")
+    // A 抬起、B 还按着并继续动：十字线留在 A 放下的地方，不跳到 B 底下
+    v.touchesEnded([a], with: FakeEvent(ms: 20_064))
+    b.point = CGPoint(x: 60, y: 500)
+    v.touchesMoved([b], with: FakeEvent(ms: 20_080))
+    let after = try #require(v.state?.crosshair, "主人抬手后十字线不该被收掉")
+    #expect(after.index == held.index && after.price == held.price && after.pane == held.pane)
+    v.touchesEnded([b], with: FakeEvent(ms: 20_096))
+    #expect(v.gesture.touches.isEmpty)
+    #expect(v.state?.crosshair?.index == held.index, "B 抬手被当成了轻点")
+  }
+
   @Test("自动Y下纵向拖动不偷偷修改Y或X")
   func verticalAuto() throws {
     let (v, _) = try makeView()
