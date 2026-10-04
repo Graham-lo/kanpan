@@ -16,7 +16,7 @@ import { authed, login, logout, devices, kick, changePassword, deleteAccount, er
 import { syncNow, syncStatus, onSyncStatus } from '../app/sync'
 import { icon } from '../ui/icons'
 import { toast } from '../ui/toast'
-import { esc } from '../ui/dom'
+import { esc, pressGate, setHTML } from '../ui/dom'
 import { onSyncChange, syncSource } from '../model/syncStatus'
 import { KIND_CN, PASSWORD_RULE, USERNAME_RULE, deviceMeta, exportFileName, sortedJSON, syncAgo, validPassword, validUsername } from '../model/formText'
 import type { MeHost, MeLayer } from './meHost'
@@ -120,17 +120,20 @@ async function deliver(file: File): Promise<void> {
 
 function buildSync(body: HTMLElement, layer: MeLayer, host: MeHost): void {
   body.classList.add('me-account')
-  const paint = (): void => {
-    if (!loggedIn()) { body.innerHTML = expiredBlock(); return }
+  // 每 30 秒「N 分钟前」、每次同步状态变都会来重画：内容没变不动；按着「立即同步」时等松手再换
+  const gate = pressGate(body)
+  const paint = (): void => gate(paintNow)
+  const paintNow = (): void => {
+    if (!loggedIn()) { setHTML(body, expiredBlock()); return }
     const s = syncSource().state()
     const busy = syncStatus().syncing
-    body.innerHTML = `
+    setHTML(body, `
       <div class="me-card">
         <div class="me-kv"><span>上次同步</span><b class="num">${s.lastSync == null ? '尚未同步' : syncAgo(s.lastSync, Date.now())}</b></div>
         ${s.error ? `<div class="me-kv me-kv-note" data-sync-error>${esc(s.error)}</div>` : ''}
         ${s.pending > 0 ? `<div class="me-kv"><span>待同步</span><b class="num">${s.pending} 项</b></div>` : ''}
       </div>
-      <div class="me-card"><button type="button" class="me-row plain accent" data-a="now"${busy ? ' disabled' : ''}><span class="me-row-title">立即同步</span>${busy ? SPIN : ''}</button></div>`
+      <div class="me-card"><button type="button" class="me-row plain accent" data-a="now"${busy ? ' disabled' : ''}><span class="me-row-title">立即同步</span>${busy ? SPIN : ''}</button></div>`)
   }
   body.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-a]')

@@ -18,7 +18,7 @@ import { INTERVALS, type IntervalId } from '../app/prefs'
 import { hooks, openSymbol, trackScroll, restoreScroll, type PageHandle } from '../app/shell'
 import { setRoute } from '../../market'
 import { icon } from '../ui/icons'
-import { el, esc } from '../ui/dom'
+import { el, esc, pressGate, setHTML } from '../ui/dom'
 import { session, loggedIn, onSession } from '../../account/session'
 import { liveCount, onAlertsChange } from '../model/alerts'
 import { onSyncChange, syncMeta, syncSource } from '../model/syncStatus'
@@ -166,16 +166,20 @@ export function initMe(root: HTMLElement): PageHandle {
   }
   const divider = '<div class="me-divider" aria-hidden="true"></div>'
 
-  function renderRoot(): void {
+  /** 同步、对数、未读、预警、每分钟「N 分钟前」都会来重画：内容没变不动；
+   *  手指按在某一行上时等松手再换，不然按着的那一行被换成新节点，点进去落空 */
+  const rootGate = pressGate(rootLayer.body)
+  function renderRoot(): void { rootGate(renderRootNow) }
+  function renderRootNow(): void {
     // 被拒 / 被顶下去之后：账号行第二行先说为什么（红字），点进去是带说明的登录页
     const account = loggedIn()
       ? `<div class="me-acct">${row('account', session.user || '', [syncMeta(syncSource().state())], false)}<button type="button" class="me-sync" data-sync>立即同步</button></div>`
       : session.notice ? row('account', '账号', [session.notice], true, true) : row('account', '账号', ['登录 / 注册'])
     const rv = reviewRootStatus()
-    rootLayer.body.innerHTML = `<div class="me-card">${account}</div>
+    setHTML(rootLayer.body, `<div class="me-card">${account}</div>
       <div class="me-card">${row('review', '复盘本', [rv.line1, rv.line2])}${divider}${row('alerts', '全部预警', [`生效中 ${liveCount()}`])}</div>
       <div class="me-card">${row('friends', '朋友与收件箱', [loggedIn() ? `未读 ${inboxUnseen()}` : '未登录'])}${divider}${row('exchange', '交易所', ['在 App 里接入'])}</div>
-      <div class="me-card">${row('settings', '设置')}</div>`
+      <div class="me-card">${row('settings', '设置')}</div>`)
   }
   rootLayer.body.addEventListener('click', e => {
     const t = e.target as HTMLElement

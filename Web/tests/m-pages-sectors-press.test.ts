@@ -12,12 +12,15 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 describe('pressGate', () => {
   async function setup() {
     vi.useFakeTimers()
+    vi.resetModules()
     const doc = target()
     vi.stubGlobal('document', doc)
     const { pressGate } = await import('../src/m/ui/dom')
-    const root = target()
-    const gate = pressGate(root as unknown as HTMLElement)
-    return { doc, root, gate }
+    const inside = { id: 'row' }
+    const rootNode = { contains: (n: unknown) => n === inside }
+    const gate = pressGate(rootNode as unknown as HTMLElement)
+    const root = { fire: (t: string, e: any) => doc.fire(t, { ...e, target: inside }) }
+    return { doc, root, gate, pressGate }
   }
 
   it('没按着：立刻跑', async () => {
@@ -53,6 +56,21 @@ describe('pressGate', () => {
     root.fire('pointerdown', { pointerId: 1 })
     vi.advanceTimersByTime(5100)
     const fn = vi.fn(); gate(fn)
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('pressGate（全 app 一份按键状态）', () => {
+  it('按在别处（底栏、另一页）不挡这一页；建很多个 gate 也只在 document 上挂一次监听', async () => {
+    vi.useFakeTimers()
+    vi.resetModules()
+    const doc = target()
+    vi.stubGlobal('document', doc)
+    const { pressGate } = await import('../src/m/ui/dom')
+    const gates = Array.from({ length: 20 }, () => pressGate({ contains: () => false } as unknown as HTMLElement))
+    expect(doc.hs.pointerdown).toHaveLength(1)
+    doc.fire('pointerdown', { pointerId: 1, target: {} })
+    const fn = vi.fn(); gates[0](fn)
     expect(fn).toHaveBeenCalledTimes(1)
   })
 })

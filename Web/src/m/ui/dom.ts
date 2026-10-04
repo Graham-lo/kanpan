@@ -60,22 +60,36 @@ export function forgetHTML(node: Element): void { lastHTML.delete(node) }
 
 /** 手指按在 root 里时把整块重画往后放：轮询回来就地 innerHTML 会把按着的那一行换成新节点，
  *  松手时点击落不到行上、长按计时随旧节点一起作废。返回的 gate(fn)：没按着立刻跑；按着就记下最后一次，
- *  松手（这一下的 click 派发完）后跑。按住超过 STUCK_MS 当作丢了松手事件，不再挡。 */
-export function pressGate(root: HTMLElement): (fn: () => void) => void {
-  const STUCK_MS = 5000
-  const down = new Set<number>()
-  let since = 0
-  let queued: (() => void) | null = null
-  const busy = (): boolean => down.size > 0 && Date.now() - since < STUCK_MS
-  const flush = (): void => {
-    if (busy() || !queued) return
-    const fn = queued; queued = null
-    setTimeout(() => { if (busy()) { queued ??= fn; return } fn() }, 0)
-  }
-  root.addEventListener('pointerdown', e => { if (!down.size) since = Date.now(); down.add(e.pointerId) })
-  const up = (e: PointerEvent): void => { down.delete(e.pointerId); flush() }
+ *  松手（这一下的 click 派发完）后跑。按住超过 STUCK_MS 当作丢了松手事件，不再挡。
+ *  按键状态是全 app 一份（document 上只挂一次监听），每层页面 / 浮层随便建 gate，不会越建越多监听。 */
+const STUCK_MS = 5000
+const presses = new Map<number, { target: Node | null; at: number }>()
+const waiting = new Set<() => void>()
+let pressWired = false
+function wirePresses(): void {
+  if (pressWired) return
+  pressWired = true
+  document.addEventListener('pointerdown', e => { presses.set(e.pointerId, { target: e.target as Node | null, at: Date.now() }) }, true)
+  const up = (e: PointerEvent): void => { presses.delete(e.pointerId); releasePresses() }
   document.addEventListener('pointerup', up, true)
   document.addEventListener('pointercancel', up, true)
-  document.addEventListener('visibilitychange', () => { down.clear(); flush() })
-  return fn => { if (busy()) queued = fn; else { queued = null; fn() } }
+  document.addEventListener('visibilitychange', () => { presses.clear(); releasePresses() })
+}
+function releasePresses(): void { for (const f of [...waiting]) f() }
+const pressedIn = (root: Node): boolean => {
+  for (const p of presses.values()) if (Date.now() - p.at < STUCK_MS && p.target && root.contains(p.target)) return true
+  return false
+}
+export function pressGate(root: HTMLElement): (fn: () => void) => void {
+  wirePresses()
+  let queued: (() => void) | null = null
+  const flush = (): void => {
+    if (!queued || pressedIn(root)) return
+    waiting.delete(flush)
+    const fn = queued; queued = null
+    setTimeout(() => { if (pressedIn(root)) { if (!queued) { queued = fn; waiting.add(flush) } return } fn() }, 0)
+  }
+  return fn => {
+    if (pressedIn(root)) { queued = fn; waiting.add(flush) } else { queued = null; waiting.delete(flush); fn() }
+  }
 }

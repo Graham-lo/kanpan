@@ -29,7 +29,7 @@
  * - 触感：用 navigator.vibrate（安卓 / 鸿蒙浏览器有；iOS Safari 没有这个接口，就安静地不震）。
  */
 import '../styles/review.css'
-import { esc } from '../ui/dom'
+import { esc, pressGate, setHTML } from '../ui/dom'
 import { icon } from '../ui/icons'
 import { confirmDialog, openMenu, openSheet } from '../ui/sheet'
 import { deleteAction, swipeRow, type SwipeHandle } from '../ui/swipeDelete'
@@ -719,23 +719,31 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
   }
 
   let offThumbs: () => void = () => {}
-  function paintTrades(): void {
-    offThumbs()
-    const now = Date.now()
+  let thumbsOn = false
+  function tradesHTML(now: number): string {
     if (!status.trades) {
-      tradesList.innerHTML = status.tradesError
+      return status.tradesError
         ? `<div class="rv-line rv-danger">${esc(status.tradesError)}</div><button type="button" class="rv-link" data-retry-trades>重试</button>`
         : spinner()
-      return
     }
     const live = status.trades.filter(t => !t.voided)
-    if (!live.length) { tradesList.innerHTML = `<div class="rv-empty rv-ink2">接入交易所后自动生成</div>`; return }
+    if (!live.length) return `<div class="rv-empty rv-ink2">接入交易所后自动生成</div>`
     const s = M.tradeSections(live, now)
     const group = (title: string, items: TradeRecord[]): string =>
       `<section class="rv-lsec">${secHead(title)}<div class="rv-rows">${items.map(t => tradeRow(t, now)).join('')}</div></section>`
-    tradesList.innerHTML = (s.open.length ? group('持仓中', s.open) : '') + s.days.map(d => group(d.title, d.items)).join('')
-    if (segment === 'trades') offThumbs = hydrateThumbs(tradesList, id => status.trades?.find(x => x.id === id), sc)
+    return (s.open.length ? group('持仓中', s.open) : '') + s.days.map(d => group(d.title, d.items)).join('')
   }
+  /** 每分钟的「已持 N 分」、每次对数（onReviewStatus）都会来重画：内容没变就不动这块；
+   *  手指按在交易行上时等松手再换，不然按着的那一行被换成新节点，点开详情落空 */
+  function paintTradesNow(): void {
+    const changed = setHTML(tradesList, tradesHTML(Date.now()))
+    const want = segment === 'trades' && !!status.trades?.some(t => !t.voided)
+    if (!changed && thumbsOn === want) return
+    offThumbs(); offThumbs = () => {}; thumbsOn = false
+    if (want) { offThumbs = hydrateThumbs(tradesList, id => status.trades?.find(x => x.id === id), sc); thumbsOn = true }
+  }
+  const tradesGate = pressGate(tradesList)
+  function paintTrades(): void { tradesGate(paintTradesNow) }
 
   const paintAll = (): void => { paintTop(); paintTrades() }
 
@@ -850,22 +858,18 @@ function openStats(host: MeHost): void {
         return `<div class="rv-srow"><span class="rv-srow-text"><span class="rv-srow-title">${esc(g.title)}</span><small class="num">${g.total} 条有效记录</small></span><span class="${short ? 'rv-rate-short' : 'rv-rate num'}">${esc(groupRateText(g))}</span></div>`
       }).join('')}</div>`
     }
-    function paintTrades(): void {
-      if (!status.trades) {
-        trades.innerHTML = status.tradesError ? `<div class="rv-line rv-danger">${esc(status.tradesError)}</div>` : spinner()
-        return
-      }
+    /** 每次对数都会来：内容没变不动（「？」解释按在手上时不被换掉） */
+    function paintTrades(): void { setHTML(trades, statTradesHTML()) }
+    function statTradesHTML(): string {
+      if (!status.trades) return status.tradesError ? `<div class="rv-line rv-danger">${esc(status.tradesError)}</div>` : spinner()
       const rounds = status.trades.filter(t => !t.voided).map(t => t.round)
       const s = M.summarize(rounds)
-      if (s.count === 0) {
-        trades.innerHTML = rounds.length ? `<div class="rv-line rv-ink3">暂无平仓的交易</div>` : `<div class="rv-line rv-ink2">接入交易所后自动生成</div>`
-        return
-      }
+      if (s.count === 0) return rounds.length ? `<div class="rv-line rv-ink3">暂无平仓的交易</div>` : `<div class="rv-line rv-ink2">接入交易所后自动生成</div>`
       const metric = (label: string, value: string, opts: { term?: string; cls?: string } = {}): string =>
         `<div class="rv-metric"><span>${esc(label)}${opts.term ? termHTML(opts.term) : ''}</span><b class="num${opts.cls ? ' ' + opts.cls : ''}">${esc(value)}</b></div>`
       const group = (title: string, rows: M.RoundGroup[]): string => rows.length ? `<section class="rv-lsec">${secHead(title)}<div class="rv-rows">${rows.map(g =>
         `<div class="rv-srow"><span class="rv-srow-text"><span class="rv-srow-title">${esc(g.title)}</span><small class="num">${g.summary.count} 笔 · 胜率 ${esc(M.percent(g.summary.winRate))}</small></span><b class="rv-srow-net num ${tone(M.pnlTone(g.summary.netPnl))}">${esc(M.money(g.summary.netPnl))}</b></div>`).join('')}</div></section>` : ''
-      trades.innerHTML = `<div class="rv-rows">
+      return `<div class="rv-rows">
           ${metric('笔数', String(s.count))}
           ${metric('胜率', M.percent(s.winRate))}
           ${metric('盈亏比', M.ratio(s.rewardRisk), { term: 'rvRewardRisk' })}
