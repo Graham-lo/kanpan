@@ -76,10 +76,14 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register(`${import.meta.env.BASE_URL}m/sw.js?v=${encodeURIComponent(v)}`, { scope: import.meta.env.BASE_URL + 'm/' })
       .catch(e => console.warn('[m] Service Worker 注册失败', e))
     // SW 就绪后把这一次实际加载过的构建产物报过去补存（第一次打开时它们是 SW 装好之前取的），下次断网打开也有完整的壳；
-    // 各页是空闲时懒加载的，稍等一会儿再报
-    void navigator.serviceWorker.ready.then(reg => setTimeout(() => {
+    // 各页是空闲时懒加载的，稍等一会儿再报。
+    // 换版时页面先由旧 SW 管着、新 SW 还在装：报给旧的那份会随旧缓存一起在新版激活时删掉，
+    // 所以接管者一换（controllerchange）就再报给新的那个。
+    const report = (to: ServiceWorker | null | undefined): void => {
       const urls = performance.getEntriesByType('resource').map(e => e.name).filter(u => u.includes('/assets/'))
-      reg.active?.postMessage({ type: 'keep', urls })
-    }, 4000))
+      to?.postMessage({ type: 'keep', urls })
+    }
+    void navigator.serviceWorker.ready.then(reg => setTimeout(() => report(reg.active), 4000))
+    navigator.serviceWorker.addEventListener('controllerchange', () => report(navigator.serviceWorker.controller))
   })
 }

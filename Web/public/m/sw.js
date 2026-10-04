@@ -30,30 +30,33 @@ function assetsOf(html) {
   return [...out]
 }
 
-/** 只存同源、在 /web/assets/ 下、这一版缓存里还没有的 */
-async function keep(cache, urls) {
+/** 只存同源、在 /web/assets/ 下、这一版缓存里还没有的；strict = 取不到就抛（装的时候用） */
+async function keep(cache, urls, strict) {
   const want = urls.map(u => new URL(u, self.location.href)).filter(u => u.origin === self.location.origin && u.pathname.startsWith(BASE + 'assets/'))
   await Promise.all(want.map(async u => {
     if (await cache.match(u.pathname)) return
     const res = await fetch(u.pathname)
     if (res.ok) await cache.put(u.pathname, res)
+    else if (strict) throw new Error(u.pathname + ' ' + res.status)
   }))
 }
 
+// 壳、入口脚本与样式有一样没存全就让这次安装失败：浏览器会留着旧版 SW 和它那份完整的缓存，
+// 下次打开再装。若照样 skipWaiting，新版一激活就把旧缓存删了，手里只剩半份壳，断网冷启动白屏。
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const cache = await caches.open(CACHE)
     try {
+      const cache = await caches.open(CACHE)
       const res = await fetch(SCOPE, { cache: 'no-cache' })
-      if (res.ok) {
-        const html = await res.clone().text()
-        await cache.put(SCOPE, res)
-        await keep(cache, assetsOf(html))
-      }
+      if (!res.ok || res.redirected) throw new Error('壳 ' + res.status)
+      const html = await res.clone().text()
+      await keep(cache, assetsOf(html), true)
+      await cache.put(SCOPE, res)
       await cache.addAll([SCOPE + 'manifest.webmanifest', SCOPE + 'icon-180.png'])
     } catch (e) {
-      // 装的时候网不好：壳照样装上，下一次在线打开时导航与构建产物会顺手补进缓存
-      console.warn('[sw] 预存壳失败', e)
+      console.warn('[sw] 预存壳失败，本次不装', e)
+      await caches.delete(CACHE)
+      throw e
     }
     await self.skipWaiting()
   })())
