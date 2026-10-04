@@ -10,7 +10,8 @@ const RATE = Number(process.argv[3] || 4)
 const ROUNDS = Number(process.argv[4] || 3)
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-const browser = await chromium.launch({ executablePath: CHROME, headless: true })
+// 关掉 Chrome 对后台 / 被遮挡渲染进程的降频，不然 rAF 时有时无，帧数与 CPU 读数一轮一个样
+const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-features=CalculateNativeWinOcclusion'] })
 try {
   const ctx = await browser.newContext({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
   await ctx.addInitScript(() => {

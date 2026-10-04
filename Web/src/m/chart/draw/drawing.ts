@@ -243,7 +243,8 @@ export function drawingIsValid(d: Drawing): boolean {
     && d.points.every(p => Number.isFinite(p.t) && Number.isFinite(p.p))
     && Number.isFinite(d.lineWidth) && d.lineWidth >= 0.5 && d.lineWidth <= 6
     && d.levels.length <= 24 && d.levels.every(v => Number.isFinite(v) && Math.abs(v) <= 10)
-    && graphemeCount(d.text) <= DRAWING_TEXT_LIMIT
+    // 字素数不会多于 UTF-16 长度：没超长度的不必再数（几何每帧都要验这一步）
+    && (d.text.length <= DRAWING_TEXT_LIMIT || graphemeCount(d.text) <= DRAWING_TEXT_LIMIT)
 }
 
 const samePoint = (a: DrawPoint, b: DrawPoint): boolean => a.t === b.t && a.p === b.p

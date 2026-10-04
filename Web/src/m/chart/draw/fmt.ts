@@ -65,12 +65,22 @@ function stripZeros(s: string): string {
   return s.replace(/0+$/, '').replace(/\.$/, '')
 }
 
-/** 字素簇个数（Swift `String.count`）。没有 `Intl.Segmenter` 时按码点数。 */
+type GraphemeSegmenter = { segment(s: string): Iterable<unknown> }
+let segmenter: GraphemeSegmenter | null | undefined
+
+/** 字素簇个数（Swift `String.count`）。没有 `Intl.Segmenter` 时按码点数。
+ *  分段器只建一次：画线几何每帧每条线都要验一遍文字长度（drawingIsValid），每次 new 一个 Segmenter
+ *  是满载平移时最热的一段；空串与纯 ASCII（除 \r\n 算一个字素外一字一簇）直接数，不进分段器。 */
 export function graphemeCount(s: string): number {
-  const Seg = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => { segment(s: string): Iterable<unknown> } }).Segmenter
-  if (Seg) {
+  if (!s) return 0
+  if (/^[\x00-\x7f]*$/.test(s)) return s.length - (s.match(/\r\n/g)?.length ?? 0)
+  if (segmenter === undefined) {
+    const Seg = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => GraphemeSegmenter }).Segmenter
+    segmenter = Seg ? new Seg(undefined, { granularity: 'grapheme' }) : null
+  }
+  if (segmenter) {
     let n = 0
-    for (const _ of new Seg(undefined, { granularity: 'grapheme' }).segment(s)) { void _; n++ }
+    for (const _ of segmenter.segment(s)) { void _; n++ }
     return n
   }
   return Array.from(s).length
