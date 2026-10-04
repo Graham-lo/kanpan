@@ -32,6 +32,7 @@ import { createOrderFlowPort } from './orderflow.source'
 import { CompareFeed, compareSymbolOf, compareTargets } from './compare.source'
 import { DepthFeed } from './depth.source'
 import { ChartBeat, resyncOnOpen } from './beat'
+import { ScaleReport } from './scaleReport'
 
 // ================================================================ ViewIntent
 
@@ -567,13 +568,15 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     if (s && series && orderFlowPort) orderFlowPort.noteView(v, series)
     emit('visibleRange', { from: v.from, to: v.to, atLatest: !!s && s.input.series.count > 0 && v.to >= s.input.series.lastTime })
   }
+  const scaleReport = new ScaleReport(() => view.gesture.touches.length > 0, w => emit('scale', { barSpacing: w }))
   view.onUserViewChanged = v => {
     const L = view.chartLayout, s = view.state
     if (!L || !s || s.input.series.count === 0) return
     const w = v.barSpacing(s.input.series.step, L.plotW)
     if (!(w > 0) || !Number.isFinite(w)) return
     resetSpacing = w
-    emit('scale', { barSpacing: w })
+    // 内存里的根宽每帧都认；报给页面（页面一收到就整份落盘）钉在手指全部抬起那一刻
+    scaleReport.note(w)
   }
   view.onCrosshairChanged = c => {
     const s = view.state
@@ -585,7 +588,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   view.onTapped = () => emit('tap', undefined)
   view.onNotice = t => emit('notice', t)
   view.onInteractionBegan = () => { wantWindow = null; emit('interaction', 'began') }
-  view.onInteractionEnded = () => emit('interaction', 'ended')
+  view.onInteractionEnded = () => { scaleReport.lift(); emit('interaction', 'ended') }
   view.onParentScroll = dy => { scroller.scrollTop += dy }
   view.onStateChanged = (s, layers) => {
     if (!s || !(layers.input || layers.viewport)) return
@@ -1138,6 +1141,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
     destroy() {
       if (destroyed) return
+      scaleReport.lift() // 手指还按着就被拆掉（切走、横竖屏重建）：捏出来的那一下别丢
       destroyed = true
       generation++
       offMarket()

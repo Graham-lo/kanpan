@@ -8,6 +8,7 @@ import type { ChartState } from '../src/m/chart/state'
 import { ChartView } from '../src/m/chart/view'
 import { ChartGesture } from '../src/m/chart/gesture'
 import { decodeDrawing } from '../src/m/chart/draw/drawing'
+import { ScaleReport } from '../src/m/chart/scaleReport'
 
 type Listener = (e: unknown) => void
 function fakeEl(): Record<string, unknown> {
@@ -183,5 +184,76 @@ describe('画线一变，开着订单流时十字线层跟着重画（金额签�
     const d = (v as unknown as Dirty).dirty
     expect(d & 1).toBe(1)
     expect(d & CROSS).toBe(0)
+  })
+})
+
+describe('捏合缩放的宽度只在抬手那一刻报给页面落盘（iOS ChartViewport.interactionEnded）', () => {
+  // 页面一收到 'scale' 就 save()：整份偏好写 localStorage + 同步记脏 + syncChart 重算。
+  // 原来 index.ts 在 onUserViewChanged 里每帧都 emit，一次捏合几十帧就整份落盘几十遍。
+  const wire = (v: ChartView) => {
+    const reports: number[] = []
+    const r = new ScaleReport(() => v.gesture.touches.length > 0, w => reports.push(w))
+    let frames = 0
+    v.onUserViewChanged = nv => {
+      const L = v.chartLayout!, s = v.state!
+      frames++
+      r.note(nv.barSpacing(s.input.series.step, L.plotW))
+    }
+    v.onInteractionEnded = () => r.lift()
+    return { reports, frames: () => frames, r }
+  }
+
+  it('双指捏开二十帧：按着时一次不报，抬起最后一根手指报一次、报的就是最终宽度', () => {
+    const v = rig()
+    const w = wire(v)
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    expect(v.gesture.mode).toBe('pinch')
+    for (let k = 1; k <= 20; k++) {
+      move(v, a, 150 - k * 3, 200, 1000 + k * 16)
+      move(v, b, 250 + k * 3, 200, 1000 + k * 16 + 1)
+    }
+    expect(w.frames()).toBeGreaterThan(10)
+    expect(w.reports).toHaveLength(0)
+    const s = v.state!
+    const final = s.viewport.view.barSpacing(s.input.series.step, v.chartLayout!.plotW)
+    up(v, a, 1400)
+    expect(w.reports).toHaveLength(0) // 还剩一根手指按着
+    up(v, b, 1410)
+    expect(w.reports).toHaveLength(1)
+    expect(w.reports[0]).toBeCloseTo(final, 9)
+    expect(w.r.owed).toBe(false)
+  })
+
+  it('捏到一半被系统取消（来电、切后台）：照样把欠着的那一下报出去', () => {
+    const v = rig()
+    const w = wire(v)
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    for (let k = 1; k <= 6; k++) { move(v, a, 150 - k * 4, 200, 1000 + k * 16); move(v, b, 250 + k * 4, 200, 1000 + k * 16 + 1) }
+    expect(w.reports).toHaveLength(0)
+    const s = v.state!
+    const final = s.viewport.view.barSpacing(s.input.series.step, v.chartLayout!.plotW)
+    fire(v, 'pointercancel', a, 1200)
+    fire(v, 'pointercancel', b, 1201)
+    // 取消路径收尾时 settleView 在手指已清空后再报一帧同样的宽度；页面对没变的宽度不写盘
+    expect(w.reports.length).toBeGreaterThanOrEqual(1)
+    for (const x of w.reports) expect(x).toBeCloseTo(final, 9)
+    expect(w.r.owed).toBe(false)
+  })
+
+  it('手指已经离开时来的帧（惯性、回弹）照常即时报', () => {
+    const reports: number[] = []
+    let down = true
+    const r = new ScaleReport(() => down, x => reports.push(x))
+    r.note(5); r.note(6)
+    expect(reports).toEqual([])
+    down = false
+    r.lift()
+    expect(reports).toEqual([6])
+    r.note(6.5)
+    expect(reports).toEqual([6, 6.5])
+    r.lift()
+    expect(reports).toEqual([6, 6.5])
   })
 })
