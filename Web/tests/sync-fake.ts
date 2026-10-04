@@ -111,7 +111,7 @@ export class FakeServer {
   }
 }
 
-const KINDS: Record<string, Kind> = { BTCUSDT: 'crypto', ETHUSDT: 'crypto', SOLUSDT: 'crypto', NVDAUSDT: 'us', XAUUSDT: 'com' }
+const KINDS: Record<string, Kind> = { BTCUSDT: 'crypto', ETHUSDT: 'crypto', SOLUSDT: 'crypto', NVDAUSDT: 'us', XAUUSDT: 'com', XAGUSDT: 'com' }
 export const ctx: Ctx & { ready: boolean } = {
   now: () => 1_800_000_000_000,
   kindOf: s => KINDS[s],

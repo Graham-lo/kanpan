@@ -50,7 +50,7 @@ export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: b
     fp.settings = now.settings
   }
   if (now.favorites !== fp.favorites && ctx.ready) {
-    vals.push(...encodeFavorites(s.watch, store.localOf('favorites'), ctx))
+    vals.push(...encodeFavorites(s.watch, store.localOf('favorites'), ctx, store.localOf('groups')))
     fp.favorites = now.favorites
   }
   if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'), opts)); fp.drawings = now.drawings }

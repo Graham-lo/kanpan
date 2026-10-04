@@ -285,8 +285,36 @@ function favKind(o: SyncObject, ctx: Ctx): Kind | undefined {
   return ctx.kindOf(s)
 }
 
-/** 网页自选 → 要记账的对象（含删除）。品种表还没到时返回空：分不出类别就不动 */
-export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObject[], ctx: Ctx): SyncObject[] {
+const PRECIOUS = new Set(['XAU', 'XAG', 'XPT', 'XPD'])
+/** 手机端 FavoriteCategory.name 的同一套类名（加密 / 美股 / 贵金属 / 其他） */
+function categoryName(kind: Kind, symbol: string): string {
+  if (kind === 'crypto') return '加密'
+  if (kind === 'us') return '美股'
+  return PRECIOUS.has(symbol.replace(/USDT$|USDC$/, '').toUpperCase()) ? '贵金属' : '其他'
+}
+/** 网页上新加的一只自选落进手机的哪一类（审查 D-01）。
+ *  网页的标签页就是他此刻站着的那一类：先找同名的分类（同名并成一格时手机留 id 最小的那个）；
+ *  没有同名的，就跟着同一标签页里已经有的自选挂在哪一类（多数那一类）。都找不到才留空——
+ *  以前一律留空，手机分类页按分类过滤，这只自选在手机上就看不见了。 */
+function groupForNew(kind: Kind, symbol: string, prev: SyncObject[], groups: SyncObject[], ctx: Ctx): string | null {
+  const live = groups.filter(o => !o.deleted && typeof o.body.name === 'string')
+  const ids = new Set(live.map(o => o.id))
+  const name = categoryName(kind, symbol)
+  const named = live.filter(o => (o.body.name as string).trim() === name).map(o => o.id).sort()
+  if (named.length) return named[0]
+  const counts = new Map<string, number>()
+  for (const o of prev) {
+    const g = o.body.groupId
+    if (typeof g === 'string' && ids.has(g) && favKind(o, ctx) === kind) counts.set(g, (counts.get(g) ?? 0) + 1)
+  }
+  let best: string | null = null, most = 0
+  for (const [g, n] of [...counts].sort((a, b) => (a[0] < b[0] ? -1 : 1))) if (n > most) { best = g; most = n }
+  return best
+}
+
+/** 网页自选 → 要记账的对象（含删除）。品种表还没到时返回空：分不出类别就不动。
+ *  `groups`：云端的分类（只读，网页不建分类），新加的自选按它挂进手机那一类 */
+export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObject[], ctx: Ctx, groups: SyncObject[] = []): SyncObject[] {
   const prev = liveSorted(prevAll)
   // 云端有、网页分不出类别的（Coinbase、表里没有的）原地留着；网页那边同名的不再重复排
   const pinnedIds = new Set(prev.filter(o => !favKind(o, ctx)).map(o => o.id))
@@ -295,15 +323,15 @@ export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObje
   for (const k of KIND_ORDER) {
     queues.set(k, (watch[k] ?? []).filter(s => validSymbol(s) && !pinnedIds.has(favId(s)) && !seen.has(s) && (seen.add(s), true)))
   }
-  const seq: { id: string; symbol: string | null; prev?: SyncObject }[] = []
+  const seq: { id: string; symbol: string | null; prev?: SyncObject; kind?: Kind }[] = []
   const byId = new Map(prevAll.map(o => [o.id, o]))
   for (const o of prev) {
     const k = favKind(o, ctx)
     if (!k) { seq.push({ id: o.id, symbol: null, prev: o }); continue }
     const next = queues.get(k)!.shift()
-    if (next !== undefined) seq.push({ id: favId(next), symbol: next, prev: byId.get(favId(next)) })
+    if (next !== undefined) seq.push({ id: favId(next), symbol: next, prev: byId.get(favId(next)), kind: k })
   }
-  for (const k of KIND_ORDER) for (const s of queues.get(k)!) seq.push({ id: favId(s), symbol: s, prev: byId.get(favId(s)) })
+  for (const k of KIND_ORDER) for (const s of queues.get(k)!) seq.push({ id: favId(s), symbol: s, prev: byId.get(favId(s)), kind: k })
   const unchanged = seq.length === prev.length && seq.every((x, i) => x.id === prev[i].id)
   const out: SyncObject[] = []
   const keep = new Set(seq.map(x => x.id))
@@ -312,7 +340,7 @@ export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObje
     const base = x.prev && !x.prev.deleted ? x.prev.body : null
     const body: Body = x.symbol == null
       ? { ...(base ?? {}), order }
-      : { symbol: x.symbol, market: MARKET, venue: VENUE, groupId: base && 'groupId' in base ? base.groupId : null, order }
+      : { symbol: x.symbol, market: MARKET, venue: VENUE, groupId: base && 'groupId' in base ? base.groupId : (x.kind ? groupForNew(x.kind, x.symbol, prev, groups, ctx) : null), order }
     out.push({ collection: 'favorites', id: x.id, body, fields: {}, revision: 0, deleted: false, generation: 0 })
   })
   for (const o of prev) {
