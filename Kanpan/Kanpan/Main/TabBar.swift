@@ -118,7 +118,7 @@ struct TabBar: View {
         // 角标挂在记号外面：记号自己那层 64% 的压暗不该连角标一起压（要一眼看得见）。
         .overlay(alignment: .topTrailing) {
           if tab == .me, let review {
-            ReviewCountBadge(review: review, theme: theme).offset(x: 7, y: -4)
+            ReviewCountBadge(review: review, theme: theme).equatable().offset(x: 7, y: -4)
           }
         }
         .frame(width: Self.cellW, height: Self.cellH)
@@ -385,9 +385,19 @@ struct ReviewGlyph: View {
 /// 单独成一个视图，是为了让「数欠着几条」这件事只跟着复盘记录走：宿主（底栏、再往上是
 /// `MainScreen`）跟着行情一秒重画好几次，只要递下来的 feature 引用没变，SwiftUI 就不重跑
 /// 这里的 body；`pendingCount` 本身也已在 feature 里缓存，记录真变了才重数。
-struct ReviewCountBadge: View {
+///
+/// 「引用没变就不重跑」不能交给 SwiftUI 默认的逐字段比对：`PanelTheme` 里的种子和图色带着
+/// `[Hex]` 数组，宿主每趟 body 都现做一份主题，数组是新开的堆内存，逐字段比对一律判「变了」，
+/// 角标就跟着宿主一趟不落地重算（单元用例 `ReviewBadgeIsolationTests` 量到 20 趟重算 20 次）。
+/// 所以这儿自己说清楚什么叫「没变」——同一只 feature、主题按值相等——挂的时候套 `.equatable()`。
+/// 复盘记录真变了不走这条比对：body 里读 `pendingCount` 登记的观察会直接叫醒这一块。
+struct ReviewCountBadge: View, Equatable {
   let review: ReviewFeature
   let theme: PanelTheme
+
+  nonisolated static func == (a: Self, b: Self) -> Bool {
+    a.review === b.review && a.theme == b.theme
+  }
   #if DEBUG
     /// 测试用：这块 body 一共求值了几次。
     static var bodies = 0
