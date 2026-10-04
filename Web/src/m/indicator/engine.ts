@@ -458,15 +458,18 @@ export function utcMonthIndex(ms: number): number {
 }
 
 /**
- * 第 i 根是不是一个新累计周期的头一根：日内周期按 UTC 零点归零，日线及以上按自然月归零
- * （TradingView 的口径）。
+ * 第 i 根是不是一个新累计周期的头一根：日内周期按 UTC 零点归零，日线按自然月，
+ * 周线、月线按自然年，年线不归零（年线一次载齐全部历史）。和 iOS `startsAnchorPeriod`
+ * 同一张表——从前日线以上一律按自然月，月线上每根都清零，VWAP / CVD 等于没有。
  */
 export function startsAnchorPeriod(b: BarSeries, i: number): boolean {
   if (!(i > 0)) return true
   const dayMs = 86_400_000
   const now = b.time(i), prev = b.time(i - 1)
   if (b.step < dayMs) return idiv(now, dayMs) !== idiv(prev, dayMs)
-  return utcMonthIndex(now) !== utcMonthIndex(prev)
+  if (b.step < 7 * dayMs) return utcMonthIndex(now) !== utcMonthIndex(prev)
+  if (b.step < 365 * dayMs) return idiv(utcMonthIndex(now) - 1, 12) !== idiv(utcMonthIndex(prev) - 1, 12)
+  return false
 }
 
 /** 当日VWAP：成交量加权均价，每天零点归零。逐根的累加和存下来，尾部重算才接得上。 */
@@ -489,6 +492,8 @@ export class VWAPState {
       if (startsAnchorPeriod(b, i)) { sp = 0; sv = 0 }
       // 典型价（高+低+收）/3。
       const tp = (b.high[i] + b.low[i] + b.close[i]) / 3
+      // 价或量不是有限数：留白、累计值原样往下传（和 CVD 一个写法，与 iOS 同步）。
+      if (!isFin(tp) || !isFin(b.volume[i])) { pv[i] = sp; vv[i] = sv; out[i] = NaN; continue }
       sp += tp * b.volume[i]
       sv += b.volume[i]
       pv[i] = sp; vv[i] = sv
@@ -653,14 +658,14 @@ export class SARState {
         // 轨不许进到前两根的最低价里面去。
         sar = swiftMin(sar, low[i - 1], low[Math.max(0, i - 2)])
         if (low[i] < sar) {
-          long = false; sar = e; e = low[i]; a = SARState.step
+          long = false; sar = swiftMax(e, high[i]); e = low[i]; a = SARState.step
         } else if (high[i] > e) {
           e = high[i]; a = swiftMin(a + SARState.step, SARState.maxAF)
         }
       } else {
         sar = swiftMax(sar, high[i - 1], high[Math.max(0, i - 2)])
         if (high[i] > sar) {
-          long = true; sar = e; e = high[i]; a = SARState.step
+          long = true; sar = swiftMin(e, low[i]); e = high[i]; a = SARState.step
         } else if (low[i] < e) {
           e = low[i]; a = swiftMin(a + SARState.step, SARState.maxAF)
         }

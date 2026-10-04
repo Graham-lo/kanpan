@@ -633,14 +633,21 @@ func utcMonthIndex(_ ms: Int64) -> Int {
 ///
 /// 累计型指标（当日VWAP、累计成交量差）必须有一个固定的归零点，否则线的高低只取决于
 /// **这次加载了多少历史**：往回翻一页，整条线换一个样，读不出任何东西。所以日内周期
-/// 按 UTC 零点归零（币安的日线就是这么切的），日线及以上按自然月归零——日线上再按天
-/// 归零的话每根自己就是一个周期，累计就不存在了。这是 TradingView 的口径。
+/// 按 UTC 零点归零（币安的日线就是这么切的），日线按自然月归零——日线上再按天
+/// 归零的话每根自己就是一个周期，累计就不存在了。
+///
+/// 同一个道理再往上推一级：周线、月线按自然年归零，年线不归零（年线一次就把上市以来
+/// 全部历史载齐，线不随加载量变）。从前日线以上一律按自然月，于是月线上每一根都是
+/// 新的一个月——VWAP 恒等于这根的典型价、CVD 只剩单根净额，线等于没有；周线也只攒
+/// 四五根就清零（深度审查 B 线）。
 func startsAnchorPeriod(_ b: BarSeries, _ i: Int) -> Bool {
   guard i > 0 else { return true }
   let dayMs: Int64 = 86_400_000
   let now = b.time(at: i), prev = b.time(at: i - 1)
   if b.step < dayMs { return now / dayMs != prev / dayMs }
-  return utcMonthIndex(now) != utcMonthIndex(prev)
+  if b.step < 7 * dayMs { return utcMonthIndex(now) != utcMonthIndex(prev) }
+  if b.step < 365 * dayMs { return (utcMonthIndex(now) - 1) / 12 != (utcMonthIndex(prev) - 1) / 12 }
+  return false
 }
 
 /// 当日VWAP：成交量加权均价，每天零点归零。
@@ -664,6 +671,13 @@ struct VWAPState: Sendable, Equatable {
       if startsAnchorPeriod(b, i) { sp = 0; sv = 0 }
       // 典型价（高+低+收）/3，和交易所自己算 VWAP 的口径一致。
       let tp = (b.high[i] + b.low[i] + b.close[i]) / 3
+      // 这一根价或量不是有限数：留白，累计值原样往下传（和 CVD 同一个写法）。
+      // 加进去的话 NaN 会把这一段剩下的线全抹掉，而且此后每个 tick 都因为
+      // 「上一根累计不是有限数」整列重建。
+      guard tp.isFinite, b.volume[i].isFinite else {
+        pv[i] = sp; vv[i] = sv; out[i] = .nan
+        continue
+      }
       sp += tp * b.volume[i]
       sv += b.volume[i]
       pv[i] = sp; vv[i] = sv
@@ -843,14 +857,17 @@ struct SARState: Sendable, Equatable {
         // 轨不许进到前两根的最低价里面去，否则会在一根实体里被自己扫出去。
         sar = min(sar, b.low[i - 1], b.low[max(0, i - 2)])
         if b.low[i] < sar {
-          long = false; sar = e; e = b.low[i]; a = Self.step
+          // 翻空那一根的点要落在这根的最高价之上（TradingView `ta.sar`、TA-Lib 都这么夹）：
+          // 直接写上一段的极值，碰上「同一根先创新高、再跌破轨」的大振幅 K 线，
+          // 点就画进了这根的上影线里。
+          long = false; sar = max(e, b.high[i]); e = b.low[i]; a = Self.step
         } else if b.high[i] > e {
           e = b.high[i]; a = min(a + Self.step, Self.maxAF)
         }
       } else {
         sar = max(sar, b.high[i - 1], b.high[max(0, i - 2)])
         if b.high[i] > sar {
-          long = true; sar = e; e = b.high[i]; a = Self.step
+          long = true; sar = min(e, b.low[i]); e = b.high[i]; a = Self.step
         } else if b.low[i] < e {
           e = b.low[i]; a = min(a + Self.step, Self.maxAF)
         }

@@ -172,6 +172,116 @@ struct IndicatorEdgeTests {
   }
 }
 
+@Suite("抛物线转向")
+struct SARReversalTests {
+  static func sar(_ s: BarSeries) -> IndicatorResult {
+    var e = IndicatorEngine()
+    e.ensure(series: s, wanted: [.sar], dataKey: "sar")
+    return e.values[.sar]!
+  }
+
+  @Test("翻转那一根的点落在这根 K 线之外，不画进影线里")
+  func reversalBarSitsOutsideTheBar() {
+    // 一路上涨六根，第七根先冲到 120、再砸到 80：同一根既创新高又跌破轨。
+    var o = [89.5], h = [91.0], l = [89.0], c = [90.0]
+    for k in 1...5 {
+      let base = 90.0 + 2 * Double(k)
+      o.append(base); h.append(base + 2); l.append(base); c.append(base + 1.5)
+    }
+    o.append(101); h.append(120); l.append(80); c.append(82)
+    let s = BarSeries(symbol: "BTCUSDT", interval: .h1, t0: 1_700_000_000_000,
+                      open: o, high: h, low: l, close: c, volume: Array(repeating: 1, count: o.count))
+    let r = Self.sar(s)
+    let last = s.count - 1
+    #expect(r.dir?[last] == -1, "这一根翻空")
+    #expect(r.lines[0][last] >= h[last], "翻空那一根的点要在最高价之上，实际 \(r.lines[0][last])")
+  }
+
+  @Test("随机序列：每一根的点都在这根之外（多头在最低价之下，空头在最高价之上）")
+  func everyBarOutsideItsRange() {
+    for seed in [UInt64(3), 11, 29, 47] {
+      let s = synthSeries(count: 1500, seed: seed)
+      let r = Self.sar(s)
+      let out = r.lines[0], dir = r.dir ?? []
+      var flips = 0
+      for i in 1..<s.count {
+        if dir[i] != dir[i - 1] { flips += 1 }
+        if dir[i] > 0 {
+          #expect(out[i] <= s.low[i], "seed \(seed) 第 \(i) 根多头点进了 K 线")
+        } else {
+          #expect(out[i] >= s.high[i], "seed \(seed) 第 \(i) 根空头点进了 K 线")
+        }
+      }
+      #expect(flips > 10, "随机序列里得真的翻过几次才算测到")
+    }
+  }
+}
+
+@Suite("累计周期的锚")
+struct AnchorPeriodTests {
+  static func series(_ interval: Interval, _ times: [Int64]) -> BarSeries {
+    BarSeries(symbol: "X", interval: interval, bars: times.map {
+      Bar(openTime: $0, open: 10, high: 12, low: 8, close: 11, volume: 5, takerBuy: 3)
+    })
+  }
+  static func ms(_ y: Int, _ m: Int, _ d: Int) -> Int64 { Aggregator.utcMs(year: y, month: m, day: d) }
+
+  @Test("周线、月线按自然年归零，年线不归零")
+  func weeklyMonthlyAnchorToYear() {
+    // 12-16、12-23、12-30 在 2024 年，01-06 进了 2025。
+    let w = Self.series(.w1, [Self.ms(2024, 12, 16), Self.ms(2024, 12, 23), Self.ms(2024, 12, 30), Self.ms(2025, 1, 6)])
+    #expect((0..<4).map { startsAnchorPeriod(w, $0) } == [true, false, false, true])
+    let mo = Self.series(.mo1, [Self.ms(2024, 11, 1), Self.ms(2024, 12, 1), Self.ms(2025, 1, 1), Self.ms(2025, 2, 1)])
+    #expect((0..<4).map { startsAnchorPeriod(mo, $0) } == [true, false, true, false])
+    let y = Self.series(.y1, [Self.ms(2021, 1, 1), Self.ms(2022, 1, 1), Self.ms(2023, 1, 1)])
+    #expect((0..<3).map { startsAnchorPeriod(y, $0) } == [true, false, false])
+    // 日线照旧按自然月。
+    let d = Self.series(.d1, [Self.ms(2025, 1, 30), Self.ms(2025, 1, 31), Self.ms(2025, 2, 1)])
+    #expect((0..<3).map { startsAnchorPeriod(d, $0) } == [true, false, true])
+  }
+
+  @Test("月线上的 VWAP / CVD 真的在累计，不是每根各算各的")
+  func monthlyCumulates() {
+    let times = (1...6).map { Self.ms(2025, $0, 1) }
+    let s = BarSeries(symbol: "X", interval: .mo1, bars: times.enumerated().map { i, t in
+      let p = 100 + Double(i) * 10
+      return Bar(openTime: t, open: p, high: p + 6, low: p - 3, close: p + 3, volume: 10, takerBuy: 7)
+    })
+    var e = IndicatorEngine()
+    e.ensure(series: s, wanted: [.vwap, .cvd], dataKey: "mo")
+    let vwap = e.values[.vwap]!.lines[0], cvd = e.values[.cvd]!.lines[0]
+    let last = s.count - 1
+    let typical = (s.high[last] + s.low[last] + s.close[last]) / 3
+    #expect(vwap[last] < typical, "半年的量价都算进来，VWAP 落在末根典型价下面")
+    #expect(cvd[last] == 6 * (2 * 7 - 10), "CVD 是六根净额的累计")
+  }
+
+  @Test("VWAP 碰上一根量不是有限数：只空这一根，后面照常累计，增量与全量一致")
+  func vwapSkipsNonFiniteVolume() {
+    var bars = (0..<48).map { i in
+      Bar(openTime: Self.ms(2025, 3, 3) + Int64(i) * 3_600_000, open: 100, high: 101 + Double(i % 3),
+          low: 99, close: 100.5, volume: 10 + Double(i))
+    }
+    bars[5].volume = .nan
+    let s = BarSeries(symbol: "X", interval: .h1, bars: bars)
+    var e = IndicatorEngine()
+    e.ensure(series: s, wanted: [.vwap], dataKey: "v")
+    let line = e.values[.vwap]!.lines[0]
+    #expect(line[5].isNaN, "那一根留白")
+    #expect(line[6...23].allSatisfy2(\.isFinite), "同一天后面的线还在")
+    #expect(line[24...].allSatisfy2(\.isFinite))
+    // 改末根走增量，结果要和新引擎全量一致。
+    var tail = bars; tail[47].close = 100.9
+    let s2 = BarSeries(symbol: "X", interval: .h1, bars: tail)
+    e.updateTail(series: s2, dataKey: "v")
+    var fresh = IndicatorEngine()
+    fresh.ensure(series: s2, wanted: [.vwap], dataKey: "v")
+    let a = e.values[.vwap]!.lines[0], b = fresh.values[.vwap]!.lines[0]
+    #expect(a.count == b.count)
+    #expect(zip(a, b).allSatisfy { $0 == $1 || ($0.isNaN && $1.isNaN) })
+  }
+}
+
 func nanArrayTest(_ n: Int) -> [Double] { [Double](repeating: .nan, count: n) }
 
 extension Collection where Element == Double {

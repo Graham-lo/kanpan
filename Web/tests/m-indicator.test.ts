@@ -422,6 +422,58 @@ describe('累计周期的锚', () => {
     const d = BarSeries.fromBars('X', '1d', [0, 1, 2, 3].map(i => bar(d0 + i * 86_400_000, 1, 1, 1, 1, 1)))
     expect([0, 1, 2, 3].map(i => startsAnchorPeriod(d, i))).toEqual([true, false, true, false])
   })
+
+  it('周线、月线按自然年，年线不归零（月线上不许每根都清零）', () => {
+    const w0 = Date.UTC(2024, 11, 16)
+    const w = BarSeries.fromBars('X', '1w', [0, 1, 2, 3].map(i => bar(w0 + i * 7 * 86_400_000, 1, 1, 1, 1, 1)))
+    // 12-16、12-23、12-30 在 2024 年，01-06 进了 2025
+    expect([0, 1, 2, 3].map(i => startsAnchorPeriod(w, i))).toEqual([true, false, false, true])
+    const months = [Date.UTC(2024, 10, 1), Date.UTC(2024, 11, 1), Date.UTC(2025, 0, 1), Date.UTC(2025, 1, 1)]
+    const mo = BarSeries.fromBars('X', '1M', months.map(t => bar(t, 1, 1, 1, 1, 1)))
+    expect([0, 1, 2, 3].map(i => startsAnchorPeriod(mo, i))).toEqual([true, false, true, false])
+    const years = [Date.UTC(2021, 0, 1), Date.UTC(2022, 0, 1), Date.UTC(2023, 0, 1)]
+    const y = BarSeries.fromBars('X', '1y', years.map(t => bar(t, 1, 1, 1, 1, 1)))
+    expect([0, 1, 2].map(i => startsAnchorPeriod(y, i))).toEqual([true, false, false])
+  })
+
+  it('VWAP 碰上一根量不是有限数：只空这一根，后面照常累计', () => {
+    const t0 = Date.UTC(2025, 2, 3)
+    const bars = Array.from({ length: 48 }, (_, i) => bar(t0 + i * 3_600_000, 100, 101 + (i % 3), 99, 100.5, i === 5 ? NaN : 10 + i))
+    const e = new IndicatorEngine()
+    e.ensure({ series: BarSeries.fromBars('X', '1h', bars), wanted: ['VWAP'], dataKey: 'v' })
+    const line = e.get('VWAP')!.lines[0]
+    expect(Number.isNaN(line[5])).toBe(true)
+    expect(line.slice(6).every(Number.isFinite)).toBe(true)
+  })
+})
+
+describe('抛物线转向', () => {
+  it('翻转那一根的点落在这根 K 线之外（和 iOS SARReversalTests 同一组）', () => {
+    const t0 = Date.UTC(2025, 2, 3)
+    const rows: [number, number, number, number][] = [[89.5, 91, 89, 90]]
+    for (let k = 1; k <= 5; k++) { const b = 90 + 2 * k; rows.push([b, b + 2, b, b + 1.5]) }
+    rows.push([101, 120, 80, 82])
+    const s = BarSeries.fromBars('X', '1h', rows.map(([o, h, l, c], i) => bar(t0 + i * 3_600_000, o, h, l, c, 1)))
+    const e = new IndicatorEngine()
+    e.ensure({ series: s, wanted: ['SAR'], dataKey: 'sar' })
+    const r = e.get('SAR')!
+    const last = s.count - 1
+    expect(r.dir![last]).toBe(-1)
+    expect(r.lines[0][last]).toBeGreaterThanOrEqual(120)
+  })
+
+  it('随机序列：每一根的点都在这根之外', () => {
+    for (const seed of [3, 11, 29, 47]) {
+      const s = synthSeries(1500, seed)
+      const e = new IndicatorEngine()
+      e.ensure({ series: s, wanted: ['SAR'], dataKey: 'sar' })
+      const r = e.get('SAR')!
+      for (let i = 1; i < s.count; i++) {
+        if (r.dir![i] > 0) expect(r.lines[0][i] <= s.low[i], `seed ${seed} #${i}`).toBe(true)
+        else expect(r.lines[0][i] >= s.high[i], `seed ${seed} #${i}`).toBe(true)
+      }
+    }
+  })
 })
 
 // ================================================================== 外部序列刷新缓存（ExternalSeriesTests.cache）
