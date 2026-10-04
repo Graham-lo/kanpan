@@ -446,6 +446,17 @@ struct ChartLoadingBadge: View {
 
 /// 回放态的页头（原 `MainScreen.reviewHeader`）。
 struct ReplayHeaderView: View {
+  /// 标题里的品种名：「BTC/USDT」，和行情页顶栏、提醒总表、创建提醒页一个写法。
+  ///
+  /// 2026-10-04 G 线走查：原来写的是 `InstrumentID.display`——那是「交易所代号给人看」的
+  /// 写法，币安的代号没有分隔符，于是交易回放的标题成了「回放 · BTCUSDT · 1 小时」，
+  /// 全 app 只有这一处把交易所的原始代号直接摆给人看。报价币缺省（目录里查不到）时只写基础币。
+  static func pairTitle(_ symbol: String) -> String {
+    let info = SymbolInfo.placeholder(symbol: InstrumentID.canonical(symbol))
+    if info.base.isEmpty { return "" }
+    return info.quote.isEmpty ? info.base : info.display
+  }
+
   let bridge: ReviewChartBridge
   /// 图上没给时区时按设置里那一档（`prefs.timeZone`）。
   let fallbackZone: TZChoice
@@ -456,7 +467,7 @@ struct ReplayHeaderView: View {
   var body: some View {
     // 字和颜色走令牌（UI 整改 P3）：标题 17 semibold `ink`，时刻 12 `ink3`，开高低收 12 等宽 `ink2`。
     // 原来一律系统默认色，深色皮肤下是纯白，和页面上别处的墨色不是一个调子。
-    let symbol = InstrumentID(bridge.state?.series.symbol ?? "").display
+    let symbol = Self.pairTitle(bridge.state?.series.symbol ?? "")
     let hasBars = (bridge.state?.series.count ?? 0) > 0
     VStack(alignment: .leading, spacing: Space.xs) {
       // 交易回放（3d）叫「回放 · 品种 · 周期」，笔记还叫「重温 · 品种」。
