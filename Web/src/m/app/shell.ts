@@ -17,6 +17,7 @@ import { closeOpenSwipe } from '../ui/swipeDelete'
 import { el } from '../ui/dom'
 import { installBack, onBack, syncBack } from '../ui/backStack'
 import { installNativeFeel } from '../ui/native'
+import { session, onSession } from '../../account/session'
 
 /** 一页对壳的承诺 */
 export interface PageHandle {
@@ -75,6 +76,15 @@ export const nav = {
     if (v && v !== 'chart') unbackOrigin = onBack(() => { const o = origin; nav.origin = null; if (o) go(o) }, 'chart')
   },
 }
+/** 来路与扫图名单是这个人这一趟的（iOS ChartTrail）：换号 / 退登 / 被顶下线 = 档案换了主人，两样一起作废——
+ *  不然横滑翻的还是上一个人冻结下来的自选，返回键也指着上一个人的来路。同一个人重登（只换了会话）不算 */
+let trailOwner: string | null = session.userId
+onSession(() => {
+  if (session.userId === trailOwner) return
+  trailOwner = session.userId
+  nav.origin = null
+  scanList = null
+})
 
 export const pageRoot = (id: PageId): HTMLElement => document.getElementById('page-' + id)!
 export const currentPage = (): PageId => st.page
