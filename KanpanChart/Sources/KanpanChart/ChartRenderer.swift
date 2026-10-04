@@ -25,7 +25,10 @@ extension ChartColors {
 /// / `IndicatorEngine`），这里只负责把数落到像素上。
 public struct ChartRenderer {
   /// 临时客线不属于存档与个人布局。
-  public var guestDrawings: [Drawing] = []
+  public var guestDrawings: [Drawing] = [] {
+    // 金额签也躲对方分享来的线上的字，签存在订单流那只盒子里，线一换就得重排。
+    didSet { if guestDrawings != oldValue { orderFlowCache = OrderFlowCache() } }
+  }
   public var ownDimmed = false
   /// 最新价胶囊正在闪（P2.8）：刚来的这一口比上一口高还是低。不属于 `state`——
   /// 它是一段 150ms 的过场，不是行情，不该进 `sameFrame` 的比较，也不该被存下来。
@@ -80,8 +83,10 @@ public struct ChartRenderer {
       viewportCache = ViewportCache()
       ChartWorkCounter.bump(.viewportCache)
     }
+    // 画线一变也换：金额签躲画线上的字（`drawingLabelBoxes`），签和色带几何同存一只盒子。
     if inputChanged || viewportChanged || previous.orderFlow != state.orderFlow
-      || previous.orderFlowDisplay != state.orderFlowDisplay {
+      || previous.orderFlowDisplay != state.orderFlowDisplay
+      || previous.drawings != state.drawings || previous.drawingPreviewID != state.drawingPreviewID {
       orderFlowCache = OrderFlowCache()
     }
     if inputChanged || previous.view != state.view {

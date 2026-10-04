@@ -48,7 +48,11 @@ public final class ChartView: UIView {
 
   /// 客线是临时覆盖，不属于 ChartState / 存档，也不参与画线命中。
   public var guestDrawings: [Drawing] = [] {
-    didSet { renderer?.guestDrawings = guestDrawings; setNeedsRedraw(.plot); refreshDrawingOverlay() }
+    didSet {
+      renderer?.guestDrawings = guestDrawings
+      // 金额签躲客线上的字，签在 cross 层（见 `ChartRenderer.drawingLabelBoxes`）。
+      setNeedsRedraw(state?.orderFlow == nil ? .plot : [.plot, .cross]); refreshDrawingOverlay()
+    }
   }
   public var ownDimmed = false {
     didSet { renderer?.ownDimmed = ownDimmed; setNeedsRedraw(.plot); refreshDrawingOverlay() }
@@ -620,12 +624,18 @@ public final class ChartView: UIView {
       p.insert([.plot, .live])
       if o.crosshair != nil || new.crosshair != nil || new.percentAxis || new.orderFlow != nil { p.insert(.cross) }
     }
-    if o.drawings != new.drawings || o.drawingPreviewID != new.drawingPreviewID { p.insert(.plot) }
+    if o.drawings != new.drawings || o.drawingPreviewID != new.drawingPreviewID {
+      p.insert(.plot)
+      // 金额签在 cross 层、要躲画线上的字（`drawingLabelBoxes`）：线一变签得跟着重排。
+      if new.orderFlow != nil { p.insert(.cross) }
+    }
     // 末根变了：蜡烛（plot）、最新价（live）都要重画；没有十字线时图例读的就是末根，
-    // 图例在 `crossLayer` 上，所以 cross 也得跟着脏。
+    // 图例在 `crossLayer` 上，所以 cross 也得跟着脏。十字线开着时看它读不读末根（见 `crossReadsLastBar`）。
     if !sameLastBar(o.series, new.series) {
       p.insert([.plot, .live])
-      if o.crosshair == nil || new.crosshair == nil { p.insert(.cross) }
+      if o.crosshair == nil || new.crosshair == nil || crossReadsLastBar(o) || crossReadsLastBar(new) {
+        p.insert(.cross)
+      }
     }
     if o.depth != new.depth {
       p.insert(.live)
@@ -644,6 +654,22 @@ public final class ChartView: UIView {
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
     if o.nowMs != new.nowMs, new.options.countdown, new.options.lastLine { p.insert(.live) }
     return p
+  }
+
+  /// 十字线开着时，末根一跳它那一层会不会变（审查 B·P3-1）。
+  ///
+  /// 从前一律当「不会」：手指按着最后一根不动，开高低收框与图例停在按下那一刻的价上，
+  /// 底图的蜡烛却一笔一笔在长，两边对不上。会变的有三种：
+  /// - 十字线就停在末根上：读数框、图例读的就是它；
+  /// - 「至今涨幅」开着：它是从十字线那根到**末根**收盘的涨跌；
+  /// - 末根在这一屏里（含右侧护栏根）：它参与主图价格区间与副图值域，一跳区间就可能变，
+  ///   十字线横线（按价格定位）与右轴读数都得跟着挪，不然线与蜡烛错开。
+  /// 只有往回翻到末根不在屏里、又没开「至今涨幅」时，末根才真的与这一层无关。
+  private static func crossReadsLastBar(_ s: ChartState) -> Bool {
+    guard let cross = s.crosshair, s.series.count > 0 else { return false }
+    let last = s.series.count - 1
+    return cross.index >= last || s.options.sinceChange
+      || visibleRange(view: s.view, series: s.series).hi >= last
   }
 
   /// 这份 state 下画不画盘口梯（与 `ChartRenderer.depthEnvelope` 的前提一致：深度是这只、簿里有量）。

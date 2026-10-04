@@ -868,10 +868,14 @@ extension ChartRenderer {
     // 价位靠上的挂单签会盖在「均线 … / 主力 买 … 卖 …」那几行读数上。
     let ceiling = pane.y + min(mainLegendInset(plotW: L.plotW), max(0, pane.h - h))
     var labels: [OrderFlowLabel] = []
+    // 签要让开的框：用户画线上的字（读数胶囊、刻度、文字标注）打底，已放下的签逐枚加进来。
+    // 水平线的价格胶囊贴主图右缘、坐在线上方——挂着的签也贴右缘、坐在线上方，用户在大单价位上画一条水平线
+    // （最常见的用法）两枚就整个叠在一起，签在十字线层、盖在画线字上面，用户自己标的价读不出来（审查 B·待核实 4）。
+    // 画线字是用户自己写下的，签让它，不反过来。
+    var taken: [CGRect] = mains.isEmpty ? [] : drawingLabelBoxes(pane: pane, range: range, L: L)
     let collides = { (r: CGRect) in
-      labels.contains { l in
-        l.frame.minX < r.maxX && l.frame.maxX > r.minX
-          && r.minY < l.frame.maxY + gap && r.maxY > l.frame.minY - gap
+      taken.contains { l in
+        l.minX < r.maxX && l.maxX > r.minX && r.minY < l.maxY + gap && r.maxY > l.minY - gap
       }
     }
     for band in mains where labels.count < Self.orderFlowLabelMax {
@@ -951,11 +955,10 @@ extension ChartRenderer {
         rect = other
       }
       if collides(rect) {
-        let hits = labels.filter { l in
-          l.frame.minX < rect.maxX && l.frame.maxX > rect.minX
-            && rect.minY < l.frame.maxY + gap && rect.maxY > l.frame.minY - gap
+        let hits = taken.filter { l in
+          l.minX < rect.maxX && l.maxX > rect.minX && rect.minY < l.maxY + gap && rect.maxY > l.minY - gap
         }
-        let tops = hits.flatMap { [Double($0.frame.minY) - gap - h, Double($0.frame.maxY) + gap] }
+        let tops = hits.flatMap { [Double($0.minY) - gap - h, Double($0.maxY) + gap] }
         let fits = tops
           .filter { $0 >= ceiling && $0 + h <= pane.y + pane.h && abs($0 + h / 2 - mid) <= Self.orderFlowLabelMaxShift }
           .compactMap { shift(CGRect(x: x, y: $0, width: w, height: h)) }
@@ -967,8 +970,28 @@ extension ChartRenderer {
       let shown = mixHex(band.color, bg, 1 - Self.orderFlowLabelAlpha)
       labels.append(OrderFlowLabel(key: band.key, text: text, frame: rect, fill: band.color,
                                    ink: Self.orderFlowLabelInk(shown)))
+      taken.append(rect)
     }
     return labels
+  }
+
+  /// 主图上画线的字此刻真正盖住的那些框：和 `drawDrawings` 画的是同一批线（开关、拖动中的那条、
+  /// 藏起来的、对方分享来的线都照它取舍），排版走同一个入口（`layoutLabels`），所以框和屏幕上的字一像素不差。
+  /// 只在订单流色带几何没命中缓存时算一次（画线一变 `recalc` 换盒子，见 `ChartRenderer.recalc`）。
+  func drawingLabelBoxes(pane: Pane, range: PriceRange, L: Layout) -> [CGRect] {
+    var items = guestDrawings
+    if state.options.drawings { items += state.drawings.filter { $0.id != state.drawingPreviewID } }
+    items.removeAll(where: \.hidden)
+    guard !items.isEmpty else { return [] }
+    let axes = DrawAxes(layout: L, pane: pane, range: range, mode: state.price.mode,
+                        view: state.view, decimals: state.decimals)
+    return items.flatMap { d -> [CGRect] in
+      var g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y, decimals: axes.decimals,
+                              series: state.series)
+      return g.layoutLabels(plotW: L.plotW, paneY: pane.y, paneH: pane.h, measure: measureDrawLabel).map {
+        CGRect(x: $0.box.left, y: $0.box.top, width: $0.box.right - $0.box.left, height: $0.box.bottom - $0.box.top)
+      }
+    }
   }
 
   /// 金额签躲 K 线：给一枚签的框，签横向范围里有蜡烛（含影线；平均 K 线按画出来的那根，收盘价画法按那一截折线）

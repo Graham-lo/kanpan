@@ -2326,3 +2326,51 @@ struct OrderFlowPerfBenchTests {
     }
   }
 }
+
+extension OrderFlowChartTests {
+  @Test("挂着的金额签不压用户画线上的字：大单价位上画一条水平线，签让开它的价格胶囊；线一删签回原位（审查 B·待核实 4）")
+  func labelsDodgeDrawingLabels() throws {
+    var (r, _) = Self.renderer()
+    Self.clearRight(&r)
+    let L = r.layout(size: Self.size)
+    let before = frame(r)
+    let band = try #require(bandAt(before, bucket: 1))
+    let label = try #require(before.labels.first { $0.key == band.key })
+    // 夹具：水平线画在这堵挂着的买单的价位上（最常见的用法），它的价格胶囊贴主图右缘、坐在线上方。
+    let wall = price(r, atY: Double(band.frame.midY))
+    r.state.drawings = [Drawing(id: "h", kind: .hline, a: DrawPoint(t: Double(r.state.series.lastTime), p: wall))]
+    let boxes = r.drawingLabelBoxes(pane: L.main, range: r.priceRange(size: Self.size), L: L)
+    #expect(boxes.count == 1)
+    #expect(boxes.contains { $0.intersects(label.frame) }, "夹具得真撞上：签 \(label.frame)，胶囊 \(boxes)")
+    let after = frame(r)
+    let moved = try #require(after.labels.first { $0.key == band.key }, "签不能因为让画线就没了")
+    for box in boxes { #expect(!moved.frame.intersects(box), "签 \(moved.frame) 仍压着画线字 \(box)") }
+    #expect(abs(Double(moved.frame.midY) - Double(band.frame.midY)) <= ChartRenderer.orderFlowLabelMaxShift)
+    // 藏起来的线不画字，签也不必让。
+    r.state.drawings[0].hidden = true
+    #expect(r.drawingLabelBoxes(pane: L.main, range: r.priceRange(size: Self.size), L: L).isEmpty)
+    #expect(frame(r).labels.first { $0.key == band.key }?.frame == label.frame)
+    // 删掉线：盒子随画线换新，签回到原位。
+    r.state.drawings = []
+    #expect(frame(r).labels.first { $0.key == band.key }?.frame == label.frame)
+    // 对方分享来的线一样要让。
+    r.guestDrawings = [Drawing(id: "g", kind: .hline, a: DrawPoint(t: Double(r.state.series.lastTime), p: wall))]
+    let guest = try #require(frame(r).labels.first { $0.key == band.key })
+    #expect(guest.frame != label.frame, "客线上的字也要让")
+    for box in r.drawingLabelBoxes(pane: L.main, range: r.priceRange(size: Self.size), L: L) {
+      #expect(!guest.frame.intersects(box))
+    }
+  }
+
+  @Test("画线一变 cross 层跟着重画（金额签在那一层、要躲画线字）；没开订单流只脏底图")
+  func drawingChangeDirtiesCrossWhenOrderFlowOn() {
+    let (r, _) = Self.renderer()
+    var next = r.state
+    next.drawings = [Drawing(id: "h", kind: .hline, a: DrawPoint(t: Double(next.series.lastTime), p: next.series.close.last!))]
+    #expect(ChartView.changed(from: r.state, to: next).contains(.cross))
+    var plain = r.state; plain.orderFlow = nil
+    var plainNext = plain; plainNext.drawings = next.drawings
+    let parts = ChartView.changed(from: plain, to: plainNext)
+    #expect(parts.contains(.plot) && !parts.contains(.cross))
+  }
+}

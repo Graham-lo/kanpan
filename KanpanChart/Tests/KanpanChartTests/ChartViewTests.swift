@@ -93,9 +93,12 @@ struct ChartViewDirtyTests {
     #expect(ChartView.changed(from: a, to: b) == [.plot, .live, .cross])
   }
 
-  @Test("十字线在时，末根动不必重画十字线那层")
+  @Test("十字线在、往回翻到末根不在屏里时，末根动不必重画十字线那层")
   func lastBarWithCrosshair() {
     var a = fixtureState()
+    // 视野翻回最早那一段：末根既不在屏里，也不参与价格区间。
+    let span = a.view.span
+    a.view = ViewWindow(to: Double(a.series.time(at: 100)), span: span)
     a.crosshair = Crosshair(index: 10)
     var s = a.series
     s.close[s.count - 1] *= 1.001
@@ -103,6 +106,25 @@ struct ChartViewDirtyTests {
     b.series = s
     // 图例读的是十字线那根（第 10 根），末根怎么动都和它无关。
     #expect(ChartView.changed(from: a, to: b) == [.plot, .live])
+  }
+
+  /// 审查 B·P3-1：手指按着最后一根不动，末根一跳读数框与图例得跟着刷新。
+  @Test("十字线读末根时，末根一跳十字线层跟着重画", arguments: ["onLast", "visible", "sinceChange"])
+  func lastBarTickRefreshesCrosshair(_ when: String) {
+    var a = fixtureState()
+    switch when {
+    case "onLast": a.crosshair = Crosshair(index: a.series.count - 1)
+    case "visible": a.crosshair = Crosshair(index: a.series.count - 20)  // 末根在屏里，参与区间
+    default:
+      a.view = ViewWindow(to: Double(a.series.time(at: 100)), span: a.view.span)
+      a.crosshair = Crosshair(index: 10)
+      a.options.sinceChange = true  // 「至今涨幅」读的是末根收盘
+    }
+    var s = a.series
+    s.close[s.count - 1] *= 1.001
+    var b = a
+    b.series = s
+    #expect(ChartView.changed(from: a, to: b) == [.plot, .live, .cross], "\(when)")
   }
 
   @Test("指标一动三层全画；视野一动只画底图与最新价，十字线层看它读不读视野")
