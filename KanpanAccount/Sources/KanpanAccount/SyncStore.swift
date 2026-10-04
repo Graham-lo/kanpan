@@ -250,6 +250,8 @@ final class ArchiveWriter: @unchecked Sendable {
   private let directory: URL
   private let lock = NSLock()
   private var failure: Error?
+  /// 最近一次写盘没写成（见 `drain(_:)`）。
+  private var unwritten = false
   private var writes = 0
   private var bytes = 0
   /// 还没开写的最新一版。每次 `schedule` 覆盖它，队列上的第一格取走它。
@@ -294,7 +296,18 @@ final class ArchiveWriter: @unchecked Sendable {
     } catch { caught = error }
     lock.lock()
     writes += 1; bytes += written
-    if failure == nil { failure = caught }
+    if let caught {
+      if failure == nil { failure = caught }
+      // 没写成的这一版放回去，等重试（`drain(_:)`）或下一次 `schedule` 把它（或包住它的更新一版）
+      // 再写一遍。从前它在开头被取走就没了：这一版要等下一次编辑才有机会落盘。
+      if pending == nil { pending = value }
+      unwritten = true
+    } else {
+      // 存档是整份快照：这一版落下去，之前没写成的那几版也一并在盘上了，旧错误不再作数。
+      // 从前它要留到下一次 `transaction` 才抛，那一次编辑就白白被拒一回。
+      failure = nil
+      unwritten = false
+    }
     lock.unlock()
   }
   /// 等队列排空（**阻塞当前线程**）。
@@ -309,11 +322,30 @@ final class ArchiveWriter: @unchecked Sendable {
   /// （其中 `settings:chart` 一项占 10.6 KB × 2），线多了就是几百 KB。在主线程上
   /// 等这一整份编码 + 原子写完成，等于每次抬手都交一次卡顿的税。
   /// 编辑路径改用「`schedule` 立刻发起写、不等它完成」，见 `AppAccountBridge.capture`。
-  func drain() { Self.queue.sync {} }
+  ///
+  /// 前面那次没写成的那一版（`writeLatest` 放回去的）在这儿再试一次：这是 app 走之前
+  /// 最后一次落盘机会，不能等下一次编辑。
+  func drain() { Self.queue.sync { if self.stuck { self.writeLatest() } } }
   /// 不阻塞的排空：`done` 在**写盘队列上**跑，跑到它的时候，在它之前排进来的每一次
   /// `schedule` 都已经写完了（串行队列 FIFO）。顺序保证和 `drain()` 一模一样，
   /// 差别只有「谁在等」——调用方不再被挂住，所以它不能假设自己返回时字节已经在盘上。
-  func drain(_ done: @escaping @Sendable () -> Void) { Self.queue.async { done() } }
+  ///
+  /// **前面那次存档没写成，`done` 就不跑**（深度审查 D 线 2026-10-04）。`done` 是正式文件那次写，
+  /// 它排在存档后面就是为了不出现「新正式文件 + 旧存档」——那个方向下一次拉取会拿云端
+  /// 旧值把用户刚改的盖掉，而且谁也不知道。从前这里不看存档写成没写成，盘满 / 数据保护
+  /// 锁着时存档写失败，正式文件照样写新的，偏偏走进了这个补不回来的方向。现在先就地
+  /// 重试一次存档；还不成就不写正式文件，留下「新内存 + 旧存档 + 旧正式文件」——
+  /// 盘上两份是一致的，错误由下一次 `transaction` 抛给调用方，等存档写成后正式文件下一次
+  /// 整份写入时自然追上（正式文件同样是整份快照）。
+  func drain(_ done: @escaping @Sendable () -> Void) {
+    Self.queue.async {
+      if self.stuck { self.writeLatest() }
+      guard !self.stuck else { return }
+      done()
+    }
+  }
+  /// 最近一次存档写失败、还没有后来的一次写成把它补上。
+  private var stuck: Bool { lock.lock(); defer { lock.unlock() }; return unwritten }
   /// 取走并清掉攒下的写盘错误。落盘是异步的，错误只能由下一次 transaction 抛出来。
   func takeFailure() -> Error? {
     lock.lock(); defer { lock.unlock() }
@@ -328,13 +360,51 @@ final class ArchiveWriter: @unchecked Sendable {
 @MainActor public final class SyncStore {
   public private(set) var archive: SyncArchive
   private let writer: ArchiveWriter
-  public init(directory: URL) throws {
-    let loaded = try ArchiveDisk.load(directory: directory)
+  public init(directory: URL, now: Date = Date()) throws {
+    let loaded = try Self.open(directory: directory, now: now)
     archive = loaded.archive
     guard archive.version == 1 else { throw AccountError.storage }
     writer = ArchiveWriter(directory: directory, seed: loaded.committed, migrating: loaded.migrating)
     // 老的整份 `sync-v1.json`：现在就排一次整份提交迁成分片，不等下一次事务。
     if loaded.migrating { writer.schedule(archive) }
+  }
+  /// 读盘上那份；**坏了就挪开、从空档起步**（深度审查 D 线 2026-10-04）。
+  ///
+  /// 三种读不动分开对待（口径同 `AccountFiles.init` 对 registry.json）：
+  /// - **读不出字节**（首次解锁前的数据保护、IO 抽风）：照抛，下次再试；
+  /// - **比自己新的格式**（`AccountError.storage`）：照抛、原地不动，升级回去还能读；
+  /// - **字节在、但解不开，或 head 指着的分片没了**：从前也照抛——`AppAccountBridge.prepare`
+  ///   每一次（登录、恢复、冷启动）都在这儿中断，这个账号在这台机器上从此同步不了，
+  ///   没有任何自救的路。现在把整个存档原样挪到旁边（`sync.unreadable-<毫秒>`，
+  ///   老的整份档挪成 `sync-v1.json.unreadable-<毫秒>`）留作证据，按「这台机器上还没有存档」起步：
+  ///   `prepare` 拿正式文件填底稿（不当成待推的改动——存档里那几条待发操作已经说不清了，
+  ///   拿整份本地去盖云端会把别的设备新近的改动抹掉），设置上带脏标识的字段照样记成操作推上去，
+  ///   下一次全量把云端那份拉回来。
+  private static func open(directory: URL, now: Date) throws -> ArchiveDisk.Loaded {
+    do {
+      return try ArchiveDisk.load(directory: directory)
+    } catch let error where unreadable(error) {
+      let stamp = Int((now.timeIntervalSince1970 * 1000).rounded())
+      let fm = FileManager.default
+      for name in [ArchiveDisk.directoryName, ArchiveDisk.legacyName] {
+        let url = directory.appendingPathComponent(name)
+        guard fm.fileExists(atPath: url.path) else { continue }
+        try fm.moveItem(at: url, to: directory.appendingPathComponent("\(name).unreadable-\(stamp)"))
+      }
+      // 这个进程里要是提交过这个目录，记着的那套分片文件名已经跟着挪走了；不清掉的话下一次
+      // 提交会以为它们还在、只写变了的几片，head 指向不存在的分片，又坏一遍。
+      let key = directory.standardizedFileURL.path
+      ArchiveWriter.queue.sync { ArchiveDisk.committed[key] = nil }
+      return ArchiveDisk.Loaded(archive: SyncArchive(), committed: CommittedArchive(), migrating: false, found: false)
+    }
+  }
+  /// 「字节在、但解不开」或「head 指着的分片不在了」——这两种再等也不会好。
+  nonisolated static func unreadable(_ error: Error) -> Bool {
+    if error is DecodingError { return true }
+    if let cocoa = error as? CocoaError {
+      return cocoa.code == .fileReadNoSuchFile || cocoa.code == .fileReadCorruptFile
+    }
+    return false
   }
   /// 直接读盘上那份存档（不经过任何 `SyncStore` 的内存）。测试与诊断用；可以在任意线程调。
   public nonisolated static func readArchive(directory: URL) throws -> SyncArchive? {

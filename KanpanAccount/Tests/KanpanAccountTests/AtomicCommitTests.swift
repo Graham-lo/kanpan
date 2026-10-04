@@ -492,4 +492,129 @@ private func tickOnDisk(_ root: URL) -> Int {
     #expect(log.stale.isEmpty)
     #expect(tickOnDisk(root) == 30)
   }
+
+  /// 把存档目录改成只读 / 改回来，模拟盘满、数据保护锁着这类「这一次写不进去」。
+  private func block(_ root: URL, _ on: Bool) throws {
+    let folder = root.appendingPathComponent(ArchiveDisk.directoryName)
+    try FileManager.default.setAttributes([.posixPermissions: on ? 0o500 : 0o700], ofItemAtPath: folder.path)
+  }
+
+  /// 深度审查 D 线 2026-10-04：存档那次没写成，正式文件那一笔从前照样写——盘上成了
+  /// 「新正式文件 + 旧存档」，下一次拉取会拿云端旧值把用户刚改的盖掉。
+  @Test func aFailedArchiveWriteHoldsTheFormalWriteBack() throws {
+    let root = try temp(); defer { try? block(root, false); try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root); let device = UUID()
+    var value = SyncObject(collection: "settings", id: "chart")
+    value.body["tick"] = .number(1)
+    try store.capture(value, device: device)
+    store.flushNow()
+    #expect(tickOnDisk(root) == 1)
+    try block(root, true)
+    let log = OrderLog()
+    value.body["tick"] = .number(2)
+    try store.capture(value, device: device)
+    store.afterArchiveWritten { log.record(want: 2, onDisk: tickOnDisk(root)) }
+    store.flushNow()
+    // 重试也没写成：正式文件那一笔不跑，盘上两份都还是第 1 版，一致。
+    #expect(log.count == 0)
+    #expect(tickOnDisk(root) == 1)
+    // 盘恢复了：错误由下一次事务交给调用方，再下一次照常落盘，正式文件跟着追上。
+    try block(root, false)
+    value.body["tick"] = .number(3)
+    #expect(throws: (any Error).self) { try store.capture(value, device: device) }
+    try store.capture(value, device: device)
+    store.afterArchiveWritten { log.record(want: 3, onDisk: tickOnDisk(root)) }
+    store.flushNow()
+    #expect(log.count == 1)
+    #expect(log.stale.isEmpty)
+    #expect(tickOnDisk(root) == 3)
+  }
+
+  /// 存档第一次没写成、重试时盘已经好了：就地补写，正式文件照常跟上，也不再把这次
+  /// 已经补上的错误留给下一次编辑去挨。
+  @Test func aRetriedArchiveWriteLetsTheFormalWriteThrough() throws {
+    let root = try temp(); defer { try? block(root, false); try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root); let device = UUID()
+    var value = SyncObject(collection: "settings", id: "chart")
+    value.body["tick"] = .number(1)
+    try store.capture(value, device: device)
+    store.flushNow()
+    try block(root, true)
+    let log = OrderLog()
+    value.body["tick"] = .number(2)
+    try store.capture(value, device: device)
+    // 存档那次写（排在前面）失败之后、正式文件那一笔之前，盘恢复。
+    ArchiveWriter.queue.async { try? self.block(root, false) }
+    store.afterArchiveWritten { log.record(want: 2, onDisk: tickOnDisk(root)) }
+    store.flushNow()
+    #expect(log.count == 1)
+    #expect(log.stale.isEmpty)
+    #expect(tickOnDisk(root) == 2)
+    value.body["tick"] = .number(3)
+    try store.capture(value, device: device)
+    store.flushNow()
+    #expect(tickOnDisk(root) == 3)
+  }
+}
+
+/// 深度审查 D 线 2026-10-04：同步存档坏了（head 解不开、分片没了），从前 `SyncStore.init`
+/// 每次都抛，`AppAccountBridge.prepare` 跟着中断——这个账号在这台机器上再也同步不了。
+@MainActor @Suite("同步存档坏了挪开重来，读不动和更新的格式照抛") struct ArchiveDamageTests {
+  private func temp() throws -> URL {
+    let p = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: p, withIntermediateDirectories: true)
+    return p
+  }
+  private func seeded(_ root: URL) throws {
+    let store = try SyncStore(directory: root)
+    var value = SyncObject(collection: "settings", id: "chart")
+    value.body["tick"] = .number(7)
+    try store.capture(value, device: UUID())
+    store.flushNow()
+  }
+  private func setAside(_ root: URL) -> [String] {
+    ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { $0.hasPrefix("sync.unreadable-") }
+  }
+
+  @Test func aGarbledHeadIsSetAsideAndTheStoreStartsEmpty() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    try seeded(root)
+    let head = root.appendingPathComponent(ArchiveDisk.directoryName).appendingPathComponent(ArchiveDisk.headName)
+    try Data("{\"format\": 半截".utf8).write(to: head)
+    let store = try SyncStore(directory: root, now: Date(timeIntervalSince1970: 1_000))
+    #expect(store.archive.local.isEmpty)
+    #expect(setAside(root) == ["sync.unreadable-1000000"])
+    // 起步之后照常能写、写下去的读得回来。
+    var value = SyncObject(collection: "settings", id: "chart")
+    value.body["tick"] = .number(8)
+    try store.capture(value, device: UUID())
+    store.flushNow()
+    guard case .number(let tick)? = try SyncStore.readArchive(directory: root)?.local["settings:chart"]?.body["tick"] else {
+      Issue.record("新存档没落下"); return
+    }
+    #expect(tick == 8)
+  }
+
+  @Test func aMissingShardIsSetAsideToo() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    try seeded(root)
+    let folder = root.appendingPathComponent(ArchiveDisk.directoryName)
+    for name in try FileManager.default.contentsOfDirectory(atPath: folder.path) where name != ArchiveDisk.headName {
+      try FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+    }
+    let store = try SyncStore(directory: root)
+    #expect(store.archive.local.isEmpty)
+    #expect(setAside(root).count == 1)
+  }
+
+  @Test func aNewerFormatStillThrowsAndStaysPut() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    try seeded(root)
+    let head = root.appendingPathComponent(ArchiveDisk.directoryName).appendingPathComponent(ArchiveDisk.headName)
+    let newer = ArchiveHead(format: ArchiveHead.format + 1, archive: SyncArchive(), shards: [:])
+    try JSONEncoder().encode(newer).write(to: head)
+    #expect(throws: (any Error).self) { _ = try SyncStore(directory: root) }
+    #expect(setAside(root).isEmpty)
+    #expect(FileManager.default.fileExists(atPath: head.path))
+  }
 }
