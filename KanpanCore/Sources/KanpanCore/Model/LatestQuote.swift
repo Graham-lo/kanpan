@@ -116,7 +116,9 @@ public struct QuoteState: Sendable {
     // 成交额单独过：整帧被判旧的 REST 回包，成交额可能仍比手里的新（推送帧不带它）。
     var accepted = turnover.note(next)
     if let time = next.timeMs, let id = next.lastTradeID {
-      accepted = receive(TradeQuote(symbol: next.symbol, price: next.last, timeMs: time, tradeID: id))
+      // 不能直接赋值：成交更旧被挡回 false 时会把上一行「成交额收下了」也一起抹掉，
+      // 统计也判旧的话就不 rebuild，值里还是旧成交额，返回值还说「没收」。
+      accepted = receive(TradeQuote(symbol: next.symbol, price: next.last, timeMs: time, tradeID: id)) || accepted
     }
     if LatestQuote.accepts(next, after: statistics) {
       statistics = next; accepted = true

@@ -145,6 +145,22 @@ struct TurnoverCarryTests {
     #expect(state.value?.quoteVolume == 7_000)
   }
 
+  @Test("整帧已旧、带成交号的 REST 回包：成交更旧被挡，成交额照样收下并出值")
+  func staleRestFrameWithTradeIDStillDeliversTurnover() {
+    var state = QuoteState()
+    // 网关线路 OKX 替身的推送帧：有价、有成交号，没有成交额。
+    state.receive(Ticker(symbol: "BTCUSDT", last: 102, changePercent: 1, high: 110, low: 90,
+      quoteVolume: .nan, open24h: 100, timeMs: 2000, lastTradeID: 200))
+    #expect(state.value?.quoteVolume.isNaN == true)
+    let late = Ticker(symbol: "BTCUSDT", last: 101, changePercent: 1, high: 110, low: 90,
+      quoteVolume: 7_000, open24h: 100, timeMs: 1500, lastTradeID: 150)
+    let accepted = state.receive(late)
+    #expect(accepted, "成交额是新的：这一帧算收下了")
+    #expect(state.value?.quoteVolume == 7_000)
+    #expect(state.value?.last == 102, "价不回退")
+    #expect(state.value?.lastTradeID == 200)
+  }
+
   @Test("只收成交额的入口不动价和会话")
   func turnoverOnlyEntry() {
     var state = QuoteState()
