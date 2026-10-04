@@ -91,7 +91,12 @@ final class DrawingController {
     var problem: String?
     let archive: DrawArchive
     do { archive = try store.read() }
-    catch { archive = DrawArchive(); problem = "暂时无法读取画线，原存档已保留。" }
+    catch DrawStore.StoreError.corrupt where (try? store.setAside()) != nil {
+      // 坏档挪到了旁边，正式文件的位置空出来——之后画的线照常落盘（见 `DrawStore.setAside`）。
+      archive = DrawArchive(); problem = "画线存档已损坏，原文件已另存"
+    } catch DrawStore.StoreError.newerVersion {
+      archive = DrawArchive(); problem = "画线存档来自更新的版本，请先升级"
+    } catch { archive = DrawArchive(); problem = "暂时无法读取画线，原存档已保留。" }
     book = DrawingBook(archive)
     preferences = archive.preferences
     notice = problem
@@ -259,6 +264,22 @@ final class DrawingController {
     if changed { savePreferences() }
     sync()
   }
+  /// 样式表点「保存」。
+  ///
+  /// 样式表只占下半截、上半截的图照样能摸（`presentationBackgroundInteraction`），
+  /// 开着它把线拖到别处、或者在画线台里长按锁上，都是常事。表里拿着的是**进来那一刻**
+  /// 的整条线；原来保存时把这份快照整条写回去，刚拖好的端点、刚上的锁一起被盖回旧值。
+  /// 这里只把表上真能改的几样（颜色、粗细、画法、文字、比例）搬到图上**现在**那条线上，
+  /// 几何、锁定、隐藏一律以图上为准。线在表开着的时候被撤销 / 删掉了，就什么都不写。
+  func saveEdits(_ edited: Drawing, promoteStyle: Bool) {
+    guard var next = book.items(symbol).first(where: { $0.id == edited.id }) else { return }
+    next.color = edited.color
+    next.lineWidth = edited.lineWidth
+    next.kind = edited.kind
+    next.text = edited.text
+    next.levels = edited.levels
+    update(next, promoteStyle: promoteStyle)
+  }
   func toggleHidden(_ item: Drawing) { var next = item; next.hidden.toggle(); chart?.updateDrawing(next); sync() }
   func toggleMagnet() { preferences.magnet.toggle(); savePreferences() }
   func toggleContinuous() { preferences.continuous.toggle(); savePreferences() }
@@ -297,7 +318,11 @@ final class DrawingController {
       do { try store.save(value) }
       // 出错提示是唯一准跳回主 actor 的东西：它不参与「谁先落盘」这件事，
       // 晚一点、乱一点序都无所谓。
-      catch { Task { @MainActor in self?.notice = "画线没存上，检查存储空间" } }
+      // 比自己新的存档挡着不写（怕把新版本的线盖成旧格式），那不是存储空间的事，
+      // 照原样说（原来一律说「检查存储空间」）。
+      catch DrawStore.StoreError.newerVersion {
+        Task { @MainActor in self?.notice = "画线存档来自更新的版本，请先升级" }
+      } catch { Task { @MainActor in self?.notice = "画线没存上，检查存储空间" } }
     }
   }
   func useStorage(_ store: DrawStore, archive: DrawArchive) {

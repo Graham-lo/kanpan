@@ -46,16 +46,39 @@ struct DrawStore: Sendable {
   }
 
   /// 读。读不出来一律当空档，**不抛**：画线丢了是可惜，因为它开不了图是不可接受的。
-  enum StoreError: Error { case newerVersion, invalidArchive }
+  ///
+  /// `corrupt` 只给「字节读到手了、但解不成一份存档」那一种（半份 JSON、被别的东西改坏）。
+  /// 读字节本身失败（设备还没解过锁、文件受保护）原样往外抛，**不归进 `corrupt`**：
+  /// 那份文件很可能是好的，只是这会儿读不到，绝不能当坏档挪走。
+  enum StoreError: Error { case newerVersion, invalidArchive, corrupt }
   func read() throws -> DrawArchive {
     guard FileManager.default.fileExists(atPath: url.path) else { return DrawArchive() }
     let data = try Data(contentsOf: url)
     // Read the envelope before decoding tools unknown to this version.
-    if let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-       let version = raw["v"] as? Int, version > DrawArchive.currentVersion { throw StoreError.newerVersion }
-    var archive = try JSONDecoder().decode(DrawArchive.self, from: data)
+    let raw: Any
+    do { raw = try JSONSerialization.jsonObject(with: data) } catch { throw StoreError.corrupt }
+    if let raw = raw as? [String: Any], let version = raw["v"] as? Int, version > DrawArchive.currentVersion {
+      throw StoreError.newerVersion
+    }
+    var archive: DrawArchive
+    do { archive = try JSONDecoder().decode(DrawArchive.self, from: data) } catch { throw StoreError.corrupt }
     archive.version = DrawArchive.currentVersion
     return archive
+  }
+
+  /// 把解不动的那份挪到旁边（`draws.json.unreadable-<毫秒时间戳>`），原样留着。
+  ///
+  /// 原来坏档就留在原处：`save` 每次先读一遍、读不动就拒写（不拿空档盖掉原件，这条对），
+  /// 结果是这台机器上之后画的每一条线都存不下来，重开 app 全没了，提示还说「检查存储空间」。
+  /// 挪开之后原件一个字节都不少，正式文件的位置空出来，新画的线照常落盘。
+  /// 只该对 `StoreError.corrupt` 用；比自己新的版本要原地留着，等升级回去还能读。
+  @discardableResult
+  func setAside(now: Date = Date()) throws -> URL {
+    let stamp = Int((now.timeIntervalSince1970 * 1000).rounded())
+    let target = url.deletingLastPathComponent()
+      .appendingPathComponent(url.lastPathComponent + ".unreadable-\(stamp)")
+    try FileManager.default.moveItem(at: url, to: target)
+    return target
   }
   func load() -> DrawArchive { (try? read()) ?? DrawArchive() }
 

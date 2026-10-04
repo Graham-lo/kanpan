@@ -691,7 +691,7 @@ private struct DrawingStyleEditor: View {
             if item.kind.usesLevels, let levels = parsedLevels { item.levels = levels }
             // 只有颜色 / 粗细 / 比例真的动过，才把它提成这类工具以后的默认。
             // 只换了画法、改了文字的，下次画的线不该跟着变。
-            controller.update(item, promoteStyle: DrawingStyle(item) != original); dismiss()
+            controller.saveEdits(item, promoteStyle: DrawingStyle(item) != original); dismiss()
           }.disabled(!item.isValid || (item.kind.usesLevels && parsedLevels == nil)).accessibilityIdentifier("draw.save")
         }
       }
