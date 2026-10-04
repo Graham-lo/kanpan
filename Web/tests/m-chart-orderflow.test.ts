@@ -19,6 +19,7 @@ import { AICoinBehavior, Layout, ViewMath, ViewWindow, candleMetrics, pOf, price
 import { effectivePriceMode, makeOrderBook, makeState, withInput, withOverlay, withViewport } from '../src/m/chart/state'
 import type { Crosshair } from '../src/m/chart/state'
 import { ChartRenderer } from '../src/m/chart/renderer'
+import { decodeDrawing } from '../src/m/chart/draw/drawing'
 import type { Rect } from '../src/m/chart/renderer'
 import { FALLBACK_COLORS, contrast, orderFlowFor, orderFlowOnDark, orderFlowOnLight, orderFlowUnfilled, rgba } from '../src/m/chart/paint'
 import type { BigOrder, BookSide, Product, Status } from '../src/orderflow/types'
@@ -30,7 +31,7 @@ import type { OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSegment, OrderFlowSn
 import {
   OrderFlowStyle as S, OrderFlowWallCache, candleHit, drawOrderFlow, drawOrderFlowBracket, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow,
   mixHex, orderFlowAmount, orderFlowBands, orderFlowBaseColor, orderFlowColor, orderFlowEntry, orderFlowFocus,
-  orderFlowFrameUnfiltered, orderFlowHit, orderFlowHitBands, orderFlowHoversBand, orderFlowIsSelected, orderFlowLabelInk,
+  drawingLabelBoxes, orderFlowFrameUnfiltered, orderFlowHit, orderFlowHitBands, orderFlowHoversBand, orderFlowIsSelected, orderFlowLabelInk,
   orderFlowLabelWidth, orderFlowMergeGapMs, orderFlowMergeNoise, orderFlowMinLifeMs,
 } from '../src/m/chart/renderer.orderflow'
 import type { OrderFlowBand, OrderFlowFrame, OrderFlowLabel } from '../src/m/chart/renderer.orderflow'
@@ -1776,5 +1777,45 @@ describe('范围括号三笔对齐到物理像素后不交叠', () => {
     for (let i = 0; i < rects.length; i++) {
       for (let j = i + 1; j < rects.length; j++) expect(overlapArea(rects[i], rects[j])).toBeLessThan(1e-9)
     }
+  })
+})
+
+describe('挂着的金额签不压用户画线上的字（OrderFlowChartTests.labelsDodgeDrawingLabels · 审查 B·待核实 4）', () => {
+  it('大单价位上画一条水平线，签让开它的价格胶囊；藏线 / 删线签回原位；客线一样要让', () => {
+    const { g } = fixtureRig()
+    g.clearRight()
+    const L = g.L
+    const before = g.frame()
+    const band = bandAt(before, 1)!
+    expect(band).toBeTruthy()
+    const label = before.labels.find(l => eqKey(l.key, band.group.key))!
+    expect(label).toBeTruthy()
+    const wall = g.price(midY(band.frame))
+    const line = (id: string, hidden = false) => ({ ...decodeDrawing({ id, kind: 'hline', points: [{ t: g.b.lastTime, p: wall }] }), hidden })
+    g.r.state = withOverlay(g.r.state, { drawings: [line('h')] })
+    const boxes = drawingLabelBoxes(g.r, L.main, g.range, L)
+    expect(boxes.length).toBe(1)
+    expect(boxes.some(b => intersects(b, label.frame)), `夹具得真撞上：签 ${JSON.stringify(label.frame)}，胶囊 ${JSON.stringify(boxes)}`).toBe(true)
+    const moved = g.frame().labels.find(l => eqKey(l.key, band.group.key))!
+    expect(moved, '签不能因为让画线就没了').toBeTruthy()
+    for (const b of boxes) expect(intersects(moved.frame, b), `签仍压着画线字`).toBe(false)
+    expect(Math.abs(midY(moved.frame) - midY(band.frame))).toBeLessThanOrEqual(S.labelMaxShift)
+    // 藏起来的线不画字，签也不必让。
+    g.r.state = withOverlay(g.r.state, { drawings: [line('h', true)] })
+    expect(drawingLabelBoxes(g.r, L.main, g.range, L)).toEqual([])
+    expect(g.frame().labels.find(l => eqKey(l.key, band.group.key))!.frame).toEqual(label.frame)
+    // 拖动中的那条（预览 ID）照屏幕取舍：屏上画的是预览，不是存档里那条。
+    g.r.state = withOverlay(g.r.state, { drawings: [line('h')], drawingPreviewID: 'h' })
+    expect(drawingLabelBoxes(g.r, L.main, g.range, L)).toEqual([])
+    // 删掉线：盒子随画线换新，签回到原位。
+    g.r.state = withOverlay(g.r.state, { drawings: [], drawingPreviewID: null })
+    expect(g.frame().labels.find(l => eqKey(l.key, band.group.key))!.frame).toEqual(label.frame)
+    // 对方分享来的线一样要让。
+    g.r.guestDrawings = [line('g')]
+    const guest = g.frame().labels.find(l => eqKey(l.key, band.group.key))!
+    expect(guest.frame).not.toEqual(label.frame)
+    for (const b of drawingLabelBoxes(g.r, L.main, g.range, L)) expect(intersects(guest.frame, b)).toBe(false)
+    g.r.guestDrawings = []
+    expect(g.frame().labels.find(l => eqKey(l.key, band.group.key))!.frame).toEqual(label.frame)
   })
 })

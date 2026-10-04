@@ -28,6 +28,7 @@ import { toFixed, volUnit } from './format'
 import type { ChartFontSpec, Hex } from './paint'
 import { ChartFont, bytes, contrast, css, drawCentered, drawLeft, orderFlowUnfilled, rgba, roundRectPath, textHeight, textWidth } from './paint'
 import { effectivePriceMode } from './state'
+import { DrawAxes, drawingGeometry, measureDrawLabel } from './drawing'
 import type { OrderFlowCardCandle, OrderFlowCardPlacement, OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSnapshot } from './orderflowGroup'
 import { OrderFlowCardBudget, OrderFlowGroup, OrderFlowKey, canonicalSymbol, displayShows, orderFlowDisplayEqual, wallGroup } from './orderflowGroup'
 
@@ -669,9 +670,14 @@ function orderFlowLabels(r: ChartRenderer, mains: OrderFlowBand[], pane: Pane, r
   const bg = r.colors.bg
   const ceiling = pane.y + Math.min(r.mainLegendInset(L.plotW), Math.max(0, pane.h - h))
   const labels: OrderFlowLabel[] = []
-  const hitsLabel = (l: OrderFlowLabel, q: Rect) =>
-    minX(l.frame) < maxX(q) && maxX(l.frame) > minX(q) && minY(q) < maxY(l.frame) + gap && maxY(q) > minY(l.frame) - gap
-  const collides = (q: Rect) => labels.some(l => hitsLabel(l, q))
+  // 签要让开的框：用户画线上的字（读数胶囊、刻度、文字标注）打底，已放下的签逐枚加进来。
+  // 水平线的价格胶囊贴主图右缘、坐在线上方——挂着的签也贴右缘、坐在线上方，在大单价位上画一条水平线
+  // （最常见的用法）两枚就整个叠在一起，签在十字线层、盖住用户自己标的价（ChartRenderer+OrderFlow.swift，
+  // 审查 B·待核实 4）。画线字是用户自己写下的，签让它，不反过来。
+  const taken: Rect[] = mains.length ? drawingLabelBoxes(r, pane, range, L) : []
+  const hitsLabel = (l: Rect, q: Rect) =>
+    minX(l) < maxX(q) && maxX(l) > minX(q) && minY(q) < maxY(l) + gap && maxY(q) > minY(l) - gap
+  const collides = (q: Rect) => taken.some(l => hitsLabel(l, q))
   type Want = { x: number; top: number; left: boolean }
   for (const band of mains) {
     if (labels.length >= S.labelMax) break
@@ -755,8 +761,8 @@ function orderFlowLabels(r: ChartRenderer, mains: OrderFlowBand[], pane: Pane, r
       }
     }
     if (collides(placedRect)) {
-      const hitsNow = labels.filter(l => hitsLabel(l, placedRect))
-      const tops = hitsNow.flatMap(l => [minY(l.frame) - gap - h, maxY(l.frame) + gap])
+      const hitsNow = taken.filter(l => hitsLabel(l, placedRect))
+      const tops = hitsNow.flatMap(l => [minY(l) - gap - h, maxY(l) + gap])
       let fit: Rect | null = null
       for (const top of tops) {
         if (!(top >= ceiling && top + h <= pane.y + pane.h && Math.abs(top + h / 2 - mid) <= S.labelMaxShift)) continue
@@ -769,8 +775,31 @@ function orderFlowLabels(r: ChartRenderer, mains: OrderFlowBand[], pane: Pane, r
     }
     const shown = mixHex(band.color, bg, 1 - S.labelAlpha)
     labels.push({ key: band.group.key, text, frame: placedRect, fill: band.color, ink: orderFlowLabelInk(shown) })
+    taken.push(placedRect)
   }
   return labels
+}
+
+/**
+ * 主图上画线的字此刻真正盖住的那些框：和 drawDrawings 画的是同一批线（开关、拖动中的那条、藏起来的、
+ * 对方分享来的线都照它取舍），排版走同一个入口（layoutLabels），所以框和屏幕上的字一像素不差。
+ * 只在订单流色带几何没命中缓存时算一次（画线一变 recalc 换盒子）。
+ */
+export function drawingLabelBoxes(r: ChartRenderer, pane: Pane, range: PriceRange, L: Layout): Rect[] {
+  const st = r.state
+  const items = r.guestDrawings.slice()
+  if (st.input.options.drawings) for (const d of st.overlay.drawings) if (d.id !== st.overlay.drawingPreviewID) items.push(d)
+  const shown = items.filter(d => !d.hidden)
+  if (!shown.length) return []
+  const axes = new DrawAxes({ layout: L, pane, range, mode: st.viewport.price.mode, view: st.viewport.view, decimals: st.input.decimals })
+  const out: Rect[] = []
+  for (const d of shown) {
+    const g = drawingGeometry(d, axes.bounds, axes.x, axes.y, axes.decimals, st.input.series)
+    for (const p of g.layoutLabels(L.plotW, pane.y, pane.h, measureDrawLabel)) {
+      out.push(rect(p.box.left, p.box.top, p.box.right - p.box.left, p.box.bottom - p.box.top))
+    }
+  }
+  return out
 }
 
 // ------------------------------------------------------------------ 这一屏的几何

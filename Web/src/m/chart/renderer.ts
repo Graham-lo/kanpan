@@ -90,7 +90,13 @@ const sameIds = (a: readonly string[], b: readonly string[]): boolean => a.lengt
 export type Rect = { x: number; y: number; w: number; h: number }
 
 export class ChartRenderer {
-  guestDrawings: Drawing[] = []
+  private _guestDrawings: Drawing[] = []
+  /** 临时客线不属于存档与个人布局。金额签也躲客线上的字，签存在订单流那只盒子里，线一换就得重排。 */
+  get guestDrawings(): Drawing[] { return this._guestDrawings }
+  set guestDrawings(v: Drawing[]) {
+    if (v !== this._guestDrawings) this.orderFlowCache = new Map()
+    this._guestDrawings = v
+  }
   ownDimmed = false
   priceFlash: PriceFlash | null = null
   pinnedPriceRange: PriceRange | null = null
@@ -139,8 +145,10 @@ export class ChartRenderer {
       && previous.viewport.axisScaleAnchor === state.viewport.axisScaleAnchor && previous.viewport.subScale === state.viewport.subScale)
     if (inputChanged) this.inputCache = newInputCache()
     if (inputChanged || viewportChanged) this.viewportCache = newViewportCache()
+    // 画线一变也换：金额签躲画线上的字（drawingLabelBoxes），签和色带几何同存一只盒子。
     if (inputChanged || viewportChanged || previous.overlay.orderFlow !== state.overlay.orderFlow
-      || previous.overlay.orderFlowDisplay !== state.overlay.orderFlowDisplay) {
+      || previous.overlay.orderFlowDisplay !== state.overlay.orderFlowDisplay
+      || previous.overlay.drawings !== state.overlay.drawings || previous.overlay.drawingPreviewID !== state.overlay.drawingPreviewID) {
       this.orderFlowCache = new Map()
     }
     if (inputChanged || !previous.viewport.view.equals(state.viewport.view)) this.rebuildIndicators(previous, prev)

@@ -7,6 +7,7 @@ import { makeState, withOverlay } from '../src/m/chart/state'
 import type { ChartState } from '../src/m/chart/state'
 import { ChartView } from '../src/m/chart/view'
 import { ChartGesture } from '../src/m/chart/gesture'
+import { decodeDrawing } from '../src/m/chart/draw/drawing'
 
 type Listener = (e: unknown) => void
 function fakeEl(): Record<string, unknown> {
@@ -121,5 +122,66 @@ describe('十字线归哪根手指（ChartGestureTests · 审查 B·P3-2）', ()
     up(v, other, 1040)
     expect(v.gesture.mode).toBe('crosshair')
     up(v, owner, 1060)
+  })
+})
+
+// ------------------------------------------------------------------ 哪几层脏（ChartViewDirtyTests · 审查 B·P3-1 / 待核实 4）
+
+type Dirty = { dirty: number }
+const CROSS = 4  // Parts.cross
+function tick(v: ChartView): number {
+  const s = v.state!
+  const b = s.input.series, i = b.count - 1
+  ;(v as unknown as Dirty).dirty = 0
+  b.replaceLast({ ...b.bar(i), close: b.close[i] * 1.001, high: Math.max(b.high[i], b.close[i] * 1.001) })
+  v.state = s
+  return (v as unknown as Dirty).dirty
+}
+
+describe('十字线读不读末根（ChartViewDirtyTests.lastBarTickRefreshesCrosshair）', () => {
+  it('十字线停在末根 / 末根在屏里 / 开着「至今涨幅」：末根一跳十字线层跟着重画', () => {
+    for (const when of ['onLast', 'visible', 'sinceChange'] as const) {
+      const v = rig()
+      let s = v.state!
+      const n = s.input.series.count
+      if (when === 'sinceChange') {
+        s = { ...s, input: { ...s.input, options: { ...s.input.options, sinceChange: true } } }
+        s = { ...s, viewport: { ...s.viewport, view: new ViewWindow(s.input.series.time(100), s.viewport.view.span) } }
+      }
+      const index = when === 'onLast' ? n - 1 : when === 'visible' ? n - 20 : 10
+      v.state = withOverlay(s, { crosshair: { index, pane: null, t: null, price: 100 } })
+      expect(tick(v) & CROSS, when).toBe(CROSS)
+    }
+  })
+
+  it('往回翻到末根不在屏里、没开「至今涨幅」：末根一跳不必重画十字线层', () => {
+    const v = rig()
+    const s = v.state!
+    v.state = withOverlay({ ...s, viewport: { ...s.viewport, view: new ViewWindow(s.input.series.time(100), s.viewport.view.span) } },
+      { crosshair: { index: 10, pane: null, t: null, price: 100 } })
+    expect(tick(v) & CROSS).toBe(0)
+  })
+})
+
+describe('画线一变，开着订单流时十字线层跟着重画（金额签在那一层、要躲画线字）', () => {
+  const hline = (s: ChartState) => decodeDrawing({ id: 'h', kind: 'hline', points: [{ t: s.input.series.lastTime, p: 100 }] })
+  it('开订单流：画线一变 cross 脏；客线一换 cross 也脏', () => {
+    const v = rig()
+    const s0 = v.state!
+    v.state = withOverlay(s0, { orderFlow: { symbol: 'BTCUSDT', phase: 'ready', orders: [], asOfMs: s0.input.series.lastTime, thresholds: {} } })
+    ;(v as unknown as Dirty).dirty = 0
+    v.state = withOverlay(v.state!, { drawings: [hline(s0)] })
+    expect((v as unknown as Dirty).dirty & CROSS).toBe(CROSS)
+    ;(v as unknown as Dirty).dirty = 0
+    v.guestDrawings = [hline(s0)]
+    expect((v as unknown as Dirty).dirty & CROSS).toBe(CROSS)
+  })
+  it('没开订单流：画线一变只脏底图', () => {
+    const v = rig()
+    ;(v as unknown as Dirty).dirty = 0
+    v.state = withOverlay(v.state!, { drawings: [hline(v.state!)] })
+    const d = (v as unknown as Dirty).dirty
+    expect(d & 1).toBe(1)
+    expect(d & CROSS).toBe(0)
   })
 })

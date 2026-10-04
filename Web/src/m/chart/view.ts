@@ -14,6 +14,7 @@
 import type { ChartState, Crosshair } from './state'
 import { ChartRenderer } from './renderer'
 import type { PriceRange, ViewWindow, Layout } from './geometry'
+import { visibleRange } from './geometry'
 import { sameRender, orderFlowDisplayEqual, sameOrderFlowKey } from './orderflowGroup'
 import type { OrderFlowSnapshot, OrderFlowGroupKey } from './orderflowGroup'
 import type { BarSeries } from './series'
@@ -209,7 +210,8 @@ export class ChartView {
   set guestDrawings(v: Drawing[]) {
     this._guestDrawings = v
     if (this.renderer) this.renderer.guestDrawings = v
-    this.setNeedsRedraw(Parts.plot)
+    // 金额签躲客线上的字，签在 cross 层（见 renderer.orderflow drawingLabelBoxes）。
+    this.setNeedsRedraw(this.storedState?.overlay.orderFlow == null ? Parts.plot : Parts.plot | Parts.cross)
     this.refreshDrawingOverlay()
   }
   get ownDimmed(): boolean { return this._ownDimmed }
@@ -454,10 +456,17 @@ export class ChartView {
       p |= Parts.plot | Parts.live
       if (o.overlay.crosshair != null || n.overlay.crosshair != null || n.input.percentAxis || n.overlay.orderFlow != null) p |= Parts.cross
     }
-    if (o.overlay.drawings !== n.overlay.drawings || o.overlay.drawingPreviewID !== n.overlay.drawingPreviewID) p |= Parts.plot
+    if (o.overlay.drawings !== n.overlay.drawings || o.overlay.drawingPreviewID !== n.overlay.drawingPreviewID) {
+      p |= Parts.plot
+      // 金额签在 cross 层、要躲画线上的字（drawingLabelBoxes）：线一变签得跟着重排。
+      if (n.overlay.orderFlow != null) p |= Parts.cross
+    }
+    // 末根变了：蜡烛（plot）、最新价（live）都要重画；没有十字线时图例读的就是末根，图例在 cross 层，
+    // 所以 cross 也得跟着脏。十字线开着时看它读不读末根（见 crossReadsLastBar）。
     if (!(seriesSame || (nm.count === om.count && sameLastValues(om.last, nm.last)))) {
       p |= Parts.plot | Parts.live
-      if (o.overlay.crosshair == null || n.overlay.crosshair == null) p |= Parts.cross
+      if (o.overlay.crosshair == null || n.overlay.crosshair == null
+        || crossReadsLastBar(o, om.count) || crossReadsLastBar(n, nm.count)) p |= Parts.cross
     }
     if (o.overlay.depth !== n.overlay.depth) {
       p |= Parts.live
@@ -507,4 +516,18 @@ export class ChartView {
 function sameLayout(a: Layout, b: Layout): boolean {
   if (a.W !== b.W || a.H !== b.H || a.plotW !== b.plotW || a.panes.length !== b.panes.length) return false
   return a.panes.every((p, i) => p.y === b.panes[i].y && p.h === b.panes[i].h && p.indicator === b.panes[i].indicator)
+}
+
+/**
+ * 十字线开着时，末根一跳它那一层会不会变（ChartView.crossReadsLastBar，审查 B·P3-1）。
+ * 从前一律当「不会」：手指按着最后一根不动，开高低收框与图例停在按下那一刻的价上，底图的蜡烛却一笔一笔在长。
+ * 会变的有三种：十字线就停在末根上；「至今涨幅」开着（从十字线那根到末根收盘）；末根在这一屏里（含右侧护栏根），
+ * 它参与价格区间与副图值域，一跳区间就可能变，横线与右轴读数都得跟着挪。
+ * count 按那一帧记下的根数给：序列是原地改的，旧帧的 series.count 已经是新的。
+ */
+function crossReadsLastBar(s: ChartState, count: number): boolean {
+  const cross = s.overlay.crosshair
+  if (!cross || count <= 0) return false
+  const last = count - 1
+  return cross.index >= last || s.input.options.sinceChange || visibleRange(s.viewport.view, s.input.series).hi >= last
 }
