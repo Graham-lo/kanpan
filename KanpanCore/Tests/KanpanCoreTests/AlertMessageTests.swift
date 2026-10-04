@@ -88,6 +88,26 @@ struct AlertMessageTests {
     #expect(text == "BTCUSDT|84,662.2|价格达到|2026-09-21T14:13:20Z|看这里|{别的}")
   }
 
+  @Test("斜线的目标价是触发那一刻线上的价，不是首锚点（深度审查 E-3）")
+  func slopedTargetIsTheLinePriceAtFireTime() throws {
+    let line = AlertLine(points: [DrawPoint(t: Self.t0, p: 100), DrawPoint(t: Self.t0 + 7_200_000, p: 200)])
+    let a = Alert(symbol: "BTCUSDT", drawingID: "d1", lines: [line], armedAt: Self.t0, title: "BTC 触到你画的趋势线", created: Self.t0)
+    let at = Self.t0 + 3_600_000
+    #expect(AlertMessage.render(template: "{目标价}|{价格}", alert: a, price: 151, decimals: 0, at: at) == "150|151")
+    let payload = AlertWebhookPayload(event: .alert, alert: a, price: 151, decimals: 0, at: at)
+    #expect(payload.target == 150)
+  }
+
+  @Test("占位符一遍扫完：值里带「{价格}」原样留着，不被二次展开（深度审查 E-5）")
+  func filledValuesAreNotExpandedAgain() {
+    let a = btc(note: "看{价格}{目标价}")
+    let text = AlertMessage.render(template: "{备注} {价格} {目标价}", alert: a, price: 84_670.5, decimals: 1, at: Self.t0)
+    #expect(text == "看{价格}{目标价} 84,670.5 84,662.2")
+    // 没配对的花括号、认不得的名字原样留着。
+    #expect(AlertMessage.fill("{a}{价格", ["价格": "1"]) == "{a}{价格")
+    #expect(AlertMessage.fill("{{价格}}", ["价格": "1"]) == "{1}")
+  }
+
   @Test("POST 身体：十四个键，测试事件与告警事件同一个形状")
   func payload() throws {
     let a = btc(note: "n", webhook: "https://a.b/c")

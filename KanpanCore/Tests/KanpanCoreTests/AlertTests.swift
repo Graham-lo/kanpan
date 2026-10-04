@@ -84,8 +84,11 @@ struct AlertTests {
     #expect(lines.count == 2)
     #expect(lines[0].price(at: Self.t0 + Self.hour) == 110)
     #expect(lines[1].price(at: Self.t0 + Self.hour) == 90)
-    // 只在两个锚点之间那一段。
-    #expect(lines[0].price(at: Self.t0 + 3 * Self.hour) == nil)
+    // 上下沿是水平价位，箱子右沿之后照样是那个价（深度审查 E-1）；左沿之前不延。
+    #expect(lines.allSatisfy { $0.extendRight && !$0.extendLeft })
+    #expect(lines[0].price(at: Self.t0 + 30 * Self.hour) == 110)
+    #expect(lines[1].price(at: Self.t0 + 30 * Self.hour) == 90)
+    #expect(lines[0].price(at: Self.t0 - Self.hour) == nil)
   }
 
   @Test("通道摊成两条平行边，第二条过第三个点")
@@ -111,6 +114,33 @@ struct AlertTests {
     #expect(lines[0].price(at: Self.t0 + Self.hour) == 100)
     #expect(lines[1].price(at: Self.t0 + Self.hour) == 150)
     #expect(lines[2].price(at: Self.t0 + Self.hour) == 200)
+    // 每一级都往右一直延：画在已走完那段行情上的回撤，价格之后回来碰到才是它的用处。
+    #expect(lines.allSatisfy { $0.extendRight && !$0.extendLeft })
+    #expect(lines[1].price(at: Self.t0 + 48 * Self.hour) == 150)
+    #expect(lines[1].price(at: Self.t0 - Self.hour) == nil)
+  }
+
+  @Test("画在已走完那段行情上的回撤：价格之后回到 0.618 就响（深度审查 E-1）")
+  func pastFibonacciFiresAfterSegmentEnds() throws {
+    // 从 200 跌到 100 的一段已经走完（t0 → t0+2h），回撤画上去之后过了一天价格才反弹。
+    var d = drawing(.fibonacci, [(Self.t0, 200), (Self.t0 + 2 * Self.hour, 100)])
+    d.levels = [0, 0.618, 1]
+    let lines = try #require(AlertGeometry.lines(for: d))
+    let a = alert(lines, armedAt: Self.t0 + 3 * Self.hour)
+    let hit = try #require(AlertEvaluator.hit(a, bar: .init(openTime: Self.t0 + 26 * Self.hour, high: 163, low: 158)))
+    #expect(hit.line == 1)
+    #expect(abs(hit.price - 161.8) < 1e-9)
+  }
+
+  @Test("画在已走完那段行情上的矩形：之后碰到箱顶就响，趋势线段走完之后不响")
+  func pastRectangleFiresTrendSegmentDoesNot() throws {
+    let box = try #require(AlertGeometry.lines(for: drawing(.rectangle, [(Self.t0, 110), (Self.t0 + 2 * Self.hour, 90)])))
+    let later = AlertEvaluator.Bar(openTime: Self.t0 + 10 * Self.hour, high: 111, low: 108)
+    #expect(AlertEvaluator.fires(alert(box, armedAt: Self.t0 + 3 * Self.hour), bar: later))
+    // 趋势线是「两点之间」那一段本身，没开延长就不替它延。
+    let trend = try #require(AlertGeometry.lines(for: drawing(.trend, [(Self.t0, 100), (Self.t0 + 2 * Self.hour, 120)])))
+    #expect(!AlertEvaluator.fires(alert(trend, armedAt: Self.t0 + 3 * Self.hour),
+                                  bar: .init(openTime: Self.t0 + 10 * Self.hour, high: 200, low: 50)))
   }
 
   @Test("摊平最多 32 条，和服务端那道闸一样")

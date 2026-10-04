@@ -23,6 +23,12 @@ import KanpanCore
 /// 可能比真 K 线的影线短一点。差的结果是**漏判**，不是误响——两根采样之间插进来的
 /// 那根针可能判不到。这是有意的取舍（见下面「响不了的情况」）。
 ///
+/// 换桶那一下例外：上一口价（上一桶的收盘）和这一口价之间那段行情，交易所的真 K 线
+/// 一定把它记在某一根里，而采样折出来的两个桶都不含它——分钟 N 最后一口 101、
+/// N+1 第一口 99，100 那条线就落在缝里。所以新桶开桶时把上一桶的收盘价也算进
+/// 高低（等于把它当成这一桶的第一笔），价格是连续走过去的，这仍然只会少判、不会误响。
+/// 中间空过超过 `staleBuckets` 个桶就不补——那时不知道手上那口价还是不是真的（深度审查 E-2）。
+///
 /// ## 和服务端会不会响两次
 ///
 /// 不会，两道闸各挡一边：
@@ -94,7 +100,9 @@ final class AlertEngine: ObservableObject {
       .sink { [weak self] archive in self?.live = Self.index(archive) }
       .store(in: &bag)
     store.$archive
-      .receive(on: RunLoop.main)
+      // 走主队列而不是 `RunLoop.main`：Combine 的 RunLoop 调度只在 default 模式里跑，
+      // 用户手指按着列表滚动（tracking 模式）时整段收不到，提醒响了也要等松手才说、才收尾。
+      .receive(on: DispatchQueue.main)
       .sink { [weak self] archive in self?.settle(archive) }
       .store(in: &bag)
     // 复盘到点不看价，按钟判：前台每半分钟看一眼（日历通知只精确到分钟，这个粒度够）。
@@ -178,7 +186,7 @@ final class AlertEngine: ObservableObject {
 
     guard let bucket = buckets[key] else {
       buckets[key] = Bucket(openTime: open, high: price, low: price, close: price, previousClose: nil)
-      evaluateLive(key)
+      evaluateLive(key, at: stamp)
       return
     }
     if open == bucket.openTime {
@@ -187,35 +195,40 @@ final class AlertEngine: ObservableObject {
       next.low = min(next.low, price)
       next.close = price
       buckets[key] = next
-      evaluateLive(key)
+      evaluateLive(key, at: stamp)
       return
     }
     // 乱序：比手上这桶还早的一口价一概不要（`FeedComposer` 那儿也是这么挡的）。
     guard open > bucket.openTime else { return }
     // 桶换了 ⇒ 上一桶收了。先拿收了的那一根判一次（`.close` 只在这一刻有机会响），
     // 再开新桶。顺序不能反：反了就是拿这一根和自己比。
-    closeOut(key, bucket: bucket)
+    closeOut(key, bucket: bucket, at: stamp)
     let gap = (open - bucket.openTime) / Self.bucketMs
-    buckets[key] = Bucket(openTime: open, high: price, low: price, close: price,
-                          previousClose: gap <= Self.staleBuckets ? bucket.close : nil)
-    evaluateLive(key)
+    if gap <= Self.staleBuckets {
+      // 上一口价到这一口价之间那段不属于任何一个采样桶，记进新桶（见头注释）。
+      buckets[key] = Bucket(openTime: open, high: max(price, bucket.close), low: min(price, bucket.close),
+                            close: price, previousClose: bucket.close)
+    } else {
+      buckets[key] = Bucket(openTime: open, high: price, low: price, close: price, previousClose: nil)
+    }
+    evaluateLive(key, at: stamp)
   }
 
   /// 盘中那一帧：只有 `.touch` 会在这儿响，`.close` 被 `isClosed == false` 挡在外面。
-  private func evaluateLive(_ symbol: String) {
+  private func evaluateLive(_ symbol: String, at stamp: Int64) {
     guard let bucket = buckets[symbol] else { return }
     let bar = AlertEvaluator.Bar(openTime: Double(bucket.openTime), high: bucket.high, low: bucket.low,
                                  close: bucket.close, isClosed: false, previousClose: bucket.previousClose)
-    evaluate(symbol, bar: bar, price: bucket.close)
+    evaluate(symbol, bar: bar, price: bucket.close, at: stamp)
   }
 
   /// 这一根收了。`.close` 在这儿判；`.touch` 再判一次是无害的——它要么在盘中那几帧
   /// 里已经响过（`once`，`markFired` 第二次进来会被 `status` 挡掉），要么这一根
   /// 压根不该它响（`armedAt` 之前开盘的）。
-  private func closeOut(_ symbol: String, bucket: Bucket) {
+  private func closeOut(_ symbol: String, bucket: Bucket, at stamp: Int64) {
     let bar = AlertEvaluator.Bar(openTime: Double(bucket.openTime), high: bucket.high, low: bucket.low,
                                  close: bucket.close, isClosed: true, previousClose: bucket.previousClose)
-    evaluate(symbol, bar: bar, price: bucket.close)
+    evaluate(symbol, bar: bar, price: bucket.close, at: stamp)
   }
 
   /// 判一遍，响了就标 `fired`。
@@ -227,12 +240,16 @@ final class AlertEngine: ObservableObject {
   ///
   /// `firedPrice` 记的是**现价**，不是线价——和服务端 `fire(…, candle.close, at)`
   /// 一致，通知正文那句「现价 X」说的也是它。
-  private func evaluate(_ symbol: String, bar: AlertEvaluator.Bar, price: Double) {
+  ///
+  /// `firedAt` 记的是**判到它的那口价的交易所时刻**（`stamp`，取不到时 `observe` 已经用本机的顶上），
+  /// 和分桶同一个钟：手机的钟偏了，记下的触发时刻也不跟着偏——它会同步上云、和服务端的
+  /// 触发记录与 Webhook 时间窗比（深度审查 E-6）。
+  private func evaluate(_ symbol: String, bar: AlertEvaluator.Bar, price: Double, at stamp: Int64) {
     guard let store, let candidates = live[symbol], !candidates.isEmpty else { return }
     let hits = candidates.filter { AlertEvaluator.hit($0, bar: bar) != nil }.map(\.id)
     guard !hits.isEmpty else { return }
     // 同一口价响的一起落：一次写、一次记账、一次发布（`AlertStore.markFired(ids:)`）。
-    store.markFired(ids: hits, at: Date().timeIntervalSince1970 * 1000, price: price)
+    store.markFired(ids: hits, at: Double(stamp), price: price)
   }
 
   /// 存档 → 按品种的判定索引。条件和 `watched` 是同一份：活动中、画线或价格、有线。
@@ -252,7 +269,8 @@ final class AlertEngine: ObservableObject {
   /// UI 用例「输一个价建提醒，然后它响了」要一段一定会碰到那个价的行情：真行情下一分钟
   /// 未必走到。启动环境 `KANPAN_TEST_ALERT_TOUCH=<代号>`（配 `KANPAN_TEST_PROFILE=1`）时，
   /// 这只品种一挂上裸价格提醒，就往它身上喂两口夹住目标价的价（高一点、低一点）。
-  /// 时间戳放在一天以后：`armedAt` 那一关照样要过，真行情的帧全比它早、按乱序挡掉。
+  /// 时间戳放在下一分钟：`armedAt` 那一关照样要过，真行情的帧在那之前全比它早、按乱序挡掉；
+  /// 触发时刻记的就是这口价的时刻，只比此刻晚一分钟以内，总表里看着仍是「刚刚」。
   /// 往下走的是和真行情完全一样的一条路：桶 → `AlertEvaluator.hit` → `markFired`
   /// → `AlertWatcher` 浮条 + 通知 → 总表「已触发」。
   private func feedTestTouch(_ symbols: Set<String>,
@@ -260,7 +278,7 @@ final class AlertEngine: ObservableObject {
     guard environment["KANPAN_TEST_PROFILE"] == "1",
           let symbol = environment["KANPAN_TEST_ALERT_TOUCH"].map(InstrumentID.canonical), symbols.contains(symbol),
           let store else { return }
-    let future = Int64(Date().timeIntervalSince1970 * 1000) + 86_400_000
+    let future = Int64(Date().timeIntervalSince1970 * 1000) + Self.bucketMs
     for alert in store.all where alert.kind == .price && alert.isActive && InstrumentID.canonical(alert.symbol) == symbol {
       guard let target = alert.targetPrice else { continue }
       observe(symbol: symbol, price: target * 1.001, timeMs: future)

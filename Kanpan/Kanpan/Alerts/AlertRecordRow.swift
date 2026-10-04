@@ -285,8 +285,11 @@ enum AlertRecordText {
   /// - 已触发：「已触发 · 9/24 16:44 · 现价 84,670.5」。v3 触发即删，界面上基本见不到，
   ///   只在发出通知与删掉之间那一拍存在。
   /// - 复盘到点：「到期 9/24 16:44」/「已到点 · 9/24 16:44」。
+  /// - 生效中、但线段已经走完（`Alert.isSpent`，E-1 之前建的过去的趋势线段）：「线段已走完」，
+  ///   不再假装还在等。
   static func meta(_ alert: KanpanCore.Alert, zone: TZOffset, decimals: Int?,
-                   conditionInline: Bool) -> String {
+                   conditionInline: Bool,
+                   now: Double = Date().timeIntervalSince1970 * 1000) -> String {
     if alert.kind == .reviewDue {
       let at = alert.status == .fired ? alert.firedAt ?? alert.dueAt : alert.dueAt
       let time = at.map { ReviewLabels.dayTime(ms: Int64($0), offsetMinutes: zone) } ?? ""
@@ -305,9 +308,12 @@ enum AlertRecordText {
       let label = AlertArchive.isDrawingMissing(alert) ? AlertArchive.drawingMissingNote : "已暂停"
       return conditionInline ? label + " · " + conditionText(alert) : label
     case .active:
+      if alert.isSpent(at: now) { return spentNote }
       return conditionInline ? conditionText(alert) : "生效中"
     }
   }
+
+  static let spentNote = "线段已走完"
 
   private static func conditionText(_ alert: KanpanCore.Alert) -> String {
     alert.kind == .condition ? conditionLabel(alert.rule) : alert.condition.title

@@ -45,6 +45,10 @@ final class AlertWatcher: ObservableObject {
   /// 看的是 `AccountFiles.currentProfile`：提醒存档就装在这份档案里，它是账号档案
   /// （`u-…`）时这条提醒的变动一定走账号同步到服务端；访客档案（`local/…`）不同步。
   var serverSendsWebhooks: () -> Bool = { AccountFiles.currentProfile.hasPrefix("u-") }
+  /// 往通知中心放一条。出厂就是 `AlertNotifications.present`；用例换成记账的，量「响一次只说一次」。
+  var present: (Alert, Int?, AlertSound, String?) -> Void = { alert, decimals, sound, detail in
+    AlertNotifications.present(alert, decimals: decimals, sound: sound, detail: detail)
+  }
 
   private weak var store: AlertStore?
   private var bag: Set<AnyCancellable> = []
@@ -67,7 +71,9 @@ final class AlertWatcher: ObservableObject {
     // （`useStorage` 先加代次再换存档），所以跟着存档一起取出来的代次是配套的。
     store.$archive
       .map { [weak store] archive in (archive, store?.generation ?? 0) }
-      .receive(on: RunLoop.main)
+      // 走主队列而不是 `RunLoop.main`：Combine 的 RunLoop 调度只在 default 模式里跑，
+      // 用户手指按着列表滚动（tracking 模式）时整段收不到，提醒响了也要等松手才说、才收尾。
+      .receive(on: DispatchQueue.main)
       .sink { [weak self] archive, generation in self?.settle(archive, generation: generation) }
       .store(in: &bag)
   }
@@ -105,7 +111,7 @@ final class AlertWatcher: ObservableObject {
     let decimals = priceDecimals(alert.symbol)
     // 条件提醒：本机判到的有那一句观测（`ConditionAlertEngine`），服务端判到、同步下来的只有价，按种类补一句。
     let observation = store?.observation(for: alert)
-    AlertNotifications.present(alert, decimals: decimals, sound: sound(), detail: observation?.detail)
+    present(alert, decimals, sound(), observation?.detail)
     if alert.kind == .condition {
       // 服务端只替**它自己判到的**条件提醒发 Webhook（`alerts::reported_fire` 只认画线 / 价格两类），
       // 所以本机判到的由本机发，登没登录都一样。

@@ -203,6 +203,23 @@ public enum AlertRule: Sendable, Equatable, Codable {
     return text + u
   }
 
+  /// 回填到表单输入框里的金额：K / M / B / T 单位同 `units`，但**一位都不舍**
+  /// （`1250000` → `1.25M`，`1234567` → `1.234567M`）。`units` 只保留一位小数，是给人看的；
+  /// 拿它回填输入框，用户不动门槛直接保存，`parseAmount` 读回去就成了 1.2M——门槛被悄悄
+  /// 改小了（深度审查 E-4）。这里按十进制整除单位，`parseAmount` 读回来一分不差。
+  public static func editableAmount(_ v: Decimal) -> String {
+    let a = v < 0 ? -v : v
+    let scale: (Decimal, String) = a >= 1_000_000_000_000 ? (1_000_000_000_000, "T") : a >= 1_000_000_000 ? (1_000_000_000, "B")
+      : a >= 1_000_000 ? (1_000_000, "M") : a >= 1_000 ? (1_000, "K") : (1, "")
+    return NSDecimalNumber(decimal: v / scale.0).stringValue + scale.1
+  }
+
+  /// `Double` 版：先按它最短的十进制写法转成 `Decimal`（`1250000.0` 不会变成 `1249999.9999…`）。
+  public static func editableAmount(_ v: Double) -> String {
+    guard v.isFinite else { return "" }
+    return editableAmount(Decimal(string: String(v), locale: Locale(identifier: "en_US_POSIX")) ?? Decimal(v))
+  }
+
   /// 用户在表单里写的金额（`5M`、`1.5m`、`800K`、`2000000`、`1,000,000`）→ 美元数。写不成数返回 nil。
   public static func parseAmount(_ text: String) -> Decimal? {
     var s = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "").uppercased()

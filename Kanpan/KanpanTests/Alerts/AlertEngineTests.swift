@@ -154,6 +154,60 @@ struct AlertEngineTests {
     #expect(engine.bucketState("BTCUSDT")?.previousClose == nil)
   }
 
+  // ---------------------------------------------------------------- 跨分钟（深度审查 E-2）
+
+  @Test("跨分钟一跳穿线也响：上一分钟最后一口 101、这一分钟第一口 99，100 那条线不落在缝里")
+  func crossingTheMinuteBoundaryStillTouches() {
+    let store = fresh()
+    let alert = arm(store, price: 100)
+    let engine = AlertEngine()
+    engine.attach(store)
+    engine.observe(symbol: "BTCUSDT", price: 101, timeMs: minute(0) + 59_900)
+    #expect(store.alert(id: alert.id)?.status == .active)
+    engine.observe(symbol: "BTCUSDT", price: 99, timeMs: minute(1) + 500)
+    let bucket = engine.bucketState("BTCUSDT")
+    #expect(bucket?.high == 101)
+    #expect(bucket?.low == 99)
+    #expect(bucket?.close == 99)
+    #expect(store.alert(id: alert.id)?.status == .fired)
+    #expect(store.alert(id: alert.id)?.firedPrice == 99)
+  }
+
+  @Test("断得太久就不补那段缝：隔了六个桶的价不拿来夹线")
+  func staleGapDoesNotBridgeTheSeam() {
+    let store = fresh()
+    let alert = arm(store, price: 100)
+    let engine = AlertEngine()
+    engine.attach(store)
+    engine.observe(symbol: "BTCUSDT", price: 101, timeMs: minute(0) + 59_900)
+    engine.observe(symbol: "BTCUSDT", price: 99, timeMs: minute(6) + 500)
+    #expect(engine.bucketState("BTCUSDT")?.high == 99)
+    #expect(store.alert(id: alert.id)?.status == .active)
+  }
+
+  @Test("触发时刻记的是那口价的交易所时刻，不是本机的钟（深度审查 E-6）")
+  func firedAtIsTheTickTime() {
+    let store = fresh()
+    let alert = arm(store, price: 100)
+    let engine = AlertEngine()
+    engine.attach(store)
+    let at = minute(3) + 1_234
+    engine.observe(symbol: "BTCUSDT", price: 100, timeMs: at)
+    #expect(store.alert(id: alert.id)?.firedAt == Double(at))
+  }
+
+  @Test("收盘那一下响的也记换桶那口价的时刻")
+  func closeFiresAtTheTickThatClosedTheBar() {
+    let store = fresh()
+    let alert = arm(store, price: 100, condition: .close)
+    let engine = AlertEngine()
+    engine.attach(store)
+    engine.observe(symbol: "BTCUSDT", price: 99, timeMs: minute(0) + 1_000)
+    engine.observe(symbol: "BTCUSDT", price: 101, timeMs: minute(1) + 1_000)
+    engine.observe(symbol: "BTCUSDT", price: 102, timeMs: minute(2) + 700)
+    #expect(store.alert(id: alert.id)?.firedAt == Double(minute(2) + 700))
+  }
+
   // ---------------------------------------------------------------- 上膛时刻
 
   @Test("刚挪好的线不会被它开盘那一分钟当场判成已触发")

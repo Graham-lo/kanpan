@@ -250,7 +250,8 @@ struct AlertForm: View {
     if let conditions {
       maInterval = conditions.interval
       maLengthText = String(conditions.maLength)
-      if let wall = conditions.wallThreshold, wall >= 10_000 { wallText = AlertRule.units(wall) }
+      // 回填用不舍位的写法：`units` 只留一位小数，不动直接保存会把门槛改小（深度审查 E-4）。
+      if let wall = conditions.wallThreshold, wall >= 10_000 { wallText = AlertRule.editableAmount(wall) }
     }
     if let existing {
       if let target = existing.targetPrice {
@@ -279,7 +280,8 @@ struct AlertForm: View {
     case let .maCross(interval, length, side):
       maInterval = interval; maLengthText = String(length); maSide = side
     case let .orderflowWall(threshold):
-      wallText = AlertRule.units(AlertRule.decimal(threshold).map { NSDecimalNumber(decimal: $0).doubleValue } ?? 0)
+      // 不舍位：编辑页不动门槛直接保存，存回去的仍是原数（深度审查 E-4）。
+      wallText = AlertRule.decimal(threshold).map { AlertRule.editableAmount($0) } ?? ""
     default: break
     }
   }

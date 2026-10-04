@@ -36,6 +36,23 @@ struct AlertStoreTests {
     #expect(store.all.isEmpty)
   }
 
+  @Test("已经走完的趋势线段不建（永远不会响）；画在过去的回撤照建，它往右延（深度审查 E-1）")
+  func spentSegmentsAreRefusedPastFibIsNot() throws {
+    let store = fresh()
+    let now = 10 * 3_600_000.0
+    let trend = Drawing(id: "t1", kind: .trend, points: [DrawPoint(t: 1_000, p: 100), DrawPoint(t: 2_000, p: 120)])
+    #expect(store.add(drawing: trend, symbol: "BTCUSDT", now: now) == nil)
+    #expect(store.all.isEmpty)
+    // 同一条线自己开了往右延（射线）就照建。
+    let ray = Drawing(id: "r1", kind: .ray, points: trend.points)
+    #expect(store.add(drawing: ray, symbol: "BTCUSDT", now: now) != nil)
+    var fib = Drawing(id: "f1", kind: .fibonacci, points: [DrawPoint(t: 1_000, p: 200), DrawPoint(t: 2_000, p: 100)])
+    fib.levels = [0, 0.618, 1]
+    let alert = try #require(store.add(drawing: fib, symbol: "BTCUSDT", now: now))
+    #expect(alert.lines.allSatisfy { $0.extendRight })
+    #expect(!alert.isSpent(at: now))
+  }
+
   @Test("同一条线再点一次是「还要」，不是「再来一条」")
   func askingTwiceRearmsInsteadOfDuplicating() {
     let store = fresh()

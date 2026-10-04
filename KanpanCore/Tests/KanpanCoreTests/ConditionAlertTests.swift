@@ -99,6 +99,21 @@ struct ConditionAlertTests {
     #expect(AlertRule.parseAmount("-1M") == nil)
   }
 
+  @Test("回填输入框的金额一位不舍，读回去一分不差（深度审查 E-4）")
+  func editableAmountRoundTrips() {
+    #expect(AlertRule.editableAmount(Decimal(1_250_000)) == "1.25M")
+    #expect(AlertRule.editableAmount(Decimal(1_234_567)) == "1.234567M")
+    #expect(AlertRule.editableAmount(Decimal(5_000_000)) == "5M")
+    #expect(AlertRule.editableAmount(Decimal(800_000)) == "800K")
+    #expect(AlertRule.editableAmount(1_250_000.0) == "1.25M")
+    for v in [Decimal(1_250_000), Decimal(1_234_567), Decimal(10_000), Decimal(string: "2500000000.5")!, Decimal(3_100_000_000_000)] {
+      #expect(AlertRule.parseAmount(AlertRule.editableAmount(v)) == v)
+    }
+    // 给人看的 `units` 不变（和服务端 `conditions::units` 一字不差）。
+    #expect(AlertRule.units(1_250_000) == "1.2M")
+  }
+
+
   // ------------------------------------------------------------------ 文案
 
   @Test("标题与服务端默认标题同一句；列表行是短句")

@@ -2,7 +2,7 @@
  "version": 1,
  "whatThisIs": "提醒判定的共用夹具：一根 K 线对一条提醒响不响、响在哪条线的哪个价。客户端 AlertEvaluator.hit 与服务端 alerts.rs 的 judge 各跑一遍，结论必须一字不差。",
  "howToMaintain": "手工维护。改判定规则时先在这里加 / 改用例，两边的测试（KanpanCore AlertCasesContractTests、Rust alerts::tests::every_shared_alert_case_agrees）会各自告诉你哪一边还没跟上。时间是毫秒整数，价格是有限数。",
- "fields": "condition: touch | close；armedAt 毫秒；lines 与同步线上的 alerts.lines 同形；bar.openTime/low/high 必有，close/previousClose 可缺（缺 previousClose 就是「没有上一根」），closed 是币安 kline 的 k.x；expect 为 null 表示不响，否则 {line: alert.lines 下标, price: 线在这一刻的价}。服务端只返回价，line 下标只有客户端核对。",
+ "fields": "condition: touch | close；armedAt 毫秒；lines 与同步线上的 alerts.lines 同形；bar.openTime/low/high 必有，close/previousClose 可缺（缺 previousClose 就是「没有上一根」），closed 是币安 kline 的 k.x；expect 为 null 表示不响，否则 {line: alert.lines 下标, price: 线在这一刻的价}。服务端只返回价，line 下标只有客户端核对。 targets 是另一张表：一条提醒在 at 毫秒以 price 响时，通知 / Webhook 的「目标价」是多少（客户端 Alert.target(at:near:)、服务端 alerts::target_of）；expect 为 null 表示没有目标价。",
  "webhook": {
   "whoSends": "登录着：只有服务端发。客户端本机判响后只把 status=fired、firedAt、firedPrice 随同步推上去；服务端在同步事务里（咨询锁之下）看到这条提醒由 active（或首次出现）变成 fired、firedAt 在 10 分钟之内，就在事务提交后替它发一封；服务端评估器自己判响的那次也是它发。两条路共用 alert_items 的 status='active' 这道闸，一次到价只发一封。没登录：服务端不知道这条提醒，客户端只为本机判响的那一次自己发。",
   "body": "{event:\"alert\", alertId, symbol, market, name, title, condition, once:true, target, price, firedAt, time, note, text}；price 是触发价（客户端报上来的用 firedPrice），firedAt 毫秒，time 是 ISO 时间，text 按用户的文案模板填好；客户端 AlertWebhook 与服务端 webhook_body 同一个形状。",
@@ -546,6 +546,113 @@
    }
   },
   {
+   "name": "level-extends-right-past-segment",
+   "why": "回撤一级 / 矩形一条边：两点同价、只往右延，锚点之后再碰到也响（深度审查 E-1）",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 161.8
+      },
+      {
+       "t": 1100,
+       "p": 161.8
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 5000,
+    "low": 160,
+    "high": 163,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 161.8
+   }
+  },
+  {
+   "name": "level-not-left-of-segment",
+   "why": "只往右延的水平价位，左锚点之前不评估",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 161.8
+      },
+      {
+       "t": 1100,
+       "p": 161.8
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 900,
+    "low": 160,
+    "high": 163,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "rectangle-bottom-edge-past-box",
+   "why": "矩形摊成上下两条只往右延的边：箱子右沿之后跌到箱底，响在第二条线",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 110
+      },
+      {
+       "t": 1100,
+       "p": 110
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    },
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 90
+      },
+      {
+       "t": 1100,
+       "p": 90
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 3000,
+    "low": 89,
+    "high": 95,
+    "closed": false
+   },
+   "expect": {
+    "line": 1,
+    "price": 90
+   }
+  },
+  {
    "name": "vertical-segment-takes-first",
    "why": "两点同时刻（竖直段）：取按时间稳定排序后靠前那个点的价（从前 Swift 取靠后那个，两端分歧）",
    "condition": "touch",
@@ -1011,6 +1118,170 @@
     "line": 0,
     "price": 150
    }
+  }
+ ],
+ "targets": [
+  {
+   "name": "horizontal-anchor",
+   "why": "水平线：目标价就是那个价",
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 84662.2
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "at": 5000,
+   "price": 84670.5,
+   "expect": 84662.2
+  },
+  {
+   "name": "slope-at-fire-time",
+   "why": "斜线 (0,100)→(2h,200)，1h 时响：目标价是那一刻线上的 150，不是首锚点的 100（深度审查 E-3）",
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 0,
+       "p": 100
+      },
+      {
+       "t": 7200000,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "at": 3600000,
+   "price": 151,
+   "expect": 150
+  },
+  {
+   "name": "ray-extrapolated",
+   "why": "射线越过第二个点之后照斜率外推",
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 0,
+       "p": 100
+      },
+      {
+       "t": 7200000,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    }
+   ],
+   "at": 14400000,
+   "price": 299,
+   "expect": 300
+  },
+  {
+   "name": "channel-nearest-edge",
+   "why": "通道两条边：取离触发价最近的那条（命中的是上沿就写上沿）",
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 0,
+       "p": 100
+      },
+      {
+       "t": 7200000,
+       "p": 200
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    },
+    {
+     "points": [
+      {
+       "t": 0,
+       "p": 130
+      },
+      {
+       "t": 7200000,
+       "p": 230
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "at": 3600000,
+   "price": 181,
+   "expect": 180
+  },
+  {
+   "name": "tie-takes-first",
+   "why": "一样近取靠前那条",
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 0,
+       "p": 90
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    },
+    {
+     "points": [
+      {
+       "t": 0,
+       "p": 110
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "at": 1000,
+   "price": 100,
+   "expect": 90
+  },
+  {
+   "name": "segment-past-end-clamps",
+   "why": "触发时刻已过线段右端（桶按开盘时刻判）：取最近那个端点的价",
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 0,
+       "p": 100
+      },
+      {
+       "t": 60000,
+       "p": 160
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "at": 90000,
+   "price": 161,
+   "expect": 160
+  },
+  {
+   "name": "no-lines",
+   "why": "没有线（条件提醒那种）就没有目标价",
+   "lines": [],
+   "at": 1000,
+   "price": 100,
+   "expect": null
   }
  ]
 }

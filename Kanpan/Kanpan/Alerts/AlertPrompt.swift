@@ -29,8 +29,10 @@ final class AlertPromptModel: ObservableObject {
   /// **必须推到下一轮 runloop 才改 `pending`**：这条路常常是从别的发布回调里同步
   /// 回来的，SwiftUI 这一帧多半正开着事务；`@Published` 的通知是改之前发的，撞上就会
   /// 读到改之前的 `nil`，整场不再重画，问话出不来。让出一轮之后两件事分开。
-  func offerBatch(_ drawings: [Drawing], symbol: String, preferred: Set<String>, from sender: String) {
-    let supported = drawings.filter { AlertGeometry.lines(for: $0) != nil }
+  func offerBatch(_ drawings: [Drawing], symbol: String, preferred: Set<String>, from sender: String,
+                  now: Double = Date().timeIntervalSince1970 * 1000) {
+    // 已经走完的线段设了也不会响，不算进「能设提醒的那几条」（E-1）。
+    let supported = drawings.filter { AlertGeometry.canAlert($0, at: now) }
     guard !supported.isEmpty, !symbol.isEmpty else { return }
     let defaults = supported.filter { preferred.contains($0.id) }
     let sentence = defaults.isEmpty

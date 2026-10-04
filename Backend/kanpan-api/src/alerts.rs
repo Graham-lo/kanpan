@@ -670,13 +670,35 @@ pub fn render_template(template:Option<&str>,default:&str,value:impl Fn(&str)->O
  out.push_str(rest);
  out
 }
-/// `{目标价}`：`lines` 第一条的第一个点的价（物化时已按时间排过）。
-fn target_of(w:&Watch)->Option<f64> {w.lines.first().and_then(|l|l.points.first()).map(|p|p.p)}
+/// `{目标价}` 与 Webhook 的 `target`：响的那一刻（`at`）线上的价；摊成好几条线（通道、矩形、
+/// 回撤）时取离触发价 `price` 最近的那一条（一样近取靠前那条）。那一刻线段已经过了头就取
+/// 离它最近的那个端点的价。
+///
+/// 从前取「第一条线的第一个点」，斜线上那个锚点可能离触发时的线价很远，通道还可能命中的是
+/// 另一条边（深度审查 E-3）。和客户端 `Alert.target(at:near:)` 同一个算法，夹具
+/// `contract/alert-cases.json` 的 `targets` 两边都跑。
+fn target_of(lines:&[Line],price:f64,at:i64)->Option<f64> {
+ let mut best:Option<f64>=None;
+ for line in lines {
+  let Some(p)=reachable_price(line,at).filter(|p|p.is_finite()) else {continue};
+  if best.is_some_and(|b|(p-price).abs()>=(b-price).abs()) {continue}
+  best=Some(p);
+ }
+ best
+}
+/// 这条线在 `t` 的价；`t` 落在线外（那一头没延）就取离它最近的那个端点的价。只给目标价用。
+fn reachable_price(line:&Line,t:i64)->Option<f64> {
+ if let Some(p)=price_at(line,t) {return Some(p)}
+ let mut sorted=line.points.clone();
+ sort_points(&mut sorted);
+ let (first,last)=(sorted.first()?,sorted.last()?);
+ Some(if (t as f64)<first.t {first.p} else {last.p})
+}
 /// POST 出去的那份 JSON。字段和客户端的字段契约一一对应；`once` 照契约写死 `true`
 /// （提醒一律响一次就结束）。
 fn webhook_body(w:&Watch,price:f64,at:i64)->Value {
  let note=w.note.as_deref().unwrap_or_default();
- let target=target_of(w);
+ let target=target_of(&w.lines,price,at);
  let text=render_webhook_text(w.webhook_text.as_deref(),&WebhookFill{market:&w.market,symbol:&w.symbol,condition:w.condition,target,price,at,note});
  json!({
   "event":"alert","alertId":w.alert_id,"symbol":w.symbol,"market":w.market,
@@ -1537,6 +1559,28 @@ mod tests {
    let want=case["expect"]["price"].as_f64();
    assert_eq!(got,want,"{name}：{}",case["why"].as_str().unwrap_or(""));
   }
+ }
+ /// **通知 / Webhook 的「目标价」两端一字不差**：夹具 `targets` 那张表，客户端
+ /// `AlertCasesContractTests` 跑同一份（深度审查 E-3：斜线上从前写的是首锚点的价）。
+ #[test] fn every_shared_target_case_agrees() {
+  let fixture:Value=serde_json::from_str(include_str!("../contract/alert-cases.json")).expect("contract/alert-cases.json");
+  let cases=fixture["targets"].as_array().expect("targets");
+  assert!(cases.len()>=5,"目标价夹具被删薄了");
+  for case in cases {
+   let name=case["name"].as_str().expect("name");
+   let lines:Vec<Line>=serde_json::from_value(case["lines"].clone()).expect("lines");
+   let got=target_of(&lines,case["price"].as_f64().expect("price"),case["at"].as_i64().expect("at"));
+   let want=case["expect"].as_f64();
+   assert!(match (got,want) {(Some(a),Some(b))=>(a-b).abs()<1e-9,(None,None)=>true,_=>false},"{name}：{}（得到 {got:?}）",case["why"].as_str().unwrap_or(""));
+  }
+ }
+ /// Webhook 的 `target` 与 `{目标价}` 用的是触发那一刻线上的价，不是首锚点。
+ #[test] fn the_webhook_target_follows_a_sloped_line() {
+  let mut w=watch("binance/usd_m/BTCUSDT/a2",Condition::Touch,vec![line(&[(0.0,60_000.0),(7_200_000.0,68_000.0)],false,true)]);
+  w.webhook=Some("https://hooks.example.com/x".into());
+  let body=webhook_body(&w,64_010.0,3_600_000);
+  assert_eq!(body["target"],json!(64_000.0));
+  assert_eq!(body["text"],json!("BTC 价格达到 64,000，现价 64,010"));
  }
 
  fn line(points:&[(f64,f64)],left:bool,right:bool)->Line {

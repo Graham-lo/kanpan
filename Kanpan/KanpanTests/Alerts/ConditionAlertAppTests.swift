@@ -123,6 +123,19 @@ struct ConditionAlertAppTests {
     #expect(burst.cursor == 20)
   }
 
+  @Test("品种上新拉取的闸按账号分：A 那笔还在路上时 B 照常发；同一账号在路上或刚拉过才挡（E-11）")
+  func listingGateIsPerOwner() {
+    let a = UUID(), b = UUID()
+    let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+    #expect(ListingNotices.begin(owner: a, now: t0))
+    #expect(ListingNotices.begin(owner: b, now: t0), "切账号时上一个账号那笔没回来，新账号被挡掉")
+    #expect(!ListingNotices.begin(owner: a, now: t0 + 60), "同一账号那笔还在路上")
+    ListingNotices.end(owner: a)
+    #expect(!ListingNotices.begin(owner: a, now: t0 + 5), "两次太近")
+    #expect(ListingNotices.begin(owner: a, now: t0 + ListingNotices.minInterval))
+    ListingNotices.end(owner: a); ListingNotices.end(owner: b)
+  }
+
   @Test("品种上新拉取的线上形状：data.notices，deliveryAt 可为 null")
   func listingDecodes() throws {
     let json = #"{"notices":[{"id":42,"venue":"binance","market":"usd_m","symbol":"ABCUSDT","event":"delistScheduled","at":1790517600000,"deliveryAt":1790985600000,"title":"ABCUSDT 将下架","body":"币安合约 · 10月3日 16:00（北京时间）停止交易"},{"id":41,"venue":"coinbase","market":"spot","symbol":"XYZ-USD","event":"listed","at":1790517000000,"deliveryAt":null,"title":"新上线：XYZ-USD","body":"Coinbase 现货"}]}"#

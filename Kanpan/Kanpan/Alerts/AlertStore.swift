@@ -105,10 +105,11 @@ final class AlertStore: ObservableObject {
 
   // ---------------------------------------------------------------- 增删改
 
-  /// 给图上那条线加一条提醒。种类不支持（摊不出线）就什么都不做，返回 nil。
+  /// 给图上那条线加一条提醒。种类不支持（摊不出线）、或者是一段已经走完的线段
+  /// （`AlertGeometry.canAlert`，设了永远不会响）就什么都不做，返回 nil。
   @discardableResult
   func add(drawing: Drawing, symbol: String, now: Double = Date().timeIntervalSince1970 * 1000) -> Alert? {
-    guard let lines = AlertGeometry.lines(for: drawing) else { return nil }
+    guard let lines = AlertGeometry.lines(for: drawing), AlertGeometry.canAlert(drawing, at: now) else { return nil }
     guard archive.hasRoom else { notice = "提醒最多 \(AlertArchive.limit) 条"; return nil }
     // 同一条线只留一条提醒：再点一次「加入提醒」是「还要」，不是「再来一条」。
     if let existing = alert(symbol: symbol, drawingID: drawing.id) {

@@ -19,7 +19,7 @@ public enum AlertMessage {
   /// - `{品种}`：`Alert.name(of:)`（`BTC`、`BTC/USD`）
   /// - `{代号}`：完整代号（`BTCUSDT`、`BTC-USD`）
   /// - `{价格}`：现价，千分位 + 品种小数位
-  /// - `{目标价}`：`lines.first.points.first.p`，写法同上
+  /// - `{目标价}`：响的那一刻线上的价（`Alert.target(at:near:)`，斜线、通道取触发时离现价最近那条），写法同上
   /// - `{条件}`：价格达到 / 收盘穿过
   /// - `{时间}`：ISO 8601 UTC，`2026-09-24T16:44:00Z`
   /// - `{备注}`：备注，没有就是空
@@ -29,23 +29,46 @@ public enum AlertMessage {
   /// `{价格}` 按服务端 `alerts::money` 写（它不知道品种小数位）。
   ///
   /// 模板为空（nil 或全是空白）时用出厂模板；认不得的 `{…}` 原样留着。
+  ///
+  /// **一遍扫完**（和服务端 `render_template` 同一个走法）：从前是按占位符逐个
+  /// `replacingOccurrences`，备注里写了「{价格}」、先被换进去的值就会被后面那一轮再换一次
+  /// （深度审查 E-5）。现在填进去的值原样落字，不再被扫第二遍。
   public static func render(template: String?, alert: Alert, price: Double, decimals: Int?,
                             at ms: Double, detail: String? = nil) -> String {
     let isCondition = alert.kind == .condition
     let text = Alert.blankIsNil(template) ?? (isCondition ? conditionTemplate : defaultTemplate)
-    let target = isCondition ? nil : alert.lines.first?.points.first?.p
-    let values: [(String, String)] = [
-      ("品种", Alert.name(of: alert.symbol)),
-      ("代号", InstrumentID(alert.symbol).symbol),
-      ("价格", isCondition ? AlertRule.money(price) : groupedPrice(price, decimals: decimals)),
-      ("目标价", target.map { groupedPrice($0, decimals: decimals) } ?? ""),
-      ("条件", isCondition ? (alert.rule?.phrase ?? "") : alert.condition.title),
-      ("数值", detail ?? ""),
-      ("时间", iso(ms: ms)),
-      ("备注", alert.note ?? ""),
+    let target = isCondition ? nil : alert.target(at: ms, near: price)
+    let values: [String: String] = [
+      "品种": Alert.name(of: alert.symbol),
+      "代号": InstrumentID(alert.symbol).symbol,
+      "价格": isCondition ? AlertRule.money(price) : groupedPrice(price, decimals: decimals),
+      "目标价": target.map { groupedPrice($0, decimals: decimals) } ?? "",
+      "条件": isCondition ? (alert.rule?.phrase ?? "") : alert.condition.title,
+      "数值": detail ?? "",
+      "时间": iso(ms: ms),
+      "备注": alert.note ?? "",
     ]
-    var out = text
-    for (name, value) in values { out = out.replacingOccurrences(of: "{\(name)}", with: value) }
+    return fill(text, values)
+  }
+
+  /// 模板替换本身：遇到 `{名字}` 查表，查得到就写值、查不到就把 `{` 原样写出去接着往后扫；
+  /// 没有配对的 `}` 时余下部分原样留着。和服务端 `alerts::render_template` 一字一字同一个走法。
+  static func fill(_ template: String, _ values: [String: String]) -> String {
+    var out = ""
+    var rest = Substring(template)
+    while let open = rest.firstIndex(of: "{") {
+      out += rest[..<open]
+      let tail = rest[open...]
+      guard let close = tail.firstIndex(of: "}") else { rest = tail; break }
+      if let value = values[String(tail[tail.index(after: open)..<close])] {
+        out += value
+        rest = tail[tail.index(after: close)...]
+      } else {
+        out += "{"
+        rest = tail[tail.index(after: open)...]
+      }
+    }
+    out += rest
     return out
   }
 
@@ -136,7 +159,7 @@ public struct AlertWebhookPayload: Sendable, Equatable, Encodable {
       value = observation?.value ?? .object([:])
     } else {
       condition = alert.condition.rawValue
-      target = alert.lines.first?.points.first?.p ?? price
+      target = alert.target(at: ms, near: price) ?? price
     }
     text = AlertMessage.render(template: alert.webhookText, alert: alert, price: price,
                                decimals: decimals, at: ms, detail: detail)

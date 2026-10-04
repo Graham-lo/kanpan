@@ -68,10 +68,14 @@ final class LineAlertModel: ObservableObject {
     }
   }
 
-  /// 胶囊上那句话。`nil` 表示这种线不能设提醒，胶囊不出现。
+  /// 胶囊上那句话。`nil` 表示这条线此刻不能设提醒，胶囊不出现：种类不支持，或者是一段
+  /// 已经走完、没开延长的线段（再也取不到线价，设了也永远不会响，E-1）。走完之前就已经
+  /// 开着的那条照样出胶囊，好让人点一下关掉它。
   func phrase(for drawing: Drawing, symbol: String, now: Date = Date()) -> LineAlertPhrase? {
-    guard let lines = AlertGeometry.lines(for: live(drawing)) else { return nil }
+    let drawing = live(drawing)
+    guard let lines = AlertGeometry.lines(for: drawing) else { return nil }
     let t = now.timeIntervalSince1970 * 1000
+    guard AlertGeometry.canAlert(drawing, at: t) || isOn(drawing, symbol: symbol) else { return nil }
     let current = quote?.symbol == symbol ? quote?.price : nil
     return LineAlertPhrase(targets: lines.compactMap { $0.price(at: t) }, current: current,
                            decimals: decimals(symbol))

@@ -33,7 +33,9 @@ enum ListingNotices {
   /// 两次拉取至少隔多久（回前台和同步跑完常常前后脚到）。
   static let minInterval: TimeInterval = 20
 
-  private static var inflight = false
+  /// 哪几个账号的拉取还在路上、各自上次什么时候拉的。两样都按账号记：原来「在路上」是全局一格，
+  /// 切账号恰逢上一个账号那笔没回来，新账号这一轮就被挡掉，要等下一次回前台（深度审查 E-11）。
+  private static var inflight: Set<UUID> = []
   private static var lastPull: [UUID: Date] = [:]
 
   nonisolated static let idPrefix = "listing."
@@ -50,12 +52,20 @@ enum ListingNotices {
     return (Array(fresh.prefix(maxPerPull)), next)
   }
 
+  /// 这个账号现在能不能发一笔：它自己没有在路上的、离它上次拉够久了。能就记上「在路上」。
+  static func begin(owner: UUID, now: Date = Date()) -> Bool {
+    guard !inflight.contains(owner), now.timeIntervalSince(lastPull[owner] ?? .distantPast) >= minInterval else { return false }
+    inflight.insert(owner)
+    lastPull[owner] = now
+    return true
+  }
+
+  static func end(owner: UUID) { inflight.remove(owner) }
+
   static func pull(api: AccountClient, owner: UUID, sound: AlertSound) {
-    guard !inflight, Date().timeIntervalSince(lastPull[owner] ?? .distantPast) >= minInterval else { return }
-    inflight = true
-    lastPull[owner] = Date()
+    guard begin(owner: owner) else { return }
     Task { @MainActor in
-      defer { inflight = false }
+      defer { end(owner: owner) }
       guard let page = try? await api.request("v1/alerts/listing-notices", owner: owner, as: Page.self) else { return }
       let key = cursorKey(owner)
       let cursor = (UserDefaults.standard.object(forKey: key) as? NSNumber)?.int64Value

@@ -30,8 +30,18 @@ struct AlertCasesContractTests {
       var bar: Bar
       var expect: Expect?
     }
+    /// 「目标价」那张表（深度审查 E-3）：一条提醒在 `at` 以 `price` 响时，通知 / Webhook 写的目标价。
+    struct Target: Decodable {
+      var name: String
+      var why: String
+      var lines: [AlertLine]
+      var at: Double
+      var price: Double
+      var expect: Double?
+    }
     var version: Int
     var cases: [Case]
+    var targets: [Target]
   }
 
   static func load() throws -> Fixture {
@@ -54,6 +64,21 @@ struct AlertCasesContractTests {
                                    close: c.bar.close, isClosed: c.bar.closed, previousClose: c.bar.previousClose)
       let got = AlertEvaluator.hit(alert, bar: bar).map { Fixture.Expect(line: $0.line, price: $0.price) }
       #expect(got == c.expect, "\(c.name)：\(c.why)")
+    }
+  }
+
+  @Test("目标价夹具里每一条，Alert.target 的结论和夹具一致（服务端 target_of 跑同一份）")
+  func everySharedTargetAgrees() throws {
+    let fixture = try Self.load()
+    #expect(fixture.targets.count >= 5, "目标价夹具被删薄了")
+    for c in fixture.targets {
+      let alert = Alert(symbol: "BTCUSDT", lines: c.lines, armedAt: 0, title: c.name, created: 0)
+      let got = alert.target(at: c.at, near: c.price)
+      switch (got, c.expect) {
+      case let (got?, want?): #expect(abs(got - want) < 1e-9, "\(c.name)：\(c.why)（得到 \(got)）")
+      case (nil, nil): break
+      default: Issue.record("\(c.name)：\(c.why)（得到 \(String(describing: got))）")
+      }
     }
   }
 }

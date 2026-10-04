@@ -195,6 +195,14 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 还在等的那些。列表的排序、前台评估、自选页的「离提醒线最近」都只看这一种。
   public var isActive: Bool { status == .active }
 
+  /// 线段已经走完：一条按线判的提醒，它的每一条线都没往右延、最右那个点也已经在 `t` 之前，
+  /// 从此任何一根 K 线都取不到线价，永远不会响（深度审查 E-1：画在过去的趋势线段）。
+  /// 回撤与矩形从 E-1 起往右延，不会走完；条件提醒、复盘到点不按线判，恒为 false。
+  public func isSpent(at t: Double) -> Bool {
+    guard kind == .drawing || kind == .price, !lines.isEmpty else { return false }
+    return lines.allSatisfy { $0.isSpent(at: t) }
+  }
+
   /// 通知正文那句话。图上那条线用「触到你画的<线名>」，裸价格用「到了 <价>」。
   ///
   /// 代号只取 base（`BTCUSDT` → `BTC`）：通知栏一行字很短，后面那个 `USDT`
@@ -225,6 +233,27 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   public var targetPrice: Double? {
     guard kind == .price else { return nil }
     return lines.first?.points.first?.p
+  }
+
+  /// 通知与 Webhook 里的「目标价」：响的那一刻（`ms`）线上的价；摊成好几条线（通道、矩形、
+  /// 回撤）时取离触发价 `price` 最近的那一条（一样近取靠前那条）。
+  ///
+  /// 从前两端都取「第一条线的第一个锚点」，水平线没事，斜线上那个锚点可能离触发时的线价很远
+  /// （锚点 60,000、触发时线在 64,000，消息写「目标价 60,000，现价 64,010」），通道还可能命中的
+  /// 是另一条边（深度审查 E-3）。不另存「命中价」：本机判响、服务端判响、客户端报上来由服务端
+  /// 代发三条路手上都有 `lines` + 触发时刻 + 触发价，按同一个算法当场算，两端写出来的数一样
+  /// （服务端 `alerts.rs` 的 `target_of`，夹具 `contract/alert-cases.json` 的 `targets` 两边都跑）。
+  /// 那一刻线段已经过了头（一分钟的桶按开盘时刻判、触发时刻在桶里更晚一点），按最近的端点取。
+  /// 条件提醒、复盘到点没有目标价，返回 nil。
+  public func target(at ms: Double, near price: Double) -> Double? {
+    guard kind == .drawing || kind == .price else { return nil }
+    var best: Double?
+    for line in lines {
+      guard let p = line.reachablePrice(at: ms), p.isFinite else { continue }
+      if let b = best, abs(p - price) >= abs(b - price) { continue }
+      best = p
+    }
+    return best
   }
 
   /// 建一条裸价格提醒。目标价挂成一条两端都延的水平线——和画线里的水平线摊出来的
@@ -347,6 +376,22 @@ public struct AlertLine: Sendable, Equatable, Codable {
       return a.p + (b.p - a.p) * (t - a.t) / span
     }
     return last.p
+  }
+
+  /// 这条线在 `t` 的价；`t` 落在线外（那一头没延）就取离它最近的那个端点的价。
+  /// 只给「目标价」用（`Alert.target`），判定一律用 `price(at:)`。
+  public func reachablePrice(at t: Double) -> Double? {
+    if let p = price(at: t) { return p }
+    let pts = points.sorted { $0.t < $1.t }
+    guard let first = pts.first, let last = pts.last else { return nil }
+    return t < first.t ? first.p : last.p
+  }
+
+  /// 这条线在 `t` 之后再也取不到价：没往右延，最右那个点也在 `t` 之前。
+  public func isSpent(at t: Double) -> Bool {
+    guard !extendRight else { return false }
+    guard let last = points.map(\.t).max() else { return true }
+    return last < t
   }
 
   private func extrapolate(from a: DrawPoint, through b: DrawPoint, at t: Double) -> Double {

@@ -271,6 +271,29 @@ import Testing
     #expect(u.series["binance/usd_m/BTCUSDT"]?.returns.count == 30)
   }
 
+  @Test("每一口价不再清表：收盘价表只留最近几根、收益攒到两倍才裁，幅度和只看最后 1440 个一致（深度审查 E-8）")
+  func bookkeepingHappensOnCommitOnly() {
+    var t = WatchMove.Tracker()
+    var closes: [Double] = []
+    for n in Int64(0)..<3_000 {
+      let price = 100 + Double(n % 7) * 0.03 + Double(n % 13) * 0.01
+      // 一根里三口价，最后一口就是收盘。
+      _ = t.observe(symbol: "BTCUSDT", barOpen: minute(n), price: price - 0.01)
+      _ = t.observe(symbol: "BTCUSDT", barOpen: minute(n), price: price + 0.01)
+      _ = t.observe(symbol: "BTCUSDT", barOpen: minute(n), price: price)
+      closes.append(price)
+    }
+    let series = t.series["binance/usd_m/BTCUSDT"]
+    #expect((series?.closes.count ?? 99) <= 8)
+    #expect((series?.returns.count ?? 0) < 2 * WatchMove.maxReturns)
+    // 最后一根还开着，收了的是前 2999 根。
+    let committed = Array(closes.dropLast())
+    let returns = zip(committed.dropFirst(), committed).map { Foundation.log($0 / $1) }
+    #expect(t.threshold(for: "BTCUSDT") == WatchMove.autoThreshold(returns: returns))
+    // 五分钟参照照常取得到。
+    #expect(t.observe(symbol: "BTCUSDT", barOpen: minute(2_999), price: closes[2_994] * 1.2) != nil)
+  }
+
   @Test("切后台断过：收盘价作废、估出来的幅度留着")
   func forgettingPricesKeepsTheThreshold() {
     var t = WatchMove.Tracker()

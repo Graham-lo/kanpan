@@ -1,3 +1,5 @@
+import Foundation
+import KanpanCore
 import Testing
 @testable import Kanpan
 
@@ -37,6 +39,38 @@ struct LineAlertPhraseTests {
   @Test("线段此刻不在（已经走完或还没开始）：不报价")
   func outOfSpan() {
     #expect(LineAlertPhrase(targets: [], current: 64_000, decimals: 0).target == "价格达到这条线")
+  }
+
+  @Test("已经走完的趋势线段不出胶囊；走完之前就开着的那条照出，好让人关掉（深度审查 E-1）")
+  @MainActor
+  func spentSegmentHasNoChip() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("alerts-\(UUID().uuidString).json")
+    let store = AlertStore(store: AlertFileStore(url: url))
+    let model = LineAlertModel()
+    model.attach(store)
+    let trend = Drawing(id: "t1", kind: .trend, points: [DrawPoint(t: 1_000_000, p: 100), DrawPoint(t: 2_000_000, p: 120)])
+    let during = Date(timeIntervalSince1970: 1_500)      // 线段中间：1,500,000 毫秒
+    let after = Date(timeIntervalSince1970: 3_000)       // 右锚点之后
+    #expect(model.phrase(for: trend, symbol: "BTCUSDT", now: during) != nil)
+    #expect(model.phrase(for: trend, symbol: "BTCUSDT", now: after) == nil)
+    // 线段还没走完时开的提醒：走完之后胶囊仍在（显示开着），点一下就能关。
+    try #require(store.add(drawing: trend, symbol: "BTCUSDT", now: 1_500_000) != nil)
+    #expect(model.phrase(for: trend, symbol: "BTCUSDT", now: after) != nil)
+    // 画在过去的回撤：价位往右延，任何时候都有胶囊、都报得出价。
+    var fib = Drawing(id: "f1", kind: .fibonacci, points: [DrawPoint(t: 1_000_000, p: 200), DrawPoint(t: 2_000_000, p: 100)])
+    fib.levels = [0.618]
+    let phrase = try #require(model.phrase(for: fib, symbol: "BTCUSDT", now: after))
+    #expect(phrase.target.contains("161.8"))
+  }
+
+  @Test("总表里线段已走完的那条写「线段已走完」，不再假装生效中")
+  func spentAlertSaysSo() {
+    let line = AlertLine(points: [DrawPoint(t: 1_000, p: 100), DrawPoint(t: 2_000, p: 120)])
+    let alert = KanpanCore.Alert(symbol: "BTCUSDT", drawingID: "t1", lines: [line], armedAt: 1_000,
+                                 title: "BTC 触到你画的趋势线", created: 1_000)
+    #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: true, now: 1_500) == "价格达到")
+    #expect(AlertRecordText.meta(alert, zone: .fixed(0), decimals: 1, conditionInline: true, now: 3_000)
+            == AlertRecordText.spentNote)
   }
 
   @Test("小价不插千分位，四位以上才插")

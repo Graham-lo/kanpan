@@ -78,12 +78,17 @@ public enum WatchMove {
     public init() {}
 
     /// 这一根收了。第一次收才记收益；前一分钟那一根也收着，才算一个收益。
+    ///
+    /// 清旧收盘价、裁收益都只在这儿做（一分钟一次），不在每一口价上做（深度审查 E-8）：
+    /// `closes` 只在收根时才会长，留最近七根就够五分钟参照用；`returns` 攒到两倍上限
+    /// 才一次裁回上限，`autoThreshold` 本来就只看最后 `maxReturns` 个，结论不变。
     mutating func commit(open: Int64, close: Double) {
       let fresh = closes[open] == nil
       closes[open] = close
+      if closes.count > 8 { closes = closes.filter { $0.key >= open - 7 * WatchMove.barMs } }
       guard fresh, let previous = closes[open - WatchMove.barMs], previous > 0 else { return }
       returns.append(Foundation.log(close / previous))
-      if returns.count > WatchMove.maxReturns { returns.removeFirst(returns.count - WatchMove.maxReturns) }
+      if returns.count >= 2 * WatchMove.maxReturns { returns.removeFirst(returns.count - WatchMove.maxReturns) }
       threshold = WatchMove.autoThreshold(returns: returns)
     }
 
@@ -105,7 +110,6 @@ public enum WatchMove {
       currentOpen = barOpen
       currentClose = price
       if closed { commit(open: barOpen, close: price) }
-      closes = closes.filter { $0.key >= barOpen - 7 * WatchMove.barMs }
       guard let reference = closes[barOpen - WatchMove.windowMs], reference > 0 else { return nil }
       return price / reference - 1
     }
@@ -151,12 +155,11 @@ public enum WatchMove {
                                  sensitivity: Double = 1) -> Event? {
       let key = InstrumentID.canonical(symbol)
       guard !key.isEmpty else { return nil }
-      var s = series[key] ?? Series()
-      let change = s.observe(barOpen: barOpen, price: price, closed: closed)
-      series[key] = s
-      guard let change else { return nil }
+      // 原地改：先拷出来再写回，会让收盘价表和收益数组每一口价都多拷一份（深度审查 E-8）。
+      let change = series[key, default: Series()].observe(barOpen: barOpen, price: price, closed: closed)
+      guard let change, let threshold = series[key]?.threshold else { return nil }
       let factor = sensitivity.isFinite ? min(max(sensitivity, 0.5), 2) : 1
-      let limit = s.threshold * factor / 100
+      let limit = threshold * factor / 100
       let window = barOpen - barOpen % WatchMove.windowMs
       var fired: Event?
       for direction in Direction.allCases {
