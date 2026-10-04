@@ -1586,6 +1586,38 @@ describe('画线交互', () => {
     expect(c.canUndo).toBe(false)
   })
 
+  // ChartDrawingPreviewResidueTests.deleteMidDragDropsTheDrag（iOS 633143a1，审查 B·拖动残留）
+  test('拖到一半那条线在另一张图上被删掉：拖动当场作废，抬手不写回，下一笔落笔不被当成拖那条线', () => {
+    const book = new DrawingBook()
+    const A = makeView(), B = makeView()
+    A.c.bindDrawings(book); B.c.bindDrawings(book)
+    const line = makeDrawing('trend', pt(A.axes, 80, 120), pt(A.axes, 240, 180))
+    A.c.setDrawings([line]); A.c.selected = line.id
+    const f = finger({ x: 80, y: 120 })
+    down(A.v, f, 10_000)
+    move(A.v, f, { x: 110, y: 140 }, 10_020)
+    expect(A.v.state!.overlay.drawingPreviewID).toBe(line.id)
+    expect(A.c.preview).not.toBeNull()
+
+    B.c.selected = line.id
+    B.c.deleteSelected()
+    expect(A.c.drawings).toEqual([])
+    expect(A.c.preview, '覆盖层不许再画那条线的预览和读数').toBeNull()
+    expect(A.v.state!.overlay.drawingPreviewID).toBeNull()
+
+    move(A.v, f, { x: 140, y: 160 }, 10_040)
+    expect(A.c.preview).toBeNull()
+    up(A.v, f, 10_060)
+    expect(A.c.drawings, '抬手不许把删掉的线写回来').toEqual([])
+    expect(book.items('BTCUSDT')).toEqual([])
+
+    A.c.setTool('trend')
+    drag(A.v, { x: 100, y: 250 }, { x: 220, y: 200 }, 20_000)
+    expect(A.c.drawings.length).toBe(1)
+    expect(A.c.drawings[0].kind).toBe('trend')
+    expect(A.c.drawings[0].id).not.toBe(line.id)
+  })
+
   test('落点中途捏合：已落的锚点原样留着', () => {
     const { v, c } = makeView()
     c.setTool('channel')

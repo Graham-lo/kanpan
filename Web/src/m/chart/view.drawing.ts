@@ -388,7 +388,11 @@ export class DrawingController {
     // 宿主靠它对账画线提醒，线被同步删了提醒要跟着撤，不能只重画
     if (change.kind === 'edited') {
       if (change.key !== key || this.committing) return
-      this.reproject()
+      // 正拖着的那条在真值里没了（另一台设备同步删了它、另一张图上删 / 清空）：拖动当场作废，
+      // 预览、放大镜、预览 id 一起收；手指还按着，剩下的移动和抬手都落空（审查 B·拖动残留）。
+      const drag = this.drag
+      const gone = drag != null && !this._book.items(key).some(d => d.id === drag.id)
+      this.reproject(gone ? this.dropDrag() : same)
       if (this._selected != null && !this.drawings.some(d => d.id === this._selected)) this._selected = null
       this.changed(this.drawings)
     } else {
@@ -765,14 +769,22 @@ export class DrawingController {
       this.loupe = null
       const axes = drawAxesOf(this.view)
       const drag = this.drag
-      const i = drag ? this.drawings.findIndex(d => d.id === drag.id) : -1
-      if (drag && i >= 0) {
+      if (drag) {
         const preview = this.preview
         this.drag = null; this.preview = null
+        const clearPreview: StateUpdate = s => (s.overlay.drawingPreviewID == null ? s : withOverlay(s, { drawingPreviewID: null }))
+        // 拖到一半这条线没了：拖动整个作废。原来「线还在」和「在拖」写在同一个条件里，线一没就掉进
+        // 下面落笔那条路，drag / preview / 预览 id 全留着——读数胶囊挂在图上，下一次落笔的手指还被
+        // 当成在拖那条已不存在的线（ChartView+Drawing.swift，审查 B·拖动残留）。
+        const i = this.drawings.findIndex(d => d.id === drag.id)
+        if (i < 0) {
+          this.reproject(clearPreview)
+          this.changed()
+          return
+        }
         const cur = this.drawings
         const next = cur.slice()
         if (!cancelled && preview) next[i] = preview
-        const clearPreview: StateUpdate = s => (s.overlay.drawingPreviewID == null ? s : withOverlay(s, { drawingPreviewID: null }))
         if (!cancelled && !drawingEquals(next[i], cur[i])) {
           this.commitDrawings(next, clearPreview)
           this.changed(this.drawings)
