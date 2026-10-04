@@ -139,6 +139,52 @@ struct PriceScaleTests {
     }
   }
 
+  /// 审查 B·P1-1：一字板的留白要跟价格同量级。从前是 `±(0.1% + 1)`，0.00001234 的小币
+  /// 被撑到 -1...+1，蜡烛压成一条线、下沿进负价；对数轴还被 1e-12 兜底拉出十几个数量级。
+  @Test("一字板留白按价格比例：小币不进负价、大币不被撑开", arguments: [0.00001234, 0.5, 60_000.0])
+  func flatSeriesPadIsRelative(_ price: Double) {
+    let n = 50
+    let s = BarSeries(
+      symbol: "FLAT", interval: .h1, t0: 1_700_000_000_000,
+      open: .init(repeating: price, count: n), high: .init(repeating: price, count: n),
+      low: .init(repeating: price, count: n), close: .init(repeating: price, count: n),
+      volume: .init(repeating: 0, count: n))
+    let v = ViewMath.reset(series: s, plotW: 390, spacing: 9.2)
+    for mode in [PriceMode.linear, .log] {
+      let r = priceRange(view: v, series: s, transform: PriceTransform(mode: mode))
+      #expect(r.lo > 0, "\(mode.rawValue) \(price) 的下沿进了负价：\(r)")
+      #expect(r.lo < price && price < r.hi, "\(mode.rawValue) 价格不在区间里：\(r)")
+      // 千分之一留白 + 图例 / 底边内缩，整段也只该是价格的百分之一以内。
+      #expect((r.hi - r.lo) / price < 0.01, "\(mode.rawValue) \(price) 被撑成 \(r)")
+      #expect((r.hi - r.lo) / price > 0.001, "\(mode.rawValue) \(price) 塌得太薄：\(r)")
+    }
+  }
+
+  /// 价格本身就是 0 时没有量级可依，退回 ±1，照样不塌。
+  @Test("一字板价格为 0 仍有厚度")
+  func flatZeroSeries() {
+    let n = 10
+    let z = [Double](repeating: 0, count: n)
+    let s = BarSeries(symbol: "ZERO", interval: .h1, t0: 1_700_000_000_000,
+                      open: z, high: z, low: z, close: z, volume: z)
+    let r = priceRange(view: ViewMath.reset(series: s, plotW: 390, spacing: 9.2), series: s)
+    #expect(r.hi > r.lo && r.lo.isFinite && r.hi.isFinite, "\(r)")
+  }
+
+  /// 一根坏数（inf / NaN）不许把整屏区间顶飞。
+  @Test("高低价里的坏数不进区间")
+  func nonFiniteBarsIgnored() {
+    let n = 50
+    var high = [Double](repeating: 101, count: n), low = [Double](repeating: 99, count: n)
+    high[n - 3] = .infinity; low[n - 4] = -.infinity; high[n - 5] = .nan
+    let s = BarSeries(symbol: "BAD", interval: .h1, t0: 1_700_000_000_000,
+                      open: .init(repeating: 100, count: n), high: high, low: low,
+                      close: .init(repeating: 100, count: n), volume: .init(repeating: 1, count: n))
+    let r = priceRange(view: ViewMath.reset(series: s, plotW: 390, spacing: 9.2), series: s,
+                       drawingPrices: [.nan, .infinity])
+    #expect(r.lo > 90 && r.hi < 110, "坏数顶飞了区间：\(r)")
+  }
+
   /// 副图值域映射。
   @Test("副图值 → y")
   func subPane() {

@@ -98,9 +98,10 @@ public func priceRange(
         if series.close[i] < minV { minV = series.close[i] }
       }
     } else {
+      // 坏数（NaN / ±inf）一根都不许进区间：一个 inf 会把整屏顶成兜底的 0...1。
       for i in lo...hi {
-        if series.high[i] > maxV { maxV = series.high[i] }
-        if series.low[i] < minV { minV = series.low[i] }
+        if series.high[i].isFinite, series.high[i] > maxV { maxV = series.high[i] }
+        if series.low[i].isFinite, series.low[i] < minV { minV = series.low[i] }
       }
     }
     for arr in overlayValues where arr.count > lo {
@@ -110,7 +111,7 @@ public func priceRange(
       }
     }
   }
-  for p in drawingPrices {
+  for p in drawingPrices where p.isFinite {
     if p > maxV { maxV = p }
     if p < minV { minV = p }
   }
@@ -119,9 +120,14 @@ public func priceRange(
     if p < minV { minV = p }
   }
   if !minV.isFinite || !maxV.isFinite { minV = 0; maxV = 1 }
-  if maxV == minV {                     // 十字星 / 停牌：退化处理，和原型一致
-    maxV = minV * 1.001 + 1
-    minV = minV * 0.999 - 1
+  if maxV == minV {                     // 十字星 / 停牌：上下各留价格的千分之一
+    // 从前照原型写成 `±(0.1% + 1)`：那个「+1」是绝对值，对 60000 的 BTC 无所谓，
+    // 对 0.00001234 的小币却是把区间撑到 -1...+1——蜡烛压成正中一条线，下沿掉进负价，
+    // 对数轴还被 1e-12 兜底拉出十几个数量级的空白。留白必须跟价格同量级；
+    // 只有价格本身就是 0 时才没有量级可依，退回 ±1。
+    let pad = minV != 0 ? abs(minV) * 0.001 : 1
+    maxV = minV + pad
+    minV = minV - pad
   }
   let height = paneHeight
   do {
