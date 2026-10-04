@@ -10,14 +10,58 @@ import Foundation
   }
   private var registry: Registry
   private var registryURL: URL { root.appendingPathComponent("registry.json") }
-  public init(root: URL) throws {
+  /// 打开账号根目录。
+  ///
+  /// `registry.json` 三种读不动要分开对待：
+  /// - **读不出字节**（首次解锁前的数据保护、IO 抽风）：照抛。这是「这会儿读不动」，下次启动就好。
+  /// - **比自己新的版本**：照抛、原地不动，等升级回去还能读。
+  /// - **字节在、但解不开**（半截、乱码）：从前也是照抛，而 `AppAccountBridge` 建不起来，
+  ///   `MainScreen` 那边只能报个错——此后**每一次**启动都一样，账号同步、换档案全都死掉，
+  ///   没有任何自救的路（V-3）。现在把坏档原样挪到旁边（`registry.json.unreadable-<毫秒时间戳>`），
+  ///   重建一份：访客批次能确定就沿用（见 `recoveredGuest`），确定不了就开新的；
+  ///   认领日志没法重建，丢掉的最坏结果是某次没走完的访客搬家要重新认领，原目录都还在盘上。
+  public init(root: URL, now: Date = Date()) throws {
     self.root = root
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let url = root.appendingPathComponent("registry.json")
     if FileManager.default.fileExists(atPath: url.path) {
-      registry = try JSONDecoder().decode(Registry.self, from: Data(contentsOf: url))
-      guard registry.version == 1 else { throw AccountError.storage }
+      let data = try Data(contentsOf: url)
+      if let decoded = try? JSONDecoder().decode(Registry.self, from: data) {
+        guard decoded.version == 1 else { throw AccountError.storage }
+        registry = decoded
+      } else {
+        struct Probe: Decodable { var version: Int? }
+        if let version = (try? JSONDecoder().decode(Probe.self, from: data))?.version, version != 1 {
+          throw AccountError.storage
+        }
+        let stamp = Int((now.timeIntervalSince1970 * 1000).rounded())
+        try FileManager.default.moveItem(at: url, to: root.appendingPathComponent("registry.json.unreadable-\(stamp)"))
+        var fresh = Registry()
+        if let guest = Self.recoveredGuest(root: root) { fresh.guest = guest }
+        registry = fresh; try Self.write(registry, to: url)
+      }
     } else { registry = Registry(); try Self.write(registry, to: url) }
+  }
+
+  /// 登记簿坏了之后，哪个访客批次能**确定**是现在这位访客的。
+  ///
+  /// 只有一种情况能确定：这台机器上从没登录过（根目录下没有任何 `u-` 档案），
+  /// 而 `local/` 下恰好只有一个有内容的批次——那就是一直在用的那一份，接着用，
+  /// 访客的自选、画线不会因为登记簿坏了就「没了」。
+  /// 登录过就不猜：那时 `local/` 下的旧批次可能是已经搬进某个账号的备份，
+  /// 拿它当访客，下次登录会被再认领一遍，把用户早删掉的东西又并回去。
+  private static func recoveredGuest(root: URL) -> UUID? {
+    let fm = FileManager.default
+    let top = (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
+    guard !top.contains(where: { $0.hasPrefix("u-") }) else { return nil }
+    let local = root.appendingPathComponent("local", isDirectory: true)
+    let batches = ((try? fm.contentsOfDirectory(atPath: local.path)) ?? []).compactMap { name -> UUID? in
+      guard let id = UUID(uuidString: name),
+        let items = try? fm.contentsOfDirectory(atPath: local.appendingPathComponent(name).path), !items.isEmpty
+      else { return nil }
+      return id
+    }
+    return batches.count == 1 ? batches[0] : nil
   }
   public var guestBatch: UUID { registry.guest }
   /// 上一次装进来的是哪个**登录的**人（访客、已退登 = `nil`）。

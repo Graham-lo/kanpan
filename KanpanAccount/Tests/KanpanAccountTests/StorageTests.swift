@@ -18,11 +18,52 @@ import Testing
     #expect(try files.pendingGuest(user: a) == nil)
     #expect(FileManager.default.fileExists(atPath: original.appendingPathComponent("review.json").path))
   }
-  @Test func unreadableRegistryIsNotOverwritten() throws {
+  /// V-3：登记簿解不开时，从前每次启动都抛、账号桥建不起来，同步永远起不来。
+  /// 现在坏档原样挪到旁边（一个字节不少）、重建一份，再开一次也照常。
+  @Test func unreadableRegistryIsSetAsideAndRebuilt() throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let url = root.appendingPathComponent("registry.json"); let bad = Data("broken".utf8); try bad.write(to: url)
-    #expect(throws: (any Error).self) { try AccountFiles(root: root) }
-    #expect(try Data(contentsOf: url) == bad)
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    let files = try AccountFiles(root: root, now: now)
+    let aside = root.appendingPathComponent("registry.json.unreadable-1700000000000")
+    #expect(try Data(contentsOf: aside) == bad)
+    let reopened = try AccountFiles(root: root)
+    #expect(reopened.guestBatch == files.guestBatch)
+    #expect(reopened.lastOwner == nil)
+  }
+  /// 没登录过、`local/` 下只有一个有内容的批次：那就是现在这位访客，接着用，自选不会「没了」。
+  @Test func rebuiltRegistryKeepsTheOnlyGuestBatch() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let original = try AccountFiles(root: root)
+    let guest = try original.directory(user: nil)
+    try Data("guest-favorites".utf8).write(to: guest.appendingPathComponent("symbols.json"))
+    _ = try FileManager.default.createDirectory(at: root.appendingPathComponent("local/" + UUID().uuidString.lowercased()), withIntermediateDirectories: true)
+    try Data("{\"version\":1,\"gue".utf8).write(to: root.appendingPathComponent("registry.json"))
+    let rebuilt = try AccountFiles(root: root)
+    #expect(rebuilt.guestBatch == original.guestBatch)
+    #expect(try rebuilt.directory(user: nil) == guest)
+  }
+  /// 登录过就不猜：旧访客批次可能已经搬进账号，拿来当访客会在下次登录时被再认领一遍。
+  @Test func rebuiltRegistryStartsAFreshGuestAfterAnyLogin() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let original = try AccountFiles(root: root)
+    try Data("guest".utf8).write(to: try original.directory(user: nil).appendingPathComponent("symbols.json"))
+    _ = try original.directory(user: UUID())
+    try Data("garbage".utf8).write(to: root.appendingPathComponent("registry.json"))
+    let rebuilt = try AccountFiles(root: root)
+    #expect(rebuilt.guestBatch != original.guestBatch)
+  }
+  /// 比自己新的版本照旧拒绝、原地不动，等升级回去还能读。
+  @Test func newerRegistryIsNotOverwritten() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("registry.json")
+    for newer in [Data("{\"version\":2}".utf8), Data("{\"version\":2,\"guest\":\"\(UUID().uuidString)\",\"claims\":{},\"completed\":[]}".utf8)] {
+      try newer.write(to: url)
+      #expect(throws: (any Error).self) { try AccountFiles(root: root) }
+      #expect(try Data(contentsOf: url) == newer)
+    }
+    let leftovers = try FileManager.default.contentsOfDirectory(atPath: root.path).filter { $0.contains("unreadable") }
+    #expect(leftovers.isEmpty)
   }
   @Test func uncertainOperationsKeepIdentityAndPayload() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
