@@ -21,6 +21,7 @@ import type { SectorMarket, SectorStat, SectorWindow, SymbolRow } from '../secto
 import { applyLive, feed, seedFromUniverse, startFeed, stopFeed } from '../sectors/feed'
 import { history, startHistory, stopHistory } from '../sectors/history'
 import { PER_BOARD, boardPath, sparkSVG, stopSparks, wantSparks } from '../sectors/spark'
+import { pickWindow, shownWindow } from '../sectors/window'
 
 GLOSSARY['跑赢大盘'] = '这段时间里，板块成员跑赢全市场等权平均的有几只（分母是有行情的成员数）。'
 GLOSSARY['领涨'] = '跑赢大盘，而且涨幅排进全市场前 10% 的成员。'
@@ -40,6 +41,8 @@ const pref = loadPref()
 const sp = {
   market: pref.market,
   want: pref.want,
+  /** 这一次临时改看的窗口（见 sectors/window.ts），不进偏好 */
+  once: null as SectorWindow | null,
   /** 选中的板块：去掉市场前缀的 id（目录 id 或兜底桶 id） */
   sel: null as string | null,
   /** 右侧列表里正在显示、并订了推送的合约，及其 base */
@@ -61,7 +64,7 @@ const nameOf = (id: string): string => catalog.sector(id)?.name ?? feed.buckets[
 function compute(): { hasD5: boolean; title: string } {
   const m = sp.market, buckets = feed.buckets[m]
   const hasD5 = hasEligible(m, feed.quotes, 'd5', history.held)
-  const w = resolveWindow(sp.want, hasD5)
+  const w = resolveWindow(shownWindow(sp), hasD5)
   sp.window = w.window
   let list = stats(m, feed.quotes, buckets, w.window, w.window === 'today' ? EMPTY_HISTORY : history.held)
   if (w.window !== 'today') list = list.filter(s => rankable(m, s, feed.quotes, w.window, history.held, buckets))
@@ -224,10 +227,11 @@ function openSector(full: string): void {
   const id = full.replace(/^[cu]:/, '')
   if (m !== sp.market) { sp.market = m; savePref() }
   sp.sel = id
+  sp.once = null
   // 从图表点进来的板块若 5 日覆盖不足、不在 5 日榜上，这一次先看今日（不改存下的偏好）
   if (sp.want === 'd5' && feed.quotes.size) {
     compute()
-    if (sp.window === 'd5' && !sp.boards.some(b => b.id === id)) { sp.want = 'today'; sp.sel = id }
+    if (sp.window === 'd5' && !sp.boards.some(b => b.id === id)) { sp.once = 'today'; sp.sel = id }
   }
   go('sectors')
   render()
@@ -245,9 +249,13 @@ export function initSectors(): void {
     const t = tgt(e)
     if (t.closest('.term')) return
     const mk = t.closest<HTMLElement>('[data-mk]')
-    if (mk) { const m = mk.dataset.mk === 'us' ? 'us' : 'crypto'; if (m !== sp.market) { sp.market = m; sp.sel = null; savePref(); $('#secList .sec-scroll').scrollTop = 0; render() } return }
+    if (mk) { const m = mk.dataset.mk === 'us' ? 'us' : 'crypto'; if (m !== sp.market) { sp.market = m; sp.sel = null; sp.once = null; savePref(); $('#secList .sec-scroll').scrollTop = 0; render() } return }
     const win = t.closest<HTMLElement>('[data-win]')
-    if (win) { const w: SectorWindow = win.dataset.win === 'd5' ? 'd5' : 'today'; if (w !== sp.want) { sp.want = w; savePref(); render() } return }
+    if (win) {
+      const p = pickWindow(sp, win.dataset.win === 'd5' ? 'd5' : 'today')
+      if (p) { sp.want = p.next.want; sp.once = p.next.once; if (p.save) savePref(); render() }
+      return
+    }
     const star = t.closest<HTMLElement>('[data-star]')
     if (star) {
       const k = star.dataset.star || ''; toggleWatch(k)
@@ -275,7 +283,7 @@ export function initSectors(): void {
     startFeed(render)
     startHistory(render)
   }
-  hooks.pageHidden.sectors = () => { stopFeed(); stopHistory(); stopSparks(); sp.visible = []; refreshStreams() }
+  hooks.pageHidden.sectors = () => { sp.once = null; stopFeed(); stopHistory(); stopSparks(); sp.visible = []; refreshStreams() }
   hooks.extraStreams.push(() => st.page === 'sectors' ? sp.visible.map(k => streamName.ticker(k)) : [])
   hooks.onTicks.push(patchTicks)
   hooks.booted.push(() => { if (st.page === 'sectors') render() })
