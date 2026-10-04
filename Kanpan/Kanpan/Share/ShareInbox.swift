@@ -66,12 +66,28 @@ extension ShareClient: ShareInboxService {}
   /// `shares.json` 的落盘队列。整个进程一条，所有账号目录共用（按文件分开合批）。
   nonisolated static let writer = ShareCacheWriter()
 
-  nonisolated static func read(directory: URL) throws -> Cache {
+  /// 读本机那份收件箱缓存。
+  ///
+  /// 读字节失败（设备还没解过锁、文件受保护）原样抛：那份文件很可能是好的，只是这会儿读不到。
+  /// 字节读到了却解不开（半份 JSON、被别的东西改坏）就挪到旁边
+  /// （`shares.json.unreadable-<毫秒时间戳>`，原样留着），当一份空缓存往下走。
+  /// 以前解不开也抛，而它在 `AppAccountBridge.prepare` 里排在自选、画线前面——
+  /// 一份坏掉的收件箱缓存让整个账号档案装不上，登录 / 换号次次失败（审查 D 线）。
+  /// 它本来就是服务端那份的缓存：游标空着，下次 `pull` 从头把信拉回来；
+  /// 丢的只有还没回执出去的已读 / 留下（信本身和「已保存」以服务端为准）。
+  nonisolated static func read(directory: URL, now: Date = Date()) throws -> Cache {
     // 后台还排着没写出去的那一份要先落地，不然刚切走又切回来的账号会读到旧的。
     writer.drain()
     let file = directory.appendingPathComponent("shares.json")
     guard FileManager.default.fileExists(atPath: file.path) else { return Cache() }
-    return try JSONDecoder().decode(Cache.self, from: Data(contentsOf: file))
+    let data = try Data(contentsOf: file)
+    do { return try JSONDecoder().decode(Cache.self, from: data) } catch {
+      let stamp = Int((now.timeIntervalSince1970 * 1000).rounded())
+      let aside = directory.appendingPathComponent("shares.json.unreadable-\(stamp)")
+      try FileManager.default.moveItem(at: file, to: aside)
+      log.error("shares.json unreadable, set aside as \(aside.lastPathComponent, privacy: .public)")
+      return Cache()
+    }
   }
   func activate(directory: URL, owner: UUID?, cache: Cache, api: AccountClient?) {
     activate(directory: directory, owner: owner, cache: cache,
@@ -133,28 +149,15 @@ extension ShareClient: ShareInboxService {}
       }
       do {
         try await flush(client: client, generation: generation)
-        let page = try await client.inbox(after: cache.cursor)
-        try Task.checkCancellation(); guard epoch == generation else { return }
-        var merged = Dictionary(uniqueKeysWithValues: cache.items.map { ($0.id, $0) })
-        for var item in page.items {
-          Self.intake(&item)
-          if cache.pending[item.id] != nil {
-            item.openedAt = item.openedAt ?? merged[item.id]?.openedAt
-            item.keptAt = item.keptAt ?? merged[item.id]?.keptAt
-          }
-          merged[item.id] = item
-        }
-        // 服务端 90 天清理没有墓碑；本地遵守同一留存规则。
-        let cutoff = Date().addingTimeInterval(-90 * 86400)
-        cache.items = merged.values.filter { $0.keptAt != nil || ($0.createdDate ?? .distantFuture) >= cutoff }
-          .sorted { $0.createdAt == $1.createdAt ? $0.id > $1.id : $0.createdAt > $1.createdAt }
-        cache.cursor = page.cursor
-        persist(); items = cache.items; revision += 1
-        // 列表刷新完顺手扫一次截图缓存：过了留存期被滤掉的信，图也跟着删（审查 D4）。
-        // 列目录、删文件都在后台做，不占主线程。
-        if let directory {
-          let keeping = Set(cache.items.map(\.id))
-          Task.detached(priority: .utility) { Self.pruneShots(in: directory, keeping: keeping) }
+        // 服务端一页最多 200 封 / 4 MB，满了就带 `more` 让接着拉（审查 D 线）。以前只拉一页：
+        // 一次攒了几百封（离线好几天、朋友一口气发一串）时，游标落在第一页末尾，
+        // 后面那几页要等下一次有人打开朋友页才轮到，期间「收到的线」看着就是少了。
+        // 一次最多拉 `pagesPerPull` 页，每页落一次盘：中途断网，已经拉到的不丢、游标不倒退。
+        for _ in 0..<Self.pagesPerPull {
+          let page = try await client.inbox(after: cache.cursor)
+          try Task.checkCancellation(); guard epoch == generation else { return }
+          absorb(page)
+          guard page.more == true else { break }
         }
         let names = try await client.friends()
         try Task.checkCancellation(); guard epoch == generation else { return }
@@ -163,6 +166,40 @@ extension ShareClient: ShareInboxService {}
         if epoch == generation { notice = ShareClient.message(error) }
       }
     }
+  }
+  /// 一次 `pull` 最多连着拉几页。200 封一页，20 页四千封，远超这几位朋友一段时间能发的量；
+  /// 封顶只是不让一个出错的服务端（`more` 永远 true）把这一趟拖成死循环。
+  static let pagesPerPull = 20
+  /// 一页信并进本机那份：保住本机还没回执出去的已读 / 留下，按 90 天留存滤掉旧的，
+  /// 推进游标，落盘，刷新列表，再顺手清掉跟着旧信走的东西。
+  private func absorb(_ page: ShareClient.Page) {
+    var merged = Dictionary(uniqueKeysWithValues: cache.items.map { ($0.id, $0) })
+    for var item in page.items {
+      Self.intake(&item)
+      if cache.pending[item.id] != nil {
+        item.openedAt = item.openedAt ?? merged[item.id]?.openedAt
+        item.keptAt = item.keptAt ?? merged[item.id]?.keptAt
+      }
+      merged[item.id] = item
+    }
+    // 服务端 90 天清理没有墓碑；本地遵守同一留存规则。
+    let cutoff = Date().addingTimeInterval(-90 * 86400)
+    cache.items = merged.values.filter { $0.keptAt != nil || ($0.createdDate ?? .distantFuture) >= cutoff }
+      .sorted { $0.createdAt == $1.createdAt ? $0.id > $1.id : $0.createdAt > $1.createdAt }
+    cache.cursor = page.cursor
+    let keeping = Set(cache.items.map(\.id))
+    cache.copies = Self.prunedCopies(cache.copies, keeping: keeping)
+    persist(); items = cache.items; revision += 1
+    // 列表刷新完顺手扫一次截图缓存：过了留存期被滤掉的信，图也跟着删（审查 D4）。
+    // 列目录、删文件都在后台做，不占主线程。
+    if let directory {
+      Task.detached(priority: .utility) { Self.pruneShots(in: directory, keeping: keeping) }
+    }
+  }
+  /// 「留下」时给每条线预留的新 id（`prepareKeep`）只对还在收件箱里的信有意义。
+  /// 信过了留存期被滤掉之后，这份预留以前没人删，`shares.json` 里一直攒（审查 D 线）。
+  nonisolated static func prunedCopies(_ copies: [String: [String]], keeping ids: Set<String>) -> [String: [String]] {
+    copies.filter { ids.contains($0.key) }
   }
   /// 这条回执服务端永远不会收：信没了（404，未留下且过了留存期）、这封信的号不认（400）之类。
   /// 只有连不上、5xx、限流（429）、超时（408）和登录这一关（401 / 403，换号 / 重登之后还要发）才留着重试。
@@ -201,6 +238,10 @@ extension ShareClient: ShareInboxService {}
     return item.copies(ids: cache.copies[item.id])
   }
   /// 朋友页上「加朋友」。成功就记进本机那份名单；失败把错抛给输入框那一行去说。
+  ///
+  /// 服务端认了就算加上了：本机名单交给后台写（`persist`），写不成由收件箱那行提示。
+  /// 以前这里是同步 `save()`、写不成就抛——服务端已经加上了，输入框底下却说没加成，
+  /// 人再点一次，服务端回的又是同一个结果，看着像怎么加都加不上（审查 D 线）。
   func addFriend(_ name: String) async throws {
     guard let client else { throw AccountError.unavailable }
     let generation = epoch
@@ -210,14 +251,19 @@ extension ShareClient: ShareInboxService {}
       cache.friends.append(ShareFriend(username: name))
       cache.friends.sort { $0.username < $1.username }
     }
-    try save(); friends = cache.friends
+    persist(); friends = cache.friends
   }
-  func removeFriend(_ name: String) async {
-    guard let client else { return }; let generation = epoch
-    do {
-      try await client.remove(name); guard generation == epoch else { return }
-      cache.friends.removeAll { $0.username == name }; try save(); friends = cache.friends
-    } catch { if generation == epoch { notice = ShareClient.message(error) } }
+  /// 朋友页左划删朋友。失败把错抛回朋友页，由它在名单底下单独说一句。
+  ///
+  /// 以前失败写进收件箱的 `notice`：那行带「· 重试」，点了是重拉收件箱，不是再删一次，
+  /// 人点完以为删掉了、朋友却还在（审查 D 线）。本机名单同 `addFriend`，交给后台写。
+  func removeFriend(_ name: String) async throws {
+    guard let client else { throw AccountError.unavailable }
+    let generation = epoch
+    try await client.remove(name)
+    guard generation == epoch else { throw CancellationError() }
+    cache.friends.removeAll { $0.username == name }
+    persist(); friends = cache.friends
   }
   /// `share-shots/` 里只留还在收件箱里的那几封信的图，别的删掉。
   ///

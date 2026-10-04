@@ -27,7 +27,7 @@ DEVICE ?= iPhone 16 Pro
 
 .PHONY: help doctor venue-isolation core-test presentation-test network-test data-test chart-build chart-test \
 	symbols-test settings-test sector-test scan-test alerts-test exchange-test diag-test deeplink-test account-codec-test \
-	diag-ios-test main-ios-test app-logic-test habits-test sync-contract backend-test account-test review-test test \
+	diag-ios-test main-ios-test app-logic-test habits-test share-test sync-contract backend-test account-test review-test test \
 	test-release core-test-release presentation-test-release network-test-release data-test-release account-test-release \
 	app-logic-test-release chart-test-release main-ios-test-release review-test-release diag-ios-test-release \
 	strict evidence fixtures feed app-test ui-test ui-test-one build device-release install-release \
@@ -212,6 +212,10 @@ diag-test:
 # 照着同一份形态拼串，解析只有这一处，所以它的契约要有人钉着。
 deeplink-test:
 	$(call app_test,DeepLink)
+
+# 朋友分享收件箱（`Kanpan/Kanpan/Share/`）：分页跟到最后一页、过期副本跟着清、朋友增删失败的去向、读不懂的缓存挪开。
+share-test:
+	$(call app_test,Share)
 
 # 「这个客户端替哪些字段说话」那张表（`PersonalSyncCodec.ownedKeys`）与画线字段契约。
 account-codec-test:

@@ -7,7 +7,13 @@ struct ShareClient: Sendable {
   /// 新人的令牌出门、把 B 的收件箱写进 A 的缓存（`AccountClient.data(owner:)` 当场取消）。
   /// `nil` = 不钉，发给朋友这类「现在是谁就替谁发」的一次性动作用。
   var owner: UUID? = nil
-  struct Page: Decodable, Sendable { var items: [ShareItem]; var cursor: String }
+  /// 收件箱的一页。`more` = 服务端这一页是截着发的（满 200 封或满 4 MB），后面还有，接着拉。
+  /// 老服务端不带这个字段，按「没有了」算——和以前一页就停一样，不会多拉。
+  struct Page: Decodable, Sendable {
+    var items: [ShareItem]
+    var cursor: String
+    var more: Bool? = nil
+  }
   private struct Sent: Decodable, Sendable { var id: String }
   private struct OK: Decodable, Sendable { var ok: Bool }
   func friends() async throws -> [ShareFriend] { try await api.request("v1/friends", owner: owner) }

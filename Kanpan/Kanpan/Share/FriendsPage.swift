@@ -21,6 +21,8 @@ struct FriendsPage: View {
   @State private var name = ""
   @State private var saving = false
   @State private var error: String?
+  /// 左划删朋友没删成时那一句（「没删掉 X：…」）。和加朋友的错、收件箱那行「· 重试」各说各的。
+  @State private var removeError: String?
   /// 当前左划开着的是哪位朋友。一张表同一时刻只许开一行（`SwipeToDelete`）。
   @State private var openSwipe: String?
   @Environment(\.panelTheme) private var theme
@@ -98,6 +100,12 @@ struct FriendsPage: View {
         PanelRow(name: friend.username)
       }
     }
+    if let removeError {
+      Text(removeError).font(TypeScale.caption).foregroundStyle(theme.danger)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, hPad).padding(.vertical, Space.s)
+        .accessibilityIdentifier("friends.removeError")
+    }
     if inbox.friends.isEmpty, !adding {
       emptyMark("person.2.fill", "还没有朋友")
     }
@@ -171,7 +179,13 @@ struct FriendsPage: View {
 
   private func remove(_ friend: ShareFriend) {
     Haptics.warning()
-    Task { await inbox.removeFriend(friend.username) }
+    removeError = nil
+    let name = friend.username
+    Task {
+      do { try await inbox.removeFriend(name) }
+      catch is CancellationError {}
+      catch { removeError = "没删掉 \(name)：\(ShareClient.message(error))" }
+    }
   }
 
   private func add(_ username: String) {
