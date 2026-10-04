@@ -52,6 +52,9 @@ export class ReplayPlayer {
   }
 
   readTheme(): void { this.chart.readTheme(); this.overlay.readTheme() }
+  /** 复盘页切走：停播、上面那层不再逐帧跑；切回来再醒 */
+  sleep(): void { this.stop(); this.overlay.sleep() }
+  wake(): void { this.overlay.wake() }
 
   destroy(): void {
     this.stop()

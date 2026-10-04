@@ -817,6 +817,7 @@ function shown(): void {
   R.shown = true
   if (!reviewToken()) { renderLogin(false); return }
   if (!R.built) build()
+  player?.wake()
   if (!R.loadedAt || Date.now() - R.loadedAt > 60_000) { render(); void load() }
   else render()
 }
@@ -824,7 +825,7 @@ function shown(): void {
 function hidden(): void {
   R.shown = false
   clearTimeout(pollTimer)
-  player?.stop()
+  player?.sleep()
 }
 
 /** 从别的页跳进来并选中一条：交易回合按回合 id（记录 id 或 round.id 都认）、观点按记录 id。

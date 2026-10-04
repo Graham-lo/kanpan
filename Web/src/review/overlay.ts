@@ -23,6 +23,8 @@ export class ReviewOverlay {
   private pw = 0
   private raf = 0
   private dead = false
+  /** 复盘页切走时睡下：不再每帧比对几何（页面藏着时图表也不画） */
+  private asleep = false
   private col: Colors = { up: '', down: '', accent: '', warn: '', text1: '', text2: '', text3: '', surface: '', font: '' }
 
   constructor(wrap: HTMLElement, chart: TVChart) {
@@ -48,9 +50,15 @@ export class ReviewOverlay {
   setRevealed(t: number): void { if (t !== this.revealed) { this.revealed = t; this.sig = '' } }
 
   destroy(): void { this.dead = true; cancelAnimationFrame(this.raf); this.canvas.remove() }
+  sleep(): void { this.asleep = true; cancelAnimationFrame(this.raf); this.raf = 0 }
+  wake(): void {
+    if (this.dead || !this.asleep) return
+    this.asleep = false; this.sig = ''
+    this.raf = requestAnimationFrame(this.loop)
+  }
 
   private loop = (): void => {
-    if (this.dead) return
+    if (this.dead || this.asleep) return
     const c = this.chart, r = c._ranges.main
     const s = [c.rightBar, c.spacing, c.replay, c.w, c.h, c.aw, r?.min, r?.max, c.bars.length, this.revealed, this.plan ? 1 : 0].join('|')
     if (s !== this.sig) { this.sig = s; this.draw() }
