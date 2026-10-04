@@ -48,6 +48,9 @@ struct OrderFlowDetailCardTests {
     // 挂着的照旧。
     #expect(Self.text(Self.group(status: .live)).statusText == "在场")
     #expect(Self.text(Self.group(status: .live, filled: 1_900_000)).statusText == "在场 · 成交 16%")
+    // 挂着的墙吃过一小口：至少写 0.1%，不写「成交 0.0%」（审查 A 线）。
+    #expect(Self.text(Self.group(status: .live, filled: 3_000)).statusText == "在场 · 成交 0.1%")
+    #expect(Self.text(Self.group(status: .live, filled: 600_000)).statusText == "在场 · 成交 5.0%")
     // 各档都是两数相加 100。
     for f in stride(from: 0.001, through: 0.994, by: 0.0137) {
       guard let s = OrderFlowCardText.fillSplit(f) else { Issue.record("\(f) 不该算全成交"); continue }

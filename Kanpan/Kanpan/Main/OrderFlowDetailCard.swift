@@ -281,9 +281,13 @@ struct OrderFlowCardText {
   }
 
   /// 「38%」；不到 10% 留一位小数（「0.4%」），免得小成交写成 0%。
+  /// 吃过一口就至少「0.1%」——原来不到 0.05% 的照样四舍五入成「在场 · 成交 0.0%」，
+  /// 和「在场」后面跟一个成交比例这件事自相矛盾（结束的墙走 `fillSplit`，早就有这道底）。
   static func percent(_ ratio: Double) -> String {
     let v = ratio * 100
-    return (v >= 10 ? toFixed(v, 0) : toFixed(v, 1)) + "%"
+    if v >= 10 { return toFixed(v, 0) + "%" }
+    let tenths = v > 0 ? max(1, Int((v * 10).rounded())) : 0
+    return toFixed(Double(tenths) / 10, 1) + "%"
   }
 
   /// 步长要几位小数才写得下（1 → 0、0.1 → 1、0.25 → 2、0.005 → 3）。
