@@ -1,9 +1,9 @@
 // ChartView 触摸状态机（Pointer Events 驱动），移植自 KanpanChart/Tests/KanpanChartTests/ChartGestureTests.swift
 // 里与审查 B 线修复相关的几条。场地：node 里假的 DOM 元素、帧循环不跑，只看状态与模型。
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { ViewWindow } from '../src/m/chart/geometry'
+import { ViewMath, ViewWindow, pOf } from '../src/m/chart/geometry'
 import { BarSeries, INTERVAL_STEP } from '../src/m/chart/series'
-import { makeState, withOverlay } from '../src/m/chart/state'
+import { effectivePriceMode, makeState, withOverlay, withViewport } from '../src/m/chart/state'
 import type { ChartState } from '../src/m/chart/state'
 import { ChartView } from '../src/m/chart/view'
 import { ChartGesture } from '../src/m/chart/gesture'
@@ -255,5 +255,96 @@ describe('捏合缩放的宽度只在抬手那一刻报给页面落盘（iOS Cha
     expect(reports).toEqual([6, 6.5])
     r.lift()
     expect(reports).toEqual([6, 6.5])
+  })
+})
+
+describe('捏合手感（移植 iOS a8012401：死区 3pt、按轴分开量、焦点钉住、竖捏价格轴）', () => {
+  const spacingOf = (v: ChartView) => {
+    const s = v.state!
+    return s.viewport.view.barSpacing(s.input.series.step, v.chartLayout!.plotW)
+  }
+  /** 视野停在历史中段（不贴最新）。 */
+  const midHistory = (v: ChartView) => {
+    const s = v.state!, b = s.input.series
+    v.state = withViewport(s, { view: new ViewWindow(b.lastTime - b.step * 150, b.step * 80) })
+  }
+
+  it('死区：横向张开量只变 2pt 不缩放；越过 3pt 那一帧只重设基准不缩放；下一帧按横向比例缩、没有跳', () => {
+    const v = rig()
+    midHistory(v)
+    const w0 = spacingOf(v)
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    move(v, a, 149, 200, 1016); move(v, b, 251, 200, 1017)       // sx 100 → 102
+    expect(v.gesture.pinchActive).toBe(false)
+    expect(spacingOf(v)).toBeCloseTo(w0, 9)
+    move(v, a, 148, 200, 1032); move(v, b, 252, 200, 1033)       // sx 104：越过 3pt
+    expect(v.gesture.pinchActive).toBe(true)
+    expect(v.gesture.pinchAxis).toBe('time')
+    expect(spacingOf(v)).toBeCloseTo(w0, 9)                         // 越门槛那一帧不缩
+    move(v, a, 138, 200, 1048)                                      // sx 104 → 114（只动一根）
+    expect(spacingOf(v)).toBeCloseTo(w0 * 114 / 104, 6)
+    up(v, a, 1100); up(v, b, 1101)
+  })
+
+  it('死区里两指一起挪是平移，不改根宽', () => {
+    const v = rig()
+    midHistory(v)
+    const w0 = spacingOf(v), to0 = v.state!.viewport.view.to
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    move(v, a, 170, 200, 1016); move(v, b, 270, 200, 1017)
+    expect(v.gesture.pinchActive).toBe(false)
+    expect(spacingOf(v)).toBeCloseTo(w0, 9)
+    expect(v.state!.viewport.view.to).toBeLessThan(to0)              // 手指往右 = 看更早
+  })
+
+  it('不贴最新：绕两指中点缩放，中点底下那一刻的时间不动', () => {
+    const v = rig()
+    midHistory(v)
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    move(v, a, 146, 200, 1016); move(v, b, 254, 200, 1017)       // 越门槛
+    const L = v.chartLayout!
+    const tAtMid = v.state!.viewport.view.t(200, L.plotW)
+    for (let k = 1; k <= 5; k++) { move(v, a, 146 - k * 6, 200, 1016 + k * 16); move(v, b, 254 + k * 6, 200, 1017 + k * 16) }
+    const view = v.state!.viewport.view
+    expect(Math.abs(view.x(tAtMid, L.plotW) - 200)).toBeLessThan(0.01)
+    expect(spacingOf(v)).toBeGreaterThan(0)
+  })
+
+  it('贴着最新：末根钉住，捏开捏合之后仍贴着最新', () => {
+    const v = rig()
+    const s = v.state!, b = s.input.series, L = v.chartLayout!
+    v.state = withViewport(s, { view: ViewMath.reset(b, L.plotW, 8) })
+    expect(ViewMath.isPinnedToLatest(v.state!.viewport.view, b, L.plotW)).toBe(true)
+    const w0 = spacingOf(v)
+    const f1 = finger(100, 200), f2 = finger(200, 200)
+    down(v, f1, 1000); down(v, f2, 1001)
+    move(v, f1, 96, 200, 1016); move(v, f2, 204, 200, 1017)
+    // 一边捏一边手指往左偏：中点漂移不算数
+    for (let k = 1; k <= 5; k++) { move(v, f1, 96 - k * 10, 200, 1016 + k * 16); move(v, f2, 204 + k * 2, 200, 1017 + k * 16) }
+    const view = v.state!.viewport.view
+    expect(spacingOf(v)).toBeGreaterThan(w0)
+    expect(ViewMath.isPinnedToLatest(view, b, L.plotW)).toBe(true)
+    expect(view.to).toBeCloseTo(ViewMath.reset(b, L.plotW, spacingOf(v)).to, 3)
+  })
+
+  it('竖着捏（两指在主图里）只缩价格轴：时间窗不动，中点底下的价位还在中点高度', () => {
+    const v = rig()
+    midHistory(v)
+    const view0 = v.state!.viewport.view
+    const a = finger(200, 150), b = finger(204, 250)
+    down(v, a, 1000); down(v, b, 1001)
+    move(v, a, 200, 140, 1016); move(v, b, 204, 260, 1017)        // sy 100 → 120：越门槛、定价格轴
+    expect(v.gesture.pinchAxis).toBe('price')
+    const L = v.chartLayout!
+    const anchor = v.gesture.pinchPrice
+    move(v, a, 200, 120, 1032); move(v, b, 204, 280, 1033)
+    const s = v.state!
+    expect(s.viewport.price.zoom).toBeGreaterThan(1)
+    expect(s.viewport.view.equals(view0)).toBe(true)
+    const r = v.chartPriceRange!
+    expect(Math.abs(pOf(200, L.main, r, effectivePriceMode(s)) - anchor) / anchor).toBeLessThan(1e-6)
   })
 })

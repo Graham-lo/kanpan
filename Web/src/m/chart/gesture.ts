@@ -9,7 +9,7 @@
 import type { PriceRange, PriceTransform, Layout } from './geometry'
 import {
   AICoinBehavior, Chart, ViewMath, ViewTransition, ViewWindow, FlingRun, VelocityTracker, axisZoom, clampView,
-  clampedCenter, isManualTransform, pOf, priceTransform,
+  anchoredCenter, clampedCenter, isManualTransform, pOf, priceTransform,
 } from './geometry'
 import type { ChartState, Crosshair } from './state'
 import type { IndicatorID } from '../indicator/ids'
@@ -27,6 +27,9 @@ export { ChartGesture }
 export type GestureMode = 'pan' | 'crosshair' | 'pinch' | 'axisPrice' | 'subAxis' | 'verticalPan' | 'parentScroll' | 'autoFit'
 export interface Point { x: number; y: number }
 
+/** 两指的一帧：横 / 纵张开量（平均偏离 ×2）、中点、斜线距离。 */
+interface TwoFinger { d: number; mid: number; my: number; sx: number; sy: number }
+
 export class GestureState {
   mode: GestureMode | null = null
   /** 按落下顺序的 pointerId */
@@ -39,6 +42,23 @@ export class GestureState {
   pinchD0 = 0
   pinchMid0 = 0
   pinchActive = false
+  /** 捏合基准：两指横 / 纵张开量与中点纵坐标（死区按轴分开量，iOS a8012401）。 */
+  pinchSx0 = 0
+  pinchSy0 = 0
+  pinchMidY0 = 0
+  /** 这一捏缩哪根轴：越过死区那一帧定下，一捏之内不换。 */
+  pinchAxis: 'undecided' | 'time' | 'price' = 'undecided'
+  /**
+   * 死区里这一轮已经报过新位置的手指。浏览器一根手指发一条 pointermove（iOS 一帧里两指一起到），
+   * 只挪了一根时的「半帧」张开量会虚涨：两指一起平移 10pt，中间那一刻横向张开量就差了 10pt，
+   * 3pt 的死区会把平移误判成捏合。所以死区里要等这一轮每根手指都报过（或者同一根报了第二次——
+   * 另一根这一帧没动）再判；没判之前照常按中点平移。
+   */
+  pinchFresh = new Set<number>()
+  /** 价格轴捏合：起捏时的倍数、纵向张开量、中点底下的价位。 */
+  pinchStartZoom = 1
+  pinchSyStart = 0
+  pinchPrice = 0
   cameFromPinch = false
   directionChosen = false
   axisStarted = false
@@ -64,6 +84,8 @@ export class GestureState {
     this.longPressActivated = false
     this.moved = 0
     this.pinchActive = false
+    this.pinchAxis = 'undecided'
+    this.pinchFresh.clear()
     this.cameFromPinch = false
     this.directionChosen = false
     this.axisStarted = false
@@ -132,7 +154,7 @@ export class ChartGestures {
       e.preventDefault()
       const d = this.v.drawingInput
       if (d) d.moved([e.pointerId], e.timeStamp)
-      else this.touchesMoved(e.timeStamp)
+      else this.touchesMoved(e.timeStamp, [e.pointerId])
     }
     const up = (e: PointerEvent) => {
       if (!this.points.has(e.pointerId)) return
@@ -253,13 +275,13 @@ export class ChartGestures {
 
   private lastParentY: number | null = null
 
-  touchesMoved(now: number): void {
+  touchesMoved(now: number, ids?: readonly number[]): void {
     const L = this.v.chartLayout
     const g = this.gesture
     const mode = g.mode
     if (!this.gestureReady || !L || !mode) return
     if (mode === 'pinch' && g.touches.length >= 2) {
-      this.updatePinch(L)
+      this.updatePinch(L, ids)
       return
     }
     // 十字线只认它的主人那根手指；其余模式这时只会有一根手指（两根就进捏合了）。
@@ -459,45 +481,122 @@ export class ChartGestures {
     if (g.touches.length < 2 || g.mode === 'crosshair') return
     this.cancelAxisFreeze()
     this.clearCrosshair()
-    const { d, mid } = this.twoFinger()
+    const f = this.twoFinger()
     g.cancelLongPress()
     this.clearAxisScaleAnchor()
     g.mode = 'pinch'
-    g.trace = `begin d=${d}`
-    g.pinchD0 = d
-    g.pinchMid0 = mid
+    g.trace = `begin d=${f.d}`
+    g.pinchD0 = f.d
+    this.rebasePinch(f)
     g.pinchActive = false
+    g.pinchAxis = 'undecided'
+    g.pinchFresh.clear()
     g.moved = Number.MAX_VALUE
   }
 
-  private updatePinch(L: Layout): void {
+  /** 死区里这一轮每根手指都报过新位置了吗（见 GestureState.pinchFresh）。不知道是哪根手指动的就当报齐。 */
+  private pinchFrameComplete(ids?: readonly number[]): boolean {
+    const g = this.gesture
+    if (!ids || ids.length === 0) { g.pinchFresh.clear(); return true }
+    const repeat = ids.some(id => g.pinchFresh.has(id))
+    for (const id of ids) g.pinchFresh.add(id)
+    const all = g.touches.slice(0, 2).every(t => g.pinchFresh.has(t))
+    if (!(repeat || all)) return false
+    g.pinchFresh.clear()
+    return true
+  }
+
+  private rebasePinch(f: TwoFinger): void {
+    const g = this.gesture
+    g.pinchD0 = f.d
+    g.pinchSx0 = f.sx
+    g.pinchSy0 = f.sy
+    g.pinchMid0 = f.mid
+    g.pinchMidY0 = f.my
+  }
+
+  /**
+   * 双指的一帧（移植 iOS a8012401「横屏捏合手感」，竖屏同样生效）：
+   * - 死区：横向或纵向张开量变过 3pt（ChartGesture.pinchSlopPt）才认缩放；死区里两指一起挪是平移。
+   *   越过门槛那一帧只重设基准、定下缩哪根轴，不缩放——门槛小也不会「嘭」地跳。
+   * - 轴锁：竖着摆、竖着捏（纵向张开量 > 横向 1.5 倍）、中点在主图里 → 这一捏只缩价格轴；其余缩时间轴。
+   * - 焦点：时间轴缩放钉住两指中点那一根；视野贴着最新一根时按最新一根锚住。
+   * 软边（越过 1.6…40 带阻尼、松手回弹）网页没做：根宽到边界就停。
+   */
+  private updatePinch(L: Layout, ids?: readonly number[]): void {
     const s = this.state, g = this.gesture
     if (!s) return
-    const { d, mid: m } = this.twoFinger()
-    g.trace = `move d=${d} previous=${g.pinchD0} active=${g.pinchActive}`
-    if (!(g.pinchD0 > 0)) { g.pinchD0 = d; return }
-    if (d < ChartGesture.minPinchSpanPt) {
-      g.pinchD0 = d; g.pinchMid0 = m; g.pinchActive = false
+    const f = this.twoFinger()
+    g.trace = `move sx=${f.sx} sy=${f.sy} axis=${g.pinchAxis} active=${g.pinchActive}`
+    // 两指太近的那几帧只当噪声，但基准要跟着走：不跟的话，等间距一跨过门槛，比例会一次性甩出去。
+    if (f.d < ChartGesture.minPinchSpanPt) {
+      this.rebasePinch(f); g.pinchActive = false; g.pinchAxis = 'undecided'
       return
     }
     if (!g.pinchActive) {
-      if (!(Math.abs(d - g.pinchD0) > 2 * ChartGesture.panSlopPt)) {
-        this.panPinch(m, L)
+      // 死区期间基准不跟着每一帧走（跟了就永远越不过门槛），但平移不看门槛（A-06）。
+      if (!this.pinchFrameComplete(ids)) { this.panPinch(f.mid, L); return }
+      const dsx = Math.abs(f.sx - g.pinchSx0), dsy = Math.abs(f.sy - g.pinchSy0)
+      if (!(Math.max(dsx, dsy) > ChartGesture.pinchSlopPt)) {
+        this.panPinch(f.mid, L)
         return
       }
       g.pinchActive = true
+      const inMain = f.my >= L.main.y && f.my <= L.main.y + L.main.h && f.mid <= L.plotW
+      const vertical = f.sy > 1.5 * f.sx && dsy > ChartGesture.pinchSlopPt && inMain && this.v.chartPriceRange != null
+      g.pinchAxis = vertical ? 'price' : 'time'
+      this.rebasePinch(f)
+      if (vertical) {
+        g.pinchStartZoom = s.viewport.price.zoom
+        g.pinchSyStart = f.sy
+        g.pinchPrice = this.price(f.my)
+      }
+      return
     }
-    const b = s.input.series, v0 = s.viewport.view
-    const spacing = v0.barSpacing(b.step, L.plotW)
-    const aligned = b.lastTime + b.step / 2
-    const mode4 = Math.abs(v0.to - aligned) / v0.span * L.plotW < spacing
-    const moved = mode4 ? v0 : this.clamp(v0.dragged(m - g.pinchMid0, L.plotW), L.plotW)
-    const view = ViewMath.scaled(moved, b, L.plotW, d / g.pinchD0, m, s.input.options.anchor)
-    g.pinchD0 = d
-    g.pinchMid0 = m
+    if (g.pinchAxis === 'price') this.pinchPrice(f, L)
+    else this.pinchTime(f, L)
+  }
+
+  /** 时间轴捏合的一帧：倍数只看横向张开量；贴着最新 → 末根钉住、中点漂移不算；不贴 → 先跟中点平移再绕中点缩放。 */
+  private pinchTime(f: TwoFinger, L: Layout): void {
+    const s = this.state, g = this.gesture
+    if (!s) return
+    if (!(f.sx >= ChartGesture.minPinchSpanPt) || !(g.pinchSx0 >= ChartGesture.minPinchSpanPt)) {
+      // 两指几乎竖成一条线：横向张开量太小，比值全是噪声。只换基准。
+      this.rebasePinch(f)
+      return
+    }
+    const b = s.input.series, v0 = s.viewport.view, anchor = s.input.options.anchor
+    if (b.isEmpty) { this.rebasePinch(f); return }
+    const lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
+    const spacing = Math.min(hi, Math.max(lo, v0.barSpacing(b.step, L.plotW) * f.sx / g.pinchSx0))
+    const pinned = ViewMath.isPinnedToLatest(v0, b, L.plotW, anchor)
+    const base = pinned ? v0 : ViewMath.clampedOffset(v0.dragged(f.mid - g.pinchMid0, L.plotW), b, L.plotW, anchor)
+    const view = this.clamp(ViewMath.pinched(base, b, L.plotW, spacing, f.mid, pinned, anchor), L.plotW)
+    this.rebasePinch(f)
     this.state = withViewport(s, { view })
     this.viewDidChange(view)
     this.reportZoomLimit(view, L)
+  }
+
+  /**
+   * 价格轴捏合的一帧：两指竖着张开 = 价格放大、捏拢 = 缩小，绕起捏时中点底下那个价位；
+   * 倍数走价格轴竖拖同一条曲线（axisZoom），进的也是同一个手动态（「A」徽章、双击价格轴照常回自动）。时间轴整轮不动。
+   */
+  private pinchPrice(f: TwoFinger, L: Layout): void {
+    const s = this.state, g = this.gesture, r = this.v.renderer
+    if (!s || !r || !(g.pinchSyStart > 0) || !(f.sy >= ChartGesture.minPinchSpanPt)) return
+    const unit = Math.max(L.mainH / 4, 1)
+    const zoom = axisZoom(g.pinchStartZoom, -unit * Math.log2(f.sy / g.pinchSyStart), L.mainH)
+    const auto: PriceTransform = { ...s.viewport.price, zoom: 1, centerFraction: 0.5 }
+    const automatic = r.priceRange(this.v.width, this.v.height, undefined, auto)
+    const frac = Math.min(1, Math.max(0, (f.my - L.main.y) / Math.max(1, L.main.h)))
+    const inverted = this.v.chartPriceRange?.inverted ?? s.viewport.price.inverted
+    const gy = inverted ? frac : 1 - frac
+    const mode = effectivePriceMode(s) === 'log' ? 'log' : 'linear'
+    const centerFraction = anchoredCenter(g.pinchPrice, gy, zoom, automatic.lo, automatic.hi, mode)
+    g.pinchMid0 = f.mid
+    this.state = withViewport(s, { price: { ...s.viewport.price, zoom, centerFraction }, axisScaleAnchor: null })
   }
 
   private panPinch(m: number, L: Layout): void {
@@ -511,14 +610,14 @@ export class ChartGestures {
     this.viewDidChange(view)
   }
 
-  private twoFinger(): { d: number; mid: number } {
+  private twoFinger(): TwoFinger {
     const pts = this.gesture.touches.map(t => this.location(t))
     const n = pts.length || 1
     const mx = pts.reduce((a, p) => a + p.x, 0) / n
     const my = pts.reduce((a, p) => a + p.y, 0) / n
     const sx = 2 * pts.reduce((a, p) => a + Math.abs(p.x - mx), 0) / n
     const sy = 2 * pts.reduce((a, p) => a + Math.abs(p.y - my), 0) / n
-    return { d: Math.hypot(sx, sy), mid: mx }
+    return { d: Math.hypot(sx, sy), mid: mx, my, sx, sy }
   }
 
   private reportZoomLimit(v: ViewWindow, L: Layout): void {

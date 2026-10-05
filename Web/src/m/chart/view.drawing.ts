@@ -752,7 +752,7 @@ export class DrawingController {
     }
     const t = this.claimed
     const axes = drawAxesOf(this.view)
-    if (t == null || !ids.includes(t) || !axes) { this.gs.touchesMoved(now); return }
+    if (t == null || !ids.includes(t) || !axes) { this.gs.touchesMoved(now, ids); return }
     const q = this.loc(t)
     this.moved = Math.max(this.moved, Math.hypot(q.x - this.startPoint.x, q.y - this.startPoint.y))
     if (this.drag) this.applyDrag(q, axes)

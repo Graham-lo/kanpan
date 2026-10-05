@@ -7,5 +7,7 @@ export const ChartGesture = {
   longPressSlopPt: 6,
   panSlopPt: 4,
   minPinchSpanPt: 10,
+  /** 捏合死区：横 / 纵张开量各自变化超过 3pt 才算捏（iOS a8012401；从前是斜线距离 2×panSlopPt = 8pt）。 */
+  pinchSlopPt: 3,
   selectedHandlePt: 22,
 } as const

@@ -1506,6 +1506,9 @@ describe('画线交互', () => {
     // 网页两根手指各发一次 pointermove（Swift 是同一次 touchesMoved 带两根）
     move(v, a, { x: 60, y: 300 }, 10_026)
     move(v, b, { x: 320, y: 300 }, 10_026)
+    // 越过捏合死区那一帧只重设基准、不缩放（iOS a8012401），下一帧才按比例缩
+    move(v, a, { x: 40, y: 300 }, 10_042)
+    move(v, b, { x: 340, y: 300 }, 10_042)
     expect(v.state!.viewport.view.span, '捏开没把窗口缩窄').toBeLessThan(before)
     expect(c.drawings).toEqual([])
   })
