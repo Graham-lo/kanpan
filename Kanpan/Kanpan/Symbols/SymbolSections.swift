@@ -30,7 +30,7 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   /// 行首大字：`BTC`。
   var name: String { info.base }
   /// 大字后面那半截灰的：` / USDT`。
-  var quoteSuffix: String { " / " + info.quote }
+  var quoteSuffix: String { info.quote.isEmpty ? "" : " / " + info.quote }
   /// 第二行小字。原型这行放的是「内嵌了哪些周期」，属于原型特有；
   /// 真 app 里放合约全称，和顶栏「BTCUSDT 永续 ▾」对上。
   var meta: String { info.id.symbol + " " + info.id.productLabel }
@@ -244,7 +244,13 @@ enum SymbolSections {
 }
 
 extension InstrumentID {
-  /// 品种名后面那枚小签：现货市场写「现货」，其余（币安 U 本位）写「永续」。
-  /// 按市场分、不按交易所分，这一层不认识任何一家交易所。
-  var productLabel: String { market == "spot" ? "现货" : "永续" }
+  /// 品种名后面那枚小签：现货市场写「现货」，指数（美元指数）写「指数」，
+  /// 其余（币安 U 本位）写「永续」。按市场分、不按交易所分，这一层不认识任何一家交易所。
+  var productLabel: String {
+    switch market {
+    case "spot": "现货"
+    case "index": "指数"
+    default: "永续"
+    }
+  }
 }

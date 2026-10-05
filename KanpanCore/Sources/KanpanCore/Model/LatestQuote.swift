@@ -24,6 +24,7 @@ public enum LatestQuote {
     return a.symbol == b.symbol && equal(a.last, b.last) && equal(a.changePercent, b.changePercent)
       && equal(a.high, b.high) && equal(a.low, b.low) && equal(a.quoteVolume, b.quoteVolume)
       && a.priceChange == b.priceChange && a.markPrice == b.markPrice && a.open24h == b.open24h
+      && a.marketClosed == b.marketClosed
   }
 
   public static func newest(_ a: Ticker?, _ b: Ticker?, symbol: String) -> Ticker? {

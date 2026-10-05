@@ -859,8 +859,13 @@ struct FavoritesView: View {
   }
   /// 行里基础币后面那一小截。代号本身带分隔的（别家现货 `BTC-USD`）写成 `BTC/USD`，
   /// 币安那种连写的代号照旧只写计价币。
+  /// 没有计价币的品种（美元指数）这一截写它的中文名。
   private func quoteLabel(_ symbol: String) -> String {
     let quote = quoteAsset(symbol)
+    if quote.isEmpty {
+      let base = model.info(for: symbol)?.base ?? SymbolInfo.placeholder(symbol: symbol).base
+      return SymbolAliases.names(base: base).first ?? ""
+    }
     return InstrumentID(symbol).symbol.contains("-") ? "/" + quote : quote
   }
   private func open(_ symbol: String) {

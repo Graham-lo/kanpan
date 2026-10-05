@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VENUE_DIRS='^(KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|OrderFlow)|Kanpan/Kanpan/Exchange/(Binance))/'
+VENUE_DIRS='^(KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|Macro|OrderFlow)|Kanpan/Kanpan/Exchange/(Binance))/'
 REGISTRY='^(KanpanNetwork/Sources/KanpanNetwork/Provider/VenueRegistry|Kanpan/Kanpan/Exchange/ExchangeAccountRegistry)\.swift$'
 PATTERN='Binance\|Coinbase\|fapi\.binance\|coinbase\.com\|hasSuffix("USDT")'
 

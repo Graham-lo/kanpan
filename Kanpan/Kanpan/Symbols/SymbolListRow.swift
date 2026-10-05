@@ -439,6 +439,14 @@ struct SymbolRowView: View {
         .foregroundStyle(seg.hit ? theme.amber : theme.ink)
       out = Text("\(out)\(piece)")
     }
+    // 没有计价币的品种（美元指数）：不写斜杠，后面跟一截灰的中文名。
+    if quote.isEmpty {
+      if let name = SymbolAliases.names(base: base).first {
+        let piece = Text(" " + name).font(.system(size: quoteSize)).foregroundStyle(theme.ink3)
+        out = Text("\(out)\(piece)")
+      }
+      return out
+    }
     let slash = Text(" / ").font(.system(size: quoteSize)).foregroundStyle(theme.ink3)
     out = Text("\(out)\(slash)")
     for seg in SymbolQuery.split(quote, highlight: row.match.highlight, offset: base.count) {

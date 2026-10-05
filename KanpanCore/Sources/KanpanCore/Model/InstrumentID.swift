@@ -69,6 +69,8 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
   ///   `QuoteAssets.tradable` 里的一个计价资产结尾，前面还得有底名。ASCII 小写不收
   ///   （币安代号永远是大写，小写只会是拼错了）。
   /// - `coinbase/spot`：`BASE-USD`，BASE 只有 ASCII 大写与数字。
+  /// - `macro/index`：只有 `DXY`（美元指数，2026-10-05）。服务端只采得到这一只，
+  ///   不开放成「任意大写」——收下了也永远没价、判不响。
   /// - 别的交易所 / 市场、大小写不对的交易所名：一律不收。
   ///
   /// 不做任何规范化：传进来什么就判什么（`InstrumentID.init` 会把小写代号抬成大写，
@@ -77,6 +79,7 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
     switch (venue, market) {
     case ("binance", "usd_m"): return isQuoteSuffixedSymbol(symbol)
     case ("coinbase", "spot"): return isDashUSDSymbol(symbol)
+    case ("macro", "index"): return symbol == "DXY"
     default: return false
     }
   }

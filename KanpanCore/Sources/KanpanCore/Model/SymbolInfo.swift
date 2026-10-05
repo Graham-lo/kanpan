@@ -79,8 +79,8 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
 
   public var id: InstrumentID { InstrumentID(symbol) }
   public var key: String { id.key }
-  /// 顶栏和品种页里显示的名字：BTC/USDT。
-  public var display: String { base + "/" + quote }
+  /// 顶栏和品种页里显示的名字：BTC/USDT。没有计价资产的（指数）只摆底名。
+  public var display: String { quote.isEmpty ? base : base + "/" + quote }
 
   public init(symbol: String, base: String, quote: String = "USDT",
               pricePrecision: Int, quantityPrecision: Int = 3, tickSize: Double, underlyingType: String? = nil,
@@ -158,9 +158,10 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   public static func placeholder(symbol: String, status: SymbolStatus = .tradable) -> SymbolInfo {
     let identity = InstrumentID(symbol)
     // 后缀表只有 `QuoteAssets` 那一份（和服务端 `instruments::base` 同一口径）；
-    // 认不出计价资产时 base 就是整串代号，计价按出厂的 USDT 记。
+    // 认不出计价资产时 base 就是整串代号；默认那一家（币安合约）计价按出厂的 USDT 记，
+    // 别家认不出就留空（美元指数 `DXY` 这种指数没有计价资产，不能摆成「DXY USDT」）。
     let (base, quote) = QuoteAssets.split(identity.symbol)
-    return SymbolInfo(symbol: identity.key, base: base, quote: quote ?? "USDT",
+    return SymbolInfo(symbol: identity.key, base: base, quote: quote ?? (identity.isDefaultMarket ? "USDT" : ""),
                       pricePrecision: 0, tickSize: 0, status: status)
   }
 }
@@ -222,6 +223,10 @@ public struct Ticker: Sendable, Equatable {
   /// Exchange snapshot time (REST closeTime / WS C), never local arrival time.
   public var timeMs: Int64?
   public var lastTradeID: Int64?
+  /// 这一口价所在的市场此刻休市（有交易时段的品种才会是 true，比如美元指数：
+  /// 周末、每日 17–18 点休息、或者服务端超过 10 分钟没采到新价）。价格照常摆，
+  /// 只是按「停住的价」变灰——走的是和断线、停推同一条变灰路径，不加任何状态字段。
+  public var marketClosed: Bool = false
 
   /// 振幅以24h开盘价为分母，独立于用户选择的日涨跌幅口径。
   public var amplitude24h: Double? {
@@ -231,8 +236,10 @@ public struct Ticker: Sendable, Equatable {
 
   public init(symbol: String, last: Double, changePercent: Double,
               high: Double, low: Double, quoteVolume: Double, markPrice: Double? = nil, open24h: Double? = nil,
-              timeMs: Int64? = nil, lastTradeID: Int64? = nil, priceChange: Double? = nil) {
+              timeMs: Int64? = nil, lastTradeID: Int64? = nil, priceChange: Double? = nil,
+              marketClosed: Bool = false) {
     self.symbol = InstrumentID.canonical(symbol)
+    self.marketClosed = marketClosed
     self.last = last
     self.priceChange = priceChange.flatMap { $0.isFinite ? $0 : nil }
     self.changePercent = changePercent

@@ -17,6 +17,8 @@ public struct VenueDescriptor: Sendable {
   public let joinsSectors: Bool
   /// 冷启动什么都没有时默认看的那一只。
   public let defaultSymbol: String
+  /// 自选分类条上那一类叫什么。nil = 用 `displayName`（Coinbase 那一类就叫「Coinbase」）。
+  let categoryName: String?
   public typealias Factory = @Sendable (MarketRoute, FeedLog) -> any MarketProvider
   /// 按线路建提供者（网关上可能是替身）。
   let make: Factory
@@ -26,8 +28,9 @@ public struct VenueDescriptor: Sendable {
 
   public init(id: String, market: String, displayName: String, searchTag: String?,
               hasFavoriteCategory: Bool, joinsSectors: Bool, defaultSymbol: String,
-              makeOwn: Factory? = nil, make: @escaping Factory) {
+              categoryName: String? = nil, makeOwn: Factory? = nil, make: @escaping Factory) {
     self.id = id; self.market = market; self.displayName = displayName; self.searchTag = searchTag
+    self.categoryName = categoryName
     self.hasFavoriteCategory = hasFavoriteCategory; self.joinsSectors = joinsSectors
     self.defaultSymbol = InstrumentID(venue: id, market: market, symbol: defaultSymbol).key
     self.make = make
@@ -36,7 +39,7 @@ public struct VenueDescriptor: Sendable {
 
   public var marketKey: String { "\(id)/\(market)" }
   /// 自选页上它自己那一类的名字；nil = 不单列（按资产类型分）。
-  public var favoriteCategory: String? { hasFavoriteCategory ? displayName : nil }
+  public var favoriteCategory: String? { hasFavoriteCategory ? (categoryName ?? displayName) : nil }
 }
 
 /// **唯一的「有哪些交易所」清单。**
@@ -63,8 +66,20 @@ public enum VenueRegistry {
     CoinbaseProvider(route: route, log: log)
   }
 
+  /// 美元指数（`macro/index/DXY`）。不是交易所，是看盘自己的 `kanpan-api` 采的一只指数，
+  /// 但对上层来说就是又一家「交易所」：品种表里一只、自选里单独一类「指数」、不进板块页、
+  /// 搜索结果不挂来源小字（行上已经写着「美元指数」）。数据只从 `kanpan-api` 来（`MacroProvider`），
+  /// 直连 / 网关两条线路都一样。
+  public static let macro = VenueDescriptor(
+    id: MacroProvider.venue, market: MacroProvider.market, displayName: "美元指数",
+    searchTag: nil, hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "DXY",
+    categoryName: "指数"
+  ) { route, log in
+    MacroProvider(route: route, log: log)
+  }
+
   /// 注册顺序就是自选分类条、设置里出现的顺序。第一家是默认交易所。
-  public static let all: [VenueDescriptor] = [binance, coinbase]
+  public static let all: [VenueDescriptor] = [binance, coinbase, macro]
 
   /// 默认交易所：没带交易所前缀的旧数据（裸符号）一律归它。
   public static var `default`: VenueDescriptor { all[0] }

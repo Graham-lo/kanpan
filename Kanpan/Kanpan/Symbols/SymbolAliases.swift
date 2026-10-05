@@ -38,6 +38,9 @@ enum SymbolAliases {
     // 一个字母的拼音没有意义：「b」会把所有中文名以 b 开头的币一起顶上来，
     // 而那一档本来就该让字面前缀去排。两个字母起才认。
     guard q.count >= 2 else { return nil }
+    // 整词打对了英文叫法（「USD」→ 美元指数）就是最匹配：排在所有 xxxUSDT（字面只是「含」）
+    // 和 USDC 这类前缀命中前面。只认整词，打「US」不算。
+    if entry.keywords.contains(q) { return .exact }
     if entry.pinyin.contains(where: { $0 == q || $0.hasPrefix(q) }) { return .pinyinFull }
     if entry.initials.contains(where: { $0 == q || $0.hasPrefix(q) }) { return .pinyinInitials }
     return nil
@@ -71,6 +74,8 @@ enum SymbolAliases {
 
   private struct Entry: Sendable {
     var names: [String] = []
+    /// 整词命中算「最匹配」的英文叫法（大写）。
+    var keywords: [String] = []
     var pinyin: [String] = []
     var initials: [String] = []
   }
@@ -98,6 +103,7 @@ enum SymbolAliases {
           entry.initials.append(p.initials)
         }
       }
+      entry.keywords = asciiKeywords[base] ?? []
       out[base] = entry
     }
     return out
@@ -219,5 +225,14 @@ enum SymbolAliases {
     "XAG": ["白银"],
     "XPT": ["铂金"],
     "XPD": ["钯金"],
+    // 美元指数（`macro/index/DXY`）：人会打「美元」「美指」，也会粘「美元指数」。
+    // 全拼 / 首字母照常算（meiyuan、my、mz……）。表里没有别的品种叫「美元」，不会撞。
+    "DXY": ["美元指数", "美指", "美元"],
+  ]
+
+  /// 整词打对就排第一档的英文叫法。只收不会撞别的品种的：「USD」是 DXY 的通行叫法，
+  /// 而 USDT / USDC 的底名打全了是 `USDT` / `USDC`，不是 `USD`。
+  private static let asciiKeywords: [String: [String]] = [
+    "DXY": ["USD"],
   ]
 }

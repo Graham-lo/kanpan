@@ -57,6 +57,9 @@ public struct ProviderCapabilities: Sendable, Equatable {
   public var snapshotNamespace: String?
   /// 收哪些计价资产。
   public var quoteAssets: [String]
+  /// 有盘口可聚（主力订单流那一层）。没有盘口的品种（指数）干脆不给这一层，
+  /// 行情页上不画、不转圈、不报错。
+  public var hasOrderFlow: Bool
 
   public init(venue: String, market: String, upstream: String? = nil,
               nativeIntervals: Set<Interval>, aggregatedFrom: [Interval: Interval] = [:],
@@ -65,7 +68,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
               openInterestSource: String?, hasMicrostructure: Bool, hasDerivativeMetrics: Bool,
               hasOpenInterestHistory: Bool = false, hasOpenInterestArchive: Bool = false,
               hasBulkTickers: Bool, probesHistoryBoundary: Bool, snapshotNamespace: String? = nil,
-              quoteAssets: [String]) {
+              quoteAssets: [String], hasOrderFlow: Bool = true) {
     self.venue = venue; self.market = market; self.upstream = upstream ?? venue
     self.nativeIntervals = nativeIntervals; self.aggregatedFrom = aggregatedFrom
     self.maxKlines = maxKlines; self.maxTailBars = maxTailBars ?? maxKlines; self.initialKlines = initialKlines
@@ -75,7 +78,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
     self.hasDerivativeMetrics = hasDerivativeMetrics; self.hasBulkTickers = hasBulkTickers
     self.hasOpenInterestHistory = hasOpenInterestHistory; self.hasOpenInterestArchive = hasOpenInterestArchive
     self.probesHistoryBoundary = probesHistoryBoundary; self.snapshotNamespace = snapshotNamespace
-    self.quoteAssets = quoteAssets
+    self.quoteAssets = quoteAssets; self.hasOrderFlow = hasOrderFlow
   }
 
   /// 真正去网上拉哪一档。原生周期就是它自己，聚出来的周期是它的源周期。
