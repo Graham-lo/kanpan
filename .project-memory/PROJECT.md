@@ -438,6 +438,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 服务端 `DRAWING_PREFERENCE_FIELDS` 加 `variants`，值只收已知画法。报告：[画法记忆](../docs/acceptance/画线-画法记忆-2026-09-23/验收报告.md)。
 - 模拟器转屏偶尔卡死（设备转了界面不转，无关用例同样红），重启模拟器即恢复，别当成 app 回归。
 - **2026-10-05 画线条只露常用的几把**（用户：「底下的画线工具只展示少量常用的，根据用户的使用频率智能展示即可」）：竖屏画线条 4 把、横屏画线台底条 5 把，其余在「全部工具」面板里一把不少；排法是 `Kanpan/Kanpan/Drawing/DrawingToolRank.swift`——按 `Prefs.drawToolUsage`（每把工具选了几次，变体记在族首名下，总数过 256 整体减半，随账号同步，服务端规则 `sync_validation::draw_tool_usage`：对象、≤12 键、键是画线种类、值 0…100000 整数）降序，同次数按面板顺序，没用过的按趋势线 / 水平线 / 斐波那契回撤 / 平行通道 / 价时测量……补位；顺序在画线打开那一下定好、这一回里不重排，从面板挑的、不在条上的那把顶掉最后一格。不给「固定哪几把」的设置。
+  服务端 `drawToolUsage` 白名单与校验 2026-10-05 21:20:24（CST）从 origin/main `44991485` 交叉编译部署到 kanpan-sg：备份 `/opt/kanpan-api/backup-20261005-211944/`（旧二进制 `548b63af…` + `source.tgz`），源码 `rsync -rlt --checksum`（不带 `--delete`，只有 3 个文件有差异）后 178 个文件 sha256 逐个对上，二进制 sha256 `16b1a38d…b8d9ce` 本地 = 线上；`ops/install.py` 自己 try-restart，`kanpan-api` / `kanpan-worker` active、`NRestarts=0`，`/health` 200，迁移仍是 43。测试账号（用完即删号）推 `settings/chart` 的 `drawToolUsage` `{trend:5,position:2,fibonacci:1}` → 200、`droppedFields []`、revision 1；键 `bogus`、值 1.5、值 -1 → 400 `invalid_operation`。回滚：`sudo install -m 0755 /opt/kanpan-api/backup-20261005-211944/kanpan-api /opt/kanpan-api/target/release/kanpan-api && sudo systemctl restart kanpan-api kanpan-worker`（旧服务端只会把这个字段当未知字段丢掉并回报，客户端不会卡队列）。
 
 ## 画线页 / 指标 / 分享整理（2026-09-23，提交 `1e271ee`）
 
