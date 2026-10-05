@@ -128,8 +128,11 @@ pub fn quote_url()->String {
  format!("https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols={symbols}&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json")
 }
 
-/// `[from, until]`（UTC 毫秒）换成美东墙上时间填进路径。
+/// `[from, until]`（UTC 毫秒）换成美东墙上时间填进路径。CNBC 的分桶是从请求的起点往后数的
+/// （起点写 18:04，1H 就答 18:04、19:04……），所以分钟 / 5 分钟 / 小时档的起点先向下取整到档宽
+/// （美东与 UTC 只差整点，按 UTC 取整就是按美东取整）。
 pub fn bars_url(kind:BarKind,from:i64,until:i64)->String {
+ let from=match kind {BarKind::D1=>from,_=>from.div_euclid(kind.step())*kind.step()};
  format!("https://ts-api.cnbc.com/harmony/app/bars/.DXY/{}/{}/{}/adjusted/EST5EDT.json",kind.path(),calendar::cnbc_stamp(from),calendar::cnbc_stamp(until))
 }
 
@@ -317,6 +320,11 @@ mod tests {
  #[test] fn urls_use_eastern_wall_clock() {
   assert_eq!(bars_url(BarKind::M1,ms("2026-10-05 09:30"),ms("2026-10-05 09:45")),
    "https://ts-api.cnbc.com/harmony/app/bars/.DXY/1M/20261005053000/20261005054500/adjusted/EST5EDT.json");
+  // 起点不在档宽上（18:04:37）：先取整，免得 CNBC 按 :04 分桶。
+  assert_eq!(bars_url(BarKind::H1,ms("2026-06-28 22:04")+37_000,ms("2026-07-01 00:00")),
+   "https://ts-api.cnbc.com/harmony/app/bars/.DXY/1H/20260628180000/20260630200000/adjusted/EST5EDT.json");
+  assert!(bars_url(BarKind::M5,ms("2026-10-05 09:33")+5_000,ms("2026-10-05 10:00")).contains("/5M/20261005053000/"));
+  assert!(bars_url(BarKind::M1,ms("2026-10-05 09:33")+5_000,ms("2026-10-05 10:00")).contains("/1M/20261005053300/"));
   assert!(quote_url().contains("symbols=.DXY%7CEUR%3D%7CJPY%3D%7CGBP%3D%7CCAD%3D%7CSEK%3D%7CCHF%3D&"));
  }
 

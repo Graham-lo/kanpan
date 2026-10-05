@@ -110,7 +110,7 @@ impl State {
   let mut rows=Vec::new();
   let mut touched=BTreeSet::new();
   for b in bars {
-   if b.t+MINUTE_MS>now||!calendar::is_open(b.t)||!b.sane() {continue}
+   if b.t+MINUTE_MS>now||b.t.rem_euclid(MINUTE_MS)!=0||!calendar::is_open(b.t)||!b.sane() {continue}
    rows.push(Row{interval:"1m",bar:*b,official:true});
    if b.t>=now-MINUTES_KEPT {self.minutes.insert(b.t,(*b,true));touched.insert(b.t);}
   }
@@ -342,15 +342,16 @@ async fn heal_loop(pool:&PgPool) {
  }
 }
 
-/// 一档官方 K 线的覆盖：(行数, 最新开盘时刻)。
-async fn coverage(pool:&PgPool,interval:&str)->sqlx::Result<(i64,Option<i64>)> {
- sqlx::query_as("SELECT count(*),max(open_time) FROM macro_bars WHERE symbol=$1 AND interval=$2 AND source=1")
+/// 一档官方 K 线的覆盖：(行数, 最早开盘时刻, 最新开盘时刻)。
+async fn coverage(pool:&PgPool,interval:&str)->sqlx::Result<(i64,Option<i64>,Option<i64>)> {
+ sqlx::query_as("SELECT count(*),min(open_time),max(open_time) FROM macro_bars WHERE symbol=$1 AND interval=$2 AND source=1")
   .bind(SYMBOL).bind(interval).fetch_one(pool).await
 }
 
 /// 收完整、在开盘时间里的那几根（休市窗口里 CNBC 也会冒几根，比如 17:00–17:33 ET，丢掉）。
+/// 不在档宽上的也丢（CNBC 按请求起点分桶，起点没取整时会答 :04 的 1H，和聚出来的整点那根撞成两根）。
 pub fn completed(kind:BarKind,list:Vec<Bar>,now:i64)->Vec<Row> {
- list.into_iter().filter(|b|b.t+kind.step()<=now&&calendar::is_open(b.t))
+ list.into_iter().filter(|b|b.t+kind.step()<=now&&b.t.rem_euclid(kind.step())==0&&calendar::is_open(b.t))
   .map(|bar|Row{interval:kind.interval(),bar,official:true}).collect()
 }
 
@@ -381,6 +382,17 @@ pub fn completed_days(list:Vec<Bar>,now:i64,from:i64)->(Vec<Row>,Vec<NaiveDate>)
  (rows,repair)
 }
 
+/// 这一档回填从哪儿取起。表里最早那根离「该有的深度」还差得远（首次部署；或者分钟循环抢先写了最近
+/// 几小时，只看最新那根会以为已经补过），就整段重取；否则从最新那根往前留一点重取。
+/// `FRONT_SLACK` 给周末加节假日留余地：深度的起点落在周六，最早那根本来就只能是周日晚上。
+const FRONT_SLACK:i64=4*DAY_MS;
+pub fn start_of(now:i64,depth:i64,oldest:Option<i64>,newest:Option<i64>,overlap:i64)->i64 {
+ match (oldest,newest) {
+  (Some(o),Some(n)) if o<=now-depth+FRONT_SLACK=>(n-overlap).max(now-depth),
+  _=>now-depth,
+ }
+}
+
 /// 一轮回填。返回写了（或试图写）多少行。
 async fn heal(pool:&PgPool,_first:bool)->anyhow::Result<usize> {
  let now=now_ms();
@@ -391,8 +403,8 @@ async fn heal(pool:&PgPool,_first:bool)->anyhow::Result<usize> {
   (BarKind::M5,64*DAY_MS,8*DAY_MS,HOUR_MS),
   (BarKind::M1,30*DAY_MS,2*DAY_MS,10*MINUTE_MS),
  ] {
-  let (_,newest)=coverage(pool,kind.interval()).await?;
-  let mut from=newest.map_or(now-depth,|t|(t-overlap).max(now-depth));
+  let (_,oldest,newest)=coverage(pool,kind.interval()).await?;
+  let mut from=start_of(now,depth,oldest,newest,overlap);
   while from<now {
    let until=(from+chunk).min(now);
    let list=cnbc::bars(kind,from,until).await.map_err(|e|anyhow::anyhow!("{} {e}",kind.path()))?;
@@ -406,7 +418,7 @@ async fn heal(pool:&PgPool,_first:bool)->anyhow::Result<usize> {
   }
  }
  // 1D：没有十年就整段取，有就重取最近 15 天（CNBC 收盘后才出当天那根）。
- let (count,_)=coverage(pool,"1d").await?;
+ let (count,_,_)=coverage(pool,"1d").await?;
  let from=if count<2000 {now-3660*DAY_MS} else {now-15*DAY_MS};
  let list=cnbc::bars(BarKind::D1,from,now).await.map_err(|e|anyhow::anyhow!("1D {e}"))?;
  let (mut rows,repair)=completed_days(list,now,from);
@@ -477,6 +489,32 @@ mod tests {
  use super::super::cnbc::Quote;
  fn ms(s:&str)->i64 {chrono::NaiveDateTime::parse_from_str(s,"%Y-%m-%d %H:%M").unwrap().and_utc().timestamp_millis()}
  const SEC:i64=1000;
+
+ #[test] fn backfill_refetches_the_whole_depth_until_the_front_is_covered() {
+  let now=ms("2026-10-05 11:05");
+  let depth=30*DAY_MS;
+  // 空表：整段。
+  assert_eq!(start_of(now,depth,None,None,10*MINUTE_MS),now-depth);
+  // 分钟循环抢先写了最近 3 小时：最早那根离深度起点差得远，仍然整段（线上首次部署就是这样只剩 3 小时的）。
+  assert_eq!(start_of(now,depth,Some(now-3*HOUR_MS),Some(now-2*MINUTE_MS),10*MINUTE_MS),now-depth);
+  // 前面补齐了（最早那根在周末余量以内）：从最新那根往前 10 分钟。
+  assert_eq!(start_of(now,depth,Some(now-depth+2*DAY_MS),Some(now-2*MINUTE_MS),10*MINUTE_MS),now-12*MINUTE_MS);
+  // 停了很久再起：最新那根早于深度起点，从深度起点取。
+  assert_eq!(start_of(now,depth,Some(now-90*DAY_MS),Some(now-60*DAY_MS),10*MINUTE_MS),now-depth);
+ }
+
+ #[test] fn bars_off_the_interval_grid_are_dropped() {
+  let now=ms("2026-10-05 11:05");
+  let bar=|t|Bar{t,o:98.0,h:98.2,l:97.9,c:98.1};
+  // 周一欧洲时段，开盘中。
+  let rows=completed(BarKind::H1,vec![bar(ms("2026-10-05 08:00")),bar(ms("2026-10-05 08:04")),bar(ms("2026-10-05 09:00"))],now);
+  assert_eq!(rows.iter().map(|r|r.bar.t).collect::<Vec<_>>(),vec![ms("2026-10-05 08:00"),ms("2026-10-05 09:00")]);
+  let rows=completed(BarKind::M5,vec![bar(ms("2026-10-05 10:55")),bar(ms("2026-10-05 10:59"))],now);
+  assert_eq!(rows.len(),1);
+  let mut st=State::default();
+  let rows=st.merge_minutes(&[bar(ms("2026-10-05 11:00")),bar(ms("2026-10-05 11:01")+30*SEC)],now);
+  assert_eq!(rows.iter().filter(|r|r.interval=="1m").count(),1);
+ }
 
  #[test] fn ticks_build_the_minute_and_its_coarser_buckets() {
   let mut st=State::default();
