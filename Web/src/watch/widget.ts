@@ -13,7 +13,7 @@
  * 多图时头部下写「在第 N 格打开」，跟着活动格走；行的右键菜单同样写第几格。
  */
 import { st, save } from '../app/store'
-import { S, REST, j, TABS, type Kind } from '../market'
+import { S, REST, j, TABS, fetchOpenInterest, type Kind } from '../market'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge } from '../ui/common'
@@ -344,8 +344,9 @@ async function refreshOI(list: string[]): Promise<void> {
     while (next < todo.length) {
       const k = todo[next++]
       try {
-        const r = await j<{ openInterest: string }>(`${REST}/fapi/v1/openInterest?symbol=${k}`)
-        oiCache.set(k, { oi: oiFromResponse(r.openInterest), t: Date.now() })
+        // 与详情块共用同一只的在途请求（冷启动时当前品种两边各取一次）
+        const raw = await fetchOpenInterest(k)
+        oiCache.set(k, { oi: oiFromResponse(raw), t: Date.now() })
         // 到一只填一格：一屏上下近百只要取好几秒，不等整批取完再一起亮
         const o = $(`#wTbl tr[data-sym="${k}"] [data-f="oi"]`)
         if (o) o.outerHTML = oiCell(k)

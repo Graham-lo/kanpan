@@ -160,6 +160,20 @@ export interface Detail {
   taker?: number        // 主动买卖比
 }
 const detailCache = new Map<string, Detail>()
+
+/** 单只的未平仓量（原文，张数）。PC 详情块和自选宽列的持仓额都要它，冷启动时两边在同一秒各发一次同一个请求；
+ *  没带 alive 的那次在途或取到不满 10 秒时大家共用。带 alive 的可能排队时被作废（Superseded），只给自己用 */
+const oiShared = new Map<string, { t: number; p: Promise<string | undefined> }>()
+export function fetchOpenInterest(symbol: string, alive?: () => boolean): Promise<string | undefined> {
+  const hit = oiShared.get(symbol)
+  if (hit && (hit.t === 0 || ago(hit.t) < 10e3)) return hit.p
+  const p = j<{ openInterest?: string }>(`${REST}/fapi/v1/openInterest?symbol=${symbol}`, 8000, false, alive).then(r => r?.openInterest)
+  if (alive) return p
+  const e = { t: 0, p }
+  oiShared.set(symbol, e)
+  p.then(() => { e.t = Date.now() }, () => { if (oiShared.get(symbol) === e) oiShared.delete(symbol) })
+  return p
+}
 export function detailOf(symbol: string): Detail | undefined { return detailCache.get(symbol) }
 
 /** 一分钟最多取一次。alive：排在限流队列里时问一下还要不要（扫图划过去的那只不要了就不发、不记这一分钟） */
@@ -172,7 +186,7 @@ export async function fetchDetail(symbol: string, alive?: () => boolean): Promis
   const get = <T,>(path: string, q: string) => j<T>(`${REST}${path}?symbol=${symbol}${q ? '&' + q : ''}`, 8000, false, alive)
     .catch(e => { if (e instanceof Superseded) dropped = true; return null })
   const [oi, hist, ls, top, taker] = await Promise.all([
-    get<{ openInterest: string }>('/fapi/v1/openInterest', ''),
+    fetchOpenInterest(symbol, alive).catch(e => { if (e instanceof Superseded) dropped = true; return null }),
     get<{ sumOpenInterestValue: string }[]>('/futures/data/openInterestHist', 'period=1h&limit=25'),
     get<{ longShortRatio: string }[]>('/futures/data/globalLongShortAccountRatio', 'period=5m&limit=1'),
     get<{ longShortRatio: string }[]>('/futures/data/topLongShortPositionRatio', 'period=5m&limit=1'),
@@ -182,7 +196,7 @@ export async function fetchDetail(symbol: string, alive?: () => boolean): Promis
   if (dropped && detailCache.get(symbol) === d) { if (prev) detailCache.set(symbol, prev); else detailCache.delete(symbol) }
   if (dropped) return
   const px = S.symbols.get(symbol)?.price
-  if (oi && px) d.oiValue = +oi.openInterest * px
+  if (oi != null && px) d.oiValue = +oi * px
   if (hist && hist.length > 1) d.oiChg = (+hist[hist.length - 1].sumOpenInterestValue / +hist[0].sumOpenInterestValue - 1) * 100
   if (ls?.[0]) d.ls = +ls[0].longShortRatio
   if (top?.[0]) d.top = +top[0].longShortRatio
