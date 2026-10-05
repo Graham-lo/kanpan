@@ -1058,3 +1058,20 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   （基线 77 / 1343）；`npm run build` 无告警。七条线共 **76 项**（A 18、B 21、C 9、D 14、E 16、G 6、F 11）加主窗口抓的基差翻页 1 项。
 - **已推送**：`00276e67..d8f6cca2`（G 线）；F 线与其它窗口的提交由各窗口推送，`44991485` 时 main 与 origin/main 一致。
 - **网页最终上线**（2026-10-05 晚，从 HEAD 干净工作树构建）：PC `assets/index-D7BE4hdj.js`、手机 `assets/m-DcUxzsim.js`。F / G 两线无服务端改动。
+
+## 40. 网页版对齐 iOS 10-05 新功能（2026-10-05 晚，手机网页 + 电脑网页，已部署）
+
+- **美元指数当普通品种**（`baedc267`）：裸代号 `DXY`，同步键 `macro/index/DXY`（`src/market/macro.ts`）；K 线 REST 改写到
+  `/v1/market/raw/klines?…&source=macro`、推送 `/v1/market/stream?source=macro`；搜「USD / DXY / 美元」排第一，自选多「指数」分类，
+  能开图 / 加自选 / 建价格提醒 / 当对比品种；没有成交量与合约衍生数据，相关指标（手机 `chartIndicatorsFor`、电脑 `indFor`）与头部格子收掉、偏好不动。
+  补修 `48baee2f`：手机图表 `clampView` 原按根数夹右边界，休市空档多的序列（每天停一小时、周末两天）一打开被夹回一个多月前；
+  改为按「首根到末根占的格数」夹（照 iOS `Clamp.swift` 的 cells），用例 `m-chart-geometry`「gappyLatest」。
+  补修 `15160cae`：电脑图例对 macro 品种不挂「币安」（「DXY · 1小时 · 指数」）。
+- **对比**：手机顶栏「对比＋」开对比模式搜索页、对比从「分析」面板搬出（`63af9ba4`）；电脑工具栏「对比」叠最多 3 只按百分比（`5948c41e`，
+  `src/chart/compare.ts` / `src/pages/compare.ts`）。三端共用 `settings.compareSymbols`。
+- **顶栏铃 +「提醒」表（列表 | 日志）**（`dde3e93e`，补修 `946532bf` 底部「创建提醒」被推出屏外）：走 `GET/DELETE /v1/alerts/log`；电脑右栏提醒加「列表 | 日志」分段。
+- **横屏画线条只露常用五把、按次数排**（`89f3a950`，`m-draw-tool-rank`）。
+- **没做**：手机网页横屏「切换主图指标」入口——手机网页横屏画线台现在只画裸 K 线（`overlays = landscape ? [] : look.overlays`），
+  要先做横屏主图指标默认展示 + 开关（`drawingOverlaysShown` 已在同步里），再照 iOS `land.indicatorPicker` 补入口。
+- **验证**：干净工作树 vitest 129 文件 1665 条全过；部署 22:09–22:11 CST，PC `assets/index-CXUg2iM3.js`、手机 `assets/m-D9FgX1hU.js`；
+  线上 Playwright 走查与截图 `docs/acceptance/网页版对齐-2026-10-05/`（summary.txt）。服务端无改动。

@@ -1,0 +1,63 @@
+网页版对齐 iOS 2026-10-05 新功能 · 验收记录
+==========================================
+
+范围：手机网页（Web/src/m/**，/web/m/）与电脑网页（Web/src/**，/web/）。
+服务端 kanpan-api 不需要改：美元指数的 K 线 / 24h / 推送走既有 macro 源，提醒日志走已上线的
+GET/DELETE /v1/alerts/log（协议 docs/提醒日志-协议-2026-10-05.md），对比与画线计数走既有设置同步。
+
+一、功能与提交（全部在 main）
+1. 美元指数（DXY）当一只普通品种 —— baedc267
+   搜「USD / DXY / 美元」排第一；自选分类多「指数」（加密 / 美股 / 指数 / 贵金属 / 其他）；能开图、能加自选、
+   能建价格提醒、能当对比品种；K 线 REST 改写到 /v1/market/raw/klines?source=macro，推送 /v1/market/stream?source=macro；
+   没有成交量 / 费率 / 持仓 / 盘口，相关指标与头部格子收掉（偏好不动）。
+   补修 48baee2f：手机网页 DXY 行情页一打开停在一个多月前——clampView 按根数夹右边界，休市空档多的序列
+   （每天停一小时、周末停两天）被夹回历史中段；改为按「首根到末根占的格数」夹（照 iOS Clamp.swift 的 cells）。
+   补修 15160cae：电脑网页 DXY 图例写成「1小时 · 币安指数」，macro 品种不再挂「币安」，现为「DXY · 1小时 · 指数」。
+2. 对比
+   - 手机网页：顶栏「对比＋」开对比模式的搜索页，对比从「分析」面板搬出 —— 63af9ba4
+   - 电脑网页：工具栏「指标」旁「对比」，叠最多 3 只按百分比比涨跌 —— 5948c41e（另一子代理完成）
+   两端与 iOS 共用同步字段 settings.compareSymbols。
+3. 顶栏铃铛 +「提醒」表（列表 | 日志） —— dde3e93e
+   手机：顶栏铃铛带未触发条数；表内「列表」置顶图上这只、底部通栏「创建提醒」；「日志」按天分组，右上「清空」要确认，
+   没登录只有一句「登录后可查看」。电脑：右侧提醒栏加「列表 | 日志」分段。
+   补修 946532bf：手机「提醒」表底部「创建提醒」被 min-height:100% 推出屏外（alerts.css）。
+   注：946532bf 误用不带路径的 git commit，把另一子代理暂存的 iOS 美元指数文件一并带入；对方以空提交 f6014151 补了说明，历史未改。
+4. 横屏画线台工具条只露常用五把、按使用次数排 —— 89f3a950
+   首次：趋势线、水平线、斐波那契、通道、测量；临时选了别的会钉在第五格；下次进来按次数重排。
+
+跳过：5. 手机网页横屏「切换主图指标」入口
+   原因：手机网页横屏画线台目前只画裸 K 线（overlays = landscape ? [] : look.overlays），没有主图指标可切；
+   要先把横屏主图指标默认展示 + 开关（drawingOverlaysShown，已在同步里）做出来，再加切换入口。iOS 端由另一子代理在做，
+   网页端待 iOS 定稿后照着补，本轮不动。
+
+二、测试（干净工作树，origin/main 15160cae）
+   npm run build：tsc 无错，vite 构建通过
+   npm test（vitest）：129 个文件、1665 条全过
+   新增 / 相关：macro-dxy、compare-pc、m-compare-mode、alerts-log、m-draw-tool-rank、m-chart-geometry（gappyLatest）、m-pages
+
+三、部署（从 git 干净工作树 npm run deploy，不带别的窗口未提交改动）
+   2026-10-05 22:01:21–22:02:34 CST（48baee2f）：电脑 assets/index-NeHwby5K.js，手机 assets/m-D9FgX1hU.js
+   2026-10-05 22:09:52–22:11:20 CST（15160cae）：电脑 assets/index-CXUg2iM3.js，手机 assets/m-D9FgX1hU.js（手机未变）
+   线上 curl：/web/ 引用 index-CXUg2iM3.js，/web/m/ 引用 m-D9FgX1hU.js
+
+四、线上验证（Playwright + 系统 Chrome，手机 430×932@3 / 横屏 932×430，电脑 2560×1440；临时测试账号，验完注销，口令与令牌不入档）
+   手机 https://kanpan.43-160-232-253.sslip.io/web/m/
+   - 搜「USD」：DXY 排第一（m-search-usd.png）
+   - 自选分类出现「指数」，DXY 在其中（m-fav-index.png）
+   - DXY 行情页打开即贴到最新一根，价格轴与现价线正常（m-dxy-chart.png）
+   - 对比＋：搜索页对比模式选 DXY，同步里 compareSymbols = ["macro/index/DXY"]（m-compare-search.png、m-compare-btc-dxy.png）
+   - 顶栏铃铛「提醒 2」（m-top-bell.png）；列表置顶 BTC 组 + ETH、DXY，底部「创建提醒」可见（m-alerts-list.png）；
+     日志按天分组（m-alerts-log.png）
+   - 横屏画线条：首次 趋势线/水平线/斐波那契/通道/测量（m-land-dock.png）；选「仓位」钉在第五格（m-land-dock-held.png）；
+     下一次进入按次数重排为 斐波那契/仓位/趋势线/水平线/通道
+   - 无页面错误
+   电脑 https://kanpan.43-160-232-253.sslip.io/web/
+   - ?s=DXY&i=1h&panel=alerts：图例「DXY · 1小时 · 指数」，右栏提醒列表（pc-dxy-alerts-list.png）
+   - 「日志」分段：今天（BTC 价格达到 86,000 · 触发价 86,012.4；DXY 98.2）、昨天（ETH）、10月2日（SOL），有「清空」（pc-alerts-log.png）
+   - BTC 图上对比 DXY + ETH：图例两行带百分比（pc-compare-btc-dxy-eth.png）
+   - 无页面错误
+
+五、截图（本目录）
+   m-search-usd.png  m-fav-index.png  m-dxy-chart.png  m-compare-search.png  m-compare-btc-dxy.png
+   m-top-bell.png  m-alerts-list.png  m-alerts-log.png  m-land-dock.png  m-land-dock-held.png
+   pc-dxy-alerts-list.png  pc-alerts-log.png  pc-compare-btc-dxy-eth.png
