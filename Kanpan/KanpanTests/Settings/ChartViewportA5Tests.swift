@@ -176,4 +176,66 @@ struct ChartViewportA5Tests {
     #expect(viewport.adoptToken == token0 + 1)
     #expect(viewport.barSpacing == Prefs.clampSpacing(12))
   }
+
+  /// 横屏图宽是竖屏两倍多（2026-10-05）：两边共用一份根宽的话，横屏里捏合适了、转回竖屏一屏
+  /// 根数就翻倍。横竖各记一份（`Prefs.landscapeBarSpacing`），各捏各的、各落各的。
+  @Test("横竖各记一份根宽：横屏捏的不动竖屏那份，抬手一轮落两边欠的账")
+  @MainActor
+  func landscapeKeepsItsOwnSpacing() {
+    let (viewport, store, _, sync) = make()
+    viewport.userIsZooming(to: 2.5, landscape: true)
+    #expect(viewport.landscapeBarSpacing == 2.5)
+    #expect(viewport.barSpacing == AICoinBehavior.initialSpacing, "横屏这一捏不许碰竖屏那份")
+    #expect(viewport.spacing(landscape: true) == 2.5)
+    #expect(viewport.spacing(landscape: false) == AICoinBehavior.initialSpacing)
+    #expect(store.prefs.landscapeBarSpacing == AICoinBehavior.initialSpacing, "手还按着不落盘")
+    viewport.interactionEnded()
+    #expect(store.prefs.landscapeBarSpacing == 2.5)
+    #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
+    #expect((sync.records, sync.pushes) == (1, 1))
+
+    // 转回竖屏捏一下：只动竖屏那份，横屏那份留着。
+    viewport.userIsZooming(to: 9)
+    viewport.interactionEnded()
+    #expect((store.prefs.barSpacing, store.prefs.landscapeBarSpacing) == (9, 2.5))
+    #expect((sync.records, sync.pushes) == (2, 2))
+  }
+
+  @Test("横屏欠着没落盘时同一份档案晚到：本地这一捏赢；没欠账时两份一起按档案")
+  @MainActor
+  func landscapePendingWinsSameProfile() {
+    let (viewport, store, _, sync) = make()
+    store.onAdopt = { prefs, why in viewport.adopt(barSpacing: prefs.barSpacing, landscape: prefs.landscapeBarSpacing, reason: why) }
+    let token0 = viewport.adoptToken
+    viewport.userIsZooming(to: 3, landscape: true)
+    viewport.adopt(barSpacing: AICoinBehavior.initialSpacing, landscape: AICoinBehavior.initialSpacing, reason: .sameProfile)
+    #expect(viewport.landscapeBarSpacing == 3)
+    #expect(store.prefs.landscapeBarSpacing == 3, "顺手落掉欠的那一捏")
+    #expect((sync.records, sync.pushes) == (1, 1))
+    #expect(viewport.adoptToken == token0)
+
+    viewport.adopt(barSpacing: 7, landscape: 15, reason: .sameProfile)
+    #expect((viewport.barSpacing, viewport.landscapeBarSpacing) == (7, 15))
+    #expect(viewport.adoptToken == token0 + 1)
+
+    // 换了人：横屏欠的那一捏也作废。
+    viewport.userIsZooming(to: 20, landscape: true)
+    viewport.adopt(barSpacing: 5, landscape: 6, reason: .ownerSwitched)
+    #expect((viewport.barSpacing, viewport.landscapeBarSpacing) == (5, 6))
+    viewport.interactionEnded()
+    #expect(store.prefs.landscapeBarSpacing == 3, "上一个人欠的那一捏不许写到新属主头上")
+  }
+
+  @Test("云端只改了横屏那份：也要让图按档案重量")
+  @MainActor
+  func remoteLandscapeOnlyAdopts() {
+    let (viewport, store, _, _) = make()
+    store.onAdopt = { prefs, why in viewport.adopt(barSpacing: prefs.barSpacing, landscape: prefs.landscapeBarSpacing, reason: why) }
+    let token0 = viewport.adoptToken
+    var remote = store.prefs
+    remote.landscapeBarSpacing = 11
+    store.applySynced(remote)
+    #expect(viewport.landscapeBarSpacing == 11)
+    #expect(viewport.adoptToken == token0 + 1)
+  }
 }

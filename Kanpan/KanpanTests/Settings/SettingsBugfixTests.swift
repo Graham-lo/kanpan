@@ -205,6 +205,21 @@ struct SettingsBugfixTests {
     #expect(back.drawToolUsage == ["channel": 3])
   }
 
+  @Test("横屏根宽：老档案没有这个键就取同一份里的 barSpacing，之后两份各走各的；越界夹到 1.6…40")
+  func 横屏根宽() {
+    #expect(decode(#"{"barSpacing":9}"#).landscapeBarSpacing == 9, "第一次有这个字段时取当时的 barSpacing")
+    #expect(decode(#"{"barSpacing":9,"landscapeBarSpacing":"x"}"#).landscapeBarSpacing == 9, "读不出来也一样")
+    #expect(decode(#"{"barSpacing":9,"landscapeBarSpacing":3}"#).landscapeBarSpacing == 3)
+    #expect(decode(#"{"landscapeBarSpacing":500}"#).landscapeBarSpacing == Prefs.clampSpacing(500))
+    #expect(decode(#"{"landscapeBarSpacing":0.1}"#).landscapeBarSpacing == Prefs.clampSpacing(0.1))
+    #expect(Prefs.defaults.landscapeBarSpacing == AICoinBehavior.initialSpacing)
+    var q = Prefs.defaults
+    q.barSpacing = 12; q.landscapeBarSpacing = 2.5
+    let back = decode(String(decoding: PrefsCodec.encode(q), as: UTF8.self))
+    #expect((back.barSpacing, back.landscapeBarSpacing) == (12, 2.5))
+    #expect(PrefsFieldPlan.names(.synced).contains("landscapeBarSpacing"), "随账号同步")
+  }
+
   @Test("收设置项 G：自选排序 / 迷你走势、板块排序的老键读进来即丢，旁边的键照常认")
   func 收设置项G老键() {
     let old = decode(#"{"favoritesSort":"volume","favoritesAscending":true,"favoritesAmount":true,"favoritesSparkline":true,"sectorSort":"volume","sectorWindow":"d5","favoritesGroup":"g1"}"#)

@@ -83,6 +83,8 @@ enum PrefsFieldPlan {
     "theme": .synced, "skin": .synced, "redUp": .synced,
     "priceMode": .synced, "depth": .synced, "orderFlow": .synced, "candleKind": .synced,
     "barSpacing": .synced, "mainInverted": .synced, "subInverted": .synced,
+    // 横屏自己记的根间距（2026-10-05）：横竖图宽差两倍多，共用一份转屏就乱，见 `Prefs.landscapeBarSpacing`。
+    "landscapeBarSpacing": .synced,
     "portraitHeight": .synced,
     "indicatorColors": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,

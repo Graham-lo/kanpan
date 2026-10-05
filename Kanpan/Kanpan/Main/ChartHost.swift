@@ -64,6 +64,8 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   var isReordering: Bool { reorderStart != nil }
   var onSubReorder: ([IndicatorID]) -> Void = { _ in }
   var portrait = true
+  /// 图上这份根宽是按哪个朝向开的（横竖各记一份，见 `ChartHost.updateUIView`）。`nil` = 还没开过。
+  var spacingPortrait: Bool?
   var pending: ViewIntent = .reset
   /// `.reset` 时用哪个根间距。外面每次接线都灌一遍（`ChartHost.wire`），值来自
   /// `Prefs.barSpacing`——用户上次捏到的那个宽度。没存过就是出厂的 `initialSpacing`。
@@ -325,6 +327,10 @@ final class ChartProxy {
   /// 序号跟着 `MainScreen` 的 `@State` 活着，重建盒子时就能看出「我不在的时候档案
   /// 到过货」，改按 `resetSpacing` 重量一次（`.adopt`），位置照旧留着。
   var lastAdoptToken = 0
+  /// 上一次画的时候是不是竖屏。横竖各记一份根宽（`Prefs.landscapeBarSpacing`），转屏回来
+  /// 重建盒子时要知道「朝向换过了」，按这个朝向那一份重量（`.adopt`），而不是把另一个朝向的
+  /// 宽度原样装回来。
+  var lastPortrait: Bool?
   /// 上一次从外面（偏好快照）带进来的翻转。和 `lastAdoptToken` 同理记在这儿：盒子活不过
   /// 一次换页，换页回来要知道「我不在的时候偏好里的翻转改过没有」。见 `ChartInversion.adopt`。
   var lastSnapshotInversion: ChartInversion?
@@ -498,7 +504,9 @@ struct ChartHost: UIViewRepresentable {
       incoming = next
       // 图不在的那段时间档案到过货（见 `ChartProxy.lastAdoptToken`）：存下来的那份
       // 视野宽度是旧的，位置留着、宽度按档案重量。没到过货就原样装回去。
-      box.pending = adoptToken != consumedAdoptToken(box)
+      // 转过屏（横竖各记一份根宽）也一样：按这个朝向那一份重量，位置留着。
+      let rotated = proxy?.lastPortrait.map { $0 != portrait } ?? false
+      box.pending = adoptToken != consumedAdoptToken(box) || rotated
         ? .adopt(spacing: resetSpacing)
         : .resize(spacing: saved.view.barSpacing(step: saved.series.step, plotW: width))
     }
@@ -506,6 +514,9 @@ struct ChartHost: UIViewRepresentable {
     // 走到这儿要么按 `resetSpacing` 走 `.reset`，要么上面已经补了 `.adopt`——
     // 这次到货算兑现过了。
     consumeAdoptToken(box)
+    // 没东西可画时图上还没按哪个朝向开过：沿用把手上记着的那个朝向，数据到了再比（`updateUIView`）。
+    if incoming != nil { proxy?.lastPortrait = portrait }
+    box.spacingPortrait = proxy?.lastPortrait ?? portrait
     return box
   }
 
@@ -619,7 +630,14 @@ struct ChartHost: UIViewRepresentable {
     }
     // 档案到货：图得按新到货的根宽重新起点。放在所有 `pending` 赋值之后——
     // `.reset`（换品种 / 第一次拿到数据）本来就用 `resetSpacing` 开张，不用再重量一次。
-    if adoptToken != consumedAdoptToken(box) {
+    // 横竖各记一份根宽（`Prefs.landscapeBarSpacing`）：图上那份宽度是按另一个朝向量的，
+    // 朝向一换就按这个朝向那一份重量，和「档案到货」同一条路（位置留着、只换宽度）。
+    // 记的是「图上这份宽度按哪个朝向开的」而不是上一帧的朝向：转屏那一下要是正好没数据
+    // （上面 `state == nil` 提前返回），这笔账留到数据来了再兑现。
+    let rotated = box.spacingPortrait.map { $0 != portrait } ?? false
+    box.spacingPortrait = portrait
+    proxy?.lastPortrait = portrait
+    if adoptToken != consumedAdoptToken(box) || rotated {
       consumeAdoptToken(box)
       if box.pending != .reset { box.pending = .adopt(spacing: resetSpacing) }
     }

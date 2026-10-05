@@ -344,7 +344,7 @@ final class PrefsStore {
     persist(marking: changed)
     // 下游里只有图的视野关心「档案那一侧的值被换了」（它手上有一份根宽）。根宽不在
     // 这次还原的字段里就不去惊动它——惊动一次图就要重新起点一次。
-    if changed.contains("barSpacing") { onAdopt?(prefs, .sameProfile) }
+    if !changed.isDisjoint(with: ["barSpacing", "landscapeBarSpacing"]) { onAdopt?(prefs, .sameProfile) }
   }
 
   /// 恢复出厂：体验类字段回到新默认，**本机字段（`deviceOnly`，比如行情线路）留着**。
@@ -517,7 +517,7 @@ final class PrefsStore {
   func applySynced(_ value: Prefs) {
     let merged = Prefs.keeping(stamp.dirtyFields, of: prefs, over: value)
     guard merged != prefs else { return }
-    let spacingChanged = merged.barSpacing != prefs.barSpacing
+    let spacingChanged = merged.barSpacing != prefs.barSpacing || merged.landscapeBarSpacing != prefs.landscapeBarSpacing
     prefs = merged
     write(merged, to: storage)
     mirrorToDevice()
@@ -549,4 +549,6 @@ final class PrefsStore {
 extension PrefsStore: ChartViewport.Owner {
   var storedBarSpacing: Double { prefs.barSpacing }
   func storeBarSpacing(_ value: Double) { update { $0.barSpacing = value } }
+  var storedLandscapeBarSpacing: Double { prefs.landscapeBarSpacing }
+  func storeLandscapeBarSpacing(_ value: Double) { update { $0.landscapeBarSpacing = value } }
 }

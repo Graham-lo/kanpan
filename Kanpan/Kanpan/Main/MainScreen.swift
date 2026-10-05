@@ -1612,7 +1612,7 @@ struct MainScreen: View {
     // 档案到货（访客档案装进来、账号档案读回来、云端推下来、换号、恢复出厂）：
     // 图得按新到货的根宽重新起点。**谁到的货、是不是同一个人**由 `arrival` 说明，
     // `ChartViewport` 据此决定要不要把用户刚捏了一半的那份保下来。
-    store.onAdopt = { prefs, arrival in viewport.adopt(barSpacing: prefs.barSpacing, reason: arrival) }
+    store.onAdopt = { prefs, arrival in viewport.adopt(barSpacing: prefs.barSpacing, landscape: prefs.landscapeBarSpacing, reason: arrival) }
     let feedsToken = AppLifecycle.shared.registerResources(id: "feeds") {
       // 先把后台运行额度要下来，再进后台状态：两处宽限窗口靠它才有 CPU 可跑，
       // 短暂切走再回来就不必重连。

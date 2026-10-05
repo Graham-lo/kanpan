@@ -63,10 +63,13 @@ final class ChartViewport {
   ///
   /// 「向它要起点、把结果交回去」就是这两个方法的全部意思。
   @MainActor protocol Owner: AnyObject {
-    /// 档案里记着的根宽（冷启动读的那一份）。
+    /// 档案里记着的根宽（冷启动读的那一份）。竖屏用。
     var storedBarSpacing: Double { get }
     /// 把根宽落进档案。实现方自己挡住「没真改动」的那些。
     func storeBarSpacing(_ value: Double)
+    /// 横屏那一份（`Prefs.landscapeBarSpacing`）。
+    var storedLandscapeBarSpacing: Double { get }
+    func storeLandscapeBarSpacing(_ value: Double)
   }
 
   /// 这份值往云上走的那一小段。登录时由 `AppAccountBridge` 装进来，没登录就是 `nil`。
@@ -100,8 +103,16 @@ final class ChartViewport {
   /// `Prefs.barSpacing` 是落到盘上的那一份，管的是下次冷启动。
   private(set) var barSpacing: Double
 
-  /// 手势进行中还没落盘的那个根宽。手一抬就清空。
+  /// 横屏那一份（`Prefs.landscapeBarSpacing`）。
+  ///
+  /// 横屏图宽是竖屏的两倍多，两边共用一个根宽的话，在横屏里捏合适了、转回竖屏一屏的根数
+  /// 就跟着翻倍。所以横竖各记各的：横屏（画线台、横过来的全屏图）读写这一份，竖屏读写
+  /// `barSpacing`；转屏时图按另一份重量（`ChartHost` 看 `portrait` 变没变）。
+  private(set) var landscapeBarSpacing: Double
+
+  /// 手势进行中还没落盘的那个根宽（竖屏 / 横屏各一份）。手一抬就清空。
   private var pending: Double?
+  private var pendingLandscape: Double?
 
   /// 档案到货、要让图按新宽度重量一次时 +1。`ChartHost` 只认这个数变没变。
   ///
@@ -113,18 +124,29 @@ final class ChartViewport {
   init(owner: any Owner) {
     self.owner = owner
     self.barSpacing = owner.storedBarSpacing
+    self.landscapeBarSpacing = owner.storedLandscapeBarSpacing
   }
+
+  /// 这个朝向的图该开多宽。
+  func spacing(landscape: Bool) -> Double { landscape ? landscapeBarSpacing : barSpacing }
 
   // ---------------------------------------------------------------- 外面报告发生了什么
 
   /// **用户**正在缩放（`ChartHost` 只把手势来源的视野变化喂进来，一帧一次）。
   ///
   /// 内存立刻认；盘上与云端等手抬起来（`interactionEnded()`），按着不动多久都不提前写。
-  func userIsZooming(to value: Double) {
+  /// `landscape`：这一捏是在横屏图上（写 `landscapeBarSpacing`），还是竖屏（写 `barSpacing`）。
+  func userIsZooming(to value: Double, landscape: Bool = false) {
     let want = Prefs.clampSpacing(value)
-    guard abs(want - barSpacing) > 0.001 else { return }
-    barSpacing = want
-    pending = want
+    if landscape {
+      guard abs(want - landscapeBarSpacing) > 0.001 else { return }
+      landscapeBarSpacing = want
+      pendingLandscape = want
+    } else {
+      guard abs(want - barSpacing) > 0.001 else { return }
+      barSpacing = want
+      pending = want
+    }
   }
 
   /// **手指全部离开画布了。** 落盘与同步就钉在这一刻（规矩 2）。
@@ -149,14 +171,17 @@ final class ChartViewport {
   ///   - `.ownerSwitched` —— 真换了人，作废。
   /// - 没有欠账时以档案为准，并且**让图重新起点**（`adoptToken` +1）：只改内存不改图的话，
   ///   图身上那份开张时的出厂宽度早晚会漏回去（杀法甲）。
-  func adopt(barSpacing value: Double, reason: ChartLayoutArrival) {
-    if pending != nil, reason == .sameProfile {
+  ///
+  /// 横竖两份一起到货（`landscape` 不传就只认竖屏那份、横屏那份不动）。
+  func adopt(barSpacing value: Double, landscape: Double? = nil, reason: ChartLayoutArrival) {
+    if pending != nil || pendingLandscape != nil, reason == .sameProfile {
       settle()                                  // 用户刚做的那一下赢，顺手落盘
       return
     }
     pending = nil
-    let want = Prefs.clampSpacing(value)
-    barSpacing = want
+    pendingLandscape = nil
+    barSpacing = Prefs.clampSpacing(value)
+    if let landscape { landscapeBarSpacing = Prefs.clampSpacing(landscape) }
     adoptToken &+= 1
   }
 
@@ -175,9 +200,9 @@ final class ChartViewport {
   /// 第 3、4 步在没登录时不存在（`sync == nil`），其余一模一样。这就是「登录和本地
   /// 是同一个功能」在代码上的样子：分支只有这一处，而且在这层里面。
   private func settle() {
-    guard let want = pending else { return }
-    pending = nil
-    owner?.storeBarSpacing(want)
+    guard pending != nil || pendingLandscape != nil else { return }
+    if let want = pending { pending = nil; owner?.storeBarSpacing(want) }
+    if let want = pendingLandscape { pendingLandscape = nil; owner?.storeLandscapeBarSpacing(want) }
     guard let sync else { return }
     sync.recordLayout()
     sync.pushLayout()

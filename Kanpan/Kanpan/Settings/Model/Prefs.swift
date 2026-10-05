@@ -72,6 +72,15 @@ struct Prefs: Sendable, Equatable {
   /// → `PrefsStore.storeBarSpacing`），捏的过程中它不动。本程内要「用户此刻捏到多宽」
   /// 请读 `ChartViewport.barSpacing`，那一份手一动就变——用户捏完立刻换周期换品种，靠的是它。
   var barSpacing: Double = AICoinBehavior.initialSpacing
+  /// 横屏（画线台、横过来的全屏图）自己记的根间距（pt）。竖屏仍用 `barSpacing`。
+  ///
+  /// 两边共用一份的时候，横屏图宽是竖屏的两倍多，在横屏里捏一下合适了，转回竖屏一屏的根数
+  /// 就跟着翻了一倍（反过来也一样）。所以横竖各记各的，转屏时各回各的（`ChartViewport`）。
+  ///
+  /// **第一次有这个字段时取当时的 `barSpacing`**：老存档、云端老 body 里没有这个键，读的时候
+  /// 拿同一份里的 `barSpacing` 补上（`PrefsCodec`），之后两份独立。范围与 `barSpacing` 同一个
+  /// （`clampSpacing`，1.6…40）。随账号同步，和 `barSpacing` 同理是「人的习惯」。
+  var landscapeBarSpacing: Double = AICoinBehavior.initialSpacing
   /// 主图上下翻转（双击价格轴）。和根间距同理：是「我习惯怎么看」，不是这个品种的属性。
   /// 原来要先在设置里打开「主轴允许翻转」才认，2026-09-28 起开关收掉、手势直接生效，
   /// 再双击一下就翻回来。

@@ -71,6 +71,7 @@ enum PrefsCodec {
   static func sanitized(_ prefs: Prefs) -> Prefs {
     var p = prefs
     p.barSpacing = Prefs.clampSpacing(p.barSpacing)
+    p.landscapeBarSpacing = Prefs.clampSpacing(p.landscapeBarSpacing)
     p.portraitHeight = Prefs.clampPortraitHeight(p.portraitHeight)
     p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
@@ -139,6 +140,7 @@ extension Prefs: Codable {
     case orderFlowOverrides
     case candleKind
     case barSpacing, mainInverted, subInverted
+    case landscapeBarSpacing
     // `hiddenOutputs`、`rsiUpper`、`rsiLower` 2026-09-28 收掉（收设置项 C 组），老档里的这几个键读时忽略；
     // `indicatorLayouts/<组>` 里嵌着的 `hiddenOutputs` 同样忽略。
     case portraitHeight
@@ -180,6 +182,7 @@ extension Prefs: Codable {
     try c.encode(orderFlow, forKey: .orderFlow)
     try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
     try c.encode(barSpacing, forKey: .barSpacing)
+    try c.encode(landscapeBarSpacing, forKey: .landscapeBarSpacing)
     try c.encode(mainInverted, forKey: .mainInverted)
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
     try c.encode(portraitHeight, forKey: .portraitHeight)
@@ -310,6 +313,9 @@ extension Prefs: Codable {
     // 存档里的根间距同样夹一道：手改过存档、或者以后动了上下限，都不能让图开在
     // 一个画不出来的宽度上。
     if let v = try? c.decode(Double.self, forKey: .barSpacing) { barSpacing = Prefs.clampSpacing(v) }
+    // 横屏那一份：老存档、云端老 body 里没有这个键（或读不成数），就拿同一份里的竖屏根宽补上——
+    // 「第一次有这个字段时取当时的 barSpacing」，之后两份各走各的。
+    landscapeBarSpacing = (try? c.decode(Double.self, forKey: .landscapeBarSpacing)).map(Prefs.clampSpacing) ?? barSpacing
     if let v = bool(.mainInverted) { mainInverted = v }
     if let raw = strs(.subInverted) { subInverted = Set(Prefs.ids(raw, placement: .sub)) }
     if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = Prefs.clampPortraitHeight(v) }
