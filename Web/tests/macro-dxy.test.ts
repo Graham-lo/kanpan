@@ -134,3 +134,11 @@ describe('美元指数 · 图上收掉的指标（偏好不动）', () => {
     expect(indFor(want, 'BTCUSDT')).toBe(want)
   })
 })
+
+describe('美元指数 · 电脑图例不挂「币安」', async () => {
+  const src = (await import('../src/pages/chart.ts?raw')).default as string
+  it('图例副标题：macro 品种只写「指数」，币安品种照旧「币安永续」', () => {
+    expect(src).toContain("${s?.macro ? '' : '币安'}${kindName(s)}")
+    expect(src).not.toContain('· 币安${kindName(s)}`')
+  })
+})

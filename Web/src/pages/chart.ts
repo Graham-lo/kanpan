@@ -72,9 +72,10 @@ const RANGES: [string, string, RangeDays][] = [['1天', '1m', 1], ['5天', '5m',
 function cfg(cell: Cell | undefined): CellCfg { return st.cells[cell ? cell.idx : st.active] || st.cells[0] }
 export const active = (): Cell | undefined => cells[st.active]
 
+/** 图例副标题：美元指数这类自家服务器给的品种（macro）不是币安的，不挂「币安」，只写「指数」 */
 function metaFor(c: CellCfg) {
   const s = sym(c.symbol)
-  return { symbol: c.symbol, iv: IV_MS[c.iv], title: c.symbol, sub: `· ${IV_LABEL[c.iv]} · 币安${kindName(s)}`, dec: s?.dec ?? 2, badge: badge(s) }
+  return { symbol: c.symbol, iv: IV_MS[c.iv], title: c.symbol, sub: `· ${IV_LABEL[c.iv]} · ${s?.macro ? '' : '币安'}${kindName(s)}`, dec: s?.dec ?? 2, badge: badge(s) }
 }
 
 /** 图上画的提醒线：这只品种还在等的价格提醒（画线提醒由画线本身表示） */
