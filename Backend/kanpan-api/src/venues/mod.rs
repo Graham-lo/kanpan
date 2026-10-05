@@ -9,6 +9,10 @@
 //!   （`/v1/market/stream?source=coinbase`）、复盘 worker 用的 K 线与逐笔。
 //! - `binance`：合约公开 REST 原样透传（`/v1/market/raw/fapi/v1/klines?source=binance&…`），
 //!   给网页版的网关线路用——浏览器在国内不开代理连不上 `fapi.binance.com`（2026-10-02）。
+//! - `macro_index`：美元指数（`macro/index/DXY`，2026-10-05）。没有可透传的上游：服务端自己从 CNBC
+//!   采价、存进 `macro_bars`，`/v1/market/raw/{instruments,klines,ticker/24hr}?source=macro` 答成币安的形状。
+//!   K 线要读库，库连接由采集任务放进模块里
+//!   （这两族路由本身不带状态），没起采集的主机上答 503。
 //!
 //! 接第三家：新建 `venues/<id>.rs`，在下面两个分发里各加一行，别处不动
 //! （见 `docs/多交易所-接入指南.md`）。挂在 `/v1/market/` 下而不是 `/market/`：
@@ -19,9 +23,11 @@ use serde_json::json;
 
 pub mod binance;
 pub mod coinbase;
+pub mod macro_index;
 pub mod okx;
 
-/// 两族路由都不读数据库，所以 API 主机与只答持仓量的备用主机挂的是同一份。
+/// 两族路由都不读数据库（美元指数例外：库连接由它的采集任务放进模块，没起采集的备用主机上答 503），
+/// 所以 API 主机与只答持仓量的备用主机挂的是同一份。
 pub fn routes<S:Clone+Send+Sync+'static>()->Router<S> {
  Router::new()
   .route("/v1/market/raw/{*path}",get(raw))
@@ -42,6 +48,7 @@ async fn raw(Path(path):Path<String>,Query(query):Query<Vec<(String,String)>>)->
  match source(&query) {
   Some(coinbase::SOURCE)=>coinbase::raw(&path,&query).await,
   Some(binance::SOURCE)=>binance::raw(&path,&query).await,
+  Some(macro_index::SOURCE)=>macro_index::raw(&path,&query).await,
   _=>unsupported(),
  }
 }

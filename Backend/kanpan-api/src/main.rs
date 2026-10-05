@@ -93,6 +93,8 @@ async fn main()->anyhow::Result<()> {
  supervisor.watch("daily-close",Life::Forever,kanpan_api::sector_history::spawn_daily(s.pool.clone()));
  // 全部 U 本位合约的小时收盘（网页版「指标与叠加」）：整点后扫一遍，只问缺的；启动那一轮就是回填。
  supervisor.watch("hourly-close",Life::Forever,kanpan_api::hourly_close::spawn(s.pool.clone()));
+ // 美元指数：CNBC 采价、写 macro_bars，raw / stream 接口读它（见 venues::macro_index）。
+ supervisor.watch("macro-index",Life::Forever,kanpan_api::venues::macro_index::spawn(s.pool.clone()));
  // 主力订单流的历史：常驻跟踪各家挂单簿、判出来的大单写进库，同一进程回 `/v1/market/orderflow/history`。
  supervisor.watch("orderflow-history",Life::Forever,kanpan_api::orderflow_history::spawn(s.pool.clone()));
  // 大单条件提醒：跟踪器每评估一次簿当场判（`conditions::walls`），触发与刷新在这条任务里。
