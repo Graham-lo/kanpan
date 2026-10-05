@@ -3,13 +3,8 @@
 import { priceText } from './rowText'
 import type { AlertSound } from '../app/prefs'
 
-/** 输入框里的数：去千分位、全角点，不是正数就 null */
-export function parseTarget(text: string): number | null {
-  const s = text.replace(/[,，\s]/g, '').replace(/[。．]/g, '.')
-  if (!/^\d*\.?\d*$/.test(s) || !s || s === '.') return null
-  const n = +s
-  return n > 0 && isFinite(n) ? n : null
-}
+/** 输入框里的数：去千分位、全角点，不是正数就 null（和电脑网页同一份，在 alerts/shape） */
+export { parseTarget } from '../../alerts/shape'
 /** 提示行（照 AlertForm.hintText） */
 export function hintText(target: number | null, price: number | null | undefined, dec?: number): string {
   if (target == null) return '输入一个价格'

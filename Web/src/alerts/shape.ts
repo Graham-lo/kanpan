@@ -247,6 +247,21 @@ export function oiChange(rows: readonly { timestamp: number; sumOpenInterest: st
   if (!before || before.v === 0 || last.v === 0) return null
   return last.v / before.v - 1
 }
+/** 价格输入框里的数（手机网页、电脑网页同一份，照 iOS AlertForm）：去千分位与空白、全角句点当小数点；不是正数就 null */
+export function parseTarget(text: string): number | null {
+  const s = text.replace(/[,，\s]/g, '').replace(/[。．]/g, '.')
+  if (!/^\d*\.?\d*$/.test(s) || !s || s === '.') return null
+  const n = +s
+  return n > 0 && isFinite(n) ? n : null
+}
+/** 百分数输入框（资金费率、持仓量变化）：同上，另认负号（含全角 −／－）与末尾的 %；空的、不是数的给 null（不当 0） */
+export function parsePercent(text: string): number | null {
+  const s = text.replace(/[,，\s%％]/g, '').replace(/[。．]/g, '.').replace(/^[−－]/, '-')
+  if (!/^[-+]?\d*\.?\d*$/.test(s) || !/\d/.test(s)) return null
+  const n = +s
+  return isFinite(n) ? n : null
+}
+
 /** 创建条件提醒时填的百分数在不在服务端收的范围里：持仓量 0.1%–1000%（threshold 0.001–10），资金费率 ±10%（rate ±0.1） */
 export function conditionPercentOK(kind: 'funding' | 'oi', v: number): boolean {
   if (!isFinite(v)) return false

@@ -18,6 +18,7 @@ import {
   activeAlerts, addAlert, alertLevel, checkPrice, cleanWebhook, conditionLabel, conditionPercentOK, deleteAlert, fire, judgeFunding, makeConditionAlert,
   makePriceAlert, oiChange, oiHit, onAlertFired, onAlertsChange, rulePhrase, setQuoteSource, validWebhook, webhookBody, webhookByPage, type Alert, type AlertRule,
 } from './model'
+import { parsePercent, parseTarget } from './shape'
 
 export interface AlertUIHooks {
   /** 打开某只品种（总表里点品种名） */
@@ -139,7 +140,7 @@ export function openCreateAlert(symbol: string, price?: number | null): void {
     if (kind === 'price') {
       v.innerHTML = `<div class="field"><label for="aPrice">价格</label><div class="input-wrap"><input id="aPrice" class="input lg num" inputmode="decimal" value="${p0.toFixed(dec)}"><span class="suffix">USDT</span></div><div class="hint num" id="aHint"></div></div>`
       const inp = $<HTMLInputElement>('#aPrice', d.dlg)
-      const hint = () => { const p = +inp.value; $('#aHint', d.dlg).textContent = !(p > 0) ? '填一个价格' : last == null ? '' : `比现价${p >= last ? '高' : '低'} ${Math.abs((p - last) / last * 100).toFixed(2)}%` }
+      const hint = () => { const p = parseTarget(inp.value); $('#aHint', d.dlg).textContent = p == null ? '填一个价格' : last == null ? '' : `比现价${p >= last ? '高' : '低'} ${Math.abs((p - last) / last * 100).toFixed(2)}%` }
       inp.addEventListener('input', hint); hint(); inp.focus(); inp.select()
     } else if (kind === 'funding') v.innerHTML = `<div class="field"><label>资金费率</label><div style="display:flex;gap:8px"><div class="seg" id="aOp"><button data-op="above" aria-pressed="true">高于</button><button data-op="below" aria-pressed="false">低于</button></div><div class="input-wrap" style="flex:1"><input id="aNum" class="input num" inputmode="decimal" value="0.05"><span class="suffix">%</span></div></div><div class="hint">现在 <span class="num">${s?.fr != null ? (s.fr * 100).toFixed(4) + '%' : '—'}</span> · 结算前 15 分钟判</div></div>`
     else v.innerHTML = `<div class="field"><label>1 小时内持仓量变化超过</label><div class="input-wrap"><input id="aNum" class="input num" inputmode="decimal" value="5"><span class="suffix">%</span></div><div class="hint">增减都算</div></div>`
@@ -164,12 +165,12 @@ export function openCreateAlert(symbol: string, price?: number | null): void {
     const webhook = cleanWebhook(hook.value)
     let a: Alert
     if (kind === 'price') {
-      const inp = $<HTMLInputElement>('#aPrice', d.dlg), p = +inp.value
-      if (!(p > 0)) { inp.focus(); return }
+      const inp = $<HTMLInputElement>('#aPrice', d.dlg), p = parseTarget(inp.value)
+      if (p == null) { inp.focus(); return }
       a = makePriceAlert(symbol, p, last, { dec, webhook })
     } else {
-      const inp = $<HTMLInputElement>('#aNum', d.dlg), v = +inp.value
-      if (!conditionPercentOK(kind, v)) { inp.focus(); toast(kind === 'oi' ? '填 0.1 到 1000 之间的百分数' : '填 −10 到 10 之间的百分数', '', 'info', 2000); return }
+      const inp = $<HTMLInputElement>('#aNum', d.dlg), v = parsePercent(inp.value)
+      if (v == null || !conditionPercentOK(kind, v)) { inp.focus(); toast(kind === 'oi' ? '填 0.1 到 1000 之间的百分数' : '填 −10 到 10 之间的百分数', '', 'info', 2000); return }
       const ratio = String(+(v / 100).toPrecision(8))
       const rule: AlertRule = kind === 'funding'
         ? { type: 'funding', side: ($('[data-op][aria-pressed="true"]', d.dlg)?.dataset.op as 'above' | 'below' | undefined) ?? 'above', rate: ratio }
