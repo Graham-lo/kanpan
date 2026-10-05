@@ -5,7 +5,9 @@ import XCTest
 //
 // 以交易员的身份走一遍：搜「美元」→ 第一行就是「美元指数」→ 点星 → 自选页多出「指数」那一类、
 // 它在里面 → 点开进图 → 顶栏五格都是「—」（指数没有持仓、市值、费率、结算、成交额，也没有估值格）
-// → 15m / 1d 都有 K 线 → 图上点一根，十字线那颗「创建提醒」开出的创建页写的是美元指数。
+// → 头部右侧那块整块不摆（一格都给不出）、成交量副图也不画（指数没有成交量）
+// → 15m / 1d 都有 K 线 → 切到 BTC 那块与成交量原样回来 → 再回美元指数
+// → 图上点一根，十字线那颗「创建提醒」开出的创建页写的是美元指数。
 //
 // 要真网络：美元指数只有 kanpan-api 一个来源（`/v1/market/raw/*?source=macro`、
 // `/v1/market/stream?source=macro`），直连、网关都打它。
@@ -146,30 +148,39 @@ final class DollarIndexUITests: KanpanUICase {
                   "自选行上美元指数没有价格：\(price.label)")
     shot("自选-指数")
 
-    // 4. 从自选点进图：顶栏五格都是「—」，没有估值格。
+    // 4. 从自选点进图：价格照常，头部右侧那块整块不摆（指数一格都给不出），成交量副图不画。
     open.tap()
     XCTAssertTrue(waitUntil(timeout: 30) { self.chartInfo()["symbol"] as? String == self.key },
                   "从自选点美元指数没进它的图：\(chartInfo())")
     let top = app.symbolLabel.label.replacingOccurrences(of: " ", with: "")
     XCTAssertTrue(top.contains("DXY") && !top.contains("/"), "顶栏品种名不是 DXY：\(app.symbolLabel.label)")
-    for id in ["top.openInterest", "top.marketCap", "top.settlement", "top.turnover", "top.funding"] {
-      let cell = app.descendants(matching: .any).matching(identifier: id).firstMatch
-      XCTAssertTrue(cell.waitForExistence(timeout: Self.short), "顶栏没有 \(id)")
-      XCTAssertEqual(cell.label, "—", "\(id) 应是「—」")
-    }
-    XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "top.valuation").firstMatch.exists,
-                   "指数不该有估值那一格")
+    let lastPrice = app.descendants(matching: .any).matching(identifier: "top.lastPrice").firstMatch
+    XCTAssertTrue(waitUntil(timeout: 30) { lastPrice.exists && lastPrice.label.contains(where: \.isNumber) },
+                  "美元指数头部没有最新价：\(lastPrice.label)")
+    assertNoStatsNoVolume("进图")
 
     // 5. 15m、1d 都有 K 线。
     app.tapIntervalChip("15m")
     XCTAssertTrue(waitChart(key, "15m"), "美元指数 15m 没出图：\(chartInfo())")
+    assertNoStatsNoVolume("15m")
     shot("图-15m")
     app.tapIntervalChip("1d")
     XCTAssertTrue(waitChart(key, "1d"), "美元指数 1d 没出图：\(chartInfo())")
     shot("图-1d-MA")
     app.tapIntervalChip("1h")
     XCTAssertTrue(waitChart(key, "1h"), "美元指数 1h 没出图：\(chartInfo())")
+    assertNoStatsNoVolume("1h")
     shot("图-1h-MA")
+
+    // 5b. 切到 BTC：头部那块、成交量副图立刻回来（指标布局跟人走，一个字没动）；再切回来。
+    switchTo("BTC", "binance/usd_m/BTCUSDT")
+    XCTAssertTrue(waitUntil(timeout: 30) { (self.chartInfo()["subs"] as? [String])?.contains("VOL") == true },
+                  "切回 BTC 成交量副图没回来：\(chartInfo()["subs"] ?? "")")
+    XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "top.stats").firstMatch
+                    .waitForExistence(timeout: Self.short), "切回 BTC 头部右侧那块没回来")
+    switchTo("DXY", key)
+    XCTAssertTrue(waitChart(key, "1h"), "切回美元指数 1h 没出图：\(chartInfo())")
+    assertNoStatsNoVolume("切回美元指数")
 
     // 6. 图上点一根 → 十字线「创建提醒」→ 创建页写的是美元指数（DXY · 美元指数 · 指数）。
     XCTAssertTrue(openNewAlertFromChart(), "十字线上的「创建提醒」没开出美元指数的创建页")
@@ -218,6 +229,35 @@ final class DollarIndexUITests: KanpanUICase {
   }
 
   // ------------------------------------------------------------ 零件
+
+  /// 头部右侧那块（仓 / 额 · 市值 / 费率 · 结算 / 估值）整块不在；副图里没有成交量、量差，
+  /// 画出来的各格里也没有成交量那一格。
+  private func assertNoStatsNoVolume(_ step: String) {
+    for id in ["top.stats", "top.openInterest", "top.marketCap", "top.settlement", "top.turnover",
+               "top.funding", "top.valuation"] {
+      XCTAssertFalse(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists,
+                     "\(step)：美元指数头部不该有 \(id)")
+    }
+    XCTAssertTrue(waitUntil(timeout: Self.short) {
+      let subs = self.chartInfo()["subs"] as? [String] ?? ["?"]
+      return !subs.contains("VOL") && !subs.contains("CVD")
+    }, "\(step)：美元指数不该画成交量副图：\(chartInfo()["subs"] ?? "")")
+    let panes = (chartInfo()["panes"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+    XCTAssertFalse(panes.contains("VOL"), "\(step)：副图格子里还有成交量：\(panes)")
+    let overlays = chartInfo()["overlays"] as? [String] ?? []
+    XCTAssertFalse(overlays.contains("VWAP"), "\(step)：美元指数不该画均价线：\(overlays)")
+  }
+
+  /// 顶栏放大镜 → 搜 `query` → 点 `key` 那一行进图。
+  private func switchTo(_ query: String, _ key: String) {
+    XCTAssertTrue(app.openSymbolSearch(), "顶栏放大镜没进搜索页")
+    enter(query, into: app.textFields[Ids.searchQuery])
+    let row = app.buttons["symbols.row." + key]
+    XCTAssertTrue(row.waitForExistence(timeout: 30), "搜「\(query)」没出 \(key) 那一行")
+    row.tap()
+    XCTAssertTrue(waitUntil(timeout: 30) { self.chartInfo()["symbol"] as? String == key },
+                  "点 \(key) 那一行没进它的图：\(chartInfo())")
+  }
 
   private func applySkin(_ skin: String, _ mode: String) {
     openSettingsPage()

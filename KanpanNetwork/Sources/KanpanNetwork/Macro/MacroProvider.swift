@@ -34,7 +34,8 @@ public struct MacroProvider: MarketProvider {
     // 不带 symbol 的 `ticker/24hr` 一次回全部（就一只）。
     hasBulkTickers: true, probesHistoryBoundary: false, snapshotNamespace: nil,
     // 涨跌是服务端按「相对上一交易日收盘」算好的（协议第 4 节），客户端不重算。
-    quoteAssets: [], hasOrderFlow: false, hasSessionChange: true)
+    // 指数没有成交量（服务端 K 线的 volume 恒为 0）：成交量那一类副图与顶栏「额」都不给。
+    quoteAssets: [], hasOrderFlow: false, hasSessionChange: true, hasVolume: false)
 
   public var capabilities: ProviderCapabilities { Self.capabilities }
   /// 服务端不通时品种表用的那一行（离线也能搜、能加自选）。

@@ -100,6 +100,15 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// 值是外面喂进来的（持仓量、多空比、主动买卖比、基差），不是 K 线算出来的。
   public var isExternal: Bool { externalColumns != nil }
 
+  /// 要靠成交量才算得出来（成交量与均量、量差、均价线）。品种没有成交量（美元指数）时
+  /// 这几把画出来只是一条 0 线或者什么都没有，界面上干脆不给。
+  public var needsVolume: Bool {
+    switch self {
+    case .vol, .cvd, .vwap: true
+    default: false
+    }
+  }
+
   /// 每把指标的出厂参数。**客户端只此一份**：偏好的出厂值（`factoryParams`）、
   /// 图表状态的缺省、存档修补（`IndicatorParamRule.sanitize`）、引擎补位
   /// （`normalizedParams`）都从这里取。

@@ -232,7 +232,8 @@ struct MainHeaderView<Card: View>: View {
           forwardEarnings: market.forwardEarnings,
           revenue: market.revenue,
           nextFundingTimeMs: market.displayedNextFundingTime,
-          stale: !market.priceFresh)
+          stale: !market.priceFresh,
+          showsStats: InstrumentSurfaces.showsHeaderStats(capabilities: market.capabilities, asset: market.asset))
           .modifier(HiddenWhileCrosshairReads(readout: readout, context: context))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
@@ -345,13 +346,16 @@ struct MainChartView: View {
         },
         // 读的是 `ChartViewport` 内存里那一份，不是 `prefs.barSpacing`：落盘虽然钉在
         // 手指抬起那一刻，但用户捏完可能下一帧就换品种，那一下必须按刚捏出来的宽度开图。
-        resetSpacing: viewport.barSpacing,
+        //
+        // 横竖各记一份（`Prefs.landscapeBarSpacing`）：横屏图宽是竖屏两倍多，共用一份的话
+        // 横屏里捏一下、转回竖屏一屏的根数就翻倍。
+        resetSpacing: viewport.spacing(landscape: !portrait),
         // 复盘只读这份根宽、不写回去：一进复盘 K 线不该突然变宽变窄，但复盘是在重放
         // 一段历史，它那边怎么拉怎么捏都不该改写用户平时看盘的习惯。
         //
         // **这一路只收用户手上的动作**（`ChartHost.onBarSpacing` ← `ChartView.onUserViewChanged`）。
         // 程序自己摆出来的视野绝不会走到这儿——那正是用户那个 bug 的「杀法甲」。
-        onBarSpacing: { if !reviewChart.active { viewport.userIsZooming(to: $0) } },
+        onBarSpacing: { if !reviewChart.active { viewport.userIsZooming(to: $0, landscape: !portrait) } },
         // 取景时拖图、捏图就是在圈区间（`ReviewChartBridge.followViewport`）：手指一离开就存草稿。
         onInteractionEnded: {
           if !reviewChart.active { viewport.interactionEnded() } else if reviewChart.mode == .capture { review.saveDraft() }

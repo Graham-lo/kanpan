@@ -971,16 +971,18 @@ struct MainScreen: View {
   /// 例外是**整个市场就没有这类数据**（现货：没有持仓量、也没有任何衍生统计）：
   /// 那不是线路暂时给不了，而是永远不会有，挂一格空态只是在报错。这时候这几格
   /// 直接不画，`prefs.subs` 一个字不动——切回永续品种，它们原样回来。
+  /// 没有成交量的品种（美元指数）同一条路：成交量（连均量）、量差、均价线不画。
+  /// 规则在 `InstrumentSurfaces`（纯函数，用例守着）。
   private var visibleSubs: [IndicatorID] {
     if drawingCanvasOnly { return [] }
-    let caps = market.capabilities
-    guard !caps.hasOpenInterest, !caps.hasOpenInterestHistory, !caps.hasDerivativeMetrics else { return prefs.subs }
-    return prefs.subs.filter { !$0.isExternal }
+    return InstrumentSurfaces.subs(prefs.subs, capabilities: market.capabilities)
   }
   private var visibleOverlays: [IndicatorID] {
     if comparing { return [] }
-    if drawingCanvasOnly { return prefs.drawingOverlaysShown ? prefs.overlays : [] }
-    return prefs.overlays
+    if drawingCanvasOnly {
+      return prefs.drawingOverlaysShown ? InstrumentSurfaces.overlays(prefs.overlays, capabilities: market.capabilities) : []
+    }
+    return InstrumentSurfaces.overlays(prefs.overlays, capabilities: market.capabilities)
   }
   /// 图上只调整当前可见副图的顺序，保留没有参与排序的设置。
   /// 横屏画线台不展示副图；网关则保留已选指标并显示空态。

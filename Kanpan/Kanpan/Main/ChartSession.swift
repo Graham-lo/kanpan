@@ -183,7 +183,8 @@ final class ChartSession {
   func crosshairContext(timeZone: TZOffset, enabled: Bool) -> CrosshairContext {
     CrosshairContext(
       seriesSource: { [market] in market.series }, symbol: market.symbol, interval: market.interval,
-      decimals: market.info.priceDecimals, offsetMinutes: timeZone, enabled: enabled)
+      decimals: market.info.priceDecimals, offsetMinutes: timeZone, enabled: enabled,
+      hasVolume: market.capabilities.hasVolume)
   }
 
   /// 行情 + 设置 揉成一份 `ChartState`。**只在 `MainChartView` 的 body 里调**——
@@ -348,7 +349,7 @@ struct LiveCompareObservers: ViewModifier {
         // `spacing` 里。三份对不上，就知道是哪一步把用户的值写掉了。
         Text("layout").font(.system(size: 1)).opacity(0.01)
           .accessibilityIdentifier("layout.diagnostics")
-          .accessibilityValue("stored=\(store.prefs.barSpacing);live=\(viewport.barSpacing);token=\(viewport.adoptToken)")
+          .accessibilityValue("stored=\(store.prefs.barSpacing);live=\(viewport.barSpacing);token=\(viewport.adoptToken);landStored=\(store.prefs.landscapeBarSpacing);landLive=\(viewport.landscapeBarSpacing)")
         // 主力订单流手上这份大单：条数、最早一条的出现时刻、还挂着的条数。用例拿「最早出现」比启动时刻，
         // 早于启动就只能是从服务端历史并进来的（本机日志只记本机看见过的）。
         // 主线程卡顿账（`MainThreadHangLog`）：压测用例前后各读一次，看这一轮卡了几次、最长多久。

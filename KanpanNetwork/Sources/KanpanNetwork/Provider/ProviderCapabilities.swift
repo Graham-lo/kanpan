@@ -63,6 +63,9 @@ public struct ProviderCapabilities: Sendable, Equatable {
   /// 行情帧里的涨跌幅已经是**按交易日**算好的（相对上一交易日收盘，美元指数由服务端算）。
   /// 上层照原样用，不再拿 UTC 0 点那根 K 线的开盘价重算。
   public var hasSessionChange: Bool
+  /// K 线带成交量。没有的（美元指数：一个算出来的指数，谁也没在「成交」它）不给成交量副图、
+  /// 均量、量差、均价线，顶栏「额」那格也给不出；指标布局本身不动，切回有量的品种原样回来。
+  public var hasVolume: Bool
 
   public init(venue: String, market: String, upstream: String? = nil,
               nativeIntervals: Set<Interval>, aggregatedFrom: [Interval: Interval] = [:],
@@ -71,7 +74,8 @@ public struct ProviderCapabilities: Sendable, Equatable {
               openInterestSource: String?, hasMicrostructure: Bool, hasDerivativeMetrics: Bool,
               hasOpenInterestHistory: Bool = false, hasOpenInterestArchive: Bool = false,
               hasBulkTickers: Bool, probesHistoryBoundary: Bool, snapshotNamespace: String? = nil,
-              quoteAssets: [String], hasOrderFlow: Bool = true, hasSessionChange: Bool = false) {
+              quoteAssets: [String], hasOrderFlow: Bool = true, hasSessionChange: Bool = false,
+              hasVolume: Bool = true) {
     self.venue = venue; self.market = market; self.upstream = upstream ?? venue
     self.nativeIntervals = nativeIntervals; self.aggregatedFrom = aggregatedFrom
     self.maxKlines = maxKlines; self.maxTailBars = maxTailBars ?? maxKlines; self.initialKlines = initialKlines
@@ -83,6 +87,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
     self.probesHistoryBoundary = probesHistoryBoundary; self.snapshotNamespace = snapshotNamespace
     self.quoteAssets = quoteAssets; self.hasOrderFlow = hasOrderFlow
     self.hasSessionChange = hasSessionChange
+    self.hasVolume = hasVolume
   }
 
   /// 真正去网上拉哪一档。原生周期就是它自己，聚出来的周期是它的源周期。

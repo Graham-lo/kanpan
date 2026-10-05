@@ -93,11 +93,12 @@ html[data-theme="dark"] .alf-submit:disabled { background: var(--raised2) }
 .al-sub { font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3); padding: var(--s-s) var(--inset-card) var(--s-xxs) }
 
 /* ───────── 顶栏铃铛开的「提醒」表（列表 | 日志） ───────── */
-.alhub-body { display: flex; flex-direction: column; min-height: 100% }
+/* 表体就是滚动容器：不许撑高（min-height 留 0，否则底部「创建提醒」被推出屏外）；底部安全区由 .alhub-foot 自己让 */
+.m-sheet-wrap .alhub-sheet .m-sheet-body.alhub-body { display: flex; flex-direction: column; padding-bottom: 0 }
 .alhub-tabs { position: sticky; top: 0; z-index: 1; background: var(--raised); padding: var(--s-s) 0 }
 .alhub-sheet .alhub-seg { display: flex; width: 100% }
 .alhub-sheet .alhub-seg .m-seg-opt { flex: 1 }
-.alhub-pane { flex: 1 }
+.alhub-pane { flex: 1 0 auto }
 .alhub-pane.all-alerts { padding-top: var(--s-s) }
 .alhub-foot { position: sticky; bottom: 0; background: var(--raised); padding: var(--s-s) 0 calc(var(--s-s) + var(--safe-bottom, 0px)); display: flex; flex-direction: column }
 .alhub-foot[hidden] { display: none }

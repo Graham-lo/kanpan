@@ -53,6 +53,8 @@ struct CrosshairContext {
   /// 「顶部」那档显示模式开着吗。2026-09-28 起 K 线数据位置定死在「顶部」，宿主恒传 `true`；
   /// 留着这个口子是给复盘、预览这类不想要头部读数的宿主。
   var enabled: Bool
+  /// 品种带不带成交量（`ProviderCapabilities.hasVolume`）。没有的（美元指数）读数里不写「量」。
+  var hasVolume = true
 }
 
 /// 头部那几行开高低收。口径和从前的 `MainScreen.topCandleData` 逐字相同。
@@ -66,7 +68,7 @@ struct CrosshairContext {
   return fmtFull(ms: Double(series.time(at: i)), offsetMinutes: context.offsetMinutes)
     + "\n开 " + fmtPrice(series.open[i], decimals: p) + "  高 " + fmtPrice(series.high[i], decimals: p)
     + "\n低 " + fmtPrice(series.low[i], decimals: p) + "  收 " + fmtPrice(series.close[i], decimals: p)
-    + "  量 " + fmtVol(series.volume[i])
+    + (context.hasVolume ? "  量 " + fmtVol(series.volume[i]) : "")
 }
 
 /// 十字线的开高低收那一块。**只有它跟着手指重求值**。

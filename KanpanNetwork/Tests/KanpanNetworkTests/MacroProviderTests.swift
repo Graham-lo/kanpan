@@ -212,6 +212,10 @@ struct MacroRESTTests {
     #expect(c.hasSessionChange)
     #expect(!CoinbaseProvider.capabilities.hasSessionChange && CoinbaseProvider.capabilities.hasOrderFlow)
     #expect(c.openInterestSource == nil)
+    // 指数没有成交量：成交量那一类副图与顶栏「额」都不给。两家交易所照旧有。
+    #expect(!c.hasVolume)
+    #expect(CoinbaseProvider.capabilities.hasVolume)
+    #expect(BinanceProvider.capabilities(.binance).hasVolume && BinanceProvider.capabilities(.okx).hasVolume)
     #expect(VenueRegistry.descriptor(forSymbol: "macro/index/DXY").id == "macro")
     #expect(VenueRegistry.descriptor(forSymbol: "macro/index/DXY").favoriteCategory == "指数")
     #expect(!VenueRegistry.descriptor(forSymbol: "macro/index/DXY").joinsSectors)

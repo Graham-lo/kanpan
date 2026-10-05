@@ -307,6 +307,9 @@ struct PriceRow: View {
   /// 除了灰显，它还会把「额 / 市值 / 费率」几格压成 `—`（审查 B.8）：那几个数
   /// 和价来自同一帧，价已经判定为旧的，它们摆在那儿只会让人当成现在的数。
   var stale = false
+  /// 右侧那块摆不摆。一格都给不出数的品种（美元指数）整块不摆，规则在
+  /// `InstrumentSurfaces.showsHeaderStats`；左边价格区照常，图表把这块高度收回去。
+  var showsStats = true
 
   private var pct: Double? {
     guard let value = ticker?.changePercent, value.isFinite else { return nil }
@@ -342,7 +345,7 @@ struct PriceRow: View {
       .lineLimit(1)
       .fixedSize(horizontal: true, vertical: false)
       Spacer(minLength: Space.l)
-      stats
+      if showsStats { stats }
     }
     // 换品种这一下整行不带任何动画（哪怕外面的事务带着）：旧那只的价当场拿掉，
     // 不留一帧淡出，涨跌与六格也直接换成新那只的数。
