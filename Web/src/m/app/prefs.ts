@@ -98,7 +98,7 @@ export interface Prefs {
   sectorMarket: SectorMarket
   sectorWindow: SectorWindow
   lastDrawTool: string
-  /** iOS 画线条按它挑最常用的几把（每把工具用了几次）；手机网页只随账号带着走、不丢 */
+  /** 画线条按它挑最常用的几把（每把工具用了几次；iOS 竖屏画线条与横屏画线台、手机网页横屏画线台同一张表，m/chart/draw/toolRank.ts） */
   drawToolUsage: Record<string, number>
   /** iOS 横屏画线台里主图指标画不画（手机网页没有画线台，只随账号带着走、不丢） */
   drawingOverlaysShown: boolean

@@ -3,7 +3,9 @@
  * Drawing/DrawingToolPicker.swift、Alerts/LineAlert.swift 的画线提醒胶囊）
  *
  * 横屏的整页：左边一列周期栏（52 宽）｜ 中间一列 [品种胶囊行、选中栏、图、画线条] ｜ 不在画线时右边一列「画线 / 竖屏」。
- * 画线条（46 高、raised 底、顶上一根发丝线）：工具 · 面板上的十二把（横滚）· 撤销（能重做才出重做）· 更多 · 完成。
+ * 画线条（46 高、raised 底、顶上一根发丝线）：工具 · 常用的五把 · 撤销（能重做才出重做）· 更多 · 完成。
+ *   五把按这个人每把工具用了几次排（chart/draw/toolRank.ts，次数表 drawToolUsage 随账号同步、与 iOS 同一张），
+ *   顺序在进画线那一下定好、这一回里不重排；从「工具」面板挑了一把条上没有的，它顶掉最后一格。其余都在「工具」面板里。
  * 选中一条线：图上方多一行选中栏——能设提醒的线左边一颗「跌到 X 叫我」胶囊（点了挂 / 摘画线提醒），右边样式、复制、删除。
  *
  * 线从全 app 共享的那本（m/app/drawings.ts 的 drawingBook）来；增删改、撤销由本自己落盘记账。
@@ -18,6 +20,7 @@ import { batchRoom } from '../../model/sharePreview'
 import type { ChartHandle } from '../../chart'
 import type { DrawingController } from '../../chart/view.drawing'
 import { DrawKind, DRAWING_TEXT_LIMIT, isDrawingKind, type Drawing, type DrawingKind } from '../../chart/draw/drawing'
+import { DOCK_COUNT, countedTool, shownTools, toolHead } from '../../chart/draw/toolRank'
 import { styleOf, styleEquals } from '../../chart/draw/archive'
 import { AlertGeometry, alertLinePrice } from '../../chart/draw/alert'
 import { graphemeCount } from '../../chart/draw/fmt'
@@ -310,11 +313,27 @@ export function createBench(ctx: BenchContext) {
   })
 
   // ---- 画线条
+  // 这一回进画线时的次数表快照、这一回里挑过的工具（最近的在前，已归到面板那一格）。
+  // 点一把就挪位置，手指下一次就点不准了——所以一回里不跟着重排；换账号、云端推来新次数都在下一回生效
+  let sessionUsage: Record<string, number> = {}
+  let sessionPicks: DrawingKind[] = []
+  const dockTools = (): DrawingKind[] => {
+    const base = shownTools(sessionUsage, DOCK_COUNT)
+    return shownTools(sessionUsage, DOCK_COUNT, sessionPicks.find(k => !base.includes(k)))
+  }
+  /** 挑了一把工具：记「上次用的」与这把的次数（同一次落盘、随账号同步），并记进这一回挑过的 */
+  function notePick(k: DrawingKind): void {
+    st.lastDrawTool = k
+    st.drawToolUsage = countedTool(st.drawToolUsage ?? {}, k)
+    save()
+    const head = toolHead(k)
+    if (DrawKind.palette.includes(head)) sessionPicks = [head, ...sessionPicks.filter(x => x !== head)]
+  }
   const renderDock = (): void => {
     const held = c.tool && !DrawKind.palette.includes(c.tool) ? DrawKind.title(c.tool) : null
     dock.innerHTML = `<button type="button" class="cp-dbtn cp-dtools${held ? ' on' : ''}" data-act="tools" aria-label="全部画线工具">${icon('draw', 20)}<span>${esc(held ?? '工具')}</span></button>
       <i class="cp-ddiv"></i>
-      <div class="cp-dscroll">${DrawKind.palette.map(k => {
+      <div class="cp-dscroll">${dockTools().map(k => {
         const on = c.tool === k
         return `<button type="button" class="cp-dbtn${on ? ' on' : ''}" data-kind="${k}" aria-pressed="${on}">${kindGlyph(k, 22)}<span>${esc(DrawKind.title(k))}</span></button>`
       }).join('')}</div>
@@ -343,7 +362,7 @@ export function createBench(ctx: BenchContext) {
     if (c.tool === k) { c.setTool(null); return }
     c.selected = null
     c.setTool(k)
-    if (st.lastDrawTool !== k) { st.lastDrawTool = k; save() }
+    notePick(k)
   }
   function openTools(): void {
     sheet?.close()
@@ -361,8 +380,9 @@ export function createBench(ctx: BenchContext) {
         const k = b.dataset.kind as DrawingKind
         c.selected = null
         c.setTool(k)
-        if (st.lastDrawTool !== k) { st.lastDrawTool = k; save() }
+        notePick(k)
         sheet?.close()
+        render()
       })
     }, { title: '画线', detent: 'large', className: 'cp-sheet', id: 'draw-tools' })
   }
@@ -546,6 +566,7 @@ export function createBench(ctx: BenchContext) {
   function setActive(on: boolean): void {
     if (active === on) return
     active = on
+    if (on) { sessionUsage = { ...(st.drawToolUsage ?? {}) }; sessionPicks = [] }
     if (!on) { sheet?.close(); c.endDrawing(); c.setTool(null); c.selected = null }
     c.editable = on
     c.interactive = on
