@@ -1309,19 +1309,36 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
   let mut sweep=tokio::time::interval_at(tokio::time::Instant::now()+SWEEP,SWEEP);
   // 进程起来一分钟后先清一次，之后每小时一次。
   let mut purge=tokio::time::interval_at(tokio::time::Instant::now()+Duration::from_secs(60),PURGE);
+  // 热力表另起一个每分钟一次的清理：每次只删刚过期的那一分钟（见 `heat::purge`）。删到哪记在库里，重启接着删。
+  let mut heat_purge=tokio::time::interval_at(tokio::time::Instant::now()+Duration::from_secs(90),heat::PURGE_EVERY);
+  heat_purge.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+  let mut heat_floor:Option<Option<i64>>=None;
+  let mut heat_deleted=0u64;
   loop {
    tokio::select! {
     _=sweep.tick()=>registry.sweep(now_ms()),
+    _=heat_purge.tick()=>{
+     let floor=match heat_floor {
+      Some(floor)=>floor,
+      None=>match heat::purged(&pool).await {Ok(floor)=>floor,Err(e)=>{tracing::warn!("Orderflow heat: purge progress unreadable: {e}");continue}},
+     };
+     match heat::purge(&pool,now_ms(),floor).await {
+      Ok((deleted,done))=>{
+       heat_deleted+=deleted;
+       heat_floor=Some(Some(done));
+       if let Err(e)=heat::set_purged(&pool,done).await {tracing::warn!("Orderflow heat: purge progress not saved: {e}");}
+      },
+      Err(e)=>tracing::warn!("Orderflow heat: purge failed: {e}"),
+     }
+    },
     _=purge.tick()=>{
      let tracked=registry.tracked();
      match store::purge(&pool,now_ms(),&tracked).await {
       Ok((deleted,closed))=>tracing::info!("Orderflow history: purge deleted {deleted}, closed {closed}; table {} bytes",store::size(&pool).await.unwrap_or(-1)),
       Err(e)=>tracing::warn!("Orderflow history: purge failed: {e}"),
      }
-     match heat::purge(&pool,now_ms()).await {
-      Ok(deleted)=>tracing::info!("Orderflow heat: purge deleted {deleted}; table {} bytes",heat::size(&pool).await.unwrap_or(-1)),
-      Err(e)=>tracing::warn!("Orderflow heat: purge failed: {e}"),
-     }
+     // 热力每分钟删，日志仍每小时报一次这一小时一共删了多少。
+     tracing::info!("Orderflow heat: purge deleted {}; table {} bytes",std::mem::take(&mut heat_deleted),heat::size(&pool).await.unwrap_or(-1));
      match flow::purge(&pool,now_ms()).await {
       Ok(deleted)=>tracing::info!("Orderflow flow: purge deleted {deleted}; table {} bytes",flow::size(&pool).await.unwrap_or(-1)),
       Err(e)=>tracing::warn!("Orderflow flow: purge failed: {e}"),

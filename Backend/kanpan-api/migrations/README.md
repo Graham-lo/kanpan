@@ -187,3 +187,24 @@ SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexr
  WHERE c.relname='market_features_census';                                                         -- 一行、t
 SELECT egress_id, market, used, reserved FROM provider_budgets;                                                -- 有 reserved 列
 ```
+
+## 0047–0050 上线（2026-10-06 慢查询第二轮）
+
+四条都跟着 `ops/install.py` 的 `migrate` 走，不需要手工 SQL、不需要停服务：
+
+- **0047**：新建 `orderflow_purged(target, before_ms)`，放进 `heat` 一行：此刻 − 3 天 − 70 分钟。新二进制的热力清理
+  每分钟从这里接着删一分钟（`src/orderflow_history/heat.rs` `purge`）；旧二进制不认识它，无害。
+- **0048**（`-- no-transaction`）：`orderflow_orders_end_covering`，(base,end_ms,first_seen_ms) 再 INCLUDE 读出去的列，
+  历史读走仅索引扫描。线上 160 万行建约一两分钟、三百来 MB，不挡读写。
+- **0049**（`-- no-transaction`）：删掉被 0048 替代的 `orderflow_orders_end_first_seen`。
+- **0050**：`orderflow_orders` 的 `autovacuum_vacuum_insert_scale_factor=0.01`、`market_features` 的 0.02、`orderflow_heat` 的
+  `autovacuum_vacuum_scale_factor=0.05`。只改存储参数，不挡读写。
+
+只读核对：
+
+```sql
+SELECT * FROM orderflow_purged;                                                       -- heat 一行，重启后每分钟往前走
+SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
+ WHERE c.relname LIKE 'orderflow_orders_end%';                                         -- 只剩 orderflow_orders_end_covering、t
+SELECT relname, reloptions FROM pg_class WHERE relname IN ('orderflow_orders','orderflow_heat','market_features');
+```

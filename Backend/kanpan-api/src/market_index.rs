@@ -76,9 +76,9 @@ const RERANK: Duration = Duration::from_secs(6 * 3600);
 const ROUND: usize = 60;
 /// 旧窗口多久删一次。
 const PRUNE_EVERY: Duration = Duration::from_secs(3600);
-/// 进程里记的「每段已有几个窗口」多久对一次库：写进去的每段自己加上，删旧窗口、重排品种之后也重数。
-/// 原来每轮（没活时每分钟）都数一遍，一次 5–7 秒整表扫（2026-09-30 压测 C 路）。
-const RECOUNT: Duration = Duration::from_secs(3600);
+/// `census` 一条语句数几只品种：一只 1h 一年约一万个窗口，八只一条，仅索引扫描几万项，冷盘也在两三百毫秒内。
+/// 原来一个周期四十只一条：1h 那条 39 万项、回表 5 万次，冷时 1.2–1.5 秒（2026-10-06 慢查询，每小时两条）。
+const CENSUS_SYMBOLS: usize = 8;
 
 /// 一个周期的索引形状。
 #[derive(Clone, Copy, Debug)]
@@ -333,6 +333,8 @@ async fn budget_room(pool: &PgPool) -> sqlx::Result<bool> {
 }
 
 /// 每只品种每个周期、每段库里已有几个窗口（只数计划里的长度、深度以内的）。
+/// 每个周期按 `CENSUS_SYMBOLS` 只一条分开数；段号用整数除（`start_at` 都是正的毫秒数，和 `div_euclid` 一样），
+/// 原来的 `div(bigint,bigint)` 落到 numeric 除法上，几十万行每行一次。
 async fn census(pool: &PgPool, symbols: &[(String, i64)], now_ms: i64) -> sqlx::Result<HashMap<(String, usize), HashMap<i64, usize>>> {
     let names: Vec<String> = symbols.iter().map(|s| s.0.clone()).collect();
     let mut out = HashMap::new();
@@ -340,20 +342,22 @@ async fn census(pool: &PgPool, symbols: &[(String, i64)], now_ms: i64) -> sqlx::
         let step = plan.step_ms();
         let lengths: Vec<i32> = plan.lengths.iter().map(|&l| l as i32).collect();
         let since = now_ms - DAYS * 86_400_000;
-        let rows: Vec<(String, i64, i64)> = sqlx::query_as("SELECT symbol,div(start_at,$1)::bigint AS chunk,count(*) FROM market_features WHERE market=$2 AND timeframe=$3 AND source=$4 AND render_version=$5 AND model_id=$6 AND symbol=ANY($7) AND bars_count=ANY($8) AND start_at>=$9 GROUP BY 1,2")
-            .bind(step * CHUNK)
-            .bind(MARKET)
-            .bind(plan.interval)
-            .bind(SOURCE)
-            .bind(RENDER_VERSION)
-            .bind(chart_match::MODEL)
-            .bind(&names)
-            .bind(&lengths)
-            .bind(since)
-            .fetch_all(pool)
-            .await?;
-        for (symbol, chunk, count) in rows {
-            out.entry((symbol, index)).or_insert_with(HashMap::new).insert(chunk, count as usize);
+        for names in names.chunks(CENSUS_SYMBOLS) {
+            let rows: Vec<(String, i64, i64)> = sqlx::query_as("SELECT symbol,start_at/$1 AS chunk,count(*) FROM market_features WHERE market=$2 AND timeframe=$3 AND source=$4 AND render_version=$5 AND model_id=$6 AND symbol=ANY($7) AND bars_count=ANY($8) AND start_at>=$9 GROUP BY 1,2")
+                .bind(step * CHUNK)
+                .bind(MARKET)
+                .bind(plan.interval)
+                .bind(SOURCE)
+                .bind(RENDER_VERSION)
+                .bind(chart_match::MODEL)
+                .bind(names)
+                .bind(&lengths)
+                .bind(since.max(0))
+                .fetch_all(pool)
+                .await?;
+            for (symbol, chunk, count) in rows {
+                out.entry((symbol, index)).or_insert_with(HashMap::new).insert(chunk, count as usize);
+            }
         }
     }
     Ok(out)
@@ -416,9 +420,13 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
     let mut symbols: Vec<(String, i64)> = Vec::new();
     let mut ranked_at: Option<tokio::time::Instant> = None;
     let mut pruned_at: Option<tokio::time::Instant> = None;
-    // 每段已有几个窗口：进程里记一份，写进去的自己加，`RECOUNT` 一次或删过旧窗口、换过品种表就重数。
+    // 每段已有几个窗口：进程里记一份，写进去的自己加（`credit`），只在起来时和换过品种表（`RERANK`，6 小时）之后对一次库。
+    // 原来每小时、删过旧窗口之后也重数：写这张表的只有这个循环（和关掉它才跑的 `import_public_history`），
+    // 写进去的行数 `credit` 已经记准；删旧窗口只删 `end_at` 早于「此刻 − 深度 − 1 天」的，数的是 `start_at` 在
+    // 「此刻 − 深度」以后的，两批不相交，删完数出来一样。深度边上那一段进程里的数会比库里多几个（窗口滑出了深度），
+    // 该有的数（`expected`）也按同一个起点在减，只会让那一段不再去取，和重数之后一样。
     let mut have: HashMap<(String, usize), HashMap<i64, usize>> = HashMap::new();
-    let mut counted_at: Option<tokio::time::Instant> = None;
+    let mut counted = false;
     let mut tried: HashMap<(String, usize, i64), usize> = HashMap::new();
     // (这是第几分钟, 这一分钟索引自己花了多少权重)
     let mut spent: (i64, i32) = (0, 0);
@@ -429,7 +437,7 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
                     tracing::info!("Market index: tracking {} symbols ({}…)", list.len(), list.iter().take(5).map(|s| s.0.as_str()).collect::<Vec<_>>().join(","));
                     symbols = list;
                     ranked_at = Some(tokio::time::Instant::now());
-                    counted_at = None;
+                    counted = false;
                 }
                 _ => {
                     if symbols.is_empty() {
@@ -445,18 +453,17 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
                 Ok(n) => {
                     if n > 0 {
                         tracing::info!("Market index: pruned {n} windows older than {DAYS} days");
-                        counted_at = None;
                     }
                     pruned_at = Some(tokio::time::Instant::now());
                 }
                 Err(e) => tracing::warn!("Market index: prune failed ({e})"),
             }
         }
-        if counted_at.is_none_or(|t| t.elapsed() >= RECOUNT) {
+        if !counted {
             match census(&s.pool, &symbols, now_ms).await {
                 Ok(counts) => {
                     have = counts;
-                    counted_at = Some(tokio::time::Instant::now());
+                    counted = true;
                 }
                 Err(e) => {
                     tracing::warn!("Market index: census failed ({e})");
@@ -705,5 +712,69 @@ mod tests {
         let one_hour = jobs.iter().filter(|j| PLANS[j.plan].interval == "1h").count();
         assert_eq!(one_hour, 1, "20 天的 1h 是 480 根，一段就装下");
         assert!(jobs.iter().all(|j| PLANS[j.plan].interval != "1d"), "20 根日线凑不出 32 根的窗口");
+    }
+
+    async fn isolated_pool() -> Option<PgPool> {
+        let (Ok(admin), Ok(url), Ok(role)) = (std::env::var("KANPAN_TEST_ADMIN_URL"), std::env::var("KANPAN_TEST_DATABASE_URL"), std::env::var("KANPAN_TEST_ROLE")) else {
+            eprintln!("Skipping the market_index database assertions: run ops/test.py for an isolated PostgreSQL");
+            return None;
+        };
+        assert!(role.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        for target in [&admin, &url] {
+            assert!(target.contains("@127.0.0.1:") || target.contains("@localhost:"), "tests must never target a database off this machine");
+        }
+        let admin = PgPool::connect(&admin).await.unwrap();
+        sqlx::migrate!().run(&admin).await.unwrap();
+        for sql in [format!("GRANT USAGE ON SCHEMA public TO {role}"), format!("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO {role}")] {
+            sqlx::query(&sql).execute(&admin).await.unwrap();
+        }
+        Some(PgPool::connect(&url).await.unwrap())
+    }
+
+    /// census 按 `CENSUS_SYMBOLS` 只一条分开数、段号改成整数除之后，数出来的和写进去时 `credit` 记的一模一样：
+    /// 品种比一批多（跨两条语句），历史跨两段，另有一只不在品种表里的、一段深度以外的不该被数进来。
+    #[tokio::test]
+    async fn census_in_batches_counts_exactly_what_was_written() {
+        let Some(pool) = isolated_pool().await else { return };
+        sqlx::query("DELETE FROM market_features WHERE symbol LIKE 'ZZCEN%'").execute(&pool).await.unwrap();
+        let index = PLANS.iter().position(|p| p.interval == "1h").unwrap();
+        let plan = PLANS[index];
+        let interval = Interval::exact(plan.interval).unwrap();
+        let now_ms = Utc::now().timestamp_millis();
+        let wavy = |first: DateTime<Utc>, count: usize, seed: f64| -> Vec<Bar> {
+            (0..count)
+                .map(|n| {
+                    let start = interval.add_bars(first, n as i64);
+                    let mid = 100.0 + 10.0 * ((n as f64) * 0.37 + seed).sin() + (n as f64) * 0.01;
+                    let fmt = |v: f64| format!("{v:.4}");
+                    Bar { start, end: interval.add_bars(start, 1), open: fmt(mid - 0.5), high: fmt(mid + 1.5), low: fmt(mid - 1.5), close: fmt(mid + 0.5), volume: None }
+                })
+                .collect()
+        };
+        let names: Vec<String> = (0..CENSUS_SYMBOLS + 3).map(|i| format!("ZZCEN{i:02}USDT")).collect();
+        let symbols: Vec<(String, i64)> = names.iter().map(|n| (n.clone(), 0)).collect();
+        let mut credited: HashMap<(String, usize), HashMap<i64, usize>> = HashMap::new();
+        // 最近 2000 根，至少跨两段（一段 928 根）。
+        let first = interval.floor(DateTime::from_timestamp_millis(now_ms - 2_000 * 3_600_000).unwrap());
+        for (k, name) in names.iter().enumerate() {
+            let bars = wavy(first, 2_000, k as f64);
+            for &len in plan.lengths {
+                let windows = aligned_windows(&bars, interval, len, plan.stride as usize);
+                let written = insert_windows(&pool, SOURCE, name, plan.interval, &windows).await.unwrap();
+                assert_eq!(written, windows.len(), "{name} {len}");
+                for w in &windows {
+                    *credited.entry((name.clone(), index)).or_default().entry(bar_number(interval, w[0].start).div_euclid(CHUNK)).or_default() += 1;
+                }
+            }
+        }
+        // 深度以外的（起点早于此刻 − 365 天）和品种表以外的，都不数。
+        let ancient = interval.floor(DateTime::from_timestamp_millis(now_ms - (DAYS + 2) * 86_400_000).unwrap());
+        let old = wavy(ancient, 100, 0.5);
+        insert_windows(&pool, SOURCE, &names[0], plan.interval, &aligned_windows(&old, interval, 64, plan.stride as usize)).await.unwrap();
+        insert_windows(&pool, SOURCE, "ZZCENOUTUSDT", plan.interval, &aligned_windows(&wavy(first, 200, 0.1), interval, 64, plan.stride as usize)).await.unwrap();
+        let counted = census(&pool, &symbols, now_ms).await.unwrap();
+        assert_eq!(counted, credited);
+        assert!(credited.len() == names.len() && credited.values().all(|chunks| chunks.len() >= 2), "每只都跨两段以上");
+        sqlx::query("DELETE FROM market_features WHERE symbol LIKE 'ZZCEN%'").execute(&pool).await.unwrap();
     }
 }

@@ -71,8 +71,15 @@ const QUEUE:usize=1024;
 const INSERT_ROWS:usize=1_000;
 /// 写库任务一次最多攒多少行。
 const PENDING_CAP:usize=20_000;
-/// 清理一批删多少行（一行几 KB）。
+/// 清理一批删多少行（一行几 KB）：只用在不知道上次删到哪的那一遍（`delete_before`）。
 const DELETE_BATCH:i64=5_000;
+/// 原始快照的清理每分钟一次（`PURGE_EVERY`），一条语句删一截这么宽、所有 base 一起删：一分钟的快照
+/// 线上约 5.6 千行、落在五百来页上（2026-10-06，157 只在跟），一条 0.2–0.5 秒。
+pub(super) const PURGE_EVERY:Duration=Duration::from_secs(60);
+const PURGE_SLICE_MS:i64=60_000;
+/// 段的清理一条语句删多少个段宽（每只 base 每个步长至多这么多行）。
+const ROLLUP_PURGE_SLICES:i64=60;
+const ROLLUP_PURGE_SLACK_MS:i64=10*60_000;
 /// 体积闸门：表（含索引）超过这么大，按时间往前删到估出来的实际占用低于目标。
 const GATE_BYTES:f64=36.0*1024.0*1024.0*1024.0;
 const GATE_TARGET:f64=32.0*1024.0*1024.0*1024.0;
@@ -377,16 +384,28 @@ fn pieces(lo:i64,hi:i64,width:i64,covered:&[Option<i64>;3])->(Vec<(i64,i64,i64)>
  (rolled,raw)
 }
 
-/// 段的清理：和原始快照同一个截止时刻，按分区逐张删。
-async fn delete_rollups_before(pool:&PgPool,cutoff:i64)->sqlx::Result<u64> {
+/// 段的清理：和原始快照同一个截止时刻，按分区逐张删。`floor` 是上一次删到的截止时刻（`None` = 不知道）：
+/// 知道就只删 [floor − 段宽 − `ROLLUP_PURGE_SLACK_MS`, cutoff) 这一截——并段最早从「它那一轮的此刻 − 保留期」往下取整到段宽写起，
+/// 那一轮可能比这次清理早开始（一条并段语句最长 2 分钟），所以下沿再让出十分钟；不知道才退回不设下限、按批删。
+async fn delete_rollups_before(pool:&PgPool,floor:Option<i64>,cutoff:i64)->sqlx::Result<u64> {
  let mut deleted=0;
  for w in ROLLUPS {
   let table=rollup_table(w);
-  loop {
-   let n=sqlx::query(&format!("DELETE FROM {table} WHERE ctid=ANY(ARRAY(SELECT ctid FROM {table} WHERE width_ms={w} AND bucket_ms<$1 LIMIT $2))"))
-    .bind(cutoff).bind(DELETE_BATCH).execute(pool).await?.rows_affected();
-   deleted+=n;
-   if n<DELETE_BATCH as u64 {break}
+  let Some(floor)=floor else {
+   loop {
+    let n=sqlx::query(&format!("DELETE FROM {table} WHERE ctid=ANY(ARRAY(SELECT ctid FROM {table} WHERE width_ms={w} AND bucket_ms<$1 LIMIT $2))"))
+     .bind(cutoff).bind(DELETE_BATCH).execute(pool).await?.rows_affected();
+    deleted+=n;
+    if n<DELETE_BATCH as u64 {break}
+   }
+   continue
+  };
+  let mut a=floor-w-ROLLUP_PURGE_SLACK_MS;
+  while a<cutoff {
+   let b=(a+ROLLUP_PURGE_SLICES*w).min(cutoff);
+   deleted+=sqlx::query(&format!("DELETE FROM {table} WHERE width_ms={w} AND bucket_ms>=$1 AND bucket_ms<$2"))
+    .bind(a).bind(b).execute(pool).await?.rows_affected();
+   a=b;
   }
  }
  Ok(deleted)
@@ -394,6 +413,12 @@ async fn delete_rollups_before(pool:&PgPool,cutoff:i64)->sqlx::Result<u64> {
 
 // ------------------------------------------------------------------ 清理
 
+/// 不知道上次删到哪时的删法：逐只 base、不设下限、按批删。
+///
+/// 只在没有记下进度时用（新库、进度行被删）。原来每小时都这样删：`bucket_ms < 截止` 没有下限，
+/// 索引从这只 base 最旧的一头走起，前几个小时删掉、还没被 VACUUM 收走的死索引项每一条都要回表确认
+/// （位图扫描不会给死项打标记，下一次照样再走一遍），离上次 VACUUM 越久越慢——
+/// 2026-10-06 线上 LTC 一条选 3668 行要走 2.4 万个索引项、读 6 千页，1.7 秒；一次清理 27 条慢语句。
 async fn delete_before(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u64> {
  let mut deleted=0;
  loop {
@@ -404,34 +429,67 @@ async fn delete_before(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u64> {
  }
 }
 
+/// 删 [floor, cutoff) 的原始快照：所有 base 一条语句、一截 `PURGE_SLICE_MS`。
+/// 有下沿，索引只走这一截里的项：上一次删掉的死项全在下沿以下，碰都不碰。
+/// `floor` 是 `None`（不知道上次删到哪）或者落后得比保留期还多（不像是真的进度），退回 `delete_before`。
+async fn delete_span(pool:&PgPool,bases:&[String],floor:Option<i64>,cutoff:i64)->sqlx::Result<u64> {
+ let mut deleted=0;
+ match floor.filter(|&f|cutoff-f<=store::RETENTION_MS) {
+  None=>for base in bases {deleted+=delete_before(pool,base,cutoff).await?;},
+  Some(mut a)=>while a<cutoff {
+   let b=(a+PURGE_SLICE_MS).min(cutoff);
+   deleted+=sqlx::query("DELETE FROM orderflow_heat WHERE base=ANY($1) AND bucket_ms>=$2 AND bucket_ms<$3")
+    .bind(bases).bind(a).bind(b).execute(pool).await?.rows_affected();
+   a=b;
+  },
+ }
+ Ok(deleted)
+}
+
+/// 清理删到哪了（`orderflow_purged` 的 `heat` 那一行，迁移见 0047）：这个时刻以前的原始快照与段都已经删掉。
+/// 进程重启接着用，不必回头不设下限地再走一遍。
+pub(super) async fn purged(pool:&PgPool)->sqlx::Result<Option<i64>> {
+ sqlx::query_scalar("SELECT before_ms FROM orderflow_purged WHERE target='heat'").fetch_optional(pool).await
+}
+
+pub(super) async fn set_purged(pool:&PgPool,before:i64)->sqlx::Result<()> {
+ sqlx::query("INSERT INTO orderflow_purged(target,before_ms) VALUES('heat',$1) ON CONFLICT(target) DO UPDATE SET before_ms=EXCLUDED.before_ms")
+  .bind(before).execute(pool).await.map(|_|())
+}
+
 /// 表（含索引）此刻多大。
 pub(super) async fn size(pool:&PgPool)->sqlx::Result<i64> {
  sqlx::query_scalar("SELECT pg_total_relation_size('orderflow_heat')").fetch_one(pool).await
 }
 
-/// 每小时一次：删 3 天以前的（预聚合的段同一个截止时刻一起删，返回两边合计删了几行）；表超过 `GATE_BYTES` 时按「行数 × 最近一行的平均大小」估实际占用，
+/// 每分钟一次：删 3 天以前的（预聚合的段同一个截止时刻一起删）；`floor` 是上一次删到的截止时刻（见 `purged`），
+/// 返回（两边合计删了几行，这一次删到的截止时刻——下一次的 `floor`）。表超过 `GATE_BYTES` 时按「行数 × 最近一行的平均大小」估实际占用，
 /// 超过 `GATE_TARGET` 就把截止时刻往后挪（每次 6 小时）接着删。删掉的空间留给以后的插入用，文件不缩，所以不能直接拿文件大小判断。
-pub(super) async fn purge(pool:&PgPool,now:i64)->sqlx::Result<u64> {
+///
+/// 原来每小时一次、逐只 base 不设下限地删（见 `delete_before`）：一小时攒下 30 多万行，每批都要先走一遍前几次删掉的死索引项，
+/// 2026-10-06 线上一次清理 2–27 条 1–2.3 秒的慢语句、而且越攒越多。现在每分钟只删刚过期的那一分钟（约 5.6 千行、一条语句）。
+pub(super) async fn purge(pool:&PgPool,now:i64,floor:Option<i64>)->sqlx::Result<(u64,i64)> {
  let bases=store::bases(pool).await?;
- let mut deleted=0;
- for base in &bases {deleted+=delete_before(pool,base,now-store::RETENTION_MS).await?;}
+ let mut cutoff=now-store::RETENTION_MS;
+ // 进度不会往回退：闸门挪过的截止时刻比保留期还靠后。
+ if let Some(f)=floor {cutoff=cutoff.max(f);}
+ let mut deleted=delete_span(pool,&bases,floor,cutoff).await?;
+ let mut done=cutoff;
  if size(pool).await? as f64>GATE_BYTES {
   let tuples:f32=sqlx::query_scalar("SELECT reltuples FROM pg_class WHERE oid='orderflow_heat'::regclass").fetch_one(pool).await?;
   let average:Option<f64>=sqlx::query_scalar("SELECT avg(pg_column_size(h.*))::float8 FROM orderflow_heat h WHERE base=ANY($1) AND bucket_ms>=$2")
    .bind(&bases).bind(now-60_000).fetch_one(pool).await?;
   let per_row=average.unwrap_or(2_000.0)+50.0;
   let mut rows=(tuples.max(0.0) as f64)-deleted as f64;
-  let mut cutoff=now-store::RETENTION_MS;
-  while rows*per_row>GATE_TARGET&&cutoff<now-store::DAY_MS/4 {
-   cutoff+=store::DAY_MS/4;
-   for base in &bases {let n=delete_before(pool,base,cutoff).await?;deleted+=n;rows-=n as f64;}
+  while rows*per_row>GATE_TARGET&&done<now-store::DAY_MS/4 {
+   let next=done+store::DAY_MS/4;
+   let n=delete_span(pool,&bases,Some(done),next).await?;
+   deleted+=n;rows-=n as f64;done=next;
   }
-  tracing::warn!("Orderflow heat: size gate trimmed to bucket_ms >= {cutoff}");
-  deleted+=delete_rollups_before(pool,cutoff).await?;
-  return Ok(deleted)
+  if done>cutoff {tracing::warn!("Orderflow heat: size gate trimmed to bucket_ms >= {done}");}
  }
- deleted+=delete_rollups_before(pool,now-store::RETENTION_MS).await?;
- Ok(deleted)
+ deleted+=delete_rollups_before(pool,floor,done).await?;
+ Ok((deleted,done))
 }
 
 // ------------------------------------------------------------------ 接口
@@ -842,13 +900,32 @@ mod tests {
   assert_eq!((bucket_ms,rows.len()),(5_000,4));
   // 这一段没有快照：空行，步长取客户端的与跟踪器此刻的较大者。
   assert_eq!(read(&pool,base,0,1_000,Some(5.0),Some(100.0),MAX_ROWS,None).await.unwrap(),(100.0,BUCKET_MS,vec![]));
-  // 清理按 orderflow_bases 逐只走：还没登记的 base 不动（起跟时 start 写库失败的情形）……
-  assert_eq!(purge(&pool,now).await.unwrap(),0);
+  // 清理按 orderflow_bases 走：还没登记的 base 不动（起跟时 start 写库失败的情形）……
+  let cutoff=now-store::RETENTION_MS;
+  assert_eq!(purge(&pool,now,None).await.unwrap(),(0,cutoff));
   // ……跟踪器每分钟报活时补上这一行，下一次清理就收得到：3 天以前的删掉，其余留着。
+  // 记着上次删到哪时只删 [上次, 这次) 这一截：比上次还早的（照理早删掉了）不碰——
+  let ancient=cutoff-10*60_000;
+  insert(&pool,&[band("binance",ancient,1.0)]).await.unwrap();
   store::alive(&pool,base,now).await.unwrap();
-  assert_eq!(purge(&pool,now).await.unwrap(),1);
-  let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
-  assert_eq!(left,3);
+  assert_eq!(purge(&pool,now,Some(cutoff-60_000)).await.unwrap(),(1,cutoff));
+  let count=||sqlx::query_scalar::<_,i64>("SELECT count(*) FROM orderflow_heat WHERE base=$1").bind(base).fetch_one(&pool);
+  assert_eq!(count().await.unwrap(),4);
+  // ……一分钟后再删，下沿接着上次的截止时刻、什么都不剩可删；不知道上次删到哪才不设下限，连更早的一起删。
+  assert_eq!(purge(&pool,now+60_000,Some(cutoff)).await.unwrap(),(0,cutoff+60_000));
+  assert_eq!(purge(&pool,now,None).await.unwrap(),(1,cutoff));
+  assert_eq!(count().await.unwrap(),3);
+  // 进度落后得比保留期还多不像真的，同样退回不设下限；进度不往回退（闸门挪过的截止时刻比此刻 − 保留期还靠后时）。
+  insert(&pool,&[band("binance",ancient,1.0)]).await.unwrap();
+  assert_eq!(purge(&pool,now,Some(cutoff-store::RETENTION_MS-1)).await.unwrap(),(1,cutoff));
+  assert_eq!(purge(&pool,now,Some(cutoff+5_000)).await.unwrap(),(0,cutoff+5_000));
+  assert_eq!(count().await.unwrap(),3);
+  // 进度存在库里，重启接着用。
+  sqlx::query("DELETE FROM orderflow_purged WHERE target='heat'").execute(&pool).await.unwrap();
+  assert_eq!(purged(&pool).await.unwrap(),None);
+  set_purged(&pool,cutoff).await.unwrap();
+  set_purged(&pool,cutoff+60_000).await.unwrap();
+  assert_eq!(purged(&pool).await.unwrap(),Some(cutoff+60_000));
   sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
   sqlx::query("DELETE FROM orderflow_bases WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
@@ -1090,8 +1167,8 @@ mod tests {
   // 价格范围照样只留范围里的桶。
   let (_,_,narrow)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(Scope{prices:Some((60_100.0,60_150.0)),hint:900_000})).await.unwrap();
   assert!(!narrow.is_empty()&&narrow.iter().all(|r|r.1==60_100.0));
-  // 清理：段和原始快照同一个截止时刻删。
-  purge(&pool,now+store::RETENTION_MS+1).await.unwrap();
+  // 清理：段和原始快照同一个截止时刻删；记着进度时只删进度以来的一截（下沿让出段宽与十分钟，并段可能落在进度前一点）。
+  purge(&pool,now+store::RETENTION_MS+1,Some(from)).await.unwrap();
   let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat_rollup WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
   assert_eq!(left,0);
   wipe().await;

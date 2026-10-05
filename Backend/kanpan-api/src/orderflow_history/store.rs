@@ -224,7 +224,7 @@ pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:
  Ok((n,more))
 }
 
-/// `range_each` 的查询：$1 base、$2 from、$3 to、$4 已结束单的条数上限、$5 最短寿命。结束的两路都要走得上 `orderflow_orders_end`（测试里 EXPLAIN 核对）。
+/// `range_each` 的查询：$1 base、$2 from、$3 to、$4 已结束单的条数上限、$5 最短寿命。结束的两路都走 `orderflow_orders_end_covering` 的仅索引扫描（0048，测试里 EXPLAIN 核对）。
 /// 2026-09-29 起上限只管已结束的单：挂着的（`to` 之前出现的）一律全回，不占名额——翻页只翻已结束的。
 /// 已结束的多取一条（`LIMIT $4 + 1`），每行带着这次取到几条（`ended`，挂着的为 NULL），超了上限就是还有下一页。
 pub(super) fn range_sql()->String {
@@ -660,8 +660,10 @@ pub(super) mod tests {
  /// 三天量级的数据上读历史（2026-10-05 线上慢查询）：「终点时还挂着、之后才结束」那一路原来走 (base,first_seen_ms)，
  /// first_seen_ms ≤ 终点就是这只 base 三天里的每一单，逐行回表再按 end_ms 滤光——终点是此刻时一行不剩，ETH 一次 4.8 秒。
  /// 0044 起两路都走 (base,end_ms,first_seen_ms)：两个条件都在索引项上判，回表的只有真要回的行。
+ /// 0048 起这条索引把读出去的列都 INCLUDE 进去：一只 base 的单在堆里和几百只别的交错，回表一行读一页，
+ /// 线上 ETH / LTC 一天两三万行冷读 1–3.5 秒（2026-10-06）；现在是仅索引扫描，一行都不回表（可见性图新鲜时）。
  /// 按 sqlx 的预备语句两种计划（前几次的定制计划、之后可能换成的通用计划）各看一遍，
- /// 断言每个扫 orderflow_orders 的节点都走这条索引、没有回了表又滤掉的行，并量一下耗时的量级。
+ /// 断言每个扫 orderflow_orders 的节点都是这条索引上的仅索引扫描、不回表、没有滤掉的行，并量一下耗时的量级。
  #[tokio::test]
  async fn three_days_of_orders_read_without_walking_the_whole_base() {
   let Some(pool)=isolated_pool().await else {return};
@@ -677,17 +679,18 @@ pub(super) mod tests {
     e-((k*7919+m*31)%240+1)*60000,e,'cancelled',6e6,6e6,0,5e6,6e6,100,e \
    FROM generate_series(0,3*1440-1) m CROSS JOIN generate_series(0,11) k CROSS JOIN LATERAL (SELECT $2::bigint+m*60000 AS e) x")
    .bind(base).bind(now-RETENTION_MS).execute(&pool).await.unwrap();}
-  // 统计信息要属主来收（运行角色 ANALYZE 只会跳过）。
+  // 统计信息要属主来收（运行角色 ANALYZE 只会跳过）；VACUUM 把可见性图补齐，线上由 0050 调快的 autovacuum 做。
   let admin=PgPool::connect(&std::env::var("KANPAN_TEST_ADMIN_URL").unwrap()).await.unwrap();
-  sqlx::query("ANALYZE orderflow_orders").execute(&admin).await.unwrap();
+  sqlx::query("VACUUM (ANALYZE) orderflow_orders").execute(&admin).await.unwrap();
   let total:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_orders WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
   assert_eq!(total,3*1440*12);
-  /// 计划里扫 orderflow_orders 的节点：（用的索引，回表后又滤掉的行数）。位图扫描的索引在它底下那个节点上。
-  fn scans(node:&serde_json::Value,out:&mut Vec<(String,i64)>) {
+  /// 计划里扫 orderflow_orders 的节点：（节点类型，用的索引，滤掉的行数，回表次数，读出的行数）。位图扫描的索引在它底下那个节点上。
+  fn scans(node:&serde_json::Value,out:&mut Vec<(String,String,i64,i64,i64)>) {
    if node["Relation Name"]=="orderflow_orders" {
+    let kind=node["Node Type"].as_str().unwrap_or("").to_string();
     let index=node["Index Name"].as_str().or_else(||node["Plans"][0]["Index Name"].as_str()).unwrap_or("（顺序扫描）").to_string();
     let removed=node["Rows Removed by Filter"].as_i64().unwrap_or(0)+node["Rows Removed by Index Recheck"].as_i64().unwrap_or(0);
-    out.push((index,removed));
+    out.push((kind,index,removed,node["Heap Fetches"].as_i64().unwrap_or(-1),node["Actual Rows"].as_i64().unwrap_or(0)));
    }
    for child in node["Plans"].as_array().into_iter().flatten() {scans(child,out);}
   }
@@ -710,9 +713,11 @@ pub(super) mod tests {
     scans(&plan[0]["Plan"],&mut found);
     println!("[{from},{to}] {mode}：读回 {} 行，range_capped {elapsed:?}，库里 {} ms，扫描 {found:?}",got.len(),plan[0]["Execution Time"]);
     assert_eq!(found.len(),2,"已结束的两路各扫一次：{plan}");
-    for (index,removed) in &found {
-     assert_eq!(index,"orderflow_orders_end_first_seen","{mode} 下应走 (base,end_ms,first_seen_ms)：{plan}");
-     assert_eq!(*removed,0,"{mode} 下不该有回了表又滤掉的行：{plan}");
+    for (kind,index,removed,fetches,rows) in &found {
+     assert_eq!((kind.as_str(),index.as_str()),("Index Only Scan","orderflow_orders_end_covering"),"{mode} 下应走 (base,end_ms,first_seen_ms) INCLUDE 的仅索引扫描：{plan}");
+     assert_eq!(*removed,0,"{mode} 下不该有滤掉的行：{plan}");
+     // 前面别的用例删过行的页 VACUUM 之后也可能还没标全可见，零星几十次回表；成片回表（以前是每行一次）就不对了。
+     assert!(*fetches>=0&&*fetches*20<=(*rows).max(20),"{mode} 下可见性图齐了就不该成片回表（{fetches} / {rows}）：{plan}");
     }
    }
    assert!(elapsed<std::time::Duration::from_secs(2),"三天量级的一次读应在百毫秒级：{elapsed:?}");
