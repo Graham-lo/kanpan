@@ -212,15 +212,24 @@ async fn range_capped(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:i6
 ///
 /// 返回（交出去的条数，已结束的是否还有更早的没回——截到了 `cap`）。库里多取一条已结束的来判断有没有下一页：
 /// 按升序它是第一条已结束的，到了就跳过、记下「还有」。
+///
+/// 包在一个事务里、`work_mem` 放到 16 MB（`SET LOCAL`，事务结束即还原）：一只热门 base 一天几万条，内外两次排序在缺省 4 MB 下
+/// 溢出成外部归并（线上 EXPLAIN 3–5 MB 的临时文件），16 MB 时都在内存里排完。同时在跑的读最多
+/// `HISTORY_READS` 条，内存上界几十 MB。
 pub async fn range_each(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,cap:i64,mut each:impl FnMut(BigOrder))->sqlx::Result<(usize,bool)> {
  use futures_util::TryStreamExt;
  let sql=range_sql();
- let mut rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).bind(min_life).fetch(pool);
+ let mut tx=pool.begin().await?;
+ sqlx::query("SET LOCAL work_mem='16MB'").execute(&mut *tx).await?;
  let (mut n,mut more)=(0,false);
- while let Some(row)=rows.try_next().await? {
-  if !more&&row.try_get::<Option<i64>,_>("ended").ok().flatten().is_some_and(|k|k>cap) {more=true;continue}
-  if let Some(o)=order(&row) {each(o);n+=1;}
+ {
+  let mut rows=sqlx::query(&sql).bind(base).bind(from).bind(to).bind(cap).bind(min_life).fetch(&mut *tx);
+  while let Some(row)=rows.try_next().await? {
+   if !more&&row.try_get::<Option<i64>,_>("ended").ok().flatten().is_some_and(|k|k>cap) {more=true;continue}
+   if let Some(o)=order(&row) {each(o);n+=1;}
+  }
  }
+ tx.commit().await?;
  Ok((n,more))
 }
 
