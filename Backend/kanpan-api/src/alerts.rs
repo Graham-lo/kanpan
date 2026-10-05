@@ -410,6 +410,14 @@ fn venue_of(market:&str)->&str {market.split('/').next().unwrap_or(market)}
 /// 自选波动提醒开着的人，以及其中哪些品种正被实时活动盯着。
 struct Loaded {watches:Vec<Watch>,due:Vec<Due>,movers:Vec<crate::watch_move::Mover>,live:Vec<String>}
 
+/// 某条行情流（`market`）的评估器下一轮刷新会盯上的那些价格提醒：`(alert_id, symbol)`。
+/// 走的就是 `run_binance` / `run_coinbase` / `run_macro` 用的同一个 `load`，只给集成测试
+/// 证明「同步上来的提醒确实进了那条流的判定表」，运行期没有人调它。
+#[doc(hidden)]
+pub async fn watching(s:&AppState,market:&str)->Result<Vec<(String,String)>> {
+ Ok(load(s,market).await?.watches.into_iter().map(|w|(w.alert_id,w.symbol)).collect())
+}
+
 /// 把所有用户的活动提醒读成一张内存表。
 ///
 /// 为什么逐个用户开事务：这两张表和同步表一样挂着 FORCE ROW LEVEL SECURITY，运行期角色

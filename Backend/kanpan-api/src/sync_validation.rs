@@ -106,8 +106,11 @@ fn learned_defaults(v:&Value)->bool {
  }))
 }
 fn symbol(v:&Value)->bool {
- v.as_str().is_some_and(|s|coinbase_symbol(s)||binance_symbol(s))
+ v.as_str().is_some_and(|s|coinbase_symbol(s)||binance_symbol(s)||macro_symbol(s))
 }
+/// 美元指数（`venues::macro_index`，2026-10-05）：`macro/index` 下只有一只 `DXY`。
+/// 只收这一个代号，不开放成「任意大写」：服务端只采得到这一只的价，别的收下了也永远判不响。
+fn macro_symbol(s:&str)->bool {s==crate::venues::macro_index::SYMBOL}
 /// 代号最长 40 个字符（按字符数，不按字节：中文代号一个字三个字节）。
 const SYMBOL_MAX_CHARS:usize=40;
 /// 币安 U 本位合约的代号：ASCII 大写字母、数字，或者**非 ASCII 的 Unicode 字母数字**，
@@ -244,8 +247,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   (DRAWINGS,"dash")=>v.as_str().is_some_and(|s|["solid","dashed","dotted"].contains(&s)),
   (DRAWINGS,"filled"|"locked"|"hidden")|(FAVORITES,"alerts")=>v.is_boolean(),
   (DRAWINGS,"levels")=>v.as_array().is_some_and(|a|a.len()<=24&&a.iter().all(|v|number(v,-10.0,10.0))),
-  (DRAWINGS|FAVORITES,"market")=>v=="usd_m"||v=="spot",
-  (DRAWINGS|FAVORITES,"venue")=>v=="binance"||v=="coinbase",
+  (DRAWINGS|FAVORITES,"market")=>v=="usd_m"||v=="spot"||v==crate::venues::macro_index::MARKET,
+  (DRAWINGS|FAVORITES,"venue")=>v=="binance"||v=="coinbase"||v==crate::venues::macro_index::SOURCE,
   (DRAWINGS|FAVORITES,"symbol")=>symbol(v),
   (DRAWINGS,"created")=>number(v,0.0,9e15),
   // An anti-abuse ceiling, deliberately not a copy of the client's UX rule. The client caps a
@@ -271,7 +274,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   (ALERTS,"rule")=>crate::conditions::valid_rule(v),
   // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
   // venue）。形状是文档定的，照抄，不要「统一」。
-  (ALERTS,"market")=>v=="binance/usd_m"||v=="coinbase/spot",
+  (ALERTS,"market")=>v=="binance/usd_m"||v=="coinbase/spot"||v==crate::alerts::MACRO,
   (ALERTS,"symbol")=>symbol(v),
   // 画线的同步对象 id 原样，和 `drawings` 的 id 同一套形态。
   (ALERTS,"drawingID")=>string(v,180),
@@ -323,6 +326,9 @@ pub fn identity(venue:&str,market:&str,symbol:&str)->bool {
  match (venue,market) {
   ("binance","usd_m") => binance_symbol(symbol),
   ("coinbase","spot") => coinbase_symbol(symbol),
+  // 美元指数：自选、画线、价格 / 画线提醒、对比都认 `macro/index/DXY`；条件提醒仍只认币安
+  // （`object` 里另有一道），交易复盘的回合也只认币安 U 本位（`trade_round`）。
+  (s,m) if s==crate::venues::macro_index::SOURCE && m==crate::venues::macro_index::MARKET => macro_symbol(symbol),
   _ => false,
  }
 }
@@ -476,6 +482,42 @@ mod tests {
   a.id="binance/usd_m/BTCUSDT/9F1E".into(); assert!(object(&a).is_err());
   let mut f=Object{collection:"favorites".into(),id:"coinbase/spot/BTC-USD".into(),body:BTreeMap::from([("venue".into(),json!("coinbase")),("market".into(),json!("spot")),("symbol".into(),json!("BTC-USD"))]),fields:BTreeMap::new(),revision:0,deleted:false,generation:0};
   assert!(object(&f).is_ok()); f.id="binance/usd_m/BTCUSDT".into(); assert!(object(&f).is_err());
+ }
+ /// 美元指数（2026-10-05）：`macro/index` 只收 `DXY`，自选、画线、价格 / 画线提醒、对比四处
+ /// 同一条规则；条件提醒仍只认币安，别的交易所 / 市场 / 代号的搭配一律拒。
+ #[test] fn macro_index_dxy_syncs_everywhere_a_symbol_can() {
+  assert!(identity("macro","index","DXY"));
+  for (v,m,s) in [("macro","index","EURUSD"),("macro","index","dxy"),("macro","usd_m","DXY"),("macro","spot","DXY"),
+   ("binance","index","DXY"),("binance","usd_m","DXY"),("coinbase","spot","DXY"),("macro","index","BTCUSDT")] {assert!(!identity(v,m,s),"{v}/{m}/{s}")}
+  // 自选
+  let mut f=Object{collection:"favorites".into(),id:"macro/index/DXY".into(),body:BTreeMap::from([("venue".into(),json!("macro")),("market".into(),json!("index")),("symbol".into(),json!("DXY"))]),fields:BTreeMap::new(),revision:0,deleted:false,generation:0};
+  assert!(object(&f).is_ok());
+  f.id="binance/usd_m/DXY".into(); assert!(object(&f).is_err());
+  f.id="macro/index/DXY".into(); f.body.insert("symbol".into(),json!("EURUSD")); assert!(object(&f).is_err());
+  // 画线
+  let mut d=drawing("hline",1);
+  d.id="macro/index/DXY/line-1".into();
+  d.body.insert("venue".into(),json!("macro")); d.body.insert("market".into(),json!("index")); d.body.insert("symbol".into(),json!("DXY"));
+  assert!(object(&d).is_ok());
+  d.body.insert("market".into(),json!("usd_m")); assert!(object(&d).is_err());
+  // 价格提醒与画线提醒
+  let mut a=alert(&[("kind",json!("price")),("market",json!("macro/index")),("symbol",json!("DXY")),("title",json!("美元指数 价格达到 100"))]);
+  a.id="macro/index/DXY/A1".into(); assert!(object(&a).is_ok());
+  a.id="binance/usd_m/DXY/A1".into(); assert!(object(&a).is_err());
+  let mut a=alert(&[("market",json!("macro/index")),("symbol",json!("DXY")),("drawingID",json!("macro/index/DXY/hline-1"))]);
+  a.id="macro/index/DXY/A2".into(); assert!(object(&a).is_ok());
+  assert!(field("alerts","market",&json!("macro/index")));
+  assert!(!field("alerts","market",&json!("macro/usd_m")));
+  assert!(!field("alerts","market",&json!("binance/index")));
+  // 条件提醒：数据只来自币安，美元指数上一样拒。
+  let mut c=alert(&[("kind",json!("condition")),("market",json!("macro/index")),("symbol",json!("DXY")),("lines",json!([])),
+   ("rule",json!({"type":"funding","side":"above","rate":"0.0005"}))]);
+  c.id="macro/index/DXY/C1".into(); assert!(object(&c).is_err());
+  // 对比
+  assert!(field("settings","compareSymbols",&json!(["macro/index/DXY","binance/usd_m/BTCUSDT"])));
+  for bad in [json!(["macro/index/EURUSD"]),json!(["macro/usd_m/DXY"]),json!(["binance/index/DXY"]),json!(["macro/index/DXY","macro/index/DXY"])] {
+   assert!(!field("settings","compareSymbols",&bad),"{bad}");
+  }
  }
  fn drawing(kind:&str,anchors:usize)->crate::sync::Object {
   let points:Vec<_>=(0..anchors).map(|i|json!({"t":1_800_000_000_000i64+i as i64,"p":100.0+i as f64})).collect();

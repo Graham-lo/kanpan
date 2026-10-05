@@ -130,3 +130,52 @@ async fn alert_log_records_both_paths_once_filters_clears_purges_and_isolates() 
  assert_eq!(request(&w.app,"/v1/alerts/log","DELETE",None,None,json!({})).await.0,401);
  w.close().await;
 }
+
+/// 美元指数（2026-10-05 放行 `macro/index`）：自选、画线、对比、价格提醒同步得上来；价格提醒落进
+/// `alert_watches`（market = `macro/index`），`run_macro` 用的那个 `load` 盯得上它，响了照样记一行。
+/// 别的代号 / 市场的搭配仍然整条拒。
+#[tokio::test]
+async fn macro_index_dxy_syncs_lands_in_watches_and_logs() {
+ let w=boot().await;
+ let a=signup(&w.app,"qa_alertlog_dxy").await;
+ let dev=device(&w,&a).await;
+ let now=chrono::Utc::now().timestamp_millis();
+ let any=|collection:&str,id:&str,fields:Value|{
+  let mut o=op(dev,id,0,"patch",fields);o["collection"]=json!(collection);o
+ };
+ push(&w,&a,vec![
+  any("favorites","macro/index/DXY",json!({"venue":"macro","market":"index","symbol":"DXY","order":1.0})),
+  any("drawings","macro/index/DXY/hline-1",json!({"kind":"hline","venue":"macro","market":"index","symbol":"DXY",
+   "anchors":[{"t":now,"p":100.0}],"color":{"value":"#FF8800"},"lineWidth":1.0,"dash":"solid","filled":false,"locked":false,"hidden":false,"levels":[],"created":now})),
+  any("settings","chart",json!({"compareSymbols":["macro/index/DXY","binance/usd_m/BTCUSDT"]})),
+ ]).await;
+
+ let id="macro/index/DXY/M1";
+ push(&w,&a,vec![op(dev,id,0,"patch",price_fields("DXY","macro/index",100.0,now-60_000))]).await;
+ let mut tx=w.s.personal(a.id).await.unwrap();
+ let row:(String,String,String,String)=sqlx::query_as("SELECT market,symbol,kind,status FROM alert_watches WHERE user_id=$1 AND alert_id=$2")
+  .bind(a.id).bind(id).fetch_one(&mut *tx).await.unwrap();
+ tx.commit().await.unwrap();
+ assert_eq!(row,("macro/index".into(),"DXY".into(),"price".into(),"active".into()));
+ let watched=kanpan_api::alerts::watching(&w.s,kanpan_api::alerts::MACRO).await.unwrap();
+ assert!(watched.contains(&(id.to_string(),"DXY".to_string())),"run_macro 的判定表里要有它：{watched:?}");
+ assert!(!kanpan_api::alerts::watching(&w.s,kanpan_api::alerts::BINANCE).await.unwrap().iter().any(|(i,_)|i==id),"不串到币安那条流");
+
+ assert!(kanpan_api::alerts::record_fired(&w.s,a.id,id,Some(100.02),now-5_000).await.unwrap());
+ let records=log(&w,&a,"?symbol=macro/index/DXY").await;
+ assert_eq!(records.len(),1,"{records:?}");
+ assert_eq!(records[0]["symbol"],json!("macro/index/DXY"));
+ assert_eq!(records[0]["condition"],json!("价格达到 100"));
+
+ // 别的搭配仍然拒：代号不是 DXY、市场不是 index、条件提醒挂在美元指数上。
+ for (collection,oid,fields) in [
+  ("favorites","macro/index/EURUSD",json!({"venue":"macro","market":"index","symbol":"EURUSD"})),
+  ("favorites","macro/usd_m/DXY",json!({"venue":"macro","market":"usd_m","symbol":"DXY"})),
+  ("alerts","macro/index/DXY/C1",json!({"kind":"condition","symbol":"DXY","market":"macro/index","status":"active","once":true,"armedAt":now,"created":now,
+   "title":"x","lines":[],"condition":"touch","rule":{"type":"funding","side":"above","rate":"0.0005"}})),
+ ] {
+  let (status,v)=request(&w.app,"/v1/sync/operations","POST",Some(&a.token),None,json!({"operations":[any(collection,oid,fields)]})).await;
+  assert!(status==400||v["data"]["results"][0]["status"]==json!("rejected"),"{oid} 应被拒：{status} {v}");
+ }
+ w.close().await;
+}
