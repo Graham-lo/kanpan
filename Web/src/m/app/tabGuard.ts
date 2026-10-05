@@ -14,7 +14,12 @@
  * 不回来，非领头页的改动就一直上不了云端。所以旧了的页还会把别的页写下的那份「收养」进内存（不写盘、
  * 不动界面上的人为操作，只走平常 save() 的通知），领头的同步据此记账推上去；人回到这页照旧整页重载。
  * 读不出 / 解不开的存档不收养（否则同步会把「空的」当成本机删光了推上去）。
+ *
+ * 写不下（localStorage 满了，/web/ 与 /web/m/ 共用一份约 5M）：先清掉能让位的缓存再写（util/storage.ts，与 PC 同一套），
+ * 还写不下就告诉登记了 onFull 的（main.ts 弹「本机存储已满」）——以前只在控制台留一句，人改了半天关页面全没了也不知道。
  */
+import { setItemMakingRoom } from '../../util/storage'
+
 const WRITER_KEY = 'hkline-m-v1-writer'
 
 interface Writer { serialize: () => string; adopt?: () => void }
@@ -29,15 +34,13 @@ function ls(): Storage | null { try { return globalThis.localStorage ?? null } c
 /** 写进本机存储；返回写成了没有（存储满了、被禁用时是 false：这一轮不落盘，内存照常用，下一次写再试） */
 function put(key: string, value: string): boolean {
   const s = ls(); if (!s) return false
-  try {
-    s.setItem(WRITER_KEY, JSON.stringify({ at: touchedAt }))
-    s.setItem(key, value)
-    return true
-  } catch (e) {
-    console.warn('[m] 本机存储写不进去', key, e)
-    return false
-  }
+  setItemMakingRoom(WRITER_KEY, JSON.stringify({ at: touchedAt }), s)
+  if (setItemMakingRoom(key, value, s)) return true
+  console.warn('[m] 本机存储写不进去', key)
+  fullSubs.forEach(fn => { try { fn() } catch (e) { console.error(e) } })
+  return false
 }
+const fullSubs = new Set<() => void>()
 
 export const tabGuard = {
   /** 登记一份整份写的存档：key、「现在该写什么」、以及旧了之后怎么把别的页写的那份收进内存 */
@@ -60,6 +63,8 @@ export const tabGuard = {
   },
   /** 测试用：立刻收养排着的 */
   flush(): void { if (adoptTimer) { clearTimeout(adoptTimer); adoptNow() } },
+  /** 清掉缓存也写不下时通知（弹提示）；返回取消登记 */
+  onFull(fn: () => void): () => void { fullSubs.add(fn); return () => { fullSubs.delete(fn) } },
   touch(now = Date.now()): void { touchedAt = now },
   get stale(): boolean { return stale },
   /** 测试用 */

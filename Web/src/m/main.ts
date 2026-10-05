@@ -19,6 +19,8 @@ import { setRoute } from '../market'
 import { initMobileSync } from './app/sync'
 import { startLinkGrace } from './app/linkGrace'
 import { startLineAlerts } from './app/lineAlerts'
+import { tabGuard } from './app/tabGuard'
+import { toast } from './ui/toast'
 
 type PageModule = Record<string, unknown>
 // 下划线开头的是各页共用的模块（_streams.ts），不是页：各页静态引它，扫进来只会让分包失效
@@ -55,6 +57,9 @@ startLinkGrace()
 // 画线提醒跟着线走：同步开始之前按本机那一本记下「见过的线」，首次同步整桶换线时删了的线才比得出来
 startLineAlerts()
 initMobileSync()
+// 本机存储满了（清掉缓存也写不下）：告诉人这次的改动没存住，一个会话提示一次（与 PC main.ts 同一口径）
+let fullWarned = false
+tabGuard.onFull(() => { if (!fullWarned) { fullWarned = true; toast('本机存储已满，这次的改动没能存进本机') } })
 // 品种表：回前台超过 30 分钟、在前台每 6 小时重拉（新上线的搜得到、下架的翻成下架）
 startUniverseRefresh({ onForeground: fn => hooks.onForeground.push(fn) })
 
