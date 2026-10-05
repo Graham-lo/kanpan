@@ -53,9 +53,16 @@ export function renderHeader(): void {
   av.dataset.tip = u ? `我的 · ${u}` : '我的'
 }
 
+/** 去登录：「我的」翻到账号那一栏 */
+export function goLogin(): void {
+  if (st.meSection !== 'account') { st.meSection = 'account'; save() }
+  go('me')
+}
+
 export function installShell(): void {
   addEventListener('hashchange', () => go(location.hash.slice(1), false))
-  $('#hdrAvatar').onclick = () => go('me')
+  // 没登录时头像就是登录入口：落在「我的 · 账号」那一栏（默认那栏是外观，点了看不到登录框）
+  $('#hdrAvatar').onclick = () => session.user ? go('me') : goLogin()
   $('#hdrTheme').onclick = () => { st.theme = st.theme === 'dark' ? 'light' : 'dark'; save(); applyTheme() }
   $('#searchTrigger').onclick = () => { go('chart'); hooks.onSearch?.() }
   $$('.nav a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); go(a.dataset.page || 'chart') }))

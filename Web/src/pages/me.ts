@@ -7,6 +7,7 @@ import { setRoute } from '../market'
 import { session, onSession } from '../account/session'
 import { createLoadGate } from '../review/loadGate'
 import { login, logout, devices, kick, changePassword, deleteAccount, errorText, type DeviceRow } from '../account/client'
+import { PASSWORD_RULE, USERNAME_RULE, validPassword, validUsername } from '../account/rules'
 import { sh, pad } from '../util/format'
 import { openShortcuts, renderPanel, refreshStreams } from './chart'
 import { tvImportHTML, tvImportClick, tvImportChange, onTvImported } from '../watch/importPanel'
@@ -141,10 +142,27 @@ async function loadDevices(): Promise<void> {
 function setErr(id: string, text: string): void { const el = document.getElementById(id); if (el) el.textContent = text }
 function val(id: string): string { return (document.getElementById(id) as HTMLInputElement | null)?.value ?? '' }
 
+/** 登录 / 注册先在本地按账号规则查（和手机网页、iOS 同一份 account/rules）：不合规的不发请求，直接说哪里不对。
+ *  登录只查用户名形状和密码非空（老密码规则可能更宽），注册连密码规则一起查 */
+export function authProblem(mode: 'login' | 'register', user: string, pass: string): string | null {
+  if (!user.trim() || !pass) return '用户名和密码都要填'
+  if (!validUsername(user)) return USERNAME_RULE
+  if (mode === 'register' && !validPassword(pass)) return PASSWORD_RULE
+  return null
+}
+/** 改密码：新密码按注册的规则查 */
+export function passwordProblem(cur: string, next: string): string | null {
+  if (!cur || !next) return '两个都要填'
+  if (cur === next) return '新密码和当前密码一样'
+  if (!validPassword(next)) return PASSWORD_RULE
+  return null
+}
+
 async function submitAuth(): Promise<void> {
   if (busy) return
   const u = val('acctUser').trim(), p = val('acctPass')
-  if (!u || !p) { setErr('acctErr', '用户名和密码都要填'); return }
+  const bad = authProblem(authMode === 'register' ? 'register' : 'login', u, p)
+  if (bad) { setErr('acctErr', bad); return }
   busy = true
   const btn = document.getElementById('acctGo') as HTMLButtonElement | null
   if (btn) btn.disabled = true
@@ -161,8 +179,8 @@ async function submitAuth(): Promise<void> {
 async function submitPassword(): Promise<void> {
   if (busy) return
   const cur = val('pwCur'), next = val('pwNew')
-  if (!cur || !next) { setErr('pwErr', '两个都要填'); return }
-  if (cur === next) { setErr('pwErr', '新密码和当前密码一样'); return }
+  const bad = passwordProblem(cur, next)
+  if (bad) { setErr('pwErr', bad); return }
   busy = true
   const btn = document.getElementById('pwGo') as HTMLButtonElement | null
   if (btn) btn.disabled = true
@@ -278,6 +296,8 @@ export function initMe(): void {
     renderHeader()
     venGate.reset(); devGate.reset()
     resetDevs(); resetVenues()
+    // 被顶掉 / 登录过期：「我的」直接停在账号那一栏，去了就是登录框
+    if (!session.user && session.notice && st.meSection !== 'account') { st.meSection = 'account'; save() }
     if (st.page === 'me') render()
     else if (session.notice) toast(session.notice, '到「我的」重新登录', 'user', 6000)
   })

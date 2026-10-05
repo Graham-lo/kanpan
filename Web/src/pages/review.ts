@@ -9,7 +9,7 @@
  * 播放条只有拖进度线与关键点跳转，没有逐根步进。时间一律上海时间。
  */
 import '../styles/review.css'
-import { hooks, go } from '../app/shell'
+import { hooks, go, goLogin } from '../app/shell'
 import { $, I, esc } from '../ui/dom'
 import { GLOSSARY, term, toast } from '../ui/overlay'
 import { badge, shTime, sym } from '../ui/common'
@@ -185,7 +185,7 @@ function renderLogin(expired: boolean): void {
       <div class="rv-login-d">交易回合、观点记录和战绩都存在你的账号里，登录后在这里看、在图上重放。</div>
       <button class="btn primary" id="rvLogin">${expired ? '重新登录' : '去登录'}</button>
     </div></div>`
-  $('#rvLogin').onclick = () => go('me')
+  $('#rvLogin').onclick = () => goLogin()
 }
 
 function teardown(): void {
