@@ -78,4 +78,18 @@ struct DollarIndexSearchTests {
     #expect(model.prefs.groupForSymbol["macro/index/DXY"] == own)
     #expect(model.prefs.favorites.contains("macro/index/DXY"))
   }
+
+  @Test("自选里还没分类的币与美元指数：冷启动等目录到了再一起编，「指数」排在「加密」后面")
+  @MainActor func unassignedSeedKeepsIndexAfterCrypto() {
+    let store = SymbolPrefsStore(storage: MemoryPrefsStorage())
+    store.save(SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "macro/index/DXY", "binance/usd_m/ETHUSDT"]))
+    let model = SymbolPickerModel(store: store,
+                                  venueCategory: { VenueRegistry.descriptor(forSymbol: $0).favoriteCategory })
+    // 目录还没到：币认不出来，美元指数也不抢先开「指数」。
+    #expect(model.prefs.groups.isEmpty)
+    model.setCatalog(Self.catalog)
+    #expect(model.prefs.groups.map(\.name) == ["加密", "指数"])
+    let index = model.prefs.groups.first { $0.name == "指数" }?.id
+    #expect(index != nil && model.prefs.groupForSymbol["macro/index/DXY"] == index)
+  }
 }

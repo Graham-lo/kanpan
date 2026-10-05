@@ -9,7 +9,11 @@ public func clampView(_ v: ViewWindow, series: BarSeries, plotW: Double,
                  min(plotW / AICoinBehavior.minimumSpacing * step, v.span))
   let spacing = plotW / span * step
   let first = Double(series.firstTime) - step / 2
-  let maximumOffset = ViewMath.maximumOffset(count: series.count, spacing: spacing, plotW: plotW, anchor: anchor)
+  // 视野是时间窗，右边界得按**时间**量到末根，不能拿「根数 × 周期」去推：休市的品种
+  // （美元指数周末、每天收盘那一小时）中间没有 K 线，根数推出来的末端比真实末根早出
+  // 好几天，图一打开就被夹在历史中段、最新那一截永远拖不过去。不缺根的序列两者相等。
+  let cells = max(Double(series.count), Double(series.lastTime - series.firstTime) / step + 1)
+  let maximumOffset = ViewMath.maximumOffset(cells: cells, spacing: spacing, plotW: plotW, anchor: anchor)
   let offset = (v.to - span - first) / step * spacing
   let clampedOffset = max(0, min(maximumOffset, offset))
   return ViewWindow(to: first + clampedOffset / spacing * step + span, span: span)
@@ -30,7 +34,12 @@ public enum ViewMath {
   }
 
   static func maximumOffset(count: Int, spacing: Double, plotW: Double, anchor: ViewAnchor) -> Double {
-    let total = max(0, Double(count + 400) * spacing - plotW)
+    maximumOffset(cells: Double(count), spacing: spacing, plotW: plotW, anchor: anchor)
+  }
+
+  /// `cells`：从首根到末根按周期量出来的格数（缺根的序列比根数多）。
+  static func maximumOffset(cells: Double, spacing: Double, plotW: Double, anchor: ViewAnchor) -> Double {
+    let total = max(0, (cells + 400) * spacing - plotW)
     let reserved = min(400 * spacing - rightInset(anchor, plotW: plotW), total)
     return max(0, total - reserved)
   }
