@@ -22,6 +22,7 @@ pub mod hourly_close;
 pub mod oi_archive;
 pub mod maintenance;
 pub mod alerts;
+pub mod alert_log;
 pub mod conditions;
 pub mod listing_watch;
 pub mod apns;
@@ -112,7 +113,7 @@ pub fn metrics_router() -> Router {
 }
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(auth::routes()).merge(export::routes()).merge(legal::routes()).merge(sync::routes()).merge(alerts::routes()).merge(listing_watch::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(review_trade::routes()).merge(search::routes()).merge(market_meta::routes()).merge(market_depth::routes()).merge(orderflow_instruments::routes()).merge(orderflow_history::routes()).merge(market_relay::routes()).merge(sector_history::routes()).merge(hourly_close::routes()).merge(oi_archive::routes()).merge(venues::routes())
+  .merge(auth::routes()).merge(export::routes()).merge(legal::routes()).merge(sync::routes()).merge(alerts::routes()).merge(alert_log::routes()).merge(listing_watch::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(review_trade::routes()).merge(search::routes()).merge(market_meta::routes()).merge(market_depth::routes()).merge(orderflow_instruments::routes()).merge(orderflow_history::routes()).merge(market_relay::routes()).merge(sector_history::routes()).merge(hourly_close::routes()).merge(oi_archive::routes()).merge(venues::routes())
   .layer(DefaultBodyLimit::max(512*1024))
   // 在超时那层里面：排队等名额的时间也算进三十秒。
   .layer(axum::middleware::from_fn(session_slots))

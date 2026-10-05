@@ -202,6 +202,12 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
   // 条件提醒的条件本体；别的 kind（以及 `rule: null`）存 NULL。
   .bind(object.body.get("rule").filter(|v|v.is_object()).cloned())
   .execute(&mut **tx).await?;
+ // 客户端判响报上来的那一次（「非 fired → fired」）记一行触发记录。服务端自己判响的那一次
+ // 在 `record_fired` 里记过了：那时库里已经是 fired，这里不会再记。
+ if object.body.get("status").and_then(Value::as_str)==Some("fired")&&before.as_deref()!=Some("fired") {
+  let at=object.body.get("firedAt").and_then(Value::as_f64).filter(|t|t.is_finite()).map_or_else(||chrono::Utc::now().timestamp_millis(),|t|t as i64);
+  crate::alert_log::record(tx,owner,object,object.body.get("firedPrice").and_then(Value::as_f64),at).await?;
+ }
  Ok(reported_fire(before.as_deref(),owner,object,chrono::Utc::now().timestamp_millis()))
 }
 
@@ -541,11 +547,12 @@ pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:Option<f64>
  if changed==0 {tx.commit().await?;return Ok(false)}
  // 同步对象没了（用户在别的设备上删了这条提醒，而这一轮的内存快照还没刷新）：
  // 把物化表那一行一起清掉就好，不要拿一条不存在的对象去写 op。
- let present=crate::sync::read_object(&mut tx,owner,crate::sync::ALERTS,alert_id).await?.is_some();
- if !present {
+ let Some(object)=crate::sync::read_object(&mut tx,owner,crate::sync::ALERTS,alert_id).await? else {
   sqlx::query("DELETE FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(alert_id).execute(&mut *tx).await?;
   tx.commit().await?;return Ok(false)
- }
+ };
+ // 触发记录和状态同一个事务：要么都落、要么都不落（`alert_log`）。
+ crate::alert_log::record(&mut tx,owner,&object,price,at).await?;
  let mut fields:BTreeMap<String,Value>=[("status",json!("fired")),("firedAt",json!(at))]
   .into_iter().map(|(k,v)|(k.to_string(),v)).collect();
  if let Some(price)=price {fields.insert("firedPrice".into(),json!(price));}
@@ -617,7 +624,7 @@ pub fn webhook_name(market:&str,symbol:&str)->String {
  if market==BINANCE {symbol.strip_suffix("USDT").filter(|b|!b.is_empty()).unwrap_or(symbol).to_string()} else {symbol.replace('-',"/")}
 }
 /// `{条件}`：`价格达到` / `收盘穿过`（2026-09-25 用户：「碰到改成价格达到」）。
-fn condition_word(c:Condition)->&'static str {match c {Condition::Touch=>"价格达到",Condition::Close=>"收盘穿过"}}
+pub(crate) fn condition_word(c:Condition)->&'static str {match c {Condition::Touch=>"价格达到",Condition::Close=>"收盘穿过"}}
 fn condition_key(c:Condition)->&'static str {match c {Condition::Touch=>"touch",Condition::Close=>"close"}}
 /// `{时间}`：ISO 8601、UTC、到秒，`2026-09-24T16:44:00Z`。
 pub fn iso_time(at:i64)->String {
@@ -680,7 +687,7 @@ pub fn render_template(template:Option<&str>,default:&str,value:impl Fn(&str)->O
 /// 从前取「第一条线的第一个点」，斜线上那个锚点可能离触发时的线价很远，通道还可能命中的是
 /// 另一条边（深度审查 E-3）。和客户端 `Alert.target(at:near:)` 同一个算法，夹具
 /// `contract/alert-cases.json` 的 `targets` 两边都跑。
-fn target_of(lines:&[Line],price:f64,at:i64)->Option<f64> {
+pub(crate) fn target_of(lines:&[Line],price:f64,at:i64)->Option<f64> {
  let mut best:Option<f64>=None;
  for line in lines {
   let Some(p)=reachable_price(line,at).filter(|p|p.is_finite()) else {continue};

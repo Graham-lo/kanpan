@@ -42,10 +42,13 @@ where F:FnMut(i64)->Fut,Fut:std::future::Future<Output=Result<u64>> {
 /// worker 那几个小时里没跑、或者推送一直失败的那种情形——一行永远没人管的活动登记
 /// 会让心跳每一拍都为它多跑一次苹果往返。这里只删行不推送：都过了八小时了，
 /// 那个活动在系统那边早就自己结束了。
-const PERSONAL:[&str;3]=[
+///
+/// `alert_log`（提醒触发记录）留 30 天：2592000000 毫秒 = `alert_log::RETENTION_MS`，测试对过。
+const PERSONAL:[&str;4]=[
  "DELETE FROM review_searches WHERE ctid IN (SELECT ctid FROM review_searches WHERE user_id=$1 AND expires_at<now() LIMIT $2)",
  "DELETE FROM shares WHERE ctid IN (SELECT ctid FROM shares WHERE to_user=$1 AND kept_at IS NULL AND created_at<now()-interval '90 days' LIMIT $2)",
  "DELETE FROM device_push_tokens WHERE ctid IN (SELECT ctid FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity' AND COALESCE(started_at,updated_at)<now()-interval '8 hours' LIMIT $2)",
+ "DELETE FROM alert_log WHERE ctid IN (SELECT ctid FROM alert_log WHERE user_id=$1 AND fired_at<(extract(epoch from now())*1000)::bigint-2592000000 LIMIT $2)",
 ];
 
 /// 全局的那几条，不分人。名字只用来写日志。$1 是这一批的上限（`BATCH`）。
@@ -144,6 +147,12 @@ mod tests {
  #[test] fn every_cleanup_statement_is_bounded_by_a_batch_limit() {
   for (name,sql) in GLOBAL {assert!(sql.contains("ctid IN (SELECT ctid")&&sql.contains("LIMIT $1"),"{name}: {sql}")}
   for sql in PERSONAL {assert!(sql.contains("ctid IN (SELECT ctid")&&sql.contains("LIMIT $2"),"{sql}")}
+ }
+ /// 触发记录留 30 天：清理语句里的毫秒数和 `alert_log::RETENTION_MS` 是同一个数。
+ #[test] fn the_alert_log_keeps_thirty_days() {
+  let sql=PERSONAL.iter().find(|s|s.starts_with("DELETE FROM alert_log")).expect("清理里有触发记录这一路");
+  assert!(sql.contains(&format!("-{} LIMIT",crate::alert_log::RETENTION_MS)),"{sql}");
+  assert_eq!(crate::alert_log::RETENTION_MS,30*86_400_000);
  }
  #[tokio::test(start_paused=true)] async fn batches_roll_until_one_comes_back_short_or_the_cap() {
   // 12345 行：两批满、第三批不满就停。
