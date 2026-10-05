@@ -22,6 +22,8 @@ export const S = {
   error: '' as string,
   /** 全市场表没取到是因为币安限流（冷却完会自动重试），不是网络不通 */
   limited: false,
+  /** 全市场表（含 premiumIndex 整表的资金费）上一次取到的本机时刻；侧栏资金费列一分钟一刷，刚取过就不再整表重取 */
+  universeAt: 0,
   wsState: 'idle' as WsState,
   route: 'direct' as Route,
   lastMsg: 0,

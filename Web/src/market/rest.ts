@@ -99,6 +99,7 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
       Object.assign(s, { fr: p.lastFundingRate === '' ? null : +p.lastFundingRate, nextFunding: p.nextFundingTime || null, mark: +p.markPrice, index: +p.indexPrice, markAt: at })
     }
     S.symbols = next
+    S.universeAt = Date.now()
     S.live = true
     S.limited = false
     S.error = ''

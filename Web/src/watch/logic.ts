@@ -42,3 +42,25 @@ export function oiFromResponse(raw: string | number | undefined): number | null 
   if (raw === undefined || raw === '' || !Number.isFinite(n)) return undefined
   return n > 0 ? n : null
 }
+
+/** 宽侧栏「持仓额」只取看得见的那几行（上下各多垫 extra 屏）：返回 [起, 止) 行下标。
+ *  原来每次渲染、每分钟都把整个自选列表逐只取一遍——300 只自选挂着不动一分钟就是约 290 次 openInterest
+ *  （网关那一道 800 权重的三分之一多），限流账本也跟着一分钟重写几百次（2026-10-05 F 线压测）。
+ *  量不出行高 / 视口（收起、还没排版）时一行都不取，等滚动或下一分钟再说。 */
+export function visibleRange(n: number, scrollTop: number, viewH: number, headH: number, rowH: number, extra = 1): [number, number] {
+  if (n <= 0 || !(rowH > 0) || !(viewH > 0)) return [0, 0]
+  const pad = viewH * extra
+  const from = Math.min(n, Math.max(0, Math.floor((scrollTop - headH - pad) / rowH)))
+  const to = Math.min(n, Math.ceil((scrollTop - headH + viewH + pad) / rowH))
+  return [from, Math.max(from, to)]
+}
+
+/** 跳价闪色的四个类：涨 / 跌各两套同样的关键帧（app.css 的 wvFlashUp / wvFlashUp2 …） */
+export const FLASH_CLASSES = ['wv-flash-up', 'wv-flash-up2', 'wv-flash-down', 'wv-flash-down2'] as const
+/** 这一次该挂哪个闪色类：和上一次的动画名错开（上次是第一套就挂第二套），浏览器见到新的动画名就从头播，
+ *  不用先摘类、读一次 offsetWidth 逼它重算样式再挂回去 */
+export function flashClass(prev: string, dir: number): string {
+  const was = prev.split(/\s+/).find(c => (FLASH_CLASSES as readonly string[]).includes(c))
+  const second = !!was && !was.endsWith('2')
+  return (dir > 0 ? 'wv-flash-up' : 'wv-flash-down') + (second ? '2' : '')
+}

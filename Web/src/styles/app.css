@@ -847,10 +847,15 @@ kbd {
 .wv-wide .tbl .sym b { font-size: var(--t13); }
 .wv-wide .tbl .sym .cn { display: none; }
 /* 价格变动：文字闪一次涨跌色 150 ms */
+/* 每套两份同样的关键帧轮换着挂：换了动画名浏览器就从头播，脚本不用读 offsetWidth 逼它重算（watch/logic.ts flashClass） */
 .wv-flash-up { animation: wvFlashUp 150ms linear; }
+.wv-flash-up2 { animation: wvFlashUp2 150ms linear; }
 .wv-flash-down { animation: wvFlashDown 150ms linear; }
+.wv-flash-down2 { animation: wvFlashDown2 150ms linear; }
 @keyframes wvFlashUp { 0%, 70% { color: var(--up-text); } }
+@keyframes wvFlashUp2 { 0%, 70% { color: var(--up-text); } }
 @keyframes wvFlashDown { 0%, 70% { color: var(--down-text); } }
+@keyframes wvFlashDown2 { 0%, 70% { color: var(--down-text); } }
 .scroll.no-bar { scrollbar-width: none; }
 .scroll.no-bar::-webkit-scrollbar { display: none; }
 

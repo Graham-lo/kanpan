@@ -25,6 +25,10 @@ export const COOL_418_MS = 300_000
 const CAP_429_MS = 300_000
 const CAP_418_MS = 1_800_000
 const WINDOW = 60_000
+/** 账本按秒并笔：同一秒内的几笔记成一笔（时刻取这一秒的第一笔），一道一分钟最多 60 笔。
+ *  原来一笔请求一行，账本随请求数长，每次 take 都把整本 JSON 化写回 localStorage：300 只自选的宽侧栏挂两分钟，
+ *  这个键被整本重写 591 次、合计 3 MB（2026-10-05 F 线压测）。并笔让窗口最多早放行不到一秒，预算本来只用官方的一半 */
+const MERGE_MS = 1_000
 
 export type Family = 'fapi' | 'dapi' | 'spot'
 /** 每族一分钟的本地预算（官方上限的一半） */
@@ -198,7 +202,9 @@ export class Limiter {
       while (k < list.length && sum + w > cap) { sum -= list[k].w; k++ }
       return k ? Math.max(1, list[k - 1].t + WINDOW - now) : 1
     }
-    list.push({ t: now, w })
+    const last = list[list.length - 1]
+    if (last && now >= last.t && now - last.t < MERGE_MS) last.w += w
+    else list.push({ t: now, w })
     this.push(now)
     return 0
   }
