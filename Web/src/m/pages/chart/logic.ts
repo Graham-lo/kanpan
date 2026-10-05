@@ -415,6 +415,33 @@ export function isLandscape(viewportLandscape: boolean, orientationType: string 
   return viewportLandscape && (!orientationType || orientationType.startsWith('landscape'))
 }
 
+// ───────────────────────────── 横屏画线台：独立根宽、主图指标（照 iOS ChartViewport.spacing(landscape:)、IndicatorPage.mainOnly）
+
+/** 横竖各记一份的根宽：横屏读 landscapeBarSpacing、竖屏读 barSpacing */
+export function spacingFor(landscape: boolean, p: { barSpacing: number; landscapeBarSpacing: number }): number {
+  return landscape ? p.landscapeBarSpacing : p.barSpacing
+}
+/** 一捏松手报上来的根宽该写进哪一格；和那一格现值一样（差不到 1e-6）就不写，返回 null */
+export function spacingWrite(e: { barSpacing: number; landscape: boolean }, p: { barSpacing: number; landscapeBarSpacing: number }):
+  'barSpacing' | 'landscapeBarSpacing' | null {
+  const key = e.landscape ? 'landscapeBarSpacing' : 'barSpacing'
+  return Math.abs(p[key] - e.barSpacing) > 1e-6 ? key : null
+}
+/** 开着的主图指标（主力订单流不算，它有自己的开关） */
+export function mainOverlaysOf(list: readonly IndicatorId[]): IndicatorId[] {
+  return list.filter(x => x !== 'ORDERFLOW')
+}
+/**
+ * 画线台「主图指标」面板里拨一个主图叠加开关：眼睛关着时新开一个，眼睛跟着睁开
+ * （用户是来看它的，不然开了图上什么也不变，像没点上）；关掉一个不动眼睛。
+ */
+export function toggleMainOverlay(p: { overlays: readonly IndicatorId[]; drawingOverlaysShown: boolean }, id: IndicatorId):
+  { overlays: IndicatorId[]; drawingOverlaysShown: boolean } {
+  const overlays = toggleOverlay(p.overlays, id)
+  const turnedOn = overlays.includes(id) && !p.overlays.includes(id)
+  return { overlays, drawingOverlaysShown: p.drawingOverlaysShown || turnedOn }
+}
+
 /** 该不该盖住图区：这次取数失败了，而图上还留着别的品种 / 别的周期的那张（引擎换的时候留旧图不闪空）。
  *  图上就是当前这只这一档（只是补最新失败）不盖；还在取、或取到了不盖 */
 export function showsOtherChart(

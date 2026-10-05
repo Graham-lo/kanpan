@@ -54,7 +54,8 @@ const chart = createChart(host, {
 | `setLook(p)` | 其余样式：参数、颜色覆写、隐藏输出、副图倍率、强弱上下轨等 |
 | `setOrderFlow(on, display?)` | 主力订单流开关与显示设置 |
 | `setDrawings(list)` | 本品种画线（只读展示用；装了画线控制器之后线从 `DrawingBook` 投影，用控制器的 `setDrawings` / `bindDrawings`） |
-| `setLandscape(on)` | 横屏画线台：只留原始 K 线（不画主图副图指标、不画订单流），退出时恢复 |
+| `setLandscape(on, barSpacing?)` | 横屏画线台：不画副图与订单流；主图指标照画（`setLandscapeOverlays` 可关）但不撑价格区间（`overlaysAffectPriceRange = false`，区间只按 K 线算）。带 `barSpacing` 时按这一方向自己记的根宽摆（横屏 `landscapeBarSpacing`、竖屏 `barSpacing`），各方向各记各的；松手报的 `'scale'` 事件带 `landscape` 标明是哪个方向的 |
+| `setLandscapeOverlays(on)` | 横屏画线台上主图指标显示与否（眼睛开关，偏好 `drawingOverlaysShown`）；竖屏不受影响 |
 | `showWindow(from, to)` | 把视野铺到这段时间（扫图 / 复盘跳转） |
 | `scrollToLatest()` / `clearCrosshair()` / `resetPriceScale()` | |
 | `redrawNow()` | 立刻画完脏层（截图用） |
@@ -67,7 +68,7 @@ const chart = createChart(host, {
 | 事件 | 载荷 | 用途 |
 |---|---|---|
 | `crosshair` | `{ crosshair, bar }` | 头部开高低收读数（`dataDisplay: 'top'`） |
-| `scale` | `{ barSpacing }` | 用户捏合 / 平移后落盘根宽 |
+| `scale` | `{ barSpacing, landscape }` | 用户捏合松手后落盘根宽；`landscape` 说明是横屏还是竖屏捏的，宿主据此写 `landscapeBarSpacing` 或 `barSpacing` |
 | `visibleRange` | `{ from, to, atLatest }` | 可视范围（「最新」药丸 2026-10-02 删了，行情页不再订它） |
 | `select` | `{ kind: 'orderFlow', focus }` | 点中订单流墙（focus 带详情卡摆放：below / leading / top / maxHeight / maxWidth / compact；卡片由页面画）。画线的选中不走这里，看下节控制器的 `selected` / `onState` |
 | `inversion` | `{ main, subs }` | 双击翻转后落盘 |

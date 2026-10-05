@@ -2,7 +2,8 @@
  *
  * 竖屏：顶栏 · 头部（价格 + 六格）· 周期条 · 图（主图 + 副图，同一屏）；图下沿让出底栏。
  * 横屏（手机横过来，高 ≤ 500）：画线工作台——左周期栏 · 中间 [品种胶囊、选中栏、图、画线条] · 右「画线 / 竖屏」；
- *   底栏让位（#m-app.landscape-free），图只留原始 K 线。浏览器转不了屏：竖屏点「开始画线」出一层引导，
+ *   底栏让位（#m-app.landscape-free），图上不画副图与主力订单流；主图指标由品种胶囊行右端的眼睛管（drawingOverlaysShown），
+ *   开着照画但价格轴只按 K 线定，「主图˅」就地换主图指标；横竖各记一份根宽（barSpacing / landscapeBarSpacing）。浏览器转不了屏：竖屏点「开始画线」出一层引导，
  *   手机一横过来就直接进画线；转回竖屏自动收工。
  *
  * 状态全在 st：改完 save()，这里订阅 store 把图对齐（syncChart）；图上的手势（捏合根宽、双击翻转、
@@ -36,7 +37,7 @@ import { openSearch } from './search'
 import { openAlertForm } from './alertForm'
 import { openAlertHub } from './alertHub'
 import { onAlertsChange, pendingCount } from '../model/alerts'
-import { chartIndicatorsFor, isStale, isLandscape, priceModeFor, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
+import { chartIndicatorsFor, isStale, isLandscape, spacingFor, spacingWrite, priceModeFor, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
 import { compareTargets } from '../chart/compare.source'
@@ -160,6 +161,7 @@ export function initChart(root: HTMLElement): PageHandle {
     priceMode: effectivePriceMode(sym()), mainInverted: st.mainInverted, subInverted: st.subInverted,
     subScale: { ...st.subHeightOverrides },
     barSpacing: st.barSpacing, orderFlow: st.orderFlow && shownInd().orderFlow,
+    landscapeOverlays: st.drawingOverlaysShown,
     // 对比整串交给引擎（它自己去掉主图那只、去重、最多三只）；盘口只在页面露着时开，见 syncChart 的 extraKey
     compareSymbols: [...st.compareSymbols], depth: false,
     streams: list => { chartStreams = list; pushStreams() },
@@ -231,7 +233,8 @@ export function initChart(root: HTMLElement): PageHandle {
     page.classList.toggle('land', land)
     page.classList.toggle('drawing', bench.active)
     document.getElementById('m-app')?.classList.toggle('landscape-free', land && shown)
-    chart.setLandscape(land)
+    // 转过去那一边自己记着的根宽（第一次进横屏还没记过时，prefs 已经拿竖屏那份兜底）
+    chart.setLandscape(land, spacingFor(land, st))
     if (!land && bench.active) bench.setActive(false)
     if (land && wantDraw) { wantDraw = false; guide.hidden = true; bench.setActive(true) }
     bench.render()
@@ -248,7 +251,8 @@ export function initChart(root: HTMLElement): PageHandle {
   const axisCtx: AxisContext = { mode: () => effectivePriceMode(sym()), category: () => axisCategory(sym()) }
 
   // ---- 图上的事件 → st（手指一松就落盘）
-  chart.on('scale', e => { if (Math.abs(st.barSpacing - e.barSpacing) > 1e-6) { st.barSpacing = e.barSpacing; save() } })
+  // 横竖各记一份：这一捏在哪一边的图上捏的，就写哪一格（iOS ChartViewport.userIsZooming(to:landscape:)）
+  chart.on('scale', e => { const k = spacingWrite(e, st); if (k) { st[k] = e.barSpacing; save() } })
   chart.on('inversion', e => { st.mainInverted = e.main; st.subInverted = [...e.subs] as IndicatorId[]; save() })
   chart.on('subScale', e => { st.subHeightOverrides = { ...st.subHeightOverrides, [e.id]: e.scale }; save() })
   chart.on('subOrder', list => { st.subs = [...list] as IndicatorId[]; save() })
@@ -288,6 +292,7 @@ export function initChart(root: HTMLElement): PageHandle {
       chart.setOrderFlow(of)
       if (!of) card.set(null, '', 2)
     }
+    chart.setLandscapeOverlays(st.drawingOverlaysShown)
     const pm = effectivePriceMode(sym())
     const lk = JSON.stringify([st.indicatorColors, st.subInverted, st.subHeightOverrides, st.mainInverted, pm, st.candleKind, st.portraitHeight])
     if (lk !== lookKey) {

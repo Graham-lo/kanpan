@@ -77,12 +77,19 @@ export interface ChartOptions {
   allowSubInversion: boolean
   adaptiveIndicators: boolean
   portraitHeight: number
+  /**
+   * 主图叠加线（均线、布林带……）进不进价格轴的上下界（iOS `ChartState.overlaysAffectPriceRange`）。
+   * 横屏画线台关掉：线照画（裁在主图里），轴只按 K 线定——MA256 一挂上量程被拉宽、K 线被压扁，
+   * 画的线就和真正的价格结构对不上。
+   */
+  overlaysAffectPriceRange: boolean
 }
 
 export const defaultChartOptions = (): ChartOptions => ({
   kind: 'candle', grid: 'off', body: 'solid', lastLine: true, drawings: true, countdown: false,
   sinceChange: false, bias: 'center', anchor: 'right', dataDisplay: 'inside', crossPrice: 'selected',
   allowMainInversion: false, allowSubInversion: false, adaptiveIndicators: false, portraitHeight: 0.5,
+  overlaysAffectPriceRange: true,
 })
 
 // ------------------------------------------------------------------ ViewWindow
@@ -172,6 +179,59 @@ export const ViewMath = {
     const span = plotW / newW * series.step
     const time = v.t(pin, plotW)
     return clampView(ViewWindow.fromTo(time - pin / plotW * span, time + (1 - pin / plotW) * span), series, plotW, anchor)
+  },
+
+  /**
+   * 只夹左右（视野在时间轴上的偏移），根宽原样不动（iOS ViewMath.clampedOffset）。
+   * `clampView` = 先把根宽夹进 [1.6, 40]，再走这一步。
+   */
+  clampedOffset(v: ViewWindow, series: BarSeries, plotW: number, anchor: ViewAnchor = 'right'): ViewWindow {
+    if (series.isEmpty || !(plotW > 0) || !(v.span > 0)) return v
+    const step = series.step
+    const span = v.span
+    const spacing = plotW / span * step
+    const first = series.firstTime - step / 2
+    const cells = Math.max(series.count, (series.lastTime - series.firstTime) / step + 1)
+    const maximumOffset = ViewMath.maximumOffset(cells, spacing, plotW, anchor)
+    const offset = (v.to - span - first) / step * spacing
+    const clamped = Math.max(0, Math.min(maximumOffset, offset))
+    return new ViewWindow(first + clamped / spacing * step + span, span)
+  },
+
+  /** 按 `spacing` 摆到最新（末根 + 右留白），只夹左右、不夹根宽。 */
+  latestView(series: BarSeries, plotW: number, spacing: number, anchor: ViewAnchor = 'right'): ViewWindow {
+    const step = series.step
+    return ViewMath.clampedOffset(
+      new ViewWindow(series.lastTime + step / 2 + ViewMath.rightInset(anchor, plotW) / spacing * step, plotW / spacing * step),
+      series, plotW, anchor)
+  },
+
+  /**
+   * 视野是不是「贴着最新」：右缘离「末根 + 右留白」不到一格（iOS ViewMath.isPinnedToLatest，a8012401）。
+   * 捏合只认这一条判据：贴着 → 末根钉住、两指中点的漂移不算数；不贴 → 绕两指中点缩放。
+   */
+  isPinnedToLatest(v: ViewWindow, series: BarSeries, plotW: number, anchor: ViewAnchor = 'right'): boolean {
+    if (series.isEmpty || !(plotW > 0) || !(v.span > 0) || !Number.isFinite(v.span)) return false
+    const spacing = plotW / v.span * series.step
+    const latest = ViewMath.latestView(series, plotW, spacing, anchor)
+    return Math.abs(v.to - latest.to) / v.span * plotW < spacing
+  },
+
+  /**
+   * 捏合的一帧：根宽换成 `spacing`，左右照常夹（iOS ViewMath.pinched）。
+   * - `pinned`：末根连同右留白钉在原处；
+   * - 否则以 `focus`（两指中点，图区内的 x）为不动点；视野左缘已经顶着首根时以左缘为不动点。
+   */
+  pinched(v: ViewWindow, series: BarSeries, plotW: number, spacing: number, focus: number, pinned: boolean, anchor: ViewAnchor = 'right'): ViewWindow {
+    if (series.isEmpty || !(plotW > 0) || !(v.span > 0) || !(spacing > 0) || !Number.isFinite(spacing)) return v
+    if (pinned) return ViewMath.latestView(series, plotW, spacing, anchor)
+    const step = series.step
+    const oldW = plotW / v.span * step
+    const offset = (v.from - series.firstTime) / step * oldW + oldW / 2
+    const pin = offset <= 0.5 ? 0 : Math.max(0, Math.min(plotW, focus))
+    const span = plotW / spacing * step
+    const time = v.t(pin, plotW)
+    return ViewMath.clampedOffset(ViewWindow.fromTo(time - pin / plotW * span, time + (1 - pin / plotW) * span), series, plotW, anchor)
   },
 
   needsMoreHistory(v: ViewWindow, series: BarSeries): boolean {
@@ -480,6 +540,37 @@ export function clampedCenter(c: number, zoom: number): number {
   const h = 1 / (2 * zoom), margin = zoom <= 1 ? 3.0 : 0.75
   const a = h - margin, b = 1 - h + margin
   return Math.max(Math.min(a, b), Math.min(Math.max(a, b), c))
+}
+
+/**
+ * 价格轴绕一个价位缩放：倍数换成 `zoom` 之后，`price` 仍落在主图同一个高度上，返回该用的
+ * `centerFraction`（已夹过）。双指竖着捏价格轴用它（iOS PriceTransform.anchoredCenter，a8012401）。
+ * - `g`：那个高度在主图里的位置，按前向空间从下往上量（0 = 下沿，1 = 上沿；反转的轴由调用方先翻）；
+ * - `autoLow` / `autoHigh`：同一视野下 zoom = 1 时的价格区间。
+ * 手动区间在价格空间里按 mid ± half 摆（见 priceRange）：线性、百分比是闭式解，对数轴二分。
+ */
+export function anchoredCenter(price: number, g: number, zoom: number, autoLow: number, autoHigh: number, mode: PriceMode): number {
+  const autoH = autoHigh - autoLow
+  if (!(autoH > 0) || !Number.isFinite(autoH) || !Number.isFinite(price) || !Number.isFinite(g) || !Number.isFinite(zoom) || !(zoom > 0)) return 0.5
+  const z = Math.min(16, Math.max(0.03, zoom))
+  const half = autoH / (2 * z)
+  let mid: number
+  if (mode === 'log' && price > 0 && g > 0 && g < 1) {
+    const target = Math.log(price)
+    const frac = (m: number): number => {
+      const lo = Math.log(Math.max(1e-300, m - half)), hi = Math.log(m + half)
+      return (target - lo) / (hi - lo)
+    }
+    let a = half * (1 + 1e-12), b = price + half
+    for (let k = 0; k < 80; k++) {
+      const m = (a + b) / 2
+      if (frac(m) > g) a = m; else b = m
+    }
+    mid = (a + b) / 2
+  } else {
+    mid = price + half * (1 - 2 * g)
+  }
+  return clampedCenter((mid - autoLow) / autoH, z)
 }
 
 export function visibleRange(view: ViewWindow, series: BarSeries): { lo: number; hi: number } {

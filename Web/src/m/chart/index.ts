@@ -20,6 +20,7 @@ import type { Bar, Interval } from './series'
 import { BarSeries, ExternalSeries, isIrregular } from './series'
 import type { ChartState, Crosshair, OrderBook, SymbolInfo } from './state'
 import { makeState, withInput, withOverlay, withViewport } from './state'
+import { OrientedPriceScale } from './orientedPrice'
 import type { ChartColors } from './paint'
 import { readChartColors, skinKey } from './paint'
 import type { Drawing } from './drawing'
@@ -86,6 +87,11 @@ export interface CreateChartOptions extends Partial<ChartLook> {
   drawings?: Drawing[]
   landscape?: boolean
   /**
+   * 横屏（画线台）里画不画主图指标（Prefs.drawingOverlaysShown，出厂开）。副图与主力订单流横屏一律不画；
+   * 主图指标照画，但价格轴只按 K 线定（overlaysAffectPriceRange 关）。默认 true。
+   */
+  landscapeOverlays?: boolean
+  /**
    * 图要订的推送流名（`market.streamName.kline`）。行情推送是全页共用的一条连接，
    * 由宿主页把各处要的流并起来再交给 `market.setStreams`；图自己不直接动连接。
    */
@@ -114,7 +120,8 @@ export interface CreateChartOptions extends Partial<ChartLook> {
 
 export interface CrosshairEvent { crosshair: Crosshair | null; bar: Bar | null }
 export interface VisibleRangeEvent { from: number; to: number; atLatest: boolean }
-export interface ScaleEvent { barSpacing: number }
+/** 手指捏出来的根宽；landscape：这一捏是在横屏图上（页面写 Prefs.landscapeBarSpacing）还是竖屏（barSpacing） */
+export interface ScaleEvent { barSpacing: number; landscape: boolean }
 export type SelectEvent =
   | { kind: 'orderFlow'; focus: ChartOrderFlowFocus | null }
   | { kind: 'drawing'; id: string | null }
@@ -152,7 +159,14 @@ export interface ChartHandle {
   /** 盘口五档开关。 */
   setDepth(on: boolean): void
   setDrawings(list: Drawing[]): void
-  setLandscape(on: boolean): void
+  /**
+   * 横屏（画线台）进出。barSpacing：转过去那一边自己记着的根宽（Prefs.landscapeBarSpacing / barSpacing，
+   * iOS ChartViewport.spacing(landscape:)）——横屏图宽是竖屏两倍多，共用一份的话横屏里捏一下、
+   * 转回竖屏一屏的根数就翻倍。给了就按它重摆视野（右缘不动）并记成这一边的根宽；不给保持当前根宽。
+   */
+  setLandscape(on: boolean, barSpacing?: number): void
+  /** 横屏里画不画主图指标（Prefs.drawingOverlaysShown） */
+  setLandscapeOverlays(on: boolean): void
   /** 「铺到某段时间」（扫图、复盘跳转）：数据到了就按这段摆视野。 */
   showWindow(from: number, to: number): void
   scrollToLatest(animated?: boolean): void
@@ -293,6 +307,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   let nowMs: number | null = null
   let destroyed = false
   let landscape = !!opts.landscape
+  let landscapeOverlays = opts.landscapeOverlays ?? true
+  const orientedPrice = new OrientedPriceScale()
   let orderFlowOn = !!opts.orderFlow
   let orderFlowDisplay = opts.orderFlowDisplay ?? defaultOrderFlowDisplay()
   let orderFlowSnapshot: OrderFlowSnapshot | null = null
@@ -408,10 +424,12 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   const compose = (s: BarSeries): ChartState => {
     const si = info(s)
     const price = { ...priceTransform(look.priceMode), inverted: look.mainInverted }
-    const overlays = landscape ? [] : look.overlays
+    // 横屏画线台（iOS MainScreen.visibleOverlays / ChartSession.compose 的 drawingCanvasOnly）：副图一律不画；
+    // 主图指标由顶行「指标」眼睛管，开着照画但不撑价格轴（overlaysAffectPriceRange 关）
+    const overlays = landscape ? (landscapeOverlays ? look.overlays : []) : look.overlays
     const subs = landscape ? [] : look.subs
     const options: ChartOptions = { ...look.options, grid: gridAuto ? skinGrid() : look.options.grid }
-    if (landscape) options.drawings = true
+    if (landscape) { options.drawings = true; options.overlaysAffectPriceRange = false }
     const comparing = comparingFor(s.symbol)
     // 对比态：百分比轴、不画线（ChartSession.compose）；集合本身不动，退出对比就回来。
     if (comparing) options.drawings = false
@@ -479,6 +497,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
         cross = null
         overlay.orderFlowSelected = null
         pending = { kind: 'reset' }
+        orientedPrice.forget()
       } else if (oldSeries.interval !== input.series.interval) {
         cross = null
         overlay.orderFlowSelected = null
@@ -573,7 +592,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     if (s && series && orderFlowPort) orderFlowPort.noteView(v, series)
     emit('visibleRange', { from: v.from, to: v.to, atLatest: !!s && s.input.series.count > 0 && v.to >= s.input.series.lastTime })
   }
-  const scaleReport = new ScaleReport(() => view.gesture.touches.length > 0, w => emit('scale', { barSpacing: w }))
+  const scaleReport = new ScaleReport(() => view.gesture.touches.length > 0, w => emit('scale', { barSpacing: w, landscape }))
   view.onUserViewChanged = v => {
     const L = view.chartLayout, s = view.state
     if (!L || !s || s.input.series.count === 0) return
@@ -1123,14 +1142,32 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       if (st) view.state = withOverlay(st, { drawings: list })
     },
 
-    setLandscape(on) {
+    setLandscape(on, barSpacing) {
       if (on === landscape) return
+      // 欠着没报的那一捏是在转之前那一边捏的，先按那一边报掉
+      scaleReport.lift()
+      // 价格轴倍率横竖各一份（只在内存）：把手上这份收进离开的朝向，换上要去的朝向那份（第一次去是 1.0）
+      const cur = view.state
+      if (cur) {
+        const price = orientedPrice.rotate(cur.viewport.price, cur.input.series.symbol, landscape, on)
+        if (price !== cur.viewport.price) view.state = withViewport(cur, { price, axisScaleAnchor: null })
+      }
       landscape = on
+      if (barSpacing != null && barSpacing > 0 && Number.isFinite(barSpacing)) {
+        resetSpacing = barSpacing
+        pending = { kind: 'adopt', spacing: barSpacing }
+      }
       orderFlowPort?.setWanted(orderFlowOn && !landscape, symbol, interval)
       syncDepth()
       view.clearCrosshair()
       update()
       layoutContent()
+    },
+
+    setLandscapeOverlays(on) {
+      if (on === landscapeOverlays) return
+      landscapeOverlays = on
+      if (landscape) update()
     },
 
     showWindow(from, to) {

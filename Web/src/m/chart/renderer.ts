@@ -379,7 +379,8 @@ export class ChartRenderer {
 
   private computeOverlayLines(): number[][] {
     const inp = this._state.input
-    if (inp.percentAxis) return []
+    // 对比的百分比轴、横屏画线台（overlaysAffectPriceRange 关）：区间只按 K 线定，叠加线照画不撑轴
+    if (inp.percentAxis || !inp.options.overlaysAffectPriceRange) return []
     let out: number[][] = []
     for (const id of inp.overlays) {
       const v = this.displayed(id)

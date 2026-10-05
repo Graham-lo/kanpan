@@ -3,6 +3,10 @@
  * Drawing/DrawingToolPicker.swift、Alerts/LineAlert.swift 的画线提醒胶囊）
  *
  * 横屏的整页：左边一列周期栏（52 宽）｜ 中间一列 [品种胶囊行、选中栏、图、画线条] ｜ 不在画线时右边一列「画线 / 竖屏」。
+ * 品种胶囊行右端（2026-10-05，照 iOS LandscapeIndicatorPicker / LandscapeIndicatorToggle）：「主图˅」开「主图指标」面板
+ *   就地换主图指标（始终在，一个都没开时正要从它开第一个）；它右边眼睛「指标」管横屏画不画主图指标
+ *   （st.drawingOverlaysShown，出厂开；只在开着主图指标时摆）。手机网页的横屏整个就是画线台，
+ *   所以这两颗在横屏一直在，不只在画线时。
  * 画线条（46 高、raised 底、顶上一根发丝线）：工具 · 常用的五把 · 撤销（能重做才出重做）· 更多 · 完成。
  *   五把按这个人每把工具用了几次排（chart/draw/toolRank.ts，次数表 drawToolUsage 随账号同步、与 iOS 同一张），
  *   顺序在进画线那一下定好、这一回里不重排；从「工具」面板挑了一把条上没有的，它顶掉最后一格。其余都在「工具」面板里。
@@ -36,7 +40,8 @@ import { el, esc, setAttr, setText } from '../../ui/dom'
 import { icon } from '../../ui/icons'
 import { railIntervals, deleteDrawingById, safeHexColor, mergeStyleEdits } from './logic'
 import { splitPair } from './header'
-import { openSymbolPicker, colorControlHTML, syncColorControl } from './panels'
+import { openSymbolPicker, openMainIndicators, colorControlHTML, syncColorControl } from './panels'
+import { mainOverlaysOf } from './logic'
 
 // ───────────────────────────── 工具记号（照 DrawingGlyph.swift，24 格取景）
 
@@ -81,6 +86,19 @@ export function kindGlyph(k: DrawingKind, size = 22): string {
 
 const UNDO = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 4.5 4 8l3.5 3.5"/><path d="M4.5 8H12a4 4 0 0 1 0 8H9"/></svg>`
 const REDO = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5 16 8l-3.5 3.5"/><path d="M15.5 8H8a4 4 0 0 0 0 8h3"/></svg>`
+/** 实心圆润的眼睛（照 iOS EyeGlyph）：杏仁形眼眶填实、中间挖一圈露出底、再放一颗实心瞳孔；
+ *  slashed 时左上到右下一道圆头斜杠（先挖一道宽缝，让斜杠和眼睛之间留出一线底色） */
+let eyeSeq = 0
+export function eyeGlyph(slashed: boolean, size = 15): string {
+  const id = `cp-eye-${++eyeSeq}`
+  return `<svg class="cp-eye" width="${size}" height="${size}" viewBox="0 0 16 16" aria-hidden="true"><defs><mask id="${id}">`
+    + `<path d="M0.8 8C3.2 3.4 12.8 3.4 15.2 8C12.8 12.6 3.2 12.6 0.8 8Z" fill="#fff"/><circle cx="8" cy="8" r="3.3" fill="#000"/><circle cx="8" cy="8" r="1.9" fill="#fff"/>`
+    + (slashed ? `<path d="M2.2 2.2L13.8 13.8" stroke="#000" stroke-width="4" stroke-linecap="round"/>` : '')
+    + `</mask></defs><rect width="16" height="16" fill="currentColor" mask="url(#${id})"/>`
+    + (slashed ? `<path d="M2.2 2.2L13.8 13.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>` : '')
+    + `</svg>`
+}
+
 const COPY = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="6.5" width="10" height="10" rx="2"/><path d="M13.5 6.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5"/></svg>`
 
 // ───────────────────────────── 提示语（照 DrawingFeedback.swift DrawingHints）
@@ -242,9 +260,27 @@ export function createBench(ctx: BenchContext) {
   }
 
   // ---- 中上：品种胶囊 + 读数 / 提示
-  line.innerHTML = `<button type="button" class="cp-lpill"></button><span class="cp-lread num"></span>`
+  line.innerHTML = `<button type="button" class="cp-lpill"></button><span class="cp-lread num"></span><span class="cp-lind"></span>`
   const pill = line.querySelector<HTMLButtonElement>('.cp-lpill')!
   const lread = line.querySelector<HTMLElement>('.cp-lread')!
+  const lind = line.querySelector<HTMLElement>('.cp-lind')!
+  // 「主图˅」·眼睛「指标」：开主图指标面板时收掉换品种、工具面板那几层（同一个 sheet 槽，开一个就把另一个收了）
+  lind.addEventListener('click', e => {
+    const b = (e.target as Element).closest<HTMLElement>('[data-act]')
+    if (!b) return
+    if (b.dataset.act === 'main-ind') { sheet?.close(); sheet = openMainIndicators() }
+    else if (b.dataset.act === 'eye') { st.drawingOverlaysShown = !st.drawingOverlaysShown; save() }
+  })
+  let lindKey = ''
+  const renderIndicatorControls = (): void => {
+    const hasMain = mainOverlaysOf(st.overlays).length > 0
+    const on = st.drawingOverlaysShown
+    const key = `${hasMain}|${on}`
+    if (key === lindKey) return
+    lindKey = key
+    lind.innerHTML = `<button type="button" class="cp-lbtn" data-act="main-ind" aria-label="切换主图指标">主图<span class="cp-lchev">${icon('chevron', 10)}</span></button>`
+      + (hasMain ? `<button type="button" class="cp-lbtn${on ? '' : ' off'}" data-act="eye" aria-label="主图指标" aria-pressed="${on}">${eyeGlyph(!on)}<span>指标</span></button>` : '')
+  }
   pill.addEventListener('click', () => {
     if (!active) return
     sheet?.close()
@@ -265,6 +301,7 @@ export function createBench(ctx: BenchContext) {
       + (s?.price != null ? `<b class="num ${cls}">${esc(grouped(fmtPrice(s.price, s.dec ?? 2)))}</b>` : '')
       + (s?.pct != null && Number.isFinite(s.pct) ? `<small class="num ${cls}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</small>` : '')
     if (html !== pillHTML) { pillHTML = html; pill.innerHTML = html }
+    renderIndicatorControls()
     if (pill.disabled === active) pill.disabled = !active
     setAttr(pill, 'aria-label', active ? `换品种，当前 ${base}/${quote}` : `${base}/${quote}`)
     const hint = active && c.tool && readout == null ? drawHint(c.tool, c.placedAnchors) : null

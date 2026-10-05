@@ -1,6 +1,7 @@
 /* 手机网页版 · 行情页的几张面板（照 iOS Panels/IndicatorPanel.swift、ChartPanel.swift、OrderFlow/OrderFlowEditor.swift）
  *
  * - 分析（周期条行尾「分析」）：画线 · 指标（在用 / 主图叠加 / 副图）· 主力订单流 · 恢复这一组的默认。
+ * - 主图指标（横屏画线台顶行「主图˅」，iOS IndicatorPage.mainOnly）：只有使用中的主图指标与主图叠加开关。
  *   （对比 2026-10-05 起搬到顶栏 ＋ 的对比搜索页，见 pages/search.ts）
  *   开关即时生效：改 st 再 save()，行情页订阅 store 重画图；面板自己也订阅，改完就地重绘。
  * - 指标参数编辑：全 app 唯一一处「按保存才生效」（一组参数要一起改，逐字生效图会乱跳）。
@@ -28,6 +29,7 @@ import type { Thresholds } from '../../../orderflow/types'
 import {
   toggleOverlay, toggleSub, moveSubAmong, sanitizeParam, clampParam, VARIABLE_PARAMS, MAX_VARIABLE_PARAMS,
   sanitizeAmount, clampAmount, mergeOverride, compactAmount, plainNumber, type OrderFlowField,
+  mainOverlaysOf, toggleMainOverlay,
 } from './logic'
 import { TERMS, splitPair } from './header'
 import type { PagePort } from './data'
@@ -130,6 +132,70 @@ export function openAnalysis(ctx: PanelContext): Sheet {
   return sheet
 }
 
+/** 在用那一行：名字 + 参数 + 「›」，点进参数编辑（副图行带拖动把手；同一段里有把手时主图行垫一块空位对齐） */
+function inUseLine(id: IndicatorId, sub: boolean, handles: boolean): string {
+  const params = paramsOf(id).join(' · ')
+  const resized = sub && st.subHeightOverrides[id] != null
+  return `<div class="cp-iu"${sub ? ` data-sub="${id}"` : ''}>
+    <button type="button" class="cp-iu-main" data-act="edit:${id}" aria-label="${esc(params ? `${indicatorName(id)}，${params}` : indicatorName(id))}">
+      <span class="cp-rn">${dot(swatchVar(id))}${esc(indicatorName(id))}</span>
+      ${params ? `<span class="cp-meta num">${esc(params)}</span>` : '<span></span>'}${chevron()}
+    </button>
+    ${resized ? `<button type="button" class="cp-reheight" data-act="height:${id}">还原高度</button>` : ''}
+    ${sub ? `<span class="cp-grip" aria-label="拖动换序">${icon('grip', 16)}</span>` : handles ? '<span class="cp-grip cp-grip-pad" aria-hidden="true"></span>' : ''}
+  </div>`
+}
+function toggleRowHTML(id: IndicatorId, on: boolean, act: string): string {
+  const term = INDICATOR_TERM[id]
+  return `<div class="cp-row"><span class="cp-rn">${dot(swatchVar(id))}${esc(indicatorName(id))}${term ? termHTML(term) : ''}</span>${sw(on, `${act}:${id}`, indicatorName(id))}</div>`
+}
+
+// ───────────────────────────── 主图指标（横屏画线台「主图˅」）
+
+/**
+ * 画线台那一版「分析」（iOS IndicatorPage.mainOnly，2026-10-05）：画线台不画副图、不画主力订单流，
+ * 那几段在这儿点了图上看不出任何变化，所以只摆主图那几段——开着的主图指标（点进参数）和主图叠加那排开关；
+ * 「恢复默认指标」会连副图一起动、「开始画线」已经在画，都不摆。改的仍是同一份指标布局（跟人走，不另起横屏配置）。
+ * 眼睛（drawingOverlaysShown）关着时新开一个主图指标，眼睛跟着睁开。
+ */
+export function openMainIndicators(): Sheet {
+  ensureTerms()
+  let off: (() => void) | null = null
+  const sheet = openSheet(body => {
+    const host = el('div', 'cp-panel')
+    body.append(host)
+    const render = (): void => { host.innerHTML = mainOnlyHTML() }
+    render()
+    off = subscribe(() => { if (!sheet.closed) render() })
+    host.addEventListener('click', e => {
+      const b = (e.target as Element).closest<HTMLElement>('[data-act]')
+      if (!b || b.hasAttribute('disabled')) return
+      const [act, arg] = (b.dataset.act || '').split(':') as [string, string | undefined]
+      const id = arg as IndicatorId
+      if (act === 'edit') openIndicatorEditor(id)
+      else if (act === 'ov') {
+        const next = toggleMainOverlay({ overlays: st.overlays, drawingOverlaysShown: st.drawingOverlaysShown }, id)
+        st.overlays = next.overlays
+        st.drawingOverlaysShown = next.drawingOverlaysShown
+        save()
+      }
+    })
+  }, { title: '主图指标', detent: 'large', dim: 'large', id: 'main-indicators', className: 'cp-sheet cp-list', onClose: () => { off?.() } })
+  return sheet
+}
+
+function mainOnlyHTML(): string {
+  const out: string[] = []
+  const overlays = mainOverlaysOf(st.overlays)
+  if (overlays.length) {
+    out.push(gt('使用中'))
+    out.push(`<div class="cp-inuse">${overlays.map(id => inUseLine(id, false, false)).join('')}</div>`)
+  }
+  out.push(gt('主图叠加'))
+  out.push(`<div class="cp-group">${OVERLAY_ROWS.map(id => toggleRowHTML(id, st.overlays.includes(id), 'ov')).join('')}</div>`)
+  return out.join('')
+}
+
 function analysisHTML(ctx: PanelContext): string {
   const out: string[] = []
   out.push(gt('画线'))
@@ -141,26 +207,11 @@ function analysisHTML(ctx: PanelContext): string {
   if (inUse) {
     out.push(gt('指标'))
     const rows: string[] = []
-    const line = (id: IndicatorId, sub: boolean): string => {
-      const params = paramsOf(id).join(' · ')
-      const resized = sub && st.subHeightOverrides[id] != null
-      return `<div class="cp-iu"${sub ? ` data-sub="${id}"` : ''}>
-        <button type="button" class="cp-iu-main" data-act="edit:${id}" aria-label="${esc(params ? `${indicatorName(id)}，${params}` : indicatorName(id))}">
-          <span class="cp-rn">${dot(swatchVar(id))}${esc(indicatorName(id))}</span>
-          ${params ? `<span class="cp-meta num">${esc(params)}</span>` : '<span></span>'}${chevron()}
-        </button>
-        ${resized ? `<button type="button" class="cp-reheight" data-act="height:${id}">还原高度</button>` : ''}
-        ${sub ? `<span class="cp-grip" aria-label="拖动换序">${icon('grip', 16)}</span>` : handles ? '<span class="cp-grip cp-grip-pad" aria-hidden="true"></span>' : ''}
-      </div>`
-    }
-    for (const id of overlays) rows.push(line(id, false))
-    for (const id of st.subs) rows.push(line(id, true))
+    for (const id of overlays) rows.push(inUseLine(id, false, handles))
+    for (const id of st.subs) rows.push(inUseLine(id, true, handles))
     out.push(`<div class="cp-inuse">${rows.join('')}</div>`)
   }
-  const toggleRow = (id: IndicatorId, on: boolean, act: string): string => {
-    const term = INDICATOR_TERM[id]
-    return `<div class="cp-row"><span class="cp-rn">${dot(swatchVar(id))}${esc(indicatorName(id))}${term ? termHTML(term) : ''}</span>${sw(on, `${act}:${id}`, indicatorName(id))}</div>`
-  }
+  const toggleRow = toggleRowHTML
   out.push(gt(inUse ? '主图叠加' : '指标 · 主图叠加'))
   out.push(`<div class="cp-group">${OVERLAY_ROWS.map(id => toggleRow(id, st.overlays.includes(id), 'ov')).join('')}</div>`)
   out.push(gt('副图 · 最多三个 · 成交量不占'))

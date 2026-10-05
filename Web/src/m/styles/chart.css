@@ -319,6 +319,18 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cp-lread.hint { font-family: var(--font-ui); color: var(--ink3) }
+/* 品种胶囊行右端：「主图˅」·眼睛「指标」（照 iOS LandscapeIndicatorPicker / Toggle：和品种胶囊同底同字同高，命中区上下撑到 44） */
+.cp-lind { flex: none; display: flex; align-items: center; gap: var(--s-s) }
+.cp-lind:empty { display: none }
+.cp-lbtn {
+  position: relative; display: inline-flex; align-items: center; gap: var(--s-xs);
+  height: var(--pill-h); min-width: var(--pill-h); padding: 0 var(--s-m); border-radius: 999px;
+  background: var(--raised2); color: var(--ink); font: var(--t-control-on); white-space: nowrap;
+}
+.cp-lbtn::after { content: ''; position: absolute; inset: calc((var(--pill-h) - var(--hit)) / 2) 0 }
+.cp-lbtn.off { color: var(--ink3) }
+.cp-lbtn .cp-lchev { display: inline-flex; color: inherit }
+.cp-eye { flex: none; display: block }
 
 .cp-lsel {
   align-items: center; gap: var(--s-s); min-height: 40px; padding: 0 var(--s-m);
