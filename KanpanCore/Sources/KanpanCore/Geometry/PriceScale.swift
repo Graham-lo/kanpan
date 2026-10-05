@@ -49,6 +49,41 @@ public struct PriceTransform: Sendable, Equatable {
     let a = h - margin, b = 1 - h + margin
     return max(min(a, b), min(max(a, b), c))
   }
+
+  /// 价格轴绕一个价位缩放：倍数换成 `zoom` 之后，`price` 仍落在主图同一个高度上，
+  /// 返回该用的 `centerFraction`（已夹过）。双指竖着捏价格轴用它（2026-10-05）。
+  ///
+  /// - `fraction`：那个高度在主图里的位置，按**前向空间**从下往上量（0 = 下沿，1 = 上沿；
+  ///   反转了的轴由调用方先翻过来）。
+  /// - `autoLow` / `autoHigh`：同一视野下自动贴合时的价格区间（zoom = 1 的那一份）。
+  /// - `mode`：主图的映射模式。手动区间是在**价格空间**里按 mid ± half 摆的（见 `priceRange`），
+  ///   线性与百分比轴的前向变换是仿射的，闭式解；对数轴没有闭式，二分。
+  public static func anchoredCenter(price: Double, fraction g: Double, zoom: Double,
+                                    autoLow: Double, autoHigh: Double, mode: PriceMode) -> Double {
+    let autoH = autoHigh - autoLow
+    guard autoH > 0, autoH.isFinite, price.isFinite, g.isFinite, zoom.isFinite, zoom > 0 else { return 0.5 }
+    let z = min(16, max(0.03, zoom))
+    let half = autoH / (2 * z)
+    let mid: Double
+    if mode == .log, price > 0, g > 0, g < 1 {
+      // 价位在窗口里的对数位置随 mid 单调减：mid 刚过 half（下沿贴 0）时它在最上面，
+      // mid = price + half（下沿就是它）时在最下面。
+      let target = Foundation.log(price)
+      func frac(_ m: Double) -> Double {
+        let lo = Foundation.log(max(1e-300, m - half)), hi = Foundation.log(m + half)
+        return (target - lo) / (hi - lo)
+      }
+      var a = half * (1 + 1e-12), b = price + half
+      for _ in 0..<80 {
+        let m = (a + b) / 2
+        if frac(m) > g { a = m } else { b = m }
+      }
+      mid = (a + b) / 2
+    } else {
+      mid = price + half * (1 - 2 * g)
+    }
+    return clampedCenter((mid - autoLow) / autoH, zoom: z)
+  }
 }
 
 /// 可见区间的下标范围（原型 `visible()`）：左右各多算一根，边上的线不缺。

@@ -287,6 +287,9 @@ private func stroke(
     let a = FakeTouch(CGPoint(x: 120, y: 120)), b = FakeTouch(CGPoint(x: 260, y: 120))
     v.touchesBegan([a], with: FakeEvent(ms: 10000))
     v.touchesBegan([b], with: FakeEvent(ms: 10010))
+    a.point.x = 110; b.point.x = 270
+    v.touchesMoved([a,b], with: FakeEvent(ms: 10020))   // 越过死区：这一帧只重设基准
+    #expect(v.state!.view == state.view)
     a.point.x = 80; b.point.x = 300
     v.touchesMoved([a,b], with: FakeEvent(ms: 10030))
     let zoomed = v.state!.view
@@ -309,13 +312,16 @@ private func stroke(
     v.touchesBegan([b], with: FakeEvent(ms: 10010))
     a.point.x = 172; b.point.x = 188
     v.touchesMoved([a, b], with: FakeEvent(ms: 10020))
-    #expect(v.gesture.pinchD0 == 14)
+    #expect(v.gesture.pinchSx0 == 14)                  // 死区里（张开 2pt < 3pt）基准不跟
     #expect(v.state!.view == initial)
     a.point.x = 166; b.point.x = 194
     v.touchesMoved([a, b], with: FakeEvent(ms: 10030))
     #expect(v.gesture.pinchActive)
+    #expect(v.state!.view == initial, "越过死区那一帧只重设基准，不缩放（不跳）")
+    a.point.x = 152; b.point.x = 208
+    v.touchesMoved([a, b], with: FakeEvent(ms: 10040))
     #expect(abs(v.state!.view.span - initial.span / 2) < 1)
-    v.touchesEnded([a, b], with: FakeEvent(ms: 10040))
+    v.touchesEnded([a, b], with: FakeEvent(ms: 10050))
   }
   @Test("实时末根更新与同数历史替换均刷新指标")
   func indicatorsRefresh() throws {

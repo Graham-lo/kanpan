@@ -196,3 +196,23 @@ struct PriceScaleTests {
     #expect(yOfValue(5, pane: p, lo: 3, hi: 3) == 140)
   }
 }
+
+@Suite("价格轴绕价位缩放") struct AnchoredCenterTests {
+  /// 双指竖捏价格轴：换了倍数之后，两指中点底下那个价位还在同一个高度。
+  @Test("线性 / 对数：价位留在原高度", arguments: [PriceMode.linear, .log])
+  func keepsPrice(_ mode: PriceMode) {
+    let s = synthSeries(count: 300)
+    let view = ViewWindow(to: Double(s.lastTime), span: Double(s.step) * 80)
+    let pane = Pane(indicator: nil, y: 0, h: 400)
+    var t = PriceTransform(mode: mode)
+    let auto = priceRange(view: view, series: s, transform: t, paneHeight: 400)
+    for (y, zoom) in [(80.0, 2.0), (300, 3.5), (200, 0.6), (40, 1.4)] {
+      let p = pOf(y, pane: pane, range: auto, mode: mode)
+      t.zoom = zoom
+      t.centerFraction = PriceTransform.anchoredCenter(price: p, fraction: 1 - y / 400, zoom: zoom,
+                                                       autoLow: auto.lo, autoHigh: auto.hi, mode: mode)
+      let r = priceRange(view: view, series: s, transform: t, paneHeight: 400)
+      #expect(abs(yOf(p, pane: pane, range: r, mode: mode) - y) < 0.01, "y=\(y) zoom=\(zoom)")
+    }
+  }
+}

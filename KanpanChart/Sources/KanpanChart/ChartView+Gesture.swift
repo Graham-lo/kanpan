@@ -36,9 +36,24 @@ final class GestureState {
   var startTransform = PriceTransform()
   var startRange: PriceRange?
   var trace = ""
-  var pinchD0: Double = 0
+  /// 捏合这一轴的基准：两指**横向**张开量 sx、**纵向**张开量 sy（各自 = 2 × 到中点的平均距离）。
+  ///
+  /// 从前只记一个斜线距离 d = hypot(sx, sy)，两指竖着摆一捏，时间轴也跟着缩——
+  /// 人竖着捏是想看价格的细节，不是想改一根 K 线多宽（2026-10-05 P2）。
+  var pinchSx0: Double = 0
+  var pinchSy0: Double = 0
   var pinchMid0: Double = 0
+  var pinchMidY0: Double = 0
   var pinchActive = false
+  /// 这一轮捏合缩的是哪根轴。越过死区那一帧定下来，整轮不再改（中途换轴，图会忽横忽竖地抽）。
+  enum PinchAxis { case undecided, time, price }
+  var pinchAxis: PinchAxis = .undecided
+  /// 时间轴：手指「要的」根宽（可越过 [1.6, 40]，见 `ViewMath.softSpacing`）。
+  var pinchRawSpacing: Double = 0
+  /// 价格轴：越过死区那一刻的倍数、纵向张开量，和两指中点底下那个价位。
+  var pinchStartZoom: Double = 1
+  var pinchSyStart: Double = 0
+  var pinchPrice: Double = 0
   /// 这一轮手势是从**捏合**降下来的（捏合中途抬掉一根，剩下那根接着拖）。
   ///
   /// 降下来之后 `reset()` 把 `moved` 清了零、模式换成 `.pan`，于是「原地抬起剩下那根」
@@ -75,6 +90,7 @@ final class GestureState {
     longPressActivated = false
     moved = 0
     pinchActive = false
+    pinchAxis = .undecided
     cameFromPinch = false
     directionChosen = false
     axisStarted = false
@@ -278,6 +294,11 @@ extension ChartView {
         // G10：捏合中途抬一根手指要无缝变拖动——以剩下那根的**当前**位置重新起手，
         // 不是拿按下时的位置，否则图会瞬间跳一段。
         let q = t.location(in: self)
+        // 捏合越过软边界时抬掉一根：剩下那根接着拖，拖动走的是硬夹（`ViewMath.dragging`），
+        // 先把根宽收回边界再起手，不然第一帧拖动就是一次没有过渡的跳。
+        if var s = state, let target = pinchSettleTarget(s.view, L: L), target != s.view {
+          s.view = target; state = s; viewDidChange(target)
+        }
         gesture.reset()
         gesture.mode = .pan
         // 但这一轮的身世要留着：原地抬起剩下那根手指不是轻点（A-03）。
@@ -286,8 +307,6 @@ extension ChartView {
         gesture.startView = state?.view ?? gesture.startView
         gesture.startTransform = state?.price ?? PriceTransform()
         gesture.velocity.add(x: Double(q.x), t: now)
-        // 框先缓着还给自动贴合，同时剩下那根手指已经能拖了，两件事互不打扰。
-        _ = L
         return
       }
       gesture.reset()
@@ -394,56 +413,127 @@ extension ChartView {
     // 捏合就是冲着视野来的，这时候还钉着等于把缩放整个吞掉。
     cancelAxisFreeze()
     clearCrosshair()
-    let (d, m) = twoFinger()
+    let f = twoFinger()
     gesture.cancelLongPress()
     state?.axisScaleAnchor = nil
     gesture.mode = .pinch
-    gesture.trace = "begin d=\(d)"
-    gesture.pinchD0 = d
-    gesture.pinchMid0 = m
+    gesture.trace = "begin sx=\(f.sx) sy=\(f.sy)"
+    rebasePinch(f)
     gesture.pinchActive = false
+    gesture.pinchAxis = .undecided
     gesture.moved = .greatestFiniteMagnitude
   }
 
+  private func rebasePinch(_ f: TwoFinger) {
+    gesture.pinchSx0 = f.sx
+    gesture.pinchSy0 = f.sy
+    gesture.pinchMid0 = f.mx
+    gesture.pinchMidY0 = f.my
+  }
+
   private func updatePinch(L: Layout) {
-    guard var s = state else { return }
-    let (d, m) = twoFinger()
-    gesture.trace = "move d=\(d) previous=\(gesture.pinchD0) active=\(gesture.pinchActive)"
-    guard gesture.pinchD0 > 0 else { gesture.pinchD0 = d; return }
+    guard let s = state else { return }
+    let f = twoFinger()
+    gesture.trace = "move sx=\(f.sx) sy=\(f.sy) axis=\(gesture.pinchAxis) active=\(gesture.pinchActive)"
     // 两指太近的那几帧只当噪声，但基准要跟着它走：不跟的话，等间距一跨过门槛，
-    // d/d0 会把这一路攒下来的比例一次性甩出去，图会「嘭」地跳一下。
-    guard d >= ChartGesture.minPinchSpanPt else {
-      gesture.pinchD0 = d; gesture.pinchMid0 = m; gesture.pinchActive = false
+    // 比例会把这一路攒下来的一次性甩出去，图会「嘭」地跳一下。
+    guard hypot(f.sx, f.sy) >= ChartGesture.minPinchSpanPt else {
+      rebasePinch(f); gesture.pinchActive = false; gesture.pinchAxis = .undecided
       return
     }
-    // 缩放要越过死区才认：两指之间那点抖动不该被读成缩放。但**平移不看这个门槛**——
-    // 两指保持距离一起往旁边挪，那就是明明白白的平移，从前它被这条 `return` 整个吃掉，
-    // 于是「两指按住图挪」纹丝不动，非得先捏一下改了倍数才肯跟着走（A-06）。
-    // 死区期间 `pinchD0` 不跟着每一帧走：跟了就永远越不过门槛（慢慢撑开等于没撑）。
+    // P1 死区：横向或纵向张开量变过 3pt 才认缩放。死区期间基准不跟着每一帧走
+    // （跟了就永远越不过门槛，慢慢撑开等于没撑），但**平移不看这个门槛**——
+    // 两指保持距离一起往旁边挪就是平移（A-06）。
+    // 越过门槛那一帧只重设基准、定下这轮缩哪根轴，不缩放：从这一帧起按比例走，没有跳。
     if !gesture.pinchActive {
-      guard abs(d - gesture.pinchD0) > 2 * ChartGesture.panSlopPt else {
-        panPinch(mid: m, L: L)
+      let dsx = abs(f.sx - gesture.pinchSx0), dsy = abs(f.sy - gesture.pinchSy0)
+      guard max(dsx, dsy) > ChartGesture.pinchSlopPt else {
+        panPinch(mid: f.mx, L: L)
         return
       }
       gesture.pinchActive = true
+      let inMain = f.my >= L.main.y && f.my <= L.main.y + L.main.h
+      // P2：竖着摆、竖着捏、两指中点在主图里 → 缩价格轴；其余一律缩时间轴。
+      let vertical = f.sy > 1.5 * f.sx && dsy > ChartGesture.pinchSlopPt && inMain
+      gesture.pinchAxis = vertical ? .price : .time
+      rebasePinch(f)
+      if vertical {
+        gesture.pinchStartZoom = s.price.zoom
+        gesture.pinchSyStart = f.sy
+        gesture.pinchPrice = price(atY: f.my)
+      } else {
+        gesture.pinchRawSpacing = ViewMath.rawSpacing(
+          forSoft: s.view.barSpacing(step: s.series.step, plotW: L.plotW))
+      }
+      return
     }
-    let spacing = s.view.barSpacing(step: s.series.step, plotW: L.plotW)
-    // Android mode4 aligns the latest column without reserved blank, not any RIGHT boundary.
-    let aligned = Double(s.series.lastTime) + Double(s.series.step) / 2
-    let mode4 = abs(s.view.to - aligned) / s.view.span * L.plotW < spacing
-    let moved = mode4 ? s.view : clamp(s.view.dragged(byFingerPx: m - gesture.pinchMid0, plotW: L.plotW), plotW: L.plotW)
-    s.view = ViewMath.scaled(moved, series: s.series, plotW: L.plotW,
-                            factor: d / gesture.pinchD0, focus: m, anchor: s.options.anchor)
-    gesture.pinchD0 = d
-    gesture.pinchMid0 = m
+    switch gesture.pinchAxis {
+    case .price: pinchPrice(f, L: L)
+    case .time, .undecided: pinchTime(f, L: L)
+    }
+  }
+
+  /// 时间轴捏合的一帧（P1 / P3 / P5）。
+  ///
+  /// 倍数只看**横向**张开量：斜着捏时纵向那一半不再把根宽带着走。
+  /// 贴着最新（`ViewMath.isPinnedToLatest`，捏合与滚轮同一条判据）→ 末根钉住、中点漂移不算；
+  /// 不贴 → 视野先跟着中点平移，再绕中点缩放。
+  /// 根宽越过 [1.6, 40] 时带阻尼往外走（最多 1.6 × 0.85、40 × 1.15），抬手 `settleView` 弹回；
+  /// 系统「减少动效」开着就不越界，硬停在边界上。
+  private func pinchTime(_ f: TwoFinger, L: Layout) {
+    guard var s = state else { return }
+    guard f.sx >= ChartGesture.minPinchSpanPt, gesture.pinchSx0 >= ChartGesture.minPinchSpanPt else {
+      // 两指几乎竖成一条线：横向张开量太小，比值全是噪声。只换基准，等它张开再说。
+      rebasePinch(f)
+      return
+    }
+    let lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
+    var raw = gesture.pinchRawSpacing * f.sx / gesture.pinchSx0
+    let reduce = ChartHaptics.reduceMotion
+    raw = reduce ? min(hi, max(lo, raw)) : ViewMath.boundedRawSpacing(raw)
+    gesture.pinchRawSpacing = raw
+    let spacing = reduce ? raw : ViewMath.softSpacing(raw)
+    let anchor = s.options.anchor
+    let pinned = ViewMath.isPinnedToLatest(s.view, series: s.series, plotW: L.plotW, anchor: anchor)
+    let base = pinned ? s.view
+      : ViewMath.clampedOffset(s.view.dragged(byFingerPx: f.mx - gesture.pinchMid0, plotW: L.plotW),
+                               series: s.series, plotW: L.plotW, anchor: anchor)
+    s.view = ViewMath.pinched(base, series: s.series, plotW: L.plotW, spacing: spacing,
+                              focus: f.mx, pinned: pinned, anchor: anchor)
+    rebasePinch(f)
     state = s
     viewDidChange(s.view)
     reportZoomLimit(s.view, L: L)
   }
 
+  /// 价格轴捏合的一帧（P2）：两指竖着张开 = 价格放大，捏拢 = 缩小，绕两指中点那个价位。
+  ///
+  /// 倍数走价格轴竖拖同一条曲线（`AICoinBehavior.axisZoom`，0.03…16、靠近 1 吸回自动），
+  /// 进的也是同一个手动态（底边「A」徽章、双击价格轴都照常能回自动）。按下那一刻中点底下
+  /// 的价位一直跟着中点：两指一起上下挪，价格跟着挪。时间轴整轮不动。
+  private func pinchPrice(_ f: TwoFinger, L: Layout) {
+    guard var s = state, let renderer, gesture.pinchSyStart > 0,
+          f.sy >= ChartGesture.minPinchSpanPt else { return }
+    let unit = max(L.mainH / 4, 1)
+    let zoom = AICoinBehavior.axisZoom(from: gesture.pinchStartZoom,
+                                       dy: -unit * log2(f.sy / gesture.pinchSyStart), height: L.mainH)
+    var auto = s.price; auto.reset()
+    let automatic = renderer.priceRange(size: bounds.size, transform: auto)
+    let frac = min(1, max(0, (f.my - L.main.y) / max(1, L.main.h)))
+    let g = (chartPriceRange?.inverted ?? s.price.inverted) ? frac : 1 - frac
+    s.price.zoom = zoom
+    s.price.centerFraction = PriceTransform.anchoredCenter(
+      price: gesture.pinchPrice, fraction: g, zoom: zoom,
+      autoLow: automatic.lo, autoHigh: automatic.hi,
+      mode: s.effectivePriceMode == .log ? .log : .linear)
+    s.axisScaleAnchor = nil
+    gesture.pinchMid0 = f.mx
+    state = s
+  }
+
   /// 两指整体位移：中点挪了多少，图就跟着挪多少（A-06）。
   ///
-  /// 和捏合里那段平移的差别只有一处：这里不做 `mode4`（视野右缘贴着末根时按住不动）。
+  /// 和捏合的差别只有一处：这里不认「贴着最新」（`isPinnedToLatest`）。
   /// 那条规矩是给**缩放**用的——在最新位置捏合时把末根钉住，中点的漂移不算数；
   /// 可若把它套到纯平移上，就成了「停在最新时两指怎么拖都不动」，正是要修的那个毛病。
   /// 纵向一点不碰：两指平移只改时间窗，价格轴归价格轴的手势管。
@@ -456,17 +546,34 @@ extension ChartView {
     viewDidChange(s.view)
   }
 
-  private func twoFinger() -> (d: Double, mid: Double) {
+  struct TwoFinger { var sx: Double; var sy: Double; var mx: Double; var my: Double }
+
+  private func twoFinger() -> TwoFinger {
     let points = gesture.touches.map { $0.location(in: self) }
     let count = Double(points.count)
     let mx = points.reduce(0) { $0 + Double($1.x) } / count
     let my = points.reduce(0) { $0 + Double($1.y) } / count
     let sx = 2 * points.reduce(0) { $0 + abs(Double($1.x) - mx) } / count
     let sy = 2 * points.reduce(0) { $0 + abs(Double($1.y) - my) } / count
-    return (hypot(sx, sy), mx)
+    return TwoFinger(sx: sx, sy: sy, mx: mx, my: my)
+  }
+
+  /// 捏合越过软边界之后该回到哪：根宽收回 [1.6, 40]，不动点和捏的时候同一个
+  /// （贴着最新就钉末根，否则是最后那一帧的两指中点）。根宽没越界返回 nil。
+  func pinchSettleTarget(_ v: ViewWindow, L: Layout) -> ViewWindow? {
+    guard let s = state, !s.series.isEmpty, v.span > 0 else { return nil }
+    let sp = v.barSpacing(step: s.series.step, plotW: L.plotW)
+    let lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
+    guard sp < lo * (1 - 1e-9) || sp > hi * (1 + 1e-9) else { return nil }
+    let anchor = s.options.anchor
+    let pinned = ViewMath.isPinnedToLatest(v, series: s.series, plotW: L.plotW, anchor: anchor)
+    return clamp(ViewMath.pinched(v, series: s.series, plotW: L.plotW, spacing: min(hi, max(lo, sp)),
+                                  focus: gesture.pinchMid0, pinned: pinned, anchor: anchor),
+                 plotW: L.plotW)
   }
 
   /// 缩放顶到 1.6 / 40 那一下震一次，松开再撞才震第二次（G11 的 rigid）。
+  /// 软越界那几帧根宽在边界外面，照样算「顶着」，不重复震。
   private func reportZoomLimit(_ v: ViewWindow, L: Layout) {
     guard let s = state, s.series.count > 0 else { return }
     let sp = v.barSpacing(step: s.series.step, plotW: L.plotW)
@@ -775,17 +882,22 @@ extension ChartView {
   /// 保证图不停在半途」的兜底。没超界就一句不响，免得每次轻点都白发一轮视野变更通知。
   private func settleGeometry() {
     guard let s = state, let L = chartLayout, s.view.span > 0 else { return }
-    let target = clamp(s.view, plotW: L.plotW)
+    let target = pinchSettleTarget(s.view, L: L) ?? clamp(s.view, plotW: L.plotW)
     let offPx = abs(target.to - s.view.to) / s.view.span * L.plotW
     guard offPx > 0.01 || abs(target.span - s.view.span) / s.view.span > 1e-9 else { return }
     settleView()
   }
 
   /// 两端单指拉出的空白松手回对应边界，历史窗口不被拉回最新。
+  ///
+  /// 捏合越过软边界的（根宽在 [1.6, 40] 外面）绕捏的那个不动点弹回，不是绕右缘——
+  /// 不然捏着中间放大到头一松手，画面整体往右一滑。
   private func settleView() {
-    guard var s = state, let L = chartLayout else { return }
-    let target = clamp(s.view, plotW: L.plotW)
-    if !ChartHaptics.reduceMotion, abs(s.view.to - target.to) / s.view.span * L.plotW > 0.01 {
+    guard var s = state, let L = chartLayout, s.view.span > 0 else { return }
+    let target = pinchSettleTarget(s.view, L: L) ?? clamp(s.view, plotW: L.plotW)
+    let offPx = abs(s.view.to - target.to) / s.view.span * L.plotW
+    let spanOff = abs(target.span - s.view.span) / s.view.span > 1e-9
+    if !ChartHaptics.reduceMotion, offPx > 0.01 || spanOff {
       animate(from: s.view, to: target, rebound: true)
     } else {
       s.view = target; state = s; viewDidChange(s.view)
@@ -913,8 +1025,12 @@ enum ChartHaptics {
   private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
   private static let selection = UISelectionFeedbackGenerator()
 
-  /// 系统「减少动效」。甩和回弹看它，触觉不看——那是两个开关。
-  static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+  /// 系统「减少动效」。甩、回弹、捏合软越界看它，触觉不看——那是两个开关。
+  static var reduceMotion: Bool { reduceMotionOverride ?? UIAccessibility.isReduceMotionEnabled }
+  /// 单测用：模拟器里拨不动系统开关。
+  static var reduceMotionOverride: Bool?
+  /// 单测用：边界震了几次。
+  private(set) static var boundaryCount = 0
 
   static func crosshair() {
     light.prepare()
@@ -925,6 +1041,7 @@ enum ChartHaptics {
   static func magnetTick() { selection.selectionChanged() }
 
   static func boundary() {
+    boundaryCount += 1
     rigid.prepare()
     rigid.impactOccurred(intensity: 0.7)
   }

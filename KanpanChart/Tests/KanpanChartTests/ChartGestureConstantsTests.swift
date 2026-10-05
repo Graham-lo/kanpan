@@ -11,6 +11,8 @@ struct ChartGestureConstantsTests {
     #expect(ChartGesture.longPressSlopPt == 6)
     #expect(ChartGesture.panSlopPt == 4)
     #expect(ChartGesture.minPinchSpanPt == 10)
+    // 捏合死区 2026-10-05 从 8pt（2 × panSlopPt，量斜线距离）收到 3pt（量横 / 纵张开量）。
+    #expect(ChartGesture.pinchSlopPt == 3)
     #expect(ChartGesture.selectedHandlePt == 22)
     // 选中手柄的靶要比未选中的线体大，否则「只放大正在编辑那条」就没有意义。
     #expect(ChartGesture.selectedHandlePt > Chart.hitHandlePt)

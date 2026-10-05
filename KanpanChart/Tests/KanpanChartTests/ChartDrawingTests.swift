@@ -412,6 +412,10 @@ struct ChartDrawingTests {
     let b = FakeTouch(CGPoint(x: 260, y: 300))
     v.drawingTouchesBegan([a], with: FakeEvent(ms: 10_000))
     v.drawingTouchesBegan([b], with: FakeEvent(ms: 10_010))
+    // 越过捏合死区那一帧只重设基准（ChartPinchFeelTests P1），下一帧才缩。
+    a.point = CGPoint(x: 110, y: 300)
+    b.point = CGPoint(x: 270, y: 300)
+    v.drawingTouchesMoved([a, b], with: FakeEvent(ms: 10_018))
     a.point = CGPoint(x: 60, y: 300)
     b.point = CGPoint(x: 320, y: 300)
     v.drawingTouchesMoved([a, b], with: FakeEvent(ms: 10_026))
