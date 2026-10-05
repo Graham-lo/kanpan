@@ -10,8 +10,8 @@
 //! - `binance`：合约公开 REST 原样透传（`/v1/market/raw/fapi/v1/klines?source=binance&…`），
 //!   给网页版的网关线路用——浏览器在国内不开代理连不上 `fapi.binance.com`（2026-10-02）。
 //! - `macro_index`：美元指数（`macro/index/DXY`，2026-10-05）。没有可透传的上游：服务端自己从 CNBC
-//!   采价、存进 `macro_bars`，`/v1/market/raw/{instruments,klines,ticker/24hr}?source=macro` 答成币安的形状。
-//!   K 线要读库，库连接由采集任务放进模块里
+//!   采价、存进 `macro_bars`，`/v1/market/raw/{instruments,klines,ticker/24hr}?source=macro` 答成币安的形状，
+//!   `/v1/market/stream?source=macro` 推 ticker 与末根。K 线要读库，库连接由采集任务放进模块里
 //!   （这两族路由本身不带状态），没起采集的主机上答 503。
 //!
 //! 接第三家：新建 `venues/<id>.rs`，在下面两个分发里各加一行，别处不动
@@ -112,6 +112,10 @@ async fn oi_history(Query(query):Query<Vec<(String,String)>>)->Response {
 async fn stream(ws:WebSocketUpgrade,Query(query):Query<Vec<(String,String)>>)->Response {
  match source(&query) {
   Some(coinbase::SOURCE)=>ws.on_upgrade(coinbase::serve_client),
+  Some(macro_index::SOURCE)=>{
+   let initial=param(&query,"streams").map(|s|s.chars().take(1024).collect::<String>());
+   ws.on_upgrade(move|socket|macro_index::serve_client(socket,initial))
+  }
   _=>unsupported(),
  }
 }

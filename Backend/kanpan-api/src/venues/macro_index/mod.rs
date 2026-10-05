@@ -7,6 +7,7 @@
 //! - `GET /v1/market/raw/instruments?source=macro`：品种表（一只）。
 //! - `GET /v1/market/raw/klines?source=macro&symbol=DXY&interval=1h[&limit&startTime&endTime]`：币安 K 线数组。
 //! - `GET /v1/market/raw/ticker/24hr?source=macro[&symbol=DXY]`：币安 24h 行情的字段 + `marketState` + `priceSource`。
+//! - `WS /v1/market/stream?source=macro`：见 `stream`。
 //!
 //! 涨跌幅的口径是「对上一个交易日的官方收盘」，不是滚动 24 小时（见 `collector::State::ticker`）。
 //! 交易时间是 ICE 美元指数的：美东周日 18:00 到周五 17:00，每天 17:00–18:00 休一小时（见 `calendar`）。
@@ -14,6 +15,7 @@ pub mod bars;
 pub mod calendar;
 pub mod cnbc;
 pub mod collector;
+pub mod stream;
 
 use axum::http::{HeaderValue,StatusCode,header};
 use axum::response::{IntoResponse,Response};
@@ -34,6 +36,7 @@ pub const MAX_LIMIT:usize=1500;
 pub const DEFAULT_LIMIT:usize=500;
 
 pub use collector::spawn;
+pub use stream::serve_client;
 
 fn json_body(status:StatusCode,body:&Value)->Response {
  let mut response=(status,body.to_string()).into_response();
