@@ -197,6 +197,30 @@ describe('第一次对上（照 iOS SettingsStamp：按根比谁新）', () => {
     await a.first({ settings: { skin: server.now + 10 }, favorites: server.now + 10 }, true)
     expect(a.s.p.skin).toBe('terra')
   })
+
+  it('换了个新账号（云端没有设置）：上一个人的指标、参数、皮肤不带进来，回出厂；推上去的也是出厂那份', async () => {
+    const server = new FakeServer()
+    const a = phone(server)
+    a.edit(p => { p.subs = ['VOL', 'BASIS', 'LSR', 'TAKER']; p.overlays = ['EMA']; p.params = { MACD: [5, 9, 3] } })
+    a.s.p.skin = 'terra'
+    await a.first({ settings: { subs: server.now + 10 }, favorites: 0 }, true)
+    const d = defaultPrefs()
+    expect(a.s.p.subs).toEqual(d.subs)
+    expect(a.s.p.overlays).toEqual(d.overlays)
+    expect(a.s.p.params).toEqual(d.params)
+    expect(a.s.p.skin).toBe(d.skin)
+    expect(settingsOnServer(server).body.subs).toEqual(d.subs)
+  })
+
+  it('换了账号、云端只有部分设置：有的装云端的，缺的回出厂', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'settings', id: 'chart', body: { skin: 'terra' }, deleted: false })
+    const a = phone(server)
+    a.edit(p => { p.subs = ['VOL', 'BASIS'] })
+    await a.first({ settings: {}, favorites: 0 }, true)
+    expect(a.s.p.skin).toBe('terra')
+    expect(a.s.p.subs).toEqual(defaultPrefs().subs)
+  })
 })
 
 describe('自选与分类（照 iOS SymbolPrefs）', () => {

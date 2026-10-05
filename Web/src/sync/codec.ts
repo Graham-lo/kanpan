@@ -234,6 +234,25 @@ export function encodeSettings(s: SettingsState, prev: SyncObject | undefined, s
   return { collection: 'settings', id: SETTINGS_ID, body, fields: {}, revision: 0, deleted: false, generation: 0 }
 }
 
+/** 出厂的同步设置（与 app/store 的 defaults() 同一组值，tests/sync-bridge 对过账）：
+ *  换了账号、云端又没有这个人的设置时，这台电脑回到出厂，不把上一个账号的指标布局带进新账号（iOS 按账号分目录存偏好，同理） */
+export function factorySettings(): Required<SettingsState> {
+  return {
+    pinned: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
+    ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] },
+    params: null,
+    orderFlowOverrides: {},
+  }
+}
+
+/** 换人：同步设置整份回到出厂（原地改），返回变了的字段 */
+export function resetSettings(s: SettingsState): string[] {
+  const before = SETTINGS_FIELDS.map(f => webSetting(s, f))
+  const f = factorySettings()
+  s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides
+  return SETTINGS_FIELDS.filter((x, i) => !same(before[i], webSetting(s, x)))
+}
+
 /** 应用：云端值和 seen 不同的字段写回状态。返回改了哪些字段 */
 export function applySettings(s: SettingsState, cloud: SyncObject | undefined, seen: Record<string, Json>): string[] {
   if (!cloud || cloud.deleted) return []

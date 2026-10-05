@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { Drawing } from '../src/chart/chart'
 import { makeConditionAlert, makeDrawingAlert, makePriceAlert } from '../src/alerts/shape'
 import { OWNED, applyInto, captureInto, mergeFirst, type Prints, type WebState } from '../src/sync/bridge'
-import { alertToBody } from '../src/sync/codec'
+import { alertToBody, factorySettings } from '../src/sync/codec'
+import { hydrate } from '../src/app/store'
+import type { SubId } from '../src/chart/calc'
 import { Engine } from '../src/sync/engine'
 import { SyncStore } from '../src/sync/store'
 import { emptyArchive } from '../src/sync/types'
@@ -93,6 +95,35 @@ describe('首次对上', () => {
     expect(b.s.drawings.BTCUSDT).toEqual([])
     expect(b.s.watch.crypto.length).toBeGreaterThan(1) // 云端空 → 出厂自选
     expect(server.objects.has('drawings:binance/usd_m/BTCUSDT/prev')).toBe(false)
+  })
+
+  it('换了个新账号（云端没有设置）：指标布局、钉住周期、参数回到出厂，不把上一个人的带进新账号的云端', async () => {
+    const server = new FakeServer()
+    const prev = { ...state(), pinned: ['15m'], ind: { ma: false, ema: true, boll: true, vol: false, subs: ['macd', 'kdj', 'oi'] as SubId[] }, params: { macd: { fast: 5, slow: 9, signal: 3 } } }
+    const b = browser(server, prev)
+    await b.first({ settings: 0, favorites: 0 }, true)
+    const f = factorySettings()
+    expect(b.s.pinned).toEqual(f.pinned)
+    expect(b.s.ind).toEqual(f.ind)
+    expect(b.s.params).toBeNull()
+    const pushed = server.objects.get('settings:chart')?.body
+    expect(pushed?.subs).toEqual(['VOL', 'MACD', 'RSI'])
+    expect(pushed?.['params/MACD']).toBeUndefined()
+  })
+
+  it('换了账号、云端只有部分设置：有的装云端的，缺的回出厂', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'settings', id: 'chart', body: { subs: ['KDJ'] }, deleted: false })
+    const b = browser(server, { ...state(), pinned: ['15m'], ind: { ma: false, ema: true, boll: false, vol: true, subs: ['oi'] } })
+    await b.first({ settings: 0, favorites: 0 }, true)
+    expect(b.s.ind).toEqual({ ma: true, ema: false, boll: false, vol: false, subs: ['kdj'] })
+    expect(b.s.pinned).toEqual(factorySettings().pinned)
+  })
+
+  it('出厂设置与 app/store 的 defaults() 对得上', () => {
+    const d = hydrate({})
+    const f = factorySettings()
+    expect({ pinned: d.pinned, ind: d.ind, params: d.params, orderFlowOverrides: d.orderFlowOverrides }).toEqual(f)
   })
 })
 

@@ -33,7 +33,7 @@ import { validSymbol, decodeAlerts, syncableAlert, alertId } from '../../sync/co
 import { DRAW_OWNED, unseenDrawingsM } from './drawCodec'
 import type { Alert } from '../../alerts/shape'
 import {
-  LAYOUT_GROUPS, SYNCED_FIELDS, adoptBook, cleanColors, collapseLayouts, currentLayout, layoutBook, normalizePrefs, sanitizeLayout,
+  LAYOUT_GROUPS, SYNCED_FIELDS, adoptBook, cleanColors, collapseLayouts, currentLayout, defaultPrefs, layoutBook, normalizePrefs, sanitizeLayout,
   type IndicatorLayout, type LayoutBook, type Prefs,
 } from './prefs'
 import type { FavoriteGroup, SymbolPrefs } from './store'
@@ -263,14 +263,28 @@ export function rootTouched(o: SyncObject | undefined, root: string): number {
  *  指标布局七个根一起比、一起装。override：上一次在这台设备同步的是另一个账号，云端整体覆盖。
  *  seen 由调用方先清空；本机新的根不记 seen，记账时推上去。返回改了哪些根 */
 export function mergeSettings(p: Prefs, cloud: SyncObject | undefined, seen: Record<string, Json>, edited: Record<string, number>, override: boolean): Root[] {
+  if (override) {
+    // 换了人：先回出厂再装云端的——云端没有（新账号）或缺了的根不能留着上一个账号的（iOS 按账号分目录存偏好，新人就是出厂）
+    const reset = resetSynced(p)
+    const applied = cloud && !cloud.deleted ? applySettings(p, cloud, seen) : []
+    return [...new Set([...reset, ...applied])]
+  }
   if (!cloud || cloud.deleted) return []
-  if (override) return applySettings(p, cloud, seen)
   const only = new Set<string>()
   for (const r of ROOTS) if (!isLayoutRoot(r) && !((edited[r] ?? 0) > rootTouched(cloud, r))) only.add(r)
   const localLayout = Math.max(0, ...LAYOUT_ROOTS.map(r => edited[r] ?? 0))
   const cloudLayout = Math.max(0, ...LAYOUT_ROOTS.map(r => rootTouched(cloud, r)))
   if (!(localLayout > cloudLayout)) for (const r of LAYOUT_ROOTS) only.add(r)
   return applySettings(p, cloud, seen, only)
+}
+
+/** 进同步的字段整份回到出厂（原地改），返回变了的根 */
+export function resetSynced(p: Prefs): Root[] {
+  const before = settingsSubs(p)
+  const d = defaultPrefs() as unknown as Record<string, unknown>
+  for (const k of SYNCED_FIELDS) (p as unknown as Record<string, unknown>)[k] = d[k]
+  const after = settingsSubs(p)
+  return ROOTS.filter(r => !same(before[r], after[r]))
 }
 
 /** 两份拍平值之间变了的根（记「本机最后一次改」用） */

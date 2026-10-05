@@ -13,7 +13,7 @@ import type { Alert } from '../alerts/shape'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
   type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
-  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, syncableAlert, syncableDrawing, unseenDrawings, validSymbol,
+  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, unseenDrawings, validSymbol,
 } from './codec'
 import type { Owned, SyncStore } from './store'
 import { type SyncObject, keyOf, same } from './types'
@@ -105,7 +105,10 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   // 设置：云端新（或覆盖）就装云端的；本机新就什么都不装、seen 留空，记账时每个字段都会和云端比一遍
   const cloudSettings = store.get('settings', SETTINGS_ID)
   a.seen = {}
+  // 换了人：先回出厂再装云端的——云端没有（新账号）或缺了的字段不能留着上一个账号的
+  const reset = override ? resetSettings(s) : []
   if (override || !(edited.settings > lastTouched(cloudSettings, SETTINGS_FIELDS))) r.settings = applySettings(s, cloudSettings, a.seen)
+  r.settings = [...new Set([...reset, ...r.settings])]
 
   // 自选
   if (ctx.ready) {
