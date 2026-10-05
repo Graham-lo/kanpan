@@ -2,6 +2,7 @@
  *
  * 自选页与板块下钻共用「琉璃行」；搜索用整页行。输出 HTML 字符串，行情推送来时用 patch* 就地改字，不重建整行。
  */
+import type { CompareRowState } from './compareMode'
 import { assetOf, badgeHTML, liuliBadgeHTML, type BadgeAsset } from './badge'
 import { changePercentText, esc, fmtVol, MISSING, priceText, textIsUp } from './rowText'
 import { splitHighlight } from './search'
@@ -80,16 +81,30 @@ export function patchLiuli(row: Element, d: LiuliData): void {
 }
 
 /** 搜索结果行（SymbolRowView）：徽章 32 · base（命中处着色）/ quote · 右侧价格与涨跌 · 星 */
-export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number | null; pct: number | null; meta: string; fav: boolean; hl?: [number, number] | null }): string {
+export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number | null; pct: number | null; meta: string; fav: boolean; hl?: [number, number] | null; cmp?: CompareRowState }): string {
   const baseParts = splitHighlight(f.base, d.hl ?? null, 0).map(p => p.hit ? `<em>${esc(p.text)}</em>` : esc(p.text)).join('')
   const quoteParts = splitHighlight(f.quote, d.hl ?? null, f.base.length).map(p => p.hit ? `<em>${esc(p.text)}</em>` : esc(p.text)).join('')
   const chg = changePercentText(d.pct)
   const dir = chg === MISSING ? '' : textIsUp(chg) ? 'up' : 'down'
-  return `<div class="sr" data-sym="${esc(f.symbol)}" role="button" tabindex="0">${badgeHTML(f.base, 32, f.asset)}`
+  // 对比模式（搜索页顶栏 ＋ 开的那一副）：主图那一行整行退成禁用色、点不动
+  const main = d.cmp === 'main'
+  return `<div class="sr${main ? ' cmp-main' : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="${main ? -1 : 0}"${main ? ' aria-disabled="true"' : ''}>${badgeHTML(f.base, 32, f.asset)}`
     + `<div class="sr-name"><div class="sr-top"><span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : idxName(f) ? `<span class="sr-sep"> </span><span class="sr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="sr-meta">${esc(d.meta)}</div></div>`
     + `<div class="sr-right num"><span class="sr-price">${esc(priceText(d.price, d.dec))}</span><span class="sr-chg ${dir}">${esc(chg)}</span></div>`
-    + `<button type="button" class="sr-star${d.fav ? ' on' : ''}" data-star="${esc(f.symbol)}" aria-label="${d.fav ? '取消自选' : '加入自选'}" aria-pressed="${d.fav}">${STAR}</button>`
+    + (d.cmp ? compareMarkHTML(f.symbol, d.cmp)
+      : `<button type="button" class="sr-star${d.fav ? ' on' : ''}" data-star="${esc(f.symbol)}" aria-label="${d.fav ? '取消自选' : '加入自选'}" aria-pressed="${d.fav}">${STAR}</button>`)
     + `</div>`
 }
+const CMP_VALUE: Record<CompareRowState, string> = { add: '可添加', added: '已添加', full: '已满', main: '主图' }
+/** 对比模式的行尾（照 iOS SymbolListRow.compareMark）：可加是一颗淡底 ＋，已加是强调色实心圆里一个 ✓，满了是退色的 ＋；看得见 24、点击区 44 */
+function compareMarkHTML(symbol: string, state: CompareRowState): string {
+  const added = state === 'added'
+  const glyph = added
+    ? '<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    : PLUS_GLYPH
+  return `<button type="button" class="sr-cmp ${state}" data-cmp="${esc(symbol)}" aria-label="${added ? '移除对比' : '添加对比'}" aria-description="${CMP_VALUE[state]}" aria-pressed="${added}"${state === 'main' ? ' tabindex="-1"' : ''}><span>${glyph}</span></button>`
+}
+/** 顶栏「对比＋」与对比行尾共用的加号 */
+export const PLUS_GLYPH = '<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v15M4.5 12h15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>'
 export const STAR = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3-4.57-4.46 6.32-.92z" stroke-linejoin="round"/></svg>'

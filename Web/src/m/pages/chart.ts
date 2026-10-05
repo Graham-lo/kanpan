@@ -37,6 +37,7 @@ import { openAlertForm } from './alertForm'
 import { chartIndicatorsFor, isStale, isLandscape, priceModeFor, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
+import { compareTargets } from '../chart/compare.source'
 import { createIntervalBar } from './chart/intervalBar'
 import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
@@ -116,6 +117,8 @@ export function initChart(root: HTMLElement): PageHandle {
   const panel = (open: () => void) => (): void => { ivBar.closeGrid(); open() }
   const topBar = createTopBar(page, {
     onBack: () => { const o = nav.origin; nav.origin = null; if (o && o !== 'chart') go(o); else render() },
+    // 顶栏 ＋：开对比模式的搜索页（照 iOS d26df149，对比从「分析」面板搬到这里）
+    onCompare: panel(() => openSearch({ compare: { current: sym() } })),
     onNote: panel(() => { openNote({ chart, symbol: sym, interval: iv }) }),
     onShare: panel(() => { openShare({ chart, symbol: sym, interval: iv, previewing: () => !!preview?.previewing() }) }),
     onSearch: panel(() => openSearch()),
@@ -309,7 +312,7 @@ export function initChart(root: HTMLElement): PageHandle {
     const now = Date.now()
     const s = S.symbols.get(sym())
     const stale = isStale({ flag: st.stale, live: S.live, lastTick: s?.lastTick ?? null, now }) || s?.closed === true
-    topBar.render(sym(), nav.origin != null && nav.origin !== 'chart')
+    topBar.render(sym(), nav.origin != null && nav.origin !== 'chart', compareTargets(st.compareSymbols, sym()).length > 0)
     header.render(sym(), stale, now)
     ivBar.render({ quick: st.quickIntervals, current: iv() })
     bench.renderRail()

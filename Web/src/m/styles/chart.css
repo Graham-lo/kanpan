@@ -68,7 +68,11 @@
   flex: none; font: var(--t-caption2-emph); color: var(--ink3);
   padding: 1px 5px; border-radius: var(--r-xs); background: var(--raised2);
 }
-.cp-top-acts { flex: none; display: flex; gap: var(--s-m) }
+.cp-top-acts { flex: none; display: flex; gap: var(--s-s) }
+/* 有对比品种时 ＋ 亮强调色（照 iOS TopBar：五颗圆片间距收到 s 档） */
+.cp-cmpdisc.on { background: var(--accent); color: var(--badge-ink) }
+/* 窄屏带返回键时整行放不下「永续」角标：先去掉它（照 iOS ViewThatFits） */
+@media (max-width: 415px) { .cp-top:has(.cp-back:not([hidden])) .cp-perp { display: none } }
 
 /* ───────────── 头部：价格 + 六格 ───────────── */
 .cp-head {

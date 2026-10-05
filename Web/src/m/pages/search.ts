@@ -6,6 +6,11 @@
  * 点它进品种整页（symbolPicker.ts，盖在这一页上面），查询词跟着过去；整页那颗返回原路退回这里，查询词也带回来。
  * 行上的星是加自选的唯一入口；点行换图。
  *
+ * 对比模式（2026-10-05，照 iOS CompareSearchMode / SymbolSearchView）：行情页顶栏那颗 ＋ 开的也是这一页，传进 compare 换一副样子——
+ * 页顶一条「正在对比 n/3」小块各带 ×；行尾的星换成 ＋ / ✓；满三只别的行 ＋ 退色、点了说「最多对比 3 个品种」；主图那只整行禁用；
+ * 「取消」换成「完成」；点行不换主图、不记搜索历史、不关页（挑完一只接着挑）；搜到的整列给出来（品种整页没有对比模式）。
+ * 每一下都立刻写回 st.compareSymbols（cleanCompare + save，走原来那条落盘 + 同步）。
+ *
  * 键盘：输入框锁英文（自动大写、autocorrect/spellcheck 关、lang=en、inputmode=latin）；
  * visualViewport 跟着键盘缩，整页高度等于可视区，内容始终留在键盘上沿以内。
  */
@@ -20,10 +25,14 @@ import { S, on, streamName, type Sym } from '../../market'
 import { esc } from '../model/rowText'
 import { clearHistory, hot, rank, readHistory, remember, SEARCH_PREVIEW, type Ranked } from '../model/search'
 import { factsOf, listRowHTML, splitSymbol } from '../model/rowHTML'
+import { badgeHTML } from '../model/badge'
 import { isFavorite, toggleFavorite } from '../model/favorites'
 import { life } from '../model/life'
 import { ensureUniverse, wantStreams } from './_streams'
 import { openPicker } from './symbolPicker'
+import { CompareSearchMode, COMPARE_FULL_NOTICE, type CompareRowState } from '../model/compareMode'
+import { compareSymbolOf } from '../chart/compare.source'
+import { cleanCompare, MAX_COMPARE as MAX } from '../app/prefs'
 
 const EMPTY_TEXT = '没有这个品种'
 
@@ -31,6 +40,8 @@ export interface SearchOptions {
   /** 加了自选之后（自选页用它把分类切到品种落进去的那一类） */
   onStarred?: (symbol: string) => void
   onClose?: () => void
+  /** 对比模式：主图那只（裸代号）。给了就是顶栏 ＋ 开的对比搜索 */
+  compare?: { current: string }
 }
 
 /** 屏上那一个搜索页（同一时刻只有一个） */
@@ -47,13 +58,16 @@ export function openSearch(opts: SearchOptions = {}): void {
         <input type="search" enterkeyhint="search" placeholder="搜 BTC、ETH、SOL…" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" lang="en" inputmode="latin" aria-label="搜索品种">
         <button type="button" class="msr-clear" aria-label="清空" hidden>${CLEAR}</button>
       </label>
-      <button type="button" class="msr-cancel">取消</button>
+      <button type="button" class="msr-cancel">${opts.compare ? '完成' : '取消'}</button>
     </div>
+    ${opts.compare ? '<div class="msr-cmpbar" hidden></div>' : ''}
     <div class="msr-scroll"><div class="msr-body"></div></div>`
   const input = root.querySelector<HTMLInputElement>('input')!
   const clearBtn = root.querySelector<HTMLButtonElement>('.msr-clear')!
   const scroll = root.querySelector<HTMLElement>('.msr-scroll')!
   const body = root.querySelector<HTMLElement>('.msr-body')!
+  const cmpBar = root.querySelector<HTMLElement>('.msr-cmpbar')
+  if (opts.compare) root.classList.add('msr-compare')
   layer().appendChild(root)
   input.focus({ preventScroll: true })
   // 这一次打开的生命期：关掉时监听、排着的帧、迟到的回调一起作废（见 model/life.ts）
@@ -76,14 +90,16 @@ export function openSearch(opts: SearchOptions = {}): void {
     if (next.length > hotList.length) hotList = next
   }
 
-  const row = (s: Sym | undefined, symbol: string, hl: [number, number] | null = null): string => {
+  const mode = (): CompareSearchMode | null => opts.compare ? new CompareSearchMode(st.compareSymbols, opts.compare.current) : null
+  const row = (s: Sym | undefined, symbol: string, hl: [number, number] | null = null, m: CompareSearchMode | null = mode()): string => {
     const f = factsOf(symbol, s)
-    return listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: isFavorite(st.symbols, symbol), hl })
+    const cmp: CompareRowState | undefined = m ? m.state(symbol) : undefined
+    return listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: isFavorite(st.symbols, symbol), hl, cmp })
   }
-  const rows = (list: string[] | Ranked<Sym>[]): string => list.map((x, i) => {
-    const html = typeof x === 'string' ? row(S.symbols.get(x), x) : row(x.item, x.item.symbol, x.hit.hl)
+  const rows = (list: string[] | Ranked<Sym>[]): string => { const m = mode(); return list.map((x, i) => {
+    const html = typeof x === 'string' ? row(S.symbols.get(x), x, null, m) : row(x.item, x.item.symbol, x.hit.hl, m)
     return (i ? '<div class="sr-div"></div>' : '') + html
-  }).join('')
+  }).join('') }
   const head = (title: string, trailing = ''): string => `<div class="msr-head"><span>${esc(title)}</span>${trailing}</div>`
 
   function render(): void {
@@ -96,13 +112,15 @@ export function openSearch(opts: SearchOptions = {}): void {
       const hits = rank(all().map(s => s), term, s => splitSymbol(s.symbol).base)
       if (!hits.length) html = `<div class="msr-empty">${S.symbols.size ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
       else {
-        const list = hits.slice(0, SEARCH_PREVIEW)
+        // 对比模式整列给出来：「查看全部」去的品种整页没有对比模式
+        const list = opts.compare ? hits.slice(0, 200) : hits.slice(0, SEARCH_PREVIEW)
         shown = list.map(h => h.item.symbol)
         html = head('品种', `<span class="msr-count num">${hits.length}</span>`) + rows(list)
-        if (hits.length > SEARCH_PREVIEW) html += `<button type="button" class="msr-all">查看全部 ${hits.length} 个品种${icon('chevronRight', 12)}</button>`
+        if (!opts.compare && hits.length > SEARCH_PREVIEW) html += `<button type="button" class="msr-all">查看全部 ${hits.length} 个品种${icon('chevronRight', 12)}</button>`
       }
     } else {
-      const terms = readHistory()
+      // 历史搜索词：对比模式不摆（也不记）——那一页是来挑对比的，不是来找主图的
+      const terms = opts.compare ? [] : readHistory()
       if (terms.length) {
         html += head('历史搜索', `<button type="button" class="msr-trash" aria-label="清除搜索记录">${icon('trash', 13)}</button>`)
         html += `<div class="msr-chips">${terms.map(t => `<button type="button" class="msr-chip" data-term="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
@@ -115,12 +133,54 @@ export function openSearch(opts: SearchOptions = {}): void {
       }
     }
     body.innerHTML = html
+    renderStrip()
     wantStreams('search', shown.map(s => streamName.ticker(s)))
   }
   const schedule = L.frame(render)
 
+  /** 页顶「正在对比 n/3」：集合里的摆成小块，每块一个 × 直接拿掉；集合空时整条不摆 */
+  function renderStrip(): void {
+    if (!cmpBar) return
+    const keys = mode()!.keys
+    cmpBar.hidden = !keys.length
+    if (!keys.length) { cmpBar.innerHTML = ''; return }
+    cmpBar.innerHTML = `<div class="msr-cmpbar-head"><span>正在对比</span><span class="num">${keys.length}/${MAX}</span></div>`
+      + `<div class="msr-cmpchips">${keys.map(k => {
+        const sym = compareSymbolOf(k) ?? k
+        const f = factsOf(sym, S.symbols.get(sym))
+        return `<span class="msr-cmpchip" data-key="${esc(k)}">${badgeHTML(f.base, 20, f.asset)}<span>${esc(f.base)}</span><button type="button" class="msr-cmpx" data-cmpx="${esc(k)}" aria-label="移除 ${esc(f.base)}">${XMARK}</button></span>`
+      }).join('')}</div>`
+  }
+  /** 对比模式里点了一行（或行尾那颗 / 小块的 ×）：加 / 减 / 满了提示，主图那只不动 */
+  function toggleCompare(symbolOrKey: string): void {
+    const m = mode(); if (!m) return
+    const a = m.action(symbolOrKey)
+    if (a.kind === 'none') return
+    if (a.kind === 'rejectFull') { toast(COMPARE_FULL_NOTICE); return }
+    st.compareSymbols = cleanCompare(m.apply(a))
+    save()
+    refreshCompareMarks()
+  }
+  /** 只换行尾与整行状态、重画页顶那条，不重排列表（滚动位置不动） */
+  function refreshCompareMarks(): void {
+    const m = mode(); if (!m) return
+    body.querySelectorAll<HTMLElement>('.sr[data-sym]').forEach(r => {
+      const sym = r.dataset.sym!
+      const tmp = document.createElement('div')
+      tmp.innerHTML = row(S.symbols.get(sym), sym, null, m)
+      const next = tmp.querySelector('.sr-cmp')
+      const cur = r.querySelector('.sr-cmp')
+      if (next && cur) cur.replaceWith(next)
+    })
+    renderStrip()
+  }
+  cmpBar?.addEventListener('click', e => {
+    const x = (e.target as HTMLElement).closest<HTMLElement>('[data-cmpx]')
+    if (x) toggleCompare(x.dataset.cmpx!)
+  })
+
   input.addEventListener('input', () => { q = input.value; scroll.scrollTop = 0; render() })
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') { remember(q); input.blur() } })
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { if (!opts.compare) remember(q); input.blur() } })
   clearBtn.onclick = () => { input.value = ''; q = ''; render(); input.focus() }
   root.querySelector<HTMLElement>('.msr-cancel')!.onclick = () => close()
   // 滚动收键盘（iOS scrollDismissesKeyboard）
@@ -128,6 +188,13 @@ export function openSearch(opts: SearchOptions = {}): void {
 
   body.addEventListener('click', e => {
     const t = e.target as HTMLElement
+    if (opts.compare) {
+      // 对比模式：点行或行尾那颗都是加 / 减对比，不换主图、不记历史、页面不关
+      const r = t.closest<HTMLElement>('[data-cmp], .sr')
+      const sym = r?.dataset.cmp ?? r?.dataset.sym
+      if (sym) toggleCompare(sym)
+      return
+    }
     const star = t.closest<HTMLElement>('[data-star]')
     if (star) {
       const sym = star.dataset.star!
@@ -218,4 +285,5 @@ export function openSearch(opts: SearchOptions = {}): void {
 
 export function closeSearch(): void { current?.close() }
 
+const XMARK = '<svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg>'
 const CLEAR = '<svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="var(--raised2)" stroke-width="2" stroke-linecap="round"/></svg>'

@@ -14,6 +14,9 @@ import { badgeHTML, assetOf } from '../../model/badge'
 import { glyph, icon } from '../../ui/icons'
 import { termMark, type Term } from '../../ui/hint'
 import { el, setText } from '../../ui/dom'
+
+/** 顶栏「对比」那颗加号（看得见 15，与搜索放大镜同一视觉分量） */
+const PLUS_DISC = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
 import {
   priceChangeText, openInterestText, turnoverText, marketCapText, valuationCell, fundingText, fundingCountdownText,
   type AssetKind,
@@ -31,7 +34,8 @@ export const TERMS: Record<string, Term> = {
   step: { id: 'step', title: '步长', body: '相邻这么多美元以内的挂单先并成一档，再和门槛比。\n步长越大，零散的挂单越容易并成一堵墙。' },
 }
 
-export interface TopBarHandlers { onBack(): void; onNote(): void; onShare(): void; onSearch(): void }
+/** 顶栏圆片（照 iOS TopBar，2026-10-05 起五颗）：对比＋ · 提醒铃 · 记一笔 · 分享 · 搜索 */
+export interface TopBarHandlers { onBack(): void; onCompare(): void; onNote(): void; onShare(): void; onSearch(): void }
 
 /** 「BTCUSDT」→ BTC / USDT；1000 前缀用全市场表的 base */
 export function splitPair(sym: string): { base: string; quote: string } {
@@ -48,6 +52,7 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
     <button class="cp-disc cp-back" aria-label="返回" hidden>${icon('chevronLeft', 17)}</button>
     <div class="cp-id"><span class="cp-badge"></span><span class="cp-base"></span><span class="cp-quote"></span><span class="cp-perp">永续</span></div>
     <div class="cp-top-acts">
+      <button class="cp-disc cp-cmpdisc" data-act="compare" aria-label="对比" aria-pressed="false">${PLUS_DISC}</button>
       <button class="cp-disc" data-act="note" aria-label="记一笔">${glyph('review', 20)}</button>
       <button class="cp-disc" data-act="share" aria-label="分享">${icon('share', 17)}</button>
       <button class="cp-disc" data-act="search" aria-label="搜索品种">${icon('search', 16)}</button>
@@ -55,14 +60,18 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
   host.append(bar)
   const back = bar.querySelector<HTMLButtonElement>('.cp-back')!
   back.onclick = () => h.onBack()
+  const cmpDisc = bar.querySelector<HTMLButtonElement>('[data-act=compare]')!
+  cmpDisc.onclick = () => h.onCompare()
   bar.querySelector<HTMLButtonElement>('[data-act=note]')!.onclick = () => h.onNote()
   bar.querySelector<HTMLButtonElement>('[data-act=share]')!.onclick = () => h.onShare()
   bar.querySelector<HTMLButtonElement>('[data-act=search]')!.onclick = () => h.onSearch()
   let shown = ''
   return {
     el: bar,
-    render(sym: string, hasOrigin: boolean): void {
+    render(sym: string, hasOrigin: boolean, comparing = false): void {
       if (back.hidden === hasOrigin) back.hidden = !hasOrigin
+      // 有对比品种时 ＋ 亮强调色
+      if (cmpDisc.classList.contains('on') !== comparing) { cmpDisc.classList.toggle('on', comparing); cmpDisc.setAttribute('aria-pressed', String(comparing)) }
       const s = S.symbols.get(sym)
       const { base, quote } = splitPair(sym)
       const key = sym + '|' + (s?.kind ?? '') + '|' + document.documentElement.dataset.skin

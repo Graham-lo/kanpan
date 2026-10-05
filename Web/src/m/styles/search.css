@@ -88,3 +88,31 @@ html[data-theme="dark"] .msr-chip { background: color-mix(in srgb, var(--ink) 7%
 .sr-star svg path { fill: transparent; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round }
 .sr-star.on { color: var(--accent) }
 .sr-star.on svg path { fill: currentColor }
+
+/* 对比模式（顶栏 ＋ 开的那一副，照 iOS SymbolSearchView.compareStrip / SymbolListRow.compareMark） */
+.sr-cmp { width: 44px; height: 44px; margin-right: -10px; display: grid; place-items: center; flex: none; color: var(--ink2) }
+.sr-cmp > span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--raised2); transition: background var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out) }
+.sr-cmp.added > span { background: var(--accent); color: var(--badge-ink) }
+.sr-cmp.full > span { opacity: var(--disabled-opacity) }
+.sr-cmp:active > span { opacity: .6 }
+.sr.cmp-main { opacity: var(--disabled-opacity); pointer-events: none }
+/* 页顶「正在对比 n/3」+ 一排小块（看得见 32、× 点击区 44） */
+.msr-cmpbar {
+  flex: none; display: flex; flex-direction: column; gap: var(--s-s);
+  padding: var(--s-xs) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+  box-shadow: inset 0 -.5px 0 var(--hair);
+}
+.msr-cmpbar[hidden] { display: none }
+.msr-cmpbar-head { display: flex; align-items: center; gap: var(--s-s); font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3) }
+.msr-cmpbar-head .num { font: var(--t-caption2); letter-spacing: 0; font-variant-numeric: tabular-nums }
+.msr-cmpchips { display: flex; gap: var(--s-s); overflow-x: auto; scrollbar-width: none }
+.msr-cmpchips::-webkit-scrollbar { display: none }
+.msr-cmpchip {
+  flex: none; display: inline-flex; align-items: center; gap: var(--s-xs); height: 32px; padding: 0 0 0 6px; border-radius: 16px;
+  background: var(--raised); font: var(--t-footnote-emph); color: var(--ink);
+}
+.msr-cmpchip .badge, .msr-cmpchip > :first-child { flex: none }
+.msr-cmpx { width: 32px; height: 32px; display: grid; place-items: center; color: var(--ink3) }
+.msr-cmpx::before { content: ''; position: absolute; width: 44px; height: 44px }
+.msr-cmpx { position: relative }
+.msr-cmpx:active { opacity: .5 }
