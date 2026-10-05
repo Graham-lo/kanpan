@@ -209,7 +209,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "quickIntervals"=>intervals(v,10),"interval"=>v.as_str().is_some_and(is_synced_interval),
    "portraitHeight"=>number(v,0.1,1.0),
    // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.
-   "barSpacing"=>number(v,1.6,40.0),
+   "barSpacing"|"landscapeBarSpacing"=>number(v,1.6,40.0),
    "compareSymbols"=>v.as_array().is_some_and(|a|a.len()<=3 && a.iter().all(compare_key) && a.iter().enumerate().all(|(i,v)| !a[..i].contains(v))),
    "skin"=>one_of(v,&["sage","terra","classic"]),
    "routePolicy"=>one_of(v,&["direct","gateway"]),
@@ -752,6 +752,12 @@ mod tests {
   let thirteen:serde_json::Map<String,Value>=KINDS.iter().take(13).map(|k|(k.to_string(),json!(1))).collect();
   assert!(!field("settings","drawToolUsage",&Value::Object(thirteen)),"最多十二个键");
   assert!(crate::sync::SETTINGS_FIELDS.contains(&"drawToolUsage"));
+  // 横屏根间距：和 barSpacing 同一个范围。
+  assert!(field("settings","landscapeBarSpacing",&json!(1.6))&&field("settings","landscapeBarSpacing",&json!(40))&&field("settings","landscapeBarSpacing",&json!(9.5)));
+  for bad in [json!(1.5),json!(41.0),json!("4"),json!(null),json!(true)] {
+   assert!(!field("settings","landscapeBarSpacing",&bad),"landscapeBarSpacing {bad}");
+  }
+  assert!(crate::sync::SETTINGS_FIELDS.contains(&"landscapeBarSpacing"));
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");

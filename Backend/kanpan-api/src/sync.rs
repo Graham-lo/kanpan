@@ -175,6 +175,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "drawingOverlaysShown",
  // 画线条上露哪几把：每把画线工具用了几次（2026-10-05，对象，规则见 `sync_validation::draw_tool_usage`）。
  "drawToolUsage",
+ // 横屏自己记的根间距（2026-10-05，pt，1.6…40，同 barSpacing）：横屏图宽是竖屏两倍多，两边各记一份。
+ "landscapeBarSpacing",
 ];
 /// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
 ///

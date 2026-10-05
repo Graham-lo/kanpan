@@ -76,6 +76,8 @@ export interface Prefs {
   orderFlowOverrides: Record<string, OrderFlowOverride>
   candleKind: CandleKind
   barSpacing: number
+  /** 横屏自己记的根间距（与 iOS `Prefs.landscapeBarSpacing` 同义；老档案没有就取同一份里的 barSpacing） */
+  landscapeBarSpacing: number
   mainInverted: boolean
   subInverted: IndicatorId[]
   /** 竖屏时主图占图区的比例 */
@@ -108,7 +110,7 @@ export interface Prefs {
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
   'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'favoritesGroup', 'habitLearning',
-  'indicatorColors', 'indicatorLayouts', 'interval', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
+  'indicatorColors', 'indicatorLayouts', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
   'notifyListingChanges', 'orderFlow', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
   'subInverted', 'subs', 'theme', 'watchMoveAlert',
@@ -125,7 +127,7 @@ export function defaultPrefs(): Prefs {
   return {
     interval: '1h', quickIntervals: [...QUICK_INTERVALS], theme: 'auto', skin: 'sage', redUp: false,
     compareSymbols: [], priceMode: 'log', depth: false, orderFlow: false, orderFlowOverrides: {},
-    candleKind: 'candle', barSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
+    candleKind: 'candle', barSpacing: 4, landscapeBarSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
     indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
     params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
@@ -380,6 +382,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     orderFlowOverrides: cleanOrderFlowOverrides(r.orderFlowOverrides),
     candleKind: top.candleKind,
     barSpacing: num(r.barSpacing, d.barSpacing, BAR_SPACING[0], BAR_SPACING[1]),
+    landscapeBarSpacing: num(r.landscapeBarSpacing, num(r.barSpacing, d.barSpacing, BAR_SPACING[0], BAR_SPACING[1]), BAR_SPACING[0], BAR_SPACING[1]),
     mainInverted: bool(r.mainInverted, d.mainInverted),
     subInverted: idList(r.subInverted, SUB_IDS),
     portraitHeight: num(r.portraitHeight, d.portraitHeight, PORTRAIT_HEIGHT[0], PORTRAIT_HEIGHT[1]),

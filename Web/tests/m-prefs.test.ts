@@ -67,4 +67,12 @@ describe('手机网页版 · 偏好出厂值与容错', () => {
     expect(once.greenUpMigrated).toBe(true)
     expect(hydrate({ ...once, redUp: true } as unknown as Record<string, unknown>).redUp).toBe(true)
   })
+  it('横屏根间距（2026-10-05）：老档案没有就取同一份里的 barSpacing，之后两份各走各的；夹到 1.6…40', () => {
+    expect(defaultPrefs().landscapeBarSpacing).toBe(4)
+    expect(normalizePrefs({ barSpacing: 9 }).landscapeBarSpacing).toBe(9)
+    expect(normalizePrefs({ barSpacing: 9, landscapeBarSpacing: 'x' }).landscapeBarSpacing).toBe(9)
+    expect(normalizePrefs({ barSpacing: 9, landscapeBarSpacing: 3 }).landscapeBarSpacing).toBe(3)
+    expect(normalizePrefs({ landscapeBarSpacing: 500 }).landscapeBarSpacing).toBe(40)
+    expect(normalizePrefs({ barSpacing: 0.1 }).landscapeBarSpacing).toBe(1.6)
+  })
 })
