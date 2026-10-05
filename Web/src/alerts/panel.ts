@@ -1,7 +1,8 @@
 /* Hkline Web · 提醒模块（界面与盯盘）
  *
  * 三块界面，规矩和手机「创建提醒」页一致：
- *   · 侧栏「提醒」：只列这只品种还没触发的；右上「全部」打开按品种分组的总表；行上只有删除
+ *   · 侧栏「提醒」：分段「列表 | 日志」（照 iOS 543a308d 铃铛开的那张表）。列表只列这只品种还没触发的，右上「全部」打开按品种分组的总表，
+ *     行上只有删除；日志是响过的提醒（alerts/log.ts，账在服务端、留 30 天），按上海时间分天，右上「清空」要确认，没登录只有「登录后可查看」
  *   · 「创建提醒」对话框：品种不可改；条件叫「价格达到」；Webhook 只填地址；没有备注、没有重复
  *   · 总表：按品种分组，价格 / 画线 / 条件三类可筛
  * 盯盘：逐笔价看价格与画线提醒；资金费率在结算前 15 分钟那个窗口里看；持仓量每分钟看一次最近一小时。
@@ -19,6 +20,7 @@ import {
   makePriceAlert, oiChange, oiHit, onAlertFired, onAlertsChange, rulePhrase, setQuoteSource, validWebhook, webhookBody, webhookByPage, type Alert, type AlertRule,
 } from './model'
 import { parsePercent, parseTarget } from './shape'
+import { alertLog, bareSymbol, logClock, logDays, logDetail, logName, logOwner } from './log'
 
 export interface AlertUIHooks {
   /** 打开某只品种（总表里点品种名） */
@@ -60,20 +62,84 @@ function row(a: Alert, withSym: boolean): string {
 }
 
 // ------------------------------------------------------------ 侧栏
+type SideTab = 'list' | 'log'
+let sideTab: SideTab = 'list'
+/** 侧栏正摆着的那一块（日志拉回来 / 清空后就地重画） */
+let side: { el: HTMLElement; symbol: string } | null = null
+let logWired = false
+
+function logPane(): string {
+  if (!logOwner()) return `<div class="empty">${I('bell', 'icon-24')}<div>登录后可查看</div></div>`
+  const log = alertLog()
+  const days = logDays(log.records)
+  if (!days.length) return `<div class="empty">${I('bell', 'icon-24')}<div>${log.phase === 'idle' || log.phase === 'loading' ? '正在载入…' : log.phase === 'failed' ? '暂时取不到记录' : '暂无记录'}</div></div>`
+  return days.map(d => `<div class="alog-day">${esc(d.title)}</div>${d.records.map(r => {
+    const k = bareSymbol(r.symbol), s = k ? sym(k) : undefined
+    const detail = logDetail(r, s?.dec)
+    return `<div class="list-row alog-row"${k && s ? ` data-log-open="${esc(k)}" data-tip="打开这只品种"` : ''}>${badge(s ?? (k ? { base: k, color: '#888' } : undefined))}
+      <div class="main"><div class="t1"><span>${esc(logName(r, code))}</span></div>${detail ? `<div class="t2 num">${esc(detail)}</div>` : ''}</div>
+      <span class="alog-clock num faint">${logClock(r.firedAt)}</span></div>`
+  }).join('')}`).join('')
+}
+
 export function renderAlertsPanel(el: HTMLElement, symbol: string): void {
+  side = { el, symbol }
+  if (!logWired) {
+    logWired = true
+    alertLog().onChange(() => { if (side && sideTab === 'log' && side.el.isConnected) renderAlertsPanel(side.el, side.symbol) })
+  }
+  const tabs = `<div class="sp-sub"><div class="seg fill alog-tabs" role="tablist" aria-label="提醒">${([['list', '列表'], ['log', '日志']] as [SideTab, string][])
+    .map(([k, l]) => `<button role="tab" data-atab="${k}" aria-pressed="${k === sideTab}" aria-selected="${k === sideTab}">${l}</button>`).join('')}</div></div>`
+  if (sideTab === 'log') {
+    const canClear = !!logOwner() && alertLog().records.length > 0
+    el.innerHTML = `<div class="sp-head"><h3>提醒</h3>
+        <button class="ibtn sm" id="aNew" aria-label="创建提醒" data-tip="创建提醒" data-kbd="Alt A">${I('plus')}</button>
+        ${canClear ? `<button class="btn ghost sm" id="aLogClear" data-tip="清空全部记录">清空</button>` : ''}</div>
+      ${tabs}
+      <div class="scroll" style="flex:1;min-height:0">${logPane()}</div>`
+    return
+  }
   const mine = activeAlerts(symbol).sort((a, b) => b.created - a.created)
   const total = activeAlerts().length
   el.innerHTML = `<div class="sp-head"><h3>提醒</h3>
       <button class="ibtn sm" id="aNew" aria-label="创建提醒" data-tip="创建提醒" data-kbd="Alt A">${I('plus')}</button>
       <button class="btn ghost sm" id="aAllBtn" data-tip="所有品种的提醒">全部<span class="num faint" style="margin-left:4px">${total}</span></button></div>
+    ${tabs}
     <div class="sp-sub"><span class="alert-sym">${badge(sym(symbol))}<b>${esc(code(symbol))}</b></span><span class="faint num">${mine.length ? `${mine.length} 条在等` : ''}</span></div>
     <div class="scroll" style="flex:1;min-height:0">
     ${mine.length ? mine.map(a => row(a, false)).join('') : `<div class="empty">${I('bell', 'icon-24')}<div>这只品种没有在等的提醒</div><div class="faint" style="font-size:12px;margin-top:4px">点价格轴，或在图上右键</div></div>`}
     </div>`
 }
+
+/** 清空日志前问一句（居中小框，照 iOS confirmationDialog「清空全部记录？」） */
+function confirmClearLog(): void {
+  const d = dialog(`${head('清空全部记录？')}<div class="dialog-foot"><button class="btn ghost" data-close>取消</button><button class="btn danger" id="alogOk">清空</button></div>`, 'alog-confirm', { center: true, label: '清空全部记录？' })
+  const ok = $<HTMLButtonElement>('#alogOk', d.dlg)
+  ok.focus()
+  ok.onclick = async () => {
+    ok.disabled = true
+    const done = await alertLog().clear()
+    d.close()
+    if (!done) toast('没清掉', '稍后再试', 'info')
+  }
+}
+
 /** 侧栏里的点击；认得就返回 true */
 export function alertsPanelClick(e: MouseEvent, symbol: string): boolean {
   const t = tgt(e)
+  const tab = t.closest<HTMLElement>('[data-atab]')
+  if (tab) {
+    const next = tab.dataset.atab as SideTab
+    if (next !== sideTab) {
+      sideTab = next
+      const host = tab.closest<HTMLElement>('.sp-head')?.parentElement ?? side?.el
+      if (host) renderAlertsPanel(host, symbol)
+      if (next === 'log') void alertLog().refresh(logOwner())
+    }
+    return true
+  }
+  if (t.closest('#aLogClear')) { confirmClearLog(); return true }
+  const lo = t.closest<HTMLElement>('[data-log-open]'); if (lo) { if (lo.dataset.logOpen !== symbol) ui.openSymbol(lo.dataset.logOpen || ''); return true }
   const del = t.closest<HTMLElement>('[data-del-alert]'); if (del) { deleteAlert(del.dataset.delAlert || ''); return true }
   if (t.closest('#aAllBtn')) { openAllAlerts(); return true }
   if (t.closest('#aNew')) { openCreateAlert(symbol); return true }

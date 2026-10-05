@@ -20,7 +20,7 @@ import { esc } from '../model/rowText'
 import { badgeHTML } from '../model/badge'
 import { factsOf, splitSymbol } from '../model/rowHTML'
 import {
-  deleteAlert, onAlertFired, onAlertsChange, recordMeta, recordTitle, restoreAlert, sections, watchedSymbols, checkPrice, webhookBody,
+  activeAlerts, deleteAlert, onAlertFired, onAlertsChange, pinnedSections, recordMeta, recordTitle, restoreAlert, sections, watchedSymbols, checkPrice, webhookBody,
   type Alert,
 } from '../model/alerts'
 import { hooks, openSymbol } from '../app/shell'
@@ -68,22 +68,27 @@ export function deleteWithUndo(id: string): void {
   if (gone) toast('已删除提醒', { title: '撤销', run: () => restoreAlert(gone) })
 }
 
-/** 「全部预警」正文；返回解绑 */
-export function buildAlertList(host: HTMLElement, opts: { onOpen?: (a: Alert) => void } = {}): () => void {
+/** 「全部预警」正文；返回解绑。pinned：顶栏铃铛开的「提醒」表里，图上这只置顶成一组（组名是品种名，下面分价格 / 画线） */
+export function buildAlertList(host: HTMLElement, opts: { onOpen?: (a: Alert) => void; pinned?: string } = {}): () => void {
   host.classList.add('all-alerts')
   const render = (): void => {
-    const secs = sections().filter(s => s.count > 0)
-    if (!secs.length) {
+    const pin = opts.pinned ? pinnedSections(opts.pinned) : []
+    const secs = sections(opts.pinned).filter(s => s.count > 0)
+    if (!secs.length && !pin.length) {
       host.innerHTML = `<div class="al-empty">${BELL}<span>暂无预警</span></div>`
       return
     }
-    host.innerHTML = secs.map(sec => `<section class="al-sec" data-kind="${sec.id}">
+    const pinned = pin.length ? `<section class="al-sec al-pinned" data-kind="pinned">
+      <div class="al-card">${symbolHeadHTML(opts.pinned!, pin.reduce((n, s) => n + s.count, 0))}${pin.map((sec, si) => `<div class="al-sub num">${sec.title} ${sec.count}</div>`
+        + sec.groups[0].alerts.map((a, i) => recordRowHTML(a, { divider: !(si === pin.length - 1 && i === sec.groups[0].alerts.length - 1) })).join('')).join('')}</div>
+    </section>` : ''
+    host.innerHTML = pinned + secs.map(sec => `<section class="al-sec" data-kind="${sec.id}">
       <div class="al-title num">${sec.title} ${sec.count}</div>
       <div class="al-card">${sec.groups.map((g, gi) => symbolHeadHTML(g.symbol, g.alerts.length)
         + g.alerts.map((a, i) => recordRowHTML(a, { divider: !(gi === sec.groups.length - 1 && i === g.alerts.length - 1) })).join('')).join('')}</div>
     </section>`).join('')
   }
-  const byId = (id: string): Alert | undefined => sections().flatMap(s => s.groups.flatMap(g => g.alerts)).find(a => a.id === id)
+  const byId = (id: string): Alert | undefined => activeAlerts().find(a => a.id === id)
   const onClick = (e: Event): void => {
     const t = e.target as HTMLElement
     const del = t.closest<HTMLElement>('[data-del]')

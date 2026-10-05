@@ -175,8 +175,8 @@ function groupBySymbol(list: Alert[]): AlertGroup[] {
   return out
 }
 /** 全部预警：分「价格」「画线」两类，各自按品种分组（组按最新一条排，组内新的在前） */
-export function sections(): AlertSection[] {
-  const live = activeAlerts()
+export function sections(exclude?: string): AlertSection[] {
+  const live = activeAlerts().filter(a => a.symbol !== exclude)
   const price = live.filter(a => a.kind === 'price')
   const drawing = live.filter(a => a.kind === 'drawing')
   return [
@@ -184,6 +184,17 @@ export function sections(): AlertSection[] {
     { id: 'drawing', title: '画线提醒', groups: groupBySymbol(drawing), count: drawing.length },
   ]
 }
+/** 顶栏铃铛开的「提醒」表里置顶的那一组（照 iOS AlertListPage pinned）：图上这只的价格、画线两类，各自新的在前；
+ *  其余品种照 sections(symbol) 摆在下面 */
+export function pinnedSections(symbol: string): AlertSection[] {
+  const mine = activeAlerts(symbol)
+  return ([['price', '价格'], ['drawing', '画线']] as const)
+    .map(([id, title]) => { const list = mine.filter(a => a.kind === id); return { id, title, groups: list.length ? [{ symbol, alerts: list }] : [], count: list.length } })
+    .filter(s => s.count > 0)
+}
+/** 顶栏铃铛上的角标：这只还没响的提醒条数（照 iOS AlertStore.pendingCount） */
+export const pendingCount = (symbol: string): number => activeAlerts(symbol).length
+
 /** 创建提醒页底下那张表：只列这只品种还没触发的价格与画线提醒（价格提醒点进去能改，画线提醒去图上拖线） */
 export const records = (symbol: string): Alert[] => activeAlerts(symbol).filter(a => a.kind === 'price' || a.kind === 'drawing')
 /** 行上第二行：这条提醒的条件（价格达到 / 收盘穿过） */

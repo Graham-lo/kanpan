@@ -88,3 +88,29 @@ html[data-theme="dark"] .alf-submit:disabled { background: var(--raised2) }
 .alf-submit:not(:disabled):active { opacity: .8 }
 .alf-records:empty { display: none }
 .alf-records { padding-bottom: var(--s-section) }
+
+/* 「提醒」表置顶那组里分「价格」「画线」的小标题（照 iOS AlertListPage pinned） */
+.al-sub { font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3); padding: var(--s-s) var(--inset-card) var(--s-xxs) }
+
+/* ───────── 顶栏铃铛开的「提醒」表（列表 | 日志） ───────── */
+.alhub-body { display: flex; flex-direction: column; min-height: 100% }
+.alhub-tabs { position: sticky; top: 0; z-index: 1; background: var(--raised); padding: var(--s-s) 0 }
+.alhub-sheet .alhub-seg { display: flex; width: 100% }
+.alhub-sheet .alhub-seg .m-seg-opt { flex: 1 }
+.alhub-pane { flex: 1 }
+.alhub-pane.all-alerts { padding-top: var(--s-s) }
+.alhub-foot { position: sticky; bottom: 0; background: var(--raised); padding: var(--s-s) 0 calc(var(--s-s) + var(--safe-bottom, 0px)); display: flex; flex-direction: column }
+.alhub-foot[hidden] { display: none }
+.alhub-sheet .m-sheet-action[hidden] { display: none }
+.alhub-sheet .m-sheet-action { color: var(--accent) }
+/* 日志一行：徽章 28 + 品种 / 条件 · 触发价 + 时刻 */
+.alg-list { padding-top: var(--s-s); padding-bottom: var(--s-section) }
+.alg { display: flex; align-items: center; gap: var(--s-m); min-height: var(--row-min); padding: var(--s-s) var(--inset-card); position: relative }
+.alg::after { content: ''; position: absolute; left: calc(var(--inset-card) + 28px + var(--s-m)); right: 0; bottom: 0; height: 1px; transform: scaleY(.34); background: var(--hair) }
+.alg.last::after { display: none }
+.alg-nobadge { width: 28px; height: 28px; flex: none }
+.alg-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
+.alg-name { font: var(--t-body-emph); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.alg-detail { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.alg-clock { font: var(--t-caption); color: var(--ink3); flex: none }
+.alg-empty { min-height: 40vh }

@@ -232,6 +232,22 @@ describe('手机网页版 · 提醒', () => {
     al.restoreAlert(del)
     expect(al.liveCount()).toBe(3)
   })
+  it('铃铛「提醒」表：图上这只置顶（分价格 / 画线），其余品种照旧排在下面；角标是这只还没响的条数', () => {
+    al.useStore(mem())
+    al.addPriceAlert('BTCUSDT', 90000, 100000, 1, null, 1)
+    al.addPriceAlert('ETHUSDT', 5000, 4000, 2, null, 2)
+    al.addPriceAlert('BTCUSDT', 110000, 100000, 1, null, 3)
+    al.addPriceAlert('DXY', 150, 100, 3, null, 4)
+    const pin = al.pinnedSections('BTCUSDT')
+    expect(pin.map(s => [s.id, s.count])).toEqual([['price', 2]])
+    expect(pin[0].groups[0].alerts.map(a => a.created)).toEqual([3, 1])
+    const rest = al.sections('BTCUSDT')
+    expect(rest[0].groups.map(g => g.symbol)).toEqual(['DXY', 'ETHUSDT'])
+    expect(al.pendingCount('BTCUSDT')).toBe(2)
+    expect(al.pendingCount('DXY')).toBe(1)
+    expect(al.pendingCount('SOLUSDT')).toBe(0)
+    expect(al.pinnedSections('SOLUSDT')).toEqual([])
+  })
   it('行上写价位（千分位）；Webhook 那份 JSON 格式由我们定', () => {
     al.useStore(mem())
     const a = al.addPriceAlert('BTCUSDT', 101000, 100000, 1, 'https://x.y/z', 1)!

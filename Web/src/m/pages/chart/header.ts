@@ -1,7 +1,7 @@
 /* 手机网页版 · 行情页顶栏 + 头部（照 iOS Main/TopBar.swift、MainScreenParts.swift、HeaderStats.swift）
  *
  * 顶栏：有来路时左边一颗「‹」；徽章 28 · 基础币 · /USDT · 「永续」角标（品种名不是按钮）；
- *       右边三颗 32 圆片：记一笔、分享、放大镜。
+ *       右边五颗 32 圆片：对比＋、提醒铃（角上这只还没响的条数）、记一笔、分享、放大镜。
  * 头部：左边最新价（--t-price，按涨跌上色，停住变灰）+ 紧贴其下一行涨跌额 涨跌幅；
  *       右边两列六格：仓 / 市值 / 结算 · 额 / 费率 / 估值。
  *       十字线活着（主图或副图）时整行价格连同六格透明让位（行高不变），同一位置换成铺满整宽的开高低收读数。
@@ -17,6 +17,8 @@ import { el, setText } from '../../ui/dom'
 
 /** 顶栏「对比」那颗加号（看得见 15，与搜索放大镜同一视觉分量） */
 const PLUS_DISC = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
+/** 顶栏铃铛（照 iOS TopBarGlyph.bell：实心钟身 + 底下一颗铃舌，18 框，看得见 17） */
+const BELL_DISC = '<svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true"><path fill="currentColor" d="M9 2.2c-2.9 0-5 2.3-5 5.1v3.2L2.6 12.6c-.4.5 0 1.2.6 1.2h11.6c.6 0 1-.7.6-1.2L14 10.5V7.3c0-2.8-2.1-5.1-5-5.1z"/><path fill="currentColor" d="M7.1 14.6h3.8a1.9 1.9 0 0 1-3.8 0z"/></svg>'
 import {
   priceChangeText, openInterestText, turnoverText, marketCapText, valuationCell, fundingText, fundingCountdownText,
   type AssetKind,
@@ -35,7 +37,7 @@ export const TERMS: Record<string, Term> = {
 }
 
 /** 顶栏圆片（照 iOS TopBar，2026-10-05 起五颗）：对比＋ · 提醒铃 · 记一笔 · 分享 · 搜索 */
-export interface TopBarHandlers { onBack(): void; onCompare(): void; onNote(): void; onShare(): void; onSearch(): void }
+export interface TopBarHandlers { onBack(): void; onCompare(): void; onAlerts(): void; onNote(): void; onShare(): void; onSearch(): void }
 
 /** 「BTCUSDT」→ BTC / USDT；1000 前缀用全市场表的 base */
 export function splitPair(sym: string): { base: string; quote: string } {
@@ -53,6 +55,7 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
     <div class="cp-id"><span class="cp-badge"></span><span class="cp-base"></span><span class="cp-quote"></span><span class="cp-perp">永续</span></div>
     <div class="cp-top-acts">
       <button class="cp-disc cp-cmpdisc" data-act="compare" aria-label="对比" aria-pressed="false">${PLUS_DISC}</button>
+      <button class="cp-disc cp-belldisc" data-act="alerts" aria-label="提醒">${BELL_DISC}<span class="cp-bellcount num" aria-hidden="true" hidden></span></button>
       <button class="cp-disc" data-act="note" aria-label="记一笔">${glyph('review', 20)}</button>
       <button class="cp-disc" data-act="share" aria-label="分享">${icon('share', 17)}</button>
       <button class="cp-disc" data-act="search" aria-label="搜索品种">${icon('search', 16)}</button>
@@ -62,14 +65,23 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
   back.onclick = () => h.onBack()
   const cmpDisc = bar.querySelector<HTMLButtonElement>('[data-act=compare]')!
   cmpDisc.onclick = () => h.onCompare()
+  const bell = bar.querySelector<HTMLButtonElement>('[data-act=alerts]')!
+  const bellCount = bell.querySelector<HTMLElement>('.cp-bellcount')!
+  bell.onclick = () => h.onAlerts()
   bar.querySelector<HTMLButtonElement>('[data-act=note]')!.onclick = () => h.onNote()
   bar.querySelector<HTMLButtonElement>('[data-act=share]')!.onclick = () => h.onShare()
   bar.querySelector<HTMLButtonElement>('[data-act=search]')!.onclick = () => h.onSearch()
   let shown = ''
   return {
     el: bar,
-    render(sym: string, hasOrigin: boolean, comparing = false): void {
+    render(sym: string, hasOrigin: boolean, comparing = false, alerts = 0): void {
       if (back.hidden === hasOrigin) back.hidden = !hasOrigin
+      // 铃铛角标：这只还没响的提醒条数，0 条不画；读屏念在标签里（「提醒 2」）
+      const n = alerts > 0 ? String(Math.min(alerts, 99)) : ''
+      if (bellCount.textContent !== n) {
+        bellCount.textContent = n; bellCount.hidden = !n
+        bell.setAttribute('aria-label', n ? '提醒 ' + alerts : '提醒')
+      }
       // 有对比品种时 ＋ 亮强调色
       if (cmpDisc.classList.contains('on') !== comparing) { cmpDisc.classList.toggle('on', comparing); cmpDisc.setAttribute('aria-pressed', String(comparing)) }
       const s = S.symbols.get(sym)
