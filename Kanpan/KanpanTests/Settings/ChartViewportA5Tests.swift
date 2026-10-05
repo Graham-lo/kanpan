@@ -238,4 +238,57 @@ struct ChartViewportA5Tests {
     #expect(viewport.landscapeBarSpacing == 11)
     #expect(viewport.adoptToken == token0 + 1)
   }
+
+  /// 价格轴倍率横竖各一份（`OrientedPriceScale`，只在内存里）：横屏竖向捏出来的 2.83
+  /// 不带回竖屏；再进横屏回到 2.83。第一次进横屏取 1.0，不抄竖屏那份。
+  @Test("价格轴倍率横竖各记各的：横屏竖向捏 → 回竖屏仍是 1.0 → 再进横屏回到 2.83")
+  @MainActor
+  func priceZoomPerOrientation() {
+    var oriented = OrientedPriceScale()
+    var price = PriceTransform(mode: .linear)
+    price.inverted = true
+    // 进横屏：第一次没有那一份，1.0。
+    price = oriented.rotate(price, symbol: "BTCUSDT", from: true, to: false)
+    #expect(price.zoom == 1 && price.centerFraction == 0.5)
+    // 横屏里竖向捏。
+    price.zoom = 2.83; price.centerFraction = 0.62
+    // 回竖屏：竖屏那份是 1.0。翻转跟着当前那份走。
+    price = oriented.rotate(price, symbol: "BTCUSDT", from: false, to: true)
+    #expect(price.zoom == 1 && price.centerFraction == 0.5)
+    #expect(price.inverted)
+    // 再进横屏：回到 2.83。
+    price = oriented.rotate(price, symbol: "BTCUSDT", from: true, to: false)
+    #expect(price.zoom == 2.83 && price.centerFraction == 0.62)
+    // 回竖屏还是竖屏自己那份。
+    price = oriented.rotate(price, symbol: "BTCUSDT", from: false, to: true)
+    #expect(price.zoom == 1)
+    // 朝向没变：原样。
+    price.zoom = 1.4
+    #expect(oriented.rotate(price, symbol: "BTCUSDT", from: true, to: true).zoom == 1.4)
+  }
+
+  @Test("价格轴倍率：竖屏拉过的倍率不抄进第一次的横屏；换品种 / 换轴模式那一份作废")
+  @MainActor
+  func priceZoomPerOrientationScope() {
+    var oriented = OrientedPriceScale()
+    var price = PriceTransform(mode: .linear, zoom: 1.7, centerFraction: 0.4)
+    price = oriented.rotate(price, symbol: "BTCUSDT", from: true, to: false)
+    #expect(price.zoom == 1, "第一次进横屏不该抄竖屏的 1.7")
+    price.zoom = 2.83
+    price = oriented.rotate(price, symbol: "BTCUSDT", from: false, to: true)
+    #expect(price.zoom == 1.7 && price.centerFraction == 0.4, "竖屏回到自己那份")
+    // 别的品种记的那一份对不上，回 1.0。
+    #expect(oriented.rotate(price, symbol: "ETHUSDT", from: true, to: false).zoom == 1)
+    // 轴模式换了，回 1.0。
+    var o2 = OrientedPriceScale()
+    var p2 = PriceTransform(mode: .linear)
+    p2 = o2.rotate(p2, symbol: "BTCUSDT", from: true, to: false)
+    p2.zoom = 2.83
+    p2 = o2.rotate(p2, symbol: "BTCUSDT", from: false, to: true)
+    p2.mode = .log
+    #expect(o2.rotate(p2, symbol: "BTCUSDT", from: true, to: false).zoom == 1)
+    // 换品种：两份都作废。
+    o2.forget()
+    #expect(o2.portrait == nil && o2.landscape == nil)
+  }
 }

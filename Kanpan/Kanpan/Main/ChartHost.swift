@@ -301,6 +301,47 @@ struct ChartInversion: Equatable {
 /// 「回到最新」要叫的是 `ChartView.scrollToLatest()`，那是 UIKit 那一侧的方法；
 /// SwiftUI 这边拿不到视图实例，所以建视图时把它挂进来。弱引用——视图归 SwiftUI 管，
 /// 这里只是借来用一下。
+/// 价格轴倍率横竖各记一份（只在内存里，不同步、不落盘；2026-10-05）。
+///
+/// 横屏画线台的图高不到竖屏的一半，同一个倍率在两种朝向下看起来是两回事：横屏里竖向捏出来的
+/// 2.83 带回竖屏，竖屏的价格轴就莫名其妙被放大了。所以和根宽一样（`Prefs.landscapeBarSpacing`）
+/// 横竖各一份，转屏各回各的。
+///
+/// - 第一次进某个朝向（那一份还没有）取 1.0 自动贴合，**不抄**另一个朝向那份；
+/// - 只换倍率与中心（`zoom` / `centerFraction`），轴模式和上下翻转跟着当前那份走；
+/// - 记下来的那份是哪个品种、哪种轴模式的也一并记着，对不上就当没有——换品种本来就丢倍率
+///   （`ChartHost.updateUIView`），换了对数 / 线性，倍率的意思也变了。
+struct OrientedPriceScale: Equatable {
+  struct Parked: Equatable {
+    var symbol: String
+    var mode: PriceMode
+    var zoom: Double
+    var centerFraction: Double
+  }
+  private(set) var portrait: Parked?
+  private(set) var landscape: Parked?
+
+  /// 转屏：把 `current` 记进离开的那个朝向，换上要去的那个朝向那一份（没有就回 1.0）。
+  mutating func rotate(_ current: PriceTransform, symbol: String,
+                       from wasPortrait: Bool, to nowPortrait: Bool) -> PriceTransform {
+    guard wasPortrait != nowPortrait else { return current }
+    let leaving = Parked(symbol: symbol, mode: current.mode,
+                         zoom: current.zoom, centerFraction: current.centerFraction)
+    if wasPortrait { portrait = leaving } else { landscape = leaving }
+    var next = current
+    if let back = nowPortrait ? portrait : landscape, back.symbol == symbol, back.mode == current.mode {
+      next.zoom = back.zoom
+      next.centerFraction = back.centerFraction
+    } else {
+      next.reset()
+    }
+    return next
+  }
+
+  /// 换品种：两份都作废（倍率本来就不跨品种）。
+  mutating func forget() { portrait = nil; landscape = nil }
+}
+
 @MainActor
 final class ChartProxy {
   weak var box: ChartBox? { didSet { if box !== oldValue, box != nil { onBoxChanged?() } } }
@@ -331,6 +372,9 @@ final class ChartProxy {
   /// 重建盒子时要知道「朝向换过了」，按这个朝向那一份重量（`.adopt`），而不是把另一个朝向的
   /// 宽度原样装回来。
   var lastPortrait: Bool?
+  /// 价格轴倍率横竖各一份（`OrientedPriceScale`）。和 `lastPortrait` 一起记在把手上：
+  /// 转屏可能把盒子整只重建，盒子上记不住。
+  var orientedPrice = OrientedPriceScale()
   /// 上一次从外面（偏好快照）带进来的翻转。和 `lastAdoptToken` 同理记在这儿：盒子活不过
   /// 一次换页，换页回来要知道「我不在的时候偏好里的翻转改过没有」。见 `ChartInversion.adopt`。
   var lastSnapshotInversion: ChartInversion?
@@ -506,9 +550,19 @@ struct ChartHost: UIViewRepresentable {
       // 视野宽度是旧的，位置留着、宽度按档案重量。没到过货就原样装回去。
       // 转过屏（横竖各记一份根宽）也一样：按这个朝向那一份重量，位置留着。
       let rotated = proxy?.lastPortrait.map { $0 != portrait } ?? false
+      // 价格轴倍率同理横竖各一份（`OrientedPriceScale`），只在内存里。
+      if rotated, let proxy {
+        next.price = proxy.orientedPrice.rotate(next.price, symbol: next.series.symbol,
+                                                from: !portrait, to: portrait)
+        incoming = next
+      }
       box.pending = adoptToken != consumedAdoptToken(box) || rotated
         ? .adopt(spacing: resetSpacing)
         : .resize(spacing: saved.view.barSpacing(step: saved.series.step, plotW: width))
+    }
+    // 换了品种（存下来的那张图是别的品种，或者断过档）：横竖两份价格轴倍率一起作废。
+    if let next = incoming, proxy?.savedState?.series.symbol != next.series.symbol {
+      proxy?.orientedPrice.forget()
     }
     box.chart.state = incoming
     // 走到这儿要么按 `resetSpacing` 走 `.reset`，要么上面已经补了 `.adopt`——
@@ -586,6 +640,7 @@ struct ChartHost: UIViewRepresentable {
       if old.series.symbol != s.series.symbol {
         s.crosshair = nil
         s.orderFlowSelected = nil
+        proxy?.orientedPrice.forget()
         box.pending = .reset
       } else if old.series.interval != s.series.interval {
         s.crosshair = nil
@@ -637,6 +692,11 @@ struct ChartHost: UIViewRepresentable {
     let rotated = box.spacingPortrait.map { $0 != portrait } ?? false
     box.spacingPortrait = portrait
     proxy?.lastPortrait = portrait
+    // 价格轴倍率横竖各一份（`OrientedPriceScale`）：转屏这一下把手上这份收进离开的朝向，
+    // 换上要去的朝向那份（第一次去就是 1.0）。换品种上面已经作废过两份，这里只会回到 1.0。
+    if rotated, let proxy {
+      s.price = proxy.orientedPrice.rotate(s.price, symbol: s.series.symbol, from: !portrait, to: portrait)
+    }
     if adoptToken != consumedAdoptToken(box) || rotated {
       consumeAdoptToken(box)
       if box.pending != .reset { box.pending = .adopt(spacing: resetSpacing) }

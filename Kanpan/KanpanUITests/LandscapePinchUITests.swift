@@ -79,14 +79,28 @@ final class LandscapePinchUITests: KanpanUICase {
     Thread.sleep(forTimeInterval: 0.8)
     note("竖向捏"); shot("横屏缩放-3-竖向捏价格轴")
     XCTAssertEqual(spacing(), narrow, accuracy: narrow * 0.05, "竖向捏把根宽也改了：\(narrow) → \(spacing())")
+    let landZoom = zoomY()
 
     // 回竖屏：按竖屏自己那份根宽重量。
     app.buttons[Ids.drawFinish].tap()
     expectExists(app.buttons[Ids.bottomMe], Self.long, "画完没自己转回竖屏")
     XCTAssertTrue(waitUntil(timeout: Self.long) { abs(spacing() - portraitSpacing) < portraitSpacing * 0.05 },
                   "回竖屏根宽没回到竖屏那份：\(portraitSpacing) → \(spacing())，\(layout())")
+    // 价格轴倍率也横竖各一份：横屏竖向捏出来的倍率不带回竖屏（竖屏起点是 zoom0）。
+    XCTAssertEqual(zoomY(), zoom0, accuracy: 0.01, "横屏竖向捏的价格轴倍率被带回了竖屏：\(landZoom) → \(zoomY())")
     note("回竖屏")
     let back = XCTAttachment(screenshot: app.screenshot()); back.name = "横屏缩放-4-回竖屏根宽不变"; back.lifetime = .keepAlways; add(back)
+
+    // 再进横屏：根宽和价格轴倍率都回到横屏自己那份。
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")
+    expectExists(symbol, Self.long, "第二次点「画线」没横过去")
+    XCTAssertTrue(waitUntil(timeout: Self.long) { abs(zoomY() - landZoom) < 0.01 },
+                  "再进横屏价格轴倍率没回到横屏那份：\(landZoom) → \(zoomY())")
+    XCTAssertEqual(spacing(), narrow, accuracy: narrow * 0.05, "再进横屏根宽没回到横屏那份：\(narrow) → \(spacing())")
+    Thread.sleep(forTimeInterval: 0.8)
+    note("再进横屏"); shot("横屏缩放-5-再进横屏回到横屏那份")
+    app.buttons[Ids.drawFinish].tap()
+    expectExists(app.buttons[Ids.bottomMe], Self.long, "画完没自己转回竖屏")
   }
 
   /// 两指在 `center` 上下对称地从相距 `from` 张到 `to`（pt，界面坐标），0.5 秒走完。
