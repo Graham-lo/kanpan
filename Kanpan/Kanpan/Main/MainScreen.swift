@@ -188,6 +188,8 @@ struct MainScreen: View {
   /// 提醒那一张表：总表（`hkline://alerts`、通知点开）或新建页（图上十字线那颗药丸）。
   /// 一个 `sheet(item:)` 管两样，两张不会同时开：开新建页时总表自然收起。
   @State private var alertSheet: AlertSheetRoute?
+  /// 顶栏铃铛那张「提醒」表的日志页：响过的提醒（账在服务端），按账号缓存一份在本机。
+  @State private var alertLog = AlertLogModel()
   @State private var shareInterval: SharePreviewInterval?
   @State private var inbox = ShareInbox()
   @State private var showFriends = false
@@ -589,13 +591,18 @@ struct MainScreen: View {
     }
     .onAppear { wireReview() }
     // 提醒：深链 / 通知点开的是总表，图上十字线那颗药丸开的是新建页（右上「全部预警」再推进总表）。
+    // 顶栏铃铛开的是「提醒」表（列表 | 日志），在里面建好一条不收表。
     .sheet(item: $alertSheet) { route in
-      AlertSheetView(route: route, store: alerts, context: alertListContext(live: route != .list),
+      AlertSheetView(route: route, store: alerts, context: alertListContext(live: route.needsLiveQuote),
+                     log: alertLog, owner: account.user?.id, fetch: alertLogFetch,
                      onCreated: { alert in
-                       alertSheet = nil
+                       if case .hub = route {} else { alertSheet = nil }
                        say("已加提醒 · " + alert.title)
-                     })
+                     },
+                     onClearFailed: { say("清空失败") })
         .environment(\.panelTheme, theme)
+        // 分段、导航标题这些系统控件跟着 app 的深浅走，不跟系统（app 强制浅色、系统是深色时不再一半深一半浅）。
+        .preferredColorScheme(effectiveTheme.forced)
     }
     // 盯着的那条被删、被暂停、响了：锁屏那块跟着收。
     .onReceive(alerts.$archive) { activities.reconcile($0.alerts) }
@@ -1020,7 +1027,7 @@ struct MainScreen: View {
       // 看朋友分享的线时这张图不是「我的图」，对比本来就暂退，加号不排。
       onCompare: draw.previewing == nil ? { dismissPanel(); showComparePicker = true } : nil,
       compareActive: !compareKeys.isEmpty,
-      onAlerts: { dismissPanel(); alertSheet = .list },
+      onAlerts: { openAlertHub() },
       alertCount: alerts.pendingCount(symbol: market.symbol),
       onSearch: { dismissPanel(); symbolSearch.openSearch() },
       onScan: { scan($0) },
@@ -2242,6 +2249,19 @@ struct MainScreen: View {
       if let keep { proxy.show(window: keep, symbol: symbol, interval: market.interval) }
       Haptics.step()
     }
+  }
+
+  /// 顶栏铃铛：开「提醒」表，图上这只置顶，创建页预填此刻的最新价。
+  private func openAlertHub() {
+    dismissPanel()
+    let last = market.tradeQuote?.price ?? market.ticker?.last
+    alertSheet = .hub(symbol: market.symbol, price: last.flatMap { $0.isFinite && $0 > 0 ? $0 : nil })
+  }
+
+  /// 日志页发请求走账号那条通道（钉住当前这个人，换号之后在途的那一趟作废）。没登录 = nil。
+  private var alertLogFetch: AlertLogModel.Fetch? {
+    guard let api = account.client, let owner = account.user?.id else { return nil }
+    return { path, method in try await api.data(path, method: method, owner: owner) }
   }
 
   /// 十字线那颗「创建提醒」：收十字线，弹新建提醒页（品种、价格都填好）。

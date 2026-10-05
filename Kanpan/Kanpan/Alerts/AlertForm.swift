@@ -771,7 +771,7 @@ struct AlertForm: View {
 }
 
 /// 主按钮的按压反馈：按下缩一点、松手弹回。只动比例，不动颜色（禁用态由 `PanelDisabled` 管）。
-private struct AlertPressStyle: ButtonStyle {
+struct AlertPressStyle: ButtonStyle {
   @Environment(\.isEnabled) private var enabled
 
   func makeBody(configuration: Configuration) -> some View {
@@ -851,22 +851,33 @@ enum AlertSheetRoute: Identifiable, Equatable {
   case list
   /// 新建提醒（图上十字线那颗药丸），带着品种的代号与那一口价。
   case new(symbol: String, price: Double)
+  /// 顶栏铃铛那张「提醒」表（列表 | 日志，2026-10-05）：图上那只与开表那一刻的最新价。
+  case hub(symbol: String, price: Double?)
 
   var id: String {
     switch self {
     case .list: "list"
     case let .new(symbol, price): "new:\(symbol):\(price)"
+    case let .hub(symbol, _): "hub:\(symbol)"
     }
   }
+
+  /// 这张表里有没有要现价的页（新建 / 编辑）。只有总表的那张没有。
+  var needsLiveQuote: Bool { self != .list }
 }
 
-/// 宿主 `sheet(item:)` 里那一层：按路由摆总表或新建页。非泛型、一个类型，
+/// 宿主 `sheet(item:)` 里那一层：按路由摆总表、新建页或「提醒」表。非泛型、一个类型，
 /// 免得在 `MainScreen` 的修饰器链上再多挂一张表（文件头那条层数上限）。
 struct AlertSheetView: View {
   var route: AlertSheetRoute
   @ObservedObject var store: AlertStore
   var context: AlertListContext
+  /// 「提醒」表的日志（账号那份缓存 + 拉取）。
+  var log: AlertLogModel
+  var owner: UUID?
+  var fetch: AlertLogModel.Fetch?
   var onCreated: (KanpanCore.Alert) -> Void
+  var onClearFailed: () -> Void = {}
 
   var body: some View {
     switch route {
@@ -875,6 +886,9 @@ struct AlertSheetView: View {
     case let .new(symbol, price):
       AlertComposeSheet(store: store, context: context, symbol: symbol, price: price,
                         onCreated: onCreated)
+    case let .hub(symbol, price):
+      AlertHubSheet(store: store, context: context, symbol: symbol, price: price, log: log,
+                    owner: owner, fetch: fetch, onCreated: onCreated, onClearFailed: onClearFailed)
     }
   }
 }

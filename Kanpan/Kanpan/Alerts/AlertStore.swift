@@ -13,7 +13,7 @@ import KanpanCore
 final class AlertStore: ObservableObject {
   @Published private(set) var archive: AlertArchive {
     // 存档一变，总表那份排好的分段与行跟着作废；下次有人读再排一趟（压测收尾第 5 项）。
-    didSet { cachedRows = nil; cachedLiveCount = nil; cachedPending = nil }
+    didSet { cachedRows = nil; cachedLiveCount = nil; cachedPinned = nil; cachedPending = nil }
   }
   /// 存档变了就响一次；账号桥挂在这儿记账 + 同步。
   var onChange: ((AlertArchive) -> Void)?
@@ -96,6 +96,20 @@ final class AlertStore: ObservableObject {
     return n
   }
   private var cachedLiveCount: Int?
+
+  /// 「提醒」sheet 列表页那一列：这只品种的置顶，其余照总表（`AlertListItem.pinnedRows`）。
+  /// 和 `listRows` 同一个缓存口径，另外按品种记——换了品种才再排。
+  func pinnedRows(symbol: String) -> [AlertListItem] {
+    let key = InstrumentID.canonical(symbol)
+    if let cachedPinned, cachedPinned.key == key { return cachedPinned.rows }
+    let rows = AlertListItem.pinnedRows(archive.alerts, symbol: key)
+    cachedPinned = (key, rows)
+    pinnedRowBuilds += 1
+    return rows
+  }
+  private var cachedPinned: (key: String, rows: [AlertListItem])?
+  /// 置顶那一列排过几趟。只给单测数次数用。
+  private(set) var pinnedRowBuilds = 0
 
   /// 顶栏铃角标：这只品种还没触发的提醒数（`AlertRecordText.records` 同一口径：价格、画线、条件，
   /// 不含复盘到点）。顶栏跟着每一笔成交重画，所以按品种数好一张表缓存着，存档变了才重数。

@@ -104,6 +104,7 @@ struct AlertListRowsTests {
       case let .title(kind, text, first): "T \(kind.rawValue) \(text) \(first)"
       case let .header(_, symbol, count, top): "H \(InstrumentID(symbol).symbol) \(count) \(top)"
       case let .record(_, withSymbol, divider, top, bottom): "R \(withSymbol) \(divider) \(top) \(bottom)"
+      case .pinTitle, .pinKind, .pinEmpty: "P"
       }
     }
     #expect(shape == [

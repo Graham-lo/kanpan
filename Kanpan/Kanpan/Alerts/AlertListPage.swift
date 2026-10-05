@@ -52,6 +52,10 @@ struct AlertListPage: View {
   /// 从它右上推进来的总表跟着白；推在「我的」里就跟「我的」走页面底色。卡片仍是 `raised2`，
   /// 和「我的」那几张卡同一层。
   var onAppGround = false
+  /// 「提醒」sheet 的列表页（2026-10-05）：这只品种（规范键）置顶成一组，其余照旧。nil = 总表。
+  var pinned: String? = nil
+  /// 导航栏标题。「提醒」sheet 里由外面那层定（传 nil）。
+  var title: String? = "全部预警"
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -77,10 +81,14 @@ struct AlertListPage: View {
   }
 
   /// 头部是系统导航栏（居中 17 标题），推进来的那一层用系统返回。
-  private var content: some View {
-    list
-      .navigationTitle("全部预警")
-      .navigationBarTitleDisplayMode(.inline)
+  @ViewBuilder private var content: some View {
+    if let title {
+      list
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    } else {
+      list
+    }
   }
 
   /// 2026-09-26 压测收尾第 5 项：原来是 `ScrollView { VStack }`，body 里现排
@@ -93,7 +101,7 @@ struct AlertListPage: View {
   /// - 记录行是 `Equatable`（`AlertListRecord`），写一次只有输入真变了的那几行重画——
   ///   删一条：它自己、它那组的段头（数量）、段标题（数量）、以及接替它首尾位置的那一行。
   private var list: some View {
-    let rows = store.listRows
+    let rows = pinned.map { store.pinnedRows(symbol: $0) } ?? store.listRows
     return ScrollView {
       Group {
         if rows.isEmpty {
@@ -142,6 +150,22 @@ struct AlertListPage: View {
                       onDelete: { [store] in withAnimation(.snappy) { store.remove(id: alert.id) } })
         .equatable()
         .transition(AlertRecordRow.removal)
+    case let .pinTitle(symbol):
+      AlertCardTitle(text: AlertRecordText.pairName(symbol))
+        .padding(.bottom, Space.s)
+        .accessibilityIdentifier("alerts.pinned")
+    case let .pinKind(kind, count, top):
+      AlertPinnedKindHeader(text: kind == .drawing ? "画线" : "价格", count: count, divider: !top)
+        .modifier(AlertCardSlice(top: top, bottom: false))
+        .transition(.opacity)
+        .accessibilityIdentifier("alerts.pinned.\(kind.rawValue)")
+    case .pinEmpty:
+      Text("暂无提醒")
+        .font(TypeScale.body).foregroundStyle(t.ink3)
+        .padding(.horizontal, Inset.card)
+        .frame(maxWidth: .infinity, minHeight: Inset.rowMin, alignment: .leading)
+        .modifier(AlertCardSlice(top: true, bottom: true))
+        .accessibilityIdentifier("alerts.pinned.empty")
     }
   }
 
@@ -170,14 +194,57 @@ enum AlertListItem: Identifiable, Equatable {
   case header(kind: KanpanCore.Alert.Kind, symbol: String, count: Int, top: Bool)
   /// 一条提醒。`withSymbol`：标题里带品种（复盘到点那段）；`bottom`：卡片的最后一片（下圆角）。
   case record(alert: KanpanCore.Alert, withSymbol: Bool, divider: Bool, top: Bool, bottom: Bool)
+  /// 置顶那一组（「提醒」sheet，2026-10-05）的组名：品种名，卡片外。
+  case pinTitle(symbol: String)
+  /// 置顶那张卡片里的小节头：「价格 2」「画线 1」。
+  case pinKind(kind: KanpanCore.Alert.Kind, count: Int, top: Bool)
+  /// 置顶那只一条都没有：卡片里一行「暂无提醒」。
+  case pinEmpty
 
   var id: String {
     switch self {
+    case .pinTitle: "pin/title"
+    case let .pinKind(kind, _, _): "pin/kind/" + kind.rawValue
+    case .pinEmpty: "pin/empty"
     case let .title(kind, _, _): "title/" + kind.rawValue
     // 同一只品种可能同时在价格、画线两段里有段头。
     case let .header(kind, symbol, _, _): "head/" + kind.rawValue + "/" + symbol
     case let .record(alert, _, _, _, _): "alert/" + alert.id
     }
+  }
+
+  /// 「提醒」sheet 列表页：这只品种（规范键）的提醒置顶成一组——组名是品种名，下面按
+  /// 「价格」（含条件提醒）、「画线」分小节，行里不再写品种；一条都没有时那张卡片只有一行「暂无提醒」。
+  /// 其余品种照总表（`rows(sections(…))`），复盘到点照旧单列一段。
+  static func pinnedRows(_ alerts: [KanpanCore.Alert], symbol: String) -> [AlertListItem] {
+    let key = InstrumentID.canonical(symbol)
+    let mine = AlertRecordText.records(alerts, symbol: key)
+    var out: [AlertListItem] = [.pinTitle(symbol: key)]
+    let groups: [(KanpanCore.Alert.Kind, [KanpanCore.Alert])] = [
+      (.price, mine.filter { $0.kind == .price || $0.kind == .condition }),
+      (.drawing, mine.filter { $0.kind == .drawing }),
+    ].filter { !$0.1.isEmpty }
+    if groups.isEmpty {
+      out.append(.pinEmpty)
+    } else {
+      var top = true
+      for (g, (kind, list)) in groups.enumerated() {
+        out.append(.pinKind(kind: kind, count: list.count, top: top))
+        top = false
+        let lastGroup = g == groups.count - 1
+        for (i, alert) in list.enumerated() {
+          let last = i == list.count - 1
+          out.append(.record(alert: alert, withSymbol: false, divider: !last,
+                             top: false, bottom: last && lastGroup))
+        }
+      }
+    }
+    let rest = alerts.filter { InstrumentID.canonical($0.symbol) != key || $0.kind == .reviewDue }
+    out += rows(AlertRecordText.sections(rest)).map { item in
+      if case let .title(kind, text, true) = item { return .title(kind: kind, text: text, first: false) }
+      return item
+    }
+    return out
   }
 
   /// 分段摊成行。分隔线与首尾圆角的口径和原来整张卡片一致：组里最后一条、且是卡片里最后一组
@@ -232,5 +299,33 @@ struct AlertListRecord: View, Equatable {
       onTap: onTap,
       onDelete: onDelete)
     .modifier(AlertCardSlice(top: top, bottom: bottom))
+  }
+}
+
+/// 置顶那张卡片里的小节头：「价格」「画线」+ 右边一枚灰色数量。比品种段头（`AlertSymbolHeader`）
+/// 矮一档、不带徽章——品种名已经是卡片外那行组名。
+struct AlertPinnedKindHeader: View {
+  var text: String
+  var count: Int
+  /// 不是卡片第一片时，上沿补一条发丝线把上一小节隔开。
+  var divider: Bool
+  @Environment(\.panelTheme) private var t
+
+  var body: some View {
+    HStack(spacing: Space.s) {
+      Text(text)
+        .font(TypeScale.footnoteEmph)
+        .foregroundStyle(t.ink2)
+      Spacer(minLength: Space.s)
+      Text("\(count)")
+        .font(TypeScale.caption).monospacedDigit()
+        .foregroundStyle(t.ink3)
+        .contentTransition(.numericText())
+    }
+    .padding(.horizontal, Inset.card)
+    .padding(.top, Space.m)
+    .padding(.bottom, Space.xs)
+    .overlay(alignment: .top) { if divider { AlertCardDivider() } }
+    .accessibilityElement(children: .combine)
   }
 }
