@@ -108,6 +108,16 @@ struct CoinBadgeBrandsTests {
     #expect(CoinSpec.brand("NOT-A-SYMBOL") == nil)
   }
 
+  /// 美元指数：一枚自己的描边美元符号（钞票绿），不落进长尾散列标，也不和 USDT / USDC 撞。
+  @Test func dollarIndexHasItsOwnMark() {
+    let dxy = CoinSpec.of("DXY", asset: .index)
+    guard case .parts(let parts) = dxy.mark else { Issue.record("DXY 应是图形记号"); return }
+    #expect(parts.count == 1 && parts[0].stroke != nil && parts[0].d.count == 2)
+    #expect(dxy.from == Hex("#6FBF8E") && dxy.to == Hex("#23634A"))
+    #expect(CoinSpec.of("DXY") == dxy)
+    #expect(dxy != CoinSpec.of("USDT") && dxy != CoinSpec.of("USDC"))
+  }
+
   /// 比亚迪那枚椭圆原来起笔写成了左端点当顶点，整只椭圆往左偏了 6.6 格、一半出了画布，
   /// 中间那道横条戳在圈外。守住它居中。
   @Test func bydEllipseIsCentered() throws {

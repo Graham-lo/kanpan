@@ -208,6 +208,9 @@ struct MacroRESTTests {
     #expect(c.nativeIntervals == Set(Interval.allCases))
     #expect(c.liveKlineIntervals == Set(Interval.allCases))
     #expect(!c.hasOrderFlow && !c.hasDerivativeMetrics && !c.hasMarkPrice && !c.hasFunding)
+    // 涨跌是服务端按交易日算好的（相对上一交易日收盘），客户端不再拿 UTC 0 点重算。
+    #expect(c.hasSessionChange)
+    #expect(!CoinbaseProvider.capabilities.hasSessionChange && CoinbaseProvider.capabilities.hasOrderFlow)
     #expect(c.openInterestSource == nil)
     #expect(VenueRegistry.descriptor(forSymbol: "macro/index/DXY").id == "macro")
     #expect(VenueRegistry.descriptor(forSymbol: "macro/index/DXY").favoriteCategory == "指数")

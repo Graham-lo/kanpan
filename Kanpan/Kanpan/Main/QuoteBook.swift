@@ -460,7 +460,10 @@ final class QuoteBook {
 
   /// 这只品种的涨跌幅口径：加密看滚动 24 小时，有交易日的（美股 / ETF / 贵金属 / 指数…）看 UTC 0 点起。
   func basis(for symbol: String) -> ChangeBasis {
-    ChangeBasis.automatic(for: symbolInfo(symbol) ?? SymbolInfo.placeholder(symbol: symbol))
+    // 来源自己按交易日算好了涨跌（美元指数：相对上一交易日收盘）：照原样用，
+    // 不再拿 UTC 0 点的开盘价重算一遍（`.rolling24h` 在这儿的意思就是「用帧里那个数」）。
+    if provider(for: symbol).capabilities.hasSessionChange { return .rolling24h }
+    return ChangeBasis.automatic(for: symbolInfo(symbol) ?? SymbolInfo.placeholder(symbol: symbol))
   }
 
   /// 按日口径的那些品种共用的一档边界：UTC 0 点（上海 08:00）。滚动口径的品种不需要边界。

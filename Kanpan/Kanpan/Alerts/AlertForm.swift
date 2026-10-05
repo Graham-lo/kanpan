@@ -312,7 +312,8 @@ struct AlertForm: View {
         CoinBadge(base: info.base, size: ControlMetrics.badge)
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: Space.xxs) {
-          Text(info.base + "/" + info.quote)
+          // 和总表段头同一个写法：没有计价币的（美元指数）只写代号，不留一道斜杠。
+          Text(AlertRecordText.pairName(key))
             .font(TypeScale.heading)
             .foregroundStyle(t.ink)
             .lineLimit(1)

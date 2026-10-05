@@ -33,7 +33,8 @@ public struct MacroProvider: MarketProvider {
     openInterestSource: nil, hasMicrostructure: false, hasDerivativeMetrics: false,
     // 不带 symbol 的 `ticker/24hr` 一次回全部（就一只）。
     hasBulkTickers: true, probesHistoryBoundary: false, snapshotNamespace: nil,
-    quoteAssets: [], hasOrderFlow: false)
+    // 涨跌是服务端按「相对上一交易日收盘」算好的（协议第 4 节），客户端不重算。
+    quoteAssets: [], hasOrderFlow: false, hasSessionChange: true)
 
   public var capabilities: ProviderCapabilities { Self.capabilities }
   /// 服务端不通时品种表用的那一行（离线也能搜、能加自选）。

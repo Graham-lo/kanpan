@@ -43,7 +43,7 @@ struct OrderFlowSlot {
   mutating func start(symbol: String, foreground: Bool, provider: (any MarketProvider)?,
                       paths: Paths, log: FeedLog, publish: @escaping Publish) -> Bool {
     guard enabled, foreground, feed == nil, !symbol.isEmpty, chartReady == symbol,
-          let provider, let facts = facts(symbol) else { return false }
+          let provider, provider.capabilities.hasOrderFlow, let facts = facts(symbol) else { return false }
     let token = UUID()
     let directory = Self.directory(in: paths)
     guard let next = OrderFlowFeed(symbol: symbol, facts: facts, override: overrides[facts.overrideKey],

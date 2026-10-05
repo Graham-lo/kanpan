@@ -879,7 +879,10 @@ final class MarketModel {
   /// **临时停牌（`.halted`）不在内**（审查复核项 3）：美股永续和贵金属每天收盘都是
   /// 这一档，它们的身份和外观一律照正常合约走；收盘之后价格自然停着不动，
   /// 那一面由 `tickerStale` 这条价格不新鲜的规则去说，不必让状态再说一遍。
-  var priceFresh: Bool { !tickerStale && !linkDown && info.status.hasLivePrice }
+  ///
+  /// * 行情帧自己说了休市（`Ticker.marketClosed`，美元指数的 `marketState: closed`）——
+  ///   周末那口价是上周五的收盘，同样灰显；不加状态字段，开市第一帧到了自己亮回来。
+  var priceFresh: Bool { !tickerStale && !linkDown && info.status.hasLivePrice && ticker?.marketClosed != true }
 
   /// 顶栏费率那一格真正要显示的值。
   var displayedFundingRate: Double? { fundingExpired ? nil : funding?.fundingRate }

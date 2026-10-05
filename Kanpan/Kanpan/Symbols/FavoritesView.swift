@@ -1149,7 +1149,9 @@ private struct FavoriteQuoteRow: View {
     let skeleton = !price.isFinite && !stale
     // 没有实时价时最后那口真价照旧摆着，只是退成次要文字色——不加标签、不弹窗。
     // 连接断满宽限也一样：价还是那口价，但已经不是「现在」的了。
-    let priceInk: Color = (stale || linkDown) ? skin.ink4 : theme.ink
+    // 行情帧自己说了休市（美元指数周末）：同样退灰，开市第一帧到了自己亮回来。
+    let closed = display?.marketClosed == true
+    let priceInk: Color = (stale || linkDown || closed) ? skin.ink4 : theme.ink
     // 行本身（徽章、字号、药丸、左右边距、发丝线）是和板块内品种表共用的 `LiuliSymbolRow`
     // （UI 审查 2026-09-24：两份手抄已经漂开）。这一页只管往里填什么。
     return LiuliSymbolRow(
@@ -1161,7 +1163,7 @@ private struct FavoriteQuoteRow: View {
       // 涨跌一律带「+ / −」（UI 审查 2026-09-24：全 app 跌幅一种写法，不再用小三角说方向）。
       // 还没到的涨跌和还没到的价格用同一种骨架：药丸只剩一块底，不写字。
       change: change, changeText: changePercentText(change), changePending: !stale,
-      changeMuted: linkDown,
+      changeMuted: linkDown || closed,
       changeID: "favorites.change." + symbol,
       openID: "favorites.open." + symbol,
       onOpen: onOpen
