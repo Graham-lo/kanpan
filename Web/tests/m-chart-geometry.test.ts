@@ -63,6 +63,22 @@ describe('AICoin 硬边界（ClampTests）', () => {
     }
   })
 
+  it('gappyLatest：休市缺根的序列（美元指数周末）打开就贴到真实末根，最新一截能拖到', () => {
+    // 1h，前 300 根连续，中间停 48 小时（周末），后 200 根连续（照 iOS ClampTests.gappyLatest）
+    const step = INTERVAL_STEP['1h']
+    const times = [...Array.from({ length: 300 }, (_, i) => i * step), ...Array.from({ length: 200 }, (_, i) => (300 + 48 + i) * step)]
+    const s = BarSeries.fromBars('DXY', '1h', times.map(t => bar(t, 1, 1, 1, 1, 1)))
+    expect(s.lastTime).toBe(times[times.length - 1])
+    for (const spacing of [1.6, 4, 8, 40]) {
+      const v = ViewMath.reset(s, 390, spacing)
+      const c = synthSeries(times.length)
+      const vc = ViewMath.reset(c, 390, spacing)
+      expect(Math.abs(v.x(s.lastTime, 390) - vc.x(c.lastTime, 390))).toBeLessThan(1e-6)
+      const pushed = clampView(new ViewWindow(v.to + 1e9, v.span), s, 390)
+      expect(Math.abs(pushed.to - v.to)).toBeLessThan(1e-3)
+    }
+  })
+
   it('empty：空数据不产生无效窗口', () => {
     const s = BarSeries.fromBars('X', '1h', [])
     const v = ViewWindow.fromTo(10, 20)

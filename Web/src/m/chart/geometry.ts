@@ -107,7 +107,10 @@ export function clampView(v: ViewWindow, series: BarSeries, plotW: number, ancho
   const span = Math.max(plotW / AICoinBehavior.maximumSpacing * step, Math.min(plotW / AICoinBehavior.minimumSpacing * step, v.span))
   const spacing = plotW / span * step
   const first = series.firstTime - step / 2
-  const maximumOffset = ViewMath.maximumOffset(series.count, spacing, plotW, anchor)
+  // 能拖到的最右按「从第一根到最后一根占了多少格」算，不按根数：美元指数这类有休市空档的序列
+  // （每天停一小时、周末停两天）根数远少于格数，按根数夹会把视野夹回一个多月前（照 iOS Clamp.swift 的 cells）
+  const cells = Math.max(series.count, (series.lastTime - series.firstTime) / step + 1)
+  const maximumOffset = ViewMath.maximumOffset(cells, spacing, plotW, anchor)
   const offset = (v.to - span - first) / step * spacing
   const clampedOffset = Math.max(0, Math.min(maximumOffset, offset))
   return new ViewWindow(first + clampedOffset / spacing * step + span, span)
@@ -125,8 +128,8 @@ export const ViewMath = {
     return new ViewWindow(settled.to + (beyond > 0 ? pull : -pull) / plotW * settled.span, settled.span)
   },
 
-  maximumOffset(count: number, spacing: number, plotW: number, anchor: ViewAnchor): number {
-    const total = Math.max(0, (count + 400) * spacing - plotW)
+  maximumOffset(cells: number, spacing: number, plotW: number, anchor: ViewAnchor): number {
+    const total = Math.max(0, (cells + 400) * spacing - plotW)
     const reserved = Math.min(400 * spacing - ViewMath.rightInset(anchor, plotW), total)
     return Math.max(0, total - reserved)
   },
