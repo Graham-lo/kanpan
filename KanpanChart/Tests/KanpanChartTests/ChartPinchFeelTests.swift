@@ -226,22 +226,79 @@ private func spacing(_ v: ChartView, _ L: Layout) -> Double {
     #expect(abs(v.state!.view.x(t, plotW: L.plotW) - 400) < 1e-6, "回弹不该绕右缘，该绕捏的那一点")
   }
 
-  @Test("P5 软越界时抬掉一根：先收回 40 再接着拖，不跳")
-  func overshootHandoffSnaps() throws {
-    let (_, v, L) = try stage(spacing: 38, history: 3000)
-    let a = FakeTouch(CGPoint(x: 350, y: 150)), b = FakeTouch(CGPoint(x: 450, y: 150))
+  /// 捏开到 40 外面（38 → 约 45 的软越界），返回捏的那一点（x = 400）底下的时间。
+  @MainActor
+  private func overshootTo40(_ v: ChartView, _ L: Layout, _ a: FakeTouch, _ b: FakeTouch) -> Double {
     v.touchesBegan([a, b], with: FakeEvent(ms: 1000))
     a.point.x = 345; b.point.x = 455
     v.touchesMoved([a, b], with: FakeEvent(ms: 1010))
     a.point.x = 300; b.point.x = 500
     v.touchesMoved([a, b], with: FakeEvent(ms: 1020))
-    #expect(spacing(v, L) > AICoinBehavior.maximumSpacing)
+    return v.state!.view.t(atX: 400, plotW: L.plotW)
+  }
+
+  @Test("P5 软越界时抬掉一根：和松手同一条路绕捏的那一点弹回 40，弹的途中剩下那根不抢，弹完接着拖不跳")
+  func overshootHandoffRebounds() throws {
+    let (_, v, L) = try stage(spacing: 38, history: 3000)
+    let hi = AICoinBehavior.maximumSpacing
+    let a = FakeTouch(CGPoint(x: 350, y: 150)), b = FakeTouch(CGPoint(x: 450, y: 150))
+    let t = overshootTo40(v, L, a, b)
+    let over = spacing(v, L)
+    #expect(over > hi)
     v.touchesEnded([a], with: FakeEvent(ms: 1030))
+    #expect(v.animation != nil, "抬掉一根也该走回弹动画，不是直接吸到边界")
+    #expect(abs(spacing(v, L) - over) < 1e-9, "抬手那一下不该瞬间跳到 40")
+    // 回弹走一半，剩下那根手指动了：画面归回弹，手指不接管。
+    let t0 = CACurrentMediaTime()
+    _ = v.animation!(t0 + 0.08)
+    let mid = v.state!.view
+    b.point.x -= 30
+    v.touchesMoved([b], with: FakeEvent(ms: 1040))
+    #expect(v.state!.view == mid, "回弹途中拖动不该和回弹打架")
+    runAnimation(v)
+    #expect(abs(spacing(v, L) - hi) < 1e-9)
+    #expect(abs(v.state!.view.x(t, plotW: L.plotW) - 400) < 1e-6, "回弹该绕捏的那一点")
+    // 弹完：第一下只重设起手点，之后按剩下那根手指的位移拖，根宽不变、位置不跳。
+    v.touchesMoved([b], with: FakeEvent(ms: 1300))
+    let held = v.state!.view
+    b.point.x -= 20
+    v.touchesMoved([b], with: FakeEvent(ms: 1310))
+    #expect(abs(v.state!.view.span - held.span) / held.span < 1e-12)
+    #expect(abs(v.state!.view.to - held.dragged(byFingerPx: -20, plotW: L.plotW).to) / held.span * L.plotW < 0.01)
+    v.touchesEnded([b], with: FakeEvent(ms: 1320))
+  }
+
+  @Test("P5 软越界抬掉一根、回弹途中把剩下那根也抬了：回弹照走完，停在 40，不判轻点")
+  func overshootHandoffLiftDuringRebound() throws {
+    let (_, v, L) = try stage(spacing: 38, history: 3000)
+    var taps = 0
+    v.onTapped = { taps += 1 }
+    let a = FakeTouch(CGPoint(x: 350, y: 150)), b = FakeTouch(CGPoint(x: 450, y: 150))
+    _ = overshootTo40(v, L, a, b)
+    v.touchesEnded([a], with: FakeEvent(ms: 1030))
+    v.touchesEnded([b], with: FakeEvent(ms: 1040))
+    #expect(v.animation != nil, "回弹不该被惯性或轻点换掉")
+    runAnimation(v)
     #expect(abs(spacing(v, L) - AICoinBehavior.maximumSpacing) < 1e-9)
+    #expect(v.state!.crosshair == nil)
+    #expect(taps == 0)
+  }
+
+  @Test("P5 软越界抬掉一根，「减少动效」下直接到位：没有动画，剩下那根立刻接着拖")
+  func overshootHandoffReduceMotion() throws {
+    let (_, v, L) = try stage(spacing: 38, history: 3000)
+    let a = FakeTouch(CGPoint(x: 350, y: 150)), b = FakeTouch(CGPoint(x: 450, y: 150))
+    let t = overshootTo40(v, L, a, b)
+    #expect(spacing(v, L) > AICoinBehavior.maximumSpacing)
+    ChartHaptics.reduceMotionOverride = true
+    defer { ChartHaptics.reduceMotionOverride = nil }
+    v.touchesEnded([a], with: FakeEvent(ms: 1030))
+    #expect(v.animation == nil)
+    #expect(abs(spacing(v, L) - AICoinBehavior.maximumSpacing) < 1e-9)
+    #expect(abs(v.state!.view.x(t, plotW: L.plotW) - 400) < 1e-6, "到位也是绕捏的那一点")
     let held = v.state!.view
     b.point.x -= 20
     v.touchesMoved([b], with: FakeEvent(ms: 1040))
-    #expect(v.state!.view.span == held.span)
     #expect(abs(v.state!.view.to - held.dragged(byFingerPx: -20, plotW: L.plotW).to) / held.span * L.plotW < 0.01)
     v.touchesEnded([b], with: FakeEvent(ms: 1050))
   }

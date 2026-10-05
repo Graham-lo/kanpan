@@ -60,6 +60,9 @@ final class GestureState {
   /// 完全长得像一次轻点——图上凭空多出一条十字线，`onTapped` 也白响一次（A-03）。
   /// 剩下那根手指照常能拖（语义不变），但这一轮**不许再被判成轻点**。
   var cameFromPinch = false
+  /// 捏合越过软边界时抬掉一根：图正走着回弹（`settleView`），剩下那根手指先不接管——
+  /// 一边弹、一边跟着画面重设起手点，弹完再按它拖（2026-10-05，不再直接吸到边界上）。
+  var reboundHandoff = false
   var directionChosen = false
   var axisStarted = false
   /// 上一次价格轴轻点：什么时候、点在哪儿。两样都要，见 `handleAxisTap`（A-09）。
@@ -92,6 +95,7 @@ final class GestureState {
     pinchActive = false
     pinchAxis = .undecided
     cameFromPinch = false
+    reboundHandoff = false
     directionChosen = false
     axisStarted = false
     velocity.reset()
@@ -195,6 +199,14 @@ extension ChartView {
     // 十字线只认它的主人那根手指；其余模式这时只会有一根手指（两根就进捏合了）。
     let finger = mode == .crosshair ? (gesture.owner ?? gesture.touches.first) : gesture.touches.first
     let q = finger?.location(in: self) ?? gesture.startPoint
+    if mode == .pan, gesture.reboundHandoff {
+      // 捏合越界抬掉一根、回弹还没走完：这根手指不抢画面，起手点跟着回弹重设，
+      // 弹完那一帧接着拖——不跳、也不和回弹打架。
+      gesture.startPoint = q
+      gesture.startView = state?.view ?? gesture.startView
+      if animation == nil { gesture.reboundHandoff = false }
+      return
+    }
     let dx = Double(q.x - gesture.startPoint.x)
     let dy = Double(q.y - gesture.startPoint.y)
     gesture.moved = max(gesture.moved, (dx * dx + dy * dy).squareRoot())
@@ -295,11 +307,12 @@ extension ChartView {
         // 不是拿按下时的位置，否则图会瞬间跳一段。
         let q = t.location(in: self)
         // 捏合越过软边界时抬掉一根：剩下那根接着拖，拖动走的是硬夹（`ViewMath.dragging`），
-        // 先把根宽收回边界再起手，不然第一帧拖动就是一次没有过渡的跳。
-        if var s = state, let target = pinchSettleTarget(s.view, L: L), target != s.view {
-          s.view = target; state = s; viewDidChange(target)
-        }
+        // 根宽得先回到边界里。和两指都松开同一条路（`settleView`）：绕捏的那一点弹回去，
+        // 「减少动效」下直接到位。弹的这一程剩下那根手指不接管（`reboundHandoff`）。
+        let overshoot = state.flatMap { s in pinchSettleTarget(s.view, L: L).map { $0 != s.view } } ?? false
+        if overshoot { settleView() }
         gesture.reset()
+        gesture.reboundHandoff = overshoot && animation != nil
         gesture.mode = .pan
         // 但这一轮的身世要留着：原地抬起剩下那根手指不是轻点（A-03）。
         gesture.cameFromPinch = true
@@ -315,6 +328,9 @@ extension ChartView {
     }
 
     guard liftedAll || gesture.touches.isEmpty || ownerLifted else { return }
+    // 捏合越界降下来的那根手指在回弹途中抬起：回弹照走完，不判轻点、不起惯性
+    // （惯性会把还没弹回的根宽连同动画一起换掉，停在边界外面）。
+    if gesture.reboundHandoff, animation != nil { gesture.reset(); return }
     let mode = gesture.mode
     state?.axisScaleAnchor = nil
     let wasLongPress = gesture.longPressActivated
