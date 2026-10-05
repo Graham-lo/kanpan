@@ -41,6 +41,11 @@ struct IndicatorPage: View {
   var onDraw: (() -> Void)? = nil
   /// 对比期间画不了线：那一行置灰、点不动（原来周期条那颗记号的 `drawEnabled`）。
   var drawEnabled = true
+  /// 横屏画线台顶行「主图˅」开的这一页（2026-10-05）：画线台不画副图、不画主力订单流，
+  /// 那几段在这儿点了图上看不出任何变化，所以只摆主图那几段——开着的主图指标（点进参数）
+  /// 和主图叠加那排开关；「恢复默认指标」会连副图一起动，也不摆。标题改叫「主图指标」。
+  /// 改的仍是同一份指标布局，退出画线回竖屏原样带着走。
+  var mainOnly = false
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -54,40 +59,8 @@ struct IndicatorPage: View {
   private static let overlayPalette = IndicatorID.mainPalette.filter { $0 != .orderFlow }
 
   var body: some View {
-    PanelSheet(title: Panel.indicators.title, subtitle: nil) {
-      drawSection
-
-      // 「指标」这一节：节名压在开着的那几项上（原来这里叫「正在用」），下面是两段开关。
-      // 一项都没开时不让两行节名叠在一起，节名并进第一段的标题里。
-      let inUse = !prefs.overlays.isEmpty || !prefs.subs.isEmpty
-      if inUse {
-        PanelGroupTitle(text: "指标")
-        InUseList(store: store, onEdit: { editing = $0 })
-      }
-
-      PanelGroupTitle(text: inUse ? "主图叠加" : "指标 · 主图叠加")
-      ForEach(Self.overlayPalette, id: \.self) { id in
-        row(id, last: id == Self.overlayPalette.last)
-      }
-
-      // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
-      // 成交量不占名额（`Prefs.maxSubs`，与网页版同一口径），标题上一并说清。
-      PanelGroupTitle(text: "副图 · 最多三个 · 成交量不占")
-      ForEach(IndicatorID.subPalette, id: \.self) { id in
-        row(id, last: id == IndicatorID.subPalette.last)
-      }
-
-      orderFlowSection
-
-      // 指标布局回到出厂（一人一份、不分周期，2026-10-03）。
-      // 已经是出厂那份时点不动（`PanelRow` 在禁用时自己换禁用色阶）。
-      PanelRow(name: "恢复默认指标", divider: false, onTap: {
-        store.resetIndicatorLayout()
-        Haptics.warning()
-      })
-      .padding(.top, Space.xl)
-      .disabled(prefs.indicatorLayout == .factory)
-      .accessibilityIdentifier("indicator.reset")
+    PanelSheet(title: mainOnly ? "主图指标" : Panel.indicators.title, subtitle: nil) {
+      if mainOnly { mainOnlyBody } else { fullBody }
     }
     .sheet(item: $editing) { id in
       if id == .orderFlow {
@@ -96,6 +69,55 @@ struct IndicatorPage: View {
         IndicatorEditor(store: store, id: id).environment(\.panelTheme, t)
       }
     }
+  }
+
+  /// 画线台那一版：开着的主图指标（点进参数），下面一排主图叠加开关。
+  @ViewBuilder private var mainOnlyBody: some View {
+    let inUse = prefs.overlays.contains { $0.placement == .main }
+    if inUse {
+      PanelGroupTitle(text: "使用中")
+      InUseList(store: store, onEdit: { editing = $0 }, mainOnly: true)
+    }
+    PanelGroupTitle(text: "主图叠加")
+    ForEach(Self.overlayPalette, id: \.self) { id in
+      row(id, last: id == Self.overlayPalette.last)
+    }
+  }
+
+  @ViewBuilder private var fullBody: some View {
+    drawSection
+
+    // 「指标」这一节：节名压在开着的那几项上（原来这里叫「正在用」），下面是两段开关。
+    // 一项都没开时不让两行节名叠在一起，节名并进第一段的标题里。
+    let inUse = !prefs.overlays.isEmpty || !prefs.subs.isEmpty
+    if inUse {
+      PanelGroupTitle(text: "指标")
+      InUseList(store: store, onEdit: { editing = $0 })
+    }
+
+    PanelGroupTitle(text: inUse ? "主图叠加" : "指标 · 主图叠加")
+    ForEach(Self.overlayPalette, id: \.self) { id in
+      row(id, last: id == Self.overlayPalette.last)
+    }
+
+    // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
+    // 成交量不占名额（`Prefs.maxSubs`，与网页版同一口径），标题上一并说清。
+    PanelGroupTitle(text: "副图 · 最多三个 · 成交量不占")
+    ForEach(IndicatorID.subPalette, id: \.self) { id in
+      row(id, last: id == IndicatorID.subPalette.last)
+    }
+
+    orderFlowSection
+
+    // 指标布局回到出厂（一人一份、不分周期，2026-10-03）。
+    // 已经是出厂那份时点不动（`PanelRow` 在禁用时自己换禁用色阶）。
+    PanelRow(name: "恢复默认指标", divider: false, onTap: {
+      store.resetIndicatorLayout()
+      Haptics.warning()
+    })
+    .padding(.top, Space.xl)
+    .disabled(prefs.indicatorLayout == .factory)
+    .accessibilityIdentifier("indicator.reset")
   }
 
   /// 画线：一行，行尾是原来周期条上那颗 24pt 记号（`IntervalDrawGlyph`）。点它先收面板，
@@ -143,7 +165,16 @@ struct IndicatorPage: View {
   private func row(_ id: IndicatorID, last: Bool) -> some View {
     let on = prefs.isOn(id)
     return PanelRow(name: id.name, term: .indicator(id), swatch: t.swatch(id), divider: !last) {
-      PanelSwitch(isOn: on) { store.byHand { $0.toggleIndicator(id) } }
+      PanelSwitch(isOn: on) {
+        store.byHand {
+          $0.toggleIndicator(id)
+          // 画线台里眼睛关着时新开一个主图指标：用户是来看它的，眼睛跟着睁开，
+          // 不然开了图上什么也不变，像没点上。
+          if mainOnly, !on, $0.prefs.isOn(id), !$0.prefs.drawingOverlaysShown {
+            $0.update { $0.drawingOverlaysShown = true }
+          }
+        }
+      }
         .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }
   }
@@ -159,6 +190,8 @@ struct IndicatorPage: View {
 private struct InUseList: View {
   var store: PrefsStore
   var onEdit: (IndicatorID) -> Void
+  /// 画线台「主图指标」那一版只列主图那几行，副图不摆（画线台不画副图）。
+  var mainOnly = false
   @Environment(\.panelTheme) private var t
 
   @State private var dragging: IndicatorID?
@@ -170,14 +203,15 @@ private struct InUseList: View {
   private var prefs: Prefs { store.prefs }
   /// 这一段里有没有带把手的行（副图）。有的话，没把手的行（主图叠加）在同一个位置
   /// 垫一块同宽的空位，参数和「›」才落在同一条竖线上（UI 整改 P2）。
-  private var hasHandles: Bool { !prefs.subs.isEmpty }
+  private var hasHandles: Bool { !mainOnly && !prefs.subs.isEmpty }
+  private var subs: [IndicatorID] { mainOnly ? [] : prefs.subs }
 
   var body: some View {
     VStack(spacing: 0) {
       ForEach(prefs.overlays.filter { $0.placement == .main }, id: \.self) { id in
         line(id, index: nil)
       }
-      ForEach(Array(prefs.subs.enumerated()), id: \.element) { index, id in
+      ForEach(Array(subs.enumerated()), id: \.element) { index, id in
         line(id, index: index)
           .background(dragging == id ? t.raised2 : .clear)
           .offset(y: dragging == id ? offset : 0)

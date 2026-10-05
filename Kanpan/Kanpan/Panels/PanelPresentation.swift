@@ -160,6 +160,8 @@ struct PanelActions {
   /// 传的是引用而不是算好的值——大单帧每半秒一次，算好的值挂在这里会让主界面跟着重算。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
+  /// 横屏画线台里开的「分析」：只摆主图指标那几段（见 `IndicatorPage.mainOnly`）。
+  var mainOnly = false
 }
 
 /// 某张面板里装什么。竖屏 sheet（`prefsPanel`）和横屏侧栏（`PanelSide`）都只认这一个，
@@ -180,7 +182,7 @@ struct PanelContent: View {
       // 「分析」面板（画线 · 指标 · 主力订单流）。从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
       // 选中反馈长在指标页各控件的动作上（`PrefsStore.updateByHand`），两条路一样。
       IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol,
-                    onDraw: actions.onDraw, drawEnabled: actions.drawEnabled)
+                    onDraw: actions.onDraw, drawEnabled: actions.drawEnabled, mainOnly: actions.mainOnly)
     }
   }
 }

@@ -491,6 +491,95 @@ final class MainScreenUITests: KanpanUICase {
                   "退回竖屏后均线没回来：\(chartInfo()["overlays"] ?? "?")")
   }
 
+  /// 横屏画线台顶行「主图˅」（`land.indicatorPicker`，2026-10-05）：不退横屏换主图指标。
+  ///
+  /// 这颗始终在（一个主图指标都没开时也在，正要从它开第一个）；点开是右侧栏「主图指标」，
+  /// 只摆主图那几段（副图、主力订单流、「恢复默认指标」画线台里看不出变化，不摆）。
+  /// 改的是同一份指标布局：画线台里开的布林带，退回竖屏照样挂着。
+  /// 眼睛关着时从这里新开一个主图指标，眼睛跟着睁开。
+  func testLandscapeDrawingIndicatorPicker() {
+    func shot(_ name: String) {
+      // 横屏下 `app.screenshot()` 拿到的是转屏前那张错位的帧，取整屏的（存下来是竖着的原始帧）。
+      let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
+    }
+    XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
+    let overlays = { self.chartInfo()["overlays"] as? [String] ?? ["?"] }
+    XCTAssertEqual(overlays(), ["MA"], "竖屏出厂主图该只开着 MA，否则这条用例验不到东西")
+
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")
+    let symbol = app.descendants(matching: .any).matching(identifier: Ids.landscapeSymbol).firstMatch
+    expectExists(symbol, Self.long, "点「画线」没横过去")
+    let picker = app.descendants(matching: .any).matching(identifier: Ids.landscapeIndicatorPicker).firstMatch
+    let eye = app.descendants(matching: .any).matching(identifier: Ids.landscapeIndicators).firstMatch
+    // 先等画线台真的立住（副图收掉、均线照画），再查顶行——刚横过去那几秒 app 还在转屏重排，
+    // 读屏树可能一时拿不全（2026-10-05 首跑就在这儿扑过一次空）。
+    XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["subs"] as? [String])?.isEmpty == true },
+                  "画线横屏里还留着副图：\(chartInfo()["subs"] ?? "?")")
+    XCTAssertTrue(waitUntil(timeout: Self.long) { overlays() == ["MA"] }, "画线台里均线默认该开着：\(overlays())")
+    expectExists(picker, Self.long, "横屏画线台顶行没有「主图˅」")
+    expectExists(eye, Self.long, "开着 MA 时眼睛胶囊该在")
+    XCTAssertEqual(picker.label, "切换主图指标")
+    XCTAssertGreaterThanOrEqual(picker.frame.height, 43.5, "「主图˅」的点击区不到 44")
+    XCTAssertEqual(picker.frame.midY, symbol.frame.midY, accuracy: 2, "「主图˅」和品种胶囊不在一行")
+    XCTAssertLessThan(picker.frame.midX, eye.frame.midX, "「主图˅」该在眼睛胶囊左边")
+
+    // 胶囊贴着屏幕上沿，点击区上缘越出屏幕，按中心点点（同 `testLandscapeDrawingIndicatorToggle`）。
+    let openPicker = { picker.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+    let close = app.buttons[Ids.panelDone]
+    let boll = app.descendants(matching: .any).matching(identifier: Ids.indicatorSwitch("BOLL")).firstMatch
+    let ma = app.descendants(matching: .any).matching(identifier: Ids.indicatorSwitch("MA")).firstMatch
+    // 侧栏收起是 0.28s 往右滑出去的过渡；滑出去之前它还盖在顶行右端（「主图˅」就在那儿），
+    // 读屏树里却已经没有它的开关了——紧跟着点「主图˅」会点在正滑走的侧栏上。等过渡走完再点。
+    let closePanel = {
+      close.tap()
+      Thread.sleep(forTimeInterval: 0.6)
+    }
+
+    openPicker()
+    expectExists(boll, Self.short, "点「主图˅」没开出主图指标侧栏")
+    XCTAssertTrue(app.staticTexts["主图指标"].exists, "侧栏标题不是「主图指标」")
+    XCTAssertFalse(app.descendants(matching: .any)[Ids.indicatorSwitch("MACD")].exists, "画线台的侧栏里不该摆副图开关")
+    XCTAssertFalse(app.descendants(matching: .any)[Ids.indicatorSwitch("ORDERFLOW")].exists, "画线台的侧栏里不该摆主力订单流")
+    XCTAssertFalse(app.descendants(matching: .any)["indicator.reset"].exists, "画线台的侧栏里不该摆「恢复默认指标」")
+    XCTAssertFalse(app.buttons[Ids.indicatorDraw].exists, "画线台的侧栏里不该有「开始画线」")
+    shot("横屏画线台-主图指标侧栏")
+    // 关掉 MA：一个主图指标都没开了。
+    ma.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { overlays().isEmpty }, "侧栏里关了 MA，图上还在：\(overlays())")
+    closePanel()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !boll.exists }, "点「完成」侧栏没收")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !eye.exists }, "一个主图指标都没开，眼睛胶囊不该在")
+    XCTAssertTrue(picker.exists, "一个主图指标都没开时「主图˅」也得在")
+    shot("横屏画线台-主图全关-入口仍在")
+
+    // 从「主图˅」开布林带：关侧栏后图上就有、眼睛胶囊回来。
+    openPicker()
+    expectExists(boll, Self.short, "第二次点「主图˅」没开出侧栏")
+    boll.tap()
+    closePanel()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { overlays() == ["BOLL"] }, "开了布林带，图上没画：\(overlays())")
+    expectExists(eye, Self.short, "开了一个主图指标，眼睛胶囊没出来")
+    XCTAssertEqual(eye.value as? String, "开")
+    shot("横屏画线台-主图换成布林带")
+
+    // 眼睛关着时从侧栏再开 MA：眼睛跟着睁开，两条都画。
+    eye.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { overlays().isEmpty }, "眼睛关了图上还有：\(overlays())")
+    openPicker()
+    expectExists(ma, Self.short, "第三次点「主图˅」没开出侧栏")
+    ma.tap()
+    closePanel()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { Set(overlays()) == ["BOLL", "MA"] },
+                  "眼睛关着时新开 MA，眼睛该跟着睁开、两条都画：\(overlays())")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { eye.value as? String == "开" }, "眼睛没跟着睁开")
+
+    // 同一份指标布局：退回竖屏，布林带照样挂着。
+    app.buttons[Ids.drawFinish].tap()
+    expectExists(app.buttons[Ids.bottomMe], Self.long, "画完没自己转回竖屏")
+    XCTAssertTrue(waitUntil(timeout: Self.long) { Set(overlays()) == ["BOLL", "MA"] },
+                  "画线台里换的主图指标没带回竖屏：\(overlays())")
+  }
+
   /// 审查 U11：横屏画线台上品种名和竖屏一个写法、工具只有一套名字、出口只有「完成」。
   ///
   /// - 品种名「BTC/USDT」，不是裸代号「BTCUSDT」；

@@ -835,12 +835,25 @@ struct MainScreen: View {
           // 换品种和挑工具都贴在左边，同时开会叠在一起——开一个就把另一个收了。
           onTapSymbol: draw.active ? { draw.picker = false; showDrawSwitcher.toggle() } : nil)
           .padding(.horizontal, Space.m).padding(.vertical, Space.xs)
-          // 画线台顶行最右：主图指标开关。贴在 overlay 里，居中的品种胶囊不因它挪位。
+          // 画线台顶行最右：「主图˅」换哪几个 + 眼睛「指标」画不画。贴在 overlay 里，
+          // 居中的品种胶囊不因它们挪位。眼睛那颗只在开着主图指标时摆（一个都没开，开关就是空的）；
+          // 「主图˅」始终在——一个都没开时正要从它开第一个。
           .frame(maxWidth: .infinity)
           .overlay(alignment: .trailing) {
-            if drawingCanvasOnly && !prefs.overlays.isEmpty {
-              LandscapeIndicatorToggle(theme: theme, on: prefs.drawingOverlaysShown) {
-                store.update { $0.drawingOverlaysShown.toggle() }
+            if drawingCanvasOnly {
+              HStack(spacing: Space.s) {
+                LandscapeIndicatorPicker(theme: theme) {
+                  // 和左边那两层（换品种、工具面板）不同时开：开这张就把它们收了。
+                  showDrawSwitcher = false
+                  draw.picker = false
+                  if draw.panel != nil { draw.panel = nil }
+                  panel = .indicators
+                }
+                if !prefs.overlays.isEmpty {
+                  LandscapeIndicatorToggle(theme: theme, on: prefs.drawingOverlaysShown) {
+                    store.update { $0.drawingOverlaysShown.toggle() }
+                  }
+                }
               }
               .padding(.trailing, Space.m)
             }
@@ -1011,7 +1024,9 @@ struct MainScreen: View {
     return PanelActions(onPickInterval: pick(interval:),
                  onShare: chartShareAction, onDraw: onDraw, drawEnabled: !comparing,
                  onSend: chartSendAction, sendBlocked: shareSendBlocked,
-                 orderFlow: market.orderFlow, symbol: market.symbol)
+                 orderFlow: market.orderFlow, symbol: market.symbol,
+                 // 横屏画线台不画副图和主力订单流，那里开的「分析」只摆主图那几段（「主图˅」进来）。
+                 mainOnly: drawingCanvasOnly)
   }
 
   /// 行情页头部。画的东西全在 `MainHeaderView`（`MainScreenParts.swift`）——

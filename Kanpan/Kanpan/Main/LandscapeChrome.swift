@@ -106,6 +106,41 @@ struct LandscapeIndicatorToggle: View {
   }
 }
 
+/// 横屏画线台顶行，「指标」眼睛胶囊左边那颗「主图 ˅」：开右侧栏换主图指标（2026-10-05）。
+///
+/// 用户：「既然画线也展示指标，就增加一个入口，方便主图切换指标」。眼睛那颗管「画不画」，
+/// 这一颗管「换哪几个」——点开的是和竖屏同一张「分析」面板的主图那几段（`IndicatorPage.mainOnly`），
+/// 改的是同一份指标布局（跟人走，不另起横屏配置）。所以它不看 `prefs.overlays` 空不空：
+/// 一个都没开时正是要从这儿开第一个。
+///
+/// 画面和眼睛那颗同一把：同底、同字、同高，点击区上下撑到 44；字后面跟一颗朝下的小 V，
+/// 和周期条「更多˅」同一个记号，读得出「点开有一张单子」。
+struct LandscapeIndicatorPicker: View {
+  var theme: PanelTheme
+  var onTap: () -> Void
+
+  var body: some View {
+    HStack(spacing: Space.xs) {
+      Text("主图").font(TypeScale.controlOn)
+      VectorIcon.chevron(9, w: 1.7)
+    }
+    .foregroundStyle(theme.ink)
+    .padding(.horizontal, Space.m)
+    .padding(.vertical, Space.xs)
+    .background(Capsule().fill(theme.raised2.opacity(0.82)))
+    .frame(minWidth: Hit.min, minHeight: Hit.min)
+    // 点击区与读屏框挂在撑到 44 的这一层上，再用负边距还给布局（同 `LandscapeIndicatorToggle`）。
+    .contentShape(Rectangle())
+    .onTapGesture(perform: onTap)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("切换主图指标")
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier("land.indicatorPicker")
+    .padding(.vertical, -(Hit.min - ControlMetrics.pillHeight) / 2)
+    .dynamicTypeSize(...MarketChrome.typeCap)
+  }
+}
+
 /// 实心圆润的眼睛：杏仁形的眼眶填实，中间挖一圈露出底、再放一颗实心瞳孔；`slashed`
 /// 时从左上到右下划一道圆头斜杠（先挖一道宽缝，让斜杠和眼睛之间留出一线底色）。
 /// 单色，颜色跟 `foregroundStyle` 走。

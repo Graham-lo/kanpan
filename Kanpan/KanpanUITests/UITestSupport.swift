@@ -88,6 +88,8 @@ enum Ids {
   static let landscapeSymbol = "land.symbol"
   /// 横屏画线台顶行最右的「指标」胶囊（主图指标开关）。
   static let landscapeIndicators = "land.indicators"
+  /// 横屏画线台顶行，眼睛胶囊左边的「主图˅」：开右侧栏换主图指标（2026-10-05）。始终在。
+  static let landscapeIndicatorPicker = "land.indicatorPicker"
   // 品种页
   static let symbolsBack = "symbols.back"
   static let symbolsQuery = "symbols.query"
