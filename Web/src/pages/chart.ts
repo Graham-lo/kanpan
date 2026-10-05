@@ -42,6 +42,7 @@ import {
   IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, type Kind, type Sym, type KlineResult,
 } from '../market'
 import { settle } from '../market/settle'
+import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 
@@ -845,9 +846,9 @@ export function openSearch(initial = ''): void {
     <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>↵</kbd>打开</span><span><kbd>⇧</kbd><kbd>↵</kbd>加自选</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg', { label: '搜索品种' })
   const inp = $<HTMLInputElement>('#sq', d.dlg), listEl = $('#sl', d.dlg)
   function render(): void {
-    const qq = q.trim().toUpperCase()
+    const qq = normalize(q)
     const pool = [...S.symbols.values()].filter(s => cat === 'all' || s.kind === cat)
-    results = rankSearch(pool, qq, isWatched)
+    results = rankSearch(pool, q, isWatched)
     activeIdx = Math.min(activeIdx, Math.max(0, results.length - 1))
     const hl = (t: string) => qq && t.toUpperCase().startsWith(qq) ? `<mark>${esc(t.slice(0, qq.length))}</mark>${esc(t.slice(qq.length))}` : esc(t)
     listEl.innerHTML = !S.symbols.size ? `<div class="empty">${S.live === false ? '连不上币安合约接口，搜不了' : '正在取品种表…'}</div>`

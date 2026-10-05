@@ -6,6 +6,7 @@
  * 中文名：大宗与美股用对照表，加密只给常见的几个，其余留空。
  */
 import SECTORS from '../data/sectors.json'
+import { normalize, matchOne, Tier } from './searchText'
 
 export type Kind = 'crypto' | 'us' | 'com'
 
@@ -118,21 +119,31 @@ export function sectorsOf(s: Sym): { id: string; cn: string }[] {
   return (SEC.members[s.symbol.replace(/USDT$|USDC$/, '')] || SEC.members[s.base] || []).map(id => SEC.crypto.find(x => x[0] === id)).filter((x): x is [string, string] => !!x).map(x => ({ id: 'c:' + x[0], cn: x[1] }))
 }
 
-/** 搜索打分：代号或全名完全相等 5、代号前缀 4、代号或全名包含 3、中文名包含 2，否则 0 */
+/** 搜索打分（越大越靠前，0 = 不命中）：和手机网页 / iOS 同一套归一与分档（market/searchText）——
+ *  查询先全角折半角、剥分隔符（BTC/USDT、btc usdt、ＢＴＣ 都认），中文常用叫法与全拼 / 首字母（大饼、longxia、hj）也认；
+ *  电脑这边多两条：去掉 1000 前缀的代号（PEPE）按代号算，品种表里的中文名（cn）按别名算 */
 export function matchScore(s: Pick<Sym, 'symbol' | 'code' | 'cn'>, q: string): number {
-  if (!q) return 1
-  const Q = q.toUpperCase()
-  const code = s.code.toUpperCase(), full = s.symbol.toUpperCase()
-  if (code === Q || full === Q) return 5
-  if (code.startsWith(Q) || full.startsWith(Q)) return 4
-  if (code.includes(Q) || full.includes(Q)) return 3
-  if (s.cn && s.cn.toUpperCase().includes(Q)) return 2
-  return 0
+  const Q = normalize(q)
+  if (!Q) return 1
+  let tier: number | null = matchOne(s.symbol, s.symbol.replace(/USDT$|USDC$/, ''), Q)?.tier ?? null
+  const better = (t: number) => { if (tier == null || t < tier) tier = t }
+  const code = normalize(s.code)
+  if (code === Q) better(Tier.exact)
+  else if (code.startsWith(Q)) better(Tier.basePrefix)
+  else if (code.includes(Q)) better(Tier.baseContains)
+  const cn = s.cn ? normalize(s.cn) : ''
+  if (cn) {
+    if (cn === Q) better(Tier.exact)
+    else if (cn.startsWith(Q)) better(Tier.cnPrefix)
+    else if (cn.includes(Q)) better(Tier.cnContains)
+  }
+  return tier == null ? 0 : 7 - tier
 }
 
 /** 搜索排序：先按匹配档，同档按 24h 成交额降序；空查询时自选在前 */
 export function rankSearch<T extends Pick<Sym, 'symbol' | 'code' | 'cn' | 'vol'>>(list: T[], q: string, watched: (k: string) => boolean = () => false, limit = 80): T[] {
-  const scored = list.map(s => ({ s, m: matchScore(s, q.trim()) })).filter(x => x.m > 0)
-  scored.sort((a, b) => (b.m - a.m) || (!q.trim() ? (+watched(b.s.symbol) - +watched(a.s.symbol)) : 0) || ((b.s.vol || 0) - (a.s.vol || 0)))
+  const blank = !normalize(q)
+  const scored = list.map(s => ({ s, m: matchScore(s, q) })).filter(x => x.m > 0)
+  scored.sort((a, b) => (b.m - a.m) || (blank ? (+watched(b.s.symbol) - +watched(a.s.symbol)) : 0) || ((b.s.vol || 0) - (a.s.vol || 0)))
   return scored.slice(0, limit).map(x => x.s)
 }
