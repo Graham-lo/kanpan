@@ -33,6 +33,7 @@ const BELL = '<svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"
 
 /** 品种卡第二行：「币安 · USDT 永续」 */
 export const venueLine = (symbol: string): string => {
+  if (symbol === 'DXY') return '美元指数 · 指数'
   const { quote } = splitSymbol(symbol)
   return '币安 · ' + (quote ? quote + ' 永续' : '永续')
 }

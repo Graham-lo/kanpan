@@ -204,6 +204,8 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
 .muted { color: var(--text-2); }
 .faint { color: var(--text-3); }
 .stale .price-live { color: var(--text-3) !important; }
+/* 休市（美元指数周末）：价格退灰，和行情停住一个样 */
+.price-live.closed { color: var(--text-3) !important; }
 
 :focus { outline: none; }
 :focus-visible { outline: var(--stroke-mark) solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }

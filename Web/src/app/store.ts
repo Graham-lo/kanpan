@@ -198,7 +198,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 const rec = (v: unknown): Record<string, unknown> => (isObj(v) ? v : {})
 const PANELS: PanelId[] = ['watch', 'alerts', 'flow', 'notes', 'trades']
 const WIDGETS: WidgetId[] = ['watch', 'detail', 'book', 'tape', 'walls', 'alerts', 'liq', 'vol']
-const KINDS: Kind[] = ['crypto', 'us', 'com']
+const KINDS: Kind[] = ['crypto', 'us', 'idx', 'com']
 const HEX = /^#[0-9A-Fa-f]{6}$/
 /** 周期键认不认：原生、秒级（1s / 5s / 15s）、自定义分钟（2–1440 分且不和原生重复） */
 export function validIv(iv: unknown): iv is string {

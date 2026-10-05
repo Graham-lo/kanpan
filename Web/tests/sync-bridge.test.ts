@@ -14,7 +14,7 @@ const state = (): WebState => ({
   pinned: ['1h', '4h'],
   ind: { ma: true, ema: false, boll: false, vol: true, subs: [] },
   params: null,
-  watch: { crypto: ['BTCUSDT'], us: [], com: [] },
+  watch: { crypto: ['BTCUSDT'], us: [], idx: [], com: [] },
   drawings: {},
   alerts: [],
 })
@@ -54,23 +54,23 @@ describe('首次对上', () => {
 
   it('本机没改过：云端的自选与设置装进来', async () => {
     const server = new FakeServer()
-    const a = browser(server, { ...state(), watch: { crypto: ['ETHUSDT', 'SOLUSDT'], us: ['NVDAUSDT'], com: [] }, pinned: ['15m'] })
+    const a = browser(server, { ...state(), watch: { crypto: ['ETHUSDT', 'SOLUSDT'], us: ['NVDAUSDT'], idx: [], com: [] }, pinned: ['15m'] })
     await a.first({ settings: Date.now(), favorites: Date.now() })
     const b = browser(server)
     await b.first()
-    expect(b.s.watch).toEqual({ crypto: ['ETHUSDT', 'SOLUSDT'], us: ['NVDAUSDT'], com: [] })
+    expect(b.s.watch).toEqual({ crypto: ['ETHUSDT', 'SOLUSDT'], us: ['NVDAUSDT'], idx: [], com: [] })
     expect(b.s.pinned).toEqual(['15m'])
   })
 
   it('本机改得比云端新：本机的自选盖过去', async () => {
     const server = new FakeServer()
-    const a = browser(server, { ...state(), watch: { crypto: ['ETHUSDT'], us: [], com: [] } })
+    const a = browser(server, { ...state(), watch: { crypto: ['ETHUSDT'], us: [], idx: [], com: [] } })
     await a.first()
-    const b = browser(server, { ...state(), watch: { crypto: ['SOLUSDT'], us: [], com: ['XAUUSDT'] } })
+    const b = browser(server, { ...state(), watch: { crypto: ['SOLUSDT'], us: [], idx: [], com: ['XAUUSDT'] } })
     await b.first({ settings: 0, favorites: server.now + 60e3 })
-    expect(b.s.watch).toEqual({ crypto: ['SOLUSDT'], us: [], com: ['XAUUSDT'] })
+    expect(b.s.watch).toEqual({ crypto: ['SOLUSDT'], us: [], idx: [], com: ['XAUUSDT'] })
     await a.sync()
-    expect(a.s.watch).toEqual({ crypto: ['SOLUSDT'], us: [], com: ['XAUUSDT'] })
+    expect(a.s.watch).toEqual({ crypto: ['SOLUSDT'], us: [], idx: [], com: ['XAUUSDT'] })
   })
 
   it('画线、提醒取并集；云端删掉的不从本机带回去', async () => {
@@ -90,7 +90,7 @@ describe('首次对上', () => {
 
   it('上一次同步的是另一个账号：云端整体覆盖，不把上一个人的东西带进来', async () => {
     const server = new FakeServer()
-    const b = browser(server, { ...state(), drawings: { BTCUSDT: [line('prev', 1)] }, watch: { crypto: ['SOLUSDT'], us: [], com: [] } })
+    const b = browser(server, { ...state(), drawings: { BTCUSDT: [line('prev', 1)] }, watch: { crypto: ['SOLUSDT'], us: [], idx: [], com: [] } })
     await b.first({ settings: 0, favorites: 0 }, true)
     expect(b.s.drawings.BTCUSDT).toEqual([])
     expect(b.s.watch.crypto.length).toBeGreaterThan(1) // 云端空 → 出厂自选

@@ -3,12 +3,13 @@
  * 品种全集来自币安 U 本位合约 exchangeInfo（只取 USDT 计价、正在交易的永续与 TradFi 永续），
  * 分类按交易所自己给的 underlyingType：
  *   COIN / INDEX → 加密；EQUITY 及各地股票 / PREMARKET → 美股；COMMODITY / FX → 大宗。
+ * 另有一只不在币安的「美元指数」（DXY，macro/index，见 market/macro.ts），分类「指数」（idx），排在美股后面。
  * 中文名：大宗与美股用对照表，加密只给常见的几个，其余留空。
  */
 import SECTORS from '../data/sectors.json'
 import { normalize, matchOne, Tier } from './searchText'
 
-export type Kind = 'crypto' | 'us' | 'com'
+export type Kind = 'crypto' | 'us' | 'com' | 'idx'
 
 export interface Sym {
   symbol: string
@@ -42,6 +43,10 @@ export interface Sym {
   ut?: string           // 交易所给的 underlyingType 原文（COIN / EQUITY / HK_EQUITY / COMMODITY …），市场筛选用
   tags?: string[]       // underlyingSubType 小写去重（layer-1 / meme / ai …），板块筛选用
   onboard?: number      // 上线时间（毫秒），「新」字记号用
+  /** 美元指数这类自家服务器给的品种（macro 交易所）：没有计价币、没有费率 / 持仓 / 盘口，成交量恒为 0 */
+  macro?: boolean
+  /** 休市（服务端 marketState = closed）：价格文字变灰，不加状态字段 */
+  closed?: boolean
 }
 
 export interface SectorData {
@@ -52,7 +57,7 @@ export interface SectorData {
 }
 export const SEC = SECTORS as unknown as SectorData
 
-export const TABS: [Kind, string][] = [['crypto', '加密'], ['us', '美股'], ['com', '大宗']]
+export const TABS: [Kind, string][] = [['crypto', '加密'], ['us', '美股'], ['idx', '指数'], ['com', '大宗']]
 
 export const IV_LABEL: Record<string, string> = { '1m': '1分', '3m': '3分', '5m': '5分', '15m': '15分', '30m': '30分', '1h': '1小时', '2h': '2小时', '4h': '4小时', '6h': '6小时', '8h': '8小时', '12h': '12小时', '1d': '日线', '1w': '周线', '1M': '月线' }
 export const IV_SHORT: Record<string, string> = { '1m': '1分', '3m': '3分', '5m': '5分', '15m': '15分', '30m': '30分', '1h': '1时', '2h': '2时', '4h': '4时', '6h': '6时', '8h': '8时', '12h': '12时', '1d': '日', '1w': '周', '1M': '月' }
@@ -66,6 +71,7 @@ export const DEFAULT_WATCH: Record<Kind, string[]> = {
   crypto: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'HYPEUSDT', 'DOGEUSDT', 'ZECUSDT', 'LINKUSDT', 'SUIUSDT', 'NEARUSDT', 'QNTUSDT', 'HBARUSDT'],
   us: ['NVDAUSDT', 'TSLAUSDT', 'SNDKUSDT', 'MUUSDT', 'AMDUSDT', 'TSMUSDT', 'COINUSDT', 'MSTRUSDT'],
   com: ['XAUUSDT', 'XAGUSDT', 'CLUSDT'],
+  idx: [],   // 美元指数不进出厂默认自选
 }
 
 // 徽标：网页版用「一只品种一个颜色 + 首字母」的圆片，这是网页版自己的定稿画法（手机端的矢量记号不搬过来）
@@ -93,6 +99,7 @@ export function kindOfUnderlying(u: string | undefined, base: string): Kind {
 }
 
 export function cnOf(base: string, kind: Kind): string {
+  if (kind === 'idx') return base === 'DXY' ? '美元指数' : ''
   if (kind === 'com') return COMMODITY[base] || ''
   if (kind === 'us') return SEC.usNames[base] || US_EXTRA[base] || ''
   return CRYPTO_CN[base] || ''
@@ -108,7 +115,7 @@ export function decOfTick(tick: string | number): number {
 }
 
 export function kindName(s: Pick<Sym, 'kind'> | null | undefined): string {
-  return s?.kind === 'us' ? '美股永续' : s?.kind === 'com' ? '大宗永续' : '永续'
+  return s?.kind === 'us' ? '美股永续' : s?.kind === 'com' ? '大宗永续' : s?.kind === 'idx' ? '指数' : '永续'
 }
 
 /** 品种所在板块：加密按成员表、美股按板块代号表 */

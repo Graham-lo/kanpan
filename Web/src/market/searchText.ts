@@ -51,7 +51,11 @@ export const CRYPTO_NAMES: Record<string, string[]> = {
   FLOKI: ['弗洛基'], JUP: ['木星'], CAKE: ['薄饼'], APE: ['猿币', '无聊猿'], WLD: ['世界币'], TRUMP: ['特朗普币', '川普币'], CFX: ['树图'],
   ONT: ['本体'], RENDER: ['渲染币'], HMSTR: ['仓鼠'], PENGU: ['企鹅'],
   XAU: ['黄金'], PAXG: ['黄金'], XAUT: ['黄金'], XAG: ['白银'], XPT: ['铂金'], XPD: ['钯金'],
+  DXY: ['美元指数', '美指', '美元'],
 }
+/** 整词打全就算「最匹配」的英文关键词（照 iOS SymbolAliases.asciiKeywords）：
+ *  美元指数没有计价币，打「USD」时要排在所有 xxxUSDT 前面；只认整词，打「US」不算 */
+export const ASCII_KEYWORDS: Record<string, string[]> = { DXY: ['USD'] }
 let aliasIndex: Map<string, string[]> | null = null
 export function aliasNames(base: string): string[] {
   if (!aliasIndex) {
@@ -70,6 +74,7 @@ export const pinyinOf = (name: string): readonly [string, string] | undefined =>
 
 export function aliasTier(base: string, q: string): Tier | null {
   if (!q) return null
+  if (ASCII_KEYWORDS[aliasKey(base)]?.includes(q)) return Tier.exact
   const names = aliasNames(base)
   if (HAN.test(q)) {
     let best: Tier | null = null

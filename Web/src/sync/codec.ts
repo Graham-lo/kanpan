@@ -17,6 +17,7 @@ import { migrateAlert } from '../alerts/shape'
 import type { Drawing, DrawingType, DrawPoint } from '../chart/chart'
 import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { INTERVALS, type Kind } from '../market/symbols'
+import { MACRO_ALERT_MARKET, MACRO_CN, MACRO_MARKET, MACRO_SYMBOL, MACRO_VENUE, isMacro, syncKeyOf, venueMarketOf } from '../market/macro'
 import { type Body, type Json, type SyncObject, same } from './types'
 import { MAX_OVERRIDES, isValidBase, normalizeOverride, type Override } from '../orderflow/settings'
 
@@ -32,7 +33,17 @@ export interface Ctx {
 export const VENUE = 'binance'
 export const MARKET = 'usd_m'
 export const ALERT_MARKET = 'binance/usd_m'
-const PREFIX = `${VENUE}/${MARKET}/`
+/** 一只网页品种的同步前缀：币安 U 本位是 binance/usd_m/<代号>/，美元指数是 macro/index/DXY/ */
+const prefixOf = (symbol: string): string => syncKeyOf(symbol) + '/'
+/** 网页存的裸代号能不能上云：币安代号规则，或美元指数（DXY ↔ macro/index/DXY） */
+export function webSymbol(s: string): boolean { return validSymbol(s) || isMacro(s) }
+/** 提醒正文里的 market */
+export function alertMarketOf(symbol: string): string { return isMacro(symbol) ? MACRO_ALERT_MARKET : ALERT_MARKET }
+/** 同步正文的 venue / market 是不是这只网页品种的（美元指数认 macro/index） */
+function venueOk(b: Body, symbol: string): boolean {
+  const vm = venueMarketOf(symbol)
+  return b.venue === vm.venue && b.market === vm.market && (vm.venue !== VENUE || validSymbol(symbol))
+}
 
 const QUOTE_ASSETS = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'USD1', 'TUSD'] // instruments.rs QUOTE_ASSETS
 /** 一个字符是 ASCII 大写 / 数字，或非 ASCII 的 Unicode 字母数字（Rust char::is_alphanumeric = Alphabetic ∪ Nd/Nl/No） */
@@ -56,6 +67,7 @@ export function coinbaseSymbol(s: string): boolean {
 export function instrumentIdentity(venue: string, market: string, symbol: string): boolean {
   if (venue === VENUE && market === MARKET) return validSymbol(symbol)
   if (venue === 'coinbase' && market === 'spot') return coinbaseSymbol(symbol)
+  if (venue === MACRO_VENUE && market === MACRO_MARKET) return symbol === MACRO_SYMBOL   // 服务端白名单只放美元指数一只
   return false
 }
 /** 服务端 compare_key：`venue/market/SYMBOL`，整串 UTF-8 不超过 128 字节，三段过 identity */
@@ -64,7 +76,7 @@ export function compareKey(k: string): boolean {
   return p.length === 3 && new TextEncoder().encode(k).length <= 128 && instrumentIdentity(p[0], p[1], p[2])
 }
 /** 标题里用的品种名：去掉计价币（和手机 `Alert.base(of:)` 一致） */
-export function baseName(s: string): string { return s.replace(/(USDT|USDC|FDUSD|BUSD|USD1|TUSD)$/, '') || s }
+export function baseName(s: string): string { return isMacro(s) ? MACRO_CN : s.replace(/(USDT|USDC|FDUSD|BUSD|USD1|TUSD)$/, '') || s }
 
 const lastSeg = (id: string): string => id.slice(id.lastIndexOf('/') + 1)
 const num = (v: Json | undefined): number | null => typeof v === 'number' && isFinite(v) ? v : null
@@ -290,18 +302,17 @@ export function lastTouched(o: SyncObject | undefined, fields?: string[]): numbe
 // 合并用「类别占位」：云端列表里每个位置按它原来的类别，填回网页那个类别的新顺序；
 // 网页不认识的（Coinbase 现货、表里没有的）原地不动；新加的接在最后。
 
-export const favId = (symbol: string): string => PREFIX + symbol
-const KIND_ORDER: Kind[] = ['crypto', 'us', 'com']
+export const favId = (symbol: string): string => syncKeyOf(symbol)
+const KIND_ORDER: Kind[] = ['crypto', 'us', 'idx', 'com']
 
 function liveSorted(objs: SyncObject[]): SyncObject[] {
   return objs.filter(o => !o.deleted).sort((a, b) => (num(a.body.order) ?? 0) - (num(b.body.order) ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 /** 网页管得着的自选：币安 U 本位、在品种表里 */
 function favKind(o: SyncObject, ctx: Ctx): Kind | undefined {
-  if (o.body.venue !== VENUE || o.body.market !== MARKET) return undefined
   const s = str(o.body.symbol)
-  if (!s || o.id !== favId(s)) return undefined
-  return ctx.kindOf(s)
+  if (!s || !venueOk(o.body, s) || o.id !== favId(s)) return undefined
+  return isMacro(s) ? 'idx' : ctx.kindOf(s)
 }
 
 const PRECIOUS = new Set(['XAU', 'XAG', 'XPT', 'XPD'])
@@ -309,6 +320,7 @@ const PRECIOUS = new Set(['XAU', 'XAG', 'XPT', 'XPD'])
 function categoryName(kind: Kind, symbol: string): string {
   if (kind === 'crypto') return '加密'
   if (kind === 'us') return '美股'
+  if (kind === 'idx') return '指数'
   return PRECIOUS.has(symbol.replace(/USDT$|USDC$/, '').toUpperCase()) ? '贵金属' : '其他'
 }
 /** 网页上新加的一只自选落进手机的哪一类（审查 D-01）。
@@ -340,7 +352,7 @@ export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObje
   const seen = new Set<string>()
   const queues = new Map<Kind, string[]>()
   for (const k of KIND_ORDER) {
-    queues.set(k, (watch[k] ?? []).filter(s => validSymbol(s) && !pinnedIds.has(favId(s)) && !seen.has(s) && (seen.add(s), true)))
+    queues.set(k, (watch[k] ?? []).filter(s => webSymbol(s) && !pinnedIds.has(favId(s)) && !seen.has(s) && (seen.add(s), true)))
   }
   const seq: { id: string; symbol: string | null; prev?: SyncObject; kind?: Kind }[] = []
   const byId = new Map(prevAll.map(o => [o.id, o]))
@@ -359,7 +371,7 @@ export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObje
     const base = x.prev && !x.prev.deleted ? x.prev.body : null
     const body: Body = x.symbol == null
       ? { ...(base ?? {}), order }
-      : { symbol: x.symbol, market: MARKET, venue: VENUE, groupId: base && 'groupId' in base ? base.groupId : (x.kind ? groupForNew(x.kind, x.symbol, prev, groups, ctx) : null), order }
+      : { symbol: x.symbol, ...venueMarketOf(x.symbol), groupId: base && 'groupId' in base ? base.groupId : (x.kind ? groupForNew(x.kind, x.symbol, prev, groups, ctx) : null), order }
     out.push({ collection: 'favorites', id: x.id, body, fields: {}, revision: 0, deleted: false, generation: 0 })
   })
   for (const o of prev) {
@@ -371,7 +383,7 @@ export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObje
 
 /** 云端自选 → 网页三个标签页 */
 export function decodeFavorites(all: SyncObject[], ctx: Ctx): Record<Kind, string[]> {
-  const out: Record<Kind, string[]> = { crypto: [], us: [], com: [] }
+  const out: Record<Kind, string[]> = { crypto: [], us: [], com: [], idx: [] }
   for (const o of liveSorted(all)) {
     const k = favKind(o, ctx)
     const s = str(o.body.symbol)
@@ -394,7 +406,7 @@ export const DRAWING_DEFAULTS = { dash: 'solid', filled: true, hidden: false, le
 export const WEB_LINE_WIDTH = 2
 const HEX = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/
 
-export const drawingId = (symbol: string, id: string): string => PREFIX + symbol + '/' + id
+export const drawingId = (symbol: string, id: string): string => prefixOf(symbol) + id
 
 /** 网页画线的规范形（比对用） */
 function normDrawing(d: Drawing): Json {
@@ -406,9 +418,8 @@ export function drawingManaged(o: SyncObject): boolean {
   const b = o.body
   const kind = str(b.kind)
   if (!kind || !TYPE_OF[kind]) return false
-  if (b.venue !== VENUE || b.market !== MARKET) return false
   const s = str(b.symbol)
-  if (!s || !o.id.startsWith(PREFIX + s + '/')) return false
+  if (!s || !venueOk(b, s) || !o.id.startsWith(prefixOf(s))) return false
   if (b.hidden === true) return false
   const anchors = Array.isArray(b.anchors) ? b.anchors : null
   return !!anchors && anchors.length === ANCHORS[kind]
@@ -435,7 +446,7 @@ export function decodeDrawing(o: SyncObject): { symbol: string; d: Drawing } | n
 
 function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined): SyncObject | null {
   const kind = KIND_OF[d.type]
-  if (!kind || !validSymbol(symbol) || d.pts.length !== ANCHORS[kind] || !d.id || d.id.includes('/')) return null
+  if (!kind || !webSymbol(symbol) || d.pts.length !== ANCHORS[kind] || !d.id || d.id.includes('/')) return null
   if (!d.pts.every(p => isFinite(p.t) && isFinite(p.p))) return null
   const id = drawingId(symbol, d.id)
   const live = prev && !prev.deleted ? prev : undefined
@@ -451,7 +462,8 @@ function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined)
   body.lineWidth = Math.min(6, Math.max(0.5, d.width ?? WEB_LINE_WIDTH))
   body.dash = d.dash ?? 'solid'
   body.locked = !!d.locked
-  body.symbol = symbol; body.market = MARKET; body.venue = VENUE
+  const vm = venueMarketOf(symbol)
+  body.symbol = symbol; body.market = vm.market; body.venue = vm.venue
   return { collection: 'drawings', id, body, fields: {}, revision: 0, deleted: false, generation: 0 }
 }
 
@@ -501,7 +513,7 @@ export function decodeDrawings(all: SyncObject[], current: Record<string, Drawin
 
 export function syncableDrawing(symbol: string, d: Drawing): boolean {
   const kind = KIND_OF[d.type]
-  return !!kind && validSymbol(symbol) && d.pts.length === ANCHORS[kind] && !!d.id && !d.id.includes('/')
+  return !!kind && webSymbol(symbol) && d.pts.length === ANCHORS[kind] && !!d.id && !d.id.includes('/')
 }
 
 // ═════════════════════════════ alerts ═════════════════════════════
@@ -517,7 +529,7 @@ export function syncableDrawing(symbol: string, d: Drawing): boolean {
 
 export const ALERT_KEYS = ['kind', 'market', 'symbol', 'lines', 'condition', 'status', 'once', 'armedAt', 'firedAt', 'firedPrice',
   'title', 'note', 'webhook', 'webhookText', 'drawingID', 'reviewID', 'dueAt', 'rule', 'created'] as const
-export const alertId = (symbol: string, id: string): string => PREFIX + symbol + '/' + id
+export const alertId = (symbol: string, id: string): string => prefixOf(symbol) + id
 
 const DECIMAL = /^-?\d+(\.\d+)?$/
 function decIn(v: unknown, lo: number, hi: number): boolean {
@@ -539,7 +551,9 @@ export function syncableAlert(a: Alert): boolean { return a.status === 'active' 
 /** 记账时还认刚响的那一下（`active → fired`，照手机 markFired 先推一次已触发，服务端据此发 Webhook） */
 export function encodableAlert(a: Alert): boolean { return (a.status === 'active' || a.status === 'fired') && alertShapeOk(a) }
 function alertShapeOk(a: Alert): boolean {
-  if (a.market !== ALERT_MARKET || !validSymbol(a.symbol) || !a.id || a.id.includes('/')) return false
+  if (!webSymbol(a.symbol) || a.market !== alertMarketOf(a.symbol) || !a.id || a.id.includes('/')) return false
+  // 美元指数只有价格 / 画线提醒（服务端白名单不收条件提醒）
+  if (isMacro(a.symbol) && a.kind !== 'price' && a.kind !== 'drawing') return false
   if (a.kind === 'price' || a.kind === 'drawing') {
     if (!a.lines.length || !a.lines.every(l => l.points.length && l.points.every(p => isFinite(p.t) && isFinite(p.p)))) return false
     if (a.kind === 'drawing' && !a.drawingID) return false
@@ -550,7 +564,7 @@ function alertShapeOk(a: Alert): boolean {
 }
 
 const wireDrawingId = (a: Alert): string | null => {
-  const pre = PREFIX + a.symbol + '/'
+  const pre = prefixOf(a.symbol)
   return a.drawingID && a.drawingID.startsWith(pre) ? a.drawingID.slice(pre.length) : a.drawingID
 }
 /** 网页提醒 → 线上身体（19 个键） */
@@ -571,15 +585,15 @@ export function unseenDrawings(all: SyncObject[]): Set<string> {
 /** 云端提醒 → 网页提醒；网页管不着的返回 null。`fired`：已触发的也解（记账比对、同步下来的「服务端响了」） */
 export function decodeAlert(o: SyncObject, unseen?: Set<string>, fired = false): Alert | null {
   const b = o.body
-  if (o.deleted || !(b.status === 'active' || (fired && b.status === 'fired')) || b.market !== ALERT_MARKET) return null
+  if (o.deleted || !(b.status === 'active' || (fired && b.status === 'fired'))) return null
   if (b.kind !== 'price' && b.kind !== 'drawing' && b.kind !== 'condition') return null
   const symbol = str(b.symbol)
-  if (!symbol || !o.id.startsWith(PREFIX + symbol + '/')) return null
+  if (!symbol || !webSymbol(symbol) || b.market !== alertMarketOf(symbol) || !o.id.startsWith(prefixOf(symbol))) return null
   const raw: Record<string, unknown> = { id: lastSeg(o.id) }
   for (const k of ALERT_KEYS) if (k in b) raw[k] = structuredClone(b[k])
   if (!Array.isArray(raw.lines)) raw.lines = []
   const did = str(b.drawingID)
-  raw.drawingID = did ? (did.includes('/') ? did : PREFIX + symbol + '/' + did) : null
+  raw.drawingID = did ? (did.includes('/') ? did : prefixOf(symbol) + did) : null
   if (raw.kind === 'drawing' && raw.drawingID && unseen?.has(raw.drawingID as string)) return null
   const a = migrateAlert(raw)
   return a && a.symbol === symbol ? a : null

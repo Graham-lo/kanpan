@@ -157,7 +157,7 @@ describe('同步编码：新工具与线型', () => {
 
 const state = (drawings: Record<string, Drawing[]> = {}): WebState => ({
   pinned: ['1h'], ind: { ma: true, ema: false, boll: false, vol: true, subs: [] }, params: null,
-  watch: { crypto: ['BTCUSDT'], us: [], com: [] }, drawings, alerts: [],
+  watch: { crypto: ['BTCUSDT'], us: [], idx: [], com: [] }, drawings, alerts: [],
 })
 const line = (id: string, p: number): Drawing => ({ id, type: 'hline', pts: [{ t: 1, p }], width: 2 })
 

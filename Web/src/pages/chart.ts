@@ -756,9 +756,14 @@ function renderDetail(): void {
   const cell = (k: string, v: string, c = '', f = ''): string => `<div><span class="k">${k}</span><span class="v num ${c}"${f ? ` data-f="${f}"` : ''}>${v}</span></div>`
   el.innerHTML = `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(s.code)}<span class="kind">${kindName(s)}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}${secHTML ? `<span class="secs">${secHTML}</span>` : ''}</div></div>
       <button class="ibtn sm" data-star="${k}" aria-pressed="${w}" aria-label="${w ? '移出自选' : '加入自选'}" data-tip="${w ? '移出自选' : '加入自选'}">${I(w ? 'star' : 'starOff')}</button>${collapseBtn(isCollapsed('detail'))}</div>
-    <div class="px"><span class="big num price-live ${st.stale ? '' : cls(s.pct)}" data-f="big">${priceText(s)}</span><span class="chg num ${cls(s.pct)}" data-f="chg">${chgText(s)}</span></div>
+    <div class="px"><span class="big num price-live ${st.stale || s.closed ? '' : cls(s.pct)}${s.closed ? ' closed' : ''}" data-f="big">${priceText(s)}</span><span class="chg num ${cls(s.pct)}" data-f="chg">${chgText(s)}</span></div>
     ${s.hi && s.lo ? `<div class="range"><span class="num" data-f="lo">${fmt(s.lo, s.dec)}</span><div class="bar"><i data-f="pos" style="left:${clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100}%"></i></div><span class="num" data-f="hi">${fmt(s.hi, s.dec)}</span></div>` : ''}
-    <div class="stats inline">
+    ${s.macro ? `<div class="stats inline">
+      ${cell('开盘', s.open ? fmt(s.open, s.dec) : '—')}
+      ${cell('最高', s.hi ? fmt(s.hi, s.dec) : '—')}
+      ${cell('最低', s.lo ? fmt(s.lo, s.dec) : '—')}
+      ${cell('状态', s.closed ? '休市' : '交易中', '', 'mstate')}
+    </div>` : `<div class="stats inline">
       ${cell(term('持仓量'), d.oiValue ? fmtCompact(d.oiValue) : '—')}
       ${cell('持仓 24h', d.oiChg == null ? '—' : pctText(d.oiChg), cls(d.oiChg))}
       ${cell('成交额', s.vol ? fmtCompact(s.vol) : '—', '', 'vol')}
@@ -771,7 +776,7 @@ function renderDetail(): void {
       ${cell(term('标记价'), s.mark ? fmt(s.mark, s.dec) : '—', '', 'mark')}
       ${cell(term('指数价'), s.index ? fmt(s.index, s.dec) : '—', '', 'index')}
       ${cell(term('基差'), pctText(basis), cls(basis), 'basis')}
-    </div>`
+    </div>`}`
 }
 const chgText = (s: Sym): string => s.price == null ? '—' : `${s.chg >= 0 ? '+' : ''}${fmt(s.chg, s.dec)}  ${pctText(s.pct)}`
 const frText = (s: Sym): string => s.fr == null ? '—' : (s.fr * 100).toFixed(4) + '%'
@@ -781,7 +786,8 @@ function patchDetail(): void {
   const el = $('#detail'); if (!el) return
   const s = sym(cfg(active()).symbol); if (!s) return
   const set = (f: string, text: string, c?: string) => { const e = $(`[data-f="${f}"]`, el); if (!e) return; e.textContent = text; if (c != null) e.className = c }
-  set('big', priceText(s), `big num price-live ${st.stale ? '' : cls(s.pct)}`)
+  set('big', priceText(s), `big num price-live ${st.stale || s.closed ? '' : cls(s.pct)}${s.closed ? ' closed' : ''}`)
+  set('mstate', s.closed ? '休市' : '交易中')
   set('chg', chgText(s), `chg num ${cls(s.pct)}`)
   set('vol', s.vol ? fmtCompact(s.vol) : '—')
   set('count', s.count ? fmtCompact(s.count) : '—')

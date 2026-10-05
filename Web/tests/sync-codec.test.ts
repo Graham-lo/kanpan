@@ -60,14 +60,14 @@ describe('favorites', () => {
       obj('favorites', 'coinbase/spot/BTC-USD', { symbol: 'BTC-USD', market: 'spot', venue: 'coinbase', groupId: null, order: 1 }),
       obj('favorites', favId('NVDAUSDT'), { symbol: 'NVDAUSDT', market: 'usd_m', venue: 'binance', groupId: null, order: 2 }),
     ]
-    const out = encodeFavorites({ crypto: ['ETHUSDT', 'BTCUSDT'], us: [], com: ['XAUUSDT'] }, prev, ctx)
+    const out = encodeFavorites({ crypto: ['ETHUSDT', 'BTCUSDT'], us: [], idx: [], com: ['XAUUSDT'] }, prev, ctx)
     const live = out.filter(o => !o.deleted).sort((a, b) => (a.body.order as number) - (b.body.order as number))
     expect(live.map(o => o.id)).toEqual([favId('ETHUSDT'), 'coinbase/spot/BTC-USD', favId('BTCUSDT'), favId('XAUUSDT')])
     expect(live.find(o => o.id === favId('BTCUSDT'))!.body.groupId).toBe('g1')
     expect(live.find(o => o.id === favId('ETHUSDT'))!.body).toEqual({ symbol: 'ETHUSDT', market: 'usd_m', venue: 'binance', groupId: null, order: 0 })
     expect(out.find(o => o.id === favId('NVDAUSDT'))!.deleted).toBe(true)
     expect(out.some(o => o.id === 'coinbase/spot/BTC-USD' && o.deleted)).toBe(false)
-    expect(decodeFavorites(out, ctx)).toEqual({ crypto: ['ETHUSDT', 'BTCUSDT'], us: [], com: ['XAUUSDT'] })
+    expect(decodeFavorites(out, ctx)).toEqual({ crypto: ['ETHUSDT', 'BTCUSDT'], us: [], idx: [], com: ['XAUUSDT'] })
   })
 
   // 审查 D-01：网页上新加的自选以前一律 groupId: null，手机分类页按分类过滤，它在手机上就看不见了
@@ -82,13 +82,13 @@ describe('favorites', () => {
       obj('favorites', favId('BTCUSDT'), { symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance', groupId: 'g-mine', order: 0 }),
       obj('favorites', favId('XAGUSDT'), { symbol: 'XAGUSDT', market: 'usd_m', venue: 'binance', groupId: 'g-mine', order: 1 }),
     ]
-    const out = encodeFavorites({ crypto: ['BTCUSDT', 'ETHUSDT'], us: ['NVDAUSDT'], com: ['XAGUSDT', 'XAUUSDT'] }, prev, ctx, groups)
+    const out = encodeFavorites({ crypto: ['BTCUSDT', 'ETHUSDT'], us: ['NVDAUSDT'], idx: [], com: ['XAGUSDT', 'XAUUSDT'] }, prev, ctx, groups)
     const g = (s: string) => out.find(o => o.id === favId(s))!.body.groupId
     expect(g('BTCUSDT')).toBe('g-mine')        // 原来挂哪儿就挂哪儿
     expect(g('ETHUSDT')).toBe('g-crypto')      // 有同名的「加密」
     expect(g('NVDAUSDT')).toBe('g-us')
     expect(g('XAUUSDT')).toBe('g-mine')        // 「贵金属」删了，跟着同标签页的白银
-    const bare = encodeFavorites({ crypto: ['ETHUSDT'], us: [], com: [] }, [], ctx, [])
+    const bare = encodeFavorites({ crypto: ['ETHUSDT'], us: [], idx: [], com: [] }, [], ctx, [])
     expect(bare[0].body.groupId).toBeNull()    // 一个分类都没有：留空，手机装进来时补分类
   })
 })

@@ -31,6 +31,9 @@ export function compareSymbolOf(key: string): string | null {
   const parts = key.trim().split('/')
   // 代号按币安那条规则（sync/codec.validSymbol，与服务端 binance_symbol 同一条）：「币安人生USDT」这种中文底名也认
   const sym = (s: string): string | null => { const u = s.toUpperCase(); return validSymbol(u) ? u : null }
+  // 美元指数：键 macro/index/DXY（服务端 compare_key 白名单认它），网页里用裸代号 DXY 取数
+  if (parts.length === 1 && parts[0].toUpperCase() === 'DXY') return 'DXY'
+  if (parts.length === 3 && parts[0].toLowerCase() === 'macro' && parts[1].toLowerCase() === 'index') return parts[2].toUpperCase() === 'DXY' ? 'DXY' : null
   if (parts.length === 1) return sym(parts[0])
   if (parts.length !== 3) return null
   if (parts[0].toLowerCase() !== 'binance' || parts[1].toLowerCase() !== 'usd_m') return null

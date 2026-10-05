@@ -56,7 +56,16 @@ export function marketCapText(supply: number | null | undefined, price: number |
   return fresh && c != null ? fmtVol(c) : MISSING
 }
 
-export type AssetKind = 'crypto' | 'us' | 'com'
+export type AssetKind = 'crypto' | 'us' | 'com' | 'idx'
+
+/** 美元指数（没有成交量、没有合约数据、没有盘口）在图上收掉的指标：
+ *  成交量与均量（VOL 连着 MAVOL）、成交量算出来的 VWAP / CVD、四条合约衍生副图。
+ *  只是图上不画，用户的指标布局（偏好）原样不动，切回别的品种照旧。 */
+const NO_VOLUME_HIDDEN: ReadonlySet<string> = new Set(['VOL', 'CVD', 'VWAP', 'OI', 'LSR', 'TAKER', 'BASIS'])
+export function chartIndicatorsFor(macro: boolean, overlays: readonly IndicatorId[], subs: readonly IndicatorId[]): { overlays: IndicatorId[]; subs: IndicatorId[]; orderFlow: boolean } {
+  if (!macro) return { overlays: [...overlays], subs: [...subs], orderFlow: true }
+  return { overlays: overlays.filter(id => !NO_VOLUME_HIDDEN.has(id)), subs: subs.filter(id => !NO_VOLUME_HIDDEN.has(id)), orderFlow: false }
+}
 /** 估值那一格：加密 O/M、美股 FPE（预期亏损的给 P/S）、其它类别不摆（返回 null） */
 export function valuationCell(kind: AssetKind, o: {
   oi?: number | null; supply?: number | null; price?: number | null; forwardEarnings?: number | null; revenue?: number | null

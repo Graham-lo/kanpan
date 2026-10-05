@@ -60,6 +60,7 @@ const localId = (o: SyncObject): string => o.id.slice(o.id.lastIndexOf('/') + 1)
 
 /** 服务端收得下的桶键（sync_validation.rs 的 venue / market / symbol：代号按 binance_symbol 或 coinbase_symbol，不分交易所） */
 export function syncableKey(key: string): boolean {
+  if (key === 'macro/index/DXY') return true   // 美元指数：服务端白名单只放这一个 macro 身份
   const p = key.split('/')
   return p.length === 3 && key.length <= 128 && (p[0] === 'binance' || p[0] === 'coinbase') && (p[1] === 'usd_m' || p[1] === 'spot')
     && (validSymbol(p[2]) || coinbaseSymbol(p[2]))

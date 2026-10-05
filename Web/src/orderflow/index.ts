@@ -91,7 +91,8 @@ export function sync(): void {
   }
   const act = api.activeChart()
   const away = st.page !== 'chart' || document.visibilityState === 'hidden'
-  const want = idle.want(away, Date.now()) && !!act && needed()
+  // 美元指数没有盘口（算出来的指数，没有簿）：不起订单流 / 盘口 / 成交（照 iOS hasOrderFlow）
+  const want = idle.want(away, Date.now()) && !!act && act.symbol.toUpperCase() !== 'DXY' && needed()
   if (!want) { if (OF.feed) stopFeed(); setPending(false); return }
   const symbol = act!.symbol.toUpperCase()
   if (OF.feed && OF.feed.symbol !== symbol) stopFeed()

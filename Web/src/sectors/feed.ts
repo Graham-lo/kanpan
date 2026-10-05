@@ -51,7 +51,7 @@ function loadCatalog(): Promise<void> {
 export function seedFromUniverse(): boolean {
   if (feed.quotes.size || !S.symbols.size) return false
   const list: Ticker[] = []
-  for (const s of S.symbols.values()) list.push({ symbol: s.symbol, pct: s.pct ?? NaN, quoteVolume: s.vol, price: s.price ?? NaN })
+  for (const s of S.symbols.values()) if (!s.macro) list.push({ symbol: s.symbol, pct: s.pct ?? NaN, quoteVolume: s.vol, price: s.price ?? NaN })
   feed.quotes = ingest(list, feed.index.size ? feed.index : undefined)
   return feed.quotes.size > 0
 }

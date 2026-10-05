@@ -11,8 +11,11 @@ export function priceText(s: Sym | undefined, v: number | null | undefined = s?.
 export const clamp01 = (v: number): number => Math.max(0, Math.min(1, isFinite(v) ? v : 0))
 
 type BadgeSrc = Pick<Sym, 'base' | 'color'> | undefined
+/** 美元指数：和手机同一枚描粗美元符号（钞票绿渐变、圆头），不写首字母，免得和 USDT / USDC 的圆片读成一类 */
+const DXY_MARK = '<svg viewBox="0 0 24 24" width="66%" height="66%"><path fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" d="M16.2 8.3c-.8-1.5-2.4-2.4-4.2-2.4-2.4 0-4.2 1.4-4.2 3.2 0 2 1.8 2.7 4.2 3.2s4.2 1.3 4.2 3.3c0 1.9-1.8 3.2-4.2 3.2-1.9 0-3.5-.9-4.3-2.4M12 3.4v17.2"/></svg>'
 export function badge(s: BadgeSrc, size = ''): string {
   const b = s?.base || '?'
+  if (b === 'DXY') return `<span class="badge ${size}" style="background:linear-gradient(135deg,#6FBF8E,#23634A)" aria-hidden="true">${DXY_MARK}</span>`
   const t = b.length > 3 ? b.slice(0, 3) : b
   return `<span class="badge ${size}" style="background:${s?.color || '#888'}" aria-hidden="true">${esc(t)}</span>`
 }

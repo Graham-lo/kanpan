@@ -95,7 +95,7 @@ export function widgetWatch(): string {
   if (wide && list.length) void refreshFunding()
   // 标题、分类、添加、更多、收起并在一行（36 px），省下的高度给列表
   return `<div class="widget widget-watch ${c ? 'collapsed' : ''} ${wide ? 'wv-wide' : ''}"><div class="sp-head wv-head"><h3>自选</h3>
-      <div class="wv-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="chip" role="tab" data-tab="${k}" aria-pressed="${st.watchTab === k}">${l} ${st.watch[k].length}</button>`).join('')}</div>
+      <div class="wv-tabs" role="tablist">${TABS.filter(([k]) => k !== 'idx' || st.watch.idx.length || st.watchTab === 'idx').map(([k, l]) => `<button class="chip" role="tab" data-tab="${k}" aria-pressed="${st.watchTab === k}">${l} ${st.watch[k].length}</button>`).join('')}</div>
       <button class="ibtn xs" id="wAdd" aria-label="添加品种" data-tip="添加品种" data-kbd="⌘ K">${I('plus', 'icon-16')}</button>
       <button class="ibtn xs" id="wMore" aria-label="更多" data-tip="更多">${I('more', 'icon-16')}</button>
       ${D.collapseBtn(c)}</div>

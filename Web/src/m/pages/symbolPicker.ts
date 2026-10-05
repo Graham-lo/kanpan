@@ -104,7 +104,7 @@ export function openPicker(opts: PickerOptions): void {
     const s = S.symbols.get(symbol)
     // 品种表认得的照常；不认得的（已下架的自选）凑一行占位：价格与涨跌写「—」，退成灰
     const gone = !s && S.live === true
-    const html = listRowHTML(factsOf(symbol, s), { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: `${symbol} 永续`, fav: F.isFavorite(st.symbols, symbol), hl })
+    const html = listRowHTML(factsOf(symbol, s), { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: F.isFavorite(st.symbols, symbol), hl })
     return gone ? html.replace('class="sr"', 'class="sr stale"') : html
   }
   const sectionHTML = (sec: PickerSection): string => {

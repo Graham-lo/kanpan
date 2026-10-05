@@ -78,7 +78,7 @@ export function openSearch(opts: SearchOptions = {}): void {
 
   const row = (s: Sym | undefined, symbol: string, hl: [number, number] | null = null): string => {
     const f = factsOf(symbol, s)
-    return listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: `${symbol} 永续`, fav: isFavorite(st.symbols, symbol), hl })
+    return listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: isFavorite(st.symbols, symbol), hl })
   }
   const rows = (list: string[] | Ranked<Sym>[]): string => list.map((x, i) => {
     const html = typeof x === 'string' ? row(S.symbols.get(x), x) : row(x.item, x.item.symbol, x.hit.hl)

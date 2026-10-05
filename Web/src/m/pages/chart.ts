@@ -34,7 +34,7 @@ import { closeAllSheets } from '../ui/sheet'
 import { wantStreams, ensureUniverse, takeOpenParam } from './_streams'
 import { openSearch } from './search'
 import { openAlertForm } from './alertForm'
-import { isStale, isLandscape, priceModeFor, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
+import { chartIndicatorsFor, isStale, isLandscape, priceModeFor, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
 import { createIntervalBar } from './chart/intervalBar'
@@ -143,13 +143,16 @@ export function initChart(root: HTMLElement): PageHandle {
     if (!shown || replay) { wantStreams('chart', []); return }
     wantStreams('chart', [...chartStreams, streamName.ticker(sym()), streamName.mark(sym())])
   }
+  // 美元指数在图上收掉成交量类与合约衍生指标、不起订单流与盘口（偏好原样不动）
+  const isMacroSym = (x: string): boolean => x === 'DXY' || S.symbols.get(x)?.macro === true
+  const shownInd = () => chartIndicatorsFor(isMacroSym(sym()), st.overlays as IndicatorId[], st.subs as IndicatorId[])
   const chart: ChartHandle = createChart(box, {
     symbol: sym(), interval: iv(),
-    overlays: st.overlays, subs: st.subs, params: st.params,
+    overlays: shownInd().overlays, subs: shownInd().subs, params: st.params,
     indicatorColors: colorTable(st.indicatorColors),
     priceMode: effectivePriceMode(sym()), mainInverted: st.mainInverted, subInverted: st.subInverted,
     subScale: { ...st.subHeightOverrides },
-    barSpacing: st.barSpacing, orderFlow: st.orderFlow,
+    barSpacing: st.barSpacing, orderFlow: st.orderFlow && shownInd().orderFlow,
     // 对比整串交给引擎（它自己去掉主图那只、去重、最多三只）；盘口只在页面露着时开，见 syncChart 的 extraKey
     compareSymbols: [...st.compareSymbols], depth: false,
     streams: list => { chartStreams = list; pushStreams() },
@@ -269,12 +272,14 @@ export function initChart(root: HTMLElement): PageHandle {
     if (chart.symbol !== sym()) { card.set(null, '', 2); chart.setSymbol(sym()); pushStreams(); bench.refreshAlerts() }
     if (chart.interval !== iv()) chart.setInterval(iv())
     bench.renderRail()
-    const ik = JSON.stringify([st.overlays, st.subs, st.params, st.orderFlow])
+    const ind = shownInd()
+    const of = st.orderFlow && ind.orderFlow
+    const ik = JSON.stringify([ind.overlays, ind.subs, st.params, of])
     if (ik !== indKey) {
       indKey = ik
-      chart.setIndicators([...st.overlays] as IndicatorId[], [...st.subs] as IndicatorId[], st.params)
-      chart.setOrderFlow(st.orderFlow)
-      if (!st.orderFlow) card.set(null, '', 2)
+      chart.setIndicators(ind.overlays, ind.subs, st.params)
+      chart.setOrderFlow(of)
+      if (!of) card.set(null, '', 2)
     }
     const pm = effectivePriceMode(sym())
     const lk = JSON.stringify([st.indicatorColors, st.subInverted, st.subHeightOverrides, st.mainInverted, pm, st.candleKind, st.portraitHeight])
@@ -284,16 +289,17 @@ export function initChart(root: HTMLElement): PageHandle {
       chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight, priceMode: pm, mainInverted: st.mainInverted })
     }
     // 对比、盘口（图表设置里的开关）。盘口是一条单独的 depth5 小连接，页面藏着时关掉，回来再按偏好开
-    const xk = JSON.stringify([st.compareSymbols, st.depth && shown])
+    const depthOn = st.depth && shown && !isMacroSym(sym())
+    const xk = JSON.stringify([st.compareSymbols, depthOn])
     if (xk !== extraKey) {
       extraKey = xk
       chart.setCompare([...st.compareSymbols])
-      chart.setDepth(st.depth && shown)
+      chart.setDepth(depthOn)
     }
     port?.setOverride(st.orderFlowOverrides[baseOfSymbol(sym()).base] ?? null)
     render()
   }
-  indKey = JSON.stringify([st.overlays, st.subs, st.params, st.orderFlow])
+  indKey = ((i) => JSON.stringify([i.overlays, i.subs, st.params, st.orderFlow && i.orderFlow]))(shownInd())
   lookKey = JSON.stringify([st.indicatorColors, st.subInverted, st.subHeightOverrides, st.mainInverted, effectivePriceMode(sym()), st.candleKind, st.portraitHeight])
 
   // ---- 头部与各条的刷新（行情推送经 rAF 合并）
@@ -302,7 +308,7 @@ export function initChart(root: HTMLElement): PageHandle {
     if (raf) { cancelAnimationFrame(raf); raf = 0 }
     const now = Date.now()
     const s = S.symbols.get(sym())
-    const stale = isStale({ flag: st.stale, live: S.live, lastTick: s?.lastTick ?? null, now })
+    const stale = isStale({ flag: st.stale, live: S.live, lastTick: s?.lastTick ?? null, now }) || s?.closed === true
     topBar.render(sym(), nav.origin != null && nav.origin !== 'chart')
     header.render(sym(), stale, now)
     ivBar.render({ quick: st.quickIntervals, current: iv() })

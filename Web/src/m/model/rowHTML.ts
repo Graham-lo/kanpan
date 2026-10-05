@@ -30,30 +30,35 @@ export function factsOf(symbol: string, s?: Pick<Sym, 'kind' | 'cn' | 'onboard'>
 
 /** 涨跌药丸：宽 72 高 28，底是涨跌色 14%、描边 30%，字就是涨跌色。
  *  缺值两种：还在路上（骨架，只剩一块底不写字）；gone = 目录说它没有实时价（已下架 / 目录里没有），写「—」 */
-export function pillHTML(pct: number | null | undefined, text?: string, gone = false): string {
+export function pillHTML(pct: number | null | undefined, text?: string, gone = false, muted = false): string {
   const t = text ?? changePercentText(pct)
   if (t === MISSING) return `<span class="m-pill none${gone ? ' gone' : ''} num">${MISSING}</span>`
+  if (muted) return `<span class="m-pill none num">${esc(t)}</span>`
   return `<span class="m-pill ${textIsUp(t) ? 'up' : 'down'} num">${esc(t)}</span>`
 }
 
 /** gone：目录说它没有实时价（已下架 / 目录里没有）——不摆骨架（那块灰底会永远亮着，读起来像永远加载不完），
  *  价格与涨跌写「—」、退成次要文字色（照 iOS FavoritesView 行：skeleton = 价缺 && !stale） */
-export interface LiuliData { price: number | null; dec?: number | null; pct: number | null; vol: number | null; priceText?: string; extra?: string; gone?: boolean }
+export interface LiuliData { price: number | null; dec?: number | null; pct: number | null; vol: number | null; priceText?: string; extra?: string; gone?: boolean
+  /** 行情帧自己说了休市（美元指数周末）：价格退灰、涨跌药丸退成中性灰，数照摆（照 iOS FavoritesView） */
+  closed?: boolean }
 /** 成交额那格缺数写「—」，和同一行价格 / 涨跌的缺数一个样（iOS sectorVolumeText） */
 const volText = (v: number | null): string => v != null && Number.isFinite(v) ? fmtVol(v) : MISSING
 const priceCell = (d: LiuliData): { cls: string; text: string } => {
   const t = d.priceText ?? (d.price == null ? '' : priceText(d.price, d.dec))
-  if (t) return { cls: d.gone ? 'lr-price num gone' : 'lr-price num', text: t }
+  if (t) return { cls: d.gone || d.closed ? 'lr-price num gone' : 'lr-price num', text: t }
   return d.gone ? { cls: 'lr-price num gone', text: MISSING } : { cls: 'lr-price skel', text: '' }
 }
+/** 没有计价币的指数（美元指数）：代号后面不写斜杠，跟一截灰的中文名（照 iOS 行） */
+const idxName = (f: RowFacts): string => f.kind === 'idx' && !f.quote && f.cn ? f.cn : ''
 /** 琉璃行（高 66）：徽章 33 · 名字 + 成交额 · 价格 + 药丸；第一行不画顶上那道发丝线 */
 export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, extraCls = ''): string {
   const price = priceCell(d)
   return `<div class="lr${first ? ' first' : ''}${extraCls ? ' ' + extraCls : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="0">`
     + `<div class="lr-in">${liuliBadgeHTML(f.base, f.asset)}`
-    + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
+    + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : idxName(f) ? `<span class="lr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(volText(d.vol))}</span>${d.extra ?? ''}</div></div>`
-    + `<div class="lr-right"><span class="${price.cls}">${esc(price.text)}</span>${pillHTML(d.pct, undefined, !!d.gone)}</div>`
+    + `<div class="lr-right"><span class="${price.cls}">${esc(price.text)}</span>${pillHTML(d.pct, undefined, !!d.gone, !!d.closed)}</div>`
     + `</div></div>`
 }
 /** 推送来了：只改价格、药丸与成交额 */
@@ -67,8 +72,8 @@ export function patchLiuli(row: Element, d: LiuliData): void {
   const pill = row.querySelector('.m-pill')
   if (pill) {
     const t = changePercentText(d.pct)
-    const cls = 'm-pill ' + (t === MISSING ? (d.gone ? 'none gone' : 'none') : textIsUp(t) ? 'up' : 'down') + ' num'
-    if (pill.textContent !== t || pill.className !== cls) pill.outerHTML = pillHTML(d.pct, undefined, !!d.gone)
+    const cls = 'm-pill ' + (t === MISSING ? (d.gone ? 'none gone' : 'none') : d.closed ? 'none' : textIsUp(t) ? 'up' : 'down') + ' num'
+    if (pill.textContent !== t || pill.className !== cls) pill.outerHTML = pillHTML(d.pct, undefined, !!d.gone, !!d.closed)
   }
   const v = row.querySelector('.lr-vol')
   if (v) { const t = '成交额 ' + volText(d.vol); if (v.textContent !== t) v.textContent = t }
@@ -81,7 +86,7 @@ export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number
   const chg = changePercentText(d.pct)
   const dir = chg === MISSING ? '' : textIsUp(chg) ? 'up' : 'down'
   return `<div class="sr" data-sym="${esc(f.symbol)}" role="button" tabindex="0">${badgeHTML(f.base, 32, f.asset)}`
-    + `<div class="sr-name"><div class="sr-top"><span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
+    + `<div class="sr-name"><div class="sr-top"><span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : idxName(f) ? `<span class="sr-sep"> </span><span class="sr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="sr-meta">${esc(d.meta)}</div></div>`
     + `<div class="sr-right num"><span class="sr-price">${esc(priceText(d.price, d.dec))}</span><span class="sr-chg ${dir}">${esc(chg)}</span></div>`
     + `<button type="button" class="sr-star${d.fav ? ' on' : ''}" data-star="${esc(f.symbol)}" aria-label="${d.fav ? '取消自选' : '加入自选'}" aria-pressed="${d.fav}">${STAR}</button>`

@@ -17,6 +17,7 @@ export function categoryName(kind: Kind | undefined, base: string): string | nul
   if (!kind) return null
   if (kind === 'crypto') return '加密'
   if (kind === 'us') return '美股'
+  if (kind === 'idx') return '指数'
   return PRECIOUS.has(base.toUpperCase()) ? '贵金属' : '其他'
 }
 
@@ -31,14 +32,17 @@ function newId(): string {
 }
 const identity = (name: string): string => name.trim()
 
-/** 按名字开一个分类（同名就用已有的）；名字截到 24 个字 */
-export function createGroup(p: SymbolPrefs, name: string): string | null {
+/** 按名字开一个分类（同名就用已有的）；名字截到 24 个字。
+ *  after：新开的排在这个名字的分类后面（没有它就接在最后），照 iOS createGroup(name, after:) */
+export function createGroup(p: SymbolPrefs, name: string, after?: string): string | null {
   const trimmed = [...name.trim()].slice(0, 24).join('')
   if (!trimmed) return null
   const hit = p.groups.find(g => identity(g.name) === trimmed)
   if (hit) return hit.id
   const id = newId()
-  p.groups.push({ id, name: trimmed })
+  const at = after ? p.groups.findIndex(g => identity(g.name) === after) : -1
+  if (at >= 0) p.groups.splice(at + 1, 0, { id, name: trimmed })
+  else p.groups.push({ id, name: trimmed })
   return id
 }
 
@@ -70,6 +74,13 @@ export function addFavorite(p: SymbolPrefs, symbol: string, current: string | nu
   const s = key(symbol)
   if (!s || p.favorites.includes(s)) return
   p.favorites.push(s)
+  // 交易所自带分类的品种（美元指数 → 「指数」）不管他站在哪一类都落进自己那一类，分类排在「美股」后面
+  // （照 iOS SymbolPickerModel.assignVenueCategory）
+  if (facts?.kind === 'idx' || s === 'DXY') {
+    const id = createGroup(p, '指数', '美股')
+    if (id) p.groupForSymbol[s] = id
+    return
+  }
   const g = group(p, current)
   if (g) { p.groupForSymbol[s] = g; return }
   const name = categoryName(facts?.kind, facts?.base ?? s.replace(/USDT$|USDC$/, ''))

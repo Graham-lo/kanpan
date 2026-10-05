@@ -122,6 +122,16 @@ export interface ChartMeta {
 }
 export type ChartMetaInput = Partial<ChartMeta> & { iv: number }
 
+/** 美元指数没有成交量（恒 0）、没有持仓与成交明细：成交量、VWAP、成交量分布、CVD、OBV、大单、持仓量在它的图上不画。
+ *  只是不画，用户的指标布局原样不动，切回别的品种照旧 */
+const NO_VOLUME_MAIN = ['vwap', 'vpvr'] as const
+const NO_VOLUME_SUBS = new Set<string>(['oi', 'cvd', 'obv', 'whale'])
+export function indFor(ind: IndState, symbol: string): IndState {
+  if (symbol !== 'DXY') return ind
+  const out: IndState = { ...ind, vol: false, subs: ind.subs.filter(id => !NO_VOLUME_SUBS.has(id)) }
+  for (const k of NO_VOLUME_MAIN) out[k] = false
+  return out
+}
 export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]; vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean; keys?: boolean }
 
 export interface ContextMenuInfo { clientX: number; clientY: number; price: number | null; time: number; drawing?: Drawing }
@@ -238,6 +248,8 @@ export class TVChart {
   spacing = DEFAULT_SPACING
   rightBar = 0
   ind: IndState = { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }
+  /** 页面要的指标（偏好原样）；ind 是按品种收过的、真正画的那份（美元指数收掉成交量类与持仓） */
+  indWanted: IndState = { ...this.ind }
   params: Record<IndicatorId, IndParams>
   hidden = new Set<string>()
   /** 用户拖过的副图高（占画布高的比例）；null = 默认分配 */
@@ -383,6 +395,7 @@ export class TVChart {
     this.bars = bars
     this.iv = meta.iv
     this.meta = Object.assign({}, this.meta, meta)
+    this.ind = indFor(this.indWanted, this.meta.symbol)
     if (!sameSym) {
       // 换品种 / 周期时手里还按着：拖平移记的起点下标、分隔线起拖的高度、两下画线的第一下都是上一份数据上的，作废
       this.dropGesture(true)
@@ -414,7 +427,7 @@ export class TVChart {
     this.recalcTail(); this.dirty = true
     if (!this.cross) this.legendDirty = true
   }
-  setIndicators(ind: Partial<IndState>): void { this.ind = Object.assign({}, this.ind, ind); this.recalc(); this.dirty = true; this.renderLegend() }
+  setIndicators(ind: Partial<IndState>): void { this.indWanted = Object.assign({}, this.indWanted, ind); this.ind = indFor(this.indWanted, this.meta.symbol); this.recalc(); this.dirty = true; this.renderLegend() }
   setParams(id: IndicatorId, p: IndParams): void { this.params[id] = p; this.recalc(); this.dirty = true; this.renderLegend() }
   setDrawings(arr: Drawing[]): void {
     // 换了一份（换品种、撤销 / 重做、同步落地）：手里正拖的那条、画了一半的草稿属于上一份，不能带进这一份

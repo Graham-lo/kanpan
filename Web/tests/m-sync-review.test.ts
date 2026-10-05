@@ -60,7 +60,7 @@ describe('第一次对上比「谁新」：本机钟与服务器钟不一致', (
     const store = new SyncStore(emptyArchive(), 'pc-fast', () => server.now + 10 * MIN)
     const engine = new Engine(store, server.transport(), OWNED, { capture: () => {}, apply: () => {} })
     await engine.full()
-    const s: WebState = { pinned: ['1h'], ind: { ma: true, ema: false, boll: false, vol: true, subs: [] }, params: null, watch: { crypto: ['BTCUSDT'], us: [], com: [] }, drawings: {}, alerts: [] }
+    const s: WebState = { pinned: ['1h'], ind: { ma: true, ema: false, boll: false, vol: true, subs: [] }, params: null, watch: { crypto: ['BTCUSDT'], us: [], idx: [], com: [] }, drawings: {}, alerts: [] }
     const localEdit = T0 + 10 * MIN // 真实时间 T0，比云端旧
     pcMergeFirst(s, store, ctx, { settings: localEdit, favorites: localEdit }, false)
     expect(s.watch.crypto).toEqual(['ETHUSDT'])

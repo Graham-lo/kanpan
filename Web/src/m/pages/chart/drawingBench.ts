@@ -23,7 +23,7 @@ import { AlertGeometry, alertLinePrice } from '../../chart/draw/alert'
 import { graphemeCount } from '../../chart/draw/fmt'
 import { INTERVAL_SHORT } from '../../chart/series'
 import { S } from '../../../market'
-import { baseOf, drawingIdOf, MARKET, newAlertId, type Alert } from '../../../alerts/shape'
+import { baseOf, drawingIdOf, marketOf, newAlertId, type Alert } from '../../../alerts/shape'
 import { activeAlerts, alertsReplaced, deleteAlert, onAlertsChange } from '../../model/alerts'
 import { grouped, fmtPrice } from '../../model/rowText'
 import { openSheet, confirmDialog, type Sheet } from '../../ui/sheet'
@@ -132,7 +132,7 @@ function toggleLineAlert(sym: string, d: Drawing): boolean {
   if (!lines) return false
   const now = Date.now()
   const a: Alert = {
-    id: newAlertId(), kind: 'drawing', market: MARKET, symbol: sym, lines, condition: 'touch', status: 'active', once: true,
+    id: newAlertId(), kind: 'drawing', market: marketOf(sym), symbol: sym, lines, condition: 'touch', status: 'active', once: true,
     armedAt: now, firedAt: null, firedPrice: null, title: `${baseOf(sym)} 触到你画的${DrawKind.title(d.kind)}`, note: null,
     webhook: null, webhookText: null, drawingID: drawingIdOf(sym, d.id), reviewID: null, dueAt: null, rule: null, created: now,
   }
@@ -152,7 +152,7 @@ export function addLineAlerts(sym: string, list: readonly Drawing[]): { added: n
   const want = list.filter(d => !have.has(d.id) && alertLinesOf(d) != null)
   const room = batchRoom(st.alerts.filter(a => a.status === 'active').length, want.length)
   const made: Alert[] = want.slice(0, room).map(d => ({
-    id: newAlertId(), kind: 'drawing', market: MARKET, symbol: sym, lines: alertLinesOf(d)!, condition: 'touch', status: 'active', once: true,
+    id: newAlertId(), kind: 'drawing', market: marketOf(sym), symbol: sym, lines: alertLinesOf(d)!, condition: 'touch', status: 'active', once: true,
     armedAt: now, firedAt: null, firedPrice: null, title: `${baseOf(sym)} 触到你画的${DrawKind.title(d.kind)}`, note: null,
     webhook: null, webhookText: null, drawingID: drawingIdOf(sym, d.id), reviewID: null, dueAt: null, rule: null, created: now,
   }))

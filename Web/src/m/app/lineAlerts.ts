@@ -14,6 +14,7 @@ import { drawingBook, onDrawingsChanged } from './drawings'
 import type { Drawing } from '../chart/draw/drawing'
 import { AlertGeometry } from '../chart/draw/alert'
 import { drawingIdOf, MARKET, type Alert } from '../../alerts/shape'
+import { MACRO_KEY, MACRO_SYMBOL } from '../../market/macro'
 import { activeAlerts, alertsReplaced, deleteAlert } from '../model/alerts'
 
 /** 这条线作为提醒几何的样子（点位取整到毫秒）；画不成提醒的线是 null */
@@ -48,7 +49,10 @@ export function reconcileLineAlerts(sym: string, drawings: readonly Drawing[]): 
  */
 export function reconcileLineAlertsIn(itemsOf: (key: string) => readonly Drawing[], keys: Iterable<string>): void {
   const pre = MARKET + '/'
-  for (const k of keys) if (k.startsWith(pre)) reconcileLineAlerts(k.slice(pre.length), itemsOf(k))
+  for (const k of keys) {
+    if (k.startsWith(pre)) reconcileLineAlerts(k.slice(pre.length), itemsOf(k))
+    else if (k === MACRO_KEY) reconcileLineAlerts(MACRO_SYMBOL, itemsOf(k))   // 美元指数的桶
+  }
 }
 
 let stop: (() => void) | null = null

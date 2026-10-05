@@ -355,9 +355,21 @@
     "SUOLANA",
     "SLN"
   ],
+  "美元" : [
+    "MEIYUAN",
+    "MY"
+  ],
+  "美元指数" : [
+    "MEIYUANZHISHU",
+    "MYZS"
+  ],
   "美光" : [
     "MEIGUANG",
     "MG"
+  ],
+  "美指" : [
+    "MEIZHI",
+    "MZ"
   ],
   "联想" : [
     "LIANXIANG",

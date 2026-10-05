@@ -72,7 +72,8 @@ export function initFavorites(root: HTMLElement): PageHandle {
     if (editing && frozen.has(sym)) return frozen.get(sym)!
     const s = S.symbols.get(sym)
     const gone = S.live === true && !s
-    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone ? null : s?.vol ?? null, gone }
+    // 美元指数没有成交量（恒 0）：成交额写「—」；休市时价格与药丸退灰
+    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone || s?.macro ? null : s?.vol ?? null, gone, closed: s?.closed === true }
   }
 
   // ---------------------------------------------------------------- 头部

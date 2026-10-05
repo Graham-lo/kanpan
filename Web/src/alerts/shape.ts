@@ -15,9 +15,10 @@
  * 表的增删与触发在 model.ts。
  */
 import type { Drawing } from '../chart/chart'
+import { MACRO_ALERT_MARKET, MACRO_CN, isMacro } from '../market/macro'
 
 export type AlertKind = 'drawing' | 'price' | 'reviewDue' | 'condition'
-export type AlertMarket = 'binance/usd_m' | 'coinbase/spot'
+export type AlertMarket = 'binance/usd_m' | 'coinbase/spot' | 'macro/index'
 export interface AlertPoint { t: number; p: number }
 export interface AlertGeom { points: AlertPoint[]; extendLeft: boolean; extendRight: boolean }
 export type AlertRule =
@@ -51,6 +52,8 @@ export interface Alert {
 }
 
 export const MARKET: AlertMarket = 'binance/usd_m'
+/** 这只品种的提醒 market：美元指数是 macro/index（服务端白名单），其余币安 U 本位 */
+export const marketOf = (symbol: string): AlertMarket => isMacro(symbol) ? MACRO_ALERT_MARKET as AlertMarket : MARKET
 const QUOTES = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'USD1', 'TUSD', 'USD']
 
 export function newAlertId(): string {
@@ -60,6 +63,7 @@ export function newAlertId(): string {
 export const syncIdOf = (a: Pick<Alert, 'market' | 'symbol' | 'id'>): string => `${a.market}/${a.symbol}/${a.id}`
 /** 标题里的品种短名：BTCUSDT → BTC，BTC-USD → BTC */
 export function baseOf(symbol: string): string {
+  if (isMacro(symbol)) return MACRO_CN   // 推送标题照服务端写「美元指数」
   if (symbol.includes('-')) return symbol.split('-')[0]
   for (const q of QUOTES) if (symbol.length > q.length && symbol.endsWith(q)) return symbol.slice(0, -q.length)
   return symbol
@@ -99,7 +103,7 @@ export const conditionLabel = (c: Alert['condition']): string => c === 'close' ?
 // ------------------------------------------------------------ 构造
 function base(symbol: string, kind: AlertKind, now: number): Alert {
   return {
-    id: newAlertId(), kind, market: MARKET, symbol, lines: [], condition: 'touch', status: 'active', once: true,
+    id: newAlertId(), kind, market: marketOf(symbol), symbol, lines: [], condition: 'touch', status: 'active', once: true,
     armedAt: now, firedAt: null, firedPrice: null, title: '', note: null, webhook: null, webhookText: null,
     drawingID: null, reviewID: null, dueAt: null, rule: null, created: now,
   }
@@ -112,7 +116,7 @@ export function makePriceAlert(symbol: string, target: number, current: number |
   a.webhook = cleanWebhook(opts.webhook)
   return a
 }
-export const drawingIdOf = (symbol: string, drawingId: string): string => `${MARKET}/${symbol}/${drawingId}`
+export const drawingIdOf = (symbol: string, drawingId: string): string => `${marketOf(symbol)}/${symbol}/${drawingId}`
 /** 画线摊平成折线（水平线两侧延伸、射线往右、趋势线不延伸）；别的工具不给提醒 */
 export function drawingLines(d: Pick<Drawing, 'type' | 'pts'>): AlertGeom[] {
   const pts = d.pts.map(p => ({ t: Math.round(p.t), p: p.p }))

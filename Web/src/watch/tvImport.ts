@@ -37,7 +37,7 @@ export interface TvResult {
   total: number
 }
 
-const KINDS: Kind[] = ['crypto', 'us', 'com']
+const KINDS: Kind[] = ['crypto', 'us', 'idx', 'com']
 
 /** 分区名 → 自选分类；映射不上返回 null（调用方并进加密） */
 export function sectionKind(name: string): Kind | null {
@@ -45,6 +45,7 @@ export function sectionKind(name: string): Kind | null {
   if (!n) return null
   if (/^(加密|加密货币|数字货币|币|币圈|crypto|cryptos|cryptocurrency|coins?)$/.test(n)) return 'crypto'
   if (/^(美股|股票|美国股票|us|usa|stocks?|equit(y|ies)|usstocks?)$/.test(n)) return 'us'
+  if (/^(指数|indices|indexes|index)$/.test(n)) return 'idx'
   if (/^(大宗|大宗商品|商品|期货|金属|贵金属|外汇|commodit(y|ies)|metals?|futures|forex|fx)$/.test(n)) return 'com'
   return null
 }
@@ -101,7 +102,7 @@ export function matchTv(raw: string, u: TvUniverse): string | null {
 /** 算出导入结果；不改传进来的自选 */
 export function importTv(text: string, u: TvUniverse, watch: Record<Kind, string[]>): TvResult {
   const tokens = parseTv(text)
-  const added: Record<Kind, string[]> = { crypto: [], us: [], com: [] }
+  const added: Record<Kind, string[]> = { crypto: [], us: [], idx: [], com: [] }
   const already: string[] = [], unmatched: string[] = []
   const seen = new Set<string>(), seenBad = new Set<string>()
   const secs = new Map<string, TvSection>()

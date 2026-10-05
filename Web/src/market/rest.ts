@@ -13,6 +13,7 @@ import { S, emit } from './state'
 import { Superseded, admit, coolingFor, isRateLimit, noteStatus, setGatewayProbe } from './limit'
 import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
 import { supplyOf } from './meta'
+import { MACRO_SYMBOL, applyMacroTicker, isMacro, macroFallback, macroRewrite, type MacroTicker } from './macro'
 import { ago } from '../util/clock'
 
 export const REST = 'https://fapi.binance.com'
@@ -37,6 +38,8 @@ setGatewayProbe(url => viaRoute(url) !== url)
 export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<T> {
   // 主机在限流冷却里就不发（抛 RateLimited）：429 之后接着打会被升级成 418 封 IP；
   // 一分钟权重快满了就先排队（见 limit.ts）；排队期间 alive() 说不要了就不发（抛 Superseded）
+  // 美元指数：币安形状的 K 线 / 24h 行情改走自家服务器（不占币安额度），它没有的数据本地就抛（见 macro.ts）
+  url = macroRewrite(url, apiOrigin()) ?? url
   const gw = await admit(url, background, alive)
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
@@ -85,6 +88,8 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
       if (!s) { s = blank(e); const sup = supplyOf(e.symbol); if (sup != null) s.supply = sup }   // 元数据先于全市场表到了
       next.set(e.symbol, s)
     }
+    // 美元指数不在币安的表里：手里有就原样带过来，没有就放内置的一行（价格等 loadMacro / 推送来填）
+    next.set(MACRO_SYMBOL, S.symbols.get(MACRO_SYMBOL) ?? macroFallback())
     // 三个请求要几百毫秒到几秒才回来，这期间推送已经把手里的价格、标记价刷新过了：
     // 交易所时间比手里旧的那一组不覆盖（否则价格回跳一下、涨跌幅闪回旧值，直到下一帧推送再改回来）
     for (const t of tk) {
@@ -111,7 +116,31 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
     S.error = S.limited ? `请求太密，${Math.ceil(Math.max(coolingFor(REST), 1000) / 1000)} 秒后自动重试` : String((e as Error)?.message || e)
   }
   emit({ type: 'universe' })
+  if (S.symbols.has(MACRO_SYMBOL)) void loadMacro()
   return S.symbols
+}
+
+/** 美元指数的品种信息与 24h 行情（自家服务器，两条线路同一台）。取不到就留着内置那一行，不报错 */
+let macroAt = 0
+export async function loadMacro(): Promise<void> {
+  if (Date.now() - macroAt < 5000) return
+  macroAt = Date.now()
+  const s = S.symbols.get(MACRO_SYMBOL)
+  if (!s) return
+  const origin = apiOrigin()
+  const [ins, tk] = await Promise.all([
+    j<{ symbols?: { key?: string; displayName?: string; tickSize?: string; pricePrecision?: number }[] }>(`${origin}/v1/market/raw/instruments?source=macro`, 8000).catch(() => null),
+    j<MacroTicker>(`${REST}/fapi/v1/ticker/24hr?symbol=${MACRO_SYMBOL}`, 8000).catch(() => null),
+  ])
+  const row = ins?.symbols?.find(x => x.key === 'macro/index/DXY')
+  if (row) {
+    if (row.displayName) s.cn = row.displayName
+    if (row.tickSize) s.dec = decOfTick(row.tickSize)
+  }
+  if (tk && applyMacroTicker(s, tk, +(tk.closeTime ?? 0) || Date.now())) {
+    s.lastTick = Date.now()
+    emit({ type: 'ticker', symbol: MACRO_SYMBOL, dir: 0 })
+  }
 }
 
 type Row = [number, string, string, string, string, string, number, string, ...unknown[]]
@@ -138,7 +167,7 @@ export async function klines(symbol: string, iv: string, endTime?: number, limit
 /** 持仓量副图：币安只给最近 30 天、5 分钟以上周期的历史，对不齐的根留空 */
 const OI_PERIOD = new Set(['5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'])
 export async function attachOI(symbol: string, iv: string, bars: Bar[]): Promise<void> {
-  if (!OI_PERIOD.has(iv) || !bars.length) return
+  if (!OI_PERIOD.has(iv) || !bars.length || isMacro(symbol)) return
   try {
     const endTime = bars[bars.length - 1].t + 1
     const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${iv}&limit=500&endTime=${endTime}`)
@@ -165,6 +194,8 @@ const detailCache = new Map<string, Detail>()
  *  没带 alive 的那次在途或取到不满 10 秒时大家共用。带 alive 的可能排队时被作废（Superseded），只给自己用 */
 const oiShared = new Map<string, { t: number; p: Promise<string | undefined> }>()
 export function fetchOpenInterest(symbol: string, alive?: () => boolean): Promise<string | undefined> {
+  // 美元指数没有持仓量：不发请求（发了也只会在本地被 macroRewrite 拦下）
+  if (isMacro(symbol)) return Promise.resolve(undefined)
   const hit = oiShared.get(symbol)
   if (hit && (hit.t === 0 || ago(hit.t) < 10e3)) return hit.p
   const p = j<{ openInterest?: string }>(`${REST}/fapi/v1/openInterest?symbol=${symbol}`, 8000, false, alive).then(r => r?.openInterest)
@@ -178,6 +209,7 @@ export function detailOf(symbol: string): Detail | undefined { return detailCach
 
 /** 一分钟最多取一次。alive：排在限流队列里时问一下还要不要（扫图划过去的那只不要了就不发、不记这一分钟） */
 export async function fetchDetail(symbol: string, alive?: () => boolean): Promise<void> {
+  if (isMacro(symbol)) return
   const prev = detailCache.get(symbol)
   if (prev && ago(prev.t) < 60e3) return
   const d: Detail = { ...(prev || {}), t: Date.now() }

@@ -10,7 +10,7 @@ const TABLE: Record<string, Kind> = {
   '1000000MOGUSDT': 'crypto', NVDAUSDT: 'us', AAPLUSDT: 'us', QQQUSDT: 'us', XAUUSDT: 'com', XAGUSDT: 'com', CLUSDT: 'com', BZUSDT: 'com',
 }
 const U: TvUniverse = { has: s => s in TABLE, kindOf: s => TABLE[s] }
-const empty = (): Record<Kind, string[]> => ({ crypto: [], us: [], com: [] })
+const empty = (): Record<Kind, string[]> => ({ crypto: [], us: [], idx: [], com: [] })
 
 describe('TradingView 代号', () => {
   it('去交易所前缀与永续后缀', () => {
@@ -55,7 +55,7 @@ describe('导入结果', () => {
     const watch = { ...empty(), crypto: ['BTCUSDT'] }
     const text = '###短线观察,BINANCE:BTCUSDT.P,BINANCE:ETHUSDT.P,BINANCE:ETHUSDT,###美股,NASDAQ:NVDA,OANDA:XAUUSD,COMEX:GC1!,COMEX:GC1!'
     const r = importTv(text, U, watch)
-    expect(r.added).toEqual({ crypto: ['ETHUSDT'], us: ['NVDAUSDT'], com: ['XAUUSDT'] })
+    expect(r.added).toEqual({ crypto: ['ETHUSDT'], us: ['NVDAUSDT'], idx: [], com: ['XAUUSDT'] })
     expect(r.already).toEqual(['BTCUSDT'])
     expect(r.unmatched).toEqual(['COMEX:GC1!'])
     expect(r.total).toBe(4)
@@ -67,10 +67,10 @@ describe('导入结果', () => {
     expect(watch.crypto).toEqual(['BTCUSDT'])
   })
   it('并进自选：追加到各类末尾，返回新增数', () => {
-    const watch = { crypto: ['BTCUSDT'], us: [], com: ['XAGUSDT'] } as Record<Kind, string[]>
+    const watch = { crypto: ['BTCUSDT'], us: [], idx: [], com: ['XAGUSDT'] } as Record<Kind, string[]>
     const r = importTv('SOL,AAPL,XAU,XAG', U, watch)
     expect(applyTv(watch, r)).toBe(3)
-    expect(watch).toEqual({ crypto: ['BTCUSDT', 'SOLUSDT'], us: ['AAPLUSDT'], com: ['XAGUSDT', 'XAUUSDT'] })
+    expect(watch).toEqual({ crypto: ['BTCUSDT', 'SOLUSDT'], us: ['AAPLUSDT'], idx: [], com: ['XAGUSDT', 'XAUUSDT'] })
   })
   it('空输入', () => {
     const r = importTv('  \n , ', U, empty())

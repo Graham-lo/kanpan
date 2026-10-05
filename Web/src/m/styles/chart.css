@@ -142,6 +142,8 @@
 }
 @keyframes cp-card-spin { to { transform: rotate(360deg) } }
 .cp-stats { flex: none; display: flex; gap: var(--s-l) }
+/* 美元指数：六格不摆，但留着高度，扫图划过去时 K 线区不跳 */
+.cp-stats[hidden] { visibility: hidden }
 .cp-col { display: grid; gap: var(--s-xxs); min-width: 92px }
 .cp-cell { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-s); white-space: nowrap }
 .cp-cell[hidden] { display: none }

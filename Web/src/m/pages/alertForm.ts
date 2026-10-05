@@ -92,7 +92,7 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
       </div>
       <div class="al-card alf-cond">
         <label class="alf-row alf-price-row"><span class="alf-label">价格</span>
-          <span class="alf-well">${PENCIL}<input class="num" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="0" aria-label="价格" value="${esc(startText)}"><span class="alf-unit">${esc(quote || 'USDT')}</span></span>
+          <span class="alf-well">${PENCIL}<input class="num" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="0" aria-label="价格" value="${esc(startText)}"><span class="alf-unit">${esc(quote || (sym === 'DXY' ? '' : 'USDT'))}</span></span>
         </label>
         <div class="alf-hint num"></div>
         <div class="al-div"></div>

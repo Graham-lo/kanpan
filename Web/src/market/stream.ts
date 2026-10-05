@@ -30,6 +30,7 @@
 import type { Bar } from '../chart/calc'
 import { S, emit, type Route } from './state'
 import { emitTrade } from './trades'
+import { isMacroStream, setMacroStreams } from './macroStream'
 import { ago, before } from '../util/clock'
 
 /**
@@ -147,8 +148,10 @@ function effective(): string[] {
 /** all：前台要订的全部；core：页面隐藏时仍保留的 */
 export function setStreams(list: string[], coreList: string[] = list, opts: { now?: boolean } = {}): void {
   // 流名大小写敏感（月线是 kline_1M），品种部分由 streamName 负责转小写
-  all = [...new Set(list)]
-  core = [...new Set(coreList)]
+  // 美元指数（dxy@…）走自家服务器那条连接，不进币安的连接池（币安没有这只，发过去整条连接会被掐）
+  setMacroStreams(list.filter(isMacroStream))
+  all = [...new Set(list.filter(x => !isMacroStream(x)))]
+  core = [...new Set(coreList.filter(x => !isMacroStream(x)))]
   if (debounce) clearTimeout(debounce)
   // now：冷启动时和品种表、K 线并行先把连接建起来，不等 150 ms 的合并窗口
   if (opts.now) { debounce = null; apply(); return }

@@ -29,7 +29,8 @@
 import { type Body, type Json, type SyncObject, same } from '../../sync/types'
 import type { Owned } from '../../sync/store'
 import { OWNED as PC_OWNED } from '../../sync/bridge'
-import { validSymbol, decodeAlerts, syncableAlert, alertId } from '../../sync/codec'
+import { validSymbol, webSymbol, decodeAlerts, syncableAlert, alertId } from '../../sync/codec'
+import { isMacro, syncKeyOf, venueMarketOf } from '../../market/macro'
 import { DRAW_OWNED, unseenDrawingsM } from './drawCodec'
 import type { Alert } from '../../alerts/shape'
 import {
@@ -296,7 +297,8 @@ export function changedRoots(a: Record<string, Body>, b: Record<string, Body>): 
 
 export const FAV_VENUE = 'binance'
 export const FAV_MARKET = 'usd_m'
-export const favId = (symbol: string): string => `${FAV_VENUE}/${FAV_MARKET}/${symbol}`
+/** 裸代号 → 同步 id；美元指数（DXY）是 macro/index/DXY */
+export const favId = (symbol: string): string => isMacro(symbol) ? syncKeyOf(symbol) : `${FAV_VENUE}/${FAV_MARKET}/${symbol}`
 export type FavState = Pick<SymbolPrefs, 'favorites' | 'groups' | 'groupForSymbol'>
 
 const num = (v: Json | undefined): number | null => typeof v === 'number' && isFinite(v) ? v : null
@@ -306,10 +308,12 @@ function liveSorted(objs: SyncObject[]): SyncObject[] {
 /** 手机网页版管得着的自选：币安 U 本位、代号合规、id 与代号对得上 */
 function managed(o: SyncObject): string | null {
   const s = o.body.symbol
-  if (o.body.venue !== FAV_VENUE || o.body.market !== FAV_MARKET || typeof s !== 'string' || !validSymbol(s) || o.id !== favId(s)) return null
+  if (typeof s !== 'string' || !webSymbol(s) || o.id !== favId(s)) return null
+  const vm = venueMarketOf(s)
+  if (o.body.venue !== vm.venue || o.body.market !== vm.market || (vm.venue === FAV_VENUE && !validSymbol(s))) return null
   return s
 }
-const syncable = (s: string): boolean => validSymbol(s)
+const syncable = (s: string): boolean => webSymbol(s)
 
 /** 自选指纹（seeded 这种本机记号不算） */
 export function favPrint(f: FavState): string {
@@ -351,7 +355,7 @@ export function encodeFavorites(f: FavState, prevFavs: SyncObject[], prevGroups:
     const base = x.prev && !x.prev.deleted ? x.prev.body : null
     if (x.symbol == null) { out.push(mk('favorites', x.id, { ...(base ?? {}), order })); return }
     const g = f.groupForSymbol[x.symbol]
-    out.push(mk('favorites', x.id, { symbol: x.symbol, market: FAV_MARKET, venue: FAV_VENUE, groupId: g && groupIds.has(g) ? g : null, order }))
+    out.push(mk('favorites', x.id, { symbol: x.symbol, ...venueMarketOf(x.symbol), groupId: g && groupIds.has(g) ? g : null, order }))
   })
   for (const o of prev) if (!keep.has(o.id) && managed(o)) out.push({ ...o, deleted: true })
   return out

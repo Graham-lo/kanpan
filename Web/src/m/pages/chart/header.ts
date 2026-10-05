@@ -36,6 +36,8 @@ export interface TopBarHandlers { onBack(): void; onNote(): void; onShare(): voi
 /** 「BTCUSDT」→ BTC / USDT；1000 前缀用全市场表的 base */
 export function splitPair(sym: string): { base: string; quote: string } {
   const s = S.symbols.get(sym)
+  // 美元指数没有计价币：顶栏只写 DXY，不写「/」
+  if (s?.macro || sym === 'DXY') return { base: s?.base ?? sym, quote: '' }
   const quote = /USDC$/.test(sym) ? 'USDC' : 'USDT'
   return { base: s?.base ?? sym.replace(/USDT$|USDC$/, ''), quote }
 }
@@ -68,7 +70,9 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
       shown = key
       bar.querySelector('.cp-badge')!.innerHTML = badgeHTML(base, 28, assetOf(s?.kind, base))
       bar.querySelector('.cp-base')!.textContent = base
-      bar.querySelector('.cp-quote')!.textContent = '/' + quote
+      bar.querySelector('.cp-quote')!.textContent = quote ? '/' + quote : ''
+      // 产品角标：永续合约写「永续」，美元指数写「指数」
+      bar.querySelector('.cp-perp')!.textContent = s?.macro ? '指数' : '永续'
     },
     invalidate(): void { shown = '' },
   }
@@ -102,6 +106,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
   const priceEl = head.querySelector<HTMLElement>('.cp-price')!, chgEl = head.querySelector<HTMLElement>('.cp-chg')!
   const readout = head.querySelector<HTMLElement>('.cp-readout')!
   const valCell = cell('val')
+  const stats = head.querySelector<HTMLElement>('.cp-stats')!
   let valKey = ''
 
   // 横滑扫图：只在价格区（左边报价 + 右边六格整块）。触摸走 touch（iOS Safari 的横滑会吃掉 pointerup），鼠标走 pointer
@@ -141,6 +146,10 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
         return b
       }
       shownSym = sym
+      // 美元指数：没有持仓、成交额（恒 0）、市值、资金费率、结算、估值——右边六格整块不摆，也不去取详情
+      const macro = !!s?.macro
+      if (stats.hidden !== macro) stats.hidden = macro
+      if (macro) return
       // 自己一分钟最多取一次；价还没到时取了算不出美元持仓、又要空等一分钟。扫图划过去的那只还排在限流里就不发
       // 详情的五个慢数不是首屏：品种停稳（market/settle）再取，同一个键只留最后那只
       if (s?.price != null) settle.whenSettled('m-detail', () => { if (shownSym === sym) void fetchDetail(sym, () => shownSym === sym) })
