@@ -287,36 +287,55 @@ struct SymbolPreviewCard: View {
 
 /// 卡上那段 K 线。只画蜡烛：没有轴、没有网格、没有图例——那些是整张图的事，
 /// 这儿只要一个形状。
+///
+/// 2026-10-05 回归压测：原来是 `Canvas` + `drawingGroup()`，两样在 iOS 26 上都走 RenderBox（Metal），
+/// 启动后第一次长按品种要在主线程上建 Metal 设备、现编渲染管线（模拟器上两三百毫秒，正卡在弹卡的动画里）。
+/// 改成四层 `Shape`（涨 / 跌 × 影线 / 实体），走 Core Animation，画出来的形一样。
 struct MiniCandles: View {
   var bars: [Bar]
   var up: Color
   var down: Color
 
   var body: some View {
-    Canvas(opaque: false) { ctx, size in
-      guard bars.count > 1 else { return }
-      let lo = bars.map(\.low).min() ?? 0
-      let hi = bars.map(\.high).max() ?? 0
-      guard hi > lo, lo.isFinite, hi.isFinite else { return }
-      let slot = size.width / CGFloat(bars.count)
-      let body = max(1.2, min(5, slot * 0.62))
-      func y(_ value: Double) -> CGFloat {
-        size.height - CGFloat((value - lo) / (hi - lo)) * size.height
-      }
-      for (index, bar) in bars.enumerated() {
-        let x = (CGFloat(index) + 0.5) * slot
-        let color = bar.close >= bar.open ? up : down
-        var wick = Path()
-        wick.move(to: CGPoint(x: x, y: y(bar.high)))
-        wick.addLine(to: CGPoint(x: x, y: y(bar.low)))
-        ctx.stroke(wick, with: .color(color), lineWidth: 1)
+    ZStack {
+      MiniCandleShape(bars: bars, rising: true, part: .wick).stroke(up, lineWidth: 1)
+      MiniCandleShape(bars: bars, rising: true, part: .body).fill(up)
+      MiniCandleShape(bars: bars, rising: false, part: .wick).stroke(down, lineWidth: 1)
+      MiniCandleShape(bars: bars, rising: false, part: .body).fill(down)
+    }
+  }
+}
+
+/// 一段蜡烛里涨（或跌）的那一半的影线或实体。量程按整段的高低点算，四层叠起来对得齐。
+private struct MiniCandleShape: Shape {
+  enum Part { case wick, body }
+  var bars: [Bar]
+  var rising: Bool
+  var part: Part
+
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    guard bars.count > 1 else { return path }
+    let lo = bars.map(\.low).min() ?? 0
+    let hi = bars.map(\.high).max() ?? 0
+    guard hi > lo, lo.isFinite, hi.isFinite else { return path }
+    let slot = rect.width / CGFloat(bars.count)
+    let body = max(1.2, min(5, slot * 0.62))
+    func y(_ value: Double) -> CGFloat {
+      rect.minY + rect.height - CGFloat((value - lo) / (hi - lo)) * rect.height
+    }
+    for (index, bar) in bars.enumerated() where (bar.close >= bar.open) == rising {
+      let x = rect.minX + (CGFloat(index) + 0.5) * slot
+      switch part {
+      case .wick:
+        path.move(to: CGPoint(x: x, y: y(bar.high)))
+        path.addLine(to: CGPoint(x: x, y: y(bar.low)))
+      case .body:
         let top = y(max(bar.open, bar.close))
         let bottom = y(min(bar.open, bar.close))
-        ctx.fill(Path(CGRect(x: x - body / 2, y: top, width: body,
-                             height: max(1, bottom - top))),
-                 with: .color(color))
+        path.addRect(CGRect(x: x - body / 2, y: top, width: body, height: max(1, bottom - top)))
       }
     }
-    .drawingGroup()
+    return path
   }
 }
