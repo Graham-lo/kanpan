@@ -375,6 +375,8 @@ impl Condition {
 /// 裸代号的默认交易所（`instruments::DEFAULT_MARKET_KEY`），缺 `market` 的老提醒按它记。
 pub const BINANCE:&str=crate::instruments::DEFAULT_MARKET_KEY;
 pub const COINBASE:&str="coinbase/spot";
+/// 美元指数（`venues::macro_index`）。只有一只 `DXY`，只判画线 / 「价格达到」这类按价的提醒。
+pub const MACRO:&str="macro/index";
 
 /// 评估器在内存里保有的一条活动提醒。
 #[derive(Clone,Debug)]
@@ -609,8 +611,9 @@ pub struct WebhookFill<'a> {
 }
 
 /// `{品种}`：币安去掉尾巴上的 `USDT`（`BTCUSDT` → `BTC`，没有这个尾巴就原样）；
-/// Coinbase 把 `-` 换成 `/`（`BTC-USD` → `BTC/USD`）。
+/// Coinbase 把 `-` 换成 `/`（`BTC-USD` → `BTC/USD`）；美元指数写「美元指数」。
 pub fn webhook_name(market:&str,symbol:&str)->String {
+ if market==MACRO {return crate::venues::macro_index::NAME.to_string()}
  if market==BINANCE {symbol.strip_suffix("USDT").filter(|b|!b.is_empty()).unwrap_or(symbol).to_string()} else {symbol.replace('-',"/")}
 }
 /// `{条件}`：`价格达到` / `收盘穿过`（2026-09-25 用户：「碰到改成价格达到」）。
@@ -785,8 +788,9 @@ fn link_of(w:&Watch)->String {
 pub fn symbol_path(market:&str,symbol:&str)->String {
  if market==BINANCE {symbol.to_string()} else {format!("{market}/{symbol}")}
 }
-/// 通知标题里的品种名：和界面上一样，Coinbase 写 `BTC/USD`。
+/// 通知标题里的品种名：和界面上一样，Coinbase 写 `BTC/USD`，美元指数写「美元指数」。
 pub fn display_symbol(market:&str,symbol:&str)->String {
+ if market==MACRO {return crate::venues::macro_index::NAME.to_string()}
  if market==BINANCE {symbol.to_string()} else {symbol.replace('-',"/")}
 }
 
@@ -1472,6 +1476,93 @@ async fn coinbase_session(s:&AppState,effects:&Effects,symbols:&[String],mut wat
  }
 }
 
+// ------------------------------------------------------------------ 美元指数
+
+/// 美元指数多久看一次库。采价那边（api 进程里的 `venues::macro_index::collector`）五秒问一次 CNBC、
+/// 当场写进 `macro_bars`；worker 进程手里没有那份内存，就照同一个节奏读表里最新的 1 分钟 K 线。
+const MACRO_POLL:Duration=Duration::from_secs(5);
+/// 一分钟结束后再等这么久才算它收了（采价五秒一拍，写库还要一点时间）。
+const MACRO_SETTLE_MS:i64=15_000;
+
+/// 美元指数这一支：不连任何上游，读 `macro_bars` 的 1 分钟 K 线交给同一个 `evaluate`。
+///
+/// - 触线：这一分钟的高 / 低 / 收变了就判一次；收盘穿越：一分钟收完才判。
+/// - 断开（worker 重启、库读失败）后从上一根判过的收盘接着读，最多往回一小时——K 线就在库里，
+///   用不着另找 REST 补。
+/// - 休市（美东周五 17:00 到周日 18:00、每天 17:00–18:00）没有新 K 线，自然什么都不判。
+/// - 条件提醒（费率、持仓量、均线）不判：那几样美元指数没有（`conditions::load` 跳过非币安的）。
+pub async fn run_macro(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
+ let (effects,queue)=Effects::channel(EFFECT_QUEUE);
+ let busy=effects.busy.clone();
+ tokio::join!(macro_index(&s,effects),work(&s,apns.as_deref(),MACRO,queue,busy));
+}
+
+/// 读回来的一根 1 分钟 K 线该不该判、判成什么样子。`last` 是这一根上次判过的（低, 高, 收, 收了没有）；
+/// 没变就不再判。`later` 是表里有没有比它新的一根（有就说明它已经收了）。
+fn macro_candle(bar:&crate::venues::macro_index::bars::Bar,later:bool,now:i64,last:Option<(f64,f64,f64,bool)>)->Option<Candle> {
+ let closed=later||bar.t+60_000+MACRO_SETTLE_MS<=now;
+ let state=(bar.l,bar.h,bar.c,closed);
+ // 收了的那一根判过一次就够了（之后官方 K 线覆盖合成的，那是改历史，不再响）。
+ if last.is_some_and(|l|l.3||l==state) {return None}
+ if ![bar.l,bar.h,bar.c].iter().all(|v|v.is_finite()) {return None}
+ Some(Candle{symbol:crate::venues::macro_index::SYMBOL.to_string(),open_time:bar.t,low:bar.l,high:bar.h,close:bar.c,closed})
+}
+
+/// 下一轮从哪一根开始读：上一根判过收盘的下一分钟，最多往回 [`BACKFILL_MS`]；
+/// 从没判过（刚起来、刚有人设了提醒）就从上一分钟读起。
+fn macro_from(closes:&Closes,now:i64)->i64 {
+ let minute=now.div_euclid(60_000)*60_000;
+ match closes.get(crate::venues::macro_index::SYMBOL) {
+  Some((last,_))=>(last+60_000).max(minute-BACKFILL_MS),
+  None=>minute-60_000,
+ }
+}
+
+async fn macro_index(s:&AppState,effects:Effects) {
+ use crate::venues::macro_index::{SYMBOL,collector};
+ let mut closes:Closes=BTreeMap::new();
+ let mut movers=crate::watch_move::Movers::default();
+ let mut watches:Vec<Watch>=vec![];
+ let mut quotes:BTreeMap<String,Quote>=BTreeMap::new();
+ // 每根（开盘时刻）上次判过的样子。
+ let mut judged:BTreeMap<i64,(f64,f64,f64,bool)>=BTreeMap::new();
+ let mut refresh=tokio::time::interval(Duration::from_secs(10));
+ refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+ let mut poll=tokio::time::interval(MACRO_POLL);
+ poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+ let mut quiet_until=0i64;
+ loop {
+  tokio::select! {
+   _=refresh.tick()=>match load(s,MACRO).await {
+    Ok(fresh)=>{movers.refresh(&fresh.movers);watches=effects.idle(fresh.watches);}
+    Err(e)=>tracing::warn!("Dollar index alerts could not be refreshed ({e:?}); keeping the current set"),
+   },
+   _=poll.tick()=>{
+    let now=chrono::Utc::now().timestamp_millis();
+    if watches.is_empty()&&!movers.symbols().contains(SYMBOL) {closes.clear();judged.clear();continue}
+    let from=macro_from(&closes,now);
+    let bars=match collector::read(&s.pool,"1m",Some(from),None,true,BACKFILL_MS/60_000+2).await {
+     Ok(v)=>v,
+     Err(e)=>{
+      if now>=quiet_until {tracing::warn!("Dollar index bars could not be read for alerts ({e}); will retry");quiet_until=now+600_000}
+      continue
+     }
+    };
+    judged.retain(|t,_|*t>=from-60_000);
+    for (i,bar) in bars.iter().enumerate() {
+     let Some(candle)=macro_candle(bar,i+1<bars.len(),now,judged.get(&bar.t).copied()) else {continue};
+     judged.insert(bar.t,(bar.l,bar.h,bar.c,candle.closed));
+     quotes.entry(SYMBOL.to_string()).or_default().price=Some(candle.close);
+     evaluate(&effects,&mut watches,&mut closes,&quotes,&candle);
+     for (owner,event) in movers.observe(&candle.symbol,candle.open_time,candle.close,candle.closed) {
+      effects.send(Effect::Move{owner,event});
+     }
+    }
+   }
+  }
+ }
+}
+
 /// 一分钟结束后再等这么久才判它收了：推送的逐笔会比成交时间晚一点到。
 const SETTLE_MS:i64=2_000;
 
@@ -1543,6 +1634,44 @@ mod tests {
  /// 靠后那个点、这里取靠前那个。同一根 K 线一端响一端不响，用户就会收到一条前台没响过的
  /// 推送，或者反过来。夹具是手工维护的 `contract/alert-cases.json`；改规则先改它。
  /// 服务端只返回价，所以这里只核价；`line` 下标由客户端那一半核。
+ /// 美元指数：库里读回来的 1 分钟 K 线，没收的变了才判、收了的只判一次；表里有新的一根或者
+ /// 过了这一分钟加 15 秒就算收了。
+ #[test] fn dollar_index_bars_are_judged_once_closed_and_again_only_when_they_move() {
+  use crate::venues::macro_index::bars::Bar;
+  let t=1_759_700_000_000i64/60_000*60_000;
+  let bar=Bar{t,o:100.0,h:100.2,l:99.9,c:100.1};
+  let open=macro_candle(&bar,false,t+30_000,None).expect("first sight is judged");
+  assert!(!open.closed);
+  assert_eq!(open.symbol,"DXY");
+  assert_eq!((open.low,open.high,open.close),(99.9,100.2,100.1));
+  assert!(macro_candle(&bar,false,t+35_000,Some((99.9,100.2,100.1,false))).is_none(),"没变不再判");
+  let moved=Bar{h:100.3,c:100.25,..bar};
+  assert!(macro_candle(&moved,false,t+40_000,Some((99.9,100.2,100.1,false))).is_some(),"新高要判");
+  assert!(macro_candle(&bar,false,t+70_000,Some((99.9,100.2,100.1,false))).is_none(),"结束后 15 秒内还不算收（没变就不判）");
+  assert!(macro_candle(&bar,false,t+75_000,Some((99.9,100.2,100.1,false))).is_some_and(|c|c.closed),"过了 15 秒算收");
+  assert!(macro_candle(&bar,true,t+61_000,Some((99.9,100.2,100.1,false))).is_some_and(|c|c.closed),"有新的一根就算收");
+  assert!(macro_candle(&moved,true,t+200_000,Some((99.9,100.2,100.1,true))).is_none(),"收了的不再判（官方覆盖合成的是改历史）");
+  assert!(macro_candle(&Bar{c:f64::NAN,..bar},false,t+30_000,None).is_none());
+ }
+ /// 从哪一根读起：判过收盘的下一分钟，最多往回一小时；没判过就从上一分钟。
+ #[test] fn dollar_index_reads_from_the_last_judged_close() {
+  let now=1_759_700_000_000i64/60_000*60_000+20_000;
+  let minute=now/60_000*60_000;
+  let mut closes:Closes=BTreeMap::new();
+  assert_eq!(macro_from(&closes,now),minute-60_000);
+  closes.insert("DXY".into(),(minute-180_000,100.0));
+  assert_eq!(macro_from(&closes,now),minute-120_000);
+  closes.insert("DXY".into(),(minute-10*BACKFILL_MS,100.0));
+  assert_eq!(macro_from(&closes,now),minute-BACKFILL_MS,"最多往回一小时");
+ }
+ /// 通知标题与 Webhook `{品种}` 写中文名；深链仍是完整的 `macro/index/DXY`。
+ #[test] fn dollar_index_names_and_links() {
+  assert_eq!(display_symbol(MACRO,"DXY"),"美元指数");
+  assert_eq!(webhook_name(MACRO,"DXY"),"美元指数");
+  assert_eq!(symbol_path(MACRO,"DXY"),"macro/index/DXY");
+  assert_eq!(venue_of(MACRO),"macro");
+ }
+
  #[test] fn every_shared_alert_case_agrees() {
   let fixture:Value=serde_json::from_str(include_str!("../contract/alert-cases.json")).expect("contract/alert-cases.json");
   assert_eq!(fixture["version"],json!(1),"alert-cases.json 的格式版本变了，这里的读法要一起改");

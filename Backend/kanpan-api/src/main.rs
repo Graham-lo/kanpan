@@ -72,6 +72,8 @@ async fn main()->anyhow::Result<()> {
   let apns=kanpan_api::apns::Apns::from_env().map(Arc::new);
   supervisor.spawn("alerts",Life::Forever,kanpan_api::alerts::run(s.clone(),apns.clone()));
   supervisor.spawn("alerts-coinbase",Life::Forever,kanpan_api::alerts::run_coinbase(s.clone(),apns.clone()));
+  // 美元指数的画线 / 价格提醒：读 api 进程写进 macro_bars 的 1 分钟 K 线来判。
+  supervisor.spawn("alerts-macro",Life::Forever,kanpan_api::alerts::run_macro(s.clone(),apns.clone()));
   // 条件提醒（费率、持仓量、均线；大单在 serve 里，跟踪器在那边）与品种状态通知。
   supervisor.spawn("conditions",Life::Forever,kanpan_api::conditions::run(s.clone(),apns.clone()));
   supervisor.spawn("listing-watch",Life::Forever,kanpan_api::listing_watch::run(s.clone(),apns));

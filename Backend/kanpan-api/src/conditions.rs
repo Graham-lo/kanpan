@@ -166,6 +166,11 @@ pub async fn load(s:&AppState)->Result<Vec<CondAlert>> {
     .bind(owner).fetch_all(&mut *tx).await?;
    tx.commit().await?;
    for r in rows {
+    // 费率、持仓量、均线、大单这几样数据都只从币安来（`PREMIUM_INDEX`、`/fapi` K 线）。
+    // 别家的条件提醒（客户端本不该建，例如美元指数 `macro/index`）留在库里、不判，免得拿它的
+    // 代号去问币安、每分钟白发一串必败的请求。
+    let market:String=r.get("market");
+    if market!=alerts::BINANCE {continue}
     let rule_json:Option<Value>=r.get("rule");
     let Some(rule_json)=rule_json else {continue};
     let Some(rule)=Rule::parse(&rule_json) else {tracing::warn!("A condition alert has an unusable rule and will not be evaluated");continue};
@@ -174,7 +179,7 @@ pub async fn load(s:&AppState)->Result<Vec<CondAlert>> {
      if warned.get_or_insert_with(HashSet::new).insert(kind.clone()) {tracing::warn!("Condition alerts of type {kind:?} are stored but this server does not evaluate them")}
      continue
     }
-    out.push(CondAlert{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),market:r.get("market"),rule,rule_json,
+    out.push(CondAlert{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),market,rule,rule_json,
      armed_at:r.get("armed_at"),title:r.get("title"),note:r.get("note"),webhook:r.get("webhook"),webhook_text:r.get("webhook_text")});
    }
   }
