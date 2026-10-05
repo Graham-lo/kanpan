@@ -525,7 +525,10 @@ pub async fn serve_client(socket:WebSocket) {
      Ok((subscribe,channel,products))=>{let _=hub().send(Cmd::Change{id,subscribe,channel,products});}
      Err(why)=>{let _=errors_tx.try_send(json!({"type":"error","message":why}).to_string());}
     },
-    Message::Close(_)=>break,
+    // 对方先发了 Close：回执已排进 tungstenite 的发送队列，要等下一次读才冲出去；直接 break
+    // 客户端看到的是 1006 而不是 1000（2026-10-05 服务端回归实测）。再读一次把回执送出去
+    // （读到的只会是「已关闭」），对方卡着不关 TCP 也只等 2 秒。
+    Message::Close(_)=>{let _=tokio::time::timeout(Duration::from_secs(2),stream.next()).await;break}
     _=>{}
    }
   }
@@ -629,5 +632,24 @@ mod tests {
  #[test] fn iso_times_keep_milliseconds() {
   assert_eq!(iso_ms("1970-01-01T00:00:01.2345Z"),Some(1234));
   assert_eq!(iso_ms("2026-09-23T00:28:42.713058Z").map(|t|t%1000),Some(713));
+ }
+
+ /// 客户端先关，服务端要回一帧 Close，客户端那边才是干净的 1000（见 macro_index::stream 同名用例）。
+ #[tokio::test] async fn a_client_close_is_answered_with_a_close_frame() {
+  use tokio_tungstenite::tungstenite::{Error,Message as Frame,error::ProtocolError};
+  let app=axum::Router::new().route("/s",axum::routing::get(|ws:axum::extract::WebSocketUpgrade|async move {ws.on_upgrade(serve_client)}));
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let addr=listener.local_addr().unwrap();
+  tokio::spawn(async move {axum::serve(listener,app).await.unwrap()});
+  let (mut client,_)=tokio_tungstenite::connect_async(format!("ws://{addr}/s")).await.unwrap();
+  client.close(None).await.unwrap();
+  let answer=loop {
+   match tokio::time::timeout(Duration::from_secs(5),client.next()).await.expect("服务端 5 秒内没回话") {
+    Some(Ok(Frame::Close(_)))=>break Ok(()),
+    Some(Ok(_))=>continue,
+    Some(Err(Error::Protocol(ProtocolError::ResetWithoutClosingHandshake)))=>break Err("没回 Close 就断了"),
+    other=>break Err(if other.is_none() {"流结束却没见到 Close"} else {"读出错"}),
+   }
+  };
+  assert_eq!(answer,Ok(()));
  }
 }

@@ -26,6 +26,8 @@ pub const MAX_CLIENTS:u64=64;
 /// 一个连接最多订多少条流（14 档 K 线 + ticker = 15，留点余量）。
 pub const MAX_STREAMS:usize=32;
 const HEARTBEAT:Duration=Duration::from_secs(15);
+/// 回 Close 回执最多等多久（对方不收、发送缓冲满时不让这个座位一直占着）。
+const CLOSE_GRACE:Duration=Duration::from_secs(2);
 const WRITE_TIMEOUT:Duration=Duration::from_secs(10);
 static CLIENTS:AtomicU64=AtomicU64::new(0);
 
@@ -187,7 +189,11 @@ pub async fn serve_client(socket:WebSocket,initial:Option<String>) {
       }
      }
     }
-    Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,
+    // 对方先发了 Close：tungstenite 已经把回执排进发送队列，但要等下一次读或写才真正发出去。
+    // 直接 break 掉 socket，回执就没出门，客户端看到的是 1006（异常断开）而不是 1000
+    // （2026-10-05 服务端回归实测）。冲一次 sink 把它送出去；对方卡着不收也只等 CLOSE_GRACE。
+    Some(Ok(Message::Close(_)))=>{let _=tokio::time::timeout(CLOSE_GRACE,sink.flush()).await;break}
+    None|Some(Err(_))=>break,
     Some(Ok(_))=>vec![],
    },
    changed=changes.changed()=>{
@@ -261,4 +267,25 @@ mod tests {
  }
  const SEC:i64=1000;
  const MINUTE:i64=60_000;
+
+ /// 客户端先关：服务端要回一帧 Close（RFC 6455 §5.5.1），客户端才算干净地关上（1000）。
+ /// 2026-10-05 以前服务端收到 Close 就丢掉 socket，回执留在 tungstenite 的队列里没发出去，
+ /// 客户端拿到的是「对方没走关闭握手就断了」（浏览器里是 1006）。
+ #[tokio::test] async fn a_client_close_is_answered_with_a_close_frame() {
+  use tokio_tungstenite::tungstenite::{Error,Message as Frame,error::ProtocolError};
+  let app=axum::Router::new().route("/s",axum::routing::get(|ws:axum::extract::WebSocketUpgrade|async move {ws.on_upgrade(|s|serve_client(s,None))}));
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let addr=listener.local_addr().unwrap();
+  tokio::spawn(async move {axum::serve(listener,app).await.unwrap()});
+  let (mut client,_)=tokio_tungstenite::connect_async(format!("ws://{addr}/s")).await.unwrap();
+  client.close(None).await.unwrap();
+  let answer=loop {
+   match tokio::time::timeout(Duration::from_secs(5),client.next()).await.expect("服务端 5 秒内没回话") {
+    Some(Ok(Frame::Close(_)))=>break Ok(()),
+    Some(Ok(_))=>continue,
+    Some(Err(Error::Protocol(ProtocolError::ResetWithoutClosingHandshake)))=>break Err("没回 Close 就断了"),
+    other=>break Err(if other.is_none() {"流结束却没见到 Close"} else {"读出错"}),
+   }
+  };
+  assert_eq!(answer,Ok(()));
+ }
 }
