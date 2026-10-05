@@ -68,7 +68,12 @@ GET/DELETE /v1/alerts/log（协议 docs/提醒日志-协议-2026-10-05.md），�
    172dfa6c 捏合手感照 iOS a8012401：3pt 死区（横纵分开量）、越门槛只重设基准不缩放、停在最新时钉住最新根否则焦点钉住手指、
             竖向捏缩价格轴；浏览器一指一个 pointermove，死区里等两指都报过一帧再判，避免两指平移被误判成捏合。
    与 iOS 的差异：网页横屏一律是画线台布局，所以「主图˅」与眼睛横屏就在（iOS 只在画线时出现）；
-            捏过界的软边缘（阻尼与回弹，iOS aedc26df）网页没做，根宽到 1.6 / 40 直接停。
+            捏过界的软边缘后补（见下条 3b03703b），已与 iOS 一致。
+   3b03703b 捏过界软边照 iOS aedc26df：根宽越过 1.6 / 40 按对数阻尼再走一点（zoomOvershoot 0.15，最多 ×0.85 / ×1.15），
+            松手或双指变单指时 320ms 弹回边界（绕最后捏合中点，停在最新时钉住最新根）；回弹途中剩下那根手指不接管、
+            弹完接着拖，中途抬手不算点按也不甩；prefers-reduced-motion 下硬停在边界不越界。m-chart-gesture-view 加 6 条，
+            vitest 130 个文件 1693 条全过；干净工作树（origin/main 3b03703b）npm run deploy，2026-10-05 22:49:34 CST 完成，
+            手机 assets/m-CfJRh4mX.js，电脑 assets/index-CXUg2iM3.js（未变），curl /web/m/ 核对一致。
    测试：npm run build 通过；vitest 130 个文件 1687 条全过。新增 tests/m-landscape-bench.test.ts（17 条：逻辑、渲染开关、
             ViewMath 捏合几何、anchoredCenter、OrientedPriceScale），m-chart-gesture-view 加 5 条捏合用例。
    部署：干净工作树（origin/main 172dfa6c）npm run deploy，2026-10-05 22:37:52 CST 完成；电脑 assets/index-CXUg2iM3.js（未变），

@@ -1076,7 +1076,7 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   「眼睛 指标」开关走同步字段 `drawingOverlaysShown`，眼睛关着开指标会把眼睛打开；横屏 `landscapeBarSpacing` / 竖屏 `barSpacing` 各记各的
   （`'scale'` 事件带 `landscape`），价格轴倍率横竖各记一份只在内存（`chart/orientedPrice.ts`，照 iOS `424a0160`）；捏合照 iOS `a8012401`：
   3pt 死区、越门槛只重设基准、钉最新或钉手指、竖向捏缩价格轴，死区里等两指都报过再判（浏览器一指一个 pointermove）。
-  与 iOS 的差异：网页横屏一律是画线台，所以「主图˅」与眼睛横屏就在；捏过界的软边缘（iOS `aedc26df`）网页没做。
+  与 iOS 的差异：网页横屏一律是画线台，所以「主图˅」与眼睛横屏就在；捏过界的软边缘（iOS `aedc26df`）已补（`3b03703b`：越界对数阻尼、松手或双指变单指弹回、回弹中剩下那根手指不接管、减少动效下硬停）。
   vitest 130 文件 1687 条全过（新增 `m-landscape-bench`）；线上 Playwright 走查截图 `m-land-*.png`。
 - **验证**：干净工作树 vitest 129 文件 1665 条全过；部署 22:09–22:11 CST，PC `assets/index-CXUg2iM3.js`、手机 `assets/m-D9FgX1hU.js`；
   线上 Playwright 走查与截图 `docs/acceptance/网页版对齐-2026-10-05/`（summary.txt）。服务端无改动。
