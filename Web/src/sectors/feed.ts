@@ -55,13 +55,20 @@ export function seedFromUniverse(): boolean {
   return feed.quotes.size > 0
 }
 
+/** 最近一次拉到全量行情的时刻；在途的那次拉取（离开又回来时共用，不另发一次） */
+let okAt = 0
+let inflight: Promise<void> | null = null
+function poll(): Promise<void> {
+  return inflight ??= pollOnce().finally(() => { inflight = null })
+}
+
 async function pollOnce(): Promise<void> {
   await loadCatalog()
   try {
     const rows = await j<Ticker24[]>(`${REST}/fapi/v1/ticker/24hr`, 10_000)
     const list: Ticker[] = rows.map(t => ({ symbol: t.symbol, pct: num(t.priceChangePercent), quoteVolume: num(t.quoteVolume), price: num(t.lastPrice) }))
     const next = ingest(list, feed.index.size ? feed.index : undefined)
-    if (next.size) { feed.quotes = next; feed.ok = true } else feed.ok = feed.quotes.size > 0
+    if (next.size) { feed.quotes = next; feed.ok = true; okAt = Date.now() } else feed.ok = feed.quotes.size > 0
   } catch {
     feed.ok = feed.quotes.size > 0 ? true : false
     throw new Error('ticker')
@@ -72,15 +79,22 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let gen = 0
 let failures = 0
 /** 开始轮询；每拉到一次就回调一次。页面离开时 stopFeed()。
- *  每次开始记一代：离开又回来时上一轮还没回来的那次拉取作废，不会再排出第二条轮询链 */
+ *  每次开始记一代：离开又回来时上一轮还没回来的那次拉取作废，不会再排出第二条轮询链。
+ *  回来时上一次拉到的还不满一个周期就先用它、等满了再拉；上一次还在途就等它，不另发——
+ *  全量 ticker/24hr 权重 40，几页之间来回点 50 次曾发出 50 次全量拉取、把一分钟预算吃满，
+ *  后面的 K 线请求排在限流队列里干等（2026-10-05 F 路压测） */
 export function startFeed(onChange: () => void): void {
   if (gen > 0) return
   const my = gen = -gen + 1
   const live = (): boolean => gen === my
+  let first = true
   const tick = (): void => {
     if (!live()) return
     if (document.hidden) { timer = setTimeout(tick, POLL_MS); return }
-    pollOnce().then(() => { failures = 0 }, () => { failures++ }).finally(() => {
+    const fresh = POLL_MS - (Date.now() - okAt)
+    if (first && fresh > 0 && feed.quotes.size && !inflight) { first = false; onChange(); timer = setTimeout(tick, fresh); return }
+    first = false
+    poll().then(() => { failures = 0 }, () => { failures++ }).finally(() => {
       if (!live()) return
       onChange()
       timer = setTimeout(tick, failures ? Math.min(POLL_MS * 2 ** Math.min(failures, 2), 30_000) : POLL_MS)

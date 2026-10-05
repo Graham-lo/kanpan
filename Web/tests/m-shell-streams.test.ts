@@ -1,5 +1,6 @@
 /* 手机网页版收尾审查（同步与壳）：离开行情页后 K 线流真的撤掉、连接没人要就关（m/pages/_streams → market/stream） */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { LINGER_MS } from '../src/market/stream'
 
 class FakeWS {
   static OPEN = 1; static CONNECTING = 0; static CLOSED = 3
@@ -34,7 +35,7 @@ const frames = (w: FakeWS) => w.sent.map(x => `${x.method} ${x.params.join(',')}
  * 连接池一条连接上可以挂多页的流，URL 里的 ?streams= 只是开连接那一刻的名单；离开后发的是 UNSUBSCRIBE、
  * 之后一帧 K 线都不再收；没人要任何流时连接直接关。这里把这几条钉住 */
 describe('离开行情页后 K 线流（_streams.wantStreams → market/stream 连接池）', () => {
-  it('只有行情页在订：离开后连接关掉', async () => {
+  it('只有行情页在订：离开后 K 线立刻退订、连接空着留 LINGER_MS 再关', async () => {
     const m = await load()
     m.wantStreams('chart', [K, T])
     vi.advanceTimersByTime(200)
@@ -42,8 +43,43 @@ describe('离开行情页后 K 线流（_streams.wantStreams → market/stream �
     expect(m.streamDebug().subscribed).toEqual([K, T])
     m.wantStreams('chart', [])
     vi.advanceTimersByTime(200)
+    expect(frames(FakeWS.all[0])).toEqual([`UNSUBSCRIBE ${K},${T}`])
+    expect(m.streamDebug().subscribed).toEqual([])
+    expect(m.streamDebug().state).toBe('idle')
+    vi.advanceTimersByTime(LINGER_MS)
     expect(m.streamDebug().conns).toEqual([])
     expect(FakeWS.all[0].readyState).toBe(3)
+  })
+
+  it('F6：我的 ↔ 行情来回点（LINGER_MS 内回来）：同一条连接上补订，不再握手', async () => {
+    const m = await load()
+    m.wantStreams('chart', [K, T])
+    vi.advanceTimersByTime(200)
+    const ws = FakeWS.all[0]
+    ws.open()
+    for (let i = 0; i < 50; i++) {
+      m.wantStreams('chart', []); vi.advanceTimersByTime(1000)
+      m.wantStreams('chart', [K, T]); vi.advanceTimersByTime(1000)
+      ws.onmessage?.({ data: JSON.stringify({ stream: K, data: { e: 'kline', s: 'BTCUSDT', k: { t: 0, o: '1', h: '1', l: '1', c: '1', q: '1', Q: '1', v: '1', i: '15m' } } }) })
+    }
+    expect(FakeWS.all).toHaveLength(1)
+    expect(ws.readyState).toBe(1)
+    expect(m.streamDebug().subscribed.sort()).toEqual([K, T].sort())
+  })
+
+  it('F6：没人要流时切后台，空连接立刻收掉，不在后台留', async () => {
+    const m = await load()
+    m.wantStreams('chart', [K, T])
+    vi.advanceTimersByTime(200)
+    FakeWS.all[0].open()
+    m.wantStreams('chart', [])
+    vi.advanceTimersByTime(200)
+    expect(FakeWS.all[0].readyState).toBe(1)
+    vi.stubGlobal('document', { visibilityState: 'hidden' })
+    m.wantStreams('chart', [])
+    vi.advanceTimersByTime(200)
+    expect(FakeWS.all[0].readyState).toBe(3)
+    expect(m.streamDebug().conns).toEqual([])
   })
 
   it('自选页还订着行情：连接留着给它用，但 K 线退订；回来在同一条连接上补订，不新开', async () => {
@@ -85,8 +121,9 @@ describe('离开行情页后 K 线流（_streams.wantStreams → market/stream �
     m.wantStreams('sectors', ['ethusdt@ticker'])
     m.wantStreams('sectors', [])
     vi.advanceTimersByTime(200)
+    expect(frames(ws)).toEqual([`UNSUBSCRIBE ${K},${T}`])
+    vi.advanceTimersByTime(LINGER_MS)
     expect(ws.readyState).toBe(3)
-    expect(ws.sent).toEqual([])
   })
 })
 

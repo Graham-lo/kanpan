@@ -74,8 +74,12 @@ export class ChartBeat {
  * - 冷启动第一次连上：首屏那一页刚取完（freshAt 距今不到 5 秒）就是同一批数据，不再补第二次；
  *   首屏取完很久才连上（弱网慢连）照样补，那段时间里可能收了根。
  * 首屏还在取（loading）时的连上由 resync 自己跳过，取回来的就是最新的。
+ * - idled：连过之后中途变成过「没人要流」（idle）、之后没再真断过——那是行情页自己收起来（切到「我的」、
+ *   进回放）退订的，不是断线；回来补不补交给心跳的 onReturn（离开超过 AWAY_RESYNC_MS 才补）。
+ *   否则「我的 ↔ 行情」来回点一次就整页重取一次 1500 根末页（权重 10），50 次来回 50 次（2026-10-05 F 路压测）。
  */
-export function resyncOnOpen(was: string, now: string, everOpen: boolean, freshAt: number, at: number): boolean {
+export function resyncOnOpen(was: string, now: string, everOpen: boolean, freshAt: number, at: number, idled = false): boolean {
   if (now !== 'open' || was === 'open') return false
+  if (everOpen && idled) return false
   return everOpen || at - freshAt > AWAY_RESYNC_MS
 }

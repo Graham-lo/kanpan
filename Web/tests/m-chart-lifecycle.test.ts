@@ -245,6 +245,12 @@ describe('推送连上时补缺口：只有真正断过再连上才补（冷启�
     expect(resyncOnOpen('connecting', 'open', true, t0, t0 + 100)).toBe(true)
     expect(resyncOnOpen('closed', 'open', true, t0, t0 + 60_000)).toBe(true)
   })
+  it('F7：连过之后行情页自己收起来（idle）再回来连上 → 不补，交给心跳 onReturn；冷启动的 idle 不受影响', () => {
+    expect(resyncOnOpen('idle', 'open', true, t0, t0 + 100, true)).toBe(false)
+    expect(resyncOnOpen('connecting', 'open', true, t0, t0 + 60_000, true)).toBe(false)
+    expect(resyncOnOpen('connecting', 'open', false, t0, t0 + 5_001, true)).toBe(true)
+    expect(resyncOnOpen('connecting', 'open', true, t0, t0 + 100, false)).toBe(true)
+  })
   it('没有变成连上（仍连着、断开、重连中）→ 不补', () => {
     expect(resyncOnOpen('open', 'open', true, 0, t0)).toBe(false)
     expect(resyncOnOpen('open', 'connecting', true, 0, t0)).toBe(false)

@@ -124,6 +124,11 @@ let failed = false
 let debounce: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let watchdog: ReturnType<typeof setInterval> | null = null
+/** 没人要流时，连着的那条先退订干净、空着留一会再关：手机网页「我的」页不订任何流，
+ *  我的 ↔ 行情来回点一次就是一次握手（经网关 0.6–1.2 秒才连上、首帧 0.7–2.2 秒，2026-10-05 F 路实测），
+ *  留着空连接回来只发一条 SUBSCRIBE。只在前台留；切后台照旧立刻收掉 */
+export const LINGER_MS = 20_000
+let lingerTimer: ReturnType<typeof setTimeout> | null = null
 
 function offline(): boolean { return typeof navigator !== 'undefined' && navigator.onLine === false }
 function hidden(): boolean { return typeof document !== 'undefined' && document.visibilityState === 'hidden' }
@@ -151,7 +156,7 @@ function urlFor(route: Route): string | null { return route === 'direct' ? DIREC
 
 function paint(): void {
   const want = effective().length
-  const st: typeof S.wsState = !want && !conns.length ? 'idle'
+  const st: typeof S.wsState = !want ? 'idle'
     : failed ? 'closed'
     : conns.length && conns.every(c => c.sock.readyState === WebSocket.OPEN) ? 'open' : 'connecting'
   if (S.wsState !== st) { S.wsState = st; emit({ type: 'ws' }) }
@@ -164,6 +169,18 @@ function apply(): void {
   if (!url) { S.route = 'direct'; url = DIRECT }
   // 换了线路的连接一律收掉
   for (const c of conns.slice()) if (c.url !== url) drop(c)
+  if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null }
+  if (!want.length && !hidden() && !offline()) {
+    // 连着的留一条空着（退订干净），没连上的直接收；LINGER_MS 内没人再要就关
+    const keep = conns.find(c => c.sock.readyState === WebSocket.OPEN)
+    for (const c of conns.slice()) if (c !== keep) drop(c)
+    if (keep) {
+      keep.want = []; reconcile(keep)
+      lingerTimer = setTimeout(() => { lingerTimer = null; if (!effective().length) { for (const c of conns.slice()) drop(c); paint() } }, LINGER_MS)
+    }
+    paint()
+    return
+  }
   const plan = assignStreams(conns.map(c => c.want), want, PER_CONN[S.route])
   const old = conns
   conns = []

@@ -764,6 +764,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   let wsSeen: string = S.wsState
   let everOpen = S.wsState === 'open'
+  /** 连过之后中途没人要流（行情页收起来退订）、之后没真断过：连上时不算断线重连，见 resyncOnOpen */
+  let idled = false
   const offMarket = opts.offline ? () => {} : onMarket(e => {
     if (destroyed) return
     if (e.type === 'kline' && e.symbol === symbol && e.iv === interval) onKline(e.bar)
@@ -780,10 +782,12 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       syncDepth()
       const was = wsSeen, now = S.wsState
       wsSeen = now
+      if (now === 'idle') idled = true
+      else if (now === 'closed') idled = false   // 真断过：回来照样补
       // 刚才取不到（直连在国内连不上币安）、现在换了线路连上了：整条重取，不等用户换品种
       if (now === 'open' && was !== 'open' && !series && error && !loading) void load()
-      else if (resyncOnOpen(was, now, everOpen, freshAt, Date.now())) { void resync(); compareFeed.resync() }
-      if (now === 'open') everOpen = true
+      else if (resyncOnOpen(was, now, everOpen, freshAt, Date.now(), idled)) { void resync(); compareFeed.resync() }
+      if (now === 'open') { everOpen = true; idled = false }
     }
   })
 
