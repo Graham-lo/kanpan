@@ -104,6 +104,7 @@ function fakeFetcher(series: MetricPoint[], field: string, o: { fail?: number; r
 /** now 取一个 5 分钟桶中间的时刻，数据是从 40 天前到 now 的每 5 分钟一条。 */
 const NOW = Date.UTC(2026, 8, 29, 12, 2, 30)
 const FIVE = 5 * MIN
+const PAGE_ = 500
 const firstSample = bucketStart(NOW - 40 * DAY, '5m')
 const everyFive: MetricPoint[] = []
 for (let t = firstSample; t <= NOW; t += FIVE) everyFive.push({ time: t, value: (t - firstSample) / FIVE })
@@ -178,6 +179,55 @@ describe('OISource.fetchMetric（近 30 天那一段）', () => {
     // 已经到手的 20 页照用（降采样后挤在同一两个 5 分钟桶里）。
     expect(r.points.length).toBeGreaterThan(0)
     expect(r.points.every(p => p.time % FIVE === 0)).toBe(true)
+  })
+
+  /**
+   * 照币安基差接口的真实脾气（2026-10-05 线上实测）：只带 endTime 时不理它、永远回最新的 limit 条；
+   * 同时带 startTime 才按 [startTime, endTime] 升序给前 limit 条。
+   */
+  function binanceLikeBasis(series: MetricPoint[]) {
+    const calls: Call[] = []
+    const fetcher = async <T,>(url: string): Promise<T> => {
+      const u = new URL(url)
+      calls.push({ url, path: u.pathname, params: u.searchParams })
+      const end = Number(u.searchParams.get('endTime')), limit = Number(u.searchParams.get('limit'))
+      const start = u.searchParams.has('startTime') ? Number(u.searchParams.get('startTime')) : null
+      const rows = start == null ? series.slice(-limit) : series.filter(p => p.time >= start && p.time <= end).slice(0, limit)
+      return rows.map(p => ({ timestamp: p.time, basisRate: p.value / 100, pair: 'BTCUSDT', contractType: 'PERPETUAL' })) as T
+    }
+    return { calls, fetcher }
+  }
+
+  it('fetchMetric · 基差每页同时带 startTime（(end − 500 桶, end]，不早于近 30 天）：翻页真的往左走、翻到底', async () => {
+    // 线上现象：手机网页开「基差」副图，同一页请求连发 20 次（endTime 被上游忽略，first.time 永远不变）
+    const { calls, fetcher } = binanceLikeBasis(everyFive)
+    const from = NOW - 3 * DAY
+    const r = await fetchMetric('BASIS', 'BTCUSDT', '5m', from, NOW, NOW, fetcher)
+    expect(r.complete).toBe(true)
+    // 3 天 × 288 条 = 864 条 → 两页
+    expect(calls.length).toBe(2)
+    for (const c of calls) {
+      expect(c.path).toBe('/futures/data/basis')
+      expect(c.params.get('contractType')).toBe('PERPETUAL')
+      const end = Number(c.params.get('endTime')), start = Number(c.params.get('startTime'))
+      expect(start).toBe(Math.max(from, end - 500 * FIVE + 1))
+    }
+    expect(calls[1].params.get('startTime')).toBe(String(from))
+    const want = everyFive.filter(p => p.time >= from && p.time <= NOW)
+    expect(r.points.length).toBe(want.length)
+    expect(r.points[0]).toEqual(want[0])
+    expect(r.points.at(-1)).toEqual(want.at(-1))
+  })
+
+  it('fetchMetric · 上游不理 endTime（同一页回两次）：第二页就当问完，不再烧满 20 页', async () => {
+    const latest = everyFive.slice(-PAGE_)
+    const { calls, fetcher } = fakeFetcher(everyFive, 'longShortRatio', {
+      rowsFor: () => latest.map(p => ({ timestamp: p.time, longShortRatio: p.value })),
+    })
+    const r = await fetchMetric('LSR', 'BTCUSDT', '5m', NOW - 20 * DAY, NOW, NOW, fetcher)
+    expect(calls.length).toBe(2)
+    expect(r.complete).toBe(true)
+    expect(r.points).toEqual(latest)
   })
 
   it('fetchMetric · from > to 或整段早于近 30 天：不发请求，算问完（归档那一段网页不做）', async () => {

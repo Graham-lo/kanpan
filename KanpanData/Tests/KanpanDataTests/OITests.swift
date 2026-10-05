@@ -692,6 +692,87 @@ struct OIIncrementalTests {
   }
 }
 
+@Suite("外部指标近期翻页：基差接口不理 endTime")
+struct ExternalPagingTests {
+
+  /// 照币安基差接口的真实脾气（2026-10-05 线上实测）：只带 endTime 时不理它、永远回最新的 500 条；
+  /// 同时带 startTime 才按 [startTime, endTime] 升序给前 500 条。时间戳每小时一条、到 `now` 为止。
+  private static func basisServer(now: Int64, pacer: StepPacer) -> FakeServer {
+    FakeServer(pacer: pacer) { url in
+      guard url.path == "/futures/data/basis" else { return HTTPReply(status: 404) }
+      let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+      let value = { (name: String) in q.first { $0.name == name }?.value.flatMap { Int64($0) } }
+      let end = value("endTime") ?? now
+      let step: Int64 = 3_600_000
+      var times: [Int64]
+      if let start = value("startTime") {
+        times = (0..<900).map { now - Int64($0) * step }.filter { $0 >= start && $0 <= end }.sorted()
+        times = Array(times.prefix(500))
+      } else {
+        times = (0..<500).map { now - Int64(499 - $0) * step }
+      }
+      let rows = times.map { t in
+        #"{"pair":"BTCUSDT","contractType":"PERPETUAL","basis":"-37.0","basisRate":"-0.0004","indexPrice":"86000","futuresPrice":"85963","annualizedBasisRate":"","timestamp":\#(t)}"#
+      }
+      return json("[" + rows.joined(separator: ",") + "]")
+    }
+  }
+
+  @Test("基差每页同时带 startTime（(end − 500 桶, end]，不早于近 30 天）：翻页真的往左走、两页翻到底")
+  func basisPagesCarryStartTime() async throws {
+    // 线上现象：开「基差」副图，同一页请求连发 20 次（endTime 被上游忽略，first.time 永远不变）
+    let pacer = StepPacer()
+    let now = Aggregator.utcMs(year: 2026, month: 10, day: 5)
+    let server = Self.basisServer(now: now, pacer: pacer)
+    let transport = FakeTransport(server)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let src = OISource(rest: BinanceREST(transport: transport, pacer: pacer), transport: transport,
+                       store: OIStore(paths: Paths(root: dir)))
+    let from = now - 600 * 3_600_000          // 25 天：在近 30 天里，要翻两页
+    let got = await src.fetchMetric(.basis, symbol: "BTCUSDT", interval: .h1, from: from, to: now, now: now)
+    let urls = await server.urls()
+    #expect(urls.count == 2)
+    for url in urls {
+      let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+      let end = try #require(q.first { $0.name == "endTime" }?.value.flatMap { Int64($0) })
+      let start = try #require(q.first { $0.name == "startTime" }?.value.flatMap { Int64($0) })
+      #expect(start == max(from, end - 500 * 3_600_000 + 1))
+    }
+    #expect(got.complete)
+    #expect(got.points.count == 601)
+    #expect(got.points.first?.time == from)
+    #expect(got.points.last?.time == now)
+    #expect(got.points.allSatisfy { abs($0.value - (-0.04)) < 1e-9 })   // 百分数
+  }
+
+  @Test("上游不理 endTime（同一页回两次）：第二页就当问完，不再烧满 20 页")
+  func ignoredEndTimeStopsAfterOneRepeat() async throws {
+    let pacer = StepPacer()
+    let now = Aggregator.utcMs(year: 2026, month: 10, day: 5)
+    let server = FakeServer(pacer: pacer) { url in
+      guard url.path == "/futures/data/globalLongShortAccountRatio" else { return HTTPReply(status: 404) }
+      // 不管问的是哪一段，永远回最新的 500 条
+      let rows = (0..<500).map { i -> String in
+        let t = now - Int64(499 - i) * 3_600_000
+        return #"{"symbol":"BTCUSDT","longShortRatio":"1.2","longAccount":"0.55","shortAccount":"0.45","timestamp":\#(t)}"#
+      }
+      return json("[" + rows.joined(separator: ",") + "]")
+    }
+    let transport = FakeTransport(server)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let src = OISource(rest: BinanceREST(transport: transport, pacer: pacer), transport: transport,
+                       store: OIStore(paths: Paths(root: dir)))
+    // 25 天：比一页 500 小时宽，不加护栏就会一页一页重复问到 20 次
+    let got = await src.fetchMetric(.lsr, symbol: "BTCUSDT", interval: .h1,
+                                    from: now - 600 * 3_600_000, to: now, now: now)
+    #expect(await server.urls().count == 2)
+    #expect(got.complete)
+    #expect(got.points.count == 500)
+  }
+}
+
 @Suite("OI 切块：细周期看长区间也要走网关那条快路")
 struct OIChunkTests {
 

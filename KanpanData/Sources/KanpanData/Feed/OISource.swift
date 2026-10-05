@@ -467,12 +467,18 @@ public actor OISource {
       let lower = max(from, cutoff)
       let sampleInterval: Interval = interval.stepMs < 300_000 ? .m5 : interval.stepMs > 86_400_000 ? .d1 : interval
       let currentBucket = Aggregator.bucketStart(ms: now, interval: sampleInterval)
+      let periodMs = sampleInterval.stepMs
       var end = min(to, now)
       var answered = false
       for _ in 0..<20 {
         if Task.isCancelled { break }
         do {
           let page: [OIPoint]
+          // 基差接口只带 endTime 时不理它、永远回最新的 500 条（2026-10-05 线上实测），从右往左翻
+          // 就在同一页上原地打转、把 20 页额度全烧掉；同时带 startTime 它才按窗口给。所以基差每页
+          // 把下界也说清楚：(end − 500 桶, end]，截在近 30 天里（更早的 startTime 上游报 -1130）。
+          // 多空比 / 主动买卖比认 endTime，照旧只带上界。
+          let basisStart = max(lower, end - 500 * periodMs + 1)
           switch id {
           case .lsr:
             page = try await provider.globalLongShortAccountRatio(symbol: symbol, period: period, limit: 500,
@@ -484,7 +490,7 @@ public actor OISource {
               .map { OIPoint(time: $0.timeMs, value: $0.buySellRatio) }
           default:
             page = try await provider.basis(symbol: symbol, period: period, limit: 500,
-                                            startTime: nil, endTime: end)
+                                            startTime: basisStart, endTime: end)
               .map { OIPoint(time: $0.timeMs, value: $0.basisRate * 100) }
           }
           guard !Task.isCancelled else { break }
@@ -492,6 +498,8 @@ public actor OISource {
             (id != .taker || $0.time < currentBucket) }
           guard let first = page.first else { answered = true; break }
           if page.count < 500 || first.time <= lower { answered = true; break }
+          // 上游没理 endTime（整页都落在问的那一刻之后）：再翻也还是这一页，当问完，不再往左试。
+          if first.time > end { answered = true; break }
           end = first.time - 1
         } catch {
           // 断在半路：已经到手的几页照用，`answered` 留假，下一轮再问这一段。

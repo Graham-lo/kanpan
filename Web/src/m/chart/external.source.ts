@@ -85,13 +85,19 @@ export async function fetchMetric(id: ExternalID, symbol: string, iv: Interval, 
   const period = metricPeriod(iv)
   const sampleIv: Interval = stepMs(iv) < 300_000 ? '5m' : stepMs(iv) > 86_400_000 ? '1d' : iv
   const currentBucket = bucketStart(now, sampleIv)
+  const periodMs = stepMs(sampleIv)
   const out: MetricPoint[] = []
   let end = Math.min(to, now)
   let complete = false
   for (let k = 0; k < MAX_PAGES; k++) {
     let rows: Row[]
+    // 基差接口（/futures/data/basis）只带 endTime 时不理它、永远回最新的 500 条（2026-10-05 线上实测），
+    // 从右往左翻就在同一页上原地打转、把 20 页额度全烧掉；同时带 startTime 它才按窗口给。
+    // 所以基差每页把下界也说清楚：(end − 500 桶, end]，截在近 30 天里（更早的 startTime 上游报 -1130）。
+    // 持仓量 / 多空比 / 主动买卖比认 endTime，照旧只带上界。
+    const window = id === 'BASIS' ? `&startTime=${Math.floor(Math.max(lower, end - PAGE * periodMs + 1))}` : ''
     try {
-      rows = await fetcher<Row[]>(`${REST}${e.path}?${e.symbolKey}=${symbol}&period=${period}&limit=${PAGE}&endTime=${Math.floor(end)}${e.extra}`)
+      rows = await fetcher<Row[]>(`${REST}${e.path}?${e.symbolKey}=${symbol}&period=${period}&limit=${PAGE}${window}&endTime=${Math.floor(end)}${e.extra}`)
     } catch { break }
     if (!Array.isArray(rows) || !rows.length) { complete = true; break }
     const page = rows.map(r => ({ time: +r.timestamp, value: e.pick(r) })).filter(p => Number.isFinite(p.time))
@@ -99,6 +105,8 @@ export async function fetchMetric(id: ExternalID, symbol: string, iv: Interval, 
     out.push(...page.filter(p => p.time >= lower && p.time <= to && (id !== 'TAKER' || p.time < currentBucket)))
     const first = page[0]
     if (!first || page.length < PAGE || first.time <= lower) { complete = true; break }
+    // 上游没理 endTime（整页都落在问的那一刻之后）：再翻也还是这一页，当问完，不再往左试
+    if (first.time > end) { complete = true; break }
     end = first.time - 1
   }
   // 和 Swift 一样交回按本周期降采样过的点（OISource.fetchMetric 末尾的 downsample(dedup(points))）：
