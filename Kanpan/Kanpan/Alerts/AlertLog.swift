@@ -10,7 +10,7 @@ import KanpanAccount
 /// 复盘到点也由它推。日志按账号存在 `kanpan-api`：
 ///
 /// - `GET v1/alerts/log?limit=200`（要登录）→ `{"records":[…]}`（裸的或包在 `{"data":…}` 里都认），
-///   每条 `id / alertId / kind(price|line|condition|reviewDue) / symbol / title / condition /
+///   每条 `id / alertId / kind(price|drawing|condition|reviewDue) / symbol / title / condition /
 ///   firedAt(毫秒) / firedPrice`，按响的时间倒序；
 /// - `DELETE v1/alerts/log` → 204，清空；
 /// - **404 = 服务端还没有这条路**：当作「暂无记录」，不当成故障。
@@ -21,7 +21,7 @@ import KanpanAccount
 struct AlertLogRecord: Codable, Equatable, Identifiable, Sendable {
   var id: String
   var alertId: String?
-  /// `price` / `line` / `condition` / `reviewDue`。认不得的也照摆，只当价格类。
+  /// `price` / `drawing` / `condition` / `reviewDue`。认不得的也照摆，只当价格类。
   var kind: String
   var symbol: String
   var title: String
