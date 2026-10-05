@@ -30,6 +30,7 @@
 import type { Bar } from '../chart/calc'
 import { S, emit, type Route } from './state'
 import { emitTrade } from './trades'
+import { ago, before } from '../util/clock'
 
 /**
  * 直连的推送域名照 iOS 出厂的 `dstream.binance.me`（`KanpanNetwork/Binance/BinanceProvider.swift`
@@ -44,6 +45,8 @@ export const PER_CONN: Record<Route, number> = { direct: 200, gateway: 64 }
 export const TOTAL: Record<Route, number> = { direct: 1000, gateway: 160 }
 const FIRST_FRAME_MS = 8000
 const SILENCE_MS = 30000
+/** 断线退避最长等多久（藏在后台时至少 10 秒，也不超过它） */
+const MAX_BACKOFF_MS = 15000
 /** 每条连接的控制消息令牌桶：网关 3/s 突发 12（stream_hub 每条 4/s 突发 16、同一 IP 16/s 突发 64，三条连接也不越线）；
  *  直连 4/s 突发 4（币安每条连接每秒 10 条，桶满时任何 1 秒窗口里最多 8 条） */
 export const CONTROL: Record<Route, { rate: number; burst: number }> = { direct: { rate: 4, burst: 4 }, gateway: { rate: 3, burst: 12 } }
@@ -191,7 +194,7 @@ function apply(): void {
   })
   const t = Date.now()
   if (plan.open.length) {
-    if (t < blockedUntil || offline()) scheduleRetry(Math.max(0, blockedUntil - t))
+    if (before(blockedUntil, MAX_BACKOFF_MS, t) || offline()) scheduleRetry(Math.max(0, Math.min(blockedUntil - t, MAX_BACKOFF_MS)))
     else plan.open.forEach(w => open(url!, w))
   } else if (failed && conns.every(c => c.gotFrame)) failed = false   // 断掉那条的流已经挪到别的连接上
   paint()
@@ -207,7 +210,7 @@ function reconcile(c: Conn): void {
   if (!need) return
   const { rate, burst } = CONTROL[S.route]
   const now = Date.now()
-  c.tokens = Math.min(burst, c.tokens + (now - c.tokAt) * rate / 1000); c.tokAt = now
+  c.tokens = Math.min(burst, c.tokens + ago(c.tokAt, now) * rate / 1000); c.tokAt = now
   if (c.tokens < need) {
     const wait = Math.ceil((need - c.tokens) * 1000 / rate)
     c.ctlTimer = setTimeout(() => { c.ctlTimer = null; if (conns.includes(c)) reconcile(c) }, wait)
@@ -277,7 +280,7 @@ function open(url: string, want: string[]): void {
   sock.onerror = () => { /* onclose 会跟着来 */ }
   if (!watchdog) watchdog = setInterval(() => {
     const now = Date.now()
-    for (const x of conns.slice()) if (x.sock.readyState === WebSocket.OPEN && x.gotFrame && x.subscribed.size && now - x.last > SILENCE_MS) fail(x)
+    for (const x of conns.slice()) if (x.sock.readyState === WebSocket.OPEN && x.gotFrame && x.subscribed.size && ago(x.last, now) > SILENCE_MS) fail(x)
   }, 5000)
 }
 
@@ -296,7 +299,7 @@ function fail(c: Conn): void {
   if (!conns.includes(c)) return
   drop(c)
   failed = true
-  const delay = Math.min(15000, 1000 * 2 ** retry++)
+  const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry++)
   const wait = hidden() ? Math.max(delay, 10000) : delay
   blockedUntil = Date.now() + wait
   paint()

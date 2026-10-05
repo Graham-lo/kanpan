@@ -28,6 +28,7 @@ import { ReplayPlayer } from '../review/player'
 import { createLoadGate } from '../review/loadGate'
 import { onSession } from '../account/session'
 import type { Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from '../review/types'
+import { ago } from '../util/clock'
 
 GLOSSARY['净盈亏'] = '已平仓回合的已实现盈亏，减去手续费，加上收到的资金费（付出的资金费是负数）。'
 GLOSSARY['盈亏比'] = '赚钱回合的平均盈利 ÷ 亏钱回合的平均亏损。'
@@ -818,7 +819,7 @@ function shown(): void {
   if (!reviewToken()) { renderLogin(false); return }
   if (!R.built) build()
   player?.wake()
-  if (!R.loadedAt || Date.now() - R.loadedAt > 60_000) { render(); void load() }
+  if (!R.loadedAt || ago(R.loadedAt) > 60_000) { render(); void load() }
   else render()
 }
 

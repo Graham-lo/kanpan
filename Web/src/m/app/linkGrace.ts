@@ -6,6 +6,7 @@
  */
 import { S, on as onMarket } from '../../market'
 import { st, save } from './store'
+import { ago } from '../../util/clock'
 
 export const LINK_GRACE_MS = 5000
 
@@ -19,7 +20,7 @@ export class LinkGrace {
     this.since = now
     return true
   }
-  isDown(now: number): boolean { return this.since != null && now - this.since >= LINK_GRACE_MS }
+  isDown(now: number): boolean { return this.since != null && ago(this.since, now) >= LINK_GRACE_MS }
 }
 
 /** 此刻该连着却没连上：前台、有流要订（idle = 没人要连接）、却不是 open */

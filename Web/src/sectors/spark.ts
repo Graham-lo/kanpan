@@ -15,6 +15,7 @@
 import { klines } from '../market'
 import { parseDay } from './aggregate'
 import type { SectorWindow } from './aggregate'
+import { ago, before } from '../util/clock'
 
 export const PER_BOARD = 6
 /** 服务端一批最多几只（契约上限） */
@@ -91,7 +92,7 @@ async function drainServer(): Promise<void> {
     while (serverQueue.length) {
       const list = serverQueue
       serverQueue = []
-      if (Date.now() < serverDownUntil) { direct(list); continue }
+      if (before(serverDownUntil, TTL_MS)) { direct(list); continue }
       const batches: string[][] = []
       for (let i = 0; i < list.length; i += BATCH) batches.push(list.slice(i, i + BATCH))
       const oks = await Promise.all(batches.map(b => fromServer(b)))
@@ -113,7 +114,7 @@ function loadSession(): void {
     const saved = JSON.parse(raw) as Record<string, { at: number; bars: [number, number][] }>
     const now = Date.now()
     for (const [k, v] of Object.entries(saved)) {
-      if (!v || !Array.isArray(v.bars) || !(now - v.at < TTL_MS)) continue
+      if (!v || !Array.isArray(v.bars) || !(ago(v.at, now) < TTL_MS)) continue
       if (!cache.has(k)) cache.set(k, { at: v.at, bars: new Map(v.bars) })
     }
   } catch { /* 坏了就当没有 */ }
@@ -125,7 +126,7 @@ function saveSession(): void {
   saveTimer = setTimeout(() => {
     try {
       const now = Date.now(), out: Record<string, { at: number; bars: [number, number][] }> = {}
-      for (const [k, v] of cache) if (v.direct && now - v.at < TTL_MS && v.bars.size) out[k] = { at: v.at, bars: [...v.bars] }
+      for (const [k, v] of cache) if (v.direct && ago(v.at, now) < TTL_MS && v.bars.size) out[k] = { at: v.at, bars: [...v.bars] }
       globalThis.sessionStorage?.setItem(SESSION_KEY, JSON.stringify(out))
     } catch { /* 存不下就只留在内存里 */ }
   }, 500)
@@ -166,7 +167,7 @@ export function wantSparks(symbols: string[], onReady: () => void): void {
     if (seen.has(k)) continue
     seen.add(k)
     const c = cache.get(k)
-    if ((!c || now - c.at >= TTL_MS) && !inflight.has(k)) want.push(k)
+    if ((!c || ago(c.at, now) >= TTL_MS) && !inflight.has(k)) want.push(k)
   }
   // 直连队列里上一轮剩下、这一轮不看了的，丢掉
   queue = queue.filter(k => seen.has(k) || (inflight.delete(k), false))

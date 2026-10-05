@@ -5,6 +5,8 @@
  * 一分钟之内回来不用重连。只认「离开」本身，不认停留多久之外的任何东西。
  */
 
+import { ago } from '../util/clock'
+
 /** 离开多久后停掉数据层 */
 export const IDLE_STOP_MS = 60_000
 
@@ -16,7 +18,7 @@ export class IdleGate {
   want(away: boolean, now: number): boolean {
     if (!away) { this.since = null; return true }
     if (this.since == null) this.since = now
-    return now - this.since < this.ms
+    return ago(this.since, now) < this.ms
   }
 }
 

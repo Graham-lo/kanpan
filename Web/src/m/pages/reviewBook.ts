@@ -56,6 +56,7 @@ import { groupRateText, resolvedGroups, roundDecimals } from '../../review/model
 import type { Fill, Match, ReviewAttachment, Round, SavedMatch, SearchStatus, StatGroup, TradeRecord, ViewRecordFull } from '../../review/types'
 import * as M from '../model/reviewBook'
 import type { MeHost, MeLayer } from './meHost'
+import { ago, before } from '../../util/clock'
 
 const CHEV = icon('chevronRight', 12)
 const PLAY = '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M5 3.2v11.6c0 .6.66.97 1.17.66l9.3-5.8a.78.78 0 0 0 0-1.32l-9.3-5.8A.78.78 0 0 0 5 3.2z" fill="currentColor"/></svg>'
@@ -138,7 +139,7 @@ async function flushRound(): Promise<void> {
     // 记一笔那条还没传上去：先等它（服务端还没有这条）
     if (local.has(op.recordId)) { blocked.add(op.recordId); continue }
     const now = Date.now()
-    if (op.holdUntil && op.holdUntil > now && !op.attempted) {
+    if (op.holdUntil && before(op.holdUntil, M.VOID_HOLD_MS, now) && !op.attempted) {
       // 作废留 5 秒撤销：到点再来；这条后面排着的也等它
       blocked.add(op.recordId)
       scheduleFlush(op.holdUntil - now)
@@ -289,7 +290,7 @@ export function refreshReviewStatus(force = false): void {
   void flushPending()
   // 只有替同一个人拉的那一拉才挡：换了人时上一个人的那拉回来会被丢掉，新人这拉必须照发
   if (inflight && inflight.user === session.user) { if (force) inflight.again = true; return }
-  if (!force && status.at && Date.now() - status.at < THROTTLE) return
+  if (!force && status.at && ago(status.at) < THROTTLE) return
   status.at = Date.now()
   const who = session.user
   const run = { user: who, again: false }

@@ -16,6 +16,7 @@ import { fmtAxis, fmtCompact, sh, pad } from '../util/format'
 import { reviewApi, errorText, ReviewError } from '../review/api'
 import type { TradeRecord, Fill } from '../review/types'
 import { canUpload } from '../notes/sync'
+import { ago } from '../util/clock'
 
 export const NO_KEY_TEXT = '在手机上绑定交易所只读密钥后，成交会自动同步到这里'
 const TTL = 60_000
@@ -85,7 +86,7 @@ function dayLabel(t: number): string {
 
 async function load(symbol: string, force = false): Promise<void> {
   const e = cache.get(symbol)
-  if (e && (e.loading || (!force && Date.now() - e.at < TTL))) return
+  if (e && (e.loading || (!force && ago(e.at) < TTL))) return
   const cur: Entry = { at: e?.at ?? 0, rows: e?.rows ?? null, err: null, loading: true }
   cache.set(symbol, cur)
   const ep = epoch
@@ -115,7 +116,7 @@ export function renderTradesPanel(el: HTMLElement, symbol: string): void {
   const headHTML = `<div class="sp-head"><h3>成交</h3><button class="ibtn sm" id="trReload" aria-label="重新取成交" data-tip="重新取">${I('refresh', 'icon-16')}</button></div>`
   if (!canUpload()) { el.innerHTML = `<div class="sp-head"><h3>成交</h3></div>${loginBlock()}`; return }
   const e = cache.get(symbol)
-  if (!e || (!e.loading && Date.now() - e.at >= TTL)) void load(symbol)
+  if (!e || (!e.loading && ago(e.at) >= TTL)) void load(symbol)
   const ent = cache.get(symbol)!
   let body: string
   if (ent.rows == null) {

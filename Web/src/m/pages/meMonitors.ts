@@ -24,6 +24,7 @@ import { notify, notifyPermission } from './notify'
 import { wantStreams } from './_streams'
 import { noteWatchMoveFired, startHabits, watchMoveFactor } from './habitsRuntime'
 import { startInbox } from './inboxStore'
+import { ago } from '../../util/clock'
 
 // ───────── 自选波动提醒 ─────────
 
@@ -80,7 +81,7 @@ function readCursor(owner: string): number | null {
 export async function pullListingNotices(): Promise<void> {
   const owner = session.userId
   if (!st.notifyListingChanges || !owner || inflight) return
-  if (Date.now() - (lastPull.get(owner) ?? 0) < LN.minIntervalMs) return
+  if (ago(lastPull.get(owner) ?? 0) < LN.minIntervalMs) return
   inflight = true
   lastPull.set(owner, Date.now())
   try {

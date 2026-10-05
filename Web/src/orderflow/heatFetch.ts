@@ -9,6 +9,7 @@
  */
 import { getJSON } from './feed'
 import { bucketIndex } from './bucket'
+import { ago } from '../util/clock'
 
 export type Resp = { status: number; body: unknown }
 interface Entry { at: number; ttl: number; p: Promise<Resp> }
@@ -19,11 +20,11 @@ let sent = 0
 export function heatFetch(url: string, ttlMs: number, timeoutMs = 12_000): Promise<Resp> {
   const now = Date.now()
   const e = cache.get(url)
-  if (e && now - e.at < e.ttl) return e.p
+  if (e && ago(e.at, now) < e.ttl) return e.p
   sent++
   const p = getJSON(url, timeoutMs).then(r => { if (r.status !== 200) cache.delete(url); return r }, err => { cache.delete(url); throw err })
   cache.set(url, { at: now, ttl: ttlMs, p })
-  if (cache.size > 64) for (const [k, v] of cache) if (now - v.at >= v.ttl) cache.delete(k)
+  if (cache.size > 64) for (const [k, v] of cache) if (ago(v.at, now) >= v.ttl) cache.delete(k)
   return p
 }
 /** 诊断：一共真发出去几次（回归脚本看去重有没有生效） */

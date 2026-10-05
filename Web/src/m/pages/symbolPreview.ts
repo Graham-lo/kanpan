@@ -19,6 +19,7 @@ import { changePercentText, MISSING, priceText } from '../model/rowText'
 import { pillHTML, splitSymbol } from '../model/rowHTML'
 import { historyChange, miniCandles, RecentKeys, PREVIEW_BARS, PREVIEW_IV, PREVIEW_MINUTE_BARS, PREVIEW_SPAN_TEXT, type PreviewBar } from '../model/preview'
 import { fundingText, marketCapText, openInterestText, turnoverText } from './chart/logic'
+import { ago } from '../../util/clock'
 
 /** 菜单里的一项；带 submenu 的点了不关，原地换成子菜单 */
 export interface PreviewItem extends MenuItem { submenu?: () => MenuItem[] }
@@ -51,7 +52,7 @@ function touch(sym: string): void {
 async function load(sym: string, iv: string, limit: number, book: Map<string, Series>, fresh: number, done: () => void): Promise<void> {
   const prev = book.get(sym)
   const key = sym + '@' + iv
-  if ((prev && Date.now() - prev.at < fresh) || inflight.has(key)) return
+  if ((prev && ago(prev.at) < fresh) || inflight.has(key)) return
   inflight.add(key)
   try {
     const r = await klines(sym, iv, undefined, limit, false)

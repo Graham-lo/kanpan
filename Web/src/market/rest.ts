@@ -13,6 +13,7 @@ import { S, emit } from './state'
 import { Superseded, admit, coolingFor, isRateLimit, noteStatus, setGatewayProbe } from './limit'
 import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
 import { supplyOf } from './meta'
+import { ago } from '../util/clock'
 
 export const REST = 'https://fapi.binance.com'
 
@@ -164,7 +165,7 @@ export function detailOf(symbol: string): Detail | undefined { return detailCach
 /** 一分钟最多取一次。alive：排在限流队列里时问一下还要不要（扫图划过去的那只不要了就不发、不记这一分钟） */
 export async function fetchDetail(symbol: string, alive?: () => boolean): Promise<void> {
   const prev = detailCache.get(symbol)
-  if (prev && Date.now() - prev.t < 60e3) return
+  if (prev && ago(prev.t) < 60e3) return
   const d: Detail = { ...(prev || {}), t: Date.now() }
   detailCache.set(symbol, d)
   let dropped = false

@@ -10,6 +10,7 @@
  */
 import type { Bar } from './calc'
 import { klines } from '../market/rest'
+import { ago } from '../util/clock'
 
 export const FINE_CAP = 5000
 const PAGE = 1500
@@ -76,7 +77,7 @@ function request(key: string, symbol: string, f: { ms: number; name: string }, t
     while (cache.size > KEEP) { const k = cache.keys().next().value; if (k == null || k === key) break; cache.delete(k) }
   }
   c.want = [t0, t1]
-  if (c.busy || c.timer || Date.now() - c.failedAt < RETRY_MS) return
+  if (c.busy || c.timer || ago(c.failedAt) < RETRY_MS) return
   const entry = c
   entry.timer = setTimeout(() => { entry.timer = null; void load(entry, symbol, f, onReady) }, DEBOUNCE_MS)
 }

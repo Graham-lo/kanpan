@@ -22,6 +22,7 @@ import {
   type DepthBook, type BinanceMarket, binanceMarket, binanceSnapshot, binanceStreams, BINANCE_SNAPSHOT_LEVELS,
   decodeBinance, decodeOKX, decodeCoinbase, okxSubscribe, okxResubscribe, coinbaseSubscribe, OKX_MAX_BOOKS, type Out,
 } from './adapters'
+import { ago, before } from '../util/clock'
 
 export type Route = 'direct' | 'gateway'
 export const API_ORIGIN = 'https://kanpan.43-160-232-253.sslip.io'
@@ -174,7 +175,7 @@ class Conn {
     ws.onerror = () => { try { ws.close() } catch { /* 已关 */ } }
   }
   /** 半分钟没有帧：当它死了重连。 */
-  watchdog(now: number): void { if (this.ws && now - this.lastMsg > SILENCE_MS) this.reconnect() }
+  watchdog(now: number): void { if (this.ws && ago(this.lastMsg, now) > SILENCE_MS) this.reconnect() }
   send(m: string): void { if (this.ws?.readyState === 1) this.ws.send(m) }
   reconnect(): void { this.teardown(); this.start() }
   private fail(): void {
@@ -405,7 +406,7 @@ export class OrderFlowFeed {
   private async fetchSnapshot(b: DepthBook): Promise<void> {
     const last = this.snapshotting.get(b.id)
     const now = Date.now()
-    if (last != null && now - last < 1000) {
+    if (last != null && ago(last, now) < 1000) {
       // 一秒内不重复拉；过一会儿再看要不要
       setTimeout(() => { if (!this.stopped && !this.model.isReady(b.id)) void this.fetchSnapshot(b) }, 1000)
       return
@@ -509,14 +510,14 @@ export class OrderFlowFeed {
     if (step == null || this.historyBlockedStep === step) return null
     const oldest = now - D.retentionMs
     if (this.historyCursor == null || this.historyFrom == null) {
-      return now >= this.historyRetryAt ? { kind: 'initial', from: now - HISTORY_SPAN_MS, to: now, minLife: false } : null
+      return !before(this.historyRetryAt, HISTORY_RETRY_MS, now) ? { kind: 'initial', from: now - HISTORY_SPAN_MS, to: now, minLife: false } : null
     }
-    if (now - this.historyPulled >= HISTORY_EVERY_MS) {
+    if (ago(this.historyPulled, now) >= HISTORY_EVERY_MS) {
       return { kind: 'increment', from: Math.max(oldest, Math.min(this.historyCursor, now) - HISTORY_OVERLAP_MS), to: now, minLife: false }
     }
     // 往前一页：抽屉滚到底（全要），或图往左拖出了已取的范围（只要活过 5 分钟的，图上短命的看不出来）。
     const scrolled = this.visibleFrom != null && this.visibleFrom < this.historyFrom
-    if ((this.olderWanted || scrolled) && now >= this.backfillRetryAt) {
+    if ((this.olderWanted || scrolled) && !before(this.backfillRetryAt, BACKFILL_RETRY_MS, now)) {
       const floor = Math.max(this.historyTrackedSince ?? oldest, oldest)
       if (this.historyFrom <= floor) { this.olderWanted = false; return null }
       return { kind: 'backfill', from: Math.max(floor, this.historyFrom - HISTORY_SPAN_MS), to: this.historyFrom, minLife: !this.olderWanted }

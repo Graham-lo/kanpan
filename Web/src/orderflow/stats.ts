@@ -14,6 +14,7 @@ import type { Thresholds } from './types'
 import { getJSON } from './feed'
 import { heatFetch, scopedHeatUrl, parseHeatSplit, colSum, type SplitCol } from './heatFetch'
 import { snapFine, niceCeil } from './depthDelta'
+import { ago } from '../util/clock'
 
 export const SLOT_MS = 1_800_000
 export const SLOTS = 48
@@ -127,7 +128,7 @@ export class VolSource {
   private gen = 0
 
   ensure(books: DepthBook[], now: number): void {
-    if (this.busy || !books.length || now - this.at < (this.status === 'down' ? RETRY_MS : VOL_REFRESH_MS)) return
+    if (this.busy || !books.length || ago(this.at, now) < (this.status === 'down' ? RETRY_MS : VOL_REFRESH_MS)) return
     const reqs = klineRequests(books, now)
     if (!reqs.length) return
     this.busy = true; this.at = now
@@ -207,7 +208,7 @@ export class LiqSource {
 
   /** 每帧调：每 5 秒记一个实时点（中间价 ±2.5%，过滤口径与服务端一致）。 */
   sample(fine: FineBook, thresholds: Thresholds, now: number): void {
-    if (now - this.liveAt < LIVE_EVERY_MS || fine.mid == null) return
+    if (ago(this.liveAt, now) < LIVE_EVERY_MS || fine.mid == null) return
     const col = snapFine(fine, thresholds, now, 0, LIQ_BAND * 1.2)
     if (!col) return
     this.liveAt = now
@@ -226,7 +227,7 @@ export class LiqSource {
    */
   ensure(base: string, chartScale: number, fineStep: number, mid: number | null, mids: Map<number, number>, klinesDone: boolean, now: number): void {
     if (this.busy || !(fineStep > 0) || mid == null) return
-    if (now - this.at < (this.status === 'down' ? RETRY_MS : this.full ? LIQ_REFRESH_MS : 0)) return
+    if (ago(this.at, now) < (this.status === 'down' ? RETRY_MS : this.full ? LIQ_REFRESH_MS : 0)) return
     if (!this.full && !mids.size && !klinesDone) return
     let lo: number, hi: number
     if (!this.range || mid < this.range.lo / (1 - LIQ_BAND) || mid > this.range.hi / (1 + LIQ_BAND)) {

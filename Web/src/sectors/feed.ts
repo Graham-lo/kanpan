@@ -9,6 +9,7 @@
 import { REST, S, j } from '../market'
 import { fallbackBuckets, ingest, tradableSplit } from './aggregate'
 import type { CatalogEntry, Quotes, SectorBucket, SectorMarket, Ticker } from './aggregate'
+import { ago } from '../util/clock'
 
 interface ExRow { symbol: string; baseAsset: string; quoteAsset: string; contractType: string; status: string; underlyingType?: string; underlyingSubType?: string[] }
 interface Ticker24 { symbol: string; lastPrice: string; priceChangePercent: string; quoteVolume: string }
@@ -30,7 +31,7 @@ let catalogFailedAt = 0
 function loadCatalog(): Promise<void> {
   if (feed.entries.length) return Promise.resolve()
   if (catalogP) return catalogP
-  if (Date.now() - catalogFailedAt < 60_000) return Promise.resolve()
+  if (ago(catalogFailedAt) < 60_000) return Promise.resolve()
   catalogP = j<{ symbols: ExRow[] }>(`${REST}/fapi/v1/exchangeInfo`, 15_000).then(ex => {
     const entries: CatalogEntry[] = []
     for (const e of ex.symbols) {
@@ -91,7 +92,7 @@ export function startFeed(onChange: () => void): void {
   const tick = (): void => {
     if (!live()) return
     if (document.hidden) { timer = setTimeout(tick, POLL_MS); return }
-    const fresh = POLL_MS - (Date.now() - okAt)
+    const fresh = POLL_MS - ago(okAt)
     if (first && fresh > 0 && feed.quotes.size && !inflight) { first = false; onChange(); timer = setTimeout(tick, fresh); return }
     first = false
     poll().then(() => { failures = 0 }, () => { failures++ }).finally(() => {

@@ -15,6 +15,7 @@ import { drawingAlertOf, drawingCanAlert, toggleDrawingAlert } from '../alerts/m
 import { askNotify } from '../alerts/panel'
 import { $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, closeMenu, type MenuItem } from '../ui/overlay'
+import { ago } from '../util/clock'
 
 export interface DrawCell { chart: TVChart; el: HTMLElement }
 export interface DrawHost {
@@ -135,7 +136,7 @@ let lastQuotaToast = 0
 /** 这只品种还能不能再加 add；不能就提示（2 秒内只提示一次） */
 export function canAdd(symbol: string, add: Drawing[]): boolean {
   if (quotaOK(host.drawings(symbol), add)) return true
-  if (Date.now() - lastQuotaToast > 2000) {
+  if (ago(lastQuotaToast) > 2000) {
     lastQuotaToast = Date.now()
     toast(`${symbol} 的画线到上限了`, `每只品种最多 ${QUOTA.count} 条（${QUOTA.bytes / 1024 / 1024} MB），先删掉一些再画`, 'info', 4000)
   }

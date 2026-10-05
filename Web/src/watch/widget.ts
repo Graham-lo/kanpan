@@ -20,6 +20,7 @@ import { sym, pctText, cls, priceText, badge } from '../ui/common'
 import { fmtCompact } from '../util/format'
 import { reorderWatch, undoClear, oiShown, oiFromResponse, visibleRange, flashClass, FLASH_CLASSES, type OiEntry } from './logic'
 import { onSession } from '../account/session'
+import { ago } from '../util/clock'
 
 export interface WatchDeps {
   openSymbol(k: string): void
@@ -311,7 +312,7 @@ let fundingAt = 0
 /** 资金费：启动时 premiumIndex 取过一次，此后只有订了标记价流的那只在动；宽列出来时一分钟整表刷一次 */
 async function refreshFunding(): Promise<void> {
   // 全市场表刚带着 premiumIndex 整表回来的一分钟内不再重取（原来宽侧栏一开图就紧跟着再拉一遍同一张表）
-  if (Date.now() - Math.max(fundingAt, S.universeAt) < 60e3) return
+  if (ago(Math.max(fundingAt, S.universeAt)) < 60e3) return
   fundingAt = Date.now()
   try {
     const pi = await j<Premium[]>(`${REST}/fapi/v1/premiumIndex`)
@@ -335,7 +336,7 @@ const oiInflight = new Set<string>()
 /** 持仓额 = 未平仓合约数 × 最新价（和详情一致）；币安没有批量接口，逐只取，并发 4，一分钟过期 */
 async function refreshOI(list: string[]): Promise<void> {
   const now = Date.now()
-  const todo = list.filter(k => !oiInflight.has(k) && now - (oiCache.get(k)?.t || 0) >= OI_TTL)
+  const todo = list.filter(k => !oiInflight.has(k) && ago(oiCache.get(k)?.t || 0, now) >= OI_TTL)
   if (!todo.length) return
   todo.forEach(k => oiInflight.add(k))
   let next = 0

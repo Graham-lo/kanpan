@@ -8,6 +8,7 @@
  * 纯逻辑，不碰 DOM 与网络，单测见 tests/kline-tail.test.ts。
  */
 import type { Bar } from '../chart/calc'
+import { ago } from '../util/clock'
 
 /** 补尾巴一次最多取这么多根；断得更久就整段重取（limit ≤ 500 时币安权重 2） */
 export const TAIL_MAX = 500
@@ -50,6 +51,6 @@ export class TailResync {
     if (!visible) { if (this.hiddenAt == null) this.hiddenAt = now; return false }
     const at = this.hiddenAt
     this.hiddenAt = null
-    return at != null && now - at >= HIDDEN_RESYNC_MS
+    return at != null && ago(at, now) >= HIDDEN_RESYNC_MS
   }
 }

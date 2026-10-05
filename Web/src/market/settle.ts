@@ -10,6 +10,8 @@
  *   whenSettled(key, fn)  停稳了再做；同一个 key 只留最后一次登记（前一只品种的活自动作废）；已经停稳就立刻做
  *   cancel(key)           撤掉还没做的
  */
+import { ago } from '../util/clock'
+
 export const SETTLE_MS = 500
 
 export class Settle {
@@ -24,7 +26,7 @@ export class Settle {
     this.arm()
   }
 
-  settled(): boolean { return Date.now() - this.last >= this.ms }
+  settled(): boolean { return ago(this.last) >= this.ms }
 
   whenSettled(key: string, fn: () => void): void {
     if (this.settled()) { this.waits.delete(key); fn(); return }
@@ -40,7 +42,7 @@ export class Settle {
   private arm(): void {
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
     if (!this.waits.size) return
-    this.timer = setTimeout(() => { this.timer = null; this.fire() }, Math.max(0, this.last + this.ms - Date.now()))
+    this.timer = setTimeout(() => { this.timer = null; this.fire() }, Math.max(0, this.ms - ago(this.last)))
   }
 
   private fire(): void {

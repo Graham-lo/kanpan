@@ -11,6 +11,7 @@
 import { EMPTY_HISTORY, accepts, decodeHistory, historyRetryDelay } from './aggregate'
 import type { SectorHistory } from './aggregate'
 import { SECTOR_HISTORY_KEY } from '../util/storage'
+import { ago } from '../util/clock'
 
 const KEY = SECTOR_HISTORY_KEY
 const URL = `${import.meta.env.BASE_URL.replace(/\/web\/$/, '/')}v1/market/sector-history`
@@ -66,8 +67,8 @@ export function startHistory(onChange: () => void): void {
   const schedule = (ms: number): void => { clearTimeout(timer); timer = setTimeout(tick, ms) }
   const tick = (): void => {
     if (!running || inflight) return
-    const due = failures > 0 || !lastOk || Date.now() - lastOk >= HOUR_MS
-    if (!due) { schedule(lastOk + HOUR_MS - Date.now()); return }
+    const due = failures > 0 || !lastOk || ago(lastOk) >= HOUR_MS
+    if (!due) { schedule(HOUR_MS - ago(lastOk)); return }
     inflight = true
     void pull().then(changed => {
       inflight = false

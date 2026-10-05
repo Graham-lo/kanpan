@@ -17,6 +17,7 @@ import type { ViewWindow } from './geometry'
 import type { Snapshot } from '../../orderflow/model'
 import type { Override } from '../../orderflow/settings'
 import type { OrderFlowSnapshot } from './orderflowGroup'
+import { ago } from '../../util/clock'
 
 export interface OrderFlowSourceOptions {
   /** 是不是加密货币（美股、贵金属等传 false：默认门槛按标定走）。默认 true。 */
@@ -88,7 +89,7 @@ export class OrderFlowSource {
   private frame(gen: number, feed: OrderFlowFeed, s: Snapshot): void {
     if (gen !== this.generation || feed !== this.feed) return
     const now = Date.now()
-    if (this.intervalMs > 0 && now - this.lastEmit < this.intervalMs) return
+    if (this.intervalMs > 0 && ago(this.lastEmit, now) < this.intervalMs) return
     this.lastEmit = now
     this.onSnapshot(toChartSnapshot(feed.symbol, s, feed.defaults()))
   }

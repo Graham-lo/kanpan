@@ -22,6 +22,7 @@ import { vpvr } from './overlays'
 import { klines } from '../market/rest'
 import { settle } from '../market/settle'
 import { fmtAxis, hexA } from '../util/format'
+import { ago } from '../util/clock'
 
 const DAY = 864e5
 const WEEK = 7 * DAY
@@ -127,7 +128,7 @@ export function keyLevelsOf(ch: TVChart, now = Date.now()): KeyLevel[] {
     if (!entry.daily || (!entry.prof && ch.iv < DAY)) { waiting.add(ch); settle.whenSettled('keylevels', wake) }
     return [...(entry.daily || []), ...(entry.prof || [])]
   }
-  if (!entry.daily && !entry.busyD && now - entry.failD > RETRY_MS) {
+  if (!entry.daily && !entry.busyD && ago(entry.failD, now) > RETRY_MS) {
     entry.busyD = true
     void klines(sym, '1d', undefined, 16, false).then(r => {
       entry.busyD = false
@@ -139,7 +140,7 @@ export function keyLevelsOf(ch: TVChart, now = Date.now()): KeyLevel[] {
   if (!entry.prof && ch.iv < DAY) {
     // 当前就是 5 分钟、已经盖住了昨天：不用再要
     if (ch.iv === 5 * 60e3) { const p = profileLevels(ch.bars, now); if (p.length) entry.prof = p }
-    if (!entry.prof && !entry.busyP && now - entry.failP > RETRY_MS) {
+    if (!entry.prof && !entry.busyP && ago(entry.failP, now) > RETRY_MS) {
       entry.busyP = true
       void klines(sym, '5m', today, 288, false).then(r => {
         entry.busyP = false

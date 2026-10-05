@@ -12,6 +12,7 @@ import type { Thresholds } from './types'
 import { bucketIndex } from './bucket'
 import { HEAT_MIN_FRACTION } from './heat'
 import { heatFetch, scopedHeatUrl, parseHeatSplit, colRows, type SplitCol } from './heatFetch'
+import { ago, before } from '../util/clock'
 
 export type DeltaWin = '1h' | '1d'
 export const WIN_MS: Record<DeltaWin, number> = { '1h': 3_600_000, '1d': 86_400_000 }
@@ -108,8 +109,8 @@ export class DeltaSource {
   /** 每帧调：到点就往两个环里各记一列。 */
   sample(fine: FineBook, thresholds: Thresholds, now: number): void {
     const f = this.fine[this.fine.length - 1], c = this.coarse[this.coarse.length - 1]
-    const needF = !f || f.step !== fine.step || now - f.t >= RING_FINE_MS
-    const needC = !c || c.step !== fine.step || now - c.t >= RING_COARSE_MS
+    const needF = !f || f.step !== fine.step || ago(f.t, now) >= RING_FINE_MS
+    const needC = !c || c.step !== fine.step || ago(c.t, now) >= RING_COARSE_MS
     if (!needF && !needC) return
     if (f && f.step !== fine.step) { this.fine = []; this.coarse = [] }
     const col = snapFine(fine, thresholds, now, RING_FINE_MS)
@@ -129,7 +130,7 @@ export class DeltaSource {
   ensure(win: DeltaWin, base: string, chartScale: number, fineStep: number, lo: number, hi: number, mid: number, now: number): void {
     const s = this.srvs[win] ?? null
     if (this.srv !== s) { this.srv = s; this.srvStep = s && s.cols.length ? s.step : 0; this.status = s ? (s.cols.length ? 'ok' : 'empty') : 'idle'; this.version++ }
-    if (this.busy || now < this.retryAt || !(fineStep > 0) || !(mid > 0)) return
+    if (this.busy || before(this.retryAt, RETRY_MS, now) || !(fineStep > 0) || !(mid > 0)) return
     const a = Math.max(lo, mid * (1 - RADIUS)), z = Math.min(hi, mid * (1 + RADIUS))
     if (!(z > a)) return
     const align = WIN_ALIGN[win]

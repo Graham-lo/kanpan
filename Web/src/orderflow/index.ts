@@ -30,6 +30,7 @@ import type { Snapshot } from './model'
 import type { TVChart } from '../chart/chart'
 import { settle } from '../market/settle'
 import { IdleGate } from './idle'
+import { before } from '../util/clock'
 
 export { mountLadder, mountDrawer, widgetHTML, mountWidgets, isOfWidget, openOrderFlowSettings }
 /** 侧栏某块是不是收起（本机偏好） */
@@ -234,7 +235,7 @@ async function heatBackfill(visFrom: number, visTo: number, visMin: number, visM
   const f = OF.feed, store = OF.heat
   if (!f || !store || heatBack.busy) return
   const now = Date.now()
-  if (now < heatBack.retryAt) return
+  if (before(heatBack.retryAt, HEAT_RETRY_MS, now)) return
   const span = Math.max(60_000, visTo - visFrom)
   const from = Math.max(now - HEAT_BACK_MAX_MS, visFrom - span * 0.25)
   const to = Math.min(now, visTo, store.liveStart)

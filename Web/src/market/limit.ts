@@ -19,6 +19,7 @@
  * 两个标签页也各记各的。
  * 纯逻辑在 Limiter 里（不碰网络与计时器），vitest 直接测；模块级函数是给 fetch 包装用的那一层。
  */
+import { CLOCK_SKEW_MS } from '../util/clock'
 
 export const COOL_429_MS = 60_000
 export const COOL_418_MS = 300_000
@@ -77,7 +78,8 @@ export function weightOf(url: string): number {
   return 1
 }
 
-interface Cool { until: number; strikes: number }
+/** at：记下这次冷却的那一刻（时钟往回拨时据此把 until 一起挪回来）；老的盘上记录没有 */
+interface Cool { until: number; strikes: number; at?: number }
 /** 落盘的那一份：各道各主机的冷却、各道各族一分钟内的 [时间, 权重]。
  *  键：直连就是主机名 / 族名（与 2026-10-05 之前落盘的格式一致，老数据照读）；网关那一道加「@gw」后缀。 */
 export interface LimitSnap { cool: Record<string, Cool>; used: Record<string, [number, number][]> }
@@ -116,7 +118,7 @@ export class Limiter {
     const snap = raw && typeof raw === 'object' ? raw as Partial<LimitSnap> : {}
     this.cool.clear()
     if (snap.cool && typeof snap.cool === 'object') {
-      for (const [h, c] of Object.entries(snap.cool)) if (c && num(c.until) && num(c.strikes)) this.cool.set(h, { until: c.until, strikes: c.strikes })
+      for (const [h, c] of Object.entries(snap.cool)) if (c && num(c.until) && num(c.strikes)) this.cool.set(h, { until: c.until, strikes: c.strikes, ...(num(c.at) ? { at: c.at } : {}) })
     }
     this.used.clear()
     if (snap.used && typeof snap.used === 'object') {
@@ -138,9 +140,28 @@ export class Limiter {
     try { this.seen = this.store.raw?.() } catch { this.seen = undefined }
   }
 
+  /** 系统时钟往回拨过（账上的时间点比现在还晚）：账上那几笔当作「刚刚」记的、冷却整体挪回来——
+   *  不然往回拨多久，这一分钟的权重和冷却就要多占多久（往回拨两小时 = 两小时发不出请求） */
+  private rebase(now: number): void {
+    let moved = false
+    for (const list of this.used.values()) {
+      if (!list.length || list[list.length - 1].t - now <= CLOCK_SKEW_MS) continue
+      for (const x of list) if (x.t > now) x.t = now
+      moved = true
+    }
+    for (const c of this.cool.values()) {
+      if (c.at == null || c.at - now <= CLOCK_SKEW_MS) continue
+      c.until -= c.at - now
+      c.at = now
+      moved = true
+    }
+    if (moved) this.push(now)
+  }
+
   /** 这个地址的主机还要冷却多久（毫秒）；0 = 可以发。gw：这一次是不是走网关（走网关看网关那一道） */
   coolingFor(url: string, now: number, gw = false): number {
     this.pull()
+    this.rebase(now)
     const c = this.cool.get(laneOf(hostOf(url), gw))
     return c && c.until > now ? c.until - now : 0
   }
@@ -152,6 +173,7 @@ export class Limiter {
     const hit = status === 429 || status === 418
     if (!hit && !(status >= 200 && status < 300)) return
     this.pull()
+    this.rebase(now)
     const host = laneOf(hostOf(url), gw)
     const c = this.cool.get(host)
     if (!hit) {
@@ -164,13 +186,14 @@ export class Limiter {
       const base = status === 418 ? COOL_418_MS : COOL_429_MS, cap = status === 418 ? CAP_418_MS : CAP_429_MS
       const ms = Number.isFinite(sec) && sec > 0 ? sec * 1000 : Math.min(cap, base * 2 ** Math.max(0, next.strikes - 1))
       next.until = Math.max(next.until, now + ms)
+      next.at = now
       this.cool.set(host, next)
     }
     this.push(now)
   }
 
   /** 这一族（这一道）现在一分钟内记了多少权重 */
-  usedOf(fam: Family, now: number, gw = false): number { this.pull(); return this.sum(laneOf(fam, gw), now) }
+  usedOf(fam: Family, now: number, gw = false): number { this.pull(); this.rebase(now); return this.sum(laneOf(fam, gw), now) }
   private sum(lane: string, now: number): number {
     const list = this.used.get(lane) || []
     let k = 0
@@ -190,6 +213,7 @@ export class Limiter {
     const fam = familyOf(url)
     if (!fam) return 0
     this.pull()
+    this.rebase(now)
     const lane = laneOf(fam, gw)
     const cap = Math.max(1, Math.floor(this.budget[fam] * (gw ? GATEWAY_SHARE : 1) * Math.min(1, Math.max(0, share))))
     const w = Math.min(weightOf(url), cap)

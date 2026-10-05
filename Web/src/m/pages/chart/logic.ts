@@ -15,6 +15,7 @@ import { MINUS, MISSING, fmtPrice, fmtVol, grouped, toFixed, changePercentText }
 import { MAX_QUICK, MAX_SUBS, type IntervalId, type IndicatorId, type OrderFlowOverride } from '../../app/prefs'
 import { THRESHOLD_RANGE, STEP_RANGE } from '../../../orderflow/settings'
 import type { Drawing } from '../../chart/draw/drawing'
+import { ago } from '../../../util/clock'
 
 export { MAX_QUICK, MAX_SUBS, THRESHOLD_RANGE, STEP_RANGE }
 
@@ -101,7 +102,7 @@ export function fundingCountdownText(nextFunding: number | null | undefined, now
 /** 行情是不是停住了：全局停住标、全市场表断了、或这只 60 秒没有新价 */
 export function isStale(o: { flag: boolean; live: boolean | null | undefined; lastTick?: number | null; now: number }): boolean {
   if (o.flag || o.live === false) return true
-  return o.lastTick != null && o.lastTick > 0 && o.now - o.lastTick > 60_000
+  return o.lastTick != null && o.lastTick > 0 && ago(o.lastTick, o.now) > 60_000
 }
 
 // ───────────────────────────── 扫图

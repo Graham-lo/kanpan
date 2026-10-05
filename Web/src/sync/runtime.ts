@@ -21,6 +21,7 @@ import { Engine, type Transport } from './engine'
 import { type Owned, SyncStore, resumeArchive, serialize } from './store'
 import { syncKeys } from './keys'
 import { type ChangesPage, type Collection, type Page, type PushResponse, emptyArchive } from './types'
+import { ago } from '../util/clock'
 
 const POLL = 15e3
 const FULL_EVERY = 5 * 60e3
@@ -181,11 +182,11 @@ export function createSyncRuntime(adapter: SyncAdapter): SyncRuntime {
     if (!engine || initial) return
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
     const now = Date.now()
-    if (!force && now - lastTick < 3e3) return
+    if (!force && ago(lastTick, now) < 3e3) return
     lastTick = now
     void run(async e => {
       await e.push()
-      if (Date.now() - e.store.a.lastFull > FULL_EVERY) await e.full()
+      if (ago(e.store.a.lastFull) > FULL_EVERY) await e.full()
       else await e.pull()
       await e.push()
     })

@@ -12,6 +12,7 @@
 import type { Bar, Series, CalcEnv } from './calc'
 import type { TradeEvent } from '../orderflow/feed'
 import { baseOfSymbol } from '../orderflow/settings'
+import { before } from '../util/clock'
 
 /** 散户线：一笔不到 1 万美元 */
 export const SMALL_USD = 10_000
@@ -192,7 +193,7 @@ async function fetchServer(f: SymbolFlow, now: number): Promise<void> {
 function ensureServer(f: SymbolFlow, env: CalcEnv | undefined, now: number): void {
   if (!env) return
   f.listeners.add(env.invalidate)
-  if (f.srv.busy || now < f.srv.nextAt || typeof fetch === 'undefined') return
+  if (f.srv.busy || before(f.srv.nextAt, Math.max(POLL_MS, RETRY_MS), now) || typeof fetch === 'undefined') return
   void fetchServer(f, now)
 }
 

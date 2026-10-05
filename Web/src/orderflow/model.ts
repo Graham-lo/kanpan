@@ -12,6 +12,7 @@ import { orderId, usdOf, venueId } from './types'
 import { D } from './settings'
 import { BucketScheme } from './bucket'
 import { VenueBook, bucketKey, keySide, keyIndex, type BucketValue } from './localBook'
+import { ago } from '../util/clock'
 
 export const STALE_MS = 120_000
 export const REMOTE_FRESH_MS = 180_000
@@ -97,8 +98,8 @@ class Matching {
     if (m > 0) { out = m; this.fill -= m; this.drop -= m }
     if (this.fill <= 0) { this.fill = 0; this.fillSince = null }
     if (this.drop <= 0) { this.drop = 0; this.dropSince = null }
-    if (this.fillSince != null && now - this.fillSince > D.fillMatchMs) { this.fill = 0; this.fillSince = null }
-    if (this.dropSince != null && now - this.dropSince > D.fillMatchMs) { this.drop = 0; this.dropSince = null }
+    if (this.fillSince != null && ago(this.fillSince, now) > D.fillMatchMs) { this.fill = 0; this.fillSince = null }
+    if (this.dropSince != null && ago(this.dropSince, now) > D.fillMatchMs) { this.drop = 0; this.dropSince = null }
     return out
   }
 }

@@ -1,5 +1,7 @@
 /* Hkline 手机网页版 · DOM 小工具（不依赖 PC 的 ui/dom） */
 
+import { ago } from '../../util/clock'
+
 /** HTML 转义 */
 export function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
@@ -82,7 +84,7 @@ function wirePresses(): void {
 }
 function releasePresses(): void { for (const f of [...waiting]) f() }
 const pressedIn = (root: Node): boolean => {
-  for (const p of presses.values()) if (Date.now() - p.at < STUCK_MS && p.target && root.contains(p.target)) return true
+  for (const p of presses.values()) if (ago(p.at) < STUCK_MS && p.target && root.contains(p.target)) return true
   return false
 }
 export function pressGate(root: HTMLElement): (fn: () => void) => void {
