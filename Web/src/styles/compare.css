@@ -1,0 +1,16 @@
+/* 对比：挑品种弹层（沿用搜索框样式）与图例里的对比行（pages/compare.ts、chart/chart.ts） */
+.cmp-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding: var(--s3) var(--s5) 0; min-height: 36px; }
+.cmp-count { font-size: var(--t13); color: var(--text-2); margin-right: var(--s2); }
+.cmp-count b { color: var(--text-1); font-weight: 600; }
+.cmp-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 2px 0 10px; border-radius: 999px; background: var(--surface-2); font-size: var(--t13); font-weight: 600; color: var(--text-1); }
+.cmp-chip i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.cmp-chip .ibtn { width: 24px; height: 24px; border-radius: 50%; color: var(--text-2); }
+.cmp-chip .ibtn:hover { color: var(--text-1); }
+.cmp-dlg .sr.cmp-off { cursor: default; }
+.cmp-dlg .sr.cmp-off > :not(.cmp-tag):not(.cmp-tgl) { opacity: .45; }
+.cmp-dlg .cmp-tgl { border-radius: 50%; color: var(--text-2); }
+.cmp-dlg .cmp-tgl.on { background: var(--accent); color: #fff; }
+.cmp-dlg .cmp-tag { font-size: var(--t12); color: var(--text-3); text-align: center; }
+.legend .cmp-row .cmp-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.legend .cmp-mini { font-size: var(--t12); font-weight: 600; margin-left: var(--s2); }
+.tb-btn .tb-count { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 11px; line-height: 16px; text-align: center; font-weight: 600; }

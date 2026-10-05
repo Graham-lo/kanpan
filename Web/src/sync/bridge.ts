@@ -12,13 +12,13 @@ import type { State } from '../app/store'
 import type { Alert } from '../alerts/shape'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
-  type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
+  type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, webSetting, decodeSetting, putSetting, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
   encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, unseenDrawings, validSymbol,
 } from './codec'
 import type { Owned, SyncStore } from './store'
 import { type SyncObject, keyOf, same } from './types'
 
-export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides'>>
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols'>>
 export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
 export type Prints = Partial<Record<Part, string>>
 
@@ -32,7 +32,7 @@ export const OWNED: Owned = {
 
 export function fingerprint(s: WebState): Record<Part, string> {
   return {
-    settings: JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}]),
+    settings: JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.compareSymbols ?? []]),
     favorites: JSON.stringify(s.watch),
     drawings: JSON.stringify(s.drawings),
     alerts: JSON.stringify(s.alerts),
@@ -91,6 +91,30 @@ export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boo
   if (all || ctx.ready) u.clear()
   else for (const c of [...u]) if (c !== 'favorites') u.delete(c)
   return r
+}
+
+/**
+ * 新版本新加的同步设置字段（例如 compareSymbols）：老账本的 seen 里没有它。
+ * 不先处理的话，续上账本那一下的记账会把「网页这边的出厂值」当成网页改过的推上去，把手机早就设好的值冲掉。
+ * 所以账本已经对上过（seen 非空）时，seen 里缺的字段先按云端装一次（云端没有 / 表达不了就记成网页现值），
+ * 返回装进来改了的字段。第一次对上（seen 为空）不走这里，由 mergeFirst 按「谁新用谁」定。
+ */
+export function adoptNewSettings(s: WebState, store: SyncStore): string[] {
+  const seen = store.a.seen
+  if (!Object.keys(seen).length) return []
+  const missing = SETTINGS_FIELDS.filter(f => !(f in seen))
+  if (!missing.length) return []
+  const cloud = store.get('settings', SETTINGS_ID)
+  const body = cloud && !cloud.deleted ? cloud.body : {}
+  const changed: string[] = []
+  for (const f of missing) {
+    const d = decodeSetting(f, body[f], s)
+    if (d === undefined) { seen[f] = webSetting(s, f); continue }
+    seen[f] = d
+    if (same(d, webSetting(s, f))) continue
+    putSetting(s, f, d); changed.push(f)
+  }
+  return changed
 }
 
 export interface Edited { settings: number; favorites: number }

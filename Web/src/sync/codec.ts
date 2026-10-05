@@ -75,6 +75,20 @@ export function compareKey(k: string): boolean {
   const p = k.split('/')
   return p.length === 3 && new TextEncoder().encode(k).length <= 128 && instrumentIdentity(p[0], p[1], p[2])
 }
+/** 对比品种最多三只（与手机 m/app/prefs MAX_COMPARE、服务端 sync_validation compareSymbols ≤ 3 同一个数） */
+export const MAX_COMPARE = 3
+/** 对比品种的规范形（照手机 m/app/prefs.cleanCompare，同一条规则，tests/compare-pc 对过账）：
+ *  键是 `venue/market/SYMBOL`；裸代号按币安 U 本位补全；过服务端 compare_key、不重复、最多三只。
+ *  美元指数只认 `macro/index/DXY`（裸 DXY 会被补成 binance/usd_m/DXY、过不了 compare_key 而丢掉）——网页存的从来是规范键。 */
+export function cleanCompare(v: unknown): string[] {
+  const out: string[] = []
+  for (const x of Array.isArray(v) ? v.filter((y): y is string => typeof y === 'string') : []) {
+    const k = x.includes('/') ? x : 'binance/usd_m/' + x.toUpperCase()
+    if (compareKey(k) && !out.includes(k)) out.push(k)
+    if (out.length >= MAX_COMPARE) break
+  }
+  return out
+}
 /** 标题里用的品种名：去掉计价币（和手机 `Alert.base(of:)` 一致） */
 export function baseName(s: string): string { return isMacro(s) ? MACRO_CN : s.replace(/(USDT|USDC|FDUSD|BUSD|USD1|TUSD)$/, '') || s }
 
@@ -98,11 +112,13 @@ export interface SettingsState {
   pinned: string[]; ind: IndState; params: Record<string, IndParams> | null
   /** 主力订单流门槛 / 步长里用户改过的项（按 base），线上形状和手机一样：{ BTC: { spot, usdtPerp, coinPerp, delivery, step } } */
   orderFlowOverrides?: Record<string, Override>
+  /** 对比品种（规范键 venue/market/SYMBOL，最多三只），和手机 Prefs.compareSymbols 同一个字段 */
+  compareSymbols?: string[]
 }
 
 export const SETTINGS_ID = 'chart'
 const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ']]
-export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides']
+export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'compareSymbols']
 
 /** 订单流覆盖项的规范形：base 合规、每项过 normalizeOverride、最多 MAX_OVERRIDES 只、键排序（比较不受顺序影响） */
 function cleanOverrides(v: unknown): Record<string, Override> | null {
@@ -123,6 +139,7 @@ export function webSetting(s: SettingsState, field: string): Json {
   if (field === 'overlays') return OVERLAY_MAP.filter(([w]) => s.ind[w]).map(([, c]) => c)
   if (field === 'subs') return [...(s.ind.vol ? ['VOL'] : []), ...s.ind.subs.map(x => SUB_MAP.find(([w]) => w === x)?.[1]).filter((x): x is string => !!x)]
   if (field === 'orderFlowOverrides') return (cleanOverrides(s.orderFlowOverrides) ?? {}) as unknown as Json
+  if (field === 'compareSymbols') return cleanCompare(s.compareSymbols)
   if (field.startsWith('params/')) {
     const id = PARAM_IDS.find(([, c]) => 'params/' + c === field)?.[0]
     const p = id ? s.params?.[id] : undefined
@@ -164,6 +181,7 @@ export function encodeSetting(field: string, web: Json, prev: Json | undefined):
   if (field === 'overlays') return mergeList(prevList, new Set(OVERLAY_MAP.map(([, c]) => c)), web as string[])
   if (field === 'subs') return mergeList(prevList, new Set(SUB_MAP.map(([, c]) => c)), web as string[])
   if (field === 'orderFlowOverrides') return (cleanOverrides(web) ?? undefined) as unknown as Json | undefined
+  if (field === 'compareSymbols') return cleanCompare(web)
   if (field.startsWith('params/')) {
     const p = web as IndParams | null
     if (!p) return undefined
@@ -199,6 +217,8 @@ export function decodeSetting(field: string, cloud: Json | undefined, cur: Setti
     return [...(vol ? ['VOL'] : []), ...others]
   }
   if (field === 'orderFlowOverrides') return (cleanOverrides(cloud) ?? undefined) as unknown as Json | undefined
+  // 别家的键（Coinbase 现货）照样留着：网页画不了就不画，但不能一装一推把手机那只冲掉
+  if (field === 'compareSymbols') return Array.isArray(cloud) ? cleanCompare(cloud) : undefined
   if (field.startsWith('params/')) {
     const v = Array.isArray(cloud) ? cloud.filter((x): x is number => typeof x === 'number') : null
     if (!v || !v.length || !v.every(okInt)) return undefined
@@ -219,6 +239,7 @@ export function putSetting(s: SettingsState, field: string, v: Json): void {
   const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
   if (field === 'quickIntervals') s.pinned = list
   else if (field === 'orderFlowOverrides') s.orderFlowOverrides = cleanOverrides(v) ?? {}
+  else if (field === 'compareSymbols') s.compareSymbols = cleanCompare(v)
   else if (field === 'overlays') for (const [w, c] of OVERLAY_MAP) s.ind[w] = list.includes(c)
   else if (field === 'subs') {
     s.ind.vol = list.includes('VOL')
@@ -254,6 +275,7 @@ export function factorySettings(): Required<SettingsState> {
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] },
     params: null,
     orderFlowOverrides: {},
+    compareSymbols: [],
   }
 }
 
@@ -261,7 +283,7 @@ export function factorySettings(): Required<SettingsState> {
 export function resetSettings(s: SettingsState): string[] {
   const before = SETTINGS_FIELDS.map(f => webSetting(s, f))
   const f = factorySettings()
-  s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides
+  s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides; s.compareSymbols = f.compareSymbols
   return SETTINGS_FIELDS.filter((x, i) => !same(before[i], webSetting(s, x)))
 }
 

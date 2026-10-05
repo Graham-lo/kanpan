@@ -45,6 +45,7 @@ import { settle } from '../market/settle'
 import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
+import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
 
 // ------------------------------------------------------------ 图表格子
 interface Cell {
@@ -280,6 +281,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
     if (limited) setTimeout(() => { if (token === cell.loadToken) void loadCell(cell) }, Math.max(coolingFor(REST), 5000) + 500)
   } else showCellEmpty(cell, null)
   cell.chart.setData(bars, metaFor(c))
+  refreshCompare()
   // 自定义分钟：攒下的原生周期推送逐根并进当前格（和实时时同一条路）
   if (late.length && isCustomIv(c.iv)) for (const p of late) cell.chart.updateBar(customTick(c.symbol, c.iv, p))
   // 持仓量副图不在首屏：品种停稳再取（连切时中间划过的品种不取）
@@ -335,6 +337,7 @@ async function loadMore(cell: Cell): Promise<void> {
   if (!ok) return
   if (!bars.length) { cell.noMore = true; return }
   cell.chart.prependData(bars)
+  refreshCompare()
 }
 
 function applyRange(cell: Cell, k: number): void {
@@ -504,6 +507,7 @@ export function renderToolbar(): void {
     </div>
     <span class="tb-sep"></span>
     <button class="tb-btn" id="tbInd" data-tip="指标" data-kbd="/">${I('indicators')}指标</button>
+    <button class="tb-btn${st.compareSymbols.length ? ' on' : ''}" id="tbCompare" data-tip="叠加别的品种，按百分比比涨跌">${I('compare')}对比${st.compareSymbols.length ? `<span class="num tb-count">${st.compareSymbols.length}</span>` : ''}</button>
     <button class="tb-btn" id="tbAlert" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bellPlus')}提醒</button>
     <button class="tb-btn" id="tbNote" data-tip="把这一刻记下来">${I('note')}记一笔</button>
     ${heatButtonHTML()}
@@ -525,6 +529,7 @@ function onToolbarClick(e: MouseEvent): void {
     case 'tbSymbol': return openSearch()
     case 'tbMoreIv': return intervalMenu(b)
     case 'tbInd': return openIndicators()
+    case 'tbCompare': return openCompare()
     case 'tbAlert': return openAlert()
     case 'tbNote': return openNote()
     case 'tbHeat': return toggleHeat()
@@ -600,6 +605,7 @@ function legendAction(id: string, act: string, btn?: HTMLElement): void {
     menuFrom(btn, [{ header: '成交量分布' }, ...VPVR_MODES.map((m): MenuItem => ({ label: m.label, check: true, checked: st.vpvrMode === m.id, run: () => { st.vpvrMode = m.id; save(); cells.forEach(c => c.chart.setVpvrMode(m.id)) } }))])
     return
   }
+  if (act === 'cmpRemove') { removeCompare(id); return }
   if (act === 'remove') {
     if (isMainToggle(id)) st.ind[id] = false
     else st.ind.subs = st.ind.subs.filter(x => x !== id)
@@ -1235,6 +1241,11 @@ export async function initChart(): Promise<void> {
   onSecondsTick(k => { pendingSec.add(k); if (!secRAF) secRAF = requestAnimationFrame(flushSeconds) })
   migrateDrawingFlags()
   onAlertsChange(refreshAlerts)
+  installCompare({
+    cells: () => cells.map(c => ({ idx: c.idx, chart: c.chart, symbol: cfg(c).symbol, iv: cfg(c).iv })),
+    load: async (symbol, iv, endTime) => { const r = await barsFor(symbol, iv, endTime ?? undefined, undefined, false); return r.ok ? r.bars : null },
+    refreshStreams, renderToolbar, activeSymbol: () => cfg(active()).symbol, isWatched,
+  })
 
   // 藏着时非当前格的 K 线推送是退订的（stream.ts 只留核心），藏久了回来各格都补一次尾巴
   document.addEventListener('visibilitychange', () => {

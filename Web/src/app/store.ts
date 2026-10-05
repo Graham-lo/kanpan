@@ -12,6 +12,7 @@ import { DEFAULT_WATCH, INTERVALS, type Kind } from '../market/symbols'
 import { IV_MS } from '../util/format'
 import { setItemMakingRoom } from '../util/storage'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
+import { cleanCompare } from '../sync/codec'
 
 export type Theme = 'light' | 'dark'
 export type Skin = 'sage' | 'terra' | 'classic'
@@ -122,6 +123,9 @@ export interface State {
   orderFlow: boolean
   /** 主力订单流门槛 / 步长里用户改过的项，按 base（BTC、PEPE…）存；随账号同步 */
   orderFlowOverrides: Record<string, Override>
+  /** 对比品种：规范键 venue/market/SYMBOL（美元指数是 macro/index/DXY），最多三只；一人一份，随账号同步（和手机同一个字段）。
+   *  多图时每格按自己的主图叠这同一份，去掉格子主图那只 */
+  compareSymbols: string[]
   /** 以下不落盘 */
   page: PageId
   stale: boolean
@@ -147,7 +151,7 @@ function defaults(): State {
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
-    orderFlow: false, orderFlowOverrides: {},
+    orderFlow: false, orderFlowOverrides: {}, compareSymbols: [],
     page: 'chart', stale: false, account: null,
   }
 }
@@ -312,6 +316,7 @@ export function hydrate(saved: Partial<State>): State {
     for (const [k, v] of Object.entries(s.orderFlowOverrides).slice(0, MAX_OVERRIDES)) { const n = normalizeOverride(v); if (n && /^[A-Z0-9]{1,20}$/.test(k)) ofo[k] = n }
   }
   s.orderFlowOverrides = ofo
+  s.compareSymbols = cleanCompare(s.compareSymbols)
   s.page = 'chart'; s.stale = false; s.account = null
   return s
 }

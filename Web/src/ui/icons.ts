@@ -28,6 +28,8 @@ const P: Record<string, string> = {
   chevronDown: `<path d="M7.3 9.3a1 1 0 0 1 1.4 0L12 12.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z" fill="currentColor"/>`,
   candles: `<rect x="4" y="6" width="5" height="10" rx="1.5" fill="currentColor"/><rect x="15" y="9" width="5" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="5.75" y="3" width="1.5" height="17" rx=".75" fill="currentColor"/><rect x="16.75" y="5" width="1.5" height="15" rx=".75" fill="currentColor" ${D}/>`,
   indicators: `<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" ${D}/><path d="M6.5 15.5l3.2-4 3 2.5 4.8-6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  // 对比：两条走势叠在一起（主线实、对比线衬底色），端点实心圆点
+  compare: `<path d="M3.5 17.5l5-5.5 4 3 7.5-8" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 9.5l5 4 4-5 7.5 5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${D}/><circle cx="20" cy="7" r="2.2" fill="currentColor"/>`,
   layout: `<rect x="3" y="3" width="8" height="18" rx="2.5" fill="currentColor"/><rect x="13" y="3" width="8" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="13" y="13" width="8" height="8" rx="2.5" fill="currentColor" ${D}/>`,
   layout1: `<rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor"/>`,
   layout2: `<rect x="3" y="4" width="8.5" height="16" rx="2.5" fill="currentColor"/><rect x="12.5" y="4" width="8.5" height="16" rx="2.5" fill="currentColor" ${D}/>`,

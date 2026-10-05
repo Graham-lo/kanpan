@@ -14,7 +14,8 @@ import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
 import { allCells, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
-import { type Applied, type Edited, type Prints, OWNED, applyInto, captureInto, fingerprint, mergeFirst, restoreDrawings } from './bridge'
+import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, fingerprint, mergeFirst, restoreDrawings } from './bridge'
+import { refreshCompare } from '../pages/compare'
 import { type Ctx, alertId } from './codec'
 import { type SyncAdapter, type SyncRuntime, createSyncRuntime } from './runtime'
 import type { SyncStore } from './store'
@@ -60,6 +61,8 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
         c.chart.setIndicators(structuredClone(st.ind))
         for (const [k, p] of Object.entries(st.params ?? {})) c.chart.setParams(k as IndicatorId, structuredClone(p))
       })
+      // 对比品种（手机 / 别的电脑改了）：每格按自己的主图重配对比
+      if (r.settings.includes('compareSymbols')) refreshCompare()
       renderToolbar()
     }
     if (r.drawings.size) { r.drawings.forEach(rebaseDrawings); allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) }) }
@@ -96,6 +99,9 @@ const pc: SyncAdapter = {
     if (again) rt?.pushSoon()
   },
   resume(store) {
+    // 新版本新加的同步字段（compareSymbols）：老账本没记过它，先按云端装，免得续上那一下把出厂值推上去冲掉手机的
+    const adopted = adoptNewSettings(st, store)
+    if (adopted.length) refreshUI(store, { settings: adopted, favorites: false, drawings: new Set(), alerts: false, fired: [] })
     // 本机画线存档读坏过：先把账本里的云端那份并回来，再记账（不然本机的「空」会记成删除）
     if (drawingsSuspect()) { if (refreshUI(store, restoreDrawings(st, store))) rt?.pushSoon(); clearDrawingsSuspect() }
   },

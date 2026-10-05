@@ -25,6 +25,7 @@ import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes
 import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 import { detachFlows } from './tradeFlow'
+import { COMPARE_COLORS, alignCompare, compareBaseIndexFrom, comparePercentAt, comparePercentLabel, compareSegments, pctOf, percentTickLabel, percentTicks, priceOfPct, type Aligned, type CompareLine } from './compare'
 
 const AXIS_H = 28
 const MIN_SPACING = 1.5
@@ -44,6 +45,7 @@ export const LINE = {
   measure: 1,   // 测量十字
   wallMin: 1, wallMax: 3, // 主力大单：按金额从 1 到 3 px，悬停 3 px
   handle: 2,    // 选中锚点的描边
+  compare: 2,   // 对比线：比均线粗半档，一眼分得开
 } as const
 const VOL_ALPHA = 0.3, VOL_H = 0.16 // 成交量：垫在主图底部 16%，三成不透明，不抢蜡烛
 
@@ -273,6 +275,12 @@ export class TVChart {
   private env: CalcEnv | null = null
   log = false
   auto = true
+  /** 对比（叠加别的品种）：有对比时价格轴换成百分比、对数坐标让位（compare.ts） */
+  compare: CompareLine[] = []
+  /** 对齐缓存：主图的时间轴（根数 / 首尾）或任一只对比的数据戳变了才重算 */
+  private cmpAligned: { key: string; v: Aligned[] } | null = null
+  /** 这一帧百分比轴的刻度步长（标签小数位跟它走） */
+  private cmpStep = 0
   manual: PriceRange | null = null // 主图手动价格区间 {min,max}
   cross: Crosshair | null = null   // {x,y}
   extCross: number | null = null // 同步来的时间
@@ -489,6 +497,47 @@ export class TVChart {
   setMarkers(m: Marker[] | null): void { this.markers = m; this.dirty = true }
   setReplay(i: number | null): void { this.replay = i; this.dirty = true; this.renderLegend() }
   setLog(on: boolean): void { this.log = on; this.manual = null; this.dirty = true }
+  /** 对数坐标真的在用（有对比时让位给百分比轴，偏好里的「对数」不动，撤掉对比就回来） */
+  logOn(): boolean { return this.log && !this.compare?.length }
+  compareOn(): boolean { return !!this.compare?.length }
+  /** 叠加对比线（页面按偏好与这一格的主图挑好、取好数）；空数组 = 没有对比，一切照旧。
+   *  开关翻转时价格轴回到自动（百分比轴与价格轴的手动区间不通用） */
+  setCompare(lines: readonly CompareLine[]): void {
+    const was = this.compare.length > 0, now = lines.length > 0
+    this.compare = lines.slice()
+    if (was !== now) { this.manual = null; if (!this.auto) { this.auto = true; this.o.onAutoChange?.(true) } }
+    this.dirty = true; this.renderLegend()
+  }
+  /** 各条对比线按主图对齐好的开收（缓存） */
+  compareAligned(): Aligned[] {
+    const b = this.bars, n = b.length
+    const key = `${n}:${b[0]?.t}:${b[n - 1]?.t}|` + this.compare.map(l => `${l.key}:${l.rev}`).join('|')
+    if (this.cmpAligned?.key !== key) this.cmpAligned = { key, v: this.compare.map(l => alignCompare(b, l.bars)) }
+    return this.cmpAligned.v
+  }
+  /** 百分比的基准：可见区第一根的下标与开盘价 */
+  compareBase(): { index: number; price: number } | null {
+    if (!this.compare?.length || !this.bars?.length) return null
+    const i = clamp(this.visible().from, 0, this.bars.length - 1), o = this.bars[i]?.o
+    return o > 0 ? { index: i, price: o } : null
+  }
+  /** 每条对比线此刻的几何：基准根、从哪根起画、读第 i 根的百分比 */
+  compareViews(): { line: CompareLine; color: string; base: number | null; start: number; at: (i: number) => number | null }[] {
+    const base = this.compareBase(), al = this.compareAligned(), hi = this.lastIndex()
+    return this.compare.map((line, k) => {
+      const a = al[k], color = line.color || COMPARE_COLORS[k % COMPARE_COLORS.length]
+      const bi = base && a ? compareBaseIndexFrom(a.open, base.index, hi) : null
+      // 基准就是主图那根：从可见区最左（含左边半根）起画；往后挪了（那几根它没数据）从它自己的基准起
+      const start = bi == null ? Infinity : bi === base!.index ? Math.max(0, base!.index - 1) : bi
+      return { line, color, base: bi, start, at: (i: number) => bi == null || i < start ? null : comparePercentAt(a, i, bi) }
+    })
+  }
+  /** 主图价格轴上的文字：有对比时是相对基准的百分比 */
+  mainAxisText(v: number, tick = false): string {
+    const base = this.compareBase()
+    if (!base) return fmtAxis(v, this.meta.dec)
+    return tick ? percentTickLabel(v, base.price, this.cmpStep) : comparePercentLabel(pctOf(v, base.price))
+  }
   setAuto(on: boolean): void { this.auto = on; if (on) this.manual = null; this.dirty = true; this.o.onAutoChange?.(on) }
   setStale(on: boolean): void { this.stale = on; this.dirty = true; this.renderLegend() }
   // 图例读数也跟着同步来的时间走（legendIndex 认 extCross），不然别的格子十字线挪了、图例还停在最新一根上
@@ -524,8 +573,8 @@ export class TVChart {
   scaleManual(lo: number, hi: number, a: number, f: number): boolean {
     const span = hi - lo, mid = (lo + hi) / 2
     if (!(span > 0) || !isFinite(span) || !isFinite(mid) || !isFinite(a) || !(f > 0)) return false
-    const minSpan = this.log ? 1e-6 : Math.max(Math.abs(mid) * 1e-6, 1e-12)
-    const maxSpan = this.log ? Math.log(1e12) : Math.max(Math.abs(mid), 1) * 1e6
+    const minSpan = this.logOn() ? 1e-6 : Math.max(Math.abs(mid) * 1e-6, 1e-12)
+    const maxSpan = this.logOn() ? Math.log(1e12) : Math.max(Math.abs(mid), 1) * 1e6
     const k = clamp(f, minSpan / span, maxSpan / span)
     this.manual = { min: this.itf(a - (a - lo) * k), max: this.itf(a + (hi - a) * k) }
     return true
@@ -545,7 +594,7 @@ export class TVChart {
     if (!p || !r || !this.bars.length) return null
     const { from, to } = this.visible()
     return {
-      pane: p, range: r, plotW: this.plotW(), from, to, spacing: this.spacing, iv: this.iv, log: this.log,
+      pane: p, range: r, plotW: this.plotW(), from, to, spacing: this.spacing, iv: this.iv, log: this.logOn(),
       priceToY: v => this.priceToY(v, p, r), yToPrice: y => this.yToPrice(y, p, r),
       timeToX: t => this.indexToX(this.indexAt(t)), xToTime: x => this.timeOfIndex(this.xToIndex(x)),
       timeOf: i => this.timeOfIndex(i), indexToX: i => this.indexToX(i),
@@ -633,7 +682,8 @@ export class TVChart {
   axisW(): number {
     this.ctx.font = this.font
     const max = this.mainRange ? this.mainRange.max : (this.bars[this.bars.length - 1]?.h || 100)
-    const s = fmtAxis(max, this.meta.dec)
+    const base = this.mainRange ? this.compareBase() : null
+    const s = base ? [this.mainRange!.max, this.mainRange!.min].map(v => comparePercentLabel(pctOf(v, base.price))).sort((a, b) => b.length - a.length)[0] : fmtAxis(max, this.meta.dec)
     return Math.max(56, Math.ceil(this.ctx.measureText(s).width) + 20)
   }
   plotW(): number { return this.w - this.aw }
@@ -674,8 +724,8 @@ export class TVChart {
     const to = Math.min(n - 1, Math.ceil(this.rightBar))
     return { from, to }
   }
-  tf(v: number): number { return this.log ? Math.log(Math.max(v, 1e-12)) : v }
-  itf(v: number): number { return this.log ? Math.exp(v) : v }
+  tf(v: number): number { return this.logOn() ? Math.log(Math.max(v, 1e-12)) : v }
+  itf(v: number): number { return this.logOn() ? Math.exp(v) : v }
   priceToY(p: number, pane: Pane, r: PriceRange): number { const a = this.tf(r.max), b = this.tf(r.min); return pane.y + 8 + (a - this.tf(p)) / (a - b) * (pane.h - 16) }
   yToPrice(y: number, pane: Pane, r: PriceRange): number { const a = this.tf(r.max), b = this.tf(r.min); return this.itf(a - (y - pane.y - 8) / (pane.h - 16) * (a - b)) }
 
@@ -683,13 +733,19 @@ export class TVChart {
     if (this.manual) return this.manual
     // 只认有限值；对数轴只认正数——布林下轨、VWAP −2σ 在暴跌的小币上会穿到 0 以下，
     // 拿它取对数整条价格轴变 NaN、主图全空
-    const log = this.log, ok = (v: number) => Number.isFinite(v) && (!log || v > 0)
+    const log = this.logOn(), ok = (v: number) => Number.isFinite(v) && (!log || v > 0)
     let lo = Infinity, hi = -Infinity
     for (let i = from; i <= to; i++) { const b = this.bars[i]; if (!b) continue; if (ok(b.l)) lo = Math.min(lo, b.l); if (ok(b.h)) hi = Math.max(hi, b.h) }
     for (const id of MAIN_IDS) {
       const ser = this.series[id]
       if (!ser || this.hidden.has(id)) continue
       for (const s of ser) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null && ok(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
+    }
+    // 对比：各条线换算到主图价格空间里的位置也要装得下
+    const base = this.compareBase()
+    if (base) for (const cv of this.compareViews()) for (let i = from; i <= to; i++) {
+      const pct = cv.at(i); if (pct == null) continue
+      const v = priceOfPct(pct, base.price); if (ok(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v) }
     }
     if (!(hi >= lo)) { lo = log ? 1 : 0; hi = log ? 10 : 1 }
     if (log) { const a = Math.log(lo), b = Math.log(hi), pad = (b - a) * 0.08 || 0.01; return { min: Math.exp(a - pad), max: Math.exp(b + pad) } }
@@ -759,6 +815,7 @@ export class TVChart {
     this.drawCandles(mainPane, mr, from, to)
     for (const id of ['boll', 'ema', 'ma'] as MainId[]) if (this.series[id] && !this.hidden.has(id)) this.drawLines(id, mainPane, mr, from, to)
     drawExtraMain(this, mainPane, mr, from, to)
+    if (this.compareOn()) this.drawCompare(mainPane, mr, from, to)
     this.drawLastLine(mainPane, mr)
     this.drawAlertLines(mainPane, mr)
     this.drawDrawings(mainPane, mr)
@@ -790,7 +847,7 @@ export class TVChart {
       for (const t of p.ticks ?? []) {
         const y = this.priceToY(t, p, r)
         if (y < p.y + 8 || y > p.y + p.h - 6) continue
-        c.fillText(p.id === 'main' ? fmtAxis(t, this.meta.dec) : this.subFmt(p.id, t), PW + 8, y)
+        c.fillText(p.id === 'main' ? this.mainAxisText(t, true) : this.subFmt(p.id, t), PW + 8, y)
       }
     }
     c.textAlign = 'center'
@@ -814,7 +871,11 @@ export class TVChart {
     // 主图刻度不细过品种的价格精度：细过了一列刻度会印出好几个一样的价（BTC 一位小数，步长 0.05 → 两个「60000.0」）
     const floor = p.id === 'main' && this.meta.dec >= 0 ? Math.pow(10, -this.meta.dec) : 0
     const round = (v: number, st: number) => +(Math.round(v / st) * st).toFixed(Math.max(0, Math.min(20, 1 - Math.floor(Math.log10(st)))))
-    if (this.log && p.id === 'main') {
+    if (p.id === 'main' && this.compareOn()) {
+      const base = this.compareBase()
+      if (base) { const t = percentTicks(r.min, r.max, base.price, n, niceStep); this.cmpStep = t.step; return t.prices }
+    }
+    if (this.logOn() && p.id === 'main') {
       if (!(r.min > 0)) return []
       const out: number[] = [], a = Math.log(r.min), b = Math.log(r.max)
       for (let i = 1; i <= n; i++) {
@@ -945,6 +1006,20 @@ export class TVChart {
     c.stroke()
   }
   lastBar(): Bar | undefined { return this.bars[this.lastIndex()] }
+  /** 对比线：每只一条，缺根与主图跳空处断开 */
+  drawCompare(p: Pane, r: PriceRange, from: number, to: number): void {
+    const base = this.compareBase(); if (!base) return
+    const c = this.ctx, times = (i: number) => this.bars[i]?.t ?? 0, hi = Math.min(to + 1, this.lastIndex())
+    c.lineWidth = LINE.compare; c.lineJoin = 'round'; c.lineCap = 'round'
+    for (const cv of this.compareViews()) {
+      c.strokeStyle = cv.color; c.beginPath()
+      for (const seg of compareSegments(times, this.iv, Math.max(from - 1, 0), hi, cv.at)) {
+        seg.forEach(([i, v], k) => { const x = this.indexToX(i), y = this.priceToY(priceOfPct(v, base.price), p, r); if (k) c.lineTo(x, y); else c.moveTo(x, y) })
+        if (seg.length === 1) { const [i, v] = seg[0]; const x = this.indexToX(i), y = this.priceToY(priceOfPct(v, base.price), p, r); c.moveTo(x - 1.5, y); c.lineTo(x + 1.5, y) }
+      }
+      c.stroke()
+    }
+  }
   drawLastLine(p: Pane, r: PriceRange): void {
     const b = this.lastBar(); if (!b) return
     const c = this.ctx, y = Math.round(this.priceToY(b.c, p, r)) + .5
@@ -999,10 +1074,17 @@ export class TVChart {
       c.fillStyle = C.text; c.textAlign = 'left'; c.font = this.font
       c.fillText(fmtAxis(this.yToPrice(y, p, r), this.meta.dec), PW + ALERT_CHIP_W + 2, top + 9)
     }
+    // 对比线的最新值：各自的颜色，压在主图最新价下面
+    const cb = this.compareBase()
+    if (cb) for (const cv of this.compareViews()) {
+      const v = cv.at(this.lastIndex()); if (v == null) continue
+      const y = this.priceToY(priceOfPct(v, cb.price), p, r); if (y < p.y || y > p.y + p.h) continue
+      label(y, comparePercentLabel(v), cv.color, '#fff')
+    }
     const b = this.lastBar(); if (!b) return
     const y = this.priceToY(b.c, p, r)
     const col = this.stale ? C.text3 : (b.c >= b.o ? C.up : C.down)
-    label(y, fmtAxis(b.c, this.meta.dec), col, '#fff')
+    label(y, this.mainAxisText(b.c), col, '#fff')
     // 十字线标签画在最上层（drawCrosshair）
   }
   drawCrosshair(panes: Pane[]): void {
@@ -1030,7 +1112,7 @@ export class TVChart {
     c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(tl, clamp(x, tw / 2, PW - tw / 2), H - AXIS_H / 2)
     if (pane) {
       const r = this._ranges[pane.id], v = this.yToPrice(y, pane, r)
-      const s = pane.id === 'main' ? fmtAxis(v, this.meta.dec) : this.subFmt(pane.id, v)
+      const s = pane.id === 'main' ? this.mainAxisText(v) : this.subFmt(pane.id, v)
       c.fillStyle = C.crossLabel; roundRect(c, PW + 1, y - 10, this.aw - 2, 20, 3); c.fill()
       c.fillStyle = '#fff'; c.textAlign = 'left'; c.fillText(s, PW + 8, y)
     }
@@ -1215,7 +1297,9 @@ export class TVChart {
     // 多图小格：只留品种与周期（周期是 sub 里「· 」后的第一段）
     if (this.deg.compact) {
       const iv = this.meta.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || ''
-      const html = `<div class="lrow compact"><span class="title">${this.meta.badge || ''}${this.meta.title}<span class="sub">${iv}</span></span></div>`
+      const i0 = this.legendIndex()
+      const cmp = this.compareOn() ? this.compareViews().map(cv => `<span class="cmp-mini num" style="color:${cv.color}">${cv.line.name} ${comparePercentLabel(cv.at(i0))}</span>`).join('') : ''
+      const html = `<div class="lrow compact"><span class="title">${this.meta.badge || ''}${this.meta.title}<span class="sub">${iv}</span></span>${cmp}</div>`
       if (this.legendEl.innerHTML !== html) this.legendEl.innerHTML = html
       this.renderPaneLegends(this._panes || [])
       return
@@ -1224,6 +1308,10 @@ export class TVChart {
         <span class="ohlc"><span><i>开</i>${v(b.o)}</span><span><i>高</i>${v(b.h)}</span><span><i>低</i>${v(b.l)}</span><span><i>收</i>${v(b.c)}</span>
         <span class="num ${cls}">${chg >= 0 ? '+' : ''}${fmt(chg, dec)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span></span></div>`
     const i = this.legendIndex()
+    // 对比：每只一行「代号 +x.xx%」，悬停出移除
+    if (this.compareOn()) for (const cv of this.compareViews()) {
+      h += `<div class="lrow cmp-row"><span class="cmp-dot" style="background:${cv.color}"></span><span class="ind-name">${cv.line.name}</span><span class="vals num"><span style="color:${cv.color}">${comparePercentLabel(cv.at(i))}</span></span><span class="tools"><button class="ibtn xs" data-act="cmpRemove" data-id="${cv.line.key}" data-tip="移除对比">${I('close', 'icon-16')}</button></span></div>`
+    }
     for (const id of MAIN_IDS) {
       if (!this.ind[id]) continue
       const cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || []

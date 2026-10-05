@@ -123,7 +123,7 @@ describe('首次对上', () => {
   it('出厂设置与 app/store 的 defaults() 对得上', () => {
     const d = hydrate({})
     const f = factorySettings()
-    expect({ pinned: d.pinned, ind: d.ind, params: d.params, orderFlowOverrides: d.orderFlowOverrides }).toEqual(f)
+    expect({ pinned: d.pinned, ind: d.ind, params: d.params, orderFlowOverrides: d.orderFlowOverrides, compareSymbols: d.compareSymbols }).toEqual(f)
   })
 })
 
