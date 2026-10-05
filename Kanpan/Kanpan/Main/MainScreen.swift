@@ -385,7 +385,11 @@ struct MainScreen: View {
   }
 
   /// 报价簿要不要拉列表：看得见一列品种的时候才拉。
-  private var listVisible: Bool { showingFavorites || symbolSearch.isActive }
+  ///
+  /// 顶栏加号开的对比搜索页（`showComparePicker`）也是一列品种：10-05 回归压测发现漏了它，
+  /// 报价簿以为列表收着，`requestQuote` 只放行图上那只，对比页里搜出来的每一行价格与涨跌
+  /// 一直是「—」。
+  private var listVisible: Bool { showingFavorites || symbolSearch.isActive || showComparePicker }
 
   private var lifecycleContent: some View {
     presentation
