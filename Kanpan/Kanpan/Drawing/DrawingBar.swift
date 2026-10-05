@@ -9,7 +9,7 @@ import UIKit
 /// 一起给二级弹窗，常用的直接展示在画线那一页上」。原来这根栏上摆着吸附、连续、管理、撤销、
 /// 重做、纸飞机、工具、收藏、完成九样，「清空」又藏在「管理」那张表的最底下。现在：
 ///
-/// - **上排**是手上正在干的事：没选中时是收藏的那几把工具，选中一条线之后整排
+/// - **上排**是手上正在干的事：没选中时是最常用的那几把工具（见下），选中一条线之后整排
 ///   换成这条线的动作（`DrawingSelectionBar`：提醒胶囊、样式、删除、⋯）。
 /// - **下排**钉死：全部工具、撤销、（能重做时才出现的）重做、⋯ 更多、完成。
 /// - 吸附、连续、全部隐藏、画线列表、清空全部——一天点不了几次的——都在「更多」里
@@ -17,11 +17,16 @@ import UIKit
 ///
 /// 两行怎么换，总高度都不变，选中 / 取消选中时图不会跳。
 ///
-/// **工具排：放得下就铺满，放不下才滚动（2026-09-21）。** 从前它一律是滚动区，
-/// 393pt 上出厂那几把正好把第四把「回撤」切在字中间——切口没有任何「后面还有」的提示，
-/// 这把工具在最窄的机型上等于不存在。现在按周期条那套来：`ViewThatFits` 先试一套不滚动、
-/// 各档等分铺满剩余宽度的排法，真放不下（用户钉了很多把）才退回滚动，并且右缘加一层
-/// 渐隐——被裁的那把是淡出去的，不是被切成半个字。字号、图标、文字一个都没缩。
+/// **工具排只露四把常用的（2026-10-05）。** 从前这排把面板上那十二把全摆出来，393pt 上
+/// 要横着滚，右缘一层渐隐，用户的话是「只展示少量常用的，根据用户的使用频率智能展示即可，
+/// 不然全部撑满了，体验不好，把其它功能都遮盖了」。现在只摆 `DrawingToolRank.portraitCount`
+/// 把：按这个人每把工具用了几次排（`Prefs.drawToolUsage`，随账号同步，总数过 256 减半，
+/// 量的是最近常用），没用过的按趋势线、水平线、斐波那契、平行通道……补位。顺序在画线
+/// 打开的那一下定好，这一回里不跟着重排；从面板里挑了一把不在这四把里的，它顶掉最后一格。
+/// 其余工具一把不少，都在左下「全部工具」（`draw.tools`）那张面板里。不给「固定哪几把」的设置。
+///
+/// 四把在最窄的机型上也铺得开：`ViewThatFits` 先试各档等分铺满剩余宽度的排法，三套都放不下
+/// （加大字号这类）才退回滚动，并且右缘加一层渐隐。字号、图标、文字一个都没缩。
 /// 可变的那一段一律 `.frame(maxWidth: .infinity)` + `.clipped()`，不许把内容漏到
 /// 固定按钮底下（「测量」曾整块压在「撤销」底下，点测量点到的是撤销）。
 /// 画线的几根栏（竖屏两行、选中栏、「更多」、横屏底条）共用的记号尺寸。
@@ -94,11 +99,11 @@ struct DrawingBar: View {
     .overlay(alignment: .top) { theme.line.frame(height: 0.5) }
   }
 
-  /// 面板上那十二把工具，按同一个顺序摆。三套候选排法从宽松到紧凑，都放不下才滚动。
+  /// 最常用的那四把（`DrawingController.shownTools`，怎么排见文件头）。三套候选排法从宽松到紧凑，
+  /// 都放不下才滚动。
   ///
-  /// 原来这排 chip 摆的是用户收藏的那几把。收藏是 41 把工具时代的解法——翻不到就先收起来；
-  /// 砍到十二把之后面板一屏就是全部，收藏没有了要解决的问题，这排也就直接摆全量
-  /// （`Drawing.Kind.palette`），省掉「先去收藏、这排才有」这一道。
+  /// 2026-09 中这排曾直接摆全量十二把（再往前是用户收藏的那几把）——一排挤满还得横着滚，
+  /// 2026-10-05 收成按用量挑出来的四把，其余去「全部工具」面板里拿。
   ///
   /// 三套铺满的差别只在留白（chip 之间的最小间距与各自的内边距），chip 自己的字号和
   /// 记号大小三套一个数：挤不下时让出来的是空隙，不是内容。
@@ -113,15 +118,18 @@ struct DrawingBar: View {
     .clipped()
   }
 
+  private var shownTools: [Drawing.Kind] { controller.shownTools(count: DrawingToolRank.portraitCount) }
+
   /// 铺满的那套排法：**多出来的宽度摊给 chip 之间的空隙**，chip 自己按内容该多宽多宽。
   ///
   /// 不能拿 `.frame(maxWidth: .infinity)` 等分——出厂那几把宽窄不一（「趋势线」三个字，
   /// 「矩形」两个字），等分会让宽的那两把恰好差几个点，`Text` 当场截成「趋…」，
   /// 那正是这次要修的毛病换了个样子。
   private func filledTools(spacing: Double, pad: Double) -> some View {
-    HStack(spacing: 0) {
-      ForEach(Drawing.Kind.palette) { kind in
-        if kind != Drawing.Kind.palette.first { Spacer(minLength: spacing) }
+    let shown = shownTools
+    return HStack(spacing: 0) {
+      ForEach(shown) { kind in
+        if kind != shown.first { Spacer(minLength: spacing) }
         toolChip(kind, pad: pad)
       }
     }.padding(.horizontal, Space.xs)
@@ -130,7 +138,7 @@ struct DrawingBar: View {
   private var scrollingTools: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: Space.s) {
-        ForEach(Drawing.Kind.palette) { kind in toolChip(kind, pad: Space.m) }
+        ForEach(shownTools) { kind in toolChip(kind, pad: Space.m) }
       }.padding(.horizontal, Space.xs)
     }
     .frame(maxWidth: .infinity)
@@ -393,7 +401,7 @@ struct DrawingHintStrip: View {
   }
 }
 
-/// 横屏画线工作台底下那根横条：笔形入口 + 收藏的几把工具 + 几个常驻动作（§2E5）。
+/// 横屏画线工作台底下那根横条：笔形入口 + 最常用的五把工具 + 几个常驻动作（§2E5）。
 ///
 /// 这根条改过三轮，每一轮都是位置和入口数量的取舍：
 ///
@@ -407,7 +415,7 @@ struct DrawingHintStrip: View {
 /// 十四五个，横屏可用高度只有 390pt 上下，竖着摆必然要滚动——而横屏的**宽**有 850pt，
 /// 横着摆绰绰有余。手也顺：横握手机时两个拇指都停在下沿，右栏顶上那几格恰恰是最难够的。
 ///
-/// 条上留下的都是**画的过程中要反复点**的东西：收藏的工具一格一个、形状即按钮
+/// 条上留下的都是**画的过程中要反复点**的东西：最常用的五把工具一格一个、形状即按钮
 /// （`DrawKindGlyph`），撤销、（能重做时才出现的）重做、完成。2026-09-23 起吸附 / 连续 /
 /// 全部隐藏 / 画线列表 / 清空都收进了「⋯ 更多」（`DrawingMoreButton`），纸飞机撤了
 /// （分享统一走「图表设置 › 分享」）——和竖屏那根栏同一套分法，见 `DrawingBar`。
@@ -422,12 +430,25 @@ struct DrawingDock: View {
     HStack(spacing: 0) {
       toolsButton
       divider
-      // 工具放在滚动区里：十二把在横屏这根条上也摆不下，但右边那几个固定动作
-      // 一个都不能被挤没（竖屏那根条踩过这个坑，见 `DrawingBar` 顶上那段）。
-      ScrollView(.horizontal, showsIndicators: false) {
+      // 只露最常用的五把（`DrawingToolRank.dockCount`，排法和竖屏那排一样，见 `DrawingBar`
+      // 文件头）。五把在横屏这根条上一定摆得下，就靠左一排、不滚；真摆不下（加大字号这类）
+      // 才退回滚动加右缘渐隐。右边那几个固定动作一个都不能被挤没
+      // （竖屏那根条踩过这个坑，见 `DrawingBar` 顶上那段）。
+      ViewThatFits(in: .horizontal) {
         HStack(spacing: Space.xxs) {
-          ForEach(Drawing.Kind.palette) { kind in toolButton(kind) }
+          ForEach(shownTools) { kind in toolButton(kind) }
+          Spacer(minLength: 0)
         }.padding(.horizontal, Space.xs)
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: Space.xxs) {
+            ForEach(shownTools) { kind in toolButton(kind) }
+          }.padding(.horizontal, Space.xs)
+        }
+        .clipped()
+        .mask(LinearGradient(
+          stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.9),
+                  .init(color: .black.opacity(0), location: 1)],
+          startPoint: .leading, endPoint: .trailing))
       }
       .frame(maxWidth: .infinity)
       .clipped()
@@ -447,7 +468,7 @@ struct DrawingDock: View {
       .accessibilityIdentifier("draw.finish")
     }
     // 记号下面那行名字原来 10 号，低于 HIG 下限 11（UI 审查 2026-09-24）。
-    // 工具名写全不截：它们排在横滚区里，要多宽给多宽，放不下的往右滑。
+    // 工具名写全不截：要多宽给多宽，五把摆不下时才退回横滚。
     .font(TypeScale.caption2Emph)
     .dynamicTypeSize(...MarketChrome.typeCap)
     .buttonStyle(.plain)
@@ -458,6 +479,8 @@ struct DrawingDock: View {
   }
 
   private var divider: some View { theme.line.frame(width: 1 / displayScale, height: ControlMetrics.pillHeight) }
+
+  private var shownTools: [Drawing.Kind] { controller.shownTools(count: DrawingToolRank.dockCount) }
 
   /// 笔形入口。手里拿着的工具不在这根条上时它也亮着，并且写上那把工具的名字——
   /// 不然换了一把这条上没摆的线（长按重复画留下的，或者老版本存的），
@@ -480,8 +503,8 @@ struct DrawingDock: View {
     Button { controller.pick(kind) } label: {
       VStack(spacing: Space.xxs) {
         DrawKindGlyph(kind: kind, size: DrawChrome.icon)
-        // 名字写全、不许截（审查 U11：「VWAP」曾被截成「VW」）——这一格在横滚区里，
-        // 要多宽给多宽，`fixedSize` 让它按字的真宽度排。
+        // 名字写全、不许截（审查 U11：「VWAP」曾被截成「VW」）——要多宽给多宽，
+        // `fixedSize` 让它按字的真宽度排。
         Text(kind.title).lineLimit(1).fixedSize()
       }.frame(minWidth: Hit.min, minHeight: Self.height).padding(.horizontal, Space.xxs).contentShape(Rectangle())
     }

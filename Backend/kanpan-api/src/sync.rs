@@ -173,6 +173,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "habitLearning","learnedDefaults",
  // 横屏画线台顶行「指标」胶囊：画线台里主图指标画不画（2026-10-05，布尔）。
  "drawingOverlaysShown",
+ // 画线条上露哪几把：每把画线工具用了几次（2026-10-05，对象，规则见 `sync_validation::draw_tool_usage`）。
+ "drawToolUsage",
 ];
 /// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
 ///

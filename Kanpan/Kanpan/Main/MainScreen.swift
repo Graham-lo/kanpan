@@ -1975,7 +1975,14 @@ struct MainScreen: View {
     if !picker.prefs.favorites.isEmpty { primeFavorites(picker.prefs.favorites) }
     // 上次用的是哪把画线工具。只用来在工具面板上把那一格预选高亮（见 `Prefs.lastDrawTool`），
     // 不是「此刻正举着笔」——待画状态归图自己管，换品种照样清掉，冷启动也不会举着笔进来。
-    draw.onPickTool = { tool in store.update { $0.lastDrawTool = tool.rawValue } }
+    // 同一次写里给这把工具记一次用——画线条只露几把常用的，按这张次数表排（`DrawingToolRank`）。
+    draw.onPickTool = { tool in
+      store.update {
+        $0.lastDrawTool = tool.rawValue
+        $0.drawToolUsage = DrawingToolRank.counted($0.drawToolUsage, tool)
+      }
+    }
+    draw.toolUsage = { [weak store] in store?.prefs.drawToolUsage ?? [:] }
     live = true
     // 点通知 / 桌面快捷入口冷启动进来的那一条，这会儿才有人接得住
     // （行情、品种表、报价簿都接好了）。

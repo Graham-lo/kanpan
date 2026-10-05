@@ -75,6 +75,7 @@ enum PrefsCodec {
     p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
     p.learnedDefaults = p.learnedDefaults.sanitized()
+    p.drawToolUsage = Prefs.cleanDrawToolUsage(p.drawToolUsage)
     return p
   }
 
@@ -154,6 +155,7 @@ extension Prefs: Codable {
     case favoritesGroup
     case sectorMarket, sectorWindow
     case lastDrawTool
+    case drawToolUsage
     case drawingOverlaysShown
     // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：老存档里的键读时忽略，服务端退役。
     case reviewSearchScope
@@ -196,6 +198,7 @@ extension Prefs: Codable {
     try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
+    try c.encode(drawToolUsage, forKey: .drawToolUsage)
     try c.encode(drawingOverlaysShown, forKey: .drawingOverlaysShown)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
@@ -350,6 +353,15 @@ extension Prefs: Codable {
     // 再被推上去整条拒收。
     if let raw = str(.lastDrawTool) { lastDrawTool = raw.isEmpty || Drawing.Kind(rawValue: raw) != nil ? raw : "" }
     if let v = bool(.drawingOverlaysShown) { drawingOverlaysShown = v }
+    // 画线工具次数：和服务端值规则对齐——键只认 `Drawing.Kind`，值只认 0…100000 的整数，
+    // 最多十二个键。一项一项读，一个坏值不拖垮整张表（读不成整数的那一项丢掉）。
+    if let raw = try? c.nestedContainer(keyedBy: PrefsUsageKey.self, forKey: .drawToolUsage) {
+      var usage: [String: Int] = [:]
+      for key in raw.allKeys {
+        if let n = try? raw.decode(Int.self, forKey: key) { usage[key.stringValue] = n }
+      }
+      drawToolUsage = Prefs.cleanDrawToolUsage(usage)
+    }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }
@@ -375,5 +387,31 @@ extension Prefs: Codable {
       out.append(id)
     }
     return out
+  }
+}
+
+/// 读 `drawToolUsage` 那张表用的键：表的键是工具名，事先不知道有哪些。
+private struct PrefsUsageKey: CodingKey {
+  let stringValue: String
+  var intValue: Int? { nil }
+  init?(stringValue: String) { self.stringValue = stringValue }
+  init?(intValue: Int) { nil }
+}
+
+extension Prefs {
+  /// `drawToolUsage` 一张表最多几个键（面板上就十二把工具）。
+  static let maxDrawToolUsageKeys = 12
+  /// 单把工具的次数上限，和服务端 `sync_validation.rs` 同一个数。
+  static let maxDrawToolUsageCount = 100_000
+
+  /// 只留认得出的工具、0 以上的次数（0 次等于没记，不留），过上限的夹到上限；
+  /// 键多了按次数多的留（同次数按名字），凑不出超过十二个键的表。
+  static func cleanDrawToolUsage(_ usage: [String: Int]) -> [String: Int] {
+    let kept = usage
+      .filter { Drawing.Kind(rawValue: $0.key) != nil && $0.value > 0 }
+      .map { ($0.key, min($0.value, maxDrawToolUsageCount)) }
+      .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0 < $1.0 }
+      .prefix(maxDrawToolUsageKeys)
+    return Dictionary(uniqueKeysWithValues: kept.map { ($0.0, $0.1) })
   }
 }

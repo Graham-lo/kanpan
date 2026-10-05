@@ -494,7 +494,7 @@ final class MainScreenUITests: KanpanUICase {
   /// 审查 U11：横屏画线台上品种名和竖屏一个写法、工具只有一套名字、出口只有「完成」。
   ///
   /// - 品种名「BTC/USDT」，不是裸代号「BTCUSDT」；
-  /// - 底下那根条上每一把工具念出来和写出来的都是面板上那个名字（`Drawing.Kind.title`），
+  /// - 底下那根条上（只露最常用的五把）每一把工具念出来和写出来的都是面板上那个名字（`Drawing.Kind.title`），
   ///   字按真宽度排，不许截（「VWAP」曾被截成「VW」）；
   /// - 画线进行中右边那根侧栏（「画线」「竖屏」）不在，也没有「返回」，只有「完成」；
   /// - 工具面板标题叫「画线」。
@@ -514,7 +514,13 @@ final class MainScreenUITests: KanpanUICase {
       ("note", "文字标注"), ("anchoredVWAP", "锚定均价线"), ("fixedVolumeProfile", "区间成交量分布"),
       ("anchoredVolumeProfile", "锚定成交量分布"), ("position", "多空持仓框"),
     ]
-    for (id, title) in titles {
+    // 2026-10-05 起条上只露最常用的五把（新装没用过：趋势线、水平线、斐波那契回撤、平行通道、
+    // 价时测量），其余七把只在笔形入口那张面板里——条上的那五把逐一认名字和真宽度。
+    let onDock: Set<String> = ["trend", "hline", "fibonacci", "channel", "measure"]
+    for (id, title) in titles where !onDock.contains(id) {
+      XCTAssertFalse(app.buttons["draw." + id].exists, "「\(title)」不该摆在条上（条上只露最常用的五把）")
+    }
+    for (id, title) in titles where onDock.contains(id) {
       let tool = app.buttons["draw." + id]
       expectExists(tool, Self.short, "画线条上没有「\(title)」")
       XCTAssertEqual(tool.label, title, "\(id) 念出来是「\(tool.label)」，和工具面板上的名字不一样")

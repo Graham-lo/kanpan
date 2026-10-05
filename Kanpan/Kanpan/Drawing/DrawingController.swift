@@ -22,7 +22,18 @@ final class DrawingController {
   /// 「绘图」工具面板开着没有。它没跟 `panel` 合在一起：横竖屏呈现方式不一样——
   /// 竖屏是半屏表单，横屏是贴边的一块卡片（见 `DrawingToolPicker`），而 `panel`
   /// 那两张（管理 / 样式）两种朝向下都是表单。
-  private(set) var active = false { didSet { chart?.drawingEditable = active } }
+  private(set) var active = false {
+    didSet {
+      chart?.drawingEditable = active
+      // 画线条上露哪几把，在打开的那一下按次数表定好，这一回里不再跟着重排——
+      // 点一把就挪位置，手指下一次就点不准了。换账号、云端推来新次数都在下一回生效。
+      if active, !oldValue { sessionUsage = toolUsage(); sessionPicks = [] }
+    }
+  }
+  /// 这一回打开画线时的工具次数表（`Prefs.drawToolUsage` 的快照）。见 `shownTools`。
+  private(set) var sessionUsage: [String: Int] = [:]
+  /// 这一回里从面板选过的工具，最近的在前（已归到面板那一格）。
+  private(set) var sessionPicks: [Drawing.Kind] = []
   private(set) var tool: DrawingStore.Tool?
   private(set) var hint: String?
   private(set) var canDelete = false
@@ -62,11 +73,15 @@ final class DrawingController {
   /// 拿新的画线去对老的提醒会当场把人家的提醒误删；而云端那一份本来就已经是
   /// 另一台设备对过账的结果，不需要这台再对一遍。
   @ObservationIgnored var onGeometryChanged: ((DrawArchive) -> Void)?
-  /// 记下「上次用的是哪把工具」。宿主接到 `Prefs.lastDrawTool`（随账号同步）。
+  /// 记下「上次用的是哪把工具」。宿主接到 `Prefs.lastDrawTool`（随账号同步），
+  /// 同一次写里也给 `Prefs.drawToolUsage` 记一笔（`DrawingToolRank.counted`），
+  /// 下一回画线条上露哪几把就照它排。
   ///
   /// 它**只**用来在工具面板上把那把工具预选高亮，不是「此刻正举着笔」——
   /// 待画状态归图自己（`ChartView+Drawing`），换品种照样清掉。
   @ObservationIgnored var onPickTool: ((DrawingStore.Tool) -> Void)?
+  /// 读此刻的工具次数表。宿主接到 `Prefs.drawToolUsage`；只在画线打开的那一下读一次。
+  @ObservationIgnored var toolUsage: () -> [String: Int] = { [:] }
   /// 手指正拖着的那条线此刻的样子；抬手（或别的任何一次状态变化）报一次 `nil`。
   ///
   /// 不进观察：拖动是逐帧的，发布出去会让整个主屏跟着每帧重算一遍。
@@ -187,6 +202,14 @@ final class DrawingController {
     chart.selectedDrawingID = wanted.id
     sync()
   }
+  /// 画线条上露哪几把（从左到右，`count` 把）：按这一回打开时的次数表排
+  /// （`DrawingToolRank.shown`）；这一回从面板挑过、却不在前几把里的那把顶掉最后一格。
+  func shownTools(count: Int) -> [Drawing.Kind] {
+    let base = DrawingToolRank.shown(usage: sessionUsage, count: count)
+    let held = sessionPicks.first { !base.contains($0) }
+    return DrawingToolRank.shown(usage: sessionUsage, count: count, held: held)
+  }
+
   func toggle() { active.toggle(); if !active { chart?.endDrawing(); assign(\.picker, false) }; sync() }
   /// 开「绘图」面板。入口只有一个笔形图标，横竖屏都是它。
   func openTools() { assign(\.active, true); picker = true }
@@ -215,6 +238,12 @@ final class DrawingController {
     }
     chart?.drawTool = t
     onPickTool?(t)
+    let head = DrawingToolRank.head(t)
+    if Drawing.Kind.palette.contains(head) {
+      var picks = sessionPicks.filter { $0 != head }
+      picks.insert(head, at: 0)
+      assign(\.sessionPicks, picks)
+    }
     assign(\.panel, nil); assign(\.picker, false)
     sync()
   }

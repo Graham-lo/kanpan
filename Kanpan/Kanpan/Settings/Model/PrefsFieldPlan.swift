@@ -94,6 +94,10 @@ enum PrefsFieldPlan {
     "favoritesGroup": .synced,
     "sectorMarket": .synced, "sectorWindow": .synced,
     "lastDrawTool": .synced,
+    // 画线条上露哪几把：每把工具用了几次（整张表一个键，见 `Prefs.drawToolUsage`）。
+    // 它是自动统计出来的，按上面的判据本该只在本机；但它定的是条上摆什么——同一个人
+    // 换台手机条上还该是那几把，所以跟账号走。量很小（最多十二个键、总数过 256 就减半）。
+    "drawToolUsage": .synced,
     "drawingOverlaysShown": .synced,
     "reviewSearchScope": .synced,
     "alertSound": .synced,

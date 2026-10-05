@@ -37,6 +37,12 @@ fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()
 fn integers(v:&Value,count:usize,lo:i64,hi:i64)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_i64().is_some_and(|n|n>=lo&&n<=hi)))}
 fn names(v:&Value,count:usize,names:&[&str])->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(|s|names.contains(&s))))}
 fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)}
+/// `settings.drawToolUsage`：每把画线工具用了几次（画线条只露几把常用的，按它排）。
+/// 一个对象，最多十二个键（面板上就十二把），键是画线种类，值是 0…100000 的整数。
+/// 客户端总数过 256 就整体减半，所以正常的值远到不了上限；上限只防坏档。
+fn draw_tool_usage(v:&Value)->bool {
+ v.as_object().is_some_and(|o|o.len()<=12&&o.iter().all(|(k,n)|KINDS.contains(&k.as_str())&&n.as_i64().is_some_and(|n|(0..=100_000).contains(&n))))
+}
 /// 一组的指标布局（客户端 `IndicatorLayout`，Kanpan/Kanpan/Settings/Model/IndicatorLayouts.swift）：
 /// 键是顶层那七个同名字段的子集，值的规则也和顶层逐项相同——顶层那份是三组共用的，
 /// 这里是某一组分了叉之后自己的那份。缺的键在客户端跟共用那份走，所以不要求七个都在。
@@ -215,6 +221,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "learnedDefaults"=>learned_defaults(v),
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
+   "drawToolUsage"=>draw_tool_usage(v),
    // A tab label on the drawing panel, not an enum with any server meaning; the client
    // falls back when the saved one is gone, so the length is the only real rule.
    "drawToolGroup"=>string(v,128),
@@ -736,6 +743,15 @@ mod tests {
   }
   assert!(field("settings","reviewSearchScope",&json!("private"))&&!field("settings","reviewSearchScope",&json!("world")));
   assert!(field("settings","lastDrawTool",&json!(""))&&field("settings","lastDrawTool",&json!("gannFan"))&&!field("settings","lastDrawTool",&json!("laser")));
+  assert!(field("settings","drawToolUsage",&json!({}))&&field("settings","drawToolUsage",&json!({"trend":12,"fibonacci":3,"gannFan":0})));
+  assert!(field("settings","drawToolUsage",&json!({"hline":100_000})));
+  for bad in [json!({"laser":1}),json!({"trend":-1}),json!({"trend":1.5}),json!({"trend":"3"}),json!({"trend":100_001}),
+              json!(["trend"]),json!("trend"),json!(null)] {
+   assert!(!field("settings","drawToolUsage",&bad),"{bad}");
+  }
+  let thirteen:serde_json::Map<String,Value>=KINDS.iter().take(13).map(|k|(k.to_string(),json!(1))).collect();
+  assert!(!field("settings","drawToolUsage",&Value::Object(thirteen)),"最多十二个键");
+  assert!(crate::sync::SETTINGS_FIELDS.contains(&"drawToolUsage"));
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");

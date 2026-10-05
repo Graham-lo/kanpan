@@ -9,6 +9,7 @@
  */
 
 import { compareKey } from '../../sync/codec'
+import { isDrawingKind } from '../chart/draw/drawing'
 
 export type IntervalId = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '12h' | '1d' | '1w' | '1M' | '1y'
 export const INTERVALS: readonly IntervalId[] = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w', '1M', '1y']
@@ -97,6 +98,8 @@ export interface Prefs {
   sectorMarket: SectorMarket
   sectorWindow: SectorWindow
   lastDrawTool: string
+  /** iOS 画线条按它挑最常用的几把（每把工具用了几次）；手机网页只随账号带着走、不丢 */
+  drawToolUsage: Record<string, number>
   /** iOS 横屏画线台里主图指标画不画（手机网页没有画线台，只随账号带着走、不丢） */
   drawingOverlaysShown: boolean
   reviewSearchScope: ReviewSearchScope
@@ -104,7 +107,7 @@ export interface Prefs {
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
-  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawingOverlaysShown', 'favoritesGroup', 'habitLearning',
+  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'favoritesGroup', 'habitLearning',
   'indicatorColors', 'indicatorLayouts', 'interval', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
   'notifyListingChanges', 'orderFlow', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
@@ -126,7 +129,7 @@ export function defaultPrefs(): Prefs {
     indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
     params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
-    favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', reviewSearchScope: 'history',
+    favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, reviewSearchScope: 'history',
     drawingOverlaysShown: true,
   }
 }
@@ -211,6 +214,18 @@ export function cleanOrderFlowOverrides(v: unknown): Record<string, OrderFlowOve
     if (typeof o.step === 'number' && Number.isFinite(o.step) && o.step >= 1e-8 && o.step <= 1e6) one.step = o.step
     if (Object.keys(one).length) out[base] = one
   }
+  return out
+}
+/** iOS Prefs.cleanDrawToolUsage / 服务端 draw_tool_usage：键是画线种类、值是 1…100000 的整数、最多 12 个键 */
+export function cleanDrawToolUsage(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!isRecord(v)) return out
+  const kept = Object.entries(v)
+    .filter((e): e is [string, number] => isDrawingKind(e[0]) && Number.isInteger(e[1]) && (e[1] as number) > 0)
+    .map(([k, n]) => [k, Math.min(n, 100_000)] as const)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, 12)
+  for (const [k, n] of kept) out[k] = n
   return out
 }
 /** LearnedDefaults.sanitized：每条恰好 {v, n, at}；整份 ≤ 16 KB（超了按最旧的先丢） */
@@ -384,6 +399,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     sectorMarket: oneOf(r.sectorMarket, ['crypto', 'us'] as const, d.sectorMarket),
     sectorWindow: oneOf(r.sectorWindow, ['today', 'd5', 'd20'] as const, d.sectorWindow),
     lastDrawTool: typeof r.lastDrawTool === 'string' ? r.lastDrawTool : d.lastDrawTool,
+    drawToolUsage: cleanDrawToolUsage(r.drawToolUsage),
     drawingOverlaysShown: bool(r.drawingOverlaysShown, d.drawingOverlaysShown),
     reviewSearchScope: oneOf(r.reviewSearchScope, ['history', 'private'] as const, d.reviewSearchScope),
   }

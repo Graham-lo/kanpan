@@ -192,6 +192,19 @@ struct SettingsBugfixTests {
     #expect(decode(#"{"lastDrawTool":""}"#).lastDrawTool == "")
   }
 
+  @Test("画线工具次数：认不出的工具、负数、非整数一项一项丢，好的留着；编码写得回来")
+  func 画线工具次数() throws {
+    let p = decode(#"{"drawToolUsage":{"trend":5,"laser":3,"hline":-2,"note":1.5,"measure":"7","fibonacci":0,"position":2}}"#)
+    #expect(p.drawToolUsage == ["trend": 5, "position": 2])
+    #expect(decode(#"{"drawToolUsage":"trend"}"#).drawToolUsage == [:])
+    #expect(decode(#"{"drawToolUsage":{"trend":500000}}"#).drawToolUsage == ["trend": 100_000])
+    #expect(Prefs.defaults.drawToolUsage.isEmpty)
+    var q = Prefs.defaults
+    q.drawToolUsage = ["channel": 3, "bogus": 9]
+    let back = decode(String(decoding: PrefsCodec.encode(q), as: UTF8.self))
+    #expect(back.drawToolUsage == ["channel": 3])
+  }
+
   @Test("收设置项 G：自选排序 / 迷你走势、板块排序的老键读进来即丢，旁边的键照常认")
   func 收设置项G老键() {
     let old = decode(#"{"favoritesSort":"volume","favoritesAscending":true,"favoritesAmount":true,"favoritesSparkline":true,"sectorSort":"volume","sectorWindow":"d5","favoritesGroup":"g1"}"#)

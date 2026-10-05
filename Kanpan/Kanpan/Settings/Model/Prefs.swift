@@ -193,6 +193,13 @@ struct Prefs: Sendable, Equatable {
   /// 这儿记的只是「上次用的是哪把」这个习惯。
   var lastDrawTool: String = ""
 
+  /// 每把画线工具用了几次（键是面板那一格的 `Drawing.Kind` rawValue，变体记在族首名下）。
+  ///
+  /// 画线条只露几把常用的（竖屏 4 把、横屏画线台 5 把），就照它排（`DrawingToolRank`）；
+  /// 其余的都在「绘图」面板里。每选一次 +1，总数过 256 整体减半，量的是「最近常用」。
+  /// 随账号同步。它不是设置：用户看不到、也不用管。
+  var drawToolUsage: [String: Int] = [:]
+
   /// 横屏画线台里主图指标（均线、布林……）画不画——顶行最右那颗「指标」胶囊管它，出厂开。
   ///
   /// 开着时价格轴仍只按 K 线定（`ChartSession.compose` 关掉 `overlaysAffectPriceRange`），
