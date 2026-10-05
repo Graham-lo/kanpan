@@ -333,8 +333,9 @@ async fn minute_loop(pool:&PgPool) {
 
 async fn heal_loop(pool:&PgPool) {
  let mut first=true;
+ let mut healed=Healed::new();
  loop {
-  let wait=match heal(pool,first).await {
+  let wait=match heal(pool,&mut healed).await {
    Ok(n)=>{if first||n>0 {tracing::info!("Macro index: backfill wrote {n} bars")};first=false;HEAL_EVERY}
    Err(e)=>{if HEAL_ERR.ready() {tracing::warn!("Macro index: backfill will retry ({e})")};HEAL_RETRY}
   };
@@ -342,9 +343,9 @@ async fn heal_loop(pool:&PgPool) {
  }
 }
 
-/// 一档官方 K 线的覆盖：(行数, 最早开盘时刻, 最新开盘时刻)。
-async fn coverage(pool:&PgPool,interval:&str)->sqlx::Result<(i64,Option<i64>,Option<i64>)> {
- sqlx::query_as("SELECT count(*),min(open_time),max(open_time) FROM macro_bars WHERE symbol=$1 AND interval=$2 AND source=1")
+/// 一档官方 K 线有几根。
+async fn coverage(pool:&PgPool,interval:&str)->sqlx::Result<(i64,)> {
+ sqlx::query_as("SELECT count(*) FROM macro_bars WHERE symbol=$1 AND interval=$2 AND source=1")
   .bind(SYMBOL).bind(interval).fetch_one(pool).await
 }
 
@@ -382,19 +383,19 @@ pub fn completed_days(list:Vec<Bar>,now:i64,from:i64)->(Vec<Row>,Vec<NaiveDate>)
  (rows,repair)
 }
 
-/// 这一档回填从哪儿取起。表里最早那根离「该有的深度」还差得远（首次部署；或者分钟循环抢先写了最近
-/// 几小时，只看最新那根会以为已经补过），就整段重取；否则从最新那根往前留一点重取。
-/// `FRONT_SLACK` 给周末加节假日留余地：深度的起点落在周六，最早那根本来就只能是周日晚上。
-const FRONT_SLACK:i64=4*DAY_MS;
-pub fn start_of(now:i64,depth:i64,oldest:Option<i64>,newest:Option<i64>,overlap:i64)->i64 {
- match (oldest,newest) {
-  (Some(o),Some(n)) if o<=now-depth+FRONT_SLACK=>(n-overlap).max(now-depth),
-  _=>now-depth,
- }
+/// 每档回填连续补到了哪一刻（只在本进程里记）。
+///
+/// 不拿库里「最新那根」当进度：分钟循环一起来就写最近几小时，回填中途失败或进程中途重启时库里也会
+/// 前后都有、中间一段空着，只看最新那根会以为已经补过，那段就永远空着（首次上线时 1M 就只剩 3 小时）。
+/// 所以每个进程第一轮整段重取（1M 30 天 15 次请求、5M 8 次、1H 1 次，值没变的行不重写），
+/// 之后每段取成功才往前挪，失败了下一轮从挪到的地方接着取。
+pub type Healed=std::collections::BTreeMap<&'static str,i64>;
+pub fn start_of(now:i64,depth:i64,healed:Option<i64>,overlap:i64)->i64 {
+ healed.map_or(now-depth,|t|(t-overlap).max(now-depth))
 }
 
 /// 一轮回填。返回写了（或试图写）多少行。
-async fn heal(pool:&PgPool,_first:bool)->anyhow::Result<usize> {
+async fn heal(pool:&PgPool,healed:&mut Healed)->anyhow::Result<usize> {
  let now=now_ms();
  let mut total=0;
  // 1H、5M、1M：表里没有就整段取（分段，单次答复小），有就从最新那根往前留一点重取。
@@ -403,8 +404,7 @@ async fn heal(pool:&PgPool,_first:bool)->anyhow::Result<usize> {
   (BarKind::M5,64*DAY_MS,8*DAY_MS,HOUR_MS),
   (BarKind::M1,30*DAY_MS,2*DAY_MS,10*MINUTE_MS),
  ] {
-  let (_,oldest,newest)=coverage(pool,kind.interval()).await?;
-  let mut from=start_of(now,depth,oldest,newest,overlap);
+  let mut from=start_of(now,depth,healed.get(kind.interval()).copied(),overlap);
   while from<now {
    let until=(from+chunk).min(now);
    let list=cnbc::bars(kind,from,until).await.map_err(|e|anyhow::anyhow!("{} {e}",kind.path()))?;
@@ -414,11 +414,12 @@ async fn heal(pool:&PgPool,_first:bool)->anyhow::Result<usize> {
    };
    total+=rows.len();
    upsert(pool,&rows).await?;
+   healed.insert(kind.interval(),until);
    from=until;
   }
  }
  // 1D：没有十年就整段取，有就重取最近 15 天（CNBC 收盘后才出当天那根）。
- let (count,_,_)=coverage(pool,"1d").await?;
+ let (count,)=coverage(pool,"1d").await?;
  let from=if count<2000 {now-3660*DAY_MS} else {now-15*DAY_MS};
  let list=cnbc::bars(BarKind::D1,from,now).await.map_err(|e|anyhow::anyhow!("1D {e}"))?;
  let (mut rows,repair)=completed_days(list,now,from);
@@ -490,17 +491,17 @@ mod tests {
  fn ms(s:&str)->i64 {chrono::NaiveDateTime::parse_from_str(s,"%Y-%m-%d %H:%M").unwrap().and_utc().timestamp_millis()}
  const SEC:i64=1000;
 
- #[test] fn backfill_refetches_the_whole_depth_until_the_front_is_covered() {
+ #[test] fn backfill_starts_from_its_own_progress_not_the_newest_row() {
   let now=ms("2026-10-05 11:05");
   let depth=30*DAY_MS;
-  // 空表：整段。
-  assert_eq!(start_of(now,depth,None,None,10*MINUTE_MS),now-depth);
-  // 分钟循环抢先写了最近 3 小时：最早那根离深度起点差得远，仍然整段（线上首次部署就是这样只剩 3 小时的）。
-  assert_eq!(start_of(now,depth,Some(now-3*HOUR_MS),Some(now-2*MINUTE_MS),10*MINUTE_MS),now-depth);
-  // 前面补齐了（最早那根在周末余量以内）：从最新那根往前 10 分钟。
-  assert_eq!(start_of(now,depth,Some(now-depth+2*DAY_MS),Some(now-2*MINUTE_MS),10*MINUTE_MS),now-12*MINUTE_MS);
-  // 停了很久再起：最新那根早于深度起点，从深度起点取。
-  assert_eq!(start_of(now,depth,Some(now-90*DAY_MS),Some(now-60*DAY_MS),10*MINUTE_MS),now-depth);
+  // 本进程还没补过：整段（不管分钟循环已经写了多少最近的）。
+  assert_eq!(start_of(now,depth,None,10*MINUTE_MS),now-depth);
+  // 上一轮中途失败、补到了 12 天前：从那儿往前 10 分钟接着取。
+  assert_eq!(start_of(now,depth,Some(now-12*DAY_MS),10*MINUTE_MS),now-12*DAY_MS-10*MINUTE_MS);
+  // 补完了：只重取最近一点。
+  assert_eq!(start_of(now,depth,Some(now-30*MINUTE_MS),10*MINUTE_MS),now-40*MINUTE_MS);
+  // 进度比深度起点还旧：从深度起点取。
+  assert_eq!(start_of(now,depth,Some(now-60*DAY_MS),10*MINUTE_MS),now-depth);
  }
 
  #[test] fn bars_off_the_interval_grid_are_dropped() {
