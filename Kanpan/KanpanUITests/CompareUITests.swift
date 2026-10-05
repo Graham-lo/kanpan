@@ -51,11 +51,39 @@ import UIKit
     let state = XCTAttachment(string: String(describing: info()))
     state.name = name + "-读数"; state.lifetime = .keepAlways; add(state)
   }
-  /// 对比整节 2026-09-27 起搬进了指标页（周期条行尾「指标」直达），不再在图表设置里。
-  func panel() {
-    let button = app.buttons["interval.indicators"]
+  /// 对比入口 2026-10-05 起在顶栏（加号 `top.compare`），点开是搜索页的对比模式：
+  /// 顶上「正在对比」一条（`compare.chip.<键>` / `compare.remove.<键>`），每行行尾一颗加号
+  /// （`compare.toggle.<键>`，值是 可添加 / 已添加 / 已满 / 主图），「完成」（`compare.done`）收起。
+  func openCompare() {
+    let button = app.buttons[Ids.topCompare]
     XCTAssertTrue(button.waitForExistence(timeout: 10)); button.tap()
-    XCTAssertTrue(app.descendants(matching: .any)["compare.add"].firstMatch.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.textFields[Ids.searchQuery].waitForExistence(timeout: 10), "顶栏加号没开出对比搜索页")
+    XCTAssertTrue(app.buttons["compare.done"].exists, "开出来的不是对比模式（右上不是「完成」）")
+  }
+  /// 在对比搜索页里换一个查询词，返回那一行行尾的加号。
+  @discardableResult func find(_ symbol: String) -> XCUIElement {
+    let query = app.textFields[Ids.searchQuery]
+    query.tap()
+    if let text = query.value as? String, !text.isEmpty, text != query.placeholderValue {
+      query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
+    }
+    query.typeText(symbol)
+    let mark = app.buttons["compare.toggle." + testInstrumentKey(symbol)]
+    XCTAssertTrue(mark.waitForExistence(timeout: 20), "搜「\(symbol)」没出那一行")
+    return mark
+  }
+  func toggle(_ symbol: String, expect value: String) {
+    let mark = find(symbol)
+    mark.tap()
+    XCTAssertTrue(wait(5) { mark.value as? String == value }, "\(symbol) 点完行尾不是「\(value)」：\(String(describing: mark.value))")
+  }
+  func doneCompare() {
+    let done = app.buttons["compare.done"]
+    XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap()
+    XCTAssertTrue(wait(10) { !self.app.textFields[Ids.searchQuery].exists }, "「完成」没收起对比搜索页")
+  }
+  func chips() -> Int {
+    app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "compare.chip.")).count
   }
   /// 图表设置（周期条行尾那颗）：「记一笔」还在这一页。
   func chartPanel() {
@@ -69,30 +97,50 @@ import UIKit
     XCTAssertTrue(wait(10) { !done.exists })
   }
   func addCompare(_ symbol: String) {
-    panel()
-    app.descendants(matching: .any)["compare.add"].firstMatch.tap()
-    let query = app.textFields["symbols.query"]
-    XCTAssertTrue(query.waitForExistence(timeout: 10)); query.tap(); query.typeText(symbol)
-    let row = app.buttons["symbols.row." + testInstrumentKey(symbol)]
-    XCTAssertTrue(row.waitForExistence(timeout: 20)); row.tap()
-    XCTAssertTrue(wait(10) { !query.exists })
+    openCompare(); toggle(symbol, expect: "已添加"); doneCompare()
   }
 
+  /// 顶栏加号 → 对比模式：加两只、图上立刻出线；再加满三只，第四只被拒（行尾「已满」、集合不变、
+  /// 提示「最多对比 3 个品种」）；主图那只那一行点不动；重启还在；从「正在对比」那条的 × 和
+  /// 行尾那颗各删一只，最后清空。
   func testPanelCollectionPersistsAndClears() {
     app.launch(); ready(0)
-    addCompare("ETHUSDT"); ready(1)
-    addCompare("ETHUSDT"); ready(1)
-    addCompare("BTCUSDT"); ready(1)
-    addCompare("SOLUSDT"); ready(2)
-    addCompare("DOGEUSDT"); ready(3)
+    openCompare()
+    XCTAssertFalse(app.descendants(matching: .any)["compare.strip"].exists, "一只都没选时不该有「正在对比」那条")
+    toggle("ETHUSDT", expect: "已添加")
+    toggle("SOLUSDT", expect: "已添加")
+    XCTAssertEqual(chips(), 2, "「正在对比」那条不是两只")
+    shot("对比-搜索页两只")
+    doneCompare(); ready(2)
+    XCTAssertEqual(info()["compareKeys"] as? [String], Array(keys.prefix(2)))
+    shot("对比-两条线")
+
+    openCompare()
+    XCTAssertEqual(chips(), 2)
+    let main = find("BTCUSDT")
+    XCTAssertEqual(main.value as? String, "主图", "主图那只那一行不是「主图」")
+    toggle("DOGEUSDT", expect: "已添加")
+    let fourth = find("XRPUSDT")
+    XCTAssertEqual(fourth.value as? String, "已满", "满三只后别的行不是「已满」")
+    fourth.tap()
+    XCTAssertTrue(app.staticTexts["最多对比 3 个品种"].waitForExistence(timeout: 3), "第四只没给「最多对比 3 个品种」提示")
+    XCTAssertEqual(fourth.value as? String, "已满")
+    XCTAssertEqual(chips(), 3, "第四只被塞进去了")
+    shot("对比-第四只被拒")
+    doneCompare(); ready(3)
     XCTAssertEqual(info()["compareKeys"] as? [String], keys)
-    panel()
-    XCTAssertFalse(app.descendants(matching: .any)["compare.add"].firstMatch.isEnabled)
-    shot("对比-三项面板"); closePanel()
+
     app.terminate(); app.launch(); ready(3)
     XCTAssertEqual(info()["compareKeys"] as? [String], keys)
-    panel(); app.buttons["compare.remove." + keys[2]].tap(); ready(2)
-    panel(); app.descendants(matching: .any)["compare.clear"].firstMatch.tap(); ready(0)
+    openCompare()
+    app.buttons["compare.remove." + keys[2]].tap()
+    XCTAssertTrue(wait(5) { self.chips() == 2 }, "「正在对比」那条的 × 没删掉")
+    doneCompare(); ready(2)
+    openCompare()
+    toggle("ETHUSDT", expect: "可添加")
+    app.buttons["compare.remove." + keys[1]].tap()
+    XCTAssertTrue(wait(5) { self.chips() == 0 })
+    doneCompare(); ready(0)
     XCTAssertEqual(info()["percentAxis"] as? Bool, false)
     app.terminate(); app.launch(); ready(0)
   }
@@ -233,9 +281,11 @@ import UIKit
     ready(2)
     XCTAssertEqual(info()["compareKeys"] as? [String], Array(keys.dropFirst()))
     XCTAssertEqual(info()["compareColors"] as? [String], originalColors.map { Array($0.dropFirst()) })
-    panel()
-    // ETH 只是这张图临时忽略；持久集合仍有它，移除入口仍在。
-    XCTAssertTrue(app.buttons["compare.remove." + keys[0]].exists); closePanel()
+    openCompare()
+    // ETH 只是这张图临时忽略；持久集合仍有它，「正在对比」那条里移除入口仍在；ETH 这时是主图，那一行点不动。
+    XCTAssertTrue(app.buttons["compare.remove." + keys[0]].exists)
+    XCTAssertEqual(find("ETHUSDT").value as? String, "主图")
+    doneCompare()
     shot("对比-扫到ETH忽略自身")
     swipe(false)
     XCTAssertTrue(wait(30) { self.info()["symbol"] as? String == testInstrumentKey("BTCUSDT") })

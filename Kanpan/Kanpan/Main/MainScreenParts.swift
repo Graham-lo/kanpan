@@ -190,6 +190,12 @@ struct MainHeaderView<Card: View>: View {
   /// 顶栏「记一笔」「分享」两颗圆片；nil 时那颗不排。
   let onNote: (() -> Void)?
   let onShare: (() -> Void)?
+  /// 顶栏「添加对比」「提醒」两颗（2026-10-05）；nil 时那颗不排。
+  let onCompare: (() -> Void)?
+  let compareActive: Bool
+  let onAlerts: (() -> Void)?
+  /// 这只还没响的提醒条数（铃铛角标）。宿主算好传进来，头部不自己翻提醒表。
+  let alertCount: Int
   let onSearch: () -> Void
   let onScan: (ScanDirection) -> Void
   let card: Card
@@ -209,6 +215,10 @@ struct MainHeaderView<Card: View>: View {
         onBack: onBack,
         onNote: onNote,
         onShare: onShare,
+        onCompare: onCompare,
+        compareActive: compareActive,
+        onAlerts: onAlerts,
+        alertCount: alertCount,
         onSearch: onSearch)
       ZStack {
         PriceRow(theme: theme, instrument: market.symbol, ticker: session.rollingTicker, lastPrice: session.readoutPrice,

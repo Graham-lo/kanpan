@@ -3,7 +3,8 @@ import UIKit
 import KanpanCore
 
 /// 「分析」面板：周期条行尾「分析」直达（`Panel.indicators`），半屏面板里的一整页。
-/// 四节：**画线 · 指标 · 对比 · 主力订单流**（2026-09-28 起；之前这一页和行尾那格都叫「指标」）。
+/// 三节：**画线 · 指标 · 主力订单流**（2026-10-05 起；2026-09-28 到 10-04 是四节，多一节「对比」，
+/// 再往前这一页和行尾那格都叫「指标」）。
 ///
 /// 2026-09-18 指标并进「图表设置」时，是十三个开关连同每个开着的指标底下那块「参数与颜色」
 /// 一股脑铺在那一页上的——再往下还有一段「副图顺序」。开得越多，这一页越长，坐标轴、
@@ -25,19 +26,18 @@ import KanpanCore
 /// 画线那颗记号挪进这一页、排在最上面单成一节，行尾回到「更多 ▾ · 分析 · 图表设置」三件，
 /// 这一页的标题跟着行尾改叫「分析」，「指标」只作第二节的节名。
 ///
+/// 2026-10-05 照 TradingView 手机版把「添加对比」搬上顶栏（加号那颗，`TopBar` 的 `top.compare`），
+/// 点开是搜索页的对比模式（`CompareSearchMode`）：加、删、看已选都在那一页，这里的「对比」一节撤掉，
+/// 同一个动作只留一个入口。
+///
 /// 参数编辑那层 sheet 和面板提示仍挂在这一层自己身上。
 struct IndicatorPage: View {
   var store: PrefsStore
   /// 主力订单流的胶水与当前品种（它那张表要显示这只币此刻生效的门槛）。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
-  /// 「添加对比」：关面板、开品种搜索。此刻不能对比（复盘回放、横屏画线台）时调用方传 nil，
-  /// 「对比」这一节整节不排。
-  var onAddCompare: (() -> Void)? = nil
-  /// 对比品种键 → 显示名（主界面按品种表算好递进来，这儿不查表）。
-  var compareNames: [String: String] = [:]
   /// 「画线」：关面板、把这张图横过来进画线工作台。复盘回放、已经在画时调用方传 nil，
-  /// 「画线」这一节整节不排（和对比那节同一个判法）。
+  /// 「画线」这一节整节不排。
   var onDraw: (() -> Void)? = nil
   /// 对比期间画不了线：那一行置灰、点不动（原来周期条那颗记号的 `drawEnabled`）。
   var drawEnabled = true
@@ -48,7 +48,7 @@ struct IndicatorPage: View {
   @Environment(\.panelDismiss) private var sideDismiss
 
   private var prefs: Prefs { store.prefs }
-  /// 对比那几个动作要先收面板再做（搜索页、看得见图），竖屏 sheet / 横屏侧栏一律走这里。
+  /// 「开始画线」要先收面板再做（看得见图），竖屏 sheet / 横屏侧栏一律走这里。
   private var close: PanelCloser { PanelCloser(side: sideDismiss, sheet: dismiss) }
   /// 主图叠加那排开关里不再有主力订单流——它单成了一节。
   private static let overlayPalette = IndicatorID.mainPalette.filter { $0 != .orderFlow }
@@ -77,7 +77,6 @@ struct IndicatorPage: View {
         row(id, last: id == IndicatorID.subPalette.last)
       }
 
-      compareSection
       orderFlowSection
 
       // 指标布局回到出厂（一人一份、不分周期，2026-10-03）。
@@ -114,31 +113,6 @@ struct IndicatorPage: View {
       }
       .disabled(!drawEnabled)
       .accessibilityIdentifier("indicator.draw")
-    }
-  }
-
-  /// 对比 K 线（`Kanpan/Kanpan/Compare/`）：最多三只，颜色跟皮肤色板走，不给选。
-  /// 原样搬自「图表设置」（2026-09-27），标识不变：`compare.add` / `compare.remove.<键>` / `compare.clear`。
-  @ViewBuilder private var compareSection: some View {
-    if let onAddCompare {
-      PanelGroupTitle(text: "对比")
-      // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶。
-      PanelRow(name: "添加对比", divider: !prefs.compareSymbols.isEmpty, onTap: { close(); onAddCompare() })
-        .disabled(prefs.compareSymbols.count >= 3)
-        .accessibilityIdentifier("compare.add")
-      ForEach(prefs.compareSymbols, id: \.self) { key in
-        PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
-          Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
-            Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
-          }
-          .buttonStyle(PanelPlainButtonStyle())
-          .accessibilityIdentifier("compare.remove." + key)
-        }
-      }
-      if !prefs.compareSymbols.isEmpty {
-        PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; close() })
-          .accessibilityIdentifier("compare.clear")
-      }
     }
   }
 
@@ -299,7 +273,7 @@ private struct InUseList: View {
 
 #if DEBUG
 #Preview("指标") {
-  PanelPreviewHost { store in IndicatorPage(store: store, onAddCompare: {}) }
+  PanelPreviewHost { store in IndicatorPage(store: store) }
 }
 #endif
 

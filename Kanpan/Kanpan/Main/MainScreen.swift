@@ -296,19 +296,20 @@ struct MainScreen: View {
                        onRowVisibility: { quotes.watchRow($0, visible: $1) })
         .preferredColorScheme(effectiveTheme.forced)
     }
-    .fullScreenCover(isPresented: $showComparePicker) {
-      SymbolPickerView(model: picker, redUp: prefs.redUp,
-        onClose: { showComparePicker = false; picker.query = "" },
-        onSelect: { info in
-          // 和解码同一条规则（`Prefs.addCompareSymbol` → `cleanCompareSymbols`）：
-          // 加得进去的，下一次从档案或云端读回来也还在。
-          let key = InstrumentID.canonical(info.symbol), current = InstrumentID.canonical(market.symbol)
-          store.update { $0.addCompareSymbol(key, current: current) }
-          showComparePicker = false; picker.query = ""
-        },
-        onVisible: { quotes.watch($0) },
-        onRowVisibility: { quotes.watchRow($0, visible: $1) })
+    // 对比（2026-10-05 起顶栏加号开）：同一张搜索页的对比模式（`CompareSearchMode`），挑一只就落进
+    // 集合、页面不关；「完成」或下滑收起。所以这一层是系统 sheet（能下滑），不是全屏盖层。
+    // 关掉之后词清掉：搜索页与它共用一个 `SymbolPickerModel`。
+    .sheet(isPresented: $showComparePicker, onDismiss: { picker.query = "" }) {
+      SymbolSearchView(model: picker, history: searchHistory, redUp: prefs.redUp,
+                       onClose: { showComparePicker = false },
+                       onAll: {},
+                       onVisible: { quotes.watch($0) },
+                       onRowVisibility: { quotes.watchRow($0, visible: $1) },
+                       compare: CompareSearchMode(keys: prefs.compareSymbols, current: market.symbol),
+                       onCompareToggle: { toggleCompare($0) })
         .environment(\.panelTheme, theme)
+        .presentationDetents([.large])
+        .presentationBackground(theme.app)
         .preferredColorScheme(effectiveTheme.forced)
     }
     .fullScreenCover(isPresented: $symbolSearch.allShown, onDismiss: { symbolSearch.allDismissed() }) {
@@ -321,6 +322,19 @@ struct MainScreen: View {
                        onVisible: { quotes.watch($0) },
                        onRowVisibility: { quotes.watchRow($0, visible: $1) })
         .preferredColorScheme(effectiveTheme.forced)
+    }
+  }
+
+  /// 对比模式里点了一行 / 行尾那颗 / 「正在对比」小块上的 ×。和解码同一条规则
+  /// （`Prefs.addCompareSymbol` → `cleanCompareSymbols`）：加得进去的，下一次从档案或云端读回来也还在。
+  /// 触觉在页面那一侧给过了，这儿走不带触觉的 `update`。
+  private func toggleCompare(_ symbol: String) {
+    let current = InstrumentID.canonical(market.symbol)
+    switch CompareSearchMode(keys: prefs.compareSymbols, current: current).action(for: symbol) {
+    case .add(let key): store.update { _ = $0.addCompareSymbol(key, current: current) }
+    case .remove(let key): store.update { $0.compareSymbols.removeAll { $0 == key } }
+    case .rejectFull: say(CompareSearchMode.fullNotice)
+    case .none: break
     }
   }
 
@@ -981,13 +995,12 @@ struct MainScreen: View {
   }
 
   /// 面板里的动作，竖屏 sheet 与横屏侧栏共用这一份（见 `PanelActions`）。
-  /// 以前侧栏那份是手抄的，比 sheet 少了「记一笔」「对比」两个动作。
+  /// 以前侧栏那份是手抄的，比 sheet 少了「记一笔」「对比」两个动作（对比 2026-10-05 起在顶栏）。
   private var panelActions: PanelActions {
     // 分析面板第一节「画线」：复盘回放 / 已经在画（横屏画线台的侧栏）时不排，对比期间置灰。
     let onDraw: (() -> Void)? = reviewChart.active || draw.active ? nil : { startDrawing() }
     return PanelActions(onPickInterval: pick(interval:),
-                 onShare: chartShareAction, onAddCompare: { showComparePicker = true },
-                 compareNames: compareNames, onDraw: onDraw, drawEnabled: !comparing,
+                 onShare: chartShareAction, onDraw: onDraw, drawEnabled: !comparing,
                  onSend: chartSendAction, sendBlocked: shareSendBlocked,
                  orderFlow: market.orderFlow, symbol: market.symbol)
   }
@@ -1003,6 +1016,12 @@ struct MainScreen: View {
       onBack: trail.origin.map { origin in { switchTo(tab: origin) } },
       onNote: chartRecordAction.map { record in { dismissPanel(); record() } },
       onShare: headerShareAction,
+      // 对比 2026-10-05 从「分析」面板那一节搬到顶栏：加号开搜索页的对比模式。
+      // 看朋友分享的线时这张图不是「我的图」，对比本来就暂退，加号不排。
+      onCompare: draw.previewing == nil ? { dismissPanel(); showComparePicker = true } : nil,
+      compareActive: !compareKeys.isEmpty,
+      onAlerts: { dismissPanel(); alertSheet = .list },
+      alertCount: alerts.pendingCount(symbol: market.symbol),
       onSearch: { dismissPanel(); symbolSearch.openSearch() },
       onScan: { scan($0) },
       card: shareAndAlertCard(inHeader: true))

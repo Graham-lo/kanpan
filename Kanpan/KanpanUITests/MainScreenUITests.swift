@@ -353,13 +353,14 @@ final class MainScreenUITests: KanpanUICase {
   ///
   /// 2026-09-18 起指标不再是底栏上单独的一格，整段并进了「图表设置」面板
   /// （用户：「行情页面的指标放到图表里作为一个子栏目」）。2026-09-24 周期条行尾多了「指标」，
-  /// 2026-09-27 起指标页**只**从那颗开（图表设置里那一行撤了），页里三节：指标 · 对比 · 主力订单流。
+  /// 2026-09-27 起指标页**只**从那颗开（图表设置里那一行撤了）。2026-10-05 起页里三节：
+  /// 画线 · 指标 · 主力订单流（「对比」搬上顶栏加号）。
   func testIndicatorPanelOpensAndCloses() {
     XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
     expectExists(macd, Self.short, "指标页里没有副图那几栏")
     expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标页里没有主图叠加")
-    expectExists(app.descendants(matching: .any)["compare.add"].firstMatch, Self.short, "指标页里没有「对比」一节")
+    XCTAssertFalse(app.descendants(matching: .any)["compare.add"].firstMatch.exists, "指标页里还有「对比」一节（应在顶栏）")
     // 主力订单流（2026-09-24）：2026-09-27 起自成一节，行名「显示」，不在主图叠加里。
     expectExists(app.buttons[Ids.indicatorSwitch("ORDERFLOW")], Self.short, "指标页里没有「主力订单流」一节")
     dismissSheet(until: macd)

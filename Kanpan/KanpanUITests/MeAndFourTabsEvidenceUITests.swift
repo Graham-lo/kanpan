@@ -128,7 +128,7 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
       XCTAssertLessThan(draw.frame.maxY, app.buttons["indicator.switch.RSI"].frame.minY, "\(tag)：「画线」不在指标之上")
       RunLoop.main.run(until: Date().addingTimeInterval(0.8))
       shot("分析", tag)
-      // 往下滚到「对比」与「主力订单流」两节，再拍一张下半页。
+      // 往下滚到「主力订单流」那节，再拍一张下半页（「对比」2026-10-05 起在顶栏，这一页不该再有）。
       let orderFlow = app.buttons["indicator.switch.ORDERFLOW"]
       let window = app.windows.firstMatch
       for _ in 0..<8 where !(orderFlow.exists && orderFlow.isHittable) {
@@ -136,7 +136,7 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
           .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62)))
       }
-      XCTAssertTrue(app.buttons["compare.add"].exists, "\(tag)：分析面板没有「对比」节")
+      XCTAssertFalse(app.buttons["compare.add"].exists, "\(tag)：分析面板里还有「对比」节（应在顶栏）")
       XCTAssertTrue(orderFlow.exists, "\(tag)：分析面板没有「主力订单流」节")
       RunLoop.main.run(until: Date().addingTimeInterval(0.6))
       shot("分析下半", tag)

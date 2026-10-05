@@ -13,7 +13,7 @@ import KanpanCore
 final class AlertStore: ObservableObject {
   @Published private(set) var archive: AlertArchive {
     // 存档一变，总表那份排好的分段与行跟着作废；下次有人读再排一趟（压测收尾第 5 项）。
-    didSet { cachedRows = nil; cachedLiveCount = nil }
+    didSet { cachedRows = nil; cachedLiveCount = nil; cachedPending = nil }
   }
   /// 存档变了就响一次；账号桥挂在这儿记账 + 同步。
   var onChange: ((AlertArchive) -> Void)?
@@ -96,6 +96,20 @@ final class AlertStore: ObservableObject {
     return n
   }
   private var cachedLiveCount: Int?
+
+  /// 顶栏铃角标：这只品种还没触发的提醒数（`AlertRecordText.records` 同一口径：价格、画线、条件，
+  /// 不含复盘到点）。顶栏跟着每一笔成交重画，所以按品种数好一张表缓存着，存档变了才重数。
+  func pendingCount(symbol: String) -> Int {
+    if cachedPending == nil {
+      var counts: [String: Int] = [:]
+      for alert in archive.alerts where alert.kind != .reviewDue && alert.status != .fired {
+        counts[InstrumentID.canonical(alert.symbol), default: 0] += 1
+      }
+      cachedPending = counts
+    }
+    return cachedPending?[InstrumentID.canonical(symbol)] ?? 0
+  }
+  private var cachedPending: [String: Int]?
   func alerts(symbol: String) -> [Alert] { archive.alerts(symbol: symbol) }
   func alertedDrawingIDs(symbol: String) -> Set<String> { archive.alertedDrawingIDs(symbol: symbol) }
   func alert(id: String) -> Alert? { archive[id] }

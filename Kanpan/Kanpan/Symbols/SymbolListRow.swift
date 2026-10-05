@@ -287,6 +287,9 @@ struct SymbolRowView: View {
   let theme: PanelTheme
   let onStar: () -> Void
   let onPick: () -> Void
+  /// 搜索页对比模式（`CompareSearchMode`，2026-10-05）：给了就把行尾那颗星换成对比的 ＋ / ✓，
+  /// 点行尾那颗走 `onStar`（宿主在对比模式下把它接成加 / 减对比）。主图那一行整行禁用。
+  var compare: CompareSearchMode.RowState? = nil
 
   // 名字是逐段拼的 `Text`（命中片段换色），只能吃 `Font`，吃不了 `ScaledFont`，
   // 所以字号在这儿按同一条曲线量一份。
@@ -350,26 +353,78 @@ struct SymbolRowView: View {
       .accessibilityAddTraits(.isButton)
       .accessibilityIdentifier("symbols.row.\(row.id)")
       .accessibilityAction(.default, onPick)
-      StarShape()
-        .fill(isFavorite ? theme.amber : .clear)
-        .overlay(StarShape().stroke(isFavorite ? theme.amber : theme.ink3,
-                                    style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)))
-        .frame(width: Self.starSize, height: Self.starSize)
-        // 星画得小是视觉上的克制，点击区撑到 44；多出来的半截伸进右边距里，
-        // 星本身仍然贴着页面右边那条竖线。
-        .frame(width: Hit.min, height: Hit.min)
-        .contentShape(Rectangle())
-        .padding(.trailing, -(Hit.min - Self.starSize) / 2)
-        .animation(.easeOut(duration: 0.2), value: isFavorite)
-        .onTapGesture(perform: onStar)
-        .accessibilityElement()
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(isFavorite ? "取消自选" : "加入自选")
-        .accessibilityIdentifier("symbols.star.\(row.id)")
-        .accessibilityAction(.default, onStar)
+      if let compare {
+        compareMark(compare)
+      } else {
+        StarShape()
+          .fill(isFavorite ? theme.amber : .clear)
+          .overlay(StarShape().stroke(isFavorite ? theme.amber : theme.ink3,
+                                      style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)))
+          .frame(width: Self.starSize, height: Self.starSize)
+          // 星画得小是视觉上的克制，点击区撑到 44；多出来的半截伸进右边距里，
+          // 星本身仍然贴着页面右边那条竖线。
+          .frame(width: Hit.min, height: Hit.min)
+          .contentShape(Rectangle())
+          .padding(.trailing, -(Hit.min - Self.starSize) / 2)
+          .animation(.easeOut(duration: 0.2), value: isFavorite)
+          .onTapGesture(perform: onStar)
+          .accessibilityElement()
+          .accessibilityAddTraits(.isButton)
+          .accessibilityLabel(isFavorite ? "取消自选" : "加入自选")
+          .accessibilityIdentifier("symbols.star.\(row.id)")
+          .accessibilityAction(.default, onStar)
+      }
     }
     .frame(minHeight: Inset.rowMin)
     .pageHorizontalInset()
+    // 主图那一只：拿自己和自己比没有意义，整行退成禁用色、点不动。
+    .opacity(compare == .main ? ControlMetrics.disabledOpacity : 1)
+    .allowsHitTesting(compare != .main)
+  }
+
+  /// 对比模式的行尾：可加是一颗淡底 ＋，已加是一颗强调色实心圆里一个 ✓，
+  /// 满了是退成禁用色的 ＋。看得见 24，点击区 44（同星）。
+  private func compareMark(_ state: CompareSearchMode.RowState) -> some View {
+    let added = state == .added
+    // 主图那只整行已经退色（见 `body`），行尾这颗不再叠一层。
+    let dim = state == .full
+    return ZStack {
+      Circle().fill(added ? theme.amber : theme.raised2)
+      if added {
+        Image(systemName: "checkmark")
+          .font(.system(size: 11, weight: .bold))
+          .foregroundStyle(theme.badgeInk)
+      } else {
+        TopBarGlyph.plus(11)
+          .foregroundStyle(theme.ink2)
+      }
+    }
+    .frame(width: Self.compareMarkSize, height: Self.compareMarkSize)
+    .opacity(dim ? ControlMetrics.disabledOpacity : 1)
+    .frame(width: Hit.min, height: Hit.min)
+    .contentShape(Rectangle())
+    .padding(.trailing, -(Hit.min - Self.compareMarkSize) / 2)
+    .animation(.easeOut(duration: 0.2), value: state)
+    .onTapGesture(perform: onStar)
+    .accessibilityElement()
+    .accessibilityAddTraits(.isButton)
+    .accessibilityLabel(added ? "移除对比" : "添加对比")
+    .accessibilityValue(Self.compareValue(state))
+    .accessibilityIdentifier("compare.toggle.\(row.id)")
+    .accessibilityAction(.default, onStar)
+  }
+
+  /// 对比模式行尾那颗看得见多大。
+  static let compareMarkSize: CGFloat = 24
+
+  /// 行尾那颗的读屏值（UI 用例也读它判状态）。
+  static func compareValue(_ state: CompareSearchMode.RowState) -> String {
+    switch state {
+    case .add: "可添加"
+    case .added: "已添加"
+    case .full: "已满"
+    case .main: "主图"
+    }
   }
 
   /// `BTC` + 灰的 ` / USDT`；搜索命中的片段用强调色标出来（§10.5 匹配片段高亮）。

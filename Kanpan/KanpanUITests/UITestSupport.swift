@@ -27,6 +27,10 @@ enum Ids {
   /// 顶栏右侧「记一笔」「分享」两颗圆片（2026-09-28 方案 B，原来在「图表设置 › 这张图」里）。
   static let topNote = "top.note"
   static let topShare = "top.share"
+  /// 顶栏「添加对比」加号与「提醒」铃（2026-10-05，照 TradingView 手机版）。加号点开搜索页的对比模式，
+  /// 铃点开「提醒」sheet（列表 | 日志），铃角标是这只品种还没触发的提醒数。
+  static let topCompare = "top.compare"
+  static let topAlerts = "top.alerts"
   /// 底栏「自选」那一格。标签栏常驻，任何一页上都点得到。
   static let favoritesTab = "bottom.favorites"
   // 周期条

@@ -29,6 +29,13 @@ import SwiftUI
 /// （32 + 12 = 44，命中区首尾相接，缝里没有死区）。左侧只剩返回圆片和品种名，
 /// 品种名仍然不是按钮。
 ///
+/// 2026-10-05 照 TradingView 手机版再加两颗，右上角变成一簇五颗，从左到右
+/// 「对比＋ · 提醒铃 · 记一笔 · 分享 · 搜索」：对比从「分析」面板那一节搬上来（加号开搜索页的
+/// 对比模式，集合里有品种时加号亮强调色），铃开「提醒」那张表（列表 / 日志），角上一颗数字
+/// 是这只还没响的提醒条数，0 条不画。五颗步距从 12 收到 8：32 × 5 + 8 × 4 = 192
+/// （步距 12 要 208，16 Pro 有返回时品种块只剩 106pt，「BTC/USDT」都放不下）；命中区 44
+/// 相邻两颗叠 4pt，缝里同样没有死区。品种块放不下「永续」角标时先把角标收掉（`ViewThatFits`）。
+///
 /// 字号、间距、图标一律取 `DesignTokens` 的令牌（UI 审查 2026-09-24 §4.3 #4–#12），别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
 /// 层级：品种名 16 semibold（`TypeScale.heading`，不用 bold——它不该比 22 的价格更「黑」）
@@ -45,6 +52,14 @@ struct TopBar: View {
   var onNote: (() -> Void)? = nil
   /// 「分享」：这张图的图片或画线（两种都能用时弹二选一）。没有可分享的时候传 nil，圆片不画。
   var onShare: (() -> Void)? = nil
+  /// 「添加对比」：开搜索页的对比模式。没有「这张图」可对比的时候（复盘回放、画线预览）传 nil，圆片不画。
+  var onCompare: (() -> Void)? = nil
+  /// 对比集合里有（这张图上真在画的）品种：加号亮强调色。
+  var compareActive = false
+  /// 「提醒」：开提醒那张表（列表 / 日志）。传 nil 不画。
+  var onAlerts: (() -> Void)? = nil
+  /// 这只还没响的提醒有几条（`AlertRecordText.records`）。0 不画角标。
+  var alertCount = 0
   var onSearch: () -> Void
 
   /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
@@ -59,33 +74,15 @@ struct TopBar: View {
       if let onBack {
         backButton(onBack)
       }
-      HStack(spacing: Space.s) {
-        CoinBadge(base: base, size: ControlMetrics.badge)
-        HStack(alignment: .firstTextBaseline, spacing: Space.xxs) {
-          Text(base)
-            .font(TypeScale.heading)
-            .foregroundStyle(theme.ink)
-          if !quote.isEmpty {
-            Text("/" + quote)
-              .font(TypeScale.caption)
-              .foregroundStyle(theme.ink3)
-          }
-          // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
-          // 「点我展开」的记号，比没有记号更糟。
-          Text(InstrumentID(symbol).productLabel)
-            // 11pt 是 HIG 的文字下限（原来 10）；纯符号不在此列。
-            .font(TypeScale.caption2Emph)
-            .foregroundStyle(theme.ink3)
-            .padding(.horizontal, Space.xs)
-            .padding(.vertical, Space.xxs)
-            .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.xs))
-            .padding(.leading, Space.xs)
-        }
-        .lineLimit(1)
-      }
-      // 品种名先让右边三颗圆片：三颗固定 32 + 12 + 32 + 12 + 32 = 120，余下的全归品种名
-      // （16 Pro 有返回时 ≥ 170pt，`PUMPBTC/USDT 永续` 放得下）。真放不下时先压计价币，
+      // 品种块先让右边五颗圆片：五颗固定 32 × 5 + 8 × 4 = 192，余下的全归品种名
+      // （16 Pro 402pt：没返回时 162pt，`BTC/USDT 永续` 放得下；有返回时 122pt，
+      // `BTC/USDT` 放得下、「永续」角标放不下，就先收角标）。还放不下时先压计价币，
       // 基础币最后才截——`layoutPriority` 让它比右边的 Spacer 先拿宽度。
+      ViewThatFits(in: .horizontal) {
+        symbolBlock(tag: true)
+        symbolBlock(tag: false)
+        symbolBlock(tag: false).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+      }
       .layoutPriority(1)
       .accessibilityElement(children: .combine)
       .accessibilityLabel("当前品种 \(InstrumentID(symbol).display)")
@@ -93,9 +90,21 @@ struct TopBar: View {
 
       Spacer(minLength: 0)
 
-      // 右上角一簇三颗：记一笔 · 分享 · 搜索。托底 32pt（`ControlMetrics.iconDisc`），
-      // 命中区撑到 44×44（见 `iconButton`），步距 12 让相邻两颗的命中区正好首尾相接。
-      HStack(spacing: Space.m) {
+      // 右上角一簇五颗：对比 · 提醒 · 记一笔 · 分享 · 搜索。托底 32pt（`ControlMetrics.iconDisc`），
+      // 命中区撑到 44×44（见 `iconButton`），步距 8，相邻两颗的命中区叠 4pt。
+      HStack(spacing: Self.clusterSpacing) {
+        if let onCompare {
+          iconButton(TopBarGlyph.plus(15), label: "添加对比", lit: compareActive, action: onCompare)
+            .accessibilityIdentifier("top.compare")
+        }
+        if let onAlerts {
+          // 角标对读屏是隐藏的，条数念在标签里（「提醒 2」）。
+          iconButton(TopBarGlyph.bell(17), label: alertCount > 0 ? "提醒 \(alertCount)" : "提醒", action: onAlerts)
+            .accessibilityIdentifier("top.alerts")
+            .overlay(alignment: .topTrailing) {
+              if alertCount > 0 { AlertCountBadge(count: alertCount, theme: theme) }
+            }
+        }
         if let onNote {
           iconButton(ReviewGlyph(theme: theme, size: 20), label: "记一笔", action: onNote)
             .accessibilityIdentifier("top.note")
@@ -108,6 +117,39 @@ struct TopBar: View {
         iconButton(VectorIcon.search(16), label: "搜索品种", action: onSearch)
           .accessibilityIdentifier("top.search")
       }
+    }
+  }
+
+  /// 右上角那簇圆片的步距（见文件头 2026-10-05 那段的算术）。
+  static let clusterSpacing = Space.s
+
+  /// 徽章 + 品种名 +（放得下时）「永续」角标。
+  private func symbolBlock(tag: Bool) -> some View {
+    HStack(spacing: Space.s) {
+      CoinBadge(base: base, size: ControlMetrics.badge)
+      HStack(alignment: .firstTextBaseline, spacing: Space.xxs) {
+        Text(base)
+          .font(TypeScale.heading)
+          .foregroundStyle(theme.ink)
+        if !quote.isEmpty {
+          Text("/" + quote)
+            .font(TypeScale.caption)
+            .foregroundStyle(theme.ink3)
+        }
+        // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
+        // 「点我展开」的记号，比没有记号更糟。
+        if tag {
+          Text(InstrumentID(symbol).productLabel)
+            // 11pt 是 HIG 的文字下限（原来 10）；纯符号不在此列。
+            .font(TypeScale.caption2Emph)
+            .foregroundStyle(theme.ink3)
+            .padding(.horizontal, Space.xs)
+            .padding(.vertical, Space.xxs)
+            .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.xs))
+            .padding(.leading, Space.xs)
+        }
+      }
+      .lineLimit(1)
     }
   }
 
@@ -138,17 +180,18 @@ struct TopBar: View {
   /// 右上角的圆按钮：32pt 的托底 + 16pt 的线性图标。
   /// 图标用二级墨色配一层中性托底，不要用强调色填满——它旁边就是价格，
   /// 填满会把视线从价格上抢走。
+  /// `lit`：功能正开着（对比集合里有品种），图标换强调色、托底垫一层淡强调色。
   private func iconButton<Icon: View>(
-    _ icon: Icon, label: String, action: @escaping () -> Void
+    _ icon: Icon, label: String, lit: Bool = false, action: @escaping () -> Void
   ) -> some View {
     Button {
       iconTapCount += 1
       action()
     } label: {
       icon
-        .foregroundStyle(theme.ink2)
+        .foregroundStyle(lit ? theme.amber : theme.ink2)
         .frame(width: ControlMetrics.iconDisc, height: ControlMetrics.iconDisc)
-        .background(theme.raised, in: Circle())
+        .background(lit ? theme.amber.opacity(0.16) : theme.raised, in: Circle())
         // 画出来的是 32pt，手指够得着的是 44×44。
         //
         // 放大只能写在 `label` 里面：`Button` 认的是标签自己的 `contentShape`，
@@ -175,6 +218,52 @@ struct TopBar: View {
   }
 }
 
+
+/// 顶栏铃铛角上那颗数字：照底栏「我的」那颗待判定角标（`ReviewCountBadge`）的画法——
+/// 11 等宽数字、强调色胶囊、最窄 16，超过 99 写 99。不吃点击，点到的仍是铃铛。
+struct AlertCountBadge: View {
+  let count: Int
+  let theme: PanelTheme
+
+  var body: some View {
+    Text("\(min(count, 99))")
+      .font(TypeScale.caption2Emph)
+      .monospacedDigit()
+      .foregroundStyle(theme.badgeInk)
+      .padding(.horizontal, Space.xs)
+      .padding(.vertical, Space.xxs)
+      .frame(minWidth: 16)
+      .background(theme.amber, in: Capsule())
+      // 圆片托底 32、命中区 44（外面收回 -6），角标钉在托底右上角外沿。
+      .offset(x: 4, y: -4)
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+  }
+}
+
+/// 顶栏新加那两颗的记号：实心、圆头（记忆 kanpan-icons-are-not-wireframes），
+/// 坐标照 `VectorIcon` 的写法给 `viewBox` 与 `d=` 串，只是 `.fill` 不描边。
+enum TopBarGlyph {
+  /// 加号：两根 2.5 粗、圆头的横竖条（16 框）。
+  static func plus(_ size: CGFloat) -> some View {
+    IconShape(box: 16, items: [
+      .rect(x: 6.75, y: 2, w: 2.5, h: 12, r: 1.25),
+      .rect(x: 2, y: 6.75, w: 12, h: 2.5, r: 1.25),
+    ])
+    .fill(style: FillStyle(eoFill: false))
+    .frame(width: size, height: size)
+  }
+
+  /// 铃铛：实心钟身 + 底下一颗铃舌（18 框）。
+  static func bell(_ size: CGFloat) -> some View {
+    IconShape(box: 18, items: [
+      .path("M9 2.2c-2.9 0-5 2.3-5 5.1v3.2L2.6 12.6c-.4.5 0 1.2.6 1.2h11.6c.6 0 1-.7.6-1.2L14 10.5V7.3c0-2.8-2.1-5.1-5-5.1z"),
+      .path("M7.1 14.6h3.8a1.9 1.9 0 0 1-3.8 0z"),
+    ])
+    .fill()
+    .frame(width: size, height: size)
+  }
+}
 
 /// 行情页价格行：左侧价格与涨跌小字，右侧两列三行数据。
 /// 六格始终在价格右侧；字号跟随系统，但密集数据行有独立封顶。

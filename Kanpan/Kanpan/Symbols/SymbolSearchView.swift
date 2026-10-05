@@ -18,6 +18,11 @@ import KanpanCore
 // 那些浏览的事仍然归品种整页（`SymbolPickerView`），搜到超过 6 个时底下那行
 // 「查看全部 N 个品种」就是过去的路，查询词跟着一起过去。
 //
+// 对比模式（2026-10-05）：顶栏加号开的也是这一页，传进 `compare` 就换一副样子——页顶一条
+// 「正在对比」、行尾的星换成对比的 ＋ / ✓、右上「取消」换成「完成」；点行不换主图、不记搜索历史，
+// 历史词与剪贴板那一行不摆，搜到的结果整列给出来（不再截六行去品种整页——那一页没有对比模式）。
+// 判定都在 `CompareSearchMode`。
+//
 // 页面上一个英文标签都没有：栏目名、按钮、空态全是中文（用户 2026-09-18 定的），
 // 只有品种代号（BTCUSDT）和金额单位（K / M / B / T）保持原样。
 
@@ -43,6 +48,11 @@ struct SymbolSearchView: View {
   var onStarred: ((String) -> Void)? = nil
   var onVisible: ((String) -> Void)? = nil
   var onRowVisibility: ((String, Bool) -> Void)? = nil
+  /// 对比模式：集合与主图那只。nil 是普通搜索。
+  var compare: CompareSearchMode? = nil
+  /// 对比模式下点了一行（或行尾那颗）：参数是那只的品种键。加 / 减 / 满了的提示由宿主按
+  /// `CompareSearchMode.action` 做（集合在宿主的 `PrefsStore` 里）。
+  var onCompareToggle: ((String) -> Void)? = nil
 
   @Environment(\.panelTheme) private var theme
   @FocusState private var focused: Bool
@@ -76,8 +86,11 @@ struct SymbolSearchView: View {
   /// 24h 行情（`seedTickers`）常常还在路上，手里只有图上那一只的报价，原来这一拍排出
   /// 「热门」一行就定住了，之后整表到了也不再排，这一组永远只有一只。
   private var awaitingHot: Bool {
-    hot.count < SymbolSections.hotLimit && history.terms.isEmpty && model.prefs.recents.isEmpty
+    hot.count < SymbolSections.hotLimit && historyTerms.isEmpty && model.prefs.recents.isEmpty
   }
+
+  /// 历史搜索词。对比模式不摆（也不记）：那一页是来挑对比的，不是来找主图的。
+  private var historyTerms: [String] { compare == nil ? history.terms : [] }
 
   /// 搜索态下那唯一一个分区（`SymbolSections.build` 有查询时只回一组）。
   private var hits: SymbolSection? { model.sections.first { $0.kind == .search } }
@@ -96,10 +109,11 @@ struct SymbolSearchView: View {
   var body: some View {
     VStack(spacing: 0) {
       searchBar
+      if let compare, !compare.keys.isEmpty { compareStrip(compare) }
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
           // 剪贴板里像是有个品种时，最上面摆一个系统的粘贴按钮。
-          if !searching, offerPaste { clipboardRow }
+          if !searching, offerPaste, compare == nil { clipboardRow }
           if showsResults { results } else { resting }
           Color.clear.frame(height: Space.xxl)
         }
@@ -149,7 +163,7 @@ struct SymbolSearchView: View {
   private var searchBar: some View {
     HStack(spacing: Space.xs) {
       SymbolSearchField(text: $model.query, focused: $focused, id: "search.query",
-                        onSubmit: { history.remember(trimmed) },
+                        onSubmit: { if compare == nil { history.remember(trimmed) } },
                         clearID: "search.clear",
                         onClear: { model.query = ""; focused = true })
 
@@ -157,7 +171,8 @@ struct SymbolSearchView: View {
         focused = false
         close()
       } label: {
-        Text("取消")
+        // 对比模式里挑的每一下都已经落进集合了，出口叫「完成」。
+        Text(compare == nil ? "取消" : "完成")
           .font(TypeScale.bodyEmph)
           .foregroundStyle(theme.amber)
           .padding(.horizontal, Space.s)
@@ -166,7 +181,7 @@ struct SymbolSearchView: View {
       .buttonStyle(.plain)
       // 字右边那截留白伸进页边距里，「取消」两个字的右沿仍在页面右边那条竖线上。
       .padding(.trailing, -Space.s)
-      .accessibilityIdentifier("search.cancel")
+      .accessibilityIdentifier(compare == nil ? "search.cancel" : "compare.done")
     }
     .pageHorizontalInset()
     .padding(.vertical, Space.s)
@@ -176,7 +191,7 @@ struct SymbolSearchView: View {
 
   @ViewBuilder
   private var resting: some View {
-    if !history.terms.isEmpty {
+    if !historyTerms.isEmpty {
       groupHead("历史搜索") {
         Button { askClear = true } label: {
           Image(systemName: "trash")
@@ -215,7 +230,7 @@ struct SymbolSearchView: View {
     // 第一次打开：没搜过、也没看过，这一页原来是一整屏空白（审查 U7）。
     // 给按 24h 成交额排的前 10 个——和搜索结果、「全部合约」同一个排序口径。
     // 有了历史或最近，这一组就让位，不和它们抢位置。
-    if history.terms.isEmpty, rows.isEmpty {
+    if historyTerms.isEmpty, rows.isEmpty {
       let hotRows = hot.compactMap { key in
         model.info(for: key).map { SymbolRow(match: SymbolMatch(info: $0), ticker: nil) }
       }
@@ -228,7 +243,7 @@ struct SymbolSearchView: View {
   }
 
   private func refreshHot() {
-    guard hot.count < SymbolSections.hotLimit, history.terms.isEmpty, recents.isEmpty else { return }
+    guard hot.count < SymbolSections.hotLimit, historyTerms.isEmpty, recents.isEmpty else { return }
     let next = model.hotSymbols()
     // 只会越排越满：整表没到之前手里那几只照旧摆着，不因为某一拍少了一只就缩回去。
     if next.count > hot.count { hot = next }
@@ -254,8 +269,9 @@ struct SymbolSearchView: View {
           .monospacedDigit()
           .foregroundStyle(theme.ink3)
       }
-      rowList(Array(rows.prefix(Self.previewRows)))
-      if hitCount > Self.previewRows {
+      // 对比模式整列给出来：「查看全部」去的品种整页没有对比模式。
+      rowList(compare == nil ? Array(rows.prefix(Self.previewRows)) : rows)
+      if compare == nil, hitCount > Self.previewRows {
         Button {
           history.remember(trimmed)
           onAll()
@@ -302,9 +318,11 @@ struct SymbolSearchView: View {
                      isFavorite: model.isFavorite(row.id),
                      theme: rowTheme,
                      onStar: {
+                       if compare != nil { toggleCompare(row.id); return }
                        if model.toggleFavorite(row.id, info: row.info) { onStarred?(row.id) }
                      },
-                     onPick: { pick(row.info) })
+                     onPick: { pick(row.info) },
+                     compare: compare?.state(for: row.id))
         .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
         .onDisappear { onRowVisibility?(row.id, false) }
     }
@@ -356,6 +374,8 @@ struct SymbolSearchView: View {
 
   /// 选中一个品种：把这一次搜的词记下来（真搜到了才算数），再交给宿主换图。
   private func pick(_ info: SymbolInfo) {
+    // 对比模式：点行就是加 / 减对比，不换主图、不记历史、页面不关（挑完一只接着挑下一只）。
+    if compare != nil { toggleCompare(info.symbol); return }
     focused = false
     if searching { history.remember(trimmed) }
     model.query = ""
@@ -366,6 +386,85 @@ struct SymbolSearchView: View {
   private func close() {
     model.query = ""
     onClose()
+  }
+
+  private func toggleCompare(_ symbol: String) {
+    guard let compare else { return }
+    switch compare.action(for: symbol) {
+    case .add: Haptics.tap()
+    case .remove: Haptics.step()
+    case .rejectFull: Haptics.warning()
+    case .none: return
+    }
+    onCompareToggle?(symbol)
+  }
+
+  // ---------------------------------------------------------------- 对比模式：正在对比
+
+  /// 页顶那一条「正在对比」：集合里的（最多三只）摆成小块，每块一个 × 直接拿掉。
+  /// 小块看得见 32 高，× 的点击区 44（竖向多出来的叠在上下留白里）。
+  private func compareStrip(_ compare: CompareSearchMode) -> some View {
+    VStack(alignment: .leading, spacing: Space.s) {
+      HStack(spacing: Space.s) {
+        Text("正在对比")
+          .font(TypeScale.caption2Emph)
+          .kerning(1)
+          .foregroundStyle(theme.ink3)
+        Text("\(compare.keys.count)/\(Prefs.maxCompareSymbols)")
+          .font(TypeScale.caption2)
+          .monospacedDigit()
+          .foregroundStyle(theme.ink3)
+        Spacer(minLength: 0)
+      }
+      ScrollView(.horizontal) {
+        HStack(spacing: Space.s) {
+          ForEach(compare.keys, id: \.self) { key in compareChip(key) }
+        }
+        .padding(.vertical, (Hit.min - Self.compareChipHeight) / 2)
+      }
+      .scrollIndicators(.hidden)
+      .padding(.vertical, -(Hit.min - Self.compareChipHeight) / 2)
+    }
+    .pageHorizontalInset()
+    .padding(.top, Space.xs)
+    .padding(.bottom, Space.s)
+    .overlay(alignment: .bottom) { theme.hair.frame(height: 0.5) }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("compare.strip")
+  }
+
+  private static let compareChipHeight: CGFloat = 32
+
+  private func compareChip(_ key: String) -> some View {
+    let info = model.info(for: key) ?? SymbolInfo.placeholder(symbol: key)
+    return HStack(spacing: Space.xs) {
+      CoinBadge(base: info.base, asset: SymbolClassifier.classify(info).asset, size: 20)
+      Text(info.base)
+        .font(TypeScale.footnoteEmph)
+        .foregroundStyle(theme.ink)
+        .lineLimit(1)
+      Button {
+        Haptics.step()
+        onCompareToggle?(key)
+      } label: {
+        Image(systemName: "xmark")
+          .font(.system(size: 10, weight: .bold))
+          .foregroundStyle(theme.ink3)
+          .frame(width: Hit.min, height: Hit.min)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      // 44 的点击区不把小块撑大：横向那截伸进小块右边的留白，竖向叠在上下留白里。
+      .frame(width: Space.l, height: Self.compareChipHeight)
+      .accessibilityLabel("移除 \(info.base)")
+      .accessibilityIdentifier("compare.remove." + key)
+    }
+    .padding(.leading, Space.xs + Space.xxs)
+    .padding(.trailing, Space.s)
+    .frame(height: Self.compareChipHeight)
+    .background(theme.raised, in: Capsule())
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("compare.chip." + key)
   }
 }
 
@@ -382,11 +481,13 @@ private struct SearchQuoteRow: View {
   let theme: PanelTheme
   let onStar: () -> Void
   let onPick: () -> Void
+  var compare: CompareSearchMode.RowState? = nil
 
   var body: some View {
     var live = row
     if let ticker = cell.ticker { live.ticker = ticker }
-    return SymbolRowView(row: live, isFavorite: isFavorite, theme: theme, onStar: onStar, onPick: onPick)
+    return SymbolRowView(row: live, isFavorite: isFavorite, theme: theme, onStar: onStar, onPick: onPick,
+                         compare: compare)
   }
 }
 
