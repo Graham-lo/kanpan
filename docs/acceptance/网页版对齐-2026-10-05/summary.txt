@@ -25,10 +25,8 @@ GET/DELETE /v1/alerts/log（协议 docs/提醒日志-协议-2026-10-05.md），�
 4. 横屏画线台工具条只露常用五把、按使用次数排 —— 89f3a950
    首次：趋势线、水平线、斐波那契、通道、测量；临时选了别的会钉在第五格；下次进来按次数重排。
 
-跳过：5. 手机网页横屏「切换主图指标」入口
-   原因：手机网页横屏画线台目前只画裸 K 线（overlays = landscape ? [] : look.overlays），没有主图指标可切；
-   要先把横屏主图指标默认展示 + 开关（drawingOverlaysShown，已在同步里）做出来，再加切换入口。iOS 端由另一子代理在做，
-   网页端待 iOS 定稿后照着补，本轮不动。
+5. 手机网页横屏画线台对齐 iOS（原「跳过」项，已补）—— 5623f65d、172dfa6c
+   见文末「六、补：手机网页横屏画线台」。
 
 二、测试（干净工作树，origin/main 15160cae）
    npm run build：tsc 无错，vite 构建通过
@@ -61,3 +59,28 @@ GET/DELETE /v1/alerts/log（协议 docs/提醒日志-协议-2026-10-05.md），�
    m-search-usd.png  m-fav-index.png  m-dxy-chart.png  m-compare-search.png  m-compare-btc-dxy.png
    m-top-bell.png  m-alerts-list.png  m-alerts-log.png  m-land-dock.png  m-land-dock-held.png
    pc-dxy-alerts-list.png  pc-alerts-log.png  pc-compare-btc-dxy-eth.png
+
+六、补：手机网页横屏画线台（2026-10-05 22:20–22:50）
+   5623f65d 横屏主图指标默认照画、不撑价格区间（区间只按 K 线算，`overlaysAffectPriceRange = false`）；不画副图与订单流。
+            侧栏「主图˅」常驻（开 mainOnly 面板「主图指标」：使用中 + 主图叠加开关；眼睛关着时开一个指标会把眼睛一并打开），
+            「眼睛 指标」开关走同步字段 drawingOverlaysShown；横屏 landscapeBarSpacing、竖屏 barSpacing 各记各的，
+            松手 'scale' 事件带 landscape 由页面写对应那份；价格轴倍率横竖各记一份（只在内存，照 iOS 424a0160）。
+   172dfa6c 捏合手感照 iOS a8012401：3pt 死区（横纵分开量）、越门槛只重设基准不缩放、停在最新时钉住最新根否则焦点钉住手指、
+            竖向捏缩价格轴；浏览器一指一个 pointermove，死区里等两指都报过一帧再判，避免两指平移被误判成捏合。
+   与 iOS 的差异：网页横屏一律是画线台布局，所以「主图˅」与眼睛横屏就在（iOS 只在画线时出现）；
+            捏过界的软边缘（阻尼与回弹，iOS aedc26df）网页没做，根宽到 1.6 / 40 直接停。
+   测试：npm run build 通过；vitest 130 个文件 1687 条全过。新增 tests/m-landscape-bench.test.ts（17 条：逻辑、渲染开关、
+            ViewMath 捏合几何、anchoredCenter、OrientedPriceScale），m-chart-gesture-view 加 5 条捏合用例。
+   部署：干净工作树（origin/main 172dfa6c）npm run deploy，2026-10-05 22:37:52 CST 完成；电脑 assets/index-CXUg2iM3.js（未变），
+            手机 assets/m-LIjxrTYE.js（curl 线上 /web/m/ 核对过）。
+   线上走查（Playwright + 系统 Chrome，横屏 932×430 DPR 3，临时账号，走完已注销）：
+            ✓ 默认 drawingOverlaysShown=true、侧栏有「主图˅」与眼睛、均线照画（m-land-overlays.png）
+            ✓ 关眼睛 → false、图上只剩 K 线（m-land-overlays-off.png）；再开 → true
+            ✓「主图˅」开「主图指标」面板：使用中 + 主图叠加，没有副图 / 订单流（m-land-picker.png）
+            ✓ 面板里开布林带 → overlays [MA, BOLL]，布林带照画、超出 K 线区间的部分不撑量程（m-land-picker-boll.png）
+            ✓ 眼睛关着在面板里开指数均线 → 眼睛自动打开
+            ✓ 横屏捏开 landscapeBarSpacing 4→12.8、barSpacing 不动；转竖屏捏合 barSpacing 4→1.6、横屏那份不动（m-land-spacing-portrait.png）；
+              转回横屏两份各自保留（m-land-spacing.png）
+            ✓ 云端 /v1/sync/bootstrap?collection=settings 里 landscapeBarSpacing = 12.8
+            ✓ 无页面错误
+   截图：m-land-overlays.png  m-land-overlays-off.png  m-land-picker.png  m-land-picker-boll.png  m-land-spacing.png  m-land-spacing-portrait.png
