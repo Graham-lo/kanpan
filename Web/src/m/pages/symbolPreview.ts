@@ -215,7 +215,7 @@ export function openPreviewMenu(row: HTMLElement, opts: PreviewOptions, items: (
   touch(sym)
   void load(sym, PREVIEW_IV, PREVIEW_BARS, hourly, HOURLY_FRESH, L.guard(paint))
   if (opts.recent) void load(sym, '1m', PREVIEW_MINUTE_BARS, minutely, MINUTE_FRESH, L.guard(paint))
-  void fetchDetail(sym)
+  void fetchDetail(sym, () => !L.ended)
   wantMeta([sym])
   L.add(on(e => {
     if (e.type === 'meta' || e.type === 'universe' || ((e.type === 'ticker' || e.type === 'detail' || e.type === 'mark') && e.symbol === sym)) paint()

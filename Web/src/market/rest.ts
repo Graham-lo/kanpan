@@ -10,7 +10,7 @@
  */
 import type { Bar } from '../chart/calc'
 import { S, emit } from './state'
-import { admit, coolingFor, isRateLimit, noteStatus, setGatewayProbe } from './limit'
+import { Superseded, admit, coolingFor, isRateLimit, noteStatus, setGatewayProbe } from './limit'
 import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
 import { supplyOf } from './meta'
 
@@ -161,13 +161,15 @@ export interface Detail {
 const detailCache = new Map<string, Detail>()
 export function detailOf(symbol: string): Detail | undefined { return detailCache.get(symbol) }
 
-/** 一分钟最多取一次 */
-export async function fetchDetail(symbol: string): Promise<void> {
+/** 一分钟最多取一次。alive：排在限流队列里时问一下还要不要（扫图划过去的那只不要了就不发、不记这一分钟） */
+export async function fetchDetail(symbol: string, alive?: () => boolean): Promise<void> {
   const prev = detailCache.get(symbol)
   if (prev && Date.now() - prev.t < 60e3) return
   const d: Detail = { ...(prev || {}), t: Date.now() }
   detailCache.set(symbol, d)
-  const get = <T,>(path: string, q: string) => j<T>(`${REST}${path}?symbol=${symbol}${q ? '&' + q : ''}`).catch(() => null)
+  let dropped = false
+  const get = <T,>(path: string, q: string) => j<T>(`${REST}${path}?symbol=${symbol}${q ? '&' + q : ''}`, 8000, false, alive)
+    .catch(e => { if (e instanceof Superseded) dropped = true; return null })
   const [oi, hist, ls, top, taker] = await Promise.all([
     get<{ openInterest: string }>('/fapi/v1/openInterest', ''),
     get<{ sumOpenInterestValue: string }[]>('/futures/data/openInterestHist', 'period=1h&limit=25'),
@@ -175,6 +177,9 @@ export async function fetchDetail(symbol: string): Promise<void> {
     get<{ longShortRatio: string }[]>('/futures/data/topLongShortPositionRatio', 'period=5m&limit=1'),
     get<{ buySellRatio: string }[]>('/futures/data/takerlongshortRatio', 'period=5m&limit=1'),
   ])
+  // 排队时作废了：这一分钟不算取过，回到这只时照常取
+  if (dropped && detailCache.get(symbol) === d) { if (prev) detailCache.set(symbol, prev); else detailCache.delete(symbol) }
+  if (dropped) return
   const px = S.symbols.get(symbol)?.price
   if (oi && px) d.oiValue = +oi.openInterest * px
   if (hist && hist.length > 1) d.oiChg = (+hist[hist.length - 1].sumOpenInterestValue / +hist[0].sumOpenInterestValue - 1) * 100

@@ -6,6 +6,7 @@
 // 对外只有 createChart(host, opts) 一个入口，合同写在同目录 README.md。
 
 import { j, on as onMarket, REST, S, streamName } from '../../market'
+import { settle } from '../../market/settle'
 import type { Bar as MarketBar } from '../../chart/calc'
 import type { IndicatorID } from '../indicator/ids'
 import { alive, placement } from '../indicator/ids'
@@ -92,7 +93,8 @@ export interface CreateChartOptions extends Partial<ChartLook> {
   /** 品种信息；默认读 market.S.symbols。 */
   symbolInfo?: (symbol: string) => SymbolInfo | null
   /** 取一页 K 线（endTime 为 null 是最新一页）；默认走 market.klines。测试与复盘可换。 */
-  loadBars?: (symbol: string, iv: Interval, endTime: number | null) => Promise<Bar[] | null>
+  /** alive：排在限流队列里时问一下还要不要（顶栏扫图划过去的那只、换走的周期不要了就不发） */
+  loadBars?: (symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean) => Promise<Bar[] | null>
   /** 关掉推送 / 心跳 / 外部副图（复盘、截图用静态图）。 */
   offline?: boolean
   /** 主力订单流的数据口：图把「要不要、哪只、哪个周期、看到哪段」告诉它，它把快照推回来。 */
@@ -217,10 +219,10 @@ function guessDecimals(price: number): number {
 }
 
 /** 一页 K 线（KanpanCore 的 Bar：量取 r[5] 币量、主动买取 r[9] takerBuyBaseVolume）。取不到回 null。 */
-async function defaultLoad(symbol: string, iv: Interval, endTime: number | null): Promise<Bar[] | null> {
+async function defaultLoad(symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean): Promise<Bar[] | null> {
   try {
     const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${HISTORY_PAGE}${endTime ? `&endTime=${endTime - 1}` : ''}`
-    const rows = await j<KlineRow[]>(u, 10000)
+    const rows = await j<KlineRow[]>(u, 10000, false, alive)
     return rows.map(r => ({ openTime: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], volume: +r[5], takerBuy: +r[9] }))
   } catch {
     return null
@@ -253,7 +255,10 @@ const MAX_SUBS = 3
 
 // ================================================================ createChart
 
+let engineSeq = 0
 export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartHandle {
+  /** 外部副图（持仓量 / 多空比 / 主动买卖比 / 基差）等品种停稳再取，见 market/settle.ts；每台引擎一个键 */
+  const settleKey = `m-ext:${++engineSeq}`
   // ---------------------------------------------------------------- DOM：滚动容器 → 内容 → 画布
   const scroller = document.createElement('div')
   scroller.className = 'm-chart-scroll'
@@ -634,7 +639,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     series = s
     remember(s)
     historyDone = false
-    feed?.want(wantedExternal(), s)
+    // 外部副图不是首屏：顶栏横滑连扫时划过去的那几只一笔都不取，停稳约半秒再给停下的那只取
+    const f = feed
+    settle.whenSettled(settleKey, () => { if (!destroyed && feed === f && series) f?.want(wantedExternal(), series) })
     update()
     status()
   }
@@ -649,7 +656,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     series = cached ?? null
     if (cached) takeSeries(cached)
     else { update(); status() }
-    const bars = await loadBars(sym, iv, null)
+    const bars = await loadBars(sym, iv, null, () => !destroyed && gen === generation)
     if (destroyed || gen !== generation) return
     loading = false
     if (bars) freshAt = Date.now()
@@ -704,7 +711,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const s = series
     if (!s || opts.offline || loading) return
     const gen = generation
-    const bars = await loadBars(s.symbol, s.interval, null)
+    const bars = await loadBars(s.symbol, s.interval, null, () => !destroyed && gen === generation && series === s)
     if (destroyed || gen !== generation || series !== s || !bars) return
     freshAt = Date.now()
     mergeLatest(s, bars)
@@ -717,7 +724,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     historyLoading = true
     const gen = generation
     try {
-      const bars = await loadBars(s.symbol, s.interval, s.firstTime)
+      const bars = await loadBars(s.symbol, s.interval, s.firstTime, () => !destroyed && gen === generation && series === s)
       if (destroyed || gen !== generation || series !== s) return
       if (!bars || !bars.length) { if (bars) historyDone = true; return }
       const before = s.count
@@ -1038,6 +1045,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     setSymbol(next: string) {
       const up = next.toUpperCase()
       if (up === symbol) return
+      settle.noteSwitch()
       symbol = up
       wantWindow = null
       resetFeed()
@@ -1049,6 +1057,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
     setInterval(iv: Interval) {
       if (iv === interval) return
+      settle.noteSwitch()
       interval = iv
       wantWindow = null
       resetFeed()
@@ -1147,6 +1156,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       if (destroyed) return
       scaleReport.lift() // 手指还按着就被拆掉（切走、横竖屏重建）：捏出来的那一下别丢
       destroyed = true
+      settle.cancel(settleKey)
       generation++
       offMarket()
       beat.dispose()

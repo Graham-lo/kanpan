@@ -167,7 +167,8 @@ export class ExternalFeed {
     try {
       const points: MetricPoint[] = []
       for (const seg of segments) {
-        const r = await this.fetch(id, this.symbol, this.interval, seg.from, seg.to, now)
+        // 换走了（品种 / 周期，feed 被 dispose）还排在限流队列里的就不发
+        const r = await this.fetch(id, this.symbol, this.interval, seg.from, seg.to, now, u => j(u, 10000, false, () => this.alive))
         if (!this.alive) return
         points.push(...r.points)
         // 只把问完整的段记进 have：断在半路的下次还要再问

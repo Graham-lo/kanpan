@@ -8,6 +8,7 @@
  *       价格区横滑扫图（左滑下一只、右滑上一只）。
  */
 import { S, detailOf, fetchDetail } from '../../../market'
+import { settle } from '../../../market/settle'
 import { esc, grouped, fmtPrice, MISSING } from '../../model/rowText'
 import { badgeHTML, assetOf } from '../../model/badge'
 import { glyph, icon } from '../../ui/icons'
@@ -116,6 +117,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
   head.addEventListener('touchstart', e => { const t = e.touches[0]; tx = t.clientX; ty = t.clientY }, { passive: true })
   head.addEventListener('touchend', e => { const t = e.changedTouches[0]; h.onSwipe(t.clientX - tx, t.clientY - ty) }, { passive: true })
 
+  let shownSym = ''
   return {
     el: head,
     render(sym: string, stale: boolean, now = Date.now()): void {
@@ -138,7 +140,10 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
         b.classList.toggle('miss', stale || text === MISSING)
         return b
       }
-      if (s?.price != null) void fetchDetail(sym) // 自己一分钟最多取一次；价还没到时取了算不出美元持仓、又要空等一分钟
+      shownSym = sym
+      // 自己一分钟最多取一次；价还没到时取了算不出美元持仓、又要空等一分钟。扫图划过去的那只还排在限流里就不发
+      // 详情的五个慢数不是首屏：品种停稳（market/settle）再取，同一个键只留最后那只
+      if (s?.price != null) settle.whenSettled('m-detail', () => { if (shownSym === sym) void fetchDetail(sym, () => shownSym === sym) })
       const oi = detailOf(sym)?.oiValue
       put('oi', openInterestText(oi))
       put('vol', turnoverText(s?.vol, fresh))
