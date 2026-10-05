@@ -193,6 +193,12 @@ struct Prefs: Sendable, Equatable {
   /// 这儿记的只是「上次用的是哪把」这个习惯。
   var lastDrawTool: String = ""
 
+  /// 横屏画线台里主图指标（均线、布林……）画不画——顶行最右那颗「指标」胶囊管它，出厂开。
+  ///
+  /// 开着时价格轴仍只按 K 线定（`ChartSession.compose` 关掉 `overlaysAffectPriceRange`），
+  /// 所以开不开都不改量程；关掉就是一整屏原始 K 线。只管画线台，竖屏和横屏看行情照常画。
+  var drawingOverlaysShown: Bool = true
+
   // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：每一趟回放按根数自己挑
   // （`ReplayPace`，整趟 20–40 秒），回放条上那颗倍速键只改这一趟，不再存。
   /// 「找相似」的搜索范围：`history`（市场历史）/ `private`（我的记录）。

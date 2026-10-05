@@ -94,6 +94,7 @@ enum PrefsFieldPlan {
     "favoritesGroup": .synced,
     "sectorMarket": .synced, "sectorWindow": .synced,
     "lastDrawTool": .synced,
+    "drawingOverlaysShown": .synced,
     "reviewSearchScope": .synced,
     "alertSound": .synced,
     "watchMoveAlert": .synced,

@@ -441,34 +441,49 @@ final class MainScreenUITests: KanpanUICase {
     XCTAssertTrue(app.buttons["draw.sheet.done"].exists, "横屏工具卡片上没有关闭按钮")
   }
 
-  /// 画线横屏是一张**原始 K 线**：副图和主图均线全不画。
+  /// 画线横屏：副图不画；主图均线默认照画，顶行最右「指标」胶囊一点就收掉、再点回来。
   ///
-  /// 副图（成交量、MACD）不画是因为它们把主图挤扁；主图均线也要收掉，是因为价格轴的
-  /// 上下界把均线一起算进去——MA256 一挂上量程就被拉宽，K 线当场压扁、位置也挪，
-  /// 画在上面的线和真正的价格结构对不上。退出画线回到竖屏，两样都要原样回来：
+  /// 副图（成交量、MACD）不画是因为它们把主图挤扁。主图均线 2026-10-05 起默认开着，
+  /// 价格轴只按 K 线定（量程不被 MA256 拉宽，见 KanpanChart「只按蜡烛定量程」单测），
+  /// 想要一整屏原始 K 线就点胶囊。退出画线回到竖屏，副图和均线都原样回来：
   /// 这一路只影响画出来的那一帧，用户开着的指标偏好一个字没动。
-  func testLandscapeDrawingHidesEveryIndicator() {
-    // 审查 C.9：同上，跳过改硬断言。
+  func testLandscapeDrawingIndicatorToggle() {
     XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
     let subsBefore = chartInfo()["subs"] as? [String] ?? []
     let overlaysBefore = chartInfo()["overlays"] as? [String] ?? []
     XCTAssertFalse(subsBefore.isEmpty, "竖屏默认就该有副图，否则这条用例验不到东西")
-    XCTAssertFalse(overlaysBefore.isEmpty, "竖屏默认就该有均线，否则这条用例验不到东西")
+    XCTAssertTrue(overlaysBefore.contains("MA"), "竖屏默认就该开着 MA，否则这条用例验不到东西：\(overlaysBefore)")
 
     XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「画线」")
-    // 横屏那行品种名早就不是按钮了——竖屏的品种名不再开换品种弹层之后，横屏这一行
-    // 跟着退回纯图例（`LandscapeHeadline` 只有 `accessibilityElement(children: .combine)`，
-    // 没有 `.isButton`）。用例还按 `app.buttons` 找它，于是 iPhone、iPad 一台不落地
-    // 全报「点「画线」没横过去」，其实横是横过去了。按 identifier 找任意元素。
     let landscapeSymbol = app.descendants(matching: .any).matching(identifier: Ids.landscapeSymbol).firstMatch
     expectExists(landscapeSymbol, Self.long, "点「画线」没横过去")
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["subs"] as? [String])?.isEmpty == true },
                   "画线横屏里还留着副图：\(chartInfo()["subs"] ?? "?")")
-    XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["overlays"] as? [String])?.isEmpty == true },
-                  "画线横屏里还挂着均线：\(chartInfo()["overlays"] ?? "?")")
+    XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["overlays"] as? [String]) == overlaysBefore },
+                  "画线横屏里均线默认该开着：\(chartInfo()["overlays"] ?? "?")")
+
+    let toggle = app.descendants(matching: .any).matching(identifier: Ids.landscapeIndicators).firstMatch
+    expectExists(toggle, Self.short, "横屏画线台顶行没有「指标」胶囊")
+    XCTAssertEqual(toggle.label, "主图指标")
+    XCTAssertEqual(toggle.value as? String, "开")
+    XCTAssertGreaterThanOrEqual(toggle.frame.height, 43.5, "「指标」胶囊的点击区不到 44")
+    XCTAssertEqual(toggle.frame.midY, landscapeSymbol.frame.midY, accuracy: 2, "「指标」胶囊和品种胶囊不在一行")
+
+    // 胶囊贴着屏幕上沿，撑到 44 的点击区上缘越出屏幕几点，XCUITest 便不肯算「可点点」——
+    // 按它自己的中心点点（真手指点的也就是那颗胶囊本身）。
+    let tapToggle = { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+    tapToggle()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["overlays"] as? [String])?.isEmpty == true },
+                  "点「指标」关掉后均线还在：\(chartInfo()["overlays"] ?? "?")")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { toggle.value as? String == "关" }, "胶囊没念成「关」")
+    tapToggle()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["overlays"] as? [String]) == overlaysBefore },
+                  "再点「指标」均线没回来：\(chartInfo()["overlays"] ?? "?")")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { toggle.value as? String == "开" }, "胶囊没念回「开」")
 
     app.buttons[Ids.drawFinish].tap()
     expectExists(app.buttons[Ids.bottomMe], Self.long, "画完没自己转回竖屏")
+    XCTAssertFalse(toggle.exists, "竖屏里不该有「指标」胶囊")
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["subs"] as? [String]) == subsBefore },
                   "退回竖屏后副图没回来：\(chartInfo()["subs"] ?? "?")")
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["overlays"] as? [String]) == overlaysBefore },

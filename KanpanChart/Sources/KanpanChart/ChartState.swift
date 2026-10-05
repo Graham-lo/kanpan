@@ -57,6 +57,12 @@ public struct ChartState: Sendable, Equatable {
     /// 当前行情线路给不给得出多空比、主动买卖、基差这几样衍生统计。和持仓量分开：
     /// 网关线路上的替身有持仓量历史，这几样没有。
     public var externalSupported: Bool = true
+    /// 主图叠加（均线、布林上下轨、均价……）参不参与价格轴上下界。出厂 `true` = 现状。
+    ///
+    /// 横屏画线台把它关掉：均线照画（裁剪在主图里），量程只按 K 线定——MA256 一挂上，
+    /// 量程被拉宽、K 线被压扁，画出来的线就和真实的价格结构对不上。放在 `input` 里，
+    /// 这一项一变几何缓存（`InputCache` / `ViewportCache`）跟着整只换掉。
+    public var overlaysAffectPriceRange: Bool = true
   }
 
   /// 看哪一段、多大：手势只改这一层。
@@ -189,6 +195,10 @@ public struct ChartState: Sendable, Equatable {
   public var externalSupported: Bool {
     get { input.externalSupported }
     _modify { yield &input.externalSupported }
+  }
+  public var overlaysAffectPriceRange: Bool {
+    get { input.overlaysAffectPriceRange }
+    _modify { yield &input.overlaysAffectPriceRange }
   }
   public var view: ViewWindow {
     get { viewport.view }

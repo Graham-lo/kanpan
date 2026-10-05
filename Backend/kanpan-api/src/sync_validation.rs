@@ -226,7 +226,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
     // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
     |"notifyListingChanges"
     // 设置 › 通用「按我的习惯自动调整」。
-    |"habitLearning"=>v.is_boolean(),
+    |"habitLearning"
+    // 横屏画线台顶行「指标」胶囊（2026-10-05）。
+    |"drawingOverlaysShown"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),_=>false
   }
  }
@@ -695,7 +697,7 @@ mod tests {
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");
-  for flag in ["mainInverted","watchMoveAlert"] {
+  for flag in ["mainInverted","watchMoveAlert","drawingOverlaysShown"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");
   }
  }

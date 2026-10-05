@@ -171,6 +171,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 「按我的习惯自动调整」（2026-09-28）：开关 + 学到的结论（整份一个对象，≤ 16 KB，
  // 规则见 `sync_validation::learned_defaults`）。行为日志只在手机上，不上传。
  "habitLearning","learnedDefaults",
+ // 横屏画线台顶行「指标」胶囊：画线台里主图指标画不画（2026-10-05，布尔）。
+ "drawingOverlaysShown",
 ];
 /// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
 ///

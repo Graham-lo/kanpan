@@ -411,14 +411,14 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     let landscapeSymbol = app.descendants(matching: .any)
       .matching(identifier: Ids.landscapeSymbol).firstMatch
     expectExists(landscapeSymbol, Self.long, "点「画线」没横过去")
-    // 横屏那一屏是**说好要空的**：指标一律不画（`kanpan-landscape-is-for-drawing`），
-    // 但画上去的线必须还在——那才是横过来要干的事。
+    // 横屏画线台：副图不画；主图均线默认照画（顶行「指标」胶囊管，价格轴只按 K 线定）。
+    // 画上去的线必须还在——那才是横过来要干的事。
     XCTAssertTrue(waitUntil(timeout: Self.long) {
       (self.chartInfo()["subs"] as? [String])?.isEmpty == true
     }, "画线横屏里还留着副图：\(chartInfo()["subs"] ?? "?")")
     XCTAssertTrue(waitUntil(timeout: Self.long) {
-      (self.chartInfo()["overlays"] as? [String])?.isEmpty == true
-    }, "画线横屏里还挂着均线：\(chartInfo()["overlays"] ?? "?")")
+      (self.chartInfo()["overlays"] as? [String]) == baseline.overlays
+    }, "画线横屏里均线默认该开着：\(chartInfo()["overlays"] ?? "?")")
     XCTAssertEqual(chartInfo()["drawingIDs"] as? [String], baseline.drawingIDs,
                    "横过来画的线没了")
     shot("画线横屏")

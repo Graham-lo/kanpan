@@ -82,6 +82,8 @@ enum Ids {
   static let landscapeExit = "land.exit"
   /// 横屏顶上那行小字里的品种名：拿它当「已经横过来了」的准星。
   static let landscapeSymbol = "land.symbol"
+  /// 横屏画线台顶行最右的「指标」胶囊（主图指标开关）。
+  static let landscapeIndicators = "land.indicators"
   // 品种页
   static let symbolsBack = "symbols.back"
   static let symbolsQuery = "symbols.query"

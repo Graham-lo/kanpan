@@ -314,7 +314,7 @@ public final class ChartView: UIView {
           "orderFlowDirtyReasons": orderFlowDirtyReasons,
           "renderCounts": renderCounts,
           "panes": layout.panes.dropFirst().map { ["id": $0.indicator?.rawValue ?? "", "y": $0.y, "h": $0.h] as [String: Any] }, "subs": s.subs.map(\.rawValue),
-          // 画线横屏要的是一张没有任何指标参与定标的原始 K 线，用例得能看见主图叠加层。
+          // 画线横屏的主图叠加层由「指标」胶囊开关（量程只按 K 线定），用例得能看见此刻画了哪几层。
           "overlays": s.overlays.map(\.rawValue),
           "ma": s.params[.ma] ?? [], "macd": s.params[.macd] ?? [],
           "externalReady": s.external.keys.map(\.rawValue).sorted(),

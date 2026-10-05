@@ -232,6 +232,9 @@ final class ChartSession {
     result.external = market.external
     result.depth = input.drawingCanvasOnly || !prefs.depth ? nil : market.depth
     result.orderFlow = market.orderFlow.chartValue(symbol: market.symbol, drawingCanvasOnly: input.drawingCanvasOnly)
+    // 横屏画线台：主图指标可以开着（顶行「指标」胶囊管），但价格轴只按 K 线定——
+    // 挂一条 MA256 不该把量程拉宽、把蜡烛压扁，画出来的线才落在真实的价格结构上。
+    result.overlaysAffectPriceRange = !input.drawingCanvasOnly
     // 持仓量和衍生统计分开认：网关线路上的替身有持仓量历史（kanpan-api 代问 OKX），
     // 多空比、主动买卖、基差没有。
     result.oiSupported = market.capabilities.hasOpenInterestHistory

@@ -19,7 +19,7 @@
 - 品种搜索：先最匹配、同档按 24h 成交额降序（`KanpanSymbols/SymbolQuery.swift`、`SymbolSections.swift`）。
 - 自选页「琉璃」版（`Symbols/FavoritesView.swift`，提交 `a2cbb0d`，`fda4e1c` 起去掉玻璃纸改为融合）：浅色光斑底（底部叠同色渐变保可读）、深色素底不画光斑（2026-09-17 用户要求去掉）、行直接长在底上只留发丝线、衬线标题 22pt 与正放的数量印章、涨跌比例条、品种徽章 33pt、价格 15.5pt、涨跌药丸；迷你走势图默认关闭，「…」菜单里 `favorites.sparkline` 可打开（本机 AppStorage）；排序与涨跌幅口径在 `favorites.sort` 弹层里；没有领涨 / 领跌行。
 - 品种徽章一品种一记号（`Main/CoinBadge.swift`、`Resources/CoinBadgeBrands.json`），配色随皮肤。
-- K 线只有 AICoin 一套造型（`CandleStyle.all == [aicoin]`），主图 MA(10,30,120,256)，副图默认 MACD + RSI；14 档周期，不含 3d；横屏仅画线用，画线时主副图指标不画。
+- K 线只有 AICoin 一套造型（`CandleStyle.all == [aicoin]`），主图 MA(10,30,120,256)，副图默认 MACD + RSI；14 档周期，不含 3d；横屏仅画线用：画线台里副图不画，主图指标默认照画、顶行最右「指标」胶囊（`land.indicators`）一点就收掉，开关记在 `Prefs.drawingOverlaysShown`（跟账号同步，出厂开）；2026-10-05 起画线台的价格轴只按 K 线定（KanpanChart `overlaysAffectPriceRange = false`），MA256 挂着也不拉宽量程，竖屏和横屏看行情照旧把均线算进量程。
 - 图上不浮任何控件（`kanpan-no-floating-controls-over-chart`）：早先那颗可拖动的「记」按钮已经没有了，
   记一笔走图表设置「这张图」与复盘本右上的「+」，工具一律放在图外的周期条 / 底栏 / 横屏工具栏上。
 

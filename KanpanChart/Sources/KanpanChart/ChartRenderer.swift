@@ -518,7 +518,8 @@ public struct ChartRenderer {
   }
 
   private func computeOverlayLines() -> [[Double]] {
-    guard !state.percentAxis else { return [] }
+    // 「只按蜡烛定量程」（横屏画线台）：叠加线照画，但一条都不进价格区间、也不进轴宽的量法。
+    guard !state.percentAxis, state.overlaysAffectPriceRange else { return [] }
     var out: [[Double]] = []
     for id in state.overlays {
       guard let v = displayed(id) else { continue }

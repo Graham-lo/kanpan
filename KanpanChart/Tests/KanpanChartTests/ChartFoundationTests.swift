@@ -47,6 +47,39 @@ struct ChartFoundationTests {
     #expect(try #require(renderer.displayed(.ma)).lines.allSatisfy { $0.allSatisfy { !$0.isFinite } })
   }
 
+  /// 横屏画线台的「只按蜡烛定量程」：一条单边上涨里 MA256 远远落在可见 K 线下面，
+  /// 平时它把价格区间往下撑；关掉 `overlaysAffectPriceRange` 后区间与不开均线时一模一样，
+  /// 均线照样算出来（还在画），图例也照样有值。
+  @Test("只按蜡烛定量程：远离的均线不撑宽价格轴")
+  func overlaysOutOfPriceRange() throws {
+    let n = 400
+    let close = (0..<n).map { 100 + Double($0) * 0.5 }
+    let series = BarSeries(symbol: "BTCUSDT", interval: .h1, t0: 1_700_000_000_000, step: 3_600_000,
+                           open: close.map { $0 - 0.2 }, high: close.map { $0 + 0.6 },
+                           low: close.map { $0 - 0.6 }, close: close, volume: Array(repeating: 10, count: n))
+    let L = Layout(width: Double(size.width), height: Double(size.height), subs: [])
+    let info = SymbolInfo(symbol: "BTCUSDT", base: "BTC", quote: "USDT", pricePrecision: 2, tickSize: 0.1)
+    var s = ChartState(
+      series: series, symbol: info,
+      view: ViewMath.reset(series: series, plotW: L.plotW, spacing: AICoinBehavior.initialSpacing),
+      price: .init(mode: .linear), overlays: [], subs: [], timezone: .utc, decimals: 2)
+    var renderer = ChartRenderer(state: s)
+    let bare = renderer.priceRange(size: size)
+    s.overlays = [.ma]; s.params[.ma] = [256]; renderer.state = s
+    let widened = renderer.priceRange(size: size)
+    // 前提：这条 MA256 真的在可见区间外，平时会把下界往下拉。
+    #expect(widened.lo < bare.lo - 10)
+    s.overlaysAffectPriceRange = false; renderer.state = s
+    let candlesOnly = renderer.priceRange(size: size)
+    #expect(candlesOnly == bare)
+    // 均线还在：算出来的那条线有有限值（画线台里照画、裁剪在主图里）。
+    let ma = try #require(renderer.displayed(.ma))
+    #expect(ma.lines.first?.last?.isFinite == true)
+    // 开关回去，缓存跟着换：区间回到被撑宽的那个。
+    s.overlaysAffectPriceRange = true; renderer.state = s
+    #expect(renderer.priceRange(size: size) == widened)
+  }
+
   @Test("高度改变不改变横向布局；副图重排完整区域跟随指标身份")
   func layout() throws {
     var s = state(); s.subs = [.vol, .oi, .macd, .kdj, .rsi]

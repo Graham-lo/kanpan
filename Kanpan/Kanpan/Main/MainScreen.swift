@@ -814,6 +814,16 @@ struct MainScreen: View {
           // 换品种和挑工具都贴在左边，同时开会叠在一起——开一个就把另一个收了。
           onTapSymbol: draw.active ? { draw.picker = false; showDrawSwitcher.toggle() } : nil)
           .padding(.horizontal, Space.m).padding(.vertical, Space.xs)
+          // 画线台顶行最右：主图指标开关。贴在 overlay 里，居中的品种胶囊不因它挪位。
+          .frame(maxWidth: .infinity)
+          .overlay(alignment: .trailing) {
+            if drawingCanvasOnly && !prefs.overlays.isEmpty {
+              LandscapeIndicatorToggle(theme: theme, on: prefs.drawingOverlaysShown) {
+                store.update { $0.drawingOverlaysShown.toggle() }
+              }
+              .padding(.trailing, Space.m)
+            }
+          }
         // 横屏读数原来 10pt，低于 HIG 下限 11（UI 审查 2026-09-24 §4.3 #34），用默认的 11。
         CrosshairOHLCLabel(readout: crosshairReadout, context: crosshairContext, color: theme.ink)
         }
@@ -925,15 +935,15 @@ struct MainScreen: View {
     if UIDevice.current.userInterfaceIdiom != .pad { Orientation.rotate(to: false) }
   }
 
-  /// 画线的时候横屏里**一个指标都不画**：画线要的就是一整屏的原始 K 线。
+  /// 横屏画线台：副图一律不画，主图指标由顶行「指标」胶囊管（`prefs.drawingOverlaysShown`，出厂开）。
   ///
-  /// 副图（成交量、MACD）好理解——它们只是把主图挤扁。主图上的均线要一起收掉则是
-  /// 因为价格轴的上下界是把均线算进去一起取的：MA256 一挂上，量程被拉宽，K 线当场
-  /// 被压扁、整体位置也挪了，这时候画的线和真正的价格结构对不上。所以横屏画线给的是
-  /// 一张没有任何指标参与定标的图。
+  /// 副图（成交量、MACD）只是把主图挤扁，画线时不要。主图均线从前也一起收掉，因为价格轴
+  /// 的上下界是把均线算进去一起取的——MA256 一挂上，量程被拉宽、K 线被压扁，画的线和真正
+  /// 的价格结构对不上。2026-10-05 起改成：均线照画（裁剪在主图里），但价格轴只按 K 线定
+  /// （`ChartSession.compose` 关掉 `overlaysAffectPriceRange`），想要一整屏原始 K 线就点胶囊关掉。
   ///
-  /// 两个都只影响画出来的这一帧，`prefs.subs` 和 `prefs.overlays` 一个字没动——画完
-  /// 退出画线，副图和均线原样回来，用户开着的那几个指标不需要重新打开。
+  /// 都只影响画出来的这一帧，`prefs.subs` 和 `prefs.overlays` 一个字没动——画完退出画线，
+  /// 副图和均线原样回来，用户开着的那几个指标不需要重新打开。
   private var drawingCanvasOnly: Bool { draw.active && landscape }
   /// 外部指标在不支持的线路上保留对应空态，选择不随线路变化。
   ///
@@ -946,7 +956,11 @@ struct MainScreen: View {
     guard !caps.hasOpenInterest, !caps.hasOpenInterestHistory, !caps.hasDerivativeMetrics else { return prefs.subs }
     return prefs.subs.filter { !$0.isExternal }
   }
-  private var visibleOverlays: [IndicatorID] { drawingCanvasOnly || comparing ? [] : prefs.overlays }
+  private var visibleOverlays: [IndicatorID] {
+    if comparing { return [] }
+    if drawingCanvasOnly { return prefs.drawingOverlaysShown ? prefs.overlays : [] }
+    return prefs.overlays
+  }
   /// 图上只调整当前可见副图的顺序，保留没有参与排序的设置。
   /// 横屏画线台不展示副图；网关则保留已选指标并显示空态。
   private func merged(subs order: [IndicatorID]) -> [IndicatorID] {

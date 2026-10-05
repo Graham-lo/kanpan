@@ -200,6 +200,19 @@ struct PrefsFieldPlanTests {
     #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).favoritesGroup.isEmpty)
   }
 
+  /// 横屏画线台「指标」胶囊记的开关：跟着人走（出厂开），关掉能原样存下来、读回来。
+  @Test("画线台主图指标开关跟着人走")
+  func drawingOverlaysShownIsSynced() {
+    #expect(PrefsFieldPlan.table["drawingOverlaysShown"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("drawingOverlaysShown"))
+    var prefs = Prefs.defaults
+    #expect(prefs.drawingOverlaysShown)
+    prefs.drawingOverlaysShown = false
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).drawingOverlaysShown == false)
+    prefs.drawingOverlaysShown = true
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).drawingOverlaysShown)
+  }
+
   /// **「线路」这一摊整个留在这台设备上——直连 / 网关那两档也不再跟着人走。**
   ///
   /// 这条钉的是 2026-09-19 按 GPT Pro 第二轮审查 B7 定下的决定。在那之前 `routePolicy`

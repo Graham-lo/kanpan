@@ -72,6 +72,74 @@ struct LandscapeHeadline: View {
   }
 }
 
+/// 横屏画线台顶行最右那颗「指标」胶囊：主图指标在画线台里开不开（`prefs.drawingOverlaysShown`）。
+///
+/// 画面和左边那颗品种胶囊同一把——同样的底、同样的字、同样的高；点击区上下撑到 44，
+/// 多出来的高度用负边距还给布局。开着是一只睁着的眼睛（正文色），关着是划掉的眼睛（降两级）。
+/// 只有用户开着主图指标时宿主才摆它：一个都没开，开关就是空的。
+struct LandscapeIndicatorToggle: View {
+  var theme: PanelTheme
+  var on: Bool
+  var onToggle: () -> Void
+
+  var body: some View {
+    HStack(spacing: Space.xs) {
+      EyeGlyph(slashed: !on, size: 15)
+      Text("指标").font(TypeScale.controlOn)
+    }
+    .foregroundStyle(on ? theme.ink : theme.ink3)
+    .padding(.horizontal, Space.m)
+    .padding(.vertical, Space.xs)
+    .background(Capsule().fill(theme.raised2.opacity(0.82)))
+    .frame(minWidth: Hit.min, minHeight: Hit.min)
+    // 点击区与读屏框都挂在撑到 44 的这一层上，再用负边距把多出来的高度还给布局——
+    // 顺序反过来（先负边距再 contentShape），点击区就跟着缩回 28 了。
+    .contentShape(Rectangle())
+    .onTapGesture(perform: onToggle)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("主图指标")
+    .accessibilityValue(on ? "开" : "关")
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier("land.indicators")
+    .padding(.vertical, -(Hit.min - ControlMetrics.pillHeight) / 2)
+    .dynamicTypeSize(...MarketChrome.typeCap)
+  }
+}
+
+/// 实心圆润的眼睛：杏仁形的眼眶填实，中间挖一圈露出底、再放一颗实心瞳孔；`slashed`
+/// 时从左上到右下划一道圆头斜杠（先挖一道宽缝，让斜杠和眼睛之间留出一线底色）。
+/// 单色，颜色跟 `foregroundStyle` 走。
+struct EyeGlyph: View {
+  var slashed: Bool
+  var size: Double = 15
+
+  private static let box: Double = 24
+  private static let slash = "M4.6 4.6L19.4 19.4"
+
+  var body: some View {
+    let k = size / Self.box
+    ZStack {
+      shape([.path("M12 5.2c-4.6 0-8.2 3.1-9.9 6.1a1.4 1.4 0 0 0 0 1.4c1.7 3 5.3 6.1 9.9 6.1"
+                   + "s8.2-3.1 9.9-6.1a1.4 1.4 0 0 0 0-1.4C20.2 8.3 16.6 5.2 12 5.2z")])
+        .fill(.foreground)
+      shape([.circle(x: 12, y: 12, r: 4.6)]).fill(.black).blendMode(.destinationOut)
+      shape([.circle(x: 12, y: 12, r: 2.9)]).fill(.foreground)
+      if slashed {
+        shape([.path(Self.slash)])
+          .stroke(.black, style: StrokeStyle(lineWidth: 4.8 * k, lineCap: .round))
+          .blendMode(.destinationOut)
+        shape([.path(Self.slash)])
+          .stroke(.foreground, style: StrokeStyle(lineWidth: 2.2 * k, lineCap: .round))
+      }
+    }
+    .compositingGroup()
+    .frame(width: size, height: size)
+    .accessibilityHidden(true)
+  }
+
+  private func shape(_ items: [IconItem]) -> IconShape { IconShape(box: Self.box, items: items) }
+}
+
 /// 周期竖排贴左，宽 52pt（原型 `.screen.land .periods`）。可上下滚。
 struct IntervalRail: View {
   var theme: PanelTheme

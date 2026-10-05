@@ -154,6 +154,7 @@ extension Prefs: Codable {
     case favoritesGroup
     case sectorMarket, sectorWindow
     case lastDrawTool
+    case drawingOverlaysShown
     // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：老存档里的键读时忽略，服务端退役。
     case reviewSearchScope
     case alertSound
@@ -195,6 +196,7 @@ extension Prefs: Codable {
     try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
+    try c.encode(drawingOverlaysShown, forKey: .drawingOverlaysShown)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
@@ -347,6 +349,7 @@ extension Prefs: Codable {
     // （或空串 = 没用过）。认不出的退回出厂值，不让一个手改 / 更高版本写下的字面量躺进档里、
     // 再被推上去整条拒收。
     if let raw = str(.lastDrawTool) { lastDrawTool = raw.isEmpty || Drawing.Kind(rawValue: raw) != nil ? raw : "" }
+    if let v = bool(.drawingOverlaysShown) { drawingOverlaysShown = v }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }

@@ -97,12 +97,14 @@ export interface Prefs {
   sectorMarket: SectorMarket
   sectorWindow: SectorWindow
   lastDrawTool: string
+  /** iOS 横屏画线台里主图指标画不画（手机网页没有画线台，只随账号带着走、不丢） */
+  drawingOverlaysShown: boolean
   reviewSearchScope: ReviewSearchScope
 }
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
-  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'favoritesGroup', 'habitLearning',
+  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawingOverlaysShown', 'favoritesGroup', 'habitLearning',
   'indicatorColors', 'indicatorLayouts', 'interval', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
   'notifyListingChanges', 'orderFlow', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
@@ -125,6 +127,7 @@ export function defaultPrefs(): Prefs {
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
     params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
     favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', reviewSearchScope: 'history',
+    drawingOverlaysShown: true,
   }
 }
 
@@ -381,6 +384,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     sectorMarket: oneOf(r.sectorMarket, ['crypto', 'us'] as const, d.sectorMarket),
     sectorWindow: oneOf(r.sectorWindow, ['today', 'd5', 'd20'] as const, d.sectorWindow),
     lastDrawTool: typeof r.lastDrawTool === 'string' ? r.lastDrawTool : d.lastDrawTool,
+    drawingOverlaysShown: bool(r.drawingOverlaysShown, d.drawingOverlaysShown),
     reviewSearchScope: oneOf(r.reviewSearchScope, ['history', 'private'] as const, d.reviewSearchScope),
   }
   // 老档的分叉记忆：顶层本来就是当前周期所在组那份，以它为准收成一份
