@@ -153,17 +153,11 @@ async fn insert(pool:&PgPool,rows:&[(String,Minute)])->sqlx::Result<()> {
 
 // ------------------------------------------------------------------ 清理
 
-/// 表里有哪些 base：沿主键跳着取（每只一次索引查找），不扫整表。
-async fn bases(pool:&PgPool)->sqlx::Result<Vec<String>> {
- sqlx::query_scalar("WITH RECURSIVE b(base) AS (SELECT min(base) FROM orderflow_flow UNION ALL SELECT (SELECT min(base) FROM orderflow_flow WHERE base>b.base) FROM b WHERE b.base IS NOT NULL) \
-  SELECT base FROM b WHERE base IS NOT NULL").fetch_all(pool).await
-}
-
 /// 每小时一次：逐只 base 按主键删 3 天以前的。
 pub(super) async fn purge(pool:&PgPool,now:i64)->sqlx::Result<u64> {
  let cutoff=now-store::RETENTION_MS;
  let mut deleted=0;
- for base in bases(pool).await? {
+ for base in store::bases(pool).await? {
   loop {
    let n=sqlx::query("DELETE FROM orderflow_flow WHERE ctid=ANY(ARRAY(SELECT ctid FROM orderflow_flow WHERE base=$1 AND minute_ms<$2 LIMIT $3))")
     .bind(&base).bind(cutoff).bind(DELETE_BATCH).execute(pool).await?.rows_affected();
@@ -321,6 +315,8 @@ mod tests {
   let base="FLOWTEST";
   sqlx::query("DELETE FROM orderflow_flow WHERE base=$1").bind(base).execute(&pool).await.unwrap();
   let now=10*store::DAY_MS;
+  // 清理的名单取自 orderflow_bases：跟踪器起跟时登记。
+  store::start(&pool,base,now).await.unwrap();
   let m=|minute_ms,big_buy,small_sell|Minute{minute_ms,big_buy,small_sell,..Minute::default()};
   let old=now-store::RETENTION_MS-MINUTE_MS;
   insert(&pool,&[(base.into(),m(now-120_000,100.0,1.0)),(base.into(),m(now-60_000,50.0,0.0)),(base.into(),m(old,9.0,9.0))]).await.unwrap();
@@ -332,5 +328,6 @@ mod tests {
   let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_flow WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
   assert_eq!(left,2);
   sqlx::query("DELETE FROM orderflow_flow WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  sqlx::query("DELETE FROM orderflow_bases WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
 }

@@ -272,13 +272,21 @@ async fn roll_range(pool:&PgPool,k:usize,bases:&[String],a:i64,b:i64)->sqlx::Res
 
 /// 起来时从哪接着并：每档已有的最后一段之后；一段都没有就从原始快照最早的那格起（刚部署时把已有的都追上），
 /// 表是空的就从此刻起。3 天以前的（已经清掉的）不追。
+///
+/// 最早那格只在某档一段都没有时才去查：每只 base 的 `min(bucket_ms)` 落在主键里这只 base 最旧的那一头，
+/// 正是每小时清理刚删掉的那一截（死索引项要逐条回表确认），平时各档都有段，用不着它。
 async fn resume(pool:&PgPool,bases:&[String],now:i64)->sqlx::Result<[i64;3]> {
- let first:Option<i64>=sqlx::query_scalar("SELECT min(m) FROM unnest($1::text[]) b(base) CROSS JOIN LATERAL (SELECT min(bucket_ms) AS m FROM orderflow_heat WHERE base=b.base) x")
-  .bind(bases).fetch_one(pool).await?;
+ let mut lasts=[None;3];
+ for (k,&w) in ROLLUPS.iter().enumerate() {
+  lasts[k]=sqlx::query_scalar::<_,Option<i64>>(&format!("SELECT max(bucket_ms) FROM {} WHERE width_ms={w}",rollup_table(w))).fetch_one(pool).await?;
+ }
+ let first:Option<i64>=if lasts.iter().all(Option::is_some) {None} else {
+  sqlx::query_scalar("SELECT min(m) FROM unnest($1::text[]) b(base) CROSS JOIN LATERAL (SELECT min(bucket_ms) AS m FROM orderflow_heat WHERE base=b.base) x")
+   .bind(bases).fetch_one(pool).await?
+ };
  let mut done=[0;3];
  for (k,&w) in ROLLUPS.iter().enumerate() {
-  let last:Option<i64>=sqlx::query_scalar(&format!("SELECT max(bucket_ms) FROM {} WHERE width_ms={w}",rollup_table(w))).fetch_one(pool).await?;
-  let start=last.map(|t|t+w).or(first).unwrap_or(now-ROLL_GRACE).max(now-store::RETENTION_MS);
+  let start=lasts[k].map(|t|t+w).or(first).unwrap_or(now-ROLL_GRACE).max(now-store::RETENTION_MS);
   done[k]=start.div_euclid(w)*w;
  }
  Ok(done)
@@ -296,7 +304,7 @@ impl Roller {
 
  /// 一轮：每档往前并一截。返回还落不落后（落后就马上接着来）。
  async fn step(&mut self,pool:&PgPool,now:i64)->sqlx::Result<bool> {
-  let bases=bases(pool).await?;
+  let bases=store::bases(pool).await?;
   let mut behind=false;
   for (k,&w) in ROLLUPS.iter().enumerate() {
    let floor=(now-store::RETENTION_MS).div_euclid(w)*w;
@@ -327,7 +335,7 @@ async fn roller(pool:PgPool) {
  };
  let mut roller=loop {
   let now=now_ms();
-  match async {let bases=bases(&pool).await?;resume(&pool,&bases,now).await}.await {
+  match async {let bases=store::bases(&pool).await?;resume(&pool,&bases,now).await}.await {
    Ok(done)=>break Roller{done,failures:[0;3]},
    Err(e)=>{warn("resume",e);tokio::time::sleep(ROLL_EVERY).await;},
   }
@@ -386,12 +394,6 @@ async fn delete_rollups_before(pool:&PgPool,cutoff:i64)->sqlx::Result<u64> {
 
 // ------------------------------------------------------------------ 清理
 
-/// 表里有哪些 base：沿主键跳着取（每只一次索引查找），不扫整表。
-async fn bases(pool:&PgPool)->sqlx::Result<Vec<String>> {
- sqlx::query_scalar("WITH RECURSIVE b(base) AS (SELECT min(base) FROM orderflow_heat UNION ALL SELECT (SELECT min(base) FROM orderflow_heat WHERE base>b.base) FROM b WHERE b.base IS NOT NULL) \
-  SELECT base FROM b WHERE base IS NOT NULL").fetch_all(pool).await
-}
-
 async fn delete_before(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u64> {
  let mut deleted=0;
  loop {
@@ -410,7 +412,7 @@ pub(super) async fn size(pool:&PgPool)->sqlx::Result<i64> {
 /// 每小时一次：删 3 天以前的（预聚合的段同一个截止时刻一起删，返回两边合计删了几行）；表超过 `GATE_BYTES` 时按「行数 × 最近一行的平均大小」估实际占用，
 /// 超过 `GATE_TARGET` 就把截止时刻往后挪（每次 6 小时）接着删。删掉的空间留给以后的插入用，文件不缩，所以不能直接拿文件大小判断。
 pub(super) async fn purge(pool:&PgPool,now:i64)->sqlx::Result<u64> {
- let bases=bases(pool).await?;
+ let bases=store::bases(pool).await?;
  let mut deleted=0;
  for base in &bases {deleted+=delete_before(pool,base,now-store::RETENTION_MS).await?;}
  if size(pool).await? as f64>GATE_BYTES {
@@ -817,6 +819,7 @@ mod tests {
   let Some(pool)=store::tests::isolated_pool().await else {return};
   let base="HEATTEST";
   sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  sqlx::query("DELETE FROM orderflow_bases WHERE base=$1").bind(base).execute(&pool).await.unwrap();
   let band=|exchange:&'static str,t:i64,bid:f32|Band{base:base.into(),exchange,product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0,3],bids:vec![bid,0.0],asks:vec![0.0,7.0]};
   let now=10*store::DAY_MS;
   let old=now-store::RETENTION_MS-BUCKET_MS;
@@ -839,11 +842,15 @@ mod tests {
   assert_eq!((bucket_ms,rows.len()),(5_000,4));
   // 这一段没有快照：空行，步长取客户端的与跟踪器此刻的较大者。
   assert_eq!(read(&pool,base,0,1_000,Some(5.0),Some(100.0),MAX_ROWS,None).await.unwrap(),(100.0,BUCKET_MS,vec![]));
-  // 清理：3 天以前的删掉，其余留着。
+  // 清理按 orderflow_bases 逐只走：还没登记的 base 不动（起跟时 start 写库失败的情形）……
+  assert_eq!(purge(&pool,now).await.unwrap(),0);
+  // ……跟踪器每分钟报活时补上这一行，下一次清理就收得到：3 天以前的删掉，其余留着。
+  store::alive(&pool,base,now).await.unwrap();
   assert_eq!(purge(&pool,now).await.unwrap(),1);
   let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
   assert_eq!(left,3);
   sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  sqlx::query("DELETE FROM orderflow_bases WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
 
  fn query(lo:Option<f64>,hi:Option<f64>,around:Option<f64>,pct:Option<f64>,bucket_ms:Option<i64>)->HeatQuery {
@@ -1036,6 +1043,8 @@ mod tests {
   wipe().await;
   let now=20*store::DAY_MS;
   let from=now-3_600_000;
+  // 并段与清理的名单取自 orderflow_bases：跟踪器起跟时登记。
+  store::start(&pool,base,from).await.unwrap();
   // 一小时 720 个快照：币安 600 买 100 每拍都有、601 卖 60 只在每 30 秒的头两拍；OKX 603 买 10 每拍都有。
   let bands:Vec<Band>=(0..720).flat_map(|k:i64|{
    let t=from+k*BUCKET_MS;
@@ -1086,5 +1095,6 @@ mod tests {
   let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat_rollup WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
   assert_eq!(left,0);
   wipe().await;
+  sqlx::query("DELETE FROM orderflow_bases WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
 }

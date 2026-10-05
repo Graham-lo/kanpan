@@ -266,8 +266,13 @@ pub async fn start(pool:&PgPool,base:&str,now:i64)->sqlx::Result<()> {
 }
 
 /// 跟踪器还活着、手里的都写进库了。
+///
+/// 没有这一行就补上（since 记此刻）：起跟时 `start` 写库失败只记一条警告、跟踪照跑，原来这里只 UPDATE，
+/// 那只 base 在 `orderflow_bases` 里就一直没有行——而三张历史表（挂单、热力、主动成交）的清理与并段
+/// 都按这张小表逐只走（见 `bases`），没行的 base 写进去的历史永远不删、也不并段。
 pub async fn alive(pool:&PgPool,base:&str,now:i64)->sqlx::Result<()> {
- sqlx::query("UPDATE orderflow_bases SET alive_ms=GREATEST(alive_ms,$2) WHERE base=$1").bind(base).bind(now).execute(pool).await?;
+ sqlx::query("INSERT INTO orderflow_bases(base,since_ms,requested_ms,alive_ms) VALUES($1,$2,0,$2) \
+  ON CONFLICT(base) DO UPDATE SET alive_ms=GREATEST(orderflow_bases.alive_ms,EXCLUDED.alive_ms)").bind(base).bind(now).execute(pool).await?;
  Ok(())
 }
 
@@ -276,7 +281,13 @@ pub async fn recent_bases(pool:&PgPool,now:i64)->sqlx::Result<Vec<(String,i64)>>
  sqlx::query_as("SELECT base,requested_ms FROM orderflow_bases WHERE requested_ms>=$1 ORDER BY requested_ms DESC").bind(now-DAY_MS).fetch_all(pool).await
 }
 
-async fn bases(pool:&PgPool)->sqlx::Result<Vec<String>> {sqlx::query_scalar("SELECT base FROM orderflow_bases").fetch_all(pool).await}
+/// 跟过哪些 base：`orderflow_bases` 这张几百行的小表。跟踪器起跟（`start`）与每分钟报活（`alive`）都会写它，
+/// 写过历史的 base 一定在里面，所以挂单、热力、主动成交三张历史表的清理与并段都从这里取名单。
+///
+/// 热力与主动成交原来各自沿主键跳着取（递归 CTE，每只 base 一次 `min(base) WHERE base>…`）：
+/// 每次跳到的恰好是下一只 base 最旧的那一头——每小时清理刚删掉的那一截，死索引项要回表逐条确认，
+/// 在 21 GB 的热力表上一次 1–18 秒，而并段任务每 30 秒就要取一次（2026-10-05 线上 185 条慢查询）。
+pub(super) async fn bases(pool:&PgPool)->sqlx::Result<Vec<String>> {sqlx::query_scalar("SELECT base FROM orderflow_bases").fetch_all(pool).await}
 
 /// 分批删：一条语句最多 `DELETE_BATCH` 行。返回删了多少。
 async fn delete_ended_before(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u64> {
@@ -644,5 +655,68 @@ pub(super) mod tests {
   assert_eq!(rest.iter().find(|o|o.bucket==5).map(|o|(o.status,o.end_ms)),Some((Status::Lost,Some(now+2))));
   clear(&pool,&["ZZT"]).await;
   sqlx::query("DELETE FROM orderflow_bases WHERE base='ZZT'").execute(&pool).await.unwrap();
+ }
+
+ /// 三天量级的数据上读历史（2026-10-05 线上慢查询）：「终点时还挂着、之后才结束」那一路原来走 (base,first_seen_ms)，
+ /// first_seen_ms ≤ 终点就是这只 base 三天里的每一单，逐行回表再按 end_ms 滤光——终点是此刻时一行不剩，ETH 一次 4.8 秒。
+ /// 0044 起两路都走 (base,end_ms,first_seen_ms)：两个条件都在索引项上判，回表的只有真要回的行。
+ /// 按 sqlx 的预备语句两种计划（前几次的定制计划、之后可能换成的通用计划）各看一遍，
+ /// 断言每个扫 orderflow_orders 的节点都走这条索引、没有回了表又滤掉的行，并量一下耗时的量级。
+ #[tokio::test]
+ async fn three_days_of_orders_read_without_walking_the_whole_base() {
+  let Some(pool)=isolated_pool().await else {return};
+  let base="ZZDAYS";
+  // 再陪 9 只同样多的：线上一张表几百只 base，只有这一只的话按 base 滤不掉什么，规划器自然去顺序扫描。
+  let others:Vec<String>=(0..9).map(|i|format!("ZZDAYS{i}")).collect();
+  let all:Vec<&str>=std::iter::once(base).chain(others.iter().map(String::as_str)).collect();
+  clear(&pool,&all).await;
+  let now=100*DAY_MS;
+  // 每分钟结束 12 单（4 本簿 × 买卖），寿命 1–240 分钟错开：三天约 5.2 万单，和线上 ETH（5.3 万）一个量级。
+  for base in &all {sqlx::query("INSERT INTO orderflow_orders(base,venue_id,exchange,product,side,bucket,price,first_seen_ms,end_ms,status,initial_notional,notional,filled_notional,threshold,vanished_notional,step,seen_ms) \
+   SELECT $1,'v'||(k%4),'ex','usdtPerp',CASE WHEN k%2=0 THEN 'bid' ELSE 'ask' END,m*12+k,(m*12+k)*100.0, \
+    e-((k*7919+m*31)%240+1)*60000,e,'cancelled',6e6,6e6,0,5e6,6e6,100,e \
+   FROM generate_series(0,3*1440-1) m CROSS JOIN generate_series(0,11) k CROSS JOIN LATERAL (SELECT $2::bigint+m*60000 AS e) x")
+   .bind(base).bind(now-RETENTION_MS).execute(&pool).await.unwrap();}
+  // 统计信息要属主来收（运行角色 ANALYZE 只会跳过）。
+  let admin=PgPool::connect(&std::env::var("KANPAN_TEST_ADMIN_URL").unwrap()).await.unwrap();
+  sqlx::query("ANALYZE orderflow_orders").execute(&admin).await.unwrap();
+  let total:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_orders WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
+  assert_eq!(total,3*1440*12);
+  /// 计划里扫 orderflow_orders 的节点：（用的索引，回表后又滤掉的行数）。位图扫描的索引在它底下那个节点上。
+  fn scans(node:&serde_json::Value,out:&mut Vec<(String,i64)>) {
+   if node["Relation Name"]=="orderflow_orders" {
+    let index=node["Index Name"].as_str().or_else(||node["Plans"][0]["Index Name"].as_str()).unwrap_or("（顺序扫描）").to_string();
+    let removed=node["Rows Removed by Filter"].as_i64().unwrap_or(0)+node["Rows Removed by Index Recheck"].as_i64().unwrap_or(0);
+    out.push((index,removed));
+   }
+   for child in node["Plans"].as_array().into_iter().flatten() {scans(child,out);}
+  }
+  // （起，止，上限）：最常见的「最近一天、终点 = 此刻」，往回翻一页（6 小时、终点在 6 小时前），翻到最旧的那头。
+  for (from,to,cap) in [(now-DAY_MS,now,MAX_ROWS),(now-12*3_600_000,now-6*3_600_000,5_000),(now-RETENTION_MS,now-RETENTION_MS+6*3_600_000,5_000)] {
+   let expected:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_orders WHERE base=$1 AND ((end_ms>=$2 AND end_ms<=$3) OR (end_ms>$3 AND first_seen_ms<=$3))")
+    .bind(base).bind(from).bind(to).fetch_one(&pool).await.unwrap();
+   let started=std::time::Instant::now();
+   let got=range_capped(&pool,base,from,to,0,cap).await.unwrap();
+   let elapsed=started.elapsed();
+   assert_eq!(got.len() as i64,expected.min(cap),"窗口 [{from},{to}]");
+   for mode in ["force_custom_plan","force_generic_plan"] {
+    let mut conn=pool.acquire().await.unwrap();
+    sqlx::query(&format!("SET plan_cache_mode={mode}")).execute(&mut *conn).await.unwrap();
+    sqlx::query(&format!("PREPARE ord(text,bigint,bigint,bigint,bigint) AS {}",range_sql())).execute(&mut *conn).await.unwrap();
+    let plan:serde_json::Value=sqlx::query_scalar(&format!("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) EXECUTE ord('{base}',{from},{to},{cap},0)")).fetch_one(&mut *conn).await.unwrap();
+    sqlx::query("DEALLOCATE ord").execute(&mut *conn).await.unwrap();
+    sqlx::query("RESET plan_cache_mode").execute(&mut *conn).await.unwrap();
+    let mut found=Vec::new();
+    scans(&plan[0]["Plan"],&mut found);
+    println!("[{from},{to}] {mode}：读回 {} 行，range_capped {elapsed:?}，库里 {} ms，扫描 {found:?}",got.len(),plan[0]["Execution Time"]);
+    assert_eq!(found.len(),2,"已结束的两路各扫一次：{plan}");
+    for (index,removed) in &found {
+     assert_eq!(index,"orderflow_orders_end_first_seen","{mode} 下应走 (base,end_ms,first_seen_ms)：{plan}");
+     assert_eq!(*removed,0,"{mode} 下不该有回了表又滤掉的行：{plan}");
+    }
+   }
+   assert!(elapsed<std::time::Duration::from_secs(2),"三天量级的一次读应在百毫秒级：{elapsed:?}");
+  }
+  clear(&pool,&all).await;
  }
 }
