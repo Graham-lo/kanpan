@@ -234,6 +234,53 @@ export const ViewMath = {
     return ViewMath.clampedOffset(ViewWindow.fromTo(time - pin / plotW * span, time + (1 - pin / plotW) * span), series, plotW, anchor)
   },
 
+  /** 捏合软边越过去最多多少：根宽最多捏到 1.6 × 0.85、40 × 1.15，松手弹回 [1.6, 40]（iOS ViewMath.zoomOvershoot）。 */
+  zoomOvershoot: 0.15,
+
+  /**
+   * 捏合软边：把「手指要的根宽」`raw` 换成「这一帧画出来的根宽」（iOS ViewMath.softSpacing，aedc26df）。
+   * [1.6, 40] 之内原样；越过去带阻尼——越界那一点斜率是 1（不打顿），越往外越紧，渐近到 zoomOvershoot 那条线却够不着。
+   * 对数空间里算，放大缩小两头手感对称。
+   */
+  softSpacing(raw: number): number {
+    const lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
+    if (!Number.isFinite(raw) || !(raw > 0)) return lo
+    if (raw > hi) {
+      const room = Math.log(1 + ViewMath.zoomOvershoot), e = Math.log(raw / hi)
+      return hi * Math.exp(room * (1 - 1 / (1 + e / room)))
+    }
+    if (raw < lo) {
+      const room = -Math.log(1 - ViewMath.zoomOvershoot), e = Math.log(lo / raw)
+      return lo / Math.exp(room * (1 - 1 / (1 + e / room)))
+    }
+    return raw
+  },
+
+  /** softSpacing 的反函数：画面上是 `soft` 这么宽时手指「要的」根宽（回弹半途又捏上去，从画面根宽倒推，不跳）。 */
+  rawSpacingForSoft(soft: number): number {
+    const lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
+    if (!Number.isFinite(soft) || !(soft > 0)) return lo
+    if (soft > hi) {
+      const room = Math.log(1 + ViewMath.zoomOvershoot), u = Math.log(soft / hi) / room
+      if (!(u < 1)) return ViewMath.boundedRawSpacing(Infinity)
+      return ViewMath.boundedRawSpacing(hi * Math.exp(room * u / (1 - u)))
+    }
+    if (soft < lo) {
+      const room = -Math.log(1 - ViewMath.zoomOvershoot), u = Math.log(lo / soft) / room
+      if (!(u < 1)) return ViewMath.boundedRawSpacing(0)
+      return ViewMath.boundedRawSpacing(lo / Math.exp(room * u / (1 - u)))
+    }
+    return soft
+  },
+
+  /** 手指要的根宽最多攒到越界三倍阻尼宽度：再往外画面几乎不动，攒多了回捏要先白捏一大段。 */
+  boundedRawSpacing(raw: number): number {
+    const lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
+    if (Number.isNaN(raw)) return hi
+    const up = hi * Math.pow(1 + ViewMath.zoomOvershoot, 3), down = lo * Math.pow(1 - ViewMath.zoomOvershoot, 3)
+    return Math.min(up, Math.max(down, raw))
+  },
+
   needsMoreHistory(v: ViewWindow, series: BarSeries): boolean {
     return !series.isEmpty && v.from <= series.firstTime + Chart.loadMoreBars * series.step
   },
@@ -393,7 +440,8 @@ export const ViewTransition = {
     const t = Math.max(0, Math.min(1, elapsedMs / 320))
     if (!(t < 1)) return { view: b, done: true }
     const remaining = (1 + 9 * t) * Math.exp(-9 * t)
-    return { view: new ViewWindow(b.to + (a.to - b.to) * remaining, b.span), done: false }
+    // 根宽也一起回（捏合软边松手弹回 [1.6, 40]）：左右两缘同一个权重插值，捏的那一点整段回弹里站在原地
+    return { view: new ViewWindow(b.to + (a.to - b.to) * remaining, b.span + (a.span - b.span) * remaining), done: false }
   },
   frame(a: ViewWindow, b: ViewWindow, elapsedMs: number): { view: ViewWindow; done: boolean } {
     const t = Math.max(0, Math.min(1, elapsedMs / 200))

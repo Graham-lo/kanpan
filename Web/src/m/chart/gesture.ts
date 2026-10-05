@@ -59,7 +59,14 @@ export class GestureState {
   pinchStartZoom = 1
   pinchSyStart = 0
   pinchPrice = 0
+  /** 时间轴：手指「要的」根宽（可越过 [1.6, 40]，画出来的是 ViewMath.softSpacing(它)）。越过死区那一帧从画面根宽倒推。 */
+  pinchRawSpacing = 0
   cameFromPinch = false
+  /**
+   * 捏合越过软边时抬掉一根：图正走着回弹（settleView），剩下那根手指先不接管——
+   * 一边弹、一边跟着画面重设起手点，弹完那一帧接着拖（iOS aedc26df）。
+   */
+  reboundHandoff = false
   directionChosen = false
   axisStarted = false
   lastAxisTap: { ms: number; y: number } | null = null
@@ -87,6 +94,7 @@ export class GestureState {
     this.pinchAxis = 'undecided'
     this.pinchFresh.clear()
     this.cameFromPinch = false
+    this.reboundHandoff = false
     this.directionChosen = false
     this.axisStarted = false
     this.velocity.reset()
@@ -286,6 +294,13 @@ export class ChartGestures {
     }
     // 十字线只认它的主人那根手指；其余模式这时只会有一根手指（两根就进捏合了）。
     const q = this.location(mode === 'crosshair' ? (g.owner ?? g.touches[0]) : g.touches[0])
+    if (mode === 'pan' && g.reboundHandoff) {
+      // 捏合越界抬掉一根、回弹还没走完：这根手指不抢画面，起手点跟着回弹重设，弹完那一帧接着拖——不跳、不和回弹打架
+      g.startPoint = { ...q }
+      g.startView = this.state?.viewport.view ?? g.startView
+      if (this.v.animation == null) g.reboundHandoff = false
+      return
+    }
     const dx = q.x - g.startPoint.x
     const dy = q.y - g.startPoint.y
     g.moved = Math.max(g.moved, Math.sqrt(dx * dx + dy * dy))
@@ -371,7 +386,14 @@ export class ChartGestures {
         }
         if (g.touches.length === 1 && this.v.chartLayout) {
           const q = this.location(g.touches[0])
+          // 捏合越过软边时抬掉一根：剩下那根接着拖，拖动走的是硬夹（ViewMath.dragging），根宽得先回到边界里。
+          // 和两指都松开同一条路（settleView）：绕捏的那一点弹回去，「减少动效」下直接到位；弹的这一程剩下那根不接管。
+          const s0 = this.state, L0 = this.v.chartLayout
+          const target = s0 ? this.pinchSettleTarget(s0.viewport.view, L0) : null
+          const overshoot = !!target && !!s0 && !(target.to === s0.viewport.view.to && target.span === s0.viewport.view.span)
+          if (overshoot) this.settleView()
           g.reset()
+          g.reboundHandoff = overshoot && this.v.animation != null
           g.mode = 'pan'
           g.cameFromPinch = true
           g.startPoint = { ...q }
@@ -385,6 +407,8 @@ export class ChartGestures {
         return
       }
       if (!(liftedAll || g.touches.length === 0 || ownerLifted)) return
+      // 捏合越界降下来的那根手指在回弹途中抬起：回弹照走完，不判轻点、不起惯性（惯性会把没弹回的根宽连动画一起换掉）
+      if (g.reboundHandoff && this.v.animation != null) { g.reset(); return }
       const mode = g.mode
       this.clearAxisScaleAnchor()
       const wasLongPress = g.longPressActivated
@@ -521,7 +545,8 @@ export class ChartGestures {
    *   越过门槛那一帧只重设基准、定下缩哪根轴，不缩放——门槛小也不会「嘭」地跳。
    * - 轴锁：竖着摆、竖着捏（纵向张开量 > 横向 1.5 倍）、中点在主图里 → 这一捏只缩价格轴；其余缩时间轴。
    * - 焦点：时间轴缩放钉住两指中点那一根；视野贴着最新一根时按最新一根锚住。
-   * 软边（越过 1.6…40 带阻尼、松手回弹）网页没做：根宽到边界就停。
+   * - 软边：根宽越过 [1.6, 40] 按对数阻尼还能再走一点（最多 ×0.85 / ×1.15，ViewMath.softSpacing），
+   *   松手或双指变单指时 settleView 绕捏的那一点弹回；prefers-reduced-motion 下不越界、硬停在边界（iOS aedc26df）。
    */
   private updatePinch(L: Layout, ids?: readonly number[]): void {
     const s = this.state, g = this.gesture
@@ -550,6 +575,9 @@ export class ChartGestures {
         g.pinchStartZoom = s.viewport.price.zoom
         g.pinchSyStart = f.sy
         g.pinchPrice = this.price(f.my)
+      } else if (!s.input.series.isEmpty) {
+        // 回弹半途又捏上去：画面根宽可能在边界外，从它倒推手指那一侧，第一帧不跳
+        g.pinchRawSpacing = ViewMath.rawSpacingForSoft(s.viewport.view.barSpacing(s.input.series.step, L.plotW))
       }
       return
     }
@@ -569,10 +597,16 @@ export class ChartGestures {
     const b = s.input.series, v0 = s.viewport.view, anchor = s.input.options.anchor
     if (b.isEmpty) { this.rebasePinch(f); return }
     const lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
-    const spacing = Math.min(hi, Math.max(lo, v0.barSpacing(b.step, L.plotW) * f.sx / g.pinchSx0))
+    if (!(g.pinchRawSpacing > 0)) g.pinchRawSpacing = ViewMath.rawSpacingForSoft(v0.barSpacing(b.step, L.plotW))
+    const reduce = reduceMotion()
+    let raw = g.pinchRawSpacing * f.sx / g.pinchSx0
+    raw = reduce ? Math.min(hi, Math.max(lo, raw)) : ViewMath.boundedRawSpacing(raw)
+    g.pinchRawSpacing = raw
+    const spacing = reduce ? raw : ViewMath.softSpacing(raw)
     const pinned = ViewMath.isPinnedToLatest(v0, b, L.plotW, anchor)
     const base = pinned ? v0 : ViewMath.clampedOffset(v0.dragged(f.mid - g.pinchMid0, L.plotW), b, L.plotW, anchor)
-    const view = this.clamp(ViewMath.pinched(base, b, L.plotW, spacing, f.mid, pinned, anchor), L.plotW)
+    // 只夹左右、不夹根宽（夹根宽就没有软边了）
+    const view = ViewMath.pinched(base, b, L.plotW, spacing, f.mid, pinned, anchor)
     this.rebasePinch(f)
     this.state = withViewport(s, { view })
     this.viewDidChange(view)
@@ -860,18 +894,35 @@ export class ChartGestures {
     const s = this.state, L = this.v.chartLayout
     if (!s || !L || !(s.viewport.view.span > 0)) return
     const v = s.viewport.view
-    const target = this.clamp(v, L.plotW)
+    const target = this.pinchSettleTarget(v, L) ?? this.clamp(v, L.plotW)
     const offPx = Math.abs(target.to - v.to) / v.span * L.plotW
     if (!(offPx > 0.01 || Math.abs(target.span - v.span) / v.span > 1e-9)) return
     this.settleView()
   }
 
+  /**
+   * 根宽在 [1.6, 40] 外面（捏合软边）时该弹回到哪：绕最后那一捏的两指中点弹回，贴着最新的照旧钉最新——
+   * 不是绕右缘，不然捏着中间放大到头一松手画面整体往右一滑（iOS pinchSettleTarget）。根宽在界内返回 null。
+   */
+  pinchSettleTarget(v: ViewWindow, L: Layout): ViewWindow | null {
+    const s = this.state
+    if (!s || s.input.series.isEmpty || !(v.span > 0)) return null
+    const b = s.input.series, anchor = s.input.options.anchor
+    const sp = v.barSpacing(b.step, L.plotW)
+    const lo = AICoinBehavior.minimumSpacing, hi = AICoinBehavior.maximumSpacing
+    if (!(sp < lo * (1 - 1e-9) || sp > hi * (1 + 1e-9))) return null
+    const pinned = ViewMath.isPinnedToLatest(v, b, L.plotW, anchor)
+    return this.clamp(ViewMath.pinched(v, b, L.plotW, Math.min(hi, Math.max(lo, sp)), this.gesture.pinchMid0, pinned, anchor), L.plotW)
+  }
+
+  /** 两端拉出的空白松手回边界、捏合越过软边的根宽弹回 [1.6, 40]；「减少动效」下直接到位。 */
   private settleView(): void {
     const s = this.state, L = this.v.chartLayout
-    if (!s || !L) return
+    if (!s || !L || !(s.viewport.view.span > 0)) return
     const v = s.viewport.view
-    const target = this.clamp(v, L.plotW)
-    if (!reduceMotion() && Math.abs(v.to - target.to) / v.span * L.plotW > 0.01) {
+    const target = this.pinchSettleTarget(v, L) ?? this.clamp(v, L.plotW)
+    const spanOff = Math.abs(target.span - v.span) / v.span > 1e-9
+    if (!reduceMotion() && (Math.abs(v.to - target.to) / v.span * L.plotW > 0.01 || spanOff)) {
       this.animate(v, target, true)
     } else {
       this.state = withViewport(s, { view: target })

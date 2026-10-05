@@ -348,3 +348,150 @@ describe('捏合手感（移植 iOS a8012401：死区 3pt、按轴分开量、�
     expect(Math.abs(pOf(200, L.main, r, effectivePriceMode(s)) - anchor) / anchor).toBeLessThan(1e-6)
   })
 })
+
+describe('捏合软边（移植 iOS aedc26df：越过 1.6 / 40 带对数阻尼、松手绕捏的那一点弹回、减少动效直接到位）', () => {
+  const lo = 1.6, hi = 40
+  const spacingOf = (v: ChartView) => {
+    const s = v.state!
+    return s.viewport.view.barSpacing(s.input.series.step, v.chartLayout!.plotW)
+  }
+  /** 视野停在历史中段、根宽 `w`。 */
+  const at = (v: ChartView, w: number) => {
+    const s = v.state!, b = s.input.series, L = v.chartLayout!
+    const span = L.plotW / w * b.step
+    v.state = withViewport(s, { view: new ViewWindow(b.lastTime - b.step * 120, span) })
+  }
+  /** 帧循环在 node 里不跑：手动把动画推进到 `ms` 毫秒之后（演完就照 view.ts 摘掉）。 */
+  const runAnim = (v: ChartView, ms: number) => {
+    const a = v.animation
+    if (!a) return
+    if (a(performance.now() + ms) && v.animation === a) v.animation = null
+  }
+  /** 两指从 (cx ± 50) 横着张到 (cx ± half)，先越死区再分 8 帧走完。 */
+  const spread = (v: ChartView, a: Finger, b: Finger, cx: number, half: number, t0: number) => {
+    move(v, a, cx - 54, 200, t0); move(v, b, cx + 54, 200, t0 + 1)
+    for (let k = 1; k <= 8; k++) {
+      const h = 54 + (half - 54) * k / 8
+      move(v, a, cx - h, 200, t0 + k * 16); move(v, b, cx + h, 200, t0 + k * 16 + 1)
+    }
+  }
+  const mq = (matches: boolean) => ({ matches, addEventListener() { /* 无 */ }, removeEventListener() { /* 无 */ } })
+  const noReduce = () => vi.stubGlobal('matchMedia', () => mq(false))
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('softSpacing：界内原样、越界那一点斜率 1、渐近 ×1.15 / ×0.85 够不着；rawSpacingForSoft 是它的反函数；攒的上限三倍', () => {
+    expect(ViewMath.softSpacing(20)).toBe(20)
+    expect(ViewMath.softSpacing(hi)).toBe(hi)
+    expect((ViewMath.softSpacing(hi * 1.0001) - hi) / (hi * 0.0001)).toBeCloseTo(1, 2)
+    expect((lo - ViewMath.softSpacing(lo * 0.9999)) / (lo * 0.0001)).toBeCloseTo(1, 2)
+    let prev = hi
+    for (const r of [45, 60, 100, 1e3, 1e6]) {
+      const x = ViewMath.softSpacing(r)
+      expect(x).toBeGreaterThan(prev); expect(x).toBeLessThan(hi * 1.15); prev = x
+    }
+    expect(ViewMath.softSpacing(0.5)).toBeGreaterThan(lo * 0.85)
+    expect(ViewMath.softSpacing(0.5)).toBeLessThan(lo)
+    for (const r of [1.0, 1.2, 1.6, 5, 40, 44, 52]) expect(ViewMath.rawSpacingForSoft(ViewMath.softSpacing(r))).toBeCloseTo(r, 6)
+    expect(ViewMath.boundedRawSpacing(1e9)).toBeCloseTo(hi * 1.15 ** 3, 9)
+    expect(ViewMath.boundedRawSpacing(0)).toBeCloseTo(lo * 0.85 ** 3, 9)
+  })
+
+  it('捏开越过 40：画出来的根宽在 40 外面但不到 46；松手绕捏的那一点弹回 40，那一刻的时间站在原地', () => {
+    noReduce()
+    const v = rig()
+    at(v, 20)
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    spread(v, a, b, 200, 160, 1016)
+    const w = spacingOf(v)
+    expect(w).toBeGreaterThan(hi)
+    expect(w).toBeLessThan(hi * 1.15)
+    const L = v.chartLayout!
+    const tAtMid = v.state!.viewport.view.t(200, L.plotW)
+    up(v, a, 1300); up(v, b, 1301)
+    expect(v.animation).not.toBeNull()                    // 弹回是动画，不是一下吸到边界
+    runAnim(v, 120)
+    const mid = spacingOf(v)
+    expect(mid).toBeGreaterThan(hi); expect(mid).toBeLessThan(w)
+    runAnim(v, 400)
+    expect(v.animation).toBeNull()
+    expect(spacingOf(v)).toBeCloseTo(hi, 6)
+    expect(Math.abs(v.state!.viewport.view.x(tAtMid, L.plotW) - 200)).toBeLessThan(0.5)
+  })
+
+  it('捏合越过 1.6 同样带阻尼并弹回 1.6', () => {
+    noReduce()
+    const v = rig()
+    at(v, 2.4)
+    const a = finger(100, 200), b = finger(300, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    move(v, a, 104, 200, 1016); move(v, b, 296, 200, 1017)
+    for (let k = 1; k <= 8; k++) { move(v, a, 104 + k * 11, 200, 1016 + k * 16); move(v, b, 296 - k * 11, 200, 1017 + k * 16) }
+    const w = spacingOf(v)
+    expect(w).toBeLessThan(lo); expect(w).toBeGreaterThan(lo * 0.85)
+    up(v, a, 1300); up(v, b, 1301)
+    runAnim(v, 400)
+    expect(spacingOf(v)).toBeCloseTo(lo, 6)
+  })
+
+  it('越界时抬掉一根：剩下那根在回弹途中不抢画面，弹完接着拖、不跳', () => {
+    noReduce()
+    const v = rig()
+    at(v, 20)
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    spread(v, a, b, 200, 160, 1016)
+    expect(spacingOf(v)).toBeGreaterThan(hi)
+    up(v, a, 1300)
+    expect(v.gesture.mode).toBe('pan')
+    expect(v.gesture.reboundHandoff).toBe(true)
+    expect(v.animation).not.toBeNull()
+    runAnim(v, 100)
+    const during = v.state!.viewport.view
+    move(v, b, 300, 200, 1320)                            // 回弹途中手指挪了：画面不跟
+    expect(v.state!.viewport.view.equals(during)).toBe(true)
+    runAnim(v, 400)
+    expect(spacingOf(v)).toBeCloseTo(hi, 6)
+    const settled = v.state!.viewport.view
+    move(v, b, 300, 200, 1400)                            // 弹完第一帧：只交接起手点
+    expect(v.gesture.reboundHandoff).toBe(false)
+    expect(v.state!.viewport.view.equals(settled)).toBe(true)
+    move(v, b, 280, 200, 1416)                            // 往左拖 20pt = 看更新的
+    const L = v.chartLayout!
+    const after = v.state!.viewport.view
+    expect(spacingOf(v)).toBeCloseTo(hi, 6)
+    expect((after.to - settled.to) / settled.span * L.plotW).toBeCloseTo(20, 3)
+    up(v, b, 1500)
+  })
+
+  it('越界抬掉一根、回弹途中剩下那根也抬了：回弹照走完，不判轻点、不起惯性', () => {
+    noReduce()
+    const v = rig()
+    at(v, 20)
+    let taps = 0
+    v.onTapped = () => { taps++ }
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    spread(v, a, b, 200, 160, 1016)
+    up(v, a, 1300)
+    const anim = v.animation
+    up(v, b, 1310)
+    expect(taps).toBe(0)
+    expect(v.animation).toBe(anim)                        // 还是那段回弹，没被惯性换掉
+    runAnim(v, 400)
+    expect(spacingOf(v)).toBeCloseTo(hi, 6)
+  })
+
+  it('prefers-reduced-motion：不越界、硬停在 40，松手没有动画', () => {
+    vi.stubGlobal('matchMedia', (q: string) => mq(q.includes('reduce')))
+    const v = rig()
+    at(v, 20)
+    const a = finger(150, 200), b = finger(250, 200)
+    down(v, a, 1000); down(v, b, 1001)
+    spread(v, a, b, 200, 160, 1016)
+    expect(spacingOf(v)).toBeCloseTo(hi, 9)
+    up(v, a, 1300); up(v, b, 1301)
+    expect(v.animation).toBeNull()
+    expect(spacingOf(v)).toBeCloseTo(hi, 9)
+  })
+})

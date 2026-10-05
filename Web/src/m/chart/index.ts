@@ -596,8 +596,10 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   view.onUserViewChanged = v => {
     const L = view.chartLayout, s = view.state
     if (!L || !s || s.input.series.count === 0) return
-    const w = v.barSpacing(s.input.series.step, L.plotW)
-    if (!(w > 0) || !Number.isFinite(w)) return
+    const raw = v.barSpacing(s.input.series.step, L.plotW)
+    if (!(raw > 0) || !Number.isFinite(raw)) return
+    // 捏合软边那几帧根宽在 [1.6, 40] 外面（松手就弹回）：记下、报出去的一律是界内的值
+    const w = Math.min(AICoinBehavior.maximumSpacing, Math.max(AICoinBehavior.minimumSpacing, raw))
     resetSpacing = w
     // 内存里的根宽每帧都认；报给页面（页面一收到就整份落盘）钉在手指全部抬起那一刻
     scaleReport.note(w)
