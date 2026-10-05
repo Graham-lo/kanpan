@@ -629,7 +629,10 @@ final class WalkthroughFavoritesUITests: WalkthroughCase {
     _ = waitForLiveChart()
     step("自选页") {
       guard app.openFavorites() else { return false }
-      settle(2.0); shot("自选-默认")
+      // 种子自选不带分类：分类要等品种表到了（`SymbolPickerModel.setCatalog` → 按资产类型归类）才开出来。
+      // 新测试子树没有品种表缓存，机器忙时现拉要好几秒，固定睡 2 秒就会撞上「还没分类」那一刻。
+      _ = app.buttons["favorites.group.加密"].waitForExistence(timeout: 20)
+      settle(1.0); shot("自选-默认")
       for g in ["加密", "美股"] {
         let b = app.buttons["favorites.group.\(g)"]
         if b.exists { b.tap(); settle(1.2); shot("自选-\(g)") }

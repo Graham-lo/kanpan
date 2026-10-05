@@ -117,11 +117,21 @@ final class ReleaseBackdoorUITests: XCTestCase {
   }
 
   /// 冷启动可能落在自选页（存档里有自选时就落在那一格），先回行情页。
+  ///
+  /// 裸启动在全新档案上会先开在行情页，默认自选（`DefaultFavoritesSeeder`，要等全市场成交额）
+  /// 种好之后 `honorProfile` 才按「有自选就停在自选」翻到自选页——这一下可能落在「看过一眼
+  /// 顶栏品种名」之后（10-05 回归矩阵 16 Pro 上红过一次：看见了品种名、没点「图表」，
+  /// 接着页面翻走，再等 30 秒也等不回来）。所以不是看一眼就算，要一直看到它站稳在行情页。
   private func goToChart(_ app: XCUIApplication) {
     let chartTab = app.buttons[Ids.bottomChart]
     XCTAssertTrue(chartTab.waitForExistence(timeout: 30), "标签栏都没起来")
-    if !app.symbolLabel.exists { chartTab.tap() }
-    XCTAssertTrue(app.symbolLabel.waitForExistence(timeout: 30), "没等到顶栏品种名")
+    let deadline = Date().addingTimeInterval(30)
+    var steady = 0
+    while Date() < deadline, steady < 3 {
+      if app.symbolLabel.exists { steady += 1 } else { steady = 0; chartTab.tap() }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    }
+    XCTAssertTrue(app.symbolLabel.exists, "没等到顶栏品种名")
   }
 
   private func goToFavorites(_ app: XCUIApplication) {

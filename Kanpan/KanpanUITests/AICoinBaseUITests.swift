@@ -141,7 +141,21 @@ final class AICoinBaseUITests: XCTestCase {
     } else {
       XCTAssertTrue(wait { (info()["plotW"] as? Double ?? 0) > portraitWidth + 80 })
     }
-    XCTAssertEqual(try XCTUnwrap(info()["spacing"] as? Double), portraitSpacing, accuracy: 0.001)
+    // 2026-10-05 起横屏有自己那份 K 线宽度（`landscapeBarSpacing`）：竖屏刚捏宽的那一下不带进横屏，
+    // 横屏用的是它自己记着的那份（全新档案 = 出厂 4）。底座仍是同一张，只是宽度各记各的。
+    let layoutProbe = app.descendants(matching: .any).matching(identifier: "layout.diagnostics").firstMatch
+    func landStored() -> Double? {
+      guard layoutProbe.exists, let text = layoutProbe.value as? String else { return nil }
+      for pair in text.split(separator: ";") {
+        let kv = pair.split(separator: "=", maxSplits: 1)
+        if kv.count == 2, kv[0] == "landStored" { return Double(kv[1]) }
+      }
+      return nil
+    }
+    let landSpacing = landStored() ?? 4
+    XCTAssertTrue(wait { abs((info()["spacing"] as? Double ?? 0) - landSpacing) < 0.001 },
+                  "横屏没用自己那份 K 线宽度 \(landSpacing)：\(info())（竖屏 \(portraitSpacing)）")
+    XCTAssertNotEqual(portraitSpacing, landSpacing, accuracy: 0.001, "竖屏捏宽之后横屏不该跟着变")
     shot("05-横屏共用底座")
     if UIDevice.current.userInterfaceIdiom == .pad {
       XCUIDevice.shared.orientation = .landscapeLeft

@@ -380,6 +380,10 @@ final class StressRegression1005UITests: KanpanUICase {
     let groups = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'favorites.group.'")).allElementsBoundByIndex
       .map { String($0.identifier.dropFirst("favorites.group.".count)) }
     note("自选出厂分类 \(groups)")
+    // 一只自选都没有时，放大镜与「…」两颗圆片仍贴右边（10-05 回归压测前被挤到了屏幕正中）。
+    let more = app.buttons["favorites.more"]
+    XCTAssertGreaterThan(more.frame.maxX, app.frame.width - 32,
+                         "空自选页「…」没贴右边：\(more.frame) 屏宽 \(app.frame.width)")
     XCTAssertFalse(groups.contains("指数"), "还没加美元指数，自选页就有「指数」一类：\(groups)")
     shot("走查02-自选出厂")
     app.buttons[Ids.bottomChart].tap()
@@ -469,6 +473,11 @@ final class StressRegression1005UITests: KanpanUICase {
     let doge = app.buttons["compare.toggle.binance/usd_m/DOGEUSDT"]
     XCTAssertTrue(doge.waitForExistence(timeout: 20))
     XCTAssertEqual(doge.value as? String, "已满", "三只满了第四只行尾不是「已满」")
+    // 对比搜索页里搜出来的行要有价（10-05 回归压测前，这一页不算「看得见的列表」，价一直是「—」）。
+    let dogeRow = app.descendants(matching: .any).matching(identifier: "symbols.row.binance/usd_m/DOGEUSDT").firstMatch
+    let priced = NSPredicate(format: "label MATCHES %@", "^[0-9][0-9,]*\\.[0-9]+$")
+    XCTAssertTrue(waitUntil(timeout: 10) { dogeRow.staticTexts.matching(priced).count > 0 },
+                  "对比搜索页 DOGE 那一行 10 秒没出价：\(dogeRow.staticTexts.allElementsBoundByIndex.map(\.label))")
     doge.tap()
     dwell(0.5)
     // 搜索页盖着图，读不到图上的读数——数「正在对比」那条上的 ×。
