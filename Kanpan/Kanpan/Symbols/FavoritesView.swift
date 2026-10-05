@@ -354,7 +354,9 @@ struct FavoritesView: View {
   /// 宽一点也撑不破版面。
   @ViewBuilder private var groupStrip: some View {
     if model.prefs.groups.isEmpty {
-      EmptyView()
+      // 一只自选都没有时没有分类条，但这块地方仍要占住：`EmptyView` 吃不进外面的
+      // `.frame(maxWidth: .infinity)`，右边两颗圆片会被 HStack 挤到屏幕正中。
+      Color.clear
     } else {
       ScrollViewReader { reader in
         ScrollView(.horizontal, showsIndicators: false) {
