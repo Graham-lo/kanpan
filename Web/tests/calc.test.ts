@@ -1,3 +1,4 @@
+import { DEFAULT_PARAMS as M_DEFAULT } from '../src/m/app/prefs'
 import { describe, expect, it } from 'vitest'
 import { CATALOG, Calc, MAX_SUBS, ema, paramText, rma, sma } from '../src/chart/calc'
 import type { Bar } from '../src/chart/calc'
@@ -126,7 +127,8 @@ describe('CATALOG / paramText', () => {
     expect(CATALOG.ma).toEqual({ name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#0EA5B7'] })
     expect(CATALOG.boll.params).toEqual({ n: 20, k: 2 })
     expect(CATALOG.vol).toEqual({ name: '成交量', cn: '成交量', place: 'overlay' })
-    expect(CATALOG.macd.params).toEqual({ fast: 12, slow: 26, signal: 9 })
+    expect(CATALOG.macd.params).toEqual({ fast: 10, slow: 30, signal: 9 })
+    expect(CATALOG.ema.colors?.length).toBe(4)
     expect(CATALOG.rsi.colors).toEqual(['#7E57C2'])
     expect(CATALOG.kdj.params).toEqual({ n: 9, m1: 3, m2: 3 })
     expect(CATALOG.oi.place).toBe('sub')
@@ -134,8 +136,20 @@ describe('CATALOG / paramText', () => {
   })
   it('paramText', () => {
     expect(paramText('ma', CATALOG.ma.params)).toBe('10 30 120 256')
-    expect(paramText('macd', CATALOG.macd.params)).toBe('12 26 9')
+    expect(paramText('macd', CATALOG.macd.params)).toBe('10 30 9')
     expect(paramText('oi', {})).toBe('')
     expect(paramText('vol', undefined)).toBe('')
+  })
+})
+
+describe('默认参数与手机 / iOS 同一组', () => {
+  it('没改过参数时 MACD / EMA / BOLL / KDJ / MA 与 DEFAULT_PARAMS 相同，RSI 取手机第一条', () => {
+    const toList = (id: string): number[] => { const p = CATALOG[id as keyof typeof CATALOG].params!; return p.periods ?? Object.values(p) as number[] }
+    expect(toList('ma')).toEqual(M_DEFAULT.MA)
+    expect(toList('ema')).toEqual(M_DEFAULT.EMA)
+    expect(toList('boll')).toEqual(M_DEFAULT.BOLL)
+    expect(toList('macd')).toEqual(M_DEFAULT.MACD)
+    expect(toList('kdj')).toEqual(M_DEFAULT.KDJ)
+    expect(toList('rsi')).toEqual(M_DEFAULT.RSI!.slice(0, 1))
   })
 })

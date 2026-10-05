@@ -56,7 +56,7 @@ describe('页面状态', () => {
     expect(s.ind.ma).toBe(true)
     expect(s.ind.vol).toBe(false)
     expect(s.ind.subs).toEqual(['macd', 'rsi'])
-    expect(s.params).toEqual({ macd: { fast: 12, slow: 30, signal: 9 } })
+    expect(s.params).toEqual({ macd: { fast: 10, slow: 30, signal: 9 } }) // 坏的 fast 回默认（与手机同一组 10）
     expect(s.panel).toBe('watch'); expect(s.watchTab).toBe('crypto'); expect(s.lastPanel).toBe('watch')
     expect(s.magnet).toBe(false); expect(s.drawColor).toBe('#2962FF')
     expect(s.slots).toEqual({ ladder: false, drawer: false, widgets: ['watch', 'detail'] })
