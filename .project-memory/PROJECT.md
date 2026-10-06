@@ -1092,7 +1092,7 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   提醒只剩两种删法：用户自己删（提醒表 / 画线铃铛）、触发即删。图上「提醒线」：线不在、被单条隐藏或整层隐藏时，按提醒自己的几何画
   琥珀 / 提醒色虚线 + 右端铃铛（手机 `view.drawing` `shownAlertSignals` / `paintSignals`，竖屏点中开提醒表；电脑 `TVChart.signalsShown` /
   `drawAlertSignals`）；对比 / 百分比轴不画。用例 `alerts-independent-of-drawings`、`m-chart-drawing`「提醒线」等。
-- **10-06「隐藏画线」**（`47fb5b01`）：同步字段 `drawingsHidden`（出厂 false；服务端白名单与契约由 iOS 那条线先上线）。手机「分析」面板
+- **10-06「隐藏画线」**（`47fb5b01`，部署 11:44–11:45 CST，PC `assets/index-3_Hd60AU.js`、手机 `assets/m-CDKye6JL.js`；干净工作树 `f679f4f2` vitest 133 文件 1724 条全过）：同步字段 `drawingsHidden`（出厂 false；服务端白名单 `d76db6d7` 11:40 先上线）。手机「分析」面板
   「画线」节一行开关，藏着时竖屏不画、点不中画线，提醒照判、改画提醒线；横屏画线台一律显示，看朋友分享的线时自己的线照画（`drawingsOn()`）。
   电脑 = 画线工具条的眼睛 / ⌘⌥H（`st.drawHidden` ↔ `drawingsHidden`，本机与同步共用 `applyDrawingsHidden`）。用例 `drawings-hidden`。
 
