@@ -1,8 +1,10 @@
 /* 手机网页版 · 行情页的几张面板（照 iOS Panels/IndicatorPanel.swift、ChartPanel.swift、OrderFlow/OrderFlowEditor.swift）
  *
- * - 分析（周期条行尾「分析」）：画线 · 指标（在用 / 主图叠加 / 副图）· 主力订单流 · 恢复这一组的默认。
+ * - 分析（周期条行尾「分析」）：画线 · 指标（在用 / 主图叠加 / 副图）· 对比 · 主力订单流 · 恢复这一组的默认。
+ *   对比 10-05 搬到顶栏 ＋ 之后，10-06 用户要求两处并存（「分析里的对比要留」，照 iOS IndicatorPage.compareSection）：
+ *   这一节的「添加对比」开的就是顶栏 ＋ 那张对比模式搜索页（pages/search.ts），共用同一份 compareSymbols；
+ *   此刻不能对比（复盘回放、横屏画线台、看朋友分享的线）时整节不排。
  * - 主图指标（横屏画线台顶行「主图˅」，iOS IndicatorPage.mainOnly）：只有使用中的主图指标与主图叠加开关。
- *   （对比 2026-10-05 起搬到顶栏 ＋ 的对比搜索页，见 pages/search.ts）
  *   开关即时生效：改 st 再 save()，行情页订阅 store 重画图；面板自己也订阅，改完就地重绘。
  * - 指标参数编辑：全 app 唯一一处「按保存才生效」（一组参数要一起改，逐字生效图会乱跳）。
  * - 图表设置（行尾记号）：K 线画法 · 盘口 · 价格轴刻度。
@@ -11,7 +13,7 @@
  */
 import { st, save, subscribe } from '../../app/store'
 import {
-  FACTORY_PARAMS_IDS, currentLayout, factoryLayout, sameValue,
+  FACTORY_PARAMS_IDS, MAX_COMPARE, currentLayout, factoryLayout, sameValue,
   type CandleKind, type IndicatorId, type PriceMode, type OrderFlowOverride,
 } from '../../app/prefs'
 import { indicatorName, mainPalette, subPalette, paletteOffset, paramLabels, normalizedParams, defaultParams, lineNames } from '../../indicator/ids'
@@ -78,10 +80,20 @@ export interface PanelContext {
   port(): PagePort | null
   /** 「开始画线」（先关面板再调） */
   onDraw(): void
+  /** 「添加对比」：开顶栏 ＋ 那张对比模式搜索页（先关面板再调）。没有时「对比」整节不排 */
+  onAddCompare?(): void
+  /** 此刻能不能对比（复盘回放、横屏画线台、看朋友分享的线时不能）；不给当能 */
+  canCompare?(): boolean
 }
 
 /** 当前生效参数（按指标能直接下标取用的长度） */
 const paramsOf = (id: IndicatorId): number[] => normalizedParams(id, st.params[id] ?? defaultParams(id))
+/** 对比品种键 → 显示名：binance/usd_m/ETHUSDT → ETH/USDT，macro/index/DXY → DXY */
+export const compareName = (key: string): string => {
+  const sym = key.split('/').pop() ?? key
+  const { base, quote } = splitPair(sym)
+  return quote ? `${base}/${quote}` : base
+}
 
 // ───────────────────────────── 分析
 
@@ -117,6 +129,11 @@ export function openAnalysis(ctx: PanelContext): Sheet {
           if (r.dropped) toast(`副图最多三个 · 已换下 ${indicatorName(r.dropped)}`)
           break
         }
+        // 照 iOS compareSection：加、移除、清除都先收起面板（对比画在图上，要让人马上看到）；
+        // 「添加对比」开顶栏 ＋ 那张对比模式搜索页（两处入口共用一页）
+        case 'cmp-add': sheet.close(); ctx.onAddCompare?.(); break
+        case 'cmp-rm': st.compareSymbols = st.compareSymbols.filter(k => k !== arg); save(); sheet.close(); break
+        case 'cmp-clear': st.compareSymbols = []; save(); sheet.close(); break
         case 'of': st.orderFlow = !st.orderFlow; save(); break
         case 'of-edit': openOrderFlowEditor(ctx); break
         case 'reset': resetLayout(); break
@@ -196,7 +213,7 @@ function mainOnlyHTML(): string {
   return out.join('')
 }
 
-function analysisHTML(ctx: PanelContext): string {
+export function analysisHTML(ctx: PanelContext): string {
   const out: string[] = []
   out.push(gt('画线'))
   out.push(`<div class="cp-group"><button type="button" class="cp-row cp-tap" data-act="draw"><span class="cp-rn">开始画线</span><span class="cp-drawglyph">${glyph('draw', 24)}</span></button></div>`)
@@ -217,7 +234,7 @@ function analysisHTML(ctx: PanelContext): string {
   out.push(gt('副图 · 最多三个 · 成交量不占'))
   out.push(`<div class="cp-group">${SUB_ROWS.map(id => toggleRow(id, st.subs.includes(id), 'sub')).join('')}</div>`)
 
-  // 对比 2026-10-05 起搬到顶栏 ＋（对比模式的搜索页，照 iOS d26df149）：面板四节收成三节（画线 · 指标 · 主力订单流）
+  out.push(compareSectionHTML(ctx))
 
   out.push(gt(indicatorName('ORDERFLOW')))
   const base = baseOfSymbol(ctx.symbol()).base
@@ -231,6 +248,19 @@ function analysisHTML(ctx: PanelContext): string {
   const factory = sameValue(currentLayout(st), factoryLayout())
   out.push(`<div class="cp-group cp-reset"><button type="button" class="cp-row cp-tap" data-act="reset"${factory ? ' disabled' : ''}><span class="cp-rn">恢复默认指标</span></button></div>`)
   return out.join('')
+}
+
+/** 「对比」一节（照 iOS IndicatorPage.compareSection，10-06 恢复、与顶栏 ＋ 并存）：
+ *  「添加对比」（满三只置灰）开顶栏 ＋ 那张对比模式搜索页；每只一行带「移除」；有对比时「清除对比」。
+ *  此刻不能对比（复盘回放、横屏画线台、看朋友分享的线）或没接入口时整节不排。 */
+export function compareSectionHTML(ctx: PanelContext): string {
+  if (!ctx.onAddCompare || ctx.canCompare?.() === false) return ''
+  const keys = st.compareSymbols
+  const rows: string[] = []
+  rows.push(`<button type="button" class="cp-row cp-tap" data-act="cmp-add"${keys.length >= MAX_COMPARE ? ' disabled' : ''}><span class="cp-rn">添加对比</span>${chevron()}</button>`)
+  for (const k of keys) rows.push(`<div class="cp-row"><span class="cp-rn">${esc(compareName(k))}</span><button type="button" class="cp-textbtn" data-act="cmp-rm:${esc(k)}">移除</button></div>`)
+  if (keys.length) rows.push(`<button type="button" class="cp-row cp-tap" data-act="cmp-clear"><span class="cp-rn">清除对比</span></button>`)
+  return gt('对比') + `<div class="cp-group">${rows.join('')}</div>`
 }
 
 /** 「恢复默认指标」（PrefsStore.resetIndicatorLayout）：指标布局整份回到出厂（所有周期共用这一份），可撤销 */

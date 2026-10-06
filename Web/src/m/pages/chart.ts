@@ -120,7 +120,7 @@ export function initChart(root: HTMLElement): PageHandle {
   const panel = (open: () => void) => (): void => { ivBar.closeGrid(); open() }
   const topBar = createTopBar(page, {
     onBack: () => { const o = nav.origin; nav.origin = null; if (o && o !== 'chart') go(o); else render() },
-    // 顶栏 ＋：开对比模式的搜索页（照 iOS d26df149，对比从「分析」面板搬到这里）
+    // 顶栏 ＋：开对比模式的搜索页（照 iOS d26df149；10-06 起「分析」面板的「对比」一节也开这一页）
     onCompare: panel(() => openSearch({ compare: { current: sym() } })),
     // 铃铛：开「提醒」表（列表 | 日志，照 iOS 543a308d），创建页预填最新价
     onAlerts: panel(() => { openAlertHub(sym(), S.symbols.get(sym())?.price ?? null) }),
@@ -247,7 +247,13 @@ export function initChart(root: HTMLElement): PageHandle {
   mq.addEventListener('change', onOrientation)
   so?.addEventListener('change', onOrientation)
 
-  const panelCtx: PanelContext = { symbol: sym, port: () => port, onDraw: startDrawing }
+  const panelCtx: PanelContext = {
+    symbol: sym, port: () => port, onDraw: startDrawing,
+    // 「分析」里的「对比」一节（10-06 与顶栏 ＋ 并存）：开的是同一张对比模式搜索页
+    onAddCompare: () => openSearch({ compare: { current: sym() } }),
+    // 照 iOS：复盘回放、横屏画线台、看朋友分享的线时不能对比，整节不排
+    canCompare: () => !replay && !isLand() && !bench.active && !preview?.previewing(),
+  }
   const axisCtx: AxisContext = { mode: () => effectivePriceMode(sym()), category: () => axisCategory(sym()) }
 
   // ---- 图上的事件 → st（手指一松就落盘）
