@@ -1,0 +1,420 @@
+2026-10-05T14:54:07Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：473ms bars=1500
+2026-10-05T14:54:08Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：487ms bars=1500
+2026-10-05T14:54:09Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：491ms bars=1500
+2026-10-05T14:54:09Z 16Pro|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T14:55:15Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|断网窗口：开图后约 40s 起断 40s
+2026-10-05T14:57:15Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T14:57:16Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1m：455ms bars=1501
+2026-10-05T14:57:16Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 5m：453ms bars=1500
+2026-10-05T14:57:17Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 15m：446ms bars=1500
+2026-10-05T14:57:17Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1h：468ms bars=1500
+2026-10-05T14:57:18Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 4h：445ms bars=1500
+2026-10-05T14:57:20Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1d：1860ms bars=1500
+2026-10-05T14:57:58Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T14:57:59Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1m：439ms bars=300
+2026-10-05T14:57:59Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 5m：422ms bars=300
+2026-10-05T14:58:00Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 15m：423ms bars=300
+2026-10-05T14:58:00Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1h：423ms bars=300
+2026-10-05T14:58:01Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 4h：421ms bars=438
+2026-10-05T14:58:02Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1d：1782ms bars=300
+2026-10-05T14:58:09Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|冷启动品种 binance/usd_m/BTCUSDT 周期 1h bars=1500
+2026-10-05T14:58:12Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|自选出厂分类 []
+2026-10-05T14:58:30Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1m：423ms bars=300
+2026-10-05T14:58:30Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：420ms bars=1623
+2026-10-05T14:58:33Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1d：2365ms bars=300
+2026-10-05T14:58:33Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 4h：410ms bars=300
+2026-10-05T14:58:36Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1w：2408ms bars=300
+2026-10-05T14:58:36Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：422ms bars=1623
+2026-10-05T14:59:23Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|走查一全程 卡顿>100ms=1 最坏=182ms >250ms=[]
+2026-10-05T15:00:13Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-05T15:00:27Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-05T15:00:39Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333323 → 捏合 4.671210645894185；价格轴 1.0 → 3.053097345132743 layout=["stored": 4.0, "landLive": 4.671211, "token": 0.0, "live": 4.0, "landStored": 4.671211]
+2026-10-05T15:00:41Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=5 最坏=511ms >250ms=[511]
+2026-10-05T15:00:49Z 16Pro|testWalk4BTCHeaderOrderFlowVolume|BTC 估值格「0.48%」 额「13.30B」
+2026-10-05T15:01:01Z 16Pro|testWalk4BTCHeaderOrderFlowVolume|BTC 主力订单流 orders=17
+2026-10-05T15:16:00Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：749ms bars=1500
+2026-10-05T15:16:00Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：468ms bars=1500
+2026-10-05T15:16:01Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：497ms bars=1500
+2026-10-05T15:16:01Z 16Pro|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:17:16Z 16Pro|testStressHopBTCDollarIndexETH|第 1 轮 →BTC 到 K 线 5217ms
+2026-10-05T15:17:23Z 16Pro|testStressHopBTCDollarIndexETH|第 1 轮 →美元指数 到 K 线 6043ms
+2026-10-05T15:17:29Z 16Pro|testStressHopBTCDollarIndexETH|第 2 轮 →BTC 到 K 线 5487ms
+2026-10-05T15:17:35Z 16Pro|testStressHopBTCDollarIndexETH|第 2 轮 →美元指数 到 K 线 5465ms
+2026-10-05T15:17:41Z 16Pro|testStressHopBTCDollarIndexETH|第 3 轮 →BTC 到 K 线 5472ms
+2026-10-05T15:17:47Z 16Pro|testStressHopBTCDollarIndexETH|第 3 轮 →美元指数 到 K 线 5415ms
+2026-10-05T15:17:53Z 16Pro|testStressHopBTCDollarIndexETH|第 4 轮 →BTC 到 K 线 5437ms
+2026-10-05T15:17:59Z 16Pro|testStressHopBTCDollarIndexETH|第 4 轮 →美元指数 到 K 线 5487ms
+2026-10-05T15:18:05Z 16Pro|testStressHopBTCDollarIndexETH|第 5 轮 →BTC 到 K 线 5415ms
+2026-10-05T15:18:11Z 16Pro|testStressHopBTCDollarIndexETH|第 5 轮 →美元指数 到 K 线 5458ms
+2026-10-05T15:18:16Z 16Pro|testStressHopBTCDollarIndexETH|第 6 轮 →BTC 到 K 线 5370ms
+2026-10-05T15:18:23Z 16Pro|testStressHopBTCDollarIndexETH|第 6 轮 →美元指数 到 K 线 5491ms
+2026-10-05T15:18:28Z 16Pro|testStressHopBTCDollarIndexETH|第 7 轮 →BTC 到 K 线 5375ms
+2026-10-05T15:18:35Z 16Pro|testStressHopBTCDollarIndexETH|第 7 轮 →美元指数 到 K 线 5459ms
+2026-10-05T15:18:40Z 16Pro|testStressHopBTCDollarIndexETH|第 8 轮 →BTC 到 K 线 5400ms
+2026-10-05T15:18:47Z 16Pro|testStressHopBTCDollarIndexETH|第 8 轮 →美元指数 到 K 线 5410ms
+2026-10-05T15:18:52Z 16Pro|testStressHopBTCDollarIndexETH|第 9 轮 →BTC 到 K 线 5420ms
+2026-10-05T15:18:59Z 16Pro|testStressHopBTCDollarIndexETH|第 9 轮 →美元指数 到 K 线 5455ms
+2026-10-05T15:19:04Z 16Pro|testStressHopBTCDollarIndexETH|第 10 轮 →BTC 到 K 线 5391ms
+2026-10-05T15:19:11Z 16Pro|testStressHopBTCDollarIndexETH|第 10 轮 →美元指数 到 K 线 5453ms
+2026-10-05T15:19:16Z 16Pro|testStressHopBTCDollarIndexETH|第 11 轮 →BTC 到 K 线 5383ms
+2026-10-05T15:19:22Z 16Pro|testStressHopBTCDollarIndexETH|第 11 轮 →美元指数 到 K 线 5464ms
+2026-10-05T15:19:28Z 16Pro|testStressHopBTCDollarIndexETH|第 12 轮 →BTC 到 K 线 5396ms
+2026-10-05T15:19:34Z 16Pro|testStressHopBTCDollarIndexETH|第 12 轮 →美元指数 到 K 线 5388ms
+2026-10-05T15:19:40Z 16Pro|testStressHopBTCDollarIndexETH|第 13 轮 →BTC 到 K 线 5430ms
+2026-10-05T15:19:46Z 16Pro|testStressHopBTCDollarIndexETH|第 13 轮 →美元指数 到 K 线 5397ms
+2026-10-05T15:19:52Z 16Pro|testStressHopBTCDollarIndexETH|第 14 轮 →BTC 到 K 线 5446ms
+2026-10-05T15:19:58Z 16Pro|testStressHopBTCDollarIndexETH|第 14 轮 →美元指数 到 K 线 5485ms
+2026-10-05T15:20:04Z 16Pro|testStressHopBTCDollarIndexETH|第 15 轮 →BTC 到 K 线 5399ms
+2026-10-05T15:20:10Z 16Pro|testStressHopBTCDollarIndexETH|第 15 轮 →美元指数 到 K 线 5464ms
+2026-10-05T15:20:16Z 16Pro|testStressHopBTCDollarIndexETH|第 16 轮 →BTC 到 K 线 5405ms
+2026-10-05T15:20:22Z 16Pro|testStressHopBTCDollarIndexETH|第 16 轮 →美元指数 到 K 线 5443ms
+2026-10-05T15:20:27Z 16Pro|testStressHopBTCDollarIndexETH|第 17 轮 →BTC 到 K 线 5412ms
+2026-10-05T15:20:34Z 16Pro|testStressHopBTCDollarIndexETH|第 17 轮 →美元指数 到 K 线 5407ms
+2026-10-05T15:20:39Z 16Pro|testStressHopBTCDollarIndexETH|第 18 轮 →BTC 到 K 线 5413ms
+2026-10-05T15:20:46Z 16Pro|testStressHopBTCDollarIndexETH|第 18 轮 →美元指数 到 K 线 5457ms
+2026-10-05T15:20:51Z 16Pro|testStressHopBTCDollarIndexETH|第 19 轮 →BTC 到 K 线 5444ms
+2026-10-05T15:20:58Z 16Pro|testStressHopBTCDollarIndexETH|第 19 轮 →美元指数 到 K 线 5425ms
+2026-10-05T15:21:03Z 16Pro|testStressHopBTCDollarIndexETH|第 20 轮 →BTC 到 K 线 5426ms
+2026-10-05T15:21:10Z 16Pro|testStressHopBTCDollarIndexETH|第 20 轮 →美元指数 到 K 线 5420ms
+2026-10-05T15:21:10Z 16Pro|testStressHopBTCDollarIndexETH|换品种 60 次 到 K 线 p50=5405ms p90=5472ms max=6043ms
+2026-10-05T15:21:10Z 16Pro|testStressHopBTCDollarIndexETH|换品种 60 次 卡顿>100ms=1 最坏=110ms >250ms=[]
+2026-10-05T15:21:17Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|断网窗口：开图后约 40s 起断 40s
+2026-10-05T15:22:10Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|断网切回刚看过的 1h：有图 394ms
+2026-10-05T15:22:24Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|断网中 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:22:59Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|网回来后 1d 自愈：24ms
+2026-10-05T15:22:59Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|DXY 切到 1h：412ms bars=1624
+2026-10-05T15:23:44Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:23:45Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1m：453ms bars=1500
+2026-10-05T15:23:45Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 5m：457ms bars=1500
+2026-10-05T15:23:46Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 15m：456ms bars=1500
+2026-10-05T15:23:46Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1h：482ms bars=1500
+2026-10-05T15:23:47Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 4h：449ms bars=1500
+2026-10-05T15:23:49Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1d：1854ms bars=1500
+2026-10-05T15:24:28Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:24:28Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1m：437ms bars=301
+2026-10-05T15:24:29Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 5m：431ms bars=300
+2026-10-05T15:24:29Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 15m：437ms bars=300
+2026-10-05T15:24:30Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1h：423ms bars=300
+2026-10-05T15:24:30Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 4h：435ms bars=438
+2026-10-05T15:24:32Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1d：1789ms bars=300
+2026-10-05T15:24:39Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|冷启动品种 binance/usd_m/BTCUSDT 周期 1h bars=1500
+2026-10-05T15:24:42Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|自选出厂分类 []
+2026-10-05T15:24:59Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1m：420ms bars=300
+2026-10-05T15:25:00Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：420ms bars=1624
+2026-10-05T15:25:02Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1d：1813ms bars=300
+2026-10-05T15:25:02Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 4h：432ms bars=300
+2026-10-05T15:25:05Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1w：2108ms bars=300
+2026-10-05T15:25:05Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：423ms bars=1624
+2026-10-05T15:25:52Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|走查一全程 卡顿>100ms=1 最坏=189ms >250ms=[]
+2026-10-05T15:26:47Z 16Pro|testWalk2DollarIndexCompareAndAlerts|走查二全程 卡顿>100ms=3 最坏=152ms >250ms=[]
+2026-10-05T15:27:09Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-05T15:27:13Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·竖屏画线 卡顿>100ms=1 最坏=329ms >250ms=[329]
+2026-10-05T15:27:23Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-05T15:27:23Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进横屏画线台 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:27:27Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·眼睛与主图侧栏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:27:34Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333323 → 捏合 4.671210645894185；价格轴 1.0 → 3.053097345132743 layout=["token": 0.0, "landLive": 4.671211, "live": 4.0, "stored": 4.0, "landStored": 4.671211]
+2026-10-05T15:27:34Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·横屏捏合 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:27:36Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:27:37Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=1 最坏=329ms >250ms=[329]
+2026-10-05T15:27:44Z 16Pro|testWalk4BTCHeaderOrderFlowVolume|BTC 估值格「0.48%」 额「13.43B」
+2026-10-05T15:27:55Z 16Pro|testWalk4BTCHeaderOrderFlowVolume|BTC 主力订单流 orders=11643
+2026-10-05T15:31:20Z 16Pro|testWalk6RelaunchKeepsEverything|重启前：竖屏条 ["trend", "hline", "fibonacci", "position"] 横屏条 ["position", "trend", "hline", "fibonacci", "channel"] 横屏根宽 8.266666666666671 竖屏根宽 4.0 对比 ["binance/usd_m/BTCUSDT"]
+2026-10-05T15:34:02Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：469ms bars=1500
+2026-10-05T15:34:03Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：497ms bars=1500
+2026-10-05T15:34:04Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：503ms bars=1501
+2026-10-05T15:34:11Z 16Pro|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:34:34Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:34:34Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动：帧 1208 超 8ms 301（24.9%）构建=Debug
+2026-10-05T15:34:59Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:34:59Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动：帧 1168 超 8ms 92（7.9%）构建=Debug
+2026-10-05T15:39:18Z 16Pro|testStressHopBTCDollarIndexETH|BTC→ETH 横滑 20 次 点下去到 K 线 p50=1008ms p90=1030ms max=1035ms
+2026-10-05T15:39:18Z 16Pro|testStressHopBTCDollarIndexETH|→BTC 20 次 点下去到 K 线 p50=385ms p90=387ms max=392ms
+2026-10-05T15:39:18Z 16Pro|testStressHopBTCDollarIndexETH|→美元指数 20 次 点下去到 K 线 p50=372ms p90=382ms max=934ms
+2026-10-05T15:39:18Z 16Pro|testStressHopBTCDollarIndexETH|XCUITest 回自选页找行（不算 app 的账）p50=5048ms
+2026-10-05T15:39:18Z 16Pro|testStressHopBTCDollarIndexETH|换品种 60 次 卡顿>100ms=1 最坏=165ms >250ms=[]
+2026-10-05T15:39:36Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进竖屏画线 卡顿>100ms=3 最坏=572ms >250ms=[572]
+2026-10-05T15:39:38Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·画趋势线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:39:42Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-05T15:39:42Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·全部工具挑一把 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:39:47Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·撤销与完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:39:57Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-05T15:39:57Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进横屏画线台 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:40:02Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·眼睛与主图侧栏 卡顿>100ms=1 最坏=143ms >250ms=[]
+2026-10-05T15:40:08Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333323 → 捏合 4.671210645894185；价格轴 1.0 → 3.053097345132743 layout=["token": 0.0, "stored": 4.0, "landStored": 4.671211, "landLive": 4.671211, "live": 4.0]
+2026-10-05T15:40:08Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·横屏捏合 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:40:11Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:40:11Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=4 最坏=572ms >250ms=[572]
+2026-10-05T15:41:30Z 16Pro|testWalk6RelaunchKeepsEverything|重启前：竖屏条 ["position", "trend", "hline", "fibonacci"] 横屏条 ["position", "trend", "hline", "fibonacci", "channel"] 横屏根宽 8.266666666666671 竖屏根宽 4.0 对比 ["binance/usd_m/BTCUSDT"]
+2026-10-05T15:47:17Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：754ms bars=1500
+2026-10-05T15:47:18Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：491ms bars=1500
+2026-10-05T15:47:18Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：458ms bars=1500
+2026-10-05T15:47:20Z 16Pro|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:47:42Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:47:42Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动：帧 1188 超 8ms 192（16.2%）构建=Debug
+2026-10-05T15:48:06Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:48:06Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动：帧 1170 超 8ms 103（8.8%）构建=Debug
+2026-10-05T15:48:50Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进竖屏画线 卡顿>100ms=1 最坏=275ms >250ms=[275]
+2026-10-05T15:48:52Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·画趋势线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:48:56Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-05T15:48:56Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·全部工具挑一把 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:49:00Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·撤销与完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:49:10Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-05T15:49:10Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进横屏画线台 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:49:15Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·眼睛与主图侧栏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:49:21Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333323 → 捏合 4.671210645894185；价格轴 1.0 → 3.053097345132743 layout=["live": 4.0, "token": 0.0, "landStored": 4.671211, "stored": 4.0, "landLive": 4.671211]
+2026-10-05T15:49:21Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·横屏捏合 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:49:24Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:49:24Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=1 最坏=275ms >250ms=[275]
+2026-10-05T15:50:43Z 16Pro|testWalk6RelaunchKeepsEverything|重启前：竖屏条 ["position", "trend", "hline", "fibonacci"] 横屏条 ["position", "trend", "hline", "fibonacci", "channel"] 横屏根宽 8.266666666666671 竖屏根宽 4.0 对比 ["binance/usd_m/BTCUSDT"]
+2026-10-05T15:53:37Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：450ms bars=1500
+2026-10-05T15:53:38Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：758ms bars=1500
+2026-10-05T15:53:38Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：494ms bars=1500
+2026-10-05T15:53:38Z 16Pro|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:54:01Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:54:01Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动：帧 1188 超 8ms 199（16.8%）构建=Debug
+2026-10-05T15:54:26Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:54:26Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动：帧 1174 超 8ms 101（8.6%）构建=Debug
+2026-10-05T15:54:50Z 16Pro|testStressCompare3IntervalLandscapeRotate|转屏 10 次 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:02Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·冷开分析面板 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:10Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进竖屏画线 卡顿>100ms=1 最坏=282ms >250ms=[282]
+2026-10-05T15:55:11Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·画趋势线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:16Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-05T15:55:16Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·全部工具挑一把 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:20Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·撤销与完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:29Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-05T15:55:29Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进横屏画线台 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:34Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·眼睛与主图侧栏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:40Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333323 → 捏合 4.671210645894185；价格轴 1.0 → 3.053097345132743 layout=["stored": 4.0, "token": 0.0, "live": 4.0, "landStored": 4.671211, "landLive": 4.671211]
+2026-10-05T15:55:40Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·横屏捏合 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:43Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:55:43Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=1 最坏=282ms >250ms=[282]
+2026-10-05T15:57:19Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=1 最坏=219ms >250ms=[]
+2026-10-05T15:57:24Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:57:28Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:57:35Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:57:40Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:57:44Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:57:51Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:57:56Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:58:00Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:17Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=1 最坏=218ms >250ms=[]
+2026-10-05T15:59:22Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:26Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:33Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:38Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:42Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:49Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:54Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T15:59:58Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:04Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=1 最坏=232ms >250ms=[]
+2026-10-05T16:01:09Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:13Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:20Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:25Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:29Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:36Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:41Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:01:45Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:07:56Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第1轮
+2026-10-05T16:08:04Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=2 最坏=1229ms >250ms=[1229]
+2026-10-05T16:16:35Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第1轮
+2026-10-05T16:16:41Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:16:46Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:16:54Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:16:58Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第2轮
+2026-10-05T16:17:04Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:17:09Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:17:13Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:17:16Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第3轮
+2026-10-05T16:17:22Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:17:27Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:17:31Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:01Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·冷开分析面板 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:09Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进竖屏画线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:11Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·画趋势线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:15Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-05T16:18:15Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·全部工具挑一把 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:19Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·撤销与完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:29Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-05T16:18:29Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进横屏画线台 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:33Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·眼睛与主图侧栏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:40Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333323 → 捏合 4.671210645894185；价格轴 1.0 → 3.053097345132743 layout=["landLive": 4.671211, "stored": 4.0, "token": 0.0, "live": 4.0, "landStored": 4.671211]
+2026-10-05T16:18:40Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·横屏捏合 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:43Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:18:43Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:03Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第1轮
+2026-10-05T16:20:09Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:14Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:22Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:25Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第2轮
+2026-10-05T16:20:32Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:37Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:40Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:44Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第3轮
+2026-10-05T16:20:50Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:55Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:20:59Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T16:22:07Z 16Pro|testProbeEnterPortraitDrawingHang|探针·长按自选弹小卡 卡顿>100ms=1 最坏=133ms >250ms=[]
+2026-10-05T19:58:38Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第1轮
+2026-10-05T19:58:44Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:58:49Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:58:57Z 16Pro|testProbeEnterPortraitDrawingHang|探针第1轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:59:00Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第2轮
+2026-10-05T19:59:06Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:59:11Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:59:15Z 16Pro|testProbeEnterPortraitDrawingHang|探针第2轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:59:18Z 16Pro|testProbeEnterPortraitDrawingHang|探针就绪 第3轮
+2026-10-05T19:59:25Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:59:30Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T19:59:33Z 16Pro|testProbeEnterPortraitDrawingHang|探针第3轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:00:42Z 16Pro|testProbeEnterPortraitDrawingHang|探针·长按自选弹小卡 卡顿>100ms=1 最坏=142ms >250ms=[]
+2026-10-05T20:04:09Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：436ms bars=1500
+2026-10-05T20:04:10Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：477ms bars=1500
+2026-10-05T20:04:10Z 16Pro|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：460ms bars=1500
+2026-10-05T20:04:12Z 16Pro|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:04:34Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:04:34Z 16Pro|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动：帧 1197 超 8ms 171（14.3%）构建=Debug
+2026-10-05T20:04:59Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:04:59Z 16Pro|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动：帧 1167 超 8ms 88（7.5%）构建=Debug
+2026-10-05T20:05:23Z 16Pro|testStressCompare3IntervalLandscapeRotate|转屏 10 次 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:09:30Z 16Pro|testStressHopBTCDollarIndexETH|BTC→ETH 横滑 20 次 点下去到 K 线 p50=1005ms p90=1020ms max=1023ms
+2026-10-05T20:09:30Z 16Pro|testStressHopBTCDollarIndexETH|→BTC 20 次 点下去到 K 线 p50=384ms p90=390ms max=395ms
+2026-10-05T20:09:30Z 16Pro|testStressHopBTCDollarIndexETH|→美元指数 20 次 点下去到 K 线 p50=374ms p90=377ms max=936ms
+2026-10-05T20:09:30Z 16Pro|testStressHopBTCDollarIndexETH|XCUITest 回自选页找行（不算 app 的账）p50=5053ms
+2026-10-05T20:09:30Z 16Pro|testStressHopBTCDollarIndexETH|换品种 60 次 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:09:37Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|断网窗口：开图后约 40s 起断 40s
+2026-10-05T20:10:30Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|断网切回刚看过的 1h：有图 389ms
+2026-10-05T20:10:44Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|断网中 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:11:18Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|网回来后 1d 自愈：25ms
+2026-10-05T20:11:18Z 16Pro|testStressOfflineDollarIndexAndAlertSheet|DXY 切到 1h：425ms bars=1629
+2026-10-05T20:12:03Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:12:04Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1m：452ms bars=1501
+2026-10-05T20:12:04Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 5m：441ms bars=1500
+2026-10-05T20:12:05Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 15m：463ms bars=1500
+2026-10-05T20:12:05Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1h：472ms bars=1500
+2026-10-05T20:12:06Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 4h：462ms bars=1500
+2026-10-05T20:12:08Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1d：1860ms bars=1500
+2026-10-05T20:12:47Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:12:47Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1m：403ms bars=300
+2026-10-05T20:12:48Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 5m：425ms bars=300
+2026-10-05T20:12:48Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 15m：428ms bars=300
+2026-10-05T20:12:49Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1h：429ms bars=300
+2026-10-05T20:12:49Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 4h：419ms bars=440
+2026-10-05T20:12:51Z 16Pro|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1d：1781ms bars=300
+2026-10-05T20:12:58Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|冷启动品种 binance/usd_m/BTCUSDT 周期 1h bars=1500
+2026-10-05T20:13:01Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|自选出厂分类 []
+2026-10-05T20:13:18Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1m：415ms bars=300
+2026-10-05T20:13:19Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：416ms bars=1629
+2026-10-05T20:13:21Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1d：1804ms bars=300
+2026-10-05T20:13:21Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 4h：430ms bars=300
+2026-10-05T20:13:23Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1w：1813ms bars=300
+2026-10-05T20:13:24Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：414ms bars=1629
+2026-10-05T20:14:11Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|走查一全程 卡顿>100ms=2 最坏=146ms >250ms=[]
+2026-10-05T20:15:05Z 16Pro|testWalk2DollarIndexCompareAndAlerts|走查二全程 卡顿>100ms=2 最坏=150ms >250ms=[]
+2026-10-05T20:15:14Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·冷开分析面板 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:23Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进竖屏画线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:24Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·画趋势线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:28Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-05T20:15:28Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·全部工具挑一把 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:32Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·撤销与完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:42Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-05T20:15:42Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进横屏画线台 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:46Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·眼睛与主图侧栏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:53Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333323 → 捏合 4.671210645894185；价格轴 1.0 → 3.053097345132743 layout=["landStored": 4.671211, "token": 0.0, "landLive": 4.671211, "stored": 4.0, "live": 4.0]
+2026-10-05T20:15:53Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·横屏捏合 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:56Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三·回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:15:56Z 16Pro|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-05T20:16:03Z 16Pro|testWalk4BTCHeaderOrderFlowVolume|BTC 估值格「0.47%」 额「15.10B」
+2026-10-05T20:16:15Z 16Pro|testWalk4BTCHeaderOrderFlowVolume|BTC 主力订单流 orders=25
+2026-10-05T20:19:53Z 16Pro|testWalk6RelaunchKeepsEverything|重启前：竖屏条 ["position", "trend", "hline", "fibonacci"] 横屏条 ["position", "trend", "hline", "fibonacci", "channel"] 横屏根宽 8.266666666666671 竖屏根宽 4.0 对比 ["binance/usd_m/BTCUSDT"]
+2026-10-05T21:17:16Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|冷启动品种 binance/usd_m/BTCUSDT 周期 1h bars=1500
+2026-10-05T21:17:19Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|自选出厂分类 []
+2026-10-05T21:17:37Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1m：427ms bars=300
+2026-10-05T21:17:37Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：429ms bars=1629
+2026-10-05T21:17:40Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1d：2127ms bars=300
+2026-10-05T21:17:40Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 4h：422ms bars=300
+2026-10-05T21:17:42Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1w：1835ms bars=300
+2026-10-05T21:17:42Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：425ms bars=1629
+2026-10-05T21:18:30Z 16Pro|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|走查一全程 卡顿>100ms=2 最坏=231ms >250ms=[]
+2026-10-05T21:19:26Z 16Pro|testWalk2DollarIndexCompareAndAlerts|走查二全程 卡顿>100ms=4 最坏=219ms >250ms=[]
+2026-10-06T00:53:22Z 17ProMax|testProbeEnterPortraitDrawingHang|探针就绪 第1轮
+2026-10-06T00:53:28Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第1轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:53:33Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第1轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:53:41Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第1轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:53:44Z 17ProMax|testProbeEnterPortraitDrawingHang|探针就绪 第2轮
+2026-10-06T00:53:50Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第2轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:53:55Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第2轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:53:59Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第2轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:54:02Z 17ProMax|testProbeEnterPortraitDrawingHang|探针就绪 第3轮
+2026-10-06T00:54:09Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第3轮·点画线横过去 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:54:14Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第3轮·手动转回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:54:17Z 17ProMax|testProbeEnterPortraitDrawingHang|探针第3轮·完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:55:26Z 17ProMax|testProbeEnterPortraitDrawingHang|探针·长按自选弹小卡 卡顿>100ms=1 最坏=114ms >250ms=[]
+2026-10-06T00:56:44Z 17ProMax|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：452ms bars=1500
+2026-10-06T00:56:45Z 17ProMax|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：468ms bars=1500
+2026-10-06T00:56:45Z 17ProMax|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：458ms bars=1500
+2026-10-06T00:56:46Z 17ProMax|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:57:09Z 17ProMax|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:57:09Z 17ProMax|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动：帧 1203 超 8ms 547（45.5%）构建=Debug
+2026-10-06T00:57:33Z 17ProMax|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T00:57:33Z 17ProMax|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动：帧 1178 超 8ms 251（21.3%）构建=Debug
+2026-10-06T00:57:58Z 17ProMax|testStressCompare3IntervalLandscapeRotate|转屏 10 次 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:02:05Z 17ProMax|testStressHopBTCDollarIndexETH|BTC→ETH 横滑 20 次 点下去到 K 线 p50=1042ms p90=1093ms max=1128ms
+2026-10-06T01:02:05Z 17ProMax|testStressHopBTCDollarIndexETH|→BTC 20 次 点下去到 K 线 p50=385ms p90=390ms max=398ms
+2026-10-06T01:02:05Z 17ProMax|testStressHopBTCDollarIndexETH|→美元指数 20 次 点下去到 K 线 p50=372ms p90=383ms max=443ms
+2026-10-06T01:02:05Z 17ProMax|testStressHopBTCDollarIndexETH|XCUITest 回自选页找行（不算 app 的账）p50=5041ms
+2026-10-06T01:02:05Z 17ProMax|testStressHopBTCDollarIndexETH|换品种 60 次 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:02:11Z 17ProMax|testStressOfflineDollarIndexAndAlertSheet|断网窗口：开图后约 40s 起断 40s
+2026-10-06T01:03:05Z 17ProMax|testStressOfflineDollarIndexAndAlertSheet|断网切回刚看过的 1h：有图 389ms
+2026-10-06T01:03:19Z 17ProMax|testStressOfflineDollarIndexAndAlertSheet|断网中 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:03:54Z 17ProMax|testStressOfflineDollarIndexAndAlertSheet|网回来后 1d 自愈：28ms
+2026-10-06T01:03:54Z 17ProMax|testStressOfflineDollarIndexAndAlertSheet|DXY 切到 1h：425ms bars=1633
+2026-10-06T01:04:40Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:04:40Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1m：462ms bars=1500
+2026-10-06T01:04:41Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 5m：455ms bars=1500
+2026-10-06T01:04:41Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 15m：450ms bars=1500
+2026-10-06T01:04:42Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1h：445ms bars=1500
+2026-10-06T01:04:42Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 4h：461ms bars=1500
+2026-10-06T01:04:44Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|BTCUSDT 切到 1d：1824ms bars=1500
+2026-10-06T01:05:23Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|DXY 周期狂切 49 下 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:05:24Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1m：434ms bars=301
+2026-10-06T01:05:24Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 5m：405ms bars=301
+2026-10-06T01:05:24Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 15m：431ms bars=300
+2026-10-06T01:05:25Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1h：431ms bars=300
+2026-10-06T01:05:25Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 4h：424ms bars=441
+2026-10-06T01:05:27Z 17ProMax|testStressRapidIntervalsBTCAndDollarIndex|DXY 切到 1d：1810ms bars=300
+2026-10-06T01:05:34Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|冷启动品种 binance/usd_m/BTCUSDT 周期 1h bars=1500
+2026-10-06T01:05:37Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|自选出厂分类 []
+2026-10-06T01:05:55Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1m：417ms bars=300
+2026-10-06T01:05:55Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：438ms bars=1633
+2026-10-06T01:05:57Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1d：1796ms bars=300
+2026-10-06T01:05:58Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 4h：429ms bars=300
+2026-10-06T01:06:00Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1w：1814ms bars=300
+2026-10-06T01:06:00Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|DXY 切到 1h：428ms bars=1633
+2026-10-06T01:06:35Z 17ProMax|testWalk1ColdStartFavoritesDollarIndexPeriodsIndicators|走查一全程 卡顿>100ms=1 最坏=124ms >250ms=[]
+2026-10-06T01:07:30Z 17ProMax|testWalk2DollarIndexCompareAndAlerts|走查二全程 卡顿>100ms=3 最坏=156ms >250ms=[]
+2026-10-06T01:07:39Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·冷开分析面板 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:07:48Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进竖屏画线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:07:49Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·画趋势线 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:07:53Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|竖屏挑冷门工具后条上 ["trend", "hline", "fibonacci", "anchoredVWAP"]
+2026-10-06T01:07:53Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·全部工具挑一把 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:07:57Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·撤销与完成 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:08:07Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|横屏条上 ["trend", "anchoredVWAP", "hline", "fibonacci", "channel"]
+2026-10-06T01:08:07Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·进横屏画线台 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:08:11Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·眼睛与主图侧栏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:08:18Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|横屏根宽 4.0 → 捏开 9.333333333333327 → 捏合 4.67478260869565；价格轴 1.0 → 3.0530973451327434 layout=["stored": 4.0, "landLive": 4.674783, "live": 4.0, "token": 0.0, "landStored": 4.674783]
+2026-10-06T01:08:18Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·横屏捏合 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:08:21Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三·回竖屏 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:08:21Z 17ProMax|testWalk3DrawingBarAndLandscapeWorkbench|走查三全程 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T01:08:28Z 17ProMax|testWalk4BTCHeaderOrderFlowVolume|BTC 估值格「0.47%」 额「12.70B」
+2026-10-06T01:08:40Z 17ProMax|testWalk4BTCHeaderOrderFlowVolume|BTC 主力订单流 orders=13718
+2026-10-06T01:12:19Z 17ProMax|testWalk6RelaunchKeepsEverything|重启前：竖屏条 ["position", "trend", "hline", "fibonacci"] 横屏条 ["position", "trend", "hline", "fibonacci", "channel"] 横屏根宽 8.266666666666653 竖屏根宽 4.0 对比 ["binance/usd_m/BTCUSDT"]
+2026-10-06T02:18:03Z 17ProMax|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1h：570ms bars=1500
+2026-10-06T02:18:04Z 17ProMax|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 4h：443ms bars=1500
+2026-10-06T02:18:05Z 17ProMax|testStressCompare3IntervalLandscapeRotate|BTCUSDT 切到 1m：462ms bars=1500
+2026-10-06T02:18:08Z 17ProMax|testStressCompare3IntervalLandscapeRotate|对比三只切三次周期 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T02:18:31Z 17ProMax|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T02:18:31Z 17ProMax|testStressCompare3IntervalLandscapeRotate|竖屏对比三只甩动：帧 1194 超 8ms 58（4.9%）构建=Release
+2026-10-06T02:18:55Z 17ProMax|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动 卡顿>100ms=0 最坏=0ms >250ms=[]
+2026-10-06T02:18:55Z 17ProMax|testStressCompare3IntervalLandscapeRotate|横屏 MA + BOLL 甩动：帧 1169 超 8ms 22（1.9%）构建=Release
+2026-10-06T02:19:20Z 17ProMax|testStressCompare3IntervalLandscapeRotate|转屏 10 次 卡顿>100ms=0 最坏=0ms >250ms=[]
