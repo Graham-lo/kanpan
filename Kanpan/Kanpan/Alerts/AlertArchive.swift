@@ -1,4 +1,5 @@
 import Foundation
+import KanpanChart
 import KanpanCore
 
 /// 提醒的存档与落盘。
@@ -11,7 +12,12 @@ import KanpanCore
 /// 反而要为了列一页把所有桶拼起来。要按品种取的地方自己 `filter`。
 struct AlertArchive: Sendable, Equatable, Codable {
   static let currentVersion = 1
-  /// 一个人最多存多少条。提醒是要往服务端占评估名额的东西，不能无上限。
+  /// 一个人在**本机新建**时最多建到多少条。提醒是要往服务端占评估名额的东西，不能无上限。
+  ///
+  /// 只卡本机新建那三个口（`AlertStore.add(drawing:)` / `addPrice` / `addCondition`）。
+  /// 同步换下来的（别的设备建的）、派生出来的（复盘到点）一律收下、不受这个数限制——
+  /// 2026-10-06 用户：「提醒只要没失效也要留存」。失效只有两种：触发了（触发即删）、
+  /// 复盘到点过了一天。
   static let limit = 200
 
   var version: Int
@@ -44,7 +50,17 @@ struct AlertArchive: Sendable, Equatable, Codable {
     Set(alerts.filter { $0.symbol == InstrumentID.canonical(symbol) && $0.status != .fired }.compactMap(\.drawingID))
   }
 
+  /// 本机还能不能再新建一条（只给新建那几个口用，见 `limit`）。
   var hasRoom: Bool { alerts.count < Self.limit }
+
+  /// 这个品种上的提醒线：生效中的画线提醒，按它自己存的那份几何（见 `AlertStore.signals`）。
+  func signals(symbol: String) -> [ChartAlertSignal] {
+    let key = InstrumentID.canonical(symbol)
+    return alerts.compactMap { alert in
+      guard alert.kind == .drawing, alert.status == .active, alert.symbol == key, !alert.lines.isEmpty else { return nil }
+      return ChartAlertSignal(id: alert.id, drawingID: alert.drawingID, lines: alert.lines)
+    }
+  }
 
   /// 列表的排序：还在等的排前面，各自按建立时间倒序。
   var sorted: [Alert] {
@@ -54,69 +70,51 @@ struct AlertArchive: Sendable, Equatable, Codable {
     }
   }
 
-  /// 画线提醒的线在本机存档里找不到时，列表上给这条提醒的那句话。
-  static let drawingMissingNote = "画线已不存在"
-
-  /// 这条画线提醒的线眼下找不到（对账时被暂停、等线回来或者等用户自己删）。
+  /// 跟着画线存档对一遍账。
   ///
-  /// `paused` 这个状态别处都不产出（没有「手动暂停」这个入口），所以画线提醒处在
-  /// `paused` 就只有这一种来历；两端评估器都不判 `paused`（前台 `isActive`、服务端
-  /// `alerts.rs` 的 `reported_fire`），线不在的时候它不会凭一条看不见的线响。
-  static func isDrawingMissing(_ alert: Alert) -> Bool { alert.kind == .drawing && alert.status == .paused }
-
-  /// 跟着画线存档对一遍账（方案第 10 节「画线前台提醒的三条规则」）。
+  /// **2026-10-06 起画线与提醒互相独立**（用户：「画线和警报是不冲突的，我删除画线也不应该
+  /// 删除警报才对」「即使画线删除也应该保留预警信号」）：
   ///
-  /// - 线被**本机删掉**了（`previous` 里还在、`drawings` 里没了）→ 提醒跟着删（显式级联）。
-  /// - 线**找不到、但说不清是被删的**（没有 `previous`、或者 `previous` 里也没有）→ 提醒留着，
-  ///   暂停并标成「画线已不存在」（`isDrawingMissing`）。常见来历：别的设备画的线和它的提醒
-  ///   分两摊同步，提醒先到、线还在路上；老版本认不出新工具，解存档时把那条线丢了。
-  ///   从前这两种都当「线被删了」把提醒删掉，删除还会同步上去，把别的设备上好好的提醒也带走。
-  /// - 线回来了 → 暂停的那条恢复生效，`armedAt` 重置成现在（离线那段不补判）。
-  /// - 线被挪了 → 几何重算，`armedAt` 重置成现在。不重置的话，刚挪过去的这条线
-  ///   会被历史 K 线当场判成已触发——用户看到的是「我刚一松手它就响了」。
+  /// - 线**不在了**（本机删掉、别的设备删掉、还在路上、老版本解不出来，一概不分）→ 提醒原样
+  ///   留着、照常生效，按它自己存下来的 `lines` 继续判；图上由提醒线（虚线 + 铃铛）接着指出来。
+  ///   不暂停、不删、不问。从前本机删线会显式级联删提醒、说不清来历的缺线会暂停并标
+  ///   「画线已不存在」，这两条都撤了。
+  /// - 线**被挪了 / 回来了且几何变了** → 几何重算，`armedAt` 重置成现在。不重置的话，刚挪过去的
+  ///   这条线会被历史 K 线当场判成已触发——用户看到的是「我刚一松手它就响了」。
   /// - 别的（改颜色、上锁、隐藏）不动提醒：那些不改线在哪儿。
+  /// - 旧版本留下的暂停态画线提醒（上面那条「缺线暂停」的产物）一律复活：状态改回生效中、
+  ///   `armedAt` 重置成现在（暂停那段不补判）。`paused` 别处都不产出，所以画线提醒处在
+  ///   `paused` 只有这一种来历。
+  ///
+  /// 提醒只剩两种删法：用户自己删（提醒列表、选中栏的提醒胶囊），以及触发即删。
   ///
   /// 返回真表示存档变了，调用方要落盘 + 同步。
-  static func reconcile(_ archive: inout AlertArchive, with drawings: DrawArchive,
-                        previous: DrawArchive? = nil, now: Double) -> Bool {
-    var changed = false
-    var kept: [Alert] = []
-    for var alert in archive.alerts {
-      guard alert.kind == .drawing, let drawingID = alert.drawingID else { kept.append(alert); continue }
-      guard let drawing = drawings[alert.symbol].first(where: { $0.id == drawingID }),
-            let lines = AlertGeometry.lines(for: drawing) else {
-        let deletedHere = previous.map { prior in
-          prior[alert.symbol].contains { $0.id == drawingID }
-            && !drawings[alert.symbol].contains { $0.id == drawingID }
-        } ?? false
-        if deletedHere { changed = true; continue }
-        if alert.status == .active { alert.status = .paused; changed = true }
-        kept.append(alert)
-        continue
-      }
-      if alert.status == .paused {
-        alert.status = .active
-        alert.armedAt = now
-        changed = true
-      }
-      if lines != alert.lines {
-        alert.lines = lines
-        alert.armedAt = now
-        changed = true
-      }
-      kept.append(alert)
+  static func reconcile(_ archive: inout AlertArchive, with drawings: DrawArchive, now: Double) -> Bool {
+    var changed = revivePaused(&archive, now: now)
+    for i in archive.alerts.indices {
+      let alert = archive.alerts[i]
+      guard alert.kind == .drawing, alert.status == .active, let drawingID = alert.drawingID,
+            let drawing = drawings[alert.symbol].first(where: { $0.id == drawingID }),
+            let lines = AlertGeometry.lines(for: drawing), lines != alert.lines else { continue }
+      archive.alerts[i].lines = lines
+      archive.alerts[i].armedAt = now
+      changed = true
     }
-    if changed { archive.alerts = kept }
     return changed
   }
 
-  /// 显式级联：这几条线被删了，挂在上面的提醒一并删掉。返回删了几条。
-  @discardableResult
-  mutating func removeAlerts(symbol: String, drawingIDs: Set<String>) -> Int {
-    let key = InstrumentID.canonical(symbol)
-    let before = alerts.count
-    alerts.removeAll { $0.kind == .drawing && $0.symbol == key && $0.drawingID.map(drawingIDs.contains) == true }
-    return before - alerts.count
+  /// 旧版本「缺线暂停」留下的画线提醒，复活成生效中（`armedAt` = 现在）。返回真表示动了东西。
+  ///
+  /// 载入存档（启动、登录 / 换号、云端推下来）之后由 `AlertStore.reviveLegacyPaused` 调一次，
+  /// 对账（`reconcile`）每次也顺手过一遍。
+  static func revivePaused(_ archive: inout AlertArchive, now: Double) -> Bool {
+    var changed = false
+    for i in archive.alerts.indices where archive.alerts[i].kind == .drawing && archive.alerts[i].status == .paused {
+      archive.alerts[i].status = .active
+      archive.alerts[i].armedAt = now
+      changed = true
+    }
+    return changed
   }
 }
 

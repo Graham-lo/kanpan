@@ -100,6 +100,43 @@ import UIKit
     openCompare(); toggle(symbol, expect: "已添加"); doneCompare()
   }
 
+  /// 分析面板里的那一行（在下半截，先滚到点得到）。
+  func scrollPanel(to element: XCUIElement) {
+    let content = app.scrollViews["panel.content"]
+    guard content.waitForExistence(timeout: 8) else { return }
+    for _ in 0..<14 {
+      if element.exists, element.isHittable { return }
+      let up = !element.exists || element.frame.midY > content.frame.midY
+      content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.3))
+        .press(forDuration: 0.1, thenDragTo: content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.3 : 0.7)))
+    }
+  }
+
+  /// 2026-10-06 用户：「分析里的对比要留」。分析面板「对比」一节 ›「添加对比」开的是顶栏加号
+  /// 那同一张对比搜索页；加一只回到图上就有线，面板里多一行带「移除」的、底下一行「清除对比」。
+  func testIndicatorPanelAddCompareOpensTheSameSearch() {
+    app.launch(); ready(0)
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
+    let add = app.buttons["compare.add"]
+    scrollPanel(to: add)
+    XCTAssertTrue(add.isHittable, "分析面板里没有「添加对比」")
+    shot("分析面板-对比一节")
+    add.tap()
+    XCTAssertTrue(app.textFields[Ids.searchQuery].waitForExistence(timeout: 10), "「添加对比」没开出对比搜索页")
+    XCTAssertTrue(app.buttons["compare.done"].exists, "开出来的不是对比模式（右上不是「完成」）")
+    toggle("ETHUSDT", expect: "已添加")
+    doneCompare(); ready(1)
+    XCTAssertEqual(info()["compareKeys"] as? [String], [keys[0]])
+    XCTAssertTrue(app.openIndicatorPage(), "第二次开不出分析面板")
+    let clear = app.buttons["compare.clear"]
+    scrollPanel(to: clear)
+    XCTAssertTrue(app.buttons["compare.remove." + keys[0]].exists, "面板里没有刚加那只的「移除」")
+    shot("分析面板-对比一只")
+    clear.tap()
+    ready(0)
+    XCTAssertEqual(info()["compareKeys"] as? [String] ?? [], [])
+  }
+
   /// 顶栏加号 → 对比模式：加两只、图上立刻出线；再加满三只，第四只被拒（行尾「已满」、集合不变、
   /// 提示「最多对比 3 个品种」）；主图那只那一行点不动；重启还在；从「正在对比」那条的 × 和
   /// 行尾那颗各删一只，最后清空。

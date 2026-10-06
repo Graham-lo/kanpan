@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import KanpanChart
 import KanpanCore
 
 /// 提醒模块手上那份存档。
@@ -126,6 +127,9 @@ final class AlertStore: ObservableObject {
   private var cachedPending: [String: Int]?
   func alerts(symbol: String) -> [Alert] { archive.alerts(symbol: symbol) }
   func alertedDrawingIDs(symbol: String) -> Set<String> { archive.alertedDrawingIDs(symbol: symbol) }
+  /// 图上的提醒线（`ChartAlertSignal`）：这只品种上还在生效、摊得出线的画线提醒。
+  /// 哪几条真画出来由图按「挂的画线此刻画没画出来」定（`ChartView.shownAlertSignals`）。
+  func signals(symbol: String) -> [ChartAlertSignal] { archive.signals(symbol: symbol) }
   func alert(id: String) -> Alert? { archive[id] }
   func alert(symbol: String, drawingID: String) -> Alert? {
     archive.alerts.first { $0.symbol == InstrumentID.canonical(symbol) && $0.drawingID == drawingID }
@@ -247,19 +251,21 @@ final class AlertStore: ObservableObject {
   }
 
   /// 复盘待办到点：跟着复盘记录对一遍账（`ReviewDueAlerts.plan` 算，这儿只落账）。
+  ///
+  /// 派生出来的提醒不受 `AlertArchive.limit` 限制：满 200 条时从前会把新到点的那条静悄悄丢掉
+  /// （2026-10-06 审查：「提醒只要没失效也要留存」）。上限只卡本机新建。
   func settleReviewDue(_ plan: ReviewDueAlerts.Plan) {
     guard !plan.isEmpty else { return }
     write { archive in
       for id in plan.remove { archive[id] = nil }
-      for alert in plan.upsert {
-        if archive[alert.id] != nil { archive[alert.id] = alert }
-        else if archive.hasRoom { archive.alerts.append(alert) }
-      }
+      for alert in plan.upsert { archive[alert.id] = alert }
     }
   }
 
+  /// 用户在提醒列表里删一条。提醒只有两种删法：这儿（以及选中栏胶囊那一口），和触发即删。
   func remove(id: String) { write { $0[id] = nil } }
 
+  /// 用户在线的选中栏上把提醒胶囊关掉（`LineAlert.toggle`）。删的是提醒，线不动。
   func remove(symbol: String, drawingID: String) {
     write { $0.alerts.removeAll { $0.symbol == InstrumentID.canonical(symbol) && $0.drawingID == drawingID } }
   }
@@ -349,32 +355,27 @@ final class AlertStore: ObservableObject {
     return localFires[alert.id] == at
   }
 
-  /// 跟着画线存档对一遍账。返回真表示真的动了东西。
+  /// 跟着画线存档对一遍账：线挪了就重算几何、重新上膛。返回真表示真的动了东西。
   ///
-  /// 拿上一次见过的那份画线存档（`seenDrawings`）当「删之前」：上一份里有、这一份里没有的线
-  /// 是本机刚删的，提醒跟着删；说不清来历的缺线只暂停、标「画线已不存在」，不删
-  /// （见 `AlertArchive.reconcile`）。
+  /// 2026-10-06 起线没了**不删、不暂停**提醒（见 `AlertArchive.reconcile`），所以这里不再需要
+  /// 记「删之前」那份画线存档——原来的 `seenDrawings` / `noteDrawings` / `removeAlerts`
+  /// （本机删线显式级联删提醒）整套撤了。
   @discardableResult
   func reconcile(with drawings: DrawArchive, now: Double = Date().timeIntervalSince1970 * 1000) -> Bool {
-    let previous = seenDrawings
-    seenDrawings = drawings
     var next = archive
-    guard AlertArchive.reconcile(&next, with: drawings, previous: previous, now: now) else { return false }
+    guard AlertArchive.reconcile(&next, with: drawings, now: now) else { return false }
     write { $0 = next }
     return true
   }
 
-  /// 记下此刻的画线存档，当下一次对账的「删之前」，但不对账。宿主在画线存档换档
-  /// （登录 / 换号）、云端推下来之后调它，本机第一次删线就能级联到提醒。
-  func noteDrawings(_ drawings: DrawArchive) { seenDrawings = drawings }
-
-  /// 上一次对账（或 `noteDrawings`）见过的画线存档。
-  private var seenDrawings: DrawArchive?
-
-  /// 显式级联：这几条线被删了，挂在上面的提醒一并删掉（删除照常同步上去）。
-  func removeAlerts(symbol: String, drawingIDs: Set<String>) {
-    guard !drawingIDs.isEmpty else { return }
-    write { _ = $0.removeAlerts(symbol: symbol, drawingIDs: drawingIDs) }
+  /// 旧版本「缺线暂停」留下的画线提醒复活成生效中，走 `write`（落盘 + 同步上去，
+  /// 服务端那份才会重新开始判）。账号桥在换档、云端推下来之后调。返回真表示动了东西。
+  @discardableResult
+  func reviveLegacyPaused(now: Double = Date().timeIntervalSince1970 * 1000) -> Bool {
+    var next = archive
+    guard AlertArchive.revivePaused(&next, now: now) else { return false }
+    write { $0 = next }
+    return true
   }
 
   // ---------------------------------------------------------------- 落盘
@@ -407,8 +408,6 @@ final class AlertStore: ObservableObject {
   func useStorage(_ store: AlertFileStore, archive: AlertArchive) {
     self.store = store
     generation += 1
-    // 换了人，上一个人的画线存档不能再当「删之前」。
-    seenDrawings = nil
     self.archive = archive
   }
 

@@ -23,7 +23,8 @@ import KanpanCore
 ///
 /// 2026-09-28 行尾收回三件：那格「指标」改名「分析」，面板也叫「分析」，分四节
 /// 画线 · 指标 · 对比 · 主力订单流——画线与指标并列，「指标」从此只是面板里的一节名。
-/// 2026-10-05「对比」那一节搬上顶栏（加号，`top.compare`），面板回到三节：画线 · 指标 · 主力订单流。
+/// 2026-10-05「对比」那一节搬到顶栏（加号，`top.compare`），面板一度只剩三节；10-06 用户要求两处并存，
+/// 分析面板恢复四节，这一节的「添加对比」开的就是顶栏加号那张对比模式搜索页。
 /// 枚举值仍叫 `indicators`（面板状态、测试 id 都挂在它上面，改名没有好处）。
 ///
 /// 同一天（顶栏方案 B）多了一张 `share`：「图表设置 › 这张图 › 分享」那条推进去的路撤了，
@@ -150,6 +151,9 @@ struct PanelActions {
   var onPickInterval: ((Interval) -> Void)? = nil
   /// 分享成图片（`share` 面板的「图片」格）。
   var onShare: (() -> Void)? = nil
+  /// 分析面板「对比」一节的「添加对比」：开顶栏加号那张对比模式搜索页。此刻不能对比时传 nil，那一节不排。
+  var onAddCompare: (() -> Void)? = nil
+  var compareNames: [String: String] = [:]
   /// 指标页第一节「画线」（2026-09-28 从周期条行尾归进来）。复盘回放、已经在画时传 nil，那一节不排。
   var onDraw: (() -> Void)? = nil
   /// 对比期间画不了线：那一行置灰、点不动。
@@ -179,9 +183,10 @@ struct PanelContent: View {
     case .share:
       SharePanel(onImage: actions.onShare, onLines: actions.onSend, linesBlocked: actions.sendBlocked)
     case .indicators:
-      // 「分析」面板（画线 · 指标 · 主力订单流）。从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
+      // 「分析」面板（画线 · 指标 · 对比 · 主力订单流）。从周期条直接开：没有上一层，`onBack` 不传，左上角那颗就是关面板（`PanelSheet`）。
       // 选中反馈长在指标页各控件的动作上（`PrefsStore.updateByHand`），两条路一样。
       IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol,
+                    onAddCompare: actions.onAddCompare, compareNames: actions.compareNames,
                     onDraw: actions.onDraw, drawEnabled: actions.drawEnabled, mainOnly: actions.mainOnly)
     }
   }

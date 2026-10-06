@@ -3,7 +3,7 @@ import KanpanCore
 import Testing
 @testable import Kanpan
 
-/// 存档与对账：画线一动，提醒跟着怎么走（方案第 10 节「画线前台提醒的三条规则」）。
+/// 存档与对账：画线一动，提醒跟着怎么走。2026-10-06 起线没了提醒照留（画线与提醒互相独立）。
 @Suite("提醒存档")
 struct AlertArchiveTests {
   private func line(_ id: String, p: Double) -> Drawing {
@@ -18,58 +18,49 @@ struct AlertArchiveTests {
           created: armedAt)
   }
 
-  @Test("线在本机被删了（上一份存档里还在），提醒跟着删")
-  func deletingTheLineDeletesTheAlert() {
-    let drawing = line("d1", p: 100)
-    var archive = AlertArchive(alerts: [alert(for: drawing)])
-    var before = DrawArchive()
-    before["BTCUSDT"] = [drawing]
-    var drawings = DrawArchive()
-    drawings["BTCUSDT"] = []
-    #expect(AlertArchive.reconcile(&archive, with: drawings, previous: before, now: 9) == true)
-    #expect(archive.alerts.isEmpty)
-  }
-
-  @Test("线找不到、又说不清是被删的（同步还没到 / 老版本认不出）：提醒留着，暂停并标「画线已不存在」")
-  func missingLineKeepsTheAlertPaused() {
+  @Test("线被删了（上一份存档里还在）：提醒原样留着、照常生效，线一根不动（2026-10-06）")
+  func deletingTheLineKeepsTheAlert() {
     let drawing = line("d1", p: 100)
     let original = alert(for: drawing)
     var archive = AlertArchive(alerts: [original])
-    let drawings = DrawArchive()
-    #expect(AlertArchive.reconcile(&archive, with: drawings, now: 9) == true)
-    #expect(archive.alerts.count == 1)
-    #expect(archive.alerts[0].id == original.id)
-    #expect(archive.alerts[0].status == .paused)
-    #expect(AlertArchive.isDrawingMissing(archive.alerts[0]))
-    #expect(AlertArchive.drawingMissingNote == "画线已不存在")
-    #expect(AlertRecordText.meta(archive.alerts[0], zone: .fixed(0), decimals: 1, conditionInline: true)
-            == "画线已不存在 · 价格达到")
-    // 上一份里也没有这条线：同样不删。
-    #expect(AlertArchive.reconcile(&archive, with: drawings, previous: DrawArchive(), now: 10) == false)
-    #expect(archive.alerts.count == 1)
+    var before = DrawArchive()
+    before["BTCUSDT"] = [drawing]
+    #expect(AlertArchive.reconcile(&archive, with: before, now: 5) == false)
+    var drawings = DrawArchive()
+    drawings["BTCUSDT"] = []
+    #expect(AlertArchive.reconcile(&archive, with: drawings, now: 9) == false)
+    #expect(archive.alerts == [original])
+    #expect(archive.alerts[0].status == .active)
+    #expect(archive.alerts[0].lines == original.lines)
+    #expect(archive.alertedDrawingIDs(symbol: "BTCUSDT") == ["d1"])
   }
 
-  @Test("线回来了：暂停的那条恢复生效，并从现在起算")
-  func returningLineReactivatesTheAlert() {
+  @Test("线找不到（同步还没到 / 老版本认不出）：不暂停、不删")
+  func missingLineDoesNotPause() {
     let drawing = line("d1", p: 100)
-    var archive = AlertArchive(alerts: [alert(for: drawing)])
-    _ = AlertArchive.reconcile(&archive, with: DrawArchive(), now: 9)
-    var drawings = DrawArchive()
-    drawings["BTCUSDT"] = [drawing]
-    #expect(AlertArchive.reconcile(&archive, with: drawings, now: 20_000) == true)
+    let original = alert(for: drawing)
+    var archive = AlertArchive(alerts: [original])
+    #expect(AlertArchive.reconcile(&archive, with: DrawArchive(), now: 9) == false)
+    #expect(archive.alerts == [original])
+  }
+
+  @Test("旧版本留下的暂停态画线提醒：对账 / 载入时复活，从现在起算；别的种类不碰")
+  func legacyPausedAlertsAreRevived() {
+    var paused = alert(for: line("d1", p: 100))
+    paused.status = .paused
+    var price = Alert.price(symbol: "BTCUSDT", target: 1, current: 2, label: "1", now: 1)
+    price.status = .paused
+    var archive = AlertArchive(alerts: [paused, price])
+    #expect(AlertArchive.revivePaused(&archive, now: 20_000) == true)
     #expect(archive.alerts[0].status == .active)
     #expect(archive.alerts[0].armedAt == 20_000)
-    #expect(!AlertArchive.isDrawingMissing(archive.alerts[0]))
-  }
+    #expect(archive.alerts[0].lines == paused.lines)
+    #expect(archive.alerts[1].status == .paused)
+    #expect(AlertArchive.revivePaused(&archive, now: 30_000) == false)
 
-  @Test("显式级联删除：只删挂在这几条线上的画线提醒")
-  func cascadeRemovesOnlyThoseLines() {
-    let a = alert(for: line("d1", p: 100))
-    let b = alert(for: line("d2", p: 200))
-    let c = alert(for: line("d1", p: 100), symbol: "ETHUSDT")
-    var archive = AlertArchive(alerts: [a, b, c])
-    #expect(archive.removeAlerts(symbol: "BTCUSDT", drawingIDs: ["d1"]) == 1)
-    #expect(archive.alerts.map(\.id) == [b.id, c.id])
+    var viaReconcile = AlertArchive(alerts: [paused])
+    #expect(AlertArchive.reconcile(&viaReconcile, with: DrawArchive(), now: 7) == true)
+    #expect(viaReconcile.alerts[0].status == .active && viaReconcile.alerts[0].armedAt == 7)
   }
 
   @Test("线被挪了，按同一个 id 重算并重新上膛")

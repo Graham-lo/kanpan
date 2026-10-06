@@ -133,7 +133,7 @@ struct AlertStoreTests {
     #expect(beats == 3)
   }
 
-  @Test("画线一动，提醒跟着对账")
+  @Test("画线一动，提醒跟着对账；线删了提醒照留、照常生效（2026-10-06 画线与提醒互相独立）")
   func reconcileFollowsTheDrawings() {
     let store = fresh()
     let alert = store.add(drawing: hline("d1"), symbol: "BTCUSDT", now: 5)!
@@ -141,27 +141,67 @@ struct AlertStoreTests {
     drawings["BTCUSDT"] = [hline("d1", p: 250)]
     #expect(store.reconcile(with: drawings, now: 30) == true)
     #expect(store.alert(id: alert.id)?.armedAt == 30)
+    let moved = store.alert(id: alert.id)!
     drawings["BTCUSDT"] = []
-    #expect(store.reconcile(with: drawings, now: 40) == true)
-    #expect(store.all.isEmpty)
+    #expect(store.reconcile(with: drawings, now: 40) == false)
+    #expect(store.alert(id: alert.id) == moved)
+    #expect(store.alert(id: alert.id)?.status == .active)
+    #expect(store.alertedDrawingIDs(symbol: "BTCUSDT") == ["d1"])
   }
 
-  @Test("没见过这条线就缺线：只暂停不删；noteDrawings 记过之后本机删线才级联")
-  func missingLineIsPausedUntilSeenDeleted() {
+  @Test("线从没见过、同步还没到：不暂停、不删；线到了也不重新上膛（几何没变）")
+  func missingLineIsNeitherPausedNorDeleted() {
     let store = fresh()
     let alert = store.add(drawing: hline("d1"), symbol: "BTCUSDT", now: 5)!
-    // 同步先到了提醒、线还没到：这一次对账不许删。
-    #expect(store.reconcile(with: DrawArchive(), now: 10) == true)
-    #expect(store.alert(id: alert.id)?.status == .paused)
-    // 线到了：恢复。
+    #expect(store.reconcile(with: DrawArchive(), now: 10) == false)
+    #expect(store.alert(id: alert.id)?.status == .active)
     var drawings = DrawArchive()
     drawings["BTCUSDT"] = [hline("d1")]
-    store.noteDrawings(drawings)
-    #expect(store.reconcile(with: drawings, now: 20) == true)
-    #expect(store.alert(id: alert.id)?.status == .active)
-    // 本机把线删了：级联删。
-    #expect(store.reconcile(with: DrawArchive(), now: 30) == true)
-    #expect(store.all.isEmpty)
+    #expect(store.reconcile(with: drawings, now: 20) == false)
+    #expect(store.alert(id: alert.id)?.armedAt == 5)
+  }
+
+  @Test("旧版本留下的暂停态画线提醒：换档后复活成生效中，走 write（落盘 + 记账同步）")
+  func legacyPausedAlertIsRevivedAndSynced() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("alerts-\(UUID().uuidString).json")
+    let file = AlertFileStore(url: url)
+    var paused = Alert(symbol: "BTCUSDT", drawingID: "gone",
+                       lines: AlertGeometry.lines(for: hline("gone")) ?? [],
+                       armedAt: 1, title: "BTC", created: 1)
+    paused.status = .paused
+    try file.save(AlertArchive(alerts: [paused]))
+    let store = fresh()
+    var beats = 0
+    store.onChange = { _ in beats += 1 }
+    store.useStorage(file, archive: file.load())
+    #expect(store.reviveLegacyPaused(now: 99) == true)
+    #expect(store.alert(id: paused.id)?.status == .active)
+    #expect(store.alert(id: paused.id)?.armedAt == 99)
+    #expect(store.alert(id: paused.id)?.lines == paused.lines)
+    #expect(beats == 1)
+    #expect(file.load().alerts.first?.status == .active)
+    #expect(store.reviveLegacyPaused(now: 100) == false)
+  }
+
+  @Test("同步换下来的、复盘到点派生的不受 200 条上限：照单全收；上限只卡本机新建")
+  func syncedAndDerivedAlertsIgnoreTheLimit() {
+    let store = fresh()
+    var archive = AlertArchive()
+    archive.alerts = (0..<(AlertArchive.limit + 5)).map { i in
+      Alert(symbol: "ETHUSDT", drawingID: "s\(i)", lines: AlertGeometry.lines(for: hline("s\(i)")) ?? [],
+            armedAt: 1, title: "ETH", created: 1)
+    }
+    store.publishSynced(archive)
+    #expect(store.all.count == AlertArchive.limit + 5)
+    let due = Alert(id: "rX", kind: .reviewDue, symbol: "BTCUSDT", lines: [], armedAt: 1, dueAt: 9_000,
+                    reviewID: "X", title: "BTC 到点了", created: 1)
+    store.settleReviewDue(ReviewDueAlerts.Plan(upsert: [due]))
+    #expect(store.alert(id: "rX") != nil)
+    #expect(store.all.count == AlertArchive.limit + 6)
+    // 本机新建照旧卡住、说一声。
+    #expect(store.add(drawing: hline("local"), symbol: "BTCUSDT") == nil)
+    #expect(store.addPrice(symbol: "BTCUSDT", target: 1, current: 2, label: "1") == nil)
+    #expect(store.notice != nil)
   }
 
   @Test("存满了就说一声，不悄悄丢")

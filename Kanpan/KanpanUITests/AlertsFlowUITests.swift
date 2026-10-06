@@ -355,6 +355,86 @@ import XCTest
     shot("06-不碰只剩线")
   }
 
+  private func signals() -> [String] { (info()["alertSignals"] as? [String]) ?? [] }
+  private var drawingsVisible: Bool { info()["drawingsVisible"] as? Bool ?? true }
+
+  /// 分析面板「画线」一节的「隐藏画线」开关点一下，收面板。
+  private func toggleHideDrawings() {
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
+    let toggle = app.buttons["drawing.hide"].exists ? app.buttons["drawing.hide"] : app.switches["drawing.hide"]
+    XCTAssertTrue(toggle.waitForExistence(timeout: 8), "分析面板「画线」一节没有「隐藏画线」")
+    toggle.tap()
+    app.closeOpenPanel()
+  }
+
+  /// 2026-10-06：画线和提醒互不依赖。
+  /// 挂了提醒的线 → 分析 ›「隐藏画线」：线不画了，提醒还在、图上换成一条提醒线（点它开提醒总表）→
+  /// 进画线台线回来 → 在画线台里把线删了，提醒照样在、提醒线接着画 → 出画线台还是藏着的。
+  func testHidingAndDeletingLinesKeepsTheAlert() throws {
+    // ① 画一条水平线并挂上提醒。
+    XCTAssertTrue(enterDrawing(), "没能进入竖屏画线态")
+    XCTAssertTrue(try drawAndAwaitChip(at: 0.35, "隐藏画线"), "画完选中之后没有提醒胶囊：\(info())")
+    let line = try XCTUnwrap(ids().last)
+    chip.tap()
+    XCTAssertTrue(wait(seconds: 8) { self.alerted() == [line] }, "铃铛没挂上：\(info())")
+    app.buttons["draw.finish"].tap()
+    XCTAssertTrue(wait(seconds: 10) { !self.app.buttons["draw.finish"].exists }, "画线栏收不起来")
+    XCTAssertTrue(drawingsVisible)
+    XCTAssertEqual(signals(), [], "线还在、没藏，不该另画提醒线")
+
+    // ② 隐藏画线：线不画了，提醒线出来。
+    toggleHideDrawings()
+    XCTAssertTrue(wait(seconds: 8) { !self.drawingsVisible && self.signals().count == 1 },
+                  "隐藏画线之后画线还在 / 没出提醒线：\(info())")
+    XCTAssertEqual(ids(), [line], "隐藏画线把线删了")
+    shot("10-隐藏画线-只剩提醒线")
+
+    // ③ 点提醒线右端的铃铛：开提醒总表。
+    let bells = try XCTUnwrap(info()["alertSignalBells"] as? [[String: Double]], "读数里没有提醒线铃铛")
+    let bell = try XCTUnwrap(bells.first)
+    let scale = canvas.frame.height / max(1, info()["height"] as? Double ?? canvas.frame.height)
+    canvas.coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: (bell["x"] ?? 0) * scale, dy: (bell["y"] ?? 0) * scale)).tap()
+    XCTAssertTrue(alertsPage.waitForExistence(timeout: 8), "点提醒线铃铛没开出提醒总表")
+    shot("11-点提醒线开总表")
+    closeSheet()
+
+    // ④ 进画线台（横屏）：线回来，字段不动；转回竖屏画线栏把线删掉。
+    XCTAssertTrue(app.tapDrawEntry(), "分析面板里没有「开始画线」")
+    XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: 15), "没进横屏画线台")
+    XCTAssertTrue(wait(seconds: 8) { self.drawingsVisible && self.signals().isEmpty },
+                  "画线台里画线没回来：\(info())")
+    shot("12-画线台线回来")
+    app.rotateDrawingToPortraitByHand()
+    XCTAssertTrue(wait(seconds: 15) { self.inPortraitDrawing }, "没转回竖屏画线栏")
+    let delete = app.buttons["draw.delete"]
+    for _ in 0..<3 where !delete.exists {
+      try point(x: 0.5, y: 0.35).tap()
+      _ = delete.waitForExistence(timeout: 4)
+    }
+    XCTAssertTrue(delete.exists, "选不中那条线：\(info())")
+    delete.tap()
+    XCTAssertTrue(wait(seconds: 8) { self.ids().isEmpty }, "线没删掉：\(info())")
+    XCTAssertFalse(app.otherElements["alert.prompt"].exists, "删线时又问了一句")
+    XCTAssertTrue(wait(seconds: 8) { self.signals().count == 1 }, "删了线提醒线没了（提醒被带走？）：\(info())")
+    shot("13-删线后提醒线还在")
+
+    // ⑤ 出画线台：还是藏着的；提醒总表里那条还在。
+    app.buttons["draw.finish"].tap()
+    XCTAssertTrue(wait(seconds: 10) { !self.app.buttons["draw.finish"].exists }, "画线栏收不起来")
+    XCTAssertTrue(wait(seconds: 8) { !self.drawingsVisible && self.signals().count == 1 },
+                  "出画线台之后隐藏画线没接着生效：\(info())")
+    XCTAssertTrue(openAlertsPage(), "开不出提醒总表")
+    XCTAssertTrue(app.staticTexts["画线提醒 1"].waitForExistence(timeout: 5), "删了线，总表里那条画线提醒没了")
+    shot("14-删线后总表里提醒还在")
+    closeSheet()
+
+    // ⑥ 再点一下「隐藏画线」关掉：提醒线照画（线已经删了）。
+    toggleHideDrawings()
+    XCTAssertTrue(wait(seconds: 8) { self.drawingsVisible && self.signals().count == 1 },
+                  "关掉隐藏画线之后读数不对：\(info())")
+  }
+
   /// 触发即删（2026-09-25 v3）：服务端判到价 → 同步换下来一条 `status=fired` →
   /// app 报一次（通知 / 前台提示）之后就把它从存档里删掉，界面上一眼都不露。
   ///

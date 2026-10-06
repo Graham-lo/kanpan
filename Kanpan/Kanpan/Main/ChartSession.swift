@@ -246,6 +246,9 @@ final class ChartSession {
     result.paletteSeed = input.seed
     result.indicatorColors = prefs.indicatorColors
     result.percentAxis = input.comparing
+    // 「隐藏画线」只管看行情：正在画线（横屏画线台 / 竖屏画线条）或预览朋友分享的线时一律画出来，
+    // 字段本身不动，退出来照旧藏着。对比态的百分比轴上画线没有意义，仍然关。
+    if input.forcesDrawings { result.options.drawings = true }
     if input.comparing { result.options.drawings = false }
     let shown = input.comparing ? input.compareKeys : []
     let names = input.compareNames
@@ -273,6 +276,8 @@ struct ChartInput {
   var comparing: Bool
   var compareKeys: [String]
   var compareNames: [String: String]
+  /// 正在画线或预览分享的线：无视 `Prefs.drawingsHidden`，画线照画。
+  var forcesDrawings: Bool = false
 }
 
 /// 逐笔推送带出来的两件副作用：成交交给报价簿、费率存一份给预览卡。

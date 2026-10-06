@@ -433,13 +433,13 @@ import ReviewUI
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
       alerts.useStorage(alertStore, archive: nextAlerts)
-      // 提醒存档记下这份画线存档当「删之前」：这一档里第一次删线就能级联删提醒，
-      // 不用先把提醒暂停一轮、等下一次对账才删。
-      alerts.noteDrawings(drawings.storedArchive)
       inbox.activate(directory: directory, owner: user?.id, cache: nextInbox, api: account.client)
       search.useStorage(nextStorage)
       review.activate(store: nextReview, client: client)
       gate.leave(); updateStatus()
+      // 旧版本「缺线暂停」留下的画线提醒复活（2026-10-06 起画线与提醒互相独立）。
+      // 排在离开保护区之后：走 `write` → 记账同步，服务端那份才会重新开始判。
+      alerts.reviveLegacyPaused()
       // 换进来的档案里可能有还没分类的自选（访客那几只并进来的、上一次同步装进来没归类的）。
       // 目录早就到了的话 `setCatalog` 不会再跑一趟，这里补上并回写（审查 D-01）。
       symbols.classifyArrivals()
@@ -895,7 +895,8 @@ import ReviewUI
     drawingDiff.rebase(from: drawings.storedArchive, to: archive)
     drawings.publishSynced(archive)
     alerts.publishSynced(alertArchive)
-    alerts.noteDrawings(drawings.storedArchive)
+    // 别的设备（旧版本）推下来的暂停态画线提醒，离开保护区后复活并推回去（理由同上面的设置）。
+    gate.afterApplying { [weak self] in self?.alerts.reviveLegacyPaused() }
     symbols.applySynced(nextSymbols)
     if !mergedGroups.isEmpty {
       // 记账那一步的第一道门是 `!gate.isApplying`，写在保护区里一条操作都产生不了，

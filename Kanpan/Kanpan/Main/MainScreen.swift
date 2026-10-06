@@ -1021,12 +1021,17 @@ struct MainScreen: View {
   }
 
   /// 面板里的动作，竖屏 sheet 与横屏侧栏共用这一份（见 `PanelActions`）。
-  /// 以前侧栏那份是手抄的，比 sheet 少了「记一笔」「对比」两个动作（对比 2026-10-05 起在顶栏）。
+  /// 以前侧栏那份是手抄的，比 sheet 少了「记一笔」「对比」两个动作。
   private var panelActions: PanelActions {
     // 分析面板第一节「画线」：复盘回放 / 已经在画（横屏画线台的侧栏）时不排，对比期间置灰。
     let onDraw: (() -> Void)? = reviewChart.active || draw.active ? nil : { startDrawing() }
+    // 第三节「对比」（10-06 恢复，和顶栏加号并存）：开的是加号那张对比模式搜索页。
+    // 此刻不能对比——复盘回放、横屏画线台、看朋友分享的线（对比在这几处都暂退）——整节不排。
+    let onAddCompare: (() -> Void)? = reviewChart.active || draw.active || landscape || draw.previewing != nil
+      ? nil : { dismissPanel(); showComparePicker = true }
     return PanelActions(onPickInterval: pick(interval:),
-                 onShare: chartShareAction, onDraw: onDraw, drawEnabled: !comparing,
+                 onShare: chartShareAction, onAddCompare: onAddCompare, compareNames: compareNames,
+                 onDraw: onDraw, drawEnabled: !comparing,
                  onSend: chartSendAction, sendBlocked: shareSendBlocked,
                  orderFlow: market.orderFlow, symbol: market.symbol,
                  // 横屏画线台不画副图和主力订单流，那里开的「分析」只摆主图那几段（「主图˅」进来）。
@@ -1044,7 +1049,7 @@ struct MainScreen: View {
       onBack: trail.origin.map { origin in { switchTo(tab: origin) } },
       onNote: chartRecordAction.map { record in { dismissPanel(); record() } },
       onShare: headerShareAction,
-      // 对比 2026-10-05 从「分析」面板那一节搬到顶栏：加号开搜索页的对比模式。
+      // 对比 2026-10-05 搬上顶栏：加号开搜索页的对比模式；10-06 起「分析」面板那一节恢复，两处开同一页。
       // 看朋友分享的线时这张图不是「我的图」，对比本来就暂退，加号不排。
       onCompare: draw.previewing == nil ? { dismissPanel(); showComparePicker = true } : nil,
       compareActive: !compareKeys.isEmpty,
@@ -1299,6 +1304,9 @@ struct MainScreen: View {
       panelOpen: panel != nil || draw.panel != nil,
       drawingCanvasOnly: drawingCanvasOnly,
       alertedDrawingIDs: alerts.alertedDrawingIDs(symbol: market.symbol),
+      alertSignals: alerts.signals(symbol: market.symbol),
+      // 点中提醒线：开顶栏铃铛那张「提醒」表（这只品种置顶，删 / 改都在那儿）。
+      onAlertSignalTap: { _ in openAlertHub() },
       atLatest: $atLatest,
       merged: { merged(subs: $0) },
       say: { say($0) },
@@ -1511,7 +1519,8 @@ struct MainScreen: View {
   private var chartInput: ChartInput {
     ChartInput(prefs: habits.chartPrefs(prefs), seed: seed, overlays: visibleOverlays, subs: visibleSubs, subScale: subScale,
                drawingCanvasOnly: drawingCanvasOnly, comparing: comparing,
-               compareKeys: compareKeys, compareNames: compareNames)
+               compareKeys: compareKeys, compareNames: compareNames,
+               forcesDrawings: draw.active || draw.previewing != nil)
   }
 
   /// 此刻图上是不是对比态。横屏画线、复盘、看朋友分享的线时暂退，集合本身不动，回来就恢复。

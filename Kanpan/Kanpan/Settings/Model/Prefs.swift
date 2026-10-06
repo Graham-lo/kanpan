@@ -215,6 +215,14 @@ struct Prefs: Sendable, Equatable {
   /// 所以开不开都不改量程；关掉就是一整屏原始 K 线。只管画线台，竖屏和横屏看行情照常画。
   var drawingOverlaysShown: Bool = true
 
+  /// 竖屏（和横屏看行情）把画线整片藏起来——画线面板「画线」一节的「隐藏画线」开关，出厂关。
+  ///
+  /// 2026-10-06 用户：「我既想保留警报又不想看画线」。藏起来时画线、选中态、画线上的铃都不画、
+  /// 也点不中；提醒照常盯盘，它的信号线（`ChartAlertSignal`）照常画。横屏画线台永远显示画线、
+  /// 不改这个字段（`ChartInput.forcesDrawings`）。跟账号同步。全局那颗旧的 `showDrawings`
+  /// 已经退役（服务端 `RETIRED_SETTINGS_FIELDS` 里），所以换了个名字。
+  var drawingsHidden: Bool = false
+
   // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：每一趟回放按根数自己挑
   // （`ReplayPace`，整趟 20–40 秒），回放条上那颗倍速键只改这一趟，不再存。
   /// 「找相似」的搜索范围：`history`（市场历史）/ `private`（我的记录）。
@@ -291,10 +299,10 @@ struct Prefs: Sendable, Equatable {
     o.grid = skin == .classic ? .off : .on
     o.body = .solid                  // 阳线一律实心（AICoin 画法）
     o.lastLine = true                // 最新价横线 + 右轴胶囊常在
-    // 画线显隐只按品种管（画线页「更多」里的「全部隐藏」）。原来还有一个全局的
-    // `showDrawings`，和那颗按品种的开关打架——关了全局那颗，画线栏上怎么点都看不见线；
-    // 2026-09-23 撤了入口，2026-09-24 连字段带同步白名单两端一起删了。
-    o.drawings = true
+    // 画线显隐：2026-09-24 删掉的全局 `showDrawings` 和按品种的「全部隐藏」打架；
+    // 2026-10-06 起「隐藏画线」（`drawingsHidden`）回来，但只管看行情——一进画线台
+    // （或正在预览）`ChartSession` 一律强制画出来，所以不会再出现「画线栏上怎么点都看不见线」。
+    o.drawings = !drawingsHidden
     // 本根收线倒计时不画（2026-10-03：用户用不到）。图表引擎的这项能力还在，
     // 要恢复只改这一行并让心跳喂 `nowMs`，原样见 tag `before-remove-candle-countdown-2026-10-03`。
     o.countdown = false

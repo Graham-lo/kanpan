@@ -101,6 +101,8 @@ enum PrefsFieldPlan {
     // 换台手机条上还该是那几把，所以跟账号走。量很小（最多十二个键、总数过 256 就减半）。
     "drawToolUsage": .synced,
     "drawingOverlaysShown": .synced,
+    // 2026-10-06「隐藏画线」：个人的看图偏好，换台手机还该是藏着的，跟账号走。
+    "drawingsHidden": .synced,
     "reviewSearchScope": .synced,
     "alertSound": .synced,
     "watchMoveAlert": .synced,

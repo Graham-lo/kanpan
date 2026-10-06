@@ -68,7 +68,7 @@ import XCTest
       let e = app.buttons[id]
       XCTAssertGreaterThanOrEqual(e.frame.height, 42, "\(id) 命中区不到 44pt：\(e.frame)")
     }
-    // 「指标」那一行已经搬进指标页、「对比」整节 2026-10-05 起在顶栏，这一页不该再有；
+    // 「指标」那一行与「对比」整节在分析面板（「对比」另有顶栏加号），图表设置这一页不该再有；
     // 「更多设置」和它里面那些开关、「实时价格线」2026-09-28 收掉了，也不许回来。
     for id in ["chart.indicators", "compare.add", "compare.clear", "chart.more", "chart.lastLine",
                "chart.allowMainInversion", "chart.allowSubInversion", "chart.countdown", "chart.sinceChange",

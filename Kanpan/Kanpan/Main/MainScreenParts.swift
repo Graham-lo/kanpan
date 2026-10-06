@@ -317,6 +317,9 @@ struct MainChartView: View {
   let panelOpen: Bool
   let drawingCanvasOnly: Bool
   let alertedDrawingIDs: Set<String>
+  /// 提醒线：画线删了 / 藏着时替提醒指位置（复盘态不画，那张图不是行情图）。
+  var alertSignals: [ChartAlertSignal] = []
+  var onAlertSignalTap: (String) -> Void = { _ in }
   @Binding var atLatest: Bool
   let merged: ([IndicatorID]) -> [IndicatorID]
   let say: (String) -> Void
@@ -380,7 +383,9 @@ struct MainChartView: View {
         onNotice: { say($0) },
         drawing: reviewChart.active ? nil : draw,
         // 图上哪几条线挂着提醒——右端一枚小铃铛。
-        alertedDrawingIDs: alertedDrawingIDs
+        alertedDrawingIDs: alertedDrawingIDs,
+        alertSignals: reviewChart.active ? [] : alertSignals,
+        onAlertSignalTap: onAlertSignalTap
       )
       .id(reviewChart.mode.rawValue)
       // 横屏画线时复盘的区间框、目标线和「等答案」标签一律不画（§2E5）：横屏那一屏

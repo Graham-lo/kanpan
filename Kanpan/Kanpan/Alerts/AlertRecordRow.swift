@@ -304,8 +304,9 @@ enum AlertRecordText {
       }
       return parts.joined(separator: " · ")
     case .paused:
-      // 画线提醒只有「线找不到」这一种暂停（`AlertArchive.reconcile`）。
-      let label = AlertArchive.isDrawingMissing(alert) ? AlertArchive.drawingMissingNote : "已暂停"
+      // 2026-10-06 起没有任何路径再产出暂停态（缺线不再暂停，旧档载入时复活，见
+      // `AlertArchive.revivePaused`）；这里只给复活之前那一瞬间兜个字。
+      let label = "已暂停"
       return conditionInline ? label + " · " + conditionText(alert) : label
     case .active:
       if alert.isSpent(at: now) { return spentNote }

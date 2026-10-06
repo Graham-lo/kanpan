@@ -213,6 +213,24 @@ struct PrefsFieldPlanTests {
     #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).drawingOverlaysShown)
   }
 
+  /// 「隐藏画线」（2026-10-06）：跟着人走、出厂关；开着时喂给图的那包开关不画画线
+  /// （画线台里由 `ChartSession` 强制画出来，那一半在 UI 用例里验）。老存档没有这个键时按出厂。
+  @Test("隐藏画线跟着人走，开着时图上不画画线")
+  func drawingsHiddenIsSyncedAndTurnsDrawingsOff() {
+    #expect(PrefsFieldPlan.table["drawingsHidden"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("drawingsHidden"))
+    var prefs = Prefs.defaults
+    #expect(prefs.drawingsHidden == false)
+    #expect(prefs.chartOptions.drawings)
+    prefs.drawingsHidden = true
+    #expect(prefs.chartOptions.drawings == false)
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).drawingsHidden)
+    prefs.drawingsHidden = false
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).drawingsHidden == false)
+    // 键缺失（老存档 / 老客户端写的云端 body）：按出厂，不藏。
+    #expect(PrefsCodec.decode(Data("{}".utf8)).drawingsHidden == false)
+  }
+
   /// **「线路」这一摊整个留在这台设备上——直连 / 网关那两档也不再跟着人走。**
   ///
   /// 这条钉的是 2026-09-19 按 GPT Pro 第二轮审查 B7 定下的决定。在那之前 `routePolicy`

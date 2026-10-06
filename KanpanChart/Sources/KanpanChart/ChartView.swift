@@ -245,6 +245,11 @@ public final class ChartView: UIView {
           "drawingHidden": s.drawings.map { $0.hidden },
           // 哪几条线右端挂着铃铛（提醒）。图自己只认 id，用例也只问这一件事。
           "drawingAlerted": s.drawings.filter { drawing.alerted.contains($0.id) }.map { $0.id },
+          // 此刻画出来的提醒线（提醒 id）与它们铃铛的位置（视图坐标）。
+          "alertSignals": shownAlertSignals.map(\.id),
+          "alertSignalBells": drawAxes.map { axes in
+            shownAlertSignals.compactMap { alertSignalBell($0, axes: axes) }.map { ["x": $0.x, "y": $0.y] }
+          } ?? [],
           "maColor0": renderer?.indicatorColor(.ma, 0).value ?? "",
           "emaColor0": renderer?.indicatorColor(.ema, 0).value ?? "",
           "drawingCommits": drawing.commits,

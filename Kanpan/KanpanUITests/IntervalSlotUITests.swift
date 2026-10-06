@@ -449,11 +449,12 @@ final class IntervalSlotUITests: KanpanUICase {
     let header = app.staticTexts["panel.header"]
     XCTAssertTrue(header.exists && header.label == "分析", "面板标题不是「分析」：\(header.label)")
     XCTAssertFalse(app.buttons[Ids.chartPanelMarker].exists, "开出来的是图表设置，不是分析面板")
-    // 2026-09-28：画线在最上面。2026-10-05 起分三节（画线 · 指标 · 主力订单流），「对比」搬上顶栏。
+    // 2026-09-28：分析面板分四节（画线 · 指标 · 对比 · 主力订单流），画线在最上面。
+    // 10-05 曾把「对比」撤到顶栏加号，10-06 用户要求两处并存，这一节恢复。
     let draw = app.buttons[Ids.indicatorDraw]
     XCTAssertTrue(draw.exists, "分析面板里没有「画线」一节")
     XCTAssertLessThan(draw.frame.maxY, marker.frame.minY, "「画线」不在指标之上")
-    XCTAssertFalse(app.descendants(matching: .any)["compare.add"].firstMatch.exists, "分析面板里还有「对比」一节（应在顶栏）")
+    XCTAssertTrue(app.descendants(matching: .any)["compare.add"].firstMatch.exists, "分析面板里没有「对比」一节")
     shot("30-周期条分析-开出分析面板")
 
     // 左上角那颗：关面板，不退回「图表设置」。

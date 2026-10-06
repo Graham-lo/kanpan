@@ -104,6 +104,31 @@ final class DrawingSession {
   var commits = 0
   /// 哪几条线上挂着提醒。图上只拿它画那枚小铃铛，别的一概不管。
   var alerted: Set<String> = []
+  /// 提醒线：线没了 / 没画出来时，替提醒在图上指出位置（`ChartView.alertSignals`）。
+  var signals: [ChartAlertSignal] = []
+  /// 点中一条提醒线（或它的铃铛）。外面拿提醒 id 去开那条提醒。
+  var onSignalTap: ((String) -> Void)?
+}
+
+/// 一条「提醒线」（2026-10-06）。
+///
+/// 画线与提醒互相独立之后，提醒所挂的那条画线可能已经删掉了，或者此刻没画出来（「隐藏画线」
+/// 开着、那条线自己隐藏了、对比态把画线整层收了）。提醒照常生效，图上就得有个记号告诉人
+/// 「这儿还有一条会响的线」：用提醒**自己存下来的那份几何**（`Alert.lines`，和会响的那条是
+/// 同一份）画一条细虚线，右端挂同一枚小铃铛。画线在、而且画出来了，就不画它——铃铛照旧挂在
+/// 画线上（`alertedDrawingIDs`）。
+///
+/// 图这一侧只认 id 与几何：条件、状态、谁建的都不是图该知道的事。
+public struct ChartAlertSignal: Sendable, Equatable {
+  /// 提醒 id。点中时原样交出去。
+  public var id: String
+  /// 它挂的那条画线（裸价格提醒没有）。这条线此刻画在图上时，提醒线不画。
+  public var drawingID: String?
+  public var lines: [AlertLine]
+
+  public init(id: String, drawingID: String?, lines: [AlertLine]) {
+    self.id = id; self.drawingID = drawingID; self.lines = lines
+  }
 }
 
 /// 画线这一层要外面「给个反应」的几个时刻。震不震、怎么震是 app 的事（审查 23.2：
@@ -402,6 +427,90 @@ extension ChartView {
   public var alertedDrawingIDs: Set<String> {
     get { drawing.alerted }
     set { guard drawing.alerted != newValue else { return }; drawing.alerted = newValue; refreshDrawingOverlay() }
+  }
+
+  /// 提醒线（见 `ChartAlertSignal`）。外面把这只品种上还在生效的画线提醒整份扔进来，
+  /// 哪几条要画由图自己按「那条画线此刻画没画出来」定。
+  public var alertSignals: [ChartAlertSignal] {
+    get { drawing.signals }
+    set { guard drawing.signals != newValue else { return }; drawing.signals = newValue; refreshDrawingOverlay() }
+  }
+
+  /// 点中一条提醒线或它的铃铛（不在画线态也认：它不是画线，点它不会进画线台）。
+  public var onAlertSignalTap: ((String) -> Void)? {
+    get { drawing.onSignalTap }
+    set { drawing.onSignalTap = newValue }
+  }
+
+  /// 此刻真画在图上的那几条提醒线：画线整层收着（隐藏画线 / 对比态）就全画；
+  /// 否则只画「挂的那条线不在、或者那条线自己隐藏了」的。百分比轴（对比态）上价格坐标不成立，不画。
+  var shownAlertSignals: [ChartAlertSignal] {
+    guard let s = state, !s.percentAxis, let d = drawingSessionIfLoaded, !d.signals.isEmpty else { return [] }
+    guard s.options.drawings else { return d.signals }
+    let visible = Set(s.drawings.lazy.filter { !$0.hidden }.map(\.id))
+    return d.signals.filter { signal in signal.drawingID.map { !visible.contains($0) } ?? true }
+  }
+
+  /// 一条提醒线在图区里的折线（按 6pt 采样：对数轴上直线不再是直线，时间轴也未必等距）。
+  func alertSignalPath(_ line: AlertLine, axes: DrawAxes) -> [CGPoint] {
+    let ts = line.points.map(\.t)
+    guard let lo = ts.min(), let hi = ts.max() else { return [] }
+    let right = axes.layout.plotW
+    let x0 = line.extendLeft ? 0 : max(0, axes.x(lo))
+    let x1 = line.extendRight ? right : min(right, axes.x(hi))
+    guard x0.isFinite, x1.isFinite, x1 >= x0 else { return [] }
+    var out: [CGPoint] = []
+    var x = x0
+    while true {
+      if let p = line.price(at: axes.t(atX: x)), p.isFinite {
+        let y = axes.y(p)
+        if y.isFinite { out.append(CGPoint(x: x, y: y)) }
+      }
+      if x >= x1 { break }
+      x = min(x1, x + 6)
+    }
+    return out
+  }
+
+  /// 提醒线右端那枚铃铛的位置：两端无限延的贴图区右边，有头有尾的停在最后一个点上（和画线铃铛同一个规矩）。
+  func alertSignalBell(_ signal: ChartAlertSignal, axes: DrawAxes) -> CGPoint? {
+    guard let line = signal.lines.first else { return nil }
+    let right = axes.layout.plotW
+    let last = line.points.map(\.t).max() ?? 0
+    let x = line.extendRight ? right - 10 : min(axes.x(last), right - 10)
+    guard x.isFinite, x > 2, let p = line.price(at: axes.t(atX: x)), p.isFinite else { return nil }
+    let y = axes.y(p)
+    guard y.isFinite, y > axes.pane.y, y < axes.pane.y + axes.pane.h else { return nil }
+    return CGPoint(x: x, y: y)
+  }
+
+  /// 点在哪条提醒线上（铃铛 22pt、线体 12pt 的手指靶）。
+  func alertSignalHit(_ q: CGPoint, axes: DrawAxes) -> String? {
+    var best: (id: String, distance: Double)?
+    for signal in shownAlertSignals.reversed() {
+      var nearest = Double.infinity
+      if let bell = alertSignalBell(signal, axes: axes) {
+        let d = hypot(Double(bell.x - q.x), Double(bell.y - q.y))
+        if d <= ChartGesture.selectedHandlePt { nearest = d }
+      }
+      for line in signal.lines {
+        let path = alertSignalPath(line, axes: axes)
+        for i in path.indices.dropFirst() {
+          let d = segmentDistance(q, path[i - 1], path[i])
+          if d <= 12 { nearest = min(nearest, d) }
+        }
+      }
+      if nearest.isFinite, best.map({ nearest < $0.distance }) ?? true { best = (signal.id, nearest) }
+    }
+    return best?.id
+  }
+
+  private func segmentDistance(_ q: CGPoint, _ a: CGPoint, _ b: CGPoint) -> Double {
+    let dx = Double(b.x - a.x), dy = Double(b.y - a.y)
+    let len2 = dx * dx + dy * dy
+    guard len2 > 0 else { return hypot(Double(q.x - a.x), Double(q.y - a.y)) }
+    let t = max(0, min(1, (Double(q.x - a.x) * dx + Double(q.y - a.y) * dy) / len2))
+    return hypot(Double(q.x - a.x) - t * dx, Double(q.y - a.y) - t * dy)
   }
 
   public var drawingStyles: [String: DrawingStyle] {
@@ -1043,6 +1152,14 @@ extension ChartView {
       // 不在画线态时点一下**只能取消**已有的高亮（深链从提醒指过来的那条得有办法收掉），
       // 命中一律不认——认了就等于替用户按下「进画线台」。
       let hit = d.editable ? drawHitTest(q, axes: axes) : nil
+      // 点中一条提醒线（画线删了 / 藏着时替提醒指位置的那条）：交给外面开那条提醒。
+      // 画线在上面，点中画线优先；不在画线态也认——它不是画线，点它不会进画线台。
+      if hit == nil, d.tool == nil, let tap = d.onSignalTap, let signal = alertSignalHit(q, axes: axes) {
+        consumeTap()
+        touchesEnded(touches, with: event)
+        tap(signal)
+        return
+      }
       // 取消选中要给双击复位让路——原型里双击那一支也排在选中之前。
       if hit != nil || d.selected != nil {
         consumeTap()
@@ -1340,6 +1457,8 @@ final class DrawingOverlayView: UIView {
       ctx.restoreGState()
     }
     let t = s.colors
+    // 提醒线排在画线开关之前：「隐藏画线」收的是画线，提醒照常生效、记号照常在。
+    alertSignals(ctx, host: host, axes: axes, colors: t)
     guard s.options.drawings else { return }
     ctx.saveGState()
     defer { ctx.restoreGState() }
@@ -1416,6 +1535,32 @@ final class DrawingOverlayView: UIView {
       let y = axes.y(p)
       guard y.isFinite, y > axes.pane.y, y < axes.pane.y + axes.pane.h else { continue }
       bell(ctx, at: CGPoint(x: x, y: y), color: item.color ?? t.ink)
+    }
+  }
+
+  /// 提醒线：细虚线（1pt，4/3 的点划）+ 右端一枚铃铛，皮肤的强调色（和手柄同一个 `amber`）。
+  /// 只画 `shownAlertSignals` 那几条（挂的画线此刻画在图上的不画，铃铛由画线那边挂）。
+  private func alertSignals(_ ctx: CGContext, host: ChartView, axes: DrawAxes, colors t: ChartColors) {
+    let shown = host.shownAlertSignals
+    guard !shown.isEmpty else { return }
+    ctx.saveGState()
+    defer { ctx.restoreGState() }
+    ctx.clip(to: CGRect(x: 0, y: axes.pane.y, width: axes.layout.plotW, height: axes.pane.h))
+    ctx.setStrokeColor(Paint.cg(t.amber))
+    ctx.setLineWidth(1)
+    ctx.setLineDash(phase: 0, lengths: [4, 3])
+    for signal in shown {
+      for line in signal.lines {
+        let path = host.alertSignalPath(line, axes: axes)
+        guard path.count >= 2 else { continue }
+        ctx.beginPath()
+        ctx.addLines(between: path)
+        ctx.strokePath()
+      }
+    }
+    ctx.setLineDash(phase: 0, lengths: [])
+    for signal in shown {
+      if let at = host.alertSignalBell(signal, axes: axes) { bell(ctx, at: at, color: t.amber) }
     }
   }
 

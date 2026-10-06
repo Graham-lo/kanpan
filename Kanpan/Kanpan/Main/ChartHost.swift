@@ -524,6 +524,10 @@ struct ChartHost: UIViewRepresentable {
   var onDrawingCommitted: (Drawing, String) -> Void = { _, _ in }
   /// 哪几条线上挂着提醒。图照它在线的右端点一枚小铃铛。
   var alertedDrawingIDs: Set<String> = []
+  /// 提醒线（`ChartAlertSignal`）：这只品种上还在生效的画线提醒。画线删了 / 藏着时，
+  /// 图照它画一条虚线 + 铃铛；点中交出提醒 id。
+  var alertSignals: [ChartAlertSignal] = []
+  var onAlertSignalTap: (String) -> Void = { _ in }
 
   func makeUIView(context: Context) -> ChartBox {
     let box = ChartBox(frame: .zero)
@@ -772,6 +776,8 @@ struct ChartHost: UIViewRepresentable {
     box.chart.onTapped = onTapped
     box.chart.onNotice = onNotice
     box.chart.alertedDrawingIDs = alertedDrawingIDs
+    box.chart.alertSignals = alertSignals
+    box.chart.onAlertSignalTap = onAlertSignalTap
     let onDrawingCommitted = self.onDrawingCommitted
     box.chart.onDrawingCommitted = { [weak box] item in
       guard let symbol = box?.chart.state?.series.symbol, !symbol.isEmpty else { return }

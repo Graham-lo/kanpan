@@ -159,6 +159,7 @@ extension Prefs: Codable {
     case lastDrawTool
     case drawToolUsage
     case drawingOverlaysShown
+    case drawingsHidden
     // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：老存档里的键读时忽略，服务端退役。
     case reviewSearchScope
     case alertSound
@@ -203,6 +204,7 @@ extension Prefs: Codable {
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
     try c.encode(drawToolUsage, forKey: .drawToolUsage)
     try c.encode(drawingOverlaysShown, forKey: .drawingOverlaysShown)
+    try c.encode(drawingsHidden, forKey: .drawingsHidden)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
@@ -359,6 +361,7 @@ extension Prefs: Codable {
     // 再被推上去整条拒收。
     if let raw = str(.lastDrawTool) { lastDrawTool = raw.isEmpty || Drawing.Kind(rawValue: raw) != nil ? raw : "" }
     if let v = bool(.drawingOverlaysShown) { drawingOverlaysShown = v }
+    if let v = bool(.drawingsHidden) { drawingsHidden = v }
     // 画线工具次数：和服务端值规则对齐——键只认 `Drawing.Kind`，值只认 0…100000 的整数，
     // 最多十二个键。一项一项读，一个坏值不拖垮整张表（读不成整数的那一项丢掉）。
     if let raw = try? c.nestedContainer(keyedBy: PrefsUsageKey.self, forKey: .drawToolUsage) {
