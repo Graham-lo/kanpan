@@ -1083,6 +1083,17 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   vitest 130 文件 1687 条全过（新增 `m-landscape-bench`）；线上 Playwright 走查截图 `m-land-*.png`。
 - **验证**：干净工作树 vitest 129 文件 1665 条全过；部署 22:09–22:11 CST，PC `assets/index-CXUg2iM3.js`、手机 `assets/m-D9FgX1hU.js`；
   线上 Playwright 走查与截图 `docs/acceptance/网页版对齐-2026-10-05/`（summary.txt）。服务端无改动。
+- **10-06 对比两处入口并存**（`eb58bce5`）：手机「分析」面板恢复「对比」一节（添加 / 移除 / 清除，照 iOS `IndicatorPage.compareSection`），
+  与顶栏「对比＋」开同一张对比模式搜索页、共用 `compareSymbols`；复盘回放、横屏画线台、看朋友分享的线时整节不排（`m-analysis-compare`）。
+- **10-06 画线与提醒互相独立**（`c6d622f2`，部署 11:20–11:21 CST，PC `assets/index-D_hV3cvU.js`、手机 `assets/m-pRz9_jUS.js`）：用户
+  「画线和警报是不冲突的，我删除画线也不应该删除警报才对」。线删了 / 几何算不出 → 提醒照常生效、按自己存的 `lines` 判，不暂停不删不问；
+  线挪了 → 几何重算、`armedAt` 重置；旧版「缺线暂停」的画线提醒载入即复活（`migrateAlert`、两端同步解码）；同步编解码去掉「没见过的画线就丢提醒」。
+  提醒只剩两种删法：用户自己删（提醒表 / 画线铃铛）、触发即删。图上「提醒线」：线不在、被单条隐藏或整层隐藏时，按提醒自己的几何画
+  琥珀 / 提醒色虚线 + 右端铃铛（手机 `view.drawing` `shownAlertSignals` / `paintSignals`，竖屏点中开提醒表；电脑 `TVChart.signalsShown` /
+  `drawAlertSignals`）；对比 / 百分比轴不画。用例 `alerts-independent-of-drawings`、`m-chart-drawing`「提醒线」等。
+- **10-06「隐藏画线」**（`47fb5b01`）：同步字段 `drawingsHidden`（出厂 false；服务端白名单与契约由 iOS 那条线先上线）。手机「分析」面板
+  「画线」节一行开关，藏着时竖屏不画、点不中画线，提醒照判、改画提醒线；横屏画线台一律显示，看朋友分享的线时自己的线照画（`drawingsOn()`）。
+  电脑 = 画线工具条的眼睛 / ⌘⌥H（`st.drawHidden` ↔ `drawingsHidden`，本机与同步共用 `applyDrawingsHidden`）。用例 `drawings-hidden`。
 
 ## 41. 10-05 回归压测（iOS，2026-10-05 ~ 10-06，接 §38 / §40）
 
