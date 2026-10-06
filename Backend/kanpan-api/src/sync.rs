@@ -177,6 +177,9 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "drawToolUsage",
  // 横屏自己记的根间距（2026-10-05，pt，1.6…40，同 barSpacing）：横屏图宽是竖屏两倍多，两边各记一份。
  "landscapeBarSpacing",
+ // 画线面板「隐藏画线」（2026-10-06，布尔）：看行情时把画线整片藏起来，提醒照常。
+ // 不复用已退役的 `showDrawings`（RETIRED_SETTINGS_FIELDS 里，老客户端写的是另一种语义）。
+ "drawingsHidden",
 ];
 /// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
 ///
