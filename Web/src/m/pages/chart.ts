@@ -171,7 +171,10 @@ export function initChart(root: HTMLElement): PageHandle {
   // 引擎心跳（每秒按视野补外部数据、覆盖层重算）只在页面露着时跑：壳是在后台把各页先建出来的，
   // 建的时候行情页多半没露着，先停；show / hide 里 resume / pause，跟订单流口一样
   if (!shown) chart.pause()
-  chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight })
+  // 「隐藏画线」（st.drawingsHidden）：竖屏看行情时整层画线不画、点不中，提醒照判、图上改画提醒线；
+  // 横屏画线台由引擎一律画出来（compose），看朋友分享的线时自己的线也照画（照 iOS ChartInput.forcesDrawings）
+  const drawingsOn = (): boolean => !st.drawingsHidden || !!preview?.previewing()
+  chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight, drawings: drawingsOn() })
   // 取不到行情（下架 / 不认得的品种、断网时换品种或周期）：引擎换的时候只在取数那一拍留着上一张图（不闪空图），
   // 出错或取到零根就撤图；这层底色盖住空图区写一句取不到，取到了就撤掉（图上仍是别的品种 / 周期时也兜底盖住）
   const empty = el('div', 'cp-nodata')
@@ -286,6 +289,8 @@ export function initChart(root: HTMLElement): PageHandle {
 
   // ---- st → 图
   let lookKey = '', indKey = '', extraKey = JSON.stringify([st.compareSymbols, false])
+  const lookKeyOf = (pm: PriceMode): string =>
+    JSON.stringify([st.indicatorColors, st.subInverted, st.subHeightOverrides, st.mainInverted, pm, st.candleKind, st.portraitHeight, drawingsOn()])
   function syncChart(): void {
     preview?.symbolChanged()
     if (chart.symbol !== sym()) { card.set(null, '', 2); chart.setSymbol(sym()); pushStreams(); bench.refreshAlerts() }
@@ -302,11 +307,11 @@ export function initChart(root: HTMLElement): PageHandle {
     }
     chart.setLandscapeOverlays(st.drawingOverlaysShown)
     const pm = effectivePriceMode(sym())
-    const lk = JSON.stringify([st.indicatorColors, st.subInverted, st.subHeightOverrides, st.mainInverted, pm, st.candleKind, st.portraitHeight])
+    const lk = lookKeyOf(pm)
     if (lk !== lookKey) {
       lookKey = lk
       chart.setLook({ indicatorColors: colorTable(st.indicatorColors), subInverted: [...st.subInverted] as IndicatorId[], subScale: { ...st.subHeightOverrides } })
-      chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight, priceMode: pm, mainInverted: st.mainInverted })
+      chart.setCandleStyle({ kind: st.candleKind, portraitHeight: st.portraitHeight, priceMode: pm, mainInverted: st.mainInverted, drawings: drawingsOn() })
     }
     // 对比、盘口（图表设置里的开关）。盘口是一条单独的 depth5 小连接，页面藏着时关掉，回来再按偏好开
     const depthOn = st.depth && shown && !isMacroSym(sym())
@@ -320,7 +325,7 @@ export function initChart(root: HTMLElement): PageHandle {
     render()
   }
   indKey = ((i) => JSON.stringify([i.overlays, i.subs, st.params, st.orderFlow && i.orderFlow]))(shownInd())
-  lookKey = JSON.stringify([st.indicatorColors, st.subInverted, st.subHeightOverrides, st.mainInverted, effectivePriceMode(sym()), st.candleKind, st.portraitHeight])
+  lookKey = lookKeyOf(effectivePriceMode(sym()))
 
   // ---- 头部与各条的刷新（行情推送经 rAF 合并）
   let raf = 0

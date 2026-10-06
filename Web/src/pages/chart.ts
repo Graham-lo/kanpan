@@ -435,10 +435,17 @@ function redo(): void { const u = redoStack.pop(); if (!u) return; restoreSnap(u
 
 function toggleHideDrawings(): void {
   st.drawHidden = !st.drawHidden
+  applyDrawingsHidden()
+  save()
+  toast(st.drawHidden ? '画线已隐藏' : '画线已显示', '⌘ ⌥ H 切换', st.drawHidden ? 'eyeOff' : 'eye', 1500)
+}
+
+/** st.drawHidden → 各图格与画线工具条（本机切换、手机 / 别的电脑同步过来的 drawingsHidden 共用）。
+ *  藏着时画线不画、点不中，提醒照判、图上改画提醒线（TVChart.signalsShown） */
+export function applyDrawingsHidden(): void {
   cells.forEach(c => { c.chart.drawingsHidden = st.drawHidden; c.chart.dirty = true })
   if (st.drawHidden) hideQuick()
-  save(); renderDrawbar()
-  toast(st.drawHidden ? '画线已隐藏' : '画线已显示', '⌘ ⌥ H 切换', st.drawHidden ? 'eyeOff' : 'eye', 1500)
+  renderDrawbar()
 }
 
 // ---- 批量删除：这只品种的全部画线 / 全部指标 / 全部，菜单上是实时的数量，⌘Z 能撤回来

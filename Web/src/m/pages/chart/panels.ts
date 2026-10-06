@@ -1,6 +1,6 @@
 /* 手机网页版 · 行情页的几张面板（照 iOS Panels/IndicatorPanel.swift、ChartPanel.swift、OrderFlow/OrderFlowEditor.swift）
  *
- * - 分析（周期条行尾「分析」）：画线 · 指标（在用 / 主图叠加 / 副图）· 对比 · 主力订单流 · 恢复这一组的默认。
+ * - 分析（周期条行尾「分析」）：画线（开始画线 · 隐藏画线）· 指标（在用 / 主图叠加 / 副图）· 对比 · 主力订单流 · 恢复这一组的默认。
  *   对比 10-05 搬到顶栏 ＋ 之后，10-06 用户要求两处并存（「分析里的对比要留」，照 iOS IndicatorPage.compareSection）：
  *   这一节的「添加对比」开的就是顶栏 ＋ 那张对比模式搜索页（pages/search.ts），共用同一份 compareSymbols；
  *   此刻不能对比（复盘回放、横屏画线台、看朋友分享的线）时整节不排。
@@ -119,6 +119,7 @@ export function openAnalysis(ctx: PanelContext): Sheet {
       const id = arg as IndicatorId
       switch (act) {
         case 'draw': sheet.close(); ctx.onDraw(); break
+        case 'draw-hide': st.drawingsHidden = !st.drawingsHidden; save(); break
         case 'edit': openIndicatorEditor(id); break
         case 'height': delete st.subHeightOverrides[id]; save(); break
         case 'ov': st.overlays = toggleOverlay(st.overlays, id); save(); break
@@ -216,7 +217,10 @@ function mainOnlyHTML(): string {
 export function analysisHTML(ctx: PanelContext): string {
   const out: string[] = []
   out.push(gt('画线'))
-  out.push(`<div class="cp-group"><button type="button" class="cp-row cp-tap" data-act="draw"><span class="cp-rn">开始画线</span><span class="cp-drawglyph">${glyph('draw', 24)}</span></button></div>`)
+  // 「隐藏画线」（iOS IndicatorPage 画线节同一行，跟账号同步）：竖屏看行情时线全收起来，提醒照判、图上改画提醒线；
+  // 横屏画线台一律显示，不受它管
+  out.push(`<div class="cp-group"><button type="button" class="cp-row cp-tap" data-act="draw"><span class="cp-rn">开始画线</span><span class="cp-drawglyph">${glyph('draw', 24)}</span></button>`
+    + `<div class="cp-row"><span class="cp-rn">隐藏画线</span>${sw(st.drawingsHidden, 'draw-hide', '隐藏画线')}</div></div>`)
 
   const overlays = st.overlays.filter(x => x !== 'ORDERFLOW')
   const inUse = overlays.length > 0 || st.subs.length > 0

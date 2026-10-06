@@ -12,7 +12,7 @@ import { hooks } from '../app/shell'
 import { S } from '../market'
 import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
-import { allCells, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
+import { allCells, applyDrawingsHidden, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
 import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, fingerprint, mergeFirst, restoreDrawings } from './bridge'
 import { refreshCompare } from '../pages/compare'
@@ -63,6 +63,8 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       })
       // 对比品种（手机 / 别的电脑改了）：每格按自己的主图重配对比
       if (r.settings.includes('compareSymbols')) refreshCompare()
+      // 隐藏画线（手机分析面板那颗开关 / 别的电脑的眼睛）：各格跟着收起或放出画线
+      if (r.settings.includes('drawingsHidden')) applyDrawingsHidden()
       renderToolbar()
     }
     if (r.drawings.size) { r.drawings.forEach(rebaseDrawings); allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) }) }

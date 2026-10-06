@@ -18,7 +18,7 @@ import {
 import type { Owned, SyncStore } from './store'
 import { type SyncObject, keyOf, same } from './types'
 
-export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols'>>
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden'>>
 export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
 export type Prints = Partial<Record<Part, string>>
 
@@ -32,7 +32,7 @@ export const OWNED: Owned = {
 
 export function fingerprint(s: WebState): Record<Part, string> {
   return {
-    settings: JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.compareSymbols ?? []]),
+    settings: JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.compareSymbols ?? [], s.drawHidden === true]),
     favorites: JSON.stringify(s.watch),
     drawings: JSON.stringify(s.drawings),
     alerts: JSON.stringify(s.alerts),

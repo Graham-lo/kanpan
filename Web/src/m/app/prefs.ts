@@ -104,12 +104,15 @@ export interface Prefs {
   drawToolUsage: Record<string, number>
   /** iOS 横屏画线台里主图指标画不画（手机网页没有画线台，只随账号带着走、不丢） */
   drawingOverlaysShown: boolean
+  /** 竖屏「隐藏画线」（与 iOS `Prefs.drawingsHidden` 同义，出厂 false）：开着时竖屏图上不画、点不中任何画线，
+   *  提醒照常判、图上改画提醒线；横屏画线台不管它、一律显示 */
+  drawingsHidden: boolean
   reviewSearchScope: ReviewSearchScope
 }
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
-  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'favoritesGroup', 'habitLearning',
+  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'habitLearning',
   'indicatorColors', 'indicatorLayouts', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
   'notifyListingChanges', 'orderFlow', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
@@ -132,7 +135,7 @@ export function defaultPrefs(): Prefs {
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
     params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
     favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, reviewSearchScope: 'history',
-    drawingOverlaysShown: true,
+    drawingOverlaysShown: true, drawingsHidden: false,
   }
 }
 
@@ -404,6 +407,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     lastDrawTool: typeof r.lastDrawTool === 'string' ? r.lastDrawTool : d.lastDrawTool,
     drawToolUsage: cleanDrawToolUsage(r.drawToolUsage),
     drawingOverlaysShown: bool(r.drawingOverlaysShown, d.drawingOverlaysShown),
+    drawingsHidden: bool(r.drawingsHidden, d.drawingsHidden),
     reviewSearchScope: oneOf(r.reviewSearchScope, ['history', 'private'] as const, d.reviewSearchScope),
   }
   // 老档的分叉记忆：顶层本来就是当前周期所在组那份，以它为准收成一份
