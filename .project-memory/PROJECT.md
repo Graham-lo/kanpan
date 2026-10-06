@@ -1083,3 +1083,26 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   vitest 130 文件 1687 条全过（新增 `m-landscape-bench`）；线上 Playwright 走查截图 `m-land-*.png`。
 - **验证**：干净工作树 vitest 129 文件 1665 条全过；部署 22:09–22:11 CST，PC `assets/index-CXUg2iM3.js`、手机 `assets/m-D9FgX1hU.js`；
   线上 Playwright 走查与截图 `docs/acceptance/网页版对齐-2026-10-05/`（summary.txt）。服务端无改动。
+
+## 41. 10-05 回归压测（iOS，2026-10-05 ~ 10-06，接 §38 / §40）
+
+- **范围**：10-05 一批新功能，包括美元指数当品种、对比＋（最多三只）、铃铛「提醒」表（列表 | 日志）、画线条按频率排（竖屏 4 格、横屏 5 格）、横屏画线台（默认画主图指标、眼睛开关、「主图˅」）、横竖屏根宽与价格轴倍率分开记、捏合手感。
+  压测用例在 `Kanpan/KanpanUITests/StressRegression1005UITests.swift`（`e1f16b45`）。验收记录与截图在 `docs/acceptance/回归压测-2026-10-05/`（summary.md、ui-数据.txt、16Pro-* / 17ProMax-*，`2fd9a3c4`）。
+- **套件**：单测全过。core 499、presentation 17、network 244、data 267、account 156、app-logic 788+5、main-ios 163、chart 245+15、exchange 51、review 21+31，symbols 211。
+  全量 UI（Debug）：16 Pro 270 过 3 挂，三条都是用例过时或抢时序；17 Pro Max 272 过 1 挂，那一条是真 bug。两边都从根上修了，挂的用例重跑全过。
+- **修复**（都从根因改）：
+  - `5c0c7691`：启动后第一次进画线主线程卡 200–570 ms。画线工具记号与长按小卡的迷你 K 线改成单个 `Shape`。
+  - `9c1026c1`：对比搜索页每行价格一直是「—」。原因是 `listVisible` 漏了 `showComparePicker`。
+  - `64a8ff07`：空自选时右上两颗圆片挤到屏幕正中。原因是空分类条用的 `EmptyView`，改成 `Color.clear`。
+  - `465a8499`：品种目录没到时有一只被交易所拒掉，`SymbolPickerModel.markDelisted` 把「空目录 + 占位行」当成了目录，自选全被归进「贵金属」。改成目录为空时不写。
+  - `0ff179b7`：三条过时用例（AICoinBase 改比 `landStored`、ReleaseBackdoor 等跳转、Walkthrough 自选等「加密」胶囊）。
+  - `d342e30f`：Release 下压测用例嵌套函数里的 XCTAssert autoclosure 报数据竞争，整个 UI 测试包编不过。
+- **数字**：
+  - 周期狂切与换品种都是 0 卡顿，→BTC 与 →DXY 的 p50 约 372–385 ms。
+  - 断网时切回刚看过的周期 389 ms 出图，网回来后 1d 24–28 ms 自愈。
+  - 横屏捏合：根宽 4 → 9.33 → 4.67，价格轴 1 → 3.05，横竖屏各记一份。
+  - 对比三只甩动（Release，17 Pro Max）：竖屏超 8 ms 帧 4.9%，横屏 MA + BOLL 1.9%（Debug 是 45.5% / 21.3%，不作数）。
+  - 热路径帧（Release，17 Pro Max）：183 / 3405 = 5.4%，上一轮 5.9%，门 12%。
+  - 没有崩溃报告，RSS 稳定在 430–485 MB。
+- **不算 bug 的**：DXY 休市段照实留空（与网页 §40 一致）；SETTLING 品种显示「—」；横屏和画线时对比线暂时收起；画线条下一次进画线才重排。
+- **真机**：两台 iPhone 在 devicectl 里都是 unavailable，`make install-release` 跳过，真机包没装。
