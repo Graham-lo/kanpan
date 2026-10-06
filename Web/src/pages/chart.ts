@@ -20,7 +20,7 @@ import { applyPageSizes, placePageSplits, applyGrid, placeGridSplits } from './c
 import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick, isCollapsed } from '../orderflow'
 import { deleteAlert } from '../alerts/model'
 import { alertDesc } from '../alerts/panel'
-import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel } from '../alerts/model'
+import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel, drawingIdOf } from '../alerts/model'
 import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, streamIvOf, startSeconds, onSecondsTick, secondBars, secondLastBar, customKlines, customTick, customBase } from '../chart/intervals'
 import { VPVR_MODES } from '../chart/overlays'
 import { keyLevelsShown, keyLevelsOf, levelsForInterval } from '../chart/keyLevels'
@@ -33,7 +33,7 @@ import { installWatch, widgetWatch, mountWatch, watchClick, patchWatchRow, takeW
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
-import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine } from '../chart/chart'
+import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine, type AlertSignal } from '../chart/chart'
 import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd } from './drawing'
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
@@ -81,6 +81,13 @@ function metaFor(c: CellCfg) {
 /** 图上画的提醒线：这只品种还在等的价格提醒（画线提醒由画线本身表示） */
 function priceAlerts(symbol: string): AlertLine[] {
   return activeAlerts(symbol).filter(a => a.kind === 'price').flatMap(a => { const p = alertLevel(a); return p == null ? [] : [{ price: p, id: a.id, symbol: a.symbol, kind: a.kind, created: a.created }] })
+}
+/** 图上的提醒线：这只品种还在生效的画线提醒（几何用提醒自己存的那份）。线在、画出来了图就不画，
+ *  线删了 / 画线整层藏着才画（2026-10-06：画线和提醒互相独立） */
+function lineSignals(symbol: string): AlertSignal[] {
+  const pre = drawingIdOf(symbol, '')
+  return activeAlerts(symbol).filter(a => a.kind === 'drawing' && a.lines.length > 0)
+    .map(a => ({ id: a.id, drawingID: a.drawingID?.startsWith(pre) ? a.drawingID.slice(pre.length) : null, lines: a.lines }))
 }
 /** 在价位 p 直接建一条价格提醒（点 / 拖价格轴、右键菜单） */
 function quickAlert(symbol: string, p: number): void {
@@ -295,6 +302,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   cell.chart.setDrawings(ds)
   refreshQuick()
   cell.chart.setAlerts(priceAlerts(c.symbol))
+  cell.chart.setAlertSignals(lineSignals(c.symbol))
   cell.chart.setStale(st.stale)
   then?.()
   if (cell.idx === st.active) { renderToolbar(); renderPanel() }
@@ -810,7 +818,7 @@ function patchDetail(): void {
 // ---- 提醒（模块在 alerts/）
 function panelAlerts(el: HTMLElement): void { renderAlertsPanel(el, cfg(active()).symbol) }
 export function refreshAlerts(): void {
-  cells.forEach(c => c.chart.setAlerts(priceAlerts(cfg(c).symbol)))
+  cells.forEach(c => { c.chart.setAlerts(priceAlerts(cfg(c).symbol)); c.chart.setAlertSignals(lineSignals(cfg(c).symbol)) })
   renderRail(); if (st.panel === 'alerts') renderPanel()
   refreshQuick()
   refreshStreams()

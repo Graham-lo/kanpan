@@ -7,7 +7,7 @@ import type { SymbolPrefs } from '../src/m/app/store'
 import * as C from '../src/m/app/syncCodec'
 import { Engine } from '../src/sync/engine'
 import { SyncStore } from '../src/sync/store'
-import { alertId, decodeAlerts, encodeAlerts, unseenDrawings } from '../src/sync/codec'
+import { alertId, decodeAlerts, encodeAlerts } from '../src/sync/codec'
 import { emptyArchive, keyOf, same, type SyncObject } from '../src/sync/types'
 import { FakeServer } from './sync-fake'
 
@@ -25,7 +25,7 @@ function phone(server: FakeServer, s = dev()) {
     const now = prints(); const vals: SyncObject[] = []
     if (now.settings !== fp.settings) { const o = C.encodeSettings(s.p, store.get('settings', C.SETTINGS_ID), store.a.seen); if (o) vals.push(o); fp.settings = now.settings }
     if (now.favorites !== fp.favorites) { vals.push(...C.encodeFavorites(s.sym, store.localOf('favorites'), store.localOf('groups'))); fp.favorites = now.favorites }
-    if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), unseenDrawings(store.localOf('drawings')), spent)); fp.alerts = now.alerts }
+    if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), spent)); fp.alerts = now.alerts }
     return store.capture(vals, C.OWNED_M)
   }
   const fired: Alert[] = []
@@ -35,7 +35,7 @@ function phone(server: FakeServer, s = dev()) {
     let merged: Record<string, string> = {}
     if (u.has('favorites') || u.has('groups')) { const d = C.decodeFavorites(store.localOf('favorites'), store.localOf('groups'), s.sym); merged = d.merged; Object.assign(s.sym, { favorites: d.favorites, groups: d.groups, groupForSymbol: d.groupForSymbol }) }
     let f: Alert[] = []
-    if (u.has('alerts')) { f = C.remoteFired(s.alerts, id => store.get('alerts', id)); s.alerts = decodeAlerts(store.localOf('alerts'), s.alerts, unseenDrawings(store.localOf('drawings'))) }
+    if (u.has('alerts')) { f = C.remoteFired(s.alerts, id => store.get('alerts', id)); s.alerts = decodeAlerts(store.localOf('alerts'), s.alerts) }
     u.clear()
     fp = prints()
     if (Object.keys(merged).length) delete fp.favorites
@@ -51,7 +51,7 @@ function phone(server: FakeServer, s = dev()) {
       C.mergeSettings(s.p, store.get('settings', C.SETTINGS_ID), store.a.seen, edited.settings, override)
       const fav = C.mergeFavorites(s.sym, store.localOf('favorites'), store.localOf('groups'), edited.favorites, override, () => ({ favorites: [], groups: [], groupForSymbol: {} }))
       if (fav) Object.assign(s.sym, { favorites: fav.favorites, groups: fav.groups, groupForSymbol: fav.groupForSymbol })
-      s.alerts = C.mergeAlerts(s.alerts, store.localOf('alerts'), store.localOf('drawings'), override, id => !!store.a.objects[keyOf('alerts', id)])
+      s.alerts = C.mergeAlerts(s.alerts, store.localOf('alerts'), override, id => !!store.a.objects[keyOf('alerts', id)])
       store.a.unapplied.clear()
       initial = false; fp = {}
       capture()
@@ -387,7 +387,6 @@ describe('画线编码（照 iOS PersonalSyncCodec.drawing）', () => {
     expect(D.decodePrefsObject({ ...o, body: { ...o.body, magnet: 'x' } })).toBeNull()
     const bad = { ...D.encodeDrawingObject(BTC, line(1, 'dX')), body: { kind: 'someFutureTool', anchors: [] } }
     expect(D.decodeDrawingObject(bad)).toBeNull()
-    expect(D.unseenDrawingsM([bad])).toEqual(new Set([bad.id]))
     const arc = new DrawArchive()
     D.overlay(arc, [bad, D.encodeDrawingObject(BTC, line(1, 'dY'))])
     expect(arc.get(BTC).map(d => d.id)).toEqual(['dY'])

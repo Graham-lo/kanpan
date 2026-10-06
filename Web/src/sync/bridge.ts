@@ -13,7 +13,7 @@ import type { Alert } from '../alerts/shape'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
   type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, webSetting, decodeSetting, putSetting, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
-  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, unseenDrawings, validSymbol,
+  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, validSymbol, pausedLineAlerts,
 } from './codec'
 import type { Owned, SyncStore } from './store'
 import { type SyncObject, keyOf, same } from './types'
@@ -54,12 +54,16 @@ export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: b
     fp.favorites = now.favorites
   }
   if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'), opts)); fp.drawings = now.drawings }
-  if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), unseenDrawings(store.localOf('drawings')), spent)); fp.alerts = now.alerts }
+  if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), spent)); fp.alerts = now.alerts }
   return store.capture(vals, OWNED)
 }
 
 /** `fired`：本机还在等、云端已经是已触发的那几条（服务端判响了）——外面报给人，再记删除 */
-export interface Applied { settings: string[]; favorites: boolean; drawings: Set<string>; alerts: boolean; fired: Alert[] }
+export interface Applied {
+  settings: string[]; favorites: boolean; drawings: Set<string>; alerts: boolean; fired: Alert[]
+  /** 云端还有暂停着的画线提醒（老版本「线找不到」时暂停的）：网页已当生效的装进来，要再记一次账推回 active */
+  revive?: boolean
+}
 
 /** 把账本里的云端值装进页面状态（原地改 s）。`all`：不看 unapplied，全部重装 */
 export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, all = false): Applied {
@@ -76,11 +80,12 @@ export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boo
     for (const x of s.alerts) {
       if (!syncableAlert(x)) continue
       const o = store.get('alerts', alertId(x.symbol, x.id))
-      const f = o && o.body.status === 'fired' ? decodeAlert(o, undefined, true) : null
+      const f = o && o.body.status === 'fired' ? decodeAlert(o, true) : null
       if (f) r.fired.push(f)
     }
-    const alerts = decodeAlerts(store.localOf('alerts'), s.alerts, unseenDrawings(store.localOf('drawings')))
+    const alerts = decodeAlerts(store.localOf('alerts'), s.alerts)
     if (!same(alerts, s.alerts)) { s.alerts = alerts; r.alerts = true }
+    r.revive = pausedLineAlerts(store.localOf('alerts'))
     const d = decodeDrawings(store.localOf('drawings'), s.drawings)
     for (const sym of new Set([...Object.keys(d), ...Object.keys(s.drawings)])) {
       if (same(d[sym] ?? [], s.drawings[sym] ?? [])) continue
@@ -145,7 +150,8 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   }
 
   // 画线、提醒：并集
-  const cloudAlerts = decodeAlerts(store.localOf('alerts'), [], unseenDrawings(store.localOf('drawings')))
+  const cloudAlerts = decodeAlerts(store.localOf('alerts'), [])
+  r.revive = pausedLineAlerts(store.localOf('alerts'))
   const cloudDraw = decodeDrawings(store.localOf('drawings'), {})
   const draw: Record<string, typeof s.drawings[string]> = {}
   for (const [sym, list] of Object.entries(cloudDraw)) draw[sym] = [...list]

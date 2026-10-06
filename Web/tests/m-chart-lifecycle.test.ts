@@ -142,10 +142,10 @@ describe('holdsPrevious · 换品种留旧图只留到取数有结果', () => {
   })
 })
 
-// 同步整桶换线要撤掉被删那条线上的提醒（行情页 pages/chart.ts 接的是：onDrawingsChanged 的 replaced → reconcileLineAlertsIn，
+// 同步整桶换线时画线提醒的对账（壳层接的是：onDrawingsChanged 的 replaced → reconcileLineAlertsIn，
 // 控制器 onChanged → reconcileLineAlerts；这里把同一套接在一本 DrawingBook 上）。
-// 删不删照 iOS AlertArchive.reconcile：上一份里有、这一份里没有才算删了；提醒先到、线还没到的不动。
-describe('同步删线 → 线上的提醒被撤', () => {
+// 2026-10-06 起提醒不依附画线：线删了（本机或同步）提醒照留、照自己的 lines 判；线挪了才跟着改。
+describe('同步删线 → 线上的提醒照留', () => {
   type Bench = typeof import('../src/m/pages/chart/drawingBench')
   type Store = typeof import('../src/m/app/store')
   type Book = typeof import('../src/m/chart/draw/book')
@@ -156,7 +156,6 @@ describe('同步删线 → 线上的提醒被撤', () => {
     S = await import('../src/m/app/store')
     K = await import('../src/m/chart/draw/book')
     A = await import('../src/m/chart/draw/drawing')
-    B.resetSeenLines()
   })
   const T = 1_700_000_000_000
   const hline = (id: string, p: number) => A.decodeDrawing({ id, kind: 'hline', points: [{ t: T, p }] })
@@ -173,18 +172,19 @@ describe('同步删线 → 线上的提醒被撤', () => {
   }
   const ids = () => S.st.alerts.map(a => a.id).sort()
 
-  it('云端删了 BTC 的 a 线：a 上的提醒撤掉，b 上的留着；不在图上的 ETH 一样撤', () => {
+  it('云端删了 BTC 的 a 线、ETH 的 e 线：提醒全留着、还生效、lines 不变', () => {
     const book = new K.DrawingBook()
     book.replaceBucket([hline('a', 60_000), hline('b', 61_000)], 'BTCUSDT')
     book.replaceBucket([hline('e', 3_000)], 'ETHUSDT')
     S.st.alerts = [lineAlert('BTCUSDT', 'a', 60_000), lineAlert('BTCUSDT', 'b', 61_000), lineAlert('ETHUSDT', 'e', 3_000)]
     wire(book)
-    expect(ids()).toEqual(['al-a', 'al-b', 'al-e'])
+    const before = structuredClone(S.st.alerts)
     const next = book.archive.clone()
     next.set('binance/usd_m/BTCUSDT', [hline('b', 61_000)])
     next.set('binance/usd_m/ETHUSDT', [])
     book.replace(next)
-    expect(ids(), '同步删掉的线上的提醒还留着（孤儿照样会响）').toEqual(['al-b'])
+    expect(ids()).toEqual(['al-a', 'al-b', 'al-e'])
+    expect(S.st.alerts).toEqual(before)
   })
 
   it('线被别处挪了：提醒跟着改价位并重新上膛', () => {
@@ -199,33 +199,14 @@ describe('同步删线 → 线上的提醒被撤', () => {
     expect(S.st.alerts[0].armedAt).toBeGreaterThan(1)
   })
 
-  it('同步逐页拉：提醒先到、线还在下一页——这一页换了同一只别的线时不误删', () => {
-    const book = new K.DrawingBook()
-    book.replaceBucket([hline('old', 59_000)], 'BTCUSDT')
-    S.st.alerts = []
-    wire(book)
-    S.st.alerts = [lineAlert('BTCUSDT', 'late', 62_000)] // 提醒这一页到了
-    const page1 = book.archive.clone()
-    page1.set('binance/usd_m/BTCUSDT', [hline('old', 59_000), hline('other', 58_000)])
-    book.replace(page1)
-    expect(ids(), '线还没到就把提醒删了（删除会推上云端，别的设备也没了）').toEqual(['al-late'])
-    const page2 = book.archive.clone()
-    page2.set('binance/usd_m/BTCUSDT', [hline('old', 59_000), hline('other', 58_000), hline('late', 62_000)])
-    book.replace(page2)
-    expect(ids()).toEqual(['al-late'])
-    const gone = book.archive.clone()
-    gone.set('binance/usd_m/BTCUSDT', [hline('old', 59_000)])
-    book.replace(gone)
-    expect(ids(), '见过的线被删了，提醒要撤').toEqual([])
-  })
-
-  it('本机删线（控制器 onChanged 那条路）照旧撤提醒', () => {
+  it('本机删线（控制器 onChanged 那条路）：提醒照留', () => {
     const book = new K.DrawingBook()
     book.replaceBucket([hline('a', 60_000)], 'BTCUSDT')
     S.st.alerts = [lineAlert('BTCUSDT', 'a', 60_000)]
     wire(book)
     B.reconcileLineAlerts('BTCUSDT', [])
-    expect(ids()).toEqual([])
+    expect(ids()).toEqual(['al-a'])
+    expect(S.st.alerts[0]).toMatchObject({ status: 'active', armedAt: 1, lines: [{ points: [{ t: T, p: 60_000 }] }] })
   })
 })
 

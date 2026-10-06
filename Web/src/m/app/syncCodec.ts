@@ -31,7 +31,7 @@ import type { Owned } from '../../sync/store'
 import { OWNED as PC_OWNED } from '../../sync/bridge'
 import { validSymbol, webSymbol, decodeAlerts, syncableAlert, alertId } from '../../sync/codec'
 import { isMacro, syncKeyOf, venueMarketOf } from '../../market/macro'
-import { DRAW_OWNED, unseenDrawingsM } from './drawCodec'
+import { DRAW_OWNED } from './drawCodec'
 import type { Alert } from '../../alerts/shape'
 import {
   LAYOUT_GROUPS, SYNCED_FIELDS, adoptBook, cleanColors, collapseLayouts, currentLayout, defaultPrefs, layoutBook, normalizePrefs, sanitizeLayout,
@@ -460,8 +460,8 @@ export function remoteFired(alerts: Alert[], cloud: (id: string) => SyncObject |
 }
 
 /** 第一次对上时提醒的合并：并集；云端有这一条（活的已在云端那份里，墓碑说明别处删了）就听云端的 */
-export function mergeAlerts(local: Alert[], all: SyncObject[], drawings: SyncObject[], override: boolean, has: (id: string) => boolean): Alert[] {
-  const out = decodeAlerts(all, [], unseenDrawingsM(drawings))
+export function mergeAlerts(local: Alert[], all: SyncObject[], override: boolean, has: (id: string) => boolean): Alert[] {
+  const out = decodeAlerts(all, [])
   if (!override) for (const a of local) if (!syncableAlert(a) || !has(alertId(a.symbol, a.id))) out.push(a)
   return out
 }

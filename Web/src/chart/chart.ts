@@ -25,6 +25,7 @@ import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes
 import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 import { detachFlows } from './tradeFlow'
+import { linePriceAt } from '../alerts/shape'
 import { COMPARE_COLORS, alignCompare, compareBaseIndexFrom, comparePercentAt, comparePercentLabel, compareSegments, pctOf, percentTickLabel, percentTicks, priceOfPct, type Aligned, type CompareLine } from './compare'
 
 const AXIS_H = 28
@@ -92,6 +93,16 @@ export interface AlertLine {
   kind?: string
   dir?: number
   created?: number
+}
+
+/** 提醒线（2026-10-06）：画线提醒挂的那条线删了、或者画线整层藏着时，按提醒自己存的那份几何（会响的就是它）
+ *  在图上画一条细虚线、右端挂一枚铃铛——「画线和警报是不冲突的」，线没了提醒照常生效，图上也得看得见。
+ *  线在、而且画出来了就不画（照 iOS ChartAlertSignal） */
+export interface AlertSignal {
+  id: string
+  /** 它挂的那条画线自己的 id（不带品种前缀） */
+  drawingID: string | null
+  lines: { points: DrawPoint[]; extendLeft: boolean; extendRight: boolean }[]
 }
 
 /** 复盘的一个回合（开仓 → 平仓） */
@@ -323,6 +334,8 @@ export class TVChart {
   loadingMore = false
   /** 画线整体隐藏 */
   drawingsHidden = false
+  /** 提醒线（见 AlertSignal）：页面把这只品种上还在生效的画线提醒整份给，画哪几条由 signalsShown 定 */
+  alertSignals: AlertSignal[] = []
   dead = false
   ro: ResizeObserver
   w = 10
@@ -493,6 +506,7 @@ export class TVChart {
 
   setWalls(w: Wall[] | null): void { this.walls = w; this.dirty = true }
   setAlerts(a: AlertLine[] | null | undefined): void { this.alerts = a || []; this.dirty = true }
+  setAlertSignals(a: AlertSignal[] | null | undefined): void { this.alertSignals = a || []; this.dirty = true }
   setVpvrMode(m: VpvrMode): void { this.vpvrMode = m; this.dirty = true; this.renderLegend() }
   setMarkers(m: Marker[] | null): void { this.markers = m; this.dirty = true }
   setReplay(i: number | null): void { this.replay = i; this.dirty = true; this.renderLegend() }
@@ -818,6 +832,7 @@ export class TVChart {
     if (this.compareOn()) this.drawCompare(mainPane, mr, from, to)
     this.drawLastLine(mainPane, mr)
     this.drawAlertLines(mainPane, mr)
+    this.drawAlertSignals(mainPane, mr)
     this.drawDrawings(mainPane, mr)
     if (this.markers) this.drawMarkers(mainPane, mr)
     if (geo) for (const l of this.layers) if (l.over) { c.save(); l.over(c, geo); c.restore() }
@@ -1033,6 +1048,47 @@ export class TVChart {
       if (y < p.y || y > p.y + p.h) continue
       c.strokeStyle = this.colors.alert; c.setLineDash([6, 4]); c.lineWidth = LINE.hair; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
     }
+  }
+  /** 此刻真画在图上的提醒线：画线整层藏着就全画；否则只画挂的那条线不在了的。对比态（百分比轴）上价格坐标不成立，不画 */
+  signalsShown(): AlertSignal[] {
+    if (!this.alertSignals.length || this.compareOn()) return []
+    if (this.drawingsHidden) return this.alertSignals.slice()
+    const ids = new Set(this.drawings.map(d => d.id))
+    return this.alertSignals.filter(a => a.drawingID == null || !ids.has(a.drawingID))
+  }
+  /** 一条提醒线在图区里的折线（按 6px 采样：对数轴上直线不再是直线） */
+  signalPath(line: AlertSignal['lines'][number], p: Pane, r: PriceRange): XY[] {
+    const ts = line.points.map(q => q.t); if (!ts.length) return []
+    const PW = this.plotW(), tx = (t: number) => this.indexToX(this.indexAt(t))
+    const x0 = line.extendLeft ? 0 : Math.max(0, tx(Math.min(...ts))), x1 = line.extendRight ? PW : Math.min(PW, tx(Math.max(...ts)))
+    if (!isFinite(x0) || !isFinite(x1) || x1 < x0) return []
+    const out: XY[] = []
+    for (let x = x0; ; x = Math.min(x1, x + 6)) {
+      const v = linePriceAt(line, this.timeOfIndex(this.xToIndex(x)))
+      if (v != null && isFinite(v)) { const y = this.priceToY(v, p, r); if (isFinite(y)) out.push({ x, y }) }
+      if (x >= x1) break
+    }
+    return out
+  }
+  drawAlertSignals(p: Pane, r: PriceRange): void {
+    const shown = this.signalsShown(); if (!shown.length) return
+    const c = this.ctx, col = this.colors.alert
+    c.save()
+    c.strokeStyle = col; c.lineWidth = LINE.hair; c.setLineDash([6, 4])
+    for (const a of shown) for (const l of a.lines) {
+      const path = this.signalPath(l, p, r); if (path.length < 2) continue
+      c.beginPath(); c.moveTo(path[0].x, path[0].y); for (let k = 1; k < path.length; k++) c.lineTo(path[k].x, path[k].y); c.stroke()
+    }
+    c.setLineDash([])
+    // 右端一枚铃铛：两端无限延的贴图区右边，有头有尾的停在最后一个点上
+    for (const a of shown) {
+      const path = a.lines[0] ? this.signalPath(a.lines[0], p, r) : []
+      const e = path[path.length - 1]; if (!e) continue
+      const x = Math.min(e.x, this.plotW() - 12) , y = path.length > 1 ? this.priceToY(linePriceAt(a.lines[0], this.timeOfIndex(this.xToIndex(x))) ?? NaN, p, r) : e.y
+      if (!isFinite(y) || y < p.y + 6 || y > p.y + p.h - 6) continue
+      bellGlyph(c, x, y, col)
+    }
+    c.restore()
   }
   /** 图上要画的提醒线：拖动中的那条换成手上的价位，新建中的草稿也算一条 */
   alertsShown(): AlertLine[] {
@@ -1681,3 +1737,18 @@ function segDist(x: number, y: number, a: XY, b: XY): number {
 }
 function extend(a: XY, b: XY, len: number): XY { const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; return { x: a.x + dx / L * len, y: a.y + dy / L * len } }
 let _u = 0; function uid(): string { return 'd' + Date.now().toString(36) + (_u++) }
+
+/** 提醒线右端的小铃铛（钟罩 + 锤子），以 (x, y) 为中心，约 9px */
+function bellGlyph(c: CanvasRenderingContext2D, x: number, y: number, color: string): void {
+  c.save()
+  c.fillStyle = color; c.strokeStyle = color; c.lineWidth = 1.2; c.lineJoin = 'round'
+  const w = 8, h = 8, top = y - h / 2 - 1
+  c.beginPath()
+  c.moveTo(x - w / 2, top + h)
+  c.lineTo(x - w / 2 + 1, top + h * 0.4)
+  c.arc(x, top + h * 0.4, w / 2 - 1, Math.PI, 0, false)
+  c.lineTo(x + w / 2, top + h)
+  c.closePath(); c.fill()
+  c.beginPath(); c.arc(x, top + h + 1.6, 1.3, 0, Math.PI * 2); c.fill()
+  c.restore()
+}

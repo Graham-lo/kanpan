@@ -78,9 +78,10 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
   return settleRemoteFires(store, r)
 }
 
-/** 服务端判响、同步下来的（照手机 AlertWatcher.settle）：报给人，再记一笔删除推上去 */
+/** 服务端判响、同步下来的（照手机 AlertWatcher.settle）：报给人，再记一笔删除推上去。
+ *  云端还有暂停着的画线提醒：也再记一次账，把它推回生效（codec.encodeAlerts） */
 function settleRemoteFires(store: SyncStore, r: Applied): boolean {
-  if (!r.fired.length) return false
+  if (!r.fired.length && !r.revive) return false
   for (const a of r.fired) { spent.add(alertId(a.symbol, a.id)); announceRemoteFire(a) }
   delete fp.alerts
   return captureInto(st, store, ctx, fp, spent, hold()) > 0

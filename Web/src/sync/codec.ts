@@ -596,27 +596,29 @@ export function alertToBody(a: Alert): Body {
   return JSON.parse(JSON.stringify(b)) as Body
 }
 
-/** 云端还活着、但网页不显示的画线（手机上藏起来的、网页没有的种类）的完整 id。
- *  挂在这些画线上的提醒网页不接手：不显示、不删，免得网页因为「画线不在」把手机的提醒对账删掉 */
-export function unseenDrawings(all: SyncObject[]): Set<string> {
-  const out = new Set<string>()
-  for (const o of all) if (!o.deleted && !decodeDrawing(o)) out.add(o.id)
-  return out
+/** 画线提醒的状态在云端是 `paused`（老版本「线找不到」时暂停的）：网页一律当生效的装进来。
+ *  2026-10-06 起提醒不再依附画线（用户：「画线和警报是不冲突的，我删除画线也不应该删除警报才对」），
+ *  线删了、藏了、网页认不出那种工具，提醒都照自己的 lines 判；记账时把它推回 `active`（encodeAlerts） */
+const revivable = (b: Body): boolean => b.kind === 'drawing' && b.status === 'paused'
+/** 云端有没有还暂停着的画线提醒（有就要再记一次账，把它推回生效） */
+export function pausedLineAlerts(all: SyncObject[]): boolean {
+  return all.some(o => o.collection === 'alerts' && !o.deleted && revivable(o.body))
 }
 
-/** 云端提醒 → 网页提醒；网页管不着的返回 null。`fired`：已触发的也解（记账比对、同步下来的「服务端响了」） */
-export function decodeAlert(o: SyncObject, unseen?: Set<string>, fired = false): Alert | null {
+/** 云端提醒 → 网页提醒；网页管不着的返回 null。`fired`：已触发的也解（记账比对、同步下来的「服务端响了」）。
+ *  挂在哪条线上都不影响解不解：线不在、网页认不出那条线，提醒照样装进来（照它自己的 lines 判、在图上画提醒线） */
+export function decodeAlert(o: SyncObject, fired = false): Alert | null {
   const b = o.body
-  if (o.deleted || !(b.status === 'active' || (fired && b.status === 'fired'))) return null
+  if (o.deleted || !(b.status === 'active' || revivable(b) || (fired && b.status === 'fired'))) return null
   if (b.kind !== 'price' && b.kind !== 'drawing' && b.kind !== 'condition') return null
   const symbol = str(b.symbol)
   if (!symbol || !webSymbol(symbol) || b.market !== alertMarketOf(symbol) || !o.id.startsWith(prefixOf(symbol))) return null
   const raw: Record<string, unknown> = { id: lastSeg(o.id) }
   for (const k of ALERT_KEYS) if (k in b) raw[k] = structuredClone(b[k])
+  if (revivable(b)) raw.status = 'active'
   if (!Array.isArray(raw.lines)) raw.lines = []
   const did = str(b.drawingID)
   raw.drawingID = did ? (did.includes('/') ? did : prefixOf(symbol) + did) : null
-  if (raw.kind === 'drawing' && raw.drawingID && unseen?.has(raw.drawingID as string)) return null
   const a = migrateAlert(raw)
   return a && a.symbol === symbol ? a : null
 }
@@ -626,7 +628,7 @@ const normAlert = (a: Alert): Json => alertToBody(a)
 /** 网页提醒 → 要记账的对象（含删除）。只动网页管得着的那部分。
  *  `spent`：这个网页已经报过的已触发（本机响的、同步下来服务端响的）——只有这些已触发的会被删；
  *  没报过的已触发留给报它的那台设备去删（照手机 AlertWatcher：报完才 purgeFired），不抢先删掉 */
-export function encodeAlerts(alerts: Alert[], prevAll: SyncObject[], unseen?: Set<string>, spent?: ReadonlySet<string>): SyncObject[] {
+export function encodeAlerts(alerts: Alert[], prevAll: SyncObject[], spent?: ReadonlySet<string>, now = Date.now()): SyncObject[] {
   const out: SyncObject[] = []
   const byId = new Map(prevAll.map(o => [o.id, o]))
   const local = new Set<string>()
@@ -639,23 +641,27 @@ export function encodeAlerts(alerts: Alert[], prevAll: SyncObject[], unseen?: Se
     const live = prev && !prev.deleted ? prev : undefined
     // 已触发的不再往回改成 active（服务端先响了、本机这份还没装进来：以云端为准）
     if (a.status === 'active' && live?.body.status === 'fired') continue
-    const was = live ? decodeAlert(live, undefined, true) : null
-    if (live && was && same(normAlert(was), normAlert(a))) { out.push({ ...live, body: { ...live.body } }); continue }
+    const was = live ? decodeAlert(live, true) : null
+    const paused = !!live && revivable(live.body)
+    if (live && was && !paused && same(normAlert(was), normAlert(a))) { out.push({ ...live, body: { ...live.body } }); continue }
     const body: Body = { ...(live?.body ?? {}), ...alertToBody(a) }
+    // 云端暂停着的画线提醒推回生效：从这一刻起算（暂停那段不补判，照 iOS reconcile 线回来时重置 armedAt）
+    if (paused && a.status === 'active' && same(normAlert(was!), normAlert(a))) body.armedAt = Math.max(a.armedAt, now)
     out.push({ collection: 'alerts', id, body, fields: {}, revision: 0, deleted: false, generation: 0 })
   }
-  // 删除：网页管得着、本机已经没有这一条了（响过、删掉、画线没了）。本机还在只是暂时上不了云的不删
+  // 删除：网页管得着、本机已经没有这一条了（响过、用户在提醒表里删掉）。本机还在只是暂时上不了云的不删。
+  // 画线删了不在此列：提醒不跟着线走，本机表里还留着它
   for (const o of prevAll) {
     if (o.deleted || local.has(o.id)) continue
-    if (decodeAlert(o, unseen) || (o.body.status === 'fired' && spent?.has(o.id) && decodeAlert(o, unseen, true))) out.push({ ...o, deleted: true })
+    if (decodeAlert(o) || (o.body.status === 'fired' && spent?.has(o.id) && decodeAlert(o, true))) out.push({ ...o, deleted: true })
   }
   return out
 }
 
 /** 云端提醒装进网页：本机上不了云的那几条原样留着，其余按云端来，保持原来的先后 */
-export function decodeAlerts(all: SyncObject[], current: Alert[], unseen?: Set<string>): Alert[] {
+export function decodeAlerts(all: SyncObject[], current: Alert[]): Alert[] {
   const cloud = new Map<string, Alert>()
-  for (const o of all) { const a = decodeAlert(o, unseen); if (a) cloud.set(o.id, a) }
+  for (const o of all) { const a = decodeAlert(o); if (a) cloud.set(o.id, a) }
   const list: Alert[] = []
   for (const a of current) {
     const id = alertId(a.symbol, a.id)

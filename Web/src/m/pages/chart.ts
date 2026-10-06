@@ -193,6 +193,8 @@ export function initChart(root: HTMLElement): PageHandle {
   // 同步 / 别的标签页整批换进来的画线由壳层对账（m/app/lineAlerts.ts，启动时就记下基线，不等行情页挂上）
   c.onState = () => benchRef?.render()
   c.onFull = () => toast('这只品种的画线满了（最多 50 条）')
+  // 点中提醒线（画线删了 / 藏了还在生效的提醒）：开「提醒」表，照 iOS onAlertSignalTap → openAlertHub
+  c.onSignalTap = () => { chart.clearCrosshair(); openAlertHub(sym(), S.symbols.get(sym())?.price ?? null) }
   c.onFeedback = k => {
     if (k === 'locked') toast('已锁定')
     else if (k === 'unlocked') toast('已解锁')

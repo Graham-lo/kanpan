@@ -21,9 +21,9 @@ import { setSyncSource } from '../model/syncStatus'
 import { type SyncAdapter, type SyncRuntime, type SyncStatus, createSyncRuntime } from '../../sync/runtime'
 import type { SyncStore } from '../../sync/store'
 import { syncKeys } from '../../sync/keys'
-import { alertId, decodeAlerts, encodeAlerts } from '../../sync/codec'
+import { alertId, decodeAlerts, encodeAlerts, pausedLineAlerts } from '../../sync/codec'
 import { COLLECTIONS, keyOf, same } from '../../sync/types'
-import { DrawTracker, PREFS_COLLECTION, PREFS_ID, capArchive, mergeFirstDrawings, overlay, unseenDrawingsM } from './drawCodec'
+import { DrawTracker, PREFS_COLLECTION, PREFS_ID, capArchive, mergeFirstDrawings, overlay } from './drawCodec'
 import { clearDrawingsSuspect, drawingBook, drawingsRev, drawingsSuspect, onDrawingsChanged, replaceDrawings } from './drawings'
 import type { Alert } from '../../alerts/shape'
 
@@ -90,7 +90,7 @@ function captureInto(store: SyncStore): number {
     fp.favorites = now.favorites
   }
   if (now.alerts !== fp.alerts) {
-    vals.push(...encodeAlerts(st.alerts, store.localOf('alerts'), unseenDrawingsM(store.localOf('drawings')), spent))
+    vals.push(...encodeAlerts(st.alerts, store.localOf('alerts'), spent))
     fp.alerts = now.alerts
   }
   if (drawingsRev() !== drawSeen || draw.prints == null) {
@@ -108,8 +108,9 @@ function assignFavorites(f: C.FavState): boolean {
 }
 
 /** 云端的值已经装进 st：落盘、刷新界面、指纹对齐（这些不是本机的改动，不再记账）。
- *  并掉了同名分类、或服务端判响了提醒：要再记一次账（返回 true = 记了，要推） */
-function settle(store: SyncStore | null, r: SyncChange, fired: Alert[], merged: Record<string, string>): boolean {
+ *  并掉了同名分类、服务端判响了提醒、或云端还有暂停着的画线提醒（`revive`，要推回生效）：
+ *  要再记一次账（返回 true = 记了，要推） */
+function settle(store: SyncStore | null, r: SyncChange, fired: Alert[], merged: Record<string, string>, revive = false): boolean {
   applying = true
   try {
     if (st.favoritesGroup && merged[st.favoritesGroup]) st.favoritesGroup = merged[st.favoritesGroup]
@@ -133,6 +134,7 @@ function settle(store: SyncStore | null, r: SyncChange, fired: Alert[], merged: 
     for (const a of fired) { spent.add(alertId(a.symbol, a.id)); announceRemoteFire(a) }
     delete fp.alerts; again = true
   }
+  if (revive) { delete fp.alerts; again = true }
   return again && !!store && captureInto(store) > 0
 }
 
@@ -161,6 +163,7 @@ const mobile: SyncAdapter = {
     let fired: Alert[] = []
     let dropped = 0
     let merged: Record<string, string> = {}
+    let revive = false
     if (u.has('settings')) r.settings = C.applySettings(st, store.get('settings', C.SETTINGS_ID), store.a.seen)
     if (u.has('favorites') || u.has('groups')) {
       const d = C.decodeFavorites(store.localOf('favorites'), store.localOf('groups'), st.symbols)
@@ -169,15 +172,16 @@ const mobile: SyncAdapter = {
     }
     if (u.has('alerts') || u.has('drawings')) {
       fired = C.remoteFired(st.alerts, id => store.get('alerts', id))
-      const alerts = decodeAlerts(store.localOf('alerts'), st.alerts, unseenDrawingsM(store.localOf('drawings')))
+      const alerts = decodeAlerts(store.localOf('alerts'), st.alerts)
       if (!same(alerts, st.alerts)) { st.alerts = alerts; r.alerts = true }
+      revive = pausedLineAlerts(store.localOf('alerts'))
     }
     if (u.has('drawings') || u.has(PREFS_COLLECTION)) {
       applying = true
       try { dropped = applyDrawings(store, r) } finally { applying = false }
     }
     u.clear()
-    const again = settle(store, r, fired, merged)
+    const again = settle(store, r, fired, merged, revive)
     // 进门裁掉了几条（每品种 50 条）：推成删除，云端和别的设备收敛到同一份
     return (dropped > 0 && captureInto(store) > 0) || again
   },
@@ -196,7 +200,7 @@ const mobile: SyncAdapter = {
       const seeded = !(override && cloudEmpty)
       if (st.symbols.seeded !== seeded) { st.symbols.seeded = seeded; r.favorites = true }
     }
-    const alerts = C.mergeAlerts(st.alerts, store.localOf('alerts'), store.localOf('drawings'), override, id => !!store.a.objects[keyOf('alerts', id)])
+    const alerts = C.mergeAlerts(st.alerts, store.localOf('alerts'), override, id => !!store.a.objects[keyOf('alerts', id)])
     if (!same(alerts, st.alerts)) { st.alerts = alerts; r.alerts = true }
     // 画线：并集（云端墓碑的不带回，同一条谁新用谁），换账号云端整体覆盖；再裁到每品种 50 条
     const before = drawingBook.archive

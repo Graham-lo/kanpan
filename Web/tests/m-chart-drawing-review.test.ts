@@ -368,7 +368,7 @@ describe('画线审查：画到一半换品种 / 换周期 / 系统取消', () =
 
 describe('画线审查：别处整桶换线也把最终的线交给 onChanged', () => {
   // 宿主靠 onChanged 对账画线提醒（reconcileLineAlerts）。原来同步整本换（book.replace）、setDrawings 整桶换、
-  // 另一张图改了同一只都只重画不回调，被云端删掉的线上的提醒就成了孤儿。
+  // 另一张图改了同一只都只重画不回调，别处挪了的线上的提醒还按老位置判。
   const line = (id: string, p: number): Drawing => decodeDrawing({ id, kind: 'hline', points: [{ t: 1_700_000_000_000, p }] })
 
   test('同步整本换进来：这只的最终线交给 onChanged；别的品种变了不回调', () => {

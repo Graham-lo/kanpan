@@ -22,7 +22,7 @@ import { drawingBook, saveDrawingPreferences } from '../../app/drawings'
 import { alertLinesOf } from '../../app/lineAlerts'
 import { batchRoom } from '../../model/sharePreview'
 import type { ChartHandle } from '../../chart'
-import type { DrawingController } from '../../chart/view.drawing'
+import type { AlertSignal, DrawingController } from '../../chart/view.drawing'
 import { DrawKind, DRAWING_TEXT_LIMIT, isDrawingKind, type Drawing, type DrawingKind } from '../../chart/draw/drawing'
 import { DOCK_COUNT, countedTool, shownTools, toolHead } from '../../chart/draw/toolRank'
 import { styleOf, styleEquals } from '../../chart/draw/archive'
@@ -191,8 +191,21 @@ export function alertedLineIds(sym: string): Set<string> {
   return new Set(activeAlerts(sym).filter(a => a.kind === 'drawing' && a.drawingID?.startsWith(pre)).map(a => a.drawingID!.slice(pre.length)))
 }
 
-// 线挪了 / 删了时挂在上面的提醒跟着改 / 摘：对账与「见过的线」在壳层 m/app/lineAlerts.ts（不依赖行情页挂没挂）
-export { reconcileLineAlerts, reconcileLineAlertsIn, resetSeenLines } from '../../app/lineAlerts'
+/**
+ * 这只品种上还在生效的画线提醒，换成图上的提醒线（AlertSignal）：几何用提醒自己存的那份（会响的就是它）。
+ * 画哪几条由图定（线删了、线自己藏了、「隐藏画线」开着才画），这里整份给。照 iOS AlertArchive.signals。
+ */
+export function lineAlertSignals(sym: string): AlertSignal[] {
+  const pre = drawingIdOf(sym, '')
+  return activeAlerts(sym).filter(a => a.kind === 'drawing' && a.lines.length > 0).map(a => ({
+    id: a.id,
+    drawingID: a.drawingID?.startsWith(pre) ? a.drawingID.slice(pre.length) : null,
+    lines: a.lines.map(l => ({ points: l.points.map(q => ({ t: q.t, p: q.p })), extendLeft: !!l.extendLeft, extendRight: !!l.extendRight })),
+  }))
+}
+
+// 线挪了时挂在上面的提醒跟着改（线删了提醒不动，10-06）：对账在壳层 m/app/lineAlerts.ts（不依赖行情页挂没挂）
+export { reconcileLineAlerts, reconcileLineAlertsIn } from '../../app/lineAlerts'
 
 // ───────────────────────────── 工作台
 
@@ -618,8 +631,9 @@ export function createBench(ctx: BenchContext) {
     c.styles = { ...p.styles }
     c.variants = { ...p.variants }
   }
-  const offAlerts = onAlertsChange(() => { c.alerted = alertedIds(); if (active) renderSel() })
-  c.alerted = alertedIds()
+  const pushAlerts = (): void => { c.alerted = alertedIds(); c.signals = lineAlertSignals(ctx.symbol()) }
+  const offAlerts = onAlertsChange(() => { pushAlerts(); if (active) renderSel() })
+  pushAlerts()
   pullPreferences()
   c.editable = false
   c.interactive = false
@@ -633,7 +647,7 @@ export function createBench(ctx: BenchContext) {
     renderRail,
     renderQuote,
     pullPreferences,
-    refreshAlerts(): void { c.alerted = alertedIds() },
+    refreshAlerts(): void { pushAlerts() },
     setReadout(text: string | null): void { readout = text; renderQuote() },
     closeSheets(): void { sheet?.close() },
     destroy(): void { offAlerts(); sheet?.close() },

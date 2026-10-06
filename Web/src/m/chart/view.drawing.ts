@@ -36,7 +36,7 @@ import { type DrawingStyle, DrawingPreferences } from './draw/archive'
 import { DrawingBook, type DrawingBookChange } from './draw/book'
 import { canonicalInstrument } from './draw/instrument'
 import { fittedRegression } from './draw/regression'
-import { AlertGeometry, alertLinePrice } from './draw/alert'
+import { AlertGeometry, alertLinePrice, type AlertLine } from './draw/alert'
 
 // ------------------------------------------------------------------ 常量与反馈
 
@@ -47,6 +47,91 @@ export type DrawingFeedback = 'snapped' | 'rejected' | 'removed' | 'locked' | 'u
 const DRAW_TAP_MS = 500
 /** 挪过这么远就算「拖着画」（ChartGesture.panSlopPt × 2）。 */
 export const DRAW_DRAG_SLOP_PT = ChartGesture.panSlopPt * 2
+
+/**
+ * 一条「提醒线」（2026-10-06，照 ChartView+Drawing.swift 的 ChartAlertSignal）。
+ *
+ * 画线与提醒互相独立之后，提醒所挂的那条画线可能已经删掉了，或者此刻没画出来（「隐藏画线」开着、
+ * 那条线自己隐藏了、对比态把画线整层收了）。提醒照常生效，图上就得有个记号告诉人「这儿还有一条会响的线」：
+ * 用提醒自己存下来的那份几何（Alert.lines，和会响的那条是同一份）画一条细虚线，右端挂同一枚小铃铛。
+ * 画线在、而且画出来了，就不画它——铃铛照旧挂在画线上（alerted）。图这一侧只认 id 与几何。
+ */
+export interface AlertSignal {
+  /** 提醒 id，点中时原样交出去 */
+  id: string
+  /** 它挂的那条画线自己的 id（不带品种前缀）；这条线此刻画在图上时提醒线不画 */
+  drawingID: string | null
+  lines: AlertLine[]
+}
+
+/**
+ * 此刻真画在图上的那几条提醒线：画线整层收着（隐藏画线 / options.drawings 关）就全画；
+ * 否则只画「挂的那条线不在、或者那条线自己隐藏了」的。百分比轴（对比态）上价格坐标不成立，不画。
+ */
+export function shownAlertSignals(s: ChartState | null, signals: readonly AlertSignal[]): AlertSignal[] {
+  if (!s || s.input.percentAxis || signals.length === 0) return []
+  if (!s.input.options.drawings) return signals.slice()
+  const visible = new Set(s.overlay.drawings.filter(d => !d.hidden).map(d => d.id))
+  return signals.filter(x => x.drawingID == null || !visible.has(x.drawingID))
+}
+
+/** 一条提醒线在图区里的折线（按 6pt 采样：对数轴上直线不再是直线，时间轴也未必等距）。 */
+export function alertSignalPath(line: AlertLine, axes: DrawAxes): DrawPixel[] {
+  const ts = line.points.map(p => p.t)
+  if (!ts.length) return []
+  const lo = Math.min(...ts), hi = Math.max(...ts)
+  const right = axes.layout.plotW
+  const x0 = line.extendLeft ? 0 : Math.max(0, axes.x(lo))
+  const x1 = line.extendRight ? right : Math.min(right, axes.x(hi))
+  if (!Number.isFinite(x0) || !Number.isFinite(x1) || x1 < x0) return []
+  const out: DrawPixel[] = []
+  for (let x = x0; ; x = Math.min(x1, x + 6)) {
+    const p = alertLinePrice(line, axes.t(x))
+    if (p != null && Number.isFinite(p)) {
+      const y = axes.y(p)
+      if (Number.isFinite(y)) out.push({ x, y })
+    }
+    if (x >= x1) break
+  }
+  return out
+}
+
+/** 提醒线右端那枚铃铛：两端无限延的贴图区右边，有头有尾的停在最后一个点上（和画线铃铛同一个规矩）。 */
+export function alertSignalBell(signal: AlertSignal, axes: DrawAxes): DrawPixel | null {
+  const line = signal.lines[0]
+  if (!line) return null
+  const right = axes.layout.plotW
+  const last = line.points.length ? Math.max(...line.points.map(p => p.t)) : 0
+  const x = line.extendRight ? right - 10 : Math.min(axes.x(last), right - 10)
+  if (!Number.isFinite(x) || !(x > 2)) return null
+  const p = alertLinePrice(line, axes.t(x))
+  if (p == null || !Number.isFinite(p)) return null
+  const y = axes.y(p)
+  if (!Number.isFinite(y) || !(y > axes.pane.y) || !(y < axes.pane.y + axes.pane.h)) return null
+  return { x, y }
+}
+
+const segDistance = (q: DrawPixel, a: DrawPixel, b: DrawPixel): number => {
+  const dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy
+  const u = len > 0 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / len)) : 0
+  return Math.hypot(q.x - (a.x + u * dx), q.y - (a.y + u * dy))
+}
+
+/** 点在哪条提醒线上（铃铛 22pt、线体 12pt 的手指靶），取最近的那条。 */
+export function alertSignalHit(q: DrawPixel, axes: DrawAxes, shown: readonly AlertSignal[]): string | null {
+  let best: { id: string; d: number } | null = null
+  for (const signal of shown.slice().reverse()) {
+    let nearest = Infinity
+    const b = alertSignalBell(signal, axes)
+    if (b) { const d = Math.hypot(b.x - q.x, b.y - q.y); if (d <= ChartGesture.selectedHandlePt) nearest = d }
+    for (const line of signal.lines) {
+      const path = alertSignalPath(line, axes)
+      for (let i = 1; i < path.length; i++) { const d = segDistance(q, path[i - 1], path[i]); if (d <= 12) nearest = Math.min(nearest, d) }
+    }
+    if (nearest < Infinity && (!best || nearest < best.d)) best = { id: signal.id, d: nearest }
+  }
+  return best?.id ?? null
+}
 
 // ------------------------------------------------------------------ 坐标
 
@@ -287,6 +372,9 @@ export class DrawingController {
   /** 落成了几条（测试与宿主统计用）。 */
   commits = 0
   private _alerted = new Set<string>()
+  private _signals: AlertSignal[] = []
+  /** 点中一条提醒线或它的铃铛（不在画线态也认：它不是画线）。外面拿提醒 id 去开提醒 */
+  onSignalTap: ((id: string) => void) | null = null
 
   // ---- 回调
   onChanged: ((items: Drawing[]) => void) | null = null
@@ -465,6 +553,7 @@ export class DrawingController {
     v.drawingProject = null
     v.drawingKeyOf = null
     v.onDrawingKeyChanged = null
+    if (v.signalTap === this.signalTapHook) v.signalTap = null
     if (v.drawingTeardown === this.teardownHook) v.drawingTeardown = null
     v.refreshDrawingOverlay()
   }
@@ -515,6 +604,26 @@ export class DrawingController {
     if (v.size === this._alerted.size && [...v].every(id => this._alerted.has(id))) return
     this._alerted = new Set(v)
     this.view.refreshDrawingOverlay()
+  }
+
+  /** 提醒线（见 AlertSignal）：外面把这只品种上还在生效的画线提醒整份扔进来，画哪几条由图按「那条画线此刻画没画出来」定 */
+  get signals(): readonly AlertSignal[] { return this._signals }
+  set signals(v: readonly AlertSignal[]) {
+    if (JSON.stringify(v) === JSON.stringify(this._signals)) return
+    this._signals = v.slice()
+    this.view.refreshDrawingOverlay()
+  }
+  /** 此刻真画在图上的那几条提醒线 */
+  get shownSignals(): AlertSignal[] { return shownAlertSignals(this.view.state, this._signals) }
+
+  /** 一下轻点落在提醒线上：交给 onSignalTap，返回真表示这一下被吃掉了（view.signalTap，手势层在判十字线之前问） */
+  readonly signalTapHook = (x: number, y: number): boolean => {
+    const axes = drawAxesOf(this.view)
+    if (!this.onSignalTap || !axes || this._tool != null) return false
+    const id = alertSignalHit({ x, y }, axes, this.shownSignals)
+    if (id == null) return false
+    this.onSignalTap(id)
+    return true
   }
 
   get continuous(): boolean { return this._continuous }
@@ -970,6 +1079,8 @@ export class DrawingController {
     try {
       if (v.ownDimmed) ctx.globalAlpha = 0.35
       const t = s.input.colors
+      // 提醒线排在画线开关之前：「隐藏画线」收的是画线，提醒照常生效、记号照常在
+      this.paintSignals(ctx, axes, t)
       if (!s.input.options.drawings) return
       ctx.beginPath(); ctx.rect(0, axes.pane.y, axes.layout.plotW, axes.pane.h); ctx.clip()
       const series = s.input.series
@@ -1011,6 +1122,30 @@ export class DrawingController {
         }
       }
       this.bells(ctx, s.overlay.drawings, axes, t)
+    } finally {
+      ctx.restore()
+    }
+  }
+
+  /** 提醒线：细虚线（1pt，4/3 的点划）+ 右端一枚铃铛，皮肤的强调色（和手柄同一个 amber，照 iOS） */
+  private paintSignals(ctx: CanvasRenderingContext2D, axes: DrawAxes, t: ChartColors): void {
+    const shown = this.shownSignals
+    if (!shown.length) return
+    ctx.save()
+    try {
+      ctx.beginPath(); ctx.rect(0, axes.pane.y, axes.layout.plotW, axes.pane.h); ctx.clip()
+      ctx.strokeStyle = css(t.amber); ctx.lineWidth = 1; ctx.setLineDash([4, 3])
+      for (const signal of shown) {
+        for (const line of signal.lines) {
+          const path = alertSignalPath(line, axes)
+          if (path.length < 2) continue
+          ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y)
+          for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y)
+          ctx.stroke()
+        }
+      }
+      ctx.setLineDash([])
+      for (const signal of shown) { const b = alertSignalBell(signal, axes); if (b) bell(ctx, b.x, b.y, t.amber) }
     } finally {
       ctx.restore()
     }
@@ -1105,6 +1240,7 @@ export function attachDrawing(view: ChartView): DrawingController {
   view.onDrawingKeyChanged = from => c.keyDidChange(from)
   view.drawingOverlayPaint = ctx => c.paintOverlay(ctx)
   view.drawingTeardown = c.teardownHook
+  view.signalTap = c.signalTapHook
   c.interactive = true
   // 已经有 state 的图：重新过一遍投影，拿到投影键
   const s = view.state

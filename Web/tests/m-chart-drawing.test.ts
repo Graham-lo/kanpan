@@ -31,7 +31,7 @@ import {
   DrawHistory, newDrawingID, DrawArchive, decodeArchive, encodeArchive, drawingGeometry, DrawGeometry,
   DrawingBook, canonicalInstrument, DrawingPreferences, styleOf, decodePreferences, encodePreferences, DrawAge,
   vwapTrail, volumeProfile, VolumeProfile, DRAW_PART_ANCHORS, ComputedMemo, computeVWAPTrail, computeVolumeProfile,
-  DrawingController, DrawAxes, DrawingPreview, attachDrawing, drawAxesOf, DRAW_DRAG_SLOP_PT,
+  DrawingController, DrawAxes, DrawingPreview, attachDrawing, drawAxesOf, DRAW_DRAG_SLOP_PT, alertSignalPath,
 } from '../src/m/chart/drawing'
 import { ViewWindow, priceRange, priceTransform, pOf, yOf, type Pane, type PriceRange } from '../src/m/chart/geometry'
 import { BarSeries, INTERVAL_STEP, bar } from '../src/m/chart/series'
@@ -2063,5 +2063,61 @@ describe('十字线跟手（2026-10-03）', () => {
     drag(v, { x: 30, y: c0.y - 60 }, { x: 120, y: c0.y - 60 }, 14_000)
     expect(v.state!.overlay.crosshair).toBeNull()
     expect(v.state!.viewport.view.equals(before)).toBe(false)
+  })
+})
+
+// 2026-10-06：画线与提醒互相独立。线删了 / 藏了 / 「隐藏画线」开着，提醒照常生效，图上由提醒线（虚线 + 铃铛）指出来
+describe('提醒线（画线删了提醒还在）', () => {
+  const rig = () => {
+    const r = disciplineView()
+    const p = r.axes.p(300)
+    const line = { ...makeDrawing('hline', { t: r.axes.t(200), p }), id: 'L1' }
+    r.c.setDrawings([line])
+    r.c.alerted = new Set(['L1'])
+    r.c.signals = [{ id: 'al-1', drawingID: 'L1', lines: [{ points: [{ t: r.axes.t(200), p }], extendLeft: true, extendRight: true }] }]
+    return { ...r, line, p }
+  }
+
+  test('线在、画出来了：不画提醒线（铃铛挂在线上）；线删了：渲染数据里多出一条提醒线', () => {
+    const { c } = rig()
+    expect(c.shownSignals).toEqual([])
+    c.setDrawings([])
+    expect(c.shownSignals.map(s => s.id)).toEqual(['al-1'])
+  })
+
+  test('线自己藏了、或者整层画线收着（隐藏画线）：提醒线照画；对比态百分比轴不画', () => {
+    const { v, c, line } = rig()
+    c.setDrawings([{ ...line, hidden: true }])
+    expect(c.shownSignals.map(s => s.id)).toEqual(['al-1'])
+    c.setDrawings([line])
+    v.state = withInput(v.state!, { options: { ...v.state!.input.options, drawings: false } })
+    expect(c.shownSignals.map(s => s.id)).toEqual(['al-1'])
+    v.state = withInput(v.state!, { percentAxis: true })
+    expect(c.shownSignals).toEqual([])
+  })
+
+  test('两端无限延的水平提醒线铺满图区宽、高度就是那个价', () => {
+    const { v, c, p } = rig()
+    const axes = axesNow(v)
+    const path = alertSignalPath(c.signals[0].lines[0], axes)
+    expect(path[0].x).toBe(0)
+    expect(path[path.length - 1].x).toBe(axes.layout.plotW)
+    for (const q of path) expect(q.y).toBeCloseTo(axes.y(p), 6)
+  })
+
+  test('竖屏（不在画线态）点中提醒线：交出提醒 id、不出十字线；点空白照旧出十字线', () => {
+    const { v, c } = rig()
+    c.setDrawings([])
+    c.interactive = false
+    c.editable = false
+    const got: string[] = []
+    c.onSignalTap = id => got.push(id)
+    const axes = axesNow(v)
+    tap(v, { x: 150, y: 300 }, 20_000)
+    expect(got).toEqual(['al-1'])
+    expect(v.state!.overlay.crosshair).toBeNull()
+    tap(v, { x: 150, y: axes.pane.y + 20 }, 30_000)
+    expect(got).toEqual(['al-1'])
+    expect(v.state!.overlay.crosshair).not.toBeNull()
   })
 })

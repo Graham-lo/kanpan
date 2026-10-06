@@ -793,6 +793,8 @@ export class ChartGestures {
       return
     }
     g.lastPlotTap = { ms: now, x: p.x, y: p.y }
+    // 提醒线（画线删了 / 藏了还在生效的提醒）：十字线没开时点中它就开提醒，不出十字线
+    if (this.state?.overlay.crosshair == null && this.v.signalTap?.(p.x, p.y)) return
     const r = this.v.renderer
     if (r && OF.orderFlowHit && OF.candleHit && !OF.candleHit(r, p.x, p.y, this.v.width, this.v.height)) {
       const hit = OF.orderFlowHit(r, p.x, p.y, this.v.width, this.v.height)

@@ -54,7 +54,7 @@ installShell(document.getElementById('m-mount') ?? document.body)
 resume()
 setRoute(st.routePolicy)
 startLinkGrace()
-// 画线提醒跟着线走：同步开始之前按本机那一本记下「见过的线」，首次同步整桶换线时删了的线才比得出来
+// 画线提醒跟着线挪（线删了提醒不动，10-06）：同步开始之前装上，整批换进来的画线随到随对账
 startLineAlerts()
 initMobileSync()
 // 本机存储满了（清掉缓存也写不下）：告诉人这次的改动没存住，一个会话提示一次（与 PC main.ts 同一口径）

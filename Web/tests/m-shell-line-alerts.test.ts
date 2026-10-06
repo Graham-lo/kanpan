@@ -1,6 +1,5 @@
-/* 手机网页版壳层：画线提醒对账的「见过的线」基线在启动时就建（m/app/lineAlerts），不等行情页挂上。
- * 行情页是空闲时才挂的；原来基线建在它挂上那一刻，首次同步先到、整桶换了线，那次删线比不出来，
- * 被删线上的提醒留着照响。 */
+/* 手机网页版壳层：画线提醒对账在启动时就装（m/app/lineAlerts），不等行情页挂上。
+ * 2026-10-06 起提醒不依附画线：线删了（本机或别处）提醒照留、照自己的 lines 判；只有线挪了才跟着改。 */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import mainSrc from '../src/m/main.ts?raw'
 import chartSrc from '../src/m/pages/chart.ts?raw'
@@ -47,20 +46,34 @@ async function boot(local: Record<string, [string, number][]>) {
 beforeEach(() => { vi.resetModules() })
 afterEach(() => { vi.unstubAllGlobals() })
 
-describe('启动 → 同步先到 → 行情页后挂载：被删线上的提醒已撤', () => {
-  it('首次同步整桶删了 BTC 的 a、ETH 的 e：行情页还没挂，提醒已经撤掉，b 上的留着', async () => {
+describe('启动 → 同步先到 → 行情页后挂载：线删了提醒照留', () => {
+  it('首次同步整桶删了 BTC 的 a、ETH 的 e：提醒全留着、还生效、lines 不变；挂上之后再删也一样', async () => {
     const { S, D, L, cloud, ids } = await boot({ BTCUSDT: [['a', 60_000], ['b', 61_000]], ETHUSDT: [['e', 3_000]] })
     S.st.alerts = [lineAlert('BTCUSDT', 'a', 60_000), lineAlert('BTCUSDT', 'b', 61_000), lineAlert('ETHUSDT', 'e', 3_000)]
+    const before = structuredClone(S.st.alerts)
     L.startLineAlerts() // main.ts：同步开始之前
     D.replaceDrawings(cloud({ BTCUSDT: [['b', 61_000]], ETHUSDT: [] })) // 首次同步整桶换进来（行情页还在等空闲）
-    expect(ids(), '同步在行情页挂上之前删的线，提醒留着照响').toEqual(['al-b'])
-    // 行情页后挂上：它不再自己建基线 / 订 replaced（否则会重复对账，或拿换过之后的线当「删之前」）
+    expect(ids(), '删线不该删提醒').toEqual(['al-a', 'al-b', 'al-e'])
+    expect(S.st.alerts, '提醒还生效、几何与上膛时刻都不动').toEqual(before)
     const chartB = await import('../src/m/pages/chart/drawingBench')
-    chartB.reconcileLineAlerts('BTCUSDT', D.drawingBook.items('binance/usd_m/BTCUSDT')) // 挂上后本机 onChanged 那条路
-    expect(ids()).toEqual(['al-b'])
-    // 挂上之后再来的同步照样对账（壳层订阅一直在）
+    chartB.reconcileLineAlerts('BTCUSDT', []) // 本机在图上删光（onChanged 那条路）
     D.replaceDrawings(cloud({ BTCUSDT: [] }))
-    expect(ids()).toEqual([])
+    expect(S.st.alerts).toEqual(before)
+    // 图上的提醒线照提醒自己的几何给（画哪几条由图按线在不在定，见 m-chart-drawing「提醒线」）
+    const sig = chartB.lineAlertSignals('BTCUSDT')
+    expect(sig.map(x => [x.id, x.drawingID])).toEqual([['al-a', 'a'], ['al-b', 'b']])
+    expect(sig[0].lines).toEqual(before[0].lines)
+  })
+
+  it('线删了又回来（撤销 / 别处恢复）且挪了位置：提醒按回来的样子重算、重新上膛', async () => {
+    const { S, D, L, cloud } = await boot({ BTCUSDT: [['a', 60_000]] })
+    S.st.alerts = [lineAlert('BTCUSDT', 'a', 60_000)]
+    L.startLineAlerts()
+    D.replaceDrawings(cloud({ BTCUSDT: [] }))
+    expect(S.st.alerts[0].armedAt).toBe(1)
+    D.replaceDrawings(cloud({ BTCUSDT: [['a', 64_000]] }))
+    expect(S.st.alerts[0].lines[0].points[0].p).toBe(64_000)
+    expect(S.st.alerts[0].armedAt).toBeGreaterThan(1)
   })
 
   it('同步把线挪了：行情页没挂也跟着改价位、重新上膛', async () => {
@@ -72,15 +85,16 @@ describe('启动 → 同步先到 → 行情页后挂载：被删线上的提醒
     expect(S.st.alerts[0].armedAt).toBeGreaterThan(1)
   })
 
-  it('本机没有这条线的来历（提醒先到、线还没拉到）：不当删', async () => {
+  it('提醒先到、线还没拉到：不动；线到了几何相同也不重新上膛', async () => {
     const { S, D, L, cloud, ids } = await boot({ BTCUSDT: [['old', 59_000]] })
     S.st.alerts = [lineAlert('BTCUSDT', 'late', 62_000)]
     L.startLineAlerts()
     D.replaceDrawings(cloud({ BTCUSDT: [['old', 59_000], ['other', 58_000]] }))
     expect(ids()).toEqual(['al-late'])
     D.replaceDrawings(cloud({ BTCUSDT: [['old', 59_000], ['late', 62_000]] }))
+    expect(S.st.alerts[0].armedAt).toBe(1)
     D.replaceDrawings(cloud({ BTCUSDT: [['old', 59_000]] }))
-    expect(ids(), '见过的线被删了，提醒要撤').toEqual([])
+    expect(ids(), '线又被删了，提醒照留').toEqual(['al-late'])
   })
 
   it('装多次只装一次：一次换线只对账一遍', async () => {
@@ -101,5 +115,7 @@ describe('启动 → 同步先到 → 行情页后挂载：被删线上的提醒
     expect(start).toBeLessThan(mainSrc.indexOf('initMobileSync()'))
     expect(chartSrc).not.toMatch(/reconcileLineAlertsIn/)
     expect(chartSrc).not.toMatch(/onDrawingsChanged/)
+    // 点中提醒线开「提醒」表（照 iOS onAlertSignalTap → openAlertHub）
+    expect(chartSrc).toMatch(/c\.onSignalTap = [^\n]*openAlertHub/)
   })
 })

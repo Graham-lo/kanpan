@@ -53,7 +53,7 @@ export function setWebhook(id: string, url: string | null): void {
   a.webhook = cleanWebhook(url); changed()
 }
 
-// ---- 画线提醒：跟着画线走
+// ---- 画线提醒：跟着画线挪，不跟着画线删
 export const drawingAlertOf = (symbol: string, drawingId: string): Alert | undefined =>
   st.alerts.find(a => a.kind === 'drawing' && a.status === 'active' && a.drawingID === drawingIdOf(symbol, drawingId))
 export function toggleDrawingAlert(symbol: string, d: Drawing): boolean {
@@ -62,18 +62,20 @@ export function toggleDrawingAlert(symbol: string, d: Drawing): boolean {
   if (!drawingCanAlert(d.type)) return false
   st.alerts.push(makeDrawingAlert(symbol, d)); changed(); return true
 }
-/** 画线挪动、删除之后对账：几何跟上，画线没了提醒也删 */
+/** 画线挪动、删除之后对账：线还在、几何变了 → 提醒跟上并从此刻起算；线删了、几何算不出 → 提醒不动，
+ *  照它自己存的 lines 判、图上画提醒线（2026-10-06 用户：「画线和警报是不冲突的，我删除画线也不应该删除警报才对」）。
+ *  提醒只在用户自己删、或者响了的时候才没 */
 export function reconcileDrawingAlerts(symbol: string, drawings: Drawing[]): void {
   let dirty = false
   const byId = new Map(drawings.map(d => [drawingIdOf(symbol, d.id), d]))
-  st.alerts = st.alerts.filter(a => {
-    if (a.kind !== 'drawing' || a.symbol !== symbol || !a.drawingID) return true
+  for (const a of st.alerts) {
+    if (a.kind !== 'drawing' || a.symbol !== symbol || !a.drawingID) continue
     const d = byId.get(a.drawingID)
-    if (!d) { dirty = true; return false }
-    const lines = drawingLines(d)
+    const lines = d ? drawingLines(d) : []
+    if (a.status === 'paused') { a.status = 'active'; a.armedAt = Date.now(); dirty = true }
+    if (!lines.length || a.status !== 'active') continue
     if (JSON.stringify(lines) !== JSON.stringify(a.lines)) { a.lines = lines; a.armedAt = Date.now(); dirty = true }
-    return true
-  })
+  }
   if (dirty) changed()
 }
 /** 第一阶段画线上的 alert 开关 → 画线提醒 */

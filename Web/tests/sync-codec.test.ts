@@ -4,7 +4,7 @@ import { drawingIdOf, makeConditionAlert, makeDrawingAlert, makePriceAlert } fro
 import type { Drawing } from '../src/chart/chart'
 import {
   ALERT_MARKET, SETTINGS_ID, applySettings, decodeAlerts, decodeDrawings, decodeFavorites, drawingId, encodeAlerts,
-  encodeDrawings, encodeFavorites, encodeSettings, favId, alertId, unseenDrawings, type SettingsState,
+  encodeDrawings, encodeFavorites, encodeSettings, favId, alertId, pausedLineAlerts, type SettingsState,
 } from '../src/sync/codec'
 import type { SyncObject } from '../src/sync/types'
 import { ctx } from './sync-fake'
@@ -176,13 +176,36 @@ describe('alerts', () => {
     expect(decodeAlerts([live], [broken])).toEqual([price])
   })
 
-  it('挂在手机藏起来的画线上的提醒：网页不接手，本机没有也不删', () => {
-    const hidden = obj('drawings', drawingId('BTCUSDT', 'H'), { kind: 'hline', anchors: [{ t: 1, p: 1 }], symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance', hidden: true })
+  it('提醒不依附画线（10-06）：线藏着、网页认不出、云端没这条线，提醒照样装进来；用户在表里删了才删云端', () => {
     const al = obj('alerts', 'binance/usd_m/BTCUSDT/q', { ...encodeAlerts([onLine], [])[0].body, drawingID: 'H' })
-    const unseen = unseenDrawings([hidden])
-    expect(decodeAlerts([al], [], unseen)).toEqual([])
-    expect(encodeAlerts([], [al], unseen)).toEqual([])
-    expect(encodeAlerts([], [al])).toHaveLength(1) // 对照：不给 unseen 就会删
+    const [a] = decodeAlerts([al], [])
+    expect(a).toMatchObject({ id: 'q', status: 'active', drawingID: drawingIdOf('BTCUSDT', 'H'), lines: onLine.lines })
+    // 本机还留着：原样推回（不删）
+    const [same] = encodeAlerts([a], [al])
+    expect(same.deleted).toBe(false)
+    expect(same.body).toEqual(al.body)
+    // 用户在提醒表里删掉：删云端
+    expect(encodeAlerts([], [al])).toEqual([{ ...al, deleted: true }])
+  })
+
+  it('云端暂停着的画线提醒（老版本「线找不到」暂停的）：解成生效的；记账推回 active、从此刻起算', () => {
+    const body = { ...encodeAlerts([onLine], [])[0].body, status: 'paused' }
+    const paused = obj('alerts', alertId('BTCUSDT', onLine.id), body, { revision: 3 })
+    expect(pausedLineAlerts([paused])).toBe(true)
+    expect(pausedLineAlerts([{ ...paused, deleted: true }])).toBe(false)
+    expect(pausedLineAlerts([obj('alerts', alertId('BTCUSDT', 'p'), { ...body, kind: 'price' })])).toBe(false)
+    const [a] = decodeAlerts([paused], [])
+    expect(a.status).toBe('active')
+    expect(a.lines).toEqual(onLine.lines)
+    const [o] = encodeAlerts([a], [paused], undefined, 50_000)
+    expect(o.deleted).toBe(false)
+    expect(o.body.status).toBe('active')
+    expect(o.body.armedAt).toBe(50_000)
+    expect(o.body.lines).toEqual(onLine.lines)
+    // 本机没有它也不会被当成「网页管不着」留在云端：网页管得着，用户删了就删
+    expect(encodeAlerts([], [paused])).toEqual([{ ...paused, deleted: true }])
+    // 价格提醒的 paused 不是这条来历，照旧不解
+    expect(decodeAlerts([obj('alerts', alertId('BTCUSDT', 'p'), { ...body, kind: 'price', drawingID: null })], [])).toEqual([])
   })
 
   it('超出服务端范围的条件不上云（本机留着）', () => {

@@ -163,6 +163,9 @@ export function migrateAlert(raw: unknown): Alert | null {
     const now = Date.now(), b = base(o.symbol, o.kind, now)
     const a = { ...b, ...o } as Alert
     if (typeof a.id !== 'string' || !a.id) a.id = b.id
+    // 老存档里暂停着的画线提醒（从前「线找不到」时暂停的）读进来就恢复生效、从此刻起算：
+    // 2026-10-06 起提醒不再依附画线，线没了照它自己的 lines 判（用户：「删除画线也不应该删除警报」）
+    if (a.kind === 'drawing' && a.status === 'paused') { a.status = 'active'; a.armedAt = Math.max(a.armedAt || 0, now) }
     return a
   }
   const created = typeof o.created === 'number' ? o.created : Date.now()

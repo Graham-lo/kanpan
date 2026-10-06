@@ -91,13 +91,6 @@ export function decodeDrawingObject(o: SyncObject): { key: string; d: Drawing } 
   return d ? { key, d } : null
 }
 
-/** 本机解不开的活对象（提醒解码用：挂在它们上面的画线提醒不装、也不删） */
-export function unseenDrawingsM(all: SyncObject[]): Set<string> {
-  const out = new Set<string>()
-  for (const o of all) if (o.collection === 'drawings' && !o.deleted && !decodeDrawingObject(o)) out.add(o.id)
-  return out
-}
-
 // ═════════════════════════════ 工具偏好 ═════════════════════════════
 
 export function encodePrefsObject(p: DrawingPreferences): SyncObject {

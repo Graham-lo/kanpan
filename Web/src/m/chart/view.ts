@@ -137,6 +137,8 @@ export class ChartView {
   onDrawingKeyChanged: ((from: string | null) => void) | null = null
   /** 图销毁时通知画线控制器摘下（退订全局本、停长按计时器）。attachDrawing 赋值。 */
   drawingTeardown: (() => void) | null = null
+  /** 一下轻点先问画线层：落在提醒线（AlertSignal）上就归它、返回真，图不再当轻点处理 */
+  signalTap: ((x: number, y: number) => boolean) | null = null
   private _drawingKeyOf: ((s: ChartState) => string) | null = null
   private drawingKey: string | null = null
 
