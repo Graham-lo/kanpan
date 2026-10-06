@@ -625,6 +625,13 @@ final class SymbolPickerModel {
   /// 权威那份在 `SymbolCatalog`（磁盘也会跟着改），这儿改的是这一页手里的副本，
   /// 免得用户要等下一次目录刷新才看到一致的样子。
   func markDelisted(_ symbol: String) {
+    // 目录还没到：什么都不写，和 `SymbolCatalog.markDelisted` 同一条规矩。
+    // 拿「空目录 + 这一行占位」去 `setCatalog`，目录就不再是空的——「等目录到了再编分类」
+    // 那道闸（`classifyUnassigned` 的 `waits`）随之打开，自选里只有黄金认得出（ISO 代码），
+    // 先开出「贵金属」，其余几只被归进「此刻看的那一类」，全挤在「贵金属」一格里，
+    // 真目录到了也改不回来（2026-10-06 17 Pro Max 全量 UI 抓到）。各行「已加载目录却不认识」
+    // 的判定（`status(for:)` 的 `catalogLoaded`）也会跟着错成「未知」。
+    guard !catalog.isEmpty else { return }
     let key = SymbolPrefs.key(symbol)
     var next = catalog
     if let i = next.firstIndex(where: { InstrumentID.canonical($0.symbol) == key }) {

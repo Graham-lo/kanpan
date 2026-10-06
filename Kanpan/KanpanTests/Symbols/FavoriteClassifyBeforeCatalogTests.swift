@@ -39,4 +39,22 @@ struct FavoriteClassifyBeforeCatalogTests {
     let crypto = try #require(m.prefs.groups.first { $0.name == "加密" }?.id)
     #expect(m.prefs.groupForSymbol["binance/usd_m/BTCUSDT"] == crypto)
   }
+
+  /// 2026-10-06 17 Pro Max 全量 UI 里抓到的：目录还没到时报价簿先收到一次「交易所不认这个代号」，
+  /// 品种页的 `markDelisted` 拿「空目录 + 一行占位」当了目录灌进去——目录不再是空的，
+  /// 「等目录」那道闸就开了：只有黄金认得出（ISO 代码），先开「贵金属」，其余七只全被归进
+  /// 「他此刻看的那一类」，自选页上只剩一格「贵金属，8 个品种」，真目录到了也改不回来。
+  @Test("目录没到时有一只被拒：不拿占位行当目录，真目录到了照常按资产类型分")
+  func rejectionBeforeCatalogDoesNotFakeACatalog() throws {
+    let store = SymbolPrefsStore(storage: MemoryPrefsStorage(), key: "t")
+    store.save(SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/NVDAUSDT", "binance/usd_m/XAUUSDT"]))
+    let m = SymbolPickerModel(store: store)   // 目录还没到
+    m.markDelisted("binance/usd_m/GONEUSDT")
+    #expect(m.catalog.isEmpty)
+    #expect(m.prefs.groups.isEmpty)
+    m.setCatalog(Self.catalog)
+    #expect(m.prefs.groups.map(\.name) == ["加密", "美股", "贵金属"])
+    let crypto = try #require(m.prefs.groups.first { $0.name == "加密" }?.id)
+    #expect(m.prefs.groupForSymbol["binance/usd_m/BTCUSDT"] == crypto)
+  }
 }
