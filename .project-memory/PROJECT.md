@@ -594,7 +594,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **同步（`8279a7f4` `77039139`）**：差分基线改成「本机已装的那一版」（`SyncArchive.shelved` 底稿 + `appliedLocal`），启动对账不再拿远端当基线把本机刚改的覆盖回去；推送断在半路按批 `onPushed` 报已落地字段；拒绝记录 `retryRejected` 能了结；两边都删了不再补发删除；偏好编码失败（`PrefsCodec.encoded` 可失败）不写空档、不推空；冷启动 `activate()` 装上次那个人的档案（`files.lastOwner`），不再先装访客档再切。已知取舍：拒绝记录的锁按对象不按字段；`account.user` 在恢复完成前为 nil。
 - **设置项（`8b944b7b` `8c891f3f`）**：PrefsCodec 升 v3（键仍 `kanpan.prefs.v2`），常用周期 `factoryQuicks` 迁移只对老档做一次（无版本号的老数据跳过该迁移）；恢复默认保留线路等 deviceOnly 字段；撤销改成字段范围 `restore(fields, from:)` 只还原自己那几项；`onChange(of: prefs.interval)` 不再被别的字段误触发；`noteInversion` 受「允许翻转」开关约束，关掉开关不再把用户的翻转记录抹成 false。settings-test 164/164。
 - **WS / 行情（`9ac8962f` … `55c075af`）**：控制帧发送失败当场重连；Coinbase 新订阅无首帧先重发再重连、按频道记错（`topicErrors`）；`WireNumber` 只收有限数；WSSocket 单帧上限 8 MiB；`MergedMarketStream` 改「期望集 + 唯一对账任务」，乱序 Task 不再把订阅覆盖回旧的、不再给同一家开两条连接；簿流 `DepthStream` 运行态机 + 轮次号，stop 后不被晚到的 start 拉起；K 线断档超补缺上限（`ProviderCapabilities.maxTailBars`：币安 6000 / Coinbase 1400）整段重拉不留洞；对比主品种走只留最新的信箱；预览卡最近使用表改成有容量 LRU；小组件、板块历史、复盘找相似的取数都改成退避重试且有上限。已知取舍：很安静的 Coinbase 频道可能多一次重连。
-- **提醒（`4541d69b` `a78dea3d` `fa57d317`）**：Webhook 只由服务端发一次（登录用户客户端不发，`serverSendsWebhooks` 按档案前缀 `u-` 判；迟报 10 分钟截止）；画线暂时读不到时提醒先暂停标「画线已不存在」，画线回来自动恢复；档案装好 / 云端推下来之后把画线存档记给提醒存档当「删之前」，第一次删线就级联删提醒。
+- **提醒（`4541d69b` `a78dea3d` `fa57d317`）**：Webhook 只由服务端发一次（登录用户客户端不发，`serverSendsWebhooks` 按档案前缀 `u-` 判；迟报 10 分钟截止）；~~画线暂时读不到时提醒先暂停、删线级联删提醒~~——**10-06 起画线与提醒互相独立**（§42）：删线 / 藏线 / 画线读不到都不删不停提醒，提醒照自己存的几何继续判，老版本暂停的自动复活。
 - **后端（`557c66f4` … `38c3f65e`，12 个）**：评估器按 90 秒无帧判死重连，超 200 路分片且提醒优先；`supervise.rs` 收编模块自起的常驻任务（单例 hub 死了进程退出交给 systemd `Restart=on-failure`，可重启的自己拉起，`Running` 守卫 panic 也复位）；同步字段校验放行 Unicode 基础币合约名；Webhook 客户端 `redirect::Policy::none`；APNs 403 过期令牌作废缓存重签重试一次；维护清理分批删除；复盘任务连续失败 5 次放弃；OKX 1000 倍打包合约映射与换算；分享收件箱「时间~id」复合游标；订单流共享连接池新 tracker 接手旧路由。后端单测 374/374 + 集成套件绿，clippy 无新告警。
 - 测试：account 126、settings 164、main-ios 90、app-logic 587 + 烟测 4、review 全绿、data 249、network 196，`Tools/check-venue-isolation.sh` 336 文件通过（WS 组三处注释点了交易所名，已改）。
 - 部署后日志里 `market_meta` 的「stocks/SPY 等 answered with another company's page; publishing nothing」WARN 是 09-20 第四轮定的既定行为（ETF 在 stockanalysis 没有 `stocks/` 页，宁可留空不猜），每天几百条，与本轮无关，未动。
@@ -982,6 +982,7 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **对比搬到顶栏**（`d26df149`）：周期条「分析」面板从四节收成三节「画线 · 指标 · 主力订单流」，对比节与 `compare.clear` 去掉；顶栏＋开**对比模式的搜索页**——
   上方「正在对比」条最多三枚胶囊各带 ×，每行行尾＋点加、再点去，满三只吐司「最多对比 3 个品种」，主品种置灰，「完成」或下滑收起，写回 `Prefs.compareSymbols`；
   有对比品种时＋亮皮肤强调色（`theme.amber`，青苔下是绿）。纯逻辑在 `Symbols/CompareSearchMode.swift`。周期条行尾仍三件，没加第四件。
+  **10-06 起「分析」面板的「对比」一节恢复**（用户：「分析里的对比要留」），与顶栏＋并存、开同一张对比模式搜索页（§42）。
 - **铃**：角标是当前品种还没触发的提醒数（`AlertStore.pendingCount`，0 不显示），无障碍标签「提醒 N」。点开「提醒」表（`Alerts/AlertHubSheet.swift`），
   分段「列表 | 日志」：列表把当前品种置顶（`AlertStore.pinnedRows`），底部「创建提醒」开创建页、品种锁死、价格预填现价，建完表不收；
   日志走 `GET /v1/alerts/log?limit=200`（全部品种、不带 since）、「清空」确认后 `DELETE /v1/alerts/log`（204），按天分组、下拉刷新、本地缓存一份（`Alerts/AlertLog.swift`），
@@ -1117,3 +1118,27 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   - 没有崩溃报告，RSS 稳定在 430–485 MB。
 - **不算 bug 的**：DXY 休市段照实留空（与网页 §40 一致）；SETTLING 品种显示「—」；横屏和画线时对比线暂时收起；画线条下一次进画线才重排。
 - **真机**：两台 iPhone 在 devicectl 里都是 unavailable，`make install-release` 跳过，真机包没装。
+
+## 42. 10-06：对比两处入口并存、提醒只要没失效就留存、画线与提醒互相独立、「隐藏画线」（iOS + 服务端）
+
+用户 10-06：「分析里的对比要留，提醒只要没失效也要留存」；「画线要给一个主动隐藏的按钮，不然竖屏情况下我既想保留警报又不想看画线体验非常不好，
+即使画线删除也应该保留预警信号啊。画线和警报是不冲突的，我删除画线也不应该删除警报才对。」网页那一半见 §40 的 10-06 三条。
+
+- **对比两处入口**（`48a39265`）：`IndicatorPage` 第三节「对比」恢复（`compare.add` / `compare.remove.<key>` / `compare.clear`），「添加对比」开顶栏＋那张
+  对比模式搜索页（`showComparePicker`）；复盘回放、横屏画线台、看朋友分享的线时整节不排（`PanelActions.onAddCompare` 为 nil）。
+- **提醒留存**：「失效」只有两种——已触发（`purgeFired`），复盘到期提醒过期超过一天（`ReviewDueAlerts`）。`AlertArchive.limit = 200` 只卡本机新建的三处
+  `hasRoom`（`add` / `addPrice` / `addCondition`）与批量接收；复盘到期派生（`settleReviewDue`）、云端推下来（`SyncOverlay`）、访客认领都不截断。
+  删提醒的路径逐条审过：只剩用户手删（提醒表 / 创建页 / 画线选中栏的提醒胶囊关掉）、已触发、复盘到期失效、服务端墓碑四种。
+- **画线与提醒互相独立**：`AlertArchive.reconcile` 不再级联删、不再暂停；删掉 `noteDrawings` / `seenDrawings` / `removeAlerts`。挪线仍按新几何重算并重置 `armedAt`。
+  老版本暂停（「画线已不存在」）的提醒在档案装好与同步落地后由 `AlertStore.reviveLegacyPaused` 复活；暂停标签改「已暂停」。
+- **提醒线**：`KanpanChart` 的 `ChartAlertSignal`——画线看不见（被删、被藏、画线层关）时，按提醒自己存的几何画琥珀色虚线 + 右缘铃铛；线还在且看得见时不重复画；
+  点中线或铃铛开「提醒」表（`openAlertHub`）。诊断键 `alertSignals` / `alertSignalBells`。限制：价格提醒不画线（只画画线类）；点中开的是整张提醒表、不定位到那一条；
+  对比态与复盘回放不画。
+- **隐藏画线**：同步字段 `Prefs.drawingsHidden`（出厂 false；不复用已退役的 `showDrawings`），`chartOptions.drawings = !drawingsHidden`；「分析」面板画线节
+  「开始画线」下一行开关「隐藏画线」（`drawing.hide`，复盘回放里也有）。横屏画线台与看朋友分享的线时 `ChartInput.forcesDrawings` 照画自己的线。
+  服务端 `SETTINGS_FIELDS` + `sync_validation` 布尔规则 + 契约（`d76db6d7`），11:40 CST 部署 kanpan-sg：二进制 sha256 `8dea80ec…f8388`，
+  备份 `/opt/kanpan-api/backup-20261006-113912/`，NRestarts 0、`/health` 200、迁移 50。
+- **验证**：sync-contract + backend cargo test 591、app-logic 791 + 5、main-ios 163、KanpanChart 250（新 `ChartAlertSignalTests` 5 条）、
+  `PrefsFieldPlanTests.drawingsHiddenIsSyncedAndTurnsDrawingsOff`；UI 16 Pro：`AlertsFlowUITests.testHidingAndDeletingLinesKeepsTheAlert`（画线建提醒 → 藏线后出一条提醒线 →
+  点铃铛开提醒表 → 横屏画线台线照画 → 竖屏删线提醒线还在、不问 → 提醒表仍「画线提醒 1」→ 关掉隐藏线回来）、`CompareUITests.testIndicatorPanelAddCompareOpensTheSameSearch`、
+  `ChartPanelLayoutUITests.testSingleLayerFitsOneScreen` 3/3。两台 iPhone 不可用，真机包未装。
