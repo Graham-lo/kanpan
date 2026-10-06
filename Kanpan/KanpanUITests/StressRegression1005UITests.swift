@@ -823,7 +823,10 @@ final class StressRegression1005UITests: KanpanUICase {
     /// 回自选页、点那一行；返回点下那一刻（到 K 线的计时从这儿起，不含 XCUITest 找按钮的那几秒）。
     func fromFavorites(_ group: String, _ key: String) -> Date {
       let n0 = Date()
-      XCTAssertTrue(app.openFavorites(), "回不到自选页")
+      // 先落到局部量再断言：Release 下嵌套函数里把 `app.openFavorites()` 直接塞进 XCTAssert 的 autoclosure，
+      // 编译器按区域隔离判成「sending 'self' risks causing data races」，Release 测试包整包编不过。
+      let opened = app.openFavorites()
+      XCTAssertTrue(opened, "回不到自选页")
       let g = app.buttons["favorites.group." + group]
       XCTAssertTrue(g.waitForExistence(timeout: Self.short), "自选页没有「\(group)」")
       if !g.isSelected { g.tap() }
