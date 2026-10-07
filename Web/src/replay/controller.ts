@@ -58,6 +58,8 @@ interface Session {
   loading: boolean
   /** 拖进度线拖到了还没取到的地方：取到后再落过去 */
   want: number | null
+  /** 整份重摆还在取数时又拖到了别处：取到后再落到这里 */
+  again: number | null
   /** 回放期间收起来的外挂绘制层（订单流是实时的，不能画到过去） */
   layers: ChartLayer[]
   ui: ReplayBar
@@ -161,7 +163,7 @@ async function begin(cell: ReplayCell, t: number): Promise<void> {
     const ch = cell.chart
     s = {
       cell, symbol, iv, start, clock: start, future: [], ended: false, playing: false, speed: 1, timer: null,
-      token: 0, busy: false, loading: false, want: null, layers: ch.layers, ui: null as unknown as ReplayBar,
+      token: 0, busy: false, loading: false, want: null, again: null, layers: ch.layers, ui: null as unknown as ReplayBar,
     }
     const ss = s
     s.ui = new ReplayBar(cell.host, {
@@ -190,7 +192,7 @@ async function place(s: Session, clock: number, local: Bar[] | null): Promise<vo
   const tok = ++s.token, wasPlaying = s.playing
   stopTimer(s)
   // 在路上的补页按旧的那份算的，作废（它回来看到代号变了就不动）
-  s.want = null; s.busy = false
+  s.want = null; s.again = null; s.busy = false
   const now = Date.now()
   let cut = local ? M.splitAt(local, clock, s.iv, now) : null
   if (!cut) {
@@ -212,6 +214,8 @@ async function place(s: Session, clock: number, local: Bar[] | null): Promise<vo
   if (cut.hist.length < M.HISTORY_BARS) void moreHistory(s)
   after(s)
   if (wasPlaying) play(s)
+  // 取数那会儿进度线又被拖到了别处：落过去（还在这份里就直接切，不在就再取一份）
+  if (s.again != null) { const w = s.again; s.again = null; if (w !== clock) { seek(s, w); sync(s) } }
 }
 
 /** 往左补历史：起点左边不到 300 根时（切周期后从当前时刻往回取的那页不够）补一页 */
@@ -337,6 +341,10 @@ function after(s: Session): void {
 /** 回放钟落到 clock：往回就把多出来的那几根收回「未来」，往前就从「未来」里搬，不重取 */
 function seek(s: Session, clock: number): void {
   const ch = s.cell.chart, bars = ch.bars
+  // 往回落到了手里最早那根之前（切过周期、拖到过最右之后，图上这份是围着别的时刻取的）：
+  // 这份里一根都不该露出来，整份围着 clock 重取，不能把 K 线全收回「未来」留一张空图
+  const first = bars[0] ?? s.future[0]
+  if (s.loading || !first || first.t >= M.relocate(clock, s.iv)) { reposition(s, clock); return }
   const off = ch.rightBar - (bars.length - 1)
   const n = M.visibleCount(bars, clock, s.iv)
   s.want = null
@@ -355,6 +363,20 @@ function seek(s: Session, clock: number): void {
   s.clock = s.want != null && last ? M.barClose(last.t, s.iv) : clock
   if (bars.length < M.HISTORY_BARS) void moreHistory(s)
   paintReplayQuote()
+}
+
+/** 整份围着 clock 重摆：先清掉图上那份（都在 clock 之后，露出来就是「未来」），已经在取就只记下最后要去的地方 */
+function reposition(s: Session, clock: number): void {
+  s.clock = clock
+  s.want = null
+  if (s.loading) { s.again = clock; return }
+  const ch = s.cell.chart
+  ch.bars.splice(0)
+  s.future = []
+  s.ended = false
+  ch.recalc(); ch.legendDirty = true
+  paintReplayQuote()
+  void place(s, clock, null)
 }
 
 /** 拖进度线：拖的时候暂停，松手按之前的状态继续 */

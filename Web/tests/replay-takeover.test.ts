@@ -7,7 +7,7 @@ const Q = 9e5, H = 36e5
 const NOW = Date.UTC(2026, 9, 7, 4, 7, 30)
 
 /** 交易所那边的「真相」：任何周期都是从很早开始首尾相接，收盘价 = 开盘时刻 / 周期（看值就知道是哪一根） */
-const ivMs = (iv: string): number => ({ '15m': Q, '1h': H } as Record<string, number>)[iv]
+const ivMs = (iv: string): number => ({ '1m': 6e4, '15m': Q, '1h': H } as Record<string, number>)[iv]
 const barAt = (t: number, iv: string): Bar => ({ t, o: t / ivMs(iv), h: t / ivMs(iv) + 1, l: t / ivMs(iv) - 1, c: t / ivMs(iv), v: 1 }) as Bar
 /** 开盘严格早于 endTime 的最后 limit 根（正在走的那根也给，和币安一样） */
 function backPage(iv: string, endTime: number | undefined, limit: number): Bar[] {
@@ -140,6 +140,50 @@ describe('K 线回放接管之后图表收到的数据', () => {
     ui.handlers!.toStart()
     expect(cell.chart.bars[cell.chart.bars.length - 1].t).toBe(start)
     expect(calls.filter(c => c.startsWith('back'))).toEqual([])
+  })
+
+  /** 3 天前定起点、16× 播过 30 小时、切到 1m：1m 从这里往回一页（1500 根 ≈ 25 小时）够不到起点 */
+  async function farFromStart(): Promise<number> {
+    const start = Date.UTC(2026, 9, 4, 4, 0)
+    await startAt(start)
+    ui.handlers!.speed(16); ui.handlers!.toggle()
+    await vi.advanceTimersByTimeAsync(1000 / 16 * 120)
+    ui.handlers!.toggle()
+    cfg.iv = '1m'
+    expect(R.replayLoad(cell)).toBe(true)
+    await flush()
+    expect(cell.chart.bars[0].t).toBeGreaterThan(start)
+    calls.length = 0
+    return start + Q                                     // 起点的回放钟（15m 那一根收线）
+  }
+  const atStart = (s0: number): void => {
+    const b = cell.chart.bars
+    expect(R.replayState()!.clock).toBe(s0)
+    expect(b.length).toBeGreaterThanOrEqual(300)
+    expect(b[b.length - 1].t).toBe(s0 - 6e4)
+    expect(b.every((x, i) => !i || x.t - b[i - 1].t === 6e4)).toBe(true)
+    expect(calls.some(c => c.startsWith('back 1m'))).toBe(true)   // 重取过（不是空图干等）
+  }
+
+  it('切到细周期后图上那份够不到起点：「回到起点」围着起点重取，不留空图', async () => {
+    const s0 = await farFromStart()
+    ui.handlers!.toStart()
+    await flush()
+    atStart(s0)
+  })
+
+  it('切到细周期后图上那份够不到起点：进度线一路拖到最左（取数没回来就松手）落在起点，等的时候不露「未来」', async () => {
+    const s0 = await farFromStart()
+    ui.handlers!.seek(0.95, 'start')
+    ui.handlers!.seek(0.4, 'move')                      // 还在这份里：照常收回「未来」
+    expect(cell.chart.bars.length).toBeGreaterThan(300)
+    ui.handlers!.seek(0.05, 'move')                     // 过了这份最早那根
+    expect(cell.chart.bars.length).toBe(0)
+    ui.handlers!.seek(0.02, 'move')
+    ui.handlers!.seek(0, 'move')
+    ui.handlers!.seek(0, 'end')
+    await flush(); await flush()
+    atStart(s0)
   })
 
   it('播到最新：停下并提示，不会把正在走的那根当未来播出去', async () => {
