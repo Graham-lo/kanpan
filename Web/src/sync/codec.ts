@@ -14,6 +14,7 @@
  */
 import type { Alert, IndState } from '../app/store'
 import { migrateAlert } from '../alerts/shape'
+import { indicatorRuleOk, isIndicatorRule } from '../alerts/indicator'
 import type { Drawing, DrawingType, DrawPoint } from '../chart/chart'
 import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { INTERVALS, type Kind } from '../market/symbols'
@@ -568,8 +569,11 @@ const DECIMAL = /^-?\d+(\.\d+)?$/
 function decIn(v: unknown, lo: number, hi: number): boolean {
   return typeof v === 'string' && DECIMAL.test(v) && +v >= lo && +v <= hi
 }
-/** 服务端 `conditions::Rule::parse` 收不收（认不得的 type 服务端也收，只要是纯字母） */
-function ruleOk(r: Alert['rule']): boolean {
+/** 服务端 `conditions::Rule::parse` 收不收（认不得的 type 服务端也收，只要是纯字母）。
+ *  技术指标条件（`{kind:'ma_cross'|'rsi_level'|'bar_breakout',…}`，没有 type）按约定的线格式严格校验：
+ *  不合格的不上云，合格的照推——服务端还不认时回 400，同步层把这一条单独隔开、过几分钟再推（见 alerts/indicator.ts） */
+export function ruleOk(r: Alert['rule']): boolean {
+  if (isIndicatorRule(r)) return indicatorRuleOk(r)
   if (!r || typeof r !== 'object' || typeof r.type !== 'string' || !/^[A-Za-z]{1,40}$/.test(r.type)) return false
   const o = r as Record<string, unknown>
   if (r.type === 'funding') return (o.side === 'above' || o.side === 'below') && decIn(o.rate, -0.1, 0.1)

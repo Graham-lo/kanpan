@@ -51,7 +51,9 @@ export interface Device { id: string; name: string; secret: string; kind: Device
 
 export class ApiError extends Error {
   status: number; code: string; deviceKind?: string
-  constructor(status: number, code: string, deviceKind?: string) { super(code); this.status = status; this.code = code; this.deviceKind = deviceKind }
+  /** 服务端给的人话原因（`error.message`，400 校验不过时带中文），没有就是 undefined */
+  reason?: string
+  constructor(status: number, code: string, deviceKind?: string, reason?: string) { super(code); this.status = status; this.code = code; this.deviceKind = deviceKind; this.reason = reason }
 }
 
 // ───────── 本机存储 ─────────
@@ -102,7 +104,7 @@ export function device(): Device {
 
 // ───────── 请求 ─────────
 
-interface Envelope<T> { data?: T; error?: { code?: string; deviceKind?: string } }
+interface Envelope<T> { data?: T; error?: { code?: string; deviceKind?: string; message?: unknown } }
 
 /** 同源请求，解包 `{data}`，错误统一成 ApiError（网络不通是 status 0 / network） */
 export async function request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
@@ -117,7 +119,10 @@ export async function request<T>(method: string, path: string, body?: unknown, h
   } catch { throw new ApiError(0, 'network') }
   let j: Envelope<T> | null = null
   try { j = await res.json() as Envelope<T> } catch { /* 413 之类可能不是 JSON */ }
-  if (!res.ok) throw new ApiError(res.status, j?.error?.code || (res.status === 413 ? 'payload_too_large' : 'http_' + res.status), j?.error?.deviceKind)
+  if (!res.ok) {
+    const msg = j?.error?.message
+    throw new ApiError(res.status, j?.error?.code || (res.status === 413 ? 'payload_too_large' : 'http_' + res.status), j?.error?.deviceKind, typeof msg === 'string' && msg.trim() ? msg.trim().slice(0, 200) : undefined)
+  }
   return (j?.data ?? (null as T))
 }
 

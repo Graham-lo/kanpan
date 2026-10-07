@@ -16,6 +16,7 @@
  */
 import type { Drawing } from '../chart/chart'
 import { MACRO_ALERT_MARKET, MACRO_CN, isMacro } from '../market/macro'
+import { indicatorPhrase, isIndicatorRule, type IndicatorRule } from './indicator'
 
 export type AlertKind = 'drawing' | 'price' | 'reviewDue' | 'condition'
 export type AlertMarket = 'binance/usd_m' | 'coinbase/spot' | 'macro/index'
@@ -26,6 +27,8 @@ export type AlertRule =
   | { type: 'openInterestChange'; threshold: string }
   | { type: 'maCross'; interval: string; length: number; side: 'above' | 'below' }
   | { type: 'orderflowWall'; threshold: string }
+  /** 技术指标条件（均线交叉 / RSI / 突破）：线上是 `{kind:…}`，没有 type，见 indicator.ts */
+  | IndicatorRule
   | { type: string; [k: string]: unknown }
 
 export interface Alert {
@@ -90,6 +93,7 @@ function pct(ratio: string, dp: number): string {
 /** 条件那一段（和服务端 Rule::phrase 一字对一字） */
 export function rulePhrase(r: AlertRule | null): string {
   if (!r) return '条件提醒'
+  if (isIndicatorRule(r)) return indicatorPhrase(r)
   if (r.type === 'funding') { const f = r as { side: string; rate: string }; return `资金费率${f.side === 'above' ? '高于' : '低于'} ${pct(f.rate, 6)}%` }
   if (r.type === 'openInterestChange') return `1 小时持仓量变化超过 ${pct((r as { threshold: string }).threshold, 4)}%`
   if (r.type === 'maCross') { const m = r as { interval: string; length: number; side: string }; return `${m.interval} 收盘${m.side === 'above' ? '站上' : '跌破'} MA${m.length}` }

@@ -36,7 +36,13 @@ export interface Hooks {
   apply(): void
 }
 
-interface Err { status?: number; code?: string }
+interface Err { status?: number; code?: string; reason?: string }
+
+/** 一条操作被服务端永久拒了（400 / 422，单条隔开挪进 rejected 之后）：谁关心谁订（提醒层拿它弹中文原因） */
+export interface Rejected { op: SyncOperation; code: string; reason?: string }
+const rejectedHandlers = new Set<(r: Rejected) => void>()
+export function onRejected(fn: (r: Rejected) => void): () => void { rejectedHandlers.add(fn); return () => { rejectedHandlers.delete(fn) } }
+function reportRejected(r: Rejected): void { rejectedHandlers.forEach(f => { try { f(r) } catch (e) { console.error(e) } }) }
 
 export const MAX_BATCH = 100
 export const MAX_BODY = 384 * 1024
@@ -129,6 +135,7 @@ export class Engine {
           s.rollback(ids)
           if (batch.length > 1) { this.suspects = batch.length; continue }
           s.quarantine(batch[0].id, err.code || 'rejected')
+          reportRejected({ op: batch[0], code: err.code || 'rejected', reason: err.reason })
           this.suspects = 0
           continue
         }
