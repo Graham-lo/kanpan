@@ -75,13 +75,18 @@ struct TopBar: View {
         backButton(onBack)
       }
       // 品种块先让右边五颗圆片：五颗固定 32 × 5 + 8 × 4 = 192，余下的全归品种名
-      // （16 Pro 402pt：没返回时 162pt，`BTC/USDT 永续` 放得下；有返回时 122pt，
-      // `BTC/USDT` 放得下、「永续」角标放不下，就先收角标）。还放不下时先压计价币，
-      // 基础币最后才截——`layoutPriority` 让它比右边的 Spacer 先拿宽度。
+      // （16 Pro 402pt：没返回时 162pt，`徽章 BTC/USDT 永续` 放得下；有返回时 122pt）。
+      //
+      // 「永续 / 现货」角标**不许被挤掉**（2026-10-08 走查）：自选里现货和永续挨着放，
+      // 从自选点进来带着返回键一路横滑扫图，扫到哪一只是现货、哪一只是永续全靠它；
+      // 原来先收角标，一出返回键角标就没了，看着像换了一种品种。
+      // 现在放不下时先收币种徽章（左边已经有返回键顶着，少一颗圆不显空），再收计价币，
+      // 最后才截基础币——角标一直在。`layoutPriority` 让它比右边的 Spacer 先拿宽度。
       ViewThatFits(in: .horizontal) {
-        symbolBlock(tag: true)
-        symbolBlock(tag: false)
-        symbolBlock(tag: false).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        symbolBlock(badge: true, quote: true)
+        symbolBlock(badge: false, quote: true)
+        symbolBlock(badge: false, quote: false)
+        symbolBlock(badge: false, quote: false).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
       }
       .layoutPriority(1)
       .accessibilityElement(children: .combine)
@@ -123,26 +128,30 @@ struct TopBar: View {
   /// 右上角那簇圆片的步距（见文件头 2026-10-05 那段的算术）。
   static let clusterSpacing = Space.s
 
-  /// 徽章 + 品种名 +（放得下时）「永续」角标。
-  private func symbolBlock(tag: Bool) -> some View {
+  /// （放得下时）徽章 + 品种名 +（放得下时）计价币 +「永续 / 现货」角标（总在）。
+  private func symbolBlock(badge: Bool, quote showQuote: Bool) -> some View {
     HStack(spacing: Space.s) {
-      CoinBadge(base: base, size: ControlMetrics.badge)
+      if badge { CoinBadge(base: base, size: ControlMetrics.badge) }
       HStack(alignment: .firstTextBaseline, spacing: Space.xxs) {
         Text(base)
           .font(TypeScale.heading)
           .foregroundStyle(theme.ink)
-        if !quote.isEmpty {
+          // 最后那一档放不下时只截基础币，角标不让。
+          .layoutPriority(-1)
+        if showQuote, !quote.isEmpty {
           Text("/" + quote)
             .font(TypeScale.caption)
             .foregroundStyle(theme.ink3)
         }
         // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
         // 「点我展开」的记号，比没有记号更糟。
-        if tag {
-          Text(InstrumentID(symbol).productLabel)
+        let tag = InstrumentID(symbol).productLabel
+        if !tag.isEmpty {
+          Text(tag)
             // 11pt 是 HIG 的文字下限（原来 10）；纯符号不在此列。
             .font(TypeScale.caption2Emph)
             .foregroundStyle(theme.ink3)
+            .fixedSize()
             .padding(.horizontal, Space.xs)
             .padding(.vertical, Space.xxs)
             .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.xs))

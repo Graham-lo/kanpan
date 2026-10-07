@@ -183,8 +183,9 @@ struct MainHeaderView<Card: View>: View {
   /// 那口价、涨跌和诊断串都在这块自己的 body 里向会话现取（审查 21）：逐笔推送只叫醒头部，
   /// 不叫醒宿主。
   let session: ChartSession
+  /// 十字线读数 2026-10-08 起不在头部了（挪去周期条那一行），这里留着入参不用，宿主那一行不必跟着改。
   let context: CrosshairContext
-  /// 「要不要加提醒」/ 分享卡在场没有：价格行和读数行照旧占位，只是透明。
+  /// 「要不要加提醒」/ 分享卡在场没有：价格行照旧占位，只是透明。
   let cardVisible: Bool
   let onBack: (() -> Void)?
   /// 顶栏「记一笔」「分享」两颗圆片；nil 时那颗不排。
@@ -204,7 +205,6 @@ struct MainHeaderView<Card: View>: View {
     #if DEBUG
       let _ = FrameProbe.shared.countBody("MainHeaderView")
     #endif
-    let readout = session.readout
     VStack(spacing: Space.s) {
       // 顶栏没有自选星了（用户 2026-09-18 定的）：加自选统一在搜索页和自选页的
       // 品种行上做，那儿看得见一整列，挑着加；顶栏这一颗紧贴品种名，只会误触。
@@ -234,21 +234,14 @@ struct MainHeaderView<Card: View>: View {
           nextFundingTimeMs: market.displayedNextFundingTime,
           stale: !market.priceFresh,
           showsStats: InstrumentSurfaces.showsHeaderStats(capabilities: market.capabilities, asset: market.asset))
-          .modifier(HiddenWhileCrosshairReads(readout: readout, context: context))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
           .accessibilityValue(session.quoteDiagnostics)
           // 「要不要加提醒」在场的那六秒，价格行也照旧占着位置、只是透明——
           // 和十字线那套让位一模一样，行高一个 pt 都不变。
           .opacity(cardVisible ? 0 : 1)
-        // 「顶部」那一档的开高低收（其余两档读数在图里，这儿什么都不画）。
-        // 十字线那颗「创建提醒」不在头部：它在周期条那一行（`CrosshairActionBar`），
-        // 所以按住图找位置的时候，价格、涨跌、六格一直是实时的（2026-09-23）。
-        CrosshairOHLCLabel(readout: readout, context: context, color: theme.ink, fillsWidth: true)
-          .fixedSize(horizontal: false, vertical: true)
-          // 刚画完的那一句优先：让位也是透明让位，这一行的高度不因此变。
-          .opacity(cardVisible ? 0 : 1)
-          .allowsHitTesting(false)
+        // 十字线的读数和那颗「创建提醒」都不在头部：它们在周期条那一行（`CrosshairActionBar`，
+        // 2026-10-08 起读数也挪过去了），所以按住图找位置的时候，价格、涨跌、六格一直是实时的。
       }
       // 画完一条线问的那一句，摆在**价格行的位置上**，而且是 `overlay`——
       // overlay 不参与父视图定尺寸，所以它在与不在，头部和图表的高度一个 pt 都不会变

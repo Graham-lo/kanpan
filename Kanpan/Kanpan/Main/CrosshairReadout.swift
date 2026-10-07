@@ -71,6 +71,62 @@ struct CrosshairContext {
     + (context.hasVolume ? "  量 " + fmtVol(series.volume[i]) : "")
 }
 
+/// 周期条那一行左边的十字线读数（2026-10-08 走查）：`时间 · 开 高 低 收 · 涨跌幅`，一行。
+///
+/// 原来十字线一出来，头部的实时价格行就让给一块等宽字体的三行开高低收（像终端），周期条
+/// 那一行只剩一颗「创建提醒」、副图上连那颗都没有——一整条空带。现在读数挪进这条带子的左边，
+/// 头部价格、涨跌、六格一直实时；放不下时先收「开 高 低」，再收时间，收盘价和涨跌幅总在。
+struct CrosshairBandReadout: Equatable {
+  /// 日内周期写「10-08 14:30」，日线及以上写「2026-10-08」。
+  let time: String
+  let open: String
+  let high: String
+  let low: String
+  let close: String
+  /// 这一根相对上一根收盘的涨跌幅（第一根没有上一根，相对它自己的开盘），「+0.12%」。
+  let change: String?
+
+  /// 一档放不下就往下一档退：全量 → 收掉开高低 → 再收掉时间。
+  enum Fit: CaseIterable { case full, closeOnly, bare }
+
+  func text(_ fit: Fit) -> String {
+    let tail = change.map { " · " + $0 } ?? ""
+    switch fit {
+    case .full: return "\(time) · 开 \(open) 高 \(high) 低 \(low) 收 \(close)\(tail)"
+    case .closeOnly: return "\(time) · 收 \(close)\(tail)"
+    case .bare: return "收 \(close)\(tail)"
+    }
+  }
+}
+
+/// 十字线那一根的读数（纯函数，跟 `crosshairOHLCText` 同一个对得上序列的口径）。
+/// 副图上的十字线也给——它对着的仍是那一根 K 线。
+@MainActor func crosshairBandReadout(_ crosshair: Crosshair?, _ context: CrosshairContext) -> CrosshairBandReadout? {
+  guard context.enabled, let c = crosshair, let series = context.series,
+        series.symbol == context.symbol, series.interval == context.interval,
+        series.close.indices.contains(c.index) else { return nil }
+  let i = c.index, p = context.decimals
+  let ms = Double(series.time(at: i))
+  let parts = DateParts(ms: ms, offsetMinutes: context.offsetMinutes)
+  func pad(_ n: Int) -> String { n < 10 ? "0\(n)" : "\(n)" }
+  let time = context.interval.stepMs >= 86_400_000
+    ? "\(parts.year)-\(pad(parts.month))-\(pad(parts.day))"
+    : "\(pad(parts.month))-\(pad(parts.day)) \(pad(parts.hour)):\(pad(parts.minute))"
+  let close = series.close[i]
+  let base = i > 0 ? series.close[i - 1] : series.open[i]
+  var change: String?
+  if base.isFinite, close.isFinite, base != 0 {
+    let pct = (close - base) / base * 100
+    // 四舍五入到两位之后是 0 的写「0.00%」，不写「-0.00%」。
+    change = abs(pct) < 0.005 ? "0.00%" : String(format: "%+.2f%%", pct)
+  }
+  return CrosshairBandReadout(
+    time: time,
+    open: fmtPrice(series.open[i], decimals: p), high: fmtPrice(series.high[i], decimals: p),
+    low: fmtPrice(series.low[i], decimals: p), close: fmtPrice(close, decimals: p),
+    change: change)
+}
+
 /// 十字线的开高低收那一块。**只有它跟着手指重求值**。
 struct CrosshairOHLCLabel: View {
   let readout: CrosshairReadout
@@ -91,25 +147,6 @@ struct CrosshairOHLCLabel: View {
   }
 }
 
-/// 「顶部」读数那一档里，十字线活着的时候把实时价格行让给开高低收。
-///
-/// 做成修饰器而不是在主屏 body 里算 `opacity`：这一层跟着十字线重求值，
-/// 被它包着的 `PriceRow` 是主屏那一次 body 求值造出来的值，不会跟着重造。
-///
-/// **只有 `.top` 那一档让位**（2026-09-23）。从前是「十字线一在就让」，因为头部那一行
-/// 要腾出来放十字线的几颗动作——结果手指按在图上找位置的那几秒，
-/// 顶栏最新价、涨跌和右边六格全没了，而那正是交易员最想同时盯着的东西。现在那一行的动作
-/// 搬去了周期条那一行（`CrosshairActionBar`），价格行一直实时；只有读数摆在顶部的那一档，
-/// 开高低收要借这一行的位置。让的是**同一行**：价格行照旧占着位置（只是透明），行高不变。
-struct HiddenWhileCrosshairReads: ViewModifier {
-  let readout: CrosshairReadout
-  let context: CrosshairContext
-
-  func body(content: Content) -> some View {
-    content.opacity(context.enabled && readout.orderFlow == nil && crosshairAlive(readout.crosshair, context) ? 0 : 1)
-  }
-}
-
 /// 十字线此刻是不是真的落在一根上（序列对得上、下标在范围里）。
 @MainActor func crosshairAlive(_ crosshair: Crosshair?, _ context: CrosshairContext) -> Bool {
   guard let c = crosshair, let series = context.series,
@@ -118,19 +155,18 @@ struct HiddenWhileCrosshairReads: ViewModifier {
   return series.close.indices.contains(c.index)
 }
 
-/// 十字线活着时周期条那一行换成的一颗药丸：铃铛 +「创建提醒」。
+/// 十字线活着时周期条那一行换成的那条带子：左边是这一根的读数，右边一颗「创建提醒」。
 ///
 /// **摆在周期条那一行的同一个 44pt 框里**（2026-09-23）：十字线活着时它整行顶替周期条
 /// （周期条透明让位、点不着，但照旧占着位置、量着自己的宽度，所以十字线收起时不跳位），
 /// 顶栏的价格、涨跌、六格一直实时。画布上不许浮控件，而周期条那一行紧贴图的上沿、
 /// 拇指够得着、也不压 K 线。跟着手指重求值的只有这只小视图。
 ///
-/// 2026-09-25 起这一行只剩这一颗：原来的「上一根 / 下一根 / 按此价画线 / 看细节」四颗撤掉，
-/// 换成从图上加提醒——这是新建提醒唯一的入口。
+/// 2026-09-25 起药丸上的字固定写「创建提醒」（不写价、不写涨到跌到），十字线那口价带进页里预填。
 ///
-/// 2026-09-25 v2（用户看完真机）：药丸上的字固定写「创建提醒」，不再写「涨到 / 跌到 X 提醒我」、
-/// 也不显示价——点空白是要**创建一条提醒**，涨跌方向与离现价多远交给页里那行小字说。
-/// 十字线那口价照旧带进页里预填。
+/// 2026-10-08 走查：读数从头部挪进这条带子的左边（`CrosshairBandReadout`），11pt 二级墨色，
+/// 等宽数字但不用等宽字体；药丸挪到右边。副图上的十字线没有药丸（指标值建不了价格提醒），
+/// 读数照给，不再是一整条空带。出主力订单流详情卡时读数让位给卡片（两块读数不同时出）。
 struct CrosshairActionBar: View {
   let readout: CrosshairReadout
   let context: CrosshairContext
@@ -142,19 +178,41 @@ struct CrosshairActionBar: View {
   static let title = "创建提醒"
 
   var body: some View {
-    // 副图上的十字线读的是指标值，不是价——按它建价格提醒毫无意义，所以不给。
-    if crosshairAlive(readout.crosshair, context), let c = readout.crosshair, c.pane == nil,
-       let price = c.price ?? priceOfBar(c.index), price.isFinite, price > 0 {
-      chip(price)
-        .fixedSize(horizontal: true, vertical: false)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // 左缘和头部、周期条同一根线（`Inset.page`）；字号封顶也跟它们一起（UI 审查 2026-09-24 §4.3 #23/#24）。
-        .pageHorizontalInset()
-        .frame(height: Hit.min)
-        .dynamicTypeSize(...MarketChrome.typeCap)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("chart.crosshair.actions")
+    if crosshairAlive(readout.crosshair, context), let c = readout.crosshair {
+      // 副图上的十字线读的是指标值，不是价——按它建价格提醒毫无意义，所以不给。
+      let price = c.pane == nil ? (c.price ?? priceOfBar(c.index)).flatMap { $0.isFinite && $0 > 0 ? $0 : nil } : nil
+      let reading = readout.orderFlow == nil ? crosshairBandReadout(c, context) : nil
+      HStack(spacing: Space.s) {
+        if let reading { band(reading) }
+        Spacer(minLength: 0)
+        if let price {
+          chip(price).fixedSize(horizontal: true, vertical: false)
+        }
+      }
+      // 左缘和头部、周期条同一根线（`Inset.page`）；字号封顶也跟它们一起（UI 审查 2026-09-24 §4.3 #23/#24）。
+      .pageHorizontalInset()
+      .frame(height: Hit.min)
+      .dynamicTypeSize(...MarketChrome.typeCap)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("chart.crosshair.actions")
     }
+  }
+
+  /// 左边那行读数：一档放不下退一档（先收开高低，再收时间）。
+  private func band(_ reading: CrosshairBandReadout) -> some View {
+    ViewThatFits(in: .horizontal) {
+      ForEach(CrosshairBandReadout.Fit.allCases, id: \.self) { fit in
+        Text(reading.text(fit))
+      }
+    }
+    .font(.system(size: 11).monospacedDigit())
+    .foregroundStyle(theme.ink2)
+    .lineLimit(1)
+    // 读屏仍按原来那三行念（时间一行、开高一行、低收量一行），UI 用例按第一行认时间。
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(crosshairOHLCText(readout.crosshair, context) ?? reading.text(.full))
+    .accessibilityIdentifier("chart.topOHLC")
+    .accessibilityAddTraits(.isStaticText)
   }
 
   private func priceOfBar(_ i: Int) -> Double? {
