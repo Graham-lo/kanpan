@@ -1777,3 +1777,46 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   布局 10 次；无谓的两处改掉 —— `paintConn` 每次流状态 / 品种表事件都给 16 个连接点写属性（没变也写）→ 只在变了时写；订单流 24 小时两块小图每帧读
   `clientWidth / clientHeight` 强制布局 → 尺寸由 ResizeObserver 推过来。其余是真工作（图例改字 ~19 次/秒、自选可见行改价与闪色 ~10 次/秒、
   详情块 ~8 次/秒、各格按推送重画），挂机布局 10.3 → 8.1 次/秒。
+
+## 54. 10-08：走查整改（交易员 + 视觉师两条线）——琉璃料铺全 app、画线笔色跟皮肤、自选走势线、板块领涨与美股 23 格、提醒 / 复盘空态
+
+用户 10-08：「iOS app 是不是会有点单调，或者体验不好……只是讨论方案」→「先以交易员的身份走查一遍」→「同时也要以美学视觉师的身份走查一遍，
+结合给出结论」→「直接开始做就行，做之前先打 tag 方便回滚」→「迷你走势默认打开但是要设置一个全局开关，全部完成后做一次压测」。
+走查结论里「先做 / 再做」两档全部做掉，「不建议做」那档照规矩不收编。**回滚点：tag `before-walkthrough-visual-overhaul-2026-10-08`
+（61049f11，已推远程）**，整批在 main 上小步进（三条 Opus 子代理 A 画线 / B 材质与板块 / C 自选与提醒复盘，主窗口收尾）。
+
+- **A · 画线与图例（`5bb13556`、`043b59da`）**：新增 `DrawPen`，画线 color 为空时用皮肤强调色 `t.accent`（青苔墨绿、陶土赤陶，深色各自 accent；
+  `ChartColors` 加 `accent`，`Palette.expanded` 从 seed 带进），已存的显式色原样；色板五支全从皮肤派生（跟皮肤 / 浅一阶 / 涨 / 跌 / 墨），与前格同色的不重复摆；
+  一条线所有部件（手柄、铃铛、预览、放大镜圈）同一支笔。没在编辑的画线 70%，选中与正在画的 100%，系统「降低透明度」开时一律 100%。
+  画线列表每行加「周期 · 距现价 ±x.xx% · 价」（周期记本机 `DrawArchive.intervals`，不进云同步；代表价 `DrawReference`，趋势线取最新根投影夹在两端之间）。
+  主图图例固定一行：放不下先换短写、再收成「+N」，副图图例去参数只留数值（`LegendFit`）；主图叠加线超过 6 条时非焦点 0.45（焦点 = 十字线所读 / 刚改过的 / 前 6）。
+- **B · 设计系统与材质（`d0b11746`、`d1c7719c`、`a14910f1`、`f0f9cd96`）**：琉璃材质抽成 `DesignSystem/LiuliMaterial.swift` 全 app 一份
+  （`LiuliBackdrop`、`.liuliCard()`、`LiuliPill`，数值照自选页定稿）；三套皮肤签名：经典白底无光斑、青苔 #E9F3F1 冷绿光斑、陶土 #F4EFEA 暖纸纹，深色不画光斑。
+  提示条改玻璃底并按 `TabBar.height + 8` 让位（原写死 92）。弹层底在 `PanelHost` 铺一次无光斑琉璃，分析面板 / 图表设置分组成玻璃卡（`PanelCard`），
+  图表设置 / 分享 / 周期三张短面板高度跟内容走（唯一一档 `.height`，超屏高 85% 才加满屏档）。指标参数表：出厂色排第一标「默认」，其余从皮肤派生
+  （`Palette.lineSwatches`，对图区底色 ≥ 3:1、去重），色块 id 改按角色 `indicator.color.N.<角色>`。板块、我的、交易所与账号页全换琉璃底 + 玻璃卡 + 1/3pt 材质细线；
+  板块空态「板块行情还没取到 / 重新获取」、我的页未登录时账号卡一颗「登录 / 注册」药丸。
+- **B · 板块（`dcadde57`）**：板块行涨跌幅左边一行小字「领涨 X」（`SectorStat.leader`：窗口收益最高且在涨、至少两只、全员跌不给）。美股从 12 个 AI 细分
+  扩到 23 格：补 APLD/AGPU/ANET/OKLO/CAT/ACN/AKAM/BSP，新增加密概念、金融、消费、媒体娱乐、医药、汽车与出行、航天、能源与资源、ETF 与基金、杠杆做多、
+  反向与波动 11 格；按 10-08 币安 178 只美股名单「其他」从 103 只收到 3 只。跨格重复（QCOM、ARM、TSLA 等 8 只）是有意的。
+- **C · 自选行（`bf3a4c4a`、`09269c10`、`f5674c02`）**：价格与涨跌药丸之间加 24 小时走势线（44×20、1.5pt、按 24h 涨跌取涨 / 跌色，不填充），数据是
+  `QuoteBook` 同一趟并取的 24h 15 分钟线，尾点接最新价；涨跌药丸同一只价真动一口时按方向闪 150 ms（`PillTick.flash`，换品种 / 减少动效 / 编辑 / 断线 / 休市不闪）。
+  **全局开关 `Prefs.favoritesTrend`（出厂开、跟账号同步）**：PrefsFieldPlan `.synced` → `make sync-contract` → kanpan-api `SETTINGS_FIELDS` + 布尔校验 →
+  手机网页 `prefs.ts` SYNCED_FIELDS；开关行 `FavoritesTrendSettingRow`（`settings.favoritesTrend`）挂在设置 › 通用首行。
+  402pt 机型上走势线曾把价格挤成「8:」→ 价格 / 走势 / 药丸那列 layoutPriority 先拿够，名字列让。自选页私有 LiuliSkin 删掉改用共用料；默认自选的美元现货键从
+  `VenueRegistry` 取，不点交易所名。
+- **C · 提醒与复盘（`0b1ced42`、`0748f8e1`）**：创建提醒页第一次露面时问一次通知权限（只在 `.notDetermined` 真弹），点「创建提醒」不再问；「Webhook」改「网络回调」；
+  创建表量「整页刚好装下」做一档，推进全部预警 / 编辑时拉满；空态「还没有提醒 + 一句怎么建 + 去创建」（`AlertEmptyState`，`AlertListContext.onCreate`）。
+  复盘本「观点」一条没有而「交易」有时直接开在交易面（`TradeReviewFeature.preferredSegment`），观点空态「还没有观点 · 在图上记一笔」+「去记一笔」胶囊走宿主 `startReviewCapture`。
+- **C · 行情页顶栏（`a9f64327`）**：横滑后返回键挤不掉「永续 / 现货」标（先舍币图标、再舍计价币）；十字线读数挪到周期条一行（11pt 次级墨色，放不下先去开高低再去时间），
+  头部价格 / 涨跌 / 六格按住图时一直实时，副图上的十字线也有读数（`CrosshairBandReadoutTests`）。
+- **主窗口收尾（`4cb3213f`）**：网页版 `sectors.json` 对齐 23 格（`us` 是 `[id, name, members]` 三元组列表）、`sectors.test.ts` 容忍 AI 12 格之外的「后加」格、
+  AI 格 102 只；拼音生成器改读 `src/market/searchText.ts`（原路径下 CRYPTO_NAMES 已搬走，重生成少了 112 条加密名）；COIN 中文名从「币基」回到「Coinbase」，
+  `SectorCatalog` 那行标 `venue-name-ok`、`Tools/check-venue-isolation.sh` 认这个标记跳过；`StorageLayeringTests` 登记 `DeviceListCache` / `ReviewKlineStore` 可删层。
+- **压测 / 回归（用户点名「全部完成后做一次压测」）**：见下一条「结果」。`ReviewBadgeIsolationTests.tickingHeaderDoesNotRecountReviews` 在全量跑里红过一次
+  （角标求值 4 次 vs 1 次）、单跑三遍全绿：起算点原来固定等 50 ms，组里几百条用例挤着跑时首屏没排完就起算，把首屏自己的重排算成「跟行情重算」；
+  改成等角标求值次数连续两趟不再变才起算（上限 2 s）。模拟器两次「Busy / Application failed preflight checks」拒启动是上一轮残留实例，冷启动 + 卸载后不再出现。
+- **结果（10-08 03:40–05:12，本窗口）**：Web vitest 166 文件 / 2167 条 ✓；SwiftPM core 507 / presentation 20 / network 245 / data 292 / account 156 ✓；
+  venue 隔离 408 文件 ✓；app-logic 837 ✓；chart ✓；review 261 ✓；exchange ✓；Main 组 183 ✓（冷启模拟器后重跑）。界面回归 iPhone 16 Pro 一台：
+  17 个套件（八个走查 + ChartFoundation + DrawingToolBar + StressRegression1005 + WholeAppStress + SkinScaleAccessibility + ReviewEntry + TopBarAlerts +
+  ScanSwipe + IntervalSlot）79 条通过 / 0 红 / 5 条「正式存档下」手动用例按设计跳过，87 分钟（`/tmp/kanpan-ui-1008/`）。真机这轮没装（规矩：手机不在手边就跳过）。
