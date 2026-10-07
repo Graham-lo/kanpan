@@ -19,15 +19,26 @@ function serverSettingsFields(): string[] {
   return [...body.matchAll(/"([^"]+)"/g)].map(x => x[1])
 }
 
+/** 只有电脑网页版读写、不进 iOS 契约的设置字段（sync.rs WEB_ONLY_SETTINGS_FIELDS，如多套图表布局 chartLayouts） */
+function webOnlyFields(): Set<string> {
+  const m = /pub const WEB_ONLY_SETTINGS_FIELDS:&\[&str\]=&\[([^\]]*)\];/.exec(syncRs)
+  return new Set(m ? [...m[1].matchAll(/"([^"]+)"/g)].map(x => x[1]) : [])
+}
+
 const sorted = (a: Iterable<string>) => [...a].sort()
 
 describe('手机网页版 · 同步字段白名单三方对账', () => {
   const mobile = sorted(SYNCED_FIELDS)
   const ios = sorted(Object.entries(contract.fieldClasses).filter(([, c]) => c === 'synced').map(([k]) => k))
-  const server = serverSettingsFields()
+  const webOnly = webOnlyFields()
+  const server = serverSettingsFields().filter(k => !webOnly.has(k))
   const wireOnly = new Set(Object.keys(contract.wireOnlyKeys))
 
   it('手机 = iOS 契约里 synced 的字段', () => { expect(mobile).toEqual(ios) })
+  it('网页独有字段在服务端白名单里、不在契约与手机里', () => {
+    expect([...webOnly]).toContain('chartLayouts')
+    for (const k of webOnly) { expect(serverSettingsFields()).toContain(k); expect(contract.wireKeys).not.toContain(k); expect(mobile).not.toContain(k) }
+  })
   it('手机 = 服务端 SETTINGS_FIELDS − wireOnlyKeys', () => { expect(mobile).toEqual(sorted(server.filter(k => !wireOnly.has(k)))) })
   it('契约 wireKeys 与服务端 SETTINGS_FIELDS 是同一份', () => { expect(sorted(contract.wireKeys)).toEqual(sorted(server)) })
   it('本机字段与契约 deviceOnly 一致、且不进同步', () => {

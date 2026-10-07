@@ -236,11 +236,14 @@ export function barFootprint(symbol: string, t: number, end: number, d: number, 
 }
 
 // ------------------------------------------------------------ 每格图的开关与画法
-const LS_KEY = 'hkline-web-footprint'
-function loadOn(): Set<number> {
-  try { const v = JSON.parse(localStorage.getItem(LS_KEY) || '[]') as unknown; return new Set(Array.isArray(v) ? v.filter(x => Number.isInteger(x)) as number[] : []) } catch { return new Set() }
-}
-const onCells = loadOn()
+/** 每格开没开足迹：开关记在格子配置里（st.cells[i].footprint，随布局集同步），由图表页接上；
+ *  没接（单元测试）时用一份内存里的 */
+export interface FootprintSource { on(idx: number): boolean; set(idx: number, on: boolean): void }
+const memory = new Set<number>()
+const memorySource: FootprintSource = { on: i => memory.has(i), set: (i, on) => { if (on) memory.add(i); else memory.delete(i) } }
+let source: FootprintSource = memorySource
+export function setFootprintSource(s: FootprintSource | null): void { source = s ?? memorySource }
+const isOn = (idx: number): boolean => source.on(idx)
 const bound = new Map<number, TVChart>()
 interface View { key: string; mult: number; aggs: Map<number, FootAgg | null>; stat: { mode: 'num' | 'bar' | 'candle'; drawn: number; rows: number; ms: number; step: number; d: number; med: number; ppp: number } }
 const views = new WeakMap<TVChart, View>()
@@ -250,13 +253,12 @@ readyHooks.add(symbol => { for (const c of bound.values()) if (!c.dead && c.meta
 const supports = (c: TVChart): boolean => c.iv >= MIN
 /** 有没有哪格开着足迹（订单流数据层要不要为它开着） */
 export function footprintWanted(): boolean {
-  for (const [i, c] of bound) if (onCells.has(i) && !c.dead && supports(c)) return true
+  for (const [i, c] of bound) if (isOn(i) && !c.dead && supports(c)) return true
   return false
 }
-export function footprintOn(idx: number): boolean { return onCells.has(idx) }
+export function footprintOn(idx: number): boolean { return isOn(idx) }
 export function setFootprint(idx: number, on: boolean): void {
-  if (on) onCells.add(idx); else onCells.delete(idx)
-  try { localStorage.setItem(LS_KEY, JSON.stringify([...onCells])) } catch { /* 隐私模式 */ }
+  source.set(idx, on)
   const c = bound.get(idx)
   if (!c) return
   // 打开时放到最宽，一屏就能看到数字（少一步缩放）
@@ -274,7 +276,7 @@ export function bindFootprint(chart: TVChart, idx: number): void {
 /** 周期菜单里的那一行（秒级周期置灰） */
 export function footprintMenuItem(idx: number, iv: string): MenuItem {
   const sec = /^\d+s$/.test(iv)
-  return { html: `${term('足迹')}${sec ? '<span class="faint" style="margin-left:8px">秒级周期不支持</span>' : ''}`, check: true, checked: !sec && onCells.has(idx), disabled: sec, run: () => { if (!sec) setFootprint(idx, !onCells.has(idx)) } }
+  return { html: `${term('足迹')}${sec ? '<span class="faint" style="margin-left:8px">秒级周期不支持</span>' : ''}`, check: true, checked: !sec && isOn(idx), disabled: sec, run: () => { if (!sec) setFootprint(idx, !isOn(idx)) } }
 }
 
 function view(chart: TVChart, key: string): View {
@@ -325,7 +327,7 @@ function fmtUsd(x: number): string {
 /** 主图这一帧的 K 线：画了返回 true（chart.ts 就不画蜡烛） */
 function paint(c: TVChart, idx: number, p: Pane, r: PriceRange, from: number, to: number): boolean {
   const t0 = performance.now(), now = Date.now()
-  if (!onCells.has(idx) || !supports(c) || !c.bars.length) return false
+  if (!isOn(idx) || !supports(c) || !c.bars.length) return false
   const fv = frameView(c, from, to, now); if (!fv) return false
   const { v, d } = fv
   v.stat.mode = 'candle'; v.stat.drawn = 0; v.stat.rows = 0
@@ -422,7 +424,7 @@ function paint(c: TVChart, idx: number, p: Pane, r: PriceRange, from: number, to
 
 /** 图例里足迹那一行：十字线所在那根的买、卖、净额与控制点 */
 function legendRow(c: TVChart, idx: number, i: number): string {
-  if (!onCells.has(idx) || !supports(c) || !c.bars[i]) return ''
+  if (!isOn(idx) || !supports(c) || !c.bars[i]) return ''
   const now = Date.now(), r = c.visible()
   const fv = frameView(c, r.from, r.to, now); if (!fv) return ''
   const g = aggAt(c, fv.v, i, fv.d, now)
@@ -439,7 +441,7 @@ function legendRow(c: TVChart, idx: number, i: number): string {
 ;(globalThis as unknown as { __footprint?: (i?: number) => unknown }).__footprint = (i = 0) => {
   const c = bound.get(i); if (!c) return null
   const k = c.meta.symbol.toUpperCase(), h = hist.get(k), l = live.get(k), v = views.get(c)
-  return { on: onCells.has(i), iv: c.iv, spacing: c.spacing, srvStep: srvStep.get(k) ?? null, histMinutes: h?.minutes.size ?? 0, histFrom: h?.from ?? null, histTo: h?.to ?? null, liveMinutes: l?.minutes.size ?? 0, ...(v?.stat ?? {}) }
+  return { on: isOn(i), iv: c.iv, spacing: c.spacing, srvStep: srvStep.get(k) ?? null, histMinutes: h?.minutes.size ?? 0, histFrom: h?.from ?? null, histTo: h?.to ?? null, liveMinutes: l?.minutes.size ?? 0, ...(v?.stat ?? {}) }
 }
 ;(globalThis as unknown as { __fpBench?: (i?: number, n?: number, show?: number) => unknown }).__fpBench = (i = 0, n = 60, show = 0) => {
   const c = bound.get(i); if (!c) return null
@@ -452,7 +454,7 @@ function legendRow(c: TVChart, idx: number, i: number): string {
   return { frameMed: med(frame), frameP95: p95(frame), footprintMed: med(fp), stat: views.get(c)?.stat }
 }
 export function setFootprintApiBase(b: string): void { apiBase = b }
-export function resetFootprint(): void { live.clear(); srvStep.clear(); hist.clear(); bound.clear(); onCells.clear() }
+export function resetFootprint(): void { live.clear(); srvStep.clear(); hist.clear(); bound.clear(); memory.clear() }
 export function historyOf(symbol: string): { from: number; to: number; minutes: number; empty: boolean } | null {
   const h = hist.get(symbol.toUpperCase()); return h ? { from: h.from, to: h.to, minutes: h.minutes.size, empty: h.empty } : null
 }

@@ -10,21 +10,18 @@ import { migrateAlert, type Alert } from '../alerts/shape'
 import type { VpvrMode } from '../chart/overlays'
 import type { NoteDraft } from '../notes/draft'
 import { DEFAULT_WATCH, INTERVALS, type Kind } from '../market/symbols'
-import { IV_MS } from '../util/format'
 import { setItemMakingRoom } from '../util/storage'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
 import { cleanCompare } from '../sync/codec'
+import {
+  bookFrom, cleanBook, cleanCells, cleanLayout, clampActive, commitLive, loadLive, migrateLegacyFootprint, validIv, validSymbol,
+  LEGACY_FOOTPRINT_KEY, type CellCfg, type Layout, type LayoutBook,
+} from './layouts'
 
 export type Theme = 'light' | 'dark'
 export type Skin = 'sage' | 'terra' | 'classic'
 export type UpDown = 'red-up' | 'green-up'
-export type Layout = '1' | '2' | '2v' | '3' | '4' | '6' | '8' | '9' | '12' | '16'
-/** 布局清单（TradingView 那种多窗口，最多 16 格） */
-export const LAYOUTS: Layout[] = ['1', '2', '2v', '3', '4', '6', '8', '9', '12', '16']
-/** 每种布局几格 */
-export const LAYOUT_N: Record<Layout, number> = { '1': 1, '2': 2, '2v': 2, '3': 3, '4': 4, '6': 6, '8': 8, '9': 9, '12': 12, '16': 16 }
-/** 最多几格 */
-export const MAX_CELLS = 16
+export { LAYOUTS, LAYOUT_N, MAX_CELLS, FILL_SYMBOLS, ensureCells, clampActive, validIv, validSymbol, type Layout, type CellCfg, type LayoutBook, type SavedLayout } from './layouts'
 /**
  * 每种布局的网格：几列几行；areas 只有「左一右二」要（第 0 格占左边整列，右边两格上下分）。
  * 列宽 / 行高的比例用户能拖，按布局分别记在本机（app/sizes.ts）。
@@ -36,29 +33,11 @@ export const GRID: Record<Layout, GridSpec> = {
   '4': { cols: 2, rows: 2 }, '6': { cols: 3, rows: 2 }, '8': { cols: 4, rows: 2 },
   '9': { cols: 3, rows: 3 }, '12': { cols: 4, rows: 3 }, '16': { cols: 4, rows: 4 },
 }
-/** 当前格子落在布局的格数以内（地址栏把八图改成一图时，参数要落到看得见的那一格上） */
-export function clampActive(s: Pick<State, 'active' | 'layout'>): void {
-  const n = LAYOUT_N[s.layout] || 1
-  s.active = Number.isInteger(s.active) ? Math.min(Math.max(0, s.active), n - 1) : 0
-}
-/** 多图时补齐格子的品种：先 BTC 与几只主流，再往后是热门山寨与美股、金银（16 格各不相同） */
-export const FILL_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'NVDAUSDT', 'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'SUIUSDT', 'XAGUSDT', 'TSLAUSDT', 'LTCUSDT', 'TRXUSDT']
-/** 格子配置补到 n 格：缺的（含稀疏数组里的洞）按清单补一只还没用过的品种，周期跟第 0 格 */
-export function ensureCells(s: Pick<State, 'cells'>, n: number): void {
-  const iv = s.cells[0]?.iv || '1h'
-  for (let i = 0; i < n; i++) {
-    const c = s.cells[i]
-    if (c && typeof c.symbol === 'string' && typeof c.iv === 'string') continue
-    const used = new Set(s.cells.filter(Boolean).map(x => x.symbol))
-    s.cells[i] = { symbol: FILL_SYMBOLS.find(k => !used.has(k)) || 'BTCUSDT', iv }
-  }
-}
 export type PanelId = 'watch' | 'alerts' | 'flow' | 'notes' | 'trades'
 export type PageId = 'chart' | 'sectors' | 'review' | 'me'
 /** 侧栏「自选」视图里按顺序堆叠的小部件（自选、品种详情、盘口、逐笔成交、大单、提醒、24 小时流动性、24 小时成交），用户可调顺序与开合 */
 export type WidgetId = 'watch' | 'detail' | 'book' | 'tape' | 'walls' | 'alerts' | 'liq' | 'vol'
 
-export interface CellCfg { symbol: string; iv: string }
 /** 提醒：形状和手机端同步的 alerts 对象一致（19 个字段），见 alerts/shape.ts */
 export type { Alert }
 export interface Note {
@@ -102,6 +81,8 @@ export interface State {
    *  做过之后的红涨就是用户自己切回去的，不再动 */
   greenUpMigrated: boolean
   layout: Layout; cells: CellCfg[]; active: number
+  /** 布局集：若干套有名字的布局（layout + cells），当前那套就是上面的 layout / cells（app/layouts.ts）；随账号同步（chartLayouts） */
+  layouts: LayoutBook
   pinned: string[]
   panel: PanelId | null; watchTab: Kind; watch: Record<Kind, string[]>
   ind: IndState; params: Record<string, IndParams> | null
@@ -145,7 +126,7 @@ const TRANSIENT: (keyof State)[] = ['page', 'stale', 'account']
 function defaults(): State {
   return {
     theme: 'light', skin: 'sage', updown: 'green-up', route: 'gateway', routePicked: false, greenUpMigrated: true,
-    layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0,
+    layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0, layouts: bookFrom('1', [{ symbol: 'BTCUSDT', iv: '1h' }]),
     pinned: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
     panel: 'watch', watchTab: 'crypto', watch: structuredClone(DEFAULT_WATCH),
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }, params: null,
@@ -208,19 +189,6 @@ const PANELS: PanelId[] = ['watch', 'alerts', 'flow', 'notes', 'trades']
 const WIDGETS: WidgetId[] = ['watch', 'detail', 'book', 'tape', 'walls', 'alerts', 'liq', 'vol']
 const KINDS: Kind[] = ['crypto', 'us', 'idx', 'com']
 const HEX = /^#[0-9A-Fa-f]{6}$/
-/** 周期键认不认：原生、秒级（1s / 5s / 15s）、自定义分钟（2–1440 分且不和原生重复） */
-export function validIv(iv: unknown): iv is string {
-  if (typeof iv !== 'string') return false
-  if (INTERVALS.includes(iv) || iv === '1s' || iv === '5s' || iv === '15s') return true
-  const m = /^(\d+)m$/.exec(iv)
-  if (!m) return false
-  const n = +m[1]
-  return n >= 2 && n <= 1440 && !INTERVALS.some(k => IV_MS[k] === n * 60e3)
-}
-/** 本机存档里的品种代号：字母数字（1000PEPEUSDT、XAUUSDT），也有中文名的（币安人生USDT、龙虾USDT——
- *  2026-09-30 regress 60 只自选少了一只，就是一开始只认 ASCII 把它丢了），留一点余量给点号与横线。
- *  这只管「形状像不像代号」；能不能上云是 sync/codec.ts 的另一条规则（服务端只收 ASCII，中文名的只留本机） */
-export const validSymbol = (v: unknown): v is string => typeof v === 'string' && /^[\p{L}\p{N}._-]{2,40}$/u.test(v)
 const SUB_IDS = new Set(Object.entries(CATALOG).filter(([, c]) => c.place === 'sub').map(([k]) => k))
 /** 指标参数：只留认识的指标、认识的数值键；缺的项照目录默认补上（各指标算法按整份参数取值） */
 function cleanParams(raw: unknown): Record<string, IndParams> | null {
@@ -278,15 +246,14 @@ export function hydrate(saved: Partial<State>): State {
   s.lastPanel = PANELS.includes(s.lastPanel as PanelId) ? s.lastPanel : d.lastPanel
   if (!KINDS.includes(s.watchTab)) s.watchTab = d.watchTab
   s.customIvs = Array.isArray(s.customIvs) ? [...new Set(s.customIvs.filter(x => typeof x === 'string' && /^\d+m$/.test(x) && validIv(x)))].slice(0, 12) : []
-  // 格子：坏项与洞交给 ensureCells 补；认不出的周期回第 0 格的（第 0 格自己坏了回 1 小时）；自定义分钟启动时照格子注册
-  const ivOk = (iv: unknown): iv is string => validIv(iv)
-  const rawCells: unknown[] = Array.isArray(saved.cells) ? saved.cells.slice(0, MAX_CELLS) : []
-  const iv0 = isObj(rawCells[0]) && ivOk(rawCells[0].iv) ? rawCells[0].iv : d.cells[0].iv
-  s.cells = rawCells.map(c => (isObj(c) && validSymbol(c.symbol) ? { symbol: c.symbol, iv: ivOk(c.iv) ? c.iv : iv0 } : undefined)) as CellCfg[]
-  if (!s.cells.length || !s.cells[0]) s.cells[0] = { symbol: d.cells[0].symbol, iv: iv0 }
-  ensureCells(s, s.cells.length)
-  if (typeof s.layout === 'number') s.layout = String(s.layout) as Layout
-  if (!LAYOUTS.includes(s.layout)) s.layout = '1'
+  // 格子：坏项与洞补上，认不出的周期回第 0 格的（第 0 格自己坏了回 1 小时）；自定义分钟启动时照格子注册
+  s.cells = cleanCells(saved.cells)
+  s.layout = cleanLayout(saved.layout)
+  // 布局集：老存档没有它，单套 layout + cells 原样迁成「默认」；有它时活数据（layout / cells）为准抄回当前那套
+  // （活数据才是最后一次 save 写下的；只有布局集没有活数据时才从布局集装）
+  const book = cleanBook(saved.layouts)
+  if (book && !Array.isArray(saved.cells)) { s.layouts = book; loadLive(s) }
+  else { s.layouts = book ?? bookFrom(s.layout, s.cells); commitLive(s) }
   clampActive(s)
   for (const k of ['magnet', 'drawHidden', 'drawLocked'] as const) s[k] = s[k] === true
   if (typeof s.drawColor !== 'string' || !HEX.test(s.drawColor)) s.drawColor = d.drawColor
@@ -381,18 +348,33 @@ const fullSubs = new Set<() => void>()
 /** 本机存储清掉可让位的缓存后仍写不下主存档：每次写失败都叫（调用方自己决定提示几次） */
 export function onStorageFull(fn: () => void): () => void { fullSubs.add(fn); return () => { fullSubs.delete(fn) } }
 
-function write(): void {
+function write(): boolean {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(st)) if (!TRANSIENT.includes(k as keyof State)) out[k] = v
   // 先记写的人再写主存档：别的页收到主存档的 storage 事件时要读得到这次的时刻（WRITER_KEY 自己的事件不看）
   setItemMakingRoom(WRITER_KEY, JSON.stringify({ at: touchedAt }))
-  if (!setItemMakingRoom(KEY, JSON.stringify(out))) fullSubs.forEach(fn => fn())
+  if (setItemMakingRoom(KEY, JSON.stringify(out))) return true
+  fullSubs.forEach(fn => fn())
+  return false
 }
 
 export function save(): void {
+  // 当前那套布局抄回布局集（格子换品种 / 周期、开关足迹、换格子数都只改活数据）
+  commitLive(st)
   // 这份已经被别的标签页比下去了：不写盘（写了就把新的盖成旧的），切回来会重载
   if (!stale) write()
   subs.forEach(fn => fn(st))
 }
 
 export function resetAll(): void { localStorage.removeItem(KEY) }
+
+// 足迹开关 2026-10-07 前只记本机（一串格子序号）：并进当前那套布局的格子配置、写盘成功后再删老键（写不下就留着下次再迁）
+{
+  let raw: string | null = null
+  try { raw = localStorage.getItem(LEGACY_FOOTPRINT_KEY) } catch { /* 隐私模式 */ }
+  if (raw != null) {
+    migrateLegacyFootprint(st, raw)
+    commitLive(st)
+    if (write()) try { localStorage.removeItem(LEGACY_FOOTPRINT_KEY) } catch { /* 无 */ }
+  }
+}
