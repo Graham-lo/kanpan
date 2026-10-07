@@ -1953,6 +1953,7 @@ struct MainScreen: View {
       widgetFeed.quotesChanged()
     }
     quotes.onHistory = { picker.setHistory($0, $1) }
+    quotes.onTrend = { picker.setTrend($0, $1) }
     // 交易所不认这个代号：只把它标成下架，自选一行都不删（审查 B-06）。
     // 两处都标是因为品种页手里握的是目录的一份副本，标了它这一屏才立刻一致。
     quotes.onSymbolRejected = { symbol in

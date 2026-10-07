@@ -64,8 +64,16 @@ struct ChangePill: View {
   /// 数还是那个数，但已经不是「现在」的了（推送连接断满宽限）：字和底一起退成弱墨，
   /// 不再用涨跌色说方向。版面不动。
   var muted = false
+  /// 这一行此刻的「一口」（哪一只、什么价）。给了才会闪：同一只的价真动了，
+  /// 底按这一口的方向提亮 150ms 再落回去（`PillTick.flash`）。nil = 不闪（编辑中、断线、没价）。
+  var tick: PillTick? = nil
 
   @Environment(\.panelTheme) private var theme
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// 正在闪的那一下：方向 + 第几下（连着跳时后一下接着前一下重新计时）。只这一个状态，
+  /// 闪的只有药丸的底，整行不跟着重画。
+  @State private var flash: Flash?
+  private struct Flash: Equatable { var direction: PillTick.Direction; var serial: Int }
   /// 固定宽：`−12.34%` 这种最长的也放得下；字号放大时跟着长。
   @ScaledMetric(relativeTo: .footnote) private var width: CGFloat = 72
   @ScaledMetric(relativeTo: .footnote) private var height: CGFloat = ControlMetrics.pillHeight
@@ -87,10 +95,31 @@ struct ChangePill: View {
       .frame(width: width, height: height)
       .background {
         shape.fill(finite ? tint.opacity(0.14) : SymbolRowInk.rule(theme))
+          .overlay {
+            // 闪：按这一口的方向（不是按药丸的涨跌色）垫一层亮一档的底，150ms 后淡回去。
+            if let flash, finite, !muted {
+              shape.fill((flash.direction == .up ? theme.up : theme.down).opacity(Self.flashOpacity))
+            }
+          }
           .overlay(shape.strokeBorder(finite ? tint.opacity(0.3) : .clear, lineWidth: 0.5))
+      }
+      .onChange(of: tick) { old, new in
+        guard let direction = PillTick.flash(from: old, to: new, reduceMotion: reduceMotion) else { return }
+        flash = Flash(direction: direction, serial: (flash?.serial ?? 0) &+ 1)
+      }
+      .task(id: flash?.serial) {
+        guard flash != nil else { return }
+        try? await Task.sleep(for: PillTick.duration)
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: Self.flashFade)) { flash = nil }
       }
       .accessibilityIdentifier(id ?? "")
   }
+
+  /// 闪的那一层底：叠在 14% 的常态底上，合起来约 35%。
+  static let flashOpacity = 0.25
+  /// 闪完落回去的那一下淡出。
+  static let flashFade = 0.18
 }
 
 // MARK: - 字与墨
@@ -176,6 +205,11 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
   /// 涨跌药丸退灰（见 `ChangePill.muted`）。
   var changeMuted: Bool
   let changeID: String
+  /// 涨跌药丸收到的那一口（见 `ChangePill.tick`）。nil = 不闪。
+  var changeTick: PillTick?
+  /// 价格与药丸之间那条 24 小时走势线（`FavoriteTrendLine`）。nil = 不摆那一格（开关关着、
+  /// 板块页）；给了但 `trend` 是 nil = 让出 56pt 空着，数据到了原地画上，不挪版面。
+  var trend: FavoriteTrendLine?
   let openID: String
   let onOpen: () -> Void
   let detail: Detail
@@ -191,7 +225,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
        asset: SymbolClassification.Asset? = nil, isNew: Bool = false, first: Bool,
        priceText: String, priceInk: Color? = nil, priceSkeleton: Bool = false, priceID: String,
        change: Double, changeText: String, changePending: Bool = false, changeMuted: Bool = false,
-       changeID: String,
+       changeID: String, changeTick: PillTick? = nil, trend: FavoriteTrendLine? = nil,
        openID: String, onOpen: @escaping () -> Void,
        @ViewBuilder detail: () -> Detail,
        @ViewBuilder accessory: () -> Accessory) {
@@ -210,6 +244,8 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
     self.changePending = changePending
     self.changeMuted = changeMuted
     self.changeID = changeID
+    self.changeTick = changeTick
+    self.trend = trend
     self.openID = openID
     self.onOpen = onOpen
     self.detail = detail()
@@ -271,7 +307,12 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
           }
         }
         .accessibilityIdentifier(priceID)
-      ChangePill(value: change, text: changeText, pending: changePending, id: changeID, muted: changeMuted)
+      // 走势线夹在价格与药丸之间，两边比价格那一格收紧一档（行宽要留给名字）。
+      HStack(spacing: Space.s) {
+        if let trend { trend.equatable() }
+        ChangePill(value: change, text: changeText, pending: changePending, id: changeID,
+                   muted: changeMuted, tick: changeTick)
+      }
     }
   }
 }

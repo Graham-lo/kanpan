@@ -7,7 +7,7 @@ import KanpanNetwork
 /// 自选分类页 ——「琉璃」。
 ///
 /// 底是三团会慢慢漂的光，上面浮着玻璃：按钮是玻璃圆片，分类是玻璃胶囊，整张列表
-/// 是一张玻璃纸。颜色一律从当前皮肤的种子推（见 `LiuliSkin`），View 里不写死
+/// 是一张玻璃纸。颜色一律从当前皮肤的种子推（见 `LiuliMaterial`，全 app 共用的琉璃材质），View 里不写死
 /// 十六进制——唯一的例外是浅色那组「天青·薄荷」光斑，那是浅色底下专配的一组冷光，
 /// 不属于任何一套皮肤。
 ///
@@ -87,8 +87,10 @@ struct FavoritesView: View {
   // 同一个账号还是这个样子；同一台机器上换个人登进来，就不该还是上一个人摆的样子。
   //
   // 行尾「迷你走势」开关（`favoritesSparkline`，菜单行 `favorites.sparkline`）2026-09-28
-  // 收掉（收设置项 G）：出厂就不画，列表行尾不再摆走势线；分钟线仍订着，给长按预览卡的
-  // 1 小时 / 4 小时涨跌用。
+  // 收掉（收设置项 G）。2026-10-08 用户要回来一条 24 小时走势线，换了位置与口径：摆在价格与
+  // 涨跌药丸之间、出厂开、开关在设置 › 通用「自选走势线」（`Prefs.favoritesTrend`，新键，
+  // 老键在服务端退役名单里）。数据是露面那几行各取一份的 15 分钟线（`QuoteCell.trend`），
+  // 分钟线仍订着，给长按预览卡的 1 小时 / 4 小时涨跌用。
   //
   // 调整顺序开着没有、调整期间冻住的报价不落盘（冷启动举着半做完的动作进来更吓人），
   // 住在宿主手里的 `FavoritesEditSession`。
@@ -123,7 +125,7 @@ struct FavoritesView: View {
   /// 真正画出来的那一类：存的那个可能已经被删了，`SymbolPrefs.group(_:)` 退回第一类。
   private var selected: String? { model.prefs.group(group) }
   private var groupID: String? { selected }
-  private var skin: LiuliSkin { LiuliSkin(theme: theme) }
+  private var skin: LiuliMaterial { LiuliMaterial(theme: theme) }
   /// 画出来的那一份顺序。
   ///
   /// 手指按在表上（或者表还在滚）的时候用按下去那一刻冻住的那一份，抬手才换成最新的
@@ -173,7 +175,7 @@ struct FavoritesView: View {
       }
       .animation(.easeOut(duration: 0.16), value: more)
     }
-    .background { AuroraBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
+    .background { LiuliBackdrop(material: skin) }
     .tint(theme.amber)
     .task { await model.appear() }
     .onAppear {
@@ -521,7 +523,7 @@ struct FavoritesView: View {
   /// 这里原来铺着一张玻璃纸（圆角 22、白雾填充、上沿高光、半像素描边，两侧各留 12pt）。
   /// 用户看过对比之后选了「融合」：纸的四条边把屏幕切成「底」和「纸」两层，去掉之后
   /// 头部、分类段、列表读成同一块材料。玻璃原本干的活是替文字挡光斑，现在交给
-  /// `AuroraBackdrop` 底部那层同色渐变。行与行之间只剩一根两头淡出的发丝线。
+  /// `LiuliBackdrop` 底部那层同色渐变。行与行之间只剩一根两头淡出的发丝线。
   private func listSheet(_ order: [String]) -> some View {
     // 只加一层 `ScrollViewReader`——它不画任何东西，版面一个像素都不动（审查 C-08）。
     ScrollViewReader { reader in
@@ -845,6 +847,7 @@ struct FavoritesView: View {
       editing: editing,
       frozen: editing ? editQuotes[symbol] : nil,
       reduceMotion: reduceMotion,
+      trendOn: store.prefs.favoritesTrend,
       onOpen: { selectOrOpen(symbol) })
   }
 
@@ -933,7 +936,7 @@ struct FavoritesView: View {
         .background(skin.glassThin, in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radius.m, style: .continuous)
           .strokeBorder(skin.accent.opacity(0.35), lineWidth: 1))
-      Text("还没有自选").font(skin.serif(TypeScale.body.size)).foregroundStyle(theme.ink)
+      Text("还没有自选").font(ScaledFont(TypeScale.body.size, .medium, design: .serif)).foregroundStyle(theme.ink)
       Button { search.openSearch() } label: {
         Text("添加品种").font(TypeScale.controlOn).foregroundStyle(theme.badgeInk)
           .frame(height: Hit.min).padding(.horizontal, Space.xl)
@@ -947,161 +950,14 @@ struct FavoritesView: View {
   }
 }
 
-// MARK: - 派生色板
+// MARK: - 页面底色
 
-/// 「琉璃」用到的所有材质与光，全部从当前皮肤种子推出来。
-///
-/// 浅色的底与光斑是唯一的例外：用户定的「天青 · 薄荷」，不是皮肤原色——
-/// 皮肤原色在浅底上糊成一片，冷光才托得住玻璃。
-/// 经典（白）又是例外中的例外：它的底就是那张 AICoin 白，直接用种子的 `ground`，
-/// 光斑仍借青苔那三团。
+/// 2026-10-08 起这一页的底与玻璃改用全 app 共用的 `LiuliMaterial` / `LiuliBackdrop`
+/// （原来这里私有的一份 `LiuliSkin` / `AuroraBackdrop` / `Grain` 删了）。和原来的差别只在
+/// 材质那三笔皮肤签名上：经典不再画光斑、青苔第二团换成更饱和的冷绿、陶土颗粒加重成纸纹。
 extension FavoritesView {
-  /// 这一页的底色（`AuroraBackdrop` 的底）。底栏身后那道渐变收在它上面（`TabBar.fade`）。
-  static func pageGround(_ theme: PanelTheme) -> Color { LiuliSkin(theme: theme).ground }
-}
-
-private struct LiuliSkin {
-  let theme: PanelTheme
-  var seed: PaletteSeed { theme.seed }
-  var dark: Bool { theme.dark }
-  private var warm: Bool { Palette.isWarm(seed) }
-
-  private static let sageGround: Hex = "#E9F3F1"
-  private static let terraGround: Hex = "#F4EFEA"
-  private static let sageLobes: [Hex] = ["#A9DDF3", "#BFEFD6", "#DCEFF6"]
-  private static let terraLobes: [Hex] = ["#B5D9F1", "#F5D8C3", "#D3EDE0"]
-
-  var ground: Color {
-    if dark || Palette.isClassic(seed) { return Color(hex: seed.ground) }
-    return Color(hex: warm ? Self.terraGround : Self.sageGround)
-  }
-  /// 光斑只在浅色下画（深色的三团已按用户要求去掉，见 `AuroraBackdrop`）。
-  var lobes: [Color] {
-    dark ? [accent, accentLift, Color(hex: seed.amber)]
-         : (warm ? Self.terraLobes : Self.sageLobes).map { Color(hex: $0) }
-  }
-  /// 列表不再垫玻璃之后光斑直接穿过文字，整体收 30%——最亮的那一团正好压在
-  /// 最上面两三行，那几行是最常看的。
-  func lobeOpacity(_ index: Int) -> Double {
-    guard dark else { return 0.9 * 0.7 }
-    return (index == 2 ? 0.34 : 0.55) * 0.7
-  }
-  /// 底部同色收敛：从 22% 高度起往下渐渐回到底色，到底部盖住七成。
-  /// 头部那一截极光完整保留，越往下行越多也越稳。
-  var washStrength: Double { 0.7 }
-  var grainOpacity: Double { dark ? 0.05 : 0.035 }
-
-  var accent: Color { Color(hex: seed.accent) }
-  var accentLift: Color { Self.lift(seed.accent, 0.42) }
-  /// 液态药丸：acc2 → acc。
-  var accentGradient: LinearGradient {
-    LinearGradient(colors: [accentLift, accent], startPoint: .topLeading, endPoint: .bottomTrailing)
-  }
-  /// 玻璃：深色借近白的墨色，浅色借 `raised`（两套浅色种子的 raised 都是白）。
-  private var pane: Color { Color(hex: dark ? seed.ink : seed.raised) }
-  var glass: Color { pane.opacity(dark ? 0.065 : 0.64) }
-  var glassThin: Color { pane.opacity(dark ? 0.045 : 0.46) }
-  var edgeSoft: Color { pane.opacity(dark ? 0.12 : 0.62) }
-  var rule: Color { Color(hex: seed.ink).opacity(dark ? 0.11 : 0.09) }
-  /// 比 ink3 再弱一档，给上标数字、单位、微标签。
-  var ink4: Color { Color(hex: seed.ink3).opacity(0.7) }
-
-  /// 玻璃顶上那一线高光。
-  func topHighlight(inset: CGFloat) -> some View {
-    Capsule().fill(pane.opacity(dark ? 0.3 : 0.9))
-      .frame(height: 1).padding(.horizontal, inset)
-  }
-
-  /// 标题字体。原型上是宋体，但 iOS 装机量里没有任何一支简体中文衬线体可用——
-  /// `UIFont.familyNames` 里既没有 Songti SC 也没有 Kaiti SC，New York 只管拉丁字母，
-  /// 唯一在机的明朝体 Hiragino Mincho ProN 缺「选」「这」「栏」这些简体字，混排会崩。
-  /// 既然说好了不打包字体文件，这里就老实用 `.serif`：拉丁走 New York，中文走系统字，
-  /// 靠字号与字距把标题撑起来。
-  func serif(_ size: CGFloat) -> ScaledFont { ScaledFont(size, .medium, design: .serif) }
-
-  func lift(_ hex: Hex, _ amount: Double) -> Color { Self.lift(hex, amount) }
-
-  /// 往亮里提一档：色相不动，饱和收一点、明度往上走——原型里 acc2 和 acc 的关系。
-  private static func lift(_ hex: Hex, _ amount: Double) -> Color {
-    let rgba = hex.rgba
-    var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-    UIColor(red: rgba.r, green: rgba.g, blue: rgba.b, alpha: 1)
-      .getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-    return Color(hue: Double(h), saturation: Double(s) * (1 - amount * 0.6),
-                 brightness: Double(b) + (1 - Double(b)) * amount)
-  }
-}
-
-// MARK: - 底：三团会动的光
-
-private struct AuroraBackdrop: View {
-  let skin: LiuliSkin
-  let reduceMotion: Bool
-  @State private var drift = false
-
-  var body: some View {
-    GeometryReader { geometry in
-      let width = geometry.size.width, height = geometry.size.height
-      ZStack(alignment: .topLeading) {
-        skin.ground
-        // 深色下不画光斑：用户看过真机说「深色模式下有两个光晕影响视觉，直接去掉」——
-        // 深底上那两团强调色的光压在最上面几行字上，像屏幕没擦干净。素底加颗粒就够。
-        if !skin.dark {
-          lobe(0, size: 300, x: -95, y: -80, seconds: 22)
-          lobe(1, size: 250, x: width - 170, y: 240, seconds: 27)
-          lobe(2, size: 280, x: -70, y: height - 230, seconds: 31)
-          LinearGradient(stops: [
-            .init(color: skin.ground.opacity(0), location: 0.22),
-            .init(color: skin.ground.opacity(skin.washStrength), location: 1)],
-            startPoint: .top, endPoint: .bottom)
-            .frame(width: width, height: height)
-        }
-        if let grain = Grain.image {
-          grain.resizable(resizingMode: .tile).opacity(skin.grainOpacity)
-        }
-      }
-      .frame(width: width, height: height)
-    }
-    .allowsHitTesting(false)
-    .onAppear { if !reduceMotion { drift = true } }
-  }
-
-  /// 漂移只动 `offset` / `scale`，交给渲染线程去跑，不会让列表每帧重建。
-  private func lobe(_ index: Int, size: CGFloat, x: CGFloat, y: CGFloat, seconds: Double) -> some View {
-    let color = skin.lobes[index]
-    let peak = skin.lobeOpacity(index)
-    return RadialGradient(
-      gradient: Gradient(stops: [
-        .init(color: color.opacity(peak), location: 0),
-        .init(color: color.opacity(peak * 0.55), location: 0.45),
-        .init(color: color.opacity(0), location: 1)]),
-      center: .center, startRadius: 0, endRadius: size / 2)
-      .frame(width: size, height: size)
-      .scaleEffect(drift ? 1.08 : 1)
-      .offset(x: x + (drift ? 18 : 0), y: y + (drift ? -26 : 0))
-      .animation(reduceMotion ? nil
-                 : .easeInOut(duration: seconds).repeatForever(autoreverses: true), value: drift)
-  }
-}
-
-/// 一张 96×96 的灰噪点，平铺当颗粒。只生成一次。
-@MainActor private enum Grain {
-  static let image: Image? = {
-    let side = 96
-    var bytes = [UInt8](repeating: 0, count: side * side)
-    var state: UInt64 = 0x2545_F491_4F6C_DD1D
-    for index in bytes.indices {
-      state ^= state << 13; state ^= state >> 7; state ^= state << 17
-      bytes[index] = UInt8(truncatingIfNeeded: state >> 33)
-    }
-    guard let provider = CGDataProvider(data: Data(bytes) as CFData),
-          let image = CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 8,
-                              bytesPerRow: side, space: CGColorSpaceCreateDeviceGray(),
-                              bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-                              provider: provider, decode: nil, shouldInterpolate: false,
-                              intent: .defaultIntent) else { return nil }
-    return Image(decorative: image, scale: 1)
-  }()
+  /// 这一页的底色（`LiuliBackdrop` 的底）。底栏身后那道渐变收在它上面（`TabBar.fade`）。
+  static func pageGround(_ theme: PanelTheme) -> Color { LiuliMaterial(theme: theme).ground }
 }
 
 // MARK: - 按行订阅的那一截
@@ -1128,10 +984,12 @@ private struct FavoriteQuoteRow: View {
   /// 调整顺序期间冻住的那口报价（`FavoritesEditSession.quotes`）。
   let frozen: Ticker?
   let reduceMotion: Bool
+  /// 设置 › 通用「自选走势线」（`Prefs.favoritesTrend`）。
+  let trendOn: Bool
   let onOpen: () -> Void
 
   @Environment(\.panelTheme) private var theme
-  private var skin: LiuliSkin { LiuliSkin(theme: theme) }
+  private var skin: LiuliMaterial { LiuliMaterial(theme: theme) }
 
   /// 编辑行布局不随每批WS报价重建；退出编辑立刻读取最新行情。
   private var shown: Ticker? { editing ? frozen : cell.ticker }
@@ -1167,6 +1025,14 @@ private struct FavoriteQuoteRow: View {
       change: change, changeText: changePercentText(change), changePending: !stale,
       changeMuted: linkDown || closed,
       changeID: "favorites.change." + symbol,
+      // 药丸闪：只认真在跳的那口价。编辑中（报价冻住）、目录说没实时价、断线、休市都不闪。
+      changeTick: editing || stale || linkDown || closed || !price.isFinite
+        ? nil : PillTick(key: symbol, price: price),
+      // 24 小时走势线：开关开着就让出那一格；数据没到时那一格空着，到了原地画上。
+      trend: trendOn
+        ? FavoriteTrendLine(trend: stale ? nil : cell.trend, last: price.isFinite ? price : nil,
+                            up: theme.up, down: theme.down, flat: skin.ink4)
+        : nil,
       openID: "favorites.open." + symbol,
       onOpen: onOpen
     ) {
@@ -1528,8 +1394,7 @@ struct FavoritesLandingPlaceholder: View {
 
   var body: some View {
     ZStack(alignment: .top) {
-      AuroraBackdrop(skin: LiuliSkin(theme: theme), reduceMotion: reduceMotion)
-        .ignoresSafeArea()
+      LiuliBackdrop()
       VStack(spacing: 0) {
         // 头部那一行（分类胶囊 + 两颗圆片）的位置：只让出高度，不画它——
         // 胶囊里写的是他自己的分类名，猜不出来的就不摆。

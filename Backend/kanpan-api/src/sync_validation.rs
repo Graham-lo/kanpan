@@ -272,7 +272,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
     // 横屏画线台顶行「指标」胶囊（2026-10-05）。
     |"drawingOverlaysShown"
     // 画线面板「隐藏画线」（2026-10-06）。
-    |"drawingsHidden"=>v.is_boolean(),
+    |"drawingsHidden"
+    // 设置 › 通用「自选走势线」（2026-10-08）。
+    |"favoritesTrend"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),
    // 网页图表设置（crate::sync::WEB_SETTINGS_FIELDS）：一个对象，序列化 ≤ 8 KB；里面的键由网页自己清洗
    "webChart"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=8192),_=>false
@@ -821,7 +823,8 @@ mod tests {
   }
   assert!(crate::sync::SETTINGS_FIELDS.contains(&"chartLayouts"));
   assert!(crate::sync::SETTINGS_FIELDS.contains(&"drawingsHidden"));
-  for flag in ["mainInverted","watchMoveAlert","drawingOverlaysShown","drawingsHidden"] {
+  assert!(crate::sync::SETTINGS_FIELDS.contains(&"favoritesTrend"));
+  for flag in ["mainInverted","watchMoveAlert","drawingOverlaysShown","drawingsHidden","favoritesTrend"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");
   }
  }

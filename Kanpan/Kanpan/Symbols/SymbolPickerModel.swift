@@ -21,9 +21,12 @@ import KanpanCore
 final class QuoteCell {
   fileprivate(set) var ticker: Ticker?
   fileprivate(set) var bars: [Bar]?
-  fileprivate init(ticker: Ticker?, bars: [Bar]?) {
+  /// 行上那条 24 小时迷你走势（`FavoriteTrend`）。没取到是 nil。
+  fileprivate(set) var trend: FavoriteTrend?
+  fileprivate init(ticker: Ticker?, bars: [Bar]?, trend: FavoriteTrend? = nil) {
     self.ticker = ticker
     self.bars = bars
+    self.trend = trend
   }
 }
 
@@ -76,6 +79,8 @@ final class SymbolPickerModel {
   private(set) var quoteRevision: UInt64 = 0
   /// 同 `tickers`，不参与观察；长按预览卡读 `quoteCell(_:).bars`。
   @ObservationIgnored private(set) var historyBars: [String: [Bar]] = [:]
+  /// 同 `historyBars`：自选行那条 24 小时走势，按行读 `quoteCell(_:).trend`。
+  @ObservationIgnored private(set) var trends: [String: FavoriteTrend] = [:]
   /// 自选与最近。改完立刻落盘。
   private(set) var prefs = SymbolPrefs()
   /// 搜索框里的原文。改它分区就重算——但不是当场、也不在主线程上（压测收尾 2026-09-26）：
@@ -254,7 +259,7 @@ final class SymbolPickerModel {
   func quoteCell(_ symbol: String) -> QuoteCell {
     let key = SymbolPrefs.key(symbol)
     if let cell = cells[key] { return cell }
-    let cell = QuoteCell(ticker: ticker(for: key), bars: historyBars[key])
+    let cell = QuoteCell(ticker: ticker(for: key), bars: historyBars[key], trend: trends[key])
     cells[key] = cell
     return cell
   }
@@ -289,6 +294,19 @@ final class SymbolPickerModel {
     let kept = Array(bars.suffix(245))
     historyBars[symbol] = kept
     cells[symbol]?.bars = kept
+  }
+
+  /// 自选行那条 24 小时走势的 15 分钟线（`QuoteBook.onTrend`）。一份 97 个数不到 1 KB，
+  /// 上限和 `historyCapacity` 一样，挤掉的那只下次露面再取。截不出两根以上就不动原来那份。
+  func setTrend(_ symbol: String, _ bars: [Bar], now: Date = Date()) {
+    guard let trend = FavoriteTrend.make(bars: bars, now: Int64(now.timeIntervalSince1970 * 1000)) else { return }
+    if trends[symbol] == nil, trends.count >= Self.historyCapacity,
+       let victim = trends.keys.sorted().first {
+      trends.removeValue(forKey: victim)
+      cells[victim]?.trend = nil
+    }
+    trends[symbol] = trend
+    if cells[symbol]?.trend != trend { cells[symbol]?.trend = trend }
   }
 
   /// 已退订报价不继续冒充实时；只清数字，不碰收藏/分类/顺序。

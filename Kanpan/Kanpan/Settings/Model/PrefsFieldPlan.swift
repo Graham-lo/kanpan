@@ -103,6 +103,8 @@ enum PrefsFieldPlan {
     "drawingOverlaysShown": .synced,
     // 2026-10-06「隐藏画线」：个人的看图偏好，换台手机还该是藏着的，跟账号走。
     "drawingsHidden": .synced,
+    // 2026-10-08「自选走势线」：个人的看表偏好，换台手机还该是那样，跟账号走。
+    "favoritesTrend": .synced,
     "reviewSearchScope": .synced,
     "alertSound": .synced,
     "watchMoveAlert": .synced,

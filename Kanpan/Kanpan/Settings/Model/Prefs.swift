@@ -223,6 +223,13 @@ struct Prefs: Sendable, Equatable {
   /// 已经退役（服务端 `RETIRED_SETTINGS_FIELDS` 里），所以换了个名字。
   var drawingsHidden: Bool = false
 
+  /// 自选行上那条 24 小时迷你走势线（价格与涨跌药丸之间），出厂开。设置 › 通用「自选走势线」。
+  ///
+  /// 2026-10-08 用户要回来的：只此一颗全局开关，不分分类、不分品种，跟账号同步。
+  /// 2026-09-28 收掉的那颗 `favoritesSparkline`（行尾、出厂关）已在服务端退役名单里，
+  /// 老客户端写的是另一种语义，所以换了个名字。
+  var favoritesTrend: Bool = true
+
   // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：每一趟回放按根数自己挑
   // （`ReplayPace`，整趟 20–40 秒），回放条上那颗倍速键只改这一趟，不再存。
   /// 「找相似」的搜索范围：`history`（市场历史）/ `private`（我的记录）。

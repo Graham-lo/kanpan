@@ -231,6 +231,22 @@ struct PrefsFieldPlanTests {
     #expect(PrefsCodec.decode(Data("{}".utf8)).drawingsHidden == false)
   }
 
+  /// 「自选走势线」（2026-10-08）：跟着人走、出厂开；老存档没有这个键时按出厂（开）。
+  /// 名字不能是已退役的 `favoritesSparkline`——那颗在服务端退役名单里，推上去会被整条拒收。
+  @Test("自选走势线跟着人走，出厂开")
+  func favoritesTrendIsSyncedAndOnByDefault() {
+    #expect(PrefsFieldPlan.table["favoritesTrend"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("favoritesTrend"))
+    #expect(PrefsFieldPlan.table["favoritesSparkline"] == nil)
+    var prefs = Prefs.defaults
+    #expect(prefs.favoritesTrend)
+    prefs.favoritesTrend = false
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).favoritesTrend == false)
+    prefs.favoritesTrend = true
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).favoritesTrend)
+    #expect(PrefsCodec.decode(Data("{}".utf8)).favoritesTrend)
+  }
+
   /// **「线路」这一摊整个留在这台设备上——直连 / 网关那两档也不再跟着人走。**
   ///
   /// 这条钉的是 2026-09-19 按 GPT Pro 第二轮审查 B7 定下的决定。在那之前 `routePolicy`

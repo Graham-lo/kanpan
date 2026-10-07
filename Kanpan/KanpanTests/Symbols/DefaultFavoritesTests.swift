@@ -151,9 +151,11 @@ struct DefaultFavoritesTests {
 
   @Test("Coinbase 现货的键用交易所自己的口径，服务端认")
   func coinbaseKey() {
-    #expect(DefaultFavorites.coinbaseSpot("btc") == "coinbase/spot/BTC-USD")
-    #expect(InstrumentID.isSyncKey(DefaultFavorites.coinbaseSpot("ZEC")))
-    #expect(VenueRegistry.descriptor(forSymbol: DefaultFavorites.coinbaseSpot("BTC")).id == CoinbaseProvider.venue)
+    #expect(DefaultFavorites.usdSpot("btc") == "coinbase/spot/BTC-USD")
+    #expect(InstrumentID.isSyncKey(DefaultFavorites.usdSpot("ZEC") ?? ""))
+    #expect(VenueRegistry.descriptor(forSymbol: DefaultFavorites.usdSpot("BTC") ?? "").id == CoinbaseProvider.venue)
+    #expect(DefaultFavorites.usdSpotVenue?.id == CoinbaseProvider.venue)
+    #expect(FavoriteSiblings.spotMarket == CoinbaseProvider.market)
   }
 
   @Test("目录还没加载出来时什么都不给")

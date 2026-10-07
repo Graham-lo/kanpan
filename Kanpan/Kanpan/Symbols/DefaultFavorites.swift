@@ -53,10 +53,23 @@ enum DefaultFavorites {
   /// 点名的币之外再按成交额取几条。
   static let hotCount = 5
 
-  /// Coinbase 现货的品种键（`coinbase/spot/BTC-USD`）。只收美元计价（记忆 kanpan-coinbase-spot-only）。
-  static func coinbaseSpot(_ base: String) -> String {
-    InstrumentID(venue: CoinbaseProvider.venue, market: CoinbaseProvider.market,
-                 symbol: base.uppercased() + "-USD").key
+  /// 美元计价现货那一家的品种键（今天是 `coinbase/spot/BTC-USD`）。只收美元计价
+  /// （记忆 kanpan-coinbase-spot-only）。不点交易所的名字：从 `VenueRegistry` 里找
+  /// 「市场是现货、默认那只是美元计价」的那一家，按它默认那只的写法（`底名-USD`）拼。
+  /// 清单里没有这样一家时返回 nil（那几条现货就不给）。
+  static func usdSpot(_ base: String) -> String? {
+    guard let venue = usdSpotVenue else { return nil }
+    let sample = InstrumentID(venue.defaultSymbol).symbol
+    guard let dash = sample.lastIndex(of: "-") else { return nil }
+    return InstrumentID(venue: venue.id, market: venue.market,
+                        symbol: base.uppercased() + sample[dash...]).key
+  }
+
+  /// 有现货、美元计价的那一家：市场是现货（`FavoriteSiblings.spotMarket`），默认那只以 `-USD` 结尾。
+  static var usdSpotVenue: VenueDescriptor? {
+    VenueRegistry.all.first {
+      $0.market == FavoriteSiblings.spotMarket && InstrumentID($0.defaultSymbol).symbol.hasSuffix("-USD")
+    }
   }
 
   /// 算出该给的默认自选，已按摆放顺序排好、去过重。
@@ -107,7 +120,7 @@ enum DefaultFavorites {
     for base in pairedCoins {
       let key = SymbolAliases.key(base)
       taken.insert(key)
-      add(coinbaseSpot(base), cryptoGroup)
+      if let spot = usdSpot(base) { add(spot, cryptoGroup) }
       if let info = coins[key] { add(info.symbol, cryptoGroup) }
     }
 

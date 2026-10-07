@@ -21,9 +21,12 @@ enum FavoriteSiblings {
     SymbolAliases.key((info ?? SymbolInfo.placeholder(symbol: symbol)).base)
   }
 
-  /// 现货排在最前面：现货 0，其余 1。
+  /// 现货市场的 `InstrumentID.market`。只认市场种类，不认是哪一家交易所。
+  static let spotMarket = "spot"
+
+  /// 现货排在最前面：现货 0，其余 1。只看品种键的市场是不是现货，不点交易所的名字。
   static func rank(_ symbol: String) -> Int {
-    InstrumentID(symbol).market == CoinbaseProvider.market ? 0 : 1
+    InstrumentID(symbol).market == spotMarket ? 0 : 1
   }
 
   /// 新加的 `symbol` 该插在 `favorites` 的第几位、挨着哪一条。自选里没有它的同品种就返回 nil

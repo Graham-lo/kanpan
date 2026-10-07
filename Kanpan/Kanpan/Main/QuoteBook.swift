@@ -272,6 +272,9 @@ final class QuoteBook {
   private var historyJobs: [String: Task<Void, Never>] = [:]
   private var historyRequested: [String: Date] = [:]
   var onHistory: ((String, [Bar]) -> Void)?
+  /// 自选行那条 24 小时迷你走势用的 15 分钟线（2026-10-08，`FavoriteTrend`）。和逐分钟那份
+  /// 同一趟取、同一个节流，失败各算各的：走势没取到不耽误预览卡的 1 / 4 小时涨跌。
+  var onTrend: ((String, [Bar]) -> Void)?
   var onUpdate: (([Ticker]) -> Void)?
   /// 盘上每一口新价，**不合批**。提醒模块（`AlertEngine`）挂在这儿判到价。
   ///
@@ -1048,12 +1051,16 @@ final class QuoteBook {
       let rest = provider(for: symbol)
       historyJobs[symbol] = Task { [weak self] in
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let bars = try? await rest.klines(symbol: symbol, interval: .m1, limit: 245,
+        async let minute = try? rest.klines(symbol: symbol, interval: .m1, limit: 245,
           startTime: now - 4 * 3_600_000 - 60_000, endTime: now)
+        async let quarter = try? rest.klines(symbol: symbol, interval: .m15, limit: 97,
+          startTime: now - 24 * 3_600_000 - 900_000, endTime: now)
+        let (bars, trend) = await (minute, quarter)
         guard let self, !Task.isCancelled else { return }
         self.historyJobs[symbol] = nil
-        if bars == nil { self.historyRequested[symbol] = Date().addingTimeInterval(-30) }
+        if bars == nil || trend == nil { self.historyRequested[symbol] = Date().addingTimeInterval(-30) }
         if let bars, !bars.isEmpty { self.onHistory?(symbol, bars) }
+        if let trend, !trend.isEmpty { self.onTrend?(symbol, trend) }
         self.loadHistories()
       }
     }
@@ -1425,7 +1432,7 @@ final class QuoteBook {
     teardown()   // 它自己会落一次盘
     trackLink()  // 不该再有连接了：停表、复原
     discardBatches()
-    onUpdate = nil; onReset = nil; onScopeChange = nil; onHistory = nil
+    onUpdate = nil; onReset = nil; onScopeChange = nil; onHistory = nil; onTrend = nil
     onPrice = nil
     onSymbolRejected = nil
   }
