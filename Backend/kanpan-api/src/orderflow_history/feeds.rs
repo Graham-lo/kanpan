@@ -50,7 +50,8 @@ pub enum Event {
  Closed{venues:Vec<String>,connection:u64},
  Frame{venue:String,connection:u64,message:Message},
  /// `id`：币安 aggTrade 的 `a`。交接期间两条连接会推同一笔，跟踪器按它去重。
- Trade{venue:String,trade:Trade,id:Option<i64>},
+ /// `at`：交易所给的成交时刻（毫秒；币安 `T`、OKX `ts`、Coinbase `time`），足迹图与秒线按它分秒、分钟。
+ Trade{venue:String,trade:Trade,id:Option<i64>,at:Option<i64>},
  /// `epoch`：发请求时簿的 `VenueBook::epoch`，对不上的丢掉。
  Snapshot{venue:String,epoch:u64,snapshot:Option<Snapshot>},
 }
@@ -158,7 +159,8 @@ fn trade(venue:&VenueInfo,price:f64,quantity:f64,hit:Side)->Option<Trade> {
 }
 
 /// 一条连接收到的一帧 → （哪本簿，消息）。成交与簿分开发：成交不看连接代号。
-pub enum Decoded {Book(String,Message),Trade(String,Trade,Option<i64>)}
+/// 成交带（簿，成交，成交号，交易所给的成交时刻）。
+pub enum Decoded {Book(String,Message),Trade(String,Trade,Option<i64>,Option<i64>)}
 
 /// 一条连接的解码器。挂在这条连接上的簿会变（OKX 动态订退、币安交接后退掉旧簿），所以可增删。
 pub struct Decoder {kind:Kind,by_instrument:HashMap<String,VenueInfo>}
@@ -192,7 +194,7 @@ impl Decoder {
    Some("aggTrade")=>{
     let (Some(p),Some(q))=(num(&body["p"]),num(&body["q"])) else {return Vec::new()};
     let hit=if body["m"].as_bool().unwrap_or(false) {Side::Bid} else {Side::Ask};
-    trade(venue,p,q,hit).map(|t|Decoded::Trade(venue.id.clone(),t,int(&body["a"]))).into_iter().collect()
+    trade(venue,p,q,hit).map(|t|Decoded::Trade(venue.id.clone(),t,int(&body["a"]),int(&body["T"]))).into_iter().collect()
    },
    _=>Vec::new(),
   }
@@ -206,7 +208,8 @@ impl Decoder {
   match arg["channel"].as_str() {
    Some("trades")=>items.iter().filter_map(|t| {
     let hit=match t["side"].as_str()? {"buy"=>Side::Ask,"sell"=>Side::Bid,_=>return None};
-    trade(venue,num(&t["px"])?,num(&t["sz"])?,hit).map(|t|Decoded::Trade(venue.id.clone(),t,None))
+    let at=int(&t["ts"]);
+    trade(venue,num(&t["px"])?,num(&t["sz"])?,hit).map(|t|Decoded::Trade(venue.id.clone(),t,None,at))
    }).collect(),
    Some("books")=>{
     let (Some(action),[item])=(frame["action"].as_str(),items.as_slice()) else {return Vec::new()};
@@ -255,7 +258,8 @@ impl Decoder {
       if t["product_id"].as_str()!=Some(venue.instrument.as_str()) {continue}
       let hit=match t["side"].as_str().map(str::to_uppercase).as_deref() {Some("BUY")=>Side::Ask,Some("SELL")=>Side::Bid,_=>continue};
       let (Some(p),Some(q))=(num(&t["price"]),num(&t["size"])) else {continue};
-      if let Some(t)=trade(venue,p,q,hit) {out.push(Decoded::Trade(id.clone(),t,None));}
+      let at=t["time"].as_str().and_then(|v|chrono::DateTime::parse_from_rfc3339(v).ok()).map(|v|v.timestamp_millis());
+      if let Some(t)=trade(venue,p,q,hit) {out.push(Decoded::Trade(id.clone(),t,None,at));}
      }
     }
     out
@@ -328,10 +332,10 @@ mod tests {
   assert_eq!((delta.first,delta.last,delta.prev),(5,7,Some(4)));
   assert!((delta.bids[0].0-0.000012).abs()<1e-12&&(delta.bids[0].1-100_000.0).abs()<1e-6);
   let mut trades=decoder(Kind::BinanceUmTrades,&venues);
-  let text=r#"{"data":{"e":"aggTrade","s":"1000PEPEUSDT","a":42,"p":"0.012","q":"5","m":true}}"#;
+  let text=r#"{"data":{"e":"aggTrade","s":"1000PEPEUSDT","a":42,"p":"0.012","q":"5","m":true,"T":1700000000123}}"#;
   let out=trades.decode(text);
-  let [Decoded::Trade(_,t,id)]=out.as_slice() else {panic!("one trade")};
-  assert_eq!((t.hit,*id),(Side::Bid,Some(42)));
+  let [Decoded::Trade(_,t,id,at)]=out.as_slice() else {panic!("one trade")};
+  assert_eq!((t.hit,*id,*at),(Side::Bid,Some(42),Some(1_700_000_000_123)));
   trades.remove(&venues[0]);
   assert!(trades.decode(text).is_empty(),"退掉的簿不再解");
  }
@@ -342,8 +346,8 @@ mod tests {
   assert!(matches!(snap.as_slice(),[Decoded::Book(_,Message::Snapshot(s))] if s.last==9&&s.bids.len()==1&&s.requested==400),"OKX 快照只到 400 档，不是全簿");
   let reset=d.decode(r#"{"arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"action":"update","data":[{"bids":[],"asks":[],"seqId":3,"prevSeqId":9}]}"#);
   assert!(matches!(reset.as_slice(),[Decoded::Book(_,Message::Reset)]));
-  let trades=d.decode(r#"{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"px":"60000","sz":"3","side":"buy"}]}"#);
-  assert!(matches!(trades.as_slice(),[Decoded::Trade(_,t,None)] if t.hit==Side::Ask));
+  let trades=d.decode(r#"{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"px":"60000","sz":"3","side":"buy","ts":"1700000000456"}]}"#);
+  assert!(matches!(trades.as_slice(),[Decoded::Trade(_,t,None,Some(1_700_000_000_456))] if t.hit==Side::Ask));
   assert!(d.decode(r#"{"event":"subscribe","arg":{"channel":"books","instId":"BTC-USDT-SWAP"}}"#).is_empty());
   assert!(d.decode("pong").is_empty());
  }
@@ -354,9 +358,9 @@ mod tests {
   assert!(matches!(snap.as_slice(),[Decoded::Book(_,Message::Snapshot(s))] if s.last==4&&s.asks.len()==1));
   let hb=d.decode(r#"{"channel":"heartbeats","sequence_num":5,"events":[]}"#);
   assert!(matches!(hb.as_slice(),[Decoded::Book(_,Message::Delta(x))] if x.first==5&&x.bids.is_empty()));
-  let trades=d.decode(r#"{"channel":"market_trades","sequence_num":6,"events":[{"type":"snapshot","trades":[{"product_id":"BTC-USD","price":"1","size":"1","side":"BUY"}]},{"type":"update","trades":[{"product_id":"BTC-USD","price":"60000","size":"1","side":"SELL"}]}]}"#);
+  let trades=d.decode(r#"{"channel":"market_trades","sequence_num":6,"events":[{"type":"snapshot","trades":[{"product_id":"BTC-USD","price":"1","size":"1","side":"BUY"}]},{"type":"update","trades":[{"product_id":"BTC-USD","price":"60000","size":"1","side":"SELL","time":"2023-11-14T22:13:20.789Z"}]}]}"#);
   assert_eq!(trades.len(),2,"快照里的历史成交不算");
-  assert!(matches!(&trades[1],Decoded::Trade(_,t,_) if t.hit==Side::Bid));
+  assert!(matches!(&trades[1],Decoded::Trade(_,t,_,Some(1_700_000_000_789)) if t.hit==Side::Bid));
  }
 
  #[test] fn rest_snapshot_parses() {

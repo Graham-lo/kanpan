@@ -436,7 +436,7 @@ impl Conn {
  fn deliver(&self,decoded:Decoded,connection:u64) {
   let (id,event)=match decoded {
    Decoded::Book(venue,message)=>(venue.clone(),Event::Frame{venue,connection,message}),
-   Decoded::Trade(venue,trade,id)=>(venue.clone(),Event::Trade{venue,trade,id}),
+   Decoded::Trade(venue,trade,id,at)=>(venue.clone(),Event::Trade{venue,trade,id,at}),
   };
   let Some(route)=self.routes.get(&id) else {return};
   FRAMES[self.kind.index()].fetch_add(1,Ordering::Relaxed);
@@ -629,7 +629,7 @@ mod tests {
   let (control,mut control_rx)=mpsc::unbounded_channel();
   r.control=control;
   // 跟踪器堵住了：帧的口满着。
-  events.try_send(Event::Trade{venue:r.venue.id.clone(),trade:super::super::book::Trade{price:1.0,quantity:1.0,hit:super::super::book::Side::Bid},id:None}).unwrap();
+  events.try_send(Event::Trade{venue:r.venue.id.clone(),trade:super::super::book::Trade{price:1.0,quantity:1.0,hit:super::super::book::Side::Bid},id:None,at:None}).unwrap();
   let mut conn=Conn{kind:Kind::BinanceUmDepth,routes:HashMap::new(),decoder:Decoder::new(Kind::BinanceUmDepth)};
   conn.insert(r.clone());
   conn.announce(&[&r],|venues|Event::Opened{venues,connection:7});

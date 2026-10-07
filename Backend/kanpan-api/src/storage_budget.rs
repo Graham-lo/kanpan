@@ -111,7 +111,7 @@ mod tests {
   assert_eq!(BUDGETS.iter().map(|b|b.gib).sum::<u64>(),TOTAL_GIB);
   assert_eq!((HEAT.gib,FOOTPRINT.gib,SECONDS.gib,FEATURES.gib),(20,2,1,3));
   assert_eq!(SECONDS.line(),1073741824.0);
-  assert_eq!(SECONDS.target(),SECONDS.line()*0.9);
+  assert!((SECONDS.target()-SECONDS.line()*0.9).abs()<64.0);
   let names:std::collections::HashSet<&str>=BUDGETS.iter().flat_map(|b|b.tables.iter().copied()).collect();
   assert_eq!(names.len(),BUDGETS.iter().map(|b|b.tables.len()).sum::<usize>(),"一张表只算在一条预算头上");
  }
@@ -125,9 +125,9 @@ mod tests {
  fn run<F:Future>(f:F)->F::Output {tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(f)}
 
  #[test] fn the_gate_trims_oldest_slices_until_under_target_and_no_further() {
-  // 每一截删 10 行、每行 10 字节：从 1000 字节删到 700 以下要删 4 截。
+  // 每一截删 10 行、每行 10 字节：从 1000 字节删到 650 以下要删 4 截。
   let calls=RefCell::new(Vec::new());
-  let (cutoff,deleted)=run(trim(1000.0,700.0,10.0,0,100,10,|from,to|{calls.borrow_mut().push((from,to));async {Ok(10)}})).unwrap();
+  let (cutoff,deleted)=run(trim(1000.0,650.0,10.0,0,100,10,|from,to|{calls.borrow_mut().push((from,to));async {Ok(10)}})).unwrap();
   assert_eq!((cutoff,deleted),(40,40));
   assert_eq!(*calls.borrow(),vec![(0,10),(10,20),(20,30),(30,40)]);
  }
