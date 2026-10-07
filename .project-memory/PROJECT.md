@@ -1310,7 +1310,8 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 
 ## 46. 技术指标提醒（服务端，2026-10-07）
 
-**状态**：代码已进 main（37dce028、a815f6f0），**待部署**。按任务要求没有部署；部署另行安排。网页端界面由另一路在做。
+**状态**：代码已进 main（37dce028、a815f6f0），**已部署**：2026-10-07 15:48:11 CST 部署到 kanpan-sg（origin/main `bc4ee858`，和 §48 的 `chartLayouts` 白名单同一次）：二进制在 Mac 上 `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.35`（美国编译机 10-05 起停用），sha256 `f2156d6abbd38f08ddd97fb734a9f4b1badcdc0774a9349e1f4f182e0ed84b10`；部署前线上源码逐文件散列 = 上次部署 `25ec35f8`；备份 `/opt/kanpan-backups/indicator-alerts-chartlayouts-20261007-154729/`（旧二进制 `59e632da…c0dfa`、源码、迁移版本 51）；`ops/install.py` 无迁移、自己重启。回滚：`sudo install -m 0755 /opt/kanpan-backups/indicator-alerts-chartlayouts-20261007-154729/kanpan-api /opt/kanpan-api/target/release/kanpan-api && sudo systemctl restart kanpan-api kanpan-worker`。
+验证：`cargo test --lib` 626 过；临时账号推 4 条 BTCUSDT 1 分钟指标提醒 200、未上架品种 400 `indicator_symbol`，15:54:02.6 那条「收盘跌破前 2 根最低」在 15:53 那根收线后 2.6 秒变 `fired`（判定循环取数、判定、记触发整条通），临时账号已删。网页端界面见 §47。
 
 - **线上格式**：放在条件提醒（alert `kind:"condition"`）现有的条件字段 `rule` 里，用 `kind` 区分。字段名和网页端约定的一字不差：
   ```json
@@ -1378,11 +1379,11 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **运维**：
   - 不需要迁移。
   - `ops/README.md` 条件提醒一节已补说明。
-  - 部署后看判定与取数用 `journalctl -u kanpan-worker | grep -i "indicator"`。
+  - 判定循环没有 info 级的启动 / 取数日志，触发那行 info 在 `kanpan_api::conditions` 下、被 SG 的 `RUST_LOG`（只放 warn 与 alerts / apns / orderflow_history 的 info）滤掉，所以 `journalctl -u kanpan-worker | grep -i indicator` 正常时是空的、只会出 warn（取不到 exchangeInfo、记触发失败）。看它在不在干活要像 10-07 部署那样建一条短周期提醒看 `fired`。
 
 ## 47. 网页版技术指标提醒（2026-10-07）
 
-**状态**：代码已进 main，**未部署**（按任务要求不部署）。只做电脑网页版 `Web/src/`，不含手机网页 `Web/src/m/`，也不含 iOS。服务端见 §46，同样待部署。
+**状态**：代码已进 main，**未部署**（按任务要求不部署）。只做电脑网页版 `Web/src/`，不含手机网页 `Web/src/m/`，也不含 iOS。服务端见 §46（10-07 15:48 已部署）。
 
 - **模块**：
   - `Web/src/alerts/indicator.ts`：三种条件的形状、校验（中文原因）、文案、收盘判定、从图上预填、被拒原因。
@@ -1459,7 +1460,7 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - 服务端改了 `Backend/kanpan-api/src/sync.rs`（白名单）和 `sync_validation.rs`（`chart_layouts` 校验）：
   - 整本不超过 32 KB，格数枚举固定；
   - 每格 symbol / iv 合法，另外最多 6 个短键，值只能是布尔、数或不超过 16 字的串。
-- **服务端白名单待部署**，没部署前服务端会拒这个字段，本机照常可用。
+- **服务端白名单已部署**（2026-10-07 15:48:11 CST，和 §46 同一次，二进制 sha256 `f2156d6a…84b10`，备份与回滚见 §46）。验证：临时账号推一份两套布局（含 footprint / ha / range 短键）的 `chartLayouts` 200、`droppedFields` 空，bootstrap 读回逐字相等；`sets` 为空的坏值 400 `invalid_operation`；临时账号已删。
 - 因为是网页专用字段、不进 iOS 生成的契约，所以没跑 `make sync-contract` / `make app-logic-test`。
 
 **主图画法开关跟人走**
