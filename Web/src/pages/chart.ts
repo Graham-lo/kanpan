@@ -49,10 +49,12 @@ import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
-import { bindFootprint } from '../chart/footprint'
+import { bindFootprint, setFootprintSource } from '../chart/footprint'
 import { bindHeikinAshi } from '../chart/heikinAshi'
 import { baseBars, bindRangeBars } from '../chart/rangeBars'
 import { styleMenuItems } from '../chart/mainStyle'
+import { setsMenu, switchNth, setButtonHTML, paintSetButtons } from './layoutSets'
+import { exportChart, type ExportRange } from '../chart/exportCsv'
 import { secondsKlines } from '../chart/secondsHistory'
 import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote } from '../replay/controller'
 
@@ -69,6 +71,8 @@ interface Cell {
   hold: string | null
 }
 const cells: Cell[] = []
+// 足迹开关记在格子配置里（随布局集同步，见 app/layouts.ts）
+setFootprintSource({ on: i => st.cells[i]?.footprint === true, set: (i, on) => { const c = st.cells[i]; if (!c) return; if (on) c.footprint = true; else delete c.footprint; save() } })
 /** K 线在路上时攒着的推送（行情推送与 K 线并行建连，见 chart/pushBuffer.ts） */
 const pushes = new PushBuffer()
 /** 冷启动时和品种表并行先发出去的 K 线（品种 | 周期 → 结果），第一次装这一格时直接用 */
@@ -189,8 +193,10 @@ function makeCell(i: number): Cell {
     <div class="cell-empty" hidden></div>
     <div class="cell-foot">
       <button class="foot-ic" data-act="layout" aria-label="图表布局" data-tip="图表布局">${I(LAYOUT_ICON[st.layout], 'icon-16')}</button>
+      <button class="foot-set" data-act="sets" aria-label="切换布局" data-tip="切换布局">${setButtonHTML()}</button>
       <button class="foot-ic" data-act="save" aria-label="保存图表截图" data-tip="保存图表截图" data-kbd="⌥ S">${I('camera', 'icon-16')}</button>
       <button class="foot-ic" data-act="replay" aria-label="K 线回放" data-tip="K 线回放：选一个起点，一根一根往后播" data-kbd="⌥ R">${I('replay', 'icon-16')}</button>
+      <button class="foot-ic" data-act="export" aria-label="导出" data-tip="导出 K 线与指标（CSV）">${I('download', 'icon-16')}</button>
       <span class="tb-sep"></span>
       ${RANGES.map(([l, iv], k) => `<button data-range="${k}" data-tip="${l}：切到 ${IV_LABEL[iv]}，显示最近${l === '全部' ? '全部历史' : l === '今年' ? '今年以来' : l}">${l}</button>`).join('')}
       <div class="foot-right">
@@ -243,6 +249,8 @@ function makeCell(i: number): Cell {
     if (a === 'layout') { layoutMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement); return }
     if (a === 'save') { setActive(cell.idx); screenshot(); return }
     if (a === 'replay') { setActive(cell.idx); toggleReplay(cell); return }
+    if (a === 'sets') { setsMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement, applyLayoutSet); return }
+    if (a === 'export') { setActive(cell.idx); exportMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement, cell); return }
     if (a === 'log') { cell.chart.setLog(!cell.chart.log); t.closest('[data-act]')?.setAttribute('aria-pressed', String(cell.chart.log)) }
     if (a === 'auto') cell.chart.setAuto(!cell.chart.auto)
   })
@@ -573,6 +581,33 @@ function onToolbarClick(e: MouseEvent): void {
       ]); return
     case 'tbFull': return fullscreen()
   }
+}
+/** 换了一套布局（本机切换 / 别的设备改了布局集同步过来）：留着的格子就地换品种 / 周期（旧 K 线留到新的到），
+ *  格数变了再增删格子——不整页重建 */
+export function applyLayoutSet(): void {
+  if (!cells.length) return
+  for (const c of st.cells) registerCustomIv(c.iv)
+  const n = LAYOUT_N[st.layout] || 1
+  settle.noteSwitch()
+  cells.slice(0, n).forEach(c => {
+    const k = cfg(c), m = c.chart.meta
+    if (m.symbol !== k.symbol || m.sub !== metaFor(k).sub) void loadCell(c)
+    else { c.chart.dirty = true; c.chart.legendDirty = true }
+  })
+  setLayout(st.layout)
+  cells.forEach((c, i) => c.el.classList.toggle('active', i === st.active))
+  paintSetButtons(); renderPanel(); refreshCompare()
+}
+/** 导出：可见范围 / 全部已加载 */
+function exportMenu(b: HTMLElement, cell: Cell): void {
+  const n = cell.chart.bars.length, v = cell.chart.visible(), vis = n ? Math.max(0, v.to - v.from + 1) : 0
+  const go = (r: ExportRange): void => {
+    const c = cfg(cell), res = exportChart(cell.chart, c.symbol, c.iv, r)
+    if (res.rows) toast('已导出', `${res.rows} 根 · ${res.name}`, 'download', 3000); else toast('这一格还没有 K 线', '', 'info')
+  }
+  menuFrom(b, [{ header: '导出 CSV' },
+    { label: '可见范围', sc: vis ? `${vis} 根` : '', disabled: !vis, run: () => go('visible') },
+    { label: '全部已加载', sc: n ? `${n} 根` : '', disabled: !n, run: () => go('all') }], { width: 200 })
 }
 export function setLayout(k: Layout): void { st.layout = k; buildCells(); renderToolbar(); $$('.cell-foot [data-act="layout"]').forEach(e => { e.innerHTML = I(LAYOUT_ICON[k], 'icon-16') }) }
 
@@ -1035,7 +1070,7 @@ function openAlert(price?: number): void {
 // ------------------------------------------------------------ 快捷键
 export const SHORTCUTS: [string, [string, string][]][] = [
   ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['1 – 9', '栏上钉的第几个周期'], [', 再打数字', '换任意周期（如 7、240、1D、5S）'], ['↑ ↓', '自选里上一只 / 下一只'], ['Home End', '自选列表里：第一只 / 最后一只'], ['空格 Delete', '自选列表里：收藏 / 移出（⌘ Z 撤销）'], ['⇧ ↵', '在搜索里加自选']]],
-  ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt 0', '重置视图'], ['Alt R', 'K 线回放（空格 播放 / 暂停，Home 跳到起点）'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标（对所有图格同时生效）'], ['⇧ T', '图表布局'], ['Alt ⇧ W', '开 / 关侧栏']]],
+  ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt 0', '重置视图'], ['Alt R', 'K 线回放（空格 播放 / 暂停，Home 跳到起点）'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标（对所有图格同时生效）'], ['⇧ T', '图表布局'], ['Alt 1…9', '切到第几套布局'], ['Alt ⇧ W', '开 / 关侧栏']]],
   ['画线工具', [['Alt T', '趋势线'], ['Alt J', '射线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt ⇧ R', '矩形'], ['Alt F', '斐波那契回撤'], ['双击工具', '连续画（右键或 Esc 退出）'], ['右键', '拿着工具时：放下工具'], ['⇧ 拖', '临时测量']]],
   ['编辑画线', [['⇧ 拖端点', '吸到 45° / 水平 / 竖直'], ['按住 ⌘', '临时反过来用磁吸'], ['⌘ 拖', '复制一条再拖走'], ['⌘ C / ⌘ V', '复制 / 粘贴画线（同一只品种）'], ['← → ↑ ↓', '微移选中的画线（⇧ 10 像素）'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z', '撤销'], ['⌘ Y / ⌘ ⇧ Z', '重做'], ['⌘ ⌥ H / ⌃ ⌥ H', '隐藏 / 显示全部画线']]],
   ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['Alt N', '记一笔'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['?', '这张表']]],
@@ -1141,6 +1176,8 @@ function onKey(e: KeyboardEvent): void {
     if (e.code === 'KeyR') { e.preventDefault(); toggleReplay(cell); return }
     if (e.code === 'Digit0') { e.preventDefault(); cell.chart.resetView(); return }
     if (e.code === 'KeyS') { e.preventDefault(); screenshot(); return }
+    // ⌥1…⌥9：切到第几套布局
+    if (/^Digit[1-9]$/.test(e.code) && !e.shiftKey) { if (switchNth(+e.code.slice(5) - 1, applyLayoutSet)) e.preventDefault(); return }
     return
   }
   if (e.key === 'Escape') { if (cell.chart.cancelDraft()) return; if (drawTool()) { selectTool(null); return } if (cell.chart.selected) { cell.chart.selected = null; cell.chart.dirty = true; hideQuick() } return }
