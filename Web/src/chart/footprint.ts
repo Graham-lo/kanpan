@@ -443,6 +443,21 @@ function legendRow(c: TVChart, idx: number, i: number): string {
   const k = c.meta.symbol.toUpperCase(), h = hist.get(k), l = live.get(k), v = views.get(c)
   return { on: isOn(i), iv: c.iv, spacing: c.spacing, srvStep: srvStep.get(k) ?? null, histMinutes: h?.minutes.size ?? 0, histFrom: h?.from ?? null, histTo: h?.to ?? null, liveMinutes: l?.minutes.size ?? 0, ...(v?.stat ?? {}) }
 }
+/** 压测脚本读：第 i 格最后 n 根的足迹（买 / 卖合计、每一分钟用的是实时还是服务端的、可选逐档）——验历史与实时的接缝不重不漏 */
+;(globalThis as unknown as { __fpBars?: (i?: number, n?: number, rows?: boolean) => unknown }).__fpBars = (i = 0, n = 30, rows = false) => {
+  const c = bound.get(i); if (!c || !c.bars.length) return null
+  const k = c.meta.symbol.toUpperCase(), l = live.get(k), h = hist.get(k), f = l ? flowOf(k) : null, now = Date.now()
+  const d = stepOf(k, c.bars[c.bars.length - 1].c)
+  return { step: d, bars: c.bars.slice(-n).map(b => {
+    const end = b.t + c.iv, src: string[] = []
+    for (let mt = Math.floor(b.t / MIN) * MIN; mt < end; mt += MIN) {
+      src.push(l && f && f.covered(mt, mt + MIN, now) ? (l.minutes.has(mt) ? 'L' : 'l') : h?.minutes.has(mt) ? 'H' : '-')
+    }
+    const g = barFootprint(k, b.t, end, d, now)
+    const mins = src.map((x, j) => { const mt = Math.floor(b.t / MIN) * MIN + j * MIN, m = barFootprint(k, mt, mt + MIN, d, now); return [mt, x, m?.tb ?? 0, m?.ts ?? 0] })
+    return { t: b.t, buy: g?.tb ?? 0, sell: g?.ts ?? 0, src: src.join(''), mins, rows: rows && g ? [...g.px].map((p, j) => [p, g.buy[j], g.sell[j]]) : undefined }
+  }) }
+}
 ;(globalThis as unknown as { __fpBench?: (i?: number, n?: number, show?: number) => unknown }).__fpBench = (i = 0, n = 60, show = 0) => {
   const c = bound.get(i); if (!c) return null
   // show：先把视图摆成一屏正好 show 根（压测用）
