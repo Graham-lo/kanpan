@@ -290,10 +290,45 @@ struct OrderFlowAdapterTests {
   """#
 
   static func catalog(_ policy: MarketRoutePolicy, server: FakeServer, gateways: [String] = gateways,
-                      api: [String]? = nil) -> OrderFlowCatalog {
+                      api: [String]? = nil, cache: OrderFlowCatalogCache = OrderFlowCatalogCache()) -> OrderFlowCatalog {
     OrderFlowCatalog(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways, api: api)),
                      binanceHosts: hosts, sockets: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
-                     http: FakeTransport(server), cache: OrderFlowCatalogCache())
+                     http: FakeTransport(server), cache: cache)
+  }
+
+  @Test("品种表落盘：再开 app 从 Caches 读回来不再问；超过 10 分钟先用旧表、后台问一次；超过 24 小时才等服务端")
+  func catalogPersistsAndRevalidates() async throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hkline-catalog-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let file = dir.appendingPathComponent("orderflow-catalog.json")
+    let t0: Int64 = 1_790_000_000_000
+    let server = FakeServer { _ in json(Self.catalogJSON) }
+    _ = await Self.catalog(.direct, server: server, cache: OrderFlowCatalogCache(file: file)).books(base: "BTC", nowMs: t0)
+    #expect(await server.urls().count == 1)
+    #expect(FileManager.default.fileExists(atPath: file.path))
+
+    // 「再开 app」：新的缓存对象从文件读回来，10 分钟内一次都不问。
+    let reopened = Self.catalog(.direct, server: server, cache: OrderFlowCatalogCache(file: file))
+    let got = await reopened.books(base: "btc", nowMs: t0 + 60_000)
+    #expect(got.fromCatalog && got.books.count == 10)
+    #expect(await server.urls().count == 1)
+
+    // 过了 10 分钟、没到 24 小时：马上用旧表，后台补问一次（不等它）。
+    let later = await reopened.books(base: "BTC", nowMs: t0 + 2 * 3_600_000)
+    #expect(later.fromCatalog && later.books.count == 10)
+    for _ in 0..<50 where await server.urls().count < 2 { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(await server.urls().count == 2)
+
+    // 后台那次问到的（2 小时那刻）也落了盘；离它超过 24 小时：等服务端回了再用。
+    let stale = Self.catalog(.direct, server: server, cache: OrderFlowCatalogCache(file: file))
+    _ = await stale.books(base: "BTC", nowMs: t0 + 27 * 3_600_000)
+    #expect(await server.urls().count == 3)
+
+    // 文件坏了就当没有：照常问服务端，不崩。
+    try Data("{\"BTC\":{\"atMs\":\"x\",\"venues\":7},\"ETH\":[]}".utf8).write(to: file)
+    let broken = Self.catalog(.direct, server: server, cache: OrderFlowCatalogCache(file: file))
+    _ = await broken.books(base: "BTC", nowMs: t0)
+    #expect(await server.urls().count == 4)
   }
 
   @Test("品种表：解析各家各产品，丢掉未知交易所、坏面值、已过交割时间的，分到 5 条连接")

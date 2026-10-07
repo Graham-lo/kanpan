@@ -59,6 +59,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
   })
   let wanted: string | null = null, knewSymbol = false, suspended = startSuspended
   let seen: [number | null, number | null] | null = null
+  let precise = false
   const info = (sym: string) => {
     const m = S.symbols.get(sym)
     return { known: !!m, crypto: (m?.kind ?? 'crypto') === 'crypto', turnover24h: m?.vol ?? null }
@@ -67,7 +68,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
     const i = info(sym)
     knewSymbol = i.known
     thresholds = null; defaults = null
-    src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: override(sym) })
+    src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: override(sym), precise: () => precise })
   }
   const off = onMarket(e => {
     if (!wanted || suspended || bg) return
@@ -94,6 +95,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
       seen = [view.from, view.to + Math.max(0, series.step)]
       if (wanted && !suspended && !bg) src.setVisible(seen[0], seen[1])
     },
+    setPrecise(on) { precise = on },
     dispose() { off(); offHidden(); wanted = null; src.stop() },
     suspend() {
       if (suspended) return

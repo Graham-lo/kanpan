@@ -1,7 +1,8 @@
 /* Hkline Web · 主力订单流 · 数据层（照 KanpanData/OrderFlow/OrderFlowFeed.swift）
  *
  * 打开一只品种：向 kanpan-api 查这只币在三家交易所的全部簿（/v1/market/orderflow/instruments，
- * 查不到用保底三本），按线路分连接订上，每 500 ms 评估一轮出一帧；服务端历史先取 24 小时，
+ * 查不到用保底三本；表在本机留 24 小时，开图不再等这一问），按线路分连接订上，每 500 ms 评估一轮，
+ * 出帧按 pace.ts 的节奏（画面没变不发、金额 5 秒一换）；服务端历史先取 6 小时，
  * 之后每分钟取一次增量（往前退 5 分钟），图往左拖出去了再往前补。
  *
  * 线路（与手机端一致）：
@@ -23,6 +24,7 @@ import {
   decodeBinance, decodeOKX, decodeCoinbase, okxSubscribe, okxResubscribe, coinbaseSubscribe, OKX_MAX_BOOKS, type Out,
 } from './adapters'
 import { ago, before } from '../util/clock'
+import { FramePacer } from './pace'
 
 export type Route = 'direct' | 'gateway'
 export const API_ORIGIN = 'https://kanpan.43-160-232-253.sslip.io'
@@ -102,6 +104,48 @@ export function parseCatalog(json: unknown): Row[] | null {
     out.push({ exchange: ex, product: pr, instrument: inst, notional, expiryMs: typeof r.expiryMs === 'number' ? r.expiryMs : null, priceScale: scale, tick: typeof r.tick === 'number' ? r.tick : null })
   }
   return out
+}
+
+/** 品种表的本机缓存（localStorage）：10 分钟内直接用；24 小时内先用着、后台再问一次；再旧就当没有。
+ *  开图那一问 0.6 秒整是一次往返，第二次打开同一只不该再等它（2026-10-07）。 */
+export const CATALOG_CACHE_KEY = 'hkline-orderflow-catalog-v1'
+export const CATALOG_FRESH_MS = 10 * 60_000
+export const CATALOG_STALE_MS = 24 * 3_600_000
+const CATALOG_CACHE_MAX = 64
+type CatalogCache = Record<string, { atMs: number; venues: Row[] }>
+function readCatalogCache(): CatalogCache {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const v = JSON.parse(localStorage.getItem(CATALOG_CACHE_KEY) ?? '{}') as unknown
+    return v && typeof v === 'object' && !Array.isArray(v) ? v as CatalogCache : {}
+  } catch { return {} }
+}
+/** 缓存里这只 base 的表：fresh = 10 分钟内；没有或超过 24 小时是 null */
+export function cachedCatalog(base: string, now: number): { rows: Row[]; fresh: boolean } | null {
+  const e = readCatalogCache()[base]
+  if (!e || typeof e.atMs !== 'number') return null
+  const age = ago(e.atMs, now)
+  if (age > CATALOG_STALE_MS) return null
+  const rows = parseCatalog({ venues: e.venues })
+  return rows?.length ? { rows, fresh: age < CATALOG_FRESH_MS } : null
+}
+export function storeCatalog(base: string, rows: Row[], now: number): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    let all = readCatalogCache()
+    if (Object.keys(all).length >= CATALOG_CACHE_MAX) all = {}
+    all[base] = { atMs: now, venues: rows }
+    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(all))
+  } catch { /* 满了、隐私模式：不缓存而已 */ }
+}
+/** 向服务端问这只的表；拿到就存进缓存。查不到是 null。 */
+async function fetchCatalog(base: string): Promise<Row[] | null> {
+  try {
+    const r = await getJSON(api(`/v1/market/orderflow/instruments?base=${encodeURIComponent(base)}`), 6000)
+    const rows = r.status === 200 ? parseCatalog(r.body) : null
+    if (rows?.length) { storeCatalog(base, rows, Date.now()); return rows }
+  } catch { /* 查不到用保底 */ }
+  return null
 }
 
 function booksOf(rows: Row[], chartScale: number, now: number): DepthBook[] {
@@ -213,6 +257,8 @@ export interface FeedOptions {
   override: Override | null
   onFrame: (s: Snapshot) => void
   onTrade?: (t: TradeEvent) => void
+  /** 十字线此刻停在色块上、读数要精确金额：逐拍发、不按住金额（见 pace.ts）。默认否。 */
+  precise?: () => boolean
 }
 
 export class OrderFlowFeed {
@@ -233,8 +279,13 @@ export class OrderFlowFeed {
   private calibrating: boolean
   private calibrated: number | null = null
   private calibrationDeadline: number | null = null
-  /** 门槛改了、历史并进来了：不等下一个 500 ms，马上出一帧。 */
-  private kick(): void { if (this.stopped || !this.timer) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.loop(), 0) }
+  private pacer = new FramePacer(() => this.opts.precise?.() ?? false)
+  /** 门槛改了、历史并进来了：不等下一个 500 ms，马上出一帧（也不按住金额）。 */
+  private kick(): void {
+    this.pacer.reset()
+    if (this.stopped || !this.timer) return
+    clearTimeout(this.timer); this.timer = setTimeout(() => this.loop(), 0)
+  }
   // 历史
   private historyGen = 0
   private historyBusy = false
@@ -275,11 +326,11 @@ export class OrderFlowFeed {
   async start(): Promise<void> {
     if (!isValidBase(this.base)) return
     const now = Date.now()
-    let rows: Row[] | null = null
-    try {
-      const r = await getJSON(api(`/v1/market/orderflow/instruments?base=${encodeURIComponent(this.base)}`), 6000)
-      if (r.status === 200) rows = parseCatalog(r.body)
-    } catch { /* 查不到用保底 */ }
+    // 本机留着的表：新鲜的直接用；旧一点的先用着、后台刷新给下一次；没有才等服务端
+    const cached = cachedCatalog(this.base, now)
+    let rows: Row[] | null = cached?.rows ?? null
+    if (!cached) rows = await fetchCatalog(this.base)
+    else if (!cached.fresh) void fetchCatalog(this.base)
     if (this.stopped) return
     const books = rows?.length ? booksOf(rows, this.chartScale, now) : []
     this.fromCatalog = books.length > 0
@@ -464,7 +515,7 @@ export class OrderFlowFeed {
       : this.model.evaluate(now)
     for (const c of this.conns) c.watchdog(now)
     this.pumpHistory()
-    if (!hidden) this.opts.onFrame(frame)
+    if (!hidden) { const out = this.pacer.next(frame, now); if (out) this.opts.onFrame(out) }
     this.timer = setTimeout(() => this.loop(), hidden ? HIDDEN_EVALUATE_MS : EVALUATE_MS)
   }
 

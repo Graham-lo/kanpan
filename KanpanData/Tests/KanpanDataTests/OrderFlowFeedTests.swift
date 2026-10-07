@@ -166,7 +166,7 @@ struct OrderFlowFeedTests {
       sink: { await frames.add($0) })
   }
 
-  @Test("出帧去重（审查 31）：画面没变不发；只是金额变了隔 5 秒发一次，十字线停着就逐拍发")
+  @Test("出帧去重（审查 31）：画面没变不发；只是金额变了隔 5 秒发一次，十字线停着就逐拍发；画面变了那帧其余活单金额按住（2026-10-07）")
   func emitOnlyWhenPixelsChange() {
     let order = BigOrder(venueID: "binance:usdtPerp:ETHUSDT", exchange: "币安", product: .usdtPerp, side: .ask,
                          bucket: 3, price: 2_000, firstSeenMs: 1, initialNotional: 3_000_000, notional: 3_000_000,
@@ -175,11 +175,45 @@ struct OrderFlowFeedTests {
     var same = last; same.asOfMs = 501
     var jitter = same; jitter.orders[0].notional += 20_000
     var grew = same; grew.orders[0].notional += 500_000
-    #expect(OrderFlowFeed.skip(same, after: last, sinceLastMs: 500, precise: true))
-    #expect(OrderFlowFeed.skip(jitter, after: last, sinceLastMs: 500, precise: false))
-    #expect(!OrderFlowFeed.skip(jitter, after: last, sinceLastMs: OrderFlowFeed.amountRefreshMs, precise: false))
-    #expect(!OrderFlowFeed.skip(jitter, after: last, sinceLastMs: 500, precise: true))
-    #expect(!OrderFlowFeed.skip(grew, after: last, sinceLastMs: 500, precise: false))
+    let pace = OrderFlowFeed.pace
+    // 第一帧照发、算换过金额
+    #expect(pace(same, nil, 500, 500, false)?.amountsRefreshed == true)
+    // 完全没变不发；只是金额抖了：5 秒内按住不发，到 5 秒换新金额发，十字线停着逐拍发
+    #expect(pace(same, last, 500, 500, true) == nil)
+    #expect(pace(jitter, last, 500, 500, false) == nil)
+    let refreshed = pace(jitter, last, 500, OrderFlowFeed.amountRefreshMs, false)
+    #expect(refreshed?.amountsRefreshed == true && refreshed?.frame.orders[0].notional == 3_020_000)
+    #expect(pace(jitter, last, 500, 500, true)?.frame.orders[0].notional == 3_020_000)
+    // 金额涨到厚度跨档也不算画面变：5 秒内照样按住不发，到 5 秒才换上新金额（高度跟着金额一起换）
+    #expect(pace(grew, last, 500, 500, false) == nil)
+    #expect(pace(grew, last, 500, OrderFlowFeed.amountRefreshMs, false)?.frame.orders[0].notional == 3_500_000)
+    // 桶内均价随挂单量抖：和金额一起按住（5 秒内不发；发时均价仍是上一帧的）
+    var moved = jitter; moved.orders[0].price = 2_000.7
+    #expect(pace(moved, last, 500, 500, false) == nil)
+    var movedPlus = moved
+    var newcomer2 = order; newcomer2.bucket = 11; movedPlus.orders.append(newcomer2)
+    #expect(pace(movedPlus, last, 500, 500, false)?.frame.orders[0].price == 2_000)
+    // 成交格按上一帧的挂单量算底：挂单量翻倍、成交没动，不算变；成交多了一格才算
+    var halfLast = last; halfLast.orders[0].filledNotional = 1_500_000
+    var doubled = halfLast; doubled.asOfMs = 501; doubled.orders[0].notional = 6_000_000
+    #expect(pace(doubled, halfLast, 500, 500, false) == nil)
+    var eaten = doubled; eaten.orders[0].filledNotional = 1_650_000
+    #expect(pace(eaten, halfLast, 500, 500, false)?.frame.orders[0].notional == 6_000_000)
+    // 成交格变了算画面变：立刻发、金额取新的
+    var filled = same; filled.orders[0].notional -= 400_000; filled.orders[0].filledNotional = 400_000
+    #expect(pace(filled, last, 500, 500, false)?.frame.orders[0].filledNotional == 400_000)
+    // 心跳到点：没变也发
+    #expect(pace(same, last, OrderFlowFeed.heartbeatMs, 500, false) != nil)
+    // 新单出现：这一帧立刻发，但原来那单抖掉的 2 万按住、仍是上一帧的 300 万；新单金额是新的
+    var appeared = jitter
+    var newcomer = order; newcomer.bucket = 9; newcomer.notional = 1_500_000; newcomer.initialNotional = 1_500_000
+    appeared.orders.append(newcomer)
+    let out = pace(appeared, last, 500, 500, false)
+    #expect(out?.amountsRefreshed == false)
+    #expect(out?.frame.orders.map(\.notional) == [3_000_000, 1_500_000])
+    // 结束了的单金额取新的（结束前最后一次过门槛的名义）
+    var ended = jitter; ended.orders[0].status = .cancelled; ended.orders[0].endMs = 900
+    #expect(pace(ended, last, 500, 500, false)?.frame.orders[0].notional == 3_020_000)
   }
 
   @Test("两家两条连接：REST 快照那本与流内快照那本各自就绪，墙各出一条；停时日志落盘，再开读回来",
@@ -532,24 +566,24 @@ struct OrderFlowFeedTests {
     await feed.stop()
   }
 
-  @Test("服务端历史：读完日志就取最近 24 小时并进来；每分钟取增量（从上一页最晚时刻退 5 分钟）；图往左拖出去就 24 小时一段往前补，补到够为止",
+  @Test("服务端历史：读完日志就取最近 6 小时并进来；每分钟取增量（从上一页最晚时刻退 5 分钟）；图往左拖出去就 6 小时一段往前补，补到够为止",
         .timeLimit(.minutes(1)))
   func serverHistory() async throws {
     let clock = TestClock()
     let t0 = clock.now
-    let hour: Int64 = 3_600_000, day: Int64 = 86_400_000
+    let hour: Int64 = 3_600_000, day: Int64 = 86_400_000, span = OrderFlowFeed.historySpanMs
     let ended = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .bid, bucket: 0,
                          price: 1_500, firstSeenMs: t0 - 3 * hour, endMs: t0 - 2 * hour, status: .cancelled,
                          initialNotional: 8e6, notional: 8e6, threshold: 5e6)
     let live = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .ask, bucket: 0,
                         price: 1_700, firstSeenMs: t0 - hour, initialNotional: 6e6, notional: 6e6, threshold: 5e6)
     // 首次那一页（到 t0）有两单；之后的增量、往前补的各段都是空的。
-    let server = HistoryServer { call in historyPage(call, orders: call.to == t0 && call.from == t0 - day ? [ended, live] : []) }
+    let server = HistoryServer { call in historyPage(call, orders: call.to == t0 && call.from == t0 - span ? [ended, live] : []) }
     let frames = Frames()
     let feed = makeFeed([], dir: nil, frames: frames, clock: clock, history: { await server.load($0, $1, $2, $3) })
     await feed.start()
     #expect(await waitUntil(5) { await frames.last?.orders.count == 2 })
-    #expect(await server.calls.first == HistoryServer.Call(base: "ETH", from: t0 - day, to: t0))
+    #expect(await server.calls.first == HistoryServer.Call(base: "ETH", from: t0 - span, to: t0))
     let orders = try #require(await frames.last?.orders)
     #expect(orders.map(\.firstSeenMs) == [t0 - 3 * hour, t0 - hour])
     #expect(orders.map(\.status) == [.cancelled, .live])
@@ -564,46 +598,49 @@ struct OrderFlowFeedTests {
     // 服务端这一页没再提那单挂着的：本机没有这本簿、又没人续命，3 分钟后才按失联结束——这一拍它还在。
     #expect(await frames.last?.orders.count == 2)
 
-    // 图往左拖到 60 小时前：往前补两段（24–48 小时前、48 小时前到 3 天前），补到 3 天（留存上限）就停。
-    // 此刻已经是 t0 + 1 分钟，3 天的底是 t0 + 1 分钟 − 3 天。
+    // 图往左拖到 60 小时前：6 小时一段往前补（6–12 小时前、12–18 ……、54–60 小时前，九段），补到 60 小时前就停。
     let now = t0 + OrderFlowFeed.historyEveryMs
     await feed.setVisibleWindow(fromMs: t0 - 60 * hour, toMs: t0 - 40 * hour)
-    #expect(await waitUntil(5) { await server.count == 4 })
+    #expect(await waitUntil(5) { await server.count == 11 })
     let calls = await server.calls
-    // 往前补的两段带「活够 5 分钟」（服务端只回活过 5 分钟的，一闪而过的不要）；首次与增量不带（上两条的 minLife 是 nil）。
+    // 往前补的各段带「活够 5 分钟」（服务端只回活过 5 分钟的，一闪而过的不要）；首次与增量不带（上两条的 minLife 是 nil）。
     let minLife = OrderFlowFeed.backfillMinLifeMs
-    #expect(calls[2] == HistoryServer.Call(base: "ETH", from: t0 - 2 * day, to: t0 - day, minLife: minLife))
-    #expect(calls[3] == HistoryServer.Call(base: "ETH", from: now - OrderFlowDefaults.retentionMs, to: t0 - 2 * day,
-                                           minLife: minLife))
+    #expect(calls[2] == HistoryServer.Call(base: "ETH", from: t0 - 2 * span, to: t0 - span, minLife: minLife))
+    #expect(calls[10] == HistoryServer.Call(base: "ETH", from: t0 - 60 * hour, to: t0 - 54 * hour, minLife: minLife))
     #expect(calls[0].minLife == nil && calls[1].minLife == nil)
-    // 再往左拖也不取 3 天以前的。
-    await feed.setVisibleWindow(fromMs: t0 - 5 * day, toMs: t0 - 4 * day)
     try await Task.sleep(for: .milliseconds(200))
-    #expect(await server.count == 4)
+    #expect(await server.count == 11)
+    // 再往左拖到 5 天前：补到 3 天（留存上限；此刻是 t0 + 1 分钟，底是 t0 + 1 分钟 − 3 天）就停，不取更早的。
+    await feed.setVisibleWindow(fromMs: t0 - 5 * day, toMs: t0 - 4 * day)
+    #expect(await waitUntil(5) { await server.count == 13 })
+    #expect(await server.calls.last == HistoryServer.Call(base: "ETH", from: now - OrderFlowDefaults.retentionMs,
+                                                         to: t0 - 66 * hour, minLife: minLife))
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(await server.count == 13)
     #expect(await feed.historyRangeForTests().from == now - OrderFlowDefaults.retentionMs)
     await feed.stop()
   }
 
-  @Test("日志带游标：saveNow 把游标写进日志；再开读回来，第一次取的是游标往前 5 分钟起的增量而不是整页 24 小时；门槛调低了就整页重取",
+  @Test("日志带游标：saveNow 把游标写进日志；再开读回来，第一次取的是游标往前 5 分钟起的增量而不是整页 6 小时；门槛调低了就整页重取",
         .timeLimit(.minutes(1)))
   func journalCarriesHistoryCursor() async throws {
     let dir = tempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     let clock = TestClock()
     let t0 = clock.now
-    let hour: Int64 = 3_600_000, day: Int64 = 86_400_000
+    let hour: Int64 = 3_600_000, day: Int64 = 86_400_000, span = OrderFlowFeed.historySpanMs
     let ended = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .bid, bucket: 0,
                          price: 1_500, firstSeenMs: t0 - 3 * hour, endMs: t0 - 2 * hour, status: .cancelled,
                          initialNotional: 8e6, notional: 8e6, threshold: 5e6)
     let live = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .ask, bucket: 0,
                         price: 1_700, firstSeenMs: t0 - hour, initialNotional: 6e6, notional: 6e6, threshold: 5e6)
-    let first = HistoryServer { call in historyPage(call, orders: call.from == call.to - day ? [ended, live] : []) }
+    let first = HistoryServer { call in historyPage(call, orders: call.from == call.to - span ? [ended, live] : []) }
     let frames = Frames()
     let feed = makeFeed([], dir: dir, frames: frames, clock: clock, history: { await first.load($0, $1, $2, $3) })
     await feed.start()
     #expect(await waitUntil(5) { await frames.last?.orders.count == 2 })
     let cursor = try #require(await feed.historyCursorForTests())
-    #expect(cursor.fromMs == t0 - day)
+    #expect(cursor.fromMs == t0 - span)
     #expect(cursor.cursorMs == t0 - hour)
     #expect(cursor.trackedSinceMs == t0 - 3 * day)
     #expect(cursor.thresholds?.usdtPerp == 5e6)
@@ -624,28 +661,28 @@ struct OrderFlowFeedTests {
     #expect(await waitUntil(5) { await second.count == 1 })
     #expect(await second.calls.first == HistoryServer.Call(base: "ETH", from: t0 - hour - OrderFlowFeed.historyOverlapMs,
                                                           to: clock.now))
-    #expect(await again.historyRangeForTests().from == t0 - day)
+    #expect(await again.historyRangeForTests().from == t0 - span)
     // 停时也落盘（增量那页空的，游标不动；大单没变就不写——写了也读得回同一个游标）。
     await again.stop()
     #expect(OrderFlowJournal.decode(try Data(contentsOf: file))?.history?.cursorMs == t0 - hour)
 
-    // 门槛调低（U 本位 500 万 → 400 万）：低出来的那一截服务端没给过，整页重取 24 小时。
+    // 门槛调低（U 本位 500 万 → 400 万）：低出来的那一截服务端没给过，整页重取 6 小时。
     let lowered = HistoryServer { call in historyPage(call, orders: []) }
     let low = makeFeed([], override: OrderFlowOverride(usdtPerp: 4e6), dir: dir, frames: Frames(), clock: clock,
                        history: { await lowered.load($0, $1, $2, $3) })
     await low.start()
     #expect(await waitUntil(5) { await lowered.count == 1 })
-    #expect(await lowered.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - day, to: clock.now))
+    #expect(await lowered.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - span, to: clock.now))
     await low.stop()
   }
 
-  @Test("日志游标作废：步长变了、日志超过 24 小时，都整页重取 24 小时", .timeLimit(.minutes(1)))
+  @Test("日志游标作废：步长变了、日志超过 6 小时，都整页重取 6 小时", .timeLimit(.minutes(1)))
   func staleCursorFallsBackToInitialPage() async throws {
     let dir = tempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     let clock = TestClock()
     let t0 = clock.now
-    let day: Int64 = 86_400_000
+    let span = OrderFlowFeed.historySpanMs
     let ended = BigOrder(venueID: binancePerp.id, exchange: "币安", product: .usdtPerp, side: .bid, bucket: 0,
                          price: 1_500, firstSeenMs: t0 - 3_600_000, endMs: t0 - 1_800_000, status: .cancelled,
                          initialNotional: 8e6, notional: 8e6, threshold: 5e6)
@@ -669,7 +706,7 @@ struct OrderFlowFeedTests {
                           history: { await stepped.load($0, $1, $2, $3) })
     await custom.start()
     #expect(await waitUntil(5) { await stepped.count == 1 })
-    #expect(await stepped.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - day, to: clock.now))
+    #expect(await stepped.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - span, to: clock.now))
     #expect(await custom.modelForTests().orders.isEmpty)
     await custom.stop()
 
@@ -679,7 +716,7 @@ struct OrderFlowFeedTests {
     let stale = makeFeed([], dir: dir, frames: Frames(), clock: clock, history: { await late.load($0, $1, $2, $3) })
     await stale.start()
     #expect(await waitUntil(5) { await late.count == 1 })
-    #expect(await late.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - day, to: clock.now))
+    #expect(await late.calls.first == HistoryServer.Call(base: "ETH", from: clock.now - span, to: clock.now))
     await stale.stop()
   }
 

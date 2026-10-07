@@ -122,6 +122,8 @@ function startFeed(symbol: string): void {
   overrideSig = JSON.stringify(own)
   const f = new OrderFlowFeed({
     symbol, crypto: s.crypto(symbol), turnover24h: s.turnover(symbol), tick: null, route: st.route, override: own,
+    // 鼠标停在色块 / 梯子行上、或点选了某一单：逐拍给精确金额；平时金额 5 秒换一次（feed.ts 的 FramePacer）
+    precise: () => OF.hoverRow != null || OF.highlight != null,
     onFrame, onTrade,
   })
   OF.feed = f

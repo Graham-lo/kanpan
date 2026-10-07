@@ -196,6 +196,8 @@ export interface DepthPort {
 export interface OrderFlowPort {
   setWanted(on: boolean, symbol: string, interval: Interval): void
   noteView(view: VW, series: BarSeries): void
+  /** 十字线停到 / 离开色块（停着时数据源逐拍给精确金额）；旧的口子可以没有 */
+  setPrecise?(on: boolean): void
   dispose(): void
 }
 
@@ -609,7 +611,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const bar = c && s && c.index >= 0 && c.index < s.input.series.count ? s.input.series.bar(c.index) : null
     emit('crosshair', { crosshair: c, bar })
   }
-  view.onOrderFlowFocusChanged = f => emit('select', { kind: 'orderFlow', focus: f })
+  view.onOrderFlowFocusChanged = f => { orderFlowPort?.setPrecise?.(f != null); emit('select', { kind: 'orderFlow', focus: f }) }
   view.onNeedsHistory = () => { void loadHistory() }
   view.onTapped = () => emit('tap', undefined)
   view.onNotice = t => emit('notice', t)

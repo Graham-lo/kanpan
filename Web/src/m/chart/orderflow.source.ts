@@ -28,6 +28,8 @@ export interface OrderFlowSourceOptions {
   route?: Route
   /** 用户改过的门槛与步长（全端同步的指标设置）。默认 null。 */
   override?: Override | null
+  /** 十字线此刻停在色块上（读数要精确金额，feed 逐拍发、不按住金额）。默认一直否。 */
+  precise?: () => boolean
 }
 
 export class OrderFlowSource {
@@ -65,6 +67,7 @@ export class OrderFlowSource {
       tick: null,
       route: options.route ?? 'direct',
       override: options.override ?? null,
+      precise: options.precise,
       onFrame: s => this.frame(gen, feed, s),
     })
     this.feed = feed
@@ -112,6 +115,8 @@ export function toChartSnapshot(symbol: string, s: Snapshot, defaults?: OrderFlo
 export interface OrderFlowSourcePort {
   setWanted(on: boolean, symbol: string, interval: Interval): void
   noteView(view: ViewWindow, series: BarSeries): void
+  /** 十字线停到 / 离开色块：停着时 feed 逐拍发精确金额，离开后金额又按 5 秒一换 */
+  setPrecise(on: boolean): void
   dispose(): void
 }
 
@@ -129,6 +134,7 @@ export function createOrderFlowPort(
   const src = new OrderFlowSource(push)
   let wanted: string | null = null
   let knewSymbol = false
+  let precise = false
   const info = (sym: string) => {
     const m = S.symbols.get(sym)
     return { known: !!m, crypto: (m?.kind ?? 'crypto') === 'crypto', turnover24h: m?.vol ?? null }
@@ -136,7 +142,7 @@ export function createOrderFlowPort(
   const start = (sym: string) => {
     const i = info(sym)
     knewSymbol = i.known
-    src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: opts.override?.(sym) ?? null })
+    src.start(sym, 0, { crypto: i.crypto, turnover24h: i.turnover24h, route: S.route, override: opts.override?.(sym) ?? null, precise: () => precise })
   }
   const off = onMarket(e => {
     if (!wanted || bg) return
@@ -165,6 +171,7 @@ export function createOrderFlowPort(
       seen = [view.from, view.to + Math.max(0, series.step)]
       if (!bg) src.setVisible(seen[0], seen[1])
     },
+    setPrecise(on) { precise = on },
     dispose() { off(); offHidden(); wanted = null; src.stop() },
   }
 }

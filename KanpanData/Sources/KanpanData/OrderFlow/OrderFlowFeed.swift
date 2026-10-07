@@ -40,8 +40,9 @@ public struct OrderFlowFacts: Sendable, Equatable {
 ///   每条连接一个 `DepthStream`。某家没有、某条连不上，只是少几本簿。
 /// - 门槛与步长：默认表（`OrderFlowDefaults`）叠用户改过的项（`setOverride`）；表里和用户都没给步长时，
 ///   按前一 UTC 日收盘 × 最小变动价推一个（`BucketScheme.derivedStep`），跨 UTC 日重算。
-/// - 服务端历史（2026-09-24）：kanpan-api 常驻跟踪大单生命周期、存 3 天（2026-09-25 从 30 天收到 3 天）。读完本地日志就取最近 24 小时并进模型，
-///   之后每分钟取一次增量（从上一页最晚的时刻往前退 5 分钟接着取）；图往左拖到已取区间之外，就 24 小时一段往前补，
+/// - 服务端历史（2026-09-24）：kanpan-api 常驻跟踪大单生命周期、存 3 天（2026-09-25 从 30 天收到 3 天）。读完本地日志就取最近 6 小时并进模型
+///   （2026-10-07 从 24 小时收到 6 小时：BTC 一页 470 KB / 一万条变 100 KB / 两千条，开图少等一截；更早的往左拖再补），
+///   之后每分钟取一次增量（从上一页最晚的时刻往前退 5 分钟接着取）；图往左拖到已取区间之外，就 6 小时一段往前补，
 ///   最多到 3 天（`OrderFlowDefaults.retentionMs`，或服务端开始跟这只的时刻）。取不到就当没有，纯本地照常，不报错、不提示。
 ///   合并规则见 `OrderFlowModel.mergeHistory`。
 /// - 非币默认门槛标定（2026-09-25）：非币、且不在固定表里的品种，默认门槛按簿深标定
@@ -71,19 +72,21 @@ public actor OrderFlowFeed {
   public static let heartbeatMs: Int64 = 30_000
   /// 画出来一样、只是金额变了的帧最快隔这么久才发一次（图例「主力 买 12.3M」的合计要跟上，
   /// 但不能每拍都发）；十字线停在色块上（`precise` 为真）时不受这一条限制，读数要精确金额。
+  /// 画面变了（有单出现 / 结束）那一帧照发，但其余画面没变的活单金额仍按上一次发出去的（`hold`），
+  /// 到点再一起换——不然每有一单出现，满屏金额签都跟着跳一次（用户 2026-10-07：「数字变化的非常快，像出错的数据」）。
   public static let amountRefreshMs: Int64 = 5_000
   /// 大单有变化时隔这么久落一次盘。日志最多约 1 MB，更早的都在服务端，被杀掉丢的这一分钟下次打开由服务端补回。
   public static let saveEveryMs: Int64 = 60_000
   /// 服务端历史：每隔多久取一次增量；增量从上一页最晚时刻往前退多少接着取（服务端挂着的单 15 秒才刷一次库）；
-  /// 一段取多长（首次与往左补都是 24 小时一段）。
+  /// 一段取多长（首次与往左补都是 6 小时一段；与网页版 HISTORY_SPAN_MS 同口径）。
   public static let historyEveryMs: Int64 = 60_000
   public static let historyOverlapMs: Int64 = 5 * 60_000
-  public static let historySpanMs: Int64 = 86_400_000
+  public static let historySpanMs: Int64 = 6 * 3_600_000
   /// 首次那一页没取到，隔多久再试；往左补的一段没取到，隔多久再试。
   static let historyRetryMs: Int64 = 10_000
   static let backfillRetryMs: Int64 = 30_000
-  /// 往左补（24 小时之前）的那几页只要活过 5 分钟的单：那么早的碎单（BTC 一半活不过 1 分钟）拉远看是底噪，
-  /// 还占着 2 万条的额度；首次与增量那两种页照旧全要（最近 24 小时的细节要紧）。
+  /// 往左补（6 小时之前）的那几页只要活过 5 分钟的单：那么早的碎单（BTC 一半活不过 1 分钟）拉远看是底噪，
+  /// 还占着 2 万条的额度；首次与增量那两种页照旧全要（最近 6 小时的细节要紧）。
   public static let backfillMinLifeMs: Int64 = 300_000
 
   public let symbol: String
@@ -137,6 +140,8 @@ public actor OrderFlowFeed {
   static let maxFirstSnapshotNudges = 3
   private var lastEmitted: OrderFlowSnapshot?
   private var lastEmitMs: Int64 = .min / 2
+  /// 上一次把活单的金额换成新的是什么时候（`amountRefreshMs`）。
+  private var amountsAtMs: Int64 = .min / 2
   private var lastSaveMs: Int64 = 0
   private var started = false
   private var stopped = false
@@ -591,7 +596,7 @@ public actor OrderFlowFeed {
     var toMs: Int64
   }
 
-  /// 该取哪一页了：首次（最近 24 小时）→ 到点的增量 → 图往左拖出去了就往前补一段。都不该取是 nil。
+  /// 该取哪一页了：首次（最近 6 小时）→ 到点的增量 → 图往左拖出去了就往前补一段。都不该取是 nil。
   func nextHistoryJob(nowMs now: Int64) -> HistoryJob? {
     // 还没有步长（按收盘推的那个还在路上）：并不进来，先不取。
     guard let step = model.thresholds.step else { return nil }
@@ -627,8 +632,8 @@ public actor OrderFlowFeed {
   }
 
   /// 读回的日志带着游标（模型接下了那份日志、步长与门槛都对得上）：接着用，下一次取的是游标之后的增量，
-  /// 不再整页重取 24 小时。原来每次起订都发首次页：ETH 24 小时一页 1.3 MB gzip、3 万行，首字节 0.9–4.5 秒。
-  /// 游标停在 24 小时以前（日志存得太久）不接着用：增量要取的比首次那页还长，不如整页重取。
+  /// 不再整页重取。原来每次起订都发首次页：ETH 24 小时一页 1.3 MB gzip、3 万行，首字节 0.9–4.5 秒。
+  /// 游标停在一段（6 小时）以前（日志存得太久）不接着用：增量要取的比首次那页还长，不如整页重取。
   private func adoptRestoredHistory() {
     guard historyCursorMs == nil, let cursor = model.takeRestoredHistory(),
           clock() - cursor.cursorMs <= Self.historySpanMs else { return }
@@ -725,12 +730,12 @@ public actor OrderFlowFeed {
                                       calibrated: calibrated)
     }
     if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
-    if let last = lastEmitted, now - lastEmitMs < Self.heartbeatMs, Self.skip(frame, after: last,
-                                                                             sinceLastMs: now - lastEmitMs,
-                                                                             precise: precise()) { return }
-    lastEmitted = frame
+    guard let out = Self.pace(frame, after: lastEmitted, sinceLastMs: now - lastEmitMs,
+                              sinceAmountsMs: now - amountsAtMs, precise: precise()) else { return }
+    if out.amountsRefreshed { amountsAtMs = now }
+    lastEmitted = out.frame
     lastEmitMs = now
-    frameSink.yield(frame)
+    frameSink.yield(out.frame)
   }
 
   /// 非币默认门槛标定：所有簿都拿到首张快照就算；到点（订阅起来 8 秒）时有一本就按已有的算，一本都没有用兜底。
@@ -759,11 +764,33 @@ public actor OrderFlowFeed {
   }
 
   /// 心跳之内这一帧发不发：画出来有变化就发；只是金额变了，十字线停着就发、否则隔 `amountRefreshMs` 发一次。
-  static func skip(_ frame: OrderFlowSnapshot, after last: OrderFlowSnapshot, sinceLastMs: Int64,
-                   precise: Bool) -> Bool {
-    guard last.sameContent(as: frame) else { return false }
-    if last.sameExactContent(as: frame) { return true }
-    return !precise && sinceLastMs < amountRefreshMs
+  /// 这一拍该不该发、发哪一份：
+  /// - 第一帧、十字线停着（`precise`）、距上次换金额已满 `amountRefreshMs`：照模型此刻的金额发；
+  /// - 否则活着、画面没变的单金额按上一次发出去的（`hold`）；按完和上一帧逐字相同就不发（心跳到点除外）。
+  /// 返回 nil 是不发；`amountsRefreshed` 为真表示这一帧换上了新金额（调用方记下时刻）。
+  static func pace(_ frame: OrderFlowSnapshot, after last: OrderFlowSnapshot?, sinceLastMs: Int64,
+                   sinceAmountsMs: Int64, precise: Bool) -> (frame: OrderFlowSnapshot, amountsRefreshed: Bool)? {
+    guard let last else { return (frame, true) }
+    let refresh = precise || sinceAmountsMs >= amountRefreshMs
+    let out = refresh ? frame : hold(frame, from: last)
+    if sinceLastMs < heartbeatMs, last.sameExactContent(as: out) { return nil }
+    return (out, refresh)
+  }
+
+  /// 活着、除金额外没变（`BigOrder.sameShape`：不比高度与桶内均价，它们跟着金额 5 秒一换）的单，
+  /// 金额与均价照 `last` 里发出去的那份；新单、成交格变了的、已结束的取 `frame` 的。
+  static func hold(_ frame: OrderFlowSnapshot, from last: OrderFlowSnapshot) -> OrderFlowSnapshot {
+    var held: [String: BigOrder] = [:]
+    for o in last.orders where o.status == .live { held[o.id] = o }
+    guard !held.isEmpty else { return frame }
+    var out = frame
+    for i in out.orders.indices where out.orders[i].status == .live {
+      guard let h = held[out.orders[i].id], BigOrder.sameShape(h, out.orders[i]) else { continue }
+      out.orders[i].notional = h.notional
+      out.orders[i].filledNotional = h.filledNotional
+      out.orders[i].price = h.price
+    }
+    return out
   }
 
   /// 落盘：大单有变化才写；`force`（停、进后台）时游标往前走了也写。都在这个 actor 上，不占主线程；

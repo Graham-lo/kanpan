@@ -106,6 +106,22 @@ public struct BigOrder: Sendable, Equatable, Identifiable, Codable {
       && a.heightUnits == b.heightUnits && a.fillStep == b.fillStep && a.venueID == b.venueID
   }
 
+  /// 除金额以外是不是同一回事（身份、状态、门槛、成交格）：`samePixels` 去掉高度与桶内均价两项。
+  /// feed 出帧时按它判断「画面没变、只是金额在抖」——高度是金额画出来的样子，均价是桶内按量加权的、随挂单量每拍动几块钱，
+  /// 都和金额一起每 5 秒换一次；不然 BTC 三百来条活单每拍总有几条跨档、均价全在动，等于每拍都发
+  /// （2026-10-07 网页端实测 20 秒 40 拍发了 39 拍）。
+  /// 成交格按 `a` 那份的挂单量算底、`b` 只看吃掉了多少：挂单量一拍一个样，各算各的底的话成交没动格也会跳。
+  public static func sameShape(_ a: BigOrder, _ b: BigOrder) -> Bool {
+    a.firstSeenMs == b.firstSeenMs && a.bucket == b.bucket && a.side == b.side && a.status == b.status
+      && a.endMs == b.endMs && a.threshold == b.threshold
+      && a.fillStep == a.fillStep(of: b) && a.venueID == b.venueID
+  }
+
+  private func fillStep(of b: BigOrder) -> Int {
+    guard status == .live else { return b.fillStep }
+    return notional > 0 ? Int((min(1, max(0, b.filledNotional / notional)) * 20).rounded()) : 0
+  }
+
   private var heightUnits: Int {
     threshold > 0 && notional.isFinite
       ? min(Self.maxHeightUnits, Int((max(0, notional) / (threshold / 8)).rounded())) : 0

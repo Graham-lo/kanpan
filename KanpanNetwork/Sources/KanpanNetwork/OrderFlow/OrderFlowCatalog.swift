@@ -6,6 +6,8 @@ import KanpanCore
 /// 1. 查 kanpan-api 的品种表 `GET /v1/market/orderflow/instruments?base=BTC`（每 10 分钟把币安 /
 ///    OKX / Coinbase 的七张合约表汇总一次，只查内存）：各家各产品的合约代号、面值口径、交割时间、
 ///    币安带前缀的缩放（`1000PEPE`）。两条线路都查 `MarketRoute.apiHosts`（只有主机）——和行情走哪条路无关。
+///    表在本机留一份（`OrderFlowCatalogCache`，Caches 目录，按币）：10 分钟内直接用；24 小时内先用着、后台再问一次；
+///    再旧才等服务端。原来只留内存、冷启动开图每只币都先等这一问（一个往返 0.6 秒以上，2026-10-07）。
 /// 2. 查不到（网关都不通、回了坏数据、一本都没有）就用保底那几本：币安 U 本位永续 `<BASE>USDT`、
 ///    币安现货 `<BASE>USDT`、Coinbase `<BASE>-USD`。哪本不存在，它的快照回 4xx，那本就一直不就绪，
 ///    图上少一本而已。
@@ -16,8 +18,9 @@ import KanpanCore
 /// 哪几种产品真的要订由调用方按门槛决定（没有门槛的产品不订，例如非加密只有 U 本位永续）。
 public struct OrderFlowCatalog: Sendable {
   public static let path = "/v1/market/orderflow/instruments"
-  /// 同一只币的品种表在内存里留多久（网关那边 10 分钟刷一次表）。
+  /// 同一只币的品种表算新鲜多久（网关那边 10 分钟刷一次表）；旧到多久之内还先用着、后台刷新。
   static let cacheMs: Int64 = 10 * 60_000
+  static let staleMs: Int64 = 24 * 3_600_000
 
   let route: MarketRoute
   let binanceHosts: BinanceHosts
@@ -59,6 +62,23 @@ public struct OrderFlowCatalog: Sendable {
     if let rows = await cache.rows(base: base, nowMs: nowMs) {
       return Books(base: base, chartScale: scale, books: Self.books(rows, chartScale: scale, nowMs: nowMs), fromCatalog: true)
     }
+    if let rows = await cache.staleRows(base: base, nowMs: nowMs) {
+      // 旧一点的先用着（交割合约多半还是那几张；到期的 books() 会剔掉），后台问一次给下一回
+      let me = self
+      Task.detached(priority: .utility) { _ = await me.fetch(base: base, nowMs: nowMs) }
+      return Books(base: base, chartScale: scale, books: Self.books(rows, chartScale: scale, nowMs: nowMs), fromCatalog: true)
+    }
+    if let rows = await fetch(base: base, nowMs: nowMs) {
+      let books = Self.books(rows, chartScale: scale, nowMs: nowMs)
+      if !books.isEmpty { return Books(base: base, chartScale: scale, books: books, fromCatalog: true) }
+    }
+    return Books(base: base, chartScale: scale,
+                 books: Self.fallback(viewedBase: viewedBase.uppercased(), base: base, chartScale: scale),
+                 fromCatalog: false)
+  }
+
+  /// 向服务端问这只币的表；拿到就存进缓存。都不通、回了坏数据是 nil。
+  func fetch(base: String, nowMs: Int64) async -> [Row]? {
     for host in route.apiHosts {
       guard var c = URLComponents(string: "https://\(host)"), c.host != nil, c.user == nil else { continue }
       c.path = Self.path
@@ -68,17 +88,14 @@ public struct OrderFlowCatalog: Sendable {
         let reply = try await http.get(url, timeout: 6)
         guard (200..<300).contains(reply.status), let rows = Self.parse(reply.body), !rows.isEmpty else { continue }
         await cache.store(rows, base: base, nowMs: nowMs)
-        let books = Self.books(rows, chartScale: scale, nowMs: nowMs)
-        if !books.isEmpty { return Books(base: base, chartScale: scale, books: books, fromCatalog: true) }
+        return rows
       } catch is CancellationError {
         break
       } catch {
         continue
       }
     }
-    return Books(base: base, chartScale: scale,
-                 books: Self.fallback(viewedBase: viewedBase.uppercased(), base: base, chartScale: scale),
-                 fromCatalog: false)
+    return nil
   }
 
   // ------------------------------------------------------------------ 服务端历史
@@ -161,6 +178,20 @@ public struct OrderFlowCatalog: Sendable {
       guard scale.isFinite, scale > 0 else { return nil }
       return Row(exchange: exchange, product: product, instrument: instrument, notional: notional,
                  expiryMs: DepthWire.integer(v["expiryMs"]), priceScale: scale)
+    }
+  }
+
+  /// 行 → 落盘用的字典（和服务端 `venues` 里一行同一个形状，读回来走同一个 `parse`）。
+  static func encode(_ rows: [Row]) -> [[String: Any]] {
+    rows.map { r in
+      var v: [String: Any] = ["exchange": r.exchange, "product": r.product.rawValue, "instrument": r.instrument,
+                              "priceScale": r.priceScale]
+      switch r.notional {
+      case .linear(let m): v["notional"] = ["kind": "linear", "multiplier": m]
+      case .inverse(let c): v["notional"] = ["kind": "inverse", "contractUsd": c]
+      }
+      if let e = r.expiryMs { v["expiryMs"] = e }
+      return v
     }
   }
 
@@ -279,19 +310,60 @@ public enum OrderFlowBase {
   }
 }
 
-/// 品种表的内存缓存（按 base，10 分钟）。
+/// 品种表的缓存（按 base）：内存一份，`file` 给了就同时落盘（一个 JSON，`{ base: { atMs, venues } }`，几十只币几十 KB），
+/// 冷启动第一次查时读回来。10 分钟内算新鲜；24 小时内算旧、先用着再刷；更旧不用。
 public actor OrderFlowCatalogCache {
-  public static let shared = OrderFlowCatalogCache()
+  public static let shared = OrderFlowCatalogCache(file: defaultFile)
+  /// Caches/kanpan/orderflow-catalog.json（系统缺空间会清，清了就是再问一次服务端）。
+  static var defaultFile: URL? {
+    guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+    return base.appendingPathComponent("kanpan", isDirectory: true).appendingPathComponent("orderflow-catalog.json")
+  }
   private var entries: [String: (rows: [OrderFlowCatalog.Row], atMs: Int64)] = [:]
-  public init() {}
+  private let file: URL?
+  private var loaded = false
+
+  public init(file: URL? = nil) { self.file = file }
 
   func rows(base: String, nowMs: Int64) -> [OrderFlowCatalog.Row]? {
+    load()
     guard let e = entries[base], nowMs - e.atMs < OrderFlowCatalog.cacheMs, nowMs >= e.atMs else { return nil }
     return e.rows
   }
 
+  /// 不新鲜但还没过 24 小时的那份（先用着、后台刷）。
+  func staleRows(base: String, nowMs: Int64) -> [OrderFlowCatalog.Row]? {
+    load()
+    guard let e = entries[base], nowMs - e.atMs < OrderFlowCatalog.staleMs, nowMs >= e.atMs else { return nil }
+    return e.rows
+  }
+
   func store(_ rows: [OrderFlowCatalog.Row], base: String, nowMs: Int64) {
+    load()
     if entries.count > 64 { entries.removeAll() }
     entries[base] = (rows, nowMs)
+    save()
+  }
+
+  private func load() {
+    guard !loaded else { return }
+    loaded = true
+    guard let file, let data = try? Data(contentsOf: file),
+          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+    for (base, v) in obj {
+      guard let d = v as? [String: Any], let at = DepthWire.integer(d["atMs"]),
+            let body = try? JSONSerialization.data(withJSONObject: ["venues": d["venues"] ?? []]),
+            let rows = OrderFlowCatalog.parse(body), !rows.isEmpty else { continue }
+      entries[base] = (rows, at)
+    }
+  }
+
+  private func save() {
+    guard let file else { return }
+    var obj: [String: Any] = [:]
+    for (base, e) in entries { obj[base] = ["atMs": e.atMs, "venues": OrderFlowCatalog.encode(e.rows)] }
+    guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
+    try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? data.write(to: file, options: .atomic)
   }
 }
