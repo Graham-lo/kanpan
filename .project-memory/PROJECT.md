@@ -1256,7 +1256,7 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   - `Web/tests/replay-model.test.ts` 20 例：K 线边界含周线与月线、定起点与可见根数、切分、预取窗口与补页、倍速与进度线、切周期重新定位、秒级不能回放、头部报价、时间输入。
   - `Web/tests/replay-takeover.test.ts` 7 例：用真 `TVChart.setData / updateBar / prependData` 验接管后图表收到的 K 线。覆盖：定起点只到起点那根且不重取；4× 每秒 4 根；切 1h 取前后两页、最后一根是走完的那根；拖进度线来回不重取；播到最新停下且不播正在走的那根；换品种交还且订单流层放回；秒级不进。
   - rebase 到 origin/main 后全量 `npx tsc --noEmit` 干净，vitest 139 个文件 1887 例全过，`npm run build` 无告警。
-- **浏览器验收**：`Web/scripts/replay-e2e.mjs`，用本机 Chrome（Playwright，无头，1600×960，DPR 2）、真币安 K 线（直连）跑，39 项全过。
+- **浏览器验收**：`Web/scripts/replay-e2e.mjs`，用本机 Chrome（Playwright，无头，1600×960，DPR 2）、真币安 K 线（直连）跑，37 项全过。
   - 走法：BTCUSDT 15 分，竖线选约 3 天前起点；4× 播放；中途画趋势线；切 1 小时；拖进度线到 75%；跳到起点；回 15 分 16× 量主线程；退出。
   - 另验：两格布局只回放当前格、右格照常实时；输入时间开始回放；换品种退出；1 秒周期置灰。
   - 内置浏览器面板连不上币安（直连 Failed to fetch，网关对 localhost 没开 CORS），所以改用本机 Chrome 跑。
