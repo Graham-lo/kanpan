@@ -60,8 +60,9 @@ extension RoutedMarketFeed {
 extension CompareFeed {
   /// 老用例的注入口：一家币安本家（带假 transport 的 REST）+ 一条假推送。
   /// 别的交易所一律「认不出」，正好守住「别家的 key 不许向币安冒领行情」。
-  init(rest: BinanceREST, ws: BinanceWS, pacer: any Pacer = SystemPacer()) {
+  init(rest: BinanceREST, ws: BinanceWS, pacer: any Pacer = SystemPacer(), snapshots: Paths? = nil) {
     let binance = BinanceProvider.wrapping(rest)
-    self.init(provider: { venue in venue == BinanceProvider.venue ? binance : nil }, stream: ws, pacer: pacer)
+    self.init(provider: { venue in venue == BinanceProvider.venue ? binance : nil }, stream: ws, pacer: pacer,
+              snapshots: snapshots)
   }
 }

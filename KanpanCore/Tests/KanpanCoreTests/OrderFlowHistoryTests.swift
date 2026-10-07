@@ -270,6 +270,21 @@ final class OrderFlowHistoryTests: XCTestCase {
     XCTAssertNil(model.takeRestoredHistory(), "只给一次")
   }
 
+  /// 日志头带着上一次标定的门槛：原样读回；不带的（币、旧日志）读回是 nil；非正数、非有限数不写。
+  func testJournalCarriesCalibratedThreshold() throws {
+    let journal = OrderFlowJournal(symbol: "SNDKUSDT", step: 1, savedAtMs: 100_000,
+                                   orders: [remote(first: 10_000)], history: cursor(), calibrated: 500_000)
+    let decoded = try XCTUnwrap(OrderFlowJournal.decode(journal.encoded()))
+    XCTAssertEqual(decoded, journal)
+    XCTAssertEqual(decoded.calibrated, 500_000)
+    let plain = OrderFlowJournal(symbol: "ETHUSDT", step: 1, savedAtMs: 100_000, orders: [])
+    XCTAssertNil(try XCTUnwrap(OrderFlowJournal.decode(plain.encoded())).calibrated)
+    XCTAssertFalse(String(decoding: plain.encoded(), as: UTF8.self).contains("calibrated"))
+    var bad = plain
+    bad.calibrated = .infinity
+    XCTAssertNil(try XCTUnwrap(OrderFlowJournal.decode(bad.encoded())).calibrated)
+  }
+
   /// 游标的起点收到存盘前 24 小时（更早的没跟着落盘），终点不晚于存盘时刻。
   func testRestoredCursorIsClampedToWhatTheJournalHolds() throws {
     let saved: Int64 = 3 * 86_400_000

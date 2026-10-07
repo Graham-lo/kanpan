@@ -11,6 +11,8 @@ import KanpanChart
   private(set) var snapshots: [CompareFeed.Snapshot] = []
   @ObservationIgnored private var feed: CompareFeed?
   @ObservationIgnored private var pump: Task<Void, Never>?
+  /// 对同一条对比流的 `start` 排成一串：首次开流 → 之后每次增减品种，按调用顺序落到流上。
+  @ObservationIgnored private var starts: Task<Void, Never>?
   @ObservationIgnored private var request: Request?
   @ObservationIgnored private var main: BarSeries?
   @ObservationIgnored private var generation = UUID()
@@ -44,6 +46,18 @@ import KanpanChart
     let next = Request(keys: keys.filter { $0 != InstrumentID.canonical(symbol) }, symbol: symbol, interval: interval, route: route)
     self.main = main?.symbol == symbol && main?.interval == interval ? main : nil
     if next != request {
+      // 只是增减了对比品种（周期、线路都没变）：同一条流接着用，留下的那几只不清空，
+      // 新加的那只由对比流先拿盘上的快照垫上（体感 2026-10-07）。
+      if let feed, let old = request, old.interval == next.interval, old.route == next.route,
+         foreground, !next.keys.isEmpty, let main = self.main, !main.isEmpty {
+        request = next
+        let keep = Set(next.keys.map(InstrumentID.canonical))
+        snapshots = snapshots.filter { keep.contains($0.key) }
+        alignment = nil
+        let previous = starts
+        starts = Task { await previous?.value; await feed.start(keys: next.keys, main: main) }
+        return
+      }
       stopFeed(); snapshots = []; alignment = nil; request = next
     }
     guard foreground, !next.keys.isEmpty, let main = self.main, !main.isEmpty else {
@@ -56,9 +70,14 @@ import KanpanChart
     let created = CompareFeed(resolver: RouteResolver(route: route))
     feed = created
     let token = generation
-    pump = Task { [weak self] in
+    let opened = Task { () -> AsyncStream<[CompareFeed.Snapshot]> in
       let events = await created.events()
       await created.start(keys: next.keys, main: main)
+      return events
+    }
+    starts = Task { _ = await opened.value }
+    pump = Task { [weak self] in
+      let events = await withTaskCancellationHandler { await opened.value } onCancel: { opened.cancel() }
       for await values in events {
         guard !Task.isCancelled, let self, self.generation == token else { return }
         self.snapshots = values
@@ -92,7 +111,7 @@ import KanpanChart
   }
 
   private func stopFeed() {
-    generation = UUID(); pump?.cancel(); pump = nil
+    generation = UUID(); pump?.cancel(); pump = nil; starts?.cancel(); starts = nil
     let previous = feed; feed = nil
     if let previous { Task { await previous.stop() } }
   }

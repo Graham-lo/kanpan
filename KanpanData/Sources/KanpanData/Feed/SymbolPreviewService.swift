@@ -40,6 +40,26 @@ public struct SymbolPreviewService: Sendable {
     }
   }
 
+  /// 盘上快照能拼出的那段 1 小时 K 线（主图看过这只就有）：按住那一刻先画它，REST 回来再换成新的。
+  ///
+  /// 先找 1 小时那份，没有就拿 30 / 15 / 5 分钟的就地聚合。只读、不 touch；最后一根离现在超过
+  /// 一周的不要（那段走势已经不代表「现在」了），凑不出两根也不要。
+  public static let snapshotMaxAgeMs: Int64 = 7 * 86_400_000
+
+  public func snapshotBars(for symbol: String, root: Paths = .caches(), now: Date = Date()) -> [Bar] {
+    let key = InstrumentID.canonical(symbol)
+    let dir = RoutedMarketFeed.snapshotPaths(for: capabilities(for: key), in: root).series
+    let nowMs = Int64(now.timeIntervalSince1970 * 1000)
+    for interval in [Interval.h1, .m30, .m15, .m5] {
+      guard let series = SeriesStore.read(symbol: key, interval: interval, in: dir, touch: false) else { continue }
+      let hourly = interval == Self.interval ? series : Aggregator.bucket(series: series, into: Self.interval)
+      guard !hourly.isEmpty, nowMs - hourly.lastTime <= Self.snapshotMaxAgeMs else { continue }
+      let rows = (0..<hourly.count).map(hourly.bar(at:)).filter(\.isValidMarketBar).suffix(Self.barCount)
+      if rows.count >= 2 { return Array(rows) }
+    }
+    return []
+  }
+
   /// 单品种资金费率。没有费率的品种（现货、美股）或取不到时给 nil。
   public func funding(for symbol: String) async -> FundingSnapshot? {
     let key = InstrumentID.canonical(symbol)

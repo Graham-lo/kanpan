@@ -95,6 +95,9 @@ struct SymbolSearchView: View {
   /// 搜索态下那唯一一个分区（`SymbolSections.build` 有查询时只回一组）。
   private var hits: SymbolSection? { model.sections.first { $0.kind == .search } }
   private var hitCount: Int { hits.map { $0.rows.count + $0.more } ?? 0 }
+  @Environment(\.symbolWarmup) private var warmup
+  /// 结果最前面那几只（`SymbolWarmup.hitsToWarm`）。结果一稳定就替它们先拉 K 线。
+  private var warmIDs: [String] { showsResults ? SymbolWarmup.hitsToWarm(hits?.rows.map(\.id) ?? []) : [] }
 
   /// 最近看过。品种表还没到的时候查不到信息，那就先不显示这一组——
   /// 不占位、不解释，表到了它自己就出来。存几个就摆几个（`SymbolPrefs.recentLimit`，
@@ -122,6 +125,13 @@ struct SymbolSearchView: View {
       // 滚动条一闪那一两秒点上去会没反应，所以不露它。
       .scrollIndicators(.hidden)
       .scrollDismissesKeyboard(.interactively)
+    }
+    .task(id: warmIDs) {
+      let ids = warmIDs
+      guard !ids.isEmpty else { return }
+      try? await Task.sleep(for: SymbolWarmup.settle)
+      guard !Task.isCancelled else { return }
+      warmup.hits(ids)
     }
     // iPad 上这一页是满屏的：不封顶的话品种名钉在最左、价格钉在最右，隔着一米。
     .readableColumn()

@@ -42,6 +42,7 @@ public struct URLSessionTransport: HTTPTransport {
     req.setValue("kanpan-ios/1.0", forHTTPHeaderField: "User-Agent")
     #if DEBUG
       if SimulatedOutage.active { throw URLError(.notConnectedToInternet) }
+      if let slow = SimulatedSlowNetwork.delay { try await Task.sleep(for: slow) }
     #endif
     let session = self.session, request = req
     let (data, resp) = try await Deadline.run(seconds: Self.totalSeconds(for: timeout)) {

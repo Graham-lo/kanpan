@@ -261,6 +261,10 @@ actor MarketStatsClient {
 
   /// 非 200 当失败：契约里失败一律是非 200 + `{"error":"…"}`。
   private static func get(_ url: URL, session: URLSession) async throws -> Data {
+    #if DEBUG
+      // 慢网验收（`KANPAN_TEST_NET_SLOW`）：顶栏这几样走的是自己的会话，不过行情传输层，单独接上。
+      if let slow = SimulatedSlowNetwork.delay { try await Task.sleep(for: slow) }
+    #endif
     let (body, response) = try await session.data(from: url)
     guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
       throw URLError(.badServerResponse)

@@ -323,24 +323,16 @@ struct PriceRow: View {
   var body: some View {
     HStack(alignment: .center, spacing: 0) {
       VStack(alignment: .leading, spacing: Space.xxs) {
-        Text(lastText)
-          .font(TypeScale.price)
-          .monospacedDigit()
-          .foregroundStyle(lastPrice == nil ? theme.ink3 : stale ? theme.staleInk : tint)
-          // 跳价时逐位滚过去（P2.8），只动变了的那几位；「减少动效」下直接换字。
-          .contentTransition(reduceMotion ? .identity : .numericText(value: lastPrice ?? 0))
-          .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: lastText)
-          // 逐位滚动只在**同一只**里做。换品种（横滑扫图、搜索、自选 / 板块点进）时
-          // 视图身份跟着完整品种键换掉：新的那只的价直接落（有种子就是种子，没有就是「—」），
-          // 不从上一只的数滚过来——否则标题已经是 ETH，底下还闪过一串 BTC 量级的数。
-          .id(instrument)
-          .transition(.identity)
-          .accessibilityIdentifier("top.lastPrice")
-        Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
-          .font(TypeScale.footnoteEmph)
-          .monospacedDigit()
-          .foregroundStyle(ticker?.priceChange == nil || pct == nil ? theme.ink3 : stale ? theme.staleInk : tint)
-          .accessibilityIdentifier("top.changePercent")
+        if skeleton(.price, hasValue: lastPrice != nil) {
+          headlineSkeleton(width: 120, height: 18, font: TypeScale.price, id: "top.lastPrice")
+        } else {
+          lastPriceText
+        }
+        if skeleton(.change, hasValue: ticker?.priceChange != nil && pct != nil) {
+          headlineSkeleton(width: 96, height: 11, font: TypeScale.footnoteEmph, id: "top.changePercent")
+        } else {
+          changeText
+        }
       }
       .lineLimit(1)
       .fixedSize(horizontal: true, vertical: false)
@@ -350,6 +342,39 @@ struct PriceRow: View {
     // 换品种这一下整行不带任何动画（哪怕外面的事务带着）：旧那只的价当场拿掉，
     // 不留一帧淡出，涨跌与六格也直接换成新那只的数。
     .transaction(value: instrument) { $0.animation = nil }
+  }
+
+  /// 价与涨跌还在路上时的骨架条：行高由隐藏的同字号字符撑着，数到了整行高度不跳。
+  private func headlineSkeleton(width: CGFloat, height: CGFloat, font: ScaledFont, id: String) -> some View {
+    Text(verbatim: "0").font(font).hidden()
+      .frame(width: width, alignment: .leading)
+      .overlay(RoundedRectangle(cornerRadius: Radius.xs).fill(SymbolRowInk.rule(theme)).frame(height: height))
+      .accessibilityIdentifier(id)
+      .accessibilityLabel("载入中")
+  }
+
+  private var lastPriceText: some View {
+    Text(lastText)
+      .font(TypeScale.price)
+      .monospacedDigit()
+      .foregroundStyle(lastPrice == nil ? theme.ink3 : stale ? theme.staleInk : tint)
+      // 跳价时逐位滚过去（P2.8），只动变了的那几位；「减少动效」下直接换字。
+      .contentTransition(reduceMotion ? .identity : .numericText(value: lastPrice ?? 0))
+      .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: lastText)
+      // 逐位滚动只在**同一只**里做。换品种（横滑扫图、搜索、自选 / 板块点进）时
+      // 视图身份跟着完整品种键换掉：新的那只的价直接落（有种子就是种子，没有就是「—」），
+      // 不从上一只的数滚过来——否则标题已经是 ETH，底下还闪过一串 BTC 量级的数。
+      .id(instrument)
+      .transition(.identity)
+      .accessibilityIdentifier("top.lastPrice")
+  }
+
+  private var changeText: some View {
+    Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
+      .font(TypeScale.footnoteEmph)
+      .monospacedDigit()
+      .foregroundStyle(ticker?.priceChange == nil || pct == nil ? theme.ink3 : stale ? theme.staleInk : tint)
+      .accessibilityIdentifier("top.changePercent")
   }
 
   /// 价格的小数位由品种自己说（`priceDecimals`，按 `tickSize` 推），极小的正价会自动多给几位，
@@ -392,15 +417,15 @@ struct PriceRow: View {
   private var stats: some View {
     HStack(alignment: .top, spacing: Space.l) {
       statColumn {
-        statRow("仓", openInterestText, id: "top.openInterest", term: .openInterest)
-        statRow("市值", marketCapText, id: "top.marketCap")
+        statRow("仓", openInterestText, cell: .openInterest, id: "top.openInterest", term: .openInterest)
+        statRow("市值", marketCapText, cell: .marketCap, id: "top.marketCap")
         settlementRow
       }
       statColumn {
-        statRow("额", turnoverText, id: "top.turnover", term: .turnover)
-        statRow("费率", fundingText, id: "top.funding", tint: frTint)
+        statRow("额", turnoverText, cell: .turnover, id: "top.turnover", term: .turnover)
+        statRow("费率", fundingText, cell: .funding, id: "top.funding", tint: frTint)
         if let cell = valuationCell {
-          statRow(cell.label, cell.value, id: "top.valuation", term: Self.valuationTerm(cell.label))
+          statRow(cell.label, cell.value, cell: .valuation, id: "top.valuation", term: Self.valuationTerm(cell.label))
         }
       }
     }
@@ -414,12 +439,34 @@ struct PriceRow: View {
     Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xxs) { rows() }
   }
 
-  private func statRow(_ label: String, _ value: String?, id: String,
+  private func statRow(_ label: String, _ value: String?, cell: ArrivalBoard.HeaderCell, id: String,
                        tint: Color? = nil, term: GlossaryTerm? = nil) -> some View {
     GridRow {
       statLabel(label, term: term)
-      statValue(value ?? "—", missing: value == nil, id: id, tint: tint)
+      if skeleton(cell, hasValue: value != nil) {
+        skeletonBar(id: id)
+      } else {
+        statValue(value ?? "—", missing: value == nil, id: id, tint: tint)
+      }
     }
+  }
+
+  /// 冷切过来、这一格的数还在路上：画自选行那种骨架条，不画「—」。
+  /// 「—」只留给真没有的（这家没有持仓量、后端说没有供应量、等过了 `ArrivalBoard.deadline`）。
+  private var pending: ArrivalBoard.HeaderPending { ArrivalBoard.live.header(for: instrument) }
+
+  private func skeleton(_ cell: ArrivalBoard.HeaderCell, hasValue: Bool) -> Bool {
+    ArrivalBoard.showsSkeleton(cell, hasValue: hasValue, pending: pending, hasPrice: lastPrice != nil)
+  }
+
+  private func skeletonBar(id: String) -> some View {
+    // 高度借一个隐藏的同字号字符撑出来：骨架换成数的那一下，行高一点不变。
+    Text(verbatim: "0").font(TypeScale.captionEmph).hidden()
+      .frame(width: 40)
+      .overlay(RoundedRectangle(cornerRadius: Radius.xs).fill(SymbolRowInk.rule(theme)).frame(height: 11))
+      .gridColumnAlignment(.trailing)
+      .accessibilityIdentifier(id)
+      .accessibilityLabel("载入中")
   }
 
   /// 倒计时独立刷新，缺数与其它格一样显示破折号。
@@ -427,8 +474,12 @@ struct PriceRow: View {
     GridRow {
       statLabel("结算")
       TimelineView(.periodic(from: .now, by: 30)) { context in
-        statValue(countdownText(now: context.date) ?? "—",
-                  missing: countdownText(now: context.date) == nil, id: "top.settlement")
+        let text = countdownText(now: context.date)
+        if skeleton(.settlement, hasValue: text != nil) {
+          skeletonBar(id: "top.settlement")
+        } else {
+          statValue(text ?? "—", missing: text == nil, id: "top.settlement")
+        }
       }
       .gridColumnAlignment(.trailing)
     }

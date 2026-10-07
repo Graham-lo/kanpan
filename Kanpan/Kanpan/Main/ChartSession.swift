@@ -41,6 +41,8 @@ final class ChartSession {
     quotes = QuoteBook()
     comparison = CompareModel()
     readout = CrosshairReadout()
+    // 冷切到没快照的品种时占位图要一口价：报价簿里有就先用（自选那条流或全市场种子）。
+    market.seedQuote = { [quotes] sym in quotes.raw[sym] ?? quotes.seeded(sym) }
   }
 
   // ---------------------------------------------------------------- 四件事的入口

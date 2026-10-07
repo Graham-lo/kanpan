@@ -49,6 +49,10 @@ final class SymbolPreviewStore {
   @ObservationIgnored private var jobs: [String: (ticket: UUID, task: Task<Void, Never>)] = [:]
   /// 最近用过的在后面。满了从前面扔。
   @ObservationIgnored private var recent = PreviewRecentKeys(capacity: SymbolPreviewStore.capacity)
+  /// 哪几只的 K 线是这回 REST 取到的（其余的是盘上快照垫的，按住时仍要去取一次新的）。
+  @ObservationIgnored private var liveBars: Set<String> = []
+  /// 读盘上快照的根；单测换成临时目录。
+  @ObservationIgnored var snapshotRoot: Paths = .caches()
 
   /// 换线路：手上这批数是上一条路取的，整批作废。
   func configure(route next: RouteResolver) {
@@ -57,6 +61,7 @@ final class SymbolPreviewStore {
     for job in jobs.values { job.task.cancel() }
     jobs.removeAll()
     bars.removeAll()
+    liveBars.removeAll()
     stats.removeAll()
     recent = PreviewRecentKeys(capacity: Self.capacity)
   }
@@ -85,11 +90,16 @@ final class SymbolPreviewStore {
     // 按过就算「最近用过」，满了顺手扔最旧的：以前只在取到数时才修剪，取数一直失败时
     // 这张「最近」表会无限长。
     touch(key)
-    let needsBars = bars[key] == nil
+    let service = SymbolPreviewService(resolver: resolver)
+    // 主图看过这只就有盘上快照：先画它，卡一弹出来就有走势，不等网络。
+    if bars[key] == nil {
+      let seeded = service.snapshotBars(for: key, root: snapshotRoot)
+      if !seeded.isEmpty { bars[key] = seeded }
+    }
+    let needsBars = !liveBars.contains(key)
     let needsStats = stats[key] == nil
     let needsFunding = funding(for: key) == nil
     guard jobs[key] == nil, needsBars || needsStats || needsFunding else { return }
-    let service = SymbolPreviewService(resolver: resolver)
     let proxies = resolver.route.apiHosts
     let caps = service.capabilities(for: key)
     let src = caps.openInterestSource, upstream = caps.upstream
@@ -127,6 +137,7 @@ final class SymbolPreviewStore {
 
   private func put(_ rows: [Bar], for key: String) {
     bars[key] = rows
+    liveBars.insert(key)
     touch(key)
   }
 
@@ -138,6 +149,7 @@ final class SymbolPreviewStore {
   private func touch(_ key: String) {
     for victim in recent.touch(key) {
       bars.removeValue(forKey: victim)
+      liveBars.remove(victim)
       stats.removeValue(forKey: victim)
     }
   }

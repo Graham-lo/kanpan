@@ -54,11 +54,14 @@ public struct OrderFlowJournal: Sendable, Equatable {
   public var orders: [BigOrder]
   /// 服务端历史的游标（第 2 版起有；第 1 版读回来是 nil，下一次取服务端照旧整页取）。
   public var history: OrderFlowHistoryCursor?
+  /// 上一次按簿深标定出的非币默认门槛（美元）。下次打开先按它出帧（不再空等 8 秒标定），
+  /// 标定完有出入再改。币与固定表里的品种不标定，是 nil；旧日志读回来也是 nil。
+  public var calibrated: Double?
 
   public init(symbol: String, step: Double, savedAtMs: Int64, orders: [BigOrder],
-              history: OrderFlowHistoryCursor? = nil) {
+              history: OrderFlowHistoryCursor? = nil, calibrated: Double? = nil) {
     self.version = Self.currentVersion; self.symbol = symbol; self.step = step
-    self.savedAtMs = savedAtMs; self.orders = orders; self.history = history
+    self.savedAtMs = savedAtMs; self.orders = orders; self.history = history; self.calibrated = calibrated
   }
 
   // MARK: - 写
@@ -78,6 +81,9 @@ public struct OrderFlowJournal: Sendable, Equatable {
     out.append(contentsOf: #","step":"#.utf8); writeNumber(j.step.isFinite ? j.step : 0, into: &out)
     out.append(contentsOf: #","savedAtMs":"#.utf8); out.append(contentsOf: String(j.savedAtMs).utf8)
     out.append(contentsOf: #","count":"#.utf8); out.append(contentsOf: String(j.orders.count).utf8)
+    if let c = j.calibrated, c.isFinite, c > 0 {
+      out.append(contentsOf: #","calibrated":"#.utf8); writeNumber(c, into: &out)
+    }
     if let h = j.history {
       out.append(contentsOf: #","historyFromMs":"#.utf8); out.append(contentsOf: String(h.fromMs).utf8)
       out.append(contentsOf: #","historyCursorMs":"#.utf8); out.append(contentsOf: String(h.cursorMs).utf8)
@@ -155,6 +161,7 @@ public struct OrderFlowJournal: Sendable, Equatable {
     guard let header = try? decoder.decode(Header.self, from: Data(bytes[first])),
           header.step.isFinite, header.step > 0 else { return nil }
     var journal = OrderFlowJournal(symbol: header.symbol, step: header.step, savedAtMs: header.savedAtMs, orders: [])
+    if let c = header.calibrated, c.isFinite, c > 0 { journal.calibrated = c }
     switch header.version {
     case 1:
       // 第 1 版整份一个对象，头那一行就是全部；`orders` 按条宽松解（某一条读不懂只丢那一条）。
@@ -205,6 +212,7 @@ public struct OrderFlowJournal: Sendable, Equatable {
     var historyCursorMs: Int64?
     var historyTrackedSinceMs: Int64?
     var historyThresholds: OrderFlowThresholds?
+    var calibrated: Double?
 
     var cursor: OrderFlowHistoryCursor? {
       guard let from = historyFromMs, let cursor = historyCursorMs, from <= cursor else { return nil }

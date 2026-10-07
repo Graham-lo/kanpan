@@ -10,9 +10,10 @@ import KanpanNetwork
   private actor History: HTTPTransport {
     var rows: [Bar]
     var calls = 0
-    let gate: Gate?
+    var gate: Gate?
     init(_ rows: [Bar], gate: Gate? = nil) { self.rows = rows; self.gate = gate }
     func replace(_ rows: [Bar]) { self.rows = rows }
+    func hold(_ gate: Gate?) { self.gate = gate }
     func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
       calls += 1
       let query = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
@@ -29,9 +30,9 @@ import KanpanNetwork
     (0..<count).map { i in Bar(openTime: t0 + Int64(i) * 60_000, open: 10, high: 12, low: 9, close: 11, volume: 1) }
   }
   private func main(_ bars: [Bar], interval: Interval = .m1) -> BarSeries { BarSeries(symbol: "BTCUSDT", interval: interval, bars: bars) }
-  private func feed(_ history: History, deck: ReplayDeck = ReplayDeck([.hang])) -> (CompareFeed, BinanceWS) {
+  private func feed(_ history: History, deck: ReplayDeck = ReplayDeck([.hang]), snapshots: Paths? = nil) -> (CompareFeed, BinanceWS) {
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: SystemPacer()))
-    return (CompareFeed(rest: BinanceREST(transport: history), ws: ws), ws)
+    return (CompareFeed(rest: BinanceREST(transport: history), ws: ws, snapshots: snapshots), ws)
   }
 
   @Test func alignsOnlyExactOpenTimesAndPreservesGaps() {
@@ -159,6 +160,53 @@ extension CompareFeedTests {
     #expect(await waitUntil(10) { await feed.target == last.firstTime...last.lastTime })
     try? await Task.sleep(nanoseconds: 50_000_000)
     #expect(await feed.target == last.firstTime...last.lastTime, "之前投的旧主图不许后到盖回去")
+    await feed.stop()
+  }
+
+  @Test("增一只：留着的那只不清空、不重拉整段，只补一次末根", .timeLimit(.minutes(1)))
+  func addingAKeyKeepsTheOthers() async {
+    let all = bars(650), history = History(all)
+    let (feed, _) = feed(history)
+    await feed.start(keys: ["binance/usd_m/ETHUSDT"], main: main(all))
+    #expect(await waitUntil(10) { await feed.current.first?.series.count == 650 })
+    let gate = Gate()
+    await history.hold(gate)
+    let before = await history.calls
+    await feed.start(keys: ["binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT"], main: main(all))
+    // REST 还卡着：ETH 照样在，一根不少。
+    let held = await feed.current
+    #expect(held.map(\.key) == ["binance/usd_m/ETHUSDT"])
+    #expect(held.first?.series.count == 650)
+    #expect(await waitUntil(5) { await gate.waiting >= 2 })
+    await gate.open()
+    #expect(await waitUntil(10) { let rows = await feed.current; return rows.count == 2 && rows.allSatisfy { $0.series.count == 650 } })
+    // ETH 只补末根一页（1 次），SOL 整段三页（3 次）；ETH 要是整段重拉就是 6 次。
+    #expect(await history.calls - before <= 4)
+    // 减一只：剩下那只同样不清空。
+    await history.hold(Gate())
+    await feed.start(keys: ["binance/usd_m/SOLUSDT"], main: main(all))
+    #expect(await feed.current.map(\.key) == ["binance/usd_m/SOLUSDT"])
+    #expect(await feed.current.first?.series.count == 650)
+    await feed.stop()
+  }
+
+  @Test("新加的那只先画盘上的快照，REST 到了再并", .timeLimit(.minutes(1)))
+  func newKeyDrawsSnapshotFirst() async throws {
+    let all = bars(200), gate = Gate(), history = History(all, gate: gate)
+    let root = Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+    defer { try? FileManager.default.removeItem(at: root.root) }
+    let caps = BinanceProvider.wrapping(BinanceREST(transport: history)).capabilities
+    let dir = RoutedMarketFeed.snapshotPaths(for: caps, in: root).series
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try SeriesStore.write(BarSeries(symbol: "binance/usd_m/SOLUSDT", interval: .m1, bars: Array(all.prefix(150))), in: dir)
+    let (feed, _) = feed(history, snapshots: root)
+    await feed.start(keys: ["binance/usd_m/SOLUSDT", "binance/usd_m/ETHUSDT"], main: main(all))
+    // 网络还没回：SOL 已经有盘上那 150 根，ETH（盘上没有）先空着。
+    let first = await feed.current
+    #expect(first.map(\.key) == ["binance/usd_m/SOLUSDT"])
+    #expect(first.first?.series.count == 150)
+    await gate.open()
+    #expect(await waitUntil(10) { let rows = await feed.current; return rows.count == 2 && rows.allSatisfy { $0.series.count == 200 } })
     await feed.stop()
   }
 }

@@ -3,6 +3,9 @@ import KanpanCore
 import KanpanNetwork
 
 /// 对比行情仅驻留内存；一条组合流，沿主序列时间范围补历史，不阻塞主行情。
+///
+/// 体感（2026-10-07）：增减一只时留着的那几只不清空、不重取（只补一次末根）；
+/// 新加的那只先读主图落过盘的快照（`SeriesStore`，只读不写）立刻画出来，REST 再补齐。
 public actor CompareFeed {
   public struct Snapshot: Sendable, Equatable {
     public var key: String
@@ -32,6 +35,8 @@ public actor CompareFeed {
   private let provide: Providers
   private let ws: any MarketStream
   private let pacer: any Pacer
+  /// 快照树的根（主图 `RoutedMarketFeed` 落盘的那棵）。nil = 不读快照（单测默认）。
+  private let snapshots: Paths?
   /// 每家一个提供者，这一轮对比里复用（REST 的限流器按家共享）。
   private var providers: [String: any MarketProvider] = [:]
   private var keys: [String] = []
@@ -60,8 +65,9 @@ public actor CompareFeed {
   private nonisolated let mainPost: AsyncStream<BarSeries>.Continuation
   private var inboxPump: Task<Void, Never>?
 
-  public init(provider: @escaping Providers, stream: any MarketStream, pacer: any Pacer = SystemPacer()) {
-    provide = provider; ws = stream; self.pacer = pacer
+  public init(provider: @escaping Providers, stream: any MarketStream, pacer: any Pacer = SystemPacer(),
+              snapshots: Paths? = nil) {
+    provide = provider; ws = stream; self.pacer = pacer; self.snapshots = snapshots
     (mainInbox, mainPost) = AsyncStream<BarSeries>.makeStream(bufferingPolicy: .bufferingNewest(1))
   }
 
@@ -72,7 +78,8 @@ public actor CompareFeed {
   public nonisolated func post(main: BarSeries) { mainPost.yield(main) }
 
   /// 按用户选的线路取数：每只对比品种找它自己那一家，推送按家合流（一家一条连接）。
-  public init(resolver: RouteResolver, log: FeedLog = .silent) {
+  public init(resolver: RouteResolver, snapshots: Paths? = .caches(), log: FeedLog = .silent) {
+    self.snapshots = snapshots
     provide = { venue in VenueRegistry.descriptor(venue).map { resolver.provider(venue: $0.id) } }
     ws = MergedMarketStream { venue in
       VenueRegistry.descriptor(venue).map { resolver.provider(venue: $0.id).makeStream(silenceMs: nil, log: log) }
@@ -114,8 +121,18 @@ public actor CompareFeed {
       topics.append(caps.liveKlineIntervals.contains(source) ? .kline(symbol: key, interval: source) : .trade(symbol: key))
       if unique.count == 3 { break }
     }
+    // 还在、取数周期也没变的那几只：已经取到的留着，只补一次末根（推送这一下断过）。
+    let previous = self.sources
+    let kept = unique.filter { previous[$0] == sources[$0] && data[$0] != nil }
+    var nextData: [String: FeedComposer] = [:], nextCovered: [String: ClosedRange<Int64>] = [:]
+    for key in kept { nextData[key] = data[key]; nextCovered[key] = covered[key] }
     self.keys = unique; self.sources = sources; interval = main.interval
-    data = [:]; covered = [:]; failures = [:]; blocked = []; pendingTail = []; target = nil; connected = false
+    data = nextData; covered = nextCovered; failures = [:]; blocked = []; pendingTail = Set(kept)
+    target = nil; connected = false
+    // 新加的：先拿盘上的快照垫着（主图看过它就有），REST 到了再并。
+    for key in unique where data[key] == nil {
+      if let seeded = seed(key) { data[key] = seeded }
+    }
     publish()
     guard !unique.isEmpty, !main.isEmpty else { await ws.stop(); return }
     updateMain(main)
@@ -244,6 +261,16 @@ public actor CompareFeed {
       connected = true
     default: break
     }
+  }
+
+  /// 盘上那份快照（主图落的、按源周期存）。只读、不 touch；读不到、或周期不对就是 nil。
+  private func seed(_ key: String) -> FeedComposer? {
+    guard let root = snapshots, let source = sources[key], let provider = provider(for: key) else { return nil }
+    let dir = RoutedMarketFeed.snapshotPaths(for: provider.capabilities, in: root).series
+    guard let series = SeriesStore.read(symbol: key, interval: source, in: dir, touch: false) else { return nil }
+    var composer = composer(for: key)
+    composer.merge((0..<series.count).map(series.bar(at:)).filter(\.isValidMarketBar), preservingLiveTail: false)
+    return composer.series.isEmpty ? nil : composer
   }
 
   private func composer(for key: String) -> FeedComposer {

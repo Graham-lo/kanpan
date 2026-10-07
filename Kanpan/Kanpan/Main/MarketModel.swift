@@ -21,6 +21,13 @@ final class MarketModel {
   private var metricPoints: [IndicatorID: [OIPoint]] = [:]
   private var metricRegions: [IndicatorID: (from: Int64, to: Int64)] = [:]
   private var metricRequests: [IndicatorID: UUID] = [:]
+  /// 正在路上的那一笔要的是哪一段：视野随后报上来、又落在这段里面时不再重发（换品种那一刻
+  /// 先按默认视野开取，见 `kickMetrics`，别让紧接着到的真视野把它取消重来）。
+  private var metricWants: [IndicatorID: (from: Int64, to: Int64)] = [:]
+  /// 换走之前手里那几份外部指标，按「品种|周期」留着（和 `oiMemo` 同一个办法）：换回来同步摆上。
+  @ObservationIgnored private var metricMemo = MetricMemoBook()
+  /// 换过去那一刻开始读盘上那份外部指标；`loadMetrics` 的取数先等它读完。
+  @ObservationIgnored private var metricSeedTask: Task<Void, Never>?
   private var externalEnabled: Set<IndicatorID> = []
   private var takerTail: OIPoint?
   private var depthEnabled = false
@@ -76,6 +83,8 @@ final class MarketModel {
   /// 列表上刚露面、还没替它们取顶栏数据的行（见 `prefetchListStats`）。
   @ObservationIgnored private var listStatsTask: Task<Void, Never>?
   @ObservationIgnored private var listStatsPending: [String] = []
+  @ObservationIgnored private var rowWarmPending: [String] = []
+  @ObservationIgnored private var rowWarmTask: Task<Void, Never>?
   private var lastView: ViewWindow?
   private(set) var ticker: Ticker?
   /// 成交额自己一条时钟（见 `TurnoverCarry`）：网关线路的推送帧不带成交额，整帧替换
@@ -96,6 +105,12 @@ final class MarketModel {
   /// 手里已经有的品种表（品种页那份，同步可读）。冷切换时先拿它定小数位：
   /// 从前一律先顶 2 位，`0.009428` 这种低价币第一帧会画成「0.01」，再跳成真值。
   @ObservationIgnored var knownInfo: (@MainActor (String) -> SymbolInfo?)?
+  /// 报价簿手里这一只的 24h 那一份（全市场种子或自选那条流）。冷切到一只没快照的品种时，
+  /// 占位图按它画一条最新价线与一道 24h 区间（`ArrivalBoard.ChartPlaceholder`）。
+  @ObservationIgnored var seedQuote: (@MainActor (String) -> Ticker?)?
+  /// 顶栏还在路上的几样（冷切换之后）。按品种键贴到 `ArrivalBoard.live` 上给 `PriceRow` 读。
+  @ObservationIgnored private(set) var headerPending: ArrivalBoard.HeaderPending = []
+  @ObservationIgnored private var headerDeadline: Task<Void, Never>?
   private(set) var volumeUnit: VolUnit?
   /// 顶栏右侧六格中的费率：`markPrice@1s` 那条流顺带捎回来的资金费率整帧。
   private(set) var funding: MarkPriceTick?
@@ -215,7 +230,7 @@ final class MarketModel {
     // 品种表跟着线路换：替身上游的品种表另存一棵（`SymbolCatalog.partition`）。
     let catalogs = Self.catalogs(resolver)
     Task { [catalog] in await catalog.replace(catalogs) }
-    resetOI(); forgetOIMemo()
+    resetOI(); forgetOIMemo(); forgetMetricMemo()
     if let lastView { loadOI(view: lastView, refresh: true) }
   }
 
@@ -328,6 +343,7 @@ final class MarketModel {
     // 顺手让快照目录的索引在后台扫一遍：之后换品种、淘汰旧文件都不用再碰 `contentsOfDirectory`。
     // 扫过一次就记住了，重复调用是空操作。
     if snapshot { SeriesStore.warm(snapshotSeries) }
+    publishChartPlaceholder()
     guard pump == nil else { return }
     network.start { [weak self] online in
       Task { @MainActor [weak self] in
@@ -429,12 +445,14 @@ final class MarketModel {
     neighborTask?.cancel(); neighborTask = nil
     listStatsTask?.cancel(); listStatsTask = nil
     listStatsPending.removeAll()
+    rowWarmTask?.cancel(); rowWarmTask = nil
+    rowWarmPending.removeAll()
     oiWarmLater?.cancel(); oiWarmLater = nil
     fundingRollover?.cancel(); fundingRollover = nil
   }
 
   /// 用例看「慢半拍的预取还挂着没有」。
-  var prefetchInFlight: Bool { neighborTask != nil || listStatsTask != nil || oiWarmLater != nil }
+  var prefetchInFlight: Bool { neighborTask != nil || listStatsTask != nil || rowWarmTask != nil || oiWarmLater != nil }
 
   // ---------------------------------------------------------------- 事件
 
@@ -467,6 +485,7 @@ final class MarketModel {
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
       openInterestValue = nil; openInterestUnit = nil
       seedStats()
+      beginHeaderWait(headerPending.union([.openInterest, .funding]))
       refreshFunding()
       startStats()
       rebuildOISource()
@@ -477,11 +496,14 @@ final class MarketModel {
     case .historyError(let error):
       historyError = error
       holdsFrame = false
+      publishChartPlaceholder()
     case .series(let s):
       guard s.symbol == symbol, s.interval == interval else { return }
       series = s
       switching = false
       holdsFrame = false
+      publishChartPlaceholder()
+      kickMetrics()
     case .lastBar(let b):
       guard series?.symbol == symbol, series?.interval == interval else { return }
       _ = series?.upsert(b)
@@ -515,6 +537,8 @@ final class MarketModel {
       var next = turnoverCarry.apply(t); next.markPrice = markPrice
       ticker = next
       tickerStale = false
+      if !headerPending.isEmpty { arrived(.ticker) }
+      if series == nil { publishChartPlaceholder() }
       if volumeUnit == nil, next.quoteVolume.isFinite { volumeUnit = volUnit(next.quoteVolume) }
       lastPushAt = Date()
       // 逐笔那条流不是每条线路都有（网关走 OKX 时只有 ticker），到价判定不能只挂在
@@ -525,6 +549,7 @@ final class MarketModel {
       markTime = tick.timeMs
       // 费率那一格只认有值的帧：镜像偶尔发不带 `r` 的帧，别把已经显示的费率抹成 `--`。
       if tick.fundingRate != nil || funding == nil { funding = tick }
+      if tick.fundingRate != nil, headerPending.contains(.funding) { arrived(.funding) }
       FundingBook.shared.note(rate: tick.fundingRate, nextFundingTimeMs: tick.nextFundingTimeMs,
                               for: symbol, upstream: capabilities.upstream)
       sweepDisplayLifetimes()
@@ -612,6 +637,7 @@ final class MarketModel {
     guard !proxies.isEmpty else {
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
       forwardEarnings = nil; revenue = nil
+      arrived([.openInterest, .meta])
       return
     }
     statsTask = Task { [weak self] in
@@ -624,8 +650,10 @@ final class MarketModel {
       // `sym == symbol` 的门才停下——门后面是对的，门本身不该指望。
       await withTaskGroup(of: Void.self) { group in
         group.addTask { [weak self] in
-          guard let meta = await MarketStatsClient.shared.meta(symbol: sym, base: base, hosts: proxies) else { return }
+          let meta = await MarketStatsClient.shared.meta(symbol: sym, base: base, hosts: proxies)
           if Task.isCancelled { return }
+          // 一台都没问通：那几格不会再有数，骨架撤掉回到破折号。
+          guard let meta else { await MainActor.run { self?.arrived(.meta, for: sym) }; return }
           await MainActor.run { self?.applyMeta(meta, for: sym) }
         }
         group.addTask { [weak self] in
@@ -667,6 +695,7 @@ final class MarketModel {
     totalSupply = positive(meta.totalSupply)
     forwardEarnings = positive(meta.forwardEarnings)
     revenue = positive(meta.revenue)
+    arrived(.meta)
   }
 
   /// 规则全在 `MarketStatsClient.notionalOpenInterest` 里（纯函数，用例守着）：
@@ -675,6 +704,7 @@ final class MarketModel {
     guard sym == symbol else { return }
     let next = MarketStatsClient.notionalOpenInterest(stat, previous: openInterestValue)
     openInterestValue = next
+    arrived(.openInterest)
     if let next {
       if openInterestUnit == nil { openInterestUnit = volUnit(next) }
     } else {
@@ -711,6 +741,7 @@ final class MarketModel {
     // 结算时刻已经过去的那口不拿：那格会倒数出一个负数，宁可等流来。
     let next = row.nextFundingTimeMs.flatMap { $0 > nowMs ? $0 : nil }
     funding = MarkPriceTick(timeMs: rowMs, fundingRate: row.rate, nextFundingTimeMs: next)
+    arrived(.funding)
     sweepDisplayLifetimes()
     if !caps.hasMarkPrice, let next { scheduleFundingRollover(sym, at: next) }
   }
@@ -753,6 +784,8 @@ final class MarketModel {
     let sym = symbol
     FundingBook.shared.refreshIfStale(provider: resolver.provider(forSymbol: sym), delay: delay) { [weak self] in
       self?.seedFunding(for: sym)
+      // 表回来了这只还是没有：费率与结算不会从簿里来了，骨架撤掉（流来了照样会填）。
+      self?.arrived(.funding, for: sym)
     }
   }
 
@@ -804,6 +837,51 @@ final class MarketModel {
 
   /// 一屏列表的量。再多就是滚过去没停下来看的行，不值得替它们发请求。
   static let listStatsLimit = 16
+
+  /// 自选行、搜索结果行露面：顶栏那几格的数（`prefetchListStats`）之外，当前周期的 K 线快照
+  /// 也先替它们拉一份（和板块页 `prefetchList` 同一个意思，独立槽位 `rows`，不顶掉板块那轮）。
+  /// 换分类之后新露面的行同样从 `onAppear` 进来。攒 300 ms 一批，只拉最后露面的那一屏。
+  func prefetchRows(_ symbols: [String]) {
+    prefetchListStats(symbols)
+    guard snapshot else { return }
+    rowWarmPending = Self.enqueueListStats(rowWarmPending, symbols.map { InstrumentID.canonical($0) })
+    guard rowWarmTask == nil, !rowWarmPending.isEmpty, foreground else { return }
+    rowWarmTask = Task { [weak self] in
+      try? await Task.sleep(for: .milliseconds(300))
+      guard let self, !Task.isCancelled else { return }
+      let batch = Self.rowWarmBatch(self.rowWarmPending, current: self.symbol)
+      self.rowWarmPending.removeAll()
+      self.rowWarmTask = nil
+      guard !batch.isEmpty, self.foreground else { return }
+      let iv = self.interval
+      await self.feed.prewarm(symbols: batch, interval: iv, slot: "rows")
+    }
+  }
+
+  /// 这一批拉哪几只：最后露面的那一屏，正开着的这只不用。
+  nonisolated static func rowWarmBatch(_ pending: [String], current: String) -> [String] {
+    Array(pending.filter { $0 != InstrumentID.canonical(current) }.suffix(rowWarmLimit))
+  }
+  /// 一屏的量，和板块页预热同一个克制口径。
+  nonisolated static let rowWarmLimit = 8
+
+  /// 手指刚按到一行（还没抬手、还不知道是不是点）：这一只当前周期的 K 线先去拉。
+  /// 抬手进图时快照多半已经落盘，`switchTo` 同步读出来就是一张真图。已经够新的不会再拉。
+  func prewarmPress(_ symbol: String) {
+    let sym = InstrumentID.canonical(symbol)
+    guard snapshot, foreground, sym != self.symbol else { return }
+    let iv = interval
+    Task { [feed] in await feed.prewarm(symbols: [sym], interval: iv, slot: "press") }
+  }
+
+  /// 搜索结果稳定下来（打字停了）：最前面三只先拉，回车或点第一行时多半已经有图。
+  func prewarmHits(_ symbols: [String]) {
+    let syms = Array(symbols.map { InstrumentID.canonical($0) }.filter { $0 != self.symbol }.prefix(3))
+    guard snapshot, foreground, !syms.isEmpty else { return }
+    let iv = interval
+    Task { [feed] in await feed.prewarm(symbols: syms, interval: iv, slot: "hits") }
+    prefetchListStats(syms)
+  }
 
   /// 露面的行按「最近一次露面」排进待办：已经在里头的挪到队尾。
   static func enqueueListStats(_ pending: [String], _ symbols: [String]) -> [String] {
@@ -901,6 +979,74 @@ final class MarketModel {
     onPrice?(quote.symbol, quote.price, quote.timeMs)
   }
 
+  // ---------------------------------------------------------------- 在路上（骨架 / 占位图）
+
+  /// 冷切换（或换线路）之后顶栏开始等这几样；手里已经垫上的、这一家根本没有的先划掉，
+  /// 剩下的贴到公告板上，`ArrivalBoard.deadline` 之后还没到的一律撤掉。
+  private func beginHeaderWait(_ wanted: ArrivalBoard.HeaderPending) {
+    let caps = resolver.provider(forSymbol: symbol).capabilities
+    headerPending = Self.headerWait(wanted, hasOpenInterestSource: caps.openInterestSource != nil,
+                                    hasFunding: caps.hasFunding, statsReachable: foreground && !resolver.route.apiHosts.isEmpty,
+                                    hasOpenInterest: openInterestValue != nil,
+                                    hasMeta: MarketStatsClient.shared.cachedMeta(symbol: symbol) != nil,
+                                    hasFundingRate: funding?.fundingRate != nil, hasTicker: ticker != nil)
+    publishHeaderPending()
+    headerDeadline?.cancel(); headerDeadline = nil
+    guard !headerPending.isEmpty else { return }
+    let sym = symbol
+    headerDeadline = Task { [weak self] in
+      try? await Task.sleep(for: ArrivalBoard.deadline)
+      guard !Task.isCancelled, let self, self.symbol == sym else { return }
+      self.arrived(.all)
+    }
+  }
+
+  /// 纯函数：要等的几样里，哪些真的会来、哪些手里已经有了。
+  nonisolated static func headerWait(_ wanted: ArrivalBoard.HeaderPending, hasOpenInterestSource: Bool, hasFunding: Bool,
+                                     statsReachable: Bool, hasOpenInterest: Bool, hasMeta: Bool,
+                                     hasFundingRate: Bool, hasTicker: Bool) -> ArrivalBoard.HeaderPending {
+    var next = wanted
+    if !hasOpenInterestSource || !statsReachable || hasOpenInterest { next.remove(.openInterest) }
+    if !statsReachable || hasMeta { next.remove(.meta) }
+    if !hasFunding || hasFundingRate { next.remove(.funding) }
+    if hasTicker { next.remove(.ticker) }
+    return next
+  }
+
+  /// 这几样到了（或者确定不会来了）。`sym` 给了就只认当前品种的。
+  func arrived(_ items: ArrivalBoard.HeaderPending, for sym: String? = nil) {
+    if let sym, sym != symbol { return }
+    guard !headerPending.isDisjoint(with: items) else { return }
+    headerPending.subtract(items)
+    if headerPending.isEmpty { headerDeadline?.cancel(); headerDeadline = nil }
+    publishHeaderPending()
+  }
+
+  private func publishHeaderPending() {
+    ArrivalBoard.live.setHeader(headerPending, for: symbol)
+  }
+
+  /// 图上一根 K 线都还没有（冷切到没快照的品种、冷启动没快照）：贴一张占位图——
+  /// 24h 区间一道淡带、最新价一条细线、顶上一条走动的细进度条。
+  /// 序列一到、或者历史真拉不下来（那时由「重试」接手），就撤掉。
+  /// 同品种换周期时图上留着上一档那一帧（`holdsFrame`），不摆占位。
+  func publishChartPlaceholder() {
+    ArrivalBoard.live.setChart(Self.chartPlaceholder(
+      symbol: symbol, hasSeries: series.map { $0.symbol == symbol && $0.interval == interval && $0.count > 0 } ?? false,
+      holdsFrame: holdsFrame, failed: historyError != nil, quote: ticker ?? seedQuote?(symbol)))
+  }
+
+  nonisolated static func chartPlaceholder(symbol: String, hasSeries: Bool, holdsFrame: Bool, failed: Bool,
+                                           quote: Ticker?) -> ArrivalBoard.ChartPlaceholder? {
+    guard !hasSeries, !holdsFrame, !failed else { return nil }
+    let finite = { (v: Double?) in v.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } }
+    let matches = quote.map { InstrumentID.canonical($0.symbol) == symbol } ?? false
+    let q = matches ? quote : nil
+    var low = finite(q?.low), high = finite(q?.high)
+    if let l = low, let h = high, h < l { low = nil; high = nil }
+    return ArrivalBoard.ChartPlaceholder(instrument: symbol, last: finite(q?.last), low: low, high: high)
+  }
+
   // ---------------------------------------------------------------- 切换
 
   func switchTo(symbol newSymbol: String? = nil, interval newInterval: Interval? = nil) {
@@ -918,6 +1064,7 @@ final class MarketModel {
     let request = selection
     switchTask?.cancel()
     rememberOI()
+    rememberMetrics()
     symbol = sym
     interval = iv
     switching = true
@@ -933,6 +1080,8 @@ final class MarketModel {
     holdsFrame = !cold && series == nil
     resetOI(); lastView = nil
     restoreOI()
+    restoreMetrics()
+    kickMetrics()
     if cold {
       ticker = nil
       // 上一只的最后一笔成交不能顶着新品种的名字留着：「创建提醒」的现价先取它，
@@ -956,12 +1105,14 @@ final class MarketModel {
       }
       info = seed
       seedStats()
+      beginHeaderWait(.all)
     }
     if cold {
       refreshFunding()
       startStats()
       warmOILater()
     }
+    publishChartPlaceholder()
     switchTask = Task { [feed] in
       guard !Task.isCancelled else { return }
       await feed.switchTo(symbol: sym, interval: iv, coldStart: owesInfo, selection: request)
@@ -1013,6 +1164,7 @@ final class MarketModel {
     loading = false
     historyError = nil
     switching = true
+    publishChartPlaceholder()
     let owesInfo = infoOwed
     switchTask = Task { [feed] in
       await feed.retry(selection: request)
@@ -1023,7 +1175,7 @@ final class MarketModel {
   func setExternalIndicators(_ ids: [IndicatorID], depth: Bool) {
     let wanted = Set(ids.filter { $0.isExternal && $0 != .oi })
     for id in externalEnabled.subtracting(wanted) {
-      metricTasks.removeValue(forKey: id)?.cancel(); metricRequests[id] = nil
+      metricTasks.removeValue(forKey: id)?.cancel(); metricRequests[id] = nil; metricWants[id] = nil
       external[id] = nil; metricRegions[id] = nil; metricPoints[id] = nil
     }
     externalEnabled = wanted; depthEnabled = depth
@@ -1031,7 +1183,7 @@ final class MarketModel {
     if !depth { self.depth = nil }
     updateMicrostructure()
     setOIEnabled(ids.contains(.oi))
-    if let lastView { loadMetrics(view: lastView) }
+    if let lastView { loadMetrics(view: lastView) } else { kickMetrics() }
   }
 
   func setChartVisible(_ visible: Bool) {
@@ -1041,7 +1193,7 @@ final class MarketModel {
     if visible {
       if let lastView { loadOI(view: lastView, refresh: true) }
     } else {
-      metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]
+      metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]; metricWants = [:]
       oiTask?.cancel(); oiTask = nil
     }
   }
@@ -1067,8 +1219,60 @@ final class MarketModel {
   }
 
   private func resetMetrics() {
-    metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]
+    metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]; metricWants = [:]
     metricPoints = [:]; metricRegions = [:]; external = [:]; takerTail = nil; depth = nil
+    metricSeedTask?.cancel(); metricSeedTask = nil
+  }
+
+  // ---------------------------------------------------------------- 外部指标：换品种先画旧的
+
+  /// 换走之前把手里这几份外部指标记下来。
+  private func rememberMetrics() {
+    metricMemo.remember(symbol: symbol, interval: interval, points: metricPoints, regions: metricRegions)
+  }
+
+  private func forgetMetricMemo() { metricMemo.forget() }
+
+  /// 换过去那一刻（`resetOI` 之后）：内存里记着就同步摆上；没记着就立刻读盘上那份，读到先画。
+  /// 两样都只是「先有线」，尾巴照常由 `loadMetrics` 补。
+  private func restoreMetrics() {
+    guard metricsAvailable, !externalEnabled.isEmpty else { return }
+    let sym = symbol, iv = interval
+    if let memo = metricMemo.entry(symbol: sym, interval: iv) {
+      for (id, row) in memo where externalEnabled.contains(id) {
+        metricPoints[id] = row.points
+        metricRegions[id] = row.region
+        publishMetric(id)
+      }
+    }
+    let missing = externalEnabled.filter { metricPoints[$0] == nil }
+    guard !missing.isEmpty, chartVisible, foreground else { return }
+    let store = oiStore, request = selection
+    metricSeedTask = Task { [weak self] in
+      for id in missing {
+        guard let cached = await store.loadMetric(id.rawValue, symbol: sym, interval: iv),
+              !cached.points.isEmpty, !Task.isCancelled else { continue }
+        guard let self, request == self.selection, self.symbol == sym, self.interval == iv,
+              self.externalEnabled.contains(id) else { return }
+        // 网上那份已经先到了：盘上的只补它左边没有的点，区间不动。
+        if let have = self.metricPoints[id], !have.isEmpty {
+          let first = have.first?.time ?? .max
+          self.metricPoints[id] = OISource.dedup(cached.points.filter { $0.time < first } + have)
+        } else {
+          self.metricPoints[id] = cached.points
+          let span = OISource.coveredRegion(want: (cached.from, cached.to), points: cached.points,
+                                            step: max(300_000, iv.stepMs))
+          if span.to > span.from, self.metricRegions[id] == nil { self.metricRegions[id] = span }
+        }
+        self.publishMetric(id)
+      }
+    }
+  }
+
+  /// 图还没报视野（换品种、刚进来）就先按「最右一屏」开取，不等那一下。
+  private func kickMetrics() {
+    guard lastView == nil, !externalEnabled.isEmpty, let series, !series.isEmpty else { return }
+    loadMetrics(view: MetricMemoBook.defaultWindow(lastTime: series.lastTime, step: series.step))
   }
 
   private func publishMetric(_ id: IndicatorID) {
@@ -1086,14 +1290,19 @@ final class MarketModel {
     guard from <= to else { return }
     for id in externalEnabled {
       if !refresh, let region = metricRegions[id], from >= region.from, to <= region.to { continue }
+      if !refresh, let pending = metricWants[id], from >= pending.from, to <= pending.to { continue }
       metricTasks[id]?.cancel()
       let token = UUID(), request = selection, sym = symbol, iv = interval, source = oiSource
       let margin = max(series.step * 20, (to - from) / 2)
       let want = (from: max(series.firstTime, from - margin), to: to + series.step)
       metricRequests[id] = token
+      metricWants[id] = want
+      let seed = metricSeedTask, store = oiStore
       metricTasks[id] = Task { [weak self] in
         do { try await Task.sleep(for: .milliseconds(refresh ? 250 : 60)) } catch { return }
+        await seed?.value
         guard let self, self.metricRequests[id] == token else { return }
+        defer { if self.metricRequests[id] == token { self.metricWants[id] = nil } }
         let segments = OISource.missingSegments(have: self.metricRegions[id], want: want, step: series.step, refresh: refresh)
         for segment in segments {
           let fetched = await source.fetchMetric(id, symbol: sym, interval: iv, from: segment.from, to: segment.to)
@@ -1104,7 +1313,12 @@ final class MarketModel {
             let span = OISource.coveredRegion(want: fetched.want, points: fetched.points, step: max(300_000, series.step))
             if span.to > span.from {
               let old = self.metricRegions[id]
-              self.metricRegions[id] = (min(old?.from ?? span.from, span.from), max(old?.to ?? span.to, span.to))
+              let region = (from: min(old?.from ?? span.from, span.from), to: max(old?.to ?? span.to, span.to))
+              self.metricRegions[id] = region
+              // 落一份到盘上：下次换回来（哪怕重开 app）先画它。
+              let points = self.metricPoints[id] ?? []
+              Task { await store.saveMetric(id.rawValue, symbol: sym, interval: iv, points: points,
+                                            from: region.from, to: region.to) }
             }
           }
           self.publishMetric(id)

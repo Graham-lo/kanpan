@@ -30,4 +30,25 @@
     }
   }
 
+  // ============================================================ 只让这一个 app 的 HTTP 变慢
+  //
+  // 「网慢时体感别太差」的验收（冷切占位图、顶栏骨架条，2026-10-07）要在图区真的等着的那一段截图；
+  // 本机直连回得太快，等不到。启动环境带 `KANPAN_TEST_NET_SLOW=<开始的 Unix 秒>:<毫秒>` 时，
+  // 从那一刻起每笔 HTTP 先多等这么久再发——和慢网上整笔往返变长是一回事。WebSocket 不动。
+  // 同样只有 DEBUG 包认。
+  public enum SimulatedSlowNetwork {
+    private static let setting: (start: Double, delay: Duration)? = {
+      guard let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_NET_SLOW"] else { return nil }
+      let parts = raw.split(separator: ":").compactMap { Double($0) }
+      guard parts.count == 2, parts[1] > 0 else { return nil }
+      return (parts[0], .milliseconds(Int(parts[1])))
+    }()
+
+    /// 现在这笔 HTTP 要多等多久；没开或还没到点就是 nil。
+    public static var delay: Duration? {
+      guard let setting, Date().timeIntervalSince1970 >= setting.start else { return nil }
+      return setting.delay
+    }
+  }
+
 #endif

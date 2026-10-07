@@ -66,8 +66,19 @@ public actor SymbolCatalog {
 
   private var refreshTask: Task<[SymbolInfo], Never>?
 
+  /// 后台那趟刷新换上了新表时发出（`object` 是这家的 venue 字符串）。
+  /// 过期的表照常先给出去，换新之后靠它让已经打开的页面（搜索、品种选择）重读一次。
+  public static let didRefresh = Notification.Name.symbolCatalogDidRefresh
+
   public func all(now: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) async -> [SymbolInfo] {
     if let have = cached(now: now) { return have }
+    // 过期但同代次的表：先拿它用，后台去换新的（换上后发 `didRefresh`）。
+    // 一天前的品种表和现在的几乎一样，为它把搜索 / 开图挡在一趟网络后面不值。
+    // 代次不对的表不在此列——缺行缺字段，仍然得等新表。
+    if let stale = staleSameSchema() {
+      revalidate(now: now)
+      return stale
+    }
     // 刚失败过、手里又还有一份：先用手里那份，别接着打。
     if !symbols.isEmpty, now - failedAtMs < Self.retryAfterFailureMs, refreshTask == nil {
       return symbols
@@ -87,6 +98,24 @@ public actor SymbolCatalog {
     return nil
   }
 
+  /// 手里 / 盘上那份同代次但已过期的表。
+  private func staleSameSchema() -> [SymbolInfo]? {
+    if !symbols.isEmpty { return loadedSchema == Self.schema ? symbols : nil }
+    guard let disk = readDisk(), disk.schema == Self.schema,
+          (try? Self.validate(disk.list)) != nil else { return nil }
+    adopt(disk.list, at: disk.at, schema: Self.schema)
+    log("品种表先用过期缓存 \(symbols.count) 个，后台刷新")
+    return symbols
+  }
+
+  /// 后台换新：已经有一趟在跑、或刚失败过（冷却内）就不再起。
+  private func revalidate(now: Int64) {
+    guard refreshTask == nil, now - failedAtMs >= Self.retryAfterFailureMs else { return }
+    // 先把任务挂上，紧接着进来的调用方不会再起第二趟。
+    refreshTask = makeRefreshTask(now: now)
+    Task { _ = await self.refresh(now: now) }
+  }
+
   /// 单飞的一趟刷新。
   ///
   /// 关键在于**取数、校验、采纳、退回旧表全在同一个任务里面**：
@@ -94,27 +123,38 @@ public actor SymbolCatalog {
   /// 已经验过、已经采纳的表。任务本身永不抛错（`Task<_, Never>`）——
   /// 「拉不到就用旧的」是这一层的职责，不该让每个调用方各自兜一遍。
   private func refresh(now: Int64) async -> [SymbolInfo] {
-    if let refreshTask { return await refreshTask.value }
-    let task = Task<[SymbolInfo], Never> { () -> [SymbolInfo] in
+    let task: Task<[SymbolInfo], Never>
+    if let refreshTask { task = refreshTask } else {
+      task = makeRefreshTask(now: now)
+      refreshTask = task
+    }
+    let out = await task.value
+    if refreshTask == task { refreshTask = nil }
+    return out
+  }
+
+  private func makeRefreshTask(now: Int64) -> Task<[SymbolInfo], Never> {
+    let venue = provider.capabilities.venue
+    return Task<[SymbolInfo], Never> { () -> [SymbolInfo] in
       do {
         let fresh = try await self.provider.instruments()
         try Self.validate(fresh)
         self.adopt(fresh, at: now, schema: Self.schema)
-        self.failedAtMs = 0
+        self.markSucceeded()
         self.writeDisk(fresh, at: now)
         self.log("品种表刷新 \(fresh.count) 个")
+        NotificationCenter.default.post(name: Self.didRefresh, object: venue)
         return fresh
       } catch {
-        self.failedAtMs = now
+        self.markFailed(at: now)
         self.log("品种表拉取失败，用旧的：\(error)")
         return self.fallback()
       }
     }
-    refreshTask = task
-    let out = await task.value
-    refreshTask = nil
-    return out
   }
+
+  private func markSucceeded() { failedAtMs = 0 }
+  private func markFailed(at now: Int64) { failedAtMs = now }
 
   /// 拉不到时退回盘上那份，**不看 TTL 也不看 schema**：离线状态下一张旧表远好过
   /// 一张空表（品种页空着等于这个 app 打不开）。但代次记成盘上那份的，

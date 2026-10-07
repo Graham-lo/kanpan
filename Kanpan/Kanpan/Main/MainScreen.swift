@@ -295,7 +295,8 @@ struct MainScreen: View {
                        onClose: { symbolSearch.searchShown = false },
                        onAll: { symbolSearch.showAllFromSearch() },
                        onVisible: { quotes.watch($0) },
-                       onRowVisibility: { quotes.watchRow($0, visible: $1) })
+                       onRowVisibility: { quotes.watchRow($0, visible: $1); if $1 { market.prefetchRows([$0]) } })
+        .environment(\.symbolWarmup, symbolWarmup)
         .preferredColorScheme(effectiveTheme.forced)
     }
     // 对比（2026-10-05 起顶栏加号开）：同一张搜索页的对比模式（`CompareSearchMode`），挑一只就落进
@@ -306,10 +307,11 @@ struct MainScreen: View {
                        onClose: { showComparePicker = false },
                        onAll: {},
                        onVisible: { quotes.watch($0) },
-                       onRowVisibility: { quotes.watchRow($0, visible: $1) },
+                       onRowVisibility: { quotes.watchRow($0, visible: $1); if $1 { market.prefetchRows([$0]) } },
                        compare: CompareSearchMode(keys: prefs.compareSymbols, current: market.symbol),
                        onCompareToggle: { toggleCompare($0) })
         .environment(\.panelTheme, theme)
+        .environment(\.symbolWarmup, symbolWarmup)
         .presentationDetents([.large])
         .presentationBackground(theme.app)
         .preferredColorScheme(effectiveTheme.forced)
@@ -322,7 +324,8 @@ struct MainScreen: View {
       SymbolPickerView(model: picker, redUp: prefs.redUp,
                        onClose: { closeSymbolPicker() },
                        onVisible: { quotes.watch($0) },
-                       onRowVisibility: { quotes.watchRow($0, visible: $1) })
+                       onRowVisibility: { quotes.watchRow($0, visible: $1); if $1 { market.prefetchRows([$0]) } })
+        .environment(\.symbolWarmup, symbolWarmup)
         .preferredColorScheme(effectiveTheme.forced)
     }
   }
@@ -346,16 +349,23 @@ struct MainScreen: View {
     if symbolSearch.closeAll() { picker.query = "" }
   }
 
+  /// 列表行上的「先去拉」（`SymbolWarmup`）：按下一行就拉那一只，搜索结果稳定就拉前三只。
+  private var symbolWarmup: SymbolWarmup {
+    SymbolWarmup(press: { [market] in market.prewarmPress($0) }, hits: { [market] in market.prewarmHits($0) })
+  }
+
   /// 自选那一整页。标签栏上的一格，所以没有「返回」——返回就是换一格标签。
   private var favoritesPage: some View {
     FavoritesView(model: picker, session: favoritesEdit, history: searchHistory, store: store, redUp: prefs.redUp, linkDown: quotes.linkDown, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
                   onVisible: { quotes.watch($0) },
                   // 露面的自选行顺手把顶栏那几格（仓 / 费率 / 结算 / 市值）的数先取回来。
-                  onRowVisibility: { quotes.watchRow($0, visible: $1); if $1 { market.prefetchListStats([$0]) } },
+                  // K 线快照也一起先拉（`prefetchRows`），换分类后新露面的行同样从这儿进来。
+                  onRowVisibility: { quotes.watchRow($0, visible: $1); if $1 { market.prefetchRows([$0]) } },
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) },
                   previews: previews,
                   // 点一行进图的同一瞬间冻结这张表的顺序，顶栏横滑就照着它一只只看过去。
                   onScanList: { adoptScanList($0) })
+      .environment(\.symbolWarmup, symbolWarmup)
   }
 
   /// 板块列表页那一整页。计算全在 `KanpanCore`，画全在 `Kanpan/Sector/`，
@@ -376,6 +386,7 @@ struct MainScreen: View {
                onListHidden: { market.cancelListPrefetch() },
                previews: previews, picker: picker,
                route: $sectorRoute)
+      .environment(\.symbolWarmup, symbolWarmup)
   }
 
   /// 此刻画的是不是自选页。账号还在恢复的那一小段里，`picker.prefs` 挂的是访客那份

@@ -102,6 +102,8 @@ enum SymbolSections {
   static let allTitle = "全部合约"
   /// 空结果那一行（§10.5「空结果一行『没有这个品种』，不放插画」）。
   static let emptyText = "没有这个品种"
+  /// 品种表还没到时搜索给的那一行：不能说「没有」，只是还在路上。
+  static let loadingText = "正在载入品种"
 
   /// 页头右边那行小字：原型 `D.catalog.length + ' 个永续合约'`。
   ///

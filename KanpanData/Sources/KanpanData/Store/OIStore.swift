@@ -67,6 +67,36 @@ public actor OIStore {
     write(OIArchive.encodeRange(points, from: from, to: to), to: url)
   }
 
+  /// 衍生统计（主动买卖、多空比、基差这类外部指标）上次为「品种 + 周期」取好的那一段。
+  ///
+  /// 和持仓量那份同一个格式、同一棵树（同一个上限和淘汰），文件名多带一个指标名。
+  /// 换品种时先把它画上，再只补缺的那一头（体感 2026-10-07）。
+  public func loadMetric(_ id: String, symbol: String, interval: Interval) -> (points: [OIPoint], from: Int64, to: Int64)? {
+    guard enabled else { return nil }
+    let url = paths.oiSeries(symbol: symbol, interval: Self.metricSlug(id, interval))
+    guard let d = try? Data(contentsOf: url) else { return nil }
+    try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+    guard let range = OIArchive.decodeRange(d) else { return nil }
+    let points = range.points.compactMap { p in p.takerVolumeRatio.map { OIPoint(time: p.time, value: $0) } }
+    return (points, range.from, range.to)
+  }
+
+  /// 一份最多留这么多点：画一屏多一点就够，盘上不为它多占。
+  public static let metricPointLimit = 1_500
+
+  public func saveMetric(_ id: String, symbol: String, interval: Interval, points: [OIPoint], from: Int64, to: Int64) {
+    guard enabled, to >= from, !points.isEmpty else { return }
+    let kept = points.suffix(Self.metricPointLimit)
+    let start = kept.count < points.count ? max(from, kept.first?.time ?? from) : from
+    let url = paths.oiSeries(symbol: symbol, interval: Self.metricSlug(id, interval))
+    // 外部指标的点只有「时刻 + 值」，值可以是负的（基差）；持仓量那一栏读回时要求非负，
+    // 所以值放在末栏（`takerVolumeRatio`），首栏记 0。
+    let rows = kept.filter(\.value.isFinite).map { OIPoint(time: $0.time, value: 0, takerVolumeRatio: $0.value) }
+    write(OIArchive.encodeRange(rows, from: start, to: to), to: url)
+  }
+
+  private static func metricSlug(_ id: String, _ interval: Interval) -> String { "\(interval.rawValue)-\(id)" }
+
   /// 占用字节（设置页「清缓存」要显示）。
   public func usage() -> Int {
     files().reduce(0) { $0 + $1.size }

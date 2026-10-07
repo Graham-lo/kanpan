@@ -312,6 +312,54 @@ struct CatalogStatusTests {
     #expect(await server.urls().count == 3)
   }
 
+  // ---------------------------------------------------------------- 体感：过期先用
+
+  @Test("过期但同代次的表先给出去不等网络，后台换新后发 didRefresh")
+  func staleSameSchemaServesFirstThenRefreshes() async throws {
+    let p = tempPaths()
+    defer { try? FileManager.default.removeItem(at: p.root) }
+    try seedDisk([info("BTCUSDT"), info("ETHUSDT")], at: 1_000, schema: 7, p)
+    let body = try infoBody([("BTCUSDT", "TRADING"), ("ETHUSDT", "TRADING"), ("SOLUSDT", "TRADING")])
+    let gate = Gate()
+    let (rest, server) = makeREST({ _ in HTTPReply(status: 200, body: body) }, gate: gate)
+    let catalog = SymbolCatalog(rest: rest, paths: p)
+    let now: Int64 = 1_000 + SymbolCatalog.ttlMs + 1
+
+    let posted = Stage(Data())
+    let token = NotificationCenter.default.addObserver(
+      forName: SymbolCatalog.didRefresh, object: nil, queue: nil) { _ in posted.body = Data([1]) }
+    defer { NotificationCenter.default.removeObserver(token) }
+
+    // 网络还被闸着：照样立刻拿到旧表。
+    #expect(await catalog.all(now: now).map(\.id.symbol) == ["BTCUSDT", "ETHUSDT"])
+    #expect(await waitUntil(5) { await gate.arrived >= 1 })
+    // 紧接着再来一个调用方：仍是旧表，也不起第二趟。
+    #expect(await catalog.all(now: now + 10).count == 2)
+    await gate.open()
+    // 别的用例也在发同名通知（并行跑），所以先等这份表自己换新，再看通知。
+    #expect(await waitUntil(5) { await catalog.all(now: now + 20).count == 3 })
+    #expect(await catalog.all(now: now + 20).map(\.id.symbol) == ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    #expect(posted.body == Data([1]))
+    #expect(await server.urls().count == 1)
+    #expect(try readDisk(p).list.count == 3)
+  }
+
+  @Test("过期同代次表后台刷新失败：继续用旧表，冷却内不再出站")
+  func staleRevalidateFailureKeepsOldTable() async throws {
+    let p = tempPaths()
+    defer { try? FileManager.default.removeItem(at: p.root) }
+    try seedDisk([info("BTCUSDT")], at: 1_000, schema: 7, p)
+    let (rest, server) = makeREST({ _ in HTTPReply(status: 500, body: Data()) })
+    let catalog = SymbolCatalog(rest: rest, paths: p)
+    let t0: Int64 = 1_000 + SymbolCatalog.ttlMs + 1
+    #expect(await catalog.all(now: t0).count == 1)
+    #expect(await waitUntil(5) { await server.urls().count == 1 })
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(await catalog.all(now: t0 + 1_000).count == 1)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(await server.urls().count == 1)
+  }
+
   /// 可换的响应体。`@Sendable` 闭包要读它，所以包一层锁。
   private final class Stage: @unchecked Sendable {
     private let lock = NSLock()

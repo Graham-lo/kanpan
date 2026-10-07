@@ -52,6 +52,14 @@ enum ViewIntent: Equatable {
 final class ChartBox: UIView, UIGestureRecognizerDelegate {
   let chart = ChartView(frame: .zero)
   private let scroll = ChartPageScrollView()
+  /// 冷切到没快照的品种时的占位图（见 `ChartPlaceholderView`）。
+  let placeholderView = ChartPlaceholderView()
+  var placeholderEnabled = false
+  var placeholderArmed = false
+  /// 占位图读哪块公告板（单测换一块自己的）。
+  var board: ArrivalBoard = .live
+  /// 上一张真图是深底还是浅底：占位图没有 `ChartState`，按它挑墨色。
+  var lastDark: Bool?
   var onOverlayUpdate: () -> Void = {}
   private var grips: [IndicatorID: ResizeGrip] = [:]
   private var resizeStart: (id: IndicatorID, height: Double, scale: Double, content: Double, other: Double)?
@@ -97,6 +105,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
     scroll.showsVerticalScrollIndicator = true
     addSubview(scroll)
     scroll.addSubview(chart)
+    addSubview(placeholderView)
     let reorder = UILongPressGestureRecognizer(target: self, action: #selector(reorderPane))
     reorder.minimumPressDuration = 0.35; reorder.delegate = self
     chart.addGestureRecognizer(reorder)
@@ -112,6 +121,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       oldWidth.map { state.view.barSpacing(step: state.series.step, plotW: $0) }
     }
     scroll.frame = bounds
+    placeholderView.frame = bounds
     let contentHeight = chart.state.map { state in
       ChartContentLayout.height(viewport: Double(bounds.height), subs: state.subs, portrait: portrait)
     } ?? Double(bounds.height)
@@ -533,6 +543,7 @@ struct ChartHost: UIViewRepresentable {
     let box = ChartBox(frame: .zero)
     proxy?.box = box
     box.chart.isHidden = !renderingActive
+    if !renderingActive { box.placeholderView.apply(nil, dark: false) }
     guard renderingActive else { return box }
     box.portrait = portrait
     wire(box)
@@ -575,6 +586,8 @@ struct ChartHost: UIViewRepresentable {
     // 没东西可画时图上还没按哪个朝向开过：沿用把手上记着的那个朝向，数据到了再比（`updateUIView`）。
     if incoming != nil { proxy?.lastPortrait = portrait }
     box.spacingPortrait = proxy?.lastPortrait ?? portrait
+    if let incoming { box.lastDark = incoming.dark }
+    box.syncPlaceholder(enabled: drawing != nil)
     return box
   }
 
@@ -599,10 +612,13 @@ struct ChartHost: UIViewRepresentable {
     #endif
     proxy?.box = box
     box.chart.isHidden = !renderingActive
+    if !renderingActive { box.placeholderView.apply(nil, dark: false) }
     guard renderingActive else { return }
     box.portrait = portrait
     wire(box)
     proxy?.handOverLatest(to: box)
+    // 行情主图（绑着画线真值的那张）才摆占位图；复盘那几张图的空档不是「行情在路上」。
+    defer { box.syncPlaceholder(enabled: drawing != nil) }
     guard var s = state else {
       // 切到一档没钉住的周期、盘上没快照时，新序列要一个往返才到。
       // 这段时间里留着上一档那一帧，数据一到走下面「换周期」那条路接上视野
@@ -619,6 +635,7 @@ struct ChartHost: UIViewRepresentable {
     }
     let wanted = ChartInversion(s)
     let adoptInversion = noteSnapshotInversion(s, box: box)
+    box.lastDark = s.dark
     if let old = box.chart.state ?? proxy?.savedState, old.series.count > 0 {
       // 视野归图自己管：外面传下来的那份是「上一次图告诉我的」，原样塞回去会把
       // 手势正在做的位移覆盖掉。只在品种/周期/风格真换了的时候才重算。

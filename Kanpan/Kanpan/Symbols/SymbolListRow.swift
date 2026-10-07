@@ -182,6 +182,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
   let accessory: Accessory
 
   @Environment(\.panelTheme) private var theme
+  @Environment(\.symbolWarmup) private var warmup
 
   /// 行高：66（琉璃版定稿值，不在这次整改范围内；字号放大时跟着长，不截）。
   static var height: CGFloat { 66 }
@@ -236,6 +237,8 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
     .pageHorizontalInset()
     .frame(minHeight: Self.height)
     .contentShape(Rectangle())
+    // 手指一按到行上就先去拉这一只的 K 线（`SymbolWarmup`），抬手进图时多半已经落盘。
+    .onTouchDown { [symbol, warmup] in warmup.press(symbol) }
     .onTapGesture(perform: onOpen)
     .overlay(alignment: .top) {
       if !first {
@@ -290,6 +293,7 @@ struct SymbolRowView: View {
   /// 搜索页对比模式（`CompareSearchMode`，2026-10-05）：给了就把行尾那颗星换成对比的 ＋ / ✓，
   /// 点行尾那颗走 `onStar`（宿主在对比模式下把它接成加 / 减对比）。主图那一行整行禁用。
   var compare: CompareSearchMode.RowState? = nil
+  @Environment(\.symbolWarmup) private var warmup
 
   // 名字是逐段拼的 `Text`（命中片段换色），只能吃 `Font`，吃不了 `ScaledFont`，
   // 所以字号在这儿按同一条曲线量一份。
@@ -348,6 +352,7 @@ struct SymbolRowView: View {
       }
       .padding(.vertical, Inset.rowV)
       .contentShape(Rectangle())
+      .onTouchDown { [id = row.id, warmup] in warmup.press(id) }
       .onTapGesture(perform: onPick)
       .accessibilityElement(children: .contain)
       .accessibilityAddTraits(.isButton)

@@ -252,3 +252,9 @@ public struct Ticker: Sendable, Equatable {
     self.lastTradeID = lastTradeID
   }
 }
+
+extension Notification.Name {
+  /// 某家交易所的品种表在后台换新了（`object` 是 venue 字符串）。
+  /// 发的是 `KanpanData.SymbolCatalog`；放在这一层，是为了不认识数据层的页面模型也能听。
+  public static let symbolCatalogDidRefresh = Notification.Name("SymbolCatalog.didRefresh")
+}

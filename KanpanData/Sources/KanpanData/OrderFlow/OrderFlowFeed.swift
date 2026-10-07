@@ -181,6 +181,11 @@ public actor OrderFlowFeed {
   private var calibrationDeadlineMs: Int64?
   /// 等标定期间读到的日志，标定完再交给模型。
   private var deferredJournal: OrderFlowJournal?
+  /// 日志里带着上一次标定的门槛：先按它出帧、读回日志、取历史，同时照常标定一遍，
+  /// 标定完和它有出入再改（`calibrate`）。原来非币开图要空等最多 8 秒标定，已有的大单那几秒全看不见。
+  private var recalibrating = false
+  /// 上一次落盘时写进日志头的标定值：标定值变了、大单没变时也要落一次盘。
+  private var savedCalibrated: Double?
 
   /// - Parameters:
   ///   - symbol: 品种键（`InstrumentID.canonical`），吐出去的快照带的就是它。
@@ -324,8 +329,22 @@ public actor OrderFlowFeed {
     let now = clock()
     guard let journal = (try? Data(contentsOf: file)).flatMap(OrderFlowJournal.decode),
           journal.symbol == symbol, now - journal.savedAtMs < OrderFlowDefaults.journalRetentionMs else { return }
-    // 默认门槛还在等标定：先放着，标定完再读回（兜底 200 万会把标定门槛以上、200 万以下的单删掉）。
-    if calibrating { deferredJournal = journal; return }
+    if calibrating {
+      // 上一次标定过：先按那个门槛读回、出帧，标定照跑，完了有出入再改。
+      if let saved = journal.calibrated {
+        calibrated = saved
+        savedCalibrated = saved
+        calibrating = false
+        recalibrating = true
+        let thresholds = Self.effective(facts: facts, turnover: turnover, override: override,
+                                        derivedStep: derivedStep, calibrated: saved)
+        model = OrderFlowModel(symbol: symbol, thresholds: thresholds, restored: journal)
+        log("主力订单流 \(symbol)：先按上次标定的门槛 \(Int(saved)) 出帧，标定照跑")
+        return
+      }
+      // 默认门槛还在等标定：先放着，标定完再读回（兜底 200 万会把标定门槛以上、200 万以下的单删掉）。
+      deferredJournal = journal; return
+    }
     model = OrderFlowModel(symbol: symbol, thresholds: model.thresholds, restored: journal)
   }
 
@@ -367,7 +386,7 @@ public actor OrderFlowFeed {
     let thresholds = model.thresholds
     let books = result.books.filter { thresholds[$0.venue.product] != nil }
     for book in books { model.addVenue(book.venue) }
-    if calibrating { calibrationDeadlineMs = clock() + OrderFlowDefaults.calibrationTimeoutMs }
+    if calibrating || recalibrating { calibrationDeadlineMs = clock() + OrderFlowDefaults.calibrationTimeoutMs }
     adapters = makeAdapters(books)
     log("主力订单流 \(symbol)：\(books.count) 本簿、\(adapters.count) 条连接\(result.fromCatalog ? "" : "（品种表没拿到，用保底）")")
     for (index, adapter) in adapters.enumerated() {
@@ -721,7 +740,7 @@ public actor OrderFlowFeed {
     let now = clock()
     escalateStaleResubscribes(nowMs: now)
     nudgeSilentBooks(nowMs: now)
-    if calibrating { calibrate(nowMs: now) }
+    if calibrating || recalibrating { calibrate(nowMs: now) }
     pumpHistory()
     // 标定之前出「加载中」、不带门槛与默认：面板那时按品种事实查表（兜底 200 万），标定完换成标定值。
     var frame = calibrating ? OrderFlowSnapshot.loading(symbol, asOfMs: now) : model.evaluate(nowMs: now)
@@ -729,7 +748,7 @@ public actor OrderFlowFeed {
       frame.defaults = Self.effective(facts: facts, turnover: turnover, override: nil, derivedStep: nil,
                                       calibrated: calibrated)
     }
-    if model.journalDirty, now - lastSaveMs >= Self.saveEveryMs { save() }
+    if model.journalDirty || calibrated != savedCalibrated, now - lastSaveMs >= Self.saveEveryMs { save() }
     guard let out = Self.pace(frame, after: lastEmitted, sinceLastMs: now - lastEmitMs,
                               sinceAmountsMs: now - amountsAtMs, precise: precise()) else { return }
     if out.amountsRefreshed { amountsAtMs = now }
@@ -745,15 +764,24 @@ public actor OrderFlowFeed {
     let depth = model.calibrationDepth()
     let complete = depth.total > 0 && depth.ready == depth.total
     guard complete || depth.total == 0 || now >= deadline else { return }
+    let provisional = recalibrating
     calibrating = false
+    recalibrating = false
     calibrationDeadlineMs = nil
-    calibrated = depth.ready > 0 ? OrderFlowDefaults.calibratedThreshold(depth: depth.depth) : nil
+    let fresh = depth.ready > 0 ? OrderFlowDefaults.calibratedThreshold(depth: depth.depth) : nil
+    // 先按上次的值出着帧：这次一本簿都没标定出来就别拿兜底 200 万顶掉它。
+    calibrated = provisional ? (fresh ?? calibrated) : fresh
     let shown = calibrated.map { "\(Int($0))" } ?? "标定不出，用兜底 \(Int(OrderFlowDefaults.tradfiPerpetual))"
     log("主力订单流 \(symbol)：默认门槛按簿深标定 \(shown)（±1% 簿深 \(Int(depth.depth))，\(depth.ready)/\(depth.total) 本簿）")
     let next = Self.effective(facts: facts, turnover: turnover, override: override, derivedStep: derivedStep,
                               calibrated: calibrated)
     if next != model.thresholds {
-      if next.step != model.thresholds.step { resetHistory() } else { raiseHistoryThresholds(to: next) }
+      // 先按上次的门槛取过历史了：门槛往下改，低出来那一截服务端没给过，历史从头取。
+      if next.step != model.thresholds.step || (provisional && Self.lowers(next, from: model.thresholds)) {
+        resetHistory()
+      } else {
+        raiseHistoryThresholds(to: next)
+      }
       model.setThresholds(next)
     }
     if let journal = deferredJournal {
@@ -761,6 +789,14 @@ public actor OrderFlowFeed {
       model.restore(journal)
     }
     emitNextTick()  // 标定完立刻出一帧
+  }
+
+  /// `next` 里有哪个产品的门槛比 `current` 低。
+  static func lowers(_ next: OrderFlowThresholds, from current: OrderFlowThresholds) -> Bool {
+    OrderFlowProduct.allCases.contains { product in
+      guard let n = next[product], let c = current[product] else { return false }
+      return n < c
+    }
   }
 
   /// 下一拍不等心跳、一定发；但不丢上一帧——活单金额仍按 `hold` 的规矩按住。原来这里把 `lastEmitted` 清掉，
@@ -803,16 +839,18 @@ public actor OrderFlowFeed {
   private func save(force: Bool = false) {
     guard let file else { return }
     let cursor = historyCursor
-    guard model.journalDirty || (force && cursor != savedHistory) else { return }
+    guard model.journalDirty || calibrated != savedCalibrated || (force && cursor != savedHistory) else { return }
     let now = clock()
     lastSaveMs = now
     guard var journal = model.journal(nowMs: now) else { return }
     journal.history = cursor
+    journal.calibrated = calibrated
     do {
       try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
       try journal.encoded().write(to: file, options: .atomic)
       model.markJournalSaved()
       savedHistory = cursor
+      savedCalibrated = calibrated
     } catch {
       log("主力订单流 \(symbol) 日志落盘失败：\(error)")
     }
@@ -822,6 +860,7 @@ public actor OrderFlowFeed {
 
   func modelForTests() -> OrderFlowModel { model }
   func calibratedForTests() -> (pending: Bool, value: Double?) { (calibrating, calibrated) }
+  func recalibratingForTests() -> Bool { recalibrating }
   func historyRangeForTests() -> (from: Int64?, cursor: Int64?) { (historyFromMs, historyCursorMs) }
   func historyCursorForTests() -> OrderFlowHistoryCursor? { historyCursor }
 }

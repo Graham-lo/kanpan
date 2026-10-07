@@ -490,6 +490,67 @@ struct OrderFlowFeedTests {
     await feed.stop()
   }
 
+  @Test("非币日志里存着上次标定的门槛：开图先按它读回日志、出帧，不等 8 秒；标定完有出入照新的改并立刻出帧，落盘带新值",
+        .timeLimit(.minutes(1)))
+  func savedCalibrationShowsFirst() async throws {
+    let dir = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    let saved = BigOrder(venueID: okxPerp.id, exchange: "OKX", product: .usdtPerp, side: .ask, bucket: 1_650,
+                         price: 1_650, firstSeenMs: now - 3_600_000, endMs: now - 1_800_000,
+                         status: .cancelled, initialNotional: 1_500_000, notional: 1_500_000, threshold: 500_000)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = OrderFlowFeed.journalFile(in: dir, symbol: symbolKey)
+    try OrderFlowJournal(symbol: symbolKey, step: 1, savedAtMs: now, orders: [saved], calibrated: 500_000).encoded()
+      .write(to: file)
+    let server = HistoryServer { _ in nil }
+    let okx = ScriptAdapter(name: "okx", books: [okxPerp],
+                            script: ["snap": [VenueMessage(okxPerp.id, .snapshot(deepSnapshot(last: 100)))]])
+    let frames = Frames()
+    let feed = makeFeed([okx], facts: sndk, dir: dir, frames: frames, history: { await server.load($0, $1, $2, $3) })
+    await feed.start()
+    // 簿一本都还没到：已经按上次的门槛出帧、日志里的单在图上，历史也照取。
+    #expect(await waitUntil(5) { await frames.last?.orders.contains { $0.id == saved.id } == true })
+    #expect(await frames.last?.thresholds.usdtPerp == 500_000)
+    #expect(await frames.sawLoading == false, "有上次的标定就不出「加载中」")
+    #expect(await feed.calibratedForTests().pending == false)
+    #expect(await feed.recalibratingForTests())
+    #expect(await waitUntil(5) { await server.count >= 1 }, "先按上次的门槛取历史")
+    // 簿到了：标定出 100 万，和上次不同，改过来、马上出帧，日志里那单（150 万）还在。
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    #expect(await waitUntil(5) { await frames.last?.thresholds.usdtPerp == 1_000_000 })
+    #expect(await feed.recalibratingForTests() == false)
+    #expect(await feed.calibratedForTests().value == 1_000_000)
+    #expect(await frames.last?.defaults.usdtPerp == 1_000_000)
+    #expect(await frames.last?.orders.contains { $0.id == saved.id } == true, "改门槛不清掉已有的单")
+    await feed.stop()
+    let back = try #require(OrderFlowJournal.decode(try Data(contentsOf: file)))
+    #expect(back.calibrated == 1_000_000)
+  }
+
+  @Test("标定前就算有日志，也只有日志里带着上次标定值时才先出帧；首次标定完把值写进日志头",
+        .timeLimit(.minutes(1)))
+  func firstCalibrationIsPersisted() async throws {
+    let dir = tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let okx = ScriptAdapter(name: "okx", books: [okxPerp],
+                            script: ["snap": [VenueMessage(okxPerp.id, .snapshot(deepSnapshot(last: 100)))]])
+    let frames = Frames()
+    let feed = makeFeed([okx], facts: sndk, dir: dir, frames: frames)
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    #expect(await feed.calibratedForTests().pending)
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    #expect(await waitUntil(5) { await feed.calibratedForTests().value == 1_000_000 })
+    await feed.stop()
+    let back = try #require(OrderFlowJournal.decode(
+      try Data(contentsOf: OrderFlowFeed.journalFile(in: dir, symbol: symbolKey))))
+    #expect(back.calibrated == 1_000_000)
+    #expect(OrderFlowFeed.lowers(OrderFlowThresholds(usdtPerp: 500_000), from: OrderFlowThresholds(usdtPerp: 1_000_000)))
+    #expect(!OrderFlowFeed.lowers(OrderFlowThresholds(usdtPerp: 2_000_000), from: OrderFlowThresholds(usdtPerp: 1_000_000)))
+  }
+
   @Test("非币标定到点：8 秒时有一本到了就按已有的算；一本都没到用兜底 200 万", .timeLimit(.minutes(1)))
   func calibrationTimesOut() async throws {
     // 一本到了、一本永远拉不到快照（REST 404）。

@@ -1,5 +1,8 @@
 import Foundation
 import Testing
+import KanpanCore
+import KanpanData
+import KanpanNetwork
 
 @testable import Kanpan
 
@@ -28,5 +31,33 @@ struct SymbolPreviewCacheTests {
     #expect(lru.keys.count == SymbolPreviewStore.capacity)
     #expect(evicted == 200 - SymbolPreviewStore.capacity)
     #expect(lru.keys.last == "S199")
+  }
+}
+
+/// 体感（2026-10-07）：长按那一刻先画盘上快照，不等 REST。
+@Suite("预览卡先画快照")
+@MainActor
+struct SymbolPreviewSnapshotSeedTests {
+  @Test("主图看过的那只：按住那一刻卡上就有 K 线")
+  func warmDrawsSnapshotImmediately() throws {
+    let key = "binance/usd_m/ETHUSDT"
+    let root = Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+    defer { try? FileManager.default.removeItem(at: root.root) }
+    let store = SymbolPreviewStore()
+    store.configure(route: RouteResolver(policy: .direct, endpoints: MarketEndpoints()))
+    store.snapshotRoot = root
+    let service = SymbolPreviewService(resolver: RouteResolver(policy: .direct, endpoints: MarketEndpoints()))
+    let dir = RoutedMarketFeed.snapshotPaths(for: service.capabilities(for: key), in: root).series
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let hour: Int64 = 3_600_000
+    let end = Aggregator.bucketStart(ms: Int64(Date().timeIntervalSince1970 * 1000), interval: .h1)
+    let rows = (0..<80).map { i in
+      Bar(openTime: end - Int64(79 - i) * hour, open: 10, high: 12, low: 9, close: 11, volume: 1)
+    }
+    try SeriesStore.write(BarSeries(symbol: key, interval: .h1, bars: rows), in: dir)
+    #expect(store.bars(for: key).isEmpty)
+    store.warm(symbol: key, base: "ETH")
+    #expect(store.bars(for: key).count == SymbolPreviewStore.barCount)
+    #expect(store.bars(for: key).last?.openTime == end)
   }
 }

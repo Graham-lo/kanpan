@@ -100,7 +100,8 @@ final class SymbolPickerModel {
   /// 页头右边的小字：`571 个永续合约`。
   var countText: String { SymbolSections.countText(catalog) }
   /// 搜到 0 个时显示的那一行。
-  var emptyText: String { SymbolSections.emptyText }
+  /// 品种表还没到（冷启动、离线首装）时不能说「没有这个品种」，那是冤枉。
+  var emptyText: String { catalog.isEmpty ? SymbolSections.loadingText : SymbolSections.emptyText }
   /// 一条都没有（没搜到，或者品种表还没到）。
   var isEmpty: Bool { sections.allSatisfy(\.rows.isEmpty) }
 
@@ -180,6 +181,14 @@ final class SymbolPickerModel {
   /// 只在还没进过页面时补得上，进过之后 `catalog` 已经填好了，换不换都无所谓。
   func setLoader(_ loader: @escaping @Sendable () async -> [SymbolInfo]) {
     catalogLoader = loader
+    // 品种表过期时目录先给旧表、后台换新（`SymbolCatalog.all`）；换上了就重读一次，
+    // 已经开着的搜索 / 品种页不用等下次进页才看到新上市的那几只。
+    if catalogObserver == nil {
+      catalogObserver = NotificationCenter.default.addObserver(
+        forName: .symbolCatalogDidRefresh, object: nil, queue: nil) { [weak self] _ in
+        Task { @MainActor [weak self] in await self?.reloadCatalog() }
+      }
+    }
     // 自选页现在从第一帧就盖着（见 `MainScreen.startsOnFavorites`），它的 `appear()`
     // 可能比宿主接线还早跑一步，那一趟手里没有 loader，品种表就会一直空到下次进页。
     // 补上 loader 的时候如果还空着，自己补一趟。
@@ -188,6 +197,16 @@ final class SymbolPickerModel {
       let list = await loader()
       self?.setCatalog(list)
     }
+  }
+
+  @ObservationIgnored private var catalogObserver: (any NSObjectProtocol)?
+
+  /// 目录在后台换了新表：照 loader 重读一遍。表没变就不动（免得白重建分区）。
+  func reloadCatalog() async {
+    guard let catalogLoader else { return }
+    let list = await catalogLoader()
+    guard !list.isEmpty, list != catalog else { return }
+    setCatalog(list)
   }
 
   // ---------------------------------------------------------------- 生命周期

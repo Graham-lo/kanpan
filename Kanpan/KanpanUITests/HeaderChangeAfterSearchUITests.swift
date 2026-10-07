@@ -34,7 +34,8 @@ final class HeaderChangeAfterSearchUITests: KanpanUICase {
       let change = app.descendants(matching: .any)["top.changePercent"]
       let turnover = app.descendants(matching: .any)["top.turnover"]
       func complete() -> Bool {
-        !change.label.isEmpty && !change.label.contains("—") && !turnover.label.isEmpty && !turnover.label.contains("—")
+        // 「载入中」是数还在路上时的骨架条（2026-10-07），也不算有数。
+        [change.label, turnover.label].allSatisfy { !$0.isEmpty && !$0.contains("—") && $0 != "载入中" }
       }
       XCTAssertTrue(waitUntil(timeout: 6) { complete() },
                     "\(code) 点进来 6 秒顶栏还缺统计：涨跌「\(change.label)」额「\(turnover.label)」")
