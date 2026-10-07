@@ -1437,6 +1437,60 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   - 截图在 `docs/acceptance/技术指标提醒-网页-2026-10-07/`（1–8）。
   - 没登录账号，所以 400 toast 没在浏览器里看到，由 vitest 的 mock 服务器覆盖。
 
+## 48. 网页版多套布局 / 足迹同步 / CSV 导出（2026-10-07）
+
+只改电脑网页（`Web/src`，不含 `m/`）。服务端只加了一行白名单和它的校验。提交：6bff8ea5、cb9d1718、91cc7f72、774a9403、abbf1bcb。
+
+**多套布局（布局集）**
+- 模块是 `app/layouts.ts`（模型、规范化、切换 / 另存为 / 重命名 / 删除、两本合并）和 `pages/layoutSets.ts`（菜单、就地编辑、⌥ 数字键）。
+- 每套布局记名字、格数和每格配置（品种、周期，加主图画法开关）。第一套叫「默认」，最多 20 套，名字最长 24 个字。
+- 当前那套就是 `st.layout` / `st.cells` 的活数据。`save()` 时由 `commitLive` 抄回布局集。
+- 指标布局不跟套走，仍是整份跟人、和 iOS 共用（见 kanpan-indicator-layout-is-one-per-person-all-devices）。
+- **入口**：格子底栏「图表布局」按钮旁的布局集按钮。
+  - 下拉里当前那套打勾，前九套标 ⌥1–⌥9。
+  - 末尾三项是 另存为… / 重命名 / 删除，都在菜单里就地编辑，不开新页。
+- **快捷键**：⌥1…⌥9 切到第几套，已写进快捷键表。
+- **切换**：`applyLayoutSet` 让留下的格子就地换品种 / 周期，格数变了才增删格子，不整页重建。
+- **迁移**：老的 `layout` + `cells` 无损迁成「默认」（id `default`）。有布局集时以活数据为准。
+
+**同步字段 `chartLayouts`**（settings 对象 `chart`，网页专用）
+- 走 `WEB_ONLY_SETTINGS_FIELDS` 和 `PUSH_WHEN_CLOUD_EMPTY`。
+- bridge 里 `layoutsPrint` 与 `corePrint` 分开记。首次合并按套来（`mergeBooks`），`adoptBook` 支持 cloud / local / replace 三种。
+- 服务端改了 `Backend/kanpan-api/src/sync.rs`（白名单）和 `sync_validation.rs`（`chart_layouts` 校验）：
+  - 整本不超过 32 KB，格数枚举固定；
+  - 每格 symbol / iv 合法，另外最多 6 个短键，值只能是布尔、数或不超过 16 字的串。
+- **服务端白名单待部署**，没部署前服务端会拒这个字段，本机照常可用。
+- 因为是网页专用字段、不进 iOS 生成的契约，所以没跑 `make sync-contract` / `make app-logic-test`。
+
+**主图画法开关跟人走**
+- 足迹（`footprint`）、平均 K 线（`ha`）、等幅 K 线（`range`）三个开关，从本机 localStorage 挪进每格配置，只在开着时出现。随布局集走，随 `chartLayouts` 同步。
+- 模块侧接口：`setFootprintSource` / `setHeikinAshiSource` / `setRangeBarsSource`，`pages/chart.ts` 接到 store。没接时只记内存，给单测用。
+- 老键 `hkline-web-footprint` / `hkline-web-heikin` / `hkline-web-range` 并进当前那套，写盘成功后才删。某一格已经开着别的画法就不叠，守三选一。
+- 换一套布局时，没重取 K 线的格子用 `syncRangeBars` 就地对齐等幅状态。
+- 这一节改掉了 §49 里平均 K 线 / 等幅 K 线「按格子序号记本机」的存法。原来的问题：两套布局同一格序号共用一份开关，切过去会带到别的套、和足迹叠在一起。
+
+**CSV 导出**（`chart/exportCsv.ts`）
+- 入口：格子底栏的「导出」，菜单里有两项：可见范围 / 全部已加载，后面带根数。
+- 列：
+  - 时间（上海时区 ISO 8601，带 +08:00）、开高低收、成交量、成交额；
+  - 主动买入额（交易所给了才有这一列）；
+  - 这一格挂着的主图 / 副图指标，每条线一列。列名用中文：「均线 10」「布林带 上轨」「平滑异同 快线」「相对强弱(6)」。
+- 文件 UTF-8 带 BOM，行尾 CRLF，文件名 `品种_周期_起_止.csv`（例：`BTCUSDT_4h_20260927-2000_20261007-1200.csv`）。
+
+**文案**：副图上限的提示已经按 `MAX_SUBS`（8）动态出字。`Web/src`（不含 `m/`）里没有写死「三个」的文案。手机网页和 iOS 是 3，本来就对。
+
+**验证**
+- tsc 通过。vitest 144 个文件、1966 条全过（rebase 后），其中新增 `tests/layout-sets.test.ts` 23 条、`tests/export-csv.test.ts` 6 条。
+- `npm run build` 无警告。
+- kanpan-api `cargo test` 单元 626 过 / 0 败 / 3 忽略。真 Postgres 集成测试要 `ops/test.py` 的隔离库，这次没跑。
+- Chrome 1600×960 实走，截图在 `docs/acceptance/多套布局-导出-2026-10-07/`（01–08）：
+  - 老数据（四图 + 足迹）迁成「默认」；
+  - 另存为就地输入名字，新建一套十六图「盯盘」；
+  - 重命名；菜单两套带 ⌥ 快捷键，⌥1 / ⌥2 切换不重建格子，两套里同一只 BTC 各自的周期互不影响；
+  - 导出菜单，CSV 实测记录在 `07-导出CSV实测.txt`（BOM、59 / 1500 行、16 列一致）；
+  - 平均 K 线开关跟着布局集走。
+- 开发服在 5291 端口时，网关不放行 localhost 跨域，所以测试浏览器里把行情线路设成了直连。只影响本机开发，与功能无关。
+
 ## 49. 网页版平均 K 线 / 等幅 K 线 / 秒线补平（2026-10-07）
 
 **状态**：代码已进 main，**未部署**（按任务要求）。只动电脑网页版 `Web/src/`，不含 `Web/src/m/` 与 iOS。没有新增用户设置项。
