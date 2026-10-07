@@ -522,10 +522,10 @@ export function renderToolbar(): void {
       <button class="tb-btn" id="tbMoreIv" aria-label="更多周期" data-tip="全部周期">更多${I('chevronDown', 'icon-16')}</button>
     </div>
     <span class="tb-sep"></span>
-    <button class="tb-btn" id="tbInd" data-tip="指标" data-kbd="/">${I('indicators')}指标</button>
-    <button class="tb-btn${st.compareSymbols.length ? ' on' : ''}" id="tbCompare" data-tip="叠加别的品种，按百分比比涨跌">${I('compare')}对比${st.compareSymbols.length ? `<span class="num tb-count">${st.compareSymbols.length}</span>` : ''}</button>
-    <button class="tb-btn" id="tbAlert" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bellPlus')}提醒</button>
-    <button class="tb-btn" id="tbNote" data-tip="把这一刻记下来">${I('note')}记一笔</button>
+    <button class="tb-btn" id="tbInd" aria-label="指标" data-tip="指标" data-kbd="/">${I('indicators')}<span class="tb-label">指标</span></button>
+    <button class="tb-btn${st.compareSymbols.length ? ' on' : ''}" id="tbCompare" aria-label="对比" data-tip="叠加别的品种，按百分比比涨跌">${I('compare')}<span class="tb-label">对比</span>${st.compareSymbols.length ? `<span class="num tb-count">${st.compareSymbols.length}</span>` : ''}</button>
+    <button class="tb-btn" id="tbAlert" aria-label="提醒" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bellPlus')}<span class="tb-label">提醒</span></button>
+    <button class="tb-btn" id="tbNote" aria-label="记一笔" data-tip="把这一刻记下来">${I('note')}<span class="tb-label">记一笔</span></button>
     ${heatButtonHTML()}
     <div class="tb-right">
       <button class="ibtn sm" id="tbUndo" aria-label="撤销" data-tip="撤销" data-kbd="⌘ Z" ${undoStack.length ? '' : 'disabled style="opacity:.4"'}>${I('undo')}</button>
@@ -567,10 +567,19 @@ function intervalMenu(btn: HTMLElement): void {
   const c = cfg(active())
   const groups: [string, string[]][] = [['秒（打开页面起才有）', [...SECOND_IVS]], ['分钟', ['1m', '3m', '5m', '15m', '30m']], ['小时', ['1h', '2h', '4h', '6h', '8h', '12h']], ['日及以上', ['1d', '1w', '1M']]]
   if (st.customIvs.length) groups.push(['自定义', st.customIvs.filter(iv => IV_LABEL[iv])])
-  const items: MenuItem[] = groups.flatMap(([h, ivs]): MenuItem[] => [{ header: h }, ...ivs.map(iv => ({
-    label: IV_LABEL[iv], checked: iv === c.iv, check: true, sc: st.pinned.includes(iv) ? '已钉在栏上' : isCustomIv(iv) ? '右键移除' : '', run: () => setIv(iv),
-  }))])
-  items.push('-', { header: '右键周期可钉到栏上' })
+  // 照 TradingView：每行行尾一颗星，点星钉到周期条上 / 取消，菜单不关；自定义周期行尾是 ×，点了删掉
+  const star = (on: boolean): string => I(on ? 'star' : 'starLine', on ? 'icon-16 pin on' : 'icon-16 pin')
+  const items: MenuItem[] = groups.flatMap(([h, ivs]): MenuItem[] => [{ header: h }, ...ivs.map((iv): MenuItem => {
+    const base = { label: IV_LABEL[iv], checked: iv === c.iv, check: true, run: () => setIv(iv) }
+    if (isCustomIv(iv)) return { ...base, trail: I('close', 'icon-16'), trailTip: '移除', trailRun: () => { st.customIvs = st.customIvs.filter(x => x !== iv); save(); intervalMenu(btn) } }
+    if (!INTERVALS.includes(iv)) return base
+    return { ...base, trail: star(st.pinned.includes(iv)), trailTip: '钉到周期条', trailRun: el => {
+      const on = !st.pinned.includes(iv)
+      st.pinned = on ? INTERVALS.filter(x => st.pinned.includes(x) || x === iv) : st.pinned.filter(x => x !== iv)
+      save(); renderToolbar()
+      el.innerHTML = star(on)
+    } }
+  })])
   const m = menuFrom(btn, items, { width: 260 })
   // 自定义分钟：打一个数回车就切过去，并记进「自定义」
   const box = document.createElement('div'); box.className = 'iv-custom'
@@ -586,17 +595,6 @@ function intervalMenu(btn: HTMLElement): void {
     closeMenu(); setIv(iv)
   })
   inp.addEventListener('input', () => inp.classList.remove('bad'))
-  // 右键一行 = 钉 / 取消钉
-  m.addEventListener('contextmenu', e => {
-    e.preventDefault()
-    const b = tgt(e).closest<HTMLElement>('.mi'); if (!b) return
-    const lab = b.querySelector('.label')?.textContent?.trim()
-    const iv = Object.keys(IV_LABEL).find(k => IV_LABEL[k] === lab); if (!iv) return
-    if (isCustomIv(iv)) { st.customIvs = st.customIvs.filter(x => x !== iv); save(); closeMenu(); intervalMenu($('#tbMoreIv')); return }
-    if (!INTERVALS.includes(iv)) return
-    st.pinned = st.pinned.includes(iv) ? st.pinned.filter(x => x !== iv) : INTERVALS.filter(x => st.pinned.includes(x) || x === iv)
-    save(); closeMenu(); renderToolbar(); intervalMenu($('#tbMoreIv'))
-  })
 }
 
 function screenshot(copy = false): void {

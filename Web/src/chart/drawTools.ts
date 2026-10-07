@@ -1,7 +1,7 @@
 /* Hkline Web · 画线工具：几何、命中、画法（chart.ts 只做接入）
  *
  * 三把「算出来的」工具（形状由锚点圈住的 K 线算，不由锚点本身定）：
- *   · 锚定 VWAP（avwap，一点）：从锚点那根起累计 典型价 × 成交量，画中线与 ±1σ、±2σ 带，带间 0.08 填充；
+ *   · 锚定 VWAP（avwap，一点）：从锚点那根起累计 典型价 × 成交量，只画一条线（与 iOS、手机网页版一致，不画 σ 带）；
  *     算法与主图 VWAP 一致（indicators.vwap：典型价 (高+低+收)/3，按成交量（币）加权）。
  *   · 固定区间成交量分布（fvp，两点）：两点圈一段时间，复用 overlays.vpvr 与主图 VPVR 的三种看法；
  *     行数按这段价格区间的像素高自动定（每行 ≥ 4 px），标控制点（实线）与七成价值区上下沿（虚线）。
@@ -86,16 +86,15 @@ export function toolName(t: DrawingType): string { return groupOf(t)?.tools.find
 export function familyOf(t: DrawingType): GroupId { return groupOf(t)?.id ?? 'lines' }
 
 // ------------------------------------------------------------ 锚定 VWAP
-export interface Bands { mid: number[]; u1: number[]; d1: number[]; u2: number[]; d2: number[] }
+export interface Avwap { mid: number[] }
 /** 从 from 那根起累计到 to（含）；返回的数组下标 k 对应第 from + k 根 */
-export function anchoredVwap(bars: readonly Bar[], from: number, to: number): Bands {
-  const out: Bands = { mid: [], u1: [], d1: [], u2: [], d2: [] }
-  let sw = 0, swp = 0, swp2 = 0
+export function anchoredVwap(bars: readonly Bar[], from: number, to: number): Avwap {
+  const out: Avwap = { mid: [] }
+  let sw = 0, swp = 0
   for (let i = Math.max(0, from); i <= Math.min(to, bars.length - 1); i++) {
     const b = bars[i], tp = (b.h + b.l + b.c) / 3, w = vwapWeight(b)
-    if (w > 0) { sw += w; swp += w * tp; swp2 += w * tp * tp }
-    const m = sw > 0 ? swp / sw : tp, sd = sw > 0 ? Math.sqrt(Math.max(0, swp2 / sw - m * m)) : 0
-    out.mid.push(m); out.u1.push(m + sd); out.d1.push(m - sd); out.u2.push(m + 2 * sd); out.d2.push(m - 2 * sd)
+    if (w > 0) { sw += w; swp += w * tp }
+    out.mid.push(sw > 0 ? swp / sw : tp)
   }
   return out
 }
@@ -112,8 +111,8 @@ export function avwapStart(ch: TVChart, d: Drawing): number | null {
 /** 按画线缓存锚定 VWAP：悬停时每条线都要做一次命中、每帧又要画一次，每次都从锚点重新累计的话，
  *  图上堆满锚定 VWAP 时主线程一半时间耗在这里（2026-09-29 A 路压测：499 条锚定 VWAP 悬停扫图，主线程占用 52%）。
  *  键带上根数、首根时间与末根收盘 / 成交量，末根实时跳动或翻页补历史都会重算，和固定区间成交量分布一个做法。 */
-const vwapCache = new WeakMap<Drawing, { key: string; b: Bands }>()
-export function vwapOf(ch: TVChart, d: Drawing, i0: number, end: number): Bands {
+const vwapCache = new WeakMap<Drawing, { key: string; b: Avwap }>()
+export function vwapOf(ch: TVChart, d: Drawing, i0: number, end: number): Avwap {
   const lb = ch.bars[end]
   const key = `${i0}:${end}:${ch.bars.length}:${ch.bars[0]?.t}:${lb?.c}:${lb?.v}`
   let hit = vwapCache.get(d)
@@ -251,26 +250,14 @@ function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col:
   const b = vwapOf(ch, d, i0, end)
   const from = Math.max(i0, Math.floor(ch.xToIndex(0)) - 1)
   const X = (i: number) => ch.indexToX(i), Y = (v: number) => ch.priceToY(v, p, r)
-  const band = (top: number[], bot: number[], fill: string) => {
-    if (end - from < 1) return
-    c.fillStyle = fill; c.beginPath()
-    for (let i = from; i <= end; i++) { const x = X(i), y = Y(top[i - i0]); if (i === from) c.moveTo(x, y); else c.lineTo(x, y) }
-    for (let i = end; i >= from; i--) c.lineTo(X(i), Y(bot[i - i0]))
-    c.closePath(); c.fill()
-  }
   const line = (s: number[], stroke: string, w: number, dash: number[] = []) => {
     c.strokeStyle = stroke; c.lineWidth = w; c.setLineDash(dash); c.beginPath()
     for (let i = from; i <= end; i++) { const x = X(i), y = Y(s[i - i0]); if (i === from) c.moveTo(x, y); else c.lineTo(x, y) }
     c.stroke(); c.setLineDash([])
   }
-  // 带间 0.08：±1σ 里一层青，1σ 到 2σ 两侧一层橙（颜色与主图 VWAP 一致）
-  band(b.u1, b.d1, hexA('#26A69A', 0.08))
-  band(b.u2, b.u1, hexA('#FF9800', 0.08)); band(b.d1, b.d2, hexA('#FF9800', 0.08))
-  line(b.u2, hexA('#FF9800', 0.8), 1); line(b.d2, hexA('#FF9800', 0.8), 1)
-  line(b.u1, '#26A69A', 1); line(b.d1, '#26A69A', 1)
   line(b.mid, col, d.width || 1.5, dashPattern(d))
   if (end - from >= 0) {
-    // 线尾标读数（和主图 VWAP 的图例一样只标中线）
+    // 线尾标读数
     const v = b.mid[end - i0], x = X(end), y = Y(v)
     c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'middle'; c.textAlign = 'left'
     const t = `VWAP ${fmt(v, ch.meta.dec)}`, w = c.measureText(t).width + 8

@@ -1,30 +1,10 @@
 // 深度审查 Web F 线（性能与压测，2026-10-05）的回归用例；压测脚本见 scripts/f-perf.mjs
 import { describe, it, expect } from 'vitest'
 import { Limiter, type LimitSnap } from '../src/market/limit'
-import { visibleRange, flashClass, FLASH_CLASSES } from '../src/watch/logic'
+import { flashClass, FLASH_CLASSES } from '../src/watch/logic'
 import widgetSource from '../src/watch/widget.ts?raw'
 
 const F = 'https://fapi.binance.com'
-
-describe('F1 宽侧栏持仓额只取看得见的行', () => {
-  it('300 行、视口 900、行高 32：只取视口上下各一屏的行，滚到中间取中间那一段', () => {
-    const [a, b] = visibleRange(300, 0, 900, 30, 32)
-    expect(a).toBe(0)
-    expect(b).toBe(Math.ceil((0 - 30 + 1800) / 32))
-    expect(b - a).toBeLessThan(60)
-    const [c, d] = visibleRange(300, 4000, 900, 30, 32)
-    expect(c).toBe(Math.floor((4000 - 30 - 900) / 32))
-    expect(d).toBe(Math.ceil((4000 - 30 + 1800) / 32))
-    const [e, f] = visibleRange(300, 99999, 900, 30, 32)
-    expect(f).toBe(300)
-    expect(e).toBeLessThanOrEqual(f)
-  })
-  it('量不出行高或视口（收起、还没排版）时一行都不取；空表不取', () => {
-    expect(visibleRange(300, 0, 0, 30, 32)).toEqual([0, 0])
-    expect(visibleRange(300, 0, 900, 30, 0)).toEqual([0, 0])
-    expect(visibleRange(0, 0, 900, 30, 32)).toEqual([0, 0])
-  })
-})
 
 describe('F2 限流账本按秒并笔，大小不随请求数长', () => {
   it('一分钟 600 次请求：落盘账本每道最多 60 笔，记的总权重不变，预算照样卡得住', () => {

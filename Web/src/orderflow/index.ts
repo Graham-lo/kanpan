@@ -333,7 +333,7 @@ export function toggleHeat(): void {
 /** 工具栏上「热力」按钮（放在「记一笔」后面）。 */
 export function heatButtonHTML(): string {
   const on = OF.prefs.heat
-  return `<button class="tb-btn ${on ? 'on' : ''}" id="tbHeat" aria-pressed="${on}" data-tip="${on ? '关掉' : '打开'}深度热力：三家挂单按价位的浓淡铺在 K 线下面">${I('layers')}热力</button>`
+  return `<button class="tb-btn ${on ? 'on' : ''}" id="tbHeat" aria-label="热力" aria-pressed="${on}" data-tip="${on ? '关掉' : '打开'}深度热力：三家挂单按价位的浓淡铺在 K 线下面">${I('layers')}<span class="tb-label">热力</span></button>`
 }
 
 // ------------------------------------------------------------------ 指标面板里的一行

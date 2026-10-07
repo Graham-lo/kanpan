@@ -23,23 +23,16 @@ describe('锚定 VWAP', () => {
     const b = bars(40)
     const a = anchoredVwap(b, 0, 39)
     // 主图 VWAP 按日分段；这 40 根都在同一天里，所以两者应当逐根相等
-    const [mid, u1, d1] = vwap(b, 60e3) as number[][]
-    for (let i = 0; i < 40; i++) {
-      expect(a.mid[i]).toBeCloseTo(mid[i], 9)
-      if (u1?.[i] != null) expect(a.u1[i]).toBeCloseTo(u1[i], 9)
-      if (d1?.[i] != null) expect(a.d1[i]).toBeCloseTo(d1[i], 9)
-    }
+    const [mid] = vwap(b, 60e3) as number[][]
+    for (let i = 0; i < 40; i++) expect(a.mid[i]).toBeCloseTo(mid[i], 9)
   })
-  it('锚点那根：中线就是它的典型价、带宽为 0；之后 ±2σ 恰好是 ±1σ 的两倍宽', () => {
+  it('锚点那根就是它的典型价；只有一条线（不带 σ 带，与 iOS、手机网页版一致）', () => {
     const b = bars(30)
     const a = anchoredVwap(b, 10, 29)
     const k = b[10], tp = (k.h + k.l + k.c) / 3
     expect(a.mid[0]).toBeCloseTo(tp, 12)
-    expect(a.u1[0]).toBeCloseTo(tp, 4) // 方差是 E[x²]−E[x]² 相减，有浮点残差
     expect(a.mid).toHaveLength(20)
-    const i = 15
-    expect(a.u2[i] - a.mid[i]).toBeCloseTo(2 * (a.u1[i] - a.mid[i]), 9)
-    expect(a.mid[i] - a.d2[i]).toBeCloseTo(2 * (a.mid[i] - a.d1[i]), 9)
+    expect(Object.keys(a)).toEqual(['mid'])
   })
   it('只算到 to（复盘回放时不看未来）', () => {
     expect(anchoredVwap(bars(30), 5, 12).mid).toHaveLength(8)

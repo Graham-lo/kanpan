@@ -69,6 +69,8 @@ export function toast(title: string, sub = '', ic = 'check', ms = 3600): void {
 export type MenuItem = '-' | {
   header?: string; icon?: string; label?: string; html?: string; sc?: string
   checked?: boolean; check?: boolean; disabled?: boolean; run?: () => void
+  /** 行尾的小按钮（如周期的收藏星）：点它只跑 trailRun、菜单不关；trailRun 拿到按钮自己好就地改样子 */
+  trail?: string; trailTip?: string; trailRun?: (el: HTMLElement) => void
 }
 export interface MenuOpts { width?: number; focus?: boolean; returnFocus?: HTMLElement }
 
@@ -85,7 +87,7 @@ export function menu(items: MenuItem[], x: number, y: number, opts: MenuOpts = {
     if (it === '-') return '<div class="sep" role="separator"></div>'
     if (it.header) return `<div class="mh">${esc(it.header)}</div>`
     const lead = it.icon ? I(it.icon) : it.check !== undefined ? I('check', 'icon check') : ''
-    return `<button class="mi ${it.checked ? 'checked' : ''}" role="menuitem" data-k="${k}" ${it.disabled ? 'disabled style="opacity:.45;cursor:default"' : ''}>${lead}<span class="label">${it.html || esc(it.label)}</span>${it.sc ? `<span class="sc">${esc(it.sc)}</span>` : ''}</button>`
+    return `<button class="mi ${it.checked ? 'checked' : ''}" role="menuitem" data-k="${k}" ${it.disabled ? 'disabled style="opacity:.45;cursor:default"' : ''}>${lead}<span class="label">${it.html || esc(it.label)}</span>${it.sc ? `<span class="sc">${esc(it.sc)}</span>` : ''}${it.trail ? `<span class="mi-trail" data-trail${it.trailTip ? ` data-tip="${esc(it.trailTip)}"` : ''}>${it.trail}</span>` : ''}</button>`
   }).join('')
   document.body.appendChild(m)
   const w = m.offsetWidth, h = m.offsetHeight
@@ -93,7 +95,10 @@ export function menu(items: MenuItem[], x: number, y: number, opts: MenuOpts = {
   m.style.top = (y + h > innerHeight - 8 ? Math.max(8, y - h) : y) + 'px'
   m.addEventListener('click', e => {
     const b = tgt(e).closest<HTMLButtonElement>('.mi'); if (!b || b.disabled) return
-    const it = items[+(b.dataset.k || 0)]; closeMenu()
+    const it = items[+(b.dataset.k || 0)]
+    const tr = tgt(e).closest<HTMLElement>('[data-trail]')
+    if (tr && it !== '-' && it.trailRun) { e.stopPropagation(); it.trailRun(tr); return }
+    closeMenu()
     if (it !== '-') it.run?.()
   })
   m.addEventListener('keydown', e => {

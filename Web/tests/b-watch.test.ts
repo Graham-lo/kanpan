@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reorderWatch, undoClear, oiShown, oiFromResponse } from '../src/watch/logic'
+import { reorderWatch, undoClear } from '../src/watch/logic'
 
 describe('PC 自选拖动排序落点（B4）', () => {
   it('落在淡行（空格取消后留着的那一行）上方：挪到它画出来的位置，不甩到最后', () => {
@@ -29,19 +29,5 @@ describe('清空自选后 ⌘Z（B5）', () => {
     expect(undoClear(['A', 'B'], ['C'])).toEqual(['A', 'B', 'C'])
     expect(undoClear(['A', 'B'], ['B'])).toEqual(['A', 'B'])
     expect(undoClear(['A'], [])).toEqual(['A'])
-  })
-})
-
-describe('宽侧栏持仓额格（B10）', () => {
-  it('取数那一刻没价格：不当成「没有永续」，价格到了就有数', () => {
-    const e = { oi: oiFromResponse('1200'), t: 0 }
-    expect(oiShown(e, null)).toEqual({ value: null, noPerp: false })
-    expect(oiShown(e, 2)).toEqual({ value: 2400, noPerp: false })
-  })
-  it('取失败（限流）不出「没有永续」提示；币安回 0 才算', () => {
-    expect(oiShown({ oi: undefined, t: 0 }, 5)).toEqual({ value: null, noPerp: false })
-    expect(oiShown(undefined, 5)).toEqual({ value: null, noPerp: false })
-    expect(oiShown({ oi: oiFromResponse('0'), t: 0 }, 5)).toEqual({ value: null, noPerp: true })
-    expect(oiFromResponse('abc')).toBeUndefined()
   })
 })

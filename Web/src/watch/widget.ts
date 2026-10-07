@@ -1,9 +1,10 @@
 /* Hkline Web · 侧栏「自选」小部件
  *
  * 图表页只留挂接点（installWatch / widgetWatch / mountWatch / watchClick / patchWatchRow / takeWatchUndo），
- * 列表的渲染、键盘、右键、拖动排序、宽列数据都在这里。
+ * 列表的渲染、键盘、右键、拖动排序都在这里。
  *
- * 列固定：品种 · 最新价 · 涨跌幅 · 成交额；侧栏宽 ≥ 400 时再加 资金费 · 持仓额（不给列设置）。
+ * 列固定三列：品种（只写代号）· 最新价 · 涨跌幅，不给列设置；2026-10-07 用户说中文名、成交额都没必要，
+ * 侧栏拉宽时的资金费 · 持仓额两列一并去掉。
  * 键盘（焦点在列表里时，带 ⌘ / Ctrl / Alt 的一律放给全局）：
  *   ↑ ↓ Home End  移动并在活动格打开（和全局 ↑ ↓ 一样「看到哪只图就是哪只」）
  *   ↵             在活动格打开光标这只
@@ -13,14 +14,12 @@
  * 多图时头部下写「在第 N 格打开」，跟着活动格走；行的右键菜单同样写第几格。
  */
 import { st, save } from '../app/store'
-import { S, REST, j, TABS, fetchOpenInterest, type Kind } from '../market'
+import { S, TABS, type Kind } from '../market'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge } from '../ui/common'
-import { fmtCompact } from '../util/format'
-import { reorderWatch, undoClear, oiShown, oiFromResponse, visibleRange, flashClass, FLASH_CLASSES, type OiEntry } from './logic'
+import { reorderWatch, undoClear, flashClass, FLASH_CLASSES } from './logic'
 import { onSession } from '../account/session'
-import { ago } from '../util/clock'
 
 export interface WatchDeps {
   openSymbol(k: string): void
@@ -38,20 +37,14 @@ export interface WatchDeps {
 }
 let D: WatchDeps
 
-/** 宽列出现的侧栏宽度 */
-export const WIDE_AT = 400
-const OI_TTL = 60e3
-
 const kb = { on: false, cursor: '' }
 let ghost: { k: string; i: number; tab: Kind } | null = null
-let wide = false
 let undo: (() => void) | null = null
 
 /** 全局 ⌘Z 先问这里要不要撤销自选的改动 */
 export function takeWatchUndo(): (() => void) | null { const u = undo; undo = null; return u }
 
 const panelEl = (): HTMLElement | null => document.getElementById('sidePanel')
-const panelWide = (): boolean => (panelEl()?.getBoundingClientRect().width || 0) >= WIDE_AT
 const tabName = (k: Kind): string => TABS.find(x => x[0] === k)?.[1] || ''
 const codeOf = (k: string): string => sym(k)?.code || k
 const targetLabel = (): string => D.cellCount() > 1 ? `在第 ${D.activeIndex() + 1} 格打开` : '在图上打开'
@@ -67,22 +60,10 @@ export function installWatch(d: WatchDeps): void {
   D = d
   // 换了账号：上一个账号的 ⌘Z 撤销和淡行都不再作数（不然 ⌘Z 会把上个账号移出的品种塞进这个账号）
   onSession(() => { undo = null; ghost = null })
-  // 侧栏拖宽 / 拖窄跨过 400 时重画，加减那两列
-  const el = panelEl()
-  if (el) new ResizeObserver(() => {
-    const w = panelWide()
-    if (w !== wide && st.panel === 'watch') { wide = w; D.renderPanel() }
-  }).observe(el)
-  // 宽列的慢数：资金费一分钟刷一次全表，持仓额按需取、一分钟过期
-  setInterval(() => {
-    if (!wide || st.panel !== 'watch' || st.page !== 'chart' || document.visibilityState === 'hidden') return
-    void refreshFunding(); void refreshOI(shownRows())
-  }, 61e3)
 }
 
 // ------------------------------------------------------------ 渲染
 export function widgetWatch(): string {
-  wide = panelWide()
   const cur = D.current()
   const list = rows()
   const empty = !S.symbols.size
@@ -91,39 +72,25 @@ export function widgetWatch(): string {
   const c = D.collapsed()
   if (!list.includes(kb.cursor)) kb.cursor = list.includes(cur) ? cur : list[0] || ''
   const multi = D.cellCount() > 1
-  // 持仓额等表挂上之后按看得见的行取（mountWatch）；这里只刷资金费（整表一个请求）
-  if (wide && list.length) void refreshFunding()
   // 标题、分类、添加、更多、收起并在一行（36 px），省下的高度给列表
-  return `<div class="widget widget-watch ${c ? 'collapsed' : ''} ${wide ? 'wv-wide' : ''}"><div class="sp-head wv-head"><h3>自选</h3>
+  return `<div class="widget widget-watch ${c ? 'collapsed' : ''}"><div class="sp-head wv-head"><h3>自选</h3>
       <div class="wv-tabs" role="tablist">${TABS.filter(([k]) => k !== 'idx' || st.watch.idx.length || st.watchTab === 'idx').map(([k, l]) => `<button class="chip" role="tab" data-tab="${k}" aria-pressed="${st.watchTab === k}">${l} ${st.watch[k].length}</button>`).join('')}</div>
       <button class="ibtn xs" id="wAdd" aria-label="添加品种" data-tip="添加品种" data-kbd="⌘ K">${I('plus', 'icon-16')}</button>
       <button class="ibtn xs" id="wMore" aria-label="更多" data-tip="更多">${I('more', 'icon-16')}</button>
       ${D.collapseBtn(c)}</div>
     ${multi ? `<div class="wv-target" id="wTarget">${I('layout4', 'icon-16')}<span>${targetLabel()}</span><span class="sc">↵</span></div>` : ''}
     <div class="scroll no-bar wv-body">
-      ${list.length && S.symbols.size ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选"><thead><tr><th>品种</th><th>最新价</th><th>涨跌幅</th><th>成交额</th>${wide ? '<th>资金费</th><th>持仓额</th>' : ''}</tr></thead>
+      ${list.length && S.symbols.size ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选"><thead><tr><th>品种</th><th>最新价</th><th>涨跌幅</th></tr></thead>
       <tbody>${list.map(k => watchRow(k, cur)).join('')}</tbody></table>` : empty}
     </div></div>`
 }
 
-const NO_PERP = '该品种没有永续'
-function frCell(k: string): string {
-  const s = sym(k)
-  return s?.fr == null ? `<td class="num faint" data-f="fr" data-tip="${NO_PERP}">—</td>` : `<td class="num ${cls(s.fr)}" data-f="fr">${frText(s.fr)}</td>`
-}
-function oiCell(k: string): string {
-  const o = oiShown(oiCache.get(k), S.symbols.get(k)?.price)
-  return o.value == null ? `<td class="num faint" data-f="oi"${o.noPerp ? ` data-tip="${NO_PERP}"` : ''}>—</td>` : `<td class="num muted" data-f="oi">${fmtCompact(o.value)}</td>`
-}
-const frText = (fr: number): string => (fr * 100).toFixed(4) + '%'
-
 function watchRow(k: string, cur: string): string {
   const s = sym(k), g = ghost?.k === k
   return `<tr data-sym="${k}" draggable="${!g}" tabindex="${k === kb.cursor ? 0 : -1}" class="${k === cur ? 'sel' : ''} ${g ? 'wv-ghost' : ''}" aria-selected="${k === cur}">
-    <td><div class="sym">${badge(s)}<b>${esc(s?.code || k)}</b><span class="cn">${esc(s?.cn || '')}</span>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
+    <td><div class="sym">${badge(s)}<b>${esc(s?.code || k)}</b>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
     <td class="num price-live" data-f="price">${priceText(s)}</td>
-    <td class="num ${cls(s?.pct)} price-live" data-f="pct">${pctText(s?.pct)}</td>
-    <td class="num muted" data-f="vol">${fmtCompact(s?.vol)}</td>${wide ? frCell(k) + oiCell(k) : ''}</tr>`
+    <td class="num ${cls(s?.pct)} price-live" data-f="pct">${pctText(s?.pct)}</td></tr>`
 }
 
 /** 渲染后挂事件、把键盘焦点放回光标那一行 */
@@ -142,12 +109,6 @@ export function mountWatch(el: HTMLElement): void {
     if (ghost) { ghost = null; if (st.panel === 'watch') D.renderPanel() }
   }))
   tbl.addEventListener('contextmenu', onContext)
-  if (wide) {
-    void refreshOI(shownRows())
-    // 往下滚出新的行再取（滚停 150 ms）；表每次重画都是新节点，监听跟着旧节点一起丢掉
-    let t = 0
-    tbl.closest('.wv-body')?.addEventListener('scroll', () => { clearTimeout(t); t = window.setTimeout(() => void refreshOI(shownRows()), 150) }, { passive: true })
-  }
   const a = document.activeElement
   if (kb.on && (!a || a === document.body || panelEl()?.contains(a))) {
     const tr = $<HTMLElement>(`tr[data-sym="${kb.cursor}"]`, tbl)
@@ -286,7 +247,7 @@ function bindDrag(tbl: HTMLElement): void {
 export function patchWatchRow(k: string, dir: number): void {
   const tr = $(`#wTbl tr[data-sym="${k}"]`), s = sym(k)
   if (!tr || !s) return
-  const p = $('[data-f="price"]', tr), pc = $('[data-f="pct"]', tr), v = $('[data-f="vol"]', tr)
+  const p = $('[data-f="price"]', tr), pc = $('[data-f="pct"]', tr)
   if (p) {
     p.textContent = priceText(s)
     // 重播闪色不读 offsetWidth：原来每只跳价的行都 remove → 读宽度 → add，一帧几十行就是几十次强制样式重算；
@@ -294,69 +255,4 @@ export function patchWatchRow(k: string, dir: number): void {
     if (dir) { const c = flashClass(p.className, dir); p.classList.remove(...FLASH_CLASSES); p.classList.add(c) }
   }
   if (pc) { pc.textContent = pctText(s.pct); pc.className = `num ${cls(s.pct)} price-live` }
-  if (v) v.textContent = fmtCompact(s.vol)
-}
-function patchWide(): void {
-  const tbl = $('#wTbl'); if (!tbl || !wide) return
-  for (const tr of $$<HTMLElement>('tbody tr[data-sym]', tbl)) {
-    const k = tr.dataset.sym || ''
-    const f = $('[data-f="fr"]', tr), o = $('[data-f="oi"]', tr)
-    if (f) f.outerHTML = frCell(k)
-    if (o) o.outerHTML = oiCell(k)
-  }
-}
-
-// ------------------------------------------------------------ 宽列数据
-interface Premium { symbol: string; lastFundingRate: string; nextFundingTime: number }
-let fundingAt = 0
-/** 资金费：启动时 premiumIndex 取过一次，此后只有订了标记价流的那只在动；宽列出来时一分钟整表刷一次 */
-async function refreshFunding(): Promise<void> {
-  // 全市场表刚带着 premiumIndex 整表回来的一分钟内不再重取（原来宽侧栏一开图就紧跟着再拉一遍同一张表）
-  if (ago(Math.max(fundingAt, S.universeAt)) < 60e3) return
-  fundingAt = Date.now()
-  try {
-    const pi = await j<Premium[]>(`${REST}/fapi/v1/premiumIndex`)
-    for (const p of pi) { const s = S.symbols.get(p.symbol); if (s) { s.fr = p.lastFundingRate === '' ? null : +p.lastFundingRate; if (p.nextFundingTime) s.nextFunding = p.nextFundingTime } }
-    patchWide()
-  } catch { fundingAt = 0 }
-}
-
-/** 自选表里现在看得见（上下各多一屏）的那几只 */
-function shownRows(): string[] {
-  const tbl = $('#wTbl'), body = tbl?.closest<HTMLElement>('.wv-body')
-  if (!tbl || !body) return []
-  const trs = $$<HTMLElement>('tbody tr[data-sym]', tbl)
-  if (!trs.length) return []
-  const [a, b] = visibleRange(trs.length, body.scrollTop, body.clientHeight, trs[0].offsetTop, trs[0].offsetHeight)
-  return trs.slice(a, b).map(r => r.dataset.sym || '').filter(Boolean)
-}
-
-const oiCache = new Map<string, OiEntry>()
-const oiInflight = new Set<string>()
-/** 持仓额 = 未平仓合约数 × 最新价（和详情一致）；币安没有批量接口，逐只取，并发 4，一分钟过期 */
-async function refreshOI(list: string[]): Promise<void> {
-  const now = Date.now()
-  const todo = list.filter(k => !oiInflight.has(k) && ago(oiCache.get(k)?.t || 0, now) >= OI_TTL)
-  if (!todo.length) return
-  todo.forEach(k => oiInflight.add(k))
-  let next = 0
-  const worker = async () => {
-    while (next < todo.length) {
-      const k = todo[next++]
-      try {
-        // 与详情块共用同一只的在途请求（冷启动时当前品种两边各取一次）
-        const raw = await fetchOpenInterest(k)
-        oiCache.set(k, { oi: oiFromResponse(raw), t: Date.now() })
-        // 到一只填一格：一屏上下近百只要取好几秒，不等整批取完再一起亮
-        const o = $(`#wTbl tr[data-sym="${k}"] [data-f="oi"]`)
-        if (o) o.outerHTML = oiCell(k)
-      } catch {
-        // 取失败（限流、断网）：留着上一次的数，10 秒后再试；不当成「没有永续」
-        oiCache.set(k, { oi: oiCache.get(k)?.oi, t: Date.now() - OI_TTL + 10e3 })
-      }
-      finally { oiInflight.delete(k) }
-    }
-  }
-  await Promise.all([worker(), worker(), worker(), worker()])
-  patchWide()
 }

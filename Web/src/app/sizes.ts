@@ -5,7 +5,7 @@
  * 窗口变小时按比例收，窗口变回来又回到用户拖的那个值，存着的数不被改写。
  *
  *   深度梯子列  宽  默认 240，160–480
- *   右侧面板    宽  默认 400，320–640
+ *   右侧面板    宽  默认 320（自选只剩三列，2026-10-07 收窄），320–640
  *   底部抽屉    高  默认 280，160 到页面高的 60%
  *   主图 / 副图 高  存比例（占画布高）；主图 ≥ 40%、每个副图 ≥ 80 px
  *   侧栏各块    高  默认分配 + 用户覆盖（像素，按总高按比例铺满）
@@ -19,7 +19,7 @@ export interface RegionSpec { def: number; min: number; max: number }
 export type RegionId = 'ladder' | 'panel' | 'drawer'
 export const REGIONS: Record<RegionId, RegionSpec> = {
   ladder: { def: 240, min: 160, max: 480 },
-  panel: { def: 400, min: 320, max: 640 },
+  panel: { def: 320, min: 320, max: 640 },
   drawer: { def: 280, min: 160, max: Infinity }, // 上限按页面高的 60% 另算
 }
 /** 抽屉最高占页面（图表页）高的比例 */

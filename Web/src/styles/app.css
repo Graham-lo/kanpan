@@ -31,7 +31,7 @@
   --toolbar-h: 40px;
   --drawbar-w: 48px;
   --rail-w: 48px;
-  --panel-w: 400px;
+  --panel-w: 320px;
   --gutter: 4px;
 
   --ease: cubic-bezier(.2, .7, .2, 1);
@@ -387,6 +387,12 @@ kbd {
 .menu .mi .sc { color: var(--text-3); font-size: var(--t12); }
 .menu .mi.checked .check { opacity: 1; }
 .menu .mi .check { opacity: 0; color: var(--accent-text); }
+/* 行尾小按钮（周期的收藏星、自定义周期的 ×）：没钉的星只在悬停这一行时出现，钉了的常亮 */
+.menu .mi .mi-trail { display: inline-flex; margin: -4px -6px -4px 0; padding: 4px; color: var(--text-3); }
+.menu .mi .mi-trail:hover { color: var(--text-1); }
+.menu .mi .mi-trail .pin { opacity: 0; }
+.menu .mi:hover .mi-trail .pin, .menu .mi:focus-visible .mi-trail .pin { opacity: 1; }
+.menu .mi .mi-trail .pin.on { opacity: 1; color: var(--accent-text); }
 .menu .sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
 .menu .mh { padding: var(--s2) var(--s3) var(--s1); font-size: var(--t11); color: var(--text-3); font-weight: 600; letter-spacing: .02em; }
 
@@ -433,6 +439,20 @@ kbd {
 .chart-toolbar {
   grid-column: 1 / 3; grid-row: 1;
   display: flex; align-items: center; gap: var(--s1); padding: 0 var(--s2);
+  container: toolbar / inline-size; min-width: 0;
+}
+.chart-toolbar > * { flex: none; }
+/* 放不下时照 TradingView 逐级收：文字按钮只留图标（悬停仍有提示）→ 品种类别 → 撤销 / 重做（⌘Z / ⌘Y 照用）。
+   带字整排约 1090 px、全收后约 780 px（1280 宽的窗口开着右侧面板也放得下） */
+@container toolbar (max-width: 1120px) {
+  .chart-toolbar .tb-label { display: none; }
+  .chart-toolbar .tb-btn:has(.tb-label) { padding: 0 6px; }
+}
+@container toolbar (max-width: 920px) {
+  .symbol-btn .kind { display: none; }
+}
+@container toolbar (max-width: 880px) {
+  #tbUndo, #tbRedo, .tb-right .tb-sep { display: none; }
 }
 .tb-sep { width: 1px; height: 20px; background: var(--line); margin: 0 var(--s1); flex: none; }
 .tb-btn {
@@ -450,7 +470,7 @@ kbd {
 .intervals { display: flex; align-items: center; gap: 2px; }
 .intervals button {
   height: var(--h-sm); min-width: 36px; padding: 0 var(--s2); border-radius: var(--r-sm);
-  color: var(--text-2); font-weight: 500;
+  color: var(--text-2); font-weight: 500; white-space: nowrap; flex: none;
   transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
 .intervals button:hover { background: var(--surface-3); color: var(--text-1); }
@@ -834,20 +854,10 @@ kbd {
 .widget-watch tr.wv-ghost td:first-child { opacity: 1; }
 .widget-watch tr.wv-ghost .sym > :not(.wv-off) { opacity: .45; }
 .wv-off { color: var(--text-3); margin-left: auto; }
-/* 宽列（侧栏 ≥ 400）：品种列让出中文名 */
-/* 品种列吃掉剩下的宽度、中文名放不下就省略，数字列按内容宽；侧栏拖窄到 320 也不把成交额挤出去 */
+/* 品种列吃掉剩下的宽度，两列数字按内容宽 */
 .widget-watch .tbl td:first-child { max-width: 0; width: 100%; }
 .widget-watch .tbl .sym { min-width: 0; }
 .widget-watch .tbl .sym > * { flex: none; }
-.widget-watch .tbl .sym .cn { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
-/* 六列时一行要在 400 宽里放下：数字列 12 号字、格间距收到 4，首尾各留 8，代号后面的中文名收起 */
-.wv-wide .tbl td, .wv-wide .tbl th { padding: 0 var(--s1); }
-.wv-wide .tbl td { font-size: var(--t12); }
-.wv-wide .tbl td:first-child, .wv-wide .tbl th:first-child { padding-left: var(--s2); }
-.wv-wide .tbl td:last-child, .wv-wide .tbl th:last-child { padding-right: var(--s2); }
-.wv-wide .tbl .sym { gap: var(--s1); }
-.wv-wide .tbl .sym b { font-size: var(--t13); }
-.wv-wide .tbl .sym .cn { display: none; }
 /* 价格变动：文字闪一次涨跌色 150 ms */
 /* 每套两份同样的关键帧轮换着挂：换了动画名浏览器就从头播，脚本不用读 offsetWidth 逼它重算（watch/logic.ts flashClass） */
 .wv-flash-up { animation: wvFlashUp 150ms linear; }

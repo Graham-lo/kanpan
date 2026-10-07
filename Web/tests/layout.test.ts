@@ -12,7 +12,7 @@ const sum = (xs: readonly number[]): number => xs.reduce((a, b) => a + b, 0)
 describe('分隔条尺寸：夹取、按比例收、双击回默认', () => {
   it('三处默认值与范围', () => {
     expect(REGIONS.ladder).toMatchObject({ def: 240, min: 160, max: 480 })
-    expect(REGIONS.panel).toMatchObject({ def: 400, min: 320, max: 640 })
+    expect(REGIONS.panel).toMatchObject({ def: 320, min: 320, max: 640 })
     expect(REGIONS.drawer).toMatchObject({ def: 280, min: 160 })
     expect(DRAWER_MAX_FRAC).toBe(0.6)
   })
@@ -20,7 +20,7 @@ describe('分隔条尺寸：夹取、按比例收、双击回默认', () => {
     expect(clampSize(90, REGIONS.ladder)).toBe(160)
     expect(clampSize(900, REGIONS.ladder)).toBe(480)
     expect(clampSize(333.4, REGIONS.panel)).toBe(333)
-    expect(clampSize(undefined, REGIONS.panel)).toBe(400)
+    expect(clampSize(undefined, REGIONS.panel)).toBe(320)
     expect(clampSize(Number.NaN, REGIONS.ladder)).toBe(240)
   })
   it('横向放得下时原样；放不下时梯子与面板按比例一起收，图表区留够 480，各自不低于下限', () => {
