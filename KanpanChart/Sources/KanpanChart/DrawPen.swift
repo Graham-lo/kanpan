@@ -8,7 +8,7 @@ import KanpanPresentation
 /// 一条线上所有的墨都出自 `color(of:_:)` 这一个颜色（填充、底板只是它的透明度阶）。
 /// 从前没挑过颜色的线走 `band`（蓝），手柄却是 `amber`（棕金），一条线上两种墨。
 ///
-/// **跟皮肤。** `Drawing.color == nil` 就是「跟皮肤」：画的时候取这一刻皮肤的 `amber`，
+/// **跟皮肤。** `Drawing.color == nil` 就是「跟皮肤」：画的时候取这一刻皮肤的强调色 `accent`（青苔墨绿、陶土赤陶……；`amber` 三套几乎同一支金棕，分不出皮肤，不用它），
 /// 换皮肤、切深浅色线跟着变。存档里不再写死任何默认色；老线存着的显式色照旧按那支色画，
 /// 存档格式不变、不迁移。
 ///
@@ -21,11 +21,11 @@ public enum DrawPen {
 
   /// 这条线用哪支色。
   public static func color(of d: Drawing, _ t: ChartColors) -> Hex { color(d.color, t) }
-  public static func color(_ stored: Hex?, _ t: ChartColors) -> Hex { stored ?? t.amber }
+  public static func color(_ stored: Hex?, _ t: ChartColors) -> Hex { stored ?? t.accent }
 
   /// 强调色浅一阶：往白里掺三成。深浅两版都往「亮」走——深色底上它更跳，浅色底上仍读得出。
   public static func lighter(_ t: ChartColors) -> Hex {
-    Palette.mix(t.amber, "#FFFFFF", amount: 0.7)
+    Palette.mix(t.accent, "#FFFFFF", amount: 0.7)
   }
 
   /// 色板的一格。`stored` 是选它之后写进 `Drawing.color` 的值（`nil` = 跟皮肤）。
@@ -36,16 +36,23 @@ public enum DrawPen {
     public var shown: Hex
   }
 
-  /// 五格色板，顺序固定：跟皮肤、浅一阶、涨、跌、墨。
+  /// 色板，顺序固定：跟皮肤、浅一阶、涨、跌、墨。
+  ///
+  /// 和前面某一格同色的那格不摆（深色青苔的强调色就是涨色），免得两格看着一样、选了却是两回事。
   public static func swatches(_ t: ChartColors) -> [Swatch] {
     let light = lighter(t)
-    return [
-      Swatch(role: "skin", name: "跟皮肤", stored: nil, shown: t.amber),
+    let all = [
+      Swatch(role: "skin", name: "跟皮肤", stored: nil, shown: t.accent),
       Swatch(role: "light", name: "浅色", stored: light, shown: light),
       Swatch(role: "up", name: "涨色", stored: t.up, shown: t.up),
       Swatch(role: "down", name: "跌色", stored: t.down, shown: t.down),
       Swatch(role: "ink", name: "墨色", stored: t.ink, shown: t.ink),
     ]
+    var out: [Swatch] = []
+    for s in all where !out.contains(where: { $0.shown.value.uppercased() == s.shown.value.uppercased() }) {
+      out.append(s)
+    }
+    return out
   }
 
   /// 一条线此刻画多浓。

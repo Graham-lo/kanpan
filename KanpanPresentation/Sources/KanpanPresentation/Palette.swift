@@ -80,6 +80,9 @@ public struct ChartColors: Sendable, Equatable {
   /// 副图线（MAVOL / DIF、DEA / RSI…）依次取色。青苔、陶土和 `palette` 同一组；
   /// 经典按 AICoin 的槽位色板另给一组。
   public var sub: [Hex]
+  /// 皮肤的强调色（`PaletteSeed.accent`）。画线「跟皮肤」的那支笔用它——`amber` 三套皮肤几乎同一支金棕，
+  /// 分不出皮肤；`amber` 继续给价格轴最新价胶囊、BOLL 中轴等原来的用途。
+  public var accent: Hex
 }
 
 /// 三套配色：青苔（冷，出厂）、陶土（暖）与经典（白），各有浅深两版。
@@ -489,7 +492,7 @@ public enum Palette: Sendable {
       hair: t.hair,
       amberSoft: t.amber.alpha(d ? "1A" : "16"), amberLine: t.amber.alpha("55"),
       up: t.up, down: t.down,
-      palette: t.palette, sub: t.sub)
+      palette: t.palette, sub: t.sub, accent: t.accent)
   }
 
   public static func chart(dark: Bool, redUp: Bool = false) -> ChartColors {

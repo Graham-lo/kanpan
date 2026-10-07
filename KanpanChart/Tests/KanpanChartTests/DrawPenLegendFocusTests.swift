@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import KanpanCore
+import KanpanPresentation
 import Testing
 import UIKit
 
@@ -23,7 +24,7 @@ struct DrawPenLegendFocusTests {
     for dark in [false, true] {
       let t = Evidence.state(dark: dark, size: Self.size).colors
       var d = Drawing(kind: .trend, points: [DrawPoint(t: 0, p: 1), DrawPoint(t: 1, p: 2)])
-      #expect(DrawPen.color(of: d, t) == t.amber)
+      #expect(DrawPen.color(of: d, t) == t.accent)
       d.color = "#4A90E2"
       #expect(DrawPen.color(of: d, t) == "#4A90E2")
     }
@@ -34,10 +35,28 @@ struct DrawPenLegendFocusTests {
     let t = Evidence.state(dark: false, size: Self.size).colors
     let s = DrawPen.swatches(t)
     #expect(s.map(\.role) == ["skin", "light", "up", "down", "ink"])
-    #expect(s[0].stored == nil && s[0].shown == t.amber)
+    #expect(s[0].stored == nil && s[0].shown == t.accent)
     #expect(s[2].stored == t.up && s[3].stored == t.down && s[4].stored == t.ink)
-    #expect(s[1].stored != t.amber)
+    #expect(s[1].stored != t.accent)
     #expect(Set(s.map(\.shown)).count == 5, "五格色要彼此分得开")
+  }
+
+  @Test("跟皮肤的笔是皮肤强调色：青苔与陶土分得开，深浅两版都是；同色的格不重复摆")
+  func penDiffersBySkin() {
+    let pairs: [(PaletteSeed, PaletteSeed)] = [(Palette.sageSeed, Palette.terraSeed),
+                                              (Palette.sageNightSeed, Palette.terraNightSeed)]
+    for (a, b) in pairs {
+      let ta = Palette.chart(a), tb = Palette.chart(b)
+      #expect(DrawPen.color(nil, ta) == a.accent && DrawPen.color(nil, tb) == b.accent)
+      #expect(DrawPen.color(nil, ta) != DrawPen.color(nil, tb))
+      #expect(DrawPen.color(nil, ta) != ta.amber, "笔色不该还是金棕的 amber")
+    }
+    for seed in [Palette.sageSeed, Palette.sageNightSeed, Palette.terraSeed, Palette.terraNightSeed,
+                 Palette.classicSeed, Palette.classicNightSeed] {
+      let s = DrawPen.swatches(Palette.chart(seed)).map { $0.shown.value.uppercased() }
+      #expect(Set(s).count == s.count, "\(seed.skin) 色板里有两格同色")
+      #expect(s.count >= 4)
+    }
   }
 
   @Test("非编辑态 70%，选中 100%，降低透明度时一律 100%")

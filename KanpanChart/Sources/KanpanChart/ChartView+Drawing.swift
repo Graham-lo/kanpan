@@ -1413,8 +1413,8 @@ struct DrawingPreview: Equatable {
 /// 盖在三层 `CALayer` 之上的一层：选中态、手柄、待落点、预览线，外加画线手势的入口。
 ///
 /// 静态的线由 `ChartRenderer.drawDrawings` 画在底图上（M3 就有了），这里只补
-/// **交互中间量**那一档：选中的那条用 amber 1.8pt 盖一遍（原型 `drawDrawings` 的
-/// `sel` 分支），两端 r=5 的手柄，`pending` 的 amber 圆点，以及从第一点拉到手指的
+/// **交互中间量**那一档：选中的那条用画线的笔色 1.8pt 盖一遍（原型 `drawDrawings` 的
+/// `sel` 分支），两端 r=5 的手柄，`pending` 的笔色圆点，以及从第一点拉到手指的
 /// 虚线预览。
 ///
 /// 它比十字线那层还高，所以选中的线会压在十字线上面——两者同时出现的机会很少，
@@ -1620,7 +1620,7 @@ final class DrawingOverlayView: UIView {
       // 底图整张平移到「锚点落在镜心」，所以镜子里放大的就是 `q` 周围那一块，
       // 和手指真正会落下的地方同源——这是用例 18 的第一条断言。
       backdrop.draw(at: CGPoint(x: -q.x, y: -q.y)); ctx.restoreGState()
-      ctx.setStrokeColor(Paint.cg(s.colors.amber)); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: box)
+      ctx.setStrokeColor(Paint.cg(s.colors.accent)); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: box)
       ctx.beginPath(); ctx.move(to: CGPoint(x: center.x - 7, y: center.y)); ctx.addLine(to: CGPoint(x: center.x + 7, y: center.y))
       ctx.move(to: CGPoint(x: center.x, y: center.y - 7)); ctx.addLine(to: CGPoint(x: center.x, y: center.y + 7)); ctx.strokePath()
     }
