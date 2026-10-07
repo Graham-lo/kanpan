@@ -1143,6 +1143,37 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   点铃铛开提醒表 → 横屏画线台线照画 → 竖屏删线提醒线还在、不问 → 提醒表仍「画线提醒 1」→ 关掉隐藏线回来）、`CompareUITests.testIndicatorPanelAddCompareOpensTheSameSearch`、
   `ChartPanelLayoutUITests.testSingleLayerFitsOneScreen` 3/3。两台 iPhone 不可用，真机包未装。
 
+## 43. 足迹图 / 秒线历史 / 磁盘预算（2026-10-07，服务端 kanpan-api，已部署 kanpan-sg）
+
+网页端怎么用这两条接口见 §44。服务端没有新开任何交易所连接：足迹吃已有的币安 / OKX / Coinbase 成交流（主力订单流那几路），秒线吃已有的币安 U 本位成交流。
+
+- **表（迁移 0051）**：`orderflow_footprint(base, minute_ms, step, levels bytea)` 与 `klines_seconds(base, minute_ms, symbol, tick, bars bytea)`，
+  主键都是 `(base, minute_ms)`：一个品种一分钟一行，档位 / 60 根秒线压成 bytea。两表 `autovacuum_vacuum_insert_scale_factor=0.05`。
+  共用写入器 `src/orderflow_history/minutes.rs`（trait `Row`）：批量 `INSERT … ON CONFLICT DO NOTHING RETURNING`，撞了主键（重启那一分钟）
+  在事务里 `SELECT … FOR UPDATE` 读出旧行、Rust 里合并、`ON CONFLICT DO UPDATE SET (cols)=ROW(EXCLUDED.…)` 写回。
+  分钟按交易所成交时间归（币安 `T`、OKX `ts`、Coinbase `time`，离本机时钟 10 秒以内才信），收盘 = 分钟末 + 3 秒宽限。
+- **足迹** `GET /v1/market/orderflow/footprint?symbol=&from=&to=`（`src/orderflow_history/footprint.rs`）：每分钟 × 价格档的主动买 / 主动卖 USD，三所合并（交割合约不算）。
+  档宽 = 价 × 0.0002 取最近的 1/2/5×10ⁿ、不小于最小价位（BTC 现价约 84k → 20）。窗口最长 24 小时，超了 400 `range_too_long`；没跟踪的品种 200 + 空数据
+  `{"symbol":…,"step":null,"minutes":[]}`。返回 `{"symbol","step","minutes":[{"t","rows":[[价,买USD,卖USD],…]}]}`，`cache-control: public, max-age=20`、gzip。
+- **秒线** `GET /v1/market/klines/seconds?symbol=&from=&to=`（`src/orderflow_history/seconds.rs`）：只币安 U 本位，`bars:[[ts,o,h,l,c,量,主动买量],…]`，
+  没成交的秒不出。窗口最长 6 小时，超了 400；没跟踪的品种 200 `{"symbol":…,"bars":[]}`；`symbol=btc` 这类 400 `invalid_symbol`。
+- **磁盘预算表**（`src/storage_budget.rs`，预算数字只在这一张常量表里）：热力（`orderflow_heat` + 三张 rollup）20 GiB、足迹 2 GiB、秒线 1 GiB、
+  `market_features` 3 GiB、大单（`orderflow_orders` + `orderflow_live`）4 GiB，合计闸门 30 GiB。各表先走 3 天滚动删，再过体积闸门：只在超线时动手、
+  删到线下 10%，每表只删自己最老的 6 小时片、最近 6 小时永远不碰。估算 = 活行数 × (平均行宽 + 28) × 总大小 / 堆大小。
+- **活行数用 `n_live_tup`（`25ec35f8`）**：第一版用 `pg_class.reltuples`，它要等 ANALYZE 才更新——14:57 上线后热力闸门 15:03 删掉 6 小时、
+  下一分钟还按旧行数估又删 6 小时（72 → 66 → 60 小时，后两刀是多删的），当场手动 `ANALYZE orderflow_heat` 止住，15:06 那刀（→ 54 小时）是按新数合法的。
+  改成 `pg_stat_user_tables.n_live_tup`（随提交实时增减，统计清零过才退回 reltuples），大单闸门同样改。热力现留约 54 小时（20 GiB 预算本身就装不下 72 小时）。
+- **部署**：① 14:57:28 CST，二进制 sha256 `63ed3386…9022fb`，备份 `/opt/kanpan-backups/footprint-seconds-20261007-145648/`（旧二进制 `8dea80ec…f8388`、
+  源码 tgz、迁移版本 50），迁移 0051 先在 BEGIN…ROLLBACK 里以 `kanpan_app` 角色试跑一遍（建表、插、撞键、FOR UPDATE、DO UPDATE、ctid 分批删、估算查询）再上。
+  ② 修复版 15:09:46 CST，二进制 sha256 `59e632da3ec32e2e97ab7470caa3d2517d0bc040949b13a3c1b9bfefc02c0dfa`，备份 `/opt/kanpan-backups/footprint-seconds-fix-20261007-150824/`；
+  这次 install.py 被热力表上一个长跑的 autovacuum 拦住，用 `--force` 过（这次没有新迁移）。两次部署前都核过线上 `/opt/kanpan-api` 源码逐文件散列与 origin/main 一致。
+- **回滚**：`sudo install -m 0755 /opt/kanpan-backups/footprint-seconds-20261007-145648/kanpan-api /opt/kanpan-api/target/release/kanpan-api && sudo systemctl restart kanpan-api kanpan-worker`；
+  两张新表可留着或 `TRUNCATE orderflow_footprint, klines_seconds`。
+- **验证（15:14）**：`/health` 200；api / worker / gateway / stream-hub 四个 active、NRestarts 0；修复版上线后 warn 以上日志为零（14:57–15:05 那几刀热力删除有 sqlx slow statement 告警）。
+  BTCUSDT 足迹近 5 分钟 5 分钟、档宽 20；秒线近 5 分钟 269 根、OHLC 自洽、时间单调；公网 `https://kanpan.43-160-232-253.sslip.io/v1/market/…` 两条都 200（Caddy 的 `@account` 已含 `/v1/market/*`，没改）。
+  入库 157 只：足迹平均行 147 B、秒线 353 B，估 3 天合计约 0.45 GB（< 3 GB）。库 28 GB，`df` 39G → 40G / 79G。cargo test --lib 614 过、3 忽略。
+- **日志**：SG 的 `RUST_LOG` 只放 warn 与几个模块的 info，`kanpan_api::storage_budget` 的 info 行「Storage budget:」不出现，只有合计超 30 GiB 的 warn 会出；service.env 没动。
+
 ## 44. 网页版足迹图与秒线补历史（2026-10-07）
 
 电脑网页（`Web/src/`）主图加「足迹」画法，秒级周期接服务端 1 秒线补历史。手机网页、iOS 没动。逻辑全在新模块，旧文件只加挂钩。
