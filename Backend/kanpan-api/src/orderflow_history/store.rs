@@ -328,11 +328,10 @@ pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u6
   closed+=once_more_on_deadlock("closing lost orders",||close_lost(pool,base,stale_cutoff(tracked.contains(base),now))).await?;
  }
  // 总量闸门：两张表的文件（pg_total_relation_size）超过预算（`storage_budget::ORDERS`）才动手；删到「行数 × 每行占用」估出来的
- // 实际占用低于线下 10%。行数用 reltuples（上一次 ANALYZE 的估计，够用），删完按删掉的行数往下扣。
+ // 实际占用低于线下 10%。行数用 `storage_budget::live_rows`（随提交增减的统计，不等 ANALYZE），删完按删掉的行数往下扣。
  let budget=crate::storage_budget::ORDERS;
  if crate::storage_budget::over(pool,&budget).await?.is_some() {
-  let tuples:f32=sqlx::query_scalar("SELECT reltuples FROM pg_class WHERE oid='orderflow_orders'::regclass").fetch_one(pool).await?;
-  let rows=(tuples.max(0.0) as f64)-deleted as f64;
+  let rows=crate::storage_budget::live_rows(pool,"orderflow_orders").await?-deleted as f64;
   let oldest:Option<i64>=sqlx::query_scalar("SELECT min(end_ms) FROM orderflow_orders WHERE end_ms IS NOT NULL").fetch_one(pool).await?;
   let start=oldest.unwrap_or(now);
   let (cutoff,n)=crate::storage_budget::trim(rows*ROW_BYTES,budget.target(),ROW_BYTES,start,now,DAY_MS/4,|_,to|{

@@ -57,14 +57,25 @@ pub async fn over(pool:&PgPool,budget:&Budget)->sqlx::Result<Option<i64>> {
  Ok((size as f64>budget.line()).then_some(size))
 }
 
-/// 一张表里活着的数据估多大：行数（`reltuples`，上一次 ANALYZE 的估计）×（每行平均大小 `row` + 行头与行指针 28 字节）
+/// 一张表里此刻有几行活的：统计里随每次提交增减的 `n_live_tup`；统计被清零过（还是 0）才退回 `reltuples`。
+///
+/// 不能用 `reltuples`：它只在 ANALYZE / VACUUM 时更新，大表上 autovacuum 一跑十几分钟。2026-10-07 上线头一回，热力的闸门删完 6 小时，
+/// 下一分钟再估还是删之前的行数，于是又删 6 小时（72 → 66 → 60 小时），直到手工 ANALYZE 才停。`n_live_tup` 删完几秒内就扣掉了。
+pub async fn live_rows(pool:&PgPool,table:&str)->sqlx::Result<f64> {
+ let rows:f64=sqlx::query_scalar("SELECT CASE WHEN COALESCE(s.n_live_tup,0)>0 THEN s.n_live_tup::float8 ELSE GREATEST(c.reltuples,0)::float8 END \
+  FROM pg_class c LEFT JOIN pg_stat_user_tables s ON s.relid=c.oid WHERE c.oid=$1::regclass")
+  .bind(table).fetch_one(pool).await?;
+ Ok(rows.max(0.0))
+}
+
+/// 一张表里活着的数据估多大：行数（`live_rows`）×（每行平均大小 `row` + 行头与行指针 28 字节）
 /// ×（含索引的总大小 ÷ 不含索引的大小）。`row` 由调用方从最近写的一小撮行上量（各表取样的条件不一样）。
 /// 回（估出来的占用，每行折合多少字节——删一行往下扣多少）。
 pub async fn estimate(pool:&PgPool,table:&str,row:f64)->sqlx::Result<(f64,f64)> {
- let (tuples,total,heap):(f32,i64,i64)=sqlx::query_as("SELECT GREATEST(reltuples,0)::real,pg_total_relation_size(oid),pg_table_size(oid) FROM pg_class WHERE oid=$1::regclass")
+ let (total,heap):(i64,i64)=sqlx::query_as("SELECT pg_total_relation_size(oid),pg_table_size(oid) FROM pg_class WHERE oid=$1::regclass")
   .bind(table).fetch_one(pool).await?;
  let per_row=per_row(row,total,heap);
- Ok((tuples.max(0.0) as f64*per_row,per_row))
+ Ok((live_rows(pool,table).await?*per_row,per_row))
 }
 
 /// 一行折合多少字节：（平均大小 + 28）×（含索引的总大小 ÷ 不含索引的大小）。
