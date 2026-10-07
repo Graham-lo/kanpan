@@ -1142,3 +1142,65 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   `PrefsFieldPlanTests.drawingsHiddenIsSyncedAndTurnsDrawingsOff`；UI 16 Pro：`AlertsFlowUITests.testHidingAndDeletingLinesKeepsTheAlert`（画线建提醒 → 藏线后出一条提醒线 →
   点铃铛开提醒表 → 横屏画线台线照画 → 竖屏删线提醒线还在、不问 → 提醒表仍「画线提醒 1」→ 关掉隐藏线回来）、`CompareUITests.testIndicatorPanelAddCompareOpensTheSameSearch`、
   `ChartPanelLayoutUITests.testSingleLayerFitsOneScreen` 3/3。两台 iPhone 不可用，真机包未装。
+
+## 44. 网页版足迹图与秒线补历史（2026-10-07）
+
+电脑网页（`Web/src/`）主图加「足迹」画法，秒级周期接服务端 1 秒线补历史。手机网页、iOS 没动。逻辑全在新模块，旧文件只加挂钩。
+
+- **模块**
+  - `chart/footprint.ts`：足迹整块，包括本机逐笔分桶、历史缓存、按周期并分钟、画法、图例一行和开关。
+  - `market/footprintApi.ts`：足迹历史接口的契约、解析和请求。
+  - `chart/secondsHistory.ts`：秒线历史的解析、补平、拼接、按页取。
+  - `market/rest.ts`：末尾加了 `serverHistory`。404、204、空回包、解析不了都当「没有历史」；其他非 2xx 和断网算失败。
+- **挂钩点**（其余文件没动）
+  - `chart/chart.ts`：
+    - 加两个可空回调 `footprint` 和 `legendExtra`。
+    - `render()` 里改成 `if (!this.footprint?.(…)) this.drawCandles(…)`。
+    - `renderLegend()` 写入前加 `if (this.legendExtra) h += …`。
+  - `pages/chart.ts`：
+    - 加 import。
+    - `barsFor` 秒级分支改调 `secondsKlines`。
+    - `makeCell` 加一行 `bindFootprint(cell.chart, i)`。
+    - 周期「更多」里，「秒」组标题去掉「打开页面起才有」，菜单尾加 `footprintMenuItem`。
+  - `orderflow/index.ts`：`needed()` 和 `onTrade` 各加一行（足迹开着时也收三家逐笔，并喂给 `recordFootprintTrade`）。
+- **足迹**
+  - **入口和开关**：周期「更多」最后一项「足迹」，可勾选。开关按格记在本机 `localStorage['hkline-web-footprint']`，不跨设备同步（store / codec 当时不在本路范围）。秒级周期下这项置灰，写「秒级周期不支持」。打开时把那一格放到每根 60 像素。
+  - **画法**：
+    - 每根 K 线按价位格画，左边主动卖、右边主动买（美元额），颜色跟涨跌色。
+    - 格高够（≥9 像素）且半根宽放得下时写数字，字号按格高在 8–12 之间取；放不下就只画横条。
+    - 每根加一个开收框，控制点（成交额最大的格）描橙框。
+    - 每根宽不到 6 像素，或那根没有逐价数据，就照旧画蜡烛。
+  - **价位桶**：服务端步长的整数倍（1/2/5×10ⁿ），按可见各根高低差的中位数，取每根落在 10–30 格的那一档，并且每格至少 2 像素；不给设置。服务端还没回步长时用同一规则现算：价格 × 0.0002 取最近档。
+  - **历史**：
+    - 接口 `GET /v1/market/orderflow/footprint?symbol=&from=&to=`，回 `{symbol, step, minutes:[{t, rows:[[price, buyUsd, sellUsd]]}]}`。
+    - 单次最多 24 小时，从右往左切窗；往左最多 3 天。
+    - 防抖 250 ms，同时只发一个请求，失败后 30 秒不再试。
+    - 每 15 秒补最右段；回空时改 60 秒补一次。右段与已有缓存重叠 2 分钟。缓存最多 16 只。
+    - 服务端步长变了，本机逐笔按桶中点重新落桶。
+  - **实时**：订单流数据层里币安、OKX、Coinbase 的逐笔，按同一步长记成（分钟 × 价位）。哪一分钟落在 `tradeFlow.SymbolFlow.covered` 的覆盖里就用实时数据，否则用历史；粗周期在前端并分钟。
+  - **图例**：加一行「足迹 买 / 卖 / 净 / 控制点」，那根没数据时写「这根没有逐价成交」。
+- **秒线补历史**
+  - 接口 `GET /v1/market/klines/seconds?symbol=&from=&to=`，回 `{symbol, bars:[[ts, o, h, l, c, vol, buyVol]]}`。单次最多 6 小时；没成交的秒不出行；没跟踪的品种回空。
+  - vol 和 buyVol 按币本位数量理解，成交额 = vol × (h+l+c)/3。服务端若改成美元额，只需改 `parseSeconds` 一处。
+  - 打开秒级周期时取最近 6 小时，和本机逐笔攒的拼在一起，同一秒以逐笔为准。没成交的秒补平；历史末尾到现在之间也补平，不留缺口。
+  - 往左翻页：每页 6 小时，直到 3 天上限或回空为止。失败后 30 秒不再试。
+  - 5 秒、15 秒由 1 秒合并。没有历史时照旧只用逐笔。
+  - 打开之后实时推进来的那段沿用原有逐笔路径（`intervals.ts` 的 `onTrade` 与 `pages/chart.ts` 的 `flushSeconds`），没成交的秒仍不出一根。
+- **现状**：
+  - 2026-10-07 线上这两个接口都还回 404（服务端那一路在做）。所以线上眼下足迹只画打开页面后攒到的分钟，秒线只有逐笔那段；接口上线后前端不用改。
+  - BTC 服务端步长是 20（84000 × 0.0002）。1m 每根高低差中位只有 25–30，所以 1m 每根只有 1–2 格；按「步长整数倍」的规矩做不到更细。15m 起每根约 7–30 格。
+- **测试**：
+  - `Web/tests/footprint-seconds.test.ts` 18 例，覆盖分桶与选档、合并周期、解析与空回包（404 / 空 / 5xx）、24 小时切窗、往左补和 3 天上限、失败冷却、实时与历史按覆盖切换和重新落桶、画法（数字 / 横条 / 退回蜡烛）、图例、秒级菜单置灰、秒线解析 / 补平 / 拼接、6 小时窗、翻页、3 天上限、失败与 alive。
+  - 全量 `npx tsc --noEmit` 干净，vitest 137 个文件 1860 例全过，`npm run build` 无告警。
+- **性能**：`Web/scripts/footprint-perf.mjs`，用本机无头 Chrome 在 2560×1440、DPR 1 下跑 3 轮，数据是合成的 BTC 1m（每分钟约 20 格）。
+  - 一屏 300 根横条模式（9220 格，桶 6）：整帧 render 中位 0.60 ms、P95 0.70 ms，其中足迹 0.40 ms。
+  - 放到最宽写数字（36 根，1546 格）：整帧中位 0.80 ms、P95 1.60 ms，其中足迹 0.70 ms。
+  - 两种都远低于 4 ms 的目标；整轮只发 1 次历史请求。
+- **截图**：`docs/acceptance/足迹图-秒线历史-2026-10-07/`，1920×1080。
+  - 01：周期「更多」里的足迹入口。
+  - 02–04：1m 写数字、1m 一屏 220 根横条、15m 并分钟，历史是合成的。
+  - 05–06：1s 补 6 小时、15s 由 1 秒合并，历史是合成的。
+  - 07：秒级周期下足迹置灰。
+  - 08：十六图中第一格开足迹。
+  - 09–10：线上实时逐笔的 1m 足迹和 1s。
+  - 截图脚本没进仓库。合成历史用真 1m K 线的高低生成，只用来看画法。
