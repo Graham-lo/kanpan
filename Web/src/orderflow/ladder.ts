@@ -12,7 +12,7 @@
  */
 import type { ChartGeometry, TVChart } from '../chart/chart'
 import { st, save } from '../app/store'
-import { I } from '../ui/dom'
+import { I, esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { bucketIndex, mergeFactor } from './bucket'
 import { ladderRows, rowOf, type LadderRow, venueName, exName } from './aggregate'
@@ -449,7 +449,7 @@ function rowCard(r: LadderRow): string {
     for (const [n, v, s] of items.slice(0, 12)) lines.push(`<div class="of-card-r"><span>${n}<em class="${s === 'bid' ? 'up' : 'down'}">${s === 'bid' ? '买' : '卖'}</em></span><b class="num">${amt(v)}</b></div>`)
     if (items.length > 12) lines.push(`<div class="of-card-r faint"><span>另有 ${items.length - 12} 处</span></div>`)
   }
-  const orders = r.orders.map(o => `<div class="of-card-r"><span><i class="sw" style="background:${bandColor(o.product, o.side, 1)}"></i>${venueName(exName(o.exchange), o.product)} 大单</span><b class="num">${amt(o.notional)} · ${durShort(Date.now() - o.firstSeenMs)}</b></div>`).join('')
+  const orders = r.orders.map(o => `<div class="of-card-r"><span><i class="sw" style="background:${bandColor(o.product, o.side, 1)}"></i>${esc(venueName(exName(o.exchange), o.product))} 大单</span><b class="num">${amt(o.notional)} · ${durShort(Date.now() - o.firstSeenMs)}</b></div>`).join('')
   // 成交（中列）与距中间价
   const t = frame?.trades.get(r.row)
   const since = OF.trades.since

@@ -4,6 +4,7 @@
  * 布局槽位（深度梯子列、底部抽屉、侧栏小部件顺序）也在这里，后续跟账号同步。
  */
 import type { Drawing } from '../chart/chart'
+import { cleanDrawing } from '../chart/drawTools'
 import { MAX_SUBS, CATALOG, type IndParams, type IndicatorId, type SubId } from '../chart/calc'
 import { isMoreMain } from '../chart/mainIndicators'
 import { migrateAlert, type Alert } from '../alerts/shape'
@@ -17,6 +18,7 @@ import {
   bookFrom, cleanBook, cleanCells, cleanLayout, clampActive, commitLive, loadLive, migrateLegacyFlag, validIv, validSymbol,
   CELL_FLAGS, LEGACY_FLAG_KEYS, type CellCfg, type Layout, type LayoutBook,
 } from './layouts'
+import { DEFAULTS as CHART_DEFAULTS, clean as cleanChartSettings, type ChartSettings } from '../chart/chartSettings'
 
 export type Theme = 'light' | 'dark'
 export type Skin = 'sage' | 'terra' | 'classic'
@@ -111,6 +113,8 @@ export interface State {
   /** 对比品种：规范键 venue/market/SYMBOL（美元指数是 macro/index/DXY），最多三只；一人一份，随账号同步（和手机同一个字段）。
    *  多图时每格按自己的主图叠这同一份，去掉格子主图那只 */
   compareSymbols: string[]
+  /** 图表设置（右键「设置…」，照 TradingView 四页）：一人一份、所有图格共用，随账号同步（settings 对象的 webChart 字段） */
+  chartSettings: ChartSettings
   /** 以下不落盘 */
   page: PageId
   stale: boolean
@@ -136,7 +140,7 @@ function defaults(): State {
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
-    orderFlow: false, orderFlowOverrides: {}, compareSymbols: [],
+    orderFlow: false, orderFlowOverrides: {}, compareSymbols: [], chartSettings: { ...CHART_DEFAULTS },
     page: 'chart', stale: false, account: null,
   }
 }
@@ -160,7 +164,6 @@ export function drawingsSuspect(): boolean { try { return localStorage.getItem(D
 export function markDrawingsSuspect(): void { try { localStorage.setItem(DRAW_SUSPECT_KEY, '1') } catch { /* 存不下：本轮内存里照样按坏处理不了，下次读盘还会再判 */ } }
 export function clearDrawingsSuspect(): void { try { localStorage.removeItem(DRAW_SUSPECT_KEY) } catch { /* 无 */ } }
 
-const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 /** 画线那块整理成「代号 → 画线数组」；形状不对的丢掉并报 damaged */
 export function sanitizeDrawings(raw: unknown): { drawings: Record<string, Drawing[]>; damaged: boolean } {
   const out: Record<string, Drawing[]> = {}
@@ -169,10 +172,8 @@ export function sanitizeDrawings(raw: unknown): { drawings: Record<string, Drawi
   let damaged = false
   for (const [sym, list] of Object.entries(raw as Record<string, unknown>)) {
     if (!Array.isArray(list)) { damaged = true; continue }
-    const ok = list.filter((d): d is Drawing => {
-      const x = d as Partial<Drawing> | null
-      return !!x && typeof x.id === 'string' && typeof x.type === 'string' && Array.isArray(x.pts) && x.pts.length > 0 && x.pts.every(p => p && finite(p.t) && finite(p.p))
-    })
+    // 形状认不出的（不认识的种类、锚点数不对、没 id）丢掉；颜色 / 粗细 / 线型坏了就地换默认（drawTools.cleanDrawing）
+    const ok = list.map(cleanDrawing).filter((d): d is Drawing => d !== null)
     if (ok.length !== list.length) damaged = true
     out[sym] = ok
   }
@@ -264,6 +265,7 @@ export function hydrate(saved: Partial<State>): State {
   if (!['sage', 'terra', 'classic'].includes(s.skin)) s.skin = 'sage'
   if (s.theme !== 'dark') s.theme = 'light'
   if (s.updown !== 'red-up') s.updown = 'green-up'
+  s.chartSettings = cleanChartSettings(saved.chartSettings)
   if (saved.greenUpMigrated !== true) s.updown = 'green-up'
   s.greenUpMigrated = true
   s.routePicked = saved.routePicked === true

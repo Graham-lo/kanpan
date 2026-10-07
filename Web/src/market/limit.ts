@@ -266,7 +266,20 @@ export class RateLimited extends Error {
 export const isRateLimit = (e: unknown): boolean =>
   e instanceof RateLimited || /^(429|418)\b/.test(String((e as Error)?.message ?? e))
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+/** 排队中的等待都挂在这里：作废（换品种 / 格子销毁）时 wakeQueued() 一把叫醒，让它们立刻重新问 alive、
+ *  该放弃的马上放弃——原来要把这一觉（最长 1 秒，没 alive 时 5 秒）睡满才知道自己已经没人要。 */
+const sleepers = new Set<() => void>()
+const sleep = (ms: number) => new Promise<void>(r => {
+  const done = () => { clearTimeout(t); sleepers.delete(done); r() }
+  const t = setTimeout(done, ms)
+  sleepers.add(done)
+})
+
+/** 叫醒所有排队中的请求，让它们马上重新检查 alive / 冷却 / 预算 */
+export function wakeQueued(): void { for (const f of [...sleepers]) f() }
+
+/** 测试用：现在有几个请求在排队睡 */
+export const queuedCount = (): number => sleepers.size
 
 /** 后台请求能用的那一截预算 */
 export const BACKGROUND_SHARE = 0.6
@@ -282,7 +295,8 @@ export class Superseded extends Error {
  *  连着换几十次品种之后预算全被作废的 K 线占满，最后要的那只反而排在最后（2026-09-29 A 路压测：300 次高频切换后
  *  16 格里一半是空的或还画着上一只）。
  *  返回这一次记在哪一道（true = 网关），发出去之后 noteStatus 记回同一道。 */
-export async function admit(url: string, background = false, alive?: () => boolean): Promise<boolean> {
+export async function admit(url: string, background = false, alive?: () => boolean,
+  onWait?: (ms: number) => void): Promise<boolean> {
   for (;;) {
     if (alive && !alive()) throw new Superseded(url)
     const gw = viaGateway(url)
@@ -290,7 +304,10 @@ export async function admit(url: string, background = false, alive?: () => boole
     if (cool > 0) throw new RateLimited(url, cool)
     const w = limiter.take(url, Date.now(), background ? BACKGROUND_SHARE : 1, gw)
     if (!w) return gw
+    onWait?.(w)
     await sleep(Math.min(w, alive ? 1000 : 5000))
+    // 睡醒（或被 wakeQueued 叫醒）先问一句还要不要，不要了直接放弃，不再去拿预算、不再睡下一觉
+    if (alive && !alive()) throw new Superseded(url)
   }
 }
 

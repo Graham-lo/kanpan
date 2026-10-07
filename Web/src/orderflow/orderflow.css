@@ -139,6 +139,7 @@
 .of-wall span { position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .of-wall .sd { font-weight: 600; text-align: center; }
 .of-wall .vn { display: flex; align-items: center; color: var(--text-2); }
+.of-wall .vn b { font-weight: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .of-wall .v, .of-wall .t { text-align: right; }
 .of-wall .v { font-weight: 600; }
 

@@ -20,7 +20,7 @@
 .sec-boards th:last-child, .sec-boards td:last-child { padding-right: var(--s4); }
 .sec-name { font-size: var(--t14); font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; display: block; }
 .sec-pct { font-size: var(--t14); font-weight: 600; }
-.sec-spark { width: 100%; min-width: 120px; max-width: 360px; height: 28px; display: block; margin-left: auto; overflow: visible; }
+.sec-spark { width: 100%; min-width: 120px; max-width: 360px; height: 28px; display: block; margin-left: auto; overflow: visible; pointer-events: none; } /* 纯装饰：命中落在行上，走势重画换 path 不影响指针下的节点 */
 .sec-spark-none { display: none; text-align: right; }
 .sec-spark-cell.nospark .sec-spark { display: none; }
 .sec-spark-cell.nospark .sec-spark-none { display: block; }

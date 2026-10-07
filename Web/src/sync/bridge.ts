@@ -21,7 +21,7 @@ import { LAYOUTS_FIELD, cleanBook, liveBook, mergeBooks } from '../app/layouts'
 import type { Owned, SyncStore } from './store'
 import { type Json, type SyncObject, keyOf, same } from './types'
 
-export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active'>>
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings'>>
 export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
 export type Prints = Partial<Record<Part, string>>
 
@@ -41,7 +41,7 @@ export const layoutsPrint = (s: WebState): string => (s.layouts && s.layout && s
 
 export function fingerprint(s: WebState): Record<Part, string> {
   return {
-    settings: corePrint(s) + layoutsPrint(s),
+    settings: corePrint(s) + layoutsPrint(s) + JSON.stringify(s.chartSettings ?? null),
     favorites: JSON.stringify(s.watch),
     drawings: JSON.stringify(s.drawings),
     alerts: JSON.stringify(s.alerts),

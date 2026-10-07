@@ -11,6 +11,7 @@
 import './orderflow.css'
 import { st, save, type WidgetId } from '../app/store'
 import { I, esc } from '../ui/dom'
+import { patchShell, patchText } from '../ui/patch'
 import { term } from '../ui/overlay'
 import { OrderFlowFeed, getJSON, type TradeEvent } from './feed'
 import { buildFine, exName, venueName } from './aggregate'
@@ -27,7 +28,7 @@ import { mountLadder, ladderVisible, drawLadder, resetLadder, ladderDebug } from
 import { mountDrawer, updateDrawer, revealInDrawer } from './drawer'
 import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, OF_WIDGETS, tapeDebug } from './widgets'
 import { openOrderFlowSettings, settingsLayerOpen } from './settingsDialog'
-import { baseOfSymbol, productsOf, type Display } from './settings'
+import { D, baseOfSymbol, productsOf, type Display } from './settings'
 import { OF, savePrefs, amt, PRODUCT_FULL, durShort, type Api } from './state'
 import { orderId, type BigOrder } from './types'
 import type { Snapshot } from './model'
@@ -196,7 +197,7 @@ function onFrame(s: Snapshot): void {
   // 三家逐笔的覆盖心跳：连接都开着这半秒才算盖住（副图累计量差 / 大单与散户）
   const conns = f.debug().conns
   beat(f.symbol, now, conns.length > 0 && conns.every(c => c.open))
-  OF.fine = buildFine(f.model, 500, now)
+  OF.fine = buildFine(f.model, D.fineRadiusBps, now)
   if (OF.prefs.heat && OF.fine) {
     if (!OF.heat || OF.heat.step !== OF.fine.step) { OF.heat = new HeatStore(OF.fine.step); heatBack = freshBack() }
     OF.heat.sample(OF.fine, s.thresholds, now)
@@ -505,7 +506,7 @@ function updateFlowPanel(force = false): void {
       ${f.isCalibrating ? '<div class="faint of-p-note">正在按这只品种的盘口深度定门槛…</div>' : ''}
       <button class="btn secondary sm of-p-btn" data-ofp="settings">${I('gear', 'icon-16')}改门槛与步长</button>`
   }
-  let statHTML: string
+  let statHTML: string, venuesHTML = '', kv: string[] = []
   if (!f) statHTML = ''
   else {
     const venues = s?.venues ?? []
@@ -513,19 +514,21 @@ function updateFlowPanel(force = false): void {
     const heatText = !OF.prefs.heat ? '关着' : back.status === 'ok' ? `实时每秒一列 · 之前从服务端补（${durShort(back.bucketMs)}一列）`
       : back.status === 'empty' ? '实时每秒一列 · 服务端这段没有记录' : back.status === 'down' ? '实时每秒一列 · 服务端暂时取不到' : '实时每秒一列'
     const hist = f.historyState === 'ok' ? '已并入' : f.historyState === 'down' ? '暂时取不到' : f.historyState === 'incompatible' ? '步长不同，没并' : '正在取'
-    statHTML = `<div class="of-p-venues">${venues.length ? venues.map(v => `<span class="of-p-v ${v.ready ? 'ok' : ''}" data-tip="${esc(v.instrument)}${v.ready ? '' : ' · 正在连'}"><i></i>${venueName(v.label || exName(v.exchange), v.product)}</span>`).join('') : '<span class="faint">正在查这只品种在三家的合约…</span>'}</div>
-      <div class="of-p-kv">
-        <span>线路</span><b>${st.route === 'gateway' ? '网关' : '直连'}</b>
-        <span>服务端历史</span><b>${hist}</b>
-        <span>深度热力</span><b>${heatText}</b>
-        <span>现在挂着</span><b class="num">${s ? s.orders.filter(o => o.status === 'live').length : 0} 单</b>
-      </div>`
+    venuesHTML = venues.length ? venues.map(v => `<span class="of-p-v ${v.ready ? 'ok' : ''}" data-tip="${esc(v.instrument)}${v.ready ? '' : ' · 正在连'}"><i></i>${venueName(v.label || exName(v.exchange), v.product)}</span>`).join('') : '<span class="faint">正在查这只品种在三家的合约…</span>'
+    kv = [st.route === 'gateway' ? '网关' : '直连', hist, heatText, `${s ? s.orders.filter(o => o.status === 'live').length : 0} 单`]
+    statHTML = venuesHTML + '|' + kv.join('|')
   }
   const sig = thrHTML + '|' + statHTML
   if (!force && sig === panelSig) return
   panelSig = sig
-  if (thr.innerHTML !== thrHTML) thr.innerHTML = thrHTML
-  if (stat.innerHTML !== statHTML) stat.innerHTML = statHTML
+  // 拿拼好的字符串当外壳键比，不拿 innerHTML 比（齿轮 SVG 的自闭合标签读回来写法不同，那样每次都判成变了、把「改门槛与步长」钮换掉）；
+  // 「现在挂着 N 单」这类每帧会变的只改字，不重建带悬停说明的各家标签
+  patchShell(thr, thrHTML, thrHTML)
+  if (!f) { patchShell(stat, '', ''); return }
+  patchShell(stat, '#stat', `<div class="of-p-venues"></div>
+      <div class="of-p-kv"><span>线路</span><b></b><span>服务端历史</span><b></b><span>深度热力</span><b></b><span>现在挂着</span><b class="num"></b></div>`)
+  patchShell(stat.firstElementChild!, venuesHTML, venuesHTML)
+  stat.querySelectorAll('.of-p-kv b').forEach((b, k) => patchText(b, kv[k] ?? ''))
 }
 
 // ------------------------------------------------------------------ 诊断（验收脚本用）

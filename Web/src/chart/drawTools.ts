@@ -24,6 +24,46 @@ type Ctx = CanvasRenderingContext2D
 /** 这三把是算出来的，画法与命中在这里 */
 export const COMPUTED: ReadonlySet<DrawingType> = new Set<DrawingType>(['avwap', 'fvp', 'position'])
 
+/** 每种画线的锚点数（全部种类的白名单就是它的键；读档清洗按它认：不认识的种类、锚点数不对的丢掉） */
+export const ANCHOR_COUNT: Readonly<Record<DrawingType, number>> = { trend: 2, ray: 2, hline: 1, vline: 1, rect: 2, fib: 2, measure: 2, avwap: 1, fvp: 2, position: 3 }
+export const DRAWING_TYPES: ReadonlySet<DrawingType> = new Set(Object.keys(ANCHOR_COUNT) as DrawingType[])
+export const isDrawingType = (t: unknown): t is DrawingType => typeof t === 'string' && DRAWING_TYPES.has(t as DrawingType)
+
+// ------------------------------------------------------------ 样式取值（存档会被老版本、手改写坏：颜色只认 #RGB / #RRGGBB / #RRGGBBAA，
+// 粗细只认 0.5–6 的有限数（和服务端 sync_validation 的 lineWidth 同一口径；手机有 1.5 档），线型只认虚线 / 点线，不合规的换默认）
+export const DEFAULT_DRAW_COLOR = '#2962FF'
+export const DEFAULT_DRAW_WIDTH = 2
+const DRAW_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+export const drawColorOk = (c: unknown): c is string => typeof c === 'string' && DRAW_COLOR.test(c)
+/** 合规颜色（三位简写展开成六位，同步层只认六 / 八位）；不合规给默认色 */
+export function cleanDrawColor(c: unknown): string {
+  if (!drawColorOk(c)) return DEFAULT_DRAW_COLOR
+  return c.length === 4 ? '#' + c.slice(1).split('').map(x => x + x).join('') : c
+}
+export const drawWidthOk = (w: unknown): w is number => typeof w === 'number' && Number.isFinite(w) && w >= 0.5 && w <= 6
+export const cleanDrawWidth = (w: unknown): number => drawWidthOk(w) ? w : DEFAULT_DRAW_WIDTH
+
+/** 读档清洗一条画线：形状认不出（没 id、不认识的种类、锚点数不对、锚点不是有限数）返回 null；
+ *  样式字段坏了就地换默认（颜色 / 粗细）或去掉（线型、锁定、提醒），能留的原样留着、几何不动 */
+export function cleanDrawing(raw: unknown): Drawing | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const x = raw as Record<string, unknown>
+  if (typeof x.id !== 'string' || !x.id || !isDrawingType(x.type)) return null
+  const pts = x.pts
+  if (!Array.isArray(pts) || pts.length !== ANCHOR_COUNT[x.type]) return null
+  const fin = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v)
+  if (!pts.every(p => !!p && typeof p === 'object' && fin((p as DrawPoint).t) && fin((p as DrawPoint).p))) return null
+  const d = { ...x } as unknown as Drawing
+  if (x.color == null) delete d.color
+  else { const c = cleanDrawColor(x.color); if (c !== x.color) d.color = c }
+  if (x.width == null) delete d.width
+  else if (!drawWidthOk(x.width)) d.width = DEFAULT_DRAW_WIDTH
+  if ('dash' in x && x.dash !== 'dashed' && x.dash !== 'dotted') delete d.dash
+  if ('locked' in x && typeof x.locked !== 'boolean') delete d.locked
+  if ('alert' in x && typeof x.alert !== 'boolean') delete d.alert
+  return d
+}
+
 /** 放一条线要点几下（两点的也可以按下拖到位松手） */
 export function placeCount(t: DrawingType): 1 | 2 { return t === 'hline' || t === 'vline' || t === 'avwap' ? 1 : 2 }
 

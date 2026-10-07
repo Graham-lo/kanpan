@@ -48,7 +48,7 @@ function fakeChart(bars: Bar[], iv: string): InstanceType<typeof TVChart> {
   const me = {
     meta: { symbol: 'BTCUSDT' }, iv, bars, rightBar: bars.length - 1 + 6, manual: null, auto: true, dirty: false, legendDirty: false, o: {}, drag: null, draft: null, cross: null,
     replay: null, dead: false, layers: [{ name: 'orderflow' }], indWanted: {}, ind: {},
-    recalc() {}, recalcTail() {}, renderLegend() {}, setAuto() {},
+    recalc() {}, recalcTail() {}, renderLegend() {}, setAuto() {}, rightMarginBars: () => 6,
     dropGesture: P.dropGesture, setData: P.setData, updateBar: P.updateBar, prependData: P.prependData,
   }
   return me as unknown as InstanceType<typeof TVChart>

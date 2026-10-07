@@ -34,3 +34,28 @@ export function flashClass(prev: string, dir: number): string {
   const second = !!was && !was.endsWith('2')
   return (dir > 0 ? 'wv-flash-up' : 'wv-flash-down') + (second ? '2' : '')
 }
+
+/** 自选表里哪些行此刻在滚动区里看得见：看不见的行推送来了只记一笔「欠着」、不碰 DOM，滚进来时一次补上（不闪色）。
+ *  300 只自选的表格里，滚出去的行每跳一次价都要整张表重新排版、整块侧栏重画——挂机时这一项占了主线程的一半
+ *  （2026-10-07 C15 实测：把表藏掉，主线程从 12.8% 掉到 5.3%）。
+ *  还没报过可见性的行（刚画出来、观察器还没回调）当看得见，照常改字。 */
+export class RowGate {
+  private hidden = new Set<string>()
+  private owed = new Set<string>()
+  /** 推送来了：true = 现在就改这一行；false = 先欠着 */
+  offer(k: string): boolean {
+    if (!this.hidden.has(k)) return true
+    this.owed.add(k)
+    return false
+  }
+  /** 观察器报了这一行的可见性；返回 true = 它刚滚进来、之前欠着推送，要补一次 */
+  seen(k: string, visible: boolean): boolean {
+    if (!visible) { this.hidden.add(k); return false }
+    this.hidden.delete(k)
+    return this.owed.delete(k)
+  }
+  /** 表整张重画了（行都按最新数画好）：之前记的都作废 */
+  reset(): void { this.hidden.clear(); this.owed.clear() }
+  /** 诊断：看不见的行数、欠着的行数 */
+  stats(): { hidden: number; owed: number } { return { hidden: this.hidden.size, owed: this.owed.size } }
+}

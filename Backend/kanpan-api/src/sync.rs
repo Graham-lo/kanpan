@@ -193,6 +193,11 @@ pub const WEB_ONLY_SETTINGS_FIELDS:&[&str]=&["chartLayouts"];
 /// ∪ 这张表当成「客户端会发的」；客户端把它生成进契约之后，这里那一项就是冗余的，
 /// 删掉即可（留着也不会让测试变红）。这里只能放**已经在 SETTINGS_FIELDS 里、并且有值规则**的名字。
 pub const SERVER_AHEAD_SETTINGS_FIELDS:&[&str]=&[];
+/// 只有网页端（PC 浏览器）发的设置字段：不在 iOS 契约里，所以不进 `SETTINGS_FIELDS`（那张表和契约一一对上），
+/// 单列在这里，`known_field` 认它、`sync_validation::field` 给值规则。
+/// `webChart`（2026-10-07）：网页「图表设置」（照 TradingView 的商品 / 状态栏 / 比例尺与线 / 画布），
+/// 只存和默认值不同的那几项，一个对象、序列化 ≤ 8 KB。手机端不读。
+pub const WEB_SETTINGS_FIELDS:&[&str]=&["webChart"];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
 pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
@@ -224,7 +229,7 @@ pub fn allowlist(c:&str)->&'static [&'static str] {
 }
 // Malformed paths are rejected; unknown-but-well-formed names are only dropped.
 fn valid_path(path:&str)->bool {!path.is_empty() && path.len()<=160 && !path.split('/').any(|p|p.is_empty()||p==".."||p.starts_with('_'))}
-fn known_field(c:&str,path:&str)->bool {allowlist(c).contains(&path.split('/').next().unwrap_or_default())}
+fn known_field(c:&str,path:&str)->bool {let h=path.split('/').next().unwrap_or_default();allowlist(c).contains(&h)||(c==SETTINGS&&WEB_SETTINGS_FIELDS.contains(&h))}
 impl Operation {
  /// Well-formed paths this server has never heard of. A newer client always runs
  /// ahead of a deployed server, and rejecting the whole operation left it in the
@@ -513,6 +518,17 @@ mod tests {
   assert_eq!((OPERATION_RETENTION_DAYS,CHANGE_RETENTION_DAYS),(30,30));
  }
  /// 集合名常量就是协议里的那六个，每个都有白名单；拼错的名字没有白名单。
+ // 网页独有的设置字段：认得（不进 droppedFields、能存进对象），但不在和 iOS 契约对账的 SETTINGS_FIELDS 里。
+ #[test] fn web_only_settings_fields_are_known_but_not_in_the_ios_contract() {
+  for name in WEB_SETTINGS_FIELDS {
+   assert!(!SETTINGS_FIELDS.contains(name),"{name}");
+   assert!(known_field(SETTINGS,name),"{name}");
+   assert!(!known_field(FAVORITES,name),"{name}");
+  }
+  assert!(op(SETTINGS,&[("webChart",json!({"marginTop":20}))]).unknown_fields().is_empty());
+  assert!(op(SETTINGS,&[("webChart",json!([1]))]).validate().is_err());
+  assert_eq!(applied(SETTINGS,&[("webChart",json!({"marginTop":20}))]).body["webChart"],json!({"marginTop":20}));
+ }
  #[test] fn every_collection_constant_has_an_allowlist() {
   assert_eq!(COLLECTIONS,["settings","drawingPreferences","drawings","favorites","groups","alerts"]);
   for c in COLLECTIONS {assert!(!allowlist(c).is_empty(),"{c}");assert!(collection(c).is_ok())}

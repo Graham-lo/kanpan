@@ -35,12 +35,14 @@ export function viaRoute(url: string): string {
 setGatewayProbe(url => viaRoute(url) !== url)
 
 /** priority：给浏览器的取数优先级（同一条 HTTP/2 连接上谁先拿带宽）；冷启动并行预取的 K 线用 'low'，让品种表先到 */
-export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<T> {
+/** onWait：限流闸里要排队时回调一次（排多久），界面可以先在格子里写「排队取数…」 */
+export async function j<T = unknown>(url: string, ms = 8000, background = false, alive?: () => boolean, priority?: RequestPriority,
+  onWait?: (ms: number) => void): Promise<T> {
   // 主机在限流冷却里就不发（抛 RateLimited）：429 之后接着打会被升级成 418 封 IP；
   // 一分钟权重快满了就先排队（见 limit.ts）；排队期间 alive() 说不要了就不发（抛 Superseded）
   // 美元指数：币安形状的 K 线 / 24h 行情改走自家服务器（不占币安额度），它没有的数据本地就抛（见 macro.ts）
   url = macroRewrite(url, apiOrigin()) ?? url
-  const gw = await admit(url, background, alive)
+  const gw = await admit(url, background, alive, onWait)
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
   try {
@@ -298,10 +300,11 @@ export interface KlineResult { bars: Bar[]; ok: boolean; error?: string }
 
 /** 一页 K 线（最多 1500 根）；带 endTime 时是向左翻页，取严格早于它的那一页 */
 /** background：后台一大批取的（板块迷你走势），只用限流预算的一截，见 limit.ts */
-export async function klines(symbol: string, iv: string, endTime?: number, limit = 1500, withOI = true, background = false, alive?: () => boolean, priority?: RequestPriority): Promise<KlineResult> {
+export async function klines(symbol: string, iv: string, endTime?: number, limit = 1500, withOI = true, background = false, alive?: () => boolean, priority?: RequestPriority,
+  onWait?: (ms: number) => void): Promise<KlineResult> {
   try {
     const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${limit}${endTime ? `&endTime=${endTime - 1}` : ''}`
-    const bars = parse(await j<Row[]>(u, 10000, background, alive, priority))
+    const bars = parse(await j<Row[]>(u, 10000, background, alive, priority, onWait))
     if (withOI) void attachOI(symbol, iv, bars)
     return { bars, ok: true }
   } catch (e) {
@@ -309,19 +312,26 @@ export async function klines(symbol: string, iv: string, endTime?: number, limit
   }
 }
 
-/** 持仓量副图：币安只给最近 30 天、5 分钟以上周期的历史，对不齐的根留空 */
+/** 非当前格首次取的根数：limit < 500 权重 2，1500 根是 10（见 limit.ts 的 K 线权重表）。十六格同时进来时
+ *  15 个非当前格各省 8 点权重；往左翻历史照常由 loadMore 一页 1500 根补 */
+export const SIDE_LIMIT = 499
+
+/** 持仓量副图：币安只给最近 30 天、5 分钟以上周期的历史，对不齐的根留空。
+ *  alive：排队期间这一格不要了（换品种 / 周期 / 格子没了 / 持仓量副图被收起）就不发 */
 const OI_PERIOD = new Set(['5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'])
-export async function attachOI(symbol: string, iv: string, bars: Bar[]): Promise<void> {
-  if (!OI_PERIOD.has(iv) || !bars.length || isMacro(symbol)) return
+/** 返回 false = 没取成（排队时被作废、网络 / 限流失败），调用方下次还该再取；不支持的周期 / 品种算取过了 */
+export async function attachOI(symbol: string, iv: string, bars: Bar[], alive?: () => boolean): Promise<boolean> {
+  if (!OI_PERIOD.has(iv) || !bars.length || isMacro(symbol)) return true
   try {
     const endTime = bars[bars.length - 1].t + 1
-    const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${iv}&limit=500&endTime=${endTime}`)
-    if (!rows.length) return
+    const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${iv}&limit=500&endTime=${endTime}`, 8000, false, alive)
+    if (!rows.length) return true
     const m = new Map(rows.map(r => [r.timestamp, +r.sumOpenInterestValue]))
     let hit = 0
     for (const b of bars) { const v = m.get(b.t); if (v != null) { b.oi = v; hit++ } }
     if (hit) emit({ type: 'oi', symbol, iv })
-  } catch { /* 取不到持仓量就留空 */ }
+    return true
+  } catch { return false /* 取不到持仓量就留空 */ }
 }
 
 // ------------------------------------------------------------ 详情块里不在推送里的数

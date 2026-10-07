@@ -13,10 +13,11 @@
  *   底部抽屉   —— 图表区下方，默认 280（160 到页面高 60%）/ 关 0
  *   侧栏小部件 —— 「自选」视图里按 st.slots.widgets 的顺序堆叠，块与块之间能拖高度
  */
-import { st, save, LAYOUT_N, ensureCells, FILL_SYMBOLS, type CellCfg, type PanelId, type Layout } from '../app/store'
+import { st, save, validSymbol, LAYOUT_N, ensureCells, FILL_SYMBOLS, type CellCfg, type PanelId, type Layout } from '../app/store'
 import { sizes, saveSizes } from '../app/sizes'
-import { degradeFor } from '../chart/panes'
-import { applyPageSizes, placePageSplits, applyGrid, placeGridSplits } from './chartLayout'
+import { cellClasses, degradeFor } from '../chart/panes'
+import { UndoBySymbol } from './undoStacks'
+import { applyPageSizes, placePageSplits, applyGrid, placeGridSplits, inZoomStrip, nextZoom } from './chartLayout'
 import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick, isCollapsed } from '../orderflow'
 import { deleteAlert } from '../alerts/model'
 import { alertDesc } from '../alerts/panel'
@@ -32,6 +33,7 @@ import { installNoteSync, noteState, onNotesSynced, dropShot } from '../notes/sy
 import { renderTradesPanel, tradesPanelClick, installTradesPanel } from '../trades/panel'
 import { installWatch, widgetWatch, mountWatch, watchClick, patchWatchRow, takeWatchUndo } from '../watch/widget'
 import { $, $$, I, esc, tgt } from '../ui/dom'
+import { morphHtml } from '../ui/patch'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine, type AlertSignal } from '../chart/chart'
@@ -41,7 +43,7 @@ import { isMoreMain, MORE_PARAM_NAME } from '../chart/mainIndicators'
 import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
-  S, on, REST, coolingFor, isRateLimit, klines, attachOI, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
+  S, on, REST, coolingFor, isRateLimit, wakeQueued, klines, attachOI, SIDE_LIMIT, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
   IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, baseOf, kindOfUnderlying, type Kind, type Sym, type KlineResult,
 } from '../market'
 import { klineDiskReady, diskBars, keepBars, flushBars } from '../market/klineStore'
@@ -60,6 +62,7 @@ import type { CellFlag } from '../app/layouts'
 import { exportChart, type ExportRange } from '../chart/exportCsv'
 import { secondsKlines } from '../chart/secondsHistory'
 import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote } from '../replay/controller'
+import { openChartSettings } from './chartSettingsDialog'
 
 // ------------------------------------------------------------ 图表格子
 interface Cell {
@@ -93,8 +96,11 @@ export const active = (): Cell | undefined => cells[st.active]
 
 /** 图例副标题：美元指数这类自家服务器给的品种（macro）不是币安的，不挂「币安」，只写「指数」 */
 function metaFor(c: CellCfg, bars?: readonly Bar[]) {
-  const s = sym(c.symbol) ?? guessSym(c.symbol)
-  return { symbol: c.symbol, iv: IV_MS[c.iv], title: c.symbol, sub: `· ${IV_LABEL[c.iv]} · ${s?.macro ? '' : '币安'}${kindName(s)}`, dec: s?.dec ?? decOfBars(bars) ?? 2, badge: badge(s) }
+  const real = sym(c.symbol), s = real ?? guessSym(c.symbol), cs = st.chartSettings
+  // 图表设置：状态栏的品种名（代码 / 全称 / 两个都要）、商品的价格精度（默认 = 品种自己的最小变动价位；表没到先按 K 线猜）
+  const name = real?.cn && real.cn !== c.symbol ? real.cn : ''
+  const title = cs.title === 'name' && name ? name : cs.title === 'both' && name ? `${c.symbol} ${name}` : c.symbol
+  return { symbol: c.symbol, iv: IV_MS[c.iv], title, sub: `· ${IV_LABEL[c.iv]} · ${s?.macro ? '' : '币安'}${kindName(s)}`, dec: cs.precision ?? real?.dec ?? decOfBars(bars) ?? 2, badge: badge(s) }
 }
 /** 品种表还没到（冷启动没有本机那份）：徽标、类别先按代号猜，表到了再换成准的（setMeta） */
 function guessSym(k: string): Pick<Sym, 'base' | 'kind'> & { dec?: number; macro?: boolean } {
@@ -114,6 +120,16 @@ export function decOfBars(bars?: readonly Bar[]): number | null {
     }
   }
   return Math.min(8, d)
+}
+const settingsHost = { apply: () => applyChartSettings(), base: () => active()?.chart.baseColors }
+/** 图表设置变了（对话框里改、别的设备同步来）：所有格子换上同一份，品种名与精度跟着刷新 */
+export function applyChartSettings(): void {
+  for (const c of cells) {
+    const m = metaFor(cfg(c), c.chart.bars)
+    if (c.chart.meta.symbol === m.symbol) c.chart.meta = { ...c.chart.meta, title: m.title, dec: m.dec }
+    c.chart.setSettings(st.chartSettings)
+    c.chart.dirty = true; c.chart.renderLegend()
+  }
 }
 
 /** 图上画的提醒线：这只品种还在等的价格提醒（画线提醒由画线本身表示） */
@@ -139,6 +155,7 @@ function buildCells(): void {
   st.active = Math.min(st.active, n - 1)
   const area = $('#chartArea'); area.dataset.layout = st.layout
   hideQuick()
+  zoomed = null  // 换布局 = 还原放大
   while (cells.length > n) { const c = cells.pop(); if (c) { cellRO?.unobserve(c.el); c.chart.destroy(); c.el.remove() } }
   for (let i = cells.length; i < n; i++) cells.push(makeCell(i))
   cells.forEach((c, i) => c.el.classList.toggle('active', i === st.active))
@@ -149,13 +166,30 @@ function buildCells(): void {
 /** 多图网格：按布局与本机比例排格子、摆格子间的分隔线 */
 function layoutGrid(): void {
   const area = $('#chartArea'); if (!area) return
-  applyGrid(area, st.layout, cells.map(c => c.el))
-  placeGridSplits(area, st.layout, layoutGrid)
+  applyGrid(area, st.layout, cells.map(c => c.el), zoomed?.el ?? null)
+  placeGridSplits(area, st.layout, layoutGrid, !!zoomed)
 }
 
 /**
- * 格子降级：按格子自己的尺寸算（不按窗口），宽 < 640 或高 < 360 只留主图、图例一行、
- * 价格轴字号小一档；宽 < 420 再去掉成交量。格子底栏也跟着收（见 app.css .c-narrow / .c-tiny）。
+ * 放大这一格（同 TradingView 多图的「最大化」）：临时只摆这一格铺满图表区，别的格子藏起来——
+ * 不销毁、不退订行情，布局存档不变，刷新后不保留。再按一次（右键菜单 / 双击格子顶部或底栏空白 / ⌥↩）或 Esc 还原。
+ */
+let zoomed: Cell | null = null
+function toggleZoom(cell: Cell | null): void {
+  const to = nextZoom(zoomed, cell, cells.length)
+  if (to === zoomed) return
+  const from = zoomed
+  zoomed = to
+  if (to) setActive(to.idx)
+  layoutGrid()
+  // 还原：藏着的格子这段时间没跟时间轴联动，按刚才放大那格眼下的时间段对一遍
+  if (!to && from) { const g = from.chart.geometry(); if (g) linkView(from, g.timeOf(g.from), g.timeOf(g.to)) }
+}
+;(globalThis as unknown as { __zoom?: () => number }).__zoom = () => zoomed ? zoomed.idx : -1
+
+/**
+ * 格子降级：按格子自己的尺寸算（不按窗口），门槛常量都在 chart/panes.ts：副图按剩下的高逐个留，
+ * 图例按宽高收成一行 / 只留品种周期，宽 < 420 去掉成交量。格子底栏也跟着收（app.css .c-narrow / .c-tiny / .c-short）。
  */
 let cellRO: ResizeObserver | null = null
 const cellOf = new WeakMap<Element, Cell>()
@@ -165,10 +199,10 @@ function watchCell(cell: Cell): void {
       const c = cellOf.get(e.target); if (!c) continue
       const w = e.contentRect.width, h = e.contentRect.height
       if (!w || !h) continue
-      c.el.classList.toggle('c-narrow', w < 640)
-      c.el.classList.toggle('c-tiny', w < 420)
-      c.el.classList.toggle('c-short', h < 360)
+      for (const [k, on] of Object.entries(cellClasses(w, h))) c.el.classList.toggle(k, on)
       c.chart.setDegrade(degradeFor(w, h))
+      // 格子变大、持仓量副图露出来了：这时才去取（小格子里被降级挤掉的不取）
+      ensureOI(c)
     }
   })
   cellOf.set(cell.el, cell)
@@ -178,7 +212,8 @@ function watchCell(cell: Cell): void {
 /** 时间轴联动：一格动了时间轴，其余格子套同一段时间（防回声） */
 let syncingView = false
 function linkView(from: Cell, t0: number, t1: number): void {
-  if (!st.linkTime || syncingView || cells.length < 2) return
+  // 放大了一格时别的格子藏着（宽高 0），不往它们身上套；还原时 toggleZoom 再对一遍
+  if (!st.linkTime || syncingView || cells.length < 2 || zoomed) return
   syncingView = true
   try { cells.forEach(o => { if (o !== from) o.chart.syncView(t0, t1) }) } finally { syncingView = false }
 }
@@ -266,6 +301,7 @@ function makeCell(i: number): Cell {
   cell.chart.setVpvrMode(st.vpvrMode)
   cell.chart.drawingsHidden = st.drawHidden
   bindFootprint(cell.chart, i); bindHeikinAshi(cell.chart, i); bindRangeBars(cell.chart, i)
+  cell.chart.setSettings(st.chartSettings)
   el.addEventListener('click', e => {
     const t = tgt(e)
     const r = t.closest<HTMLElement>('[data-range]'); if (r) return applyRange(cell, +(r.dataset.range || 0))
@@ -279,6 +315,14 @@ function makeCell(i: number): Cell {
     if (a === 'log') { cell.chart.setLog(!cell.chart.log); t.closest('[data-act]')?.setAttribute('aria-pressed', String(cell.chart.log)) }
     if (a === 'auto') cell.chart.setAuto(!cell.chart.auto)
   })
+  // 双击格子的「标题区」放大 / 还原这一格：底栏按钮以外的空白，或画布顶部一条（图例以外、价格轴以左，手里没拿工具、没选中画线）
+  el.addEventListener('dblclick', e => {
+    const t = tgt(e)
+    if (t.closest('.cell-foot')) { if (!t.closest('button, [data-tip]')) toggleZoom(cell); return }
+    if (t.tagName !== 'CANVAS' || drawTool() || cell.chart.selected) return
+    const r = host.getBoundingClientRect()
+    if (inZoomStrip(e.clientX - r.left, e.clientY - r.top, cell.chart.plotW())) toggleZoom(cell)
+  })
   watchCell(cell)
   void loadCell(cell)
   return cell
@@ -287,28 +331,37 @@ function makeCell(i: number): Cell {
 function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
   const e = $('.cell-empty', cell.el); if (!e) return
   e.hidden = !msg
-  if (msg) e.innerHTML = quiet ? `<div class="empty">${I('trades', 'icon-24')}<div>${esc(msg)}</div></div>` : `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>重试</button></div>`
+  if (msg) morphHtml(e, quiet ? `<div class="empty">${I('trades', 'icon-24')}<div>${esc(msg)}</div></div>` : `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>重试</button></div>`)
 }
 /** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所。
  *  alive：这一格还要不要这份（换了品种 / 周期就不要了）——在限流闸里排队的作废请求不发、不占预算 */
-async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean, withOI = true): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
+async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean, withOI = true,
+  limit = 1500, onWait?: (ms: number) => void): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
   if (isSecondIv(iv)) return secondsKlines(symbol, iv, endTime, alive)
   if (isCustomIv(iv)) return customKlines(symbol, iv, endTime, alive)
   if (endTime != null) return klines(symbol, iv, endTime, 1500, withOI, false, alive)
   // 最新一段：刚取过同一只同一周期的（换布局集、切格数再切回来）只补尾巴（market/klineCache.ts）
   const key = `${symbol}|${iv}`, need = recentKlines.need(key, IV_MS[iv], Date.now())
   if (need != null) {
-    const r = await klines(symbol, iv, undefined, need, false, false, alive)
+    const r = await klines(symbol, iv, undefined, need, false, false, alive, undefined, onWait)
     const bars = r.ok ? recentKlines.merge(key, r.bars, Date.now()) : null
     if (bars) { if (withOI) void attachOI(symbol, iv, bars); return { bars, ok: true } }
     if (!r.ok) return r
   }
-  const r = await klines(symbol, iv, undefined, 1500, withOI, false, alive)
+  // 多格布局的非当前格首次只取 limit（SIDE_LIMIT）根，往左翻再由 loadMore 补
+  const r = await klines(symbol, iv, undefined, limit, withOI, false, alive, undefined, onWait)
   if (r.ok) recentKlines.put(key, r.bars, Date.now())
   return r
 }
+/** 进本会话 K 线缓存的周期：交易所原生周期（秒级在内存里攒、自定义分钟由原生周期并，都不进） */
+const cacheable = (iv: string): boolean => !isSecondIv(iv) && !isCustomIv(iv) && IV_MS[iv] > 0
+/** 首次取数的根数：多格布局里不是当前格的只取 SIDE_LIMIT 根（权重 2，1500 根是 10），往左翻再由 loadMore 补 */
+const firstLimit = (idx: number): number => (LAYOUT_N[st.layout] || 1) > 1 && idx !== st.active ? SIDE_LIMIT : 1500
+/** 在限流闸里排队、格子上写着「排队取数…」的格子：断线重连那一下的 retryLoad 不去打断它（打断 = 重新排到队尾） */
+const queued = new WeakSet<Cell>()
 
 async function retryLoad(cell: Cell): Promise<void> {
+  if (queued.has(cell)) return
   // 品种表还没确认过：先取表，取到了由 universe 事件（afterUniverse）重装报错的格子
   if (S.live !== true) { await loadUniverse(); if (S.live) return }
   void loadCell(cell)
@@ -330,13 +383,30 @@ async function topUp(cell: Cell, token: number): Promise<void> {
   keepBars(c.symbol, c.iv, baseBars(cell.chart))
   settle.whenSettled(`oi:${cell.idx}`, () => {
     if (token !== cell.loadToken || cell.chart.dead) return
-    void attachOI(c.symbol, c.iv, cell.chart.bars)
+    ensureOI(cell)
     void loadMore(cell, true)
   })
 }
 
+/** 持仓量副图：只在这一格真的露着它（开了，且没被小格降级挤掉）时取，一次装载取一次；
+ *  排队期间换了品种 / 格子没了 / 副图被收起就作废。装载完（停稳后）、格子尺寸变了、开关指标后各问一次 */
+const oiDone = new WeakMap<Cell, number>()
+function ensureOI(cell: Cell): void {
+  const c = cfg(cell), token = cell.loadToken, bars = cell.chart.bars
+  if (cell.chart.dead || cell.hold || !bars.length || !cacheable(c.iv) || oiDone.get(cell) === token) return
+  const shown = () => cell.chart.subIds().includes('oi')
+  if (!shown()) return
+  oiDone.set(cell, token)
+  // 从缓存出的图：根对象是上次那份，已经带着持仓量（最后一根收线的有值）就不用再取
+  if (bars.length > 1 && bars[bars.length - 2].oi != null) return
+  const alive = () => token === cell.loadToken && !cell.chart.dead && shown()
+  void attachOI(c.symbol, c.iv, bars, alive).then(ok => { if (!ok && oiDone.get(cell) === token) oiDone.delete(cell) })
+}
+
 async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const c = cfg(cell), token = ++cell.loadToken
+  // 这一格上一次取数若还在限流闸里排队：叫醒它，让它马上发现自己作废了（不再占着队、睡满那一觉）
+  wakeQueued()
   cell.noMore = false
   // 画线跟着品种走：图上还是上一只的 K 线时不能先把这一只的线摆上去（会画在别的价位上、点了也记错品种），等新数据到了再换
   const sameSym = cell.chart.meta.symbol === c.symbol
@@ -363,9 +433,14 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   if (!showing) cell.chart.setPending(metaFor(c))
   if (pre) cell.hold = pre.hold                    // 冷启动先发的那次：缓冲它开着，接过来
   else if (siv) { cell.hold = pushKey(c.symbol, siv); pushes.open(cell.hold) }
-  const { bars, ok, error } = await (pre ? pre.res : barsFor(c.symbol, c.iv, undefined, () => token === cell.loadToken && !cell.chart.dead, false))
+  const alive = () => token === cell.loadToken && !cell.chart.dead
+  // 限流闸要排队：格子上先写「排队取数…」，不让人对着上一只的图或一片空白干等
+  const onWait = () => { if (alive() && !queued.has(cell)) { queued.add(cell); showCellEmpty(cell, '排队取数…', true) } }
+  // 持仓量不随 K 线一起取：这一格露着持仓量副图才取（ensureOI，停稳后）
+  const { bars, ok, error }: KlineResult = await (pre ? pre.res : barsFor(c.symbol, c.iv, undefined, alive, false, firstLimit(cell.idx), onWait))
   // 被后一次取数顶掉：缓冲已经由后一次撒手，这里什么都不动
   if (token !== cell.loadToken) return
+  queued.delete(cell)
   const hold = cell.hold
   cell.hold = null
   const late = hold && bars.length ? pushes.take(hold, bars[bars.length - 1].t) : []
@@ -379,7 +454,8 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
       : limited ? `币安限流了，${c.symbol} 的 K 线冷却后自动重取`
       : `取不到 ${c.symbol} 的 K 线${error ? `（${error.split(' ')[0]}）` : ''}`)
     // 限流：冷却一过这一格自己再取（期间换了品种 / 周期就作废），不让用户对着空图去点
-    if (limited) setTimeout(() => { if (token === cell.loadToken) void loadCell(cell) }, Math.max(coolingFor(REST), 5000) + 500)
+    // 格子已经没了（切布局 16→1 被收掉）就不再重取：原来这里只认 token，死格子冷却后照样打一次 K 线
+    if (limited) setTimeout(() => { if (token === cell.loadToken && !cell.chart.dead) void loadCell(cell) }, Math.max(coolingFor(REST), 5000) + 500)
   } else showCellEmpty(cell, null)
   cell.chart.setData(bars, metaFor(c, bars))
   if (ok && bars.length && diskable(cell, c)) keepBars(c.symbol, c.iv, bars)
@@ -388,7 +464,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   if (late.length && isCustomIv(c.iv)) for (const p of late) cell.chart.updateBar(customTick(c.symbol, c.iv, p))
   // 持仓量副图不在首屏：品种停稳再取（连切时中间划过的品种不取）
   if (ok && bars.length && !isSecondIv(c.iv) && !isCustomIv(c.iv)) {
-    settle.whenSettled(`oi:${cell.idx}`, () => { if (token === cell.loadToken && !cell.chart.dead) void attachOI(c.symbol, c.iv, cell.chart.bars) })
+    settle.whenSettled(`oi:${cell.idx}`, () => { if (token === cell.loadToken) ensureOI(cell) })
   }
   finishLoad(cell, c, then)
 }
@@ -403,7 +479,9 @@ function finishLoad(cell: Cell, c: CellCfg, then?: () => void): void {
   cell.chart.setAlertSignals(lineSignals(c.symbol))
   cell.chart.setStale(st.stale)
   then?.()
-  if (cell.idx === st.active) { renderToolbar(); renderPanel() }
+  // 取完 K 线：侧栏还是这只品种的自选面板时只就地改详情，不整块重画——整块重画会把指针下的自选行 / 星标 / 订单流按钮
+  // 全换成新节点（开页后几秒、重连补数时正好在悬停 / 瞄准的那一下点不中）
+  if (cell.idx === st.active) { renderToolbar(); if (st.panel === 'watch' && panelSym === 'watch:' + c.symbol) renderDetail(); else renderPanel() }
 }
 
 /** 断线重连 / 页面藏久了回来：把这段时间收线的几根补回图上（币安只推当前那一根，错过的不会再推），
@@ -431,7 +509,11 @@ async function resyncTail(cell: Cell, tries = 0): Promise<void> {
     if (r.ok && diskable(cell, c)) keepBars(c.symbol, c.iv, baseBars(cell.chart))
     // 没取到（刚连上时网络还在抖、限流）：冷却过了再补，最多再试三次；之后的重连 / 回前台还会再补
     if (!r.ok && tries < 3) setTimeout(() => { if (alive()) void resyncTail(cell, tries + 1) }, Math.max(coolingFor(REST), 5000) + 500)
-  } finally { tailing.delete(cell) }
+  } finally {
+    tailing.delete(cell)
+    // 补尾巴期间（缓冲开着）停稳那一下的持仓量被跳过了：补完再问一次
+    if (alive() && !cell.hold) ensureOI(cell)
+  }
 }
 const tailGate = new TailResync()
 
@@ -442,12 +524,15 @@ async function loadMore(cell: Cell, quiet = false): Promise<void> {
   if (cell.more || cell.noMore || !cell.chart.bars.length || cell.chart.pendingMeta || cell.chart.meta.symbol !== c.symbol) return
   cell.more = true; if (!quiet) cell.chart.loadingMore = true
   const token = cell.loadToken
-  const { bars, ok } = await barsFor(c.symbol, c.iv, cell.chart.bars[0].t, () => token === cell.loadToken && !cell.chart.dead)
+  const alive = () => token === cell.loadToken && !cell.chart.dead
+  // 持仓量不随这一页自动取：这一格露着持仓量副图才给这一页补（原来每翻一页都打一次 openInterestHist）
+  const { bars, ok } = await barsFor(c.symbol, c.iv, cell.chart.bars[0].t, alive, false)
   cell.more = false; cell.chart.loadingMore = false
   if (token !== cell.loadToken) return
   if (!ok) return
   if (!bars.length) { cell.noMore = true; return }
   cell.chart.prependData(bars)
+  if (cacheable(c.iv) && cell.chart.subIds().includes('oi')) void attachOI(c.symbol, c.iv, bars, () => alive() && cell.chart.subIds().includes('oi'))
   refreshCompare()
 }
 
@@ -459,18 +544,30 @@ function applyRange(cell: Cell, k: number): void {
   else if (days === 'all') t0 = 0
   else t0 = now - days * 864e5
   const fit = () => { const b = cell.chart.bars; if (b.length) cell.chart.setVisibleRange(Math.max(t0, b[0].t), b[b.length - 1].t) }
-  if (c.iv !== iv) { c.iv = iv; save(); void loadCell(cell, fit); refreshStreams(); renderToolbar() } else fit()
+  // 点哪一格的底栏就先把哪一格设成当前格，换周期走和工具栏同一个入口（周期跨图同步照样生效）
+  setActive(cell.idx)
+  if (c.iv !== iv) setIv(iv, cell, fit); else fit()
 }
 
+/** 底栏的钟：只写当前格那一个（多图里别的格子的钟藏着，见 app.css），字没变不写——
+ *  原来每秒给每格都写一遍，十六图就是每秒十六处改字 */
+function paintClock(): void {
+  const c = active(); if (!c || c.el.classList.contains('c-narrow')) return
+  const e = $('.cell-foot .clock', c.el); if (!e) return
+  const d = sh(Date.now()), t = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC+8`
+  if (e.textContent !== t) e.textContent = t
+}
 function setActive(i: number): void {
   if (i === st.active || i < 0) return
   st.active = i
   cells.forEach((c, k) => c.el.classList.toggle('active', k === i))
-  save(); renderToolbar(); renderPanel(); refreshStreams()
+  // 放大着的时候切了当前格（快捷键 / 程序里切）：放大跟着换到这一格
+  if (zoomed && cells[i] && zoomed !== cells[i]) { zoomed = cells[i]; layoutGrid() }
+  save(); renderToolbar(); renderPanel(); refreshStreams(); paintClock()
 }
 
 export function openSymbol(symbol: string, cell: Cell | undefined = active()): void {
-  if (!cell) return
+  if (!cell || !validSymbol(symbol)) return // 服务端记录 / 提醒日志里带来的代号先过一遍形状，坏串不进格子与图例
   const c = cfg(cell)
   if (c.symbol === symbol) return
   settle.noteSwitch()
@@ -479,21 +576,23 @@ export function openSymbol(symbol: string, cell: Cell | undefined = active()): v
   void loadCell(cell); refreshStreams(); renderToolbar(); renderPanel()
 }
 
-function setIv(iv: string, cell: Cell | undefined = active()): void {
+function setIv(iv: string, cell: Cell | undefined = active(), then?: () => void): void {
   if (!cell) return
   const c = cfg(cell); if (c.iv === iv) return
   settle.noteSwitch()
   c.iv = iv
   // 周期跨图同步：其余格子一起换
   if (st.linkIv && cells.length > 1) cells.forEach(o => { const oc = cfg(o); if (o !== cell && oc.iv !== iv) { oc.iv = iv; void loadCell(o) } })
-  save(); void loadCell(cell); refreshStreams(); renderToolbar()
+  save(); void loadCell(cell, then); refreshStreams(); renderToolbar()
 }
 
 // ------------------------------------------------------------ 画线
 export function drawingsFor(s: string): Drawing[] { return (st.drawings[s] ||= []) }
-/** 一步撤销：某只品种的画线（json），批量删除指标时再带上删之前的指标（ind） */
+/** 一步撤销：某只品种的画线（json），批量删除指标时再带上删之前的指标（ind）。
+ *  撤销栈一只品种一份：⌘Z 只退当前格这只品种的改动（undoStacks.ts） */
 interface Snap { s: string; json: string; ind?: string }
-const undoStack: Snap[] = [], redoStack: Snap[] = []
+const undos = new UndoBySymbol<Snap>()
+const undoDepth = (): { undo: number; redo: number } => undos.depth(cfg(active())?.symbol ?? '')
 const lastSnap: Record<string, string> = {}
 const snapOf = (s: string): string => JSON.stringify(drawingsFor(s).filter(d => d.type !== 'measure'))
 
@@ -501,7 +600,7 @@ export function drawingsChanged(cell: Cell): void {
   const s = cfg(cell).symbol
   const now = snapOf(s)
   const prev = lastSnap[s] ?? '[]'
-  if (now !== prev) { undoStack.push({ s, json: prev }); redoStack.length = 0 }
+  if (now !== prev) undos.push({ s, json: prev })
   lastSnap[s] = now
   cells.forEach(c => { if (cfg(c).symbol === s) c.chart.dirty = true })
   reconcileDrawingAlerts(s, drawingsFor(s))
@@ -526,15 +625,21 @@ function setDrawingsOf(s: string, list: Drawing[]): void {
   cells.forEach(c => { if (cfg(c).symbol === s && c.chart.meta.symbol === s) c.chart.setDrawings(st.drawings[s]) })
   reconcileDrawingAlerts(s, st.drawings[s])
 }
-function applyInd(): void { cells.forEach(c => c.chart.setIndicators(structuredClone(st.ind))) }
-function restoreSnap(u: Snap, toStack: Snap[]): void {
-  toStack.push({ s: u.s, json: snapOf(u.s), ...(u.ind != null ? { ind: JSON.stringify(st.ind) } : {}) })
+function applyInd(): void { cells.forEach(c => { c.chart.setIndicators(structuredClone(st.ind)); ensureOI(c) }) }
+/** 把快照装回去，返回装之前的样子（进另一边的栈） */
+function restoreSnap(u: Snap): Snap {
+  const inv: Snap = { s: u.s, json: snapOf(u.s), ...(u.ind != null ? { ind: JSON.stringify(st.ind) } : {}) }
   setDrawingsOf(u.s, JSON.parse(u.json) as Drawing[])
   if (u.ind != null) { st.ind = JSON.parse(u.ind) as typeof st.ind; applyInd() }
-  hideQuick(); save(); renderToolbar()
+  hideQuick(); save()
+  return inv
 }
-function undo(): void { const u = undoStack.pop(); if (!u) return; restoreSnap(u, redoStack); toast('已撤销', '⌘ Y 或 ⌘ ⇧ Z 重做', 'undo', 1800) }
-function redo(): void { const u = redoStack.pop(); if (!u) return; restoreSnap(u, undoStack) }
+function undo(): void {
+  const s = cfg(active())?.symbol; if (!s) return
+  if (!undos.undo(s, restoreSnap)) return
+  renderToolbar(); toast('已撤销', '⌘ Y 或 ⌘ ⇧ Z 重做', 'undo', 1800)
+}
+function redo(): void { const s = cfg(active())?.symbol; if (s && undos.redo(s, restoreSnap)) renderToolbar() }
 
 function toggleHideDrawings(): void {
   st.drawHidden = !st.drawHidden
@@ -572,14 +677,14 @@ function bulkDelete(draw: boolean, ind: boolean): void {
     applyInd()
   }
   if (nd) setDrawingsOf(s, [])
-  undoStack.push(snap); redoStack.length = 0
+  undos.push(snap)
   hideQuick(); save(); renderToolbar()
   toast(`已删除${[nd ? ` ${nd} 条画线` : '', ni ? ` ${ni} 个指标` : ''].filter(Boolean).join('、')}`, '⌘ Z 撤销', 'trash')
 }
 // 回归脚本（scripts/regress.mjs「画线」）读：撤销栈深度、手里的工具、连续画、当前格子看得见的开高低收（验磁吸）
 ;(globalThis as unknown as { __draw?: () => unknown }).__draw = () => {
   const c = active(), v = c?.chart.visible()
-  return { undo: undoStack.length, redo: redoStack.length, tool: drawTool(), sticky: drawSticky(), ohlc: c && v ? c.chart.bars.slice(v.from, v.to + 1).flatMap(b => [b.o, b.h, b.l, b.c]) : [] }
+  return { ...undoDepth(), tool: drawTool(), sticky: drawSticky(), ohlc: c && v ? c.chart.bars.slice(v.from, v.to + 1).flatMap(b => [b.o, b.h, b.l, b.c]) : [] }
 }
 
 // ------------------------------------------------------------ 工具栏
@@ -604,11 +709,13 @@ function linkAll(symbol: string): void {
 type Conn = 'live' | 'connecting' | 'down'
 const CONN_TIP: Record<Conn, string> = { live: '行情连着', connecting: '正在连行情', down: '行情断了，正在重连' }
 function connState(): Conn { return st.stale || S.wsState === 'closed' || S.live === false ? (S.wsState === 'connecting' ? 'connecting' : 'down') : S.wsState === 'open' ? 'live' : 'connecting' }
-function paintConn(): void { const c = connState(); $$('.cell-foot .conn-dot').forEach(e => { e.dataset.conn = c; e.dataset.tip = CONN_TIP[c] }) }
+/** 十六格的连接点：状态没变就不碰（每次流状态事件 / 品种表到了都会来，无谓的属性写会让 16 格各自重算样式） */
+function paintConn(): void { const c = connState(); $$('.cell-foot .conn-dot').forEach(e => { if (e.dataset.conn !== c) { e.dataset.conn = c; e.dataset.tip = CONN_TIP[c] } }) }
 /** 浏览器标签页标题：当前品种的最新价与涨跌；换品种时立刻换，不等下一笔成交 */
 function syncTitle(): void {
   const s = sym(cfg(active())?.symbol || '')
-  document.title = s?.price ? `${s.code} ${priceText(s)} ${pctText(s.pct)} · Hkline` : 'Hkline'
+  const t = s?.price ? `${s.code} ${priceText(s)} ${pctText(s.pct)} · Hkline` : 'Hkline'
+  if (document.title !== t) document.title = t
   paintReplayQuote()
 }
 
@@ -617,7 +724,8 @@ export function renderToolbar(): void {
   const c = cfg(cell), s = sym(c.symbol)
   syncTitle()
   const pinnedHas = st.pinned.includes(c.iv)
-  $('#toolbar').innerHTML = `
+  // 取完 K 线 / 重连 / 同步都会走这里：就地改，按钮节点留着（整块换了，指针下的按钮悬停与提示要等下一次 mousemove）
+  morphHtml($('#toolbar'), `
     <button class="tb-btn symbol-btn" id="tbSymbol" data-tip="换品种" data-kbd="⌘ K">${badge(s ?? guessSym(c.symbol))}<span>${esc(c.symbol)}</span><span class="kind">${kindName(s ?? guessSym(c.symbol))}</span></button>
     <span class="tb-sep"></span>
     <div class="intervals" role="group" aria-label="周期">
@@ -632,14 +740,15 @@ export function renderToolbar(): void {
     <button class="tb-btn" id="tbNote" aria-label="记一笔" data-tip="把这一刻记下来">${I('note')}<span class="tb-label">记一笔</span></button>
     ${heatButtonHTML()}
     <div class="tb-right">
-      <button class="ibtn sm" id="tbUndo" aria-label="撤销" data-tip="撤销" data-kbd="⌘ Z" ${undoStack.length ? '' : 'disabled style="opacity:.4"'}>${I('undo')}</button>
-      <button class="ibtn sm" id="tbRedo" aria-label="重做" data-tip="重做" data-kbd="⌘ Y" ${redoStack.length ? '' : 'disabled style="opacity:.4"'}>${I('redo')}</button>
+      <button class="ibtn sm" id="tbUndo" aria-label="撤销" data-tip="撤销" data-kbd="⌘ Z" ${undoDepth().undo ? '' : 'disabled style="opacity:.4"'}>${I('undo')}</button>
+      <button class="ibtn sm" id="tbRedo" aria-label="重做" data-tip="重做" data-kbd="⌘ Y" ${undoDepth().redo ? '' : 'disabled style="opacity:.4"'}>${I('redo')}</button>
       <span class="tb-sep"></span>
       <button class="ibtn sm" id="tbLayout" aria-label="布局" data-tip="图表布局">${I(LAYOUT_ICON[st.layout])}</button>
       <button class="ibtn sm" id="tbShot" aria-label="截图" data-tip="保存图表截图" data-kbd="⌥ S">${I('camera')}</button>
       <button class="ibtn sm" id="tbShare" aria-label="分享" data-tip="分享">${I('share')}</button>
       <button class="ibtn sm" id="tbFull" aria-label="全屏" data-tip="全屏" data-kbd="⇧ F">${I('fullscreen')}</button>
-    </div>`
+      <button class="ibtn sm" id="tbSettings" aria-label="图表设置" data-tip="图表设置">${I('gear')}</button>
+    </div>`)
 }
 function onToolbarClick(e: MouseEvent): void {
   const b = tgt(e).closest<HTMLElement>('button'); if (!b) return
@@ -663,6 +772,7 @@ function onToolbarClick(e: MouseEvent): void {
         { icon: 'link', label: '复制这张图的链接', run: () => { void navigator.clipboard?.writeText(`${location.origin}${location.pathname}?s=${c.symbol}&i=${c.iv}#chart`); toast('链接已复制', '') } },
       ]); return
     case 'tbFull': return fullscreen()
+    case 'tbSettings': return openChartSettings(settingsHost)
   }
 }
 /** 换了一套布局（本机切换 / 别的设备改了布局集同步过来）：留着的格子就地换品种 / 周期（旧 K 线留到新的到），
@@ -797,6 +907,10 @@ function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
     { label: '对数坐标', check: true, checked: cell.chart.log, run: () => { cell.chart.setLog(!cell.chart.log); $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(cell.chart.log)) } },
     { label: '隐藏画线', check: true, checked: st.drawHidden, sc: '⌘ ⌥ H', run: toggleHideDrawings },
   )
+  if (cells.length > 1) items.push('-', zoomed
+    ? { label: '还原布局', icon: LAYOUT_ICON[st.layout], sc: 'Alt Enter', run: () => toggleZoom(null) }
+    : { label: '放大这一格', icon: 'fullscreen', sc: 'Alt Enter', run: () => toggleZoom(cell) })
+  items.push('-', { label: '设置…', icon: 'gear', run: () => openChartSettings(settingsHost) })
   menu(items, info.clientX, info.clientY, { width: 260 })
 }
 
@@ -855,10 +969,13 @@ function togglePanel(): void {
 }
 export function openPanel(p: PanelId): void { st.panel = p; st.lastPanel = p; save(); renderRail(); renderPanel() }
 
+/** 侧栏上次整块画的是哪个面板、哪只品种（loadCell 收尾据此决定整块重画还是只改详情） */
+let panelSym = ''
 export function renderPanel(): void {
   layoutSlots()
   if (!st.panel || !cells.length) return
   const el = $('#sidePanel')
+  panelSym = st.panel + ':' + cfg(active())?.symbol
   ;({ watch: panelWatch, alerts: panelAlerts, flow: panelFlow, notes: panelNotes, trades: panelTrades } as Record<PanelId, (el: HTMLElement) => void>)[st.panel](el)
 }
 
@@ -906,8 +1023,8 @@ function renderDetail(): void {
   if (!s) {
     // 品种表还没到：先摆徽标、代号与价格位（「—」），表到了整块重画
     const g = guessSym(k)
-    el.innerHTML = `<div class="dh">${badge(g, 'lg')}<div class="names"><div class="code">${esc(g.base)}<span class="kind">${kindName(g)}</span></div><div class="cn"></div></div>${collapseBtn(isCollapsed('detail'))}</div>
-    <div class="px"><span class="big num" data-f="big">—</span><span class="chg num" data-f="chg"></span></div>`
+    morphHtml(el, `<div class="dh">${badge(g, 'lg')}<div class="names"><div class="code">${esc(g.base)}<span class="kind">${kindName(g)}</span></div><div class="cn"></div></div>${collapseBtn(isCollapsed('detail'))}</div>
+    <div class="px"><span class="big num" data-f="big">—</span><span class="chg num" data-f="chg"></span></div>`)
     return
   }
   // 五个慢数不在首屏：品种停稳再取；没到之前格子里是「—」，到了自己补上
@@ -921,7 +1038,8 @@ function renderDetail(): void {
   // 一屏放得下：板块标签并进名字下面那一行，十二格改成「名 值」四行三列
   const secHTML = secs.slice(0, 3).map(x => `<button class="sec-link" data-sector="${x.id}">${esc(x.cn)}</button>`).join('')
   const cell = (k: string, v: string, c = '', f = ''): string => `<div><span class="k">${k}</span><span class="v num ${c}"${f ? ` data-f="${f}"` : ''}>${v}</span></div>`
-  el.innerHTML = `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(s.code)}<span class="kind">${kindName(s)}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}${secHTML ? `<span class="secs">${secHTML}</span>` : ''}</div></div>
+  // 61 秒一次的慢数 / 元数据到了都会重画：就地改，星标 / 板块 / 收起按钮留着，指针停在上面不跳、点得中
+  morphHtml(el, `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(s.code)}<span class="kind">${kindName(s)}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}${secHTML ? `<span class="secs">${secHTML}</span>` : ''}</div></div>
       <button class="ibtn sm" data-star="${k}" aria-pressed="${w}" aria-label="${w ? '移出自选' : '加入自选'}" data-tip="${w ? '移出自选' : '加入自选'}">${I(w ? 'star' : 'starOff')}</button>${collapseBtn(isCollapsed('detail'))}</div>
     <div class="px"><span class="big num price-live ${st.stale || s.closed ? '' : cls(s.pct)}${s.closed ? ' closed' : ''}" data-f="big">${priceText(s)}</span><span class="chg num ${cls(s.pct)}" data-f="chg">${chgText(s)}</span></div>
     ${s.hi && s.lo ? `<div class="range"><span class="num" data-f="lo">${fmt(s.lo, s.dec)}</span><div class="bar"><i data-f="pos" style="left:${clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100}%"></i></div><span class="num" data-f="hi">${fmt(s.hi, s.dec)}</span></div>` : ''}
@@ -943,7 +1061,7 @@ function renderDetail(): void {
       ${cell(term('标记价'), s.mark ? fmt(s.mark, s.dec) : '—', '', 'mark')}
       ${cell(term('指数价'), s.index ? fmt(s.index, s.dec) : '—', '', 'index')}
       ${cell(term('基差'), pctText(basis), cls(basis), 'basis')}
-    </div>`}`
+    </div>`}`)
   paintReplayQuote()
 }
 const chgText = (s: Sym): string => s.price == null ? '—' : `${s.chg >= 0 ? '+' : ''}${fmt(s.chg, s.dec)}  ${pctText(s.pct)}`
@@ -953,7 +1071,8 @@ const frText = (s: Sym): string => s.fr == null ? '—' : (s.fr * 100).toFixed(4
 function patchDetail(): void {
   const el = $('#detail'); if (!el) return
   const s = sym(cfg(active()).symbol); if (!s) return
-  const set = (f: string, text: string, c?: string) => { const e = $(`[data-f="${f}"]`, el); if (!e) return; e.textContent = text; if (c != null) e.className = c }
+  // 只变才写：同样的字再写一遍 textContent，浏览器也会换掉文字节点、整块详情重排重画（挂机时每秒十来次）
+  const set = (f: string, text: string, c?: string) => { const e = $(`[data-f="${f}"]`, el); if (!e) return; if (e.textContent !== text) e.textContent = text; if (c != null && e.className !== c) e.className = c }
   set('big', priceText(s), `big num price-live ${st.stale || s.closed ? '' : cls(s.pct)}${s.closed ? ' closed' : ''}`)
   set('mstate', s.closed ? '休市' : '交易中')
   set('chg', chgText(s), `chg num ${cls(s.pct)}`)
@@ -964,7 +1083,7 @@ function patchDetail(): void {
   set('index', s.index ? fmt(s.index, s.dec) : '—')
   const basis = s.mark && s.index ? (s.mark / s.index - 1) * 100 : null
   set('basis', pctText(basis), `v num ${cls(basis)}`)
-  if (s.hi && s.lo) { set('lo', fmt(s.lo, s.dec)); set('hi', fmt(s.hi, s.dec)); const p = $('[data-f="pos"]', el); if (p) p.style.left = clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100 + '%' }
+  if (s.hi && s.lo) { set('lo', fmt(s.lo, s.dec)); set('hi', fmt(s.hi, s.dec)); const p = $('[data-f="pos"]', el); if (p) { const l = clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100 + '%'; if (p.style.left !== l) p.style.left = l } }
   const cap = marketCap(s.symbol); if (cap) set('cap', fmtCompact(cap))
   paintReplayQuote()
 }
@@ -987,10 +1106,10 @@ function panelNotes(el: HTMLElement): void {
   el.innerHTML = `<div class="sp-head"><h3>笔记</h3><button class="btn secondary sm" id="nNew">${I('plus', 'icon-16')}记一笔</button></div>
     <div class="scroll" style="flex:1;min-height:0">${st.notes.length ? st.notes.slice().reverse().map(n => {
       const s = sym(n.symbol), state = noteState(n), rule = noteRuleText(n)
-      return `<div class="list-row" data-note="${n.id}" style="cursor:pointer;align-items:flex-start">${badge(s, 'lg')}<div class="main"><div class="t1">${esc(s?.code || n.symbol)}<span class="tag">${IV_LABEL[n.iv] || n.iv}</span>${state ? `<span class="note-state ${state.cls}" ${n.err ? `data-tip="${esc(n.err)}"` : ''}>${state.text}</span>` : ''}<span class="faint" style="font-size:12px;font-weight:400;margin-left:auto">${shTime(n.draft?.created ?? n.t)}</span></div>
+      return `<div class="list-row" data-note="${esc(n.id)}" style="cursor:pointer;align-items:flex-start">${badge(s, 'lg')}<div class="main"><div class="t1">${esc(s?.code || n.symbol)}<span class="tag">${IV_LABEL[n.iv] || esc(n.iv)}</span>${state ? `<span class="note-state ${state.cls}" ${n.err ? `data-tip="${esc(n.err)}"` : ''}>${state.text}</span>` : ''}<span class="faint" style="font-size:12px;font-weight:400;margin-left:auto">${shTime(n.draft?.created ?? n.t)}</span></div>
         ${rule ? `<div class="note-rule num">${esc(rule)}</div>` : ''}
         ${n.text ? `<div class="t2" style="color:var(--text-1);font-size:13px;line-height:20px;white-space:pre-wrap">${esc(n.text)}</div>` : ''}</div>
-        <button class="ibtn sm act" data-del-note="${n.id}" aria-label="从这台电脑删掉" data-tip="${n.sync === 'synced' ? '从这台电脑删掉（复盘里的记录还在）' : '删除'}">${I('trash')}</button></div>`
+        <button class="ibtn sm act" data-del-note="${esc(n.id)}" aria-label="从这台电脑删掉" data-tip="${n.sync === 'synced' ? '从这台电脑删掉（复盘里的记录还在）' : '删除'}">${I('trash')}</button></div>`
     }).join('') : `<div class="empty">${I('note', 'icon-24')}<div>还没有笔记</div><div class="faint" style="font-size:12px;margin-top:4px">在图上右键「在这根 K 线记一笔」</div></div>`}</div>`
 }
 function openNote(t?: number, p?: number): void {
@@ -1030,7 +1149,7 @@ export function openSearch(initial = ''): void {
       : results.length ? results.map((s, i) => { const w = isWatched(s.symbol); return `<div class="sr ${i === activeIdx ? 'active' : ''}" role="option" aria-selected="${i === activeIdx}" data-i="${i}">
       ${badge(s, 'lg')}<div><div class="n1">${hl(s.code)}<span class="muted" style="font-weight:400;font-size:12px;margin-left:6px">${esc(s.symbol === s.code ? '' : s.symbol)}</span></div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${kindName(s)}</div></div>
       <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>
-      <button class="ibtn sm" data-w="${s.symbol}" aria-label="${w ? '移出自选' : '加入自选'}" style="color:${w ? '#F5A623' : ''}">${I(w ? 'star' : 'starOff')}</button></div>` }).join('')
+      <button class="ibtn sm" data-w="${esc(s.symbol)}" aria-label="${w ? '移出自选' : '加入自选'}" style="color:${w ? '#F5A623' : ''}">${I(w ? 'star' : 'starOff')}</button></div>` }).join('')
       : `<div class="empty">没有找到「${esc(q)}」<div class="faint" style="font-size:12px;margin-top:4px">代号、中文名都能搜，比如「英伟达」「黄金」</div></div>`
   }
   const setCat = (k: 'all' | Kind) => { cat = k; $$('[data-cat]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cat === cat))); activeIdx = 0; render() }
@@ -1095,7 +1214,7 @@ function openIndicators(): void {
     else if (st.ind.subs.includes(id as SubId)) st.ind.subs = st.ind.subs.filter(x => x !== id)
     else if (st.ind.subs.length < MAX_SUBS) st.ind.subs = [...st.ind.subs, id as SubId]
     else return
-    cells.forEach(c => c.chart.setIndicators(st.ind)); save(); render()
+    cells.forEach(c => { c.chart.setIndicators(st.ind); ensureOI(c) }); save(); render()
     $<HTMLElement>(`.ind-row[data-id="${id}"]`, list)?.focus()
   }
   inp.addEventListener('input', () => { q = inp.value; render(); list.scrollTop = 0 })
@@ -1162,7 +1281,7 @@ export const SHORTCUTS: [string, [string, string][]][] = [
   ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt 0', '重置视图'], ['Alt R', 'K 线回放（空格 播放 / 暂停，Home 跳到起点）'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标（对所有图格同时生效）'], ['⇧ T', '图表布局'], ['Alt 1…9', '切到第几套布局'], ['Alt ⇧ W', '开 / 关侧栏']]],
   ['画线工具', [['Alt T', '趋势线'], ['Alt J', '射线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt ⇧ R', '矩形'], ['Alt F', '斐波那契回撤'], ['双击工具', '连续画（右键或 Esc 退出）'], ['右键', '拿着工具时：放下工具'], ['⇧ 拖', '临时测量']]],
   ['编辑画线', [['⇧ 拖端点', '吸到 45° / 水平 / 竖直'], ['按住 ⌘', '临时反过来用磁吸'], ['⌘ 拖', '复制一条再拖走'], ['⌘ C / ⌘ V', '复制 / 粘贴画线（同一只品种）'], ['← → ↑ ↓', '微移选中的画线（⇧ 10 像素）'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z', '撤销'], ['⌘ Y / ⌘ ⇧ Z', '重做'], ['⌘ ⌥ H / ⌃ ⌥ H', '隐藏 / 显示全部画线']]],
-  ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['Alt N', '记一笔'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['?', '这张表']]],
+  ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['Alt N', '记一笔'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['⌥ ↩', '放大这一格 / 还原'], ['?', '这张表']]],
 ]
 export function kbdHTML(s: string): string { return s.split(' ').map(k => /^[直拖滚双右按]/.test(k) ? `<span class="muted">${k}</span>` : k === '/' && /[⌘⌃]/.test(s) ? ' / ' : `<kbd>${k}</kbd>`).join(' ') }
 /** 搜快捷键：按键与说明一起搜；Alt / Option / ⌥、Cmd / ⌘、Shift / ⇧、Ctrl / ⌃ 当成同一个 */
@@ -1267,9 +1386,10 @@ function onKey(e: KeyboardEvent): void {
     if (e.code === 'KeyS') { e.preventDefault(); screenshot(); return }
     // ⌥1…⌥9：切到第几套布局
     if (/^Digit[1-9]$/.test(e.code) && !e.shiftKey) { if (switchNth(+e.code.slice(5) - 1, applyLayoutSet)) e.preventDefault(); return }
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); toggleZoom(cell); return }
     return
   }
-  if (e.key === 'Escape') { if (cell.chart.cancelDraft()) return; if (drawTool()) { selectTool(null); return } if (cell.chart.selected) { cell.chart.selected = null; cell.chart.dirty = true; hideQuick() } return }
+  if (e.key === 'Escape') { if (cell.chart.cancelDraft()) return; if (drawTool()) { selectTool(null); return } if (cell.chart.selected) { cell.chart.selected = null; cell.chart.dirty = true; hideQuick(); return } if (zoomed) toggleZoom(null); return }
   if (e.key === 'Delete' || e.key === 'Backspace') { if (cell.chart.deleteSelected()) e.preventDefault(); return }
   if (e.key === '?') { e.preventDefault(); openShortcuts(); return } // 焦点落在搜索框：吃掉这次按键，不然「?」会被打进去
   if (e.key === '/') { e.preventDefault(); openIndicators(); return }
@@ -1296,26 +1416,28 @@ function onKey(e: KeyboardEvent): void {
 
 // ------------------------------------------------------------ 实时
 export function refreshStreams(early = false): void {
-  const set = new Set<string>(), core = new Set<string>()
+  // vital：各格的 K 线与行情、当前格的标记价与逐笔——断了才让图变灰，连接池里永远排最前、坐最早的连接；
+  // 自选报价排最后：同一来源的总上限（网关 160 路，和同一 IP 的手机、别的标签页合算）不够时先挤掉它们
+  const set = new Set<string>(), core = new Set<string>(), vital = new Set<string>()
   // early：格子还没摆出来（品种表在路上），按存档里这套布局的格子先订
   const n = early ? LAYOUT_N[st.layout] || 1 : cells.length
   st.cells.slice(0, n).forEach((c, i) => {
     // 秒级没有 K 线流，订逐笔自己攒；自定义分钟订它底下那个原生周期
     const siv = streamIvOf(c.iv), bar = siv ? streamName.kline(c.symbol, siv) : streamName.trade(c.symbol)
-    set.add(bar); set.add(streamName.ticker(c.symbol))
+    set.add(bar); set.add(streamName.ticker(c.symbol)); vital.add(bar); vital.add(streamName.ticker(c.symbol))
     if (i === st.active) { core.add(bar); core.add(streamName.ticker(c.symbol)) }
   })
   const a = st.cells[st.active]
-  if (a) { set.add(streamName.mark(a.symbol)); set.add(streamName.trade(a.symbol)) }
-  if (st.panel === 'watch') for (const k of st.watch[st.watchTab]) set.add(streamName.ticker(k))
+  if (a) for (const x of [streamName.mark(a.symbol), streamName.trade(a.symbol)]) { set.add(x); vital.add(x) }
   // 提醒要在后台也盯着
   const al = alertStreams()
   for (const k of al.ticker) { set.add(streamName.ticker(k)); core.add(streamName.ticker(k)) }
   for (const k of al.mark) { set.add(streamName.mark(k)); core.add(streamName.mark(k)) }
   for (const fn of hooks.extraStreams) for (const x of fn()) set.add(x)
+  if (st.panel === 'watch') for (const k of st.watch[st.watchTab]) set.add(streamName.ticker(k))
   // 品种表没到时没法筛（冷启动先订的那次）；到了之后下一次对账会把表里没有的撤掉
   const known = (name: string) => !S.symbols.size || S.symbols.has(name.split('@')[0].toUpperCase())
-  setStreams([...set].filter(known), [...core].filter(known), { now: early })
+  setStreams([...set].filter(known), [...core].filter(known), { now: early, vital: [...vital].filter(known) })
 }
 
 /**
@@ -1330,16 +1452,17 @@ function bootInParallel(): void {
   ensureCells(st, n)
   refreshStreams(true)
   const now = Date.now()
-  for (const c of st.cells.slice(0, n)) {
+  st.cells.slice(0, n).forEach((c, i) => {
     const k = `${c.symbol}|${c.iv}`, siv = streamIvOf(c.iv)
-    if (early.has(k) || !siv || isSecondIv(c.iv) || isCustomIv(c.iv)) continue
+    if (early.has(k) || !siv || isSecondIv(c.iv) || isCustomIv(c.iv)) return
     // 本机留着这一段、补尾巴够得着：装格子时先摆它、只取尾巴，不再整段预取
     const d = diskBars(c.symbol, c.iv)
-    if (d && tailNeed(d[d.length - 1].t, IV_MS[c.iv], now) <= TAIL_MAX) continue
+    if (d && tailNeed(d[d.length - 1].t, IV_MS[c.iv], now) <= TAIL_MAX) return
     const hold = pushKey(c.symbol, siv)
     pushes.open(hold)
-    early.set(k, { hold, res: klines(c.symbol, c.iv, undefined, 1500, false, false, undefined, 'low').then(r => { if (r.ok) recentKlines.put(k, r.bars, Date.now()); return r }) })
-  }
+    // 多格布局的非当前格只先取 SIDE_LIMIT 根（同 loadCell）
+    early.set(k, { hold, res: klines(c.symbol, c.iv, undefined, firstLimit(i), false, false, undefined, 'low').then(r => { if (r.ok) recentKlines.put(k, r.bars, Date.now()); return r }) })
+  })
 }
 /** 品种表把存档里的品种换掉了：先发的那几次没人接，缓冲撒手 */
 function dropEarly(): void {
@@ -1510,8 +1633,7 @@ export async function initChart(): Promise<void> {
 
   // 每秒：钟、资金费率结算倒计时（图上的收线倒计时 2026-10-03 起不画，不再每秒重画各图）；每分钟：详情里的慢数、持仓量提醒
   setInterval(() => {
-    const d = sh(Date.now()), t = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC+8`
-    $$('.cell-foot .clock').forEach(e => { e.textContent = t })
+    paintClock()
     const s = sym(cfg(active())?.symbol || ''), cd = $('#detail [data-f="cd"]')
     if (cd && s?.nextFunding) cd.textContent = countdown(s.nextFunding - Date.now())
   }, 1000)

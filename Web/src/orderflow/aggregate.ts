@@ -39,7 +39,8 @@ export function emptyFine(step: number, venues: VenueMeta[] = []): FineBook {
   return { step, asOfMs: 0, venues, bid: new Map(), ask: new Map(), mid: null, bestBid: null, bestAsk: null, ready: 0 }
 }
 
-/** 把模型里每本簿按 step 分桶再加总（radiusBps：各簿自己中间价两侧多远以内）。 */
+/** 把模型里每本簿按 step 分桶再加总（radiusBps：各簿自己中间价两侧多远以内）。
+ *  各簿的分桶走 fineBuckets：簿没动就复用（evaluate 扫大圈时已顺带分好这一圈），不再每帧整本重扫。 */
 export function buildFine(model: OrderFlowModel, radiusBps: number, nowMs: number, refInstrument?: string): FineBook | null {
   const scheme = model.scheme
   if (!scheme) return null
@@ -55,7 +56,7 @@ export function buildFine(model: OrderFlowModel, radiusBps: number, nowMs: numbe
   const mids: number[] = []
   ids.forEach((id, vi) => {
     const b = model.books.get(id)!
-    const map = b.buckets(scheme, radiusBps)
+    const map = b.fineBuckets(scheme, radiusBps)
     if (!map) return
     out.ready++
     const m = b.mid()

@@ -14,7 +14,9 @@
  * 从原型 prototype/web-2026-09-29/chart.js 逐字移植；画法、数值不改。
  */
 import { icon } from '../ui/icons'
-import { clamp, crossTimeLabel, durText, fmt, fmtAxis, fmtCompact, fmtSub, hexA, niceStep } from '../util/format'
+import { esc } from '../ui/dom'
+import { VALS_BOX, applyHidden, patchVals, toolsHtml, type LegVal } from './legendDom'
+import { clamp, durText, fmt, fmtAxis, fmtCompact, fmtSub, hexA, niceStep } from '../util/format'
 import { CATALOG, Calc, MAIN_IDS, paramText } from './calc'
 import type { Bar, CalcEnv, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
 import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
@@ -23,18 +25,16 @@ import { oscLevels, subBand, subFixed, subStyles, type SubStyle } from './indica
 import { mainOn } from './mainIndicators'
 import { drawMoreMain, pivotPColor } from './overlaysMore'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
-import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
+import { AXIS_H, FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
 import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 import { detachFlows } from './tradeFlow'
 import { linePriceAt } from '../alerts/shape'
+import { DEFAULTS as CS_DEFAULTS, crossText, dashOf, dayStartSh, marginRange, type ChartSettings } from './chartSettings'
 import { COMPARE_COLORS, alignCompare, compareBaseIndexFrom, comparePercentAt, comparePercentLabel, compareSegments, pctOf, percentTickLabel, percentTicks, priceOfPct, type Aligned, type CompareLine } from './compare'
 
-const AXIS_H = 28
-const MIN_SPACING = 1.5
-const MAX_SPACING = 60
-const DEFAULT_SPACING = 8
-const RIGHT_MARGIN_BARS = 6
+// 间距上下限、默认间距、右侧留白与滚轮手感都照 TradingView，见 ./wheel
+import { DEFAULT_SPACING, MAX_SPACING, MIN_SPACING, clampRightBar, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing, wheelDelta, wheelSpeed, zoomFactor, zoomScale, zoomStart, zoomStep, type ZoomAnim } from './wheel'
 const SEP_HIT = 3 // 窗格分隔线上下各 3 px，热区 6 px
 
 // 线条规格（网页版自己的一套，和手机端无关）。基准屏 1 CSS px = 1 物理像素：
@@ -191,6 +191,20 @@ export interface ThemeColors {
 export interface PriceRange { min: number; max: number }
 export type PaneId = 'main' | SubId
 export interface Pane { id: PaneId; y: number; h: number; ticks?: number[] }
+
+/** 一条画线连同它的标签、提醒点、选中把手整个落在主图之外（拖到看不见的历史里、价格在视野上下）：这一帧不画。
+ *  几百条画线的品种（C15 的 BTC 500 条）每次重画都把屏幕外的斐波那契逐级写字，挂机时占主线程约 0.6%。
+ *  射线会往外延伸、不判；水平线只看高度；斐波那契的读数写在左端再往左，左边多留 240；测量的读数框在上下 50、宽 200 以内。 */
+export function offPlot(type: string, pts: XY[], p: Pane, PW: number): boolean {
+  if (!pts.length || type === 'ray') return false
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+  for (const q of pts) { if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y }
+  if (![x0, x1, y0, y1].every(Number.isFinite)) return false
+  const m = type === 'measure' ? 200 : 16, left = type === 'fib' ? m + 240 : m
+  if (y1 + m < p.y || y0 - m > p.y + p.h) return true
+  if (type === 'hline') return false
+  return x1 + m < 0 || x0 - left > PW
+}
 export interface Crosshair { x: number; y: number; pane?: PaneId }
 export interface DrawingHit { d: Drawing; handle: number | null }
 
@@ -258,13 +272,17 @@ export class TVChart {
   ctx: CanvasRenderingContext2D
   legendEl: HTMLDivElement
   paneLegendEls: HTMLDivElement[] = []
-  /** 各副图图例上次渲染的内容键，没变就不重写 innerHTML（原型挂在元素的 _k 上） */
+  /** 各副图图例外壳上次渲染的键（指标、参数、显隐），没变就不重建；读数另记在 .vals 元素的 _k 上 */
   paneLegendKeys: (string | null)[] = []
+  /** 这一帧画完画布后要写的副图读数（见 tick：先把所有格子的画布画完，再统一写 DOM） */
+  private paneLegendQ: Pane[] | null = null
   bars: Bar[] = []
   iv = 36e5
   meta: ChartMeta = { symbol: '', title: '', sub: '', dec: 2 }
   spacing = DEFAULT_SPACING
   rightBar = 0
+  /** 进行中的滚轮缩放（共用帧里 stepZoom 一帧推一步）；null = 没在缩 */
+  private zAnim: ZoomAnim | null = null
   ind: IndState = { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }
   /** 页面要的指标（偏好原样）；ind 是按品种收过的、真正画的那份（美元指数收掉成交量类与持仓） */
   indWanted: IndState = { ...this.ind }
@@ -324,6 +342,15 @@ export class TVChart {
   vpvrMode: VpvrMode = 'split'
   vpvrLast: Vpvr | null = null
   dirty = true
+  /** 只有十字线 / 读数要换（鼠标扫过、别的格子同步过来）：贴回静态层底图再画十字线，不整帧重画（dirty 优先） */
+  crossDirty = false
+  /** 静态层底图（K 线、指标、画线、挂单墙、标记、价格轴标签——十字线以下的全部），与主画布同尺寸；格子销毁时释放 */
+  private statCv: HTMLCanvasElement | OffscreenCanvas | null = null
+  private statCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null
+  /** 底图是上一次整帧重画的结果 */
+  private statOk = false
+  /** 主画布上现在正好是静态层（上次整帧重画时没有十字线）：要底图时直接从它拷 */
+  private mainStatic = false
   hoverWall: Wall | null = null
   /** 外挂绘制层（订单流） */
   layers: ChartLayer[] = []
@@ -356,6 +383,10 @@ export class TVChart {
   legendExtra: ((i: number) => string) | null = null
   /** 等幅 K 线等换了横轴的画法（chart/rangeBars.ts 挂）：返回 false 的画线这时不画、点不中（不删） */
   drawingShown: ((d: Drawing) => boolean) | null = null
+  /** 图表设置（所有格子共用一份，见 chartSettings.ts）；没设过（含测试里的假图）走 cs() 的默认值，所以这里不给初值 */
+  settings?: ChartSettings
+  /** 皮肤给的原色（readTheme 读的）；colors = 它叠上图表设置里的颜色覆盖 */
+  baseColors?: ThemeColors
   /** 提醒线（见 AlertSignal）：页面把这只品种上还在生效的画线提醒整份给，画哪几条由 signalsShown 定 */
   alertSignals: AlertSignal[] = []
   dead = false
@@ -402,16 +433,19 @@ export class TVChart {
       cross: v('--chart-cross'), crossLabel: v('--chart-cross-label'), scaleLine: v('--chart-scale-line'),
       up: v('--up'), down: v('--down'), accent: v('--accent'), alert: v('--alert-line'), line: v('--line'),
     }
+    this.baseColors = { ...this.colors }; this.mergeColors(); this.applyLegendOpts()
     this.font = `${this.deg.font}px ${getComputedStyle(document.body).getPropertyValue('--font-num').trim() || 'sans-serif'}`
     this.dirty = true
   }
   /** 多图降级：格子尺寸变了由页面算好传进来；没变就什么都不做 */
   setDegrade(d: Degrade): void {
     const o = this.deg
-    if (o.subs === d.subs && o.compact === d.compact && o.font === d.font && o.vol === d.vol) return
+    if (o.subs === d.subs && o.legend === d.legend && o.font === d.font && o.vol === d.vol) return
     this.deg = d
     this.font = `${d.font}px ${this.fontFamily()}`
-    if (o.subs !== d.subs) this.recalc()
+    // 多放出来的副图要现算（收掉的不用重算，下次 render 不画它就是了）
+    const shown = (n: number): number => Math.min(n, this.ind.subs.length)
+    if (shown(d.subs) > shown(o.subs)) this.recalc()
     this.paneLegendKeys.fill(null)
     this.dirty = true; this.renderLegend()
   }
@@ -442,7 +476,7 @@ export class TVChart {
     if (!sameSym) {
       // 换品种 / 周期时手里还按着：拖平移记的起点下标、分隔线起拖的高度、两下画线的第一下都是上一份数据上的，作废
       this.dropGesture(true)
-      this.rightBar = bars.length - 1 + RIGHT_MARGIN_BARS; this.manual = null; this.auto = true; this.o.onAutoChange?.(true)
+      this.rightBar = bars.length - 1 + this.rightMarginBars(); this.manual = null; this.auto = true; this.o.onAutoChange?.(true)
     }
     if (this.pendingMeta) { this.pendingMeta = null; this.host.classList.remove('pending') }
     this.recalc(); this.dirty = true; this.renderLegend()
@@ -518,6 +552,135 @@ export class TVChart {
   }
   setTool(t: DrawingType | null): void { this.tool = t; this.draft = null; this.canvas.style.cursor = 'crosshair'; this.dirty = true }
   setMagnet(on: boolean): void { this.magnet = on }
+  // ---------------------------------------------------------- 图表设置
+  cs(): ChartSettings { return this.settings ?? CS_DEFAULTS }
+  /** 右侧留白（根数）：图表设置「画布 · 边距 · 右」 */
+  rightMarginBars(): number { return this.cs().rightBars }
+  /** 换设置：立刻重画；右边距变了而最新一根正在屏幕上时，视图跟着让出 / 收回那几根 */
+  setSettings(s: ChartSettings): void {
+    const old = this.cs(); if (old === s) return
+    this.settings = s
+    if (old.rightBars !== s.rightBars && this.bars.length && this.rightBar >= this.lastIndex()) this.rightBar = Math.max(this.lastIndex(), this.rightBar + s.rightBars - old.rightBars)
+    this.mergeColors(); this.applyLegendOpts()
+    this.dirty = true; this.paneLegendKeys.fill(null); this.renderLegend()
+  }
+  private mergeColors(): void {
+    const b = this.baseColors; if (!b) return
+    const s = this.cs()
+    this.colors = { ...b, bg: s.bg ?? b.bg, text: s.scaleText ?? b.text, scaleLine: s.scaleLine ?? b.scaleLine, cross: s.crossColor ?? b.cross }
+  }
+  /** 状态栏的显隐与底色：只切格子上的 class / 变量，图例的拼法不动（app.css 的 .ls-*） */
+  private applyLegendOpts(): void {
+    const h = this.host; if (!h) return
+    const s = this.cs(), cl = h.classList
+    cl.toggle('ls-no-ohlc', !s.ohlc); cl.toggle('ls-no-chg', !s.barChange)
+    cl.toggle('ls-no-indtitle', !s.indTitles); cl.toggle('ls-no-indargs', !s.indArgs); cl.toggle('ls-no-indvals', !s.indValues)
+    cl.toggle('ls-bg', s.legendBg)
+    const bg = `color-mix(in srgb, ${this.colors.bg || 'transparent'} ${s.legendBgOpacity}%, transparent)`
+    if (h.style.getPropertyValue('--ls-bg') !== bg) h.style.setProperty('--ls-bg', bg)
+    // 画布背景改过色：图例悬停底、工具按钮底跟着换（--chart-bg 本身不动，readTheme 还要从它读皮肤色）
+    cl.toggle('cs-bgset', !!s.bg)
+    if (s.bg) h.style.setProperty('--cs-bg', s.bg); else h.style.removeProperty('--cs-bg')
+  }
+  /** 状态栏「成交量」：成交量指标没开时在开高低收后面带一个量（开着的话它自己那行已经有了） */
+  legendVolume(b: Bar, cls: string): LegVal[] {
+    return this.cs().volume && !this.ind.vol ? [['', '量', fmtCompact(b.v), cls]] : []
+  }
+  /** 最新一根的颜色（最新价线、最新价标签）：跟实体色走，行情断了是灰的 */
+  lastColor(b: Bar): string {
+    const C = this.colors, S = this.cs()
+    if (this.stale) return C.text3
+    const i = this.lastIndex(), prev = this.bars[i - 1]
+    const up = S.prevCloseColor && prev ? b.c >= prev.c : b.c >= b.o
+    return (up ? S.bodyUp : S.bodyDown) ?? (up ? C.up : C.down)
+  }
+  /** 画布背景：纯色或上下渐变 */
+  private fillBg(W: number, H: number): void {
+    const c = this.ctx, S = this.cs(), bg = this.colors.bg
+    if (S.bgType === 'gradient') {
+      const g = c.createLinearGradient(0, 0, 0, H)
+      g.addColorStop(0, bg); g.addColorStop(1, S.bg2 ?? this.baseColors?.bg ?? bg)
+      c.fillStyle = g
+    } else c.fillStyle = bg
+    c.fillRect(0, 0, W, H)
+  }
+  /** 水印：品种代号与周期，铺在主图正中 */
+  private drawWatermark(p: Pane, PW: number): void {
+    const S = this.cs(); if (!S.watermark || !this.meta.symbol) return
+    const c = this.ctx, iv = this.meta.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || ''
+    const text = iv ? `${this.meta.symbol}, ${iv}` : this.meta.symbol
+    let size = clamp(Math.round(p.h / 5), 16, 96)
+    c.save()
+    c.font = `600 ${size}px ${this.fontFamily()}`
+    const w = c.measureText(text).width
+    if (w > PW * 0.8) { size = Math.max(12, Math.floor(size * PW * 0.8 / w)); c.font = `600 ${size}px ${this.fontFamily()}` }
+    c.globalAlpha = S.watermarkOpacity / 100; c.fillStyle = this.colors.text; c.textAlign = 'center'; c.textBaseline = 'middle'
+    c.fillText(text, PW / 2, p.y + p.h / 2)
+    c.restore()
+  }
+  /** 前一天（上海时间）最后一根的收盘价；日线及以上没有「前收盘」这条线 */
+  prevDayClose(): number | null {
+    if (this.iv >= 864e5) return null
+    const i = this.lastIndex(), b = this.bars[i]; if (!b) return null
+    const start = dayStartSh(b.t)
+    for (let k = i; k >= 0 && i - k < 5000; k--) if (this.bars[k].t < start) return this.bars[k].c
+    return null
+  }
+  /** 可见区间的最高 / 最低价 */
+  visibleHiLo(): { hi: number; lo: number } | null {
+    const { from, to } = this.visible()
+    let hi = -Infinity, lo = Infinity
+    for (let i = Math.max(0, from); i <= Math.min(to, this.lastIndex()); i++) { const b = this.bars[i]; if (!b) continue; if (b.h > hi) hi = b.h; if (b.l < lo) lo = b.l }
+    return hi >= lo && Number.isFinite(hi) && Number.isFinite(lo) ? { hi, lo } : null
+  }
+  /** 主图里的参考线：最高最低价线、前收盘价线（画在主图裁剪区里） */
+  private drawRefLines(p: Pane, r: PriceRange): void {
+    const S = this.cs(); if (!S.hiloLine && !S.prevClose) return
+    const c = this.ctx, PW = this.plotW()
+    const line = (v: number, col: string) => {
+      const y = Math.round(this.priceToY(v, p, r)) + .5; if (y < p.y || y > p.y + p.h) return
+      c.strokeStyle = col; c.lineWidth = LINE.hair; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(0, y); c.lineTo(PW, y); c.stroke(); c.setLineDash([])
+    }
+    if (S.hiloLine) { const hl = this.visibleHiLo(); if (hl) { line(hl.hi, this.colors.text2); line(hl.lo, this.colors.text2) } }
+    if (S.prevClose) { const v = this.prevDayClose(); if (v != null) line(v, this.colors.text3) }
+  }
+  /** 价格轴上的一枚标签（和最新价标签一个样子） */
+  private axisTag(p: Pane, y: number, text: string, bg: string, fg = '#fff'): void {
+    const c = this.ctx, PW = this.plotW(), h = 20
+    if (y < p.y || y > p.y + p.h) return
+    const top = clamp(y - 10, p.y, p.y + p.h - h)
+    c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, h, 3); c.fill()
+    c.fillStyle = fg; c.textAlign = 'left'; c.font = `600 ${this.font}`
+    c.fillText(text, PW + 8, top + 10)
+    c.font = this.font
+  }
+  /** 比例尺与线：指标最新值、最高最低价、前收盘价的轴标签（主图）。最新价标签最后画，压在最上面 */
+  private drawSettingLabels(p: Pane, r: PriceRange): void {
+    const S = this.cs(), C = this.colors, i = this.lastIndex()
+    if (S.indLabels) for (const id of ['ma', 'ema', 'boll', 'vwap'] as MainId[]) {
+      if (!mainOn(this.ind, id) || this.hidden.has(id)) continue
+      const ser = this.series[id]; if (!ser) continue
+      const cols = CATALOG[id].colors ?? []
+      ser.forEach((s, k) => { const v = s[i]; if (v != null && Number.isFinite(v)) this.axisTag(p, this.priceToY(v, p, r), this.mainAxisText(v), cols[k % cols.length] || C.text2) })
+    }
+    if (S.hiloLabel) { const hl = this.visibleHiLo(); if (hl) { this.axisTag(p, this.priceToY(hl.hi, p, r), this.mainAxisText(hl.hi), C.text2); this.axisTag(p, this.priceToY(hl.lo, p, r), this.mainAxisText(hl.lo), C.text2) } }
+    if (S.prevClose) { const v = this.prevDayClose(); if (v != null) this.axisTag(p, this.priceToY(v, p, r), this.mainAxisText(v), C.text3) }
+  }
+  /** 副图指标线的最新值标签（柱状的不挂） */
+  private drawSubLabels(panes: Pane[]): void {
+    if (!this.cs().indLabels) return
+    const i = this.lastIndex()
+    for (const p of panes.slice(1)) {
+      const id = p.id as SubId, r = this._ranges[p.id], ser = this.series[id]; if (!r || !ser || this.hidden.has(id)) continue
+      const styles: readonly SubStyle[] = id === 'macd' ? ['line', 'line', 'hist4'] : subStyles(id) ?? []
+      const cols = CATALOG[id]?.colors ?? []
+      ser.forEach((s, k) => {
+        if ((styles[k] ?? 'line') !== 'line') return
+        const v = s[i]; if (v == null || !Number.isFinite(v)) return
+        this.axisTag(p, this.priceToY(v, p, r), this.subFmt(id, v), cols[k % cols.length] || this.colors.text2)
+      })
+    }
+  }
   /** 能不能新画、拖、改画线（复盘回放里不能） */
   editable(): boolean { return !this.readOnly && !this.pendingMeta }
   /** 把选中的画线挪 dx / dy 像素（方向键微调）；锁住的、只读时不动 */
@@ -600,20 +763,53 @@ export class TVChart {
   setAuto(on: boolean): void { this.auto = on; if (on) this.manual = null; this.dirty = true; this.o.onAutoChange?.(on) }
   setStale(on: boolean): void { this.stale = on; this.dirty = true; this.renderLegend() }
   // 图例读数也跟着同步来的时间走（legendIndex 认 extCross），不然别的格子十字线挪了、图例还停在最新一根上
-  syncCrosshair(t: number | null): void { if (t === this.extCross) return; this.extCross = t; this.dirty = true; this.legendDirty = true }
-  resetView(): void { this.spacing = DEFAULT_SPACING; this.rightBar = this.lastIndex() + RIGHT_MARGIN_BARS; this.setAuto(true) }
+  syncCrosshair(t: number | null): void { if (t === this.extCross) return; this.extCross = t; this.crossDirty = true; this.legendDirty = true }
+  resetView(): void { this.zAnim = null; this.spacing = DEFAULT_SPACING; this.rightBar = this.lastIndex() + this.rightMarginBars(); this.setAuto(true) }
   setVisibleRange(t0: number, t1: number): void {
+    this.zAnim = null
     const i0 = this.indexAt(t0), i1 = this.indexAt(t1)
     const n = Math.max(10, i1 - i0 + 1)
-    this.spacing = clamp(this.plotW() / (n + RIGHT_MARGIN_BARS), MIN_SPACING, MAX_SPACING)
-    this.rightBar = i1 + RIGHT_MARGIN_BARS; this.setAuto(true)
+    this.spacing = clamp(this.plotW() / (n + this.rightMarginBars()), MIN_SPACING, MAX_SPACING)
+    this.rightBar = i1 + this.rightMarginBars(); this.setAuto(true)
   }
   scrollBars(k: number): void { this.rightBar += k; this.dirty = true; this.maybeMore() }
+  /** 一步到位的缩放（键盘 + / -）：anchorX 底下那根不动 */
   zoom(f: number, anchorX?: number): void {
+    this.zAnim = null
     const ax = anchorX ?? this.plotW()
     const idx = this.xToIndex(ax)
     this.spacing = clamp(this.spacing * f, MIN_SPACING, MAX_SPACING)
-    this.rightBar = idx + (this.plotW() - ax) / this.spacing
+    this.rightBar = this.clampRB(idx + (this.plotW() - ax) / this.spacing)
+    this.dirty = true; this.maybeMore()
+  }
+  /** 右沿下标夹住，两头至少各留 2 根看得见（TV correctOffset），不让一路滚 / 拖到整屏空白 */
+  private clampRB(rb: number): number { return clampRightBar(rb, this.lastIndex(), this.plotW(), this.spacing) }
+  /** 滚轮 / 捏合缩放（TV TimeScale.zoom）：x 底下那根 K 线不动；间距 ZOOM_MS 内顺滑插到目标（共用帧里 stepZoom 推），
+   *  还没到位又滚一格就在目标上再乘一格，锚点换成这一格鼠标下那根 */
+  wheelZoom(f: number, x: number, now = performance.now()): void {
+    const W = this.plotW()
+    if (!this.bars.length || !(W > 0) || !(f > 0) || f === 1) return
+    const ax = clamp(x, 1, W) // TV zoomTime 把锚点夹在 [1, 宽]
+    this.zAnim = zoomStart(this.zAnim, this.spacing, this.rightBar, f, this.xToIndex(ax), ax, now)
+    if (this.zAnim) kick()
+  }
+  /** 共用帧开头调（先于所有格子的 frame）：推进滚轮缩放一帧，联动的格子同一帧跟上。
+   *  别处改了间距（双击时间轴复位、联动套来的时间段）就作罢；只挪了右沿（新的一根顶出来、补更早的历史、横滑）锚点跟着挪 */
+  stepZoom(now: number): void {
+    const a = this.zAnim
+    if (!a) return
+    if (this.dead || this.drag || this.spacing !== a.sp || !this.bars.length) { this.zAnim = null; return }
+    if (this.rightBar !== a.rb) a.idx += this.rightBar - a.rb
+    const r = zoomStep(a, now, this.plotW(), this.lastIndex())
+    this.spacing = a.sp = r.spacing; this.rightBar = a.rb = r.rightBar
+    if (r.done) this.zAnim = null
+    this.dirty = true; this.legendDirty = true
+    this.maybeMore(); this.emitView()
+  }
+  /** 滚轮横滑（TV scrollChart）：px > 0 往新的那头；不带惯性 */
+  wheelPan(px: number): void {
+    if (!this.bars.length || !px) return
+    this.rightBar = this.clampRB(this.rightBar + px / this.spacing)
     this.dirty = true; this.maybeMore()
   }
   /** 纵向缩放主图价格轴（以 anchorY 为不动点；f > 1 放大价格区间） */
@@ -680,6 +876,8 @@ export class TVChart {
     if (this.env) detachFlows(this.env.invalidate)
     frames.delete(this)
     this.drag = null
+    if (this.statCv) { this.statCv.width = 0; this.statCv.height = 0 }
+    this.statCv = null; this.statCtx = null; this.statOk = false
     this.host.innerHTML = ''
   }
 
@@ -695,8 +893,8 @@ export class TVChart {
     const b = this.bars
     if (!b.length) return
     for (const id of MAIN_IDS) if (mainOn(this.ind, id)) series[id] = Calc[id](b, this.params[id], env)
-    // 降级收掉副图时不算副图（十六图里每格省下几个指标的整段重算）
-    if (this.deg.subs) for (const id of this.ind.subs) if (Calc[id]) series[id] = Calc[id](b, this.params[id], env)
+    // 降级收掉的副图不算（十六图里每格省下几个指标的整段重算）
+    for (const id of this.subIds()) if (Calc[id]) series[id] = Calc[id](b, this.params[id], env)
   }
   /** 给指标的上下文（一个图一份，invalidate 是同一个函数，异步数据源拿它登记回调不会越攒越多） */
   calcEnv(): CalcEnv {
@@ -719,6 +917,8 @@ export class TVChart {
   // ---------------------------------------------------------- 几何
   resize(): void {
     const r = this.host.getBoundingClientRect()
+    // 格子被藏起来（多图放大了别的格）：宽高是 0，画布与视口原样留着，还原时尺寸没变、不用重铺
+    if ((!r.width || !r.height) && this.w > 0) return
     const w = Math.max(10, r.width), h = Math.max(10, r.height), dpr = window.devicePixelRatio || 1
     // 尺寸没变就不动画布（重设 canvas.width 会清空画面；拖分隔线时每帧都会问一遍）
     if (w === this.w && h === this.h && this.canvas.width === Math.round(w * dpr) && this.canvas.height === Math.round(h * dpr)) return
@@ -745,8 +945,9 @@ export class TVChart {
   plotW(): number { return this.w - this.aw }
   // 副图默认矮：每个副图取画布高的 11%，夹在 96–136 px（2K 屏上约 132 px，TradingView 桌面版的比例），
   // 主图拿剩下的全部。用户拖过分隔线后按比例记（paneR），窗口高度变了各格等比伸缩；
-  // 主图不少于 40%、每个副图不少于 80 px。分配规则见 panes.ts。多图降级时只留主图。
-  subIds(): SubId[] { return this.deg.subs ? this.ind.subs : [] }
+  // 主图不少于 40% 与 160 px、每个副图不少于 80 px（挤时 56）。分配规则见 panes.ts。
+  // 多图降级时按格子高度只留前 deg.subs 个副图（用户排在前面的先留）。
+  subIds(): SubId[] { return this.deg.subs >= this.ind.subs.length ? this.ind.subs : this.ind.subs.slice(0, this.deg.subs) }
   panes(): Pane[] {
     const subs = this.subIds()
     const H = this.h - AXIS_H
@@ -805,10 +1006,10 @@ export class TVChart {
       const v = priceOfPct(pct, base.price); if (ok(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v) }
     }
     if (!(hi >= lo)) { lo = log ? 1 : 0; hi = log ? 10 : 1 }
-    if (log) { const a = Math.log(lo), b = Math.log(hi), pad = (b - a) * 0.08 || 0.01; return { min: Math.exp(a - pad), max: Math.exp(b + pad) } }
-    // 一字线（停牌、涨跌停、刚上线只有一个价）：上下各留价格的 1%；负价（价差类）按绝对值留，否则上下沿颠倒
-    const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.01 || 1
-    return { min: lo - pad, max: hi + pad }
+    // 上下留白照图表设置「画布 · 边距」（TV 默认上 10%、下 8%）：可见最高价离窗格上沿 top%、最低价离下沿 bottom%；
+    // 一字线（停牌、涨跌停、刚上线只有一个价）按价格的 2% 当跨度，负价（价差类）按绝对值，上下沿不颠倒
+    const S = this.cs()
+    return marginRange(lo, hi, S.marginTop, S.marginBottom, log)
   }
   rangeSub(id: SubId, from: number, to: number): PriceRange {
     if (id === 'rsi') return { min: 0, max: 100 }
@@ -825,17 +1026,73 @@ export class TVChart {
   /** 共用的那一帧里调：脏了才画，不在屏幕上的不画（回到屏幕上时 IntersectionObserver 再置脏） */
   frame(): void {
     if (this.dead || !this.onScreen) return
-    if (this.legendDirty) { this.legendDirty = false; this.renderLegend() }
-    if (this.dirty) { this.dirty = false; this.render() }
+    if (this.dirty) { this.dirty = false; this.crossDirty = false; this.render() }
+    else if (this.crossDirty) { this.crossDirty = false; this.render(true) }
   }
-  render(): void {
+  /** 共用的那一帧里、所有格子的画布都画完之后调：写图例 DOM。
+   *  画布与 DOM 交错着来的话，前一格刚改了图例文字（样式变脏），后一格一设 ctx.font 浏览器就得先把样式重算一遍——
+   *  十六格联动十字线时每帧重算十几次；先画后写，一帧只重算一次 */
+  frameDom(): void {
+    if (this.dead || !this.onScreen) { this.paneLegendQ = null; return }
+    if (this.legendDirty) { this.legendDirty = false; this.paneLegendQ = null; this.renderLegend() }
+    else if (this.paneLegendQ) { const p = this.paneLegendQ; this.paneLegendQ = null; this.renderPaneLegends(p) }
+  }
+  /** 画完一帧要更新副图读数：在共用帧里就排到 frameDom，别处（同步重画）直接写 */
+  private paneLegends(panes: Pane[]): void { if (inTick) this.paneLegendQ = panes; else this.renderPaneLegends(panes) }
+  /** 把主画布上此刻的内容（十字线以下的静态层）存成底图；建不出离屏画布时返回 false，之后照常整帧重画 */
+  private snapStatic(): boolean {
+    const cv = this.canvas, w = cv.width, h = cv.height
+    if (!w || !h) return false
+    try {
+      if (!this.statCv) {
+        this.statCv = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas')
+        this.statCtx = this.statCv.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
+      }
+      const sc = this.statCv, x = this.statCtx
+      if (!x) return false
+      if (sc.width !== w || sc.height !== h) { sc.width = w; sc.height = h } // 尺寸 / DPR 变了：底图跟着换
+      x.setTransform(1, 0, 0, 1, 0, 0)
+      x.globalCompositeOperation = 'copy'
+      x.drawImage(cv, 0, 0)
+      x.globalCompositeOperation = 'source-over'
+      return true
+    } catch { this.statCv = null; this.statCtx = null; return false }
+  }
+  /** 轻量一帧：底图贴回主画布，只重画十字线与副图读数。底图不可用（尺寸变了、还没整帧画过）时返回 false 走整帧 */
+  private renderCross(): boolean {
+    const panes = this._panes, cv = this.canvas
+    if (!panes || !this.bars.length) return false
+    if (!this.statOk) {
+      if (!this.mainStatic) return false
+      this.statOk = this.snapStatic() // 主画布上正好是没有十字线的静态层：直接拿它当底图
+      if (!this.statOk) return false
+    } else {
+      const sc = this.statCv
+      if (!sc || sc.width !== cv.width || sc.height !== cv.height) { this.statOk = false; return false }
+      const c = this.ctx
+      c.save()
+      c.setTransform(1, 0, 0, 1, 0, 0)
+      c.globalCompositeOperation = 'copy'
+      c.drawImage(sc, 0, 0)
+      c.restore()
+    }
+    this.drawCrosshair(panes)
+    this.paneLegends(panes)
+    this.mainStatic = this.cross == null && this.extCross == null
+    return true
+  }
+  /** crossOnly：只有十字线动了——贴底图、画十字线与副图读数；没有可用的底图时整帧重画并顺手存底图。
+   *  只在十字线要单独动的时候才存：存底图要把这一帧先光栅化出来，缩放 / 平移这类连续整帧重画时存了也是白存 */
+  render(crossOnly = false): void {
+    if (crossOnly && this.renderCross()) return
+    this.statOk = false; this.mainStatic = false
     const c = this.ctx, C = this.colors
     this.aw = this.axisW()
     const W = this.w, H = this.h, PW = this.plotW()
     // 图例不许压到价格轴上：窄格子里（四图、板块预览）让它在绘图区宽度内折行
     const lw = `${Math.max(120, PW - 16)}px`; if (this.legendEl.style.maxWidth !== lw) this.legendEl.style.maxWidth = lw
     c.clearRect(0, 0, W, H)
-    c.fillStyle = C.bg; c.fillRect(0, 0, W, H)
+    this.fillBg(W, H)
     if (!this.bars.length) { this.renderSkeleton(); return }
     const { from, to } = this.visible()
     const panes = this.panes()
@@ -844,20 +1101,22 @@ export class TVChart {
     const mr = this.rangeMain(from, to); this.mainRange = mr
     this._ranges = { main: mr }
     for (const p of panes.slice(1)) this._ranges[p.id] = this.rangeSub(p.id as SubId, from, to)
+    this.drawWatermark(mainPane, PW)
 
     // 网格 + 价格刻度
     c.font = this.font; c.textBaseline = 'middle'
+    const S = this.cs(), gh = S.grid === 'both' || S.grid === 'horz', gv = S.grid === 'both' || S.grid === 'vert'
     for (const p of panes) {
       const r = this._ranges[p.id]
       const ticks = this.priceTicks(p, r)
       p.ticks = ticks
-      c.strokeStyle = C.grid; c.lineWidth = LINE.hair; c.beginPath()
-      for (const t of ticks) { const y = Math.round(this.priceToY(t, p, r)) + .5; c.moveTo(0, y); c.lineTo(PW, y) }
+      c.strokeStyle = S.horzColor ?? C.grid; c.lineWidth = LINE.hair; c.beginPath()
+      if (gh) for (const t of ticks) { const y = Math.round(this.priceToY(t, p, r)) + .5; c.moveTo(0, y); c.lineTo(PW, y) }
       c.stroke()
     }
     const tticks = this.timeTicks(from, to)
-    c.strokeStyle = C.grid; c.beginPath()
-    for (const t of tticks) { const x = Math.round(this.indexToX(t.i)) + .5; c.moveTo(x, 0); c.lineTo(x, H - AXIS_H) }
+    c.strokeStyle = S.vertColor ?? C.grid; c.beginPath()
+    if (gv) for (const t of tticks) { const x = Math.round(this.indexToX(t.i)) + .5; c.moveTo(x, 0); c.lineTo(x, H - AXIS_H) }
     c.stroke()
 
     // 主图
@@ -874,6 +1133,7 @@ export class TVChart {
     drawExtraMain(this, mainPane, mr, from, to)
     drawMoreMain(this, mainPane, mr, from, to)
     if (this.compareOn()) this.drawCompare(mainPane, mr, from, to)
+    this.drawRefLines(mainPane, mr)
     this.drawLastLine(mainPane, mr)
     this.drawAlertLines(mainPane, mr)
     this.drawAlertSignals(mainPane, mr)
@@ -919,8 +1179,13 @@ export class TVChart {
     c.font = this.font
 
     this.drawPriceLabels(mainPane, mr)
+    this.drawSubLabels(panes)
+    // 十字线以下到此画完：十字线在的话存一张底图（之后十字线再动只贴底图重画十字线），不在就记下主画布本身就是底图
+    const crossOn = this.cross != null || this.extCross != null
+    this.statOk = crossOn && crossOnly && this.snapStatic()
+    this.mainStatic = !crossOn
     this.drawCrosshair(panes)
-    this.renderPaneLegends(panes)
+    this.paneLegends(panes)
     if (geo) for (const l of this.layers) l.after?.(geo)
   }
 
@@ -987,29 +1252,76 @@ export class TVChart {
     if (w % 2 !== wick % 2) w -= 1
     return Math.max(wick, w)
   }
+  /** K 线：实体 / 边框 / 影线各自开关与涨跌色（图表设置「商品」；颜色没改过就跟涨跌色）。
+   *  边框和实体同色（默认）时不另描——实体本身就是边，和原来一样两遍填充 */
   drawCandles(p: Pane, r: PriceRange, from: number, to: number): void {
-    const c = this.ctx, C = this.colors, bw = this.candleW(), wick = this.wickW()
+    if (this.spacing < 1) { this.drawColumns(p, r, from, to); return }
+    const c = this.ctx, C = this.colors, S = this.cs(), bw = this.candleW(), wick = this.wickW()
     const half = Math.floor(bw / 2), wh = wick >> 1
+    const bodyOn = S.body && (bw > wick || !S.wick), borderOn = S.border && bw >= 3
+    const isUp = (i: number, b: Bar): boolean => { const q = S.prevCloseColor ? this.bars[i - 1] : undefined; return q ? b.c >= q.c : b.c >= b.o }
     for (const pass of [0, 1]) {
-      c.fillStyle = pass ? C.up : C.down
-      c.beginPath()
-      for (let i = from; i <= to; i++) {
-        const b = this.bars[i]; if (!b) continue
-        const up = b.c >= b.o
-        if ((pass === 1) !== up) continue
-        const x = Math.round(this.indexToX(i))
-        const yh = this.priceToY(b.h, p, r), yl = this.priceToY(b.l, p, r)
-        const yo = this.priceToY(b.o, p, r), yc = this.priceToY(b.c, p, r)
-        c.rect(x - wh, Math.round(yh), wick, Math.max(1, Math.round(yl) - Math.round(yh)))
-        if (bw > wick) {
+      const base = pass ? C.up : C.down
+      const bodyCol = (pass ? S.bodyUp : S.bodyDown) ?? base, borderCol = (pass ? S.borderUp : S.borderDown) ?? base, wickCol = (pass ? S.wickUp : S.wickDown) ?? base
+      const stroke = borderOn && (!bodyOn || borderCol !== bodyCol)
+      for (const part of [0, 1, 2]) { // 0 影线 · 1 实体 · 2 边框
+        if (part === 0 ? !S.wick : part === 1 ? !bodyOn : !stroke) continue
+        if (part === 2) { c.strokeStyle = borderCol; c.lineWidth = 1 } else c.fillStyle = part ? bodyCol : wickCol
+        c.beginPath()
+        for (let i = from; i <= to; i++) {
+          const b = this.bars[i]; if (!b) continue
+          if ((pass === 1) !== isUp(i, b)) continue
+          const x = Math.round(this.indexToX(i))
+          if (part === 0) {
+            const yh = Math.round(this.priceToY(b.h, p, r)), yl = Math.round(this.priceToY(b.l, p, r))
+            if (bodyOn || bw <= wick) { c.rect(x - wh, yh, wick, Math.max(1, yl - yh)); continue }
+            // 空心（实体关了）：影线只画实体上下两段，不穿过实体
+            const top = Math.round(this.priceToY(Math.max(b.o, b.c), p, r)), bot = Math.round(this.priceToY(Math.min(b.o, b.c), p, r))
+            if (top > yh) c.rect(x - wh, yh, wick, top - yh)
+            if (yl > bot) c.rect(x - wh, bot, wick, yl - bot)
+            continue
+          }
+          const yo = this.priceToY(b.o, p, r), yc = this.priceToY(b.c, p, r)
           const top = Math.round(Math.min(yo, yc)), bot = Math.round(Math.max(yo, yc))
-          c.rect(x - half, top, bw, Math.max(1, bot - top))
+          if (part === 1) c.rect(x - half, top, bw, Math.max(1, bot - top))
+          else c.rect(x - half + .5, top + .5, bw - 1, Math.max(0, bot - top - 1))
         }
+        if (part === 2) c.stroke(); else c.fill()
+      }
+    }
+  }
+  /** 间距不到 1 px（最密 0.5）时同一像素列上会落好几根：按列并成一根（首根开、末根收、最高、最低、量相加）。
+   *  不并的话几根叠在一列上，涨色盖住跌色、影线糊成一片；TV 也是间距小于 1 个物理像素时并柱（conflation） */
+  columns(from: number, to: number): { x: number[]; b: Bar[] } {
+    const xs: number[] = [], bs: Bar[] = []
+    for (let i = Math.max(0, from); i <= to; i++) {
+      const b = this.bars[i]; if (!b) continue
+      const x = Math.round(this.indexToX(i)), k = bs.length - 1
+      if (k >= 0 && xs[k] === x) {
+        const m = bs[k]; m.c = b.c; if (b.h > m.h) m.h = b.h; if (b.l < m.l) m.l = b.l
+        m.v = (Number.isFinite(m.v) && m.v > 0 ? m.v : 0) + (Number.isFinite(b.v) && b.v > 0 ? b.v : 0)
+      } else { xs.push(x); bs.push({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v }) }
+    }
+    return { x: xs, b: bs }
+  }
+  /** 最密时的 K 线：每列一根 1 px 细线（最高到最低），按并后的开收定涨跌色 */
+  private drawColumns(p: Pane, r: PriceRange, from: number, to: number): void {
+    const c = this.ctx, C = this.colors, S = this.cs(), { x: xs, b: bs } = this.columns(from, to)
+    for (const pass of [0, 1]) {
+      const base = pass ? C.up : C.down
+      c.fillStyle = (S.body ? (pass ? S.bodyUp : S.bodyDown) : (pass ? S.wickUp : S.wickDown)) ?? base
+      c.beginPath()
+      for (let k = 0; k < bs.length; k++) {
+        const b = bs[k], up = S.prevCloseColor && k > 0 ? b.c >= bs[k - 1].c : b.c >= b.o
+        if ((pass === 1) !== up) continue
+        const yh = Math.round(this.priceToY(b.h, p, r)), yl = Math.round(this.priceToY(b.l, p, r))
+        c.rect(xs[k], yh, 1, Math.max(1, yl - yh))
       }
       c.fill()
     }
   }
   drawVolume(p: Pane, from: number, to: number): void {
+    if (this.spacing < 1) { this.drawVolumeColumns(p, from, to); return }
     const c = this.ctx, C = this.colors, bw = this.candleW()
     let mx = 0
     // 坏量（NaN / Infinity / 负数）不画也不参与取顶：一根 Infinity 会把整屏的量柱压成 0 高
@@ -1026,6 +1338,25 @@ export class TVChart {
         if ((b.c >= b.o) !== (pass === 1)) continue
         const x = Math.round(this.indexToX(i)), vh = Math.max(1, b.v / mx * h)
         c.rect(x - half, Math.round(base - vh), Math.max(1, bw), Math.round(vh))
+      }
+      c.fill()
+    }
+  }
+  /** 最密时的成交量：按列相加，一列一根 1 px */
+  private drawVolumeColumns(p: Pane, from: number, to: number): void {
+    const c = this.ctx, C = this.colors, { x: xs, b: bs } = this.columns(from, to)
+    let mx = 0
+    for (const b of bs) if (Number.isFinite(b.v) && b.v > mx) mx = b.v
+    if (!mx) return
+    const h = p.h * VOL_H, base = p.y + p.h
+    for (const pass of [0, 1]) {
+      c.fillStyle = hexA(pass ? C.up : C.down, VOL_ALPHA)
+      c.beginPath()
+      for (let k = 0; k < bs.length; k++) {
+        const b = bs[k]
+        if (!(Number.isFinite(b.v) && b.v > 0) || (b.c >= b.o) !== (pass === 1)) continue
+        const vh = Math.max(1, b.v / mx * h)
+        c.rect(xs[k], Math.round(base - vh), 1, Math.round(vh))
       }
       c.fill()
     }
@@ -1143,10 +1474,11 @@ export class TVChart {
     }
   }
   drawLastLine(p: Pane, r: PriceRange): void {
+    const S = this.cs(); if (!S.lastLine) return
     const b = this.lastBar(); if (!b) return
     const c = this.ctx, y = Math.round(this.priceToY(b.c, p, r)) + .5
-    c.strokeStyle = this.stale ? this.colors.text3 : (b.c >= b.o ? this.colors.up : this.colors.down)
-    c.setLineDash([1, 2]); c.lineWidth = LINE.hair; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
+    c.strokeStyle = this.lastColor(b)
+    c.setLineDash(dashOf(S.lastLineStyle)); c.lineWidth = LINE.hair; c.beginPath(); c.moveTo(0, y); c.lineTo(this.plotW(), y); c.stroke(); c.setLineDash([])
   }
   drawAlertLines(p: Pane, r: PriceRange): void {
     const c = this.ctx
@@ -1244,10 +1576,10 @@ export class TVChart {
       const y = this.priceToY(priceOfPct(v, cb.price), p, r); if (y < p.y || y > p.y + p.h) continue
       label(y, comparePercentLabel(v), cv.color, '#fff')
     }
-    const b = this.lastBar(); if (!b) return
+    this.drawSettingLabels(p, r)
+    const b = this.lastBar(); if (!b || !this.cs().lastLabel) return
     const y = this.priceToY(b.c, p, r)
-    const col = this.stale ? C.text3 : (b.c >= b.o ? C.up : C.down)
-    label(y, this.mainAxisText(b.c), col, '#fff')
+    label(y, this.mainAxisText(b.c), this.lastColor(b), '#fff')
     // 十字线标签画在最上层（drawCrosshair）
   }
   drawCrosshair(panes: Pane[]): void {
@@ -1256,7 +1588,8 @@ export class TVChart {
     if (this.cross) { idx = Math.round(this.xToIndex(this.cross.x)); x = this.indexToX(idx) }
     else if (this.extCross != null) { idx = Math.round(this.indexAt(this.extCross)); x = this.indexToX(idx) }
     if (x == null || x < 0 || x > PW) return
-    c.strokeStyle = C.cross; c.lineWidth = LINE.hair; c.setLineDash([4, 4])
+    const S = this.cs()
+    c.strokeStyle = C.cross; c.lineWidth = S.crossWidth; c.setLineDash(dashOf(S.crossStyle, S.crossWidth))
     c.beginPath(); c.moveTo(Math.round(x) + .5, 0); c.lineTo(Math.round(x) + .5, H - AXIS_H)
     let y = 0, pane: Pane | undefined
     if (this.cross) {
@@ -1269,7 +1602,7 @@ export class TVChart {
     c.stroke(); c.setLineDash([])
     // 轴上标签
     c.font = this.font; c.textBaseline = 'middle'
-    const tl = crossTimeLabel(this.timeAt(idx), this.iv)
+    const tl = crossText(this.timeAt(idx), this.iv, S)
     const tw = c.measureText(tl).width + 16
     c.fillStyle = C.crossLabel; roundRect(c, clamp(x - tw / 2, 0, PW - tw), H - AXIS_H + 2, tw, AXIS_H - 4, 3); c.fill()
     c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(tl, clamp(x, tw / 2, PW - tw / 2), H - AXIS_H / 2)
@@ -1367,6 +1700,7 @@ export class TVChart {
     c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = d.dash === 'dotted' ? 'round' : d.dash ? 'butt' : 'round'; c.lineJoin = 'round'
     if (d.type !== 'fib' && d.type !== 'measure') c.setLineDash(dashPattern(d))
     const pts = d.pts.map(q => this.pt(q, p, r))
+    if (offPlot(d.type, pts, p, PW)) return
     const a = pts[0], b = pts[1] || pts[0]
     const q0 = d.pts[0], q1 = d.pts[1] || d.pts[0]
     c.beginPath()
@@ -1450,83 +1784,115 @@ export class TVChart {
     return this.lastIndex()
   }
   renderLegend(): void {
-    const I = icon, b = this.bars[this.legendIndex()], dec = this.meta.dec
+    const i = this.legendIndex(), b = this.bars[i], dec = this.meta.dec
     // 新数据在路上 / 还没有 K 线：只摆标题（加「载入中」），旧图的开高低收不挂在新品种名下
     const pm = this.pendingMeta
     if (pm || !b) {
       const m = pm ?? this.meta
-      if (!m.title) { this.legendEl.innerHTML = ''; return }
-      const sub = this.deg.compact ? m.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || '' : m.sub
-      const html = `<div class="lrow${this.deg.compact ? ' compact' : ''}"><span class="title">${m.badge || ''}${m.title}<span class="sub">${sub}</span></span>${pm ? '<span class="loading-tag">载入中</span>' : ''}</div>`
-      if (this.legendEl.innerHTML !== html) this.legendEl.innerHTML = html
+      if (!m.title) { this.setLegend('', []); return }
+      const sub = this.deg.legend === 'compact' ? m.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || '' : m.sub
+      this.setLegend(`<div class="lrow${this.deg.legend === 'compact' ? ' compact' : ''}"><span class="title">${m.badge || ''}${esc(m.title)}<span class="sub">${sub}</span></span>${pm ? '<span class="loading-tag">载入中</span>' : ''}</div>`, [])
       return
     }
-    const prev = this.bars[this.legendIndex() - 1]
+    const prev = this.bars[i - 1]
     const chg = prev ? b.c - prev.c : b.c - b.o, pct = chg / (prev ? prev.c : b.o) * 100
     const cls = this.stale ? 'faint' : chg >= 0 ? 'up' : 'down'
-    const v = (x: number) => `<span class="num ${cls}">${fmt(x, dec)}</span>`
-    const tools = (id: string) => this.legendTools(id)
+    // 结构（shell）只带「指标集 / 参数 / 降级档 / 对比线」，读数一个字都不进 shell——读数按 data-v 盒的出现顺序收进 boxes，
+    // 由 patchVals 只改文字节点。推送与十字线移动不会再把指针下那一行换成新节点（2026-10-07「悬停一直跳、点不到隐藏」）
+    const boxes: LegVal[][] = []
     // 多图小格：只留品种与周期（周期是 sub 里「· 」后的第一段）
-    if (this.deg.compact) {
+    if (this.deg.legend === 'compact') {
       const iv = this.meta.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || ''
-      const i0 = this.legendIndex()
-      const cmp = this.compareOn() ? this.compareViews().map(cv => `<span class="cmp-mini num" style="color:${cv.color}">${cv.line.name} ${cv.line.loading ? '<span class="cmp-wait"></span>' : comparePercentLabel(cv.at(i0))}</span>`).join('') : ''
-      const html = `<div class="lrow compact"><span class="title">${this.meta.badge || ''}${this.meta.title}<span class="sub">${iv}</span></span>${cmp}</div>`
-      if (this.legendEl.innerHTML !== html) this.legendEl.innerHTML = html
+      let cmp = ''
+      if (this.compareOn()) for (const cv of this.compareViews()) {
+        // 还在取数：名字后面一枚等待圈（在壳里，取到数壳才换）
+        cmp += cv.line.loading ? `<span class="cmp-mini num" style="color:${cv.color}">${esc(cv.line.name)} <span class="cmp-wait"></span></span>` : '<span class="cmp-mini num" data-v></span>'
+        if (!cv.line.loading) boxes.push([[cv.color, '', `${cv.line.name} ${comparePercentLabel(cv.at(i))}`]])
+      }
+      this.setLegend(`<div class="lrow compact"><span class="title">${this.meta.badge || ''}${esc(this.meta.title)}<span class="sub">${iv}</span></span>${cmp}</div>`, boxes)
       this.renderPaneLegends(this._panes || [])
       return
     }
-    let h = `<div class="lrow"><span class="title">${this.meta.badge || ''}${this.meta.title}<span class="sub">${this.meta.sub}</span></span>
-        <span class="ohlc"><span><i>开</i>${v(b.o)}</span><span><i>高</i>${v(b.h)}</span><span><i>低</i>${v(b.l)}</span><span><i>收</i>${v(b.c)}</span>
-        <span class="num ${cls}">${chg >= 0 ? '+' : ''}${fmt(chg, dec)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span></span></div>`
-    const i = this.legendIndex()
-    // 对比：每只一行「代号 +x.xx%」，悬停出移除
+    let h = `<div class="lrow"><span class="title">${this.meta.badge || ''}${esc(this.meta.title)}<span class="sub">${this.meta.sub}</span></span><span class="ohlc num" data-v></span></div>`
+    boxes.push([['', '开', fmt(b.o, dec), cls], ['', '高', fmt(b.h, dec), cls], ['', '低', fmt(b.l, dec), cls], ['', '收', fmt(b.c, dec), cls],
+      ['', '', `${chg >= 0 ? '+' : ''}${fmt(chg, dec)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`, cls], ...this.legendVolume(b, cls)])
+    // 对比：每只一行「代号 +x.xx%」，悬停出移除（按钮在名字之后、读数之前）
     if (this.compareOn()) for (const cv of this.compareViews()) {
-      h += `<div class="lrow cmp-row"><span class="cmp-dot" style="background:${cv.color}"></span><span class="ind-name">${cv.line.name}</span>${cv.line.loading ? '<span class="cmp-wait"></span>' : ''}<span class="vals num"><span style="color:${cv.color}">${comparePercentLabel(cv.at(i))}</span></span><span class="tools"><button class="ibtn xs" data-act="cmpRemove" data-id="${cv.line.key}" data-tip="移除对比">${I('close', 'icon-16')}</button></span></div>`
+      h += `<div class="lrow cmp-row"><span class="lhead"><span class="cmp-dot" style="background:${cv.color}"></span><span class="ind-name">${esc(cv.line.name)}</span>${cv.line.loading ? '<span class="cmp-wait"></span>' : ''}<span class="tools"><button class="ibtn xs" data-act="cmpRemove" data-id="${cv.line.key}" data-tip="移除对比" aria-label="移除对比">${icon('close', 'icon-16')}</button></span></span>${VALS_BOX}</div>`
+      boxes.push([[cv.color, '', comparePercentLabel(cv.at(i))]])
     }
+    const items: [string, string, LegVal[]][] = []
     for (const id of MAIN_IDS) {
       if (!mainOn(this.ind, id)) continue
       const cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || [], labels = cat.labels
-      const extra = id === 'vpvr' ? `<button class="lchip" data-act="vpvrMode" data-id="vpvr" data-tip="看法">${VPVR_MODES.find(m => m.id === this.vpvrMode)?.label ?? ''}${I('chevronDown', 'icon-16')}</button>` : ''
-      const vals = s.map((ser, k) => {
+      const extra = id === 'vpvr' ? `<button class="lchip" data-act="vpvrMode" data-id="vpvr" data-tip="看法">${VPVR_MODES.find(m => m.id === this.vpvrMode)?.label ?? ''}${icon('chevronDown', 'icon-16')}</button>` : ''
+      const vals: LegVal[] = []
+      s.forEach((ser, k) => {
         // 之字转向只在转折那根有值：读数取到这根为止最近的一个转折
         let val = ser[i]
         if (id === 'zigzag') for (let j = Math.min(i, ser.length - 1); j >= 0 && val == null; j--) val = ser[j]
         const lab = labels?.[k]
         // 带前缀的线（上 / 下轨、R1 / S1、上 / 下分形、多 / 空）这一根没值就不列
-        if (lab && val == null) return ''
-        const col = cols[k % cols.length] || (id === 'pivots' ? pivotPColor(this) : 'var(--text)')
-        return `<span style="color:${col}">${lab ? `<i>${lab}</i>` : ''}${fmt(val, dec)}</span>`
-      }).join('')
-      h += `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}${extra}
-          <span class="vals num">${vals}</span>${tools(id)}</div>`
+        if (lab && val == null) return
+        vals.push([cols[k % cols.length] || (id === 'pivots' ? pivotPColor(this) : 'var(--text)'), lab ?? '', fmt(val, dec)])
+      })
+      items.push([id, `<span class="lhead"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}${extra}${this.legendTools(id)}</span>${VALS_BOX}`, vals])
     }
-    if (this.ind.vol) h += `<div class="lrow ${this.hidden.has('vol') ? 'hidden-ind' : ''}"><span class="ind-name">成交量</span><span class="vals num"><span class="${b.c >= b.o ? 'up' : 'down'}">${fmtCompact(b.v)}</span></span>${tools('vol')}</div>`
-    if (this.walls) h += `<div class="lrow ${this.hidden.has('walls') ? 'hidden-ind' : ''}"><span class="ind-name">主力订单流</span><span class="ind-param">${this.meta.wallParam || ''}</span><span class="vals num"><span style="color:#8B5CF6">合约 ${this.walls.filter(w => !w.to && w.product !== 'spot').length}</span><span style="color:#06B6D4">现货 ${this.walls.filter(w => !w.to && w.product === 'spot').length}</span></span>${tools('walls')}</div>`
+    if (this.ind.vol) items.push(['vol', `<span class="lhead"><span class="ind-name">成交量</span>${this.legendTools('vol')}</span>${VALS_BOX}`, [['', '', fmtCompact(b.v), b.c >= b.o ? 'up' : 'down']]])
+    if (this.walls) {
+      const fut = this.walls.filter(w => !w.to && w.product !== 'spot').length, spot = this.walls.filter(w => !w.to && w.product === 'spot').length
+      items.push(['walls', `<span class="lhead"><span class="ind-name">主力订单流</span><span class="ind-param">${this.meta.wallParam || ''}</span>${this.legendTools('walls')}</span>${VALS_BOX}`, [['#8B5CF6', '', `合约 ${fut}`], ['#06B6D4', '', `现货 ${spot}`]]])
+    }
+    // 格子矮（dense）：主图指标并成一行，放不下的折成「…」，悬停这一行就地换行展开（第一行的块不挪位）；否则每个指标一行
+    if (this.deg.legend === 'dense') { if (items.length) h += `<div class="lrow dense">${items.map(([id, x]) => `<span class="dchip" data-lid="${id}">${x}</span>`).join('')}</div>` }
+    else for (const [id, x] of items) h += `<div class="lrow" data-lid="${id}">${x}</div>`
+    for (const it of items) boxes.push(it[2])
+    // 足迹图等挂的附加行（chart/footprint.ts）：整行是文字读数，直接进壳；它变了壳才重建
     if (this.legendExtra) h += this.legendExtra(i)
-    this.legendEl.innerHTML = h
+    this.setLegend(h, boxes)
     this.renderPaneLegends(this._panes || [])
   }
-  /** 图例行尾的 显示 / 参数 / 移除；没有可调参数的不放齿轮 */
+  /** 图例结构跟上一次拼的一样就不写：拿拼好的字符串比，不拿 innerHTML 比——
+   *  浏览器序列化回来的 innerHTML（徽标 SVG 的自闭合标签、属性写法）跟拼的不一样，那样比每帧都会判成「变了」整块重写，
+   *  十六格联动十字线时每帧 16 块图例重建，样式重算翻几倍 */
+  private legendHtml: string | null = null
+  private legendBoxes: HTMLElement[] = []
+  private legendHidKey: string | null = null
+  setLegendHtml(h: string): boolean {
+    if (this.legendHtml === h) return false
+    this.legendHtml = h
+    this.legendEl.innerHTML = h
+    return true
+  }
+  /** 结构变了才重建外壳；显隐就地改；读数只改文字节点 */
+  setLegend(shell: string, boxes: readonly LegVal[][]): void {
+    if (this.setLegendHtml(shell)) {
+      this.legendBoxes = Array.from(this.legendEl.querySelectorAll<HTMLElement>('[data-v]'))
+      this.legendHidKey = null
+    }
+    const hk = [...this.hidden].sort().join(',')
+    if (this.legendHidKey !== hk) { this.legendHidKey = hk; applyHidden(this.legendEl, this.hidden) }
+    boxes.forEach((v, k) => { const box = this.legendBoxes[k]; if (box) patchVals(box, v) })
+  }
+  /** 图例里名字与参数之后的 显示 / 参数 / 移除（固定宽、悬停才可见、不占位）；没有可调参数的不放齿轮 */
   legendTools(id: string): string {
-    const I = icon, hid = this.hidden.has(id)
-    const hasParams = Object.keys(CATALOG[id as IndicatorId]?.params ?? {}).length > 0
     // 均线 / 指数均线 / RSI：一键带着图上的参数去建技术指标提醒
-    const alertBtn = (id === 'ma' || id === 'ema' || id === 'rsi') && this.o.onAlertCreate ? `<button class="ibtn xs" data-act="alert" data-id="${id}" data-tip="以此建提醒">${I('bellPlus', 'icon-16')}</button>` : ''
-    return `<span class="tools">${alertBtn}<button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${hid ? '显示' : '隐藏'}">${I(hid ? 'eyeOff' : 'eye', 'icon-16')}</button>${hasParams ? `<button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button>` : ''}<button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span>`
+    const alertBtn = (id === 'ma' || id === 'ema' || id === 'rsi') && this.o?.onAlertCreate ? `<button class="ibtn xs" data-act="alert" data-id="${id}" data-tip="以此建提醒" aria-label="以此建提醒">${icon('bellPlus', 'icon-16')}</button>` : ''
+    return toolsHtml(id, Object.keys(CATALOG[id as IndicatorId]?.params ?? {}).length > 0, alertBtn)
   }
   renderPaneLegends(panes: Pane[]): void {
     const subs = panes.slice(1)
     while (this.paneLegendEls.length < subs.length) { const e = document.createElement('div'); e.className = 'pane-legend'; this.host.appendChild(e); this.paneLegendEls.push(e); this.paneLegendKeys.push(null) }
-    this.paneLegendEls.forEach((e, k) => { e.style.display = k < subs.length ? '' : 'none' })
+    this.paneLegendEls.forEach((e, k) => { const d = k < subs.length ? '' : 'none'; if (e.style.display !== d) e.style.display = d })
     const i = this.legendIndex(), h4 = this.hist4Colors()
     subs.forEach((p, k) => {
       const e = this.paneLegendEls[k], id = p.id as SubId, cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || [], labels = cat.labels
-      e.style.top = (p.y + 6) + 'px'
-      const vals = s.map((ser, j) => {
+      const top = (p.y + 6) + 'px'
+      if (e.style.top !== top) e.style.top = top
+      const vals = s.map((ser, j): LegVal | null => {
         const val = ser[i], lab = labels?.[j]
         // 带前缀的线（现货 / 合约、大单 / 散户）这一根没值就不列
-        if (lab && val == null) return ''
+        if (lab && val == null) return null
         // 柱的读数跟柱色走：四色柱取两种深色，零轴柱取涨跌色，升降柱看比上一根高还是低
         const st = id === 'macd' ? (j === 2 ? 'hist4' : 'line') : subStyles(id)?.[j] ?? 'line'
         const v0 = val ?? 0, prev = ser[i - 1] ?? v0
@@ -1534,13 +1900,19 @@ export class TVChart {
           : st === 'hist' ? (v0 >= 0 ? 'var(--up-text)' : 'var(--down-text)')
           : st === 'histTrend' ? (v0 >= prev ? 'var(--up-text)' : 'var(--down-text)')
           : cols[j % cols.length]
-        return `<span style="color:${col}">${lab ? `<i>${lab}</i>` : ''}${val == null ? '—' : this.subFmt(id, val)}</span>`
-      }).join('')
-      const key = id + ':' + i + ':' + vals + ':' + this.paramCell(id)
-      if (this.paneLegendKeys[k] === key) return
-      this.paneLegendKeys[k] = key
-      e.innerHTML = `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}<span class="vals num">${vals}</span>
-          ${this.legendTools(id)}</div>`
+        return [col, lab ?? '', val == null ? '—' : this.subFmt(id, val)]
+      }).filter((v): v is LegVal => v != null)
+      // 外壳（名称、参数、显示 / 参数 / 移除按钮）只在指标、参数变了时重建；显隐就地改（applyHidden），
+      // 十字线移动与推送只改读数那几个字（patchVals）
+      const shell = id + ':' + this.paramCell(id)
+      const em = e as HTMLElement & { _h?: string }
+      if (this.paneLegendKeys[k] !== shell) {
+        this.paneLegendKeys[k] = shell; em._h = undefined
+        e.innerHTML = `<div class="lrow" data-lid="${id}"><span class="lhead"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}${this.legendTools(id)}</span>${VALS_BOX}</div>`
+      }
+      const hk = String(this.hidden.has(id))
+      if (em._h !== hk) { em._h = hk; applyHidden(e, this.hidden) }
+      const box = e.querySelector<HTMLElement>('[data-v]'); if (box) patchVals(box, vals)
     })
   }
 
@@ -1561,7 +1933,7 @@ export class TVChart {
       const btn = (e.target as Element | null)?.closest<HTMLElement>('[data-act]'); if (!btn) return
       e.stopPropagation()
       const id = btn.dataset.id ?? '', act = btn.dataset.act ?? ''
-      if (act === 'toggle') { if (this.hidden.has(id)) this.hidden.delete(id); else this.hidden.add(id); this.dirty = true; this.paneLegendKeys.fill(null); this.renderLegend() }
+      if (act === 'toggle') { if (this.hidden.has(id)) this.hidden.delete(id); else this.hidden.add(id); this.dirty = true; this.renderLegend() }   // 显隐就地改（applyHidden），不重建图例外壳
       else this.o.onLegendAction?.(id, act, btn)
     }, { signal })
     cv.addEventListener('mousemove', e => {
@@ -1571,6 +1943,7 @@ export class TVChart {
       cv.style.cursor = reg === 'price' ? 'ns-resize' : reg === 'time' ? 'ew-resize' : reg.startsWith('sep') ? 'row-resize' : 'crosshair'
       const sep = reg.startsWith('sep:') ? reg.slice(4) : null
       if (sep !== this.hoverSep) { this.hoverSep = sep; this.dirty = true }
+      let full = false
       const onMainAxis = reg === 'price' && this.paneAt(y)?.id === 'main' && !!this.o.onAlertCreate
       const hy = onMainAxis ? y : null
       if (hy !== this.axisHoverY) { this.axisHoverY = hy; this.dirty = true }
@@ -1582,22 +1955,25 @@ export class TVChart {
         const pane = this.paneAt(y)
         this.cross = { x, y, pane: pane?.id }
         this.metaHeld = e.metaKey || e.ctrlKey
-        if (this.draft && this._panes) this.updateDraft(x, y, e.shiftKey)
+        if (this.draft && this._panes) { this.updateDraft(x, y, e.shiftKey); full = true }
         if (!this.tool) {
           const hit = this.editable() ? this.hitDrawing(x, y) : null
           if (hit) cv.style.cursor = hit.handle != null ? 'grab' : 'pointer'
           let soft = false
           const lh = pane?.id === 'main' && !hit ? this.layers.find(l => { const r = l.hover?.(x, y, e.clientX, e.clientY); soft = r === 'soft'; return !!r }) ?? null : null
+          if (this.layerHover !== lh) full = true
           if (this.layerHover && this.layerHover !== lh) this.layerHover.leave?.()
           this.layerHover = lh
           if (lh && !soft) cv.style.cursor = 'pointer'
           const w = pane?.id === 'main' && !hit && !lh ? this.wallAt(x, y) : null
-          if (w !== this.hoverWall) { this.hoverWall = w; this.o.onWallHover?.(w, e.clientX, e.clientY) }
+          if (w !== this.hoverWall) { this.hoverWall = w; full = true; this.o.onWallHover?.(w, e.clientX, e.clientY) }
           else if (w) this.o.onWallHover?.(w, e.clientX, e.clientY)
         }
         this.o.onCrosshairMove?.(this.timeAt(Math.round(this.xToIndex(x))))
-      } else { this.cross = null; this.o.onCrosshairMove?.(null); if (this.layerHover) { this.layerHover.leave?.(); this.layerHover = null } }
-      this.dirty = true; this.legendDirty = true  // 图例读数并到下一帧：高回报率鼠标一帧里来好几次 mousemove，只拼一次 DOM
+      } else { this.cross = null; this.o.onCrosshairMove?.(null); if (this.layerHover) { this.layerHover.leave?.(); this.layerHover = null; full = true } }
+      // 草稿、挂单墙高亮、图层悬停变了要整帧重画；只是十字线挪了就走轻量帧（贴底图 + 十字线）
+      if (full) this.dirty = true; else this.crossDirty = true
+      this.legendDirty = true  // 图例读数并到下一帧：高回报率鼠标一帧里来好几次 mousemove，只拼一次 DOM
     }, { signal })
     cv.addEventListener('mouseleave', () => {
       if (this.drag) return
@@ -1702,15 +2078,17 @@ export class TVChart {
         if (this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
         this.cross = null
       } else if (d.region === 'plot') {
-        this.rightBar = d.right0 - dx / this.spacing
+        this.rightBar = this.clampRB(d.right0 - dx / this.spacing)
         if (!this.auto && d.pane?.id === 'main' && d.r0 && this._panes) {
           const p = this._panes[0]; const k = (this.tf(d.r0.max) - this.tf(d.r0.min)) / (p.h - 16) * dy
           this.manual = { min: this.itf(this.tf(d.r0.min) + k), max: this.itf(this.tf(d.r0.max) + k) }
         }
         this.cross = null; this.maybeMore()
       } else if (d.region === 'time') {
-        const f = Math.exp(dx / 200); this.spacing = clamp(d.sp0 * f, MIN_SPACING, MAX_SPACING)
-        this.rightBar = d.right0; this.maybeMore()
+        // TV 拖时间轴：右沿不动、按下处那根跟着鼠标（往左拖放大，往右拖缩小）
+        const sp = timeAxisDragSpacing(d.sp0, d.x0, x, this.plotW())
+        if (sp != null) this.spacing = sp
+        this.rightBar = this.clampRB(d.right0); this.maybeMore()
       } else if (d.region === 'price' && d.pane?.id === 'main' && d.r0) {
         const lo = this.tf(d.r0.min), hi = this.tf(d.r0.max)
         if (this.scaleManual(lo, hi, (lo + hi) / 2, Math.exp(dy / 200)) && this.auto) { this.auto = false; this.o.onAutoChange?.(false) }
@@ -1775,16 +2153,22 @@ export class TVChart {
       else if (reg === 'time') { this.resetView(); this.emitView() }
       else if (reg.startsWith('sep:')) { this.paneR = null; this.paneLegendKeys.fill(null); this.dirty = true; this.o.onPaneResize?.(null) }
     }, { signal })
+    // 滚轮 / 触控板照 TradingView（ChartWidget._onMousewheel，算法见 ./wheel）：
+    // 竖向 = 缩放（鼠标下那根不动，一格 ×1.1 / ×0.9，顺滑插到位）；横向（触控板横扫、Shift + 滚轮）= 平移，一格 80 px、不带惯性；
+    // Ctrl / 触控板捏合 = 跟手缩放；价格轴上 / Alt + 滚轮 = 缩价格（鼠标那一价不动）；时间轴上 = 缩时间、右沿不动
     cv.addEventListener('wheel', e => {
-      e.preventDefault()
-      const { x } = pos(e)
-      // 按行 / 按页给的滚动量（Windows 上的 Firefox、部分鼠标驱动）折成像素：不折的话一格滚轮只缩放 0.75%，像没反应
-      const k = wheelPx(e.deltaMode, this.h), dX = e.deltaX * k, dY = e.deltaY * k
-      if (e.altKey) this.zoomPrice(Math.exp(dY * 0.002), pos(e).y) // Alt + 滚轮 = 纵向缩放
-      else if (Math.abs(dX) > Math.abs(dY)) { this.rightBar += dX / this.spacing; this.maybeMore() }
-      else this.zoom(Math.exp(-dY * (e.ctrlKey ? 0.01 : 0.0025)), Math.min(x, this.plotW()))
-      this.dirty = true; this.legendDirty = true
-      if (!e.altKey) this.emitView()
+      if (e.cancelable) e.preventDefault()
+      const { x, y } = pos(e), reg = this.region(x, y)
+      const { dx, dy } = wheelDelta(e, wheelSpeed(e.deltaMode, WIN_CHROMIUM, window.devicePixelRatio || 1))
+      const zf = dy ? (e.ctrlKey ? pinchFactor(dy) : zoomFactor(zoomScale(dy))) : 1
+      if (e.altKey || reg === 'price') {
+        const main = this.paneAt(y)?.id === 'main'
+        if (reg === 'price' && !main) return // 副图的价格轴各自自适应，不缩
+        if (zf !== 1) this.zoomPrice(1 / zf, main ? y : undefined)
+        return
+      }
+      if (zf !== 1) this.wheelZoom(zf, reg === 'time' || reg === 'corner' ? this.plotW() : x)
+      if (dx) { this.wheelPan(panPx(dx)); this.legendDirty = true; this.emitView() }
     }, { passive: false, signal })
     cv.addEventListener('contextmenu', e => {
       e.preventDefault()
@@ -1855,16 +2239,21 @@ export class TVChart {
   private fontFamily(): string { return this.font.split('px ')[1] }
 }
 
-/** 滚轮事件的一个单位折多少像素：0 像素、1 行（按 16 px）、2 页（按图高） */
-export function wheelPx(mode: number, pageH: number): number { return mode === 1 ? 16 : mode === 2 ? Math.max(1, pageH) : 1 }
+/** Windows 上的 Chromium 滚轮量要再除 DPR（TV 同款修正，见 ./wheel wheelSpeed） */
+const WIN_CHROMIUM = typeof navigator !== 'undefined' && isWinChromium(navigator.userAgent)
 
 // ------------------------------------------------------------ 共用的一帧
 // 十六格各自挂一个 requestAnimationFrame 循环，每帧就是十六次回调；合成一个循环，挨个问脏没脏。
 const frames = new Set<TVChart>()
-let frameId = 0
+let frameId = 0, inTick = false
 function tick(): void {
   frameId = 0
-  for (const ch of frames) ch.frame()
+  // 先推进滚轮缩放（会经 emitView 把时间段套到联动的格子上），再统一画：联动的格子同一帧跟上
+  const now = performance.now()
+  for (const ch of frames) ch.stepZoom(now)
+  inTick = true
+  try { for (const ch of frames) ch.frame() } finally { inTick = false }
+  for (const ch of frames) ch.frameDom()
   if (frames.size) frameId = requestAnimationFrame(tick)
 }
 function kick(): void { if (!frameId && typeof requestAnimationFrame !== 'undefined') frameId = requestAnimationFrame(tick) }

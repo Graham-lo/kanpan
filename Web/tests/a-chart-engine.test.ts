@@ -7,7 +7,8 @@ vi.mock('../src/market/rest', () => ({
   klines: vi.fn(async () => (kl.ok ? { ok: true, bars: [] } : { ok: false, bars: [] })),
 }))
 
-const { TVChart, wheelPx } = await import('../src/chart/chart')
+const { TVChart } = await import('../src/chart/chart')
+const { wheelSpeed } = await import('../src/chart/wheel')
 const { vwap, vwapAnchor } = await import('../src/chart/indicators')
 const { vpvr } = await import('../src/chart/overlays')
 const { anchoredVwap, avwapStart } = await import('../src/chart/drawTools')
@@ -253,9 +254,9 @@ describe('拖整条画线：对数轴上按比例挪', () => {
   })
 })
 
-describe('滚轮按 deltaMode 折像素', () => {
+describe('滚轮按 deltaMode 折像素（照 TV：行 32、页 120）', () => {
   it('像素 / 行 / 页', () => {
-    expect(wheelPx(0, 800)).toBe(1); expect(wheelPx(1, 800)).toBe(16); expect(wheelPx(2, 800)).toBe(800); expect(wheelPx(2, 0)).toBe(1)
+    expect(wheelSpeed(0)).toBe(1); expect(wheelSpeed(1)).toBe(32); expect(wheelSpeed(2)).toBe(120); expect(wheelSpeed(0, true, 2)).toBe(0.5)
   })
 })
 

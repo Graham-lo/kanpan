@@ -7,7 +7,9 @@ const bars = (n: number): Bar[] => Array.from({ length: n }, (_, i) => ({ t: i *
 /** 不起画布，只借 setData 的视口逻辑：给它一个最小的 this */
 function fake(): TVChart {
   const me = { meta: { symbol: '' }, iv: '', bars: [] as Bar[], rightBar: 0, manual: null, auto: true, dirty: false, o: {}, drag: null, draft: null, recalc() {}, renderLegend() {},
-    dropGesture: (TVChart.prototype as unknown as { dropGesture: unknown }).dropGesture }
+    dropGesture: (TVChart.prototype as unknown as { dropGesture: unknown }).dropGesture,
+    // 右侧留白读图表设置（没装设置按默认 10 根）
+    rightMarginBars: TVChart.prototype.rightMarginBars, cs: TVChart.prototype.cs }
   return me as unknown as TVChart
 }
 

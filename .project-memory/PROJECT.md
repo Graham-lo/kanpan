@@ -1717,3 +1717,60 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   `make build` 与 data-test 再跑一遍过。截图在 `docs/acceptance/体感优化-2026-10-07/`。网页已部署（index-CnbaJGbf / m-DI2rg57f）。
   **真机没装**：本机 Xcode 没有登录 Apple 账号（「No Accounts」、找不到 com.yj27y32.hkline 的描述文件），要用户在 Xcode 登录后 `make install-release`。
 - 没改的小现象：慢网下新加对比品种且盘上无快照时，图例先显示推送给的涨跌幅、线要等 REST 才画满；往很早翻历史时 openInterestHist 偶尔 400（原有）。
+
+## 53. 10-07：电脑网页指标补全对齐 TV；画线交叉套件；十六图专项；图例悬停；TV 滚轮；图表设置（含 `webChart` 同步）
+
+用户 10-07 一连串：「web 端指标要做全……成交分布应该是这样的展示……还有一些没必要的描述」「各种指标的展示风格能复刻的都复刻」
+「做完后重点验收画线的 bug，压测是否通过」「无论是性能还是其他，都要交叉画线验证，这是重点功能，最好抽出来」「16 个布局你要放到重点审查
+里面，交互的体验，切换，性能等」「左上角指标悬浮指针时一直跳动不稳定无法点击到隐藏按钮……其他是否有类似问题」「鼠标滚轮放大缩小体验非常差，
+和 tv 完全不一样……图表可以设置高度和右边距离吗，把图表设置也复刻进来」。全部只改电脑网页 `Web/src/`（不碰 `Web/src/m/`）。
+
+- **指标补全与成交分布（`8ad40fdd`）**：目录按 TradingView 内置指标补齐，成交分布改 TV 式（按价位横条 + 价值区 + POC，不再是模糊的色带），
+  指标面板去掉解释性文案，副图线型 / 配色 / 图例字段照 TV。
+- **画线交叉验证套件（新，`Web/scripts/draw-cross.mjs` + `draw-lib.mjs`）**：以后任何性能 / 指标 / 布局验收都带着画线跑这一条。
+  11 段（tools indicators layouts intervals scroll-zoom theme bulk undo reload perf alerts），每段在干净上下文里画全部持久工具各一条，
+  再跑同一组不变量：条数、几何（≤ 1 根 / 1 跳）、像素落点、点中 / 点空、拖锚点 / 拖整条 / ⌘Z、隐藏开关、切品种回来、页内无报错。
+  修前 ✗ 5：坏档里不认识的工具类型留在存档（画不出也删不掉）、`color=123` 选中抛 `toUpperCase`、颜色串直接拼进 HTML（能注入）、
+  `width="x"` 画出 NaN；十六格 20 条画线下联动十字线 600 下的重画预算。修后全过（见 `docs/acceptance/网页版-指标与十六图与画线交叉-2026-10-07/画线交叉/`）。
+  读档现在按类型 / 颜色 / 宽度逐条校验、不合法的丢掉或归默认；调色板用 textContent / dataset，不拼 HTML。
+- **十六图专项（新，`Web/scripts/layout16-review.mjs`，101 项）**：修前 ✗ 7、P0 一项。
+  - P0 自选 300 + 十六图：网关第 3 条连接被拒，整页判「断线」，16 格永远不再跟推送 → `market/stream.ts`：1008 且原因带 limit 是「同一来源总上限满了」
+    不是断线（`closeKind`），被拒的只会是后开的自选报价那条、图上各格照常跟推送；被拒后记住对面实际收下的路数当上限（`capLimit`），
+    状态只看已收下的连接（`wsStateOf`）；挂机 3 分钟 16/16 格价都在动。
+  - P1 1↔16 来回 20 轮每轮重拉 15 格 × 1500 根打穿额度、空格无提示 → 非当前格首次只取 `SIDE_LIMIT=499`（权重 2）、关掉的格子的排队
+    请求可撤（`alive`）、排队中显示「排队取数…」；会话内 K 线缓存并到 §52 的 `klineCache.ts`（我那份 rest.ts 里的重复缓存删掉）。
+  - P2 2560×1440 以下十六图永远不画副图、九 / 十二图图例占画布 24–29% → 降级档按格子实际高宽算，图例紧凑档并成一行。
+  - P2 持仓量请求格子关了照发、副图没开也取 → `attachOI(…, alive)` 且只在显示持仓量副图时取（`ensureOI`）。
+  - P3 底栏区间按钮点在非当前格不切当前格、不走周期联动 → 先 `setActive` 再走工具栏同一入口；加「单格放大」（双击标题区 / ⌥↩ / 右键），
+    放大不改存档，Esc 还原；撤销栈按品种分（`pages/undoStacks.ts`）；底栏时钟只写当前格、字没变不写（`paintClock`）。
+  - 修后：切换布局每档 78–363 ms 无闪空、16→1→16 零 K 线请求、十六格逐格点选中位 4.4 ms、c13 十六图联动十字线 600 下 p95 66.7 ms（受本机 15 Hz 采样）。
+- **图例悬停跳动（用户报）**：根因是每一拍行情推送都把整块图例 `innerHTML` 重建，指针下的行被换掉、`:hover` 丢失、按钮时隐时现
+  （线上探针：子树替换 5.5 次/秒、按钮不见 19.7% 帧、点 5 次才生效）。改成 `chart/legendDom.ts`：图例壳只在结构变化时重建，数值走
+  `data-v` 盒子 `patchVals` 改 textContent，工具按钮绝对定位、用 visibility 不用 display。全局扫了一遍同类写法（`ui/patch.ts` `morphHtml`
+  就地 morph：复盘页头 / 列表、板块页、工具栏、详情、自选小组件），探针 `scripts/legend-hover-probe.mjs` 本地 12 项全过
+  （子树替换 0/秒、按钮不见 0% 帧、第 1 次点击生效）。
+- **滚轮对齐 TV（`chart/wheel.ts`）**：照 lightweight-charts `_onMousewheel` + `TimeScale.zoom`：一格 ±100 → 间距 ×1.1 / ×0.9（原来
+  ×1.284 / ×0.779 且无动画）、锚定鼠标下那根、带 120 ms 缓动且连续滚累加目标不抖、触控板按 delta 比例、Ctrl+滚轮缩图不缩页、
+  Shift+滚轮 / 横滑平移 80 px 不缩放不加惯性、价格轴上滚轮只缩价格。`scripts/wheel-feel.mjs` 19 项修前 ✗ 6 → 修后全过（`滚轮/`）。
+- **图表设置（`chart/chartSettings.ts` + `pages/chartSettingsDialog.ts`）**：照 TV 的商品 / 状态栏 / 比例尺与线 / 画布四页：蜡烛 / 影线 /
+  边框色、标题显示（代号 / 名称 / 两者）、小数位、上下边距、右侧留白根数、网格、十字线、水印等；跟人走，存在 `settings/chart.webChart`
+  （`sync/codec.ts`，后端 `WEB_SETTINGS_FIELDS=["webChart"]`，对象 ≤ 8 KB）。涨跌色方向改动时 `withUpDownReset` 把自定义蜡烛色归默认。
+  **后端二进制待部署**：线上 `/opt/kanpan-api` 的 sync.rs / sync_validation.rs 与二进制仍是 18:22 那份（一次性账号实测推 `webChart` 被
+  `droppedFields` 丢掉）；本机 zigbuild 已编好，部署脚本 `~/Desktop/kanpan-api-webchart-deploy.sh`（备份 → 同步两个源码文件 → 换二进制 →
+  `ops/install.py` 只重启一次 → `ops/webchart-check.mjs` 线上验证）。部署前网页端改设置本机照常生效、只是不跨设备同步。
+- **regress / stress 本机跑不起来的根因**：出厂线路是网关，localhost 起源打网关 REST 被 CORS 拦；脚本现在统一 `corsShim` 并种
+  `route:'direct', routePicked:true`。
+- 合并：与 `origin/main`（§52 体感整改）在独立工作树 `web-1007-int` 合并，9 个文件冲突；取舍是 K 线缓存用 §52 的 `klineCache.ts` /
+  `klineStore.ts`，我的 `SIDE_LIMIT` / 排队 / `ensureOI` / 图例 DOM / 滚轮 / 图表设置保留。
+- 测试：tsc 0、vitest 165 文件 2164 条、vite build 过；cargo `--lib sync` 58 过。浏览器链（draw-cross / regress / stress / wheel-feel /
+  layout16 / legend-hover）结果见下一行。
+- 浏览器链结果（全部修到过为止）：画线交叉 `draw-cross` ✓ 269 ✗ 0；滚轮 `wheel-feel` 19 / 0；回归 `regress` 全段跑过一遍后 layout + chart 两段复跑
+  95 / 95（唯一留着的 ✗ 是「画线同步要 KP_PASS」，本机没给账号密码的环境跳过，不是产品问题）；压测 `stress` 全模式过，oldstate 那一项修前超时、
+  根因在脚本不在产品：`pace()` 只读直连账本，没读网关那道（旧存档没 `routePicked` 回网关，上限 800），且「空白页」走 vite 的 SPA 回退把整个
+  app 又启动了一遍白耗权重 —— 现在两道账本都算、`__stress_blank` 真给空白页，18 / 18；十六图 `layout16-review` 复跑 c13 / c15 9 ✓ 0 ✗
+  （联动十字线 600 下布局 560 / 基线 569，常态 10 秒布局 80 / 基线 112，挂机 3 分钟主线程 15.0% ≤ 15%、16 / 16 格跟推送）；图例探针本地 12 项全过，
+  wl 单跑指针真落在按钮上 100% 帧（先前 98.8% 是和压测同时跑挤出来的）。探针脚本现在把「场景跑出错」也计入未达标，不会再在出错时打全部达标。
+- 挂机 15% 这一刀的归因（临时探针按调用栈统计 DOM 写 / 强制布局 / 画布重画）：16 格 + 300 自选 + 订单流挂机每秒推送约 320 条、画布重画 24 次、
+  布局 10 次；无谓的两处改掉 —— `paintConn` 每次流状态 / 品种表事件都给 16 个连接点写属性（没变也写）→ 只在变了时写；订单流 24 小时两块小图每帧读
+  `clientWidth / clientHeight` 强制布局 → 尺寸由 ResizeObserver 推过来。其余是真工作（图例改字 ~19 次/秒、自选可见行改价与闪色 ~10 次/秒、
+  详情块 ~8 次/秒、各格按推送重画），挂机布局 10.3 → 8.1 次/秒。

@@ -12,7 +12,7 @@ import { hooks } from '../app/shell'
 import { S } from '../market'
 import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
-import { allCells, applyDrawingsHidden, applyLayoutSet, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
+import { allCells, applyChartSettings, applyDrawingsHidden, applyLayoutSet, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
 import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, corePrint, fingerprint, layoutsPrint, mergeFirst, restoreDrawings } from './bridge'
 import { LAYOUTS_FIELD } from '../app/layouts'
@@ -68,6 +68,8 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       if (r.settings.includes('drawingsHidden')) applyDrawingsHidden()
       // 布局集（别的电脑另存 / 切换 / 换了品种）：各格平滑换成当前那套的品种与周期
       if (r.settings.includes(LAYOUTS_FIELD)) applyLayoutSet()
+      // 图表设置（别的电脑改了）：十六格一起换
+      if (r.settings.includes('webChart')) applyChartSettings()
       renderToolbar()
     }
     if (r.drawings.size) { r.drawings.forEach(rebaseDrawings); allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) }) }

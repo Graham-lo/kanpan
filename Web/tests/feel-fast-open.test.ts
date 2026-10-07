@@ -121,7 +121,7 @@ describe('K 线本机留底：落盘', () => {
 })
 
 // ------------------------------------------------------------ 图表：等新数据时的样子
-type Fake = TVChart & { host: { classList: { set: Set<string>; toggle(c: string, on?: boolean): void; remove(c: string): void; contains(c: string): boolean }; appendChild(e: unknown): void }; legendEl: { innerHTML: string; style: Record<string, string> } }
+type Fake = TVChart & { host: { classList: { set: Set<string>; toggle(c: string, on?: boolean): void; remove(c: string): void; contains(c: string): boolean }; appendChild(e: unknown): void }; legendEl: { innerHTML: string; style: Record<string, string>; querySelectorAll: () => never[] } }
 function fakeChart(): Fake {
   const set = new Set<string>()
   const me = Object.create(TVChart.prototype) as Fake
@@ -130,9 +130,9 @@ function fakeChart(): Fake {
       classList: { set, toggle: (c: string, on?: boolean) => { if (on ?? !set.has(c)) set.add(c); else set.delete(c) }, remove: (c: string) => set.delete(c), contains: (c: string) => set.has(c) },
       children: [] as unknown[], appendChild(e: unknown) { (this as { children: unknown[] }).children.push(e) },
     },
-    legendEl: { innerHTML: '', style: {} },
+    legendEl: { innerHTML: '', style: {}, querySelectorAll: () => [] },
     meta: { symbol: 'BTCUSDT', title: 'BTCUSDT', sub: ' · 1小时', badge: '', dec: 1 },
-    bars: [] as Bar[], deg: { compact: false }, cross: null, extCross: null, replay: null,
+    bars: [] as Bar[], deg: { legend: 'full' }, hidden: new Set<string>(), cross: null, extCross: null, replay: null,
     selected: null, measure: null, drag: null, draft: null, readOnly: false, pendingMeta: null, dirty: false,
     _loadingMore: false, moreEl: null,
     dropGesture() {}, renderPaneLegends() {}, legendTools: () => '', compareOn: () => false,

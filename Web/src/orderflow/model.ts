@@ -248,7 +248,7 @@ export class OrderFlowModel {
       const book = this.books.get(id)!
       const threshold = this.thresholds[book.venue.product]
       if (threshold == null || !(threshold > 0)) continue
-      const map = book.buckets(scheme, D.scanRadiusBps)
+      const map = book.buckets(scheme, D.scanRadiusBps, D.fineRadiusBps)
       const mid = book.mid()
       if (!map || mid == null) continue
       evaluated.add(id)

@@ -33,9 +33,16 @@ export function changePct(cur: number, prev: number | undefined): number | null 
 export class StatChart {
   private hover = -1
   private sig = ''
+  /** 宿主尺寸由 ResizeObserver 推过来：每帧读 clientWidth / clientHeight 会在刚改完 DOM 的那一帧强制布局（十六图挂机时每秒白付两次布局） */
+  private W = 0
+  private H = 0
   constructor(readonly kind: StatKind, readonly cv: HTMLCanvasElement) {
     cv.onmousemove = e => this.move(e)
     cv.onmouseleave = () => { this.hover = -1; hideCard(); this.draw(true) }
+    const host = cv.parentElement
+    if (host && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(es => { const r = es[es.length - 1]?.contentRect; if (r) { this.W = Math.round(r.width); this.H = Math.round(r.height); this.draw() } }).observe(host)
+    }
   }
 
   private first(now: number): number { return slotOf(now) - (SLOTS - 1) * SLOT_MS }
@@ -48,7 +55,8 @@ export class StatChart {
   draw(force = false): void {
     const cv = this.cv, host = cv.parentElement
     if (!host || !cv.isConnected) return
-    const W = host.clientWidth, H = host.clientHeight
+    if (!this.W || !this.H) { this.W = host.clientWidth; this.H = host.clientHeight }
+    const W = this.W, H = this.H
     if (!W || !H) return
     const now = Date.now()
     const ver = this.kind === 'liq' ? OF.liq.version : OF.vol.version
@@ -223,16 +231,18 @@ export function statHead(kind: StatKind): string {
   return sum > 0 ? `<span class="num faint">24h ${amt(sum)}</span>` : ''
 }
 
-/** 详情小部件里「每秒成交」一行：数字 + 最近两分钟的小折线（SVG） */
-export function tpsLineHTML(): string {
-  if (!OF.feed) return ''
+/** 「每秒成交」一行的数据：读数文字 + 最近两分钟小折线的 path；没有数据时 null */
+export function tpsLine(): { txt: string; d: string } | null {
+  if (!OF.feed) return null
   const now = Date.now()
   const r = OF.tps.rate(now)
-  if (r == null) return ''
+  if (r == null) return null
   const s = OF.tps.series(now)
-  const w = 96, h = 16
   const max = Math.max(1, ...s)
-  const d = s.map((v, i) => `${i ? 'L' : 'M'}${(i / (s.length - 1) * w).toFixed(1)},${(h - 1 - v / max * (h - 2)).toFixed(1)}`).join('')
-  return `<div class="of-tps" data-tip="三家逐笔合流，最近 10 秒的平均；小线是最近两分钟"><span class="faint">每秒成交</span><b class="num">${r >= 10 ? r.toFixed(0) : r.toFixed(1)} 笔</b>
-    <svg class="of-tps-sp" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.25"/></svg></div>`
+  const d = s.map((v, i) => `${i ? 'L' : 'M'}${(i / (s.length - 1) * TPS_W).toFixed(1)},${(TPS_H - 1 - v / max * (TPS_H - 2)).toFixed(1)}`).join('')
+  return { txt: `${r >= 10 ? r.toFixed(0) : r.toFixed(1)} 笔`, d }
 }
+const TPS_W = 96, TPS_H = 16
+/** 「每秒成交」一行的外壳（读数与折线由调用方每帧就地改：整块重写会把带悬停说明的那一格换掉，说明跑到左上角） */
+export const TPS_SHELL = `<div class="of-tps" data-tip="三家逐笔合流，最近 10 秒的平均；小线是最近两分钟"><span class="faint">每秒成交</span><b class="num"></b>
+    <svg class="of-tps-sp" width="${TPS_W}" height="${TPS_H}" viewBox="0 0 ${TPS_W} ${TPS_H}" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.25"/></svg></div>`

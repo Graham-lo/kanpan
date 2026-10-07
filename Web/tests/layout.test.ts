@@ -107,16 +107,16 @@ describe('多图布局清单与降级', () => {
     const many = hydrate({ layout: '16', cells: Array.from({ length: 20 }, () => ({ symbol: 'BTCUSDT', iv: '1h' })) })
     expect(many.cells.length).toBeLessThanOrEqual(16)
   })
-  it('降级门槛：宽 < 640 或高 < 400 只留主图、图例一行、字小一档；宽 < 420 不画成交量', () => {
-    expect(degradeFor(640, 400)).toEqual(FULL)
-    // 开着抽屉的四图：每格约 1240 × 370，主图加两个副图挤不下，要降级
-    expect(degradeFor(1240, 370)).toMatchObject({ subs: false, compact: true, vol: true })
-    expect(degradeFor(639, 800)).toMatchObject({ subs: false, compact: true, vol: true })
-    expect(degradeFor(1000, 359)).toMatchObject({ subs: false, compact: true, vol: true })
-    expect(degradeFor(419, 300)).toMatchObject({ subs: false, vol: false })
-    expect(degradeFor(500, 300).font).toBeLessThan(FULL.font)
-    // 2560×1440、面板开着的十六格：约 500 × 330，降级但成交量还在
-    expect(degradeFor(500, 330)).toMatchObject({ subs: false, compact: true, vol: true })
+  it('降级门槛：副图按剩下的高逐个留（详表见 panes-degrade.test.ts）；宽 < 480 图例只留品种周期；宽 < 420 不画成交量', () => {
+    expect(degradeFor(1900, 1200)).toEqual(FULL)
+    // 开着抽屉的四图：每格约 1240 × 370，主图 + 两个副图，指标图例并成一行
+    expect(degradeFor(1240, 370)).toMatchObject({ subs: 2, legend: 'dense', vol: true })
+    expect(degradeFor(479, 800)).toMatchObject({ legend: 'compact', vol: true })
+    expect(degradeFor(1000, 359)).toMatchObject({ legend: 'compact', vol: true })
+    expect(degradeFor(419, 300)).toMatchObject({ subs: 1, vol: false })
+    expect(degradeFor(470, 300).font).toBeLessThan(FULL.font)
+    // 2560×1440 十六格：528 × 304，留一个副图、成交量还在
+    expect(degradeFor(528, 304)).toMatchObject({ subs: 1, legend: 'compact', vol: true })
   })
 })
 

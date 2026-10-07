@@ -493,6 +493,9 @@ kbd {
 /* 各布局的行列由 chartLayout.ts 按本机比例写在行内样式上（1 / 2 / 2v / 3 / 4 / 6 / 8 / 9 / 12 / 16） */
 .chart-cell { position: relative; display: flex; flex-direction: column; overflow: hidden; outline: 1px solid transparent; outline-offset: -1px; transition: outline-color var(--d-fast) var(--ease); }
 .chart-area:not([data-layout="1"]) .chart-cell.active { outline: var(--stroke-mark) solid var(--accent); outline-offset: -2px; }
+/* 放大一格（pages/chart.ts toggleZoom）：只摆这一格，别的格子藏起来但不销毁；放大时不画当前格描边 */
+.chart-area.zoomed > .chart-cell:not(.zoomed) { display: none; }
+.chart-area.zoomed .chart-cell.active { outline-color: transparent; }
 .chart-cell .canvas-host { position: relative; flex: 1; min-height: 0; }
 .chart-cell canvas { position: absolute; inset: 0; display: block; }
 .chart-cell .cell-foot {
@@ -503,7 +506,10 @@ kbd {
 .cell-foot button:hover { background: var(--surface-3); color: var(--text-1); }
 .cell-foot button[aria-pressed="true"] { color: var(--accent-text); }
 .cell-foot .foot-right { margin-left: auto; display: flex; align-items: center; gap: 2px; }
-.cell-foot .clock { color: var(--text-2); font-size: var(--t12); padding: 0 var(--s2); }
+/* 钟每秒改一次字：定宽定高 + contain: strict，改字只在这一小块里排版，不牵动底栏与格子；
+ * 多图里只有当前格的钟在走（pages/chart.ts paintClock），别的格子的钟藏起来但照样占位，切当前格时底栏不跳 */
+.cell-foot .clock { color: var(--text-2); font-size: var(--t12); padding: 0 var(--s2); display: inline-block; box-sizing: border-box; width: 112px; height: 20px; line-height: 20px; white-space: nowrap; contain: strict; }
+.chart-area:not([data-layout="1"]):not(.zoomed) .chart-cell:not(.active) .cell-foot .clock { visibility: hidden; }
 
 /* 图例（画布左上，HTML 叠层） */
 .legend { position: absolute; left: var(--s3); top: var(--s2); pointer-events: none; z-index: 2; font-size: var(--t13); line-height: 20px; }
@@ -514,7 +520,6 @@ kbd {
 .legend .ohlc i { font-style: normal; color: var(--text-2); margin-right: 2px; }
 .legend .ind-name { color: var(--text-1); }
 .legend .ind-param { color: var(--text-2); }
-.legend .tools { display: none; gap: 0; }
 .legend .lrow:hover { background: color-mix(in srgb, var(--chart-bg) 80%, transparent); }
 /* 等数据时不留白：换品种 / 周期时旧图淡下去、不能点（数据到了再换）；没有图时画布上是骨架，图例写「载入中」 */
 .chart-cell .canvas-host > canvas { transition: opacity .16s ease; }
@@ -531,21 +536,26 @@ kbd {
 @keyframes hkSpin { to { transform: rotate(360deg); } }
 @keyframes hkFadeIn { from { opacity: 0; } }
 @keyframes hkBreathe { 50% { opacity: .45; } }
-.legend .lrow:hover .tools { display: flex; }
+/* 名字 + 参数 + 工具按钮一组（lhead），读数盒在它后面。工具按钮固定宽、绝对定位叠在读数开头、只切 visibility：
+ * 悬停出 / 收按钮、读数变宽变窄都不让任何东西挪位，按钮的位置只由名字与参数决定（2026-10-07「悬停一直跳、点不到隐藏」） */
+.legend .lhead, .pane-legend .lhead { display: flex; align-items: center; gap: 0 var(--s2); position: relative; }
+.legend .tools, .pane-legend .tools { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 2px; display: flex; gap: 0; visibility: hidden; z-index: 1; background: var(--chart-bg); border-radius: var(--r-xs); }
+.legend .lrow:not(.dense):hover .tools, .legend .dchip:hover .tools, .pane-legend .lrow:hover .tools { visibility: visible; }
 .legend .tools .ibtn { width: var(--h-xs); height: var(--h-xs); }
+.legend [data-v] b { font-weight: inherit; }
 .legend .lrow.hidden-ind .ind-name, .legend .lrow.hidden-ind .vals { opacity: .45; }
 .legend .vals { display: flex; gap: var(--s2); }
+.legend [data-v], .pane-legend [data-v] { font-variant-numeric: tabular-nums; }
 .pane-legend { position: absolute; left: var(--s3); z-index: 2; font-size: var(--t13); line-height: 20px; pointer-events: none; }
 .pane-legend .lrow { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; pointer-events: auto; padding-right: var(--s2); border-radius: var(--r-xs); width: max-content; }
 .pane-legend .ind-name { color: var(--text-1); }
 .pane-legend .ind-param { color: var(--text-2); }
 .pane-legend .vals { display: flex; gap: var(--s2); }
+.pane-legend .vals b { font-weight: inherit; }
 /* 副图多条线各带一个短名（「现货」「合约」「大单」「散户」）；图例上的口径小字悬停看说明 */
 .legend .vals i, .pane-legend .vals i { font-style: normal; color: var(--text-3); margin-right: 3px; }
-.pane-legend .tools { display: none; }
 .pane-legend .tools .ibtn { width: var(--h-xs); height: var(--h-xs); }
 .pane-legend .lrow:hover { background: color-mix(in srgb, var(--chart-bg) 80%, transparent); }
-.pane-legend .lrow:hover .tools { display: flex; }
 .pane-legend .lrow.hidden-ind .ind-name, .pane-legend .lrow.hidden-ind .vals { opacity: .45; }
 
 .no-data { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); z-index: 1; pointer-events: none; }
@@ -861,7 +871,9 @@ kbd {
 .wv-head h3 { flex: none; font-size: var(--t13); margin-right: var(--s2); }
 .wv-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
 .wv-tabs .chip { height: 22px; padding: 0 8px; flex: none; }
-.wv-body { flex: 1; min-height: 0; }
+/* 滚动区的大小只由侧栏给（flex:1），和里面几百行无关：contain:strict 让表里改字 / 闪色只在这块里排版重画，
+   不再带着整块侧栏和整页一起重排（C15 挂机实测：这一项省下约 2 个点主线程） */
+.wv-body { flex: 1; min-height: 0; contain: strict; }
 .widget-watch .tbl th { height: 24px; }
 .widget-watch.collapsed .wv-body { display: none; }
 .widget-watch.collapsed .wv-target { display: none; }
@@ -915,11 +927,63 @@ body.resizing-x, body.resizing-x * { cursor: col-resize !important; }
 body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 
 /* ---------------------------------------------------------------- 多图格子降级（按格子尺寸，见 pages/chart.ts watchCell）
- * 窄（< 640）：底栏只留前四个时间范围、藏钟；很窄（< 420）：时间范围全藏；图例只剩一行（画布里做）。 */
+ * 门槛常量在 chart/panes.ts，这里的数值照抄那边（改一处要两处一起改）：
+ * c-narrow = 宽 < FOOT_TRIM_W（640）：底栏只留前四个时间范围、藏钟；
+ * c-tiny   = 宽 < CELL_NO_VOL_W（420）：时间范围全藏；
+ * c-short  = 高 < CELL_SHORT_H（360）：底栏 FOOT_SHORT_H（28）高（常态 FOOT_H 32）。
+ * 图例的 dense / compact 两档在画布里做（chart.ts renderLegend，门槛 CELL_DENSE_H 500 / CELL_COMPACT_W 480）。 */
 .chart-cell.c-narrow .cell-foot [data-range]:nth-of-type(n+5),
 .chart-cell.c-narrow .cell-foot .clock { display: none; }
 .chart-cell.c-tiny .cell-foot [data-range],
 .chart-cell.c-tiny .cell-foot > .tb-sep { display: none; }
 .chart-cell.c-short .cell-foot { height: 28px; }
 .legend .lrow.compact .title { font-size: var(--t13); }
+/* dense：主图指标并成一行，放不下的折成「…」；悬停这一行时原地折行把藏起来的接着往下排（第一行的块不挪位——
+ * 早先悬停时每块各占一行，右边的块会跳到第二行左边、从指针下溜走），悬停某个指标出它的工具 */
+.legend .lrow.dense { display: block; width: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+.legend .lrow.dense .dchip { display: inline-flex; align-items: center; gap: 0 var(--s2); margin-right: var(--s3); vertical-align: top; border-radius: var(--r-xs); }
+.legend .lrow.dense:hover { white-space: normal; overflow: visible; }
+.legend .lrow.dense .dchip.hidden-ind .ind-name, .legend .lrow.dense .dchip.hidden-ind .vals { opacity: .45; }
 .legend .lrow.compact .title .sub { font-size: var(--t12); }
+
+/* 图表设置 · 状态栏显隐（格子上的 class 由引擎 applyLegendOpts 切，图例拼法不动） */
+.ls-no-ohlc .legend .ohlc > span:nth-child(-n+4) { display: none; }
+.ls-no-chg .legend .ohlc > span:nth-child(5) { display: none; }
+.ls-no-indtitle :is(.legend, .pane-legend) [data-lid] .ind-name { display: none; }
+.ls-no-indargs :is(.legend, .pane-legend) [data-lid] .ind-param { display: none; }
+.ls-no-indvals :is(.legend, .pane-legend) [data-lid] .vals { display: none; }
+.ls-bg :is(.legend, .pane-legend) .lrow:not(:hover) { background: var(--ls-bg); }
+.cs-bgset :is(.legend, .pane-legend) .lrow:hover { background: color-mix(in srgb, var(--cs-bg) 80%, transparent); }
+.cs-bgset :is(.legend, .pane-legend) .tools { background: var(--cs-bg); }
+
+/* 图表设置对话框（版式照指标对话框：左边分页、右边一行一项） */
+.cs-dlg { width: 760px; height: 640px; position: relative; }
+.cs-dlg .body { grid-template-columns: 200px 1fr; position: relative; }
+.cs-side .ind-cats button { justify-content: flex-start; gap: var(--s2); }
+.cs-pane { overflow-y: auto; min-height: 0; padding: 0 var(--s6) var(--s5); }
+.cs-gh { padding: var(--s5) 0 var(--s2); color: var(--text-3); font-size: var(--t12); font-weight: 500; }
+.cs-gh:first-child { padding-top: var(--s4); }
+.cs-row { display: flex; align-items: center; gap: var(--s3); min-height: 40px; }
+.cs-lab { flex: 1; color: var(--text-1); }
+.cs-chk { flex: 1; display: flex; align-items: center; gap: var(--s3); min-height: 32px; text-align: left; color: var(--text-1); }
+.cs-chk .check-box { color: #fff; }
+.cs-ctl { display: flex; align-items: center; gap: var(--s2); }
+.cs-ro { color: var(--text-2); }
+.cs-dd { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--s2); height: var(--h-sm); padding: 0 var(--s2) 0 var(--s3);
+  border: 1px solid var(--control-line); border-radius: var(--r-sm); background: var(--surface); color: var(--text-1); }
+.cs-dd:hover { border-color: var(--text-3); }
+.cs-dd span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-dd .icon-12, .cs-chk .icon-12 { width: 12px; height: 12px; flex: none; color: var(--text-2); }
+.cs-chk .icon-12 { color: #fff; }
+.cs-num .input:disabled { opacity: .45; }
+.cs-color { width: var(--h-sm); height: var(--h-sm); display: grid; place-items: center; border: 1px solid var(--control-line); border-radius: var(--r-sm); background: var(--surface); }
+.cs-color:hover { border-color: var(--text-3); }
+.cs-color .swatch { width: 18px; height: 18px; }
+.cs-num { display: inline-flex; align-items: center; gap: var(--s2); color: var(--text-2); }
+.cs-num .input { width: 72px; height: var(--h-sm); text-align: right; font-variant-numeric: tabular-nums; }
+.cs-pop { position: absolute; z-index: 5; padding: var(--s2); background: var(--overlay); border-radius: var(--r-md); box-shadow: var(--shadow-menu); animation: pop var(--d-pop) var(--ease); }
+.cs-pop-grid { display: grid; grid-template-columns: repeat(7, var(--h-xs)); gap: 2px; }
+.cs-pop-foot { display: flex; gap: var(--s2); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--line); }
+.cs-pop-foot .btn { flex: 1; position: relative; overflow: hidden; }
+.cs-pop-foot input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.cs-dlg .dialog-foot { justify-content: flex-start; }

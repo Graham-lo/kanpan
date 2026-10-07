@@ -97,7 +97,19 @@ function liveFracs(area: HTMLElement, layout: Layout, axis: 'cols' | 'rows'): nu
   const total = (axis === 'cols' ? area.clientWidth : area.clientHeight) - (n - 1) * gut
   return fitTracks(trackFracs(sizes.grid?.[layout]?.[axis], n), total, axis === 'cols' ? TRACK_MIN_W : TRACK_MIN_H)
 }
-export function applyGrid(area: HTMLElement, layout: Layout, cells: readonly HTMLElement[]): void {
+/**
+ * zoomed = 放大的那一格（同 TradingView 多图的「最大化」）：网格临时收成一格铺满图表区，
+ * 别的格子 display: none（不销毁、不退订；见 app.css .chart-area.zoomed）。null = 照布局排。
+ */
+export function applyGrid(area: HTMLElement, layout: Layout, cells: readonly HTMLElement[], zoomed: HTMLElement | null = null): void {
+  area.classList.toggle('zoomed', !!zoomed)
+  cells.forEach(el => el.classList.toggle('zoomed', el === zoomed))
+  if (zoomed) {
+    area.style.gridTemplateColumns = area.style.gridTemplateRows = 'minmax(0, 1fr)'
+    area.style.gridTemplateAreas = ''
+    cells.forEach(el => { el.style.gridArea = '' })
+    return
+  }
   const g = GRID[layout]
   const cols = liveFracs(area, layout, 'cols'), rows = liveFracs(area, layout, 'rows')
   const fr = (f: number[]): string => f.map(x => `minmax(0, ${(x * 1000).toFixed(3)}fr)`).join(' ')
@@ -111,8 +123,8 @@ export function applyGrid(area: HTMLElement, layout: Layout, cells: readonly HTM
 let gridSplits: Splitter[] = []
 let gridDrag: { fr: number[]; total: number } | null = null
 
-/** 摆多图网格的分隔线（挂在图表区里）；relayout = 重排网格并重摆分隔线 */
-export function placeGridSplits(area: HTMLElement, layout: Layout, relayout: () => void): void {
+/** 摆多图网格的分隔线（挂在图表区里）；relayout = 重排网格并重摆分隔线；zoomed = 放大了一格，分隔线全藏 */
+export function placeGridSplits(area: HTMLElement, layout: Layout, relayout: () => void, zoomed = false): void {
   const g = GRID[layout]
   const want = (g.cols - 1) + (g.rows - 1)
   gridSplits = gridSplits.filter(s => s.el.parentElement === area)
@@ -121,6 +133,8 @@ export function placeGridSplits(area: HTMLElement, layout: Layout, relayout: () 
     for (let i = 0; i < g.cols - 1; i++) gridSplits.push(gridSplitter(area, layout, 'cols', i, relayout))
     for (let i = 0; i < g.rows - 1; i++) gridSplits.push(gridSplitter(area, layout, 'rows', i, relayout))
   }
+  gridSplits.forEach(s => s.show(!zoomed))
+  if (zoomed) return
   const gut = px(area, '--gutter', 4)
   const W = area.clientWidth, H = area.clientHeight
   const cols = liveFracs(area, layout, 'cols'), rows = liveFracs(area, layout, 'rows')
@@ -158,3 +172,13 @@ function gridSplitter(area: HTMLElement, layout: Layout, axis: 'cols' | 'rows', 
   return sp
 }
 
+// ------------------------------------------------------------ 放大一格
+/** 双击格子顶部这么高的一条（图例以外的空白）放大 / 还原这一格 */
+export const ZOOM_STRIP_H = 36
+/** 双击点 (x, y)（相对画布左上）落在「标题区」：顶部一条、价格轴以左 */
+export function inZoomStrip(x: number, y: number, plotW: number): boolean { return y >= 0 && y <= ZOOM_STRIP_H && x >= 0 && x < plotW }
+/** 下一步放大谁：再点同一格 / 传 null = 还原；只有一格时不放大 */
+export function nextZoom<T>(cur: T | null, want: T | null, n: number): T | null {
+  if (n < 2) return null
+  return want == null || want === cur ? null : want
+}

@@ -8,6 +8,7 @@
  */
 import { st, save, type WidgetId } from '../app/store'
 import { I, esc } from '../ui/dom'
+import { patchAttr, patchClass, patchShell, patchStyle, patchText, rowPool } from '../ui/patch'
 import { toast } from '../ui/overlay'
 import { hexA } from '../util/format'
 import { pressure, steppedBook, exName, venueName, PRODUCT_SHORT, type FineBook } from './aggregate'
@@ -17,7 +18,7 @@ import { parseAmount } from './settings'
 import { OF, feedIdleText, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
 import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, partsFor, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
 import { sizes, saveSizes } from '../app/sizes'
-import { StatChart, statHead, tpsLineHTML, type StatKind } from './statsView'
+import { StatChart, statHead, tpsLine, TPS_SHELL, type StatKind } from './statsView'
 import { splitter, type Splitter } from '../ui/splitter'
 export { toggleCollapsed }
 
@@ -85,8 +86,11 @@ function ensureTps(d: HTMLElement): void {
   if (!d.isConnected || !d.firstElementChild) return
   let t = d.querySelector<HTMLElement>(':scope > .of-tps-row')
   if (!t) { t = document.createElement('div'); t.className = 'of-tps-row'; d.appendChild(t) }
-  const html = tpsLineHTML()
-  if (t.dataset.html !== html) { t.innerHTML = html; t.dataset.html = html }
+  const line = tpsLine()
+  if (!line) { patchShell(t, '', ''); return }
+  patchShell(t, '#tps', TPS_SHELL)
+  patchText(t.querySelector('b'), line.txt)
+  patchAttr(t.querySelector('path'), 'd', line.d)
 }
 
 function updateStats(force = false): void {
@@ -327,8 +331,8 @@ function updateBook(): void {
   const feed = OF.feed, fine = OF.fine
   const pEl = el.querySelector<HTMLElement>('#ofPress')!, vEl = el.querySelector<HTMLElement>('#ofVenues')!, bEl = el.querySelector<HTMLElement>('#ofBook')!
   if (!feed || !fine || !fine.ready) {
-    pEl.innerHTML = `<div class="of-wait faint">${feed ? '正在连三家交易所的盘口…' : '打开指标「主力订单流」或深度梯子后开始接盘口'}</div>`
-    vEl.innerHTML = ''; bEl.innerHTML = ''
+    const w = `<div class="of-wait faint">${feed ? '正在连三家交易所的盘口…' : '打开指标「主力订单流」或深度梯子后开始接盘口'}</div>`
+    patchShell(pEl, w, w); patchShell(vEl, '', ''); patchShell(bEl, '', '')
     return
   }
   const mid = fine.mid
@@ -338,11 +342,18 @@ function updateBook(): void {
   const t = pr.total[bi]
   const sum = t.bid + t.ask
   const share = sum > 0 ? t.bid / sum : 0.5
-  pEl.innerHTML = `<div class="of-press-top">
-      <div class="of-bands" role="group" aria-label="距中间价">${BANDS.map(b => `<button class="chip" data-of="band" data-v="${b}" aria-pressed="${b === band}">±${b}%</button>`).join('')}</div>
-      <span class="num up">买 ${unitAmt(t.bid, mid)}</span><span class="num down">卖 ${unitAmt(t.ask, mid)}</span></div>
-    <div class="of-press-bar" data-tip="中间价 ±${band}% 以内三家所有簿的买卖挂单名义"><i class="b" style="width:${(share * 100).toFixed(1)}%"></i><i class="a"></i>
-      <span class="l num">${(share * 100).toFixed(0)}%</span><span class="r num">${((1 - share) * 100).toFixed(0)}%</span></div>`
+  // 外壳（档位钮、条）只建一次；每帧只改字、条宽、钮的按下态与条的悬停说明——整块重写会把指针下的档位钮换掉（点不上、悬停说明跑到左上角）
+  patchShell(pEl, 'press', `<div class="of-press-top">
+      <div class="of-bands" role="group" aria-label="距中间价">${BANDS.map(b => `<button class="chip" data-of="band" data-v="${b}" aria-pressed="false">±${b}%</button>`).join('')}</div>
+      <span class="num up"></span><span class="num down"></span></div>
+    <div class="of-press-bar"><i class="b"></i><i class="a"></i>
+      <span class="l num"></span><span class="r num"></span></div>`)
+  const pTop = pEl.firstElementChild!, pBar = pEl.lastElementChild!
+  pTop.querySelectorAll('[data-of="band"]').forEach(c => patchAttr(c, 'aria-pressed', String(Number((c as HTMLElement).dataset.v) === band)))
+  patchText(pTop.children[1], `买 ${unitAmt(t.bid, mid)}`); patchText(pTop.children[2], `卖 ${unitAmt(t.ask, mid)}`)
+  patchAttr(pBar, 'data-tip', `中间价 ±${band}% 以内三家所有簿的买卖挂单名义`)
+  patchStyle(pBar.children[0], 'width', `${(share * 100).toFixed(1)}%`)
+  patchText(pBar.children[2], `${(share * 100).toFixed(0)}%`); patchText(pBar.children[3], `${((1 - share) * 100).toFixed(0)}%`)
   // 各家：交易所 × 产品，同一格里几本（比如两个交割）加总
   const cells = new Map<string, { bid: number; ask: number }>()
   const exs: string[] = [], prods: Product[] = []
@@ -361,13 +372,21 @@ function updateBook(): void {
   let maxSide = 0
   for (const c of cells.values()) maxSide = Math.max(maxSide, c.bid, c.ask)
   maxSide ||= 1
-  vEl.style.gridTemplateColumns = `56px repeat(${exs.length}, minmax(0,1fr))`
-  vEl.innerHTML = `<span></span>${exs.map(e => `<span class="of-vh">${exName(e)}</span>`).join('')}` + prods.map(p =>
-    `<span class="of-vp">${PRODUCT_SHORT[p]}</span>` + exs.map(e => {
-      const c = cells.get(e + '|' + p)
-      if (!c) return '<span class="of-vc none faint">—</span>'
-      return `<span class="of-vc" data-tip="${venueName(exName(e), p)}：买 ${amt(c.bid)} · 卖 ${amt(c.ask)}"><i class="b" style="width:${(c.bid / maxSide * 50).toFixed(1)}%"></i><i class="a" style="width:${(c.ask / maxSide * 50).toFixed(1)}%"></i><em class="num">${amt(c.bid + c.ask)}</em></span>`
-    }).join('')).join('')
+  patchStyle(vEl, 'grid-template-columns', `56px repeat(${exs.length}, minmax(0,1fr))`)
+  // 各家格子：哪几家 × 哪几种产品（结构）变了才重建，每帧只改条宽、金额与悬停说明
+  const vKey = exs.join(',') + '|' + prods.map(p => p + ':' + exs.map(e => cells.has(e + '|' + p) ? 1 : 0).join('')).join(',')
+  patchShell(vEl, vKey, `<span></span>${exs.map(e => `<span class="of-vh">${exName(e)}</span>`).join('')}` + prods.map(p =>
+    `<span class="of-vp">${PRODUCT_SHORT[p]}</span>` + exs.map(e => cells.has(e + '|' + p)
+      ? `<span class="of-vc" data-vc="${e}|${p}"><i class="b"></i><i class="a"></i><em class="num"></em></span>`
+      : '<span class="of-vc none faint">—</span>').join('')).join(''))
+  vEl.querySelectorAll<HTMLElement>('[data-vc]').forEach(span => {
+    const c = cells.get(span.dataset.vc || ''); if (!c) return
+    const [e, p] = (span.dataset.vc || '').split('|') as [string, Product]
+    patchAttr(span, 'data-tip', `${venueName(exName(e), p)}：买 ${amt(c.bid)} · 卖 ${amt(c.ask)}`)
+    patchStyle(span.children[0], 'width', `${(c.bid / maxSide * 50).toFixed(1)}%`)
+    patchStyle(span.children[1], 'width', `${(c.ask / maxSide * 50).toFixed(1)}%`)
+    patchText(span.children[2], amt(c.bid + c.ask))
+  })
   // 分档盘口：买左卖右，各 8 档
   const step = fine.step
   const k = bookK(fine)
@@ -379,6 +398,8 @@ function updateBook(): void {
   const row = (r: { price: number; usd: number; cum: number; qty: number }, side: 'b' | 'a'): string =>
     `<div class="of-br ${side}"><i class="c" style="width:${(r.cum / maxCum * 100).toFixed(1)}%"></i><i class="o" style="width:${(r.usd / maxOne * 100).toFixed(1)}%"></i>
       <span class="p num">${px(r.price, d)}</span><span class="v num">${r.usd > 0 ? (coin ? amt(r.qty) : amt(r.usd)) : ''}</span><span class="s num faint">${coin ? amt(r.cum / Math.max(r.price, 1e-12)) : amt(r.cum)}</span></div>`
+  // 分档盘口的行没有可点、可悬停的东西（不挂悬停说明），整块写不碍事；写之前清掉外壳记号，等待态回来时能重建
+  patchShell(bEl, '#book', '')
   bEl.innerHTML = `<div class="of-bh"><span>买 · 每档 ${px(step * k, decFor(step * k, 0))}</span><span class="num">${mid != null ? px(mid, d) : '—'}</span><span>卖</span></div>
     <div class="of-bcols"><div class="of-bcol">${sb.bids.map(r => row(r, 'b')).join('')}</div><div class="of-bcol">${sb.asks.map(r => row(r, 'a')).join('')}</div></div>`
 }
@@ -397,22 +418,29 @@ function updateWalls(): void {
   if (!el || el.classList.contains('collapsed')) return
   const box = el.querySelector<HTMLElement>('#ofWalls')!, n = el.querySelector<HTMLElement>('#ofWallsN')!
   const live = (OF.snap?.orders ?? []).filter(o => o.status === 'live').sort((a, b) => b.notional - a.notional)
-  n.textContent = live.length ? `${live.length} 单` : ''
-  if (!OF.feed) { box.innerHTML = `<div class="of-wait faint">${feedIdleText()}</div>`; return }
-  if (!live.length) { box.innerHTML = `<div class="of-wait faint">${OF.snap?.phase === 'ready' || OF.snap?.phase == null ? '现在没有达到门槛的挂单' : '正在接盘口…'}</div>`; return }
+  patchText(n, live.length ? `${live.length} 单` : '')
+  const wait = (msg: string): void => { const h = `<div class="of-wait faint">${msg}</div>`; patchShell(box, h, h) }
+  if (!OF.feed) { wait(feedIdleText()); return }
+  if (!live.length) { wait(OF.snap?.phase === 'ready' || OF.snap?.phase == null ? '现在没有达到门槛的挂单' : '正在接盘口…'); return }
   const dec = decFor(OF.feed.model.scheme?.step ?? 0, OF.api?.dec(OF.feed.symbol) ?? 2)
   const now = Date.now()
   const max = live[0].notional
   // 只放得下的几行，不出滚动条（全部在抽屉里）
   const fit = Math.max(1, Math.floor(((box.clientHeight || 6 * WALL_ROW + 4) - 4) / WALL_ROW)) // 扣掉底边 4
-  box.innerHTML = live.slice(0, fit).map(o => {
-    const id = orderId(o)
-    return `<div class="of-wall ${OF.highlight === id ? 'sel' : ''}" data-wall="${esc(id)}" tabindex="0" role="button" aria-label="${o.side === 'bid' ? '买' : '卖'} ${px(o.price, dec)} ${amt(o.notional)}">
-      <i class="bar" style="width:${(o.notional / max * 100).toFixed(1)}%;background:${bandColor(o.product, o.side, 0.16)}"></i>
-      <span class="sd ${o.side === 'bid' ? 'up' : 'down'}">${o.side === 'bid' ? '买' : '卖'}</span>
-      <span class="vn"><i class="sw" style="background:${bandColor(o.product, o.side, 1)}"></i>${venueName(exName(o.exchange), o.product)}</span>
-      <span class="p num">${px(o.price, dec)}</span><span class="v num">${amt(o.notional)}</span><span class="t num faint">${durShort(now - o.firstSeenMs)}</span></div>`
-  }).join('')
+  // 行按位置复用、每帧只改字与条宽（「挂了多久」每帧都变，整块重写会把指针下 / 键盘焦点所在的那一行换掉，点不上）
+  const shown = live.slice(0, fit)
+  rowPool(box, shown.length, `<div class="of-wall" tabindex="0" role="button"><i class="bar"></i><span class="sd"></span><span class="vn"><i class="sw"></i><b></b></span><span class="p num"></span><span class="v num"></span><span class="t num faint"></span></div>`)
+    .forEach((row, k) => {
+      const o = shown[k], id = orderId(o), bid = o.side === 'bid'
+      patchClass(row, `of-wall${OF.highlight === id ? ' sel' : ''}`)
+      patchAttr(row, 'data-wall', id)
+      patchAttr(row, 'aria-label', `${bid ? '买' : '卖'} ${px(o.price, dec)} ${amt(o.notional)}`)
+      const [bar, sd, vn, p, v, t] = Array.from(row.children)
+      patchStyle(bar, 'width', `${(o.notional / max * 100).toFixed(1)}%`); patchStyle(bar, 'background', bandColor(o.product, o.side, 0.16))
+      patchClass(sd, `sd ${bid ? 'up' : 'down'}`); patchText(sd, bid ? '买' : '卖')
+      patchStyle(vn.firstElementChild, 'background', bandColor(o.product, o.side, 1)); patchText(vn.lastElementChild, venueName(exName(o.exchange), o.product))
+      patchText(p, px(o.price, dec)); patchText(v, amt(o.notional)); patchText(t, durShort(now - o.firstSeenMs))
+    })
 }
 
 function updateAlerts(): void {
@@ -422,7 +450,7 @@ function updateAlerts(): void {
   const box = el.querySelector<HTMLElement>('#ofAlerts')!
   if (!a || !OF.api) { box.innerHTML = ''; return }
   const list = OF.api.alertsFor(a.symbol)
-  const html = list.length ? list.map(x => `<div class="of-al"><span class="num">${esc(OF.api!.alertDesc(x))}</span><button class="ibtn xs" data-of-del="${x.id}" aria-label="删除提醒" data-tip="删除">${I('trash', 'icon-16')}</button></div>`).join('')
+  const html = list.length ? list.map(x => `<div class="of-al"><span class="num">${esc(OF.api!.alertDesc(x))}</span><button class="ibtn xs" data-of-del="${esc(x.id)}" aria-label="删除提醒" data-tip="删除">${I('trash', 'icon-16')}</button></div>`).join('')
     : `<div class="of-wait faint">这只品种没有还在等的提醒 · 点梯子上的一行就能建</div>`
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html }
 }

@@ -6,6 +6,7 @@
 //   环境变量：KP_USER / KP_PASS（multitab 要）、STRESS_OUT（截图目录，默认 /tmp/kpA-stress）、OFFLINE_N（断网次数，默认 5）
 // 每一项打一行「✓ / ✗」，全程收集控制台报错、未捕获异常、网络失败。
 import { chromium } from 'playwright-core'
+import { corsShim } from './f-lib.mjs'
 import { mkdirSync, writeFileSync } from 'node:fs'
 
 const URL_ = process.argv[2] || 'http://localhost:5181/web/'
@@ -47,6 +48,10 @@ const WS_SPY = () => {
 }
 async function newCtx() {
   const ctx = await browser.newContext({ viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 })
+  await corsShim(ctx)   // 本机 localhost 下 kanpan-api 不回跨域头，替页面转一手（线上同源部署不经过这一步）
+  // 「空白页」要真的空：vite dev / preview 对不存在的路径回首页（SPA 回退），app 会在上面跑起来、取一遍品种表（权重 51），
+  // 九个旧存档用例连开下来就把网关那道 800 的预算堆满（10-07 oldstate「加载超时」的根子之一）；这里直接替服务器回一页空白
+  await ctx.route('**/__stress_blank', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>blank</title>' }))
   await ctx.addInitScript(WS_SPY)
   await ctx.addInitScript(() => { window.__keepGate = ls => { const g = ls.getItem('hkline-web-rate-limit'); ls.clear(); if (g) ls.setItem('hkline-web-rate-limit', g) } })
   return ctx
@@ -82,10 +87,12 @@ const open = async (qs = '', hash = 'chart') => { await page.goto(`${URL_}?${qs}
 const BLANK = new URL('__stress_blank', URL_).href
 await ctx.route(BLANK, r => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>blank</title>' }))
 const toBlank = async (pg = page) => { await pg.goto(BLANK, { waitUntil: 'domcontentloaded' }) }
-// 压测自己也守币安的出口预算：连开页面前看一眼共用账本（页面里的限频闸门记的），这一分钟合约权重超过 400 或在暂停就等
+// 压测自己也守币安的出口预算：连开页面前看一眼共用账本（页面里的限频闸门记的），这一分钟合约权重超过 400 或在暂停就等。
+// 账本分两道（limit.ts 10-05 起）：直连记在 fapi、网关记在 fapi@gw（网关那道上限只有 800）——旧存档没有 routePicked 会回到出厂的网关线路，
+// 原来只看 fapi 那道，oldstate 连开九次页面把网关那道堆到 800，第十次排队 50 秒当成「加载超时」（10-07）
 async function pace(limit = 400) {
   for (let k = 0; k < 90; k++) {
-    const g = await page.evaluate(() => { try { const s = JSON.parse(localStorage.getItem('hkline-web-rate-limit') || 'null'); const now = Date.now(); if (!s) return { used: 0, pause: 0 }; return { used: (s.used?.fapi || []).filter(x => now - x[0] < 60000).reduce((a, x) => a + x[1], 0), pause: Math.max(0, (s.cool?.['fapi.binance.com']?.until || 0) - now) } } catch { return { used: 0, pause: 0 } } })
+    const g = await page.evaluate(() => { try { const s = JSON.parse(localStorage.getItem('hkline-web-rate-limit') || 'null'); const now = Date.now(); if (!s) return { used: 0, pause: 0 }; const lane = k => (s.used?.[k] || []).filter(x => now - x[0] < 60000).reduce((a, x) => a + x[1], 0); return { used: Math.max(lane('fapi'), lane('fapi@gw')), pause: Math.max(0, (s.cool?.['fapi.binance.com']?.until || 0) - now, (s.cool?.['fapi.binance.com@gw']?.until || 0) - now) } } catch { return { used: 0, pause: 0 } } })
     if (g.used <= limit && !g.pause) return
     if (k === 0) log(`  等币安预算：这一分钟合约权重 ${g.used}${g.pause ? '，暂停还剩 ' + Math.round(g.pause / 1000) + ' 秒' : ''}`)
     await wait(2000)
@@ -95,6 +102,9 @@ async function seed(partial, qs = '', sizes) {
   await toBlank(); await pace()
   await page.evaluate(([p, z]) => {
     __keepGate(localStorage)
+    // 10-03 起出厂线路是网关（a9ceeafb）：没指明线路的段一律种成「亲手选过的直连」，币安 REST 走本机出口的额度、不打线上网关
+    if (p == null) p = { route: 'direct', routePicked: true }
+    else if (typeof p !== 'string' && p.route == null) p = { route: 'direct', routePicked: true, ...p }
     if (p != null) localStorage.setItem('hkline-web-v1', typeof p === 'string' ? p : JSON.stringify(p))
     if (z != null) localStorage.setItem('hkline-web-sizes-v1', typeof z === 'string' ? z : JSON.stringify(z))
   }, [partial, sizes])
@@ -178,15 +188,16 @@ async function modeLayouts() {
     ok(`布局 ${label}：${n} 格各自的品种周期对得上、没串数据`, bad.length === 0 && off.length === 0 && cs.length === n,
       bad.length ? bad.slice(0, 4).map(({ i, c, w }) => `#${i} 要 ${w.s}/${w.iv} 得 ${c.symbol}/${c.iv} 图 ${c.metaSym}/${c.metaIv} ${c.bars} 根`).join('；') : off.length ? off.map(x => `#${x.i} ${x.s} 收 ${x.last} 价 ${x.p}`).join('；') : `${cs.map(c => `${c.symbol.replace('USDT', '')}/${c.iv}`).join(' ')}`)
     const deg = cs.map(c => c.deg), rect = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)] }))
-    const wrongDeg = deg.map((d, i) => ({ d, r: rect[i], i })).filter(({ d, r }) => (r[0] < 640 || r[1] < 400) === d.subs)
-    const paneBad = cs.filter(c => (c.deg.subs ? c.panes.length !== 1 + (c.subs ?? 2) : c.panes.length !== 1))
-    ok(`布局 ${label}：副图按格子尺寸降级（小格只留主图）`, wrongDeg.length === 0 && paneBad.length === 0, `格子 ${rect[0].join('×')}，降级 ${JSON.stringify(deg[0])}，窗格 ${cs.map(c => c.panes.length).join('')}`)
+    const fitSubsFor = h => { const H = h - (h < 360 ? 28 : 32) - 28; if (H <= 0) return 0; const m = Math.min(H, Math.max(160, Math.ceil(H * 0.4))); return Math.min(8, Math.max(0, Math.floor((H - m) / 56))) }  // 同 src/chart/panes.ts degradeFor
+    const wrongDeg = deg.map((d, i) => ({ d, r: rect[i], i })).filter(({ d, r }) => d.subs !== fitSubsFor(r[1]) || (d.legend === 'compact') !== (r[0] < 480 || r[1] < 360))
+    const paneBad = cs.filter(c => c.panes.length !== 1 + Math.min(c.deg.subs, c.subs ?? 2))
+    ok(`布局 ${label}：副图按格子剩下的高逐个留（放得下几个画几个）`, wrongDeg.length === 0 && paneBad.length === 0, `格子 ${rect[0].join('×')}，降级 ${JSON.stringify(deg[0])}，窗格 ${cs.map(c => c.panes.length).join('')}`)
     if (k === '16' || k === '6') await shot(`A-布局-${label}`)
   }
   // 回到一图：指标、窗格、第 0 格的品种周期
   await pickLayout('一图'); await wait(2500)
   const one = (await cellsNow())[0]
-  ok('回到一图：副图恢复、不降级', one.deg.subs && !one.deg.compact && one.panes.length === 3, `${JSON.stringify(one.deg)} 窗格 ${one.panes.length}（开始时 ${base.panes.length}）`)
+  ok('回到一图：副图恢复、不降级', one.deg.subs >= 2 && one.deg.legend === 'full' && one.panes.length === 3, `${JSON.stringify(one.deg)} 窗格 ${one.panes.length}（开始时 ${base.panes.length}）`)
   // 16 格切品种 / 周期 / 皮肤：主线程与报错
   await pickLayout('十六图'); await wait(6000)
   await cdp.send('Performance.enable', { timeDomain: 'timeTicks' })

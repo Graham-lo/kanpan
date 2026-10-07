@@ -9,6 +9,7 @@ import '../styles/sectors.css'
 import { st } from '../app/store'
 import { hooks, go } from '../app/shell'
 import { $, $$, I, esc, tgt } from '../ui/dom'
+import { morphHtml, patchKeyedRows } from '../ui/patch'
 import { GLOSSARY, term } from '../ui/overlay'
 import { badge, cls, pctText, priceText, sym } from '../ui/common'
 import { fmtCompact } from '../util/format'
@@ -94,8 +95,9 @@ function renderHead(hasD5: boolean): void {
       <button data-mk="crypto" aria-pressed="${sp.market === 'crypto'}">加密</button><button data-mk="us" aria-pressed="${sp.market === 'us'}">美股</button></div>`
   const chips = hasD5 ? `<div class="sec-win" role="group" aria-label="时间段">
       <button class="chip" data-win="today" aria-pressed="${sp.window === 'today'}">今日</button><button class="chip" data-win="d5" aria-pressed="${sp.window === 'd5'}">5 日</button></div>` : ''
-  $('#secHead').innerHTML = `<h2>板块</h2>${seg}${chips}`
-  $('#secThead').innerHTML = `<tr><th>板块</th><th>走势</th><th>${term('跑赢大盘')}</th><th>${term('板块涨跌', '涨跌幅')}</th></tr>`
+  // 每 10 秒的重算也走这里：就地改（按钮节点留着），不整块换——换了指针下的按钮 / 提示要等下一次 mousemove 才回来
+  morphHtml($('#secHead'), `<h2>板块</h2>${seg}${chips}`)
+  morphHtml($('#secThead'), `<tr><th>板块</th><th>走势</th><th>${term('跑赢大盘')}</th><th>${term('板块涨跌', '涨跌幅')}</th></tr>`)
 }
 
 function boardRow(s: SectorStat): string {
@@ -114,12 +116,13 @@ function boardRow(s: SectorStat): string {
 function renderBoards(): void {
   const empty = $('#secEmpty')
   if (!sp.boards.length) {
-    $('#secBody').innerHTML = ''
-    empty.innerHTML = emptyHTML()
+    patchKeyedRows($('#secBody'), [], 'data-sec')
+    morphHtml(empty, emptyHTML())
     return
   }
-  empty.innerHTML = ''
-  $('#secBody').innerHTML = sp.boards.map(boardRow).join('')
+  morphHtml(empty, '')
+  // 板块行按 id 复用：10 秒一次的重算只改变了的字 / 类，顺序变了挪位置，指针下的行不被换掉（探针 sector 场景量过）
+  patchKeyedRows($('#secBody'), sp.boards.map(s => [s.id, boardRow(s)] as const), 'data-sec')
 }
 
 function emptyHTML(): string {
@@ -149,15 +152,16 @@ function renderMembers(title: string): void {
   const id = sp.sel
   const stat = sp.boards.find(b => b.id === id)
   const head = $('#secMHead'), body = $('#secMBody'), empty = $('#secMEmpty')
-  $('#secMThead').innerHTML = `<tr><th>品种</th><th>最新价</th><th>${title}涨跌</th><th>成交额</th><th></th></tr>`
-  if (!id) { head.innerHTML = ''; body.innerHTML = ''; empty.innerHTML = feed.quotes.size ? '' : emptyHTML(); setVisible([]); return }
+  morphHtml($('#secMThead'), `<tr><th>品种</th><th>最新价</th><th>${title}涨跌</th><th>成交额</th><th></th></tr>`)
+  if (!id) { morphHtml(head, ''); patchKeyedRows(body, [], 'data-msym'); morphHtml(empty, feed.quotes.size ? '' : emptyHTML()); setVisible([]); return }
   const rows = symbolRows(membersOf(id), feed.quotes, stat?.frontier ?? [], sp.window, history.held)
   const n = stat?.memberCount ?? 0
   const sub = stat && !isThin(stat) ? `${title} · <span class="num">${outperformCount(stat)}/${n}</span> ${term('跑赢大盘')}` : title
   const lead = stat?.frontier.length ? ` · ${term('领涨')} <span class="num">${stat.frontier.length}</span>` : ''
-  head.innerHTML = `<h2>${esc(nameOf(id))}</h2>${stat ? `<span class="num sec-big ${cls(stat.pct)}">${pctText(stat.pct)}</span>` : ''}<span class="sub">${sub}${lead}</span>`
-  body.innerHTML = rows.map(symbolRowHTML).join('')
-  empty.innerHTML = rows.length ? '' : '<div class="empty">这个板块暂时没有行情</div>'
+  morphHtml(head, `<h2>${esc(nameOf(id))}</h2>${stat ? `<span class="num sec-big ${cls(stat.pct)}">${pctText(stat.pct)}</span>` : ''}<span class="sub">${sub}${lead}</span>`)
+  // 成员行按品种复用（同板块的 10 秒重算只改字；星标按钮等节点留着）
+  patchKeyedRows(body, rows.map(r => [feed.quotes.get(r.base)?.symbol ?? r.base + 'USDT', symbolRowHTML(r)] as const), 'data-msym')
+  morphHtml(empty, rows.length ? '' : '<div class="empty">这个板块暂时没有行情</div>')
   sp.baseOf = new Map()
   for (const r of rows) { const k = feed.quotes.get(r.base)?.symbol; if (k && S.symbols.has(k)) sp.baseOf.set(k, r.base) }
   setVisible([...sp.baseOf.keys()])

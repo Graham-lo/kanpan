@@ -70,30 +70,127 @@ function gatewayURL(): string | null {
 // ------------------------------------------------------------ 分配（纯逻辑，单测覆盖）
 /**
  * 把想要的流分到连接上。current = 现有各条连接上分着的流；返回每条现有连接的新分配
- * （null = 这条要关掉），以及要新开的几条的分配。
+ * （null = 这条要关掉），以及要新开的几条的分配。want 按轻重排好：前 vital 个是关键流
+ * （各格的 K 线与行情、当前格的标记价与逐笔），其后依次是核心、其余（自选报价垫底）。
  *   1. 每条连接只留还想要的流；
- *   2. 连接数多于 ⌈n / cap⌉ 时，从最空的那条开始收，它上面的流算作没分配；
- *   3. 没分配的流先填有空位的连接（按原顺序），还剩就新开连接，每条至多 cap 路。
+ *   2. 连接数多于 ⌈n / cap⌉ 时收掉一条：先收关键流最少的、再收最空的、同样空收后开的那条，
+ *      它上面的流算作没分配；
+ *   3. 关键流永远坐最早的连接：没分配的关键流按顺序放进最早一条「有空位或有非关键流」的连接，
+ *      满了就把那条上排得最靠后的非关键流挤出去重排；已经分着的关键流若坐在后面的连接上，
+ *      而前面的连接还有空位 / 非关键流，就和它对调；
+ *   4. 没分配的非关键流先填有空位的连接（按轻重顺序），还剩就新开连接，每条至多 cap 路。
+ * 后开的连接最容易被网关按同一来源的总上限拒掉——被拒的只会是自选报价，图上的各格照常跟推送。
+ * vital = 0 时和原来一样：已经在连接上的流不挪，挪动只发生在要收掉一条连接的时候。
  */
-export function assignStreams(current: readonly (readonly string[])[], want: readonly string[], cap: number): { keep: (string[] | null)[]; open: string[][] } {
-  const W = new Set(want)
-  const need = W.size ? Math.ceil(W.size / cap) : 0
-  const sets = current.map(c => c.filter(x => W.has(x)))
+export function assignStreams(current: readonly (readonly string[])[], want: readonly string[], cap: number, vital = 0): { keep: (string[] | null)[]; open: string[][] } {
+  const rank = new Map<string, number>()
+  want.forEach((x, i) => { if (!rank.has(x)) rank.set(x, i) })
+  const isVital = (x: string) => (rank.get(x) ?? Infinity) < vital
+  const byRank = (a: string, b: string) => rank.get(a)! - rank.get(b)!
+  const need = rank.size ? Math.ceil(rank.size / cap) : 0
+  const seen = new Set<string>()
+  const sets = current.map(c => c.filter(x => rank.has(x) && !seen.has(x) && (seen.add(x), true)))
+  const vitals = (s: readonly string[]) => s.reduce((n, x) => n + (isVital(x) ? 1 : 0), 0)
   const alive = sets.map((_, i) => i)
   while (alive.length > need) {
     let k = 0
-    for (let j = 1; j < alive.length; j++) if (sets[alive[j]].length < sets[alive[k]].length) k = j
+    for (let j = 1; j < alive.length; j++) {
+      const a = sets[alive[j]], b = sets[alive[k]], va = vitals(a), vb = vitals(b)
+      if (va < vb || (va === vb && a.length <= b.length)) k = j
+    }
     alive.splice(k, 1)
   }
   const keepSet = new Set(alive)
-  const placed = new Set<string>()
-  for (const i of alive) for (const x of sets[i]) placed.add(x)
-  const orphans = want.filter(x => !placed.has(x) && (placed.add(x), true))
   const keep: (string[] | null)[] = sets.map((s, i) => keepSet.has(i) ? s.slice(0, cap) : null)
-  for (const s of keep) if (s) while (s.length < cap && orphans.length) s.push(orphans.shift()!)
+  const live = keep.filter((s): s is string[] => !!s)
+  const placed = new Set(live.flat())
+  const orphans = want.filter(x => !placed.has(x) && (placed.add(x), true))
+  const spill: string[] = orphans.filter(x => !isVital(x))
+  /** 这条连接上排得最靠后的非关键流（挤它出去） */
+  const worst = (s: string[]): number => {
+    let k = -1
+    s.forEach((x, i) => { if (!isVital(x) && (k < 0 || rank.get(x)! > rank.get(s[k])!)) k = i })
+    return k
+  }
   const open: string[][] = []
-  while (orphans.length) open.push(orphans.splice(0, cap))
+  if (vital > 0) {
+    // 已经分着、却坐在后面的关键流：和前面连接上的非关键流对调（前面有空位就直接挪过去）
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        for (let p = 0; p < live[j].length; p++) {
+          const x = live[j][p]
+          if (!isVital(x)) continue
+          if (live[i].length < cap) { live[i].push(x); live[j].splice(p--, 1); continue }
+          const w = worst(live[i])
+          if (w < 0) break
+          live[j][p] = live[i][w]; live[i][w] = x
+        }
+      }
+    }
+    // 没分配的关键流：最早一条有空位或有非关键流的连接
+    for (const x of orphans) {
+      if (!isVital(x)) continue
+      let done = false
+      for (const s of live) {
+        if (s.length < cap) { s.push(x); done = true; break }
+        const w = worst(s)
+        if (w >= 0) { spill.push(s[w]); s[w] = x; done = true; break }
+      }
+      if (done) continue
+      const last = open[open.length - 1]
+      if (last && last.length < cap) last.push(x); else open.push([x])
+    }
+  }
+  spill.sort(byRank)
+  for (const s of live) while (s.length < cap && spill.length) s.push(spill.shift()!)
+  const last = open[open.length - 1]
+  if (last) while (last.length < cap && spill.length) last.push(spill.shift()!)
+  while (spill.length) open.push(spill.splice(0, cap))
   return { keep, open }
+}
+
+// ------------------------------------------------------------ 同一来源的总上限（纯逻辑，单测覆盖）
+/** 网关被拒后至少还留几路（16 格各一路 K 线的量；再往下收就按普通断线退避） */
+export const MIN_CAP = 16
+/** 被拒后每隔多久试着放宽一档、每档放多少；放宽又被拒，间隔翻倍，最长 10 分钟 */
+export const PROBE_MS = 60_000
+export const PROBE_MAX_MS = 600_000
+export const PROBE_STEP = 16
+
+/**
+ * 一条连接收掉了，是「同一来源的总上限满了」还是「断线」：
+ *   · 1008 且原因带 limit（stream_hub：subscription limit exceeded）——订阅越线，对面掐的是整条；
+ *   · 握手就没成（浏览器只给 1006，看不到 429 / 503），而同一线路上别的连接正好好地在来帧——
+ *     网络是通的，被拒的只能是这一条（同一 IP 合计 160 路 / 连接数上限）。
+ * 其余（1008 控制消息超速、非法订阅，网络断、对面重启）一律按断线退避。
+ */
+export function closeKind(code: number, reason: string, opened: boolean, othersHealthy: boolean): 'capacity' | 'down' {
+  if (code === 1008) return /limit/i.test(reason) ? 'capacity' : 'down'
+  return !opened && othersHealthy ? 'capacity' : 'down'
+}
+
+/** 被拒之后的总上限：对面已经收下的路数就是同一来源这一刻还剩的额度；一路都没收下就折半往下试。
+ *  返回值不比 current 小（收不动了）就该按普通断线处理 */
+export function capAfterReject(accepted: number, current: number): number {
+  const next = accepted > 0 ? Math.min(accepted, current - PROBE_STEP) : Math.floor(current / 2)
+  return Math.max(MIN_CAP, Math.min(current, next))
+}
+
+/** 放宽一档；到了 total 就回到不设限（null） */
+export function capAfterProbe(current: number, total: number): number | null {
+  const n = current + PROBE_STEP
+  return n >= total ? null : n
+}
+
+/**
+ * 连接点 / 「断线变灰」只看承载关键流的那几条连接：只订自选报价的连接被拒、断开，只影响自选报价自己，
+ * 不能把整页判断线（以前一条被拒，16 格全变灰、再也不接推送）。
+ *   holders：关键流所在的连接（没有关键流时就是全部连接）；placed：关键流是不是都分到了连接上
+ */
+export function wsStateOf(want: number, failed: boolean, placed: boolean, holders: readonly { open: boolean }[]): 'idle' | 'connecting' | 'open' | 'closed' {
+  if (!want) return 'idle'
+  if (failed) return 'closed'
+  return placed && holders.length && holders.every(h => h.open) ? 'open' : 'connecting'
 }
 
 // ------------------------------------------------------------ 连接池
@@ -110,6 +207,8 @@ interface Conn {
   tokens: number
   tokAt: number
   ctlTimer: ReturnType<typeof setTimeout> | null
+  /** 握手成了（onopen 来过） */
+  opened: boolean
   gotFrame: boolean
   last: number
   firstTimer: ReturnType<typeof setTimeout> | null
@@ -118,13 +217,24 @@ interface Conn {
 let conns: Conn[] = []
 let all: string[] = []
 let core: string[] = []
+/** 关键流：断了就要让图变灰的那几路（各格 K 线与行情、当前格标记价与逐笔）；分配时永远排最前、坐最早的连接 */
+let vital = new Set<string>()
 /** 上游用 error 回执明确拒掉的流（本线路内不再订；换线路清空） */
 const rejected = new Set<string>()
 let msgId = 1
 let retry = 0
 /** 断线退避：这之前不开新连接 */
 let blockedUntil = 0
+/** 承载关键流的连接断了、关键流还没在别的连接上接上 */
 let failed = false
+/** 网关被拒后摸出来的同一来源总上限（null = 用 TOTAL）：160 路是和同一 IP 的别的标签页、手机合着算的 */
+let capLimit: number | null = null
+let probeTimer: ReturnType<typeof setTimeout> | null = null
+let probeDelay = PROBE_MS
+/** 上一次放宽的时刻：放宽后不久又被拒，说明这一档还不行，下一次等更久 */
+let probedAt = 0
+/** 有新连接要开，但别的连接上的退订还没落地：等落地再开（先退后订） */
+let openHeld = false
 let debounce: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let watchdog: ReturnType<typeof setInterval> | null = null
@@ -136,22 +246,37 @@ let lingerTimer: ReturnType<typeof setTimeout> | null = null
 
 function offline(): boolean { return typeof navigator !== 'undefined' && navigator.onLine === false }
 function hidden(): boolean { return typeof document !== 'undefined' && document.visibilityState === 'hidden' }
-/** 这一刻该订的：隐藏时只留核心；超出总上限时核心优先 */
+/** 这条线路这一刻最多订几路 */
+function capOf(route: Route): number { return Math.min(TOTAL[route], capLimit ?? Infinity) }
+/** 这一刻该订的，按轻重排：关键 → 核心 → 其余；隐藏时只留核心；超出总上限时从尾巴（自选报价）挤掉 */
 function effective(): string[] {
   const route = S.route
   const ok = (x: string) => !rejected.has(x) && validStream(x, route)
-  if (hidden()) return core.filter(ok).slice(0, TOTAL[route])
-  const c = new Set(core), a = new Set(all)
-  return [...core.filter(x => a.has(x)), ...all.filter(x => !c.has(x))].filter(ok).slice(0, TOTAL[route])
+  const v = [...vital]
+  if (hidden()) { const c = new Set(core); return [...new Set([...v.filter(x => c.has(x)), ...core])].filter(ok).slice(0, capOf(route)) }
+  const a = new Set(all)
+  return [...new Set([...v.filter(x => a.has(x)), ...core.filter(x => a.has(x)), ...all])].filter(ok).slice(0, capOf(route))
 }
+/** 这一刻想要的关键流（没有关键流时，任何一条连接都算「承载关键流」，和以前一样） */
+function vitalWanted(): string[] { return effective().filter(x => vital.has(x)) }
+function holdsVital(c: Conn, v: readonly string[] = vitalWanted()): boolean { return !v.length || c.want.some(x => vital.has(x)) }
+/** 关键流都分到了连接上，承载它们的连接都已经来过帧 */
+function vitalHealthy(): boolean {
+  const v = vitalWanted()
+  if (!v.length) return conns.length > 0 && conns.every(c => c.gotFrame)
+  const H = conns.filter(c => holdsVital(c, v))
+  return v.every(x => H.some(c => c.want.includes(x))) && H.every(c => c.gotFrame)
+}
+function healthy(c: Conn): boolean { return c.sock.readyState === WebSocket.OPEN && c.gotFrame }
 
-/** all：前台要订的全部；core：页面隐藏时仍保留的 */
-export function setStreams(list: string[], coreList: string[] = list, opts: { now?: boolean } = {}): void {
+/** all：前台要订的全部；core：页面隐藏时仍保留的；opts.vital：关键流（默认 = core），断了才让整页判断线 */
+export function setStreams(list: string[], coreList: string[] = list, opts: { now?: boolean; vital?: string[] } = {}): void {
   // 流名大小写敏感（月线是 kline_1M），品种部分由 streamName 负责转小写
   // 美元指数（dxy@…）走自家服务器那条连接，不进币安的连接池（币安没有这只，发过去整条连接会被掐）
   setMacroStreams(list.filter(isMacroStream))
   all = [...new Set(list.filter(x => !isMacroStream(x)))]
   core = [...new Set(coreList.filter(x => !isMacroStream(x)))]
+  vital = new Set((opts.vital ?? coreList).filter(x => !isMacroStream(x)))
   if (debounce) clearTimeout(debounce)
   // now：冷启动时和品种表、K 线并行先把连接建起来，不等 150 ms 的合并窗口
   if (opts.now) { debounce = null; apply(); return }
@@ -161,10 +286,10 @@ export function setStreams(list: string[], coreList: string[] = list, opts: { no
 function urlFor(route: Route): string | null { return route === 'direct' ? DIRECT : gatewayURL() }
 
 function paint(): void {
-  const want = effective().length
-  const st: typeof S.wsState = !want ? 'idle'
-    : failed ? 'closed'
-    : conns.length && conns.every(c => c.sock.readyState === WebSocket.OPEN) ? 'open' : 'connecting'
+  const want = effective(), v = want.filter(x => vital.has(x))
+  const H = conns.filter(c => holdsVital(c, v))
+  const placed = v.every(x => H.some(c => c.want.includes(x)))
+  const st = wsStateOf(want.length, failed, placed, H.map(c => ({ open: c.sock.readyState === WebSocket.OPEN })))
   if (S.wsState !== st) { S.wsState = st; emit({ type: 'ws' }) }
 }
 
@@ -187,28 +312,50 @@ function apply(): void {
     paint()
     return
   }
-  const plan = assignStreams(conns.map(c => c.want), want, PER_CONN[S.route])
+  const nv = want.filter(x => vital.has(x)).length   // effective() 已把关键流排在最前
+  const plan = assignStreams(conns.map(c => c.want), want, PER_CONN[S.route], nv)
   const old = conns
   conns = []
   old.forEach((c, i) => {
     const w = plan.keep[i]
     if (!w) { drop(c); return }
-    c.want = w; conns.push(c); reconcile(c)
+    c.want = w; conns.push(c)
   })
+  // 先全部对账（退订先发），再看要不要开新连接
+  for (const c of conns.slice()) reconcile(c)
   const t = Date.now()
+  openHeld = false
   if (plan.open.length) {
     if (before(blockedUntil, MAX_BACKOFF_MS, t) || offline()) scheduleRetry(Math.max(0, Math.min(blockedUntil - t, MAX_BACKOFF_MS)))
+    else if (releasing()) openHeld = true            // 退订落地再开（新连接握手带的流也算进同一来源的总数）
     else plan.open.forEach(w => open(url!, w))
-  } else if (failed && conns.every(c => c.gotFrame)) failed = false   // 断掉那条的流已经挪到别的连接上
+  }
+  if (failed && vitalHealthy()) failed = false        // 断掉那条的关键流已经挪到别的连接上
   paint()
+}
+
+/** 网关按同一来源合计算总数：别的连接上还有没落地的退订（没发出去 / 发了没回执）。直连没有合计上限，不等 */
+function releasing(except?: Conn): boolean {
+  if (S.route !== 'gateway') return false
+  return conns.some(x => x !== except && x.sock.readyState === WebSocket.OPEN && (
+    [...x.pending.values()].some(p => p.method === 'UNSUBSCRIBE') || [...x.subscribed].some(s => !x.want.includes(s))))
+}
+/** 退订都落地了：压着的订阅补发、压着的新连接开出去 */
+function settleReleases(): void {
+  if (releasing()) return
+  for (const c of conns.slice()) reconcile(c)
+  if (openHeld) { openHeld = false; if (debounce) clearTimeout(debounce); debounce = setTimeout(apply, 0) }
 }
 
 function reconcile(c: Conn): void {
   if (c.sock.readyState !== WebSocket.OPEN) return   // 连上后 onopen 会对账
   if (c.ctlTimer) return                             // 桶空着、已经约好了下一次：到点按那一刻的名单一起发
   const want = new Set(c.want)
-  const add = c.want.filter(x => !c.subscribed.has(x) && !rejected.has(x))
+  let add = c.want.filter(x => !c.subscribed.has(x) && !rejected.has(x))
   const del = [...c.subscribed].filter(x => !want.has(x))
+  // 先退后订：同一来源合计有上限（网关 160 路），别的连接上的退订没落地时，净新增的订阅先压着，
+  // 不让过渡态越线被 1008 掐掉整条连接（同一条连接上的退订排在订阅前面发，对面按顺序处理，不用等）
+  if (add.some(x => !conns.some(y => y !== c && y.subscribed.has(x))) && releasing(c)) add = []
   const need = (del.length ? 1 : 0) + (add.length ? 1 : 0)
   if (!need) return
   const { rate, burst } = CONTROL[S.route]
@@ -238,7 +385,8 @@ function onReply(c: Conn, id: number, error: unknown): void {
   const p = c.pending.get(id)
   if (!p) return
   c.pending.delete(id)
-  if (!error || p.method !== 'SUBSCRIBE') return
+  if (p.method === 'UNSUBSCRIBE') { settleReleases(); return }
+  if (!error) return
   for (const x of p.params) { rejected.add(x); c.subscribed.delete(x) }
   c.want = c.want.filter(x => !rejected.has(x))
   if (!c.gotFrame && !c.subscribed.size) settleQuiet(c)
@@ -248,16 +396,25 @@ function onReply(c: Conn, id: number, error: unknown): void {
 function settleQuiet(c: Conn): void {
   if (c.firstTimer) { clearTimeout(c.firstTimer); c.firstTimer = null }
   c.gotFrame = true   // 没有可等的帧了：不再算「还没来首帧」，也不让它把连接点一直钉在红色
-  if (failed && conns.every(x => x.gotFrame)) { failed = false; paint() }
+  if (failed && vitalHealthy()) { failed = false; paint() }
+}
+
+/** 对面确认收下的路数（握手带的 + 回执过的订阅；还在路上的 SUBSCRIBE 不算） */
+function confirmed(c: Conn): number {
+  if (!c.opened) return 0
+  let n = c.subscribed.size
+  for (const p of c.pending.values()) if (p.method === 'SUBSCRIBE') n -= p.params.filter(x => c.subscribed.has(x)).length
+  return Math.max(0, n)
 }
 
 function open(url: string, want: string[]): void {
   const { burst } = CONTROL[S.route]
   const sock = new WebSocket(`${url}?streams=${want.join('/')}`)
-  const c: Conn = { sock, url, want, subscribed: new Set(want), pending: new Map(), tokens: burst, tokAt: Date.now(), ctlTimer: null, gotFrame: false, last: Date.now(), firstTimer: null }
+  const c: Conn = { sock, url, want, subscribed: new Set(want), pending: new Map(), tokens: burst, tokAt: Date.now(), ctlTimer: null, opened: false, gotFrame: false, last: Date.now(), firstTimer: null }
   conns.push(c)
   sock.onopen = () => {
     if (!conns.includes(c)) return
+    c.opened = true
     reconcile(c)
     // 首帧窗口只等还订着的（被拒的永远不会来帧）；到点时一路都没订着就不算失败
     c.firstTimer = setTimeout(() => { c.firstTimer = null; if (conns.includes(c) && !c.gotFrame && c.subscribed.size) fail(c) }, FIRST_FRAME_MS)
@@ -275,11 +432,16 @@ function open(url: string, want: string[]): void {
       c.gotFrame = true
       if (c.firstTimer) { clearTimeout(c.firstTimer); c.firstTimer = null }
       retry = 0; blockedUntil = 0
-      if (failed && conns.every(x => x.gotFrame)) { failed = false; paint() }
+      if (failed && vitalHealthy()) { failed = false; paint() }
     }
     handle(m)
   }
-  sock.onclose = () => { if (conns.includes(c)) fail(c) }
+  sock.onclose = (ev?: CloseEvent) => {
+    if (!conns.includes(c)) return
+    const kind = closeKind(ev?.code ?? 1006, ev?.reason ?? '', c.opened, conns.some(x => x !== c && healthy(x)))
+    if (kind === 'capacity' && reject(c)) return
+    fail(c)
+  }
   sock.onerror = () => { /* onclose 会跟着来 */ }
   if (!watchdog) watchdog = setInterval(() => {
     const now = Date.now()
@@ -297,16 +459,53 @@ function drop(c: Conn): void {
   try { s.close() } catch { /* 已经关了 */ }
 }
 
-/** 一条连接断了：收掉它，退避一段再把它的流重新分出去 */
+/**
+ * 同一来源的总上限满了（这条被 1008 掐掉 / 握手被拒）：把总上限收到对面已经收下的路数，
+ * 按新上限马上重分——挤掉的是排在最后的自选报价，关键流挪回最早那条连接；不退避、也不再重开
+ * 那条注定被拒的连接。之后每 PROBE_MS 放宽一档试试。收不动了（已到 MIN_CAP）返回 false，按普通断线处理
+ */
+function reject(c: Conn): boolean {
+  const cur = capOf(S.route)
+  const next = capAfterReject(conns.reduce((n, x) => n + confirmed(x), 0), cur)
+  if (next >= cur) return false
+  const lostVital = holdsVital(c)
+  drop(c)
+  capLimit = next
+  if (lostVital) failed = true
+  if (probedAt && ago(probedAt, Date.now()) < probeDelay) probeDelay = Math.min(PROBE_MAX_MS, probeDelay * 2)
+  probedAt = 0
+  scheduleProbe()
+  paint()
+  if (debounce) clearTimeout(debounce)
+  debounce = setTimeout(apply, 300)
+  return true
+}
+
+function scheduleProbe(): void {
+  if (probeTimer) clearTimeout(probeTimer)
+  probeTimer = capLimit == null ? null : setTimeout(() => {
+    probeTimer = null
+    if (capLimit == null) return
+    capLimit = capAfterProbe(capLimit, TOTAL[S.route])
+    probedAt = Date.now()
+    if (capLimit == null) probeDelay = PROBE_MS
+    scheduleProbe()
+    if (!debounce) debounce = setTimeout(apply, 0)
+  }, probeDelay)
+}
+
+/** 一条连接断了：收掉它，退避一段再把它的流重新分出去。只订非关键流（自选报价）的那条断了不让整页判断线 */
 function fail(c: Conn): void {
   if (!conns.includes(c)) return
+  const lostVital = holdsVital(c)
   drop(c)
-  failed = true
+  if (lostVital) failed = true
   const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry++)
   const wait = hidden() ? Math.max(delay, 10000) : delay
   blockedUntil = Date.now() + wait
   paint()
   scheduleRetry(wait)
+  settleReleases()
 }
 
 function scheduleRetry(ms: number): void {
@@ -407,10 +606,12 @@ export function setRoute(route: Route): void {
   for (const c of conns.slice()) drop(c)
   rejected.clear()
   failed = false
+  capLimit = null; probeDelay = PROBE_MS; probedAt = 0
+  if (probeTimer) { clearTimeout(probeTimer); probeTimer = null }
   reconnectNow()
 }
 
-/** 测试与排障用：当前线路、各条连接与订阅 */
-export function streamDebug(): { route: Route; state: string; subscribed: string[]; conns: number[] } {
-  return { route: S.route, state: S.wsState, subscribed: conns.flatMap(c => [...c.subscribed]), conns: conns.map(c => c.subscribed.size) }
+/** 测试与排障用：当前线路、各条连接与订阅、被拒后摸出来的总上限 */
+export function streamDebug(): { route: Route; state: string; subscribed: string[]; conns: number[]; cap: number } {
+  return { route: S.route, state: S.wsState, subscribed: conns.flatMap(c => [...c.subscribed]), conns: conns.map(c => c.subscribed.size), cap: capOf(S.route) }
 }

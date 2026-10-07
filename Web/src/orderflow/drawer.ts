@@ -6,7 +6,8 @@
  * 点一行：图挪到那条大单带的中间并高亮；图上点一条带：抽屉滚到那一行。
  */
 import { st, save } from '../app/store'
-import { I, esc } from '../ui/dom'
+import { I } from '../ui/dom'
+import { patchAttr, patchClass, patchShell, patchStyle, patchText, rowPool } from '../ui/patch'
 import { shows, type Display } from './settings'
 import { exName, outcomeText, PRODUCT_SHORT } from './aggregate'
 import { orderId, type BigOrder } from './types'
@@ -138,8 +139,8 @@ function paint(): void {
   if (!list.length) {
     const msg = OF.feed && OF.snap ? '没有符合筛选的大单' : ''
     const html = msg ? `<div class="of-wait faint">${msg}</div>` : ''
-    if (box.dataset.sig !== html) { box.innerHTML = html; box.dataset.sig = html }
-    box.style.transform = ''
+    patchShell(box, html, html)
+    patchStyle(box, 'transform', '')
     return
   }
   const top = body.scrollTop, h = body.clientHeight
@@ -148,25 +149,27 @@ function paint(): void {
   const dec = decFor(OF.feed?.model.scheme?.step ?? 0, OF.feed ? OF.api?.dec(OF.feed.symbol) ?? 2 : 2)
   const today = mdhm(now).slice(0, 5)
   const t = (ms: number): string => { const s = mdhm(ms); return s.slice(0, 5) === today ? hms(ms) : s }
-  let html = ''
-  for (let i = i0; i < i1; i++) {
-    const o = list[i], id = orderId(o)
-    const live = o.status === 'live'
-    html += `<div class="of-dr-row ${OF.highlight === id ? 'sel' : ''} ${live ? 'live' : ''}" data-id="${esc(id)}" role="row" tabindex="-1">
-      <span class="l num">${t(o.firstSeenMs)}</span>
-      <span class="l num ${live ? 'faint' : ''}">${live ? '挂着' : t(o.endMs ?? now)}</span>
-      <span class="r num">${durShort(endOf(o, now) - o.firstSeenMs)}</span>
-      <span class="c"><em class="of-side ${o.side === 'bid' ? 'up' : 'down'}">${o.side === 'bid' ? '买' : '卖'}</em></span>
-      <span class="l">${exName(o.exchange)}</span>
-      <span class="l"><i class="sw" style="background:${bandColor(o.product, o.side, 1)}"></i>${PRODUCT_SHORT[o.product]}</span>
-      <span class="r num">${px(o.price, dec)}</span>
-      <span class="r num">${amt(peak(o, id))}</span>
-      <span class="r num">${o.filledNotional > 0 ? amt(o.filledNotional) : '—'}</span>
-      <span class="l">${outcomeText(o)}</span></div>`
-  }
-  const sig = `${i0}|${i1}|${html.length}|${OF.version}|${OF.highlight}`
-  box.style.transform = `translateY(${i0 * ROW}px)`
-  if (box.dataset.sig !== sig) { box.innerHTML = html; box.dataset.sig = sig }
+  // 行按位置复用（虚拟列表：滚动时同一批行换内容），订单流每帧只改字——整块重写会把指针下那一行换掉（点不上、悬停闪）
+  const rows = rowPool(box, i1 - i0, `<div class="of-dr-row" role="row" tabindex="-1"><span class="l num"></span><span class="l num"></span><span class="r num"></span><span class="c"><em class="of-side"></em></span><span class="l"></span><span class="l"><i class="sw"></i> </span><span class="r num"></span><span class="r num"></span><span class="r num"></span><span class="l"></span></div>`)
+  rows.forEach((row, k) => {
+    const o = list[i0 + k], id = orderId(o), live = o.status === 'live', bid = o.side === 'bid'
+    patchClass(row, `of-dr-row${OF.highlight === id ? ' sel' : ''}${live ? ' live' : ''}`)
+    patchAttr(row, 'data-id', id)
+    const c = row.children
+    patchText(c[0], t(o.firstSeenMs))
+    patchClass(c[1], `l num${live ? ' faint' : ''}`); patchText(c[1], live ? '挂着' : t(o.endMs ?? now))
+    patchText(c[2], durShort(endOf(o, now) - o.firstSeenMs))
+    const sd = c[3].firstElementChild!; patchClass(sd, `of-side ${bid ? 'up' : 'down'}`); patchText(sd, bid ? '买' : '卖')
+    patchText(c[4], exName(o.exchange))
+    patchStyle(c[5].firstElementChild, 'background', bandColor(o.product, o.side, 1))
+    const tn = c[5].lastChild as Text; if (tn.data !== PRODUCT_SHORT[o.product]) tn.data = PRODUCT_SHORT[o.product]
+    patchText(c[6], px(o.price, dec))
+    patchText(c[7], amt(peak(o, id)))
+    patchText(c[8], o.filledNotional > 0 ? amt(o.filledNotional) : '—')
+    patchText(c[9], outcomeText(o))
+  })
+  const sig = `${i0}|${i1}|${OF.version}|${OF.highlight}`
+  patchStyle(box, 'transform', `translateY(${i0 * ROW}px)`)
   lastSig = sig
 }
 

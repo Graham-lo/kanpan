@@ -6,6 +6,7 @@
 //   默认地址 http://localhost:5188/web/；截图写到 docs/acceptance/网页版-2026-09-29/回归-*.png（REGRESS_OUT 环境变量可改到别处，压测反复跑时不去动已提交的验收图）
 // 每一段都收集控制台报错与未处理的 Promise 拒绝，目标是 0；每一项的结论打一行「✓ / ✗」。
 import { chromium } from 'playwright-core'
+import { corsShim } from './f-lib.mjs'
 import { mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +23,8 @@ const ok = (name, pass, detail = '') => { results.push({ name, pass, detail }); 
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--enable-precise-memory-info'] })
 const ctx = await browser.newContext({ viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 })
+// 本机 localhost 下 kanpan-api（网关 REST、同步、订单流品种表）直接打线上域名、线上只对同源放行不回跨域头：替页面转一手补上（f-lib.corsShim，线上同源部署不经过这一步）
+await corsShim(ctx)
 // 数 WebSocket：开过几条、现在活着几条、每条上订着哪些流
 await ctx.addInitScript(() => {
   const W = window.WebSocket
@@ -93,7 +96,9 @@ const fresh = async (qs = 'layout=1&panel=watch&ladder=0&drawer=0') => {
   // 同源、200、又不是 app 页（manifest 是 JSON，不跑脚本）：落在 404 上会被下面的报错收集记成「控制台有报错」
   await page.goto(new URL('/web/m/manifest.webmanifest', URL_).href, { waitUntil: 'load' })
   // 清状态但留下限流闸的账：清掉它等于让下一页以为这一分钟一笔没发过
-  await page.evaluate(() => { const g = localStorage.getItem('hkline-web-rate-limit'); localStorage.clear(); if (g) localStorage.setItem('hkline-web-rate-limit', g) })
+  await page.evaluate(() => { const g = localStorage.getItem('hkline-web-rate-limit'); localStorage.clear(); if (g) localStorage.setItem('hkline-web-rate-limit', g)
+    // 10-03 起出厂线路是网关（a9ceeafb）：回归一律种成「亲手选过的直连」，币安 REST 走本机出口的额度（pace() 记的就是这一份），不把几百次请求打到线上那台共用出口的网关上；线路段自己再按人的路径切网关
+    localStorage.setItem('hkline-web-v1', JSON.stringify({ route: 'direct', routePicked: true })) })
   await open(qs)
 }
 const heap = async () => { await cdp.send('HeapProfiler.collectGarbage'); await wait(300); await cdp.send('HeapProfiler.collectGarbage'); return (await cdp.send('Runtime.getHeapUsage')).usedSize }
@@ -773,6 +778,7 @@ async function partAccount() {
 
   // ---- 被另一台电脑顶掉：session_replaced 后回到未登录、不死循环刷新
   const ctx2 = await browser.newContext({ viewport: { width: 1600, height: 1000 } })
+  await corsShim(ctx2)
   const p2 = await ctx2.newPage()
   await p2.goto(URL_, { waitUntil: 'load' }); await p2.waitForTimeout(800)
   const other = await uiLogin(p2)
@@ -803,6 +809,7 @@ async function partAccount() {
     const { randomBytes } = await import('node:crypto')
     const du = `${KP_USER}_${Date.now() % 100000}`, dp = 'Tmp' + randomBytes(6).toString('hex')
     const c3 = await browser.newContext({ viewport: { width: 1600, height: 1000 } })
+    await corsShim(c3)
     const p3 = await c3.newPage()
     await p3.goto(`${URL_}#me`, { waitUntil: 'load' }); await p3.waitForTimeout(1000)
     await p3.click('[data-me="account"]'); await p3.waitForTimeout(300)
@@ -1184,11 +1191,12 @@ async function partLayout() {
   let cs = await cellsNow()
   const c16 = await rectOf('.chart-cell')
   const deg = cs[0].deg
-  ok('16 格按格子尺寸降级：只留主图、图例一行、价格轴字号小一档（量还在）', !deg.subs && deg.compact && deg.font === 11 && deg.vol === (c16.w >= 420), `格子 ${c16.w}×${c16.h}，${JSON.stringify(deg)}`)
+  const fitSubsFor = h => { const H = h - (h < 360 ? 28 : 32) - 28; if (H <= 0) return 0; const m = Math.min(H, Math.max(160, Math.ceil(H * 0.4))); return Math.min(8, Math.max(0, Math.floor((H - m) / 56))) }  // 同 src/chart/panes.ts degradeFor
+  ok('16 格按格子尺寸降级：副图按剩下的高放得下几个画几个、窄 / 矮格图例只留品种周期且字号小一档、宽 ≥ 420 带量', deg.subs === fitSubsFor(c16.h) && cs[0].panes.length - 1 <= deg.subs && (deg.legend === 'compact') === (c16.w < 480 || c16.h < 360) && deg.font === (deg.legend === 'compact' ? 11 : 12) && deg.vol === (c16.w >= 420), `格子 ${c16.w}×${c16.h}，${JSON.stringify(deg)}，窗格 ${cs[0].panes.length}`)
   const g0 = cs.map(x => x.bars), spacing = cs.length
   await shotL('十六图')
   let w16 = await ws(), st16 = await streamNow()
-  const market16 = w16.live.filter(l => /market\/stream|fstream/.test(l.url))
+  const market16 = w16.live.filter(l => /market\/stream|fstream|dstream\.binance\.me/.test(l.url))
   ok('16 格：行情连接按上限分摊、订阅覆盖 16 只', market16.length >= 1 && st16.subscribed.length >= 16 * 2 && ['BTCUSDT', 'TRXUSDT'].every(x => st16.subscribed.some(n => n.startsWith(x.toLowerCase()))), `连接 ${market16.length} 条（${st16.conns.join('/')} 路），订阅 ${st16.subscribed.length} 路，${spacing} 格，最少 ${Math.min(...g0)} 根`)
 
   // ---- 16 格实时刷新：4 秒主线程占用
@@ -1238,7 +1246,7 @@ async function partLayout() {
   for (let k = 0; k < 20; k++) { await page.click('#tbLayout'); await wait(80); await page.locator('.menu .mi', { hasText: cycle[k % cycle.length] }).first().click(); await wait(120) }
   await pickLayout('十六图'); await wait(6000)
   const wB = await ws(), sB = await streamNow()
-  const mk = w => w.live.filter(l => /market\/stream|fstream/.test(l.url)).length
+  const mk = w => w.live.filter(l => /market\/stream|fstream|dstream\.binance\.me/.test(l.url)).length
   ok('快速切 20 次布局后 WS 条数不涨', mk(wB) <= mk(wA) && wB.live.length <= wA.live.length, `行情连接 ${mk(wA)}→${mk(wB)}，全部 ${wA.live.length}→${wB.live.length}，开过 ${wA.opened}→${wB.opened}`)
   ok('切完订阅回到同一组（不多不少）', sB.subscribed.length === sA.subscribed.length, `${sA.subscribed.length} → ${sB.subscribed.length} 路`)
   await pickLayout('一图'); await wait(4000)
@@ -1248,7 +1256,7 @@ async function partLayout() {
   // ---- 页面三条分隔线：默认值、拖、夹、刷新还在、双击回默认
   await fresh('s=BTCUSDT&i=1h&layout=4&panel=watch&ladder=1&drawer=1')
   let lad = await rectOf('#ladderSlot'), pan = await rectOf('#sidePanel'), dra = await rectOf('#drawerSlot')
-  ok('默认宽高：梯子 240、侧栏 400、抽屉 280', lad.w === 240 && pan.w === 400 && dra.h === 280, `${lad.w} / ${pan.w} / ${dra.h}`)
+  ok('默认宽高：梯子 240、侧栏 320、抽屉 280', lad.w === 240 && pan.w === 320 && dra.h === 280, `${lad.w} / ${pan.w} / ${dra.h}`)
   await dragSplit('panel', -1000, 0)
   pan = await rectOf('#sidePanel')
   ok('侧栏往左拖到头：夹在 640', pan.w === 640, `${pan.w}`)
@@ -1304,7 +1312,7 @@ async function partLayout() {
   await dblSplit('grid-cols-0', 0.25); await dblSplit('grid-rows-0', 0.25)
   lad = await rectOf('#ladderSlot'); pan = await rectOf('#sidePanel'); dra = await rectOf('#drawerSlot'); z = await sizesNow()
   const cellsReset = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => Math.round(e.getBoundingClientRect().width)))
-  ok('双击分隔线回默认（本机记录一并清掉）', lad.w === 240 && pan.w === 400 && dra.h === 280 && z.panel == null && z.ladder == null && z.drawer == null && !z.grid?.['4']?.cols && !z.grid?.['4']?.rows && Math.abs(cellsReset[0] - cellsReset[1]) <= 1, `${lad.w} / ${pan.w} / ${dra.h}，格宽 ${cellsReset.join(',')}，${JSON.stringify(z)}`)
+  ok('双击分隔线回默认（本机记录一并清掉）', lad.w === 240 && pan.w === 320 && dra.h === 280 && z.panel == null && z.ladder == null && z.drawer == null && !z.grid?.['4']?.cols && !z.grid?.['4']?.rows && Math.abs(cellsReset[0] - cellsReset[1]) <= 1, `${lad.w} / ${pan.w} / ${dra.h}，格宽 ${cellsReset.join(',')}，${JSON.stringify(z)}`)
 
   // ---- 副图高（一图里：MACD / RSI 两个副图）
   await fresh('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0')
@@ -1331,7 +1339,8 @@ async function partLayout() {
   }
 
   // ---- 侧栏块之间（自选 / 盘口 / 详情）
-  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1')); s.slots.widgets = ['watch', 'book', 'detail']; localStorage.setItem('hkline-web-v1', JSON.stringify(s)) })
+  // 订单流第一次进侧栏时会把「清算 / 成交额」两块统计摆一次（orderflow/index.ts seedStats，之后尊重用户开合）：这里只量三块，先把那次「已摆过」记上
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1')); s.slots.widgets = ['watch', 'book', 'detail']; localStorage.setItem('hkline-web-v1', JSON.stringify(s)); const p = JSON.parse(localStorage.getItem('hkline-web-of-v1') || '{}'); p.seededStats = true; localStorage.setItem('hkline-web-of-v1', JSON.stringify(p)) })
   await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(1500)
   const hOf = () => page.evaluate(() => [...document.querySelectorAll('#sidePanel [data-w]')].map(e => [e.dataset.w, Math.round(e.getBoundingClientRect().height)]))
   const h0 = await hOf()

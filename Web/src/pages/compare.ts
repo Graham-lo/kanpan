@@ -177,7 +177,7 @@ export function openCompare(): void {
       : results.length ? results.map((s, i) => {
         const isMain = s.symbol === main, on_ = inCompare(s.symbol), dis = isMain || (full && !on_)
         const btn = isMain ? `<span class="cmp-tag">主图</span>`
-          : `<button class="ibtn sm cmp-tgl ${on_ ? 'on' : ''}" data-t="${s.symbol}" aria-label="${on_ ? '移出对比' : '加入对比'}" aria-pressed="${on_}">${I(on_ ? 'check' : 'plus')}</button>`
+          : `<button class="ibtn sm cmp-tgl ${on_ ? 'on' : ''}" data-t="${esc(s.symbol)}" aria-label="${on_ ? '移出对比' : '加入对比'}" aria-pressed="${on_}">${I(on_ ? 'check' : 'plus')}</button>`
         return `<div class="sr ${i === activeIdx ? 'active' : ''} ${dis ? 'cmp-off' : ''}" role="option" aria-selected="${on_}" aria-disabled="${dis}" data-i="${i}">
       ${badge(s, 'lg')}<div><div class="n1">${hl(s.code)}<span class="muted" style="font-weight:400;font-size:12px;margin-left:6px">${esc(s.symbol === s.code ? '' : s.symbol)}</span></div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${kindName(s)}</div></div>
       <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>${btn}</div>`

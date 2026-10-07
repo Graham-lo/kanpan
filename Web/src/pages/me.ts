@@ -9,7 +9,8 @@ import { createLoadGate } from '../review/loadGate'
 import { login, logout, devices, kick, changePassword, deleteAccount, errorText, type DeviceRow } from '../account/client'
 import { PASSWORD_RULE, USERNAME_RULE, validPassword, validUsername } from '../account/rules'
 import { sh, pad } from '../util/format'
-import { openShortcuts, renderPanel, refreshStreams } from './chart'
+import { openShortcuts, renderPanel, refreshStreams, applyChartSettings } from './chart'
+import { withUpDownReset } from '../chart/chartSettings'
 import { tvImportHTML, tvImportClick, tvImportChange, onTvImported } from '../watch/importPanel'
 import { reviewApi, errorText as reviewErrorText } from '../review/api'
 import { NO_KEY_TEXT, venueRows, type VenueRow } from '../trades/panel'
@@ -260,7 +261,7 @@ export function initMe(): void {
       const k = sg.dataset.seg, v = sg.dataset.v || ''
       if (k === 'skin') st.skin = v as typeof st.skin
       if (k === 'theme') st.theme = v as typeof st.theme
-      if (k === 'updown') st.updown = v as typeof st.updown
+      if (k === 'updown' && st.updown !== v) { st.updown = v as typeof st.updown; st.chartSettings = withUpDownReset(st.chartSettings); applyChartSettings() }
       if (k === 'route') { st.route = v as typeof st.route; st.routePicked = true; setRoute(st.route); toast(v === 'gateway' ? '已切到网关' : '已切到直连', '只影响这台电脑', 'link', 1800) }
       save()
       if (k === 'theme' || k === 'updown' || k === 'skin') applyTheme()

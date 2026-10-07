@@ -18,7 +18,7 @@ import { S, TABS, baseOf, kindOfUnderlying, type Kind } from '../market'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge } from '../ui/common'
-import { reorderWatch, undoClear, flashClass, FLASH_CLASSES } from './logic'
+import { reorderWatch, undoClear, flashClass, FLASH_CLASSES, RowGate } from './logic'
 import { onSession } from '../account/session'
 
 export interface WatchDeps {
@@ -94,10 +94,33 @@ function watchRow(k: string, cur: string): string {
     <td class="num ${cls(s?.pct)} price-live" data-f="pct">${pctText(s?.pct)}</td></tr>`
 }
 
+// 只改看得见的行（RowGate）：观察器挂在列表的滚动区上，上下各多留 160 px，滚动时新露出的行已经是新价
+const gate = new RowGate()
+let rowIO: IntersectionObserver | null = null
+/** 代号 → 这一行（每次画表时重建）：推送一来就按代号直接取，不再拿属性选择器扫整页——
+ *  全市场每秒几百只在跳，不在自选里的那些原来每只都要白扫一遍文档 */
+const rowEl = new Map<string, HTMLElement>()
+/** 诊断用：看不见的行、欠着推送的行 */
+export const watchGateStats = (): { hidden: number; owed: number } => gate.stats()
+function observeRows(tbl: HTMLElement, root: HTMLElement | null): void {
+  rowIO?.disconnect(); rowIO = null
+  gate.reset(); rowEl.clear()
+  for (const tr of $$<HTMLElement>('tbody tr[data-sym]', tbl)) rowEl.set(tr.dataset.sym || '', tr)
+  if (typeof IntersectionObserver === 'undefined') return
+  rowIO = new IntersectionObserver(es => {
+    for (const e of es) {
+      const k = (e.target as HTMLElement).dataset.sym || ''
+      if (gate.seen(k, e.isIntersecting)) writeRow(e.target as HTMLElement, k, 0)
+    }
+  }, { root, rootMargin: '160px 0px' })
+  for (const tr of rowEl.values()) rowIO.observe(tr)
+}
+
 /** 渲染后挂事件、把键盘焦点放回光标那一行 */
 export function mountWatch(el: HTMLElement): void {
   const tbl = $('#wTbl', el)
-  if (!tbl) return
+  if (!tbl) { rowIO?.disconnect(); rowIO = null; gate.reset(); rowEl.clear(); return }
+  observeRows(tbl, tbl.closest<HTMLElement>('.wv-body'))
   bindDrag(tbl)
   tbl.addEventListener('keydown', onKey)
   tbl.addEventListener('focusin', e => {
@@ -246,14 +269,26 @@ function bindDrag(tbl: HTMLElement): void {
 // ------------------------------------------------------------ 推送来的数：只改那几格的字
 /** dir：这一跳是涨（1）还是跌（-1）；价格文字闪一次涨跌色（150 ms） */
 export function patchWatchRow(k: string, dir: number): void {
-  const tr = $(`#wTbl tr[data-sym="${k}"]`), s = sym(k)
-  if (!tr || !s) return
+  // 滚出去的行：不碰 DOM，滚进来时补（见 RowGate）
+  const tr = rowEl.get(k)
+  if (!tr || !tr.isConnected || !gate.offer(k)) return
+  writeRow(tr, k, dir)
+}
+function writeRow(tr: HTMLElement, k: string, dir: number): void {
+  const s = sym(k)
+  if (!s) return
   const p = $('[data-f="price"]', tr), pc = $('[data-f="pct"]', tr)
+  // 字没变就不写（同一价位来回推、涨跌幅两位小数没跳）：写一次 textContent 就是一次排版
   if (p) {
-    p.textContent = priceText(s)
+    const pt = priceText(s)
+    if (p.textContent !== pt) p.textContent = pt
     // 重播闪色不读 offsetWidth：原来每只跳价的行都 remove → 读宽度 → add，一帧几十行就是几十次强制样式重算；
     // 改成两套同样的关键帧轮换（换了动画名就从头播），一帧内只写不读
     if (dir) { const c = flashClass(p.className, dir); p.classList.remove(...FLASH_CLASSES); p.classList.add(c) }
   }
-  if (pc) { pc.textContent = pctText(s.pct); pc.className = `num ${cls(s.pct)} price-live` }
+  if (pc) {
+    const ct = pctText(s.pct), cn = `num ${cls(s.pct)} price-live`
+    if (pc.textContent !== ct) pc.textContent = ct
+    if (pc.className !== cn) pc.className = cn
+  }
 }

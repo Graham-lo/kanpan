@@ -273,7 +273,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
     |"drawingOverlaysShown"
     // 画线面板「隐藏画线」（2026-10-06）。
     |"drawingsHidden"=>v.is_boolean(),
-   "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),_=>false
+   "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),
+   // 网页图表设置（crate::sync::WEB_SETTINGS_FIELDS）：一个对象，序列化 ≤ 8 KB；里面的键由网页自己清洗
+   "webChart"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=8192),_=>false
   }
  }
  if collection==DRAWING_PREFERENCES {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
@@ -1032,5 +1034,14 @@ mod tests {
   }
   // 同一只中文底名不能出现两次。
   assert!(!field("settings","compareSymbols",&json!(["binance/usd_m/币安人生USDT","binance/usd_m/币安人生USDT"])));
+ }
+ // 网页图表设置（2026-10-07）：一个对象（空对象 = 全默认），序列化 ≤ 8 KB；别的形状、子路径、null 都不收。
+ #[test] fn web_chart_settings_are_one_bounded_object() {
+  assert!(field("settings","webChart",&json!({})));
+  assert!(field("settings","webChart",&json!({"marginTop":20,"marginBottom":5,"rightBars":30,"bodyUp":"#26A69A","grid":"none"})));
+  assert!(field("settings","webChart",&json!({"k":"x".repeat(8000)})));
+  assert!(!field("settings","webChart",&json!({"k":"x".repeat(8200)})));
+  for bad in [json!([]),json!("x"),json!(1),json!(true),Value::Null] {assert!(!field("settings","webChart",&bad),"{bad}")}
+  assert!(!field("settings","webChart/marginTop",&json!(10)));
  }
 }

@@ -347,6 +347,13 @@ export const bucketKey = (side: BookSide, index: number): string => (side === 'b
 export const keySide = (k: string): BookSide => (k[0] === 'b' ? 'bid' : 'ask')
 export const keyIndex = (k: string): number => +k.slice(1)
 
+function addLevel(out: Map<string, BucketValue>, k: string, usd: number, p: number): void {
+  let v = out.get(k)
+  if (!v) { v = { notional: 0, topLevel: 0, price: 0 }; out.set(k, v) }
+  v.notional += usd
+  if (usd > v.topLevel) { v.topLevel = usd; v.price = p }
+}
+
 export class VenueBook {
   static readonly bufferCapacity = 5_000
   static readonly retainBps = 2 * D.scanRadiusBps
@@ -355,6 +362,10 @@ export class VenueBook {
   private buffered: BookDelta[] = []
   private pendingSnapshot: BookSnapshot | null = null
   private connection = 0
+  /** 簿的版本：深度帧 / 快照 / 重连每来一次 +1（中间价、能不能用都只在这几处变） */
+  private rev = 0
+  /** 上一次分好的细桶（fineBuckets），按「版本 + 步长 + 半径」认 */
+  private fine: { rev: number; step: number; bps: number; map: Map<string, BucketValue> | null } | null = null
 
   constructor(readonly venue: Venue) {
     this.book = new LocalBook(venue.sequenceModel)
@@ -367,6 +378,7 @@ export class VenueBook {
   knows(side: BookSide, price: number): boolean { return this.live && this.book.knows(side, price) }
 
   connectionOpened(): Action {
+    this.rev++
     this.connection += 1
     this.book.beginResync(this.connection)
     this.buffered = []
@@ -377,6 +389,7 @@ export class VenueBook {
 
   ingest(m: DepthMessage, nowMs: number): Action {
     const inBand = this.venue.snapshotInBand
+    if (m.type !== 'trade') this.rev++
     switch (m.type) {
       case 'snapshot': {
         const s = { ...m.snapshot, connection: this.connection }
@@ -413,6 +426,7 @@ export class VenueBook {
 
   applySnapshot(s: BookSnapshot, nowMs: number): Action {
     if (this.isReady) return 'none'
+    this.rev++
     this.pendingSnapshot = { ...s, connection: this.connection }
     return this.tryBootstrap(nowMs)
   }
@@ -435,20 +449,34 @@ export class VenueBook {
     }
   }
 
-  buckets(scheme: BucketScheme, radiusBps: number): Map<string, BucketValue> | null {
+  /** fineBps（≤ radiusBps）：同一遍顺带把中间价两侧 fineBps 以内的也分一份存给 fineBuckets，展示层不用再扫一遍。
+   *  内圈的边界、遍历顺序与单独 buckets(scheme, fineBps) 完全一样，结果逐位相同。 */
+  buckets(scheme: BucketScheme, radiusBps: number, fineBps?: number): Map<string, BucketValue> | null {
     if (!this.live) return null
     const n = this.venue.notional
     const out = new Map<string, BucketValue>()
+    const m0 = this.book.mid()
+    const inner = fineBps != null && fineBps > 0 && fineBps <= radiusBps && m0 != null ? new Map<string, BucketValue>() : null
+    const f = (fineBps ?? 0) / 10_000
+    const floor = (m0 ?? 0) * (1 - f), ceiling = (m0 ?? 0) * (1 + f)
     const mid = this.book.forEachLevel(radiusBps, (side, p, q) => {
       const usd = usdOf(n, p, q)
       if (usd <= 0) return
       const k = bucketKey(side, scheme.index(p))
-      let v = out.get(k)
-      if (!v) { v = { notional: 0, topLevel: 0, price: 0 }; out.set(k, v) }
-      v.notional += usd
-      if (usd > v.topLevel) { v.topLevel = usd; v.price = p }
+      addLevel(out, k, usd, p)
+      if (inner && (side === 'bid' ? p >= floor : p <= ceiling)) addLevel(inner, k, usd, p)
     })
+    if (inner) this.fine = { rev: this.rev, step: scheme.step, bps: fineBps!, map: mid == null ? null : inner }
     return mid == null ? null : out
+  }
+
+  /** 细桶（梯子、盘口、热力）：簿自上次分桶以来没动过（版本、步长、半径都一样）就直接复用——evaluate 那一遍通常已顺带分好。 */
+  fineBuckets(scheme: BucketScheme, bps: number): Map<string, BucketValue> | null {
+    const c = this.fine
+    if (c && c.rev === this.rev && c.step === scheme.step && c.bps === bps) return c.map
+    const map = this.buckets(scheme, bps)
+    this.fine = { rev: this.rev, step: scheme.step, bps, map }
+    return map
   }
 
   mid(): number | null { return this.live ? this.book.mid() : null }

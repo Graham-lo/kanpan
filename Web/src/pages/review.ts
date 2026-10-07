@@ -9,6 +9,7 @@
  * 播放条只有拖进度线与关键点跳转，没有逐根步进。时间一律上海时间。
  */
 import '../styles/review.css'
+import { morphHtml } from '../ui/patch'
 import { hooks, go, goLogin } from '../app/shell'
 import { $, I, esc } from '../ui/dom'
 import { GLOSSARY, term, toast } from '../ui/overlay'
@@ -88,11 +89,11 @@ function badgeFor(symbol: string): string {
 }
 const codeOf = (symbol: string): string => sym(symbol)?.code ?? baseOf(symbol)
 const decOf = (symbol: string, fallback = 2): number => sym(symbol)?.dec ?? fallback
-const ivText = (iv: string): string => IV_LABEL[iv] ?? iv
+const ivText = (iv: string): string => IV_LABEL[iv] ?? esc(iv)
 const kpi = (k: string, v: string, d = '', vc = '', id = ''): string => `<div class="kpi"${id ? ` data-kpi="${id}"` : ''}><div class="k">${k}</div><div class="v num ${vc}">${v}</div><div class="d">${d || '&nbsp;'}</div></div>`
 const outcomeTag = (o: string): string => {
   const c = o === 'realized' ? 'rv-ok' : o === 'unrealized' ? 'rv-bad' : o === 'waiting' ? 'accent' : ''
-  return `<span class="tag ${c}">${OUTCOME_LABEL[o] ?? o}</span>`
+  return `<span class="tag ${c}">${OUTCOME_LABEL[o] ?? esc(o)}</span>`
 }
 const dirTag = (d: string, label: string): string => `<span class="dir ${d === 'long' ? 'long' : d === 'short' ? 'short' : 'obs'}">${label}</span>`
 const stat = (k: string, v: string, vc = '', sub = ''): string => `<div class="rv-stat"><div class="k">${k}</div><div class="v num ${vc}">${v}</div>${sub ? `<div class="d num">${sub}</div>` : ''}</div>`
@@ -229,7 +230,8 @@ function renderTop(): void {
   const filter = R.tab === 'trade' && syms.length > 1
     ? `<div class="seg rv-syms" role="group" aria-label="品种">${['all', ...syms].map(s => `<button data-sym="${esc(s)}" aria-pressed="${R.symbol === s}">${s === 'all' ? '全部' : esc(codeOf(s))}</button>`).join('')}</div>` : ''
   const asOf = R.loading ? '正在更新…' : R.loadedAt ? `更新于 ${shTime(R.loadedAt, false)}` : ''
-  top.innerHTML = `
+  // 搜索没找完时每 2 秒重画一次：就地改，页签 / 刷新按钮等节点留着（整块换了，指针下的按钮要等下一次 mousemove 才算悬停、点不中）
+  morphHtml(top, `
     <div class="rv-head">
       <h2>复盘</h2>
       <div class="seg" role="tablist" aria-label="复盘内容">${(Object.keys(TAB_LABEL) as Tab[]).map(t => `<button role="tab" data-tab="${t}" aria-pressed="${R.tab === t}" aria-selected="${R.tab === t}">${TAB_LABEL[t]}<span class="rv-count num">${counts[t]}</span></button>`).join('')}</div>
@@ -239,7 +241,7 @@ function renderTop(): void {
       <span class="rv-asof">${asOf}</span>
       <button class="ibtn sm" id="rvRefresh" aria-label="刷新" data-tip="刷新" ${R.loading ? 'disabled' : ''}>${I('undo', 'icon-16')}</button>
     </div>
-    <div class="kpis${R.tab === 'trade' ? ' kpis-trade' : ''}">${R.tab === 'trade' ? tradeKpis() : R.tab === 'view' ? viewKpis() : similarKpis()}</div>`
+    <div class="kpis${R.tab === 'trade' ? ' kpis-trade' : ''}">${R.tab === 'trade' ? tradeKpis() : R.tab === 'view' ? viewKpis() : similarKpis()}</div>`)
 }
 
 function tradeKpis(): string {
@@ -311,7 +313,7 @@ function similarKpis(): string {
 function renderLeft(): void {
   const left = document.getElementById('rvLeft'); if (!left) return
   const keep = left.querySelector<HTMLElement>('.rv-list')?.scrollTop ?? 0
-  left.innerHTML = R.tab === 'trade' ? tradeLeft() : R.tab === 'view' ? viewLeft() : similarLeft()
+  morphHtml(left, R.tab === 'trade' ? tradeLeft() : R.tab === 'view' ? viewLeft() : similarLeft())
   const list = left.querySelector<HTMLElement>('.rv-list'); if (list) list.scrollTop = keep
   // 从别的页跳进来的那一条：滚到看得见
   if (scrollSel) { scrollSel = false; left.querySelector<HTMLElement>('tr.sel')?.scrollIntoView({ block: 'nearest' }) }
@@ -352,7 +354,7 @@ function tradeRow(t: TradeRecord): string {
   const net = num(r.netPnl)
   const hold = open ? Date.now() - r.openedAt : (r.holdingMs ?? 0)
   return `<tr data-trade="${esc(t.id)}" class="${R.sel.trade === t.id ? 'sel' : ''}" tabindex="0">
-    <td><span class="sym">${badgeFor(r.symbol)}<b>${esc(codeOf(r.symbol))}</b>${r.leverage ? `<span class="cn">${r.leverage} 倍</span>` : ''}</span></td>
+    <td><span class="sym">${badgeFor(r.symbol)}<b>${esc(codeOf(r.symbol))}</b>${r.leverage ? `<span class="cn">${Number(r.leverage)} 倍</span>` : ''}</span></td>
     <td>${dirTag(r.direction, TRADE_DIR_LABEL[r.direction])}</td>
     <td class="num">${shTime(r.openedAt)}</td>
     <td>${open ? '<span class="tag accent">持仓中</span> ' : ''}${durText(Math.max(0, hold))}</td>
@@ -432,7 +434,7 @@ function viewRow(v: ViewRecord): string {
   const dp = (p: number) => { const x = distPct(r.reference, p); return x == null ? '' : `<span class="faint"> ${x > 0 ? '+' : ''}${x.toFixed(2)}%</span>` }
   return `<tr data-view="${esc(d.id)}" class="${R.sel.view === d.id ? 'sel' : ''}" tabindex="0">
     <td><span class="sym">${badgeFor(d.range.symbol)}<b>${esc(codeOf(d.range.symbol))}</b><span class="cn">${ivText(d.range.interval)}</span></span></td>
-    <td>${dirTag(r.direction, VIEW_DIR_LABEL[r.direction] ?? r.direction)}</td>
+    <td>${dirTag(r.direction, VIEW_DIR_LABEL[r.direction] ?? esc(r.direction))}</td>
     <td class="num">${shTime(judgedAt(v))}</td>
     <td class="num">${fmt(r.reference, dec)}</td>
     <td class="num">${obs ? '—' : fmt(r.target, dec) + dp(r.target)}</td>
@@ -449,7 +451,7 @@ function viewGroupsHtml(): string {
   if (!gs.length) return head + emptyBlock('暂无已判定样本', '', 'layers')
   return head + `<div class="rv-vgroups">${gs.map(g => `<div class="rv-vg">
       <div class="main"><div class="chips">${titleParts(g.title).map((p, i) => `<span class="chip">${esc(i === 0 && /^[A-Z0-9]+USDT?$/.test(p) ? codeOf(p) : p)}</span>`).join('')}</div>
-      <div class="sub">${g.total} 条有效记录${g.total ? ` · 判对 ${g.correct}` : ''}${g.recheck ? ' · <span class="warn">最近十笔明显变差</span>' : ''}</div></div>
+      <div class="sub">${Number(g.total)} 条有效记录${g.total ? ` · 判对 ${Number(g.correct)}` : ''}${g.recheck ? ' · <span class="warn">最近十笔明显变差</span>' : ''}</div></div>
       <div class="rate num ${g.verdictStatus === 'insufficient' ? 'faint' : ''}">${groupRateText(g)}</div>
     </div>`).join('')}</div>`
 }
@@ -488,7 +490,7 @@ function similarLeft(): string {
     const state = e.error ? `<span class="warn">${esc(e.error)}</span>`
       : st === 'completed' ? `${e.results?.items.length ?? 0} 段${e.results?.partial ? ' · 部分结果' : ''}`
       : st ? `正在找 ${prog}%` : '—'
-    const items = st === 'completed' ? (e.results?.items.length ? e.results.items.map(m => matchRow(m, `search:${e.meta.id}:${m.id}`, savedIds.has(m.id), e.meta.id)).join('') : `<div class="rv-none" data-none-checked="${e.status?.checked ?? 0}">${esc(noMatchText(e))}</div>`) : ''
+    const items = st === 'completed' ? (e.results?.items.length ? e.results.items.map(m => matchRow(m, `search:${e.meta.id}:${m.id}`, savedIds.has(m.id), e.meta.id)).join('') : `<div class="rv-none" data-none-checked="${Number(e.status?.checked ?? 0)}">${esc(noMatchText(e))}</div>`) : ''
     return `<div class="rv-search">
       <div class="rv-search-h"><b>${esc(e.meta.label)}</b><span class="faint">${shTime(e.meta.created)}</span><span class="rv-sp"></span><span class="num">${state}</span>
         <button class="ibtn xs" data-forget="${esc(e.meta.id)}" aria-label="不再显示这次搜索" data-tip="不再显示">${I('close', 'icon-16')}</button></div>
@@ -507,8 +509,8 @@ function matchRow(m: Match, key: string, saved: boolean, searchId?: string): str
     : searchId ? `<button class="ibtn sm rv-star" data-save="${esc(m.id)}" data-search="${esc(searchId)}" aria-label="收藏" data-tip="收藏">${I('starOff', 'icon-16')}</button>` : ''
   return `<div class="list-row rv-mrow${R.sel.similar === key ? ' sel' : ''}" data-match="${esc(key)}" tabindex="0">
     ${badgeFor(r.symbol)}
-    <div class="main"><div class="t1"><b>${esc(codeOf(r.symbol))}</b><span class="faint">${ivText(r.interval)} · ${r.bars} 根</span><span class="tag accent">${scoreText(m.score)}</span></div>
-    <div class="t2 num">${shTime(r.start)} – ${shTime(r.end - (r.end - r.start) / Math.max(1, r.bars))} · ${SOURCE_LABEL[m.source] ?? m.source}</div></div>
+    <div class="main"><div class="t1"><b>${esc(codeOf(r.symbol))}</b><span class="faint">${ivText(r.interval)} · ${Number(r.bars)} 根</span><span class="tag accent">${scoreText(m.score)}</span></div>
+    <div class="t2 num">${shTime(r.start)} – ${shTime(r.end - (r.end - r.start) / Math.max(1, r.bars))} · ${SOURCE_LABEL[m.source] ?? esc(m.source)}</div></div>
     ${star}
   </div>`
 }
@@ -570,9 +572,9 @@ function renderDetail(): void {
   const wrap = document.getElementById('rvWrap')!
   wrap.classList.toggle('blank', !plan)
   if (!plan) {
-    head.innerHTML = `<span class="ttl">回放</span>`
+    morphHtml(head, `<span class="ttl">回放</span>`)
     const latest = storedSearches()[0]
-    foot.innerHTML = `<div class="rv-none">${R.tab === 'similar' ? esc(similarBlankText(R.saved.length, latest ? R.searches.get(latest.id) : undefined)) : '选左边一条，在这里按当时的节奏重放'}</div>`
+    morphHtml(foot, `<div class="rv-none">${R.tab === 'similar' ? esc(similarBlankText(R.saved.length, latest ? R.searches.get(latest.id) : undefined)) : '选左边一条，在这里按当时的节奏重放'}</div>`)
     if (R.playing) { player.destroy(); player = new ReplayPlayer(wrap, $('#rvBar')); R.playing = '' }
     return
   }
@@ -599,7 +601,7 @@ function tradeHead(t: TradeRecord): string {
   const r = t.round, open = r.status === 'open'
   return `${badgeFor(r.symbol)}<span class="ttl">${esc(codeOf(r.symbol))}</span>${dirTag(r.direction, TRADE_DIR_LABEL[r.direction])}
     ${open ? '<span class="tag accent">持仓中</span>' : `<span class="faint num">${shTime(r.openedAt)} – ${shTime(r.closedAt!)}</span>`}
-    ${r.leverage ? `<span class="faint">${r.leverage} 倍</span>` : ''}<span class="rv-sp"></span>${openBtn(r.symbol)}`
+    ${r.leverage ? `<span class="faint">${Number(r.leverage)} 倍</span>` : ''}<span class="rv-sp"></span>${openBtn(r.symbol)}`
 }
 
 function tradeFoot(t: TradeRecord): string {
@@ -627,7 +629,7 @@ function viewHead(v: ViewRecord): string {
   const d = v.draft, r = d.rule
   const canSearch = d.range.bars >= 16
   return `${badgeFor(d.range.symbol)}<span class="ttl">${esc(codeOf(d.range.symbol))}</span><span class="faint">${ivText(d.range.interval)}</span>
-    ${dirTag(r.direction, VIEW_DIR_LABEL[r.direction] ?? r.direction)}${outcomeTag(outcomeOf(v))}<span class="rv-sp"></span>
+    ${dirTag(r.direction, VIEW_DIR_LABEL[r.direction] ?? esc(r.direction))}${outcomeTag(outcomeOf(v))}<span class="rv-sp"></span>
     <button class="btn secondary sm" data-find="${esc(d.id)}" ${canSearch ? '' : 'disabled data-tip="图表区间不到 16 根，找不了相似"'}>${I('search', 'icon-16')}找相似</button>${openBtn(d.range.symbol)}`
 }
 
@@ -639,7 +641,7 @@ function viewFoot(v: ViewRecord): string {
     stat(obs ? '当时价' : '参考价', fmt(r.reference, dec), '', shTime(judgedAt(v))),
     stat('目标', obs ? '—' : fmt(r.target, dec), '', obs ? '' : dp(r.target)),
     stat('失效', obs ? '—' : fmt(r.invalidation, dec), '', obs ? '' : dp(r.invalidation)),
-    stat('到期', obs ? '—' : shTime(r.expires), '', obs ? '' : (CONFIRM_LABEL[r.confirmation] ?? r.confirmation)),
+    stat('到期', obs ? '—' : shTime(r.expires), '', obs ? '' : (CONFIRM_LABEL[r.confirmation] ?? esc(r.confirmation))),
     stat('来路', ORIGIN_LABEL[d.origin] ?? '—', '', d.confidence != null ? `把握 ${Math.round(d.confidence * (d.confidence <= 1 ? 100 : 1))}%` : ''),
     `<div class="rv-stat wide"><div class="k">结果</div><div class="v">${outcomeTag(outcomeOf(v))}<span class="rv-reason">${esc(a?.reason || '')}</span></div>${a?.eventAt ? `<div class="d num">${shTime(a.eventAt)}</div>` : ''}</div>`,
   ].join('')
@@ -655,7 +657,7 @@ function matchHead(m: Match): string {
   const star = saved ? `<button class="btn secondary sm" data-unsave="${esc(m.id)}">${I('star', 'icon-16')}取消收藏</button>`
     : searchId ? `<button class="btn secondary sm" data-save="${esc(m.id)}" data-search="${esc(searchId)}">${I('starOff', 'icon-16')}收藏</button>` : ''
   return `${badgeFor(m.range.symbol)}<span class="ttl">${esc(codeOf(m.range.symbol))}</span><span class="faint">${ivText(m.range.interval)}</span>
-    <span class="tag accent">${scoreText(m.score)}</span><span class="faint">${SOURCE_LABEL[m.source] ?? m.source}</span><span class="rv-sp"></span>${star}${openBtn(m.range.symbol)}`
+    <span class="tag accent">${scoreText(m.score)}</span><span class="faint">${SOURCE_LABEL[m.source] ?? esc(m.source)}</span><span class="rv-sp"></span>${star}${openBtn(m.range.symbol)}`
 }
 
 function matchFoot(m: Match, after: { pct: number; bars: number } | null): string {
@@ -664,7 +666,7 @@ function matchFoot(m: Match, after: { pct: number; bars: number } | null): strin
     ${stat('片段', `${r.bars} 根`, '', `${shTime(r.start)} 起`)}
     ${stat('相似度', m.score.toFixed(2), '', '0 到 1，越大越像')}
     ${stat('后来', after ? `${after.pct > 0 ? '+' : ''}${(after.pct * 100).toFixed(2)}%` : '—', after ? upDown(after.pct) : '', after ? `相似段之后 ${after.bars} 根` : '载入后计算')}
-    ${stat('周期', ivText(r.interval), '', SOURCE_LABEL[m.source] ?? m.source)}
+    ${stat('周期', ivText(r.interval), '', SOURCE_LABEL[m.source] ?? esc(m.source))}
   </div>`
 }
 

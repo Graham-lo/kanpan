@@ -17,6 +17,8 @@ export const D = {
   recentKeepMs: 2 * 3_600_000,
   trimRatio: 0.9,
   scanRadiusBps: 1_000,
+  /** 细桶（梯子、盘口、热力）只要中间价两侧这么远以内；evaluate 扫 scanRadiusBps 时同一遍顺带分好 */
+  fineRadiusBps: 500,
   exitRadiusBps: 1_500,
   tradfiPerpetual: 2_000_000,
   calibrationBandBps: 100,

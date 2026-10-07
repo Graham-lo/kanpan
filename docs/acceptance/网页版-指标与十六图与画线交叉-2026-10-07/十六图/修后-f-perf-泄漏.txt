@@ -1,0 +1,30 @@
+{"tag":"起点","heap":4.32,"nodes":1813,"listeners":133,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":0,"unsubs":0,"glN":48,"bars":"1500","kl":1}
+{"tag":"切品种 50","heap":9.13,"nodes":1832,"listeners":133,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":3,"unsubs":4,"glN":48,"bars":"1500","kl":46}
+{"tag":"切品种 100","heap":11.31,"nodes":1848,"listeners":133,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":6,"unsubs":7,"glN":48,"bars":"1500","kl":71}
+{"tag":"切品种 150","heap":11.37,"nodes":1855,"listeners":133,"iv":5,"to":1,"wsLive":1,"wsOpened":1,"subs":9,"unsubs":10,"glN":48,"bars":"1500","kl":73}
+{"tag":"切品种 200","heap":11.48,"nodes":1840,"listeners":133,"iv":5,"to":6,"wsLive":1,"wsOpened":1,"subs":12,"unsubs":13,"glN":48,"bars":"1500","kl":73}
+{"tag":"切周期 50","heap":11.54,"nodes":1840,"listeners":133,"iv":5,"to":7,"wsLive":1,"wsOpened":1,"subs":13,"unsubs":14,"glN":48,"bars":"1500","kl":73}
+{"tag":"切周期 100","heap":11.61,"nodes":1840,"listeners":133,"iv":5,"to":7,"wsLive":1,"wsOpened":1,"subs":14,"unsubs":15,"glN":48,"bars":"1500","kl":73}
+{"tag":"切周期 150","heap":11.68,"nodes":1840,"listeners":133,"iv":5,"to":6,"wsLive":1,"wsOpened":1,"subs":15,"unsubs":16,"glN":48,"bars":"1500","kl":73}
+{"tag":"切周期 200","heap":11.69,"nodes":1840,"listeners":133,"iv":5,"to":7,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":48,"bars":"1500","kl":73}
+{"tag":"指标面板 25","heap":12.62,"nodes":1869,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":49,"bars":"1500","kl":74}
+{"tag":"指标面板 50","heap":12.65,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":49,"bars":"1500","kl":74}
+{"tag":"指标面板 75","heap":12.76,"nodes":1869,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":49,"bars":"1500","kl":74}
+{"tag":"指标面板 100","heap":12.7,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":49,"bars":"1500","kl":74}
+{"tag":"翻页 10","heap":17.29,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":17,"unsubs":18,"glN":49,"bars":"16500","kl":85}
+{"tag":"翻页 20","heap":21.9,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":17,"unsubs":18,"glN":49,"bars":"31500","kl":95}
+{"tag":"翻页 30","heap":24.65,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":17,"unsubs":18,"glN":49,"bars":"40000","kl":102}
+{"tag":"翻页 40","heap":24.79,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":17,"unsubs":18,"glN":49,"bars":"40002","kl":102}
+{"tag":"翻页 50","heap":24.71,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":17,"unsubs":18,"glN":49,"bars":"40003","kl":102}
+{"tag":"十六图开关 5","heap":22.82,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":6,"subs":212,"unsubs":213,"glN":49,"bars":"40004","kl":117}
+{"tag":"十六图开关 10","heap":22.89,"nodes":1862,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":11,"subs":407,"unsubs":408,"glN":49,"bars":"40004","kl":117}
+{"tag":"十六图开关 15","heap":22.92,"nodes":1861,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":16,"subs":602,"unsubs":603,"glN":49,"bars":"40004","kl":117}
+{"tag":"十六图开关 20","heap":22.98,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":21,"subs":797,"unsubs":798,"glN":49,"bars":"40004","kl":128}
+{"tag":"终点（回到起点品种周期）","heap":13.21,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":21,"subs":798,"unsubs":799,"glN":49,"bars":"1500","kl":206}
+翻到页数 29 报错 0 []
+{"tag":"切品种","n":4,"first":{"tag":"切品种 50","heap":9.13,"nodes":1832,"listeners":133,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":3,"unsubs":4,"glN":48,"bars":"1500","kl":46},"last":{"tag":"切品种 200","heap":11.48,"nodes":1840,"listeners":133,"iv":5,"to":6,"wsLive":1,"wsOpened":1,"subs":12,"unsubs":13,"glN":48,"bars":"1500","kl":73},"grow":["heap"]}
+{"tag":"切周期","n":4,"first":{"tag":"切周期 50","heap":11.54,"nodes":1840,"listeners":133,"iv":5,"to":7,"wsLive":1,"wsOpened":1,"subs":13,"unsubs":14,"glN":48,"bars":"1500","kl":73},"last":{"tag":"切周期 200","heap":11.69,"nodes":1840,"listeners":133,"iv":5,"to":7,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":48,"bars":"1500","kl":73},"grow":["heap"]}
+{"tag":"指标面板","n":4,"first":{"tag":"指标面板 25","heap":12.62,"nodes":1869,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":49,"bars":"1500","kl":74},"last":{"tag":"指标面板 100","heap":12.7,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":16,"unsubs":17,"glN":49,"bars":"1500","kl":74},"grow":[]}
+{"tag":"翻页","n":5,"first":{"tag":"翻页 10","heap":17.29,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":17,"unsubs":18,"glN":49,"bars":"16500","kl":85},"last":{"tag":"翻页 50","heap":24.71,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":1,"subs":17,"unsubs":18,"glN":49,"bars":"40003","kl":102},"grow":[]}
+{"tag":"十六图开关","n":4,"first":{"tag":"十六图开关 5","heap":22.82,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":6,"subs":212,"unsubs":213,"glN":49,"bars":"40004","kl":117},"last":{"tag":"十六图开关 20","heap":22.98,"nodes":1860,"listeners":147,"iv":5,"to":0,"wsLive":1,"wsOpened":21,"subs":797,"unsubs":798,"glN":49,"bars":"40004","kl":128},"grow":["heap"]}
+起点 → 终点 ：堆 4.32→13.21 MB、节点 1813→1860、JS 监听 133→147、窗口监听差 {"document:keydown":1}、interval 5→5、timeout 0→0、WS 活 1→1（开 20、订 798 退 799）

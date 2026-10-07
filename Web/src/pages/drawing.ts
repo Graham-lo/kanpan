@@ -10,7 +10,7 @@
  */
 import { st, save } from '../app/store'
 import type { Drawing, DrawingType, TVChart } from '../chart/chart'
-import { QUOTA, TOOL_GROUPS, familyOf, groupOf, quotaOK, toolName, type Dash } from '../chart/drawTools'
+import { QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, type Dash } from '../chart/drawTools'
 import { drawingAlertOf, drawingCanAlert, toggleDrawingAlert } from '../alerts/model'
 import { askNotify } from '../alerts/panel'
 import { $$, I, esc, tgt } from '../ui/dom'
@@ -164,8 +164,10 @@ const DASH_SVG: Record<'solid' | Dash, string> = {
   dotted: '<path d="M2.5 8h11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3.6"/>',
 }
 const DASH_NAME: Record<'solid' | Dash, string> = { solid: '实线', dashed: '虚线', dotted: '点线' }
-const widthSvg = (w: number) => `<svg class="icon-16" viewBox="0 0 16 16"><rect x="2" y="${8 - w / 2}" width="12" height="${w}" rx="${w / 2}" fill="currentColor"/></svg>`
-const swatchBtn = (c: string, pressed: boolean, tip: string) => `<button class="swatch-btn" data-color="${c}" aria-label="${tip} ${c}" data-tip="${tip}" aria-pressed="${pressed}"><span class="swatch" style="background:${c}"></span></button>`
+// 颜色 / 粗细都来自存档（会被老版本、手改写坏），拼进 HTML 之前一律先过白名单（cleanDrawColor / cleanDrawWidth）再转义
+const widthSvg = (raw: unknown) => { const w = cleanDrawWidth(raw); return `<svg class="icon-16" viewBox="0 0 16 16"><rect x="2" y="${8 - w / 2}" width="12" height="${w}" rx="${w / 2}" fill="currentColor"/></svg>` }
+const swatchBtn = (raw: unknown, pressed: boolean, tip: string) => { const c = esc(cleanDrawColor(raw)); return `<button class="swatch-btn" data-color="${c}" aria-label="${esc(tip)} ${c}" data-tip="${esc(tip)}" aria-pressed="${pressed}"><span class="swatch" style="background:${c}"></span></button>` }
+const sameColor = (a: unknown, b: unknown): boolean => cleanDrawColor(a).toUpperCase() === cleanDrawColor(b).toUpperCase()
 
 /** 这条画线能调哪些样式（多空持仓固定红绿、固定区间成交量分布只有框色） */
 function knobs(t: DrawingType): { color: boolean; width: boolean; dash: boolean } {
@@ -214,15 +216,15 @@ function renderQuick(): void {
   if (!quick) return
   const { d, c, el } = quick
   const k = knobs(d.type), locked = !!d.locked
-  const cur = d.color || '#2962FF'
-  const recent = st.recentColors.filter(x => x.toUpperCase() !== cur.toUpperCase()).slice(0, 2)
+  const cur = cleanDrawColor(d.color), w = cleanDrawWidth(d.width)
+  const recent = st.recentColors.filter(x => !sameColor(x, cur)).slice(0, 2)
   const sym = host.symbolOf(c)
   const canAlert = drawingCanAlert(d.type), hasAlert = canAlert && !!drawingAlertOf(sym, d.id)
-  const dash = d.dash ?? 'solid'
+  const dash: 'solid' | Dash = d.dash === 'dashed' || d.dash === 'dotted' ? d.dash : 'solid'
   el.innerHTML = `<span class="dq-kind" data-tip="${esc(toolName(d.type))}">${I(d.type, 'icon-16')}</span>` +
-    (k.color ? `<span class="tb-sep"></span><button class="dq-color" data-q="palette" aria-label="颜色" data-tip="颜色" ${locked ? 'disabled' : ''} aria-haspopup="menu"><span class="swatch" style="background:${cur}"></span>${I('chevronDown', 'icon-12')}</button>
+    (k.color ? `<span class="tb-sep"></span><button class="dq-color" data-q="palette" aria-label="颜色" data-tip="颜色" ${locked ? 'disabled' : ''} aria-haspopup="menu"><span class="swatch" style="background:${esc(cur)}"></span>${I('chevronDown', 'icon-12')}</button>
       ${recent.map(x => swatchBtn(x, false, '最近用过的颜色')).join('')}` : '') +
-    (k.width ? `<span class="tb-sep"></span><button class="ibtn xs" data-q="width" aria-label="粗细 ${d.width || 2} px" data-tip="粗细" ${locked ? 'disabled' : ''} aria-haspopup="menu">${widthSvg(d.width || 2)}</button>` : '') +
+    (k.width ? `<span class="tb-sep"></span><button class="ibtn xs" data-q="width" aria-label="粗细 ${w} px" data-tip="粗细" ${locked ? 'disabled' : ''} aria-haspopup="menu">${widthSvg(w)}</button>` : '') +
     (k.dash ? `<button class="ibtn xs" data-q="dash" aria-label="线型：${DASH_NAME[dash]}" data-tip="线型" ${locked ? 'disabled' : ''} aria-haspopup="menu"><svg class="icon-16" viewBox="0 0 16 16">${DASH_SVG[dash]}</svg></button>` : '') +
     `<span class="tb-sep"></span>
     ${canAlert ? `<button class="ibtn xs" data-q="alert" aria-pressed="${hasAlert}" aria-label="画线提醒" data-tip="价格碰到这条线时提醒我">${I('bellPlus', 'icon-16')}</button>` : ''}
@@ -251,17 +253,17 @@ function quickClick(e: MouseEvent): void {
   if (q === 'palette') {
     const m = menu([{ header: '颜色' }], r.left, below, { width: 200, returnFocus: b })
     const grid = document.createElement('div'); grid.className = 'dq-palette'
-    grid.innerHTML = PALETTE.map(x => swatchBtn(x, x.toUpperCase() === (d.color || '').toUpperCase(), '颜色')).join('')
+    grid.innerHTML = PALETTE.map(x => swatchBtn(x, sameColor(x, d.color), '颜色')).join('')
     grid.addEventListener('click', ev => { const s = tgt(ev).closest<HTMLElement>('[data-color]'); if (!s) return; closeMenu(); applyStyle({ color: s.dataset.color }) })
     m.appendChild(grid)
     return
   }
   if (q === 'width') {
-    menu([{ header: '粗细' }, ...[1, 2, 3, 4].map((w): MenuItem => ({ html: `<span class="dq-sample">${widthSvg(w)}</span>${w} px`, check: true, checked: (d.width || 2) === w, run: () => applyStyle({ width: w }) }))], r.left, below, { width: 160, returnFocus: b })
+    menu([{ header: '粗细' }, ...[1, 2, 3, 4].map((w): MenuItem => ({ html: `<span class="dq-sample">${widthSvg(w)}</span>${w} px`, check: true, checked: cleanDrawWidth(d.width) === w, run: () => applyStyle({ width: w }) }))], r.left, below, { width: 160, returnFocus: b })
     return
   }
   if (q === 'dash') {
-    menu([{ header: '线型' }, ...(['solid', 'dashed', 'dotted'] as const).map((k): MenuItem => ({ html: `<span class="dq-sample"><svg class="icon-16" viewBox="0 0 16 16">${DASH_SVG[k]}</svg></span>${DASH_NAME[k]}`, check: true, checked: (d.dash ?? 'solid') === k, run: () => applyStyle({ dash: k === 'solid' ? undefined : k }) }))], r.left, below, { width: 160, returnFocus: b })
+    menu([{ header: '线型' }, ...(['solid', 'dashed', 'dotted'] as const).map((k): MenuItem => ({ html: `<span class="dq-sample"><svg class="icon-16" viewBox="0 0 16 16">${DASH_SVG[k]}</svg></span>${DASH_NAME[k]}`, check: true, checked: (d.dash === 'dashed' || d.dash === 'dotted' ? d.dash : 'solid') === k, run: () => applyStyle({ dash: k === 'solid' ? undefined : k }) }))], r.left, below, { width: 160, returnFocus: b })
     return
   }
   if (q === 'alert') { if (toggleDrawingAlert(host.symbolOf(c), d)) { toast('画线提醒已开', '价格碰到这条线时通知你', 'bell'); askNotify() } host.changed(c); renderQuick(); return }
