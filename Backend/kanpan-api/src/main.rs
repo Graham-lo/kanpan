@@ -2,7 +2,12 @@ use kanpan_api::{AppState,crypto::Secrets,supervise::{Life,Supervisor}};
 use std::{sync::Arc,net::SocketAddr};
 #[tokio::main]
 async fn main()->anyhow::Result<()> {
- tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+ // 线上 RUST_LOG 只放 warn 与几个模块的 info；这两条量很小、运维又要看的 info 不管它怎么设都放行：
+ // 每小时一行行情历史磁盘预算合计（storage_budget::report）、每次技术指标提醒触发一行（conditions）。
+ // 2026-10-07 压测发现两条在 SG 上都被滤掉，磁盘预算只在超总闸时才看得到，指标提醒响没响只能查库。
+ let filter=["kanpan_api::storage_budget=info","kanpan_api::conditions=info"].into_iter()
+  .fold(tracing_subscriber::EnvFilter::from_default_env(),|f,d|f.add_directive(d.parse().expect("static log directive")));
+ tracing_subscriber::fmt().with_env_filter(filter).init();
  let command=std::env::args().nth(1).unwrap_or_else(||"serve".into());
  // The market fallback host runs `metrics`: open interest only, no accounts and
  // so no database. Answered before the pool, or it would demand a connection

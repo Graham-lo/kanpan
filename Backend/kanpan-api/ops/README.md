@@ -87,6 +87,7 @@ serve 缺省 `RUST_LOG=warn`，下面几行是 info，要看就在 `service.env`
 - 每分钟 `Orderflow history: tracking N (majors …, on-demand …, fixed …, alts …, hot …), K connections, RSS …, CPU … over the last minute, shedding …`
 - 每分钟 `connections per minute: binance-um-depth a/b conns … books … streams … frames; …`（各种连接的条数、簿数、流数、帧数、丢帧数）
 - 快照队列每分钟一行（各通道本分钟发出、排队、最久等了多久）。
+- 每小时 `Storage budget: market history X/30 GiB (orderflow_heat …/20 GiB, …)` 与每次技术指标提醒触发 `… condition … triggered: …` 两行不管 `RUST_LOG` 怎么设都会出（`main.rs` 固定放行 `kanpan_api::storage_budget`、`kanpan_api::conditions` 的 info）。
 
 `journalctl -u kanpan-api | grep -c WARN` 正常应接近 0；`market_meta` 的 `answered with another company's page` 是行情元数据那一侧的旧告警，和订单流无关。
 
