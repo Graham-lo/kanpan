@@ -48,18 +48,19 @@ export class HACache {
 }
 
 // ------------------------------------------------------------ 每格开关
-const LS_KEY = 'hkline-web-heikin'
-function loadOn(): Set<number> {
-  try { const v = JSON.parse(localStorage.getItem(LS_KEY) || '[]') as unknown; return new Set(Array.isArray(v) ? v.filter(x => Number.isInteger(x)) as number[] : []) } catch { return new Set() }
-}
-const onCells = loadOn()
+// 开关记在格子配置里、随布局集跟人走（pages/chart.ts 用 setHeikinAshiSource 接到 store；老的本机存法由 store 迁走）；没接时只记内存
+export interface CellFlagSource { on(idx: number): boolean; set(idx: number, on: boolean): void }
+const memory = new Set<number>()
+const memorySource: CellFlagSource = { on: i => memory.has(i), set: (i, on) => { if (on) memory.add(i); else memory.delete(i) } }
+let source: CellFlagSource = memorySource
+export function setHeikinAshiSource(s: CellFlagSource | null): void { source = s ?? memorySource }
+const onCells = { has: (i: number): boolean => source.on(i) }
 const bound = new Map<number, TVChart>()
 const caches = new WeakMap<TVChart, HACache>()
 export function heikinAshiOn(idx: number): boolean { return onCells.has(idx) }
 export function setHeikinAshi(idx: number, on: boolean): void {
   if (on === onCells.has(idx)) return
-  if (on) onCells.add(idx); else onCells.delete(idx)
-  try { localStorage.setItem(LS_KEY, JSON.stringify([...onCells])) } catch { /* 隐私模式 */ }
+  source.set(idx, on)
   const c = bound.get(idx)
   if (c) { c.dirty = true; c.legendDirty = true }
 }
@@ -98,4 +99,4 @@ function legendRow(c: TVChart, idx: number, i: number): string {
 }
 
 /** 测试用 */
-export function resetHeikinAshi(): void { onCells.clear(); bound.clear() }
+export function resetHeikinAshi(): void { memory.clear(); bound.clear() }

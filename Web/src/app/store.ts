@@ -14,8 +14,8 @@ import { setItemMakingRoom } from '../util/storage'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
 import { cleanCompare } from '../sync/codec'
 import {
-  bookFrom, cleanBook, cleanCells, cleanLayout, clampActive, commitLive, loadLive, migrateLegacyFootprint, validIv, validSymbol,
-  LEGACY_FOOTPRINT_KEY, type CellCfg, type Layout, type LayoutBook,
+  bookFrom, cleanBook, cleanCells, cleanLayout, clampActive, commitLive, loadLive, migrateLegacyFlag, validIv, validSymbol,
+  CELL_FLAGS, LEGACY_FLAG_KEYS, type CellCfg, type Layout, type LayoutBook,
 } from './layouts'
 
 export type Theme = 'light' | 'dark'
@@ -368,13 +368,17 @@ export function save(): void {
 
 export function resetAll(): void { localStorage.removeItem(KEY) }
 
-// 足迹开关 2026-10-07 前只记本机（一串格子序号）：并进当前那套布局的格子配置、写盘成功后再删老键（写不下就留着下次再迁）
+// 主图画法开关（足迹 / 平均 K 线 / 等幅 K 线）原先只记本机（一串格子序号）：并进当前那套布局的格子配置、
+// 写盘成功后再删老键（写不下就留着下次再迁）
 {
-  let raw: string | null = null
-  try { raw = localStorage.getItem(LEGACY_FOOTPRINT_KEY) } catch { /* 隐私模式 */ }
-  if (raw != null) {
-    migrateLegacyFootprint(st, raw)
+  const found: string[] = []
+  for (const f of CELL_FLAGS) {
+    let raw: string | null = null
+    try { raw = localStorage.getItem(LEGACY_FLAG_KEYS[f]) } catch { /* 隐私模式 */ }
+    if (raw != null) { migrateLegacyFlag(st, f, raw); found.push(LEGACY_FLAG_KEYS[f]) }
+  }
+  if (found.length) {
     commitLive(st)
-    if (write()) try { localStorage.removeItem(LEGACY_FOOTPRINT_KEY) } catch { /* 无 */ }
+    if (write()) for (const k of found) try { localStorage.removeItem(k) } catch { /* 无 */ }
   }
 }

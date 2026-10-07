@@ -50,10 +50,11 @@ import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
 import { bindFootprint, setFootprintSource } from '../chart/footprint'
-import { bindHeikinAshi } from '../chart/heikinAshi'
-import { baseBars, bindRangeBars } from '../chart/rangeBars'
+import { bindHeikinAshi, setHeikinAshiSource } from '../chart/heikinAshi'
+import { baseBars, bindRangeBars, setRangeBarsSource, syncRangeBars } from '../chart/rangeBars'
 import { styleMenuItems } from '../chart/mainStyle'
 import { setsMenu, switchNth, setButtonHTML, paintSetButtons } from './layoutSets'
+import type { CellFlag } from '../app/layouts'
 import { exportChart, type ExportRange } from '../chart/exportCsv'
 import { secondsKlines } from '../chart/secondsHistory'
 import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote } from '../replay/controller'
@@ -71,8 +72,9 @@ interface Cell {
   hold: string | null
 }
 const cells: Cell[] = []
-// 足迹开关记在格子配置里（随布局集同步，见 app/layouts.ts）
-setFootprintSource({ on: i => st.cells[i]?.footprint === true, set: (i, on) => { const c = st.cells[i]; if (!c) return; if (on) c.footprint = true; else delete c.footprint; save() } })
+// 主图画法开关（足迹 / 平均 K 线 / 等幅 K 线）记在格子配置里（随布局集同步，见 app/layouts.ts）
+const flagSource = (f: CellFlag) => ({ on: (i: number) => st.cells[i]?.[f] === true, set: (i: number, on: boolean) => { const c = st.cells[i]; if (!c) return; if (on) c[f] = true; else delete c[f]; save() } })
+setFootprintSource(flagSource('footprint')); setHeikinAshiSource(flagSource('ha')); setRangeBarsSource(flagSource('range'))
 /** K 线在路上时攒着的推送（行情推送与 K 线并行建连，见 chart/pushBuffer.ts） */
 const pushes = new PushBuffer()
 /** 冷启动时和品种表并行先发出去的 K 线（品种 | 周期 → 结果），第一次装这一格时直接用 */
@@ -592,7 +594,7 @@ export function applyLayoutSet(): void {
   cells.slice(0, n).forEach(c => {
     const k = cfg(c), m = c.chart.meta
     if (m.symbol !== k.symbol || m.sub !== metaFor(k).sub) void loadCell(c)
-    else { c.chart.dirty = true; c.chart.legendDirty = true }
+    else { syncRangeBars(c.idx); c.chart.dirty = true; c.chart.legendDirty = true }
   })
   setLayout(st.layout)
   cells.forEach((c, i) => c.el.classList.toggle('active', i === st.active))

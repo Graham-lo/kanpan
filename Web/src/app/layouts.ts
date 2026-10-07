@@ -21,9 +21,12 @@ export const LAYOUT_N: Record<Layout, number> = { '1': 1, '2': 2, '2v': 2, '3': 
 /** 最多几格 */
 export const MAX_CELLS = 16
 
-/** 一格的配置。footprint 只在开着时出现（主图画法的一种：足迹）；
+/** 一格的配置。主图画法三选一的开关只在开着时出现：footprint 足迹、ha 平均 K 线、range 等幅 K 线；
  *  别的键（以后加的格子画法）按「短键 → 布尔 / 短串 / 数」原样留着，老版本读到也不丢 */
-export interface CellCfg { symbol: string; iv: string; footprint?: boolean; [extra: string]: unknown }
+export interface CellCfg { symbol: string; iv: string; footprint?: boolean; ha?: boolean; range?: boolean; [extra: string]: unknown }
+/** 主图画法开关（每格各自记、随布局集跟人走） */
+export const CELL_FLAGS = ['footprint', 'ha', 'range'] as const
+export type CellFlag = typeof CELL_FLAGS[number]
 
 /** 当前格子落在布局的格数以内（地址栏把八图改成一图时，参数要落到看得见的那一格上） */
 export function clampActive(s: { active: number; layout: Layout }): void {
@@ -90,14 +93,14 @@ export const cleanLayout = (v: unknown): Layout => {
   return LAYOUTS.includes(k as Layout) ? k as Layout : '1'
 }
 
-/** 一格的规范形：键顺序固定（symbol、iv、footprint、其余按字母），比较时不受顺序影响 */
+/** 一格的规范形：键顺序固定（symbol、iv、footprint、ha、range、其余按字母），比较时不受顺序影响 */
 function cleanCell(c: Record<string, unknown>, iv0: string): CellCfg | undefined {
   if (!validSymbol(c.symbol)) return undefined
   const out: CellCfg = { symbol: c.symbol, iv: validIv(c.iv) ? c.iv : iv0 }
-  if (c.footprint === true) out.footprint = true
+  for (const f of CELL_FLAGS) if (c[f] === true) out[f] = true
   let n = 0
   for (const k of Object.keys(c).sort()) {
-    if (k === 'symbol' || k === 'iv' || k === 'footprint' || !EXTRA_KEY.test(k) || n >= MAX_EXTRAS) continue
+    if (k === 'symbol' || k === 'iv' || (CELL_FLAGS as readonly string[]).includes(k) || !EXTRA_KEY.test(k) || n >= MAX_EXTRAS) continue
     const v = c[k]
     if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && v.length <= 16)) { out[k] = v; n++ }
   }
@@ -238,15 +241,21 @@ export function mergeBooks(cloud: LayoutBook, local: LayoutBook): LayoutBook {
   return out
 }
 
-/** 足迹开关的老存法（2026-10-07 之前只记本机：localStorage 里一串格子序号） */
-export const LEGACY_FOOTPRINT_KEY = 'hkline-web-footprint'
-/** 老存法并进格子配置；返回并进了几格（读不懂的当没有） */
-export function migrateLegacyFootprint(s: { cells: CellCfg[] }, raw: string | null): number {
+/** 主图画法开关的老存法（只记本机：localStorage 里一串格子序号） */
+export const LEGACY_FLAG_KEYS: Record<CellFlag, string> = { footprint: 'hkline-web-footprint', ha: 'hkline-web-heikin', range: 'hkline-web-range' }
+export const LEGACY_FOOTPRINT_KEY = LEGACY_FLAG_KEYS.footprint
+/** 老存法并进格子配置；返回并进了几格（读不懂的当没有）。一格已经开着别的画法就不再叠（三选一） */
+export function migrateLegacyFlag(s: { cells: CellCfg[] }, flag: CellFlag, raw: string | null): number {
   if (!raw) return 0
   let v: unknown
   try { v = JSON.parse(raw) } catch { return 0 }
   if (!Array.isArray(v)) return 0
   let n = 0
-  for (const i of v) if (Number.isInteger(i) && i >= 0 && i < s.cells.length && s.cells[i] && !s.cells[i].footprint) { s.cells[i].footprint = true; n++ }
+  for (const i of v) {
+    const c = Number.isInteger(i) && i >= 0 && i < s.cells.length ? s.cells[i] : undefined
+    if (!c || CELL_FLAGS.some(f => c[f] === true)) continue
+    c[flag] = true; n++
+  }
   return n
 }
+export const migrateLegacyFootprint = (s: { cells: CellCfg[] }, raw: string | null): number => migrateLegacyFlag(s, 'footprint', raw)

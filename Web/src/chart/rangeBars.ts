@@ -18,6 +18,7 @@ import type { ChartMetaInput, TVChart } from './chart'
 import type { TimeTick } from './timeAxis'
 import { TIME_STEPS, TIME_TICK_MIN_PX } from './timeAxis'
 import { nearestNice } from './footprint'
+import type { CellFlagSource } from './heikinAshi'
 import { GLOSSARY, term } from '../ui/overlay'
 import { TZ_MS, pad, sh } from '../util/format'
 
@@ -154,12 +155,12 @@ export function stepText(step: number): string {
 }
 
 // ------------------------------------------------------------ 每格开关与挂到图表上
-const LS_KEY = 'hkline-web-range'
-function loadOn(): Set<number> {
-  try { const v = JSON.parse(localStorage.getItem(LS_KEY) || '[]') as unknown; return new Set(Array.isArray(v) ? v.filter(x => Number.isInteger(x)) as number[] : []) } catch { return new Set() }
-}
-const onCells = loadOn()
-const save = (): void => { try { localStorage.setItem(LS_KEY, JSON.stringify([...onCells])) } catch { /* 隐私模式 */ } }
+// 开关记在格子配置里、随布局集跟人走（pages/chart.ts 用 setRangeBarsSource 接到 store；老的本机存法由 store 迁走）；没接时只记内存
+const memory = new Set<number>()
+const memorySource: CellFlagSource = { on: i => memory.has(i), set: (i, on) => { if (on) memory.add(i); else memory.delete(i) } }
+let source: CellFlagSource = memorySource
+export function setRangeBarsSource(s: CellFlagSource | null): void { source = s ?? memorySource }
+const onCells = { has: (i: number): boolean => source.on(i) }
 const bound = new Map<number, TVChart>()
 /** 同一格同一只品种这次打开页面里用同一个幅度 */
 const steps = new Map<string, number>()
@@ -177,9 +178,12 @@ const states = new WeakMap<TVChart, St>()
 export function rangeBarsOn(idx: number): boolean { return onCells.has(idx) }
 export function setRangeBars(idx: number, on: boolean): void {
   if (on === onCells.has(idx)) return
-  if (on) onCells.add(idx); else onCells.delete(idx)
-  save()
-  const c = bound.get(idx), s = c && states.get(c)
+  source.set(idx, on)
+  syncRangeBars(idx)
+}
+/** 图上的状态对齐开关（setRangeBars 之后；换了一套布局、这一格没重取 K 线时也调一下） */
+export function syncRangeBars(idx: number): void {
+  const on = onCells.has(idx), c = bound.get(idx), s = c && states.get(c)
   if (!c || !s) return
   if (on && !s.base && c.iv === MIN) enter(c, s, c.bars, { ...c.meta, iv: c.iv })
   else if (!on && s.base) leave(c, s)
@@ -226,7 +230,7 @@ export function bindRangeBars(chart: TVChart, idx: number): void {
     if (onCells.has(idx) && meta.iv === MIN) { enter(chart, s, bars, meta); return }
     if (s.base) plain(chart, s)
     // 等幅开着却换到了别的周期：当成退出等幅
-    if (onCells.has(idx)) { onCells.delete(idx); save() }
+    if (onCells.has(idx)) source.set(idx, false)
     s.orig.setData(bars, meta)
   }
   chart.prependData = more => {
@@ -257,4 +261,4 @@ export function bindRangeBars(chart: TVChart, idx: number): void {
 }
 
 /** 测试用 */
-export function resetRangeBars(): void { onCells.clear(); bound.clear(); steps.clear() }
+export function resetRangeBars(): void { memory.clear(); bound.clear(); steps.clear() }

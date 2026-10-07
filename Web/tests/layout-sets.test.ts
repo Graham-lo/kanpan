@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
-  cleanBook, cleanName, bookFrom, deleteLayout, liveBook, mergeBooks, migrateLegacyFootprint, renameLayout, saveAsLayout,
+  cleanBook, cleanName, bookFrom, deleteLayout, liveBook, mergeBooks, migrateLegacyFlag, migrateLegacyFootprint, renameLayout, saveAsLayout,
   switchLayout, uniqueName, MAX_LAYOUTS, NAME_MAX, type CellCfg, type LayoutBook, type LiveLayout,
 } from '../src/app/layouts'
 import { hydrate } from '../src/app/store'
 import { decodeSetting, encodeSetting, encodeSettings, factorySettings, putSetting, seenWhenUndecodable, webSetting, SETTINGS_FIELDS, type SettingsState } from '../src/sync/codec'
 import { OWNED, adoptBook, applyInto, captureInto, corePrint, layoutsPrint, mergeFirst, type Prints, type WebState } from '../src/sync/bridge'
 import { footprintOn, setFootprint, setFootprintSource } from '../src/chart/footprint'
+import { heikinAshiOn, setHeikinAshi, setHeikinAshiSource } from '../src/chart/heikinAshi'
+import { rangeBarsOn, setRangeBarsSource } from '../src/chart/rangeBars'
 import { Engine } from '../src/sync/engine'
 import { SyncStore } from '../src/sync/store'
 import { emptyArchive, type Json } from '../src/sync/types'
@@ -270,6 +272,40 @@ describe('足迹开关跟人走', () => {
     expect(s.cells).toEqual([{ symbol: 'BTCUSDT', iv: '1h', footprint: true }, { symbol: 'ETHUSDT', iv: '1h' }])
     const o = encodeSettings(s as unknown as SettingsState, undefined, {})!
     expect((o.body.chartLayouts as unknown as LayoutBook).sets[0].cells[0].footprint).toBe(true)
+  })
+})
+
+describe('平均 K 线 / 等幅 K 线开关同样跟人走', () => {
+  it('老存法并进格子配置；一格已开着别的画法就不叠（三选一）', () => {
+    const s = { cells: [{ symbol: 'BTCUSDT', iv: '1m' }, { symbol: 'ETHUSDT', iv: '1h', footprint: true }, { symbol: 'SOLUSDT', iv: '1h' }] as CellCfg[] }
+    expect(migrateLegacyFlag(s, 'range', '[0]')).toBe(1)
+    expect(migrateLegacyFlag(s, 'ha', '[0,1,2,9]')).toBe(1)
+    expect(s.cells).toEqual([{ symbol: 'BTCUSDT', iv: '1m', range: true }, { symbol: 'ETHUSDT', iv: '1h', footprint: true }, { symbol: 'SOLUSDT', iv: '1h', ha: true }])
+  })
+
+  it('规范形只留开着的开关，键序固定，进同步', () => {
+    const s = hydrate({ layout: '2', cells: [{ symbol: 'BTCUSDT', iv: '1m', zz: 1, range: true, ha: false }, { iv: '1h', symbol: 'ETHUSDT', ha: true }] })
+    expect(s.cells).toEqual([{ symbol: 'BTCUSDT', iv: '1m', range: true, zz: 1 }, { symbol: 'ETHUSDT', iv: '1h', ha: true }])
+    expect(Object.keys(s.cells[0])).toEqual(['symbol', 'iv', 'range', 'zz'])
+    const o = encodeSettings(s as unknown as SettingsState, undefined, {})!
+    expect((o.body.chartLayouts as unknown as LayoutBook).sets[0].cells.map(c => [c.ha, c.range])).toEqual([[undefined, true], [true, undefined]])
+  })
+
+  it('开关写进格子配置，切布局时跟着那一套走', () => {
+    const s = two()
+    const src = (f: 'ha' | 'range') => ({ on: (i: number) => s.cells[i]?.[f] === true, set: (i: number, on: boolean) => { const c = s.cells[i]; if (!c) return; if (on) c[f] = true; else delete c[f] } })
+    setHeikinAshiSource(src('ha')); setRangeBarsSource(src('range'))
+    try {
+      setHeikinAshi(2, true)
+      s.cells[5] = { ...s.cells[5], range: true }
+      expect(heikinAshiOn(2)).toBe(true)
+      switchLayout(s, 'default')
+      expect(heikinAshiOn(2)).toBe(false)
+      expect(rangeBarsOn(5)).toBe(false)
+      switchLayout(s, 'watch16')
+      expect(heikinAshiOn(2)).toBe(true)
+      expect(rangeBarsOn(5)).toBe(true)
+    } finally { setHeikinAshiSource(null); setRangeBarsSource(null) }
   })
 })
 
