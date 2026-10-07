@@ -10,8 +10,8 @@
  */
 import { loggedIn } from '../account/session'
 import { st } from '../app/store'
-import { S, on, j, REST } from '../market'
-import { $, $$, I, esc, tgt } from '../ui/dom'
+import { S, on, j, REST, klines } from '../market'
+import { $, I, esc, tgt } from '../ui/dom'
 import { dialog, head, toast, type Dialog } from '../ui/overlay'
 import { badge, cls, pctText, priceText, shTime, sym } from '../ui/common'
 import { fmt } from '../util/format'
@@ -19,7 +19,14 @@ import {
   activeAlerts, addAlert, alertLevel, checkPrice, cleanWebhook, conditionLabel, conditionPercentOK, deleteAlert, fire, judgeFunding, makeConditionAlert,
   makePriceAlert, oiChange, oiHit, onAlertFired, onAlertsChange, rulePhrase, setQuoteSource, validWebhook, webhookBody, webhookByPage, type Alert, type AlertRule,
 } from './model'
-import { parsePercent, parseTarget } from './shape'
+import { parsePercent, parseTarget, syncIdOf } from './shape'
+import {
+  IND_INTERVALS, IV_MS_IND, barsNeeded, draftFromChart, flipLevel, indicatorPhrase, indicatorRuleError, isIndicatorRule, judgeClosedBars, lastCloseAt,
+  parseIntField, parseNumField, rejectReason, ruleFromDraft, type ChartIndView, type Direction, type IndInterval, type IndicatorDraft, type IndicatorKind, type IndicatorRule, type MaType,
+} from './indicator'
+import { CATALOG } from '../chart/calc'
+import { isMacro } from '../market/macro'
+import { onRejected } from '../sync/engine'
 import { alertLog, bareSymbol, logClock, logDays, logDetail, logName, logOwner } from './log'
 
 export interface AlertUIHooks {
@@ -182,35 +189,82 @@ export function openAllAlerts(): void {
 }
 
 // ------------------------------------------------------------ 创建
-type CKind = 'price' | 'funding' | 'oi'
+type CKind = 'price' | 'funding' | 'oi' | IndicatorKind
+/** 建提醒页的起点：直接落在哪一种条件、从哪个图例 / 副图点进来的（预填参数用）、哪个周期 */
+export interface CreatePreset { kind?: CKind; from?: 'ma' | 'ema' | 'rsi'; iv?: string }
+const KIND_LABEL: [CKind, string][] = [['price', '价格'], ['funding', '费率'], ['oi', '持仓量'], ['ma_cross', '均线交叉'], ['rsi_level', 'RSI'], ['bar_breakout', '突破']]
+const isInd = (k: CKind): k is IndicatorKind => k === 'ma_cross' || k === 'rsi_level' || k === 'bar_breakout'
+/** 当前格子图上的指标（预填用）：开着哪几条、参数是图上的那份（没改过就是目录默认） */
+export function chartIndView(iv?: string): ChartIndView {
+  return {
+    iv: iv ?? st.cells[st.active]?.iv ?? '1h',
+    ma: !!st.ind.ma, ema: !!st.ind.ema, rsi: st.ind.subs.includes('rsi'),
+    params: id => st.params?.[id] ?? CATALOG[id].params,
+  }
+}
+const DIR_LABEL: Record<IndicatorKind, [string, string]> = { ma_cross: ['金叉', '死叉'], rsi_level: ['上穿', '下穿'], bar_breakout: ['上破', '下破'] }
+const segOf = <T extends string>(id: string, items: [T, string][], cur: T, attr: string, fill = true): string =>
+  `<div class="seg${fill ? ' fill' : ''}" id="${id}" role="group">${items.map(([k, l]) => `<button type="button" data-${attr}="${k}" aria-pressed="${k === cur}">${l}</button>`).join('')}</div>`
+const numInput = (id: string, v: number, label: string, mode = 'numeric'): string =>
+  `<div class="input-wrap"><input id="${id}" class="input num" inputmode="${mode}" autocomplete="off" aria-label="${label}" value="${Number.isFinite(v) ? v : ''}"></div>`
+
 let createDlg: Dialog | null = null
-export function openCreateAlert(symbol: string, price?: number | null): void {
+export function openCreateAlert(symbol: string, price?: number | null, preset: CreatePreset = {}): void {
   createDlg?.close()
   const s = sym(symbol), dec = decOf(symbol)
   const last = s?.price ?? null
-  if (last == null && price == null) { toast('还没有这只品种的价格', '行情连上后再建', 'info'); return }
-  const p0 = price ?? last!
-  let kind: CKind = 'price'
+  const macro = isMacro(symbol)
+  // 美元指数只有价格提醒（服务端白名单不收条件提醒，也没有费率、持仓量）
+  const kind0: CKind = preset.kind && !(macro && preset.kind !== 'price') ? preset.kind : 'price'
+  if (kind0 === 'price' && last == null && price == null) { toast('还没有这只品种的价格', '行情连上后再建', 'info'); return }
+  let kind: CKind = kind0
+  const p0 = price ?? last ?? 0
+  const draft: IndicatorDraft = draftFromChart(chartIndView(preset.iv), preset.from)
   let off = (): void => { /* 下面挂上 */ }
-  const KINDS: [CKind, string][] = [['price', '价格达到'], ['funding', '资金费率'], ['oi', '持仓量变化']]
+  const KINDS = macro ? KIND_LABEL.slice(0, 1) : KIND_LABEL
   const d = dialog(`${head('创建提醒', `<button class="btn ghost sm" id="aAll">全部提醒</button>`)}<div class="dialog-body"><div class="form-grid">
     <div class="sym-card">${badge(s, 'lg')}<div style="flex:1"><b>${esc(code(symbol))}</b><div class="muted" style="font-size:12px;line-height:16px">${esc(s?.cn || symbol)}</div></div><div style="text-align:right"><div class="num" style="font-weight:600">${last != null ? fmt(last, dec) : '—'}</div><div class="num ${cls(s?.pct)}" style="font-size:12px;line-height:16px">${pctText(s?.pct)}</div></div></div>
-    <div class="field"><label>条件</label><div class="seg fill" id="aKind">${KINDS.map(([k, l]) => `<button data-k="${k}" aria-pressed="${k === kind}">${l}</button>`).join('')}</div></div>
-    <div id="aVal"></div>
+    ${KINDS.length > 1 ? `<div class="field"><label>条件</label>${segOf('aKind', KINDS, kind, 'k')}</div>` : ''}
+    <div id="aVal" class="form-grid"></div>
     <div class="field"><label for="aHook">Webhook 地址 <span class="faint" style="font-weight:400">选填</span></label><div class="input-wrap"><input id="aHook" class="input" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://"></div><div class="hint" id="aHookHint"></div></div>
     <div id="aExisting"></div>
-    </div></div><div class="dialog-foot"><span class="faint" style="margin-right:auto;font-size:12px;align-self:center">响一次就结束</span><button class="btn ghost" data-close>取消</button><button class="btn primary" id="aOk">创建</button></div>`, 'alert-dlg', { label: '创建提醒', onClose: () => { if (createDlg === d) createDlg = null; off() } })
+    </div></div><div class="dialog-foot"><span class="faint" style="margin-right:auto;font-size:12px;align-self:center" id="aFootNote">响一次就结束</span><button class="btn ghost" data-close>取消</button><button class="btn primary" id="aOk">创建</button></div>`, 'alert-dlg', { label: '创建提醒', onClose: () => { if (createDlg === d) createDlg = null; off() } })
   createDlg = d
+  /** 技术指标那三种：预览这条会叫什么；参数不对就说哪里不对 */
+  function preview(): void {
+    if (!isInd(kind)) return
+    const el = $('#aPreview', d.dlg)
+    const rule = ruleFromDraft(kind, draft), err = indicatorRuleError(rule)
+    el.textContent = err ?? indicatorPhrase(rule)
+    el.classList.toggle('bad', !!err)
+  }
   function renderVal(): void {
     const v = $('#aVal', d.dlg)
+    $('#aFootNote', d.dlg).textContent = isInd(kind) ? '收盘时判 · 响一次就结束' : '响一次就结束'
     if (kind === 'price') {
       v.innerHTML = `<div class="field"><label for="aPrice">价格</label><div class="input-wrap"><input id="aPrice" class="input lg num" inputmode="decimal" value="${p0.toFixed(dec)}"><span class="suffix">USDT</span></div><div class="hint num" id="aHint"></div></div>`
       const inp = $<HTMLInputElement>('#aPrice', d.dlg)
       const hint = () => { const p = parseTarget(inp.value); $('#aHint', d.dlg).textContent = p == null ? '填一个价格' : last == null ? '' : `比现价${p >= last ? '高' : '低'} ${Math.abs((p - last) / last * 100).toFixed(2)}%` }
       inp.addEventListener('input', hint); hint(); inp.focus(); inp.select()
-    } else if (kind === 'funding') v.innerHTML = `<div class="field"><label>资金费率</label><div style="display:flex;gap:8px"><div class="seg" id="aOp"><button data-op="above" aria-pressed="true">高于</button><button data-op="below" aria-pressed="false">低于</button></div><div class="input-wrap" style="flex:1"><input id="aNum" class="input num" inputmode="decimal" value="0.05"><span class="suffix">%</span></div></div><div class="hint">现在 <span class="num">${s?.fr != null ? (s.fr * 100).toFixed(4) + '%' : '—'}</span> · 结算前 15 分钟判</div></div>`
-    else v.innerHTML = `<div class="field"><label>1 小时内持仓量变化超过</label><div class="input-wrap"><input id="aNum" class="input num" inputmode="decimal" value="5"><span class="suffix">%</span></div><div class="hint">增减都算</div></div>`
-    $<HTMLInputElement>('#aNum', d.dlg)?.focus()
+      return
+    }
+    if (kind === 'funding') { v.innerHTML = `<div class="field"><label>资金费率</label><div style="display:flex;gap:8px"><div class="seg" id="aOp"><button data-op="above" aria-pressed="true">高于</button><button data-op="below" aria-pressed="false">低于</button></div><div class="input-wrap" style="flex:1"><input id="aNum" class="input num" inputmode="decimal" value="0.05"><span class="suffix">%</span></div></div><div class="hint">现在 <span class="num">${s?.fr != null ? (s.fr * 100).toFixed(4) + '%' : '—'}</span> · 结算前 15 分钟判</div></div>`; $<HTMLInputElement>('#aNum', d.dlg).focus(); return }
+    if (kind === 'oi') { v.innerHTML = `<div class="field"><label>1 小时内持仓量变化超过</label><div class="input-wrap"><input id="aNum" class="input num" inputmode="decimal" value="5"><span class="suffix">%</span></div><div class="hint">增减都算</div></div>`; $<HTMLInputElement>('#aNum', d.dlg).focus(); return }
+    const ivs = IND_INTERVALS.map(k => [k, k] as [IndInterval, string])
+    const [up, down] = DIR_LABEL[kind]
+    const dir = kind === 'ma_cross' ? draft.maDir : kind === 'rsi_level' ? draft.rsiDir : draft.brDir
+    const maRow = (which: 'fast' | 'slow', label: string): string => {
+      const l = draft[which]
+      return `<div class="field"><label for="a${which}N">${label}</label><div class="ma-line">${segOf(`a${which}Ma`, [['sma', '简单均线'], ['ema', '指数均线']], l.ma, `ma-${which}`, false)}${numInput(`a${which}N`, l.period, `${label}长度`)}</div></div>`
+    }
+    let body = ''
+    if (kind === 'ma_cross') body = `<div class="ind-pair">${maRow('fast', '快线')}${maRow('slow', '慢线')}</div>`
+    else if (kind === 'rsi_level') body = `<div class="ind-pair"><div class="field"><label for="aRsiN">长度</label>${numInput('aRsiN', draft.rsiPeriod, 'RSI 长度')}</div><div class="field"><label for="aLevel">水平</label>${numInput('aLevel', draft.level, '水平', 'decimal')}</div></div>`
+    else body = `<div class="field"><label for="aBars">前几根</label>${numInput('aBars', draft.bars, '根数')}</div>`
+    v.innerHTML = `<div class="field"><label>周期</label>${segOf('aIv', ivs, draft.interval, 'iv')}</div>${body}
+      <div class="field"><label>方向</label>${segOf('aDir', [['up', up], ['down', down]], dir, 'dir')}<div class="hint num" id="aPreview" aria-live="polite"></div></div>`
+    preview()
+    const first = v.querySelector<HTMLInputElement>('input'); first?.focus(); first?.select()
   }
   function renderExisting(): void {
     const mine = activeAlerts(symbol)
@@ -219,11 +273,39 @@ export function openCreateAlert(symbol: string, price?: number | null): void {
   off = onAlertsChange(renderExisting)
   const hook = $<HTMLInputElement>('#aHook', d.dlg)
   hook.addEventListener('input', () => { $('#aHookHint', d.dlg).textContent = validWebhook(hook.value) ? '' : '要以 http:// 或 https:// 开头' })
+  const press = (b: HTMLElement): void => { b.parentElement?.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))) }
   d.dlg.addEventListener('click', e => {
     const t = tgt(e)
-    const k = t.closest<HTMLElement>('#aKind [data-k]'); if (k) { kind = k.dataset.k as CKind; $$('#aKind button', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b === k))); renderVal() }
-    const op = t.closest<HTMLElement>('[data-op]'); if (op) $$('[data-op]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b === op)))
+    const k = t.closest<HTMLElement>('#aKind [data-k]'); if (k) { kind = k.dataset.k as CKind; press(k); renderVal(); return }
+    const op = t.closest<HTMLElement>('[data-op]'); if (op) { press(op); return }
+    const iv = t.closest<HTMLElement>('[data-iv]'); if (iv) { draft.interval = iv.dataset.iv as IndInterval; press(iv); preview(); return }
+    const ma = t.closest<HTMLElement>('[data-ma-fast],[data-ma-slow]')
+    if (ma) { const which = ma.dataset.maFast ? 'fast' : 'slow'; draft[which] = { ...draft[which], ma: (ma.dataset.maFast || ma.dataset.maSlow) as MaType }; press(ma); preview(); return }
+    const dr = t.closest<HTMLElement>('[data-dir]')
+    if (dr && isInd(kind)) {
+      const v = dr.dataset.dir as Direction
+      if (kind === 'ma_cross') draft.maDir = v
+      else if (kind === 'bar_breakout') draft.brDir = v
+      else {
+        draft.rsiDir = v
+        const lv = flipLevel(draft.level, v)
+        if (lv !== draft.level) { draft.level = lv; const inp = d.dlg.querySelector<HTMLInputElement>('#aLevel'); if (inp) inp.value = String(lv) }
+      }
+      press(dr); preview(); return
+    }
     const x = t.closest<HTMLElement>('[data-x]'); if (x) deleteAlert(x.dataset.x || '')
+  })
+  // 指标参数框：边打边记进草稿（解析不出来记 NaN，预览那行就说哪里不对）
+  d.dlg.addEventListener('input', e => {
+    const inp = tgt(e) as HTMLInputElement
+    const n = (inp.id === 'aLevel' ? parseNumField(inp.value) : parseIntField(inp.value)) ?? NaN
+    if (inp.id === 'afastN') draft.fast = { ...draft.fast, period: n }
+    else if (inp.id === 'aslowN') draft.slow = { ...draft.slow, period: n }
+    else if (inp.id === 'aRsiN') draft.rsiPeriod = n
+    else if (inp.id === 'aLevel') draft.level = n
+    else if (inp.id === 'aBars') draft.bars = n
+    else return
+    preview()
   })
   $('#aAll', d.dlg).onclick = () => { d.close(); openAllAlerts() }
   const ok = () => {
@@ -234,6 +316,10 @@ export function openCreateAlert(symbol: string, price?: number | null): void {
       const inp = $<HTMLInputElement>('#aPrice', d.dlg), p = parseTarget(inp.value)
       if (p == null) { inp.focus(); return }
       a = makePriceAlert(symbol, p, last, { dec, webhook })
+    } else if (isInd(kind)) {
+      const rule = ruleFromDraft(kind, draft), err = indicatorRuleError(rule)
+      if (err) { toast(err, '', 'info', 2400); d.dlg.querySelector<HTMLInputElement>('#aVal input')?.focus(); return }
+      a = makeConditionAlert(symbol, rule, { webhook })
     } else {
       const inp = $<HTMLInputElement>('#aNum', d.dlg), v = parsePercent(inp.value)
       if (v == null || !conditionPercentOK(kind, v)) { inp.focus(); toast(kind === 'oi' ? '填 0.1 到 1000 之间的百分数' : '填 −10 到 10 之间的百分数', '', 'info', 2000); return }
@@ -283,6 +369,43 @@ async function checkOI(): Promise<void> {
     } catch { /* 下一分钟再看 */ }
   }
 }
+/** 技术指标提醒：每条判到了哪一根的收盘（判过的那根不再判） */
+const indJudged = new Map<string, number>()
+/** 收盘后等几秒再取：币安那根 K 线落定要一小会 */
+const CLOSE_GRACE = 2500
+let indBusy = false
+/** 页面开着时的收盘判定：哪条提醒的周期刚收了一根，就取那只品种那个周期的 K 线判一次。
+ *  第一次判（刚建、刚打开页面）只看最近收的那一根，不把页面关着那段时间的旧穿越翻出来响 */
+export async function checkIndicators(now = Date.now()): Promise<void> {
+  if (indBusy) return
+  const due = activeAlerts().filter(a => {
+    if (a.kind !== 'condition' || !isIndicatorRule(a.rule)) return false
+    const lc = lastCloseAt(a.rule.interval, now)
+    return lc > a.armedAt && lc > (indJudged.get(a.id) ?? 0) && now >= lc + CLOSE_GRACE
+  })
+  if (!due.length) return
+  indBusy = true
+  try {
+    const groups = new Map<string, Alert[]>()
+    for (const a of due) { const k = `${a.symbol}|${(a.rule as IndicatorRule).interval}`; groups.set(k, [...(groups.get(k) || []), a]) }
+    for (const [k, as] of groups) {
+      const [symbol, iv] = k.split('|') as [string, IndInterval]
+      const lc = lastCloseAt(iv, now)
+      const res = await klines(symbol, iv, undefined, Math.min(1500, Math.max(...as.map(a => barsNeeded(a.rule as IndicatorRule))) + 1), false, true)
+      // 取不到、或者最新收的那根还没出现在里面：这一轮不判，下一轮再取
+      if (!res.ok || !res.bars.some(b => b.t + IV_MS_IND[iv] === lc)) continue
+      for (const a of as) {
+        const r = a.rule as IndicatorRule
+        const i = judgeClosedBars(r, res.bars, a.armedAt, now, indJudged.get(a.id) ?? lc - IV_MS_IND[iv])
+        indJudged.set(a.id, lc)
+        if (i >= 0) fire(a, res.bars[i].c, null)
+      }
+    }
+  } finally { indBusy = false }
+}
+/** 同步被服务端拒了的技术指标提醒：每条每次打开页面只说一次 */
+const toldRejected = new Set<string>()
+
 /** 资金费率提醒：每条判过的是哪一次结算（一次结算只判窗口里的第一眼） */
 const fundingJudged = new Map<string, number>()
 
@@ -302,6 +425,15 @@ export function installAlerts(hooks: AlertUIHooks): void {
     }
   })
   setInterval(() => { void checkOI() }, 60e3)
+  setInterval(() => { void checkIndicators() }, 5e3)
+  // 服务端还不认技术指标条件时会 400：说一声中文原因（这条照样留在本机、本页开着照判，服务端认了之后同步层自己补推）
+  onRejected(({ op, code, reason }) => {
+    if (op.collection !== 'alerts') return
+    const a = st.alerts.find(x => syncIdOf(x) === op.objectId)
+    if (!a || !isIndicatorRule(a.rule) || toldRejected.has(a.id)) return
+    toldRejected.add(a.id)
+    toast('这条提醒没存上云端', `${indicatorPhrase(a.rule)}：${rejectReason(code, reason)}`, 'info', 8000)
+  })
 }
 
 /** 要一直订着的行情：提醒涉及的品种（价格、画线要逐笔价；费率要标记价） */

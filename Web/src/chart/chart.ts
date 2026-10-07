@@ -152,7 +152,7 @@ export function indFor(ind: IndState, symbol: string): IndState {
 /** 指标开关：老的几个主图叠加是布尔字段（会同步）；mains 是第三批主图叠加（加权均线、肯特纳通道、SAR…），只存本机 */
 export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]; vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean; keys?: boolean; mains?: string[] }
 
-export interface ContextMenuInfo { clientX: number; clientY: number; price: number | null; time: number; drawing?: Drawing }
+export interface ContextMenuInfo { clientX: number; clientY: number; price: number | null; time: number; drawing?: Drawing; /** 右键落在哪一格（主图 / 哪个副图） */ pane?: PaneId }
 
 export interface ChartOptions {
   onActivate?: () => void
@@ -1442,7 +1442,9 @@ export class TVChart {
   legendTools(id: string): string {
     const I = icon, hid = this.hidden.has(id)
     const hasParams = Object.keys(CATALOG[id as IndicatorId]?.params ?? {}).length > 0
-    return `<span class="tools"><button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${hid ? '显示' : '隐藏'}">${I(hid ? 'eyeOff' : 'eye', 'icon-16')}</button>${hasParams ? `<button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button>` : ''}<button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span>`
+    // 均线 / 指数均线 / RSI：一键带着图上的参数去建技术指标提醒
+    const alertBtn = (id === 'ma' || id === 'ema' || id === 'rsi') && this.o.onAlertCreate ? `<button class="ibtn xs" data-act="alert" data-id="${id}" data-tip="以此建提醒">${I('bellPlus', 'icon-16')}</button>` : ''
+    return `<span class="tools">${alertBtn}<button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${hid ? '显示' : '隐藏'}">${I(hid ? 'eyeOff' : 'eye', 'icon-16')}</button>${hasParams ? `<button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button>` : ''}<button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span>`
   }
   renderPaneLegends(panes: Pane[]): void {
     const subs = panes.slice(1)
@@ -1722,7 +1724,7 @@ export class TVChart {
       const pane = this.paneAt(y)
       const hit = this.editable() ? this.hitDrawing(x, y) : null
       const price = pane?.id === 'main' ? this.yToPrice(y, pane, this._ranges.main) : null
-      const info: ContextMenuInfo = { clientX: e.clientX, clientY: e.clientY, price, time: this.timeAt(Math.round(this.xToIndex(x))), drawing: hit?.d }
+      const info: ContextMenuInfo = { clientX: e.clientX, clientY: e.clientY, price, time: this.timeAt(Math.round(this.xToIndex(x))), drawing: hit?.d, pane: pane?.id }
       // 右键还按着（macOS 按下就发）：等松手，没拖动才弹；刚右键拖过（Windows 松手后才发）：这一次不弹
       if (this.drag?.kind === 'pan' && this.drag.vertical) { this.pendingMenu = info; return }
       if (this.rightDragged) { this.rightDragged = false; return }

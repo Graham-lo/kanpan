@@ -705,6 +705,10 @@ kbd {
 .alert-dlg { width: 520px; }
 .sym-card { display: flex; align-items: center; gap: var(--s3); padding: var(--s3); border-radius: var(--r-md); background: var(--surface-2); }
 .form-grid { display: grid; gap: var(--s5); }
+.ind-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.ma-line { display: flex; gap: var(--s2); }
+.ma-line .input-wrap { flex: 1; min-width: 0; }
+.hint.bad { color: var(--warn); }
 
 /* 周期快输 */
 .interval-pop {

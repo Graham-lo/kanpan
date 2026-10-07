@@ -25,6 +25,7 @@ import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, stream
 import { VPVR_MODES } from '../chart/overlays'
 import { keyLevelsShown, keyLevelsOf, levelsForInterval } from '../chart/keyLevels'
 import { renderAlertsPanel, alertsPanelClick, openCreateAlert, installAlerts, alertStreams, askNotify } from '../alerts/panel'
+import { isMacro } from '../market/macro'
 import { hooks, go } from '../app/shell'
 import { openNoteDialog, noteRuleText } from '../notes/dialog'
 import { installNoteSync, noteState, onNotesSynced, dropShot } from '../notes/sync'
@@ -205,7 +206,7 @@ function makeCell(i: number): Cell {
     onNeedMore: () => { void loadMore(cell) },
     onCrosshairMove: t => { if (st.linkCross) cells.forEach(o => { if (o !== cell) o.chart.syncCrosshair(t) }) },
     onContextMenu: info => chartContextMenu(cell, info),
-    onLegendAction: (id, act, btn) => legendAction(id, act, btn),
+    onLegendAction: (id, act, btn) => { if (act === 'alert') indicatorAlert(cell, id); else legendAction(id, act, btn) },
     onToolDone: d => toolDone(cell, d),
     onSelectDrawing: d => showQuick(d, cell),
     onDrawingsChanged: () => drawingsChanged(cell),
@@ -645,6 +646,13 @@ function addHlineAt(cell: Cell, t: number, p: number): void {
   if (!cell.chart.editable() || !canAdd(s, [d])) return
   drawingsFor(s).push(d); cell.chart.dirty = true; drawingsChanged(cell)
 }
+/** 图例「以此建提醒」/ RSI 副图右键：带着图上这条指标的参数进建提醒页 */
+function indicatorAlert(cell: Cell, id: string): void {
+  if (id !== 'ma' && id !== 'ema' && id !== 'rsi') return
+  const symbol = cfg(cell).symbol
+  if (isMacro(symbol)) { toast('美元指数只能建价格提醒', '', 'info', 2000); return }
+  openCreateAlert(symbol, null, { kind: id === 'rsi' ? 'rsi_level' : 'ma_cross', from: id, iv: cfg(cell).iv })
+}
 function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
   // 拿着工具时右键 = 放下（连续画也退出），不弹菜单
   if (drawTool()) { cell.chart.cancelDraft(); selectTool(null); return }
@@ -662,6 +670,7 @@ function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
     { icon: 'hline', label: `在 ${pt} 画水平线`, sc: 'Alt H', run: () => addHlineAt(cell, info.time, p) },
     { icon: 'note', label: '在这根 K 线记一笔…', run: () => openNote(info.time, p) },
     { icon: 'link', label: `复制价格 ${pt}`, run: () => { void navigator.clipboard?.writeText(p.toFixed(s?.dec ?? 2)); toast('已复制', pt, 'check', 1500) } }, '-')
+  if (info.pane === 'rsi' && !isMacro(c.symbol)) items.push({ icon: 'bellPlus', label: '以此建 RSI 提醒', run: () => indicatorAlert(cell, 'rsi') }, '-')
   items.push(
     { label: '重置视图', icon: 'candles', sc: 'Alt 0', run: () => cell.chart.resetView() },
     { label: '对数坐标', check: true, checked: cell.chart.log, run: () => { cell.chart.setLog(!cell.chart.log); $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(cell.chart.log)) } },
