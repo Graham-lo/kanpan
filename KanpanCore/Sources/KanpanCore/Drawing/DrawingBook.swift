@@ -71,6 +71,13 @@ public final class DrawingBook {
     set { archive.preferences = newValue }
   }
 
+  /// 给 `symbol` 那一桶里刚画下、还没记过的线记上是在哪个周期上画的（`DrawArchive.intervals`）。
+  /// 只是列表上给人看的一行小字：不发通知、不进撤销栈；落盘跟着这一笔编辑的那次写走。
+  @discardableResult
+  public func noteIntervals(_ interval: Interval, for symbol: String) -> Bool {
+    archive.noteIntervals(interval, for: symbol)
+  }
+
   // MARK: - 上限
 
   /// 这一桶还能再放 `count` 条吗（每品种 `DrawArchive.perSymbolLimit` 条）。

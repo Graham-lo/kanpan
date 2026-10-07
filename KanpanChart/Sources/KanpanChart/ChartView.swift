@@ -436,6 +436,26 @@ public final class ChartView: UIView {
     // 选择子式的观察者随视图释放自动摘掉，不用在 deinit 里撤。
     NotificationCenter.default.addObserver(self, selector: #selector(orderFlowWallsReady(_:)),
                                            name: ChartRenderer.OrderFlowWallCache.readyNotification, object: nil)
+    // 系统「降低透明度」一拨，画线的浓淡立刻跟上（开着时画线一律不退后）。
+    NotificationCenter.default.addObserver(self, selector: #selector(reduceTransparencyChanged),
+                                           name: UIAccessibility.reduceTransparencyStatusDidChangeNotification, object: nil)
+  }
+
+  /// 把「选中哪条、系统降不降透明度」交给底图：没选中的线按 `DrawPen.restAlpha` 退后一步，
+  /// 选中的那条画满。变了才重画底图。
+  func syncDrawingEmphasis() {
+    guard renderer != nil else { return }
+    let selected = drawingSessionIfLoaded?.selected
+    let reduce = UIAccessibility.isReduceTransparencyEnabled
+    guard renderer?.drawingSelected != selected || renderer?.reduceTransparency != reduce else { return }
+    renderer?.drawingSelected = selected
+    renderer?.reduceTransparency = reduce
+    setNeedsRedraw(.plot)
+  }
+
+  @objc private func reduceTransparencyChanged() {
+    syncDrawingEmphasis()
+    refreshDrawingOverlay()
   }
 
   /// 后台并墙算完一份（主线程上发来）。这只图上一帧拿的是旧的（或还一份都没有）才动：换一只新盒子让下一帧按新的算，
@@ -547,11 +567,16 @@ public final class ChartView: UIView {
     // 视野变了才需要知道「布局动没动」（轴宽跟着这一屏的刻度走）；旧布局此刻多半
     // 就在缓存里，取一下不花钱。
     let layoutBefore = layers.contains(.viewport) ? chartLayout : nil
+    // 叠加线超过六条时焦点跟十字线走（`overlayFocus`）：焦点换了，蜡烛那层也得重画。
+    let focusBefore = renderer?.overlayFocus()
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
     // 挂在窗口上才把并墙交给后台（离屏渲染、快照取证要这一帧就画全）。
     renderer?.orderFlowPrepareInBackground = window != nil
     renderer?.guestDrawings = guestDrawings; renderer?.ownDimmed = ownDimmed
+    renderer?.drawingSelected = drawingSessionIfLoaded?.selected
+    renderer?.reduceTransparency = UIAccessibility.isReduceTransparencyEnabled
     var parts = Self.changed(from: old, to: s)
+    if old != nil, !parts.contains(.plot), renderer?.overlayFocus() != focusBefore { parts.insert(.plot) }
     if let layoutBefore, !parts.contains(.cross), chartLayout != layoutBefore { parts.insert(.cross) }
     setNeedsRedraw(parts)
     #if DEBUG

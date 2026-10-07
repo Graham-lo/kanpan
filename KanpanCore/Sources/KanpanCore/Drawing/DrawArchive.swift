@@ -139,10 +139,36 @@ public struct DrawArchive: Sendable, Equatable, Codable {
   /// 撤销栈也跟着按周期碎成好几份，「撤销」撤掉的是哪一条要先想想现在是什么周期。
   /// 这两样都和产品基线相反。周期只改看见多长的时间，不改这张图上画了什么。
   public var bySymbol: [String: [Drawing]]
+  /// 每条线是在哪个周期上画的：线 id → `Interval.rawValue`（画线列表里那一行的「15分」）。
+  ///
+  /// **只在本机，不进同步、也不是 `Drawing` 的字段。** 线的同步是逐条、逐字段走的
+  /// （`PersonalSyncCodec`），服务端对画线对象的字段是白名单（`sync_validation.rs`），
+  /// 多一个它不认识的键整条操作就被拒、整批卡住；这一项又只是给人看的一行小字，
+  /// 不值得为它改协议。别的设备同步来的线这儿没有记录，列表上就不写周期。
+  /// 云端那批装进来是叠在本机这份存档上改的（`SyncOverlay.drawings(_:onto:)`），这张表跟着留下。
+  public var intervals: [String: String] = [:]
 
   public init(version: Int = DrawArchive.currentVersion, bySymbol: [String: [Drawing]] = [:]) {
     self.version = version
     self.bySymbol = Self.migrate(bySymbol)
+  }
+
+  /// 这条线是在哪个周期上画的；没记过（老线、别的设备画的）是 `nil`。
+  public func interval(of id: String) -> Interval? { intervals[id].flatMap(Interval.init(rawValue:)) }
+
+  /// 给 `symbol` 那一桶里还没记过周期的线记上 `interval`（刚画下的那几条），
+  /// 顺手把已经不在任何一桶里的记录清掉。真改了返回 `true`。
+  @discardableResult
+  public mutating func noteIntervals(_ interval: Interval, for symbol: String) -> Bool {
+    var next = intervals
+    for d in self[symbol] where next[d.id] == nil { next[d.id] = interval.rawValue }
+    if next.count > intervals.count {
+      let alive = Set(bySymbol.values.joined().map(\.id))
+      next = next.filter { alive.contains($0.key) }
+    }
+    guard next != intervals else { return false }
+    intervals = next
+    return true
   }
 
   private static func migrate(_ values: [String: [Drawing]]) -> [String: [Drawing]] {
@@ -245,6 +271,16 @@ public struct DrawArchive: Sendable, Equatable, Codable {
     case version = "v"
     case bySymbol = "d"
     case preferences
+    case intervals = "iv"
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(version, forKey: .version)
+    try c.encode(bySymbol, forKey: .bySymbol)
+    try c.encode(preferences, forKey: .preferences)
+    // 空的不写：老存档、没画过线的存档逐字不变。
+    if !intervals.isEmpty { try c.encode(intervals, forKey: .intervals) }
   }
 
   public init(from decoder: Decoder) throws {
@@ -264,6 +300,8 @@ public struct DrawArchive: Sendable, Equatable, Codable {
       let kept = bucket.compactMap(\.drawing)
       return kept.isEmpty ? nil : kept
     })
+    // 周期记录坏了只丢记录，线照常读。
+    intervals = ((try? c.decodeIfPresent([String: String].self, forKey: .intervals)) ?? nil) ?? [:]
   }
 }
 

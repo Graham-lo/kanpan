@@ -30,6 +30,13 @@ public struct ChartRenderer {
     didSet { if guestDrawings != oldValue { orderFlowCache = OrderFlowCache() } }
   }
   public var ownDimmed = false
+  /// 选中的那条画线（底图里它画满 1，其余按 `DrawPen.restAlpha` 退后一步）。
+  public var drawingSelected: String?
+  /// 系统「降低透明度」开着：画线一律不退后。
+  public var reduceTransparency = false
+  /// 最近一次被编辑的那把主图叠加指标（`overlayFocus` 用）：只在 `recalc` 里认，
+  /// 一次只动了一把时才记（见 `editedOverlay(from:to:)`）；那把被摘掉就清掉。
+  public private(set) var overlayEdited: IndicatorID?
   /// 最新价胶囊正在闪（P2.8）：刚来的这一口比上一口高还是低。不属于 `state`——
   /// 它是一段 150ms 的过场，不是行情，不该进 `sameFrame` 的比较，也不该被存下来。
   public var priceFlash: PriceFlash?
@@ -76,6 +83,8 @@ public struct ChartRenderer {
       || (previous.orderFlow == nil) != (state.orderFlow == nil)  // 开着主力就多一行图例，影响 mainLegendInset
     let viewportChanged = previous.viewport != state.viewport
     if inputChanged {
+      if let edited = Self.editedOverlay(from: previous, to: state) { overlayEdited = edited }
+      if let edited = overlayEdited, !state.overlays.contains(edited) { overlayEdited = nil }
       inputCache = InputCache()
       ChartWorkCounter.bump(.geometryCache)
     }
@@ -194,7 +203,10 @@ public struct ChartRenderer {
     return fmtVol(value)
   }
 
-  // Adaptive mode reserves legend rows, never changes pane allocation.
+  /// 主图顶上给图例留的高度：图例恒为一行（`LegendFit`），开着主力订单流再多一行。
+  ///
+  /// 从前「自适应指标」开着时按叠加线条数折几行、内缩跟着变高，K 线被往下顶；
+  /// 2026-10-08 起图例一律单行、放不下收「+N」，这里不再量字宽。
   func mainLegendInset(plotW: Double) -> Double {
     if let hit = inputCache.legendInset, hit.plotW == plotW { return hit.value }
     let value = computeMainLegendInset(plotW: plotW)
@@ -205,17 +217,7 @@ public struct ChartRenderer {
   private func computeMainLegendInset(plotW: Double) -> Double {
     if state.percentAxis { return compareLegendInset(plotW: plotW) }
     let orderFlowRow = orderFlowSnapshot == nil ? 0.0 : 12  // 主力订单流的图例另占一行
-    guard state.options.adaptiveIndicators else { return AICoinBehavior.mainTopInset + orderFlowRow }
-    var x = 8.0, rows = 1.0
-    for id in state.overlays {
-      let names = id.lineNames(params: state.params[id] ?? id.defaultParams)
-      for (k, name) in names.enumerated() where outputVisible(id, k) {
-        let width = Double((name + " " + indicatorNumber(state.series.close.last ?? 0, decimals: state.decimals)).width(ChartFont.axis)) + 8
-        if x + width > plotW - 4 { rows += 1; x = 8 }
-        x += width
-      }
-    }
-    return max(AICoinBehavior.mainTopInset, rows * 12 + 12) + orderFlowRow
+    return AICoinBehavior.mainTopInset + orderFlowRow
   }
 
   // ---------------------------------------------------------------- 入口
@@ -874,32 +876,43 @@ public struct ChartRenderer {
     ctx.beginPath()
     ctx.addRect(CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     ctx.clip()
+    // 超过六条时非焦点线退到 0.45（`overlayFocus`），六条以内 `focus == nil`，一条都不淡。
+    let focus = overlayFocus()
+    let fade = { (id: IndicatorID, k: Int, body: () -> Void) in
+      self.withOverlayFade(ctx, focus, OverlayLineKey(id, k), body)
+    }
     for id in state.overlays {
       guard let v = displayed(id) else { continue }
       switch id {
-      case .ma:
+      case .ma, .ema:
         for (k, a) in v.lines.enumerated() {
-          line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, k), lo: lo, hi: hi)
-        }
-      case .ema:
-        for (k, a) in v.lines.enumerated() {
-          line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, k), lo: lo, hi: hi)
+          fade(id, k) {
+            line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, k), lo: lo, hi: hi)
+          }
         }
       case .boll:
         guard v.lines.count >= 3 else { break }
-        line(ctx, pane: pane, r: r, plotW: L.plotW, arr: v.lines[1], color: t.band, lo: lo, hi: hi)
-        line(ctx, pane: pane, r: r, plotW: L.plotW, arr: v.lines[0], color: t.amber, lo: lo, hi: hi)
-        line(ctx, pane: pane, r: r, plotW: L.plotW, arr: v.lines[2], color: t.band, lo: lo, hi: hi)
+        for (k, color) in [(1, t.band), (0, t.amber), (2, t.band)] {
+          fade(id, k) {
+            line(ctx, pane: pane, r: r, plotW: L.plotW, arr: v.lines[k], color: color, lo: lo, hi: hi)
+          }
+        }
       case .vwap:
         guard let a = v.lines.first else { break }
-        line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, 0), lo: lo, hi: hi)
+        fade(id, 0) {
+          line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, 0), lo: lo, hi: hi)
+        }
       case .supertrend:
         guard let a = v.lines.first else { break }
-        directedLine(
-          ctx, pane: pane, r: r, plotW: L.plotW, arr: a, dir: v.dir ?? [], lo: lo, hi: hi)
+        fade(id, 0) {
+          directedLine(
+            ctx, pane: pane, r: r, plotW: L.plotW, arr: a, dir: v.dir ?? [], lo: lo, hi: hi)
+        }
       case .sar:
         guard let a = v.lines.first else { break }
-        dots(ctx, pane: pane, r: r, L: L, arr: a, dir: v.dir ?? [], lo: lo, hi: hi, scale: s)
+        fade(id, 0) {
+          dots(ctx, pane: pane, r: r, L: L, arr: a, dir: v.dir ?? [], lo: lo, hi: hi, scale: s)
+        }
       default: break
       }
     }

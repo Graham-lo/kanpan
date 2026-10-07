@@ -129,27 +129,13 @@ extension ChartRenderer {
     }
   }
 
-  func compareLegendInset(plotW: Double) -> Double {
-    var x = 8.0, rows = 1.0
-    for entry in compareLegend {
-      // 宽度只依赖品种名，十字线读数变化不触发几何重建。
-      let width = Double((entry.name + " −999.99%").width(ChartFont.axis)) + 8
-      if x + width > plotW - 4 { rows += 1; x = 8 }
-      x += min(width, plotW - 12)
-    }
-    return max(AICoinBehavior.mainTopInset, rows * 12 + 12)
-  }
+  /// 对比图例和叠加图例一样单行（见 `LegendFit`）：宽度不再随品种名折行，内缩恒为一行。
+  func compareLegendInset(plotW: Double) -> Double { AICoinBehavior.mainTopInset }
 
   func drawCompareLegend(_ ctx: CGContext, pane: Pane, L: Layout) {
-    var x = 8.0, y = pane.y + 9
-    ctx.saveGState(); defer { ctx.restoreGState() }
-    ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: mainLegendInset(plotW: L.plotW)))
-    for entry in compareLegend {
-      let width = Double((entry.name + " −999.99%").width(ChartFont.axis)) + 8
-      if x + width > L.plotW - 4 { x = 8; y += 12 }
-      (entry.name + " " + ChartState.comparePercentLabel(entry.value))
-        .drawLeft(at: CGPoint(x: x, y: y), font: ChartFont.axis, color: entry.color)
-      x += min(width, L.plotW - 12)
+    let items = compareLegend.map { entry in
+      LegendItem(entry.name + " " + ChartState.comparePercentLabel(entry.value), color: entry.color)
     }
+    LegendFit.draw(items, x: 8, y: pane.y + 9, maxX: L.plotW - 4, more: state.colors.dim)
   }
 }

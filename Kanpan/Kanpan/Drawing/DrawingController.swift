@@ -118,9 +118,29 @@ final class DrawingController {
     // 本机改出来的（图上画、拖、删、撤销，收下分享来的整批）才落盘；整批换进来的
     // （`useStorage` / `publishSynced`）本来就是从盘上或云端来的，不再写一遍。
     book.observe(self) { [weak self] change in
-      if case .edited = change { self?.write() }
+      if case .edited = change { self?.noteIntervals(); self?.write() }
     }
   }
+  /// 刚画下的线记上是在哪个周期上画的（画线列表那一行的周期）。只记看着的这只品种。
+  private func noteIntervals() {
+    guard let interval = chart?.state?.series.interval, !symbol.isEmpty else { return }
+    book.noteIntervals(interval, for: symbol)
+  }
+
+  /// 画线列表一行的副行：周期 · 距现价 · 价位。周期没记过（老线、别的设备画的）就不写；
+  /// 现价还没到就只写价位。距现价照自选页的写法（`changePercentText`：+ / −，两位小数）。
+  func listFacts(_ item: Drawing, decimals: Int) -> (interval: String?, distance: String?, price: String) {
+    let interval = book.archive.interval(of: item.id)?.shortLabel
+    var distance: String?
+    var price = item.a.p
+    if let series = chart?.state?.series, series.count > 0, let latest = series.close.last, latest.isFinite {
+      let t = Double(series.time(at: series.count - 1))
+      if let p = item.referencePrice(at: t, latest: latest) { price = p }
+      distance = item.distancePercent(at: t, latest: latest).map { changePercentText($0) }
+    }
+    return (interval, distance, fmtPrice(price, decimals: decimals))
+  }
+
   func attach(_ view: ChartView) {
     guard chart !== view else { return }
     chart?.onDrawingStateChanged = nil; chart?.onDrawingDragged = nil

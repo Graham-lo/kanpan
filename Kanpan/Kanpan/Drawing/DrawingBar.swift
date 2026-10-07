@@ -1,3 +1,4 @@
+import KanpanChart
 import KanpanCore
 import SwiftUI
 import UIKit
@@ -582,8 +583,15 @@ struct DrawingSheet: View {
                         // 价格的写法全 app 一个口径：品种自己的小数位 + 极小正价自动多给
                         // 几位（审查 B-07）。原来这儿按「有效数字 2–10 位」写，同一条线
                         // 在图上和在这张清单里能差出好几位。
-                        Text(fmtPrice(item.a.p, decimals: decimals))
-                          .font(TypeScale.caption).foregroundStyle(theme.ink3)
+                        //
+                        // 副行：在哪个周期上画的 · 离现价多远 · 线上离现价最近的那个价位
+                        // （`Drawing.referencePrice`：趋势线取最新那根 K 线处的投影）。
+                        let facts = controller.listFacts(item, decimals: decimals)
+                        Text([facts.interval, facts.distance.map { "距现价 " + $0 }, facts.price]
+                          .compactMap { $0 }.joined(separator: " · "))
+                          .font(TypeScale.caption).monospacedDigit().foregroundStyle(theme.ink3)
+                          .lineLimit(1)
+                          .accessibilityIdentifier("draw.object.facts.\(item.id)")
                       }.frame(maxWidth: .infinity, alignment: .leading)
                     }.accessibilityIdentifier("draw.object.\(item.id)")
                     Button {
@@ -654,7 +662,7 @@ private struct DrawingStyleEditor: View {
         // 内建的 `Section("字面量")` 那一行是系统 secondary label 灰，换皮肤不动，
         // 在一张已经全部换过肤的表上，它是唯一一处三套皮肤长得一样的字。
         Section {
-          DrawingColorControl(title: "颜色", color: Binding(get: { item.color ?? "#D6A64F" }, set: { item.color = $0 }))
+          DrawingPenSwatches(color: $item.color)
           LineWidthPicker(width: $item.lineWidth)
           // 2026-09-28 收设置项 F：样式只剩颜色与粗细。线型（实 / 虚 / 点）与「背景填充」
           // 不再给选——新线一律实线、带填充的工具一律带填充；老线存着的虚线 / 不填充照旧画。
@@ -852,7 +860,48 @@ private extension View {
   }
 }
 
+/// 画线的色板：五格全部从当前皮肤派生（`DrawPen.swatches`）。
+///
+/// 第一格「跟皮肤」存 `nil`——换皮肤、切深浅色线跟着变；其余四格存挑的那一刻的色值。
+/// 不再给系统取色器：画线的墨只该出自这张图自己的那几支色，不然一张图上又是七八种颜色。
+/// 老线存着色板之外的显式色（旧版色板、取色器挑的）时，行尾多一格「当前」把它亮出来，
+/// 点别的格就换掉；不点就原样留着。
+struct DrawingPenSwatches: View {
+  @Binding var color: Hex?
+  @Environment(\.panelTheme) private var theme
+  var body: some View {
+    let swatches = DrawPen.swatches(theme.chart)
+    let custom = color.flatMap { c in swatches.contains(where: { $0.stored == c }) ? nil : c }
+    HStack(spacing: Space.s) {
+      Text("颜色").font(TypeScale.body).foregroundStyle(theme.ink)
+      Spacer(minLength: Space.s)
+      ForEach(swatches, id: \.role) { swatch in
+        dot(swatch.shown, on: color == swatch.stored, label: swatch.name, id: "color.\(swatch.role)") {
+          color = swatch.stored
+        }
+      }
+      if let custom {
+        dot(custom, on: true, label: "当前颜色", id: "color.custom") {}
+      }
+    }
+  }
+
+  private func dot(_ hex: Hex, on: Bool, label: String, id: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Circle().fill(Color(hex: hex)).frame(width: 22, height: 22)
+        // 选中圈走皮肤的墨色，不用系统的黑白（同 `LineWidthPicker`）。
+        .overlay(Circle().stroke(on ? theme.ink : .clear, lineWidth: 2).padding(-3))
+        .hitTarget()
+    }
+    .buttonStyle(.borderless)
+    .accessibilityLabel(label)
+    .accessibilityAddTraits(on ? .isSelected : [])
+    .accessibilityIdentifier(id)
+  }
+}
+
 /// Shared native picker + one-tap swatches, storing an explicit sRGB hex value.
+/// 现在只剩指标面板在用（指标线的颜色）；画线走上面的 `DrawingPenSwatches`。
 struct DrawingColorControl: View {
   var title: String
   var identifierPrefix = "color"

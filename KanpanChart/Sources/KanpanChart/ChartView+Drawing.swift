@@ -729,6 +729,7 @@ extension ChartView {
   public func refreshDrawingOverlay() { drawing.overlay?.setNeedsDisplay() }
 
   fileprivate func drawingChanged(items: [Drawing]? = nil) {
+    syncDrawingEmphasis()
     refreshDrawingOverlay()
     if let items { drawing.onChanged?(items) }
     drawing.onState?()
@@ -1482,22 +1483,28 @@ final class DrawingOverlayView: UIView {
         plan.points = Drawing.fittedRegression(from: plan.points, series: s.series) ?? plan.points
       }
       let points = plan.points
+      let kind = DrawingPreferences.kind(for: tool, variants: d.variants)
+      // 落下来会带上这种线记住的颜色（`styles`），预览、手柄、连线就先用同一支笔，
+      // 不然画的一路是皮肤色、松手才换色。
+      let pen = d.styles[kind.rawValue]?.color
       if plan.whole {
         // 预览和落下来的是同一种画法：拖的一路上看到的就是两端延伸，不是先给一段线段。
-        var preview = Drawing(kind: DrawingPreferences.kind(for: tool, variants: d.variants), points: points)
+        var preview = Drawing(kind: kind, points: points)
+        preview.color = pen
         preview.dash = .dashed
         // 预览也喂序列：两点的区间分布在点第二下之前就该把整块柱子实时画出来，
         // 用户是照着柱子的位置决定第二下点哪儿的。
         paintDrawing(preview, ctx: ctx, axes: axes, colors: t, selected: true, handles: true,
                      series: s.series)
       } else {
-        for pt in points { handle(ctx: ctx, x: axes.x(pt.t), y: axes.y(pt.p), colors: t) }
+        for pt in points { handle(ctx: ctx, x: axes.x(pt.t), y: axes.y(pt.p), colors: t, pen: DrawPen.color(pen, t)) }
         // 还没点够的时候把**已经落下的点全连起来**，不是只连前两个。
         // XABCD 要点五下、头肩要点七下，从前点到第四下屏幕上还是当初那一小段，
         // 用户看不出自己画到哪儿了。
         for i in 1 ..< max(points.count, 1) {
           var link = Drawing(kind: .trend, points: Array(points[(i - 1)...i]))
           link.dash = .dashed
+          link.color = pen
           paintDrawing(link, ctx: ctx, axes: axes, colors: t, selected: true, handles: false)
         }
       }
@@ -1510,7 +1517,8 @@ final class DrawingOverlayView: UIView {
         readout(ctx, at: CGPoint(x: axes.x(pt.t), y: axes.y(pt.p)), point: pt, host: host, axes: axes)
       }
     }
-    bells(ctx, drawings: s.drawings, alerted: d.alerted, axes: axes, colors: t)
+    bells(ctx, drawings: s.drawings, alerted: d.alerted, axes: axes, colors: t,
+          selected: d.selected, reduce: UIAccessibility.isReduceTransparencyEnabled)
   }
 
   /// 挂着提醒的那几条线，右端一枚小铃铛。
@@ -1521,9 +1529,9 @@ final class DrawingOverlayView: UIView {
   /// 真正会响的是 B 线」。矩形与回撤的提醒线按水平价位往右延（深度审查 E-1），但图上
   /// 那块箱子 / 那组刻度只画到右锚点，铃铛仍挂在画出来的右端，不飘到图区右边的空白里。
   ///
-  /// 尺寸克制：整枚 7pt 高，只有轮廓，用皮肤的 `ink`。它是一个记号，不是一个按钮。
+  /// 尺寸克制：整枚 7pt 高，只有轮廓，和线同一支笔（`DrawPen`）。它是一个记号，不是一个按钮。
   private func bells(_ ctx: CGContext, drawings: [Drawing], alerted: Set<String>,
-                     axes: DrawAxes, colors t: ChartColors) {
+                     axes: DrawAxes, colors t: ChartColors, selected: String?, reduce: Bool) {
     guard !alerted.isEmpty else { return }
     let right = axes.layout.plotW
     for item in drawings where alerted.contains(item.id) && !item.hidden {
@@ -1534,7 +1542,11 @@ final class DrawingOverlayView: UIView {
       guard x.isFinite, x > 2, let p = line.price(at: axes.t(atX: x)), p.isFinite else { continue }
       let y = axes.y(p)
       guard y.isFinite, y > axes.pane.y, y < axes.pane.y + axes.pane.h else { continue }
-      bell(ctx, at: CGPoint(x: x, y: y), color: item.color ?? t.ink)
+      // 铃铛是这条线的记号：同一支笔、同一档浓淡（没选中就和线一起退后一步）。
+      ctx.saveGState()
+      ctx.setAlpha(DrawPen.alpha(for: item.id, selected: selected, reduceTransparency: reduce))
+      bell(ctx, at: CGPoint(x: x, y: y), color: DrawPen.color(of: item, t))
+      ctx.restoreGState()
     }
   }
 
@@ -1586,11 +1598,11 @@ final class DrawingOverlayView: UIView {
   }
 
   /// Visual handle stays compact; the selected handle accepts a 44pt touch target.
-  private func handle(ctx: CGContext, x: Double, y: Double, colors t: ChartColors) {
+  private func handle(ctx: CGContext, x: Double, y: Double, colors t: ChartColors, pen: Hex) {
     let r = CGRect(x: x - 5, y: y - 5, width: 10, height: 10)
     ctx.setFillColor(Paint.cg(t.panel))
     ctx.fillEllipse(in: r)
-    ctx.setStrokeColor(Paint.cg(t.amber))
+    ctx.setStrokeColor(Paint.cg(pen))
     ctx.setLineWidth(1.4)
     ctx.strokeEllipse(in: r)
   }
@@ -1676,7 +1688,8 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
   let placedLabels = g.layoutLabels(plotW: axes.layout.plotW, paneY: axes.pane.y, paneH: axes.pane.h,
                                     measure: measureDrawLabel)
   guard !d.hidden else { return }
-  let color = d.color ?? t.band
+  // 一条线上所有的墨都出自这一支笔（`DrawPen`）：没挑过颜色就跟皮肤。
+  let color = DrawPen.color(of: d, t)
   ctx.saveGState(); defer { ctx.restoreGState() }
   ctx.clip(to: CGRect(x: axes.bounds.left, y: axes.bounds.top, width: axes.layout.plotW, height: axes.pane.h))
   // 「多空持仓框」的两半要跟着图表的涨跌色走，别的画线一律用用户自己挑的那个颜色
@@ -1718,7 +1731,7 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
     for p in points {
       let rect = CGRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12)
       ctx.setFillColor(Paint.cg(t.panel)); ctx.fillEllipse(in: rect)
-      ctx.setStrokeColor(Paint.cg(t.amber)); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: rect)
+      ctx.setStrokeColor(Paint.cg(color)); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: rect)
     }
   }
 }

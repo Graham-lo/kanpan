@@ -488,7 +488,7 @@ final class WalkthroughDrawingUITests: WalkthroughCase {
       settle(0.6); shot("拖动后")
       let after = (chartInfo()["drawingAnchors"] as? [[[String: Double]]])?[idx] ?? []
       fact("拖动锚点", "\(before) → \(after)")
-      if app.openDrawingStyleSheet(pick: "#4A90E2") {
+      if app.openDrawingStyleSheet(pick: "down") {
         settle(0.5); shot("样式表")
         app.buttons["draw.save"].tap(); settle(0.6)
       }

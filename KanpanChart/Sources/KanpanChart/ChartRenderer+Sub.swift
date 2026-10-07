@@ -274,49 +274,64 @@ extension ChartRenderer {
 
   private func params(_ id: IndicatorID) -> [Int] { state.params[id] ?? id.defaultParams }
 
+  /// 主图叠加图例：**单行**，放不下先换短称、再把尾巴收成「+N」（见 `LegendFit`）。
   func drawLegend(_ ctx: CGContext, pane: Pane, L: Layout) {
     if state.percentAxis { drawCompareLegend(ctx, pane: pane, L: L); return }
+    let y = pane.y + 9
+    guard y < pane.y + pane.h - 6 else { return }
+    let x = LegendFit.draw(mainLegendItems(), x: 8, y: y, maxX: L.plotW - 4, more: state.colors.dim)
+    drawOrderFlowLegend(ctx, pane: pane, L: L, x: x, y: y)
+  }
+
+  /// 主图叠加图例的各段（读数跟着十字线那根）。短称：每把指标第一段留个短名，后面几段只留读数（颜色认线）。
+  func mainLegendItems() -> [LegendItem] {
     let t = state.colors
     let i = legendIndex
     let p = state.decimals
-    var x = 8.0
-    var y = pane.y + 9
-    let put = { (text: String, color: Hex) in
-      guard !text.contains("NaN"), !text.contains("--") else { return }
-      if x + Double(text.width(ChartFont.axis)) > L.plotW - 4 { x = 8; y += 12 }
-      guard y < pane.y + min(pane.h - 6, mainLegendInset(plotW: L.plotW) - 4) else { return }
-      text.drawLeft(at: CGPoint(x: x, y: y), font: ChartFont.axis, color: color)
-      x += Double(text.width(ChartFont.axis)) + 8
+    var items: [LegendItem] = []
+    /// 一把指标的几段：第一段能读出数的短称带名字，其余只留读数。
+    func group(_ name: String, _ parts: [(full: String, value: String, color: Hex)]) {
+      var named = false
+      for part in parts {
+        let item = LegendItem(part.full, short: named ? part.value : name + " " + part.value, color: part.color)
+        if item.readable { named = true }
+        items.append(item)
+      }
     }
     for id in state.overlays {
       guard let v = displayed(id) else { continue }
       switch id {
       case .ma, .ema:
-        for (k, n) in params(id).enumerated() where k < v.lines.count && outputVisible(id, k) {
-          put("\(id.name)\(n) " + indicatorNumber(reading(v.lines[k]), decimals: p), indicatorColor(id, k))
-        }
+        group(id == .ma ? "均线" : "指数", params(id).enumerated().compactMap { k, n -> (full: String, value: String, color: Hex)? in
+          guard k < v.lines.count, outputVisible(id, k) else { return nil }
+          let value = indicatorNumber(reading(v.lines[k]), decimals: p)
+          return ("\(id.name)\(n) " + value, value, indicatorColor(id, k))
+        })
       case .boll:
         // `legendIndex` 在序列为空时是 −1，指标结果也可能比序列短一截（换品种那一拍）：
-        // 裸下标会直接越界崩溃。读不到就是 NaN，`put` 自己会跳过。
+        // 裸下标会直接越界崩溃。读不到就是 NaN，`LegendItem.readable` 会把它剔掉。
         guard v.lines.count >= 3 else { break }
-        let at = { (k: Int) -> Double in v.lines[k].indices.contains(i) ? v.lines[k][i] : .nan }
-        put("上轨 " + fmtNum(at(1), p), t.band)
-        put("中轨 " + fmtNum(at(0), p), t.amber)
-        put("下轨 " + fmtNum(at(2), p), t.band)
+        let at = { (k: Int) -> String in fmtNum(v.lines[k].indices.contains(i) ? v.lines[k][i] : .nan, p) }
+        group("布林", [("上轨 " + at(1), at(1), t.band), ("中轨 " + at(0), at(0), t.amber), ("下轨 " + at(2), at(2), t.band)])
       case .vwap:
         guard let a = v.lines.first, outputVisible(id, 0) else { break }
-        put("当日均价 " + indicatorNumber(reading(a), decimals: p), indicatorColor(id, 0))
+        let value = indicatorNumber(reading(a), decimals: p)
+        items.append(LegendItem("当日均价 " + value, short: "均价 " + value, color: indicatorColor(id, 0)))
       case .supertrend, .sar:
         // 这两把的图例跟着它当前的多空走同一套涨跌色，和线上/点上看到的颜色对得上。
         guard let a = v.lines.first, outputVisible(id, 0) else { break }
         let d = v.dir.map { reading($0) } ?? .nan
-        put(id.name + " " + indicatorNumber(reading(a), decimals: p), d > 0 ? t.up : t.down)
+        let value = indicatorNumber(reading(a), decimals: p)
+        items.append(LegendItem(id.name + " " + value, short: (id == .sar ? "抛物 " : "趋势 ") + value,
+                                color: d > 0 ? t.up : t.down))
       default: break
       }
     }
     // 至今涨幅挂在图例最后一段：它读的是十字线那根，和前面几段同源。
-    if let (text, color) = sinceChangeChip { put(text, color) }
-    drawOrderFlowLegend(ctx, pane: pane, L: L, x: x, y: y)
+    if let (text, color) = sinceChangeChip {
+      items.append(LegendItem(text, short: String(text.dropFirst(3)), color: color))
+    }
+    return items
   }
 
   /// 「至今涨幅」那一段：从十字线那根的收盘到**最新一根**收盘的涨跌幅。
@@ -346,81 +361,95 @@ extension ChartRenderer {
     drawLegend(ctx, pane: L.main, L: L)
   }
 
+  /// 副图图例：和主图一样**单行**，不折第二行压线；放不下先去参数、只留读数，再收「+N」。
   private func subLegend(_ ctx: CGContext, pane: Pane, key: IndicatorID, plotW: Double) {
+    LegendFit.draw(subLegendItems(key), x: 8, y: pane.y + 8, maxX: plotW - 4, more: state.colors.dim)
+  }
+
+  /// 副图图例的各段。短称：标题去掉参数，读数去掉名字（颜色认线）。
+  func subLegendItems(_ key: IndicatorID) -> [LegendItem] {
     let t = state.colors
     let i = legendIndex
     let pal = t.sub
-    var x = 8.0
-    var y = pane.y + 8
-    let put = { (text: String, color: Hex) in
-      guard !text.contains("NaN"), !text.contains("--") else { return }
-      if x + Double(text.width(ChartFont.axis)) > plotW - 4 { x = 8; y += 11 }
-      guard y < pane.y + (key == .vol ? 24 : 26) else { return }
-      text.drawLeft(at: CGPoint(x: x, y: y), font: ChartFont.axis, color: color)
-      x += Double(text.width(ChartFont.axis)) + 8
-    }
+    var items: [LegendItem] = []
+    let put = { (full: String, short: String?, color: Hex) in items.append(LegendItem(full, short: short, color: color)) }
     let v = displayed(key)
     let at = { (a: [Double]) -> Double in reading(a) }
+    let args = { (id: IndicatorID) in "(" + params(id).map(String.init).joined(separator: ",") + ")" }
     switch key {
     case .vol:
-      if outputVisible(.vol, v?.lines.count ?? 0) { put("成交量 " + amountNumber(state.series.volume[i]), t.text) }
+      if outputVisible(.vol, v?.lines.count ?? 0), state.series.volume.indices.contains(i) {
+        let x = amountNumber(state.series.volume[i])
+        put("成交量 " + x, "量 " + x, t.text)
+      }
       if let v {
         for (k, n) in params(.vol).enumerated() where k < v.lines.count {
-          put("均量\(n) " + amountNumber(at(v.lines[k])), pal[k % pal.count])
+          let x = amountNumber(at(v.lines[k]))
+          put("均量\(n) " + x, x, pal[k % pal.count])
         }
       }
     case .macd:
-      put("平滑异同(" + params(.macd).map(String.init).joined(separator: ",") + ")", t.dim)
+      put("平滑异同" + args(.macd), "平滑异同", t.dim)
       guard let v, let hist = v.histogram, v.lines.count >= 2 else { break }
       // MACD 三个值都是价差，量级跟着价格走：0.0033 的币种上它们在 1e-5 附近，
       // 按固定 2 位小数印出来全是 0.00。跟着品种的价格精度走才读得出东西。
-      put("差值 " + indicatorNumber(at(v.lines[0]), decimals: state.decimals), pal[0])
-      put("信号 " + indicatorNumber(at(v.lines[1]), decimals: state.decimals), pal[1])
+      let d0 = indicatorNumber(at(v.lines[0]), decimals: state.decimals)
+      let d1 = indicatorNumber(at(v.lines[1]), decimals: state.decimals)
+      put("差值 " + d0, d0, pal[0])
+      put("信号 " + d1, d1, pal[1])
       let h = at(hist)
-      put("柱值 " + indicatorNumber(h, decimals: state.decimals), h >= 0 ? t.up : t.down)
+      let hs = indicatorNumber(h, decimals: state.decimals)
+      put("柱值 " + hs, hs, h >= 0 ? t.up : t.down)
     case .rsi:
-      put("强弱(\(Int(state.rsiUpper))/\(Int(state.rsiLower)))", t.dim)
+      put("强弱(\(Int(state.rsiUpper))/\(Int(state.rsiLower)))", "强弱", t.dim)
       guard let v else { break }
       for (k, n) in params(.rsi).enumerated() where k < v.lines.count {
-        put("\(n) " + indicatorNumber(at(v.lines[k]), decimals: 1), pal[k % pal.count])
+        let x = indicatorNumber(at(v.lines[k]), decimals: 1)
+        put("\(n) " + x, x, pal[k % pal.count])
       }
     case .kdj:
-      put("随机(" + params(.kdj).map(String.init).joined(separator: ",") + ")", t.dim)
+      put("随机" + args(.kdj), "随机", t.dim)
       guard let v, v.lines.count >= 3 else { break }
-      put("快线 " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
-      put("慢线 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
-      put("敏感线 " + indicatorNumber(at(v.lines[2]), decimals: 1), pal[2])
+      for (k, name) in ["快线", "慢线", "敏感线"].enumerated() {
+        let x = indicatorNumber(at(v.lines[k]), decimals: 1)
+        put(name + " " + x, x, pal[k])
+      }
     case .srsi:
-      put("随机强弱", t.dim)
+      put("随机强弱", nil, t.dim)
       guard let v, v.lines.count >= 2 else { break }
-      put("快线 " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
-      put("慢线 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
+      for (k, name) in ["快线", "慢线"].enumerated() {
+        let x = indicatorNumber(at(v.lines[k]), decimals: 1)
+        put(name + " " + x, x, pal[k])
+      }
     case .atr:
       guard let v, let a = v.lines.first else { break }
-      put("真实波幅\(params(.atr)[0]) " + fmtNum(at(a), state.decimals), pal[0])
+      let x = fmtNum(at(a), state.decimals)
+      put("真实波幅\(params(.atr)[0]) " + x, "波幅 " + x, pal[0])
     case .lsr, .taker, .basis:
-      put(key.name, t.dim)
+      put(key.name, nil, t.dim)
       if let values = v?.lines.first, reading(values).isFinite {
-        put(subValueText(reading(values), indicator: key), indicatorColor(key, 0))
+        put(subValueText(reading(values), indicator: key), nil, indicatorColor(key, 0))
       }
     case .dmi:
-      put("动向(" + params(.dmi).map(String.init).joined(separator: ",") + ")", t.dim)
+      put("动向" + args(.dmi), "动向", t.dim)
       guard let v, v.lines.count >= 3 else { break }
-      put("多头动向 " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
-      put("空头动向 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
-      put("趋势强度 " + indicatorNumber(at(v.lines[2]), decimals: 1), pal[2])
+      for (k, name) in ["多头动向", "空头动向", "趋势强度"].enumerated() {
+        let x = indicatorNumber(at(v.lines[k]), decimals: 1)
+        put(name + " " + x, x, pal[k])
+      }
     case .cvd:
-      put(key.name, t.dim)
+      put(key.name, nil, t.dim)
       // 读数按涨跌色：为正是这一段被主动买上去的，为负是被主动卖下去的。
       if let x = (v?.lines.first).map({ at($0) }), x.isFinite {
-        put(amountNumber(x), x >= 0 ? t.up : t.down)
+        put(amountNumber(x), nil, x >= 0 ? t.up : t.down)
       }
     case .oi:
       let x0 = (v?.lines.first).map { at($0) }.flatMap { $0.isFinite ? amountNumber($0) : nil } ?? "--"
-      put("持仓量 " + x0, t.oi)
+      put("持仓量 " + x0, "持仓 " + x0, t.oi)
 
     default: break
     }
+    return items
   }
 
   // ---------------------------------------------------------------- 画线
@@ -436,18 +465,40 @@ extension ChartRenderer {
                         view: state.view, decimals: state.decimals)
     // `series` 也必须传：计算型工具（VWAP、成交量分布）的形状是从这段 K 线里算出来的，
     // 漏了它们在底层就只剩一个手柄，选中覆盖层却画得出来——一选中就多出一整块柱子。
+    //
+    // 没在编辑的线退后一步（`DrawPen.restAlpha`）：整批画进**一个**透明层再统一降不透明度，
+    // 线与自己的填充、字叠在一起不会叠出更深的一块，几十条线也只开一层。选中的那条画满，
+    // 排在最后（盖在别的线上面）；正在拖的那条底图跳过，由覆盖层整只画。
     ctx.saveGState()
     if ownDimmed { ctx.setAlpha(0.35); ctx.beginTransparencyLayer(auxiliaryInfo: nil) }
     if state.options.drawings {
-      for d in state.drawings where d.id != state.drawingPreviewID {
+      let rest = state.drawings.filter { $0.id != state.drawingPreviewID && $0.id != drawingSelected }
+      paintFaded(ctx, alpha: drawingRestAlpha) {
+        for d in rest { paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors, series: state.series) }
+      }
+      if let sel = drawingSelected, sel != state.drawingPreviewID,
+         let d = state.drawings.first(where: { $0.id == sel }) {
         paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors, series: state.series)
       }
     }
     if ownDimmed { ctx.endTransparencyLayer() }
     ctx.restoreGState()
-    for d in guestDrawings {
-      paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors, series: state.series)
+    paintFaded(ctx, alpha: drawingRestAlpha) {
+      for d in guestDrawings {
+        paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors, series: state.series)
+      }
     }
+  }
+
+  /// 没选中的画线此刻画多浓（系统「降低透明度」开着就是 1）。
+  var drawingRestAlpha: CGFloat { reduceTransparency ? 1 : DrawPen.restAlpha }
+
+  /// 在一只降了不透明度的透明层里画一批；`alpha == 1` 就直接画，不开层。
+  func paintFaded(_ ctx: CGContext, alpha: CGFloat, _ body: () -> Void) {
+    guard alpha < 1 else { body(); return }
+    ctx.saveGState(); ctx.setAlpha(alpha); ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+    body()
+    ctx.endTransparencyLayer(); ctx.restoreGState()
   }
 }
 

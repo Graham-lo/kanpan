@@ -1633,10 +1633,12 @@ extension ChartFoundationUITests {
     app.buttons["draw.undo"].tap(); XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 0 })
     app.buttons["draw.redo"].tap(); XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 })
     // Undo removes selection; tap the actual line after redo.
+    // 点线的中段而不是第一下落点：磁吸把端点吸到那根 K 线的高 / 低上，端点可能离落点十来 pt
+    // （行情不同差多少不同），中段是两端吸附的平均、离得最近；后面长按锁定点的也是这儿。
     origin = canvas.coordinate(withNormalizedOffset: .zero)
-    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
-    XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 3))
-    XCTAssertTrue(app.openDrawingStyleSheet(pick: "#4A90E2"), "样式面板里点不到蓝色")
+    origin.withOffset(CGVector(dx: 160, dy: 130)).tap()
+    XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 3), String(describing: info()))
+    XCTAssertTrue(app.openDrawingStyleSheet(pick: "down"), "样式面板里点不到跌色")
     // 「换一种画法」：面板上只摆十二把，射线活在线段这一族的这一行里
     // （`Drawing.Kind.swaps`）。换完点数不变，所以这条线原地变成射线、id 也不换。
     switchDrawKind(to: "向右延伸")
@@ -1647,7 +1649,10 @@ extension ChartFoundationUITests {
     XCTAssertFalse(app.textFields["draw.price.0"].exists, "样式表里还有端点价格输入框")
     shot("画线-样式表只剩颜色粗细")
     app.buttons["draw.save"].tap()
-    XCTAssertTrue(wait { self.info()["drawingColors"] as? [String] == ["#4A90E2"] })
+    // 跌色从皮肤来，色值随皮肤变：只认「挑了一支显式色」（不再是跟皮肤的 default），重启后原样。
+    XCTAssertTrue(wait { (self.info()["drawingColors"] as? [String]).map { $0.count == 1 && $0[0] != "default" } ?? false },
+                  String(describing: info()))
+    let picked = info()["drawingColors"] as? [String]
     XCTAssertEqual(info()["drawingKinds"] as? [String], ["ray"], "换画法没生效，或者被 isValid 挡掉了")
     // 锁定挪到图上：按住线不动 400ms 锁上，再按一次解开，第三次再锁上。
     let onLine = canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 160, dy: 130))
@@ -1664,7 +1669,7 @@ extension ChartFoundationUITests {
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids }, String(describing: info()))
-    XCTAssertEqual(info()["drawingColors"] as? [String], ["#4A90E2"])
+    XCTAssertEqual(info()["drawingColors"] as? [String], picked)
     XCTAssertEqual(info()["drawingLocked"] as? [Bool], [true])
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     XCTAssertTrue(app.openDrawList(), "「更多」里开不出画线列表")

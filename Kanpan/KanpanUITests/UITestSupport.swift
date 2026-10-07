@@ -668,12 +668,15 @@ extension XCUIApplication {
   /// 打开选中画线的样式面板并挑一个颜色。
   ///
   /// 样式面板第二批改成了 `.fraction(0.4)` 起手的半屏（图还看得见），色板在那一截里
-  /// 有可能被挡住或落在屏幕外——直接点 `color.<hex>` 会「no matches found」。
+  /// 有可能被挡住或落在屏幕外——直接点 `color.<角色>` 会「no matches found」。
   /// 所以这里先等面板起来，色板点不到就把导航栏往上拖到 `.large` 再点。
-  @discardableResult func openDrawingStyleSheet(pick hex: String) -> Bool {
+  ///
+  /// 色板 2026-10-08 起全从皮肤派生（`DrawPen.swatches`），按角色认：
+  /// `skin`（跟皮肤）/ `light` / `up` / `down` / `ink`，不再按写死的色值认。
+  @discardableResult func openDrawingStyleSheet(pick role: String) -> Bool {
     buttons["draw.style"].tap()
     guard buttons["draw.save"].waitForExistence(timeout: 8) else { return false }
-    let swatch = buttons["color.\(hex)"]
+    let swatch = buttons["color.\(role)"]
     if !swatch.waitForExistence(timeout: 2) || !swatch.isHittable {
       let bar = navigationBars.element(boundBy: 0)
       if bar.exists {
