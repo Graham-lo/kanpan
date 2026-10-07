@@ -208,3 +208,20 @@ SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexr
  WHERE c.relname LIKE 'orderflow_orders_end%';                                         -- 只剩 orderflow_orders_end_covering、t
 SELECT relname, reloptions FROM pg_class WHERE relname IN ('orderflow_orders','orderflow_heat','market_features');
 ```
+
+## 0051 上线（2026-10-07 足迹图 / 秒线历史）
+
+跟着 `ops/install.py` 的 `migrate` 走，不需要手工 SQL、不需要停服务：
+
+- **0051**：新建 `orderflow_footprint(base, minute_ms, step, levels)` 与 `klines_seconds(base, minute_ms, symbol, tick, bars)`，
+  主键都是 `(base, minute_ms)`，各设 `autovacuum_vacuum_insert_scale_factor=0.05`。只建新表，不碰已有的表；旧二进制不认识它们，无害。
+  新二进制起来后一分钟过完再 3 秒开始写；保留 3 天，表文件分别不超过 2 GiB、1 GiB（`src/storage_budget.rs`）。
+
+只读核对：
+
+```sql
+SELECT relname, reloptions FROM pg_class WHERE relname IN ('orderflow_footprint','klines_seconds');
+SELECT count(DISTINCT base), count(*), to_timestamp(max(minute_ms)/1000) FROM orderflow_footprint; -- 只数≈在跟的 base，最新一分钟接近此刻
+SELECT count(DISTINCT base), count(*), to_timestamp(max(minute_ms)/1000) FROM klines_seconds;      -- 只数≈在跟且有币安 U 本位永续的
+SELECT pg_size_pretty(pg_total_relation_size('orderflow_footprint')), pg_size_pretty(pg_total_relation_size('klines_seconds'));
+```

@@ -38,15 +38,21 @@
 //!   接口 `GET /v1/market/orderflow/heat`，见 `heat.rs`。
 //! * 大单与散户的分钟成交（网页版）：同一个跟踪任务把去重后的每笔成交按分钟记大单（≥ 门槛 / 50）与散户（< 1 万美元）的主动买卖额，
 //!   写进 `orderflow_flow`，接口 `GET /v1/market/orderflow/flow`，见 `flow.rs`。
+//! * 足迹图与秒线（网页版，2026-10-07）：同一批成交按交易所给的时刻记每分钟每个价位桶的主动买卖额（`orderflow_footprint`，
+//!   接口 `GET /v1/market/orderflow/footprint`，见 `footprint.rs`），币安 U 本位永续的再记每秒的开高低收与量（`klines_seconds`，
+//!   接口 `GET /v1/market/klines/seconds`，见 `seconds.rs`）；写库与清理共用 `minutes.rs`，各自的磁盘预算在 `storage_budget.rs`。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
 mod feeds;
 mod flow;
+mod footprint;
 mod heat;
 mod hub;
 mod layers;
+mod minutes;
 mod model;
 mod resources;
+mod seconds;
 mod snapshots;
 mod store;
 
@@ -444,6 +450,9 @@ struct Tracker {
  last_trade:HashMap<String,i64>,
  /// 这一分钟的大单 / 散户成交（去重之后，见 `flow.rs`）。
  flow:flow::Acc,
+ /// 这几分钟的足迹（价位桶 × 主动买卖，见 `footprint.rs`）与币安 U 本位永续的秒线（见 `seconds.rs`）。
+ footprint:footprint::Acc,
+ seconds:seconds::Acc,
  /// 挂着的单上次写库时的量、成交、门槛与时刻（见 `changed_live`）。
  written:HashMap<LiveKey,(f64,f64,f64,i64)>,
  priority:Arc<AtomicU8>,
@@ -459,6 +468,13 @@ impl Tracker {
  fn calibrating(&self)->bool {self.calibration.needed&&self.calibration.value.is_none()}
 
  fn add_venues(&mut self,venues:&[Venue]) {
+  for v in venues.iter().filter(|v|self.planned.of(wire_product(v.product)).is_some()) {
+   let scale=v.price_scale.unwrap_or(1).max(1) as f64;
+   if v.product!=Product::Delivery {self.footprint.tick(v.tick/scale);}
+   if v.exchange==Exchange::Binance&&v.product==Product::UsdtPerp {
+    self.seconds.venue(seconds::Venue{id:info(v).id,symbol:v.instrument.clone(),tick:v.tick,scale});
+   }
+  }
   let known:HashSet<String>=self.model.venue_ids().into_iter().collect();
   let fresh:Vec<VenueInfo>=venues.iter().filter(|v|self.planned.of(wire_product(v.product)).is_some()).map(info).filter(|v|!known.contains(&v.id)).collect();
   if fresh.is_empty() {return}
@@ -529,14 +545,19 @@ impl Tracker {
     let action=self.model.ingest(&venue,connection,message,now);
     self.resync(&venue,action,ready_since,now);
    },
-   Event::Trade{venue,trade,id}=>{
+   Event::Trade{venue,trade,id,at}=>{
     if let Some(id)=id {
      let last=self.last_trade.entry(venue.clone()).or_insert(i64::MIN);
      if id<=*last {return}
      *last=id;
     }
     let usd=self.model.book_mut(&venue).map_or(0.0,|b|b.venue.notional.usd(trade.price,trade.quantity));
-    flow::submit(&self.base,self.flow.add(usd,flow::is_buy(trade.hit),flow::big_cut(&self.model.thresholds),now));
+    let buy=flow::is_buy(trade.hit);
+    flow::submit(&self.base,self.flow.add(usd,buy,flow::big_cut(&self.model.thresholds),now));
+    // 足迹与秒线按交易所给的成交时刻分分钟、分秒（交割合约有基差，不进足迹）。
+    let at=minutes::trade_time(at,now);
+    if !venue.contains(":delivery:") {self.footprint.add(trade.price,usd,buy,at);}
+    if venue.starts_with(seconds::VENUE_PREFIX) {self.seconds.add(&venue,trade.price,trade.quantity,buy,at);}
     self.model.trade(&venue,trade,now);
    },
    Event::Snapshot{venue,epoch,snapshot}=>{
@@ -632,6 +653,8 @@ impl Tracker {
  async fn hand_over(&mut self)->Final {
   self.write_ended().await;
   flow::submit(&self.base,self.flow.take());
+  footprint::submit(&self.base,self.footprint.take());
+  seconds::submit(&self.base,self.seconds.take());
   let live=self.model.live();
   let rows=changed_live(live.clone(),&mut self.written,now_ms(),i64::MAX);
   if !rows.is_empty() {let _=self.writes.send(Write{step:self.step(),rows}).await;}
@@ -721,6 +744,8 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
     }
     t.due_retries(now);
     flow::submit(&t.base,t.flow.roll(now));
+    footprint::submit(&t.base,t.footprint.roll(now));
+    seconds::submit(&t.base,t.seconds.roll(now));
     t.write_ended().await;
    },
    _=flush.tick()=>t.write_live().await,
@@ -768,7 +793,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  let (writes,rx)=mpsc::channel::<Write>(WRITES_QUEUE);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
  let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,control,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
-  epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority,writes,
+  epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority,writes,
   calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
   Ok(rows) if needed=>t.calibration.restored=Some((rows,now_ms())),
@@ -796,6 +821,8 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  t.model.stop();
  t.write_ended().await;
  flow::submit(&base,t.flow.take());
+ footprint::submit(&base,t.footprint.take());
+ seconds::submit(&base,t.seconds.take());
  hub::remove(t.model.venue_ids(),&t.events);
  drop(t);
  // 等写库任务写完手里的（它自己最多再试 `WRITE_DRAIN`）：注册表按这个任务结束判断收尾完了。
@@ -1283,6 +1310,8 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
  let pool=POOL.get_or_init(||own_pool(&pool)).clone();
  heat::start(pool.clone());
  flow::start(pool.clone());
+ footprint::start(pool.clone());
+ seconds::start(pool.clone());
  tokio::spawn(async move {
   let registry=REGISTRY.get_or_init(||Arc::new(Registry::new(pool.clone()))).clone();
   let enabled=Enabled::from_env();
@@ -1343,6 +1372,15 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
       Ok(deleted)=>tracing::info!("Orderflow flow: purge deleted {deleted}; table {} bytes",flow::size(&pool).await.unwrap_or(-1)),
       Err(e)=>tracing::warn!("Orderflow flow: purge failed: {e}"),
      }
+     match footprint::purge(&pool,now_ms()).await {
+      Ok(deleted)=>tracing::info!("Orderflow footprint: purge deleted {deleted}"),
+      Err(e)=>tracing::warn!("Orderflow footprint: purge failed: {e}"),
+     }
+     match seconds::purge(&pool,now_ms()).await {
+      Ok(deleted)=>tracing::info!("Orderflow seconds: purge deleted {deleted}"),
+      Err(e)=>tracing::warn!("Orderflow seconds: purge failed: {e}"),
+     }
+     crate::storage_budget::report(&pool).await;
     },
    }
   }
@@ -1601,6 +1639,7 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,limit:i64,thr
 
 pub fn routes()->Router<AppState> {
  Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat)).route(flow::PATH,get(flow::flow))
+  .route(footprint::PATH,get(footprint::footprint)).route(seconds::PATH,get(seconds::seconds))
 }
 
 #[cfg(test)]
@@ -1692,7 +1731,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(1.0),..Default::default()};
   let t=Tracker{base:"ZZSLOW".into(),model:Model::new("ZZSLOW",thresholds),events:events.clone(),control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   let (stop_tx,stop)=watch::channel(false);
   let slow=|_due:bool|async {tokio::time::sleep(Duration::from_secs(100)).await;Refreshed{venues:vec![],thresholds:None}};
@@ -1719,7 +1758,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(100.0),usdt_perp:Some(5e6),..Default::default()};
   let t=Tracker{base:base.into(),model:Model::new(base,thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   (t,inbox,control_rx,writes_rx)
  }
@@ -1892,7 +1931,7 @@ mod tests {
    Restored{order:order(90),step:1.0,seen_ms:read_at-130_000},
   ];
   let mut t=Tracker{base:"ZZSTOCK".into(),model:Model::new("ZZSTOCK",thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:true,value:None,day:None,partial:false,since:read_at,subscribed:read_at,restored:Some((rows,read_at))},planned:thresholds,shared};
   t.calibrate(read_at+237_000);
   assert!(t.calibration.value.is_some(),"标定了");

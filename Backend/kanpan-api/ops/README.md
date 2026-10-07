@@ -130,7 +130,7 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 `GET /v1/market/orderflow/heat` 读。设计与接口见 `docs/主力订单流-方案-2026-09-24.md`「深度热力快照」。
 
 - 日志（info）：每 10 分钟 `Orderflow heat: last 600s wrote N bands / M buckets (… bands/s, ~… MB/day of rows) in K statements, …s busy; dropped a (queue full), b (write failed)`；
-  每小时 `Orderflow heat: purge deleted …; table … bytes`。`dropped` 不为 0 说明库跟不上；表超过 36 GB 会 warn `size gate trimmed to …`。
+  每小时 `Orderflow heat: purge deleted …; table … bytes`。`dropped` 不为 0 说明库跟不上；原始表与三张预聚合表合计超过热力的预算（20 GiB，见下「磁盘预算」）会 warn `size gate trimmed to …`。
 - 看体积：`SELECT pg_size_pretty(pg_total_relation_size('orderflow_heat'))`；看写入：`SELECT count(*)/12.0 FROM orderflow_heat WHERE bucket_ms > (SELECT max(bucket_ms)-60000 FROM orderflow_heat)`（每 5 秒几行）。
 - 2026-09-29 线上稳态（154 只）：每 5 秒约 460 行 / 1.85 万桶，一行约 626 字节（含索引约 713），一天约 5.6 GB，3 天约 17 GB；满额 220 只约 24 GB。
   写库 10 分钟忙约 8 秒。冷启动头几分钟币安快照还在排队，行数从几十爬到稳态。
@@ -157,6 +157,45 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 - 体积：220 只 3 天最多约 95 万行、几十 MB，不设闸门。看写入：`SELECT count(*) FROM orderflow_flow WHERE minute_ms = (SELECT max(minute_ms) FROM orderflow_flow)`（约等于在跟的只数）。
 - 同参数 20 秒内只读一次库，答复 `Cache-Control: public, max-age=20`；和 `/history`、热力共用两个读名额。没在跟的 base 回 `tracked:false`、空 `rows`，不起跟。
 - 删表回退：只给这张副图用，回滚二进制即可；`TRUNCATE orderflow_flow` 不影响别的。
+
+### 足迹图与秒线历史（2026-10-07，`footprint.rs`、`seconds.rs`、`minutes.rs`，表 `orderflow_footprint`、`klines_seconds`，迁移 0051）
+
+同一个跟踪任务、同一批去重后的成交（不另开交易所连接），按交易所给的成交时刻（币安 `T`、OKX `ts`、Coinbase `time`；离此刻 10 秒以上不信，按收到的时刻）分分钟、分秒；
+一分钟过完再等 3 秒交给各自的写库任务，一只 base 一分钟一行、内容打包成 bytea。
+
+- **足迹** `GET /v1/market/orderflow/footprint?symbol=BTCUSDT&from=&to=` → `{"symbol","step","minutes":[{"t","rows":[[价,主动买美元,主动卖美元],…]}]}`：
+  三家现货与永续（不含交割）每分钟每个价位桶的主动买卖美元额；桶宽 = 价 × 0.0002 取到最近的 1/2/5×10ⁿ、不小于几家里最小的跳价，
+  价在原桶宽 0.6–1.8 倍之间不换，存在行上；`price` 是桶的下沿、升序。`from` 缺省 `to` 前 1 小时，区间超过 24 小时回 400 `range_too_long`；
+  区间里桶宽不止一个的整段按最粗的报。没在跟的 base 回 200、`step:null`、空 `minutes`。`1000PEPEUSDT` 的价按 1000 个币报，`PEPEUSDT` 按一个币。
+- **秒线** `GET /v1/market/klines/seconds?symbol=BTCUSDT&from=&to=` → `{"symbol","bars":[[ts,o,h,l,c,量,主动买量],…]}`：
+  只有币安 U 本位永续的 aggTrade，每秒一根，一秒里没成交就没有这根；价与量是币安挂牌的原样（问 `PEPEUSDT` 的换成每个币）。
+  `from` 缺省 `to` 前 30 分钟，区间超过 6 小时回 400 `range_too_long`；没在跟的回 200、空 `bars`。最近一分钟要过完再 3 秒才进库。
+- 两条都和 `/flow` 同一套：不要登录，同样的请求 20 秒内只读一次库，答复 `Cache-Control: public, max-age=20`，读库占 `HISTORY_READS`；
+  `symbol` 不是 `…USDT`、base 不合法回 400 `invalid_symbol`。SG 的 Caddy 本来就放行 `/v1/market/*`，不用改。
+- 写库：每张表一个写库任务，攒一批一条 `INSERT … ON CONFLICT DO NOTHING RETURNING`；库里已经有的那一分钟（停机交出的半分钟、重启后的另半分钟）
+  在事务里 `SELECT … FOR UPDATE` 读出来合并再写回。日志（info）每小时 `Orderflow orderflow_footprint: last 3600s wrote N base-minutes (M merged into existing rows); dropped a (queue full), b (write failed)`，秒线同样一行。
+- 清理：每小时和订单流的滚动清理一起，逐只 base 删 3 天以前的（`Orderflow footprint: purge deleted …`、`Orderflow seconds: purge deleted …`）；
+  再看各自的预算（足迹 2 GiB、秒线 1 GiB），超了从最旧的 6 小时一截一截删到线下 10%，warn `size gate trimmed to …`。
+- 体积估计（220 只）：足迹一分钟几十到两百档、每档约 10 字节，3 天约 0.2–0.5 GB；秒线活跃的一分钟约 60 根、七八百字节，3 天约 0.5–0.9 GB。
+  看体积：`SELECT pg_size_pretty(pg_total_relation_size('orderflow_footprint')), pg_size_pretty(pg_total_relation_size('klines_seconds'))`；
+  看写入：`SELECT count(*) FROM klines_seconds WHERE minute_ms = (SELECT max(minute_ms) FROM klines_seconds)`（约等于在跟、有币安 U 本位永续的只数）。
+- 删表回退：只给网页版的足迹图与秒线用，回滚二进制即可；两张表都可以 `TRUNCATE`，不影响别的。
+
+### 磁盘预算（2026-10-07，`src/storage_budget.rs`）
+
+行情类历史几张大表合起来不超过 **30 GiB**，按一张常量表分到各自头上（全仓库只有那里写预算数字），每张只看自己那一条线、超了只删自己最旧的：
+
+| 预算 | 表 | 上限 |
+| --- | --- | --- |
+| 热力 | `orderflow_heat` + `orderflow_heat_rollup_30s/150s/900s` | 20 GiB |
+| 足迹 | `orderflow_footprint` | 2 GiB |
+| 秒线 | `klines_seconds` | 1 GiB |
+| 找相似 | `market_features` | 3 GiB |
+| 大单 | `orderflow_orders` + `orderflow_live` | 4 GiB |
+
+两道删法沿用原来的：各自按保留期滚动删（订单流几张 3 天、找相似 365 天）；表文件（`pg_total_relation_size`，含索引与 TOAST）超过线才动手，
+按「行数 × 每行占用」估实际占用、从最旧的一截一截删到线下 10%。删掉的空间留给以后的插入，表文件不缩。
+找相似的闸门删到哪儿记在 `orderflow_purged`（target `market_features`），回填不再往前补。每小时清理后打一行 `Storage budget: market history X/30 GiB (…)`，合计超过 30 GiB 记 warn。
 
 ### 上线
 
