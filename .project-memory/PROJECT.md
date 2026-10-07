@@ -1307,3 +1307,75 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   - 09：两格只回放当前格；
   - 10：秒级置灰。
 - **没部署**：按任务要求只推 main，网页版没上线。
+
+## 46. 技术指标提醒（服务端，2026-10-07）
+
+**状态**：代码已进 main（37dce028、a815f6f0），**待部署**。按任务要求没有部署；部署另行安排。网页端界面由另一路在做。
+
+- **线上格式**：放在条件提醒（alert `kind:"condition"`）现有的条件字段 `rule` 里，用 `kind` 区分。字段名和网页端约定的一字不差：
+  ```json
+  {"kind":"ma_cross","interval":"15m","fast":{"ma":"ema","period":9},"slow":{"ma":"sma","period":21},"direction":"up"}
+  {"kind":"rsi_level","interval":"1h","period":14,"level":70,"direction":"up"}
+  {"kind":"bar_breakout","interval":"4h","bars":20,"direction":"up"}
+  ```
+  - 取值范围：
+    - `interval`：1m / 5m / 15m / 30m / 1h / 4h / 1d
+    - `ma`：sma / ema
+    - `direction`：up / down
+    - `period`、`bars`：2–500
+    - `level`：1–99，可以带小数
+  - 旧的条件提醒用 `type` 区分，`rule` 里有 `type` 时照旧走老路。认不出的 `kind`（只含小写字母和下划线）按「未知」存着不判，留给以后的新版本。
+- **校验**：在 `sync.rs` 的 `Operation::validate` 里做，规则不合法回 400，正文是 `{"error":{"code":…,"message":"中文原因"}}`，`message` 是新加的。
+  - 错误码与中文原因：
+    - `indicator_kind`：类型不对
+    - `indicator_interval`：周期不对
+    - `indicator_ma`：均线类型不对
+    - `indicator_ma_period`：均线周期超范围
+    - `indicator_same_ma`：快线和慢线相同
+    - `indicator_rsi_period`：RSI 周期超范围
+    - `indicator_level`：RSI 阈值超范围
+    - `indicator_bars`：突破根数超范围
+    - `indicator_direction`：方向不对
+    - `indicator_rule_too_large`：条件内容太长
+  - 品种必须是币安 U 本位合约里正在交易的（查 exchangeInfo 缓存），否则 400 `indicator_symbol`。exchangeInfo 拿不到时放行并记一条警告。
+- **判定语义**（`src/conditions/indicators.rs`）：
+  - 只在该周期 K 线收盘后判，正在走的那根不算。复用 `MaClock` 对表：收线后去取，币安还没收好就隔一会儿重取。
+  - 数据来自币安 U 本位合约 `fapi/v1/klines`。
+  - 公式照 TradingView：
+    - EMA 用前 period 根的 SMA 做种子
+    - RSI 用 Wilder 平滑；平均跌幅为 0 时取 100，平均涨幅为 0 时取 0
+  - 穿越的判法：上穿是前一根 ≤ 且这一根 >，下穿是前一根 ≥ 且这一根 <，恰好相等不算穿越。
+  - 突破的判法：收盘价严格高于前 N 根的最高（向下是严格低于前 N 根的最低），不含当根。
+  - 只判建立（武装）之后才收盘的 K 线。
+  - 每条只响一次：先过进程内的去重集合，再由 `alerts::record_fired` 的 `WHERE status='active'` 把关，然后发推送。
+  - 推送标题由服务端统一生成，例如：
+    - 「BTCUSDT 15m：EMA9 上穿 SMA21」
+    - 「ETHUSDT 1h：RSI(14) 上穿 70」
+    - 「SOLUSDT 4h：收盘突破前 20 根最高」（向下是「收盘跌破前 N 根最低」）
+  - 推送正文带当时的数值，例如「SMA2 8.50 · SMA3 8.33 · 收盘 9.00」。
+- **缓存**：按 品种 × 周期 一份，同一组里所有提醒共用，容量取组内最大值。
+  - SMA 和突破：所需根数 + 50。
+  - EMA 和 RSI：5×period 预热 + 50，让数值贴近 TV。
+  - 上限 1499 根。
+  - 刚启动或缓存不完整时一次取满，之后每次只取缺的根数 + 2。
+  - 增量取回来接不上（出现缺口）时，下一轮重新取满。
+- **测试**：
+  - `cargo test --lib` 626 过、0 失败、3 忽略；其中新加的指标测试 12 例，覆盖：
+    - 线上格式
+    - 校验边界与中文原因
+    - 同步操作的错误码
+    - 品种校验
+    - 标题
+    - 公式
+    - 均线相等不算穿越
+    - RSI 穿越
+    - 突破严格大于
+    - 只判已收盘的 K 线、只响一次
+    - 缓存缺口
+    - K 线解析
+  - `make sync-contract` 通过，没有生成合约文件改动。
+  - `make app-logic-test`：791 例 / 121 组 + 5 例 / 1 组，全过。
+- **运维**：
+  - 不需要迁移。
+  - `ops/README.md` 条件提醒一节已补说明。
+  - 部署后在 worker 日志里 grep `conditions` 看判定与取数。
