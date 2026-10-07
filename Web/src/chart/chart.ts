@@ -339,6 +339,8 @@ export class TVChart {
   /** 足迹图等替换蜡烛的画法（chart/footprint.ts 挂）：返回 true 就不再画蜡烛；legendExtra 往图例末尾加行 */
   footprint: ((p: Pane, r: PriceRange, from: number, to: number) => boolean) | null = null
   legendExtra: ((i: number) => string) | null = null
+  /** 等幅 K 线等换了横轴的画法（chart/rangeBars.ts 挂）：返回 false 的画线这时不画、点不中（不删） */
+  drawingShown: ((d: Drawing) => boolean) | null = null
   /** 提醒线（见 AlertSignal）：页面把这只品种上还在生效的画线提醒整份给，画哪几条由 signalsShown 定 */
   alertSignals: AlertSignal[] = []
   dead = false
@@ -1297,7 +1299,7 @@ export class TVChart {
   drawDrawings(p: Pane, r: PriceRange): void {
     const all = this.draft ? this.drawings.concat([this.draft]) : this.drawings
     if (this.drawingsHidden) return
-    for (const d of all) this.drawOne(d, p, r, d === this.selected || d === this.draft)
+    for (const d of all) if (!this.drawingShown || d === this.draft || this.drawingShown(d)) this.drawOne(d, p, r, d === this.selected || d === this.draft)
   }
   pt(q: DrawPoint, p: Pane, r: PriceRange): XY { return { x: this.indexToX(this.indexAt(q.t)), y: this.priceToY(q.p, p, r) } }
   drawOne(d: Drawing, p: Pane, r: PriceRange, sel: boolean): void {
@@ -1356,7 +1358,7 @@ export class TVChart {
     const p = this._panes[0], r = this._ranges.main, PW = this.plotW()
     for (let k = this.drawings.length - 1; k >= 0; k--) {
       const d = this.drawings[k]
-      if (!d.pts.length) continue
+      if (!d.pts.length || (this.drawingShown && !this.drawingShown(d))) continue
       const pts = COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : d.pts.map(q => this.pt(q, p, r)), a = pts[0], b = pts[1] || a
       for (let j = 0; j < pts.length; j++) if (Math.hypot(pts[j].x - x, pts[j].y - y) < 8) return { d, handle: j }
       let dist = hitComputed(this, d, x, y, p, r) ?? Infinity

@@ -49,7 +49,10 @@ import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
-import { bindFootprint, footprintMenuItem } from '../chart/footprint'
+import { bindFootprint } from '../chart/footprint'
+import { bindHeikinAshi } from '../chart/heikinAshi'
+import { baseBars, bindRangeBars } from '../chart/rangeBars'
+import { styleMenuItems } from '../chart/mainStyle'
 import { secondsKlines } from '../chart/secondsHistory'
 import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote } from '../replay/controller'
 
@@ -231,7 +234,7 @@ function makeCell(i: number): Cell {
   cell.chart.setMagnet(st.magnet)
   cell.chart.setVpvrMode(st.vpvrMode)
   cell.chart.drawingsHidden = st.drawHidden
-  bindFootprint(cell.chart, i)
+  bindFootprint(cell.chart, i); bindHeikinAshi(cell.chart, i); bindRangeBars(cell.chart, i)
   el.addEventListener('click', e => {
     const t = tgt(e)
     const r = t.closest<HTMLElement>('[data-range]'); if (r) return applyRange(cell, +(r.dataset.range || 0))
@@ -337,7 +340,7 @@ async function resyncTail(cell: Cell, tries = 0): Promise<void> {
     cell.hold = null
     const late = hold ? pushes.take(hold, 0) : []
     if (hold) pushes.release(hold)
-    if (r.ok) for (const b of tailFrom(cell.chart.bars, r.bars)) cell.chart.updateBar(b)
+    if (r.ok) for (const b of tailFrom(baseBars(cell.chart), r.bars)) cell.chart.updateBar(b)
     for (const p of late) cell.chart.updateBar(isCustomIv(c.iv) ? customTick(c.symbol, c.iv, p) : p)
     // 没取到（刚连上时网络还在抖、限流）：冷却过了再补，最多再试三次；之后的重连 / 回前台还会再补
     if (!r.ok && tries < 3) setTimeout(() => { if (alive()) void resyncTail(cell, tries + 1) }, Math.max(coolingFor(REST), 5000) + 500)
@@ -590,7 +593,7 @@ function intervalMenu(btn: HTMLElement): void {
       el.innerHTML = star(on)
     } }
   })])
-  items.push('-', footprintMenuItem(st.active, c.iv))
+  items.push('-', ...styleMenuItems(st.active, c.iv, setIv))
   const m = menuFrom(btn, items, { width: 260 })
   // 自定义分钟：打一个数回车就切过去，并记进「自定义」
   const box = document.createElement('div'); box.className = 'iv-custom'
