@@ -35,9 +35,17 @@ struct ReviewBadgeIsolationTests {
     window.rootViewController = controller
     window.makeKeyAndVisible()
     controller.view.layoutIfNeeded()
-    // 首屏落定（窗口、安全区第一趟会再排一次）之后再起算。
-    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-    controller.view.layoutIfNeeded()
+    // 首屏落定（窗口、安全区第一趟会再排一次）之后再起算。落定不按固定时长等：和几百条
+    // 用例挤在一组里跑时主线程忙，50 ms 不够首屏排完，起算点落在半道上就会把首屏自己的
+    // 那几趟重排算成「跟着行情重算」（2026-10-08 全量回归里红过一次，单跑三遍全绿）。
+    // 所以等到角标的求值次数连续两趟不再变才起算，上限两秒。
+    var settled = ReviewCountBadge.bodies
+    for _ in 0..<40 {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+      controller.view.layoutIfNeeded()
+      if ReviewCountBadge.bodies == settled { break }
+      settled = ReviewCountBadge.bodies
+    }
     let first = ReviewCountBadge.bodies; let hostFirst = host.bodies
     #expect(first >= 1, "角标一次都没画出来，量不到")
     for n in 1...20 {
