@@ -85,7 +85,7 @@ export async function secondsKlines(symbol: string, iv: string, endTime?: number
   if (endTime != null) {
     if (endTime <= floor) return { bars: [], ok: true }
     if (ago(failedAt.get(symbol) ?? 0, now) < RETRY_MS) return { bars: [], ok: false, error: '秒线历史稍后再取' }
-    const from = Math.max(floor, Math.floor((endTime - SEC_WINDOW_MS) / ms) * ms)
+    const from = Math.max(floor, Math.ceil((endTime - SEC_WINDOW_MS) / ms) * ms) // 区间不能超过 6 小时，多 1 毫秒服务端就回 400
     const r = await fetchSeconds(symbol, from, endTime, base)
     if (alive && !alive()) return { bars: [], ok: false }
     if (!r.ok) { failedAt.set(symbol, Date.now()); return { bars: [], ok: false, error: '取不到秒线历史' } }
@@ -93,8 +93,8 @@ export async function secondsKlines(symbol: string, iv: string, endTime?: number
     const one = fillGaps(r.bars, endTime)
     return { bars: ms === 1e3 ? one : aggregate(one, ms).filter(b => b.t < endTime), ok: true }
   }
-  const from = Math.floor((now - SEC_WINDOW_MS) / ms) * ms
-  const r = ago(failedAt.get(symbol) ?? 0, now) < RETRY_MS ? { ok: false, bars: [] } : await fetchSeconds(symbol, from, now + 1e3, base)
+  const to = now + 1e3, from = Math.ceil((to - SEC_WINDOW_MS) / ms) * ms
+  const r = ago(failedAt.get(symbol) ?? 0, now) < RETRY_MS ? { ok: false, bars: [] } : await fetchSeconds(symbol, from, to, base)
   if (!r.ok) failedAt.set(symbol, Date.now())
   const live = secondBars(symbol, '1s')
   // 没有历史：照旧只有逐笔攒的那段（没成交时页面写「等第一笔成交」）

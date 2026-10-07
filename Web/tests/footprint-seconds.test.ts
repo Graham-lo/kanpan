@@ -290,7 +290,7 @@ describe('秒线：服务端历史', () => {
     liveSecs.bars = [{ t: now - 11_000 + 1000, o: 7, h: 7, l: 7, c: 7, v: 3 }]
     const r = await sh.secondsKlines('BTCUSDT', '1s', undefined, undefined, base, now)
     const q = hits[0].q
-    expect(+q.get('to')! - +q.get('from')!).toBeLessThanOrEqual(6 * H + 1000)
+    expect(+q.get('to')! - +q.get('from')!).toBeLessThanOrEqual(6 * H) // 服务端多 1 毫秒就回 400
     expect(r.ok).toBe(true)
     expect(r.bars[0].t).toBe(now + 1000 - 20_000) // 窗外那一行被丢
     expect(r.bars[r.bars.length - 1].c).toBe(7) // 逐笔的赢
@@ -311,6 +311,10 @@ describe('秒线：服务端历史', () => {
     expect(r.ok).toBe(true)
     expect(r.bars[r.bars.length - 1].t).toBeLessThan(end)
     expect(r.bars.every(b => b.t % 15_000 === 0)).toBe(true)
+    // 右沿没对齐 15 秒时左沿往里收，区间仍不超过 6 小时
+    hits.length = 0
+    await sh.secondsKlines('BTCUSDT', '15s', end + 7000, undefined, base, now)
+    expect(end + 7000 - +hits[0].q.get('from')!).toBeLessThanOrEqual(6 * H)
     // 快到 3 天：from 卡在下限
     hits.length = 0
     const nearFloor = now - 3 * 86_400_000 + H
