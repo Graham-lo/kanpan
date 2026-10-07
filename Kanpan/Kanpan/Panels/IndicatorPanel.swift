@@ -414,7 +414,7 @@ private struct IndicatorEditor: View {
         } header: {
           PanelFormSectionTitle(text: "参数")
         }
-        .listRowBackground(t.raised)
+        .listRowBackground(LiuliMaterial(t).glass)
 
         // 「输出」一节（逐条线的显示开关）2026-09-28 收掉（收设置项 C 组）：线一律全画，
         // 不想要哪条均线就在上面左滑删掉那个周期。
@@ -422,10 +422,14 @@ private struct IndicatorEditor: View {
         if draft.id == .ma || draft.id == .ema || draft.id == .vwap {
           Section {
             ForEach(Array(draft.outputs.enumerated()), id: \.offset) { index, name in
-              DrawingColorControl(title: name, identifierPrefix: "indicator.color.\(index)", color: Binding(get: {
-                let palette = store.prefs.chartColors(dark: colorScheme == .dark).palette
-                return draft.colors[index] ?? palette[(index + draft.id.paletteOffset) % palette.count]
-              }, set: { draft.colors[index] = $0 }))
+              let seed = store.prefs.seed(systemDark: colorScheme == .dark)
+              let palette = store.prefs.chartColors(dark: colorScheme == .dark).palette
+              let fallback = palette[(index + draft.id.paletteOffset) % palette.count]
+              IndicatorColorControl(
+                title: name, identifierPrefix: "indicator.color.\(index)",
+                swatches: Palette.lineSwatches(default: fallback, seed: seed, redUp: store.prefs.redUp),
+                picked: draft.colors[index],
+                pick: { draft.colors[index] = $0 })
             }
             // 同上：表单纸会在键盘起落时整张跳一下，按钮的按压跟踪扛不住，点击手势能。
             Text("恢复默认颜色")
@@ -438,25 +442,23 @@ private struct IndicatorEditor: View {
           } header: {
             PanelFormSectionTitle(text: "线条颜色")
           }
-          .listRowBackground(t.raised)
+          .listRowBackground(LiuliMaterial(t).glass)
         }
       }
       // 行文 15 regular，和面板行同一档（系统 `Form` 默认 17，在这里比标题还大）。
       .font(TypeScale.body)
-      // 这张表是系统 `Form`，但配色得跟着皮肤走：底换成 `app`、行换成 `raised`、
-      // 强调色（「添加周期」、开关、光标）走 `tint`。留着 `Form` 是因为分节、左滑删除
-      // 和键盘避让都是它给的，自己搭一套只会把这几样做丢。
+      // 这张表是系统 `Form`，但配色得跟着皮肤走：底是琉璃底（不带光斑）、行是琉璃玻璃、
+      // 分隔线是材质细线，强调色（「添加周期」、开关、光标）走 `tint`。留着 `Form` 是因为
+      // 分节、左滑删除和键盘避让都是它给的，自己搭一套只会把这几样做丢。
       //
-      // 导航栏和表底同取 `app`。原来这儿给的是 `raised`：青苔浅色下 `raised` 是
-      // `#FFFFFF`、表底 `app` 是 `#F3F7F4`，亮度比 1.08，导航栏下沿会横出一道
-      // 看得见的台阶；六套皮肤里五套都有这道边（经典浅色两支同为 `#FFFFFF` 才碰巧无缝）。
-      // 整屏要读成一块连续的材料，所以栏与表同色，`raised` 只留给**行**。
+      // 导航栏不另上底色：整屏要读成一块连续的材料（原来栏取 `raised`、表取 `app`，
+      // 栏下沿会横出一道台阶），所以栏透明、让同一块琉璃底从它身后透上来。
       .scrollContentBackground(.hidden)
-      .background(t.app)
+      .listRowSeparatorTint(LiuliMaterial(t).rule)
+      .background { LiuliBackdrop(material: LiuliMaterial(t), lobes: false) }
       .navigationTitle(draft.id.name)
       .navigationBarTitleDisplayMode(.inline)
-      .toolbarBackground(t.app, for: .navigationBar)
-      .toolbarBackground(.visible, for: .navigationBar)
+      .toolbarBackground(.hidden, for: .navigationBar)
       // 数字键盘没有回车键：下滑把它划走，或者直接按右上角「保存」，不用再多一颗「完成」。
       // （原来这儿写「输进去的数字是边打边生效的」，和这张表的 draft 模型对不上——
       //   它就是要按「保存」才生效的那一张，见上面 `IndicatorEditor` 的说明。）
@@ -483,7 +485,7 @@ private struct IndicatorEditor: View {
       }
     }
     .tint(t.amber)
-    .presentationBackground(t.app)
+    .presentationBackground { LiuliBackdrop(material: LiuliMaterial(t), lobes: false) }
   }
 
   /// 「保存」：先把手上还在打的那格算进去，再落盘、关面板。
@@ -628,5 +630,61 @@ private struct ParamField: View {
         .accessibilityIdentifier(identifier)
         .accessibilityLabel(label)
     }
+  }
+}
+
+// MARK: - 线条颜色
+
+/// 指标参数表里一条线的颜色（2026-10-08）：这条线的出厂色排第一、底下标「默认」，
+/// 后面几支全从皮肤派生（`Palette.lineSwatches`：强调色、提亮的强调色、涨、跌、墨），
+/// 不再摆一排跟皮肤无关的通用色；行尾仍留系统取色器给真想要别的颜色的人。
+///
+/// 点「默认」是把这条线的自定义色清掉（`nil`），之后跟着皮肤走，换皮肤也对；
+/// 点别的就记成那一支。标识：`<前缀>.default`，其余 `<前缀>.<十六进制>`。
+struct IndicatorColorControl: View {
+  var title: String
+  var identifierPrefix: String
+  /// 第一支是出厂色。
+  var swatches: [Hex]
+  /// 用户改过的颜色；nil 就是出厂色。
+  var picked: Hex?
+  var pick: (Hex?) -> Void
+  @Environment(\.panelTheme) private var theme
+
+  private var current: Hex { picked ?? swatches.first ?? "#000000" }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: Space.s) {
+      ColorPicker(title, selection: Binding(get: { Color(hex: current) },
+                                            set: { pick(Self.hex($0)) }), supportsOpacity: false)
+      HStack(alignment: .top, spacing: Space.m) {
+        ForEach(Array(swatches.enumerated()), id: \.offset) { index, hex in
+          let isDefault = index == 0
+          let on = isDefault ? picked == nil || picked == hex : picked == hex
+          Button { pick(isDefault ? nil : hex) } label: {
+            VStack(spacing: Space.xxs) {
+              Circle().fill(Color(hex: hex)).frame(width: 22, height: 22)
+                // 选中圈走皮肤的墨色（同 `LineWidthPicker`）。
+                .overlay(Circle().stroke(on ? theme.ink : .clear, lineWidth: 2).padding(-3))
+              if isDefault {
+                Text("默认").font(TypeScale.caption).foregroundStyle(theme.ink3)
+              }
+            }
+            .frame(minWidth: Hit.min, minHeight: Hit.min, alignment: .top)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.borderless)
+          .accessibilityLabel(isDefault ? "默认" : hex.value)
+          .accessibilityAddTraits(on ? [.isSelected] : [])
+          .accessibilityIdentifier(isDefault ? "\(identifierPrefix).default" : "\(identifierPrefix).\(hex.value)")
+        }
+      }
+    }
+  }
+
+  static func hex(_ color: Color) -> Hex {
+    var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+    UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+    return Hex(String(format: "#%02X%02X%02X", Int((r * 255).rounded()), Int((g * 255).rounded()), Int((b * 255).rounded())))
   }
 }

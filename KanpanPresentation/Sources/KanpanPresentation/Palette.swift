@@ -496,6 +496,54 @@ public enum Palette: Sendable {
     chart(dark ? darkSeed : lightSeed, redUp: redUp)
   }
 
+  // MARK: - 指标线可选色
+
+  /// 往亮里提一档：色相不动，饱和收一点（×(1 − 0.6·amount)）、明度往白里走 `amount`。
+  /// 与 app 里琉璃材质的 `LiuliMaterial.lift` 同一个算法（HSB），这里出 `Hex` 给要落盘的地方用。
+  public static func lift(_ c: Hex, _ amount: Double) -> Hex {
+    let v = c.rgba
+    let hi = max(v.r, v.g, v.b), lo = min(v.r, v.g, v.b), d = hi - lo
+    let h = hue(c) / 60
+    let s = (hi > 0 ? d / hi : 0) * (1 - amount * 0.6)
+    let b = hi + (1 - hi) * amount
+    // HSB → RGB
+    let chroma = b * s
+    let x = chroma * (1 - abs(h.truncatingRemainder(dividingBy: 2) - 1))
+    let (r1, g1, b1): (Double, Double, Double) = switch Int(h) % 6 {
+    case 0: (chroma, x, 0)
+    case 1: (x, chroma, 0)
+    case 2: (0, chroma, x)
+    case 3: (0, x, chroma)
+    case 4: (x, 0, chroma)
+    default: (chroma, 0, x)
+    }
+    let m = b - chroma
+    func byte(_ n: Double) -> Int { Int((min(1, max(0, n + m)) * 255).rounded()) }
+    return Hex(String(format: "#%02X%02X%02X", byte(r1), byte(g1), byte(b1)))
+  }
+
+  /// 指标参数表里每条线可挑的颜色（2026-10-08）：**这条线的出厂色排第一**（界面上标「默认」），
+  /// 后面只从皮肤里派生——强调色、提亮一档的强调色、涨色、跌色、墨色——不再摆一排跟皮肤无关的
+  /// 通用色。画在图上的是线，按图形元素的 3:1 对图区底色收：不够的往墨色那边压深（浅色）/
+  /// 提亮（深色），和 `readable` 同一个做法；重复的（深色青苔的强调色就是涨色）只留一支。
+  public static func lineSwatches(default fallback: Hex, seed t: PaletteSeed, redUp: Bool = false) -> [Hex] {
+    let colors = chart(t, redUp: redUp)
+    let bg = colors.bg
+    func visible(_ c: Hex) -> Hex {
+      for step in 0...100 {
+        let candidate = mix(c, t.ink, amount: 1 - Double(step) / 100)
+        if contrast(candidate, bg) >= 3 { return candidate }
+      }
+      return t.ink
+    }
+    var out = [fallback]
+    for c in [t.accent, lift(t.accent, 0.42), colors.up, colors.down, t.ink] {
+      let v = visible(c)
+      if !out.contains(where: { $0.value.uppercased() == v.value.uppercased() }) { out.append(v) }
+    }
+    return out
+  }
+
   /// 遮罩与薄纱，弹层用。
   public static func veil(_ t: PaletteSeed) -> Hex { t.app.alpha(t.dark ? "EE" : "F0") }
   public static func scrim(_ t: PaletteSeed) -> Hex { t.dark ? t.ground.alpha("D9") : t.ink.alpha("4D") }
