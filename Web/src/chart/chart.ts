@@ -336,6 +336,9 @@ export class TVChart {
   loadingMore = false
   /** 画线整体隐藏 */
   drawingsHidden = false
+  /** 足迹图等替换蜡烛的画法（chart/footprint.ts 挂）：返回 true 就不再画蜡烛；legendExtra 往图例末尾加行 */
+  footprint: ((p: Pane, r: PriceRange, from: number, to: number) => boolean) | null = null
+  legendExtra: ((i: number) => string) | null = null
   /** 提醒线（见 AlertSignal）：页面把这只品种上还在生效的画线提醒整份给，画哪几条由 signalsShown 定 */
   alertSignals: AlertSignal[] = []
   dead = false
@@ -826,7 +829,7 @@ export class TVChart {
     if (this.walls && !this.hidden.has('walls')) this.drawWalls(mainPane, mr, from, to)
     if (this.markers) this.drawTradeSpan(mainPane, mr)
     if (this.ind.keys && !this.hidden.has('keys')) drawKeyLevels(this, mainPane, mr, from, to)
-    this.drawCandles(mainPane, mr, from, to)
+    if (!this.footprint?.(mainPane, mr, from, to)) this.drawCandles(mainPane, mr, from, to)
     for (const id of ['boll', 'ema', 'ma'] as MainId[]) if (this.series[id] && !this.hidden.has(id)) this.drawLines(id, mainPane, mr, from, to)
     drawExtraMain(this, mainPane, mr, from, to)
     drawMoreMain(this, mainPane, mr, from, to)
@@ -1431,6 +1434,7 @@ export class TVChart {
     }
     if (this.ind.vol) h += `<div class="lrow ${this.hidden.has('vol') ? 'hidden-ind' : ''}"><span class="ind-name">成交量</span><span class="vals num"><span class="${b.c >= b.o ? 'up' : 'down'}">${fmtCompact(b.v)}</span></span>${tools('vol')}</div>`
     if (this.walls) h += `<div class="lrow ${this.hidden.has('walls') ? 'hidden-ind' : ''}"><span class="ind-name">主力订单流</span><span class="ind-param">${this.meta.wallParam || ''}</span><span class="vals num"><span style="color:#8B5CF6">合约 ${this.walls.filter(w => !w.to && w.product !== 'spot').length}</span><span style="color:#06B6D4">现货 ${this.walls.filter(w => !w.to && w.product === 'spot').length}</span></span>${tools('walls')}</div>`
+    if (this.legendExtra) h += this.legendExtra(i)
     this.legendEl.innerHTML = h
     this.renderPaneLegends(this._panes || [])
   }

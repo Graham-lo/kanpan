@@ -48,6 +48,8 @@ import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
+import { bindFootprint, footprintMenuItem } from '../chart/footprint'
+import { secondsKlines } from '../chart/secondsHistory'
 
 // ------------------------------------------------------------ 图表格子
 interface Cell {
@@ -226,6 +228,7 @@ function makeCell(i: number): Cell {
   cell.chart.setMagnet(st.magnet)
   cell.chart.setVpvrMode(st.vpvrMode)
   cell.chart.drawingsHidden = st.drawHidden
+  bindFootprint(cell.chart, i)
   el.addEventListener('click', e => {
     const t = tgt(e)
     const r = t.closest<HTMLElement>('[data-range]'); if (r) return applyRange(cell, +(r.dataset.range || 0))
@@ -249,7 +252,7 @@ function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
 /** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所。
  *  alive：这一格还要不要这份（换了品种 / 周期就不要了）——在限流闸里排队的作废请求不发、不占预算 */
 async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean, withOI = true): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
-  if (isSecondIv(iv)) return { bars: endTime ? [] : secondBars(symbol, iv), ok: true }
+  if (isSecondIv(iv)) return secondsKlines(symbol, iv, endTime, alive)
   if (isCustomIv(iv)) return customKlines(symbol, iv, endTime, alive)
   return klines(symbol, iv, endTime, 1500, withOI, false, alive)
 }
@@ -566,7 +569,7 @@ export function setLayout(k: Layout): void { st.layout = k; buildCells(); render
 
 function intervalMenu(btn: HTMLElement): void {
   const c = cfg(active())
-  const groups: [string, string[]][] = [['秒（打开页面起才有）', [...SECOND_IVS]], ['分钟', ['1m', '3m', '5m', '15m', '30m']], ['小时', ['1h', '2h', '4h', '6h', '8h', '12h']], ['日及以上', ['1d', '1w', '1M']]]
+  const groups: [string, string[]][] = [['秒', [...SECOND_IVS]], ['分钟', ['1m', '3m', '5m', '15m', '30m']], ['小时', ['1h', '2h', '4h', '6h', '8h', '12h']], ['日及以上', ['1d', '1w', '1M']]]
   if (st.customIvs.length) groups.push(['自定义', st.customIvs.filter(iv => IV_LABEL[iv])])
   // 照 TradingView：每行行尾一颗星，点星钉到周期条上 / 取消，菜单不关；自定义周期行尾是 ×，点了删掉
   const star = (on: boolean): string => I(on ? 'star' : 'starLine', on ? 'icon-16 pin on' : 'icon-16 pin')
@@ -581,6 +584,7 @@ function intervalMenu(btn: HTMLElement): void {
       el.innerHTML = star(on)
     } }
   })])
+  items.push('-', footprintMenuItem(st.active, c.iv))
   const m = menuFrom(btn, items, { width: 260 })
   // 自定义分钟：打一个数回车就切过去，并记进「自定义」
   const box = document.createElement('div'); box.className = 'iv-custom'

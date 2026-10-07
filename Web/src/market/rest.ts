@@ -235,3 +235,21 @@ export async function fetchDetail(symbol: string, alive?: () => boolean): Promis
   if (taker?.[0]) d.taker = +taker[0].buySellRatio
   emit({ type: 'detail', symbol })
 }
+
+/**
+ * 自家服务器上的历史接口（足迹图的分钟价位、秒级 K 线）：同源相对地址（本机开发经 vite 转发到线上），两条线路一样走。
+ * 接口还没上线时回 404——和空回包一样当「没有历史」：ok 为真、body 为 null，不报错；
+ * 只有网络断、超时、其余非 2xx 才算失败（ok 为假，调用方 30 秒内不再试）。base 给测试用（指到本机假服务器）。
+ */
+export async function serverHistory(path: string, ms = 12_000, base = ''): Promise<{ ok: boolean; body: unknown }> {
+  if (typeof fetch === 'undefined') return { ok: false, body: null }
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms)
+  try {
+    const r = await fetch(base + path, { signal: ctl.signal, referrerPolicy: 'no-referrer', cache: 'no-store' })
+    if (r.status === 404 || r.status === 204) return { ok: true, body: null }
+    if (!r.ok) return { ok: false, body: null }
+    const text = await r.text()
+    if (!text.trim()) return { ok: true, body: null }
+    try { return { ok: true, body: JSON.parse(text) as unknown } } catch { return { ok: true, body: null } }
+  } catch { return { ok: false, body: null } } finally { clearTimeout(t) }
+}

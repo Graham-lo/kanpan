@@ -17,6 +17,7 @@ import { buildFine, exName, venueName } from './aggregate'
 import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
 import { tapeBase } from './tape'
 import { recordTrade, beat } from '../chart/tradeFlow'
+import { recordFootprintTrade, footprintWanted } from '../chart/footprint'
 import { heatFetchSent } from './heatFetch'
 import { createLayer } from './layer'
 import { mountLadder, ladderVisible, drawLadder, resetLadder, ladderDebug } from './ladder'
@@ -76,6 +77,7 @@ function needed(): boolean {
   if (st.orderFlow || st.slots.ladder || st.slots.drawer || OF.prefs.heat) return true
   // 副图「累计量差」的三家实时段、「大单与散户累计量差」都靠这里的逐笔成交
   if (st.ind.subs.includes('cvd') || st.ind.subs.includes('whale')) return true
+  if (footprintWanted()) return true
   if (st.panel === 'flow') return true
   return st.panel === 'watch' && st.slots.widgets.some(w => isOfWidget(w))
 }
@@ -193,6 +195,7 @@ function onTrade(ev: TradeEvent): void {
   const v = ev.book.venue
   const cut = OF.snap ? tapeBase(OF.snap.thresholds) : null
   recordTrade(f.symbol, ev, cut ? cut / 50 : null)
+  recordFootprintTrade(f.symbol, ev)
   const row = OF.tape.push({
     t: ev.trade.timeMs || Date.now(), exchange: v.exchange, label: exName(v.exchange), product: v.product,
     side: ev.trade.hitSide === 'ask' ? 'buy' : 'sell', price: ev.trade.price, usd: ev.usd, qty: ev.trade.quantity, instrument: v.instrument,
