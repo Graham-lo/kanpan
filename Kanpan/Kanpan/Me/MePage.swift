@@ -14,7 +14,8 @@ import ReviewUI
 /// - 每块只有一行标题（16）+ 一行状态（12），不写解释（设置那块照方案 §2 没有状态行）；
 /// - 外边距跟页面走（`Inset.page`：16 Pro 16 / 17 Pro Max 20），卡片内 16，卡片之间 16，
 ///   标题与状态之间 2；
-/// - 底色就是皮肤的页面底（`theme.app`），卡片用皮肤自己的 `raised2`，不另起颜色；
+/// - 整页铺琉璃底（`LiuliBackdrop`，2026-10-08 起），卡片是同一份琉璃材质的玻璃卡
+///   （`liuliCard`），分隔线是材质里那根 1/3pt 细线，不另起颜色；
 /// - 状态里的数全是现成缓存：复盘 `ReviewFeature.pendingCount` / `tally`（记录一变才重数）、
 ///   提醒 `AlertStore.liveCount`（存档一变才重数）、收件箱 `ShareInbox.unseen`（本来就是缓存）、
 ///   账号 `AccountFeature` 的同步字段——这一页重画不扫整张表。
@@ -67,7 +68,8 @@ struct MePage: View {
       }
       .scrollBounceBehavior(.basedOnSize)
       .safeAreaPadding(.bottom, bottomInset)
-      .background(t.app.ignoresSafeArea())
+      .background { LiuliBackdrop() }
+      .scrollContentBackground(.hidden)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("me.page")
       .navigationTitle("我的")
@@ -88,7 +90,13 @@ struct MePage: View {
   @ViewBuilder private var accountRow: some View {
     if let account {
       if account.user == nil {
-        row("账号", "登录 / 注册", id: "me.account", action: onAccount)
+        // 没登录：一句「未登录」+ 一颗「登录 / 注册」，整行仍可点（同一个 `me.account`）。
+        HStack(spacing: Space.s) {
+          row("账号", "未登录", id: "me.account", chevron: false, action: onAccount)
+          LiuliPill("登录 / 注册", fill: false, action: onAccount)
+            .padding(.trailing, Inset.card)
+            .accessibilityIdentifier("me.account.login")
+        }
       } else {
         HStack(spacing: 0) {
           row(account.user?.email ?? "", Self.syncMeta(account), id: "me.account",
@@ -161,11 +169,11 @@ struct MePage: View {
   private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     VStack(spacing: 0) { content() }
       .frame(maxWidth: .infinity)
-      .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
+      .liuliCard(radius: Radius.m)
   }
 
   private var divider: some View {
-    Rectangle().fill(t.line).frame(height: 1 / 3).padding(.leading, Inset.card)
+    Rectangle().fill(LiuliMaterial(t).rule).frame(height: LiuliMaterial.hairline).padding(.leading, Inset.card)
   }
 
   /// 一块：标题一行、状态一行（复盘本多一行交易那半句），行尾一枚灰箭头。整行都能点，最矮 44。

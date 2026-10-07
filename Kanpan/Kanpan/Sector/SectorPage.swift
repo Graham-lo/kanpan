@@ -195,25 +195,19 @@ struct SectorPage: View {
 
   /// 一个板块都没有、而且取数确实失败了的时候。
   ///
-  /// 给一句中文和一个可以点的动作，就这两行——不说「网络异常」、不说「数据截至」、
+  /// 一句中文 + 一颗「重新获取」琉璃药丸，就这两件——不说「网络异常」、不说「数据截至」、
   /// 不报线路状态（`kanpan-no-engineering-status-fields`），点一下就重取一趟。
+  /// 药丸沿用 `sector.empty` 这个 id（UI 用例认它）。
   private var emptyState: some View {
-    Button { feed.retry() } label: {
-      VStack(spacing: Space.s) {
-        Text("暂无行情")
-          .font(TypeScale.bodyEmph)
-          .foregroundStyle(theme.ink2)
-        Text("点此重试")
-          .font(TypeScale.caption)
-          .foregroundStyle(theme.ink3)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .contentShape(Rectangle())
+    VStack(spacing: Space.l) {
+      Text("板块行情还没取到")
+        .font(TypeScale.bodyEmph)
+        .foregroundStyle(theme.ink2)
+      LiuliPill("重新获取", systemImage: "arrow.clockwise", fill: false) { feed.retry() }
+        .accessibilityIdentifier("sector.empty")
     }
-    .buttonStyle(.plain)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel("暂无行情，点此重试")
-    .accessibilityIdentifier("sector.empty")
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .padding(.bottom, TabBar.height)
   }
 
   /// 页头：标题「板块」+ 规模一行，右边市场硬切换。字体与排布照原「全部板块」的页头，
@@ -401,7 +395,7 @@ struct SectorMarketSwitch: View {
 
 // MARK: - 分段
 
-/// 板块页的两处分段（市场、窗口）。画法与 `PanelSegment` 一字不差：32 高的 `raised2` 槽、
+/// 板块页的两处分段（市场、窗口）。画法照 `PanelSegment`：32 高的琉璃薄玻璃槽（2026-10-08 起不再是实色 `raised2`）、
 /// 28 高的档、选中那档抬起一块 `segOn`、每一档的点击区 44 高。
 ///
 /// 不直接用 `PanelSegment`：那一颗是给 `PanelRow` 行尾用的——它用负边距把高度还给行，
@@ -449,8 +443,14 @@ struct SectorSegment<Value: Hashable>: View {
     }
     .padding(.horizontal, Space.xxs)
     .background {
+      // 槽是琉璃的薄玻璃 + 1/3pt 边（原来是实色 `raised2`，压在光斑上像贴了块补丁）。
+      let m = LiuliMaterial(t)
       RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-        .fill(t.raised2)
+        .fill(m.glassThin)
+        .overlay {
+          RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
+            .strokeBorder(m.cardEdge, lineWidth: LiuliMaterial.hairline)
+        }
         .padding(.vertical, (Hit.min - ControlMetrics.pillHeight) / 2 - Space.xxs)
     }
   }
@@ -458,159 +458,57 @@ struct SectorSegment<Value: Hashable>: View {
 
 // MARK: - 派生色板
 
-/// 板块页用到的材质与光，全部从当前皮肤推出来——这一页不写死任何一支颜色。
-///
-/// 口径照 `FavoritesView` 的「琉璃」：同一张底、同一根发丝线、同一档墨色，
-/// 第二层的品种列表才和自选页读成同一页纸。差别只在光斑取色：自选页浅色下借的是
-/// 一组写死的「天青·薄荷」，这一页按契约一律从种子推（原型 `#ground` 用的也正是
-/// `--acc` / `--accB` / `--gold` 三支）。
+/// 板块页用到的材质与光。2026-10-08 起整份借 `LiuliMaterial`（自选页定稿的琉璃材质抽出来的
+/// 那一份），这一页不再自己推一套光斑与底色——板块、自选、我的读成同一种材料，
+/// 三套皮肤的签名（经典无光斑、青苔冷绿、陶土纸纹）也跟着一起走。
 struct SectorSkin {
   let theme: PanelTheme
   var seed: PaletteSeed { theme.seed }
   var dark: Bool { theme.dark }
+  var material: LiuliMaterial { LiuliMaterial(theme) }
 
-  /// 深色下画不画那几团光。
-  ///
-  /// 原型的深色底是有强调色光晕的，但用户看过真机之后点名把自选页深色那两团去掉了
-  /// （「深色模式下有两个光晕影响视觉，直接去掉」）。这一页的第二层要和自选页读成
-  /// 同一张纸，所以两页一起守这条：深色只留素底加颗粒。
-  static let lobesInDark = false
+  /// 整页的底（底栏身后那道渐变也收在它上面，`MainScreen.tabBarFade`）。
+  var ground: Color { material.ground }
 
-  /// 整页的底。取法和自选页一字不差：深色与经典白用 `ground`，青苔 / 陶土的浅色
-  /// 用 `app` 那张暖白 / 冷白（自选页那两支是为「琉璃」单调的字面色，这一页按契约
-  /// 只能从种子取，色相同族、明度相近）。
-  var ground: Color { Color(hex: dark || Palette.isClassic(seed) ? seed.ground : seed.app) }
-
-  /// 三团光。只在浅色下画，颜色是强调色与暖色**提到很淡**的一档——原型 `#ground`
-  /// 用的就是 `--acc` / `--accB` / `--gold` 这三支，自选页浅色下那三支柔和的
-  /// 天青、薄荷、淡蓝是同一个意思的手调版。直接拿饱和的强调色铺 63% 会把整页染绿，
-  /// 所以先 `lift` 到接近白再铺。
-  var lobes: [Color] {
-    [Self.lift(seed.accent, 0.78), Self.lift(seed.amber, 0.82), Self.lift(seed.accent, 0.9)]
-  }
-  /// 列表不再垫玻璃之后光斑直接穿过文字，整体收 30%。和自选页同一个系数。
-  func lobeOpacity(_ index: Int) -> Double { 0.9 * 0.7 }
-  /// 底部同色收敛：从 22% 高度起往下渐渐回到底色，文字压在光斑上也读得清。
-  var washStrength: Double { 0.7 }
-  var grainOpacity: Double { dark ? 0.05 : 0.035 }
-
-  var accent: Color { Color(hex: seed.accent) }
-  var accentLift: Color { Self.lift(seed.accent, 0.42) }
+  var accent: Color { material.accent }
+  var accentLift: Color { material.accentLift }
   /// 液态药丸：提亮的强调 → 强调。
-  var accentGradient: LinearGradient {
-    LinearGradient(colors: [accentLift, accent], startPoint: .topLeading, endPoint: .bottomTrailing)
-  }
+  var accentGradient: LinearGradient { material.accentGradient }
 
-  /// 玻璃：深色借近白的墨色，浅色借 `raised`（浅色种子的 raised 都是白）。
-  private var pane: Color { Color(hex: dark ? seed.ink : seed.raised) }
-  /// 圆按钮与分段器的槽（原型 `.mkt` / `.more` / `.back`）。
-  var well: Color { Color(hex: seed.ink).opacity(dark ? 0.055 : 0.06) }
+  /// 圆按钮与分段器的槽：琉璃的薄玻璃。
+  var well: Color { material.glassThin }
   /// 半像素的边、行与行之间那根发丝线。
-  var rule: Color { Color(hex: seed.ink).opacity(dark ? 0.11 : 0.09) }
+  var rule: Color { material.rule }
+  /// 玻璃分隔线下沿那一线柔光（浅色是白、深色几乎看不见），让发丝线读成玻璃上的刻痕。
+  var ruleGlow: Color { material.edgeSoft }
   /// 选中那颗药丸的底与边（原型 `.chip[aria-selected]`）。
-  var chipOn: Color { Color(hex: dark ? seed.ink : seed.raised).opacity(dark ? 0.08 : 0.7) }
-  var chipEdge: Color { Color(hex: dark ? seed.ink : seed.line).opacity(dark ? 0.165 : 1) }
+  var chipOn: Color { material.glass }
+  var chipEdge: Color { material.cardEdge }
   /// 比 ink3 再弱一档，给单位、微标签、统计行。
-  var ink4: Color { Color(hex: seed.ink3).opacity(0.7) }
+  var ink4: Color { material.ink4 }
 
   /// 玻璃顶上那一线高光。
-  func topHighlight(inset: CGFloat) -> some View {
-    Capsule().fill(pane.opacity(dark ? 0.3 : 0.9))
-      .frame(height: 1).padding(.horizontal, inset)
-  }
+  func topHighlight(inset: CGFloat) -> some View { material.topHighlight(inset: inset) }
 
   /// 标题字体。原来是 `.serif`（拉丁走 New York）按传入的字号画；2026-09-24 UI 审查定
   /// 全 app 标题统一系统字、整页标题一律 17 semibold（`TypeScale.title`），所以这里不再
   /// 看 `size`——下钻那层「AI 代币」这类标题跟着一起换，调用处不必改。
   func serif(_ size: CGFloat) -> ScaledFont { TypeScale.title }
-
-  /// 往亮里提一档：色相不动，饱和收一点、明度往上走。
-  private static func lift(_ hex: Hex, _ amount: Double) -> Color {
-    let rgba = hex.rgba
-    var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-    UIColor(red: rgba.r, green: rgba.g, blue: rgba.b, alpha: 1)
-      .getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-    return Color(hue: Double(h), saturation: Double(s) * (1 - amount * 0.6),
-                 brightness: Double(b) + (1 - Double(b)) * amount)
-  }
 }
 
 // MARK: - 底：一块连续的材料
 
-/// 板块页两层共用的底。
+/// 板块页两层共用的底：就是 `LiuliBackdrop`。
 ///
 /// 板块列表和品种列表都铺这一张——上层盖下来时换的是内容不是纸，
 /// 整屏从头到脚读成同一块材料，上下不出拼缝。
 struct SectorBackdrop: View {
   let skin: SectorSkin
   let reduceMotion: Bool
-  @State private var drift = false
 
   var body: some View {
-    GeometryReader { geometry in
-      let width = geometry.size.width
-      let height = geometry.size.height
-      ZStack(alignment: .topLeading) {
-        skin.ground
-        if !skin.dark || SectorSkin.lobesInDark {
-          lobe(0, size: 300, x: -95, y: -80, seconds: 22)
-          lobe(1, size: 250, x: width - 170, y: 240, seconds: 27)
-          lobe(2, size: 280, x: -70, y: height - 230, seconds: 31)
-          LinearGradient(stops: [
-            .init(color: skin.ground.opacity(0), location: 0.22),
-            .init(color: skin.ground.opacity(skin.washStrength), location: 1)],
-            startPoint: .top, endPoint: .bottom)
-            .frame(width: width, height: height)
-        }
-        if let grain = SectorGrain.image {
-          grain.resizable(resizingMode: .tile).opacity(skin.grainOpacity)
-        }
-      }
-      .frame(width: width, height: height)
-      .clipped()
-    }
-    .allowsHitTesting(false)
-    .onAppear { if !reduceMotion { drift = true } }
+    LiuliBackdrop(material: skin.material)
   }
-
-  /// 漂移只动 `offset` / `scale`，交给渲染层去跑，不会让上面的列表每帧重建。
-  private func lobe(_ index: Int, size: CGFloat, x: CGFloat, y: CGFloat, seconds: Double) -> some View {
-    let color = skin.lobes[index]
-    let peak = skin.lobeOpacity(index)
-    return RadialGradient(
-      gradient: Gradient(stops: [
-        .init(color: color.opacity(peak), location: 0),
-        .init(color: color.opacity(peak * 0.55), location: 0.45),
-        .init(color: color.opacity(0), location: 1)]),
-      center: .center, startRadius: 0, endRadius: size / 2)
-      .frame(width: size, height: size)
-      .scaleEffect(drift ? 1.08 : 1)
-      .offset(x: x + (drift ? 18 : 0), y: y + (drift ? -26 : 0))
-      .animation(reduceMotion ? nil
-                 : .easeInOut(duration: seconds).repeatForever(autoreverses: true), value: drift)
-  }
-}
-
-/// 一张 96×96 的灰噪点，平铺当颗粒。只生成一次。
-@MainActor enum SectorGrain {
-  static let image: Image? = {
-    let side = 96
-    var bytes = [UInt8](repeating: 0, count: side * side)
-    var state: UInt64 = 0x2545_F491_4F6C_DD1D
-    for index in bytes.indices {
-      state ^= state << 13
-      state ^= state >> 7
-      state ^= state << 17
-      bytes[index] = UInt8(truncatingIfNeeded: state >> 33)
-    }
-    guard let provider = CGDataProvider(data: Data(bytes) as CFData),
-          let image = CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 8,
-                              bytesPerRow: side, space: CGColorSpaceCreateDeviceGray(),
-                              bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-                              provider: provider, decode: nil, shouldInterpolate: false,
-                              intent: .defaultIntent) else { return nil }
-    return Image(decorative: image, scale: 1)
-  }()
 }
 
 // MARK: - 两层共用的零件
@@ -644,14 +542,22 @@ struct SectorBackButton: View {
   }
 }
 
-/// 行与行之间那根两端渐隐的发丝线。照抄自选页。
+/// 行与行之间那根两端渐隐的玻璃分隔线：上面一根 1/3pt 墨色刻痕，下面贴一根 1/3pt 柔光，
+/// 读成玻璃上划出来的一道，而不是印在纸上的灰线。两端渐隐照抄自选页。
 struct SectorHairline: View {
   let skin: SectorSkin
 
   var body: some View {
-    LinearGradient(colors: [.clear, skin.rule, skin.rule, .clear],
-                   startPoint: .leading, endPoint: .trailing)
-      .frame(height: 0.5).pageHorizontalInset()
+    VStack(spacing: 0) {
+      Rectangle().fill(skin.rule).frame(height: LiuliMaterial.hairline)
+      Rectangle().fill(skin.ruleGlow).frame(height: LiuliMaterial.hairline)
+    }
+    .mask {
+      LinearGradient(colors: [.clear, .black, .black, .clear],
+                     startPoint: .leading, endPoint: .trailing)
+    }
+    .pageHorizontalInset()
+    .accessibilityHidden(true)
   }
 }
 

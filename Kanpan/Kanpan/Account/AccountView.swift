@@ -18,7 +18,8 @@ struct AccountView: View {
       // `children: .contain` 让里头的输入框、按钮各留各的名字。
       VStack(spacing: 0) { page }
         .tint(theme.amber)
-        .background(theme.app.ignoresSafeArea())
+        // 整页琉璃底（2026-10-08）：账号、同步、设备几层都透明，底只铺这一处。
+        .background { LiuliBackdrop() }
         // 提交中不许退（和表那条路的 `interactiveDismissDisabled(busy)` 同一个意思）；
         // 子页的「‹」是自己的，系统那颗藏起来。
         .navigationBarBackButtonHidden(!atTop || feature.busy)
@@ -59,7 +60,7 @@ struct AccountView: View {
       // 审查 U14 在模拟器上见过一次「下半截白底硬边」，2026-09-24 按键盘交互收起、整张下拉
       // 复现过一轮没再出现。表单底色只铺在内容那一层，sheet 本身仍是系统默认底；
       // 把 sheet 的底也钉成页面底色，哪一帧露出来都是同一块料。
-      .presentationBackground(theme.app)
+      .presentationBackground { LiuliBackdrop(lobes: false) }
       .interactiveDismissDisabled(feature.busy)
       .accessibilityIdentifier("account.view")
   }
@@ -139,7 +140,6 @@ struct AccountView: View {
       .padding(.vertical, Space.xl)
     }.scrollDismissesKeyboard(.interactively)
       .scrollContentBackground(.hidden)
-      .background(theme.app)
   }
   private var primary: String {
     switch feature.page { case .changePassword: "保存"; default: title }
@@ -152,7 +152,7 @@ struct AccountView: View {
       Text(title).font(TypeScale.footnote).foregroundStyle(theme.ink3)
       content().font(TypeScale.body).padding(.horizontal, Space.m).frame(minHeight: Hit.min)
         .foregroundStyle(theme.ink)
-        .background(theme.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
+        .liuliCard(radius: Radius.s, thin: true, highlight: false)
       if let hint {
         Text(hint).font(TypeScale.caption).foregroundStyle(theme.ink3).accessibilityIdentifier(hintID)
       }
@@ -176,14 +176,14 @@ struct AccountView: View {
             .frame(minHeight: Hit.min).accessibilityIdentifier("account.reauthenticate")
         }.padding(.vertical, Space.xs)
       }
-      .listRowBackground(theme.raised)
+      .listRowBackground(LiuliMaterial(theme).glass)
     }
   }
   private var account: some View {
     List {
       expired
       Section { LabeledContent("用户名", value: feature.user?.email ?? "") }
-        .listRowBackground(theme.raised)
+        .listRowBackground(LiuliMaterial(theme).glass)
       Section {
         row("同步") { feature.move(.sync) }
         row("登录设备") { feature.move(.devices) }
@@ -198,15 +198,15 @@ struct AccountView: View {
         .foregroundStyle(theme.ink).disabled(feature.exporting)
         .accessibilityIdentifier("account.export")
       }
-      .listRowBackground(theme.raised)
+      .listRowBackground(LiuliMaterial(theme).glass)
       if let error = feature.error {
         Section { Text(error).foregroundStyle(theme.danger).accessibilityIdentifier("account.error") }
-          .listRowBackground(theme.raised)
+          .listRowBackground(LiuliMaterial(theme).glass)
       }
       Section { Button("退出登录") { Haptics.warning(); Task { await feature.logout() } }.foregroundStyle(theme.danger) }
-        .listRowBackground(theme.raised)
+        .listRowBackground(LiuliMaterial(theme).glass)
       Section { Button("注销账号") { feature.move(.close) }.foregroundStyle(theme.danger) }
-        .listRowBackground(theme.raised)
+        .listRowBackground(LiuliMaterial(theme).glass)
     }
     .listed(theme)
   }
@@ -219,9 +219,9 @@ struct AccountView: View {
         if !feature.syncStatus.isEmpty { Text(feature.syncStatus).foregroundStyle(theme.ink3) }
         if feature.pending > 0 { LabeledContent("待同步", value: "\(feature.pending) 项") }
       }
-      .listRowBackground(theme.raised)
+      .listRowBackground(LiuliMaterial(theme).glass)
       Section { Button("立即同步") { feature.onSynchronize?() } }
-        .listRowBackground(theme.raised)
+        .listRowBackground(LiuliMaterial(theme).glass)
     }
     .listed(theme)
   }
@@ -240,13 +240,13 @@ struct AccountView: View {
           Button { Haptics.warning(); feature.revoke(item) } label: { Text("退出").hitTarget() }
             .buttonStyle(.borderless).foregroundStyle(theme.danger)
         }
-        .listRowBackground(theme.raised)
+        .listRowBackground(LiuliMaterial(theme).glass)
       }
       // 这一条也挂 `account.error`：设备列表是「被顶下去」唯一必然带令牌出门的入口，
       // 它报的错不打标识的话，用例红了只会说「页面上没有报错」，查不出到底是撞了
       // 401 还是这一趟请求超时了（09-21 矩阵上就吃过这个哑巴亏）。
       if let error = feature.error {
-        Text(error).foregroundStyle(theme.danger).listRowBackground(theme.raised)
+        Text(error).foregroundStyle(theme.danger).listRowBackground(LiuliMaterial(theme).glass)
           .accessibilityIdentifier("account.error")
       }
     }
@@ -259,9 +259,10 @@ struct AccountView: View {
 }
 
 private extension View {
-  /// 账号里那几张 `List` 共用的底：系统那抹灰换成皮肤的 `app`。
+  /// 账号里那几张 `List` 共用的底：系统那抹灰收掉，透出外层的琉璃底（2026-10-08 前是皮肤的 `app`）；
+  /// 行底是琉璃玻璃（`LiuliMaterial.glass`），分隔线是材质里那根细线。
   /// 不换的话它们是全 app 仅存的系统配色，和左右两页对不上。
-  /// 行的底得逐个 `Section` 自己写 `.listRowBackground(theme.raised)`，
+  /// 行的底得逐个 `Section` 自己写 `.listRowBackground(LiuliMaterial(theme).glass)`，
   /// 那是行的属性，挂在 `List` 上不生效。
   ///
   /// 2026-09-24 UI 整改 P1b：行名 15（`TypeScale.body`，系统 List 默认是 17），行高至少 44。
@@ -269,6 +270,7 @@ private extension View {
   func listed(_ theme: PanelTheme) -> some View {
     font(TypeScale.body)
       .environment(\.defaultMinListRowHeight, Inset.rowMin)
-      .scrollContentBackground(.hidden).background(theme.app).foregroundStyle(theme.ink)
+      .listRowSeparatorTint(LiuliMaterial(theme).rule)
+      .scrollContentBackground(.hidden).foregroundStyle(theme.ink)
   }
 }

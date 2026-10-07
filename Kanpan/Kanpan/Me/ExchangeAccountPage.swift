@@ -8,6 +8,8 @@ import ReviewUI
 /// 接入先过只读校验——Key 开着交易或提现权限就一行红字拒收，Keychain 一个字都不写。
 /// 接着了：尾号四位（「密钥」）、上次同步、回溯（挂问号），「立即同步」与「移除」。
 ///
+/// 整页铺琉璃底，卡片与输入框都是同一份琉璃玻璃（`LiuliMaterial`，2026-10-08）。
+///
 /// 不写教程、不写解释（`kanpan-ui-no-lecturing`）；Key 只在两个框里停留到按下「接入」，
 /// 接上以后框清空，界面上只剩尾号。
 struct ExchangeAccountPage: View {
@@ -30,7 +32,8 @@ struct ExchangeAccountPage: View {
     }
     .scrollDismissesKeyboard(.interactively)
     .scrollBounceBehavior(.basedOnSize)
-    .background(t.app.ignoresSafeArea())
+    .background { LiuliBackdrop() }
+    .scrollContentBackground(.hidden)
     .navigationTitle("交易所")
     .navigationBarTitleDisplayMode(.inline)
     .accessibilityElement(children: .contain)
@@ -67,7 +70,7 @@ struct ExchangeAccountPage: View {
       }
     }
     .frame(maxWidth: .infinity)
-    .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
+    .liuliCard(radius: Radius.m)
   }
 
   private func syncText(_ status: ExchangeCredentialStore.Status, now: Date) -> String {
@@ -77,7 +80,7 @@ struct ExchangeAccountPage: View {
   }
 
   private var divider: some View {
-    Rectangle().fill(t.line).frame(height: 1 / 3).padding(.leading, Inset.card)
+    Rectangle().fill(LiuliMaterial(t).rule).frame(height: LiuliMaterial.hairline).padding(.leading, Inset.card)
   }
 
   private func info(_ title: String, _ value: String, term: GlossaryTerm? = nil, id: String) -> some View {
@@ -137,7 +140,7 @@ struct ExchangeAccountPage: View {
   private func field<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     content().font(TypeScale.body).padding(.horizontal, Space.m).frame(minHeight: Hit.min)
       .foregroundStyle(t.ink)
-      .background(t.raised2, in: RoundedRectangle(cornerRadius: Radius.s, style: .continuous))
+      .liuliCard(radius: Radius.s, thin: true, highlight: false)
   }
 
   // MARK: - 接着
