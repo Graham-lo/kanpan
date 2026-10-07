@@ -1626,10 +1626,28 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 | `c8b53f04` | 网页 | 回放落到最早一根之前时，围着目标时刻整份重取 |
 | `423e49a5` | 网页与脚本 | 压测脚本和足迹调试钩子 `__fpBars` |
 
+### 部署
+
+**kanpan-api**：`500e2e7f`、`9ec3d268` 已部署到新加坡。
+- 时间：10-07 18:23:01 CST，源码是 origin/main `4a16d59b`。部署前线上源码与 `bc4ee858` 逐文件一致。
+- 二进制 sha256：`072648dcf7aea299865517c14f4bdc328d22c6dad6a10b84487d4aa92071d217`。
+- 备份：`/opt/kanpan-backups/stress-fixes-20261007-182222/`，里面有旧二进制 `f2156d6a…`、source.tgz，迁移版本 51。
+- 回滚：`sudo install -m 0755 /opt/kanpan-backups/stress-fixes-20261007-182222/kanpan-api /opt/kanpan-api/target/release/kanpan-api && sudo systemctl restart kanpan-api kanpan-worker`。
+- 部署前 `cargo test --lib` 627 条全过（经 machine-guard）。
+
+**线上验证**（只读）：
+- 足迹接口 20 并发：0 错误。
+- 60 并发：有 429（`Retry-After: 1`），没有 5xx。
+- journal 里看得到 `storage_budget` 每小时合计那一行，也看得到 `conditions` 指标提醒触发那一行。
+- `orderflow_heat` 最老一行仍是 10-05 01:02 UTC（57.4 h），三天滚动正常。
+
+**网页 /web/**：`3bcd4645`、`c8b53f04`、`423e49a5` 已上线。
+- 由主窗口从 origin/main `4a16d59b` 构建部署。
+- 入口脚本 `index-QuA5644a.js`，手机版 `m-BlQr8n-2.js`。
+- tsc 0 错；vitest 147 个文件、1979 条全过；构建 0 告警。
+
 ### 待部署
 
-- **kanpan-api**：`500e2e7f`、`9ec3d268`。
-- **网页 /web/**：`3bcd4645`、`c8b53f04`、`423e49a5`。
 - **运维，可选**：对 `orderflow_heat` 及 rollup 表做一次 `VACUUM FULL`，大约能还 7 GiB。它会锁表，需要约 17 GB 空闲。本轮只读，没做。
 
 ### 没做到
@@ -1637,7 +1655,7 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **秒线「翻满 3 天」**：服务端秒线 10-07 14:57 才上线，只能由单测覆盖。攒满 3 天后可以用 `p1007-s5.mjs` 原样复跑。
 - **第七节完整流程在本机后端跑**：线上只读，不能在线上走一遍完整的注册、注销流程。
 
-### 事故：线上留了一个测试账号，待用户处理
+### 事故：线上留了一个测试账号（10-07 已删）
 
 **原因**：第七节第一次跑时，`vite preview` 把同源 `/v1` 代理到了线上，结果在**线上**注册了临时账号。
 
@@ -1647,7 +1665,19 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - 1 个会话；
 - 27 条 sync_objects。
 
-**没删的原因**：服务端只读，删除不可逆，要用户删除或授权删除。
+**处理**：10-07 18:27:24 CST 已整账号删干净。
+- 删之前只读核对过：
+  - 注册于 10-07 17:45 CST；
+  - 数据只有上面这些，加上 27 条 sync_operations、30 条 sync_changes；
+  - 其它带用户键的表都是 0。
+- 删除走服务端自己的路径，没手写 SQL：
+  1. 运维命令 `kanpan-api reset-password e2e_66469fae` 换一次性密码，同时吊销旧会话；
+  2. 用这个密码登录；
+  3. 调 `DELETE /v1/auth/account`，返回 200。
+- 删完复查：
+  - 用同一密码再登录，返回 401；
+  - `account_users`、会话、`sync_objects` / `sync_operations` / `sync_changes`、`alert_watches`、`alert_log` 全是 0；
+  - 只剩 `account_deletions` 一行删除记录（服务端的正常留痕）。
 
 **之后的守门**（`p1007-s7.mjs`）：
 - 拦截同时认线上域名和 localhost；
