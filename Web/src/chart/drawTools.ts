@@ -3,8 +3,8 @@
  * 三把「算出来的」工具（形状由锚点圈住的 K 线算，不由锚点本身定）：
  *   · 锚定 VWAP（avwap，一点）：从锚点那根起累计 典型价 × 成交量，只画一条线（与 iOS、手机网页版一致，不画 σ 带）；
  *     算法与主图 VWAP 一致（indicators.vwap：典型价 (高+低+收)/3，按成交量（币）加权）。
- *   · 固定区间成交量分布（fvp，两点）：两点圈一段时间，复用 overlays.vpvr 与主图 VPVR 的三种看法；
- *     行数按这段价格区间的像素高自动定（每行 ≥ 4 px），标控制点（实线）与七成价值区上下沿（虚线）。
+ *   · 固定区间成交量分布（fvp，两点）：两点圈一段时间，复用 overlays.vpvr 与主图 VPVR 的三种看法，画法照 TradingView
+ *     （volumeProfile.ts，与主图共用）；行数按这段价格区间的像素高自动定（每行 ≥ 4 px），控制点与七成价值区上下沿都是实线。
  *   · 多空持仓（position，三点：入场、目标、止损）：目标在入场上方就是多、下方就是空（照手机 DrawGeometry）；
  *     只标止盈 / 止损相对入场的百分比与盈亏比 R，不算仓位。
  * 复盘回放时 lastIndex() 是放到的那根，这里一律只算到它为止——不会拿「未来」的 K 线画。
@@ -14,6 +14,7 @@
 import { fmt, hexA } from '../util/format'
 import type { Bar } from './calc'
 import { vpvr, type Vpvr } from './overlays'
+import { drawProfile, profileRows } from './volumeProfile'
 import { vwapWeight } from './indicators'
 import type { DrawPoint, Drawing, DrawingType, Pane, PriceRange, TVChart } from './chart'
 
@@ -122,7 +123,7 @@ export function vwapOf(ch: TVChart, d: Drawing, i0: number, end: number): Avwap 
 
 // ------------------------------------------------------------ 固定区间成交量分布
 /** 行数：这段价格区间在屏上的像素高 ÷ 4（每行至少 4 px），1–240 行 */
-export function fvpRows(pxH: number): number { return Math.max(1, Math.min(240, Math.floor(Math.abs(pxH) / 4))) }
+export function fvpRows(pxH: number): number { return profileRows(pxH) }
 export interface FvpShape { v: Vpvr; i0: number; i1: number; x0: number; x1: number }
 const fvpCache = new WeakMap<Drawing, { key: string; v: Vpvr | null }>()
 export function fvpShape(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): FvpShape | null {
@@ -274,39 +275,18 @@ function drawFvp(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: s
     for (const x of xs) { c.moveTo(Math.round(x) + .5, p.y); c.lineTo(Math.round(x) + .5, p.y + p.h) }
     c.stroke(); c.setLineDash([]); return
   }
-  const v = s.v, C = ch.colors, mode = ch.vpvrMode
-  const up = C.up || '#089981', down = C.down || '#F23645', neutral = '#5B8DEF'
-  const yHi = ch.priceToY(v.hi, p, r), yLo = ch.priceToY(v.lo, p, r)
-  const W = s.x1 - s.x0, maxW = Math.max(16, W * 0.3)
-  // 底：整段淡淡一层，选中时描边
-  c.fillStyle = hexA(col, 0.05); c.fillRect(s.x0, yHi, W, yLo - yHi)
-  if (sel) { c.strokeStyle = hexA(col, 0.6); c.lineWidth = 1; c.strokeRect(Math.round(s.x0) + .5, Math.round(yHi) + .5, Math.round(W), Math.round(yLo - yHi)) }
-  let mx = 0
-  for (const row of v.rows) mx = Math.max(mx, mode === 'delta' ? Math.abs(row.buy - row.sell) : row.buy + row.sell)
-  if (mx) v.rows.forEach((row, k) => {
-    const y0 = ch.priceToY(v.lo + (k + 1) * v.step, p, r), y1 = ch.priceToY(v.lo + k * v.step, p, r)
-    const top = Math.round(Math.min(y0, y1)) + 1, h = Math.max(1, Math.round(Math.abs(y1 - y0)) - 1)
-    if (top > p.y + p.h || top + h < p.y) return
-    const a = k >= v.vaLo && k <= v.vaHi ? 0.42 : 0.18, x = s.x0
-    if (mode === 'total') { const w = (row.buy + row.sell) / mx * maxW; c.fillStyle = hexA(neutral, a); c.fillRect(x, top, w, h) }
-    else if (mode === 'delta') { const dd = row.buy - row.sell, w = Math.abs(dd) / mx * maxW; c.fillStyle = hexA(dd >= 0 ? up : down, a); c.fillRect(x, top, w, h) }
-    else {
-      const wb = row.buy / mx * maxW, ws = row.sell / mx * maxW
-      c.fillStyle = hexA(up, a); c.fillRect(x, top, wb, h)
-      c.fillStyle = hexA(down, a); c.fillRect(x + wb, top, ws, h)
-    }
+  // 照 TradingView 固定区间成交量分布：底板、从左沿往右长的实色柱、价值区上下沿实线、控制点橙线（画法见 volumeProfile.ts）
+  const C = ch.colors
+  drawProfile(c, {
+    x0: s.x0, x1: s.x1, v: s.v, mode: ch.vpvrMode, base: true,
+    colors: { up: C.up || '#089981', down: C.down || '#F23645', line: col },
+    priceToY: price => ch.priceToY(price, p, r), clipY: [p.y, p.y + p.h],
   })
-  // 控制点实线、价值区上下沿虚线，横贯整段
-  const hl = (price: number, stroke: string, dash: number[]) => {
-    const y = Math.round(ch.priceToY(price, p, r)) + .5
-    c.strokeStyle = stroke; c.lineWidth = 1; c.setLineDash(dash); c.beginPath(); c.moveTo(s.x0, y); c.lineTo(s.x1, y); c.stroke(); c.setLineDash([])
-    return y
+  if (sel) {
+    const yHi = ch.priceToY(s.v.hi, p, r), yLo = ch.priceToY(s.v.lo, p, r)
+    c.strokeStyle = hexA(col, 0.6); c.lineWidth = 1
+    c.strokeRect(Math.round(s.x0) + .5, Math.round(yHi) + .5, Math.round(s.x1 - s.x0), Math.round(yLo - yHi))
   }
-  const py = hl(v.lo + (v.poc + 0.5) * v.step, '#FF9800', [])
-  hl(v.lo + (v.vaHi + 1) * v.step, hexA(col, 0.8), [4, 3])
-  hl(v.lo + v.vaLo * v.step, hexA(col, 0.8), [4, 3])
-  c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'bottom'; c.textAlign = 'right'
-  c.fillStyle = '#FF9800'; if (W > 90) c.fillText(`控制点 ${fmt(v.lo + (v.poc + 0.5) * v.step, ch.meta.dec)}`, s.x1 - 4, py - 2)
 }
 
 function drawPosition(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: string): void {

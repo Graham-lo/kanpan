@@ -271,21 +271,11 @@ export function whaleFlow(bars: Bar[], iv: number, f: SymbolFlow | null, now = D
   return [big, small]
 }
 
-/** 金额短写：100000 → 100K、1500000 → 1.5M */
-export function shortUsd(v: number): string {
-  const u: [number, string][] = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']]
-  for (const [k, s] of u) if (Math.abs(v) >= k) return `${+(v / k).toFixed(2)}${s}`
-  return `${Math.round(v)}`
-}
-
 // ------------------------------------------------------------ 并进 EXTRA_CALC 的两个入口
-const CVD_TIP = '虚线左边只有币安 U 本位（K 线自带的主动买入）；右边是打开页面以后浏览器收到的币安、OKX、Coinbase 三家现货加合约，并拆成现货、合约两条'
-
 export function calcCvd(bars: Bar[], env?: CalcEnv): Series[] {
   const now = Date.now()
   const f = env?.symbol ? flowOf(env.symbol) : null
   if (f && env) f.listeners.add(env.invalidate)
-  env?.note('cvd', '币安 · 三家', CVD_TIP)
   return cvdFlow(bars, env?.iv || 0, f, now)
 }
 
@@ -293,11 +283,5 @@ export function calcWhale(bars: Bar[], env?: CalcEnv): Series[] {
   const now = Date.now()
   const f = env?.symbol ? flowOf(env.symbol) : null
   if (f) ensureServer(f, env, now)
-  if (env) {
-    const cut = f?.cut, head = `大单 ≥ ${cut ? shortUsd(cut) : '门槛 / 50'} · 散户 < ${shortUsd(SMALL_USD)}`
-    const tracked = f?.srv.tracked
-    if (tracked === false) env.note('whale', `${head} · 从打开起`, '服务端只给常驻跟踪的品种记分钟历史（近 3 天）；这只没在跟，从打开页面、连上三家成交起算')
-    else env.note('whale', head, '一笔成交 ≥ 大单线（订单流门槛的 1/50）算大单，< 1 万美元算散户；主动买额减主动卖额逐根累加。三家现货加合约；近 3 天历史来自服务端常驻跟踪')
-  }
   return whaleFlow(bars, env?.iv || 0, f, now)
 }

@@ -9,10 +9,12 @@
 export type Bar = { t: number; o: number; h: number; l: number; c: number; v: number; oi?: number | null; tb?: number; bv?: number; venueDelta?: Partial<Record<'binance' | 'okx' | 'coinbase', number>> }
 export type Series = (number | null)[]
 import { EXTRA_CALC, EXTRA_CATALOG, type ExtraMainId, type ExtraSubId } from './indicators'
+import { OSC_CALC, OSC_CATALOG, type OscId } from './oscillators'
+import { MORE_MAIN_CALC, MORE_MAIN_CATALOG, MORE_MAIN_IDS, type MoreMainId } from './mainIndicators'
 
-export type IndicatorId = 'ma' | 'ema' | 'boll' | 'vol' | 'macd' | 'rsi' | 'kdj' | 'oi' | ExtraMainId | ExtraSubId
-export type MainId = 'ma' | 'ema' | 'boll' | ExtraMainId
-export type SubId = 'macd' | 'rsi' | 'kdj' | 'oi' | ExtraSubId
+export type IndicatorId = 'ma' | 'ema' | 'boll' | 'vol' | 'macd' | 'rsi' | 'kdj' | 'oi' | ExtraMainId | ExtraSubId | MoreMainId | OscId
+export type MainId = 'ma' | 'ema' | 'boll' | ExtraMainId | MoreMainId
+export type SubId = 'macd' | 'rsi' | 'kdj' | 'oi' | ExtraSubId | OscId
 export type CalcId = MainId | SubId
 
 /** 指标参数：各指标只用到其中几项（MA/EMA 用 periods，BOLL 用 n/k，MACD 用 fast/slow/signal，RSI 用 n，KDJ 用 n/m1/m2） */
@@ -43,19 +45,18 @@ export interface CatalogEntry {
   labels?: string[]
 }
 
-/** 算指标时给的上下文：哪只品种、什么周期；异步数据（服务端历史、浏览器实时成交）到了叫 invalidate 重算；
- *  note 往图例这一行的参数位置写一句口径说明（悬停出 tip） */
+/** 算指标时给的上下文：哪只品种、什么周期；异步数据（服务端历史、浏览器实时成交）到了叫 invalidate 重算 */
 export interface CalcEnv {
   symbol: string
   iv: number
   invalidate(): void
-  note(id: string, text: string, tip?: string): void
 }
 
 /** 主图叠加指标（按这个顺序算、按 boll → ema → ma 的顺序画） */
-export const MAIN_IDS: MainId[] = ['ma', 'ema', 'boll', 'vwap', 'st', 'ichi', 'vpvr', 'keys']
-/** 副图最多三个，和手机端 `Prefs.maxSubs` 一致（成交量叠在主图底部，不占副图名额） */
-export const MAX_SUBS = 3
+export const MAIN_IDS: MainId[] = ['ma', 'ema', 'boll', 'vwap', 'st', 'ichi', 'vpvr', 'keys', ...MORE_MAIN_IDS]
+/** 副图最多八个：网页大屏指标要全，比手机（`Prefs.maxSubs` 三个）放得多；八个时窗格按比例自动收矮（panes.ts）。
+ *  成交量叠在主图底部，不占副图名额；同步到云端的仍只有手机认识的那几个，手机读的时候自己截到三个 */
+export const MAX_SUBS = 8
 
 // ------------------------------------------------------------ 指标计算
 export function sma(src: number[], n: number): Series {
@@ -130,9 +131,11 @@ export const Calc: Record<CalcId, CalcFn> = {
   },
   oi(bars) { return [bars.map(b => b.oi ?? null)] },
   ...EXTRA_CALC,
+  ...MORE_MAIN_CALC,
+  ...OSC_CALC,
 }
 
-// 指标目录：名字、默认参数、线色。副图最多三个（MAX_SUBS）。
+// 指标目录：名字、默认参数、线色。副图最多 MAX_SUBS 个。
 // 默认参数与 iOS / 手机网页（m/app/prefs DEFAULT_PARAMS）同一组：同一个人没改过参数时，电脑和手机上的 MACD / EMA / RSI 读数一样
 // （RSI 网页只画一条，取手机那组的第一条 6）。
 export const CATALOG: Record<IndicatorId, CatalogEntry> = {
@@ -145,6 +148,8 @@ export const CATALOG: Record<IndicatorId, CatalogEntry> = {
   kdj: { name: 'KDJ', cn: '随机指标', place: 'sub', params: { n: 9, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00', '#AB47BC'] },
   oi: { name: '持仓量', cn: '持仓量', place: 'sub', params: {}, colors: ['#2962FF'] },
   ...EXTRA_CATALOG,
+  ...MORE_MAIN_CATALOG,
+  ...OSC_CATALOG,
 }
 
 export function paramText(_id: string, p: IndParams | null | undefined): string {

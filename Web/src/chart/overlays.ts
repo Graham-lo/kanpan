@@ -1,7 +1,7 @@
 /* Hkline Web · 主图第二批叠加的画法：VWAP 带、超级趋势、一目均衡表、成交量分布（VPVR）
  *
  * 成交量分布按「可见区间」现算：缩放、平移一动就重算（算量是可见根数 × 行数，2K 屏上几百根、几十行，可以每帧算）。
- * 画在绘图区右侧约四分之一宽，控制点（成交最多的一行）一条横线贯穿，七成价值区的行更实、区外更淡。
+ * 照 TradingView 的样子贴价格轴画在右侧、最长一行占绘图区 30% 宽（画法在 volumeProfile.ts，与固定区间成交量分布共用）。
  * 三种看法一个下拉切：买卖分开、净差、合计。
  *
  * 只从 chart.ts 拿类型，运行时不反向依赖（chart.ts 调这里的函数）。
@@ -11,6 +11,7 @@ import type { Bar, Series } from './calc'
 import { SUB_LEVELS, barInterval, vwapAnchor, type ExtraSubId } from './indicators'
 import type { Pane, PriceRange, TVChart } from './chart'
 import { fineSplit } from './fineVolume'
+import { drawProfile, profileRows } from './volumeProfile'
 
 export type VpvrMode = 'split' | 'delta' | 'total'
 export const VPVR_MODES: { id: VpvrMode; label: string }[] = [
@@ -142,37 +143,29 @@ export function drawExtraMain(ch: TVChart, p: Pane, r: PriceRange, from: number,
   }
 }
 
+/** 可见区间成交量分布：照 TradingView「Visible Range Volume Profile」默认放右侧，贴着价格轴往左长，最长一行占绘图区宽 30%；
+ *  价值区上下沿与控制点横贯整个可见区。画法与固定区间那把画线共用 volumeProfile.ts。
+ *  行数和固定区间同一口径按像素定（这段价格区间的像素高 ÷ 4，1–240 行），不再用参数 n——
+ *  旧的默认 48 行在 2K 屏上每行十几像素，一片糊；n 留在 catalog 里只为了不动已同步的参数（渲染忽略它）。 */
 function drawVpvr(ch: TVChart, p: Pane, r: PriceRange, from: number, to: number): void {
-  const rows = Math.max(4, Math.min(200, Math.round(ch.params.vpvr?.n || 48)))
-  const split = fineSplit(ch.meta.symbol, ch.iv, ch.bars, from, to, () => { if (!ch.dead) ch.dirty = true })
-  const v = vpvr(ch.bars, from, to, rows, 0.7, split)
+  const bars = ch.bars, f = Math.max(0, from), t = Math.min(bars.length - 1, to)
+  let lo = Infinity, hi = -Infinity
+  for (let i = f; i <= t; i++) { const b = bars[i]; if (Number.isFinite(b.l) && b.l < lo) lo = b.l; if (Number.isFinite(b.h) && b.h > hi) hi = b.h }
+  if (!isFinite(lo) || !isFinite(hi)) return
+  const rows = profileRows(ch.priceToY(lo, p, r) - ch.priceToY(hi, p, r))
+  const split = fineSplit(ch.meta.symbol, ch.iv, bars, from, to, () => { if (!ch.dead) ch.dirty = true })
+  const v = vpvr(bars, from, to, rows, 0.7, split)
   if (!v || !v.total) return
   ch.vpvrLast = v
-  const c: Ctx = ch.ctx, C = ch.colors, PW = ch.plotW(), maxW = PW * 0.25, mode = ch.vpvrMode
-  let mx = 0
-  for (const row of v.rows) mx = Math.max(mx, mode === 'delta' ? Math.abs(row.buy - row.sell) : row.buy + row.sell)
-  if (!mx) return
-  const up = C.up || '#089981', down = C.down || '#F23645', neutral = '#5B8DEF'
-  v.rows.forEach((row, k) => {
-    const y0 = ch.priceToY(v.lo + (k + 1) * v.step, p, r), y1 = ch.priceToY(v.lo + k * v.step, p, r)
-    const top = Math.round(Math.min(y0, y1)) + 1, h = Math.max(1, Math.round(Math.abs(y1 - y0)) - 1)
-    if (top > p.y + p.h || top + h < p.y) return
-    const inVa = k >= v.vaLo && k <= v.vaHi, a = inVa ? 0.42 : 0.18
-    if (mode === 'total') {
-      const w = (row.buy + row.sell) / mx * maxW
-      c.fillStyle = hexA(neutral, a); c.fillRect(PW - w, top, w, h)
-    } else if (mode === 'delta') {
-      const d = row.buy - row.sell, w = Math.abs(d) / mx * maxW
-      c.fillStyle = hexA(d >= 0 ? up : down, a); c.fillRect(PW - w, top, w, h)
-    } else {
-      const wb = row.buy / mx * maxW, ws = row.sell / mx * maxW
-      c.fillStyle = hexA(up, a); c.fillRect(PW - wb - ws, top, wb, h)
-      c.fillStyle = hexA(down, a); c.fillRect(PW - ws, top, ws, h)
-    }
+  const C = ch.colors
+  drawProfile(ch.ctx, {
+    x0: 0, x1: ch.plotW(), v, mode: ch.vpvrMode, alignRight: true,
+    colors: { up: C.up || '#089981', down: C.down || '#F23645', line: VPVR_VA_LINE },
+    priceToY: price => ch.priceToY(price, p, r), clipY: [p.y, p.y + p.h],
   })
-  const py = Math.round(ch.priceToY(v.lo + (v.poc + 0.5) * v.step, p, r)) + .5
-  c.strokeStyle = '#FF9800'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, py); c.lineTo(PW, py); c.stroke()
 }
+/** 可见区间成交量分布的价值区上下沿线色（固定区间那把用画线自己的工具色，默认也是这个蓝） */
+const VPVR_VA_LINE = '#2962FF'
 
 /** 副图参考线（随机 RSI 80/20、CCI ±100、威廉 −20/−80） */
 export function drawSubLevels(ch: TVChart, p: Pane, r: PriceRange, id: string): void {
@@ -191,20 +184,16 @@ function drawCvdSeams(ch: TVChart, p: Pane): void {
   if (!s) return
   const c: Ctx = ch.ctx, PW = ch.plotW(), col = hexA(ch.colors.text3 || '#888', 0.85)
   const from = Math.max(1, Math.floor(ch.xToIndex(0)) - 1), to = Math.min(s.length - 1, Math.ceil(ch.xToIndex(PW)) + 1)
-  const seam = (at: number, left: string, right: string) => {
+  // 只画一条分界虚线，不写「币安 / 三家」这类口径文字（图上不放解释性文案）
+  const seam = (at: number) => {
     const x = Math.round(ch.indexToX(at)) + .5
     if (x < 0 || x > PW) return
     c.setLineDash([3, 3]); c.strokeStyle = col; c.lineWidth = 1; c.beginPath(); c.moveTo(x, p.y); c.lineTo(x, p.y + p.h); c.stroke(); c.setLineDash([])
-    c.fillStyle = col; c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'alphabetic'
-    const y = p.y + p.h - 6
-    c.textAlign = 'right'; c.fillText(left, x - 5, y)
-    c.textAlign = 'left'; c.fillText(right, x + 5, y)
-    c.textBaseline = 'middle'; c.font = ch.font
   }
   for (let i = from; i <= to; i++) {
     const on = s[i] != null, prev = s[i - 1] != null
     // 实时段的第一个点是分叉点（进入实时段前一根的合计），分界画在它和下一根之间
-    if (on && !prev) seam(i + 0.5, '币安', '三家')
-    else if (!on && prev) seam(i - 0.5, '三家', '币安')
+    if (on && !prev) seam(i + 0.5)
+    else if (!on && prev) seam(i - 0.5)
   }
 }

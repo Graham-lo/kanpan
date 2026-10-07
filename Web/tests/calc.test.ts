@@ -123,7 +123,9 @@ describe('Calc', () => {
 describe('CATALOG / paramText', () => {
   it('目录与原型一致', () => {
     expect(Object.keys(CATALOG).slice(0, 8)).toEqual(['ma', 'ema', 'boll', 'vol', 'macd', 'rsi', 'kdj', 'oi'])
-    expect(Object.keys(CATALOG).slice(8)).toEqual(['vwap', 'st', 'ichi', 'vpvr', 'keys', 'cvd', 'atr', 'obv', 'stochrsi', 'cci', 'wr', 'whale'])
+    // 第二批主图叠加（mainIndicators.ts）与第三批副图（oscillators.ts）接在后面，这里只认第一批都还在
+    expect(Object.keys(CATALOG).slice(8, 20)).toEqual(['vwap', 'st', 'ichi', 'vpvr', 'keys', 'cvd', 'atr', 'obv', 'stochrsi', 'cci', 'wr', 'whale'])
+    expect(Object.keys(CATALOG)).toEqual(expect.arrayContaining(['wma', 'hma', 'kc', 'sar', 'pivots', 'stoch', 'dmi', 'ao', 'ppo']))
     expect(CATALOG.ma).toEqual({ name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#0EA5B7'] })
     expect(CATALOG.boll.params).toEqual({ n: 20, k: 2 })
     expect(CATALOG.vol).toEqual({ name: '成交量', cn: '成交量', place: 'overlay' })
@@ -132,7 +134,7 @@ describe('CATALOG / paramText', () => {
     expect(CATALOG.rsi.colors).toEqual(['#7E57C2'])
     expect(CATALOG.kdj.params).toEqual({ n: 9, m1: 3, m2: 3 })
     expect(CATALOG.oi.place).toBe('sub')
-    expect(MAX_SUBS).toBe(3) // 和手机端 Prefs.maxSubs 一致
+    expect(MAX_SUBS).toBe(8) // 网页大屏放得比手机（Prefs.maxSubs 三个）多
   })
   it('paramText', () => {
     expect(paramText('ma', CATALOG.ma.params)).toBe('10 30 120 256')

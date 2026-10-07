@@ -4,7 +4,7 @@ import { vwap } from '../src/chart/indicators'
 import { vpvr } from '../src/chart/overlays'
 import { fineOf } from '../src/chart/fineVolume'
 import { dailyLevels, profileLevels, touchIndex, levelsForInterval, weekStartOf, dayStartOf } from '../src/chart/keyLevels'
-import { flowOf, resetFlows, recordTrade, beat, cvdFlow, whaleFlow, parseFlow, shortUsd, SMALL_USD } from '../src/chart/tradeFlow'
+import { flowOf, resetFlows, recordTrade, beat, cvdFlow, whaleFlow, parseFlow, SMALL_USD } from '../src/chart/tradeFlow'
 import type { TradeEvent } from '../src/orderflow/feed'
 
 const bar = (t: number, o: number, h: number, l: number, c: number, v: number, extra: Partial<Bar> = {}): Bar => ({ t, o, h, l, c, v, ...extra })
@@ -162,8 +162,5 @@ describe('大单与散户累计量差', () => {
     expect(parseFlow({ tracked: true, bigUsd: 100000, rows: [[60000, 1, 2, 3, 4], [1, 'x'], null] })).toEqual({ tracked: true, bigUsd: 100000, rows: [[60000, 1, 2, 3, 4]] })
     expect(parseFlow({ tracked: false, rows: [] })).toEqual({ tracked: false, bigUsd: null, rows: [] })
     expect(parseFlow({})).toBeNull()
-  })
-  it('金额短写用 K / M / B', () => {
-    expect(shortUsd(100_000)).toBe('100K'); expect(shortUsd(1_500_000)).toBe('1.5M'); expect(shortUsd(2e9)).toBe('2B')
   })
 })

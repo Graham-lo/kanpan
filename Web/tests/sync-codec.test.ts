@@ -53,6 +53,30 @@ describe('settings', () => {
   })
 })
 
+describe('settings · 网页独有的指标只留本机', () => {
+  const rich = (): SettingsState => ({
+    pinned: ['1h'],
+    ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'stoch', 'cvd', 'rsi', 'dmi'], mains: ['kc', 'sar', 'pivots'] },
+    params: { macd: { fast: 12, slow: 26, signal: 9 }, kc: { n: 30, k: 2 }, stoch: { n: 21, m1: 1, m2: 3 } },
+  })
+  it('第二批主图叠加、第三批副图、它们的参数一律不上云（服务端白名单不认会整份 400）', () => {
+    const o = encodeSettings(rich(), undefined, {})!
+    expect(o.body.overlays).toEqual(['MA'])
+    expect(o.body.subs).toEqual(['VOL', 'MACD', 'RSI'])
+    const keys = Object.keys(o.body)
+    expect(keys.filter(k => k.startsWith('params/'))).toEqual(['params/MACD'])
+    const text = JSON.stringify(o.body)
+    for (const id of ['kc', 'sar', 'pivots', 'stoch', 'cvd', 'dmi', 'KC', 'SAR', 'STOCH', 'DMI', 'CVD']) expect(text).not.toContain(`"${id}"`)
+  })
+  it('云端副图改了：手机也认识的按云端顺序填回原位，网页独有的副图与主图叠加原地留着', () => {
+    const s = rich()
+    applySettings(s, obj('settings', SETTINGS_ID, { subs: ['VOL', 'KDJ', 'MACD'] }), {})
+    expect(s.ind.subs).toEqual(['kdj', 'stoch', 'cvd', 'macd', 'dmi'])
+    expect(s.ind.mains).toEqual(['kc', 'sar', 'pivots'])
+    expect(s.params?.kc).toEqual({ n: 30, k: 2 })
+  })
+})
+
 describe('favorites', () => {
   it('编码按类别占位，Coinbase 等管不着的原地留着；解码回三个标签页', () => {
     const prev = [

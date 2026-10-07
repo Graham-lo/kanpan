@@ -36,6 +36,8 @@ import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioT
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine, type AlertSignal } from '../chart/chart'
 import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd } from './drawing'
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
+import { isMoreMain, MORE_PARAM_NAME } from '../chart/mainIndicators'
+import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
   S, on, REST, coolingFor, isRateLimit, klines, attachOI, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
@@ -170,7 +172,6 @@ function linkView(from: Cell, t0: number, t1: number): void {
     vwap: vw ? { first: first(vw), firstT: ch.bars[first(vw)]?.t ?? null, n: nn(vw) } : null,
     cvd: cvd ? { tot: nn(cvd[0]), spot: nn(cvd[1]), con: nn(cvd[2]), seam: first(cvd[1]) } : null,
     whale: wh ? { big: nn(wh[0]), small: nn(wh[1]), first: first(wh[0]), last: [wh[0][wh[0].length - 1], wh[1][wh[1].length - 1]] } : null,
-    notes: ch.notes,
   }
 }
 
@@ -449,7 +450,7 @@ export function applyDrawingsHidden(): void {
 }
 
 // ---- 批量删除：这只品种的全部画线 / 全部指标 / 全部，菜单上是实时的数量，⌘Z 能撤回来
-const indCount = (): number => MAIN_TOGGLES.filter(k => st.ind[k as MainToggle]).length + st.ind.subs.length
+const indCount = (): number => MAIN_TOGGLES.filter(k => st.ind[k as MainToggle]).length + (st.ind.mains?.length ?? 0) + st.ind.subs.length
 const drawCount = (s: string): number => drawingsFor(s).filter(d => d.type !== 'measure').length
 function clearMenu(b: HTMLElement): void {
   const s = cfg(active()).symbol, nd = drawCount(s), ni = indCount()
@@ -465,7 +466,7 @@ function bulkDelete(draw: boolean, ind: boolean): void {
   const snap: Snap = { s, json: snapOf(s) }
   if (ni) {
     snap.ind = JSON.stringify(st.ind)
-    MAIN_TOGGLES.forEach(k => { st.ind[k as MainToggle] = false }); st.ind.subs = []
+    MAIN_TOGGLES.forEach(k => { st.ind[k as MainToggle] = false }); st.ind.mains = []; st.ind.subs = []
     applyInd()
   }
   if (nd) setDrawingsOf(s, [])
@@ -622,6 +623,7 @@ function legendAction(id: string, act: string, btn?: HTMLElement): void {
   if (act === 'cmpRemove') { removeCompare(id); return }
   if (act === 'remove') {
     if (isMainToggle(id)) st.ind[id] = false
+    else if (isMoreMain(id)) st.ind.mains = (st.ind.mains ?? []).filter(x => x !== id)
     else st.ind.subs = st.ind.subs.filter(x => x !== id)
     cells.forEach(c => c.chart.setIndicators(st.ind)); save()
     toast(`已移除 ${CATALOG[id as IndicatorId]?.name || id}`, '在「指标」里可以加回来', 'close', 2200)
@@ -904,38 +906,52 @@ export function openSearch(initial = ''): void {
 }
 
 // ------------------------------------------------------------ 指标
-type IndRow = [IndicatorId, 'main' | 'sub', string, string]
-const IND_ROWS: IndRow[] = [
-  ['ma', 'main', 'MA', '均线'], ['ema', 'main', 'EMA', '指数均线'], ['boll', 'main', 'BOLL', '布林带'], ['vol', 'main', '成交量', '叠在主图底部'],
-  ...(['vwap', 'st', 'ichi', 'vpvr', 'keys'] as IndicatorId[]).map((id): IndRow => [id, 'main', CATALOG[id].name, CATALOG[id].cn]),
-  ['macd', 'sub', 'MACD', '平滑异同移动平均'], ['rsi', 'sub', 'RSI', '相对强弱'], ['kdj', 'sub', 'KDJ', '随机指标'], ['oi', 'sub', '持仓量', '币安只给 30 天内的历史'],
-  ...(['cvd', 'whale', 'atr', 'obv', 'stochrsi', 'cci', 'wr'] as IndicatorId[]).map((id): IndRow => [id, 'sub', CATALOG[id].name, CATALOG[id].cn]),
-]
-/** 主图上用开关记的那几个（其余是副图） */
+/** 主图上用开关记的那几个（第二批主图叠加记在 st.ind.mains，其余是副图） */
 type MainToggle = 'ma' | 'ema' | 'boll' | 'vol' | 'vwap' | 'st' | 'ichi' | 'vpvr' | 'keys'
 const MAIN_TOGGLES: string[] = ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi', 'vpvr', 'keys']
 const isMainToggle = (id: string): id is MainToggle => MAIN_TOGGLES.includes(id)
+/** 主力订单流那一行（orderflow 模块出的 HTML）只取开关与齿轮，说明小字不要 */
+const OF_NAME = '主力订单流'
 function openIndicators(): void {
-  let cat: 'all' | 'main' | 'sub' = 'all'
-  const d = dialog(`${head('指标', `<span class="faint" style="font-size:12px">副图最多三个</span>`)}<div class="body"><div class="ind-cats">${([['all', '全部'], ['main', '主图'], ['sub', '副图']] as ['all' | 'main' | 'sub', string][]).map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${k === 'all' ? IND_ROWS.length : IND_ROWS.filter(r => r[1] === k).length}</span></button>`).join('')}</div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
-  const isOn = (id: IndicatorId) => isMainToggle(id) ? !!st.ind[id] : st.ind.subs.includes(id as SubId)
+  let cat: 'all' | 'main' | 'sub' = 'all', q = ''
+  const rows = indicatorRows()
+  const count = (k: typeof cat) => (k === 'sub' ? 0 : 1) + rows.filter(r => k === 'all' || r.place === k).length
+  const d = dialog(`${head('指标')}<div class="body"><div class="ind-side"><div class="ind-search">${I('search', 'icon-16')}<input id="indQ" type="search" placeholder="搜索" autocomplete="off" spellcheck="false" aria-label="搜索指标"></div><div class="ind-cats">${([['all', '全部'], ['main', '主图'], ['sub', '副图']] as ['all' | 'main' | 'sub', string][]).map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${count(k)}</span></button>`).join('')}</div></div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
+  const inp = $<HTMLInputElement>('#indQ', d.dlg), list = $('#indList', d.dlg)
+  const isOn = (id: IndicatorId) => isMainToggle(id) ? !!st.ind[id] : isMoreMain(id) ? !!st.ind.mains?.includes(id) : st.ind.subs.includes(id as SubId)
+  const ofRow = () => indicatorRowHTML().replace(/<small>[\s\S]*?<\/small>/, '')
+  const ofHit = () => { const k = q.toLowerCase().replace(/\s+/g, ''); return cat !== 'sub' && (!k || `${OF_NAME}|orderflow`.includes(k)) }
   function render(): void {
     const full = st.ind.subs.length >= MAX_SUBS
-    $('#indList', d.dlg).innerHTML = (cat !== 'sub' ? indicatorRowHTML() : '') + IND_ROWS.filter(r => cat === 'all' || r[1] === cat).map(([id, pl, n, sub]) => {
-      const on_ = isOn(id), dis = pl === 'sub' && !on_ && full
-      return `<div class="ind-row ${dis ? 'disabled' : ''}" data-id="${id}" tabindex="0" role="checkbox" aria-checked="${on_}" aria-disabled="${dis}" ${dis ? 'data-tip="副图已经有三个了，先关一个"' : ''}>
-        <span class="check-box ${on_ ? 'on' : ''}">${on_ ? I('check', 'icon-16') : ''}</span><span class="nm">${n}<small>${sub}</small></span>
-        <span class="tag">${pl === 'main' ? '主图' : '副图'}</span>
+    const shown = rows.filter(r => (cat === 'all' || r.place === cat) && matchRow(r, q))
+    const html = IND_GROUPS.map(g => {
+      const rs = shown.filter(r => r.group === g)
+      const of = g === '成交量类' && ofHit()
+      if (!rs.length && !of) return ''
+      // 订单流行排在成交量类主图那几行的末尾
+      const mainEnd = rs.filter(r => r.place === 'main').length
+      const items = rs.map(({ id, place }) => {
+        const on_ = isOn(id), dis = place === 'sub' && !on_ && full
+        return `<div class="ind-row ${dis ? 'disabled' : ''}" data-id="${id}" tabindex="0" role="checkbox" aria-checked="${on_}" aria-disabled="${dis}" ${dis ? `data-tip="副图已满 ${MAX_SUBS} 个"` : ''}>
+        <span class="check-box ${on_ ? 'on' : ''}">${on_ ? I('check', 'icon-16') : ''}</span><span class="nm">${CATALOG[id].name}</span>
+        <span class="tag">${place === 'main' ? '主图' : '副图'}</span>
         ${id !== 'vol' && Object.keys(CATALOG[id]?.params || {}).length ? `<button class="ibtn xs" data-set="${id}" aria-label="参数" data-tip="参数">${I('gear', 'icon-16')}</button>` : '<span style="width:24px"></span>'}</div>`
+      })
+      if (of) items.splice(mainEnd, 0, ofRow())
+      return `<div class="ind-group" role="group" aria-label="${g}"><div class="ind-gh">${g}</div>${items.join('')}</div>`
     }).join('')
+    list.innerHTML = html || '<div class="ind-empty faint">没有匹配的指标</div>'
   }
   function toggle(id: IndicatorId): void {
     if (isMainToggle(id)) st.ind[id] = !st.ind[id]
+    else if (isMoreMain(id)) { const m = st.ind.mains ?? []; st.ind.mains = m.includes(id) ? m.filter(x => x !== id) : [...m, id] }
     else if (st.ind.subs.includes(id as SubId)) st.ind.subs = st.ind.subs.filter(x => x !== id)
     else if (st.ind.subs.length < MAX_SUBS) st.ind.subs = [...st.ind.subs, id as SubId]
     else return
     cells.forEach(c => c.chart.setIndicators(st.ind)); save(); render()
+    $<HTMLElement>(`.ind-row[data-id="${id}"]`, list)?.focus()
   }
+  inp.addEventListener('input', () => { q = inp.value; render(); list.scrollTop = 0 })
   d.dlg.addEventListener('click', e => {
     const t = tgt(e)
     const c = t.closest<HTMLElement>('[data-c]'); if (c) { cat = c.dataset.c as typeof cat; $$('[data-c]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === cat))); render(); return }
@@ -944,18 +960,31 @@ function openIndicators(): void {
     const r = t.closest<HTMLElement>('.ind-row'); if (r && r.getAttribute('aria-disabled') !== 'true') toggle(r.dataset.id as IndicatorId)
   })
   d.dlg.addEventListener('keydown', e => {
-    const t = tgt(e); if ((e.key !== ' ' && e.key !== 'Enter') || !t.classList.contains('ind-row')) return
+    const t = tgt(e)
+    // 焦点在列表上直接打字 = 搜索（进来不抢键盘，打字才落到搜索框）
+    if (t !== inp && e.key.length === 1 && e.key !== ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) { inp.focus(); return }
+    const rowsEl = $$<HTMLElement>('.ind-row', list)
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!rowsEl.length) return
+      e.preventDefault()
+      const i = rowsEl.indexOf(t), n = e.key === 'ArrowDown' ? (i < 0 ? 0 : Math.min(rowsEl.length - 1, i + 1)) : (i <= 0 ? (t === inp ? -1 : 0) : i - 1)
+      if (n < 0) return
+      if (e.key === 'ArrowUp' && i === 0) { inp.focus(); return }
+      rowsEl[n].focus(); rowsEl[n].scrollIntoView({ block: 'nearest' }); return
+    }
+    if (t === inp && e.key === 'Enter') { e.preventDefault(); rowsEl[0]?.focus(); return }
+    if ((e.key !== ' ' && e.key !== 'Enter') || !t.classList.contains('ind-row')) return
     e.preventDefault()
-    if (t.hasAttribute('data-of-row')) { indicatorRowClick(t); render(); $<HTMLElement>('[data-of-row]', d.dlg)?.focus() } else toggle(t.dataset.id as IndicatorId)
+    if (t.hasAttribute('data-of-row')) { indicatorRowClick(t); render(); $<HTMLElement>('[data-of-row]', d.dlg)?.focus() } else if (t.getAttribute('aria-disabled') !== 'true') toggle(t.dataset.id as IndicatorId)
   })
-  render(); $('.ind-row', d.dlg)?.focus()
+  render(); $<HTMLElement>('.ind-row', list)?.focus()
 }
 const PARAM_NAME: Record<string, string> = { n: '周期', k: '倍数', fast: '快线', slow: '慢线', signal: '信号线', m1: '平滑 1', m2: '平滑 2', stoch: '取值窗口', tenkan: '转换线', kijun: '基准线', senkou: '先行带 B' }
 function openParams(id: IndicatorId): void {
   const cell = active(); if (!cell) return
   const catg = CATALOG[id], p = cell.chart.params[id] || catg.params || {}
   type Field = [string, number, string]
-  const fields: Field[] = p.periods ? p.periods.map((v, k): Field => [`周期 ${k + 1}`, v, 'periods']) : Object.entries(p).map(([k, v]): Field => [PARAM_NAME[k] || k, v as number, k])
+  const fields: Field[] = p.periods ? p.periods.map((v, k): Field => [`周期 ${k + 1}`, v, 'periods']) : Object.entries(p).map(([k, v]): Field => [(MORE_PARAM_NAME as Record<string, Record<string, string> | undefined>)[id]?.[k] || PARAM_NAME[k] || k, v as number, k])
   if (!fields.length) return
   const d = dialog(`${head(`${catg.name} 参数`)}<div class="dialog-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     ${fields.map((f, i) => `<div class="field"><label for="pf${i}">${f[0]}</label><div class="input-wrap"><input id="pf${i}" class="input num" inputmode="decimal" value="${f[1]}"></div></div>`).join('')}

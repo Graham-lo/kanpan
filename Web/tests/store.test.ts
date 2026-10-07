@@ -29,11 +29,25 @@ describe('页面状态', () => {
     expect(hydrate({ layout: '1', active: 2 }).active).toBe(0)
   })
 
-  it('副图上限三个（和手机端 Prefs.maxSubs 一致）：本机存着四个的收成前三个，成交量不占名额', () => {
-    expect(MAX_SUBS).toBe(3)
-    const s = hydrate({ ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi', 'kdj', 'oi'] } })
-    expect(s.ind.subs).toEqual(['macd', 'rsi', 'kdj'])
+  it('副图上限八个（网页大屏，手机仍是三个）：本机存着九个的收成前八个，成交量不占名额', () => {
+    expect(MAX_SUBS).toBe(8)
+    const nine = ['macd', 'rsi', 'kdj', 'oi', 'cvd', 'atr', 'stoch', 'dmi', 'ao'] as State['ind']['subs']
+    const s = hydrate({ ind: { ma: true, ema: false, boll: false, vol: true, subs: nine } })
+    expect(s.ind.subs).toEqual(nine.slice(0, 8))
     expect(s.ind.vol).toBe(true)
+  })
+
+  it('第二批主图叠加记在 ind.mains（只存本机）：认不出的、重复的、非字符串的丢掉，空了就不留这个字段', () => {
+    const s = hydrate({ ind: { ma: true, ema: false, boll: false, vol: true, subs: [], mains: ['kc', 'nope', 'sar', 'kc', 7, 'ma', 'pivots'] } } as unknown as Partial<State>)
+    expect(s.ind.mains).toEqual(['kc', 'sar', 'pivots'])
+    const e = hydrate({ ind: { ma: true, ema: false, boll: false, vol: true, subs: [], mains: ['nope'] } } as unknown as Partial<State>)
+    expect(e.ind.mains).toBeUndefined()
+    expect(hydrate({}).ind.mains).toBeUndefined()
+  })
+
+  it('成交量分布改成按像素定行数、没有参数了：老存档里的 params.vpvr.n 安静丢掉，别的指标参数照留', () => {
+    expect(hydrate({ params: { vpvr: { n: 48 } } } as unknown as Partial<State>).params).toBeNull()
+    expect(hydrate({ params: { vpvr: { n: 48 }, rsi: { n: 14 } } } as unknown as Partial<State>).params).toEqual({ rsi: { n: 14 } })
   })
 
   it('读坏存档逐项验形状：坏周期回第 0 格的、坏字段回默认、认不出的副图与小部件丢掉（2026-09-29 压测）', () => {

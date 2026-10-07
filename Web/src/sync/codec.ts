@@ -250,7 +250,10 @@ export function putSetting(s: SettingsState, field: string, v: Json): void {
   else if (field === 'overlays') for (const [w, c] of OVERLAY_MAP) s.ind[w] = list.includes(c)
   else if (field === 'subs') {
     s.ind.vol = list.includes('VOL')
-    s.ind.subs = list.map(c => SUB_MAP.find(([, x]) => x === c)?.[0]).filter((x): x is SubId => !!x && x !== 'vol').slice(0, MAX_SUBS)
+    // 云端那几个（手机也认识的）按云端的顺序填回它们在本机列表里的位置；网页独有的副图（累计量差、随机指标…）原地留着
+    const cloud = list.map(c => SUB_MAP.find(([, x]) => x === c)?.[0]).filter((x): x is SubId => !!x && x !== 'vol')
+    const known = new Set(SUB_MAP.map(([w]) => w))
+    s.ind.subs = [...new Set(mergeList(s.ind.subs, known, cloud))].slice(0, MAX_SUBS) as SubId[]
   } else if (field.startsWith('params/')) {
     const id = PARAM_IDS.find(([, c]) => 'params/' + c === field)?.[0]
     if (id && v && typeof v === 'object') s.params = { ...(s.params ?? {}), [id]: v as IndParams }

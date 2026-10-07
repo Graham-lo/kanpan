@@ -1,7 +1,7 @@
 /* Hkline Web · K 线引擎（TradingView 桌面版的那一套）
  *
  * 和手机那套（AICoin 复刻）完全分开。对齐的是 TradingView 桌面版：
- *   · 多窗格：主图 + 最多三个副图，窗格之间 1 px 分隔、可拖动改高度
+ *   · 多窗格：主图 + 最多八个副图（MAX_SUBS），窗格之间 1 px 分隔、可拖动改高度
  *   · 右侧价格轴：最新价标签（实心、涨跌色）；十字线在轴上出深色标签。本根收线倒计时 2026-10-03 起不画
  *     （用户用不到，三端一起去掉；恢复见 tag before-remove-candle-countdown-2026-10-03）
  *   · 十字线：鼠标悬停就出（不用按住），虚线，横竖都在轴上标值
@@ -19,7 +19,9 @@ import { CATALOG, Calc, MAIN_IDS, paramText } from './calc'
 import type { Bar, CalcEnv, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
 import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
 import type { TimeTick } from './timeAxis'
-import { SUB_FIXED, type ExtraSubId } from './indicators'
+import { oscLevels, subBand, subFixed, subStyles, type SubStyle } from './indicators'
+import { mainOn } from './mainIndicators'
+import { drawMoreMain, pivotPColor } from './overlaysMore'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
 import { FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
 import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
@@ -48,7 +50,7 @@ export const LINE = {
   handle: 2,    // 选中锚点的描边
   compare: 2,   // 对比线：比均线粗半档，一眼分得开
 } as const
-const VOL_ALPHA = 0.3, VOL_H = 0.16 // 成交量：垫在主图底部 16%，三成不透明，不抢蜡烛
+const VOL_ALPHA = 0.5, VOL_H = 0.16 // 成交量：垫在主图底部 16%，照 TradingView 默认与蜡烛同色、半透明
 
 // ------------------------------------------------------------ 类型
 /** avwap 锚定 VWAP、fvp 固定区间成交量分布、position 多空持仓（几何与画法在 drawTools.ts） */
@@ -138,14 +140,17 @@ export type ChartMetaInput = Partial<ChartMeta> & { iv: number }
 /** 美元指数没有成交量（恒 0）、没有持仓与成交明细：成交量、VWAP、成交量分布、CVD、OBV、大单、持仓量在它的图上不画。
  *  只是不画，用户的指标布局原样不动，切回别的品种照旧 */
 const NO_VOLUME_MAIN = ['vwap', 'vpvr'] as const
+const NO_VOLUME_MAINS = new Set<string>(['vwma'])
 const NO_VOLUME_SUBS = new Set<string>(['oi', 'cvd', 'obv', 'whale'])
 export function indFor(ind: IndState, symbol: string): IndState {
   if (symbol !== 'DXY') return ind
   const out: IndState = { ...ind, vol: false, subs: ind.subs.filter(id => !NO_VOLUME_SUBS.has(id)) }
+  if (ind.mains) out.mains = ind.mains.filter(id => !NO_VOLUME_MAINS.has(id))
   for (const k of NO_VOLUME_MAIN) out[k] = false
   return out
 }
-export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]; vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean; keys?: boolean }
+/** 指标开关：老的几个主图叠加是布尔字段（会同步）；mains 是第三批主图叠加（加权均线、肯特纳通道、SAR…），只存本机 */
+export interface IndState { ma: boolean; ema: boolean; boll: boolean; vol: boolean; subs: SubId[]; vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean; keys?: boolean; mains?: string[] }
 
 export interface ContextMenuInfo { clientX: number; clientY: number; price: number | null; time: number; drawing?: Drawing }
 
@@ -276,13 +281,10 @@ export class TVChart {
   /** 图例要在下一帧重写（逐笔更新不再每笔都重写一次 innerHTML） */
   legendDirty = false
   private _series: Partial<Record<CalcId, Series[]>> = {}
-  /** 指标算的时候留下的口径说明（图例参数位置显示，悬停出 tip） */
-  private _notes: Partial<Record<string, { text: string; tip?: string }>> = {}
   /** 指标要重算但还没算：真正读到（这一帧要画、图例要读数、调试钩子）时才算一遍。
    *  一帧里来几条推送只算一次；不在屏幕上的格子（十六图滚出去的、切到别的标签页）不算 */
   private calcStale = false
   get series(): Partial<Record<CalcId, Series[]>> { if (this.calcStale) this.computeSeries(); return this._series }
-  get notes(): Partial<Record<string, { text: string; tip?: string }>> { if (this.calcStale) this.computeSeries(); return this._notes }
   private env: CalcEnv | null = null
   log = false
   auto = true
@@ -639,18 +641,17 @@ export class TVChart {
   }
 
   // ---------------------------------------------------------- 指标
-  /** 标记指标要重算（K 线、指标开关、参数、异步数据变了）；真正的计算在第一次读 series / notes 时做 */
+  /** 标记指标要重算（K 线、指标开关、参数、异步数据变了）；真正的计算在第一次读 series 时做 */
   recalc(): void { this.calcStale = true; this.dirty = true }
   private computeSeries(): void {
     this.calcStale = false
     const series: Partial<Record<CalcId, Series[]>> = {}
     this._series = series
-    this._notes = {}
     const env = this.calcEnv()
     detachFlows(env.invalidate)  // 这一轮用到哪只再由量差 / 大单重新登记
     const b = this.bars
     if (!b.length) return
-    for (const id of MAIN_IDS) if (this.ind[id]) series[id] = Calc[id](b, this.params[id], env)
+    for (const id of MAIN_IDS) if (mainOn(this.ind, id)) series[id] = Calc[id](b, this.params[id], env)
     // 降级收掉副图时不算副图（十六图里每格省下几个指标的整段重算）
     if (this.deg.subs) for (const id of this.ind.subs) if (Calc[id]) series[id] = Calc[id](b, this.params[id], env)
   }
@@ -662,15 +663,13 @@ export class TVChart {
       get symbol() { return ch.meta.symbol },
       get iv() { return ch.iv },
       invalidate: () => { if (ch.dead) return; ch.recalc(); ch.legendDirty = true },
-      note: (id, text, tip) => { ch._notes[id] = { text, tip } },
     }
     return this.env
   }
-  /** 图例参数位置：指标自己留了口径说明就用它，否则是参数 */
+  /** 图例参数位置：没有参数的不占位 */
   paramCell(id: string): string {
-    const n = this.notes[id]
-    if (n) return `<span class="ind-param ind-note"${n.tip ? ` data-tip="${n.tip.replace(/"/g, '&quot;')}"` : ''}>${n.text}</span>`
-    return `<span class="ind-param">${paramText(id, this.params[id as IndicatorId])}</span>`
+    const t = paramText(id, this.params[id as IndicatorId])
+    return t ? `<span class="ind-param">${t}</span>` : ''
   }
   recalcTail(): void { this.recalc() }
 
@@ -752,7 +751,8 @@ export class TVChart {
     for (let i = from; i <= to; i++) { const b = this.bars[i]; if (!b) continue; if (ok(b.l)) lo = Math.min(lo, b.l); if (ok(b.h)) hi = Math.max(hi, b.h) }
     for (const id of MAIN_IDS) {
       const ser = this.series[id]
-      if (!ser || this.hidden.has(id)) continue
+      // 枢轴点的 R3 / S3 常常离价格很远，照 TradingView 不参与自动缩放
+      if (!ser || this.hidden.has(id) || id === 'pivots') continue
       for (const s of ser) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null && ok(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
     }
     // 对比：各条线换算到主图价格空间里的位置也要装得下
@@ -769,7 +769,7 @@ export class TVChart {
   }
   rangeSub(id: SubId, from: number, to: number): PriceRange {
     if (id === 'rsi') return { min: 0, max: 100 }
-    const fixed = SUB_FIXED[id as ExtraSubId]; if (fixed) return fixed
+    const fixed = subFixed(id); if (fixed) return fixed
     let lo = Infinity, hi = -Infinity
     for (const s of this.series[id] || []) for (let i = from; i <= to; i++) { const v = s[i]; if (v != null && Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
     if (!isFinite(lo)) return { min: 0, max: 1 }
@@ -829,6 +829,7 @@ export class TVChart {
     this.drawCandles(mainPane, mr, from, to)
     for (const id of ['boll', 'ema', 'ma'] as MainId[]) if (this.series[id] && !this.hidden.has(id)) this.drawLines(id, mainPane, mr, from, to)
     drawExtraMain(this, mainPane, mr, from, to)
+    drawMoreMain(this, mainPane, mr, from, to)
     if (this.compareOn()) this.drawCompare(mainPane, mr, from, to)
     this.drawLastLine(mainPane, mr)
     this.drawAlertLines(mainPane, mr)
@@ -970,7 +971,7 @@ export class TVChart {
     const c = this.ctx, cols = CATALOG[id].colors ?? [], ser = this.series[id]
     if (!ser) return
     if (id === 'boll') {
-      c.fillStyle = hexA('#2962FF', 0.06); c.beginPath()
+      c.fillStyle = hexA('#2962FF', 0.05); c.beginPath()
       let started = false
       for (let i = from; i <= to; i++) { const v = ser[1][i]; if (v == null) continue; const x = this.indexToX(i), y = this.priceToY(v, p, r); if (started) c.lineTo(x, y); else { c.moveTo(x, y); started = true } }
       for (let i = to; i >= from; i--) { const v = ser[2][i]; if (v == null) continue; c.lineTo(this.indexToX(i), this.priceToY(v, p, r)) }
@@ -989,31 +990,74 @@ export class TVChart {
       c.stroke()
     })
   }
+  /** 涨色是不是绿的（绿涨红跌）：MACD 四色柱照 TradingView 的青绿 / 红两组，红涨绿跌时两组对调 */
+  greenUp(): boolean {
+    const m = /^#?([0-9a-f]{6})$/i.exec((this.colors.up || '').trim())
+    if (!m) return true
+    const n = parseInt(m[1], 16)
+    return (n >> 8 & 255) >= (n >> 16 & 255)
+  }
+  /** TradingView MACD 柱的四色：[零上变长, 零上变短, 零下变长, 零下变短] */
+  hist4Colors(): [string, string, string, string] {
+    const g: [string, string] = ['#26A69A', '#B2DFDB'], rd: [string, string] = ['#EF5350', '#FFCDD2']
+    const [pos, neg] = this.greenUp() ? [g, rd] : [rd, g]
+    return [pos[0], pos[1], neg[0], neg[1]]
+  }
+  /** 副图参考线：横贯的灰色虚线 */
+  private levelLines(p: Pane, r: PriceRange, vals: number[], alpha = 0.7): void {
+    const c = this.ctx, PW = this.plotW()
+    c.setLineDash([4, 4]); c.strokeStyle = hexA(this.colors.text3 || '#888', alpha); c.lineWidth = LINE.hair; c.beginPath()
+    for (const v of vals) { const yy = Math.round(this.priceToY(v, p, r)) + .5; c.moveTo(0, yy); c.lineTo(PW, yy) }
+    c.stroke(); c.setLineDash([])
+  }
+  /** 副图：参考带底色 → 参考线 → 柱 / 面 → 线 → 点。画法照 TradingView 各指标默认样式 */
   drawSub(p: Pane, r: PriceRange, from: number, to: number): void {
     const c = this.ctx, C = this.colors, id = p.id as SubId, ser = this.series[id], cols = CATALOG[id].colors ?? []
     if (!ser || this.hidden.has(id)) return
-    const y = (v: number) => this.priceToY(v, p, r)
-    if (id === 'macd') {
-      const bw = this.candleW(), half = Math.floor(bw / 2), y0 = y(0)
-      for (let i = from; i <= to; i++) {
-        const v = ser[2][i]; if (v == null) continue
-        const prev = ser[2][i - 1] ?? v
-        const col = v >= 0 ? C.up : C.down
-        c.fillStyle = (v >= 0 ? v >= prev : v <= prev) ? col : hexA(col, 0.45)
-        const x = Math.round(this.indexToX(i)), yy = y(v)
-        c.fillRect(x - half, Math.min(y0, yy), Math.max(1, bw), Math.max(1, Math.abs(yy - y0)))
-      }
-      this.polyline(ser[0], p, r, from, to, cols[0]); this.polyline(ser[1], p, r, from, to, cols[1])
-    } else if (id === 'rsi') {
-      const y70 = y(70), y30 = y(30)
-      c.fillStyle = hexA('#7E57C2', 0.08); c.fillRect(0, y70, this.plotW(), y30 - y70)
-      c.setLineDash([4, 4]); c.strokeStyle = hexA(C.text3 || '#888', 0.7); c.lineWidth = LINE.hair; c.beginPath()
-      c.moveTo(0, Math.round(y70) + .5); c.lineTo(this.plotW(), Math.round(y70) + .5); c.moveTo(0, Math.round(y30) + .5); c.lineTo(this.plotW(), Math.round(y30) + .5); c.stroke(); c.setLineDash([])
-      this.polyline(ser[0], p, r, from, to, cols[0])
-    } else {
+    const y = (v: number) => this.priceToY(v, p, r), PW = this.plotW()
+    // 上下轨之间 10% 底色（RSI 70 / 30，随机 RSI、CCI、威廉指标与第三批里有的），色取主线
+    const band: [number, number] | undefined = id === 'rsi' ? [70, 30] : subBand(id)
+    if (band) { const ya = y(band[0]), yb = y(band[1]); c.fillStyle = hexA(cols[0] || '#7E57C2', 0.1); c.fillRect(0, Math.min(ya, yb), PW, Math.abs(yb - ya)) }
+    if (id === 'rsi') { this.levelLines(p, r, [70, 30]); this.levelLines(p, r, [50], 0.4) }
+    else {
       drawSubLevels(this, p, r, id)
-      ser.forEach((s, k) => this.polyline(s, p, r, from, to, cols[k % cols.length]))
+      const lv = oscLevels(id); if (lv) this.levelLines(p, r, lv)
     }
+    const styles: readonly SubStyle[] = id === 'macd' ? ['line', 'line', 'hist4'] : subStyles(id) ?? []
+    const style = (k: number): SubStyle => styles[k] ?? 'line'
+    const bw = this.candleW(), half = Math.floor(bw / 2), y0 = y(0)
+    const bar = (i: number, v: number) => { const x = Math.round(this.indexToX(i)), yy = y(v); c.fillRect(x - half, Math.round(Math.min(y0, yy)), Math.max(1, bw), Math.max(1, Math.round(Math.abs(yy - y0)))) }
+    const h4 = this.hist4Colors()
+    ser.forEach((s, k) => {
+      const st = style(k), col = cols[k % cols.length] || C.text2
+      if (st === 'hist' || st === 'hist4' || st === 'histTrend') {
+        for (let i = Math.max(0, from); i <= to; i++) {
+          const v = s[i]; if (v == null) continue
+          const prev = s[i - 1] ?? v
+          c.fillStyle = st === 'hist' ? (v >= 0 ? C.up : C.down)
+            : st === 'histTrend' ? (v >= prev ? C.up : C.down)
+            : v >= 0 ? (v >= prev ? h4[0] : h4[1]) : (v <= prev ? h4[2] : h4[3])
+          bar(i, v)
+        }
+      } else if (st === 'area') {
+        c.fillStyle = hexA(col, 0.15)
+        let run: [number, number][] = []
+        const flush = () => {
+          if (run.length > 1) { c.beginPath(); c.moveTo(run[0][0], y0); for (const [x, yy] of run) c.lineTo(x, yy); c.lineTo(run[run.length - 1][0], y0); c.closePath(); c.fill() }
+          run = []
+        }
+        for (let i = Math.max(0, from - 1); i <= to; i++) { const v = s[i]; if (v == null) { flush(); continue } run.push([this.indexToX(i), y(v)]) }
+        flush()
+      }
+    })
+    ser.forEach((s, k) => { const st = style(k); if (st === 'line' || st === 'area') this.polyline(s, p, r, from, to, cols[k % cols.length] || C.text2) })
+    ser.forEach((s, k) => {
+      if (style(k) !== 'dots') return
+      const rad = Math.max(1.25, Math.min(2.5, bw / 4))
+      c.fillStyle = cols[k % cols.length] || C.text2; c.beginPath()
+      for (let i = Math.max(0, from); i <= to; i++) { const v = s[i]; if (v == null) continue; const x = this.indexToX(i), yy = y(v); c.moveTo(x + rad, yy); c.arc(x, yy, rad, 0, Math.PI * 2) }
+      c.fill()
+    })
   }
   polyline(s: Series, p: Pane, r: PriceRange, from: number, to: number, col: string): void {
     const c = this.ctx; c.strokeStyle = col; c.lineWidth = LINE.plot; c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath(); let st = false
@@ -1349,7 +1393,7 @@ export class TVChart {
     const chg = prev ? b.c - prev.c : b.c - b.o, pct = chg / (prev ? prev.c : b.o) * 100
     const cls = this.stale ? 'faint' : chg >= 0 ? 'up' : 'down'
     const v = (x: number) => `<span class="num ${cls}">${fmt(x, dec)}</span>`
-    const tools = (id: string) => `<span class="tools"><button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${this.hidden.has(id) ? '显示' : '隐藏'}">${I(this.hidden.has(id) ? 'eyeOff' : 'eye', 'icon-16')}</button><button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button><button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span>`
+    const tools = (id: string) => this.legendTools(id)
     // 多图小格：只留品种与周期（周期是 sub 里「· 」后的第一段）
     if (this.deg.compact) {
       const iv = this.meta.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || ''
@@ -1369,22 +1413,38 @@ export class TVChart {
       h += `<div class="lrow cmp-row"><span class="cmp-dot" style="background:${cv.color}"></span><span class="ind-name">${cv.line.name}</span><span class="vals num"><span style="color:${cv.color}">${comparePercentLabel(cv.at(i))}</span></span><span class="tools"><button class="ibtn xs" data-act="cmpRemove" data-id="${cv.line.key}" data-tip="移除对比">${I('close', 'icon-16')}</button></span></div>`
     }
     for (const id of MAIN_IDS) {
-      if (!this.ind[id]) continue
-      const cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || []
+      if (!mainOn(this.ind, id)) continue
+      const cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || [], labels = cat.labels
       const extra = id === 'vpvr' ? `<button class="lchip" data-act="vpvrMode" data-id="vpvr" data-tip="看法">${VPVR_MODES.find(m => m.id === this.vpvrMode)?.label ?? ''}${I('chevronDown', 'icon-16')}</button>` : ''
+      const vals = s.map((ser, k) => {
+        // 之字转向只在转折那根有值：读数取到这根为止最近的一个转折
+        let val = ser[i]
+        if (id === 'zigzag') for (let j = Math.min(i, ser.length - 1); j >= 0 && val == null; j--) val = ser[j]
+        const lab = labels?.[k]
+        // 带前缀的线（上 / 下轨、R1 / S1、上 / 下分形、多 / 空）这一根没值就不列
+        if (lab && val == null) return ''
+        const col = cols[k % cols.length] || (id === 'pivots' ? pivotPColor(this) : 'var(--text)')
+        return `<span style="color:${col}">${lab ? `<i>${lab}</i>` : ''}${fmt(val, dec)}</span>`
+      }).join('')
       h += `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}${extra}
-          <span class="vals num">${s.map((ser, k) => `<span style="color:${cols[k % cols.length]}">${fmt(ser[i], dec)}</span>`).join('')}</span>${tools(id)}</div>`
+          <span class="vals num">${vals}</span>${tools(id)}</div>`
     }
     if (this.ind.vol) h += `<div class="lrow ${this.hidden.has('vol') ? 'hidden-ind' : ''}"><span class="ind-name">成交量</span><span class="vals num"><span class="${b.c >= b.o ? 'up' : 'down'}">${fmtCompact(b.v)}</span></span>${tools('vol')}</div>`
     if (this.walls) h += `<div class="lrow ${this.hidden.has('walls') ? 'hidden-ind' : ''}"><span class="ind-name">主力订单流</span><span class="ind-param">${this.meta.wallParam || ''}</span><span class="vals num"><span style="color:#8B5CF6">合约 ${this.walls.filter(w => !w.to && w.product !== 'spot').length}</span><span style="color:#06B6D4">现货 ${this.walls.filter(w => !w.to && w.product === 'spot').length}</span></span>${tools('walls')}</div>`
     this.legendEl.innerHTML = h
     this.renderPaneLegends(this._panes || [])
   }
+  /** 图例行尾的 显示 / 参数 / 移除；没有可调参数的不放齿轮 */
+  legendTools(id: string): string {
+    const I = icon, hid = this.hidden.has(id)
+    const hasParams = Object.keys(CATALOG[id as IndicatorId]?.params ?? {}).length > 0
+    return `<span class="tools"><button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${hid ? '显示' : '隐藏'}">${I(hid ? 'eyeOff' : 'eye', 'icon-16')}</button>${hasParams ? `<button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button>` : ''}<button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span>`
+  }
   renderPaneLegends(panes: Pane[]): void {
     const subs = panes.slice(1)
     while (this.paneLegendEls.length < subs.length) { const e = document.createElement('div'); e.className = 'pane-legend'; this.host.appendChild(e); this.paneLegendEls.push(e); this.paneLegendKeys.push(null) }
     this.paneLegendEls.forEach((e, k) => { e.style.display = k < subs.length ? '' : 'none' })
-    const i = this.legendIndex(), I = icon
+    const i = this.legendIndex(), h4 = this.hist4Colors()
     subs.forEach((p, k) => {
       const e = this.paneLegendEls[k], id = p.id as SubId, cat = CATALOG[id], cols = cat.colors ?? [], s = this.series[id] || [], labels = cat.labels
       e.style.top = (p.y + 6) + 'px'
@@ -1392,14 +1452,20 @@ export class TVChart {
         const val = ser[i], lab = labels?.[j]
         // 带前缀的线（现货 / 合约、大单 / 散户）这一根没值就不列
         if (lab && val == null) return ''
-        const col = id === 'macd' && j === 2 ? ((val ?? 0) >= 0 ? 'var(--up-text)' : 'var(--down-text)') : cols[j % cols.length]
+        // 柱的读数跟柱色走：四色柱取两种深色，零轴柱取涨跌色，升降柱看比上一根高还是低
+        const st = id === 'macd' ? (j === 2 ? 'hist4' : 'line') : subStyles(id)?.[j] ?? 'line'
+        const v0 = val ?? 0, prev = ser[i - 1] ?? v0
+        const col = st === 'hist4' ? (v0 >= 0 ? h4[0] : h4[2])
+          : st === 'hist' ? (v0 >= 0 ? 'var(--up-text)' : 'var(--down-text)')
+          : st === 'histTrend' ? (v0 >= prev ? 'var(--up-text)' : 'var(--down-text)')
+          : cols[j % cols.length]
         return `<span style="color:${col}">${lab ? `<i>${lab}</i>` : ''}${val == null ? '—' : this.subFmt(id, val)}</span>`
       }).join('')
-      const key = id + ':' + i + ':' + vals + ':' + (this.notes[id]?.text ?? '')
+      const key = id + ':' + i + ':' + vals + ':' + this.paramCell(id)
       if (this.paneLegendKeys[k] === key) return
       this.paneLegendKeys[k] = key
       e.innerHTML = `<div class="lrow ${this.hidden.has(id) ? 'hidden-ind' : ''}"><span class="ind-name">${cat.name}</span>${this.paramCell(id)}<span class="vals num">${vals}</span>
-          <span class="tools"><button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="${this.hidden.has(id) ? '显示' : '隐藏'}">${I(this.hidden.has(id) ? 'eyeOff' : 'eye', 'icon-16')}</button><button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数">${I('gear', 'icon-16')}</button><button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除">${I('close', 'icon-16')}</button></span></div>`
+          ${this.legendTools(id)}</div>`
     })
   }
 

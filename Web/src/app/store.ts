@@ -5,6 +5,7 @@
  */
 import type { Drawing } from '../chart/chart'
 import { MAX_SUBS, CATALOG, type IndParams, type IndicatorId, type SubId } from '../chart/calc'
+import { isMoreMain } from '../chart/mainIndicators'
 import { migrateAlert, type Alert } from '../alerts/shape'
 import type { VpvrMode } from '../chart/overlays'
 import type { NoteDraft } from '../notes/draft'
@@ -78,6 +79,9 @@ export interface IndState {
   vwap?: boolean; st?: boolean; ichi?: boolean; vpvr?: boolean
   /** 关键价位（昨高低、上周高低、今开、昨控与价值区） */
   keys?: boolean
+  /** 第三批主图叠加（加权均线、肯特纳通道、抛物线 SAR…，chart/mainIndicators.ts）：开着的按开的先后排。
+   *  只存本机，不同步——服务端设置白名单里没有这些名字，混进去整份设置会被拒 */
+  mains?: string[]
 }
 
 export interface Slots {
@@ -230,6 +234,8 @@ function cleanParams(raw: unknown): Record<string, IndParams> | null {
       if (k === 'periods') { if (Array.isArray(v) && v.length && v.length <= 8 && v.every(x => Number.isInteger(x) && x >= 1 && x <= 2000)) one.periods = v.slice() }
       else if (typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 2000 && k in (cat.params || {})) one[k] = v
     }
+    // 没有可调参数的（成交量分布 2026-10-07 起按像素定行数，老存档里的 n 安静丢掉）不留空壳
+    if (!Object.keys(one).length) continue
     out[id] = one as IndParams
   }
   return Object.keys(out).length ? out : null
@@ -259,6 +265,10 @@ export function hydrate(saved: Partial<State>): State {
   const ind = rec(saved.ind)
   s.ind = { ...d.ind }
   for (const k of ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi', 'vpvr', 'keys'] as const) if (typeof ind[k] === 'boolean') s.ind[k] = ind[k] as boolean
+  if (Array.isArray(ind.mains)) {
+    const mains = [...new Set((ind.mains as unknown[]).filter((x): x is string => typeof x === 'string' && isMoreMain(x)))]
+    if (mains.length) s.ind.mains = mains
+  }
   if (Array.isArray(ind.subs)) s.ind.subs = [...new Set((ind.subs as unknown[]).filter((x): x is SubId => typeof x === 'string' && SUB_IDS.has(x)))]
   s.ind.subs = s.ind.subs.slice(0, MAX_SUBS)
   s.params = cleanParams(saved.params)

@@ -10,6 +10,7 @@
  */
 import type { Bar, Series, IndParams, CatalogEntry, CalcEnv } from './calc'
 import { calcCvd, calcWhale } from './tradeFlow'
+import * as Osc from './oscillators'
 
 export type ExtraMainId = 'vwap' | 'st' | 'ichi' | 'vpvr' | 'keys'
 export type ExtraSubId = 'cvd' | 'atr' | 'obv' | 'stochrsi' | 'cci' | 'wr' | 'whale'
@@ -224,18 +225,18 @@ export const EXTRA_CALC: Record<ExtraMainId | ExtraSubId, Fn> = {
 }
 
 export const EXTRA_CATALOG: Record<ExtraMainId | ExtraSubId, CatalogEntry> = {
-  vwap: { name: '成交均价', cn: '按成交量加权，日内周期每天零点重算、日线按月、周线按年，带一倍与两倍标准差', place: 'main', params: {}, colors: ['#2962FF', '#26A69A', '#26A69A', '#FF9800', '#FF9800'] },
-  st: { name: '超级趋势', cn: '按真实波幅翻转的趋势线', place: 'main', params: { n: 10, k: 3 }, colors: ['#089981', '#F23645'] },
-  ichi: { name: '一目均衡表', cn: '转换线、基准线、云带、迟行线', place: 'main', params: { tenkan: 9, kijun: 26, senkou: 52 }, colors: ['#2962FF', '#B71C1C', '#43A047', '#F44336', '#9C27B0'] },
-  vpvr: { name: '成交量分布', cn: '看得见的这段里各价位成交多少，含控制点与七成价值区', place: 'main', params: { n: 48 }, colors: [] },
-  keys: { name: '关键价位', cn: '昨高低、上周高低、今开，昨日控制点与七成价值区（未回踩的才延伸）', place: 'main', params: {}, colors: [] },
-  cvd: { name: '累计量差', cn: '主动买入减主动卖出逐根累加；实时段加上 OKX、Coinbase，拆现货、合约', place: 'sub', params: {}, colors: ['#2962FF', '#06B6D4', '#8B5CF6'], labels: ['', '现货', '合约'] },
-  atr: { name: '真实波幅', cn: '平均真实波幅', place: 'sub', params: { n: 14 }, colors: ['#B71C1C'] },
-  obv: { name: '能量潮', cn: '涨加跌减的累计成交额', place: 'sub', params: {}, colors: ['#2962FF'] },
-  stochrsi: { name: '随机强弱', cn: '相对强弱再取随机值', place: 'sub', params: { n: 14, stoch: 14, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00'] },
-  cci: { name: '顺势指标', cn: '偏离均价的程度', place: 'sub', params: { n: 20 }, colors: ['#2962FF'] },
-  wr: { name: '威廉指标', cn: '收盘在区间里的位置', place: 'sub', params: { n: 14 }, colors: ['#7E57C2'] },
-  whale: { name: '大单与散户累计量差', cn: '三家成交里大单、散户各自的主动买减主动卖，逐根累加', place: 'sub', params: {}, colors: ['#F7A600', '#26A69A'], labels: ['大单', '散户'] },
+  vwap: { name: '成交均价', cn: '', place: 'main', params: {}, colors: ['#2962FF', '#26A69A', '#26A69A', '#FF9800', '#FF9800'] },
+  st: { name: '超级趋势', cn: '', place: 'main', params: { n: 10, k: 3 }, colors: ['#089981', '#F23645'] },
+  ichi: { name: '一目均衡表', cn: '', place: 'main', params: { tenkan: 9, kijun: 26, senkou: 52 }, colors: ['#2962FF', '#B71C1C', '#43A047', '#F44336', '#9C27B0'] },
+  vpvr: { name: '成交量分布', cn: '', place: 'main', params: {}, colors: [] },
+  keys: { name: '关键价位', cn: '', place: 'main', params: {}, colors: [] },
+  cvd: { name: '累计量差', cn: '', place: 'sub', params: {}, colors: ['#2962FF', '#06B6D4', '#8B5CF6'], labels: ['', '现货', '合约'] },
+  atr: { name: '真实波幅', cn: '', place: 'sub', params: { n: 14 }, colors: ['#B71C1C'] },
+  obv: { name: '能量潮', cn: '', place: 'sub', params: {}, colors: ['#2962FF'] },
+  stochrsi: { name: '随机强弱', cn: '', place: 'sub', params: { n: 14, stoch: 14, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00'] },
+  cci: { name: '顺势指标', cn: '', place: 'sub', params: { n: 20 }, colors: ['#2962FF'] },
+  wr: { name: '威廉指标', cn: '', place: 'sub', params: { n: 14 }, colors: ['#7E57C2'] },
+  whale: { name: '大单与散户累计量差', cn: '', place: 'sub', params: {}, colors: ['#F7A600', '#26A69A'], labels: ['大单', '散户'] },
 }
 
 /** 固定刻度的副图（不随可见数据伸缩） */
@@ -245,7 +246,26 @@ export const SUB_FIXED: Partial<Record<ExtraSubId, { min: number; max: number }>
 }
 /** 副图上的参考线 */
 export const SUB_LEVELS: Partial<Record<ExtraSubId, number[]>> = {
+  stochrsi: [80, 50, 20],
+  wr: [-20, -50, -80],
+  cci: [100, 0, -100],
+}
+/** 两条参考线之间铺一层底色（照 TradingView：随机 RSI、CCI、威廉指标的上下轨之间 10% 填充，色取主线） */
+export const SUB_BAND: Partial<Record<ExtraSubId, [number, number]>> = {
   stochrsi: [80, 20],
   wr: [-20, -80],
   cci: [100, -100],
 }
+
+// ------------------------------------------------------------ 副图画法查表：第二批（这里）与第三批（oscillators.ts）合在一起查
+/** 副图每条序列的画法：line 折线 · hist 零轴柱（正涨色负跌色）· hist4 MACD 式四色柱 · histTrend 比上一根高绿低红的柱 ·
+ *  area 零轴填充加线 · dots 小圆点 */
+export type SubStyle = 'line' | 'hist' | 'hist4' | 'histTrend' | 'area' | 'dots'
+type Lookup<T> = Partial<Record<string, T>>
+// OSC_BAND 是 oscillators.ts 后加的表：没有它时当空表（另一路还在写那个文件）
+export const subFixed = (id: string): { min: number; max: number } | undefined => (SUB_FIXED as Lookup<{ min: number; max: number }>)[id] ?? (Osc.OSC_FIXED as Lookup<{ min: number; max: number }>)[id]
+/** 第三批副图的参考线（第二批的由 overlays.ts 的 drawSubLevels 画） */
+export const oscLevels = (id: string): number[] | undefined => (Osc.OSC_LEVELS as Lookup<number[]>)[id]
+export const subLevels = (id: string): number[] | undefined => (SUB_LEVELS as Lookup<number[]>)[id] ?? oscLevels(id)
+export const subBand = (id: string): [number, number] | undefined => (SUB_BAND as Lookup<[number, number]>)[id] ?? (Osc.OSC_BAND as Lookup<[number, number]>)[id]
+export const subStyles = (id: string): readonly SubStyle[] | undefined => (Osc.OSC_STYLE as Lookup<readonly SubStyle[]>)[id]

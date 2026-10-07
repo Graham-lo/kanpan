@@ -1407,12 +1407,9 @@ async function partLevels() {
   await open('s=BTCUSDT&i=1m&layout=1&panel=watch&ladder=0&drawer=0')
   d = await until(async () => { const x = await indNow(); return x && x.cvd && x.cvd.seam >= 0 && x.cvd.spot >= 2 && x.whale && x.whale.big > 0 ? x : null }, 150000, 3000) || await indNow()
   ok('累计量差：有历史 / 实时分界，实时段拆成现货、合约两条', !!d.cvd && d.cvd.seam > 0 && d.cvd.spot >= 2 && d.cvd.con === d.cvd.spot && d.cvd.tot === d.bars, JSON.stringify(d.cvd))
-  ok('累计量差：图例口径写「币安 · 三家」', d.notes?.cvd?.text === '币安 · 三家', JSON.stringify(d.notes?.cvd))
   ok('大单与散户：两条都有数', !!d.whale && d.whale.big > 0 && d.whale.small > 0, JSON.stringify(d.whale))
-  ok('大单与散户：图例写大单线与散户线（K / M 金额）', /^大单 ≥ [\d.]+[KMB] · 散户 < 10K/.test(d.notes?.whale?.text || ''), d.notes?.whale?.text || '无')
   // BTC 是服务端常驻跟踪的品种：近 3 天分钟历史回填后，1 分钟线加载的一整段（约 25 小时）都该有数
   const hist = d.whale && d.whale.big >= d.bars * 0.9
-  ok('大单与散户：常驻跟踪品种有服务端分钟历史（不是从打开起）', hist && !/从打开起/.test(d.notes?.whale?.text || ''), `${d.whale?.big} / ${d.bars} 根有数；${d.notes?.whale?.text}`)
   const legend = await page.evaluate(() => [...document.querySelectorAll('.pane-legend .lrow')].map(e => e.textContent.replace(/\s+/g, ' ').trim()))
   ok('副图图例：现货 / 合约、大单 / 散户各有短名', legend.some(t => t.includes('现货') && t.includes('合约')) && legend.some(t => t.includes('大单') && t.includes('散户')), legend.join(' | '))
   await page.mouse.move(5, 700); await wait(300)

@@ -51,13 +51,19 @@ export function fmtCompact(v: number | null | undefined): string {
 /** 副图读数（图例、刻度、十字线）。MACD、ATR 是价格单位，低价品种（DOGE 0.1、PEPE 0.00001）的值常在 0.001 以下，
  *  原来一律 < 10 取两位，DOGE 日线的 MACD 图例与刻度全是「0.00」；这两个按品种价格精度 dec 取位（至少两位、至多 10 位）。
  *  RSI、KDJ 取整；持仓量用 K/M/B/T；其余（成交量类、CCI、威廉）照旧。 */
+/** 0–100 刻度的副图：整数位就够 */
+const PCT100 = new Set(['rsi', 'kdj', 'stochrsi', 'stoch', 'mfi', 'uo', 'chop', 'rvi', 'crsi', 'aroon', 'cmo', 'dmi'])
+/** 以价格为单位的副图：小数位跟品种价格的小数位走（低价币上 2 位会一律显示 0.00） */
+const PRICE_UNIT = new Set(['macd', 'atr', 'ao', 'ac', 'mom', 'dpo', 'stdev'])
 export function fmtSub(id: string, v: number, dec: number): string {
   if (!isFinite(v)) return ''
-  if (id === 'rsi' || id === 'kdj') return v.toFixed(0)
+  if (PCT100.has(id)) return v.toFixed(0)
   if (id === 'oi') return fmtCompact(v)
   const a = Math.abs(v)
   if (a >= 1000) return fmtCompact(v)
-  if (id === 'macd' || id === 'atr') return v.toFixed(Math.min(10, Math.max(a < 10 ? 2 : 1, dec)))
+  if (PRICE_UNIT.has(id)) return v.toFixed(Math.min(10, Math.max(a < 10 ? 2 : 1, dec)))
+  // 极小量（低价币的量价类、比值类）：留三位有效数字，不要显示成 0.00
+  if (a > 0 && a < 0.01) return v.toFixed(Math.min(10, 2 - Math.floor(Math.log10(a))))
   return v.toFixed(a < 10 ? 2 : 1)
 }
 
