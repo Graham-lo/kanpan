@@ -219,23 +219,15 @@ import ReviewUI
     includeForming ? openTime < end : closeTime(openTime, interval: interval) <= end
   }
 
-  /// 两种回放（笔记重温、交易回放）共用的取数：分页取本家 K 线、验连续、落卷、定精度，
-  /// 返回装好这一卷的底图。中途被新的一趟顶掉返回 `nil`。
+  /// 两种回放（笔记重温、交易回放）共用的取数：先读盘上那份、缺的分页并行取本家 K 线
+  /// （`ReviewKlineCache`），验连续、落卷、定精度，返回装好这一卷的底图。中途被新的一趟顶掉返回 `nil`。
   private func fetchTape(_ request: TapeRequest, base: ChartState, provider: any MarketProvider,
                          feature: ReviewFeature, id: UUID) async throws -> ChartState? {
     let caps = provider.capabilities
     let interval = request.interval, end = request.end
-    var start = request.start
-    var fetched: [Bar] = []
-    while start < end {
-      try Task.checkCancellation()
-      let page = try await provider.klines(symbol: request.key, interval: interval, limit: caps.maxKlines, startTime: start, endTime: end - 1)
-      guard let last = page.last else { break }
-      fetched.append(contentsOf: page)
-      let next = Self.closeTime(last.openTime, interval: caps.source(for: interval))
-      guard next > start else { break }; start = next
-      guard fetched.count <= 6000 else { throw ReviewBridgeError.rangeTooLarge }
-    }
+    let fetched = try await ReviewKlineCache.sourceBars(provider: provider, key: request.key, interval: interval,
+                                                        start: request.start, end: end, maxBars: 6000,
+                                                        overflow: .fail)
     try Task.checkCancellation(); guard loadID == id else { return nil }
     let series = MarketSeries.series(symbol: request.key, interval: interval, bars: fetched, capabilities: caps)
     let ordered = (0..<series.count).filter {
@@ -250,16 +242,54 @@ import ReviewUI
     replayKey = request.key
     var base = base
     base.series = BarSeries(symbol: request.key, interval: interval, bars: ordered)
-    // 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
-    let decimals = feature.priceDecimals(request.key)
-      ?? (base.symbol.symbol == request.key ? base.symbol.knownPriceDecimals : nil)
-      ?? ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] })
-      ?? priceDecimalsFallback(ordered.last!.close)
-    base.symbol = SymbolInfo(symbol: request.key, base: request.shortSymbol, pricePrecision: decimals,
+    applyPrecision(&base, key: request.key, shortSymbol: request.shortSymbol, bars: ordered, feature: feature)
+    return base
+  }
+
+  /// 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
+  private func applyPrecision(_ base: inout ChartState, key: String, shortSymbol: String, bars: [Bar],
+                              feature: ReviewFeature) {
+    guard let last = bars.last else { return }
+    let decimals = feature.priceDecimals(key)
+      ?? (base.symbol.symbol == key ? base.symbol.knownPriceDecimals : nil)
+      ?? ReviewPricePrecision.decimals(of: bars.flatMap { [$0.open, $0.high, $0.low, $0.close] })
+      ?? priceDecimalsFallback(last.close)
+    base.symbol = SymbolInfo(symbol: key, base: shortSymbol, pricePrecision: decimals,
                              tickSize: pow(10, -Double(decimals)))
     // 存储的显示位数与这次替换的品种一起更新。
     base.decimals = base.symbol.priceDecimals
-    return base
+  }
+
+  /// 交易回放开图那一刻先画的那一截：盘上现成有的（多半是复盘本缩略图刚取过的那段），一页都不取。
+  ///
+  /// 先按回放周期找；整卷都在盘上就不用垫（马上就是整卷）。回放周期没有，就退到缩略图那一档
+  /// （`ReviewChartInterval.window`）。只画到回放起点那一根（不够三根就画到开仓前一根）——
+  /// 和整卷到了之后的第一帧接得上，也不先把这一笔的结果亮出来。
+  static func tradePreview(plan: TradeReplayPlan, window: (start: Int64, end: Int64), round: TradeRound,
+                           provider: any MarketProvider, key: String,
+                           store: ReviewKlineStore = ReviewKlineCache.shared) async -> BarSeries? {
+    let own = await ReviewKlineCache.cachedSeries(provider: provider, key: key, interval: plan.interval,
+                                                  start: window.start, end: window.end, store: store)
+    if own.complete { return nil }
+    var candidates = [own.series]
+    let thumb = ReviewChartInterval.window(openedAt: round.openedAt, closedAt: round.closedAt, now: ReviewClock.now)
+    if thumb.interval != plan.interval {
+      candidates.append(await ReviewKlineCache.cachedSeries(provider: provider, key: key, interval: thumb.interval,
+                                                            start: thumb.start, end: thumb.end + 1, store: store).series)
+    }
+    for series in candidates {
+      let cut = cutPreview(series, startBar: plan.startBar, openBar: plan.openBar)
+      if cut.count >= 3 { return cut }
+    }
+    return nil
+  }
+
+  /// 垫图只留到回放起点（不够三根就留到开仓前）。
+  static func cutPreview(_ series: BarSeries, startBar: Int64, openBar: Int64) -> BarSeries {
+    let bars = (0..<series.count).map(series.bar(at:))
+    var kept = bars.filter { $0.openTime <= startBar }
+    if kept.count < 3 { kept = bars.filter { $0.openTime < openBar } }
+    return BarSeries(symbol: series.symbol, interval: series.interval, bars: kept)
   }
 
   /// 回放取数认的是记录所属那一家的本家数据（`RouteResolver.ownDataProvider`）。
@@ -345,8 +375,22 @@ import ReviewUI
                                   interval: plan.interval, start: window.start,
                                   end: min(window.end, ReviewClock.now), drawingSnapshot: nil,
                                   includeForming: true)
+    let shortSymbol = tapeRequest.shortSymbol
     loadTask = Task {
       do {
+        // 盘上没有整卷时，先把现成的那一截（缩略图取过的）画上去，人不用对着一张空图等。
+        if let preview = await Self.tradePreview(plan: plan, window: (tapeRequest.start, tapeRequest.end),
+                                                 round: round, provider: provider, key: key),
+           loadID == request, replayBase == nil {
+          var shown = base
+          shown.series = preview
+          applyPrecision(&shown, key: key, shortSymbol: shortSymbol, bars: (0..<preview.count).map(preview.bar(at:)), feature: feature)
+          let window = ReviewReplayViewport.next(current: nil, previousLastTime: nil, lastTime: preview.lastTime,
+                                                 step: preview.step, reset: true)
+          shown.view = ViewWindow(to: window.to, span: window.span)
+          state = shown
+          if let chart = proxy.box?.chart { chart.state = shown }
+        }
         guard let base = try await fetchTape(tapeRequest, base: base, provider: provider, feature: feature, id: request)
         else { return }
         guard bars.contains(where: { $0.openTime >= plan.openBar }) else { throw ReviewBridgeError.noHistory }

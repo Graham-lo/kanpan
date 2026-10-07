@@ -14,13 +14,15 @@ final class LateReplyProtocol: URLProtocol, @unchecked Sendable {
   private static let lock = NSLock()
   nonisolated(unsafe) private static var holdDevices = false
   nonisolated(unsafe) private static var deletes = 0
+  /// DELETE 一律答 500（「退出某设备」没成那条路）。
+  nonisolated(unsafe) static var failDeletes = false
   nonisolated(unsafe) private static var released = false
   nonisolated(unsafe) private static var held: [@Sendable () -> Void] = []
   nonisolated(unsafe) private static var arrivals: AsyncStream<Void>.Continuation?
 
   static func reset(holdDevices hold: Bool) -> AsyncStream<Void> {
     lock.lock(); defer { lock.unlock() }
-    holdDevices = hold; deletes = 0; released = false; held = []
+    holdDevices = hold; deletes = 0; released = false; held = []; failDeletes = false
     let (stream, continuation) = AsyncStream<Void>.makeStream()
     arrivals = continuation
     return stream
@@ -36,7 +38,8 @@ final class LateReplyProtocol: URLProtocol, @unchecked Sendable {
   override func startLoading() {
     let path = request.url?.path ?? ""
     if request.httpMethod == "DELETE" {
-      Self.lock.lock(); Self.deletes += 1; Self.lock.unlock()
+      Self.lock.lock(); Self.deletes += 1; let fail = Self.failDeletes; Self.lock.unlock()
+      if fail { answer(#"{"error":{"code":"internal","message":"x"}}"#, status: 500); return }
     }
     guard path.hasSuffix("/v1/auth/devices"), request.httpMethod == "GET" else {
       answer(#"{"data":{"ok":true}}"#)
@@ -50,8 +53,8 @@ final class LateReplyProtocol: URLProtocol, @unchecked Sendable {
     Self.lock.unlock()
     if hold { arrived?.yield() } else { answer(body) }
   }
-  private func answer(_ body: String) {
-    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+  private func answer(_ body: String, status: Int = 200) {
+    let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
     client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
     client?.urlProtocol(self, didLoad: Data(body.utf8))
     client?.urlProtocolDidFinishLoading(self)
@@ -111,11 +114,113 @@ struct AccountLateReplyTests {
     _ = LateReplyProtocol.reset(holdDevices: false)
     let (feature, _) = try await signedIn()
     let other = AccountSessionDevice(id: UUID(), name: "旧手机", createdAt: 0, lastSeen: 0, current: false)
-    feature.revoke(other)
-    feature.revoke(other)
-    for _ in 0..<200 where feature.devices.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(!feature.devices.isEmpty)
+    feature.devices = [other]
+    let first = feature.revoke(other)
+    let second = feature.revoke(other)
+    #expect(first != nil)
+    #expect(second == nil)
+    await first?.value
     #expect(LateReplyProtocol.deleteCount == 1)
     #expect(feature.error == nil)
+  }
+
+  // MARK: - 体感优化 2026-10-07：设备表先摆本机那份、踢设备乐观更新
+
+  private func cacheDirectory() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("devices-\(UUID().uuidString)", isDirectory: true)
+  }
+  private let phone = AccountSessionDevice(id: UUID(uuidString: "D0000000-0000-4000-8000-000000000001")!,
+                                           name: "alice 的手机", createdAt: 0, lastSeen: 0, current: true)
+  private let pad = AccountSessionDevice(id: UUID(uuidString: "D0000000-0000-4000-8000-000000000002")!,
+                                         name: "旧平板", kind: .tablet, createdAt: 0, lastSeen: 0, current: false)
+  private let mac = AccountSessionDevice(id: UUID(uuidString: "D0000000-0000-4000-8000-000000000003")!,
+                                         name: "办公室电脑", kind: .desktop, createdAt: 0, lastSeen: 0, current: false)
+
+  @Test("设备表的本机那份：按人记、封顶、清得掉")
+  func deviceCacheIsPerUserAndCapped() {
+    let directory = cacheDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let cache = DeviceListCache(directory: directory)
+    #expect(cache.load(for: alice.id) == nil)
+    cache.save([phone, pad], for: alice.id)
+    #expect(cache.load(for: alice.id)?.map(\.id) == [phone.id, pad.id])
+    #expect(cache.load(for: UUID()) == nil, "换了人还摆着上一个人的设备")
+    let many = (0..<50).map { AccountSessionDevice(id: UUID(), name: "\($0)", createdAt: 0, lastSeen: 0, current: false) }
+    cache.save(many, for: alice.id)
+    #expect(cache.load(for: alice.id)?.count == DeviceListCache.limit)
+    cache.clear()
+    #expect(cache.load(for: alice.id) == nil)
+  }
+
+  @Test("进设备页先摆上回那张，服务端回来整张换掉并记下")
+  func deviceListShowsCacheFirstThenRefreshes() async throws {
+    let directory = cacheDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let arrivals = LateReplyProtocol.reset(holdDevices: true)
+    let (feature, _) = try await signedIn()
+    let cache = DeviceListCache(directory: directory)
+    cache.save([phone, pad, mac], for: alice.id)
+    feature.deviceCache = cache
+    let load = Task { await feature.loadDevices() }
+    for await _ in arrivals { break }
+    // 服务端还没回：页上已经是上回那张。
+    #expect(feature.devices.map(\.id) == [phone.id, pad.id, mac.id])
+    LateReplyProtocol.release()
+    await load.value
+    #expect(feature.devices.map(\.id) == [phone.id])
+    #expect(cache.load(for: alice.id)?.map(\.id) == [phone.id])
+    #expect(feature.error == nil)
+  }
+
+  @Test("踢设备：那一行当场没了，成了不再刷新、本机那份跟着少一行")
+  func revokeRemovesRowImmediately() async throws {
+    let directory = cacheDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    _ = LateReplyProtocol.reset(holdDevices: false)
+    let (feature, _) = try await signedIn()
+    feature.deviceCache = DeviceListCache(directory: directory)
+    await feature.loadDevices()
+    feature.devices = [phone, pad, mac]
+    let task = feature.revoke(pad)
+    #expect(feature.devices.map(\.id) == [phone.id, mac.id], "点完还得等回包才消失")
+    await task?.value
+    #expect(feature.devices.map(\.id) == [phone.id, mac.id])
+    #expect(feature.deviceCache?.load(for: alice.id)?.map(\.id) == [phone.id, mac.id])
+    #expect(feature.error == nil)
+    #expect(feature.user != nil)
+  }
+
+  @Test("踢设备没成：那一行回到原位，底下念一句")
+  func failedRevokePutsRowBack() async throws {
+    let directory = cacheDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    _ = LateReplyProtocol.reset(holdDevices: false)
+    LateReplyProtocol.failDeletes = true
+    let (feature, _) = try await signedIn()
+    feature.deviceCache = DeviceListCache(directory: directory)
+    await feature.loadDevices()
+    feature.devices = [phone, pad, mac]
+    let task = feature.revoke(pad)
+    #expect(feature.devices.map(\.id) == [phone.id, mac.id])
+    await task?.value
+    #expect(feature.devices.map(\.id) == [phone.id, pad.id, mac.id])
+    #expect(feature.error == AccountFeature.revokeFailure)
+    #expect(feature.deviceCache?.load(for: alice.id)?.map(\.id) == [phone.id, pad.id, mac.id])
+    #expect(feature.user != nil)
+  }
+
+  @Test("退登把本机那份设备表一起删掉")
+  func logoutClearsDeviceCache() async throws {
+    let directory = cacheDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    _ = LateReplyProtocol.reset(holdDevices: false)
+    let (feature, client) = try await signedIn()
+    let cache = DeviceListCache(directory: directory)
+    feature.deviceCache = cache
+    await feature.loadDevices()
+    #expect(cache.load(for: alice.id) != nil)
+    await feature.logout()
+    await client.settleRevocation()
+    #expect(cache.load(for: alice.id) == nil)
   }
 }

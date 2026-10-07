@@ -2,6 +2,7 @@ import SwiftUI
 import Observation
 import KanpanAccount
 import KanpanCore
+import KanpanData
 
 @MainActor @Observable final class AccountFeature {
   enum Page: String { case account, login, register, sync, devices, changePassword, close }
@@ -34,6 +35,11 @@ import KanpanCore
   /// 正在踢的那几台设备。同一行连点两下只发一趟：点的是「本机」那一行时，第二趟会在
   /// 第一趟退登之后出门，拿着已经没有的凭据撞一个 401 回来。
   @ObservationIgnored private var revoking: Set<UUID> = []
+  /// 「登录设备」那张表本机的一份：进页先摆它，再刷新（体感优化 2026-10-07）。
+  /// 产品走 `Library/Caches/kanpan`，测试给临时目录或不给。
+  @ObservationIgnored var deviceCache: DeviceListCache?
+  /// `devices` 现在摆的是谁的表。换了人就不拿上一个人的表垫底。
+  @ObservationIgnored private var devicesOwner: UUID?
   @ObservationIgnored var onPrepareAccount: ((AccountUser?) throws -> (@MainActor () -> Void))?
   @ObservationIgnored var onSynchronize: (() -> Void)?
   /// 上一次装进来的是哪个登录的人（`AccountFiles.lastOwner`，只有身份没有令牌）。
@@ -72,6 +78,7 @@ import KanpanCore
   init() {
     // 上一次运行留下的导出文件（面板没收起 app 就被杀了之类）冷启动时清掉。
     Self.purgeExports()
+    deviceCache = DeviceListCache(directory: Paths.caches().root)
     // 线上地址只在 `ServerHosts` 一处（以前另抄在 Info.plist 的 KanpanAccountAPIURL 里）；
     // DEBUG 构建的 UI 用例可以用环境变量指别处。
     let configured = ServerHosts.accountAPI.absoluteString
@@ -299,6 +306,7 @@ import KanpanCore
     // `email`（登录页那个用户名输入框）也要清：不清的话下次打开登录页预填着上一个人的
     // 账号名，同一台设备换人用一眼就看见别人用的是什么号。
     user = nil; presented = false; email = ""; password = ""; newPassword = ""; devices = []
+    devicesOwner = nil; deviceCache?.clear()
     needsReauthentication = false; replacedNotice = nil; endCredentialWait()
     do { let apply = try onPrepareAccount?(nil); apply?() }
     catch { failure = failure ?? error }
@@ -369,27 +377,62 @@ import KanpanCore
   }
   /// 认不得的错误那一句。和 `AccountError.http(_, _)` 的兜底同一句话。
   nonisolated static let genericFailure = "暂未成功，请稍后重试"
+  /// 进「登录设备」：先把本机那份摆上（网慢也不是一张空表），再去服务端刷新，回来整张换掉。
+  /// 刷新失败就留着摆着的那张，底下念一句。正在踢的那几台不让刷新回来的表又摆回去。
   func loadDevices() async {
     guard let client else { return }
     let started = generation
+    if let owner = user?.id, devicesOwner != owner || devices.isEmpty,
+       let cached = deviceCache?.load(for: owner) {
+      devices = cached.filter { !revoking.contains($0.id) }
+      devicesOwner = owner
+    }
     do {
       let list = try await client.request("v1/auth/devices", as: AccountDevices.self).devices
       guard started == generation else { return }
-      devices = list
+      devices = list.filter { !revoking.contains($0.id) }
+      devicesOwner = user?.id
+      if let owner = user?.id { deviceCache?.save(devices, for: owner) }
     } catch { if started == generation { note(error) } }
   }
-  func revoke(_ item: AccountSessionDevice) {
-    guard let client, !revoking.contains(item.id) else { return }
+
+  /// 「退出」某台设备：那一行当场拿掉，请求在后面走（乐观更新）。
+  /// 成了就不再刷新（表已经是对的）；踢的是本机就顺势退登。没成就把那一行放回原位，
+  /// 底下念一句。同一行连点两下只发一趟。
+  @discardableResult
+  func revoke(_ item: AccountSessionDevice) -> Task<Void, Never>? {
+    guard let client, !revoking.contains(item.id) else { return nil }
     revoking.insert(item.id)
     let started = generation
-    Task {
+    let position = devices.firstIndex(where: { $0.id == item.id })
+    if let position {
+      devices.remove(at: position)
+      saveDevices()
+    }
+    return Task {
       defer { revoking.remove(item.id) }
       do {
         let _: AccountOK = try await client.request("v1/auth/devices/" + item.id.uuidString, method: "DELETE")
         guard started == generation else { return }
-        if item.current { await logout() } else { await loadDevices() }
-      } catch { if started == generation { note(error) } }
+        if item.current { await logout() }
+      } catch {
+        guard started == generation else { return }
+        if let position, !devices.contains(where: { $0.id == item.id }) {
+          devices.insert(item, at: min(position, devices.count))
+          saveDevices()
+        }
+        note(error)
+        // 断网、超时这些说成「这一台没退成」，比一句泛泛的网络提示更知道发生了什么；
+        // 「该重新登录了」「被顶下去」那两种照原话念。
+        if Self.message(error) != nil, !needsReauthentication { self.error = Self.revokeFailure }
+      }
     }
+  }
+  nonisolated static let revokeFailure = "未能退出该设备，请稍后重试"
+
+  private func saveDevices() {
+    guard let owner = user?.id, devicesOwner == owner else { return }
+    deviceCache?.save(devices, for: owner)
   }
 }
 extension DeviceKind {

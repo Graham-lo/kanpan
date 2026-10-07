@@ -60,7 +60,19 @@ public struct TradeItem: Identifiable, Hashable, Sendable {
   /// 本页里画好的图（缩略图、详情大图），按「回合 id + 版本 + 尺寸」记。
   @ObservationIgnored private var images: [String: Data] = [:]
   @ObservationIgnored private var imageOrder: [String] = []
+  /// 正在画（或正在从盘上读）的那几张：同一张不许列表格子和预热各画一遍。
+  @ObservationIgnored private var imagesInFlight: Set<String> = []
   public private(set) var imageVersion = 0
+  /// 本页内存里最多记几张（缩略图一张几 KB）。
+  static let imageMemoryLimit = 120
+  /// 复盘本打开时先画好前面这么多张，往下滚不用一格一格等。
+  static let prewarmCount = 24
+  /// 缩略图盘上那份放在哪（宿主给 `Library/Caches/kanpan/trade-images`）。不给就只记在本页。
+  @ObservationIgnored public var imageCacheRoot: URL? { didSet { reopenImageStore() } }
+  /// 图的画法（深浅、涨跌色、时区…）摘成一句，进盘上那张的名字：换了皮肤不拿旧图冒充。
+  @ObservationIgnored public var imageStyle: @MainActor () -> String = { "" }
+  @ObservationIgnored private var imageStore: TradeImageStore?
+  @ObservationIgnored private var profileDirectory: URL?
 
   public init() {}
 
@@ -70,6 +82,8 @@ public struct TradeItem: Identifiable, Hashable, Sendable {
   func activate(directory: URL?, client: ScorebookClient?) {
     epoch = UUID(); again = false; syncing = false
     store = directory.map { TradeReviewStore(directory: $0) }
+    profileDirectory = directory
+    reopenImageStore()
     self.client = client
     records = client == nil ? [] : (store?.archive.records ?? [])
     remerge()
@@ -180,15 +194,60 @@ public struct TradeItem: Identifiable, Hashable, Sendable {
     images[Self.imageKey(round, size)]
   }
 
-  /// 画一张（本页记住，最多几十张）；已经有就直接回。
+  /// 画一张（本页记住，最多一百来张）；已经有就直接回。画完就不会再变的缩略图先翻盘上那份，
+  /// 没有再请宿主画，画好顺手存盘（`TradeImagePolicy`）。
   public func loadImage(_ round: TradeRound, spec: TradeChartSpec?, size: CGSize) async {
     let key = Self.imageKey(round, size)
-    guard images[key] == nil, let chartImage else { return }
-    guard let data = await chartImage(round, spec, size) else { return }
+    guard images[key] == nil, !imagesInFlight.contains(key) else { return }
+    imagesInFlight.insert(key)
+    defer { imagesInFlight.remove(key) }
+    let disk = TradeImagePolicy.persists(round, spec: spec, size: size, now: ReviewClock.now)
+      ? imageStore.map { ($0, TradeImagePolicy.diskKey(round, spec: spec, size: size, style: imageStyle())) } : nil
+    if let disk, let data = await disk.0.read(disk.1) {
+      remember(key, data); imageVersion &+= 1
+      return
+    }
+    guard let chartImage, let data = await chartImage(round, spec, size) else { return }
+    remember(key, data); imageVersion &+= 1
+    if let disk { await disk.0.write(disk.1, data: data) }
+  }
+
+  /// 复盘本打开时：先把手上这些单子已经存在盘上的缩略图一次翻出来（界面只刷一次），
+  /// 再把前面那几张还没有的依次画好——往下滚时格子里已经是图，不再一格一格冒出来。
+  public func prewarmThumbnails(size: CGSize) async {
+    let now = ReviewClock.now
+    if let store = imageStore {
+      let style = imageStyle()
+      var names: [String: String] = [:]
+      for item in items {
+        let spec = item.record?.result?.chart
+        let key = Self.imageKey(item.round, size)
+        guard images[key] == nil, TradeImagePolicy.persists(item.round, spec: spec, size: size, now: now) else { continue }
+        names[TradeImagePolicy.diskKey(item.round, spec: spec, size: size, style: style)] = key
+      }
+      if !names.isEmpty {
+        let found = await store.read(Array(names.keys))
+        for (name, data) in found { if let key = names[name], images[key] == nil { remember(key, data) } }
+        if !found.isEmpty { imageVersion &+= 1 }
+      }
+    }
+    for item in items.prefix(Self.prewarmCount) {
+      if Task.isCancelled { return }
+      await loadImage(item.round, spec: item.record?.result?.chart, size: size)
+    }
+  }
+
+  private func remember(_ key: String, _ data: Data) {
+    if images[key] == nil { imageOrder.append(key) }
     images[key] = data
-    imageOrder.append(key)
-    if imageOrder.count > 60 { images[imageOrder.removeFirst()] = nil }
-    imageVersion &+= 1
+    while imageOrder.count > Self.imageMemoryLimit { images[imageOrder.removeFirst()] = nil }
+  }
+
+  private func reopenImageStore() {
+    guard let root = imageCacheRoot, let profileDirectory else { imageStore = nil; return }
+    if let current = imageStore, current.root == root,
+       current.directory == TradeImageStore(root: root, profile: profileDirectory.path).directory { return }
+    imageStore = TradeImageStore(root: root, profile: profileDirectory.path)
   }
 
   private static func imageKey(_ round: TradeRound, _ size: CGSize) -> String {

@@ -13,13 +13,13 @@ public struct DiskMarketCache: Sendable {
 
   /// 分开量的四笔，口径见 app 里的 `MarketCacheUsage`。
   public struct Footprint: Sendable, Equatable {
-    /// `series/` 下按 (品种, 周期) 存的启动快照，加上旧版单份快照。
+    /// `series/` 下按 (品种, 周期) 存的启动快照，加上旧版单份快照，以及复盘用的历史 K 线（`review-klines/`）。
     public var snapshotBytes: Int
     /// 品种表，加上换过行情源的人那棵 `sources/<行情源>/`。
     public var catalogBytes: Int
     /// `oi/` 下按天存的归档切片。
     public var oiBytes: Int
-    /// `profiles/<档案>/` 下的报价与当日开盘价，加上板块历史与板块行情。
+    /// `profiles/<档案>/` 下的报价与当日开盘价，加上板块历史与板块行情、复盘本缩略图。
     public var derivedBytes: Int
   }
 
@@ -27,11 +27,12 @@ public struct DiskMarketCache: Sendable {
     let p = paths
     return await Task.detached(priority: .utility) {
       Footprint(
-        snapshotBytes: DiskMarketCache.size(of: p.series) + DiskMarketCache.size(of: p.snapshot),
+        snapshotBytes: DiskMarketCache.size(of: p.series) + DiskMarketCache.size(of: p.snapshot)
+          + DiskMarketCache.size(of: p.reviewKlines),
         catalogBytes: DiskMarketCache.size(of: p.exchangeInfo) + DiskMarketCache.size(of: p.sources),
         oiBytes: DiskMarketCache.size(of: p.oi),
         derivedBytes: DiskMarketCache.size(of: p.profiles) + DiskMarketCache.size(of: p.sectorHistory)
-          + DiskMarketCache.size(of: p.sectorQuotes))
+          + DiskMarketCache.size(of: p.sectorQuotes) + DiskMarketCache.size(of: p.tradeImages))
     }.value
   }
 
@@ -51,7 +52,8 @@ public struct DiskMarketCache: Sendable {
     let p = paths
     await Task.detached(priority: .utility) {
       let fm = FileManager.default
-      for url in [p.series, p.snapshot, p.exchangeInfo, p.sources, p.oi, p.profiles, p.sectorHistory, p.sectorQuotes] {
+      for url in [p.series, p.snapshot, p.exchangeInfo, p.sources, p.oi, p.profiles, p.sectorHistory, p.sectorQuotes,
+                      p.reviewKlines, p.tradeImages] {
         try? fm.removeItem(at: url)
       }
     }.value

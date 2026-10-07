@@ -90,6 +90,13 @@ public struct Paths: Sendable {
   /// 在 `source(_:)` 那棵子树里。整份覆盖写，不堆积。
   public var sectorQuotes: URL { root.appendingPathComponent("sector-quotes.json") }
 
+  /// 复盘回放与复盘本缩略图用的已收盘历史 K 线，按「品种 + 周期」分文件、按时间段存。
+  /// 总量封顶、按最近使用淘汰，见 `ReviewKlineStore`。公开行情，不随人走，挂在根上。
+  public var reviewKlines: URL { root.appendingPathComponent("review-klines", isDirectory: true) }
+  /// 复盘本里每一单的缩略图（画好的小图）。总量封顶、按最近使用淘汰（复盘包里的
+  /// `TradeImageStore`）；里面按档案再分一层，不同账号的单子不会串。
+  public var tradeImages: URL { root.appendingPathComponent("trade-images", isDirectory: true) }
+
   // MARK: 内容随当前账号派生的那几份
 
   /// 按身份分的那一层。**清缓存整棵删它**。

@@ -179,13 +179,14 @@ struct SectorPage: View {
     VStack(spacing: 0) {
       header(snap)
       if snap.hasD5 { windowBar(snap) }
-      if feed.showsEmptyState {
+      switch SectorBoardContent.of(showsEmptyState: feed.showsEmptyState, hasStats: !snap.stats.isEmpty) {
+      case .failed:
         emptyState
-      } else if snap.stats.isEmpty {
-        // 第一趟还在路上：整块留白，不闪那句「暂无行情」，也不写「加载中」
-        // （复核项 2 / `kanpan-no-engineering-status-fields`）。
-        Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
+      case .skeleton:
+        // 第一趟还在路上：摆几行和真行同版式的骨架，不闪那句「暂无行情」，也不写「加载中」
+        // （复核项 2 / `kanpan-no-engineering-status-fields`；体感优化 2026-10-07 起不再整块留白）。
+        SectorBoardSkeleton()
+      case .list:
         SectorBoardList(stats: snap.stats, onPick: { push(.sector($0.id)) })
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }

@@ -406,9 +406,11 @@ struct MainChartView: View {
       if let error = market.historyError, !reviewChart.active {
         ChartHistoryRetry(theme: theme, text: error) { market.retryHistory() }
       }
-      // 交易回放取数时什么都不弹（3d）：图已经换成这只品种的空图，数一到就开播。
-      if reviewChart.loading && reviewChart.trade == nil {
-        ChartLoadingBadge(theme: theme)
+      // 交易回放取数时不挡图（3d）：图上先垫着缩略图取过的那一截，上沿一枚小胶囊说在加载，
+      // 数一到就开播。笔记重温仍是居中那枚。
+      if reviewChart.loading {
+        if reviewChart.trade == nil { ChartLoadingBadge(theme: theme) }
+        else { ReplayLoadingCapsule(theme: theme) }
       }
       // 提示条压在图区上沿（§10.8），不占版面高度，所以走 overlay 不进 VStack。
       if draw.hint != nil {
@@ -446,6 +448,37 @@ struct ChartHistoryRetry: View {
     .padding(.vertical, -Space.s)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.top, Space.s)
+  }
+}
+
+/// 交易回放取数时压在图区上沿的那枚小胶囊：不挡图（图上可能已经垫着一截），只说一句在加载。
+///
+/// 晚 0.3 秒才露面：整卷都在盘上时几十毫秒就开播，一闪而过的提示比没有更扎眼。
+struct ReplayLoadingCapsule: View {
+  let theme: PanelTheme
+  static let title = "加载回放"
+  static let delay: Duration = .milliseconds(300)
+  @State private var shown = false
+
+  var body: some View {
+    HStack(spacing: Space.s) {
+      ProgressView().controlSize(.mini).tint(theme.amber)
+      Text(Self.title).font(.caption).foregroundStyle(theme.ink2)
+    }
+    .padding(.horizontal, Space.m).padding(.vertical, Space.s)
+    .background(theme.raised, in: Capsule())
+    .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
+    .opacity(shown ? 1 : 0)
+    .animation(.easeOut(duration: 0.2), value: shown)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("replay.loading")
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .padding(.top, Space.s)
+    .allowsHitTesting(false)
+    .task {
+      try? await Task.sleep(for: Self.delay)
+      shown = true
+    }
   }
 }
 

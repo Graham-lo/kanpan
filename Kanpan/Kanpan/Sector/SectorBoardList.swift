@@ -94,3 +94,62 @@ extension PanelTheme {
     }
   }
 }
+
+// MARK: - 第一趟还在路上
+
+/// 板块页第一次装好、第一趟行情还没回来时那几行骨架（体感优化 2026-10-07）。
+///
+/// 原来这儿整块留白（`Color.clear`）：不闪「暂无行情」、不写「加载中」都对，可一整页空着
+/// 看起来像坏了。现在照 `SectorBoardList` 一行的版式摆几行浅色块——记号一枚圆、
+/// 行名一条、副文案一条、右边涨跌一条，分隔线与真行同一根——数据一到原地换成真行，
+/// 版面不跳。仍旧不写任何字。
+struct SectorBoardSkeleton: View {
+  /// 摆几行：一屏上半截够了，不必铺满（6–8 行的中间值）。
+  static let rowCount = 7
+
+  @Environment(\.panelTheme) private var theme
+  private var skin: SectorSkin { SectorSkin(theme: theme) }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      ForEach(0..<Self.rowCount, id: \.self) { index in
+        row(index)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.top, Space.xs)
+    .skeletonPulse()
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .allowsHitTesting(false)
+    .accessibilityElement(children: .ignore)
+    .accessibilityIdentifier("sector.skeleton")
+  }
+
+  private func row(_ index: Int) -> some View {
+    let ink = skin.rule
+    return HStack(spacing: Space.m) {
+      Circle().fill(ink).frame(width: ControlMetrics.listBadge, height: ControlMetrics.listBadge)
+      VStack(alignment: .leading, spacing: Space.xs) {
+        SkeletonBlock(width: Skeleton.width(index, base: 52, spread: 44), height: 13, fill: ink)
+        SkeletonBlock(width: Skeleton.width(index + 3, base: 96, spread: 60), height: 10, fill: ink)
+      }.frame(maxWidth: .infinity, alignment: .leading)
+      SkeletonBlock(width: 48, height: 13, fill: ink)
+    }
+    .pageHorizontalInset()
+    .padding(.vertical, Space.s)
+    .frame(minHeight: Inset.rowMin)
+    .overlay(alignment: .top) {
+      if index > 0 { SectorHairline(skin: skin) }
+    }
+  }
+}
+
+/// 板块页第一层此刻摆什么：取数确实失败了的空态、第一趟在路上的骨架、还是真表。
+enum SectorBoardContent: Equatable {
+  case failed, skeleton, list
+
+  static func of(showsEmptyState: Bool, hasStats: Bool) -> SectorBoardContent {
+    if showsEmptyState { return .failed }
+    return hasStats ? .list : .skeleton
+  }
+}

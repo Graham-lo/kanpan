@@ -76,6 +76,8 @@ struct TradeBookList: View {
       .accessibilityIdentifier("review.trades.list")
     }
     .task { trades.onPull(); await trades.synchronize() }
+    // 盘上存着的缩略图一次翻出来，前面那几张提前画好：滚下去格子里已经是图。
+    .task(id: trades.items.count) { await trades.prewarmThumbnails(size: TradeRow.thumb) }
   }
 
   private func row(_ item: TradeItem) -> some View {

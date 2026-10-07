@@ -1515,13 +1515,55 @@ private struct MenuAnchors: PreferenceKey {
 
 /// 冷启动落在自选页、但自选表还在路上（登录用户的档案要等 `account.restore()`）
 /// 那一小段里铺的底：就是自选页自己的那层底，不画空态（「这一栏还空着」只会闪一下）。
+///
+/// 体感优化 2026-10-07：底上再摆几行骨架，站在真行的位置上（头部那一行的高度让出来，
+/// 每行同 `LiuliSymbolRow` 的版式与行高：徽章、名字、右边价格与涨跌药丸），
+/// 表一到原地换成真行。不写字、不转圈。
 struct FavoritesLandingPlaceholder: View {
+  /// 摆几行。
+  static let rowCount = 4
+
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    AuroraBackdrop(skin: LiuliSkin(theme: theme), reduceMotion: reduceMotion)
-      .ignoresSafeArea()
-      .accessibilityIdentifier("favorites.landing")
+    ZStack(alignment: .top) {
+      AuroraBackdrop(skin: LiuliSkin(theme: theme), reduceMotion: reduceMotion)
+        .ignoresSafeArea()
+      VStack(spacing: 0) {
+        // 头部那一行（分类胶囊 + 两颗圆片）的位置：只让出高度，不画它——
+        // 胶囊里写的是他自己的分类名，猜不出来的就不摆。
+        Color.clear.frame(height: Hit.min + Space.xs)
+        ForEach(0..<Self.rowCount, id: \.self) { row($0) }
+        Spacer(minLength: 0)
+      }
+      .skeletonPulse()
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("favorites.landing")
+  }
+
+  private func row(_ index: Int) -> some View {
+    let ink = SymbolRowInk.rule(theme)
+    return HStack(spacing: Space.m) {
+      RoundedRectangle(cornerRadius: 13.7, style: .continuous).fill(ink)
+        .frame(width: LiuliBadge.size, height: LiuliBadge.size)
+      VStack(alignment: .leading, spacing: Space.xs) {
+        SkeletonBlock(width: Skeleton.width(index, base: 40, spread: 36), height: 14, fill: ink)
+        SkeletonBlock(width: Skeleton.width(index + 2, base: 64, spread: 40), height: 10, fill: ink)
+      }.frame(maxWidth: .infinity, alignment: .leading)
+      SkeletonBlock(width: 70, height: 13, fill: ink)
+      SkeletonBlock(width: 72, height: ControlMetrics.pillHeight, fill: ink, radius: Radius.s)
+    }
+    .pageHorizontalInset()
+    .frame(height: LiuliSymbolRow<EmptyView, EmptyView>.height)
+    .overlay(alignment: .top) {
+      if index > 0 {
+        LinearGradient(colors: [.clear, ink, ink, .clear], startPoint: .leading, endPoint: .trailing)
+          .frame(height: 0.5).pageHorizontalInset()
+      }
+    }
   }
 }

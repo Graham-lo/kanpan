@@ -6,6 +6,7 @@ import os
 import KanpanAccount
 import KanpanChart
 import KanpanCore
+import KanpanData
 import KanpanNetwork
 import ReviewDomain
 import ReviewUI
@@ -135,6 +136,10 @@ import ReviewUI
     review.trades.chartImage = { [weak self] round, spec, size in
       await self?.chartImage(round, spec: spec, size: size)
     }
+    // 缩略图存盘（`TradeImageStore`）：位置跟着行情缓存那棵树走，「清缓存」一并清；
+    // 画法摘要进文件名，换了深浅、涨跌色、时区就重画。
+    review.trades.imageCacheRoot = Paths.caches().tradeImages
+    review.trades.imageStyle = { [weak self] in self?.imageStyle() ?? "" }
     publish()
     showRounds()
     watchProfile()
@@ -357,13 +362,20 @@ import ReviewUI
     base.drawings = Self.markers(round)
     let step = Double(interval.stepMs)
     base.view = ViewWindow(from: Double(series.time(at: 0)) - step, to: Double(series.lastTime) + step * 2)
-    if size.width < 160 {
+    if size.width < TradeImagePolicy.thumbnailMaxWidth {
       // 缩略图：按三倍大小画、1× 出，再由行里缩下去——K 线的形状看得清，刻度字缩成纹理。
       base.options.lastLine = false
       let big = CGSize(width: size.width * 3, height: size.height * 3)
       return ChartSnapshotRenderer.chartImage(state: base, size: big, scale: 1)?.jpegData(compressionQuality: 0.8)
     }
     return ChartSnapshotRenderer.chartImage(state: base, size: size)?.pngData()
+  }
+
+  /// 缩略图的画法摘要：同一笔单子在这几样不同的时候画出来不一样。
+  func imageStyle() -> String {
+    guard let base = baseState() else { return "" }
+    return [String(base.dark), String(base.redUp), String(describing: base.paletteSeed),
+            String(describing: base.timezone), String(describing: base.price.mode)].joined(separator: ",")
   }
 
   /// 成交点：买是向上箭头（画在点下方）、卖是向下箭头；开仓均价、平仓均价两条虚线。
@@ -383,29 +395,19 @@ import ReviewUI
     return drawings
   }
 
-  /// 取一段历史 K 线（本页记住最近几十段：缩略图和详情大图常常是同一段）。
+  /// 取一段历史 K 线（`end` 含在内）。本页记住最近几十段（缩略图和详情大图常常是同一段）；
+  /// 盘上那份（`ReviewKlineCache`）跨启动留着，缺的那几页并行取。只画开头那 1500 根。
   private func bars(key: String, venue: String, market: String, interval: Interval,
                     start: Int64, end: Int64) async -> BarSeries? {
     let cacheKey = "\(key)|\(interval.rawValue)|\(start)|\(end)"
     if let hit = barCache[cacheKey] { return hit }
     guard VenueRegistry.descriptor(venue)?.market == market,
           let provider = resolver().ownDataProvider(venue: venue) else { return nil }
-    let caps = provider.capabilities
-    var cursor = start
-    var fetched: [Bar] = []
-    do {
-      while cursor <= end {
-        let page = try await provider.klines(symbol: key, interval: interval, limit: caps.maxKlines,
-                                             startTime: cursor, endTime: end)
-        guard let last = page.last else { break }
-        fetched.append(contentsOf: page)
-        let next = interval.advancing(last.openTime, by: 1)
-        guard next > cursor, fetched.count < 1500 else { break }
-        cursor = next
-      }
-    } catch { return nil }
-    guard !fetched.isEmpty else { return nil }
-    let series = MarketSeries.series(symbol: key, interval: interval, bars: fetched, capabilities: caps)
+    guard let fetched = try? await ReviewKlineCache.sourceBars(provider: provider, key: key, interval: interval,
+                                                               start: start, end: end + 1, maxBars: 1500,
+                                                               overflow: .truncate),
+          !fetched.isEmpty else { return nil }
+    let series = MarketSeries.series(symbol: key, interval: interval, bars: fetched, capabilities: provider.capabilities)
     barCache[cacheKey] = series; barOrder.append(cacheKey)
     if barOrder.count > 40 { barCache[barOrder.removeFirst()] = nil }
     return series
