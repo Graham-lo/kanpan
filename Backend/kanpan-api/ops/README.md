@@ -35,6 +35,7 @@ systemd-run --quiet --pipe --wait --collect -p DynamicUser=yes \
 - 查某人的条件提醒：`SELECT alert_id,status,rule,fired_at,fired_price FROM alert_watches WHERE kind='condition'`（要 BYPASSRLS 角色）。
 - 品种状态：`SELECT * FROM listing_events ORDER BY id DESC LIMIT 20`；目录 `listing_catalog`。第一次跑只建基线不发事件；某一轮品种数不到上一轮一半会 warn 并跳过。事件与通知 30 天后清掉。
 - 认不得的 `rule.type`（客户端先上了新条件）：收下存着，worker 打一行 warn，不判。
+- 技术指标提醒（2026-10-07，`src/conditions/indicators.rs`）：`rule` 没有 `type`、用 `kind`（`ma_cross` / `rsi_level` / `bar_breakout`），同在 worker 的 `conditions` 任务里按各自周期收盘判，K 线按「品种 × 周期」缓存在内存里（进程起来后每组先整段拉一次，之后每根收盘只补缺的几根）。日志 `journalctl -u kanpan-worker | grep -i "indicator"`。校验不过回 400，正文 `{"error":{"code":"indicator_…","message":"中文原因"}}`；品种不在币安 U 本位正在交易的永续里回 `indicator_symbol`（合约表取不到时放行）。不需要迁移。
 
 ## 主力订单流：常驻跟踪（2026-09-25 分层版）
 

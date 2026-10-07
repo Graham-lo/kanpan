@@ -11,8 +11,15 @@ impl ApiError {
  pub fn conflict(code: &'static str) -> Self { Self(StatusCode::CONFLICT,code) }
 }
 impl IntoResponse for ApiError {
- fn into_response(self) -> Response { (self.0,Json(json!({"error":{"code":self.1}}))).into_response() }
+ fn into_response(self) -> Response {
+  // 有中文原因的错误码（目前是技术指标提醒的校验）多带一个 `message`，客户端可以原样显示；
+  // 其余照旧只有 `code`。
+  let body=match message(self.1) {Some(m)=>json!({"error":{"code":self.1,"message":m}}),None=>json!({"error":{"code":self.1}})};
+  (self.0,Json(body)).into_response()
+ }
 }
+/// 错误码对应的中文原因。
+pub fn message(code: &str) -> Option<&'static str> { crate::conditions::indicators::reason(code) }
 /// 数据库错误对外一律是 503 `temporarily_unavailable`（客户端只需要知道「稍后再试」），
 /// 但对内必须留下原因：原来这里把错误直接丢掉，线上一条 503 在日志里什么都查不到。
 ///

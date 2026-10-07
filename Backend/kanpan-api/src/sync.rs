@@ -209,7 +209,7 @@ pub const ALERT_FIELDS:[&str;19]=[
  "status","firedAt","firedPrice","dueAt","reviewID","title","created",
  // 从图上加提醒：备注、Webhook 地址、Webhook 文案模板（值规则见 sync_validation）。
  "note","webhook","webhookText",
- // 条件提醒（`kind:"condition"`）的条件本体：费率 / 持仓量 / 均线 / 大单。
+ // 条件提醒（`kind:"condition"`）的条件本体：费率 / 持仓量 / 均线 / 大单 / 技术指标。
  // 形状见 docs/条件提醒-协议-2026-09-27.md 第 2 节与 `conditions::Rule`。
  "rule",
 ];
@@ -228,6 +228,10 @@ impl Operation {
  }
  pub fn validate(&self)->Result<()> {
   collection(&self.collection)?;
+  // 技术指标提醒的条件不对，回具体的错误码（带中文原因），不折成笼统的 invalid_operation。
+  if self.collection==ALERTS && let Some(code)=self.fields.get("rule").and_then(crate::conditions::indicators::rejection) {
+   return Err(ApiError::bad(code))
+  }
   if self.object_id.is_empty()||self.object_id.len()>180||self.base_revision<0||self.generation<0||self.logical>i64::MAX as u64||self.timestamp<0
    || !matches!(self.action.as_str(),"patch"|"delete"|"restore") || self.fields.len()>256
    || self.fields.keys().any(|k|!valid_path(k))
@@ -398,6 +402,9 @@ pub async fn apply_server_op(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:
 }
 async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Json<Value>> {
  if v.operations.is_empty()||v.operations.len()>100{return Err(ApiError::bad("invalid_batch"))}
+ // 技术指标提醒只判币安 U 本位里正在交易的品种。查合约表可能出站，所以在开事务、上锁之前做。
+ let indicator_symbols:Vec<String>=v.operations.iter().filter_map(|op|crate::conditions::indicators::symbol_of(&op.collection,&op.object_id,&op.action,&op.fields)).collect();
+ crate::conditions::indicators::check_symbols(&indicator_symbols).await?;
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
  let device:Uuid=sqlx::query_scalar("SELECT device_id FROM account_sessions WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL").bind(i.session).bind(i.user).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
  let mut results=vec![];

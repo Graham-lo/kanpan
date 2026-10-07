@@ -279,7 +279,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   // `condition`（2026-09-27）：费率 / 持仓量 / 均线 / 大单，条件本体在 `rule` 里，只有服务端判。
   (ALERTS,"kind")=>one_of(v,&["drawing","price","reviewDue","condition"]),
   // 条件提醒的条件本体（docs/条件提醒-协议-2026-09-27.md 第 2 节）。已知 `type` 严格校验，
-  // 认不得的 `type` 收下不判（`conditions::Rule::Unknown`）；null 见上面的可空名单。
+  // 认不得的 `type` 收下不判（`conditions::Rule::Unknown`）；null 见上面的可空名单。没有 `type`、用 `kind`
+  // 区分的是技术指标条件（2026-10-07，`conditions::indicators`），三种严格校验。
   (ALERTS,"rule")=>crate::conditions::valid_rule(v),
   // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
   // venue）。形状是文档定的，照抄，不要「统一」。
