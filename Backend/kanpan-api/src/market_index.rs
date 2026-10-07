@@ -19,6 +19,8 @@
 //!
 //! 品种是币安 U 本位里标的是币的 USDT 永续（`underlyingType = COIN`）按 24h 成交额的前
 //! [`TOP`] 只，每 6 小时重排一次；历史深度 [`DAYS`] 天，和 15m 原来一样，更早的每小时删掉。
+//! 表文件超过磁盘预算（[`crate::storage_budget::FEATURES`]，2026-10-07）就从结束得最早的删起、删到线下 10%（[`gate`]），
+//! 删到的时刻记在 `orderflow_purged`（`target='market_features'`），回填不再往这之前补（[`with_horizon`]），免得删了又取。
 //!
 //! **怎么知道缺什么**：不另开状态表。每只品种每个周期的时间轴按绝对 K 线编号切成 [`CHUNK`]
 //! 根一段；这一段该有多少个窗口（每种长度、起点落在步长整数倍上、整个窗口已收盘）是算得出来的，
@@ -365,7 +367,11 @@ async fn census(pool: &PgPool, symbols: &[(String, i64)], now_ms: i64) -> sqlx::
 
 /// 删掉深度以外的窗口（多留一天余量），每批 5000 行，免得一条大 DELETE 长时间占着表。
 pub async fn prune(pool: &PgPool, now_ms: i64) -> sqlx::Result<u64> {
-    let cutoff = now_ms - (DAYS + 1) * 86_400_000;
+    delete_ended_before(pool, now_ms - (DAYS + 1) * 86_400_000).await
+}
+
+/// 删掉 `end_at` 早于 `cutoff` 的窗口，每个周期每批 5000 行。
+async fn delete_ended_before(pool: &PgPool, cutoff: i64) -> sqlx::Result<u64> {
     let mut total = 0;
     for plan in PLANS {
         loop {
@@ -385,6 +391,55 @@ pub async fn prune(pool: &PgPool, now_ms: i64) -> sqlx::Result<u64> {
         }
     }
     Ok(total)
+}
+
+/// 闸门一次往后挪多少（删一截）。
+const GATE_STEP_MS: i64 = 7 * 86_400_000;
+/// 闸门怎么删也留住最近这么多天。
+const GATE_KEEP_MS: i64 = 30 * 86_400_000;
+const HORIZON_TARGET: &str = "market_features";
+
+/// 体积闸门：表文件超过预算才动手，按「行数 × 每行占用（含索引）」估实际占用，从结束得最早的一周一周往后删到线下 10%
+/// （最近 30 天不动）。删过就把删到的时刻记下来并回它；没动手回 `None`。
+pub async fn gate(pool: &PgPool, now_ms: i64) -> sqlx::Result<Option<i64>> {
+    let budget = crate::storage_budget::FEATURES;
+    if crate::storage_budget::over(pool, &budget).await?.is_none() {
+        return Ok(None);
+    }
+    let row: Option<f64> = sqlx::query_scalar("SELECT avg(pg_column_size(m.*))::float8 FROM (SELECT * FROM market_features LIMIT 1000) m").fetch_one(pool).await?;
+    let (live, per_row) = crate::storage_budget::estimate(pool, "market_features", row.unwrap_or(1_000.0)).await?;
+    let mut oldest: Option<i64> = None;
+    for plan in PLANS {
+        let at: Option<i64> = sqlx::query_scalar("SELECT min(end_at) FROM market_features WHERE market=$1 AND timeframe=$2 AND published")
+            .bind(MARKET)
+            .bind(plan.interval)
+            .fetch_one(pool)
+            .await?;
+        oldest = match (oldest, at) { (Some(a), Some(b)) => Some(a.min(b)), (a, b) => a.or(b) };
+    }
+    let Some(start) = oldest else { return Ok(None) };
+    let (cutoff, n) = crate::storage_budget::trim(live, budget.target(), per_row, start, now_ms - GATE_KEEP_MS, GATE_STEP_MS, |_, to| delete_ended_before(pool, to)).await?;
+    if cutoff <= start {
+        return Ok(None);
+    }
+    sqlx::query("INSERT INTO orderflow_purged(target,before_ms) VALUES($1,$2) ON CONFLICT(target) DO UPDATE SET before_ms=GREATEST(orderflow_purged.before_ms,EXCLUDED.before_ms)")
+        .bind(HORIZON_TARGET)
+        .bind(cutoff)
+        .execute(pool)
+        .await?;
+    tracing::warn!("Market index: size gate deleted {n} windows ending before {cutoff}");
+    Ok(Some(cutoff))
+}
+
+/// 闸门删到的时刻（没删过为 0）。
+pub async fn horizon(pool: &PgPool) -> sqlx::Result<i64> {
+    let at: Option<i64> = sqlx::query_scalar("SELECT before_ms FROM orderflow_purged WHERE target=$1").bind(HORIZON_TARGET).fetch_optional(pool).await?;
+    Ok(at.unwrap_or(0))
+}
+
+/// 排活用的品种表：上市时刻按闸门删到的时刻往后夹，`schedule` 就不再往闸门删掉的那一截回填。
+pub fn with_horizon(symbols: &[(String, i64)], horizon_ms: i64) -> Vec<(String, i64)> {
+    symbols.iter().map(|(s, listed)| (s.clone(), (*listed).max(horizon_ms))).collect()
 }
 
 /// 取一段、切窗、写库。返回新写了几行；`Err(true)` 表示「这会儿」取不到（闸门、账本、网络），
@@ -420,6 +475,11 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
     let mut symbols: Vec<(String, i64)> = Vec::new();
     let mut ranked_at: Option<tokio::time::Instant> = None;
     let mut pruned_at: Option<tokio::time::Instant> = None;
+    // 体积闸门删到的时刻（见 `gate`）：起来读一次，之后闸门删了就跟着挪。
+    let mut horizon_ms = horizon(&s.pool).await.unwrap_or_else(|e| {
+        tracing::warn!("Market index: reading the size-gate horizon failed ({e})");
+        0
+    });
     // 每段已有几个窗口：进程里记一份，写进去的自己加（`credit`），只在起来时和换过品种表（`RERANK`，6 小时）之后对一次库。
     // 原来每小时、删过旧窗口之后也重数：写这张表的只有这个循环（和关掉它才跑的 `import_public_history`），
     // 写进去的行数 `credit` 已经记准；删旧窗口只删 `end_at` 早于「此刻 − 深度 − 1 天」的，数的是 `start_at` 在
@@ -458,6 +518,15 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
                 }
                 Err(e) => tracing::warn!("Market index: prune failed ({e})"),
             }
+            match gate(&s.pool, now_ms).await {
+                Ok(Some(at)) => {
+                    horizon_ms = horizon_ms.max(at);
+                    // 删过一大截：进程里记的每段个数不准了，重数一遍。
+                    counted = false;
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("Market index: size gate failed ({e})"),
+            }
         }
         if !counted {
             match census(&s.pool, &symbols, now_ms).await {
@@ -472,7 +541,7 @@ pub async fn run(s: AppState, market: std::sync::Arc<dyn MarketDataProvider>) {
                 }
             }
         }
-        let jobs = schedule(&have, &symbols, now_ms, &tried);
+        let jobs = schedule(&have, &with_horizon(&symbols, horizon_ms), now_ms, &tried);
         if jobs.is_empty() {
             tokio::time::sleep(IDLE).await;
             continue;
@@ -712,6 +781,24 @@ mod tests {
         let one_hour = jobs.iter().filter(|j| PLANS[j.plan].interval == "1h").count();
         assert_eq!(one_hour, 1, "20 天的 1h 是 480 根，一段就装下");
         assert!(jobs.iter().all(|j| PLANS[j.plan].interval != "1d"), "20 根日线凑不出 32 根的窗口");
+    }
+
+    /// 体积闸门删过一截：回填不再往删到的时刻之前补（不然删了又取，来回折腾）。
+    #[test]
+    fn nothing_is_backfilled_behind_the_size_gate() {
+        let now = 1_790_000_000_000i64;
+        let horizon = now - 100 * 86_400_000;
+        let symbols = vec![("BTCUSDT".to_string(), 0i64), ("NEWUSDT".to_string(), now - 20 * 86_400_000)];
+        let clamped = with_horizon(&symbols, horizon);
+        assert_eq!(clamped, vec![("BTCUSDT".to_string(), horizon), ("NEWUSDT".to_string(), now - 20 * 86_400_000)], "比闸门晚上市的不动");
+        let jobs = schedule(&HashMap::new(), &clamped, now, &HashMap::new());
+        for job in &jobs {
+            let step = PLANS[job.plan].step_ms();
+            assert!(job.span.1 * step > horizon, "{} {} 段 {} 全在闸门之前", job.symbol, PLANS[job.plan].interval, job.chunk);
+        }
+        let all = schedule(&HashMap::new(), &symbols, now, &HashMap::new()).len();
+        assert!(jobs.len() < all, "闸门之前的段不排");
+        assert_eq!(with_horizon(&symbols, 0), symbols, "没删过照旧");
     }
 
     async fn isolated_pool() -> Option<PgPool> {

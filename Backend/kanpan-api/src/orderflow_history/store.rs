@@ -5,7 +5,7 @@
 //!   结束的单一结束就写进 `orderflow_orders`、同一条语句里从 `orderflow_live` 删掉。
 //!   挂着的只在 `orderflow_orders` 里没有这一单时才写（`NOT EXISTS`）：晚到的一批「挂着」不会把刚写进去的结束翻回去。
 //!   0031 之前挂着的和结束的同在一张 200 万行的表里，挂着的散在各处、停机刷新一句 UPDATE 要 1 900 次冷随机读（1.5–2.5 秒）。
-//! * 保留：按结束时刻滚动 3 天（2026-09-25 从 30 天改：没人往回看超过几天）；另有总量闸门，表文件超过 20 GB 时从结束得最早的删起、删到 18 GB 以下。
+//! * 保留：按结束时刻滚动 3 天（2026-09-25 从 30 天改：没人往回看超过几天）；另有总量闸门，表文件（连同挂着的那张）超过预算（`storage_budget::ORDERS`）时从结束得最早的删起、删到线下 10%。
 //!   删行不会让表文件变小（空间留给后来的行复用），所以「删到多少」按「行数 × 每行占用」估，不按文件大小——
 //!   按文件大小会每小时都判超、一路删光。
 use super::book::Side;
@@ -16,9 +16,6 @@ use std::sync::atomic::{AtomicU64,Ordering};
 pub const DAY_MS:i64=86_400_000;
 /// 结束的单留多久。
 pub const RETENTION_MS:i64=3*DAY_MS;
-/// 总量闸门：表文件超过它就删，删到估算占用低于 `GATE_TARGET`。
-pub const GATE_BYTES:f64=20e9;
-pub const GATE_TARGET:f64=18e9;
 /// 一行连同三条索引大约占多少字节（堆上一行约 200 字节、主键与两条索引各约 50–80 字节，取整往大里估）。
 pub const ROW_BYTES:f64=450.0;
 /// 一条语句最多删几行：serve 的连接挂着 20 秒语句死线，一口气删几十万行会半路断。
@@ -330,21 +327,20 @@ pub async fn purge(pool:&PgPool,now:i64,tracked:&[String])->sqlx::Result<(u64,u6
  for base in &bases {
   closed+=once_more_on_deadlock("closing lost orders",||close_lost(pool,base,stale_cutoff(tracked.contains(base),now))).await?;
  }
- // 总量闸门：表文件（pg_total_relation_size）超过 20 GB 才动手；删到「行数 × 每行占用」估出来的
- // 实际占用低于 18 GB。行数用 reltuples（上一次 ANALYZE 的估计，够用），删完按删掉的行数往下扣。
- let tuples:f32=sqlx::query_scalar("SELECT reltuples FROM pg_class WHERE oid='orderflow_orders'::regclass").fetch_one(pool).await?;
- let mut rows=(tuples.max(0.0) as f64)-deleted as f64;
- if size(pool).await? as f64>GATE_BYTES&&rows*ROW_BYTES>GATE_TARGET {
+ // 总量闸门：两张表的文件（pg_total_relation_size）超过预算（`storage_budget::ORDERS`）才动手；删到「行数 × 每行占用」估出来的
+ // 实际占用低于线下 10%。行数用 reltuples（上一次 ANALYZE 的估计，够用），删完按删掉的行数往下扣。
+ let budget=crate::storage_budget::ORDERS;
+ if crate::storage_budget::over(pool,&budget).await?.is_some() {
+  let tuples:f32=sqlx::query_scalar("SELECT reltuples FROM pg_class WHERE oid='orderflow_orders'::regclass").fetch_one(pool).await?;
+  let rows=(tuples.max(0.0) as f64)-deleted as f64;
   let oldest:Option<i64>=sqlx::query_scalar("SELECT min(end_ms) FROM orderflow_orders WHERE end_ms IS NOT NULL").fetch_one(pool).await?;
-  let mut cutoff=oldest.unwrap_or(now);
-  while rows*ROW_BYTES>GATE_TARGET&&cutoff<now {
-   cutoff+=DAY_MS/4;
-   for base in &bases {
-    let n=delete_ended_before(pool,base,cutoff).await?;
-    deleted+=n;rows-=n as f64;
-   }
-  }
-  tracing::warn!("Orderflow history: size gate trimmed to end_ms >= {cutoff}");
+  let start=oldest.unwrap_or(now);
+  let (cutoff,n)=crate::storage_budget::trim(rows*ROW_BYTES,budget.target(),ROW_BYTES,start,now,DAY_MS/4,|_,to|{
+   let bases=&bases;
+   async move {let mut n=0;for base in bases {n+=delete_ended_before(pool,base,to).await?;} Ok(n)}
+  }).await?;
+  deleted+=n;
+  if cutoff>start {tracing::warn!("Orderflow history: size gate trimmed to end_ms >= {cutoff}");}
  }
  Ok((deleted,closed))
 }

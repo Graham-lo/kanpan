@@ -4,7 +4,7 @@
 //!   同一交易所同一产品的几本簿（交割好几期）合成一条带子；名义不到该产品门槛 5% 的那一侧记 0，两侧都是 0 的桶不写，
 //!   空带子不写。交给全进程一个写库任务，攒一批用一条多行 INSERT 写进 `orderflow_heat`（一条带子一行，桶在数组里，见 0033）。
 //!   写库占 `WRITE_SLOTS` 的一条；通道满了（库慢）就丢这一拍的快照，不堵跟踪任务。
-//! * 清理：每小时和订单流的滚动清理一起，逐只 base 按主键删 3 天以前的；表超过 36 GB 再按时间往前删到约 32 GB。
+//! * 清理：每小时和订单流的滚动清理一起，逐只 base 按主键删 3 天以前的；表（连同预聚合的段）超过预算（`storage_budget::HEAT`）再按时间往前删到线下 10%。
 //! * 接口 `GET /v1/market/orderflow/heat?base=&from=&to=&step=` → `{"step","bucketMs","rows":[[t_ms,price,bid_usd,ask_usd],…]}`：
 //!   三家合起来；价格按 `max(step, 存储步长)` 向下取整合并（同一时刻各桶相加）；时间按 `bucketMs` 合并（取这一格里各快照的平均，
 //!   某个快照里没有这个桶按 0 算）。`to` 缺省此刻、`from` 缺省 `to` 前 1 小时，超过 3 天把 `from` 夹到 `to` 前 3 天。
@@ -80,9 +80,6 @@ const PURGE_SLICE_MS:i64=60_000;
 /// 段的清理一条语句删多少个段宽（每只 base 每个步长至多这么多行）。
 const ROLLUP_PURGE_SLICES:i64=60;
 const ROLLUP_PURGE_SLACK_MS:i64=10*60_000;
-/// 体积闸门：表（含索引）超过这么大，按时间往前删到估出来的实际占用低于目标。
-const GATE_BYTES:f64=36.0*1024.0*1024.0*1024.0;
-const GATE_TARGET:f64=32.0*1024.0*1024.0*1024.0;
 /// 写库统计多久打一行日志。
 const REPORT:Duration=Duration::from_secs(10*60);
 /// 预聚合的段宽（细到粗）：150 秒不是 60 秒的整数倍，所以 30 秒这一档既给 30 / 60 秒格用，也是 150 秒段的来源；
@@ -463,8 +460,9 @@ pub(super) async fn size(pool:&PgPool)->sqlx::Result<i64> {
 }
 
 /// 每分钟一次：删 3 天以前的（预聚合的段同一个截止时刻一起删）；`floor` 是上一次删到的截止时刻（见 `purged`），
-/// 返回（两边合计删了几行，这一次删到的截止时刻——下一次的 `floor`）。表超过 `GATE_BYTES` 时按「行数 × 最近一行的平均大小」估实际占用，
-/// 超过 `GATE_TARGET` 就把截止时刻往后挪（每次 6 小时）接着删。删掉的空间留给以后的插入用，文件不缩，所以不能直接拿文件大小判断。
+/// 返回（两边合计删了几行，这一次删到的截止时刻——下一次的 `floor`）。原始快照连同三张段表的文件超过预算（`storage_budget::HEAT`）时
+/// 按「行数 × 最近一分钟一行的平均大小（含索引）+ 段表的文件大小」估实际占用，超过线下 10% 就把截止时刻往后挪（每次 6 小时）接着删。
+/// 删掉的空间留给以后的插入用，文件不缩，所以不能直接拿文件大小判断删到哪儿。
 ///
 /// 原来每小时一次、逐只 base 不设下限地删（见 `delete_before`）：一小时攒下 30 多万行，每批都要先走一遍前几次删掉的死索引项，
 /// 2026-10-06 线上一次清理 2–27 条 1–2.3 秒的慢语句、而且越攒越多。现在每分钟只删刚过期的那一分钟（约 5.6 千行、一条语句）。
@@ -475,17 +473,18 @@ pub(super) async fn purge(pool:&PgPool,now:i64,floor:Option<i64>)->sqlx::Result<
  if let Some(f)=floor {cutoff=cutoff.max(f);}
  let mut deleted=delete_span(pool,&bases,floor,cutoff).await?;
  let mut done=cutoff;
- if size(pool).await? as f64>GATE_BYTES {
-  let tuples:f32=sqlx::query_scalar("SELECT reltuples FROM pg_class WHERE oid='orderflow_heat'::regclass").fetch_one(pool).await?;
+ let budget=crate::storage_budget::HEAT;
+ if crate::storage_budget::over(pool,&budget).await?.is_some() {
   let average:Option<f64>=sqlx::query_scalar("SELECT avg(pg_column_size(h.*))::float8 FROM orderflow_heat h WHERE base=ANY($1) AND bucket_ms>=$2")
    .bind(&bases).bind(now-60_000).fetch_one(pool).await?;
-  let per_row=average.unwrap_or(2_000.0)+50.0;
-  let mut rows=(tuples.max(0.0) as f64)-deleted as f64;
-  while rows*per_row>GATE_TARGET&&done<now-store::DAY_MS/4 {
-   let next=done+store::DAY_MS/4;
-   let n=delete_span(pool,&bases,Some(done),next).await?;
-   deleted+=n;rows-=n as f64;done=next;
-  }
+  let (raw,per_row)=crate::storage_budget::estimate(pool,"orderflow_heat",average.unwrap_or(2_000.0)).await?;
+  let rollups=crate::storage_budget::size(pool,&crate::storage_budget::Budget{tables:&budget.tables[1..],..budget}).await? as f64;
+  let live=raw-deleted as f64*per_row+rollups;
+  let (next,n)=crate::storage_budget::trim(live,budget.target(),per_row,done,now-store::DAY_MS/4,store::DAY_MS/4,|from,to|{
+   let bases=&bases;
+   async move {delete_span(pool,bases,Some(from),to).await}
+  }).await?;
+  deleted+=n;done=next;
   if done>cutoff {tracing::warn!("Orderflow heat: size gate trimmed to bucket_ms >= {done}");}
  }
  deleted+=delete_rollups_before(pool,floor,done).await?;

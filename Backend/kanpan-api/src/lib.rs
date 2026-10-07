@@ -10,6 +10,7 @@ pub mod review_worker;
 pub mod review_trade;
 pub mod search;
 pub mod market_index;
+pub mod storage_budget;
 pub mod binance_gate;
 pub mod market_meta;
 pub mod market_depth;
