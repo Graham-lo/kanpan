@@ -41,6 +41,7 @@
 //! * 足迹图与秒线（网页版，2026-10-07）：同一批成交按交易所给的时刻记每分钟每个价位桶的主动买卖额（`orderflow_footprint`，
 //!   接口 `GET /v1/market/orderflow/footprint`，见 `footprint.rs`），币安 U 本位永续的再记每秒的开高低收与量（`klines_seconds`，
 //!   接口 `GET /v1/market/klines/seconds`，见 `seconds.rs`）；写库与清理共用 `minutes.rs`，各自的磁盘预算在 `storage_budget.rs`。
+//! * 这五条历史接口不要登录，同一来源地址同时最多 `PER_CLIENT`（24）条在处理，超了 429 `history_client_limit` + `Retry-After: 1`。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
 mod feeds;
@@ -1640,6 +1641,46 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,limit:i64,thr
 pub fn routes()->Router<AppState> {
  Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat)).route(flow::PATH,get(flow::flow))
   .route(footprint::PATH,get(footprint::footprint)).route(seconds::PATH,get(seconds::seconds))
+  .route_layer(axum::middleware::from_fn(per_client))
+}
+
+/// 同一来源地址同时在处理的历史请求（大单 / 热力 / 分钟成交 / 足迹 / 秒线五条合计）最多几条。
+/// 网页十六图一屏全开时一格最多同时要两三条（热力 + 足迹或秒线 + 往前翻页），24 条够一个家庭网络几台设备同时开；
+/// 读库只有 `HISTORY_READS` 两个名额，不限的话一个匿名客户端开几十条并发就把别人全挤在后面排队（2026-10-07 压测：
+/// 一个来源 60 并发打秒线，别人的请求跟着排到 1.4 秒）。
+const PER_CLIENT:usize=24;
+static CLIENTS:std::sync::LazyLock<std::sync::Mutex<HashMap<std::net::IpAddr,usize>>>=std::sync::LazyLock::new(Default::default);
+
+/// 一个来源占着的一条名额；请求处理完（或被超时那层半路丢掉）时还回去。
+struct ClientLease(std::net::IpAddr);
+impl Drop for ClientLease {
+ fn drop(&mut self) {
+  let mut clients=CLIENTS.lock().unwrap_or_else(|e|e.into_inner());
+  if let Some(n)=clients.get_mut(&self.0) {
+   *n=n.saturating_sub(1);
+   if *n==0 {clients.remove(&self.0);}
+  }
+ }
+}
+
+/// 超过 [`PER_CLIENT`] 的立刻回 429 `history_client_limit` + `Retry-After: 1`，不进队、不占连接。
+/// 来源地址按 `auth::client_ip`：对端是本机（前面的 Caddy）才认 `X-Forwarded-For` 的最后一段。
+async fn per_client(req:axum::extract::Request,next:axum::middleware::Next)->axum::response::Response {
+ use axum::response::IntoResponse as _;
+ let peer=req.extensions().get::<axum::extract::ConnectInfo<std::net::SocketAddr>>().map(|c|c.0)
+  .unwrap_or(std::net::SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED,0)));
+ let ip=crate::auth::client_ip(&peer,req.headers());
+ let lease={
+  let mut clients=CLIENTS.lock().unwrap_or_else(|e|e.into_inner());
+  let n=clients.entry(ip).or_insert(0);
+  if *n>=PER_CLIENT {None} else {*n+=1;Some(ClientLease(ip))}
+ };
+ let Some(_lease)=lease else {
+  let mut reply=ApiError(axum::http::StatusCode::TOO_MANY_REQUESTS,"history_client_limit").into_response();
+  reply.headers_mut().insert(axum::http::header::RETRY_AFTER,axum::http::HeaderValue::from_static("1"));
+  return reply
+ };
+ next.run(req).await
 }
 
 #[cfg(test)]
@@ -2360,6 +2401,33 @@ mod tests {
     Err(code)=>{assert_eq!(status,StatusCode::BAD_REQUEST,"{query}");assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["error"]["code"],code,"{query}");},
    }
   }
+ }
+
+ /// 同一来源同时第 25 条起回 429 + Retry-After，别的来源不受影响；前面的做完名额就还回来。
+ #[tokio::test] async fn one_source_cannot_hold_more_than_its_share_of_history_reads() {
+  use axum::{body::Body,http::{Request,StatusCode}};
+  use tower::ServiceExt;
+  let (release,wait)=tokio::sync::watch::channel(false);
+  let app=Router::<()>::new().route("/slow",get(move||{let mut wait=wait.clone();async move {let _=wait.wait_for(|v|*v).await;"ok"}})).route_layer(axum::middleware::from_fn(per_client));
+  let call=|ip:&'static str|{
+   let app=app.clone();
+   async move {
+    let mut req=Request::builder().uri("/slow").header("x-forwarded-for",ip).body(Body::empty()).unwrap();
+    req.extensions_mut().insert(axum::extract::ConnectInfo(std::net::SocketAddr::from(([127,0,0,1],9))));
+    app.oneshot(req).await.unwrap()
+   }
+  };
+  let held:Vec<_>=(0..PER_CLIENT).map(|_|tokio::spawn(call("203.0.113.7"))).collect();
+  while CLIENTS.lock().unwrap().get(&"203.0.113.7".parse().unwrap()).copied()!=Some(PER_CLIENT) {tokio::task::yield_now().await;}
+  let over=call("203.0.113.7").await;
+  assert_eq!(over.status(),StatusCode::TOO_MANY_REQUESTS);
+  assert_eq!(over.headers()["retry-after"],"1");
+  let other=tokio::spawn(call("198.51.100.2"));
+  release.send(true).unwrap();
+  assert_eq!(other.await.unwrap().status(),StatusCode::OK,"别的来源不受影响");
+  for h in held {assert_eq!(h.await.unwrap().status(),StatusCode::OK);}
+  assert!(!CLIENTS.lock().unwrap().contains_key(&"203.0.113.7".parse().unwrap()),"做完名额还回来、表里不留");
+  assert_eq!(call("203.0.113.7").await.status(),StatusCode::OK);
  }
 
  #[test] fn gzip_is_sent_only_when_accepted() {

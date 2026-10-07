@@ -5,7 +5,7 @@
 // （默认 2 → 5 → 10 → 20），最后一档持续到给定时长。每 10 秒一个窗口，窗口里错误率超过 1%
 // 或 p95 超过 2 秒立刻停下（先查原因，别硬打）。不是打垮它：线上有人在用。
 //
-//   node ops/stress.mjs meta|heat|history|sector [--secs 150] [--stages 2,5,10,20]
+//   node ops/stress.mjs meta|heat|history|sector|footprint|seconds [--secs 150] [--stages 2,5,10,20]
 //   KANPAN_STRESS_USER=… KANPAN_STRESS_PASSWORD=… node ops/stress.mjs sync|auth|search
 //
 // 账号密码只从环境变量读，别写进任何文件。输出最后一行是整段的 JSON 汇总。
@@ -24,6 +24,7 @@ const HEADERS = { 'accept-encoding': 'gzip, br', 'user-agent': 'kanpan-stress-c/
 const pct = (xs, q) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))]) }
 const uuid = () => crypto.randomUUID()
 const pick = xs => xs[Math.floor(Math.random() * xs.length)]
+const jitter = span => span - Math.floor(Math.random() * span / 4 / 60_000) * 60_000 // 少掉至多四分之一、按整分钟
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // ------------------------------------------------------------------ 计量
@@ -100,6 +101,22 @@ const scenarios = {
     const nb = r.body?.data?.nextBefore
     if (nb) ctx.next = { base: b, before: nb }
     return r
+  },
+  // 2026-10-07 足迹图 / 秒线历史：起点按分钟随机错开（同样的请求 20 秒内合成一次读库，不错开就只是在打缓存）；
+  // 5% 故意超过上限（足迹 24 小时、秒线 6 小时），要回 400 而不是 5xx。
+  async footprint() {
+    const b = pick(['BTC', 'ETH', 'SOL']), now = Date.now()
+    const over = Math.random() < .05
+    const span = over ? 25 * 3_600_000 : jitter(pick([3_600_000, 4 * 3_600_000, 24 * 3_600_000]))
+    const to = now - Math.floor(Math.random() * 120) * 60_000
+    return timed(`/v1/market/orderflow/footprint?symbol=${b}USDT&from=${to - span}&to=${to}`, {}, r => over ? r.status === 400 : r.status === 200)
+  },
+  async seconds() {
+    const b = pick(['BTC', 'ETH', 'SOL']), now = Date.now()
+    const over = Math.random() < .05
+    const span = over ? 7 * 3_600_000 : jitter(pick([30 * 60_000, 3_600_000, 6 * 3_600_000]))
+    const to = now - Math.floor(Math.random() * 120) * 60_000
+    return timed(`/v1/market/klines/seconds?symbol=${b}USDT&from=${to - span}&to=${to}`, {}, r => over ? r.status === 400 : r.status === 200)
   },
 }
 
