@@ -12,6 +12,7 @@ import { IV_MS } from '../util/format'
 import { IV_LABEL, IV_SHORT } from '../market/symbols'
 import { klines } from '../market/rest'
 import { tapTrade, type Trade } from '../market/trades'
+import { S, on } from '../market/state'
 import type { Bar } from './calc'
 
 export const SECOND_IVS = ['1s', '5s', '15s'] as const
@@ -86,19 +87,24 @@ const KEEP_1S = 6 * 3600
 const secs = new Map<string, Bar[]>()
 const secListeners = new Set<(symbol: string) => void>()
 let tapped = false
+const notify = (symbol: string) => secListeners.forEach(f => { try { f(symbol) } catch (e) { console.error(e) } })
+function trim(arr: Bar[]): void { if (arr.length > KEEP_1S * 1.1) arr.splice(0, arr.length - KEEP_1S) }
 function onTrade(tr: Trade): void {
   const t = Math.floor(tr.t / 1e3) * 1e3, quote = tr.price * tr.qty
   let arr = secs.get(tr.symbol)
   if (!arr) { arr = []; secs.set(tr.symbol, arr) }
   const last = arr[arr.length - 1]
   if (last && last.t === t) {
+    // 这一秒先被补成了平的（成交晚到）：第一笔成交按真的开盘算
+    if (last.v === 0 && !last.bv) { last.o = last.h = last.l = tr.price }
     last.h = Math.max(last.h, tr.price); last.l = Math.min(last.l, tr.price); last.c = tr.price
     last.v += quote; last.bv = (last.bv ?? 0) + tr.qty; if (!tr.sell) last.tb = (last.tb ?? 0) + quote
   } else if (!last || t > last.t) {
+    padArr(arr, tr.symbol, t)   // 上一笔到这一笔之间没成交的秒先补平
     arr.push({ t, o: tr.price, h: tr.price, l: tr.price, c: tr.price, v: quote, bv: tr.qty, tb: tr.sell ? 0 : quote })
-    if (arr.length > KEEP_1S * 1.1) arr.splice(0, arr.length - KEEP_1S)
+    trim(arr)
   } else return // 乱序的旧成交不回改
-  secListeners.forEach(f => { try { f(tr.symbol) } catch (e) { console.error(e) } })
+  notify(tr.symbol)
 }
 /** 开始攒（页面一启动就调；只会攒到已订逐笔流的品种） */
 export function startSeconds(): void { if (!tapped) { tapped = true; tapTrade(onTrade) } }
@@ -110,12 +116,103 @@ export function secondBars(symbol: string, iv: string): Bar[] {
 }
 /** 当前这一格（给实时更新） */
 export function secondLastBar(symbol: string, iv: string): Bar | null {
-  const a = secs.get(symbol); if (!a?.length) return null
-  const ms = IV_MS[iv], t = Math.floor(a[a.length - 1].t / ms) * ms
-  let k = a.length - 1
-  while (k > 0 && a[k - 1].t >= t) k--
-  return aggregate(a.slice(k), ms)[0] ?? null
+  return secondBarsSince(symbol, iv, Infinity)[0] ?? null
 }
+/** 从 t 所在那一格起到最新的各格（图上最后一根之后补上来的几秒一起给；t = Infinity 只给当前格） */
+export function secondBarsSince(symbol: string, iv: string, t: number): Bar[] {
+  const a = secs.get(symbol); if (!a?.length) return []
+  const ms = IV_MS[iv] || 1e3, lastT = Math.floor(a[a.length - 1].t / ms) * ms
+  const from = Math.min(lastT, Math.floor(t / ms) * ms)
+  let k = a.length - 1
+  while (k > 0 && a[k - 1].t >= from) k--
+  return aggregate(a.slice(k), ms)
+}
+
+/* ------------------------------------------------------------ 秒级：没成交的秒补平（2026-10-07）
+ * 一秒里没有成交，逐笔就不来，图上那一秒就是个缺口。照交易所 / TradingView 的秒线：这一秒过完（再等 PAD_GRACE_MS 让晚到的成交落位）
+ * 还没成交，补一根开高低收都等于上一根收盘、量 0 的平线；5 秒 / 15 秒由 1 秒并出来，自然一样。
+ * 只在「确实一直在收这只的逐笔」时补：WS 断着、页面藏到后台而这只的逐笔被退订（只有当前格的逐笔是核心流）时停补，
+ * 恢复后从下一笔真成交起接着补，断掉那一段不编平线——由页面重取一次服务端秒线历史把它拼回来（resumed 回调）。
+ * 页面在后台时定时器会被浏览器节流：回前台立刻把睡掉的秒一次补齐（一直在收逐笔的那只）。 */
+export const PAD_GRACE_MS = 500
+const watched = new Set<string>()
+const dead = new Set<string>()
+/** 收着收着断了的（刚开始看、还没连上的不算）：恢复时要页面补一次历史 */
+const broke = new Set<string>()
+/** 这一秒之前的不补（刚开始看、断流恢复的时刻）：最后一根早于它就等下一笔真成交再接着补 */
+const breakAt = new Map<string, number>()
+const secOf = (t: number) => Math.floor(t / 1e3) * 1e3
+const flat = (t: number, c: number): Bar => ({ t, o: c, h: c, l: c, c, v: 0, bv: 0, tb: 0 })
+/** 往 arr 末尾补平线到 until（不含）；返回补了几根 */
+function padArr(arr: Bar[], symbol: string, until: number): number {
+  const last = arr[arr.length - 1]
+  if (!last || !watched.has(symbol) || dead.has(symbol) || last.t < (breakAt.get(symbol) ?? Infinity)) return 0
+  let t = Math.max(last.t + 1e3, until - KEEP_1S * 1e3), n = 0
+  for (; t < until; t += 1e3, n++) arr.push(flat(t, last.c))
+  if (n) trim(arr)
+  return n
+}
+/** 把这只品种补到「now 往前 PAD_GRACE_MS 已经过完的那一秒」；补了就照常通知图上去并 */
+export function padSeconds(symbol: string, now = Date.now()): number {
+  const arr = secs.get(symbol); if (!arr?.length) return 0
+  const n = padArr(arr, symbol, secOf(now - PAD_GRACE_MS))
+  if (n) notify(symbol)
+  return n
+}
+/** 服务端历史拼好后，把历史最后一根（已补平到「现在」）接到逐笔的内存里，补平从它接着走 */
+export function seedSeconds(symbol: string, b: Bar): void {
+  let arr = secs.get(symbol)
+  if (!arr) { arr = []; secs.set(symbol, arr) }
+  const last = arr[arr.length - 1]
+  if (last && last.t >= b.t) return
+  arr.push({ ...b }); trim(arr)
+  if (!watched.has(symbol)) { watched.add(symbol); breakAt.set(symbol, b.t) }
+  else if ((breakAt.get(symbol) ?? 0) > b.t && !dead.has(symbol)) breakAt.set(symbol, b.t)
+}
+export interface SecondsPadHost {
+  /** 现在摆在秒级格子里的品种 */
+  symbols(): string[]
+  /** 页面藏到后台时这只的逐笔还订着（当前格的） */
+  keepsWhenHidden(symbol: string): boolean
+  /** 断流后又在收了：页面重取这只的秒线历史，把断掉的那段拼回来 */
+  resumed(symbol: string): void
+}
+let padHost: SecondsPadHost | null = null
+const pageHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
+/** 对一遍账：谁在看、谁在收；返回恢复了的品种 */
+export function reconcileSeconds(now = Date.now(), wsOpen = S.wsState === 'open', hidden = pageHidden()): string[] {
+  if (!padHost) return []
+  const want = new Set(padHost.symbols()), back: string[] = []
+  for (const k of [...watched]) if (!want.has(k)) { watched.delete(k); dead.delete(k); broke.delete(k); breakAt.delete(k) }
+  for (const k of want) {
+    const wasLive = watched.has(k) && !dead.has(k)
+    if (!watched.has(k)) { watched.add(k); breakAt.set(k, secOf(now)) }
+    const live = wsOpen && (!hidden || padHost.keepsWhenHidden(k))
+    if (!live) { if (wasLive) broke.add(k); dead.add(k) }
+    else if (dead.has(k)) { dead.delete(k); breakAt.set(k, secOf(now)); if (broke.delete(k)) back.push(k) }
+  }
+  return back
+}
+function padTick(now = Date.now()): void {
+  if (!padHost) return
+  const back = reconcileSeconds(now)
+  for (const k of watched) padSeconds(k, now)
+  for (const k of back) { try { padHost.resumed(k) } catch (e) { console.error(e) } }
+}
+/** 页面启动时调一次：每秒到点补平、WS 断连 / 前后台切换时对账 */
+export function startSecondsPadding(host: SecondsPadHost): void {
+  const first = !padHost
+  padHost = host
+  if (!first) return
+  const loop = () => { padTick(); setTimeout(loop, 1e3 - (Date.now() % 1e3) + PAD_GRACE_MS) }
+  setTimeout(loop, 1e3 - (Date.now() % 1e3) + PAD_GRACE_MS)
+  on(e => { if (e.type === 'ws') padTick() })
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => padTick())
+}
+/** 测试用 */
+export function resetSeconds(): void { secs.clear(); watched.clear(); dead.clear(); broke.clear(); breakAt.clear(); padHost = null }
+export function setSecondsPadHost(h: SecondsPadHost | null): void { padHost = h }
+export function feedTrade(tr: Trade): void { onTrade(tr) }
 
 // ------------------------------------------------------------ 自定义分钟：取数与实时
 /** 当前那一格里的原生线（按「品种|周期」记） */

@@ -14,7 +14,7 @@
 import type { Bar } from './calc'
 import { IV_MS } from '../util/format'
 import { serverHistory } from '../market/rest'
-import { aggregate, secondBars } from './intervals'
+import { aggregate, secondBars, seedSeconds } from './intervals'
 import { ago } from '../util/clock'
 
 /** 单次最多要 6 小时 */
@@ -57,13 +57,14 @@ export function fillGaps(bars: Bar[], until?: number): Bar[] {
 }
 const flat = (t: number, c: number): Bar => ({ t, o: c, h: c, l: c, c, v: 0, bv: 0, tb: 0 })
 
-/** 服务端的历史与逐笔攒的拼起来：同一秒以逐笔攒的为准，按时间升序 */
+/** 服务端的历史与逐笔攒的拼起来：同一秒以逐笔攒的为准，按时间升序。
+ *  逐笔那边补出来的平线（量 0，intervals.ts 的补平）碰上服务端那一秒有真成交，以服务端为准 */
 export function spliceSeconds(hist: Bar[], live: Bar[]): Bar[] {
   if (!hist.length) return live
   if (!live.length) return hist
   const m = new Map<number, Bar>()
   for (const b of hist) m.set(b.t, b)
-  for (const b of live) m.set(b.t, b)
+  for (const b of live) { const h = m.get(b.t); if (!(h && b.v === 0 && !b.bv && h.v > 0)) m.set(b.t, b) }
   return [...m.values()].sort((a, b) => a.t - b.t)
 }
 
@@ -101,6 +102,7 @@ export async function secondsKlines(symbol: string, iv: string, endTime?: number
   if (!r.bars.length) return { bars: ms === 1e3 ? live : aggregate(live, ms), ok: true }
   // 历史末尾到现在之间（服务端落后几秒、逐笔还没来）也补平，不留缺口
   const one = fillGaps(spliceSeconds(r.bars, live), Math.floor(now / 1e3) * 1e3)
+  seedSeconds(symbol, one[one.length - 1])   // 逐笔那边的补平从拼好的最后一根接着走，和图上同一条
   return { bars: ms === 1e3 ? one : aggregate(one, ms), ok: true }
 }
 

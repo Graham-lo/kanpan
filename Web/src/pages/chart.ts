@@ -21,7 +21,7 @@ import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, f
 import { deleteAlert } from '../alerts/model'
 import { alertDesc } from '../alerts/panel'
 import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel, drawingIdOf } from '../alerts/model'
-import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, streamIvOf, startSeconds, onSecondsTick, secondBars, secondLastBar, customKlines, customTick, customBase } from '../chart/intervals'
+import { SECOND_IVS, isSecondIv, isCustomIv, registerCustomIv, minutesIv, streamIvOf, startSeconds, onSecondsTick, secondBars, secondBarsSince, startSecondsPadding, customKlines, customTick, customBase } from '../chart/intervals'
 import { VPVR_MODES } from '../chart/overlays'
 import { keyLevelsShown, keyLevelsOf, levelsForInterval } from '../chart/keyLevels'
 import { renderAlertsPanel, alertsPanelClick, openCreateAlert, installAlerts, alertStreams, askNotify } from '../alerts/panel'
@@ -1223,7 +1223,7 @@ function flushSeconds(): void {
   cells.forEach(c => {
     const cc = cfg(c); if (!pendingSec.has(cc.symbol) || !isSecondIv(cc.iv)) return
     if (!c.chart.bars.length) { c.chart.setData(secondBars(cc.symbol, cc.iv), metaFor(cc)); showCellEmpty(c, null); return }
-    const b = secondLastBar(cc.symbol, cc.iv); if (b) c.chart.updateBar(b)
+    for (const b of secondBarsSince(cc.symbol, cc.iv, c.chart.lastBar()!.t)) c.chart.updateBar(b) // 补平 / 回前台补上来的几秒一起并
   })
   pendingSec.clear()
 }
@@ -1303,6 +1303,11 @@ export async function initChart(): Promise<void> {
   st.customIvs.forEach(registerCustomIv); st.cells.forEach(c => registerCustomIv(c.iv))
   startSeconds()
   onSecondsTick(k => { pendingSec.add(k); if (!secRAF) secRAF = requestAnimationFrame(flushSeconds) })
+  startSecondsPadding({
+    symbols: () => cells.map(cfg).filter(c => isSecondIv(c.iv)).map(c => c.symbol),
+    keepsWhenHidden: k => { const a = cfg(active()); return !!a && a.symbol === k && isSecondIv(a.iv) },
+    resumed: k => cells.forEach(c => { if (cfg(c).symbol === k && isSecondIv(cfg(c).iv)) void loadCell(c) }),
+  })
   migrateDrawingFlags()
   onAlertsChange(refreshAlerts)
   installCompare({
