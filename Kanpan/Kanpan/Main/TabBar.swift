@@ -70,7 +70,9 @@ struct TabBar: View {
   /// 传整只 feature 而不是算好的数，理由同 `ReviewCountBadge`。
   var review: ReviewFeature? = nil
   /// 身后那道「透明 → 页面底色」渐变的终点色：每页传**自己的**底色令牌（自选是 `AuroraBackdrop`
-  /// 的底、板块是 `SectorSkin.ground`、我的是 `app`）。nil 就不铺——行情页的图不在栏身后滚，
+  /// 的底、板块是 `SectorSkin.ground`、我的是 `app`）。自选 / 板块 / 我的三页 2026-10-08 起
+  /// 铺的都是同一层琉璃底，所以只要传了（非 nil），这里一律收在 `LiuliMaterial.ground` 上，
+  /// 宿主传来的具体颜色只当「要不要铺」的开关——免得某页底换了材质、宿主那份令牌没跟上。nil 就不铺——行情页的图不在栏身后滚，
   /// 那道渐变上沿会压淡 K 线图下沿的时间轴。
   var fade: Color? = nil
   var onPick: (Tab) -> Void
@@ -90,6 +92,14 @@ struct TabBar: View {
   private static let cellH: CGFloat = 40
   /// 一格的宽。
   private static let cellW: CGFloat = 52
+  /// 栏顶上那道留白（见 `body` 里的注释：留白全给上面那一侧）。
+  private static let topPad: CGFloat = 8
+  /// 一格上下各垫的那一点。
+  private static let cellVPad: CGFloat = 5
+
+  /// 栏自己的高度（不含 home 条那截安全区）：顶上留白 + 一格的点区 + 上下垫。
+  /// 浮在栏上方的东西（`ToastStage` 那条提示）按它让位，不再各写一个魔数。
+  static let height: CGFloat = topPad + cellH + cellVPad * 2
 
   /// 亮着的是哪一格。画线进行中也还是「图表」——画线不再占底栏的格子。
   private var active: Tab { current }
@@ -102,11 +112,11 @@ struct TabBar: View {
     }
     // 留白全给上面那一侧：`safeAreaInset` 已经把栏摆在 home 条正上方了，底下再垫一道
     // 就是把整排记号往屏幕中间顶。用户要的是「往下移一点」。
-    .padding(.top, 8)
+    .padding(.top, Self.topPad)
     .padding(.bottom, 0)
     .background { glowBed }
     // 渐变垫在灯座下面：先把滚进栏身后的那一截内容压回页面底色，灯座再浮在上面。
-    .background(alignment: .bottom) { if let fade { fadeBed(fade) } }
+    .background(alignment: .bottom) { if fade != nil { fadeBed(LiuliMaterial(theme).ground) } }
     .animation(.spring(response: 0.34, dampingFraction: 0.82), value: active)
   }
 
@@ -122,7 +132,7 @@ struct TabBar: View {
           }
         }
         .frame(width: Self.cellW, height: Self.cellH)
-        .padding(.vertical, 5)
+        .padding(.vertical, Self.cellVPad)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
     }
@@ -457,7 +467,7 @@ struct Toast: View {
       Text(text)
       if let undo {
         // 中间点一个间隔点，别让文案和按钮糊成一句话。
-        Text("·").foregroundStyle(theme.ink3)
+        Text("·").foregroundStyle(Color(hex: Self.secondaryInk(theme)))
         Button(action: undo) {
           // 命中区 44（UI 审查 2026-09-24 §4.3 #31）：字本身只有十五六点高，点区四边各往外撑
           // `Self.undoReach`，版面一个点不变。竖着撑出条外的那几点由 `ToastStage` 把命中矩形
@@ -466,7 +476,7 @@ struct Toast: View {
             .contentShape(Rectangle().inset(by: -Self.undoReach))
         }
           .buttonStyle(.plain)
-          .foregroundStyle(theme.amber)
+          .foregroundStyle(Color(hex: Self.actionInk(theme)))
           .accessibilityIdentifier(actionTitle == "撤销" ? "toast.undo" : "toast.action")
       }
     }
@@ -474,11 +484,41 @@ struct Toast: View {
       .foregroundStyle(theme.ink)
       .padding(.horizontal, Space.l)
       .padding(.vertical, Self.vPad)
-      // 高约 36，原来写的是 r20 的矩形——圆角大过半高，本来就是胶囊，照实写成胶囊。
-      .background(
-        Capsule().fill(theme.raised)
-          .overlay(Capsule().stroke(theme.line, lineWidth: 1)))
-      .shadow(color: .black.opacity(theme.dark ? 0.5 : 0.12), radius: 12, y: 4)
+      // 高约 36，圆角大过半高，本来就是胶囊。底是琉璃玻璃：一层系统模糊垫着，
+      // 上面压 `fillOpacity` 的玻璃料（浅色白 / 陶土暖白，深色 `raised`），再描一圈 1/3pt 细线。
+      // 料压得够厚，底下是白图还是黑图，墨色字都在 4.5:1 以上（`ToastContrastTests`）。
+      .background {
+        Capsule().fill(.ultraThinMaterial)
+          .overlay(Capsule().fill(Color(hex: Self.base(theme)).opacity(Self.fillOpacity)))
+          .overlay(Capsule().strokeBorder(Color(hex: theme.seed.ink).opacity(theme.dark ? 0.16 : 0.12),
+                                          lineWidth: LiuliMaterial.hairline))
+      }
+      .shadow(color: .black.opacity(theme.dark ? 0.45 : 0.10), radius: 12, y: 4)
       .transition(.opacity)
+  }
+
+  /// 玻璃料压多厚。0.9：透出一点底下的颜色，读起来是玻璃；再薄，白图上的深色皮肤字就不够 4.5:1。
+  static let fillOpacity = 0.9
+
+  /// 玻璃料的颜色：浅色借琉璃的白（陶土是暖白），深色借 `raised`（深色琉璃那层太薄，托不住字）。
+  static func base(_ theme: PanelTheme) -> Hex {
+    if theme.dark { return theme.seed.raised }
+    return Palette.isWarm(theme.seed) ? "#FFFAF4" : theme.seed.raised
+  }
+
+  /// 最坏情况下这条胶囊落成什么颜色：玻璃料 90% 盖在纯白或纯黑上（模糊层不算，按没有算）。
+  static func worstSurfaces(_ theme: PanelTheme) -> [Hex] {
+    let b = base(theme)
+    return [Palette.mix(b, "#FFFFFF", amount: fillOpacity), Palette.mix(b, "#000000", amount: fillOpacity)]
+  }
+
+  /// 右边那颗按钮的字色：皮肤强调色，压不到 4.5:1 就往墨色挪到够为止。
+  static func actionInk(_ theme: PanelTheme) -> Hex {
+    Palette.readable(theme.seed.accent, on: worstSurfaces(theme), toward: theme.seed.ink)
+  }
+
+  /// 间隔点的字色：`ink3` 往墨色挪到够 4.5:1。
+  static func secondaryInk(_ theme: PanelTheme) -> Hex {
+    Palette.readable(theme.seed.ink3, on: worstSurfaces(theme), toward: theme.seed.ink)
   }
 }

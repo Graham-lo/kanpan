@@ -140,7 +140,11 @@ private final class ToastHostController: UIHostingController<ToastStage> {
   }
 }
 
-/// 窗口里唯一的内容：底下那条提示。位置和原来宿主上那条一样（离底 92pt，让开底栏）。
+/// 窗口里唯一的内容：底下那条提示。浮在底栏正上方：离安全区下沿「底栏实际高度 + 8」。
+///
+/// 安全区（home 条那一截）不用另加：这个 `ZStack` 没有 `ignoresSafeArea`（只忽略键盘），
+/// 它的下沿本来就停在 home 条上沿，正是底栏的下沿。原来写死 92，比栏（58）高出 34，
+/// 提示和底栏之间空着一大截。
 private struct ToastStage: View {
   let center: ToastCenter
 
@@ -155,7 +159,7 @@ private struct ToastStage: View {
           .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
             center.hitRect = $0.insetBy(dx: 0, dy: -max(0, Toast.undoReach - Toast.vPad))
           }
-          .padding(.bottom, 92)
+          .padding(.bottom, TabBar.height + Space.s)
           .id(line.serial)
       }
     }
