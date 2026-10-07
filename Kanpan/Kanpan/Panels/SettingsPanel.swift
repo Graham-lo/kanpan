@@ -101,6 +101,8 @@ struct SettingsPanel: View {
     AlertSettingsSection(preferences: store)
 
     PanelGroupTitle(text: "通用")
+    // 自选行上那条 24 小时走势线的全局开关（出厂开，跟账号同步；2026-10-08 用户点名）。
+    FavoritesTrendSettingRow(store: store)
     // 「自动适应」开关 + 「已学到的」（模块在 `Habits/`）。
     HabitSettingsRows(store: store)
     // 「朋友」原来排在这一组最上面，2026-09-27 搬去「我的 › 朋友与收件箱」。
