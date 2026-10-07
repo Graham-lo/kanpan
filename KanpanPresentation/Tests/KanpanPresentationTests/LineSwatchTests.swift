@@ -24,6 +24,16 @@ struct LineSwatchTests {
     #expect(Set(list.map { $0.value.uppercased() }).count == list.count)
   }
 
+  @Test("角色名：第一支是 default，其余角色唯一，色值与 lineSwatches 一致", arguments: seeds)
+  func rolesAreStable(_ seed: PaletteSeed) {
+    let fallback = Palette.chart(seed).palette[0]
+    let options = Palette.lineSwatchOptions(default: fallback, seed: seed)
+    #expect(options.first?.role == "default")
+    #expect(Set(options.map(\.role)).count == options.count)
+    #expect(Set(options.map(\.role)).isSubset(of: ["default", "accent", "accentLift", "up", "down", "ink"]))
+    #expect(options.map(\.hex) == Palette.lineSwatches(default: fallback, seed: seed))
+  }
+
   @Test func liftKeepsHueAndBrightens() {
     let base: Hex = "#2E7D6B"
     let lifted = Palette.lift(base, 0.42)

@@ -21,6 +21,11 @@ import KanpanCore
 /// 一张面板，而是标签栏上的一整页。整页没有「返回哪儿」可言（返回就是换一格标签），
 /// 所以那颗「‹」只在半屏／侧栏模式下画；底色也从浮起来的 `raised` 换成页面的 `app`，
 /// 免得一整页浮在一整页上面，读成两块拼接的材料。
+///
+/// 2026-10-08 换成琉璃材质：底是 `LiuliBackdrop`（整页带光斑，半屏 / 侧栏不带），
+/// 标题行下沿与行间分隔线是 1/3pt 的材质细线（`LiuliMaterial.rule`），分组用 `PanelCardGroup`
+/// 垫成玻璃卡。半屏里那块底由 `PanelHost` 画在 `presentationBackground` 上（这一层透明，
+/// 免得两层颗粒叠在一起），并把「标题行 + 正文」的自然高度报给它，面板按内容定高。
 struct PanelSheet<Content: View>: View {
   var title: String
   var subtitle: String?
@@ -39,6 +44,12 @@ struct PanelSheet<Content: View>: View {
   @Environment(\.panelHPad) private var hPad
   /// 正文的滚动闸：滚着的时候正文里的按钮不认点按（见 `PanelScrollGate`）。
   @State private var gate = PanelScrollGate()
+  /// 半屏时底由 `PanelHost` 画（见上）。
+  @Environment(\.panelBackdropOwned) private var backdropOwned
+  /// 自然高度往外报给 `PanelHost`（按内容定高）；没人收就是 nil。
+  @Environment(\.panelFit) private var fit
+  @State private var headerHeight: CGFloat = 0
+  @State private var bodyHeight: CGFloat = 0
 
   var body: some View {
     VStack(spacing: 0) {
@@ -86,20 +97,78 @@ struct PanelSheet<Content: View>: View {
       .padding(.leading, asPage ? hPad : 0)
       .padding(.trailing, hPad)
       .padding(.vertical, Space.xs)
-      .overlay(alignment: .bottom) { Rectangle().fill(t.line).frame(height: 1) }
+      .overlay(alignment: .bottom) {
+        Rectangle().fill(LiuliMaterial(t).rule).frame(height: LiuliMaterial.hairline)
+      }
+      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0; report() }
 
       ScrollView {
         VStack(spacing: 0) { content() }
           .padding(.top, Space.xs)
           .padding(.bottom, Space.l)
           .environment(\.panelScrollGate, gate)
+          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bodyHeight = $0; report() }
       }
       .scrollBounceBehavior(.basedOnSize)
       .onScrollPhaseChange { _, phase in gate.note(phase) }
       .accessibilityIdentifier("panel.content")
     }
-    .background(asPage ? t.app : t.raised)
+    .background {
+      if !backdropOwned { LiuliBackdrop(material: LiuliMaterial(t), lobes: asPage) }
+    }
     .accessibilityLabel(title)
+  }
+
+  private func report() {
+    guard let fit, headerHeight > 0, bodyHeight > 0 else { return }
+    fit(headerHeight + bodyHeight)
+  }
+}
+
+/// `PanelSheet` 把自己的自然高度（标题行 + 正文，不含安全区）报给半屏外壳。
+/// 包一层 struct：环境值要求 `Sendable`（同 `PanelDismiss`）。
+struct PanelFit: Sendable {
+  private let run: @MainActor @Sendable (CGFloat) -> Void
+  init(_ run: @escaping @MainActor @Sendable (CGFloat) -> Void) { self.run = run }
+  @MainActor func callAsFunction(_ height: CGFloat) { run(height) }
+}
+
+extension EnvironmentValues {
+  /// 半屏外壳（`PanelHost`）已经在 `presentationBackground` 上画了琉璃底，`PanelSheet` 自己不再画。
+  @Entry var panelBackdropOwned = false
+  /// 收 `PanelSheet` 自然高度的那一位（`PanelHost`）。
+  @Entry var panelFit: PanelFit? = nil
+}
+
+// MARK: - 玻璃卡分组
+
+/// 面板里的一张琉璃玻璃卡：里面的行左右各留 `Inset.card`，卡本身按面板边距（`panelHPad`）缩进。
+/// 卡里最后一行自己传 `divider: false`（和原来分组末行同一个规矩）。
+struct PanelCard<Content: View>: View {
+  @ViewBuilder var content: () -> Content
+  @Environment(\.panelHPad) private var hPad
+
+  var body: some View {
+    VStack(spacing: 0) { content() }
+      .environment(\.panelHPad, Inset.card)
+      .frame(maxWidth: .infinity)
+      .liuliCard(radius: Radius.m)
+      .padding(.horizontal, hPad)
+  }
+}
+
+/// 分组标题 + 一张玻璃卡。标题的字和卡里行文左对齐（缩进 = 面板边距 + 卡内边距）。
+struct PanelCardGroup<Content: View>: View {
+  var title: String?
+  var term: GlossaryTerm? = nil
+  @ViewBuilder var content: () -> Content
+  @Environment(\.panelHPad) private var hPad
+
+  var body: some View {
+    if let title {
+      PanelGroupTitle(text: title, term: term).environment(\.panelHPad, hPad + Inset.card)
+    }
+    PanelCard(content: content)
   }
 }
 
@@ -184,7 +253,11 @@ struct PanelRow<Trailing: View>: View {
     .frame(minHeight: Inset.rowMin)
     .contentShape(Rectangle())
     .overlay(alignment: .bottom) {
-      if divider { Rectangle().fill(t.hair).frame(height: 1) }
+      // 材质细线，左端让出行文的边距（照系统分组列表）。
+      if divider {
+        Rectangle().fill(LiuliMaterial(t).rule).frame(height: LiuliMaterial.hairline)
+          .padding(.leading, hPad)
+      }
     }
 
     if let onTap {
@@ -296,8 +369,9 @@ struct PanelSegment<Value: Hashable>: View {
   /// 按钮顶着同一个标识，`app.buttons["chart.priceMode"]` 拿到的是一团分不开的东西，
   /// 用例只能退回按坐标猜。所以分段行一律把行上的标识撤掉，改从这里逐档下发。
   var id: String? = nil
-  /// 槽的底色。缺省 `raised2`（整页铺在 `raised` 上的设置行）；放进本身就是 `raised2` 的
-  /// 分组卡片里时（创建提醒页），槽会化进卡片，由调用方换成页面那一层的底。
+  /// 槽的底色。缺省是琉璃的「凹槽」（`LiuliMaterial.well`：墨色压一层薄纱，落在玻璃卡上、
+  /// 琉璃底上都看得出来；原来的 `raised2` 在经典浅色的玻璃卡上会化进卡里）。
+  /// 创建提醒页的分组卡片仍由调用方换成那一页的底。
   var track: Color? = nil
   var pick: (Value) -> Void
 
@@ -334,7 +408,7 @@ struct PanelSegment<Value: Hashable>: View {
     .padding(.horizontal, Space.xxs)
     .background {
       RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-        .fill(track ?? t.raised2)
+        .fill(track ?? LiuliMaterial(t).well)
         .padding(.vertical, (Hit.min - ControlMetrics.pillHeight) / 2 - Space.xxs)
     }
     .padding(.vertical, -PanelMetrics.vPad)

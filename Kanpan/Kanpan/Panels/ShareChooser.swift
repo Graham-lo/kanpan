@@ -57,7 +57,8 @@ struct ShareChooser: View {
       }
       .padding(Inset.card)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      .background(t.raised2, in: shape)
+      // 琉璃玻璃卡（2026-10-08），和面板里的分组卡同一块料。
+      .liuliCard(radius: Radius.m)
       .contentShape(shape)
     }
     .buttonStyle(.plain)

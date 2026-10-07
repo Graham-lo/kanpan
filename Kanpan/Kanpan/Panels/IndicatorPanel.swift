@@ -81,12 +81,14 @@ struct IndicatorPage: View {
   @ViewBuilder private var mainOnlyBody: some View {
     let inUse = prefs.overlays.contains { $0.placement == .main }
     if inUse {
-      PanelGroupTitle(text: "使用中")
-      InUseList(store: store, onEdit: { editing = $0 }, mainOnly: true)
+      PanelCardGroup(title: "使用中") {
+        InUseList(store: store, onEdit: { editing = $0 }, mainOnly: true)
+      }
     }
-    PanelGroupTitle(text: "主图叠加")
-    ForEach(Self.overlayPalette, id: \.self) { id in
-      row(id, last: id == Self.overlayPalette.last)
+    PanelCardGroup(title: "主图叠加") {
+      ForEach(Self.overlayPalette, id: \.self) { id in
+        row(id, last: id == Self.overlayPalette.last)
+      }
     }
   }
 
@@ -96,21 +98,25 @@ struct IndicatorPage: View {
     // 「指标」这一节：节名压在开着的那几项上（原来这里叫「正在用」），下面是两段开关。
     // 一项都没开时不让两行节名叠在一起，节名并进第一段的标题里。
     let inUse = !prefs.overlays.isEmpty || !prefs.subs.isEmpty
+    // 每节一张琉璃玻璃卡（2026-10-08），节名与卡里行文对齐。
     if inUse {
-      PanelGroupTitle(text: "指标")
-      InUseList(store: store, onEdit: { editing = $0 })
+      PanelCardGroup(title: "指标") {
+        InUseList(store: store, onEdit: { editing = $0 })
+      }
     }
 
-    PanelGroupTitle(text: inUse ? "主图叠加" : "指标 · 主图叠加")
-    ForEach(Self.overlayPalette, id: \.self) { id in
-      row(id, last: id == Self.overlayPalette.last)
+    PanelCardGroup(title: inUse ? "主图叠加" : "指标 · 主图叠加") {
+      ForEach(Self.overlayPalette, id: \.self) { id in
+        row(id, last: id == Self.overlayPalette.last)
+      }
     }
 
     // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
     // 成交量不占名额（`Prefs.maxSubs`，与网页版同一口径），标题上一并说清。
-    PanelGroupTitle(text: "副图 · 最多三个 · 成交量不占")
-    ForEach(IndicatorID.subPalette, id: \.self) { id in
-      row(id, last: id == IndicatorID.subPalette.last)
+    PanelCardGroup(title: "副图 · 最多三个 · 成交量不占") {
+      ForEach(IndicatorID.subPalette, id: \.self) { id in
+        row(id, last: id == IndicatorID.subPalette.last)
+      }
     }
 
     compareSection
@@ -118,13 +124,15 @@ struct IndicatorPage: View {
 
     // 指标布局回到出厂（一人一份、不分周期，2026-10-03）。
     // 已经是出厂那份时点不动（`PanelRow` 在禁用时自己换禁用色阶）。
-    PanelRow(name: "恢复默认指标", divider: false, onTap: {
-      store.resetIndicatorLayout()
-      Haptics.warning()
-    })
+    PanelCard {
+      PanelRow(name: "恢复默认指标", divider: false, onTap: {
+        store.resetIndicatorLayout()
+        Haptics.warning()
+      })
+      .disabled(prefs.indicatorLayout == .factory)
+      .accessibilityIdentifier("indicator.reset")
+    }
     .padding(.top, Space.xl)
-    .disabled(prefs.indicatorLayout == .factory)
-    .accessibilityIdentifier("indicator.reset")
   }
 
   /// 画线：一行，行尾是原来周期条上那颗 24pt 记号（`IntervalDrawGlyph`）。点它先收面板，
@@ -137,20 +145,21 @@ struct IndicatorPage: View {
   /// 画线台永远显示画线。
   @ViewBuilder private var drawSection: some View {
     if sideDismiss == nil {
-      PanelGroupTitle(text: "画线")
-      if let onDraw {
-        // 行名不重复「画线」：分组标题已经念过一遍（2026-09-24 审查 U4，和主力订单流那节同一条规矩）。
-        PanelRow(name: "开始画线", onTap: { close(); onDraw() }) {
-          IntervalDrawGlyph(theme: t, size: 24)
-            .opacity(drawEnabled ? 1 : ControlMetrics.disabledOpacity)
-            .accessibilityHidden(true)
+      PanelCardGroup(title: "画线") {
+        if let onDraw {
+          // 行名不重复「画线」：分组标题已经念过一遍（2026-09-24 审查 U4，和主力订单流那节同一条规矩）。
+          PanelRow(name: "开始画线", onTap: { close(); onDraw() }) {
+            IntervalDrawGlyph(theme: t, size: 24)
+              .opacity(drawEnabled ? 1 : ControlMetrics.disabledOpacity)
+              .accessibilityHidden(true)
+          }
+          .disabled(!drawEnabled)
+          .accessibilityIdentifier("indicator.draw")
         }
-        .disabled(!drawEnabled)
-        .accessibilityIdentifier("indicator.draw")
-      }
-      PanelRow(name: "隐藏画线", divider: false) {
-        PanelSwitch(isOn: prefs.drawingsHidden) { store.updateByHand { $0.drawingsHidden.toggle() } }
-          .accessibilityIdentifier("drawing.hide")
+        PanelRow(name: "隐藏画线", divider: false) {
+          PanelSwitch(isOn: prefs.drawingsHidden) { store.updateByHand { $0.drawingsHidden.toggle() } }
+            .accessibilityIdentifier("drawing.hide")
+        }
       }
     }
   }
@@ -160,23 +169,24 @@ struct IndicatorPage: View {
   /// 「添加对比」开的是顶栏加号那张对比模式搜索页（10-06 起，两处入口共用）。
   @ViewBuilder private var compareSection: some View {
     if let onAddCompare {
-      PanelGroupTitle(text: "对比")
-      // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶。
-      PanelRow(name: "添加对比", divider: !prefs.compareSymbols.isEmpty, onTap: { close(); onAddCompare() })
-        .disabled(prefs.compareSymbols.count >= 3)
-        .accessibilityIdentifier("compare.add")
-      ForEach(prefs.compareSymbols, id: \.self) { key in
-        PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
-          Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
-            Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
+      PanelCardGroup(title: "对比") {
+        // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶。
+        PanelRow(name: "添加对比", divider: !prefs.compareSymbols.isEmpty, onTap: { close(); onAddCompare() })
+          .disabled(prefs.compareSymbols.count >= 3)
+          .accessibilityIdentifier("compare.add")
+        ForEach(prefs.compareSymbols, id: \.self) { key in
+          PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
+            Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
+              Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
+            }
+            .buttonStyle(PanelPlainButtonStyle())
+            .accessibilityIdentifier("compare.remove." + key)
           }
-          .buttonStyle(PanelPlainButtonStyle())
-          .accessibilityIdentifier("compare.remove." + key)
         }
-      }
-      if !prefs.compareSymbols.isEmpty {
-        PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; close() })
-          .accessibilityIdentifier("compare.clear")
+        if !prefs.compareSymbols.isEmpty {
+          PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; close() })
+            .accessibilityIdentifier("compare.clear")
+        }
       }
     }
   }
@@ -184,22 +194,23 @@ struct IndicatorPage: View {
   /// 主力订单流：一颗开关，开着时底下多一行「门槛」进它那张表（原来在「正在用」里点它那一行进）。
   /// 行右写这只币的门槛动没动过。标识沿用 `indicator.switch.ORDERFLOW` / `indicator.edit.ORDERFLOW`。
   @ViewBuilder private var orderFlowSection: some View {
-    PanelGroupTitle(text: IndicatorID.orderFlow.name)
-    // 行名不再重复「主力订单流」：分组标题已经念过一遍（2026-09-24 审查 U4 同一条规矩）。
-    // 「门槛」那一行只在这只币的品种信息到了之后才出：那张表里只剩门槛与步长两节
-    // （显示开关 2026-09-28 收设置项 D 组收掉），没有品种信息时点进去是一张空表。
-    let base = prefs.orderFlow ? orderFlow?.currentFacts?.overrideKey : nil
-    PanelRow(name: "显示", swatch: t.swatch(.orderFlow), divider: base != nil) {
-      PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
-        .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
-    }
-    if let base {
-      let meta = "\(base) · " + (prefs.orderFlowOverrides[base] == nil ? "默认门槛" : "已改门槛")
-      PanelRow(name: "门槛", term: .orderFlowThreshold, divider: false, onTap: { editing = .orderFlow },
-               buttonID: "indicator.edit.\(IndicatorID.orderFlow.rawValue)", buttonLabel: "门槛，\(meta)") {
-        HStack(spacing: Space.s) {
-          Text(meta).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
-          VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+    PanelCardGroup(title: IndicatorID.orderFlow.name) {
+      // 行名不再重复「主力订单流」：分组标题已经念过一遍（2026-09-24 审查 U4 同一条规矩）。
+      // 「门槛」那一行只在这只币的品种信息到了之后才出：那张表里只剩门槛与步长两节
+      // （显示开关 2026-09-28 收设置项 D 组收掉），没有品种信息时点进去是一张空表。
+      let base = prefs.orderFlow ? orderFlow?.currentFacts?.overrideKey : nil
+      PanelRow(name: "显示", swatch: t.swatch(.orderFlow), divider: base != nil) {
+        PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
+          .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
+      }
+      if let base {
+        let meta = "\(base) · " + (prefs.orderFlowOverrides[base] == nil ? "默认门槛" : "已改门槛")
+        PanelRow(name: "门槛", term: .orderFlowThreshold, divider: false, onTap: { editing = .orderFlow },
+                 buttonID: "indicator.edit.\(IndicatorID.orderFlow.rawValue)", buttonLabel: "门槛，\(meta)") {
+          HStack(spacing: Space.s) {
+            Text(meta).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
+            VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+          }
         }
       }
     }
@@ -256,13 +267,15 @@ private struct InUseList: View {
       }
       ForEach(Array(subs.enumerated()), id: \.element) { index, id in
         line(id, index: index)
-          .background(dragging == id ? t.raised2 : .clear)
+          .background(dragging == id ? LiuliMaterial(t).well : .clear)
           .offset(y: dragging == id ? offset : 0)
           .zIndex(dragging == id ? 1 : 0)
       }
     }
     .animation(.easeOut(duration: 0.15), value: prefs.subs)
-    .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }
+    // 整段装在一张玻璃卡里（`PanelCardGroup`，2026-10-08）：原来底下那条分隔线不要了，
+    // 拖着的那一行的底按卡的圆角裁。
+    .clipShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
   }
 
   private func line(_ id: IndicatorID, index: Int?) -> some View {
@@ -427,7 +440,7 @@ private struct IndicatorEditor: View {
               let fallback = palette[(index + draft.id.paletteOffset) % palette.count]
               IndicatorColorControl(
                 title: name, identifierPrefix: "indicator.color.\(index)",
-                swatches: Palette.lineSwatches(default: fallback, seed: seed, redUp: store.prefs.redUp),
+                swatches: Palette.lineSwatchOptions(default: fallback, seed: seed, redUp: store.prefs.redUp),
                 picked: draft.colors[index],
                 pick: { draft.colors[index] = $0 })
             }
@@ -640,25 +653,27 @@ private struct ParamField: View {
 /// 不再摆一排跟皮肤无关的通用色；行尾仍留系统取色器给真想要别的颜色的人。
 ///
 /// 点「默认」是把这条线的自定义色清掉（`nil`），之后跟着皮肤走，换皮肤也对；
-/// 点别的就记成那一支。标识：`<前缀>.default`，其余 `<前缀>.<十六进制>`。
+/// 点别的就记成那一支此刻的色值。标识按角色：`<前缀>.default` / `.accent` / `.accentLift` /
+/// `.up` / `.down` / `.ink`（色值随皮肤变，角色不变；和画线色板 `color.<角色>` 同一个办法）。
 struct IndicatorColorControl: View {
   var title: String
   var identifierPrefix: String
   /// 第一支是出厂色。
-  var swatches: [Hex]
+  var swatches: [LineSwatch]
   /// 用户改过的颜色；nil 就是出厂色。
   var picked: Hex?
   var pick: (Hex?) -> Void
   @Environment(\.panelTheme) private var theme
 
-  private var current: Hex { picked ?? swatches.first ?? "#000000" }
+  private var current: Hex { picked ?? swatches.first?.hex ?? "#000000" }
 
   var body: some View {
     VStack(alignment: .leading, spacing: Space.s) {
       ColorPicker(title, selection: Binding(get: { Color(hex: current) },
                                             set: { pick(Self.hex($0)) }), supportsOpacity: false)
       HStack(alignment: .top, spacing: Space.m) {
-        ForEach(Array(swatches.enumerated()), id: \.offset) { index, hex in
+        ForEach(Array(swatches.enumerated()), id: \.offset) { index, swatch in
+          let hex = swatch.hex
           let isDefault = index == 0
           let on = isDefault ? picked == nil || picked == hex : picked == hex
           Button { pick(isDefault ? nil : hex) } label: {
@@ -674,11 +689,23 @@ struct IndicatorColorControl: View {
             .contentShape(Rectangle())
           }
           .buttonStyle(.borderless)
-          .accessibilityLabel(isDefault ? "默认" : hex.value)
+          .accessibilityLabel(isDefault ? "默认" : Self.roleName(swatch.role))
+          .accessibilityValue(hex.value)
           .accessibilityAddTraits(on ? [.isSelected] : [])
-          .accessibilityIdentifier(isDefault ? "\(identifierPrefix).default" : "\(identifierPrefix).\(hex.value)")
+          .accessibilityIdentifier("\(identifierPrefix).\(swatch.role)")
         }
       }
+    }
+  }
+
+  static func roleName(_ role: String) -> String {
+    switch role {
+    case "accent": "强调色"
+    case "accentLift": "浅强调色"
+    case "up": "涨色"
+    case "down": "跌色"
+    case "ink": "墨色"
+    default: "默认"
     }
   }
 

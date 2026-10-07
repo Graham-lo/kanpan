@@ -928,6 +928,13 @@ final class WalkthroughMeUITests: WalkthroughCase {
           leaveSettings()
           _ = waitForLiveChart()
           settle(1.5); shot("行情页-\(tag)\(mode)")
+          // 图表设置弹层（琉璃底 + 玻璃卡，高度跟内容走）。
+          let chartPanel = app.buttons["interval.chart"]
+          if chartPanel.waitForExistence(timeout: 5) {
+            chartPanel.tap(); settle(1.0); shot("图表设置-\(tag)\(mode)")
+            let done = app.buttons["panel.done"]
+            if done.waitForExistence(timeout: 3) { done.tap(); settle(0.6) }
+          }
           if app.openFavorites() { settle(1.2); shot("自选-\(tag)\(mode)") }
           app.buttons[Ids.bottomSectors].tap(); settle(2.0); shot("板块-\(tag)\(mode)")
           if app.openMePage() { settle(1.0); shot("我的-\(tag)\(mode)") }

@@ -59,24 +59,70 @@ extension ThemeChoice {
 }
 
 /// 给面板灌上主题、深浅与半屏尺寸。四个面板都从这儿出场，省得各写一遍。
+///
+/// 2026-10-08 起（琉璃材质）：
+/// - 底是一块不带光斑的琉璃底（`LiuliBackdrop(lobes: false)`），画在 `presentationBackground` 上，
+///   里面的 `PanelSheet` 不再自己铺底（`panelBackdropOwned`），分组是玻璃卡、分隔是 1/3pt 细线；
+/// - 高度跟内容走：图表设置、分享、周期这几张短面板量出「标题行 + 正文」的自然高度
+///   （`PanelSheet` 经 `panelFit` 报上来）直接作为唯一一档 `.height`——不再一律半屏，
+///   不再另加底部安全区：iOS 26 短档 sheet 浮在屏幕底边之上，`.height` 已不含它，加了会底下空一截；
+///   内容只有三组时下面不留一大片空。内容比屏幕的 85% 还高时退回「这一档 + 满屏」。
+///   「分析」那张是长列表，仍是半屏 / 满屏两档（理由见下面 `presentationContentInteraction`）。
 struct PanelHost<Content: View>: View {
   var store: PrefsStore
+  /// 哪张面板（决定定高方式）；不传按长列表处理。
+  var which: Panel? = nil
   @ViewBuilder var content: () -> Content
 
   @Environment(\.colorScheme) private var systemScheme
+  @State private var fit = PanelFitBox()
 
   private var seed: PaletteSeed { store.prefs.seed(systemDark: systemScheme == .dark) }
+  private var theme: PanelTheme { PanelTheme(seed: seed, redUp: store.prefs.redUp) }
+
+  /// 按内容定高的那几张。
+  private var fitsContent: Bool {
+    switch which {
+    case .chart, .share, .period: true
+    case .indicators, nil: false
+    }
+  }
+
+  /// 量到之前先用的估计（量到后只差几个点，出场那一下看不出跳）。
+  private var estimate: CGFloat {
+    switch which {
+    case .chart: 330
+    case .share: 250
+    case .period: 360
+    case .indicators, nil: 400
+    }
+  }
+
+  /// 唯一那一档（或「这一档 + 满屏」里的第一档）。
+  private var fitted: PresentationDetent {
+    let natural = fit.height ?? estimate
+    return .height(min(natural, fit.screenCap))
+  }
+
+  private var detents: Set<PresentationDetent> {
+    guard fitsContent else { return [.medium, .large] }
+    let natural = fit.height ?? estimate
+    return natural > fit.screenCap ? [fitted, .large] : [fitted]
+  }
 
   var body: some View {
     content()
-      .environment(\.panelTheme, PanelTheme(seed: seed, redUp: store.prefs.redUp))
+      .environment(\.panelTheme, theme)
+      .environment(\.panelBackdropOwned, true)
+      .environment(\.panelFit, fitsContent ? PanelFit { [fit] in fit.note($0) } : nil)
       .preferredColorScheme(store.prefs.theme.forced)
-      .presentationDetents([.medium, .large])
+      .presentationDetents(detents)
       .presentationDragIndicator(.visible)
-      .presentationBackground { Color(hex: seed.raised) }
+      // 底在这里画一次（`PanelSheet` 透明），料子显式递进去：这个闭包不一定拿得到上面灌的环境。
+      .presentationBackground { LiuliBackdrop(material: LiuliMaterial(theme), lobes: false) }
       // 圆角交给系统（iOS 26 的 sheet 圆角与屏幕同心），不再手写 18。
       // 背后继续更新；外部触摸由宿主页的 `PanelDismissShield` 接住，只关闭面板。
-      .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+      .presentationBackgroundInteraction(.enabled(upThrough: fitsContent ? fitted : .medium))
       // 面板里那张长列表**自己滚**，不许它把面板一路顶到满屏。
       //
       // 不写这一句时 `.automatic` 生效：手指在内容上往上一划，系统先把 sheet 从
@@ -89,6 +135,21 @@ struct PanelHost<Content: View>: View {
       //
       // 要满屏仍旧走得通：拖那根把手 / 面板顶部空白处，那还是改尺寸。
       .presentationContentInteraction(.scrolls)
+  }
+}
+
+/// `PanelHost` 量到的高度。引用盒子：`PanelFit` 的闭包要 `Sendable`，抓它比抓 `@State` 省事。
+@MainActor @Observable final class PanelFitBox {
+  /// `PanelSheet` 报上来的自然高度（标题行 + 正文）。
+  var height: CGFloat?
+  /// 定高不超过屏幕的 85%（再高就退回「这一档 + 满屏」，正文自己滚）。
+  var screenCap: CGFloat { (UIScreen.main.bounds.height * 0.85).rounded() }
+
+  /// 只在变化超过 1pt 时改：量出来的小数抖动不该让面板跟着抖。
+  func note(_ value: CGFloat) {
+    let rounded = value.rounded(.up)
+    if let height, abs(height - rounded) <= 1 { return }
+    height = rounded
   }
 }
 
@@ -216,7 +277,7 @@ extension View {
   /// 主界面用这一个：`.prefsPanel($panel, store: store, actions: …)`。
   func prefsPanel(_ panel: Binding<Panel?>, store: PrefsStore, actions: PanelActions = PanelActions()) -> some View {
     sheet(item: panel) { which in
-      PanelHost(store: store) { PanelContent(which: which, store: store, actions: actions) }
+      PanelHost(store: store, which: which) { PanelContent(which: which, store: store, actions: actions) }
     }
   }
 }

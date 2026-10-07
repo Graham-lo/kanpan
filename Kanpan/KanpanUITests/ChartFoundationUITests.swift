@@ -1730,28 +1730,33 @@ extension ChartFoundationUITests {
   }
 
   func testIndicatorColorSaveCancelAndRestart() throws {
-    func edit(_ id: String, color: String, save: Bool) {
+    // 色板 2026-10-08 起从皮肤派生（出厂色排第一标「默认」，其余按角色 accent / up / down…）：
+    // 色值随皮肤变，用例按角色点、按「挑之前 / 挑之后」比，不再写死通用色的十六进制。
+    func edit(_ id: String, role: String, save: Bool) {
       XCTAssertTrue(app.openIndicatorPage())
       if !app.buttons["indicator.edit.\(id)"].exists { app.buttons["indicator.switch.\(id)"].tap() }
       app.buttons["indicator.edit.\(id)"].tap()
-      let swatch = app.buttons["indicator.color.0.\(color)"].firstMatch
+      let swatch = app.buttons["indicator.color.0.\(role)"].firstMatch
       for _ in 0..<5 { if swatch.isHittable { break }; app.swipeUp() }
       XCTAssertTrue(swatch.isHittable); swatch.tap()
       shot("\(id)-独立颜色编辑")
       app.buttons[save ? "保存" : "取消"].tap(); closePanel()
     }
     let original = info()["maColor0"] as? String
-    edit("MA", color: "#4A90E2", save: false)
+    edit("MA", role: "down", save: false)
     XCTAssertEqual(info()["maColor0"] as? String, original)
-    edit("MA", color: "#4A90E2", save: true)
-    XCTAssertTrue(wait { self.info()["maColor0"] as? String == "#4A90E2" })
-    edit("EMA", color: "#37A78F", save: true)
-    XCTAssertEqual(info()["maColor0"] as? String, "#4A90E2")
-    XCTAssertEqual(info()["emaColor0"] as? String, "#37A78F")
+    edit("MA", role: "down", save: true)
+    XCTAssertTrue(wait { (self.info()["maColor0"] as? String).map { $0 != original } ?? false })
+    let ma = info()["maColor0"] as? String
+    let emaBefore = info()["emaColor0"] as? String
+    edit("EMA", role: "accent", save: true)
+    XCTAssertTrue(wait { (self.info()["emaColor0"] as? String).map { $0 != emaBefore } ?? false })
+    let ema = info()["emaColor0"] as? String
+    XCTAssertEqual(info()["maColor0"] as? String, ma)
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
-    XCTAssertTrue(wait { self.info()["maColor0"] as? String == "#4A90E2" })
-    XCTAssertEqual(info()["emaColor0"] as? String, "#37A78F")
+    XCTAssertTrue(wait { self.info()["maColor0"] as? String == ma })
+    XCTAssertEqual(info()["emaColor0"] as? String, ema)
     shot("均线颜色-重启恢复")
   }
 }

@@ -116,6 +116,9 @@ struct LiuliMaterial: Equatable {
   /// 分隔线 / 细线的墨色。
   var rule: Color { Color(hex: seed.ink).opacity(dark ? 0.11 : 0.09) }
 
+  /// 凹槽：分段控件的槽、开关的轨这类「往下压一层」的底（墨色薄纱，深色稍重）。
+  var well: Color { Color(hex: seed.ink).opacity(dark ? 0.12 : 0.06) }
+
   /// 卡片描边：经典是 1/3pt 墨色细线（白纸上没有光可借，靠线分层）；其余是柔光白边。
   var cardEdge: Color { (isClassic && !dark) ? Color(hex: seed.ink).opacity(0.1) : edgeSoft }
 

@@ -530,6 +530,13 @@ public enum Palette: Sendable {
   /// 通用色。画在图上的是线，按图形元素的 3:1 对图区底色收：不够的往墨色那边压深（浅色）/
   /// 提亮（深色），和 `readable` 同一个做法；重复的（深色青苔的强调色就是涨色）只留一支。
   public static func lineSwatches(default fallback: Hex, seed t: PaletteSeed, redUp: Bool = false) -> [Hex] {
+    lineSwatchOptions(default: fallback, seed: t, redUp: redUp).map(\.hex)
+  }
+
+  /// 同上，带每一支的角色名（`default` / `accent` / `accentLift` / `up` / `down` / `ink`），
+  /// 界面拿角色名做无障碍标识——色值随皮肤变，角色不变（和画线色板 `color.<角色>` 同一个办法）。
+  public static func lineSwatchOptions(default fallback: Hex, seed t: PaletteSeed,
+                                       redUp: Bool = false) -> [LineSwatch] {
     let colors = chart(t, redUp: redUp)
     let bg = colors.bg
     func visible(_ c: Hex) -> Hex {
@@ -539,10 +546,14 @@ public enum Palette: Sendable {
       }
       return t.ink
     }
-    var out = [fallback]
-    for c in [t.accent, lift(t.accent, 0.42), colors.up, colors.down, t.ink] {
+    var out = [LineSwatch(role: "default", hex: fallback)]
+    let derived: [(String, Hex)] = [("accent", t.accent), ("accentLift", lift(t.accent, 0.42)),
+                                    ("up", colors.up), ("down", colors.down), ("ink", t.ink)]
+    for (role, c) in derived {
       let v = visible(c)
-      if !out.contains(where: { $0.value.uppercased() == v.value.uppercased() }) { out.append(v) }
+      if !out.contains(where: { $0.hex.value.uppercased() == v.value.uppercased() }) {
+        out.append(LineSwatch(role: role, hex: v))
+      }
     }
     return out
   }
@@ -550,4 +561,11 @@ public enum Palette: Sendable {
   /// 遮罩与薄纱，弹层用。
   public static func veil(_ t: PaletteSeed) -> Hex { t.app.alpha(t.dark ? "EE" : "F0") }
   public static func scrim(_ t: PaletteSeed) -> Hex { t.dark ? t.ground.alpha("D9") : t.ink.alpha("4D") }
+}
+
+/// 指标线色板上的一支：角色名 + 这套皮肤下的色值（`Palette.lineSwatchOptions`）。
+public struct LineSwatch: Sendable, Equatable {
+  public var role: String
+  public var hex: Hex
+  public init(role: String, hex: Hex) { self.role = role; self.hex = hex }
 }

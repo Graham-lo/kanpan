@@ -59,7 +59,9 @@ struct SettingsPanel: View {
       }
       .scrollBounceBehavior(.basedOnSize)
       .accessibilityIdentifier("panel.content")
-      .background(t.app.ignoresSafeArea())
+      // 琉璃底（带光斑），和「我的」同一块料（2026-10-08）。行仍是平铺的细线分隔：
+      // 「通知」那一组（`AlertSettingsSection`）自带组名，这一页不另起玻璃卡，免得一半成卡一半不成。
+      .background { LiuliBackdrop() }
       .navigationTitle("设置")
       .navigationBarTitleDisplayMode(.inline)
     } else {

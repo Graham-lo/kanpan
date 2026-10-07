@@ -76,25 +76,29 @@ struct ChartPanel: View {
     PanelSheet(title: "图表设置", subtitle: nil) {
       // 2026-09-28 起这一页只剩三组：K 线 · 显示 · 价格轴。「这张图」（记一笔 / 分享）搬到了
       // 行情页顶栏右侧的两颗圆片（`TopBar` 方案 B），「对比」「指标」在分析页（`IndicatorPage`）。
-      PanelGroupTitle(text: "K 线")
-      PanelRow(name: "画法", divider: false) {
-        PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
-                     id: "chart.candleKind") { v in
-          store.updateByHand { $0.candleKind = v }
+      // 每组一张琉璃玻璃卡（2026-10-08），标题与卡里行文对齐。
+      PanelCardGroup(title: "K 线") {
+        PanelRow(name: "画法", divider: false) {
+          PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
+                       id: "chart.candleKind") { v in
+            store.updateByHand { $0.candleKind = v }
+          }
         }
       }
 
-      PanelGroupTitle(text: "显示")
-      // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
-      switchRow("盘口", nil, prefs.depth, divider: false, id: "chart.depth") { $0.depth = $1 }
+      PanelCardGroup(title: "显示") {
+        // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
+        switchRow("盘口", nil, prefs.depth, divider: false, id: "chart.depth") { $0.depth = $1 }
+      }
 
-      PanelGroupTitle(text: "价格轴")
-      PanelRow(name: "刻度", term: .priceScale, divider: false) {
-        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: habits?.effectivePriceMode(prefs) ?? prefs.priceMode,
-                     id: "chart.priceMode") { v in
-          // 手动换的这一档先记成这一类品种的一笔（按习惯时它立刻生效），再照旧写进设置。
-          habits?.notePriceAxisPicked(v)
-          store.updateByHand { $0.priceMode = v }
+      PanelCardGroup(title: "价格轴") {
+        PanelRow(name: "刻度", term: .priceScale, divider: false) {
+          PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: habits?.effectivePriceMode(prefs) ?? prefs.priceMode,
+                       id: "chart.priceMode") { v in
+            // 手动换的这一档先记成这一类品种的一笔（按习惯时它立刻生效），再照旧写进设置。
+            habits?.notePriceAxisPicked(v)
+            store.updateByHand { $0.priceMode = v }
+          }
         }
       }
     }
