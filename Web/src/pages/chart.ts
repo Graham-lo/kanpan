@@ -48,6 +48,7 @@ import { settle } from '../market/settle'
 import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
+import { KlineCache } from '../market/klineCache'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
 import { bindFootprint, setFootprintSource } from '../chart/footprint'
 import { bindHeikinAshi, setHeikinAshiSource } from '../chart/heikinAshi'
@@ -79,6 +80,8 @@ setFootprintSource(flagSource('footprint')); setHeikinAshiSource(flagSource('ha'
 const pushes = new PushBuffer()
 /** 冷启动时和品种表并行先发出去的 K 线（品种 | 周期 → 结果），第一次装这一格时直接用 */
 const early = new Map<string, { hold: string; res: Promise<KlineResult> }>()
+/** 最近取过的整段 K 线（品种 | 周期）：再要同一段只补尾巴（market/klineCache.ts） */
+const recentKlines = new KlineCache()
 export const allCells = (): readonly Cell[] => cells
 
 type RangeDays = number | 'ytd' | 'all'
@@ -271,7 +274,18 @@ function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
 async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean, withOI = true): Promise<{ bars: Bar[]; ok: boolean; error?: string }> {
   if (isSecondIv(iv)) return secondsKlines(symbol, iv, endTime, alive)
   if (isCustomIv(iv)) return customKlines(symbol, iv, endTime, alive)
-  return klines(symbol, iv, endTime, 1500, withOI, false, alive)
+  if (endTime != null) return klines(symbol, iv, endTime, 1500, withOI, false, alive)
+  // 最新一段：刚取过同一只同一周期的（换布局集、切格数再切回来）只补尾巴（market/klineCache.ts）
+  const key = `${symbol}|${iv}`, need = recentKlines.need(key, IV_MS[iv], Date.now())
+  if (need != null) {
+    const r = await klines(symbol, iv, undefined, need, false, false, alive)
+    const bars = r.ok ? recentKlines.merge(key, r.bars, Date.now()) : null
+    if (bars) { if (withOI) void attachOI(symbol, iv, bars); return { bars, ok: true } }
+    if (!r.ok) return r
+  }
+  const r = await klines(symbol, iv, undefined, 1500, withOI, false, alive)
+  if (r.ok) recentKlines.put(key, r.bars, Date.now())
+  return r
 }
 
 async function retryLoad(cell: Cell): Promise<void> {
@@ -1247,7 +1261,7 @@ function bootInParallel(): void {
     if (early.has(k) || !siv || isSecondIv(c.iv) || isCustomIv(c.iv)) continue
     const hold = pushKey(c.symbol, siv)
     pushes.open(hold)
-    early.set(k, { hold, res: klines(c.symbol, c.iv, undefined, 1500, false, false, undefined, 'low') })
+    early.set(k, { hold, res: klines(c.symbol, c.iv, undefined, 1500, false, false, undefined, 'low').then(r => { if (r.ok) recentKlines.put(k, r.bars, Date.now()); return r }) })
   }
 }
 /** 品种表把存档里的品种换掉了：先发的那几次没人接，缓冲撒手 */
