@@ -357,7 +357,7 @@ public enum SectorCatalog {
     "OKLO": "Oklo", "CAT": "卡特彼勒", "ACN": "埃森哲", "AKAM": "Akamai",
     "BSP": "Bending Spoons",
     // 加密概念
-    "COIN": "币基", "MSTR": "Strategy", "HOOD": "Robinhood", "CRCL": "Circle",
+    "COIN": "Coinbase", "MSTR": "Strategy", "HOOD": "Robinhood", "CRCL": "Circle", // venue-name-ok：上市公司名，不是交易所
     "MARA": "MARA", "HUT": "Hut 8", "BMNR": "BitMine", "BNC": "CEA Industries",
     "FWDI": "Forward Industries", "STRC": "Strategy 优先股", "CYPH": "Cypherpunk",
     "SECZ": "Securitize",

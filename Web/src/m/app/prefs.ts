@@ -86,6 +86,8 @@ export interface Prefs {
   indicatorColors: Partial<Record<IndicatorId, Record<string, string>>>
   alertSound: AlertSound
   watchMoveAlert: boolean
+  /** 自选行上那条 24 小时迷你走势（2026-10-08，出厂开；跟人走） */
+  favoritesTrend: boolean
   notifyListingChanges: boolean
   habitLearning: boolean
   learnedDefaults: LearnedDefaults
@@ -112,7 +114,7 @@ export interface Prefs {
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
-  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'habitLearning',
+  'alertSound', 'barSpacing', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'favoritesTrend', 'habitLearning',
   'indicatorColors', 'indicatorLayouts', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
   'notifyListingChanges', 'orderFlow', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
@@ -131,7 +133,7 @@ export function defaultPrefs(): Prefs {
     interval: '1h', quickIntervals: [...QUICK_INTERVALS], theme: 'auto', skin: 'sage', redUp: false,
     compareSymbols: [], priceMode: 'log', depth: false, orderFlow: false, orderFlowOverrides: {},
     candleKind: 'candle', barSpacing: 4, landscapeBarSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
-    indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, notifyListingChanges: false,
+    indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, favoritesTrend: true, notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
     params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
     favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, reviewSearchScope: 'history',
@@ -392,6 +394,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     indicatorColors: cleanColors(r.indicatorColors),
     alertSound: oneOf(r.alertSound, ['default', 'crisp', 'electronic', 'glass'] as const, d.alertSound),
     watchMoveAlert: bool(r.watchMoveAlert, d.watchMoveAlert),
+    favoritesTrend: bool(r.favoritesTrend, d.favoritesTrend),
     notifyListingChanges: bool(r.notifyListingChanges, d.notifyListingChanges),
     habitLearning: bool(r.habitLearning, d.habitLearning),
     learnedDefaults: cleanLearned(r.learnedDefaults),

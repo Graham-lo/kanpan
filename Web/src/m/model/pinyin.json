@@ -1,4 +1,8 @@
 {
+  "AMC 院线" : [
+    "YUANXIAN",
+    "YX"
+  ],
   "LG 电子" : [
     "DIANZI",
     "DZ"
@@ -11,6 +15,42 @@
     "HAILISHI",
     "HLS"
   ],
+  "Strategy 优先股" : [
+    "YOUXIANGU",
+    "YXG"
+  ],
+  "VIX 波动率" : [
+    "BODONGLU",
+    "BDL"
+  ],
+  "三倍做多半导体" : [
+    "SANBEIZUODUOBANDAOTI",
+    "SBZDBDT"
+  ],
+  "三倍做多纳指" : [
+    "SANBEIZUODUONAZHI",
+    "SBZDNZ"
+  ],
+  "三倍做多美债" : [
+    "SANBEIZUODUOMEIZHAI",
+    "SBZDMZ"
+  ],
+  "三倍做多韩国" : [
+    "SANBEIZUODUOHANGUO",
+    "SBZDHG"
+  ],
+  "三倍做空半导体" : [
+    "SANBEIZUOKONGBANDAOTI",
+    "SBZKBDT"
+  ],
+  "三倍做空纳指" : [
+    "SANBEIZUOKONGNAZHI",
+    "SBZKNZ"
+  ],
+  "三倍做空罗素 2000" : [
+    "SANBEIZUOKONGLUOSU",
+    "SBZKLS"
+  ],
   "三星电子" : [
     "SANXINGDIANZI",
     "SXDZ"
@@ -22,6 +62,50 @@
   "世界币" : [
     "SHIJIEBI",
     "SJB"
+  ],
+  "两倍做多 Marvell" : [
+    "LIANGBEIZUODUO",
+    "LBZD"
+  ],
+  "两倍做多 SK 海力士" : [
+    "LIANGBEIZUODUOHAILISHI",
+    "LBZDHLS"
+  ],
+  "两倍做多 SK 海力士（港）" : [
+    "LIANGBEIZUODUOHAILISHIGANG",
+    "LBZDHLSG"
+  ],
+  "两倍做多三星" : [
+    "LIANGBEIZUODUOSANXING",
+    "LBZDSX"
+  ],
+  "两倍做多存储" : [
+    "LIANGBEIZUODUOCUNCHU",
+    "LBZDCC"
+  ],
+  "两倍做多特斯拉" : [
+    "LIANGBEIZUODUOTESILA",
+    "LBZDTSL"
+  ],
+  "两倍做多美光" : [
+    "LIANGBEIZUODUOMEIGUANG",
+    "LBZDMG"
+  ],
+  "两倍做多英伟达" : [
+    "LIANGBEIZUODUOYINGWEIDA",
+    "LBZDYWD"
+  ],
+  "两倍做多英特尔" : [
+    "LIANGBEIZUODUOYINGTEER",
+    "LBZDYTE"
+  ],
+  "两倍做多闪迪" : [
+    "LIANGBEIZUODUOSHANDI",
+    "LBZDSD"
+  ],
+  "两倍做空美债" : [
+    "LIANGBEIZUOKONGMEIZHAI",
+    "LBZKMZ"
   ],
   "中际旭创" : [
     "ZHONGJIXUCHUANG",
@@ -59,9 +143,17 @@
     "QIE",
     "QE"
   ],
+  "优步" : [
+    "YOUBU",
+    "YB"
+  ],
   "伟创力" : [
     "WEICHUANGLI",
     "WCL"
+  ],
+  "伯克希尔 B" : [
+    "BOKEXIER",
+    "BKXE"
   ],
   "佩佩" : [
     "PEIPEI",
@@ -71,9 +163,21 @@
     "PEIPEIWA",
     "PPW"
   ],
+  "做空 SK 海力士" : [
+    "ZUOKONGHAILISHI",
+    "ZKHLS"
+  ],
   "兆易创新" : [
     "ZHAOYICHUANGXIN",
     "ZYCX"
+  ],
+  "光子 ETF" : [
+    "GUANGZI",
+    "GZ"
+  ],
+  "半导体 ETF" : [
+    "BANDAOTI",
+    "BDT"
   ],
   "博通" : [
     "BOTONG",
@@ -87,6 +191,18 @@
     "KASIPA",
     "KSP"
   ],
+  "卡特彼勒" : [
+    "KATEBILEI",
+    "KTBL"
+  ],
+  "可口可乐" : [
+    "KEKOUKELE",
+    "KKKL"
+  ],
+  "台湾 ETF" : [
+    "TAIWAN",
+    "TW"
+  ],
   "台积电" : [
     "TAIJIDIAN",
     "TJD"
@@ -94,6 +210,14 @@
   "唯链" : [
     "WEILIAN",
     "WL"
+  ],
+  "埃克森美孚" : [
+    "AIKESENMEIFU",
+    "AKSMF"
+  ],
+  "埃森哲" : [
+    "AISENZHE",
+    "ASZ"
   ],
   "埃欧塔" : [
     "AIOUTA",
@@ -111,6 +235,18 @@
     "TIANTI",
     "TT"
   ],
+  "奈飞" : [
+    "NAIFEI",
+    "NF"
+  ],
+  "好市多" : [
+    "HAOSHIDUO",
+    "HSD"
+  ],
+  "存储 ETF" : [
+    "CUNCHU",
+    "CC"
+  ],
   "宇宙" : [
     "YUZHOU",
     "YZ"
@@ -118,6 +254,10 @@
   "宇树科技" : [
     "YUSHUKEJI",
     "YSKJ"
+  ],
+  "家得宝" : [
+    "JIADEBAO",
+    "JDB"
   ],
   "小米" : [
     "XIAOMI",
@@ -138,6 +278,10 @@
   "川普币" : [
     "CHUANPUBI",
     "CPB"
+  ],
+  "巴西 ETF" : [
+    "BAXI",
+    "BX"
   ],
   "币安" : [
     "BIAN",
@@ -203,6 +347,14 @@
     "DAIER",
     "DE"
   ],
+  "拼多多" : [
+    "PINDUODUO",
+    "PDD"
+  ],
+  "摩根大通" : [
+    "MOGENDATONG",
+    "MGDT"
+  ],
   "文件币" : [
     "WENJIANBI",
     "WJB"
@@ -210,6 +362,10 @@
   "无聊猿" : [
     "WULIAOYUAN",
     "WLY"
+  ],
+  "日本 ETF" : [
+    "RIBEN",
+    "RB"
   ],
   "智谱" : [
     "ZHIPU",
@@ -239,25 +395,49 @@
     "CHAIQUANBI",
     "CQB"
   ],
+  "标普 500 ETF" : [
+    "BIAOPU",
+    "BP"
+  ],
   "树图" : [
     "SHUTU",
     "ST"
+  ],
+  "比亚迪" : [
+    "BIYADI",
+    "BYD"
   ],
   "比特币" : [
     "BITEBI",
     "BTB"
   ],
+  "比特币期货 ETF" : [
+    "BITEBIQIHUO",
+    "BTBQH"
+  ],
   "比特现金" : [
     "BITEXIANJIN",
     "BTXJ"
+  ],
+  "沃尔玛" : [
+    "WOERMA",
+    "WEM"
   ],
   "沙盒" : [
     "SHAHE",
     "SH"
   ],
+  "油轮运价 ETF" : [
+    "YOULUNYUNJIA",
+    "YLYJ"
+  ],
   "泛林" : [
     "FANLIN",
     "FL"
+  ],
+  "泡泡玛特" : [
+    "PAOPAOMATE",
+    "PPMT"
   ],
   "波卡" : [
     "BOKA",
@@ -283,13 +463,25 @@
     "HAIBO",
     "HB"
   ],
+  "温蒂汉堡" : [
+    "WENDIHANBAO",
+    "WDHB"
+  ],
   "渲染币" : [
     "XUANRANBI",
     "XRB"
   ],
+  "游戏驿站" : [
+    "YOUXIYIZHAN",
+    "YXYZ"
+  ],
   "特斯拉" : [
     "TESILA",
     "TSL"
+  ],
+  "特朗普媒体" : [
+    "TELANGPUMEITI",
+    "TLPMT"
   ],
   "特朗普币" : [
     "TELANGPUBI",
@@ -327,6 +519,10 @@
     "RUIBOBI",
     "RBB"
   ],
+  "生物科技 ETF" : [
+    "SHENGWUKEJI",
+    "SWKJ"
+  ],
   "甲骨文" : [
     "JIAGUWEN",
     "JGW"
@@ -338,6 +534,14 @@
   "白银" : [
     "BAIYIN",
     "BY"
+  ],
+  "礼来" : [
+    "LILAI",
+    "LL"
+  ],
+  "科创 50 ETF" : [
+    "KECHUANG",
+    "KC"
   ],
   "科天" : [
     "KETIAN",
@@ -355,6 +559,14 @@
     "SUOLANA",
     "SLN"
   ],
+  "纳指 100 ETF" : [
+    "NAZHI",
+    "NZ"
+  ],
+  "罗素 2000 ETF" : [
+    "LUOSU",
+    "LS"
+  ],
   "美元" : [
     "MEIYUAN",
     "MY"
@@ -367,13 +579,29 @@
     "MEIGUANG",
     "MG"
   ],
+  "美团" : [
+    "MEITUAN",
+    "MT"
+  ],
   "美指" : [
     "MEIZHI",
     "MZ"
   ],
+  "耐克" : [
+    "NAIKE",
+    "NK"
+  ],
+  "联合健康" : [
+    "LIANHEJIANKANG",
+    "LHJK"
+  ],
   "联想" : [
     "LIANXIANG",
     "LX"
+  ],
+  "能源 ETF" : [
+    "NENGYUAN",
+    "NY"
   ],
   "腾讯" : [
     "TENGXUN",
@@ -423,6 +651,10 @@
     "XIBUSHUJU",
     "XBSJ"
   ],
+  "诺和诺德" : [
+    "NUOHENUODE",
+    "NHND"
+  ],
   "诺基亚" : [
     "NUOJIYA",
     "NJY"
@@ -439,6 +671,10 @@
     "DASHIBI",
     "DSB"
   ],
+  "迪士尼" : [
+    "DISHINI",
+    "DSN"
+  ],
   "邦克" : [
     "BANGKE",
     "BK"
@@ -447,9 +683,17 @@
     "LIANGZILIAN",
     "LZL"
   ],
+  "金矿 ETF" : [
+    "JINKUANG",
+    "JK"
+  ],
   "钯金" : [
     "BAJIN",
     "BJ"
+  ],
+  "铀矿 ETF" : [
+    "YOUKUANG",
+    "YK"
   ],
   "铂金" : [
     "BOJIN",
@@ -519,6 +763,10 @@
     "QINGWA",
     "QW"
   ],
+  "韩国 ETF" : [
+    "HANGUO",
+    "HG"
+  ],
   "韩美半导体" : [
     "HANMEIBANDAOTI",
     "HMBDT"
@@ -535,12 +783,28 @@
     "MATILIAN",
     "MTL"
   ],
+  "高盛" : [
+    "GAOSHENG",
+    "GS"
+  ],
   "高通" : [
     "GAOTONG",
     "GT"
   ],
+  "麦当劳" : [
+    "MAIDANGLAO",
+    "MDL"
+  ],
   "黄金" : [
     "HUANGJIN",
     "HJ"
+  ],
+  "黑石" : [
+    "HEISHI",
+    "HS"
+  ],
+  "默沙东" : [
+    "MOSHADONG",
+    "MSD"
   ]
 }

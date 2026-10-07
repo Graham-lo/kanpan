@@ -7,6 +7,7 @@
 #   - Kanpan/Kanpan/Exchange/<交易所>/   （那一家的只读账户，自动复盘用）
 #   - Kanpan/Kanpan/Exchange/ExchangeAccountRegistry.swift（只读账户的交易所清单）
 # 其余源码一律只认 `MarketProvider` 与 `ProviderCapabilities`。测试不在此列。
+# 同名的上市公司（COIN 的中文名「Coinbase」）在那一行行尾标 `// venue-name-ok` 放行。
 # 接新交易所时把它的目录加进 VENUE_DIRS。见 docs/多交易所-接入指南.md。
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -24,6 +25,8 @@ files=$(git ls-files --cached --others --exclude-standard -- '*.swift' \
 # 「Coinbase 现货等由谁补价」不算点名。2026-10-04 深度审查 D / E 线补的十来处说明注释曾把守卫整条判红。
 hits=$(printf '%s\n' "$files" | sed '/^$/d' | tr '\n' '\0' | xargs -0 grep -n "$PATTERN" 2>/dev/null \
   | awk -v pat="$PATTERN" '{
+      # 行尾标了 `venue-name-ok` 的是上市公司名（板块目录里 COIN 的中文名就是「Coinbase」），不是在点交易所。
+      if ($0 ~ /venue-name-ok/) next
       line = $0; sub(/^[^:]+:[0-9]+:/, "", line)
       sub(/(^|[[:space:]])\/\/.*$/, "", line)
       re = pat; gsub(/\\\|/, "|", re)

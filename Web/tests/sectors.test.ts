@@ -14,6 +14,8 @@ import {
 import type { Quotes, SectorBucket, SectorCloses, SectorHistory, SectorMarket, SectorQuote, SectorStat } from '../src/sectors/aggregate'
 
 const TOL = 0.0051
+/** SectorCatalog.usAIIDs：12 个 AI 细分，顺序钉死 */
+const US_AI_IDS = ['gpu', 'mem', 'equip', 'optic', 'hyper', 'neo', 'server', 'power', 'edge', 'robot', 'software', 'app']
 const q = (base: string, pct: number, quoteVolume = 1, price = 1): SectorQuote => ({ base, pct, quoteVolume, price })
 const quotesOf = (list: SectorQuote[]): Quotes => new Map(list.map(x => [x.base, x]))
 
@@ -39,15 +41,15 @@ describe('板块口径 · 1. 目录完整性', () => {
     expect(new Set(catalog.sectors('crypto').map(d => d.id))).toEqual(want)
     expect(catalog.sectors('crypto').length).toBe(24)
   })
-  it('美股 12 段，顺序钉死', () => {
-    expect(catalog.sectors('us').map(d => d.id)).toEqual(['gpu', 'mem', 'equip', 'optic', 'hyper', 'neo', 'server', 'power', 'edge', 'robot', 'software', 'app'])
+  it('美股 23 段（12 个 AI 细分 + 11 个手工归类），顺序钉死', () => {
+    expect(catalog.sectors('us').map(d => d.id)).toEqual([...US_AI_IDS, 'cryptoeq', 'bank', 'consumer', 'media', 'pharma', 'auto', 'space', 'resource', 'etf', 'lev', 'inverse'])
     expect(catalog.sector('hardware')).toBeUndefined()
     expect(catalog.sector('gpu')?.members.length).toBe(10)
     for (const b of ['ARM', 'AVGO', 'ALAB']) expect(catalog.sector('gpu')?.members).toContain(b)
   })
   it('目录先加密后美股，id 唯一', () => {
     const all = catalog.all()
-    expect(all.length).toBe(36)
+    expect(all.length).toBe(47)
     expect(all.slice(0, 24).every(d => d.market === 'crypto')).toBe(true)
     expect(all.slice(24).every(d => d.market === 'us')).toBe(true)
     expect(new Set(all.map(d => d.id)).size).toBe(all.length)
@@ -72,12 +74,17 @@ describe('板块口径 · 1. 目录完整性', () => {
     expect(catalog.sectorsFor('ANKR', 'crypto')).toEqual([])
     expect(catalog.sectorsFor('SOL', 'us')).toEqual([])
   })
-  it('杠杆 / ETF / 非 AI 一个都不在美股表里；94 只', () => {
+  it('AI 12 格 102 只不收杠杆 / ETF / 非 AI；2026-10-08 起它们进手工归类的 11 格', () => {
     const banned = ['SOXL', 'SOXS', 'TQQQ', 'SQQQ', 'NVDL', 'UVXY', 'CSOPSAMSUNG2L', 'QQQ', 'SPY', 'SMH', 'IWM', 'BITO', 'DRAM', 'BOT', 'STRC', 'COIN', 'MSTR', 'TSM_X', 'NFLX', 'LLY', 'UBER', 'PYPL', 'HK0700', 'PAYP', 'SKDD', 'SKUU', 'MUU', 'SNXX', 'MVLL', 'RAM', 'CSOPSKHYNIX2L']
-    const inTable = new Set(catalog.sectors('us').flatMap(d => d.members))
-    for (const b of banned) expect(inTable.has(b)).toBe(false)
-    expect(inTable.size).toBe(94)
-    expect(inTable.has('SKHYNIX') && inTable.has('TENCENT') && inTable.has('SKHY')).toBe(true)
+    const ai = new Set(catalog.sectors('us').filter(d => US_AI_IDS.includes(d.id)).flatMap(d => d.members))
+    for (const b of banned) expect(ai.has(b), b).toBe(false)
+    expect(ai.size).toBe(102)
+    expect(ai.has('SKHYNIX') && ai.has('TENCENT') && ai.has('SKHY')).toBe(true)
+    // 手工归类 11 格的顺序；一只票可以同时在两格（QCOM 在算力与端侧、TSLA 在机器人与汽车），这是目录的设计
+    const manual = catalog.sectors('us').filter(d => !US_AI_IDS.includes(d.id))
+    expect(manual.map(d => d.id)).toEqual(['cryptoeq', 'bank', 'consumer', 'media', 'pharma', 'auto', 'space', 'resource', 'etf', 'lev', 'inverse'])
+    const by = (id: string) => new Set(manual.find(d => d.id === id)!.members)
+    expect(by('lev').has('SOXL') && by('inverse').has('SOXS') && by('etf').has('SPY') && by('cryptoeq').has('COIN')).toBe(true)
   })
   it('每只美股都有中文名', () => {
     for (const b of new Set(catalog.sectors('us').flatMap(d => d.members))) expect(catalog.chineseName(b)).toBeTruthy()
@@ -93,9 +100,11 @@ describe('板块口径 · 2. 中位数拿快照对数', () => {
       const want = new Map(snap.rows.map(r => [r.id, r]))
       const got = stats(market, snap.quotes, snap.buckets)
       expect(got.length).toBeGreaterThan(0)
+      // 2026-10-08 手工归类的那 11 格在快照之后才有（汽车与出行里的 TSLA / RIVN 有行情，会聚出来）。
+      const later = new Set(catalog.sectors('us').map(d => d.id).filter(id => !US_AI_IDS.includes(id)))
       for (const s of got) {
         const w = want.get(s.id)
-        if (!w) { expect(s.id).toBe('desci'); continue }
+        if (!w) { expect(s.id === 'desci' || later.has(s.id), `快照里没有 ${s.id}`).toBe(true); continue }
         expect(Math.abs(s.pct - w.median), `${s.id}: ${s.pct} vs ${w.median}`).toBeLessThan(TOL)
         expect(s.memberCount).toBe(w.n)
         expect(Math.abs(s.quoteVolume - w.vol)).toBeLessThanOrEqual(Math.abs(w.vol) * 1e-9 + 1e-6)
@@ -103,13 +112,15 @@ describe('板块口径 · 2. 中位数拿快照对数', () => {
       }
     })
   }
-  it('24 段 + 4 桶，兜底桶排在后面；美股 12 段', () => {
+  it('24 段 + 4 桶，兜底桶排在后面；美股 12 个 AI 细分一个不落', () => {
     const snap = snapshot('crypto')
     const got = stats('crypto', snap.quotes, snap.buckets)
     expect(got.filter(s => !s.isFallback).length).toBe(24)
     expect(got.filter(s => s.isFallback).length).toBe(4)
     expect(got.findIndex(s => s.isFallback)).toBe(24)
-    expect(stats('us', snapshot('us').quotes, []).length).toBe(12)
+    // 美股：12 个 AI 细分一个不落；手工归类的 11 格要看快照里有没有成员行情
+    const usIDs = new Set(stats('us', snapshot('us').quotes, []).map(s => s.id))
+    for (const id of US_AI_IDS) expect(usIDs.has(id), `快照里缺 ${id}`).toBe(true)
   })
   it('中位数', () => {
     expect(median([3, 1, 2])).toBe(2)
@@ -472,7 +483,7 @@ describe('兜底桶', () => {
       { id: 'tag-defi', name: 'DeFi 其他', members: ['ZZD'] },
       { id: 'misc', name: '其他', members: ['ZZB', 'ZZM'] },
     ])
-    const us = fallbackBuckets([e('SPY', 'EQUITY', ['TradFi']), e('NVDA', 'EQUITY'), e('HK0700', 'HK_EQUITY'), e('ZZB', 'COIN')], 'us')
-    expect(us).toEqual([{ id: 'misc', name: '其他', members: ['SPY'] }])
+    const us = fallbackBuckets([e('ZZEQ', 'EQUITY', ['TradFi']), e('NVDA', 'EQUITY'), e('SPY', 'EQUITY'), e('HK0700', 'HK_EQUITY'), e('ZZB', 'COIN')], 'us')
+    expect(us).toEqual([{ id: 'misc', name: '其他', members: ['ZZEQ'] }])
   })
 })

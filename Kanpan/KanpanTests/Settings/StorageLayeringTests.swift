@@ -77,6 +77,12 @@ struct StorageLayeringTests {
     // 只删超过 24 小时的（图上本来就只画 24 小时内的单）和目录里认不出的东西；
     // 丢了也只是图上少画几条已经结束的单，打开指标重新订簿就接着记。
     "OrderFlowFeed.swift": "主力订单流超过 24 小时的大单小日志与目录里认不出的文件，纯行情缓存",
+    // 4cad2014 体感优化：「登录设备」那张表在本机的一份「上回看到的样子」，按人记、退登就删；
+    // 权威在服务端，进页重新拉一次就有。
+    "DeviceListCache.swift": "退登时删掉上回看到的设备列表，服务端那张一回来就整张盖掉",
+    // 4cad2014 体感优化：复盘回放与缩略图用的已收盘历史 K 线（Caches/review-klines），
+    // 公开行情、总量封顶、按最近使用淘汰；删的是空段文件与最久没用的分片，重新拉一趟就有。
+    "ReviewKlineStore.swift": "复盘历史 K 线的空段与最久没用的分片（总量封顶），公开行情重拉就有",
     // 37427f3e：只读交易所账户的增量同步游标与已拉成交（每个账户一份 state 文件）。
     // 删的只是这一份同步状态，丢了从交易所只读接口重拉、重拼回合就回来了；已经判定过的回合在复盘本里，不在这儿。
     "ExchangeAccountSync.swift": "交易所账户的增量同步状态，丢了从交易所只读接口重拉",
@@ -123,7 +129,9 @@ struct StorageLayeringTests {
     // 上一份行情，下一次取数就整份覆盖。
     let refetchable: Set<String> = ["kanpan", "tests", "last.kbar", "series", "exchangeInfo.json",
                                     "quotes.json", "opens.json", "oi", "sector-history.json",
-                                    "sector-quotes.json"]
+                                    "sector-quotes.json",
+                                    // 4cad2014：复盘回放的已收盘 K 线与复盘本缩略图，公开行情 / 可重画，总量封顶按最近使用淘汰。
+                                    "review-klines", "trade-images"]
     let pattern = try! NSRegularExpression(pattern: #"appendingPathComponent\("([^"]+)""#)
     for match in pattern.matches(in: body, range: NSRange(body.startIndex..., in: body)) {
       guard let range = Range(match.range(at: 1), in: body) else { continue }

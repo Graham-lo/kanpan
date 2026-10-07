@@ -1,6 +1,6 @@
 // 手机网页版搜品种的拼音表生成器：浏览器里没有汉字转拼音的字典，
 // 所以在 Mac 上用 iOS 同一套 CFStringTransform（SymbolAliases.pinyin）把别名表算好、提交成 JSON。
-// 别名表改了（search.ts 的 CRYPTO_NAMES、sectors.json 的 usNames）就重跑：
+// 别名表改了（market/searchText.ts 的 CRYPTO_NAMES、sectors.json 的 usNames）就重跑：
 //   swift scripts/gen-pinyin.swift > src/m/model/pinyin.json
 // tests/m-search.test.ts 会拦住漏跑的情况。
 import Foundation
@@ -24,7 +24,7 @@ func pinyin(_ text: String) -> [String]? {
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
 var names = Set<String>()
 
-let search = try String(contentsOf: root.appendingPathComponent("src/m/model/search.ts"), encoding: .utf8)
+let search = try String(contentsOf: root.appendingPathComponent("src/market/searchText.ts"), encoding: .utf8)
 if let start = search.range(of: "export const CRYPTO_NAMES"), let end = search.range(of: "\n}\n", range: start.upperBound..<search.endIndex) {
   let block = String(search[start.upperBound..<end.lowerBound])
   let re = try NSRegularExpression(pattern: "'([^']*)'")
