@@ -93,6 +93,9 @@ const P: Record<string, string> = {
   // 多空持仓：上面止盈（实）、下面止损（淡），中间开仓线
   position: `<rect x="4" y="4" width="16" height="8" rx="2" fill="currentColor"/><rect x="4" y="12" width="16" height="7" rx="2" fill="currentColor" ${D}/><path d="M3 12h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
   channel: `<path d="M4 15L15 4M9 20L20 9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 15l5 5 11-11-5-5z" fill="currentColor" ${D}/><circle cx="4" cy="15" r="2.2" fill="currentColor"/><circle cx="15" cy="4" r="2.2" fill="currentColor"/>`,
+  // K 线回放：两个往回的三角（后一个淡）；跳到起点：一道竖杠挡着一个往回的三角
+  replay: `<path d="M11 6.2v11.6a1 1 0 0 1-1.6.8l-7-5.8a1 1 0 0 1 0-1.6l7-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor"/><path d="M21 6.2v11.6a1 1 0 0 1-1.6.8l-7-5.8a1 1 0 0 1 0-1.6l7-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor" ${D}/>`,
+  toStart: `<rect x="4.5" y="5" width="3" height="14" rx="1.5" fill="currentColor"/><path d="M19 6.2v11.6a1 1 0 0 1-1.6.8l-7.4-5.8a1 1 0 0 1 0-1.6l7.4-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor"/>`,
 }
 
 export type IconName = keyof typeof P

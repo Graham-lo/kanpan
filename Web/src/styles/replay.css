@@ -1,0 +1,57 @@
+/* Hkline Web · K 线回放（replay/）：浮在图表区下沿的回放条、选起点的竖线
+ * 播放条照复盘播放条（styles/review.css .rv-bar / .rv-track）的样子，复盘页的样式表不在这一页加载，这里自带一份 */
+
+.rp-bar {
+  position: absolute; left: 50%; bottom: 40px; z-index: 4; transform: translateX(-50%);
+  display: flex; align-items: center; gap: var(--s2);
+  width: min(720px, calc(100% - var(--s4))); height: var(--h-lg); padding: 0 var(--s2);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--overlay) 94%, transparent);
+  box-shadow: var(--shadow-menu);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  font-size: var(--t13); color: var(--text-1);
+  white-space: nowrap;
+}
+.rp-bar.picking { width: auto; max-width: calc(100% - var(--s4)); padding: 0 var(--s2) 0 var(--s3); }
+.rp-bar .ibtn, .rp-bar .btn, .rp-bar .seg { flex: none; }
+.rp-hint { display: inline-flex; align-items: center; gap: var(--s2); font-weight: 500; }
+.rp-hint svg { color: var(--accent); }
+.rp-sep { flex: none; width: 1px; height: 16px; background: var(--line); }
+
+.rp-track { position: relative; flex: 1; min-width: 96px; height: 28px; cursor: pointer; touch-action: none; outline: none; }
+.rp-track .rail, .rp-track .played { position: absolute; left: 0; top: 13px; height: 2px; border-radius: 1px; }
+.rp-track .rail { right: 0; background: color-mix(in srgb, var(--text-3) 20%, transparent); }
+.rp-track .played { background: var(--accent); }
+.rp-track .knob { position: absolute; top: 7px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,.2); opacity: 0; transition: opacity var(--d-fast) var(--ease); }
+.rp-track.dragging .knob, .rp-track:hover .knob, .rp-track:focus-visible .knob { opacity: 1; }
+.rp-track:focus-visible .rail { box-shadow: 0 0 0 2px var(--accent-soft); }
+.rp-time { flex: none; min-width: 104px; font-size: var(--t12); color: var(--text-2); text-align: right; }
+
+.rp-start { flex: none; display: inline-flex; align-items: center; gap: var(--s1); font-size: var(--t12); color: var(--text-2); }
+.rp-start input {
+  width: 124px; height: var(--h-sm); padding: 0 var(--s2);
+  border: 1px solid var(--control-line); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text-1); font-size: var(--t12);
+  outline: none;
+}
+.rp-start input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* 格子小了：先收起点输入与当前时刻，再收倍速里的大档 */
+.chart-cell.c-narrow .rp-bar .rp-start, .chart-cell.c-narrow .rp-bar .rp-time, .chart-cell.c-narrow .rp-bar .rp-sep { display: none; }
+.chart-cell.c-tiny .rp-bar .rp-speed button:nth-child(n+4), .chart-cell.c-tiny .rp-bar .rp-exit { display: none; }
+.chart-cell.c-tiny .rp-bar.picking .rp-hint span { display: none; }
+
+/* 底栏「回放」按钮：回放中 / 选起点时亮着 */
+.cell-foot [data-act="replay"][aria-pressed="true"] { color: var(--accent-text); }
+
+/* 选起点：跟着鼠标的竖线、右边压暗、底下标时间 */
+.rp-pick { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.rp-pick .line { position: absolute; left: var(--x); top: 0; height: var(--h); border-left: 1px dashed var(--accent); }
+.rp-pick .shade { position: absolute; left: var(--sx); width: var(--sw); top: 0; height: var(--h); background: color-mix(in srgb, var(--chart-bg) 62%, transparent); }
+.rp-pick .lab {
+  position: absolute; left: var(--x); top: calc(var(--h) + 4px); transform: translateX(-50%);
+  height: 20px; padding: 0 var(--s2); border-radius: var(--r-xs);
+  background: var(--accent); color: #fff; font-size: var(--t12); line-height: 20px; white-space: nowrap;
+}
+.rp-pick .lab b { font-weight: 600; margin-right: var(--s1); }
+.cell-foot [data-act="replay"][aria-disabled="true"] { opacity: .4; cursor: default; }

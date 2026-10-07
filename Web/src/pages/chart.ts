@@ -50,6 +50,7 @@ import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
 import { bindFootprint, footprintMenuItem } from '../chart/footprint'
 import { secondsKlines } from '../chart/secondsHistory'
+import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote } from '../replay/controller'
 
 // ------------------------------------------------------------ 图表格子
 interface Cell {
@@ -185,6 +186,7 @@ function makeCell(i: number): Cell {
     <div class="cell-foot">
       <button class="foot-ic" data-act="layout" aria-label="图表布局" data-tip="图表布局">${I(LAYOUT_ICON[st.layout], 'icon-16')}</button>
       <button class="foot-ic" data-act="save" aria-label="保存图表截图" data-tip="保存图表截图" data-kbd="⌥ S">${I('camera', 'icon-16')}</button>
+      <button class="foot-ic" data-act="replay" aria-label="K 线回放" data-tip="K 线回放：选一个起点，一根一根往后播" data-kbd="⌥ R">${I('replay', 'icon-16')}</button>
       <span class="tb-sep"></span>
       ${RANGES.map(([l, iv], k) => `<button data-range="${k}" data-tip="${l}：切到 ${IV_LABEL[iv]}，显示最近${l === '全部' ? '全部历史' : l === '今年' ? '今年以来' : l}">${l}</button>`).join('')}
       <div class="foot-right">
@@ -236,6 +238,7 @@ function makeCell(i: number): Cell {
     const a = t.closest<HTMLElement>('[data-act]')?.dataset.act
     if (a === 'layout') { layoutMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement); return }
     if (a === 'save') { setActive(cell.idx); screenshot(); return }
+    if (a === 'replay') { setActive(cell.idx); toggleReplay(cell); return }
     if (a === 'log') { cell.chart.setLog(!cell.chart.log); t.closest('[data-act]')?.setAttribute('aria-pressed', String(cell.chart.log)) }
     if (a === 'auto') cell.chart.setAuto(!cell.chart.auto)
   })
@@ -269,6 +272,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   if (lastSnap[c.symbol] == null) rebaseDrawings(c.symbol)
   // 推送不等 K 线：取数期间这一格的推送先攒进缓冲（上一次取数的缓冲在这里撒手，换品种 / 周期即作废）
   if (cell.hold) { pushes.release(cell.hold); cell.hold = null }
+  if (replayLoad(cell)) return
   const siv = streamIvOf(c.iv)
   const pre = early.get(`${c.symbol}|${c.iv}`)
   if (pre) early.delete(`${c.symbol}|${c.iv}`)
@@ -318,7 +322,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
 const tailing = new Set<Cell>()
 async function resyncTail(cell: Cell, tries = 0): Promise<void> {
   const c = cfg(cell), bars = cell.chart.bars
-  if (tailing.has(cell) || cell.hold || cell.chart.dead || isSecondIv(c.iv) || !bars.length) return
+  if (tailing.has(cell) || cell.hold || replaying(cell) || cell.chart.dead || isSecondIv(c.iv) || !bars.length) return
   const n = tailNeed(bars[bars.length - 1].t, IV_MS[c.iv], Date.now())
   if (n > TAIL_MAX) { void loadCell(cell); return }
   const token = cell.loadToken, alive = () => token === cell.loadToken && !cell.chart.dead
@@ -510,6 +514,7 @@ function paintConn(): void { const c = connState(); $$('.cell-foot .conn-dot').f
 function syncTitle(): void {
   const s = sym(cfg(active())?.symbol || '')
   document.title = s?.price ? `${s.code} ${priceText(s)} ${pctText(s.pct)} · Hkline` : 'Hkline'
+  paintReplayQuote()
 }
 
 export function renderToolbar(): void {
@@ -658,7 +663,7 @@ function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
     { icon: 'note', label: '在这根 K 线记一笔…', run: () => openNote(info.time, p) },
     { icon: 'link', label: `复制价格 ${pt}`, run: () => { void navigator.clipboard?.writeText(p.toFixed(s?.dec ?? 2)); toast('已复制', pt, 'check', 1500) } }, '-')
   items.push(
-    { label: '重置视图', icon: 'candles', sc: 'Alt R', run: () => cell.chart.resetView() },
+    { label: '重置视图', icon: 'candles', sc: 'Alt 0', run: () => cell.chart.resetView() },
     { label: '对数坐标', check: true, checked: cell.chart.log, run: () => { cell.chart.setLog(!cell.chart.log); $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(cell.chart.log)) } },
     { label: '隐藏画线', check: true, checked: st.drawHidden, sc: '⌘ ⌥ H', run: toggleHideDrawings },
   )
@@ -803,6 +808,7 @@ function renderDetail(): void {
       ${cell(term('指数价'), s.index ? fmt(s.index, s.dec) : '—', '', 'index')}
       ${cell(term('基差'), pctText(basis), cls(basis), 'basis')}
     </div>`}`
+  paintReplayQuote()
 }
 const chgText = (s: Sym): string => s.price == null ? '—' : `${s.chg >= 0 ? '+' : ''}${fmt(s.chg, s.dec)}  ${pctText(s.pct)}`
 const frText = (s: Sym): string => s.fr == null ? '—' : (s.fr * 100).toFixed(4) + '%'
@@ -824,6 +830,7 @@ function patchDetail(): void {
   set('basis', pctText(basis), `v num ${cls(basis)}`)
   if (s.hi && s.lo) { set('lo', fmt(s.lo, s.dec)); set('hi', fmt(s.hi, s.dec)); const p = $('[data-f="pos"]', el); if (p) p.style.left = clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100 + '%' }
   const cap = marketCap(s.symbol); if (cap) set('cap', fmtCompact(cap))
+  paintReplayQuote()
 }
 
 // ---- 提醒（模块在 alerts/）
@@ -1016,7 +1023,7 @@ function openAlert(price?: number): void {
 // ------------------------------------------------------------ 快捷键
 export const SHORTCUTS: [string, [string, string][]][] = [
   ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['1 – 9', '栏上钉的第几个周期'], [', 再打数字', '换任意周期（如 7、240、1D、5S）'], ['↑ ↓', '自选里上一只 / 下一只'], ['Home End', '自选列表里：第一只 / 最后一只'], ['空格 Delete', '自选列表里：收藏 / 移出（⌘ Z 撤销）'], ['⇧ ↵', '在搜索里加自选']]],
-  ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt R', '重置视图'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标（对所有图格同时生效）'], ['⇧ T', '图表布局'], ['Alt ⇧ W', '开 / 关侧栏']]],
+  ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt 0', '重置视图'], ['Alt R', 'K 线回放（空格 播放 / 暂停，Home 跳到起点）'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标（对所有图格同时生效）'], ['⇧ T', '图表布局'], ['Alt ⇧ W', '开 / 关侧栏']]],
   ['画线工具', [['Alt T', '趋势线'], ['Alt J', '射线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt ⇧ R', '矩形'], ['Alt F', '斐波那契回撤'], ['双击工具', '连续画（右键或 Esc 退出）'], ['右键', '拿着工具时：放下工具'], ['⇧ 拖', '临时测量']]],
   ['编辑画线', [['⇧ 拖端点', '吸到 45° / 水平 / 竖直'], ['按住 ⌘', '临时反过来用磁吸'], ['⌘ 拖', '复制一条再拖走'], ['⌘ C / ⌘ V', '复制 / 粘贴画线（同一只品种）'], ['← → ↑ ↓', '微移选中的画线（⇧ 10 像素）'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z', '撤销'], ['⌘ Y / ⌘ ⇧ Z', '重做'], ['⌘ ⌥ H / ⌃ ⌥ H', '隐藏 / 显示全部画线']]],
   ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['Alt N', '记一笔'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['?', '这张表']]],
@@ -1119,7 +1126,8 @@ function onKey(e: KeyboardEvent): void {
     if (map[e.code]) { e.preventDefault(); selectTool(map[e.code]); return }
     if (e.code === 'KeyN') { e.preventDefault(); openNote(); return }
     if (e.code === 'KeyA') { e.preventDefault(); openAlert(); return }
-    if (e.code === 'KeyR') { e.preventDefault(); cell.chart.resetView(); return }
+    if (e.code === 'KeyR') { e.preventDefault(); toggleReplay(cell); return }
+    if (e.code === 'Digit0') { e.preventDefault(); cell.chart.resetView(); return }
     if (e.code === 'KeyS') { e.preventDefault(); screenshot(); return }
     return
   }
@@ -1293,6 +1301,7 @@ export async function initChart(): Promise<void> {
     load: async (symbol, iv, endTime) => { const r = await barsFor(symbol, iv, endTime ?? undefined, undefined, false); return r.ok ? r.bars : null },
     refreshStreams, renderToolbar, activeSymbol: () => cfg(active()).symbol, isWatched,
   })
+  installReplay({ cfg: c => cfg(c as Cell), meta: c => metaFor(cfg(c as Cell)), reload: (c, then) => void loadCell(c as Cell, then), active, quote: () => { patchDetail(); syncTitle() } })
 
   // 藏着时非当前格的 K 线推送是退订的（stream.ts 只留核心），藏久了回来各格都补一次尾巴
   document.addEventListener('visibilitychange', () => {
@@ -1304,7 +1313,7 @@ export async function initChart(): Promise<void> {
       pushes.offer(pushKey(e.symbol, e.iv), e.bar)
     }
     if (e.type === 'kline') cells.forEach(c => {
-      if (c.hold) return
+      if (c.hold || replaying(c)) return
       const cc = cfg(c); if (cc.symbol !== e.symbol || st.stale) return
       if (cc.iv === e.iv) c.chart.updateBar({ ...e.bar })
       else if (isCustomIv(cc.iv) && customBase(cc.iv) === e.iv && c.chart.bars.length) c.chart.updateBar(customTick(cc.symbol, cc.iv, e.bar))
