@@ -6,7 +6,9 @@
 //! - 前三种（[`judge_funding`] / [`judge_open_interest`] / [`judge_ma`]）在 `kanpan-worker` 里判，
 //!   [`run`] 是它们的常驻循环：费率每分钟看一眼、落在结算前 15 分钟那个窗口里判一次；持仓量每个
 //!   新的 5 分钟点判一次；均线在每根 K 线收盘后几秒判，同一品种同一周期的所有提醒合一次 K 线请求；
-//! - 大单在 `serve` 里判（跟踪器在那个进程），见 [`walls`]。
+//! - 大单在 `serve` 里判（跟踪器在那个进程），见 [`walls`]；
+//! - 技术指标（2026-10-07，均线金叉死叉 / RSI 穿越 / 收盘突破，`rule` 用 `kind` 区分）也在 worker 里、
+//!   按收盘判，见 [`indicators`]。
 //!
 //! 触发一律走 [`fire`]：`alerts::record_fired`（同一个事务置 fired + 写同步 op，`WHERE status='active'`
 //! 就是「只响一次」的那道闸）→ Webhook → 推送。判定函数都是纯的（给定行情、给定时刻），
@@ -20,6 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+pub mod indicators;
 pub mod walls;
 
 // ——————————————————————————— 形状 ———————————————————————————
@@ -54,6 +57,8 @@ pub enum Rule {
  MaCross{interval:String,length:usize,side:Side},
  /// 出现一面名义 ≥ `threshold` 美元的新大单墙。
  Wall{threshold:Decimal},
+ /// 技术指标（均线金叉死叉 / RSI 穿越 / 收盘突破）：`rule` 用 `kind` 区分，见 [`indicators`]。
+ Indicator(indicators::Indicator),
  /// 更新版本的客户端写的、这一版服务端还认不得的条件：收下、存着、不判。
  Unknown(String),
 }
@@ -65,10 +70,12 @@ fn d(text:&str)->Decimal {text.parse().expect("constant decimal")}
 
 impl Rule {
  /// 解一个 `rule`。`None` 是「形状不对」（整条 op 该拒收）；认不得的 `type` 是 `Some(Unknown)`。
+ /// 没有 `type` 的是技术指标条件（`kind` 区分，和网页端约定的线格式），交给 [`indicators::parse`]。
  pub fn parse(v:&Value)->Option<Rule> {
   let o=v.as_object()?;
   if serde_json::to_string(v).map_or(true,|t|t.len()>RULE_MAX_BYTES) {return None}
-  let kind=o.get("type")?.as_str()?;
+  let Some(kind)=o.get("type") else {return indicators::parse(o,v)};
+  let kind=kind.as_str()?;
   if !(1..=40).contains(&kind.len())||!kind.bytes().all(|b|b.is_ascii_alphabetic()) {return None}
   Some(match kind {
    "funding"=>Rule::Funding{side:Side::parse(o.get("side"))?,rate:decimal_in(o.get("rate"),d("-0.1"),d("0.1"))?},
@@ -84,7 +91,7 @@ impl Rule {
  }
  /// 协议里的 `type`。
  pub fn kind(&self)->&str {
-  match self {Rule::Funding{..}=>"funding",Rule::OpenInterest{..}=>"openInterestChange",Rule::MaCross{..}=>"maCross",Rule::Wall{..}=>"orderflowWall",Rule::Unknown(k)=>k}
+  match self {Rule::Funding{..}=>"funding",Rule::OpenInterest{..}=>"openInterestChange",Rule::MaCross{..}=>"maCross",Rule::Wall{..}=>"orderflowWall",Rule::Indicator(i)=>i.kind(),Rule::Unknown(k)=>k}
  }
  /// `{条件}`，也是默认标题去掉品种名那一段：「资金费率高于 0.05%」。
  pub fn phrase(&self)->String {
@@ -93,6 +100,7 @@ impl Rule {
    Rule::OpenInterest{threshold}=>format!("1 小时持仓量变化超过 {}%",percent(*threshold,4)),
    Rule::MaCross{interval,length,side}=>format!("{interval} 收盘{} MA{length}",if *side==Side::Above {"站上"} else {"跌破"}),
    Rule::Wall{threshold}=>format!("出现 {} 以上的大单墙",units(threshold.to_f64().unwrap_or_default())),
+   Rule::Indicator(i)=>i.phrase(),
    Rule::Unknown(_)=>"条件提醒".into(),
   }
  }
@@ -130,7 +138,9 @@ pub struct CondAlert {
 }
 impl CondAlert {
  /// 推送标题 / Webhook `title`：客户端写的标题；空就「BTC 资金费率高于 0.05%」。
+ /// 技术指标提醒一律是「BTCUSDT 15m：EMA9 上穿 SMA21」（全代号 + 条件，和网页端约定的推送文案）。
  pub fn title(&self)->String {
+  if let Rule::Indicator(i)=&self.rule {return format!("{} {}",self.symbol,i.phrase())}
   if self.title.trim().is_empty() {format!("{} {}",crate::watch_move::short(&self.symbol),self.rule.phrase())} else {self.title.clone()}
  }
 }
@@ -413,6 +423,7 @@ pub async fn run(s:AppState,apns:Option<Arc<Apns>>) {
   funding_loop(&s,apns.as_deref(),shared.clone()),
   open_interest_loop(&s,apns.as_deref(),shared.clone()),
   ma_loop(&s,apns.as_deref(),shared.clone()),
+  indicators::run(&s,apns.as_deref(),shared.clone()),
  );
 }
 
