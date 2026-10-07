@@ -1378,4 +1378,4 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **运维**：
   - 不需要迁移。
   - `ops/README.md` 条件提醒一节已补说明。
-  - 部署后在 worker 日志里 grep `conditions` 看判定与取数。
+  - 部署后看判定与取数用 `journalctl -u kanpan-worker | grep -i "indicator"`。
