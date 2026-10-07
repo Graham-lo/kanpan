@@ -12,9 +12,10 @@ import { hooks } from '../app/shell'
 import { S } from '../market'
 import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
-import { allCells, applyDrawingsHidden, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
+import { allCells, applyDrawingsHidden, applyLayoutSet, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
-import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, fingerprint, mergeFirst, restoreDrawings } from './bridge'
+import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, corePrint, fingerprint, layoutsPrint, mergeFirst, restoreDrawings } from './bridge'
+import { LAYOUTS_FIELD } from '../app/layouts'
 import { refreshCompare } from '../pages/compare'
 import { type Ctx, alertId } from './codec'
 import { type SyncAdapter, type SyncRuntime, createSyncRuntime } from './runtime'
@@ -37,8 +38,8 @@ function lsSet(k: string, v: string): void { try { localStorage.setItem(k, v) } 
 // ───────── 本机「最后一次改」的时刻（没登录时也记，首次对上时比谁新） ─────────
 
 function readEdited(): Edited {
-  try { const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0 } } catch { /* 坏了当没改过 */ }
-  return { settings: 0, favorites: 0 }
+  try { const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0, layouts: v.layouts || 0 } } catch { /* 坏了当没改过 */ }
+  return { settings: 0, favorites: 0, layouts: 0 }
 }
 
 // ───────── 状态适配器 ─────────
@@ -65,6 +66,8 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       if (r.settings.includes('compareSymbols')) refreshCompare()
       // 隐藏画线（手机分析面板那颗开关 / 别的电脑的眼睛）：各格跟着收起或放出画线
       if (r.settings.includes('drawingsHidden')) applyDrawingsHidden()
+      // 布局集（别的电脑另存 / 切换 / 换了品种）：各格平滑换成当前那套的品种与周期
+      if (r.settings.includes(LAYOUTS_FIELD)) applyLayoutSet()
       renderToolbar()
     }
     if (r.drawings.size) { r.drawings.forEach(rebaseDrawings); allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) }) }
@@ -118,16 +121,18 @@ export function initSync(): void {
   if (rt) return
   const r = rt = createSyncRuntime(pc)
   // 本机改动时刻：以启动时的样子为底
-  let base = fingerprint(st)
+  // 设置分两块记：指标 / 周期条那些（和手机共用）与布局集（换品种、换周期也算），首次对上时各比各的
+  let base = fingerprint(st), baseCore = corePrint(st), baseLayouts = layoutsPrint(st)
   subscribe(() => {
-    const now = fingerprint(st)
-    if (!applying && (now.settings !== base.settings || now.favorites !== base.favorites)) {
+    const now = fingerprint(st), core = corePrint(st), lays = layoutsPrint(st)
+    if (!applying && (core !== baseCore || lays !== baseLayouts || now.favorites !== base.favorites)) {
       const ed = readEdited()
-      if (now.settings !== base.settings) ed.settings = Date.now()
+      if (core !== baseCore) ed.settings = Date.now()
+      if (lays !== baseLayouts) ed.layouts = Date.now()
       if (now.favorites !== base.favorites && ctx.ready) ed.favorites = Date.now()
       lsSet(syncKeys().edited, JSON.stringify(ed))
     }
-    base = now
+    base = now; baseCore = core; baseLayouts = lays
     r.changed()
   })
   // 本机判响的：fire() 先记「已触发」、报完再删，删之前记下来

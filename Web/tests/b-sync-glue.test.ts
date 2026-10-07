@@ -5,9 +5,9 @@ const h = vi.hoisted(() => ({ adapter: null as null | { apply(s: unknown): unkno
 vi.mock('../src/app/store', () => ({ st: {}, save: vi.fn(), subscribe: vi.fn(), drawingsSuspect: () => false, clearDrawingsSuspect: vi.fn() }))
 vi.mock('../src/app/shell', () => ({ hooks: { booted: [] } }))
 vi.mock('../src/market', () => ({ S: { symbols: new Map() } }))
-vi.mock('../src/pages/chart', () => ({ allCells: () => [], cfg: vi.fn(), drawingsFor: vi.fn(), renderPanel: h.renderPanel, renderToolbar: vi.fn() }))
+vi.mock('../src/pages/chart', () => ({ allCells: () => [], cfg: vi.fn(), drawingsFor: vi.fn(), renderPanel: h.renderPanel, renderToolbar: vi.fn(), applyLayoutSet: vi.fn() }))
 vi.mock('../src/alerts/model', () => ({ announceRemoteFire: vi.fn(), notifyAlerts: h.notifyAlerts, onAlertFired: vi.fn() }))
-vi.mock('../src/sync/bridge', () => ({ OWNED: [], applyInto: () => h.applied, captureInto: () => 0, fingerprint: () => ({}), mergeFirst: () => h.applied, restoreDrawings: () => h.applied }))
+vi.mock('../src/sync/bridge', () => ({ OWNED: [], applyInto: () => h.applied, captureInto: () => 0, fingerprint: () => ({}), corePrint: () => '', layoutsPrint: () => '', mergeFirst: () => h.applied, restoreDrawings: () => h.applied }))
 vi.mock('../src/sync/runtime', () => ({ transport: {}, createSyncRuntime: (a: { apply(s: unknown): unknown }) => { h.adapter = a; return { changed: vi.fn(), boot: vi.fn(), pushSoon: vi.fn() } } }))
 
 describe('同步装回自选侧栏（B19）', () => {

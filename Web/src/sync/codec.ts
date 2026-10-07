@@ -21,6 +21,7 @@ import { INTERVALS, type Kind } from '../market/symbols'
 import { MACRO_ALERT_MARKET, MACRO_CN, MACRO_MARKET, MACRO_SYMBOL, MACRO_VENUE, isMacro, syncKeyOf, venueMarketOf } from '../market/macro'
 import { type Body, type Json, type SyncObject, same } from './types'
 import { MAX_OVERRIDES, isValidBase, normalizeOverride, type Override } from '../orderflow/settings'
+import { LAYOUTS_FIELD, bookFrom, cleanBook, liveBook, loadLive, type CellCfg, type Layout, type LayoutBook } from '../app/layouts'
 
 export interface Ctx {
   now(): number
@@ -101,7 +102,7 @@ const obj = (v: Json | undefined): Record<string, Json> | null => v && typeof v 
 // ═════════════════════════════ settings（id "chart"） ═════════════════════════════
 //
 // 网页只同步和手机同一回事的那几项：钉在周期条上的周期、主图 / 副图开了哪些指标、指标参数、主力订单流的门槛与步长、
-// 对比品种、隐藏画线（drawingsHidden ↔ st.drawHidden）。
+// 对比品种、隐藏画线（drawingsHidden ↔ st.drawHidden）；外加网页独有的布局集（chartLayouts，手机不认这个键、原样留着）。
 // 皮肤 / 深浅 / 涨跌色是网页自己的一套视觉（和手机不是一回事），线路是每台设备自己的，
 // 当前周期是「每个图格一个」而手机是「整个 app 一个」，这几项不同步。
 //
@@ -118,11 +119,18 @@ export interface SettingsState {
   compareSymbols?: string[]
   /** 隐藏画线（PC 画线工具条的眼睛 / ⌘⌥H），和手机 Prefs.drawingsHidden 同一个字段，2026-10-06 起跟账号同步 */
   drawHidden?: boolean
+  /** 布局集（app/layouts.ts）与当前那套的活数据：chartLayouts 字段 = 活数据抄回之后的整个布局集，2026-10-07 起跟账号同步 */
+  layouts?: LayoutBook; layout?: Layout; cells?: CellCfg[]; active?: number
 }
 
 export const SETTINGS_ID = 'chart'
 const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ']]
-export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'compareSymbols', 'drawingsHidden']
+export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'compareSymbols', 'drawingsHidden', LAYOUTS_FIELD]
+/** 云端没有这个字段时本机的值要推上去（网页独有，没有别的端会写它）：seen 记成 null，下一次记账一定推 */
+const PUSH_WHEN_CLOUD_EMPTY = new Set([LAYOUTS_FIELD])
+/** 状态里有没有布局集那几项（单元测试里的精简状态可以没有） */
+const hasLayouts = (s: SettingsState): s is SettingsState & { layouts: LayoutBook; layout: Layout; cells: CellCfg[]; active: number } =>
+  !!s.layouts && !!s.layout && Array.isArray(s.cells)
 
 /** 订单流覆盖项的规范形：base 合规、每项过 normalizeOverride、最多 MAX_OVERRIDES 只、键排序（比较不受顺序影响） */
 function cleanOverrides(v: unknown): Record<string, Override> | null {
@@ -145,6 +153,7 @@ export function webSetting(s: SettingsState, field: string): Json {
   if (field === 'orderFlowOverrides') return (cleanOverrides(s.orderFlowOverrides) ?? {}) as unknown as Json
   if (field === 'compareSymbols') return cleanCompare(s.compareSymbols)
   if (field === 'drawingsHidden') return s.drawHidden === true
+  if (field === LAYOUTS_FIELD) return hasLayouts(s) ? liveBook({ ...s, active: s.active ?? 0 }) as unknown as Json : null
   if (field.startsWith('params/')) {
     const id = PARAM_IDS.find(([, c]) => 'params/' + c === field)?.[0]
     const p = id ? s.params?.[id] : undefined
@@ -188,6 +197,7 @@ export function encodeSetting(field: string, web: Json, prev: Json | undefined):
   if (field === 'orderFlowOverrides') return (cleanOverrides(web) ?? undefined) as unknown as Json | undefined
   if (field === 'compareSymbols') return cleanCompare(web)
   if (field === 'drawingsHidden') return web === true
+  if (field === LAYOUTS_FIELD) return (cleanBook(web) ?? undefined) as unknown as Json | undefined
   if (field.startsWith('params/')) {
     const p = web as IndParams | null
     if (!p) return undefined
@@ -226,6 +236,7 @@ export function decodeSetting(field: string, cloud: Json | undefined, cur: Setti
   // 别家的键（Coinbase 现货）照样留着：网页画不了就不画，但不能一装一推把手机那只冲掉
   if (field === 'compareSymbols') return Array.isArray(cloud) ? cleanCompare(cloud) : undefined
   if (field === 'drawingsHidden') return typeof cloud === 'boolean' ? cloud : undefined
+  if (field === LAYOUTS_FIELD) return (cleanBook(cloud) ?? undefined) as unknown as Json | undefined
   if (field.startsWith('params/')) {
     const v = Array.isArray(cloud) ? cloud.filter((x): x is number => typeof x === 'number') : null
     if (!v || !v.length || !v.every(okInt)) return undefined
@@ -248,6 +259,10 @@ export function putSetting(s: SettingsState, field: string, v: Json): void {
   else if (field === 'orderFlowOverrides') s.orderFlowOverrides = cleanOverrides(v) ?? {}
   else if (field === 'compareSymbols') s.compareSymbols = cleanCompare(v)
   else if (field === 'drawingsHidden') s.drawHidden = v === true
+  else if (field === LAYOUTS_FIELD) {
+    const b = cleanBook(v)
+    if (b && hasLayouts(s)) { s.layouts = b; const live = { ...s, active: s.active ?? 0 }; loadLive(live); s.layout = live.layout; s.cells = live.cells; s.active = live.active }
+  }
   else if (field === 'overlays') for (const [w, c] of OVERLAY_MAP) s.ind[w] = list.includes(c)
   else if (field === 'subs') {
     s.ind.vol = list.includes('VOL')
@@ -288,6 +303,8 @@ export function factorySettings(): Required<SettingsState> {
     orderFlowOverrides: {},
     compareSymbols: [],
     drawHidden: false,
+    layouts: bookFrom('1', [{ symbol: 'BTCUSDT', iv: '1h' }]),
+    layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0,
   }
 }
 
@@ -296,18 +313,24 @@ export function resetSettings(s: SettingsState): string[] {
   const before = SETTINGS_FIELDS.map(f => webSetting(s, f))
   const f = factorySettings()
   s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides; s.compareSymbols = f.compareSymbols; s.drawHidden = f.drawHidden
+  if (hasLayouts(s)) { s.layouts = f.layouts; s.layout = f.layout; s.cells = f.cells; s.active = f.active }
   return SETTINGS_FIELDS.filter((x, i) => !same(before[i], webSetting(s, x)))
 }
 
-/** 应用：云端值和 seen 不同的字段写回状态。返回改了哪些字段 */
-export function applySettings(s: SettingsState, cloud: SyncObject | undefined, seen: Record<string, Json>): string[] {
+/** 云端这个字段装不了（没有 / 表达不了）时 seen 记什么：一般记网页现值（不推）；网页独有的记 null（推） */
+export function seenWhenUndecodable(s: SettingsState, f: string, cloud: Json | undefined): Json {
+  return PUSH_WHEN_CLOUD_EMPTY.has(f) && (cloud === undefined || cloud === null) ? null : webSetting(s, f)
+}
+
+/** 应用：云端值和 seen 不同的字段写回状态。返回改了哪些字段（fields：只看这几个，缺省全部） */
+export function applySettings(s: SettingsState, cloud: SyncObject | undefined, seen: Record<string, Json>, fields: readonly string[] = SETTINGS_FIELDS): string[] {
   if (!cloud || cloud.deleted) return []
   const changed: string[] = []
-  for (const f of SETTINGS_FIELDS) {
+  for (const f of fields) {
     const d = decodeSetting(f, cloud.body[f], s)
     if (d === undefined) {
-      // 云端这个字段网页表达不了：记成网页现值，免得下一次捕获把它当成网页改过的推上去
-      if (!(f in seen)) seen[f] = webSetting(s, f)
+      // 云端这个字段网页表达不了：记成网页现值，免得下一次捕获把它当成网页改过的推上去（网页独有的、云端没有：记 null，推）
+      if (!(f in seen)) seen[f] = seenWhenUndecodable(s, f, cloud.body[f])
       continue
     }
     if (f in seen && same(d, seen[f])) continue

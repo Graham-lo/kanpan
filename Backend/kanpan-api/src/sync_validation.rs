@@ -92,6 +92,37 @@ fn one_of(v:&Value,all:&[&str])->bool {v.as_str().is_some_and(|s|all.contains(&s
 /// 整份序列化 ≤ 16 KB（客户端 `LearnedDefaults.maxBytes`，写之前按最旧的先丢裁到这以内）。
 /// 值的规则和客户端 `LearnedDefaults.sanitized()` 逐项对齐：周期同 `interval`，价格轴只有
 /// 线性 / 对数（百分比不学），板块只有今日 / 5 日，灵敏度系数 0.5…2。
+/// `settings.chartLayouts`：电脑网页版的多套图表布局（2026-10-07，Web/src/app/layouts.ts）。
+/// 只有网页版读写，手机端原样留着不认识的键；服务端只校验、不读。
+/// `{active, sets:[{id,name,layout,cells:[{symbol,iv,footprint?,…}]}]}`，最多 20 套、每套最多 16 格，整份 ≤ 32 KB。
+/// 格子里除了品种 / 周期 / 足迹，留最多 6 个短键给以后的格子配置（值只能是布尔、数、≤ 16 字的串），老服务端不挡新网页。
+const CHART_LAYOUTS_MAX_BYTES:usize=32_768;
+const CHART_LAYOUT_KINDS:&[&str]=&["1","2","2v","3","4","6","8","9","12","16"];
+fn chart_layouts(v:&Value)->bool {
+ fn id(v:&Value)->bool {v.as_str().is_some_and(|s|(1..=32).contains(&s.len())&&s.bytes().all(|c|c.is_ascii_alphanumeric()||c==b'_'||c==b'-'))}
+ fn cell(c:&Value)->bool {
+  let Some(o)=c.as_object() else {return false};
+  let extra=o.keys().filter(|k|!matches!(k.as_str(),"symbol"|"iv"|"footprint")).count();
+  o.get("symbol").and_then(Value::as_str).is_some_and(|s|(2..=40).contains(&s.chars().count())&&s.chars().all(|c|c.is_alphanumeric()||matches!(c,'.'|'_'|'-')))
+   && o.get("iv").and_then(Value::as_str).is_some_and(|s|(1..=8).contains(&s.len())&&s.bytes().all(|c|c.is_ascii_alphanumeric()))
+   && o.get("footprint").is_none_or(Value::is_boolean)
+   && extra<=6
+   && o.iter().all(|(k,v)|matches!(k.as_str(),"symbol"|"iv"|"footprint")
+     ||(1..=16).contains(&k.len())&&k.as_bytes()[0].is_ascii_alphabetic()&&k.bytes().all(|c|c.is_ascii_alphanumeric())
+      &&(v.is_boolean()||number(v,-1e15,1e15)||v.as_str().is_some_and(|s|s.chars().count()<=16)))
+ }
+ fn set(x:&Value)->bool {
+  x.as_object().is_some_and(|o|o.len()==4)
+   && id(&x["id"])
+   && x["name"].as_str().is_some_and(|s|!s.trim().is_empty()&&s.len()<=96)
+   && one_of(&x["layout"],CHART_LAYOUT_KINDS)
+   && x["cells"].as_array().is_some_and(|a|(1..=16).contains(&a.len())&&a.iter().all(cell))
+ }
+ serde_json::to_string(v).is_ok_and(|s|s.len()<=CHART_LAYOUTS_MAX_BYTES)
+  && v.as_object().is_some_and(|o|o.len()==2)
+  && id(&v["active"])
+  && v["sets"].as_array().is_some_and(|a|(1..=20).contains(&a.len())&&a.iter().all(set))
+}
 const LEARNED_DEFAULTS_MAX_BYTES:usize=16_384;
 const LEARNED_KEY_MAX_LEN:usize=128;
 fn learned_defaults(v:&Value)->bool {
@@ -219,6 +250,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
    "orderFlowOverrides"=>order_flow_overrides(v),
    "learnedDefaults"=>learned_defaults(v),
+   "chartLayouts"=>chart_layouts(v),
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
    "drawToolUsage"=>draw_tool_usage(v),
@@ -764,6 +796,28 @@ mod tests {
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");
+  // 网页版多套图表布局（2026-10-07）
+  let one=json!({"active":"default","sets":[{"id":"default","name":"默认","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h"}]}]});
+  assert!(field("settings","chartLayouts",&one));
+  let two=json!({"active":"l1","sets":[{"id":"default","name":"默认","layout":"4","cells":[{"symbol":"BTCUSDT","iv":"1h","footprint":true},{"symbol":"ETHUSDT","iv":"15m"},{"symbol":"XAUUSDT","iv":"4h","style":"line"},{"symbol":"DXY","iv":"7m"}]},
+                                     {"id":"l1","name":"十六图 盯盘","layout":"16","cells":[{"symbol":"SOLUSDT","iv":"1s"}]}]});
+  assert!(field("settings","chartLayouts",&two));
+  let cells17:Vec<Value>=(0..17).map(|_|json!({"symbol":"BTCUSDT","iv":"1h"})).collect();
+  let sets21:Vec<Value>=(0..21).map(|k|json!({"id":format!("l{k}"),"name":"x","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h"}]})).collect();
+  for bad in [json!({}),json!({"active":"default","sets":[]}),json!({"active":"a b","sets":one["sets"].clone()}),
+              json!({"active":"default","sets":one["sets"].clone(),"x":1}),
+              json!({"active":"l0","sets":sets21}),
+              json!({"active":"d","sets":[{"id":"d","name":"","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h"}]}]}),
+              json!({"active":"d","sets":[{"id":"d","name":"a","layout":"5","cells":[{"symbol":"BTCUSDT","iv":"1h"}]}]}),
+              json!({"active":"d","sets":[{"id":"d","name":"a","layout":"16","cells":cells17}]}),
+              json!({"active":"d","sets":[{"id":"d","name":"a","layout":"1","cells":[{"symbol":"B","iv":"1h"}]}]}),
+              json!({"active":"d","sets":[{"id":"d","name":"a","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h","footprint":1}]}]}),
+              json!({"active":"d","sets":[{"id":"d","name":"a","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h","x":{"deep":1}}]}]}),
+              json!({"active":"d","sets":[{"id":"d","name":"a","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h","a":1,"b":1,"c":1,"d":1,"e":1,"f":1,"g":1}]}]}),
+              json!([]),json!("default"),json!(true)] {
+   assert!(!field("settings","chartLayouts",&bad),"chartLayouts {bad}");
+  }
+  assert!(crate::sync::SETTINGS_FIELDS.contains(&"chartLayouts"));
   assert!(crate::sync::SETTINGS_FIELDS.contains(&"drawingsHidden"));
   for flag in ["mainInverted","watchMoveAlert","drawingOverlaysShown","drawingsHidden"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");

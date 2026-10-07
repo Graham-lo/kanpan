@@ -180,7 +180,13 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 画线面板「隐藏画线」（2026-10-06，布尔）：看行情时把画线整片藏起来，提醒照常。
  // 不复用已退役的 `showDrawings`（RETIRED_SETTINGS_FIELDS 里，老客户端写的是另一种语义）。
  "drawingsHidden",
+ // 电脑网页版的多套图表布局（2026-10-07，整份布局集一个对象，规则见 `sync_validation::chart_layouts`）。
+ // 只有网页版读写，不在 iOS 的 PrefsFieldPlan 契约里，见 WEB_ONLY_SETTINGS_FIELDS。
+ "chartLayouts",
 ];
+/// 只有网页版读写、不进 iOS 契约（`contract/settings-fields.json` 由 iOS `PrefsFieldPlan` 生成）的设置字段。
+/// 手机端原样留着不认识的键，所以它们不会被手机抹掉；对账测试把契约 ∪ 这张表当成白名单应有的样子。
+pub const WEB_ONLY_SETTINGS_FIELDS:&[&str]=&["chartLayouts"];
 /// 服务端先行上线、客户端还没 `make sync-contract` 进契约的设置字段。
 ///
 /// 服务端总是先于客户端部署，所以一个新设置在一段时间里只在这边有。对账测试把契约
@@ -572,7 +578,7 @@ mod tests {
   let mut have:Vec<String>=allowlist("settings").iter().map(|s|s.to_string()).collect();
   have.sort_unstable();
   let mut want=contract_wire_keys();
-  for ahead in SERVER_AHEAD_SETTINGS_FIELDS {if !want.iter().any(|k|k==ahead) {want.push(ahead.to_string())}}
+  for ahead in SERVER_AHEAD_SETTINGS_FIELDS.iter().chain(WEB_ONLY_SETTINGS_FIELDS) {if !want.iter().any(|k|k==ahead) {want.push(ahead.to_string())}}
   want.sort_unstable();
   let missing:Vec<_>=want.iter().filter(|k|!have.contains(k)).collect();
   let extra:Vec<_>=have.iter().filter(|k|!want.contains(k)).collect();
@@ -622,6 +628,7 @@ mod tests {
    json!(["MA"]),json!(["VOL"]),json!(["1m"]),json!(["BTCUSDT"]),json!(["binance/usd_m/BTCUSDT"]),json!([30,70]),
    json!("1m"),json!("sage"),json!("direct"),json!("custom"),json!("crypto"),json!("today"),
    json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),json!({}),
+   json!({"active":"default","sets":[{"id":"default","name":"默认","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h"}]}]}),
   ];
   let accepts=|key:&str|{
    [key.to_string(),format!("{key}/MA"),format!("{key}/MA/0"),format!("{key}/hour")].iter()
@@ -629,7 +636,7 @@ mod tests {
   };
   // The probe sweep would be vacuous if `field` said yes to anything, so prove it discriminates.
   assert!(!accepts("telepathy"),"a name with no rule must be refused for every probe");
-  for key in contract_wire_keys().into_iter().chain(SERVER_AHEAD_SETTINGS_FIELDS.iter().map(|k|k.to_string())) {
+  for key in contract_wire_keys().into_iter().chain(SERVER_AHEAD_SETTINGS_FIELDS.iter().chain(WEB_ONLY_SETTINGS_FIELDS).map(|k|k.to_string())) {
    assert!(accepts(&key),
     "`{key}` is on the settings allowlist but sync_validation::field has no rule that accepts \
      any probe value for it. Either the rule is missing — and the field is a poison pill that \

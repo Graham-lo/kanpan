@@ -6,6 +6,8 @@
  *     · 设置、自选：比「本机最后一次改」和「云端字段时间戳里最新的」，谁新用谁；
  *       云端一条自选都没有时保留本机的（新账号不该把自选清空）。
  *     · 画线、提醒：取并集；云端已经删掉（墓碑）的那几条不从本机带回去。
+ *     · 布局集（chartLayouts）单独比时间：换品种 / 周期只算「动了布局」，不让指标看起来比手机上的新；
+ *       云端新时以云端为准，本机多出来的几套接在后面（layouts.mergeBooks），不丢。
  *     · 上一次在这台电脑同步的是另一个账号（override）：云端整体覆盖，不把上一个人的东西带进来。
  */
 import type { State } from '../app/store'
@@ -13,12 +15,13 @@ import type { Alert } from '../alerts/shape'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
   type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, webSetting, decodeSetting, putSetting, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
-  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, validSymbol, pausedLineAlerts,
+  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, validSymbol, pausedLineAlerts, seenWhenUndecodable,
 } from './codec'
+import { LAYOUTS_FIELD, cleanBook, liveBook, mergeBooks } from '../app/layouts'
 import type { Owned, SyncStore } from './store'
-import { type SyncObject, keyOf, same } from './types'
+import { type Json, type SyncObject, keyOf, same } from './types'
 
-export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden'>>
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active'>>
 export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
 export type Prints = Partial<Record<Part, string>>
 
@@ -30,9 +33,15 @@ export const OWNED: Owned = {
   alerts: new Set(['kind', 'symbol', 'market', 'drawingID', 'lines', 'condition', 'armedAt', 'once', 'status', 'firedAt', 'firedPrice', 'dueAt', 'reviewID', 'title', 'created', 'note', 'webhook', 'webhookText', 'rule']),
 }
 
+/** 设置里除布局集以外的那几项（指标、周期条、对比……） */
+const CORE_FIELDS = SETTINGS_FIELDS.filter(f => f !== LAYOUTS_FIELD)
+export const corePrint = (s: WebState): string => JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.compareSymbols ?? [], s.drawHidden === true])
+/** 布局集（活数据抄回之后）的指纹 */
+export const layoutsPrint = (s: WebState): string => (s.layouts && s.layout && s.cells ? JSON.stringify(liveBook({ layouts: s.layouts, layout: s.layout, cells: s.cells, active: s.active ?? 0 })) : '')
+
 export function fingerprint(s: WebState): Record<Part, string> {
   return {
-    settings: JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.compareSymbols ?? [], s.drawHidden === true]),
+    settings: corePrint(s) + layoutsPrint(s),
     favorites: JSON.stringify(s.watch),
     drawings: JSON.stringify(s.drawings),
     alerts: JSON.stringify(s.alerts),
@@ -113,8 +122,9 @@ export function adoptNewSettings(s: WebState, store: SyncStore): string[] {
   const body = cloud && !cloud.deleted ? cloud.body : {}
   const changed: string[] = []
   for (const f of missing) {
+    if (f === LAYOUTS_FIELD) { changed.push(...adoptBook(s, body[f], seen, 'cloud')); continue }
     const d = decodeSetting(f, body[f], s)
-    if (d === undefined) { seen[f] = webSetting(s, f); continue }
+    if (d === undefined) { seen[f] = seenWhenUndecodable(s, f, body[f]); continue }
     seen[f] = d
     if (same(d, webSetting(s, f))) continue
     putSetting(s, f, d); changed.push(f)
@@ -122,7 +132,25 @@ export function adoptNewSettings(s: WebState, store: SyncStore): string[] {
   return changed
 }
 
-export interface Edited { settings: number; favorites: number }
+/**
+ * 布局集第一次和云端对上：云端没有 → seen 记 null（本机这份推上去）；有 → seen 记云端那份，再按 how 定本机成什么样：
+ *   cloud：以云端为准，本机多出来的几套接在后面；local：以本机为准，云端多出来的几套接在后面（之后记账推上去）；
+ *   replace：整份用云端的（换了人）。返回改了的字段
+ */
+export function adoptBook(s: WebState, cloud: Json | undefined, seen: Record<string, Json>, how: 'cloud' | 'local' | 'replace'): string[] {
+  const d = decodeSetting(LAYOUTS_FIELD, cloud, s)
+  if (d === undefined) { seen[LAYOUTS_FIELD] = seenWhenUndecodable(s, LAYOUTS_FIELD, cloud); return [] }
+  seen[LAYOUTS_FIELD] = d
+  const local = webSetting(s, LAYOUTS_FIELD)
+  const cb = cleanBook(d), lb = cleanBook(local)
+  const want = (how !== 'replace' && cb && lb ? (how === 'cloud' ? mergeBooks(cb, lb) : mergeBooks(lb, cb)) : d) as unknown as Json
+  if (same(want, local)) return []
+  putSetting(s, LAYOUTS_FIELD, want)
+  return [LAYOUTS_FIELD]
+}
+
+/** 本机「最后一次改」的时刻：设置（指标、周期条……）、自选、布局集各一个 */
+export interface Edited { settings: number; favorites: number; layouts?: number }
 
 /** 第一次对上（账本是空的、刚全量拉完）：按规则合并进页面状态，之后正常记账会把本机多出来的推上去 */
 export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, edited: Edited, override: boolean): Applied {
@@ -130,13 +158,19 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   const a = store.a
   // 本机「最后一次改」是本机钟，云端字段时间是服务器钟（op.timestamp = 本机钟 + offset）：先换到服务器钟上再比
   const onServer = (t: number): number => (t > 0 && Number.isFinite(a.offset) ? t + a.offset : t)
-  edited = { settings: onServer(edited.settings), favorites: onServer(edited.favorites) }
+  edited = { settings: onServer(edited.settings), favorites: onServer(edited.favorites), layouts: onServer(edited.layouts ?? 0) }
   // 设置：云端新（或覆盖）就装云端的；本机新就什么都不装、seen 留空，记账时每个字段都会和云端比一遍
   const cloudSettings = store.get('settings', SETTINGS_ID)
   a.seen = {}
   // 换了人：先回出厂再装云端的——云端没有（新账号）或缺了的字段不能留着上一个账号的
   const reset = override ? resetSettings(s) : []
-  if (override || !(edited.settings > lastTouched(cloudSettings, SETTINGS_FIELDS))) r.settings = applySettings(s, cloudSettings, a.seen)
+  if (override || !(edited.settings > lastTouched(cloudSettings, CORE_FIELDS))) r.settings = applySettings(s, cloudSettings, a.seen, CORE_FIELDS)
+  // 布局集：换了人整份用云端的（上面已回到出厂）；同一个人时谁新以谁为准，另一边多出来的几套接在后面
+  {
+    const body = cloudSettings && !cloudSettings.deleted ? cloudSettings.body : {}
+    const how = override ? 'replace' : (edited.layouts ?? 0) > lastTouched(cloudSettings, [LAYOUTS_FIELD]) ? 'local' : 'cloud'
+    r.settings.push(...adoptBook(s, body[LAYOUTS_FIELD], a.seen, how))
+  }
   r.settings = [...new Set([...reset, ...r.settings])]
 
   // 自选
