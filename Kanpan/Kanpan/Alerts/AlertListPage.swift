@@ -20,6 +20,9 @@ struct AlertListContext {
   var releaseQuote: () -> Void = {}
   /// 这只品种（规范键）能不能建条件提醒、默认值是什么。nil = 不给（没登录、不是币安 U 本位）。
   var conditions: (String) -> ConditionAlertDefaults? = { _ in nil }
+  /// 空态那颗「去创建」：去建一条（2026-10-08）。nil = 不摆那颗药丸。
+  /// 宿主给的是开图上这只的「提醒」表；从创建页右上推进来的那层改成退回创建页，「提醒」表里改成推创建页。
+  var onCreate: (() -> Void)? = nil
 }
 
 /// 提醒总表：「全部预警」。
@@ -117,7 +120,8 @@ struct AlertListPage: View {
       .padding(.bottom, Space.section)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .background((onAppGround ? t.app : AlertPageStyle.background(t)).ignoresSafeArea())
+    // 琉璃底：推在「我的」里是整页（带光斑，和「我的」同一块料），表里不带光斑。
+    .background { AlertPageStyle.backdrop(lobes: onAppGround) }
     // 「这张表在不在」的记号。**`children: .contain` 那一句不能省**：光写
     // `accessibilityIdentifier` 会把这个名字往下盖到每个子元素上（`DisplaySettingsSection`
     // 那一排配色卡踩过同一个坑），`.contain` 让它只当一个容器，子元素各留各的名字。
@@ -160,29 +164,56 @@ struct AlertListPage: View {
         .transition(.opacity)
         .accessibilityIdentifier("alerts.pinned.\(kind.rawValue)")
     case .pinEmpty:
-      Text("暂无提醒")
-        .font(TypeScale.body).foregroundStyle(t.ink3)
+      // 这一组下面紧跟着「提醒」表那颗通栏「创建提醒」，这里只说一句怎么建，不再摆第二颗按钮
+      // （同一个动作只留一个入口）。
+      Text("这只还没有提醒 · 点下面「创建提醒」，或在图上长按后点「创建提醒」")
+        .font(TypeScale.footnote).foregroundStyle(t.ink3)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, Inset.card)
+        .padding(.vertical, Space.m)
         .frame(maxWidth: .infinity, minHeight: Inset.rowMin, alignment: .leading)
         .modifier(AlertCardSlice(top: true, bottom: true))
         .accessibilityIdentifier("alerts.pinned.empty")
     }
   }
 
-  /// 空态：一枚实心图标 + 一句短字（UI 审查 2026-09-24：空态 = 36 图标 + 15 字，不写解释句）。
+  /// 空态（2026-10-08）：一句有用的话说清在哪儿建，下面一颗「去创建」药丸（宿主给了 `onCreate` 才摆）。
+  /// 和板块、账号卡的空态同一种写法：一句话一颗药丸，不堆解释。
   private var empty: some View {
-    VStack(spacing: Space.s) {
-      Image(systemName: "bell.fill")
-        .font(.system(size: ControlMetrics.emptyGlyph))
-        .foregroundStyle(t.ink3)
-        .accessibilityHidden(true)
-      Text("暂无预警").font(TypeScale.body).foregroundStyle(t.ink3)
+    AlertEmptyState(title: "还没有提醒",
+                    hint: "在图上长按后点「创建提醒」，或点顶栏的铃铛",
+                    id: "alerts.empty", onCreate: context.onCreate)
+      // 整页居中：高度占满滚动容器，减掉外层上下内边距，免得空态一出现就能划动。
+      .containerRelativeFrame(.vertical) { height, _ in max(0, height - Space.m - Space.section) }
+  }
+}
+
+/// 提醒几页共用的空态：一句话（标题 · 怎么建）+ 一颗「去创建」药丸。
+/// 文字那一块合成一个辅助功能元素（标识符挂在它上面），药丸是单独一颗按钮（`alerts.empty.create`）。
+struct AlertEmptyState: View {
+  var title: String
+  var hint: String
+  var id: String
+  var onCreate: (() -> Void)?
+  @Environment(\.panelTheme) private var t
+
+  var body: some View {
+    VStack(spacing: Space.l) {
+      VStack(spacing: Space.xs) {
+        Text(title).font(TypeScale.body).foregroundStyle(t.ink2)
+        Text(hint).font(TypeScale.footnote).foregroundStyle(t.ink3)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityIdentifier(id)
+      if let onCreate {
+        LiuliPill("去创建", systemImage: "bell.badge", fill: false, action: onCreate)
+          .accessibilityIdentifier(id + ".create")
+      }
     }
+    .padding(.horizontal, Space.xl)
     .frame(maxWidth: .infinity)
-    // 整页居中：高度占满滚动容器，减掉外层上下内边距，免得空态一出现就能划动。
-    .containerRelativeFrame(.vertical) { height, _ in max(0, height - Space.m - Space.section) }
-    .accessibilityElement(children: .combine)
-    .accessibilityIdentifier("alerts.empty")
   }
 }
 

@@ -16,42 +16,59 @@ import SwiftUI
 
 /// 提醒这几页的页面底与卡片底。
 ///
-/// 浅色：页面 `raised`、卡片 `raised2`（三套皮肤浅色下两者分得开）。
-/// 深色：`raised` 和 `raised2` 只差一两个色阶（青苔深 `#131C18` / `#1A241F`），卡片几乎化进
-/// 页面里；深色下页面退到更深的 `app`，卡片仍是 `raised2`——不新造颜色，只换页面那一层。
+/// 2026-10-08 起换成全 app 共用的琉璃料（`LiuliMaterial`）：页面是琉璃底（`LiuliBackdrop`，
+/// 弹层里不要光斑）、卡片是玻璃卡（`.liuliCard()`，1/3pt 材质细线描边 + 顶上一线高光）、
+/// 输入井与分段槽是墨色薄纱（`well`）。原来那套「页面 `raised` / 卡片 `raised2`」退场。
 enum AlertPageStyle {
-  static func background(_ t: PanelTheme) -> Color { t.dark ? t.app : t.raised }
-  static func card(_ t: PanelTheme) -> Color { t.raised2 }
+  /// 页面底。`lobes`：整页（「我的 › 全部预警」）带光斑，弹层里不带（和面板弹层同一块料）。
+  static func backdrop(lobes: Bool = false) -> some View { LiuliBackdrop(lobes: lobes) }
+  /// 卡片里那一口输入井、分段控件的槽。
+  static func well(_ t: PanelTheme) -> Color { LiuliMaterial(t).well }
+  /// 卡片玻璃（摊成一片一片的总表用；整张卡片走 `.liuliCard()`）。
+  static func card(_ t: PanelTheme) -> Color { LiuliMaterial(t).glass }
 }
 
-/// 一张分组卡片：`raised2` 底、`Radius.m` 圆角，里头的行首尾相接。
+/// 一张分组卡片：琉璃玻璃卡、`Radius.m` 圆角，里头的行首尾相接。
 struct AlertGroupCard<Content: View>: View {
   @ViewBuilder var content: () -> Content
-  @Environment(\.panelTheme) private var t
 
   var body: some View {
     VStack(spacing: 0) { content() }
       .frame(maxWidth: .infinity)
-      .background(AlertPageStyle.card(t))
       .clipShape(RoundedRectangle(cornerRadius: Radius.m, style: .continuous))
+      .liuliCard()
   }
 }
 
 /// 分组卡片摊开成一片一片（总表是 `LazyVStack`，整张卡片没法包住懒加载的行）：
-/// 每片同一个 `raised2` 底，卡片第一片上圆角、最后一片下圆角，拼起来和 `AlertGroupCard` 一样。
+/// 每片同一块玻璃，卡片第一片上圆角、最后一片下圆角，拼起来和 `AlertGroupCard` 一样——
+/// 描边只画这一片该有的那几条边（中间几片只有左右两条），顶上那线高光只在第一片。
 struct AlertCardSlice: ViewModifier {
   var top: Bool
   var bottom: Bool
   @Environment(\.panelTheme) private var t
 
   func body(content: Content) -> some View {
+    let m = LiuliMaterial(t)
     let shape = UnevenRoundedRectangle(
       topLeadingRadius: top ? Radius.m : 0, bottomLeadingRadius: bottom ? Radius.m : 0,
       bottomTrailingRadius: bottom ? Radius.m : 0, topTrailingRadius: top ? Radius.m : 0,
       style: .continuous)
     content
       .frame(maxWidth: .infinity)
-      .background(AlertPageStyle.card(t))
+      .background {
+        shape.fill(m.glass)
+          .overlay {
+            // 把描边往没有圆角的那一头伸出去再裁掉：拼缝处不画横线，左右两条接成一整条。
+            shape.strokeBorder(m.cardEdge, lineWidth: LiuliMaterial.hairline)
+              .padding(.top, top ? 0 : -2)
+              .padding(.bottom, bottom ? 0 : -2)
+              .clipped()
+          }
+          .overlay(alignment: .top) {
+            if top && !m.isClassic { m.topHighlight(inset: Radius.m) }
+          }
+      }
       .clipShape(shape)
   }
 }
@@ -63,7 +80,7 @@ struct AlertCardDivider: View {
   @Environment(\.panelTheme) private var t
 
   var body: some View {
-    Rectangle().fill(t.hair).frame(height: 1)
+    Rectangle().fill(LiuliMaterial(t).rule).frame(height: LiuliMaterial.hairline)
       .padding(.leading, Inset.card + leading)
   }
 }
@@ -156,7 +173,7 @@ struct AlertRecordRow: View {
             Image(systemName: "link")
               .font(TypeScale.caption2Emph)
               .foregroundStyle(t.ink3)
-              .accessibilityLabel("Webhook")
+              .accessibilityLabel("网络回调")
               .accessibilityIdentifier("alerts.row.webhook")
           }
         }

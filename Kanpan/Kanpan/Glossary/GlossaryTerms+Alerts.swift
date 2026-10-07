@@ -9,6 +9,6 @@ extension GlossaryTerm {
 
   static let webhook = GlossaryTerm(
     id: "webhook",
-    title: "Webhook",
-    body: "触发时向这个地址发一条 JSON，里面是一句提醒文字，格式由我们定好。\n可以接到自己的机器人或群里；点「发一条测试」先试一下。")
+    title: "网络回调",
+    body: "提醒响的时候，往你填的这个网址发一条消息（也叫 Webhook），内容是一句提醒文字，格式由我们定好。\n可以接到自己的机器人或群里；点「发一条测试」先试一下。")
 }

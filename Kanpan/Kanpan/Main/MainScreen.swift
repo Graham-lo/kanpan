@@ -1901,7 +1901,9 @@ struct MainScreen: View {
       decimals: { [picker] symbol in picker.info(for: InstrumentID.canonical(symbol))?.knownPriceDecimals },
       prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
       releaseQuote: { [weak quotes] in quotes?.releaseNamed() },
-      conditions: { symbol in alertConditions(symbol) })
+      conditions: { symbol in alertConditions(symbol) },
+      // 总表空着时那颗「去创建」：开图上这只的「提醒」表（顶栏铃铛同一张）。
+      onCreate: { openAlertHub() })
   }
 
   /// 创建提醒页的条件提醒默认值。条件提醒要账号（服务端判、跨设备同步），而且协议只收币安 U 本位：

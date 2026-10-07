@@ -80,17 +80,15 @@ enum AlertFormKind: String, Hashable, CaseIterable {
 
 extension AlertStore {
   /// 表单的「创建提醒 / 保存」落账。新建（图上十字线那颗「创建提醒」）与编辑（创建页底下
-  /// 「当前提醒」那一行）共用这一处：建完顺手要通知权限、登记推送——按方案，第一次建提醒
-  /// 才问权限。编辑（`editing` 给了 id）不再问。
+  /// 「当前提醒」那一行）共用这一处：建完顺手登记推送（有权限才登记）。
+  /// 通知权限 2026-10-08 起不在这儿问了：改到创建页第一次露面时问（`AlertForm.askOnce`）——
+  /// 点「创建提醒」那一下系统弹窗盖上来，人会以为提醒没建上。编辑（`editing` 给了 id）不碰推送。
   @discardableResult
   func commit(_ draft: AlertDraft, editing id: String? = nil) -> KanpanCore.Alert? {
     if let rule = draft.rule {
       if let id { return updateCondition(id: id, rule: rule, webhook: draft.webhook) }
       guard let alert = addCondition(symbol: draft.quote.symbol, rule: rule, webhook: draft.webhook) else { return nil }
-      Task {
-        await AlertNotifications.requestAuthorization()
-        await MainActor.run { PushRegistration.startIfAuthorized() }
-      }
+      PushRegistration.startIfAuthorized()
       return alert
     }
     let label = draft.quote.current(draft.target)
@@ -103,10 +101,7 @@ extension AlertStore {
                          label: label, condition: draft.condition, webhook: draft.webhook,
                          webhookText: nil, note: nil)
     guard alert != nil else { return nil }
-    Task {
-      await AlertNotifications.requestAuthorization()
-      await MainActor.run { PushRegistration.startIfAuthorized() }
-    }
+    PushRegistration.startIfAuthorized()
     return alert
   }
 }
@@ -172,6 +167,12 @@ struct AlertForm: View {
   @State private var maSide: AlertRule.Side = .above
   @State private var wallText = "1M"
   @State private var webhookURL = ""
+  /// 这一页问过通知权限没有（`askOnce`）。
+  @State private var askedPermission = false
+  /// 内容与上下让位的高度：合起来就是这张表刚好装下整页要的高度（`alertFormFitHeight`）。
+  @State private var contentHeight: CGFloat = 0
+  @State private var chromeHeight: CGFloat = 0
+  @Environment(\.alertFormFitHeight) private var fitHeight
   @State private var testing = false
   @State private var seeded = false
   @FocusState private var focus: Field?
@@ -217,10 +218,20 @@ struct AlertForm: View {
       .padding(.top, Space.m)
       .padding(.bottom, Space.section)
       .animation(.snappy, value: hasWebhook)
+      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0; reportFit() }
+    }
+    // 量这一页上下被系统让掉的那两截（导航栏、底部安全区）。垫在键盘下面量：键盘起来时不算进去，
+    // 不然一敲价格整张表就跟着键盘长高。
+    .background {
+      Color.clear
+        .ignoresSafeArea(.keyboard)
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top + $0.safeAreaInsets.bottom } action: {
+          chromeHeight = $0; reportFit()
+        }
     }
     .scrollBounceBehavior(.basedOnSize)
     .scrollDismissesKeyboard(.interactively)
-    .background(AlertPageStyle.background(t).ignoresSafeArea())
+    .background { AlertPageStyle.backdrop() }
     .navigationTitle(existing == nil ? "创建提醒" : "编辑提醒")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
@@ -231,6 +242,7 @@ struct AlertForm: View {
       }
     }
     .onAppear {
+      askOnce()
       seed(quote)
       // 要价按宿主解析出来的规范键要；代号（尤其 `BTC/USD`）直接交出去会被当成币安的裸代号。
       // 每次露面都要一次：推进「全部预警」或编辑页再退回来时，上一次那一只已经在 `onDisappear` 里放掉了。
@@ -240,6 +252,26 @@ struct AlertForm: View {
     .onDisappear { release() }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alerts.new.page")
+  }
+
+  /// 把「刚好装下这一页」的高度报给外面那张表（只有新建那张表接，`AlertComposeSheet`）。
+  private func reportFit() {
+    guard existing == nil, let fitHeight, contentHeight > 0 else { return }
+    fitHeight(contentHeight + chromeHeight)
+  }
+
+  // ---------------------------------------------------------------- 通知权限
+
+  /// 新建页第一次露面时问一次通知权限（2026-10-08）。没问过（`.notDetermined`）才会真弹，
+  /// 问过的（允许或拒绝）`requestAuthorization` 直接回，所以整台机器上一辈子只弹一次；
+  /// 编辑页不问。点「创建提醒」那一下不再问。
+  private func askOnce() {
+    guard existing == nil, !askedPermission else { return }
+    askedPermission = true
+    Task {
+      await AlertNotifications.requestAuthorization()
+      PushRegistration.startIfAuthorized()
+    }
   }
 
   // ---------------------------------------------------------------- 预填
@@ -395,7 +427,7 @@ struct AlertForm: View {
       if kinds.count <= 2 {
         PanelSegment(options: kinds.map { ($0.title, $0) },
                      selection: kind, id: "alerts.new.condition",
-                     track: AlertPageStyle.background(t)) { pick($0) }
+                     track: AlertPageStyle.well(t)) { pick($0) }
       } else {
         Menu {
           ForEach(kinds, id: \.self) { item in
@@ -423,7 +455,7 @@ struct AlertForm: View {
       Spacer(minLength: Space.s)
       PanelSegment(options: [("高于", AlertRule.Side.above), ("低于", AlertRule.Side.below)],
                    selection: fundingSide, id: "alerts.new.side",
-                   track: AlertPageStyle.background(t)) { fundingSide = $0 }
+                   track: AlertPageStyle.well(t)) { fundingSide = $0 }
     }
     AlertCardDivider()
     paramRow("费率") {
@@ -466,7 +498,7 @@ struct AlertForm: View {
       Spacer(minLength: Space.s)
       PanelSegment(options: [("站上", AlertRule.Side.above), ("跌破", AlertRule.Side.below)],
                    selection: maSide, id: "alerts.new.side",
-                   track: AlertPageStyle.background(t)) { maSide = $0 }
+                   track: AlertPageStyle.well(t)) { maSide = $0 }
     }
   }
 
@@ -540,7 +572,7 @@ struct AlertForm: View {
     .frame(maxWidth: .infinity)
     .background {
       let well = RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-      well.fill(AlertPageStyle.background(t))
+      well.fill(AlertPageStyle.well(t))
         .overlay { well.fill(focused ? t.amberSoft : .clear) }
         .overlay { well.strokeBorder(focused ? t.amberLine : .clear, lineWidth: 1) }
     }
@@ -574,7 +606,7 @@ struct AlertForm: View {
     .background {
       // 聚焦时井底微微提亮一层强调色的薄纱，描边换成强调色——一眼看得出「正在输这儿」。
       let well = RoundedRectangle(cornerRadius: Radius.s, style: .continuous)
-      well.fill(AlertPageStyle.background(t))
+      well.fill(AlertPageStyle.well(t))
         .overlay { well.fill(focused ? t.amberSoft : .clear) }
         .overlay { well.strokeBorder(focused ? t.amberLine : .clear, lineWidth: 1) }
     }
@@ -597,7 +629,7 @@ struct AlertForm: View {
   private var notifyCard: some View {
     AlertGroupCard {
       HStack(spacing: Space.m) {
-        label("Webhook", term: .webhook)
+        label("网络回调", term: .webhook)
         TextField("https://", text: $webhookURL)
           .keyboardType(.URL)
           .textInputAutocapitalization(.never)
@@ -610,7 +642,7 @@ struct AlertForm: View {
           .foregroundStyle(t.ink)
           .focused($focus, equals: .url)
           .accessibilityIdentifier("alerts.new.webhook.url")
-          .accessibilityLabel("Webhook 地址")
+          .accessibilityLabel("网络回调地址")
       }
       .padding(.horizontal, Inset.card)
       .frame(minHeight: Inset.rowMin)
@@ -771,6 +803,11 @@ struct AlertForm: View {
   }
 }
 
+extension EnvironmentValues {
+  /// 新建提醒页把「刚好装下整页」的高度报给它所在的那张表（表的停靠高度跟内容走）。nil = 没人接。
+  @Entry var alertFormFitHeight: ((CGFloat) -> Void)? = nil
+}
+
 /// 主按钮的按压反馈：按下缩一点、松手弹回。只动比例，不动颜色（禁用态由 `PanelDisabled` 管）。
 struct AlertPressStyle: ButtonStyle {
   @Environment(\.isEnabled) private var enabled
@@ -801,12 +838,36 @@ struct AlertComposeSheet: View {
 
   @State private var showAll = false
   @State private var editing: String?
+  /// 新建页刚好装下的高度（量出来的，`AlertForm.reportFit`）。nil = 还没量到。
+  @State private var fitted: CGFloat?
+  @State private var detent: PresentationDetent = .large
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
 
+  /// 停靠高度（2026-10-08）：刚好装下新建页那一档 + 拉满。推进「全部预警」或编辑页时拉满，退回来再落回那一档。
+  private var detents: Set<PresentationDetent> {
+    var out: Set<PresentationDetent> = [.large]
+    if let fitted { out.insert(.height(fitted)) }
+    return out
+  }
+
+  private var pushed: Bool { showAll || editing != nil }
+
+  /// 量到新的高度：原来就停在「刚好」那一档（或第一次量到）才跟着走；人已经拉满了就不往回收。
+  private func fit(_ height: CGFloat) {
+    let next = height.rounded(.up)
+    guard abs(next - (fitted ?? 0)) >= 1 else { return }
+    let following = fitted.map { detent == .height($0) } ?? true
+    fitted = next
+    if following, !pushed { detent = .height(next) }
+  }
+
   var body: some View {
     let key = context.quote(symbol)?.symbol ?? InstrumentID.canonical(symbol)
-    NavigationStack {
+    var inner = context
+    // 总表空着时那颗「去创建」：退回这张创建页。
+    inner.onCreate = { showAll = false }
+    return NavigationStack {
       AlertForm(initialSymbol: symbol, initialPrice: price, resolve: context.quote,
                 prepare: context.prepareQuote, release: context.releaseQuote,
                 records: AlertRecordText.records(store.all, symbol: key),
@@ -816,6 +877,7 @@ struct AlertComposeSheet: View {
                 conditions: context.conditions(key)) { draft in
         if let alert = store.commit(draft) { Haptics.success(); onCreated(alert) }
       }
+      .environment(\.alertFormFitHeight) { fit($0) }
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
           Button(role: .close) { dismiss() }
@@ -828,7 +890,7 @@ struct AlertComposeSheet: View {
         }
       }
       .navigationDestination(isPresented: $showAll) {
-        AlertListPage(store: store, context: context, presentedAsSheet: false)
+        AlertListPage(store: store, context: inner, presentedAsSheet: false)
       }
       .navigationDestination(item: $editing) { id in
         if let alert = store.all.first(where: { $0.id == id }) {
@@ -843,6 +905,10 @@ struct AlertComposeSheet: View {
     }
     .tint(t.amber)
     .panelPageInset()
+    .presentationDetents(detents, selection: $detent)
+    .onChange(of: pushed) { _, now in
+      withAnimation(.snappy) { detent = now ? .large : (fitted.map { .height($0) } ?? .large) }
+    }
   }
 }
 

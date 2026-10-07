@@ -89,7 +89,8 @@ struct AlertSoundPage: View {
       .padding(.bottom, Space.l)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .background(t.raised.ignoresSafeArea())
+    // 从设置推进来的一层，跟设置同一块琉璃底（带光斑）。
+    .background { LiuliBackdrop() }
     .navigationTitle("铃声")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {

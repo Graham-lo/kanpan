@@ -53,7 +53,7 @@ struct AlertHubSheet: View {
         }
       }
       .safeAreaInset(edge: .top, spacing: 0) { tabs }
-      .background(AlertPageStyle.background(t).ignoresSafeArea())
+      .background { AlertPageStyle.backdrop() }
       .navigationTitle("提醒")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -94,14 +94,15 @@ struct AlertHubSheet: View {
     .labelsHidden()
     .padding(.horizontal, hPad)
     .padding(.vertical, Space.s)
-    .background(AlertPageStyle.background(t))
     .accessibilityIdentifier("alerts.hub.tab")
   }
 
   // ---------------------------------------------------------------- 列表
 
   private var listPane: some View {
-    AlertListPage(store: store, context: context, presentedAsSheet: false, pinned: key, title: nil)
+    var inHub = context
+    inHub.onCreate = { composing = true }
+    return AlertListPage(store: store, context: inHub, presentedAsSheet: false, pinned: key, title: nil)
       .safeAreaInset(edge: .bottom, spacing: 0) { createButton }
   }
 
@@ -119,7 +120,6 @@ struct AlertHubSheet: View {
     .padding(.horizontal, hPad)
     .padding(.top, Space.s)
     .padding(.bottom, Space.s)
-    .background(AlertPageStyle.background(t).ignoresSafeArea())
     .accessibilityIdentifier("alerts.hub.create")
   }
 
@@ -158,7 +158,9 @@ struct AlertHubSheet: View {
               .frame(maxWidth: .infinity)
               .containerRelativeFrame(.vertical) { height, _ in max(0, height - Space.m - Space.section) }
           } else {
-            placeholder("暂无记录", glyph: "clock.fill", id: "alerts.log.empty")
+            AlertEmptyState(title: "还没有响过的提醒", hint: "提醒响了会按天记在这里",
+                            id: "alerts.log.empty", onCreate: { tab = .list; composing = true })
+              .containerRelativeFrame(.vertical) { height, _ in max(0, height - Space.m - Space.section) }
           }
         } else {
           LazyVStack(alignment: .leading, spacing: 0) {
@@ -188,7 +190,7 @@ struct AlertHubSheet: View {
     .accessibilityIdentifier("alerts.log")
   }
 
-  /// 空态：一枚实心图标 + 一句短字，和总表的「暂无预警」同一套。
+  /// 没登录那一句：一枚实心图标 + 一句短字（账号入口在「我的」，这里不另摆登录按钮）。
   private func placeholder(_ text: String, glyph: String, id: String) -> some View {
     VStack(spacing: Space.s) {
       Image(systemName: glyph)

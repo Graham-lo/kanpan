@@ -448,7 +448,9 @@ import XCTest
     XCTAssertTrue(app.buttons["panel.done"].waitForExistence(timeout: 5), "深链开的总表左上没有关闭")
     let empty = app.descendants(matching: .any).matching(identifier: "alerts.empty").firstMatch
     XCTAssertTrue(empty.waitForExistence(timeout: 8), "响过的那条还列在总表里：\(app.debugDescription)")
-    XCTAssertTrue(app.staticTexts["暂无预警"].exists, "空态没写「暂无预警」")
+    // 2026-10-08 空态改成一句有用的话 + 一颗「去创建」。
+    XCTAssertTrue(empty.label.hasPrefix("还没有提醒"), "空态没写「还没有提醒」：\(empty.label)")
+    XCTAssertTrue(app.buttons["alerts.empty.create"].exists, "空态下面没有「去创建」")
     XCTAssertFalse(app.buttons["再次提醒"].exists, "不该再有「再次提醒」")
     XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已触发")).count, 0,
                    "总表里不该出现「已触发」")
