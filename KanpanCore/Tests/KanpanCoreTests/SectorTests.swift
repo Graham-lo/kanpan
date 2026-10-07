@@ -89,7 +89,12 @@ struct SectorTests {
   @Test func usHasTheTwelveMediumSegments() {
     let want = ["gpu", "mem", "equip", "optic", "hyper", "neo", "server",
                 "power", "edge", "robot", "software", "app"]
-    #expect(SectorCatalog.sectors(.us).map(\.id) == want)
+    #expect(Array(SectorCatalog.sectors(.us).map(\.id).prefix(12)) == want)
+    #expect(SectorCatalog.usAIIDs == want)
+    // 2026-10-08 手工归类的 11 个排在 AI 细分后面。
+    #expect(Array(SectorCatalog.sectors(.us).map(\.id).dropFirst(12)) ==
+            ["cryptoeq", "bank", "consumer", "media", "pharma", "auto", "space",
+             "resource", "etf", "lev", "inverse"])
     // 「硬件」是 2026-09-18 多分出来的一格，同日按用户要求并回「算力芯片」。
     #expect(SectorCatalog.sector(id: "hardware") == nil)
     #expect(SectorCatalog.sector(id: "gpu")?.members.count == 10)
@@ -100,9 +105,9 @@ struct SectorTests {
 
   @Test func catalogIsCryptoThenUSAndIDsAreUnique() {
     let all = SectorCatalog.all
-    #expect(all.count == 36)
+    #expect(all.count == 47)
     #expect(all.prefix(24).allSatisfy { $0.market == .crypto })
-    #expect(all.suffix(12).allSatisfy { $0.market == .us })
+    #expect(all.suffix(23).allSatisfy { $0.market == .us })
     #expect(Set(all.map(\.id)).count == all.count)
     for d in all { #expect(SectorCatalog.sector(id: d.id) == d) }
     #expect(SectorCatalog.sector(id: "silicon") == nil, "粗段不是板块，不许进目录")
@@ -135,7 +140,9 @@ struct SectorTests {
   }
 
   @Test func excludedTickersNeverMadeItIntoTheUSTable() {
-    // 杠杆/反向 ETP、宽基与行业 ETF、判为非 AI 的，一个都不许在表里。
+    // 杠杆/反向 ETP、宽基与行业 ETF、判为非 AI 的，一个都不许在 12 个 AI 细分里。
+    // 2026-10-08 起它们各有自己的格（ETF 与基金 / 杠杆做多 / 反向与波动 / 加密概念…），
+    // 但 AI 那 12 格照旧不许混进来。
     // 板块读的是正股强弱，混一只两倍做多进去就能把中位数拽歪。
     //
     // 2026-09-18 放行了两个：`CRWD` 进「软件」（原来按 `NON_AI` 剔的，
@@ -149,12 +156,34 @@ struct SectorTests {
       "HK0700", "PAYP",                                                  // DEDUP 的旧代号
       "SKDD", "SKUU", "MUU", "SNXX", "MVLL", "RAM", "CSOPSKHYNIX2L",     // 存储那批杠杆/衍生品
     ]
-    let inTable = Set(SectorCatalog.sectors(.us).flatMap(\.members))
-    for b in banned { #expect(!inTable.contains(b), "\(b) 不该出现在美股板块表里") }
-    #expect(inTable.count == 94, "美股 94 只进 AI 板块")
+    let ai = Set(SectorCatalog.usAIIDs)
+    let inTable = Set(SectorCatalog.sectors(.us).filter { ai.contains($0.id) }.flatMap(\.members))
+    for b in banned { #expect(!inTable.contains(b), "\(b) 不该出现在美股 AI 板块里") }
+    #expect(inTable.count == 102, "美股 102 只进 AI 板块")
+    // 旧代号（DEDUP）哪一格都不收，免得同一家公司算两遍。
+    let everywhere = Set(SectorCatalog.sectors(.us).flatMap(\.members))
+    for b in ["HK0700", "PAYP", "TSM_X"] { #expect(!everywhere.contains(b), "\(b) 是旧代号") }
+    // 基金类产品只进自己的格。
+    let fundIDs: Set = ["etf", "lev", "inverse"]
+    for b in ["SOXL", "SQQQ", "SPY", "QQQ", "UVXY", "TQQQ"] {
+      let ids = Set(SectorCatalog.sectors(for: b, market: .us).map(\.id))
+      #expect(!ids.isEmpty && ids.isSubset(of: fundIDs), "\(b) 应只在基金类那几格")
+    }
     // DEDUP 归并后的正名在表里；SK 海力士的正股与 ADR 两档都在存储里。
     #expect(inTable.contains("SKHYNIX") && inTable.contains("TENCENT"))
     #expect(inTable.contains("SKHY"))
+  }
+
+  /// 2026-10-08 币安美股合约名单（`underlyingType == EQUITY` 的 178 只）：分类表没收的
+  /// 会落进「其他」兜底桶，这一桶不许超过 15 只——否则板块页最大的一格是个「其他」。
+  @Test func usMiscBucketStaysSmall() {
+    let live = """
+    AAOI AAPL ACN ADBE AGPU AKAM ALAB AMAT AMC AMD AMZN ANET APLD APP ARM ASML ASTS AVGO AXTI BABA BBX BE BITO BMNR BNC BOT BRKB BSP BWET BX CAT CBRS CIEN COHR COIN COST CRCL CRDO CRM CRML CRWD CRWV CSCO CVNA CYPH DDOG DELL DIS DJT DKNG DRAM EBAY EWJ EWT EWY EWZ FLEX FLNC FWDI GDX GEV GLW GME GOOGL GPRO GS GTLB HD HIMS HOOD HPE HUT IBM INTC INTW IONQ IREN IWM JPM KLAC KO KORU KSTR LITE LLY LRCX LYTE MARA MCD MDB META MP MRK MRNA MRVL MSFT MSTR MU MUU MVLL NBIS NET NFLX NKE NOK NOW NVDA NVDL NVO OKLO ONDS ORCL PANW PATH PAYP PDD PENG PLTR PYPL QCOM QNTX QQQ RAM RDDT RIVN RKLB RUM SECZ SHAZ SHOP SKDD SKHY SKUU SMCI SMH SNDK SNOW SNXX SOFI SONY SOXL SOXS SPCX SPY SQQQ STRC STXX TBT TEAM TEM TER TMF TQQQ TSLA TSLL TSM TTWO TWST TXN TZA UBER UNH URNM USAR USDEX UVXY V VKTX VRT VST WDC WEN WMT XBI XLE XOM ZM ZS
+    """.split(whereSeparator: \.isWhitespace).map(String.init)
+    #expect(live.count == 178)
+    let covered = Set(SectorCatalog.sectors(.us).flatMap(\.members))
+    let misc = live.filter { !covered.contains($0) }
+    #expect(misc.count <= 15, "「其他」里还有 \(misc.count) 只：\(misc)")
   }
 
   @Test func everyUSTickerHasAChineseName() {
@@ -174,10 +203,12 @@ struct SectorTests {
 
     let got = SectorAggregator.stats(market: market, quotes: snap.quotes,
                                      fallbackBuckets: snap.buckets)
+    // 2026-10-08 手工归类的那 11 格在快照之后才有（汽车与出行里的 TSLA / RIVN 有行情，会聚出来）。
+    let later = Set(SectorCatalog.sectors(.us).map(\.id)).subtracting(SectorCatalog.usAIIDs)
     for s in got {
       guard let w = want[s.id] else {
         // desci 只有 BIO 一个成员，原型那版把它丢进了 misc 兜底桶，快照里没有这一段。
-        #expect(s.id == "desci", "快照里没有 \(s.id)")
+        #expect(s.id == "desci" || later.contains(s.id), "快照里没有 \(s.id)")
         continue
       }
       #expect(abs(s.pct - w.median) < Self.tol, "\(s.id): 算出 \(s.pct)，快照 \(w.median)")
@@ -200,7 +231,23 @@ struct SectorTests {
     // 12 个板块，一个不落——「软件」在这份快照里只有 4 家有行情（那 9 家是
     // 2026-09-18 之后才收进来的，快照没抓到），但 4 家也够列出来；拆出来的「电力」5 家
     // 也够，段数是 12。
-    #expect(SectorAggregator.stats(market: .us, quotes: us.quotes, fallbackBuckets: []).count == 12)
+    let usIDs = Set(SectorAggregator.stats(market: .us, quotes: us.quotes, fallbackBuckets: []).map(\.id))
+    #expect(usIDs.isSuperset(of: SectorCatalog.usAIIDs))
+  }
+
+  /// 领涨：收益最高、真在涨的那一只；并列按代号；全员下跌或只有一只就没有。
+  @Test func leaderIsTheTopRisingMember() {
+    #expect(SectorAggregator.leader(bases: ["A", "B", "C"], returns: [1, 5, 3]) == "B")
+    #expect(SectorAggregator.leader(bases: ["Z", "A"], returns: [5, 5]) == "A")
+    #expect(SectorAggregator.leader(bases: ["A", "B"], returns: [-1, -3]) == nil)
+    #expect(SectorAggregator.leader(bases: ["A"], returns: [9]) == nil)
+    #expect(SectorAggregator.leader(bases: ["A", "B"], returns: [.nan, 2]) == "B")
+    // 聚合出来的板块带着它；覆盖不够的板块没有。
+    let quotes = ["SOL": SectorQuote(base: "SOL", pct: 2, quoteVolume: 10, price: 1),
+                  "AVAX": SectorQuote(base: "AVAX", pct: 7, quoteVolume: 10, price: 1),
+                  "ADA": SectorQuote(base: "ADA", pct: -1, quoteVolume: 10, price: 1)]
+    let l1 = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: []).first { $0.id == "l1" }
+    #expect(l1?.leader == "AVAX")
   }
 
   /// 板块只有中位数一个口径（2026-09-18 起均值 / 成交额加权整个撤掉）。

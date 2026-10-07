@@ -1,8 +1,8 @@
 import CoreGraphics
 import KanpanCore
 
-/// 板块记号：一个板块一枚，共 40 枚（冻结原型的 37 枚 + 后补的 `desci`，
-/// 再加 2026-09-18 美股新拆出来的「软件」「电力」）。
+/// 板块记号：一个板块一枚，共 51 枚（冻结原型的 37 枚 + 后补的 `desci`，
+/// 再加 2026-09-18 美股新拆出来的「软件」「电力」，2026-10-08 美股手工归类的 11 格）。
 ///
 /// 这一份是原型 `sector-icons.js`（2026-09-18 冻结）的移植——路径、身份色、内缩比例、
 /// 描边宽度一个数都没动。那些形是在原型上逐枚看过定下来的，这里只负责把它们画到
@@ -102,7 +102,7 @@ public enum SectorIcons {
   /// 这个板块画什么记号。板块只有三十几个，一次线性建好的字典查到底。
   public static func art(_ id: String) -> SectorIconArt? { index[id] }
 
-  /// 40 枚：加密 28 枚（24 个真板块 + 4 个兜底桶）在前，美股 12 枚在后。
+  /// 51 枚：加密 28 枚（24 个真板块 + 4 个兜底桶）在前，美股 23 枚在后。
   ///
   /// 这张表只管「哪个 id 画哪枚记号」。板块叫什么、属于哪个市场、在列表里排第几，
   /// 真板块只认 `SectorCatalog`，兜底桶只认 `SectorFeed.bucketOrder` / `bucketNames`——
@@ -546,6 +546,95 @@ public enum SectorIcons {
         "M6.27 17.46A1 1 0 0 1 7.26 16.4L10.44 16.4A1 1 0 0 1 11.16 18.1L8.18 21.17"
         + "A1 1 0 0 1 6.46 20.54Z"),
     ]),
+    // —— 2026-10-08 美股手工归类的 11 格 ——
+    // 族照「以后加板块要照族取色」那条线分：钱（加密概念、金融）走青，生活（消费、媒体、
+    // 医药、汽车）走莓，基金类（ETF、杠杆、反向）走橄榄；航天归「端与智能」紫，
+    // 能源与资源归「云与电力」靛蓝。形一律实心圆润，和原有 40 枚同一种画法。
+    icon("cryptoeq", fam: "money", hue: "teal", tone: "M",
+        from: "#66CCDA", to: "#1C879E", inset: 0.66, parts: [
+      cutout(
+        "M2.4 12A9.6 9.6 0 1 0 21.6 12A9.6 9.6 0 1 0 2.4 12Z"
+        + "M12 6.2L16.6 12L12 17.8L7.4 12Z"),
+    ]),
+    icon("bank", fam: "money", hue: "teal", tone: "D",
+        from: "#52B1C3", to: "#166C81", inset: 0.68, parts: [
+      solid(
+        "M11.3 2.9A1.5 1.5 0 0 1 12.7 2.9L20.8 7.1A1.5 1.5 0 0 1 21.6 8.4L21.6 8.6"
+        + "A0.8 0.8 0 0 1 20.8 9.4L3.2 9.4A0.8 0.8 0 0 1 2.4 8.6L2.4 8.4A1.5 1.5 0 0 1 3.2 7.1Z"
+        + "M4.4 10.8L7.2 10.8L7.2 17.6L4.4 17.6Z"
+        + "M10.6 10.8L13.4 10.8L13.4 17.6L10.6 17.6Z"
+        + "M16.8 10.8L19.6 10.8L19.6 17.6L16.8 17.6Z"
+        + "M3.2 19L20.8 19A0.8 0.8 0 0 1 21.6 19.8L21.6 20.6A0.8 0.8 0 0 1 20.8 21.4L3.2 21.4"
+        + "A0.8 0.8 0 0 1 2.4 20.6L2.4 19.8A0.8 0.8 0 0 1 3.2 19Z"),
+    ]),
+    icon("consumer", fam: "life", hue: "berry", tone: "L",
+        from: "#F5A6D6", to: "#D963A8", inset: 0.68, parts: [
+      solid(
+        "M5.9 8L18.1 8A1.4 1.4 0 0 1 19.5 9.3L20.4 20.3A1.6 1.6 0 0 1 18.8 22L5.2 22"
+        + "A1.6 1.6 0 0 1 3.6 20.3L4.5 9.3A1.4 1.4 0 0 1 5.9 8Z"),
+      stroke("M8.6 10.6L8.6 6.4A3.4 3.4 0 0 1 15.4 6.4L15.4 10.6", 2.0),
+    ]),
+    icon("media", fam: "life", hue: "berry", tone: "M",
+        from: "#E886C4", to: "#BA4A8E", inset: 0.68, parts: [
+      cutout(
+        "M5 3.6L19 3.6A3.4 3.4 0 0 1 22.4 7L22.4 17A3.4 3.4 0 0 1 19 20.4L5 20.4"
+        + "A3.4 3.4 0 0 1 1.6 17L1.6 7A3.4 3.4 0 0 1 5 3.6Z"
+        + "M9.6 8.2L16.2 12L9.6 15.8Z"),
+    ]),
+    icon("pharma", fam: "life", hue: "berry", tone: "D",
+        from: "#C96FAE", to: "#8E3175", inset: 0.64, parts: [
+      solid(
+        "M10.8 2.8L13.2 2.8A1.2 1.2 0 0 1 14.4 4L14.4 9.6L20 9.6A1.2 1.2 0 0 1 21.2 10.8"
+        + "L21.2 13.2A1.2 1.2 0 0 1 20 14.4L14.4 14.4L14.4 20A1.2 1.2 0 0 1 13.2 21.2L10.8 21.2"
+        + "A1.2 1.2 0 0 1 9.6 20L9.6 14.4L4 14.4A1.2 1.2 0 0 1 2.8 13.2L2.8 10.8"
+        + "A1.2 1.2 0 0 1 4 9.6L9.6 9.6L9.6 4A1.2 1.2 0 0 1 10.8 2.8Z"),
+    ]),
+    icon("auto", fam: "life", hue: "berry", tone: "M",
+        from: "#E886C4", to: "#BA4A8E", inset: 0.7, parts: [
+      cutout(
+        "M5.6 7.2A2 2 0 0 1 7.4 6L16.6 6A2 2 0 0 1 18.4 7.2L20.2 11.2L21 11.6"
+        + "A1.6 1.6 0 0 1 22 13.1L22 16.4A1.2 1.2 0 0 1 20.8 17.6L3.2 17.6A1.2 1.2 0 0 1 2 16.4"
+        + "L2 13.1A1.6 1.6 0 0 1 3 11.6L3.8 11.2Z"
+        + "M7.6 8L16.4 8L17.6 11L6.4 11Z"),
+      solid(
+        "M4.8 18A2.4 2.4 0 1 0 9.6 18A2.4 2.4 0 1 0 4.8 18Z"
+        + "M14.4 18A2.4 2.4 0 1 0 19.2 18A2.4 2.4 0 1 0 14.4 18Z"),
+    ]),
+    icon("space", fam: "smart", hue: "violet", tone: "M",
+        from: "#A996F0", to: "#634CCB", inset: 0.7, parts: [
+      cutout(
+        "M12 1.6C15.4 4.4 17 8.2 17 12.4L17 17L7 17L7 12.4C7 8.2 8.6 4.4 12 1.6Z"
+        + "M10 10A2 2 0 1 0 14 10A2 2 0 1 0 10 10Z"),
+      solid(
+        "M7 12.6L3.6 16.2L3.6 19.6L7 18Z"
+        + "M17 12.6L20.4 16.2L20.4 19.6L17 18Z"
+        + "M9.6 18.4L14.4 18.4L12 22.6Z"),
+    ]),
+    icon("resource", fam: "power", hue: "indigo", tone: "D",
+        from: "#6196DE", to: "#204E9C", inset: 0.66, parts: [
+      cutout(
+        "M12 2C12 2 5 10 5 14.6A7 7 0 0 0 19 14.6C19 10 12 2 12 2Z"
+        + "M8.4 14.2A1.2 1.2 0 0 1 10.8 14.2A1.2 1.2 0 0 0 12.4 17.4A1.2 1.2 0 0 1 12.4 19.8"
+        + "A3.6 3.6 0 0 1 8.4 14.2Z"),
+    ]),
+    icon("etf", fam: "fund", hue: "olive", tone: "M",
+        from: "#CFDC6A", to: "#9CAC20", inset: 0.66, parts: [
+      solid(
+        "M11 3.1A9 9 0 1 0 20.9 13L11 13Z"
+        + "M13 1.4A9.6 9.6 0 0 1 22.6 11L13 11Z"),
+    ]),
+    icon("lev", fam: "fund", hue: "olive", tone: "L",
+        from: "#DDE88A", to: "#ADBE2D", inset: 0.64, parts: [
+      solid(
+        "M12 3L20 11L20 14.4L12 6.4L4 14.4L4 11Z"
+        + "M12 10.6L20 18.6L20 22L12 14L4 22L4 18.6Z"),
+    ]),
+    icon("inverse", fam: "fund", hue: "olive", tone: "D",
+        from: "#B8C45C", to: "#86941A", inset: 0.64, parts: [
+      solid(
+        "M12 21L20 13L20 9.6L12 17.6L4 9.6L4 13Z"
+        + "M12 13.4L20 5.4L20 2L12 10L4 2L4 5.4Z"),
+    ]),
   ]
 
   /// 六支色相，各三档（原型的 `SECTOR_PALETTE`）。
@@ -579,7 +668,7 @@ public enum SectorIcons {
                        deep: SectorHue.Pair("#B8C45C", "#86941A")),
   ]
 
-  /// 九个族（原型的 `SECTOR_FAMILIES`）。
+  /// 十二个族（原型 `SECTOR_FAMILIES` 的九个 + 2026-10-08 美股新加的三个）。
   static let families: [String: SectorFamily] = [
     "chain": SectorFamily(key: "chain", market: .crypto, name: "链与主网", hue: "amber",
                           why: "公链是这一屏的地基，给最贵重的金色。"),
@@ -599,6 +688,13 @@ public enum SectorIcons {
                           why: "机房与电网的冷色，和硅的暖金对着站。"),
     "smart": SectorFamily(key: "smart", market: .us, name: "端与智能", hue: "violet",
                           why: "模型与机器人这一头走紫，是美股这屏的第三极。"),
+    // 2026-10-08 美股手工归类那 11 格带进来的三族。
+    "money": SectorFamily(key: "money", market: .us, name: "钱", hue: "teal",
+                          why: "加密概念与金融是钱的那一头，借加密那屏没给美股用过的青。"),
+    "life": SectorFamily(key: "life", market: .us, name: "生活", hue: "berry",
+                         why: "消费、媒体、医药、汽车是日常那一头，给暖艳的莓。"),
+    "fund": SectorFamily(key: "fund", market: .us, name: "基金与杠杆", hue: "olive",
+                         why: "ETF、杠杆、反向不是一家公司，和兜底桶一样给不抢戏的橄榄。"),
   ]
 
   private static let index: [String: SectorIconArt] =

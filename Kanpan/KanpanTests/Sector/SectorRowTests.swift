@@ -153,4 +153,21 @@ struct SectorRowTests {
   func scaleLine() {
     #expect(SectorSubtitle.scale(sectors: 28, symbols: 526) == "28 个板块 · 526 个品种")
   }
+
+  // ---------------------------------------------------------------- 领涨
+
+  @Test("板块行的「领涨 X」：算数的板块才写，读不出的代号换中文简称")
+  func leaderLabel() {
+    func stat(_ leader: String?, n: Int = 5, pct: Double = 1) -> SectorStat {
+      SectorStat(id: "x", name: "x", market: .us, pct: pct, memberCount: n,
+                 quoteVolume: 1, isFallback: false, leader: leader)
+    }
+    #expect(SectorLeaderLabel.text(stat("NVDA")) == "领涨 NVDA")
+    #expect(SectorLeaderLabel.text(stat("HK0992")) == "领涨 联想")
+    #expect(SectorLeaderLabel.text(stat("LGELECTRONICS")) == "领涨 LG 电子")
+    #expect(SectorLeaderLabel.text(stat("1000PEPE")) == "领涨 1000PEPE")
+    #expect(SectorLeaderLabel.text(stat(nil)) == "")
+    #expect(SectorLeaderLabel.text(stat("NVDA", n: 2)) == "", "成员不够不算数")
+    #expect(SectorLeaderLabel.text(stat("NVDA", pct: .nan)) == "", "覆盖不够不算数")
+  }
 }

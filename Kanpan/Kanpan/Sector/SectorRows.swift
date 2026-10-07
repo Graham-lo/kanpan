@@ -141,6 +141,27 @@ enum SectorSubtitle {
   }
 }
 
+/// 板块行涨跌幅左边那行小字「领涨 XXX」。
+///
+/// 只写一只：这段窗口上收益最高、而且真在涨的成员（`SectorStat.leader`）。板块强弱不算数
+/// （`SectorSubtitle.counts` 不过）或没有领涨的就返回空串，界面上那格直接不画。
+/// 港股 `HK0992`、`LGELECTRONICS` 这种读不出是谁的代号换成中文简称（有数字或超过 6 个字符、
+/// 且分类表里有简称时）；其余照写代号，超过 8 个字符截到 8 位，免得把涨跌幅挤走。
+enum SectorLeaderLabel {
+  static let maxCodeLength = 8
+
+  static func text(_ stat: SectorStat) -> String {
+    guard SectorSubtitle.counts(stat), let base = stat.leader, !base.isEmpty else { return "" }
+    return "领涨 " + display(base)
+  }
+
+  static func display(_ base: String) -> String {
+    let opaque = base.count > 6 || base.contains(where: \.isNumber)
+    if opaque, let name = SectorCatalog.chineseName(base: base) { return name }
+    return String(base.prefix(maxCodeLength))
+  }
+}
+
 /// 价格千分位。`fmtNum` 只管小数位，逗号在这儿补。和自选页同一份实现。
 func sectorGrouped(_ text: String) -> String {
   let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)

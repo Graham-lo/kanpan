@@ -436,15 +436,15 @@ import KanpanNetwork
   /// 我们定义的板块。这些币走交易所自己的 `underlyingSubTypes` 兜底，在板块列表里
   /// 和普通板块一起按涨跌幅排，画得也一模一样（不去饱和、不加标记、不另起一组）。
   ///
-  /// 桶的 id 和数量不是随手定的，得和记号表对上：`SectorIcons` 里除了 36 个真板块（加密 24 + 美股 12），
+  /// 桶的 id 和数量不是随手定的，得和记号表对上：`SectorIcons` 里除了 47 个真板块（加密 24 + 美股 23），
   /// 另有 `tag-infrastructure` / `tag-alpha` / `tag-defi` / `misc` 四枚，就是给这儿用的
   /// （原型定稿那一版也正好是这四个桶、49 个成员）。所以这儿**不能**按标签有几种就分几个桶
   /// ——那样会冒出一串 id 对不上、没有记号的小桶，在板块列表里就是一片空洞。
   ///
   /// 分桶是**划分**不是打标签：一个币只落一个桶，按 `tagOrder` 的先后认领，
-  /// 一个都不认的落 `misc`。美股那一路分类表本来就只收「AI 产业链」那几十只
-  /// （`kanpan-us-equity-data-is-binance-only`），剩下的一律进 `misc`，
-  /// 免得它们从板块列表里凭空消失。
+  /// 一个都不认的落 `misc`。美股那一路分类表 2026-10-08 起在 AI 产业链 12 格之外
+  /// 又手工归了 11 格，剩下读不出是什么的几只（≤ 15，`SectorTests.usMiscBucketStaysSmall`）
+  /// 才进 `misc`，免得它们从板块列表里凭空消失。
   func fallbackBuckets(for market: SectorMarket) -> [SectorFallbackBucket] {
     let covered = Set(SectorCatalog.sectors(market).flatMap(\.members))
     var buckets: [String: [String]] = [:]

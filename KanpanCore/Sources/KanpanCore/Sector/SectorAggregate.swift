@@ -185,6 +185,10 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
   public let frontier: [String]
   /// 删一区间：逐个删掉一个成员再取中位数，落在这个范围里。成员 ≤ 2 时没有意义，缺省。
   let jackknife: ClosedRange<Double>?
+  /// 领涨成员：这段窗口上收益最高的那一只（base）。至少两只算得出收益、且最高的那只
+  /// 真的在涨（`> 0`）才有；覆盖不够的板块、全员翻绿的板块一律缺省——列表上那行「领涨 X」就不写。
+  /// 并列按代号升序取第一个，两次刷新之间不换人。
+  public let leader: String?
 
   /// 跑赢池基准的家数。`breadth` 就是它除以 `memberCount`，这儿还原回整数给界面用。
   public var outperformCount: Int {
@@ -197,7 +201,7 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
               pct: Double, memberCount: Int, staticCount: Int? = nil,
               quoteVolume: Double, isFallback: Bool,
               breadth: Double = 0, upCount: Int = 0, frontier: [String] = [],
-              jackknife: ClosedRange<Double>? = nil) {
+              jackknife: ClosedRange<Double>? = nil, leader: String? = nil) {
     self.id = id
     self.name = name
     self.market = market
@@ -210,6 +214,7 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
     self.upCount = upCount
     self.frontier = frontier
     self.jackknife = jackknife
+    self.leader = leader
   }
 }
 
@@ -501,7 +506,20 @@ public enum SectorAggregator {
                       isFallback: isFallback,
                       breadth: Double(outperform) / Double(rets.count),
                       upCount: up, frontier: frontier.map(\.base),
-                      jackknife: jackknife(rets))
+                      jackknife: jackknife(rets),
+                      leader: leader(bases: set.bases, returns: rets))
+  }
+
+  /// 领涨成员（见 `SectorStat.leader`）。
+  static func leader(bases: [String], returns: [Double]) -> String? {
+    guard bases.count == returns.count, returns.count >= 2 else { return nil }
+    var best: (base: String, ret: Double)?
+    for (base, r) in zip(bases, returns) where r.isFinite {
+      if let b = best, r < b.ret || (r == b.ret && base >= b.base) { continue }
+      best = (base, r)
+    }
+    guard let best, best.ret > 0 else { return nil }
+    return best.base
   }
 
   /// 偶数个取中间两个的平均——跟分类表 README 的口径一致。

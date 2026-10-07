@@ -11,8 +11,9 @@ import KanpanCore
 /// **画得一模一样**：不去饱和、不加标记、不另起一组、不排到最后，就按涨跌幅落在
 /// 它该在的位置上。
 ///
-/// 这里没有名次徽章、没有「龙头」「最强」，排序只按当前窗口的涨跌幅
-/// （`SectorBoardOrder`）。
+/// 这里没有名次徽章、没有「最强」，排序只按当前窗口的涨跌幅（`SectorBoardOrder`）。
+/// 涨跌幅左边那行小字「领涨 XXX」（2026-10-08）只是这段窗口上涨得最多的那只成员，
+/// 数据不够就不写（`SectorLeaderLabel`）。
 struct SectorBoardList: View {
   /// 已按 `SectorBoardOrder` 排好（含兜底桶）。
   var stats: [SectorStat]
@@ -65,6 +66,15 @@ struct SectorBoardList: View {
             .accessibilityIdentifier("sector.board.breadth." + stat.id)
         }
       }.frame(maxWidth: .infinity, alignment: .leading)
+      let leader = SectorLeaderLabel.text(stat)
+      if !leader.isEmpty {
+        Text(leader)
+          .font(TypeScale.caption)
+          .foregroundStyle(theme.ink3)
+          .lineLimit(1)
+          .layoutPriority(-1)
+          .accessibilityIdentifier("sector.board.leader." + stat.id)
+      }
       Text(sectorPctText(stat.pct))
         .font(TypeScale.footnoteEmph).monospacedDigit()
         .foregroundStyle(theme.sectorPct(stat.pct))
