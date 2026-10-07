@@ -34,7 +34,8 @@ export function factsOf(symbol: string, s?: Pick<Sym, 'kind' | 'cn' | 'onboard'>
 export function pillHTML(pct: number | null | undefined, text?: string, gone = false, muted = false): string {
   const t = text ?? changePercentText(pct)
   if (t === MISSING) return `<span class="m-pill none${gone ? ' gone' : ''} num">${MISSING}</span>`
-  if (muted) return `<span class="m-pill none num">${esc(t)}</span>`
+  // 休市 / 上次记下的（还没连上实时）：照写涨跌、退成弱墨，不着涨跌色（不是骨架）
+  if (muted) return `<span class="m-pill none muted num">${esc(t)}</span>`
   return `<span class="m-pill ${textIsUp(t) ? 'up' : 'down'} num">${esc(t)}</span>`
 }
 
@@ -73,7 +74,7 @@ export function patchLiuli(row: Element, d: LiuliData): void {
   const pill = row.querySelector('.m-pill')
   if (pill) {
     const t = changePercentText(d.pct)
-    const cls = 'm-pill ' + (t === MISSING ? (d.gone ? 'none gone' : 'none') : d.closed ? 'none' : textIsUp(t) ? 'up' : 'down') + ' num'
+    const cls = 'm-pill ' + (t === MISSING ? (d.gone ? 'none gone' : 'none') : d.closed ? 'none muted' : textIsUp(t) ? 'up' : 'down') + ' num'
     if (pill.textContent !== t || pill.className !== cls) pill.outerHTML = pillHTML(d.pct, undefined, !!d.gone, !!d.closed)
   }
   const v = row.querySelector('.lr-vol')

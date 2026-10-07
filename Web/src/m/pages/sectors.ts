@@ -28,7 +28,7 @@ import * as F from '../model/favorites'
 import { sectorIconHTML } from '../model/badge'
 import { changePercentText, esc, MISSING, textIsUp } from '../model/rowText'
 import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowHTML'
-import { coveredCount, drillDecision } from '../model/sectorView'
+import { boardsWaiting, coveredCount, drillDecision, drillWaiting, skeletonRowsHTML } from '../model/sectorView'
 import { backdropHTML } from './favorites'
 import { ensureUniverse, wantStreams } from './_streams'
 import { openPreviewMenu } from './symbolPreview'
@@ -111,6 +111,8 @@ export function initSectors(root: HTMLElement): PageHandle {
     if (scaleEl.textContent !== scale) scaleEl.textContent = scale
     const failed = !boards.length && (feed.ok === false || (S.live === false && !feed.quotes.size))
     emptyBtn.hidden = !failed
+    // 行情还在路上：摆一屏骨架行，不是空白
+    if (boardsWaiting(boards.length, failed)) { setHTML(boardList, skeletonRowsHTML('board')); return }
     setHTML(boardList, boards.map((b, i) => {
       const sub = subtitle(b)
       return `<div class="sec-row${i === 0 ? ' first' : ''}" role="button" tabindex="0" data-sec="${esc(b.id)}" data-id="sector.row.${esc(b.id)}">`
@@ -194,6 +196,7 @@ export function initSectors(root: HTMLElement): PageHandle {
       html.push(liuliRowHTML(factsOf(sym, S.symbols.get(sym)), d, i === 0))
     })
     drillEmpty.hidden = rows.length > 0 || !feed.quotes.size
+    if (drillWaiting(rows.length, feed.quotes.size)) html.push(skeletonRowsHTML('symbol'))
     if (!setHTML(drillList, html.join(''))) return
     unpress.splice(0).forEach(f => f())
     drillList.querySelectorAll<HTMLElement>('.lr').forEach(row => {

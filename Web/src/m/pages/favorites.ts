@@ -23,6 +23,7 @@ import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowH
 import { openSearch } from './search'
 import { openPreviewMenu } from './symbolPreview'
 import { ensureUniverse, takeOpenParam, wantStreams } from './_streams'
+import { cachedSym } from '../model/quoteCache'
 
 /** 琉璃底（光斑 + 冲淡 + 颗粒）：自选页和板块页共用 */
 export function backdropHTML(): string {
@@ -70,10 +71,13 @@ export function initFavorites(root: HTMLElement): PageHandle {
   let opened: { sym: string; visible: boolean } | null = null
   const dataOf = (sym: string): LiuliData => {
     if (editing && frozen.has(sym)) return frozen.get(sym)!
-    const s = S.symbols.get(sym)
-    const gone = S.live === true && !s
+    const live = S.symbols.get(sym)
+    const gone = S.live === true && !live
+    // 表还没到：先摆上次记下的价（退灰，同休市的样子），到了就换实时的
+    const s = live ?? (gone ? undefined : cachedSym(sym) ?? undefined)
+    const cached = !live && !!s
     // 美元指数没有成交量（恒 0）：成交额写「—」；休市时价格与药丸退灰
-    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone || s?.macro ? null : s?.vol ?? null, gone, closed: s?.closed === true }
+    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone || s?.macro ? null : s?.vol ?? null, gone, closed: s?.closed === true || cached }
   }
 
   // ---------------------------------------------------------------- 头部
@@ -153,7 +157,7 @@ export function initFavorites(root: HTMLElement): PageHandle {
       if (editing) setEditing(false)
     } else {
       empty.hidden = true
-      list.innerHTML = shown.map((sym, i) => liuliRowHTML(factsOf(sym, S.symbols.get(sym)), dataOf(sym), i === 0)).join('')
+      list.innerHTML = shown.map((sym, i) => liuliRowHTML(factsOf(sym, S.symbols.get(sym) ?? cachedSym(sym)), dataOf(sym), i === 0)).join('')
       list.querySelectorAll<HTMLElement>('.lr').forEach(row => {
         const sym = row.dataset.sym!
         if (!editing) {

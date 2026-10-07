@@ -24,6 +24,7 @@ import * as F from '../model/favorites'
 import { applyFilter, buildSections, countText, EMPTY_TEXT, marketTitle, moreNote, type PickerSection } from '../model/picker'
 import { life } from '../model/life'
 import { ensureUniverse, wantStreams } from './_streams'
+import { cachedSym, symbolsForDisplay } from '../model/quoteCache'
 
 export interface PickerOptions {
   /** 带进来的查询词 */
@@ -81,7 +82,9 @@ export function openPicker(opts: PickerOptions): void {
   let redrawAfterDrag = false
   let filterTimer = 0
 
-  const all = (): Sym[] => [...S.symbols.values()]
+  // 品种表还没到（网慢）：先按上次记下的那份列，价退灰；表一到整页重画成实时的
+  const all = (): Sym[] => symbolsForDisplay().list
+  const symOf = (x: string): Sym | undefined => S.symbols.get(x) ?? (S.live === true ? undefined : cachedSym(x) ?? undefined)
   const fitViewport = (): void => {
     const vv = window.visualViewport
     if (!vv) return
@@ -101,11 +104,11 @@ export function openPicker(opts: PickerOptions): void {
   }
 
   const row = (symbol: string, hl: [number, number] | null): string => {
-    const s = S.symbols.get(symbol)
+    const s = symOf(symbol)
     // 品种表认得的照常；不认得的（已下架的自选）凑一行占位：价格与涨跌写「—」，退成灰
     const gone = !s && S.live === true
     const html = listRowHTML(factsOf(symbol, s), { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: F.isFavorite(st.symbols, symbol), hl })
-    return gone ? html.replace('class="sr"', 'class="sr stale"') : html
+    return gone ? html.replace('class="sr"', 'class="sr stale"') : s && !S.symbols.has(symbol) ? html.replace('class="sr"', 'class="sr cached"') : html
   }
   const sectionHTML = (sec: PickerSection): string => {
     const note = moreNote(sec.more)
@@ -124,12 +127,12 @@ export function openPicker(opts: PickerOptions): void {
     markets = f.markets; sectors = f.sectors
     count.textContent = catalog.length ? countText(catalog) : ''
     paintChips()
-    const sections = buildSections(f.list, { query: q, favorites: st.symbols.favorites, recents: st.symbols.recents, known: new Set(S.symbols.keys()) })
+    const sections = buildSections(f.list, { query: q, favorites: st.symbols.favorites, recents: st.symbols.recents, known: new Set(catalog.map(s => s.symbol)) })
     swipes.forEach(s => s.destroy()); swipes = []
     sorter?.destroy(); sorter = null
     visible.clear(); io?.disconnect()
     if (!sections.some(s => s.rows.length)) {
-      body.innerHTML = `<div class="mpk-empty">${q.trim() || S.symbols.size ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
+      body.innerHTML = `<div class="mpk-empty">${q.trim() || catalog.length ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
       pushStreams()
       return
     }
@@ -217,7 +220,7 @@ export function openPicker(opts: PickerOptions): void {
     const star = t.closest<HTMLElement>('[data-star]')
     if (star) {
       const sym = star.dataset.star!
-      const s = S.symbols.get(sym)
+      const s = symOf(sym)
       const added = F.toggleFavorite(st.symbols, sym, st.favoritesGroup || null, { kind: s?.kind, base: splitSymbol(sym).base })
       save()
       keepScroll(render)

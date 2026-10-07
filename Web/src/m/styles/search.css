@@ -83,6 +83,8 @@ html[data-theme="dark"] .msr-chip { background: color-mix(in srgb, var(--ink) 7%
 .sr-chg.up { color: var(--up) }
 .sr-chg.down { color: var(--down) }
 .stale .sr-price { color: var(--stale) }
+/* 品种表还没到、摆的是上次记下的价（m/model/quoteCache.ts）：价与涨跌退灰，表一到换成实时的 */
+.sr.cached .sr-price, .sr.cached .sr-chg { color: var(--stale) }
 .sr-star { width: 44px; height: 44px; display: grid; place-items: center; flex: none; color: var(--ink3) }
 .sr-star svg { width: 15px; height: 15px; transition: fill var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out) }
 .sr-star svg path { fill: transparent; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round }

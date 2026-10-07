@@ -132,6 +132,12 @@ html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, 
 html[data-theme="dark"] .m-pill.none { background: var(--lg-rule, color-mix(in srgb, var(--ink) 11%, transparent)) }
 /* 已下架 / 目录里没有：不是「还在路上」，写「—」、不摆骨架 */
 .m-pill.none.gone { color: var(--lg-ink4, color-mix(in srgb, var(--ink3) 70%, transparent)) }
+/* 休市 / 上次记下的价：写字、弱墨，不着涨跌色 */
+.m-pill.none.muted {
+  color: var(--lg-ink4, color-mix(in srgb, var(--ink3) 70%, transparent));
+  background: color-mix(in srgb, var(--lg-ink4, var(--ink3)) 14%, transparent);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--lg-ink4, var(--ink3)) 30%, transparent);
+}
 /* 推送断了满宽限（linkDown）：药丸退成弱墨，涨跌方向不再着色（ChangePill muted） */
 .stale .m-pill.up, .stale .m-pill.down {
   color: var(--lg-ink4); background: color-mix(in srgb, var(--lg-ink4) 14%, transparent);

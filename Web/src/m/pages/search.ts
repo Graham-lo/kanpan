@@ -33,6 +33,7 @@ import { openPicker } from './symbolPicker'
 import { CompareSearchMode, COMPARE_FULL_NOTICE, type CompareRowState } from '../model/compareMode'
 import { compareSymbolOf } from '../chart/compare.source'
 import { cleanCompare, MAX_COMPARE as MAX } from '../app/prefs'
+import { cachedSym, symbolsForDisplay } from '../model/quoteCache'
 
 const EMPTY_TEXT = '没有这个品种'
 
@@ -77,7 +78,9 @@ export function openSearch(opts: SearchOptions = {}): void {
   let hotList: string[] = []
   let shown: string[] = []
 
-  const all = (): Sym[] => [...S.symbols.values()]
+  // 品种表还没到（网慢）：先按上次记下的那份搜，价退灰；表一到（universe）整页重画成实时的
+  const all = (): Sym[] => symbolsForDisplay().list
+  const symOf = (x: string): Sym | undefined => S.symbols.get(x) ?? (S.live === true ? undefined : cachedSym(x) ?? undefined)
   const fitViewport = (): void => {
     const vv = window.visualViewport
     if (!vv) return
@@ -94,10 +97,11 @@ export function openSearch(opts: SearchOptions = {}): void {
   const row = (s: Sym | undefined, symbol: string, hl: [number, number] | null = null, m: CompareSearchMode | null = mode()): string => {
     const f = factsOf(symbol, s)
     const cmp: CompareRowState | undefined = m ? m.state(symbol) : undefined
-    return listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: isFavorite(st.symbols, symbol), hl, cmp })
+    const html = listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: isFavorite(st.symbols, symbol), hl, cmp })
+    return s && !S.symbols.has(symbol) ? html.replace('class="sr', 'class="sr cached') : html
   }
   const rows = (list: string[] | Ranked<Sym>[]): string => { const m = mode(); return list.map((x, i) => {
-    const html = typeof x === 'string' ? row(S.symbols.get(x), x, null, m) : row(x.item, x.item.symbol, x.hit.hl, m)
+    const html = typeof x === 'string' ? row(symOf(x), x, null, m) : row(x.item, x.item.symbol, x.hit.hl, m)
     return (i ? '<div class="sr-div"></div>' : '') + html
   }).join('') }
   const head = (title: string, trailing = ''): string => `<div class="msr-head"><span>${esc(title)}</span>${trailing}</div>`
@@ -110,7 +114,7 @@ export function openSearch(opts: SearchOptions = {}): void {
     shown = []
     if (term) {
       const hits = rank(all().map(s => s), term, s => splitSymbol(s.symbol).base)
-      if (!hits.length) html = `<div class="msr-empty">${S.symbols.size ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
+      if (!hits.length) html = `<div class="msr-empty">${all().length ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
       else {
         // 对比模式整列给出来：「查看全部」去的品种整页没有对比模式
         const list = opts.compare ? hits.slice(0, 200) : hits.slice(0, SEARCH_PREVIEW)
@@ -125,7 +129,7 @@ export function openSearch(opts: SearchOptions = {}): void {
         html += head('历史搜索', `<button type="button" class="msr-trash" aria-label="清除搜索记录">${icon('trash', 13)}</button>`)
         html += `<div class="msr-chips">${terms.map(t => `<button type="button" class="msr-chip" data-term="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
       }
-      const rec = st.symbols.recents.filter(s => S.symbols.has(s))
+      const rec = st.symbols.recents.filter(s => !!symOf(s))
       if (rec.length) { html += head('最近看过') + rows(rec); shown.push(...rec) }
       if (!terms.length && !rec.length) {
         refreshHot()
@@ -147,7 +151,7 @@ export function openSearch(opts: SearchOptions = {}): void {
     cmpBar.innerHTML = `<div class="msr-cmpbar-head"><span>正在对比</span><span class="num">${keys.length}/${MAX}</span></div>`
       + `<div class="msr-cmpchips">${keys.map(k => {
         const sym = compareSymbolOf(k) ?? k
-        const f = factsOf(sym, S.symbols.get(sym))
+        const f = factsOf(sym, symOf(sym))
         return `<span class="msr-cmpchip" data-key="${esc(k)}">${badgeHTML(f.base, 20, f.asset)}<span>${esc(f.base)}</span><button type="button" class="msr-cmpx" data-cmpx="${esc(k)}" aria-label="移除 ${esc(f.base)}">${XMARK}</button></span>`
       }).join('')}</div>`
   }
@@ -167,7 +171,7 @@ export function openSearch(opts: SearchOptions = {}): void {
     body.querySelectorAll<HTMLElement>('.sr[data-sym]').forEach(r => {
       const sym = r.dataset.sym!
       const tmp = document.createElement('div')
-      tmp.innerHTML = row(S.symbols.get(sym), sym, null, m)
+      tmp.innerHTML = row(symOf(sym), sym, null, m)
       const next = tmp.querySelector('.sr-cmp')
       const cur = r.querySelector('.sr-cmp')
       if (next && cur) cur.replaceWith(next)
@@ -198,7 +202,7 @@ export function openSearch(opts: SearchOptions = {}): void {
     const star = t.closest<HTMLElement>('[data-star]')
     if (star) {
       const sym = star.dataset.star!
-      const s = S.symbols.get(sym)
+      const s = symOf(sym)
       const added = toggleFavorite(st.symbols, sym, st.favoritesGroup || null, { kind: s?.kind, base: splitSymbol(sym).base })
       save()
       star.classList.toggle('on', added)

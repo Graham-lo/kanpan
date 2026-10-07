@@ -25,6 +25,7 @@ import {
 } from './adapters'
 import { ago, before } from '../util/clock'
 import { FramePacer } from './pace'
+import { cachedCalibration, cachedStep, storeCalibration, storeStep } from './startCache'
 
 export type Route = 'direct' | 'gateway'
 export const API_ORIGIN = 'https://kanpan.43-160-232-253.sslip.io'
@@ -276,9 +277,16 @@ export class OrderFlowFeed {
   private stopped = false
   private snapshotting = new Map<string, number>()
   private derivedStep: number | null = null
+  /** derivedStep 就是今天这个参考日的（本机记着的旧一天的不算：开张先用着，照样去问） */
+  private stepExact = false
+  /** 还在按盘口深度标定门槛（美股、贵金属） */
   private calibrating: boolean
+  /** 标定期间压着不出帧、不取历史：只有本机没有上一次标定结果时才压（有的话先拿它出帧，后台照样标） */
+  private blocking: boolean
   private calibrated: number | null = null
   private calibrationDeadline: number | null = null
+  /** 换走了先留着（见 park）：照收簿与成交、不出帧，评估放慢到 2 秒一拍 */
+  private parked = false
   private pacer = new FramePacer(() => this.opts.precise?.() ?? false)
   /** 门槛改了、历史并进来了：不等下一个 500 ms，马上出一帧（活单金额照旧按住，见 pace.ts force）。 */
   private kick(): void {
@@ -309,6 +317,13 @@ export class OrderFlowFeed {
     this.base = base
     this.chartScale = scale
     this.calibrating = needsCalibration(base, opts.crypto)
+    const now = Date.now()
+    const prior = this.calibrating ? cachedCalibration(base, now) : null
+    if (prior != null) this.calibrated = prior
+    this.blocking = this.calibrating && prior == null
+    // 本机记着的步长：模型一开始就有桶，历史不用等前一日收盘那一问
+    const kept = cachedStep(this.symbol, BucketScheme.referenceDay(now))
+    if (kept) { this.derivedStep = kept.step; this.stepExact = kept.exact }
     this.model = new OrderFlowModel(this.symbol, this.effective())
   }
 
@@ -321,16 +336,33 @@ export class OrderFlowFeed {
     return t
   }
 
-  get isCalibrating(): boolean { return this.calibrating }
+  /** 还压着在标定（没有上一次的门槛可用）：图例、梯子写「定门槛」 */
+  get isCalibrating(): boolean { return this.blocking }
+
+  /** 还没出完整一帧时卡在哪一步（图例、梯子的提示）：定门槛 → 取步长 → 连盘口 */
+  get stage(): 'threshold' | 'step' | 'connect' {
+    return this.blocking ? 'threshold' : this.model.thresholds.step == null ? 'step' : 'connect'
+  }
+
+  get isParked(): boolean { return this.parked }
+
+  /** 默认与用户门槛里都没有步长、要按前一日收盘推 */
+  private needsDerivedStep(): boolean { return applyOverride(this.defaults(), this.opts.override).step == null }
 
   async start(): Promise<void> {
     if (!isValidBase(this.base)) return
     const now = Date.now()
+    // 前一日收盘（推步长用）和品种表同时问，不排在它后面；本机记着今天的步长就不问
+    const wantStep = this.needsDerivedStep() && !this.stepExact
+    const close = wantStep ? this.referenceClose(BucketScheme.referenceDay(now)).catch(() => NaN) : null
     // 本机留着的表：新鲜的直接用；旧一点的先用着、后台刷新给下一次；没有才等服务端
     const cached = cachedCatalog(this.base, now)
     let rows: Row[] | null = cached?.rows ?? null
-    if (!cached) rows = await fetchCatalog(this.base)
-    else if (!cached.fresh) void fetchCatalog(this.base)
+    if (!cached) {
+      // 等表的这一个往返里，步长已经有了（本机记着 / 固定的）就先把服务端历史取上
+      this.pumpHistory()
+      rows = await fetchCatalog(this.base)
+    } else if (!cached.fresh) void fetchCatalog(this.base)
     if (this.stopped) return
     const books = rows?.length ? booksOf(rows, this.chartScale, now) : []
     this.fromCatalog = books.length > 0
@@ -339,7 +371,19 @@ export class OrderFlowFeed {
     if (this.calibrating) this.calibrationDeadline = Date.now() + D.calibrationTimeoutMs
     this.connect()
     this.loop()
-    if (this.model.thresholds.step == null) void this.loadStep()
+    if (wantStep) void this.loadStep(close)
+  }
+
+  /**
+   * 换品种时先留着这一只（orderflow/keep.ts 管几只、留多久）：连接、簿、历史都不断，只是不出帧、评估放慢；
+   * 换回来 unpark：出帧节奏从头算（下一帧照实发、金额不按住），马上出一帧。
+   */
+  park(): void { if (!this.stopped) this.parked = true }
+  unpark(): void {
+    if (this.stopped || !this.parked) return
+    this.parked = false
+    this.pacer.reset()
+    this.kick()
   }
 
   stop(): void {
@@ -484,18 +528,27 @@ export class OrderFlowFeed {
   }
 
   // ---------------------------------------------------------- 步长（前一 UTC 日收盘推）
-  private async loadStep(): Promise<void> {
+  /** 参考日那根日线的收盘；取不到是 NaN（网络错抛出） */
+  private async referenceClose(day: number): Promise<number> {
+    const bars = await getJSON(`https://fapi.binance.com/fapi/v1/klines?symbol=${encodeURIComponent(this.symbol)}&interval=1d&startTime=${day}&limit=2`, 8000)
+    const rows = Array.isArray(bars.body) ? (bars.body as unknown[][]) : []
+    const exact = rows.find(r => Number(r[0]) === day) ?? rows.filter(r => Number(r[0]) < day + 86_400_000).pop()
+    return exact ? parseFloat(String(exact[4])) : NaN
+  }
+
+  /** first：start 里和品种表同时发出去的那一问（第一轮用它，不再问一次） */
+  private async loadStep(first: Promise<number> | null = null): Promise<void> {
     for (let attempt = 0; !this.stopped && attempt < 6; attempt++) {
       const day = BucketScheme.referenceDay(Date.now())
       try {
-        const bars = await getJSON(`https://fapi.binance.com/fapi/v1/klines?symbol=${encodeURIComponent(this.symbol)}&interval=1d&startTime=${day}&limit=2`, 8000)
-        const rows = Array.isArray(bars.body) ? (bars.body as unknown[][]) : []
-        const exact = rows.find(r => Number(r[0]) === day) ?? rows.filter(r => Number(r[0]) < day + 86_400_000).pop()
-        const close = exact ? parseFloat(String(exact[4])) : NaN
+        const close = attempt === 0 && first ? await first : await this.referenceClose(day)
+        if (this.stopped) return
         const um = this.books.find(b => b.venue.exchange === 'binance' && b.venue.product === 'usdtPerp' && b.tick != null)
         const step = BucketScheme.derivedStep(close, this.opts.tick ?? (um ? um.tick! * um.priceFactor : null))
         if (step != null) {
           this.derivedStep = step
+          this.stepExact = true
+          storeStep(this.symbol, day, step)
           this.retarget()
           return
         }
@@ -510,13 +563,13 @@ export class OrderFlowFeed {
     const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
     const now = Date.now()
     if (this.calibrating) this.calibrate(now)
-    const frame = this.calibrating
+    const frame = this.blocking
       ? { phase: 'loading' as const, orders: [], asOfMs: now, thresholds: this.model.thresholds, venues: [] }
       : this.model.evaluate(now)
     for (const c of this.conns) c.watchdog(now)
     this.pumpHistory()
-    if (!hidden) { const out = this.pacer.next(frame, now); if (out) this.opts.onFrame(out) }
-    this.timer = setTimeout(() => this.loop(), hidden ? HIDDEN_EVALUATE_MS : EVALUATE_MS)
+    if (!hidden && !this.parked) { const out = this.pacer.next(frame, now); if (out) this.opts.onFrame(out) }
+    this.timer = setTimeout(() => this.loop(), hidden || this.parked ? HIDDEN_EVALUATE_MS : EVALUATE_MS)
   }
 
   private calibrate(now: number): void {
@@ -525,8 +578,15 @@ export class OrderFlowFeed {
     const complete = d.total > 0 && d.ready === d.total
     if (!(complete || d.total === 0 || now >= this.calibrationDeadline)) return
     this.calibrating = false
+    this.blocking = false
     this.calibrationDeadline = null
-    this.calibrated = d.ready > 0 ? calibratedThreshold(d.depth) : null
+    const prior = this.calibrated
+    const next = d.ready > 0 ? calibratedThreshold(d.depth) : null
+    if (next != null) storeCalibration(this.base, next, now)
+    // 一本簿都没就绪：有上一次的就接着用它，没有才退回默认
+    this.calibrated = next ?? prior
+    // 先拿上一次的门槛取过历史、这次标得更低：门槛以下被筛掉的那些要重取
+    if (prior != null && this.calibrated != null && this.calibrated < prior) this.resetHistory()
     this.retarget()
   }
 
@@ -577,7 +637,7 @@ export class OrderFlowFeed {
   }
 
   private pumpHistory(): void {
-    if (this.stopped || this.calibrating || this.historyBusy) return
+    if (this.stopped || this.blocking || this.historyBusy) return
     const job = this.nextJob(Date.now())
     if (!job) return
     this.historyBusy = true

@@ -15,7 +15,10 @@ import { term } from '../ui/overlay'
 import { OrderFlowFeed, getJSON, type TradeEvent } from './feed'
 import { buildFine, exName, venueName } from './aggregate'
 import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
-import { tapeBase } from './tape'
+import { Tape, tapeBase } from './tape'
+import { TradeLadder } from './tradeLadder'
+import { TpsMeter } from './stats'
+import { FeedKeeper } from './keep'
 import { recordTrade, beat } from '../chart/tradeFlow'
 import { recordFootprintTrade, footprintWanted } from '../chart/footprint'
 import { heatFetchSent } from './heatFetch'
@@ -66,7 +69,7 @@ export function installOrderFlow(a: Api): void {
   // 藏着时不做整套评估，只看要不要收掉数据层（原来藏着时一拍都不跑，后台标签页的几条簿 / 成交连接永远不关）
   setInterval(() => {
     if (document.visibilityState !== 'hidden') sync()
-    else if (OF.feed && !idle.want(true, Date.now())) stopFeed()
+    else if ((OF.feed || keeper.size) && !idle.want(true, Date.now())) { if (OF.feed) stopFeed(); keeper.clear() }
   }, SYNC_MS)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync() })
   sync()
@@ -95,14 +98,16 @@ export function sync(): void {
   const away = st.page !== 'chart' || document.visibilityState === 'hidden'
   // 美元指数没有盘口（算出来的指数，没有簿）：不起订单流 / 盘口 / 成交（照 iOS hasOrderFlow）
   const want = idle.want(away, Date.now()) && !!act && act.symbol.toUpperCase() !== 'DXY' && needed()
-  if (!want) { if (OF.feed) stopFeed(); setPending(false); return }
+  if (!want) { if (OF.feed) stopFeed(); keeper.clear(); setPending(false); return }
   const symbol = act!.symbol.toUpperCase()
-  if (OF.feed && OF.feed.symbol !== symbol) stopFeed()
+  // 换品种：旧的那只先留着（keep.ts：最多两只、三分钟），切回来接着用
+  if (OF.feed && OF.feed.symbol !== symbol) stopFeed(true)
   if (!OF.feed) {
+    const kept = keeper.take(symbol)
+    if (kept) { setPending(false); resumeFeed(kept) }
     // 深度快照（合约 20、现货 250 权重）、合约清单、步长这些不在首屏：连切时中间划过的品种不接，停稳约半秒再接
-    if (!settle.settled()) { setPending(true); settle.whenSettled('orderflow', sync); return }
-    setPending(false)
-    startFeed(act!.symbol)
+    else if (!settle.settled()) { setPending(true); settle.whenSettled('orderflow', sync); return }
+    else { setPending(false); startFeed(act!.symbol) }
   }
   const f = OF.feed!
   OF.iv = act!.iv
@@ -116,19 +121,37 @@ export function sync(): void {
   if (OF.prefs.heat && g) void heatBackfill(g.timeOf(g.from), g.timeOf(g.to + 1), g.range.min, g.range.max, g.iv / Math.max(1e-6, g.spacing))
 }
 
+/** 换走了留着的那几只各自的逐笔累计（成交带、梯子中列、每秒成交、单子峰值）：留着期间照样往里记，换回来接着用 */
+interface Kept { tape: Tape; trades: TradeLadder; tps: TpsMeter; peaks: Map<string, number>; sig: string }
+const keptState = new WeakMap<OrderFlowFeed, Kept>()
+const keeper = new FeedKeeper<OrderFlowFeed>({ onDrop: f => keptState.delete(f) })
+
 function startFeed(symbol: string): void {
   const s = api!
   const own = st.orderFlowOverrides[baseOfSymbol(symbol.toUpperCase()).base] ?? null
   overrideSig = JSON.stringify(own)
-  const f = new OrderFlowFeed({
+  const f: OrderFlowFeed = new OrderFlowFeed({
     symbol, crypto: s.crypto(symbol), turnover24h: s.turnover(symbol), tick: null, route: st.route, override: own,
     // 鼠标停在色块 / 梯子行上、或点选了某一单：逐拍给精确金额；平时金额 5 秒换一次（feed.ts 的 FramePacer）
     precise: () => OF.hoverRow != null || OF.highlight != null,
-    onFrame, onTrade,
+    onFrame, onTrade: ev => onTrade(f, ev),
   })
   OF.feed = f
   resetSymbolState()
   void f.start()
+  renderFlowPanel()
+}
+
+/** 切回刚看过的那只：连接、簿、历史都还在，逐笔累计换回它自己那份，马上出一帧 */
+function resumeFeed(f: OrderFlowFeed): void {
+  const k = keptState.get(f)
+  keptState.delete(f)
+  OF.feed = f
+  resetSymbolState()
+  if (k) { OF.tape = k.tape; OF.trades = k.trades; OF.tps = k.tps; OF.peaks = k.peaks; OF.version++ }
+  // 留着期间门槛若改过：紧接着的 sync 比对后再套（没改就不动）
+  overrideSig = k?.sig ?? '\u0000'
+  f.unpark()
   renderFlowPanel()
 }
 
@@ -139,8 +162,14 @@ function setPending(v: boolean): void {
   updateWidgets(); updateDrawer(true); renderFlowPanel()
 }
 
-function stopFeed(): void {
-  OF.feed?.stop()
+/** keep = true：换品种，这只先留着（逐笔累计跟着它走）；否则停掉 */
+function stopFeed(keep = false): void {
+  const f = OF.feed
+  if (f && keep) {
+    keptState.set(f, { tape: OF.tape, trades: OF.trades, tps: OF.tps, peaks: OF.peaks, sig: overrideSig })
+    OF.tape = new Tape(); OF.trades = new TradeLadder(); OF.tps = new TpsMeter(); OF.peaks = new Map()
+    keeper.park(f.symbol, f)
+  } else f?.stop()
   OF.feed = null
   resetSymbolState()
   api?.charts().forEach(c => { c.chart.dirty = true })
@@ -191,9 +220,8 @@ function onFrame(s: Snapshot): void {
   updateFlowPanel()
 }
 
-function onTrade(ev: TradeEvent): void {
-  const f = OF.feed
-  if (!f) return
+function onTrade(f: OrderFlowFeed, ev: TradeEvent): void {
+  if (f !== OF.feed) { keptTrade(f, ev); return }
   const v = ev.book.venue
   const cut = OF.snap ? tapeBase(OF.snap.thresholds) : null
   recordTrade(f.symbol, ev, cut ? cut / 50 : null)
@@ -208,6 +236,23 @@ function onTrade(ev: TradeEvent): void {
   OF.tps.add(Date.now())
   if (OF.bigTrade > 0) OF.tape.dotFor(row, OF.bigTrade)
   scheduleTape()
+}
+
+/** 留着的那只来的逐笔：记进它自己那份（按品种记的成交流、足迹照常记） */
+function keptTrade(f: OrderFlowFeed, ev: TradeEvent): void {
+  const k = keptState.get(f)
+  if (!k) return
+  const cut = tapeBase(f.model.thresholds)
+  recordTrade(f.symbol, ev, cut ? cut / 50 : null)
+  recordFootprintTrade(f.symbol, ev)
+  const v = ev.book.venue
+  const row = k.tape.push({
+    t: ev.trade.timeMs || Date.now(), exchange: v.exchange, label: exName(v.exchange), product: v.product,
+    side: ev.trade.hitSide === 'ask' ? 'buy' : 'sell', price: ev.trade.price, usd: ev.usd, qty: ev.trade.quantity, instrument: v.instrument,
+  })
+  const step = f.model.scheme?.step
+  if (step) k.trades.add(ev.trade.price, ev.usd, row.side, step, row.t)
+  k.tps.add(Date.now())
 }
 
 /** 抽屉 / 大单小部件里点了一单：图挪到那条带的中间、高亮它。 */

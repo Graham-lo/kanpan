@@ -2,7 +2,8 @@
 // 包成图表要的 OrderFlowSnapshot（state.overlay.orderFlow）。
 //
 // 只做三件事：
-//   1. 起停：同一品种重复 start 不重订（只更新出帧间隔），换品种先停旧的、先交一个 null 让图上立刻清掉旧品种的线。
+//   1. 起停：同一品种重复 start 不重订（只更新出帧间隔）；换品种把旧的那只交给 FeedKeeper 先留着（最多两只、三分钟，
+//      切回来接着用、不从头连），新的那只先交一帧「还在接」的空快照（图例写卡在哪一步），图上立刻清掉旧品种的线。
 //   2. 拷一份：feed 的模型原地改单子（push、改 notional / status），直接交出去的话图表那边按「同一块数组」认缓存会认错，
 //      所以每帧把单子逐条浅拷贝成一份不再变的快照（几千单一次拷贝 < 1 ms，500 ms 一帧）。
 //   3. 拼上品种与默认门槛：symbol 用 feed 规范化后的代号，defaults 取 feed.defaults()（面板「恢复默认」用）。
@@ -12,6 +13,7 @@
 import { OrderFlowFeed, type Route } from '../../orderflow/feed'
 import { S, on as onMarket } from '../../market'
 import { stopWhenHiddenLong } from '../../orderflow/idle'
+import { FeedKeeper } from '../../orderflow/keep'
 import type { BarSeries, Interval } from './series'
 import type { ViewWindow } from './geometry'
 import type { Snapshot } from '../../orderflow/model'
@@ -35,11 +37,16 @@ export interface OrderFlowSourceOptions {
 export class OrderFlowSource {
   private feed: OrderFlowFeed | null = null
   private symbol: string | null = null
+  /** 留着的键：品种 + 是不是加密（表到了以后类型变了的那只不能拿旧的接着用） */
+  private key: string | null = null
   private intervalMs = 0
   private lastEmit = -Infinity
-  private generation = 0
+  private readonly keeper = new FeedKeeper<OrderFlowFeed>()
 
   constructor(private readonly onSnapshot: (s: OrderFlowSnapshot | null) => void) {}
+
+  /** 留着的几只（诊断、测试用） */
+  get keptKeys(): string[] { return this.keeper.keys() }
 
   /** 正在订的品种（大写）；没在订是 null。 */
   get current(): string | null { return this.symbol }
@@ -56,31 +63,56 @@ export class OrderFlowSource {
       if (options.override !== undefined) this.feed.setOverride(options.override)
       return
     }
-    if (this.feed) this.stop()
+    const crypto = options.crypto ?? true
+    const key = `${sym}|${crypto ? 1 : 0}`
+    if (this.feed) this.park()
     this.symbol = sym
+    this.key = key
     this.lastEmit = -Infinity
-    const gen = ++this.generation
+    const kept = this.keeper.take(key)
+    if (kept) {
+      // 刚看过的：连接与簿都还在，换回来马上出一帧
+      this.feed = kept
+      if (options.route) kept.setRoute(options.route)
+      if (options.override !== undefined) kept.setOverride(options.override)
+      kept.unpark()
+      return
+    }
     const feed: OrderFlowFeed = new OrderFlowFeed({
       symbol: sym,
-      crypto: options.crypto ?? true,
+      crypto,
       turnover24h: options.turnover24h ?? null,
       tick: null,
       route: options.route ?? 'direct',
       override: options.override ?? null,
       precise: options.precise,
-      onFrame: s => this.frame(gen, feed, s),
+      onFrame: s => this.frame(feed, s),
     })
     this.feed = feed
     void feed.start()
+    // 第一帧要等品种表 / 盘口：先交一份空的「还在接」，图例马上写卡在哪一步
+    this.onSnapshot(toChartSnapshot(feed.symbol, { phase: 'loading', orders: [], asOfMs: Date.now(), thresholds: feed.model.thresholds, venues: [] }, feed.defaults(), feed.stage))
   }
 
-  /** 停掉并交一个 null（图上清掉）。 */
-  stop(): void {
+  /** 正在订的这只先留着（换品种、行情页切走），交一个 null（图上清掉）。 */
+  park(): void {
+    const f = this.feed, key = this.key
+    if (!f || !key) return
+    this.feed = null
+    this.symbol = null
+    this.key = null
+    this.keeper.park(key, f)
+    this.onSnapshot(null)
+  }
+
+  /** 停掉（连同留着的几只）并交一个 null（图上清掉）。only = true：只停正在订的这只，留着的不动。 */
+  stop(only = false): void {
+    if (!only) this.keeper.clear()
     if (!this.feed) return
-    this.generation++
     this.feed.stop()
     this.feed = null
     this.symbol = null
+    this.key = null
     this.onSnapshot(null)
   }
 
@@ -89,19 +121,20 @@ export class OrderFlowSource {
   /** 图最左 / 最右那一刻（往左拖出去了 feed 往前补历史）。 */
   setVisible(from: number | null, to: number | null): void { this.feed?.setVisible(from, to) }
 
-  private frame(gen: number, feed: OrderFlowFeed, s: Snapshot): void {
-    if (gen !== this.generation || feed !== this.feed) return
+  private frame(feed: OrderFlowFeed, s: Snapshot): void {
+    if (feed !== this.feed) return
     const now = Date.now()
     if (this.intervalMs > 0 && ago(this.lastEmit, now) < this.intervalMs) return
     this.lastEmit = now
-    this.onSnapshot(toChartSnapshot(feed.symbol, s, feed.defaults()))
+    this.onSnapshot(toChartSnapshot(feed.symbol, s, feed.defaults(), s.phase === 'ready' ? undefined : feed.stage))
   }
 }
 
-/** feed 的一帧 → 图表的快照：单子逐条浅拷贝（feed 原地改它们），门槛拷一份。 */
-export function toChartSnapshot(symbol: string, s: Snapshot, defaults?: OrderFlowSnapshot['defaults']): OrderFlowSnapshot {
+/** feed 的一帧 → 图表的快照：单子逐条浅拷贝（feed 原地改它们），门槛拷一份。stage：还在接时卡在哪一步。 */
+export function toChartSnapshot(symbol: string, s: Snapshot, defaults?: OrderFlowSnapshot['defaults'], stage?: OrderFlowSnapshot['stage']): OrderFlowSnapshot {
   return {
     symbol,
+    ...(stage ? { stage } : {}),
     phase: s.phase,
     orders: s.orders.map(o => ({ ...o })),
     asOfMs: s.asOfMs,
@@ -147,7 +180,7 @@ export function createOrderFlowPort(
   const off = onMarket(e => {
     if (!wanted || bg) return
     if (e.type === 'ws') src.setRoute(S.route)
-    else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(); start(wanted) }
+    else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(true); start(wanted) }
   })
   // 整页藏到后台一分钟就停掉订阅，回到前台重开（与行情页的 createPagePort 同一条规矩，见 orderflow/idle.ts）
   let bg = false

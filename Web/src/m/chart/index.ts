@@ -35,6 +35,8 @@ import { CompareFeed, compareSymbolOf, compareTargets } from './compare.source'
 import { DepthFeed } from './depth.source'
 import { ChartBeat, resyncOnOpen } from './beat'
 import { ScaleReport } from './scaleReport'
+import { BarCache, FIRST_PAGE, HISTORY_PAGE, backfillLimit, pageExhausted, sharedBars } from './barCache'
+import { cachedSym } from '../model/quoteCache'
 
 // ================================================================ ViewIntent
 
@@ -99,8 +101,13 @@ export interface CreateChartOptions extends Partial<ChartLook> {
   /** 品种信息；默认读 market.S.symbols。 */
   symbolInfo?: (symbol: string) => SymbolInfo | null
   /** 取一页 K 线（endTime 为 null 是最新一页）；默认走 market.klines。测试与复盘可换。 */
-  /** alive：排在限流队列里时问一下还要不要（顶栏扫图划过去的那只、换走的周期不要了就不发） */
-  loadBars?: (symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean) => Promise<Bar[] | null>
+  /** alive：排在限流队列里时问一下还要不要（顶栏扫图划过去的那只、换走的周期不要了就不发）；
+   *  limit：要几根（不给就是 1500）。换了取数口的可以不认 limit，照常回一整页 */
+  loadBars?: (symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean, limit?: number) => Promise<Bar[] | null>
+  /** 首屏先取几根、上图后后台补到 1500（barCache.ts）。默认取数口是 300；换了 loadBars 默认 null（一次取整页，不补） */
+  firstPage?: number | null
+  /** 共用 K 线缓存（换回来 / 重开页先画）。默认取数口用本页共用那份；换了 loadBars 默认不用 */
+  barCache?: BarCache | null
   /** 关掉推送 / 心跳 / 外部副图（复盘、截图用静态图）。 */
   offline?: boolean
   /** 主力订单流的数据口：图把「要不要、哪只、哪个周期、看到哪段」告诉它，它把快照推回来。 */
@@ -126,6 +133,8 @@ export type SelectEvent =
   | { kind: 'orderFlow'; focus: ChartOrderFlowFocus | null }
   | { kind: 'drawing'; id: string | null }
 export interface StatusEvent { loading: boolean; error: string | null; bars: number }
+/** 往左翻历史：用户翻到左缘、正在取更早那一页（后台悄悄补满那次不报） */
+export interface HistoryEvent { loading: boolean }
 
 export interface ChartEvents {
   crosshair: CrosshairEvent
@@ -135,6 +144,7 @@ export interface ChartEvents {
   tap: void
   notice: string
   status: StatusEvent
+  history: HistoryEvent
   inversion: { main: boolean; subs: IndicatorID[] }
   subScale: { id: IndicatorID; scale: number }
   subOrder: IndicatorID[]
@@ -224,7 +234,8 @@ const toChartBar = (b: MarketBar): Bar => {
 type KlineRow = [number, string, string, string, string, string, number, string, number, string, string, ...unknown[]]
 
 function defaultSymbolInfo(symbol: string): SymbolInfo | null {
-  const s = S.symbols.get(symbol.toUpperCase())
+  // 品种表还没到：先按上次记下的那份定小数位（m/model/quoteCache.ts），表到了 universe 会重排
+  const s = S.symbols.get(symbol.toUpperCase()) ?? (S.live === true ? null : cachedSym(symbol))
   return s ? { symbol: s.symbol, base: s.base, priceDecimals: s.dec } : null
 }
 
@@ -234,10 +245,13 @@ function guessDecimals(price: number): number {
   return Math.max(1, Math.min(8, 4 - Math.floor(Math.log10(price))))
 }
 
-/** 一页 K 线（KanpanCore 的 Bar：量取 r[5] 币量、主动买取 r[9] takerBuyBaseVolume）。取不到回 null。 */
-async function defaultLoad(symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean): Promise<Bar[] | null> {
+/**
+ * 一页 K 线（KanpanCore 的 Bar：量取 r[5] 币量、主动买取 r[9] takerBuyBaseVolume）。取不到回 null。
+ * 不走 market 的 klines()：那边的量是成交额口径（r[7]）、主动买是成交额（r[10]），没有币量的主动买。
+ */
+async function defaultLoad(symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean, limit = HISTORY_PAGE): Promise<Bar[] | null> {
   try {
-    const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${HISTORY_PAGE}${endTime ? `&endTime=${endTime - 1}` : ''}`
+    const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${limit}${endTime ? `&endTime=${endTime - 1}` : ''}`
     const rows = await j<KlineRow[]>(u, 10000, false, alive)
     return rows.map(r => ({ openTime: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], volume: +r[5], takerBuy: +r[9] }))
   } catch {
@@ -265,13 +279,26 @@ const sameList = <T>(a: readonly T[], b: readonly T[]): boolean => a.length === 
 const SNAPSHOT_LIMIT = 8
 /** 对比行情揉进图的节流（CompareFeed 的 flush：100 ms） */
 const COMPARE_FLUSH_MS = 100
-const HISTORY_PAGE = 1500
 /** 副图名额（与 iOS Prefs.maxSubs、手机网页 cappedSubs 同一口径）：成交量不占，别的最多三个，所以最多四块 */
 const MAX_SUBS = 3
 
 // ================================================================ createChart
 
 let engineSeq = 0
+let firstBarsMarked = false
+let freshMarked = false
+/** 开页后第一次有 K 线上图的那一刻（缓存先画的也算；性能面板里看首屏用，只记一次） */
+function markFirstBars(): void {
+  if (firstBarsMarked) return
+  firstBarsMarked = true
+  try { performance.mark('m-chart-bars') } catch { /* 没有 performance */ }
+}
+/** 开页后第一次取到最新那一页的那一刻（只记一次） */
+function markFresh(): void {
+  if (freshMarked) return
+  freshMarked = true
+  try { performance.mark('m-chart-fresh') } catch { /* 没有 performance */ }
+}
 export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartHandle {
   /** 外部副图（持仓量 / 多空比 / 主动买卖比 / 基差）等品种停稳再取，见 market/settle.ts；每台引擎一个键 */
   const settleKey = `m-ext:${++engineSeq}`
@@ -337,6 +364,17 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   const snapshots = new Map<string, BarSeries>()
   const symbolInfo = opts.symbolInfo ?? defaultSymbolInfo
   const loadBars = opts.loadBars ?? defaultLoad
+  const firstPage = opts.firstPage !== undefined ? opts.firstPage : opts.loadBars || opts.offline ? null : FIRST_PAGE
+  const barCache = opts.barCache !== undefined ? opts.barCache : opts.loadBars || opts.offline ? null : sharedBars
+  /** 首屏 / 补最新那一页要几根 */
+  const latestLimit = firstPage ?? HISTORY_PAGE
+  /** 把当前这条记进共用缓存（换品种 / 切后台 / 拆掉时；推送改过的末根一起记） */
+  const shareSeries = (s: BarSeries | null = series) => {
+    if (!barCache || !s || s.isEmpty) return
+    const from = Math.max(0, s.count - HISTORY_PAGE), out: Bar[] = []
+    for (let i = from; i < s.count; i++) out.push(s.bar(i))
+    barCache.put(s.symbol, s.interval, out)
+  }
 
   const look: ChartLook = {
     overlays: [], subs: [], params: opts.params ?? {}, indicatorColors: opts.indicatorColors ?? {},
@@ -358,6 +396,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   const snapshotKey = (sym: string, iv: Interval) => `${sym}|${iv}`
   const remember = (s: BarSeries) => {
     if (s.isEmpty) return // 空序列不当快照：下回换回来别拿它开张
+    shareSeries(s)
     const k = snapshotKey(s.symbol, s.interval)
     snapshots.delete(k)
     snapshots.set(k, s)
@@ -669,29 +708,54 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     status()
   }
 
-  /** 首屏：有快照先用快照开张（换回来的那只立刻有图），再拉最新一页接上。 */
+  /**
+   * 首屏：有快照先用快照开张（换回来的那只立刻有图）；本台没有就看共用缓存（别的引擎 / 上次开页记下的、接得上的那段），
+   * 再拉最新一小页（firstPage 根）接上，上图之后后台往左补满（backfill）。
+   */
   const load = async () => {
     const gen = ++generation
     const sym = symbol, iv = interval
-    const cached = snapshots.get(snapshotKey(sym, iv))
+    setHistoryHint(false)
+    let cached = snapshots.get(snapshotKey(sym, iv)) ?? null
+    if (!cached && barCache) {
+      const bars = barCache.take(sym, iv, latestLimit)
+      if (bars?.length) cached = BarSeries.fromBars(sym, iv, bars)
+    }
     loading = true
     error = null
-    series = cached ?? null
-    if (cached) takeSeries(cached)
+    series = cached
+    if (cached) { takeSeries(cached); markFirstBars() }
     else { update(); status() }
-    const bars = await loadBars(sym, iv, null, () => !destroyed && gen === generation)
+    const bars = await loadBars(sym, iv, null, () => !destroyed && gen === generation, latestLimit)
     if (destroyed || gen !== generation) return
     loading = false
     if (bars) freshAt = Date.now()
     if (!bars) { error = '行情暂时取不到'; update(); status(); return }
+    markFresh()
     if (cached && cached.count > 0) {
       mergeLatest(cached, bars)
       status()
+      backfill(bars.length)
       return
     }
     // 一根都没有（下架、不认得的代号）：当出错报，宿主据此盖「取不到」
     if (!bars.length) error = '这只品种没有行情'
     takeSeries(BarSeries.fromBars(sym, iv, bars))
+    markFirstBars()
+    backfill(bars.length)
+  }
+
+  /**
+   * 首屏那一小页上图后：取到的比要的少就是左边到头了；否则后台往左补到 1500（不报「加载更早」，
+   * 用户此时多半还在看最新那段）。换了取数口（firstPage = null）的不补。
+   */
+  const backfill = (got: number) => {
+    const s = series
+    if (!s || firstPage == null) return
+    // 最新那一页都没取满：整只品种就这么多根（新上线的），左边到头了
+    if (got > 0 && pageExhausted(got, latestLimit)) { historyDone = true; return }
+    const n = backfillLimit(s.count, historyDone, firstPage)
+    if (n != null) void loadHistory(n, true)
   }
 
   /** 最新一页并回已有序列：接得上就 replaceSuffix，接不上（离开太久）整条换。 */
@@ -734,26 +798,42 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const s = series
     if (!s || opts.offline || loading) return
     const gen = generation
-    const bars = await loadBars(s.symbol, s.interval, null, () => !destroyed && gen === generation && series === s)
+    const bars = await loadBars(s.symbol, s.interval, null, () => !destroyed && gen === generation && series === s, latestLimit)
     if (destroyed || gen !== generation || series !== s || !bars) return
     freshAt = Date.now()
     mergeLatest(s, bars)
+    // 离开太久、接不上整条换成了那一小页：照样后台补满
+    if (series !== s) backfill(bars.length)
   }
 
-  /** 向左翻页（ChartView.onNeedsHistory）：一次 1500 根，到头就不再问。 */
-  const loadHistory = async () => {
+  /** 「加载更早」提示：用户翻到左缘、正在取那一页时亮着 */
+  let historyHint = false
+  const setHistoryHint = (on: boolean) => {
+    if (historyHint === on) return
+    historyHint = on
+    emit('history', { loading: on })
+  }
+
+  /**
+   * 向左翻页（ChartView.onNeedsHistory）：一次 1500 根，到头就不再问。
+   * quiet：首屏后的后台补满，不亮「加载更早」；补的途中用户翻到了左缘，就在那时亮起来。
+   */
+  const loadHistory = async (limit = HISTORY_PAGE, quiet = false) => {
     const s = series
+    if (!quiet && historyLoading && !historyDone && s && !s.isEmpty) { setHistoryHint(true); return }
     if (!s || s.isEmpty || historyLoading || historyDone || opts.offline && !opts.loadBars) return
     historyLoading = true
+    if (!quiet) setHistoryHint(true)
     const gen = generation
     try {
-      const bars = await loadBars(s.symbol, s.interval, s.firstTime, () => !destroyed && gen === generation && series === s)
+      const bars = await loadBars(s.symbol, s.interval, s.firstTime, () => !destroyed && gen === generation && series === s, limit)
       if (destroyed || gen !== generation || series !== s) return
       if (!bars || !bars.length) { if (bars) historyDone = true; return }
       const before = s.count
       s.prepend(bars)
       if (s.count === before) { historyDone = true; return }
-      if (bars.length < HISTORY_PAGE) historyDone = true
+      if (pageExhausted(bars.length, limit)) historyDone = true
+      remember(s)
       const st = view.state
       if (st && st.input.series === s) view.state = { ...st }
       feed?.want(wantedExternal(), s)
@@ -762,6 +842,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       scheduleCompare()
     } finally {
       historyLoading = false
+      if (gen === generation) setHistoryHint(false)
       // 翻完一页若仍贴着左缘，让下一次视野变化再问一页
       view.gesture.askedHistory = false
     }
@@ -855,6 +936,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     onReturn: () => { void resync(); compareFeed.resync() },
   }, document.hidden, !opts.offline)
   const onVisibility = () => {
+    if (document.hidden) shareSeries()
     depthPort?.setVisible(!document.hidden)
     beat.setHidden(document.hidden)
     if (document.hidden) view.gestures.cancelAllPointers()
@@ -1196,6 +1278,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     destroy() {
       if (destroyed) return
       scaleReport.lift() // 手指还按着就被拆掉（切走、横竖屏重建）：捏出来的那一下别丢
+      shareSeries()
       destroyed = true
       settle.cancel(settleKey)
       generation++

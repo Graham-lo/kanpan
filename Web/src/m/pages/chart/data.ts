@@ -73,7 +73,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
   const off = onMarket(e => {
     if (!wanted || suspended || bg) return
     if (e.type === 'ws') src.setRoute(S.route)
-    else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(); start(wanted) }
+    else if (e.type === 'universe' && !knewSymbol && info(wanted).known) { src.stop(true); start(wanted) }
   })
   // 整页藏到后台（锁屏、切到别的 app / 标签）一分钟：停掉订阅；回到前台按想要的品种重开（页内切走另由 suspend 管）
   let bg = false
@@ -100,7 +100,9 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
     suspend() {
       if (suspended) return
       suspended = true
-      src.stop()
+      // 行情页切走（去自选挑一只再回来）：这只先留着（orderflow/keep.ts：最多两只、三分钟），回来不从头连；
+      // 整页藏到后台满一分钟照旧全停（上面的 stopWhenHiddenLong）
+      src.park()
     },
     resume() {
       if (!suspended) return

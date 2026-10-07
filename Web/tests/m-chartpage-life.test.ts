@@ -13,6 +13,7 @@ vi.mock('../src/m/chart/orderflow.source', () => ({
     constructor(private readonly push: (s: unknown) => void) {}
     start(sym: string): void { this.current = sym.toUpperCase(); log.push(`start ${this.current}`) }
     stop(): void { if (!this.current) return; log.push(`stop ${this.current}`); this.current = null; this.push(null) }
+    park(): void { this.stop() } // 停订但留着订单流在后台（换回来不从零连）；对宿主而言同样是停
     setRoute(): void {}
     setOverride(): void { log.push('override') }
     setVisible(from: number | null, to: number | null): void { log.push(`visible ${from}-${to}`) }

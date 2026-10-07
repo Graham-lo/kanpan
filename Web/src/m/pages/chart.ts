@@ -37,7 +37,7 @@ import { openSearch } from './search'
 import { openAlertForm } from './alertForm'
 import { openAlertHub } from './alertHub'
 import { onAlertsChange, pendingCount } from '../model/alerts'
-import { chartIndicatorsFor, isStale, isLandscape, spacingFor, spacingWrite, priceModeFor, showsOtherChart, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
+import { chartIndicatorsFor, isStale, isLandscape, spacingFor, spacingWrite, priceModeFor, showsOtherChart, switchCue, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
 import { compareTargets } from '../chart/compare.source'
@@ -181,9 +181,21 @@ export function initChart(root: HTMLElement): PageHandle {
   empty.hidden = true
   empty.textContent = '暂时取不到这只品种的行情'
   box.append(empty)
+  // 往左翻到头、正在取更早那段：左缘一颗小胶囊（引擎的 history 事件；首屏后后台补满那次不亮）
+  const older = el('div', 'cp-older')
+  older.textContent = '加载更早…'
+  older.setAttribute('aria-hidden', 'true')
+  box.append(older)
+  chart.on('history', e => { older.classList.toggle('on', e.loading) })
   chart.on('status', e => {
     const shown = chart.state?.input.series
-    empty.hidden = !showsOtherChart(e, shown ? { symbol: shown.symbol, interval: shown.interval } : null, chart.symbol, chart.interval)
+    const drawn = shown ? { symbol: shown.symbol, interval: shown.interval } : null
+    empty.hidden = !showsOtherChart(e, drawn, chart.symbol, chart.interval)
+    // 换品种 / 周期取数那一拍：图上还是上一张就淡下去，头部走一条细条；新的一到立刻恢复
+    const cue = switchCue(e, drawn, chart.symbol, chart.interval)
+    box.classList.toggle('switching', cue.fade)
+    header.setBusy(cue.busy)
+    if (!e.loading) older.classList.remove('on')
   })
   const card = createOrderFlowCard((chart.el.firstElementChild as HTMLElement | null) ?? chart.el)
 

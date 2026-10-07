@@ -453,6 +453,22 @@ export function showsOtherChart(
   return !drawn || drawn.symbol.toUpperCase() !== symbol.toUpperCase() || drawn.interval !== interval
 }
 
+/**
+ * 换品种 / 周期取数那一拍的提示（体感：知道在换、不像卡住）：
+ * - busy：还在取（头部那条来回走的细条）；
+ * - fade：图上留着的是别的品种 / 周期那张（旧图淡下去，新的一到立刻恢复）。
+ * 图上已经是这一只这一档（快照 / 缓存先画出来了，只在补最新）不淡。
+ */
+export function switchCue(
+  status: { loading: boolean; error: string | null },
+  drawn: { symbol: string; interval: string } | null,
+  symbol: string, interval: string,
+): { busy: boolean; fade: boolean } {
+  if (!status.loading) return { busy: false, fade: false }
+  const other = !!drawn && (drawn.symbol.toUpperCase() !== symbol.toUpperCase() || drawn.interval !== interval)
+  return { busy: true, fade: other }
+}
+
 /** 图上真正用的价格轴（照 iOS effectivePriceMode）：设置是线性 / 对数且开着个性化学习时，换成这一类学到的那档；
  *  百分比原样交给图（引擎 8e6f4b0e 起画得了） */
 export function priceModeFor<M extends string>(pref: M, habitLearning: boolean, learned: unknown): M | 'log' | 'linear' {

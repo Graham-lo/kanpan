@@ -24,6 +24,7 @@ import {
   type AssetKind,
 } from './logic'
 import { fetchValuation, valuationOf } from './data'
+import { cachedSym } from '../../model/quoteCache'
 
 export const TERMS: Record<string, Term> = {
   oi: { id: 'oi', title: '仓 · 持仓量', body: '现在市场上还没平掉的合约一共值多少美元。\n它在涨，说明有更多资金押注在这只上；在跌，说明有人在离场。' },
@@ -108,6 +109,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
       <div class="cp-quoteinner"><div class="cp-price num"></div><div class="cp-chg num"></div></div>
     </div>
     <pre class="cp-readout" hidden></pre>
+    <div class="cp-busy" aria-hidden="true"><i></i></div>
     <div class="cp-stats">
       <div class="cp-col">
         <div class="cp-cell" data-k="oi"><span class="cp-lab">仓</span><b class="num"></b></div>
@@ -147,7 +149,10 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
   return {
     el: head,
     render(sym: string, stale: boolean, now = Date.now()): void {
-      const s = S.symbols.get(sym)
+      const live = S.symbols.get(sym)
+      // 表还没到：先摆上次记下的价（退灰），实时的一到就换
+      const s = live ?? (S.live === true ? undefined : cachedSym(sym) ?? undefined)
+      if (!live && s) stale = true
       const dec = s?.dec ?? 2
       const up = (s?.pct ?? s?.chg ?? 0) >= 0
       // 一秒一次（结算倒计时）加上每跳行情都进来：同值不写
@@ -173,7 +178,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
       if (macro) return
       // 自己一分钟最多取一次；价还没到时取了算不出美元持仓、又要空等一分钟。扫图划过去的那只还排在限流里就不发
       // 详情的五个慢数不是首屏：品种停稳（market/settle）再取，同一个键只留最后那只
-      if (s?.price != null) settle.whenSettled('m-detail', () => { if (shownSym === sym) void fetchDetail(sym, () => shownSym === sym) })
+      if (live?.price != null) settle.whenSettled('m-detail', () => { if (shownSym === sym) void fetchDetail(sym, () => shownSym === sym) })
       const oi = detailOf(sym)?.oiValue
       put('oi', openInterestText(oi))
       put('vol', turnoverText(s?.vol, fresh))
@@ -185,7 +190,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
       // 估值：加密 O/M、美股 FPE（亏损给 P/S），大宗不摆
       const kind = (s?.kind ?? 'crypto') as AssetKind
       if (kind === 'us') void fetchValuation(sym)
-      else if (s && !s.supply) void fetchValuation(sym)
+      else if (live && !live.supply) void fetchValuation(sym)
       const v = valuationOf(sym)
       const vc = valuationCell(kind, { oi, supply: s?.supply, price: fresh ? s?.price : null, forwardEarnings: v?.forwardEarnings, revenue: v?.revenue })
       valCell.hidden = !vc
@@ -199,6 +204,8 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
         put('val', vc.value ?? MISSING)
       }
     },
+    /** 换品种 / 周期取数中：头部下沿一条来回走的细条 */
+    setBusy(on: boolean): void { head.classList.toggle('busy', on) },
     /** 十字线读数：null = 收起，恢复价格 */
     setReadout(text: string | null): void {
       if (readout.hidden !== (text == null)) readout.hidden = text == null

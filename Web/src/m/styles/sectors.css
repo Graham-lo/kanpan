@@ -87,3 +87,29 @@ html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: v
 .sec-drill-empty { padding: var(--s-xxl) var(--inset-page); text-align: center; font: var(--t-caption); color: var(--ink3) }
 .sec-drill-empty[hidden] { display: none }
 html[data-theme="dark"] .sec-back { background: color-mix(in srgb, var(--ink) 5.5%, transparent) }
+
+/* 行情还在路上时的骨架行（m/model/sectorView.ts skeletonRowsHTML）：和真行同高同位，块是发丝线那层淡色，轻轻呼吸 */
+.sec-skel {
+  position: relative; display: flex; align-items: center; gap: var(--s-m); min-height: 44px;
+  padding: var(--s-s) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+  pointer-events: none;
+}
+.sec-skel.symbol { min-height: 66px }
+.sec-skel:not(.first)::before {
+  content: ''; position: absolute; top: 0; left: calc(var(--inset-page) + var(--safe-left) + 32px + var(--s-m)); right: calc(var(--inset-page) + var(--safe-right));
+  height: .5px; background: var(--lg-rule);
+}
+.sec-skel .sk-icon, .sec-skel .sk-bar, .sec-skel .sk-pill {
+  background: var(--lg-rule, color-mix(in srgb, var(--ink) 9%, transparent));
+  animation: sk-breathe 1.4s ease-in-out infinite;
+}
+.sec-skel .sk-icon { width: 32px; height: 32px; border-radius: 50%; flex: none }
+.sec-skel.symbol .sk-icon { width: 33px; height: 33px }
+.sec-skel .sk-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px }
+.sec-skel .sk-bar { display: block; height: 12px; border-radius: 4px }
+.sec-skel .sk-bar.sub { height: 9px }
+.sec-skel .sk-bar.pct { width: 52px; flex: none }
+.sec-skel .sk-bar.price { width: 64px; flex: none }
+.sec-skel .sk-pill { width: 72px; height: 28px; border-radius: 8px; flex: none }
+@keyframes sk-breathe { 0%, 100% { opacity: 1 } 50% { opacity: .55 } }
+@media (prefers-reduced-motion: reduce) { .sec-skel .sk-icon, .sec-skel .sk-bar, .sec-skel .sk-pill { animation: none } }

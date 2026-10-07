@@ -43,6 +43,8 @@ export function displayShows(d: OrderFlowDisplay, o: BigOrder): boolean {
 export interface OrderFlowSnapshot {
   symbol: string
   phase: 'loading' | 'ready'
+  /** 可选：还在接（phase = loading）时卡在哪一步——定门槛 / 取步长 / 连盘口（图例的提示） */
+  stage?: 'threshold' | 'step' | 'connect'
   orders: BigOrder[]
   asOfMs: number
   thresholds: Thresholds

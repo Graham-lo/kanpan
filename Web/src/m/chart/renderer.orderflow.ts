@@ -1144,6 +1144,11 @@ export function drawOrderFlowHover(r: ChartRenderer, ctx: CanvasRenderingContext
   return true
 }
 
+/** 还在接时图例写卡在哪一步（照 PC 梯子的三段：定门槛 → 取步长 → 连盘口，字能少就少） */
+export function orderFlowLoadingText(stage: OrderFlowSnapshot['stage']): string {
+  return stage === 'threshold' ? '主力 定门槛…' : stage === 'step' ? '主力 取步长…' : '主力 连盘口…'
+}
+
 /**
  * 图例「主力」那一行：跟在叠加指标的图例后面另起一行（x、y 是前面那几段画完停在哪儿）。
  * 始终是「主力 ▬▬ 买 X · ▬▬ 卖 Y」（逐单求和）：买、卖前面各两枚色样（合约、现货，关掉的那类不画）。
@@ -1160,7 +1165,7 @@ export function drawOrderFlowLegend(r: ChartRenderer, ctx: CanvasRenderingContex
     drawLeft(ctx, text, x, y, font, color)
     x += textWidth(text, font) + 4
   }
-  if (flow.phase !== 'ready') { put('主力 …', t.text); return }
+  if (flow.phase !== 'ready') { put(orderFlowLoadingText(flow.stage), t.text); return }
   const frame = orderFlowBands(r, pane, r.priceRange(L.W, L.H), L)
   if (!(frame.bidTotal > 0 || frame.askTotal > 0)) { put('主力 暂无', t.text); return }
   const display = r.state.overlay.orderFlowDisplay
