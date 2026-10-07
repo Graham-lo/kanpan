@@ -67,7 +67,7 @@ describe('订单流出帧节奏', () => {
     expect(q.next(snap([order({ notional: 3_015_000 })], 1000), 1000)).toBeNull()
   })
 
-  it('画面变了（新单出现 / 单结束）立刻发，但其余活单的金额仍按住；reset 后下一拍取新金额', () => {
+  it('画面变了（新单出现 / 单结束）立刻发，但其余活单的金额仍按住；force 下一拍必发但金额仍按住；reset 后取新金额', () => {
     const p = new FramePacer()
     p.next(snap([order()], 0), 0)
     const appeared = p.next(snap([order({ notional: 3_030_000 }), order({ bucket: 9, notional: 1_500_000 })], 500), 500)
@@ -75,6 +75,11 @@ describe('订单流出帧节奏', () => {
     const ended = p.next(snap([order({ notional: 3_040_000 }), order({ bucket: 9, notional: 1_500_000, status: 'filled', endMs: 900 })], 1000), 1000)
     expect(ended?.orders[1].status).toBe('filled')
     expect(ended?.orders[0].notional).toBe(3_000_000)
+    // 历史并进来 / 改门槛的 force：没变也发这一拍，但活单金额还是上一帧的
+    p.force()
+    const forced = p.next(snap([order({ notional: 3_045_000 }), order({ bucket: 9, notional: 1_500_000, status: 'filled', endMs: 900 })], 1200), 1200)
+    expect(forced?.orders[0].notional).toBe(3_000_000)
+    expect(p.next(snap([order({ notional: 3_045_000 }), order({ bucket: 9, notional: 1_500_000, status: 'filled', endMs: 900 })], 1300), 1300)).toBeNull()
     p.reset()
     expect(p.next(snap([order({ notional: 3_050_000 }), order({ bucket: 9, notional: 1_500_000, status: 'filled', endMs: 900 })], 1500), 1500)?.orders[0].notional).toBe(3_050_000)
   })

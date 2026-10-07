@@ -349,7 +349,7 @@ public actor OrderFlowFeed {
     // 步长一变模型整个清空重来：服务端历史也从头取（首次那一页），路上那一页作废。
     if next.step != model.thresholds.step { resetHistory() } else { raiseHistoryThresholds(to: next) }
     model.setThresholds(next)
-    lastEmitted = nil  // 门槛一改立刻出一帧，不等心跳
+    emitNextTick()  // 门槛一改立刻出一帧，不等心跳
     pumpHistory()
   }
 
@@ -689,7 +689,7 @@ public actor OrderFlowFeed {
       case .backfill:
         historyFromMs = min(historyFromMs ?? page.fromMs, page.fromMs)
       }
-      lastEmitted = nil  // 并进来的马上出一帧
+      emitNextTick()  // 并进来的马上出一帧
     case .pending:
       // 本机步长还没定（取的时候有，回来时没了，只可能是刚被清）：下一拍重来。
       break
@@ -760,8 +760,13 @@ public actor OrderFlowFeed {
       deferredJournal = nil
       model.restore(journal)
     }
-    lastEmitted = nil  // 标定完立刻出一帧
+    emitNextTick()  // 标定完立刻出一帧
   }
+
+  /// 下一拍不等心跳、一定发；但不丢上一帧——活单金额仍按 `hold` 的规矩按住。原来这里把 `lastEmitted` 清掉，
+  /// 等于整帧金额重新来过：开图那几秒服务端历史一页一页并进来（15 分钟图要补三四页、每页一次），满屏金额
+  /// 签每页都换一遍（10-07 网页端实测 2.5 / 3.4 / 4.3 / 5.2 秒各刷一次），正是用户说的「开启到稳定那段数字变得非常快」。
+  private func emitNextTick() { lastEmitMs = .min / 2 }
 
   /// 心跳之内这一帧发不发：画出来有变化就发；只是金额变了，十字线停着就发、否则隔 `amountRefreshMs` 发一次。
   /// 这一拍该不该发、发哪一份：

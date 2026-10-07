@@ -280,9 +280,9 @@ export class OrderFlowFeed {
   private calibrated: number | null = null
   private calibrationDeadline: number | null = null
   private pacer = new FramePacer(() => this.opts.precise?.() ?? false)
-  /** 门槛改了、历史并进来了：不等下一个 500 ms，马上出一帧（也不按住金额）。 */
+  /** 门槛改了、历史并进来了：不等下一个 500 ms，马上出一帧（活单金额照旧按住，见 pace.ts force）。 */
   private kick(): void {
-    this.pacer.reset()
+    this.pacer.force()
     if (this.stopped || !this.timer) return
     clearTimeout(this.timer); this.timer = setTimeout(() => this.loop(), 0)
   }
