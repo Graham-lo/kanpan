@@ -76,7 +76,7 @@ function logPane(): string {
   return days.map(d => `<div class="alog-day">${esc(d.title)}</div>${d.records.map(r => {
     const k = bareSymbol(r.symbol), s = k ? sym(k) : undefined
     const detail = logDetail(r, s?.dec)
-    return `<div class="list-row alog-row"${k && s ? ` data-log-open="${esc(k)}" data-tip="打开这只品种"` : ''}>${badge(s ?? (k ? { base: k, color: '#888' } : undefined))}
+    return `<div class="list-row alog-row"${k && s ? ` data-log-open="${esc(k)}" data-tip="打开这只品种"` : ''}>${badge(s ?? (k ? { base: k } : undefined))}
       <div class="main"><div class="t1"><span>${esc(logName(r, code))}</span></div>${detail ? `<div class="t2 num">${esc(detail)}</div>` : ''}</div>
       <span class="alog-clock num faint">${logClock(r.firedAt)}</span></div>`
   }).join('')}`).join('')

@@ -12,7 +12,7 @@ import { $, $$, I, esc, tgt } from '../ui/dom'
 import { GLOSSARY, term } from '../ui/overlay'
 import { badge, cls, pctText, priceText, sym } from '../ui/common'
 import { fmtCompact } from '../util/format'
-import { S, badgeColor, streamName } from '../market'
+import { S, streamName } from '../market'
 import { openSymbol, toggleWatch, isWatched, refreshStreams } from './chart'
 import {
   EMPTY_HISTORY, MIN_ELIGIBLE_MEMBERS, boardOrder, catalog, hasEligible, isThin, outperformCount, rankable, resolveWindow, stats, symbolRows, windowReturn,
@@ -138,7 +138,7 @@ function symbolRowHTML(r: SymbolRow): string {
   const cn = cn0.toUpperCase() === code.toUpperCase() ? '' : cn0
   const star = isWatched(k)
   return `<tr data-msym="${esc(k)}" tabindex="0">
-    <td><div class="sym">${badge(s ?? { base: code, color: badgeColor(code) })}<b>${esc(code)}</b><span class="cn">${esc(cn)}</span>${r.isFrontier ? `<span class="sec-lead">领涨</span>` : ''}</div></td>
+    <td><div class="sym">${badge(s ?? { base: code })}<b>${esc(code)}</b><span class="cn">${esc(cn)}</span>${r.isFrontier ? `<span class="sec-lead">领涨</span>` : ''}</div></td>
     <td class="num price-live" data-f="price">${priceText(s, Number.isFinite(r.price) ? r.price : null)}</td>
     <td class="num ${cls(r.pct)} price-live" data-f="pct">${pctText(r.pct)}</td>
     <td class="num muted" data-f="vol">${fmtCompact(r.quoteVolume)}</td>

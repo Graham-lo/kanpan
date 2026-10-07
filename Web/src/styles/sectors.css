@@ -24,7 +24,7 @@
 .sec-spark-none { display: none; text-align: right; }
 .sec-spark-cell.nospark .sec-spark { display: none; }
 .sec-spark-cell.nospark .sec-spark-none { display: block; }
-.sec-zero { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
+.sec-zero { stroke: var(--line); stroke-width: 1; stroke-dasharray: 1 3; vector-effect: non-scaling-stroke; }
 
 /* 品种列表：照自选列表 */
 /* 名称列最多 320 px，星标列 48 px，最新价 / 涨跌 / 成交额平分剩下的宽度 */

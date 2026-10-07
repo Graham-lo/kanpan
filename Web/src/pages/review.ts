@@ -13,7 +13,7 @@ import { hooks, go, goLogin } from '../app/shell'
 import { $, I, esc } from '../ui/dom'
 import { GLOSSARY, term, toast } from '../ui/overlay'
 import { badge, shTime, sym } from '../ui/common'
-import { IV_LABEL, badgeColor, baseOf } from '../market/symbols'
+import { IV_LABEL, baseOf } from '../market/symbols'
 import { durText, fmt } from '../util/format'
 import { openSymbol } from './chart'
 import { ReviewError, errorText, forgetSearch, rememberSearch, reviewApi, reviewToken, storedSearches, type StoredSearch } from '../review/api'
@@ -84,7 +84,7 @@ function badgeFor(symbol: string): string {
   const s = sym(symbol)
   if (s) return badge(s)
   const b = baseOf(symbol)
-  return badge({ base: b, color: badgeColor(b) })
+  return badge({ base: b })
 }
 const codeOf = (symbol: string): string => sym(symbol)?.code ?? baseOf(symbol)
 const decOf = (symbol: string, fallback = 2): number => sym(symbol)?.dec ?? fallback

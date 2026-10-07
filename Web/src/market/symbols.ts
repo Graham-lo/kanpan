@@ -74,7 +74,7 @@ export const DEFAULT_WATCH: Record<Kind, string[]> = {
   idx: [],   // 美元指数不进出厂默认自选
 }
 
-// 徽标：网页版用「一只品种一个颜色 + 首字母」的圆片，这是网页版自己的定稿画法（手机端的矢量记号不搬过来）
+// 品种主色：图表对比线、迷你走势等要一个代表色的地方用；徽标本身画法见 ui/common.ts badge()（和手机同一套记号）
 const BADGE: Record<string, string> = { BTC: '#F7931A', ETH: '#627EEA', SOL: '#9945FF', XRP: '#23292F', HYPE: '#50D2C1', DOGE: '#C2A633', ZEC: '#E5A93D', LINK: '#2A5ADA', SUI: '#4DA2FF', NEAR: '#1E1E1E', QNT: '#585E63', HBAR: '#222222', BNB: '#F0B90B', NVDA: '#76B900', TSLA: '#CC0000', SNDK: '#E4002B', MU: '#0073CF', AMD: '#1B1B1B', TSM: '#C8102E', COIN: '#0052FF', MSTR: '#D9232E', XAU: '#C9A227', XAG: '#9EA7B3', CL: '#3D3D3D' }
 export function badgeColor(base: string): string {
   if (BADGE[base]) return BADGE[base]
