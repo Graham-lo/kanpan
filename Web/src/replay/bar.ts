@@ -65,7 +65,7 @@ export class ReplayBar {
       this.el.innerHTML = `
         <button class="ibtn sm rp-play" data-rp="toggle" aria-label="播放" data-tip="播放" data-kbd="空格">${I('play')}</button>
         <div class="seg rp-speed" role="group" aria-label="速度">${M.REPLAY_SPEEDS.map(v => `<button data-rp="speed" data-v="${v}" aria-pressed="false">${v}×</button>`).join('')}</div>
-        <div class="rp-track" role="slider" tabindex="0" aria-label="回放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="rail"></div><div class="played"></div><div class="knob"></div></div>
+        <div class="rp-track" role="slider" tabindex="0" aria-label="回放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="rp-rail"></div><div class="rp-played"></div><div class="rp-kwrap"><div class="rp-knob"></div></div></div>
         <span class="rp-time num"></span>
         <span class="rp-sep"></span>
         <label class="rp-start" data-tip="改了按回车，从这一刻重新开始（上海时间）"><span>起点</span><input class="num" data-rp="start" spellcheck="false" autocomplete="off" aria-label="起点时间（上海时间）"></label>
@@ -78,19 +78,22 @@ export class ReplayBar {
       const lab = s.playing ? '暂停' : s.end ? '从起点重播' : '播放'
       btn.dataset.icon = icon; btn.innerHTML = I(icon); btn.setAttribute('aria-label', lab); btn.dataset.tip = lab
     }
-    this.el.querySelectorAll<HTMLElement>('[data-rp="speed"]').forEach(b => b.setAttribute('aria-pressed', String(+(b.dataset.v || 0) === s.speed)))
+    // 16× 每秒刷 16 次：只写变了的；进度用 transform 挪，不触发排版
+    this.el.querySelectorAll<HTMLElement>('[data-rp="speed"]').forEach(b => put(b, 'aria-pressed', String(+(b.dataset.v || 0) === s.speed)))
     const tr = this.el.querySelector<HTMLElement>('.rp-track')
     if (tr) {
-      const pct = (s.pos * 100).toFixed(3) + '%'
-      tr.querySelector<HTMLElement>('.played')!.style.width = pct
-      tr.querySelector<HTMLElement>('.knob')!.style.left = pct
-      tr.setAttribute('aria-valuenow', String(Math.round(s.pos * 100)))
-      if (s.time != null) tr.setAttribute('aria-valuetext', M.fmtShTime(s.time))
+      const p = Math.max(0, Math.min(1, s.pos)).toFixed(4)
+      tr.querySelector<HTMLElement>('.rp-played')!.style.transform = `scaleX(${p})`
+      tr.querySelector<HTMLElement>('.rp-kwrap')!.style.transform = `translateX(${(+p * 100).toFixed(2)}%)`
+      put(tr, 'aria-valuenow', String(Math.round(s.pos * 100)))
+      if (s.time != null) put(tr, 'aria-valuetext', M.fmtShTime(s.time))
     }
     const tm = this.el.querySelector<HTMLElement>('.rp-time')
-    if (tm) tm.textContent = s.loading ? '载入中…' : s.time != null ? M.fmtShTime(s.time) : ''
+    const txt = s.loading ? '载入中…' : s.time != null ? M.fmtShTime(s.time) : ''
+    if (tm && tm.textContent !== txt) tm.textContent = txt
     const inp = this.el.querySelector<HTMLInputElement>('[data-rp="start"]')
-    if (inp && document.activeElement !== inp) inp.value = M.fmtShTime(startOpen(s.start, s.iv))
+    const sv = M.fmtShTime(startOpen(s.start, s.iv))
+    if (inp && document.activeElement !== inp && inp.value !== sv) inp.value = sv
   }
 
   destroy(): void { this.ac.abort(); this.el.remove() }
@@ -204,3 +207,6 @@ export class PickOverlay {
     lab.innerHTML = `<b>起点</b> ${esc(M.fmtShTime(ch.bars[i].t))}`
   }
 }
+
+/** 属性没变就不写（写一次就要重算样式） */
+function put(el: Element, k: string, v: string): void { if (el.getAttribute(k) !== v) el.setAttribute(k, v) }

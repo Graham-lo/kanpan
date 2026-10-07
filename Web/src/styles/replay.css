@@ -4,7 +4,7 @@
 .rp-bar {
   position: absolute; left: 50%; bottom: 40px; z-index: 4; transform: translateX(-50%);
   display: flex; align-items: center; gap: var(--s2);
-  width: min(720px, calc(100% - var(--s4))); height: var(--h-lg); padding: 0 var(--s2);
+  width: min(880px, calc(100% - var(--s4))); height: var(--h-lg); padding: 0 var(--s2);
   border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--overlay) 94%, transparent);
   box-shadow: var(--shadow-menu);
@@ -12,6 +12,8 @@
   font-size: var(--t13); color: var(--text-1);
   white-space: nowrap;
 }
+/* 播放条宽度是定的，按自己的宽度收东西（容器查询）；选起点那条宽度随内容，不当容器 */
+.rp-bar:not(.picking) { container: rpbar / inline-size; }
 .rp-bar.picking { width: auto; max-width: calc(100% - var(--s4)); padding: 0 var(--s2) 0 var(--s3); }
 .rp-bar .ibtn, .rp-bar .btn, .rp-bar .seg { flex: none; }
 .rp-hint { display: inline-flex; align-items: center; gap: var(--s2); font-weight: 500; }
@@ -19,17 +21,20 @@
 .rp-sep { flex: none; width: 1px; height: 16px; background: var(--line); }
 
 .rp-track { position: relative; flex: 1; min-width: 96px; height: 28px; cursor: pointer; touch-action: none; outline: none; }
-.rp-track .rail, .rp-track .played { position: absolute; left: 0; top: 13px; height: 2px; border-radius: 1px; }
-.rp-track .rail { right: 0; background: color-mix(in srgb, var(--text-3) 20%, transparent); }
-.rp-track .played { background: var(--accent); }
-.rp-track .knob { position: absolute; top: 7px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,.2); opacity: 0; transition: opacity var(--d-fast) var(--ease); }
-.rp-track.dragging .knob, .rp-track:hover .knob, .rp-track:focus-visible .knob { opacity: 1; }
-.rp-track:focus-visible .rail { box-shadow: 0 0 0 2px var(--accent-soft); }
+.rp-track .rp-rail, .rp-track .rp-played { position: absolute; left: 0; right: 0; top: 13px; height: 2px; border-radius: 1px; }
+.rp-track .rp-rail { background: color-mix(in srgb, var(--text-3) 20%, transparent); }
+.rp-track .rp-played { background: var(--accent); transform-origin: 0 50%; transform: scaleX(0); }
+/* 类名带 rp- 前缀：app.css 里有全局的 .rail（右侧图标栏），撞名会把轨道撑成一块灰条 */
+/* 进度只动 transform（16× 每秒 16 次），不改宽度 / 位置，免得每一帧都重排 */
+.rp-track .rp-kwrap { position: absolute; inset: 0; pointer-events: none; transform: translateX(0); }
+.rp-track .rp-knob { position: absolute; left: 0; top: 7px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,.2); opacity: 0; transition: opacity var(--d-fast) var(--ease); }
+.rp-track.dragging .rp-knob, .rp-track:hover .rp-knob, .rp-track:focus-visible .rp-knob { opacity: 1; }
+.rp-track:focus-visible .rp-rail { box-shadow: 0 0 0 2px var(--accent-soft); }
 .rp-time { flex: none; min-width: 104px; font-size: var(--t12); color: var(--text-2); text-align: right; }
 
 .rp-start { flex: none; display: inline-flex; align-items: center; gap: var(--s1); font-size: var(--t12); color: var(--text-2); }
 .rp-start input {
-  width: 124px; height: var(--h-sm); padding: 0 var(--s2);
+  width: 136px; height: var(--h-sm); padding: 0 var(--s2);
   border: 1px solid var(--control-line); border-radius: var(--r-sm);
   background: var(--surface-2); color: var(--text-1); font-size: var(--t12);
   outline: none;
@@ -37,7 +42,9 @@
 .rp-start input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 
 /* 格子小了：先收起点输入与当前时刻，再收倍速里的大档 */
-.chart-cell.c-narrow .rp-bar .rp-start, .chart-cell.c-narrow .rp-bar .rp-time, .chart-cell.c-narrow .rp-bar .rp-sep { display: none; }
+/* 放不下时先收当前时刻（K 线上就是这一刻），再收起点输入（选起点那条本来就短，输入框一直留着） */
+@container rpbar (max-width: 831px) { .rp-time, .rp-sep { display: none; } }
+@container rpbar (max-width: 705px) { .rp-start { display: none; } }
 .chart-cell.c-tiny .rp-bar .rp-speed button:nth-child(n+4), .chart-cell.c-tiny .rp-bar .rp-exit { display: none; }
 .chart-cell.c-tiny .rp-bar.picking .rp-hint span { display: none; }
 

@@ -417,3 +417,4 @@ export function replayState(): { idx: number; symbol: string; iv: string; start:
   const s = sess
   return s ? { idx: s.cell.idx, symbol: s.symbol, iv: s.iv, start: s.start, clock: s.clock, visible: s.cell.chart.bars.length, future: s.future.length, playing: s.playing, speed: s.speed } : null
 }
+;(globalThis as unknown as { __replay?: typeof replayState }).__replay = replayState
