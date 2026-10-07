@@ -1755,9 +1755,12 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **图表设置（`chart/chartSettings.ts` + `pages/chartSettingsDialog.ts`）**：照 TV 的商品 / 状态栏 / 比例尺与线 / 画布四页：蜡烛 / 影线 /
   边框色、标题显示（代号 / 名称 / 两者）、小数位、上下边距、右侧留白根数、网格、十字线、水印等；跟人走，存在 `settings/chart.webChart`
   （`sync/codec.ts`，后端 `WEB_SETTINGS_FIELDS=["webChart"]`，对象 ≤ 8 KB）。涨跌色方向改动时 `withUpDownReset` 把自定义蜡烛色归默认。
-  **后端二进制待部署**：线上 `/opt/kanpan-api` 的 sync.rs / sync_validation.rs 与二进制仍是 18:22 那份（一次性账号实测推 `webChart` 被
-  `droppedFields` 丢掉）；本机 zigbuild 已编好，部署脚本 `~/Desktop/kanpan-api-webchart-deploy.sh`（备份 → 同步两个源码文件 → 换二进制 →
-  `ops/install.py` 只重启一次 → `ops/webchart-check.mjs` 线上验证）。部署前网页端改设置本机照常生效、只是不跨设备同步。
+  **后端已部署**（10-07 23:03，用户说「你直接部署即可」后由本窗口直接做）：按 3d084e75 用 zigbuild 交叉编出 x86_64 二进制
+  （sha256 `cc593673…1bdc037`），备份在 VPS `/opt/kanpan-backups/webchart-20261007-230321/`（旧二进制 + 源码 tgz + 迁移号 51），
+  同步源码只改了 sync.rs / sync_validation.rs，`ops/install.py` 重启一次，两服务 active、health 200、三分钟内无告警；
+  `ops/webchart-check.mjs` 一次性账号实测：推 `webChart` 的 `droppedFields` 为空、bootstrap 带回 `marginTop:20`，网页图表设置已跨设备同步。
+  注意 VPS 的 ssh 用户是 ubuntu（免密 sudo），`/opt/kanpan-backups` 与 `target/release` 归 root，远端写操作要走 sudo、rsync 用 `--rsync-path="sudo rsync"`。
+  回滚：`ssh kanpan-sg "sudo sh -c 'cp /opt/kanpan-backups/webchart-20261007-230321/kanpan-api /opt/kanpan-api/target/release/kanpan-api && systemctl restart kanpan-api kanpan-worker'"`。
 - **regress / stress 本机跑不起来的根因**：出厂线路是网关，localhost 起源打网关 REST 被 CORS 拦；脚本现在统一 `corsShim` 并种
   `route:'direct', routePicked:true`。
 - 合并：与 `origin/main`（§52 体感整改）在独立工作树 `web-1007-int` 合并，9 个文件冲突；取舍是 K 线缓存用 §52 的 `klineCache.ts` /
