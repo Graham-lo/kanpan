@@ -119,9 +119,9 @@ function paint(): void {
     if (c.chart.dead || !loaded(c)) continue
     const lines: CompareLine[] = targetsOf(c).map(t => {
       const g = store!.get(t.symbol, c.iv)
-      return { key: t.key, name: compareName(t.symbol), color: COMPARE_COLORS[t.slot % COMPARE_COLORS.length], bars: g?.bars ?? null, rev: g?.rev ?? 0 }
+      return { key: t.key, name: compareName(t.symbol), color: COMPARE_COLORS[t.slot % COMPARE_COLORS.length], bars: g?.bars ?? null, rev: g?.rev ?? 0, loading: !!g?.loading && !g.bars?.length }
     })
-    const sig = lines.map(l => `${l.key}:${l.color}:${l.rev}:${l.bars ? l.bars.length : -1}`).join('|')
+    const sig = lines.map(l => `${l.key}:${l.color}:${l.rev}:${l.bars ? l.bars.length : -1}:${l.loading ? 1 : 0}`).join('|')
     if (painted.get(c.chart) === sig) continue
     painted.set(c.chart, sig)
     c.chart.setCompare(lines)

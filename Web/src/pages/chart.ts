@@ -42,8 +42,9 @@ import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
   S, on, REST, coolingFor, isRateLimit, klines, attachOI, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
-  IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, type Kind, type Sym, type KlineResult,
+  IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, baseOf, kindOfUnderlying, type Kind, type Sym, type KlineResult,
 } from '../market'
+import { klineDiskReady, diskBars, keepBars, flushBars } from '../market/klineStore'
 import { settle } from '../market/settle'
 import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
@@ -91,9 +92,28 @@ function cfg(cell: Cell | undefined): CellCfg { return st.cells[cell ? cell.idx 
 export const active = (): Cell | undefined => cells[st.active]
 
 /** 图例副标题：美元指数这类自家服务器给的品种（macro）不是币安的，不挂「币安」，只写「指数」 */
-function metaFor(c: CellCfg) {
-  const s = sym(c.symbol)
-  return { symbol: c.symbol, iv: IV_MS[c.iv], title: c.symbol, sub: `· ${IV_LABEL[c.iv]} · ${s?.macro ? '' : '币安'}${kindName(s)}`, dec: s?.dec ?? 2, badge: badge(s) }
+function metaFor(c: CellCfg, bars?: readonly Bar[]) {
+  const s = sym(c.symbol) ?? guessSym(c.symbol)
+  return { symbol: c.symbol, iv: IV_MS[c.iv], title: c.symbol, sub: `· ${IV_LABEL[c.iv]} · ${s?.macro ? '' : '币安'}${kindName(s)}`, dec: s?.dec ?? decOfBars(bars) ?? 2, badge: badge(s) }
+}
+/** 品种表还没到（冷启动没有本机那份）：徽标、类别先按代号猜，表到了再换成准的（setMeta） */
+function guessSym(k: string): Pick<Sym, 'base' | 'kind'> & { dec?: number; macro?: boolean } {
+  const base = baseOf(k)
+  return { base, kind: kindOfUnderlying(undefined, base) }
+}
+/** 精度也先按 K 线里出现过的小数位猜（最多 8 位） */
+export function decOfBars(bars?: readonly Bar[]): number | null {
+  if (!bars?.length) return null
+  let d = 0
+  for (let i = Math.max(0, bars.length - 60); i < bars.length; i++) {
+    const b = bars[i]
+    for (const v of [b.o, b.h, b.l, b.c]) {
+      const str = String(v), e = str.indexOf('e-')
+      const n = e > 0 ? +str.slice(e + 2) + Math.max(0, str.slice(0, e).split('.')[1]?.length ?? 0) : str.split('.')[1]?.length ?? 0
+      if (n > d) d = n
+    }
+  }
+  return Math.min(8, d)
 }
 
 /** 图上画的提醒线：这只品种还在等的价格提醒（画线提醒由画线本身表示） */
@@ -289,14 +309,38 @@ async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () 
 }
 
 async function retryLoad(cell: Cell): Promise<void> {
-  if (!S.live) { await loadUniverse(); if (S.live) { afterUniverse(); return } }
+  // 品种表还没确认过：先取表，取到了由 universe 事件（afterUniverse）重装报错的格子
+  if (S.live !== true) { await loadUniverse(); if (S.live) return }
   void loadCell(cell)
+}
+
+/** 这一格能不能落盘（秒级、自定义分钟、回放中的不存） */
+const diskable = (cell: Cell, c: CellCfg = cfg(cell)): boolean => !isSecondIv(c.iv) && !isCustomIv(c.iv) && !replaying(cell) && !cell.chart.dead
+/** 本机留的上一段能不能直接摆：有、断得不太久（补尾巴够得着），而且内存里没有刚取过的整段（那份更长，走 barsFor 只补尾巴） */
+function diskFor(cell: Cell, c: CellCfg): Bar[] | null {
+  if (!diskable(cell, c) || recentKlines.need(`${c.symbol}|${c.iv}`, IV_MS[c.iv], Date.now()) != null) return null
+  const bars = diskBars(c.symbol, c.iv)
+  return bars && tailNeed(bars[bars.length - 1].t, IV_MS[c.iv], Date.now()) <= TAIL_MAX ? bars : null
+}
+/** 先摆了本机那段：补上这段时间收的几根，存回去；停稳了再把更早的历史与持仓量补上（指标的预热段也就够了） */
+async function topUp(cell: Cell, token: number): Promise<void> {
+  await resyncTail(cell)
+  if (token !== cell.loadToken || cell.chart.dead) return
+  const c = cfg(cell)
+  keepBars(c.symbol, c.iv, baseBars(cell.chart))
+  settle.whenSettled(`oi:${cell.idx}`, () => {
+    if (token !== cell.loadToken || cell.chart.dead) return
+    void attachOI(c.symbol, c.iv, cell.chart.bars)
+    void loadMore(cell, true)
+  })
 }
 
 async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const c = cfg(cell), token = ++cell.loadToken
   cell.noMore = false
-  cell.chart.setDrawings(drawingsFor(c.symbol))
+  // 画线跟着品种走：图上还是上一只的 K 线时不能先把这一只的线摆上去（会画在别的价位上、点了也记错品种），等新数据到了再换
+  const sameSym = cell.chart.meta.symbol === c.symbol
+  if (sameSym) cell.chart.setDrawings(drawingsFor(c.symbol))
   if (lastSnap[c.symbol] == null) rebaseDrawings(c.symbol)
   // 推送不等 K 线：取数期间这一格的推送先攒进缓冲（上一次取数的缓冲在这里撒手，换品种 / 周期即作废）
   if (cell.hold) { pushes.release(cell.hold); cell.hold = null }
@@ -304,6 +348,19 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   const siv = streamIvOf(c.iv)
   const pre = early.get(`${c.symbol}|${c.iv}`)
   if (pre) early.delete(`${c.symbol}|${c.iv}`)
+  const showing = sameSym && cell.chart.iv === IV_MS[c.iv] && cell.chart.bars.length > 0
+  // 本机留着上一段：先摆出来，再只补这段时间的尾巴
+  const disk = pre || showing ? null : diskFor(cell, c)
+  if (disk) {
+    showCellEmpty(cell, null)
+    cell.chart.setData(disk, metaFor(c, disk))
+    refreshCompare()
+    finishLoad(cell, c, then)
+    void topUp(cell, token)
+    return
+  }
+  // 旧图留着、淡下去，图例先换成新品种加「载入中」；还没有图就是骨架
+  if (!showing) cell.chart.setPending(metaFor(c))
   if (pre) cell.hold = pre.hold                    // 冷启动先发的那次：缓冲它开着，接过来
   else if (siv) { cell.hold = pushKey(c.symbol, siv); pushes.open(cell.hold) }
   const { bars, ok, error } = await (pre ? pre.res : barsFor(c.symbol, c.iv, undefined, () => token === cell.loadToken && !cell.chart.dead, false))
@@ -324,7 +381,8 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
     // 限流：冷却一过这一格自己再取（期间换了品种 / 周期就作废），不让用户对着空图去点
     if (limited) setTimeout(() => { if (token === cell.loadToken) void loadCell(cell) }, Math.max(coolingFor(REST), 5000) + 500)
   } else showCellEmpty(cell, null)
-  cell.chart.setData(bars, metaFor(c))
+  cell.chart.setData(bars, metaFor(c, bars))
+  if (ok && bars.length && diskable(cell, c)) keepBars(c.symbol, c.iv, bars)
   refreshCompare()
   // 自定义分钟：攒下的原生周期推送逐根并进当前格（和实时时同一条路）
   if (late.length && isCustomIv(c.iv)) for (const p of late) cell.chart.updateBar(customTick(c.symbol, c.iv, p))
@@ -332,6 +390,10 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   if (ok && bars.length && !isSecondIv(c.iv) && !isCustomIv(c.iv)) {
     settle.whenSettled(`oi:${cell.idx}`, () => { if (token === cell.loadToken && !cell.chart.dead) void attachOI(c.symbol, c.iv, cell.chart.bars) })
   }
+  finishLoad(cell, c, then)
+}
+/** K 线摆上之后：这只品种的画线、提醒线换上来 */
+function finishLoad(cell: Cell, c: CellCfg, then?: () => void): void {
   // 测量框是临时的，不进存档
   const ds = drawingsFor(c.symbol)
   for (let k = ds.length - 1; k >= 0; k--) if (ds[k].type === 'measure') ds.splice(k, 1)
@@ -366,16 +428,20 @@ async function resyncTail(cell: Cell, tries = 0): Promise<void> {
     if (hold) pushes.release(hold)
     if (r.ok) for (const b of tailFrom(baseBars(cell.chart), r.bars)) cell.chart.updateBar(b)
     for (const p of late) cell.chart.updateBar(isCustomIv(c.iv) ? customTick(c.symbol, c.iv, p) : p)
+    if (r.ok && diskable(cell, c)) keepBars(c.symbol, c.iv, baseBars(cell.chart))
     // 没取到（刚连上时网络还在抖、限流）：冷却过了再补，最多再试三次；之后的重连 / 回前台还会再补
     if (!r.ok && tries < 3) setTimeout(() => { if (alive()) void resyncTail(cell, tries + 1) }, Math.max(coolingFor(REST), 5000) + 500)
   } finally { tailing.delete(cell) }
 }
 const tailGate = new TailResync()
 
-async function loadMore(cell: Cell): Promise<void> {
-  if (cell.more || cell.noMore || !cell.chart.bars.length) return
-  cell.more = true; cell.chart.loadingMore = true
-  const c = cfg(cell), token = cell.loadToken
+/** 往前翻页取更早的历史；quiet：后台自己补（本机那段摆上之后），不挂「加载更早…」 */
+async function loadMore(cell: Cell, quiet = false): Promise<void> {
+  const c = cfg(cell)
+  // 图上还是上一只（换品种、数据在路上）：不拿它的第一根去取这一只的历史
+  if (cell.more || cell.noMore || !cell.chart.bars.length || cell.chart.pendingMeta || cell.chart.meta.symbol !== c.symbol) return
+  cell.more = true; if (!quiet) cell.chart.loadingMore = true
+  const token = cell.loadToken
   const { bars, ok } = await barsFor(c.symbol, c.iv, cell.chart.bars[0].t, () => token === cell.loadToken && !cell.chart.dead)
   cell.more = false; cell.chart.loadingMore = false
   if (token !== cell.loadToken) return
@@ -456,7 +522,8 @@ export function lockAllDrawings(on: boolean): void {
 }
 function setDrawingsOf(s: string, list: Drawing[]): void {
   st.drawings[s] = list; lastSnap[s] = snapOf(s)
-  cells.forEach(c => { if (cfg(c).symbol === s) c.chart.setDrawings(st.drawings[s]) })
+  // 换品种数据还在路上的格子：图上还是上一只，这一只的线等 K 线到了由 loadCell 摆
+  cells.forEach(c => { if (cfg(c).symbol === s && c.chart.meta.symbol === s) c.chart.setDrawings(st.drawings[s]) })
   reconcileDrawingAlerts(s, st.drawings[s])
 }
 function applyInd(): void { cells.forEach(c => c.chart.setIndicators(structuredClone(st.ind))) }
@@ -536,7 +603,7 @@ function linkAll(symbol: string): void {
 // ---- 连接状态点：绿 = 实时，黄 = 在连，红 = 断了或行情停住
 type Conn = 'live' | 'connecting' | 'down'
 const CONN_TIP: Record<Conn, string> = { live: '行情连着', connecting: '正在连行情', down: '行情断了，正在重连' }
-function connState(): Conn { return st.stale || S.wsState === 'closed' || !S.live ? (S.wsState === 'connecting' ? 'connecting' : 'down') : S.wsState === 'open' ? 'live' : 'connecting' }
+function connState(): Conn { return st.stale || S.wsState === 'closed' || S.live === false ? (S.wsState === 'connecting' ? 'connecting' : 'down') : S.wsState === 'open' ? 'live' : 'connecting' }
 function paintConn(): void { const c = connState(); $$('.cell-foot .conn-dot').forEach(e => { e.dataset.conn = c; e.dataset.tip = CONN_TIP[c] }) }
 /** 浏览器标签页标题：当前品种的最新价与涨跌；换品种时立刻换，不等下一笔成交 */
 function syncTitle(): void {
@@ -551,7 +618,7 @@ export function renderToolbar(): void {
   syncTitle()
   const pinnedHas = st.pinned.includes(c.iv)
   $('#toolbar').innerHTML = `
-    <button class="tb-btn symbol-btn" id="tbSymbol" data-tip="换品种" data-kbd="⌘ K">${badge(s)}<span>${esc(c.symbol)}</span><span class="kind">${kindName(s)}</span></button>
+    <button class="tb-btn symbol-btn" id="tbSymbol" data-tip="换品种" data-kbd="⌘ K">${badge(s ?? guessSym(c.symbol))}<span>${esc(c.symbol)}</span><span class="kind">${kindName(s ?? guessSym(c.symbol))}</span></button>
     <span class="tb-sep"></span>
     <div class="intervals" role="group" aria-label="周期">
       ${st.pinned.map((iv, k) => `<button data-iv="${iv}" aria-pressed="${iv === c.iv}" data-tip="${IV_LABEL[iv]}" data-kbd="${k < 9 ? k + 1 : ''}">${IV_SHORT[iv]}</button>`).join('')}
@@ -836,7 +903,13 @@ function detailNow(): void { const k = cfg(active())?.symbol; if (k) void fetchD
 function renderDetail(): void {
   const el = $('#detail'); if (!el) return
   const k = cfg(active()).symbol, s = sym(k)
-  if (!s) { el.innerHTML = ''; return }
+  if (!s) {
+    // 品种表还没到：先摆徽标、代号与价格位（「—」），表到了整块重画
+    const g = guessSym(k)
+    el.innerHTML = `<div class="dh">${badge(g, 'lg')}<div class="names"><div class="code">${esc(g.base)}<span class="kind">${kindName(g)}</span></div><div class="cn"></div></div>${collapseBtn(isCollapsed('detail'))}</div>
+    <div class="px"><span class="big num" data-f="big">—</span><span class="chg num" data-f="chg"></span></div>`
+    return
+  }
   // 五个慢数不在首屏：品种停稳再取；没到之前格子里是「—」，到了自己补上
   settle.whenSettled('detail', detailNow)
   wantMeta([k])
@@ -899,7 +972,7 @@ function patchDetail(): void {
 // ---- 提醒（模块在 alerts/）
 function panelAlerts(el: HTMLElement): void { renderAlertsPanel(el, cfg(active()).symbol) }
 export function refreshAlerts(): void {
-  cells.forEach(c => { c.chart.setAlerts(priceAlerts(cfg(c).symbol)); c.chart.setAlertSignals(lineSignals(cfg(c).symbol)) })
+  cells.forEach(c => { const k = cfg(c).symbol; if (c.chart.meta.symbol !== k) return; c.chart.setAlerts(priceAlerts(k)); c.chart.setAlertSignals(lineSignals(k)) })
   renderRail(); if (st.panel === 'alerts') renderPanel()
   refreshQuick()
   refreshStreams()
@@ -1252,13 +1325,17 @@ export function refreshStreams(early = false): void {
  * 以前是品种表到了（约 0.5 秒）才发 K 线、再过 150 ms 才建 WS，第一次跳价要等到 1.6–1.9 秒。
  */
 function bootInParallel(): void {
-  if (cells.length) return   // 品种表已经先回来（例如限流立刻失败），格子已按正常路径装好，不用再预取
+  if (cells.length) return
   const n = LAYOUT_N[st.layout] || 1
   ensureCells(st, n)
   refreshStreams(true)
+  const now = Date.now()
   for (const c of st.cells.slice(0, n)) {
     const k = `${c.symbol}|${c.iv}`, siv = streamIvOf(c.iv)
     if (early.has(k) || !siv || isSecondIv(c.iv) || isCustomIv(c.iv)) continue
+    // 本机留着这一段、补尾巴够得着：装格子时先摆它、只取尾巴，不再整段预取
+    const d = diskBars(c.symbol, c.iv)
+    if (d && tailNeed(d[d.length - 1].t, IV_MS[c.iv], now) <= TAIL_MAX) continue
     const hold = pushKey(c.symbol, siv)
     pushes.open(hold)
     early.set(k, { hold, res: klines(c.symbol, c.iv, undefined, 1500, false, false, undefined, 'low').then(r => { if (r.ok) recentKlines.put(k, r.bars, Date.now()); return r }) })
@@ -1312,21 +1389,48 @@ function setStale(v: boolean): void {
   patchDetail()
 }
 
+/**
+ * 品种表到了（每次 universe 事件，格子摆出来之后）：
+ *   · 本机那份（S.live 还是 null）：格子早已按存档摆好、K 线照取，这里只把名字、精度、徽标补准；
+ *   · 交易所确认过的（S.live === true）：筛自选、把下架的品种换掉（只重装换了品种的格子和报错的格子），其余格子只补名字与精度；
+ *   · 没取到（false）：不拿空表 / 旧表去筛，格子照旧，第一次报一声。
+ * 交易所那边有了结果（成或败）才通知 hooks.booted（同步、板块页等它；本机那份不算）。
+ */
+let failToast = false
 function afterUniverse(): void {
-  // 品种表没取到时不能拿空表去筛，否则会把自选清空并存盘
-  if (S.symbols.size) {
+  if (!cells.length) return
+  const reload = new Set<Cell>()
+  // 品种表没确认时不能拿空表 / 本机旧表去筛，否则会把自选清空并存盘
+  if (S.live === true && S.symbols.size) {
     for (const tab of Object.keys(st.watch) as Kind[]) st.watch[tab] = st.watch[tab].filter(k => S.symbols.has(k))
     // 表里没有的品种换成一只还没摆出来的常用品种（多图时不要一排全是 BTC）
     st.cells.forEach((c, i) => {
       if (S.symbols.has(c.symbol)) return
       const used = new Set(st.cells.map(x => x.symbol))
       c.symbol = i === 0 ? 'BTCUSDT' : FILL_SYMBOLS.find(k => !used.has(k) && S.symbols.has(k)) || 'BTCUSDT'
+      if (cells[i]) reload.add(cells[i])
     })
     save()
+    // 先前因为连不上而空着报错的格子：表通了，重取
+    cells.forEach(c => { if ($('.cell-empty', c.el)?.hidden === false) reload.add(c) })
   }
-  if (!cells.length) buildCells(); else { cells.forEach(c => { void loadCell(c) }); refreshStreams() }
-  renderToolbar(); renderPanel(); updateStale()
-  hooks.booted.forEach(f => f())
+  cells.forEach(c => { if (reload.has(c)) void loadCell(c); else c.chart.setMeta(metaFor(cfg(c), c.chart.bars)) })
+  refreshStreams()
+  renderToolbar(); renderPanel(); updateStale(); paintConn()
+  if (S.live === false && !failToast && !S.universeAt) {
+    failToast = true
+    toast(S.limited ? '币安限流了' : '连不上币安合约接口', S.error || '检查网络后点图上的「重试」', 'wifiOff', 8000)
+  }
+  if (S.live != null) hooks.booted.forEach(f => f())
+}
+
+/** 冷启动摆格子：不等品种表——按存档（链接 / 上次的布局）立刻建格子、工具栏、侧栏；本机留着的 K 线先摆，
+ *  其余各格并行取（bootInParallel）。读本机 K 线最多等 150 ms，盘慢就不等它 */
+async function bootCells(): Promise<void> {
+  await klineDiskReady()
+  bootInParallel()
+  buildCells()
+  afterUniverse()
 }
 
 // ------------------------------------------------------------ 启动
@@ -1394,6 +1498,7 @@ export async function initChart(): Promise<void> {
     }
     else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) patchDetail() }
     else if (e.type === 'oi') cells.forEach(c => { const cc = cfg(c); if (cc.symbol === e.symbol && cc.iv === e.iv) { c.chart.recalc(); c.chart.dirty = true } })
+    else if (e.type === 'universe') afterUniverse()
     else if (e.type === 'detail' || e.type === 'meta') { if (st.panel === 'watch' && (e.type === 'meta' || e.symbol === cfg(active())?.symbol)) renderDetail() }
     else if (e.type === 'ws') {
       updateStale(); paintConn()
@@ -1430,24 +1535,34 @@ export async function initChart(): Promise<void> {
     renderPanel, layoutSlots, renderToolbar,
     dec: s => sym(s)?.dec ?? 2, crypto: s => (sym(s)?.kind ?? 'crypto') === 'crypto', turnover: s => sym(s)?.vol ?? null,
   })
-  // 品种表先发（标题价、自选都等它），K 线与推送下一拍再并行起：建 WS、算订阅要同步占 5 ms 左右，
+  // 关页、切走：各格最新的那段落盘（下次打开先摆它）
+  const keepAll = (): void => {
+    cells.forEach(c => { const cc = cfg(c); if (diskable(c, cc) && c.chart.bars.length && c.chart.meta.symbol === cc.symbol && !c.chart.pendingMeta) keepBars(cc.symbol, cc.iv, baseBars(c.chart)) })
+    void flushBars()
+  }
+  addEventListener('pagehide', keepAll)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') keepAll() })
+
+  // 品种表先发（本机有上次那份就同步摆上、网络那份后台取），格子、K 线与推送下一拍再并行起：建 WS、算订阅要同步占 5 ms 左右，
   // 放在同一拍里会把品种表的三个请求和 DOMContentLoaded 一起往后推；K 线用低优先级，不在同一条 HTTP/2 连接上抢品种表的带宽
   const universe = loadUniverse()
-  setTimeout(bootInParallel, 0)
+  const fromDisk = S.live == null && S.symbols.size > 0   // 本机那份已经摆上：网络失败的重试由 market 自己管
+  const booted = new Promise<void>(r => setTimeout(() => { void bootCells().then(r) }, 0))
   await universe
-  if (!S.live) toast(S.limited ? '币安限流了' : '连不上币安合约接口', S.error || '检查网络后点图上的「重试」', 'wifiOff', 8000)
-  afterUniverse()
-  dropEarly()
-  retryUniverseAfterCooldown()
+  await booted
+  // 品种表已经确认（或确认不了）之后，先发的那几次没人接的撒手
+  const settleEarly = (): void => { if (S.live != null) dropEarly(); else setTimeout(settleEarly, 1000) }
+  setTimeout(settleEarly, 0)
+  if (!fromDisk) retryUniverseAfterCooldown()
 }
 
-/** 品种表是被限流挡掉的：冷却一过自己再取一次，不要等用户点「重试」 */
+/** 品种表是被限流挡掉的：冷却一过自己再取一次，不要等用户点「重试」（取到了由 universe 事件接着装） */
 function retryUniverseAfterCooldown(): void {
   if (S.live || !S.limited) return
   setTimeout(async () => {
     if (S.live) return
     await loadUniverse()
-    if (S.live) { afterUniverse(); cells.forEach(c => void loadCell(c)) } else retryUniverseAfterCooldown()
+    if (!S.live) retryUniverseAfterCooldown()
   }, Math.max(coolingFor(REST), 5000) + 500)
 }
 

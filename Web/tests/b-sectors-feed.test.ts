@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const h = vi.hoisted(() => ({ calls: [] as string[], pending: [] as ((v: unknown) => void)[] }))
+const h = vi.hoisted(() => ({ rows: null as unknown[] | null, calls: [] as string[], pending: [] as ((v: unknown) => void)[] }))
 vi.mock('../src/market', () => ({
   REST: 'https://x', S: { symbols: new Map() },
-  j: (url: string) => {
-    h.calls.push(url)
-    if (url.includes('exchangeInfo')) return Promise.resolve({ symbols: [{ symbol: 'BTCUSDT', baseAsset: 'BTC', quoteAsset: 'USDT', contractType: 'PERPETUAL', status: 'TRADING' }] })
-    return new Promise(res => h.pending.push(res))
-  },
+  fetchExchangeInfo: () => mj('https://x/fapi/v1/exchangeInfo').then((ex: { symbols: { status: string; contractType: string }[] }) => { h.rows = ex.symbols.filter(e => e.status === 'TRADING' && /PERPETUAL$/.test(e.contractType)); return ex }),
+  fetchTicker24: () => mj('https://x/fapi/v1/ticker/24hr'),
+  exchangeRows: () => h.rows,
 }))
+function mj(url: string): Promise<any> {
+  h.calls.push(url)
+  if (url.includes('exchangeInfo')) return Promise.resolve({ symbols: [{ symbol: 'BTCUSDT', baseAsset: 'BTC', quoteAsset: 'USDT', contractType: 'PERPETUAL', status: 'TRADING' }] })
+  return new Promise(res => h.pending.push(res))
+}
 
 describe('板块页轮询：离开又回来不叠出第二条链（B12）', () => {
   beforeEach(() => { vi.useFakeTimers(); (globalThis as { document?: unknown }).document = { hidden: false } })

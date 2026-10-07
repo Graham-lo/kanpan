@@ -14,7 +14,7 @@
  * 多图时头部下写「在第 N 格打开」，跟着活动格走；行的右键菜单同样写第几格。
  */
 import { st, save } from '../app/store'
-import { S, TABS, type Kind } from '../market'
+import { S, TABS, baseOf, kindOfUnderlying, type Kind } from '../market'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, menuFrom } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge } from '../ui/common'
@@ -80,15 +80,16 @@ export function widgetWatch(): string {
       ${D.collapseBtn(c)}</div>
     ${multi ? `<div class="wv-target" id="wTarget">${I('layout4', 'icon-16')}<span>${targetLabel()}</span><span class="sc">↵</span></div>` : ''}
     <div class="scroll no-bar wv-body">
-      ${list.length && S.symbols.size ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选"><thead><tr><th>品种</th><th>最新价</th><th>涨跌幅</th></tr></thead>
+      ${list.length ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选"><thead><tr><th>品种</th><th>最新价</th><th>涨跌幅</th></tr></thead>
       <tbody>${list.map(k => watchRow(k, cur)).join('')}</tbody></table>` : empty}
     </div></div>`
 }
 
+/** 品种表还没到（冷启动、本机也没留）：行先按本机自选的代号摆出来，徽标按代号猜、价格写「—」，表到了整张重画 */
 function watchRow(k: string, cur: string): string {
-  const s = sym(k), g = ghost?.k === k
+  const s = sym(k), g = ghost?.k === k, base = baseOf(k)
   return `<tr data-sym="${k}" draggable="${!g}" tabindex="${k === kb.cursor ? 0 : -1}" class="${k === cur ? 'sel' : ''} ${g ? 'wv-ghost' : ''}" aria-selected="${k === cur}">
-    <td><div class="sym">${badge(s)}<b>${esc(s?.code || k)}</b>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
+    <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<b>${esc(s?.code || base)}</b>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
     <td class="num price-live" data-f="price">${priceText(s)}</td>
     <td class="num ${cls(s?.pct)} price-live" data-f="pct">${pctText(s?.pct)}</td></tr>`
 }

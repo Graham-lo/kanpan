@@ -5,15 +5,15 @@
  * - 行情：页面开着时每 10 秒拉一次全量 ticker/24hr，照手机的挑合约规则落成「base → 行情」；
  *   第一帧先拿启动时已有的 USDT 全市场表垫着，不白等。表和行情并排取（原来串着：表 0.6 秒回来才发行情那一问，
  *   第一帧白等一个往返，2026-10-07）；行情先到就先按合约名拆着算，表到了再按表重算一次。
+ * - exchangeInfo 与全量 ticker/24hr 和全市场表共用同一次请求（market/rest.ts fetchExchangeInfo / fetchTicker24）：
+ *   启动时全市场表取过 exchangeInfo 了，进板块页直接用那一份的目录，不再另取；行情那一问在途就共用。
  * - 正在看的那个板块的成员另外订 ticker 推送（页里经 hooks.extraStreams），推送到了只改那几格。
  */
-import { REST, S, j } from '../market'
+import { S, exchangeRows, fetchExchangeInfo, fetchTicker24 } from '../market'
 import { fallbackBuckets, ingest, tradableSplit } from './aggregate'
 import type { CatalogEntry, Quotes, SectorBucket, SectorMarket, Ticker } from './aggregate'
 import { ago } from '../util/clock'
 
-interface ExRow { symbol: string; baseAsset: string; quoteAsset: string; contractType: string; status: string; underlyingType?: string; underlyingSubType?: string[] }
-interface Ticker24 { symbol: string; lastPrice: string; priceChangePercent: string; quoteVolume: string }
 
 export const POLL_MS = 10_000
 const num = (v: unknown): number => typeof v === 'string' && v.trim() !== '' ? Number(v) : typeof v === 'number' ? v : NaN
@@ -56,15 +56,13 @@ let catalogFailedAt = 0
 function loadCatalog(): Promise<void> {
   if (feed.entries.length) return Promise.resolve()
   if (catalogP) return catalogP
+  // 全市场表这次会话已经取过 exchangeInfo：直接用它留下的目录（还要写一份本机缓存，下次冷启动进板块页也不等）
+  const seen = exchangeRows()
+  if (seen?.length) { adopt(seen); writeCachedCatalog(seen); return Promise.resolve() }
   if (readCachedCatalog()) return Promise.resolve()
   if (ago(catalogFailedAt) < 60_000) return Promise.resolve()
-  catalogP = j<{ symbols: ExRow[] }>(`${REST}/fapi/v1/exchangeInfo`, 15_000).then(ex => {
-    const entries: CatalogEntry[] = []
-    for (const e of ex.symbols) {
-      if (e.status !== 'TRADING') continue
-      if (e.contractType !== 'PERPETUAL' && e.contractType !== 'TRADIFI_PERPETUAL') continue
-      entries.push({ symbol: e.symbol, baseAsset: e.baseAsset, quoteAsset: e.quoteAsset, underlyingType: e.underlyingType, underlyingSubType: e.underlyingSubType })
-    }
+  catalogP = fetchExchangeInfo().then(() => {
+    const entries = exchangeRows() ?? []
     if (!entries.length) throw new Error('empty exchangeInfo')
     adopt(entries)
     writeCachedCatalog(entries)
@@ -99,7 +97,7 @@ function apply(list: Ticker[]): void {
 async function pollOnce(): Promise<void> {
   // 表和行情并排发：行情先回就先按合约名拆着算，不等表
   const catalog = loadCatalog()
-  const ticker = j<Ticker24[]>(`${REST}/fapi/v1/ticker/24hr`, 10_000)
+  const ticker = fetchTicker24()
   let list: Ticker[]
   try {
     const rows = await ticker

@@ -516,6 +516,21 @@ kbd {
 .legend .ind-param { color: var(--text-2); }
 .legend .tools { display: none; gap: 0; }
 .legend .lrow:hover { background: color-mix(in srgb, var(--chart-bg) 80%, transparent); }
+/* 等数据时不留白：换品种 / 周期时旧图淡下去、不能点（数据到了再换）；没有图时画布上是骨架，图例写「载入中」 */
+.chart-cell .canvas-host > canvas { transition: opacity .16s ease; }
+.chart-cell .canvas-host.pending > canvas { opacity: .35; pointer-events: none; }
+.legend .loading-tag { color: var(--text-3); font-size: var(--t12); animation: hkBreathe 1.4s ease-in-out infinite; }
+/* 往左翻历史：左缘一枚小标，慢了才淡入（快的看不见） */
+.chart-more { position: absolute; left: var(--s3); top: 50%; transform: translateY(-50%); z-index: 2; pointer-events: none;
+  display: flex; align-items: center; gap: 6px; padding: 2px var(--s2); border-radius: 999px; font-size: var(--t12); color: var(--text-2);
+  background: color-mix(in srgb, var(--chart-bg) 88%, transparent); animation: hkFadeIn .2s ease .25s both; }
+.chart-more[hidden] { display: none; }
+.chart-more .spin, .legend .cmp-wait { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%;
+  border: 1.5px solid currentColor; border-right-color: transparent; animation: hkSpin .8s linear infinite; }
+.legend .cmp-wait { color: var(--text-3); margin: 0 2px; vertical-align: -1px; }
+@keyframes hkSpin { to { transform: rotate(360deg); } }
+@keyframes hkFadeIn { from { opacity: 0; } }
+@keyframes hkBreathe { 50% { opacity: .45; } }
 .legend .lrow:hover .tools { display: flex; }
 .legend .tools .ibtn { width: var(--h-xs); height: var(--h-xs); }
 .legend .lrow.hidden-ind .ind-name, .legend .lrow.hidden-ind .vals { opacity: .45; }

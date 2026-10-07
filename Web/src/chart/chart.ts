@@ -332,8 +332,23 @@ export class TVChart {
   font = '12px sans-serif'
   /** 画完的测量框（下一次点击就清掉） */
   measure: Drawing | null = null
-  /** app 在加载更早历史时置 true，期间不再催 onNeedMore */
-  loadingMore = false
+  /** app 在加载更早历史时置 true，期间不再催 onNeedMore；左缘挂一个「加载更早…」小标（稍等一下才淡入，快的看不见） */
+  private _loadingMore = false
+  private moreEl: HTMLElement | null = null
+  get loadingMore(): boolean { return this._loadingMore }
+  set loadingMore(v: boolean) {
+    if (v === this._loadingMore) return
+    this._loadingMore = v
+    if (v && !this.moreEl && typeof document !== 'undefined') {
+      this.moreEl = document.createElement('div'); this.moreEl.className = 'chart-more'
+      this.moreEl.innerHTML = '<span class="spin"></span>加载更早…'
+      this.host.appendChild(this.moreEl)
+    }
+    if (this.moreEl) this.moreEl.hidden = !v
+  }
+  /** 新数据在路上（换品种 / 周期、冷启动）：图例先换成它的标题加「载入中」；手里有旧图就留着、淡下去、不能点
+   *  （画线、拖提醒线这时按新品种记会串到别的品种上）。setData 一来就收 */
+  pendingMeta: ChartMeta | null = null
   /** 画线整体隐藏 */
   drawingsHidden = false
   /** 足迹图等替换蜡烛的画法（chart/footprint.ts 挂）：返回 true 就不再画蜡烛；legendExtra 往图例末尾加行 */
@@ -429,6 +444,29 @@ export class TVChart {
       this.dropGesture(true)
       this.rightBar = bars.length - 1 + RIGHT_MARGIN_BARS; this.manual = null; this.auto = true; this.o.onAutoChange?.(true)
     }
+    if (this.pendingMeta) { this.pendingMeta = null; this.host.classList.remove('pending') }
+    this.recalc(); this.dirty = true; this.renderLegend()
+  }
+  /** 见 pendingMeta；meta 为 null 是收起（数据没来也不等了） */
+  setPending(meta: ChartMetaInput | null): void {
+    if (!meta) {
+      if (!this.pendingMeta) return
+      this.pendingMeta = null
+    } else {
+      this.dropGesture(true)
+      this.selected = null; this.measure = null; this.cross = null
+      this.pendingMeta = Object.assign({}, this.meta, meta)
+    }
+    this.host.classList.toggle('pending', !!this.pendingMeta && this.bars.length > 0)
+    this.dirty = true; this.renderLegend()
+  }
+  /** 只换图例 / 价格轴用的品种信息（品种表晚到：精度、名字补上），数据与视口不动 */
+  setMeta(meta: Partial<ChartMeta>): void {
+    if (this.pendingMeta) Object.assign(this.pendingMeta, meta.symbol == null || meta.symbol === this.pendingMeta.symbol ? meta : {})
+    if (meta.symbol != null && meta.symbol !== this.meta.symbol) return
+    const before = JSON.stringify(this.meta)
+    this.meta = Object.assign({}, this.meta, meta)
+    if (JSON.stringify(this.meta) === before) return
     this.recalc(); this.dirty = true; this.renderLegend()
   }
   prependData(more: Bar[]): void {
@@ -481,7 +519,7 @@ export class TVChart {
   setTool(t: DrawingType | null): void { this.tool = t; this.draft = null; this.canvas.style.cursor = 'crosshair'; this.dirty = true }
   setMagnet(on: boolean): void { this.magnet = on }
   /** 能不能新画、拖、改画线（复盘回放里不能） */
-  editable(): boolean { return !this.readOnly }
+  editable(): boolean { return !this.readOnly && !this.pendingMeta }
   /** 把选中的画线挪 dx / dy 像素（方向键微调）；锁住的、只读时不动 */
   nudgeSelected(dx: number, dy: number): boolean {
     const d = this.selected
@@ -798,7 +836,7 @@ export class TVChart {
     const lw = `${Math.max(120, PW - 16)}px`; if (this.legendEl.style.maxWidth !== lw) this.legendEl.style.maxWidth = lw
     c.clearRect(0, 0, W, H)
     c.fillStyle = C.bg; c.fillRect(0, 0, W, H)
-    if (!this.bars.length) return
+    if (!this.bars.length) { this.renderSkeleton(); return }
     const { from, to } = this.visible()
     const panes = this.panes()
     this._panes = panes
@@ -884,6 +922,26 @@ export class TVChart {
     this.drawCrosshair(panes)
     this.renderPaneLegends(panes)
     if (geo) for (const l of this.layers) l.after?.(geo)
+  }
+
+  /** 还没有 K 线：画网格、两条轴和轴上的占位短条（骨架），不留一块白板；标题与「载入中」在图例里 */
+  private renderSkeleton(): void {
+    const c = this.ctx, C = this.colors, W = this.w, H = this.h, PW = this.plotW(), bottom = H - AXIS_H
+    c.strokeStyle = C.grid; c.lineWidth = LINE.hair; c.beginPath()
+    const rows = Math.max(2, Math.floor(bottom / 56)), cols = Math.max(2, Math.floor(PW / 120))
+    for (let k = 1; k < rows; k++) { const y = Math.round(bottom * k / rows) + .5; c.moveTo(0, y); c.lineTo(PW, y) }
+    for (let k = 1; k < cols; k++) { const x = Math.round(PW * k / cols) + .5; c.moveTo(x, 0); c.lineTo(x, bottom) }
+    c.stroke()
+    c.strokeStyle = C.scaleLine; c.beginPath()
+    c.moveTo(PW + .5, 0); c.lineTo(PW + .5, bottom)
+    c.moveTo(0, bottom + .5); c.lineTo(W, bottom + .5)
+    c.stroke()
+    // 轴上的占位：价格轴每格一条、时间轴每列一条，淡色圆角短条
+    c.save(); c.globalAlpha = .5; c.fillStyle = C.grid
+    const bw = Math.max(20, Math.min(this.aw - 20, 40))
+    for (let k = 1; k < rows; k++) { roundRect(c, PW + 8, Math.round(bottom * k / rows) - 4, bw, 8, 4); c.fill() }
+    for (let k = 1; k < cols; k++) { roundRect(c, Math.round(PW * k / cols) - 16, bottom + AXIS_H / 2 - 4, 32, 8, 4); c.fill() }
+    c.restore()
   }
 
   priceTicks(p: Pane, r: PriceRange): number[] {
@@ -1393,7 +1451,16 @@ export class TVChart {
   }
   renderLegend(): void {
     const I = icon, b = this.bars[this.legendIndex()], dec = this.meta.dec
-    if (!b) { this.legendEl.innerHTML = ''; return }
+    // 新数据在路上 / 还没有 K 线：只摆标题（加「载入中」），旧图的开高低收不挂在新品种名下
+    const pm = this.pendingMeta
+    if (pm || !b) {
+      const m = pm ?? this.meta
+      if (!m.title) { this.legendEl.innerHTML = ''; return }
+      const sub = this.deg.compact ? m.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || '' : m.sub
+      const html = `<div class="lrow${this.deg.compact ? ' compact' : ''}"><span class="title">${m.badge || ''}${m.title}<span class="sub">${sub}</span></span>${pm ? '<span class="loading-tag">载入中</span>' : ''}</div>`
+      if (this.legendEl.innerHTML !== html) this.legendEl.innerHTML = html
+      return
+    }
     const prev = this.bars[this.legendIndex() - 1]
     const chg = prev ? b.c - prev.c : b.c - b.o, pct = chg / (prev ? prev.c : b.o) * 100
     const cls = this.stale ? 'faint' : chg >= 0 ? 'up' : 'down'
@@ -1403,7 +1470,7 @@ export class TVChart {
     if (this.deg.compact) {
       const iv = this.meta.sub.split('·').map(x => x.trim()).filter(Boolean)[0] || ''
       const i0 = this.legendIndex()
-      const cmp = this.compareOn() ? this.compareViews().map(cv => `<span class="cmp-mini num" style="color:${cv.color}">${cv.line.name} ${comparePercentLabel(cv.at(i0))}</span>`).join('') : ''
+      const cmp = this.compareOn() ? this.compareViews().map(cv => `<span class="cmp-mini num" style="color:${cv.color}">${cv.line.name} ${cv.line.loading ? '<span class="cmp-wait"></span>' : comparePercentLabel(cv.at(i0))}</span>`).join('') : ''
       const html = `<div class="lrow compact"><span class="title">${this.meta.badge || ''}${this.meta.title}<span class="sub">${iv}</span></span>${cmp}</div>`
       if (this.legendEl.innerHTML !== html) this.legendEl.innerHTML = html
       this.renderPaneLegends(this._panes || [])
@@ -1415,7 +1482,7 @@ export class TVChart {
     const i = this.legendIndex()
     // 对比：每只一行「代号 +x.xx%」，悬停出移除
     if (this.compareOn()) for (const cv of this.compareViews()) {
-      h += `<div class="lrow cmp-row"><span class="cmp-dot" style="background:${cv.color}"></span><span class="ind-name">${cv.line.name}</span><span class="vals num"><span style="color:${cv.color}">${comparePercentLabel(cv.at(i))}</span></span><span class="tools"><button class="ibtn xs" data-act="cmpRemove" data-id="${cv.line.key}" data-tip="移除对比">${I('close', 'icon-16')}</button></span></div>`
+      h += `<div class="lrow cmp-row"><span class="cmp-dot" style="background:${cv.color}"></span><span class="ind-name">${cv.line.name}</span>${cv.line.loading ? '<span class="cmp-wait"></span>' : ''}<span class="vals num"><span style="color:${cv.color}">${comparePercentLabel(cv.at(i))}</span></span><span class="tools"><button class="ibtn xs" data-act="cmpRemove" data-id="${cv.line.key}" data-tip="移除对比">${I('close', 'icon-16')}</button></span></div>`
     }
     for (const id of MAIN_IDS) {
       if (!mainOn(this.ind, id)) continue
@@ -1779,7 +1846,7 @@ export class TVChart {
     if (i >= 0) this.drawings.splice(i, 1)
   }
   maybeMore(): void {
-    if (this.bars.length && this.xToIndex(0) < 60 && !this.loadingMore) this.o.onNeedMore?.()
+    if (this.bars.length && this.xToIndex(0) < 60 && !this.loadingMore && !this.pendingMeta) this.o.onNeedMore?.()
   }
   crossPrice(): number | null {
     if (!this.cross || this.cross.pane !== 'main' || !this._panes) return null

@@ -1,14 +1,17 @@
 // 板块页：品种表与全量行情并排取、表晚到了按表重算一次、表留在本机 24 小时（2026-10-07）
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const h = vi.hoisted(() => ({ calls: [] as string[], pendingEx: [] as ((v: unknown) => void)[], pendingTk: [] as ((v: unknown) => void)[] }))
+const h = vi.hoisted(() => ({ rows: null as unknown[] | null, calls: [] as string[], pendingEx: [] as ((v: unknown) => void)[], pendingTk: [] as ((v: unknown) => void)[] }))
 vi.mock('../src/market', () => ({
   REST: 'https://x', S: { symbols: new Map() },
-  j: (url: string) => {
-    h.calls.push(url)
-    return new Promise(res => (url.includes('exchangeInfo') ? h.pendingEx : h.pendingTk).push(res))
-  },
+  fetchExchangeInfo: () => mj('https://x/fapi/v1/exchangeInfo').then((ex: { symbols: { status: string; contractType: string }[] }) => { h.rows = ex.symbols.filter(e => e.status === 'TRADING' && /PERPETUAL$/.test(e.contractType)); return ex }),
+  fetchTicker24: () => mj('https://x/fapi/v1/ticker/24hr'),
+  exchangeRows: () => h.rows,
 }))
+function mj(url: string): Promise<any> {
+  h.calls.push(url)
+  return new Promise(res => (url.includes('exchangeInfo') ? h.pendingEx : h.pendingTk).push(res))
+}
 
 class MemStorage {
   private m = new Map<string, string>()

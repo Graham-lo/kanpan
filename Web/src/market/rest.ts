@@ -51,12 +51,12 @@ export async function j<T = unknown>(url: string, ms = 8000, background = false,
   } finally { clearTimeout(t) }
 }
 
-interface ExSymbol {
+export interface ExSymbol {
   symbol: string; baseAsset: string; quoteAsset: string; contractType: string; status: string
   underlyingType?: string; underlyingSubType?: string[]; onboardDate?: number
   filters: { filterType: string; tickSize?: string }[]; pricePrecision: number
 }
-interface Ticker24 { symbol: string; lastPrice: string; priceChange: string; priceChangePercent: string; quoteVolume: string; openPrice: string; highPrice: string; lowPrice: string; count: number; closeTime: number }
+export interface Ticker24 { symbol: string; lastPrice: string; priceChange: string; priceChangePercent: string; quoteVolume: string; openPrice: string; highPrice: string; lowPrice: string; count: number; closeTime: number }
 interface Premium { symbol: string; lastFundingRate: string; nextFundingTime: number; markPrice: string; indexPrice: string; time?: number }
 
 function blank(e: ExSymbol): Sym {
@@ -72,12 +72,154 @@ function blank(e: ExSymbol): Sym {
   }
 }
 
-/** 全市场：exchangeInfo（品种与分类）+ ticker/24hr（价与量）+ premiumIndex（费率、标记价、指数价） */
-export async function loadUniverse(): Promise<Map<string, Sym>> {
+// ------------------------------------------------------------ exchangeInfo / ticker/24hr 全站共用一次
+/** 全市场表、板块页的品种目录与行情都要 exchangeInfo（权重 1）与全量 ticker/24hr（权重 40）：
+ *  在途的那一次大家共用，冷启动时不再各发一遍（以前进板块页会再取一次 exchangeInfo）。回来之后再要就是新的一次。 */
+const shared = new Map<string, Promise<unknown>>()
+function sharedGet<T>(path: string, ms: number, seen?: (v: T) => void): Promise<T> {
+  const hit = shared.get(path)
+  if (hit) return hit as Promise<T>
+  const p = j<T>(`${REST}${path}`, ms).then(v => { seen?.(v); return v })
+  shared.set(path, p)
+  const done = (): void => { if (shared.get(path) === p) shared.delete(path) }
+  p.then(done, done)
+  return p
+}
+/** 币安合约 exchangeInfo（共用在途的那一次） */
+export function fetchExchangeInfo(): Promise<{ symbols: ExSymbol[] }> { return sharedGet('/fapi/v1/exchangeInfo', 12000, noteExchange) }
+/** 全量 ticker/24hr（共用在途的那一次） */
+export function fetchTicker24(): Promise<Ticker24[]> { return sharedGet('/fapi/v1/ticker/24hr', 10000) }
+
+/** 本会话最近一次取到的 exchangeInfo 里全部在交易的永续（各计价币都留，板块页挑合约要用）；没取到过是 null */
+export interface ExchangeRow { symbol: string; baseAsset: string; quoteAsset: string; underlyingType?: string; underlyingSubType?: string[] }
+let exchangeRowsSeen: ExchangeRow[] | null = null
+export function exchangeRows(): ExchangeRow[] | null { return exchangeRowsSeen }
+function noteExchange(ex: { symbols: ExSymbol[] }): void {
+  const rows: ExchangeRow[] = []
+  for (const e of ex.symbols) {
+    if (e.status !== 'TRADING') continue
+    if (e.contractType !== 'PERPETUAL' && e.contractType !== 'TRADIFI_PERPETUAL') continue
+    rows.push({ symbol: e.symbol, baseAsset: e.baseAsset, quoteAsset: e.quoteAsset, underlyingType: e.underlyingType, underlyingSubType: e.underlyingSubType })
+  }
+  if (rows.length) exchangeRowsSeen = rows
+}
+
+// ------------------------------------------------------------ 全市场表的本机副本
+/** 上次取到的全市场表（只留界面要的字段，几百条约 100 KB）：冷启动先拿它出画面，网络回来再换成新的。
+ *  价格就是上次的价格，不另加状态字样。最多认 7 天，再老的不用（上新、下架差太多）。 */
+export const UNIVERSE_CACHE_KEY = 'hkline-universe-v1'
+export const UNIVERSE_CACHE_MAX_AGE = 7 * 86_400_000
+function lsOf(): Storage | null {
+  try { return typeof localStorage === 'undefined' ? null : localStorage } catch { return null }
+}
+const numOr = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) ? v : null
+function encodeSym(s: Sym): unknown[] {
+  return [s.symbol, s.base, s.ut ?? '', s.dec, s.onboard ?? 0, s.tags?.join(',') ?? '', s.price, s.chg, s.pct,
+    s.open ?? null, s.hi ?? null, s.lo ?? null, s.vol, s.count ?? null, s.fr, s.nextFunding, s.mark ?? null, s.index ?? null,
+    s.pxAt ?? 0, s.statAt ?? 0, s.markAt ?? 0, s.supply ?? null, s.macro ? s.cn : '']
+}
+function decodeSym(r: unknown, now: number): Sym | null {
+  if (!Array.isArray(r) || typeof r[0] !== 'string' || typeof r[1] !== 'string' || typeof r[3] !== 'number') return null
+  const [symbol, base, ut, dec, onboard, tags] = r as [string, string, unknown, number, unknown, unknown]
+  let s: Sym
+  if (symbol === MACRO_SYMBOL) {
+    s = macroFallback()
+    if (typeof r[22] === 'string' && r[22]) s.cn = r[22]
+    s.dec = dec
+  } else {
+    const u = typeof ut === 'string' && ut ? ut : undefined
+    const kind = kindOfUnderlying(u, base)
+    s = {
+      symbol, base, code: base, kind, cn: cnOf(base, kind), dec, color: badgeColor(base),
+      price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null, ut: u,
+      onboard: numOr(onboard) || undefined,
+      tags: typeof tags === 'string' && tags ? tags.split(',') : undefined,
+    }
+  }
+  s.price = numOr(r[6]); s.chg = numOr(r[7]) ?? 0; s.pct = numOr(r[8])
+  const opt = (k: 'open' | 'hi' | 'lo' | 'count' | 'mark' | 'index' | 'supply', v: unknown): void => { const x = numOr(v); if (x != null) s[k] = x }
+  opt('open', r[9]); opt('hi', r[10]); opt('lo', r[11]); s.vol = numOr(r[12]) ?? 0; opt('count', r[13])
+  s.fr = numOr(r[14])
+  const nf = numOr(r[15]); s.nextFunding = nf != null && nf > now ? nf : null   // 过了的结算时刻不要（倒计时会是负的）
+  opt('mark', r[16]); opt('index', r[17])
+  s.pxAt = numOr(r[18]) ?? 0; s.statAt = numOr(r[19]) ?? 0; s.markAt = numOr(r[20]) ?? 0
+  opt('supply', r[21])
+  if (s.supply == null) { const sup = supplyOf(symbol); if (sup != null) s.supply = sup }
+  return s
+}
+/** 把全市场表写进本机（写不下就算了：它只是让下次开得快一点） */
+export function saveUniverse(map: Map<string, Sym> = S.symbols, store: Storage | null = lsOf()): boolean {
+  if (!store || !map.size) return false
+  try {
+    store.setItem(UNIVERSE_CACHE_KEY, JSON.stringify({ v: 1, at: Date.now(), rows: [...map.values()].map(encodeSym) }))
+    return true
+  } catch { return false }
+}
+/** 读本机的全市场表；没有、坏了、太老都是 null */
+export function readUniverse(store: Storage | null = lsOf(), now = Date.now()): Map<string, Sym> | null {
+  if (!store) return null
+  try {
+    const v = JSON.parse(store.getItem(UNIVERSE_CACHE_KEY) ?? 'null') as { v?: unknown; at?: unknown; rows?: unknown } | null
+    if (!v || v.v !== 1 || typeof v.at !== 'number' || now - v.at > UNIVERSE_CACHE_MAX_AGE || !Array.isArray(v.rows)) return null
+    const m = new Map<string, Sym>()
+    for (const r of v.rows) { const s = decodeSym(r, now); if (s) m.set(s.symbol, s) }
+    return m.size ? m : null
+  } catch { return null }
+}
+/** 关页、切走时把手里（推送刷过的）最新价写一份；10 秒内只写一次 */
+let savedAt = 0
+let saveHooked = false
+function hookSave(): void {
+  if (saveHooked || typeof addEventListener !== 'function' || typeof document === 'undefined') return
+  saveHooked = true
+  const flush = (): void => {
+    if (!S.symbols.size || S.live === false && !S.universeAt || ago(savedAt) < 10_000) return
+    savedAt = Date.now(); saveUniverse()
+  }
+  addEventListener('pagehide', flush)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush() })
+}
+
+/** 全市场：exchangeInfo（品种与分类）+ ticker/24hr（价与量）+ premiumIndex（费率、标记价、指数价）。
+ *  本会话第一次取、手里还没有表时：本机有上次的表就先用它（S.live 仍是 null、照常发 universe 事件）、马上返回，
+ *  网络那一份在后台取，回来再发一次 universe；后台这次失败了自己隔一会儿再试（冷却或 30 秒起、逐次加长）。
+ *  同一时刻多处要表只取一次（在途的共用）。 */
+let netP: Promise<Map<string, Sym>> | null = null
+let diskTried = false
+let diskRetry = 0
+export function loadUniverse(): Promise<Map<string, Sym>> {
+  hookSave()
+  if (!diskTried) {
+    diskTried = true
+    const disk = !S.symbols.size && S.live == null ? readUniverse() : null
+    if (disk) {
+      S.symbols = disk
+      S.error = ''
+      emit({ type: 'universe' })
+      void fetchUniverse().then(retryAfterDisk)
+      return Promise.resolve(S.symbols)
+    }
+  }
+  return fetchUniverse()
+}
+function fetchUniverse(): Promise<Map<string, Sym>> {
+  return netP ??= netUniverse().finally(() => { netP = null })
+}
+/** 先摆了本机那份、网络一直没取到：自己再取（不等哪一页来要） */
+function retryAfterDisk(): void {
+  if (S.live !== false || S.universeAt) { diskRetry = 0; return }
+  const wait = S.limited ? Math.max(coolingFor(REST), 1000) + 500 : Math.min(30_000 * 2 ** diskRetry, 240_000)
+  diskRetry++
+  setTimeout(() => { if (!S.universeAt) void fetchUniverse().then(retryAfterDisk) }, wait)
+}
+/** 测试用：回到「本会话还没读过本机表」 */
+export function resetUniverseForTest(): void { netP = null; diskTried = false; diskRetry = 0; savedAt = 0; shared.clear(); exchangeRowsSeen = null }
+
+async function netUniverse(): Promise<Map<string, Sym>> {
   try {
     const [ex, tk, pi] = await Promise.all([
-      j<{ symbols: ExSymbol[] }>(`${REST}/fapi/v1/exchangeInfo`, 12000),
-      j<Ticker24[]>(`${REST}/fapi/v1/ticker/24hr`),
+      fetchExchangeInfo(),
+      fetchTicker24(),
       j<Premium[]>(`${REST}/fapi/v1/premiumIndex`),
     ])
     const next = new Map<string, Sym>()
@@ -86,6 +228,7 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
       if (e.contractType !== 'PERPETUAL' && e.contractType !== 'TRADIFI_PERPETUAL') continue
       let s = S.symbols.get(e.symbol)
       if (!s) { s = blank(e); const sup = supplyOf(e.symbol); if (sup != null) s.supply = sup }   // 元数据先于全市场表到了
+      else if (!S.universeAt) { const b = blank(e); Object.assign(s, { kind: b.kind, dec: b.dec, ut: b.ut, tags: b.tags, onboard: b.onboard }) }   // 本机那份的分类、精度以交易所这次的为准
       next.set(e.symbol, s)
     }
     // 美元指数不在币安的表里：手里有就原样带过来，没有就放内置的一行（价格等 loadMacro / 推送来填）
@@ -109,6 +252,8 @@ export async function loadUniverse(): Promise<Map<string, Sym>> {
     S.live = true
     S.limited = false
     S.error = ''
+    savedAt = Date.now()
+    setTimeout(() => saveUniverse(), 1500)   // 不和首屏抢这一拍
   } catch (e) {
     console.warn('[hkline] 币安合约接口不可达', e)
     S.live = false

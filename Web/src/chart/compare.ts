@@ -140,6 +140,8 @@ export interface CompareLine {
   bars: readonly Bar[] | null
   /** 数据戳：取数器每变一次 +1（图上的对齐缓存按它判断要不要重算） */
   rev: number
+  /** 第一次取、手里还没有数据：图例那一行挂一个小转圈（往前补历史时线已经在了，不挂） */
+  loading?: boolean
 }
 
 // ------------------------------------------------------------ 取数器
@@ -196,9 +198,9 @@ export class CompareStore {
     }
     for (const n of list) { const e = this.map.get(keyOf(n.symbol, n.iv)); if (e) this.schedule(e) }
   }
-  get(symbol: string, iv: string): { bars: Bar[] | null; rev: number } | null {
+  get(symbol: string, iv: string): { bars: Bar[] | null; rev: number; loading: boolean } | null {
     const e = this.map.get(keyOf(symbol, iv))
-    return e ? { bars: e.bars, rev: e.rev } : null
+    return e ? { bars: e.bars, rev: e.rev, loading: e.loading } : null
   }
   /** 此刻在取的「品种 + 周期」（订推送用） */
   streams(): { symbol: string; iv: string }[] { return [...this.map.values()].map(e => ({ symbol: e.symbol, iv: e.iv })) }
@@ -270,6 +272,7 @@ export class CompareStore {
       if (gen === e.gen) {
         e.loading = false
         if (ok) { e.failures = 0; this.schedule(e) } else this.backoff(e)
+        this.onChange(e.symbol, e.iv)   // 图例上的小转圈收起（成功那次的 onChange 发在 loading 还是 true 的时候）
       }
     }
   }
