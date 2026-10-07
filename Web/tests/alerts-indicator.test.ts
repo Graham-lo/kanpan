@@ -1,8 +1,8 @@
 /* 技术指标提醒（均线交叉 / RSI 穿越 / 收盘突破）：线格式、校验、文案、收盘判定、图上预填、服务端 400 的中文原因 */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  barBreakoutRule, barsNeeded, crossed, draftFromChart, flipLevel, indicatorHitAt, indicatorPhrase, indicatorRuleError, isIndicatorRule, judgeClosedBars,
-  lastCloseAt, maCrossRule, maFromChart, nearestInterval, parseIntField, rejectReason, rsiLevelRule, rsiSeries, ruleFromDraft, type ChartIndView,
+  barBreakoutRule, barsNeeded, crossed, draftFromChart, flipLevel, indicatorHitAt, indicatorPhrase, indicatorRuleError, indicatorRuleOk, isIndicatorRule, judgeClosedBars,
+  lastCloseAt, maCrossRule, maFromChart, nearestInterval, parseIntField, parseNumField, rejectReason, rsiLevelRule, rsiSeries, ruleFromDraft, type ChartIndView,
 } from '../src/alerts/indicator'
 import { makeConditionAlert, rulePhrase } from '../src/alerts/shape'
 import { alertToBody, decodeAlert, ruleOk } from '../src/sync/codec'
@@ -83,6 +83,12 @@ describe('校验', () => {
     expect(indicatorRuleError({ ...BR, extra: 1 })).not.toBeNull()
     expect(indicatorRuleError({ ...MA, fast: { ma: 'ema', period: 9, x: 1 } })).not.toBeNull()
     expect(ruleOk({ ...RSI, level: 120 } as never)).toBe(false)
+    // 水平可以带小数（服务端 1–99 收小数）；超界照样不收
+    expect(indicatorRuleOk({ ...RSI, level: 70.5 })).toBe(true)
+    expect(indicatorRuleOk({ ...RSI, level: 0.5 })).toBe(false)
+    expect(indicatorRuleOk({ ...RSI, level: 99.5 })).toBe(false)
+    expect(parseNumField('６９。５')).toBe(69.5)
+    expect(parseNumField('70.')).toBe(null)
   })
 
   it('输入框：全角数字、空白都认，非整数不认', () => {
@@ -229,6 +235,13 @@ describe('服务端没上线时的 400：中文原因', () => {
     expect((e as ApiError).status).toBe(400)
     expect((e as ApiError).code).toBe('invalid_sync_value')
     expect((e as ApiError).reason).toBe('不认识的提醒条件')
+  })
+
+  it('服务端的 indicator_* 错误：界面直接用它的中文 message', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { code: 'indicator_invalid_period', message: '均线长度要在 2 到 500 之间' } }), { status: 400 })))
+    const e = await request('POST', '/v1/sync/push', {}).catch((x: unknown) => x) as ApiError
+    expect(e.code).toBe('indicator_invalid_period')
+    expect(rejectReason(e.code, e.reason)).toBe('均线长度要在 2 到 500 之间')
   })
 
   it('没有 message 时 reason 为空，按错误码给中文', async () => {

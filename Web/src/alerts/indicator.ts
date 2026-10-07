@@ -43,6 +43,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 export const isIndicatorRule = (r: unknown): r is IndicatorRule =>
   isObj(r) && typeof r.kind === 'string' && (INDICATOR_KINDS as readonly string[]).includes(r.kind)
 const intIn = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi
+const numIn = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi
 const okIv = (v: unknown): v is IndInterval => typeof v === 'string' && (IND_INTERVALS as readonly string[]).includes(v)
 const okDir = (v: unknown): v is Direction => v === 'up' || v === 'down'
 const okMa = (v: unknown): v is MaType => v === 'sma' || v === 'ema'
@@ -70,7 +71,8 @@ export function indicatorRuleError(r: unknown): string | null {
   }
   if (r.kind === 'rsi_level') {
     if (!intIn(o.period, PERIOD_MIN, PERIOD_MAX)) return `RSI 长度填 ${PERIOD_MIN} 到 ${PERIOD_MAX} 的整数`
-    if (!intIn(o.level, LEVEL_MIN, LEVEL_MAX)) return `水平填 ${LEVEL_MIN} 到 ${LEVEL_MAX} 的整数`
+    // 水平可以带小数（服务端 1–99 收小数）
+    if (!numIn(o.level, LEVEL_MIN, LEVEL_MAX)) return `水平填 ${LEVEL_MIN} 到 ${LEVEL_MAX} 之间的数`
     return null
   }
   if (!intIn(o.bars, PERIOD_MIN, PERIOD_MAX)) return `根数填 ${PERIOD_MIN} 到 ${PERIOD_MAX} 的整数`
@@ -100,6 +102,11 @@ export function indicatorPhrase(r: IndicatorRule): string {
 export function parseIntField(text: string): number | null {
   const s = text.replace(/\s/g, '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
   return /^\d{1,6}$/.test(s) ? +s : null
+}
+/** 输入框里的数（可带小数，RSI 水平用）：去空白、全角转半角、全角句点也认 */
+export function parseNumField(text: string): number | null {
+  const s = text.replace(/\s/g, '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[。．]/g, '.')
+  return /^\d{1,6}(\.\d{1,4})?$/.test(s) ? +s : null
 }
 
 // ------------------------------------------------------------ 判定（纯函数）
