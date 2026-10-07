@@ -59,7 +59,8 @@ struct FavoriteCategoryTests {
   }
 
   /// 别家交易所的品种固定进它自己那一类，排在「美股」之后；不跟着他此刻站着的那一类走，
-  /// 默认交易所的品种照旧（交接 §2 拍板）。
+  /// 默认交易所的品种照旧（交接 §2 拍板）。例外：自选里已经有同一个底层品种时挨着它放、
+  /// 归它那一类（用户 2026-10-07 定的，`FavoriteSiblings`）。
   @Test @MainActor func venueFavoritesGoToTheirOwnCategoryAfterUSEquities() throws {
     let store = SymbolPrefsStore(storage: MemoryPrefsStorage())
     let venue: @Sendable (String) -> String? = { $0.hasPrefix("coinbase/") ? "Coinbase" : nil }
@@ -70,27 +71,33 @@ struct FavoriteCategoryTests {
       SymbolInfo(symbol: symbol, base: base, pricePrecision: 2, tickSize: 0.01, underlyingType: type)
     }
     model.addFavorite("binance/usd_m/BTCUSDT", info: info("binance/usd_m/BTCUSDT", "BTC", "COIN"))
+    let crypto = try #require(model.prefs.groupForSymbol["binance/usd_m/BTCUSDT"])
     selected = try #require(model.createGroup("美股"))
     let mine = try #require(model.createGroup("长期"))
     selected = mine
-    model.addFavorite("coinbase/spot/BTC-USD", info: info("coinbase/spot/BTC-USD", "BTC", "COIN"))
+    model.addFavorite("coinbase/spot/SOL-USD", info: info("coinbase/spot/SOL-USD", "SOL", "COIN"))
     #expect(model.prefs.groups.map(\.name) == ["加密", "美股", "Coinbase", "长期"])
     let own = try #require(model.prefs.groups.first { $0.name == "Coinbase" }?.id)
-    #expect(model.prefs.groupForSymbol["coinbase/spot/BTC-USD"] == own)
+    #expect(model.prefs.groupForSymbol["coinbase/spot/SOL-USD"] == own)
     // 第二只进同一类，不再开新的。
-    model.addFavorite("coinbase/spot/ETH-USD", info: info("coinbase/spot/ETH-USD", "ETH", "COIN"))
+    model.addFavorite("coinbase/spot/DOGE-USD", info: info("coinbase/spot/DOGE-USD", "DOGE", "COIN"))
     #expect(model.prefs.groups.count == 4)
-    #expect(model.prefs.groupForSymbol["coinbase/spot/ETH-USD"] == own)
+    #expect(model.prefs.groupForSymbol["coinbase/spot/DOGE-USD"] == own)
+    // 自选里已经有币安 BTC 永续：Coinbase 的 BTC 现货挨着它、归它那一类，现货在前。
+    model.addFavorite("coinbase/spot/BTC-USD", info: info("coinbase/spot/BTC-USD", "BTC", "COIN"))
+    #expect(model.prefs.groupForSymbol["coinbase/spot/BTC-USD"] == crypto)
+    #expect(model.prefs.favorites.prefix(2) == ["coinbase/spot/BTC-USD", "binance/usd_m/BTCUSDT"])
+    #expect(model.prefs.groups.count == 4)
     // 默认交易所的品种仍然留在他此刻那一类。
     model.addFavorite("binance/usd_m/ETHUSDT", info: info("binance/usd_m/ETHUSDT", "ETH", "COIN"))
     #expect(model.prefs.groupForSymbol["binance/usd_m/ETHUSDT"] == mine)
     // 同步拉回来一只还没分类的别家品种：重开时补进它自己那一类。
     var prefs = model.prefs
-    prefs.addFavorite("coinbase/spot/SOL-USD")
-    prefs.groupForSymbol["coinbase/spot/SOL-USD"] = nil
+    prefs.addFavorite("coinbase/spot/XRP-USD")
+    prefs.groupForSymbol["coinbase/spot/XRP-USD"] = nil
     store.save(prefs)
     let reopened = SymbolPickerModel(store: store, venueCategory: venue)
-    #expect(reopened.prefs.groupForSymbol["coinbase/spot/SOL-USD"] == own)
+    #expect(reopened.prefs.groupForSymbol["coinbase/spot/XRP-USD"] == own)
   }
 
   @Test func newCategoryWithoutAnchorGoesLast() {

@@ -13,8 +13,9 @@ import KanpanNetwork
 // · 「加密」：
 //   1. **黄金、白银摆在最上面**（XAU / XAG）。它们照交易所是贵金属，但用户要它们
 //      直接跟加密放在一起看，所以这两条明着归进「加密」，不按资产类型开「贵金属」。
-//   2. **BTC、ETH、SOL、XRP、DOGE、ZEC 各两条**：币安永续，紧跟着它的 Coinbase 现货
-//      （`coinbase/spot/BTC-USD`）——永续和现货挨着，一眼就能对比。
+//   2. **BTC、ETH、SOL、XRP、DOGE、ZEC 各两条**：Coinbase 现货（`coinbase/spot/BTC-USD`）
+//      在前，紧跟着它的币安永续——现货和永续挨着，一眼就能对比；现货排前面是用户
+//      2026-10-07 定的「一般来说现货放最前面」（`FavoriteSiblings`）。
 //      Coinbase 那条不在币安目录里，六个都核对过在线，直接按代号给。
 //   3. 再加当日 24h 成交额前五、还没占上的币。
 // · 「美股」：NVDA、QQQ、SOXL、SK 海力士两条（SKHY 是 ADR、SKHYNIX 是韩股）、美光、
@@ -44,7 +45,7 @@ enum DefaultFavorites {
 
   /// 摆在「加密」最上面的贵金属，顺序就是摆出来的顺序。
   static let metals = ["XAU", "XAG"]
-  /// 永续后面紧跟 Coinbase 现货的那几个币，顺序就是摆出来的顺序。
+  /// Coinbase 现货在前、币安永续紧跟的那几个币，顺序就是摆出来的顺序。
   static let pairedCoins = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ZEC"]
   /// 「美股」那一类，顺序就是摆出来的顺序。底名对着币安目录的 `base`。
   static let usEquities = ["NVDA", "QQQ", "SOXL", "SKHY", "SKHYNIX", "MU", "SNDK",
@@ -106,8 +107,8 @@ enum DefaultFavorites {
     for base in pairedCoins {
       let key = SymbolAliases.key(base)
       taken.insert(key)
-      if let info = coins[key] { add(info.symbol, cryptoGroup) }
       add(coinbaseSpot(base), cryptoGroup)
+      if let info = coins[key] { add(info.symbol, cryptoGroup) }
     }
 
     // 成交额榜：按 base 归并之后再排，免得同一个币的两条合约占掉两个名额。

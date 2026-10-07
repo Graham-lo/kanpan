@@ -44,10 +44,10 @@ struct DefaultFavoritesTests {
     plan.filter { $0.group == DefaultFavorites.usGroup }.map(\.symbol)
   }
 
-  @Test("「加密」：金银在最上面，六个币各是永续紧跟 Coinbase 现货，再跟成交额前五")
+  @Test("「加密」：金银在最上面，六个币各是 Coinbase 现货在前、永续紧跟，再跟成交额前五")
   func cryptoOrder() {
     let plan = DefaultFavorites.pick(catalog: Self.catalog, tickers: Self.tickers)
-    let pairs = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ZEC"].flatMap { [Self.perp($0), Self.spot($0)] }
+    let pairs = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ZEC"].flatMap { [Self.spot($0), Self.perp($0)] }
     // 剩下的币按成交额：BNB 6.4e8 > 1000PEPE 2.88e8 > AVAX 1.02e8 > BCH 9.3e7 > LTC 8.8e7（ETHFI、ETHW 落榜）
     let hot = ["binance/usd_m/BNBUSDT", "binance/usd_m/1000PEPEUSDT", "binance/usd_m/AVAXUSDT",
                "binance/usd_m/BCHUSDT", "binance/usd_m/LTCUSDT"]
@@ -120,7 +120,7 @@ struct DefaultFavoritesTests {
   @Test("行情取不到时点名的那几条照给，只少了成交额前五")
   func namedSurviveWithoutTickers() {
     let plan = DefaultFavorites.pick(catalog: Self.catalog, tickers: [])
-    let pairs = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ZEC"].flatMap { [Self.perp($0), Self.spot($0)] }
+    let pairs = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ZEC"].flatMap { [Self.spot($0), Self.perp($0)] }
     #expect(crypto(plan) == [Self.perp("XAU"), Self.perp("XAG")] + pairs)
     #expect(us(plan) == Self.usOrder.map(Self.perp))
   }
@@ -215,8 +215,8 @@ struct DefaultFavoritesSeedTests {
     let (model, _) = make(prefs)
     let plan = [
       Entry(symbol: "binance/usd_m/XAUUSDT", group: Self.crypto),
-      Entry(symbol: "binance/usd_m/BTCUSDT", group: Self.crypto),
       Entry(symbol: "coinbase/spot/BTC-USD", group: Self.crypto),
+      Entry(symbol: "binance/usd_m/BTCUSDT", group: Self.crypto),
       Entry(symbol: "binance/usd_m/ETHUSDT", group: Self.crypto),
       Entry(symbol: "coinbase/spot/ETH-USD", group: Self.crypto),
       Entry(symbol: "binance/usd_m/BNBUSDT", group: Self.crypto),
@@ -224,11 +224,12 @@ struct DefaultFavoritesSeedTests {
       Entry(symbol: "binance/usd_m/QQQUSDT", group: Self.us),
     ]
     let added = model.seedFavorites(plan)
-    #expect(added == ["binance/usd_m/XAUUSDT", "binance/usd_m/BTCUSDT", "coinbase/spot/BTC-USD",
+    #expect(added == ["binance/usd_m/XAUUSDT", "coinbase/spot/BTC-USD", "binance/usd_m/BTCUSDT",
                       "coinbase/spot/ETH-USD", "binance/usd_m/QQQUSDT"])
+    // ETH 现货插在他那条 ETH 永续后面，再按「现货在前」站成现货、永续（两条挨着，类别不变）。
     #expect(model.prefs.favorites == [
-      "binance/usd_m/XAUUSDT", "binance/usd_m/BTCUSDT", "coinbase/spot/BTC-USD",
-      "binance/usd_m/BNBUSDT", "binance/usd_m/ETHUSDT", "coinbase/spot/ETH-USD",
+      "binance/usd_m/XAUUSDT", "coinbase/spot/BTC-USD", "binance/usd_m/BTCUSDT",
+      "binance/usd_m/BNBUSDT", "coinbase/spot/ETH-USD", "binance/usd_m/ETHUSDT",
       "binance/usd_m/NVDAUSDT", "binance/usd_m/QQQUSDT",
     ])
     // 他自己的那一类排第一不动，新开的两类跟在后面。
@@ -238,8 +239,8 @@ struct DefaultFavoritesSeedTests {
     for symbol in ["binance/usd_m/BNBUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/NVDAUSDT"] {
       #expect(model.prefs.groupForSymbol[symbol] == mine.id, "\(symbol) 被挪出了他自己的分类")
     }
-    #expect(model.prefs.favorites(in: cryptoID) == ["binance/usd_m/XAUUSDT", "binance/usd_m/BTCUSDT",
-                                                    "coinbase/spot/BTC-USD", "coinbase/spot/ETH-USD"])
+    #expect(model.prefs.favorites(in: cryptoID) == ["binance/usd_m/XAUUSDT", "coinbase/spot/BTC-USD",
+                                                    "binance/usd_m/BTCUSDT", "coinbase/spot/ETH-USD"])
     #expect(model.prefs.favorites(in: usID) == ["binance/usd_m/QQQUSDT"])
 
     let before = model.prefs

@@ -358,6 +358,16 @@ final class SymbolPickerModel {
     guard !prefs.isFavorite(symbol) else { return }
     let key = SymbolPrefs.key(symbol)
     guard !key.isEmpty else { return }
+    // 自选里已经有同一个底层品种在别家 / 别的市场的那一条（币安 BTC 永续在，再加 Coinbase
+    // 的 BTC 现货）：挨着它放、归它那一类，现货排在前面（用户 2026-10-07 定的，方便对比）。
+    // 不走下面的交易所分类——两条挨在一起本来就是为了对比，拆到两类里就没法比了。
+    let facts = info ?? self.info(for: key)
+    if let slot = FavoriteSiblings.insertion(of: key, base: FavoriteSiblings.base(of: key, info: facts),
+                                             in: prefs.favorites, baseOf: siblingBase) {
+      prefs.insertFavorite(key, at: slot.index, in: prefs.groupForSymbol[slot.neighbor])
+      commit()
+      return
+    }
     prefs.addFavorite(key, in: currentGroup)
     // 别家交易所的品种固定进它自己那一类（交接 §2 拍板：分类条上「美股」之后的那一格），
     // 不跟着他此刻站着的那一类走——两家所的 BTC 混在一类里，一眼分不出是哪家的报价。
@@ -369,7 +379,6 @@ final class SymbolPickerModel {
     // `assign` 一次，结果是在「短线」里加 BTC，一松手它自己跳去「加密」。
     guard prefs.groupForSymbol[key] == nil else { commit(); return }
     // 一个分类都还没有（新用户）才走到这儿：按资产类型开第一类。
-    let facts = info ?? self.info(for: key)
     // 目录里还没有这一行、或者它没带 `underlyingType`：我们就是**不知道**它是什么
     // （审查 B-04），那就不给它编一个分类名。它此刻落在「没有分类」那格——而那一格
     // 正是此时自选页显示的东西，所以这一行照样看得见。等目录到了他自己
@@ -415,9 +424,19 @@ final class SymbolPickerModel {
       cursor = at
       added.append(key)
     }
-    guard !added.isEmpty else { return [] }
+    // 挨在一起的同品种按「现货在前」站好（用户 2026-10-07 定的）。只动已经挨着的那几条，
+    // 他自己拆开摆的不碰。顺序变了也要落盘，哪怕这一趟一条都没加。
+    let ordered = FavoriteSiblings.spotFirst(prefs.favorites, baseOf: siblingBase)
+    let reordered = ordered != prefs.favorites
+    if reordered { prefs.favorites = ordered }
+    guard !added.isEmpty || reordered else { return [] }
     commit()
     return added
+  }
+
+  /// 同品种判定用的底层名：目录里有就按目录，没有就按代号拆。
+  private func siblingBase(_ symbol: String) -> String {
+    FavoriteSiblings.base(of: symbol, info: info(for: symbol))
   }
 
   /// 给还没分类的自选补一个分类。返回是否真改了东西——调用方据此决定要不要回写。

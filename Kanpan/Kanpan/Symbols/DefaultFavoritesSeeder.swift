@@ -15,7 +15,8 @@ import KanpanNetwork
 //   分类一个不挪（并法见 `seedFavorites`）。
 // · **每台设备、每份档案只给一次**。记号记在本机 `UserDefaults` 里（键带档案名），
 //   不进档案、不随账号同步：「这台机器上这份档案我已经招呼过了」本来就是这台机器自己的事。
-//   名单换了口径就换键（v1 → v2）：老键直接不认，老用户升级上来会被并一趟新名单。
+//   名单换了口径就换键（v1 → v2 → v3）：老键直接不认，老用户升级上来会被并一趟新名单
+//   （v3：现货排到永续前面，这一趟顺手把挨着的同品种按「现货在前」站好）。
 //   跑完了就记，哪怕一条都没加（他手上本来就全有）——那也是招呼过了。
 // · **一趟只给最新那份档案**。冷启动先装访客档案顶着，`account.restore()` 回来再换成
 //   账号那份；访客那一趟还在等目录 / 取榜时账号档案到了，就当场把访客那趟作废、
@@ -29,9 +30,9 @@ import KanpanNetwork
 // 于是第一次开 app 的人正好停在一页有东西的自选上。
 
 @MainActor enum DefaultFavoritesSeeder {
-  /// 本机记号的前缀，后面接档案名（`guest` 或账号的用户 id）。名字里带 v2：
+  /// 本机记号的前缀，后面接档案名（`guest` 或账号的用户 id）。名字里带版本号：
   /// 将来真要重新招呼一轮时换一个键就行，不必去猜老键上那个 true 当初是什么意思。
-  static let markPrefix = "kanpan.defaultFavorites.seeded.v2."
+  static let markPrefix = "kanpan.defaultFavorites.seeded.v3."
 
   /// 访客档案在记号里的名字。
   static let guestProfile = "guest"
