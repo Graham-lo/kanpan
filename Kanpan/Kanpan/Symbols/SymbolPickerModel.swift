@@ -380,28 +380,42 @@ final class SymbolPickerModel {
     commit()
   }
 
-  /// 第一次启动时一次落一整批默认自选（`DefaultFavorites`，方案第 3 节第四件）。
+  /// 把一整批默认自选（`DefaultFavorites`，方案第 3 节第四件）**并进**这份档案。
   ///
-  /// 不复用 `addFavorite` 逐条加是因为那样是八次落盘、八条同步操作、八次重排，
-  /// 而这八条在用户眼里是**同一件事**（他打开 app 就看见一页自选）。
+  /// 不复用 `addFavorite` 逐条加是因为那样是二十几次落盘、二十几条同步操作、二十几次重排，
+  /// 而这一批在用户眼里是**同一件事**（他打开 app 就看见一页自选）。
   ///
-  /// 只在这台机器上一条自选都没有时算数——手上已经有东西了就什么都不做，
-  /// 谁的表都不许被默认值挤。返回真正加进去的那几条。
+  /// 2026-10-07 起不再要求手上是空的：访客和账号拿到的是同一份名单，已经有自选的人
+  /// 只补上缺的那几条，他自己的东西一条不动。并法：
+  ///
+  /// · 按名单顺序走，手里攥着一个游标——「名单里上一条此刻在全局顺序的第几位」。
+  ///   已经在自选里的那条只把游标挪到它身上（它站在哪、归哪一类都不碰）；
+  ///   缺的那条插在游标的下一位。名单第一条之前没有游标，缺的就插到最上面——
+  ///   黄金、白银就是这样落到自选第一行的，Coinbase 现货也就紧跟在它的永续后面。
+  /// · 新插进来的那条明着归进名单点名的那一类（`createGroup` 有同名的就用那一格，
+  ///   没有就新开；名单里「加密」排在「美股」前面，新档案上两类也就是这个先后）。
+  ///   明着归过类的，`classifyUnassigned` 不会再动它——Coinbase 那几条因此留在「加密」，
+  ///   不会被挪进交易所自己那一类。
+  ///
+  /// 真加了东西才落一次盘；返回真正加进去的那几条（空数组 = 什么都没变）。
   @discardableResult
-  func seedFavorites(_ list: [String]) -> [String] {
-    guard prefs.favorites.isEmpty, !list.isEmpty else { return [] }
-    for symbol in list { prefs.addFavorite(symbol, in: currentGroup) }
-    let added = prefs.favorites
-    guard !added.isEmpty else { return [] }
-    // 新机器上一个分类都没有：按第一条的资产类型开一类，剩下的跟着进去
-    // （默认那几条全是币，所以就是「加密」那一类）。
-    if prefs.groups.isEmpty {
-      let facts = info(for: added[0])
-      if FavoriteCategory.knows(symbol: added[0], info: facts),
-         let group = prefs.createGroup(FavoriteCategory.name(symbol: added[0], info: facts)) {
-        for symbol in added { prefs.assign(symbol, to: group) }
-      }
+  func seedFavorites(_ plan: [DefaultFavorites.Entry]) -> [String] {
+    var added: [String] = []
+    var cursor: Int? = nil
+    var groupOf: [String: String] = [:]
+    for entry in plan {
+      let key = SymbolPrefs.key(entry.symbol)
+      guard !key.isEmpty else { continue }
+      if let at = prefs.favorites.firstIndex(of: key) { cursor = at; continue }
+      let group: String?
+      if let known = groupOf[entry.group] { group = known }
+      else { group = prefs.createGroup(entry.group); groupOf[entry.group] = group }
+      let at = cursor.map { $0 + 1 } ?? 0
+      guard prefs.insertFavorite(key, at: at, in: group) else { continue }
+      cursor = at
+      added.append(key)
     }
+    guard !added.isEmpty else { return [] }
     commit()
     return added
   }

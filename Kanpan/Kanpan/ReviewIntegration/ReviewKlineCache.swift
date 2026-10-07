@@ -15,8 +15,13 @@ enum ReviewKlineCache {
 
   /// 界面测试用：每一页先停这么多秒再取，并且换一份空盘（每次启动都从没缓存起），
   /// 好在快网上也看得见「加载回放」那一枚。线上不设。
+  /// 只在 DEBUG 构建里读环境：Release 包不留这条口子（`ReleaseHookScanTests`，C.10-1）。
+  #if DEBUG
   private static let testDelay: Double? = ProcessInfo.processInfo.environment["KANPAN_TEST_REVIEW_KLINE_DELAY"]
     .flatMap(Double.init).flatMap { $0 > 0 ? $0 : nil }
+  #else
+  private static let testDelay: Double? = nil
+  #endif
 
   /// 本家数据里 `[start, end)` 这一段的**源周期** K 线（交给 `MarketSeries.series` 聚成 `interval`）。
   ///

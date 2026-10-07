@@ -103,6 +103,9 @@
   （配合 `KANPAN_TEST_PROFILE=1`，`#if DEBUG`）把一条链接直接喂给路由。同一套路还有一条
   `KANPAN_TEST_ALERT_FIRED=<代号>`（`AlertStore.testSeed`，`#if DEBUG`）：跑用例的是另一个进程，
   塞不进 app 的沙盒，所以「服务端判到价、同步换下来的那一条已触发提醒」由它在开局种进空存档。
+  再一条 `KANPAN_TEST_LOGIN_USER` / `KANPAN_TEST_LOGIN_PASS`（`AccountFeature.loginFromEnvironment`，`#if DEBUG`，
+  不要求测试档案）：真机 XCUITest 在 Wi-Fi 隧道上建不起通道（2026-10-07 四次 code 74）时，装 Debug 包、
+  `xcrun devicectl device process launch -e '{…}'` 起一次就把账号登上，再 `make install-release` 覆盖回 Release（登录态保留）。
 
 ### 界面这一轮定下来的几件
 

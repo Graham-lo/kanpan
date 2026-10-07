@@ -4,33 +4,42 @@ import KanpanNetwork
 
 // ============================================================ 什么时候给默认自选
 //
-// 该给哪几条在 `DefaultFavorites`（纯的，有单测）。这一层只管**什么时候给**，
-// 因为那要碰三样纯逻辑碰不着的东西：目录什么时候到、成交额榜要联网取、
-// 以及「给过没有」这个记号得落在本机。
+// 该给哪几条、各归哪一类在 `DefaultFavorites`（纯的，有单测），怎么并进已有的表在
+// `SymbolPickerModel.seedFavorites`。这一层只管**什么时候给**，因为那要碰三样纯逻辑
+// 碰不着的东西：目录什么时候到、成交额榜要联网取、以及「给过没有」这个记号得落在本机。
 //
-// 一条一条说清楚（方案第 3 节第四件）：
+// 一条一条说清楚（2026-10-07 用户改的口径）：
 //
-// · **只给真正空手的人**：没有账号（访客档案）、一条自选都没有。登录过的人手上
-//   那张表是他自己的，一个字都不许加。冷启动那 900 毫秒里挂着的是访客空档案
-//   （`AppAccountBridge` 先装访客、`account.restore()` 回来再换成账号那份），
-//   所以真要落笔之前还得再问一次「现在还是刚才那份档案吗」——代次对不上就作废。
-// · **只给一次**。记号记在本机 `UserDefaults` 里，不进档案、不随账号同步：
-//   用户把这几条删掉之后，换一台设备登同一个账号也不该把它们送回来，
-//   而「这台机器我已经招呼过了」本来就是这台机器自己的事。
-// · **拿不到成交额榜也要给**。联网取榜失败（第一次开机常常还没连上）时退回
-//   BTC / ETH / SOL 三条锚——三条总比一页空白强，剩下的他自己搜。
+// · **访客和账号一视同仁**。每一份档案装进来都问一次：访客记在 `guest` 名下，账号记在
+//   它的用户 id 名下。手上已经有自选也照样给——只补缺的那几条，他自己的一条不动、
+//   分类一个不挪（并法见 `seedFavorites`）。
+// · **每台设备、每份档案只给一次**。记号记在本机 `UserDefaults` 里（键带档案名），
+//   不进档案、不随账号同步：「这台机器上这份档案我已经招呼过了」本来就是这台机器自己的事。
+//   名单换了口径就换键（v1 → v2）：老键直接不认，老用户升级上来会被并一趟新名单。
+//   跑完了就记，哪怕一条都没加（他手上本来就全有）——那也是招呼过了。
+// · **一趟只给最新那份档案**。冷启动先装访客档案顶着，`account.restore()` 回来再换成
+//   账号那份；访客那一趟还在等目录 / 取榜时账号档案到了，就当场把访客那趟作废、
+//   给账号重开一趟（原来是「正在跑就不再起」，账号那趟在这次开机里就被吞掉了）。
+//   每次 await 回来、真要落笔之前都再问一次「被作废了没有、还是刚才那份档案吗」。
+// · **拿不到成交额榜也要给**。联网取榜失败（第一次开机常常还没连上）时点名的那几条
+//   照给，只是少了成交额前五——剩下的他自己搜。
 //
-// 「冷启动有收藏就进自选页」那条规则不动：这几条落盘之后回一句
+// 「冷启动有收藏就进自选页」那条规则不动：真加了东西之后回一句
 // `AppAccountBridge.onProfileReady`，宿主按它自己那套重新兑现落地页，
 // 于是第一次开 app 的人正好停在一页有东西的自选上。
 
 @MainActor enum DefaultFavoritesSeeder {
-  /// 本机记号。名字里带 v1，将来真要重新招呼一轮（比如默认名单换了口径）时
-  /// 换一个键就行，不必去猜老键上那个 true 当初是什么意思。
-  static let markKey = "kanpan.defaultFavorites.seeded.v1"
+  /// 本机记号的前缀，后面接档案名（`guest` 或账号的用户 id）。名字里带 v2：
+  /// 将来真要重新招呼一轮时换一个键就行，不必去猜老键上那个 true 当初是什么意思。
+  static let markPrefix = "kanpan.defaultFavorites.seeded.v2."
 
-  /// 正在跑的那一趟。一次开机只跑一趟。
-  private static var running = false
+  /// 访客档案在记号里的名字。
+  static let guestProfile = "guest"
+
+  static func markKey(_ profileKey: String) -> String { markPrefix + profileKey }
+
+  /// 正在跑的那一趟。新的档案进来就作废它。
+  private static var task: Task<Void, Never>?
 
   /// 记号落在哪儿。测试里换一个空的 `UserDefaults` 就不会碰到真机上的。
   static var defaults: UserDefaults = .standard
@@ -52,55 +61,51 @@ import KanpanNetwork
   ///
   /// - Parameters:
   ///   - symbols: 自选表。
-  ///   - isGuest: 这份档案是不是访客的（没有账号）。
+  ///   - profileKey: 这份档案的名字：访客是 `guestProfile`，账号是它的用户 id。
   ///   - stillCurrent: 落笔前再问一次「还是刚才那份档案吗」。
   ///   - done: 真的加进去了才响，宿主据此重新兑现落地页。
-  static func consider(symbols: SymbolPickerModel, isGuest: Bool,
+  static func consider(symbols: SymbolPickerModel, profileKey: String,
                        stillCurrent: @escaping @MainActor () -> Bool,
                        done: @escaping @MainActor () -> Void) {
+    // 换了档案：上一份档案那一趟不管走到哪儿都作废（它写的是上一个人的表）。
+    task?.cancel(); task = nil
     // UI 测试自己灌自选（`SymbolPrefs.testSeed`），别和它抢。这一句只在 DEBUG 下编：
     // Release 里没有测试档案，也就没有要让路的对象（审查 C.10-1）。
     #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] != "1" else { return }
     #endif
-    guard !defaults.bool(forKey: markKey) else { return }
-    guard isGuest else { return }
-    // 手上已经有自选：这台机器不是新的（老用户升级上来的那批），记上记号，
-    // 以后连想都不用再想。
-    guard symbols.prefs.favorites.isEmpty else { remember(); return }
-    guard !running else { return }
-    running = true
-    Task {
-      await run(symbols: symbols, stillCurrent: stillCurrent, done: done)
-      running = false
+    let key = markKey(profileKey)
+    guard !defaults.bool(forKey: key) else { return }
+    task = Task {
+      await run(symbols: symbols, markKey: key, stillCurrent: stillCurrent, done: done)
     }
   }
 
-  /// 测试用：把「这一趟在跑」的记号清掉。
-  static func reset() { running = false }
+  /// 测试用：作废正在跑的那一趟。
+  static func reset() { task?.cancel(); task = nil }
 
-  private static func run(symbols: SymbolPickerModel,
+  private static func run(symbols: SymbolPickerModel, markKey: String,
                           stillCurrent: @MainActor () -> Bool,
                           done: @MainActor () -> Void) async {
-    guard let catalog = await waitForCatalog(symbols) else { return }
+    guard let catalog = await waitForCatalog(symbols), !Task.isCancelled, stillCurrent() else { return }
     let tickers = await loadTickers()
-    // 取榜那几秒里可能已经换了档案（账号回来了）、或者用户自己抢先加了一条。
-    guard stillCurrent(), symbols.prefs.favorites.isEmpty else { return }
-    let picks = DefaultFavorites.pick(catalog: catalog, tickers: tickers)
-    guard !symbols.seedFavorites(picks).isEmpty else { return }
-    remember()
-    done()
+    // 取榜那几秒里可能已经换了档案（账号回来了、退登了）。
+    guard !Task.isCancelled, stillCurrent() else { return }
+    let plan = DefaultFavorites.pick(catalog: catalog, tickers: tickers)
+    guard !plan.isEmpty else { return }
+    let added = symbols.seedFavorites(plan)
+    defaults.set(true, forKey: markKey)
+    if !added.isEmpty { done() }
   }
 
   /// 等目录。冷启动时它可能是从缓存里秒回，也可能要走一趟网络。
   /// 等不到就这一趟作罢——记号没落，下次开机再说。
   private static func waitForCatalog(_ symbols: SymbolPickerModel) async -> [SymbolInfo]? {
     for _ in 0..<60 {
+      if Task.isCancelled { return nil }
       if !symbols.catalog.isEmpty { return symbols.catalog }
       try? await Task.sleep(for: .milliseconds(250))
     }
     return nil
   }
-
-  private static func remember() { defaults.set(true, forKey: markKey) }
 }

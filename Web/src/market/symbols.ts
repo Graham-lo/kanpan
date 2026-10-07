@@ -64,18 +64,21 @@ export const IV_SHORT: Record<string, string> = { '1m': '1分', '3m': '3分', '5
 export const INTERVALS = Object.keys(IV_LABEL)
 
 const COMMODITY: Record<string, string> = { XAU: '黄金', XAG: '白银', XPT: '铂金', XPD: '钯金', COPPER: '铜', CL: 'WTI 原油', BZ: '布伦特原油', NATGAS: '天然气', EURUSD: '欧元兑美元', USDJPY: '美元兑日元', GBPUSD: '英镑兑美元' }
-const US_EXTRA: Record<string, string> = { SPY: '标普 500 ETF', QQQ: '纳指 100 ETF' }
+const US_EXTRA: Record<string, string> = { SPY: '标普 500 ETF', QQQ: '纳指 100 ETF', SOXL: '三倍做多半导体 ETF' }
 const CRYPTO_CN: Record<string, string> = { BTC: '比特币', ETH: '以太坊', SOL: 'Solana', XRP: '瑞波币', BNB: '币安币', DOGE: '狗狗币', HYPE: 'Hyperliquid', ZEC: '大零币', LINK: 'Chainlink', SUI: 'Sui', NEAR: 'NEAR', QNT: 'Quant', HBAR: 'Hedera', ADA: '艾达币', TRX: '波场', AVAX: '雪崩', LTC: '莱特币', TON: 'Toncoin', DOT: '波卡', PEPE: '佩佩', ENA: 'Ethena', AAVE: 'Aave', UNI: 'Uniswap', BCH: '比特币现金', ETC: '以太经典', FIL: '文件币', APT: 'Aptos', ARB: 'Arbitrum', OP: 'Optimism', WLD: 'Worldcoin', TAO: 'Bittensor', ONDO: 'Ondo', XLM: '恒星币', XMR: '门罗币', PENGU: 'Pudgy Penguins', TRUMP: '特朗普币', FARTCOIN: 'Fartcoin', VIRTUAL: 'Virtuals', XAUT: 'Tether 黄金' }
 
+// 出厂默认自选（2026-10-07 用户定的名单，访客与账号一样，和 iOS DefaultFavorites 同一份点名）。
+// 电脑网页按资产类型分页签、同步编码也按类型重排，所以金银留在「大宗」页签的最前面；
+// 手机网页（m/model/favorites.ts seedDefaults）照 iOS 把金银放进「加密」最上面。
 export const DEFAULT_WATCH: Record<Kind, string[]> = {
-  crypto: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'HYPEUSDT', 'DOGEUSDT', 'ZECUSDT', 'LINKUSDT', 'SUIUSDT', 'NEARUSDT', 'QNTUSDT', 'HBARUSDT'],
-  us: ['NVDAUSDT', 'TSLAUSDT', 'SNDKUSDT', 'MUUSDT', 'AMDUSDT', 'TSMUSDT', 'COINUSDT', 'MSTRUSDT'],
+  crypto: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'ZECUSDT', 'HYPEUSDT', 'LINKUSDT', 'SUIUSDT', 'NEARUSDT', 'QNTUSDT', 'HBARUSDT'],
+  us: ['NVDAUSDT', 'QQQUSDT', 'SOXLUSDT', 'SKHYUSDT', 'SKHYNIXUSDT', 'MUUSDT', 'SNDKUSDT', 'MRVLUSDT', 'ARMUSDT', 'SPCXUSDT', 'INTCUSDT', 'AVGOUSDT'],
   com: ['XAUUSDT', 'XAGUSDT', 'CLUSDT'],
   idx: [],   // 美元指数不进出厂默认自选
 }
 
 // 品种主色：图表对比线、迷你走势等要一个代表色的地方用；徽标本身画法见 ui/common.ts badge()（和手机同一套记号）
-const BADGE: Record<string, string> = { BTC: '#F7931A', ETH: '#627EEA', SOL: '#9945FF', XRP: '#23292F', HYPE: '#50D2C1', DOGE: '#C2A633', ZEC: '#E5A93D', LINK: '#2A5ADA', SUI: '#4DA2FF', NEAR: '#1E1E1E', QNT: '#585E63', HBAR: '#222222', BNB: '#F0B90B', NVDA: '#76B900', TSLA: '#CC0000', SNDK: '#E4002B', MU: '#0073CF', AMD: '#1B1B1B', TSM: '#C8102E', COIN: '#0052FF', MSTR: '#D9232E', XAU: '#C9A227', XAG: '#9EA7B3', CL: '#3D3D3D' }
+const BADGE: Record<string, string> = { BTC: '#F7931A', ETH: '#627EEA', SOL: '#9945FF', XRP: '#23292F', HYPE: '#50D2C1', DOGE: '#C2A633', ZEC: '#E5A93D', LINK: '#2A5ADA', SUI: '#4DA2FF', NEAR: '#1E1E1E', QNT: '#585E63', HBAR: '#222222', BNB: '#F0B90B', NVDA: '#76B900', TSLA: '#CC0000', SNDK: '#E4002B', MU: '#0073CF', AMD: '#1B1B1B', TSM: '#C8102E', COIN: '#0052FF', MSTR: '#D9232E', QQQ: '#2E6FD8', SOXL: '#5B3FA8', SKHY: '#EA002C', SKHYNIX: '#EA002C', MRVL: '#C8102E', ARM: '#0091BD', INTC: '#0071C5', AVGO: '#CC092F', XAU: '#C9A227', XAG: '#9EA7B3', CL: '#3D3D3D' }
 export function badgeColor(base: string): string {
   if (BADGE[base]) return BADGE[base]
   let h = 0

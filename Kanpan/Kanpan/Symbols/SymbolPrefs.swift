@@ -186,6 +186,22 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     if let group = self.group(group) { groupForSymbol[s] = group }
   }
 
+  /// 把一条自选插在全局顺序的第 `index` 位（越界就夹到两头），明着归进 `group` 那一类。
+  /// 已经在自选里、或者代号是空的就什么都不做，返回 false。
+  ///
+  /// 和 `addFavorite` 的区别：那个永远 append 到最末、分组按「此刻停在哪一类」兜底；
+  /// 默认自选并进已有的表时要插在指定位置（黄金白银插到最上面、Coinbase 现货紧跟它的永续），
+  /// 分组也是名单里点名的，不兜底——`group` 不存在就让它不分类。
+  @discardableResult
+  mutating func insertFavorite(_ symbol: String, at index: Int, in group: String?) -> Bool {
+    let s = Self.key(symbol)
+    guard !s.isEmpty, !favorites.contains(s) else { return false }
+    favorites.insert(s, at: min(max(index, 0), favorites.count))
+    if let group, groups.contains(where: { $0.id == group }) { groupForSymbol[s] = group }
+    else { groupForSymbol.removeValue(forKey: s) }
+    return true
+  }
+
   mutating func removeFavorite(_ symbol: String) {
     favorites.removeAll { $0 == Self.key(symbol) }
     groupForSymbol.removeValue(forKey: Self.key(symbol))

@@ -112,11 +112,29 @@ import KanpanData
         if generation == started { holdLastOwner(started: started) }
       } else if generation == started {
         releasePreloadedOwner()
+        #if DEBUG
+        loginFromEnvironment()
+        #endif
       }
       return
     }
     await adopt(saved, started: started)
   }
+  #if DEBUG
+  /// 真机验收用的登录口子，**只在 DEBUG 构建里有**（`ReleaseHookScanTests`）：
+  /// `xcrun devicectl device process launch -e '{"KANPAN_TEST_LOGIN_USER":…,"KANPAN_TEST_LOGIN_PASS":…}'`
+  /// 把一对凭据传进来，冷启动读到「没登录」就按它走一遍和手点一样的登录（`submit`）。
+  /// 2026-10-07 加：真机 XCUITest 在无线隧道上建不起 testmanagerd 通道（四次都 code 74），
+  /// 装一个 Debug 包、起一次就能把账号登上，钥匙串和账号档案与 Release 包同一份。
+  private func loginFromEnvironment() {
+    let env = ProcessInfo.processInfo.environment
+    guard user == nil, !busy,
+          let username = env["KANPAN_TEST_LOGIN_USER"], let secret = env["KANPAN_TEST_LOGIN_PASS"],
+          !username.isEmpty, !secret.isEmpty else { return }
+    page = .login; email = username; password = secret
+    submit()
+  }
+  #endif
   /// 冷启动时桥已经按「上次那个人」把账号档案装上了（`AppAccountBridge.activate()`），
   /// 可钥匙串里确实没有这个人的凭据（会话失效被清掉、客户端没配）：退回访客那份，
   /// 和从前「冷启动先装访客、restore 读不到人就停在访客」是同一个结果。

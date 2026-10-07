@@ -171,22 +171,33 @@ export function visit(p: SymbolPrefs, symbol: string): void {
   p.recents = [s, ...p.recents.filter(x => x !== s)].slice(0, RECENT_LIMIT)
 }
 
-/** 访客第一次打开：按 DEFAULT_WATCH 三类各开一个分类落进去。只给一次。
+/** 第一次打开：照 iOS DefaultFavorites（2026-10-07 用户定的名单，访客和登录一样）落默认自选。只给一次。
+ *  · 「加密」：黄金、白银摆最上面（用户要它们跟加密放一起，不开「贵金属」），再接 DEFAULT_WATCH.crypto；
+ *  · 「美股」：DEFAULT_WATCH.us，按名单顺序；
+ *  · 其余大宗（原油）照 categoryName 归类。
+ *  iOS 在每个点名的币后面紧跟它的 Coinbase 现货；手机网页的自选只认币安代号，这里不给 Coinbase 那几条。
  *  exists 用来滤掉交易所已经下架的代号（表还没到时传 null，全收）。 */
+export const TOP_METALS = ['XAUUSDT', 'XAGUSDT']
 export function seedDefaults(p: SymbolPrefs, exists: ((symbol: string) => boolean) | null = null): boolean {
   if (p.seeded) return false
   p.seeded = true
   if (p.favorites.length) return true
+  const plan: { sym: string; name: string | null }[] = [
+    ...TOP_METALS.map(sym => ({ sym, name: '加密' })),
+    ...DEFAULT_WATCH.crypto.map(sym => ({ sym, name: '加密' })),
+    ...DEFAULT_WATCH.us.map(sym => ({ sym, name: '美股' })),
+  ]
   for (const kind of Object.keys(DEFAULT_WATCH) as Kind[]) {
-    for (const sym of DEFAULT_WATCH[kind]) {
-      if (exists && !exists(sym)) continue
-      const s = key(sym)
-      if (p.favorites.includes(s)) continue
-      const name = categoryName(kind, s.replace(/USDT$/, ''))
-      const id = name ? createGroup(p, name) : null
-      p.favorites.push(s)
-      if (id) p.groupForSymbol[s] = id
-    }
+    if (kind === 'crypto' || kind === 'us') continue
+    for (const sym of DEFAULT_WATCH[kind]) plan.push({ sym, name: categoryName(kind, key(sym).replace(/USDT$/, '')) })
+  }
+  for (const { sym, name } of plan) {
+    if (exists && !exists(sym)) continue
+    const s = key(sym)
+    if (p.favorites.includes(s)) continue
+    const id = name ? createGroup(p, name) : null
+    p.favorites.push(s)
+    if (id) p.groupForSymbol[s] = id
   }
   return true
 }

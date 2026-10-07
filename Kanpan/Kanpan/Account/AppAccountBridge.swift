@@ -445,11 +445,12 @@ import ReviewUI
       symbols.classifyArrivals()
       // 档案已经全部就位，宿主现在可以按它重新兑现首屏那几件事。
       onProfileReady()
-      // 第一次装这个 app 的人手上是空的：没账号、没自选。给他几条默认自选，
-      // 什么时候给、给过没有都在 `DefaultFavoritesSeeder` 里（方案第 3 节第四件）。
+      // 访客和账号都给同一份默认自选（只补缺的），什么时候给、给过没有都在
+      // `DefaultFavoritesSeeder` 里（方案第 3 节第四件，2026-10-07 改口径）。
       // 代次拿来防「取榜那几秒里账号档案回来了」——那时这一趟当场作废。
       let seedEpoch = epoch
-      DefaultFavoritesSeeder.consider(symbols: symbols, isGuest: user == nil,
+      DefaultFavoritesSeeder.consider(symbols: symbols,
+                                      profileKey: user?.id.uuidString ?? DefaultFavoritesSeeder.guestProfile,
                                       stillCurrent: { [weak self] in self?.epoch == seedEpoch },
                                       done: { [weak self] in self?.onProfileReady() })
       // 上一次运行拉回来了、但没装进本机就没了的那一批，在这儿补装（B4）。

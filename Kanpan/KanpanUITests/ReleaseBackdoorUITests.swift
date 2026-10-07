@@ -50,13 +50,13 @@ final class ReleaseBackdoorUITests: XCTestCase {
   /// **也不能拿别的币碰运气。** 原来那个 `LINKUSDT` 眼下没被种进去，可「今天成交额
   /// 前五是谁」是行情说了算的，哪天它上了榜这条用例又会莫名其妙地红。
   ///
-  /// **美股合约不是碰运气，是结构上进不去。** `DefaultFavorites.pick` 第一句就把目录
-  /// 筛成 `SymbolClassifier.classify(_:).asset == .crypto`（也就是 `underlyingType`
-  /// 为 `COIN`），非币的合约（美股 / ETF / 贵金属 / 指数）一条都不许进默认自选——
-  /// 那是产品定死的规矩（记忆 `kanpan-not-every-contract-is-a-coin`：新人的第一页
-  /// 自选不该是 TSLA、XAU）。所以只要这条规矩还在，这两个代号就不可能自己冒出来。
-  /// 同样两支在 `ExperienceStateRoundTripUITests.usSeed` 里也在用，都是真实目录里的合约。
-  private static let seed = ["SNDKUSDT", "MUUSDT"]
+  /// **美股合约不是碰运气，是结构上进不去。** 2026-10-07 起默认自选里的美股是
+  /// `DefaultFavorites.usEquities` 点名的那十二支（NVDA / QQQ / SOXL / SKHY / SKHYNIX /
+  /// MU / SNDK / MRVL / ARM / SPCX / INTC / AVGO），成交额榜只认币（`underlyingType`
+  /// 为 `COIN`），美股永远不能靠成交额挤进来。所以不在点名名单里的美股代号就不可能
+  /// 自己冒出来——原来用的 SNDK / MU 这天被点名了，换成 TSLA / AMD（真实目录里的合约）。
+  /// 改 `usEquities` 名单时记得回来看一眼这两支还在不在名单外。
+  private static let seed = ["TSLAUSDT", "AMDUSDT"]
 
   /// 只在 DEBUG 下才该存在的那几个诊断元素（`MainScreen.basePresentation` 的 overlay）。
   private static let diagnosticIDs = ["market.source", "market.network", "layout.diagnostics"]

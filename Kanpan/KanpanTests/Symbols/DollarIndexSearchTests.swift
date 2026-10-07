@@ -56,8 +56,8 @@ struct DollarIndexSearchTests {
 
   @Test("不在默认自选里；同步键服务端认")
   func notDefaultAndSyncable() {
-    // 默认自选只从币里挑（`SymbolClassifier` 判成加密的）；美元指数是指数，挑不上。
-    let picked = DefaultFavorites.pick(catalog: Self.catalog, tickers: SymbolFixtures.tickers)
+    // 默认自选只从币里挑成交额榜、其余按名单点名（`DefaultFavorites`）；美元指数两头都不沾。
+    let picked = DefaultFavorites.pick(catalog: Self.catalog, tickers: SymbolFixtures.tickers).map(\.symbol)
     #expect(!picked.isEmpty && !picked.contains("macro/index/DXY"))
     #expect(InstrumentID.isSyncKey("macro/index/DXY"))
     #expect(VenueRegistry.descriptor(forSymbol: "macro/index/DXY").favoriteCategory == "指数")
