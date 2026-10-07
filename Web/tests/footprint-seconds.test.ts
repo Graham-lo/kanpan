@@ -295,6 +295,7 @@ describe('秒线：服务端历史', () => {
     expect(r.bars[0].t).toBe(now + 1000 - 20_000) // 窗外那一行被丢
     expect(r.bars[r.bars.length - 1].c).toBe(7) // 逐笔的赢
     for (let k = 1; k < r.bars.length; k++) expect(r.bars[k].t - r.bars[k - 1].t).toBe(1000) // 中间补平
+    expect(r.bars[r.bars.length - 1].t).toBe(now - 1000) // 历史 / 逐笔末尾到现在也补平，不留缺口
     const r5 = await sh.secondsKlines('BTCUSDT', '5s', undefined, undefined, base, now)
     expect(r5.bars.every(b => b.t % 5000 === 0)).toBe(true)
     // 没有历史（404）：照旧只有逐笔的

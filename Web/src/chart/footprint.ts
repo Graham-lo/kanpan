@@ -242,7 +242,7 @@ function loadOn(): Set<number> {
 }
 const onCells = loadOn()
 const bound = new Map<number, TVChart>()
-interface View { key: string; mult: number; aggs: Map<number, FootAgg | null>; stat: { mode: 'num' | 'bar' | 'candle'; drawn: number; rows: number; ms: number; step: number; d: number } }
+interface View { key: string; mult: number; aggs: Map<number, FootAgg | null>; stat: { mode: 'num' | 'bar' | 'candle'; drawn: number; rows: number; ms: number; step: number; d: number; med: number; ppp: number } }
 const views = new WeakMap<TVChart, View>()
 
 readyHooks.add(symbol => { for (const c of bound.values()) if (!c.dead && c.meta.symbol.toUpperCase() === symbol) { c.dirty = true; c.legendDirty = true } })
@@ -279,7 +279,7 @@ export function footprintMenuItem(idx: number, iv: string): MenuItem {
 
 function view(chart: TVChart, key: string): View {
   let v = views.get(chart)
-  if (!v) { v = { key: '', mult: 0, aggs: new Map(), stat: { mode: 'candle', drawn: 0, rows: 0, ms: 0, step: 0, d: 0 } }; views.set(chart, v) }
+  if (!v) { v = { key: '', mult: 0, aggs: new Map(), stat: { mode: 'candle', drawn: 0, rows: 0, ms: 0, step: 0, d: 0, med: 0, ppp: 0 } }; views.set(chart, v) }
   if (v.key !== key) { v.key = key; v.aggs.clear() }
   return v
 }
@@ -311,7 +311,7 @@ function frameView(c: TVChart, from: number, to: number, now: number): { v: View
   const mult = pickMultiple(med, step, pre?.key.startsWith(`${k}|${c.iv}|${step}|`) ? pre.mult : 0, ppp)
   const d = +(mult * step).toPrecision(12)
   const v = view(c, `${k}|${c.iv}|${step}|${mult}|${h?.ver ?? 0}|${l?.step ?? 0}`)
-  v.mult = mult; v.stat.step = step; v.stat.d = d
+  v.mult = mult; v.stat.step = step; v.stat.d = d; v.stat.med = med; v.stat.ppp = ppp
   return { v, d }
 }
 
@@ -441,8 +441,10 @@ function legendRow(c: TVChart, idx: number, i: number): string {
   const k = c.meta.symbol.toUpperCase(), h = hist.get(k), l = live.get(k), v = views.get(c)
   return { on: onCells.has(i), iv: c.iv, spacing: c.spacing, srvStep: srvStep.get(k) ?? null, histMinutes: h?.minutes.size ?? 0, histFrom: h?.from ?? null, histTo: h?.to ?? null, liveMinutes: l?.minutes.size ?? 0, ...(v?.stat ?? {}) }
 }
-;(globalThis as unknown as { __fpBench?: (i?: number, n?: number) => unknown }).__fpBench = (i = 0, n = 60) => {
+;(globalThis as unknown as { __fpBench?: (i?: number, n?: number, show?: number) => unknown }).__fpBench = (i = 0, n = 60, show = 0) => {
   const c = bound.get(i); if (!c) return null
+  // show：先把视图摆成一屏正好 show 根（压测用）
+  if (show > 0) { c.spacing = c.plotW() / show; c.rightBar = c.bars.length - 1 }
   const frame: number[] = [], fp: number[] = []
   for (let k = 0; k < n; k++) { const t = performance.now(); c.render(); frame.push(performance.now() - t); fp.push(views.get(c)?.stat.ms ?? 0) }
   const med = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)]

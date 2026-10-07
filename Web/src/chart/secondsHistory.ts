@@ -99,7 +99,8 @@ export async function secondsKlines(symbol: string, iv: string, endTime?: number
   const live = secondBars(symbol, '1s')
   // 没有历史：照旧只有逐笔攒的那段（没成交时页面写「等第一笔成交」）
   if (!r.bars.length) return { bars: ms === 1e3 ? live : aggregate(live, ms), ok: true }
-  const one = fillGaps(spliceSeconds(r.bars, live))
+  // 历史末尾到现在之间（服务端落后几秒、逐笔还没来）也补平，不留缺口
+  const one = fillGaps(spliceSeconds(r.bars, live), Math.floor(now / 1e3) * 1e3)
   return { bars: ms === 1e3 ? one : aggregate(one, ms), ok: true }
 }
 
