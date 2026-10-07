@@ -46,7 +46,12 @@ public struct ReviewBook: View {
       // 搜索词落定后的重拉在 feature 里（`commitBookQuery`），这儿只管换筛选。
       .task(id: feature.tab) { await feature.loadHistory(query: feature.bookQuery) }
       // 复盘本一打开就去交易所拉一次（宿主自己按 5 分钟节流）。
-      .task { feature.trades.onPull() }
+      .task { feature.trades.onPull(); feature.settleSegment() }
+      // 「观点」空、「交易」有回合就翻到交易那面；两面有没有东西一变（回合拉回来了、
+      // 服务端那份拉完了）再摆一次。人自己点过的那面只要两面都有就不动。
+      .onChange(of: SegmentInputs(views: feature.viewsEmpty, trades: feature.trades.items.isEmpty)) {
+        feature.settleSegment()
+      }
     }
     .tint(t.accent)
   }
@@ -78,10 +83,14 @@ public struct ReviewBook: View {
             Text(error).font(ReviewType.body).foregroundStyle(t.danger).listRowBackground(t.app)
             Button("重试") { Task { if feature.nextPage != nil && !feature.history.isEmpty { await feature.loadMoreHistory() } else { await feature.loadHistory(query: feature.bookQuery) } } }.listRowBackground(t.app)
           }
-          if sections.all.isEmpty && !feature.historyLoading && feature.historyError == nil {
-            // 空状态一行字就够（§2G5）。只是一行字，不再是「记一笔」的第三个入口（审查 U6）：
-            // 记一笔只留图表设置那一行和右上角的「+」，同一件事不摆三处。
-            Text(feature.tab == "todo" ? "没有待判定的" : "还没有记录")
+          if feature.viewsEmpty && feature.historyError == nil && feature.bookQuery.isEmpty {
+            // 一条观点都没有（2026-10-08 走查）：一句话 + 一颗「去记一笔」，点了关上复盘本
+            // 回到图上记——空页本身就是第一次记一笔最顺手的地方，所以这里破例多给一个入口
+            // （原先审查 U6 只留一行字）。
+            viewsEmptyState
+          } else if sections.all.isEmpty && !feature.historyLoading && feature.historyError == nil {
+            // 有观点、只是这一档或这次搜索里没有：一行字就够（§2G5）。
+            Text(feature.bookQuery.isEmpty ? (feature.tab == "todo" ? "没有待判定的" : "还没有记录") : "没有搜到")
               .font(ReviewType.body).foregroundStyle(t.ink3)
               .frame(maxWidth: .infinity, minHeight: ReviewControl.hit)
               .listRowBackground(t.app)
@@ -102,6 +111,31 @@ public struct ReviewBook: View {
         // 字落在 feature 上，停手约 200ms 才落定成 `bookQuery`：本地过滤和服务端搜索都认那个。
         .searchable(text: $feature.bookSearchText, prompt: "搜品种或笔记")
       }
+  }
+  /// 「观点」一条都没有时那一块：一句话，下面一颗强调色胶囊（宿主没接线就只有那句话）。
+  private var viewsEmptyState: some View {
+    VStack(spacing: ReviewSpace.m) {
+      Text("还没有观点 · 在图上记一笔")
+        .font(ReviewType.body).foregroundStyle(t.ink3)
+        .accessibilityIdentifier("review.empty")
+      if let note = feature.onNoteOnChart {
+        Button { feature.bookOpen = false; note() } label: {
+          Label("去记一笔", systemImage: "square.and.pencil")
+            .font(ReviewType.bodyEmph).foregroundStyle(t.onAccent)
+            .padding(.horizontal, ReviewSpace.l)
+            .frame(height: ReviewControl.pillHeight + ReviewSpace.s)
+            .background(Capsule().fill(t.accent))
+            .frame(minHeight: ReviewControl.hit)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("review.empty.note")
+      }
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, ReviewSpace.xxl)
+    .listRowBackground(t.app)
+    .listRowSeparator(.hidden)
   }
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         // 左上角是系统关闭钮，和提醒总表同一套（UI 整改 P1b / P3）：复盘本是整屏盖上来的，
@@ -470,4 +504,10 @@ struct ReviewSection<Content: View>: View {
     self.title = title; self.term = term; self.content = content()
   }
   var body: some View { Section { content } header: { ReviewSectionTitle(title, term: term) } }
+}
+
+/// 复盘本「观点 · 交易」该停哪面要看的两件事，合成一个值好让 `onChange` 一次盯住。
+private struct SegmentInputs: Equatable {
+  let views: Bool
+  let trades: Bool
 }

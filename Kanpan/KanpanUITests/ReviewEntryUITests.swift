@@ -48,10 +48,12 @@ final class ReviewEntryUITests: KanpanUICase {
     XCTAssertTrue(app.buttons["review.back"].waitForExistence(timeout: Self.long), "「复盘本」没开出复盘本")
     let all = app.buttons["review.chip.all"]
     if all.waitForExistence(timeout: Self.short) { all.tap() }
+    // 2026-10-08 走查：一条观点都没有时，空态是「还没有观点 · 在图上记一笔」加一颗「去记一笔」
+    // ——空页本身就是第一次记一笔最顺手的地方，这里破例给一个入口。
     let empty = app.descendants(matching: .any)["review.empty"]
     XCTAssertTrue(empty.waitForExistence(timeout: Self.long), "全新档案的复盘本没有空态那行字")
-    XCTAssertFalse(app.buttons["review.empty"].exists, "空态那行字还是一颗按钮（第三个「记一笔」入口）")
-    XCTAssertFalse(empty.label.contains("记一笔"), "空态里还写着「记一笔」：\(empty.label)")
+    XCTAssertEqual(empty.label, "还没有观点 · 在图上记一笔", "空态那行字是「\(empty.label)」")
+    XCTAssertTrue(app.buttons["review.empty.note"].exists, "「观点」空态下没有「去记一笔」")
     shot("U6-复盘本空态")
 
     // 复盘本「+」照旧开取景卡。

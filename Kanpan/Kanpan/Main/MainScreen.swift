@@ -1347,6 +1347,8 @@ struct MainScreen: View {
 
   private func wireReview() {
     review.onCapture = startReviewCapture
+    // 复盘本「观点」空状态那颗「去记一笔」：和顶栏「记一笔」同一条路。
+    review.onNoteOnChart = startReviewCapture
     // 记一笔的那一刻顺手截一张图附在这条记录上（§4.3），和「分享图片」同一支渲染器。
     // 画不出来就没有图：记录照记，详情里那一格不出现。
     review.captureShot = {

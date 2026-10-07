@@ -24,6 +24,13 @@ public struct TradeItem: Identifiable, Hashable, Sendable {
   /// 复盘本顶上「观点 · 交易」那一刀。战绩页也跟着它。
   public var segment: Segment = .views
 
+  /// 复盘本打开时该停在哪一面：「观点」一条都没有、「交易」有回合，就直接翻到交易那面——
+  /// 不让人先对着一张空页再自己去点；两面都有（或都没有）就留在上次用的那面（`current`，
+  /// 只记在这次运行的内存里）。
+  public static func preferredSegment(current: Segment, viewsEmpty: Bool, tradesEmpty: Bool) -> Segment {
+    viewsEmpty && !tradesEmpty ? .trades : current
+  }
+
   /// 交易所账户接没接、上次什么时候拉的。宿主写，界面读。
   public struct Exchange: Equatable, Sendable {
     public var connected = false

@@ -84,6 +84,18 @@ import ReviewData
   /// 详情页点那张复盘图：宿主关上复盘本、切到行情图，把这一笔从开仓前播到平仓后（自动复盘 3d）。
   public var onReplayTrade: (TradeItem) -> Void = { _ in }
   public var onCapture: () -> Void = {}
+  /// 「观点」空状态那颗「去记一笔」：宿主关上复盘本、回到图上走记一笔（和右上角「+」同一条路）。
+  /// 没接线就不出那颗按钮，只留一句话。
+  public var onNoteOnChart: (() -> Void)?
+  /// 「观点」这一面一条都没有：本机没有、服务端那份也拉完了还是没有。还在拉的时候不算空，
+  /// 免得服务端那几条还在路上就把人翻到「交易」去。
+  public var viewsEmpty: Bool { records.isEmpty && history.isEmpty && !historyLoading }
+  /// 按两面有没有东西把「观点 · 交易」摆到该停的那面（`TradeReviewFeature.preferredSegment`）。
+  public func settleSegment() {
+    let next = TradeReviewFeature.preferredSegment(current: trades.segment, viewsEmpty: viewsEmpty,
+                                                   tradesEmpty: trades.items.isEmpty)
+    if next != trades.segment { trades.segment = next }
+  }
   /// 「记一笔」的那一刻，把当前这张图离屏画成一张 PNG（§4.3）。
   ///
   /// 画图的本事在 app 里（`ChartSnapshotRenderer`），这个包看不见它，所以由宿主注进来。
