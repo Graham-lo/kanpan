@@ -4,9 +4,9 @@ import SwiftUI
 // ============================================================ 自选行的 24 小时走势线与药丸闪动
 //
 // 2026-10-08 视觉与交互整改：
-// - 自选行价格与涨跌药丸之间一条 56×20 的迷你走势线，取最近 24 小时的 15 分钟收盘
+// - 自选行价格与涨跌药丸之间一条 44×20 的迷你走势线，取最近 24 小时的 15 分钟收盘
 //   （`QuoteBook.onTrend`，和预览卡那份逐分钟线同一趟取），尾点接最新价；按这 24 小时的涨跌
-//   用涨 / 跌色描 1.5pt，不填充、不垫底。没取到就空着那 56pt，不摆占位、不闪。
+//   用涨 / 跌色描 1.5pt，不填充、不垫底。没取到就空着那 44pt，不摆占位、不闪。
 //   设置 › 通用「自选走势线」一颗全局开关（`Prefs.favoritesTrend`，出厂开，跟账号同步）。
 // - 涨跌药丸在同一只的价真动了一口时按这一口的方向闪 150ms（底提亮一档再落回去），
 //   口径照 `KanpanChart.ChartView.flashIfTicked`：换品种、换列表 / 分类都不算「一口」，
@@ -48,7 +48,7 @@ struct FavoriteTrend: Equatable, Sendable {
   }
 }
 
-/// 自选行上那条 56×20 的走势线。没数据时只让出那块地方（不画、不占位），行里其余几格不挪。
+/// 自选行上那条 44×20 的走势线（56 时 402pt 宽的机型上把价格挤截了，2026-10-08 收到 44）。没数据时只让出那块地方（不画、不占位），行里其余几格不挪。
 struct FavoriteTrendLine: View, Equatable {
   let trend: FavoriteTrend?
   let last: Double?
@@ -57,7 +57,7 @@ struct FavoriteTrendLine: View, Equatable {
   let down: Color
   let flat: Color
 
-  static let width: CGFloat = 56
+  static let width: CGFloat = 44
   static let height: CGFloat = 20
   static let lineWidth: CGFloat = 1.5
 

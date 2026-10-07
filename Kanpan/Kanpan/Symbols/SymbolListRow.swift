@@ -208,7 +208,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
   /// 涨跌药丸收到的那一口（见 `ChangePill.tick`）。nil = 不闪。
   var changeTick: PillTick?
   /// 价格与药丸之间那条 24 小时走势线（`FavoriteTrendLine`）。nil = 不摆那一格（开关关着、
-  /// 板块页）；给了但 `trend` 是 nil = 让出 56pt 空着，数据到了原地画上，不挪版面。
+  /// 板块页）；给了但 `trend` 是 nil = 让出那一格（`FavoriteTrendLine.width`）空着，数据到了原地画上，不挪版面。
   var trend: FavoriteTrendLine?
   let openID: String
   let onOpen: () -> Void
@@ -268,7 +268,9 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
           .lineLimit(1)
       }.frame(maxWidth: .infinity, alignment: .leading)
       accessory
-      quoteColumn
+      // 右边那几格先拿够自己的宽度（价格、走势线、药丸），名字那一列让：价格被挤成「8:」
+      // 读不了，名字截一点还认得出（2026-10-08 走查 iPhone 16 Pro 上的截图）。
+      quoteColumn.layoutPriority(1)
     }
     .pageHorizontalInset()
     .frame(minHeight: Self.height)
