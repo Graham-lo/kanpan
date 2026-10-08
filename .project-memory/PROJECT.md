@@ -1974,3 +1974,12 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   stochrsi [n, stoch, m1, m2]、st [n, k]、atr / rsi / dmi [n]，ma / ema 整串当 periods；vol 在 PC 上没有参数）。PC 独有的额外参数作为 extras 跟在后面（动向指标的 ADX 平滑 m1）。
   `calc.ts / indicators.ts / mainIndicators.ts / oscillators.ts` 的目录项用 `shared(id)`；`cn` 只作搜索别名（均线、布林带、平滑异同…），界面与 CSV 列名用 `name`。
   PC 独有的指标（一目均衡表、威廉指标…）名字仍在各自目录里。测试 `Web/tests/shared-indicators.test.ts`。
+
+## 63. 10-08：手机网页图上大单签 + 「大单与爆仓」弹层（`Web/src/m/`，照原型 `docs/原型-手机大单与爆仓-2026-10-08.html`）
+
+- **签**：`m/chart/bigTradeSigns.ts`（每根并账、按近 300 根分档：圆点 / 三角 / 三角＋胶囊，躲图例带与画线文字）+ `m/chart/bigTradeLayer.ts`（ChartView 图层，点签 44 热区、正在走那根来大单出光环，减弱动态只闪一下）。开关在「分析」面板「图上大单签」，偏好 `bigTradeSigns`（出厂开、跟账号同步，iOS 契约与 sync.rs 已有）。横屏照画签但点了不开弹层。
+- **弹层**：`m/pages/chart/bigTrade.ts`（控制器：数据 = tradeFlow 分钟账 + summary.ts 窗口/价位/墙 + LiqStore 爆仓）+ `bigTradeSheet.ts`（纯 HTML 构造）+ `m/styles/bigTrade.css`。半屏 440 / 全屏 780 盖住底栏；上拉过 90 进全屏，全屏且滚到顶再下拉回半屏，再拉关；‹、点外面关；开着时点别的签只换根不关。「门槛」药丸进主力订单流参数表，返回回到原档位。
+- **主卡**跟十字线：本根 / 该根 hh:mm，抬手 3 秒回本根；右上「15 分钟 · 还在走」/「抬手回到本根」/「数据停在 hh:mm」。20 秒没成交或断网 → 整卡变灰。品种没被服务端常驻跟踪时提示「这只品种只算打开以后的成交」。现货没有爆仓卡。全屏多出：每根（40 柱，点柱十字线落到那根）、11 档价位梯子（标墙，条最长占一侧 62%）、24 小时爆仓 96 格 + 今日最大一笔、门槛卡。首开骨架 ≤1 秒。
+- 分析面板另有一行「大单与爆仓」，带实时摘要（如「本根 净买 +1.2M」），点开半屏。
+- **测试**：`tests/m-chart-bigtrade-signs.test.ts`（22）、`tests/m-bigtrade-sheet.test.ts`（21，模型 / HTML / 十字线联动）；vitest 无 DOM，弹层的手势与 DOM 状态走无头 Chrome 验收脚本 `Web/scripts/m-bigtrade.mjs`（对着 vite 开发服务器，`?open=bigtrade&bt=loading|spot|liqEmpty|stale|untracked` 出五种状态），截图在 `docs/acceptance/大单与爆仓-手机-2026-10-08/`。
+- 不做：逐笔表、热力、排行、推送、横屏弹层、新标签页。
