@@ -38,6 +38,3 @@
   font-size: var(--t11); line-height: 18px; font-weight: 500;
   color: var(--up-text); background: color-mix(in srgb, var(--up) 12%, transparent);
 }
-.sec-star { color: var(--text-3); }
-.sec-star[aria-pressed="true"] { color: #F5A623; background: transparent; }
-.sec-star[aria-pressed="true"]:hover { background: var(--surface-3); }

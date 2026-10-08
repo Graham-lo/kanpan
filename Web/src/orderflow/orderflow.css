@@ -52,8 +52,6 @@
 .of-w-head .num.faint { font-size: var(--t12); }
 .of-grip { display: grid; place-items: center; color: var(--text-3); width: 16px; }
 .of-w-head:hover .of-grip { color: var(--text-2); }
-.of-chev { transition: transform var(--d-fast) var(--ease); }
-.collapsed .of-chev { transform: rotate(-90deg); }
 .of-w.collapsed .of-w-body { display: none; }
 .of-w-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .of-w.dragging { opacity: .5; }

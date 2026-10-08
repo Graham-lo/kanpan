@@ -358,7 +358,7 @@ function makeCell(i: number): Cell {
 function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
   const e = $('.cell-empty', cell.el); if (!e) return
   e.hidden = !msg
-  if (msg) morphHtml(e, quiet ? `<div class="empty">${I('trades', 'icon-24')}<div>${esc(msg)}</div></div>` : `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>重试</button></div>`)
+  if (msg) morphHtml(e, quiet ? `<div class="empty">${I('trades', 'icon-24')}<div>${esc(msg)}</div></div>` : `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>${I('refresh', 'icon-16')}重试</button></div>`)
 }
 /** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所。
  *  alive：这一格还要不要这份（换了品种 / 周期就不要了）——在限流闸里排队的作废请求不发、不占预算 */
@@ -1221,7 +1221,7 @@ export function openSearch(initial = ''): void {
       : results.length ? results.map((s, i) => { const w = isWatched(s.symbol); return `<div class="sr ${i === activeIdx ? 'active' : ''}" role="option" aria-selected="${i === activeIdx}" data-i="${i}">
       ${badge(s, 'lg')}<div><div class="n1">${hl(s.code)}<span class="muted" style="font-weight:400;font-size:12px;margin-left:6px">${esc(s.symbol === s.code ? '' : s.symbol)}</span></div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${kindName(s)}</div></div>
       <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>
-      <button class="ibtn sm" data-w="${esc(s.symbol)}" aria-label="${w ? '移出自选' : '加入自选'}" style="color:${w ? '#F5A623' : ''}">${I(w ? 'star' : 'starOff')}</button></div>` }).join('')
+      <button class="ibtn sm" data-w="${esc(s.symbol)}" aria-pressed="${w}" aria-label="${w ? '移出自选' : '加入自选'}" data-tip="${w ? '移出自选' : '加入自选'}">${I(w ? 'star' : 'starOff')}</button></div>` }).join('')
       : `<div class="empty">没有找到「${esc(q)}」<div class="faint" style="font-size:12px;margin-top:4px">代号、中文名都能搜，比如「英伟达」「黄金」</div></div>`
   }
   const setCat = (k: 'all' | Kind) => { cat = k; $$('[data-cat]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cat === cat))); activeIdx = 0; render() }

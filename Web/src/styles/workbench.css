@@ -4,7 +4,7 @@
 /* ---- 多图（1–16 格）的行列、格子小了的降级都按格子尺寸算，见 app.css「多图格子降级」 */
 
 /* ---- 底栏：左边布局与截图，右边上海时间与连接点 */
-.cell-foot .foot-ic { width: var(--h-xs); padding: 0; display: grid; place-items: center; color: var(--text-2); }
+.cell-foot .foot-ic { width: var(--h-xs); padding: 0; display: grid; place-items: center; }
 .cell-foot .tb-sep { height: 14px; margin: 0 var(--s1); }
 .conn-dot { width: 8px; height: 8px; border-radius: 50%; margin: 0 var(--s2) 0 2px; flex: none; background: var(--text-3); }
 .conn-dot[data-conn="live"] { background: var(--tv-green, #089981); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tv-green, #089981) 18%, transparent); }
@@ -44,20 +44,13 @@
 .alert-row .main { flex: 1; min-width: 0; }
 .alert-row .t1 { display: flex; align-items: baseline; gap: var(--s2); font-size: var(--t14); color: var(--text-1); }
 .alert-row .t2 { margin-top: 2px; font-size: var(--t12); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.alert-row .ibtn { color: var(--text-3); opacity: .7; }
-.alert-row:hover .ibtn { opacity: 1; }
-.alert-row .ibtn:hover { color: var(--tv-red, #F23645); }
-.alert-kind { width: 28px; height: 28px; flex: none; border-radius: var(--r-sm); display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); }
-.alert-kind[data-kind="drawing"] { background: color-mix(in srgb, #2962FF 14%, transparent); color: #2962FF; }
+.alert-kind { width: 28px; height: 28px; flex: none; border-radius: var(--r-sm); display: grid; place-items: center; } /* 磨砂底在 styles/icons.css */
 /* 提醒侧栏「日志」：按天的小标题 + 一行（徽章 · 品种 / 条件 · 触发价 · 时刻） */
 .alog-tabs { flex: 1; }
 .alog-day { position: sticky; top: 0; z-index: 1; background: var(--surface); padding: var(--s3) var(--s4) var(--s1); font-size: var(--t12); font-weight: 600; color: var(--text-2); }
 .alog-row[data-log-open] { cursor: pointer; }
 .alog-row .t2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .alog-clock { flex: none; font-size: var(--t12); }
-.alert-kind[data-kind="condition"] { background: color-mix(in srgb, #F2A900 16%, transparent); color: #B07A00; }
-[data-theme="dark"] .alert-kind[data-kind="drawing"] { color: #6C8CFF; }
-[data-theme="dark"] .alert-kind[data-kind="condition"] { color: #F2C14E; }
 
 /* ---- 提醒：全部（按品种分组的总表） */
 .alerts-all-dlg { width: 640px; max-height: min(760px, 86vh); display: flex; flex-direction: column; }

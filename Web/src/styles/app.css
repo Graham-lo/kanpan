@@ -281,20 +281,17 @@ kbd {
 }
 .avatar.out { background: var(--surface-3); color: var(--text-2); }
 
-/* 通用图标按钮 */
+/* 通用图标按钮：只管按钮框；里面的字形与磨砂底块、悬停 / 选中 / 删除各态都在 styles/icons.css。
+ * 整颗按钮铺悬停 / 选中底的只剩不垫块的两处：图例悬浮按钮、选中画线的快捷条（框架上的另见下面「框架层」）。 */
 .ibtn {
   width: var(--h-md); height: var(--h-md); border-radius: var(--r-sm);
   display: inline-grid; place-items: center; color: var(--text-2); position: relative;
   transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
-.ibtn:hover { background: var(--surface-3); color: var(--text-1); }
-.ibtn[aria-pressed="true"], .ibtn.on { color: var(--accent-text); background: var(--accent-soft); }
+:where(.legend, .pane-legend, .draw-quick) .ibtn:hover { background: var(--surface-3); color: var(--text-1); }
+:where(.legend, .pane-legend, .draw-quick) .ibtn:is([aria-pressed="true"], .on) { color: var(--accent-text); background: var(--accent-soft); }
 .ibtn.sm { width: var(--h-sm); height: var(--h-sm); }
 .ibtn.xs { width: var(--h-xs); height: var(--h-xs); border-radius: var(--r-xs); }
-.ibtn .dot {
-  position: absolute; top: 5px; right: 5px; min-width: 14px; height: 14px; padding: 0 3px;
-  border-radius: 7px; background: var(--accent); color: #fff; font-size: 10px; line-height: 14px; font-weight: 600;
-}
 
 /* 文字按钮 */
 .btn {
@@ -396,7 +393,6 @@ kbd {
   border-radius: var(--r-sm); text-align: left; color: var(--text-1);
 }
 .menu .mi:hover, .menu .mi.active { background: var(--surface-3); }
-.menu .mi .icon { color: var(--text-2); }
 .menu .mi .label { flex: 1; }
 .menu .mi .sc { color: var(--text-3); font-size: var(--t12); }
 .menu .mi.checked .check { opacity: 1; }
@@ -511,7 +507,7 @@ kbd {
   border-top: 1px solid var(--chart-scale-line); flex: none;
 }
 .cell-foot button { height: var(--h-xs); padding: 0 var(--s2); border-radius: var(--r-xs); color: var(--text-2); font-size: var(--t12); font-weight: 500; }
-.cell-foot button:hover { background: var(--surface-3); color: var(--text-1); }
+.cell-foot button:not(.foot-ic):hover { background: var(--surface-3); color: var(--text-1); }
 .cell-foot button[aria-pressed="true"] { color: var(--accent-text); }
 .cell-foot .foot-right { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 /* 钟每秒改一次字：定宽定高 + contain: strict，改字只在这一小块里排版，不牵动底栏与格子；
@@ -676,7 +672,6 @@ kbd {
 .list-row .act { opacity: 0; transition: opacity var(--d-fast) var(--ease); }
 .list-row:hover .act, .list-row:focus-within .act { opacity: 1; }
 .empty { padding: var(--s10) var(--s6); text-align: center; color: var(--text-2); }
-.empty .icon-24 { margin: 0 auto var(--s3); color: var(--text-3); }
 .sec-title { display: flex; align-items: center; justify-content: space-between; padding: var(--s4) var(--s4) var(--s2); font-size: var(--t12); color: var(--text-2); font-weight: 600; }
 
 /* 搜索对话框 */
@@ -719,7 +714,6 @@ kbd {
 .ind-cats button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 .ind-row { display: flex; align-items: center; gap: var(--s3); height: var(--h-lg); padding: 0 var(--s5); cursor: pointer; font-size: var(--t14); }
 .ind-row .ibtn.xs { width: 28px; height: 28px; }
-.ind-row .ibtn.xs .icon-16 { width: 18px; height: 18px; }
 .ind-row:hover { background: var(--surface-2); }
 .ind-row .nm { flex: 1; font-weight: 500; }
 .check-box { width: 18px; height: 18px; border-radius: 5px; border: var(--stroke-hair) solid var(--control-line); display: grid; place-items: center; color: #fff; flex: none; transition: all var(--d-fast) var(--ease); }
@@ -752,7 +746,6 @@ kbd {
   background: var(--overlay); border-radius: var(--r-md); box-shadow: var(--shadow-menu);
   animation: rise var(--d-pop) var(--ease);
 }
-.toast .icon { color: var(--accent-text); }
 .toast .tx { flex: 1; }
 .toast .tx b { display: block; font-weight: 600; }
 .toast .tx span { color: var(--text-2); font-size: var(--t12); }
@@ -800,10 +793,8 @@ kbd {
 .me-nav .who { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s3) var(--s4); border-bottom: 1px solid var(--line); margin-bottom: var(--s2); }
 .me-nav .who .avatar { width: 40px; height: 40px; margin: 0; font-size: var(--t16); }
 .me-nav a { display: flex; align-items: center; gap: var(--s3); height: var(--h-lg); padding: 0 var(--s2); border-radius: var(--r-sm); color: var(--text-2); text-decoration: none; font-weight: 500; }
-.me-nav a .icon { color: var(--text-3); }
 .me-nav a:hover { background: var(--surface-3); color: var(--text-1); }
 .me-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent-text); }
-.me-nav a[aria-current="page"] .icon { color: var(--accent-text); }
 .me-body { padding: var(--s8) var(--s10); overflow: auto; }
 .me-body > * { max-width: 880px; }
 .me-body h2 { margin: 0 0 var(--s1); font-size: var(--t24); line-height: 32px; font-weight: 600; }
@@ -1042,8 +1033,6 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 .app-header { background: var(--frame); border-bottom: 0; }
 .app-header .search-trigger { background: var(--surface); border-color: var(--frame-line); }
 .app-header .search-trigger:hover { border-color: var(--line-strong); }
-.app-header .ibtn, .header-actions .ibtn { color: var(--text-1); }
-.app-header .ibtn:hover { background: var(--frame-hover); }
 .nav a:hover { color: var(--text-1); }
 
 #page-chart > .chart-toolbar.card,

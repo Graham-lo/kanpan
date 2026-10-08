@@ -8,7 +8,8 @@
  *   选中：强调色玻璃块（深色下也用该皮肤浅色那档强调色，不发灰）+ 30% 光晕，字形全白
  *   删除：悬停时字形转跌色
  * 落点：左画线栏 / 右侧栏 32 块 20 字形；画线展开菜单 26 块；顶栏提醒 / 深浅色 28 块 18 字形；
- *   工具条带字按钮 22 块 15 字形；工具条右侧撤销 / 布局这一组不垫块（18 字形，悬停整颗按钮一级框架色）。
+ *   工具条带字按钮 22 块 15 字形；工具条右侧撤销 / 布局这一组不垫块（18 字形，悬停整颗按钮一级框架色）；
+ *   其余页面与弹层的图标按钮见下面「其它页面与弹层」一节（28 / 26 / 22 三档）。
  * 未读：强调色 7 px 小点（.qdot），外圈 2 px 框架色。
  */
 :root, [data-theme="light"] {
@@ -108,17 +109,86 @@ button:hover > svg.q.q-del { --q1: var(--qdn); }
 }
 .of-p-row .tgi svg { overflow: visible; }
 
-/* ---- 「我的」左栏七项、空状态的大记号：同一块磨砂底（2026-10-09 质感收尾） ---- */
-:is(.me-nav a, .empty) > svg.q {
+/* ---- 深色下的内容层：卡片、对话框、菜单、回放条都比框架亮一级，块照框架色推亮会和卡片几乎同色、只剩一圈描边，
+ * 所以在这几层里改按所在那层的底色往亮推（推的幅度和框架上一样）；框架上的左右栏、工具条与画线展开菜单不动。 */
+[data-theme="dark"] :is(.card:not(.drawbar, .rail, .chart-toolbar), .rp-bar) {
+  --qt0: color-mix(in srgb, var(--surface) 92.5%, #fff);
+  --qt1: color-mix(in srgb, var(--surface) 95.5%, #fff);
+  --qh0: color-mix(in srgb, var(--surface) 87.5%, #fff);
+  --qh1: color-mix(in srgb, var(--surface) 90.8%, #fff);
+  --qtm: color-mix(in srgb, var(--qt0), var(--qt1));
+  --qhm: color-mix(in srgb, var(--qh0), var(--qh1));
+}
+[data-theme="dark"] :is(.dialog, .menu:not(.tool-fly), .toast) {
+  --qt0: color-mix(in srgb, var(--overlay) 92.5%, #fff);
+  --qt1: color-mix(in srgb, var(--overlay) 95.5%, #fff);
+  --qh0: color-mix(in srgb, var(--overlay) 87.5%, #fff);
+  --qh1: color-mix(in srgb, var(--overlay) 90.8%, #fff);
+  --qtm: color-mix(in srgb, var(--qt0), var(--qt1));
+  --qhm: color-mix(in srgb, var(--qh0), var(--qh1));
+}
+
+/* ---- 其它页面与弹层的图标按钮（2026-10-09 统一）：同一块磨砂底、同一套状态 ----
+ * 范围：除上面几处（左画线栏、右侧栏、工具条、顶栏）之外所有的图标按钮 .ibtn、十六格脚条 .foot-ic，
+ *   和带字的左侧导航（「我的」七项、图表设置左栏）；图例悬浮按钮、选中画线的快捷条另有自己的样子，不在这里。
+ * 尺寸按按钮框分三档，块比框各收 1–2 px：
+ *   对话框头的关闭（32 框）、左侧导航（40 行高）→ 28 块 18 字形；
+ *   列表行尾、表格星标、回放条（28 框，.ibtn.sm）→ 26 块；
+ *   小部件头、卡片头、脚条、对比小胶囊（24 框，.ibtn.xs / .foot-ic）→ 22 块 15 字形。
+ * 状态由按钮驱动：悬停 / 键盘焦点一级；aria-pressed=true、.on、当前页 → 强调色玻璃块；垃圾桶（.q-del）悬停转跌色；
+ *   不能点（disabled / aria-disabled）→ 整块退到 .4。按钮自己不再铺悬停 / 选中底（带字导航的整行底照旧）。
+ * 写法：范围用 :where() 包着，整条特异度只有后面的 svg.q 与状态那一两级，不会压过别处的规则（也不写 ID 选择器）。 */
+:where(.ibtn, .foot-ic, .me-nav a, .cs-side [data-cs-tab]):not(:where(.drawbar, .rail, .chart-toolbar, .app-header, .legend, .pane-legend, .draw-quick) *) > svg.q {
   --q1: var(--qr); --qw: var(--qtm);
+  flex: none; box-sizing: border-box; border-radius: 7px;
+  width: 26px; height: 26px; padding: 4.5px;
   background: linear-gradient(180deg, var(--qt0), var(--qt1));
   box-shadow: inset 0 0 0 .5px var(--qline), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
 }
-.me-nav a > svg.q { width: 28px; height: 28px; padding: 5px; border-radius: 8px; }
-.me-nav a:hover > svg.q { --q1: var(--qh); --qw: var(--qhm); background: linear-gradient(180deg, var(--qh0), var(--qh1)); }
-.me-nav a[aria-current="page"] > svg.q {
+/* 换档：.q.q 只为比上一条高一级（同在 :where 里，特异度只靠它） */
+:where(.dialog-head .ibtn, .me-nav a, .cs-side [data-cs-tab]) > svg.q.q { width: 28px; height: 28px; padding: 5px; border-radius: 8px; }
+:where(.ibtn.xs, .foot-ic, .detail .dh .ibtn):not(:where(.drawbar, .rail, .chart-toolbar, .app-header, .legend, .pane-legend, .draw-quick, .ind-row) *) > svg.q.q {
+  width: 22px; height: 22px; padding: 3.5px; border-radius: 6px;
+}
+:where(.ibtn, .foot-ic, .me-nav a, .cs-side [data-cs-tab]):not(:where(.drawbar, .rail, .chart-toolbar, .app-header, .legend, .pane-legend, .draw-quick) *):is(:hover, :focus-visible) > svg.q {
+  --q1: var(--qh); --qw: var(--qhm);
+  background: linear-gradient(180deg, var(--qh0), var(--qh1));
+}
+:where(.ibtn, .foot-ic, .me-nav a, .cs-side [data-cs-tab]):not(:where(.drawbar, .rail, .chart-toolbar, .app-header, .legend, .pane-legend, .draw-quick) *):is([aria-pressed="true"], .on, [aria-current="page"]) > svg.q {
   --q1: #fff; --qa: #fff; --qw: var(--qsm);
   background: linear-gradient(180deg, var(--qs0), var(--qs1));
   box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .18), inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 6px var(--qsg);
 }
-.empty > svg.q.icon-24 { width: 44px; height: 44px; padding: 10px; border-radius: 12px; }
+/* 自选 / 收藏的星（搜索结果、板块成分、品种详情、复盘相似片段）：一列里常常大半都是「在自选」，整列玻璃块太闹——
+ * 块留中性磨砂，星本身换强调墨（实心星 vs 空心星已经说明了状态） */
+:where(.ibtn):is([data-star], [data-w], .rv-star):is([aria-pressed="true"], .on) > svg.q {
+  --q1: var(--qac); --qa: var(--qac); --qw: var(--qtm);
+  background: linear-gradient(180deg, var(--qt0), var(--qt1));
+  box-shadow: inset 0 0 0 .5px var(--qline), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
+}
+:where(.ibtn):is([data-star], [data-w], .rv-star):is([aria-pressed="true"], .on):is(:hover, :focus-visible) > svg.q { --qw: var(--qhm); background: linear-gradient(180deg, var(--qh0), var(--qh1)); }
+:where(.ibtn, .foot-ic):not(:where(.drawbar, .rail, .chart-toolbar, .app-header, .legend, .pane-legend, .draw-quick) *):is(:disabled, [aria-disabled="true"]) > svg.q { opacity: .4; }
+/* 焦点环画在块上（按钮自己的悬停 / 选中底只剩图例与快捷条那两处，见 app.css「通用图标按钮」） */
+:where(.ibtn, .foot-ic):not(:where(.drawbar, .rail, .chart-toolbar, .app-header, .legend, .pane-legend, .draw-quick) *):focus-visible { outline: none; }
+:where(.ibtn, .foot-ic):not(:where(.drawbar, .rail, .chart-toolbar, .app-header, .legend, .pane-legend, .draw-quick) *):focus-visible > svg.q { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 收起 / 展开的折角：转里面的字形，不转块（块顶上那道高光要留在上沿） */
+svg.q.of-chev > * { transform-origin: 9px 9px; transition: transform var(--d-fast) var(--ease); }
+.collapsed svg.q.of-chev > * { transform: rotate(-90deg); }
+
+/* ---- 不垫块的小记号：空态插图、菜单项前的记号、提示条与轻提示里的记号（纯装饰，不能点） ----
+ * 菜单、轻提示、搜索框里主体主文字色掺 20% 次文字色、强调墨照旧一处；空态整只退到第三级文字色；挖空填各自所在那层的底色。
+ * 提示条里的小记号（我的 → 账号的提示、记一笔的未登录提示、自选的目标格、导入结果、回放选起点）跟着提示条的字色，不另管。 */
+.empty > svg.q { width: 28px; height: 28px; margin: 0 auto var(--s3); --q1: var(--text-3); --qa: var(--text-3); }
+:is(.dialog, .menu) .empty > svg.q { --qw: var(--overlay); }
+.menu:not(.tool-fly) .mi > svg.q:not(.check) { width: 18px; height: 18px; margin: 0 1px; --q1: var(--qr); }
+.menu:not(.tool-fly) .mi:is(:hover, .active) > svg.q:not(.check) { --q1: var(--qh); --qw: var(--surface-3); }
+.toast > svg.q { width: 18px; height: 18px; --q1: var(--qr); --qw: var(--overlay); }
+.search-top > svg.q { width: 20px; height: 20px; --q1: var(--qr); --qw: var(--overlay); }
+.ind-search > svg.q { --qw: var(--surface-2); }
+
+/* ---- 提醒列表行首的种类小块（价格 / 画线 / 条件）：和主力订单流四行开关前的小图同一块磨砂底，不按种类上色 ---- */
+.alert-kind {
+  background: linear-gradient(180deg, var(--qt0), var(--qt1));
+  box-shadow: inset 0 0 0 .5px var(--qline), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
+}
+.alert-kind > svg.q { width: 18px; height: 18px; --q1: var(--qr); --qw: var(--qtm); }

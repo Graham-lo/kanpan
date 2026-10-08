@@ -86,7 +86,6 @@
 .rv-mrow { cursor: pointer; }
 .rv-mrow.sel { background: var(--accent-soft); }
 .rv-mrow:focus-visible { outline: var(--stroke-mark) solid var(--accent); outline-offset: -2px; }
-.rv-star.on { color: var(--accent-text); }
 .rv-search { border-bottom: 1px solid var(--line); }
 .rv-search-h { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--surface-2); font-size: var(--t12); color: var(--text-2); }
 .rv-search-h b { color: var(--text-1); }

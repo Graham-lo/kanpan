@@ -239,7 +239,7 @@ function renderTop(): void {
       <span class="rv-sp"></span>
       ${R.error ? `<span class="rv-err">${esc(errorText(R.error))}</span>` : ''}
       <span class="rv-asof">${asOf}</span>
-      <button class="ibtn sm" id="rvRefresh" aria-label="刷新" data-tip="刷新" ${R.loading ? 'disabled' : ''}>${I('undo', 'icon-16')}</button>
+      <button class="ibtn sm" id="rvRefresh" aria-label="刷新" data-tip="刷新" ${R.loading ? 'disabled' : ''}>${I('refresh', 'icon-16')}</button>
     </div>
     <div class="kpis${R.tab === 'trade' ? ' kpis-trade' : ''}">${R.tab === 'trade' ? tradeKpis() : R.tab === 'view' ? viewKpis() : similarKpis()}</div>`)
 }
