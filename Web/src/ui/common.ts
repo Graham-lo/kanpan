@@ -1,6 +1,8 @@
 /* Hkline Web · 各页共用的展示小件（价格、涨跌、徽标、时间） */
 import { S } from '../market/state'
-import type { Sym } from '../market/symbols'
+import { baseOf, type Sym } from '../market/symbols'
+import { parseKey } from '../market/identity'
+import { marketOf, venueLabel } from '../venues'
 import { fmt, pad, sh } from '../util/format'
 import { esc } from './dom'
 import { assetOf, badgeLine, coinSpec } from '../m/model/badge'
@@ -54,3 +56,25 @@ export function shTime(t: number, withDate = true): string {
 
 export const ratioText = (r: number | null | undefined): string => r == null || !isFinite(r) ? '—' : r.toFixed(2)
 export const ratioCls = (r: number | null | undefined): string => r == null ? '' : r > 1 ? 'up' : r < 1 ? 'down' : ''
+
+// ------------------------------------------------------------ 交易所缩写（2026-10-08 起三端一致：不用交易所图标，用文字）
+/** 品种前那一截灰小字：「币安」「OKX」「Bybit」「HL」「CB」；美元指数不带（回空串） */
+export function venueTag(k: string): string {
+  const v = venueLabel(k)
+  return v ? `<span class="vtag">${esc(v)}</span>` : ''
+}
+/** 列表行的名字：「DOGE/USDT」（代号照旧去掉 1000 前缀，计价币淡一点）；美元指数这类没有计价币的只写代号。表还没到时按键猜 */
+export function pairHTML(k: string, s: Sym | undefined = sym(k)): string {
+  const code = s?.code || baseOf(k)
+  const quote = s ? s.quote : marketOf(k)?.quote ?? ''
+  return `<b>${esc(code)}</b>${quote ? `<span class="vq">/${esc(quote)}</span>` : ''}`
+}
+/** 列表行品种格：缩写 + 名字 */
+export const listName = (k: string, s: Sym | undefined = sym(k)): string => venueTag(k) + pairHTML(k, s)
+/** 图表头部名字旁的小字：「缩写 + 计价币 + 永续 / 现货」，美元指数只写「指数」；和 iOS 顶栏一样只按市场分
+ *  （spot 现货、index 指数、其余永续），不按品类写「美股永续」「大宗永续」 */
+export function chartSub(k: string, s: (Pick<Sym, 'kind'> & Partial<Pick<Sym, 'quote' | 'macro'>>) | undefined = sym(k)): string {
+  const market = parseKey(k).market
+  if (s?.macro || market === 'index') return '指数'
+  return [venueLabel(k), s?.quote || marketOf(k)?.quote || '', market === 'spot' ? '现货' : '永续'].filter(Boolean).join(' ')
+}

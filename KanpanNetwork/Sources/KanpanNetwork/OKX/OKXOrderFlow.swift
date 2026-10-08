@@ -7,7 +7,7 @@ import KanpanCore
 
 extension OrderFlowExchange {
   static let okx = OrderFlowExchange(
-    key: "okx", displayName: "OKX", maxBooksPerConnection: OKXBooksAdapter.maxBooks,
+    key: OKXVenue.id, displayName: OKXVenue.displayName, maxBooksPerConnection: OKXBooksAdapter.maxBooks,
     liquidationCode: 1,
     sequenceModel: { _, _ in .previousFinalExact },
     snapshotInBand: { _ in true },
@@ -18,4 +18,11 @@ extension OrderFlowExchange {
       }
     }
   )
+}
+
+/// 看 OKX 的永续时主力订单流照样五家聚合（按 base 币找各家的簿），连接与品种表都经 kanpan-api。
+extension OKXProvider: OrderFlowSourcing {
+  public var orderFlowCatalog: OrderFlowCatalog {
+    OrderFlowCatalog(route: route, sockets: sockets, http: transport)
+  }
 }

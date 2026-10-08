@@ -18,6 +18,13 @@
  * 2026-09-29 A 路压测：只放在内存里时，刷新一次页面冷却就清零、预算重新算，连开 24 次页面一分钟回了 26 个 429，
  * 两个标签页也各记各的。
  * 纯逻辑在 Limiter 里（不碰网络与计时器），vitest 直接测；模块级函数是给 fetch 包装用的那一层。
+ *
+ * 2026-10-08 起「一家交易所一把限流器」：上面这套按权重记账的 Limiter 是**币安那一把**（fapi / dapi / 现货三族）；
+ * 别家（OKX / Bybit / Hyperliquid / Coinbase）各自在自己的模块里（src/venues/<id>.ts）用 registerGate 登记一把
+ * Gate：主机名、按那一家官方口径的计数规则（OKX 按接口各算、Bybit 整个 IP 共用一个窗口、Hyperliquid 按权重、
+ * Coinbase 按次）、网关改写。行情 REST、订单流的盘口快照、30 分钟 K 线，只要地址是那一家的主机，
+ * admit / noteStatus / coolingFor 就按主机名找到那一把——同一家所有用途共用一道闸，不同家互不连累。
+ * 这一层不认识任何一家的名字：主机名、参数都由那一家自己登记。
  */
 import { CLOCK_SKEW_MS } from '../util/clock'
 
@@ -244,16 +251,120 @@ const lsStore: LimitStore | undefined = typeof localStorage === 'undefined' ? un
 }
 const limiter = new Limiter(BUDGET, lsStore)
 
+// ------------------------------------------------------------ 别家：一家一把限流器（按那一家官方的计数口径）
+/**
+ * 一条计数规则：滚动窗口 windowMs 内合计不超过 cap（单位：次或权重，看那一家的 weight）。
+ * key 把请求分到各自的桶：OKX「按接口各算各的」就按路径分桶；Bybit「所有接口共用」、Hyperliquid「按 IP 按权重」
+ * 就整家一个桶；回 null = 这条规则不管这个地址。
+ */
+export interface GateRule { windowMs: number; cap: number; key?: (url: string) => string | null }
+/** 一家交易所登记的出口参数 */
+export interface GateSpec {
+  /** 这一家 REST 的主机名（直连地址按它认出是哪一家；同一家可以有备用主机） */
+  hosts: readonly string[]
+  /** 计数规则（全部要放得下才发）；参数按官方上限留余量，见各家 src/venues/<id>.ts 的注释 */
+  rules: readonly GateRule[]
+  /** 一次请求记多少（默认 1 次）；Hyperliquid 按权重：body 是 POST 的正文 */
+  weight?: (url: string, body?: unknown) => number
+  /** 网关线路下这个直连地址改成什么（同源 /v1/market/raw/…?source=<id>）；不认得的地址回 null */
+  gateway?: (url: string) => string | null
+}
+/** 冷却：读不到 Retry-After 时 429 记 10 秒，再犯翻倍、封顶 2 分钟 */
+export const GATE_COOL_MS = 10_000
+const GATE_COOL_CAP_MS = 120_000
+interface Cooling { until: number; strikes: number }
+
+/** 一家交易所的限流器：按规则的滚动窗口记账 + 429 冷却；直连与网关各一道（直连花浏览器出口 IP 的额度，
+ *  网关花服务端出口的）。同一道上行情与订单流共用。纯逻辑，时刻由调用方给 */
+export class Gate {
+  private used = new Map<string, { t: number; w: number }[]>()
+  private cool = new Map<string, Cooling>()
+  constructor(readonly venue: string, readonly spec: GateSpec) {}
+  private lane = (gw: boolean): string => gw ? 'gw' : 'direct'
+  coolingFor(now: number, gw = false): number { const c = this.cool.get(this.lane(gw)); return c && c.until > now ? c.until - now : 0 }
+  /** 这一次记多少 */
+  costOf(url: string, body?: unknown): number { return Math.max(0, this.spec.weight?.(url, body) ?? 1) }
+  /** 还要等多久才能发（0 = 现在就发，已经记了账）。share < 1 是后台请求：只许用到各规则上限的这一截 */
+  take(now: number, gw = false, share = 1, url = '', cost = 1): number {
+    const buckets: [string, GateRule][] = []
+    for (const [i, r] of this.spec.rules.entries()) {
+      const k = r.key ? r.key(url) : ''
+      if (k != null) buckets.push([`${this.lane(gw)}|${i}|${k}`, r])
+    }
+    let wait = 0
+    for (const [k, r] of buckets) {
+      const list = this.used.get(k) ?? []
+      while (list.length && now - list[0].t >= r.windowMs) list.shift()
+      this.used.set(k, list)
+      const cap = Math.max(1, r.cap * Math.min(1, Math.max(0, share)))
+      const w = Math.min(cost, cap)
+      let sum = list.reduce((a, x) => a + x.w, 0)
+      if (sum + w <= cap) continue
+      let j = 0
+      while (j < list.length && sum + w > cap) { sum -= list[j].w; j++ }
+      wait = Math.max(wait, j ? Math.max(1, list[j - 1].t + r.windowMs - now) : 1)
+    }
+    if (wait) return wait
+    for (const [k, r] of buckets) this.used.get(k)!.push({ t: now, w: Math.min(cost, r.cap) })
+    return 0
+  }
+  /** 这一道某条规则的桶里这一刻记了多少（测试与诊断用） */
+  usedOf(now: number, url = '', gw = false, rule = 0): number {
+    const r = this.spec.rules[rule]
+    const k = r?.key ? r.key(url) : ''
+    if (!r || k == null) return 0
+    return (this.used.get(`${this.lane(gw)}|${rule}|${k}`) ?? []).filter(x => now - x.t < r.windowMs).reduce((a, x) => a + x.w, 0)
+  }
+  noteStatus(status: number, retryAfter: string | null | undefined, now: number, gw = false): void {
+    const k = this.lane(gw)
+    const c = this.cool.get(k) ?? { until: 0, strikes: 0 }
+    if (status === 429 || status === 418 || status === 403) {
+      if (c.until <= now) c.strikes++
+      const sec = retryAfter != null && retryAfter !== '' ? Number(retryAfter) : NaN
+      const ms = Number.isFinite(sec) && sec > 0 ? sec * 1000 : Math.min(GATE_COOL_CAP_MS, GATE_COOL_MS * 2 ** Math.max(0, c.strikes - 1))
+      c.until = Math.max(c.until, now + ms)
+      this.cool.set(k, c)
+    } else if (status >= 200 && status < 300 && c.strikes && c.until <= now) this.cool.delete(k)
+  }
+  reset(): void { this.used.clear(); this.cool.clear() }
+}
+
+const gates = new Map<string, Gate>()
+const gateByHost = new Map<string, Gate>()
+/** 一家交易所登记它唯一的那把限流器（模块加载时调一次；重复登记换成新的参数） */
+export function registerGate(venue: string, spec: GateSpec): Gate {
+  const g = new Gate(venue, spec)
+  gates.set(venue, g)
+  for (const h of spec.hosts) gateByHost.set(h, g)
+  return g
+}
+/** 某一家的限流器（测试与诊断用） */
+export const gateOf = (venue: string): Gate | undefined => gates.get(venue)
+/** 这个地址归哪一家的限流器管（按主机名；币安三族归上面的 Limiter，这里回 undefined） */
+export function gateFor(url: string): Gate | undefined {
+  const h = /^https?:\/\/([^/:?#]+)/.exec(url)?.[1]
+  return h ? gateByHost.get(h) : undefined
+}
+/** 网关线路下别家的直连地址改写成什么（不是登记过的主机、或那一家不认这个地址：null） */
+export function gatewayRewrite(url: string): string | null { return gateFor(url)?.spec.gateway?.(url) ?? null }
+/** 地址的路径（OKX 按接口分桶用） */
+export const pathOf = (url: string): string => /^https?:\/\/[^/]+(\/[^?#]*)/.exec(url)?.[1] ?? url
+
 let viaGateway: (url: string) => boolean = () => false
 /** rest.ts 告诉这里「这个地址现在是不是走网关」（limit 不直接读线路状态，免得循环引用） */
 export function setGatewayProbe(f: (url: string) => boolean): void { viaGateway = f }
 
 /** 这个地址的主机还要冷却多久（毫秒）；0 = 可以发。默认按现在的线路看那一道 */
-export function coolingFor(url: string, now = Date.now(), gw = viaGateway(url)): number { return limiter.coolingFor(url, now, gw) }
+export function coolingFor(url: string, now = Date.now(), gw = viaGateway(url)): number {
+  const g = gateFor(url)
+  return g ? g.coolingFor(now, gw) : limiter.coolingFor(url, now, gw)
+}
 
 /** 记一次响应（成功的也要记，用来清掉再犯计数）。gw 由发请求的那一刻定（发出去之后才切线路的，仍记在发出时那一道） */
 export function noteStatus(url: string, status: number, retryAfter?: string | null, now = Date.now(), gw = viaGateway(url)): void {
-  limiter.noteStatus(url, status, retryAfter, now, gw)
+  const g = gateFor(url)
+  if (g) g.noteStatus(status, retryAfter, now, gw)
+  else limiter.noteStatus(url, status, retryAfter, now, gw)
 }
 
 /** 冷却中的请求抛的错；消息带状态码开头，和真的 429 一样好认 */
@@ -296,13 +407,13 @@ export class Superseded extends Error {
  *  16 格里一半是空的或还画着上一只）。
  *  返回这一次记在哪一道（true = 网关），发出去之后 noteStatus 记回同一道。 */
 export async function admit(url: string, background = false, alive?: () => boolean,
-  onWait?: (ms: number) => void): Promise<boolean> {
+  onWait?: (ms: number) => void, body?: unknown): Promise<boolean> {
   for (;;) {
     if (alive && !alive()) throw new Superseded(url)
-    const gw = viaGateway(url)
-    const cool = limiter.coolingFor(url, Date.now(), gw)
+    const gw = viaGateway(url), g = gateFor(url)
+    const cool = g ? g.coolingFor(Date.now(), gw) : limiter.coolingFor(url, Date.now(), gw)
     if (cool > 0) throw new RateLimited(url, cool)
-    const w = limiter.take(url, Date.now(), background ? BACKGROUND_SHARE : 1, gw)
+    const w = g ? g.take(Date.now(), gw, background ? BACKGROUND_SHARE : 1, url, g.costOf(url, body)) : limiter.take(url, Date.now(), background ? BACKGROUND_SHARE : 1, gw)
     if (!w) return gw
     onWait?.(w)
     await sleep(Math.min(w, alive ? 1000 : 5000))
@@ -312,7 +423,7 @@ export async function admit(url: string, background = false, alive?: () => boole
 }
 
 /** 测试用 */
-export function resetLimits(): void { limiter.reset() }
+export function resetLimits(): void { limiter.reset(); for (const g of gates.values()) g.reset() }
 
 // 压测脚本读：各族这一分钟记了多少权重、各主机的冷却（网关那一道带 Gw 后缀）
 ;(globalThis as unknown as { __limit?: () => unknown }).__limit = () => {

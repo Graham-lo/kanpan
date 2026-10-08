@@ -10,10 +10,10 @@
  */
 import { loggedIn } from '../account/session'
 import { st } from '../app/store'
-import { S, on, j, REST, klines } from '../market'
+import { S, on, j, REST, klines, headName } from '../market'
 import { $, I, esc, tgt } from '../ui/dom'
 import { dialog, head, toast, type Dialog } from '../ui/overlay'
-import { badge, cls, pctText, priceText, shTime, sym } from '../ui/common'
+import { badge, cls, pctText, priceText, shTime, sym, venueTag } from '../ui/common'
 import { fmt } from '../util/format'
 import {
   activeAlerts, addAlert, alertLevel, checkPrice, cleanWebhook, conditionLabel, conditionPercentOK, deleteAlert, fire, judgeFunding, makeConditionAlert,
@@ -36,7 +36,7 @@ export interface AlertUIHooks {
 let ui: AlertUIHooks = { openSymbol: () => { /* 页面装上前什么都不做 */ } }
 
 const decOf = (k: string): number => sym(k)?.dec ?? 2
-const code = (k: string): string => sym(k)?.code || k
+const code = (k: string): string => sym(k)?.code || headName({ symbol: k })
 const LINE_NAME: Record<string, string> = { hline: '水平线', trend: '趋势线', ray: '射线' }
 
 // ------------------------------------------------------------ 一行
@@ -63,7 +63,7 @@ function alertSub(a: Alert): string {
 function row(a: Alert, withSym: boolean): string {
   const s = sym(a.symbol)
   return `<div class="list-row alert-row" data-alert="${esc(a.id)}">${withSym ? badge(s, 'lg') : `<span class="alert-kind" data-kind="${a.kind}">${I(a.kind === 'drawing' ? 'trend' : a.kind === 'condition' ? 'indicators' : 'bell', 'icon-16')}</span>`}
-    <div class="main"><div class="t1">${withSym ? `${esc(code(a.symbol))}<span class="tag">${kindTag(a)}</span>` : ''}<span>${alertDesc(a)}</span></div>
+    <div class="main"><div class="t1">${withSym ? `${venueTag(a.symbol)}${esc(code(a.symbol))}<span class="tag">${kindTag(a)}</span>` : ''}<span>${alertDesc(a)}</span></div>
     <div class="t2">${alertSub(a)}</div></div>
     <button class="ibtn sm" data-del-alert="${esc(a.id)}" aria-label="删除提醒" data-tip="删除">${I('trash', 'icon-16')}</button></div>`
 }

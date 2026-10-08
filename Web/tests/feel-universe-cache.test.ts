@@ -50,7 +50,7 @@ describe('全市场表的本机副本', () => {
   it('写进去再读出来：价、涨跌、精度、分类、标签都在；过了的结算时刻丢掉；超过 7 天不认；坏数据不认', async () => {
     const m = await import('../src/market')
     const { macroFallback } = await import('../src/market/macro')
-    const map = new Map<string, Sym>([['BTCUSDT', { symbol: 'BTCUSDT', base: 'BTC', code: 'BTC', kind: 'crypto' as const, cn: '比特币', dec: 1, color: '#f7931a', price: 123.4, chg: 1, pct: 2.5, vol: 99, fr: 0.0001, nextFunding: Date.now() - 1, ut: 'COIN', tags: ['pow'], pxAt: 7, statAt: 7, markAt: 7, mark: 123, index: 122, open: 120, hi: 130, lo: 110, count: 5 }]])
+    const map = new Map<string, Sym>([['BTCUSDT', { symbol: 'BTCUSDT', venue: 'binance', quote: 'USDT', base: 'BTC', code: 'BTC', kind: 'crypto' as const, cn: '比特币', dec: 1, color: '#f7931a', price: 123.4, chg: 1, pct: 2.5, vol: 99, fr: 0.0001, nextFunding: Date.now() - 1, ut: 'COIN', tags: ['pow'], pxAt: 7, statAt: 7, markAt: 7, mark: 123, index: 122, open: 120, hi: 130, lo: 110, count: 5 }]])
     const dxy = macroFallback(); dxy.price = 98.7; dxy.cn = '美元指数X'
     map.set(dxy.symbol, dxy)
     expect(m.saveUniverse(map, store as unknown as Storage)).toBe(true)
@@ -70,7 +70,7 @@ describe('全市场表的本机副本', () => {
 
   it('冷启动有本机表：马上返回、发 universe（S.live 仍是 null），网络回来再发一次并换成新价', async () => {
     const m = await import('../src/market')
-    m.saveUniverse(new Map([['BTCUSDT', { symbol: 'BTCUSDT', base: 'BTC', code: 'BTC', kind: 'crypto' as const, cn: '', dec: 3, color: '#000', price: 90, chg: 0, pct: 1, vol: 1, fr: null, nextFunding: null, pxAt: 1, statAt: 1, markAt: 1 }]]), store as unknown as Storage)
+    m.saveUniverse(new Map([['BTCUSDT', { symbol: 'BTCUSDT', venue: 'binance', quote: 'USDT', base: 'BTC', code: 'BTC', kind: 'crypto' as const, cn: '', dec: 3, color: '#000', price: 90, chg: 0, pct: 1, vol: 1, fr: null, nextFunding: null, pxAt: 1, statAt: 1, markAt: 1 }]]), store as unknown as Storage)
     const seen: (boolean | null)[] = []
     m.on(e => { if (e.type === 'universe') seen.push(m.S.live) })
     let resolved = false
@@ -107,7 +107,7 @@ describe('全市场表的本机副本', () => {
 
   it('摆着本机表、后台那次失败：表留着、S.live 变 false，自己隔 30 秒再取', async () => {
     const m = await import('../src/market')
-    m.saveUniverse(new Map([['BTCUSDT', { symbol: 'BTCUSDT', base: 'BTC', code: 'BTC', kind: 'crypto' as const, cn: '', dec: 1, color: '#000', price: 90, chg: 0, pct: 1, vol: 1, fr: null, nextFunding: null }]]), store as unknown as Storage)
+    m.saveUniverse(new Map([['BTCUSDT', { symbol: 'BTCUSDT', venue: 'binance', quote: 'USDT', base: 'BTC', code: 'BTC', kind: 'crypto' as const, cn: '', dec: 1, color: '#000', price: 90, chg: 0, pct: 1, vol: 1, fr: null, nextFunding: null }]]), store as unknown as Storage)
     await m.loadUniverse()
     gates.splice(0).forEach(g => g.fail())
     await settle()

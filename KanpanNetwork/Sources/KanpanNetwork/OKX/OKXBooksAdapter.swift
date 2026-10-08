@@ -3,34 +3,24 @@ import KanpanCore
 
 /// OKX 一条连接上的几本簿（现货 `BTC-USDT`、U 本位永续 `BTC-USDT-SWAP`、币本位永续 `BTC-USD-SWAP`、
 /// 交割 `BTC-USD-260925`……），不分线路一律经 kanpan-api 的中继 `/v1/market/ws/okx`
-/// （上游 `wss://ws.okx.com:8443/ws/v5/public`，帧原样转发）——手机在国内直连不了 OKX。
+/// （上游 public 端点，帧原样转发）——手机在国内直连不了 OKX。
+///
+/// 地址、保活来自 `OKXVenue`，控制帧的写法来自 `OKXWire`，解帧是 `OKXDTO.books`（OKX 唯一的报文解码）。
 ///
 /// - 连上后自己发订阅：`{"op":"subscribe","args":[{"channel":"books","instId":…},{"channel":"trades",…}]}`。
-///   中继一条订阅消息最多 12 个 args、一条连接最多同时订 24 个，所以一条连接最多 `maxBooks` 本，
-///   一条消息最多 6 本。
-/// - `books`（400 档）首帧 `action=snapshot`（prevSeqId = -1），之后 `update` 按各自 instId 的
-///   seqId / prevSeqId 首尾相接；序号倒退（OKX 那边重置过）就整本重来。
-///   checksum 不校验，只靠序号。
-/// - 数量原样给（现货是币数，永续 / 交割是张数），名义美元由 `OrderFlowNotional` 按面值换
-///   （正向 price × 张数 × ctVal，反向 张数 × 面值）。
-/// - `trades` 的 `side` 是主动方（buy 吃卖盘）。
+///   中继一条订阅消息最多 12 个 args，所以一条消息最多 6 本；一条连接最多 `maxBooks` 本。
 /// - OKX 30 秒没有帧就断，冷门交割可能半分钟没有变动，所以每 20 秒发一句 `ping`（中继只放行这一句），
 ///   回来的 `pong` 不是 JSON，解码直接忽略。
-///
-/// 解码对应原项目 `bit-orderbook-okx/src/lib.rs:878 decode_depth_message`。
 public struct OKXBooksAdapter: DepthFeedAdapter {
-  /// `books` 频道每侧只维护盘口最近 400 档的滑动窗口：窗口外不推，被挤出窗口的一档推 0
-  /// （2026-09-28 实测）。快照因此标 `slidingWindow`，本地簿按「窗口最深一档以内才知道」判。
-  public static let snapshotLevels = 400
-  /// 一条连接最多几本（中继 MAX_OKX_SUBSCRIPTIONS = 24，一本 books + trades 两个）。
+  /// `books` 频道每侧只维护盘口最近 400 档的滑动窗口（见 `OKXDTO.bookLevels`）。
+  public static var snapshotLevels: Int { OKXDTO.bookLevels }
+  /// 一条连接最多几本（一本 books + trades 两个订阅；中继每连接的订阅名额见 `relay.rs`）。
   public static let maxBooks = 12
-  /// 一条订阅消息最多几本（中继 MAX_OKX_ARGS = 12）。
-  static let booksPerMessage = 6
-  static let relayPath = "/v1/market/ws/okx"
-  static let pingEveryMs: Double = 20_000
+  /// 一条订阅消息最多几本（中继 MAX_ARGS = 12，一本两个 args）。
+  static let booksPerMessage = OKXVenue.maxArgsPerFrame / 2
 
   public let books: [DepthBook]
-  /// 网关候选（`MarketRoute.gateways`，主在前）。
+  /// kanpan-api 主机候选（`MarketRoute.apiHosts`，主在前）。
   let gateways: [String]
   let sockets: any WSSocketFactory
   private let byInstrument: [String: DepthBook]
@@ -44,23 +34,20 @@ public struct OKXBooksAdapter: DepthFeedAdapter {
     byInstrument = map
   }
 
-  public var name: String { "OKX \(books.map(\.venue.instrument).joined(separator: ","))" }
+  public var name: String { "\(OKXVenue.displayName) \(books.map(\.venue.instrument).joined(separator: ","))" }
 
-  public var streamURLs: [URL] { Self.gatewayStreams(gateways, path: Self.relayPath, streams: []) }
+  public var streamURLs: [URL] { OKXVenue.relayStreams(hosts: gateways) }
 
-  public var keepAlive: DepthKeepAlive? { DepthKeepAlive(text: "ping", everyMs: Self.pingEveryMs) }
+  public var keepAlive: DepthKeepAlive? { DepthKeepAlive(text: OKXVenue.pingText, everyMs: OKXVenue.pingEveryMs) }
 
   /// 订阅消息（一条最多 `booksPerMessage` 本）。
   var subscribeMessages: [String] {
     stride(from: 0, to: books.count, by: Self.booksPerMessage).compactMap { start in
       let chunk = books[start..<min(start + Self.booksPerMessage, books.count)]
-      let args: [[String: String]] = chunk.flatMap { book in
-        [["channel": "books", "instId": book.venue.instrument],
-         ["channel": "trades", "instId": book.venue.instrument]]
+      let args = chunk.flatMap { book in
+        [(channel: "books", instID: book.venue.instrument), (channel: "trades", instID: book.venue.instrument)]
       }
-      let obj: [String: Any] = ["op": "subscribe", "args": args]
-      guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return nil }
-      return String(decoding: data, as: UTF8.self)
+      return try? OKXWire.control(VenueControl.subscribe.rawValue, args)
     }
   }
 
@@ -69,10 +56,8 @@ public struct OKXBooksAdapter: DepthFeedAdapter {
   /// 中继一条消息一个 arg、退订在前，订阅数不会超过它的上限。
   public func resubscribeMessages(venueID: String) -> [String]? {
     guard let book = books.first(where: { $0.id == venueID }) else { return nil }
-    return ["unsubscribe", "subscribe"].compactMap { op in
-      let obj: [String: Any] = ["op": op, "args": [["channel": "books", "instId": book.venue.instrument]]]
-      guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return nil }
-      return String(decoding: data, as: UTF8.self)
+    return [VenueControl.unsubscribe, .subscribe].compactMap { op in
+      try? OKXWire.control(op.rawValue, [(channel: "books", instID: book.venue.instrument)])
     }
   }
 
@@ -88,45 +73,6 @@ public struct OKXBooksAdapter: DepthFeedAdapter {
   }
 
   public func decode(_ text: String) -> [VenueMessage] {
-    guard let message = DepthWire.object(text), message["event"] == nil,
-          let arg = message["arg"] as? [String: Any],
-          let instID = arg["instId"] as? String, let book = byInstrument[instID],
-          let items = message["data"] as? [[String: Any]] else { return [] }
-    switch arg["channel"] as? String {
-    case "trades":
-      var out: [VenueMessage] = []
-      for t in items {
-        // 价量解得开却不是有限值或越界：整帧丢掉并记一笔（坏帧里别的成交同样不可信）。
-        guard let p = DepthWire.number(t["px"]), let q = DepthWire.number(t["sz"]),
-              p > 0, q >= 0, p.isFinite, q.isFinite else { WireNumber.noteDropped(); return [] }
-        guard q > 0, let side = t["side"] as? String, side == "buy" || side == "sell" else { continue }
-        out.append(VenueMessage(book.id, .trade(book.trade(price: p, quantity: q, hit: side == "buy" ? .ask : .bid,
-                                                           timeMs: DepthWire.integer(t["ts"]) ?? 0))))
-      }
-      return out
-    case "books":
-      guard let action = message["action"] as? String, items.count == 1 else { return [] }
-      let item = items[0]
-      guard let seq = DepthWire.integer(item["seqId"]),
-            let bids = book.levels(item["bids"]), let asks = book.levels(item["asks"]) else { return [] }
-      let time = DepthWire.integer(item["ts"])
-      switch action {
-      case "snapshot":
-        return [VenueMessage(book.id, .snapshot(BookSnapshot(lastUpdateID: seq, requestedLevels: Self.snapshotLevels,
-                                                             bids: bids, asks: asks, eventTimeMs: time,
-                                                             slidingWindow: true)))]
-      case "update":
-        guard let previous = DepthWire.integer(item["prevSeqId"]) else { return [] }
-        // 序号倒退：OKX 那边重置过，整本重来。
-        if seq < previous { return [VenueMessage(book.id, .reset)] }
-        return [VenueMessage(book.id, .delta(BookDelta(firstUpdateID: seq, finalUpdateID: seq,
-                                                      previousFinalUpdateID: previous,
-                                                      bids: bids, asks: asks, eventTimeMs: time ?? 0)))]
-      default:
-        return []
-      }
-    default:
-      return []
-    }
+    OKXDTO.books(text, byInstrument: byInstrument)
   }
 }

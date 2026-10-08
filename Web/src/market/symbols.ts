@@ -5,14 +5,28 @@
  *   COIN / INDEX → 加密；EQUITY 及各地股票 / PREMARKET → 美股；COMMODITY / FX → 大宗。
  * 另有一只不在币安的「美元指数」（DXY，macro/index，见 market/macro.ts），分类「指数」（idx），排在美股后面。
  * 中文名：大宗与美股用对照表，加密只给常见的几个，其余留空。
+ *
+ * 2026-10-08 起 S.symbols 装所有交易所的品种：键是身份键（market/identity.ts——币安裸代号、美元指数 DXY、
+ * 别家 venue/market/SYMBOL），Sym.venue / Sym.quote 说它是哪一家、什么计价。别家的品种表由各家的行情面
+ * （src/venues/<id>.ts market.instruments）给，按需懒拉（rest.ts loadVenue）。
  */
 import SECTORS from '../data/sectors.json'
 import { normalize, matchOne, Tier } from './searchText'
+import { parseKey, wireSymbol } from './identity'
 
 export type Kind = 'crypto' | 'us' | 'com' | 'idx'
 
 export interface Sym {
+  /** 身份键（币安裸代号、DXY、别家 venue/market/SYMBOL），S.symbols 的键 */
   symbol: string
+  /** 哪一家：binance / okx / bybit / hyperliquid / coinbase / macro */
+  venue: string
+  /** 计价币：USDT / USDC / USD；美元指数是空串 */
+  quote: string
+  /** 交易所原生代号（OKX 的 BTC-USDT-SWAP、Hyperliquid 的 kPEPE、Coinbase 的 BTC-USD）；币安与键相同时不给 */
+  raw?: string
+  /** 图表头部的品种名（带交易所自己的倍数前缀，如 1000PEPE、kPEPE）；不给就按代号去掉计价币（headName） */
+  title?: string
   base: string          // 去掉 1000 前缀后的代号，搜索与展示用
   code: string          // 展示用代号
   kind: Kind
@@ -40,6 +54,7 @@ export interface Sym {
   /** 标记价 / 指数价 / 资金费率对应的交易所时间（WS markPriceUpdate 的 E、REST premiumIndex 的 time） */
   markAt?: number
   supply?: number       // 总供应量（/v1/market/meta）
+  oi?: number           // 持仓量（币；整表行情里带的那几家才有：Bybit、Hyperliquid）
   ut?: string           // 交易所给的 underlyingType 原文（COIN / EQUITY / HK_EQUITY / COMMODITY …），市场筛选用
   tags?: string[]       // underlyingSubType 小写去重（layer-1 / meme / ai …），板块筛选用
   onboard?: number      // 上线时间（毫秒），「新」字记号用
@@ -86,9 +101,16 @@ export function badgeColor(base: string): string {
   return `hsl(${h} 55% 45%)`
 }
 
+/** 代号的底：去掉计价币与 1000 / 1M 前缀（BTCUSDT → BTC、1000PEPEUSDT → PEPE、okx/usd_m/BTCUSDT → BTC、coinbase/spot/BTC-USD → BTC） */
 export function baseOf(symbol: string, baseAsset?: string): string {
-  const b = baseAsset || symbol.replace(/USDT$|USDC$/, '')
+  const b = baseAsset || wireSymbol(symbol).replace(/-USD[CT]?$|USDT$|USDC$/, '')
   return b.replace(/^1000+(?=[A-Z])/, '').replace(/^1M(?=[A-Z])/, '')
+}
+/** 图表头部的品种名：基础币（带交易所自己的倍数前缀：1000PEPE、kPEPE），不带计价币 */
+export function headName(s: Pick<Sym, 'symbol'> & Partial<Pick<Sym, 'title' | 'macro' | 'code'>>): string {
+  if (s.title) return s.title
+  if (s.macro) return s.code || s.symbol
+  return wireSymbol(s.symbol).replace(/-USD[CT]?$|USDT$|USDC$/, '') || s.symbol
 }
 
 export function kindOfUnderlying(u: string | undefined, base: string): Kind {
@@ -117,7 +139,8 @@ export function decOfTick(tick: string | number): number {
   return Math.min(8, frac.length)
 }
 
-export function kindName(s: Pick<Sym, 'kind'> | null | undefined): string {
+export function kindName(s: (Pick<Sym, 'kind'> & Partial<Pick<Sym, 'symbol'>>) | null | undefined): string {
+  if (s?.symbol && parseKey(s.symbol).market === 'spot') return '现货'
   return s?.kind === 'us' ? '美股永续' : s?.kind === 'com' ? '大宗永续' : s?.kind === 'idx' ? '指数' : '永续'
 }
 
@@ -126,7 +149,7 @@ export function sectorsOf(s: Sym): { id: string; cn: string }[] {
   if (s.kind === 'us') return SEC.us.filter(x => x[2].includes(s.base)).map(x => ({ id: 'u:' + x[0], cn: x[1] }))
   if (s.kind !== 'crypto') return []
   // 成员表按合约名的底（保留 1000 前缀，如 1000BONK），s.base 已去掉前缀，两个都查
-  return (SEC.members[s.symbol.replace(/USDT$|USDC$/, '')] || SEC.members[s.base] || []).map(id => SEC.crypto.find(x => x[0] === id)).filter((x): x is [string, string] => !!x).map(x => ({ id: 'c:' + x[0], cn: x[1] }))
+  return (SEC.members[wireSymbol(s.symbol).replace(/USDT$|USDC$/, '')] || SEC.members[s.base] || []).map(id => SEC.crypto.find(x => x[0] === id)).filter((x): x is [string, string] => !!x).map(x => ({ id: 'c:' + x[0], cn: x[1] }))
 }
 
 /** 搜索打分（越大越靠前，0 = 不命中）：和手机网页 / iOS 同一套归一与分档（market/searchText）——
@@ -135,7 +158,8 @@ export function sectorsOf(s: Sym): { id: string; cn: string }[] {
 export function matchScore(s: Pick<Sym, 'symbol' | 'code' | 'cn'>, q: string): number {
   const Q = normalize(q)
   if (!Q) return 1
-  let tier: number | null = matchOne(s.symbol, s.symbol.replace(/USDT$|USDC$/, ''), Q)?.tier ?? null
+  const w = wireSymbol(s.symbol)
+  let tier: number | null = matchOne(w, w.replace(/-USD[CT]?$|USDT$|USDC$/, ''), Q)?.tier ?? null
   const better = (t: number) => { if (tier == null || t < tier) tier = t }
   const code = normalize(s.code)
   if (code === Q) better(Tier.exact)
@@ -156,4 +180,34 @@ export function rankSearch<T extends Pick<Sym, 'symbol' | 'code' | 'cn' | 'vol'>
   const scored = list.map(s => ({ s, m: matchScore(s, q) })).filter(x => x.m > 0)
   scored.sort((a, b) => (b.m - a.m) || (blank ? (+watched(b.s.symbol) - +watched(a.s.symbol)) : 0) || ((b.s.vol || 0) - (a.s.vol || 0)))
   return scored.slice(0, limit).map(x => x.s)
+}
+
+// ------------------------------------------------------------ 搜索按交易所分组
+/** 一组搜索结果：一家一组 */
+export interface SearchGroup<T> { venue: string; items: T[]; best: number }
+
+/**
+ * 搜索结果按交易所分区（像 TradingView / AICoin：同一个币在不同交易所是不同品种）：
+ *   一家一组；组内按现有排序（匹配档 → 空查询时自选在前 → 24h 成交额）；
+ *   组序先按组内最好的匹配档、同档按 order（注册表顺序，美元指数这类不在注册表里的排最后）；每组各自封顶 perGroup。
+ * venueOf：这一行属于哪一组（默认 Sym.venue）。
+ */
+export function groupSearch<T extends Pick<Sym, 'symbol' | 'code' | 'cn' | 'vol'> & { venue?: string }>(list: T[], q: string, order: readonly string[],
+  watched: (k: string) => boolean = () => false, perGroup = 40): SearchGroup<T>[] {
+  const blank = !normalize(q)
+  const by = new Map<string, { s: T; m: number }[]>()
+  for (const s of list) {
+    const m = matchScore(s, q)
+    if (m <= 0) continue
+    const v = s.venue ?? parseKey(s.symbol).venue
+    let g = by.get(v); if (!g) by.set(v, g = [])
+    g.push({ s, m })
+  }
+  const rank = (v: string): number => { const i = order.indexOf(v); return i < 0 ? order.length : i }
+  const out: SearchGroup<T>[] = []
+  for (const [venue, xs] of by) {
+    xs.sort((a, b) => (b.m - a.m) || (blank ? (+watched(b.s.symbol) - +watched(a.s.symbol)) : 0) || ((b.s.vol || 0) - (a.s.vol || 0)))
+    out.push({ venue, items: xs.slice(0, perGroup).map(x => x.s), best: xs[0].m })
+  }
+  return out.sort((a, b) => (b.best - a.best) || (rank(a.venue) - rank(b.venue)))
 }

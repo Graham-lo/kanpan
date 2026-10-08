@@ -135,10 +135,13 @@ describe('美元指数 · 图上收掉的指标（偏好不动）', () => {
   })
 })
 
-describe('美元指数 · 电脑图例不挂「币安」', async () => {
+describe('美元指数 · 电脑图例不挂交易所', async () => {
   const src = (await import('../src/pages/chart.ts?raw')).default as string
-  it('图例副标题：macro 品种只写「指数」，币安品种照旧「币安永续」', () => {
-    expect(src).toContain("${s?.macro ? '' : '币安'}${kindName(s)}")
-    expect(src).not.toContain('· 币安${kindName(s)}`')
+  const { chartSub } = await import('../src/ui/common')
+  const { macroFallback } = await import('../src/market/macro')
+  it('图例副标题：macro 品种只写「指数」，币安品种「币安 USDT 永续」（2026-10-08 三端一致）', () => {
+    expect(src).toContain('${chartSub(c.symbol, s)}')
+    expect(chartSub('DXY', macroFallback())).toBe('指数')
+    expect(chartSub('BTCUSDT', { kind: 'crypto', quote: 'USDT' })).toBe('币安 USDT 永续')
   })
 })

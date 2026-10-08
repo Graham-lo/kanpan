@@ -10,7 +10,7 @@
  */
 import { authed, ApiError } from '../account/client'
 import { session, onSession } from '../account/session'
-import { MACRO_KEY, MACRO_SYMBOL } from '../market/macro'
+import { displayKey } from '../market/identity'
 import { priceLabel } from './shape'
 
 export interface AlertLogRecord {
@@ -114,9 +114,8 @@ export function logDetail(r: AlertLogRecord, dec?: number): string {
 /** 完整键 → 网页版的裸代号（macro/index/DXY → DXY，binance/usd_m/BTCUSDT → BTCUSDT）；本来就是裸的原样回 */
 export function bareSymbol(key: string): string {
   if (!key) return ''
-  if (key === MACRO_KEY) return MACRO_SYMBOL
-  const i = key.lastIndexOf('/')
-  return i < 0 ? key : key.slice(i + 1)
+  // 完整键 → 网页键：币安回裸代号、美元指数回 DXY，别家（okx/usd_m/BTCUSDT）原样——不能只取最后一段，那会把 OKX 的提醒开成币安的
+  return key.includes('/') ? displayKey(key) : key
 }
 
 /** 行上第一行：品种名（pair 由各端给，手机「BTC/USDT」、电脑「BTCUSDT」）；没给品种时用标题，再没有就叫「提醒」 */

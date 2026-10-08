@@ -3,7 +3,7 @@
  * 图表页只留挂接点（installWatch / widgetWatch / mountWatch / watchClick / patchWatchRow / takeWatchUndo），
  * 列表的渲染、键盘、右键、拖动排序都在这里。
  *
- * 列固定三列：品种（只写代号）· 最新价 · 涨跌幅，不给列设置；2026-10-07 用户说中文名、成交额都没必要，
+ * 列固定三列：品种（交易所缩写灰小字 + 「DOGE/USDT」，2026-10-08 三端一致）· 最新价 · 涨跌幅，不给列设置；2026-10-07 用户说中文名、成交额都没必要，
  * 侧栏拉宽时的资金费 · 持仓额两列一并去掉。2026-10-08 用户嫌挤、字小，排版照 TradingView 自选：字 14、行高 34、
  * 数字列定宽各成一竖条（仍是三列，涨跌额不要）。
  * 键盘（焦点在列表里时，带 ⌘ / Ctrl / Alt 的一律放给全局）：
@@ -15,10 +15,10 @@
  * 多图时头部下写「在第 N 格打开」，跟着活动格走；行的右键菜单同样写第几格。
  */
 import { st, save } from '../app/store'
-import { S, TABS, baseOf, kindOfUnderlying, type Kind } from '../market'
-import { $, $$, I, esc, tgt } from '../ui/dom'
+import { S, TABS, baseOf, headName, kindOfUnderlying, type Kind } from '../market'
+import { $, $$, I, tgt } from '../ui/dom'
 import { toast, menu, menuFrom } from '../ui/overlay'
-import { sym, pctText, cls, priceText, badge } from '../ui/common'
+import { sym, pctText, cls, priceText, badge, listName } from '../ui/common'
 import { reorderWatch, undoClear, flashClass, FLASH_CLASSES, RowGate } from './logic'
 import { onSession } from '../account/session'
 
@@ -47,7 +47,7 @@ export function takeWatchUndo(): (() => void) | null { const u = undo; undo = nu
 
 const panelEl = (): HTMLElement | null => document.getElementById('sidePanel')
 const tabName = (k: Kind): string => TABS.find(x => x[0] === k)?.[1] || ''
-const codeOf = (k: string): string => sym(k)?.code || k
+const codeOf = (k: string): string => sym(k)?.code || headName({ symbol: k })
 const targetLabel = (): string => D.cellCount() > 1 ? `在第 ${D.activeIndex() + 1} 格打开` : '在图上打开'
 
 /** 列表里要画的行：自选 + 空格取消后淡着留下的那一行 */
@@ -90,7 +90,7 @@ export function widgetWatch(): string {
 function watchRow(k: string, cur: string): string {
   const s = sym(k), g = ghost?.k === k, base = baseOf(k)
   return `<tr data-sym="${k}" draggable="${!g}" tabindex="${k === kb.cursor ? 0 : -1}" class="${k === cur ? 'sel' : ''} ${g ? 'wv-ghost' : ''}" aria-selected="${k === cur}">
-    <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<b>${esc(s?.code || base)}</b>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
+    <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<span class="wv-name">${listName(k, s)}</span>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
     <td class="num price-live wc-px" data-f="price">${priceText(s)}</td>
     <td class="num ${cls(s?.pct)} price-live wc-pct" data-f="pct">${pctText(s?.pct)}</td></tr>`
 }

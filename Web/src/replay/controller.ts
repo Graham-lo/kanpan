@@ -13,7 +13,7 @@
  */
 import type { Bar } from '../chart/calc'
 import type { TVChart, ChartLayer, ChartMetaInput } from '../chart/chart'
-import { j, REST, klines, attachOI } from '../market'
+import { klines, klinesFrom, attachOI } from '../market'
 import { isCustomIv, customBase, customKlines, aggregate } from '../chart/intervals'
 import { IV_MS, fmt } from '../util/format'
 import { toast, dialogs } from '../ui/overlay'
@@ -247,8 +247,6 @@ async function fetchBack(symbol: string, iv: string, endTime: number, alive: () 
   return r.bars
 }
 
-type Row = [number, string, string, string, string, string, number, string, number, string, string, ...unknown[]]
-const parse = (rows: Row[]): Bar[] => rows.map(r => ({ t: r[0], o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[7], tb: +r[10], bv: +r[5] }))
 
 /** 开盘不早于 from 的 limit 根「未来」，只留走完的整根；取不到返回 null */
 async function fetchFwd(symbol: string, iv: string, from: number, limit: number, alive: () => boolean): Promise<Bar[] | null> {
@@ -256,8 +254,8 @@ async function fetchFwd(symbol: string, iv: string, from: number, limit: number,
   const per = custom ? Math.round(IV_MS[iv] / IV_MS[base]) : 1
   const n = Math.min(M.PAGE, Math.max(1, limit * per))
   try {
-    const rows = await j<Row[]>(`${REST}/fapi/v1/klines?symbol=${symbol}&interval=${base}&startTime=${from}&limit=${n}`, 10000, false, alive)
-    let bars = parse(rows)
+    // 按品种所属的交易所取（币安走 fapi，别家走它自己的模块；见 market/rest.ts klinesFrom）
+    let bars = await klinesFrom(symbol, base, from, n, alive)
     if (custom) {
       const lastBase = bars[bars.length - 1]
       bars = aggregate(bars, IV_MS[iv])

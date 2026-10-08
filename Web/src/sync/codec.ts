@@ -19,7 +19,9 @@ import type { Drawing, DrawingType, DrawPoint } from '../chart/chart'
 import { ANCHOR_COUNT, CONTRACT_KIND, WEB_TYPE, defaultLevels, levelsOf, levelsOk, textOk, usesFill, usesLevels, usesText } from '../chart/drawTools'
 import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { INTERVALS, type Kind } from '../market/symbols'
-import { MACRO_ALERT_MARKET, MACRO_CN, MACRO_MARKET, MACRO_SYMBOL, MACRO_VENUE, isMacro, syncKeyOf, venueMarketOf } from '../market/macro'
+import { MACRO_CN, MACRO_MARKET, MACRO_SYMBOL, MACRO_VENUE, isMacro, syncKeyOf, venueMarketOf } from '../market/macro'
+import { alertMarketOf as identityAlertMarket, isDefaultVenue, keyOf, parseKey, wireSymbol } from '../market/identity'
+import { symbolOk } from '../venues'
 import { type Body, type Json, type SyncObject, same } from './types'
 import { MAX_OVERRIDES, isValidBase, normalizeOverride, type Override } from '../orderflow/settings'
 import { LAYOUTS_FIELD, bookFrom, cleanBook, liveBook, loadLive, type CellCfg, type Layout, type LayoutBook } from '../app/layouts'
@@ -37,16 +39,26 @@ export interface Ctx {
 export const VENUE = 'binance'
 export const MARKET = 'usd_m'
 export const ALERT_MARKET = 'binance/usd_m'
-/** 一只网页品种的同步前缀：币安 U 本位是 binance/usd_m/<代号>/，美元指数是 macro/index/DXY/ */
+/** 一只网页品种的同步前缀：币安 U 本位是 binance/usd_m/<代号>/，美元指数是 macro/index/DXY/，别家 okx/usd_m/<代号>/…… */
 const prefixOf = (symbol: string): string => syncKeyOf(symbol) + '/'
-/** 网页存的裸代号能不能上云：币安代号规则，或美元指数（DXY ↔ macro/index/DXY） */
-export function webSymbol(s: string): boolean { return validSymbol(s) || isMacro(s) }
-/** 提醒正文里的 market */
-export function alertMarketOf(symbol: string): string { return isMacro(symbol) ? MACRO_ALERT_MARKET : ALERT_MARKET }
+/** 网页存的品种键能不能上云：币安代号规则、美元指数（DXY ↔ macro/index/DXY），或注册表里那一家的代号形状
+ *  （okx/usd_m/BTCUSDT、bybit/usd_m/…、hyperliquid/usd_m/KPEPE、coinbase/spot/BTC-USD；2026-10-08 起） */
+export function webSymbol(s: string): boolean {
+  if (isMacro(s)) return true
+  if (isDefaultVenue(s)) return validSymbol(parseKey(s).symbol) && !s.includes('/')
+  return symbolOk(s)
+}
+/** 提醒正文里的 market（`venue/market`） */
+export function alertMarketOf(symbol: string): string { return identityAlertMarket(symbol) }
+/** 同步正文里的三段 → 网页里存的键（币安回裸代号、美元指数回 DXY、别家完整键）；缺段回 null */
+function webOf(b: Body): string | null {
+  const v = str(b.venue), m = str(b.market), s = str(b.symbol)
+  return v && m && s ? keyOf(v, m, s) : null
+}
 /** 同步正文的 venue / market 是不是这只网页品种的（美元指数认 macro/index） */
 function venueOk(b: Body, symbol: string): boolean {
   const vm = venueMarketOf(symbol)
-  return b.venue === vm.venue && b.market === vm.market && (vm.venue !== VENUE || validSymbol(symbol))
+  return b.venue === vm.venue && b.market === vm.market && webSymbol(symbol)
 }
 
 const QUOTE_ASSETS = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'USD1', 'TUSD'] // instruments.rs QUOTE_ASSETS
@@ -72,7 +84,8 @@ export function instrumentIdentity(venue: string, market: string, symbol: string
   if (venue === VENUE && market === MARKET) return validSymbol(symbol)
   if (venue === 'coinbase' && market === 'spot') return coinbaseSymbol(symbol)
   if (venue === MACRO_VENUE && market === MACRO_MARKET) return symbol === MACRO_SYMBOL   // 服务端白名单只放美元指数一只
-  return false
+  // 注册表里的别家（OKX / Bybit / Hyperliquid…）：按那一家登记的代号形状（和服务端 venues/<id> symbol_ok 同一规则）
+  return symbolOk(`${venue}/${market}/${symbol}`)
 }
 /** 服务端 compare_key：`venue/market/SYMBOL`，整串 UTF-8 不超过 128 字节，三段过 identity */
 export function compareKey(k: string): boolean {
@@ -378,7 +391,7 @@ function liveSorted(objs: SyncObject[]): SyncObject[] {
 }
 /** 网页管得着的自选：币安 U 本位、在品种表里 */
 function favKind(o: SyncObject, ctx: Ctx): Kind | undefined {
-  const s = str(o.body.symbol)
+  const s = webOf(o.body)
   if (!s || !venueOk(o.body, s) || o.id !== favId(s)) return undefined
   return isMacro(s) ? 'idx' : ctx.kindOf(s)
 }
@@ -439,7 +452,7 @@ export function encodeFavorites(watch: Record<Kind, string[]>, prevAll: SyncObje
     const base = x.prev && !x.prev.deleted ? x.prev.body : null
     const body: Body = x.symbol == null
       ? { ...(base ?? {}), order }
-      : { symbol: x.symbol, ...venueMarketOf(x.symbol), groupId: base && 'groupId' in base ? base.groupId : (x.kind ? groupForNew(x.kind, x.symbol, prev, groups, ctx) : null), order }
+      : { symbol: wireSymbol(x.symbol), ...venueMarketOf(x.symbol), groupId: base && 'groupId' in base ? base.groupId : (x.kind ? groupForNew(x.kind, x.symbol, prev, groups, ctx) : null), order }
     out.push({ collection: 'favorites', id: x.id, body, fields: {}, revision: 0, deleted: false, generation: 0 })
   })
   for (const o of prev) {
@@ -454,7 +467,7 @@ export function decodeFavorites(all: SyncObject[], ctx: Ctx): Record<Kind, strin
   const out: Record<Kind, string[]> = { crypto: [], us: [], com: [], idx: [] }
   for (const o of liveSorted(all)) {
     const k = favKind(o, ctx)
-    const s = str(o.body.symbol)
+    const s = webOf(o.body)
     if (k && s && !out[k].includes(s)) out[k].push(s)
   }
   return out
@@ -491,7 +504,7 @@ export function drawingManaged(o: SyncObject): boolean {
   const b = o.body
   const kind = str(b.kind)
   if (!kind || !TYPE_OF[kind]) return false
-  const s = str(b.symbol)
+  const s = webOf(b)
   if (!s || !venueOk(b, s) || !o.id.startsWith(prefixOf(s))) return false
   if (b.hidden === true) return false
   const anchors = Array.isArray(b.anchors) ? b.anchors : null
@@ -517,7 +530,7 @@ export function decodeDrawing(o: SyncObject): { symbol: string; d: Drawing } | n
   if (usesLevels(d.type) && levelsOk(b.levels) && b.levels.length) d.levels = [...b.levels]
   if (b.filled === false) d.filled = false
   if (typeof b.text === 'string' && b.text && textOk(b.text)) d.text = b.text
-  return { symbol: str(b.symbol)!, d }
+  return { symbol: webOf(b)!, d }
 }
 
 function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined): SyncObject | null {
@@ -542,7 +555,7 @@ function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined)
   body.dash = d.dash ?? 'solid'
   body.locked = !!d.locked
   const vm = venueMarketOf(symbol)
-  body.symbol = symbol; body.market = vm.market; body.venue = vm.venue
+  body.symbol = wireSymbol(symbol); body.market = vm.market; body.venue = vm.venue
   return { collection: 'drawings', id, body, fields: {}, revision: 0, deleted: false, generation: 0 }
 }
 
@@ -652,7 +665,7 @@ const wireDrawingId = (a: Alert): string | null => {
 /** 网页提醒 → 线上身体（19 个键） */
 export function alertToBody(a: Alert): Body {
   const b: Body = {}
-  for (const k of ALERT_KEYS) b[k] = (k === 'drawingID' ? wireDrawingId(a) : a[k]) as Json
+  for (const k of ALERT_KEYS) b[k] = (k === 'drawingID' ? wireDrawingId(a) : k === 'symbol' ? wireSymbol(a.symbol) : a[k]) as Json
   return JSON.parse(JSON.stringify(b)) as Body
 }
 
@@ -671,10 +684,13 @@ export function decodeAlert(o: SyncObject, fired = false): Alert | null {
   const b = o.body
   if (o.deleted || !(b.status === 'active' || revivable(b) || (fired && b.status === 'fired'))) return null
   if (b.kind !== 'price' && b.kind !== 'drawing' && b.kind !== 'condition') return null
-  const symbol = str(b.symbol)
+  const wire = str(b.symbol), mk = str(b.market)?.split('/')
+  // 正文里是那一家的代号（OKX 的 BTCUSDT），market 是 venue/market：拼回网页里存的键（币安裸代号、DXY、别家完整键）
+  const symbol = wire && mk?.length === 2 ? keyOf(mk[0], mk[1], wire) : null
   if (!symbol || !webSymbol(symbol) || b.market !== alertMarketOf(symbol) || !o.id.startsWith(prefixOf(symbol))) return null
   const raw: Record<string, unknown> = { id: lastSeg(o.id) }
   for (const k of ALERT_KEYS) if (k in b) raw[k] = structuredClone(b[k])
+  raw.symbol = symbol
   if (revivable(b)) raw.status = 'active'
   if (!Array.isArray(raw.lines)) raw.lines = []
   const did = str(b.drawingID)

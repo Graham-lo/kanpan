@@ -35,7 +35,7 @@ import { installWatch, widgetWatch, mountWatch, watchClick, patchWatchRow, takeW
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { morphHtml } from '../ui/patch'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
-import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
+import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls, venueTag, chartSub } from '../ui/common'
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine, type AlertSignal } from '../chart/chart'
 import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd, editText } from './drawing'
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
@@ -44,8 +44,11 @@ import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
   S, on, REST, coolingFor, isRateLimit, wakeQueued, klines, attachOI, oiPeriod, OI_EPOCH, SIDE_LIMIT, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
-  IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, baseOf, kindOfUnderlying, type Kind, type Sym, type KlineResult,
+  IV_LABEL, IV_SHORT, INTERVALS, TABS, sectorsOf, baseOf, headName, kindOfUnderlying, type Kind, type Sym, type KlineResult,
+  isDefaultVenue, knownMissing, loadAllVenues, ensureVenuesFor, symbolOfStream,
 } from '../market'
+import { venueLabel } from '../venues'
+import { searchGroups, resultName, groupHead, venueStatusHTML } from './searchGroups'
 import { klineDiskReady, diskBars, keepBars, flushBars } from '../market/klineStore'
 import { settle } from '../market/settle'
 import { normalize } from '../market/searchText'
@@ -94,18 +97,20 @@ const RANGES: [string, string, RangeDays][] = [['1天', '1m', 1], ['5天', '5m',
 function cfg(cell: Cell | undefined): CellCfg { return st.cells[cell ? cell.idx : st.active] || st.cells[0] }
 export const active = (): Cell | undefined => cells[st.active]
 
-/** 图例副标题：美元指数这类自家服务器给的品种（macro）不是币安的，不挂「币安」，只写「指数」 */
+/** 图例：品种名只写基础币「DOGE」（2026-10-08 三端一致），旁边小字写交易所、计价与类别「币安 USDT 永续」「CB USD 现货」；
+ *  美元指数这类自家服务器给的品种（macro）不挂交易所，只写「指数」（ui/common.ts chartSub） */
 function metaFor(c: CellCfg, bars?: readonly Bar[]) {
   const real = sym(c.symbol), s = real ?? guessSym(c.symbol), cs = st.chartSettings
   // 图表设置：状态栏的品种名（代码 / 全称 / 两个都要）、商品的价格精度（默认 = 品种自己的最小变动价位；表没到先按 K 线猜）
-  const name = real?.cn && real.cn !== c.symbol ? real.cn : ''
-  const title = cs.title === 'name' && name ? name : cs.title === 'both' && name ? `${c.symbol} ${name}` : c.symbol
-  return { symbol: c.symbol, iv: IV_MS[c.iv], title, sub: `· ${IV_LABEL[c.iv]} · ${s?.macro ? '' : '币安'}${kindName(s)}`, dec: cs.precision ?? real?.dec ?? decOfBars(bars) ?? 2, badge: badge(s) }
+  const head = headName(real ?? { symbol: c.symbol })
+  const name = real?.cn && real.cn !== head ? real.cn : ''
+  const title = cs.title === 'name' && name ? name : cs.title === 'both' && name ? `${head} ${name}` : head
+  return { symbol: c.symbol, iv: IV_MS[c.iv], title, sub: `· ${IV_LABEL[c.iv]} · ${chartSub(c.symbol, s)}`, dec: cs.precision ?? real?.dec ?? decOfBars(bars) ?? 2, badge: badge(s) }
 }
 /** 品种表还没到（冷启动没有本机那份）：徽标、类别先按代号猜，表到了再换成准的（setMeta） */
 function guessSym(k: string): Pick<Sym, 'base' | 'kind'> & { dec?: number; macro?: boolean } {
   const base = baseOf(k)
-  return { base, kind: kindOfUnderlying(undefined, base) }
+  return { base, kind: isDefaultVenue(k) ? kindOfUnderlying(undefined, base) : 'crypto' }
 }
 /** 精度也先按 K 线里出现过的小数位猜（最多 8 位），再按价位封顶：有效数字最多 7 位（81,081.7 最多 2 位、2,430 最多 3 位）。
  *  算出来的价（宏观源、聚合）带浮点尾巴时不至于猜成 8 位、价格轴先宽，表一到又缩回去 */
@@ -356,6 +361,8 @@ function showCellEmpty(cell: Cell, msg: string | null, quiet = false): void {
   e.hidden = !msg
   if (msg) morphHtml(e, quiet ? `<div class="empty">${I('trades', 'icon-24')}<div>${esc(msg)}</div></div>` : `<div class="empty">${I('wifiOff', 'icon-24')}<div>${esc(msg)}</div><button class="btn secondary sm" style="margin-top:12px" data-retry>重试</button></div>`)
 }
+/** 提示里的品种名：交易所缩写 + 基础币（「OKX BTC」「币安 1000PEPE」；美元指数只写代号） */
+function dispName(k: string): string { const v = venueLabel(k); return (v ? v + ' ' : '') + headName(sym(k) ?? { symbol: k }) }
 /** 取 K 线：秒级从逐笔攒的内存里拿，自定义分钟从原生周期并，其余走交易所。
  *  alive：这一格还要不要这份（换了品种 / 周期就不要了）——在限流闸里排队的作废请求不发、不占预算 */
 async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () => boolean, withOI = true,
@@ -488,9 +495,9 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   else if (!ok || !bars.length) {
     cell.chart.setData([], metaFor(c))
     const limited = !ok && isRateLimit(error)
-    showCellEmpty(cell, ok ? `${c.symbol} 在这个周期上还没有 K 线`
-      : limited ? `币安限流了，${c.symbol} 的 K 线冷却后自动重取`
-      : `取不到 ${c.symbol} 的 K 线${error ? `（${error.split(' ')[0]}）` : ''}`)
+    showCellEmpty(cell, ok ? `${dispName(c.symbol)} 在这个周期上还没有 K 线`
+      : limited ? `${venueLabel(c.symbol) || '交易所'}限流了，${dispName(c.symbol)} 的 K 线冷却后自动重取`
+      : `取不到 ${dispName(c.symbol)} 的 K 线${error ? `（${error.split(' ')[0]}）` : ''}`)
     // 限流：冷却一过这一格自己再取（期间换了品种 / 周期就作废），不让用户对着空图去点
     // 格子已经没了（切布局 16→1 被收掉）就不再重取：原来这里只认 token，死格子冷却后照样打一次 K 线
     if (limited) setTimeout(() => { if (token === cell.loadToken && !cell.chart.dead) void loadCell(cell) }, Math.max(coolingFor(REST), 5000) + 500)
@@ -764,7 +771,7 @@ export function renderToolbar(): void {
   const pinnedHas = st.pinned.includes(c.iv)
   // 取完 K 线 / 重连 / 同步都会走这里：就地改，按钮节点留着（整块换了，指针下的按钮悬停与提示要等下一次 mousemove）
   morphHtml($('#toolbar'), `
-    <button class="tb-btn symbol-btn" id="tbSymbol" data-tip="换品种" data-kbd="⌘ K">${badge(s ?? guessSym(c.symbol))}<span>${esc(c.symbol)}</span><span class="kind">${kindName(s ?? guessSym(c.symbol))}</span></button>
+    <button class="tb-btn symbol-btn" id="tbSymbol" data-tip="换品种" data-kbd="⌘ K">${badge(s ?? guessSym(c.symbol))}<span>${esc(headName(s ?? { symbol: c.symbol }))}</span><span class="kind">${esc(chartSub(c.symbol, s ?? guessSym(c.symbol)))}</span></button>
     <span class="tb-sep"></span>
     <div class="intervals" role="group" aria-label="周期">
       ${st.pinned.map((iv, k) => `<button data-iv="${iv}" aria-pressed="${iv === c.iv}" data-tip="${IV_LABEL[iv]}" data-kbd="${k < 9 ? k + 1 : ''}">${IV_SHORT[iv]}</button>`).join('')}
@@ -807,7 +814,7 @@ function onToolbarClick(e: MouseEvent): void {
     case 'tbShare':
       menuFrom(b, [
         { icon: 'camera', label: '复制图表截图', run: () => screenshot(true) },
-        { icon: 'link', label: '复制这张图的链接', run: () => { void navigator.clipboard?.writeText(`${location.origin}${location.pathname}?s=${c.symbol}&i=${c.iv}#chart`); toast('链接已复制', '') } },
+        { icon: 'link', label: '复制这张图的链接', run: () => { void navigator.clipboard?.writeText(`${location.origin}${location.pathname}?s=${encodeURIComponent(c.symbol)}&i=${c.iv}#chart`); toast('链接已复制', '') } },
       ]); return
     case 'tbFull': return fullscreen()
     case 'tbSettings': return openChartSettings(settingsHost)
@@ -1064,7 +1071,7 @@ function renderDetail(): void {
   if (!s) {
     // 品种表还没到：先摆徽标、代号与价格位（「—」），表到了整块重画
     const g = guessSym(k)
-    morphHtml(el, `<div class="dh">${badge(g, 'lg')}<div class="names"><div class="code">${esc(g.base)}<span class="kind">${kindName(g)}</span></div><div class="cn"></div></div>${collapseBtn(isCollapsed('detail'))}</div>
+    morphHtml(el, `<div class="dh">${badge(g, 'lg')}<div class="names"><div class="code">${esc(headName({ symbol: k }))}<span class="kind">${esc(chartSub(k, g))}</span></div><div class="cn"></div></div>${collapseBtn(isCollapsed('detail'))}</div>
     <div class="px"><span class="big num" data-f="big">—</span><span class="chg num" data-f="chg"></span></div>`)
     return
   }
@@ -1080,7 +1087,7 @@ function renderDetail(): void {
   const secHTML = secs.slice(0, 3).map(x => `<button class="sec-link" data-sector="${x.id}">${esc(x.cn)}</button>`).join('')
   const cell = (k: string, v: string, c = '', f = ''): string => `<div><span class="k">${k}</span><span class="v num ${c}"${f ? ` data-f="${f}"` : ''}>${v}</span></div>`
   // 61 秒一次的慢数 / 元数据到了都会重画：就地改，星标 / 板块 / 收起按钮留着，指针停在上面不跳、点得中
-  morphHtml(el, `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(s.code)}<span class="kind">${kindName(s)}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}${secHTML ? `<span class="secs">${secHTML}</span>` : ''}</div></div>
+  morphHtml(el, `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(headName(s))}<span class="kind">${esc(chartSub(k, s))}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}${secHTML ? `<span class="secs">${secHTML}</span>` : ''}</div></div>
       <button class="ibtn sm" data-star="${k}" aria-pressed="${w}" aria-label="${w ? '移出自选' : '加入自选'}" data-tip="${w ? '移出自选' : '加入自选'}">${I(w ? 'star' : 'starOff')}</button>${collapseBtn(isCollapsed('detail'))}</div>
     <div class="px"><span class="big num price-live ${st.stale || s.closed ? '' : cls(s.pct)}${s.closed ? ' closed' : ''}" data-f="big">${priceText(s)}</span><span class="chg num ${cls(s.pct)}" data-f="chg">${chgText(s)}</span></div>
     ${s.hi && s.lo ? `<div class="range"><span class="num" data-f="lo">${fmt(s.lo, s.dec)}</span><div class="bar"><i data-f="pos" style="left:${clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100}%"></i></div><span class="num" data-f="hi">${fmt(s.hi, s.dec)}</span></div>` : ''}
@@ -1147,7 +1154,7 @@ function panelNotes(el: HTMLElement): void {
   el.innerHTML = `<div class="sp-head"><h3>笔记</h3><button class="btn secondary sm" id="nNew">${I('plus', 'icon-16')}记一笔</button></div>
     <div class="scroll" style="flex:1;min-height:0">${st.notes.length ? st.notes.slice().reverse().map(n => {
       const s = sym(n.symbol), state = noteState(n), rule = noteRuleText(n)
-      return `<div class="list-row" data-note="${esc(n.id)}" style="cursor:pointer;align-items:flex-start">${badge(s, 'lg')}<div class="main"><div class="t1">${esc(s?.code || n.symbol)}<span class="tag">${IV_LABEL[n.iv] || esc(n.iv)}</span>${state ? `<span class="note-state ${state.cls}" ${n.err ? `data-tip="${esc(n.err)}"` : ''}>${state.text}</span>` : ''}<span class="faint" style="font-size:12px;font-weight:400;margin-left:auto">${shTime(n.draft?.created ?? n.t)}</span></div>
+      return `<div class="list-row" data-note="${esc(n.id)}" style="cursor:pointer;align-items:flex-start">${badge(s, 'lg')}<div class="main"><div class="t1">${venueTag(n.symbol)}${esc(s?.code || headName({ symbol: n.symbol }))}<span class="tag">${IV_LABEL[n.iv] || esc(n.iv)}</span>${state ? `<span class="note-state ${state.cls}" ${n.err ? `data-tip="${esc(n.err)}"` : ''}>${state.text}</span>` : ''}<span class="faint" style="font-size:12px;font-weight:400;margin-left:auto">${shTime(n.draft?.created ?? n.t)}</span></div>
         ${rule ? `<div class="note-rule num">${esc(rule)}</div>` : ''}
         ${n.text ? `<div class="t2" style="color:var(--text-1);font-size:13px;line-height:20px;white-space:pre-wrap">${esc(n.text)}</div>` : ''}</div>
         <button class="ibtn sm act" data-del-note="${esc(n.id)}" aria-label="从这台电脑删掉" data-tip="${n.sync === 'synced' ? '从这台电脑删掉（复盘里的记录还在）' : '删除'}">${I('trash')}</button></div>`
@@ -1175,23 +1182,28 @@ export function openSearch(initial = ''): void {
   if (dialogs.some(d => d.dlg.classList.contains('search-dlg'))) return
   let cat: 'all' | Kind = 'all', q = initial, activeIdx = 0, results: Sym[] = []
   const CATS: ['all' | Kind, string][] = [['all', '全部'], ['crypto', '加密'], ['us', '美股'], ['com', '大宗']]
+  // 别家的品种表懒拉：弹层一打开就拉全部（已经拉到的不再拉），到了一家重画一次
+  const off = on(e => { if (e.type === 'universe') render() })
   const d = dialog(`<div class="search-top">${I('search', 'icon-24')}<input id="sq" placeholder="搜索品种，比如 BTC、英伟达、黄金" autocomplete="off" spellcheck="false" aria-label="搜索品种" value="${esc(initial)}"><kbd>Esc</kbd></div>
     <div class="search-cats" role="tablist">${CATS.map(([k, l]) => `<button class="chip" data-cat="${k}" aria-pressed="${k === cat}">${l}</button>`).join('')}</div>
     <div class="search-list scroll" id="sl" role="listbox"></div>
-    <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>↵</kbd>打开</span><span><kbd>⇧</kbd><kbd>↵</kbd>加自选</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg', { label: '搜索品种' })
+    <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>↵</kbd>打开</span><span><kbd>⇧</kbd><kbd>↵</kbd>加自选</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg', { label: '搜索品种', onClose: off })
+  void loadAllVenues()
   const inp = $<HTMLInputElement>('#sq', d.dlg), listEl = $('#sl', d.dlg)
   function render(): void {
     const qq = normalize(q)
     const pool = [...S.symbols.values()].filter(s => cat === 'all' || s.kind === cat)
-    results = rankSearch(pool, q, isWatched)
+    const { groups, flat } = searchGroups(pool, q, isWatched)
+    results = flat
     activeIdx = Math.min(activeIdx, Math.max(0, results.length - 1))
-    const hl = (t: string) => qq && t.toUpperCase().startsWith(qq) ? `<mark>${esc(t.slice(0, qq.length))}</mark>${esc(t.slice(qq.length))}` : esc(t)
-    listEl.innerHTML = !S.symbols.size ? `<div class="empty">${S.live === false ? '连不上币安合约接口，搜不了' : '正在取品种表…'}</div>`
-      : results.length ? results.map((s, i) => { const w = isWatched(s.symbol); return `<div class="sr ${i === activeIdx ? 'active' : ''}" role="option" aria-selected="${i === activeIdx}" data-i="${i}">
-      ${badge(s, 'lg')}<div><div class="n1">${hl(s.code)}<span class="muted" style="font-weight:400;font-size:12px;margin-left:6px">${esc(s.symbol === s.code ? '' : s.symbol)}</span></div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${kindName(s)}</div></div>
+    let i = 0
+    const row = (s: Sym): string => { const k = i++, w = isWatched(s.symbol); return `<div class="sr ${k === activeIdx ? 'active' : ''}" role="option" aria-selected="${k === activeIdx}" data-i="${k}">
+      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${esc(chartSub(s.symbol, s))}</div></div>
       <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>
-      <button class="ibtn sm" data-w="${esc(s.symbol)}" aria-label="${w ? '移出自选' : '加入自选'}" style="color:${w ? '#F5A623' : ''}">${I(w ? 'star' : 'starOff')}</button></div>` }).join('')
-      : `<div class="empty">没有找到「${esc(q)}」<div class="faint" style="font-size:12px;margin-top:4px">代号、中文名都能搜，比如「英伟达」「黄金」</div></div>`
+      <button class="ibtn sm" data-w="${esc(s.symbol)}" aria-label="${w ? '移出自选' : '加入自选'}" style="color:${w ? '#F5A623' : ''}">${I(w ? 'star' : 'starOff')}</button></div>` }
+    listEl.innerHTML = !S.symbols.size ? `<div class="empty">${S.live === false ? '连不上币安合约接口，搜不了' : '正在取品种表…'}</div>`
+      : results.length ? groups.map(g => groupHead(g) + g.items.map(row).join('')).join('') + venueStatusHTML()
+      : `<div class="empty">没有找到「${esc(q)}」<div class="faint" style="font-size:12px;margin-top:4px">代号、中文名都能搜，比如「英伟达」「黄金」</div></div>${venueStatusHTML()}`
   }
   const setCat = (k: 'all' | Kind) => { cat = k; $$('[data-cat]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cat === cat))); activeIdx = 0; render() }
   function move(k: number): void { activeIdx = Math.max(0, Math.min(results.length - 1, activeIdx + k)); render(); $('.sr.active', listEl)?.scrollIntoView({ block: 'nearest' }) }
@@ -1208,7 +1220,7 @@ export function openSearch(initial = ''): void {
     const w = t.closest<HTMLElement>('[data-w]'); if (w) { e.stopPropagation(); toggleWatch(w.dataset.w || ''); render(); inp.focus(); return }
     const r = t.closest<HTMLElement>('.sr'); if (r) { const s = results[+(r.dataset.i || 0)]; d.close(); if (s) { go('chart'); openSymbol(s.symbol) } }
   })
-  listEl.addEventListener('mousemove', e => { const r = tgt(e).closest<HTMLElement>('.sr'); if (r && +(r.dataset.i || 0) !== activeIdx) { activeIdx = +(r.dataset.i || 0); $$('.sr', listEl).forEach((x, i) => x.classList.toggle('active', i === activeIdx)) } })
+  listEl.addEventListener('mousemove', e => { const r = tgt(e).closest<HTMLElement>('.sr'); if (r && +(r.dataset.i || 0) !== activeIdx) { activeIdx = +(r.dataset.i || 0); $$('.sr', listEl).forEach(x => x.classList.toggle('active', +(x.dataset.i || -1) === activeIdx)) } })
   render(); inp.focus(); inp.setSelectionRange(q.length, q.length)
 }
 
@@ -1477,7 +1489,8 @@ export function refreshStreams(early = false): void {
   for (const fn of hooks.extraStreams) for (const x of fn()) set.add(x)
   if (st.panel === 'watch') for (const k of st.watch[st.watchTab]) set.add(streamName.ticker(k))
   // 品种表没到时没法筛（冷启动先订的那次）；到了之后下一次对账会把表里没有的撤掉
-  const known = (name: string) => !S.symbols.size || S.symbols.has(name.split('@')[0].toUpperCase())
+  // 别家的品种：那一家的表确认拉到过、里面没有它才撤（表还没拉到不算，见 knownMissing）
+  const known = (name: string) => { const k = symbolOfStream(name); return !S.symbols.size || S.symbols.has(k) || (!isDefaultVenue(k) && !knownMissing(k)) }
   setStreams([...set].filter(known), [...core].filter(known), { now: early, vital: [...vital].filter(known) })
 }
 
@@ -1566,10 +1579,11 @@ function afterUniverse(): void {
   const reload = new Set<Cell>()
   // 品种表没确认时不能拿空表 / 本机旧表去筛，否则会把自选清空并存盘
   if (S.live === true && S.symbols.size) {
-    for (const tab of Object.keys(st.watch) as Kind[]) st.watch[tab] = st.watch[tab].filter(k => S.symbols.has(k))
+    // 别家的品种只在那一家的表确认拉到过、里面又没有它时才筛掉（表还没拉到不算没有）
+    for (const tab of Object.keys(st.watch) as Kind[]) st.watch[tab] = st.watch[tab].filter(k => !knownMissing(k))
     // 表里没有的品种换成一只还没摆出来的常用品种（多图时不要一排全是 BTC）
     st.cells.forEach((c, i) => {
-      if (S.symbols.has(c.symbol)) return
+      if (!knownMissing(c.symbol)) return
       const used = new Set(st.cells.map(x => x.symbol))
       c.symbol = i === 0 ? 'BTCUSDT' : FILL_SYMBOLS.find(k => !used.has(k) && S.symbols.has(k)) || 'BTCUSDT'
       if (cells[i]) reload.add(cells[i])
@@ -1720,6 +1734,8 @@ export async function initChart(): Promise<void> {
   // 品种表先发（本机有上次那份就同步摆上、网络那份后台取），格子、K 线与推送下一拍再并行起：建 WS、算订阅要同步占 5 ms 左右，
   // 放在同一拍里会把品种表的三个请求和 DOMContentLoaded 一起往后推；K 线用低优先级，不在同一条 HTTP/2 连接上抢品种表的带宽
   const universe = universeP = loadUniverse()
+  // 别家的品种表懒拉：格子、自选、提醒、对比里用到哪家才拉哪家（和币安那份并行，不同的主机与限流器）；搜索弹层打开时再拉全部
+  void ensureVenuesFor([...st.cells.map(c => c.symbol), ...Object.values(st.watch).flat(), ...activeAlerts().map(a => a.symbol), ...st.compareSymbols])
   const fromDisk = S.live == null && S.symbols.size > 0   // 本机那份已经摆上：网络失败的重试由 market 自己管
   const booted = new Promise<void>(r => setTimeout(() => { void bootCells().then(r) }, 0))
   await universe

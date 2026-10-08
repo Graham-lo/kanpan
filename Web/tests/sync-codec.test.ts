@@ -238,11 +238,19 @@ describe('alerts', () => {
     expect(decodeAlerts([], [bad])).toEqual([bad])
   })
 
-  it('已触发的、复盘到期、Coinbase 的网页管不着：不删不显示', () => {
+  it('已触发的、复盘到期、注册表里没有的交易所的网页管不着：不删不显示', () => {
     const fired = obj('alerts', 'binance/usd_m/BTCUSDT/x', { kind: 'price', status: 'fired', market: ALERT_MARKET, symbol: 'BTCUSDT', lines: [{ points: [{ t: 1, p: 1 }] }], condition: 'touch' })
     const review = obj('alerts', 'binance/usd_m/BTCUSDT/r', { kind: 'reviewDue', status: 'active', market: ALERT_MARKET, symbol: 'BTCUSDT', lines: [], dueAt: 9 })
-    const cb = obj('alerts', 'coinbase/spot/BTC-USD/c', { kind: 'price', status: 'active', market: 'coinbase/spot', symbol: 'BTC-USD', lines: [{ points: [{ t: 1, p: 1 }] }] })
-    expect(encodeAlerts([], [fired, review, cb])).toEqual([])
-    expect(decodeAlerts([fired, review, cb], [])).toEqual([])
+    const ftx = obj('alerts', 'ftx/usd_m/BTCUSDT/c', { kind: 'price', status: 'active', market: 'ftx/usd_m', symbol: 'BTCUSDT', lines: [{ points: [{ t: 1, p: 1 }] }] })
+    expect(encodeAlerts([], [fired, review, ftx])).toEqual([])
+    expect(decodeAlerts([fired, review, ftx], [])).toEqual([])
+  })
+  it('2026-10-08 起别家的提醒网页也管：正文是那一家的代号与 venue/market，本机是完整键', () => {
+    const cb = obj('alerts', 'coinbase/spot/BTC-USD/c1', { kind: 'price', status: 'active', market: 'coinbase/spot', symbol: 'BTC-USD', lines: [{ points: [{ t: 1, p: 1 }], extendLeft: true, extendRight: true }], condition: 'touch', once: true, armedAt: 1, created: 1, title: 'BTC 到了 1' })
+    const okx = obj('alerts', 'okx/usd_m/BTCUSDT/o1', { kind: 'price', status: 'active', market: 'okx/usd_m', symbol: 'BTCUSDT', lines: [{ points: [{ t: 1, p: 2 }], extendLeft: true, extendRight: true }], condition: 'touch', once: true, armedAt: 1, created: 1, title: 'BTC 到了 2' })
+    const got = decodeAlerts([cb, okx], [])
+    expect(got.map(a => [a.symbol, a.market, a.id])).toEqual([['coinbase/spot/BTC-USD', 'coinbase/spot', 'c1'], ['okx/usd_m/BTCUSDT', 'okx/usd_m', 'o1']])
+    const back = encodeAlerts(got, [])
+    expect(back.map(o => [o.id, o.body.symbol, o.body.market])).toEqual([['coinbase/spot/BTC-USD/c1', 'BTC-USD', 'coinbase/spot'], ['okx/usd_m/BTCUSDT/o1', 'BTCUSDT', 'okx/usd_m']])
   })
 })

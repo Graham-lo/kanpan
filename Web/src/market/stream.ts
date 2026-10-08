@@ -28,9 +28,10 @@
  *     记成「被拒」，不再占位、不再重发，也不再让首帧看门狗为它们等帧（被拒的订阅永远不会来帧）。
  */
 import type { Bar } from '../chart/calc'
-import { S, emit, type Route } from './state'
+import { S, emit, setWsPart, type Route } from './state'
 import { emitTrade } from './trades'
 import { isMacroStream, setMacroStreams } from './macroStream'
+import { isVenueStream, setVenueStreams, setVenueRoute } from './venueStream'
 import { ago, before } from '../util/clock'
 
 /**
@@ -274,9 +275,12 @@ export function setStreams(list: string[], coreList: string[] = list, opts: { no
   // 流名大小写敏感（月线是 kline_1M），品种部分由 streamName 负责转小写
   // 美元指数（dxy@…）走自家服务器那条连接，不进币安的连接池（币安没有这只，发过去整条连接会被掐）
   setMacroStreams(list.filter(isMacroStream))
-  all = [...new Set(list.filter(x => !isMacroStream(x)))]
-  core = [...new Set(coreList.filter(x => !isMacroStream(x)))]
-  vital = new Set((opts.vital ?? coreList).filter(x => !isMacroStream(x)))
+  // 别家的品种（流名的品种段是完整键 okx/usd_m/BTCUSDT@…）走那一家自己的推送（venueStream.ts），不进币安的连接池
+  setVenueStreams(list.filter(isVenueStream), coreList.filter(isVenueStream))
+  const mine = (x: string) => !isMacroStream(x) && !isVenueStream(x)
+  all = [...new Set(list.filter(mine))]
+  core = [...new Set(coreList.filter(mine))]
+  vital = new Set((opts.vital ?? coreList).filter(mine))
   if (debounce) clearTimeout(debounce)
   // now：冷启动时和品种表、K 线并行先把连接建起来，不等 150 ms 的合并窗口
   if (opts.now) { debounce = null; apply(); return }
@@ -289,8 +293,7 @@ function paint(): void {
   const want = effective(), v = want.filter(x => vital.has(x))
   const H = conns.filter(c => holdsVital(c, v))
   const placed = v.every(x => H.some(c => c.want.includes(x)))
-  const st = wsStateOf(want.length, failed, placed, H.map(c => ({ open: c.sock.readyState === WebSocket.OPEN })))
-  if (S.wsState !== st) { S.wsState = st; emit({ type: 'ws' }) }
+  setWsPart('binance', wsStateOf(want.length, failed, placed, H.map(c => ({ open: c.sock.readyState === WebSocket.OPEN }))))
 }
 
 function apply(): void {
@@ -591,11 +594,18 @@ function handle(m: Frame): void {
   }
 }
 
+/** 流名的品种段：币安 / 美元指数转小写（组合流协议的写法）；别家的完整键原样（大小写算数，venueStream 按它找那一家） */
+const streamSym = (sym: string): string => sym.includes('/') ? sym : sym.toLowerCase()
 export const streamName = {
-  kline: (sym: string, iv: string) => `${sym.toLowerCase()}@kline_${iv}`,
-  ticker: (sym: string) => `${sym.toLowerCase()}@ticker`,
-  mark: (sym: string) => `${sym.toLowerCase()}@markPrice@1s`,
-  trade: (sym: string) => `${sym.toLowerCase()}@aggTrade`,
+  kline: (sym: string, iv: string) => `${streamSym(sym)}@kline_${iv}`,
+  ticker: (sym: string) => `${streamSym(sym)}@ticker`,
+  mark: (sym: string) => `${streamSym(sym)}@markPrice@1s`,
+  trade: (sym: string) => `${streamSym(sym)}@aggTrade`,
+}
+/** 流名 → 品种键（refreshStreams 拿它对品种表） */
+export function symbolOfStream(name: string): string {
+  const k = name.split('@')[0]
+  return k.includes('/') ? k : k.toUpperCase()
 }
 
 /** 换线路：立即按新线路重连 */
@@ -609,6 +619,7 @@ export function setRoute(route: Route): void {
   capLimit = null; probeDelay = PROBE_MS; probedAt = 0
   if (probeTimer) { clearTimeout(probeTimer); probeTimer = null }
   reconnectNow()
+  setVenueRoute()
 }
 
 /** 测试与排障用：当前线路、各条连接与订阅、被拒后摸出来的总上限 */

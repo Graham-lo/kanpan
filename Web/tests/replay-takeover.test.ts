@@ -21,11 +21,11 @@ vi.mock('../src/market', () => ({
   REST: 'https://fapi.test',
   klines: vi.fn(async (_s: string, iv: string, endTime: number | undefined, limit: number) => { calls.push(`back ${iv} ${endTime}`); return { ok: true, bars: backPage(iv, endTime, limit) } }),
   attachOI: vi.fn(async () => {}),
-  j: vi.fn(async (url: string) => {
-    const u = new URL(url), iv = u.searchParams.get('interval')!, from = +u.searchParams.get('startTime')!, n = +u.searchParams.get('limit')!
+  // 往后取按品种所属的交易所分发（market/rest.ts klinesFrom），这里只记参数、按开盘时刻造整根
+  klinesFrom: vi.fn(async (_s: string, iv: string, from: number, n: number) => {
     calls.push(`fwd ${iv} ${from} ${n}`)
-    const ms = ivMs(iv), cur = Math.floor(NOW / ms) * ms, out: unknown[] = []
-    for (let t = from; t <= cur && out.length < n; t += ms) { const b = barAt(t, iv); out.push([b.t, String(b.o), String(b.h), String(b.l), String(b.c), '1', b.t + ms - 1, '1', 1, '0', '0', '0']) }
+    const ms = ivMs(iv), cur = Math.floor(NOW / ms) * ms, out: Bar[] = []
+    for (let t = from; t <= cur && out.length < n; t += ms) { const b = barAt(t, iv); out.push({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: 1, tb: 0, bv: 1 }) }
     return out
   }),
 }))

@@ -9,7 +9,7 @@ import KanpanCore
 
 extension OrderFlowExchange {
   static let hyperliquid = OrderFlowExchange(
-    key: "hyperliquid", displayName: "Hyperliquid", maxBooksPerConnection: HyperliquidBookAdapter.maxBooks,
+    key: HyperliquidVenue.id, displayName: HyperliquidVenue.displayName, maxBooksPerConnection: HyperliquidBookAdapter.maxBooks,
     liquidationCode: nil,
     sequenceModel: { _, _ in .snapshotOnly },
     snapshotInBand: { _ in true },
@@ -23,4 +23,10 @@ extension OrderFlowExchange {
       }
     }
   )
+}
+
+extension HyperliquidProvider: OrderFlowSourcing {
+  public var orderFlowCatalog: OrderFlowCatalog {
+    OrderFlowCatalog(route: endpoints.route, sockets: sockets, http: transport)
+  }
 }

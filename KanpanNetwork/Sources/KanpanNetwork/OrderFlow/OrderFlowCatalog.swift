@@ -251,8 +251,16 @@ public enum OrderFlowBase {
   /// base 最长几个字符。和 kanpan-api `ORDER_FLOW_BASE_MAX_LEN` 同一个数，经契约对账。
   public static let maxLength = 20
 
-  /// `1000PEPE` → (`PEPE`, 1000)；`1MBABYDOGE` → (`BABYDOGE`, 1e6)；其余原样、1。
+  /// 千枚计价的另一种写法：小写 `k` 打头、后面是大写币名（`kPEPE`、`kSHIB`）。只认这个小写的 `k`——
+  /// 大写的 `KAS`、`KAITO` 是币名本身，不是缩放。
+  public static let thousandsPrefix: Character = "k"
+
+  /// `1000PEPE` → (`PEPE`, 1000)；`1MBABYDOGE` → (`BABYDOGE`, 1e6)；`kPEPE` → (`PEPE`, 1000)；其余原样、1。
   public static func normalize(_ base: String) -> (base: String, scale: Double) {
+    if base.first == thousandsPrefix {
+      let rest = String(base.dropFirst())
+      if isValid(rest), rest.first.map({ !$0.isNumber }) ?? false { return (rest, 1000) }
+    }
     let upper = base.uppercased()
     for (prefix, scale) in scaledPrefixes where upper.hasPrefix(prefix) {
       let rest = String(upper.dropFirst(prefix.count))

@@ -2,8 +2,8 @@
  *
  * 规矩照 iOS（KanpanData/Feed/CompareFeed.swift、ChartRenderer+Compare.swift）与手机网页（src/m/chart/compare.source.ts、
  * renderer.compare.ts），这里另写一份不 import m/（两套 UI 各管各的，只共用 sync/codec 的清洗）：
- *   · 偏好里一人一份 compareSymbols（最多三只，键是 binance/usd_m/<代号> 或 macro/index/DXY）；
- *     每格按自己的主图挑：去掉主图那只、认不出的键（别家交易所）留在偏好里但不取不画
+ *   · 偏好里一人一份 compareSymbols（最多三只，键是完整三段 venue/market/SYMBOL：binance/usd_m/<代号>、macro/index/DXY、okx/usd_m/…）；
+ *     每格按自己的主图挑：去掉主图那只、认不出的键（注册表里没有的交易所）留在偏好里但不取不画
  *   · 按主图的 openTime 一根一根对齐，缺根是 null，绝不拿邻根补；主图相邻两根之间缺了一截（美元指数的周末）也断线
  *   · 百分比：可见区第一根的开盘价是 0%；每条对比线的基准是从那一根起它自己第一根有开盘价的
  *   · 取数：先最新一页，再向左补到用到它的各格主图起点（一轮最多 8 页）；推送接末根；断档重拉末页；
@@ -11,6 +11,8 @@
  */
 import type { Bar } from './calc'
 import { MAX_COMPARE, validSymbol } from '../sync/codec'
+import { displayKey, syncKeyOf } from '../market/identity'
+import { symbolOk } from '../venues'
 
 export { MAX_COMPARE }
 /** 每只对比线的颜色：按它在偏好里的槽位取（换主图不换色）。
@@ -21,22 +23,20 @@ export const COMPARE_MAX_PAGES = 8
 const RETRY_BASE_MS = 2_000
 const RETRY_MAX_MS = 30_000
 
-/** 偏好里的键 → 取数用的代号。`binance/usd_m/ETHUSDT` → ETHUSDT，`macro/index/DXY` / `DXY` → DXY；
- *  别家、别的市场、写坏的键回 null（不取、不画，但留在偏好里——新版本同步下来的键不能被老页面吃掉） */
+/** 偏好里的键 → 取数用的品种键（网页里存的那个）。`binance/usd_m/ETHUSDT` → ETHUSDT，`macro/index/DXY` / `DXY` → DXY，
+ *  别家 `okx/usd_m/BTCUSDT` → 原样（2026-10-08 起别家的品种也能对比）；不认识的交易所 / 市场、写坏的键回 null
+ *  （不取、不画，但留在偏好里——新版本同步下来的键不能被老页面吃掉） */
 export function compareSymbolOf(key: string): string | null {
   const parts = key.trim().split('/')
-  const sym = (s: string): string | null => { const u = s.toUpperCase(); return validSymbol(u) ? u : null }
-  if (parts.length === 1 && parts[0].toUpperCase() === 'DXY') return 'DXY'
-  if (parts.length === 3 && parts[0].toLowerCase() === 'macro' && parts[1].toLowerCase() === 'index') return parts[2].toUpperCase() === 'DXY' ? 'DXY' : null
-  if (parts.length === 1) return sym(parts[0])
+  if (parts.length === 1) { const u = parts[0].toUpperCase(); return u === 'DXY' ? 'DXY' : validSymbol(u) ? u : null }
   if (parts.length !== 3) return null
-  if (parts[0].toLowerCase() !== 'binance' || parts[1].toLowerCase() !== 'usd_m') return null
-  return sym(parts[2])
+  const k = `${parts[0].toLowerCase()}/${parts[1].toLowerCase()}/${parts[2].toUpperCase()}`
+  if (k === 'macro/index/DXY') return 'DXY'
+  return symbolOk(k) ? displayKey(k) : null
 }
-/** 代号 → 偏好里的键（加对比时用） */
+/** 品种键 → 偏好里的键（完整三段） */
 export function compareKeyOf(symbol: string): string {
-  const u = symbol.toUpperCase()
-  return u === 'DXY' ? 'macro/index/DXY' : 'binance/usd_m/' + u
+  return syncKeyOf(symbol.includes('/') ? symbol : symbol.toUpperCase())
 }
 
 export interface CompareTarget { key: string; symbol: string; slot: number }

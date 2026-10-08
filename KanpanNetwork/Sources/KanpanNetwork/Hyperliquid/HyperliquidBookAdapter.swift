@@ -14,17 +14,15 @@ import KanpanCore
 /// - 每 30 秒发一句 `{"method":"ping"}`；回来的 `{"channel":"pong"}` 与订阅回执 `subscriptionResponse` 解码直接忽略。
 ///   冷门币可能很久没有成交、盘口也不动（整本没变就不推），所以 60 秒没帧才算断（`silenceMs`）。
 /// - 数量是币数（`kPEPE` 是千枚），名义美元由 `OrderFlowNotional` 换。
+///
+/// 中继地址、保活参数来自 `HyperliquidVenue`，解帧是 `HyperliquidDTO.orderFlow`（Hyperliquid 唯一的报文解码）。
 public struct HyperliquidBookAdapter: DepthFeedAdapter {
   /// 一条连接最多几本（中继的订阅配额：一本 l2Book + trades 两个）。
   public static let maxBooks = 8
   /// `l2Book` 每侧 20 档。
   public static let snapshotLevels = 20
-  /// 价格聚合位数（4 位有效数字，档距够宽、20 档覆盖得开）。
+  /// 价格聚合位数（4 位有效数字，档距够宽、20 档覆盖得开）。中继白名单只放行 4。
   public static let significantFigures = 4
-  static let relayPath = "/v1/market/ws/hyperliquid"
-  static let pingEveryMs: Double = 30_000
-  static let pingText = #"{"method":"ping"}"#
-  static let silence: Double = 60_000
 
   public let books: [DepthBook]
   /// kanpan-api 主机（`MarketRoute.apiHosts`，主在前）。
@@ -41,13 +39,15 @@ public struct HyperliquidBookAdapter: DepthFeedAdapter {
     byCoin = map
   }
 
-  public var name: String { "Hyperliquid \(books.map(\.venue.instrument).joined(separator: ","))" }
+  public var name: String { "\(HyperliquidVenue.displayName) \(books.map(\.venue.instrument).joined(separator: ","))" }
 
-  public var streamURLs: [URL] { Self.gatewayStreams(gateways, path: Self.relayPath, streams: []) }
+  public var streamURLs: [URL] { HyperliquidVenue.relayStreams(gateways) }
 
-  public var keepAlive: DepthKeepAlive? { DepthKeepAlive(text: Self.pingText, everyMs: Self.pingEveryMs) }
+  public var keepAlive: DepthKeepAlive? {
+    DepthKeepAlive(text: HyperliquidVenue.pingText, everyMs: HyperliquidVenue.orderFlowPingEveryMs)
+  }
 
-  public var silenceMs: Double? { Self.silence }
+  public var silenceMs: Double? { HyperliquidVenue.orderFlowSilenceMs }
 
   static func message(_ method: String, type: String, coin: String) -> String? {
     var subscription: [String: Any] = ["type": type, "coin": coin]
@@ -82,49 +82,6 @@ public struct HyperliquidBookAdapter: DepthFeedAdapter {
   }
 
   public func decode(_ text: String) -> [VenueMessage] {
-    guard let frame = DepthWire.object(text) else { return [] }
-    switch frame["channel"] as? String {
-    case "l2Book": return decodeBook(frame["data"])
-    case "trades": return decodeTrades(frame["data"])
-    default: return []
-    }
-  }
-
-  private func decodeBook(_ raw: Any?) -> [VenueMessage] {
-    guard let data = raw as? [String: Any], let coin = data["coin"] as? String, let book = byCoin[coin],
-          let time = DepthWire.integer(data["time"]),
-          let sides = data["levels"] as? [Any], sides.count == 2,
-          let bids = levels(sides[0], book), let asks = levels(sides[1], book),
-          bids.count <= Self.snapshotLevels, asks.count <= Self.snapshotLevels else { return [] }
-    return [VenueMessage(book.id, .snapshot(BookSnapshot(lastUpdateID: time, requestedLevels: Self.snapshotLevels,
-                                                         bids: bids, asks: asks, eventTimeMs: time,
-                                                         slidingWindow: true)))]
-  }
-
-  /// 一侧 `[{"px","sz","n"}]` → `[[px, sz]]` 交给簿统一换算（价格口径、数量口径）。
-  private func levels(_ raw: Any, _ book: DepthBook) -> [BookLevel]? {
-    guard let items = raw as? [[String: Any]] else { return nil }
-    var pairs: [[Any]] = []
-    pairs.reserveCapacity(items.count)
-    for item in items {
-      guard let px = item["px"], let sz = item["sz"] else { return nil }
-      pairs.append([px, sz])
-    }
-    return book.levels(pairs)
-  }
-
-  private func decodeTrades(_ raw: Any?) -> [VenueMessage] {
-    guard let items = raw as? [[String: Any]] else { return [] }
-    var out: [VenueMessage] = []
-    for t in items {
-      guard let coin = t["coin"] as? String, let book = byCoin[coin] else { continue }
-      // 价量解得开却不是有限值或越界：整帧丢掉并记一笔（坏帧里别的成交同样不可信）。
-      guard let p = DepthWire.number(t["px"]), let q = DepthWire.number(t["sz"]),
-            p > 0, q >= 0, p.isFinite, q.isFinite else { WireNumber.noteDropped(); return [] }
-      guard q > 0, let side = t["side"] as? String, side == "B" || side == "A" else { continue }
-      out.append(VenueMessage(book.id, .trade(book.trade(price: p, quantity: q, hit: side == "B" ? .ask : .bid,
-                                                         timeMs: DepthWire.integer(t["time"]) ?? 0))))
-    }
-    return out
+    HyperliquidDTO.orderFlow(text, books: byCoin, levels: Self.snapshotLevels)
   }
 }

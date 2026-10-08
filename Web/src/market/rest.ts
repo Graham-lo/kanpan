@@ -10,26 +10,39 @@
  */
 import type { Bar } from '../chart/calc'
 import { S, emit } from './state'
-import { Superseded, admit, coolingFor, isRateLimit, noteStatus, setGatewayProbe } from './limit'
+import { Superseded, admit, coolingFor, gatewayRewrite, isRateLimit, noteStatus, setGatewayProbe } from './limit'
 import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from './symbols'
 import { supplyOf } from './meta'
 import { MACRO_SYMBOL, applyMacroTicker, isMacro, macroFallback, macroRewrite, type MacroTicker } from './macro'
+import { apiOrigin } from './origin'
+import { DEFAULT_VENUE, isDefaultVenue, parseKey, venueOf } from './identity'
+import { applyQuote } from './quote'
+import { MARKET_VENUES, marketKlines, marketOf } from '../venues'
+import type { FetchOpts, KlineQuery } from '../venues/common'
 import { ago } from '../util/clock'
 import { IV_MS } from '../util/format'
 
 export const REST = 'https://fapi.binance.com'
 
-/** 自家服务器的根：线上与页面同源；本机开发（localhost）直接打线上那台。 */
-export function apiOrigin(): string {
-  if (typeof location !== 'undefined' && /^https:$/.test(location.protocol) && !/^localhost$|^127\./.test(location.hostname)) return location.origin
-  return 'https://kanpan.43-160-232-253.sslip.io'
-}
-/** 网关线路下，币安合约的 REST 地址改成经新加坡透传的地址；别的地址与直连线路原样返回。 */
+export { apiOrigin }
+/** 网关线路下，交易所的直连 REST 地址改成经新加坡透传的地址（币安合约 → /v1/market/raw/<path>?source=binance；
+ *  别家按它在 venues/<id>.ts 登记的改写）；别的地址与直连线路原样返回。 */
 export function viaRoute(url: string): string {
   if (S.route !== 'gateway') return url
   const m = /^https:\/\/(?:fapi|dapi)\.binance\.com\/([^?#]+)(\?[^#]*)?$/.exec(url)
-  if (!m) return url
+  if (!m) return gatewayRewrite(url) ?? url
   return `${apiOrigin()}/v1/market/raw/${m[1]}${m[2] ? `${m[2]}&` : '?'}source=binance`
+}
+
+/** 别家的品种发到币安地址上：本地就拒（币安会回 400，还白占限流额度）。多空比、持仓量历史这些币安独有的统计，
+ *  调用方对别家的品种照样能调，回这个错就当「这家没有」 */
+export class VenueUnsupported extends Error {
+  constructor(url: string) { super(`这家交易所没有这项数据：${url}`); this.name = 'VenueUnsupported' }
+}
+function guardVenue(url: string): void {
+  if (!/^https:\/\/(?:fapi|dapi)\.binance\.com\//.test(url)) return
+  const m = /[?&]symbol=([^&#]*)/.exec(url)
+  if (m && decodeURIComponent(m[1]).includes('/')) throw new VenueUnsupported(url)
 }
 
 // 走网关的合约 REST 只用网关那份共用额度里属于这个浏览器的一截（见 limit.ts GATEWAY_SHARE）
@@ -43,6 +56,7 @@ export async function j<T = unknown>(url: string, ms = 8000, background = false,
   // 一分钟权重快满了就先排队（见 limit.ts）；排队期间 alive() 说不要了就不发（抛 Superseded）
   // 美元指数：币安形状的 K 线 / 24h 行情改走自家服务器（不占币安额度），它没有的数据本地就抛（见 macro.ts）
   url = macroRewrite(url, apiOrigin()) ?? url
+  guardVenue(url)
   const gw = await admit(url, background, alive, onWait)
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), ms)
@@ -67,12 +81,19 @@ function blank(e: ExSymbol): Sym {
   const kind = kindOfUnderlying(e.underlyingType, base)
   const tick = e.filters.find(f => f.filterType === 'PRICE_FILTER')?.tickSize
   return {
-    symbol: e.symbol, base, code: base, kind, cn: cnOf(base, kind),
+    symbol: e.symbol, venue: 'binance', quote: e.quoteAsset || 'USDT', base, code: base, kind, cn: cnOf(base, kind),
     dec: tick ? decOfTick(tick) : Math.min(8, e.pricePrecision),
     color: badgeColor(base), price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
     ut: e.underlyingType, onboard: e.onboardDate || undefined,
     tags: e.underlyingSubType?.length ? [...new Set(e.underlyingSubType.map(t => t.toLowerCase()))].sort() : undefined,
   }
+}
+
+/** exchangeInfo 的一行 → 网页品种（只收 USDT 计价、正在交易的永续与 TradFi 永续；别的回 null） */
+export function symOfExchange(e: ExSymbol): Sym | null {
+  if (e.quoteAsset !== 'USDT' || e.status !== 'TRADING') return null
+  if (e.contractType !== 'PERPETUAL' && e.contractType !== 'TRADIFI_PERPETUAL') return null
+  return blank(e)
 }
 
 // ------------------------------------------------------------ exchangeInfo / ticker/24hr 全站共用一次
@@ -123,6 +144,8 @@ function encodeSym(s: Sym): unknown[] {
 }
 function decodeSym(r: unknown, now: number): Sym | null {
   if (!Array.isArray(r) || typeof r[0] !== 'string' || typeof r[1] !== 'string' || typeof r[3] !== 'number') return null
+  // 本机副本只存币安与美元指数（别家的表按需懒拉，不进这份）
+  if (!isDefaultVenue(r[0]) && r[0] !== MACRO_SYMBOL) return null
   const [symbol, base, ut, dec, onboard, tags] = r as [string, string, unknown, number, unknown, unknown]
   let s: Sym
   if (symbol === MACRO_SYMBOL) {
@@ -133,7 +156,7 @@ function decodeSym(r: unknown, now: number): Sym | null {
     const u = typeof ut === 'string' && ut ? ut : undefined
     const kind = kindOfUnderlying(u, base)
     s = {
-      symbol, base, code: base, kind, cn: cnOf(base, kind), dec, color: badgeColor(base),
+      symbol, venue: 'binance', quote: 'USDT', base, code: base, kind, cn: cnOf(base, kind), dec, color: badgeColor(base),
       price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null, ut: u,
       onboard: numOr(onboard) || undefined,
       tags: typeof tags === 'string' && tags ? tags.split(',') : undefined,
@@ -154,7 +177,7 @@ function decodeSym(r: unknown, now: number): Sym | null {
 export function saveUniverse(map: Map<string, Sym> = S.symbols, store: Storage | null = lsOf()): boolean {
   if (!store || !map.size) return false
   try {
-    store.setItem(UNIVERSE_CACHE_KEY, JSON.stringify({ v: 1, at: Date.now(), rows: [...map.values()].map(encodeSym) }))
+    store.setItem(UNIVERSE_CACHE_KEY, JSON.stringify({ v: 1, at: Date.now(), rows: [...map.values()].filter(x => isDefaultVenue(x.symbol) || x.macro).map(encodeSym) }))
     return true
   } catch { return false }
 }
@@ -236,6 +259,8 @@ async function netUniverse(): Promise<Map<string, Sym>> {
     }
     // 美元指数不在币安的表里：手里有就原样带过来，没有就放内置的一行（价格等 loadMacro / 推送来填）
     next.set(MACRO_SYMBOL, S.symbols.get(MACRO_SYMBOL) ?? macroFallback())
+    // 别家的品种（loadVenue 懒拉来的）原样带过来：这一份只换币安那部分
+    for (const [k, x] of S.symbols) if (!isDefaultVenue(k) && !x.macro) next.set(k, x)
     // 三个请求要几百毫秒到几秒才回来，这期间推送已经把手里的价格、标记价刷新过了：
     // 交易所时间比手里旧的那一组不覆盖（否则价格回跳一下、涨跌幅闪回旧值，直到下一帧推送再改回来）
     for (const t of tk) {
@@ -299,18 +324,33 @@ function parse(rows: Row[]): Bar[] {
 
 export interface KlineResult { bars: Bar[]; ok: boolean; error?: string }
 
-/** 一页 K 线（最多 1500 根）；带 endTime 时是向左翻页，取严格早于它的那一页 */
+/** 币安合约的一页 K 线（注册表 binance.market.klines 调它）：最多 1500 根；end 不含（取严格早于它的那一页），start 含 */
+export async function binanceKlines(symbol: string, iv: string, q: KlineQuery, opts: FetchOpts = {}): Promise<Bar[]> {
+  const range = q.end != null ? `&endTime=${q.end - 1}` : q.start != null ? `&startTime=${q.start}` : ''
+  const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${Math.min(1500, q.limit)}${range}`
+  return parse(await j<Row[]>(u, opts.ms ?? 10000, opts.background, opts.alive, opts.priority, opts.onWait))
+}
+
+/** 一页 K 线（最多 1500 根）；带 endTime 时是向左翻页，取严格早于它的那一页。
+ *  按品种所属的交易所分发（venues 注册表 marketKlines）：币安走上面的 binanceKlines，别家走它自己的模块，
+ *  某一家没有的周期由注册表拿原生档并。美元指数照旧走币安形状的地址、在 j() 里改写到自家服务器。 */
 /** background：后台一大批取的（板块迷你走势），只用限流预算的一截，见 limit.ts */
 export async function klines(symbol: string, iv: string, endTime?: number, limit = 1500, withOI = true, background = false, alive?: () => boolean, priority?: RequestPriority,
   onWait?: (ms: number) => void): Promise<KlineResult> {
   try {
-    const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${limit}${endTime ? `&endTime=${endTime - 1}` : ''}`
-    const bars = parse(await j<Row[]>(u, 10000, background, alive, priority, onWait))
+    const q: KlineQuery = { limit, ...(endTime ? { end: endTime } : {}) }
+    const opts: FetchOpts = { background, alive, priority, onWait }
+    const bars = marketOf(symbol) ? await marketKlines(symbol, iv, q, opts) : await binanceKlines(symbol, iv, q, opts)
     if (withOI) void attachOI(symbol, iv, bars)
     return { bars, ok: true }
   } catch (e) {
     return { bars: [], ok: false, error: String((e as Error)?.message || e) }
   }
+}
+/** 从 start（含）往后的一页（回放往后播用）；按品种所属的交易所分发 */
+export async function klinesFrom(symbol: string, iv: string, start: number, limit: number, alive?: () => boolean): Promise<Bar[]> {
+  const q: KlineQuery = { limit, start }
+  return marketOf(symbol) ? marketKlines(symbol, iv, q, { alive }) : binanceKlines(symbol, iv, q, { alive })
 }
 
 /** 非当前格首次取的根数：limit < 500 权重 2，1500 根是 10（见 limit.ts 的 K 线权重表）。十六格同时进来时
@@ -344,7 +384,8 @@ type OIPt = readonly [number, number]
  *  limit < 500 是补尾巴：只打币安一页、不翻页、不问归档 */
 export async function attachOI(symbol: string, iv: string, bars: Bar[], alive?: () => boolean, limit = 500): Promise<boolean> {
   const period = oiPeriod(iv)
-  if (!period || !bars.length || isMacro(symbol)) return true
+  // 持仓量历史只有币安这一份（openInterestHist + 自家归档）；别家没有就空着，不报错、不画
+  if (!period || !bars.length || isMacro(symbol) || !isDefaultVenue(symbol)) return true
   const pms = IV_MS[period], ims = IV_MS[iv], now = Date.now()
   const liveFrom = now - OI_LIVE_MS
   const split = bars.findIndex(b => b.t >= liveFrom)
@@ -427,6 +468,13 @@ const oiShared = new Map<string, { t: number; p: Promise<string | undefined> }>(
 export function fetchOpenInterest(symbol: string, alive?: () => boolean): Promise<string | undefined> {
   // 美元指数没有持仓量：不发请求（发了也只会在本地被 macroRewrite 拦下）
   if (isMacro(symbol)) return Promise.resolve(undefined)
+  // 别家：整表行情里带了（Bybit、Hyperliquid）就用它，没带的问那一家（OKX）；那家没有就空着
+  if (!isDefaultVenue(symbol)) {
+    const have = S.symbols.get(symbol)?.oi
+    if (have != null) return Promise.resolve(String(have))
+    const m = marketOf(symbol)
+    return m?.openInterest ? m.openInterest(symbol, { alive }).then(x => x == null ? undefined : String(x)) : Promise.resolve(undefined)
+  }
   const hit = oiShared.get(symbol)
   if (hit && (hit.t === 0 || ago(hit.t) < 10e3)) return hit.p
   const p = j<{ openInterest?: string }>(`${REST}/fapi/v1/openInterest?symbol=${symbol}`, 8000, false, alive).then(r => r?.openInterest)
@@ -443,6 +491,7 @@ export async function fetchDetail(symbol: string, alive?: () => boolean): Promis
   if (isMacro(symbol)) return
   const prev = detailCache.get(symbol)
   if (prev && ago(prev.t) < 60e3) return
+  if (!isDefaultVenue(symbol)) { await venueDetail(symbol, prev, alive); return }
   const d: Detail = { ...(prev || {}), t: Date.now() }
   detailCache.set(symbol, d)
   let dropped = false
@@ -466,6 +515,76 @@ export async function fetchDetail(symbol: string, alive?: () => boolean): Promis
   if (taker?.[0]) d.taker = +taker[0].buySellRatio
   emit({ type: 'detail', symbol })
 }
+
+/** 别家的详情：持仓量（那家给就有）、资金费率（整表行情里没带的问那一家）；多空比这类币安独有的统计没有，格子写「—」 */
+async function venueDetail(symbol: string, prev: Detail | undefined, alive?: () => boolean): Promise<void> {
+  const d: Detail = { ...(prev || {}), t: Date.now() }
+  detailCache.set(symbol, d)
+  const m = marketOf(symbol), s = S.symbols.get(symbol)
+  const [oi, fr] = await Promise.all([
+    fetchOpenInterest(symbol, alive).catch(() => undefined),
+    m?.funding && s && s.fr == null ? m.funding(symbol, { alive }).catch(() => null) : Promise.resolve(null),
+  ])
+  if (oi != null && s?.price) d.oiValue = +oi * s.price
+  if (fr && s) { s.fr = fr.fr; s.nextFunding = fr.nextFunding; emit({ type: 'mark', symbol }) }
+  emit({ type: 'detail', symbol })
+}
+
+// ------------------------------------------------------------ 别家的品种表（懒拉）
+/**
+ * 别家（OKX / Bybit / Hyperliquid / Coinbase）的品种表与整表 24h 行情：首屏不拉（不和币安那份抢），
+ * 只在用到时拉那一家——搜索弹层打开（全拉）、自选 / 格子 / 提醒 / 对比里有那家的品种（启动后拉那几家）。
+ * 一家一次两个请求（品种表 + 整表行情；Hyperliquid、Coinbase 是同一个请求）；在途的共用；失败只记在那一家
+ * （S.venues[venue].error），不影响币安那份与别家；30 秒内不重拉失败的那家。没有轮询：价格之后靠推送。
+ */
+const venueP = new Map<string, Promise<void>>()
+export function loadVenue(venue: string): Promise<void> {
+  const a = MARKET_VENUES.find(v => v.key === venue)
+  if (!a || venue === DEFAULT_VENUE) return Promise.resolve()
+  const st = S.venues[venue]
+  if (st?.live) return Promise.resolve()
+  if (st?.live === false && ago(st.at) < 30_000) return Promise.resolve()
+  const hit = venueP.get(venue)
+  if (hit) return hit
+  const p = (async () => {
+    try {
+      const [list, quotes] = await Promise.all([a.market.instruments(), a.market.tickers().catch(() => [])])
+      const next = new Map(S.symbols)
+      for (const x of list) {
+        const had = next.get(x.symbol)
+        next.set(x.symbol, had ? Object.assign(had, { dec: x.dec, raw: x.raw, title: x.title, onboard: x.onboard }) : x)
+      }
+      for (const q of quotes) { const x = next.get(q.key); if (x) applyQuote(x, q) }
+      S.symbols = next
+      S.venues = { ...S.venues, [venue]: { live: true, error: '', at: Date.now() } }
+    } catch (e) {
+      console.warn(`[hkline] ${a.market.displayName} 品种表取不到`, e)
+      S.venues = { ...S.venues, [venue]: { live: false, error: String((e as Error)?.message || e), at: Date.now() } }
+    }
+    emit({ type: 'universe' })
+  })().finally(() => venueP.delete(venue))
+  venueP.set(venue, p)
+  return p
+}
+/** 这些品种用到的那几家都拉上（自选、格子、提醒、对比里有别家的品种时启动后调） */
+export function ensureVenuesFor(symbols: Iterable<string>): Promise<void> {
+  const want = new Set<string>()
+  for (const k of symbols) { const v = venueOf(k); if (v !== DEFAULT_VENUE && marketOf(k)) want.add(v) }
+  return Promise.all([...want].map(loadVenue)).then(() => undefined)
+}
+/** 搜索要全部的：别家都拉一遍（已经拉到的不再拉） */
+export function loadAllVenues(): Promise<void> {
+  return Promise.all(MARKET_VENUES.filter(v => v.key !== DEFAULT_VENUE).map(v => loadVenue(v.key))).then(() => undefined)
+}
+/** 这只品种「确定不存在」：那一家的表确认拉到过、里面没有它（换掉格子 / 筛自选只认这种，表没拉到不算） */
+export function knownMissing(symbol: string): boolean {
+  if (S.symbols.has(symbol)) return false
+  if (isDefaultVenue(symbol)) return S.live === true && S.symbols.size > 0
+  if (isMacro(symbol)) return false
+  return S.venues[parseKey(symbol).venue]?.live === true || !marketOf(symbol)
+}
+/** 测试用 */
+export function resetVenuesForTest(): void { venueP.clear(); S.venues = {} }
 
 /**
  * 自家服务器上的历史接口（足迹图的分钟价位、秒级 K 线）：同源相对地址（本机开发经 vite 转发到线上），两条线路一样走。

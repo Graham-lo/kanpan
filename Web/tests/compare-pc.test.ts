@@ -21,22 +21,28 @@ const nice = (v: number) => { const e = 10 ** Math.floor(Math.log10(v)); const f
 const flush = async () => { for (let k = 0; k < 6; k++) await Promise.resolve() }
 
 describe('偏好里的键 ↔ 代号', () => {
-  it('币安 U 本位、美元指数、裸代号；别家与写坏的不认', () => {
+  it('币安 U 本位、美元指数、裸代号、注册表里的别家（2026-10-08 起）；不认识的市场与写坏的不认', () => {
     expect(compareSymbolOf('binance/usd_m/ETHUSDT')).toBe('ETHUSDT')
     expect(compareSymbolOf('macro/index/DXY')).toBe('DXY')
     expect(compareSymbolOf('DXY')).toBe('DXY')
     expect(compareSymbolOf('solusdt')).toBe('SOLUSDT')
-    expect(compareSymbolOf('coinbase/spot/BTC-USD')).toBeNull()
+    expect(compareSymbolOf('coinbase/spot/BTC-USD')).toBe('coinbase/spot/BTC-USD')
+    expect(compareSymbolOf('okx/usd_m/BTCUSDT')).toBe('okx/usd_m/BTCUSDT')
+    expect(compareSymbolOf('hyperliquid/usd_m/kpepe')).toBe('hyperliquid/usd_m/KPEPE')
+    expect(compareSymbolOf('okx/usd_m/BTC-USDT-SWAP')).toBeNull()
+    expect(compareSymbolOf('coinbase/usd_m/BTC-USD')).toBeNull()
+    expect(compareSymbolOf('ftx/usd_m/BTCUSDT')).toBeNull()
     expect(compareSymbolOf('binance/spot/ETHUSDT')).toBeNull()
     expect(compareSymbolOf('a/b')).toBeNull()
     expect(compareKeyOf('ethusdt')).toBe('binance/usd_m/ETHUSDT')
     expect(compareKeyOf('DXY')).toBe('macro/index/DXY')
+    expect(compareKeyOf('bybit/usd_m/1000PEPEUSDT')).toBe('bybit/usd_m/1000PEPEUSDT')
   })
   it('一格要画的：去掉主图那只、去重、最多三只，slot 是在偏好里的位置（颜色跟它走）', () => {
     const keys = ['binance/usd_m/BTCUSDT', 'binance/usd_m/ETHUSDT', 'coinbase/spot/BTC-USD', 'ETHUSDT', 'macro/index/DXY', 'binance/usd_m/SOLUSDT', 'binance/usd_m/XRPUSDT']
     const t = compareTargets(keys, 'BTCUSDT')
-    expect(t.map(x => x.symbol)).toEqual(['ETHUSDT', 'DXY', 'SOLUSDT'])
-    expect(t.map(x => x.slot)).toEqual([1, 4, 5])
+    expect(t.map(x => x.symbol)).toEqual(['ETHUSDT', 'coinbase/spot/BTC-USD', 'DXY'])
+    expect(t.map(x => x.slot)).toEqual([1, 2, 4])
     expect(compareTargets(['binance/usd_m/ETHUSDT'], 'ETHUSDT')).toEqual([])
   })
 })

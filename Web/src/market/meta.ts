@@ -7,6 +7,15 @@
  * 取失败（断网、服务端 5xx）的那批两分钟后允许再取——原来失败也记成「要过了」，市值整场空着。
  */
 import { S, emit } from './state'
+import { isDefaultVenue, wireSymbol } from './identity'
+import { baseOf } from './symbols'
+
+/** 元数据按哪个代号问服务端：币安 / 美元指数按自己；别家的品种按同一个币的币安形状（OKX 的 BTC 与币安的 BTC 供应量是同一个） */
+export function metaKey(k: string): string {
+  if (isDefaultVenue(k) || k === 'DXY') return k
+  const w = wireSymbol(k)
+  return w.endsWith('USDT') ? w : baseOf(k) + 'USDT'   // OKX / Bybit 与币安同名（1000PEPEUSDT 的倍数也一样）；HL、Coinbase 按币
+}
 
 export interface MetaRow { totalSupply?: number | string; forwardEarnings?: unknown; revenue?: unknown }
 
@@ -23,12 +32,13 @@ let queue: string[] = []
 let timer: ReturnType<typeof setTimeout> | null = null
 
 export function wantMeta(symbols: string[]): void {
-  for (const k of symbols) if (!requested.has(k)) { requested.add(k); queue.push(k) }
+  for (const k of symbols.map(metaKey)) if (!requested.has(k)) { requested.add(k); queue.push(k) }
   if (queue.length && !timer) timer = setTimeout(flush, 200)
 }
 
 /** 这一只的元数据行：已有就直接给；否则排进下一批。null = 服务端没有这只，undefined = 这次没取到（两分钟后可再要） */
 export function metaRow(symbol: string): Promise<MetaRow | null | undefined> {
+  symbol = metaKey(symbol)
   if (rows.has(symbol)) return Promise.resolve(rows.get(symbol))
   return new Promise(res => {
     const w = waiters.get(symbol)
@@ -39,7 +49,7 @@ export function metaRow(symbol: string): Promise<MetaRow | null | undefined> {
 
 /** 已取到的总供应量（全市场表晚于元数据到时，loadUniverse 用它补上） */
 export function supplyOf(symbol: string): number | undefined {
-  const v = rows.get(symbol)?.totalSupply
+  const v = rows.get(metaKey(symbol))?.totalSupply
   const n = v != null ? +v : NaN
   return isFinite(n) && n > 0 ? n : undefined
 }
@@ -83,5 +93,6 @@ async function flush(): Promise<void> {
 
 export function marketCap(symbol: string): number | null {
   const s = S.symbols.get(symbol)
-  return s?.supply && s.price ? s.supply * s.price : null
+  const supply = s?.supply ?? (s ? supplyOf(symbol) : undefined)
+  return supply && s?.price ? supply * s.price : null
 }

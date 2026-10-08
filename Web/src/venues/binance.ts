@@ -1,4 +1,11 @@
-/* Hkline Web · 多交易所 · 币安（现货 rangeOverlap、合约 previousFinalOverlap，快照另拉 REST）
+/* Hkline Web · 多交易所 · 币安（行情 + 主力订单流）
+ *
+ * 行情：网页的默认交易所（裸代号）。REST / 推送的代码是复刻早期的那套，留在原文件——
+ *   market/rest.ts（fapi REST、全市场表、K 线、持仓量、详情、按权重记账的限流器 market/limit.ts Limiter）
+ *   market/stream.ts（组合流连接池：直连 dstream.binance.me、网关 /market/stream stream_hub）。
+ * 上层只经注册表的 binance.market 取 K 线（klines 分发）；推送由 stream.ts 自己的连接池管（这里不给 stream）。
+ *
+ * 订单流（现货 rangeOverlap、合约 previousFinalOverlap，快照另拉 REST）：
  *
  * 直连：U 本位深度、成交两条连接都拨 iOS 出厂同一台 dstream.binance.me（国内不开代理能直连；
  * fstream.binance.com 国内解析被污染、握手就重置）；币本位同一台一条；现货 data-stream.binance.vision。
@@ -6,7 +13,34 @@
  * 一律不用 *.binancefuture.com（那是合约测试网）。
  */
 import type { DepthMessage, Venue } from '../orderflow/types'
-import { chunk, levels, n, parseJSON, trade, type ConnSpec, type DepthBook, type Kline, type Out, type VenueAdapter } from './common'
+import { chunk, levels, n, parseJSON, trade, type ConnSpec, type DepthBook, type Kline, type Out, type VenueAdapter, type VenueMarket } from './common'
+import { REST, binanceKlines, fetchExchangeInfo, fetchTicker24, symOfExchange } from '../market/rest'
+import { INTERVALS } from '../market/symbols'
+
+/** 服务端 sync_validation binance_symbol：按字符数（不按 UTF-16 长度）最长 40；ASCII 大写、数字，
+ *  或非 ASCII 的 Unicode 字母数字（币安上架过「币安人生USDT」这种中文底名的合约）；以计价资产结尾，且前面还有底名 */
+const QUOTE_ASSETS = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'USD1', 'TUSD'] // instruments.rs QUOTE_ASSETS
+const symbolChar = (c: string): boolean => /^[A-Z0-9]$/.test(c) || (c.codePointAt(0)! > 0x7f && /^[\p{Alphabetic}\p{N}]$/u.test(c))
+export function binanceSymbolOk(s: string): boolean {
+  if (!s) return false
+  const chars = [...s]
+  if (chars.length > 40 || !chars.every(symbolChar)) return false
+  return QUOTE_ASSETS.some(q => s.length > q.length && s.endsWith(q))
+}
+
+/** 币安的行情面：薄薄一层，实际的取数在 market/rest.ts */
+export const BINANCE_MARKET: VenueMarket = {
+  shortName: '币安', displayName: '币安', market: 'usd_m', quote: 'USDT',
+  symbolOk: binanceSymbolOk,
+  instruments: async () => (await fetchExchangeInfo()).symbols.map(symOfExchange).filter((s): s is NonNullable<typeof s> => !!s),
+  tickers: async () => (await fetchTicker24()).map(t => ({
+    key: t.symbol, price: +t.lastPrice, chg: +t.priceChange, pct: +t.priceChangePercent, open: +t.openPrice, hi: +t.highPrice, lo: +t.lowPrice,
+    vol: +t.quoteVolume, count: +t.count, at: +t.closeTime || Date.now(),
+  })),
+  klines: (key, iv, q, opts) => binanceKlines(key, iv, q, opts),
+  maxKlines: 1500,
+  intervals: { native: Object.fromEntries(INTERVALS.map(iv => [iv, iv])), derived: {} },
+}
 
 export type BinanceMarket = 'um' | 'cm' | 'spot'
 export function binanceMarket(v: Venue): BinanceMarket {
@@ -107,7 +141,7 @@ export const binance: VenueAdapter = {
     const limit = BINANCE_SNAPSHOT_LEVELS[m]
     const url = m === 'spot' ? `https://data-api.binance.vision/api/v3/depth?symbol=${sym}&limit=${limit}`
       : route === 'gateway' ? `/v1/market/depth?symbol=${sym}&limit=1000&market=${m}`
-      : m === 'um' ? `https://fapi.binance.com/fapi/v1/depth?symbol=${sym}&limit=${limit}`
+      : m === 'um' ? `${REST}/fapi/v1/depth?symbol=${sym}&limit=${limit}`
       : `https://dapi.binance.com/dapi/v1/depth?symbol=${sym}&limit=${limit}`
     return { url, parse: binanceSnapshot }
   },
@@ -117,12 +151,12 @@ export const binance: VenueAdapter = {
     const ins = encodeURIComponent(v.instrument), f = b.priceFactor
     return {
       url: v.product === 'spot' ? `https://data-api.binance.vision/api/v3/klines?symbol=${ins}&interval=30m&limit=${slots}`
-        : `https://fapi.binance.com/fapi/v1/klines?symbol=${ins}&interval=30m&limit=${slots}`,
+        : `${REST}/fapi/v1/klines?symbol=${ins}&interval=30m&limit=${slots}`,
       parse: x => parseBinanceKlines(x, f),
     }
   },
   primary: {
-    referenceCloseUrl: (symbol, day) => `https://fapi.binance.com/fapi/v1/klines?symbol=${encodeURIComponent(symbol)}&interval=1d&startTime=${day}&limit=2`,
+    referenceCloseUrl: (symbol, day) => `${REST}/fapi/v1/klines?symbol=${encodeURIComponent(symbol)}&interval=1d&startTime=${day}&limit=2`,
     parseReferenceClose(body, day) {
       const rows = Array.isArray(body) ? (body as unknown[][]) : []
       const exact = rows.find(r => Number(r[0]) === day) ?? rows.filter(r => Number(r[0]) < day + 86_400_000).pop()
@@ -133,4 +167,5 @@ export const binance: VenueAdapter = {
     { product: 'usdtPerp', instrument: symbol, priceScale: chartScale },
     { product: 'spot', instrument: base + 'USDT', priceScale: 1 },
   ],
+  market: BINANCE_MARKET,
 }

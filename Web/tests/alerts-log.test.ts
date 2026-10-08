@@ -59,7 +59,9 @@ describe('提醒日志 · 拆包与文字（照 iOS AlertLogText）', () => {
   it('品种：完整键换回网页版裸代号；没品种用标题，再没有叫「提醒」', () => {
     expect(bareSymbol('macro/index/DXY')).toBe('DXY')
     expect(bareSymbol('binance/usd_m/BTCUSDT')).toBe('BTCUSDT')
-    expect(bareSymbol('coinbase/spot/ETH-USD')).toBe('ETH-USD')
+    // 别家留完整键（2026-10-08：同一个币在不同交易所是不同品种，只取最后一段会把 OKX 的提醒开成币安的）
+    expect(bareSymbol('coinbase/spot/ETH-USD')).toBe('coinbase/spot/ETH-USD')
+    expect(bareSymbol('okx/usd_m/BTCUSDT')).toBe('okx/usd_m/BTCUSDT')
     expect(bareSymbol('SOLUSDT')).toBe('SOLUSDT')
     const pair = (s: string) => s === 'DXY' ? 'DXY' : s.replace(/USDT$/, '/USDT')
     expect(logName(rec('1', 1), pair)).toBe('BTC/USDT')

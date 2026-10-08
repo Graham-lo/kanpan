@@ -12,12 +12,14 @@ import { cleanCompare } from '../sync/codec'
 import { CompareStore, COMPARE_COLORS, MAX_COMPARE, compareKeyOf, compareSymbolOf, compareTargets, type CompareLoad, type CompareLine } from '../chart/compare'
 import type { TVChart } from '../chart/chart'
 import { isSecondIv, isCustomIv, customBase, customTick, streamIvOf } from '../chart/intervals'
-import { S, on, rankSearch, streamName, kindName, type Kind, type Sym } from '../market'
+import { S, on, streamName, headName, isDefaultVenue, loadAllVenues, type Kind, type Sym } from '../market'
+import { venueLabel } from '../venues'
+import { searchGroups, resultName, groupHead, venueStatusHTML } from './searchGroups'
 import { normalize } from '../market/searchText'
 import { IV_MS, fmtCompact } from '../util/format'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, dialog, dialogs } from '../ui/overlay'
-import { sym, badge, priceText, pctText, cls } from '../ui/common'
+import { sym, badge, priceText, pctText, cls, chartSub } from '../ui/common'
 
 export interface CompareCell { idx: number; chart: TVChart; symbol: string; iv: string }
 export interface CompareDeps {
@@ -42,9 +44,10 @@ let paintTimer: ReturnType<typeof setTimeout> | null = null
 
 export const MAX_TOAST = `最多对比 ${MAX_COMPARE} 个品种`
 
-/** 展示名：品种表里的代号（1000PEPE → PEPE 那套），表里没有的去掉计价币 */
+/** 展示名：品种表里的代号（1000PEPE → PEPE 那套），表里没有的去掉计价币；别家的前面带交易所缩写（OKX BTC 与币安 BTC 是两只） */
 export function compareName(symbol: string): string {
-  return sym(symbol)?.code || symbol.replace(/(USDT|USDC)$/, '') || symbol
+  const code = sym(symbol)?.code || headName({ symbol }) || symbol
+  return isDefaultVenue(symbol) ? code : `${venueLabel(symbol)} ${code}`.trim()
 }
 /** 偏好里的键 → 展示名（认不出的键显示最后一段） */
 function keyName(key: string): string {
@@ -154,12 +157,13 @@ export function openCompare(): void {
   if (!deps || dialogs.some(d => d.dlg.classList.contains('search-dlg'))) return
   const D = deps
   let cat: 'all' | Kind = 'all', q = '', activeIdx = 0, results: Sym[] = []
+  let offUniverse = (): void => {}
   const CATS: ['all' | Kind, string][] = [['all', '全部'], ['crypto', '加密'], ['us', '美股'], ['idx', '指数'], ['com', '大宗']]
   const d = dialog(`<div class="search-top">${I('compare', 'icon-24')}<input id="cq" placeholder="搜索要对比的品种，比如 ETH、美元指数" autocomplete="off" spellcheck="false" aria-label="搜索要对比的品种"><kbd>Esc</kbd></div>
     <div class="cmp-head" id="cmpHead"></div>
     <div class="search-cats" role="tablist">${CATS.map(([k, l]) => `<button class="chip" data-cat="${k}" aria-pressed="${k === cat}">${l}</button>`).join('')}</div>
     <div class="search-list scroll" id="cl" role="listbox" aria-multiselectable="true"></div>
-    <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>↵</kbd>加入 / 移出对比</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg cmp-dlg', { label: '对比' })
+    <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>↵</kbd>加入 / 移出对比</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg cmp-dlg', { label: '对比', onClose: () => offUniverse() })
   const inp = $<HTMLInputElement>('#cq', d.dlg), listEl = $('#cl', d.dlg), headEl = $('#cmpHead', d.dlg)
   function renderHead(): void {
     const keys = st.compareSymbols
@@ -170,19 +174,21 @@ export function openCompare(): void {
     renderHead()
     const qq = normalize(q), main = D.activeSymbol(), full = st.compareSymbols.length >= MAX_COMPARE
     const pool = [...S.symbols.values()].filter(s => cat === 'all' || s.kind === cat)
-    results = rankSearch(pool, q, D.isWatched)
+    const { groups, flat } = searchGroups(pool, q, D.isWatched)
+    results = flat
     activeIdx = Math.min(activeIdx, Math.max(0, results.length - 1))
-    const hl = (t: string) => qq && t.toUpperCase().startsWith(qq) ? `<mark>${esc(t.slice(0, qq.length))}</mark>${esc(t.slice(qq.length))}` : esc(t)
+    let i = -1
     listEl.innerHTML = !S.symbols.size ? `<div class="empty">${S.live === false ? '连不上币安合约接口，搜不了' : '正在取品种表…'}</div>`
-      : results.length ? results.map((s, i) => {
+      : results.length ? groups.map(g => groupHead(g) + g.items.map(s => {
+        i++
         const isMain = s.symbol === main, on_ = inCompare(s.symbol), dis = isMain || (full && !on_)
         const btn = isMain ? `<span class="cmp-tag">主图</span>`
           : `<button class="ibtn sm cmp-tgl ${on_ ? 'on' : ''}" data-t="${esc(s.symbol)}" aria-label="${on_ ? '移出对比' : '加入对比'}" aria-pressed="${on_}">${I(on_ ? 'check' : 'plus')}</button>`
         return `<div class="sr ${i === activeIdx ? 'active' : ''} ${dis ? 'cmp-off' : ''}" role="option" aria-selected="${on_}" aria-disabled="${dis}" data-i="${i}">
-      ${badge(s, 'lg')}<div><div class="n1">${hl(s.code)}<span class="muted" style="font-weight:400;font-size:12px;margin-left:6px">${esc(s.symbol === s.code ? '' : s.symbol)}</span></div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${kindName(s)}</div></div>
+      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${esc(chartSub(s.symbol, s))}</div></div>
       <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>${btn}</div>`
-      }).join('')
-      : `<div class="empty">没有找到「${esc(q)}」</div>`
+      }).join('')).join('') + venueStatusHTML()
+      : `<div class="empty">没有找到「${esc(q)}」</div>${venueStatusHTML()}`
   }
   function pick(s: Sym | undefined): void {
     if (!s) return
@@ -205,7 +211,10 @@ export function openCompare(): void {
     const rm = t.closest<HTMLElement>('[data-rm]'); if (rm) { e.stopPropagation(); removeCompare(rm.dataset.rm || ''); render(); inp.focus(); return }
     const r = t.closest<HTMLElement>('.sr'); if (r) { activeIdx = +(r.dataset.i || 0); pick(results[activeIdx]); inp.focus() }
   })
-  listEl.addEventListener('mousemove', e => { const r = tgt(e).closest<HTMLElement>('.sr'); if (r && +(r.dataset.i || 0) !== activeIdx) { activeIdx = +(r.dataset.i || 0); $$('.sr', listEl).forEach((x, i) => x.classList.toggle('active', i === activeIdx)) } })
+  listEl.addEventListener('mousemove', e => { const r = tgt(e).closest<HTMLElement>('.sr'); if (r && +(r.dataset.i || 0) !== activeIdx) { activeIdx = +(r.dataset.i || 0); $$('.sr', listEl).forEach(x => x.classList.toggle('active', +(x.dataset.i || -1) === activeIdx)) } })
+  // 别家的品种表懒拉：弹层一打开就拉全部，到了一家重画一次（关掉弹层时撤掉）
+  offUniverse = on(e => { if (e.type === 'universe') render() })
+  void loadAllVenues()
   render(); inp.focus()
 }
 

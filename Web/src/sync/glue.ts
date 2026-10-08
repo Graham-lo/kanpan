@@ -18,6 +18,8 @@ import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyI
 import { LAYOUTS_FIELD } from '../app/layouts'
 import { refreshCompare } from '../pages/compare'
 import { type Ctx, alertId } from './codec'
+import { isDefaultVenue } from '../market/identity'
+import { isMacro } from '../market/macro'
 import { type SyncAdapter, type SyncRuntime, createSyncRuntime } from './runtime'
 import type { SyncStore } from './store'
 import { syncKeys } from './keys'
@@ -26,7 +28,8 @@ export { transport } from './runtime'
 
 const ctx: Ctx & { ready: boolean } = {
   now: () => Date.now(),
-  kindOf: s => S.symbols.get(s)?.kind,
+  // 别家（OKX / Bybit / Hyperliquid / Coinbase）的品种都是加密：那一家的表懒拉，还没到时也分得出类别，自选照样同步、不被当成「网页管不着」
+  kindOf: s => S.symbols.get(s)?.kind ?? (isDefaultVenue(s) || isMacro(s) ? undefined : 'crypto'),
   price: s => S.symbols.get(s)?.price ?? null,
   label: (s, p) => fmt(p, S.symbols.get(s)?.dec ?? 2),
   get ready() { return S.symbols.size > 0 },

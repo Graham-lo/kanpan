@@ -6,6 +6,7 @@
  */
 import { st, save } from '../app/store'
 import { S, TABS, type Kind } from '../market'
+import { isDefaultVenue } from '../market/identity'
 import { $, I, esc, tgt } from '../ui/dom'
 import { toast } from '../ui/overlay'
 import { onSession } from '../account/session'
@@ -21,7 +22,9 @@ let gen = 0
 onSession(() => { gen++; text = ''; last = null })
 
 const KIND_CN = Object.fromEntries(TABS) as Record<Kind, string>
-const universe: TvUniverse = { has: s => S.symbols.has(s), kindOf: s => S.symbols.get(s)?.kind }
+// 照旧只认币安（裸代号）：别家的品种（完整键）不参与匹配
+const universe: TvUniverse = { has: s => isDefaultVenue(s) && S.symbols.has(s), kindOf: s => isDefaultVenue(s) ? S.symbols.get(s)?.kind : undefined }
+const binanceCount = (): number => { let n = 0; for (const k of S.symbols.keys()) if (isDefaultVenue(k)) n++; return n }
 
 export function tvImportHTML(): string {
   const ready = S.symbols.size > 0
@@ -31,7 +34,7 @@ export function tvImportHTML(): string {
         placeholder="粘贴代号，逗号或换行分隔，如 BINANCE:BTCUSDT.P, NASDAQ:NVDA；###分区 对应到加密 / 美股 / 大宗">${esc(text)}</textarea>
       <div class="tvi-bar">
         <label class="btn secondary sm tvi-file">${I('plus', 'icon-16')}选 .txt 文件<input type="file" accept=".txt,text/plain" id="tviFile" hidden></label>
-        <span class="tvi-hint">${ready ? `按币安合约表匹配，共 ${S.symbols.size} 只；追加到各分类末尾` : '品种表还没取到，连上行情后再导入'}</span>
+        <span class="tvi-hint">${ready ? `按币安合约表匹配，共 ${binanceCount()} 只；追加到各分类末尾` : '品种表还没取到，连上行情后再导入'}</span>
         <button class="btn primary sm" id="tviGo" ${ready ? '' : 'disabled'}>导入</button>
       </div>
       ${last ? resultHTML(last) : ''}

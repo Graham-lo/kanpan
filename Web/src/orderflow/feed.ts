@@ -14,6 +14,7 @@ import { OrderFlowModel, parseHistory, latestMs, type Snapshot } from './model'
 import { BucketScheme } from './bucket'
 import { admit, coolingFor, noteStatus } from '../market/limit'
 import { viaRoute } from '../market/rest'
+import { wireSymbol } from '../market/identity'
 import { D, applyOverride, baseOfSymbol, calibratedThreshold, defaultThresholds, isValidBase, needsCalibration, type Override } from './settings'
 import {
   type ConnSpec, type DepthBook, type Route, connectionSpecs, fallbackBooks, isKnownExchange, isPrimary, makeVenue, PRIMARY, venueAdapter,
@@ -284,8 +285,10 @@ export class OrderFlowFeed {
 
   constructor(opts: FeedOptions) {
     this.opts = opts
-    this.symbol = opts.symbol.toUpperCase()
-    const { base, scale } = baseOfSymbol(this.symbol)
+    // 图上可能是别家的品种（完整键 venue/market/SYMBOL）：订单流按 base 币聚合五家，和品种属于哪家无关，取代号那一段
+    this.symbol = wireSymbol(opts.symbol).toUpperCase()
+    // base 按完整键查（Hyperliquid 的 kPEPE 要靠品种表里的原名认出千枚计价）
+    const { base, scale } = baseOfSymbol(opts.symbol)
     this.base = base
     this.chartScale = scale
     this.calibrating = needsCalibration(base, opts.crypto)
@@ -338,7 +341,7 @@ export class OrderFlowFeed {
     if (this.stopped) return
     const books = rows?.length ? booksOf(rows, this.chartScale, now) : []
     this.fromCatalog = books.length > 0
-    this.books = books.length ? books : fallbackBooks(this.symbol, this.base, this.chartScale)
+    this.books = books.length ? books : fallbackBooks(/USDT$/.test(this.symbol) ? this.symbol : this.base + 'USDT', this.base, this.chartScale)
     for (const b of this.books) { this.byId.set(b.id, b); this.model.addVenue(b.venue) }
     if (this.calibrating) this.calibrationDeadline = Date.now() + D.calibrationTimeoutMs
     this.connect()

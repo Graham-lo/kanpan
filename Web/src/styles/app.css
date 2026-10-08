@@ -696,6 +696,12 @@ kbd {
 .sr .n1 mark { background: none; color: var(--accent-text); }
 .sr .n2 { font-size: var(--t12); color: var(--text-2); line-height: 16px; }
 .sr .r { text-align: right; }
+/* 搜索结果按交易所分组（2026-10-08）：组头是交易所全名，一家一组 */
+.sr-group { display: flex; align-items: baseline; gap: var(--s2); padding: var(--s3) var(--s5) var(--s1); font-size: var(--t12); color: var(--text-2); font-weight: 600; }
+.sr-group .faint { font-weight: 400; }
+/* 品种前的交易所缩写（币安 / OKX / Bybit / HL / CB）：灰小字，美元指数不带 */
+.vtag { color: var(--text-3); font-weight: 400; font-size: var(--t12); margin-right: 4px; letter-spacing: 0; }
+.vq { color: var(--text-3); font-weight: 400; }
 .search-foot { display: flex; gap: var(--s5); padding: var(--s3) var(--s5); border-top: 1px solid var(--line); color: var(--text-2); font-size: var(--t12); }
 .search-foot span { display: flex; align-items: center; gap: 6px; }
 
@@ -885,6 +891,7 @@ kbd {
 .widget-watch .tbl .wc-pct { min-width: 72px; font-weight: 500; }
 .widget-watch .tbl .sym { gap: 10px; }
 .widget-watch .tbl .sym b { font-weight: 650; letter-spacing: .01em; }
+.wv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .widget-watch.collapsed .wv-body { display: none; }
 .widget-watch.collapsed .wv-target { display: none; }
 /* 多图：列表打开到哪一格（跟着活动格走），24 高一行 */

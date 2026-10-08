@@ -58,7 +58,8 @@ export function validIv(iv: unknown): iv is string {
 /** 本机存档里的品种代号：字母数字（1000PEPEUSDT、XAUUSDT），也有中文名的（币安人生USDT、龙虾USDT——
  *  2026-09-30 regress 60 只自选少了一只，就是一开始只认 ASCII 把它丢了），留一点余量给点号与横线。
  *  这只管「形状像不像代号」；能不能上云是 sync/codec.ts 的另一条规则（服务端只收 ASCII，中文名的只留本机） */
-export const validSymbol = (v: unknown): v is string => typeof v === 'string' && /^[\p{L}\p{N}._-]{2,40}$/u.test(v)
+/** 网页存的品种键：币安裸代号 / DXY，或别家的完整键 venue/market/SYMBOL（market/identity.ts） */
+export const validSymbol = (v: unknown): v is string => typeof v === 'string' && (/^[\p{L}\p{N}._-]{2,40}$/u.test(v) || /^[a-z][a-z0-9_]{1,19}\/[a-z][a-z0-9_]{1,9}\/[\p{L}\p{N}._-]{1,40}$/u.test(v))
 
 // ───────── 布局集 ─────────
 

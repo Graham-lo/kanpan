@@ -9,6 +9,7 @@
  */
 import { S, on } from '../../market'
 import type { Sym } from '../../market/symbols'
+import { venueOf } from '../../market/identity'
 
 export const QUOTE_CACHE_KEY = 'hkline-m-quotes-v1'
 /** 行情跳动时最多多久记一次 */
@@ -37,7 +38,7 @@ export function compact(s: Sym): CachedSym {
 
 /** 记下来的一行 → 搜索 / 列表能直接用的 Sym（缺的实时字段一律空） */
 export function expand(r: CachedSym): Sym {
-  return { ...r, fr: null, nextFunding: null }
+  return { ...r, venue: r.macro ? 'macro' : venueOf(r.symbol), quote: r.macro ? '' : 'USDT', fr: null, nextFunding: null }
 }
 
 export function readQuotes(store: KV | null = kv(), now = Date.now()): Stored | null {

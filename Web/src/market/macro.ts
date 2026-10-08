@@ -24,20 +24,14 @@ export function isMacro(sym: string | null | undefined): boolean {
   return sym === MACRO_SYMBOL || sym === MACRO_KEY
 }
 
-/** 同步用的三段身份 */
-export function venueMarketOf(sym: string): { venue: string; market: string } {
-  return isMacro(sym) ? { venue: MACRO_VENUE, market: MACRO_MARKET } : { venue: 'binance', market: 'usd_m' }
-}
-/** 同步键 */
-export function syncKeyOf(sym: string): string {
-  return isMacro(sym) ? MACRO_KEY : `binance/usd_m/${sym}`
-}
+// 同步用的三段身份：2026-10-08 起所有交易所都走 identity.ts（这里保留导出，老代码照旧从这里拿）
+export { syncKeyOf, venueMarketOf } from './identity'
 
 /** 服务端不通时的内置一行（离线照样搜得到、加得了自选）；价格等第一帧来了再填 */
 export function macroFallback(): Sym {
   return {
     symbol: MACRO_SYMBOL, base: MACRO_SYMBOL, code: MACRO_SYMBOL, kind: 'idx', cn: MACRO_CN, dec: 3,
-    color: '#2F8F5F', price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null, ut: 'INDEX', macro: true,
+    color: '#2F8F5F', venue: MACRO_VENUE, quote: '', price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null, ut: 'INDEX', macro: true,
   }
 }
 

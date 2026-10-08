@@ -5,6 +5,8 @@
  */
 import type { BigOrder, Product, Thresholds } from './types'
 import { PRODUCTS, isContract } from './types'
+import { wireSymbol } from '../market/identity'
+import { S } from '../market/state'
 
 export const D = {
   confirmationSamples: 2,
@@ -127,8 +129,11 @@ export const productsOf = (t: Thresholds): Product[] => PRODUCTS.filter(p => t[p
 export const SCALED_PREFIXES: [string, number][] = [['1000000', 1_000_000], ['1000', 1000], ['1M', 1_000_000]]
 export const isValidBase = (b: string): boolean => /^[A-Z0-9]{1,20}$/.test(b)
 
-/** `1000PEPE` → PEPE × 1000；`1MBABYDOGE` → BABYDOGE × 1e6；其余原样 × 1。 */
+/** `1000PEPE` → PEPE × 1000；`1MBABYDOGE` → BABYDOGE × 1e6；小写 k 打头的千枚币名（`kPEPE`）→ PEPE × 1000；其余原样 × 1。
+ *  大写的 `KAITO` 是真名，不拆（大写键 `KPEPE` 要不要拆由 baseOfSymbol 查品种表定）。 */
 export function normalizeBase(raw: string): { base: string; scale: number } {
+  const k = /^k([A-Z0-9]+)$/.exec(raw)
+  if (k && isValidBase(k[1]) && !/^[0-9]/.test(k[1])) return { base: k[1], scale: 1000 }
   const upper = raw.toUpperCase()
   for (const [prefix, scale] of SCALED_PREFIXES) {
     if (!upper.startsWith(prefix)) continue
@@ -138,9 +143,16 @@ export function normalizeBase(raw: string): { base: string; scale: number } {
   return { base: upper, scale: 1 }
 }
 
-/** 图上的合约代号（BTCUSDT、1000PEPEUSDT）→ 订单流的 base 与缩放。 */
+/** 图上的合约代号（BTCUSDT、1000PEPEUSDT；别家的完整键取代号那一段，BTC-USD 这种现货去掉 -USD）→ 订单流的 base 与缩放。 */
 export function baseOfSymbol(symbol: string): { base: string; scale: number } {
-  return normalizeBase(symbol.toUpperCase().replace(/USDT$|USDC$/, ''))
+  // 品种表里的原名是小写 k 打头（kPEPE）：千枚计价，按原名拆
+  const raw = S.symbols.get(symbol)?.raw
+  if (raw && /^k[A-Z0-9]/.test(raw)) return normalizeBase(raw)
+  const w = wireSymbol(symbol).toUpperCase().replace(/-USD$|USDT$|USDC$/, '')
+  // 大写键里的前导 K（KPEPE）：只有去掉 K 后的名字在币安表里以 1000<名> 上架时才算千枚（KAITO 这种真名不拆）
+  const m = /^K([A-Z][A-Z0-9]*)$/.exec(w)
+  if (m && S.symbols.has(`1000${m[1]}USDT`)) return { base: m[1], scale: 1000 }
+  return normalizeBase(w)
 }
 
 // ------------------------------------------------------------ 显示开关（网页本机，不同步）

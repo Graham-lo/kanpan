@@ -24,10 +24,21 @@ describe('viaRoute', () => {
     expect(viaRoute('https://dapi.binance.com/dapi/v1/depth?symbol=BTCUSD_PERP&limit=1000')).toBe(`${SG}/v1/market/raw/dapi/v1/depth?symbol=BTCUSD_PERP&limit=1000&source=binance`)
   })
 
-  it('不是币安合约的地址不动（现货 binance.vision 国内能直连、OKX、自家 /v1）', () => {
+  it('不是交易所 REST 的地址不动（现货 binance.vision 国内能直连、自家 /v1、WS）', () => {
     S.route = 'gateway'
-    for (const u of ['https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=30m', 'https://www.okx.com/api/v5/market/candles?instId=BTC-USDT', '/v1/market/depth?symbol=BTCUSDT&limit=1000&market=um', 'wss://fstream.binance.com/market/stream']) {
+    for (const u of ['https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=30m', '/v1/market/depth?symbol=BTCUSDT&limit=1000&market=um', 'wss://fstream.binance.com/market/stream']) {
       expect(viaRoute(u)).toBe(u)
     }
+  })
+
+  it('2026-10-08 起别家的直连 REST 在网关线路上按那一家登记的改写走透传（线路规矩：选网关就只走网关）', async () => {
+    await import('../src/venues')
+    S.route = 'gateway'
+    expect(viaRoute('https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP&bar=1m')).toBe(`${SG}/v1/market/raw/api/v5/market/candles?instId=BTC-USDT-SWAP&bar=1m&source=okx`)
+    expect(viaRoute('https://api.bybit.com/v5/market/tickers?category=linear')).toBe(`${SG}/v1/market/raw/v5/market/tickers?category=linear&source=bybit`)
+    expect(viaRoute('https://api.coinbase.com/api/v3/brokerage/market/products?product_type=SPOT')).toBe(`${SG}/v1/market/raw/products?product_type=SPOT&source=coinbase`)
+    expect(viaRoute('https://api.hyperliquid.xyz/info')).toBe(`${SG}/v1/market/raw/info?source=hyperliquid`)
+    S.route = 'direct'
+    expect(viaRoute('https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP')).toBe('https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP')
   })
 })

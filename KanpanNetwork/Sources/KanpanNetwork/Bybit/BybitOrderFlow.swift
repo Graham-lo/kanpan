@@ -9,12 +9,12 @@ import KanpanCore
 
 extension OrderFlowExchange {
   static let bybit = OrderFlowExchange(
-    key: "bybit", displayName: "Bybit", maxBooksPerConnection: BybitBooksAdapter.maxBooks,
+    key: BybitVenue.id, displayName: BybitVenue.displayName, maxBooksPerConnection: BybitBooksAdapter.maxBooks,
     liquidationCode: 2,
     sequenceModel: { _, _ in BybitBooksAdapter.sequenceModel },
     snapshotInBand: { _ in true },
     fallback: { viewedBase, _, _ in
-      [OrderFlowFallbackBook(product: .usdtPerp, instrument: viewedBase + "USDT")]
+      [OrderFlowFallbackBook(product: .usdtPerp, instrument: viewedBase + BybitVenue.quote)]
     },
     makeAdapters: { books, context in
       guard !context.route.apiHosts.isEmpty else { return [] }
@@ -29,4 +29,10 @@ extension OrderFlowExchange {
       }
     }
   )
+}
+
+extension BybitProvider: OrderFlowSourcing {
+  public var orderFlowCatalog: OrderFlowCatalog {
+    OrderFlowCatalog(route: endpoints.route, sockets: sockets, http: transport)
+  }
 }

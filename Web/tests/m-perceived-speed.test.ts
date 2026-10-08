@@ -130,7 +130,7 @@ describe('B4 · 换品种 / 周期取数那一拍的提示', () => {
 
 describe('B7 / B9 · 上次的价与品种表', () => {
   const sym = (symbol: string, price: number | null, pct: number | null): Sym => ({
-    symbol, base: symbol.replace(/USDT$/, ''), code: symbol.replace(/USDT$/, ''), kind: 'crypto', cn: '', dec: 2, color: '#000',
+    symbol, venue: 'binance', quote: 'USDT', base: symbol.replace(/USDT$/, ''), code: symbol.replace(/USDT$/, ''), kind: 'crypto', cn: '', dec: 2, color: '#000',
     price, chg: 1, pct, vol: 1e6, fr: 0.0001, nextFunding: 1, tags: ['layer-1'], onboard: 5, mark: 1, lastTick: 9,
   })
   beforeEach(() => { _resetQuoteCache(); S.symbols.clear(); S.live = null })

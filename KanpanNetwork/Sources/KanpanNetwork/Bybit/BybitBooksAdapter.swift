@@ -19,6 +19,8 @@ import KanpanCore
 /// - 每 20 秒发一句 `{"op":"ping"}`；回来的 `{"success":true,"ret_msg":"pong","op":"ping"}`
 ///   （或 `{"op":"pong",…}`）与订阅回执 `{"success":true,"op":"subscribe"}` 都不带 topic，解码直接忽略。
 /// - 数量原样给（现货与 U 本位是币数，币本位是张数，一张 1 美元），名义美元由 `OrderFlowNotional` 换。
+///
+/// 中继地址、保活、控制帧的写法来自 `BybitVenue` / `BybitWire`，解帧是 `BybitDTO.orderFlow`（Bybit 唯一的报文解码）。
 public struct BybitBooksAdapter: DepthFeedAdapter {
   public enum Category: String, Sendable, CaseIterable {
     case spot, linear, inverse
@@ -38,11 +40,8 @@ public struct BybitBooksAdapter: DepthFeedAdapter {
   public static let snapshotLevels = 1000
   /// 一条连接最多几本（中继一条连接最多 24 个 topic，一本 orderbook + publicTrade 两个）。
   public static let maxBooks = 12
-  /// 一条订阅消息最多几本（中继一条消息最多 10 个 args）。
-  static let booksPerMessage = 5
-  static let relayPath = "/v1/market/ws/bybit"
-  static let pingEveryMs: Double = 20_000
-  static let pingText = #"{"op":"ping"}"#
+  /// 一条订阅消息最多几本（一条消息最多 10 个 args，一本两个）。
+  static let booksPerMessage = BybitVenue.maxArgsPerMessage / 2
 
   public let category: Category
   public let books: [DepthBook]
@@ -72,27 +71,16 @@ public struct BybitBooksAdapter: DepthFeedAdapter {
     }
   }
 
-  public var name: String { "Bybit\(category.label) \(books.map(\.venue.instrument).joined(separator: ","))" }
+  public var name: String { "\(BybitVenue.displayName)\(category.label) \(books.map(\.venue.instrument).joined(separator: ","))" }
 
-  public var streamURLs: [URL] {
-    gateways.compactMap { host in
-      guard var c = URLComponents(string: "wss://" + host), c.host != nil, c.user == nil else { return nil }
-      c.path = Self.relayPath
-      c.queryItems = [URLQueryItem(name: "category", value: category.rawValue)]
-      return c.url
-    }
-  }
+  public var streamURLs: [URL] { BybitVenue.relayStreams(hosts: gateways, category: category.rawValue) }
 
-  public var keepAlive: DepthKeepAlive? { DepthKeepAlive(text: Self.pingText, everyMs: Self.pingEveryMs) }
+  public var keepAlive: DepthKeepAlive? { DepthKeepAlive(text: BybitVenue.pingText, everyMs: BybitVenue.pingEveryMs) }
 
-  static func bookTopic(_ instrument: String) -> String { "orderbook.\(snapshotLevels).\(instrument)" }
-  static func tradeTopic(_ instrument: String) -> String { "publicTrade.\(instrument)" }
+  static func bookTopic(_ instrument: String) -> String { BybitVenue.bookTopic(levels: snapshotLevels, instrument) }
+  static func tradeTopic(_ instrument: String) -> String { BybitVenue.tradeTopic(instrument) }
 
-  static func message(_ op: String, _ args: [String]) -> String? {
-    let obj: [String: Any] = ["op": op, "args": args]
-    guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return nil }
-    return String(decoding: data, as: UTF8.self)
-  }
+  static func message(_ op: String, _ args: [String]) -> String? { try? BybitWire.control(op, args) }
 
   /// 订阅消息（一条最多 `booksPerMessage` 本，即 10 个 args）。
   var subscribeMessages: [String] {
@@ -124,45 +112,6 @@ public struct BybitBooksAdapter: DepthFeedAdapter {
   }
 
   public func decode(_ text: String) -> [VenueMessage] {
-    guard let frame = DepthWire.object(text), let topic = frame["topic"] as? String else { return [] }
-    if topic.hasPrefix("orderbook.") { return decodeBook(frame, topic: topic) }
-    if topic.hasPrefix("publicTrade.") { return decodeTrades(frame, topic: topic) }
-    return []
-  }
-
-  private func decodeBook(_ frame: [String: Any], topic: String) -> [VenueMessage] {
-    guard let data = frame["data"] as? [String: Any],
-          let symbol = data["s"] as? String, let book = byInstrument[symbol],
-          topic == Self.bookTopic(symbol),
-          let u = DepthWire.integer(data["u"]),
-          let bids = book.levels(data["b"]), let asks = book.levels(data["a"]) else { return [] }
-    let time = DepthWire.integer(frame["ts"])
-    switch frame["type"] as? String {
-    case "snapshot":
-      guard bids.count <= Self.snapshotLevels, asks.count <= Self.snapshotLevels else { return [] }
-      return [VenueMessage(book.id, .snapshot(BookSnapshot(lastUpdateID: u, requestedLevels: Self.snapshotLevels,
-                                                           bids: bids, asks: asks, eventTimeMs: time,
-                                                           slidingWindow: true, restartsSequence: u == 1)))]
-    case "delta":
-      return [VenueMessage(book.id, .delta(BookDelta(firstUpdateID: u, finalUpdateID: u, previousFinalUpdateID: nil,
-                                                    bids: bids, asks: asks, eventTimeMs: time ?? 0)))]
-    default:
-      return []
-    }
-  }
-
-  private func decodeTrades(_ frame: [String: Any], topic: String) -> [VenueMessage] {
-    guard let items = frame["data"] as? [[String: Any]] else { return [] }
-    var out: [VenueMessage] = []
-    for t in items {
-      guard let symbol = t["s"] as? String, let book = byInstrument[symbol], topic == Self.tradeTopic(symbol) else { continue }
-      // 价量解得开却不是有限值或越界：整帧丢掉并记一笔（坏帧里别的成交同样不可信）。
-      guard let p = DepthWire.number(t["p"]), let q = DepthWire.number(t["v"]),
-            p > 0, q >= 0, p.isFinite, q.isFinite else { WireNumber.noteDropped(); return [] }
-      guard q > 0, let side = t["S"] as? String, side == "Buy" || side == "Sell" else { continue }
-      out.append(VenueMessage(book.id, .trade(book.trade(price: p, quantity: q, hit: side == "Buy" ? .ask : .bid,
-                                                         timeMs: DepthWire.integer(t["T"]) ?? 0))))
-    }
-    return out
+    BybitDTO.orderFlow(text, books: byInstrument, levels: Self.snapshotLevels)
   }
 }

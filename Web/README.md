@@ -61,6 +61,15 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 - 指标与叠加（2026-09-29，详见 `docs/网页版-吸收-指标-2026-09-29.md`）：主图「关键价位」一个开关（昨高低 / 上周高低 / 今开 / 裸昨控与昨值区，`src/chart/keyLevels.ts`）、VWAP、VPVR（≥ 4h 用 15m、≥ 1d 用 1h 细 K 线）、CVD（币安历史 + 三家实时、现货 / 合约分开）、副图「大单与散户累计量差」（实时三家逐笔 + 近 3 天服务端分钟历史 `GET /v1/market/orderflow/flow`）。
 - 压测遗留项根因修复（2026-09-30，详见 `docs/网页版-深度压测-2026-09-29/A-图表布局画线指标.md`「压测遗留项的根因修复」）：板块走势线来自服务端小时收盘（`GET /v1/market/hourly-closes`，每批 ≤ 200 只、不设上限；服务端不通时退回直连币安，取到的在 sessionStorage 留 5 分钟，`src/sectors/spark.ts`）；行情推送与 K 线并行建连（K 线在路上时推来的先攒着、到了再并，`src/chart/pushBuffer.ts`）；换品种后详情五格、持仓量副图、关键价位、订单流深度快照等停稳约半秒再取（`src/market/settle.ts`），连切时中间划过的品种一笔不取；「找相似」找完为空时直接说为什么空。首屏计时 `node scripts/firstscreen.mjs <地址> cold|switch|sectors`。
 
+### 多交易所（2026-10-08）
+
+- 同一个币在不同交易所是不同品种（像 TradingView / AICoin），K 线 / 价格 / 持仓量 / 费率只看品种所属那一家，不混源、没有替身；主力订单流仍五家按 base 币聚合。
+- 身份 `src/market/identity.ts`：币安 U 本位继续用裸代号（本机存档、画线、提醒、自选不迁移），美元指数 `DXY`，别家完整键 `okx/usd_m/BTCUSDT`、`bybit/usd_m/BTCUSDT`、`hyperliquid/usd_m/BTC`（coin 大写，原名在 `Sym.raw`）、`coinbase/spot/BTC-USD`。
+- 一家一个文件 `src/venues/<id>.ts`：地址表、唯一的限流器（`market/limit.ts registerGate`，按那一家官方口径：OKX 按接口各算、Bybit 整个 IP 共用 5 秒窗口、Hyperliquid 按权重、Coinbase 按次，各取官方的一半；直连 / 网关各一道）、一套解码；`market` 是行情面（品种表、整表行情、K 线、费率 / 持仓量、推送 `MarketWire`、周期表），其余字段是订单流。注册表 `src/venues/index.ts`（`marketOf` / `venueLabel` / `marketKlines` / `symbolOk`）。
+- 别家的品种表懒拉：首屏不拉；格子 / 自选 / 提醒 / 对比里用到哪家启动后拉哪家，搜索 / 对比弹层打开时拉全部（`market/rest.ts loadVenue`）。推送一家一条连接多订阅（`market/venueStream.ts`；OKX 的 K 线在 business 端点另一条），线路规矩同币安：选网关只走网关，直连失败报错不切。
+- 某一家没有的周期由原生档并（OKX / Bybit 8 时 ← 4 时、HL 6 时 ← 2 时、Coinbase 3 分 / 8 时 / 12 时 / 周 / 月）；Coinbase 没有任意周期的 K 线推送，当前那根拿逐笔拼。别家没有持仓量历史与多空比，图上 / 详情格空着。
+- 展示：列表行名字前灰小字缩写（币安 / OKX / Bybit / HL / CB，美元指数不带）；图表头只写基础币，旁边小字「币安 USDT 永续」「CB USD 现货」「指数」；搜索结果按交易所分组。
+
 ### 侧栏详情十二格
 
 | 格子 | 来源 | 什么时候显示「—」 |

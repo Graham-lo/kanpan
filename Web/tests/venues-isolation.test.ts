@@ -5,6 +5,15 @@ import { describe, expect, it } from 'vitest'
 const SOURCES = import.meta.glob('../src/orderflow/**/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const BANNED = /binance|okx|coinbase|bybit|hyperliquid|\.com\b|\.xyz\b|binance\.me/i
 const VENUES_IMPORT = /from\s+['"]\.\.\/venues['"]/
+/** 行情层的通用件（推送分发、行情落表、身份）与电脑版页面 / 自选：按注册表走，不许写别家的名字或域名。
+ *  币安是默认交易所（裸代号），它的 REST / 推送复刻代码留在 market/rest.ts、stream.ts、limit.ts，不在这份清单里 */
+const GENERIC = {
+  ...import.meta.glob('../src/market/{venueStream,quote,identity,state,klineCache,tail,settle}.ts', { query: '?raw', import: 'default', eager: true }),
+  ...import.meta.glob('../src/pages/**/*.ts', { query: '?raw', import: 'default', eager: true }),
+  ...import.meta.glob('../src/watch/widget.ts', { query: '?raw', import: 'default', eager: true }),
+  ...import.meta.glob('../src/ui/common.ts', { query: '?raw', import: 'default', eager: true }),
+} as Record<string, string>
+const OTHERS = /okx|bybit|hyperliquid|coinbase|okx\.com|bybit\.com|hyperliquid\.xyz|coinbase\.com/i
 
 /** 去注释（块注释保留换行好对行号；行注释不碰字符串里的 //） */
 export function stripComments(src: string): string {
@@ -23,6 +32,16 @@ describe('订单流不认交易所', () => {
         if (VENUES_IMPORT.test(line)) return
         if (BANNED.test(line)) hits.push(`${f}:${i + 1}: ${line.trim()}`)
       })
+    }
+    expect(hits).toEqual([])
+  })
+
+  it('行情层的通用件与页面也不点名别家（2026-10-08：一家的地址、解码只在 src/venues/<id>.ts）', () => {
+    const files = Object.entries(GENERIC)
+    expect(files.length).toBeGreaterThan(10)
+    const hits: string[] = []
+    for (const [f, src] of files) {
+      stripComments(src).split('\n').forEach((line, i) => { if (OTHERS.test(line)) hits.push(`${f}:${i + 1}: ${line.trim()}`) })
     }
     expect(hits).toEqual([])
   })
