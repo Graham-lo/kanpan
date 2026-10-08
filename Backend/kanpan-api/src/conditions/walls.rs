@@ -24,7 +24,7 @@ use tokio::sync::mpsc;
 pub struct WallView {
  /// 同一面墙跨评估不变的键：交易所 / 产品 / 侧 / 价位桶。
  pub key:String,
- /// 「币安」「OKX」「Coinbase」。
+ /// 「币安」「OKX」「Coinbase」「Bybit」「Hyperliquid」（跟踪器里五家的大单都会摊过来，不按交易所筛）。
  pub exchange:String,
  /// `spot` / `usdtPerp` / `coinPerp` / `delivery`。
  pub product:String,
