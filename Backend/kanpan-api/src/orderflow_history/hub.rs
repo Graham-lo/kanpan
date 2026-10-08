@@ -74,8 +74,8 @@ const OKX_OPS_PER_HOUR:usize=400;
 
 // ------------------------------------------------------------------ 统计
 
-static FRAMES:[AtomicU64;6]=[const {AtomicU64::new(0)};6];
-static DROPS:[AtomicU64;6]=[const {AtomicU64::new(0)};6];
+static FRAMES:[AtomicU64;KINDS.len()]=[const {AtomicU64::new(0)};KINDS.len()];
+static DROPS:[AtomicU64;KINDS.len()]=[const {AtomicU64::new(0)};KINDS.len()];
 
 // ------------------------------------------------------------------ 新建连接的节拍
 
@@ -86,14 +86,16 @@ fn pace(kind:Kind)->(usize,Pace) {
  if kind.binance() {return (0,Pace{gap:Duration::from_secs(1),window:Duration::from_secs(300),max:60})}
  match kind {
   Kind::Okx=>(1,Pace{gap:Duration::from_millis(400),window:Duration::from_secs(1),max:3}),
+  // Bybit：同一 IP 5 分钟最多 500 次新建连接，这里只用 100，间隔至少 250 毫秒。
+  Kind::BybitSpot|Kind::BybitLinear|Kind::BybitInverse=>(3,Pace{gap:Duration::from_millis(250),window:Duration::from_secs(300),max:100}),
   _=>(2,Pace{gap:Duration::from_millis(250),window:Duration::from_secs(1),max:4}),
  }
 }
 
 /// 等到能新建一条这种连接为止（同一家的连接共用一个节拍器）。币安出口被封着时也等。
 async fn permit(kind:Kind) {
- static LOGS:OnceLock<[tokio::sync::Mutex<VecDeque<Instant>>;3]>=OnceLock::new();
- let logs=LOGS.get_or_init(||[const {tokio::sync::Mutex::const_new(VecDeque::new())};3]);
+ static LOGS:OnceLock<[tokio::sync::Mutex<VecDeque<Instant>>;4]>=OnceLock::new();
+ let logs=LOGS.get_or_init(||[const {tokio::sync::Mutex::const_new(VecDeque::new())};4]);
  let (family,p)=pace(kind);
  let mut log=logs[family].lock().await;
  loop {
@@ -166,7 +168,7 @@ impl Slot {fn streams(&self)->usize {self.venues.len()*self.kind.suffixes().len(
 struct Pending {routes:Vec<Route>,since:Instant,last:Instant}
 
 #[derive(Default)]
-struct Pool {slots:HashMap<u64,Slot>,pending:HashMap<Kind,Pending>,next:u64,drops:Vec<(Instant,u64,Vec<String>)>,frames:[u64;6],drops_seen:[u64;6]}
+struct Pool {slots:HashMap<u64,Slot>,pending:HashMap<Kind,Pending>,next:u64,drops:Vec<(Instant,u64,Vec<String>)>,frames:[u64;KINDS.len()],drops_seen:[u64;KINDS.len()]}
 
 impl Pool {
  fn spawn(&mut self,kind:Kind,routes:Vec<Route>,replaces:Vec<(u64,Vec<String>)>,hub_tx:&mpsc::UnboundedSender<HubCmd>)->u64 {
@@ -190,7 +192,7 @@ impl Pool {
 
  fn add(&mut self,routes:Vec<Route>,hub_tx:&mpsc::UnboundedSender<HubCmd>) {
   let now=Instant::now();
-  let mut okx=Vec::new();
+  let mut fill:HashMap<Kind,Vec<Route>>=HashMap::new();
   for route in routes {
    for &kind in feeds::kinds_of(&route.venue) {
     // 已经挂在某条连接上：挂的要是别的跟踪器的收件口（旧跟踪器停了 / 崩了、它的 remove
@@ -208,7 +210,7 @@ impl Pool {
     if present {continue}
     match kind {
      Kind::Coinbase=>{self.spawn(kind,vec![route.clone()],Vec::new(),hub_tx);},
-     Kind::Okx=>okx.push(route.clone()),
+     k if k.batched()||k==Kind::Hyperliquid=>fill.entry(k).or_default().push(route.clone()),
      _=>{
       let p=self.pending.entry(kind).or_insert_with(||Pending{routes:Vec::new(),since:now,last:now});
       if let Some(queued)=p.routes.iter_mut().find(|r|r.venue.id==route.venue.id) {*queued=route.clone();continue}
@@ -217,22 +219,26 @@ impl Pool {
     }
    }
   }
-  // OKX：先填有空位的连接（装得最满的先填，少开连接），不够再开。
-  while !okx.is_empty() {
-   let target=self.slots.iter().filter(|(_,s)|s.kind==Kind::Okx&&s.venues.len()<Kind::Okx.capacity())
-    .max_by_key(|(id,s)|(s.venues.len(),std::cmp::Reverse(**id))).map(|(id,_)|*id);
-   match target {
-    Some(id)=>{
-     let slot=self.slots.get_mut(&id).expect("slot");
-     let room=Kind::Okx.capacity()-slot.venues.len();
-     let batch:Vec<Route>=okx.drain(..room.min(okx.len())).collect();
-     for r in &batch {slot.venues.insert(r.venue.id.clone(),r.clone());}
-     let _=slot.tx.send(ConnCmd::Assign(batch));
-    },
-    None=>{
-     let batch:Vec<Route>=okx.drain(..Kind::Okx.capacity().min(okx.len())).collect();
-     self.spawn(Kind::Okx,batch,Vec::new(),hub_tx);
-    },
+  // OKX / Bybit / Hyperliquid：先填有空位的连接（装得最满的先填，少开连接），不够再开。
+  let mut fill:Vec<(Kind,Vec<Route>)>=fill.into_iter().collect();
+  fill.sort_by_key(|(k,_)|*k);
+  for (kind,mut routes) in fill {
+   while !routes.is_empty() {
+    let target=self.slots.iter().filter(|(_,s)|s.kind==kind&&s.venues.len()<kind.capacity())
+     .max_by_key(|(id,s)|(s.venues.len(),std::cmp::Reverse(**id))).map(|(id,_)|*id);
+    match target {
+     Some(id)=>{
+      let slot=self.slots.get_mut(&id).expect("slot");
+      let room=kind.capacity()-slot.venues.len();
+      let batch:Vec<Route>=routes.drain(..room.min(routes.len())).collect();
+      for r in &batch {slot.venues.insert(r.venue.id.clone(),r.clone());}
+      let _=slot.tx.send(ConnCmd::Assign(batch));
+     },
+     None=>{
+      let batch:Vec<Route>=routes.drain(..kind.capacity().min(routes.len())).collect();
+      self.spawn(kind,batch,Vec::new(),hub_tx);
+     },
+    }
    }
   }
  }
@@ -258,7 +264,7 @@ impl Pool {
  }
 
  fn resubscribe(&mut self,id:&str) {
-  for slot in self.slots.values().filter(|s|matches!(s.kind,Kind::Okx|Kind::Coinbase)&&s.venues.contains_key(id)) {
+  for slot in self.slots.values().filter(|s|(s.kind.batched()||s.kind==Kind::Coinbase)&&s.venues.contains_key(id)) {
    let _=slot.tx.send(ConnCmd::Resubscribe(id.to_string()));
   }
  }
@@ -419,10 +425,10 @@ impl Conn {
  fn drop_ids(&mut self,ids:&[String])->Vec<Route> {
   ids.iter().filter_map(|id|self.routes.remove(id)).inspect(|r|self.decoder.remove(&r.venue)).collect()
  }
- fn url(&self)->String {
+ fn url(&self,attempt:u32)->String {
   let mut venues:Vec<&VenueInfo>=self.routes.values().map(|r|&r.venue).collect();
   venues.sort_by(|a,b|a.id.cmp(&b.id));
-  self.kind.url(&venues)
+  self.kind.url_at(&venues,attempt)
  }
  fn instruments(&self)->Vec<String> {self.routes.values().map(|r|r.venue.instrument.clone()).collect()}
 
@@ -461,17 +467,25 @@ async fn send_text(tx:&mut futures_util::stream::SplitSink<Ws,Up>,text:String)->
 
 /// 一条连接的一生：连上（首次连上按交接通知、之后按重连通知）、转帧、跟池子的命令增删簿，
 /// 断了抖动退避重连；挂着的簿退光了就结束。
-async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>) {
+async fn run(slot:u64,kind:Kind,routes:Vec<Route>,cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>) {
+ if kind==Kind::Hyperliquid {return run_shared(slot,routes,cmds,hub_tx).await}
+ run_own(slot,kind,routes,cmds,hub_tx).await
+}
+
+async fn run_own(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>) {
  let mut conn=Conn{kind,routes:HashMap::new(),decoder:Decoder::new(kind)};
  for r in routes {conn.insert(r);}
+ // 第几次连：Bybit 连不上主域名时下一次换备用域名（见 `Kind::url_at`）。
+ let mut attempt=0u32;
  let mut backoff=Duration::from_secs(1);
  let mut first=true;
  let mut cmds_open=true;
  'life: loop {
   if conn.routes.is_empty()||conn.routes.values().all(|r|r.events.is_closed()) {break}
-  let ws=match open(kind,&conn.url()).await {
+  let ws=match open(kind,&conn.url(attempt)).await {
    Ok(ws)=>ws,
    Err(e)=>{
+    attempt=attempt.wrapping_add(1);
     tracing::debug!("Orderflow history: {} connection {slot} unreachable: {e}",kind.label());
     let until=Instant::now()+jittered(backoff);
     backoff=(backoff*2).min(Duration::from_secs(30));
@@ -495,6 +509,11 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
     let instruments=conn.instruments();
     let refs:Vec<&str>=instruments.iter().map(String::as_str).collect();
     for text in feeds::okx_ops("subscribe",&refs,false) {ops.push_back(Instant::now());if !send_text(&mut tx,text).await {ok=false;break}}
+   },
+   Kind::BybitSpot|Kind::BybitLinear|Kind::BybitInverse=>{
+    let instruments=conn.instruments();
+    let refs:Vec<&str>=instruments.iter().map(String::as_str).collect();
+    for text in feeds::bybit_ops("subscribe",&refs,false) {if !send_text(&mut tx,text).await {ok=false;break}}
    },
    Kind::Coinbase=>{
     let product=conn.routes.values().next().map(|r|r.venue.instrument.clone()).unwrap_or_default();
@@ -525,6 +544,7 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
      deadline=Instant::now()+IDLE;
      if !announced_up {announced_up=true;let _=hub_tx.send(HubCmd::Up(slot));}
      if kind==Kind::Okx&&let Some(error)=Decoder::okx_error(text.as_str()) {tracing::warn!("Orderflow history: okx connection {slot} error {error}");continue}
+     if kind.bybit()&&let Some(error)=Decoder::bybit_error(text.as_str()) {tracing::warn!("Orderflow history: {} connection {slot} error {error}",kind.label());continue}
      for decoded in conn.decoder.decode(text.as_str()) {conn.deliver(decoded,connection);}
     },
     cmd=cmds.recv(),if cmds_open=>match cmd {
@@ -543,25 +563,25 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
       let refs:Vec<&Route>=swapped.iter().collect();
       conn.announce(&refs,|venues|Event::Opened{venues,connection});
       match kind {
-       Kind::Okx=>to_resub.extend(swapped.iter().map(|r|r.venue.instrument.clone())),
+       k if k.batched()=>to_resub.extend(swapped.iter().map(|r|r.venue.instrument.clone())),
        Kind::Coinbase if !swapped.is_empty()=>break,
        _=>{},
       }
      },
      Some(ConnCmd::Drop(ids))=>{
       let dropped=conn.drop_ids(&ids);
-      if kind==Kind::Okx {to_unsub.extend(dropped.iter().map(|r|r.venue.instrument.clone()));}
+      if kind.batched() {to_unsub.extend(dropped.iter().map(|r|r.venue.instrument.clone()));}
       let refs:Vec<&Route>=dropped.iter().collect();
       conn.announce(&refs,|venues|Event::Closed{venues,connection});
       if conn.routes.is_empty() {let _=tokio::time::timeout(Duration::from_secs(1),tx.close()).await;break 'life}
      },
      Some(ConnCmd::Resubscribe(id))=>match kind {
-      Kind::Okx=>if let Some(r)=conn.routes.get(&id) {to_resub.push(r.venue.instrument.clone())},
+      k if k.batched()=>if let Some(r)=conn.routes.get(&id) {to_resub.push(r.venue.instrument.clone())},
       // Coinbase 的序号按整条连接计，只能整条重连。
       _=>break,
      },
     },
-    _=flush.tick(),if kind==Kind::Okx=>{
+    _=flush.tick(),if kind.batched()=>{
      let now=Instant::now();
      while ops.front().is_some_and(|t|now.duration_since(*t)>=Duration::from_secs(3600)) {ops.pop_front();}
      let mut batches=Vec::new();
@@ -571,20 +591,26 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
      let s:Vec<&str>=sub.iter().map(String::as_str).collect();
      let u:Vec<&str>=unsub.iter().map(String::as_str).collect();
      let r:Vec<&str>=resub.iter().map(String::as_str).collect();
-     batches.extend(feeds::okx_ops("unsubscribe",&u,false));
-     batches.extend(feeds::okx_ops("unsubscribe",&r,true));
-     batches.extend(feeds::okx_ops("subscribe",&r,true));
-     batches.extend(feeds::okx_ops("subscribe",&s,false));
+     let make=if kind==Kind::Okx {feeds::okx_ops} else {feeds::bybit_ops};
+     batches.extend(make("unsubscribe",&u,false));
+     batches.extend(make("unsubscribe",&r,true));
+     batches.extend(make("subscribe",&r,true));
+     batches.extend(make("subscribe",&s,false));
      if batches.is_empty() {continue}
-     // 这条连接一小时的订退额度快用完了：整条重连（重连后订全部，额度重算），不去撞 480。
-     if ops.len()+batches.len()>OKX_OPS_PER_HOUR {
+     // 这条 OKX 连接一小时的订退额度快用完了：整条重连（重连后订全部，额度重算），不去撞 480。Bybit 没有这条限额。
+     if kind==Kind::Okx&&ops.len()+batches.len()>OKX_OPS_PER_HOUR {
       tracing::info!("Orderflow history: okx connection {slot} used {} subscribe ops this hour, reconnecting",ops.len());
       break;
      }
      for text in batches {ops.push_back(now);if !send_text(&mut tx,text).await {ok=false;break}}
     },
     _=ping.tick()=>{
-     let frame=if kind==Kind::Okx {Up::Text("ping".into())} else {Up::Ping(Default::default())};
+     // OKX 文本 ping；Bybit 要应用层的 `{"op":"ping"}`（回 `{"op":"pong"}` / `ret_msg:"pong"`，解码器不认，丢掉）。
+     let frame=match kind {
+      Kind::Okx=>Up::Text("ping".into()),
+      k if k.bybit()=>Up::Text(r#"{"op":"ping"}"#.into()),
+      _=>Up::Ping(Default::default()),
+     };
      if !matches!(tokio::time::timeout(SEND,tx.send(frame)).await,Ok(Ok(()))) {break}
     },
     _=tokio::time::sleep_until(up_deadline),if !announced_up=>{announced_up=true;let _=hub_tx.send(HubCmd::Up(slot));},
@@ -595,8 +621,8 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
   let all:Vec<Route>=conn.routes.values().cloned().collect();
   let refs:Vec<&Route>=all.iter().collect();
   conn.announce(&refs,|venues|Event::Closed{venues,connection});
-  // 活过一分钟的算正常断开，退避从头来。
-  if started.elapsed()>Duration::from_secs(60) {backoff=Duration::from_secs(1)}
+  // 活过一分钟的算正常断开，退避从头来；没活过一分钟的下一次换个域名试（只有 Bybit 有备用域名）。
+  if started.elapsed()>Duration::from_secs(60) {backoff=Duration::from_secs(1)} else {attempt=attempt.wrapping_add(1);}
   let until=Instant::now()+jittered(backoff);
   backoff=(backoff*2).min(Duration::from_secs(30));
   loop {
@@ -610,6 +636,77 @@ async fn run(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiv
  let _=hub_tx.send(HubCmd::Gone(slot));
 }
 
+/// Hyperliquid：不自己开连接，挂进 `venues::hyperliquid::hub` 那条全进程共用的上游（中继也在用），
+/// 按「跟踪」那一份名额订 `l2Book` + `trades`。上游连上（或加入时已连着）按「连上了」通知簿，断了按「断了」；
+/// hub 自己重连重订。每帧 `l2Book` 都是整本，断档不存在，`Resubscribe` 不用做什么。
+async fn run_shared(slot:u64,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>) {
+ use crate::venues::hyperliquid::hub::{self as hl,Class,Feed,Topic};
+ let kind=Kind::Hyperliquid;
+ let mut conn=Conn{kind,routes:HashMap::new(),decoder:Decoder::new(kind)};
+ let hl::Link{mut rx,handle}=hl::shared().join(Class::Tracking,4096);
+ let subscribe=|coin:&str|{handle.subscribe(Topic::book(coin));handle.subscribe(Topic::trades(coin));};
+ for r in routes {subscribe(&r.venue.instrument);conn.insert(r);}
+ let mut connection:Option<u64>=None;
+ let mut cmds_open=true;
+ let mut announced_up=false;
+ loop {
+  if conn.routes.is_empty() {break}
+  tokio::select! {
+   feed=rx.recv()=>match feed {
+    None=>break,
+    Some(Feed::Up)=>{
+     let id=feeds::next_connection();
+     let all:Vec<Route>=conn.routes.values().cloned().collect();
+     let refs:Vec<&Route>=all.iter().collect();
+     if let Some(old)=connection.take() {conn.announce(&refs,|venues|Event::Closed{venues,connection:old});}
+     conn.announce(&refs,|venues|Event::Opened{venues,connection:id});
+     let now=chrono::Utc::now().timestamp_millis();
+     for r in &all {conn.decoder.subscribed(&r.venue.instrument,now);}
+     connection=Some(id);
+     if !announced_up {announced_up=true;let _=hub_tx.send(HubCmd::Up(slot));}
+    },
+    Some(Feed::Down)=>if let Some(old)=connection.take() {
+     let all:Vec<Route>=conn.routes.values().cloned().collect();
+     let refs:Vec<&Route>=all.iter().collect();
+     conn.announce(&refs,|venues|Event::Closed{venues,connection:old});
+    },
+    Some(Feed::Text(text))=>{
+     if let Some(error)=Decoder::hyperliquid_error(&text) {tracing::warn!("Orderflow history: hyperliquid tracking error {error}");continue}
+     let Some(id)=connection else {continue};
+     for decoded in conn.decoder.decode(&text) {conn.deliver(decoded,id);}
+    },
+   },
+   cmd=cmds.recv(),if cmds_open=>match cmd {
+    None=>cmds_open=false,
+    Some(ConnCmd::Assign(routes))=>{
+     let fresh:Vec<Route>=routes.into_iter().filter(|r|!conn.routes.contains_key(&r.venue.id)).collect();
+     let now=chrono::Utc::now().timestamp_millis();
+     for r in &fresh {subscribe(&r.venue.instrument);conn.insert(r.clone());conn.decoder.subscribed(&r.venue.instrument,now);}
+     if let Some(id)=connection {let refs:Vec<&Route>=fresh.iter().collect();conn.announce(&refs,|venues|Event::Opened{venues,connection:id});}
+    },
+    Some(ConnCmd::Replace(routes))=>{
+     let swapped:Vec<Route>=routes.into_iter().filter(|r|conn.routes.contains_key(&r.venue.id)).collect();
+     for r in &swapped {conn.routes.insert(r.venue.id.clone(),r.clone());}
+     if let Some(id)=connection {let refs:Vec<&Route>=swapped.iter().collect();conn.announce(&refs,|venues|Event::Opened{venues,connection:id});}
+    },
+    Some(ConnCmd::Drop(ids))=>{
+     let dropped=conn.drop_ids(&ids);
+     for r in &dropped {handle.unsubscribe(Topic::book(r.venue.instrument.clone()));handle.unsubscribe(Topic::trades(r.venue.instrument.clone()));}
+     if let Some(id)=connection {let refs:Vec<&Route>=dropped.iter().collect();conn.announce(&refs,|venues|Event::Closed{venues,connection:id});}
+    },
+    Some(ConnCmd::Resubscribe(_))=>{},
+   },
+  }
+ }
+ if let Some(id)=connection {
+  let all:Vec<Route>=conn.routes.values().cloned().collect();
+  let refs:Vec<&Route>=all.iter().collect();
+  conn.announce(&refs,|venues|Event::Closed{venues,connection:id});
+ }
+ drop(handle);
+ let _=hub_tx.send(HubCmd::Gone(slot));
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;
@@ -620,7 +717,7 @@ mod tests {
   let (control,_)=mpsc::unbounded_channel();
   let notional=if product=="coinPerp" {Notional::Inverse(100.0)} else {Notional::Linear(1.0)};
   Route{venue:VenueInfo{id:format!("{exchange}:{product}:{instrument}"),exchange,label:"x",product,instrument:instrument.into(),notional,price_scale:1.0,
-   sequence:Sequence::PreviousFinalOverlap,in_band:exchange!="binance"},events:events.clone(),control}
+   sequence:Sequence::PreviousFinalOverlap,in_band:exchange!="binance",sliding:exchange=="okx"},events:events.clone(),control}
  }
 
  #[test] fn connection_events_are_never_dropped_when_the_tracker_is_behind() {

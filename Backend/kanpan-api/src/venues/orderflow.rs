@@ -166,13 +166,13 @@ pub async fn post_json(url:&str,body:&serde_json::Value)->anyhow::Result<axum::b
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
  //! 五家的表合在一起按 base 取：各家的夹具在各家的 `orderflow.rs` 里，这里只看合起来的先后与口径。
  use super::*;
  use serde_json::{Value,json};
  use std::sync::Arc;
 
- const NOW:i64=1_790_200_000_000; // 2026-09-24，BTCUSDT_260925 还没到期
+pub(crate) const NOW:i64=1_790_200_000_000; // 2026-09-24，BTCUSDT_260925 还没到期
 
  /// 前缀表和客户端那张逐项相同、顺序也相同（长的在前，`1000000` 要先于 `1000` 试）。
  #[test] fn scaled_prefixes_are_the_contract_ones() {

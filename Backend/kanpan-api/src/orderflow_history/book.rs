@@ -1,10 +1,13 @@
 //! 一本簿：照 KanpanCore 的 `LocalBook.swift` 与 `VenueBook.swift` 逐条移植。
 //!
-//! * 四种序列规则：币安现货 `U/u`（rangeOverlap）、币安合约 `U/u/pu`（previousFinalOverlap）、
-//!   OKX `seqId/prevSeqId`（previousFinalExact）、Coinbase 整条连接的 `sequence_num`（strictIncrementing）。
-//! * 快照不在流里的（币安）先缓冲增量、等 REST 快照对上序号；快照在流里的（OKX、Coinbase）收到首帧就绪。
-//! * 本地只留中间价两侧扫描半径两倍以内的价位（`RETAIN_BPS`）；OKX 滑动窗口簿不裁（本来就封顶 400 档，见 `Levels`）。
-//! * 价与量进来时已经换成「每个币」的口径（币安 `1000PEPE` 这种除掉缩放），名义美元不变。
+//! 这里不认交易所：哪家用哪种序列规则、快照在不在流里、是不是滑动窗口簿，都由 `venues::<交易所>::orderflow`
+//! 填进 `VenueInfo`（见 `venues::orderflow::book`）。
+//!
+//! * 五种序列规则：区间重叠 `U/u`（rangeOverlap）、上一条终号重叠 `U/u/pu`（previousFinalOverlap）、
+//!   上一条终号严格相等（previousFinalExact）、逐条加一（strictIncrementing）、每帧都是整本快照（snapshotOnly）。
+//! * 快照不在流里的先缓冲增量、等 REST 快照对上序号；快照在流里的收到首帧就绪。
+//! * 本地只留中间价两侧扫描半径两倍以内的价位（`RETAIN_BPS`）；滑动窗口簿不裁（本来就封顶在窗口档数，见 `Levels`）。
+//! * 价与量进来时已经换成「每个币」的口径（挂牌名带 1000 倍缩放的除掉缩放），名义美元不变。
 //!
 //! 和手机那份的差别只有一处：连接代号的核对放在上一层（`VenueBook`），旧连接的迟到帧在进簿之前就丢了。
 use super::model::{Notional,SCAN_RADIUS_BPS};
@@ -14,7 +17,7 @@ use std::collections::{BTreeMap,BTreeSet,HashMap,VecDeque};
 pub const RETAIN_BPS:f64=2.0*SCAN_RADIUS_BPS;
 /// 等快照时最多缓冲几条增量。
 pub const BUFFER:usize=5_000;
-/// 流内快照（OKX、Coinbase）的簿开了这么久还只收到增量、没等到快照：快照那一帧被丢了（跟踪器堵住时
+/// 流内快照的簿开了这么久还只收到增量、没等到快照：快照那一帧被丢了（跟踪器堵住时
 /// 帧会被丢），再等也等不来，重订一次。正常订上一两秒内就到。
 pub const IN_BAND_SNAPSHOT_WAIT_MS:i64=60_000;
 
@@ -25,8 +28,14 @@ impl Side {
  pub fn parse(text:&str)->Option<Self> {match text {"bid"=>Some(Side::Bid),"ask"=>Some(Side::Ask),_=>None}}
 }
 
+/// 增量怎么接续（照客户端 `OrderFlowSequence`，多一种 `SnapshotOnly`）。
+///
+/// * `StrictIncrementing`：序号逐条加一；流内快照序号为 1 表示交易所那边重启过、整本重来（序号回到 1
+///   不算倒退，按新快照整本替换）。
+/// * `SnapshotOnly`：没有增量，每帧都是前若干档的整本快照，`last` 是快照时刻（毫秒）。时刻倒退的帧
+///   （迟到）直接忽略、簿不动，不算断档。
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
-pub enum Sequence {RangeOverlap,PreviousFinalOverlap,PreviousFinalExact,StrictIncrementing}
+pub enum Sequence {RangeOverlap,PreviousFinalOverlap,PreviousFinalExact,StrictIncrementing,SnapshotOnly}
 
 pub type Level=(f64,f64);
 
@@ -53,21 +62,22 @@ pub struct Gap;
 
 /// 一侧的价位。正的有限浮点数按位比较与按值比较同序，所以用位做键、拿有序表取最优价。
 ///
-/// 快照被截断时（币安 REST 合约给 1000 档、现货 5000 档，OKX `books` 频道 400 档），比快照最远一档还远的
+/// 快照被截断时（REST 快照要 1000 / 5000 档、流内滑动窗口快照几十到 1000 档），比快照最远一档还远的
 /// 价位本地并不知道有没有：`extent` 记快照最远那一档（覆盖区间的远端）。覆盖范围以内「表里没有」就是没有；
 /// 以外的看这本簿的增量是哪一种（`window`）：
 ///
-/// * 全簿增量（币安）：交易所为整本簿推变动，但快照以外、此后没动过的档本地永远拿不到——一个远处的价位被推过，
+/// * 全簿增量：交易所为整本簿推变动，但快照以外、此后没动过的档本地永远拿不到——一个远处的价位被推过，
 ///   只说明那一个价位知道了，它和覆盖区间之间的档仍然不知道。所以覆盖区间不外扩，推过的价位逐个记在
 ///   `touched` 里（含推成 0 的）。
-/// * 滑动窗口（OKX `books` 400 档，`window` 为窗口档数）：交易所只维护前 400 档，一档被挤出窗口时推的是
-///   数量 0，和真撤单长得一样（2026-09-28 客户端连 OKX 实测）。所以不看快照的覆盖区间，按表本身判：
+/// * 滑动窗口（`window` 为窗口档数）：交易所只维护前 N 档，一档被挤出窗口时推的是
+///   数量 0，和真撤单长得一样（2026-09-28 客户端实测）。每帧整本快照的簿（`SnapshotOnly`）也按窗口算：
+///   只给前 N 档，最深一档以外不知道。所以不看快照的覆盖区间，按表本身判：
 ///   表满了（到窗口档数）时只有窗口最深一档以内知道——被挤出去的那档删掉之后落在新的最深一档外面，读成
-///   「不知道」；真撤掉窗口里的一档时，第 401 档会带着量补进来、落在更深处，撤掉的那档仍在窗口内，读成「没了」。
+///   「不知道」；真撤掉窗口里的一档时，第 N+1 档会带着量补进来、落在更深处，撤掉的那档仍在窗口内，读成「没了」。
 ///   表不满说明整本簿都在窗口里，整侧都知道。窗口簿不裁留存带（裁了表就不是窗口，「最深一档」失效），
 ///   本来就封顶在窗口档数。与客户端 `LocalBook.knows` 的 slidingWindow 分支同一规则。
 ///
-/// 全簿增量的快照完整（返回的档数不到要的数，Coinbase 整本推来）时 `extent` 是 None，整侧都算知道。
+/// 全簿增量的快照完整（返回的档数不到要的数，或流里整本推来）时 `extent` 是 None，整侧都算知道。
 #[derive(Clone,Debug,Default)]
 struct Levels {map:BTreeMap<u64,f64>,extent:Option<f64>,touched:BTreeSet<u64>,window:usize}
 impl Levels {
@@ -119,10 +129,10 @@ pub struct LocalBook {
 }
 
 impl LocalBook {
- pub fn new(sequence:Sequence)->Self {
-  // OKX（`seqId/prevSeqId`）的 `books` 频道是 400 档滑动窗口，其余三种是全簿增量（见 `Levels`）。
+ /// `sliding`：这本簿的流是滑动窗口（只维护前 N 档，见 `Levels`），由交易所描述（`VenueInfo::sliding`）给。
+ pub fn new(sequence:Sequence,sliding:bool)->Self {
   // 窗口档数按快照要的档数定（`bootstrap` / `replace` 里改），拿到快照之前先记成「窗口簿、档数未定」。
-  let window=if sequence==Sequence::PreviousFinalExact {usize::MAX} else {0};
+  let window=if sliding {usize::MAX} else {0};
   let side=||Levels{window,..Levels::default()};
   Self{sequence,quality:Quality::Bootstrapping,last:None,bids:side(),asks:side(),retained:None}
  }
@@ -150,6 +160,7 @@ impl LocalBook {
    Sequence::PreviousFinalOverlap=>first.prev.is_some()&&first.first<=l&&first.last>=l,
    Sequence::PreviousFinalExact=>first.prev==Some(l),
    Sequence::StrictIncrementing=>first.prev.is_none()&&first.last==l+1,
+   Sequence::SnapshotOnly=>false,
   };
   if !overlaps {return self.fail()}
   self.apply_levels(first);
@@ -169,6 +180,7 @@ impl LocalBook {
    Sequence::RangeOverlap=>d.prev.is_none()&&d.first<=previous+1&&d.last>=previous+1,
    Sequence::PreviousFinalOverlap|Sequence::PreviousFinalExact=>d.prev==Some(previous),
    Sequence::StrictIncrementing=>d.prev.is_none()&&d.first==previous+1&&d.last==d.first,
+   Sequence::SnapshotOnly=>false,
   };
   if !chained {return self.fail()}
   self.apply_levels(d);
@@ -178,7 +190,11 @@ impl LocalBook {
 
  /// 流内权威快照：整本替换，立即就绪。
  pub fn replace(&mut self,s:&Snapshot)->Result<(),Gap> {
-  if let Some(previous)=self.last&&s.last<previous {return self.fail()}
+  if let Some(previous)=self.last&&s.last<previous {
+   // 整本快照的迟到帧：忽略，簿不动。逐条加一的序号回到 1：交易所重启，整本重来。
+   if self.sequence==Sequence::SnapshotOnly {return Ok(())}
+   if !(self.sequence==Sequence::StrictIncrementing&&s.last==1) {return self.fail()}
+  }
   if s.requested==0||s.bids.len()>s.requested||s.asks.len()>s.requested {return self.fail()}
   self.begin_resync();
   write(&s.bids,&mut self.bids,None);write(&s.asks,&mut self.asks,None);
@@ -280,7 +296,8 @@ fn write(levels:&[Level],side:&mut Levels,band:Option<(f64,f64)>) {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 pub enum Action {None,FetchSnapshot,Resubscribe}
 
-/// 这本簿是哪家的哪个合约。`id` 和手机上的 `OrderFlowVenue.id` 同一个写法（`binance:usdtPerp:BTCUSDT`）。
+/// 这本簿是哪家的哪个合约。`id` 和手机上的 `OrderFlowVenue.id` 同一个写法（`{交易所}:{产品}:{合约}`）。
+/// 除 `id` / `instrument` 外都由 `venues::orderflow::book` 按交易所描述填。
 #[derive(Clone,Debug,PartialEq)]
 pub struct VenueInfo {
  pub id:String,
@@ -289,12 +306,21 @@ pub struct VenueInfo {
  pub product:&'static str,
  pub instrument:String,
  pub notional:Notional,
- /// 交易所挂牌价 ÷ 这个数 = 每个币的价（币安 `1000PEPE` 为 1000，其余为 1）。
+ /// 交易所挂牌价 ÷ 这个数 = 每个币的价（挂牌名带 `1000` 缩放的为 1000，其余为 1）。
  pub price_scale:f64,
  pub sequence:Sequence,
+ /// 快照在流里（订上就推），不用 REST 拉。
  pub in_band:bool,
+ /// 流是滑动窗口（只维护前 N 档，被挤出的推 0，见 `Levels`）。
+ pub sliding:bool,
 }
 impl VenueInfo {
+ /// 测试用：一本按给定规则接续、不订任何连接的簿。`exchange` 取 `id` 的第一段。
+ #[cfg(test)]
+ pub fn test(id:&str,instrument:&str,product:&'static str,notional:Notional,sequence:Sequence,in_band:bool,sliding:bool)->Self {
+  let exchange:&'static str=Box::leak(id.split(':').next().unwrap_or("").to_string().into_boxed_str());
+  VenueInfo{id:id.into(),exchange,label:"测试",product,instrument:instrument.into(),notional,price_scale:1.0,sequence,in_band,sliding}
+ }
  /// 交易所原样的价与量 → 每个币的价、与之配套的量（正向合约量乘回去，名义美元不变；反向合约是张数，不动）。
  pub fn level(&self,price:f64,quantity:f64)->Level {
   match self.notional {
@@ -320,7 +346,7 @@ pub struct VenueBook {
  pending:Option<Snapshot>,
  /// 当前连接代号：连接任务每次连上都换一个，迟到的旧帧与旧快照按它丢掉。
  pub connection:u64,
- /// 换连接（币安连接到 24 小时前平滑换新、或几条小连接并成一条）时，旧连接的代号：
+ /// 换连接（全局序号的连接到 24 小时前平滑换新、或几条小连接并成一条）时，旧连接的代号：
  /// 交接期间两条连接推的是同一串全局序号，两边的帧都收，重复的由 `LocalBook::apply` 按序号丢掉，
  /// 簿不用重拉快照。旧连接一断（或交接完成）就清掉。
  pub previous:Option<u64>,
@@ -336,7 +362,7 @@ pub struct VenueBook {
 
 impl VenueBook {
  pub fn new(venue:VenueInfo)->Self {
-  let book=LocalBook::new(venue.sequence);
+  let book=LocalBook::new(venue.sequence,venue.sliding);
   Self{venue,book,ready_since:None,buffered:VecDeque::new(),pending:None,connection:0,previous:None,epoch:0,waiting_since:None,online:false}
  }
  pub fn is_ready(&self)->bool {self.book.quality==Quality::Ready&&self.ready_since.is_some()}
@@ -359,7 +385,7 @@ impl VenueBook {
  pub fn accepts(&self,connection:u64)->bool {connection==self.connection||self.previous==Some(connection)}
 
  /// 平滑换连接：新连接已经在推同一串序号了，簿接着用，两条连接的帧都认。
- /// 从来没在任何连接上开过（代号 0）的，按新连接从头开。只用于序号全局的簿（币安）。
+ /// 从来没在任何连接上开过（代号 0）的，按新连接从头开。只用于序号全局、快照不在流里的簿。
  pub fn handover(&mut self,connection:u64)->Action {
   if self.connection==0 {return self.opened(connection)}
   if connection!=self.connection {self.previous=Some(self.connection);self.connection=connection;}
@@ -389,7 +415,11 @@ impl VenueBook {
   let in_band=self.venue.in_band;
   match message {
    Message::Snapshot(s)=>match self.book.replace(&s) {
-    Ok(())=>{self.ready_since=Some(now);self.waiting_since=None;Action::None},
+    Ok(())=>{
+     // 每帧整本快照的簿：就绪时刻从第一帧算起，不随每帧刷新（按就绪多久判断的规则才有意义）。
+     if self.venue.sequence==Sequence::SnapshotOnly {self.ready_since.get_or_insert(now);} else {self.ready_since=Some(now);}
+     self.waiting_since=None;Action::None
+    },
     Err(_)=>{self.ready_since=None;self.waiting_since=None;if in_band {Action::Resubscribe} else {Action::FetchSnapshot}},
    },
    Message::Delta(d)=>{
@@ -495,7 +525,7 @@ mod tests {
  fn delta(first:i64,last:i64,prev:Option<i64>,bids:&[Level])->Delta {Delta{first,last,prev,bids:bids.to_vec(),asks:vec![]}}
 
  #[test] fn spot_bootstrap_needs_l_plus_one_and_a_gap_clears_the_book() {
-  let mut book=LocalBook::new(Sequence::RangeOverlap);
+  let mut book=LocalBook::new(Sequence::RangeOverlap,false);
   let buffered:VecDeque<Delta>=[delta(95,100,None,&[]),delta(101,103,None,&[(99.0,2.0)])].into();
   assert_eq!(book.bootstrap(&snap(100,&[(99.0,1.0)],&[(101.0,1.0)]),&buffered),Ok(true));
   assert_eq!(book.quantity(Side::Bid,99.0),2.0);
@@ -506,8 +536,7 @@ mod tests {
  }
 
  fn futures_venue()->VenueInfo {
-  VenueInfo{id:"binance:usdtPerp:BTCUSDT".into(),exchange:"binance",label:"币安",product:"usdtPerp",instrument:"BTCUSDT".into(),
-   notional:super::super::model::Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalOverlap,in_band:false}
+  VenueInfo::test("venue-a:usdtPerp:BTCUSDT","BTCUSDT","usdtPerp",Notional::Linear(1.0),Sequence::PreviousFinalOverlap,false,false)
  }
 
  #[test] fn handover_keeps_the_book_and_both_connections_feed_it() {
@@ -535,8 +564,7 @@ mod tests {
  }
 
  #[test] fn an_in_band_book_whose_snapshot_was_dropped_resubscribes() {
-  let mut b=VenueBook::new(VenueInfo{id:"okx:usdtPerp:BTC-USDT-SWAP".into(),exchange:"okx",label:"OKX",product:"usdtPerp",instrument:"BTC-USDT-SWAP".into(),
-   notional:super::super::model::Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true});
+  let mut b=VenueBook::new(VenueInfo::test("venue-b:usdtPerp:BTC-USDT-SWAP","BTC-USDT-SWAP","usdtPerp",Notional::Linear(1.0),Sequence::PreviousFinalExact,true,true));
   assert_eq!(b.opened(3),Action::None,"流内快照：等它自己来");
   // 快照那一帧被丢了，只来增量。
   assert_eq!(b.ingest(Message::Delta(delta(11,11,Some(10),&[])),1_000),Action::None);
@@ -555,32 +583,32 @@ mod tests {
   assert!(c.is_ready());
  }
 
- #[test] fn futures_need_pu_and_okx_needs_exact_prev() {
-  let mut f=LocalBook::new(Sequence::PreviousFinalOverlap);
+ #[test] fn overlap_needs_pu_and_exact_needs_the_previous_final() {
+  let mut f=LocalBook::new(Sequence::PreviousFinalOverlap,false);
   let buffered:VecDeque<Delta>=[delta(95,101,Some(94),&[])].into();
   assert_eq!(f.bootstrap(&snap(100,&[(99.0,1.0)],&[(101.0,1.0)]),&buffered),Ok(true));
   assert_eq!(f.apply(&delta(102,105,Some(101),&[])),Ok(()));
   assert_eq!(f.apply(&delta(106,107,Some(104),&[])),Err(Gap));
-  let mut okx=LocalBook::new(Sequence::PreviousFinalExact);
-  okx.replace(&snap(10,&[(99.0,1.0)],&[(101.0,1.0)])).unwrap();
-  assert_eq!(okx.apply(&delta(11,11,Some(10),&[])),Ok(()));
-  assert_eq!(okx.apply(&delta(13,13,Some(12),&[])),Err(Gap));
-  let mut cb=LocalBook::new(Sequence::StrictIncrementing);
+  let mut exact=LocalBook::new(Sequence::PreviousFinalExact,true);
+  exact.replace(&snap(10,&[(99.0,1.0)],&[(101.0,1.0)])).unwrap();
+  assert_eq!(exact.apply(&delta(11,11,Some(10),&[])),Ok(()));
+  assert_eq!(exact.apply(&delta(13,13,Some(12),&[])),Err(Gap));
+  let mut cb=LocalBook::new(Sequence::StrictIncrementing,false);
   cb.replace(&snap(1,&[(99.0,1.0)],&[(101.0,1.0)])).unwrap();
   assert_eq!(cb.apply(&delta(2,2,None,&[])),Ok(()));
   assert_eq!(cb.apply(&delta(4,4,None,&[])),Err(Gap));
  }
 
  #[test] fn crossed_and_regressed_snapshots_fail_closed() {
-  let mut book=LocalBook::new(Sequence::PreviousFinalExact);
+  let mut book=LocalBook::new(Sequence::PreviousFinalExact,true);
   assert_eq!(book.replace(&snap(5,&[(101.0,1.0)],&[(100.0,1.0)])),Err(Gap));
   book.replace(&snap(5,&[(99.0,1.0)],&[(100.0,1.0)])).unwrap();
   assert_eq!(book.replace(&snap(4,&[(99.0,1.0)],&[(100.0,1.0)])),Err(Gap));
  }
 
  #[test] fn far_levels_are_dropped_and_zero_removes() {
-  // 全簿增量才裁留存带（OKX 窗口簿不裁，见 `an_okx_sliding_window_knows_only_down_to_its_deepest_level_when_full`）。
-  let mut book=LocalBook::new(Sequence::PreviousFinalOverlap);
+  // 全簿增量才裁留存带（窗口簿不裁，见 `a_sliding_window_knows_only_down_to_its_deepest_level_when_full`）。
+  let mut book=LocalBook::new(Sequence::PreviousFinalOverlap,false);
   book.replace(&snap(1,&[(99.0,1.0),(50.0,9.0)],&[(101.0,1.0),(200.0,9.0)])).unwrap();
   assert_eq!(book.quantity(Side::Bid,50.0),0.0,"中间价两侧 20% 以外不留");
   assert_eq!(book.quantity(Side::Ask,200.0),0.0);
@@ -591,8 +619,8 @@ mod tests {
  }
 
  #[test] fn a_truncated_snapshot_only_covers_as_far_as_its_last_level() {
-  // 币安 REST 快照要 1000 档只给到 1000 档：比最远那档更远的价位本地不知道，直到增量推过它。
-  let mut book=LocalBook::new(Sequence::PreviousFinalOverlap);
+  // REST 快照要 1000 档只给到 1000 档：比最远那档更远的价位本地不知道，直到增量推过它。
+  let mut book=LocalBook::new(Sequence::PreviousFinalOverlap,false);
   let bids:Vec<Level>=vec![(60_000.0,1.0),(59_990.0,1.0)];
   book.replace(&Snapshot{last:1,requested:2,bids:bids.clone(),asks:vec![(60_010.0,1.0)]}).unwrap();
   assert!(book.knows(Side::Bid,59_995.0),"覆盖范围以内不在表里就是没有");
@@ -604,16 +632,16 @@ mod tests {
   assert!(!book.knows(Side::Bid,59_400.0));
   book.apply(&delta(3,3,Some(2),&[(59_400.0,2.0)])).unwrap();
   assert!(book.knows(Side::Bid,59_400.0)&&book.quantity(Side::Bid,59_400.0)==2.0);
-  // 完整快照（档数不到要的数）整侧都知道；Coinbase 流里整本推来的（requested = MAX）也是。
+  // 完整快照（档数不到要的数）整侧都知道；流里整本推来的（requested = MAX）也是。
   book.replace(&Snapshot{last:4,requested:1000,bids,asks:vec![(60_010.0,1.0)]}).unwrap();
   assert!(book.knows(Side::Bid,59_500.0)&&book.knows(Side::Bid,1.0));
   book.mark_gapped();
   assert!(book.knows(Side::Bid,1.0),"簿本身空了由上层（VenueBook::is_ready）挡");
  }
 
- #[test] fn an_okx_sliding_window_knows_only_down_to_its_deepest_level_when_full() {
-  // OKX `books` 只维护前 N 档（这里 N = 3）：一档被挤出窗口时推 0，和真撤单一样；表满了只有最深一档以内知道。
-  let mut book=LocalBook::new(Sequence::PreviousFinalExact);
+ #[test] fn a_sliding_window_knows_only_down_to_its_deepest_level_when_full() {
+  // 滑动窗口只维护前 N 档（这里 N = 3）：一档被挤出窗口时推 0，和真撤单一样；表满了只有最深一档以内知道。
+  let mut book=LocalBook::new(Sequence::PreviousFinalExact,true);
   book.replace(&Snapshot{last:1,requested:3,bids:vec![(60_000.0,1.0),(59_990.0,1.0),(59_900.0,5.0)],asks:vec![(60_010.0,1.0)]}).unwrap();
   assert!(book.knows(Side::Bid,59_900.0)&&book.knows(Side::Bid,59_950.0),"最深一档以内都知道");
   assert!(!book.knows(Side::Bid,59_800.0),"表满了：最深一档以外不知道");
@@ -632,12 +660,53 @@ mod tests {
   // 窗口簿不裁留存带：远在留存带外的档也在表里（窗口本来就封顶）。
   book.apply(&delta(5,5,Some(4),&[(10_000.0,5.0)])).unwrap();
   assert_eq!(book.quantity(Side::Bid,10_000.0),5.0);
-  // 全簿增量（币安）不外扩：远处推过一档只说明那一档，其间的仍不知道。
-  let mut full=LocalBook::new(Sequence::PreviousFinalOverlap);
+  // 全簿增量不外扩：远处推过一档只说明那一档，其间的仍不知道。
+  let mut full=LocalBook::new(Sequence::PreviousFinalOverlap,false);
   let buffered:VecDeque<Delta>=[delta(95,101,Some(94),&[])].into();
   full.bootstrap(&Snapshot{last:100,requested:2,bids:vec![(60_000.0,1.0),(59_990.0,1.0)],asks:vec![(60_010.0,1.0)]},&buffered).unwrap();
   full.apply(&delta(102,102,Some(101),&[(59_600.0,2.0)])).unwrap();
   assert!(full.knows(Side::Bid,59_600.0)&&!full.knows(Side::Bid,59_700.0));
+ }
+
+ /// 逐条加一的流内快照序号回到 1（交易所重启）：整本重来，不算倒退；别的规则序号倒退照样断档。
+ #[test] fn a_strict_snapshot_numbered_one_is_a_full_reset() {
+  let mut book=LocalBook::new(Sequence::StrictIncrementing,true);
+  book.replace(&snap(500,&[(99.0,1.0)],&[(101.0,1.0)])).unwrap();
+  book.apply(&delta(501,501,None,&[(98.0,2.0)])).unwrap();
+  assert_eq!(book.replace(&snap(1,&[(97.0,4.0)],&[(103.0,1.0)])),Ok(()),"序号 1：整本重来");
+  assert_eq!(book.quality,Quality::Ready);
+  assert_eq!((book.quantity(Side::Bid,98.0),book.quantity(Side::Bid,97.0)),(0.0,4.0),"旧簿清掉、换成新快照");
+  assert_eq!(book.apply(&delta(2,2,None,&[(96.0,1.0)])),Ok(()),"之后从 2 接着加一");
+  assert_eq!(book.replace(&snap(1,&[(97.0,4.0)],&[(103.0,1.0)])),Ok(()),"再重启一次也一样");
+  assert_eq!(book.apply(&delta(3,3,None,&[])),Err(Gap),"从 1 跳到 3：断档");
+  // 倒退但不是 1：断档。
+  book.replace(&snap(10,&[(99.0,1.0)],&[(101.0,1.0)])).unwrap();
+  assert_eq!(book.replace(&snap(9,&[(99.0,1.0)],&[(101.0,1.0)])),Err(Gap));
+  // 只有逐条加一的规则认 1：上一条终号相等的规则序号回到 1 照样断档。
+  let mut exact=LocalBook::new(Sequence::PreviousFinalExact,true);
+  exact.replace(&snap(10,&[(99.0,1.0)],&[(101.0,1.0)])).unwrap();
+  assert_eq!(exact.replace(&snap(1,&[(99.0,1.0)],&[(101.0,1.0)])),Err(Gap));
+ }
+
+ /// 每帧整本快照：时刻倒退的迟到帧忽略、簿不动；就绪时刻从第一帧算起，不随每帧刷新；只给前 N 档时最深一档以外不知道。
+ #[test] fn snapshot_only_ignores_late_frames_and_keeps_its_ready_time() {
+  let mut b=VenueBook::new(VenueInfo::test("venue-c:usdtPerp:BTC","BTC","usdtPerp",Notional::Linear(1.0),Sequence::SnapshotOnly,true,true));
+  assert_eq!(b.opened(1),Action::None,"快照在流里");
+  let frame=|time:i64,bid:f64|Message::Snapshot(Snapshot{last:time,requested:3,bids:vec![(bid,1.0),(bid-10.0,1.0),(bid-20.0,1.0)],asks:vec![(bid+10.0,1.0)]});
+  assert_eq!(b.ingest(frame(1_000,100.0),5_000),Action::None);
+  assert_eq!(b.ready_since(),Some(5_000));
+  assert_eq!(b.ingest(frame(2_000,110.0),6_000),Action::None);
+  assert_eq!(b.ready_since(),Some(5_000),"就绪时刻不随每帧刷新");
+  assert!(b.knows(Side::Bid,90.0)&&!b.knows(Side::Bid,80.0),"三档满窗：最深一档 90 以外不知道");
+  assert_eq!(b.ingest(frame(1_500,100.0),7_000),Action::None,"时刻倒退：忽略");
+  assert!(b.is_ready());
+  assert_eq!(b.ready_since(),Some(5_000));
+  assert_eq!(b.depth_usd(10_000.0),Some(110.0+100.0+90.0+120.0),"簿还是 2000 那一帧");
+  // 断线重来：就绪时刻重新算。
+  b.closed();
+  b.opened(2);
+  assert_eq!(b.ingest(frame(3_000,110.0),9_000),Action::None);
+  assert_eq!(b.ready_since(),Some(9_000));
  }
 
  #[test] fn bucket_floors_and_snaps_float_noise() {

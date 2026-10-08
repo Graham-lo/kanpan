@@ -512,7 +512,7 @@ mod tests {
  const T:f64=1_000_000.0;
 
  fn venue(id:&str,product:&'static str,notional:Notional)->VenueInfo {
-  VenueInfo{id:id.into(),exchange:"coinbase",label:"Coinbase",product,instrument:id.into(),notional,price_scale:1.0,sequence:Sequence::StrictIncrementing,in_band:true}
+  VenueInfo{id:id.into(),exchange:"coinbase",label:"Coinbase",product,instrument:id.into(),notional,price_scale:1.0,sequence:Sequence::StrictIncrementing,in_band:true,sliding:false}
  }
  fn thresholds()->Thresholds {Thresholds{spot:Some(T),usdt_perp:Some(5.0*T),coin_perp:Some(5.0*T),delivery:Some(5.0*T),step:Some(100.0)}}
 
@@ -1040,7 +1040,7 @@ mod tests {
  /// 等窗口又伸过它（更深的档带着量推来）而它不在，再照常判撤单。
  #[test] fn an_okx_wall_past_the_four_hundredth_level_is_not_cancelled() {
   let v=VenueInfo{id:"okx:spot:BTC-USDT".into(),exchange:"okx",label:"OKX",product:"spot",instrument:"BTC-USDT".into(),
-   notional:Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true};
+   notional:Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true,sliding:true};
   let mut r=Rig::with(v);
   let ladder=|n:usize|->Vec<(f64,f64)> {(0..n).map(|i|(60_000.0-i as f64,0.01)).collect()};
   let okx=|r:&mut Rig,bids:Vec<(f64,f64)>,now:i64| {
@@ -1083,7 +1083,7 @@ mod tests {
  /// 窗口伸到墙那一档之后照常跟：被吃掉时 OKX 推 0、同一帧补进更深的一档，墙仍在窗口内，按成交结束。
  #[test] fn a_wall_inside_the_extended_okx_coverage_is_judged_as_usual() {
   let v=VenueInfo{id:"o".into(),exchange:"okx",label:"OKX",product:"spot",instrument:"BTC-USDT".into(),
-   notional:Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true};
+   notional:Notional::Linear(1.0),price_scale:1.0,sequence:Sequence::PreviousFinalExact,in_band:true,sliding:true};
   let mut r=Rig::with(v);
   let delta=|r:&mut Rig,bids:&[(f64,f64)],now:i64| {
    r.seq+=1;

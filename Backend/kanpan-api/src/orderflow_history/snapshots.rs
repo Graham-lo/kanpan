@@ -202,7 +202,7 @@ mod tests {
 
  fn venue(product:&'static str,notional:Notional)->VenueInfo {
   VenueInfo{id:format!("binance:{product}:X"),exchange:"binance",label:"币安",product,instrument:"btcusdt".into(),notional,price_scale:1.0,
-   sequence:Sequence::PreviousFinalOverlap,in_band:false}
+   sequence:Sequence::PreviousFinalOverlap,in_band:false,sliding:false}
  }
 
  #[test] fn lanes_and_urls() {

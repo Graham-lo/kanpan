@@ -63,7 +63,7 @@ mod store;
 use crate::AppState;
 use crate::error::{ApiError,Params,Result};
 use crate::orderflow_instruments::{self as instruments,Product,Venue};
-use crate::venues::{binance::orderflow::KEY as BINANCE,coinbase::orderflow::KEY as COINBASE,okx::orderflow::KEY as OKX};
+use crate::venues::{binance::orderflow::KEY as BINANCE,bybit::orderflow::KEY as BYBIT,coinbase::orderflow::KEY as COINBASE,hyperliquid::orderflow::KEY as HYPERLIQUID,okx::orderflow::KEY as OKX};
 use axum::extract::State;
 use axum::http::{HeaderValue,header};
 use axum::response::Response;
@@ -157,10 +157,12 @@ fn now_ms()->i64 {chrono::Utc::now().timestamp_millis()}
 
 fn wire_product(p:Product)->&'static str {match p {Product::Spot=>"spot",Product::UsdtPerp=>"usdtPerp",Product::CoinPerp=>"coinPerp",Product::Delivery=>"delivery"}}
 
+/// 这一行品种表接好了连接种类没有（[`info`] 认得的那几家）。
+fn has_feed(v:&Venue)->bool {[BINANCE,OKX,COINBASE,BYBIT,HYPERLIQUID].contains(&v.exchange)}
+
 /// 这只币此刻要跟的簿（品种表里接好了连接种类的那几家）。
-async fn tracked_venues(base:&str)->Vec<Venue> {
- instruments::venues(base).await.into_iter().filter(|v|[BINANCE,OKX,COINBASE].contains(&v.exchange)).collect()
-}
+async fn tracked_venues(base:&str)->Vec<Venue> {tracked(instruments::venues(base).await)}
+fn tracked(rows:Vec<Venue>)->Vec<Venue> {rows.into_iter().filter(has_feed).collect()}
 
 /// 品种表的一行 → 簿的身份。id 与手机上 `OrderFlowVenue.id` 同一个写法。
 fn info(v:&Venue)->VenueInfo {
@@ -168,15 +170,19 @@ fn info(v:&Venue)->VenueInfo {
   BINANCE=>("binance","币安",if v.product==Product::Spot {Sequence::RangeOverlap} else {Sequence::PreviousFinalOverlap},false),
   OKX=>("okx","OKX",Sequence::PreviousFinalExact,true),
   COINBASE=>("coinbase","Coinbase",Sequence::StrictIncrementing,true),
+  BYBIT=>("bybit","Bybit",Sequence::StrictIncrementing,true),
+  HYPERLIQUID=>("hyperliquid","Hyperliquid",Sequence::SnapshotOnly,true),
   other=>unreachable!("{} has no feed kinds",other.0),
  };
+ // 只推前 N 档、档位滑进滑出的（OKX 400、Bybit 1000、Hyperliquid 每帧整本）：窗口外的档不知道。
+ let sliding=matches!(v.exchange,OKX|BYBIT|HYPERLIQUID);
  let product=wire_product(v.product);
  let notional=match v.notional {
   instruments::Notional::Linear{multiplier}=>Notional::Linear(multiplier),
   instruments::Notional::Inverse{contract_usd}=>Notional::Inverse(contract_usd),
  };
  VenueInfo{id:format!("{exchange}:{product}:{}",v.instrument),exchange,label,product,instrument:v.instrument.clone(),notional,
-  price_scale:v.price_scale.unwrap_or(1).max(1) as f64,sequence,in_band}
+  price_scale:v.price_scale.unwrap_or(1).max(1) as f64,sequence,in_band,sliding}
 }
 
 // ------------------------------------------------------------------ 门槛
@@ -2567,5 +2573,23 @@ mod tests {
   let v=Venue{exchange:COINBASE,product:Product::Spot,instrument:"BTC-USD".into(),margin:None,
    notional:instruments::Notional::Linear{multiplier:1.0},tick:0.01,expiry_ms:None,price_scale:None,listed_base:"BTC".into()};
   assert_eq!(info(&v).id,"coinbase:spot:BTC-USD");
+ }
+
+ #[test] fn btc_is_tracked_on_all_five_exchanges() {
+  use crate::venues::orderflow::tests::{NOW,all};
+  let rows=tracked(instruments::pick(&all(),"BTC",NOW));
+  let infos:Vec<VenueInfo>=rows.iter().map(info).collect();
+  let exchanges:HashSet<&str>=infos.iter().map(|i|i.exchange).collect();
+  assert_eq!(exchanges,HashSet::from(["binance","okx","coinbase","bybit","hyperliquid"]));
+  let labels:HashSet<&str>=infos.iter().map(|i|i.label).collect();
+  assert_eq!(labels,HashSet::from(["币安","OKX","Coinbase","Bybit","Hyperliquid"]),"大单历史里的交易所名");
+  // Bybit 三类都在：现货、U 本位（linear）、币本位（inverse），各自走自己那种连接。
+  let bybit:HashSet<feeds::Kind>=infos.iter().filter(|i|i.exchange=="bybit").flat_map(|i|feeds::kinds_of(i).iter().copied()).collect();
+  assert_eq!(bybit,HashSet::from([feeds::Kind::BybitSpot,feeds::Kind::BybitLinear,feeds::Kind::BybitInverse]));
+  let hl=infos.iter().find(|i|i.exchange=="hyperliquid").unwrap();
+  assert_eq!((hl.id.as_str(),hl.sequence,hl.in_band,hl.sliding),("hyperliquid:usdtPerp:BTC",Sequence::SnapshotOnly,true,true));
+  assert_eq!(feeds::kinds_of(hl),&[feeds::Kind::Hyperliquid]);
+  let by=infos.iter().find(|i|i.id=="bybit:usdtPerp:BTCUSDT").unwrap();
+  assert_eq!((by.sequence,by.in_band,by.sliding),(Sequence::StrictIncrementing,true,true));
  }
 }
