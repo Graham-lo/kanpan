@@ -4,7 +4,7 @@
  *   · 图层：BigTradeLayer 挂在行情图上，开关跟 Prefs.bigTradeSigns（出厂开、跟人走，和挂单墙互不牵连）；宏观品种（DXY）不画。
  *   · 数据：签或弹层要时叫数据口 setSigns 订逐笔；分钟桶 + 服务端 /flow 历史走 tradeFlow.ensureHistory；
  *     爆仓 /liq 只在弹层开着时 30 秒补一次，现货与宏观不拉。
- *   · 弹层：点签开半屏（横屏只画签不开）；开着再点别的签只换根；十字线拉到哪根，本根卡片就看哪根，抬手 3 秒回到本根。
+ *   · 弹层：点签开整页（横屏只画签不开）；开着时再点签只换根；「每根」里点哪根 / 十字线落在哪根，本根卡片就看哪根，抬手 3 秒回到本根。
  * 页面藏起来时停 1 秒的钟；换品种时摘掉旧品种的历史监听。
  */
 import { st, save } from '../../app/store'
@@ -25,7 +25,7 @@ import { BT, fill } from '../../../terms'
 import { orderFlowAmount } from '../../chart/renderer.orderflow'
 import {
   BigTradeSheet, ladderRows, liqCells, summaryLine, LIQ_CELL_MS, LADDER_HOURS,
-  type BtModel, type BarCol, type Detent, type HeroModel, type LiqModel,
+  type BtModel, type BarCol, type HeroModel, type LiqModel,
 } from './bigTradeSheet'
 
 /** 抬手之后本根卡片停在那一根多久再回到本根 */
@@ -126,16 +126,16 @@ export class BigTradeController {
   destroy(): void { this.hide(); detachFlows(this.onHist); this.layer.destroy() }
 
   /** 开弹层（分析面板那一行 / 深链）；t = 先看哪根 */
-  open(detent: Detent = 'half', t: number | null = null): void {
+  open(t: number | null = null): void {
     if (this.d.isLand() || this.d.isMacro()) return
     if (t != null) this.pick = { t, from: 'sign' }
-    if (this.isOpen) { this.sheet!.setDetent(detent); this.refresh(); return }
+    if (this.isOpen) { this.refresh(); return }
     this.openedAt = this.now()
     this.sheet = new BigTradeSheet({
       onClose: () => { this.sheet = null; this.pick = null; this.sync() },
       onThreshold: () => this.threshold(),
       onPickBar: bt => this.pickBar(bt),
-    }, detent)
+    })
     this.sync()
     this.tick()
   }
@@ -154,11 +154,10 @@ export class BigTradeController {
   private tapSign(s: Sign): boolean {
     if (this.d.isLand()) return false
     if (this.isOpen) {
-      this.sheet!.noteSignTap()
       this.pick = { t: s.t, from: 'sign' }
       this.clearReturn()
       this.refresh()
-    } else this.open('half', s.t)
+    } else this.open(s.t)
     return true
   }
 
@@ -279,9 +278,8 @@ export class BigTradeController {
     const spot = force === 'spot' || isSpotSymbol(sym)
     const liq = spot ? null : this.liqModel(base, now, t0, step, meta?.dec ?? 2, force === 'liqEmpty')
 
-    const full = this.sheet?.detent === 'full'
     const bars: BarCol[] = []
-    if (full && s && n) {
+    if (s && n) {
       for (let i = Math.max(0, n - BARS); i < n; i++) {
         const a = s.time(i), b = i + 1 < n ? s.time(i + 1) : a + step
         const x: WinSum = windowSum(f, a, b, now, b - a < 60_000)
@@ -289,22 +287,19 @@ export class BigTradeController {
       }
     }
 
-    let ladder = null
-    if (full) {
-      const mid = (n ? s!.close[n - 1] : NaN) || meta?.price || 0
-      const pstep = port?.step ?? 0
-      const typ = s && n && step <= 15 * 60_000 ? (minute: number): number | null => {
-        const i = s.index(minute)
-        const a = s.time(i)
-        if (minute < a || minute >= a + step) return null
-        return (s.high[i] + s.low[i] + s.close[i]) / 3
-      } : null
-      const lv = priceLevels(f, pstep, now, typ, 999, LADDER_HOURS * 60)
-      ladder = ladderRows(lv, mid, pstep, nearestWalls(port?.snapshot?.orders ?? [], mid))
-    }
+    const mid = (n ? s!.close[n - 1] : NaN) || meta?.price || 0
+    const pstep = port?.step ?? 0
+    const typ = s && n && step <= 15 * 60_000 ? (minute: number): number | null => {
+      const i = s.index(minute)
+      const a = s.time(i)
+      if (minute < a || minute >= a + step) return null
+      return (s.high[i] + s.low[i] + s.close[i]) / 3
+    } : null
+    const lv = priceLevels(f, pstep, now, typ, 999, LADDER_HOURS * 60)
+    const ladder = ladderRows(lv, mid, pstep, nearestWalls(port?.snapshot?.orders ?? [], mid))
 
     return {
-      sub: this.subtitle(base), loading, stale, hero, liq, bars,
+      ...((subs: string[]) => ({ sub: subs[0], subs }))(this.subtitles(base)), loading, stale, hero, liq, bars,
       sel: this.pick ? t0 : null, ladder, thr: this.thrText(),
     }
   }
@@ -339,12 +334,18 @@ export class BigTradeController {
     return `${sameDay ? BT.todayDay : BT.yesterday} ${this.label(t, 60_000)}`
   }
 
-  private subtitle(base: string): string {
+  /** 副标题的几种写法，从长到短（和 iOS BigTradeSheet.subtitles 同一套）：全名 + 「合并」→ 全名 → 后面几家收成「+N」；
+   *  五家全开一行放不下，弹层挑第一种放得下的，读屏念第一种 */
+  private subtitles(base: string): string[] {
     const venues = this.d.port()?.snapshot?.venues
     const set = new Set<string>()
     for (const v of venues ?? []) set.add(exName(v.exchange))
     const names = set.size ? EXCHANGE_NAMES.filter(x => set.has(x)) : [...EXCHANGE_NAMES]
-    return `${base} · ${names.join(' · ')}${names.length > 1 ? ` ${BT.merged}` : ''}`
+    const full = `${base} · ${names.join(' · ')}`
+    if (names.length < 2) return [full]
+    const out = [`${full} ${BT.merged}`, full]
+    for (let k = names.length - 1; k >= 1; k--) out.push(`${base} · ${names.slice(0, k).join(' · ')} +${names.length - k}`)
+    return out
   }
 
   private thrText(): string {
@@ -364,11 +365,11 @@ export class BigTradeController {
 /** 开着签的偏好开关（分析面板那颗） */
 export function toggleSigns(): void { st.bigTradeSigns = !st.bigTradeSigns; save() }
 
-/** 开发构建里 ?bt=loading|spot|liqEmpty|stale|untracked|full（截图用） */
-export function devForce(): BtForce | 'full' | null {
+/** 开发构建里 ?bt=loading|spot|liqEmpty|stale|untracked（截图用） */
+export function devForce(): BtForce | null {
   if (!import.meta.env.DEV) return null
   try {
     const v = new URLSearchParams(location.search).get('bt')
-    return v === 'loading' || v === 'spot' || v === 'liqEmpty' || v === 'stale' || v === 'untracked' || v === 'full' ? v : null
+    return v === 'loading' || v === 'spot' || v === 'liqEmpty' || v === 'stale' || v === 'untracked' ? v : null
   } catch { return null }
 }

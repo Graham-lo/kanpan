@@ -1,9 +1,8 @@
 /* Hkline 手机网页 · 「大单与爆仓」弹层（照 docs/原型-手机大单与爆仓-2026-10-08.html 的 sheet()）
  *
- * 两档：半屏 440（「脉搏」：本根 + 近 1 小时 / 今日 + 一条爆仓）/ 满屏 780（再加每根、价位、24 小时爆仓、门槛）。
- * 都盖住底栏（挂在 #m-layer）。半屏不压暗、不挡图：图照样能拉十字线、点别的签（只换根不关）；点弹层以外的地方关。
- *   · 拖：拖拽条 / 标题行随便拖；正文滚到顶时往下拉接手。半屏往上拉过 90 落满屏；满屏往下拉回半屏，半屏再往下拉就关。
- *   · 「‹」关；右上「门槛」开订单流门槛页，那页关了回到原来那一档。
+ * 一档到底：一开就是整页 780（本根 + 近 1 小时 / 今日、爆仓、每根、价位、24 小时爆仓、门槛），盖住底栏（挂在 #m-layer）、压暗背后。
+ *   · 拖：拖拽条 / 标题行随便拖；正文滚到顶时往下拉接手。往下拉过 110（或甩一下）就关，不够就弹回。
+ *   · 「‹」/ 点压暗处关；右上「门槛」开订单流门槛页，那页关了弹层升回来。
  *   · 本根卡片的数字换值时滚 200 ms，对撞条交汇点 240 ms 缓动；减少动效时一律直接换。
  * 这里只管 DOM 与手势；数从哪来、什么时候刷新在 bigTrade.ts。
  */
@@ -18,11 +17,10 @@ import { LIQ_EX } from '../../../orderflow/liquidation'
 import { BT, fill } from '../../../terms'
 import '../../styles/bigTrade.css'
 
-export type Detent = 'half' | 'full'
-export const HALF_H = 440
-export const FULL_H = 780
-/** 半屏往上拉过这么多才落满屏 */
-export const EXPAND_PX = 90
+/** 弹层高度（屏幕矮时让出顶上安全区） */
+export const SHEET_H = 780
+/** 往下拉过这么多就关 */
+export const CLOSE_PX = 110
 
 const fmt = orderFlowAmount
 const MINUS = '−'
@@ -75,7 +73,10 @@ export interface LadderRow {
 }
 
 export interface BtModel {
+  /** 副标题全称（读屏念它） */
   sub: string
+  /** 副标题从长到短的几种写法：弹层挑第一种一行放得下的 */
+  subs: string[]
   loading: boolean
   stale: boolean
   hero: HeroModel
@@ -179,7 +180,7 @@ function vsHTML(b: number, s: number, small: boolean): string {
   return `<div class="bt-vs${small ? ' s' : ''}"><div class="b" style="width:${has ? `calc(${(k * 100).toFixed(1)}% - ${gap}px)` : '0'}"></div><div class="a" style="width:${has ? `calc(${((1 - k) * 100).toFixed(1)}% - ${gap}px)` : '0'}"></div></div>`
 }
 
-export function liqCardHTML(m: LiqModel | null, full: boolean): string {
+export function liqCardHTML(m: LiqModel | null): string {
   if (!m) return ''
   if (m.state === 'loading') return `<div class="bt-card thin"><h5>${BT.liq}</h5><div class="bt-vs s bt-skel" style="margin:4px 0 10px"></div>${skel('display:block;height:14px;width:60%')}</div>`
   if (m.state === 'none') return `<div class="bt-card thin"><h5>${BT.liq}</h5><div class="bt-empty"><b>${BT.noLiqData}</b></div></div>`
@@ -192,7 +193,7 @@ export function liqCardHTML(m: LiqModel | null, full: boolean): string {
   return `<div class="bt-card thin" data-liq="data"><h5>${BT.liq}<span class="rt">${BT.hour}</span></h5>
     ${vsHTML(h.short, h.long, true).replace('class="bt-vs s"', 'class="bt-vs s liq"')}
     <div class="bt-ends"><b class="up">${BT.shortLiq} ${esc(fmt(h.short))}</b><span></span><b class="down">${BT.longLiq} ${esc(fmt(h.long))}</b></div>
-    <div class="bt-mini">${maxLine}${full ? `<span>${BT.day} ${BT.long} <b>${esc(fmt(m.day.long))}</b> · ${BT.short} <b>${esc(fmt(m.day.short))}</b></span>` : ''}</div></div>`
+    <div class="bt-mini">${maxLine}<span>${BT.day} ${BT.long} <b>${esc(fmt(m.day.long))}</b> · ${BT.short} <b>${esc(fmt(m.day.short))}</b></span></div></div>`
 }
 
 export function barsCardHTML(bars: BarCol[], sel: number | null, flash: number | null): string {
@@ -281,7 +282,6 @@ export interface SheetHooks {
   onClose(): void
   onThreshold(): void
   onPickBar(t: number): void
-  onDetent?(d: Detent): void
 }
 
 export class BigTradeSheet {
@@ -292,26 +292,20 @@ export class BigTradeSheet {
   private heroSkel: HTMLElement
   private hero: HTMLElement
   private liqEl: HTMLElement
-  private hintEl: HTMLButtonElement
-  private fullEl: HTMLElement
   private barsEl: HTMLElement
   private ladderEl: HTMLElement
   private liqDayEl: HTMLElement
   private thrEl: HTMLButtonElement
-  private d: Detent
   private shut = false
   private parked = false
   private unback: (() => void) | null = null
-  private signTapAt = -1e9
   private model: BtModel | null = null
   private heroTitle = ''
   private flashT: number | null = null
   private flashTimer: ReturnType<typeof setTimeout> | null = null
   private scrolledRight = false
-  private readonly offDoc: () => void
 
-  constructor(private readonly hooks: SheetHooks, detent: Detent = 'half') {
-    this.d = detent
+  constructor(private readonly hooks: SheetHooks) {
     const wrap = this.wrap = el('div', 'bt-wrap')
     const scrim = el('div', 'bt-scrim')
     const root = this.root = el('div', 'bt-sheet')
@@ -336,58 +330,40 @@ export class BigTradeSheet {
           <div class="bt-hint bt-untracked" hidden>${BT.untracked}</div>
         </div>
         <div class="bt-liq"></div>
-        <button type="button" class="bt-hint bt-more">${BT.expand}</button>
-        <div class="bt-full">
-          <div class="bt-bars"></div><div class="bt-lad"></div><div class="bt-liqday"></div>
-          <button type="button" class="bt-card thin bt-thr"><span class="l">${BT.threshold}</span><span class="v"></span><span class="go">›</span></button>
-        </div>
+        <div class="bt-bars"></div><div class="bt-lad"></div><div class="bt-liqday"></div>
+        <button type="button" class="bt-card thin bt-thr"><span class="l">${BT.threshold}</span><span class="v"></span><span class="go">›</span></button>
       </div>`
     wrap.append(scrim, root)
     const q = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!
     this.body = q('.bt-body'); this.subEl = q('.bt-sub')
     this.heroSkel = q('.bt-hero-skel'); this.hero = q('.bt-hero[data-card="hero"]')
-    this.liqEl = q('.bt-liq'); this.hintEl = q('.bt-more'); this.fullEl = q('.bt-full')
+    this.liqEl = q('.bt-liq')
     this.barsEl = q('.bt-bars'); this.ladderEl = q('.bt-lad'); this.liqDayEl = q('.bt-liqday'); this.thrEl = q('.bt-thr')
 
     q('.bt-bk').addEventListener('click', () => this.close())
     q('.bt-pill').addEventListener('click', () => this.hooks.onThreshold())
     this.thrEl.addEventListener('click', () => this.hooks.onThreshold())
-    this.hintEl.addEventListener('click', () => this.setDetent('full'))
     scrim.addEventListener('click', () => this.close())
     this.barsEl.addEventListener('click', e => this.pickBar(e))
     this.wireDrag()
 
     layer().appendChild(wrap)
     this.unback = pushLayer(() => this.close())
-    this.applyDetent(false)
+    this.fitHeight()
     if (reducedMotion()) wrap.classList.add('in')
     else requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('in')))
-    this.offDoc = this.wireOutside()
   }
 
   get closed(): boolean { return this.shut }
-  get detent(): Detent { return this.d }
   get current(): BtModel | null { return this.model }
 
-  /** 点中图上的一枚签（宿主先叫这个，弹层以外的那一下就不当成「点外面关掉」） */
-  noteSignTap(): void { this.signTapAt = performance.now() }
-
-  setDetent(d: Detent): void {
-    if (this.shut || d === this.d) return
-    this.d = d
-    this.applyDetent(true)
-    if (this.model) this.update(this.model)
-    this.hooks.onDetent?.(d)
-  }
-
-  /** 门槛页盖上来时先收下去（不关），那页关了再升回原来那一档 */
+  /** 门槛页盖上来时先收下去（不关），那页关了再升回来 */
   park(): void { if (this.shut || this.parked) return; this.parked = true; this.wrap.classList.add('parked') }
   unpark(): void { if (this.shut || !this.parked) return; this.parked = false; this.wrap.classList.remove('parked') }
 
   close(): void {
     if (this.shut) return
     this.shut = true
-    this.offDoc()
     this.unback?.(); this.unback = null
     if (this.flashTimer) clearTimeout(this.flashTimer)
     this.wrap.classList.remove('in')
@@ -403,24 +379,33 @@ export class BigTradeSheet {
     if (this.model) this.renderBars(this.model)
   }
 
+  /** 副标题挑第一种一行放得下的（同一组写法、同一宽度只量一次）；弹层没排版（宽 0）时先摆全称 */
+  private subKey = ''
+  private fitSub(m: BtModel): void {
+    const el = this.subEl
+    const w = el.clientWidth
+    const key = `${w}|${m.subs.join('|')}`
+    if (key === this.subKey) return
+    this.subKey = w > 0 ? key : ''
+    el.setAttribute('aria-label', m.sub)
+    let pick = m.subs[0] ?? m.sub
+    if (w > 0) for (const s of m.subs) { setText(el, s); pick = s; if (el.scrollWidth <= w + 1) break }
+    setText(el, pick)
+  }
+
   update(m: BtModel): void {
     if (this.shut) return
     this.model = m
-    setText(this.subEl, m.sub)
+    this.fitSub(m)
     this.root.classList.toggle('stale', m.stale)
     this.heroSkel.hidden = !m.loading
     this.hero.hidden = m.loading
     if (!m.loading) this.renderHero(m.hero)
-    setHTML(this.liqEl, m.loading && m.liq ? liqCardHTML({ ...m.liq, state: 'loading' }, false) : liqCardHTML(m.liq, this.d === 'full'))
-    const full = this.d === 'full'
-    this.hintEl.hidden = full
-    this.fullEl.hidden = !full
-    if (full) {
-      this.renderBars(m)
-      setHTML(this.ladderEl, ladderCardHTML(m.ladder))
-      setHTML(this.liqDayEl, liqDayCardHTML(m.liq))
-      setText(this.thrEl.querySelector('.v')!, m.thr)
-    }
+    setHTML(this.liqEl, liqCardHTML(m.loading && m.liq ? { ...m.liq, state: 'loading' } : m.liq))
+    this.renderBars(m)
+    setHTML(this.ladderEl, ladderCardHTML(m.ladder))
+    setHTML(this.liqDayEl, liqDayCardHTML(m.liq))
+    setText(this.thrEl.querySelector('.v')!, m.thr)
   }
 
   // ------------------------------------------------------------ 本根卡片
@@ -474,7 +459,6 @@ export class BigTradeSheet {
   }
 
   private renderBars(m: BtModel): void {
-    if (this.d !== 'full') return
     setHTML(this.barsEl, barsCardHTML(m.bars, m.sel, this.flashT))
     const sc = this.barsEl.querySelector<HTMLElement>('.bt-scroll')
     if (sc && !this.scrolledRight) { sc.scrollLeft = sc.scrollWidth; this.scrolledRight = true }
@@ -490,46 +474,33 @@ export class BigTradeSheet {
     this.hooks.onPickBar(m.bars[i].t)
   }
 
-  // ------------------------------------------------------------ 档位与拖
+  // ------------------------------------------------------------ 高度与拖
 
   private maxH(): number {
     const vh = typeof innerHeight === 'number' && innerHeight > 0 ? innerHeight : 852
     return Math.max(200, vh - safeArea().top - 10)
   }
-  private heightOf(d: Detent): number { return Math.min(d === 'full' ? FULL_H : HALF_H, this.maxH()) }
 
-  private applyDetent(_animated: boolean): void {
-    this.root.style.height = this.heightOf(this.d) + 'px'
-    this.root.classList.toggle('full', this.d === 'full')
-    this.wrap.classList.toggle('full', this.d === 'full')
-    if (this.d === 'half') this.body.scrollTop = 0
-  }
+  private fitHeight(): void { this.root.style.height = Math.min(SHEET_H, this.maxH()) + 'px' }
 
+  /** 只有一档：往下拉跟手，过 CLOSE_PX 或甩一下就关，不够就弹回 */
   private wireDrag(): void {
-    let startY = 0, startH = 0, dy = 0, dragging = false, lastY = 0, lastT = 0, vel = 0
+    let startY = 0, dy = 0, dragging = false, lastY = 0, lastT = 0, vel = 0
     const root = this.root
     const begin = (y: number): void => {
       startY = lastY = y; lastT = performance.now(); dy = 0; vel = 0; dragging = true
-      startH = root.offsetHeight || this.heightOf(this.d); root.classList.add('dragging')
+      root.classList.add('dragging')
     }
     const move = (y: number): void => {
       const now = performance.now()
       vel = (y - lastY) / Math.max(1, now - lastT); lastY = y; lastT = now
       dy = y - startY
-      if (this.d === 'half' && dy > 0) { root.style.transform = `translateY(${dy}px)`; return }
-      root.style.transform = ''
-      const h = startH - dy
-      const max = this.heightOf('full')
-      root.style.height = `${Math.max(this.heightOf('half') - 40, Math.min(max + 12, h))}px`
+      root.style.transform = dy > 0 ? `translateY(${dy}px)` : ''
     }
     const end = (): void => {
       if (!dragging) return
       dragging = false; root.classList.remove('dragging'); root.style.transform = ''
-      if (this.d === 'half') {
-        if (dy > 0 && (dy > 110 || vel > 0.6)) { this.close(); return }
-        if (dy < 0 && (-dy > EXPAND_PX || vel < -0.6)) { this.setDetent('full'); return }
-      } else if (dy > 60 || vel > 0.6) { this.setDetent('half'); return }
-      this.applyDetent(true)
+      if (dy > 0 && (dy > CLOSE_PX || vel > 0.6)) this.close()
     }
     const zones = [root.querySelector<HTMLElement>('.bt-grab')!, root.querySelector<HTMLElement>('.bt-hdr')!]
     for (const z of zones) {
@@ -542,40 +513,17 @@ export class BigTradeSheet {
       z.addEventListener('pointerup', end)
       z.addEventListener('pointercancel', end)
     }
-    // 正文：满屏滚到顶往下拉 → 半屏；半屏（正文不滚）往上 / 往下拉都接手
+    // 正文：滚到顶再往下拉才接手
     const body = this.body
     let y0 = 0, armed = false
-    body.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; armed = this.d === 'half' || body.scrollTop <= 0 }, { passive: true })
+    body.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; armed = body.scrollTop <= 0 }, { passive: true })
     body.addEventListener('touchmove', e => {
       const y = e.touches[0].clientY
-      if (!dragging && armed && Math.abs(y - y0) > 6 && (this.d === 'half' || (y > y0 && body.scrollTop <= 0))) begin(y0)
+      if (!dragging && armed && y - y0 > 6 && body.scrollTop <= 0) begin(y0)
       if (dragging) { e.preventDefault(); move(y) }
-      else if (this.d === 'full' && y < y0) armed = false
+      else if (y < y0) armed = false
     }, { passive: false })
     body.addEventListener('touchend', end)
     body.addEventListener('touchcancel', end)
-  }
-
-  /** 点弹层以外的地方关（半屏不压暗、不挡图；点中图上的签只换根，见 noteSignTap） */
-  private wireOutside(): () => void {
-    let down: { x: number; y: number; t: number } | null = null
-    const inside = (t: EventTarget | null): boolean => t instanceof Node && (this.root.contains(t) || !this.wrap.isConnected)
-    const onDown = (e: PointerEvent): void => {
-      down = inside(e.target) || this.parked || !e.isPrimary ? null : { x: e.clientX, y: e.clientY, t: performance.now() }
-    }
-    const onUp = (e: PointerEvent): void => {
-      const d = down
-      down = null
-      if (!d || this.parked || this.shut) return
-      if (performance.now() - d.t > 500 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return
-      // 别的弹层（门槛页、解释卡）盖在上面时点的是它们
-      const top = layer().lastElementChild
-      if (top && top !== this.wrap && top.contains(e.target as Node)) return
-      const at = performance.now()
-      setTimeout(() => { if (!this.shut && this.signTapAt < at - 5) this.close() }, 60)
-    }
-    document.addEventListener('pointerdown', onDown, true)
-    document.addEventListener('pointerup', onUp, true)
-    return () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('pointerup', onUp, true) }
   }
 }

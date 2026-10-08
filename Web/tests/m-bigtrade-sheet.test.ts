@@ -1,10 +1,10 @@
-// 手机网页 · 「大单与爆仓」弹层：纯函数 + 片段 HTML + 胶水（BigTradeController）在半屏 / 满屏 / 骨架 / 现货 / 爆仓空 / 停住
+// 手机网页 · 「大单与爆仓」弹层：纯函数 + 片段 HTML + 胶水（BigTradeController）在整页 / 骨架 / 现货 / 爆仓空 / 停住
 // 各状态下交给弹层的模型，以及十字线联动（拉到哪根看哪根、抬手 3 秒回本根、点签只换根、点「每根」十字线跳过去）。
 // 场地：node 里假的 DOM 元素与假画布；弹层本体换成只记 update 的替身（真 DOM 走 scripts/m-bigtrade.mjs 截图验收）。
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   netText, summaryLine, niceStep, ladderRows, liqCells, LIQ_CELLS, LIQ_CELL_MS,
-  liqCardHTML, barsCardHTML, ladderCardHTML, liqDayCardHTML, type BtModel, type LiqModel, type Detent,
+  liqCardHTML, barsCardHTML, ladderCardHTML, liqDayCardHTML, type BtModel, type LiqModel,
 } from '../src/m/pages/chart/bigTradeSheet'
 import { BigTradeController, RETURN_MS, STALE_MS, SKELETON_MS, type BtForce } from '../src/m/pages/chart/bigTrade'
 import { LiqStore, type LiqRow } from '../src/orderflow/liquidation'
@@ -68,17 +68,16 @@ function liqM(o: Partial<LiqModel> = {}): LiqModel {
 
 describe('大单与爆仓 · 片段', () => {
   it('爆仓卡：现货整块不出现；骨架 / 暂无数据 / 今日无爆仓 / 有数；只留数字与短标签', () => {
-    expect(liqCardHTML(null, false)).toBe('')
-    expect(liqCardHTML(liqM({ state: 'loading' }), false)).toContain('bt-skel')
-    expect(liqCardHTML(liqM({ state: 'none' }), false)).toContain('<b>暂无爆仓数据</b>')
-    expect(liqCardHTML(liqM(), false)).toContain('<b>今日无爆仓</b></div>')
+    expect(liqCardHTML(null)).toBe('')
+    expect(liqCardHTML(liqM({ state: 'loading' }))).toContain('bt-skel')
+    expect(liqCardHTML(liqM({ state: 'none' }))).toContain('<b>暂无爆仓数据</b>')
+    expect(liqCardHTML(liqM())).toContain('<b>今日无爆仓</b></div>')
     const max: LiqRow = [0, 900_000, 0, 1, 900_000, 98765.4, 0, 1]
     const m = liqM({ hour: { long: 1_000_000, short: 200_000, n: 4, max }, today: { long: 3e6, short: 1e6, n: 9, max }, day: { long: 5e6, short: 2e6, n: 20, max }, maxWhen: '12:31', maxPrice: '98765.4' })
-    const half = liqCardHTML(m, false)
-    for (const x of ['被打得更狠', '多空都稳着', '空爆', '多爆', '被平']) expect(half).not.toContain(x)
-    expect(half).toContain('空单爆仓 200.0K'); expect(half).toContain('多单爆仓 1.0M'); expect(half).toContain('今日最大单笔 <b class="down">多单 900.0K</b>'); expect(half).toContain('@ 98765.4 · 12:31')
-    expect(half).not.toContain('24 小时 多单')
-    expect(liqCardHTML(m, true)).toContain('24 小时 多单 <b>5.0M</b>')
+    const card = liqCardHTML(m)
+    for (const x of ['被打得更狠', '多空都稳着', '空爆', '多爆', '被平']) expect(card).not.toContain(x)
+    expect(card).toContain('空单爆仓 200.0K'); expect(card).toContain('多单爆仓 1.0M'); expect(card).toContain('今日最大单笔 <b class="down">多单 900.0K</b>'); expect(card).toContain('@ 98765.4 · 12:31')
+    expect(card).toContain('24 小时 多单 <b>5.0M</b>')
   })
 
   it('每根：40 根一根一组，看的那根加框，点过的那根闪；最后一根带呼吸点', () => {
@@ -163,10 +162,7 @@ class FakeSheet {
   closed = false
   calls: string[] = []
   last: BtModel | null = null
-  constructor(public detent: Detent = 'half') {}
   update(m: BtModel): void { this.last = m }
-  setDetent(d: Detent): void { this.detent = d }
-  noteSignTap(): void { this.calls.push('noteSignTap') }
   flash(t: number): void { this.calls.push(`flash:${t}`) }
   park(): void { this.calls.push('park') }
   unpark(): void { this.calls.push('unpark') }
@@ -174,7 +170,7 @@ class FakeSheet {
 }
 
 interface Rig { c: BigTradeController; sheet: FakeSheet; view: ChartView; port: Record<string, unknown>; emit(type: string, e: unknown): void; clock: { now: number } }
-function rig(o: { sym?: string; force?: BtForce; detent?: Detent; land?: boolean; liq?: LiqStore; trades?: boolean } = {}): Rig {
+function rig(o: { sym?: string; force?: BtForce; land?: boolean; liq?: LiqStore; trades?: boolean } = {}): Rig {
   const sym = o.sym ?? 'BTCUSDT'
   const n = 300
   const op: number[] = [], h: number[] = [], l: number[] = [], cl: number[] = [], v: number[] = []
@@ -200,7 +196,7 @@ function rig(o: { sym?: string; force?: BtForce; detent?: Detent; land?: boolean
     isLand: () => !!o.land, isMacro: () => false, openThreshold: back => { back() },
     now: () => clock.now, liq: o.liq ?? new LiqStore(() => new Promise(() => { /* 不回 */ })), force: o.force ?? null,
   })
-  const sheet = new FakeSheet(o.detent ?? 'half')
+  const sheet = new FakeSheet()
   ;(c as unknown as { sheet: FakeSheet }).sheet = sheet
   ;(c as unknown as { openedAt: number }).openedAt = NOW - 5000
   ;(c as unknown as { sym: string }).sym = sym
@@ -212,21 +208,26 @@ beforeEach(() => { resetFlows(); vi.stubGlobal('fetch', () => new Promise(() => 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('大单与爆仓 · 弹层各状态的模型', () => {
-  it('半屏：本根卡片（买卖、笔数、近 1 小时 / 今日），不算每根和价位', () => {
+  it('整页：本根卡片（买卖、笔数、近 1 小时 / 今日）', () => {
     const m = model(rig())
     expect(m.loading).toBe(false); expect(m.stale).toBe(false)
     expect(m.hero).toMatchObject({ title: '本根', live: true, rt: '15 分钟', untracked: false })
     expect(m.hero.bar).toMatchObject({ bb: 900_000, bs: 300_000, bn: 2, sn: 1 })
     expect(m.hero.hour).toMatchObject({ bb: 900_000, bs: 300_000 })
     expect(m.hero.today.bs).toBe(1_800_000)
-    expect(m.bars).toEqual([]); expect(m.ladder).toBeNull(); expect(m.sel).toBeNull()
+    expect(m.sel).toBeNull()
     expect(m.sub).toBe('BTC · 币安 · OKX · Coinbase · Bybit · Hyperliquid 合并')
+    // 五家一行放不下时弹层依次往短里挑（和 iOS 同一套）：去「合并」→ 后几家收成「+N」
+    expect(m.subs).toEqual([
+      'BTC · 币安 · OKX · Coinbase · Bybit · Hyperliquid 合并', 'BTC · 币安 · OKX · Coinbase · Bybit · Hyperliquid',
+      'BTC · 币安 · OKX · Coinbase · Bybit +1', 'BTC · 币安 · OKX · Coinbase +2', 'BTC · 币安 · OKX +3', 'BTC · 币安 +4',
+    ])
     expect(m.thr).toBe('永续 100.0K · 现货 50.0K · 步长 0.5')
     expect(m.liq!.state).toBe('loading')
   })
 
-  it('满屏：每根 40 根（标签按北京时间）、价位梯 11 行', () => {
-    const m = model(rig({ detent: 'full' }))
+  it('整页一开就算好每根 40 根（标签按北京时间）、价位梯 11 行', () => {
+    const m = model(rig())
     expect(m.bars.length).toBe(40)
     expect(m.bars[39]).toMatchObject({ t: LAST, bb: 900_000, bs: 300_000 })
     expect(m.bars[35].bs).toBe(1_500_000)
@@ -267,7 +268,7 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
     expect(model(r2).liq!.state).toBe('none')
     const e = model(rig({ force: 'liqEmpty' })).liq!
     expect(e.state).toBe('data'); expect(e.cells.every(([a, b]) => a + b === 0)).toBe(true)
-    expect(liqCardHTML(e, false)).toContain('今日无爆仓')
+    expect(liqCardHTML(e)).toContain('今日无爆仓')
   })
 
   it('停住：20 秒没进成交 → 数字变灰、右上写「数据停于 hh:mm」；断网同样', () => {
@@ -327,11 +328,11 @@ describe('大单与爆仓 · 十字线联动', () => {
     expect(r.sheet.last!.hero).toMatchObject({ title: '本根', live: true, rt: '15 分钟' })
   })
 
-  it('开着时点另一枚签：只换根、不关，标记这一下不是点外面', () => {
+  it('开着时点另一枚签：只换根、不关', () => {
     const r = rig()
     const tap = (r.c as unknown as { tapSign(s: { t: number }): boolean }).tapSign.bind(r.c)
     expect(tap({ t: TB })).toBe(true)
-    expect(r.sheet.calls).toContain('noteSignTap'); expect(r.sheet.closed).toBe(false)
+    expect(r.sheet.closed).toBe(false)
     expect(r.sheet.last!.hero).toMatchObject({ title: hhmm(TB), rt: '15 分钟' })
   })
 
@@ -346,7 +347,7 @@ describe('大单与爆仓 · 十字线联动', () => {
 
   it('「每根」点一根：十字线跳过去、那根闪；跟着来的十字线事件不把它当成人拉', () => {
     vi.useFakeTimers()
-    const r = rig({ detent: 'full' })
+    const r = rig()
     const spy = vi.spyOn(r.view, 'crosshairTo')
     ;(r.c as unknown as { pickBar(t: number): void }).pickBar(TB)
     expect(spy).toHaveBeenCalledWith(295)

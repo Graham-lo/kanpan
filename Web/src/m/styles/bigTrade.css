@@ -1,7 +1,7 @@
 /* 「大单与爆仓」弹层（原型 docs/原型-手机大单与爆仓-2026-10-08.html · sheet()），只用既有令牌 */
 .bt-wrap { position: fixed; inset: 0; pointer-events: none; z-index: 1 }
 .bt-scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; transition: opacity var(--dur) var(--ease-out); pointer-events: none }
-.bt-wrap.in.full .bt-scrim { opacity: 1; pointer-events: auto }
+.bt-wrap.in .bt-scrim { opacity: 1; pointer-events: auto }
 .bt-sheet {
   position: absolute; left: 0; right: 0; bottom: 0; border-radius: 34px 34px 0 0; overflow: hidden; pointer-events: auto;
   box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge), var(--toast-shadow);
@@ -19,11 +19,10 @@
 .bt-hdr { display: flex; align-items: center; gap: 10px; padding: 26px 16px 10px; touch-action: none; flex: none }
 .bt-hdr .bt-bk { width: var(--hit, 44px); height: var(--hit, 44px); display: grid; place-items: center; margin: -5px 0 -5px -13px; color: var(--accent); background: none; border: 0; padding: 0 }
 .bt-hdr .bt-bk svg { width: 20px; height: 20px; stroke-width: 2.2 }
-.bt-hdr h4 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; line-height: 1 }
-.bt-hdr h4 small { display: block; font-size: 12px; font-weight: 500; color: var(--ink3); margin-top: 5px; letter-spacing: 0 }
-.bt-hdr .bt-pill { margin-left: auto; font: 600 13px/1 var(--font-ui); color: var(--accent); background: var(--lg-glass); padding: 9px 12px; min-height: 32px; border-radius: 999px; border: 0; box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge) }
-.bt-body { flex: 1; min-height: 0; padding: 0 16px 24px; overflow: hidden; overscroll-behavior: contain }
-.bt-sheet.full .bt-body { overflow-y: auto; -webkit-overflow-scrolling: touch }
+.bt-hdr h4 { flex: 1; min-width: 0; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; line-height: 1 }
+.bt-hdr h4 small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 500; color: var(--ink3); margin-top: 5px; letter-spacing: 0 }
+.bt-hdr .bt-pill { flex: none; white-space: nowrap; margin-left: auto; font: 600 13px/1 var(--font-ui); color: var(--accent); background: var(--lg-glass); padding: 9px 12px; min-height: 32px; border-radius: 999px; border: 0; box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge) }
+.bt-body { flex: 1; min-height: 0; padding: 0 16px 24px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain }
 
 .bt-card { display: block; width: 100%; text-align: left; background: var(--lg-glass); border: 0; border-radius: 20px; padding: 14px 16px; margin: 0 0 10px; position: relative; color: inherit; font: inherit;
   box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge), 0 10px 30px -22px rgba(0, 0, 0, .35) }
