@@ -14,6 +14,7 @@
 //! 3. **复盘 worker 的取数**：`candles`（K 线页）与 `trades`（逐笔，给 `trade_touch`）。
 //!
 //! 整个进程共用一道出站限速（公开端点按 IP 10 次/秒，这里取 8 次留余量）。
+pub mod orderflow;
 use axum::extract::ws::{Message,WebSocket};
 use axum::http::{HeaderValue,StatusCode,header};
 use axum::response::{IntoResponse,Response};

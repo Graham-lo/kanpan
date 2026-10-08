@@ -77,7 +77,7 @@ pub fn product_label(product:&str)->&str {
 pub fn orderflow_base(symbol:&str)->(String,f64) {
  let listed=crate::instruments::base(symbol);
  let rest=crate::orderflow_instruments::unscaled(listed);
- let scale=crate::orderflow_instruments::BINANCE_SCALED.iter().find(|(prefix,_)|rest!=listed&&listed.len()==prefix.len()+rest.len()&&listed.starts_with(prefix)).map_or(1.0,|(_,s)|*s as f64);
+ let scale=crate::orderflow_instruments::SCALED_PREFIXES.iter().find(|(prefix,_)|rest!=listed&&listed.len()==prefix.len()+rest.len()&&listed.starts_with(prefix)).map_or(1.0,|(_,s)|*s as f64);
  (rest.to_string(),scale)
 }
 

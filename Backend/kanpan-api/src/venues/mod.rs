@@ -18,7 +18,7 @@
 //! - `hyperliquid`：进程共用的那一条上游 hub 与 `GET /v1/market/ws/hyperliquid` 中继（2026-10-08）。
 //!   两家的 WS 中继挂在 `market_relay` 的路由里（名额、超时与币安 / OKX 两条共用）。
 //!
-//! 接第三家：新建 `venues/<id>.rs`，在下面两个分发里各加一行，别处不动
+//! 接第三家：新建 `venues/<id>/mod.rs`（主力订单流那一截放 `venues/<id>/orderflow.rs`），在下面两个分发里各加一行，别处不动
 //! （见 `docs/多交易所-接入指南.md`）。挂在 `/v1/market/` 下而不是 `/market/`：
 //! 后者在 Caddy 上整段归 Python 网关。
 use axum::{Router,extract::{Path,Query,ws::WebSocketUpgrade},response::{IntoResponse,Response},routing::get};
@@ -31,6 +31,7 @@ pub mod coinbase;
 pub mod hyperliquid;
 pub mod macro_index;
 pub mod okx;
+pub mod orderflow;
 
 /// 两族路由都不读数据库（美元指数例外：库连接由它的采集任务放进模块，没起采集的备用主机上答 503），
 /// 所以 API 主机与只答持仓量的备用主机挂的是同一份。

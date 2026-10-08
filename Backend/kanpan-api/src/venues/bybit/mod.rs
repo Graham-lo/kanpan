@@ -5,6 +5,7 @@
 //! - `orderflow`：主力订单流用的品种表解析、连接种类（地址 / 订阅消息 / 解帧）与爆仓源。
 //!
 //! 上游 `wss://stream.bybit.com/v5/public/{category}`，连不上换备用主机 `stream.bytick.com`。
+pub mod orderflow;
 pub mod relay;
 
 /// 公开行情 WS 的主机（按先后试）。后面拼 `/{category}`。

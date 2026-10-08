@@ -37,7 +37,10 @@ use super::hub::{self,Ws};
 use super::{Answer,Answers,CLOSING,HISTORY_READS,POOL,REGISTRY,WRITE_SLOTS,accepts_gzip,json_number,now_ms,packed,store};
 use crate::AppState;
 use crate::error::{ApiError,Params,Result};
-use crate::orderflow_instruments::{self as instruments,Exchange,Notional,Product,Venue};
+use crate::orderflow_instruments::{self as instruments,Notional,Product,Venue};
+#[cfg(test)]
+use crate::orderflow_instruments::ExchangeKey;
+use crate::venues::{binance::orderflow::KEY as BINANCE_TABLE,okx::orderflow::KEY as OKX_TABLE};
 use axum::extract::State;
 use axum::response::Response;
 use futures_util::{SinkExt,StreamExt};
@@ -163,10 +166,11 @@ impl Source {
  /// 一张合约表的行属于哪一路（现货与 Coinbase 不属于任何一路）。
  fn of(v:&Venue)->Option<Source> {
   match (v.exchange,v.product,v.notional) {
-   (_,Product::Spot,_)|(Exchange::Coinbase,..)=>None,
-   (Exchange::Binance,_,Notional::Linear{..})=>Some(Source::BinanceUm),
-   (Exchange::Binance,_,Notional::Inverse{..})=>Some(Source::BinanceCm),
-   (Exchange::Okx,..)=>Some(Source::Okx),
+   (_,Product::Spot,_)=>None,
+   (BINANCE_TABLE,_,Notional::Linear{..})=>Some(Source::BinanceUm),
+   (BINANCE_TABLE,_,Notional::Inverse{..})=>Some(Source::BinanceCm),
+   (OKX_TABLE,..)=>Some(Source::Okx),
+   _=>None,
   }
  }
 }
@@ -591,19 +595,19 @@ mod tests {
  const UM_SELL:&str=r#"{"e":"forceOrder","E":1791435151350,"o":{"s":"AINUSDT","S":"SELL","o":"LIMIT","f":"IOC","q":"1861","p":"0.0348700","ap":"0.0387407","X":"FILLED","l":"38","z":"1861","T":1791435150342,"ps":"AINUSDT","st":1}}"#;
  const OKX_FRAME:&str=r#"{"arg":{"channel":"liquidation-orders","instType":"SWAP"},"data":[{"details":[{"bkLoss":"0","bkPx":"0.072682","ccy":"","posSide":"long","side":"sell","sz":"2","ts":"1791435480289"}],"instFamily":"MUBARAK-USDT","instId":"MUBARAK-USDT-SWAP","instType":"SWAP","uly":"MUBARAK-USDT"}]}"#;
 
- fn venue(exchange:Exchange,product:Product,instrument:&str,notional:Notional)->Venue {
+ fn venue(exchange:ExchangeKey,product:Product,instrument:&str,notional:Notional)->Venue {
   Venue{exchange,product,instrument:instrument.into(),margin:Some(Margin::Usdt),notional,tick:0.1,expiry_ms:None,price_scale:None,listed_base:String::new()}
  }
 
  fn book()->Book {
   let rows=[
-   ("BTC",venue(Exchange::Binance,Product::Spot,"BTCUSDT",Notional::Linear{multiplier:1.0})),
-   ("BTC",venue(Exchange::Binance,Product::UsdtPerp,"BTCUSDT",Notional::Linear{multiplier:1.0})),
-   ("BTC",venue(Exchange::Binance,Product::CoinPerp,"BTCUSD_PERP",Notional::Inverse{contract_usd:100.0})),
-   ("BTC",venue(Exchange::Okx,Product::UsdtPerp,"BTC-USDT-SWAP",Notional::Linear{multiplier:0.01})),
-   ("BTC",venue(Exchange::Okx,Product::CoinPerp,"BTC-USD-SWAP",Notional::Inverse{contract_usd:100.0})),
-   ("PEPE",venue(Exchange::Binance,Product::UsdtPerp,"1000PEPEUSDT",Notional::Linear{multiplier:1.0})),
-   ("BTC",venue(Exchange::Coinbase,Product::Spot,"BTC-USD",Notional::Linear{multiplier:1.0})),
+   ("BTC",venue(ExchangeKey("binance"),Product::Spot,"BTCUSDT",Notional::Linear{multiplier:1.0})),
+   ("BTC",venue(ExchangeKey("binance"),Product::UsdtPerp,"BTCUSDT",Notional::Linear{multiplier:1.0})),
+   ("BTC",venue(ExchangeKey("binance"),Product::CoinPerp,"BTCUSD_PERP",Notional::Inverse{contract_usd:100.0})),
+   ("BTC",venue(ExchangeKey("okx"),Product::UsdtPerp,"BTC-USDT-SWAP",Notional::Linear{multiplier:0.01})),
+   ("BTC",venue(ExchangeKey("okx"),Product::CoinPerp,"BTC-USD-SWAP",Notional::Inverse{contract_usd:100.0})),
+   ("PEPE",venue(ExchangeKey("binance"),Product::UsdtPerp,"1000PEPEUSDT",Notional::Linear{multiplier:1.0})),
+   ("BTC",venue(ExchangeKey("coinbase"),Product::Spot,"BTC-USD",Notional::Linear{multiplier:1.0})),
   ];
   Book::build(rows.iter().map(|(b,v)|(*b,v)))
  }

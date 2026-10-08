@@ -235,7 +235,7 @@ pub(super) fn parse_symbol(symbol:&str)->Option<(String,f64)> {
  let base=crate::orderflow_instruments::unscaled(listed);
  if !crate::orderflow_instruments::valid_base(base) {return None}
  let scale=if base==listed {1} else {
-  crate::orderflow_instruments::BINANCE_SCALED.iter().find(|(prefix,_)|listed.strip_prefix(prefix)==Some(base)).map_or(1,|(_,s)|*s)
+  crate::orderflow_instruments::SCALED_PREFIXES.iter().find(|(prefix,_)|listed.strip_prefix(prefix)==Some(base)).map_or(1,|(_,s)|*s)
  };
  Some((base.to_string(),scale as f64))
 }

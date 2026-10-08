@@ -62,7 +62,8 @@ mod store;
 
 use crate::AppState;
 use crate::error::{ApiError,Params,Result};
-use crate::orderflow_instruments::{self as instruments,Exchange,Product,Venue};
+use crate::orderflow_instruments::{self as instruments,Product,Venue};
+use crate::venues::{binance::orderflow::KEY as BINANCE,coinbase::orderflow::KEY as COINBASE,okx::orderflow::KEY as OKX};
 use axum::extract::State;
 use axum::http::{HeaderValue,header};
 use axum::response::Response;
@@ -156,12 +157,18 @@ fn now_ms()->i64 {chrono::Utc::now().timestamp_millis()}
 
 fn wire_product(p:Product)->&'static str {match p {Product::Spot=>"spot",Product::UsdtPerp=>"usdtPerp",Product::CoinPerp=>"coinPerp",Product::Delivery=>"delivery"}}
 
+/// 这只币此刻要跟的簿（品种表里接好了连接种类的那几家）。
+async fn tracked_venues(base:&str)->Vec<Venue> {
+ instruments::venues(base).await.into_iter().filter(|v|[BINANCE,OKX,COINBASE].contains(&v.exchange)).collect()
+}
+
 /// 品种表的一行 → 簿的身份。id 与手机上 `OrderFlowVenue.id` 同一个写法。
 fn info(v:&Venue)->VenueInfo {
  let (exchange,label,sequence,in_band)=match v.exchange {
-  Exchange::Binance=>("binance","币安",if v.product==Product::Spot {Sequence::RangeOverlap} else {Sequence::PreviousFinalOverlap},false),
-  Exchange::Okx=>("okx","OKX",Sequence::PreviousFinalExact,true),
-  Exchange::Coinbase=>("coinbase","Coinbase",Sequence::StrictIncrementing,true),
+  BINANCE=>("binance","币安",if v.product==Product::Spot {Sequence::RangeOverlap} else {Sequence::PreviousFinalOverlap},false),
+  OKX=>("okx","OKX",Sequence::PreviousFinalExact,true),
+  COINBASE=>("coinbase","Coinbase",Sequence::StrictIncrementing,true),
+  other=>unreachable!("{} has no feed kinds",other.0),
  };
  let product=wire_product(v.product);
  let notional=match v.notional {
@@ -175,7 +182,7 @@ fn info(v:&Venue)->VenueInfo {
 // ------------------------------------------------------------------ 门槛
 
 /// 币安 U 本位永续（门槛分档、是不是币、推步长都看它）。
-fn binance_perp(venues:&[Venue])->Option<&Venue> {venues.iter().find(|v|v.exchange==Exchange::Binance&&v.product==Product::UsdtPerp)}
+fn binance_perp(venues:&[Venue])->Option<&Venue> {venues.iter().find(|v|v.exchange==BINANCE&&v.product==Product::UsdtPerp)}
 
 /// 是不是币：主币是；跟踪器已经判过的照旧（`known`）；币安没有这只 U 本位永续的按币算；
 /// 否则看它在合约表里的 `underlyingType` 是不是 COIN。合约表拿不到（`info` 为 None）回 None：不知道就不猜。
@@ -213,7 +220,7 @@ fn previous_close(rows:&Value,day:i64)->Option<f64> {
 
 /// 按前一日收盘推步长：先看币安 U 本位永续，没有再看币安现货。都是每个币的价（去掉 `1000` 前缀的倍数）。
 async fn derived_step(venues:&[Venue],day:i64)->Option<f64> {
- let spot=venues.iter().find(|v|v.exchange==Exchange::Binance&&v.product==Product::Spot);
+ let spot=venues.iter().find(|v|v.exchange==BINANCE&&v.product==Product::Spot);
  for (venue,host) in [(binance_perp(venues),"https://www.binance.com/fapi/v1/klines"),(spot,"https://data-api.binance.vision/api/v3/klines")] {
   let Some(v)=venue else {continue};
   let Ok(rows)=crate::market_meta::get_json(&format!("{host}?symbol={}&interval=1d&limit=3",v.instrument)).await else {continue};
@@ -475,7 +482,7 @@ impl Tracker {
   for v in venues.iter().filter(|v|self.planned.of(wire_product(v.product)).is_some()) {
    let scale=v.price_scale.unwrap_or(1).max(1) as f64;
    if v.product!=Product::Delivery {self.footprint.tick(v.tick/scale);}
-   if v.exchange==Exchange::Binance&&v.product==Product::UsdtPerp {
+   if v.exchange==BINANCE&&v.product==Product::UsdtPerp {
     self.seconds.venue(seconds::Venue{id:info(v).id,symbol:v.instrument.clone(),tick:v.tick,scale});
    }
   }
@@ -764,7 +771,7 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
 /// 拿品种表与门槛，直到步长有了。停了返回 None。
 async fn prepare(base:&str,stop:&mut watch::Receiver<bool>)->Option<(Vec<Venue>,Thresholds,bool)> {
  loop {
-  let venues=instruments::venues(base).await;
+  let venues=tracked_venues(base).await;
   let resolved=if venues.is_empty() {None} else {resolve(base,&venues,now_ms(),None).await};
   match resolved {
    Some((thresholds,crypto)) if thresholds.step.is_some()=>return Some((venues,thresholds,crypto)),
@@ -808,7 +815,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  t.add_venues(&venues);
  (t.calibration.since,t.calibration.subscribed)=(now_ms(),now_ms());
  let fetch={let base=base.clone();move |due:bool|{let base=base.clone();async move {
-  let venues=instruments::venues(&base).await;
+  let venues=tracked_venues(&base).await;
   let thresholds=if due {resolve(&base,&venues,now_ms(),Some(crypto)).await.map(|(t,_)|t).filter(|t|t.step.is_some())} else {None};
   Refreshed{venues,thresholds}
  }}};
@@ -1754,7 +1761,7 @@ mod tests {
  }
 
  #[test] fn coin_or_not_is_never_guessed() {
-  let perp=Venue{exchange:Exchange::Binance,product:Product::UsdtPerp,instrument:"NVDAUSDT".into(),margin:None,
+  let perp=Venue{exchange:BINANCE,product:Product::UsdtPerp,instrument:"NVDAUSDT".into(),margin:None,
    notional:instruments::Notional::Linear{multiplier:1.0},tick:0.01,expiry_ms:None,price_scale:None,listed_base:"NVDA".into()};
   let info=serde_json::json!({"symbols":[{"symbol":"NVDAUSDT","underlyingType":"EQUITY"},{"symbol":"DOGEUSDT","underlyingType":"COIN"}]});
   assert_eq!(crypto_kind("NVDA",Some(&perp),None,Some(&info)),Some(false));
@@ -2552,12 +2559,12 @@ mod tests {
  }
 
  #[test] fn venue_ids_match_the_phone() {
-  let v=Venue{exchange:Exchange::Binance,product:Product::UsdtPerp,instrument:"1000PEPEUSDT".into(),margin:None,
+  let v=Venue{exchange:BINANCE,product:Product::UsdtPerp,instrument:"1000PEPEUSDT".into(),margin:None,
    notional:instruments::Notional::Linear{multiplier:1.0},tick:0.0000001,expiry_ms:None,price_scale:Some(1000),listed_base:"1000PEPE".into()};
   let i=info(&v);
   assert_eq!((i.id.as_str(),i.label,i.price_scale,i.in_band),("binance:usdtPerp:1000PEPEUSDT","币安",1000.0,false));
   assert_eq!(i.sequence,Sequence::PreviousFinalOverlap);
-  let v=Venue{exchange:Exchange::Coinbase,product:Product::Spot,instrument:"BTC-USD".into(),margin:None,
+  let v=Venue{exchange:COINBASE,product:Product::Spot,instrument:"BTC-USD".into(),margin:None,
    notional:instruments::Notional::Linear{multiplier:1.0},tick:0.01,expiry_ms:None,price_scale:None,listed_base:"BTC".into()};
   assert_eq!(info(&v).id,"coinbase:spot:BTC-USD");
  }
