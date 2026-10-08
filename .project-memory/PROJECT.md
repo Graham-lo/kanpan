@@ -1902,6 +1902,8 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   3. 价位：服务端 1 分钟大单行 × 1 分钟 K 线 (h+l+c)/3 落进步长桶、实时覆盖最新一桶（只用实时时「近 1 小时 49.7M 而最密价位 121K」对不上）；最近挂单墙药丸；
      同一档既是买前三又是卖前三并成一行（一根条先涨色后跌色、两个额各按颜色写）；
   4. 爆仓：30 s 轮询 `/liq`，多空对撞条 + 「今日最大一笔」药丸；没数据不画假图。
+- **抽屉高度**：四块折成两排（≲ 1600 宽）时托底到「头 + 排数 × 240」（1440×900 默认 280 → 512），`--drawer-h` 跟着长、60% 上限放开、图表区至少留 240；托底不写回存值，回到一排恢复用户拖的高。
+  汇总 / 爆仓对撞条填充短于条宽时画圆角 3 的矮矩形（最矮 4），不再缩成一颗圆点。
 - **开关**：`setOrderFlow()` 只拨自己那一位（原来第一次开会把梯子 / 抽屉 / 侧栏小件一起种上，`OF.prefs.seeded/seededStats` 留着兼容、不再读）。
 - **服务端爆仓**（`orderflow_history/liq.rs`，迁移 `0052_orderflow_liq.sql`，表 `orderflow_liq`，三天滚动）：币安 `!forceOrder@arr`（fstream + dstream，每品种每秒最多一条采样）+
   OKX `liquidation-orders`（SWAP / FUTURES），按分钟按 base 聚合；`GET /v1/market/orderflow/liq?base=&from=&to=` → `{base,tracked,rows:[[minute_ms,longUsd,shortUsd,n,maxUsd,maxPrice,maxSide,maxEx]]}`，
