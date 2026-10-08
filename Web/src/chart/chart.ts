@@ -354,6 +354,8 @@ export class TVChart {
   hoverWall: Wall | null = null
   /** 外挂绘制层（订单流） */
   layers: ChartLayer[] = []
+  /** 这一帧主图上画线 / 交易记号写过字的地方（订单流的大单签要躲开它们，不压也不被压）；每帧画线前清空 */
+  textRects: { x: number; y: number; w: number; h: number }[] = []
   private layerHover: ChartLayer | null = null
   colors: ThemeColors = { bg: '', grid: '', text: '', text2: '', text3: '', cross: '', crossLabel: '', scaleLine: '', up: '', down: '', accent: '', alert: '', line: '' }
   font = '12px sans-serif'
@@ -1137,6 +1139,7 @@ export class TVChart {
     this.drawLastLine(mainPane, mr)
     this.drawAlertLines(mainPane, mr)
     this.drawAlertSignals(mainPane, mr)
+    this.textRects.length = 0
     this.drawDrawings(mainPane, mr)
     if (this.markers) this.drawMarkers(mainPane, mr)
     if (geo) for (const l of this.layers) if (l.over) { c.save(); l.over(c, geo); c.restore() }
@@ -1675,6 +1678,7 @@ export class TVChart {
       const tag = (x: number, y: number, text: string, col: string, below: boolean) => {
         c.font = `600 11px ${this.fontFamily()}`
         const tw = c.measureText(text).width + 12, ty = below ? y + 14 : y - 30
+        this.textRects.push({ x: x - tw / 2, y: below ? ty - 5 : ty, w: tw, h: 23 })
         c.fillStyle = col; roundRect(c, x - tw / 2, ty, tw, 18, 4); c.fill()
         c.beginPath(); c.moveTo(x - 4, below ? ty : ty + 18); c.lineTo(x + 4, below ? ty : ty + 18); c.lineTo(x, below ? ty - 5 : ty + 23); c.closePath(); c.fill()
         c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, x, ty + 9)
@@ -1717,7 +1721,9 @@ export class TVChart {
         const pr = q1.p + (q0.p - q1.p) * L, y = Math.round(this.priceToY(pr, p, r)) + .5
         c.strokeStyle = cols[k]; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke()
         c.fillStyle = cols[k]; c.textAlign = 'right'; c.textBaseline = 'bottom'; c.font = `11px ${this.fontFamily()}`
-        c.fillText(`${L} (${fmt(pr, this.meta.dec)})`, x0 - 4, y + 5)
+        const ft = `${L} (${fmt(pr, this.meta.dec)})`, fw = c.measureText(ft).width
+        c.fillText(ft, x0 - 4, y + 5)
+        this.textRects.push({ x: x0 - 4 - fw, y: y + 5 - 13, w: fw, h: 13 })
       })
       c.font = this.font; c.textBaseline = 'middle'
       c.setLineDash([3, 3]); c.strokeStyle = hexA('#787B86', .8); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.setLineDash([])
@@ -1736,6 +1742,7 @@ export class TVChart {
       const tw = Math.max(c.measureText(t1).width, c.measureText(t2).width) + 20
       const ly = up ? Math.min(a.y, b.y) - 50 : Math.max(a.y, b.y) + 8
       c.fillStyle = mc; roundRect(c, mx - tw / 2, ly, tw, 42, 6); c.fill()
+      this.textRects.push({ x: mx - tw / 2, y: ly, w: tw, h: 42 })
       c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t1, mx, ly + 13); c.font = this.font; c.fillText(t2, mx, ly + 29)
       c.beginPath()
     }

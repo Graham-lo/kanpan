@@ -302,7 +302,7 @@ function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col:
     const v = b.mid[end - i0], x = X(end), y = Y(v)
     c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'middle'; c.textAlign = 'left'
     const t = `VWAP ${fmt(v, ch.meta.dec)}`, w = c.measureText(t).width + 8
-    if (x + 6 + w < ch.plotW()) { c.fillStyle = hexA(col, 0.14); roundRect(c, x + 6, y - 9, w, 18, 4); c.fill(); c.fillStyle = col; c.fillText(t, x + 10, y) }
+    if (x + 6 + w < ch.plotW()) { c.fillStyle = hexA(col, 0.14); roundRect(c, x + 6, y - 9, w, 18, 4); c.fill(); c.fillStyle = col; c.fillText(t, x + 10, y); ch.textRects.push({ x: x + 6, y: y - 9, w, h: 18 }) }
   }
 }
 
@@ -353,6 +353,7 @@ function drawPosition(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, c
     const left = align === 'right' ? x - w : x - w / 2
     c.fillStyle = bg; roundRect(c, left, y - h / 2, w, h, 4); c.fill()
     c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(text, left + w / 2, y)
+    ch.textRects.push({ x: left, y: y - h / 2, w, h })
   }
   // 三个读数各贴各的线：目标、止损甩到框外那一侧，盈亏比压在入场线中间（照手机，三条线两两不同高不会撞）
   chip(`目标 ${pctLabel(s.targetPct)}`, x1 - 3, by + (s.long ? -12 : 12), up, 'right')
