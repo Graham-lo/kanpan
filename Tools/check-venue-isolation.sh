@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 
 VENUE_DIRS='^(KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|OKX|Bybit|Hyperliquid|Macro)|Kanpan/Kanpan/Exchange/(Binance))/'
 REGISTRY='^(KanpanNetwork/Sources/KanpanNetwork/Provider/VenueRegistry|Kanpan/Kanpan/Exchange/ExchangeAccountRegistry)\.swift$'
-PATTERN='Binance\|Coinbase\|fapi\.binance\|coinbase\.com\|Bybit\|bybit\.com\|bytick\|Hyperliquid\|hyperliquid\.xyz\|hasSuffix("USDT")'
+PATTERN='Binance\|Coinbase\|fapi\.binance\|coinbase\.com\|OKX\|okx\.com\|Bybit\|bybit\.com\|bytick\|Hyperliquid\|hyperliquid\.xyz\|hasSuffix("USDT")'
 
 files=$(git ls-files --cached --others --exclude-standard -- '*.swift' \
   | grep -Ev 'Tests/|Tests\.swift$' \

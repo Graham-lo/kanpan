@@ -17,6 +17,20 @@ struct InstrumentSyncIdentityTests {
     #expect(InstrumentID.isSyncIdentity(venue: "binance", market: "usd_m", symbol: "币安人生USDT"))
   }
 
+  @Test("OKX / Bybit 的 U 本位永续是币安形状的 USDT 代号，Hyperliquid 是大写 coin 名；形状不对的拒")
+  func otherVenues() {
+    for good in ["okx/usd_m/BTCUSDT", "okx/usd_m/1000PEPEUSDT", "bybit/usd_m/BTCUSDT", "bybit/usd_m/1000PEPEUSDT",
+                 "hyperliquid/usd_m/BTC", "hyperliquid/usd_m/KPEPE", "hyperliquid/usd_m/HYPE"] {
+      #expect(InstrumentID.isSyncKey(good), "\(good) 应该收")
+    }
+    for bad in ["okx/usd_m/BTC-USDT-SWAP", "okx/usd_m/BTCUSDC", "okx/usd_m/USDT", "okx/usd_m/btcusdt", "okx/spot/BTCUSDT",
+                "bybit/usd_m/币安人生USDT", "bybit/usd_m/BTC-USDT", "bybit/linear/BTCUSDT",
+                "hyperliquid/usd_m/kPEPE", "hyperliquid/usd_m/BTC-USD", "hyperliquid/usd_m/", "hyperliquid/usd_m/" + String(repeating: "A", count: 17),
+                "hyperliquid/spot/BTC"] {
+      #expect(!InstrumentID.isSyncKey(bad), "\(bad) 应该拒")
+    }
+  }
+
   @Test("代号最长 40 个字符，按字符数不按字节")
   func lengthIsInCharacters() {
     let longest = "binance/usd_m/" + String(repeating: "币", count: 36) + "USDT"

@@ -57,6 +57,32 @@ public enum VenueRegistry {
     BinanceProvider(route: route, log: log)
   }
 
+  /// OKX U 本位永续（`okx/usd_m/BTCUSDT`，键用币安形状的代号，OKX 目录里译成 `BTC-USDT-SWAP`）。
+  /// 2026-10-08 起是独立的一家（此前只是币安永续在网关线路上的替身），自选里单独一类「OKX」。
+  public static let okx = VenueDescriptor(
+    id: OKXVenue.id, market: OKXVenue.market, displayName: OKXVenue.displayName,
+    shortName: OKXVenue.shortName, hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTCUSDT"
+  ) { route, log in
+    OKXProvider(route: route, log: log)
+  }
+
+  /// Bybit U 本位永续（`bybit/usd_m/BTCUSDT`，代号原生就是币安形状）。2026-10-08 起接入，自选里单独一类「Bybit」。
+  public static let bybit = VenueDescriptor(
+    id: BybitVenue.id, market: BybitVenue.market, displayName: BybitVenue.displayName,
+    shortName: BybitVenue.shortName, hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTCUSDT"
+  ) { route, log in
+    BybitProvider(route: route, log: log)
+  }
+
+  /// Hyperliquid 永续（USDC 保证金，也记 `usd_m`；键是 coin 名大写 `hyperliquid/usd_m/BTC`、`…/KPEPE`，原名由品种表译回）。
+  /// 2026-10-08 起接入，自选里单独一类「Hyperliquid」。
+  public static let hyperliquid = VenueDescriptor(
+    id: HyperliquidVenue.id, market: HyperliquidVenue.market, displayName: HyperliquidVenue.displayName,
+    shortName: HyperliquidVenue.shortName, hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTC"
+  ) { route, log in
+    HyperliquidProvider(route: route, log: log)
+  }
+
   public static let coinbase = VenueDescriptor(
     id: CoinbaseVenue.id, market: CoinbaseVenue.market, displayName: CoinbaseVenue.displayName,
     shortName: CoinbaseVenue.shortName, hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTC-USD"
@@ -82,7 +108,7 @@ public enum VenueRegistry {
   public static let orderFlow: [OrderFlowExchange] = [.binance, .okx, .coinbase, .bybit, .hyperliquid]
 
   /// 注册顺序就是自选分类条、设置里出现的顺序。第一家是默认交易所。
-  public static let all: [VenueDescriptor] = [binance, coinbase, macro]
+  public static let all: [VenueDescriptor] = [binance, okx, bybit, hyperliquid, coinbase, macro]
 
   /// 默认交易所：没带交易所前缀的旧数据（裸符号）一律归它。
   public static var `default`: VenueDescriptor { all[0] }

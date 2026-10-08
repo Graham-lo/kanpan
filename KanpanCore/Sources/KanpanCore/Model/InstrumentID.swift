@@ -78,6 +78,11 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
   public static func isSyncIdentity(venue: String, market: String, symbol: String) -> Bool {
     switch (venue, market) {
     case ("binance", "usd_m"): return isQuoteSuffixedSymbol(symbol)
+    // OKX / Bybit 的 U 本位永续在看盘里用币安形状的键（`BTCUSDT`，服务端 `okx::symbol_ok` / `bybit::symbol_ok`：
+    // 大写字母数字 5–40 个、以 USDT 结尾）。
+    case ("okx", "usd_m"), ("bybit", "usd_m"): return isUSDTPerpSymbol(symbol)
+    // Hyperliquid 的键是 coin 名大写（`BTC`、`KPEPE`，服务端 `hyperliquid::symbol_ok`：大写字母数字 1–16 个）。
+    case ("hyperliquid", "usd_m"): return isUpperAlnum(symbol, 1...16)
     case ("coinbase", "spot"): return isDashUSDSymbol(symbol)
     case ("macro", "index"): return symbol == "DXY"
     default: return false
@@ -112,6 +117,17 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
       default: return c.properties.isAlphabetic
       }
     }
+  }
+
+  /// 文法三（OKX / Bybit 的 U 本位永续）：ASCII 大写字母数字 5–40 个、以 `USDT` 结尾、底名非空。
+  /// 对着 Rust `venues::okx::symbol_ok` / `venues::bybit::symbol_ok`（`upper_alnum(5..=40)` + `strip_suffix("USDT")`）。
+  private static func isUSDTPerpSymbol(_ s: String) -> Bool {
+    isUpperAlnum(s, 5...40) && s.hasSuffix("USDT") && s.utf8.count > 4
+  }
+
+  /// ASCII 大写字母数字、长度在 `range` 内。对着 Rust `venues::upper_alnum`。
+  private static func isUpperAlnum(_ s: String, _ range: ClosedRange<Int>) -> Bool {
+    range.contains(s.utf8.count) && s.utf8.allSatisfy { (65...90).contains($0) || (48...57).contains($0) }
   }
 
   /// 文法二：`BASE-USD`，BASE 只有 ASCII 大写与数字。

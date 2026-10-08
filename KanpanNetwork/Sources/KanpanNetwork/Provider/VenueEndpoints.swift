@@ -91,6 +91,8 @@ public struct VenueEndpoints: Sendable, Equatable {
   // ------------------------------------------------------------------ 推送
 
   /// 这条线路上的推送地址，按顺序试。网关线路按 `gatewayStream` 拼到网关表（`route.gateways`）的每一台上。
+  /// hub 与中继都是 kanpan-api 的 `/v1/market/*`；线上网关表与 kanpan-api 主机是同一台（2026-10-02 起只有新加坡），
+  /// 测试里网关表可以带端口、给主备两台，所以推送沿用网关表、REST 透传用 `apiHosts`，两张表各有各的用法。
   public var streams: [URL] { streams(query: []) }
 
   /// 带额外查询的推送地址（中继按类目分上游时用，例如 `category=linear`）。
