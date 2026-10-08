@@ -1,4 +1,4 @@
-//! 行情中继：两条 WebSocket，把手机连不上的公共行情流经这台 VPS 转一手。
+//! 行情中继：四条 WebSocket，把手机连不上的公共行情流经这台 VPS 转一手。
 //!
 //! * `GET /v1/market/ws/binance?streams=a/b/c`：服务端按产品把这些流分到币安合约的上游，各条上游的
 //!   文本帧原样转给手机（组合流的帧自带 `stream` 字段，手机按它分发）：
@@ -10,6 +10,13 @@
 //!   整条中继（连同手机那头）一起断，手机重连——不存在「深度还在、成交已经断了」的半条中继。
 //! * `GET /v1/market/ws/okx`：服务端连 `wss://ws.okx.com:8443/ws/v5/public`，上游帧原样转给手机
 //!   （包括 OKX 的文本 `pong`）。手机在国内直连不了 OKX。
+//! * `GET /v1/market/ws/bybit?category=spot|linear|inverse`（2026-10-08）：一条中继一条上游
+//!   `wss://stream.bybit.com/v5/public/{category}`，连不上换 `stream.bytick.com`；上游帧原样转下去
+//!   （包括 Bybit 对 `{"op":"ping"}` 的回帧）。上行白名单见 `venues::bybit::relay`。
+//! * `GET /v1/market/ws/hyperliquid`（2026-10-08）：不各开上游——Hyperliquid 按 IP 限 10 条 WS、
+//!   每分钟 30 条新连接，所以全部中继与常驻跟踪共用进程里那一条（`venues::hyperliquid::hub`），
+//!   按币分发、引用计数订退、断线由 hub 重连重订、对手机透明。上行白名单与转发见
+//!   `venues::hyperliquid::relay`；它不用先连上游，所以总是直接答 101。
 //!
 //! 为什么这样分（2026-09-24 在 VPS 上实测，每组 12 秒、各两轮；对照币安官方「Important WebSocket
 //! Change Notice」与 USDⓈ-M / COIN-M 两份 Websocket Market Streams 文档）：
@@ -41,7 +48,7 @@
 //!   4 秒 0 帧；三个入口对 ping 都在 130–190 ms 内回 pong）。任一条上游 60 秒没有任何帧
 //!   （连 pong 都没有）就断（手机会重连）；手机 90 秒没有任何帧（连 pong 都没有）也断，免得死在半路的
 //!   手机一直占着上游；往任一端发一帧 10 秒发不出去也断。
-//! * 同一来源地址同时在跑的中继（两条加起来）最多 `MAX_RELAYS_PER_CLIENT` 条（16：一个家庭网络 /
+//! * 同一来源地址同时在跑的中继（四条加起来）最多 `MAX_RELAYS_PER_CLIENT` 条（24：一个家庭网络 /
 //!   运营商 NAT 后面几台设备的量），超了 429 +
 //!   `Retry-After`；整个进程最多 `MAX_RELAYS` 条，超了 503。来源地址用 `auth::client_ip` 取：对端是
 //!   本机（前面的 Caddy）时认 `X-Forwarded-For`，否则就是对端地址。一个人开满不会把别人挤掉。
@@ -50,6 +57,8 @@
 //!   却马上被关掉的连接。币安每条上游出站之前先看 `binance_gate`，这个出口被封着就不去敲门，
 //!   握手被 429 / 418 顶回来也记进那道闸。
 use crate::{AppState,binance_gate,error::{ApiError,Params}};
+use crate::venues::bybit;
+use crate::venues::hyperliquid::{self,hub::{self,Hub}};
 use axum::Router;
 use axum::extract::{ConnectInfo,FromRequestParts};
 use axum::extract::ws::{CloseFrame,Message as Down,WebSocket,WebSocketUpgrade,rejection::WebSocketUpgradeRejection};
@@ -68,6 +77,8 @@ use tokio_tungstenite::tungstenite::{self,Message as Up};
 
 const BINANCE_PATH:&str="/v1/market/ws/binance";
 const OKX_PATH:&str="/v1/market/ws/okx";
+const BYBIT_PATH:&str="/v1/market/ws/bybit";
+const HYPERLIQUID_PATH:&str="/v1/market/ws/hyperliquid";
 /// 币本位合约（永续与交割）的组合流入口。
 const BINANCE_COIN_M:&str="wss://dstream.binance.com/stream";
 /// U 本位合约的盘口类组合流（depth）。
@@ -76,14 +87,16 @@ const BINANCE_USDM_PUBLIC:&str="wss://fstream.binance.com/public/stream";
 const BINANCE_USDM_MARKET:&str="wss://fstream.binance.com/market/stream";
 const OKX_UPSTREAM:&str="wss://ws.okx.com:8443/ws/v5/public";
 
-/// 整个进程同时在跑的中继连接数上限（两条中继合计）。3 位朋友、上限约 10 人，一人开一只币
-/// 最多三条，64 条是两倍的余量；再多就是有人在拿它当免费代理。
-const MAX_RELAYS:usize=64;
-/// 同一来源地址同时在跑的中继上限（两条中继合计）。一台设备看一只币：币安 U 本位 + 币本位各一条
-/// （合约多的币 U 本位可能拆两条）+ OKX 一条 = 3–4 条，换币时旧连接还没关干净再多一条。同一个来源
-/// 地址后面常常不止一台：手机 + 平板在同一个家庭网络，国内手机网络还有运营商 NAT，几台设备
-/// 共用一个出口。给到 16 = 四台设备满打满算，仍只是总数 64 的四分之一，一个出口开满挤不掉别人。
-const MAX_RELAYS_PER_CLIENT:usize=16;
+/// 整个进程同时在跑的中继连接数上限（四条中继合计）。3 位朋友、上限约 10 人；2026-10-08 接上
+/// Bybit 与 Hyperliquid 后一人开一只币走网关线路最多五六条（见下），96 条留出余量；再多就是有人在拿它
+/// 当免费代理。Hyperliquid 那条不占上游连接（全部共用 hub 的一条），也照样算进这里。
+const MAX_RELAYS:usize=96;
+/// 同一来源地址同时在跑的中继上限（四条中继合计）。一台设备看一只币：币安 U 本位 + 币本位各一条
+/// （合约多的币 U 本位可能拆两条）+ OKX 一条 + Bybit 现货 / U 本位 / 币本位各一条 + Hyperliquid 一条
+/// = 6–7 条，换币时旧连接还没关干净再多几条。同一个来源地址后面常常不止一台：手机 + 平板在同一个
+/// 家庭网络，国内手机网络还有运营商 NAT，几台设备共用一个出口。给到 24 = 三台设备满打满算，
+/// 仍只是总数 96 的四分之一，一个出口开满挤不掉别人。
+const MAX_RELAYS_PER_CLIENT:usize=24;
 /// 币安一条中继最多几路流。一只币的合约侧：U 本位永续 + 两个 U 本位交割 + 币本位永续 + 两个币本位交割，
 /// 每个要 depth 与 aggTrade——手机按需分两条连，每条不超过 8 路。
 pub const MAX_STREAMS:usize=8;
@@ -154,9 +167,15 @@ impl BinanceUpstreams {
 
 type Clients=Arc<Mutex<HashMap<IpAddr,usize>>>;
 
+/// 拿 Hyperliquid 那个 hub（线上是进程共用的那一个；测试里指到本机假上游）。
+type HubSource=Arc<dyn Fn()->Hub+Send+Sync>;
+
 pub struct Relay {
  binance:BinanceUpstreams,
  okx:String,
+ /// Bybit 公开行情的主机，按先后试；后面拼 `/{category}`。
+ bybit:Vec<String>,
+ hyperliquid:HubSource,
  permits:Arc<Semaphore>,
  per_client:usize,
  clients:Clients,
@@ -165,7 +184,25 @@ pub struct Relay {
 
 impl Relay {
  fn new(binance:BinanceUpstreams,okx:impl Into<String>,max:usize,per_client:usize,timing:Timing)->Self {
-  Self{binance,okx:okx.into(),permits:Arc::new(Semaphore::new(max)),per_client,clients:Clients::default(),timing}
+  Self{
+   binance,okx:okx.into(),
+   bybit:bybit::WS_BASES.iter().map(|b|b.to_string()).collect(),
+   hyperliquid:Arc::new(||hub::shared().clone()),
+   permits:Arc::new(Semaphore::new(max)),per_client,clients:Clients::default(),timing,
+  }
+ }
+ #[cfg(test)]
+ fn with_bybit(mut self,bases:Vec<String>)->Self {self.bybit=bases;self}
+ #[cfg(test)]
+ fn with_hyperliquid(mut self,hub:Hub)->Self {self.hyperliquid=Arc::new(move||hub.clone());self}
+ /// 占这个来源的名额、再占全局名额；占不到就是该答的拒绝。
+ fn hold(&self,ip:IpAddr)->Result<Held,Response> {
+  let Some(slot)=self.admit(ip) else {
+   tracing::info!("Market relay: {ip} already holds {} relays",self.per_client);
+   return Err(refuse(StatusCode::TOO_MANY_REQUESTS,"relay_client_limit"));
+  };
+  let Ok(permit)=self.permits.clone().try_acquire_owned() else {return Err(unavailable("relay_busy"))};
+  Ok(Held{_permit:permit,_slot:slot})
  }
  /// 给这个来源占一个名额；满了就是 `None`。
  fn admit(&self,ip:IpAddr)->Option<ClientSlot> {
@@ -307,7 +344,7 @@ impl OkxSubscriptions {
 type Upstream=tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
-enum Kind {Binance,Okx}
+enum Kind {Binance,Okx,Bybit}
 
 fn refuse(status:StatusCode,code:&'static str)->Response {
  let mut reply=ApiError(status,code).into_response();
@@ -334,6 +371,15 @@ async fn connect(url:&str,kind:Kind,timing:Timing)->Result<Upstream,Response> {
  }
 }
 
+/// 几个等价的上游地址按先后试，连上一个就行；全都连不上就是最后那个的拒绝。
+async fn connect_any(urls:&[String],kind:Kind,timing:Timing)->Result<Upstream,Response> {
+ let mut last=unavailable("market_upstream_unavailable");
+ for url in urls {
+  match connect(url,kind,timing).await {Ok(stream)=>return Ok(stream),Err(reply)=>last=reply}
+ }
+ Err(last)
+}
+
 /// 同时连一条中继要的全部上游；有一条连不上就整条 503（已经连上的随之丢掉、关闭）。
 async fn connect_all(urls:&[String],kind:Kind,timing:Timing)->Result<Vec<Upstream>,Response> {
  futures_util::future::try_join_all(urls.iter().map(|url|connect(url,kind,timing))).await
@@ -351,7 +397,7 @@ async fn send_all(sinks:&mut [futures_util::stream::SplitSink<Upstream,Up>],fram
  true
 }
 
-/// 一条中继的一生：上游（一条或几条）往手机搬，OKX 那条再把手机放行的帧搬上去，
+/// 一条中继的一生：上游（一条或几条）往手机搬，OKX / Bybit 两条再把手机放行的帧搬上去，
 /// 直到任一端断开或沉默。
 async fn pump(client:WebSocket,upstreams:Vec<Upstream>,kind:Kind,timing:Timing,_held:Held) {
  let (mut down_tx,mut down_rx)=client.split();
@@ -369,6 +415,7 @@ async fn pump(client:WebSocket,upstreams:Vec<Upstream>,kind:Kind,timing:Timing,_
  let mut upstream_deadlines=vec![Instant::now()+timing.upstream_idle;up_txs.len()];
  let mut client_deadline=Instant::now()+timing.client_idle;
  let mut subscriptions=OkxSubscriptions::default();
+ let mut bybit_subscriptions=bybit::relay::Subscriptions::default();
  let end=loop {
   let upstream_deadline=upstream_deadlines.iter().min().copied().unwrap_or(client_deadline);
   tokio::select! {
@@ -399,16 +446,19 @@ async fn pump(client:WebSocket,upstreams:Vec<Upstream>,kind:Kind,timing:Timing,_
      Down::Close(_)=>break End::ClientLeft,
      _=>continue,
     };
-    // 币安那条：组合流的地址就是订阅，连接里发什么都不转。
-    if kind!=Kind::Okx {continue}
-    let Some(frame)=okx_upward(text.as_str()) else {continue};
-    if !subscriptions.admit(&frame) {continue}
-    if !send_all(&mut up_txs,Up::Text(frame.text().into()),timing.send).await {break End::UpstreamStuck}
+    let upward=match kind {
+     // 币安那条：组合流的地址就是订阅，连接里发什么都不转。
+     Kind::Binance=>None,
+     Kind::Okx=>okx_upward(text.as_str()).filter(|frame|subscriptions.admit(frame)).map(|frame|frame.text()),
+     Kind::Bybit=>bybit::relay::upward(text.as_str()).filter(|frame|bybit_subscriptions.admit(frame)).map(|frame|frame.text()),
+    };
+    let Some(upward)=upward else {continue};
+    if !send_all(&mut up_txs,Up::Text(upward.into()),timing.send).await {break End::UpstreamStuck}
    },
    _=ping.tick()=>{
     if !matches!(tokio::time::timeout(timing.send,down_tx.send(Down::Ping(Default::default()))).await,Ok(Ok(()))) {break End::ClientStuck}
     // 币安的上游也 ping 一下：只订了冷门成交的那条可能一分钟没有数据帧，靠 pong 证明它还活着。
-    // OKX 那条由手机自己发文本 `ping` 保活，照旧。
+    // OKX / Bybit 两条由手机自己发 `ping` 保活（回帧也算上游的帧），照旧。
     if kind==Kind::Binance&&!send_all(&mut up_txs,Up::Ping(Default::default()),timing.send).await {break End::UpstreamStuck}
    },
    _=tokio::time::sleep_until(upstream_deadline)=>break End::UpstreamSilent,
@@ -426,17 +476,12 @@ async fn pump(client:WebSocket,upstreams:Vec<Upstream>,kind:Kind,timing:Timing,_
  futures_util::future::join_all(up_txs.iter_mut().map(|tx|tokio::time::timeout(Duration::from_secs(1),tx.close()))).await;
 }
 
-/// 两条中继共用的开门流程：要升级、占这个来源的名额、占全局名额、连上游、再答 101。
+/// 币安 / OKX 两条共用的开门流程：要升级、占这个来源的名额、占全局名额、连上游、再答 101。
 async fn open(relay:&Relay,kind:Kind,Source(ip):Source,urls:Vec<String>,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>)->Response {
  let Ok(ws)=ws else {return ApiError::bad("websocket_required").into_response()};
- let Some(slot)=relay.admit(ip) else {
-  tracing::info!("Market relay: {ip} already holds {} relays",relay.per_client);
-  return refuse(StatusCode::TOO_MANY_REQUESTS,"relay_client_limit");
- };
- let Ok(permit)=relay.permits.clone().try_acquire_owned() else {return unavailable("relay_busy")};
+ let held=match relay.hold(ip) {Ok(held)=>held,Err(reply)=>return reply};
  let upstreams=match connect_all(&urls,kind,relay.timing).await {Ok(streams)=>streams,Err(reply)=>return reply};
  let timing=relay.timing;
- let held=Held{_permit:permit,_slot:slot};
  ws.on_upgrade(move|client|pump(client,upstreams,kind,timing,held))
 }
 
@@ -455,8 +500,34 @@ async fn okx(relay:Arc<Relay>,source:Source,ws:Result<WebSocketUpgrade,WebSocket
  open(&relay,Kind::Okx,source,urls,ws).await
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CategoryQuery {category:String}
+
+/// Bybit：同一套名额；上游主机按先后试，连上一个才答 101。
+async fn bybit_relay(relay:Arc<Relay>,Source(ip):Source,query:CategoryQuery,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>)->Response {
+ if !bybit::valid_category(&query.category) {return ApiError::bad("invalid_category").into_response()}
+ let Ok(ws)=ws else {return ApiError::bad("websocket_required").into_response()};
+ let held=match relay.hold(ip) {Ok(held)=>held,Err(reply)=>return reply};
+ let urls:Vec<String>=relay.bybit.iter().map(|base|format!("{base}/{}",query.category)).collect();
+ let upstream=match connect_any(&urls,Kind::Bybit,relay.timing).await {Ok(stream)=>stream,Err(reply)=>return reply};
+ let timing=relay.timing;
+ ws.on_upgrade(move|client|pump(client,vec![upstream],Kind::Bybit,timing,held))
+}
+
+/// Hyperliquid：同一套名额，不连上游（共用 hub），直接答 101。
+async fn hyperliquid_relay(relay:Arc<Relay>,Source(ip):Source,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>)->Response {
+ let Ok(ws)=ws else {return ApiError::bad("websocket_required").into_response()};
+ let held=match relay.hold(ip) {Ok(held)=>held,Err(reply)=>return reply};
+ let hub=(relay.hyperliquid)();
+ let timing=hyperliquid::relay::Timing{ping:relay.timing.ping,client_idle:relay.timing.client_idle,send:relay.timing.send};
+ ws.on_upgrade(move|client|hyperliquid::relay::serve(client,hub,timing,Box::new(held)))
+}
+
 fn routes_with<S:Clone+Send+Sync+'static>(relay:Arc<Relay>)->Router<S> {
  let for_okx=relay.clone();
+ let for_bybit=relay.clone();
+ let for_hyperliquid=relay.clone();
  Router::new()
   .route(BINANCE_PATH,get(move|source:Source,Params(query):Params<StreamsQuery>,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>| {
    let relay=relay.clone();
@@ -465,6 +536,14 @@ fn routes_with<S:Clone+Send+Sync+'static>(relay:Arc<Relay>)->Router<S> {
   .route(OKX_PATH,get(move|source:Source,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>| {
    let relay=for_okx.clone();
    async move {okx(relay,source,ws).await}
+  }))
+  .route(BYBIT_PATH,get(move|source:Source,Params(query):Params<CategoryQuery>,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>| {
+   let relay=for_bybit.clone();
+   async move {bybit_relay(relay,source,query,ws).await}
+  }))
+  .route(HYPERLIQUID_PATH,get(move|source:Source,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>| {
+   let relay=for_hyperliquid.clone();
+   async move {hyperliquid_relay(relay,source,ws).await}
   }))
 }
 
@@ -658,7 +737,7 @@ mod tests {
 
  #[tokio::test]
  async fn bad_requests_are_refused_without_upgrading() {
-  let relay=Arc::new(Relay::new(lanes("ws://127.0.0.1:1"),"ws://127.0.0.1:1/",4,4,QUICK));
+  let relay=Arc::new(Relay::new(lanes("ws://127.0.0.1:1"),"ws://127.0.0.1:1/",4,4,QUICK).with_bybit(vec!["ws://127.0.0.1:1".into()]));
   let app=||routes_with::<()>(relay.clone());
   let cases=[
    (format!("{BINANCE_PATH}"),"invalid_query"),
@@ -670,6 +749,12 @@ mod tests {
    // 合规但不是 WebSocket 升级请求。
    (format!("{BINANCE_PATH}?streams=btcusdt@aggTrade"),"websocket_required"),
    (OKX_PATH.to_owned(),"websocket_required"),
+   (BYBIT_PATH.to_owned(),"invalid_query"),
+   (format!("{BYBIT_PATH}?category=option"),"invalid_category"),
+   (format!("{BYBIT_PATH}?category=Linear"),"invalid_category"),
+   (format!("{BYBIT_PATH}?category=linear&x=1"),"invalid_query"),
+   (format!("{BYBIT_PATH}?category=linear"),"websocket_required"),
+   (HYPERLIQUID_PATH.to_owned(),"websocket_required"),
   ];
   for (uri,code) in cases {
    let reply=app().oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap()).await.unwrap();
@@ -824,5 +909,132 @@ mod tests {
   let mut silent=dial(port,OKX_PATH).await.unwrap();
   tokio::time::sleep(Duration::from_millis(800)).await;
   assert!(closed_within(&mut silent,Duration::from_secs(3)).await,"手机沉默超过期限就断");
+ }
+
+ // ---------------------------------------------------------------- Bybit 与 Hyperliquid
+
+ #[tokio::test]
+ async fn bybit_relay_falls_back_to_the_second_host_and_forwards_only_the_whitelist() {
+  let base=format!("{}/echo",fake().await);
+  let relay=Relay::new(lanes(&base),base.clone(),4,4,QUICK).with_bybit(vec!["ws://127.0.0.1:1".into(),base.clone()]);
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let mut client=dial(port,&format!("{BYBIT_PATH}?category=linear")).await.unwrap();
+  assert_eq!(next_text(&mut client,Duration::from_secs(2)).await.as_deref(),Some("hello /echo/linear?"),"主机连不上换备用，category 拼在路径上");
+  for dropped in [r#"{"op":"auth","args":["k",1,"s"]}"#,r#"{"op":"subscribe","args":["allLiquidation.BTCUSDT"]}"#,r#"{"op":"subscribe","args":["tickers.BTCUSDT"]}"#,"ping"] {
+   client.send(Up::Text(dropped.into())).await.unwrap();
+  }
+  client.send(Up::Text(r#"{"op":"ping"}"#.into())).await.unwrap();
+  assert_eq!(next_text(&mut client,Duration::from_secs(2)).await.as_deref(),Some(r#"echo {"op":"ping"}"#),"前面四帧丢掉、连接还在");
+  client.send(Up::Text(r#"{"args":["orderbook.1000.BTCUSDT","publicTrade.BTCUSDT"], "op":"subscribe","req_id":"a1"}"#.into())).await.unwrap();
+  let echoed=next_text(&mut client,Duration::from_secs(2)).await.unwrap();
+  let sent:serde_json::Value=serde_json::from_str(echoed.strip_prefix("echo ").unwrap()).unwrap();
+  assert_eq!(sent,serde_json::json!({"op":"subscribe","args":["orderbook.1000.BTCUSDT","publicTrade.BTCUSDT"],"req_id":"a1"}));
+  // 一条连接最多 24 个 topic：再订 23 个，只放到 24 为止（整条超了的那一帧丢掉）。
+  let batch=|from:usize,n:usize|format!(r#"{{"op":"subscribe","args":[{}]}}"#,(from..from+n).map(|i|format!(r#""publicTrade.C{i}USDT""#)).collect::<Vec<_>>().join(","));
+  for frame in [batch(0,10),batch(10,10),batch(20,3)] {
+   client.send(Up::Text(frame.into())).await.unwrap();
+  }
+  let mut forwarded=0;
+  while let Some(text)=next_text(&mut client,Duration::from_millis(400)).await {assert!(text.starts_with("echo "));forwarded+=1;}
+  assert_eq!(forwarded,2,"第三帧会让这条连接订到 25 个，整帧丢掉");
+ }
+
+ #[tokio::test]
+ async fn bybit_relay_is_503_when_no_host_answers() {
+  let relay=Relay::new(lanes("ws://127.0.0.1:1"),"ws://127.0.0.1:1/",4,4,QUICK).with_bybit(vec!["ws://127.0.0.1:1".into(),"ws://127.0.0.1:2".into()]);
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  assert_eq!(refused(dial(port,&format!("{BYBIT_PATH}?category=spot")).await),(503,"2".to_owned()));
+ }
+
+ /// 假的 Hyperliquid 上游：订阅就回执（多带上游会带的 `mantissa` / `fast`），订簿再推一帧那只币的整本；
+ /// `{"method":"ping"}` 回 pong。收到的每条文本报给测试。
+ async fn fake_hyperliquid()->(String,tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>) {
+  let (tx,rx)=tokio::sync::mpsc::unbounded_channel();
+  let app=Router::new().fallback(move|ws:WebSocketUpgrade|{
+   let tx=tx.clone();
+   async move {
+    ws.on_upgrade(move|mut socket| async move {
+     while let Some(Ok(Down::Text(text)))=socket.recv().await {
+      let v:serde_json::Value=serde_json::from_str(text.as_str()).unwrap();
+      let _=tx.send(v.clone());
+      if v["method"]=="ping" {let _=socket.send(Down::Text(r#"{"channel":"pong"}"#.into())).await;continue}
+      let mut sub=v["subscription"].clone();
+      sub["mantissa"]=serde_json::Value::Null;
+      sub["fast"]=serde_json::json!(false);
+      let ack=serde_json::json!({"channel":"subscriptionResponse","data":{"method":v["method"],"subscription":sub}});
+      let _=socket.send(Down::Text(ack.to_string().into())).await;
+      if v["method"]=="subscribe"&&v["subscription"]["type"]=="l2Book" {
+       let book=serde_json::json!({"channel":"l2Book","data":{"coin":v["subscription"]["coin"],"time":1791457522600_i64,"levels":[[{"px":"82640","sz":"7.5","n":31}],[{"px":"82650","sz":"1.2","n":3}]]}});
+       let _=socket.send(Down::Text(book.to_string().into())).await;
+      }
+     }
+    })
+   }
+  });
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let port=listener.local_addr().unwrap().port();
+  tokio::spawn(async move {axum::serve(listener,app).await.unwrap()});
+  (format!("ws://127.0.0.1:{port}"),rx)
+ }
+ fn quick_hub(url:String)->Hub {
+  Hub::start(url,hub::Limits{gap:Duration::from_millis(1),connect_gap:Duration::from_millis(20),backoff_min:Duration::from_millis(20),backoff_max:Duration::from_millis(100),..hub::LIMITS})
+ }
+
+ #[tokio::test]
+ async fn hyperliquid_relay_goes_through_the_shared_hub() {
+  let (url,mut upstream)=fake_hyperliquid().await;
+  let hub=quick_hub(url);
+  let relay=Relay::new(lanes("ws://127.0.0.1:1"),"ws://127.0.0.1:1/",8,8,QUICK).with_hyperliquid(hub.clone());
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let mut a=dial(port,HYPERLIQUID_PATH).await.unwrap();
+  let mut b=dial(port,HYPERLIQUID_PATH).await.unwrap();
+  a.send(Up::Text(r#"{"method":"ping"}"#.into())).await.unwrap();
+  assert_eq!(next_text(&mut a,Duration::from_secs(2)).await.as_deref(),Some(r#"{"channel":"pong"}"#),"心跳就地答");
+  for dropped in [r#"{"method":"subscribe","subscription":{"type":"userEvents","user":"0x0"}}"#,r#"{"method":"subscribe","subscription":{"type":"l2Book","coin":"BTC","nSigFigs":2}}"#,r#"{"method":"post","id":1,"request":{}}"#] {
+   a.send(Up::Text(dropped.into())).await.unwrap();
+  }
+  let book=r#"{"method":"subscribe","subscription":{"type":"l2Book","coin":"BTC","nSigFigs":4}}"#;
+  a.send(Up::Text(book.into())).await.unwrap();
+  let up=tokio::time::timeout(Duration::from_secs(3),upstream.recv()).await.unwrap().unwrap();
+  assert_eq!(up,serde_json::json!({"method":"subscribe","subscription":{"type":"l2Book","coin":"BTC","nSigFigs":4}}),"丢掉的三帧没上去，第一条上去的就是这条");
+  let ack:serde_json::Value=serde_json::from_str(&next_text(&mut a,Duration::from_secs(2)).await.unwrap()).unwrap();
+  assert_eq!(ack["channel"],"subscriptionResponse");
+  let frame:serde_json::Value=serde_json::from_str(&next_text(&mut a,Duration::from_secs(2)).await.unwrap()).unwrap();
+  assert_eq!((frame["channel"].as_str(),frame["data"]["coin"].as_str()),(Some("l2Book"),Some("BTC")));
+  // 第二条连接订同一本：上游不再订一次，它照样拿到回执与最近那一帧。
+  b.send(Up::Text(book.into())).await.unwrap();
+  let ack:serde_json::Value=serde_json::from_str(&next_text(&mut b,Duration::from_secs(2)).await.unwrap()).unwrap();
+  assert_eq!(ack["channel"],"subscriptionResponse");
+  let frame:serde_json::Value=serde_json::from_str(&next_text(&mut b,Duration::from_secs(2)).await.unwrap()).unwrap();
+  assert_eq!(frame["data"]["coin"],"BTC");
+  // 一条连接最多 16 个：a 再订 20 只币的成交，只上去 15 个。
+  for i in 0..20 {a.send(Up::Text(format!(r#"{{"method":"subscribe","subscription":{{"type":"trades","coin":"C{i}"}}}}"#).into())).await.unwrap();}
+  let mut subscribed=0;
+  while let Ok(Some(v))=tokio::time::timeout(Duration::from_millis(500),upstream.recv()).await {if v["method"]=="subscribe" {subscribed+=1;}}
+  assert_eq!(subscribed,15,"BTC 簿 + 15 只成交 = 16");
+  // a 关掉：它订的 15 只成交退掉，BTC 簿还有 b 订着不退。
+  a.close(None).await.unwrap();
+  drop(a);
+  let mut unsubscribed=Vec::new();
+  while let Ok(Some(v))=tokio::time::timeout(Duration::from_millis(500),upstream.recv()).await {if v["method"]=="unsubscribe" {unsubscribed.push(v["subscription"]["type"].as_str().unwrap().to_owned());}}
+  assert_eq!(unsubscribed.len(),15);
+  assert!(unsubscribed.iter().all(|t|t=="trades"));
+  assert_eq!(hub.counters.topics.load(std::sync::atomic::Ordering::Relaxed),1);
+ }
+
+ #[tokio::test]
+ async fn bybit_and_hyperliquid_count_against_the_same_quota() {
+  let base=format!("{}/echo",fake().await);
+  let (url,_upstream)=fake_hyperliquid().await;
+  let relay=Relay::new(lanes(&base),base.clone(),64,2,QUICK).with_bybit(vec![base.clone()]).with_hyperliquid(quick_hub(url));
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let _first=dial_as("198.51.100.7",port,HYPERLIQUID_PATH).await.unwrap();
+  let _second=dial_as("198.51.100.7",port,&format!("{BYBIT_PATH}?category=inverse")).await.unwrap();
+  assert_eq!(refused(dial_as("198.51.100.7",port,HYPERLIQUID_PATH).await),(429,"2".to_owned()));
+  assert_eq!(refused(dial_as("198.51.100.7",port,OKX_PATH).await).0,429,"四条中继合计算这个来源的名额");
+  let relay=Relay::new(lanes(&base),base.clone(),1,4,QUICK).with_hyperliquid(quick_hub("ws://127.0.0.1:1".into()));
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let _only=dial(port,HYPERLIQUID_PATH).await.unwrap();
+  assert_eq!(refused(dial_as("198.51.100.9",port,HYPERLIQUID_PATH).await),(503,"2".to_owned()),"Hyperliquid 不开上游也占全局名额");
  }
 }
