@@ -7,7 +7,10 @@
  *   · 三个窗口：本根（当前周期正在走的那根）、近 1 小时（滚动）、今日（北京时间 0 点起）。金额来自 tradeFlow 的分钟桶
  *     （浏览器记的 + 服务端历史，取法同 bigTags.sumBig）；笔数只有整段都来自浏览器时才有。
  *   · 现货 / 合约、三家的占比只拿浏览器近 1 小时记到的大单算（服务端历史没有这几项），一笔都没有就不画。
- *   · 价位：近 1 小时浏览器记到的大单按订单流的细步长分桶，买、卖各取金额最大的三档。
+ *   · 价位：近 1 小时（最近 60 个整分钟）的大单按订单流的细步长分桶，买、卖各取金额最大的三档。每分钟取哪份同上：
+ *     浏览器整分钟都在记的用逐笔成交的真实价；否则服务端有这分钟的行就把它的大买 / 大卖整份记在那分钟 1 分钟 K 线的
+ *     典型价 (高 + 低 + 收) / 3 上（服务端行没有价，这是能拿到的最近似的价）；服务端在跟却没有行 = 没成交；
+ *     再不然用浏览器攒到的那一部分。
  *   · 最近的墙：模型里挂着（live）的大单，同一价位桶几家合计；卖墙取现价以上最近的一档、买墙取现价以下最近的一档，
  *     挂了多久从这一档最早出现的那一单算。
  * 只聚合、门槛过滤、展示，不做判定。
@@ -57,18 +60,45 @@ export function liveShares(f: SymbolFlow, now: number): Shares | null {
 }
 
 export interface Level { price: number; usd: number; n: number }
-/** 近 1 小时的大单按价位桶并，买 / 卖各取金额最大的 k 档 */
-export function priceLevels(f: SymbolFlow, step: number, now: number, k = 3): { buy: Level[]; sell: Level[] } {
+/** 某一分钟（开盘时间）1 分钟 K 线的典型价 (高 + 低 + 收) / 3；没取到给 null */
+export type TypicalAt = (minute: number) => number | null
+/** 价位用的分钟数：最近 60 个整分钟（含正在走的这一分钟），和抽屉取的 60 根 1 分钟 K 线对齐 */
+export const PX_MINUTES = 60
+/** 近 1 小时的大单按价位桶并，买 / 卖各取金额最大的 k 档（每分钟取法见文件头） */
+export function priceLevels(f: SymbolFlow, step: number, now: number, typ: TypicalAt | null, k = 3): { buy: Level[]; sell: Level[] } {
   const buy = new Map<number, Level>(), sell = new Map<number, Level>()
   if (!(step > 0)) return { buy: [], sell: [] }
-  const from = now - HOUR
+  const M = 60_000
+  const cur = Math.floor(now / M) * M, from = cur - (PX_MINUTES - 1) * M
+  const add = (price: number, usd: number, isBuy: boolean, n: number): void => {
+    if (!(usd > 0) || !(price > 0)) return
+    const b = Math.floor(price / step + 1e-9) * step
+    const m = isBuy ? buy : sell
+    const l = m.get(b)
+    if (l) { l.usd += usd; l.n += n } else m.set(b, { price: b, usd, n })
+  }
+  // 浏览器逐笔：按分钟分好（prints 按时间升序，只留 2 小时）
+  const byMin = new Map<number, { price: number; usd: number; buy: boolean }[]>()
   for (let i = f.prints.length - 1; i >= 0; i--) {
     const p = f.prints[i]
     if (p.t < from) break
-    const b = Math.floor(p.price / step + 1e-9) * step
-    const m = p.buy ? buy : sell
-    const l = m.get(b)
-    if (l) { l.usd += p.usd; l.n++ } else m.set(b, { price: b, usd: p.usd, n: 1 })
+    const m = Math.floor(p.t / M) * M
+    const a = byMin.get(m)
+    if (a) a.push(p); else byMin.set(m, [p])
+  }
+  const srv = f.srv
+  const firstCover = f.cover.length ? f.cover[0][0] : Infinity
+  for (let m = from; m <= cur; m += M) {
+    const live = byMin.get(m)
+    if (m >= firstCover && f.covered(m, m + M, now)) { if (live) for (const p of live) add(p.price, p.usd, p.buy, 1); continue }
+    const r = srv.rows.get(m)
+    if (r) {
+      const tp = typ?.(m) ?? null
+      if (tp != null) { add(tp, r[0], true, 0); add(tp, r[1], false, 0) }
+      continue
+    }
+    if (srv.tracked && m >= srv.lo && m <= srv.hi) continue
+    if (live) for (const p of live) add(p.price, p.usd, p.buy, 1)
   }
   const top = (m: Map<number, Level>): Level[] => [...m.values()].sort((a, b) => b.usd - a.usd).slice(0, k)
   return { buy: top(buy), sell: top(sell) }

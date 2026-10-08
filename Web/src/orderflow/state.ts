@@ -124,9 +124,8 @@ export const OF = {
   barHi: null as null | { symbol: string; t: number; until: number },
   /** 图上点了一枚大单签：抽屉开着就滚到那一根并高亮，没开就打开 */
   revealBar: null as null | ((symbol: string, t: number) => void),
-  /** 活动格子十字线所在那根的开盘时间（抽屉按根表同步高亮）；不在图上为 null */
+  /** 活动格子十字线所在那根的开盘时间（抽屉按根表同步高亮，drawer.ts 跟着指针移动读出来）；不在图上为 null */
   crossT: null as number | null,
-  onCross: null as null | (() => void),
 }
 
 /** 数据层还没起来时各处空态的那句话：在等品种停稳就是「正在接」，否则是没打开 */

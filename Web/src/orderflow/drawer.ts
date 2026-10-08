@@ -5,17 +5,23 @@
  * 文字只当标注。
  *
  * 四块（横着排，1440 宽时后两块折到第二行）：
- *   1. 汇总：三根「买卖对撞条」（本根 / 近 1 小时 / 今日）——买从中线往上长、卖往下长，三根共用一个比例尺，净额写在中线上；
- *      下面两条 6 px 的占比条（现货 / 合约、币安 / OKX / Coinbase，只用浏览器近 1 小时记到的），图例在右边，太小的段不写。
- *   2. 每根：跟着当前周期，最新在上，只列够得上大单签的那几根。行里是从中轴往两边长的镜像条（买向右、卖向左，
- *      长度按当前看得见的那几行里最大的那根比），净额是一个色点 + 数字，最大一笔是一颗小胶囊（不知道就空着）。
- *      点一行：图挪到那根并让那枚签亮 1.5 秒；图上点签：这里滚到那一行。图上的十字线停在哪根，这里那一行跟着亮。
- *   3. 价位：近 1 小时大单最集中的买、卖各三档，按价格排成一张小价格图，现价是一条虚线；最上 / 最下是离现价最近的
- *      卖墙 / 买墙胶囊（砖墙记号 · 价 · 额 · 距离），挂了多久画成一个小时钟弧（满一圈 = 1 小时），不写字。
+ *   1. 汇总：三根「买卖对撞条」（本根 / 近 1 小时 / 今日）——买从中线往上长、卖往下长，三根共用一个开方比例尺
+ *      （今日是本根的几十倍，线性比例下本根那根看不见），条宽 26 px、两头全圆，金额贴在条的外端，净额写在中线上；
+ *      下面的占比条（现货 / 合约、币安 / OKX / Coinbase，只用浏览器近 1 小时记到的）只有至少两段时才画——
+ *      100% 一段的条什么也没说，不画，那一截高度也收回去。
+ *   2. 每根：跟着当前周期，最新在上，只列有大单签的那几根（和图上同一套相对档位，见 bigTags.ts）。行里是从中轴往两边长的
+ *      镜像条（买向右、卖向左，长度按当前看得见的那几行里最大的那根比），金额放得下（两边各留 6 px）就写在条里，
+ *      放不下写在条外、底轨让开那一截；净额是一个色点 + 数字，最大一笔是一颗小胶囊（不知道就空着）。
+ *      点一行：图挪到那根并让那枚签亮 1.5 秒；图上点签：这里滚到那一行。活动格子的十字线（含别的格子同步过来的）停在哪根，
+ *      这里那一行跟着亮（带一道强调色左边线），不在视野里就滚进来。
+ *   3. 价位：近 1 小时大单最集中的买、卖各三档（取法见 summary.priceLevels：浏览器在记的分钟用真实成交价，其余分钟用
+ *      服务端的大买 / 大卖 × 那分钟 1 分钟 K 线的典型价；1 分钟 K 线一次取 60 根、每分钟作废一次，图本身是 1 分钟就直接用图上的），
+ *      按价格排成一张小价格图，现价是一条虚线；最上 / 最下是离现价最近的卖墙 / 买墙胶囊（砖墙记号 · 价 · 额 · 距离），
+ *      挂了多久画成一个小时钟弧（满一圈 = 1 小时），不写字。
  *   4. 爆仓：三根对撞条，空头被平往上（涨色）、多头被平往下（跌色），右边一颗「最大一笔」胶囊。数据见 liquidation.ts。
  *
  * 规则：背景透明、块与块之间 1 px 分隔线；块标题 11 px 弱色；数字一律等宽；只用皮肤已有的颜色变量（涨跌色条 85% 不透明、
- * 底轨同色 20%）；条都用 Canvas / SVG 画，按设备像素比出图；没有数据时画一条淡淡的零线 + 一行 11 px 弱色提示。
+ * 底轨同色 12%，深色皮肤下 24%——12% 在深底上几乎看不见）；条都用 Canvas / SVG 画，按设备像素比出图；没有数据时画一条淡淡的零线 + 一行 11 px 弱色提示。
  * 只聚合、门槛过滤、展示，不做判定（不写吸筹 / 扫单 / 骗单）。不加任何新的设置项。
  */
 import { st, save } from '../app/store'
@@ -24,8 +30,9 @@ import { GLOSSARY, term } from '../ui/overlay'
 import { patchAttr, patchClass, patchStyle, patchText, rowPool } from '../ui/patch'
 import { flowOf, ensureHistory, type SymbolFlow } from '../chart/tradeFlow'
 import { baseOfSymbol } from './settings'
-import { BigBarCache, unitFor, ivName, type BarBig } from './bigTags'
-import { windows, liveShares, priceLevels, nearestWalls, HOUR, type WinSum, type Wall, type Level } from './summary'
+import { BigBarCache, TierCache, unitFor, ivName, type BarBig } from './bigTags'
+import { windows, liveShares, priceLevels, nearestWalls, HOUR, PX_MINUTES, type WinSum, type Wall, type Level, type TypicalAt } from './summary'
+import { klines } from '../market'
 import { LiqStore, sumLiq, LIQ_EX, type LiqSum } from './liquidation'
 import { OF, feedIdleText, amt, hm, mdhm, px, decFor, canvasFont } from './state'
 
@@ -44,6 +51,7 @@ let cvPx: HTMLCanvasElement | null = null
 let cvLiq: HTMLCanvasElement | null = null
 const liq = new LiqStore()
 const cache = new BigBarCache()
+const tierCache = new TierCache()
 let lastAt = 0
 let lastKey = ''
 let histSym = ''
@@ -79,7 +87,8 @@ export function mountDrawer(el: HTMLElement): void {
     for (const c of [cvSum!, cvPx!, cvLiq!, list!]) ro.observe(c)
   }
   OF.revealBar = revealBar
-  OF.onCross = () => paintRows()
+  if (!crossBound) { crossBound = true; document.addEventListener('pointermove', onPointer, { passive: true, capture: true }) }
+  measureFont = ''
   lastKey = ''
   updateDrawer(true)
 }
@@ -120,9 +129,10 @@ export function updateDrawer(force = false): void {
 
 function buildRows(c: Ctx): void {
   rows = []
-  if (!(c.unit > 0)) return
   const { chart, f, now } = c
   cache.begin(f, `${c.sym}|${c.iv}`, now)
+  const tiers = tierCache.get(cache, f, chart, now, c.unit)
+  if (!tiers) return
   let start = Infinity
   for (const k of f.min.keys()) { start = k; break }
   for (const k of f.sec.keys()) { start = Math.min(start, k); break }
@@ -133,8 +143,62 @@ function buildRows(c: Ctx): void {
     const t1 = i + 1 < bars.length ? bars[i + 1].t : chart.timeAt(i + 1)
     if (t1 <= start) break
     const d = cache.get(f, t, t1, now)
-    if (d && (d.bb >= c.unit || d.bs >= c.unit)) rows.push({ t, t1, d, close: bars[i].c })
+    if (d && Math.max(d.bb, d.bs) >= tiers.t1) rows.push({ t, t1, d, close: bars[i].c })
   }
+}
+
+// ---- 十字线同步：活动格子的十字线（自己的或别的格子同步来的）停在哪根，按根表那一行亮。
+// 图层的 hover 只在主图窗格、而且只有「十字线只动」的轻量重画不走图层，所以这里跟着指针移动（一帧最多一次）直接读图的状态。
+let crossBound = false
+let crossRaf = 0
+function onPointer(): void {
+  if (crossRaf || !drawerVisible() || typeof requestAnimationFrame === 'undefined') return
+  crossRaf = requestAnimationFrame(() => { crossRaf = 0; syncCross() })
+}
+/** 图上十字线所在那根的开盘时间；不在图上 null */
+export function crossTime(ch: Pick<Ctx['chart'], 'cross' | 'extCross' | 'bars' | 'xToIndex' | 'indexAt'>): number | null {
+  let i: number
+  if (ch.cross) i = Math.round(ch.xToIndex(ch.cross.x))
+  else if (ch.extCross != null) i = Math.round(ch.indexAt(ch.extCross))
+  else return null
+  return i >= 0 && i < ch.bars.length ? ch.bars[i].t : null
+}
+function syncCross(): void {
+  const a = OF.api?.activeChart()
+  const t = a ? crossTime(a.chart) : null
+  if (t === OF.crossT) return
+  OF.crossT = t
+  paintRows()
+  if (t == null || !list || !list.clientHeight) return
+  const i = rows.findIndex(r => r.t === t)
+  if (i < 0) return
+  const top = i * ROW_H, h = list.clientHeight
+  if (top < list.scrollTop) list.scrollTop = top
+  else if (top + ROW_H > list.scrollTop + h) list.scrollTop = top + ROW_H - h
+}
+
+// ---- 价位用的 1 分钟 K 线：(高 + 低 + 收) / 3。一次取 60 根，每分钟作废一次；图本身是 1 分钟就直接读图上的
+const k1 = { sym: '', min: 0, busy: false, typ: new Map<number, number>() }
+function typicalFor(c: Ctx): TypicalAt | null {
+  if (c.iv === 60_000) {
+    const bars = c.chart.bars, m = new Map<number, number>()
+    for (let i = bars.length - 1; i >= Math.max(0, bars.length - PX_MINUTES - 1); i--) m.set(bars[i].t, (bars[i].h + bars[i].l + bars[i].c) / 3)
+    return t => m.get(t) ?? null
+  }
+  const min = Math.floor(c.now / 60_000)
+  if ((k1.sym !== c.sym || k1.min !== min) && !k1.busy) {
+    const sym = c.sym
+    k1.busy = true
+    void klines(sym, '1m', undefined, PX_MINUTES, false, true, () => drawerVisible() && ctxNow()?.sym === sym).then(r => {
+      // 取失败也记下这一分钟（空表），下一分钟再试，不在每次重画里连发
+      k1.busy = false; k1.sym = sym; k1.min = min
+      k1.typ = new Map(r.ok ? r.bars.map(b => [b.t, (b.h + b.l + b.c) / 3]) : [])
+      if (r.ok) schedulePaint()
+    })
+  }
+  if (k1.sym !== c.sym) return null
+  const m = k1.typ
+  return t => m.get(t) ?? null
 }
 
 // ------------------------------------------------------------------ 交互
@@ -191,13 +255,29 @@ function paint(): void {
   paintLiq(c, p)
 }
 
-interface Pal { up: string; down: string; t1: string; t2: string; t3: string; line: string; lineS: string; accent: string; s2: string }
+interface Pal { up: string; down: string; t1: string; t2: string; t3: string; line: string; lineS: string; accent: string; s2: string; dark: boolean; track: number }
+/** 颜色的亮度（0–1）；认 #rgb / #rrggbb / rgb()，认不出当亮色 */
+export function lum(color: string): number {
+  let r = 255, g = 255, b = 255
+  const h = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim())
+  if (h) {
+    const x = h[1].length === 3 ? h[1].split('').map(c => c + c).join('') : h[1]
+    r = parseInt(x.slice(0, 2), 16); g = parseInt(x.slice(2, 4), 16); b = parseInt(x.slice(4, 6), 16)
+  } else {
+    const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(color)
+    if (m) { r = +m[1]; g = +m[2]; b = +m[3] }
+  }
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+}
 function pal(el: HTMLElement): Pal {
   const cs = getComputedStyle(el)
   const v = (k: string, d: string): string => cs.getPropertyValue(k).trim() || d
+  // 深色皮肤：主文字是亮的。底轨在深底上要更浓才看得见
+  const dark = lum(v('--text-1', '#131722')) > 0.5
   return {
     up: v('--up', '#26a69a'), down: v('--down', '#ef5350'), t1: v('--text-1', '#131722'), t2: v('--text-2', '#545B6A'), t3: v('--text-3', '#666B77'),
     line: v('--line', '#E1E4EA'), lineS: v('--line-strong', '#CDD2DB'), accent: v('--accent', '#2B63F0'), s2: v('--surface-2', '#F6F7F9'),
+    dark, track: dark ? 0.24 : 0.12,
   }
 }
 
@@ -237,27 +317,32 @@ function emptyState(c: CanvasRenderingContext2D, W: number, y: number, p: Pal, h
 
 interface Col { name: string; sub: string; up: number; down: number }
 
-/** 三根对撞条：up 从中线往上（涨色）、down 往下（跌色），共用一个比例尺；中线上写净额（up − down） */
+/** 开方比例尺：v / scale 开方后乘长度。今日常是本根的几十倍，线性下本根只剩一个点 */
+export const sqrtLen = (v: number, scale: number, len: number): number => v > 0 && scale > 0 ? Math.sqrt(Math.min(1, v / scale)) * len : 0
+
+/** 三根对撞条：up 从中线往上（涨色）、down 往下（跌色），共用一个开方比例尺；条 26 px 宽、两头全圆，
+ *  底轨同色 12%（深色 24%）、填充 85%，金额贴在填充的外端；中线上写净额（up − down） */
 function drawCollide(c: CanvasRenderingContext2D, x0: number, w: number, H: number, cols: Col[], p: Pal): void {
-  const LAB = 30, TIP = 14, GAP = 10, CW = 18
+  const LAB = 30, TIP = 14, GAP = 10
+  const step = w / cols.length
+  const CW = Math.max(12, Math.min(26, Math.round(step * 0.4))), R = CW / 2
   const top = TIP, bottom = H - LAB - TIP
   const mid = Math.round((top + bottom) / 2)
   const half = Math.max(4, (bottom - top) / 2 - GAP)
   const scale = Math.max(1, ...cols.map(k => Math.max(k.up, k.down)))
-  const step = w / cols.length
   c.strokeStyle = p.line; c.lineWidth = 1; c.globalAlpha = 0.7
   c.beginPath(); c.moveTo(x0 + 4, mid + .5); c.lineTo(x0 + w - 4, mid + .5); c.stroke()
   c.globalAlpha = 1
   cols.forEach((k, j) => {
-    const cx = Math.round(x0 + step * (j + .5)), x = cx - CW / 2
-    // 底轨（同色 20%）
-    c.globalAlpha = 0.2
-    c.fillStyle = p.up; rr(c, x, mid - GAP - half, CW, half, 3); c.fill()
-    c.fillStyle = p.down; rr(c, x, mid + GAP, CW, half, 3); c.fill()
+    const cx = Math.round(x0 + step * (j + .5)), x = cx - R
+    c.globalAlpha = p.track
+    c.fillStyle = p.up; rr(c, x, mid - GAP - half, CW, half, R); c.fill()
+    c.fillStyle = p.down; rr(c, x, mid + GAP, CW, half, R); c.fill()
     c.globalAlpha = 0.85
-    const lu = k.up > 0 ? Math.max(2, k.up / scale * half) : 0, ld = k.down > 0 ? Math.max(2, k.down / scale * half) : 0
-    if (lu) { c.fillStyle = p.up; rr(c, x, mid - GAP - lu, CW, lu, 3); c.fill() }
-    if (ld) { c.fillStyle = p.down; rr(c, x, mid + GAP, CW, ld, 3); c.fill() }
+    // 有数的最短也是一颗圆点（= 条宽），不至于缩成一条看不见的缝
+    const lu = k.up > 0 ? Math.max(CW, sqrtLen(k.up, scale, half)) : 0, ld = k.down > 0 ? Math.max(CW, sqrtLen(k.down, scale, half)) : 0
+    if (lu) { c.fillStyle = p.up; rr(c, x, mid - GAP - lu, CW, lu, R); c.fill() }
+    if (ld) { c.fillStyle = p.down; rr(c, x, mid + GAP, CW, ld, R); c.fill() }
     c.globalAlpha = 1
     c.textAlign = 'center'; c.font = canvasFont(11)
     c.fillStyle = p.t2
@@ -274,7 +359,9 @@ function drawCollide(c: CanvasRenderingContext2D, x0: number, w: number, H: numb
 }
 
 interface Seg { v: number; color: string; name: string }
-/** 6 px 圆角占比条（段与段之间留 1 px 缝，段上不写字）+ 右边 11 px 图例（太小的段不写） */
+/** 6 px 圆角占比条（段与段之间留 1 px 缝，段上不写字）+ 右边 11 px 图例（太小的段不写）。至少两段才有意义，调用方先筛 */
+export const splitWorth = (segs: readonly { v: number }[]): boolean => segs.filter(k => k.v > 0).length >= 2
+
 function drawSplit(c: CanvasRenderingContext2D, x: number, y: number, bw: number, lx: number, lw: number, segs: Seg[], p: Pal): void {
   const tot = segs.reduce((s, k) => s + k.v, 0)
   if (!(tot > 0)) return
@@ -307,8 +394,14 @@ function paintSum(cx: Ctx | null, p: Pal): void {
   const g = prep(cvSum)
   if (!g) return
   const { c, W, H } = g
-  const SPLIT = 44
-  if (!cx) { emptyState(c, W, (H - SPLIT) / 2, p, OF.api?.activeChart()?.symbol.toUpperCase() === 'DXY' ? '美元指数没有成交明细' : feedIdleText()); return }
+  if (!cx) { emptyState(c, W, H / 2, p, OF.api?.activeChart()?.symbol.toUpperCase() === 'DXY' ? '美元指数没有成交明细' : feedIdleText()); return }
+  // 占比条：至少两段才画（100% 一段什么也没说），一条都没有就把那一截高度收回去
+  const sh = liveShares(cx.f, cx.now)
+  const splits: Seg[][] = sh ? [
+    [{ v: sh.spot, color: p.accent, name: '现货' }, { v: sh.contract, color: p.t3, name: '合约' }],
+    [{ v: sh.ex[0], color: p.accent, name: '币安' }, { v: sh.ex[1], color: p.t2, name: 'OKX' }, { v: sh.ex[2], color: p.lineS, name: 'Coinbase' }],
+  ].filter(splitWorth) : []
+  const SPLIT = splits.length ? 12 + splits.length * 20 : 0
   const bars = cx.chart.bars
   const t0 = bars[bars.length - 1].t, t1 = cx.chart.timeAt(bars.length)
   const w = windows(cx.f, t0, t1, cx.now)
@@ -320,23 +413,25 @@ function paintSum(cx: Ctx | null, p: Pal): void {
   ]
   if (!w.today.has && !w.hour.has && !w.bar.has) emptyState(c, W, (H - SPLIT) / 2, p, OF.feed ? '还没有大单' : feedIdleText())
   else drawCollide(c, 0, W, H - SPLIT, cols, p)
-  const sh = liveShares(cx.f, cx.now)
-  const y1 = H - SPLIT + 12, y2 = H - SPLIT + 32
+  if (!SPLIT) return
   const bw = Math.max(60, Math.round(W * 0.34)), lx = bw + 12, lw = W - lx
   c.strokeStyle = p.line; c.lineWidth = 1; c.beginPath(); c.moveTo(0, H - SPLIT + .5); c.lineTo(W, H - SPLIT + .5); c.stroke()
-  if (!sh) { c.font = canvasFont(11); c.fillStyle = p.t3; c.textAlign = 'left'; c.fillText('现货 / 合约、三家占比：近 1 小时还没有大单', 0, (y1 + y2) / 2); return }
-  drawSplit(c, 0, y1, bw, lx, lw, [{ v: sh.spot, color: p.accent, name: '现货' }, { v: sh.contract, color: p.t3, name: '合约' }], p)
-  drawSplit(c, 0, y2, bw, lx, lw, [{ v: sh.ex[0], color: p.accent, name: '币安' }, { v: sh.ex[1], color: p.t2, name: 'OKX' }, { v: sh.ex[2], color: p.lineS, name: 'Coinbase' }], p)
+  splits.forEach((segs, i) => drawSplit(c, 0, H - SPLIT + 12 + i * 20, bw, lx, lw, segs, p))
 }
 
-/** 每行的金额文字宽（11 px），用来决定写在条里还是条外 */
+/** 每行的金额文字宽，用来决定写在条里还是条外。字体照行里 SVG 文字实际算出来的样式量（不是猜的 canvasFont） */
 let measureCtx: CanvasRenderingContext2D | null = null
-function textW(t: string): number {
+let measureFont = ''
+function textW(t: string, probe: Element): number {
+  if (!t) return 0
   if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')
-  if (!measureCtx) return t.length * 6.5
-  measureCtx.font = canvasFont(11)
+  if (!measureCtx) return t.length * 7
+  if (!measureFont) { const cs = getComputedStyle(probe); measureFont = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}` }
+  measureCtx.font = measureFont
   return measureCtx.measureText(t).width
 }
+/** 条内金额两边各留的空 */
+const IN_PAD = 6
 
 const ROW_TPL = `<div class="of-kr" role="listitem" tabindex="-1"><span class="of-kr-t num"></span>` +
   `<svg class="of-kr-bar" height="16" aria-hidden="true"><line class="ax" x1="0" x2="0" y1="1" y2="15"></line>` +
@@ -364,7 +459,7 @@ function paintRows(): void {
   }
   empty.hidden = true
   const svg = els[0].querySelector('svg')!
-  const bw = svg.clientWidth || 200
+  const bw = svg.getBoundingClientRect().width || 200
   const mid = Math.round(bw / 2), half = Math.max(10, mid - 2)
   // 比例：当前看得见的那几行里最大的那根
   const i0 = Math.max(0, Math.floor(list.scrollTop / ROW_H)), i1 = Math.min(rows.length, Math.ceil((list.scrollTop + list.clientHeight) / ROW_H) + 1)
@@ -384,18 +479,21 @@ function paintRows(): void {
     const ax = svg === el.querySelector('svg') ? svg : el.querySelector('svg')!
     const q = (sel: string): Element => ax.querySelector(sel)!
     patchAttr(q('.ax'), 'x1', String(mid + .5)); patchAttr(q('.ax'), 'x2', String(mid + .5))
-    patchAttr(q('.tk.b'), 'x', String(mid + 1)); patchAttr(q('.tk.b'), 'width', String(half))
-    patchAttr(q('.tk.s'), 'x', String(mid - half)); patchAttr(q('.tk.s'), 'width', String(half))
     const lb = d.bb / mx * half, ls = d.bs / mx * half
+    const xb = q('.tx.b'), xs = q('.tx.s')
+    const tb = d.bb > 0 ? amt(d.bb) : '', ts = d.bs > 0 ? amt(d.bs) : ''
+    const wb = textW(tb, xb), ws = textW(ts, xs)
+    // 放得下（两边各留 IN_PAD）才写在条里；写在条外时底轨从文字后面开始，不从字中间穿过去
+    const inB = wb + IN_PAD * 2 <= lb, inS = ws + IN_PAD * 2 <= ls
+    const gb = tb && !inB ? Math.min(half, lb + 4 + wb + 4) : 0, gs = ts && !inS ? Math.min(half, ls + 4 + ws + 4) : 0
+    patchAttr(q('.tk.b'), 'x', String(mid + 1 + gb)); patchAttr(q('.tk.b'), 'width', String(Math.max(0, half - gb)))
+    patchAttr(q('.tk.s'), 'x', String(mid - half)); patchAttr(q('.tk.s'), 'width', String(Math.max(0, half - gs)))
     patchAttr(q('.br.b'), 'x', String(mid + 1)); patchAttr(q('.br.b'), 'width', String(half)); patchStyle(q('.br.b'), 'transform', `scaleX(${(lb / half).toFixed(4)})`)
     patchAttr(q('.br.s'), 'x', String(mid - half)); patchAttr(q('.br.s'), 'width', String(half)); patchStyle(q('.br.s'), 'transform', `scaleX(${(ls / half).toFixed(4)})`)
-    const tb = d.bb > 0 ? amt(d.bb) : '', ts = d.bs > 0 ? amt(d.bs) : ''
-    const inB = textW(tb) + 8 <= lb, inS = textW(ts) + 8 <= ls
-    const xb = q('.tx.b'), xs = q('.tx.s')
     patchText(xb, tb); patchClass(xb, `tx b${inB ? ' in' : ''}`)
-    patchAttr(xb, 'x', String(inB ? mid + 1 + lb - 4 : mid + 1 + lb + 4)); patchAttr(xb, 'text-anchor', inB ? 'end' : 'start')
+    patchAttr(xb, 'x', String(inB ? mid + 1 + lb - IN_PAD : mid + 1 + lb + 4)); patchAttr(xb, 'text-anchor', inB ? 'end' : 'start')
     patchText(xs, ts); patchClass(xs, `tx s${inS ? ' in' : ''}`)
-    patchAttr(xs, 'x', String(inS ? mid - ls + 4 : mid - ls - 4)); patchAttr(xs, 'text-anchor', inS ? 'start' : 'end')
+    patchAttr(xs, 'x', String(inS ? mid - ls + IN_PAD : mid - ls - 4)); patchAttr(xs, 'text-anchor', inS ? 'start' : 'end')
     const net = d.bb - d.bs
     const ne = el.children[2]
     patchClass(ne.firstElementChild, net > 0 ? 'up' : net < 0 ? 'down' : '')
@@ -471,7 +569,7 @@ function paintPx(cx: Ctx | null, p: Pal): void {
   wallPill(c, 0, W, walls.ask, true, mid, dec, cx.now, p); wallHits.push({ y0: 0, y1: PH, w: walls.ask! })
   wallPill(c, H - PH, W, walls.bid, false, mid, dec, cx.now, p); wallHits.push({ y0: H - PH, y1: H, w: walls.bid! })
   wallHits = wallHits.filter(h => h.w)
-  const { buy, sell } = priceLevels(cx.f, step, cx.now)
+  const { buy, sell } = priceLevels(cx.f, step, cx.now, typicalFor(cx))
   const top = PH + 8, bot = H - PH - 8
   if (!buy.length && !sell.length) { emptyState(c, W, (top + bot) / 2, p, '近 1 小时还没有大单'); return }
   type L = Level & { buy: boolean }
@@ -497,7 +595,7 @@ function paintPx(cx: Ctx | null, p: Pal): void {
     }
     c.font = canvasFont(11); c.fillStyle = p.t2; c.fillText(px(l.price, dec), labW, y + .5)
     const col = l.buy ? p.up : p.down
-    c.globalAlpha = 0.2; c.fillStyle = col; rr(c, bx, y - 1, bw, 2, 1); c.fill()
+    c.globalAlpha = p.dark ? 0.32 : 0.2; c.fillStyle = col; rr(c, bx, y - 1, bw, 2, 1); c.fill()
     const len = Math.max(2, l.usd / mxUsd * bw)
     c.globalAlpha = 0.85; rr(c, bx, y - 4, len, 8, 2); c.fill(); c.globalAlpha = 1
     c.textAlign = 'left'; c.fillStyle = p.t2; c.fillText(amt(l.usd), bx + len + 5, y + .5)

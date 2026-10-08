@@ -177,12 +177,15 @@
 .of-kr { display: grid; grid-template-columns: 76px minmax(0, 1fr) 72px 74px; align-items: center; column-gap: var(--s2);
   height: 24px; padding: 0 var(--s2); border-radius: var(--r-xs); cursor: pointer; }
 .of-kr.new { background: color-mix(in srgb, var(--text-1) 4%, transparent); }
-.of-kr:hover, .of-kr.x { background: var(--surface-2); }
+.of-kr:hover { background: var(--surface-2); }
+/* 图上十字线停在这一根：比悬停更显眼（强调色淡底 + 左边一道 2 px 强调线），一眼对上是哪一行 */
+.of-kr.x { background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .of-kr.sel { background: var(--accent-soft); }
 .of-kr-t { font-size: var(--t11); color: var(--text-3); white-space: nowrap; }
 .of-kr-bar { width: 100%; height: 16px; display: block; overflow: visible; }
 .of-kr-bar .ax { stroke: var(--line-strong); stroke-width: 1; }
 .of-kr-bar .tk { opacity: .2; }
+[data-theme="dark"] .of-kr-bar .tk { opacity: .32; }
 .of-kr-bar .br { opacity: .85; transform-box: fill-box; transition: transform 150ms var(--ease); }
 .of-kr-bar .b { fill: var(--up); }
 .of-kr-bar .s { fill: var(--down); }
