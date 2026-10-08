@@ -192,10 +192,14 @@ public actor CompareFeed {
           let bars = try await rest.klines(symbol: key, interval: source, limit: 300,
             startTime: nil, endTime: end)
           guard let self else { return }
+          let first = bars.first?.openTime
+          let more = bars.count == 300 && first.map { $0 > range.lowerBound && $0 <= end } == true
+          // 最后一页和「这段已取到」在同一拍里记下（`completing`）：原来分两拍，中间一旦插进
+          // `start`（增减一只），这一发被 `retire` 掉、覆盖范围没记上，留着的那只数据一根不少，
+          // 却被当成「从没取过」整段重拉。
           let accepted = await self.mergeHistory(bars.filter { $0.openTime >= range.lowerBound && $0.openTime <= range.upperBound },
-            key: key, token: token, revision: revision)
-          guard accepted else { return }
-          guard let first = bars.first?.openTime, first > range.lowerBound, first <= end, bars.count == 300 else { break }
+            key: key, token: token, revision: revision, completing: more ? nil : range)
+          guard accepted, more, let first else { return }
           end = first - 1
         }
         await self?.loaded(key, range: range, token: token, success: true)
@@ -205,11 +209,13 @@ public actor CompareFeed {
     }
   }
 
-  private func mergeHistory(_ bars: [Bar], key: String, token: UUID, revision: UInt64) -> Bool {
+  private func mergeHistory(_ bars: [Bar], key: String, token: UUID, revision: UInt64,
+                            completing range: ClosedRange<Int64>? = nil) -> Bool {
     guard token == generation, keys.contains(key), !Task.isCancelled else { return false }
     var composer = data[key] ?? composer(for: key)
     composer.merge(bars.filter(\.isValidMarketBar), preservingLiveTail: composer.wsRevision != revision)
     data[key] = composer
+    if let range { loaded(key, range: range, token: token, success: true) }
     publish()
     return true
   }

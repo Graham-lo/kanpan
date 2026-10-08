@@ -309,6 +309,15 @@ public actor MarketFeed {
     do {
       let bars = try await provider.history(symbol: sym, interval: iv, pages: pages, before: first)
       guard current(request), sym == symbol, iv == interval else { return }
+      // 这一页是贴着「发请求时的左沿」要的。翻页在路上的时候序列可能被整段换过（断档太长 /
+      // 补缺接不上换成最新一屏），左沿往右挪了：这一页和新序列中间隔着整段断档，接上去就是
+      // 图上一个永久的洞（不会再有谁去补它）。左沿没往右挪（没换过，或已被别的翻页往左接过，
+      // `prepend` 自己只收比左沿更早的）才接；换过的那份由整段换掉的那一发自己再排加深。
+      let edgeNow = aggregated ? sourceComposer?.series : composer.series
+      guard let edgeSeries = edgeNow, edgeSeries.count > 0, edgeSeries.firstTime <= first else {
+        log("补历史回来时序列已整段换过（左沿 \(first) → \(edgeNow?.firstTime ?? 0)），这一页丢掉")
+        return
+      }
       let n: Int
       if aggregated, var src = sourceComposer {
         let before = composer.series.count

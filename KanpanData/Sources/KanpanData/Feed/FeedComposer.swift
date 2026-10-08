@@ -217,7 +217,11 @@ public struct FeedComposer: Sendable {
     // 不假设入参有序：取最大的那个 openTime 当「还在走的那根」。
     let live = bars.lazy.map(\.openTime).max()
     for b in bars {
-      if preservingLiveTail, b.openTime == series.lastTime { continue }
+      // 只有当快照里这一根**也是它自己的末根**（发请求那一刻还在走）时，才留我们推送改过的版本。
+      // 快照比推送跑得快、带回了我们末根之后的新根时，它手上的这一根已经收线，是定论：
+      // 这时还跳过它，后面那几根一接上，这一根就不再是末根，推送里它的后半截（含 `x=true`）
+      // 全被 `apply(bar:)` 当乱序丢掉——永远定格在半截上。
+      if preservingLiveTail, b.openTime == series.lastTime, b.openTime == live { continue }
       // 只挡「快照的半根 vs 我们手上封好的同一根」。手上没有的那根照样得接上，
       // 不然中间会留个洞。
       if b.openTime == live, m[b.openTime] != nil, isSealed(b.openTime) { continue }

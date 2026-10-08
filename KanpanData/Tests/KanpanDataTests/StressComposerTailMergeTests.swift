@@ -26,7 +26,7 @@ private func reference(_ s: BarSeries, _ bars: [Bar], preservingLiveTail: Bool) 
   for i in 0..<s.count { m[s.time(at: i)] = s.bar(at: i) }
   let live = bars.map(\.openTime).max()
   for b in bars {
-    if preservingLiveTail, b.openTime == s.lastTime { continue }
+    if preservingLiveTail, b.openTime == s.lastTime, b.openTime == live { continue }
     if b.openTime == live, m[b.openTime] != nil, b.openTime < s.lastTime { continue }
     m[b.openTime] = b
   }

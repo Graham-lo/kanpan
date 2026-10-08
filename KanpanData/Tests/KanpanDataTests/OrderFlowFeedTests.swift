@@ -292,6 +292,13 @@ struct OrderFlowFeedTests {
     let first = try #require(await calls.all.first)
     #expect(first.0 == "ETH" && first.2 - first.1 == BigTradeFlow.keepMs)
     await okx.snapshots.socket(0)?.push(.text("trades"))
+    // 分钟账随帧带出按测试钟「每秒最多一次」：钟停着时，最近一次带出若恰好落在拨钟之后（整包并行跑、
+    // /flow 并进或逐笔晚到一拍就会这样），停住的钟再也走不满 1 秒，逐笔就一直带不出去。
+    // 所以先等数据层手上的账里 /flow 并进了、三笔也都记进去了，再拨钟：拨钟之后的头一拍一定把整份带出。
+    #expect(await waitUntil(5) {
+      let t = await feed.tradesForTests()
+      return t.tracked == true && t.minutes[t0]?.sellCount == 1 && t.lastTradeMs == t0 + 26_000
+    })
     clock.advance(2_000)
     #expect(await waitUntil(5) { await frames.last?.trades?.minutes[t0]?.sellCount == 1 })
     let trades = try #require(await frames.last?.trades)

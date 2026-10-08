@@ -95,6 +95,17 @@ struct FeedChainHardeningTests {
     init(_ box: ClockBox) { self.box = box }
     func setGap(_ g: GapMode) { gap = g }
     var calls: Int { gapCalls + windowCalls }
+    /// 往前翻页（带 `endTime` 的那种）先扣住不回，模拟「翻页还在路上」。
+    private var historyHeld = false
+    private var historyWaiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var heldHistory = 0
+    func holdHistory() { historyHeld = true }
+    func releaseHistory() {
+      historyHeld = false
+      let w = historyWaiters
+      historyWaiters.removeAll()
+      w.forEach { $0.resume() }
+    }
 
     private static func rows(from: Int64, count: Int) -> HTTPReply {
       let out = (0..<max(0, count)).map { i -> String in
@@ -111,6 +122,10 @@ struct FeedChainHardeningTests {
       let step = FeedChainHardeningTests.step
       let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
       let limit = items.first { $0.name == "limit" }?.value.flatMap(Int.init) ?? 1500
+      if historyHeld, items.contains(where: { $0.name == "endTime" }) {
+        heldHistory += 1
+        await withCheckedContinuation { historyWaiters.append($0) }
+      }
       let nowBucket = box.nowMs / step * step
       if let start = items.first(where: { $0.name == "startTime" })?.value.flatMap(Int64.init) {
         gapCalls += 1
@@ -199,15 +214,58 @@ struct FeedChainHardeningTests {
     // 按时钟只欠 200 根，但上游翻满 4 页还没到头（时钟和交易所对不上的情形）。
     box.advance(200 * Self.step)
     let now1 = box.nowMs / Self.step * Self.step
+    // 按回前台之后的增量数：启动时 WS 的 `.connected` 若排在首屏之后，feed 会为那一小段派一发补缺
+    // （生产上那段确实缺，见 `waitForSteadyState`），整包并行跑时偶尔如此，累计数就成了 5。
+    let gapBefore = await upstream.gapCalls
     await upstream.setGap(.endless)
     await feed.enterForeground()
     #expect(await waitUntil(15) { await feed.currentSeries.lastTime == now1 })
     #expect(await waitForSteadyState(feed))
-    #expect(await upstream.gapCalls == 4)
+    #expect(await upstream.gapCalls - gapBefore == 4)
     let s = await feed.currentSeries
     #expect(Self.contiguous(s), "序列中间留了洞：\(s.count) 根 \(s.firstTime)…\(s.lastTime)")
     #expect(await feed.pendingGapForTests == 0)
     #expect(await feed.isBackfillingForTests == false)
+    await feed.stop()
+  }
+
+  /// 往前翻页（用户拖到左边缘 / 首屏后的后台加深）还在路上，序列就被整段换成了最新一屏
+  /// （补缺接不上、断档太长）：那一页是贴着旧序列左沿要的，和新序列之间隔着整段断档。
+  /// 原来照样 `prepend` 上去，图上留一个永久的洞（整包并行跑时后台加深偶尔就落在这个窗口里）。
+  @Test("翻页在路上时序列被整段换成最新一屏：旧左沿那一页丢掉，不在新序列前面留洞")
+  func staleHistoryPageAfterReplaceIsDropped() async throws {
+    let paths = tempPaths()
+    defer { try? FileManager.default.removeItem(at: paths.root) }
+    let box = ClockBox(Self.t0 + 30_000)
+    let upstream = Upstream(box)
+    let feed = makeFeed(upstream, box: box, paths: paths)
+    await feed.setSnapshotEnabled(false)
+    _ = await feed.events()
+    await feed.start(symbol: "BTCUSDT", interval: .m1)
+    #expect(await waitUntil(15) { await feed.currentSeries.lastTime == Self.t0 })
+    #expect(await waitForSteadyState(feed))
+
+    // 往前翻一页，扣在路上。
+    await upstream.holdHistory()
+    let page = Task { await feed.loadMore() }
+    #expect(await waitUntil(5) { await upstream.heldHistory >= 1 })
+
+    // 这期间补缺接不上，整段换成最新一屏。
+    box.advance(200 * Self.step)
+    let now1 = box.nowMs / Self.step * Self.step
+    await upstream.setGap(.endless)
+    await feed.enterForeground()
+    #expect(await waitUntil(15) { await feed.currentSeries.lastTime == now1 })
+    #expect(await waitForSteadyState(feed))
+    let replaced = await feed.currentSeries.firstTime
+    #expect(replaced > Self.t0, "没有整段换掉")
+
+    // 那一页这时才回来。
+    await upstream.releaseHistory()
+    await page.value
+    let s = await feed.currentSeries
+    #expect(Self.contiguous(s), "序列中间留了洞：\(s.count) 根 \(s.firstTime)…\(s.lastTime)")
+    #expect(s.lastTime == now1)
     await feed.stop()
   }
 

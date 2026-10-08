@@ -915,6 +915,8 @@ public actor OrderFlowFeed {
   func recalibratingForTests() -> Bool { recalibrating }
   func historyRangeForTests() -> (from: Int64?, cursor: Int64?) { (historyFromMs, historyCursorMs) }
   func historyCursorForTests() -> OrderFlowHistoryCursor? { historyCursor }
+  /// 数据层手上的分钟账（还没随帧带出去的也在里面）：测试拿它确认逐笔已经记进去了，再拨钟。
+  func tradesForTests() -> BigTradeFlow { trades }
 }
 
 // 测试用：看一眼最后收下的可视范围起点与用户改项（审查 P2-4 的乱序用例）。

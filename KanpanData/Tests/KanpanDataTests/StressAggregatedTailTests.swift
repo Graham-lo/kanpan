@@ -96,10 +96,13 @@ struct StressAggregatedTailTests {
     #expect(done, "年线没跟上推送")
     // 等收尾那一拍合帧也抛完，再数。
     #expect(await waitUntil(5) { (await feed.isBackfillingForTests) == false })
+    // `done` 看的是 feed 里的序列，计数器却是另一条任务（`collector`）从事件流里读出来再加的：
+    // 满载时 feed 早把跨年那几条 `.lastBar` 抛完了，collector 还没轮上读，直接数就只见 1 次。
+    // 先等它把事件流读到跨年那一发；流是先进先出的，读到那里，前面的 `.series` 也都数过了。
+    #expect(await waitUntil(5) { lastBars.value >= 2 }, "跨年开新桶必须立刻抛末根，只见 \(lastBars.value) 次")
 
     // 结构性：整条序列的次数和报文条数无关（原来 = 1502 次）。
     #expect(wholeSeries.value <= 2, "推送期间整条 .series 抛了 \(wholeSeries.value) 次（报文 \(flood + 2) 条）")
-    #expect(lastBars.value >= 2, "跨年开新桶必须立刻抛末根，只见 \(lastBars.value) 次")
 
     // 正确性：只重算末桶 == 整段重聚。
     let src = try #require(await feed.sourceSeriesForTests)

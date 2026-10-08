@@ -43,6 +43,27 @@ struct DataIntegrityTests {
     composer.merge([event(109, time: 1300).bar])
     #expect(composer.series.close.last == 109)
   }
+  /// 快照比推送跑得快：发请求时我们的末根还在走，回包里它已经收线、后面还开了新根。
+  /// 这时候它是定论，必须收下——原来照样跳过，新根一接上，这根在推送里的后半截
+  /// （含 `x=true`）全被当成乱序丢掉，永远停在半截（A-T15 整包并行跑偶发的那一根）。
+  @Test func restAheadOfStreamSealsOurTailWithItsClosedValue() {
+    var composer = FeedComposer(series: BarSeries(symbol: "BTCUSDT", interval: .m1, bars: []))
+    let opened = composer.apply(event(105, time: 1000))
+    #expect(opened)
+    let requestRevision = composer.wsRevision
+    let moved = composer.apply(event(106, time: 1100))        // 请求在路上，推送又改了末根
+    #expect(moved)
+    let closed = event(107, time: 1300, closed: true).bar      // 交易所手上：这一根已收线
+    var next = event(110, time: 50, closed: false).bar         // 而且下一根已经开了
+    next.openTime = closed.openTime + 60_000
+    composer.merge([closed, next], preservingLiveTail: composer.wsRevision != requestRevision)
+    #expect(composer.series.count == 2)
+    #expect(composer.series.bar(at: 0) == closed, "已收线的那根还停在推送的半截上")
+    // 推送里这根的后半截随后到：早于末根，作乱序丢掉，不会把定论改回去。
+    let late = composer.apply(event(106.5, time: 1200))
+    #expect(!late)
+    #expect(composer.series.bar(at: 0) == closed)
+  }
   @Test func tradeDuplicatesDoNotDoubleVolume() {
     var composer = FeedComposer(series: BarSeries(symbol: "BTCUSDT", interval: .m1, bars: [event(105, time: 1000).bar]))
     #expect(composer.applyTick(price: 106, qty: 2, timeMs: 61000) == .updated)

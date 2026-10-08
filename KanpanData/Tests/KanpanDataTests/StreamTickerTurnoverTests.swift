@@ -63,7 +63,11 @@ struct StreamTickerTurnoverTests {
     let deck = ReplayDeck(steps + [.hang])
     let hits = Hits()
     let server = FakeServer { Self.reply($0, hits: hits) }
-    let rest = BinanceREST(transport: FakeTransport(server))
+    // REST 也走这把虚拟钟、不设最小间隔：默认限流器按墙上时钟每笔隔 120ms，而这里每 5ms 真时间就拨
+    // 一虚拟秒——一笔 REST 排队就吃掉二十来个虚拟秒（推送只带 24h 帧，对表隔拍取 K 线，每次都要排），
+    // 一分钟那次补成交额被推到循环收尾之后才回来，整包跑时就红。
+    let rest = BinanceREST(transport: FakeTransport(server),
+                           limiter: RateLimiter(pacer: pacer, minGapMs: 0), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer))
     let feed = MarketFeed(rest: rest, ws: ws,
                           paths: Paths(root: FileManager.default.temporaryDirectory
