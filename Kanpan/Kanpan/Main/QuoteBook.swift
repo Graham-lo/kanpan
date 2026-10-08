@@ -983,6 +983,10 @@ final class QuoteBook {
     for d in VenueRegistry.all {
       if delay == .zero, seedSleeping.remove(d.id) != nil { seedJobs.removeValue(forKey: d.id)?.cancel() }
       guard seedJobs[d.id] == nil, needsSeed(d) else { continue }
+      // 不进板块页的那几家（OKX / Bybit / Hyperliquid / Coinbase，2026-10-08 起四家）只在手里真有它们的品种时
+      // 才取整表：每进一次前台就把四家的全市场各拉一遍，是四份几十到几百 KB 的请求、还各占那一家的限流额度，
+      // 而自选里一只都没有的那家根本没人看它的价。搜索页列出别家品种时由 `drainBatch` 按需成批取。
+      guard d.joinsSectors || wanted.contains(where: { VenueRegistry.descriptor(forSymbol: $0).id == d.id }) else { continue }
       let rest = provider(for: d.defaultSymbol)
       guard rest.capabilities.hasBulkTickers else { continue }
       let venue = d.id, upstream = rest.capabilities.upstream
