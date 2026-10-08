@@ -200,6 +200,7 @@
     "poc": "控制点",
     "devPoc": "动态控制点",
     "devVa": "动态价值区",
+    "extend": "延伸",
     "point": "点 {n}",
     "entry": "开仓",
     "target": "止盈",

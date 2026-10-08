@@ -997,6 +997,8 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 .ds-dd-w { min-width: 64px; padding-left: var(--s2); }
 .ds-sample { width: 24px; height: 16px; flex: none; color: var(--text-1); }
 .menu .dq-sample .ds-sample { width: 24px; }
+/* 行尾的勾选（成交量分布各条线的「延伸」）：不占满一行，跟在线型下拉后面 */
+.cs-chk.ds-ext { flex: none; min-height: 0; gap: var(--s2); margin-left: var(--s1); color: var(--text-2); }
 .ds-tg { width: var(--h-sm); height: var(--h-sm); border: 1px solid var(--control-line); border-radius: var(--r-sm); background: var(--surface);
   color: var(--text-2); font-size: var(--t14); font-weight: 600; line-height: 1; }
 .ds-tg:hover { border-color: var(--text-3); color: var(--text-1); }

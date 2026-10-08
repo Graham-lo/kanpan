@@ -10,7 +10,7 @@
  *   main.color / main.width / main.dash / main.filled    三端共用的主字段
  *   text                                                  这条线写的那句字
  *   style.<键>          扩展项整值（bool / color / enum / num）；值给 undefined = 回到出厂（删键）
- *   style.<键>.<字段>   副线 / 方框的一个字段（on / color / width / dash）；color 给 '' = 跟画线颜色
+ *   style.<键>.<字段>   副线 / 方框的一个字段（on / color / width / dash / extend）；color 给 '' = 跟画线颜色
  *   lv.<levels|tlevels>.<行>.<on|v|c>                    刻度表一行；改完同时写 d.levels（三端口径）与 style 里整张表
  *   pt.<n>.<p|t>                                         第 n 个锚点的价格 / 时间（毫秒）
  *   vis.<类>.<on|lo|hi>                                  可见范围一类
@@ -34,7 +34,8 @@ export const TAB_LABEL: Readonly<Record<TabId, string>> = { inputs: DS.tabInputs
 export type Dash = 'solid' | 'dashed' | 'dotted'
 /** 一个控件：kind 决定画成什么；path 是改它时交给 applyEdit 的地址 */
 export type Ctl =
-  | { kind: 'check'; path: string; value: boolean; def?: boolean }
+  /** 勾选：行首那颗用行的标签；放在行尾控件里的（成交量分布各条线的「延伸」）带自己的 label */
+  | { kind: 'check'; path: string; value: boolean; def?: boolean; label?: string }
   /** 色块：value 是存着的（'' = 没设，显示 shown）；alpha = 调色板带不透明度；clear = 有「默认」一键回到出厂 / 跟画线色 */
   | { kind: 'color'; path: string; value: string; shown: string; def?: string; alpha: boolean; clear: boolean }
   | { kind: 'width'; path: string; value: number; def?: number }
@@ -66,25 +67,26 @@ export function knobs(t: DrawingType): { color: boolean; width: boolean; dash: b
 // ------------------------------------------------------------ 每页排哪些行
 const STATS = ['statPrice', 'statPct', 'statBars', 'statTime', 'statAngle', 'statsPos', 'statsAlways']
 const LINE_ORDER = ['main', 'startEnd', 'endEnd', 'extL', 'extR', 'midPt', 'priceLbl', '#stats', ...STATS]
-const FIB_ORDER = ['trend', 'main', 'levels', 'extL', 'extR', 'fill', 'prices', 'coeffs', 'pct', 'lblPos', 'lblSize']
+const FIB_ORDER = ['trend', 'main', 'levels', 'extL', 'extR', 'fill', 'reverse', 'prices', 'coeffs', 'pct', 'lblPos', 'lblSize']
 /** 照 TradingView 弹窗排的；没列的工具按 ALLOWED 顺序（主线、背景在前，文字一行在后） */
 const STYLE_ORDER: Partial<Record<DrawingType, string[]>> = {
   trend: LINE_ORDER, ray: LINE_ORDER, extended: LINE_ORDER, arrowLine: LINE_ORDER,
   channel: ['main', 'midLine', 'extL', 'extR', 'fill'],
-  regression: ['base', 'upLine', 'dnLine', 'main', 'extR', 'fill'],
-  pitchfork: ['main', 'midLine', 'levels', 'extR', 'fill'],
-  gannBox: ['main', 'angles', 'levels', 'tlevels', 'lblL', 'lblR', 'lblT', 'lblB', 'fill'],
+  regression: ['base', 'upLine', 'dnLine', 'main', 'extR', 'pearson', 'fill'],
+  // TV 叉子样式页第一行就是「样式」（标准 / 希夫 / 改良希夫）
+  pitchfork: ['fork', 'main', 'midLine', 'levels', 'extR', 'fill'],
+  gannBox: ['main', 'angles', 'levels', 'tlevels', 'reverse', 'lblL', 'lblR', 'lblT', 'lblB', 'fill'],
   gannFan: ['main', 'levels', 'coeffs', 'fill'],
   fib: FIB_ORDER, fibExtension: FIB_ORDER,
   fibChannel: ['main', 'levels', 'extL', 'extR', 'fill', 'prices', 'coeffs', 'lblPos', 'lblSize'],
   fibTimeZone: ['trend', 'main', 'levels', 'fill', 'coeffs', 'lblPos', 'lblSize'],
   fibFan: ['main', 'grid', 'levels', 'tlevels', 'lblL', 'lblR', 'lblT', 'lblB', 'fill'],
 }
-/** 输入页（照用户 10-08 定的范围：成交量分布的五项、回归的偏差与皮尔逊、叉子样式、艾略特浪级、斐波那契 / 江恩的反转） */
+/** 输入页（照 TradingView 的 Inputs：成交量分布的五项、回归的上 / 下偏差）；皮尔逊、叉子样式、艾略特浪级、
+ *  斐波那契 / 江恩箱的反转在 TV 都是样式页上的项，跟着样式页走（10-09 用户：「pc 端按照 tv 做即可」） */
 const INPUT_ORDER: Partial<Record<DrawingType, string[]>> = {
   fvp: ['rowsLayout', 'rowSize', 'volume', 'vaPct', 'extendRight'], anchoredVolumeProfile: ['rowsLayout', 'rowSize', 'volume', 'vaPct', 'extendRight'],
-  regression: ['devUp', 'devDn', 'pearson'], pitchfork: ['fork'], elliottImpulse: ['degree'], elliottCorrection: ['degree'],
-  fib: ['reverse'], fibExtension: ['reverse'], gannBox: ['reverse'],
+  regression: ['devUp', 'devDn'],
 }
 const TEXT_ORDER = ['text', 'font', 'hAlign', 'vAlign', 'txtBg', 'txtBorder']
 /** 合成一行的键（行 → 它管的键） */
@@ -121,7 +123,7 @@ function styleTokens(t: DrawingType): string[] {
 export function tabsOf(t: DrawingType): TabId[] {
   if (t === 'measure' || !ALLOWED[t]) return []
   const out: TabId[] = []
-  if (INPUT_ORDER[t]) out.push('inputs')
+  if (INPUT_ORDER[t]?.length) out.push('inputs')
   if (styleTokens(t).length) out.push('style')
   if (TEXT_ON.has(t)) out.push('text')
   out.push('coords', 'vis')
@@ -202,24 +204,23 @@ function ctlFor(d: Drawing, k: string, ctx: Ctx): Ctl | null {
   return null
 }
 
-/** 副线一行：勾选（开没开）+ 色块 + 粗细 + 线型 */
+/** 副线一行：勾选（开没开）+ 色块 + 粗细 + 线型；成交量分布的几条线行尾再多一颗「延伸」（照 TV 每条线的 Extend） */
 function lineRow(d: Drawing, k: string, ctx: Ctx): Row {
   const p = 'style.' + k
   const raw = isObj(d.style?.[k]) ? d.style![k] as StyleObject : {}
-  const { on, color, width, dash } = isProfile(d.type)
-    ? (profileLookOf(d.style, ctx.dark) as unknown as Record<string, { on: boolean; color: string; width: number; dash: Dash }>)[k]
-    : lineS(d, k)
+  const prof = isProfile(d.type)
+  const { on, color, width, dash, extend } = prof
+    ? (profileLookOf(d.style, ctx.dark) as unknown as Record<string, { on: boolean; color: string; width: number; dash: Dash; extend?: boolean }>)[k]
+    : { ...lineS(d, k), extend: undefined }
   const stored = styleColorOk(raw.color) ? raw.color : ''
   const def = factoryOf(d.type, k, ctx) as StyleObject | undefined
-  return {
-    kind: 'row', key: k, label: labelOf(k),
-    check: { kind: 'check', path: p + '.on', value: on, def: def?.on !== false },
-    ctls: [
-      { kind: 'color', path: p + '.color', value: stored, shown: color, def: typeof def?.color === 'string' ? def.color : undefined, alpha: true, clear: true },
-      { kind: 'width', path: p + '.width', value: width, def: typeof def?.width === 'number' ? def.width : undefined },
-      { kind: 'dash', path: p + '.dash', value: dash, def: (def?.dash as Dash | undefined) },
-    ],
-  }
+  const ctls: Ctl[] = [
+    { kind: 'color', path: p + '.color', value: stored, shown: color, def: typeof def?.color === 'string' ? def.color : undefined, alpha: true, clear: true },
+    { kind: 'width', path: p + '.width', value: width, def: typeof def?.width === 'number' ? def.width : undefined },
+    { kind: 'dash', path: p + '.dash', value: dash, def: (def?.dash as Dash | undefined) },
+  ]
+  if (prof) ctls.push({ kind: 'check', path: p + '.extend', value: extend === true, def: def?.extend === true, label: DS.extend })
+  return { kind: 'row', key: k, label: labelOf(k), check: { kind: 'check', path: p + '.on', value: on, def: def?.on !== false }, ctls }
 }
 /** 方框一行（文字背景、边框、读数底色、分布底色）：勾选 + 色块 */
 function boxRow(d: Drawing, k: string, ctx: Ctx): Row {
@@ -452,6 +453,8 @@ export function applyEdit(d: Drawing, path: string, v: unknown): boolean {
       else o[f] = v as StyleValue
       // 颜色给 '' = 跟画线颜色：副线 / 方框的出厂多半就是 ''，存不存一样，去掉
       if (f === 'color' && v === '') delete o.color
+      // 延伸出厂都是关：关回去就不存
+      if (f === 'extend' && v === false) delete o.extend
       if (Object.keys(o).length) s[k] = o; else delete s[k]
     }
     return setStyle(d, s)

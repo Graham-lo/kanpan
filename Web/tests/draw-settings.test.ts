@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { Drawing, DrawingType } from '../src/chart/chart'
 import { ALLOWED, DEF, KEYS, LEVEL_TABLE, TEXT_ON, contractLevels, factoryLevels, levelRows, visibleAt } from '../src/chart/drawSpec'
 import { ANCHOR_COUNT, usesLevels } from '../src/chart/drawTools'
+import { profileLookOf } from '../src/chart/drawStyle'
 import { applyPreset, factoryPreset, presetOf } from '../src/chart/drawPreset'
 import { applyEdit, knobs, labelOf, rowsOf, shInput, shParse, tabsOf, type Row, type TabId } from '../src/chart/drawSettingsModel'
 
@@ -21,11 +22,13 @@ function keysOf(r: Row): string[] {
 const keyList = (d: Drawing, tab: TabId) => rowsOf(d, tab).filter(r => r.kind !== 'group').map(r => (r as { key: string }).key)
 
 describe('每把工具的页', () => {
-  it('输入页只给有输入项的工具；文本页只给能写字的；坐标与可见范围每把都有', () => {
+  it('输入页只给有输入项的工具（照 TV：成交量分布两把、回归趋势）；文本页只给能写字的；坐标与可见范围每把都有', () => {
     const inputs = TYPES.filter(t => tabsOf(t).includes('inputs')).sort()
-    expect(inputs).toEqual(['anchoredVolumeProfile', 'elliottCorrection', 'elliottImpulse', 'fib', 'fibExtension', 'fvp', 'gannBox', 'pitchfork', 'regression'].sort())
+    expect(inputs).toEqual(['anchoredVolumeProfile', 'fvp', 'regression'].sort())
     for (const t of TYPES) {
       const tabs = tabsOf(t)
+      // 列了输入页就有行，没列的输入页一行都没有
+      expect(rowsOf(mk(t), 'inputs').length > 0, t).toBe(tabs.includes('inputs'))
       expect(tabs.includes('text'), t).toBe(TEXT_ON.has(t))
       expect(tabs.includes('style'), t).toBe(true)
       expect(tabs.slice(-2), t).toEqual(['coords', 'vis'])
@@ -47,12 +50,35 @@ describe('每把工具的页', () => {
     expect(keyList(mk('trend'), 'style')).toEqual(['main', 'startEnd', 'endEnd', 'extL', 'extR', 'midPt', 'priceLbl',
       'statPrice', 'statPct', 'statBars', 'statTime', 'statAngle', 'statsPos', 'statsAlways'])
     expect(rowsOf(mk('trend'), 'style').some(r => r.kind === 'group')).toBe(true)
-    expect(keyList(fib(), 'style')).toEqual(['trend', 'main', 'levels', 'extL', 'extR', 'fill', 'prices', 'coeffs', 'pct', 'lblPos', 'lblSize'])
-    expect(keyList(mk('gannBox'), 'style')).toEqual(['main', 'angles', 'levels', 'tlevels', 'lblL', 'lblR', 'lblT', 'lblB', 'fill'])
+    expect(keyList(fib(), 'style')).toEqual(['trend', 'main', 'levels', 'extL', 'extR', 'fill', 'reverse', 'prices', 'coeffs', 'pct', 'lblPos', 'lblSize'])
+    expect(keyList(mk('gannBox'), 'style')).toEqual(['main', 'angles', 'levels', 'tlevels', 'reverse', 'lblL', 'lblR', 'lblT', 'lblB', 'fill'])
     expect(keyList(mk('trend'), 'text')).toEqual(['text', 'font', 'hAlign', 'vAlign'])
     expect(keyList(mk('note'), 'text')).toEqual(['text', 'font', 'txtBg', 'txtBorder'])
-    expect(keyList(mk('regression'), 'inputs')).toEqual(['devUp', 'devDn', 'pearson'])
     expect(keyList(mk('fvp'), 'inputs')).toEqual(['rowsLayout', 'rowSize', 'volume', 'vaPct', 'extendRight'])
+  })
+  it('照 TV 摆页：回归的上 / 下偏差在输入页、皮尔逊在样式页；叉子样式、艾略特浪级、斐波那契 / 江恩箱的反转都在样式页', () => {
+    expect(keyList(mk('regression'), 'inputs')).toEqual(['devUp', 'devDn'])
+    expect(keyList(mk('regression'), 'style')).toEqual(['base', 'upLine', 'dnLine', 'main', 'extR', 'pearson', 'fill'])
+    expect(keyList(mk('pitchfork'), 'style')).toEqual(['fork', 'main', 'midLine', 'levels', 'extR', 'fill'])
+    for (const t of ['elliottImpulse', 'elliottCorrection'] as DrawingType[]) expect(keyList(mk(t), 'style'), t).toEqual(['main', 'degree', 'font'])
+    for (const t of ['fib', 'fibExtension', 'gannBox'] as DrawingType[]) {
+      expect(keyList(mk(t), 'style'), t).toContain('reverse')
+      expect(tabsOf(t), t).toEqual(['style', 'coords', 'vis'])
+    }
+    expect(tabsOf('regression')).toEqual(['inputs', 'style', 'coords', 'vis'])
+  })
+  it('成交量分布五条线行尾各一颗「延伸」（照 TV 每条线的 Extend），出厂关', () => {
+    for (const t of ['fvp', 'anchoredVolumeProfile'] as DrawingType[]) {
+      const rows = rowsOf(mk(t), 'style').filter((r): r is Extract<Row, { kind: 'row' }> => r.kind === 'row' && ['vah', 'val', 'poc', 'devPoc', 'devVa'].includes(r.key))
+      expect(rows.map(r => r.key), t).toEqual(['vah', 'val', 'poc', 'devPoc', 'devVa'])
+      for (const r of rows) {
+        expect(r.ctls.map(c => c.kind), `${t}/${r.key}`).toEqual(['color', 'width', 'dash', 'check'])
+        expect(r.ctls[3], `${t}/${r.key}`).toMatchObject({ path: `style.${r.key}.extend`, value: false, def: false, label: '延伸' })
+      }
+    }
+    // 别的工具的副线没有延伸
+    const mid = rowsOf(mk('channel'), 'style').find(r => r.kind === 'row' && r.key === 'midLine')
+    expect(mid && mid.kind === 'row' && mid.ctls.map(c => c.kind)).toEqual(['color', 'width', 'dash'])
   })
   it('主线一行照 knobs 给：持仓没有，成交量分布只有颜色，刻度一族没有线型', () => {
     const main = (t: DrawingType) => { const r = rowsOf(mk(t), 'style').find(x => x.kind === 'row' && x.key === 'main'); return r && r.kind === 'row' ? r.ctls.map(c => c.kind) : null }
@@ -144,6 +170,16 @@ describe('改一项后 d 长什么样', () => {
     expect(d.style).toEqual({ poc: { on: true } })
     const poc = rowsOf(d, 'style').find(r => r.kind === 'row' && r.key === 'poc')
     expect(poc && poc.kind === 'row' && poc.check?.value).toBe(true)
+    // 延伸：打开存进这条线、图上照它延到右沿（profileLookOf）；关回去就不存
+    applyEdit(d, 'style.poc.extend', true)
+    expect(d.style).toEqual({ poc: { on: true, extend: true } })
+    expect(profileLookOf(d.style, true).poc.extend).toBe(true)
+    const ext = rowsOf(d, 'style').find(r => r.kind === 'row' && r.key === 'poc')
+    expect(ext && ext.kind === 'row' && ext.ctls.at(-1)).toMatchObject({ kind: 'check', value: true })
+    applyEdit(d, 'style.poc.extend', false)
+    expect(d.style).toEqual({ poc: { on: true } })
+    applyEdit(d, 'style.devVa.extend', true)
+    expect(profileLookOf(d.style, false).devVa).toMatchObject({ on: false, extend: true })
     // 数值色的出厂灰随底色变
     const vc = (dark: boolean) => { const r = rowsOf(mk('fvp'), 'style', { dark }).find(x => x.kind === 'row' && x.key === 'values'); return r && r.kind === 'row' && r.ctls[0].kind === 'color' ? r.ctls[0].shown : '' }
     expect(vc(true)).not.toBe(vc(false))

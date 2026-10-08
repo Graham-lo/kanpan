@@ -171,6 +171,11 @@ describe('横线、发展中折线与底色', () => {
     expect(L.paths.map(q => q.kind)).toEqual(['devPoc', 'devVah', 'devVal'])
     expect(L.paths[0].pts).toEqual([null, { x: 120, y: Y(104.5) }, { x: 130, y: Y(104.5) }, { x: 130, y: Y(105.5) }])
     expect(L.paths[1].color).toBe('#00BCD4')
+    // 打开「延伸」：最后一级台阶平着接到绘图区右沿；没给右沿不接
+    const E = profileLayout(base({ dev, extendTo: 900 }, { devPoc: { ...LOOK.devPoc, on: true, extend: true }, devVa: { ...LOOK.devVa, on: true } }))
+    expect(E.paths[0].pts.at(-1)).toEqual({ x: 900, y: Y(105.5) })
+    expect(E.paths[1].pts.at(-1)).toEqual({ x: 130, y: Y(107) })
+    expect(profileLayout(base({ dev }, { devPoc: { ...LOOK.devPoc, on: true, extend: true } })).paths[0].pts.at(-1)).toEqual({ x: 130, y: Y(105.5) })
   })
   it('底色：开着时铺整个区间（时间上左右沿、价格上最高到最低），颜色透明度取自色值；关了不铺', () => {
     expect(profileLayout(base()).base).toBeNull()

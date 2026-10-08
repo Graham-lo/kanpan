@@ -8,8 +8,9 @@
  *   · 行与行之间的缝：平均行高 ≥ 1 CSS px 时留 1 个物理像素（floor(像素比)），否则不留；坐标按物理像素取整。
  *   · 三种看法：买卖分开 [买, 卖]；合计 [买 + 卖]；净差 [多的 − 少的, 少的, 少的]，都用占优那一方的颜色，
  *     透明度依次原样 / 一半 / 四分之一（三种看法一行总长都是买 + 卖）。
- *   · 横线：价值区上沿 / 下沿（浅粉 1 px，出厂开）、控制点（紫，出厂关），从区间左沿画到右沿，打开「向右延伸」画到绘图区右沿；
- *     发展中的控制点（灰）/ 价值区（#00BCD4）是逐根阶梯折线（出厂关）。每条线各有开关、颜色、线型、粗细。
+ *   · 横线：价值区上沿 / 下沿（浅粉 1 px，出厂开）、控制点（紫，出厂关），从区间左沿画到右沿；
+ *     发展中的控制点（灰）/ 价值区（#00BCD4）是逐根阶梯折线（出厂关）。每条线各有开关、颜色、线型、粗细与「延伸」
+ *     （照 TV 每条线行尾的 Extend：横线延到绘图区右沿，阶梯折线最后一级平着接过去；出厂都关）。
  *   · 数值（出厂关）：每行「涨量 × 跌量」（放右时倒过来），写在基线内侧 3 px、行顶下 0.7 行高处；最底下再多一行合计（颜色提亮 1.5 倍）。
  *     字号 = min(round(1.7 × 区间宽 ÷ 字数), round(0.6 × 行高))，全部行统一取最小的那个，小于 7.5 px 就一行都不写。
  * 版式（profileLayout）是纯函数，便于单测几何；drawProfile 只按版式往画布上涂。
@@ -101,7 +102,7 @@ export interface ProfileInput {
   clipY?: [number, number]
   /** 发展中的控制点 / 价值区（逐根价），xs[k] 是第 k 根的横坐标 */
   dev?: Developing & { xs: number[] }
-  /** 横线「向右延伸」延到这里（绘图区右沿） */
+  /** 打开「延伸」的线延到这里（绘图区右沿） */
   extendTo?: number
   /** 物理像素比（缝宽与取整按它算），缺省 1 */
   pr?: number
@@ -248,6 +249,9 @@ export function profileLayout(inp: ProfileInput): ProfileLayout {
         if (k > 0 && Number.isFinite(s[k - 1])) pts.push({ x, y: Y(s[k - 1]) })
         pts.push({ x, y })
       }
+      // 「延伸」：最后一级台阶照最后的价位平着画到绘图区右沿（同横线的延伸）
+      const tail = pts[pts.length - 1]
+      if (o.extend && tail && inp.extendTo != null && inp.extendTo > tail.x) pts.push({ x: inp.extendTo, y: tail.y })
       if (pts.length) out.paths.push({ kind, pts, color, alpha, width: o.width, dash: o.dash })
     }
     path(look.devPoc, dev.poc, 'devPoc')

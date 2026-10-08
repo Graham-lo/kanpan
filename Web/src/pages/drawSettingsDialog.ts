@@ -101,11 +101,13 @@ export function openDrawSettings(d: Drawing, host: DrawSettingsHost): void {
       case 'toggle': return `<button class="ibtn xs ds-tg ds-tg-${c.icon}" data-ci="${i}" aria-pressed="${c.value}" aria-label="${esc(c.label)}" data-tip="${esc(c.label)}"${dis()}>${c.icon === 'bold' ? 'B' : 'I'}</button>`
       case 'text': return `<textarea class="input ds-text" data-ci="${i}" data-path="${c.path}" rows="3" placeholder="${esc(DS.textPh)}" aria-label="${esc(label)}"${dis()}>${esc(c.value)}</textarea>`
       case 'time': return `<input class="input ds-time" type="datetime-local" data-ci="${i}" data-path="${c.path}" value="${inputVal(c)}" aria-label="${esc(label)}"${dis()}>`
-      case 'check': return ''
+      // 行尾的勾选（成交量分布各条线的「延伸」）：带自己的字
+      case 'check': return chkMarkup(i, c, c.label ?? label, ' ds-ext')
     }
   }
-  const chkHtml = (c: Ctl & { kind: 'check' }, label: string): string =>
-    `<button class="cs-chk" role="checkbox" data-ci="${reg(c)}" aria-checked="${c.value}"${dis()}><span class="check-box${c.value ? ' on' : ''}">${c.value ? I('check', 'icon-12') : ''}</span><span>${esc(label)}</span></button>`
+  const chkMarkup = (i: number, c: Ctl & { kind: 'check' }, label: string, cls = ''): string =>
+    `<button class="cs-chk${cls}" role="checkbox" data-ci="${i}" aria-checked="${c.value}"${dis()}><span class="check-box${c.value ? ' on' : ''}">${c.value ? I('check', 'icon-12') : ''}</span><span>${esc(label)}</span></button>`
+  const chkHtml = (c: Ctl & { kind: 'check' }, label: string): string => chkMarkup(reg(c), c, label)
   function rowHtml(r: Row): string {
     if (r.kind === 'group') return `<div class="cs-gh">${esc(r.label)}</div>`
     if (r.kind === 'levels') {
