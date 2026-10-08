@@ -79,10 +79,10 @@ const venuesOf = p => p.evaluate(() => (window.__of?.()?.venues || []).map(v => 
     for (let y = host.y + 30; y < host.y + host.h - 30; y += 3) {
       const x = host.x + host.w * fx
       await p.mouse.move(x, y)
-      const c = await p.evaluate(() => { const e = document.querySelector('.of-card.show .hc-band'); return e ? { rows: e.querySelectorAll('.hc-kv:not(.hc-meta) > *').length, text: e.innerText } : null })
+      const c = await p.evaluate(() => { const e = document.querySelector('.of-card.show .hc-band'); return e ? { rows: e.querySelectorAll('.hc-books b').length, text: e.innerText } : null })
       if (!c && !seen) seen = await p.evaluate(() => document.querySelector('.of-card.show')?.innerHTML.slice(0, 200) ?? null)
-      // 挑：带 Bybit 的优先，其次挂着的、多家合并的（行数封顶 9 行，再多也只算 9）
-      if (c) c.score = (/Bybit/.test(c.text) ? 1000 : 0) + (/挂着/.test(c.text) ? 100 : 0) + Math.min(c.rows / 3, 9) + (new Set(c.text.match(/币安|OKX|Coinbase|Bybit|Hyperliquid/g)).size * 10)
+      // 挑：带 Bybit 的优先，其次挂单中的、多家合并的（分簿那行最多点 3 本）
+      if (c) c.score = (/Bybit/.test(c.text) ? 1000 : 0) + (/挂单中/.test(c.text) ? 100 : 0) + Math.min(c.rows, 9) + (new Set(c.text.match(/币安|OKX|Coinbase|Bybit|Hyperliquid/g)).size * 10)
       if (c && (!best || c.score > best.score)) best = { ...c, x, y }
     }
     if (best && best.score >= 1100) break
@@ -95,8 +95,10 @@ const venuesOf = p => p.evaluate(() => (window.__of?.()?.venues || []).map(v => 
     console.log('读数卡：\n' + best.text)
   }
   if (!best) console.log('扫到的别的卡：', seen)
-  ok(!!best, `悬停大单带出读数卡${best ? `（${best.rows / 3 | 0} 本簿一行一行）` : ''}`)
-  ok(!!best && /Bybit/.test(best.text), '读数卡里有 Bybit 那本的一行')
+  ok(!!best, `悬停大单带出读数卡${best ? `（分簿一行点了 ${best.rows} 本）` : ''}`)
+  ok(!!best && /Bybit/.test(best.text), '读数卡分簿那行里有 Bybit')
+  ok(!!best && /挂单中|已结束/.test(best.text) && !/挂着|在场|已挂/.test(best.text), '读数卡状态词是「挂单中 / 已结束」，没有口语')
+  ok(!!best && best.text.indexOf('首见') < best.text.indexOf('Bybit'), '主数据（首见 / 持续 / 累计成交）在分簿行之前')
   await p.mouse.move(10, 10)
 
   // 抽屉：五家分项
@@ -138,11 +140,11 @@ const venuesOf = p => p.evaluate(() => (window.__of?.()?.venues || []).map(v => 
   await p.waitForSelector('.bt-wrap.in', { timeout: 20000 }).catch(() => {})
   await sleep(4000)
   await p.screenshot({ path: OUT + 'm-2-大单与爆仓.png' })
-  const sub = await p.evaluate(() => [...document.querySelectorAll('.bt-sheet *')].map(e => e.childElementCount === 0 ? e.textContent : '').filter(t => /合并|·.*·/.test(t || '') && /币安/.test(t || '')).slice(0, 4))
-  console.log('弹层口径：', JSON.stringify(sub))
-  ok(sub.some(t => /Bybit/.test(t)), `弹层口径带 Bybit：${sub[0] ?? '没找到'}`)
-  const over = await p.evaluate(() => [...document.querySelectorAll('.bt-sheet *')].filter(e => e.childElementCount === 0 && /Bybit/.test(e.textContent || '') && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflow !== 'visible').map(e => e.className))
-  ok(!over.length, `弹层五家名字没被截${over.length ? '：' + over.join(',') : ''}`)
+  const sub = await p.evaluate(() => document.querySelector('.bt-sub')?.textContent ?? '')
+  console.log('弹层副标题：', JSON.stringify(sub))
+  ok(/^BTC( 现货)?$/.test(sub.trim()), `弹层副标题只写品种（用户 2026-10-08：标题不写交易所）：${JSON.stringify(sub)}`)
+  const words = await p.evaluate(() => [...document.querySelectorAll('.bt-sheet *')].map(e => e.childElementCount === 0 ? e.textContent || '' : '').filter(t => /挂着|在场|已挂|已撤销|合并/.test(t)))
+  ok(!words.length, `弹层没有口语 / 交易所合并字样${words.length ? '：' + words.slice(0, 3).join('，') : ''}`)
   await p.evaluate(() => { const b = document.querySelector('.bt-body'); if (b) b.scrollTop = b.scrollHeight }); await sleep(500)
   await p.screenshot({ path: OUT + 'm-3-大单与爆仓-底部.png' })
   ok(!errs.length, `手机无页面报错${errs.length ? '：' + errs.slice(0, 3).join('；') : ''}`)
