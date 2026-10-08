@@ -57,6 +57,7 @@ import { bindFootprint, setFootprintSource, unbindFootprint } from '../chart/foo
 import { bindHeikinAshi, setHeikinAshiSource, unbindHeikinAshi } from '../chart/heikinAshi'
 import { baseBars, bindRangeBars, setRangeBarsSource, syncRangeBars, unbindRangeBars } from '../chart/rangeBars'
 import { DOM_MS, ROW_MS, PulseDebt } from '../chart/domPulse'
+import { LINK_GRACE_MS, LinkGrace, linkWaiting } from '../app/linkGrace'
 import { styleMenuItems } from '../chart/mainStyle'
 import { setsMenu, switchNth, setButtonHTML, paintSetButtons } from './layoutSets'
 import type { CellFlag } from '../app/layouts'
@@ -771,7 +772,8 @@ function linkAll(symbol: string): void {
 // ---- 连接状态点：绿 = 实时，黄 = 在连，红 = 断了或行情停住
 type Conn = 'live' | 'connecting' | 'down'
 const CONN_TIP: Record<Conn, string> = { live: '行情连着', connecting: '正在连行情', down: '行情断了，正在重连' }
-function connState(): Conn { return st.stale || S.wsState === 'closed' || S.live === false ? (S.wsState === 'connecting' ? 'connecting' : 'down') : S.wsState === 'open' ? 'live' : 'connecting' }
+/** 连接点只看推送连接（断线态的来源见 updateStale）；全市场表取没取到是另一回事，报错在 toast 与自选区的空态里 */
+function connState(): Conn { return st.stale || S.wsState === 'closed' ? (S.wsState === 'connecting' ? 'connecting' : 'down') : S.wsState === 'open' ? 'live' : 'connecting' }
 /** 十六格的连接点：状态没变就不碰（每次流状态事件 / 品种表到了都会来，无谓的属性写会让 16 格各自重算样式） */
 function paintConn(): void { const c = connState(); $$('.cell-foot .conn-dot').forEach(e => { if (e.dataset.conn !== c) { e.dataset.conn = c; e.dataset.tip = CONN_TIP[c] } }) }
 /** 浏览器标签页标题：当前品种的最新价与涨跌；换品种时立刻换，不等下一笔成交 */
@@ -1567,12 +1569,21 @@ function flushQuotes(ts: number): void {
   if (detailDebt.owing || rowDebt.owing) oweQuote()
 }
 
+/** 断线变灰（app/linkGrace.ts，与 iOS / 手机网页同一条规矩）：推送该连着却不在 open 满 5 秒才算断，接上立刻复原。
+ *  st.stale 一真，K 线推送整页不并（on kline 那段）、秒线不并、格子不落盘——所以它只能由推送连接说了算。
+ *  2026-10-09 十六图挂机（layout16-review C15）：原来全市场表一次没取到（S.live === false）就当场判断线，
+ *  推送明明连着、每格的 K 线帧照常到，却全被 st.stale 挡掉，16 格的最新一根整段不动，要等下一次表取成功才解开；
+ *  表取没取到自有 REST 那边的重试与 toast，不再掺进这条。 */
+const link = new LinkGrace()
 let staleTimer: ReturnType<typeof setTimeout> | undefined
 function updateStale(): void {
-  const bad = S.live === false || S.wsState === 'closed'
-  clearTimeout(staleTimer)
-  if (bad) staleTimer = setTimeout(() => setStale(true), S.live === false ? 0 : 5000)
-  else setStale(false)
+  const now = Date.now()
+  if (link.track(linkWaiting(S.wsState, document.visibilityState !== 'hidden'), now)) {
+    clearTimeout(staleTimer)
+    staleTimer = setTimeout(() => { staleTimer = undefined; updateStale() }, LINK_GRACE_MS + 50)
+  }
+  if (link.since == null && staleTimer) { clearTimeout(staleTimer); staleTimer = undefined }
+  setStale(link.isDown(now))
 }
 function setStale(v: boolean): void {
   if (st.stale === v) return
@@ -1682,6 +1693,7 @@ export async function initChart(): Promise<void> {
 
   // 藏着时非当前格的 K 线推送是退订的（stream.ts 只留核心），藏久了回来各格都补一次尾巴
   document.addEventListener('visibilitychange', () => {
+    updateStale(); paintConn()   // 后台不算断线，回前台从这一刻重新起算
     if (tailGate.visibility(document.visibilityState === 'visible', Date.now())) cells.forEach(c => void resyncTail(c))
   })
   on(e => {
