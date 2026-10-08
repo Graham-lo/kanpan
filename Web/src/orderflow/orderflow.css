@@ -152,34 +152,58 @@
 .of-al .ibtn { opacity: 0; }
 .of-al:hover .ibtn, .of-al .ibtn:focus-visible { opacity: 1; }
 
-/* ---------------------------------------------------------------- 底部抽屉：大单列表 */
-.of-dr-head { display: flex; align-items: center; gap: var(--s3); height: 44px; padding: 0 var(--s2) 0 var(--s4); flex: none; }
-.of-dr-head b { font-size: var(--t14); font-weight: 600; }
-.of-dr-head .num { font-size: var(--t12); }
-.of-dr-chips { display: flex; gap: var(--s1); margin-left: var(--s2); }
-.of-dr-note { flex: 1; font-size: var(--t12); text-align: right; }
-.of-dr-th, .of-dr-row {
-  display: grid; align-items: center; column-gap: var(--s3); padding: 0 var(--s4);
-  grid-template-columns: 112px 112px 80px 48px 88px 96px minmax(96px,1fr) 104px 104px minmax(120px,1.2fr);
-}
-.of-dr-th { height: 28px; flex: none; font-size: var(--t12); color: var(--text-3); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface-2); }
-.of-dr-th .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-.of-dr-th .sortable:hover { color: var(--text-1); }
-.of-dr-th [aria-sort="ascending"], .of-dr-th [aria-sort="descending"] { color: var(--text-1); font-weight: 600; }
-.of-dr-th .arrow { font-style: normal; margin-left: 2px; }
-.of-dr-body { position: relative; flex: 1; min-height: 0; overflow-y: auto; }
-.of-dr-rows { position: absolute; left: 0; right: 0; top: 0; }
-.of-dr-row { height: 28px; font-size: var(--t12); cursor: pointer; }
-.of-dr-row:hover { background: var(--surface-2); }
-.of-dr-row.sel { background: var(--accent-soft); }
-.of-dr-row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; }
-.of-dr-th > span { display: flex; align-items: center; }
-.of-dr-row .r, .of-dr-th .r { justify-content: flex-end; }
-.of-dr-row .c, .of-dr-th .c { justify-content: center; }
-.of-dr-row.live > span:nth-child(2) { color: var(--accent-text); }
-.of-side { font-style: normal; font-weight: 600; font-size: var(--t11); padding: 0 6px; border-radius: 3px; line-height: 18px; }
-.of-side.up { background: color-mix(in srgb, var(--up) 14%, transparent); }
-.of-side.down { background: color-mix(in srgb, var(--down) 14%, transparent); }
+/* ---------------------------------------------------------------- 底部抽屉：大单列表（2026-10-08 起是四块摘要图，见 drawer.ts）
+ * 背景透明，块与块之间只有 1 px 分隔线（左、上各一条，网格外沿的那条被裁掉——折行到第二排时也成立）；
+ * 块标题 11 px 弱色；数字等宽；涨跌条 85% 不透明、底轨同色 20%（SVG 里用 opacity，Canvas 里用 globalAlpha）。 */
+.of-dr-head { display: flex; align-items: center; gap: var(--s3); height: 32px; padding: 0 var(--s2) 0 var(--s4); flex: none; border-bottom: 1px solid var(--line); }
+.of-dr-head b { font-size: var(--t13); font-weight: 600; }
+.of-dr-sp { flex: 1; }
+.of-dr-grid { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; align-content: stretch; overflow-x: hidden; overflow-y: auto; }
+/* 一排放得下（大屏）时每块铺满抽屉高；窄屏折成两排时两排平分高度，每排至少 220 px，不够就在抽屉里滚。
+ * 画布与行列表都 contain: size：它们的内容（画布的像素高、两百行）不许把这一排撑高。 */
+.of-blk { position: relative; display: flex; flex-direction: column; min-height: 220px; padding: 10px var(--s4) 10px;
+  border-left: 1px solid var(--line); border-top: 1px solid var(--line); margin-left: -1px; margin-top: -1px; font-variant-numeric: tabular-nums; }
+.of-blk h4 { margin: 0 0 8px; font-size: var(--t11); font-weight: 500; color: var(--text-3); letter-spacing: .5px; flex: none; }
+.of-blk h4 .term { color: inherit; }
+.of-blk-sum { flex: 0 0 340px; }
+.of-blk-bars { flex: 6 1 440px; min-width: 440px; padding-left: var(--s2); padding-right: var(--s2); }
+.of-blk-bars h4 { padding-left: var(--s2); }
+.of-blk-px { flex: 1 0 300px; }
+.of-blk-liq { flex: 1 0 320px; }
+.of-cv { display: block; width: 100%; flex: 1 1 0; min-height: 0; contain: size; }
+
+/* 每根一行：时间 · 镜像条（买向右、卖向左）· 净额（色点 + 数）· 最大一笔胶囊 */
+.of-kr-list { flex: 1 1 0; min-height: 0; contain: size; overflow-y: auto; overflow-x: hidden; }
+.of-kr { display: grid; grid-template-columns: 76px minmax(0, 1fr) 72px 74px; align-items: center; column-gap: var(--s2);
+  height: 24px; padding: 0 var(--s2); border-radius: var(--r-xs); cursor: pointer; }
+.of-kr.new { background: color-mix(in srgb, var(--text-1) 4%, transparent); }
+.of-kr:hover, .of-kr.x { background: var(--surface-2); }
+.of-kr.sel { background: var(--accent-soft); }
+.of-kr-t { font-size: var(--t11); color: var(--text-3); white-space: nowrap; }
+.of-kr-bar { width: 100%; height: 16px; display: block; overflow: visible; }
+.of-kr-bar .ax { stroke: var(--line-strong); stroke-width: 1; }
+.of-kr-bar .tk { opacity: .2; }
+.of-kr-bar .br { opacity: .85; transform-box: fill-box; transition: transform 150ms var(--ease); }
+.of-kr-bar .b { fill: var(--up); }
+.of-kr-bar .s { fill: var(--down); }
+.of-kr-bar .br.b { transform-origin: left center; }
+.of-kr-bar .br.s { transform-origin: right center; }
+.of-kr-bar .tx { font-size: 11px; fill: var(--text-2); dominant-baseline: middle; font-variant-numeric: tabular-nums; }
+.of-kr-bar .tx.in { fill: #fff; }
+.of-kr-net { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: var(--t12); white-space: nowrap; }
+.of-kr-net i { width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); flex: none; }
+.of-kr-net i.up { background: var(--up); }
+.of-kr-net i.down { background: var(--down); }
+.of-kr-net b { font-weight: 500; }
+.of-kr-max { justify-self: end; display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border-radius: 9px;
+  background: var(--surface-2); font-size: var(--t11); white-space: nowrap; }
+.of-kr-max.none { visibility: hidden; }
+.of-kr-max em { font-style: normal; font-weight: 600; }
+.of-kr-max em.up { color: var(--up-text, var(--up)); }
+.of-kr-max em.down { color: var(--down-text, var(--down)); }
+.of-kr-max b { font-weight: 500; }
+.of-dr-empty { position: absolute; left: 0; right: 0; top: 50%; text-align: center; font-size: var(--t11); padding-top: 10px; }
+.of-dr-empty::before { content: ""; position: absolute; left: var(--s4); right: var(--s4); top: 0; border-top: 1px solid var(--line); opacity: .6; }
 
 /* ---------------------------------------------------------------- 侧栏「主力订单流」面板 */
 .of-p { flex: 1; min-height: 0; padding-bottom: var(--s4); }
