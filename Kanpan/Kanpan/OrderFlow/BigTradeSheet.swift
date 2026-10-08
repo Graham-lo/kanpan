@@ -378,6 +378,7 @@ struct BigTradeSheet: View {
         page(nowMs: BigTradeSheetModel.nowMs(ctx.date), now: ctx.date)
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bigtrade.sheet")
     .task(id: spot || BigTradeSheetTestState.current == .liqEmpty ? nil : base) {
       guard let base, !spot, BigTradeSheetTestState.current != .liqEmpty else { return }
