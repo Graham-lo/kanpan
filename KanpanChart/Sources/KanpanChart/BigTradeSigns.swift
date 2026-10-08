@@ -1,4 +1,5 @@
 import CoreGraphics
+import KanpanCore
 import Foundation
 
 /// 图上「大单签」的纯函数：档位、摆放（翻面 / 退化）、命中（2026-10-08，设计源
@@ -204,9 +205,9 @@ public enum BigTradeSigns {
 
   // MARK: 读屏
 
-  /// 「买方大单 1.2M，12:30 这根」。
+  /// 「12:30 大单买入 1.2M」（用词从三端共用的 terms.json 来）。
   public static func accessibilityLabel(_ s: BigTradeSign, time: String) -> String {
-    "\(s.buy ? "买方" : "卖方")大单 \(s.text)，\(time) 这根"
+    BigTradeTerm.signA11y.fill(["t": time, "side": (s.buy ? BigTradeTerm.buy : .sell).text, "v": s.text])
   }
 }
 

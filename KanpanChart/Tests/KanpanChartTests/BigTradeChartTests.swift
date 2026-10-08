@@ -117,8 +117,7 @@ struct BigTradeChartTests {
     let s = try #require(signs(r).first { $0.tier == 3 })
     #expect(r.bigTradeHit(at: s.markCenter, size: Self.size)?.index == s.index)
     #expect(r.bigTradeHit(at: CGPoint(x: 2, y: 30), size: Self.size) == nil)
-    #expect(r.bigTradeAccessibilityLabel(s).hasPrefix("买方大单 3.3M，"))
-    #expect(r.bigTradeAccessibilityLabel(s).hasSuffix("这根"))
+    #expect(r.bigTradeAccessibilityLabel(s).hasSuffix(" 大单买入 3.3M"))
   }
 
   @Test("缓存：拖图不重并根；分钟账换了才重算；十字线动不换摆好的签")

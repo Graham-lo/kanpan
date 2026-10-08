@@ -207,15 +207,15 @@ struct IndicatorPage: View {
           .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
       }
       let entry = mainOnly ? nil : bigTrades
-      PanelRow(name: "图上大单签", divider: base != nil || entry != nil) {
+      PanelRow(name: BigTradeTerm.chartMarks.text, divider: base != nil || entry != nil) {
         PanelSwitch(isOn: prefs.bigTradeSigns) { store.updateByHand { $0.bigTradeSigns.toggle() } }
           .accessibilityIdentifier("orderflow.bigTradeSigns")
       }
       // 「大单与爆仓」（2026-10-08）：本根买卖对撞、每根、价位、爆仓那张弹层。两颗开关都关着也能开——
       // 弹层开着时成交账照订（`OrderFlowLink.wanted`）。右边那行副文字是正在走那根的净额，单拎一块刷新。
       if let entry, let link = orderFlow {
-        PanelRow(name: "大单与爆仓", divider: base != nil, onTap: { entry.open() },
-                 buttonID: "orderflow.bigTrades", buttonLabel: "大单与爆仓") {
+        PanelRow(name: BigTradeTerm.title.text, divider: base != nil, onTap: { entry.open() },
+                 buttonID: "orderflow.bigTrades", buttonLabel: BigTradeTerm.title.text) {
           HStack(spacing: Space.s) {
             BigTradeEntryMeta(link: link, entry: entry)
             VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)

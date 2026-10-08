@@ -64,7 +64,6 @@ public enum BigTradeTerm: String, CaseIterable, Sendable {
   case merged
   case auto
   case step
-  case expand
   case collapse
   case yesterday
   case todayDay

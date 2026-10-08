@@ -3,10 +3,10 @@ import XCTest
 
 // ============================================================ 「大单与爆仓」弹层（2026-10-08）
 //
-// 以交易员的身份走一遍：分析面板「主力订单流 › 大单与爆仓」开半屏 → 上拉全屏 → 点「每根」里一根
-// （十字线跳过去、本根卡改读那一根）→「门槛」开表再取消 → ‹ 收掉。另外两条：
-//   · 十字线联动：半屏开着时在图上长按，本根卡标题变「该根 hh:mm」；十字线收掉 3 秒后淡回「本根」。
-//   · 点图上的大单签：第一次开半屏、读的是那一根。
+// 以交易员的身份走一遍：分析面板「主力订单流 › 大单与爆仓」一开就是整页（每张卡都在、没有「展开」）
+// → 点「每根」里一根（十字线跳过去、本根卡改读那一根）→「门槛」开表再取消 → ‹ 收掉。另外两条：
+//   · 往下拉：标题行往下拉就关（只有一档，不再落回半屏）。
+//   · 点图上的大单签：一开就是整页、读的是那一根。
 // 状态图（首次打开 / 现货 / 今天没爆仓 / 数据停了）用 DEBUG 钩子 `KANPAN_TEST_BIGTRADE_STATE` 钉住。
 // 截图写进 `docs/acceptance/大单与爆仓-手机-2026-10-08/iOS-*.png`。
 @MainActor
@@ -58,11 +58,11 @@ final class BigTradeSheetUITests: KanpanUICase {
     expectExists(el("bigtrade.hero"), Self.long, "本根卡没出来（一直是骨架）")
   }
 
-  private func goFull() {
-    let hint = el("bigtrade.hint")
-    expectExists(hint, Self.short, "半屏底下没有「上拉看每根 · 价位 · 24 小时爆仓」")
-    hint.tap()
-    expectExists(el("bigtrade.columns"), Self.short, "上拉后没有「每根」卡")
+  /// 一开就是整页：「每根」「价位」「门槛」都在，没有半屏的「展开」。
+  private func expectAllCards() {
+    expectExists(el("bigtrade.columns"), Self.short, "一打开没有「每根」卡")
+    expectExists(el("bigtrade.ladder"), Self.short, "一打开没有「价位」卡")
+    XCTAssertFalse(el("bigtrade.hint").exists, "还留着半屏的「展开」")
   }
 
   private func closeSheet() {
@@ -74,15 +74,13 @@ final class BigTradeSheetUITests: KanpanUICase {
 
   // MARK: 主流程
 
-  func testHalfFullPickBarThresholdBack() {
+  func testOpenFullPickBarThresholdBack() {
     openFromPanel()
     waitForHero()
     XCTAssertTrue((heroTitle.label).hasPrefix("本根"), "刚打开该读正在走那根，读的是「\(heroTitle.label)」")
-    shot("flow-1-half")
-
-    goFull()
-    expectExists(el("bigtrade.ladder"), Self.short, "全屏没有「价位」卡")
-    shot("flow-2-full")
+    expectAllCards()
+    XCTAssertGreaterThan(sheet.frame.height, windowFrame.height * 0.8, "弹层该一开就是整页")
+    shot("flow-1-open")
 
     // 点「每根」靠右的一根：十字线落过去，本根卡改读「该根 hh:mm」。
     let chart = el("bigtrade.columns.chart")
@@ -90,9 +88,10 @@ final class BigTradeSheetUITests: KanpanUICase {
     chart.coordinate(withNormalizedOffset: CGVector(dx: 0.86, dy: 0.5)).tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true },
                   "点了「每根」里的一根，图上没出十字线")
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.heroTitle.label.hasPrefix("该根 ") },
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.heroTitle.label.contains(":") },
                   "点了一根，本根卡标题还是「\(heroTitle.label)」")
-    XCTAssertEqual(el("bigtrade.hero.right").label, "点图回到本根")
+    // 十字线落在一根上时右边只写周期（不再有「点图回到本根」这类说明）。
+    XCTAssertEqual(el("bigtrade.hero.right").label, "1 分钟")
     shot("flow-3-pick-bar")
 
     // 「门槛」开那张表，取消回来弹层还在。
@@ -107,34 +106,20 @@ final class BigTradeSheetUITests: KanpanUICase {
     closeSheet()
   }
 
-  // MARK: 十字线联动
+  // MARK: 往下拉
 
-  func testCrosshairDrivesHeroThenFadesBack() {
+  func testPullDownCloses() {
     openFromPanel()
     waitForHero()
-    XCTAssertTrue(heroTitle.label.hasPrefix("本根"))
-    // 半屏时图上半截还露着：在那儿长按出十字线。
-    let sheetTop = sheet.frame.minY
-    let y = max(chartTop + 40, min(sheetTop - 60, chartTop + (sheetTop - chartTop) * 0.5))
-    let point = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
-      .withOffset(CGVector(dx: windowFrame.width * 0.45, dy: y))
-    point.press(forDuration: 0.8)
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.heroTitle.label.hasPrefix("该根 ") },
-                  "图上按出十字线后本根卡没改读那一根（标题「\(heroTitle.label)」）")
-    shot("crosshair-link")
-    // 收掉十字线（再点一下图），3 秒后淡回本根。
-    point.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false },
-                  "点一下图十字线没收掉")
-    XCTAssertTrue(heroTitle.label.hasPrefix("该根 "), "十字线一收就跳回本根了，该停 3 秒")
-    XCTAssertTrue(waitUntil(timeout: 6) { self.heroTitle.label.hasPrefix("本根") },
-                  "十字线收掉 6 秒了还停在「\(heroTitle.label)」")
-    closeSheet()
+    let title = el("bigtrade.hero")
+    let top = sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
+    top.press(forDuration: 0.05, thenDragTo: top.withOffset(CGVector(dx: 0, dy: windowFrame.height * 0.6)))
+    expectGone(title, Self.short, "从顶上往下拉，弹层没关")
   }
 
   // MARK: 点签
 
-  func testTapSignOpensHalfOnThatBar() throws {
+  func testTapSignOpensFullOnThatBar() throws {
     waitForBars()
     var signs: [[String: Any]] = []
     let ok = waitUntil(timeout: 90, poll: 1) {
@@ -148,8 +133,8 @@ final class BigTradeSheetUITests: KanpanUICase {
       .withOffset(CGVector(dx: sign["x"] as? Double ?? 0, dy: sign["y"] as? Double ?? 0)).tap()
     expectExists(sheet, Self.short, "点了大单签没开弹层")
     waitForHero()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.heroTitle.label.hasPrefix("该根 ") || self.heroTitle.label.hasPrefix("本根") })
-    XCTAssertTrue(el("bigtrade.hint").exists, "点签该开在半屏")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.heroTitle.label.contains(":") || self.heroTitle.label.hasPrefix("本根") })
+    expectAllCards()
     shot("flow-0-sign-tap")
     closeSheet()
   }
@@ -169,7 +154,7 @@ final class BigTradeSheetUITests: KanpanUICase {
     leaveSettings()
   }
 
-  func testSkinsHalfAndFull() {
+  func testSkins() {
     for (skin, mode, file) in [("sage", "浅色", "sage-light"), ("sage", "深色", "sage-dark"),
                                ("terra", "浅色", "terra-light"), ("terra", "深色", "terra-dark"),
                                ("classic", "浅色", "classic-light"), ("classic", "深色", "classic-dark")] {
@@ -178,11 +163,9 @@ final class BigTradeSheetUITests: KanpanUICase {
       waitForHero()
       // 爆仓第一次取回来要一下：等它从骨架换成数（取不到时那张卡整张不出，也不再等）。
       _ = waitUntil(timeout: 5) { !self.el("bigtrade.liq").exists || self.el("bigtrade.liqmax").exists || self.el("bigtrade.liq.empty").exists || self.app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "今日最大")).count > 0 }
-      shot("\(file)-half")
-      goFull()
-      shot("\(file)-full")
+      shot(file)
       el("bigtrade.ladder").swipeUp(velocity: .slow)
-      shot("\(file)-full-bottom")
+      shot("\(file)-bottom")
       closeSheet()
     }
   }
@@ -203,17 +186,18 @@ final class BigTradeSheetUITests: KanpanUICase {
     waitForHero()
     XCTAssertTrue(el("bigtrade.subtitle").label.contains("现货"), "现货的副标题没写「现货」：\(el("bigtrade.subtitle").label)")
     XCTAssertFalse(el("bigtrade.liq").exists, "现货不该有爆仓卡")
-    shot("state-spot-half")
-    goFull()
+    expectAllCards()
     XCTAssertFalse(el("bigtrade.liq24").exists, "现货不该有 24 小时爆仓")
-    shot("state-spot-full")
+    shot("state-spot")
     closeSheet()
   }
 
   func testStateLiqEmpty() {
     openFromPanel()
     waitForHero()
-    expectExists(el("bigtrade.liq.empty"), Self.short, "钉在「今天没爆仓」却没出空态")
+    let empty = el("bigtrade.liq.empty")
+    expectExists(empty, Self.short, "钉在「今天没爆仓」却没出空态")
+    XCTAssertEqual(empty.label, "今日无爆仓", "空态只留一句，不带说明")
     shot("state-no-liq")
     closeSheet()
   }
@@ -221,7 +205,7 @@ final class BigTradeSheetUITests: KanpanUICase {
   func testStateStale() {
     openFromPanel()
     waitForHero()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.el("bigtrade.hero.right").label.hasPrefix("数据停在 ") },
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.el("bigtrade.hero.right").label.hasPrefix("数据停于 ") },
                   "钉在「数据停了」标题右边却是「\(el("bigtrade.hero.right").label)」")
     shot("state-stale")
     closeSheet()

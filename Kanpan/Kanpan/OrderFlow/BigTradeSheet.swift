@@ -4,6 +4,9 @@ import KanpanPresentation
 import SwiftUI
 import UIKit
 
+/// 大单与爆仓的用词一律取三端共用的 terms.json（KanpanCore/Terms），这里不写字面文案。
+private typealias BT = BigTradeTerm
+
 // 「大单与爆仓」弹层（2026-10-08，照 docs/原型-手机大单与爆仓-2026-10-08.html 05–12）。
 //
 // 一个功能一个模块：弹层的状态（开没开、停在哪档、十字线看哪根、爆仓账）、纯算的摘要
@@ -12,7 +15,7 @@ import UIKit
 //   · 大单成交分钟账 `OrderFlowLink.trades`（行情流随订单流帧推来；弹层开着时两颗开关都关着也订）；
 //   · 爆仓分钟账 `/liq`（kanpan-api，弹层开着时每 30 秒补一次，现货不取）。
 //
-// 入口两个：点图上的大单签（第一次开半屏，之后只换根），分析面板「主力订单流 › 大单与爆仓」那一行。
+// 入口两个：点图上的大单签（打开即整页，已开着只换根），分析面板「主力订单流 › 大单与爆仓」那一行。
 // 十字线联动：按住 / 落在图上时弹层改读那一根，十字线收掉后再停 3 秒、淡回本根。
 
 // MARK: - 状态
@@ -20,15 +23,12 @@ import UIKit
 @MainActor
 @Observable
 final class BigTradeSheetModel {
-  static let half = PresentationDetent.height(440)
-  static let full = PresentationDetent.height(780)
   /// 换根的那一下多亮 1.2 秒（「每根」条上的那一格）。
   static let highlightSeconds = 1.2
   /// 十字线收掉后还停在那一根多久。
   static let holdSeconds = 3.0
 
   var presented = false
-  var detent: PresentationDetent = BigTradeSheetModel.half
   /// 「门槛」那张表开着。
   var editing = false
   /// 十字线此刻停在主图哪一根（开盘时间）。
@@ -50,10 +50,9 @@ final class BigTradeSheetModel {
   /// 弹层此刻读哪一根：十字线那根，或刚收掉还在停留的那根；nil = 正在走那根。
   var focusT: Int64? { crossT ?? heldT }
 
-  /// 点签 / 点分析面板那一行。第一次开在半屏；已经开着只换根，不动档位。
+  /// 点签 / 点分析面板那一行。一开就是整页；已经开着只换根。
   func open(at t: Int64?) {
     if !presented {
-      detent = Self.half
       openedAt = Date()
       presented = true
     }
@@ -227,11 +226,11 @@ struct BigTradeSummary: Equatable {
         let walls = BigTradeDigest.nearestWalls(orders, mid: price)
         if let w = walls.bid {
           let (r, out) = row(w.price)
-          ladder[r].bidWall = "墙 " + fmtVol(w.usd) + (out ? " · " + fmtPrice(w.price, decimals: decimals) : "")
+          ladder[r].bidWall = BT.buyWall.text + " " + fmtVol(w.usd) + (out ? " · " + fmtPrice(w.price, decimals: decimals) : "")
         }
         if let w = walls.ask {
           let (r, out) = row(w.price)
-          ladder[r].askWall = "墙 " + fmtVol(w.usd) + (out ? " · " + fmtPrice(w.price, decimals: decimals) : "")
+          ladder[r].askWall = BT.sellWall.text + " " + fmtVol(w.usd) + (out ? " · " + fmtPrice(w.price, decimals: decimals) : "")
         }
       }
     }
@@ -273,20 +272,13 @@ struct BigTradeSummary: Equatable {
                            untracked: flow.tracked == false || test == .untracked)
   }
 
-  /// 净额的写法：「净买 +3.30M」/「净卖 −1.2M」。
+  /// 净额的写法：「净买入 +3.30M」/「净卖出 −1.2M」。
   static func netText(_ net: Double, signed: Bool) -> String {
-    let side = net >= 0 ? "净买" : "净卖"
+    let side = net >= 0 ? BT.netBuy.text : BT.netSell.text
     let sign = signed ? (net >= 0 ? "+" : "−") : ""
     return "\(side) \(sign)\(fmtVol(abs(net)))"
   }
 
-  /// 爆仓那一句：哪边被打得更狠。
-  static func liqLine(long: Double, short: Double) -> String {
-    if long + short <= 0 { return "近 1 小时没有爆仓" }
-    if long > short * 1.5 { return "多头被打得更狠" }
-    if short > long * 1.5 { return "空头被打得更狠" }
-    return "多空差不多"
-  }
 }
 
 // MARK: - 分析面板入口
@@ -311,8 +303,8 @@ struct BigTradeEntryMeta: View {
   private var text: String {
     guard let flow = link.trades, let bar = entry.liveBar() else { return "" }
     let s = flow.sum(bar.t0, bar.t1, nowMs: BigTradeSheetModel.nowMs())
-    guard s.total > 0 else { return "本根 暂无大单" }
-    return "本根 " + BigTradeSummary.netText(s.net, signed: true)
+    guard s.total > 0 else { return BT.currentNoBigTrade.text }
+    return BT.currentBar.text + " " + BigTradeSummary.netText(s.net, signed: true)
   }
 }
 
@@ -342,12 +334,10 @@ private struct BigTradeSheetModifier: ViewModifier {
       .sheet(isPresented: Binding(get: { shown }, set: { if !$0 { model.close() } })) {
         BigTradeSheet(market: market, store: store, proxy: proxy)
           .environment(\.panelTheme, theme)
-          .presentationDetents([BigTradeSheetModel.half, BigTradeSheetModel.full], selection: $model.detent)
+          // 一档到底：一开就把每张卡都摆出来，不再半屏 + 上拉。
+          .presentationDetents([.large])
           .presentationDragIndicator(.visible)
           .presentationBackground { LiuliBackdrop(material: LiuliMaterial(theme), lobes: true) }
-          // 半屏时图还能摸：按住看哪根、点签换根，弹层跟着走。
-          .presentationBackgroundInteraction(.enabled(upThrough: BigTradeSheetModel.half))
-          .presentationContentInteraction(.resizes)
           .preferredColorScheme(scheme)
       }
       .onChange(of: shown, initial: true) { _, open in market.setBigTradeSheet(open: open) }
@@ -397,13 +387,13 @@ struct BigTradeSheet: View {
   /// 副标题的几种写法，从长到短：全名 + 「合并」→ 全名 → 后面几家收成「+N」。五家全开（币安 · OKX ·
   /// Coinbase · Bybit · Hyperliquid）时一行放不下，交给 `ViewThatFits` 挑第一种放得下的；读屏念第一种。
   private var subtitles: [String] {
-    let head = (base ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " 现货" : "")
+    let head = (base ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " " + BT.spot.text : "")
     var labels: [String] = []
     for v in link.snapshot?.venues ?? [] where !labels.contains(v.label) { labels.append(v.label) }
     guard !labels.isEmpty else { return [head] }
     let names = head + " · " + labels.joined(separator: " · ")
     guard labels.count > 1 else { return [names] }
-    var out = [names + " 合并", names]
+    var out = [names + " " + BT.merged.text, names]
     for k in stride(from: labels.count - 1, through: 1, by: -1) {
       out.append(head + " · " + labels.prefix(k).joined(separator: " · ") + " +\(labels.count - k)")
     }
@@ -422,7 +412,7 @@ struct BigTradeSheet: View {
       .accessibilityLabel("返回")
       .accessibilityIdentifier("bigtrade.back")
       VStack(alignment: .leading, spacing: 5) {
-        Text("大单与爆仓").font(.scaled(20, .bold, relativeTo: .title3)).foregroundStyle(t.ink)
+        Text(BT.title.text).font(.scaled(20, .bold, relativeTo: .title3)).foregroundStyle(t.ink)
           .accessibilityAddTraits(.isHeader)
         let subs = subtitles
         ViewThatFits(in: .horizontal) {
@@ -435,7 +425,7 @@ struct BigTradeSheet: View {
       }
       Spacer(minLength: Space.s)
       Button { Haptics.tap(); model.editing = true } label: {
-        Text("门槛").font(TypeScale.controlOn).foregroundStyle(t.amber)
+        Text(BT.threshold.text).font(TypeScale.controlOn).foregroundStyle(t.amber)
           .padding(.horizontal, Space.m).padding(.vertical, 7)
           .background(Capsule().fill(m.pane))
           .overlay(Capsule().strokeBorder(m.cardEdge, lineWidth: LiuliMaterial.hairline))
@@ -453,27 +443,16 @@ struct BigTradeSheet: View {
   // MARK: 页
 
   @ViewBuilder private func page(nowMs: Int64, now: Date) -> some View {
-    let full = model.detent == BigTradeSheetModel.full
     let summary = makeSummary(nowMs: nowMs, now: now)
     ScrollView {
       VStack(spacing: 10) {
         if let summary {
           hero(summary)
-          if let liq = summary.liq { liqCard(liq, full: full, muted: summary.muted) }
-          if full {
-            columnsCard(summary)
-            ladderCard(summary)
-            if let liq = summary.liq, !liq.loading { liq24Card(liq, summary: summary) }
-            thresholdRow
-          } else {
-            Button { withAnimation(spring) { model.detent = BigTradeSheetModel.full } } label: {
-              Text("上拉看每根 · 价位 · 24 小时爆仓").font(TypeScale.caption).foregroundStyle(t.ink3)
-                .frame(maxWidth: .infinity, minHeight: Hit.min)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("bigtrade.hint")
-          }
+          if let liq = summary.liq { liqCard(liq, muted: summary.muted) }
+          columnsCard(summary)
+          ladderCard(summary)
+          if let liq = summary.liq, !liq.loading { liq24Card(liq, summary: summary) }
+          thresholdRow
         } else {
           skeleton
         }
@@ -485,7 +464,6 @@ struct BigTradeSheet: View {
     .scrollBounceBehavior(.basedOnSize)
   }
 
-  private var spring: Animation? { reduceMotion ? nil : .spring(duration: 0.28, bounce: 0.14) }
 
   private func makeSummary(nowMs: Int64, now: Date) -> BigTradeSummary? {
     if BigTradeSheetTestState.current == .loading { return nil }
@@ -554,13 +532,12 @@ struct BigTradeSheet: View {
   private func hero(_ s: BigTradeSummary) -> some View {
     let bar = s.windows.bar
     let focused = model.focusT != nil
-    let title = focused ? "该根 " + time(s.barT) : "本根"
+    let title = focused ? time(s.barT) : BT.currentBar.text
     let right: String = {
       switch s.freshness {
-      case .stale(let last): return "数据停在 " + time(last, step: 60_000)
+      case .stale(let last): return BT.staleSince.fill(["t": time(last, step: 60_000)])
       default:
-        if model.crossT != nil { return "点图回到本根" }
-        return market.interval.display + (s.live ? " · 还在走" : "")
+        return market.interval.display
       }
     }()
     let up = s.muted ? t.ink3 : t.up, down = s.muted ? t.ink3 : t.down
@@ -569,8 +546,7 @@ struct BigTradeSheet: View {
          rightID: "bigtrade.hero.right")
       if bar.total <= 0 {
         VStack(spacing: 6) {
-          Text("这根还没有大单").font(TypeScale.bodyEmph).foregroundStyle(t.ink)
-          Text("门槛以上的成交一出现就在这里").font(TypeScale.footnote).foregroundStyle(t.ink3)
+          Text(BT.noBigTrade.text).font(TypeScale.bodyEmph).foregroundStyle(t.ink)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Space.xs)
@@ -580,12 +556,12 @@ struct BigTradeSheet: View {
         HStack(alignment: .firstTextBaseline) {
           HStack(alignment: .firstTextBaseline, spacing: 5) {
             amount(bar.buyUsd, color: up, size: 22)
-            if let c = bar.buyCount { Text("买 \(c) 笔").font(TypeScale.caption2Emph).foregroundStyle(t.ink3) }
+            if let c = bar.buyCount { Text(BT.buyCount.fill(["n": "\(c)"])).font(TypeScale.caption2Emph).foregroundStyle(t.ink3) }
           }
           Spacer(minLength: Space.s)
           HStack(alignment: .firstTextBaseline, spacing: 5) {
             amount(bar.sellUsd, color: down, size: 22)
-            if let c = bar.sellCount { Text("卖 \(c) 笔").font(TypeScale.caption2Emph).foregroundStyle(t.ink3) }
+            if let c = bar.sellCount { Text(BT.sellCount.fill(["n": "\(c)"])).font(TypeScale.caption2Emph).foregroundStyle(t.ink3) }
           }
         }
         .accessibilityElement(children: .combine)
@@ -595,12 +571,12 @@ struct BigTradeSheet: View {
           .padding(.top, 10).padding(.bottom, 6)
       }
       Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-        windowRow("近 1 小时", s.windows.hour, muted: s.muted)
-        windowRow("今日", s.windows.today, muted: s.muted)
+        windowRow(BT.hour.text, s.windows.hour, muted: s.muted)
+        windowRow(BT.today.text, s.windows.today, muted: s.muted)
       }
       .padding(.top, bar.total <= 0 ? 6 : 4)
       if s.untracked {
-        Text("这只品种只算打开以后的成交").font(TypeScale.caption).foregroundStyle(t.ink3)
+        Text(BT.untracked.text).font(TypeScale.caption).foregroundStyle(t.ink3)
           .frame(maxWidth: .infinity)
           .padding(.top, 10)
           .accessibilityIdentifier("bigtrade.untracked")
@@ -629,9 +605,9 @@ struct BigTradeSheet: View {
 
   // MARK: 爆仓（薄卡）
 
-  @ViewBuilder private func liqCard(_ liq: BigTradeSummary.Liq, full: Bool, muted: Bool) -> some View {
+  @ViewBuilder private func liqCard(_ liq: BigTradeSummary.Liq, muted: Bool) -> some View {
     card(thin: true, id: "bigtrade.liq") {
-      h5("爆仓", right: "近 1 小时")
+      h5(BT.liq.text, right: BT.hour.text)
       if liq.loading {
         VStack(alignment: .leading, spacing: 10) {
           SkeletonBlock(height: 10, fill: m.well, radius: 5)
@@ -640,8 +616,7 @@ struct BigTradeSheet: View {
         .skeletonPulse()
       } else if liq.today.total <= 0 {
         VStack(spacing: 6) {
-          Text("今天还没有人被打爆").font(TypeScale.bodyEmph).foregroundStyle(t.ink)
-          Text("多空都稳着").font(TypeScale.footnote).foregroundStyle(t.ink3)
+          Text(BT.noLiqToday.text).font(TypeScale.bodyEmph).foregroundStyle(t.ink)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Space.xxs)
@@ -652,35 +627,26 @@ struct BigTradeSheet: View {
         VersusBar(buy: liq.hour.shortUsd, sell: liq.hour.longUsd, height: 10, muted: muted)
           .padding(.top, 2).padding(.bottom, 4)
         HStack(spacing: Space.xs) {
-          Text("空爆 " + fmtVol(liq.hour.shortUsd)).font(TypeScale.caption2Emph).foregroundStyle(up)
+          Text(BT.shortLiq.text + " " + fmtVol(liq.hour.shortUsd)).font(TypeScale.caption2Emph).foregroundStyle(up)
           Spacer(minLength: Space.xs)
-          Text(BigTradeSummary.liqLine(long: liq.hour.longUsd, short: liq.hour.shortUsd))
-            .font(TypeScale.caption2).foregroundStyle(t.ink3)
-          Spacer(minLength: Space.xs)
-          Text("多爆 " + fmtVol(liq.hour.longUsd)).font(TypeScale.caption2Emph).foregroundStyle(down)
+          Text(BT.longLiq.text + " " + fmtVol(liq.hour.longUsd)).font(TypeScale.caption2Emph).foregroundStyle(down)
         }
         .monospacedDigit()
         .accessibilityElement(children: .combine)
         let maxLine = liq.today.max.map { r in
-          Text("今日最大 ").foregroundStyle(t.ink3)
-            + Text((r.maxIsLong ? "多单 " : "空单 ") + fmtVol(r.maxUsd)).fontWeight(.semibold)
+          Text(BT.todayMaxLiq.text + " ").foregroundStyle(t.ink3)
+            + Text((r.maxIsLong ? BT.long : BT.short).text + " " + fmtVol(r.maxUsd)).fontWeight(.semibold)
               .foregroundStyle(muted ? t.ink3 : (r.maxIsLong ? t.down : t.up))
             + Text(" @ " + fmtPrice(r.maxPrice, decimals: market.info.priceDecimals) + " · "
               + time(r.minuteMs, step: 60_000)).foregroundStyle(t.ink3)
         }
-        let dayLine = Text("24h 多爆 ").foregroundStyle(t.ink3)
+        let dayLine = Text(BT.day.text + " " + BT.long.text + " ").foregroundStyle(t.ink3)
           + Text(fmtVol(liq.day.longUsd)).fontWeight(.semibold).foregroundStyle(muted ? t.ink3 : t.ink)
-          + Text(" · 空爆 ").foregroundStyle(t.ink3)
+          + Text(" · " + BT.short.text + " ").foregroundStyle(t.ink3)
           + Text(fmtVol(liq.day.shortUsd)).fontWeight(.semibold).foregroundStyle(muted ? t.ink3 : t.ink)
-        Group {
-          if full {
-            ViewThatFits(in: .horizontal) {
-              HStack { maxLine; Spacer(minLength: Space.s); dayLine }
-              VStack(alignment: .leading, spacing: Space.xs) { maxLine; dayLine }
-            }
-          } else if let maxLine {
-            maxLine
-          }
+        ViewThatFits(in: .horizontal) {
+          HStack { maxLine; Spacer(minLength: Space.s); dayLine }
+          VStack(alignment: .leading, spacing: Space.xs) { maxLine; dayLine }
         }
         .font(TypeScale.caption2).monospacedDigit().lineLimit(1)
         .padding(.top, Space.s)
@@ -696,7 +662,7 @@ struct BigTradeSheet: View {
     let first = s.columns.first?.t, last = s.columns.last?.t
     let midT = s.columns.isEmpty ? nil : s.columns[s.columns.count / 2].t
     return card(id: "bigtrade.columns") {
-      h5("每根", right: "近 \(BigTradeSummary.columnCount) 根 · 点一根十字线就跳过去")
+      h5(BT.perBar.text, right: BT.recentBars.fill(["n": "\(BigTradeSummary.columnCount)"]))
       ColumnsChart(columns: s.columns, selected: selected, muted: s.muted, up: t.up, down: t.down,
                    accent: m.accent, axis: t.ink3, live: s.columns.last.map { _ in !s.muted } ?? false,
                    reduceMotion: reduceMotion) { k in
@@ -724,9 +690,9 @@ struct BigTradeSheet: View {
     let peak = max(s.ladder.map { max($0.buy, $0.sell) }.max() ?? 0, 1)
     let decimals = market.info.priceDecimals
     return card(id: "bigtrade.ladder") {
-      h5("价位", right: "现价上下五档 · 近 2 小时")
+      h5(BT.levels.text, right: BT.levelsRange.fill(["h": "\(BigTradeDigest.ladderWindowMs / 3_600_000)"]))
       if s.ladder.isEmpty {
-        Text("步长还没算出来").font(TypeScale.footnote).foregroundStyle(t.ink3).frame(maxWidth: .infinity)
+        Text("—").font(TypeScale.footnote).foregroundStyle(t.ink3).frame(maxWidth: .infinity)
       } else {
         Grid(horizontalSpacing: Space.s, verticalSpacing: 5) {
           ForEach(Array(s.ladder.enumerated()), id: \.offset) { _, r in
@@ -759,19 +725,19 @@ struct BigTradeSheet: View {
       return f >= liq.timelineStart && k < liq.timeline.count ? k : nil
     }
     return card(id: "bigtrade.liq24") {
-      h5("爆仓", right: "24 小时 · 每格 15 分钟")
+      h5(BT.liq.text, right: BT.day.text)
       LiqTimeline(cells: liq.timeline, focus: focusCell, up: t.up, down: t.down, accent: m.accent, axis: t.ink3,
                   muted: s.muted)
         .frame(height: 64)
       HStack {
-        Text("昨天 " + time(liq.timelineStart, step: 60_000)).foregroundStyle(t.ink3)
+        Text(BT.yesterday.text + " " + time(liq.timelineStart, step: 60_000)).foregroundStyle(t.ink3)
         Spacer(minLength: Space.xs)
-        (Text("多爆 ").foregroundStyle(t.ink3)
+        (Text(BT.long.text + " ").foregroundStyle(t.ink3)
           + Text(fmtVol(liq.day.longUsd)).fontWeight(.semibold).foregroundStyle(s.muted ? t.ink3 : t.down)
-          + Text(" · 空爆 ").foregroundStyle(t.ink3)
+          + Text(" · " + BT.short.text + " ").foregroundStyle(t.ink3)
           + Text(fmtVol(liq.day.shortUsd)).fontWeight(.semibold).foregroundStyle(s.muted ? t.ink3 : t.up))
         Spacer(minLength: Space.xs)
-        Text("现在").foregroundStyle(t.ink3)
+        Text(BT.now.text).foregroundStyle(t.ink3)
       }
       .font(TypeScale.caption2).monospacedDigit().lineLimit(1)
       .padding(.top, Space.s)
@@ -783,11 +749,11 @@ struct BigTradeSheet: View {
     let color = muted ? t.ink3 : (r.maxIsLong ? t.down : t.up)
     let venue = OrderFlowBase.exchanges[r.maxExchange.key] ?? r.maxExchange.key
     return HStack(spacing: Space.m) {
-      Text(r.maxIsLong ? "多" : "空").font(.scaled(13, .bold, relativeTo: .footnote)).foregroundStyle(.white)
+      Text((r.maxIsLong ? BT.longMark : BT.shortMark).text).font(.scaled(13, .bold, relativeTo: .footnote)).foregroundStyle(.white)
         .frame(width: 34, height: 34)
         .background(Circle().fill(muted ? t.ink3 : (r.maxIsLong ? t.candleDown : t.candleUp)))
       VStack(alignment: .leading, spacing: Space.xxs) {
-        Text("今日最大一笔 · " + (r.maxIsLong ? "多单爆仓" : "空单爆仓"))
+        Text(BT.todayMaxLiq.text + " · " + (r.maxIsLong ? BT.longLiq : BT.shortLiq).text)
           .font(.scaled(13, .semibold, relativeTo: .footnote)).foregroundStyle(t.ink)
         Text(time(r.minuteMs, step: 60_000) + " · " + fmtPrice(r.maxPrice, decimals: market.info.priceDecimals)
           + " · " + venue)
@@ -815,11 +781,11 @@ struct BigTradeSheet: View {
   private var thresholdRow: some View {
     Button { Haptics.tap(); model.editing = true } label: {
       HStack(spacing: 10) {
-        Text("门槛").font(.scaled(14, .medium, relativeTo: .subheadline)).foregroundStyle(t.ink2)
+        Text(BT.threshold.text).font(.scaled(14, .medium, relativeTo: .subheadline)).foregroundStyle(t.ink2)
         Text(thresholdText).font(.scaled(14, relativeTo: .subheadline)).monospacedDigit().foregroundStyle(t.ink)
           .lineLimit(1)
         Spacer(minLength: Space.s)
-        Text("改 ›").font(TypeScale.controlOn).foregroundStyle(t.amber)
+        Text("›").font(TypeScale.controlOn).foregroundStyle(t.amber)
       }
       .padding(.vertical, Space.xs)
       .frame(minHeight: Hit.min - 2 * Space.s)
@@ -838,7 +804,7 @@ struct BigTradeSheet: View {
   private var skeleton: some View {
     VStack(spacing: 10) {
       card(id: "bigtrade.skeleton") {
-        h5("本根", right: "第一次打开")
+        h5(BT.currentBar.text, right: nil)
         HStack {
           SkeletonBlock(width: 88, height: 22, fill: m.well, radius: 6)
           Spacer()
@@ -854,7 +820,7 @@ struct BigTradeSheet: View {
       }
       if !spot {
         card(thin: true, id: "bigtrade.liq.skeleton") {
-          h5("爆仓", right: nil)
+          h5(BT.liq.text, right: nil)
           SkeletonBlock(height: 10, fill: m.well, radius: 5).padding(.bottom, 10)
           SkeletonBlock(width: 180, height: 14, fill: m.well)
         }
@@ -1057,7 +1023,7 @@ private struct ColumnsChart: View {
       })
     }
     .accessibilityElement()
-    .accessibilityLabel("每根大单，近 \(columns.count) 根")
+    .accessibilityLabel(BT.barsA11y.fill(["n": "\(columns.count)"]))
     .accessibilityAdjustableAction { dir in
       guard !columns.isEmpty else { return }
       let cur = selected ?? columns.count - 1
@@ -1101,7 +1067,7 @@ private struct LiqTimeline: View {
       }
     }
     .accessibilityElement()
-    .accessibilityLabel("24 小时爆仓，每格 15 分钟")
+    .accessibilityLabel(BT.liqDayA11y.text)
     .accessibilityIdentifier("bigtrade.liq24.chart")
   }
 }

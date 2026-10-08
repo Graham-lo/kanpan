@@ -149,7 +149,7 @@ extension ChartView {
     guard onBigTradeTap != nil, let s = state, let renderer, s.series.count > 0 else { return [] }
     let i = s.crosshair.map { min(max($0.index, 0), s.series.count - 1) } ?? (s.series.count - 1)
     guard let sign = renderer.bigTradeSigns(size: bounds.size).first(where: { $0.index == i }) else { return [] }
-    return [UIAccessibilityCustomAction(name: "打开大单与爆仓") { [weak self] _ in
+    return [UIAccessibilityCustomAction(name: BigTradeTerm.open.text) { [weak self] _ in
       self?.tapBigTrade(sign); return true
     }]
   }
