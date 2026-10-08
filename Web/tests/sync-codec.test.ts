@@ -150,6 +150,71 @@ describe('drawings', () => {
   })
 })
 
+describe('drawings · 扩展样式（style）', () => {
+  const trend: Drawing = { id: 'd1', type: 'trend', pts: [{ t: 1, p: 100 }, { t: 2, p: 110 }], color: '#FF0000', width: 2 }
+  const cloudOf = (body: SyncObject['body']): SyncObject => obj('drawings', drawingId('BTCUSDT', 'd1'), {
+    kind: 'trend', anchors: [{ t: 1, p: 100 }, { t: 2, p: 110 }], color: { value: '#FF0000' }, lineWidth: 2, locked: false,
+    symbol: 'BTCUSDT', market: 'usd_m', venue: 'binance', dash: 'solid', text: '', filled: true, hidden: false, levels: [], ...body,
+  })
+
+  it('编码写清洗过的 style：这把工具不收的键、坏值都丢', () => {
+    const [o] = encodeDrawings({ BTCUSDT: [{ ...trend, style: { extR: true, txtSize: 16, fill: '#FF0000', extL: 'yes' } as never }] }, [])
+    expect(o.body.style).toEqual({ extR: true, txtSize: 16 })
+  })
+
+  it('新对象没有 style 时不写这个键', () => {
+    const [o] = encodeDrawings({ BTCUSDT: [trend] }, [])
+    expect('style' in o.body).toBe(false)
+  })
+
+  it('云端有 style、本机清空了：写 null（服务端当「删掉」）', () => {
+    const [o] = encodeDrawings({ BTCUSDT: [trend] }, [cloudOf({ style: { extR: true } })])
+    expect(o.body.style).toBeNull()
+  })
+
+  it('本机 style 清完为空也按清空算：写 null', () => {
+    const [o] = encodeDrawings({ BTCUSDT: [{ ...trend, style: { fill: '#FF0000' } }] }, [cloudOf({ style: { extR: true } })])
+    expect(o.body.style).toBeNull()
+  })
+
+  it('解码把清洗过的 style 挂到画线上', () => {
+    const d = decodeDrawings([cloudOf({ style: { extR: true, fill: '#00FF00', txtSize: 99 } })], {}).BTCUSDT[0]
+    expect(d.style).toEqual({ extR: true })
+  })
+
+  it('style 不是对象当没有', () => {
+    for (const style of ['x', 1, [true], null]) {
+      const d = decodeDrawings([cloudOf({ style } as SyncObject['body'])], {}).BTCUSDT[0]
+      expect('style' in d).toBe(false)
+    }
+  })
+
+  it('往返：编码出来的装回另一台 style 一样', () => {
+    const mine: Drawing = { ...trend, style: { extR: true, statsPos: 'left', vis: { hour: { on: false, lo: 1, hi: 24 } } } }
+    const [o] = encodeDrawings({ BTCUSDT: [mine] }, [])
+    expect(decodeDrawings([o], {}).BTCUSDT[0].style).toEqual(encodeDrawings({ BTCUSDT: [mine] }, [])[0].body.style)
+  })
+
+  it('style 只差键序：算没改，原样用云端 body', () => {
+    const cloud = cloudOf({ style: { extR: true, txtSize: 16 } })
+    const [o] = encodeDrawings({ BTCUSDT: [{ ...trend, style: { txtSize: 16, extR: true } }] }, [cloud])
+    expect(o.body).toEqual(cloud.body)
+  })
+
+  it('style 变了：只换 style，手机的文字留着', () => {
+    const cloud = cloudOf({ style: { extR: true }, text: '支撑' })
+    const [o] = encodeDrawings({ BTCUSDT: [{ ...trend, text: '支撑', style: { extR: false } }] }, [cloud])
+    expect(o.body.style).toEqual({ extR: false })
+    expect(o.body.text).toBe('支撑')
+  })
+
+  it('云端 style 里有这一版不认的键：本机没改就不动云端那份', () => {
+    const cloud = cloudOf({ style: { extR: true, future: 1 } })
+    const [o] = encodeDrawings({ BTCUSDT: [{ ...trend, style: { extR: true } }] }, [cloud])
+    expect(o.body.style).toEqual({ extR: true, future: 1 })
+  })
+})
+
 describe('alerts', () => {
   const price = makePriceAlert('BTCUSDT', 120000, 110000, { now: 1000 })
   const fund = makeConditionAlert('ETHUSDT', { type: 'funding', side: 'above', rate: '0.0005' }, { now: 1000, webhook: 'https://example.com/h' })

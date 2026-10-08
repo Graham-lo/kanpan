@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Drawing } from '../src/chart/chart'
 import { makeConditionAlert, makeDrawingAlert, makePriceAlert } from '../src/alerts/shape'
-import { OWNED, applyInto, captureInto, mergeFirst, type Prints, type WebState } from '../src/sync/bridge'
+import { OWNED, PC_COLLECTIONS, PREFS_COLLECTION, PREFS_ID, applyInto, captureInto, mergeFirst, type Edited, type Prints, type WebState } from '../src/sync/bridge'
+import { PREFS_COLLECTION as M_PREFS_COLLECTION, PREFS_ID as M_PREFS_ID } from '../src/m/app/drawCodec'
 import { alertToBody, factorySettings } from '../src/sync/codec'
 import { hydrate } from '../src/app/store'
 import type { SubId } from '../src/chart/calc'
 import { Engine } from '../src/sync/engine'
 import { SyncStore } from '../src/sync/store'
-import { emptyArchive } from '../src/sync/types'
+import { COLLECTIONS, emptyArchive } from '../src/sync/types'
+import { LEVEL_TABLE } from '../src/chart/drawSpec'
 import { FakeServer, ctx } from './sync-fake'
 
 const state = (): WebState => ({
@@ -235,5 +237,230 @@ describe('提醒触发（照手机 markFired → 报 → purgeFired，服务端�
     await a.engine.push()
     expect(server.objects.get('alerts:binance/usd_m/BTCUSDT/ph')?.deleted).toBe(false)
     expect(server.objects.get('alerts:binance/usd_m/BTCUSDT/mine')?.deleted).toBe(false)
+  })
+})
+
+// ─── 画线默认样式与模板（drawingPreferences「tools」里的 webStyles/<KIND>、templates/<KIND>） ───
+
+const TOOLS = 'drawingPreferences:tools'
+const prefsState = (over: Partial<WebState> = {}): WebState => ({ ...state(), drawDefaults: {}, drawTemplates: {}, ...over })
+/** 一台拉 drawingPreferences 的「网页」（PC 那份集合清单） */
+function pc(server: FakeServer, s = prefsState()) {
+  const store = new SyncStore(emptyArchive(), 'dev-' + Math.random(), () => server.now)
+  const fp: Prints = {}
+  let initial = true
+  const engine = new Engine(store, server.transport(), OWNED, {
+    capture: () => { if (!initial) captureInto(s, store, ctx, fp) },
+    apply: () => { if (!initial) applyInto(s, store, ctx) },
+  }, PC_COLLECTIONS)
+  return {
+    s, store, fp,
+    async first(edited: Edited = { settings: 0, favorites: 0 }, override = false) {
+      await engine.full()
+      mergeFirst(s, store, ctx, edited, override)
+      initial = false
+      captureInto(s, store, ctx, fp)
+      await engine.push()
+    },
+    async sync() { await engine.push(); await engine.pull(); await engine.push() },
+  }
+}
+/** 手机写的工具偏好（网页不认的那几类键） */
+const phoneTools = { favorites: ['trend'], magnet: true, 'styles/trend': { lineWidth: 2, dash: 'solid', filled: true, levels: [] }, 'variants/trend': 'extended' }
+const lastPush = (server: FakeServer) => server.pushes.flat().filter(o => o.collection === 'drawingPreferences').at(-1)
+
+describe('画线默认样式与模板随账号同步', () => {
+  it('PC 拉的集合里有 drawingPreferences，共用的那份清单不变', () => {
+    expect(PC_COLLECTIONS).toContain('drawingPreferences')
+    expect(COLLECTIONS).not.toContain('drawingPreferences')
+  })
+
+  it('对象 id 和手机网页版、iOS 是同一个', () => {
+    expect([PREFS_COLLECTION, PREFS_ID]).toEqual([M_PREFS_COLLECTION, M_PREFS_ID])
+  })
+
+  it('本机存了默认：推到 webStyles/<KIND>', async () => {
+    const server = new FakeServer()
+    const a = pc(server)
+    await a.first()
+    a.s.drawDefaults = { trend: { color: '#F23645', width: 3, style: { extR: true } } }
+    await a.sync()
+    expect(server.objects.get(TOOLS)!.body['webStyles/trend']).toEqual({ color: '#F23645', width: 3, style: { extR: true } })
+  })
+
+  it('本机存了模板：推到 templates/<KIND>，键照画线本身', async () => {
+    const server = new FakeServer()
+    const a = pc(server)
+    await a.first()
+    a.s.drawTemplates = { trend: [{ name: '红粗', color: '#F23645', width: 3 }] }
+    await a.sync()
+    expect(server.objects.get(TOOLS)!.body['templates/trend']).toEqual([{ name: '红粗', color: { value: '#F23645' }, lineWidth: 3, dash: 'solid' }])
+  })
+
+  it('另一台存的默认与模板：拉下来装进本机', async () => {
+    const server = new FakeServer()
+    const a = pc(server), b = pc(server)
+    await a.first(); await b.first()
+    a.s.drawDefaults = { hline: { color: '#089981', dash: 'dashed' } }
+    a.s.drawTemplates = { rect: [{ name: '框', filled: false }] }
+    await a.sync()
+    await b.sync()
+    expect(b.s.drawDefaults).toEqual({ hline: { color: '#089981', dash: 'dashed' } })
+    expect(b.s.drawTemplates).toEqual({ rect: [{ name: '框', filled: false }] })
+  })
+
+  it('applyInto 报出 prefs 变了', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/trend': { color: '#F23645' } }, deleted: false })
+    const a = pc(server)
+    await a.first()
+    server.now += 1000
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/trend': { color: '#2962FF' } }, deleted: false })
+    await a.store.receive([server.objects.get(TOOLS)!], server.now)
+    expect(applyInto(a.s, a.store, ctx).prefs).toBe(true)
+    expect(a.s.drawDefaults).toEqual({ trend: { color: '#2962FF' } })
+  })
+
+  it('手机的键（favorites / magnet / styles/* / variants/*）不被覆盖，也不出现在网页的操作里', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: structuredClone(phoneTools), deleted: false })
+    const a = pc(server)
+    await a.first()
+    a.s.drawDefaults = { trend: { width: 4 } }
+    await a.sync()
+    const body = server.objects.get(TOOLS)!.body
+    expect(body).toMatchObject(phoneTools)
+    expect(Object.keys(lastPush(server)!.fields)).toEqual(['webStyles/trend'])
+  })
+
+  it('模板删光了写 []', async () => {
+    const server = new FakeServer()
+    const a = pc(server, prefsState({ drawTemplates: { trend: [{ name: 'A', width: 1 }] } }))
+    await a.first()
+    a.s.drawTemplates = {}
+    await a.sync()
+    expect(lastPush(server)!.fields).toEqual({ 'templates/trend': [] })
+    expect(server.objects.get(TOOLS)!.body['templates/trend']).toEqual([])
+  })
+
+  it('默认删掉了发 null', async () => {
+    const server = new FakeServer()
+    const a = pc(server, prefsState({ drawDefaults: { trend: { width: 1 } } }))
+    await a.first()
+    a.s.drawDefaults = {}
+    await a.sync()
+    expect(lastPush(server)!.fields).toEqual({ 'webStyles/trend': null })
+  })
+
+  it('这一版不认的工具（更新版网页存的）原样留着，不替它发 null', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/text': { color: '#F23645' }, 'templates/text': [{ name: 'T' }] }, deleted: false })
+    const a = pc(server)
+    await a.first()
+    a.s.drawDefaults = { trend: { width: 4 } }
+    await a.sync()
+    expect(Object.keys(lastPush(server)!.fields)).toEqual(['webStyles/trend'])
+    expect(server.objects.get(TOOLS)!.body['webStyles/text']).toEqual({ color: '#F23645' })
+  })
+
+  it('没改动时来回不产生任何操作', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { ...structuredClone(phoneTools), 'templates/trend': [{ name: 'A', dash: 'solid', color: { value: '#F23645' } }] }, deleted: false })
+    const a = pc(server, prefsState({ drawDefaults: { hline: { width: 1 } } }))
+    await a.first()
+    const n = server.pushes.length
+    for (const k of Object.keys(a.fp) as (keyof Prints)[]) delete a.fp[k]
+    await a.sync()
+    expect(server.pushes.length).toBe(n)
+    expect(a.store.a.operations).toEqual([])
+  })
+
+  it('本机一样都没有、云端也没有这个对象：不建空对象', async () => {
+    const server = new FakeServer()
+    const a = pc(server)
+    await a.first()
+    expect(server.objects.has(TOOLS)).toBe(false)
+  })
+
+  it('首次对上：云端那个键比本机最后一次改新，用云端的', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/trend': { color: '#F23645' } }, deleted: false })
+    const a = pc(server, prefsState({ drawDefaults: { trend: { color: '#2962FF' } } }))
+    await a.first({ settings: 0, favorites: 0, drawPrefs: server.now - 60e3 })
+    expect(a.s.drawDefaults).toEqual({ trend: { color: '#F23645' } })
+  })
+
+  it('首次对上：本机改得比云端那个键新，留本机的并推上去', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/trend': { color: '#F23645' } }, deleted: false })
+    const a = pc(server, prefsState({ drawDefaults: { trend: { color: '#2962FF' } } }))
+    await a.first({ settings: 0, favorites: 0, drawPrefs: server.now + 60e3 })
+    expect(a.s.drawDefaults).toEqual({ trend: { color: '#2962FF' } })
+    expect(server.objects.get(TOOLS)!.body['webStyles/trend']).toEqual({ color: '#2962FF' })
+  })
+
+  it('首次对上：按键各比各的，云端没有的键留本机的', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/trend': { color: '#F23645' } }, deleted: false })
+    const a = pc(server, prefsState({ drawDefaults: { hline: { width: 1 } }, drawTemplates: { rect: [{ name: '框' }] } }))
+    await a.first({ settings: 0, favorites: 0, drawPrefs: server.now - 60e3 })
+    expect(a.s.drawDefaults).toEqual({ trend: { color: '#F23645' }, hline: { width: 1 } })
+    expect(server.objects.get(TOOLS)!.body).toMatchObject({ 'webStyles/hline': { width: 1 }, 'templates/rectangle': [{ name: '框', dash: 'solid' }] })
+  })
+
+  it('上一次同步的是另一个账号：云端整体覆盖本机的默认与模板', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/trend': { color: '#F23645' } }, deleted: false })
+    const a = pc(server, prefsState({ drawDefaults: { hline: { width: 1 } }, drawTemplates: { rect: [{ name: '框' }] } }))
+    await a.first({ settings: 0, favorites: 0, drawPrefs: server.now + 60e3 }, true)
+    expect(a.s.drawDefaults).toEqual({ trend: { color: '#F23645' } })
+    expect(a.s.drawTemplates).toEqual({})
+  })
+
+  it('模板多到上云时少带了几个：别处改了别的键，本机的那几个不被冲掉，也不反复推', async () => {
+    const server = new FakeServer()
+    const fat = (i: number) => ({ name: 'F' + i, width: 1, style: { levels: LEVEL_TABLE.fib!.levels.map(x => ({ ...x, c: x.c || '#787B86' })), vis: { sec: { on: true, lo: 1, hi: 59 }, min: { on: true, lo: 1, hi: 59 }, hour: { on: true, lo: 1, hi: 24 } } } })
+    const list = Array.from({ length: 16 }, (_, i) => fat(i))
+    const a = pc(server, prefsState({ drawTemplates: { fib: list } }))
+    await a.first()
+    expect((server.objects.get(TOOLS)!.body['templates/fibonacci'] as unknown[]).length).toBeLessThan(16)
+    const cloud = server.objects.get(TOOLS)!
+    server.now += 1000
+    server.put({ ...cloud, body: { ...cloud.body, magnet: true } })
+    const n = server.pushes.length
+    await a.sync()
+    expect(a.s.drawTemplates!.fib).toHaveLength(16)
+    expect(server.pushes.length).toBe(n)
+  })
+
+  it('状态里没有默认与模板两项（精简状态）：不碰云端那份', async () => {
+    const server = new FakeServer()
+    server.put({ collection: 'drawingPreferences', id: 'tools', body: { 'webStyles/trend': { color: '#F23645' } }, deleted: false })
+    const a = pc(server, state())
+    await a.first()
+    expect(a.s.drawDefaults).toBeUndefined()
+    expect(server.pushes.flat().some(o => o.collection === 'drawingPreferences')).toBe(false)
+  })
+})
+
+describe('画线的扩展样式随账号同步', () => {
+  it('一台改了 style，另一台拉到同样的 style', async () => {
+    const server = new FakeServer()
+    const a = browser(server), b = browser(server)
+    await a.first(); await b.first()
+    a.s.drawings.BTCUSDT = [{ ...line('h1', 95000), style: { showPrice: false, txtSize: 18 } }]
+    await a.sync(); await b.sync()
+    expect(b.s.drawings.BTCUSDT[0].style).toEqual({ showPrice: false, txtSize: 18 })
+  })
+
+  it('清掉 style：另一台跟着清', async () => {
+    const server = new FakeServer()
+    const a = browser(server), b = browser(server)
+    await a.first(); await b.first()
+    a.s.drawings.BTCUSDT = [{ ...line('h1', 95000), style: { showPrice: false } }]
+    await a.sync(); await b.sync()
+    a.s.drawings.BTCUSDT = [line('h1', 95000)]
+    await a.sync(); await b.sync()
+    expect(b.s.drawings.BTCUSDT).toEqual([line('h1', 95000)])
   })
 })

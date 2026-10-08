@@ -17,6 +17,7 @@ import { migrateAlert } from '../alerts/shape'
 import { indicatorRuleOk, isIndicatorRule } from '../alerts/indicator'
 import type { Drawing, DrawingType, DrawPoint } from '../chart/chart'
 import { ANCHOR_COUNT, CONTRACT_KIND, WEB_TYPE, defaultLevels, levelsOf, levelsOk, textOk, usesFill, usesLevels, usesText } from '../chart/drawTools'
+import { cleanStyle } from '../chart/drawSpec'
 import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { INTERVALS, type Kind } from '../market/symbols'
 import { MACRO_ALERT_MARKET, MACRO_CN, MACRO_MARKET, MACRO_SYMBOL, MACRO_VENUE, isMacro, syncKeyOf, venueMarketOf } from '../market/macro'
@@ -469,7 +470,7 @@ export const KIND_OF: Partial<Record<DrawingType, string>> = CONTRACT_KIND
 const TYPE_OF: Record<string, DrawingType> = WEB_TYPE
 export const ANCHORS: Record<string, number> = Object.fromEntries(Object.entries(CONTRACT_KIND).map(([t, k]) => [k, ANCHOR_COUNT[t as DrawingType]]))
 /** 网页写进 body 的键（对账用：必须是契约 syncFields 的子集） */
-export const WEB_BODY_KEYS = ['anchors', 'color', 'dash', 'filled', 'hidden', 'kind', 'levels', 'lineWidth', 'locked', 'market', 'symbol', 'text', 'venue'] as const
+export const WEB_BODY_KEYS = ['anchors', 'color', 'dash', 'filled', 'hidden', 'kind', 'levels', 'lineWidth', 'locked', 'market', 'style', 'symbol', 'text', 'venue'] as const
 /** 手机 `Drawing` 的出厂值（Drawing.swift；刻度按种类，见 defaultLevels） */
 export const DRAWING_DEFAULTS = { dash: 'solid', filled: true, hidden: false, text: '', levels: [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as number[] }
 export const WEB_LINE_WIDTH = 2
@@ -483,8 +484,12 @@ function normDrawing(d: Drawing): Json {
     type: d.type, pts: d.pts.map(p => ({ t: p.t, p: p.p })), color: d.color && HEX.test(d.color) ? d.color : null, width: d.width ?? WEB_LINE_WIDTH, dash: d.dash ?? 'solid', locked: !!d.locked,
     // 刻度、填色、文字只比这把工具用得上的（别的种类手机也写，但网页不显示、不改，比了会无谓地来回覆盖）
     levels: usesLevels(d.type) ? levelsOf(d) : null, filled: usesFill(d.type) ? d.filled !== false : null, text: usesText(d.type) ? d.text ?? '' : null,
+    // 扩展样式按这把工具的白名单清洗之后比（same 不看键序）；清完为空和没有是一回事
+    style: styleOf(d),
   }
 }
+/** 一条画线清洗过的扩展样式（TradingView 设置多出来的项）；没有 / 清完为空 → null */
+const styleOf = (d: Drawing): Json => (d.style ? cleanStyle(d.type, d.style) as Json | null : null)
 
 /** 这条云端画线网页管不管得着：币安 U 本位、网页有的种类、没隐藏、锚点数对 */
 export function drawingManaged(o: SyncObject): boolean {
@@ -517,6 +522,9 @@ export function decodeDrawing(o: SyncObject): { symbol: string; d: Drawing } | n
   if (usesLevels(d.type) && levelsOk(b.levels) && b.levels.length) d.levels = [...b.levels]
   if (b.filled === false) d.filled = false
   if (typeof b.text === 'string' && b.text && textOk(b.text)) d.text = b.text
+  // 扩展样式：只有网页写，手机原样带着走；不是对象、清完为空都当没有
+  const style = cleanStyle(d.type, b.style)
+  if (style) d.style = style
   return { symbol: str(b.symbol)!, d }
 }
 
@@ -541,6 +549,10 @@ function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined)
   body.lineWidth = Math.min(6, Math.max(0.5, d.width ?? WEB_LINE_WIDTH))
   body.dash = d.dash ?? 'solid'
   body.locked = !!d.locked
+  // 扩展样式：清完为空时云端那份有就发 null（服务端把它当「删掉」），新对象不写这个键
+  const style = styleOf(d)
+  if (style) body.style = style
+  else if ('style' in body) body.style = null
   const vm = venueMarketOf(symbol)
   body.symbol = symbol; body.market = vm.market; body.venue = vm.venue
   return { collection: 'drawings', id, body, fields: {}, revision: 0, deleted: false, generation: 0 }

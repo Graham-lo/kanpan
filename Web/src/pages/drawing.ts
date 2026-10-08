@@ -16,6 +16,7 @@ import { askNotify } from '../alerts/panel'
 import { $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, closeMenu, type MenuItem } from '../ui/overlay'
 import { ago } from '../util/clock'
+import { applyPreset } from '../chart/drawPreset'
 
 export interface DrawCell { chart: TVChart; el: HTMLElement }
 export interface DrawHost {
@@ -163,15 +164,32 @@ export function onDrawbarContext(e: MouseEvent): void {
 
 // ------------------------------------------------------------ 同族样式、上限
 export const PALETTE = ['#2962FF', '#00BCD4', '#089981', '#4CAF50', '#FFEB3B', '#F59E0B', '#FF9800', '#F23645', '#E91E63', '#9C27B0', '#673AB7', '#787B86', '#131722', '#FFFFFF']
-export function styleFor(t: DrawingType): Partial<Pick<Drawing, 'color' | 'width' | 'dash'>> {
+type NewStyle = Partial<Pick<Drawing, 'color' | 'width' | 'dash' | 'filled' | 'levels' | 'style'>>
+/** 新画一条的样式：这把工具「存为默认」过就照默认（主字段 + 扩展样式，优先于同族记忆与出厂值），
+ *  没有才用同族记住的颜色、粗细、线型 */
+export function styleFor(t: DrawingType): NewStyle {
+  const p = st.drawDefaults[t]
+  if (p) {
+    const d: Drawing = { id: '', type: t, pts: [] }
+    applyPreset(d, p)
+    const out: NewStyle = { color: d.color, width: d.width }
+    if (d.dash) out.dash = d.dash
+    if (d.filled === false) out.filled = false
+    if (d.levels) out.levels = d.levels
+    if (d.style) out.style = d.style
+    return out
+  }
   const s = st.drawStyles[familyOf(t)]
   return s ? { color: s.color, width: s.width, dash: s.dash } : {}
 }
-/** 用同族样式新建一条（右键画水平线、订单流「在这里画线」） */
+/** 用默认 / 同族样式新建一条（右键画水平线、订单流「在这里画线」） */
 export function newDrawing(type: DrawingType, pts: Drawing['pts']): Drawing {
   const s = styleFor(type)
   const d: Drawing = { id: uid(), type, pts, color: s.color || st.drawColor, width: s.width || 2 }
   if (s.dash) d.dash = s.dash
+  if (s.filled === false) d.filled = false
+  if (s.levels) d.levels = s.levels
+  if (s.style) d.style = s.style
   return d
 }
 let lastQuotaToast = 0

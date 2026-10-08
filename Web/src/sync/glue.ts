@@ -14,7 +14,7 @@ import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
 import { allCells, applyChartSettings, applyDrawingsHidden, applyLayoutSet, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
-import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, corePrint, fingerprint, layoutsPrint, mergeFirst, restoreDrawings } from './bridge'
+import { type Applied, type Edited, type Prints, OWNED, PC_COLLECTIONS, PREFS_COLLECTION, adoptNewSettings, applyInto, captureInto, corePrint, fingerprint, layoutsPrint, mergeFirst, prefsPrint, restoreDrawings } from './bridge'
 import { LAYOUTS_FIELD } from '../app/layouts'
 import { refreshCompare } from '../pages/compare'
 import { type Ctx, alertId } from './codec'
@@ -38,8 +38,8 @@ function lsSet(k: string, v: string): void { try { localStorage.setItem(k, v) } 
 // ───────── 本机「最后一次改」的时刻（没登录时也记，首次对上时比谁新） ─────────
 
 function readEdited(): Edited {
-  try { const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0, layouts: v.layouts || 0 } } catch { /* 坏了当没改过 */ }
-  return { settings: 0, favorites: 0, layouts: 0 }
+  try { const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0, layouts: v.layouts || 0, drawPrefs: v.drawPrefs || 0 } } catch { /* 坏了当没改过 */ }
+  return { settings: 0, favorites: 0, layouts: 0, drawPrefs: 0 }
 }
 
 // ───────── 状态适配器 ─────────
@@ -77,10 +77,11 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
     if (r.alerts || r.drawings.size) notifyAlerts()
     // 自选与提醒同一轮变了也要重画自选侧栏（notifyAlerts 只在开着提醒侧栏时重画）
     if (r.favorites) renderPanel()
-    if (r.settings.length || r.favorites || r.alerts || r.drawings.size) save()
+    // 画线默认样式 / 模板（别的电脑存的）：只管以后新画的那几条，界面上没有要重画的，落盘即可
+    if (r.settings.length || r.favorites || r.alerts || r.drawings.size || r.prefs) save()
   } catch (e) { console.error(e) } finally { applying = false }
   const now = fingerprint(st)
-  fp.settings = now.settings; fp.drawings = now.drawings; fp.alerts = now.alerts
+  fp.settings = now.settings; fp.drawings = now.drawings; fp.alerts = now.alerts; fp.prefs = now.prefs
   if (ctx.ready) fp.favorites = now.favorites
   return settleRemoteFires(store, r)
 }
@@ -96,6 +97,7 @@ function settleRemoteFires(store: SyncStore, r: Applied): boolean {
 
 const pc: SyncAdapter = {
   owned: OWNED,
+  collections: PC_COLLECTIONS,
   capture: store => applying ? 0 : captureInto(st, store, ctx, fp, spent, hold()),
   apply: store => refreshUI(store, applyInto(st, store, ctx)),
   mergeFirst(store, override) {
@@ -112,6 +114,8 @@ const pc: SyncAdapter = {
     if (adopted.length) refreshUI(store, { settings: adopted, favorites: false, drawings: new Set(), alerts: false, fired: [] })
     // 本机画线存档读坏过：先把账本里的云端那份并回来，再记账（不然本机的「空」会记成删除）
     if (drawingsSuspect()) { if (refreshUI(store, restoreDrawings(st, store))) rt?.pushSoon(); clearDrawingsSuspect() }
+    // 这份账本还没拉过画线工具偏好（PC 从前不拉这张表）：这一轮马上做一次全量，把云端的默认样式与模板拉下来
+    if (!store.localOf(PREFS_COLLECTION).length) store.a.lastFull = 0
   },
   begin() { fp = {} },
   end() { fp = {}; spent.clear() },
@@ -124,17 +128,19 @@ export function initSync(): void {
   const r = rt = createSyncRuntime(pc)
   // 本机改动时刻：以启动时的样子为底
   // 设置分两块记：指标 / 周期条那些（和手机共用）与布局集（换品种、换周期也算），首次对上时各比各的
-  let base = fingerprint(st), baseCore = corePrint(st), baseLayouts = layoutsPrint(st)
+  // 画线默认样式与模板单独记一个时刻（首次对上时按键比）
+  let base = fingerprint(st), baseCore = corePrint(st), baseLayouts = layoutsPrint(st), basePrefs = prefsPrint(st)
   subscribe(() => {
-    const now = fingerprint(st), core = corePrint(st), lays = layoutsPrint(st)
-    if (!applying && (core !== baseCore || lays !== baseLayouts || now.favorites !== base.favorites)) {
+    const now = fingerprint(st), core = corePrint(st), lays = layoutsPrint(st), prefs = prefsPrint(st)
+    if (!applying && (core !== baseCore || lays !== baseLayouts || now.favorites !== base.favorites || prefs !== basePrefs)) {
       const ed = readEdited()
       if (core !== baseCore) ed.settings = Date.now()
       if (lays !== baseLayouts) ed.layouts = Date.now()
       if (now.favorites !== base.favorites && ctx.ready) ed.favorites = Date.now()
+      if (prefs !== basePrefs) ed.drawPrefs = Date.now()
       lsSet(syncKeys().edited, JSON.stringify(ed))
     }
-    base = now; baseCore = core; baseLayouts = lays
+    base = now; baseCore = core; baseLayouts = lays; basePrefs = prefs
     r.changed()
   })
   // 本机判响的：fire() 先记「已触发」、报完再删，删之前记下来

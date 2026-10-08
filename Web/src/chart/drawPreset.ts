@@ -137,15 +137,32 @@ function decodeTemplate(t: DrawingType, x: unknown): unknown {
 
 export const PREF_ROOTS = ['webStyles', 'templates'] as const
 const isMine = (k: string): boolean => PREF_ROOTS.some(r => k.startsWith(r + '/'))
+/** 服务端的体量上限（sync_validation.rs 的 WEB_STYLE_MAX_BYTES / TEMPLATES_MAX_BYTES，按 UTF-8 字节）：
+ *  超了整条同步操作 400、队列堵住，所以编码时就挡在门外 */
+export const WEB_STYLE_MAX_BYTES = 8192
+export const TEMPLATES_MAX_BYTES = 16384
+const bytes = (v: unknown): number => new TextEncoder().encode(JSON.stringify(v)).length
 
 /** 写回云端对象的 body：别的键（手机的工具偏好）原样留着，这两类按本机重写。
  *  模板清空了写 []（服务端也收 null，但空数组更明白「这把工具没有模板」） */
 export function encodePrefs(defaults: Record<string, DrawPreset>, templates: Record<string, DrawTemplate[]>, prev: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(prev)) if (!isMine(k)) body[k] = v
-  for (const [t, p] of Object.entries(defaults)) { const kind = CONTRACT_KIND[t as DrawingType]; if (kind) body['webStyles/' + kind] = encodeDefault(p) }
+  for (const [t, p] of Object.entries(defaults)) {
+    const kind = CONTRACT_KIND[t as DrawingType]; if (!kind) continue
+    const o = encodeDefault(p)
+    // 扩展样式本身 ≤ 8 KB（cleanStyle），连同主字段超了就不带扩展样式
+    if (bytes(o) > WEB_STYLE_MAX_BYTES) delete o.style
+    body['webStyles/' + kind] = o
+  }
   for (const k of Object.keys(prev)) if (k.startsWith('templates/') && Array.isArray(prev[k]) && (prev[k] as unknown[]).length) body[k] = []
-  for (const [t, l] of Object.entries(templates)) { const kind = CONTRACT_KIND[t as DrawingType]; if (kind && l.length) body['templates/' + kind] = l.map(encodeTemplate) }
+  for (const [t, l] of Object.entries(templates)) {
+    const kind = CONTRACT_KIND[t as DrawingType]; if (!kind || !l.length) continue
+    // 整份超过 16 KB（十几个带整张刻度表的斐波那契模板会到）：从后往前少带几个上云，本机的一个不丢
+    const list = l.map(encodeTemplate)
+    while (list.length > 1 && bytes(list) > TEMPLATES_MAX_BYTES) list.pop()
+    if (bytes(list) <= TEMPLATES_MAX_BYTES) body['templates/' + kind] = list
+  }
   return body
 }
 export function decodePrefs(body: Record<string, unknown> | undefined): { defaults: Record<string, DrawPreset>; templates: Record<string, DrawTemplate[]> } {

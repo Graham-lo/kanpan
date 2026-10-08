@@ -4,8 +4,8 @@ export type Json = null | boolean | number | string | Json[] | { [k: string]: Js
 export type Body = Record<string, Json>
 
 export type Collection = 'settings' | 'favorites' | 'groups' | 'drawings' | 'alerts' | 'drawingPreferences'
-/** 网页版拉取的全部集合，按这个顺序。`drawingPreferences`（手机的画线工具偏好）PC 网页用不上，不拉；
- *  手机网页版的适配器另给一份带它的清单（SyncAdapter.collections） */
+/** 两种网页都拉的集合，按这个顺序（引擎不给清单时的默认）。`drawingPreferences`（画线工具偏好）不在这里：
+ *  PC 网页（sync/bridge 的 PC_COLLECTIONS：网页的默认样式与模板）和手机网页版（SyncAdapter.collections）各自接在后面 */
 export const COLLECTIONS: Collection[] = ['settings', 'favorites', 'groups', 'alerts', 'drawings']
 
 export interface SyncObject {

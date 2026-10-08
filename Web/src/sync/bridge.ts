@@ -8,6 +8,7 @@
  *     · 画线、提醒：取并集；云端已经删掉（墓碑）的那几条不从本机带回去。
  *     · 布局集（chartLayouts）单独比时间：换品种 / 周期只算「动了布局」，不让指标看起来比手机上的新；
  *       云端新时以云端为准，本机多出来的几套接在后面（layouts.mergeBooks），不丢。
+ *     · 画线默认样式与模板（drawingPreferences「tools」里网页那两类键）：按键比「本机最后一次改」和那个键的云端时间戳，谁新用谁。
  *     · 上一次在这台电脑同步的是另一个账号（override）：云端整体覆盖，不把上一个人的东西带进来。
  */
 import type { State } from '../app/store'
@@ -18,19 +19,37 @@ import {
   encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, validSymbol, pausedLineAlerts, seenWhenUndecodable,
 } from './codec'
 import { LAYOUTS_FIELD, cleanBook, liveBook, mergeBooks } from '../app/layouts'
+import { PREF_ROOTS, cleanDefaults, cleanTemplates, decodePrefs, encodePrefs } from '../chart/drawPreset'
+import { CONTRACT_KIND, WEB_TYPE } from '../chart/drawTools'
 import type { Owned, SyncStore } from './store'
-import { type Json, type SyncObject, keyOf, same } from './types'
+import { type Body, type Collection, COLLECTIONS, type Json, type SyncObject, keyOf, same } from './types'
 
-export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings'>>
-export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings' | 'drawDefaults' | 'drawTemplates'>>
+export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts' | 'prefs'
 export type Prints = Partial<Record<Part, string>>
+
+/** 画线工具偏好：和手机、iOS 同一个对象（m/app/drawCodec 的 PREFS_ID、PersonalSyncCodec.drawings 的 "tools"） */
+export const PREFS_COLLECTION = 'drawingPreferences'
+export const PREFS_ID = 'tools'
+/** PC 网页拉的集合：共用的那几张，再加画线工具偏好（网页的默认样式与模板存在里面）。
+ *  手机网页版另给自己的清单（m/app/sync 的 SyncAdapter.collections），COLLECTIONS 本身不动 */
+export const PC_COLLECTIONS: readonly Collection[] = [...COLLECTIONS, PREFS_COLLECTION]
+
+const rootOf = (k: string): string => { const i = k.indexOf('/'); return i < 0 ? k : k.slice(0, i) }
+const prefKey = (k: string): boolean => (PREF_ROOTS as readonly string[]).includes(rootOf(k))
+/** 按路径第一段认领：网页只替 `webStyles/<KIND>`、`templates/<KIND>` 说话，手机的 favorites / magnet / styles/* / variants/* 原样留着 */
+class RootSet extends Set<string> {
+  constructor(private readonly roots: readonly string[]) { super() }
+  override has(k: string): boolean { return this.roots.includes(rootOf(k)) }
+}
 
 /** 每张表网页替它说话的那些键：先前有、这次没有的键，属于这里的才发 null，其余原样带回 */
 export const OWNED: Owned = {
   settings: new Set(SETTINGS_FIELDS),
   favorites: new Set(['symbol', 'market', 'venue', 'groupId', 'order']),
-  drawings: new Set(['kind', 'anchors', 'color', 'lineWidth', 'locked', 'symbol', 'market', 'venue', 'dash', 'filled', 'hidden', 'levels']),
+  drawings: new Set(['kind', 'anchors', 'color', 'lineWidth', 'locked', 'symbol', 'market', 'venue', 'dash', 'filled', 'hidden', 'levels', 'style']),
   alerts: new Set(['kind', 'symbol', 'market', 'drawingID', 'lines', 'condition', 'armedAt', 'once', 'status', 'firedAt', 'firedPrice', 'dueAt', 'reviewID', 'title', 'created', 'note', 'webhook', 'webhookText', 'rule']),
+  drawingPreferences: new RootSet(PREF_ROOTS),
 }
 
 /** 设置里除布局集以外的那几项（指标、周期条、对比……） */
@@ -39,13 +58,81 @@ export const corePrint = (s: WebState): string => JSON.stringify([s.pinned, s.in
 /** 布局集（活数据抄回之后）的指纹 */
 export const layoutsPrint = (s: WebState): string => (s.layouts && s.layout && s.cells ? JSON.stringify(liveBook({ layouts: s.layouts, layout: s.layout, cells: s.cells, active: s.active ?? 0 })) : '')
 
+/** 画线默认样式与模板的指纹（状态里没有这两项时为空串：不碰云端那份） */
+export const prefsPrint = (s: WebState): string => (s.drawDefaults || s.drawTemplates ? JSON.stringify([s.drawDefaults ?? {}, s.drawTemplates ?? {}]) : '')
+
 export function fingerprint(s: WebState): Record<Part, string> {
   return {
     settings: corePrint(s) + layoutsPrint(s) + JSON.stringify(s.chartSettings ?? null),
     favorites: JSON.stringify(s.watch),
     drawings: JSON.stringify(s.drawings),
     alerts: JSON.stringify(s.alerts),
+    prefs: prefsPrint(s),
   }
+}
+
+// ───────── 画线默认样式与模板（drawingPreferences「tools」） ─────────
+
+type Prefs = ReturnType<typeof decodePrefs>
+/** 本机那份（清洗过，和云端解码出来的同一个形状，好比较） */
+const localPrefs = (s: WebState): Prefs => ({ defaults: cleanDefaults(s.drawDefaults), templates: cleanTemplates(s.drawTemplates) })
+/** 一个键单独解码（键不在 = 没有） */
+const decodeKey = (k: string, v: Json | undefined): Prefs => decodePrefs(v === undefined ? {} : { [k]: v })
+
+/** 本机的默认与模板 → 写回「tools」的 body；和云端那份没有差别时返回 null。
+ *  从云端那份出发：手机的键原样留着；网页的键逐个比，意思一样（解码出来相同）的原样用云端那份——
+ *  不因为写法不同（键序、模板里多写的 dash: solid）产生操作，也不替这一版解不开的值（更新版本写的）说话 */
+export function encodePrefsObject(s: WebState, prev: SyncObject | undefined): SyncObject | null {
+  const live = prev && !prev.deleted ? prev.body : null
+  const old: Body = live ?? {}
+  const l = localPrefs(s)
+  if (live && same(decodePrefs(old), l)) return null
+  const body = encodePrefs(l.defaults, l.templates, old) as Body
+  for (const k of new Set([...Object.keys(body), ...Object.keys(old)])) {
+    if (!prefKey(k) || !(k in old)) continue
+    if (same(decodeKey(k, old[k]), decodeKey(k, body[k]))) body[k] = old[k]
+  }
+  if (!live && !Object.keys(body).length) return null
+  return { collection: PREFS_COLLECTION, id: PREFS_ID, body, fields: {}, revision: 0, deleted: false, generation: 0 }
+}
+
+/** 云端那份装进本机（以云端为准）。本机那把工具编码上云就是云端现在这个样子的（模板太多、上云时少带了几个），
+ *  留本机的——不然别处改一下磁吸，这台电脑超出上限的那几个模板就被云端那份冲掉。返回有没有变 */
+function applyPrefs(s: WebState, cloud: SyncObject | undefined): boolean {
+  if (!s.drawDefaults && !s.drawTemplates) return false
+  if (!cloud || cloud.deleted) return false
+  const local = localPrefs(s), next = decodePrefs(cloud.body)
+  const mine = encodePrefs(local.defaults, local.templates, {}) as Body
+  const inSync = (root: string, t: string): boolean => { const k = root + '/' + CONTRACT_KIND[t as keyof typeof CONTRACT_KIND]; return same(decodeKey(k, mine[k]), decodeKey(k, cloud.body[k])) }
+  for (const t of Object.keys(local.defaults)) if (inSync('webStyles', t)) next.defaults[t] = local.defaults[t]
+  for (const t of Object.keys(local.templates)) if (inSync('templates', t)) next.templates[t] = local.templates[t]
+  if (same(next, local)) return false
+  s.drawDefaults = next.defaults; s.drawTemplates = next.templates
+  return true
+}
+
+/** 第一次对上：网页的键逐个比，云端那个键的时间戳不比本机「最后一次改」旧就用云端的（云端删了的跟着删），
+ *  否则留本机的（之后记账推上去）；云端没有的键留本机的。override：整份用云端的（没有就清空） */
+function mergePrefs(s: WebState, cloud: SyncObject | undefined, edited: number, override: boolean): boolean {
+  if (!s.drawDefaults && !s.drawTemplates) return false
+  const body = cloud && !cloud.deleted ? cloud.body : {}
+  const local = localPrefs(s)
+  let next: Prefs
+  if (override) next = decodePrefs(body)
+  else {
+    next = structuredClone(local)
+    const dec = decodePrefs(body)
+    for (const k of new Set([...Object.keys(body), ...Object.keys(cloud?.fields ?? {})])) {
+      const root = rootOf(k), t = WEB_TYPE[k.slice(root.length + 1)]
+      if (!prefKey(k) || !t) continue
+      if (edited > lastTouched(cloud, [k])) continue
+      if (root === 'webStyles') { if (dec.defaults[t]) next.defaults[t] = dec.defaults[t]; else delete next.defaults[t] }
+      else if (dec.templates[t]) next.templates[t] = dec.templates[t]; else delete next.templates[t]
+    }
+  }
+  if (same(next, local)) return false
+  s.drawDefaults = next.defaults; s.drawTemplates = next.templates
+  return true
 }
 
 /** 记账。`ready`：品种表到了没有（没到时分不出自选的类别，不碰自选）。
@@ -64,6 +151,11 @@ export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: b
   }
   if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'), opts)); fp.drawings = now.drawings }
   if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), spent)); fp.alerts = now.alerts }
+  if (now.prefs !== fp.prefs) {
+    const o = now.prefs ? encodePrefsObject(s, store.get(PREFS_COLLECTION, PREFS_ID)) : null
+    if (o) vals.push(o)
+    fp.prefs = now.prefs
+  }
   return store.capture(vals, OWNED)
 }
 
@@ -72,6 +164,8 @@ export interface Applied {
   settings: string[]; favorites: boolean; drawings: Set<string>; alerts: boolean; fired: Alert[]
   /** 云端还有暂停着的画线提醒（老版本「线找不到」时暂停的）：网页已当生效的装进来，要再记一次账推回 active */
   revive?: boolean
+  /** 画线默认样式 / 模板换了（别的电脑存的） */
+  prefs?: boolean
 }
 
 /** 把账本里的云端值装进页面状态（原地改 s）。`all`：不看 unapplied，全部重装 */
@@ -79,6 +173,7 @@ export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boo
   const u = store.a.unapplied
   const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false, fired: [] }
   if (all || u.has('settings')) r.settings = applySettings(s, store.get('settings', SETTINGS_ID), store.a.seen)
+  if ((all || u.has(PREFS_COLLECTION)) && applyPrefs(s, store.get(PREFS_COLLECTION, PREFS_ID))) r.prefs = true
   if ((all || u.has('favorites')) && ctx.ready) {
     const w = decodeFavorites(store.localOf('favorites'), ctx)
     // 本机那几条上不了云的（代号不合规）原样留着
@@ -149,8 +244,8 @@ export function adoptBook(s: WebState, cloud: Json | undefined, seen: Record<str
   return [LAYOUTS_FIELD]
 }
 
-/** 本机「最后一次改」的时刻：设置（指标、周期条……）、自选、布局集各一个 */
-export interface Edited { settings: number; favorites: number; layouts?: number }
+/** 本机「最后一次改」的时刻：设置（指标、周期条……）、自选、布局集、画线默认样式与模板各一个 */
+export interface Edited { settings: number; favorites: number; layouts?: number; drawPrefs?: number }
 
 /** 第一次对上（账本是空的、刚全量拉完）：按规则合并进页面状态，之后正常记账会把本机多出来的推上去 */
 export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, edited: Edited, override: boolean): Applied {
@@ -158,7 +253,7 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   const a = store.a
   // 本机「最后一次改」是本机钟，云端字段时间是服务器钟（op.timestamp = 本机钟 + offset）：先换到服务器钟上再比
   const onServer = (t: number): number => (t > 0 && Number.isFinite(a.offset) ? t + a.offset : t)
-  edited = { settings: onServer(edited.settings), favorites: onServer(edited.favorites), layouts: onServer(edited.layouts ?? 0) }
+  edited = { settings: onServer(edited.settings), favorites: onServer(edited.favorites), layouts: onServer(edited.layouts ?? 0), drawPrefs: onServer(edited.drawPrefs ?? 0) }
   // 设置：云端新（或覆盖）就装云端的；本机新就什么都不装、seen 留空，记账时每个字段都会和云端比一遍
   const cloudSettings = store.get('settings', SETTINGS_ID)
   a.seen = {}
@@ -172,6 +267,8 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
     r.settings.push(...adoptBook(s, body[LAYOUTS_FIELD], a.seen, how))
   }
   r.settings = [...new Set([...reset, ...r.settings])]
+  // 画线默认样式与模板：按键谁新用谁
+  if (mergePrefs(s, store.get(PREFS_COLLECTION, PREFS_ID), edited.drawPrefs ?? 0, override)) r.prefs = true
 
   // 自选
   if (ctx.ready) {
