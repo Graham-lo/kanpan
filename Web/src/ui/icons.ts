@@ -18,6 +18,10 @@ function gridIcon(cols: number, rows: number): string {
   }
   return out
 }
+/** 描边占位：1.6 细线、圆头（新画线工具占位用） */
+const S = (d: string, extra = '', w = 1.6): string => `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" ${extra}/>`
+/** 锚点：实心小圆 */
+const O = (x: number, y: number): string => `<circle cx="${x}" cy="${y}" r="1.9" fill="currentColor"/>`
 const P: Record<string, string> = {
   logo: `<rect x="2" y="2" width="20" height="20" rx="6" fill="var(--accent)"/><path d="M7 16.5V9.2M12 15V6.5M17 13.5v-5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M7 7.2v1M12 16.9v.8M17 15.6v.8M17 6.4v.8" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".55"/>`,
   search: `<circle cx="10.5" cy="10.5" r="6.5" fill="currentColor" ${D}/><path d="M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25a1.25 1.25 0 0 0 1.77-1.77l-4.25-4.24A7.5 7.5 0 0 0 10.5 3Zm0 2.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z" fill="currentColor"/>`,
@@ -98,6 +102,37 @@ const P: Record<string, string> = {
   // K 线回放：两个往回的三角（后一个淡）；跳到起点：一道竖杠挡着一个往回的三角
   replay: `<path d="M11 6.2v11.6a1 1 0 0 1-1.6.8l-7-5.8a1 1 0 0 1 0-1.6l7-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor"/><path d="M21 6.2v11.6a1 1 0 0 1-1.6.8l-7-5.8a1 1 0 0 1 0-1.6l7-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor" ${D}/>`,
   toStart: `<rect x="4.5" y="5" width="3" height="14" rx="1.5" fill="currentColor"/><path d="M19 6.2v11.6a1 1 0 0 1-1.6.8l-7.4-5.8a1 1 0 0 1 0-1.6l7.4-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor"/>`,
+  // ---- 2026-10-08 补全的画线工具：先用简单描边占位（整套图标重画定版后一并换掉，键名 = 画线种类不变）
+  hray: S('M4 12h17') + O(4, 12),
+  extended: S('M2 19L22 5') + O(8, 14.8) + O(16, 9.2),
+  crossLine: S('M3 12h18M12 3v18') + O(12, 12),
+  arrowLine: S('M5 19L19 5M12 5h7v7') + O(5, 19),
+  regression: S('M3 16L21 6M3 20L21 10M3 12L21 2') + O(3, 16) + O(21, 6),
+  pitchfork: S('M4 14l7-8M11 6l9 3M11 6l2 13M11 6l6 11') + O(4, 14) + O(11, 6),
+  gannBox: S('M4 5h16v14H4zM4 5l16 14M4 19L20 5M12 5v14M4 12h16', '', 1.3),
+  gannFan: S('M4 20L20 4M4 20l16-8M4 20l8-16M4 20h16M4 20V4', '', 1.4) + O(4, 20),
+  fibExtension: S('M3 6h18M3 11h18M3 16h18', 'opacity=".55"') + S('M4 19l5-10 5 6') + O(4, 19) + O(9, 9) + O(14, 15),
+  fibChannel: S('M3 15L15 3M6 18L18 6M9 21L21 9') + O(3, 15),
+  fibTimeZone: S('M4 3v18M7 3v18M10 3v18M15 3v18M21 3v18'),
+  fibFan: S('M4 20L20 4M4 20l16-6M4 20l16-11M4 20L14 4') + O(4, 20),
+  xabcd: S('M3 17l4-11 5 8 4-9 5 12M3 17l9-3M7 6l9 0', 'stroke-linejoin="round"') + O(3, 17) + O(21, 17),
+  abcd: S('M3 18l6-12 5 7 7-9', 'stroke-linejoin="round"') + O(3, 18) + O(21, 4),
+  headShoulders: S('M2 17l3-6 3 5 4-11 4 11 3-5 3 6M3 16h18', 'stroke-linejoin="round"'),
+  triangle: S('M12 4l9 16H3z', 'stroke-linejoin="round"') + O(12, 4) + O(3, 20) + O(21, 20),
+  elliottImpulse: S('M2 19l4-8 3 4 5-11 3 6 5-6', 'stroke-linejoin="round"') + O(2, 19) + O(22, 4),
+  elliottCorrection: S('M3 5l6 11 5-6 7 10', 'stroke-linejoin="round"') + O(3, 5) + O(21, 20),
+  ptMeasure: S('M5 5v14M19 5v14M5 12h14M16 9l3 3-3 3M8 9l-3 3 3 3'),
+  priceRange: S('M4 5h16M4 19h16M12 6v12M9 9l3-3 3 3M9 15l3 3 3-3'),
+  dateRange: S('M5 4v16M19 4v16M6 12h12M9 9l-3 3 3 3M15 9l3 3-3 3'),
+  datePriceRange: S('M4 4h16v16H4z', 'opacity=".55"', 1.3) + S('M7 17L17 7M13 7h4v4'),
+  ellipse: `<ellipse cx="12" cy="12" rx="9" ry="6" fill="none" stroke="currentColor" stroke-width="1.6"/>` + O(3, 12) + O(21, 12),
+  curve: S('M3 18C7 4 14 4 21 16') + O(3, 18) + O(21, 16),
+  callout: S('M4 4h16v10H11l-4 5v-5H4z', 'stroke-linejoin="round"') + S('M8 8h8M8 11h5'),
+  priceLabel: S('M3 8h12l5 4-5 4H3z', 'stroke-linejoin="round"') + O(18, 12),
+  flag: S('M6 21V3M6 4h12l-3 4 3 4H6', 'stroke-linejoin="round"'),
+  markerUp: S('M12 4l7 9h-4v7H9v-7H5z', 'stroke-linejoin="round"'),
+  markerDown: S('M12 20l7-9h-4V4H9v7H5z', 'stroke-linejoin="round"'),
+  anchoredVolumeProfile: S('M5 3v18', 'opacity=".55"') + S('M5 6h5M5 10h9M5 14h13M5 18h7') + O(5, 12),
 }
 
 export type IconName = keyof typeof P

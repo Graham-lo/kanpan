@@ -1297,7 +1297,7 @@ function openAlert(price?: number): void {
 export const SHORTCUTS: [string, [string, string][]][] = [
   ['品种与周期', [['直接打字母', '搜索品种'], ['⌘ K', '搜索品种'], ['1 – 9', '栏上钉的第几个周期'], [', 再打数字', '换任意周期（如 7、240、1D、5S）'], ['↑ ↓', '自选里上一只 / 下一只'], ['Home End', '自选列表里：第一只 / 最后一只'], ['空格 Delete', '自选列表里：收藏 / 移出（⌘ Z 撤销）'], ['⇧ ↵', '在搜索里加自选']]],
   ['图表', [['滚轮', '缩放（以光标为中心）'], ['拖动', '平移'], ['← →', '平移一根（⇧ 十根）'], ['拖价格轴', '缩放价格'], ['双击价格轴', '价格回到自动'], ['Alt 0', '重置视图'], ['Alt R', 'K 线回放（空格 播放 / 暂停，Home 跳到起点）'], ['右键', '在这里建提醒、画线、记一笔'], ['/', '指标（对所有图格同时生效）'], ['⇧ T', '图表布局'], ['Alt 1…9', '切到第几套布局'], ['Alt ⇧ W', '开 / 关侧栏']]],
-  ['画线工具', [['Alt T', '趋势线'], ['Alt J', '射线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt ⇧ R', '矩形'], ['Alt F', '斐波那契回撤'], ['双击工具', '连续画（右键或 Esc 退出）'], ['右键', '拿着工具时：放下工具'], ['⇧ 拖', '临时测量']]],
+  ['画线工具', [['Alt T', '趋势线'], ['Alt J', '射线'], ['Alt H', '水平线'], ['Alt V', '垂直线'], ['Alt C', '十字线'], ['Alt ⇧ R', '矩形'], ['Alt F', '斐波那契回撤'], ['双击工具', '连续画（右键或 Esc 退出）'], ['右键', '拿着工具时：放下工具'], ['⇧ 拖', '临时测量']]],
   ['编辑画线', [['⇧ 拖端点', '吸到 45° / 水平 / 竖直'], ['按住 ⌘', '临时反过来用磁吸'], ['⌘ 拖', '复制一条再拖走'], ['⌘ C / ⌘ V', '复制 / 粘贴画线（同一只品种）'], ['← → ↑ ↓', '微移选中的画线（⇧ 10 像素）'], ['Delete', '删除选中的画线'], ['Esc', '取消 / 回到光标'], ['⌘ Z', '撤销'], ['⌘ Y / ⌘ ⇧ Z', '重做'], ['⌘ ⌥ H / ⌃ ⌥ H', '隐藏 / 显示全部画线']]],
   ['其它', [['Alt A', '在现价（或十字线价位）建提醒'], ['Alt N', '记一笔'], ['⌥ S', '保存截图'], ['⇧ F', '全屏'], ['⌥ ↩', '放大这一格 / 还原'], ['?', '这张表']]],
 ]
@@ -1393,7 +1393,7 @@ function onKey(e: KeyboardEvent): void {
     return
   }
   if (e.altKey) {
-    const map: Record<string, DrawingType> = { KeyT: 'trend', KeyJ: 'ray', KeyH: 'hline', KeyV: 'vline', KeyF: 'fib' }
+    const map: Record<string, DrawingType> = { KeyT: 'trend', KeyJ: 'ray', KeyH: 'hline', KeyV: 'vline', KeyF: 'fib', KeyC: 'crossLine' }
     if (e.code === 'KeyR' && e.shiftKey) { e.preventDefault(); selectTool('rect'); return }
     if (e.code === 'KeyW' && e.shiftKey) { e.preventDefault(); togglePanel(); return }
     if (map[e.code]) { e.preventDefault(); selectTool(map[e.code]); return }

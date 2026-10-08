@@ -26,7 +26,8 @@ import { mainOn } from './mainIndicators'
 import { drawMoreMain, pivotPColor } from './overlaysMore'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
 import { AXIS_H, FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
-import { COMPUTED, bbox, dashPattern, drawComputed, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, widenPosition } from './drawTools'
+import { COMPUTED, SNAP_LINE, bbox, dashPattern, drawComputed, fitRegression, handlePixels, hitComputed, levelsOf, moveHandle, placeCount, setDraftEnd, snap45, usesText, widenPosition } from './drawTools'
+import { GEOM, drawGeom, geomHandles, geomOf, hitGeom } from './drawGeom'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 import { detachFlows } from './tradeFlow'
 import { linePriceAt } from '../alerts/shape'
@@ -71,8 +72,14 @@ export function candleBodyPx(spacing: number, pr: number): number {
 }
 
 // ------------------------------------------------------------ 类型
-/** avwap 锚定 VWAP、fvp 固定区间成交量分布、position 多空持仓（几何与画法在 drawTools.ts） */
+/** avwap 锚定 VWAP、fvp 固定区间成交量分布、position 多空持仓（几何与画法在 drawTools.ts）；
+ *  measure 是 ⇧ 拖出来的临时测量（不存、不同步）；ptMeasure 是工具栏上那把「价时测量」（存档、同步成契约的 measure）。
+ *  其余种类与契约 drawing-fields.json 的 kind 同名，几何复用手机网页版的 DrawGeometry（drawGeom.ts 做接入） */
 export type DrawingType = 'trend' | 'ray' | 'hline' | 'vline' | 'rect' | 'fib' | 'measure' | 'avwap' | 'fvp' | 'position'
+  | 'hray' | 'extended' | 'crossLine' | 'arrowLine' | 'channel' | 'regression' | 'pitchfork' | 'gannBox' | 'gannFan'
+  | 'fibExtension' | 'fibChannel' | 'fibTimeZone' | 'fibFan' | 'xabcd' | 'abcd' | 'headShoulders' | 'triangle'
+  | 'elliottImpulse' | 'elliottCorrection' | 'ptMeasure' | 'priceRange' | 'dateRange' | 'datePriceRange'
+  | 'ellipse' | 'curve' | 'note' | 'callout' | 'priceLabel' | 'flag' | 'markerUp' | 'markerDown' | 'anchoredVolumeProfile'
 /** 画线锚点：时间（ms）+ 价格 */
 export interface DrawPoint { t: number; p: number }
 export interface Drawing {
@@ -86,6 +93,12 @@ export interface Drawing {
   locked?: boolean
   /** 价格碰到这条线时提醒（fib / rect / measure 不给） */
   alert?: boolean
+  /** 文字标注 / 气泡标注 / 旗标写的那句话（≤ 60 个字素） */
+  text?: string
+  /** 斐波那契 / 江恩一族的刻度；没有就用这把工具的出厂刻度 */
+  levels?: number[]
+  /** 能填色的形状关掉底色时为 false；没有 = 填 */
+  filled?: boolean
 }
 
 /** 主力订单流的一条大单（价位按步长并档） */
@@ -181,6 +194,8 @@ export interface ChartOptions {
   onWallHover?: (w: Wall | null, clientX?: number, clientY?: number) => void
   onToolDone?: (d: Drawing, keep?: boolean) => void
   onSelectDrawing?: (d: Drawing | null) => void
+  /** 双击带字的画线（文字注释 / 标注框 / 旗标），或刚放下一条：在图上原地改字；at = 字块在画布里的位置 */
+  onEditText?: (d: Drawing, at: { x: number; y: number; w: number; h: number }) => void
   onDrawingsChanged?: () => void
   drawColor?: () => string | null | undefined
   /** 新画一条时的样式（同族工具记住上次改过的颜色、粗细、线型）；给了就不看 drawColor */
@@ -213,13 +228,19 @@ export interface Pane { id: PaneId; y: number; h: number; ticks?: number[] }
 /** 一条画线连同它的标签、提醒点、选中把手整个落在主图之外（拖到看不见的历史里、价格在视野上下）：这一帧不画。
  *  几百条画线的品种（C15 的 BTC 500 条）每次重画都把屏幕外的斐波那契逐级写字，挂机时占主线程约 0.6%。
  *  射线会往外延伸、不判；水平线只看高度；斐波那契的读数写在左端再往左，左边多留 240；测量的读数框在上下 50、宽 200 以内。 */
+const UNBOUNDED = new Set(['ray', 'hray', 'extended', 'crossLine', 'channel', 'pitchfork', 'fibChannel', 'fibFan', 'gannFan',
+  'fibExtension', 'priceRange', 'dateRange', 'fibTimeZone', 'headShoulders', 'regression'])
+const CULL_MARGIN: Record<string, number> = {
+  measure: 200, ptMeasure: 200, datePriceRange: 200, note: 700, callout: 700, flag: 700, priceLabel: 150,
+  xabcd: 40, abcd: 40, elliottImpulse: 40, elliottCorrection: 40, triangle: 40,
+}
 export function offPlot(type: string, pts: XY[], p: Pane, PW: number): boolean {
-  if (!pts.length || type === 'ray') return false
+  if (!pts.length || UNBOUNDED.has(type)) return false
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
   for (const q of pts) { if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y }
   if (![x0, x1, y0, y1].every(Number.isFinite)) return false
-  const m = type === 'measure' ? 200 : 16, left = type === 'fib' ? m + 240 : m
-  if (y1 + m < p.y || y0 - m > p.y + p.h) return true
+  const m = CULL_MARGIN[type] ?? 16, left = type === 'fib' ? m + 240 : m
+  if (type !== 'vline' && (y1 + m < p.y || y0 - m > p.y + p.h)) return true
   if (type === 'hline') return false
   return x1 + m < 0 || x0 - left > PW
 }
@@ -336,6 +357,8 @@ export class TVChart {
   drawings: Drawing[] = []
   tool: DrawingType | null = null
   draft: Drawing | null = null
+  /** 多点工具已经点定的那几点（草稿最后一点跟着鼠标走） */
+  private placed: DrawPoint[] = []
   selected: Drawing | null = null
   magnet = false
   /** 只读：复盘回放里的画线只看不改、也不能新画 */
@@ -1753,10 +1776,11 @@ export class TVChart {
     const c = this.ctx, PW = this.plotW(), col = d.color || '#2962FF'
     if (!d.pts.length) return
     if (drawComputed(this, d, p, r, sel)) return
-    c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = d.dash === 'dotted' ? 'round' : d.dash ? 'butt' : 'round'; c.lineJoin = 'round'
-    if (d.type !== 'fib' && d.type !== 'measure') c.setLineDash(dashPattern(d))
     const pts = d.pts.map(q => this.pt(q, p, r))
     if (offPlot(d.type, pts, p, PW)) return
+    if (drawGeom(this, d, p, r, sel)) return
+    c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = d.dash === 'dotted' ? 'round' : d.dash ? 'butt' : 'round'; c.lineJoin = 'round'
+    if (d.type !== 'fib' && d.type !== 'measure') c.setLineDash(dashPattern(d))
     const a = pts[0], b = pts[1] || pts[0]
     const q0 = d.pts[0], q1 = d.pts[1] || d.pts[0]
     c.beginPath()
@@ -1766,7 +1790,9 @@ export class TVChart {
     else if (d.type === 'vline') { c.moveTo(a.x, p.y); c.lineTo(a.x, p.y + p.h) }
     else if (d.type === 'rect') { c.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)); c.save(); c.fillStyle = hexA(col, .12); c.fill(); c.restore() }
     else if (d.type === 'fib') {
-      const lv = [0, .236, .382, .5, .618, .786, 1], cols = ['#787B86', '#F23645', '#FF9800', '#4CAF50', '#089981', '#00BCD4', '#787B86']
+      // 刻度跟画线走（同步过来的自定义刻度也照画）；颜色按位置轮着用，首尾灰
+      const lv = levelsOf(d), pal = ['#F23645', '#FF9800', '#4CAF50', '#089981', '#00BCD4', '#2962FF', '#9C27B0']
+      const cols = lv.map((L, k) => L === 0 || L === 1 || k === 0 || k === lv.length - 1 ? '#787B86' : pal[(k - 1) % pal.length])
       const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x) + 0
       c.stroke(); c.lineWidth = LINE.band
       lv.forEach((L, k) => {
@@ -1810,9 +1836,10 @@ export class TVChart {
     for (let k = this.drawings.length - 1; k >= 0; k--) {
       const d = this.drawings[k]
       if (!d.pts.length || (this.drawingShown && !this.drawingShown(d))) continue
-      const pts = COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : d.pts.map(q => this.pt(q, p, r)), a = pts[0], b = pts[1] || a
+      const geo = GEOM.has(d.type)
+      const pts = COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : geo ? geomHandles(this, d, p, r) : d.pts.map(q => this.pt(q, p, r)), a = pts[0], b = pts[1] || a
       for (let j = 0; j < pts.length; j++) if (Math.hypot(pts[j].x - x, pts[j].y - y) < 8) return { d, handle: j }
-      let dist = hitComputed(this, d, x, y, p, r) ?? Infinity
+      let dist = geo ? hitGeom(this, d, x, y, p, r) : hitComputed(this, d, x, y, p, r) ?? Infinity
       if (d.type === 'trend') dist = segDist(x, y, a, b)
       else if (d.type === 'ray') dist = segDist(x, y, a, extend(a, b, PW * 3))
       else if (d.type === 'hline') dist = Math.abs(y - a.y)
@@ -2070,11 +2097,13 @@ export class TVChart {
           const sty = this.styleFor(t)
           // 到了每只品种的上限：不新建（页面提示）
           if (t !== 'measure' && this.o.canAdd?.([{ id: '', type: t, pts: [tp, tp, tp], ...sty }]) === false) return
-          if (placeCount(t) === 1) { const d: Drawing = { id: uid(), type: t, pts: [tp], ...sty }; this.drawings.push(d); this.selected = d; this.finishTool(d); return }
+          if (placeCount(t) === 1) { const d: Drawing = { id: uid(), type: t, pts: [tp], ...sty }; this.drawings.push(d); this.selected = d; this.finishTool(d); this.askText(d); return }
           this.draft = { id: uid(), type: t, pts: [tp, { ...tp }], ...sty }
-          setDraftEnd(this.draft, { ...tp })
-          this.drag = { kind: 'place', x0: x, y0: y }
-        } else { this.updateDraft(x, y, e.shiftKey); this.completeDraft() }
+          this.placed = [tp]
+          this.updateDraft(x, y, e.shiftKey)
+        } else this.advanceDraft(x, y, e.shiftKey)
+        // 按下拖出一段再松手也算点了一下（两点工具一拖就成）
+        if (this.draft) this.drag = { kind: 'place', x0: x, y0: y }
         this.dirty = true; return
       }
       if (reg === 'plot' && this._panes) {
@@ -2120,7 +2149,7 @@ export class TVChart {
         d.moved = true
         if (d.hit.handle != null) {
           // ⇧ 拖端点：吸到 0° / 45° / 90°
-          if (e.shiftKey && (dd.type === 'trend' || dd.type === 'ray') && dd.pts.length === 2) now = this.snapTP(dd.pts[1 - d.hit.handle], x, y)
+          if (e.shiftKey && SNAP_LINE.has(dd.type) && dd.pts.length === 2) now = this.snapTP(dd.pts[1 - d.hit.handle], x, y)
           moveHandle(dd, d.hit.handle, now)
         } else {
           dd.pts = this.dragBody(d.orig, d.start, now)
@@ -2189,7 +2218,7 @@ export class TVChart {
       if (d.kind === 'place') {
         const { x, y } = pos(e)
         // 按下拖出一段才松手 = 画完；原地点一下就等第二下
-        if (this.draft && Math.hypot(x - d.x0, y - d.y0) > 5) { this.updateDraft(x, y, e.shiftKey); this.completeDraft() }
+        if (this.draft && Math.hypot(x - d.x0, y - d.y0) > 5) this.advanceDraft(x, y, e.shiftKey)
         this.dirty = true; return
       }
       if (d.kind === 'drawing') { this.o.onDrawDrag?.(false); this.o.onDrawingsChanged?.(); return }
@@ -2207,6 +2236,10 @@ export class TVChart {
     window.addEventListener('blur', () => { this.metaHeld = false }, { signal })
     cv.addEventListener('dblclick', e => {
       const { x, y } = pos(e), reg = this.region(x, y)
+      if (reg === 'plot' && !this.tool && this.editable() && this.o.onEditText) {
+        const hit = this.hitDrawing(x, y)
+        if (hit && usesText(hit.d.type) && !hit.d.locked) { const at = this.textRectOf(hit.d); if (at) { this.o.onEditText(hit.d, at); return } }
+      }
       if (reg === 'price') this.setAuto(true)
       else if (reg === 'time') { this.resetView(); this.emitView() }
       else if (reg.startsWith('sep:')) { this.paneR = null; this.paneLegendKeys.fill(null); this.dirty = true; this.o.onPaneResize?.(null) }
@@ -2253,18 +2286,50 @@ export class TVChart {
     if (s.dash) out.dash = s.dash
     return out
   }
-  /** 草稿的最后一点跟到 (x, y)；⇧ 按着时趋势线 / 射线吸 45° */
+  /** 草稿的最后一点跟到 (x, y)；⇧ 按着时两点直线一族吸 45°。回归通道边画边按圈住的收盘价拟合 */
   private updateDraft(x: number, y: number, shift: boolean): void {
     const d = this.draft
     if (!d || !this._panes) return
-    setDraftEnd(d, shift && (d.type === 'trend' || d.type === 'ray') ? this.snapTP(d.pts[0], x, y) : this.toTP(x, y))
+    const fixed = this.placed.length ? this.placed : [d.pts[0]]
+    const tp = shift && SNAP_LINE.has(d.type) && fixed.length === 1 ? this.snapTP(fixed[0], x, y) : this.toTP(x, y)
+    if (d.type === 'position' || d.type === 'measure') { d.pts = [fixed[0], tp]; setDraftEnd(d, tp); return }
+    if (d.type === 'regression') { d.pts = fitRegression(this.bars, fixed[0], tp) ?? [fixed[0], tp]; return }
+    d.pts = fixed.concat([tp])
+  }
+  /** 点下一点：点齐了就落成一条（回归通道圈住的 K 线不到 3 根时不落、接着等第二点） */
+  private advanceDraft(x: number, y: number, shift: boolean): void {
+    const d = this.draft; if (!d) return
+    this.updateDraft(x, y, shift)
+    const now = d.type === 'regression' ? (this.placed.length ? this.toTP(x, y) : d.pts[0]) : d.pts[d.pts.length - 1]
+    const raw = this.placed.concat([{ ...now }])
+    if (raw.length < placeCount(d.type)) { this.placed = raw; this.updateDraft(x, y, shift); return }
+    if (d.type === 'regression' && d.pts.length < 3) return
+    this.completeDraft()
   }
   private completeDraft(): void {
     const d = this.draft; if (!d) return
-    this.draft = null
+    this.draft = null; this.placed = []
     if (d.type === 'measure') { this.measure = d; this.drawings.push(d); this.finishTool(d, true); return }
     if (d.type === 'position') widenPosition(this, d)
     this.drawings.push(d); this.selected = d; this.finishTool(d)
+    this.askText(d)
+  }
+  /** 刚放下的文字注释 / 标注框 / 旗标：直接开原地改字 */
+  private askText(d: Drawing): void {
+    if (!usesText(d.type) || d.text || !this.o.onEditText) return
+    const at = this.textRectOf(d)
+    if (at) this.o.onEditText(d, at)
+  }
+  /** 这条画线的字块（画布坐标）；没有字块的种类退回第一点 */
+  textRectOf(d: Drawing): { x: number; y: number; w: number; h: number } | null {
+    if (!this._panes) return null
+    const p = this._panes[0], r = this._ranges.main
+    const b = geomOf(this, d, p, r)
+    const box = b?.placed[0]?.box
+    if (box) return { x: box.left, y: box.top, w: box.right - box.left, h: box.bottom - box.top }
+    if (!d.pts.length) return null
+    const q = this.pt(d.pts[0], p, r)
+    return { x: q.x, y: q.y - 9, w: 120, h: 18 }
   }
   /** 从 anchor 到 (x, y) 吸 45° 之后的锚点 */
   private snapTP(anchor: DrawPoint, x: number, y: number): DrawPoint {

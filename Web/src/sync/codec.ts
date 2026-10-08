@@ -16,6 +16,7 @@ import type { Alert, IndState } from '../app/store'
 import { migrateAlert } from '../alerts/shape'
 import { indicatorRuleOk, isIndicatorRule } from '../alerts/indicator'
 import type { Drawing, DrawingType, DrawPoint } from '../chart/chart'
+import { ANCHOR_COUNT, CONTRACT_KIND, WEB_TYPE, defaultLevels, levelsOf, levelsOk, textOk, usesFill, usesLevels, usesText } from '../chart/drawTools'
 import { MAX_SUBS, type IndParams, type SubId } from '../chart/calc'
 import { INTERVALS, type Kind } from '../market/symbols'
 import { MACRO_ALERT_MARKET, MACRO_CN, MACRO_MARKET, MACRO_SYMBOL, MACRO_VENUE, isMacro, syncKeyOf, venueMarketOf } from '../market/macro'
@@ -463,13 +464,14 @@ export function decodeFavorites(all: SyncObject[], ctx: Ctx): Record<Kind, strin
 
 // 网页工具 ↔ 手机 Drawing.Kind 的 rawValue；锚点数必须等于契约 drawing-fields.json 的 anchorCounts（tests/sync-codec 对账）。
 // 多空持仓的三个锚点照手机：入场、目标、止损；固定区间成交量分布两点只用时间；锚定 VWAP 一点只用时间。
-export const KIND_OF: Partial<Record<DrawingType, string>> = { trend: 'trend', ray: 'ray', hline: 'hline', vline: 'vline', rect: 'rectangle', fib: 'fibonacci', avwap: 'anchoredVWAP', fvp: 'fixedVolumeProfile', position: 'position' }
-const TYPE_OF: Record<string, DrawingType> = { trend: 'trend', ray: 'ray', hline: 'hline', vline: 'vline', rectangle: 'rect', fibonacci: 'fib', anchoredVWAP: 'avwap', fixedVolumeProfile: 'fvp', position: 'position' }
-export const ANCHORS: Record<string, number> = { hline: 1, vline: 1, trend: 2, ray: 2, rectangle: 2, fibonacci: 2, anchoredVWAP: 1, fixedVolumeProfile: 2, position: 3 }
+// 种类表与锚点数只存一份（chart/drawTools.ts 的 CONTRACT_KIND / ANCHOR_COUNT，锚点数取自手机 DrawKind.pointCount）
+export const KIND_OF: Partial<Record<DrawingType, string>> = CONTRACT_KIND
+const TYPE_OF: Record<string, DrawingType> = WEB_TYPE
+export const ANCHORS: Record<string, number> = Object.fromEntries(Object.entries(CONTRACT_KIND).map(([t, k]) => [k, ANCHOR_COUNT[t as DrawingType]]))
 /** 网页写进 body 的键（对账用：必须是契约 syncFields 的子集） */
-export const WEB_BODY_KEYS = ['anchors', 'color', 'dash', 'filled', 'hidden', 'kind', 'levels', 'lineWidth', 'locked', 'market', 'symbol', 'venue'] as const
-/** 手机 `Drawing` 的出厂值（Drawing.swift） */
-export const DRAWING_DEFAULTS = { dash: 'solid', filled: true, hidden: false, levels: [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as number[] }
+export const WEB_BODY_KEYS = ['anchors', 'color', 'dash', 'filled', 'hidden', 'kind', 'levels', 'lineWidth', 'locked', 'market', 'symbol', 'text', 'venue'] as const
+/** 手机 `Drawing` 的出厂值（Drawing.swift；刻度按种类，见 defaultLevels） */
+export const DRAWING_DEFAULTS = { dash: 'solid', filled: true, hidden: false, text: '', levels: [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as number[] }
 export const WEB_LINE_WIDTH = 2
 const HEX = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/
 
@@ -477,7 +479,11 @@ export const drawingId = (symbol: string, id: string): string => prefixOf(symbol
 
 /** 网页画线的规范形（比对用） */
 function normDrawing(d: Drawing): Json {
-  return { type: d.type, pts: d.pts.map(p => ({ t: p.t, p: p.p })), color: d.color && HEX.test(d.color) ? d.color : null, width: d.width ?? WEB_LINE_WIDTH, dash: d.dash ?? 'solid', locked: !!d.locked }
+  return {
+    type: d.type, pts: d.pts.map(p => ({ t: p.t, p: p.p })), color: d.color && HEX.test(d.color) ? d.color : null, width: d.width ?? WEB_LINE_WIDTH, dash: d.dash ?? 'solid', locked: !!d.locked,
+    // 刻度、填色、文字只比这把工具用得上的（别的种类手机也写，但网页不显示、不改，比了会无谓地来回覆盖）
+    levels: usesLevels(d.type) ? levelsOf(d) : null, filled: usesFill(d.type) ? d.filled !== false : null, text: usesText(d.type) ? d.text ?? '' : null,
+  }
 }
 
 /** 这条云端画线网页管不管得着：币安 U 本位、网页有的种类、没隐藏、锚点数对 */
@@ -508,6 +514,9 @@ export function decodeDrawing(o: SyncObject): { symbol: string; d: Drawing } | n
   d.width = w ?? WEB_LINE_WIDTH
   if (b.dash === 'dashed' || b.dash === 'dotted') d.dash = b.dash
   if (b.locked === true) d.locked = true
+  if (usesLevels(d.type) && levelsOk(b.levels) && b.levels.length) d.levels = [...b.levels]
+  if (b.filled === false) d.filled = false
+  if (typeof b.text === 'string' && b.text && textOk(b.text)) d.text = b.text
   return { symbol: str(b.symbol)!, d }
 }
 
@@ -522,7 +531,10 @@ function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined)
     if (was && was.symbol === symbol && same(normDrawing(was.d), normDrawing(d))) return { ...live, body: { ...live.body } }
   }
   const body: Body = { ...(live?.body ?? {}) }
-  if (!live) Object.assign(body, { dash: DRAWING_DEFAULTS.dash, filled: DRAWING_DEFAULTS.filled, hidden: DRAWING_DEFAULTS.hidden, levels: [...DRAWING_DEFAULTS.levels] })
+  if (!live) Object.assign(body, { dash: DRAWING_DEFAULTS.dash, filled: DRAWING_DEFAULTS.filled, hidden: DRAWING_DEFAULTS.hidden, text: DRAWING_DEFAULTS.text, levels: defaultLevels(d.type) })
+  if (d.levels && levelsOk(d.levels)) body.levels = [...d.levels]
+  body.filled = d.filled !== false
+  if (usesText(d.type) || d.text) body.text = d.text && textOk(d.text) ? d.text : ''
   body.kind = kind
   body.anchors = d.pts.map(p => ({ t: p.t, p: p.p }))
   body.color = d.color && HEX.test(d.color) ? { value: d.color } : null

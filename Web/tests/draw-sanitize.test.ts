@@ -18,6 +18,17 @@ const GOOD: Drawing[] = [
   { id: 'av', type: 'avwap', pts: [P(1e12, 100)], color: '#00BCD4', width: 2 },
   { id: 'fv', type: 'fvp', pts: two, color: '#787B86', width: 2 },
   { id: 'ps', type: 'position', pts: [P(1e12, 100), P(1e12 + 36e5, 110), P(1e12 + 36e5, 95)], width: 2 },
+  // 2026-10-08 补全的 31 种：锚点数照契约 anchorCounts 手写一遍（不从 ANCHOR_COUNT 取，取了就验不出漏登记）
+  ...(Object.entries({
+    hray: 1, extended: 2, crossLine: 1, arrowLine: 2, channel: 3, regression: 3, pitchfork: 3, gannBox: 2, gannFan: 2,
+    fibExtension: 3, fibChannel: 3, fibTimeZone: 2, fibFan: 2, xabcd: 5, abcd: 4, headShoulders: 7, triangle: 3,
+    elliottImpulse: 6, elliottCorrection: 4, ptMeasure: 2, priceRange: 2, dateRange: 2, datePriceRange: 2,
+    ellipse: 2, curve: 3, priceLabel: 1, markerUp: 1, markerDown: 1, anchoredVolumeProfile: 1,
+  }) as [Drawing['type'], number][]).map(([type, n]): Drawing => ({ id: type, type, pts: Array.from({ length: n }, (_, i) => P(1e12 + i * 36e5, 100 + i)), color: '#2962FF', width: 2 })),
+  { id: 'nt', type: 'note', pts: [P(1e12, 100)], text: '突破回踩' },
+  { id: 'co', type: 'callout', pts: two, text: '这里减仓', filled: false },
+  { id: 'fl', type: 'flag', pts: [P(1e12, 100)], text: '' },
+  { id: 'fe', type: 'fibExtension', pts: [P(1e12, 100), P(1e12 + 36e5, 110), P(1e12 + 72e5, 104)], levels: [0, 0.618, 1, 1.618] },
 ]
 const one = (raw: unknown) => sanitizeDrawings({ BTCUSDT: [raw] })
 
@@ -27,7 +38,7 @@ describe('画线读档清洗', () => {
     expect(r.damaged).toBe(false)
     expect(r.drawings.BTCUSDT).toEqual(GOOD)
     // 白名单与类型定义一一对应（新加一把工具忘了登记锚点数，这里会少一种）
-    expect([...DRAWING_TYPES].sort()).toEqual(GOOD.map(d => d.type).sort())
+    expect([...DRAWING_TYPES].sort()).toEqual([...new Set(GOOD.map(d => d.type))].sort())
     for (const d of GOOD) expect(d.pts.length).toBe(ANCHOR_COUNT[d.type])
   })
 

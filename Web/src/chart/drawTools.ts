@@ -17,15 +17,50 @@ import { vpvr, type Vpvr } from './overlays'
 import { drawProfile, profileRows } from './volumeProfile'
 import { vwapWeight } from './indicators'
 import type { DrawPoint, Drawing, DrawingType, Pane, PriceRange, TVChart } from './chart'
+import { DRAWING_TEXT_LIMIT, DrawKind, type DrawingKind } from '../m/chart/draw/drawing'
+import { graphemeCount } from '../m/chart/draw/fmt'
+import { fittedRegression } from '../m/chart/draw/regression'
+import type { BarSeries } from '../m/chart/series'
+import { GEOM, geomBox, geomHandles } from './drawGeom'
 
 export interface XY { x: number; y: number }
 type Ctx = CanvasRenderingContext2D
 
-/** 这三把是算出来的，画法与命中在这里 */
-export const COMPUTED: ReadonlySet<DrawingType> = new Set<DrawingType>(['avwap', 'fvp', 'position'])
+/** 这几把是算出来的，画法与命中在这里（锚定成交量分布与固定区间的同一套画法，右端一直到最新一根） */
+export const COMPUTED: ReadonlySet<DrawingType> = new Set<DrawingType>(['avwap', 'fvp', 'position', 'anchoredVolumeProfile'])
 
-/** 每种画线的锚点数（全部种类的白名单就是它的键；读档清洗按它认：不认识的种类、锚点数不对的丢掉） */
-export const ANCHOR_COUNT: Readonly<Record<DrawingType, number>> = { trend: 2, ray: 2, hline: 1, vline: 1, rect: 2, fib: 2, measure: 2, avwap: 1, fvp: 2, position: 3 }
+/** 网页种类 ↔ 契约 drawing-fields.json 的 kind（= 手机 Drawing.Kind 的 rawValue）。临时测量（measure）不存、不同步，不在里面；
+ *  工具栏那把「价时测量」在网页叫 ptMeasure，同步成契约的 measure */
+export const CONTRACT_KIND: Readonly<Partial<Record<DrawingType, DrawingKind>>> = {
+  trend: 'trend', ray: 'ray', hline: 'hline', vline: 'vline', rect: 'rectangle', fib: 'fibonacci',
+  avwap: 'anchoredVWAP', fvp: 'fixedVolumeProfile', position: 'position',
+  hray: 'hray', extended: 'extended', crossLine: 'crossLine', arrowLine: 'arrowLine', channel: 'channel', regression: 'regression',
+  pitchfork: 'pitchfork', gannBox: 'gannBox', gannFan: 'gannFan', fibExtension: 'fibExtension', fibChannel: 'fibChannel',
+  fibTimeZone: 'fibTimeZone', fibFan: 'fibFan', xabcd: 'xabcd', abcd: 'abcd', headShoulders: 'headShoulders', triangle: 'triangle',
+  elliottImpulse: 'elliottImpulse', elliottCorrection: 'elliottCorrection', ptMeasure: 'measure', priceRange: 'priceRange',
+  dateRange: 'dateRange', datePriceRange: 'datePriceRange', ellipse: 'ellipse', curve: 'curve', note: 'note', callout: 'callout',
+  priceLabel: 'priceLabel', flag: 'flag', markerUp: 'markerUp', markerDown: 'markerDown', anchoredVolumeProfile: 'anchoredVolumeProfile',
+}
+/** 契约 kind → 网页种类 */
+export const WEB_TYPE: Readonly<Record<string, DrawingType>> = Object.fromEntries(Object.entries(CONTRACT_KIND).map(([t, k]) => [k, t as DrawingType]))
+/** 手机那套种类上的问答（刻度、填色、文字），网页种类先换成契约 kind 再问；临时测量一律 false */
+const mk = (t: DrawingType): DrawingKind | null => CONTRACT_KIND[t] ?? null
+export const usesLevels = (t: DrawingType): boolean => { const k = mk(t); return !!k && DrawKind.usesLevels(k) }
+export const usesFill = (t: DrawingType): boolean => { const k = mk(t); return !!k && DrawKind.usesFill(k) }
+export const usesText = (t: DrawingType): boolean => { const k = mk(t); return !!k && DrawKind.usesText(k) }
+/** 这把工具的出厂刻度（斐波那契回撤 0 … 1；扩展、时区、扇形、江恩各有各的） */
+export const defaultLevels = (t: DrawingType): number[] => { const k = mk(t); return k ? DrawKind.defaultLevels(k) : [] }
+export const levelsOf = (d: Pick<Drawing, 'type' | 'levels'>): number[] => d.levels ?? defaultLevels(d.type)
+/** 文字最多 60 个字素（和手机 DRAWING_TEXT_LIMIT、服务端同一口径） */
+export const TEXT_LIMIT = DRAWING_TEXT_LIMIT
+export const textOk = (v: unknown): v is string => typeof v === 'string' && (v.length <= TEXT_LIMIT || graphemeCount(v) <= TEXT_LIMIT)
+export const levelsOk = (v: unknown): v is number[] => Array.isArray(v) && v.length <= 24 && v.every(x => typeof x === 'number' && Number.isFinite(x) && Math.abs(x) <= 10)
+
+/** 每种画线的锚点数（全部种类的白名单就是它的键；读档清洗按它认：不认识的种类、锚点数不对的丢掉）。
+ *  契约里有的种类照契约 anchorCounts（手机 DrawKind.pointCount），临时测量 2 */
+export const ANCHOR_COUNT: Readonly<Record<DrawingType, number>> = Object.fromEntries(
+  (Object.entries(CONTRACT_KIND) as [DrawingType, DrawingKind][]).map(([t, k]) => [t, DrawKind.pointCount(k)]).concat([['measure', 2]]),
+) as Record<DrawingType, number>
 export const DRAWING_TYPES: ReadonlySet<DrawingType> = new Set(Object.keys(ANCHOR_COUNT) as DrawingType[])
 export const isDrawingType = (t: unknown): t is DrawingType => typeof t === 'string' && DRAWING_TYPES.has(t as DrawingType)
 
@@ -61,16 +96,33 @@ export function cleanDrawing(raw: unknown): Drawing | null {
   if ('dash' in x && x.dash !== 'dashed' && x.dash !== 'dotted') delete d.dash
   if ('locked' in x && typeof x.locked !== 'boolean') delete d.locked
   if ('alert' in x && typeof x.alert !== 'boolean') delete d.alert
+  if ('text' in x && !textOk(x.text)) delete d.text
+  if ('levels' in x && !levelsOk(x.levels)) delete d.levels
+  if ('filled' in x && typeof x.filled !== 'boolean') delete d.filled
   return d
 }
 
-/** 放一条线要点几下（两点的也可以按下拖到位松手） */
-export function placeCount(t: DrawingType): 1 | 2 { return t === 'hline' || t === 'vline' || t === 'avwap' ? 1 : 2 }
+/** 放一条线要点几下（多点的也可以按下拖到位松手当一下）：多空持仓点入场、目标两下，止损按 1R 对称自动放；
+ *  回归通道圈起止两下，第三点（通道宽）由收盘价拟合；其余照锚点数 */
+export function placeCount(t: DrawingType): number {
+  if (t === 'position' || t === 'regression' || t === 'measure') return 2
+  return ANCHOR_COUNT[t] ?? 2
+}
 
-/** 草稿第二点跟着鼠标走；持仓的第三点（止损）先按 1R 对称放，画完再拖手柄改 */
+/** 按住 ⇧ 画 / 拖端点吸 0° / 45° / 90° 的两点直线一族 */
+export const SNAP_LINE: ReadonlySet<DrawingType> = new Set<DrawingType>(['trend', 'ray', 'extended', 'arrowLine'])
+
+/** 草稿最后一点跟着鼠标走；持仓的第三点（止损）先按 1R 对称放，画完再拖手柄改 */
 export function setDraftEnd(d: Drawing, tp: DrawPoint): void {
   if (d.type === 'position') { const a = d.pts[0]; d.pts = [a, tp, { t: tp.t, p: a.p - (tp.p - a.p) }]; return }
   d.pts[d.pts.length - 1] = tp
+}
+
+/** 回归通道：用户圈的两点 → 中心线两端 + 通道宽那一点（收盘价最小二乘，宽 = 2σ；手机 fittedRegression 同一份）。
+ *  圈住的 K 线不到 3 根返回 null */
+export function fitRegression(bars: readonly Bar[], a: DrawPoint, b: DrawPoint): DrawPoint[] | null {
+  // 只在落笔（以及画的过程中预览）时拟合一次，几千根取一遍收盘价不值得缓存
+  return fittedRegression([a, b], { count: bars.length, time: (i: number) => bars[i].t, close: bars.map(x => x.c) } as unknown as BarSeries)
 }
 
 /** 线型：实线 / 虚线 / 点线（和手机 Drawing.dash 同名） */
@@ -111,20 +163,32 @@ export function quotaOK(list: readonly Drawing[], add: readonly Drawing[] = []):
 }
 
 // ------------------------------------------------------------ 分组与同族
-export type GroupId = 'lines' | 'shapes' | 'fib' | 'forecast' | 'volume'
+export type GroupId = 'lines' | 'channels' | 'pitchforks' | 'fib' | 'patterns' | 'forecast' | 'shapes' | 'notes' | 'volume'
 export interface ToolGroup { id: GroupId; name: string; tools: [DrawingType, string, string][] }
-/** 左侧工具栏的分组（照 TradingView：一组一个按钮，右下角小箭头展开同组的工具） */
+/** 工具名：三端同一份（手机 DrawKind.title）。只有射线一族改了叫法——手机那三个名字是样式表「画法」一排的按钮字
+ *  （向右延伸 / 两端延伸），平铺在工具栏里分不清，网页叫射线 / 水平射线 / 延长线（TradingView 的叫法） */
+const NAME_OVERRIDE: Partial<Record<DrawingType, string>> = { ray: '射线', hray: '水平射线', extended: '延长线', measure: '测量' }
+export function toolName(t: DrawingType): string {
+  const o = NAME_OVERRIDE[t]; if (o) return o
+  const k = CONTRACT_KIND[t]
+  return k ? DrawKind.title(k) : t
+}
+const T = (t: DrawingType, kbd = ''): [DrawingType, string, string] => [t, toolName(t), kbd]
+/** 左侧工具栏的分组（照 TradingView：一组一个按钮，显示这组上次用的那把；右沿的小箭头展开整组） */
 export const TOOL_GROUPS: ToolGroup[] = [
-  { id: 'lines', name: '线', tools: [['trend', '趋势线', 'Alt T'], ['ray', '射线', 'Alt J'], ['hline', '水平线', 'Alt H'], ['vline', '垂直线', 'Alt V']] },
-  { id: 'shapes', name: '形状', tools: [['rect', '矩形', 'Alt ⇧ R']] },
-  { id: 'fib', name: '斐波那契', tools: [['fib', '斐波那契回撤', 'Alt F']] },
-  { id: 'forecast', name: '预测与测量', tools: [['position', '多空持仓', ''], ['measure', '测量（也可以按住 ⇧ 拖）', '']] },
-  { id: 'volume', name: '成交量', tools: [['avwap', '锚定 VWAP', ''], ['fvp', '固定区间成交量分布', '']] },
+  { id: 'lines', name: '线', tools: [T('trend', 'Alt T'), T('ray', 'Alt J'), T('extended'), T('hline', 'Alt H'), T('hray'), T('vline', 'Alt V'), T('crossLine', 'Alt C'), T('arrowLine')] },
+  { id: 'channels', name: '通道', tools: [T('channel'), T('regression')] },
+  { id: 'pitchforks', name: '叉子与江恩', tools: [T('pitchfork'), T('gannBox'), T('gannFan')] },
+  { id: 'fib', name: '斐波那契', tools: [T('fib', 'Alt F'), T('fibExtension'), T('fibChannel'), T('fibTimeZone'), T('fibFan')] },
+  { id: 'patterns', name: '形态', tools: [T('xabcd'), T('abcd'), T('headShoulders'), T('elliottImpulse'), T('elliottCorrection')] },
+  { id: 'forecast', name: '预测与测量', tools: [T('position'), T('ptMeasure'), T('priceRange'), T('dateRange'), T('datePriceRange')] },
+  { id: 'shapes', name: '形状', tools: [T('rect', 'Alt ⇧ R'), T('ellipse'), T('triangle'), T('curve')] },
+  { id: 'notes', name: '注释', tools: [T('note'), T('callout'), T('priceLabel'), T('flag'), T('markerUp'), T('markerDown')] },
+  { id: 'volume', name: '成交量', tools: [T('avwap'), T('fvp'), T('anchoredVolumeProfile')] },
 ]
 export function groupOf(t: DrawingType): ToolGroup | undefined { return TOOL_GROUPS.find(g => g.tools.some(x => x[0] === t)) }
-export function toolName(t: DrawingType): string { return groupOf(t)?.tools.find(x => x[0] === t)?.[1] ?? t }
-/** 同族工具共用「上次改过的样式」（颜色、粗细、线型） */
-export function familyOf(t: DrawingType): GroupId { return groupOf(t)?.id ?? 'lines' }
+/** 同族工具共用「上次改过的样式」（颜色、粗细、线型）；临时测量不进任何一组 */
+export function familyOf(t: DrawingType): GroupId { return groupOf(t)?.id ?? 'forecast' }
 
 // ------------------------------------------------------------ 锚定 VWAP
 export interface Avwap { mid: number[] }
@@ -166,10 +230,13 @@ export function vwapOf(ch: TVChart, d: Drawing, i0: number, end: number): Avwap 
 export function fvpRows(pxH: number): number { return profileRows(pxH) }
 export interface FvpShape { v: Vpvr; i0: number; i1: number; x0: number; x1: number }
 const fvpCache = new WeakMap<Drawing, { key: string; v: Vpvr | null }>()
+/** 区间成交量分布一族：固定区间两点圈一段；锚定成交量分布一点，从锚点一直统计到最新一根（照 iOS anchoredVolumeProfile） */
+export const isProfile = (t: DrawingType): boolean => t === 'fvp' || t === 'anchoredVolumeProfile'
 export function fvpShape(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): FvpShape | null {
-  if (d.pts.length < 2) return null
+  const anchored = d.type === 'anchoredVolumeProfile'
+  if (d.pts.length < (anchored ? 1 : 2)) return null
   const last = ch.lastIndex()
-  const a = Math.round(ch.indexAt(d.pts[0].t)), b = Math.round(ch.indexAt(d.pts[1].t))
+  const a = Math.round(ch.indexAt(d.pts[0].t)), b = anchored ? last : Math.round(ch.indexAt(d.pts[1].t))
   const i0 = Math.max(0, Math.min(a, b)), i1 = Math.min(last, Math.max(a, b))
   if (i1 < i0) return null
   let lo = Infinity, hi = -Infinity
@@ -211,6 +278,10 @@ export function handlePixels(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): X
     const x = s != null ? ch.indexToX(s) : px(d.pts[0]).x
     return [{ x, y: b ? ch.priceToY((b.h + b.l + b.c) / 3, p, r) : px(d.pts[0]).y }]
   }
+  if (d.type === 'anchoredVolumeProfile' && d.pts.length) {
+    const s = fvpShape(ch, d, p, r)
+    return s ? [{ x: s.x0, y: ch.priceToY((s.v.lo + s.v.hi) / 2, p, r) }] : d.pts.map(px)
+  }
   if (d.type === 'fvp' && d.pts.length >= 2) {
     const s = fvpShape(ch, d, p, r)
     if (s) {
@@ -238,10 +309,11 @@ export function moveHandle(d: Drawing, k: number, now: DrawPoint): void {
 export function bbox(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): { x0: number; y0: number; x1: number; y1: number } | null {
   if (!d.pts.length) return null
   const PW = ch.plotW()
-  let pts = handlePixels(ch, d, p, r)
+  let pts = GEOM.has(d.type) ? geomHandles(ch, d, p, r) : handlePixels(ch, d, p, r)
   if (d.type === 'hline') pts = [{ x: 0, y: pts[0].y }, { x: PW, y: pts[0].y }]
   if (d.type === 'vline') pts = [{ x: pts[0].x, y: p.y }, { x: pts[0].x, y: p.y + p.h }]
-  if (d.type === 'fvp') { const s = fvpShape(ch, d, p, r); if (s) pts = [{ x: s.x0, y: ch.priceToY(s.v.hi, p, r) }, { x: s.x1, y: ch.priceToY(s.v.lo, p, r) }] }
+  if (GEOM.has(d.type)) { const g = geomBox(ch, d, p, r); if (g.length) pts = g }
+  if (isProfile(d.type)) { const s = fvpShape(ch, d, p, r); if (s) pts = [{ x: s.x0, y: ch.priceToY(s.v.hi, p, r) }, { x: s.x1, y: ch.priceToY(s.v.lo, p, r) }] }
   if (d.type === 'avwap') { const b = avwapPixels(ch, d, p, r); if (b.length) pts = pts.concat(b.filter((_, i) => i % 8 === 0 || i === b.length - 1)) }
   if (d.type === 'position') pts = pts.concat(d.pts.map(q => ({ x: ch.indexToX(ch.indexAt(d.pts[0].t)), y: ch.priceToY(q.p, p, r) })))
   const xs = pts.map(q => q.x), ys = pts.map(q => q.y)
@@ -270,7 +342,7 @@ export function drawComputed(ch: TVChart, d: Drawing, p: Pane, r: PriceRange, se
   c.save()
   c.lineCap = 'round'; c.lineJoin = 'round'
   if (d.type === 'avwap') drawAvwap(ch, c, d, p, r, col)
-  else if (d.type === 'fvp') drawFvp(ch, c, d, p, r, col, sel)
+  else if (isProfile(d.type)) drawFvp(ch, c, d, p, r, col, sel)
   else drawPosition(ch, c, d, p, r, col)
   c.restore()
   if (sel) {
@@ -372,7 +444,7 @@ export function hitComputed(ch: TVChart, d: Drawing, x: number, y: number, p: Pa
     if (pts.length === 1) best = Math.hypot(x - pts[0].x, y - pts[0].y)
     return best
   }
-  if (d.type === 'fvp') {
+  if (isProfile(d.type)) {
     const s = fvpShape(ch, d, p, r); if (!s) return Infinity
     const yHi = ch.priceToY(s.v.hi, p, r), yLo = ch.priceToY(s.v.lo, p, r)
     return x >= s.x0 - 3 && x <= s.x1 + 3 && y >= yHi - 3 && y <= yLo + 3 ? 0 : Infinity
