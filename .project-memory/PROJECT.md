@@ -2029,3 +2029,26 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **手机网页**：`Web/src/m/chart/bigTradeSigns.ts`（`planSigns` 套电脑 `planBubbles`、`hitBox` 44 与泡直径取大、`signLabel`、`amtShort`）、`bigTradeLayer.ts`（深色按背景亮度判、轻点 1.3× / 120ms、新大单光环 8pt / 600ms、小圆点不进读屏）、`m/pages/chart/bigTrade.ts` / `data.ts` / `panels.ts` / `chart.ts`、`m/chart/gesture.ts` / `orderflow.source.ts` / `view.ts`、`m/app/prefs.ts`；图上开关开着就拉爆仓。
 - **iOS**：`KanpanChart/BigTradeSigns.swift`（纯函数：门槛 / 排布 / 命中 / 读屏 / `amtShort` / `bubbleText`）、`ChartRenderer+BigTrades.swift`（合并、缓存、绘制、命中、最新光环；数字底下一圈图底色细描边 ≈ 1.3pt 防同色 K 线穿字）、`ChartView+BigTrades.swift` / `ChartView.swift` / `ChartRenderer.swift` / `ChartState.swift` / `ChartView+Accessibility.swift` / `ChartView+Gesture.swift`；`KanpanCore/OrderFlow/BigTradeFlow.swift` 成交账加爆仓账；新建 `Kanpan/Kanpan/OrderFlow/LiquidationFeed.swift`（共用取数 30 秒一轮，图开着且层开着或大单页开着才取，切后台 / 换品种停）、`MarketModel.syncLiquidations`、`BigTradeSheet` 复用它；`OrderFlowLink` DEBUG 种子改门槛 × 20（P97 是相对门槛，× 1.2 进不了泡）。窄柱判断按整 pt 四舍五入（出厂间距 3.98）；贴左右边的泡往里挪不降点；开了「减弱动态效果」放大改闪 150ms。读屏词 `BigTradeTerm.up / .down`（terms.json 新加 `up` / `down`）。
 - **验收**：`Web/scripts/pc-bigtrade.mjs`（1440×900 浅 / 深：1 时泡 3 点 7、悬停卡有向上 / 向下、点泡抽屉开、悬停离泡命中圈够远的小圆点不出卡、5 分泡 ≤ 6、无页面错误）与 `m-bigtrade.mjs` 全过；vitest 全量绿；KanpanChart 整套 `xcodebuild test`（含画线）绿、`BigTradeBubblesTests` + `BigTradeChartTests` 25 条（1 分 × 500 根 p95 开泡 3.84ms / 关 3.31ms）；KanpanCore 19 条；`BigTradeSheetUITests` 8 条。截图 `docs/acceptance/大单爆仓气泡-2026-10-08/`（pc-* / iPhone16Pro-* / online-*）、`大单与爆仓-手机-2026-10-08/m-*`。线上 `index-Cmuxb7Um.js` / `m-BPX0zXgA.js`（口径修正后再发一版）。
+
+## 68. 10-08：电脑网页画线补全到契约 41 种 + 工具栏照 TradingView 分组（afa62d55 / f9714e51 / b4720e19 + 验收脚本加固）
+
+- **用户原话**：「pc 端的画线工具要全，但是左侧展开并没有发现」。只动电脑网页（`Web/src`，不含 `Web/src/m`）；服务端、iOS 不动，契约 `Backend/kanpan-api/contract/drawing-fields.json` 的 41 种全收。
+- **工具栏九组**（`drawTools.ts TOOL_GROUPS`，名字三端同一份 `DrawKind.title`，只有射线一族改叫 TV 的名）：
+  - 线（8）：趋势线 Alt T / 射线 Alt J / 延长线 / 水平线 Alt H / 水平射线 / 垂直线 Alt V / 十字线 Alt C / 箭头
+  - 通道（2）：平行通道 / 回归通道
+  - 叉子与江恩（3）：安德鲁斯分叉 / 江恩箱 / 江恩扇形
+  - 斐波那契（5）：回撤 Alt F / 扩展 / 通道 / 时区 / 扇形
+  - 形态（5）：XABCD / ABCD / 头肩 / 艾略特推动浪 / 艾略特调整浪
+  - 预测与测量（5）：多空持仓框 / 价时测量 / 价格区间 / 日期区间 / 日期价格区间
+  - 形状（4）：矩形 Alt ⇧ R / 椭圆 / 三角形 / 曲线
+  - 注释（6）：文字标注 / 气泡标注 / 价格标签 / 旗标 / 向上箭头 / 向下箭头
+  - 成交量（3）：锚定均价线 / 区间成交量分布 / 锚定成交量分布
+  - 测量尺（⇧ 拖）不进组、不存档。
+- **交互**（`pages/drawing.ts` + `drawbar.css`）：一组一个按钮，显示这组上次用的那把；多把的组右沿一条常显的小箭头条，悬停 120 ms 或点击展开整组（名称 + 图标 + 快捷键），菜单贴工具栏右沿、与组按钮顶对齐；单击 = 上次那把，双击 = 连续画；全中文、无解释文案。文字类（文字标注 / 气泡标注 / 价格标签 / 旗标）双击原地改字，回车确定、Esc 取消。
+- **几何**（`chart/drawGeom.ts`）：新 31 种不另写，接手机网页移植自 iOS 的 `m/chart/draw/geometry.ts drawingGeometry`（线段 / 填色 / 手柄 / 标签 / 命中），三端形状与刻度一致；WeakMap 按「坐标映射 + 画线字段」缓存，十六格满屏悬停、跳价不重算。avwap / fvp / position / anchoredVolumeProfile 走原有计算型绘制。`chart.ts` 新公开 `handlesOf(d)` / `inkOf(d)`（命中、拖手柄与验收脚本共用）。每种都有快捷条、磁吸、⇧ 45°、撤销重做、⌘C/⌘V、⌘ 拖复制、隐藏、锁定、每只品种 500 条 / 2 MB 上限、复盘回放只读，十六图可用。
+- **同步**：`codec.ts` 覆盖 41 种（文字 / 刻度 / 填色），与 iOS 编解码互通由单测证明；契约对账测试通过，服务端不改。
+- **图标**：新种类是描边占位（`ui/icons.ts`，一种一个键、键名稳定），整套图标定版后替换。
+- **测试**：`tests/draw-kinds.test.ts`（42 条：种类 / 分组 / 名称 / 编解码 / 每种几何、命中、手柄、缓存）；tsc 干净、vitest 190 文件 2426 条全过。`scripts/draw-cross.mjs` 新增 kinds（41 种逐种画 → 存档 → 像素 → 选中 → 拖手柄 → 撤销 → 隐藏，146 条）与 kinds16（十六格每格 41 种共 656 条逐条取样 + ⌘⌥H + 性能）两段；`regress.mjs` 改成认九组。
+- **验收**：本地 vite preview 全套 411 / 411；`make web-deploy`（`index-BGSThCRC.js`）后线上同一套 411 / 411（738 秒）。十六格每格 41 种（线上）：滚轮重画 p95 0.5 → 0.9 ms、CPU 8.8 → 13.2%；拖动 p95 0.3 → 0.6 ms；联动十字线 p95 0.1 → 0.1 ms，长任务 0。单格 500 条：重画 p95 4.5 ms（对照 0.6）。截图 `docs/acceptance/网页版-画线工具补全-2026-10-08/`（本地 36 张）与 `…/线上/`（36 张）。
+- **验收脚本踩坑**（都在脚本里改了根因，app 没改）：① scroll-zoom 横向滚轮朝旧 K 线平移把线推出视野 → 改朝新方向；② bulk 先找空地再滚轮，空地变成了竖线 → 滚完重找；③ 十六格 ⌘⌥H 取样偶发撞到别的线颜色 → 期待隐藏时失败重取一次；④ 线上竖线 / 趋势线锚点早 9 根：品种表没到时价格精度按 K 线小数位猜（合成 K 线长小数 → 8 位、价格轴宽 107 px），表一到收成 56 px、整图右挪，正好落在「算落点 → 点」中间 → `ready()` 等价格轴宽度连续三次不变；⑤ 线上切 ETHUSDT 偶发没切过去：搜索结果按实时成交额排、品种表走真网络晚到 → `switchSymbol` 等到 `data-w="ETHUSDT"` 那一行、方向键挪过去再回车，等 30 秒，不行整套重来一次。
+- **留意**：品种表没到之前价格轴精度按 K 线小数位猜，真数据冷启动时价格轴可能先宽后窄一下（合成数据放大了它，真行情小数位短、影响小，没改）；旧画线条 CSS 还留在共享的 `app.css` 里由 `drawbar.css` 覆盖（`app.css` 多窗口共用没动）；draw-cross 的跨场景段（layouts / intervals / theme / reload…）仍用原 9 把工具，新 32 种由 kinds / kinds16 两段专测。

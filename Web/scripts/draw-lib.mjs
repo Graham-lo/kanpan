@@ -311,6 +311,14 @@ export async function seedAndOpen(env, state, { sizes = null, hash = 'chart', qs
 }
 export async function ready(page, n = 1) {
   await page.waitForFunction(n => { const c = window.__cells?.(); return c && c.length >= n && c.slice(0, n).every(x => x.bars > 0) && window.__dx?.ch(0)?._panes }, n, { timeout: 45000, polling: 200 })
+  // 等价格轴宽度定下来：品种表没到时精度按 K 线里的小数位猜（合成 K 线的价是不取整的长小数，猜成 8 位、价格轴宽出 50 px），
+  // 表一到换成真精度、轴收窄、整张图往右挪几根。线上品种表走真网络、到得晚，挪的那一下正好落在「先算落点再点」中间
+  let last = '', same = 0
+  for (let k = 0; k < 40 && same < 3; k++) {
+    const w = await page.evaluate(() => window.__cells().map(c => c.plotW).join(','))
+    same = w === last ? same + 1 : 0; last = w
+    await sleep(150)
+  }
   await page.evaluate(() => window.__dx.frame())
   await sleep(300)
 }
@@ -586,17 +594,24 @@ export async function hideCheck(page, ci, sym, n, { ids = null } = {}) {
 }
 
 /** 切品种（⌘K 搜）并等这一格换好 */
-export async function switchSymbol(page, ci, to) {
+export async function switchSymbol(page, ci, to, retry = 1) {
   await away(page)
   await page.keyboard.press('Escape')
   await page.keyboard.press('Meta+k'); await sleep(300)
   await page.keyboard.type(to.replace(/USDT$/, ''))
-  // 品种表还在取、结果没出来时按回车什么也不做：等第一行出来再按
-  await page.waitForSelector('.search-dlg .sr', { timeout: 15000 }).catch(() => {}); await sleep(200)
+  // 品种表还在取、结果没出来时按回车什么也不做；结果排序还跟着实时成交额走（线上「ETH」第一行不一定是 ETHUSDT）：
+  // 等到要的那一行出来，用方向键挪到它再回车。品种表走真网络，机器忙时 15 秒都可能没到：等 30 秒，还不行整套再来一次
+  const row = `.search-dlg .sr:has([data-w="${to}"])`
+  await page.waitForSelector(row, { timeout: 30000 }).catch(() => {}); await sleep(200)
+  const k = await page.evaluate(to => [...document.querySelectorAll('.search-dlg .sr')].findIndex(e => e.querySelector(`[data-w="${to}"]`)), to)
+  for (let j = 0; j < k; j++) await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await page.waitForFunction(([i, s]) => { const c = window.__cells?.()[i]; return c && c.symbol === s && c.bars > 0 && c.metaSym === s }, [ci, to], { timeout: 30000, polling: 200 }).catch(() => {})
   await frame(page); await sleep(400)
-  return (await page.evaluate(i => window.__cells()[i].symbol, ci)) === to
+  const got = await page.evaluate(i => window.__cells()[i].symbol, ci)
+  if (got === to) return true
+  console.log('   [switchSymbol]', to, '没切过去', JSON.stringify({ k, got, retry, rows: await page.evaluate(() => [...document.querySelectorAll('.search-dlg .sr, .search-dlg .empty')].slice(0, 3).map(e => e.textContent.replace(/\s+/g, ' ').trim().slice(0, 40))) }))
+  return retry > 0 ? switchSymbol(page, ci, to, retry - 1) : false
 }
 
 /** 每个场景共用的一组不变量。exp = { sym, base: 基准画线（存档里的样子）, ci } */
