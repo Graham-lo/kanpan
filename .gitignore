@@ -61,3 +61,6 @@ refs/aicoin/
 # 网页版的依赖与构建产物
 Web/node_modules
 Web/dist
+
+# 子代理的嵌套工作树（Agent isolation=worktree），不是源码
+.claude/worktrees/
