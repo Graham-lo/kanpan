@@ -8,9 +8,14 @@
  *
  * 历史：服务端（kanpan-api）对常驻跟踪的品种每分钟记一行 [分钟, 大买额, 大卖额, 小买额, 小卖额]，
  * 近 3 天（GET /v1/market/orderflow/flow）。没在跟的品种没有历史，从打开页面起算。只聚合，不判定。
+ *
+ * 图上「大单签」与底部抽屉（2026-10-08）也吃这一份：浏览器这边的桶另记大单的笔数、现货部分、分交易所金额
+ * 与这一分钟最大的一笔（服务端的行没有这些，历史段只有金额）；大单逐笔的价位另留 2 小时（抽屉的价位块）。
+ * srv.ver 在服务端历史每次并进新行时加一，画签的缓存据此作废；live 在每进一笔大单时加一。
  */
 import type { Bar, Series, CalcEnv } from './calc'
 import type { TradeEvent } from '../orderflow/feed'
+import type { Product } from '../orderflow/types'
 import { baseOfSymbol } from '../orderflow/settings'
 import { before } from '../util/clock'
 
@@ -28,6 +33,15 @@ const FETCH_TIMEOUT_MS = 12_000
  *  九图各开一只累计量差时每算一格就挤掉别格的，挤掉的又从空的重来、重新去服务端要历史（2026-09-29 A 路压测） */
 const MAX_SYMBOLS = 16
 
+/** 一笔大单成交（这一桶里最大的那笔） */
+export interface Print { usd: number; price: number; exchange: string; product: Product; t: number }
+/** 大单逐笔的价位（抽屉「价位」块按价位聚合用；只留 2 小时） */
+export interface BigPrint { t: number; price: number; usd: number; buy: boolean }
+const PRINT_KEEP_MS = 2 * 3_600_000
+const PRINT_CAP = 40_000
+/** 交易所 → 下标（币安 / OKX / Coinbase），和 orderflow/aggregate.ts 的 EXCHANGE_CH 同一顺序 */
+const EX_IDX: Record<string, number> = { binance: 0, okx: 1, coinbase: 2 }
+
 /** 一个桶：美元额 */
 export interface Cell {
   /** 现货主动买 / 卖 */
@@ -39,10 +53,19 @@ export interface Cell {
   /** 大单 / 散户 主动买 / 卖 */
   bb: number; bs: number
   rb: number; rs: number
+  /** 以下只有浏览器这边记（服务端的行没有）：大单笔数、大单里现货的买 / 卖、大单分交易所（买 + 卖）、最大一笔 */
+  bn: number; sn: number
+  bsb: number; bss: number
+  bx: [number, number, number]
+  bmax: Print | null; smax: Print | null
 }
-const cell = (): Cell => ({ sb: 0, ss: 0, cb: 0, cs: 0, ub: 0, us: 0, bb: 0, bs: 0, rb: 0, rs: 0 })
-function addCell(a: Cell, b: Cell): void {
+export const cell = (): Cell => ({ sb: 0, ss: 0, cb: 0, cs: 0, ub: 0, us: 0, bb: 0, bs: 0, rb: 0, rs: 0, bn: 0, sn: 0, bsb: 0, bss: 0, bx: [0, 0, 0], bmax: null, smax: null })
+const bigger = (a: Print | null, b: Print | null): Print | null => !b ? a : !a || b.usd > a.usd ? b : a
+export function addCell(a: Cell, b: Cell): void {
   a.sb += b.sb; a.ss += b.ss; a.cb += b.cb; a.cs += b.cs; a.ub += b.ub; a.us += b.us; a.bb += b.bb; a.bs += b.bs; a.rb += b.rb; a.rs += b.rs
+  a.bn += b.bn; a.sn += b.sn; a.bsb += b.bsb; a.bss += b.bss
+  a.bx[0] += b.bx[0]; a.bx[1] += b.bx[1]; a.bx[2] += b.bx[2]
+  a.bmax = bigger(a.bmax, b.bmax); a.smax = bigger(a.smax, b.smax)
 }
 
 type Row = [number, number, number, number]
@@ -55,6 +78,8 @@ interface Server {
   bigUsd: number | null
   busy: boolean
   nextAt: number
+  /** 每并进一批新行加一（画签的缓存据此作废） */
+  ver: number
 }
 
 export class SymbolFlow {
@@ -62,7 +87,11 @@ export class SymbolFlow {
   min = new Map<number, Cell>()
   /** 覆盖区间 [起, 止]（本机时间），按时间排 */
   cover: [number, number][] = []
-  srv: Server = { rows: new Map(), lo: Infinity, hi: -Infinity, tracked: null, bigUsd: null, busy: false, nextAt: 0 }
+  srv: Server = { rows: new Map(), lo: Infinity, hi: -Infinity, tracked: null, bigUsd: null, busy: false, nextAt: 0, ver: 0 }
+  /** 大单逐笔的价位，按时间排（2 小时） */
+  prints: BigPrint[] = []
+  /** 每进一笔大单加一 */
+  live = 0
   /** 浏览器这边当下用的大单线（服务端的到了就用服务端的） */
   localCut: number | null = null
   touched = 0
@@ -118,7 +147,15 @@ export function recordTrade(symbol: string, ev: TradeEvent, cut: number | null):
     if (v.exchange === 'binance' && v.product === 'usdtPerp' && v.instrument.toUpperCase() === f.symbol) { if (buy) c.ub = usd; else c.us = usd }
   }
   const big = f.cut
-  if (big != null && usd >= big) { if (buy) c.bb = usd; else c.bs = usd }
+  if (big != null && usd >= big) {
+    const pr: Print = { usd, price: ev.trade.price, exchange: v.exchange, product: v.product, t }
+    if (buy) { c.bb = usd; c.bn = 1; c.bmax = pr; if (v.product === 'spot') c.bsb = usd }
+    else { c.bs = usd; c.sn = 1; c.smax = pr; if (v.product === 'spot') c.bss = usd }
+    const xi = EX_IDX[v.exchange]
+    if (xi != null) c.bx[xi] = usd
+    f.prints.push({ t, price: ev.trade.price, usd, buy })
+    f.live++
+  }
   if (usd < SMALL_USD) { if (buy) c.rb = usd; else c.rs = usd }
   bump(f.sec, Math.floor(t / 1000) * 1000, c)
   bump(f.min, Math.floor(t / 60_000) * 60_000, c)
@@ -141,6 +178,11 @@ export function beat(symbol: string, now: number, ok: boolean): void {
   }
   prune(f.sec, now - SEC_KEEP_MS)
   prune(f.min, now - MIN_KEEP_MS)
+  const pc = now - PRINT_KEEP_MS
+  let i = 0
+  while (i < f.prints.length && f.prints[i].t < pc) i++
+  if (f.prints.length - i > PRINT_CAP) i = f.prints.length - PRINT_CAP
+  if (i) f.prints.splice(0, i)
   while (f.cover.length && f.cover[0][1] < now - MIN_KEEP_MS) f.cover.shift()
 }
 function prune(m: Map<number, Cell>, cutoff: number): void {
@@ -182,6 +224,7 @@ async function fetchServer(f: SymbolFlow, now: number): Promise<void> {
     const cutoff = Date.now() - MIN_KEEP_MS
     for (const k of [...s.rows.keys()]) if (k < cutoff) s.rows.delete(k)
     if (s.lo < cutoff) s.lo = s.rows.size ? Math.min(...s.rows.keys()) : Infinity
+    s.ver++
     s.nextAt = Date.now() + POLL_MS
     f.notify()
   } catch {
@@ -192,7 +235,11 @@ async function fetchServer(f: SymbolFlow, now: number): Promise<void> {
 /** 算指标时调：到点了就在后台增量拉一次（不等，到了叫 invalidate 重算） */
 function ensureServer(f: SymbolFlow, env: CalcEnv | undefined, now: number): void {
   if (!env) return
-  f.listeners.add(env.invalidate)
+  ensureHistory(f, env.invalidate, now)
+}
+/** 要服务端历史的地方（指标、图上大单签、抽屉）都走这里：登记「到了叫我」，到点了在后台增量拉一次 */
+export function ensureHistory(f: SymbolFlow, onUpdate: () => void, now = Date.now()): void {
+  f.listeners.add(onUpdate)
   if (f.srv.busy || before(f.srv.nextAt, Math.max(POLL_MS, RETRY_MS), now) || typeof fetch === 'undefined') return
   void fetchServer(f, now)
 }
