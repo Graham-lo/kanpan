@@ -375,7 +375,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     const parts = [col.parts[i * 3], col.parts[i * 3 + 1], col.parts[i * 3 + 2]]
     const split = col.split
       ? EXCHANGE_NAMES.map((n, q) => `<div class="of-card-r"><span>${n}</span><b class="num">${parts[q] > 0 ? amt(parts[q]) : '—'}</b></div>`).join('')
-      : `<div class="of-card-r"><span>三家合计</span><b class="num faint">历史回填不分交易所</b></div>`
+      : ''
     const t = col.t1 - col.t0 <= 60_000 ? `${mdhm(col.t0).slice(0, 5)} ${hms(col.t0)}` : `${mdhm(col.t0)} – ${hms(col.t1).slice(0, 5)}`
     return `<div class="of-card-h"><i style="background:${g.colors.accent}"></i>深度热力 · ${t}</div>
       <div class="of-card-r"><span>价位</span><b class="num">${px(r * rs, d)} – ${px((r + 1) * rs, d)}</b></div>

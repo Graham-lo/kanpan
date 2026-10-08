@@ -91,7 +91,7 @@ export function ivShort(ms: number): string {
 // ------------------------------------------------------------------ 悬停卡（图上大单签）
 
 /** 图上大单签的悬停卡：时间 · 周期、净额大字 + 对撞条、大卖 / 大买（额 + 笔）、最大一笔、现货 / 合约、三家；
- *  这根有一分钟来自服务端历史（exact = false）时笔数 / 最大一笔 / 来源都没有，不摆四行「—」，收成一行「历史回填 · 无笔数与来源」 */
+ *  这根有一分钟来自服务端历史（exact = false）时笔数 / 最大一笔 / 来源都没有：这几项直接不摆（不写「—」也不写说明） */
 export function hoverCardHtml(d: BarBig, when: string, iv: string): string {
   const n = d.bb - d.bs, t = d.bb + d.bs || 1
   const mx = d.exact ? maxOf(d) : null
@@ -99,7 +99,7 @@ export function hoverCardHtml(d: BarBig, when: string, iv: string): string {
   const tail = d.exact
     ? `<span>最大一笔</span><b class="num">${mx ? amt(mx.usd) : '—'}</b><em class="${mx ? (mx.buy ? 'up' : 'dn') : ''}">${mx ? (mx.buy ? '买' : '卖') : ''}</em></div>` +
       `<div class="hc-src">${srcHtml(d.bb + d.bs, d.spot, d.ex)}</div>`
-    : `</div><div class="hc-src hc-hist">历史回填 · 无笔数与来源</div>`
+    : '</div>'
   return `<div class="hc"><div class="hc-h"><b class="num">${when}</b>· ${iv}</div>` +
     `<div class="hc-net"><span class="v num ${tone(n)}">${signed(n)}</span><span class="l">净额</span></div>` +
     `<div class="hc-fly"><i class="s" style="flex:${(d.bs / t).toFixed(4)}"></i><i class="b" style="flex:${(d.bb / t).toFixed(4)}"></i></div>` +
