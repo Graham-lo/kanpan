@@ -88,10 +88,14 @@ describe('持仓量：带 alive 排队，不要了就不发（rest.ts attachOI�
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('不支持的周期（1m）不取，算取过了', async () => {
-    const fetchSpy = vi.fn()
+  it('不支持的周期（秒级 / 自定义分钟）不取，算取过了；1m 退到 5 分钟桶去取', async () => {
+    const fetchSpy = vi.fn(async (_u: string) => new Response('[]', { status: 200 }))
     vi.stubGlobal('fetch', fetchSpy)
-    expect(await attachOI('BTCUSDT', '1m', barsAt(H, 3))).toBe(true)
+    expect(await attachOI('BTCUSDT', '1s', barsAt(H, 3))).toBe(true)
+    expect(await attachOI('BTCUSDT', '7m', barsAt(H, 3))).toBe(true)
     expect(fetchSpy).not.toHaveBeenCalled()
+    expect(await attachOI('BTCUSDT', '1m', barsAt(H, 3))).toBe(true)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('period=5m')
   })
 })

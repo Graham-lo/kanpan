@@ -15,6 +15,7 @@ import { baseOf, badgeColor, cnOf, decOfTick, kindOfUnderlying, type Sym } from 
 import { supplyOf } from './meta'
 import { MACRO_SYMBOL, applyMacroTicker, isMacro, macroFallback, macroRewrite, type MacroTicker } from './macro'
 import { ago } from '../util/clock'
+import { IV_MS } from '../util/format'
 
 export const REST = 'https://fapi.binance.com'
 
@@ -316,25 +317,47 @@ export async function klines(symbol: string, iv: string, endTime?: number, limit
  *  15 个非当前格各省 8 点权重；往左翻历史照常由 loadMore 一页 1500 根补 */
 export const SIDE_LIMIT = 499
 
-/** 持仓量副图：币安只给最近 30 天、5 分钟以上周期的历史，对不齐的根留空。
+/** 持仓量副图：币安只给最近 30 天的历史，周期只有 5 分钟到 1 天。更细的周期（1m / 3m）把 5 分钟那一桶的值铺到桶里每根，
+ *  更粗的（1w / 1M）取那根里最后一个日点；对不齐的根留空。
+ *  走着的那一桶币安也给点、值还在变，新开的一桶要等它的第一个点出来——所以装载取整段（500 个点）之后，
+ *  露着副图的格子每分钟再拿最近两桶补一次尾巴（limit 只要几个点），线才跟着 K 线一路延长。
  *  alive：排队期间这一格不要了（换品种 / 周期 / 格子没了 / 持仓量副图被收起）就不发 */
 const OI_PERIOD = new Set(['5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'])
+/** 这个周期取持仓量用币安的哪个 period；秒级 / 自定义分钟没有 */
+export function oiPeriod(iv: string): string | null {
+  if (OI_PERIOD.has(iv)) return iv
+  const ms = IV_MS[iv]
+  if (!(ms > 0)) return null
+  return ms < 300e3 ? '5m' : '1d'
+}
 /** 返回 false = 没取成（排队时被作废、网络 / 限流失败），调用方下次还该再取；不支持的周期 / 品种算取过了 */
-export async function attachOI(symbol: string, iv: string, bars: Bar[], alive?: () => boolean): Promise<boolean> {
-  if (!OI_PERIOD.has(iv) || !bars.length || isMacro(symbol)) return true
+export async function attachOI(symbol: string, iv: string, bars: Bar[], alive?: () => boolean, limit = 500): Promise<boolean> {
+  const period = oiPeriod(iv)
+  if (!period || !bars.length || isMacro(symbol)) return true
+  const pms = IV_MS[period], ims = IV_MS[iv], last = bars[bars.length - 1]
   try {
-    const endTime = bars[bars.length - 1].t + 1
-    const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${iv}&limit=500&endTime=${endTime}`, 8000, false, alive)
+    // 细周期：桶头 ≤ 最后一根的开盘时刻；粗周期：要到这根收线前的最后一个日点
+    const endTime = ims <= pms ? last.t + 1 : Math.min(last.t + ims, Date.now())
+    const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${period}&limit=${limit}&endTime=${endTime}`, 8000, false, alive)
     if (!rows.length) return true
-    const m = new Map(rows.map(r => [r.timestamp, +r.sumOpenInterestValue]))
     let hit = 0
-    for (const b of bars) { const v = m.get(b.t); if (v != null) { b.oi = v; hit++ } }
+    if (ims <= pms) {
+      const m = new Map(rows.map(r => [r.timestamp, +r.sumOpenInterestValue]))
+      for (const b of bars) { const v = m.get(Math.floor(b.t / pms) * pms); if (v != null) { b.oi = v; hit++ } }
+    } else {
+      const pts = rows.map(r => [r.timestamp, +r.sumOpenInterestValue] as const).sort((a, b) => a[0] - b[0])
+      for (let i = 0; i < bars.length; i++) {
+        const b = bars[i], until = i + 1 < bars.length ? bars[i + 1].t : b.t + ims
+        let v: number | undefined
+        for (const [t, x] of pts) { if (t >= until) break; if (t >= b.t) v = x }
+        if (v != null) { b.oi = v; hit++ }
+      }
+    }
     if (hit) emit({ type: 'oi', symbol, iv })
     return true
   } catch { return false /* 取不到持仓量就留空 */ }
 }
 
-// ------------------------------------------------------------ 详情块里不在推送里的数
 export interface Detail {
   t: number
   oiValue?: number      // 持仓量（美元）

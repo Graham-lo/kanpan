@@ -43,7 +43,7 @@ import { isMoreMain, MORE_PARAM_NAME } from '../chart/mainIndicators'
 import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
-  S, on, REST, coolingFor, isRateLimit, wakeQueued, klines, attachOI, SIDE_LIMIT, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
+  S, on, REST, coolingFor, isRateLimit, wakeQueued, klines, attachOI, oiPeriod, SIDE_LIMIT, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
   IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, baseOf, kindOfUnderlying, type Kind, type Sym, type KlineResult,
 } from '../market'
 import { klineDiskReady, diskBars, keepBars, flushBars } from '../market/klineStore'
@@ -397,10 +397,24 @@ function ensureOI(cell: Cell): void {
   const shown = () => cell.chart.subIds().includes('oi')
   if (!shown()) return
   oiDone.set(cell, token)
-  // 从缓存出的图：根对象是上次那份，已经带着持仓量（最后一根收线的有值）就不用再取
-  if (bars.length > 1 && bars[bars.length - 2].oi != null) return
+  // 从缓存出的图：根对象是上次那份，已经带着持仓量（最后一根收线的有值）就不用整段再取，只把尾巴刷新
+  if (bars.length > 1 && bars[bars.length - 2].oi != null) { refreshOITail(cell); return }
   const alive = () => token === cell.loadToken && !cell.chart.dead && shown()
   void attachOI(c.symbol, c.iv, bars, alive).then(ok => { if (!ok && oiDone.get(cell) === token) oiDone.delete(cell) })
+}
+
+/** 持仓量的尾巴：露着持仓量副图的格子每分钟补一次最近两桶——币安走着的那一桶值还在变，新开的一桶要等它的第一个点，
+ *  不补的话线就停在装载那一刻、不跟 K 线延长（2026-10-08 用户看到的）。整段还没取过（没露着 / 排队中）的格子交给 ensureOI */
+const oiTailAt = new WeakMap<Cell, number>()
+function refreshOITail(cell: Cell, now = Date.now()): void {
+  const c = cfg(cell), bars = cell.chart.bars, period = oiPeriod(c.iv)
+  if (cell.chart.dead || cell.hold || cell.chart.pendingMeta || cell.chart.meta.symbol !== c.symbol || !bars.length || !period || !cacheable(c.iv)) return
+  if (!cell.chart.subIds().includes('oi') || oiDone.get(cell) !== cell.loadToken) return
+  if (now - (oiTailAt.get(cell) ?? 0) < 55e3) return
+  oiTailAt.set(cell, now)
+  const token = cell.loadToken, span = 2 * Math.max(IV_MS[period], IV_MS[c.iv])
+  const tail = bars.slice(-(Math.ceil(span / IV_MS[c.iv]) + 1)), limit = Math.ceil(span / IV_MS[period]) + 1
+  void attachOI(c.symbol, c.iv, tail, () => token === cell.loadToken && !cell.chart.dead && cell.chart.subIds().includes('oi'), limit)
 }
 
 async function loadCell(cell: Cell, then?: () => void): Promise<void> {
@@ -1631,7 +1645,7 @@ export async function initChart(): Promise<void> {
     }
   })
 
-  // 每秒：钟、资金费率结算倒计时（图上的收线倒计时 2026-10-03 起不画，不再每秒重画各图）；每分钟：详情里的慢数、持仓量提醒
+  // 每秒：钟、资金费率结算倒计时（图上的收线倒计时 2026-10-03 起不画，不再每秒重画各图）；每分钟：详情里的慢数、持仓量副图的尾巴
   setInterval(() => {
     paintClock()
     const s = sym(cfg(active())?.symbol || ''), cd = $('#detail [data-f="cd"]')
@@ -1640,6 +1654,7 @@ export async function initChart(): Promise<void> {
   setInterval(() => {
     if (document.visibilityState === 'hidden') return
     if (st.panel === 'watch') settle.whenSettled('detail', detailNow)
+    cells.forEach(c => refreshOITail(c))
   }, 61e3)
 
   renderDrawbar(); renderRail(); renderSlots(); layoutSlots(); renderPanel()
