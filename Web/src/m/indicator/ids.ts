@@ -1,10 +1,12 @@
 // 移植自 KanpanCore/Sources/KanpanCore/Indicator/IndicatorID.swift（文件末尾附 OINotice.swift）
 //
 // 指标标识与展示信息。rawValue 是存档用的（写进偏好、缓存键），英文、定死不许改；
-// 界面上露脸的是 name 与 lineNames，一律中文。
+// 界面上露脸的是 name 与 lineNames（name 取自三端共用的 indicators.json）。
 //
 // Swift 的 enum + 计算属性在这里拆成：`IndicatorID` 常量表（ma → 'MA' …）+ 同名字符串联合类型，
 // 以及一组以 id 为第一个参数的函数。
+
+import catalogJson from '../../../../KanpanCore/Sources/KanpanCore/Indicator/indicators.json'
 
 /**
  * 声明顺序有约束：主图的全部排在副图前面（契约里 overlay ++ sub == allCases 按顺序比）。
@@ -39,14 +41,17 @@ export function placement(id: IndicatorID): Placement {
   }
 }
 
-const NAME: Record<IndicatorID, string> = {
-  MA: '均线', EMA: '指数均线', BOLL: '布林带', VOL: '成交量', MACD: '平滑异同', RSI: '相对强弱',
-  KDJ: '随机指标', SRSI: '随机强弱', ATR: '真实波幅', OI: '持仓量', LSR: '多空比', TAKER: '买卖比',
-  BASIS: '基差', VWAP: '均价线', ST: '超级趋势', SAR: '抛物线', ORDERFLOW: '主力订单流',
-  DMI: '动向指标', CVD: '量差',
-}
+/**
+ * 指标名与出厂参数的唯一一份：KanpanCore/Sources/KanpanCore/Indicator/indicators.json
+ * （iOS 的 `IndicatorID.name` / `defaultParams` 读的也是它，电脑网页经 src/chart/sharedIndicators.ts 读）。
+ * 改名、改出厂参数只改那一个文件。
+ */
+const CATALOG = catalogJson as Record<IndicatorID, { name: string; params: number[] }>
+const NAME: Record<IndicatorID, string> = Object.fromEntries(
+  ALL_INDICATOR_IDS.map(id => [id, CATALOG[id]?.name ?? id]),
+) as Record<IndicatorID, string>
 
-/** 中文名。 */
+/** 界面上的名字。 */
 export function indicatorName(id: IndicatorID): string { return NAME[id] }
 
 // ---------------------------------------------------------------- 面板清单
@@ -82,21 +87,12 @@ export function isExternal(id: IndicatorID): boolean { return externalColumns(id
  * 存档修补、引擎补位都从这里取。每次调用给一份新数组，调用方可以随便改。
  */
 export function defaultParams(id: IndicatorID): number[] {
-  switch (id) {
-    case 'MA': return [10, 30, 120, 256]
-    case 'EMA': return [12, 144, 169, 200]
-    case 'BOLL': return [20, 2]
-    case 'VOL': return [5, 10, 30, 60, 120]
-    case 'MACD': return [10, 30, 9]
-    case 'RSI': return [6, 12, 24]
-    case 'KDJ': return [9, 3, 3]
-    case 'SRSI': return [14, 14, 3, 3]
-    case 'ATR': return [14]
-    case 'ST': return [10, 3]
-    case 'DMI': return [14]
-    // 当日VWAP、抛物线、主力订单流、累计成交量差、外部四把：没有该让用户拨的参数。
-    case 'VWAP': case 'SAR': case 'ORDERFLOW': case 'CVD': case 'OI': case 'LSR': case 'TAKER': case 'BASIS': return []
-  }
+  return [...(CATALOG[id]?.params ?? [])]
+}
+
+/** 条数由用户定的那几把（MA、EMA、RSI、VOL）：参数是一串周期，一个周期一条线，编辑页能加能删。 */
+export function hasVariablePeriods(id: IndicatorID): boolean {
+  return id === 'MA' || id === 'EMA' || id === 'RSI' || id === 'VOL'
 }
 
 /** 新装时写进偏好的那几把（MA / EMA / VOL / MACD）的参数，值就是 defaultParams。 */
@@ -117,24 +113,18 @@ export const factoryParams: Readonly<Partial<Record<IndicatorID, readonly number
  */
 export function normalizedParams(id: IndicatorID, params: readonly number[] | null | undefined): number[] {
   if (params == null) return defaultParams(id)
-  switch (id) {
-    case 'MA': case 'EMA': case 'RSI': case 'VOL':
-      return params.map(v => (Number.isFinite(v) ? Math.trunc(v) || 0 : 0))
-    default: {
-      const d = defaultParams(id)
-      return d.map((v, i) => (i < params.length && Number.isFinite(params[i]) ? Math.trunc(params[i]) || 0 : v))
-    }
-  }
+  if (hasVariablePeriods(id)) return params.map(v => (Number.isFinite(v) ? Math.trunc(v) || 0 : 0))
+  const d = defaultParams(id)
+  return d.map((v, i) => (i < params.length && Number.isFinite(params[i]) ? Math.trunc(params[i]) || 0 : v))
 }
 
 export function paramLabels(id: IndicatorID): string[] {
   switch (id) {
-    case 'MA': case 'EMA': case 'VOL': return defaultParams(id).map((_, i) => `周期${i + 1}`)
+    case 'MA': case 'EMA': case 'RSI': case 'VOL': return defaultParams(id).map((_, i) => `周期${i + 1}`)
     case 'BOLL': return ['周期', '倍数']
     case 'MACD': return ['快', '慢', '信号']
-    case 'RSI': return ['①', '②', '③']
     case 'KDJ': return ['周期', '快线', '慢线']
-    case 'SRSI': return ['相对强弱', '随机周期', '快线', '慢线']
+    case 'SRSI': return [`${NAME.RSI}周期`, '随机周期', '快线', '慢线']
     case 'ATR': return ['周期']
     case 'ST': return ['周期', '倍数']
     case 'DMI': return ['周期']
@@ -145,25 +135,24 @@ export function paramLabels(id: IndicatorID): string[] {
 /** 每条线的名字，图例里用。顺序与 IndicatorResult.lines 一致。 */
 export function lineNames(id: IndicatorID, params: readonly number[]): string[] {
   switch (id) {
-    case 'MA': case 'EMA': return params.map(p => `${NAME[id]}${p}`)
+    case 'MA': case 'EMA': case 'RSI': return params.map(p => `${NAME[id]}${p}`)
     case 'BOLL': return ['中轨', '上轨', '下轨']
     case 'VOL': return params.map(p => `均量${p}`)
     case 'MACD': return ['差值', '信号']
-    case 'RSI': return params.map(p => `强弱${p}`)
     case 'KDJ': return ['快线', '慢线', '敏感线']
     case 'SRSI': return ['快线', '慢线']
-    case 'ATR': return ['真实波幅']
-    case 'OI': return ['持仓量']
-    case 'LSR': return ['多空比']
-    case 'TAKER': return ['买卖比']
+    case 'ATR': return [NAME.ATR]
+    case 'OI': return [NAME.OI]
+    case 'LSR': return [NAME.LSR]
+    case 'TAKER': return [NAME.TAKER]
     case 'BASIS': return ['基差率']
     // 超级趋势与抛物线转向都只有一条线，多空靠 IndicatorResult.dir 换色。
-    case 'VWAP': return ['当日均价']
-    case 'ST': return ['超级趋势']
+    case 'VWAP': return [NAME.VWAP]
+    case 'ST': return [NAME.ST]
     case 'SAR': return ['转向点']
     case 'ORDERFLOW': return ['主力']
     case 'DMI': return ['多头动向', '空头动向', '趋势强度']
-    case 'CVD': return ['量差']
+    case 'CVD': return [NAME.CVD]
   }
 }
 
@@ -194,7 +183,7 @@ export function fixedScale(id: IndicatorID): { lo: number; hi: number } | null {
   }
 }
 
-/** 参考线。RSI 30/70，KDJ 与 StochRSI 20/80，多空比 / 买卖比 1，基差 / 量差 0，动向 25。 */
+/** 参考线。RSI 30/70，KDJ 与 StochRSI 20/80，多空比 / 买卖比 1，基差 / 累计量差 0，动向 25。 */
 export function guides(id: IndicatorID): number[] {
   switch (id) {
     case 'RSI': return [30, 70]

@@ -327,7 +327,7 @@ describe('指标元数据', () => {
     expect(defaultParams('BOLL')).toEqual([20, 2])
     expect(defaultParams('VOL')).toEqual([5, 10, 30, 60, 120])
     expect(defaultParams('MACD')).toEqual([10, 30, 9])
-    expect(defaultParams('RSI')).toEqual([6, 12, 24])
+    expect(defaultParams('RSI')).toEqual([14])
     expect(defaultParams('KDJ')).toEqual([9, 3, 3])
     expect(defaultParams('SRSI')).toEqual([14, 14, 3, 3])
     expect(defaultParams('ATR')).toEqual([14])
@@ -350,8 +350,8 @@ describe('指标元数据', () => {
   })
 
   it('线名跟着参数走', () => {
-    expect(lineNames('MA', [5, 10])).toEqual(['均线5', '均线10'])
-    expect(lineNames('EMA', [8])).toEqual(['指数均线8'])
+    expect(lineNames('MA', [5, 10])).toEqual(['MA5', 'MA10'])
+    expect(lineNames('EMA', [8])).toEqual(['EMA8'])
     expect(lineNames('VOL', [5, 10])).toEqual(['均量5', '均量10'])
     expect(lineNames('BOLL', [20, 2])).toEqual(['中轨', '上轨', '下轨'])
     expect(lineNames('KDJ', [9, 3, 3])).toEqual(['快线', '慢线', '敏感线'])

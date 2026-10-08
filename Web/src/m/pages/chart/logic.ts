@@ -14,6 +14,7 @@
 import { MINUS, MISSING, fmtPrice, fmtVol, grouped, toFixed, changePercentText } from '../../model/rowText'
 import { MAX_QUICK, MAX_SUBS, type IntervalId, type IndicatorId, type OrderFlowOverride } from '../../app/prefs'
 import { THRESHOLD_RANGE, STEP_RANGE } from '../../../orderflow/settings'
+import { ALL_INDICATOR_IDS, hasVariablePeriods } from '../../indicator/ids'
 import type { Drawing } from '../../chart/draw/drawing'
 import { ago } from '../../../util/clock'
 
@@ -192,8 +193,8 @@ export function clampParam(raw: string): number | null {
   if (!s) return null
   return Math.min(400, Math.max(1, parseInt(s, 10)))
 }
-/** 周期数量可变的三把（均线、指数均线、成交量），最多 20 个 */
-export const VARIABLE_PARAMS: readonly IndicatorId[] = ['MA', 'EMA', 'VOL']
+/** 周期数量可变的四把（MA、EMA、RSI、成交量），最多 20 个（IndicatorID.hasVariablePeriods） */
+export const VARIABLE_PARAMS: readonly IndicatorId[] = ALL_INDICATOR_IDS.filter(hasVariablePeriods)
 export const MAX_VARIABLE_PARAMS = 20
 
 // ───────────────────────────── 订单流门槛（OrderFlowEditor）

@@ -1,6 +1,6 @@
 // 移植自 KanpanChart/Sources/KanpanChart/ChartRenderer+Sub.swift
 //
-// 副图（成交量、平滑异同、相对强弱、随机、动向、量差、持仓量、多空比 / 买卖比 / 基差）、
+// 副图（成交量、MACD、RSI、KDJ、动向指标、累计量差、持仓量、多空比 / 买卖比 / 基差）、
 // 主图与副图的图例、画线层。Swift 是 ChartRenderer 的 extension，这里写成吃 renderer 的函数。
 
 import type { IndicatorID } from '../indicator/ids'
@@ -286,14 +286,14 @@ export function mainLegendItems(r: ChartRenderer): LegendItem[] {
           const value = r.indicatorNumber(r.reading(v.lines[k]), p)
           parts.push({ full: `${indicatorName(id)}${n} ` + value, value, color: r.indicatorColor(id, k) })
         })
-        group(id === 'MA' ? '均线' : '指数', parts)
+        group(indicatorName(id), parts)
         break
       }
       case 'BOLL': {
         // legendIndex 在序列为空时是 −1，指标结果也可能比序列短一截（换品种那一拍）：读不到就是 NaN，readable 会把它剔掉。
         if (v.lines.length < 3) break
         const at = (k: number) => fmtNum(i >= 0 && i < v.lines[k].length ? v.lines[k][i] : NaN, p)
-        group('布林', [
+        group(indicatorName('BOLL'), [
           { full: '上轨 ' + at(1), value: at(1), color: t.band },
           { full: '中轨 ' + at(0), value: at(0), color: t.amber },
           { full: '下轨 ' + at(2), value: at(2), color: t.band },
@@ -304,7 +304,7 @@ export function mainLegendItems(r: ChartRenderer): LegendItem[] {
         const a = v.lines[0]
         if (!a || !r.outputVisible(id, 0)) break
         const value = r.indicatorNumber(r.reading(a), p)
-        items.push(legendItem('当日均价 ' + value, '均价 ' + value, r.indicatorColor(id, 0)))
+        items.push(legendItem(indicatorName(id) + ' ' + value, indicatorName(id) + ' ' + value, r.indicatorColor(id, 0)))
         break
       }
       case 'ST': case 'SAR': {
@@ -366,7 +366,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
     case 'VOL':
       if (r.outputVisible('VOL', v?.lines.length ?? 0) && i >= 0 && i < inp.series.count) {
         const x = r.amountNumber(inp.series.volume[i])
-        put('成交量 ' + x, '量 ' + x, t.text)
+        put(indicatorName('VOL') + ' ' + x, '量 ' + x, t.text)
       }
       if (v) r.params('VOL').forEach((n, k) => {
         if (k >= v.lines.length) return
@@ -375,7 +375,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
       })
       break
     case 'MACD': {
-      put('平滑异同' + args('MACD'), '平滑异同', t.dim)
+      put(indicatorName('MACD') + args('MACD'), indicatorName('MACD'), t.dim)
       const hist = v?.histogram
       if (!v || !hist || v.lines.length < 2) break
       // MACD 三个值都是价差，量级跟着价格走：跟着品种的价格精度走才读得出东西。
@@ -389,7 +389,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
       break
     }
     case 'RSI':
-      put(`强弱(${Math.trunc(inp.rsiUpper)}/${Math.trunc(inp.rsiLower)})`, '强弱', t.dim)
+      put(`${indicatorName('RSI')}(${Math.trunc(inp.rsiUpper)}/${Math.trunc(inp.rsiLower)})`, indicatorName('RSI'), t.dim)
       if (!v) break
       r.params('RSI').forEach((n, k) => {
         if (k >= v.lines.length) return
@@ -398,7 +398,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
       })
       break
     case 'KDJ':
-      put('随机' + args('KDJ'), '随机', t.dim)
+      put(indicatorName('KDJ') + args('KDJ'), indicatorName('KDJ'), t.dim)
       if (!v || v.lines.length < 3) break
       ;['快线', '慢线', '敏感线'].forEach((name, k) => {
         const x = r.indicatorNumber(at(v.lines[k]), 1)
@@ -406,7 +406,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
       })
       break
     case 'SRSI':
-      put('随机强弱', null, t.dim)
+      put(indicatorName('SRSI'), null, t.dim)
       if (!v || v.lines.length < 2) break
       ;['快线', '慢线'].forEach((name, k) => {
         const x = r.indicatorNumber(at(v.lines[k]), 1)
@@ -417,7 +417,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
       const a = v?.lines[0]
       if (!a) break
       const x = fmtNum(at(a), inp.decimals)
-      put(`真实波幅${r.params('ATR')[0]} ` + x, '波幅 ' + x, pal[0])
+      put(`${indicatorName('ATR')}${r.params('ATR')[0]} ` + x, '波幅 ' + x, pal[0])
       break
     }
     case 'LSR': case 'TAKER': case 'BASIS': {
@@ -427,7 +427,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
       break
     }
     case 'DMI':
-      put('动向' + args('DMI'), '动向', t.dim)
+      put(indicatorName('DMI') + args('DMI'), indicatorName('DMI'), t.dim)
       if (!v || v.lines.length < 3) break
       ;['多头动向', '空头动向', '趋势强度'].forEach((name, k) => {
         const x = r.indicatorNumber(at(v.lines[k]), 1)
@@ -447,7 +447,7 @@ export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[]
       const x = a ? at(a) : NaN
       // 「--」会被 readable 滤掉，和 Swift 一样：没有读数时整条不画。
       const x0 = Number.isFinite(x) ? r.amountNumber(x) : '--'
-      put('持仓量 ' + x0, '持仓 ' + x0, t.oi)
+      put(indicatorName('OI') + ' ' + x0, '持仓 ' + x0, t.oi)
       break
     }
     default: break

@@ -10,6 +10,7 @@
 
 import { compareKey } from '../../sync/codec'
 import { isDrawingKind } from '../chart/draw/drawing'
+import { defaultParams } from '../indicator/ids'
 
 export type IntervalId = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '12h' | '1d' | '1w' | '1M' | '1y'
 export const INTERVALS: readonly IntervalId[] = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w', '1M', '1y']
@@ -25,11 +26,12 @@ export const SUB_IDS: readonly IndicatorId[] = ['VOL', 'MACD', 'RSI', 'KDJ', 'SR
 /** 副图最多三个（VOL 不占名额，kanpan-max-three-sub-indicators） */
 export const MAX_SUBS = 3
 
-/** IndicatorID.defaultParams */
-export const DEFAULT_PARAMS: Partial<Record<IndicatorId, number[]>> = {
-  MA: [10, 30, 120, 256], EMA: [12, 144, 169, 200], BOLL: [20, 2], VOL: [5, 10, 30, 60, 120],
-  MACD: [10, 30, 9], RSI: [6, 12, 24], KDJ: [9, 3, 3], SRSI: [14, 14, 3, 3], ATR: [14], ST: [10, 3], DMI: [14],
-}
+/** IndicatorID.defaultParams：只收有参数的那几把；值取自三端共用的 indicators.json（经 m/indicator/ids） */
+export const DEFAULT_PARAMS: Partial<Record<IndicatorId, number[]>> = Object.fromEntries(
+  ([...OVERLAY_IDS, ...SUB_IDS] as IndicatorId[])
+    .map(id => [id, defaultParams(id)] as const)
+    .filter(([, p]) => p.length > 0),
+)
 /** IndicatorID.factoryParams：新装只带这四把 */
 export const FACTORY_PARAMS_IDS: readonly IndicatorId[] = ['MA', 'EMA', 'VOL', 'MACD']
 

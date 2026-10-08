@@ -41,16 +41,16 @@ const axis = (s: string): number => textWidth(s, ChartFont.axis)
 describe('单行图例', () => {
   it('放得下用全称，放不下换短称，再放不下收「+N」；读不出数的段剔掉', () => {
     const measure = (s: string) => [...s].length * 10
-    const items = [legendItem('均线5 100', '均线 100', '#000000'), legendItem('均线10 101', '101', '#000000'),
-      legendItem('均线20 102', '102', '#000000'), legendItem('均线30 --', '--', '#000000')]
+    const items = [legendItem('MA5 100', 'MA 100', '#000000'), legendItem('MA10 101', '101', '#000000'),
+      legendItem('MA20 102', '102', '#000000'), legendItem('MA30 --', '--', '#000000')]
     const full = LegendFit.fit(items, 1000, measure)
     expect(full.more).toBe(0)
-    expect(full.texts.map(t => t.text)).toEqual(['均线5 100', '均线10 101', '均线20 102'])
+    expect(full.texts.map(t => t.text)).toEqual(['MA5 100', 'MA10 101', 'MA20 102'])
     const short = LegendFit.fit(items, 160, measure)
     expect(short.more).toBe(0)
-    expect(short.texts.map(t => t.text)).toEqual(['均线 100', '101', '102'])
+    expect(short.texts.map(t => t.text)).toEqual(['MA 100', '101', '102'])
     const tight = LegendFit.fit(items, 120, measure)
-    expect(tight.texts.map(t => t.text)).toEqual(['均线 100'])
+    expect(tight.texts.map(t => t.text)).toEqual(['MA 100'])
     expect(tight.more).toBe(2)
     const total = tight.texts.reduce((a, t) => a + measure(t.text) + LegendFit.gap, 0) + measure(LegendFit.moreText(tight.more))
     expect(total).toBeLessThanOrEqual(120)
@@ -72,13 +72,13 @@ describe('单行图例', () => {
   it('短称去参数、留读数：均线第一段留名，后面只剩数；副图同理', () => {
     const r = new ChartRenderer(state(['MA'], ['MACD', 'VOL'], { MA: [5, 10] }))
     const main = mainLegendItems(r)
-    expect(main[0].full.startsWith('均线5 ')).toBe(true)
-    expect(main[0].short.startsWith('均线 ')).toBe(true)
-    expect(main[1].full.startsWith('均线10 ')).toBe(true)
-    expect(main[1].short.includes('均线')).toBe(false)
+    expect(main[0].full.startsWith('MA5 ')).toBe(true)
+    expect(main[0].short.startsWith('MA ')).toBe(true)
+    expect(main[1].full.startsWith('MA10 ')).toBe(true)
+    expect(main[1].short.includes('MA')).toBe(false)
     const macd = subLegendItems(r, 'MACD')
-    expect(macd[0].full.startsWith('平滑异同(')).toBe(true)
-    expect(macd[0].short).toBe('平滑异同')
+    expect(macd[0].full.startsWith('MACD(')).toBe(true)
+    expect(macd[0].short).toBe('MACD')
     const vol = subLegendItems(r, 'VOL')
     expect(vol[0].full.startsWith('成交量 ')).toBe(true)
     expect(vol[0].short.startsWith('量 ')).toBe(true)

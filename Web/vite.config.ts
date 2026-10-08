@@ -1,3 +1,4 @@
+import { searchForWorkspaceRoot } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 // 线上挂在 https://kanpan.43-160-232-253.sslip.io/web/ 下（Caddy file_server），路由走 hash，不需要改 Caddy。
@@ -13,6 +14,8 @@ export default defineConfig({
   },
   server: {
     port: 5178, strictPort: false,
+    // 指标名与出厂参数三端共用一份 KanpanCore/…/Indicator/indicators.json（在 Web 根外面），开发服务器要放行这一个目录。
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), '../KanpanCore/Sources/KanpanCore/Indicator'] },
     proxy: {
       '/v1': { target: ORIGIN, changeOrigin: true, secure: true },
       '/market': { target: ORIGIN, changeOrigin: true, secure: true, ws: true },
