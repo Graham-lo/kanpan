@@ -886,15 +886,25 @@ kbd {
 /* 侧栏小部件按 st.slots.widgets 顺序堆叠：列表类占满剩余高度，详情类按内容高 */
 .widget { display: flex; flex-direction: column; min-height: 0; }
 .widget-watch { flex: 1; }
-/* 自选：标题、分类、按钮并成一行；表头 24、行高 32；列表放不下时滚轮能滚但不出滚动条 */
+/* 自选：标题、分类、按钮并成一行；表头 28、行高 34；列表放不下时滚轮能滚但不出滚动条 */
 .wv-head { height: 36px; gap: var(--s1); padding: 0 var(--s1) 0 var(--s4); }
-.wv-head h3 { flex: none; font-size: var(--t13); margin-right: var(--s2); }
+.wv-head h3 { flex: none; font-size: var(--t14); margin-right: var(--s2); }
 .wv-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
 .wv-tabs .chip { height: 22px; padding: 0 8px; flex: none; }
 /* 滚动区的大小只由侧栏给（flex:1），和里面几百行无关：contain:strict 让表里改字 / 闪色只在这块里排版重画，
    不再带着整块侧栏和整页一起重排（C15 挂机实测：这一项省下约 2 个点主线程） */
 .wv-body { flex: 1; min-height: 0; contain: strict; }
-.widget-watch .tbl th { height: 24px; }
+/* 表照 TradingView 自选（2026-10-08 用户嫌挤、字小）：代号与数字都 14、行高 34；两列数字定最小宽、列间 16，
+   各自成一竖条对齐，不再贴在一起挤到右边 */
+.widget-watch .tbl th { height: 28px; font-size: var(--t12); color: var(--text-3); }
+.widget-watch .tbl td { height: 34px; font-size: var(--t14); }
+.widget-watch .tbl th:not(:first-child), .widget-watch .tbl td:not(:first-child) { padding-left: var(--s4); padding-right: 0; }
+.widget-watch .tbl th:last-child, .widget-watch .tbl td:last-child { padding-right: var(--s4); }
+.widget-watch .tbl .wc-px { min-width: 88px; color: var(--text-1); font-weight: 500; }
+.widget-watch .tbl th.wc-px { color: var(--text-3); }
+.widget-watch .tbl .wc-pct { min-width: 72px; font-weight: 500; }
+.widget-watch .tbl .sym { gap: 10px; }
+.widget-watch .tbl .sym b { font-weight: 650; letter-spacing: .01em; }
 .widget-watch.collapsed .wv-body { display: none; }
 .widget-watch.collapsed .wv-target { display: none; }
 /* 多图：列表打开到哪一格（跟着活动格走），24 高一行 */

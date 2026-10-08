@@ -4,7 +4,8 @@
  * 列表的渲染、键盘、右键、拖动排序都在这里。
  *
  * 列固定三列：品种（只写代号）· 最新价 · 涨跌幅，不给列设置；2026-10-07 用户说中文名、成交额都没必要，
- * 侧栏拉宽时的资金费 · 持仓额两列一并去掉。
+ * 侧栏拉宽时的资金费 · 持仓额两列一并去掉。2026-10-08 用户嫌挤、字小，排版照 TradingView 自选：字 14、行高 34、
+ * 数字列定宽各成一竖条（仍是三列，涨跌额不要）。
  * 键盘（焦点在列表里时，带 ⌘ / Ctrl / Alt 的一律放给全局）：
  *   ↑ ↓ Home End  移动并在活动格打开（和全局 ↑ ↓ 一样「看到哪只图就是哪只」）
  *   ↵             在活动格打开光标这只
@@ -80,7 +81,7 @@ export function widgetWatch(): string {
       ${D.collapseBtn(c)}</div>
     ${multi ? `<div class="wv-target" id="wTarget">${I('layout4', 'icon-16')}<span>${targetLabel()}</span><span class="sc">↵</span></div>` : ''}
     <div class="scroll no-bar wv-body">
-      ${list.length ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选"><thead><tr><th>品种</th><th>最新价</th><th>涨跌幅</th></tr></thead>
+      ${list.length ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选"><thead><tr><th>品种</th><th class="wc-px">最新价</th><th class="wc-pct">涨跌幅</th></tr></thead>
       <tbody>${list.map(k => watchRow(k, cur)).join('')}</tbody></table>` : empty}
     </div></div>`
 }
@@ -90,8 +91,8 @@ function watchRow(k: string, cur: string): string {
   const s = sym(k), g = ghost?.k === k, base = baseOf(k)
   return `<tr data-sym="${k}" draggable="${!g}" tabindex="${k === kb.cursor ? 0 : -1}" class="${k === cur ? 'sel' : ''} ${g ? 'wv-ghost' : ''}" aria-selected="${k === cur}">
     <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<b>${esc(s?.code || base)}</b>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
-    <td class="num price-live" data-f="price">${priceText(s)}</td>
-    <td class="num ${cls(s?.pct)} price-live" data-f="pct">${pctText(s?.pct)}</td></tr>`
+    <td class="num price-live wc-px" data-f="price">${priceText(s)}</td>
+    <td class="num ${cls(s?.pct)} price-live wc-pct" data-f="pct">${pctText(s?.pct)}</td></tr>`
 }
 
 // 只改看得见的行（RowGate）：观察器挂在列表的滚动区上，上下各多留 160 px，滚动时新露出的行已经是新价
@@ -287,7 +288,7 @@ function writeRow(tr: HTMLElement, k: string, dir: number): void {
     if (dir) { const c = flashClass(p.className, dir); p.classList.remove(...FLASH_CLASSES); p.classList.add(c) }
   }
   if (pc) {
-    const ct = pctText(s.pct), cn = `num ${cls(s.pct)} price-live`
+    const ct = pctText(s.pct), cn = `num ${cls(s.pct)} price-live wc-pct`
     if (pc.textContent !== ct) pc.textContent = ct
     if (pc.className !== cn) pc.className = cn
   }
