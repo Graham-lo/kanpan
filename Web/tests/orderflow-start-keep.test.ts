@@ -95,6 +95,29 @@ describe('A1 · 步长与标定门槛记在本机', () => {
     f.park()
     expect(f.isParked).toBe(false)
   })
+
+  it('留着的那只不取服务端历史、不拉深度快照（不和刚换上的抢出口），换回来再补', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (u: string) => { urls.push(String(u)); return new Response('null', { status: 503 }) }))
+    try {
+      storeStep('ARBUSDT', BucketScheme.referenceDay(Date.now()), 0.0005)
+      const f = feed('ARBUSDT', true)
+      const book = { id: 'binance:usdtPerp:ARBUSDT', venue: { exchange: 'binance', product: 'usdtPerp', instrument: 'ARBUSDT', notional: { kind: 'linear' } }, tick: 0.0001, priceFactor: 1 }
+      ;(f as unknown as { byId: Map<string, unknown> }).byId.set(book.id, book)
+      const priv = f as unknown as { pumpHistory(): void; fetchSnapshot(b: unknown): Promise<void> }
+      f.park()
+      priv.pumpHistory()
+      await priv.fetchSnapshot(book)
+      await new Promise(r => setTimeout(r, 0))
+      expect(urls.filter(u => u.includes('orderflow/history'))).toHaveLength(0)
+      expect(urls.filter(u => u.includes('depth'))).toHaveLength(0)
+      f.unpark()
+      await new Promise(r => setTimeout(r, 0))
+      expect(urls.filter(u => u.includes('orderflow/history')).length).toBe(1)
+      expect(urls.filter(u => u.includes('depth')).length).toBe(1)
+      f.stop()
+    } finally { vi.unstubAllGlobals() }
+  })
 })
 
 describe('A3 · 图例按阶段写短字', () => {

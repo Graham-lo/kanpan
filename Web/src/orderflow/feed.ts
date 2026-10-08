@@ -257,6 +257,8 @@ export class OrderFlowFeed {
   private calibrationDeadline: number | null = null
   /** 换走了先留着（见 park）：照收簿与成交、不出帧，评估放慢到 2 秒一拍 */
   private parked = false
+  /** 留着期间要补快照的簿：不在后台和新品种抢带宽，换回来再取（见 unpark） */
+  private deferredSnapshots = new Set<string>()
   private pacer = new FramePacer(() => this.opts.precise?.() ?? false)
   /** 门槛改了、历史并进来了：不等下一个 500 ms，马上出一帧（活单金额照旧按住，见 pace.ts force）。 */
   private kick(): void {
@@ -345,14 +347,20 @@ export class OrderFlowFeed {
   }
 
   /**
-   * 换品种时先留着这一只（orderflow/keep.ts 管几只、留多久）：连接、簿、历史都不断，只是不出帧、评估放慢；
-   * 换回来 unpark：出帧节奏从头算（下一帧照实发、金额不按住），马上出一帧。
+   * 换品种时先留着这一只（orderflow/keep.ts 管几只、留多久）：连接与簿不断，只是不出帧、评估放慢；
+   * 留着期间不取服务端历史、不拉深度快照——那是几十上百 KB 一页、串着翻十页的活，会和刚换上的那只抢同一条出口
+   * （2026-10-09 实测：开着 BTC 换到 PAYP，BTC 的历史还在一页页往前补、币本位 / 交割快照还在拉，PAYP 的历史排了 10 秒）。
+   * 换回来 unpark：出帧节奏从头算（下一帧照实发、金额不按住），补上留着期间欠的快照与历史，马上出一帧。
    */
   park(): void { if (!this.stopped) this.parked = true }
   unpark(): void {
     if (this.stopped || !this.parked) return
     this.parked = false
     this.pacer.reset()
+    const owed = [...this.deferredSnapshots]
+    this.deferredSnapshots.clear()
+    for (const id of owed) { const b = this.byId.get(id); if (b && !this.model.isReady(id)) void this.fetchSnapshot(b) }
+    this.pumpHistory()
     this.kick()
   }
 
@@ -427,6 +435,7 @@ export class OrderFlowFeed {
   }
 
   private async fetchSnapshot(b: DepthBook): Promise<void> {
+    if (this.parked) { this.deferredSnapshots.add(b.id); return }
     const last = this.snapshotting.get(b.id)
     const now = Date.now()
     if (last != null && ago(last, now) < 1000) {
@@ -561,7 +570,7 @@ export class OrderFlowFeed {
   }
 
   private pumpHistory(): void {
-    if (this.stopped || this.blocking || this.historyBusy) return
+    if (this.stopped || this.blocking || this.historyBusy || this.parked) return
     const job = this.nextJob(Date.now())
     if (!job) return
     this.historyBusy = true
