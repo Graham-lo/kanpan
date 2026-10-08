@@ -198,10 +198,15 @@ struct IndicatorPage: View {
       // 行名不再重复「主力订单流」：分组标题已经念过一遍（2026-09-24 审查 U4 同一条规矩）。
       // 「门槛」那一行只在这只币的品种信息到了之后才出：那张表里只剩门槛与步长两节
       // （显示开关 2026-09-28 收设置项 D 组收掉），没有品种信息时点进去是一张空表。
-      let base = prefs.orderFlow ? orderFlow?.currentFacts?.overrideKey : nil
-      PanelRow(name: "显示", swatch: t.swatch(.orderFlow), divider: base != nil) {
+      // 「图上大单签」（2026-10-08）和挂单墙互不依赖：墙关着签照出，门槛那一行两样开着任一样就排（签也按门槛算）。
+      let base = prefs.orderFlow || prefs.bigTradeSigns ? orderFlow?.currentFacts?.overrideKey : nil
+      PanelRow(name: "显示", swatch: t.swatch(.orderFlow), divider: true) {
         PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
           .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
+      }
+      PanelRow(name: "图上大单签", divider: base != nil) {
+        PanelSwitch(isOn: prefs.bigTradeSigns) { store.updateByHand { $0.bigTradeSigns.toggle() } }
+          .accessibilityIdentifier("orderflow.bigTradeSigns")
       }
       if let base {
         let meta = "\(base) · " + (prefs.orderFlowOverrides[base] == nil ? "默认门槛" : "已改门槛")

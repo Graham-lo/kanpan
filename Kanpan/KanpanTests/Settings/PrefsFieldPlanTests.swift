@@ -231,6 +231,20 @@ struct PrefsFieldPlanTests {
     #expect(PrefsCodec.decode(Data("{}".utf8)).drawingsHidden == false)
   }
 
+  /// 「图上大单签」（2026-10-08）：跟着人走、出厂开；和挂单墙开关互不依赖。
+  @Test("图上大单签跟着人走，出厂开，和挂单墙互不依赖")
+  func bigTradeSignsIsSyncedAndOnByDefault() {
+    #expect(PrefsFieldPlan.table["bigTradeSigns"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("bigTradeSigns"))
+    var prefs = Prefs.defaults
+    #expect(prefs.bigTradeSigns && !prefs.orderFlow)
+    prefs.bigTradeSigns = false
+    prefs.orderFlow = true
+    let back = PrefsCodec.decode(PrefsCodec.encode(prefs))
+    #expect(back.bigTradeSigns == false && back.orderFlow)
+    #expect(PrefsCodec.decode(Data("{}".utf8)).bigTradeSigns)
+  }
+
   /// 「自选走势线」（2026-10-08）：跟着人走、出厂开；老存档没有这个键时按出厂（开）。
   /// 名字不能是已退役的 `favoritesSparkline`——那颗在服务端退役名单里，推上去会被整条拒收。
   @Test("自选走势线跟着人走，出厂开")

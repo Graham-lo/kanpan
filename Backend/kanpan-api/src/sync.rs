@@ -183,6 +183,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 设置 › 通用「自选走势线」（2026-10-08，布尔）：自选行上那条 24 小时迷你走势，出厂开。
  // 不复用已退役的 `favoritesSparkline`（RETIRED_SETTINGS_FIELDS 里，老客户端写的是另一种语义）。
  "favoritesTrend",
+ // 主力订单流「图上大单签」（2026-10-08，布尔）：大单主动成交按根在 K 线高 / 低外标签，出厂开；和挂单墙 `orderFlow` 互不依赖。
+ "bigTradeSigns",
  // 电脑网页版的多套图表布局（2026-10-07，整份布局集一个对象，规则见 `sync_validation::chart_layouts`）。
  // 只有网页版读写，不在 iOS 的 PrefsFieldPlan 契约里，见 WEB_ONLY_SETTINGS_FIELDS。
  "chartLayouts",

@@ -44,10 +44,18 @@ final class OrderFlowFocus: Sendable {
 @MainActor
 @Observable
 final class OrderFlowLink {
-  /// 行情流推来的最近一帧（只会是当前品种的）。
+  /// 行情流推来的最近一帧（只会是当前品种的），去掉了大单成交账（`trades` 另存）：成交账每秒一换，
+  /// 跟着它整份换的话挂单墙那层也得每秒重画。画出来一样、时间戳没走过半个心跳的帧不再换。
   private(set) var snapshot: OrderFlowSnapshot?
-  /// 用户开关。
-  @ObservationIgnored private(set) var wanted = false
+  /// 大单成交分钟账（随帧来，每秒最多一换）：图上大单签与「大单与爆仓」弹层用。
+  private(set) var trades: BigTradeFlow?
+  /// 给图表的大单签分钟序列，按 `trades` 的版本缓存。
+  @ObservationIgnored private var tapeCache: (trades: BigTradeFlow, floor: Double, tape: BigTradeTape)?
+  /// 用户开关：挂单墙（`Prefs.orderFlow`）、图上大单签（`Prefs.bigTradeSigns`）。两个互不依赖，
+  /// 任一开着就订（签要逐笔成交，成交和簿走同一条连接）。
+  private(set) var walls = false
+  private(set) var signs = false
+  var wanted: Bool { walls || signs }
   /// 用户改过的门槛 / 步长（`Prefs.orderFlowOverrides` 的镜像）。
   @ObservationIgnored private(set) var overrides: [String: OrderFlowOverride] = [:]
   /// 开关开着、在前台——此刻是否真的订着簿。
@@ -80,14 +88,14 @@ final class OrderFlowLink {
   /// 十字线变了（`ChartView.onCrosshairChanged`）：停在主图上时读数要精确金额。
   func noteCrosshair(onMain: Bool) { focus.set(onMain) }
 
-  func setWanted(_ on: Bool) { wanted = on }
+  func setWanted(walls: Bool, signs: Bool) { self.walls = walls; self.signs = signs }
   func setOverrides(_ next: [String: OrderFlowOverride]) { overrides = next }
 
   /// 跟着 `MarketModel.updateMicrostructure` 走：前后台、开关、改门槛、换行情流、品种信息到了
   /// 都从那儿过（传进来的是「在前台」）。重复调用无害：行情流那一侧已经在跑同一只就不重订。
   func apply(visible: Bool, to feed: RoutedMarketFeed) {
     active = visible && wanted
-    if !active { snapshot = nil; sentView = nil }
+    if !active { snapshot = nil; trades = nil; tapeCache = nil; sentView = nil }
     sequence &+= 1
     let on = active, table = self.facts, overrides = self.overrides, focus = self.focus, sequence = self.sequence
     Task { await feed.setOrderFlow(enabled: on, overrides: overrides, facts: { table.facts(for: $0) },
@@ -96,9 +104,33 @@ final class OrderFlowLink {
 
   /// 行情流的 `.orderFlow` 事件。别的品种的帧（切品种那一拍）不认。
   func accept(_ frame: OrderFlowSnapshot?, symbol: String) {
-    guard active, let frame else { snapshot = nil; return }
+    guard active, let frame else { snapshot = nil; trades = nil; return }
     guard InstrumentID.canonical(frame.symbol) == InstrumentID.canonical(symbol) else { return }
-    snapshot = frame
+    var walls = frame
+    walls.trades = nil
+    if let prev = snapshot, prev.sameExactContent(as: walls),
+       walls.asOfMs - prev.asOfMs < OrderFlowFeed.heartbeatMs / 2 {
+      // 只有成交账变了：墙那份不换。
+    } else {
+      snapshot = walls
+    }
+    if frame.trades != trades { trades = frame.trades }
+  }
+
+  /// 大单签的地板（门槛 ÷ 5）：签按相对档位分，地板挡掉清淡时段的小额「大单」。
+  var signFloor: Double? {
+    guard let t = snapshot.flatMap({ BigTradeFlow.threshold($0.thresholds) }) else { return nil }
+    return t / 5
+  }
+
+  /// 给图表的大单签分钟序列：签关着、这只的成交账还没来是 nil。横屏画线台照画（只是不开弹层）。
+  func chartTape(symbol: String) -> BigTradeTape? {
+    guard active, signs, let trades, InstrumentID.canonical(trades.symbol) == InstrumentID.canonical(symbol),
+          let floor = signFloor else { return nil }
+    if let c = tapeCache, c.trades == trades, c.floor == floor { return c.tape }
+    let tape = trades.tape(nowMs: Int64(Date().timeIntervalSince1970 * 1000), floor: floor)
+    tapeCache = (trades, floor, tape)
+    return tape
   }
 
   /// 当前品种信息到了：记下事实。返回 true 表示这只的事实是新的，调用方要再催行情流一次
@@ -129,20 +161,24 @@ final class OrderFlowLink {
   /// 给图表的值：关着或横屏画线台是 nil；订着但这只品种的帧还没到，就先给「拉快照中」，
   /// 图例一直占着那一行，切品种时图不会上下跳一下。
   func chartValue(symbol: String, drawingCanvasOnly: Bool) -> OrderFlowSnapshot? {
-    guard active, !drawingCanvasOnly else { return nil }
+    guard active, walls, !drawingCanvasOnly else { return nil }
     if let snapshot, InstrumentID.canonical(snapshot.symbol) == InstrumentID.canonical(symbol) { return snapshot }
     return .loading(symbol)
   }
 }
 
-/// 把 `Prefs.orderFlow` 与 `Prefs.orderFlowOverrides` 接到行情模型上。挂在主界面上一行 `.modifier(...)`。
+/// 把 `Prefs.orderFlow`、`Prefs.bigTradeSigns` 与 `Prefs.orderFlowOverrides` 接到行情模型上。挂在主界面上一行 `.modifier(...)`。
 struct OrderFlowObserver: ViewModifier {
   let on: Bool
+  let signs: Bool
   let overrides: [String: OrderFlowOverride]
   let market: MarketModel
+  private struct Switches: Equatable { var walls: Bool; var signs: Bool }
   func body(content: Content) -> some View {
     content
       .onChange(of: overrides, initial: true) { _, now in market.setOrderFlowOverrides(now) }
-      .onChange(of: on, initial: true) { _, now in market.setOrderFlow(now) }
+      .onChange(of: Switches(walls: on, signs: signs), initial: true) { _, now in
+        market.setOrderFlow(walls: now.walls, signs: now.signs)
+      }
   }
 }

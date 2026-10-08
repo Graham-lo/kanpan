@@ -46,6 +46,7 @@
   "fieldClasses" : {
     "alertSound" : "synced",
     "barSpacing" : "synced",
+    "bigTradeSigns" : "synced",
     "candleKind" : "synced",
     "compareSymbols" : "synced",
     "depth" : "synced",
@@ -168,6 +169,7 @@
   "wireKeys" : [
     "alertSound",
     "barSpacing",
+    "bigTradeSigns",
     "candleKind",
     "compactValues",
     "compareSymbols",

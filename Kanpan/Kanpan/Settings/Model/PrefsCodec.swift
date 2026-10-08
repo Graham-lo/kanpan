@@ -144,6 +144,7 @@ extension Prefs: Codable {
     // `orderFlowContract`、`orderFlowShowFilled`、`orderFlowShowCancelled`）以及更早按买卖拆开的
     // `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 2026-09-28 收掉（收设置项 D 组），老档读时忽略。
     case orderFlowOverrides
+    case bigTradeSigns
     case candleKind
     case barSpacing, mainInverted, subInverted
     case landscapeBarSpacing
@@ -189,6 +190,7 @@ extension Prefs: Codable {
     try c.encode(depth, forKey: .depth)
     try c.encode(orderFlow, forKey: .orderFlow)
     try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
+    try c.encode(bigTradeSigns, forKey: .bigTradeSigns)
     try c.encode(barSpacing, forKey: .barSpacing)
     try c.encode(landscapeBarSpacing, forKey: .landscapeBarSpacing)
     try c.encode(mainInverted, forKey: .mainInverted)
@@ -314,6 +316,7 @@ extension Prefs: Codable {
 
     if let v = bool(.depth) { depth = v }
     if let v = bool(.orderFlow) { orderFlow = v }
+    if let v = bool(.bigTradeSigns) { bigTradeSigns = v }
     // 改过的门槛 / 步长：认不出的 base、越界的数一项一项丢，不让一只坏档拖垮整张表。
     if let raw = try? c.decode([String: OrderFlowOverride].self, forKey: .orderFlowOverrides) {
       for base in raw.keys.sorted() where orderFlowOverrides.count < Prefs.maxOrderFlowOverrides {

@@ -1209,8 +1209,13 @@ final class MarketModel {
     if let lastView { orderFlow.noteView(lastView, symbol: symbol, feed: feed) }
   }
 
-  /// 主力订单流开关（`Prefs.orderFlow`）。
-  func setOrderFlow(_ on: Bool) { orderFlow.setWanted(on); updateMicrostructure() }
+  /// 主力订单流开关（`Prefs.orderFlow` 挂单墙、`Prefs.bigTradeSigns` 图上大单签，任一开着就订）。
+  func setOrderFlow(walls: Bool, signs: Bool) {
+    guard walls != orderFlow.walls || signs != orderFlow.signs else { return }
+    let was = orderFlow.wanted
+    orderFlow.setWanted(walls: walls, signs: signs)
+    if was != orderFlow.wanted { updateMicrostructure() }
+  }
   /// 主力订单流改过的门槛 / 步长（`Prefs.orderFlowOverrides`）。
   func setOrderFlowOverrides(_ overrides: [String: OrderFlowOverride]) {
     guard overrides != orderFlow.overrides else { return }

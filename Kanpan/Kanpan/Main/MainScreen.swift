@@ -418,7 +418,7 @@ struct MainScreen: View {
     // 对比 K 线只有这一个观察者，自带一层修饰符，不往上面那只里塞。
     // 接线键（要读序列首尾时刻）在修饰符自己的 body 里求值，见 `LiveCompareObservers`。
     .modifier(LiveCompareObservers(drive: { compareDrive }, onChange: { updateCompare() }))
-    .modifier(OrderFlowObserver(on: prefs.orderFlow, overrides: prefs.orderFlowOverrides, market: market))
+    .modifier(OrderFlowObserver(on: prefs.orderFlow, signs: prefs.bigTradeSigns, overrides: prefs.orderFlowOverrides, market: market))
   }
 
   private var microstructureVisible: Bool {
