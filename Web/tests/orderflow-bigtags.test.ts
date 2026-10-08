@@ -73,6 +73,21 @@ describe('档位', () => {
     tc.get(c, f, ch, now, 500_000)   // 下限变了也重算
     expect(tc.computed).toBe(3)
   })
+  it('档位的分布按买卖里大的那一侧算（和过线比的同一口径）：买卖两边相近的粗周期也有签', () => {
+    const s = 'SOLUSDT', f = flowOf(s), c = new BigBarCache(), tc = new TierCache()
+    const IV = 3_600_000, N = 20, now = T0 + N * IV
+    cover(s, T0, now)
+    // 20 根 1 小时：每根买 (k+1)×100 万、卖同样多（两边相近）
+    for (let k = 0; k < N; k++) { trade(s, T0 + k * IV + 5, (k + 1) * 1_000_000, true); trade(s, T0 + k * IV + 6, (k + 1) * 1_000_000, false) }
+    const bars = Array.from({ length: N }, (_, k) => ({ t: T0 + k * IV }))
+    const ch = { bars, timeAt: (i: number) => T0 + i * IV }
+    c.begin(f, `SOLUSDT|${IV}`, now)
+    const k = tc.get(c, f, ch, now, 0)!
+    // 线落在单边的分布上（P85 ≈ 1716 万），最大的三根过线；按合计定线（P85 ≈ 3433 万）单边一根都过不了
+    expect(k.t1).toBeLessThan(20_000_000)
+    const over = bars.filter((b, i) => { const d = c.get(f, b.t, ch.timeAt(i + 1), now)!; return Math.max(d.bb, d.bs) >= k.t1 })
+    expect(over.length).toBe(3)
+  })
   it('单位：这只的大单线 × 10（= 门槛 ÷ 5），不知道就用活动那只的', () => {
     const f = flowOf('SOLUSDT')
     expect(unitFor(f, 777)).toBe(777)

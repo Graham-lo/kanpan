@@ -10,7 +10,8 @@
  *     再不然用浏览器攒到的那一部分。周期粗于 1 分钟时前端按分钟并；秒级周期只有浏览器的秒桶。
  *   · 笔数、最大一笔、现货 / 合约与三家的占比只有浏览器记（服务端的行没有）：一根里只要有一分钟的大单金额来自服务端，这几项就是 null（界面写「—」或不写）。
  *   · 档位按相对分布定（2026-10-08 验收：按绝对门槛一屏四百多枚、整张图被盖满）：当前周期最近 300 根（不足就取有的）
- *     每根「大买 + 大卖」的非零分布，三档 = P85（6 px 三角）/ P95（带金额的圆角签）/ max(P99, 3 × P95)（13 px 粗体大签），
+ *     每根「大买 / 大卖里大的那一侧」的非零分布（2026-10-08 改：原来按「大买 + 大卖」合计定线、再拿单边去比，
+ *     1 时 / 4 时 / 日线买卖两边相近时一根都过不了线，用户切到粗周期看到签「不出来」），三档 = P85（6 px 三角）/ P95（带金额的圆角签）/ max(P99, 3 × P95)（13 px 粗体大签），
  *     每档再垫一道绝对下限 = 门槛 ÷ 5（和成交带的「大额」同一条线）。和档位比的是签上写的那一侧的金额，
  *     所以签越大写的数越大。分布只在数据版本变了（缓存作废 / 新开一根）才重算。
  *   · 一根只画一枚签：买卖里大的那一侧（买挂高点上、卖挂低点下）；另一侧只有自己也过 P95 才另画一枚描边签。
@@ -115,7 +116,7 @@ export function tiersFrom(vals: readonly number[], floor: number): Tiers | null 
 
 /** 一张图的 K 线（只要时间）：bars 升序、timeAt(n) 给最后一根之后那根的开盘时间 */
 export interface BarsLike { bars: readonly { t: number }[]; timeAt: (i: number) => number }
-/** 最近 TIER_BARS 根的分布 → 三档。结果按「缓存代数 + 最后一根 + 下限」记住，数据没变就不重算 */
+/** 最近 TIER_BARS 根「大买 / 大卖里大的那一侧」的分布 → 三档。结果按「缓存代数 + 最后一根 + 下限」记住，数据没变就不重算 */
 export class TierCache {
   private key = ''
   private val: Tiers | null = null
@@ -131,7 +132,8 @@ export class TierCache {
     for (let i = n - 1; i >= Math.max(0, n - TIER_BARS); i--) {
       const t0 = ch.bars[i].t, t1 = i + 1 < n ? ch.bars[i + 1].t : ch.timeAt(n)
       const d = cache.get(f, t0, t1, now)
-      if (d) vals.push(d.bb + d.bs)
+      // 和签上写的那一侧同一口径（买卖里大的那一侧）：按「买 + 卖」合计定线、再拿单边去比，粗周期两边相近时一根都过不了线
+      if (d) vals.push(Math.max(d.bb, d.bs))
     }
     this.val = tiersFrom(vals, floor)
     return this.val
