@@ -317,12 +317,21 @@ export async function klines(symbol: string, iv: string, endTime?: number, limit
  *  15 个非当前格各省 8 点权重；往左翻历史照常由 loadMore 一页 1500 根补 */
 export const SIDE_LIMIT = 499
 
-/** 持仓量副图：币安只给最近 30 天的历史，周期只有 5 分钟到 1 天。更细的周期（1m / 3m）把 5 分钟那一桶的值铺到桶里每根，
- *  更粗的（1w / 1M）取那根里最后一个日点；对不齐的根留空。
- *  走着的那一桶币安也给点、值还在变，新开的一桶要等它的第一个点出来——所以装载取整段（500 个点）之后，
- *  露着副图的格子每分钟再拿最近两桶补一次尾巴（limit 只要几个点），线才跟着 K 线一路延长。
+/** 持仓量副图：两段拼——最近 30 天问币安（openInterestHist，只留 30 天、一页 500 个点、向左翻页翻到要的那一桶为止），
+ *  更早的问自家归档（kanpan-api /oi/v1/metrics/{symbol}/range，币安 data.binance.vision 的 metrics 日文件解出来按桶聚合，
+ *  2020-09-01 起、到昨天为止）。原来只打币安一次 500 个点，1 时线之上一翻页就是空的，用户 2026-10-08 说「品种的 oi 还是没历史数据」。
+ *  币安给的是美元值（sumOpenInterestValue = 张数 × 标记价）；归档只有张数，这里拿那根 K 线的收盘价换成美元——
+ *  两段接缝处差的是标记价与收盘价那点，肉眼看不出；iOS 端整条用张数，网页版沿用美元口径不改。
+ *  币安 period 只有 5 分钟到 1 天：更细的周期（1m / 3m）把 5 分钟那一桶的值铺到桶里每根，更粗的（1w / 1M）取那根里最后一个日点；对不齐的根留空。
+ *  走着的那一桶币安也给点、值还在变，新开的一桶要等它的第一个点出来——所以装载取整段之后，
+ *  露着副图的格子每分钟再拿最近两桶补一次尾巴（limit 只要几个点，不翻页），线才跟着 K 线一路延长。
  *  alive：排队期间这一格不要了（换品种 / 周期 / 格子没了 / 持仓量副图被收起）就不发 */
 const OI_PERIOD = new Set(['5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'])
+const DAY_MS = 864e5
+/** 币安 openInterestHist 留 30 天；留半天余量，比这早的桶一律问归档（归档到昨天为止，这一段两边都有） */
+export const OI_LIVE_MS = 29.5 * DAY_MS
+/** 归档从这天（2020-09-01 UTC）起，再早没有 */
+export const OI_EPOCH = 1_598_918_400_000
 /** 这个周期取持仓量用币安的哪个 period；秒级 / 自定义分钟没有 */
 export function oiPeriod(iv: string): string | null {
   if (OI_PERIOD.has(iv)) return iv
@@ -330,32 +339,76 @@ export function oiPeriod(iv: string): string | null {
   if (!(ms > 0)) return null
   return ms < 300e3 ? '5m' : '1d'
 }
-/** 返回 false = 没取成（排队时被作废、网络 / 限流失败），调用方下次还该再取；不支持的周期 / 品种算取过了 */
+type OIPt = readonly [number, number]
+/** 返回 false = 没取成（排队时被作废、网络 / 限流失败、归档没答），调用方下次还该再取；不支持的周期 / 品种算取过了。
+ *  limit < 500 是补尾巴：只打币安一页、不翻页、不问归档 */
 export async function attachOI(symbol: string, iv: string, bars: Bar[], alive?: () => boolean, limit = 500): Promise<boolean> {
   const period = oiPeriod(iv)
   if (!period || !bars.length || isMacro(symbol)) return true
-  const pms = IV_MS[period], ims = IV_MS[iv], last = bars[bars.length - 1]
-  try {
-    // 细周期：桶头 ≤ 最后一根的开盘时刻；粗周期：要到这根收线前的最后一个日点
-    const endTime = ims <= pms ? last.t + 1 : Math.min(last.t + ims, Date.now())
-    const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${period}&limit=${limit}&endTime=${endTime}`, 8000, false, alive)
-    if (!rows.length) return true
-    let hit = 0
-    if (ims <= pms) {
-      const m = new Map(rows.map(r => [r.timestamp, +r.sumOpenInterestValue]))
-      for (const b of bars) { const v = m.get(Math.floor(b.t / pms) * pms); if (v != null) { b.oi = v; hit++ } }
-    } else {
-      const pts = rows.map(r => [r.timestamp, +r.sumOpenInterestValue] as const).sort((a, b) => a[0] - b[0])
-      for (let i = 0; i < bars.length; i++) {
-        const b = bars[i], until = i + 1 < bars.length ? bars[i + 1].t : b.t + ims
-        let v: number | undefined
-        for (const [t, x] of pts) { if (t >= until) break; if (t >= b.t) v = x }
-        if (v != null) { b.oi = v; hit++ }
-      }
+  const pms = IV_MS[period], ims = IV_MS[iv], now = Date.now()
+  const liveFrom = now - OI_LIVE_MS
+  const split = bars.findIndex(b => b.t >= liveFrom)
+  const live = split < 0 ? [] : bars.slice(split)
+  const old = limit < 500 ? [] : (split < 0 ? bars : bars.slice(0, split)).filter(b => b.t + ims > OI_EPOCH)
+  const [a, b] = await Promise.allSettled([
+    live.length ? oiFromBinance(symbol, period, live, ims, pms, now, alive, limit) : Promise.resolve<OIPt[]>([]),
+    old.length ? oiFromArchive(symbol, period, old, ims, now, alive) : Promise.resolve<OIPt[]>([]),
+  ])
+  let hit = 0
+  if (a.status === 'fulfilled') hit += oiFill(live, a.value, ims, pms, false)
+  if (b.status === 'fulfilled') hit += oiFill(old, b.value, ims, pms, true)
+  if (hit) emit({ type: 'oi', symbol, iv })
+  return a.status === 'fulfilled' && b.status === 'fulfilled' /* 取不到持仓量就留空 */
+}
+/** 币安那一段：从最后一根要的那一桶向左翻，翻到最早一根要的桶头（或不满一页）为止；30 天 × 5 分钟 = 8640 个点，最多 20 页 */
+async function oiFromBinance(symbol: string, period: string, bars: Bar[], ims: number, pms: number, now: number, alive: (() => boolean) | undefined, limit: number): Promise<OIPt[]> {
+  const last = bars[bars.length - 1]
+  // 细周期：桶头 ≤ 最后一根的开盘时刻；粗周期：要到这根收线前的最后一个日点
+  let end = ims <= pms ? last.t + 1 : Math.min(last.t + ims, now)
+  const want = Math.floor(bars[0].t / pms) * pms
+  const out: OIPt[] = []
+  for (let page = 0; page < 20; page++) {
+    const rows = await j<{ timestamp: number; sumOpenInterestValue: string }[]>(`${REST}/futures/data/openInterestHist?symbol=${symbol}&period=${period}&limit=${limit}&endTime=${end}`, 8000, false, alive)
+    if (!rows.length) break
+    let oldest = Infinity
+    for (const r of rows) { out.push([r.timestamp, +r.sumOpenInterestValue]); if (r.timestamp < oldest) oldest = r.timestamp }
+    if (limit < 500 || rows.length < limit || oldest <= want) break
+    end = oldest - 1
+  }
+  return out
+}
+/** 归档那一段：服务端按桶聚合好（一桶取最后一个点）、一次最多十年 / 两万桶，周线以上按日点问，整段拆成几次 */
+async function oiFromArchive(symbol: string, period: string, bars: Bar[], ims: number, now: number, alive?: () => boolean): Promise<OIPt[]> {
+  const first = Math.max(bars[0].t, OI_EPOCH), to = Math.min(bars[bars.length - 1].t + ims, now - 60e3)
+  const span = Math.min(3660 * DAY_MS, 20_000 * Math.max(IV_MS[period], 300e3))
+  const out: OIPt[] = []
+  for (let from = first; from < to; ) {
+    const end = Math.min(to, from + span)
+    // 和 /v1 一样走页面同源（线上同源；本机开发由 vite 代理 /oi 转到线上）——直打线上那台没有跨域头
+    const rows = await j<[number, number][]>(`${typeof location !== 'undefined' ? location.origin : apiOrigin()}/oi/v1/metrics/${symbol}/range?interval=${period}&from=${from}&to=${end}`, 30000, false, alive)
+    for (const [t, x] of rows) out.push([t, x])
+    from = end + 1
+  }
+  return out
+}
+/** 点落到根上：细周期按桶头对；粗周期取这根里（到下一根开盘为止）最后一个点。contracts = 点是张数，乘这根的收盘价换成美元 */
+function oiFill(bars: Bar[], pts: OIPt[], ims: number, pms: number, contracts: boolean): number {
+  let hit = 0
+  const val = (b: Bar, x: number) => contracts ? x * b.c : x
+  if (ims <= pms) {
+    const m = new Map(pts)
+    for (const b of bars) { const v = m.get(Math.floor(b.t / pms) * pms); if (v != null) { b.oi = val(b, v); hit++ } }
+  } else {
+    const sorted = [...pts].sort((a, b) => a[0] - b[0])
+    let j = 0
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i], until = i + 1 < bars.length ? bars[i + 1].t : b.t + ims
+      let v: number | undefined
+      while (j < sorted.length && sorted[j][0] < until) { if (sorted[j][0] >= b.t) v = sorted[j][1]; j++ }
+      if (v != null) { b.oi = val(b, v); hit++ }
     }
-    if (hit) emit({ type: 'oi', symbol, iv })
-    return true
-  } catch { return false /* 取不到持仓量就留空 */ }
+  }
+  return hit
 }
 
 export interface Detail {

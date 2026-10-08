@@ -43,7 +43,7 @@ import { isMoreMain, MORE_PARAM_NAME } from '../chart/mainIndicators'
 import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
 import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
-  S, on, REST, coolingFor, isRateLimit, wakeQueued, klines, attachOI, oiPeriod, SIDE_LIMIT, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
+  S, on, REST, coolingFor, isRateLimit, wakeQueued, klines, attachOI, oiPeriod, OI_EPOCH, SIDE_LIMIT, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
   IV_LABEL, IV_SHORT, INTERVALS, TABS, kindName, sectorsOf, rankSearch, baseOf, kindOfUnderlying, type Kind, type Sym, type KlineResult,
 } from '../market'
 import { klineDiskReady, diskBars, keepBars, flushBars } from '../market/klineStore'
@@ -225,7 +225,10 @@ function linkView(from: Cell, t0: number, t1: number): void {
   // 压测脚本（scripts/stress.mjs）还读：图上真的装的是哪只、哪个周期、最后一根收盘价（验多图不串数据），以及 K 线里有没有断档（验断网后补齐）
   let holes = 0
   for (let j = 1; j < b.length; j++) if (b[j].t - b[j - 1].t > c.chart.iv && c.chart.iv < 864e5) holes++
-  return { symbol: k.symbol, iv: k.iv, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: b.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]),
+  // 持仓量回归读：多少根带着持仓量、最早一根是第几根（验 30 天之外的归档段真的落到根上）
+  let oi = 0, oiFirst = -1
+  for (let j = 0; j < b.length; j++) if (b[j].oi != null) { oi++; if (oiFirst < 0) oiFirst = j }
+  return { symbol: k.symbol, iv: k.iv, oi, oiFirst, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: b.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]),
     metaSym: c.chart.meta.symbol, metaIv: c.chart.iv, last: b[b.length - 1]?.c ?? null, lastT: b[b.length - 1]?.t ?? null, holes, empty: !$('.cell-empty', c.el).hidden }
 })
 ;(globalThis as unknown as { __px?: (s: string) => number | null }).__px = s => sym(s)?.price ?? null
@@ -397,8 +400,9 @@ function ensureOI(cell: Cell): void {
   const shown = () => cell.chart.subIds().includes('oi')
   if (!shown()) return
   oiDone.set(cell, token)
-  // 从缓存出的图：根对象是上次那份，已经带着持仓量（最后一根收线的有值）就不用整段再取，只把尾巴刷新
-  if (bars.length > 1 && bars[bars.length - 2].oi != null) { refreshOITail(cell); return }
+  // 从缓存出的图：根对象是上次那份，已经带着持仓量（最后一根收线的有值、最早一根也有或早于归档起点）就不用整段再取，只把尾巴刷新；
+  // 只有近 30 天那段有（上次副图没露着时翻页补的、或归档那次没答）就整段再问一次，归档那段才补得上
+  if (bars.length > 1 && bars[bars.length - 2].oi != null && (bars[0].oi != null || bars[0].t + IV_MS[c.iv] <= OI_EPOCH)) { refreshOITail(cell); return }
   const alive = () => token === cell.loadToken && !cell.chart.dead && shown()
   void attachOI(c.symbol, c.iv, bars, alive).then(ok => { if (!ok && oiDone.get(cell) === token) oiDone.delete(cell) })
 }
