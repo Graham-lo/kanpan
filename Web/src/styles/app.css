@@ -516,7 +516,7 @@ kbd {
 .chart-area:not([data-layout="1"]):not(.zoomed) .chart-cell:not(.active) .cell-foot .clock { visibility: hidden; }
 
 /* 图例（画布左上，HTML 叠层） */
-.legend { position: absolute; left: var(--s3); top: var(--s2); pointer-events: none; z-index: 2; font-size: var(--t13); line-height: 20px; }
+.legend { position: absolute; left: var(--s3); top: var(--s2); pointer-events: none; z-index: 2; font-size: var(--t13); line-height: 24px; }
 .legend .lrow { display: flex; flex-wrap: wrap; max-width: 100%; align-items: center; gap: 0 var(--s2); white-space: nowrap; pointer-events: auto; padding-right: var(--s2); border-radius: var(--r-xs); width: max-content; }
 .legend .title { font-size: var(--t14); font-weight: 600; color: var(--text-1); display: flex; align-items: center; gap: 6px; }
 .legend .title .sub { font-weight: 400; color: var(--text-2); font-size: var(--t13); }
@@ -545,12 +545,14 @@ kbd {
 .legend .lhead, .pane-legend .lhead { display: flex; align-items: center; gap: 0 var(--s2); position: relative; }
 .legend .tools, .pane-legend .tools { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 2px; display: flex; gap: 0; visibility: hidden; z-index: 1; background: var(--chart-bg); border-radius: var(--r-xs); }
 .legend .lrow:not(.dense):hover .tools, .legend .dchip:hover .tools, .pane-legend .lrow:hover .tools { visibility: visible; }
-.legend .tools .ibtn { width: var(--h-xs); height: var(--h-xs); }
+/* 图例悬浮按钮照 TradingView 量的：每颗 28 宽、和行一样 24 高，图标 18（原来 24×24 配 16 的图标，用户 2026-10-08 说太小不好点） */
+.legend .tools .ibtn, .pane-legend .tools .ibtn { width: 28px; height: 24px; border-radius: var(--r-xs); }
+:is(.legend, .pane-legend) .tools .ibtn .icon-16 { width: 18px; height: 18px; }
 .legend [data-v] b { font-weight: inherit; }
 .legend .lrow.hidden-ind .ind-name, .legend .lrow.hidden-ind .vals { opacity: .45; }
 .legend .vals { display: flex; gap: var(--s2); }
 .legend [data-v], .pane-legend [data-v] { font-variant-numeric: tabular-nums; }
-.pane-legend { position: absolute; left: var(--s3); z-index: 2; font-size: var(--t13); line-height: 20px; pointer-events: none; }
+.pane-legend { position: absolute; left: var(--s3); z-index: 2; font-size: var(--t13); line-height: 24px; pointer-events: none; }
 .pane-legend .lrow { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; pointer-events: auto; padding-right: var(--s2); border-radius: var(--r-xs); width: max-content; }
 .pane-legend .ind-name { color: var(--text-1); }
 .pane-legend .ind-param { color: var(--text-2); }
@@ -558,7 +560,6 @@ kbd {
 .pane-legend .vals b { font-weight: inherit; }
 /* 副图多条线各带一个短名（「现货」「合约」「大单」「散户」）；图例上的口径小字悬停看说明 */
 .legend .vals i, .pane-legend .vals i { font-style: normal; color: var(--text-3); margin-right: 3px; }
-.pane-legend .tools .ibtn { width: var(--h-xs); height: var(--h-xs); }
 .pane-legend .lrow:hover { background: color-mix(in srgb, var(--chart-bg) 80%, transparent); }
 .pane-legend .lrow.hidden-ind .ind-name, .pane-legend .lrow.hidden-ind .vals { opacity: .45; }
 
@@ -709,21 +710,26 @@ kbd {
 .search-foot span { display: flex; align-items: center; gap: 6px; }
 
 /* 指标对话框 */
-.ind-dlg { width: 960px; height: 760px; max-height: 86vh; max-width: calc(100vw - 48px); }
-.ind-dlg .body { display: grid; grid-template-columns: 220px 1fr; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
+/* 尺寸照 TradingView 指标弹窗量的（2026-10-08）：标题 20、搜索框 40 高、左栏分类每格 40 高 14 号字、列表行 40 高；
+   宽高随窗口收，左栏在窄窗口里收窄 */
+.ind-dlg { width: 960px; height: 760px; max-height: calc(100vh - 96px); max-width: calc(100vw - 48px); }
+.ind-dlg .dialog-head h2 { font-size: var(--t20); line-height: 28px; }
+.ind-dlg .body { display: grid; grid-template-columns: clamp(168px, 22%, 220px) 1fr; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
 .ind-dlg #indList { overflow-y: auto; min-height: 0; padding-bottom: var(--s3); }
 .ind-side { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2); border-right: 1px solid var(--line); }
-.ind-search { display: flex; align-items: center; gap: var(--s2); height: var(--h-md); padding: 0 var(--s3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-3); }
+.ind-search { display: flex; align-items: center; gap: var(--s2); height: var(--h-lg); padding: 0 var(--s3); border-radius: var(--r-md); background: var(--surface-2); color: var(--text-3); }
 .ind-search:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
-.ind-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--text-1); font-size: var(--t13); }
+.ind-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--text-1); font-size: var(--t14); }
 .ind-search input::placeholder { color: var(--text-3); }
 .ind-search input::-webkit-search-cancel-button { display: none; }
-.ind-gh { position: sticky; top: 0; z-index: 1; padding: var(--s3) var(--s5) var(--s1); background: var(--overlay); color: var(--text-3); font-size: var(--t12); font-weight: 500; }
+.ind-gh { position: sticky; top: 0; z-index: 1; padding: var(--s3) var(--s5) 6px; line-height: 16px; background: var(--overlay); color: var(--text-3); font-size: var(--t12); font-weight: 500; }
 .ind-empty { padding: var(--s6) var(--s5); }
-.ind-cats button { display: flex; width: 100%; height: var(--h-md); align-items: center; justify-content: space-between; padding: 0 var(--s3); border-radius: var(--r-sm); color: var(--text-2); font-weight: 500; }
+.ind-cats button { display: flex; width: 100%; height: var(--h-lg); align-items: center; justify-content: space-between; padding: 0 var(--s3); border-radius: var(--r-md); color: var(--text-2); font-size: var(--t14); font-weight: 500; }
 .ind-cats button:hover { background: var(--surface-3); color: var(--text-1); }
-.ind-cats button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); }
-.ind-row { display: flex; align-items: center; gap: var(--s3); height: 44px; padding: 0 var(--s5); cursor: pointer; }
+.ind-cats button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.ind-row { display: flex; align-items: center; gap: var(--s3); height: var(--h-lg); padding: 0 var(--s5); cursor: pointer; font-size: var(--t14); }
+.ind-row .ibtn.xs { width: 28px; height: 28px; }
+.ind-row .ibtn.xs .icon-16 { width: 18px; height: 18px; }
 .ind-row:hover { background: var(--surface-2); }
 .ind-row .nm { flex: 1; font-weight: 500; }
 .check-box { width: 18px; height: 18px; border-radius: 5px; border: var(--stroke-hair) solid var(--control-line); display: grid; place-items: center; color: #fff; flex: none; transition: all var(--d-fast) var(--ease); }
