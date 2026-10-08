@@ -76,15 +76,14 @@
 .cp-back[hidden] { display: none }
 .cp-id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden }
 .cp-badge { flex: none; display: inline-flex; width: var(--badge); height: var(--badge) }
-.cp-base { font: var(--t-title); white-space: nowrap }
+.cp-base { font: var(--t-title); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis }
 .cp-quote { font: var(--t-caption); color: var(--ink3); white-space: nowrap; margin-left: -4px; align-self: flex-end; padding-bottom: 5px }
 .cp-perp {
   flex: none; font: var(--t-caption2-emph); color: var(--ink3);
   padding: 1px 5px; border-radius: var(--r-xs); background: var(--raised2);
 }
-.cp-top-acts { flex: none; display: flex; gap: var(--s-s) }
-/* 有对比品种时 ＋ 亮强调色（照 iOS TopBar：五颗圆片间距收到 s 档） */
-.cp-cmpdisc.on { background: var(--accent); color: var(--badge-ink) }
+/* 三颗圆片（照 iOS TopBar 2026-10-08）：间距回到 m 档，32 × 3 + 12 × 2 = 120，44 的命中区首尾相接 */
+.cp-top-acts { flex: none; display: flex; gap: var(--s-m) }
 /* 铃铛角标（照 iOS AlertCountBadge）：强调色胶囊、11 粗等宽数字，钉在 32 托底右上角外沿（偏 4,-4），不吃点击 */
 .cp-bellcount {
   position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 var(--s-xs); box-sizing: border-box;
@@ -92,8 +91,8 @@
   font: var(--t-caption2-emph); font-variant-numeric: tabular-nums; line-height: 16px; text-align: center; pointer-events: none;
 }
 .cp-bellcount[hidden] { display: none }
-/* 窄屏带返回键时整行放不下「永续」角标：先去掉它（照 iOS ViewThatFits） */
-@media (max-width: 415px) { .cp-top:has(.cp-back:not([hidden])) .cp-perp { display: none } }
+/* 「永续」角标不许被挤掉（照 iOS 2026-10-08）：右侧收成三颗后 375 宽带返回键也还剩约 167pt，
+   真放不下时截的是基础币（上面 .cp-base 的省略号），角标一直在 */
 
 /* ───────────── 头部：价格 + 六格 ───────────── */
 .cp-head {

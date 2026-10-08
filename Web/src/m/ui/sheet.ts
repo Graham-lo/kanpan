@@ -302,6 +302,8 @@ export interface MenuItem {
   destructive?: boolean
   checked?: boolean
   disabled?: boolean
+  /** 写到这一项按钮的 data-act 上（测试与脚本按它点） */
+  act?: string
   run: () => void
 }
 
@@ -324,6 +326,7 @@ export function openMenu(anchor: HTMLElement, items: (MenuItem | null)[], onClos
     const b = el('button', 'm-menu-item' + (it.destructive ? ' danger' : '') + (it.checked ? ' checked' : ''),
       `${leadCol ? `<span class="m-menu-lead">${lead}</span>` : ''}<span class="m-menu-title">${esc(it.title)}</span>`)
     b.type = 'button'; b.setAttribute('role', 'menuitem'); b.disabled = !!it.disabled
+    if (it.act) b.dataset.act = it.act
     b.onclick = () => { pop.close(); it.run() }
     root.appendChild(b)
   })

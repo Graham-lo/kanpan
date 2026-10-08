@@ -19,7 +19,7 @@
  * 把图表设置里亲手切的线性 / 对数记成这一类的结论（不然学到的那档会把亲手选的盖回去）。
  */
 import { st, save, subscribe } from '../app/store'
-import { INTERVALS, type IntervalId, type IndicatorId, type PriceMode } from '../app/prefs'
+import { INTERVALS, MAX_COMPARE, type IntervalId, type IndicatorId, type PriceMode } from '../app/prefs'
 import { hooks, nav, go, openSymbol, type PageHandle, type SyncChange } from '../app/shell'
 import { drawingBook } from '../app/drawings'
 import { S, on as onMarket, streamName } from '../../market'
@@ -40,7 +40,6 @@ import { onAlertsChange, pendingCount } from '../model/alerts'
 import { chartIndicatorsFor, isStale, isLandscape, spacingFor, spacingWrite, priceModeFor, showsOtherChart, switchCue, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
-import { compareTargets } from '../chart/compare.source'
 import { createIntervalBar } from './chart/intervalBar'
 import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
@@ -120,7 +119,8 @@ export function initChart(root: HTMLElement): PageHandle {
   const panel = (open: () => void) => (): void => { ivBar.closeGrid(); open() }
   const topBar = createTopBar(page, {
     onBack: () => { const o = nav.origin; nav.origin = null; if (o && o !== 'chart') go(o); else render() },
-    // 顶栏 ＋：开对比模式的搜索页（照 iOS d26df149；10-06 起「分析」面板的「对比」一节也开这一页）
+    // 「⋯ › 添加对比」：开对比模式的搜索页（照 iOS d26df149；10-06 起「分析」面板的「对比」一节也开这一页；
+    // 10-08 起这颗从顶栏收进「⋯」菜单，满三只时那一项置灰）
     onCompare: panel(() => openSearch({ compare: { current: sym() } })),
     // 铃铛：开「提醒」表（列表 | 日志，照 iOS 543a308d），创建页预填最新价
     onAlerts: panel(() => { openAlertHub(sym(), S.symbols.get(sym())?.price ?? null) }),
@@ -346,7 +346,7 @@ export function initChart(root: HTMLElement): PageHandle {
     const now = Date.now()
     const s = S.symbols.get(sym())
     const stale = isStale({ flag: st.stale, live: S.live, lastTick: s?.lastTick ?? null, now }) || s?.closed === true
-    topBar.render(sym(), nav.origin != null && nav.origin !== 'chart', compareTargets(st.compareSymbols, sym()).length > 0, pendingCount(sym()))
+    topBar.render(sym(), nav.origin != null && nav.origin !== 'chart', st.compareSymbols.length >= MAX_COMPARE, pendingCount(sym()))
     header.render(sym(), stale, now)
     ivBar.render({ quick: st.quickIntervals, current: iv() })
     bench.renderRail()
