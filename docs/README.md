@@ -1,6 +1,6 @@
 # Hkline 文档索引
 
-更新：2026-09-24。开发工作仅来自四份交接书：[待办交接](待办交接-Codex-2026-09-22.md)（第一条 Codex 线程）与[多交易所-Coinbase 交接](多交易所-Coinbase-交接-Codex-2026-09-22.md)（第二条 Codex 线程，2026-09-22 用户拍板新增）、[对比K线交接](对比K线-交接-Codex-2026-09-22.md)、[提醒铃声交接](提醒铃声-交接-Codex-2026-09-22.md)（第三、四条，同日拍板）；排除项仅来自[不做清单](不做清单.md)。其它正文描述现行规格或有日期的参考数据，不生成行动项。旧审查、盘点、方案和提示词已删除，可从Git历史追溯。
+更新：2026-10-08。排除项仅来自[不做清单](不做清单.md)；书面待办仅来自[待办交接](待办交接-Codex-2026-09-22.md)，它的 P0～P4 已全部对账完成（[总结](acceptance/待办交接-2026-09-22/总结.md)），2026-09-23 起新活由用户当场指派、按日期记在 `.project-memory/PROJECT.md` 各节，Claude 这边实现（见 `AGENTS.md`）。第二至四条 Codex 线程的三份交接书（多交易所 / 对比 K 线 / 提醒铃声）2026-09-23 已交付收口，只留作设计出处。其它正文描述现行规格、协议或有日期的参考数据，不生成行动项。旧审查、盘点、方案和提示词已删除，可从 Git 历史追溯。
 
 ## 现行文档
 
@@ -8,58 +8,54 @@
 | --- | --- | --- |
 | [README.md](README.md) | 现行 | 本文：规格、数据和证据索引 |
 | [不做清单.md](不做清单.md) | 现行 | 唯一排除口径 |
-| [待办交接-Codex-2026-09-22.md](待办交接-Codex-2026-09-22.md) | 现行 | 第一条线程的工作清单、阶段顺序与验收要求 |
-| [多交易所-Coinbase-交接-Codex-2026-09-22.md](多交易所-Coinbase-交接-Codex-2026-09-22.md) | 现行 | 第二条线程：多交易所抽象 + Coinbase 现货，模块边界、五阶段与验收 |
-| [对比K线-交接-Codex-2026-09-22.md](对比K线-交接-Codex-2026-09-22.md) | 现行 | 第三条线程：对比 K 线（百分比叠加，最多 3 个） |
-| [提醒铃声-交接-Codex-2026-09-22.md](提醒铃声-交接-Codex-2026-09-22.md) | 现行 | 第四条线程：提醒铃声（四档，随人走，服务端推送同声） |
-| [使用手册-2026-09-21.md](使用手册-2026-09-21.md) | 现行 | 已实现界面与操作说明 |
+| [待办交接-Codex-2026-09-22.md](待办交接-Codex-2026-09-22.md) | 现行（已完成） | 第一条线程的工作清单、阶段顺序与验收要求；P0～P4 全部完成 |
+| [使用手册-2026-09-21.md](使用手册-2026-09-21.md) | 现行 | 已实现界面与操作说明（2026-10-08 按现行源码重写过时章节） |
 | [AICoin-K线复刻规格.md](AICoin-K线复刻规格.md) | 现行 | 图表行为、视觉约束和原始参照边界 |
 | [市值口径与数据来源-2026-09-18.md](市值口径与数据来源-2026-09-18.md) | 现行规格 / 参考数据 | 市值身份核验、数据来源与有效期；日期样本不作实时目录 |
 | [账号系统方案.md](账号系统方案.md) | 现行 | 用户名账号、会话隔离、同步与已上线接口 |
-| [testflight-uploads.md](testflight-uploads.md) | 参考台账 | 只追加实际成功上传，空表不是功能欠账 |
-| [多交易所-接入指南.md](多交易所-接入指南.md) | 现行 | 接一家新交易所或新市场时要改的文件清单，守卫为 `Tools/check-venue-isolation.sh` |
+| [多交易所-接入指南.md](多交易所-接入指南.md) | 现行 | 接一家新交易所或新市场时要改的文件清单，守卫为 `Tools/check-venue-isolation.sh`（已照它接了 Coinbase 现货、美元指数，订单流接了 Bybit / Hyperliquid） |
 | [并发台账-2026-09-22.md](并发台账-2026-09-22.md) | 现行 | 每处 `@unchecked Sendable` / `nonisolated(unsafe)` / `Task.detached` 及其安全理由（P2.6） |
+| [主力订单流-方案-2026-09-24.md](主力订单流-方案-2026-09-24.md) | 现行 | 主力订单流（逐单模型、服务端跟踪、客户端画法）方案与线上实测 |
+| [条件提醒-协议-2026-09-27.md](条件提醒-协议-2026-09-27.md) | 协议 | 条件提醒（费率 / 持仓量 / 均线穿越 / 大单墙）两端契约与服务端评估 |
+| [交易复盘-协议-2026-09-27.md](交易复盘-协议-2026-09-27.md) | 协议 | 只读交易所 API 接入、拉成交拼回合、自动复盘的数据契约（Key 只在手机） |
+| [方案-我的-自动复盘-周期分组指标-2026-09-27.md](方案-我的-自动复盘-周期分组指标-2026-09-27.md) | 现行 / 部分作废 | 「我的」页与四格底栏（已落地）、自动复盘（已落地）、指标按周期分组（2026-10-03 已整套拆掉，见 PROJECT.md §22） |
+| [提醒日志-协议-2026-10-05.md](提醒日志-协议-2026-10-05.md) | 协议 | 提醒触发记录 `alert_log` 与 `GET/DELETE /v1/alerts/log` |
+| [美元指数-协议-2026-10-05.md](美元指数-协议-2026-10-05.md) | 协议 | 第三家 venue `macro/index/DXY`：采价、存表、接口形状、客户端能力位 |
+| [手机网页版-2026-09-29.md](手机网页版-2026-09-29.md) | 现行 | 手机网页 `/web/m/` 的定位（照 iOS 复刻的临时替代）与交接 |
+| [网页版-订单簿与订单流-大屏设计-2026-09-29.md](网页版-订单簿与订单流-大屏设计-2026-09-29.md) | 现行 | 电脑网页订单簿 / 订单流大屏设计 |
+| [网页版-小时收盘接口-2026-09-30.md](网页版-小时收盘接口-2026-09-30.md) | 协议 | 服务端小时收盘表与接口（写时 VPS 在美国，451 前提 10-02 后不再成立，源码仍走 `www.binance.com`） |
+| [网页版-OpenMarket代码与文档通读-2026-09-29.md](网页版-OpenMarket代码与文档通读-2026-09-29.md)、[网页版-吸收-画线](网页版-吸收-画线-2026-09-29.md) / [指标](网页版-吸收-指标-2026-09-29.md) / [订单流](网页版-吸收-订单流-2026-09-29.md) / [复盘与自选](网页版-吸收-复盘与自选-2026-09-29.md) | 参考 | 网页版起步时对 OpenMarket 的通读与可吸收点，结论已进实现，不是待办 |
+| [网页版-深度压测-2026-09-29/](网页版-深度压测-2026-09-29/README.md) | 参考 | 网页版三路压测报告（A 图表 / B 订单流账号 / C 服务端），历史测量 |
+| [新加坡主机迁移-2026-10-02.md](新加坡主机迁移-2026-10-02.md) | 现行 / 运维记录 | 服务端迁到新加坡 `kanpan.43-160-232-253.sslip.io` 的拓扑、切换过程、踩坑与线路实测；美国两台只剩编译 / 备份 |
+| [design/电脑网页UI规范-2026-10-08.md](design/电脑网页UI规范-2026-10-08.md) | 现行（草案） | 电脑网页尺寸 / 密度 / 材料 / 图标规范 |
+| [design/大单爆仓气泡-三端规格-2026-10-08.md](design/大单爆仓气泡-三端规格-2026-10-08.md) | 现行 | 图上大单与爆仓「一枚透明气泡」三端同口径规格 |
+| [原型-手机大单与爆仓-2026-10-08.html](原型-手机大单与爆仓-2026-10-08.html)、[prototypes/](prototypes/) | 原型 | 大单与爆仓弹层、电脑网页视觉 / 大单抽屉 / 气泡原型（单文件 HTML，定稿后不回头改） |
+| [多交易所-Coinbase-交接-Codex-2026-09-22.md](多交易所-Coinbase-交接-Codex-2026-09-22.md) | 已交付 | 第二条线程：多交易所抽象 + Coinbase 现货，模块边界、五阶段与验收（2026-09-23 完成） |
+| [对比K线-交接-Codex-2026-09-22.md](对比K线-交接-Codex-2026-09-22.md) | 已交付 | 第三条线程：对比 K 线（百分比叠加，最多 3 个；2026-09-23 完成） |
+| [提醒铃声-交接-Codex-2026-09-22.md](提醒铃声-交接-Codex-2026-09-22.md) | 已交付 | 第四条线程：提醒铃声（四档，随人走，服务端推送同声；2026-09-22 完成） |
+| [testflight-uploads.md](testflight-uploads.md) | 参考台账 | 只追加实际成功上传，空表不是功能欠账 |
 | [开发者会员注册与分发-2026-09-22.md](开发者会员注册与分发-2026-09-22.md) | 参考 | 不上架前提下注册开发者会员、发包给朋友的步骤 |
 
 ## 数据与验收证据
 
-这些目录不参与P0.5正文重写。每份证据只证明其注明的提交、日期和环境；旧报告不作为功能清单。
+每份证据只证明其注明的提交、日期和环境；旧报告不作为功能清单。`acceptance/` 下 2026-09-22 之后的目录一律按「主题-日期」命名，每个目录里有自己的验收报告或 `summary.txt` 与挑过的截图，这里只列早期里程碑与几份跨目录的总结，其余按目录名直接找（如 `我的与四格底栏-2026-09-27/`、`顶栏更多菜单-2026-10-08/`、`大单爆仓气泡-2026-10-08/`、`网页版-*`、`压测-*`、`深度审查-*`）。素材只收 iPhone 16 Pro 与 iPhone 17 Pro Max 两台，原始日志不入库（`AGENTS.md`「文档维护」）。
 
 | 文件 | 性质 | 内容 |
 | --- | --- | --- |
 | [acceptance/AICoin-base/IMPLEMENTATION.md](acceptance/AICoin-base/IMPLEMENTATION.md) | 参考 | AICoin 共用底座实施记录 |
 | [acceptance/AICoin-base/compatibility/README.md](acceptance/AICoin-base/compatibility/README.md) | 参考 | 机型兼容验收 |
 | [acceptance/AICoin-base/foundation/IMPLEMENTATION.md](acceptance/AICoin-base/foundation/IMPLEMENTATION.md) | 参考 | 图表底座增补实现与验收 |
-| [acceptance/M0.md](acceptance/M0.md) | 参考 | M0 验收：工程骨架与环境 |
-| [acceptance/M1.md](acceptance/M1.md) | 参考 | M1 KanpanCore —— 验收证据 |
-| [acceptance/M2.md](acceptance/M2.md) | 参考 | M2 · 数据层验收证据 |
-| [acceptance/M3/A3.1-差异记录.md](acceptance/M3/A3.1-差异记录.md) | 参考 | A3.1 / A3.6 原型并排对照 —— 差异记录 |
-| [acceptance/M3/A3.12-cpu.md](acceptance/M3/A3.12-cpu.md) | 参考 | A3.12 [I] 静止时 DisplayLink 暂停，CPU 占用 < 1% |
-| [acceptance/M3.md](acceptance/M3.md) | 参考 | M3 · 绘制层验收证据 |
-| [acceptance/M4.md](acceptance/M4.md) | 参考 | M4 手势 · 验收证据 |
-| [acceptance/M5/品种页.md](acceptance/M5/品种页.md) | 参考 | M5 · 品种整页（搜索 / 自选 / 最近 / 全部）取证 |
-| [acceptance/M6.md](acceptance/M6.md) | 参考 | M6 设置与面板 —— 验收证据 |
-| [acceptance/M7.md](acceptance/M7.md) | 参考 | M7 画线 · 验收证据 |
-| [acceptance/M8/aicoin-对比.md](acceptance/M8/aicoin-对比.md) | 参考 | AiCoin 桌面版 ⇄ 看盘：图表细节逐项实测对比 |
-| [acceptance/M9.md](acceptance/M9.md) | 参考 | M9 稳定性 / 性能 / 诊断 · 验收证据 |
-| [acceptance/drawing-v2/DEVICE.md](acceptance/drawing-v2/DEVICE.md) | 参考 | 画线与均线颜色：真机验收 |
-| [acceptance/drawing-v2/README.md](acceptance/drawing-v2/README.md) | 参考 | 画线 v2 与均线颜色 |
+| [acceptance/M0.md](acceptance/M0.md) … [acceptance/M9.md](acceptance/M9.md) | 参考 | M0 工程骨架 → M9 稳定性 / 性能 / 诊断，各里程碑验收证据（`M2/`、`M3/`、`M5/`、`M6/`、`M8/`、`M9/` 是对应素材目录） |
+| [acceptance/M3/A3.1-差异记录.md](acceptance/M3/A3.1-差异记录.md)、[acceptance/M3/A3.12-cpu.md](acceptance/M3/A3.12-cpu.md) | 参考 | A3.1 / A3.6 原型并排对照差异记录；静止时 DisplayLink 暂停、CPU < 1% |
+| [acceptance/M5/品种页.md](acceptance/M5/品种页.md)、[acceptance/M8/aicoin-对比.md](acceptance/M8/aicoin-对比.md) | 参考 | 品种整页取证；AiCoin 桌面版 ⇄ 看盘图表细节逐项实测对比 |
+| [acceptance/drawing-v2/README.md](acceptance/drawing-v2/README.md)、[DEVICE.md](acceptance/drawing-v2/DEVICE.md) | 参考 | 画线 v2 与均线颜色（含真机验收） |
 | [acceptance/eye-colors/VALIDATION-NOTES.md](acceptance/eye-colors/VALIDATION-NOTES.md) | 参考 | 验收轮次与失败保留 |
-| [acceptance/share/主窗口独立验收-2026-09-22.md](acceptance/share/主窗口独立验收-2026-09-22.md) | 参考 | 「发给朋友」画线分享：主窗口独立验收（2026-09-22） |
-| [acceptance/share/验收报告-2026-09-22.md](acceptance/share/验收报告-2026-09-22.md) | 参考 | 发给朋友·画线分享验收报告 |
-| [acceptance/兼容-iPhone15+-iPad-iOS18-2026-09-18.md](acceptance/兼容-iPhone15+-iPad-iOS18-2026-09-18.md) | 参考 | 兼容一轮：iPhone 15 及以上 · 全 iPad 系列 · iOS 18 起 |
-| [acceptance/待办交接-2026-09-22/P0.md](acceptance/待办交接-2026-09-22/P0.md) | 参考 | P0 · 行情页头部验收 |
+| [acceptance/share/验收报告-2026-09-22.md](acceptance/share/验收报告-2026-09-22.md)、[主窗口独立验收](acceptance/share/主窗口独立验收-2026-09-22.md) | 参考 | 「发给朋友」画线分享验收 |
+| [acceptance/兼容-iPhone15+-iPad-iOS18-2026-09-18.md](acceptance/兼容-iPhone15+-iPad-iOS18-2026-09-18.md) | 参考（历史机型） | 兼容一轮：iPhone 15 及以上 · 全 iPad 系列 · iOS 18 起；2026-09-23 起只维护两台机型 |
 | [acceptance/护眼配色与数据完整性.md](acceptance/护眼配色与数据完整性.md) | 参考 | 原生配色、行情数据完整性与性能审查 |
-| [板块分类表-2026-09-18/README.md](板块分类表-2026-09-18/README.md) | 参考 | 板块气泡图 · 分类表（2026-09-18 定稿） |
-| [板块分类表-2026-09-18/加密-板块定义.md](板块分类表-2026-09-18/加密-板块定义.md) | 参考 | 看盘 · 加密细分板块清单（固定 24 个，不得自创） |
-| [acceptance/待办交接-2026-09-22/P0.5.md](acceptance/待办交接-2026-09-22/P0.5.md) | 参考 | 文档统一口径的逐份核对与验证 |
-| [acceptance/待办交接-2026-09-22/P1.md](acceptance/待办交接-2026-09-22/P1.md) | 参考 | 外部统计指标、盘口与归档扩列验收 |
-| [acceptance/待办交接-2026-09-22/P1/rework-1/验收报告.md](acceptance/待办交接-2026-09-22/P1/rework-1/验收报告.md) | 参考 | 盘口固定十行梯返工与绘制证据 |
-| [acceptance/待办交接-2026-09-22/P2.md](acceptance/待办交接-2026-09-22/P2.md) | 参考 | P2 体验与回归十八项 |
-| [acceptance/待办交接-2026-09-22/P3.md](acceptance/待办交接-2026-09-22/P3.md) | 参考 | P3 提醒、小组件、实时活动、复盘补全与种子库 |
-| [acceptance/待办交接-2026-09-22/P4.md](acceptance/待办交接-2026-09-22/P4.md) | 参考 | P4 证据与文档欠账 |
-| [acceptance/待办交接-2026-09-22/总结.md](acceptance/待办交接-2026-09-22/总结.md) | 参考 | 待办交接 P0～P4 逐条对账（完成 / 不做 / 阻塞） |
-| [acceptance/M5.md](acceptance/M5.md) | 参考 | M5 A5.1～A5.11 逐条验收（模拟器） |
-| [acceptance/M8.md](acceptance/M8.md) | 参考 | M8 兼容矩阵重跑（iPhone 16 Pro，iOS 26.5） |
+| [acceptance/待办交接-2026-09-22/总结.md](acceptance/待办交接-2026-09-22/总结.md) | 参考 | 待办交接 P0～P4 逐条对账（完成 / 不做 / 阻塞），各阶段报告 `P0.md`…`P4.md` 同目录 |
+| [acceptance/多交易所-2026-09-22/总结.md](acceptance/多交易所-2026-09-22/总结.md)、[对比K线-2026-09-22/总结.md](acceptance/对比K线-2026-09-22/总结.md)、[提醒铃声-2026-09-22/](acceptance/提醒铃声-2026-09-22/) | 参考 | 第二至四条线程各阶段验收 |
+| [acceptance/UI审查-2026-09-24/](acceptance/UI审查-2026-09-24/)、[深度审查-2026-10-04/](acceptance/深度审查-2026-10-04/)、[深度审查-Web-2026-10-05/](acceptance/深度审查-Web-2026-10-05/) | 参考 | HIG 对照整改、iOS 与网页版 bug / 性能 / 压测深度审查报告 |
+| [板块分类表-2026-09-18/README.md](板块分类表-2026-09-18/README.md)、[加密-板块定义.md](板块分类表-2026-09-18/加密-板块定义.md) | 参考 | 板块分类表（加密固定 24 个，不得自创；美股 2026-10-08 起 23 格，成员表 `Web/src/data/sectors.json` 与手机端同一份） |
 
-原始逆向素材位于本机 `../refs/aicoin/`；品牌资产与原始截图分别位于 `brand/`、`截图/`。这些素材保留，不是新增任务授权。
+原始逆向素材位于本机 `../refs/aicoin/`（不入库）；品牌资产与原始截图分别位于 `brand/`、`截图/`。这些素材保留，不是新增任务授权。

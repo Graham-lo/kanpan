@@ -21,7 +21,7 @@
 
 ## 宿主资源预算
 
-只读检查主机分别为7核/约8GB和3核/约4GB，部署时空闲内存约5.1GB/3.2GB、负载较低。先采用保守预算：主节点128连接、1.5MB/s应用出站；备用64连接、0.75MB/s。它们是上线保护参数，**不是压测得出的最大承载人数或供应商带宽保证**。
+下面这段「主节点 / 备用节点」两套预算是 2026-09 两台美国机器时期定的，留作参数出处；2026-10-02 起网关只跑在新加坡那一台（2 vCPU / 7.7 GB，见 `docs/新加坡主机迁移-2026-10-02.md`），没有备用节点，`limits.env` 以线上那台实际配置为准。当时只读检查主机分别为7核/约8GB和3核/约4GB，部署时空闲内存约5.1GB/3.2GB、负载较低。先采用保守预算：主节点128连接、1.5MB/s应用出站；备用64连接、0.75MB/s。它们是上线保护参数，**不是压测得出的最大承载人数或供应商带宽保证**。
 
 每5秒采样宿主CPU、可用内存、服务RSS、默认出口发送速度。压力升高时逐步减少新连接及发送预算，回落时缓慢恢复，避免抖动。整个服务由systemd限制1GB内存、300%CPU（备用节点用`kanpan-stream-hub.service.d/10-standby-node.conf`降为150%）、256任务；历史服务独立受限。预算在`/etc/kanpan-gateway/limits.env`配置（默认`MAX_CLIENTS=512`、`EGRESS_BYTES_PER_SECOND=6000000`、`MEMORY_BUDGET_BYTES=1073741824`、`HOST_EGRESS_BYTES_PER_SECOND=20000000`），不影响同机其他应用。公开HTTP健康接口只返回必要服务状态。
 
@@ -32,7 +32,7 @@
 - `/market/v1/tickers?source=okx`：当前源的**全市场** 24h 行情（板块页用），详见下面那一节。
 - `/market/v1/instruments?source=okx`：当前源的 USDT 永续品种表；OKX 的 `state` 按状态机原样透传成币安的 `status`（`live`→`TRADING`、`preopen`→`PENDING_TRADING`、`suspend`→`BREAK`），非交易中的合约**仍然列在表里**、其余字段照常合成，客户端才分得清「待上市」「临时停牌」和「没有这个品种」；`test`（OKX 自己的测试合约）不输出，其他没见过的 `state` 也不输出并在日志里记一条（每个值每进程一次），绝不拿 `TRADING` 兜底。临时停牌（`suspend`）的合约照样能取 K 线和 ticker——目录里既然说它在，图就不能回 503；`preopen` 等还没成交过的状态仍然不给数据。
 
-历史分页按时间游标继续请求，不把短响应误判为历史耗尽；缺口、来源不匹配或上游不可用都返回失败。主节点失败后按顺序尝试备用节点，客户端只在两台网关都不可用时报告失败。
+历史分页按时间游标继续请求，不把短响应误判为历史耗尽；缺口、来源不匹配或上游不可用都返回失败。网关表 2026-10-02 起只有新加坡一台：客户端按表遍历的代码还在，但表里只有一项，这一台不可用就按它给的 `Retry-After` 歇着再试，没有别的节点可切。
 
 OKX 的字段按**单位**对齐，不按名字对齐：ticker 的 `volCcy24h` 是 24 小时的**币数量**，只放进币安语义的 `volume` / WS `v`；OKX V5 的 ticker 根本没有计价成交额（`vol24h` 是张数），所以 `quoteVolume` / WS `q` 一律留空，REST 与 WS 两条路一致。不拿 `volCcy24h × last` 估一个「额」出来冒充——那是用一个瞬时价给一整天的成交定价，手机上显示 `--` 才是真话。K 线三个量各就各位：`vol`（张）不发，`volCcy`（币）进 row[5] / WS `k.v`，`volCcyQuote`（USDT）进 row[7] / WS `k.q`。`instruments` 只在 OKX 自己的字段能证明时才写 `underlyingType: "COIN"`（`instType=SWAP`、`ctType=linear/inverse`、`ctValCcy` 就是基础币、`uly` 与 `instFamily` 都是 `<币>-<结算币>`），证明不了就不写这个字段，让客户端保守处理，绝不把类型不明的合约一律补成币。
 
@@ -130,4 +130,4 @@ Python3.11+，独立venv，`pip install -r requirements.txt`；aiohttp固定3.14
 
 两台VPS的实时共享与 OI 验证记录见`docs/acceptance/AICoin-base/foundation/dual-gateway-live.json`；市场源的 OKX 历史、实时和分页应通过 `LiveRoutingTests` 在当前公网环境单独复验，不能用本地单元测试代替 VPS 或真机覆盖。
 
-Git只包含公开服务地址、实现及验证记录，不包含SSH配置、登录端口、私钥、密码或令牌。VPS是受信行情中转；WSS/HTTPS正常校验证书，不等于交易所对报价做端到端签名。
+Git 里不含私钥、密码、令牌与任何 `*.env` 内容（它们只在线上 `/etc/kanpan-api/`、`/etc/kanpan-gateway/`）；但公开服务地址之外，`Backend/kanpan-api/ops/` 与迁移文档里写有运维拓扑（备份机 IP 与 sshd 端口、ssh 别名、登录用户、密钥路径）——这些是部署步骤所需，不是凭证，保密靠密钥登录与安全组，不靠文档不写。VPS是受信行情中转；WSS/HTTPS正常校验证书，不等于交易所对报价做端到端签名。

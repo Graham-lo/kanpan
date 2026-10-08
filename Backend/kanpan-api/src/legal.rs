@@ -16,7 +16,7 @@ pub const PRIVACY:&str=r#"<p>Hkline 是几个朋友之间自用的看盘工具�
 <h2>我们不收集什么</h2>
 <p>除为推送提醒所需的设备标识外，不收集任何其他信息：不做统计分析，不接广告，不读取通讯录、位置或相册（除非你在复盘里自己选一张图上传）。</p>
 <h2>数据在哪</h2>
-<p>数据存放在美国的一台 VPS 上，个人数据按账号隔离，别人读不到你的数据。</p>
+<p>数据存放在新加坡的一台 VPS 上（2026-10-02 从美国迁来），个人数据按账号隔离，别人读不到你的数据。</p>
 <h2>导出与注销</h2>
 <p>你可以随时在 app 的账号页「导出我的数据」拿到一份完整副本，也可以随时注销账号；注销后你的全部数据会被删除。</p>"#;
 
@@ -38,7 +38,7 @@ fn page(title:&str,body:&str)->String {
 mod tests {
  use super::*;
  #[test] fn privacy_says_what_the_handoff_promised() {
-  for needle in ["用户名","密码哈希","自选","画线","提醒","复盘记录","设备标识","美国","导出","注销"] {
+  for needle in ["用户名","密码哈希","自选","画线","提醒","复盘记录","设备标识","新加坡","导出","注销"] {
    assert!(PRIVACY.contains(needle),"隐私政策缺「{needle}」");
   }
   assert!(page("服务条款",TERMS).starts_with("<!doctype html>"));

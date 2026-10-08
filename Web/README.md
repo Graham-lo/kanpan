@@ -42,9 +42,9 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 
 ## 数据从哪来
 
-浏览器直接连币安 U 本位合约，不经过我们的服务端。只有市值用的供应量是从自家服务端取的。**不用 `*.binancefuture.com`（那是测试网）。**
+线路两档，和 iOS 同一套规矩、没有自动切换。**出厂是「网关」**（2026-10-02 起）：REST 经 kanpan-api 的 `/v1/market/raw/<path>?source=binance` 白名单透传、WS 走网关的共享上游，国内不开代理也能用。「直连」才是下面这段：浏览器直接连币安 U 本位合约，不经过我们的服务端（国内要开代理）。市值用的供应量、订单流、美元指数不论线路都从自家服务端取。**不用 `*.binancefuture.com`（那是测试网）。**
 
-- REST `https://fapi.binance.com`（这个域名本身就带 CORS 头）：
+- 直连 REST `https://fapi.binance.com`（这个域名本身就带 CORS 头）：
   - `/fapi/v1/exchangeInfo`、`/fapi/v1/ticker/24hr`、`/fapi/v1/premiumIndex`：品种表、24h 统计、资金费率 / 标记价 / 指数价，启动时各拉一次。
   - `/fapi/v1/klines`：K 线。往左拖到头会用 `endTime` 继续向前翻页。
   - `/fapi/v1/openInterest`、`/futures/data/openInterestHist`：持仓量。副图的「持仓量」用 `openInterestHist`，币安只给 30 天内的数据。
