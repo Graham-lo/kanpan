@@ -39,7 +39,7 @@ def fetch(port, path, timeout=30):
 
 
 def klines(symbol, interval='1m', limit=300, end=None):
-    query = f'/market/v1/klines?source=okx&symbol={symbol}&interval={interval}&limit={limit}'
+    query = f'/market/v1/klines?source=binance&symbol={symbol}&interval={interval}&limit={limit}'
     return query + (f'&endTime={end}' if end is not None else '')
 
 
@@ -119,7 +119,7 @@ def main():
     report('E 回补错位窗口（重叠 90%）', [shifted], '← 落盘的 K 线库要打掉的就是这一项')
 
     # F ticker。
-    ticker_miss, _ = fetch(args.rest, f'/market/v1/ticker?source=okx&symbol={TICKER}')
+    ticker_miss, _ = fetch(args.rest, f'/market/v1/ticker?source=binance&symbol={TICKER}')
     report('F ticker 未命中', [ticker_miss])
 
     # G 实时首帧：常驻频道之外的一条，量的是上游 socket 冷不冷。一次只是一个样本，

@@ -7,7 +7,7 @@
 #
 # API 的 JSON 一律 `?Cache-Control: no-store`：`?` 只在上游自己没写时才补，深度热力（max-age=5）、
 # 分钟成交（20）、板块日线、小时收盘（300）这些自己定了缓存的不动。nosniff 等安全头在站点那一层统一加。
-@market path /market/stream /market/okx/stream /chart-gateway/stream-health
+@market path /market/stream /chart-gateway/stream-health
 handle @market {
     reverse_proxy 127.0.0.1:8793 {
         header_up X-Kanpan-Client-IP {remote_host}

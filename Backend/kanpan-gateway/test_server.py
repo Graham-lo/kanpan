@@ -59,10 +59,10 @@ class Recorder(server.Handler):
 class UpstreamStopTests(unittest.TestCase):
     """A-T06 (Python half): the stop condition the phone receives over the wire."""
 
-    PATH = '/market/v1/ticker?source=okx&symbol=BTCUSDT'
+    PATH = '/market/v1/ticker?source=binance&symbol=BTCUSDT'
 
     def answer(self, *replies):
-        market, upstream = wired('okx', *replies)
+        market, upstream = wired('binance', *replies)
         handler = Recorder(self.PATH)
         with patch.object(server, 'MARKET', market):
             handler.get_market_data()
@@ -73,8 +73,8 @@ class UpstreamStopTests(unittest.TestCase):
         handler = self.answer((429, b'{}', {'Retry-After': '120'}))
         self.assertEqual(handler.status, 429)
         self.assertEqual(handler.header('Retry-After'), ['120'])  # exactly once, not the flat 2
-        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['okx-limited'])
-        self.assertEqual(handler.body(), {'error': 'upstream_rate_limited', 'source': 'okx',
+        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['binance-limited'])
+        self.assertEqual(handler.body(), {'error': 'upstream_rate_limited', 'source': 'binance',
                                           'code': 429, 'retryAfter': 120, 'upstreamStatus': '429'})
 
     def test_a_ban_without_a_header_still_stops_for_two_minutes(self):
@@ -83,12 +83,6 @@ class UpstreamStopTests(unittest.TestCase):
         self.assertEqual(handler.header('Retry-After'), ['120'])
         self.assertEqual(handler.body()['retryAfter'], 120)
         self.assertEqual(handler.body()['upstreamStatus'], '418')
-
-    def test_an_okx_business_limit_travels_as_its_own_code(self):
-        handler = self.answer((200, b'{"code":"50011","msg":"Too Many Requests","data":[]}', {}))
-        self.assertEqual(handler.status, 429)
-        self.assertEqual(handler.header('Retry-After'), ['10'])
-        self.assertEqual(handler.body()['upstreamStatus'], '50011')
 
     def test_a_waf_ban_is_a_rate_limit_not_a_dead_route(self):
         """A-T06: 403 is Binance's WAF banning this node -- a wait, not a fault.
@@ -101,8 +95,8 @@ class UpstreamStopTests(unittest.TestCase):
         handler = self.answer((403, b'{}', {}))
         self.assertEqual(handler.status, 429)
         self.assertEqual(handler.header('Retry-After'), ['60'])
-        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['okx-limited'])
-        self.assertEqual(handler.body(), {'error': 'upstream_rate_limited', 'source': 'okx',
+        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['binance-limited'])
+        self.assertEqual(handler.body(), {'error': 'upstream_rate_limited', 'source': 'binance',
                                           'code': 429, 'retryAfter': 60, 'upstreamStatus': '403'})
         # A header on a 403 is obeyed like any other published deadline.
         headed = self.answer((403, b'{}', {'Retry-After': '30'}))
@@ -111,9 +105,24 @@ class UpstreamStopTests(unittest.TestCase):
     def test_a_geographic_block_is_unchanged(self):
         handler = self.answer((451, b'{}', {}))
         self.assertEqual(handler.status, 451)
-        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['okx-blocked'])
-        self.assertEqual(handler.body(), {'error': 'upstream_blocked', 'source': 'okx', 'code': 451})
+        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['binance-blocked'])
+        self.assertEqual(handler.body(), {'error': 'upstream_blocked', 'source': 'binance', 'code': 451})
         self.assertTrue(handler.refund)
+
+    def test_okx_is_no_longer_a_source_of_this_gateway(self):
+        # OKX lives in kanpan-api now. A request for it is malformed here, and
+        # must be refused before any exchange is contacted.
+        for path in ('/market/v1/ticker?source=okx&symbol=BTCUSDT', '/market/v1/tickers?source=okx',
+                     '/market/v1/instruments?source=okx',
+                     '/market/v1/klines?source=okx&symbol=BTCUSDT&interval=1m&limit=10',
+                     '/market/v1/tickers'):
+            market, upstream = wired('binance')
+            handler = Recorder(path)
+            with patch.object(server, 'MARKET', market):
+                handler.get_market_data()
+            self.assertEqual((path, handler.status), (path, 400))
+            self.assertEqual(handler.body(), {'error': 'invalid market request'})
+            self.assertEqual(upstream.calls, [])
 
     def test_every_other_failure_is_still_a_plain_503(self):
         handler = self.answer((500, b'{}', {}))

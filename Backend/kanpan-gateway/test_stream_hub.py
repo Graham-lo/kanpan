@@ -66,6 +66,11 @@ class BudgetTests(unittest.TestCase):
             with self.assertRaises(ValueError): streams(value)
         for value in [['https://example.com'], ['../secret'], ['btcusdt@trade'], ['btcusdt@kline_1y'], ['x'] * 65]:
             with self.assertRaises(ValueError): streams(value)
+        # The iOS gateway profile subscribes exactly these through this hub.
+        wanted = ['btcusdt@ticker', 'btcusdt@markPrice@1s', 'btcusdt@aggTrade', '!ticker@arr'] + [
+            'btcusdt@kline_' + i for i in
+            ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M')]
+        self.assertEqual(streams(wanted), set(wanted))
 
     def test_public_peer_cannot_spoof_forwarded_identity(self):
         request = SimpleNamespace(remote='192.0.2.1', headers={'X-Kanpan-Client-IP': '192.0.2.2'})
@@ -170,6 +175,12 @@ class SharedHubTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.5)
         self.assertFalse(self.hub.channels)
         self.assertIsNone(self.hub.upstream)
+
+    async def test_the_okx_route_is_gone(self):
+        # OKX is served by kanpan-api; this hub relays Binance only.
+        with self.assertRaises(WSServerHandshakeError) as caught:
+            await self.http.ws_connect(self.url.replace('/market/stream', '/market/okx/stream'))
+        self.assertEqual(caught.exception.status, 404)
 
     async def test_first_change_after_a_quiet_period_is_not_debounced(self):
         a = await self.connect()

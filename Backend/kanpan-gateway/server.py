@@ -328,7 +328,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('duplicate query')
                 q = {k: v[0] for k, v in query.items()}
                 source = q.pop('source')
-                if source not in ('binance', 'okx'):
+                if source != 'binance':
                     raise ValueError('invalid source')
                 if parts.path.endswith('/klines'):
                     if set(q) - {'symbol', 'interval', 'limit', 'startTime', 'endTime'}:
