@@ -44,6 +44,8 @@ export const tagsOf = new WeakMap<TVChart, () => readonly Tag[]>()
 export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: string }): ChartLayer {
   let bands: BandHit[] = []
   let tags: Tag[] = []
+  /** 鼠标停在哪枚签上（那根的开盘时间）：图上给那根铺一道淡竖带，不然签比根宽、十字线又停在旁边那根，看不出卡上的数是哪根的 */
+  let hoverT: number | null = null
   tagsOf.set(chart, () => tags)
   let tagData = new Map<number, BarBig>()
   const bigCache = new BigBarCache()
@@ -386,18 +388,29 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     return d ? hoverCardHtml(d, mdhm(d.t), ivShort(d.t1 - d.t)) : ''
   }
 
-  /** 抽屉里选中的那根：一道强调色竖带（画在蜡烛下面） */
-  function drawSel(c: CanvasRenderingContext2D, g: ChartGeometry): void {
-    const s = OF.selBar
-    if (!s || s.symbol !== cellOf().symbol.toUpperCase() || s.iv !== g.iv || OF.api?.activeChart()?.chart !== chart) return
-    const x = xOf(g, s.t)
+  /** 一根上的强调色竖带（画在蜡烛下面）：抽屉里点选的那根带底边粗线；鼠标停在签上的那根只有淡带 */
+  function drawBar(c: CanvasRenderingContext2D, g: ChartGeometry, t: number, strong: boolean): void {
+    const x = xOf(g, t)
     if (x + g.spacing < 0 || x > g.plotW) return
     const [r, gg, b] = rgbOf(g.colors.accent)
     const w = Math.max(2, g.spacing)
-    c.fillStyle = `rgba(${r},${gg},${b},.09)`
+    c.fillStyle = `rgba(${r},${gg},${b},${strong ? '.09' : '.13'})`
     c.fillRect(x, g.pane.y, w, g.pane.h)
+    if (!strong) return
     c.fillStyle = `rgba(${r},${gg},${b},.85)`
     c.fillRect(x, g.pane.y + g.pane.h - 3, w, 3)
+  }
+
+  function drawSel(c: CanvasRenderingContext2D, g: ChartGeometry): void {
+    const s = OF.selBar
+    if (s && s.symbol === cellOf().symbol.toUpperCase() && s.iv === g.iv && OF.api?.activeChart()?.chart === chart) drawBar(c, g, s.t, true)
+    if (hoverT != null && hoverT !== s?.t) drawBar(c, g, hoverT, false)
+  }
+
+  /** 签悬停换了根（或离开）就重画一帧 */
+  function setHover(t: number | null): void {
+    if (hoverT === t) return
+    hoverT = t; chart.dirty = true
   }
 
   const tagAt = (x: number, y: number): Tag | null => {
@@ -438,6 +451,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     hover(x, y, cx, cy) {
       if (!geo) return false
       const tg = tagAt(x, y)
+      setHover(tg?.t ?? null)
       if (tg) { showCard(tagCard(tg), cx, cy); return true }
       if (!mine()) { hideCard(); return false }
       const dec = geo.dec
@@ -451,7 +465,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       hideCard()
       return false
     },
-    leave() { hideCard() },
+    leave() { setHover(null); hideCard() },
     click(x, y) {
       const tg = tagAt(x, y)
       if (tg) {

@@ -319,6 +319,7 @@
 .of-card .hc-kv em.up { color: var(--up); }
 .of-card .hc-kv em.dn { color: var(--down); }
 .of-card .hc-src { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); display: grid; gap: 7px; }
+.of-card .hc-src.hc-hist { display: block; color: var(--text-3); font-size: 11px; }
 
 /* ---------------------------------------------------------------- 侧栏「主力订单流」面板 */
 .of-p { flex: 1; min-height: 0; padding-bottom: var(--s4); }

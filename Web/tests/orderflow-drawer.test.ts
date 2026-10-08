@@ -99,11 +99,12 @@ describe('只有历史时的写法', () => {
     const live = srcHtml(100, 25, [50, 30, 20])
     expect(live).toContain('25%'); expect(live).toContain('75%'); expect(live).toContain('50%')
   })
-  it('悬停卡：笔数、最大一笔只有历史时写「—」', () => {
+  it('悬停卡：只有历史的根不摆四行「—」，收成一行「历史回填」', () => {
     const d: BarBig = { t: 0, t1: 300_000, bb: 2e6, bs: 1e6, bn: null, sn: null, bmax: null, smax: null, spot: null, ex: null, exact: false } as unknown as BarBig
     const h = hoverCardHtml(d, '10-08 12:30', '5分')
     expect(h).toContain('+1')
-    expect((h.match(/>—</g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect(h).toContain('历史回填')
+    expect(h).not.toContain('最大一笔'); expect(h).not.toContain('现货'); expect(h).not.toContain('>—<')
   })
   it('pct / signed / tone', () => {
     expect(pct(1, 0)).toBe('—'); expect(pct(1, 3)).toBe('33%')
